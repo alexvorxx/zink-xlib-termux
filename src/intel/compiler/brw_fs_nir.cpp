@@ -1890,6 +1890,18 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       inst->predicate = BRW_PREDICATE_NORMAL;
       break;
 
+   case nir_op_fcsel:
+      bld.CSEL(result, op[1], op[2], op[0], BRW_CONDITIONAL_NZ);
+      break;
+
+   case nir_op_fcsel_gt:
+      bld.CSEL(result, op[1], op[2], op[0], BRW_CONDITIONAL_G);
+      break;
+
+   case nir_op_fcsel_ge:
+      bld.CSEL(result, op[1], op[2], op[0], BRW_CONDITIONAL_GE);
+      break;
+
    case nir_op_extract_u8:
    case nir_op_extract_i8: {
       const brw_reg_type type = brw_int_type(1, instr->op == nir_op_extract_i8);

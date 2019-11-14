@@ -301,6 +301,7 @@ EXT(EXT_shader_integer_mix                  , EXT_shader_integer_mix            
 EXT(EXT_shader_io_blocks                    , dummy_true                             ,  x ,  x ,  x ,  31, 2014)
 EXT(EXT_shader_samples_identical            , EXT_shader_samples_identical           , GLL, GLC,  x ,  31, 2015)
 EXT(EXT_shadow_funcs                        , ARB_shadow                             , GLL,  x ,  x ,  x , 2002)
+EXT(EXT_shadow_samplers                     , ARB_shadow                             ,  x ,  x ,  x , ES2, 2012)
 EXT(EXT_stencil_two_side                    , EXT_stencil_two_side                   , GLL,  x ,  x ,  x , 2001)
 EXT(EXT_stencil_wrap                        , dummy_true                             , GLL,  x ,  x ,  x , 2002)
 EXT(EXT_subtexture                          , dummy_true                             , GLL,  x ,  x ,  x , 1995)

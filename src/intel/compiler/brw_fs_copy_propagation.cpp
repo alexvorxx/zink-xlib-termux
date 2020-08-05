@@ -988,16 +988,10 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
    switch (inst->opcode) {
    case BRW_OPCODE_MOV:
    case SHADER_OPCODE_LOAD_PAYLOAD:
+   case SHADER_OPCODE_POW:
    case FS_OPCODE_PACK:
       inst->src[arg] = val;
       progress = true;
-      break;
-
-   case SHADER_OPCODE_POW:
-      if (arg == 1) {
-         inst->src[arg] = val;
-         progress = true;
-      }
       break;
 
    case BRW_OPCODE_SUBB:

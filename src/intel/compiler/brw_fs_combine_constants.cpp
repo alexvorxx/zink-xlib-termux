@@ -1317,8 +1317,6 @@ brw_fs_opt_combine_constants(fs_visitor &s)
       case SHADER_OPCODE_INT_REMAINDER:
       case SHADER_OPCODE_POW:
          if (inst->src[0].file == IMM) {
-            assert(inst->opcode != SHADER_OPCODE_POW);
-
             add_candidate_immediate(&table, inst, ip, 0, true, false, block,
                                     devinfo, const_ctx);
          }

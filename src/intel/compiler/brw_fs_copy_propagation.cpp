@@ -1168,6 +1168,29 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       }
       break;
 
+   case BRW_OPCODE_CSEL:
+      assert(inst->conditional_mod != BRW_CONDITIONAL_NONE);
+
+      if (arg == 0 &&
+          inst->src[1].file != IMM &&
+          (!brw_type_is_float(inst->src[1].type) ||
+           inst->conditional_mod == BRW_CONDITIONAL_NZ ||
+           inst->conditional_mod == BRW_CONDITIONAL_Z)) {
+         /* Only EQ and NE are commutative due to NaN issues. */
+         inst->src[0] = inst->src[1];
+         inst->src[1] = val;
+         inst->conditional_mod = brw_negate_cmod(inst->conditional_mod);
+      } else {
+         /* While CSEL is a 3-source instruction, the last source should never
+          * be a constant.  We'll support that, but should it ever happen, we
+          * should add support to the constant folding pass.
+          */
+         inst->src[arg] = val;
+      }
+
+      progress = true;
+      break;
+
    case FS_OPCODE_FB_WRITE_LOGICAL:
       /* The stencil and omask sources of FS_OPCODE_FB_WRITE_LOGICAL are
        * bit-cast using a strided region so they cannot be immediates.

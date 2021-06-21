@@ -484,6 +484,13 @@ option(
 )
 
 option(
+  'html-docs',
+  type : 'feature',
+  value : 'disabled',
+  description : 'Build HTML documentation.'
+)
+
+option(
   'selinux',
   type : 'boolean',
   value : false,

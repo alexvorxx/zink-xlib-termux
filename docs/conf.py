@@ -40,6 +40,7 @@ sys.path.append(os.path.abspath('_exts'))
 # ones.
 extensions = [
     'bootstrap',
+    'depfile',
     'formatting',
     'hawkmoth',
     'nir',

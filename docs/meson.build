@@ -1,8 +1,10 @@
 html_docs = custom_target(
   'html',
+  depfile: 'docs.d',
   depend_files: files('conf.py'),
-  command: [sphinx, '-b', 'html', '-q', meson.current_source_dir(),
-            '@OUTPUT@'],
+  command: [sphinx, '-b', 'html', '-q',
+            '-Ddepfile=@DEPFILE@',
+            meson.current_source_dir(), '@OUTPUT@'],
   output: 'html',
   build_by_default: get_option('html-docs').enabled(),
 )

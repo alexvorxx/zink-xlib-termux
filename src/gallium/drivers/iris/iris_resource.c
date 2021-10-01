@@ -1477,50 +1477,6 @@ iris_resource_from_memobj_wrapper(struct pipe_screen *pscreen,
    return prsc;
 }
 
-static void
-iris_reallocate_resource_inplace(struct iris_context *ice,
-                                 struct iris_resource *old_res,
-                                 unsigned new_bind_flag);
-
-static void
-iris_flush_resource(struct pipe_context *ctx, struct pipe_resource *resource)
-{
-   struct iris_context *ice = (struct iris_context *)ctx;
-   struct iris_resource *res = (void *) resource;
-   const struct isl_drm_modifier_info *mod = res->mod_info;
-   bool newly_external = false;
-
-   /* flush_resource() may be used to prepare an image for sharing externally
-    * with other clients (e.g. via eglCreateImage).  To account for this, we
-    * make sure to eliminate suballocation and any compression that a consumer
-    * wouldn't know how to handle.
-    */
-   if (!iris_bo_is_real(res->bo)) {
-      assert(!(res->base.b.bind & PIPE_BIND_SHARED));
-      iris_reallocate_resource_inplace(ice, res, PIPE_BIND_SHARED);
-      assert(res->base.b.bind & PIPE_BIND_SHARED);
-      newly_external = true;
-   }
-
-   iris_resource_prepare_access(ice, res,
-                                0, INTEL_REMAINING_LEVELS,
-                                0, INTEL_REMAINING_LAYERS,
-                                mod ? res->aux.usage : ISL_AUX_USAGE_NONE,
-                                mod ? mod->supports_clear_color : false);
-
-   bool disable_aux = !res->mod_info && res->aux.usage != ISL_AUX_USAGE_NONE;
-
-   if (newly_external || disable_aux) {
-      iris_foreach_batch(ice, batch) {
-         if (iris_batch_references(batch, res->bo))
-            iris_batch_flush(batch);
-      }
-   }
-
-   if (disable_aux)
-      iris_resource_disable_aux(res);
-}
-
 /**
  * Reallocate a (non-external) resource into new storage, copying the data
  * and modifying the original resource to point at the new storage.
@@ -1612,6 +1568,45 @@ iris_reallocate_resource_inplace(struct iris_context *ice,
    new_res->aux.clear_color_bo = old_clear_color_bo;
 
    pipe_resource_reference((struct pipe_resource **)&new_res, NULL);
+}
+
+static void
+iris_flush_resource(struct pipe_context *ctx, struct pipe_resource *resource)
+{
+   struct iris_context *ice = (struct iris_context *)ctx;
+   struct iris_resource *res = (void *) resource;
+   const struct isl_drm_modifier_info *mod = res->mod_info;
+   bool newly_external = false;
+
+   /* flush_resource() may be used to prepare an image for sharing externally
+    * with other clients (e.g. via eglCreateImage).  To account for this, we
+    * make sure to eliminate suballocation and any compression that a consumer
+    * wouldn't know how to handle.
+    */
+   if (!iris_bo_is_real(res->bo)) {
+      assert(!(res->base.b.bind & PIPE_BIND_SHARED));
+      iris_reallocate_resource_inplace(ice, res, PIPE_BIND_SHARED);
+      assert(res->base.b.bind & PIPE_BIND_SHARED);
+      newly_external = true;
+   }
+
+   iris_resource_prepare_access(ice, res,
+                                0, INTEL_REMAINING_LEVELS,
+                                0, INTEL_REMAINING_LAYERS,
+                                mod ? res->aux.usage : ISL_AUX_USAGE_NONE,
+                                mod ? mod->supports_clear_color : false);
+
+   bool disable_aux = !res->mod_info && res->aux.usage != ISL_AUX_USAGE_NONE;
+
+   if (newly_external || disable_aux) {
+      iris_foreach_batch(ice, batch) {
+         if (iris_batch_references(batch, res->bo))
+            iris_batch_flush(batch);
+      }
+   }
+
+   if (disable_aux)
+      iris_resource_disable_aux(res);
 }
 
 static void

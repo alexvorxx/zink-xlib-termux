@@ -124,14 +124,11 @@ ir3_delayslots_with_repeat(struct ir3_instruction *assigner,
    if (assigner->opc == OPC_MOVMSK)
       return delay;
 
-   bool mismatched_half =
-      (src->flags & IR3_REG_HALF) != (dst->flags & IR3_REG_HALF);
-
    /* TODO: Handle the combination of (rpt) and different component sizes
     * better like below. This complicates things significantly because the
     * components don't line up.
     */
-   if (mismatched_half)
+   if ((src->flags & IR3_REG_HALF) != (dst->flags & IR3_REG_HALF))
       return delay;
 
    /* If an instruction has a (rpt), then it acts as a sequence of

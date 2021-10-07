@@ -1379,17 +1379,6 @@ writes_pred(struct ir3_instruction *instr)
    return false;
 }
 
-/* Is it something other than a normal register. Shared regs, p0, and a0/a1
- * are considered special here. Special registers are always accessed with one
- * size and never alias normal registers, even though a naive calculation
- * would sometimes make it seem like e.g. r30.z aliases a0.x.
- */
-static inline bool
-is_reg_special(const struct ir3_register *reg)
-{
-   return (reg->flags & IR3_REG_SHARED) || !is_reg_gpr(reg);
-}
-
 /* r0.x - r47.w are "normal" registers. r48.x - r55.w are shared registers.
  * Everything above those are non-GPR registers like a0.x and p0.x that aren't
  * assigned by RA.

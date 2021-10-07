@@ -55,8 +55,8 @@ struct ir3_legalize_ctx {
 };
 
 struct ir3_nop_state {
-   unsigned full_ready[4 * 48];
-   unsigned half_ready[4 * 48];
+   unsigned full_ready[GPR_REG_SIZE];
+   unsigned half_ready[GPR_REG_SIZE];
 };
 
 struct ir3_legalize_state {

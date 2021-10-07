@@ -313,7 +313,10 @@ get_reg_specified(struct ra_ctx *ctx, struct ir3_register *reg, physreg_t physre
 static unsigned
 reg_file_size(struct ir3_register *reg)
 {
-   return RA_SHARED_SIZE;
+   if (reg->flags & IR3_REG_HALF)
+      return RA_SHARED_HALF_SIZE;
+   else
+      return RA_SHARED_SIZE;
 }
 
 static physreg_t

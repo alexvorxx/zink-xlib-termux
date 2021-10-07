@@ -1422,15 +1422,6 @@ ir3_reg_file_offset(const struct ir3_register *reg, unsigned num,
    }
 }
 
-/* Same as above but in cases where we don't have a register. r48.x and above
- * are shared/special.
- */
-static inline bool
-is_reg_num_special(unsigned num)
-{
-   return num >= 48 * 4;
-}
-
 /* returns defining instruction for reg */
 /* TODO better name */
 static inline struct ir3_instruction *
@@ -2694,95 +2685,66 @@ INSTR0(CCINV)
 
 #define MAX_REG 256
 
-typedef BITSET_DECLARE(regmaskstate_t, 2 * MAX_REG);
+typedef BITSET_DECLARE(fullstate_t, 2 * GPR_REG_SIZE);
+typedef BITSET_DECLARE(halfstate_t, GPR_REG_SIZE);
+typedef BITSET_DECLARE(sharedstate_t, 2 * SHARED_REG_SIZE);
+typedef BITSET_DECLARE(nongprstate_t, 2 * NONGPR_REG_SIZE);
 
 typedef struct {
    bool mergedregs;
-   regmaskstate_t mask;
+   fullstate_t full;
+   halfstate_t half;
+   sharedstate_t shared;
+   nongprstate_t nongpr;
 } regmask_t;
 
+static inline BITSET_WORD *
+__regmask_file(regmask_t *regmask, enum ir3_reg_file file)
+{
+   switch (file) {
+   case IR3_FILE_FULL:
+      return regmask->full;
+   case IR3_FILE_HALF:
+      return regmask->half;
+   case IR3_FILE_SHARED:
+      return regmask->shared;
+   case IR3_FILE_NONGPR:
+      return regmask->nongpr;
+   }
+   unreachable("bad file");
+}
+
 static inline bool
-__regmask_get(regmask_t *regmask, bool half, unsigned n)
+__regmask_get(regmask_t *regmask, enum ir3_reg_file file, unsigned n, unsigned size)
 {
-   if (regmask->mergedregs) {
-      /* a6xx+ case, with merged register file, we track things in terms
-       * of half-precision registers, with a full precisions register
-       * using two half-precision slots.
-       *
-       * Pretend that special regs (a0.x, a1.x, etc.) are full registers to
-       * avoid having them alias normal full regs.
-       */
-      if (half && !is_reg_num_special(n)) {
-         return BITSET_TEST(regmask->mask, n);
-      } else {
-         n *= 2;
-         return BITSET_TEST(regmask->mask, n) ||
-                BITSET_TEST(regmask->mask, n + 1);
-      }
-   } else {
-      /* pre a6xx case, with separate register file for half and full
-       * precision:
-       */
-      if (half)
-         n += MAX_REG;
-      return BITSET_TEST(regmask->mask, n);
+   BITSET_WORD *regs = __regmask_file(regmask, file);
+   for (unsigned i = 0; i < size; i++) {
+      if (BITSET_TEST(regs, n + i))
+         return true;
    }
+   return false;
 }
 
 static inline void
-__regmask_set(regmask_t *regmask, bool half, unsigned n)
+__regmask_set(regmask_t *regmask, enum ir3_reg_file file, unsigned n, unsigned size)
 {
-   if (regmask->mergedregs) {
-      /* a6xx+ case, with merged register file, we track things in terms
-       * of half-precision registers, with a full precisions register
-       * using two half-precision slots:
-       */
-      if (half && !is_reg_num_special(n)) {
-         BITSET_SET(regmask->mask, n);
-      } else {
-         n *= 2;
-         BITSET_SET(regmask->mask, n);
-         BITSET_SET(regmask->mask, n + 1);
-      }
-   } else {
-      /* pre a6xx case, with separate register file for half and full
-       * precision:
-       */
-      if (half)
-         n += MAX_REG;
-      BITSET_SET(regmask->mask, n);
-   }
+   BITSET_WORD *regs = __regmask_file(regmask, file);
+   for (unsigned i = 0; i < size; i++)
+      BITSET_SET(regs, n + i);
 }
 
 static inline void
-__regmask_clear(regmask_t *regmask, bool half, unsigned n)
+__regmask_clear(regmask_t *regmask, enum ir3_reg_file file, unsigned n, unsigned size)
 {
-   if (regmask->mergedregs) {
-      /* a6xx+ case, with merged register file, we track things in terms
-       * of half-precision registers, with a full precisions register
-       * using two half-precision slots:
-       */
-      if (half && !is_reg_num_special(n)) {
-         BITSET_CLEAR(regmask->mask, n);
-      } else {
-         n *= 2;
-         BITSET_CLEAR(regmask->mask, n);
-         BITSET_CLEAR(regmask->mask, n + 1);
-      }
-   } else {
-      /* pre a6xx case, with separate register file for half and full
-       * precision:
-       */
-      if (half)
-         n += MAX_REG;
-      BITSET_CLEAR(regmask->mask, n);
-   }
+   BITSET_WORD *regs = __regmask_file(regmask, file);
+   for (unsigned i = 0; i < size; i++)
+      BITSET_CLEAR(regs, n + i);
 }
 
 static inline void
 regmask_init(regmask_t *regmask, bool mergedregs)
 {
-   memset(&regmask->mask, 0, sizeof(regmask->mask));
+   memset(regmask, 0, sizeof(*regmask));
    regmask->mergedregs = mergedregs;
 }
 
@@ -2792,66 +2754,68 @@ regmask_or(regmask_t *dst, regmask_t *a, regmask_t *b)
    assert(dst->mergedregs == a->mergedregs);
    assert(dst->mergedregs == b->mergedregs);
 
-   for (unsigned i = 0; i < ARRAY_SIZE(dst->mask); i++)
-      dst->mask[i] = a->mask[i] | b->mask[i];
+   for (unsigned i = 0; i < ARRAY_SIZE(dst->full); i++)
+      dst->full[i] = a->full[i] | b->full[i];
+   for (unsigned i = 0; i < ARRAY_SIZE(dst->half); i++)
+      dst->half[i] = a->half[i] | b->half[i];
+   for (unsigned i = 0; i < ARRAY_SIZE(dst->shared); i++)
+      dst->shared[i] = a->shared[i] | b->shared[i];
+   for (unsigned i = 0; i < ARRAY_SIZE(dst->nongpr); i++)
+      dst->nongpr[i] = a->nongpr[i] | b->nongpr[i];
 }
 
 static inline void
 regmask_or_shared(regmask_t *dst, regmask_t *a, regmask_t *b)
 {
-   regmaskstate_t shared_mask;
-   BITSET_ZERO(shared_mask);
-
-   if (b->mergedregs) {
-      BITSET_SET_RANGE(shared_mask, 2 * 4 * 48, 2 * 4 * 56 - 1);
-   } else {
-      BITSET_SET_RANGE(shared_mask, 4 * 48, 4 * 56 - 1);
-   }
-
-   for (unsigned i = 0; i < ARRAY_SIZE(dst->mask); i++)
-      dst->mask[i] = a->mask[i] | (b->mask[i] & shared_mask[i]);
+   for (unsigned i = 0; i < ARRAY_SIZE(dst->shared); i++)
+      dst->shared[i] = a->shared[i] | b->shared[i];
 }
 
 static inline void
 regmask_set(regmask_t *regmask, struct ir3_register *reg)
 {
-   bool half = reg->flags & IR3_REG_HALF;
+   unsigned size = reg_elem_size(reg);
+   enum ir3_reg_file file;
+   unsigned num = post_ra_reg_num(reg);
+   unsigned n = ir3_reg_file_offset(reg, num, regmask->mergedregs, &file);
    if (reg->flags & IR3_REG_RELATIV) {
-      for (unsigned i = 0; i < reg->size; i++)
-         __regmask_set(regmask, half, reg->array.base + i);
+      __regmask_set(regmask, file, n, size * reg->size);
    } else {
-      for (unsigned mask = reg->wrmask, n = reg->num; mask; mask >>= 1, n++)
+      for (unsigned mask = reg->wrmask; mask; mask >>= 1, n += size)
          if (mask & 1)
-            __regmask_set(regmask, half, n);
+            __regmask_set(regmask, file, n, size);
    }
 }
 
 static inline void
 regmask_clear(regmask_t *regmask, struct ir3_register *reg)
 {
-   bool half = reg->flags & IR3_REG_HALF;
+   unsigned size = reg_elem_size(reg);
+   enum ir3_reg_file file;
+   unsigned num = post_ra_reg_num(reg);
+   unsigned n = ir3_reg_file_offset(reg, num, regmask->mergedregs, &file);
    if (reg->flags & IR3_REG_RELATIV) {
-      for (unsigned i = 0; i < reg->size; i++)
-         __regmask_clear(regmask, half, reg->array.base + i);
+      __regmask_clear(regmask, file, n, size * reg->size);
    } else {
-      for (unsigned mask = reg->wrmask, n = reg->num; mask; mask >>= 1, n++)
+      for (unsigned mask = reg->wrmask; mask; mask >>= 1, n += size)
          if (mask & 1)
-            __regmask_clear(regmask, half, n);
+            __regmask_clear(regmask, file, n, size);
    }
 }
 
 static inline bool
 regmask_get(regmask_t *regmask, struct ir3_register *reg)
 {
-   bool half = reg->flags & IR3_REG_HALF;
+   unsigned size = reg_elem_size(reg);
+   enum ir3_reg_file file;
+   unsigned num = post_ra_reg_num(reg);
+   unsigned n = ir3_reg_file_offset(reg, num, regmask->mergedregs, &file);
    if (reg->flags & IR3_REG_RELATIV) {
-      for (unsigned i = 0; i < reg->size; i++)
-         if (__regmask_get(regmask, half, reg->array.base + i))
-            return true;
+      return __regmask_get(regmask, file, n, size * reg->size);
    } else {
-      for (unsigned mask = reg->wrmask, n = reg->num; mask; mask >>= 1, n++)
+      for (unsigned mask = reg->wrmask; mask; mask >>= 1, n += size)
          if (mask & 1)
-            if (__regmask_get(regmask, half, n))
+            if (__regmask_get(regmask, file, n, size))
                return true;
    }
    return false;

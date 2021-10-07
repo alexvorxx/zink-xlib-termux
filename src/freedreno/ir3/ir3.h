@@ -1321,17 +1321,21 @@ dest_regs(struct ir3_instruction *instr)
    return util_last_bit(instr->dsts[0]->wrmask);
 }
 
+static inline bool
+is_reg_gpr(const struct ir3_register *reg)
+{
+   if ((reg_num(reg) == REG_A0) || (reg->flags & IR3_REG_PREDICATE))
+      return false;
+   return true;
+}
+
 /* is dst a normal temp register: */
 static inline bool
-is_dest_gpr(struct ir3_register *dst)
+is_dest_gpr(const struct ir3_register *dst)
 {
    if (dst->wrmask == 0)
       return false;
-   if (reg_num(dst) == REG_A0)
-      return false;
-   if (dst->flags & IR3_REG_PREDICATE)
-      return false;
-   return true;
+   return is_reg_gpr(dst);
 }
 
 static inline bool
@@ -1383,8 +1387,50 @@ writes_pred(struct ir3_instruction *instr)
 static inline bool
 is_reg_special(const struct ir3_register *reg)
 {
-   return (reg->flags & (IR3_REG_SHARED | IR3_REG_PREDICATE) ||
-           (reg_num(reg) == REG_A0));
+   return (reg->flags & IR3_REG_SHARED) || !is_reg_gpr(reg);
+}
+
+/* r0.x - r47.w are "normal" registers. r48.x - r55.w are shared registers.
+ * Everything above those are non-GPR registers like a0.x and p0.x that aren't
+ * assigned by RA.
+ */
+#define GPR_REG_SIZE (4 * 48)
+#define SHARED_REG_START GPR_REG_SIZE
+#define SHARED_REG_SIZE (4 * 8)
+#define NONGPR_REG_START (SHARED_REG_START + SHARED_REG_SIZE)
+#define NONGPR_REG_SIZE (4 * 8)
+
+enum ir3_reg_file {
+   IR3_FILE_FULL,
+   IR3_FILE_HALF,
+   IR3_FILE_SHARED,
+   IR3_FILE_NONGPR,
+};
+
+/* Return a file + offset that can be used for determining if two registers
+ * alias. The register is only really used for its flags, the num is taken from
+ * the parameter. Registers overlap if they are in the same file and have an
+ * overlapping offset. The offset is multiplied by 2 for full registers to
+ * handle aliasing half and full registers, that is it's in units of half-regs.
+ */
+static inline unsigned
+ir3_reg_file_offset(const struct ir3_register *reg, unsigned num,
+                    bool mergedregs, enum ir3_reg_file *file)
+{
+   unsigned size = reg_elem_size(reg);
+   if (!is_reg_gpr(reg)) {
+      *file = IR3_FILE_NONGPR;
+      return (num - NONGPR_REG_START) * size;
+   } else if (reg->flags & IR3_REG_SHARED) {
+      *file = IR3_FILE_SHARED;
+      return (num - SHARED_REG_START) * size;
+   } else if (mergedregs || !(reg->flags & IR3_REG_HALF)) {
+      *file = IR3_FILE_FULL;
+      return num * size;
+   } else {
+      *file = IR3_FILE_HALF;
+      return num;
+   }
 }
 
 /* Same as above but in cases where we don't have a register. r48.x and above

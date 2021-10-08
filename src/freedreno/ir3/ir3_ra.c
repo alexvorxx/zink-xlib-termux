@@ -656,7 +656,7 @@ ra_ctx_dump(struct ra_ctx *ctx)
    ra_file_dump(stream, &ctx->full);
    mesa_log_stream_printf(stream, "half:\n");
    ra_file_dump(stream, &ctx->half);
-   mesa_log_stream_printf(stream, "shared:");
+   mesa_log_stream_printf(stream, "shared:\n");
    ra_file_dump(stream, &ctx->shared);
    mesa_log_stream_destroy(stream);
 }

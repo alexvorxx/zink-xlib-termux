@@ -146,6 +146,7 @@ struct _egl_extensions {
    EGLBoolean MESA_gl_interop;
    EGLBoolean MESA_image_dma_buf_export;
    EGLBoolean MESA_query_driver;
+   EGLBoolean MESA_x11_native_visual_id;
 
    EGLBoolean NOK_swap_region;
    EGLBoolean NOK_texture_from_pixmap;

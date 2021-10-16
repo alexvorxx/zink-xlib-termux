@@ -288,6 +288,13 @@ dri2_get_dri_config(struct dri2_egl_config *conf, EGLint surface_type,
 static EGLBoolean
 dri2_match_config(const _EGLConfig *conf, const _EGLConfig *criteria)
 {
+#ifdef HAVE_X11_PLATFORM
+   if (conf->Display->Platform == _EGL_PLATFORM_X11 &&
+       conf->AlphaSize > 0 &&
+       conf->NativeVisualID != criteria->NativeVisualID)
+      return EGL_FALSE;
+#endif
+
    if (_eglCompareConfigs(conf, criteria, NULL, EGL_FALSE) != 0)
       return EGL_FALSE;
 
@@ -835,6 +842,8 @@ dri2_setup_screen(_EGLDisplay *disp)
          if (dri2_dpy->image->base.version >= 11)
             disp->Extensions.MESA_image_dma_buf_export = EGL_TRUE;
       }
+
+      disp->Extensions.MESA_x11_native_visual_id = EGL_TRUE;
 
       disp->Extensions.KHR_image_base = EGL_TRUE;
       disp->Extensions.KHR_gl_renderbuffer_image = EGL_TRUE;

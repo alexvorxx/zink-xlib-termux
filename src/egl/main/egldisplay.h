@@ -102,6 +102,7 @@ struct _egl_extensions {
    EGLBoolean CHROMIUM_sync_control;
 
    EGLBoolean EXT_buffer_age;
+   EGLBoolean EXT_config_select_group;
    EGLBoolean EXT_create_context_robustness;
    EGLBoolean EXT_image_dma_buf_import;
    EGLBoolean EXT_image_dma_buf_import_modifiers;

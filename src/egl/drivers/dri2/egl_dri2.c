@@ -790,6 +790,8 @@ dri2_setup_screen(_EGLDisplay *disp)
       disp->Extensions.KHR_gl_colorspace = EGL_TRUE;
    }
 
+   disp->Extensions.EXT_config_select_group = EGL_TRUE;
+
    disp->Extensions.EXT_create_context_robustness =
       get_screen_param(disp, PIPE_CAP_DEVICE_RESET_STATUS_QUERY);
    disp->RobustBufferAccess =

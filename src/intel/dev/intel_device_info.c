@@ -72,6 +72,7 @@ static const struct {
    { "rpl", 0xa780 },
    { "dg2", 0x5690 },
    { "mtl", 0x7d60 },
+   { "arl", 0x7d67 },
 };
 
 /**
@@ -1195,6 +1196,16 @@ static const struct intel_device_info intel_device_info_mtl_u = {
 static const struct intel_device_info intel_device_info_mtl_h = {
    MTL_FEATURES,
    .platform = INTEL_PLATFORM_MTL_H,
+};
+
+static const struct intel_device_info intel_device_info_arl_u = {
+   MTL_FEATURES,
+   .platform = INTEL_PLATFORM_ARL_U,
+};
+
+static const struct intel_device_info intel_device_info_arl_h = {
+   MTL_FEATURES,
+   .platform = INTEL_PLATFORM_ARL_H,
 };
 
 void

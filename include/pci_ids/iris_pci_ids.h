@@ -257,3 +257,8 @@ CHIPSET(0x7d45, mtl_h, "MTL", "Intel(R) Graphics")
 CHIPSET(0x7d55, mtl_h, "MTL", "Intel(R) Arc(tm) Graphics")
 CHIPSET(0x7d60, mtl_u, "MTL", "Intel(R) Graphics")
 CHIPSET(0x7dd5, mtl_h, "MTL", "Intel(R) Graphics")
+
+CHIPSET(0x7d41, arl_u, "ARL", "Intel(R) Graphics")
+CHIPSET(0x7d51, arl_h, "ARL", "Intel(R) Graphics")
+CHIPSET(0x7d67, arl_u, "ARL", "Intel(R) Graphics")
+CHIPSET(0x7dd1, arl_h, "ARL", "Intel(R) Graphics")

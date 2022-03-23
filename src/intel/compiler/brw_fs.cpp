@@ -4905,6 +4905,9 @@ get_fpu_lowered_simd_width(const fs_visitor *shader,
  * the message length to determine the exact SIMD width and argument count,
  * which makes a number of sampler message combinations impossible to
  * represent).
+ *
+ * Note: Platforms with monolithic SIMD16 double the possible SIMD widths
+ * change from (SIMD8, SIMD16) to (SIMD16, SIMD32).
  */
 static unsigned
 get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
@@ -4916,7 +4919,7 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
     */
    if (inst->opcode != SHADER_OPCODE_TEX &&
        inst->components_read(TEX_LOGICAL_SRC_MIN_LOD))
-      return 8;
+      return devinfo->ver < 20 ? 8 : 16;
 
    /* Calculate the number of coordinate components that have to be present
     * assuming that additional arguments follow the texel coordinates in the
@@ -4953,12 +4956,14 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
        inst->components_read(TEX_LOGICAL_SRC_TG4_OFFSET) : 0) +
       inst->components_read(TEX_LOGICAL_SRC_MCS);
 
-   /* SIMD16 messages with more than five arguments exceed the maximum message
-    * size supported by the sampler, regardless of whether a header is
-    * provided or not.
+   const unsigned simd_limit = reg_unit(devinfo) *
+      (num_payload_components > MAX_SAMPLER_MESSAGE_SIZE / 2 ? 8 : 16);
+
+   /* SIMD16 (SIMD32 on Xe2) messages with more than five arguments exceed the
+    * maximum message size supported by the sampler, regardless of whether a
+    * header is provided or not.
     */
-   return MIN2(inst->exec_size,
-               num_payload_components > MAX_SAMPLER_MESSAGE_SIZE / 2 ? 8 : 16);
+   return MIN2(inst->exec_size, simd_limit);
 }
 
 /**
@@ -5169,8 +5174,10 @@ get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       return MIN2(16, inst->exec_size);
 
    case SHADER_OPCODE_TXD_LOGICAL:
-      /* TXD is unsupported in SIMD16 mode. */
-      return 8;
+      /* TXD is unsupported in SIMD16 mode previous to Xe2. SIMD32 is still
+       * unsuppported on Xe2.
+       */
+      return devinfo->ver < 20 ? 8 : 16;
 
    case SHADER_OPCODE_TXL_LOGICAL:
    case FS_OPCODE_TXB_LOGICAL:

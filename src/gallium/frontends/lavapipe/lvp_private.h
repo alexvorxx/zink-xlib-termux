@@ -271,6 +271,7 @@ struct lvp_image_plane {
 
 struct lvp_image {
    struct vk_image vk;
+   VkDeviceSize offset;
    VkDeviceSize size;
    uint32_t alignment;
    bool disjoint;

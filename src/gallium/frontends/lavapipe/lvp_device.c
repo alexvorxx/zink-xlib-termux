@@ -2186,7 +2186,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_BindImageMemory2(VkDevice _device,
             VkResult fail = VK_SUCCESS;
             for (unsigned plane = 0; plane < image->plane_count; plane++) {
                result = lvp_image_plane_bind(device, &image->planes[plane],
-                                             mem, bind_info->memoryOffset, &offset_B);
+                                             mem, bind_info->memoryOffset + image->offset, &offset_B);
                if (status)
                   *status->pResult = res;
                if (result != VK_SUCCESS)

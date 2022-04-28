@@ -245,6 +245,19 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .NV_device_generated_commands          = true,
 };
 
+static bool
+assert_memhandle_type(VkExternalMemoryHandleTypeFlags type)
+{
+   switch (type) {
+   case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
+      break;
+   default:
+      mesa_loge("lavapipe: unimplemented external memory type %u", type);
+      return false;
+   }
+   return true;
+}
+
 static int
 min_vertex_pipeline_param(struct pipe_screen *pscreen, enum pipe_shader_cap param)
 {
@@ -1735,11 +1748,11 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_AllocateMemory(
          break;
       case VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO:
          export_info = (VkExportMemoryAllocateInfo*)ext;
-         assert(!export_info->handleTypes || export_info->handleTypes == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT);
+         assert_memhandle_type(export_info->handleTypes);
          break;
       case VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR:
          import_info = (VkImportMemoryFdInfoKHR*)ext;
-         assert(import_info->handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT);
+         assert_memhandle_type(import_info->handleType);
          break;
       case VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT: {
          VkMemoryPriorityAllocateInfoEXT *prio = (VkMemoryPriorityAllocateInfoEXT*)ext;
@@ -2177,7 +2190,7 @@ lvp_GetMemoryFdKHR(VkDevice _device, const VkMemoryGetFdInfoKHR *pGetFdInfo, int
    LVP_FROM_HANDLE(lvp_device_memory, memory, pGetFdInfo->memory);
 
    assert(pGetFdInfo->sType == VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR);
-   assert(pGetFdInfo->handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT);
+   assert_memhandle_type(pGetFdInfo->handleType);
 
    *pFD = dup(memory->backed_fd);
    assert(*pFD >= 0);

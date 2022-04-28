@@ -220,7 +220,7 @@ isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
       /* From RENDER_SURFACE_STATE::SurfaceHorizontalAlignment,
        *
        *    - Losslessly Compressed Surfaces Must be HALIGN=128 for all
-       *      supported Bpp
+       *      supported Bpp, if other restriction are not applied
        *    - Linear Surfaces surfaces must use HALIGN=128, including 1D which
        *      is always Linear.
        */

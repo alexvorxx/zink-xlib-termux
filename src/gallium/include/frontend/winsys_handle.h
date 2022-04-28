@@ -52,13 +52,26 @@ struct winsys_handle
    unsigned handle;
 #endif
    /**
-    * Input to resource_from_handle.
-    * Output for resource_get_handle.
+    * Row stride
+    * Input to texture_from_handle.
+    * Output for texture_from_handle.
     */
    unsigned stride;
    /**
-    * Input to resource_from_handle.
-    * Output for resource_get_handle.
+    * Array layer stride
+    * Input to texture_from_handle.
+    * Output for texture_from_handle.
+    */
+   unsigned array_stride;
+   /**
+    * 3D slice stride
+    * Input to texture_from_handle.
+    * Output for texture_from_handle.
+    */
+   unsigned image_stride;
+   /**
+    * Input to texture_from_handle.
+    * Output for texture_from_handle.
     */
    unsigned offset;
 

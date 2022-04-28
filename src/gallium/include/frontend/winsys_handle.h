@@ -18,6 +18,7 @@ extern "C" {
 #define WINSYS_HANDLE_TYPE_SHMID   3
 #define WINSYS_HANDLE_TYPE_D3D12_RES 4
 #define WINSYS_HANDLE_TYPE_WIN32_NAME 5
+#define WINSYS_HANDLE_TYPE_UNBACKED 5
 
 /**
  * For use with pipe_screen::{resource_from_handle|resource_get_handle}.

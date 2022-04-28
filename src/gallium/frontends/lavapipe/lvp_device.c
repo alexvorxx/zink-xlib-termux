@@ -247,17 +247,19 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
 };
 
 static bool
-assert_memhandle_type(VkExternalMemoryHandleTypeFlags type)
+assert_memhandle_type(VkExternalMemoryHandleTypeFlags types)
 {
-   switch (type) {
-   case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
-   case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT:
-      break;
-   default:
-      mesa_loge("lavapipe: unimplemented external memory type %u", type);
-      return false;
+   unsigned valid[] = {
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+   };
+   for (unsigned i = 0; i < ARRAY_SIZE(valid); i++) {
+      if (types & valid[i])
+         types &= ~valid[i];
    }
-   return true;
+   u_foreach_bit(type, types)
+      mesa_loge("lavapipe: unimplemented external memory type %u", 1<<type);
+   return types == 0;
 }
 
 static int

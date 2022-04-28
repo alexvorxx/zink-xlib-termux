@@ -259,6 +259,34 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFormatProperties2(
    VkSubpassResolvePerformanceQueryEXT *perf = (void*)vk_find_struct_const(pFormatProperties->pNext, SUBPASS_RESOLVE_PERFORMANCE_QUERY_EXT);
    if (perf)
       perf->optimal = VK_FALSE;
+
+#if DETECT_OS_LINUX
+   VkDrmFormatModifierPropertiesListEXT *modlist = (void*)vk_find_struct_const(pFormatProperties->pNext, DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT);
+   if (modlist) {
+      modlist->drmFormatModifierCount = 0;
+      if (pFormatProperties->formatProperties.optimalTilingFeatures) {
+         modlist->drmFormatModifierCount = 1;
+         VkDrmFormatModifierPropertiesEXT *mods = &modlist->pDrmFormatModifierProperties[0];
+         if (mods) {
+            mods->drmFormatModifier = DRM_FORMAT_MOD_LINEAR;
+            mods->drmFormatModifierPlaneCount = util_format_get_num_planes(lvp_vk_format_to_pipe_format(format));
+            mods->drmFormatModifierTilingFeatures = pFormatProperties->formatProperties.optimalTilingFeatures;
+         }
+      }
+   }
+#endif
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+lvp_GetImageDrmFormatModifierPropertiesEXT(VkDevice _device, VkImage _image,
+                                           VkImageDrmFormatModifierPropertiesEXT *pProperties)
+{
+#if DETECT_OS_LINUX
+   pProperties->drmFormatModifier = DRM_FORMAT_MOD_LINEAR;
+   return VK_SUCCESS;
+#else
+   return VK_ERROR_OUT_OF_HOST_MEMORY;
+#endif
 }
 
 static VkResult lvp_get_image_format_properties(struct lvp_physical_device *physical_device,
@@ -276,7 +304,8 @@ static VkResult lvp_get_image_format_properties(struct lvp_physical_device *phys
                                              &format_props);
    if (info->tiling == VK_IMAGE_TILING_LINEAR) {
       format_feature_flags = format_props.linearTilingFeatures;
-   } else if (info->tiling == VK_IMAGE_TILING_OPTIMAL) {
+   } else if (info->tiling == VK_IMAGE_TILING_OPTIMAL ||
+              info->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       format_feature_flags = format_props.optimalTilingFeatures;
    } else {
       unreachable("bad VkImageTiling");

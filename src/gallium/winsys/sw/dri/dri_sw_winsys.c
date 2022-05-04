@@ -61,6 +61,8 @@ struct dri_sw_displaytarget
    void *data;
    void *mapped;
    const void *front_private;
+   size_t size;
+   bool unbacked;
 };
 
 struct dri_sw_winsys
@@ -141,6 +143,7 @@ dri_sw_displaytarget_create(struct sw_winsys *winsys,
 
    nblocksy = util_format_get_nblocksy(format, height);
    size = dri_sw_dt->stride * nblocksy;
+   dri_sw_dt->size = size;
 
    dri_sw_dt->shmid = -1;
 
@@ -164,13 +167,49 @@ no_dt:
    return NULL;
 }
 
+static struct sw_displaytarget *
+dri_sw_displaytarget_create_mapped(struct sw_winsys *winsys,
+                                   unsigned tex_usage,
+                                   enum pipe_format format,
+                                   unsigned width, unsigned height,
+                                   unsigned stride,
+                                   void *data)
+{
+   UNUSED struct dri_sw_winsys *ws = dri_sw_winsys(winsys);
+   struct dri_sw_displaytarget *dri_sw_dt;
+   unsigned nblocksy, size;
+
+   dri_sw_dt = CALLOC_STRUCT(dri_sw_displaytarget);
+   if(!dri_sw_dt)
+      return NULL;
+
+   dri_sw_dt->format = format;
+   dri_sw_dt->width = width;
+   dri_sw_dt->height = height;
+
+   dri_sw_dt->stride = stride;
+
+   nblocksy = util_format_get_nblocksy(format, height);
+   size = dri_sw_dt->stride * nblocksy;
+   dri_sw_dt->size = size;
+
+   dri_sw_dt->shmid = -1;
+   dri_sw_dt->unbacked = true;
+
+   dri_sw_dt->data = data;
+   dri_sw_dt->mapped = data;
+
+   return (struct sw_displaytarget *)dri_sw_dt;
+}
+
 static void
 dri_sw_displaytarget_destroy(struct sw_winsys *ws,
                              struct sw_displaytarget *dt)
 {
    struct dri_sw_displaytarget *dri_sw_dt = dri_sw_displaytarget(dt);
 
-   if (dri_sw_dt->shmid >= 0) {
+   if (dri_sw_dt->unbacked) {}
+   else if (dri_sw_dt->shmid >= 0) {
 #ifdef HAVE_SYS_SHM_H
       shmdt(dri_sw_dt->data);
       shmctl(dri_sw_dt->shmid, IPC_RMID, NULL);
@@ -188,6 +227,8 @@ dri_sw_displaytarget_map(struct sw_winsys *ws,
                          unsigned flags)
 {
    struct dri_sw_displaytarget *dri_sw_dt = dri_sw_displaytarget(dt);
+   if (dri_sw_dt->unbacked)
+      return dri_sw_dt->mapped;
    dri_sw_dt->mapped = dri_sw_dt->data;
 
    if (dri_sw_dt->front_private && (flags & PIPE_MAP_READ)) {
@@ -203,6 +244,9 @@ dri_sw_displaytarget_unmap(struct sw_winsys *ws,
                            struct sw_displaytarget *dt)
 {
    struct dri_sw_displaytarget *dri_sw_dt = dri_sw_displaytarget(dt);
+
+   if (dri_sw_dt->unbacked)
+      return;
    if (dri_sw_dt->front_private && (dri_sw_dt->map_flags & PIPE_MAP_WRITE)) {
       struct dri_sw_winsys *dri_sw_ws = dri_sw_winsys(ws);
       dri_sw_ws->lf->put_image2((void *)dri_sw_dt->front_private, dri_sw_dt->data, 0, 0, dri_sw_dt->width, dri_sw_dt->height, dri_sw_dt->stride);
@@ -307,6 +351,7 @@ dri_create_sw_winsys(const struct drisw_loader_funcs *lf)
 
    /* screen texture functions */
    ws->base.displaytarget_create = dri_sw_displaytarget_create;
+   ws->base.displaytarget_create_mapped = dri_sw_displaytarget_create_mapped;
    ws->base.displaytarget_destroy = dri_sw_displaytarget_destroy;
    ws->base.displaytarget_from_handle = dri_sw_displaytarget_from_handle;
    ws->base.displaytarget_get_handle = dri_sw_displaytarget_get_handle;

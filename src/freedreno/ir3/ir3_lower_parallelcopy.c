@@ -162,14 +162,7 @@ do_swap(struct ir3_compiler *compiler, struct ir3_instruction *instr,
       do_xor(instr, src_num, src_num, dst_num, entry->flags);
       do_xor(instr, dst_num, dst_num, src_num, entry->flags);
    } else {
-      /* Use a macro for shared regs because any shared reg writes need to
-       * be wrapped in a getone block to work correctly. Writing shared regs
-       * with multiple threads active does not work, even if they all return
-       * the same value.
-       */
-      unsigned opc =
-         (entry->flags & IR3_REG_SHARED) ? OPC_SWZ_SHARED_MACRO : OPC_SWZ;
-      struct ir3_instruction *swz = ir3_instr_create(instr->block, opc, 2, 2);
+      struct ir3_instruction *swz = ir3_instr_create(instr->block, OPC_SWZ, 2, 2);
       ir3_dst_create(swz, dst_num, entry->flags);
       ir3_dst_create(swz, src_num, entry->flags);
       ir3_src_create(swz, src_num, entry->flags);
@@ -253,10 +246,7 @@ do_copy(struct ir3_compiler *compiler, struct ir3_instruction *instr,
    unsigned src_num = ra_physreg_to_num(entry->src.reg, entry->flags);
    unsigned dst_num = ra_physreg_to_num(entry->dst, entry->flags);
 
-   /* Similar to the swap case, we have to use a macro for shared regs. */
-   unsigned opc =
-      (entry->flags & IR3_REG_SHARED) ? OPC_READ_FIRST_MACRO : OPC_MOV;
-   struct ir3_instruction *mov = ir3_instr_create(instr->block, opc, 1, 1);
+   struct ir3_instruction *mov = ir3_instr_create(instr->block, OPC_MOV, 1, 1);
    ir3_dst_create(mov, dst_num, entry->flags);
    if (entry->src.flags & (IR3_REG_IMMED | IR3_REG_CONST))
       ir3_src_create(mov, INVALID_REG, (entry->flags & IR3_REG_HALF) | entry->src.flags);

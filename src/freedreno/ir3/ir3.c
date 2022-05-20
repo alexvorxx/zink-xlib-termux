@@ -792,6 +792,33 @@ ir3_instr_set_address(struct ir3_instruction *instr,
    }
 }
 
+/* Does this instruction use the scalar ALU?
+ */
+bool
+is_scalar_alu(struct ir3_instruction *instr,
+              const struct ir3_compiler *compiler)
+{
+   /* MOVMSK seems to always need (ss) even with other scalar ALU instructions
+    */
+   return instr->opc != OPC_MOVMSK &&
+      instr->opc != OPC_SCAN_CLUSTERS_MACRO &&
+      instr->opc != OPC_SCAN_MACRO &&
+      is_alu(instr) && (instr->dsts[0]->flags & IR3_REG_SHARED) &&
+      /* scalar->scalar mov instructions (but NOT cov) were supported before the
+       * scalar ALU was supported, but they still required (ss) whereas on GPUs
+       * that have a scalar ALU they are executed on it and do not require (ss).
+       * We have to be careful to return false for these if scalar ALU isn't
+       * supported, so that we treat them like vector->scalar mov instructions
+       * (such as requiring (ss)).
+       */
+      compiler->has_scalar_alu &&
+      /* moves from normal to shared seem to use a separate ALU as before and
+       * require a (ss) on dependent instructions.
+       */
+      ((instr->opc != OPC_MOV && !is_subgroup_cond_mov_macro(instr)) ||
+       (instr->srcs[0]->flags & (IR3_REG_SHARED | IR3_REG_IMMED | IR3_REG_CONST)));
+}
+
 void
 ir3_block_clear_mark(struct ir3_block *block)
 {

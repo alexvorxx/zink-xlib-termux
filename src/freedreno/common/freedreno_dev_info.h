@@ -172,6 +172,9 @@ struct fd_dev_info {
 
       bool broken_ds_ubwc_quirk;
 
+      /* See ir3_compiler::has_scalar_alu. */
+      bool has_scalar_alu;
+
       struct {
          uint32_t PC_POWER_CNTL;
          uint32_t TPL1_DBG_ECO_CNTL;

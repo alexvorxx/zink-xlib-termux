@@ -406,14 +406,15 @@ add_single_reg_dep(struct ir3_postsched_deps_state *state,
 
    unsigned d = 0;
    if (src_n >= 0 && dep && state->direction == F) {
+      struct ir3_compiler *compiler = state->ctx->ir->compiler;
       /* get the dst_n this corresponds to */
       unsigned dst_n = state->dst_n[num];
-      unsigned d_soft = ir3_delayslots(dep->instr, node->instr, src_n, true);
-      d = ir3_delayslots_with_repeat(dep->instr, node->instr, dst_n, src_n);
+      unsigned d_soft = ir3_delayslots(compiler, dep->instr, node->instr, src_n, true);
+      d = ir3_delayslots_with_repeat(compiler, dep->instr, node->instr, dst_n, src_n);
       node->delay = MAX2(node->delay, d_soft);
       if (is_sy_producer(dep->instr))
          node->has_sy_src = true;
-      if (is_ss_producer(dep->instr))
+      if (needs_ss(compiler, dep->instr, node->instr))
          node->has_ss_src = true;
    }
 

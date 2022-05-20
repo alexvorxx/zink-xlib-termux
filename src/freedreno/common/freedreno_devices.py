@@ -389,6 +389,7 @@ a6xx_gen3 = A6XXProps(
         enable_lrz_fast_clear = True,
         lrz_track_quirk = True,
         has_per_view_viewport = True,
+        has_scalar_alu = True,
     )
 
 a6xx_gen4 = A6XXProps(
@@ -412,6 +413,7 @@ a6xx_gen4 = A6XXProps(
         enable_lrz_fast_clear = True,
         has_lrz_dir_tracking = True,
         has_per_view_viewport = True,
+        has_scalar_alu = True,
     )
 
 a6xx_a690_quirk = A6XXProps(
@@ -790,6 +792,7 @@ a7xx_base = A6XXProps(
         has_per_view_viewport = True,
         line_width_min = 1.0,
         line_width_max = 127.5,
+        has_scalar_alu = True,
     )
 
 a7xx_725 = A7XXProps(

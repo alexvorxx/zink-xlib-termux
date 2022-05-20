@@ -1908,9 +1908,11 @@ struct log_stream;
 void ir3_print_instr_stream(struct log_stream *stream, struct ir3_instruction *instr);
 
 /* delay calculation: */
-int ir3_delayslots(struct ir3_instruction *assigner,
+int ir3_delayslots(struct ir3_compiler *compiler,
+                   struct ir3_instruction *assigner,
                    struct ir3_instruction *consumer, unsigned n, bool soft);
-unsigned ir3_delayslots_with_repeat(struct ir3_instruction *assigner,
+unsigned ir3_delayslots_with_repeat(struct ir3_compiler *compiler,
+                                    struct ir3_instruction *assigner,
                                     struct ir3_instruction *consumer,
                                     unsigned assigner_n, unsigned consumer_n);
 
@@ -1923,7 +1925,10 @@ is_local_mem_load(struct ir3_instruction *instr)
       instr->opc == OPC_LDLW;
 }
 
-/* Does this instruction need (ss) to wait for its result? */
+bool is_scalar_alu(struct ir3_instruction *instr,
+                   const struct ir3_compiler *compiler);
+
+/* Does this instruction sometimes need (ss) to wait for its result? */
 static inline bool
 is_ss_producer(struct ir3_instruction *instr)
 {
@@ -1931,7 +1936,21 @@ is_ss_producer(struct ir3_instruction *instr)
       if (dst->flags & IR3_REG_SHARED)
          return true;
    }
+
    return is_sfu(instr) || is_local_mem_load(instr);
+}
+
+static inline bool
+needs_ss(const struct ir3_compiler *compiler, struct ir3_instruction *producer,
+         struct ir3_instruction *consumer)
+{
+   if (is_scalar_alu(producer, compiler) &&
+       is_scalar_alu(consumer, compiler) &&
+       (producer->dsts[0]->flags & IR3_REG_HALF) ==
+       (consumer->srcs[0]->flags & IR3_REG_HALF))
+      return false;
+
+   return is_ss_producer(producer);
 }
 
 /* The soft delay for approximating the cost of (ss). */

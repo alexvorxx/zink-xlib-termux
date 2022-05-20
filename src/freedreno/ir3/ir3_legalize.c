@@ -61,7 +61,10 @@ struct ir3_nop_state {
 
 struct ir3_legalize_state {
    regmask_t needs_ss;
+   regmask_t needs_ss_scalar_full; /* half scalar ALU producer -> full scalar ALU consumer */
+   regmask_t needs_ss_scalar_half; /* full scalar ALU producer -> half scalar ALU consumer */
    regmask_t needs_ss_war; /* write after read */
+   regmask_t needs_ss_scalar_war; /* scalar ALU write -> ALU write */
    regmask_t needs_sy;
    bool needs_ss_for_const;
 
@@ -101,6 +104,9 @@ apply_ss(struct ir3_instruction *instr,
    instr->flags |= IR3_INSTR_SS;
    regmask_init(&state->needs_ss_war, mergedregs);
    regmask_init(&state->needs_ss, mergedregs);
+   regmask_init(&state->needs_ss_scalar_war, mergedregs);
+   regmask_init(&state->needs_ss_scalar_full, mergedregs);
+   regmask_init(&state->needs_ss_scalar_half, mergedregs);
    state->needs_ss_for_const = false;
 }
 
@@ -114,14 +120,14 @@ apply_sy(struct ir3_instruction *instr,
 }
 
 static bool
-count_instruction(struct ir3_instruction *n)
+count_instruction(struct ir3_instruction *n, struct ir3_compiler *compiler)
 {
    /* NOTE: don't count branch/jump since we don't know yet if they will
     * be eliminated later in resolve_jumps().. really should do that
     * earlier so we don't have this constraint.
     */
-   return is_alu(n) ||
-          (is_flow(n) && (n->opc != OPC_JUMP) && (n->opc != OPC_BR) &&
+   return (is_alu(n) && !is_scalar_alu(n, compiler)) ||
+      (is_flow(n) && (n->opc != OPC_JUMP) && (n->opc != OPC_BR) &&
            (n->opc != OPC_BRAA) && (n->opc != OPC_BRAO));
 }
 
@@ -363,6 +369,14 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
       struct ir3_legalize_state *pstate = &pbd->state;
 
       regmask_or_shared(&state->needs_ss, &state->needs_ss, &pstate->needs_ss);
+      regmask_or_shared(&state->needs_ss_scalar_full,
+                        &state->needs_ss_scalar_full,
+                        &pstate->needs_ss_scalar_full);
+      regmask_or_shared(&state->needs_ss_scalar_half,
+                        &state->needs_ss_scalar_half,
+                        &pstate->needs_ss_scalar_half);
+      regmask_or_shared(&state->needs_ss_scalar_war, &state->needs_ss_scalar_war,
+                        &pstate->needs_ss_scalar_war);
    }
 
    memcpy(&bd->state, state, sizeof(*state));
@@ -419,6 +433,8 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
          apply_ss(n, state, mergedregs);
       }
 
+      bool n_is_scalar_alu = is_scalar_alu(n, ctx->compiler);
+
       /* NOTE: consider dst register too.. it could happen that
        * texture sample instruction (for example) writes some
        * components which are unused.  A subsequent instruction
@@ -443,6 +459,34 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
                last_input_needs_ss = false;
             }
 
+            /* There is a fast feedback path for scalar ALU instructions which
+             * only takes 1 cycle of latency, similar to the normal 3 cycle
+             * latency path for ALU instructions. For this fast path the
+             * producer and consumer must use the same register size (i.e. no
+             * writing a full register and then reading half of it or vice
+             * versa). If we don't hit this path, either because of a mismatched
+             * size or a read via the regular ALU, then the write latency is
+             * variable and we must use (ss) to wait for the scalar ALU. This is
+             * different from the fixed 6 cycle latency for mismatched vector
+             * ALU accesses.
+             */
+            if (n_is_scalar_alu) {
+               /* Check if we have a mismatched size RaW dependency */
+               if (regmask_get((reg->flags & IR3_REG_HALF) ?
+                               &state->needs_ss_scalar_half :
+                               &state->needs_ss_scalar_full, reg)) {
+                  apply_ss(n, state, mergedregs);
+                  last_input_needs_ss = false;
+               }
+            } else {
+               /* check if we have a scalar -> vector RaW dependency */
+               if (regmask_get(&state->needs_ss_scalar_half, reg) ||
+                   regmask_get(&state->needs_ss_scalar_full, reg)) {
+                  apply_ss(n, state, mergedregs);
+                  last_input_needs_ss = false;
+               }
+            }
+
             if (regmask_get(&state->needs_sy, reg)) {
                apply_sy(n, state, mergedregs);
             }
@@ -455,7 +499,9 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
       }
 
       foreach_dst (reg, n) {
-         if (regmask_get(&state->needs_ss_war, reg)) {
+         if (regmask_get(&state->needs_ss_war, reg) ||
+             (!n_is_scalar_alu &&
+              regmask_get(&state->needs_ss_scalar_war, reg))) {
             apply_ss(n, state, mergedregs);
             last_input_needs_ss = false;
          }
@@ -483,6 +529,7 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
        */
 
       if ((delay > 0) && (ctx->compiler->gen >= 6) && last_n &&
+          !n_is_scalar_alu &&
           ((opc_cat(last_n->opc) == 2) || (opc_cat(last_n->opc) == 3)) &&
           (last_n->repeat == 0)) {
          /* the previous cat2/cat3 instruction can encode at most 3 nop's: */
@@ -528,8 +575,16 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
          regmask_set(&state->needs_ss, n->dsts[0]);
 
       foreach_dst (dst, n) {
-         if (dst->flags & IR3_REG_SHARED)
-            regmask_set(&state->needs_ss, dst);
+         if (dst->flags & IR3_REG_SHARED) {
+            if (n_is_scalar_alu) {
+               if (dst->flags & IR3_REG_HALF)
+                  regmask_set(&state->needs_ss_scalar_full, dst);
+               else
+                  regmask_set(&state->needs_ss_scalar_half, dst);
+            } else {
+               regmask_set(&state->needs_ss, dst);
+            }
+         }
       }
 
       if (is_tex_or_prefetch(n)) {
@@ -566,17 +621,31 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
        * their src register(s):
        */
       if (is_tex(n) || is_mem(n) || is_ss_producer(n)) {
-         foreach_src (reg, n) {
-            regmask_set(&state->needs_ss_war, reg);
+         if (n_is_scalar_alu) {
+            /* Scalar ALU also does not immediately read its source because it
+             * is not executed right away, but scalar ALU instructions are
+             * executed in-order so subsequent scalar ALU instructions don't
+             * need to wait for previous ones.
+             */
+            foreach_src (reg, n) {
+               if (reg->flags & IR3_REG_SHARED) {
+                  regmask_set(&state->needs_ss_scalar_war, reg);
+               }
+            }
+         } else {
+            foreach_src (reg, n) {
+               regmask_set(&state->needs_ss_war, reg);
+            }
          }
       }
 
-      if (count_instruction(n))
+      bool count = count_instruction(n, ctx->compiler);
+      if (count)
          cycle += 1;
 
       delay_update(state, n, cycle, mergedregs);
 
-      if (count_instruction(n))
+      if (count)
          cycle += n->repeat;
 
       if (ctx->early_input_release && is_input(n)) {
@@ -1496,9 +1565,15 @@ ir3_legalize(struct ir3 *ir, struct ir3_shader_variant *so, int *max_bary)
          rzalloc(ctx, struct ir3_legalize_block_data);
 
       regmask_init(&bd->state.needs_ss_war, mergedregs);
+      regmask_init(&bd->state.needs_ss_scalar_war, mergedregs);
+      regmask_init(&bd->state.needs_ss_scalar_full, mergedregs);
+      regmask_init(&bd->state.needs_ss_scalar_half, mergedregs);
       regmask_init(&bd->state.needs_ss, mergedregs);
       regmask_init(&bd->state.needs_sy, mergedregs);
       regmask_init(&bd->begin_state.needs_ss_war, mergedregs);
+      regmask_init(&bd->begin_state.needs_ss_scalar_war, mergedregs);
+      regmask_init(&bd->begin_state.needs_ss_scalar_full, mergedregs);
+      regmask_init(&bd->begin_state.needs_ss_scalar_half, mergedregs);
       regmask_init(&bd->begin_state.needs_ss, mergedregs);
       regmask_init(&bd->begin_state.needs_sy, mergedregs);
 

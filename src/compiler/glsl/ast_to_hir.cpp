@@ -2113,6 +2113,10 @@ ast_expression::do_hir(exec_list *instructions,
       result = new(ctx) ir_constant(this->primary_expression.uint_constant);
       break;
 
+   case ast_float16_constant:
+      result = new(ctx) ir_constant(float16_t(this->primary_expression.float16_constant));
+      break;
+
    case ast_float_constant:
       result = new(ctx) ir_constant(this->primary_expression.float_constant);
       break;
@@ -2256,6 +2260,7 @@ ast_expression::has_sequence_subexpression() const
    case ast_identifier:
    case ast_int_constant:
    case ast_uint_constant:
+   case ast_float16_constant:
    case ast_float_constant:
    case ast_bool_constant:
    case ast_double_constant:

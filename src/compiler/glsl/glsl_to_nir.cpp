@@ -1861,10 +1861,20 @@ nir_visitor::visit(ir_expression *ir)
    case ir_unop_b2i64:
    case ir_unop_d2f:
    case ir_unop_f2d:
+   case ir_unop_f162u:
+   case ir_unop_u2f16:
+   case ir_unop_f162i:
+   case ir_unop_i2f16:
    case ir_unop_f162f:
    case ir_unop_f2f16:
    case ir_unop_f162b:
    case ir_unop_b2f16:
+   case ir_unop_f162d:
+   case ir_unop_d2f16:
+   case ir_unop_f162u64:
+   case ir_unop_u642f16:
+   case ir_unop_f162i64:
+   case ir_unop_i642f16:
    case ir_unop_i2i:
    case ir_unop_u2u:
    case ir_unop_d2i:

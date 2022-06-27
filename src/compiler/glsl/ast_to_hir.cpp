@@ -243,10 +243,18 @@ get_implicit_conversion_operation(const glsl_type *to, const glsl_type *from,
                                   struct _mesa_glsl_parse_state *state)
 {
    switch (to->base_type) {
+   case GLSL_TYPE_FLOAT16:
+      switch (from->base_type) {
+      case GLSL_TYPE_INT: return ir_unop_i2f16;
+      case GLSL_TYPE_UINT: return ir_unop_u2f16;
+      default: return (ir_expression_operation)0;
+      }
+
    case GLSL_TYPE_FLOAT:
       switch (from->base_type) {
       case GLSL_TYPE_INT: return ir_unop_i2f;
       case GLSL_TYPE_UINT: return ir_unop_u2f;
+      case GLSL_TYPE_FLOAT16: return ir_unop_f162f;
       default: return (ir_expression_operation)0;
       }
 
@@ -264,6 +272,7 @@ get_implicit_conversion_operation(const glsl_type *to, const glsl_type *from,
       switch (from->base_type) {
       case GLSL_TYPE_INT: return ir_unop_i2d;
       case GLSL_TYPE_UINT: return ir_unop_u2d;
+      case GLSL_TYPE_FLOAT16: return ir_unop_f162d;
       case GLSL_TYPE_FLOAT: return ir_unop_f2d;
       case GLSL_TYPE_INT64: return ir_unop_i642d;
       case GLSL_TYPE_UINT64: return ir_unop_u642d;

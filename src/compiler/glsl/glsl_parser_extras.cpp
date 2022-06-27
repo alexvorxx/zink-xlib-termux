@@ -980,7 +980,8 @@ _mesa_glsl_can_implicitly_convert(const glsl_type *from, const glsl_type *desire
       return false;
 
    /* int and uint can be converted to float. */
-   if (glsl_type_is_float(desired) && glsl_type_is_integer_32(from))
+   if (glsl_type_is_float(desired) && (glsl_type_is_integer_32(from) ||
+       glsl_type_is_float_16(from)))
       return true;
 
    /* With GLSL 4.0, ARB_gpu_shader5, or MESA_shader_integer_functions, int
@@ -999,7 +1000,7 @@ _mesa_glsl_can_implicitly_convert(const glsl_type *from, const glsl_type *desire
 
    /* Conversions from different types to double. */
    if ((!state || state->has_double()) && glsl_type_is_double(desired)) {
-      if (glsl_type_is_float(from))
+      if (glsl_type_is_float_16_32(from))
          return true;
       if (glsl_type_is_integer_32(from))
          return true;

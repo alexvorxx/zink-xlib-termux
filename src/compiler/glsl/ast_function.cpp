@@ -1700,7 +1700,7 @@ emit_inline_matrix_constructor(const glsl_type *type,
        * components with zero.
        */
       glsl_base_type param_base_type = first_param->type->base_type;
-      assert(glsl_type_is_float(first_param->type) || glsl_type_is_double(first_param->type));
+      assert(glsl_type_is_float_16_32_64(first_param->type));
       ir_variable *rhs_var =
          new(ctx) ir_variable(glsl_simple_type(param_base_type, 4, 1),
                               "mat_ctor_vec",

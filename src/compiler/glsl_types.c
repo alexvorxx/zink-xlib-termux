@@ -1969,7 +1969,7 @@ glsl_varying_count(const glsl_type *t)
 unsigned
 glsl_get_std140_base_alignment(const glsl_type *t, bool row_major)
 {
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* (1) If the member is a scalar consuming <N> basic machine units, the
     *     base alignment is <N>.
@@ -2088,7 +2088,7 @@ glsl_get_std140_base_alignment(const glsl_type *t, bool row_major)
 unsigned
 glsl_get_std140_size(const glsl_type *t, bool row_major)
 {
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* (1) If the member is a scalar consuming <N> basic machine units, the
     *     base alignment is <N>.
@@ -2308,7 +2308,7 @@ unsigned
 glsl_get_std430_base_alignment(const glsl_type *t, bool row_major)
 {
 
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* (1) If the member is a scalar consuming <N> basic machine units, the
     *     base alignment is <N>.
@@ -2417,7 +2417,7 @@ glsl_get_std430_base_alignment(const glsl_type *t, bool row_major)
 unsigned
 glsl_get_std430_array_stride(const glsl_type *t, bool row_major)
 {
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* Notice that the array stride of a vec3 is not 3 * N but 4 * N.
     * See OpenGL 4.30 spec, section 7.6.2.2 "Standard Uniform Block Layout"
@@ -2505,7 +2505,7 @@ glsl_get_explicit_size(const glsl_type *t, bool align_to_stride)
 unsigned
 glsl_get_std430_size(const glsl_type *t, bool row_major)
 {
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* OpenGL 4.30 spec, section 7.6.2.2 "Standard Uniform Block Layout":
     *

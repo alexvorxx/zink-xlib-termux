@@ -74,6 +74,7 @@ static const struct {
    { "dg2", 0x5690 },
    { "mtl", 0x7d60 },
    { "arl", 0x7d67 },
+   { "lnl", 0x64a0 },
 };
 
 /**
@@ -1223,7 +1224,7 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .cooperative_matrix_configurations = { { 0 }, },             \
    .has_flat_ccs = true
 
-UNUSED static const struct intel_device_info intel_device_info_lnl = {
+static const struct intel_device_info intel_device_info_lnl = {
    XE2_FEATURES,
    .platform = INTEL_PLATFORM_LNL,
    .has_local_mem = false,

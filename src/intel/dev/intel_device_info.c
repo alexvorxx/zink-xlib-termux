@@ -1202,6 +1202,34 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .platform = INTEL_PLATFORM_ARL_H,
 };
 
+#define XE2_FEATURES                                            \
+   /* (Sub)slice info comes from the kernel topology info */    \
+   XEHP_FEATURES(0, 1, 0),                                      \
+   .ver = 20,                                                   \
+   .verx10 = 200,                                               \
+   .num_subslices = dual_subslices(1),                          \
+   .has_64bit_float = true,                                     \
+   .has_integer_dword_mul = false,                              \
+   .has_coarse_pixel_primitive_and_cb = true,                   \
+   .has_mesh_shading = true,                                    \
+   .has_ray_tracing = true,                                     \
+   .has_indirect_unroll = true,                                 \
+   .pat = {                                                     \
+      .cached_coherent = PAT_ENTRY(1, WB, 1WAY),                \
+      .scanout = PAT_ENTRY(6, WC, NONE),                        \
+      .writeback_incoherent = PAT_ENTRY(0, WB, NONE),           \
+      .writecombining = PAT_ENTRY(6, WC, NONE),                 \
+   },                                                           \
+   .cooperative_matrix_configurations = { { 0 }, },             \
+   .has_flat_ccs = true
+
+UNUSED static const struct intel_device_info intel_device_info_lnl = {
+   XE2_FEATURES,
+   .platform = INTEL_PLATFORM_LNL,
+   .has_local_mem = false,
+   .apply_hwconfig = true,
+};
+
 void
 intel_device_info_topology_reset_masks(struct intel_device_info *devinfo)
 {

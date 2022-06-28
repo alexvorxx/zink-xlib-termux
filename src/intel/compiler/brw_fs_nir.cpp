@@ -8018,12 +8018,17 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    if (instr->sampler_dim == GLSL_SAMPLER_DIM_BUF)
       srcs[TEX_LOGICAL_SRC_LOD] = brw_imm_d(0);
 
+   ASSERTED bool got_lod = false;
+   ASSERTED bool got_bias = false;
    uint32_t header_bits = 0;
    for (unsigned i = 0; i < instr->num_srcs; i++) {
       nir_src nir_src = instr->src[i].src;
       fs_reg src = get_nir_src(ntb, nir_src);
       switch (instr->src[i].src_type) {
       case nir_tex_src_bias:
+         assert(!got_lod);
+         got_bias = true;
+
          srcs[TEX_LOGICAL_SRC_LOD] =
             retype(get_nir_src_imm(ntb, instr->src[i].src), BRW_REGISTER_TYPE_F);
          break;
@@ -8051,6 +8056,9 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
          srcs[TEX_LOGICAL_SRC_LOD2] = retype(src, BRW_REGISTER_TYPE_F);
          break;
       case nir_tex_src_lod:
+         assert(!got_bias);
+         got_lod = true;
+
          switch (instr->op) {
          case nir_texop_txs:
             srcs[TEX_LOGICAL_SRC_LOD] =
@@ -8140,6 +8148,15 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
       case nir_tex_src_ms_mcs_intel:
          assert(instr->op == nir_texop_txf_ms);
          srcs[TEX_LOGICAL_SRC_MCS] = retype(src, BRW_REGISTER_TYPE_D);
+         break;
+
+      case nir_tex_src_combined_lod_and_array_index_intel:
+         assert(!got_lod && !got_bias);
+         got_lod = true;
+
+         assert(instr->op == nir_texop_txl || instr->op == nir_texop_txb);
+         srcs[TEX_LOGICAL_SRC_LOD] =
+            retype(get_nir_src_imm(ntb, instr->src[i].src), BRW_REGISTER_TYPE_F);
          break;
 
       default:

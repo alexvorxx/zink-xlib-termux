@@ -1036,7 +1036,6 @@ private:
    ir_dereference_record *record_ref(ir_variable *var, const char *field);
 
    ir_expression *asin_expr(ir_variable *x, float p0, float p1);
-   void do_atan(ir_factory &body, const glsl_type *type, ir_variable *res, operand y_over_x);
 
    /**
     * Call function \param f with parameters specified as the linked
@@ -1102,21 +1101,21 @@ private:
 #define B3(X) ir_function_signature *_##X(const glsl_type *, const glsl_type *, const glsl_type *);
 #define BA1(X) ir_function_signature *_##X(builtin_available_predicate, const glsl_type *);
 #define BA2(X) ir_function_signature *_##X(builtin_available_predicate, const glsl_type *, const glsl_type *);
-   B1(radians)
-   B1(degrees)
-   B1(sin)
-   B1(cos)
-   B1(tan)
-   B1(asin)
-   B1(acos)
-   B1(atan2)
-   B1(atan)
-   B1(sinh)
-   B1(cosh)
-   B1(tanh)
-   B1(asinh)
-   B1(acosh)
-   B1(atanh)
+   BA1(radians)
+   BA1(degrees)
+   BA1(sin)
+   BA1(cos)
+   BA1(tan)
+   BA1(asin)
+   BA1(acos)
+   BA1(atan2)
+   BA1(atan)
+   BA1(sinh)
+   BA1(cosh)
+   BA1(tanh)
+   BA1(asinh)
+   BA1(acosh)
+   BA1(atanh)
    B1(pow)
    B1(exp)
    B1(log)
@@ -2120,31 +2119,39 @@ builtin_builder::create_builtins()
                 _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4, &glsl_type_builtin_f16vec4),     \
                 NULL);
 
-   F(radians)
-   F(degrees)
-   F(sin)
-   F(cos)
-   F(tan)
-   F(asin)
-   F(acos)
+   FHF(radians)
+   FHF(degrees)
+   FHF(sin)
+   FHF(cos)
+   FHF(tan)
+   FHF(asin)
+   FHF(acos)
 
    add_function("atan",
-                _atan(&glsl_type_builtin_float),
-                _atan(&glsl_type_builtin_vec2),
-                _atan(&glsl_type_builtin_vec3),
-                _atan(&glsl_type_builtin_vec4),
-                _atan2(&glsl_type_builtin_float),
-                _atan2(&glsl_type_builtin_vec2),
-                _atan2(&glsl_type_builtin_vec3),
-                _atan2(&glsl_type_builtin_vec4),
+                _atan(always_available, &glsl_type_builtin_float),
+                _atan(always_available, &glsl_type_builtin_vec2),
+                _atan(always_available, &glsl_type_builtin_vec3),
+                _atan(always_available, &glsl_type_builtin_vec4),
+                _atan2(always_available, &glsl_type_builtin_float),
+                _atan2(always_available, &glsl_type_builtin_vec2),
+                _atan2(always_available, &glsl_type_builtin_vec3),
+                _atan2(always_available, &glsl_type_builtin_vec4),
+                _atan(gpu_shader_half_float, &glsl_type_builtin_float16_t),
+                _atan(gpu_shader_half_float, &glsl_type_builtin_f16vec2),
+                _atan(gpu_shader_half_float, &glsl_type_builtin_f16vec3),
+                _atan(gpu_shader_half_float, &glsl_type_builtin_f16vec4),
+                _atan2(gpu_shader_half_float, &glsl_type_builtin_float16_t),
+                _atan2(gpu_shader_half_float, &glsl_type_builtin_f16vec2),
+                _atan2(gpu_shader_half_float, &glsl_type_builtin_f16vec3),
+                _atan2(gpu_shader_half_float, &glsl_type_builtin_f16vec4),
                 NULL);
 
-   F(sinh)
-   F(cosh)
-   F(tanh)
-   F(asinh)
-   F(acosh)
-   F(atanh)
+   FHF130(sinh)
+   FHF130(cosh)
+   FHF130(tanh)
+   FHF130(asinh)
+   FHF130(acosh)
+   FHF130(atanh)
    F(pow)
    F(exp)
    F(log)
@@ -6031,31 +6038,34 @@ builtin_builder::_##NAME(const glsl_type *return_type,                  \
  */
 
 ir_function_signature *
-builtin_builder::_radians(const glsl_type *type)
+builtin_builder::_radians(builtin_available_predicate avail,
+                          const glsl_type *type)
 {
    ir_variable *degrees = in_var(type, "degrees");
-   MAKE_SIG(type, always_available, 1, degrees);
-   body.emit(ret(mul(degrees, imm(0.0174532925f))));
+   MAKE_SIG(type, avail, 1, degrees);
+   body.emit(ret(mul(degrees, IMM_FP(type, 0.0174532925f))));
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_degrees(const glsl_type *type)
+builtin_builder::_degrees(builtin_available_predicate avail,
+                          const glsl_type *type)
 {
    ir_variable *radians = in_var(type, "radians");
-   MAKE_SIG(type, always_available, 1, radians);
-   body.emit(ret(mul(radians, imm(57.29578f))));
+   MAKE_SIG(type, avail, 1, radians);
+   body.emit(ret(mul(radians, IMM_FP(type, 57.29578f))));
    return sig;
 }
 
-UNOP(sin, ir_unop_sin, always_available)
-UNOP(cos, ir_unop_cos, always_available)
+UNOPA(sin, ir_unop_sin)
+UNOPA(cos, ir_unop_cos)
 
 ir_function_signature *
-builtin_builder::_tan(const glsl_type *type)
+builtin_builder::_tan(builtin_available_predicate avail,
+                      const glsl_type *type)
 {
    ir_variable *theta = in_var(type, "theta");
-   MAKE_SIG(type, always_available, 1, theta);
+   MAKE_SIG(type, avail, 1, theta);
    body.emit(ret(div(sin(theta), cos(theta))));
    return sig;
 }
@@ -6064,14 +6074,14 @@ ir_expression *
 builtin_builder::asin_expr(ir_variable *x, float p0, float p1)
 {
    return mul(sign(x),
-              sub(imm(M_PI_2f),
-                  mul(sqrt(sub(imm(1.0f), abs(x))),
-                      add(imm(M_PI_2f),
+              sub(IMM_FP(x->type, M_PI_2f),
+                  mul(sqrt(sub(IMM_FP(x->type, 1.0f), abs(x))),
+                      add(IMM_FP(x->type, M_PI_2f),
                           mul(abs(x),
-                              add(imm(M_PI_4f - 1.0f),
+                              add(IMM_FP(x->type, (M_PI_4f - 1.0f)),
                                   mul(abs(x),
-                                      add(imm(p0),
-                                          mul(abs(x), imm(p1))))))))));
+                                      add(IMM_FP(x->type, p0),
+                                          mul(abs(x), IMM_FP(x->type, p1))))))))));
 }
 
 /**
@@ -6111,10 +6121,11 @@ builtin_builder::call(ir_function *f, ir_variable *ret, exec_list params)
 }
 
 ir_function_signature *
-builtin_builder::_asin(const glsl_type *type)
+builtin_builder::_asin(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, always_available, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    body.emit(ret(asin_expr(x, 0.086566724f, -0.03102955f)));
 
@@ -6122,45 +6133,49 @@ builtin_builder::_asin(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_acos(const glsl_type *type)
+builtin_builder::_acos(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, always_available, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
-   body.emit(ret(sub(imm(M_PI_2f), asin_expr(x, 0.08132463f, -0.02363318f))));
+   body.emit(ret(sub(IMM_FP(type, M_PI_2f), asin_expr(x, 0.08132463f, -0.02363318f))));
 
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_sinh(const glsl_type *type)
+builtin_builder::_sinh(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    /* 0.5 * (e^x - e^(-x)) */
-   body.emit(ret(mul(imm(0.5f), sub(exp(x), exp(neg(x))))));
+   body.emit(ret(mul(IMM_FP(type, 0.5f), sub(exp(x), exp(neg(x))))));
 
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_cosh(const glsl_type *type)
+builtin_builder::_cosh(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    /* 0.5 * (e^x + e^(-x)) */
-   body.emit(ret(mul(imm(0.5f), add(exp(x), exp(neg(x))))));
+   body.emit(ret(mul(IMM_FP(type, 0.5f), add(exp(x), exp(neg(x))))));
 
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_tanh(const glsl_type *type)
+builtin_builder::_tanh(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    /* Clamp x to [-10, +10] to avoid precision problems.
     * When x > 10, e^(-x) is so small relative to e^x that it gets flushed to
@@ -6168,7 +6183,7 @@ builtin_builder::_tanh(const glsl_type *type)
     * direction when x < -10.
     */
    ir_variable *t = body.make_temp(type, "tmp");
-   body.emit(assign(t, min2(max2(x, imm(-10.0f)), imm(10.0f))));
+   body.emit(assign(t, min2(max2(x, IMM_FP(type, -10.0f)), IMM_FP(type, 10.0f))));
 
    /* (e^x - e^(-x)) / (e^x + e^(-x)) */
    body.emit(ret(div(sub(exp(t), exp(neg(t))),
@@ -6178,34 +6193,37 @@ builtin_builder::_tanh(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_asinh(const glsl_type *type)
+builtin_builder::_asinh(builtin_available_predicate avail,
+                        const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    body.emit(ret(mul(sign(x), log(add(abs(x), sqrt(add(mul(x, x),
-                                                       imm(1.0f))))))));
+                                                       IMM_FP(type, 1.0f))))))));
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_acosh(const glsl_type *type)
+builtin_builder::_acosh(builtin_available_predicate avail,
+                        const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
-   body.emit(ret(log(add(x, sqrt(sub(mul(x, x), imm(1.0f)))))));
+   body.emit(ret(log(add(x, sqrt(sub(mul(x, x), IMM_FP(type, 1.0f)))))));
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_atanh(const glsl_type *type)
+builtin_builder::_atanh(builtin_available_predicate avail,
+                        const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
-   body.emit(ret(mul(imm(0.5f), log(div(add(imm(1.0f), x),
-                                        sub(imm(1.0f), x))))));
+   body.emit(ret(mul(IMM_FP(type, 0.5f), log(div(add(IMM_FP(type, 1.0f), x),
+                                                 sub(IMM_FP(type, 1.0f), x))))));
    return sig;
 }
 /** @} */
@@ -6224,7 +6242,7 @@ UNOP(exp,         ir_unop_exp,  always_available)
 UNOP(log,         ir_unop_log,  always_available)
 UNOP(exp2,        ir_unop_exp2, always_available)
 UNOP(log2,        ir_unop_log2, always_available)
-UNOP(atan,        ir_unop_atan, always_available)
+UNOPA(atan,        ir_unop_atan)
 UNOPA(sqrt,        ir_unop_sqrt)
 UNOPA(inversesqrt, ir_unop_rsq)
 
@@ -6425,9 +6443,10 @@ builtin_builder::_isinf(builtin_available_predicate avail, const glsl_type *type
 }
 
 ir_function_signature *
-builtin_builder::_atan2(const glsl_type *x_type)
+builtin_builder::_atan2(builtin_available_predicate avail,
+                        const glsl_type *x_type)
 {
-   return binop(always_available, ir_binop_atan2, x_type, x_type, x_type);
+   return binop(avail, ir_binop_atan2, x_type, x_type, x_type);
 }
 
 ir_function_signature *

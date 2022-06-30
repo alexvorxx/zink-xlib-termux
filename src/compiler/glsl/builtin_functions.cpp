@@ -460,6 +460,12 @@ gpu_shader5_or_es31_or_integer_functions(const _mesa_glsl_parse_state *state)
 }
 
 static bool
+gpu_shader_half_float(const _mesa_glsl_parse_state *state)
+{
+   return state->AMD_gpu_shader_half_float_enable;
+}
+
+static bool
 fs_interpolate_at(const _mesa_glsl_parse_state *state)
 {
    return state->stage == MESA_SHADER_FRAGMENT &&
@@ -1017,6 +1023,7 @@ private:
    ir_variable *out_lowp_var(const glsl_type *type, const char *name);
    ir_variable *out_highp_var(const glsl_type *type, const char *name);
    ir_variable *as_highp(ir_factory &body, ir_variable *var);
+   ir_constant *imm(float16_t f16, unsigned vector_elements=1);
    ir_constant *imm(float f, unsigned vector_elements=1);
    ir_constant *imm(bool b, unsigned vector_elements=1);
    ir_constant *imm(int i, unsigned vector_elements=1);
@@ -1736,6 +1743,30 @@ builtin_builder::create_builtins()
                 _##NAME(&glsl_type_builtin_vec4),  \
                 NULL);
 
+#define FHF(NAME)                                 \
+   add_function(#NAME,                          \
+                _##NAME(always_available, &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
+                NULL);
+
+#define FHF130(NAME)                                 \
+   add_function(#NAME,                          \
+                _##NAME(v130, &glsl_type_builtin_float), \
+                _##NAME(v130, &glsl_type_builtin_vec2),  \
+                _##NAME(v130, &glsl_type_builtin_vec3),  \
+                _##NAME(v130, &glsl_type_builtin_vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
+                NULL);
+
 #define FD(NAME)                                 \
    add_function(#NAME,                          \
                 _##NAME(always_available, &glsl_type_builtin_float), \
@@ -1748,6 +1779,22 @@ builtin_builder::create_builtins()
                 _##NAME(fp64, &glsl_type_builtin_dvec4),      \
                 NULL);
 
+#define FDHF(NAME)                                 \
+   add_function(#NAME,                          \
+                _##NAME(always_available, &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
+                _##NAME(fp64, &glsl_type_builtin_double),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),    \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),     \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
+                NULL);
+
 #define FD130(NAME)                                 \
    add_function(#NAME,                          \
                 _##NAME(v130, &glsl_type_builtin_float), \
@@ -1758,6 +1805,38 @@ builtin_builder::create_builtins()
                 _##NAME(fp64, &glsl_type_builtin_dvec2),    \
                 _##NAME(fp64, &glsl_type_builtin_dvec3),     \
                 _##NAME(fp64, &glsl_type_builtin_dvec4),      \
+                NULL);
+
+#define FDHF130(NAME)                                                      \
+   add_function(#NAME,                                                     \
+                _##NAME(v130, &glsl_type_builtin_float),                      \
+                _##NAME(v130, &glsl_type_builtin_vec2),                       \
+                _##NAME(v130, &glsl_type_builtin_vec3),                       \
+                _##NAME(v130, &glsl_type_builtin_vec4),                       \
+                _##NAME(fp64, &glsl_type_builtin_double),                     \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),                      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),   \
+                NULL);
+
+#define FDHF130GS4(NAME)                                                   \
+   add_function(#NAME,                                                     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_float),    \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_vec2),     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_vec3),     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_vec4),     \
+                _##NAME(fp64, &glsl_type_builtin_double),                  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),                      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),   \
                 NULL);
 
 #define FD130GS4(NAME)                          \
@@ -1782,6 +1861,22 @@ builtin_builder::create_builtins()
                 _##NAME(fp64, &glsl_type_builtin_dvec2),    \
                 _##NAME(fp64, &glsl_type_builtin_dvec3),     \
                 _##NAME(fp64, &glsl_type_builtin_dvec4),      \
+                NULL);
+
+#define FDHFGS5(NAME)                                                      \
+   add_function(#NAME,                                                     \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_float),            \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_vec2),             \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_vec3),             \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_vec4),             \
+                _##NAME(fp64, &glsl_type_builtin_double),                     \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),                      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),   \
                 NULL);
 
 #define FI(NAME)                                \
@@ -1814,6 +1909,30 @@ builtin_builder::create_builtins()
                 _##NAME(int64_avail, &glsl_type_builtin_i64vec2),  \
                 _##NAME(int64_avail, &glsl_type_builtin_i64vec3),  \
                 _##NAME(int64_avail, &glsl_type_builtin_i64vec4),  \
+                NULL);
+
+#define FI64HF(NAME)                                \
+   add_function(#NAME,                          \
+                _##NAME(always_available, &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
+                _##NAME(always_available, &glsl_type_builtin_int),   \
+                _##NAME(always_available, &glsl_type_builtin_ivec2), \
+                _##NAME(always_available, &glsl_type_builtin_ivec3), \
+                _##NAME(always_available, &glsl_type_builtin_ivec4), \
+                _##NAME(fp64, &glsl_type_builtin_double), \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),  \
+                _##NAME(int64_avail, &glsl_type_builtin_int64_t), \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
                 NULL);
 
 #define FIUD_VEC(NAME)                                            \
@@ -1937,6 +2056,68 @@ builtin_builder::create_builtins()
                 _##NAME(int64_avail, &glsl_type_builtin_u64vec2, &glsl_type_builtin_u64vec2),     \
                 _##NAME(int64_avail, &glsl_type_builtin_u64vec3, &glsl_type_builtin_u64vec3),     \
                 _##NAME(int64_avail, &glsl_type_builtin_u64vec4, &glsl_type_builtin_u64vec4),     \
+                NULL);
+
+#define FIUDHF2_MIXED(NAME)                                                                           \
+   add_function(#NAME,                                                                                \
+                _##NAME(always_available, &glsl_type_builtin_float, &glsl_type_builtin_float),        \
+                _##NAME(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_float),        \
+                _##NAME(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_float),        \
+                _##NAME(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_float),        \
+                                                                                                      \
+                _##NAME(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_vec2),         \
+                _##NAME(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_vec3),         \
+                _##NAME(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_vec4),         \
+                                                                                                      \
+                _##NAME(always_available, &glsl_type_builtin_int,   &glsl_type_builtin_int),          \
+                _##NAME(always_available, &glsl_type_builtin_ivec2, &glsl_type_builtin_int),          \
+                _##NAME(always_available, &glsl_type_builtin_ivec3, &glsl_type_builtin_int),          \
+                _##NAME(always_available, &glsl_type_builtin_ivec4, &glsl_type_builtin_int),          \
+                                                                                                      \
+                _##NAME(always_available, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),        \
+                _##NAME(always_available, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3),        \
+                _##NAME(always_available, &glsl_type_builtin_ivec4, &glsl_type_builtin_ivec4),        \
+                                                                                                      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uint,  &glsl_type_builtin_uint),      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec2, &glsl_type_builtin_uint),      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec3, &glsl_type_builtin_uint),      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec4, &glsl_type_builtin_uint),      \
+                                                                                                      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec2, &glsl_type_builtin_uvec2),     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec3, &glsl_type_builtin_uvec3),     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec4, &glsl_type_builtin_uvec4),     \
+                                                                                                      \
+                _##NAME(fp64, &glsl_type_builtin_double, &glsl_type_builtin_double),                  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2, &glsl_type_builtin_double),                   \
+                _##NAME(fp64, &glsl_type_builtin_dvec3, &glsl_type_builtin_double),                   \
+                _##NAME(fp64, &glsl_type_builtin_dvec4, &glsl_type_builtin_double),                   \
+                _##NAME(fp64, &glsl_type_builtin_dvec2, &glsl_type_builtin_dvec2),                    \
+                _##NAME(fp64, &glsl_type_builtin_dvec3, &glsl_type_builtin_dvec3),                    \
+                _##NAME(fp64, &glsl_type_builtin_dvec4, &glsl_type_builtin_dvec4),                    \
+                                                                                                      \
+                _##NAME(int64_avail, &glsl_type_builtin_int64_t, &glsl_type_builtin_int64_t),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2, &glsl_type_builtin_int64_t),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3, &glsl_type_builtin_int64_t),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4, &glsl_type_builtin_int64_t),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2, &glsl_type_builtin_i64vec2),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3, &glsl_type_builtin_i64vec3),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4, &glsl_type_builtin_i64vec4),         \
+                _##NAME(int64_avail, &glsl_type_builtin_uint64_t, &glsl_type_builtin_uint64_t),       \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec2, &glsl_type_builtin_uint64_t),        \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec3, &glsl_type_builtin_uint64_t),        \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec4, &glsl_type_builtin_uint64_t),        \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec2, &glsl_type_builtin_u64vec2),         \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec3, &glsl_type_builtin_u64vec3),         \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec4, &glsl_type_builtin_u64vec4),         \
+                                                                                                      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2, &glsl_type_builtin_float16_t),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3, &glsl_type_builtin_float16_t),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4, &glsl_type_builtin_float16_t),   \
+                                                                                                            \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2, &glsl_type_builtin_f16vec2),     \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3, &glsl_type_builtin_f16vec3),     \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4, &glsl_type_builtin_f16vec4),     \
                 NULL);
 
    F(radians)
@@ -5684,6 +5865,12 @@ builtin_builder::as_highp(ir_factory &body, ir_variable *var)
 }
 
 ir_constant *
+builtin_builder::imm(float16_t f16, unsigned vector_elements)
+{
+   return new(mem_ctx) ir_constant(f16, vector_elements);
+}
+
+ir_constant *
 builtin_builder::imm(bool b, unsigned vector_elements)
 {
    return new(mem_ctx) ir_constant(b, vector_elements);
@@ -5719,7 +5906,8 @@ builtin_builder::imm(const glsl_type *type, const ir_constant_data &data)
    return new(mem_ctx) ir_constant(type, &data);
 }
 
-#define IMM_FP(type, val) (glsl_type_is_double(type)) ? imm(val) : imm((float)val)
+#define IMM_FP(type, val) (glsl_type_is_double(type)) ? imm(val) : \
+   (glsl_type_is_float_16(type)  ? imm((float16_t)val) : imm((float)val))
 
 ir_dereference_variable *
 builtin_builder::var_ref(ir_variable *var)

@@ -2159,14 +2159,14 @@ builtin_builder::create_builtins()
    FHF(log2)
    FDHF(sqrt)
    FDHF(inversesqrt)
-   FI64(abs)
-   FI64(sign)
-   FD(floor)
-   FD130(trunc)
-   FD130GS4(round)
-   FD130(roundEven)
-   FD(ceil)
-   FD(fract)
+   FI64HF(abs)
+   FI64HF(sign)
+   FDHF(floor)
+   FDHF130(trunc)
+   FDHF130GS4(round)
+   FDHF130(roundEven)
+   FDHF(ceil)
+   FDHF(fract)
 
    add_function("truncate",
                 _truncate(gpu_shader4, &glsl_type_builtin_float),
@@ -2186,6 +2186,15 @@ builtin_builder::create_builtins()
                 _mod(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_vec3),
                 _mod(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_vec4),
 
+                _mod(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_float16_t),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_float16_t),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_float16_t),
+
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_f16vec2),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_f16vec3),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_f16vec4),
+
                 _mod(fp64, &glsl_type_builtin_double, &glsl_type_builtin_double),
                 _mod(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_double),
                 _mod(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_double),
@@ -2196,11 +2205,11 @@ builtin_builder::create_builtins()
                 _mod(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_dvec4),
                 NULL);
 
-   FD130(modf)
+   FDHF130(modf)
 
-   FIUD2_MIXED(min)
-   FIUD2_MIXED(max)
-   FIUD2_MIXED(clamp)
+   FIUDHF2_MIXED(min)
+   FIUDHF2_MIXED(max)
+   FIUDHF2_MIXED(clamp)
 
    add_function("mix",
                 _mix_lrp(always_available, &glsl_type_builtin_float, &glsl_type_builtin_float),
@@ -2211,6 +2220,15 @@ builtin_builder::create_builtins()
                 _mix_lrp(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_vec2),
                 _mix_lrp(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_vec3),
                 _mix_lrp(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_vec4),
+
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_float16_t),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_float16_t),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_float16_t),
+
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_f16vec2),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_f16vec3),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_f16vec4),
 
                 _mix_lrp(fp64, &glsl_type_builtin_double, &glsl_type_builtin_double),
                 _mix_lrp(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_double),
@@ -2225,6 +2243,11 @@ builtin_builder::create_builtins()
                 _mix_sel(v130, &glsl_type_builtin_vec2,  &glsl_type_builtin_bvec2),
                 _mix_sel(v130, &glsl_type_builtin_vec3,  &glsl_type_builtin_bvec3),
                 _mix_sel(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_bvec4),
+
+                _mix_sel(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_bool),
+                _mix_sel(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_bvec2),
+                _mix_sel(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_bvec3),
+                _mix_sel(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_bvec4),
 
                 _mix_sel(fp64, &glsl_type_builtin_double, &glsl_type_builtin_bool),
                 _mix_sel(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_bvec2),
@@ -2274,6 +2297,15 @@ builtin_builder::create_builtins()
                 _step(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_dvec2),
                 _step(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_dvec3),
                 _step(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_dvec4),
+
+                _step(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t),
+                _step(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec2),
+                _step(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec3),
+                _step(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec4),
+
+                _step(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_f16vec2),
+                _step(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_f16vec3),
+                _step(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_f16vec4),
                 NULL);
 
    add_function("smoothstep",
@@ -2293,10 +2325,19 @@ builtin_builder::create_builtins()
                 _smoothstep(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_dvec2),
                 _smoothstep(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_dvec3),
                 _smoothstep(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_dvec4),
+
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec2),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec3),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec4),
+
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_f16vec2),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_f16vec3),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_f16vec4),
                 NULL);
 
-   FD130(isnan)
-   FD130(isinf)
+   FDHF130(isnan)
+   FDHF130(isinf)
 
    F(floatBitsToInt)
    F(floatBitsToUint)
@@ -4917,7 +4958,7 @@ builtin_builder::create_builtins()
    IU(bitCount)
    IU(findLSB)
    IU(findMSB)
-   FDGS5(fma)
+   FDHFGS5(fma)
 
    add_function("ldexp",
                 _ldexp(&glsl_type_builtin_float, &glsl_type_builtin_int),
@@ -4928,6 +4969,10 @@ builtin_builder::create_builtins()
                 _ldexp(&glsl_type_builtin_dvec2,  &glsl_type_builtin_ivec2),
                 _ldexp(&glsl_type_builtin_dvec3,  &glsl_type_builtin_ivec3),
                 _ldexp(&glsl_type_builtin_dvec4,  &glsl_type_builtin_ivec4),
+                _ldexp(&glsl_type_builtin_float16_t, &glsl_type_builtin_int),
+                _ldexp(&glsl_type_builtin_f16vec2,  &glsl_type_builtin_ivec2),
+                _ldexp(&glsl_type_builtin_f16vec3,  &glsl_type_builtin_ivec3),
+                _ldexp(&glsl_type_builtin_f16vec4,  &glsl_type_builtin_ivec4),
                 NULL);
 
    add_function("frexp",
@@ -4939,6 +4984,10 @@ builtin_builder::create_builtins()
                 _frexp(&glsl_type_builtin_dvec2,  &glsl_type_builtin_ivec2),
                 _frexp(&glsl_type_builtin_dvec3,  &glsl_type_builtin_ivec3),
                 _frexp(&glsl_type_builtin_dvec4,  &glsl_type_builtin_ivec4),
+                _frexp(&glsl_type_builtin_float16_t, &glsl_type_builtin_int),
+                _frexp(&glsl_type_builtin_f16vec2,  &glsl_type_builtin_ivec2),
+                _frexp(&glsl_type_builtin_f16vec3,  &glsl_type_builtin_ivec3),
+                _frexp(&glsl_type_builtin_f16vec4,  &glsl_type_builtin_ivec4),
                 NULL);
    add_function("uaddCarry",
                 _uaddCarry(&glsl_type_builtin_uint),
@@ -6356,6 +6405,8 @@ builtin_builder::_step(builtin_available_predicate avail, const glsl_type *edge_
       /* Both are floats */
       if (glsl_type_is_double(edge_type))
          body.emit(assign(t, f2d(b2f(gequal(x, edge)))));
+      else if (glsl_type_is_float_16(edge_type))
+         body.emit(assign(t, f2f16(b2f(gequal(x, edge)))));
       else
          body.emit(assign(t, b2f(gequal(x, edge))));
    } else if (edge_type->vector_elements == 1) {
@@ -6363,6 +6414,8 @@ builtin_builder::_step(builtin_available_predicate avail, const glsl_type *edge_
       for (int i = 0; i < x_type->vector_elements; i++) {
          if (glsl_type_is_double(edge_type))
             body.emit(assign(t, f2d(b2f(gequal(swizzle(x, i, 1), edge))), 1 << i));
+         else if (glsl_type_is_float_16(edge_type))
+            body.emit(assign(t, f2f16(b2f(gequal(swizzle(x, i, 1), edge))), 1 << i));
          else
             body.emit(assign(t, b2f(gequal(swizzle(x, i, 1), edge)), 1 << i));
       }
@@ -6371,6 +6424,9 @@ builtin_builder::_step(builtin_available_predicate avail, const glsl_type *edge_
       for (int i = 0; i < x_type->vector_elements; i++) {
          if (glsl_type_is_double(edge_type))
             body.emit(assign(t, f2d(b2f(gequal(swizzle(x, i, 1), swizzle(edge, i, 1)))),
+                             1 << i));
+         else if (glsl_type_is_float_16(edge_type))
+            body.emit(assign(t, f2f16(b2f(gequal(swizzle(x, i, 1), swizzle(edge, i, 1)))),
                              1 << i));
          else
             body.emit(assign(t, b2f(gequal(swizzle(x, i, 1), swizzle(edge, i, 1))),
@@ -6427,6 +6483,9 @@ builtin_builder::_isinf(builtin_available_predicate avail, const glsl_type *type
    ir_constant_data infinities;
    for (int i = 0; i < type->vector_elements; i++) {
       switch (type->base_type) {
+      case GLSL_TYPE_FLOAT16:
+         infinities.f16[i] = _mesa_float_to_half(INFINITY);
+         break;
       case GLSL_TYPE_FLOAT:
          infinities.f[i] = INFINITY;
          break;
@@ -7947,7 +8006,11 @@ builtin_builder::_ldexp(const glsl_type *x_type, const glsl_type *exp_type)
 {
    ir_variable *x = in_highp_var(x_type, "x");
    ir_variable *y = in_highp_var(exp_type, "y");
-   MAKE_SIG(x_type, glsl_type_is_double(x_type) ? fp64 : gpu_shader5_or_es31_or_integer_functions, 2, x, y);
+   builtin_available_predicate avail = glsl_type_is_double(x_type) ? fp64 :
+      (glsl_type_is_float_16(x_type) ?
+          gpu_shader_half_float : gpu_shader5_or_es31_or_integer_functions);
+
+   MAKE_SIG(x_type, avail, 2, x, y);
    sig->return_precision = GLSL_PRECISION_HIGH;
    body.emit(ret(expr(ir_binop_ldexp, x, y)));
    return sig;
@@ -7958,8 +8021,10 @@ builtin_builder::_frexp(const glsl_type *x_type, const glsl_type *exp_type)
 {
    ir_variable *x = in_highp_var(x_type, "x");
    ir_variable *exponent = out_var(exp_type, "exp");
-   MAKE_SIG(x_type, glsl_type_is_double(x_type) ? fp64 : gpu_shader5_or_es31_or_integer_functions,
-            2, x, exponent);
+   builtin_available_predicate avail = glsl_type_is_double(x_type) ? fp64 :
+      (glsl_type_is_float_16(x_type) ?
+          gpu_shader_half_float : gpu_shader5_or_es31_or_integer_functions);
+   MAKE_SIG(x_type, avail, 2, x, exponent);
    sig->return_precision = GLSL_PRECISION_HIGH;
 
    body.emit(assign(exponent, expr(ir_unop_frexp_exp, x)));

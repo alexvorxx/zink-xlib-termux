@@ -5670,12 +5670,12 @@ static bool
 lower_derivative(fs_visitor *v, bblock_t *block, fs_inst *inst,
                  unsigned swz0, unsigned swz1)
 {
-   const fs_builder ibld(v, block, inst);
-   const fs_reg tmp0 = ibld.vgrf(inst->src[0].type);
-   const fs_reg tmp1 = ibld.vgrf(inst->src[0].type);
+   const fs_builder ubld = fs_builder(v, block, inst).exec_all();
+   const fs_reg tmp0 = ubld.vgrf(inst->src[0].type);
+   const fs_reg tmp1 = ubld.vgrf(inst->src[0].type);
 
-   ibld.emit(SHADER_OPCODE_QUAD_SWIZZLE, tmp0, inst->src[0], brw_imm_ud(swz0));
-   ibld.emit(SHADER_OPCODE_QUAD_SWIZZLE, tmp1, inst->src[0], brw_imm_ud(swz1));
+   ubld.emit(SHADER_OPCODE_QUAD_SWIZZLE, tmp0, inst->src[0], brw_imm_ud(swz0));
+   ubld.emit(SHADER_OPCODE_QUAD_SWIZZLE, tmp1, inst->src[0], brw_imm_ud(swz1));
 
    inst->resize_sources(2);
    inst->src[0] = negate(tmp0);

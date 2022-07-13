@@ -1661,6 +1661,11 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
 
    const bool has_side_effects = inst->has_side_effects();
 
+   const bool is_typed_access =
+      inst->opcode == SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL ||
+      inst->opcode == SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL ||
+      inst->opcode == SHADER_OPCODE_TYPED_ATOMIC_LOGICAL;
+
    unsigned num_components = 0;
    bool has_dest = false;
 
@@ -1680,6 +1685,8 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
 
    if (surface.file == IMM && surface.ud == GFX7_BTI_SLM)
       inst->sfid = GFX12_SFID_SLM;
+   else if (is_typed_access)
+      inst->sfid = GFX12_SFID_TGM;
    else
       inst->sfid = GFX12_SFID_UGM;
 
@@ -1715,6 +1722,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
       surf_type = LSC_ADDR_SURFTYPE_BTI;
 
    switch (inst->opcode) {
+   case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
    case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
       num_components = arg.ud;
       has_dest = true;
@@ -1724,6 +1732,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
                                 false /* transpose */,
                                 LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
       break;
+   case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
    case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
       num_components = arg.ud;
       has_dest = false;
@@ -1733,6 +1742,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
                                 false /* transpose */,
                                 LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS));
       break;
+   case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL: {
       /* Bspec: Atomic instruction -> Cache section:
        *
@@ -2798,7 +2808,9 @@ brw_fs_lower_logical_sends(fs_visitor &s)
       case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
       case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
       case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
-         lower_surface_logical_send(ibld, inst);
+         devinfo->ver >= 20 && devinfo->has_lsc ?
+            lower_lsc_surface_logical_send(ibld, inst) :
+            lower_surface_logical_send(ibld, inst);
          break;
 
       case SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:

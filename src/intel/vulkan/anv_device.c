@@ -744,7 +744,7 @@ get_features(const struct anv_physical_device *pdevice,
       .shaderSharedFloat64Atomics =    false,
       .shaderSharedFloat64AtomicAdd =  false,
       .shaderImageFloat32Atomics =     true,
-      .shaderImageFloat32AtomicAdd =   false,
+      .shaderImageFloat32AtomicAdd =   pdevice->info.ver >= 20,
       .sparseImageFloat32Atomics =     false,
       .sparseImageFloat32AtomicAdd =   false,
 

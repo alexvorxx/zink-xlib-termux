@@ -5133,7 +5133,8 @@ get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       /* MULH is lowered to the MUL/MACH sequence using the accumulator, which
        * is 8-wide on Gfx7+.
        */
-      return (devinfo->ver >= 7 ? 8 :
+      return (devinfo->ver >= 20 ? 16 :
+              devinfo->ver >= 7 ? 8 :
               get_fpu_lowered_simd_width(shader, inst));
 
    case FS_OPCODE_FB_WRITE_LOGICAL:

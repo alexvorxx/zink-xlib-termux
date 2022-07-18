@@ -233,9 +233,7 @@ fs_generator::generate_send(fs_inst *inst,
                             struct brw_reg payload,
                             struct brw_reg payload2)
 {
-   const bool dst_is_null = dst.file == BRW_ARCHITECTURE_REGISTER_FILE &&
-                            dst.nr == BRW_ARF_NULL;
-   const unsigned rlen = dst_is_null ? 0 : inst->size_written / REG_SIZE;
+   const unsigned rlen = inst->dst.is_null() ? 0 : inst->size_written / REG_SIZE;
 
    uint32_t desc_imm = inst->desc |
       brw_message_desc(devinfo, inst->mlen, rlen, inst->header_size);

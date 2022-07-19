@@ -1762,6 +1762,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
       break;
    }
    case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
+   case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
       num_components = 1;
       has_dest = true;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
@@ -1772,6 +1773,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
                                 LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
       break;
    case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
+   case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
       num_components = 1;
       has_dest = false;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE,
@@ -2797,14 +2799,14 @@ brw_fs_lower_logical_sends(fs_visitor &s)
       case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
       case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
       case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
-         if (devinfo->has_lsc) {
-            lower_lsc_surface_logical_send(ibld, inst);
-            break;
-         }
-         FALLTHROUGH;
-
       case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
       case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
+         if (devinfo->has_lsc)
+            lower_lsc_surface_logical_send(ibld, inst);
+         else
+            lower_surface_logical_send(ibld, inst);
+         break;
+
       case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
       case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
       case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:

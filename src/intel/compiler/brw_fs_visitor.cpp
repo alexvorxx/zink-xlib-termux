@@ -615,8 +615,12 @@ fs_visitor::emit_fb_writes()
        * "Output Stencil is not supported with SIMD16 Render Target Write
        * Messages."
        */
-      limit_dispatch_width(8, "gl_FragStencilRefARB unsupported "
-                           "in SIMD16+ mode.\n");
+      if (devinfo->ver >= 20)
+         limit_dispatch_width(16, "gl_FragStencilRefARB unsupported "
+                              "in SIMD32+ mode.\n");
+      else
+         limit_dispatch_width(8, "gl_FragStencilRefARB unsupported "
+                              "in SIMD16+ mode.\n");
    }
 
    /* ANV doesn't know about sample mask output during the wm key creation

@@ -654,8 +654,12 @@ fs_visitor::emit_fb_writes()
        * dispatch on ICL due some unknown reasons, see
        * https://gitlab.freedesktop.org/mesa/mesa/-/issues/2183
        */
-      limit_dispatch_width(8, "Dual source blending unsupported "
-                           "in SIMD16 and SIMD32 modes.\n");
+      if (devinfo->ver >= 20)
+         limit_dispatch_width(16, "Dual source blending unsupported "
+                              "in SIMD32 mode.\n");
+      else
+         limit_dispatch_width(8, "Dual source blending unsupported "
+                              "in SIMD16 and SIMD32 modes.\n");
    }
 
    do_emit_fb_writes(key->nr_color_regions, replicate_alpha);

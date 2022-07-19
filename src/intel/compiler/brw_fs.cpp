@@ -2038,6 +2038,7 @@ fs_visitor::emit_repclear_shader()
    brw_wm_prog_key *key = (brw_wm_prog_key*) this->key;
    fs_inst *write = NULL;
 
+   assert(devinfo->ver < 20);
    assert(uniforms == 0);
    assume(key->nr_color_regions > 0);
 

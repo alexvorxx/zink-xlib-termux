@@ -315,9 +315,15 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       return devinfo->ver >= 20 ? 16 : 8;
 
    case FS_OPCODE_FB_WRITE_LOGICAL:
-      /* Dual-source FB writes are unsupported in SIMD16 mode. */
-      return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
-              8 : MIN2(16, inst->exec_size));
+      if (devinfo->ver >= 20) {
+         /* Dual-source FB writes are unsupported in SIMD32 mode. */
+         return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
+                 16 : MIN2(32, inst->exec_size));
+      } else {
+         /* Dual-source FB writes are unsupported in SIMD16 mode. */
+         return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
+                 8 : MIN2(16, inst->exec_size));
+      }
 
    case FS_OPCODE_FB_READ_LOGICAL:
       return MIN2(16, inst->exec_size);

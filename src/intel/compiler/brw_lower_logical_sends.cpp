@@ -1077,6 +1077,23 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
       }
    }
 
+   /* Change the opcode to account for LOD being zero before the
+    * switch-statement that emits sources based on the opcode.
+    */
+   if (devinfo->ver >= 9 && lod.is_zero()) {
+      if (op == SHADER_OPCODE_TXL)
+         op = SHADER_OPCODE_TXL_LZ;
+      else if (op == SHADER_OPCODE_TXF)
+         op = SHADER_OPCODE_TXF_LZ;
+   }
+
+   /* On DG2 and newer platforms, min_lod is the first parameter specifically
+    * so that a bunch of other, possibly unused, parameters don't need to also
+    * be included.
+    */
+   const unsigned msg_type =
+      sampler_msg_type(devinfo, op, inst->shadow_compare);
+
    if (shadow_c.file != BAD_FILE) {
       bld.MOV(sources[length], shadow_c);
       length++;
@@ -1088,10 +1105,6 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
    switch (op) {
    case FS_OPCODE_TXB:
    case SHADER_OPCODE_TXL:
-      if (devinfo->ver >= 9 && op == SHADER_OPCODE_TXL && lod.is_zero()) {
-         op = SHADER_OPCODE_TXL_LZ;
-         break;
-      }
       bld.MOV(sources[length], lod);
       length++;
       break;
@@ -1128,6 +1141,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
       length++;
       break;
    case SHADER_OPCODE_TXF:
+   case SHADER_OPCODE_TXF_LZ:
       /* Unfortunately, the parameters for LD are intermixed: u, lod, v, r.
        * On Gfx9 they are u, v, lod, r
        */
@@ -1143,9 +1157,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
          length++;
       }
 
-      if (devinfo->ver >= 9 && lod.is_zero()) {
-         op = SHADER_OPCODE_TXF_LZ;
-      } else {
+      if (op != SHADER_OPCODE_TXF_LZ) {
          bld.MOV(retype(sources[length], payload_signed_type), lod);
          length++;
       }
@@ -1293,8 +1305,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
    inst->mlen = mlen;
    inst->header_size = header_size;
 
-   const unsigned msg_type =
-      sampler_msg_type(devinfo, op, inst->shadow_compare);
+   assert(msg_type == sampler_msg_type(devinfo, op, inst->shadow_compare));
 
    inst->sfid = BRW_SFID_SAMPLER;
    if (surface.file == IMM &&

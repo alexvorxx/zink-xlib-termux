@@ -486,7 +486,14 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
    }
 
    uint32_t ex_desc = 0;
-   if (devinfo->ver >= 11) {
+   if (devinfo->ver >= 20) {
+      ex_desc = inst->target << 21 |
+                (key->nr_color_regions == 0) << 20 |
+                (src0_alpha.file != BAD_FILE) << 15 |
+                (src_stencil.file != BAD_FILE) << 14 |
+                (src_depth.file != BAD_FILE) << 13 |
+                (sample_mask.file != BAD_FILE) << 12;
+   } else if (devinfo->ver >= 11) {
       /* Set the "Render Target Index" and "Src0 Alpha Present" fields
        * in the extended message descriptor, in lieu of using a header.
        */

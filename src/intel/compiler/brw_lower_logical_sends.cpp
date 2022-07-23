@@ -1319,13 +1319,23 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
                                      header_size, REG_SIZE * reg_unit(devinfo));
    unsigned mlen = load_payload_inst->size_written / REG_SIZE;
    unsigned simd_mode = 0;
-   if (payload_type_bit_size == 16) {
-      assert(devinfo->ver >= 11);
-      simd_mode = inst->exec_size <= 8 ? GFX10_SAMPLER_SIMD_MODE_SIMD8H :
-                                         GFX10_SAMPLER_SIMD_MODE_SIMD16H;
+   if (devinfo->ver < 20) {
+      if (payload_type_bit_size == 16) {
+         assert(devinfo->ver >= 11);
+         simd_mode = inst->exec_size <= 8 ? GFX10_SAMPLER_SIMD_MODE_SIMD8H :
+            GFX10_SAMPLER_SIMD_MODE_SIMD16H;
+      } else {
+         simd_mode = inst->exec_size <= 8 ? BRW_SAMPLER_SIMD_MODE_SIMD8 :
+            BRW_SAMPLER_SIMD_MODE_SIMD16;
+      }
    } else {
-      simd_mode = inst->exec_size <= 8 ? BRW_SAMPLER_SIMD_MODE_SIMD8 :
-                                         BRW_SAMPLER_SIMD_MODE_SIMD16;
+      if (payload_type_bit_size == 16) {
+         simd_mode = inst->exec_size <= 16 ? XE2_SAMPLER_SIMD_MODE_SIMD16H :
+            XE2_SAMPLER_SIMD_MODE_SIMD32H;
+      } else {
+         simd_mode = inst->exec_size <= 16 ? XE2_SAMPLER_SIMD_MODE_SIMD16 :
+            XE2_SAMPLER_SIMD_MODE_SIMD32;
+      }
    }
 
    /* Generate the SEND. */

@@ -656,6 +656,13 @@ static const char *const gfx5_sampler_simd_mode[7] = {
    [GFX10_SAMPLER_SIMD_MODE_SIMD16H] = "SIMD16H",
 };
 
+static const char *const xe2_sampler_simd_mode[7] = {
+   [XE2_SAMPLER_SIMD_MODE_SIMD16]  = "SIMD16",
+   [XE2_SAMPLER_SIMD_MODE_SIMD32]  = "SIMD32",
+   [XE2_SAMPLER_SIMD_MODE_SIMD16H] = "SIMD16H",
+   [XE2_SAMPLER_SIMD_MODE_SIMD32H] = "SIMD32H",
+};
+
 static const char *const sampler_target_format[4] = {
    [0] = "F",
    [2] = "UD",
@@ -2315,7 +2322,7 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                err |= control(file, "sampler message", xe2_sampler_msg_type,
                               brw_sampler_desc_msg_type(devinfo, imm_desc),
                               &space);
-               err |= control(file, "sampler simd mode", gfx5_sampler_simd_mode,
+               err |= control(file, "sampler simd mode", xe2_sampler_simd_mode,
                               brw_sampler_desc_simd_mode(devinfo, imm_desc),
                               &space);
                if (brw_sampler_desc_return_format(devinfo, imm_desc)) {

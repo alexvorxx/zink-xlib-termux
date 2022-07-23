@@ -620,6 +620,33 @@ static const char *const gfx5_sampler_msg_type[] = {
    [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS]       = "ld2dss",
 };
 
+static const char *const xe2_sampler_msg_type[] = {
+   [GFX5_SAMPLER_MESSAGE_SAMPLE]              = "sample",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS]         = "sample_b",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_LOD]          = "sample_l",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_COMPARE]      = "sample_c",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_DERIVS]       = "sample_d",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS_COMPARE] = "sample_b_c",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_LOD_COMPARE]  = "sample_l_c",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_LD]           = "ld",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4]      = "gather4",
+   [GFX5_SAMPLER_MESSAGE_LOD]                 = "lod",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_RESINFO]      = "resinfo",
+   [GFX6_SAMPLER_MESSAGE_SAMPLE_SAMPLEINFO]   = "sampleinfo",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_C]    = "gather4_c",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO]   = "gather4_po",
+   [XE2_SAMPLER_MESSAGE_SAMPLE_MLOD]          = "sample_mlod",
+   [XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD]  = "sample_c_mlod",
+   [HSW_SAMPLER_MESSAGE_SAMPLE_DERIV_COMPARE] = "sample_d_c",
+   [GFX9_SAMPLER_MESSAGE_SAMPLE_LZ]           = "sample_lz",
+   [GFX9_SAMPLER_MESSAGE_SAMPLE_C_LZ]         = "sample_c_lz",
+   [GFX9_SAMPLER_MESSAGE_SAMPLE_LD_LZ]        = "ld_lz",
+   [GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W]     = "ld2dms_w",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_LD_MCS]       = "ld_mcs",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DMS]       = "ld2dms",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS]       = "ld2dss",
+};
+
 static const char *const gfx5_sampler_simd_mode[7] = {
    [BRW_SAMPLER_SIMD_MODE_SIMD4X2]   = "SIMD4x2",
    [BRW_SAMPLER_SIMD_MODE_SIMD8]     = "SIMD8",
@@ -2284,7 +2311,20 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                            brw_inst_math_msg_precision(devinfo, inst), &space);
             break;
          case BRW_SFID_SAMPLER:
-            if (devinfo->ver >= 5) {
+            if (devinfo->ver >= 20) {
+               err |= control(file, "sampler message", xe2_sampler_msg_type,
+                              brw_sampler_desc_msg_type(devinfo, imm_desc),
+                              &space);
+               err |= control(file, "sampler simd mode", gfx5_sampler_simd_mode,
+                              brw_sampler_desc_simd_mode(devinfo, imm_desc),
+                              &space);
+               if (brw_sampler_desc_return_format(devinfo, imm_desc)) {
+                  string(file, " HP");
+               }
+               format(file, " Surface = %u Sampler = %u",
+                      brw_sampler_desc_binding_table_index(devinfo, imm_desc),
+                      brw_sampler_desc_sampler(devinfo, imm_desc));
+            } else if (devinfo->ver >= 5) {
                err |= control(file, "sampler message", gfx5_sampler_msg_type,
                               brw_sampler_desc_msg_type(devinfo, imm_desc),
                               &space);

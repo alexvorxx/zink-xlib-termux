@@ -2120,7 +2120,7 @@ brw_fb_write_msg_control(const fs_inst *inst,
    uint32_t mctl;
 
    if (prog_data->dual_src_blend) {
-      assert(inst->exec_size == 8);
+      assert(inst->exec_size < 32);
 
       if (inst->group % 16 == 0)
          mctl = BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN01;
@@ -2135,6 +2135,8 @@ brw_fb_write_msg_control(const fs_inst *inst,
          mctl = BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE;
       else if (inst->exec_size == 8)
          mctl = BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_SINGLE_SOURCE_SUBSPAN01;
+      else if (inst->exec_size == 32)
+         mctl = XE2_DATAPORT_RENDER_TARGET_WRITE_SIMD32_SINGLE_SOURCE;
       else
          unreachable("Invalid FB write execution size");
    }

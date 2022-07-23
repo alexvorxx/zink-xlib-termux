@@ -467,6 +467,7 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
 
    uint32_t msg_ctl = brw_fb_write_msg_control(inst, prog_data);
 
+   /* XXX - Bit 13 Per-sample PS enable */
    inst->desc =
       (inst->group / 16) << 11 | /* rt slot group */
       brw_fb_write_desc(devinfo, inst->target, msg_ctl, inst->last_rt,

@@ -517,6 +517,8 @@ lower_fb_read_logical_send(const fs_builder &bld, fs_inst *inst)
    const unsigned length = 2;
    const fs_reg header = ubld.vgrf(BRW_REGISTER_TYPE_UD, length);
 
+   assert(devinfo->ver >= 9 && devinfo->ver < 20);
+
    if (bld.group() < 16) {
       ubld.group(16, 0).MOV(header, retype(brw_vec8_grf(0, 0),
                                            BRW_REGISTER_TYPE_UD));

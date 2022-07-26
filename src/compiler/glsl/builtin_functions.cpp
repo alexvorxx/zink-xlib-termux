@@ -2438,6 +2438,15 @@ builtin_builder::create_builtins()
                 _matrixCompMult(fp64, &glsl_type_builtin_dmat3x4),
                 _matrixCompMult(fp64, &glsl_type_builtin_dmat4x2),
                 _matrixCompMult(fp64, &glsl_type_builtin_dmat4x3),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat2x3),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat2x4),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat3x2),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat3x4),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat4x2),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat4x3),
                 NULL);
    add_function("outerProduct",
                 _outerProduct(v120, &glsl_type_builtin_mat2),
@@ -2458,6 +2467,15 @@ builtin_builder::create_builtins()
                 _outerProduct(fp64, &glsl_type_builtin_dmat3x4),
                 _outerProduct(fp64, &glsl_type_builtin_dmat4x2),
                 _outerProduct(fp64, &glsl_type_builtin_dmat4x3),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat2x3),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat2x4),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat3x2),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat3x4),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat4x2),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat4x3),
                 NULL);
    add_function("determinant",
                 _determinant_mat2(v120, &glsl_type_builtin_mat2),
@@ -2466,7 +2484,9 @@ builtin_builder::create_builtins()
                 _determinant_mat2(fp64, &glsl_type_builtin_dmat2),
                 _determinant_mat3(fp64, &glsl_type_builtin_dmat3),
                 _determinant_mat4(fp64, &glsl_type_builtin_dmat4),
-
+                _determinant_mat2(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _determinant_mat3(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _determinant_mat4(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
                 NULL);
    add_function("inverse",
                 _inverse_mat2(v140_or_es3, &glsl_type_builtin_mat2),
@@ -2475,6 +2495,9 @@ builtin_builder::create_builtins()
                 _inverse_mat2(fp64, &glsl_type_builtin_dmat2),
                 _inverse_mat3(fp64, &glsl_type_builtin_dmat3),
                 _inverse_mat4(fp64, &glsl_type_builtin_dmat4),
+                _inverse_mat2(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _inverse_mat3(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _inverse_mat4(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
                 NULL);
    add_function("transpose",
                 _transpose(v120, &glsl_type_builtin_mat2),
@@ -2495,6 +2518,15 @@ builtin_builder::create_builtins()
                 _transpose(fp64, &glsl_type_builtin_dmat3x4),
                 _transpose(fp64, &glsl_type_builtin_dmat4x2),
                 _transpose(fp64, &glsl_type_builtin_dmat4x3),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat2x3),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat2x4),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat3x2),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat3x4),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat4x2),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat4x3),
                 NULL);
    FIUD_VEC(lessThan)
    FIUD_VEC(lessThanEqual)
@@ -6926,6 +6958,9 @@ builtin_builder::_outerProduct(builtin_available_predicate avail, const glsl_typ
    if (glsl_type_is_double(type)) {
       r = in_var(glsl_dvec_type(type->matrix_columns), "r");
       c = in_var(glsl_dvec_type(type->vector_elements), "c");
+   } else if (glsl_type_is_float_16(type)) {
+      r = in_var(glsl_f16vec_type(type->matrix_columns), "r");
+      c = in_var(glsl_f16vec_type(type->vector_elements), "c");
    } else {
       r = in_var(glsl_vec_type(type->matrix_columns), "r");
       c = in_var(glsl_vec_type(type->vector_elements), "c");
@@ -7049,7 +7084,7 @@ builtin_builder::_determinant_mat4(builtin_available_predicate avail, const glsl
    body.emit(assign(SubFactor17, sub(mul(matrix_elt(m, 1, 0), matrix_elt(m, 2, 2)), mul(matrix_elt(m, 2, 0), matrix_elt(m, 1, 2)))));
    body.emit(assign(SubFactor18, sub(mul(matrix_elt(m, 1, 0), matrix_elt(m, 2, 1)), mul(matrix_elt(m, 2, 0), matrix_elt(m, 1, 1)))));
 
-   ir_variable *adj_0 = body.make_temp(btype == &glsl_type_builtin_float ? &glsl_type_builtin_vec4 : &glsl_type_builtin_dvec4, "adj_0");
+   ir_variable *adj_0 = body.make_temp(btype == &glsl_type_builtin_float ? &glsl_type_builtin_vec4 : btype == &glsl_type_builtin_float16_t ? &glsl_type_builtin_f16vec4 : &glsl_type_builtin_dvec4, "adj_0");
 
    body.emit(assign(adj_0,
                     add(sub(mul(matrix_elt(m, 1, 1), SubFactor00),
@@ -7206,7 +7241,7 @@ builtin_builder::_inverse_mat4(builtin_available_predicate avail, const glsl_typ
    body.emit(assign(SubFactor17, sub(mul(matrix_elt(m, 1, 0), matrix_elt(m, 2, 2)), mul(matrix_elt(m, 2, 0), matrix_elt(m, 1, 2)))));
    body.emit(assign(SubFactor18, sub(mul(matrix_elt(m, 1, 0), matrix_elt(m, 2, 1)), mul(matrix_elt(m, 2, 0), matrix_elt(m, 1, 1)))));
 
-   ir_variable *adj = body.make_temp(btype == &glsl_type_builtin_float ? &glsl_type_builtin_mat4 : &glsl_type_builtin_dmat4, "adj");
+   ir_variable *adj = body.make_temp(btype == &glsl_type_builtin_float ? &glsl_type_builtin_mat4 : (btype == &glsl_type_builtin_double ? &glsl_type_builtin_dmat4 : &glsl_type_builtin_f16mat4), "adj");
    body.emit(assign(array_ref(adj, 0),
                     add(sub(mul(matrix_elt(m, 1, 1), SubFactor00),
                             mul(matrix_elt(m, 1, 2), SubFactor01)),

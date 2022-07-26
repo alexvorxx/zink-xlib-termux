@@ -2404,18 +2404,20 @@ builtin_builder::create_builtins()
    add_function("packUint2x32",    _packUint2x32(int64_avail),                   NULL);
    add_function("unpackUint2x32",  _unpackUint2x32(int64_avail),                 NULL);
 
-   FD(length)
-   FD(distance)
-   FD(dot)
+   FDHF(length)
+   FDHF(distance)
+   FDHF(dot)
 
    add_function("cross", _cross(always_available, &glsl_type_builtin_vec3),
-                _cross(fp64, &glsl_type_builtin_dvec3), NULL);
+                _cross(fp64, &glsl_type_builtin_dvec3),
+                _cross(gpu_shader_half_float, &glsl_type_builtin_f16vec3),
+                NULL);
 
-   FD(normalize)
+   FDHF(normalize)
    add_function("ftransform", _ftransform(), NULL);
-   FD(faceforward)
-   FD(reflect)
-   FD(refract)
+   FDHF(faceforward)
+   FDHF(reflect)
+   FDHF(refract)
    // ...
    add_function("matrixCompMult",
                 _matrixCompMult(always_available, &glsl_type_builtin_mat2),

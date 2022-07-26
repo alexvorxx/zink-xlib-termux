@@ -1165,6 +1165,8 @@ private:
    ir_function_signature *_unpackSnorm4x8(builtin_available_predicate avail);
    ir_function_signature *_packHalf2x16(builtin_available_predicate avail);
    ir_function_signature *_unpackHalf2x16(builtin_available_predicate avail);
+   ir_function_signature *_packFloat2x16(builtin_available_predicate avail);
+   ir_function_signature *_unpackFloat2x16(builtin_available_predicate avail);
    ir_function_signature *_packDouble2x32(builtin_available_predicate avail);
    ir_function_signature *_unpackDouble2x32(builtin_available_predicate avail);
    ir_function_signature *_packInt2x32(builtin_available_predicate avail);
@@ -2392,6 +2394,8 @@ builtin_builder::create_builtins()
    add_function("unpackSnorm4x8",  _unpackSnorm4x8(shader_packing_or_es31_or_gpu_shader5), NULL);
    add_function("packHalf2x16",    _packHalf2x16(shader_packing_or_es3),                   NULL);
    add_function("unpackHalf2x16",  _unpackHalf2x16(shader_packing_or_es3),                 NULL);
+   add_function("packFloat2x16",    _packFloat2x16(gpu_shader_half_float),                 NULL);
+   add_function("unpackFloat2x16",  _unpackFloat2x16(gpu_shader_half_float),               NULL);
    add_function("packDouble2x32",    _packDouble2x32(fp64),                   NULL);
    add_function("unpackDouble2x32",  _unpackDouble2x32(fp64),                 NULL);
 
@@ -6679,6 +6683,26 @@ builtin_builder::_unpackHalf2x16(builtin_available_predicate avail)
    MAKE_SIG(&glsl_type_builtin_vec2, avail, 1, p);
    sig->return_precision = GLSL_PRECISION_MEDIUM;
    body.emit(ret(expr(ir_unop_unpack_half_2x16, p)));
+   return sig;
+}
+
+ir_function_signature *
+builtin_builder::_packFloat2x16(builtin_available_predicate avail)
+{
+   ir_variable *v = in_var(&glsl_type_builtin_f16vec2, "v");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 1, v);
+
+   ir_rvalue *value = new(mem_ctx)ir_dereference_variable(v);
+   body.emit(ret(expr(ir_unop_pack_half_2x16, new(mem_ctx) ir_expression(ir_unop_f162f, &glsl_type_builtin_vec2, value, NULL))));
+   return sig;
+}
+
+ir_function_signature *
+builtin_builder::_unpackFloat2x16(builtin_available_predicate avail)
+{
+   ir_variable *p = in_var(&glsl_type_builtin_uint, "p");
+   MAKE_SIG(&glsl_type_builtin_f16vec2, avail, 1, p);
+   body.emit(ret(f2f16(expr(ir_unop_unpack_half_2x16, p))));
    return sig;
 }
 

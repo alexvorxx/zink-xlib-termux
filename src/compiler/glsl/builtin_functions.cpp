@@ -474,6 +474,11 @@ fs_interpolate_at(const _mesa_glsl_parse_state *state)
            state->OES_shader_multisample_interpolation_enable);
 }
 
+static bool
+fs_half_float_interpolate_at(const _mesa_glsl_parse_state *state)
+{
+   return fs_interpolate_at(state) && gpu_shader_half_float(state);
+}
 
 static bool
 texture_array_lod(const _mesa_glsl_parse_state *state)
@@ -1279,9 +1284,9 @@ private:
    BA1(averageRounded)
    B1(mulExtended)
    BA1(multiply32x16)
-   B1(interpolateAtCentroid)
-   B1(interpolateAtOffset)
-   B1(interpolateAtSample)
+   BA1(interpolateAtCentroid)
+   BA1(interpolateAtOffset)
+   BA1(interpolateAtSample)
 
    ir_function_signature *_atomic_counter_intrinsic(builtin_available_predicate avail,
                                                     enum ir_intrinsic_id id);
@@ -5058,22 +5063,34 @@ builtin_builder::create_builtins()
                 _mulExtended(&glsl_type_builtin_uvec4),
                 NULL);
    add_function("interpolateAtCentroid",
-                _interpolateAtCentroid(&glsl_type_builtin_float),
-                _interpolateAtCentroid(&glsl_type_builtin_vec2),
-                _interpolateAtCentroid(&glsl_type_builtin_vec3),
-                _interpolateAtCentroid(&glsl_type_builtin_vec4),
+                _interpolateAtCentroid(fs_interpolate_at, &glsl_type_builtin_float),
+                _interpolateAtCentroid(fs_interpolate_at, &glsl_type_builtin_vec2),
+                _interpolateAtCentroid(fs_interpolate_at, &glsl_type_builtin_vec3),
+                _interpolateAtCentroid(fs_interpolate_at, &glsl_type_builtin_vec4),
+                _interpolateAtCentroid(fs_half_float_interpolate_at, &glsl_type_builtin_float16_t),
+                _interpolateAtCentroid(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec2),
+                _interpolateAtCentroid(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec3),
+                _interpolateAtCentroid(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec4),
                 NULL);
    add_function("interpolateAtOffset",
-                _interpolateAtOffset(&glsl_type_builtin_float),
-                _interpolateAtOffset(&glsl_type_builtin_vec2),
-                _interpolateAtOffset(&glsl_type_builtin_vec3),
-                _interpolateAtOffset(&glsl_type_builtin_vec4),
+                _interpolateAtOffset(fs_interpolate_at, &glsl_type_builtin_float),
+                _interpolateAtOffset(fs_interpolate_at, &glsl_type_builtin_vec2),
+                _interpolateAtOffset(fs_interpolate_at, &glsl_type_builtin_vec3),
+                _interpolateAtOffset(fs_interpolate_at, &glsl_type_builtin_vec4),
+                _interpolateAtOffset(fs_half_float_interpolate_at, &glsl_type_builtin_float16_t),
+                _interpolateAtOffset(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec2),
+                _interpolateAtOffset(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec3),
+                _interpolateAtOffset(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec4),
                 NULL);
    add_function("interpolateAtSample",
-                _interpolateAtSample(&glsl_type_builtin_float),
-                _interpolateAtSample(&glsl_type_builtin_vec2),
-                _interpolateAtSample(&glsl_type_builtin_vec3),
-                _interpolateAtSample(&glsl_type_builtin_vec4),
+                _interpolateAtSample(fs_interpolate_at, &glsl_type_builtin_float),
+                _interpolateAtSample(fs_interpolate_at, &glsl_type_builtin_vec2),
+                _interpolateAtSample(fs_interpolate_at, &glsl_type_builtin_vec3),
+                _interpolateAtSample(fs_interpolate_at, &glsl_type_builtin_vec4),
+                _interpolateAtSample(fs_half_float_interpolate_at, &glsl_type_builtin_float16_t),
+                _interpolateAtSample(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec2),
+                _interpolateAtSample(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec3),
+                _interpolateAtSample(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec4),
                 NULL);
 
    add_function("atomicCounter",
@@ -8225,7 +8242,8 @@ builtin_builder::_multiply32x16(builtin_available_predicate avail,
 }
 
 ir_function_signature *
-builtin_builder::_interpolateAtCentroid(const glsl_type *type)
+builtin_builder::_interpolateAtCentroid(builtin_available_predicate avail,
+                                        const glsl_type *type)
 {
    ir_variable *interpolant = in_var(type, "interpolant");
    interpolant->data.must_be_shader_input = 1;
@@ -8237,11 +8255,12 @@ builtin_builder::_interpolateAtCentroid(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_interpolateAtOffset(const glsl_type *type)
+builtin_builder::_interpolateAtOffset(builtin_available_predicate avail,
+                                      const glsl_type *type)
 {
    ir_variable *interpolant = in_var(type, "interpolant");
    interpolant->data.must_be_shader_input = 1;
-   ir_variable *offset = in_var(&glsl_type_builtin_vec2, "offset");
+   ir_variable *offset = in_var(glsl_type_is_float_16(type) ? &glsl_type_builtin_f16vec2 : &glsl_type_builtin_vec2, "offset");
    MAKE_SIG(type, fs_interpolate_at, 2, interpolant, offset);
 
    body.emit(ret(interpolate_at_offset(interpolant, offset)));
@@ -8250,7 +8269,8 @@ builtin_builder::_interpolateAtOffset(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_interpolateAtSample(const glsl_type *type)
+builtin_builder::_interpolateAtSample(builtin_available_predicate avail,
+                                      const glsl_type *type)
 {
    ir_variable *interpolant = in_var(type, "interpolant");
    interpolant->data.must_be_shader_input = 1;

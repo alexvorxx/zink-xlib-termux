@@ -1137,7 +1137,8 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
     *    "No SIMD16 in mixed mode when destination is f32. Instruction
     *     execution size must be no more than 8."
     */
-   ERROR_IF(exec_size > 8 && dst_type == BRW_REGISTER_TYPE_F &&
+   ERROR_IF(exec_size > 8 && devinfo->ver < 20 &&
+            dst_type == BRW_REGISTER_TYPE_F &&
             opcode != BRW_OPCODE_MOV,
             "Mixed float mode with 32-bit float destination is limited "
             "to SIMD8");

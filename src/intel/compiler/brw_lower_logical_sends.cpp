@@ -1785,6 +1785,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    inst->send_is_volatile = !has_side_effects;
    inst->send_ex_bso = surf_type == LSC_ADDR_SURFTYPE_BSS &&
                        compiler->extended_bindless_surface_offset;
+   inst->size_written = lsc_msg_desc_dest_len(devinfo, inst->desc) * REG_SIZE;
 
    inst->resize_sources(4);
 
@@ -2124,6 +2125,7 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    inst->header_size = 0;
    inst->send_has_side_effects = has_side_effects;
    inst->send_is_volatile = !has_side_effects;
+   inst->size_written = lsc_msg_desc_dest_len(devinfo, inst->desc) * REG_SIZE;
 
    /* Set up SFID and descriptors */
    inst->sfid = GFX12_SFID_UGM;

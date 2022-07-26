@@ -4300,6 +4300,9 @@ apply_type_qualifier_to_variable(const struct ast_type_qualifier *qual,
       case GLSL_TYPE_FLOAT:
          /* Ok in all GLSL versions */
          break;
+      case GLSL_TYPE_FLOAT16:
+         if (state->AMD_gpu_shader_half_float_enable)
+         break;
       case GLSL_TYPE_UINT:
       case GLSL_TYPE_INT:
          if (state->is_version(130, 300) || state->EXT_gpu_shader4_enable)

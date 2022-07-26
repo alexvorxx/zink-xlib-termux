@@ -1936,7 +1936,7 @@ builtin_builder::create_builtins()
                 _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
                 NULL);
 
-#define FIUD_VEC(NAME)                                            \
+#define FIUDHF_VEC(NAME)                                          \
    add_function(#NAME,                                            \
                 _##NAME(always_available, &glsl_type_builtin_vec2),  \
                 _##NAME(always_available, &glsl_type_builtin_vec3),  \
@@ -1960,6 +1960,9 @@ builtin_builder::create_builtins()
                 _##NAME(int64_avail, &glsl_type_builtin_u64vec2),  \
                 _##NAME(int64_avail, &glsl_type_builtin_u64vec3),  \
                 _##NAME(int64_avail, &glsl_type_builtin_u64vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
                 NULL);
 
 #define IU(NAME)                                \
@@ -1975,7 +1978,7 @@ builtin_builder::create_builtins()
                 _##NAME(&glsl_type_builtin_uvec4), \
                 NULL);
 
-#define FIUBD_VEC(NAME)                                           \
+#define FIUBDHF_VEC(NAME)                                           \
    add_function(#NAME,                                            \
                 _##NAME(always_available, &glsl_type_builtin_vec2),  \
                 _##NAME(always_available, &glsl_type_builtin_vec3),  \
@@ -2004,6 +2007,9 @@ builtin_builder::create_builtins()
                 _##NAME(int64_avail, &glsl_type_builtin_u64vec2),  \
                 _##NAME(int64_avail, &glsl_type_builtin_u64vec3),  \
                 _##NAME(int64_avail, &glsl_type_builtin_u64vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
                 NULL);
 
 #define FIUD2_MIXED(NAME)                                                                 \
@@ -2528,12 +2534,12 @@ builtin_builder::create_builtins()
                 _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat4x2),
                 _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat4x3),
                 NULL);
-   FIUD_VEC(lessThan)
-   FIUD_VEC(lessThanEqual)
-   FIUD_VEC(greaterThan)
-   FIUD_VEC(greaterThanEqual)
-   FIUBD_VEC(notEqual)
-   FIUBD_VEC(equal)
+   FIUDHF_VEC(lessThan)
+   FIUDHF_VEC(lessThanEqual)
+   FIUDHF_VEC(greaterThan)
+   FIUDHF_VEC(greaterThanEqual)
+   FIUBDHF_VEC(notEqual)
+   FIUBDHF_VEC(equal)
 
    add_function("any",
                 _any(&glsl_type_builtin_bvec2),
@@ -5685,8 +5691,8 @@ builtin_builder::create_builtins()
 
 #undef F
 #undef FI
-#undef FIUD_VEC
-#undef FIUBD_VEC
+#undef FIUDHF_VEC
+#undef FIUBDHF_VEC
 #undef FIU2_MIXED
 }
 

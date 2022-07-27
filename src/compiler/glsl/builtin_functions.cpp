@@ -625,6 +625,18 @@ derivative_control(const _mesa_glsl_parse_state *state)
            state->ARB_derivative_control_enable);
 }
 
+static bool
+half_float_derivatives(const _mesa_glsl_parse_state *state)
+{
+   return derivatives(state) && gpu_shader_half_float(state);
+}
+
+static bool
+half_float_derivative_control(const _mesa_glsl_parse_state *state)
+{
+   return derivative_control(state) && gpu_shader_half_float(state);
+}
+
 /** True if sampler3D exists */
 static bool
 tex3d(const _mesa_glsl_parse_state *state)
@@ -1249,15 +1261,15 @@ private:
    BA2(textureQueryLod);
    BA1(textureQueryLevels);
    BA2(textureSamplesIdentical);
-   B1(dFdx);
-   B1(dFdy);
-   B1(fwidth);
-   B1(dFdxCoarse);
-   B1(dFdyCoarse);
-   B1(fwidthCoarse);
-   B1(dFdxFine);
-   B1(dFdyFine);
-   B1(fwidthFine);
+   BA1(dFdx);
+   BA1(dFdy);
+   BA1(fwidth);
+   BA1(dFdxCoarse);
+   BA1(dFdyCoarse);
+   BA1(fwidthCoarse);
+   BA1(dFdxFine);
+   BA1(dFdyFine);
+   BA1(fwidthFine);
    B1(noise1);
    B1(noise2);
    B1(noise3);
@@ -1759,6 +1771,30 @@ builtin_builder::create_builtins()
                 _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
                 _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
                 _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
+                NULL);
+
+#define FHF_DERIVATIVES(NAME)                                               \
+   add_function(#NAME,                                                      \
+                _##NAME(derivatives, &glsl_type_builtin_float),                \
+                _##NAME(derivatives, &glsl_type_builtin_vec2),                 \
+                _##NAME(derivatives, &glsl_type_builtin_vec3),                 \
+                _##NAME(derivatives, &glsl_type_builtin_vec4),                 \
+                _##NAME(half_float_derivatives, &glsl_type_builtin_float16_t), \
+                _##NAME(half_float_derivatives, &glsl_type_builtin_f16vec2),   \
+                _##NAME(half_float_derivatives, &glsl_type_builtin_f16vec3),   \
+                _##NAME(half_float_derivatives, &glsl_type_builtin_f16vec4),   \
+                NULL);
+
+#define FHF_DERIVATIVE_CONTROL(NAME)                                               \
+   add_function(#NAME,                                                             \
+                _##NAME(derivative_control, &glsl_type_builtin_float),                \
+                _##NAME(derivative_control, &glsl_type_builtin_vec2),                 \
+                _##NAME(derivative_control, &glsl_type_builtin_vec3),                 \
+                _##NAME(derivative_control, &glsl_type_builtin_vec4),                 \
+                _##NAME(half_float_derivative_control, &glsl_type_builtin_float16_t), \
+                _##NAME(half_float_derivative_control, &glsl_type_builtin_f16vec2),   \
+                _##NAME(half_float_derivative_control, &glsl_type_builtin_f16vec3),   \
+                _##NAME(half_float_derivative_control, &glsl_type_builtin_f16vec4),   \
                 NULL);
 
 #define FHF130(NAME)                                 \
@@ -4987,15 +5023,15 @@ builtin_builder::create_builtins()
                 _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET|TEX_CLAMP),
                 NULL);
 
-   F(dFdx)
-   F(dFdy)
-   F(fwidth)
-   F(dFdxCoarse)
-   F(dFdyCoarse)
-   F(fwidthCoarse)
-   F(dFdxFine)
-   F(dFdyFine)
-   F(fwidthFine)
+   FHF_DERIVATIVES(dFdx)
+   FHF_DERIVATIVES(dFdy)
+   FHF_DERIVATIVES(fwidth)
+   FHF_DERIVATIVE_CONTROL(dFdxCoarse)
+   FHF_DERIVATIVE_CONTROL(dFdyCoarse)
+   FHF_DERIVATIVE_CONTROL(fwidthCoarse)
+   FHF_DERIVATIVE_CONTROL(dFdxFine)
+   FHF_DERIVATIVE_CONTROL(dFdyFine)
+   FHF_DERIVATIVE_CONTROL(fwidthFine)
    F(noise1)
    F(noise2)
    F(noise3)
@@ -7875,18 +7911,19 @@ builtin_builder::_textureSamplesIdentical(builtin_available_predicate avail,
    return sig;
 }
 
-UNOP(dFdx, ir_unop_dFdx, derivatives)
-UNOP(dFdxCoarse, ir_unop_dFdx_coarse, derivative_control)
-UNOP(dFdxFine, ir_unop_dFdx_fine, derivative_control)
-UNOP(dFdy, ir_unop_dFdy, derivatives)
-UNOP(dFdyCoarse, ir_unop_dFdy_coarse, derivative_control)
-UNOP(dFdyFine, ir_unop_dFdy_fine, derivative_control)
+UNOPA(dFdx, ir_unop_dFdx)
+UNOPA(dFdxCoarse, ir_unop_dFdx_coarse)
+UNOPA(dFdxFine, ir_unop_dFdx_fine)
+UNOPA(dFdy, ir_unop_dFdy)
+UNOPA(dFdyCoarse, ir_unop_dFdy_coarse)
+UNOPA(dFdyFine, ir_unop_dFdy_fine)
 
 ir_function_signature *
-builtin_builder::_fwidth(const glsl_type *type)
+builtin_builder::_fwidth(builtin_available_predicate avail,
+                         const glsl_type *type)
 {
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(type, derivatives, 1, p);
+   MAKE_SIG(type, avail, 1, p);
 
    body.emit(ret(add(abs(expr(ir_unop_dFdx, p)), abs(expr(ir_unop_dFdy, p)))));
 
@@ -7894,10 +7931,11 @@ builtin_builder::_fwidth(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_fwidthCoarse(const glsl_type *type)
+builtin_builder::_fwidthCoarse(builtin_available_predicate avail,
+                               const glsl_type *type)
 {
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(type, derivative_control, 1, p);
+   MAKE_SIG(type, avail, 1, p);
 
    body.emit(ret(add(abs(expr(ir_unop_dFdx_coarse, p)),
                      abs(expr(ir_unop_dFdy_coarse, p)))));
@@ -7906,10 +7944,11 @@ builtin_builder::_fwidthCoarse(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_fwidthFine(const glsl_type *type)
+builtin_builder::_fwidthFine(builtin_available_predicate avail,
+                             const glsl_type *type)
 {
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(type, derivative_control, 1, p);
+   MAKE_SIG(type, avail, 1, p);
 
    body.emit(ret(add(abs(expr(ir_unop_dFdx_fine, p)),
                      abs(expr(ir_unop_dFdy_fine, p)))));

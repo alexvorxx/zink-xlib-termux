@@ -725,6 +725,12 @@ shader_trinary_minmax(const _mesa_glsl_parse_state *state)
 }
 
 static bool
+shader_trinary_minmax_half_float(const _mesa_glsl_parse_state *state)
+{
+   return shader_trinary_minmax(state) && gpu_shader_half_float(state);
+}
+
+static bool
 shader_image_load_store(const _mesa_glsl_parse_state *state)
 {
    return (state->is_version(420, 310) ||
@@ -1326,9 +1332,9 @@ private:
                                       builtin_available_predicate avail,
                                       const glsl_type *type);
 
-   B1(min3)
-   B1(max3)
-   B1(mid3)
+   BA1(min3)
+   BA1(max3)
+   BA1(mid3)
 
    ir_function_signature *_image_prototype(const glsl_type *image_type,
                                            unsigned num_arguments,
@@ -5336,54 +5342,69 @@ builtin_builder::create_builtins()
                 NULL);
 
    add_function("min3",
-                _min3(&glsl_type_builtin_float),
-                _min3(&glsl_type_builtin_vec2),
-                _min3(&glsl_type_builtin_vec3),
-                _min3(&glsl_type_builtin_vec4),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_float),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_vec2),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_vec3),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_vec4),
 
-                _min3(&glsl_type_builtin_int),
-                _min3(&glsl_type_builtin_ivec2),
-                _min3(&glsl_type_builtin_ivec3),
-                _min3(&glsl_type_builtin_ivec4),
+                _min3(shader_trinary_minmax_half_float, &glsl_type_builtin_float16_t),
+                _min3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec2),
+                _min3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec3),
+                _min3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec4),
 
-                _min3(&glsl_type_builtin_uint),
-                _min3(&glsl_type_builtin_uvec2),
-                _min3(&glsl_type_builtin_uvec3),
-                _min3(&glsl_type_builtin_uvec4),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_int),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_ivec2),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_ivec3),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_ivec4),
+
+                _min3(shader_trinary_minmax, &glsl_type_builtin_uint),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_uvec2),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_uvec3),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("max3",
-                _max3(&glsl_type_builtin_float),
-                _max3(&glsl_type_builtin_vec2),
-                _max3(&glsl_type_builtin_vec3),
-                _max3(&glsl_type_builtin_vec4),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_float),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_vec2),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_vec3),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_vec4),
 
-                _max3(&glsl_type_builtin_int),
-                _max3(&glsl_type_builtin_ivec2),
-                _max3(&glsl_type_builtin_ivec3),
-                _max3(&glsl_type_builtin_ivec4),
+                _max3(shader_trinary_minmax_half_float, &glsl_type_builtin_float16_t),
+                _max3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec2),
+                _max3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec3),
+                _max3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec4),
 
-                _max3(&glsl_type_builtin_uint),
-                _max3(&glsl_type_builtin_uvec2),
-                _max3(&glsl_type_builtin_uvec3),
-                _max3(&glsl_type_builtin_uvec4),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_int),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_ivec2),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_ivec3),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_ivec4),
+
+                _max3(shader_trinary_minmax, &glsl_type_builtin_uint),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_uvec2),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_uvec3),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("mid3",
-                _mid3(&glsl_type_builtin_float),
-                _mid3(&glsl_type_builtin_vec2),
-                _mid3(&glsl_type_builtin_vec3),
-                _mid3(&glsl_type_builtin_vec4),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_float),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_vec2),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_vec3),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_vec4),
 
-                _mid3(&glsl_type_builtin_int),
-                _mid3(&glsl_type_builtin_ivec2),
-                _mid3(&glsl_type_builtin_ivec3),
-                _mid3(&glsl_type_builtin_ivec4),
+                _mid3(shader_trinary_minmax_half_float, &glsl_type_builtin_float16_t),
+                _mid3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec2),
+                _mid3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec3),
+                _mid3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec4),
 
-                _mid3(&glsl_type_builtin_uint),
-                _mid3(&glsl_type_builtin_uvec2),
-                _mid3(&glsl_type_builtin_uvec3),
-                _mid3(&glsl_type_builtin_uvec4),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_int),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_ivec2),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_ivec3),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_ivec4),
+
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_uint),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_uvec2),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_uvec3),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_uvec4),
                 NULL);
 
    add_image_functions(true);
@@ -8488,12 +8509,13 @@ builtin_builder::_atomic_op3(const char *intrinsic,
 }
 
 ir_function_signature *
-builtin_builder::_min3(const glsl_type *type)
+builtin_builder::_min3(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
    ir_variable *y = in_var(type, "y");
    ir_variable *z = in_var(type, "z");
-   MAKE_SIG(type, shader_trinary_minmax, 3, x, y, z);
+   MAKE_SIG(type, avail, 3, x, y, z);
 
    ir_expression *min3 = min2(x, min2(y,z));
    body.emit(ret(min3));
@@ -8502,12 +8524,13 @@ builtin_builder::_min3(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_max3(const glsl_type *type)
+builtin_builder::_max3(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
    ir_variable *y = in_var(type, "y");
    ir_variable *z = in_var(type, "z");
-   MAKE_SIG(type, shader_trinary_minmax, 3, x, y, z);
+   MAKE_SIG(type, avail, 3, x, y, z);
 
    ir_expression *max3 = max2(x, max2(y,z));
    body.emit(ret(max3));
@@ -8516,12 +8539,13 @@ builtin_builder::_max3(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_mid3(const glsl_type *type)
+builtin_builder::_mid3(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
    ir_variable *y = in_var(type, "y");
    ir_variable *z = in_var(type, "z");
-   MAKE_SIG(type, shader_trinary_minmax, 3, x, y, z);
+   MAKE_SIG(type, avail, 3, x, y, z);
 
    ir_expression *mid3 = max2(min2(x, y), max2(min2(x, z), min2(y, z)));
    body.emit(ret(mid3));

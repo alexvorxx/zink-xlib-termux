@@ -1168,7 +1168,8 @@ lsc_msg_desc_wcmask(UNUSED const struct intel_device_info *devinfo,
       SET_BITS(addr_sz, 8, 7) |
       SET_BITS(data_sz, 11, 9) |
       SET_BITS(transpose, 15, 15) |
-      SET_BITS(cache_ctrl, 19, 17) |
+      (devinfo->ver >= 20 ? SET_BITS(cache_ctrl, 19, 16) :
+                            SET_BITS(cache_ctrl, 19, 17)) |
       SET_BITS(dest_length, 24, 20) |
       SET_BITS(src0_length, 28, 25) |
       SET_BITS(addr_type, 30, 29);
@@ -1249,7 +1250,7 @@ lsc_msg_desc_cache_ctrl(UNUSED const struct intel_device_info *devinfo,
                         uint32_t desc)
 {
    assert(devinfo->has_lsc);
-   return GET_BITS(desc, 19, 17);
+   return devinfo->ver >= 20 ? GET_BITS(desc, 19, 16) : GET_BITS(desc, 19, 17);
 }
 
 static inline unsigned

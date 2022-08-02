@@ -305,14 +305,18 @@ brw_message_ex_desc(const struct intel_device_info *devinfo,
                     unsigned ex_msg_length)
 {
    assert(ex_msg_length % reg_unit(devinfo) == 0);
-   return SET_BITS(ex_msg_length / reg_unit(devinfo), 9, 6);
+   return devinfo->ver >= 20 ?
+      SET_BITS(ex_msg_length / reg_unit(devinfo), 10, 6) :
+      SET_BITS(ex_msg_length / reg_unit(devinfo), 9, 6);
 }
 
 static inline unsigned
 brw_message_ex_desc_ex_mlen(const struct intel_device_info *devinfo,
                             uint32_t ex_desc)
 {
-   return GET_BITS(ex_desc, 9, 6) * reg_unit(devinfo);
+   return devinfo->ver >= 20 ?
+      GET_BITS(ex_desc, 10, 6) * reg_unit(devinfo) :
+      GET_BITS(ex_desc, 9, 6) * reg_unit(devinfo);
 }
 
 static inline uint32_t

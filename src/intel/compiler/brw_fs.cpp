@@ -1267,16 +1267,27 @@ fs_visitor::emit_gs_thread_end()
    inst->offset = 0;
 }
 
+static unsigned
+round_components_to_whole_registers(const intel_device_info *devinfo,
+                                    unsigned c)
+{
+   return DIV_ROUND_UP(c, 8 * reg_unit(devinfo)) * reg_unit(devinfo);
+}
+
 void
 fs_visitor::assign_curb_setup()
 {
-   unsigned uniform_push_length = DIV_ROUND_UP(prog_data->nr_params, 8);
+   unsigned uniform_push_length =
+      round_components_to_whole_registers(devinfo, prog_data->nr_params);
 
    unsigned ubo_push_length = 0;
    unsigned ubo_push_start[4];
    for (int i = 0; i < 4; i++) {
       ubo_push_start[i] = 8 * (ubo_push_length + uniform_push_length);
       ubo_push_length += prog_data->ubo_ranges[i].length;
+
+      assert(ubo_push_start[i] % (8 * reg_unit(devinfo)) == 0);
+      assert(ubo_push_length % (1 * reg_unit(devinfo)) == 0);
    }
 
    prog_data->curb_read_length = uniform_push_length + ubo_push_length;
@@ -2037,7 +2048,8 @@ fs_visitor::assign_constant_locations()
     * brw_curbe.c/crocus_state.c
     */
    const unsigned max_push_length = 64;
-   unsigned push_length = DIV_ROUND_UP(prog_data->nr_params, 8);
+   unsigned push_length =
+      round_components_to_whole_registers(devinfo, prog_data->nr_params);
    for (int i = 0; i < 4; i++) {
       struct brw_ubo_range *range = &prog_data->ubo_ranges[i];
 
@@ -2045,6 +2057,9 @@ fs_visitor::assign_constant_locations()
          range->length = max_push_length - push_length;
 
       push_length += range->length;
+
+      assert(push_length % (1 * reg_unit(devinfo)) == 0);
+
    }
    assert(push_length <= max_push_length);
 }

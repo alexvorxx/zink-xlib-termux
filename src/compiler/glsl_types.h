@@ -824,6 +824,7 @@ unsigned glsl_atomic_size(const glsl_type *type);
  * Type A contains type B if A is B or A is a composite type (struct,
  * interface, array) that has an element that contains B.
  */
+bool glsl_type_contains_32bit(const glsl_type *t);
 bool glsl_type_contains_64bit(const glsl_type *t);
 bool glsl_type_contains_image(const glsl_type *t);
 bool glsl_contains_atomic(const glsl_type *t);

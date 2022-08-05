@@ -240,6 +240,22 @@ glsl_contains_double(const glsl_type *t)
 }
 
 bool
+glsl_type_contains_32bit(const glsl_type *t)
+{
+   if (glsl_type_is_array(t)) {
+      return glsl_type_contains_32bit(t->fields.array);
+   } else if (glsl_type_is_struct(t) || glsl_type_is_interface(t)) {
+      for (unsigned int i = 0; i < t->length; i++) {
+         if (glsl_type_contains_32bit(t->fields.structure[i].type))
+            return true;
+      }
+      return false;
+   } else {
+      return glsl_type_is_32bit(t);
+   }
+}
+
+bool
 glsl_type_contains_64bit(const glsl_type *t)
 {
    if (glsl_type_is_array(t)) {

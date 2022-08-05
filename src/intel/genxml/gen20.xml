@@ -840,6 +840,30 @@
     <field name="Sample Mask" start="128" end="143" type="uint" />
     <field name="Depth Clear Value" start="160" end="191" type="float" />
   </instruction>
+  <instruction name="CFE_STATE" bias="2" length="6">
+    <field name="DWord Length" start="0" end="7" type="uint" default="4" />
+    <field name="CFE SubOpcode Variant" start="16" end="17" type="uint" default="0" />
+    <field name="CFE SubOpcode" start="18" end="23" type="uint" default="0" />
+    <field name="Compute Command Opcode" start="24" end="26" type="uint" default="2" />
+    <field name="Pipeline" start="27" end="28" type="uint" default="2" />
+    <field name="Command Type" start="29" end="31" type="uint" default="3" />
+    <field name="Scratch Space Buffer" start="42" end="63" type="uint" />
+    <field name="Stack ID Control" start="96" end="97" type="uint">
+      <value name="StackIDs 2048" value="0" />
+      <value name="StackIDs 1024" value="1" />
+      <value name="StackIDs 512" value="2" />
+      <value name="StackIDs 256" value="3" />
+    </field>
+    <field name="Compute Dispatch All walker Enable" start="108" end="108" type="bool" />
+    <field name="Single Slice Dispatch CCS Mode" start="109" end="109" type="bool" />
+    <field name="Over Dispatch Control" start="110" end="111" type="uint">
+      <value name="Over Dispatch None" value="0" />
+      <value name="Over Dispatch Low" value="1" />
+      <value name="Over Dispatch Normal" value="2" />
+      <value name="Over Dispatch High" value="3" />
+    </field>
+    <field name="Maximum Number of Threads" start="112" end="127" type="uint" />
+  </instruction>
   <instruction name="COMPUTE_WALKER" bias="2" length="40">
     <field name="DWord Length" start="0" end="7" type="uint" default="38" />
     <field name="Predicate Enable" start="8" end="8" type="bool" />

@@ -79,6 +79,15 @@ genX(cmd_buffer_ensure_cfe_state)(struct anv_cmd_buffer *cmd_buffer,
                                       &cmd_buffer->device->scratch_pool,
                                       total_scratch);
          cfe.ScratchSpaceBuffer = scratch_surf >> 4;
+#if GFX_VER >= 20
+         switch (cmd_buffer->device->physical->instance->stack_ids) {
+         case 256:  cfe.StackIDControl = StackIDs256;  break;
+         case 512:  cfe.StackIDControl = StackIDs512;  break;
+         case 1024: cfe.StackIDControl = StackIDs1024; break;
+         case 2048: cfe.StackIDControl = StackIDs2048; break;
+         default:   unreachable("invalid stack_ids value");
+         }
+#endif
       }
 
       cfe.OverDispatchControl = 2; /* 50% overdispatch */

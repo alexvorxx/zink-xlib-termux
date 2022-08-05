@@ -1293,6 +1293,11 @@ struct anv_instance {
     /* HW workarounds */
     bool                                        no_16bit;
     bool                                        intel_enable_wa_14018912822;
+
+    /**
+     * Ray tracing configuration.
+     */
+    unsigned                                    stack_ids;
 };
 
 VkResult anv_init_wsi(struct anv_physical_device *physical_device);

@@ -5254,6 +5254,17 @@ iris_store_fs_state(const struct intel_device_info *devinfo,
 #endif
       psx.PixelShaderComputesStencil = fs_data->computed_stencil;
 #endif
+
+#if GFX_VER >= 11
+      psx.PixelShaderRequiresSubpixelSampleOffsets =
+         fs_data->uses_sample_offsets;
+      psx.PixelShaderRequiresNonPerspectiveBaryPlaneCoefficients =
+         fs_data->uses_npc_bary_coefficients;
+      psx.PixelShaderRequiresPerspectiveBaryPlaneCoefficients =
+         fs_data->uses_pc_bary_coefficients;
+      psx.PixelShaderRequiresSourceDepthandorWPlaneCoefficients =
+         fs_data->uses_depth_w_coefficients;
+#endif
    }
 }
 

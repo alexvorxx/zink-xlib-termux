@@ -115,6 +115,11 @@ iris_apply_brw_wm_prog_data(struct iris_compiled_shader *shader,
    iris->has_side_effects     = brw->has_side_effects;
    iris->pulls_bary           = brw->pulls_bary;
 
+   iris->uses_sample_offsets        = brw->uses_sample_offsets;
+   iris->uses_npc_bary_coefficients = brw->uses_npc_bary_coefficients;
+   iris->uses_pc_bary_coefficients  = brw->uses_pc_bary_coefficients;
+   iris->uses_depth_w_coefficients  = brw->uses_depth_w_coefficients;
+
    iris->uses_nonperspective_interp_modes = brw->uses_nonperspective_interp_modes;
 
    iris->is_per_sample = brw_wm_prog_data_is_persample(brw, 0);

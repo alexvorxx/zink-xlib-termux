@@ -1664,6 +1664,12 @@ emit_3dstate_ps_extra(struct anv_graphics_pipeline *pipeline,
          ps.InputCoverageMaskState = ICMS_NORMAL;
 
 #if GFX_VER >= 11
+      ps.PixelShaderRequiresSubpixelSampleOffsets =
+         wm_prog_data->uses_sample_offsets;
+      ps.PixelShaderRequiresNonPerspectiveBaryPlaneCoefficients =
+         wm_prog_data->uses_npc_bary_coefficients;
+      ps.PixelShaderRequiresPerspectiveBaryPlaneCoefficients =
+         wm_prog_data->uses_pc_bary_coefficients;
       ps.PixelShaderRequiresSourceDepthandorWPlaneCoefficients =
          wm_prog_data->uses_depth_w_coefficients;
 #endif

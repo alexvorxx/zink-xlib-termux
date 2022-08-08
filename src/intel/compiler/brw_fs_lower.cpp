@@ -381,13 +381,16 @@ brw_fs_lower_find_live_channel(fs_visitor &s)
        * instruction has execution masking disabled, so it's kind of
        * useless there.
        */
-      fs_reg exec_mask(retype(brw_mask_reg(0), BRW_TYPE_UD));
 
       const fs_builder ibld(&s, block, inst);
       if (!inst->is_partial_write())
          ibld.emit_undef_for_dst(inst);
 
       const fs_builder ubld = fs_builder(&s, block, inst).exec_all().group(1, 0);
+
+      fs_reg exec_mask = ubld.vgrf(BRW_TYPE_UD);
+      ubld.UNDEF(exec_mask);
+      ubld.emit(SHADER_OPCODE_READ_MASK_REG, exec_mask, brw_imm_ud(0));
 
       /* ce0 doesn't consider the thread dispatch mask (DMask or VMask),
        * so combine the execution and dispatch masks to obtain the true mask.
@@ -696,4 +699,3 @@ brw_fs_lower_vgrfs_to_fixed_grfs(fs_visitor &s)
    s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
                          DEPENDENCY_VARIABLES);
 }
-

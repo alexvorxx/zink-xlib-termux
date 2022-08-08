@@ -3548,6 +3548,35 @@ brw_compute_barycentric_interp_modes(const struct intel_device_info *devinfo,
    return barycentric_interp_modes;
 }
 
+/**
+ * Return a bitfield where bit n is set if barycentric interpolation
+ * mode n (see enum brw_barycentric_mode) is needed by the fragment
+ * shader barycentric intrinsics that take an explicit offset or
+ * sample as argument.
+ */
+static unsigned
+brw_compute_offset_barycentric_interp_modes(const struct brw_wm_prog_key *key,
+                                            const nir_shader *shader)
+{
+   unsigned barycentric_interp_modes = 0;
+
+   nir_foreach_function_impl(impl, shader) {
+      nir_foreach_block(block, impl) {
+         nir_foreach_instr(instr, block) {
+            if (instr->type != nir_instr_type_intrinsic)
+               continue;
+
+            nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+            if (intrin->intrinsic == nir_intrinsic_load_barycentric_at_offset ||
+                intrin->intrinsic == nir_intrinsic_load_barycentric_at_sample)
+               barycentric_interp_modes |= 1 << brw_barycentric_mode(key, intrin);
+         }
+      }
+   }
+
+   return barycentric_interp_modes;
+}
+
 static void
 brw_compute_flat_inputs(struct brw_wm_prog_data *prog_data,
                         const nir_shader *shader)
@@ -3745,9 +3774,22 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
          ~BITFIELD_BIT(BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE);
    }
 
-   prog_data->uses_nonperspective_interp_modes |=
-      (prog_data->barycentric_interp_modes &
-      BRW_BARYCENTRIC_NONPERSPECTIVE_BITS) != 0;
+   if (devinfo->ver >= 20) {
+      const unsigned offset_bary_modes =
+         brw_compute_offset_barycentric_interp_modes(key, shader);
+
+      prog_data->uses_npc_bary_coefficients =
+         offset_bary_modes & BRW_BARYCENTRIC_NONPERSPECTIVE_BITS;
+      prog_data->uses_pc_bary_coefficients =
+         offset_bary_modes & ~BRW_BARYCENTRIC_NONPERSPECTIVE_BITS;
+      prog_data->uses_sample_offsets =
+         offset_bary_modes & ((1 << BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE) |
+                              (1 << BRW_BARYCENTRIC_NONPERSPECTIVE_SAMPLE));
+   }
+
+   prog_data->uses_nonperspective_interp_modes =
+      (prog_data->barycentric_interp_modes & BRW_BARYCENTRIC_NONPERSPECTIVE_BITS) ||
+      prog_data->uses_npc_bary_coefficients;
 
    /* The current VK_EXT_graphics_pipeline_library specification requires
     * coarse to specified at compile time. But per sample interpolation can be
@@ -3811,9 +3853,9 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
    prog_data->uses_src_depth =
       BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD) &&
       prog_data->coarse_pixel_dispatch != BRW_ALWAYS;
-   prog_data->uses_depth_w_coefficients =
-      BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD) &&
-      prog_data->coarse_pixel_dispatch != BRW_NEVER;
+   prog_data->uses_depth_w_coefficients = prog_data->uses_pc_bary_coefficients ||
+      (BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD) &&
+       prog_data->coarse_pixel_dispatch != BRW_NEVER);
 
    calculate_urb_setup(devinfo, key, prog_data, shader, mue_map);
    brw_compute_flat_inputs(prog_data, shader);

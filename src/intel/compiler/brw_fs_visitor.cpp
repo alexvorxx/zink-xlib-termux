@@ -405,9 +405,6 @@ fs_visitor::emit_interpolation_setup()
 
       switch (wm_prog_data->coarse_pixel_dispatch) {
       case BRW_NEVER:
-         assert(wm_prog_data->uses_src_depth);
-         assert(!wm_prog_data->uses_depth_w_coefficients);
-         this->pixel_z = sample_z;
          break;
 
       case BRW_SOMETIMES:

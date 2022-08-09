@@ -38,6 +38,7 @@ __gen_combine_address(__attribute__((unused)) void *data,
 #include "genxml/genX_pack.h"
 
 #include "isl_priv.h"
+#include "isl_genX_helpers.h"
 
 static const uint32_t isl_encode_ds_surftype[] = {
 #if GFX_VER >= 9

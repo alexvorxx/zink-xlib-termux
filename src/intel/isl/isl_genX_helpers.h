@@ -196,7 +196,100 @@ isl_get_qpitch(const struct isl_surf *surf)
    }
 }
 
-#if GFX_VERx10 >= 125
+#if GFX_VER >= 20
+
+/*
+ * Returns compression format encoding for Unified Lossless Compression
+ */
+UNUSED static uint8_t
+isl_get_render_compression_format(enum isl_format format)
+{
+   /* From the Bspec, Enumeration_UNIFIED_COMPRESSION_FORMAT section (63919): */
+   switch(format) {
+   case ISL_FORMAT_R8_UNORM:
+   case ISL_FORMAT_R8_UINT:
+   case ISL_FORMAT_A8_UNORM:
+   case ISL_FORMAT_R8_SNORM:
+   case ISL_FORMAT_R8_SINT:
+   case ISL_FORMAT_R24_UNORM_X8_TYPELESS:
+      return CMF_R8;
+   case ISL_FORMAT_R8G8_SNORM:
+   case ISL_FORMAT_R8G8_SINT:
+      return CMF_R8_G8;
+   case ISL_FORMAT_B8G8R8A8_UNORM:
+   case ISL_FORMAT_B8G8R8X8_UNORM:
+   case ISL_FORMAT_B8G8R8A8_UNORM_SRGB:
+   case ISL_FORMAT_B8G8R8X8_UNORM_SRGB:
+   case ISL_FORMAT_R8G8B8A8_UNORM:
+   case ISL_FORMAT_R8G8B8X8_UNORM:
+   case ISL_FORMAT_R8G8B8A8_UNORM_SRGB:
+   case ISL_FORMAT_R8G8B8X8_UNORM_SRGB:
+   case ISL_FORMAT_R8G8B8A8_UINT:
+   case ISL_FORMAT_R8G8B8A8_SNORM:
+   case ISL_FORMAT_R8G8B8A8_SINT:
+      return CMF_R8_G8_B8_A8;
+   case ISL_FORMAT_R10G10B10A2_UNORM:
+   case ISL_FORMAT_R10G10B10A2_UNORM_SRGB:
+   case ISL_FORMAT_R10G10B10_FLOAT_A2_UNORM:
+   case ISL_FORMAT_R10G10B10A2_UINT:
+   case ISL_FORMAT_B10G10R10A2_UNORM:
+   case ISL_FORMAT_B10G10R10X2_UNORM:
+   case ISL_FORMAT_B10G10R10A2_UNORM_SRGB:
+      return CMF_R10_G10_B10_A2;
+   case ISL_FORMAT_R11G11B10_FLOAT:
+      return CMF_R11_G11_B10;
+   case ISL_FORMAT_R16_UNORM:
+   case ISL_FORMAT_R16_UINT:
+   case ISL_FORMAT_R16_SNORM:
+   case ISL_FORMAT_R16_SINT:
+   case ISL_FORMAT_R16_FLOAT:
+      return CMF_R16;
+   case ISL_FORMAT_R16G16_UNORM:
+   case ISL_FORMAT_R16G16_UINT:
+   case ISL_FORMAT_R16G16_SNORM:
+   case ISL_FORMAT_R16G16_SINT:
+   case ISL_FORMAT_R16G16_FLOAT:
+      return CMF_R16_G16;
+   case ISL_FORMAT_R16G16B16A16_UNORM:
+   case ISL_FORMAT_R16G16B16X16_UNORM:
+   case ISL_FORMAT_R16G16B16A16_UINT:
+   case ISL_FORMAT_R16G16B16A16_SNORM:
+   case ISL_FORMAT_R16G16B16A16_SINT:
+   case ISL_FORMAT_R16G16B16A16_FLOAT:
+   case ISL_FORMAT_R16G16B16X16_FLOAT:
+      return CMF_R16_G16_B16_A16;
+   case ISL_FORMAT_R32_SINT:
+   case ISL_FORMAT_R32_FLOAT:
+   case ISL_FORMAT_R32_UINT:
+      return CMF_R32;
+   case ISL_FORMAT_R32G32_FLOAT:
+   case ISL_FORMAT_R32G32_SINT:
+   case ISL_FORMAT_R32G32_UINT:
+      return CMF_R32_G32;
+   case ISL_FORMAT_R32G32B32A32_FLOAT:
+   case ISL_FORMAT_R32G32B32X32_FLOAT:
+   case ISL_FORMAT_R32G32B32A32_SINT:
+   case ISL_FORMAT_R32G32B32A32_UINT:
+      return CMF_R32_G32_B32_A32;
+   case ISL_FORMAT_B5G6R5_UNORM:
+   case ISL_FORMAT_B5G6R5_UNORM_SRGB:
+   case ISL_FORMAT_B5G5R5A1_UNORM:
+   case ISL_FORMAT_B5G5R5A1_UNORM_SRGB:
+   case ISL_FORMAT_B4G4R4A4_UNORM:
+   case ISL_FORMAT_B4G4R4A4_UNORM_SRGB:
+   case ISL_FORMAT_B5G5R5X1_UNORM:
+   case ISL_FORMAT_B5G5R5X1_UNORM_SRGB:
+   case ISL_FORMAT_A1B5G5R5_UNORM:
+   case ISL_FORMAT_A4B4G4R4_UNORM:
+   case ISL_FORMAT_R8G8_UNORM:
+   case ISL_FORMAT_R8G8_UINT:
+   default:
+      unreachable("Unsupported render compression format!");
+      return 0;
+   }
+}
+
+#elif GFX_VERx10 >= 125
 
 /*
  * Returns compression format encoding for Unified Lossless Compression

@@ -762,7 +762,8 @@ get_features(const struct anv_physical_device *pdevice,
       .shaderBufferFloat16AtomicMinMax = pdevice->info.has_lsc,
       .shaderBufferFloat32AtomicMinMax = true,
       .shaderBufferFloat64AtomicMinMax =
-         pdevice->info.has_64bit_float && pdevice->info.has_lsc,
+         pdevice->info.has_64bit_float && pdevice->info.has_lsc &&
+         pdevice->info.ver < 20,
       .shaderSharedFloat16Atomics      = pdevice->info.has_lsc,
       .shaderSharedFloat16AtomicAdd    = false,
       .shaderSharedFloat16AtomicMinMax = pdevice->info.has_lsc,

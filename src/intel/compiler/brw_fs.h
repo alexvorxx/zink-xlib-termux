@@ -457,6 +457,11 @@ public:
       return *static_cast<fs_thread_payload *>(this->payload_);
    };
 
+   const fs_thread_payload &fs_payload() const {
+      assert(stage == MESA_SHADER_FRAGMENT);
+      return *static_cast<const fs_thread_payload *>(this->payload_);
+   };
+
    cs_thread_payload &cs_payload() {
       assert(gl_shader_stage_uses_workgroup(stage));
       return *static_cast<cs_thread_payload *>(this->payload_);

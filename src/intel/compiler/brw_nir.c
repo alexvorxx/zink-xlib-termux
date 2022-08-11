@@ -618,9 +618,10 @@ brw_nir_lower_fs_inputs(nir_shader *nir,
                                    NULL);
    }
 
-   nir_shader_intrinsics_pass(nir, lower_barycentric_at_offset,
-                                nir_metadata_control_flow,
-                                NULL);
+   if (devinfo->ver < 20)
+      nir_shader_intrinsics_pass(nir, lower_barycentric_at_offset,
+                                 nir_metadata_control_flow,
+                                 NULL);
 
    /* This pass needs actual constants */
    nir_opt_constant_folding(nir);

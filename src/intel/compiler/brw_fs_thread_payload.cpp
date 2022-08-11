@@ -216,12 +216,27 @@ setup_fs_payload_gfx20(fs_thread_payload &payload,
             payload.num_regs++;
          }
       }
+
+      /* R22: Sample offsets. */
+      if (prog_data->uses_sample_offsets && j == 0) {
+         payload.sample_offsets_reg = payload.num_regs;
+         payload.num_regs += 2;
+      }
    }
 
-   if (prog_data->uses_depth_w_coefficients) {
-      assert(v.max_polygons == 1);
-      payload.depth_w_coef_reg = payload.num_regs;
-      payload.num_regs += 2;
+   /* RP0: Source Depth and/or W Attribute Vertex Deltas and/or
+    * Perspective Bary Planes.
+    */
+   if (prog_data->uses_depth_w_coefficients ||
+       prog_data->uses_pc_bary_coefficients) {
+      payload.depth_w_coef_reg = payload.pc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += 2 * v.max_polygons;
+   }
+
+   /* RP4: Non-Perspective Bary planes. */
+   if (prog_data->uses_npc_bary_coefficients) {
+      payload.npc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += 2 * v.max_polygons;
    }
 
    if (v.nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH)) {

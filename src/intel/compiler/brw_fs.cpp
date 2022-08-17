@@ -2091,8 +2091,8 @@ brw_sample_mask_reg(const fs_builder &bld)
 
    if (s.stage != MESA_SHADER_FRAGMENT) {
       return brw_imm_ud(0xffffffff);
-   } else if (brw_wm_prog_data(s.prog_data)->uses_kill) {
-      assert(bld.dispatch_width() <= 16);
+   } else if (s.devinfo->ver >= 20 ||
+              brw_wm_prog_data(s.prog_data)->uses_kill) {
       return brw_flag_subreg(sample_mask_flag_subreg(s) + bld.group() / 16);
    } else {
       assert(bld.dispatch_width() <= 16);
@@ -2147,7 +2147,7 @@ brw_emit_predicate_on_sample_mask(const fs_builder &bld, fs_inst *inst)
    const fs_reg sample_mask = brw_sample_mask_reg(bld);
    const unsigned subreg = sample_mask_flag_subreg(s);
 
-   if (brw_wm_prog_data(s.prog_data)->uses_kill) {
+   if (s.devinfo->ver >= 20 || brw_wm_prog_data(s.prog_data)->uses_kill) {
       assert(sample_mask.file == ARF &&
              sample_mask.nr == brw_flag_subreg(subreg).nr &&
              sample_mask.subnr == brw_flag_subreg(
@@ -3268,7 +3268,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
       /* We handle discards by keeping track of the still-live pixels in f0.1.
        * Initialize it with the dispatched pixels.
        */
-      if (wm_prog_data->uses_kill) {
+      if (devinfo->ver >= 20 || wm_prog_data->uses_kill) {
          const unsigned lower_width = MIN2(dispatch_width, 16);
          for (unsigned i = 0; i < dispatch_width / lower_width; i++) {
             /* According to the "PS Thread Payload for Normal

@@ -3463,7 +3463,7 @@ iris_create_shader_state(struct pipe_context *ctx,
       key.fs = (struct iris_fs_prog_key) {
          KEY_INIT(base),
          .nr_color_regions = util_bitcount(color_outputs),
-         .coherent_fb_fetch = devinfo->ver >= 9,
+         .coherent_fb_fetch = devinfo->ver >= 9 && devinfo->ver < 20,
          .input_slots_valid =
             can_rearrange_varyings ? 0 : info->inputs_read | VARYING_BIT_POS,
       };

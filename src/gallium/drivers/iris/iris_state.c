@@ -4926,7 +4926,7 @@ iris_populate_fs_key(const struct iris_context *ice,
    key->persample_interp = rast->force_persample_interp;
    key->multisample_fbo = rast->multisample && fb->samples > 1;
 
-   key->coherent_fb_fetch = GFX_VER >= 9;
+   key->coherent_fb_fetch = GFX_VER >= 9 && GFX_VER < 20;
 
    key->force_dual_color_blend =
       screen->driconf.dual_color_blend_by_location &&

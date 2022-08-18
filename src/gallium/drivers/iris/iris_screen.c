@@ -310,6 +310,7 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_FBFETCH:
       return IRIS_MAX_DRAW_BUFFERS;
    case PIPE_CAP_FBFETCH_COHERENT:
+      return devinfo->ver >= 9 && devinfo->ver < 20;
    case PIPE_CAP_CONSERVATIVE_RASTER_INNER_COVERAGE:
    case PIPE_CAP_POST_DEPTH_COVERAGE:
    case PIPE_CAP_SHADER_STENCIL_EXPORT:

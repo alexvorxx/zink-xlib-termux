@@ -326,6 +326,16 @@ static const char *const m_rt_write_subtype[] = {
    [0b111] = "SIMD16/RepData-111", /* no idea how this is different than 1 */
 };
 
+static const char *const m_rt_write_subtype_xe2[] = {
+   [0b000] = "SIMD16",
+   [0b001] = "SIMD32",
+   [0b010] = "SIMD16/DualSrc",
+   [0b011] = "invalid",
+   [0b100] = "invalid",
+   [0b101] = "invalid",
+   [0b111] = "invalid",
+};
+
 static const char *const dp_dc0_msg_type_gfx7[16] = {
    [GFX7_DATAPORT_DC_OWORD_BLOCK_READ] = "DC OWORD block read",
    [GFX7_DATAPORT_DC_UNALIGNED_OWORD_BLOCK_READ] =
@@ -2183,7 +2193,8 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                GFX6_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE;
 
             if (is_rt_write) {
-               err |= control(file, "RT message type", m_rt_write_subtype,
+               err |= control(file, "RT message type",
+                              devinfo->ver >= 20 ? m_rt_write_subtype_xe2 : m_rt_write_subtype,
                               brw_inst_rt_message_type(devinfo, inst), &space);
                if (brw_inst_rt_slot_group(devinfo, inst))
                   string(file, " Hi");

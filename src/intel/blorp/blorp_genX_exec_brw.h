@@ -886,8 +886,7 @@ blorp_emit_blend_state(struct blorp_batch *batch,
    if (!batch->blorp->config.use_cached_dynamic_states) {
       struct GENX(BLEND_STATE) blend = { };
 
-      int size = GENX(BLEND_STATE_length) * 4;
-      size += GENX(BLEND_STATE_ENTRY_length) * 4 * params->num_draw_buffers;
+      const unsigned size = 96;
       uint32_t *state = blorp_alloc_dynamic_state(batch, size, 64, &offset);
       if (state == NULL)
          return;

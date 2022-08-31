@@ -1865,7 +1865,6 @@ wsi_wl_swapchain_acquire_next_image(struct wsi_swapchain *wsi_chain,
    struct wsi_wl_surface *wsi_wl_surface = chain->wsi_wl_surface;
    struct timespec start_time, end_time;
    struct timespec rel_timeout;
-   int wl_fd = wl_display_get_fd(wsi_wl_surface->display->wl_display);
 
    timespec_from_nsec(&rel_timeout, info->timeout);
 
@@ -1873,12 +1872,6 @@ wsi_wl_swapchain_acquire_next_image(struct wsi_swapchain *wsi_chain,
    timespec_add(&end_time, &rel_timeout, &start_time);
 
    while (1) {
-      /* Try to dispatch potential events. */
-      int ret = wl_display_dispatch_queue_pending(wsi_wl_surface->display->wl_display,
-                                                  wsi_wl_surface->display->queue);
-      if (ret < 0)
-         return VK_ERROR_OUT_OF_DATE_KHR;
-
       /* Try to find a free image. */
       for (uint32_t i = 0; i < chain->base.image_count; i++) {
          if (!chain->images[i].busy) {
@@ -1889,46 +1882,20 @@ wsi_wl_swapchain_acquire_next_image(struct wsi_swapchain *wsi_chain,
          }
       }
 
-      /* Check for timeout. */
-      struct timespec current_time;
+      struct timespec current_time, remaining_timeout;
       clock_gettime(CLOCK_MONOTONIC, &current_time);
-      if (timespec_after(&current_time, &end_time))
+      timespec_sub_saturate(&remaining_timeout, &end_time, &current_time);
+
+      /* Try to dispatch potential events. */
+      int ret = wl_display_dispatch_queue_timeout(wsi_wl_surface->display->wl_display,
+                                                  wsi_wl_surface->display->queue,
+                                                  &remaining_timeout);
+      if (ret == -1)
+         return VK_ERROR_OUT_OF_DATE_KHR;
+
+      /* Check for timeout. */
+      if (ret == 0)
          return (info->timeout ? VK_TIMEOUT : VK_NOT_READY);
-
-      /* Try to read events from the server. */
-      ret = wl_display_prepare_read_queue(wsi_wl_surface->display->wl_display,
-                                          wsi_wl_surface->display->queue);
-      if (ret < 0) {
-         /* Another thread might have read events for our queue already. Go
-          * back to dispatch them.
-          */
-         if (errno == EAGAIN)
-            continue;
-         return VK_ERROR_OUT_OF_DATE_KHR;
-      }
-
-      struct pollfd pollfd = {
-         .fd = wl_fd,
-         .events = POLLIN
-      };
-      timespec_sub(&rel_timeout, &end_time, &current_time);
-      ret = ppoll(&pollfd, 1, &rel_timeout, NULL);
-      if (ret <= 0) {
-         int lerrno = errno;
-         wl_display_cancel_read(wsi_wl_surface->display->wl_display);
-         if (ret < 0) {
-            /* If ppoll() was interrupted, try again. */
-            if (lerrno == EINTR || lerrno == EAGAIN)
-               continue;
-            return VK_ERROR_OUT_OF_DATE_KHR;
-         }
-         assert(ret == 0);
-         continue;
-      }
-
-      ret = wl_display_read_events(wsi_wl_surface->display->wl_display);
-      if (ret < 0)
-         return VK_ERROR_OUT_OF_DATE_KHR;
    }
 }
 

@@ -54,6 +54,8 @@
 #include <util/anon_file.h>
 #include <util/os_time.h>
 
+#include <loader/loader_wayland_helper.h>
+
 #ifdef MAJOR_IN_MKDEV
 #include <sys/mkdev.h>
 #endif

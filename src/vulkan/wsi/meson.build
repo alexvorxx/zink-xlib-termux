@@ -68,6 +68,7 @@ libvulkan_wsi = static_library(
     idep_vulkan_runtime_headers, idep_xmlconfig, idep_mesautil, platform_deps,
     idep_blake3
   ],
+  link_with: libloader_wayland_helper,
   gnu_symbol_visibility : 'hidden',
   build_by_default : false,
 )

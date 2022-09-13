@@ -1598,6 +1598,11 @@ brw_send_indirect_split_message(struct brw_codegen *p,
       assert((ex_desc.subnr & 0x3) == 0);
       brw_inst_set_send_sel_reg32_ex_desc(devinfo, send, 1);
       brw_inst_set_send_ex_desc_ia_subreg_nr(devinfo, send, phys_subnr(devinfo, ex_desc) >> 2);
+
+      if (devinfo->ver >= 20 && sfid == GFX12_SFID_UGM) {
+         const unsigned ex_mlen = brw_message_ex_desc_ex_mlen(devinfo, ex_desc_imm);
+         brw_inst_set_bits(send, 103, 99, ex_mlen / reg_unit(devinfo));
+      }
    }
 
    if (ex_bso) {

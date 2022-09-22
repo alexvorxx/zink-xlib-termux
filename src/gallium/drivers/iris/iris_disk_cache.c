@@ -274,11 +274,12 @@ iris_disk_cache_init(struct iris_screen *screen)
    if (INTEL_DEBUG(DEBUG_DISK_CACHE_DISABLE_MASK))
       return;
 
-   /* array length = print length + nul char + 1 extra to verify it's unused */
-   char renderer[11];
-   UNUSED int len =
-      snprintf(renderer, sizeof(renderer), "iris_%04x", screen->devinfo->pci_device_id);
-   assert(len == sizeof(renderer) - 2);
+   /* array length = strlen("iris_") + sha + nul char */
+   char renderer[5 + 40 + 1] = {0};
+   char device_info_sha[41];
+   brw_device_sha1(device_info_sha, screen->compiler->devinfo);
+   memcpy(renderer, "iris_", 5);
+   memcpy(renderer + 5, device_info_sha, 40);
 
    const struct build_id_note *note =
       build_id_find_nhdr_for_addr(iris_disk_cache_init);

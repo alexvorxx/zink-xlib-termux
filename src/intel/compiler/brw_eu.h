@@ -1258,19 +1258,19 @@ lsc_msg_desc_cache_ctrl(UNUSED const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-lsc_msg_desc_dest_len(const struct intel_device_info *devinfo,
-                      uint32_t desc)
+lsc_msg_dest_len(const struct intel_device_info *devinfo,
+                 enum lsc_data_size data_sz, unsigned n)
 {
-   assert(devinfo->has_lsc);
-   return GET_BITS(desc, 24, 20) * reg_unit(devinfo);
+   return DIV_ROUND_UP(lsc_data_size_bytes(data_sz) * n,
+                       reg_unit(devinfo) * REG_SIZE) * reg_unit(devinfo);
 }
 
 static inline unsigned
-lsc_msg_desc_src0_len(const struct intel_device_info *devinfo,
-                      uint32_t desc)
+lsc_msg_addr_len(const struct intel_device_info *devinfo,
+                 enum lsc_addr_size addr_sz, unsigned n)
 {
-   assert(devinfo->has_lsc);
-   return GET_BITS(desc, 28, 25) * reg_unit(devinfo);
+   return DIV_ROUND_UP(lsc_addr_size_bytes(addr_sz) * n,
+                       reg_unit(devinfo) * REG_SIZE) * reg_unit(devinfo);
 }
 
 static inline enum lsc_addr_surface_type

@@ -1360,9 +1360,9 @@ fs_visitor::assign_curb_setup()
                                    LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
                                    true /* has_dest */);
          send->header_size = 0;
-         send->mlen = lsc_msg_desc_src0_len(devinfo, send->desc);
+         send->mlen = lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32, 1);
          send->size_written =
-            lsc_msg_desc_dest_len(devinfo, send->desc) * REG_SIZE;
+            lsc_msg_dest_len(devinfo, LSC_DATA_SIZE_D32, num_regs * 8) * REG_SIZE;
          send->send_is_volatile = true;
 
          i += num_regs;

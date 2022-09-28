@@ -1156,15 +1156,6 @@ lsc_msg_desc_wcmask(UNUSED const struct intel_device_info *devinfo,
              bool transpose, unsigned cache_ctrl, bool has_dest, unsigned cmask)
 {
    assert(devinfo->has_lsc);
-
-   unsigned dest_length = !has_dest ? 0 :
-      DIV_ROUND_UP(lsc_data_size_bytes(data_sz) * num_channels * simd_size,
-                   reg_unit(devinfo) * REG_SIZE);
-
-   unsigned src0_length =
-      DIV_ROUND_UP(lsc_addr_size_bytes(addr_sz) * num_coordinates * simd_size,
-                   reg_unit(devinfo) * REG_SIZE);
-
    assert(!transpose || lsc_opcode_has_transpose(opcode));
 
    unsigned msg_desc =
@@ -1174,8 +1165,6 @@ lsc_msg_desc_wcmask(UNUSED const struct intel_device_info *devinfo,
       SET_BITS(transpose, 15, 15) |
       (devinfo->ver >= 20 ? SET_BITS(cache_ctrl, 19, 16) :
                             SET_BITS(cache_ctrl, 19, 17)) |
-      SET_BITS(dest_length, 24, 20) |
-      SET_BITS(src0_length, 28, 25) |
       SET_BITS(addr_type, 30, 29);
 
    if (lsc_opcode_has_cmask(opcode))

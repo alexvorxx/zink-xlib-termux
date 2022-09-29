@@ -1350,15 +1350,12 @@ fs_visitor::assign_curb_setup()
 
          send->sfid = GFX12_SFID_UGM;
          send->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
-                                   1 /* exec_size */,
                                    LSC_ADDR_SURFTYPE_FLAT,
                                    LSC_ADDR_SIZE_A32,
-                                   1 /* num_coordinates */,
                                    LSC_DATA_SIZE_D32,
                                    num_regs * 8 /* num_channels */,
                                    true /* transpose */,
-                                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                   true /* has_dest */);
+                                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
          send->header_size = 0;
          send->mlen = lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32, 1);
          send->size_written =

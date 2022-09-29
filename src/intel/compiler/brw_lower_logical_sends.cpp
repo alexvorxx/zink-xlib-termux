@@ -110,14 +110,11 @@ lower_urb_read_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
 
    assert((dst_comps >= 1 && dst_comps <= 4) || dst_comps == 8);
 
-   inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD, inst->exec_size,
+   inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
                              LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A32,
-                             1 /* num_coordinates */,
                              LSC_DATA_SIZE_D32, dst_comps /* num_channels */,
                              false /* transpose */,
-                             LSC_CACHE(devinfo, STORE, L1UC_L3UC),
-                             false /* has_dest */);
-
+                             LSC_CACHE(devinfo, STORE, L1UC_L3UC));
 
    /* Update the original instruction. */
    inst->opcode = SHADER_OPCODE_SEND;
@@ -241,13 +238,12 @@ lower_urb_write_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
    inst->sfid = BRW_SFID_URB;
 
    enum lsc_opcode op = mask ? LSC_OP_STORE_CMASK : LSC_OP_STORE;
-   inst->desc = lsc_msg_desc_wcmask(devinfo, op, inst->exec_size,
+   inst->desc = lsc_msg_desc_wcmask(devinfo, op,
                              LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A32,
-                             1 /* num_coordinates */,
                              LSC_DATA_SIZE_D32, src_comps /* num_channels */,
                              false /* transpose */,
                              LSC_CACHE(devinfo, STORE, L1UC_L3UC),
-                             false /* has_dest */, mask);
+                             mask);
 
 
    /* Update the original instruction. */
@@ -1722,24 +1718,20 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
       num_components = arg.ud;
       has_dest = true;
-      inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK,
                                 surf_type, LSC_ADDR_SIZE_A32,
-                                dims.ud /* num_coordinates */,
                                 LSC_DATA_SIZE_D32, num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                true /* has_dest */);
+                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
       break;
    case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
       num_components = arg.ud;
       has_dest = false;
-      inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE_CMASK, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE_CMASK,
                                 surf_type, LSC_ADDR_SIZE_A32,
-                                dims.ud /* num_coordinates */,
                                 LSC_DATA_SIZE_D32, num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS),
-                                false /* has_dest */);
+                                LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS));
       break;
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL: {
       /* Bspec: Atomic instruction -> Cache section:
@@ -1751,39 +1743,33 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
 
       num_components = 1;
       has_dest = !inst->dst.is_null();
-      inst->desc = lsc_msg_desc(devinfo, opcode, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, opcode,
                                 surf_type, LSC_ADDR_SIZE_A32,
-                                dims.ud /* num_coordinates */,
                                 lsc_bits_to_data_size(dst_sz * 8),
                                 num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, STORE, L1UC_L3WB),
-                                !inst->dst.is_null());
+                                LSC_CACHE(devinfo, STORE, L1UC_L3WB));
       break;
    }
    case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
       num_components = 1;
       has_dest = true;
-      inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
                                 surf_type, LSC_ADDR_SIZE_A32,
-                                dims.ud /* num_coordinates */,
                                 lsc_bits_to_data_size(arg.ud),
                                 num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                true /* has_dest */);
+                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
       break;
    case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
       num_components = 1;
       has_dest = false;
-      inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE,
                                 surf_type, LSC_ADDR_SIZE_A32,
-                                dims.ud /* num_coordinates */,
                                 lsc_bits_to_data_size(arg.ud),
                                 num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS),
-                                false /* has_dest */);
+                                LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS));
       break;
    default:
       unreachable("Unknown surface logical instruction");
@@ -1870,15 +1856,12 @@ lower_lsc_block_logical_send(const fs_builder &bld, fs_inst *inst)
       LSC_ADDR_SURFTYPE_BSS : LSC_ADDR_SURFTYPE_BTI;
    inst->desc = lsc_msg_desc(devinfo,
                              write ? LSC_OP_STORE : LSC_OP_LOAD,
-                             1 /* exec_size */,
                              surf_type,
                              LSC_ADDR_SIZE_A32,
-                             1 /* num_coordinates */,
                              LSC_DATA_SIZE_D32,
                              arg.ud /* num_channels */,
                              true /* transpose */,
-                             LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                             !write /* has_dest */);
+                             LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
 
    inst->mlen = lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32, 1);
    inst->size_written = write ? 0 :
@@ -2047,48 +2030,40 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
       num_components = arg;
       has_dest = true;
-      inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
-                                1 /* num_coordinates */,
                                 LSC_DATA_SIZE_D32, num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                true /* has_dest */);
+                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
       break;
    case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
       num_components = arg;
       has_dest = false;
-      inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE_CMASK, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE_CMASK,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
-                                1 /* num_coordinates */,
                                 LSC_DATA_SIZE_D32, num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS),
-                                false /* has_dest */);
+                                LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS));
       break;
    case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
       num_components = 1;
       has_dest = true;
-      inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
-                                1 /* num_coordinates */,
                                 lsc_bits_to_data_size(arg),
                                 num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                true /* has_dest */);
+                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
       break;
    case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
       num_components = 1;
       has_dest = false;
-      inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
-                                1 /* num_coordinates */,
                                 lsc_bits_to_data_size(arg),
                                 num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS),
-                                false /* has_dest */);
+                                LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS));
       break;
    case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL: {
       /* Bspec: Atomic instruction -> Cache section:
@@ -2099,14 +2074,12 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       enum lsc_opcode opcode = (enum lsc_opcode) arg;
       num_components = 1;
       has_dest = !inst->dst.is_null();
-      inst->desc = lsc_msg_desc(devinfo, opcode, inst->exec_size,
+      inst->desc = lsc_msg_desc(devinfo, opcode,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
-                                1 /* num_coordinates */,
                                 lsc_bits_to_data_size(dst_sz * 8),
                                 num_components,
                                 false /* transpose */,
-                                LSC_CACHE(devinfo, STORE, L1UC_L3WB),
-                                !inst->dst.is_null());
+                                LSC_CACHE(devinfo, STORE, L1UC_L3WB));
       break;
    }
    case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
@@ -2116,15 +2089,12 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       inst->exec_size = 1;
       inst->desc = lsc_msg_desc(devinfo,
                                 LSC_OP_LOAD,
-                                1 /* exec_size */,
                                 LSC_ADDR_SURFTYPE_FLAT,
                                 LSC_ADDR_SIZE_A64,
-                                1 /* num_coordinates */,
                                 LSC_DATA_SIZE_D32,
                                 num_components,
                                 true /* transpose */,
-                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                true /* has_dest */);
+                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
       break;
    case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
       num_components = arg;
@@ -2132,15 +2102,12 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       inst->exec_size = 1;
       inst->desc = lsc_msg_desc(devinfo,
                                 LSC_OP_STORE,
-                                1 /* exec_size */,
                                 LSC_ADDR_SURFTYPE_FLAT,
                                 LSC_ADDR_SIZE_A64,
-                                1 /* num_coordinates */,
                                 LSC_DATA_SIZE_D32,
                                 num_components,
                                 true /* transpose */,
-                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                false /* has_dest */);
+                                LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
 
       break;
    default:
@@ -2333,14 +2300,12 @@ lower_lsc_varying_pull_constant_logical_send(const fs_builder &bld,
 
    if (alignment >= 4) {
       inst->desc =
-         lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK, inst->exec_size,
+         lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK,
                       surf_type, LSC_ADDR_SIZE_A32,
-                      1 /* num_coordinates */,
                       LSC_DATA_SIZE_D32,
                       4 /* num_channels */,
                       false /* transpose */,
-                      LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                      true /* has_dest */);
+                      LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
       inst->mlen = lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32, inst->exec_size);
 
       setup_lsc_surface_descriptors(bld, inst, inst->desc,
@@ -2348,14 +2313,12 @@ lower_lsc_varying_pull_constant_logical_send(const fs_builder &bld,
                                     surface : surface_handle);
    } else {
       inst->desc =
-         lsc_msg_desc(devinfo, LSC_OP_LOAD, inst->exec_size,
+         lsc_msg_desc(devinfo, LSC_OP_LOAD,
                       surf_type, LSC_ADDR_SIZE_A32,
-                      1 /* num_coordinates */,
                       LSC_DATA_SIZE_D32,
                       1 /* num_channels */,
                       false /* transpose */,
-                      LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                      true /* has_dest */);
+                      LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
       inst->mlen = lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32, inst->exec_size);
 
       setup_lsc_surface_descriptors(bld, inst, inst->desc,
@@ -2957,17 +2920,14 @@ brw_fs_lower_uniform_pull_constant_loads(fs_visitor &s)
 
          inst->sfid = GFX12_SFID_UGM;
          inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
-                                   1 /* simd_size */,
                                    surface_handle.file == BAD_FILE ?
                                    LSC_ADDR_SURFTYPE_BTI :
                                    LSC_ADDR_SURFTYPE_BSS,
                                    LSC_ADDR_SIZE_A32,
-                                   1 /* num_coordinates */,
                                    LSC_DATA_SIZE_D32,
                                    inst->size_written / 4,
                                    true /* transpose */,
-                                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                   true /* has_dest */);
+                                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
 
          /* Update the original instruction. */
          inst->opcode = SHADER_OPCODE_SEND;

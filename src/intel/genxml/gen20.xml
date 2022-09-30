@@ -880,6 +880,89 @@
     <field name="Address" start="66" end="111" type="address" />
     <field name="Immediate Data" start="128" end="191" type="uint" />
   </instruction>
+  <instruction name="XY_FAST_COLOR_BLT" bias="2" length="16" engine="blitter">
+    <field name="DWord Length" start="0" end="7" type="uint" default="14" />
+    <field name="Number of Multisamples" start="9" end="11" type="uint">
+      <value name="MULTISAMPLECOUNT_1" value="0" />
+      <value name="MULTISAMPLECOUNT_2" value="1" />
+      <value name="MULTISAMPLECOUNT_4" value="2" />
+      <value name="MULTISAMPLECOUNT_8" value="3" />
+      <value name="MULTISAMPLECOUNT_16" value="4" />
+    </field>
+    <field name="Special Mode of Operation" start="12" end="13" type="uint">
+      <value name="NONE" value="0" />
+      <value name="USE_AUX_SPECIAL_OPERATIONS_MODE" value="1" />
+    </field>
+    <field name="Color Depth" start="19" end="21" type="uint" prefix="XY_BPP">
+      <value name="8_BIT" value="0" />
+      <value name="16_BIT" value="1" />
+      <value name="32_BIT" value="2" />
+      <value name="64_BIT" value="3" />
+      <value name="96_BIT" value="4" />
+      <value name="128_BIT" value="5" />
+    </field>
+    <field name="Instruction Target(Opcode)" start="22" end="28" type="uint" default="68">
+      <value name="XY_FAST_COLOR_BLT" value="68" />
+    </field>
+    <field name="Client" start="29" end="31" type="uint" default="2">
+      <value name="2D Processor" value="2" />
+    </field>
+    <field name="Destination Pitch" start="32" end="49" type="uint" />
+    <field name="Destination Encrypt En" start="53" end="53" type="bool" />
+    <field name="Destination MOCS" start="56" end="59" type="uint" />
+    <field name="Destination Tiling" start="62" end="63" type="uint" prefix="XY_TILE">
+      <value name="LINEAR" value="0" />
+      <value name="X" value="1" />
+      <value name="4" value="2" />
+      <value name="64" value="3" />
+    </field>
+    <field name="Destination X1" start="64" end="79" type="int" />
+    <field name="Destination Y1" start="80" end="95" type="int" />
+    <field name="Destination X2" start="96" end="111" type="int" />
+    <field name="Destination Y2" start="112" end="127" type="int" />
+    <field name="Destination Base Address" start="128" end="191" type="address" />
+    <field name="Destination X Offset" start="192" end="205" type="uint" />
+    <field name="Destination Y Offset" start="208" end="221" type="uint" />
+    <field name="Destination Target Memory" start="223" end="223" type="uint">
+      <value name="LOCAL_MEM" value="0" />
+      <value name="SYSTEM_MEM" value="1" />
+    </field>
+    <group count="4" start="224" size="32">
+      <field name="Fill Color" start="0" end="31" type="uint" />
+    </group>
+    <field name="Destination Compression Format" start="352" end="355" type="uint" />
+    <field name="Surface Format" start="384" end="392" type="uint" />
+    <field name="AUX_SPECIAL_OPERATIONS_MODE" start="413" end="415" type="uint">
+      <value name="FAST_CLEAR_HW_FORMAT_CONVERSION" value="0" />
+      <value name="FAST_CLEAR_BYPASS_HW_FORMAT_CONVERSION" value="1" />
+      <value name="FORCE_UNCOMPRESS" value="2" />
+    </field>
+    <field name="Destination Surface Height" start="416" end="429" type="uint" />
+    <field name="Destination Surface Width" start="430" end="443" type="uint" />
+    <field name="Destination Surface Type" start="445" end="447" type="uint" prefix="XY_SURFTYPE">
+      <value name="1D" value="0" />
+      <value name="2D" value="1" />
+      <value name="3D" value="2" />
+      <value name="CUBE" value="3" />
+    </field>
+    <field name="Destination LOD" start="448" end="451" type="uint" />
+    <field name="Destination Surface QPitch" start="452" end="466" type="uint" />
+    <field name="Destination Surface Depth" start="469" end="479" type="uint" />
+    <field name="Destination Horizontal Align" start="480" end="481" type="uint">
+      <value name="HALIGN_16" value="0" />
+      <value name="HALIGN_32" value="1" />
+      <value name="HALIGN_64" value="2" />
+      <value name="HALIGN_128" value="3" />
+    </field>
+    <field name="Destination Vertical Align" start="483" end="484" type="uint">
+      <value name="VALIGN_4" value="1" />
+      <value name="VALIGN_8" value="2" />
+      <value name="VALIGN_16" value="3" />
+    </field>
+    <field name="Destination Mip Tail Start LOD" start="488" end="491" type="uint" />
+    <field name="Destination Depth/Stencil Resource" start="498" end="498" type="bool" />
+    <field name="Destination Array Index" start="501" end="511" type="uint" />
+  </instruction>
   <register name="GFX_TRTT_VA_RANGE" length="1" num="0x4404">
     <field name="TR-VA Base" start="0" end="12" type="uint" />
   </register>

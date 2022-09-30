@@ -2135,12 +2135,14 @@ blorp_xy_fast_color_blit(struct blorp_batch *batch,
          params->dst.addr.local_hint ? XY_MEM_LOCAL : XY_MEM_SYSTEM;
 
       if (params->dst.aux_usage != ISL_AUX_USAGE_NONE) {
+#if GFX_VERx10 == 125
          blt.DestinationAuxiliarySurfaceMode = xy_aux_mode(&params->dst);
          blt.DestinationCompressionEnable = true;
-         blt.DestinationCompressionFormat =
-            isl_get_render_compression_format(dst_surf->format);
          blt.DestinationClearValueEnable = !!params->dst.clear_color_addr.buffer;
          blt.DestinationClearAddress = params->dst.clear_color_addr;
+#endif
+         blt.DestinationCompressionFormat =
+            isl_get_render_compression_format(dst_surf->format);
       }
 
       blt.DestinationMOCS = params->dst.addr.mocs;

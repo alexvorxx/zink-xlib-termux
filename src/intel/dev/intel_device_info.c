@@ -1225,7 +1225,7 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .cooperative_matrix_configurations = { { 0 }, },             \
    .has_flat_ccs = true
 
-UNUSED static const struct intel_device_info intel_device_info_bmg = {
+static const struct intel_device_info intel_device_info_bmg = {
    XE2_FEATURES,
    .platform = INTEL_PLATFORM_BMG,
    .has_local_mem = true,

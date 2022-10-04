@@ -75,6 +75,7 @@ static const struct {
    { "mtl", 0x7d60 },
    { "arl", 0x7d67 },
    { "lnl", 0x64a0 },
+   { "bmg", 0xe202 },
 };
 
 /**
@@ -1223,6 +1224,13 @@ static const struct intel_device_info intel_device_info_arl_h = {
    },                                                           \
    .cooperative_matrix_configurations = { { 0 }, },             \
    .has_flat_ccs = true
+
+UNUSED static const struct intel_device_info intel_device_info_bmg = {
+   XE2_FEATURES,
+   .platform = INTEL_PLATFORM_BMG,
+   .has_local_mem = true,
+   .apply_hwconfig = true,
+};
 
 static const struct intel_device_info intel_device_info_lnl = {
    XE2_FEATURES,

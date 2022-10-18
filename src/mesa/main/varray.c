@@ -241,6 +241,11 @@ _mesa_vertex_attrib_binding(struct gl_context *ctx,
       }
 
       vao->NonDefaultStateMask |= array_bit | BITFIELD_BIT(bindingIndex);
+
+      if (attribIndex != bindingIndex)
+         vao->NonIdentityBufferAttribMapping |= array_bit;
+      else
+         vao->NonIdentityBufferAttribMapping &= ~array_bit;
    }
 }
 
@@ -4093,6 +4098,8 @@ init_array(struct gl_context *ctx,
    struct gl_array_attributes *array = &vao->VertexAttrib[index];
    assert(index < ARRAY_SIZE(vao->BufferBinding));
    struct gl_vertex_buffer_binding *binding = &vao->BufferBinding[index];
+
+   vao->NonIdentityBufferAttribMapping &= ~BITFIELD_BIT(index);
 
    _mesa_set_vertex_format(&array->Format, size, type, GL_RGBA,
                            GL_FALSE, GL_FALSE, GL_FALSE);

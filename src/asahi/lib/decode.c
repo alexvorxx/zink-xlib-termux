@@ -18,17 +18,10 @@
 
 #include "util/u_hexdump.h"
 #include "decode.h"
+#include "unstable_asahi_drm.h"
 #ifdef __APPLE__
 #include "agx_iokit.h"
 #endif
-
-/* Pending UAPI */
-struct drm_asahi_params_global {
-   int gpu_generation;
-   int gpu_variant;
-   int chip_id;
-   int num_clusters_total;
-};
 
 struct libagxdecode_config lib_config;
 
@@ -281,6 +274,11 @@ agxdecode_map_read_write(struct agxdecode_ctx *ctx)
    {                                                                           \
       agx_unpack(agxdecode_dump_stream, cl, T, temp);                          \
       DUMP_UNPACKED(T, temp, str "\n");                                        \
+   }
+
+#define DUMP_FIELD(struct, fmt, field)                                         \
+   {                                                                           \
+      fprintf(agxdecode_dump_stream, #field " = " fmt "\n", struct->field);    \
    }
 
 #define agxdecode_log(str) fputs(str, agxdecode_dump_stream)
@@ -978,6 +976,116 @@ agxdecode_image_heap(struct agxdecode_ctx *ctx, uint64_t heap,
    free(map);
 
    agxdecode_map_read_write(ctx);
+}
+
+void
+agxdecode_drm_cmd_render(struct agxdecode_ctx *ctx,
+                         struct drm_asahi_params_global *params,
+                         struct drm_asahi_cmd_render *c, bool verbose)
+{
+   agxdecode_dump_file_open();
+
+   DUMP_FIELD(c, "%llx", flags);
+   DUMP_FIELD(c, "0x%llx", encoder_ptr);
+   agxdecode_stateful(ctx, c->encoder_ptr, "Encoder", agxdecode_vdm, verbose,
+                      params, NULL);
+   DUMP_FIELD(c, "0x%x", encoder_id);
+   DUMP_FIELD(c, "0x%x", cmd_ta_id);
+   DUMP_FIELD(c, "0x%x", cmd_3d_id);
+   DUMP_FIELD(c, "0x%x", ppp_ctrl);
+   DUMP_FIELD(c, "0x%llx", ppp_multisamplectl);
+   DUMP_CL(ZLS_CONTROL, &c->zls_ctrl, "ZLS Control");
+   DUMP_FIELD(c, "0x%llx", depth_buffer_load);
+   DUMP_FIELD(c, "0x%llx", depth_buffer_store);
+   DUMP_FIELD(c, "0x%llx", depth_buffer_partial);
+   DUMP_FIELD(c, "0x%llx", stencil_buffer_load);
+   DUMP_FIELD(c, "0x%llx", stencil_buffer_store);
+   DUMP_FIELD(c, "0x%llx", stencil_buffer_partial);
+   DUMP_FIELD(c, "0x%llx", scissor_array);
+   DUMP_FIELD(c, "0x%llx", depth_bias_array);
+   DUMP_FIELD(c, "%d", fb_width);
+   DUMP_FIELD(c, "%d", fb_height);
+   DUMP_FIELD(c, "%d", layers);
+   DUMP_FIELD(c, "%d", samples);
+   DUMP_FIELD(c, "%d", sample_size);
+   DUMP_FIELD(c, "%d", tib_blocks);
+   DUMP_FIELD(c, "%d", utile_width);
+   DUMP_FIELD(c, "%d", utile_height);
+   DUMP_FIELD(c, "0x%x", load_pipeline);
+   DUMP_FIELD(c, "0x%x", load_pipeline_bind);
+   agxdecode_stateful(ctx, c->load_pipeline & ~0x7, "Load pipeline",
+                      agxdecode_usc, verbose, params, NULL);
+   DUMP_FIELD(c, "0x%x", store_pipeline);
+   DUMP_FIELD(c, "0x%x", store_pipeline_bind);
+   agxdecode_stateful(ctx, c->store_pipeline & ~0x7, "Store pipeline",
+                      agxdecode_usc, verbose, params, NULL);
+   DUMP_FIELD(c, "0x%x", partial_reload_pipeline);
+   DUMP_FIELD(c, "0x%x", partial_reload_pipeline_bind);
+   agxdecode_stateful(ctx, c->partial_reload_pipeline & ~0x7,
+                      "Partial reload pipeline", agxdecode_usc, verbose, params,
+                      NULL);
+   DUMP_FIELD(c, "0x%x", partial_store_pipeline);
+   DUMP_FIELD(c, "0x%x", partial_store_pipeline_bind);
+   agxdecode_stateful(ctx, c->partial_store_pipeline & ~0x7,
+                      "Partial store pipeline", agxdecode_usc, verbose, params,
+                      NULL);
+
+   DUMP_FIELD(c, "0x%x", depth_dimensions);
+   DUMP_FIELD(c, "0x%x", isp_bgobjdepth);
+   DUMP_FIELD(c, "0x%x", isp_bgobjvals);
+
+   agxdecode_sampler_heap(ctx, c->vertex_sampler_array,
+                          c->vertex_sampler_count);
+
+   /* Linux driver doesn't use this, at least for now */
+   assert(c->fragment_sampler_array == c->vertex_sampler_array);
+   assert(c->fragment_sampler_count == c->vertex_sampler_count);
+
+   DUMP_FIELD(c, "%d", vertex_attachment_count);
+   struct drm_asahi_attachment *vertex_attachments =
+      (void *)c->vertex_attachments;
+   for (unsigned i = 0; i < c->vertex_attachment_count; i++) {
+      DUMP_FIELD((&vertex_attachments[i]), "0x%x", order);
+      DUMP_FIELD((&vertex_attachments[i]), "0x%llx", size);
+      DUMP_FIELD((&vertex_attachments[i]), "0x%llx", pointer);
+   }
+   DUMP_FIELD(c, "%d", fragment_attachment_count);
+   struct drm_asahi_attachment *fragment_attachments =
+      (void *)c->fragment_attachments;
+   for (unsigned i = 0; i < c->fragment_attachment_count; i++) {
+      DUMP_FIELD((&fragment_attachments[i]), "0x%x", order);
+      DUMP_FIELD((&fragment_attachments[i]), "0x%llx", size);
+      DUMP_FIELD((&fragment_attachments[i]), "0x%llx", pointer);
+   }
+
+   agxdecode_map_read_write(ctx);
+}
+
+void
+agxdecode_drm_cmd_compute(struct agxdecode_ctx *ctx,
+                          struct drm_asahi_params_global *params,
+                          struct drm_asahi_cmd_compute *c, bool verbose)
+{
+   agxdecode_dump_file_open();
+
+   DUMP_FIELD(c, "%llx", flags);
+   DUMP_FIELD(c, "0x%llx", encoder_ptr);
+   agxdecode_stateful(ctx, c->encoder_ptr, "Encoder", agxdecode_cdm, verbose,
+                      params, NULL);
+   DUMP_FIELD(c, "0x%x", encoder_id);
+   DUMP_FIELD(c, "0x%x", cmd_id);
+
+   agxdecode_sampler_heap(ctx, c->sampler_array, c->sampler_count);
+
+   agxdecode_map_read_write(ctx);
+
+   if (c->helper_program & 1) {
+      fprintf(agxdecode_dump_stream, "Helper program:\n");
+      uint8_t buf[1024];
+      agx_disassemble(
+         buf, agxdecode_fetch_gpu_array(ctx, c->helper_program & ~1, buf),
+         agxdecode_dump_stream);
+   }
 }
 
 static void

@@ -10,6 +10,8 @@
 #include <sys/types.h>
 #include "agx_bo.h"
 
+#include "unstable_asahi_drm.h"
+
 struct agxdecode_ctx;
 
 struct agxdecode_ctx *agxdecode_new_context(void);
@@ -25,6 +27,16 @@ void agxdecode_cmdstream(struct agxdecode_ctx *ctx, unsigned cmdbuf_index,
 
 void agxdecode_image_heap(struct agxdecode_ctx *ctx, uint64_t heap,
                           unsigned nr_entries);
+
+void agxdecode_drm_cmd_render(struct agxdecode_ctx *ctx,
+                              struct drm_asahi_params_global *params,
+                              struct drm_asahi_cmd_render *cmdbuf,
+                              bool verbose);
+
+void agxdecode_drm_cmd_compute(struct agxdecode_ctx *ctx,
+                               struct drm_asahi_params_global *params,
+                               struct drm_asahi_cmd_compute *cmdbuf,
+                               bool verbose);
 
 void agxdecode_dump_file_open(void);
 

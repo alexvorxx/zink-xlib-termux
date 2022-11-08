@@ -189,7 +189,7 @@ agx_bo_unreference(struct agx_bo *bo)
     * lock, let's make sure it's still not referenced before freeing it.
     */
    if (p_atomic_read(&bo->refcnt) == 0) {
-      assert(!p_atomic_read_relaxed(&bo->writer_syncobj));
+      assert(!p_atomic_read_relaxed(&bo->writer));
 
       if (dev->debug & AGX_DBG_TRACE)
          agxdecode_track_free(dev->agxdecode, bo);
@@ -225,12 +225,12 @@ agx_bo_create_aligned(struct agx_device *dev, unsigned size, unsigned align,
     * flush the cache to make space for the new allocation.
     */
    if (!bo)
-      bo = agx_bo_alloc(dev, size, align, flags);
+      bo = dev->ops.bo_alloc(dev, size, align, flags);
    if (!bo)
       bo = agx_bo_cache_fetch(dev, size, align, flags, false);
    if (!bo) {
       agx_bo_cache_evict_all(dev);
-      bo = agx_bo_alloc(dev, size, align, flags);
+      bo = dev->ops.bo_alloc(dev, size, align, flags);
    }
 
    if (!bo) {

@@ -9,6 +9,7 @@ libasahi_lib_files = files(
   'agx_bo.c',
   'agx_border.c',
   'agx_device.c',
+  'agx_device_virtio.c',
   'agx_formats.c',
   'agx_linker.c',
   'agx_bg_eot.c',
@@ -86,10 +87,10 @@ libagx_shaders = custom_target(
 libasahi_lib = static_library(
   'asahi_lib',
   [libasahi_lib_files, libagx_shaders, agx_pack],
-  include_directories : inc_asahi,
+  include_directories : [inc_asahi, inc_virtio_gpu, inc_virtio_vdrm],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
-  link_with: [libasahi_decode],
+  link_with: [libasahi_decode, libvdrm],
   dependencies: [dep_libdrm, dep_valgrind, idep_nir],
   build_by_default : false,
 )

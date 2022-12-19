@@ -915,6 +915,15 @@
     <field name="Address" start="66" end="111" type="address" />
     <field name="Immediate Data" start="128" end="191" type="uint" />
   </instruction>
+  <instruction name="STATE_BYTE_STRIDE" bias="2" length="2" engine="render|compute">
+    <field name="DWord Length" start="0" end="7" type="uint" default="0" />
+    <field name="Byte Stride Enable" start="8" end="8" type="bool" />
+    <field name="3D Command Sub Opcode" start="16" end="23" type="uint" default="5" />
+    <field name="3D Command Opcode" start="24" end="26" type="uint" default="0" />
+    <field name="Command SubType" start="27" end="28" type="uint" default="0" />
+    <field name="Command Type" start="29" end="31" type="uint" default="3" />
+    <field name="Byte Stride" start="34" end="63" type="uint" />
+  </instruction>
   <instruction name="XY_FAST_COLOR_BLT" bias="2" length="16" engine="blitter">
     <field name="DWord Length" start="0" end="7" type="uint" default="14" />
     <field name="Number of Multisamples" start="9" end="11" type="uint">

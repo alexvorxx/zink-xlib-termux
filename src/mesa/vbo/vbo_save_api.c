@@ -953,16 +953,16 @@ end:
       _mesa_reference_vao(ctx, &node->cold->VAO[vpm], save->VAO[vpm]);
    }
 
-   /* Prepare for DrawGalliumVertexState */
-   if (node->num_draws && ctx->Driver.DrawGalliumVertexState) {
+   /* Prepare for draw_vertex_state. */
+   if (node->num_draws && ctx->Const.HasDrawVertexState) {
       for (unsigned i = 0; i < VP_MODE_MAX; i++) {
          uint32_t enabled_attribs = _vbo_get_vao_filter(i) &
                                     node->cold->VAO[i]->_EnabledWithMapMode;
 
          node->state[i] =
-            ctx->Driver.CreateGalliumVertexState(ctx, node->cold->VAO[i],
-                                                 node->cold->ib.obj,
-                                                 enabled_attribs);
+            st_create_gallium_vertex_state(ctx, node->cold->VAO[i],
+                                           node->cold->ib.obj,
+                                           enabled_attribs);
          node->private_refcount[i] = 0;
          node->enabled_attribs[i] = enabled_attribs;
       }

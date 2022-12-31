@@ -271,43 +271,6 @@ st_indirect_draw_vbo(struct gl_context *ctx,
       _mesa_flush(ctx);
 }
 
-static void
-st_draw_gallium_vertex_state(struct gl_context *ctx,
-                             struct pipe_vertex_state *state,
-                             struct pipe_draw_vertex_state_info info,
-                             const struct pipe_draw_start_count_bias *draws,
-                             const uint8_t *mode,
-                             unsigned num_draws)
-{
-   struct st_context *st = st_context(ctx);
-
-   st_prepare_draw(ctx, ST_PIPELINE_RENDER_STATE_MASK_NO_VARRAYS);
-
-   struct pipe_context *pipe = st->pipe;
-   uint32_t velem_mask = ctx->VertexProgram._Current->info.inputs_read;
-
-   if (!mode) {
-      pipe->draw_vertex_state(pipe, state, velem_mask, info, draws, num_draws);
-   } else {
-      /* Find consecutive draws where mode doesn't vary. */
-      for (unsigned i = 0, first = 0; i <= num_draws; i++) {
-         if (i == num_draws || mode[i] != mode[first]) {
-            unsigned current_num_draws = i - first;
-
-            /* Increase refcount to be able to use take_vertex_state_ownership
-             * with all draws.
-             */
-            if (i != num_draws && info.take_vertex_state_ownership)
-               p_atomic_inc(&state->reference.count);
-
-            info.mode = mode[first];
-            pipe->draw_vertex_state(pipe, state, velem_mask, info, &draws[first],
-                                    current_num_draws);
-            first = i;
-         }
-      }
-   }
-}
 
 void
 st_init_draw_functions(struct pipe_screen *screen,
@@ -315,11 +278,6 @@ st_init_draw_functions(struct pipe_screen *screen,
 {
    functions->DrawGallium = st_draw_gallium;
    functions->DrawGalliumMultiMode = st_draw_gallium_multimode;
-
-   if (screen->get_param(screen, PIPE_CAP_DRAW_VERTEX_STATE)) {
-      functions->DrawGalliumVertexState = st_draw_gallium_vertex_state;
-      functions->CreateGalliumVertexState = st_create_gallium_vertex_state;
-   }
 }
 
 

@@ -169,20 +169,7 @@ struct dd_function_table {
                                 const struct pipe_draw_start_count_bias *draws,
                                 const unsigned char *mode,
                                 unsigned num_draws);
-
-   void (*DrawGalliumVertexState)(struct gl_context *ctx,
-                                  struct pipe_vertex_state *state,
-                                  struct pipe_draw_vertex_state_info info,
-                                  const struct pipe_draw_start_count_bias *draws,
-                                  const uint8_t *mode,
-                                  unsigned num_draws);
    /*@}*/
-
-   struct pipe_vertex_state *
-      (*CreateGalliumVertexState)(struct gl_context *ctx,
-                                  const struct gl_vertex_array_object *vao,
-                                  struct gl_buffer_object *indexbuf,
-                                  uint32_t enabled_attribs);
 
    /**
     * \name Support for multiple T&L engines

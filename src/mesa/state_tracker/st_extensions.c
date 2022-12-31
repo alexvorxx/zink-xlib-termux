@@ -626,6 +626,9 @@ void st_init_limits(struct pipe_screen *screen,
 
    c->AllowGLThreadBufferSubDataOpt =
       screen->get_param(screen, PIPE_CAP_ALLOW_GLTHREAD_BUFFER_SUBDATA_OPT);
+
+   c->HasDrawVertexState =
+      screen->get_param(screen, PIPE_CAP_DRAW_VERTEX_STATE);
 }
 
 

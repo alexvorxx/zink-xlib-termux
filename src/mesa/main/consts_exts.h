@@ -1018,5 +1018,9 @@ struct gl_constants
 
    /** Allow GLThread to convert glBuffer */
    bool AllowGLThreadBufferSubDataOpt;
+
+   /** Whether pipe_context::draw_vertex_state is supported. */
+   bool HasDrawVertexState;
 };
+
 #endif

@@ -113,7 +113,7 @@ st_prepare_draw(struct gl_context *ctx, uint64_t state_mask)
 
 void
 st_draw_gallium(struct gl_context *ctx,
-                struct pipe_draw_info *info,
+                const struct pipe_draw_info *info,
                 unsigned drawid_offset,
                 const struct pipe_draw_indirect_info *indirect,
                 const struct pipe_draw_start_count_bias *draws,
@@ -435,7 +435,7 @@ st_draw_quad(struct st_context *st,
 
 static void
 st_hw_select_draw_gallium(struct gl_context *ctx,
-                          struct pipe_draw_info *info,
+                          const struct pipe_draw_info *info,
                           unsigned drawid_offset,
                           const struct pipe_draw_indirect_info *indirect,
                           const struct pipe_draw_start_count_bias *draws,
@@ -445,12 +445,14 @@ st_hw_select_draw_gallium(struct gl_context *ctx,
    enum mesa_prim old_mode = info->mode;
 
    if (st_draw_hw_select_prepare_common(ctx) &&
-       st_draw_hw_select_prepare_mode(ctx, info)) {
+       /* Removing "const" is fine because we restore the changed mode
+        * at the end. */
+       st_draw_hw_select_prepare_mode(ctx, ((struct pipe_draw_info*)info))) {
       cso_draw_vbo(st->cso_context, info, drawid_offset, indirect, draws,
                    num_draws);
    }
 
-   info->mode = old_mode;
+   ((struct pipe_draw_info*)info)->mode = old_mode;
 }
 
 static void

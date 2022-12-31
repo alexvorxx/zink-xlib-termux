@@ -218,7 +218,7 @@ cso_draw_arrays(struct cso_context *cso, unsigned mode, unsigned start, unsigned
 
 static ALWAYS_INLINE void
 cso_draw_vbo(struct cso_context *cso,
-             struct pipe_draw_info *info,
+             const struct pipe_draw_info *info,
              unsigned drawid_offset,
              const struct pipe_draw_indirect_info *indirect,
              const struct pipe_draw_start_count_bias *draws,

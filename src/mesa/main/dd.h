@@ -143,20 +143,13 @@ struct dd_function_table {
     */
 
    /**
-    * Optimal Gallium version of Draw() that doesn't require translation
-    * of draw info in the state tracker.
+    * The basic draw function used to implement glDrawArrays, glDrawElements,
+    * multidraws, and instancing.
     *
     * The interface is identical to pipe_context::draw_vbo.
-    *
-    * "info" is not const and the following fields can be changed by
-    * the callee, so callers should be aware:
-    * - info->index_bounds_valid (if false)
-    * - info->min_index (if index_bounds_valid is false)
-    * - info->max_index (if index_bounds_valid is false)
-    * - info->drawid (if increment_draw_id is true)
     */
    void (*DrawGallium)(struct gl_context *ctx,
-                       struct pipe_draw_info *info,
+                       const struct pipe_draw_info *info,
                        unsigned drawid_offset,
                        const struct pipe_draw_indirect_info *indirect,
                        const struct pipe_draw_start_count_bias *draws,

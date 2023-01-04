@@ -2682,14 +2682,22 @@ static void
 setup_barrier_message_payload_gfx125(const fs_builder &bld,
                                      const fs_reg &msg_payload)
 {
-   assert(bld.shader->devinfo->verx10 >= 125);
+   const fs_builder ubld = bld.exec_all().group(1, 0);
+   const struct intel_device_info *devinfo = bld.shader->devinfo;
+   assert(devinfo->verx10 >= 125);
 
    /* From BSpec: 54006, mov r0.2[31:24] into m0.2[31:24] and m0.2[23:16] */
    fs_reg m0_10ub = horiz_offset(retype(msg_payload, BRW_TYPE_UB), 10);
    fs_reg r0_11ub =
       stride(suboffset(retype(brw_vec1_grf(0, 0), BRW_TYPE_UB), 11),
              0, 1, 0);
-   bld.exec_all().group(2, 0).MOV(m0_10ub, r0_11ub);
+   ubld.group(2, 0).MOV(m0_10ub, r0_11ub);
+
+   if (devinfo->ver >= 20) {
+      /* Use an active threads barrier. */
+      const fs_reg m0_2ud = component(retype(msg_payload, BRW_TYPE_UD), 2);
+      ubld.OR(m0_2ud, m0_2ud, brw_imm_ud(1u << 8));
+   }
 }
 
 static void

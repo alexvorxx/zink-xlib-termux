@@ -911,7 +911,12 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
       }
 #endif
 
-#if GFX_VER >= 12
+#if GFX_VER >= 20
+      /* According to Bspec 57023 >> RENDER_SURFACE_STATE, the clear value
+       * address and explicit clear value are removed since Xe2.
+       */
+      assert(!info->use_clear_address);
+#elif GFX_VER >= 12
       assert(info->use_clear_address);
 #elif GFX_VER >= 9
       if (!info->use_clear_address) {

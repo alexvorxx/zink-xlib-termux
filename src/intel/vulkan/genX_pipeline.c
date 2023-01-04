@@ -1451,6 +1451,10 @@ emit_3dstate_te(struct anv_graphics_pipeline *pipeline)
          /* 1K_TRIANGLES */
          te.LocalBOPAccumulatorThreshold = 1;
 #endif
+
+#if GFX_VER >= 20
+         te.NumberOfRegionsPerPatch = 2;
+#endif
       }
    }
 }

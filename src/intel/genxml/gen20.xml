@@ -746,6 +746,7 @@
       <value name="TRI_CW" value="2" />
       <value name="TRI_CCW" value="3" />
     </field>
+    <field name="Number Of Regions Per Patch" start="42" end="43" type="uint" />
     <field name="Partitioning" start="44" end="45" type="uint">
       <value name="INTEGER" value="0" />
       <value name="ODD_FRACTIONAL" value="1" />

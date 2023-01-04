@@ -1995,7 +1995,8 @@ optimizations.extend([
    (('imul_32x16', a, b), ('imul', a, ('extract_i16', b, 0)), 'options->lower_mul_32x16'),
    (('umul_32x16', a, b), ('imul', a, ('extract_u16', b, 0)), 'options->lower_mul_32x16'),
 
-   (('uadd_sat@64', a, b), ('bcsel', ('ult', ('iadd', a, b), a), -1, ('iadd', a, b)), 'options->lower_uadd_sat || (options->lower_int64_options & nir_lower_iadd64) != 0'),
+   (('uadd_sat@64', a, b), ('bcsel', ('ult', ('iadd', a, b), a), -1, ('iadd', a, b)),
+    'options->lower_uadd_sat || (options->lower_int64_options & (nir_lower_iadd64 | nir_lower_uadd_sat64)) != 0'),
    (('uadd_sat', a, b), ('bcsel', ('ult', ('iadd', a, b), a), -1, ('iadd', a, b)), 'options->lower_uadd_sat'),
    (('usub_sat', a, b), ('bcsel', ('ult', a, b), 0, ('isub', a, b)), 'options->lower_usub_sat'),
    (('usub_sat@64', a, b), ('bcsel', ('ult', a, b), 0, ('isub', a, b)), '(options->lower_int64_options & nir_lower_usub_sat64) != 0'),
@@ -2330,7 +2331,7 @@ optimizations.extend([
 for bit_size in [8, 16, 32, 64]:
    cond = '!options->lower_uadd_sat'
    if bit_size == 64:
-      cond += ' && !(options->lower_int64_options & nir_lower_iadd64)'
+      cond += ' && !(options->lower_int64_options & (nir_lower_iadd64 | nir_lower_uadd_sat64))'
    add = 'iadd@' + str(bit_size)
 
    optimizations += [

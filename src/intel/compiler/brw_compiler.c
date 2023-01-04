@@ -145,7 +145,8 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
                         nir_lower_bit_count64 |
                         nir_lower_bcsel64 | nir_lower_conv64 |
                         nir_lower_extract64 | nir_lower_scan_reduce_bitwise64 |
-                        nir_lower_scan_reduce_iadd64 | nir_lower_subgroup_shuffle64);
+                        nir_lower_scan_reduce_iadd64 | nir_lower_subgroup_shuffle64 |
+                        nir_lower_iadd_sat64 | nir_lower_uadd_sat64);
 
    /* We want the GLSL compiler to emit code that uses condition codes */
    for (int i = 0; i < MESA_ALL_SHADER_STAGES; i++) {

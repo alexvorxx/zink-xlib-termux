@@ -373,6 +373,9 @@ Struct("intel_device_info",
         Member("unsigned", "num_thread_per_eu", compiler_field=True,
                comment="Number of threads per eu, varies between 4 and 8 between generations."),
 
+        Member("uint8_t", "grf_size",
+               comment="Size of a register from the EU GRF file in bytes."),
+
         Member("uint8_t", "slice_masks",
                comment="A bit mask of the slices available."),
 

@@ -640,9 +640,8 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
    const intel_device_info *devinfo = bld.shader->devinfo;
    const unsigned reg_size = dst.component_size(bld.dispatch_width()) /
                              REG_SIZE;
-   assert(count % reg_size == 0);
 
-   for (unsigned i = 0; i < count / reg_size; i++) {
+   for (unsigned i = 0; i < DIV_ROUND_UP(count, reg_size); i++) {
       ++stats->fill_count;
 
       fs_inst *unspill_inst;
@@ -715,6 +714,7 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
                         BRW_DATAPORT_OWORD_BLOCK_DWORDS(reg_size * 8));
       }
       _mesa_set_add(spill_insts, unspill_inst);
+      assert(unspill_inst->force_writemask_all || count % reg_size == 0);
 
       dst.offset += reg_size * REG_SIZE;
       spill_offset += reg_size * REG_SIZE;
@@ -730,9 +730,8 @@ fs_reg_alloc::emit_spill(const fs_builder &bld,
    const intel_device_info *devinfo = bld.shader->devinfo;
    const unsigned reg_size = src.component_size(bld.dispatch_width()) /
                              REG_SIZE;
-   assert(count % reg_size == 0);
 
-   for (unsigned i = 0; i < count / reg_size; i++) {
+   for (unsigned i = 0; i < DIV_ROUND_UP(count, reg_size); i++) {
       ++stats->spill_count;
 
       fs_inst *spill_inst;
@@ -794,6 +793,7 @@ fs_reg_alloc::emit_spill(const fs_builder &bld,
                         BRW_DATAPORT_OWORD_BLOCK_DWORDS(reg_size * 8));
       }
       _mesa_set_add(spill_insts, spill_inst);
+      assert(spill_inst->force_writemask_all || count % reg_size == 0);
 
       src.offset += reg_size * REG_SIZE;
       spill_offset += reg_size * REG_SIZE;

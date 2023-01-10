@@ -100,7 +100,7 @@ foreach grl_file : grl_grl_files
 endforeach
 
 grl_genX_libs = []
-foreach t : [['125', 'gfx125', 'dg2']]
+foreach t : [['125', 'gfx125', 'dg2'], ['200', 'gfx20', 'lnl'], ]
   verX10 = t[0]
   genX_prefix = t[1]
   platform = t[2]

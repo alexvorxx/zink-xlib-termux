@@ -77,9 +77,10 @@ alloc_transfer_temp_bo(struct radv_cmd_buffer *cmd_buffer)
       return true;
 
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   const VkResult r = radv_bo_create(device, RADV_SDMA_TRANSFER_TEMP_BYTES, 4096, RADEON_DOMAIN_VRAM,
-                                     RADEON_FLAG_NO_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING,
-                                     RADV_BO_PRIORITY_SCRATCH, 0, true, &cmd_buffer->transfer.copy_temp);
+   const VkResult r =
+      radv_bo_create(device, &cmd_buffer->vk.base, RADV_SDMA_TRANSFER_TEMP_BYTES, 4096, RADEON_DOMAIN_VRAM,
+                     RADEON_FLAG_NO_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_SCRATCH, 0, true,
+                     &cmd_buffer->transfer.copy_temp);
 
    if (r != VK_SUCCESS) {
       vk_command_buffer_set_error(&cmd_buffer->vk, r);

@@ -973,7 +973,7 @@ radv_create_shader_arena(struct radv_device *device, struct radv_shader_free_lis
       flags |= RADEON_FLAG_PREFER_LOCAL_BO;
 
    VkResult result;
-   result = radv_bo_create(device, arena_size, RADV_SHADER_ALLOC_ALIGNMENT, RADEON_DOMAIN_VRAM, flags,
+   result = radv_bo_create(device, NULL, arena_size, RADV_SHADER_ALLOC_ALIGNMENT, RADEON_DOMAIN_VRAM, flags,
                            RADV_BO_PRIORITY_SHADER, replay_va, true, &arena->bo);
    if (result != VK_SUCCESS)
       goto fail;
@@ -1010,7 +1010,7 @@ fail:
    if (alloc)
       free_block_obj(device, alloc);
    if (arena && arena->bo)
-      radv_bo_destroy(device, arena->bo);
+      radv_bo_destroy(device, NULL, arena->bo);
    free(arena);
    return NULL;
 }
@@ -1164,7 +1164,7 @@ fail:
    free(alloc);
    if (arena) {
       free(arena->list.next);
-      radv_bo_destroy(device, arena->bo);
+      radv_bo_destroy(device, NULL, arena->bo);
    }
    free(arena);
    return NULL;
@@ -1235,7 +1235,7 @@ radv_free_shader_memory(struct radv_device *device, union radv_shader_arena_bloc
       struct radv_shader_arena *arena = hole->arena;
       free_block_obj(device, hole);
 
-      radv_bo_destroy(device, arena->bo);
+      radv_bo_destroy(device, NULL, arena->bo);
       list_del(&arena->list);
       free(arena);
    } else if (free_list) {
@@ -1331,7 +1331,7 @@ radv_destroy_shader_arenas(struct radv_device *device)
       free(block);
 
    list_for_each_entry_safe (struct radv_shader_arena, arena, &device->shader_arenas, list) {
-      radv_bo_destroy(device, arena->bo);
+      radv_bo_destroy(device, NULL, arena->bo);
       free(arena);
    }
    mtx_destroy(&device->shader_arena_mutex);
@@ -1399,7 +1399,7 @@ radv_destroy_shader_upload_queue(struct radv_device *device)
       if (submission->cs)
          ws->cs_destroy(submission->cs);
       if (submission->bo)
-         radv_bo_destroy(device, submission->bo);
+         radv_bo_destroy(device, NULL, submission->bo);
       list_del(&submission->list);
       free(submission);
    }
@@ -1914,10 +1914,10 @@ radv_shader_dma_resize_upload_buf(struct radv_device *device, struct radv_shader
                                   uint64_t size)
 {
    if (submission->bo)
-      radv_bo_destroy(device, submission->bo);
+      radv_bo_destroy(device, NULL, submission->bo);
 
    VkResult result = radv_bo_create(
-      device, size, RADV_SHADER_ALLOC_ALIGNMENT, RADEON_DOMAIN_GTT,
+      device, NULL, size, RADV_SHADER_ALLOC_ALIGNMENT, RADEON_DOMAIN_GTT,
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_32BIT | RADEON_FLAG_GTT_WC,
       RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &submission->bo);
    if (result != VK_SUCCESS)

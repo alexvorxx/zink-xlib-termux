@@ -334,14 +334,14 @@ radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
 
       list_for_each_entry_safe (struct radv_cmd_buffer_upload, up, &cmd_buffer->upload.list, list) {
          radv_rmv_log_command_buffer_bo_destroy(device, up->upload_bo);
-         radv_bo_destroy(device, up->upload_bo);
+         radv_bo_destroy(device, &cmd_buffer->vk.base, up->upload_bo);
          list_del(&up->list);
          free(up);
       }
 
       if (cmd_buffer->upload.upload_bo) {
          radv_rmv_log_command_buffer_bo_destroy(device, cmd_buffer->upload.upload_bo);
-         radv_bo_destroy(device, cmd_buffer->upload.upload_bo);
+         radv_bo_destroy(device, &cmd_buffer->vk.base, cmd_buffer->upload.upload_bo);
       }
 
       if (cmd_buffer->cs)
@@ -349,7 +349,7 @@ radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
       if (cmd_buffer->gang.cs)
          device->ws->cs_destroy(cmd_buffer->gang.cs);
       if (cmd_buffer->transfer.copy_temp)
-         radv_bo_destroy(device, cmd_buffer->transfer.copy_temp);
+         radv_bo_destroy(device, &cmd_buffer->vk.base, cmd_buffer->transfer.copy_temp);
 
       radv_cmd_buffer_finish_shader_part_cache(cmd_buffer);
 
@@ -440,7 +440,7 @@ radv_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer, UNUSED VkCommandB
 
    list_for_each_entry_safe (struct radv_cmd_buffer_upload, up, &cmd_buffer->upload.list, list) {
       radv_rmv_log_command_buffer_bo_destroy(device, up->upload_bo);
-      radv_bo_destroy(device, up->upload_bo);
+      radv_bo_destroy(device, &cmd_buffer->vk.base, up->upload_bo);
       list_del(&up->list);
       free(up);
    }
@@ -499,7 +499,7 @@ radv_cmd_buffer_resize_upload_buf(struct radv_cmd_buffer *cmd_buffer, uint64_t m
    new_size = MAX2(new_size, 2 * cmd_buffer->upload.size);
 
    VkResult result = radv_bo_create(
-      device, new_size, 4096, device->ws->cs_domain(device->ws),
+      device, &cmd_buffer->vk.base, new_size, 4096, device->ws->cs_domain(device->ws),
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_32BIT | RADEON_FLAG_GTT_WC,
       RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &bo);
 
@@ -514,7 +514,7 @@ radv_cmd_buffer_resize_upload_buf(struct radv_cmd_buffer *cmd_buffer, uint64_t m
 
       if (!upload) {
          vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
-         radv_bo_destroy(device, bo);
+         radv_bo_destroy(device, &cmd_buffer->vk.base, bo);
          return false;
       }
 
@@ -531,6 +531,7 @@ radv_cmd_buffer_resize_upload_buf(struct radv_cmd_buffer *cmd_buffer, uint64_t m
       vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_DEVICE_MEMORY);
       return false;
    }
+
    radv_rmv_log_command_buffer_bo_create(device, cmd_buffer->upload.upload_bo, 0, cmd_buffer->upload.size, 0);
 
    return true;

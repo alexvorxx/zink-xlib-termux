@@ -1304,7 +1304,6 @@ struct radv_device_memory {
 void radv_device_memory_init(struct radv_device_memory *mem, struct radv_device *device, struct radeon_winsys_bo *bo);
 void radv_device_memory_finish(struct radv_device_memory *mem);
 
-
 enum radv_dynamic_state_bits {
    RADV_DYNAMIC_VIEWPORT = 1ull << 0,
    RADV_DYNAMIC_SCISSOR = 1ull << 1,

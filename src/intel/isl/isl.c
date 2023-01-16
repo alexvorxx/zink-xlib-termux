@@ -2995,7 +2995,7 @@ _isl_surf_info_supports_ccs(const struct isl_device *dev,
    /* TODO: Disable for now, as we're not sure about the meaning of
     * 3DSTATE_CPSIZE_CONTROL_BUFFER::CPCBCompressionEnable
     */
-   if (isl_surf_usage_is_cpb(usage))
+   if (isl_surf_usage_is_cpb(usage) && dev->info->ver < 20)
       return false;
 
    if (INTEL_DEBUG(DEBUG_NO_CCS))

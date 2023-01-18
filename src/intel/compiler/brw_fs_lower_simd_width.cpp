@@ -368,16 +368,21 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
-      return MIN2(16, inst->exec_size);
+      return devinfo->ver < 20 ?
+             MIN2(16, inst->exec_size) :
+             inst->exec_size;
 
    case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
    case SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
    case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
-      assert(inst->exec_size <= 16);
-      return inst->exec_size;
+      return devinfo->ver < 20 ?
+             MIN2(16, inst->exec_size) :
+             inst->exec_size;
 
    case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
-      return devinfo->has_lsc ? MIN2(16, inst->exec_size) : 8;
+      return devinfo->ver < 20 ?
+             devinfo->has_lsc ? MIN2(16, inst->exec_size) : 8 :
+             inst->exec_size;
 
    case SHADER_OPCODE_URB_READ_LOGICAL:
    case SHADER_OPCODE_URB_WRITE_LOGICAL:

@@ -1911,7 +1911,7 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
          ds->db_stencil_info2 = S_02806C_EPITCH(surf->u.gfx9.zs.stencil_epitch);
       }
 
-      ds->db_depth_view |= S_028008_MIPID(level);
+      ds->db_depth_view |= S_028008_MIPID_GFX9(level);
       ds->db_depth_size =
          S_02801C_X_MAX(iview->image->vk.extent.width - 1) | S_02801C_Y_MAX(iview->image->vk.extent.height - 1);
 

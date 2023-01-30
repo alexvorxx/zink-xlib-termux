@@ -2120,8 +2120,8 @@ radv_emit_scissor(struct radv_cmd_buffer *cmd_buffer)
       VkRect2D viewport_scissor = radv_scissor_from_viewport(d->vk.vp.viewports + i);
       VkRect2D scissor = radv_intersect_scissor(&d->vk.vp.scissors[i], &viewport_scissor);
 
-      radeon_emit(
-         cs, S_028250_TL_X(scissor.offset.x) | S_028250_TL_Y(scissor.offset.y) | S_028250_WINDOW_OFFSET_DISABLE(1));
+      radeon_emit(cs, S_028250_TL_X(scissor.offset.x) | S_028250_TL_Y_GFX6(scissor.offset.y) |
+                         S_028250_WINDOW_OFFSET_DISABLE(1));
       radeon_emit(cs, S_028254_BR_X(scissor.offset.x + scissor.extent.width) |
                          S_028254_BR_Y(scissor.offset.y + scissor.extent.height));
    }
@@ -4939,7 +4939,7 @@ radv_write_vertex_descriptors(const struct radv_cmd_buffer *cmd_buffer, const st
          unsigned hw_format = vtx_info->hw_format[vtx_info->num_channels - 1];
 
          if (chip >= GFX10) {
-            rsrc_word3 = vtx_info->dst_sel | S_008F0C_FORMAT(hw_format);
+            rsrc_word3 = vtx_info->dst_sel | S_008F0C_FORMAT_GFX10(hw_format);
          } else {
             rsrc_word3 =
                vtx_info->dst_sel | S_008F0C_NUM_FORMAT((hw_format >> 4) & 0x7) | S_008F0C_DATA_FORMAT(hw_format & 0xf);
@@ -4948,7 +4948,7 @@ radv_write_vertex_descriptors(const struct radv_cmd_buffer *cmd_buffer, const st
          rsrc_word3 = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
                       S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
          if (chip >= GFX10)
-            rsrc_word3 |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_UINT);
+            rsrc_word3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_UINT);
          else
             rsrc_word3 |=
                S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_UINT) | S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
@@ -5174,9 +5174,9 @@ radv_flush_streamout_descriptors(struct radv_cmd_buffer *cmd_buffer)
 
          if (pdev->info.gfx_level >= GFX11) {
             rsrc_word3 |=
-               S_008F0C_FORMAT(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
+               S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
          } else if (pdev->info.gfx_level >= GFX10) {
-            rsrc_word3 |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) |
+            rsrc_word3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
                           S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
          } else {
             rsrc_word3 |= S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
@@ -6355,9 +6355,10 @@ radv_bind_descriptor_sets(struct radv_cmd_buffer *cmd_buffer,
                      S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
 
             if (pdev->info.gfx_level >= GFX11) {
-               dst[3] |= S_008F0C_FORMAT(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
+               dst[3] |=
+                  S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
             } else if (pdev->info.gfx_level >= GFX10) {
-               dst[3] |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) |
+               dst[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
                          S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
             } else {
                dst[3] |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
@@ -8357,7 +8358,7 @@ radv_CmdBeginRendering(VkCommandBuffer commandBuffer, const VkRenderingInfo *pRe
 
    radeon_check_space(device->ws, cmd_buffer->cs, 6);
    radeon_set_context_reg(cmd_buffer->cs, R_028204_PA_SC_WINDOW_SCISSOR_TL,
-                          S_028204_TL_X(render->area.offset.x) | S_028204_TL_Y(render->area.offset.y));
+                          S_028204_TL_X(render->area.offset.x) | S_028204_TL_Y_GFX6(render->area.offset.y));
    radeon_set_context_reg(cmd_buffer->cs, R_028208_PA_SC_WINDOW_SCISSOR_BR,
                           S_028208_BR_X(render->area.offset.x + render->area.extent.width) |
                              S_028208_BR_Y(render->area.offset.y + render->area.extent.height));
@@ -10501,9 +10502,9 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
 
       if (info->unaligned) {
          radeon_set_sh_reg_seq(cs, R_00B81C_COMPUTE_NUM_THREAD_X, 3);
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(compute_shader->info.cs.block_size[0]));
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(compute_shader->info.cs.block_size[1]));
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(compute_shader->info.cs.block_size[2]));
+         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(compute_shader->info.cs.block_size[0]));
+         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(compute_shader->info.cs.block_size[1]));
+         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(compute_shader->info.cs.block_size[2]));
 
          dispatch_initiator |= S_00B800_USE_THREAD_DIMENSIONS(1);
       }
@@ -10603,9 +10604,9 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
          }
 
          radeon_set_sh_reg_seq(cs, R_00B81C_COMPUTE_NUM_THREAD_X, 3);
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(cs_block_size[0]) | S_00B81C_NUM_THREAD_PARTIAL(remainder[0]));
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(cs_block_size[1]) | S_00B81C_NUM_THREAD_PARTIAL(remainder[1]));
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(cs_block_size[2]) | S_00B81C_NUM_THREAD_PARTIAL(remainder[2]));
+         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(cs_block_size[0]) | S_00B81C_NUM_THREAD_PARTIAL(remainder[0]));
+         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(cs_block_size[1]) | S_00B81C_NUM_THREAD_PARTIAL(remainder[1]));
+         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(cs_block_size[2]) | S_00B81C_NUM_THREAD_PARTIAL(remainder[2]));
 
          dispatch_initiator |= S_00B800_PARTIAL_TG_EN(1);
       }

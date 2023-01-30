@@ -341,8 +341,8 @@ void si_set_mutable_tex_desc_fields(struct si_screen *sscreen, struct si_texture
          if (tex->surface.blk_w == 2)
             pitch *= 2;
 
-         state[4] |= S_00A010_DEPTH(pitch - 1) | /* DEPTH contains low bits of PITCH. */
-                     S_00A010_PITCH_MSB((pitch - 1) >> 13);
+         state[4] |= S_00A010_DEPTH_GFX10(pitch - 1) | /* DEPTH contains low bits of PITCH. */
+                     S_00A010_PITCH_MSB_GFX103((pitch - 1) >> 13);
       }
 
       if (meta_va) {
@@ -1133,10 +1133,10 @@ static void si_init_buffer_resources(struct si_context *sctx,
                 S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
 
       if (sctx->gfx_level >= GFX11) {
-         desc[3] |= S_008F0C_FORMAT(V_008F0C_GFX11_FORMAT_32_FLOAT) |
+         desc[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) |
                     S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
       } else if (sctx->gfx_level >= GFX10) {
-         desc[3] |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) |
+         desc[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
                     S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
       } else {
          desc[3] |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
@@ -1585,10 +1585,10 @@ void si_set_ring_buffer(struct si_context *sctx, uint slot, struct pipe_resource
       }
 
       if (sctx->gfx_level >= GFX11) {
-         desc[3] |= S_008F0C_FORMAT(V_008F0C_GFX11_FORMAT_32_FLOAT) |
+         desc[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) |
                     S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_DISABLED);
       } else if (sctx->gfx_level >= GFX10) {
-         desc[3] |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) |
+         desc[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
                     S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_DISABLED) | S_008F0C_RESOURCE_LEVEL(1);
       } else {
          desc[3] |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |

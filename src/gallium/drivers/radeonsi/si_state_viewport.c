@@ -239,10 +239,10 @@ static void si_emit_one_scissor(struct si_context *ctx, struct radeon_cmdbuf *cs
     * any_scissor.BR_X/Y <= 0.
     */
    if (ctx->gfx_level == GFX6 && (final.maxx == 0 || final.maxy == 0)) {
-      radeon_emit(S_028250_TL_X(1) | S_028250_TL_Y(1) | S_028250_WINDOW_OFFSET_DISABLE(1));
+      radeon_emit(S_028250_TL_X(1) | S_028250_TL_Y_GFX6(1) | S_028250_WINDOW_OFFSET_DISABLE(1));
       radeon_emit(S_028254_BR_X(1) | S_028254_BR_Y(1));
    } else {
-      radeon_emit(S_028250_TL_X(final.minx) | S_028250_TL_Y(final.miny) |
+      radeon_emit(S_028250_TL_X(final.minx) | S_028250_TL_Y_GFX6(final.miny) |
                   S_028250_WINDOW_OFFSET_DISABLE(1));
       radeon_emit(S_028254_BR_X(final.maxx) | S_028254_BR_Y(final.maxy));
    }

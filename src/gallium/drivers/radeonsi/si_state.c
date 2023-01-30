@@ -2818,7 +2818,7 @@ static void si_init_depth_surface(struct si_context *sctx, struct si_surface *su
          surf->db_z_info2 = S_028068_EPITCH(tex->surface.u.gfx9.epitch);
          surf->db_stencil_info2 = S_02806C_EPITCH(tex->surface.u.gfx9.zs.stencil_epitch);
       }
-      surf->db_depth_view |= S_028008_MIPID(level);
+      surf->db_depth_view |= S_028008_MIPID_GFX9(level);
       surf->db_depth_size = S_02801C_X_MAX(tex->buffer.b.b.width0 - 1) |
                             S_02801C_Y_MAX(tex->buffer.b.b.height0 - 1);
 
@@ -4252,7 +4252,7 @@ void si_make_buffer_descriptor(struct si_screen *screen, struct si_resource *buf
        *       else:
        *          offset+payload > NUM_RECORDS
        */
-      state[7] |= S_008F0C_FORMAT(fmt->img_format) |
+      state[7] |= S_008F0C_FORMAT_GFX10(fmt->img_format) |
                   S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_STRUCTURED_WITH_OFFSET) |
                   S_008F0C_RESOURCE_LEVEL(screen->info.gfx_level < GFX11);
    } else {
@@ -4372,7 +4372,7 @@ static void cdna_emu_make_image_descriptor(struct si_screen *screen, struct si_t
    if (screen->info.gfx_level >= GFX10) {
       const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&screen->info)[pipe_format];
 
-      state[3] |= S_008F0C_FORMAT(fmt->img_format) |
+      state[3] |= S_008F0C_FORMAT_GFX10(fmt->img_format) |
                   S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_STRUCTURED_WITH_OFFSET) |
                   S_008F0C_RESOURCE_LEVEL(screen->info.gfx_level < GFX11);
    } else {
@@ -4476,7 +4476,7 @@ static void gfx10_make_texture_descriptor(
       depth = res->array_size / 6;
 
    state[0] = 0;
-   state[1] = S_00A004_FORMAT(img_format) | S_00A004_WIDTH_LO(width - 1);
+   state[1] = S_00A004_FORMAT_GFX10(img_format) | S_00A004_WIDTH_LO(width - 1);
    state[2] = S_00A008_WIDTH_HI((width - 1) >> 2) | S_00A008_HEIGHT(height - 1) |
               S_00A008_RESOURCE_LEVEL(screen->info.gfx_level < GFX11);
 
@@ -4486,13 +4486,13 @@ static void gfx10_make_texture_descriptor(
       S_00A00C_DST_SEL_Z(si_map_swizzle(swizzle[2])) |
       S_00A00C_DST_SEL_W(si_map_swizzle(swizzle[3])) |
       S_00A00C_BASE_LEVEL(res->nr_samples > 1 ? 0 : first_level) |
-      S_00A00C_LAST_LEVEL(res->nr_samples > 1 ? util_logbase2(res->nr_samples) : last_level) |
+      S_00A00C_LAST_LEVEL_GFX10(res->nr_samples > 1 ? util_logbase2(res->nr_samples) : last_level) |
       S_00A00C_BC_SWIZZLE(gfx9_border_color_swizzle(desc->swizzle)) | S_00A00C_TYPE(type);
    /* Depth is the the last accessible layer on gfx9+. The hw doesn't need
     * to know the total number of layers.
     */
    state[4] =
-      S_00A010_DEPTH((type == V_008F1C_SQ_RSRC_IMG_3D && sampler) ? depth - 1 : last_layer) |
+      S_00A010_DEPTH_GFX10((type == V_008F1C_SQ_RSRC_IMG_3D && sampler) ? depth - 1 : last_layer) |
       S_00A010_BASE_ARRAY(first_layer);
    state[5] = S_00A014_ARRAY_PITCH(!!(type == V_008F1C_SQ_RSRC_IMG_3D && !sampler)) |
               S_00A014_PERF_MOD(4);
@@ -4501,7 +4501,7 @@ static void gfx10_make_texture_descriptor(
                                             tex->buffer.b.b.last_level;
 
    if (screen->info.gfx_level >= GFX11) {
-      state[1] |= S_00A004_MAX_MIP(max_mip);
+      state[1] |= S_00A004_MAX_MIP_GFX11(max_mip);
    } else {
       state[5] |= S_00A014_MAX_MIP(max_mip);
    }
@@ -4566,7 +4566,7 @@ static void gfx10_make_texture_descriptor(
       }
 #undef FMASK
       fmask_state[0] = (va >> 8) | tex->surface.fmask_tile_swizzle;
-      fmask_state[1] = S_00A004_BASE_ADDRESS_HI(va >> 40) | S_00A004_FORMAT(format) |
+      fmask_state[1] = S_00A004_BASE_ADDRESS_HI(va >> 40) | S_00A004_FORMAT_GFX10(format) |
                        S_00A004_WIDTH_LO(width - 1);
       fmask_state[2] = S_00A008_WIDTH_HI((width - 1) >> 2) | S_00A008_HEIGHT(height - 1) |
                        S_00A008_RESOURCE_LEVEL(1);
@@ -4575,7 +4575,7 @@ static void gfx10_make_texture_descriptor(
          S_00A00C_DST_SEL_Z(V_008F1C_SQ_SEL_X) | S_00A00C_DST_SEL_W(V_008F1C_SQ_SEL_X) |
          S_00A00C_SW_MODE(tex->surface.u.gfx9.color.fmask_swizzle_mode) |
          S_00A00C_TYPE(si_tex_dim(screen, tex, target, 0));
-      fmask_state[4] = S_00A010_DEPTH(last_layer) | S_00A010_BASE_ARRAY(first_layer);
+      fmask_state[4] = S_00A010_DEPTH_GFX10(last_layer) | S_00A010_BASE_ARRAY(first_layer);
       fmask_state[5] = 0;
       fmask_state[6] = S_00A018_META_PIPE_ALIGNED(1);
       fmask_state[7] = 0;
@@ -5179,8 +5179,8 @@ static void *si_create_sampler_state(struct pipe_context *ctx,
        S_008F30_ANISO_THRESHOLD(max_aniso_ratio >> 1) | S_008F30_ANISO_BIAS(max_aniso_ratio) |
        S_008F30_DISABLE_CUBE_WRAP(!state->seamless_cube_map) |
        S_008F30_TRUNC_COORD(trunc_coord));
-   rstate->val[1] = (S_008F34_MIN_LOD(S_FIXED(CLAMP(state->min_lod, 0, 15), 8)) |
-                     S_008F34_MAX_LOD(S_FIXED(CLAMP(state->max_lod, 0, 15), 8)) |
+   rstate->val[1] = (S_008F34_MIN_LOD_GFX6(S_FIXED(CLAMP(state->min_lod, 0, 15), 8)) |
+                     S_008F34_MAX_LOD_GFX6(S_FIXED(CLAMP(state->max_lod, 0, 15), 8)) |
                      S_008F34_PERF_MIP(max_aniso_ratio ? max_aniso_ratio + 6 : 0));
    rstate->val[2] = (S_008F38_XY_MAG_FILTER(si_tex_filter(state->mag_img_filter, max_aniso)) |
                      S_008F38_XY_MIN_FILTER(si_tex_filter(state->min_img_filter, max_aniso)) |
@@ -5472,7 +5472,7 @@ static void *si_create_vertex_elements(struct pipe_context *ctx, unsigned count,
          ASSERTED unsigned last_vertex_format = sscreen->info.gfx_level >= GFX11 ? 64 : 128;
          assert(fmt->img_format != 0 && fmt->img_format < last_vertex_format);
          v->elem[i].rsrc_word3 |=
-            S_008F0C_FORMAT(fmt->img_format) |
+            S_008F0C_FORMAT_GFX10(fmt->img_format) |
             S_008F0C_RESOURCE_LEVEL(sscreen->info.gfx_level < GFX11) |
             /* OOB_SELECT chooses the out-of-bounds check:
              *  - 1: index >= NUM_RECORDS (Structured)
@@ -6079,7 +6079,7 @@ static void gfx6_init_gfx_preamble_state(struct si_context *sctx)
    if (sctx->gfx_level >= GFX7) {
       si_pm4_set_reg_idx3(pm4, R_00B01C_SPI_SHADER_PGM_RSRC3_PS,
                           ac_apply_cu_en(S_00B01C_CU_EN(0xffffffff) |
-                                         S_00B01C_WAVE_LIMIT(0x3F),
+                                         S_00B01C_WAVE_LIMIT_GFX7(0x3F),
                                          C_00B01C_CU_EN, 0, &sscreen->info));
    }
 
@@ -6326,8 +6326,8 @@ static void gfx10_init_gfx_preamble_state(struct si_context *sctx)
    }
    si_pm4_set_reg_idx3(pm4, R_00B01C_SPI_SHADER_PGM_RSRC3_PS,
                        ac_apply_cu_en(S_00B01C_CU_EN(cu_mask_ps) |
-                                      S_00B01C_WAVE_LIMIT(0x3F) |
-                                      S_00B01C_LDS_GROUP_SIZE(sctx->gfx_level >= GFX11),
+                                      S_00B01C_WAVE_LIMIT_GFX7(0x3F) |
+                                      S_00B01C_LDS_GROUP_SIZE_GFX11(sctx->gfx_level >= GFX11),
                                       C_00B01C_CU_EN, 0, &sscreen->info));
    si_pm4_set_reg(pm4, R_00B0C0_SPI_SHADER_REQ_CTRL_PS,
                   S_00B0C0_SOFT_GROUPING_EN(1) |

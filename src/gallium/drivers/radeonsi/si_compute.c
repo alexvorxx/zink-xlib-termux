@@ -507,7 +507,7 @@ static bool si_switch_compute_shader(struct si_context *sctx, struct si_compute 
                                     SI_TRACKED_COMPUTE_PGM_RSRC2, rsrc2);
       gfx11_opt_push_compute_sh_reg(R_00B8A0_COMPUTE_PGM_RSRC3,
                                     SI_TRACKED_COMPUTE_PGM_RSRC3,
-                                    S_00B8A0_INST_PREF_SIZE(si_get_shader_prefetch_size(shader)));
+                                    S_00B8A0_INST_PREF_SIZE_GFX11(si_get_shader_prefetch_size(shader)));
       gfx11_opt_push_compute_sh_reg(R_00B860_COMPUTE_TMPRING_SIZE,
                                     SI_TRACKED_COMPUTE_TMPRING_SIZE, tmpring_size);
       if (shader->scratch_bo) {
@@ -539,7 +539,7 @@ static bool si_switch_compute_shader(struct si_context *sctx, struct si_compute 
       if (sctx->gfx_level >= GFX11) {
          radeon_opt_set_sh_reg(sctx, R_00B8A0_COMPUTE_PGM_RSRC3,
                                SI_TRACKED_COMPUTE_PGM_RSRC3,
-                               S_00B8A0_INST_PREF_SIZE(si_get_shader_prefetch_size(shader)));
+                               S_00B8A0_INST_PREF_SIZE_GFX11(si_get_shader_prefetch_size(shader)));
       }
       radeon_end();
    }
@@ -830,8 +830,8 @@ static void si_emit_dispatch_packets(struct si_context *sctx, const struct pipe_
    bool partial_block_en = last_block[0] || last_block[1] || last_block[2];
    uint32_t num_threads[3];
 
-   num_threads[0] = S_00B81C_NUM_THREAD_FULL(info->block[0]);
-   num_threads[1] = S_00B820_NUM_THREAD_FULL(info->block[1]);
+   num_threads[0] = S_00B81C_NUM_THREAD_FULL_GFX6(info->block[0]);
+   num_threads[1] = S_00B820_NUM_THREAD_FULL_GFX6(info->block[1]);
    num_threads[2] = S_00B824_NUM_THREAD_FULL(info->block[2]);
 
    if (partial_block_en) {

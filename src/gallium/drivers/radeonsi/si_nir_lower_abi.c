@@ -54,7 +54,7 @@ static nir_def *build_attr_ring_desc(nir_builder *b, struct si_shader *shader,
                   S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
                   S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) |
                   S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W) |
-                  S_008F0C_FORMAT(V_008F0C_GFX11_FORMAT_32_32_32_32_FLOAT) |
+                  S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_32_32_32_FLOAT) |
                   S_008F0C_INDEX_STRIDE(2) /* 32 elements */),
    };
 
@@ -139,10 +139,10 @@ static nir_def *build_tess_ring_desc(nir_builder *b, struct si_screen *screen,
       S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
 
    if (screen->info.gfx_level >= GFX11) {
-      rsrc3 |= S_008F0C_FORMAT(V_008F0C_GFX11_FORMAT_32_FLOAT) |
+      rsrc3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) |
                S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
    } else if (screen->info.gfx_level >= GFX10) {
-      rsrc3 |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) |
+      rsrc3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
                S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) |
                S_008F0C_RESOURCE_LEVEL(1);
    } else {
@@ -234,7 +234,7 @@ static void build_gsvs_ring_desc(nir_builder *b, struct lower_abi_state *s)
 
          if (sel->screen->info.gfx_level >= GFX10) {
             rsrc3 |=
-               S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) |
+               S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
                S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_DISABLED) |
                S_008F0C_RESOURCE_LEVEL(1);
          } else {

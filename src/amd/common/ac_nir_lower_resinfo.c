@@ -29,7 +29,7 @@ static nir_def *query_samples(nir_builder *b, nir_def *desc, enum glsl_sampler_d
 
    if (dim == GLSL_SAMPLER_DIM_MS) {
       /* LAST_LEVEL contains log2(num_samples). */
-      samples = get_field(b, desc, 3, ~C_00A00C_LAST_LEVEL);
+      samples = get_field(b, desc, 3, ~C_00A00C_LAST_LEVEL_GFX10);
       samples = nir_ishl(b, nir_imm_int(b, 1), samples);
    } else {
       samples = nir_imm_int(b, 1);
@@ -41,7 +41,7 @@ static nir_def *query_samples(nir_builder *b, nir_def *desc, enum glsl_sampler_d
 static nir_def *query_levels(nir_builder *b, nir_def *desc)
 {
    nir_def *base_level = get_field(b, desc, 3, ~C_00A00C_BASE_LEVEL);
-   nir_def *last_level = get_field(b, desc, 3, ~C_00A00C_LAST_LEVEL);
+   nir_def *last_level = get_field(b, desc, 3, ~C_00A00C_LAST_LEVEL_GFX10);
 
    nir_def *levels = nir_iadd_imm(b, nir_isub(b, last_level, base_level), 1);
 
@@ -86,10 +86,10 @@ lower_query_size(nir_builder *b, nir_def *desc, nir_src *lod,
       if (has_height)
          height = get_field(b, desc, 2, ~C_00A008_HEIGHT);
       if (has_depth)
-         depth = get_field(b, desc, 4, ~C_00A010_DEPTH);
+         depth = get_field(b, desc, 4, ~C_00A010_DEPTH_GFX10);
 
       if (is_array) {
-         last_array = get_field(b, desc, 4, ~C_00A010_DEPTH);
+         last_array = get_field(b, desc, 4, ~C_00A010_DEPTH_GFX10);
          base_array = get_field(b, desc, 4, ~C_00A010_BASE_ARRAY);
       }
    } else {
@@ -168,7 +168,7 @@ lower_query_size(nir_builder *b, nir_def *desc, nir_src *lod,
       nir_def *uav3d =
          nir_ieq_imm(b, get_field(b, desc, 5, ~C_00A014_ARRAY_PITCH), 1);
       nir_def *layers_3d =
-         nir_isub(b, get_field(b, desc, 4, ~C_00A010_DEPTH),
+         nir_isub(b, get_field(b, desc, 4, ~C_00A010_DEPTH_GFX10),
                      get_field(b, desc, 4, ~C_00A010_BASE_ARRAY));
       layers_3d = nir_iadd_imm(b, layers_3d, 1);
       depth = nir_bcsel(b, uav3d, layers_3d, depth);

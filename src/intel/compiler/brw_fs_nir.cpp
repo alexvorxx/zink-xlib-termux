@@ -7684,13 +7684,14 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
    }
 
    case nir_intrinsic_load_topology_id_intel: {
-       /* These move around basically every hardware generation, so don'
-        * do any >= checks and fail if the platform hasn't explicitly
-        * been enabled here.
-        */
-      assert(devinfo->ver == 12);
+      /* These move around basically every hardware generation, so don't
+       * do any unbounded checks and fail if the platform hasn't explicitly
+       * been enabled here.
+       */
+      assert(devinfo->ver >= 12 && devinfo->ver <= 20);
 
-      /* Here is what the layout of SR0 looks like on Gfx12 :
+      /* Here is what the layout of SR0 looks like on Gfx12
+       * https://gfxspecs.intel.com/Predator/Home/Index/47256
        *   [13:11] : Slice ID.
        *   [10:9]  : Dual-SubSlice ID
        *   [8]     : SubSlice ID
@@ -7698,30 +7699,90 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        *   [6]     : Reserved
        *   [5:4]   : EUID[1:0]
        *   [2:0]   : Thread ID
+       *
+       * Xe2: Engine 3D and GPGPU Programs, EU Overview, Registers and
+       * Register Regions, ARF Registers, State Register,
+       * https://gfxspecs.intel.com/Predator/Home/Index/56623
+       *   [15:11] : Slice ID.
+       *   [9:8]   : SubSlice ID
+       *   [6:4]   : EUID
+       *   [2:0]   : Thread ID
        */
       fs_reg raw_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
       bld.emit(SHADER_OPCODE_READ_SR_REG, raw_id, brw_imm_ud(0));
       switch (nir_intrinsic_base(instr)) {
       case BRW_TOPOLOGY_ID_DSS:
-         bld.AND(raw_id, raw_id, brw_imm_ud(0x3fff));
-         /* Get rid of anything below dualsubslice */
-         bld.SHR(retype(dest, BRW_REGISTER_TYPE_UD), raw_id, brw_imm_ud(9));
+         if (devinfo->ver >= 20) {
+            /* Xe2+: 3D and GPGPU Programs, Shared Functions, Ray Tracing:
+             * https://gfxspecs.intel.com/Predator/Home/Index/56936
+             *
+             * Note: DSSID in all formulas below is a logical identifier of an
+             * XeCore (a value that goes from 0 to (number_of_slices *
+             * number_of_XeCores_per_slice -1). SW can get this value from
+             * either:
+             *
+             *  - Message Control Register LogicalSSID field (only in shaders
+             *    eligible for Mid-Thread Preemption).
+             *  - Calculated based of State Register with the following formula:
+             *    DSSID = StateRegister.SliceID * GT_ARCH_SS_PER_SLICE +
+             *    StateRRegister.SubSliceID where GT_SS_PER_SLICE is an
+             *    architectural parameter defined per product SKU.
+             *
+             * We are using the state register to calculate the DSSID.
+             */
+            fs_reg slice_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
+            fs_reg subslice_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
+            bld.AND(slice_id, raw_id, brw_imm_ud(INTEL_MASK(15, 11)));
+            bld.SHR(slice_id, slice_id, brw_imm_ud(11));
+
+            /* Assert that max subslices covers at least 2 bits that we use for
+             * subslices.
+             */
+            assert(devinfo->max_subslices_per_slice >= (1 << 2));
+            bld.MUL(slice_id, slice_id,
+                    brw_imm_ud(devinfo->max_subslices_per_slice));
+            bld.AND(subslice_id, raw_id, brw_imm_ud(INTEL_MASK(9, 8)));
+            bld.SHR(subslice_id, subslice_id, brw_imm_ud(8));
+            bld.ADD(retype(dest, BRW_REGISTER_TYPE_UD), slice_id,
+                    subslice_id);
+         } else {
+            bld.AND(raw_id, raw_id, brw_imm_ud(0x3fff));
+            /* Get rid of anything below dualsubslice */
+            bld.SHR(retype(dest, BRW_REGISTER_TYPE_UD), raw_id, brw_imm_ud(9));
+         }
          break;
       case BRW_TOPOLOGY_ID_EU_THREAD_SIMD: {
          s.limit_dispatch_width(16, "Topology helper for Ray queries, "
                               "not supported in SIMD32 mode.");
          fs_reg dst = retype(dest, BRW_REGISTER_TYPE_UD);
 
-         /* EU[3:0] << 7
-          *
-          * The 4bit EU[3:0] we need to build for ray query memory addresses
-          * computations is a bit odd :
-          *
-          *   EU[1:0] = raw_id[5:4] (identified as EUID[1:0])
-          *   EU[2]   = raw_id[8]   (identified as SubSlice ID)
-          *   EU[3]   = raw_id[7]   (identified as EUID[2] or Row ID)
-          */
-         {
+         if (devinfo->ver >= 20) {
+            /* Xe2+: Graphics Engine, 3D and GPGPU Programs, Shared Functions
+             * Ray Tracing,
+             * https://gfxspecs.intel.com/Predator/Home/Index/56936
+             *
+             * SyncStackID = (EUID[2:0] <<  8) | (ThreadID[2:0] << 4) |
+             *               SIMDLaneID[3:0];
+             *
+             * This section just deals with the EUID part.
+             *
+             * The 3bit EU[2:0] we need to build for ray query memory addresses
+             * computations is a bit odd :
+             *
+             *   EU[2:0] = raw_id[6:4] (identified as EUID[2:0])
+             */
+            bld.AND(dst, raw_id, brw_imm_ud(INTEL_MASK(6, 4)));
+            bld.SHL(dst, dst, brw_imm_ud(4));
+         } else {
+            /* EU[3:0] << 7
+             *
+             * The 4bit EU[3:0] we need to build for ray query memory addresses
+             * computations is a bit odd :
+             *
+             *   EU[1:0] = raw_id[5:4] (identified as EUID[1:0])
+             *   EU[2]   = raw_id[8]   (identified as SubSlice ID)
+             *   EU[3]   = raw_id[7]   (identified as EUID[2] or Row ID)
+             */
             fs_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
             bld.AND(tmp, raw_id, brw_imm_ud(INTEL_MASK(7, 7)));
             bld.SHL(dst, tmp, brw_imm_ud(3));

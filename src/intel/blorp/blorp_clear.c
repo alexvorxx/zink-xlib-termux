@@ -413,7 +413,25 @@ blorp_fast_clear(struct blorp_batch *batch,
    params.x1 = x1;
    params.y1 = y1;
 
-   memset(&params.wm_inputs.clear_color, 0xff, 4*sizeof(float));
+   if (batch->blorp->isl_dev->info->ver >= 20) {
+      /* Bspec 57340 (r59562):
+       *
+       *   Overview of Fast Clear:
+       *      Pixel shader's color output is treated as Clear Value, value
+       *      should be a constant.
+       */
+      memcpy(&params.wm_inputs.clear_color, &surf->clear_color,
+             4 * sizeof(float));
+   } else {
+      /* BSpec: 2423 (r153658):
+       *
+       *   The pixel shader kernel requires no attributes, and delivers a
+       *   value of 0xFFFFFFFF in all channels of the render target write
+       *   message The replicated color message should be used.
+       */
+      memset(&params.wm_inputs.clear_color, 0xff, 4 * sizeof(float));
+   }
+
    params.fast_clear_op = ISL_AUX_OP_FAST_CLEAR;
 
    get_fast_clear_rect(batch->blorp->isl_dev, surf->surf, surf->aux_surf,

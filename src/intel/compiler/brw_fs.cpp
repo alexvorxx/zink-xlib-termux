@@ -8297,9 +8297,9 @@ compile_single_bs(const struct brw_compiler *compiler,
       .prog_data = prog_data,
 
       /* Since divergence is a lot more likely in RT than compute, it makes
-       * sense to limit ourselves to SIMD8 for now.
+       * sense to limit ourselves to the smallest available SIMD for now.
        */
-      .required_width = 8,
+      .required_width = compiler->devinfo->ver >= 20 ? 16u : 8u,
    };
 
    std::unique_ptr<fs_visitor> v[2];

@@ -1102,7 +1102,7 @@ get_h265_msg(struct radv_device *device, struct radv_video_session *vid, struct 
 
 static bool
 rvcn_dec_message_decode(struct radv_cmd_buffer *cmd_buffer, struct radv_video_session *vid,
-                        struct radv_video_session_params *params, void *ptr, void *it_ptr, uint32_t *slice_offset,
+                        struct radv_video_session_params *params, void *ptr, void *it_probs_ptr, uint32_t *slice_offset,
                         const struct VkVideoDecodeInfoKHR *frame_info)
 {
    struct radv_device *device = cmd_buffer->device;
@@ -1222,13 +1222,13 @@ rvcn_dec_message_decode(struct radv_cmd_buffer *cmd_buffer, struct radv_video_se
    switch (vid->vk.op) {
    case VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR: {
       rvcn_dec_message_avc_t avc = get_h264_msg(vid, params, frame_info, slice_offset, &decode->width_in_samples,
-                                                &decode->height_in_samples, it_ptr);
+                                                &decode->height_in_samples, it_probs_ptr);
       memcpy(codec, (void *)&avc, sizeof(rvcn_dec_message_avc_t));
       index_codec->message_id = RDECODE_MESSAGE_AVC;
       break;
    }
    case VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR: {
-      rvcn_dec_message_hevc_t hevc = get_h265_msg(device, vid, params, frame_info, it_ptr);
+      rvcn_dec_message_hevc_t hevc = get_h265_msg(device, vid, params, frame_info, it_probs_ptr);
       memcpy(codec, (void *)&hevc, sizeof(rvcn_dec_message_hevc_t));
       index_codec->message_id = RDECODE_MESSAGE_HEVC;
       break;
@@ -1763,24 +1763,24 @@ radv_uvd_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
    struct radv_video_session *vid = cmd_buffer->video.vid;
    struct radv_video_session_params *params = cmd_buffer->video.params;
    unsigned size = sizeof(struct ruvd_msg);
-   void *ptr, *fb_ptr, *it_ptr = NULL;
-   uint32_t out_offset, fb_offset, it_offset = 0;
-   struct radeon_winsys_bo *msg_bo, *fb_bo, *it_bo = NULL;
+   void *ptr, *fb_ptr, *it_probs_ptr = NULL;
+   uint32_t out_offset, fb_offset, it_probs_offset = 0;
+   struct radeon_winsys_bo *msg_bo, *fb_bo, *it_probs_bo = NULL;
    unsigned fb_size =
       (cmd_buffer->device->physical_device->rad_info.family == CHIP_TONGA) ? FB_BUFFER_SIZE_TONGA : FB_BUFFER_SIZE;
 
    radv_vid_buffer_upload_alloc(cmd_buffer, fb_size, &fb_offset, &fb_ptr);
    fb_bo = cmd_buffer->upload.upload_bo;
    if (have_it(vid)) {
-      radv_vid_buffer_upload_alloc(cmd_buffer, IT_SCALING_TABLE_SIZE, &it_offset, &it_ptr);
-      it_bo = cmd_buffer->upload.upload_bo;
+      radv_vid_buffer_upload_alloc(cmd_buffer, IT_SCALING_TABLE_SIZE, &it_probs_offset, &it_probs_ptr);
+      it_probs_bo = cmd_buffer->upload.upload_bo;
    }
 
    radv_vid_buffer_upload_alloc(cmd_buffer, size, &out_offset, &ptr);
    msg_bo = cmd_buffer->upload.upload_bo;
 
    uint32_t slice_offset;
-   ruvd_dec_message_decode(cmd_buffer->device, vid, params, ptr, it_ptr, &slice_offset, frame_info);
+   ruvd_dec_message_decode(cmd_buffer->device, vid, params, ptr, it_probs_ptr, &slice_offset, frame_info);
    rvcn_dec_message_feedback(fb_ptr);
    if (vid->sessionctx.mem)
       send_cmd(cmd_buffer, RDECODE_CMD_SESSION_CONTEXT_BUFFER, vid->sessionctx.mem->bo, vid->sessionctx.offset);
@@ -1804,7 +1804,7 @@ radv_uvd_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
    send_cmd(cmd_buffer, RDECODE_CMD_DECODING_TARGET_BUFFER, img->bindings[0].bo, img->bindings[0].offset);
    send_cmd(cmd_buffer, RDECODE_CMD_FEEDBACK_BUFFER, fb_bo, fb_offset);
    if (have_it(vid))
-      send_cmd(cmd_buffer, RDECODE_CMD_IT_SCALING_TABLE_BUFFER, it_bo, it_offset);
+      send_cmd(cmd_buffer, RDECODE_CMD_IT_SCALING_TABLE_BUFFER, it_probs_bo, it_probs_offset);
 
    radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 2);
    set_reg(cmd_buffer, cmd_buffer->device->physical_device->vid_dec_reg.cntl, 1);
@@ -1817,9 +1817,9 @@ radv_vcn_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
    struct radv_video_session *vid = cmd_buffer->video.vid;
    struct radv_video_session_params *params = cmd_buffer->video.params;
    unsigned size = 0;
-   void *ptr, *fb_ptr, *it_ptr = NULL;
-   uint32_t out_offset, fb_offset, it_offset = 0;
-   struct radeon_winsys_bo *msg_bo, *fb_bo, *it_bo = NULL;
+   void *ptr, *fb_ptr, *it_probs_ptr = NULL;
+   uint32_t out_offset, fb_offset, it_probs_offset = 0;
+   struct radeon_winsys_bo *msg_bo, *fb_bo, *it_probs_bo = NULL;
 
    size += sizeof(rvcn_dec_message_header_t); /* header */
    size += sizeof(rvcn_dec_message_index_t);  /* codec */
@@ -1842,8 +1842,8 @@ radv_vcn_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
    radv_vid_buffer_upload_alloc(cmd_buffer, FB_BUFFER_SIZE, &fb_offset, &fb_ptr);
    fb_bo = cmd_buffer->upload.upload_bo;
    if (have_it(vid)) {
-      radv_vid_buffer_upload_alloc(cmd_buffer, IT_SCALING_TABLE_SIZE, &it_offset, &it_ptr);
-      it_bo = cmd_buffer->upload.upload_bo;
+      radv_vid_buffer_upload_alloc(cmd_buffer, IT_SCALING_TABLE_SIZE, &it_probs_offset, &it_probs_ptr);
+      it_probs_bo = cmd_buffer->upload.upload_bo;
    }
 
    radv_vid_buffer_upload_alloc(cmd_buffer, size, &out_offset, &ptr);
@@ -1853,7 +1853,7 @@ radv_vcn_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
       radv_vcn_sq_start(cmd_buffer);
 
    uint32_t slice_offset;
-   rvcn_dec_message_decode(cmd_buffer, vid, params, ptr, it_ptr, &slice_offset, frame_info);
+   rvcn_dec_message_decode(cmd_buffer, vid, params, ptr, it_probs_ptr, &slice_offset, frame_info);
    rvcn_dec_message_feedback(fb_ptr);
    send_cmd(cmd_buffer, RDECODE_CMD_SESSION_CONTEXT_BUFFER, vid->sessionctx.mem->bo, vid->sessionctx.offset);
    send_cmd(cmd_buffer, RDECODE_CMD_MSG_BUFFER, msg_bo, out_offset);
@@ -1876,7 +1876,7 @@ radv_vcn_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
    send_cmd(cmd_buffer, RDECODE_CMD_DECODING_TARGET_BUFFER, img->bindings[0].bo, img->bindings[0].offset);
    send_cmd(cmd_buffer, RDECODE_CMD_FEEDBACK_BUFFER, fb_bo, fb_offset);
    if (have_it(vid))
-      send_cmd(cmd_buffer, RDECODE_CMD_IT_SCALING_TABLE_BUFFER, it_bo, it_offset);
+      send_cmd(cmd_buffer, RDECODE_CMD_IT_SCALING_TABLE_BUFFER, it_probs_bo, it_probs_offset);
 
    if (cmd_buffer->device->physical_device->vid_decode_ip != AMD_IP_VCN_UNIFIED) {
       radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 2);

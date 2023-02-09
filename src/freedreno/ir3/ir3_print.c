@@ -560,13 +560,14 @@ print_block(struct ir3_block *block, int lvl)
       mesa_log_stream_printf(stream, "/* succs: block%u; */\n",
                              block_id(block->successors[0]));
    }
-   if (block->physical_successors[0]) {
+   if (block->physical_successors_count > 0) {
       tab(stream, lvl + 1);
-      mesa_log_stream_printf(stream, "/* physical succs: block%u",
-                             block_id(block->physical_successors[0]));
-      if (block->physical_successors[1]) {
-         mesa_log_stream_printf(stream, ", block%u",
-                                block_id(block->physical_successors[1]));
+      mesa_log_stream_printf(stream, "/* physical succs: ");
+      for (unsigned i = 0; i < block->physical_successors_count; i++) {
+         mesa_log_stream_printf(stream, "block%u",
+                                block_id(block->physical_successors[i]));
+         if (i < block->physical_successors_count - 1)
+            mesa_log_stream_printf(stream, ", ");
       }
       mesa_log_stream_printf(stream, " */\n");
    }

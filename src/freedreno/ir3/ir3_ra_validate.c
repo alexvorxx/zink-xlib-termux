@@ -477,10 +477,8 @@ propagate_block(struct ra_val_ctx *ctx, struct ir3_block *block)
       progress |=
          merge_state(ctx, &ctx->block_reaching[succ->index], &ctx->reaching);
    }
-   for (unsigned i = 0; i < 2; i++) {
+   for (unsigned i = 0; i < block->physical_successors_count; i++) {
       struct ir3_block *succ = block->physical_successors[i];
-      if (!succ)
-         continue;
       progress |= merge_state_physical(ctx, &ctx->block_reaching[succ->index],
                                        &ctx->reaching);
    }

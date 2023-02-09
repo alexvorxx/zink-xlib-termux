@@ -22,6 +22,7 @@
  */
 
 #include "ir3.h"
+#include "util/ralloc.h"
 
 /* Lower several macro-instructions needed for shader subgroup support that
  * must be turned into if statements. We do this after RA and post-RA
@@ -178,18 +179,21 @@ split_block(struct ir3 *ir, struct ir3_block *before_block,
          replace_pred(after_block->successors[i], before_block, after_block);
    }
 
-   for (unsigned i = 0; i < ARRAY_SIZE(before_block->physical_successors);
-        i++) {
-      after_block->physical_successors[i] =
-         before_block->physical_successors[i];
-      if (after_block->physical_successors[i]) {
-         replace_physical_pred(after_block->physical_successors[i],
-                               before_block, after_block);
-      }
+   for (unsigned i = 0; i < before_block->physical_successors_count; i++) {
+      replace_physical_pred(before_block->physical_successors[i],
+                            before_block, after_block);
    }
 
+   ralloc_steal(after_block, before_block->physical_successors);
+   after_block->physical_successors = before_block->physical_successors;
+   after_block->physical_successors_sz = before_block->physical_successors_sz;
+   after_block->physical_successors_count =
+      before_block->physical_successors_count;
+
    before_block->successors[0] = before_block->successors[1] = NULL;
-   before_block->physical_successors[0] = before_block->physical_successors[1] = NULL;
+   before_block->physical_successors = NULL;
+   before_block->physical_successors_count = 0;
+   before_block->physical_successors_sz = 0;
 
    foreach_instr_from_safe (rem_instr, &instr->node,
                             &before_block->instr_list) {
@@ -205,19 +209,11 @@ split_block(struct ir3 *ir, struct ir3_block *before_block,
 }
 
 static void
-link_blocks_physical(struct ir3_block *pred, struct ir3_block *succ,
-                     unsigned index)
-{
-   pred->physical_successors[index] = succ;
-   ir3_block_add_physical_predecessor(succ, pred);
-}
-
-static void
 link_blocks(struct ir3_block *pred, struct ir3_block *succ, unsigned index)
 {
    pred->successors[index] = succ;
    ir3_block_add_predecessor(succ, pred);
-   link_blocks_physical(pred, succ, index);
+   ir3_block_link_physical(pred, succ);
 }
 
 static struct ir3_block *
@@ -292,7 +288,7 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
       header->brtype = IR3_BRANCH_GETONE;
 
       link_blocks(exit, after_block, 0);
-      link_blocks_physical(exit, footer, 1);
+      ir3_block_link_physical(exit, footer);
 
       link_blocks(footer, header, 0);
 

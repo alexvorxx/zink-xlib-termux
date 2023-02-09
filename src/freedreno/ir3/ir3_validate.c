@@ -372,7 +372,7 @@ validate_instr(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr)
 static bool
 is_physical_successor(struct ir3_block *block, struct ir3_block *succ)
 {
-   for (unsigned i = 0; i < ARRAY_SIZE(block->physical_successors); i++)
+   for (unsigned i = 0; i < block->physical_successors_count; i++)
       if (block->physical_successors[i] == succ)
          return true;
    return false;
@@ -426,13 +426,12 @@ ir3_validate(struct ir3 *ir)
             ctx->current_instr = NULL;
 
             /* Each logical successor should also be a physical successor: */
-            if (block->physical_successors[0])
+            if (block->physical_successors_count > 0)
                validate_assert(ctx, is_physical_successor(block, block->successors[i]));
          }
       }
 
       validate_assert(ctx, block->successors[0] || !block->successors[1]);
-      validate_assert(ctx, block->physical_successors[0] || !block->physical_successors[1]);
    }
 
    ralloc_free(ctx);

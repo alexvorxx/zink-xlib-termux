@@ -139,6 +139,8 @@ ir3_calc_reconvergence(struct ir3_shader_variant *so)
       blocks[block->index].first_processed_divergent_pred = UINT_MAX;
       for (unsigned i = 0; i < ARRAY_SIZE(block->successors); i++) {
          if (block->successors[i]) {
+            ir3_block_link_physical(block, block->successors[i]);
+
             if (block->successors[i]->index > block->index + 1) {
                edges[edge] = (struct logical_edge) {
                   .node = {
@@ -196,6 +198,7 @@ ir3_calc_reconvergence(struct ir3_shader_variant *so)
 
       /* Iterate over all edges stepping over the block. */
       struct uinterval interval = { block->index, block->index };
+      struct logical_edge *prev = NULL;
       uinterval_tree_foreach (struct logical_edge, edge, interval, &forward_edges,
                               node) {
          /* If "block" definitely isn't outstanding when the branch
@@ -249,6 +252,19 @@ ir3_calc_reconvergence(struct ir3_shader_variant *so)
                }
             }
          }
+
+         if (!prev || prev->start_block != edge->start_block) {
+            /* We should only process this edge + block combination once, and
+             * we use the fact that edges are sorted by start point to avoid
+             * adding redundant physical edges in case multiple edges have the
+             * same start point by comparing with the previous edge. Therefore
+             * we should only add the physical edge once.
+             */
+            for (unsigned i = 0; i < block->physical_predecessors_count; i++)
+               assert(block->physical_predecessors[i] != edge->start_block);
+            ir3_block_link_physical(edge->start_block, block);
+         }
+         prev = edge;
       }
 
       blocks[block->index].first_processed_divergent_pred =

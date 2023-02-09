@@ -653,10 +653,10 @@ struct ir3_block {
     */
    struct ir3_instruction *condition;
    struct ir3_block *successors[2];
-   struct ir3_block *physical_successors[2];
 
    DECLARE_ARRAY(struct ir3_block *, predecessors);
    DECLARE_ARRAY(struct ir3_block *, physical_predecessors);
+   DECLARE_ARRAY(struct ir3_block *, physical_successors);
 
    uint16_t start_ip, end_ip;
 
@@ -724,12 +724,9 @@ ir3_after_preamble(struct ir3 *ir)
 }
 
 void ir3_block_add_predecessor(struct ir3_block *block, struct ir3_block *pred);
-void ir3_block_add_physical_predecessor(struct ir3_block *block,
-                                        struct ir3_block *pred);
+void ir3_block_link_physical(struct ir3_block *pred, struct ir3_block *succ);
 void ir3_block_remove_predecessor(struct ir3_block *block,
                                   struct ir3_block *pred);
-void ir3_block_remove_physical_predecessor(struct ir3_block *block,
-                                           struct ir3_block *pred);
 unsigned ir3_block_get_pred_index(struct ir3_block *block,
                                   struct ir3_block *pred);
 

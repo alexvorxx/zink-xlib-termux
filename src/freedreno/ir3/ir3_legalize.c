@@ -580,7 +580,7 @@ opt_jump(struct ir3 *ir)
       /* This pass destroys the physical CFG so don't keep it around to avoid
        * validation errors.
        */
-      block->physical_successors[0] = block->physical_successors[1] = NULL;
+      block->physical_successors_count = 0;
       block->physical_predecessors_count = 0;
 
       foreach_instr (instr, &block->instr_list) {

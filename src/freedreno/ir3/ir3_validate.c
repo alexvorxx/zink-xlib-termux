@@ -84,6 +84,9 @@ validate_src(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr,
    validate_assert(ctx, src->wrmask == reg->wrmask);
    validate_assert(ctx, reg_class_flags(src) == reg_class_flags(reg));
 
+   if (src->flags & IR3_REG_CONST)
+      validate_assert(ctx, !(src->flags & IR3_REG_SHARED));
+
    if (reg->tied) {
       validate_assert(ctx, reg->tied->tied == reg);
       bool found = false;

@@ -335,7 +335,14 @@ typedef enum ir3_instruction_flags {
     * before register assignment is done:
     */
    IR3_INSTR_MARK = BIT(15),
-   IR3_INSTR_UNUSED = BIT(16),
+
+   /* Used by shared register allocation when creating spill/reload instructions
+    * to inform validation that this is created by RA. This also may be set on
+    * an instruction where a spill has been folded into it.
+    */
+   IR3_INSTR_SHARED_SPILL = IR3_INSTR_MARK,
+
+   IR3_INSTR_UNUSED = BIT(17),
 } ir3_instruction_flags;
 
 struct ir3_instruction {

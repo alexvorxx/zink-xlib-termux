@@ -2537,14 +2537,9 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    }
    case nir_intrinsic_elect:
       dst[0] = ir3_ELECT_MACRO(ctx->block);
-      /* This may expand to a divergent if/then, so allocate stack space for
-       * it.
-       */
-      ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       break;
    case nir_intrinsic_preamble_start_ir3:
       dst[0] = ir3_SHPS_MACRO(ctx->block);
-      ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       break;
 
    case nir_intrinsic_read_invocation_cond_ir3: {
@@ -2555,7 +2550,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       dst[0]->dsts[0]->flags |= IR3_REG_SHARED;
       dst[0]->srcs[0]->num = regid(REG_P0, 0);
       array_insert(ctx->ir, ctx->ir->predicates, dst[0]);
-      ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       break;
    }
 
@@ -2563,7 +2557,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       struct ir3_instruction *src = ir3_get_src(ctx, &intr->src[0])[0];
       dst[0] = ir3_READ_FIRST_MACRO(ctx->block, src, 0);
       dst[0]->dsts[0]->flags |= IR3_REG_SHARED;
-      ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       break;
    }
 
@@ -2579,7 +2572,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
          ballot = ir3_BALLOT_MACRO(ctx->block, pred, components);
          ballot->srcs[0]->num = regid(REG_P0, 0);
          array_insert(ctx->ir, ctx->ir->predicates, ballot);
-         ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       }
 
       ballot->barrier_class = IR3_BARRIER_ACTIVE_FIBERS_R;
@@ -3748,20 +3740,6 @@ emit_loop(struct ir3_context *ctx, nir_loop *nloop)
 }
 
 static void
-stack_push(struct ir3_context *ctx)
-{
-   ctx->stack++;
-   ctx->max_stack = MAX2(ctx->max_stack, ctx->stack);
-}
-
-static void
-stack_pop(struct ir3_context *ctx)
-{
-   compile_assert(ctx, ctx->stack > 0);
-   ctx->stack--;
-}
-
-static void
 emit_cf_list(struct ir3_context *ctx, struct exec_list *list)
 {
    foreach_list_typed (nir_cf_node, node, node, list) {
@@ -3770,14 +3748,10 @@ emit_cf_list(struct ir3_context *ctx, struct exec_list *list)
          emit_block(ctx, nir_cf_node_as_block(node));
          break;
       case nir_cf_node_if:
-         stack_push(ctx);
          emit_if(ctx, nir_cf_node_as_if(node));
-         stack_pop(ctx);
          break;
       case nir_cf_node_loop:
-         stack_push(ctx);
          emit_loop(ctx, nir_cf_node_as_loop(node));
-         stack_pop(ctx);
          break;
       case nir_cf_node_function:
          ir3_context_error(ctx, "TODO\n");
@@ -3924,12 +3898,8 @@ emit_function(struct ir3_context *ctx, nir_function_impl *impl)
 {
    nir_metadata_require(impl, nir_metadata_block_index);
 
-   compile_assert(ctx, ctx->stack == 0);
-
    emit_cf_list(ctx, &impl->body);
    emit_block(ctx, impl->end_block);
-
-   compile_assert(ctx, ctx->stack == 0);
 
    /* at this point, we should have a single empty block,
     * into which we emit the 'end' instruction.
@@ -4687,8 +4657,6 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
       goto out;
    }
 
-   so->branchstack = ctx->max_stack;
-
    ir = so->ir = ctx->ir;
 
    if (gl_shader_stage_is_compute(so->type)) {
@@ -4878,6 +4846,8 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
    IR3_PASS(ir, ir3_remove_unreachable);
 
    IR3_PASS(ir, ir3_array_to_ssa);
+
+   ir3_calc_reconvergence(so);
 
    do {
       progress = false;

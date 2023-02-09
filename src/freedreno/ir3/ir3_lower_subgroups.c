@@ -264,6 +264,7 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
        *       exclusive = reduce;
        *       inclusive = src OP exclusive;
        *       reduce = inclusive;
+       *       break;
        *    }
        *    footer:
        * }
@@ -280,6 +281,9 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
 
       struct ir3_block *footer = ir3_block_create(ir);
       list_add(&footer->node, &exit->node);
+      footer->reconvergence_point = true;
+
+      after_block->reconvergence_point = true;
 
       link_blocks(before_block, header, 0);
 
@@ -312,6 +316,7 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
          before_block->brtype = IR3_BRANCH_GETONE;
          before_block->condition = NULL;
          mov_immed(instr->dsts[0], then_block, 0);
+         after_block->reconvergence_point = true;
          before_block = after_block;
          after_block = split_block(ir, before_block, instr);
          then_block = create_if(ir, before_block, after_block);
@@ -333,6 +338,7 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
       case OPC_BALLOT_MACRO:
       case OPC_READ_COND_MACRO:
          before_block->brtype = IR3_BRANCH_COND;
+         after_block->reconvergence_point = true;
          break;
       case OPC_ANY_MACRO:
          before_block->brtype = IR3_BRANCH_ANY;
@@ -344,6 +350,7 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
       case OPC_READ_FIRST_MACRO:
       case OPC_SWZ_SHARED_MACRO:
          before_block->brtype = IR3_BRANCH_GETONE;
+         after_block->reconvergence_point = true;
          break;
       default:
          unreachable("bad opcode");

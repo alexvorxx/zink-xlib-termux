@@ -489,7 +489,9 @@ print_block(struct ir3_block *block, int lvl)
    struct log_stream *stream = mesa_log_streami();
 
    tab(stream, lvl);
-   mesa_log_stream_printf(stream, "block%u {\n", block_id(block));
+   mesa_log_stream_printf(stream, "%sblock%u {\n",
+                          block->reconvergence_point ? "(jp)" : "",
+                          block_id(block));
 
    if (block->predecessors_count > 0) {
       tab(stream, lvl + 1);

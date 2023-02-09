@@ -426,7 +426,8 @@ ir3_validate(struct ir3 *ir)
             ctx->current_instr = NULL;
 
             /* Each logical successor should also be a physical successor: */
-            validate_assert(ctx, is_physical_successor(block, block->successors[i]));
+            if (block->physical_successors[0])
+               validate_assert(ctx, is_physical_successor(block, block->successors[i]));
          }
       }
 

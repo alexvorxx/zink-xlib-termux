@@ -394,7 +394,7 @@ struct IDSet {
 
    struct Iterator {
       const IDSet* set;
-      std::map<uint32_t, block_t>::const_iterator block;
+      aco::map<uint32_t, block_t>::const_iterator block;
       uint32_t id;
 
       Iterator& operator++();
@@ -511,6 +511,8 @@ struct IDSet {
 
    bool empty() const { return !size(); }
 
+   explicit IDSet(monotonic_buffer_resource& m) : words(m) {}
+
 private:
    static uint32_t get_first_set(const block_t& words)
    {
@@ -521,7 +523,7 @@ private:
       return UINT32_MAX;
    }
 
-   std::map<uint32_t, block_t> words;
+   aco::map<uint32_t, block_t> words;
 };
 
 inline IDSet::Iterator&

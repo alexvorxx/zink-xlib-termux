@@ -459,7 +459,8 @@ void
 live_var_analysis(Program* program)
 {
    program->live.live_out.clear();
-   program->live.live_out.resize(program->blocks.size());
+   program->live.memory.release();
+   program->live.live_out.resize(program->blocks.size(), IDSet(program->live.memory));
    program->live.register_demand.resize(program->blocks.size());
    unsigned worklist = program->blocks.size();
    std::vector<PhiInfo> phi_info(program->blocks.size());

@@ -120,7 +120,14 @@ ir3_context_init(struct ir3_compiler *compiler, struct ir3_shader *shader,
    if ((so->type == MESA_SHADER_FRAGMENT) && compiler->has_fs_tex_prefetch)
       NIR_PASS_V(ctx->s, ir3_nir_lower_tex_prefetch);
 
+   NIR_PASS(progress, ctx->s, nir_convert_to_lcssa, true, true);
+
    NIR_PASS(progress, ctx->s, nir_lower_phis_to_scalar, true);
+
+   /* This has to go at the absolute end to make sure that all SSA defs are
+    * correctly marked.
+    */
+   NIR_PASS_V(ctx->s, nir_divergence_analysis);
 
    /* Super crude heuristic to limit # of tex prefetch in small
     * shaders.  This completely ignores loops.. but that's really

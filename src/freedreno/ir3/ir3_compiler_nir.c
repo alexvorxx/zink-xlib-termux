@@ -4687,6 +4687,8 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
       goto out;
    }
 
+   so->branchstack = ctx->max_stack;
+
    ir = so->ir = ctx->ir;
 
    if (gl_shader_stage_is_compute(so->type)) {
@@ -5054,8 +5056,6 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
          ir3_instr_create(ctx->block, OPC_UNLOCK, 0, 0);
       ir3_instr_move_before(unlock, end);
    }
-
-   so->branchstack = ctx->max_stack;
 
    so->pvtmem_size = ALIGN(so->pvtmem_size, compiler->pvtmem_per_fiber_align);
 

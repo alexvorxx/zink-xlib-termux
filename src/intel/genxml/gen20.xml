@@ -274,6 +274,41 @@
     <field name="Mip Region Depth In Log2" start="388" end="391" type="uint" />
     <field name="Disallowlowqualityfiltering" start="447" end="447" type="bool" />
   </struct>
+  <instruction name="3DSTATE_BTD" bias="2" length="6" engine="render|compute">
+    <field name="DWord Length" start="0" end="7" type="uint" default="4" />
+    <field name="3D Command Sub Opcode" start="16" end="23" type="uint" default="6" />
+    <field name="3D Command Opcode" start="24" end="26" type="uint" default="1" />
+    <field name="Command SubType" start="27" end="28" type="uint" default="0" />
+    <field name="Command Type" start="29" end="31" type="uint" default="3" />
+    <field name="Dispatch Timeout Counter" start="32" end="34" type="uint">
+      <value name="64 clocks" value="0" />
+      <value name="128 clocks" value="1" />
+      <value name="192 clocks" value="2" />
+      <value name="256 clocks" value="3" />
+      <value name="512 clocks" value="4" />
+      <value name="1024 clocks" value="5" />
+      <value name="2048 clocks" value="6" />
+      <value name="4096 clocks" value="7" />
+    </field>
+    <field name="Controls the maximum number of outstanding Ray Queries per SS" start="39" end="40" type="uint" prefix="RAYS_QUERIES_OUTSTANDING">
+      <value name="128" value="0" />
+      <value name="256" value="1" />
+      <value name="512" value="2" />
+      <value name="1024" value="3" />
+    </field>
+    <field name="BTD Mid thread preemption" start="63" end="63" type="bool" />
+    <field name="Per DSS Memory Backed Buffer Size" start="64" end="66" type="uint" default="6">
+      <value name="2KB" value="0" />
+      <value name="4KB" value="1" />
+      <value name="8KB" value="2" />
+      <value name="16KB" value="3" />
+      <value name="32KB" value="4" />
+      <value name="64KB" value="5" />
+      <value name="128KB" value="6" />
+    </field>
+    <field name="Memory Backed Buffer Base Pointer" start="74" end="127" type="address" />
+    <field name="Scratch Space Buffer" start="138" end="159" type="uint" />
+  </instruction>
   <instruction name="3DSTATE_DEPTH_BUFFER" bias="2" length="8" engine="render">
     <field name="DWord Length" start="0" end="7" type="uint" default="6" />
     <field name="3D Command Sub Opcode" start="16" end="23" type="uint" default="5" />

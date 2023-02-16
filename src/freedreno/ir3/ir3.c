@@ -1078,7 +1078,10 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
       if (flags & ~(IR3_REG_IMMED | IR3_REG_CONST | IR3_REG_SHARED))
          return false;
 
-      if ((flags & IR3_REG_SHARED) && !(instr->dsts[0]->flags & IR3_REG_SHARED))
+      /* Except for immed/const sources, source and dest shared-ness must match.
+       */
+      if (!(flags & (IR3_REG_IMMED | IR3_REG_CONST)) &&
+          (flags & IR3_REG_SHARED) != (instr->dsts[0]->flags & IR3_REG_SHARED))
          return false;
 
       return true;
@@ -1096,7 +1099,10 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
          valid_flags = IR3_REG_SHARED;
          break;
       case OPC_SCAN_MACRO:
-         return flags == 0;
+         if (n == 0)
+            return flags == 0;
+         else
+            return flags == IR3_REG_SHARED;
          break;
       case OPC_SCAN_CLUSTERS_MACRO:
          if (n == 0)

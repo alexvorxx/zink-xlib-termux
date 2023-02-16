@@ -917,14 +917,8 @@ is_same_type_reg(struct ir3_register *dst, struct ir3_register *src)
    unsigned dst_type = (dst->flags & IR3_REG_HALF);
    unsigned src_type = (src->flags & IR3_REG_HALF);
 
-   /* Treat shared->normal copies as same-type, because they can generally be
-    * folded, but not normal->shared copies.
-    */
-   if (dst_type != src_type ||
-       ((dst->flags & IR3_REG_SHARED) && !(src->flags & IR3_REG_SHARED)))
-      return false;
-   else
-      return true;
+   /* Treat shared->normal copies and normal->shared copies as same-type. */
+   return dst_type == src_type;
 }
 
 /* Is it a non-transformative (ie. not type changing) mov?  This can

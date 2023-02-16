@@ -116,7 +116,7 @@ combine_flags(unsigned *dstflags, struct ir3_instruction *src)
    if (srcflags & IR3_REG_BNOT)
       *dstflags ^= IR3_REG_BNOT;
 
-   *dstflags &= ~IR3_REG_SSA;
+   *dstflags &= ~(IR3_REG_SSA | IR3_REG_SHARED);
    *dstflags |= srcflags & IR3_REG_SSA;
    *dstflags |= srcflags & IR3_REG_CONST;
    *dstflags |= srcflags & IR3_REG_IMMED;

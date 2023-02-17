@@ -270,6 +270,18 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return "tg4_offset";
    case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
       return "tg4_offset_logical";
+   case SHADER_OPCODE_TG4_BIAS:
+      return "tg4_b";
+   case SHADER_OPCODE_TG4_BIAS_LOGICAL:
+      return "tg4_b_logical";
+   case SHADER_OPCODE_TG4_EXPLICIT_LOD:
+      return "tg4_l";
+   case SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL:
+      return "tg4_l_logical";
+   case SHADER_OPCODE_TG4_IMPLICIT_LOD:
+      return "tg4_i";
+   case SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL:
+      return "tg4_i_logical";
    case SHADER_OPCODE_SAMPLEINFO:
       return "sampleinfo";
    case SHADER_OPCODE_SAMPLEINFO_LOGICAL:

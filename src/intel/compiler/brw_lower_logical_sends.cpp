@@ -905,7 +905,21 @@ sampler_msg_type(const intel_device_info *devinfo,
       assert(devinfo->ver >= 7);
       return shadow_compare ? GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO_C :
                               GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO;
-   case SHADER_OPCODE_SAMPLEINFO:
+   case SHADER_OPCODE_TG4_BIAS:
+      assert(!has_min_lod);
+      assert(devinfo->ver >= 20);
+      return XE2_SAMPLER_MESSAGE_SAMPLE_GATHER4_B;
+   case SHADER_OPCODE_TG4_EXPLICIT_LOD:
+      assert(!has_min_lod);
+      assert(devinfo->ver >= 20);
+      return shadow_compare ? XE2_SAMPLER_MESSAGE_SAMPLE_GATHER4_L_C :
+                              XE2_SAMPLER_MESSAGE_SAMPLE_GATHER4_L;
+   case SHADER_OPCODE_TG4_IMPLICIT_LOD:
+      assert(!has_min_lod);
+      assert(devinfo->ver >= 20);
+      return shadow_compare ? XE2_SAMPLER_MESSAGE_SAMPLE_GATHER4_I_C :
+                              XE2_SAMPLER_MESSAGE_SAMPLE_GATHER4_I;
+  case SHADER_OPCODE_SAMPLEINFO:
       assert(!has_min_lod);
       return GFX6_SAMPLER_MESSAGE_SAMPLE_SAMPLEINFO;
    default:
@@ -962,6 +976,9 @@ shader_opcode_needs_header(opcode op)
    switch (op) {
    case SHADER_OPCODE_TG4:
    case SHADER_OPCODE_TG4_OFFSET:
+   case SHADER_OPCODE_TG4_BIAS:
+   case SHADER_OPCODE_TG4_EXPLICIT_LOD:
+   case SHADER_OPCODE_TG4_IMPLICIT_LOD:
    case SHADER_OPCODE_SAMPLEINFO:
       return true;
    default:
@@ -1145,6 +1162,8 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
    /* Set up the LOD info */
    switch (op) {
    case FS_OPCODE_TXB:
+   case SHADER_OPCODE_TG4_BIAS:
+   case SHADER_OPCODE_TG4_EXPLICIT_LOD:
    case SHADER_OPCODE_TXL:
       bld.MOV(sources[length], lod);
       length++;
@@ -3181,6 +3200,21 @@ brw_fs_lower_logical_sends(fs_visitor &s)
 
       case SHADER_OPCODE_TG4_LOGICAL:
          lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TG4);
+         break;
+
+      case SHADER_OPCODE_TG4_BIAS_LOGICAL:
+         assert(devinfo->ver >= 20);
+         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TG4_BIAS);
+         break;
+
+      case SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL:
+         assert(devinfo->ver >= 20);
+         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TG4_EXPLICIT_LOD);
+         break;
+
+      case SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL:
+         assert(devinfo->ver >= 20);
+         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TG4_IMPLICIT_LOD);
          break;
 
       case SHADER_OPCODE_TG4_OFFSET_LOGICAL:

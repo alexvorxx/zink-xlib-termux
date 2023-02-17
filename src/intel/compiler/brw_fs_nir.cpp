@@ -8303,12 +8303,30 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    case nir_texop_lod:
       opcode = SHADER_OPCODE_LOD_LOGICAL;
       break;
-   case nir_texop_tg4:
-      if (srcs[TEX_LOGICAL_SRC_TG4_OFFSET].file != BAD_FILE)
+   case nir_texop_tg4: {
+      if (srcs[TEX_LOGICAL_SRC_TG4_OFFSET].file != BAD_FILE) {
          opcode = SHADER_OPCODE_TG4_OFFSET_LOGICAL;
-      else
+      } else {
          opcode = SHADER_OPCODE_TG4_LOGICAL;
+         if (devinfo->ver >= 20) {
+            /* If SPV_AMD_texture_gather_bias_lod extension is enabled, all
+             * texture gather functions (ie. the ones which do not take the
+             * extra bias argument and the ones that do) fetch texels from
+             * implicit LOD in fragment shader stage. In all other shader
+             * stages, base level is used instead.
+             */
+            if (instr->is_gather_implicit_lod)
+               opcode = SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL;
+
+            if (got_bias)
+               opcode = SHADER_OPCODE_TG4_BIAS_LOGICAL;
+
+            if (got_lod)
+               opcode = SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL;
+         }
+      }
       break;
+   }
    case nir_texop_texture_samples:
       opcode = SHADER_OPCODE_SAMPLEINFO_LOGICAL;
       break;

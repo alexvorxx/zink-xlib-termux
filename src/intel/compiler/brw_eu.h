@@ -1666,6 +1666,7 @@ brw_btd_spawn_desc(ASSERTED const struct intel_device_info *devinfo,
                    unsigned exec_size, unsigned msg_type)
 {
    assert(devinfo->has_ray_tracing);
+   assert(devinfo->ver < 20 || exec_size == 16);
 
    return SET_BITS(0, 19, 19) | /* No header */
           SET_BITS(msg_type, 17, 14) |
@@ -1691,6 +1692,7 @@ brw_rt_trace_ray_desc(ASSERTED const struct intel_device_info *devinfo,
                       unsigned exec_size)
 {
    assert(devinfo->has_ray_tracing);
+   assert(devinfo->ver < 20 || exec_size == 16);
 
    return SET_BITS(0, 19, 19) | /* No header */
           SET_BITS(0, 17, 14) | /* Message type */

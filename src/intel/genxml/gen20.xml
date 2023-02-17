@@ -644,9 +644,6 @@
     </field>
     <field name="Render Target Resolve Type" start="198" end="199" type="uint">
       <value name="RESOLVE_DISABLED" value="0" />
-      <value name="RESOLVE_PARTIAL" value="1" />
-      <value name="FAST_CLEAR_0" value="2" />
-      <value name="RESOLVE_FULL" value="3" />
     </field>
     <field name="Render Target Fast Clear Enable" start="200" end="200" type="bool" />
     <field name="Overlapping Subspans Enable" start="201" end="201" type="bool" />

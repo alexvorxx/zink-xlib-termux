@@ -470,6 +470,7 @@ create_parallel_copy(struct ir3_block *block)
              !phi->srcs[pred_idx]->def)
             continue;
          phi->srcs[pred_idx]->def = pcopy->dsts[j];
+         pcopy->dsts[j]->flags |= phi->dsts[0]->flags & IR3_REG_SHARED;
          phi->srcs[pred_idx]->flags = pcopy->dsts[j]->flags;
          j++;
       }

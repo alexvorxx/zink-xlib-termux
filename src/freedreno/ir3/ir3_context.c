@@ -284,6 +284,9 @@ ir3_create_collect(struct ir3_block *block, struct ir3_instruction *const *arr,
    if (arrsz == 0)
       return NULL;
 
+   if (arrsz == 1)
+      return arr[0];
+
    unsigned flags = dest_flags(arr[0]);
 
    collect = ir3_instr_create(block, OPC_META_COLLECT, 1, arrsz);

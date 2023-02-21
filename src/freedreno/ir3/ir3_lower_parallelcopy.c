@@ -528,7 +528,7 @@ ir3_lower_copies(struct ir3_shader_variant *v)
             for (unsigned i = 0; i < instr->dsts_count; i++) {
                struct ir3_register *dst = instr->dsts[i];
                struct ir3_register *src = instr->srcs[i];
-               unsigned flags = src->flags & (IR3_REG_HALF | IR3_REG_SHARED);
+               unsigned flags = dst->flags & (IR3_REG_HALF | IR3_REG_SHARED);
                unsigned dst_physreg = ra_reg_get_physreg(dst);
                for (unsigned j = 0; j < reg_elems(dst); j++) {
                   array_insert(

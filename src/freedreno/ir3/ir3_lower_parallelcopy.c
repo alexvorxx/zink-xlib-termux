@@ -572,6 +572,63 @@ ir3_lower_copies(struct ir3_shader_variant *v)
             list_del(&instr->node);
          } else if (instr->opc == OPC_META_PHI) {
             list_del(&instr->node);
+         } else if (instr->opc == OPC_MOV) {
+            /* There seems to be a HW bug where moves where the source is 16-bit
+             * non-shared and the destination is 16-bit shared don't work when
+             * only fibers 64-127 are active. We work around it by instead
+             * generating a narrowing mov, which only works with even-numbered
+             * registers (i.e. .x and .z), but for odd numbers we can swap the
+             * components of the normal src and its even neighbor and then
+             * unswap afterwords to make it work for everything.
+             */
+            if ((instr->dsts[0]->flags & IR3_REG_SHARED) &&
+                (instr->dsts[0]->flags & IR3_REG_HALF) &&
+                !(instr->srcs[0]->flags & (IR3_REG_SHARED | IR3_REG_IMMED |
+                                           IR3_REG_CONST)) &&
+                (instr->srcs[0]->flags & IR3_REG_HALF)) {
+               unsigned src_num = instr->srcs[0]->num;
+               unsigned dst_num = instr->dsts[0]->num;
+
+               for (unsigned i = 0; i <= instr->repeat; i++,
+                    src_num++, dst_num++) {
+                  if (src_num & 1) {
+                     for (unsigned i = 0; i < 2; i++) {
+                        struct ir3_instruction *swz = ir3_instr_create(instr->block, OPC_SWZ, 2, 2);
+                        ir3_dst_create(swz, src_num - 1, IR3_REG_HALF);
+                        ir3_dst_create(swz, src_num, IR3_REG_HALF);
+                        ir3_src_create(swz, src_num, IR3_REG_HALF);
+                        ir3_src_create(swz, src_num - 1, IR3_REG_HALF);
+                        swz->cat1.dst_type = TYPE_U16;
+                        swz->cat1.src_type = TYPE_U16;
+                        swz->repeat = 1;
+                        if (i == 0)
+                           ir3_instr_move_before(swz, instr);
+                        else
+                           ir3_instr_move_after(swz, instr);
+                     }
+                  }
+
+                  struct ir3_instruction *mov =
+                     ir3_instr_create(instr->block, OPC_MOV, 1, 1);
+
+                  ir3_dst_create(mov, dst_num, instr->dsts[0]->flags);
+                  ir3_src_create(mov, src_num / 2,
+                                 instr->srcs[0]->flags & ~IR3_REG_HALF);
+
+                  /* Float conversions are banned in this case in
+                   * ir3_valid_flags(), so we only have to worry about normal
+                   * non-converting moves.
+                   */
+                  assert(instr->cat1.src_type == TYPE_U16 ||
+                         instr->cat1.src_type == TYPE_S16);
+                  mov->cat1.src_type = TYPE_U32;
+                  mov->cat1.dst_type = TYPE_U16;
+
+                  ir3_instr_move_before(mov, instr);
+               }
+
+               list_del(&instr->node);
+            }
          }
       }
    }

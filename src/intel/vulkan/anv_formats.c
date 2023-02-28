@@ -1591,6 +1591,7 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
    VkExternalImageFormatProperties *external_props = NULL;
    VkSamplerYcbcrConversionImageFormatProperties *ycbcr_props = NULL;
    UNUSED VkAndroidHardwareBufferUsageANDROID *android_usage = NULL;
+   VkTextureLODGatherFormatPropertiesAMD *texture_lod_gather_props = NULL;
    VkResult result;
    bool from_wsi = false;
 
@@ -1630,6 +1631,9 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
          break;
       case VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_USAGE_ANDROID:
          android_usage = (void *) s;
+         break;
+      case VK_STRUCTURE_TYPE_TEXTURE_LOD_GATHER_FORMAT_PROPERTIES_AMD:
+         texture_lod_gather_props = (void *) s;
          break;
       default:
          anv_debug_ignored_stype(s->sType);
@@ -1788,6 +1792,11 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
                             external_info->handleType);
          goto fail;
       }
+   }
+
+   if (texture_lod_gather_props) {
+      texture_lod_gather_props->supportsTextureGatherLODBiasAMD =
+         physical_device->info.ver >= 20;
    }
 
    return VK_SUCCESS;

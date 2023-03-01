@@ -598,17 +598,22 @@ st_link_glsl_to_nir(struct gl_context *ctx,
        */
       if (options->EmitNoIndirectInput || options->EmitNoIndirectOutput ||
           options->EmitNoIndirectTemp || options->EmitNoIndirectUniform) {
-         nir_variable_mode mode = options->EmitNoIndirectInput ?
-            nir_var_shader_in : (nir_variable_mode)0;
-         mode |= options->EmitNoIndirectOutput ?
-            nir_var_shader_out : (nir_variable_mode)0;
+         nir_variable_mode mode = (nir_variable_mode)0;
+
+         if (!nir->info.io_lowered) {
+            mode |= options->EmitNoIndirectInput ?
+               nir_var_shader_in : (nir_variable_mode)0;
+            mode |= options->EmitNoIndirectOutput ?
+               nir_var_shader_out : (nir_variable_mode)0;
+         }
          mode |= options->EmitNoIndirectTemp ?
             nir_var_function_temp : (nir_variable_mode)0;
          mode |= options->EmitNoIndirectUniform ?
             nir_var_uniform | nir_var_mem_ubo | nir_var_mem_ssbo :
             (nir_variable_mode)0;
 
-         nir_lower_indirect_derefs(nir, mode, UINT32_MAX);
+         if (mode)
+            nir_lower_indirect_derefs(nir, mode, UINT32_MAX);
       }
 
       /* This needs to run after the initial pass of nir_lower_vars_to_ssa, so
@@ -621,6 +626,9 @@ st_link_glsl_to_nir(struct gl_context *ctx,
 
       NIR_PASS(_, nir, nir_lower_system_values);
       NIR_PASS(_, nir, nir_lower_compute_system_values, NULL);
+
+      if (nir->info.io_lowered)
+         continue; /* the rest is for non-lowered IO only */
 
       /* Remap the locations to slots so those requiring two slots will occupy
        * two locations. For instance, if we have in the IR code a dvec3 attr0 in
@@ -759,6 +767,10 @@ st_link_glsl_to_nir(struct gl_context *ctx,
 void
 st_nir_assign_varying_locations(struct st_context *st, nir_shader *nir)
 {
+   /* Lowered IO don't have variables, so exit. */
+   if (nir->info.io_lowered)
+      return;
+
    if (nir->info.stage == MESA_SHADER_VERTEX) {
       nir_assign_io_var_locations(nir, nir_var_shader_out,
                                   &nir->num_outputs,

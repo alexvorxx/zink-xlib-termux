@@ -101,6 +101,7 @@ static const struct debug_control radv_perftest_options[] = {{"localbos", RADV_P
                                                              {"dmashaders", RADV_PERFTEST_DMA_SHADERS},
                                                              {"gsfastlaunch2", RADV_PERFTEST_GS_FAST_LAUNCH_2},
                                                              {"transfer_queue", RADV_PERFTEST_TRANSFER_QUEUE},
+                                                             {"shader_object", RADV_PERFTEST_SHADER_OBJECT},
                                                              {NULL, 0}};
 
 const char *

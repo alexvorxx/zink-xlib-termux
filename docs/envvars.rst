@@ -1351,6 +1351,8 @@ RADV driver environment variables
       enable NGG culling on GPUs where it's not enabled by default (GFX10.1 only).
    ``sam``
       enable optimizations to move more driver internal objects to VRAM.
+   ``shader_object``
+      enable experimental implementation of VK_EXT_shader_object (GFX6-8)
    ``rtwave64``
       enable wave64 for ray tracing shaders (GFX10+)
    ``transfer_queue``

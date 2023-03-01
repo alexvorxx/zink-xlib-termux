@@ -95,6 +95,12 @@ radv_calibrated_timestamps_enabled(const struct radv_physical_device *pdevice)
           !(pdevice->rad_info.family == CHIP_RAVEN || pdevice->rad_info.family == CHIP_RAVEN2);
 }
 
+static bool
+radv_shader_object_enabled(const struct radv_physical_device *pdevice)
+{
+   return pdevice->rad_info.gfx_level < GFX9 && pdevice->instance->perftest_flags & RADV_PERFTEST_SHADER_OBJECT;
+}
+
 bool
 radv_enable_rt(const struct radv_physical_device *pdevice, bool rt_pipelines)
 {
@@ -592,6 +598,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_image_atomic_int64 = true,
       .EXT_shader_module_identifier = true,
+      .EXT_shader_object = radv_shader_object_enabled(device),
       .EXT_shader_stencil_export = true,
       .EXT_shader_subgroup_ballot = true,
       .EXT_shader_subgroup_vote = true,
@@ -1116,6 +1123,9 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
       /* VK_KHR_shader_subgroup_rotate */
       .shaderSubgroupRotate = true,
       .shaderSubgroupRotateClustered = true,
+
+      /* VK_EXT_shader_object */
+      .shaderObject = true,
    };
 }
 
@@ -1796,6 +1806,10 @@ radv_get_physical_device_properties(struct radv_physical_device *pdevice)
    p->blockTexelViewCompatibleMultipleLayers = true;
    p->maxCombinedImageSamplerDescriptorCount = 1;
    p->fragmentShadingRateClampCombinerInputs = true;
+
+   /* VK_EXT_shader_object */
+   radv_device_get_cache_uuid(pdevice, p->shaderBinaryUUID);
+   p->shaderBinaryVersion = 1;
 }
 
 static VkResult

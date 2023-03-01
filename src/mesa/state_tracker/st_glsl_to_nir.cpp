@@ -616,6 +616,12 @@ st_link_glsl_to_nir(struct gl_context *ctx,
        * constants in GLSL. */
       NIR_PASS(_, nir, gl_nir_lower_buffers, shader_program);
 
+      NIR_PASS(_, nir, st_nir_lower_wpos_ytransform, shader->Program,
+               st->screen);
+
+      NIR_PASS(_, nir, nir_lower_system_values);
+      NIR_PASS(_, nir, nir_lower_compute_system_values, NULL);
+
       /* Remap the locations to slots so those requiring two slots will occupy
        * two locations. For instance, if we have in the IR code a dvec3 attr0 in
        * location 0 and vec4 attr1 in location 1, in NIR attr0 will use
@@ -623,12 +629,6 @@ st_link_glsl_to_nir(struct gl_context *ctx,
        */
       if (nir->info.stage == MESA_SHADER_VERTEX && !shader_program->data->spirv)
          nir_remap_dual_slot_attributes(nir, &shader->Program->DualSlotInputs);
-
-      NIR_PASS(_, nir, st_nir_lower_wpos_ytransform, shader->Program,
-                 st->screen);
-
-      NIR_PASS(_, nir, nir_lower_system_values);
-      NIR_PASS(_, nir, nir_lower_compute_system_values, NULL);
 
       if (i >= 1) {
          struct gl_program *prev_shader = linked_shader[i - 1]->Program;

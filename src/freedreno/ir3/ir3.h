@@ -334,10 +334,14 @@ typedef enum ir3_instruction_flags {
    IR3_INSTR_NONUNIF = BIT(13),
    /* (cat5-only) Get some parts of the encoding from a1.x */
    IR3_INSTR_A1EN = BIT(14),
+   /* uniform destination for ldc, which must be set if and only if it has a
+    * shared reg destination
+    */
+   IR3_INSTR_U = BIT(15),
    /* meta-flags, for intermediate stages of IR, ie.
     * before register assignment is done:
     */
-   IR3_INSTR_MARK = BIT(15),
+   IR3_INSTR_MARK = BIT(16),
 
    /* Used by shared register allocation when creating spill/reload instructions
     * to inform validation that this is created by RA. This also may be set on

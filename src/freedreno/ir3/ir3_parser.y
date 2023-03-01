@@ -1308,6 +1308,7 @@ cat6_bindless_ldc_opc: T_OP_LDC  { new_instr(OPC_LDC); }
 /* This is separated from the opcode to avoid lookahead/shift-reduce conflicts */
 cat6_bindless_ldc_middle:
                         T_OFFSET '.' cat6_immed '.' cat6_bindless_mode dst_reg { instr->cat6.d = $1; }
+|                       'u' '.' T_OFFSET '.' cat6_immed '.' cat6_bindless_mode dst_reg { instr->flags |= IR3_INSTR_U; instr->cat6.d = $3; }
 |                       cat6_immed '.' 'k' '.' cat6_bindless_mode 'c' '[' T_A1 ']' { instr->opc = OPC_LDC_K; }
 
 cat6_bindless_ldc: cat6_bindless_ldc_opc '.' cat6_bindless_ldc_middle ',' cat6_reg_or_immed ',' cat6_reg_or_immed {

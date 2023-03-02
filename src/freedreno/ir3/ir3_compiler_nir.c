@@ -385,6 +385,23 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
    dst_sz = alu->def.num_components;
    wrmask = (1 << dst_sz) - 1;
 
+   bool use_shared = !alu->def.divergent &&
+      ctx->compiler->has_scalar_alu &&
+      /* not ALU ops */
+      alu->op != nir_op_fddx &&
+      alu->op != nir_op_fddx_fine &&
+      alu->op != nir_op_fddx_coarse &&
+      alu->op != nir_op_fddy &&
+      alu->op != nir_op_fddy_fine &&
+      alu->op != nir_op_fddy_coarse &&
+      /* it probably isn't worth emulating these with scalar-only ops */
+      alu->op != nir_op_udot_4x8_uadd &&
+      alu->op != nir_op_udot_4x8_uadd_sat &&
+      alu->op != nir_op_sudot_4x8_iadd &&
+      alu->op != nir_op_sudot_4x8_iadd_sat &&
+      /* not supported in HW, we have to fall back to normal registers */
+      alu->op != nir_op_ffma;
+
    dst = ir3_get_def(ctx, &alu->def, dst_sz);
 
    /* Vectors are special in that they have non-scalarized writemasks,
@@ -398,9 +415,9 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
       for (int i = 0; i < info->num_inputs; i++) {
          nir_alu_src *asrc = &alu->src[i];
 
-         src[i] = ir3_get_src(ctx, &asrc->src)[asrc->swizzle[0]];
+         src[i] = ir3_get_src_shared(ctx, &asrc->src, use_shared)[asrc->swizzle[0]];
          if (!src[i])
-            src[i] = create_immed_typed(ctx->block, 0, dst_type);
+            src[i] = create_immed_typed_shared(ctx->block, 0, dst_type, use_shared);
          dst[i] = ir3_MOV(b, src[i], dst_type);
       }
 
@@ -413,7 +430,8 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
     */
    if (alu->op == nir_op_mov) {
       nir_alu_src *asrc = &alu->src[0];
-      struct ir3_instruction *const *src0 = ir3_get_src(ctx, &asrc->src);
+      struct ir3_instruction *const *src0 =
+         ir3_get_src_shared(ctx, &asrc->src, use_shared);
 
       for (unsigned i = 0; i < dst_sz; i++) {
          if (wrmask & (1 << i)) {
@@ -433,7 +451,7 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
    for (int i = 0; i < info->num_inputs; i++) {
       nir_alu_src *asrc = &alu->src[i];
 
-      src[i] = ir3_get_src(ctx, &asrc->src)[asrc->swizzle[0]];
+      src[i] = ir3_get_src_shared(ctx, &asrc->src, use_shared)[asrc->swizzle[0]];
       bs[i] = nir_src_bit_size(asrc->src);
 
       compile_assert(ctx, src[i]);
@@ -641,10 +659,21 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
       dst[0] = ir3_MULL_U(b, src[0], 0, src[1], 0);
       break;
    case nir_op_imadsh_mix16:
-      dst[0] = ir3_MADSH_M16(b, src[0], 0, src[1], 0, src[2], 0);
+      if (use_shared) {
+         struct ir3_instruction *sixteen = create_immed_shared(b, 16, true);
+         struct ir3_instruction *src1 = ir3_SHR_B(b, src[1], 0, sixteen, 0);
+         struct ir3_instruction *mul = ir3_MULL_U(b, src[0], 0, src1, 0);
+         dst[0] = ir3_ADD_U(b, ir3_SHL_B(b, mul, 0, sixteen, 0), 0, src[2], 0);
+      } else {
+         dst[0] = ir3_MADSH_M16(b, src[0], 0, src[1], 0, src[2], 0);
+      }
       break;
    case nir_op_imad24_ir3:
-      dst[0] = ir3_MAD_S24(b, src[0], 0, src[1], 0, src[2], 0);
+      if (use_shared) {
+         dst[0] = ir3_ADD_U(b, ir3_MUL_U24(b, src[0], 0, src[1], 0), 0, src[2], 0);
+      } else {
+         dst[0] = ir3_MAD_S24(b, src[0], 0, src[1], 0, src[2], 0);
+      }
       break;
    case nir_op_imul:
       compile_assert(ctx, alu->def.bit_size == 16);
@@ -659,7 +688,8 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
    case nir_op_inot:
       if (bs[0] == 1) {
          struct ir3_instruction *one =
-               create_immed_typed(ctx->block, 1, ctx->compiler->bool_type);
+               create_immed_typed_shared(ctx->block, 1, ctx->compiler->bool_type,
+                                         use_shared);
          dst[0] = ir3_SUB_U(b, one, 0, src[0], 0);
       } else {
          dst[0] = ir3_NOT_B(b, src[0], 0);
@@ -755,8 +785,9 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
       // support is in place, this should probably move to a NIR lowering pass:
       struct ir3_instruction *hi, *lo;
 
-      hi = ir3_COV(b, ir3_SHR_B(b, src[0], 0, create_immed(b, 16), 0), TYPE_U32,
-                   TYPE_U16);
+      hi = ir3_COV(b,
+                   ir3_SHR_B(b, src[0], 0, create_immed_shared(b, 16, use_shared), 0),
+                   TYPE_U32, TYPE_U16);
       lo = ir3_COV(b, src[0], TYPE_U32, TYPE_U16);
 
       hi = ir3_CBITS_B(b, hi, 0);
@@ -776,15 +807,17 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
    case nir_op_ifind_msb: {
       struct ir3_instruction *cmp;
       dst[0] = ir3_CLZ_S(b, src[0], 0);
-      cmp = ir3_CMPS_S(b, dst[0], 0, create_immed(b, 0), 0);
+      cmp = ir3_CMPS_S(b, dst[0], 0, create_immed_shared(b, 0, use_shared), 0);
       cmp->cat2.condition = IR3_COND_GE;
-      dst[0] = ir3_SEL_B32(b, ir3_SUB_U(b, create_immed(b, 31), 0, dst[0], 0),
+      dst[0] = ir3_SEL_B32(b, ir3_SUB_U(b, create_immed_shared(b, 31, use_shared), 0,
+                                        dst[0], 0),
                            0, cmp, 0, dst[0], 0);
       break;
    }
    case nir_op_ufind_msb:
       dst[0] = ir3_CLZ_B(b, src[0], 0);
-      dst[0] = ir3_SEL_B32(b, ir3_SUB_U(b, create_immed(b, 31), 0, dst[0], 0),
+      dst[0] = ir3_SEL_B32(b, ir3_SUB_U(b, create_immed_shared(b, 31, use_shared), 0,
+                                        dst[0], 0),
                            0, src[0], 0, dst[0], 0);
       break;
    case nir_op_find_lsb:
@@ -880,6 +913,12 @@ emit_intrinsic_load_ubo_ldc(struct ir3_context *ctx, nir_intrinsic_instr *intr,
    if (ldc->flags & IR3_INSTR_B)
       ctx->so->bindless_ubo = true;
    ir3_handle_nonuniform(ldc, intr);
+
+   if (!intr->def.divergent &&
+       ctx->compiler->has_scalar_alu) {
+      ldc->dsts[0]->flags |= IR3_REG_SHARED;
+      ldc->flags |= IR3_INSTR_U;
+   }
 
    ir3_split_dest(b, dst, ldc, 0, ncomp);
 }
@@ -2205,12 +2244,20 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
                intr->def.bit_size == 16 ? TYPE_F16 : TYPE_F32);
          }
       } else {
-         src = ir3_get_src(ctx, &intr->src[0]);
+         src = ctx->compiler->has_scalar_alu ?
+            ir3_get_src_maybe_shared(ctx, &intr->src[0]) : 
+            ir3_get_src(ctx, &intr->src[0]);
          for (int i = 0; i < dest_components; i++) {
             dst[i] = create_uniform_indirect(
                b, idx + i,
                intr->def.bit_size == 16 ? TYPE_F16 : TYPE_F32,
                ir3_get_addr0(ctx, src[0], 1));
+            /* Since this may not be foldable into conversions into shared
+             * registers, manually make it shared. Optimizations can undo this if
+             * the user can't use shared regs.
+             */
+            if (ctx->compiler->has_scalar_alu && !intr->def.divergent)
+               dst[i]->dsts[0]->flags |= IR3_REG_SHARED;
          }
          /* NOTE: if relative addressing is used, we set
           * constlen in the compiler (to worst-case value)
@@ -2767,7 +2814,9 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       unsigned dst_hi = dst >> 8;
 
       struct ir3_instruction *src =
-         ir3_create_collect(b, ir3_get_src(ctx, &intr->src[0]), components);
+         ir3_create_collect(b, ir3_get_src_shared(ctx, &intr->src[0],
+                                                  ctx->compiler->has_scalar_alu),
+                            components);
       struct ir3_instruction *a1 = NULL;
       if (dst_hi) {
          /* Encode only the high part of the destination in a1.x to increase the
@@ -3565,6 +3614,10 @@ emit_phi(struct ir3_context *ctx, nir_phi_instr *nphi)
    __ssa_dst(phi);
    phi->phi.nphi = nphi;
 
+   if (ctx->compiler->has_scalar_alu &&
+       !nphi->def.divergent)
+      phi->dsts[0]->flags |= IR3_REG_SHARED;
+
    dst[0] = phi;
 
    ir3_put_def(ctx, &nphi->def);
@@ -3603,7 +3656,9 @@ read_phi_src(struct ir3_context *ctx, struct ir3_block *blk,
             /* We need to insert the move at the end of the block */
             struct ir3_block *old_block = ctx->block;
             ctx->block = blk;
-            struct ir3_instruction *src = ir3_get_src(ctx, &nsrc->src)[0];
+            struct ir3_instruction *src =
+               ir3_get_src_shared(ctx, &nsrc->src,
+                                  phi->dsts[0]->flags & IR3_REG_SHARED)[0];
             ctx->block = old_block;
             return src;
          }

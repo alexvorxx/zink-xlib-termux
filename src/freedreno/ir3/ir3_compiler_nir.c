@@ -2644,6 +2644,14 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
                                    src, 0);
       dst[0]->dsts[0]->flags |= IR3_REG_SHARED;
       dst[0]->srcs[0]->flags |= IR3_REG_PREDICATE;
+      /* Work around a bug with half-register shared -> non-shared moves by
+       * adding an extra mov here so that the original destination stays full.
+       */
+      if (src->dsts[0]->flags & IR3_REG_HALF) {
+         dst[0] = ir3_MOV(b, dst[0], TYPE_U32);
+         if (!ctx->compiler->has_scalar_alu)
+            dst[0]->dsts[0]->flags &= ~IR3_REG_SHARED;
+      }
       break;
    }
 
@@ -2651,6 +2659,12 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       struct ir3_instruction *src = ir3_get_src(ctx, &intr->src[0])[0];
       dst[0] = ir3_READ_FIRST_MACRO(ctx->block, src, 0);
       dst[0]->dsts[0]->flags |= IR3_REG_SHARED;
+      /* See above. */
+      if (src->dsts[0]->flags & IR3_REG_HALF) {
+         dst[0] = ir3_MOV(b, dst[0], TYPE_U32);
+         if (!ctx->compiler->has_scalar_alu)
+            dst[0]->dsts[0]->flags &= ~IR3_REG_SHARED;
+      }
       break;
    }
 
@@ -3586,7 +3600,12 @@ read_phi_src(struct ir3_context *ctx, struct ir3_block *blk,
             /* Create an ir3 undef */
             return NULL;
          } else {
-            return ir3_get_src(ctx, &nsrc->src)[0];
+            /* We need to insert the move at the end of the block */
+            struct ir3_block *old_block = ctx->block;
+            ctx->block = blk;
+            struct ir3_instruction *src = ir3_get_src(ctx, &nsrc->src)[0];
+            ctx->block = old_block;
+            return src;
          }
       }
    }

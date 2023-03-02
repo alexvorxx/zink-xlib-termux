@@ -227,7 +227,7 @@ ir3_get_def(struct ir3_context *ctx, nir_def *def, unsigned n)
 }
 
 struct ir3_instruction *const *
-ir3_get_src(struct ir3_context *ctx, nir_src *src)
+ir3_get_src_maybe_shared(struct ir3_context *ctx, nir_src *src)
 {
    struct hash_entry *entry;
    entry = _mesa_hash_table_search(ctx->def_ht, src->ssa);
@@ -235,23 +235,48 @@ ir3_get_src(struct ir3_context *ctx, nir_src *src)
    return entry->data;
 }
 
+static struct ir3_instruction *
+get_shared(struct ir3_block *block, struct ir3_instruction *src, bool shared)
+{
+   if (!!(src->dsts[0]->flags & IR3_REG_SHARED) != shared) {
+      struct ir3_instruction *mov =
+         ir3_MOV(block, src, (src->dsts[0]->flags & IR3_REG_HALF) ? TYPE_U16 : TYPE_U32);
+      mov->dsts[0]->flags &= ~IR3_REG_SHARED;
+      mov->dsts[0]->flags |= COND(shared, IR3_REG_SHARED);
+      return mov;
+   }
+
+   return src;
+}
+
+struct ir3_instruction *const *
+ir3_get_src_shared(struct ir3_context *ctx, nir_src *src, bool shared)
+{
+   unsigned num_components = nir_src_num_components(*src);
+   struct ir3_instruction *const *value = ir3_get_src_maybe_shared(ctx, src);
+   bool mismatch = false;
+   for (unsigned i = 0; i < nir_src_num_components(*src); i++) {
+      if (!!(value[i]->dsts[0]->flags & IR3_REG_SHARED) != shared) {
+         mismatch = true;
+         break;
+      }
+   }
+
+   if (!mismatch)
+      return value;
+
+   struct ir3_instruction **new_value =
+      ralloc_array(ctx, struct ir3_instruction *, num_components);
+   for (unsigned i = 0; i < num_components; i++)
+      new_value[i] = get_shared(ctx->block, value[i], shared);
+
+   return new_value;
+}
+
 void
 ir3_put_def(struct ir3_context *ctx, nir_def *def)
 {
    unsigned bit_size = ir3_bitsize(ctx, def->bit_size);
-
-   /* add extra mov if dst value is shared reg.. in some cases not all
-    * instructions can read from shared regs, in cases where they can
-    * ir3_cp will clean up the extra mov:
-    */
-   for (unsigned i = 0; i < ctx->last_dst_n; i++) {
-      if (!ctx->last_dst[i])
-         continue;
-      if (ctx->last_dst[i]->dsts[0]->flags & IR3_REG_SHARED) {
-         ctx->last_dst[i] = ir3_MOV(ctx->block, ctx->last_dst[i], TYPE_U32);
-         ctx->last_dst[i]->dsts[0]->flags &= ~IR3_REG_SHARED;
-      }
-   }
 
    if (bit_size <= 16) {
       for (unsigned i = 0; i < ctx->last_dst_n; i++) {
@@ -627,7 +652,8 @@ ir3_create_array_store(struct ir3_context *ctx, struct ir3_array *arr, int n,
    dst->array.id = arr->id;
    dst->array.offset = n;
    dst->array.base = INVALID_REG;
-   ir3_src_create(mov, INVALID_REG, IR3_REG_SSA | flags)->def = src->dsts[0];
+   ir3_src_create(mov, INVALID_REG, IR3_REG_SSA | flags |
+                  (src->dsts[0]->flags & IR3_REG_SHARED))->def = src->dsts[0];
 
    if (arr->last_write && arr->last_write->instr->block == block)
       ir3_reg_set_last_array(mov, dst, arr->last_write);

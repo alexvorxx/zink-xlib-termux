@@ -2056,12 +2056,18 @@ bool ir3_remove_unreachable(struct ir3 *ir);
 /* calculate reconvergence information: */
 void ir3_calc_reconvergence(struct ir3_shader_variant *so);
 
+/* lower invalid shared phis after calculating reconvergence information: */
+bool ir3_lower_shared_phis(struct ir3 *ir);
+
 /* dead code elimination: */
 struct ir3_shader_variant;
 bool ir3_dce(struct ir3 *ir, struct ir3_shader_variant *so);
 
 /* fp16 conversion folding */
 bool ir3_cf(struct ir3 *ir);
+
+/* shared mov folding */
+bool ir3_shared_fold(struct ir3 *ir);
 
 /* copy-propagate: */
 bool ir3_cp(struct ir3 *ir, struct ir3_shader_variant *so);
@@ -2120,6 +2126,21 @@ ir3_has_latency_to_hide(struct ir3 *ir)
 
    return false;
 }
+
+/**
+ * Move 'instr' to after the last phi node at the beginning of the block:
+ */
+static inline void
+ir3_instr_move_after_phis(struct ir3_instruction *instr,
+                          struct ir3_block *block)
+{
+   struct ir3_instruction *last_phi = ir3_block_get_last_phi(block);
+   if (last_phi)
+      ir3_instr_move_after(instr, last_phi);
+   else
+      ir3_instr_move_before_block(instr, block);
+}
+
 
 /* ************************************************************************* */
 /* instruction helpers */

@@ -26,6 +26,7 @@
 #include "util/ralloc.h"
 
 #include "ir3.h"
+#include "ir3_compiler.h"
 
 struct ir3_validate_ctx {
    struct ir3 *ir;
@@ -229,6 +230,10 @@ validate_instr(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr)
                                  (reg->flags & IR3_REG_HALF));
       }
 
+      if (is_scalar_alu(instr, ctx->ir->compiler) && reg != instr->address)
+         validate_assert(ctx, reg->flags & (IR3_REG_SHARED | IR3_REG_IMMED |
+                                            IR3_REG_CONST));
+
       last_reg = reg;
    }
 
@@ -239,6 +244,12 @@ validate_instr(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr)
    }
 
    _mesa_set_add(ctx->defs, instr);
+
+   if ((opc_cat(instr->opc) == 2 || opc_cat(instr->opc) == 3 ||
+        opc_cat(instr->opc) == 4)) {
+      validate_assert(ctx, !(instr->dsts[0]->flags & IR3_REG_SHARED) ||
+                      ctx->ir->compiler->has_scalar_alu);
+   }
 
    /* Check that src/dst types match the register types, and for
     * instructions that have different opcodes depending on type,

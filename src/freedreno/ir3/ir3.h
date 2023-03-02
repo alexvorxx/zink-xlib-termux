@@ -2155,7 +2155,7 @@ type_flags(type_t type)
 }
 
 static inline struct ir3_instruction *
-create_immed_typed(struct ir3_block *block, uint32_t val, type_t type)
+create_immed_typed_shared(struct ir3_block *block, uint32_t val, type_t type, bool shared)
 {
    struct ir3_instruction *mov;
    ir3_register_flags flags = type_flags(type);
@@ -2163,16 +2163,28 @@ create_immed_typed(struct ir3_block *block, uint32_t val, type_t type)
    mov = ir3_instr_create(block, OPC_MOV, 1, 1);
    mov->cat1.src_type = type;
    mov->cat1.dst_type = type;
-   __ssa_dst(mov)->flags |= flags;
+   __ssa_dst(mov)->flags |= flags | (shared ? IR3_REG_SHARED : 0);
    ir3_src_create(mov, 0, IR3_REG_IMMED | flags)->uim_val = val;
 
    return mov;
 }
 
 static inline struct ir3_instruction *
+create_immed_typed(struct ir3_block *block, uint32_t val, type_t type)
+{
+   return create_immed_typed_shared(block, val, type, false);
+}
+
+static inline struct ir3_instruction *
+create_immed_shared(struct ir3_block *block, uint32_t val, bool shared)
+{
+   return create_immed_typed_shared(block, val, TYPE_U32, shared);
+}
+
+static inline struct ir3_instruction *
 create_immed(struct ir3_block *block, uint32_t val)
 {
-   return create_immed_typed(block, val, TYPE_U32);
+   return create_immed_shared(block, val, false);
 }
 
 static inline struct ir3_instruction *

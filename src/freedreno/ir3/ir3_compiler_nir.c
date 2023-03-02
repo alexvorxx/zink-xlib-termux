@@ -1960,9 +1960,8 @@ emit_intrinsic_reduce(struct ir3_context *ctx, nir_intrinsic_instr *intr)
     * not supported.
     */
    struct ir3_instruction *identity =
-      create_immed(ctx->block, get_reduce_identity(nir_reduce_op, dst_size));
-   identity = ir3_READ_FIRST_MACRO(ctx->block, identity, 0);
-   identity->dsts[0]->flags |= IR3_REG_SHARED;
+      create_immed_shared(ctx->block, get_reduce_identity(nir_reduce_op, dst_size),
+                          true);
 
    /* OPC_SCAN_MACRO has the following destinations:
     * - Exclusive scan result (interferes with source)
@@ -2025,8 +2024,8 @@ emit_intrinsic_reduce_clusters(struct ir3_context *ctx,
     * not supported.
     */
    struct ir3_instruction *identity =
-      create_immed(ctx->block, get_reduce_identity(nir_reduce_op, dst_size));
-   identity->dsts[0]->flags |= IR3_REG_SHARED;
+      create_immed_shared(ctx->block, get_reduce_identity(nir_reduce_op, dst_size),
+                          true);
 
    /* OPC_SCAN_CLUSTERS_MACRO has the following destinations:
     * - Shared reg reduction result, must be initialized to the identity

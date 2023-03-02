@@ -3769,7 +3769,6 @@ emit_block(struct ir3_context *ctx, nir_block *nblock)
 
    list_addtail(&ctx->block->node, &ctx->ir->block_list);
 
-   ctx->block->loop_id = ctx->loop_id;
    ctx->block->loop_depth = ctx->loop_depth;
 
    /* re-emit addr register in each block if needed: */
@@ -3926,8 +3925,6 @@ static void
 emit_loop(struct ir3_context *ctx, nir_loop *nloop)
 {
    assert(!nir_loop_has_continue_construct(nloop));
-   unsigned old_loop_id = ctx->loop_id;
-   ctx->loop_id = ctx->so->loops + 1;
    ctx->loop_depth++;
 
    struct nir_block *nstart = nir_loop_first_block(nloop);
@@ -3948,14 +3945,12 @@ emit_loop(struct ir3_context *ctx, nir_loop *nloop)
       struct ir3_block *start = get_block(ctx, nstart);
       ir3_JUMP(continue_blk);
       continue_blk->successors[0] = start;
-      continue_blk->loop_id = ctx->loop_id;
       continue_blk->loop_depth = ctx->loop_depth;
       list_addtail(&continue_blk->node, &ctx->ir->block_list);
    }
 
    ctx->so->loops++;
    ctx->loop_depth--;
-   ctx->loop_id = old_loop_id;
 }
 
 static void

@@ -40,12 +40,11 @@ clone_with_predicate_dst(struct opt_predicates_ctx *ctx,
       return entry->data;
 
    assert(instr->dsts_count == 1);
-   assert(!(instr->dsts[0]->flags & IR3_REG_SHARED));
 
    struct ir3_instruction *clone = ir3_instr_clone(instr);
    ir3_instr_move_after(clone, instr);
    clone->dsts[0]->flags |= IR3_REG_PREDICATE;
-   clone->dsts[0]->flags &= ~IR3_REG_HALF;
+   clone->dsts[0]->flags &= ~(IR3_REG_HALF | IR3_REG_SHARED);
    _mesa_hash_table_insert(ctx->predicate_clones, instr, clone);
    return clone;
 }

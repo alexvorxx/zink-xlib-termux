@@ -528,12 +528,14 @@ ir3_get_predicate(struct ir3_context *ctx, struct ir3_instruction *src)
 
    /* NOTE: we use cpms.s.ne x, 0 to move x into a predicate register */
    struct ir3_instruction *zero =
-         create_immed_typed(b, 0, is_half(src) ? TYPE_U16 : TYPE_U32);
+         create_immed_typed_shared(b, 0, is_half(src) ? TYPE_U16 : TYPE_U32,
+                                   src->dsts[0]->flags & IR3_REG_SHARED);
    cond = ir3_CMPS_S(b, src, 0, zero, 0);
    cond->cat2.condition = IR3_COND_NE;
 
    /* condition always goes in predicate register: */
    cond->dsts[0]->flags |= IR3_REG_PREDICATE;
+   cond->dsts[0]->flags &= ~IR3_REG_SHARED;
 
    /* phi's should stay first in a block */
    if (src->opc == OPC_META_PHI)

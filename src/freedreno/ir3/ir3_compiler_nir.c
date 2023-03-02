@@ -3554,7 +3554,7 @@ emit_phi(struct ir3_context *ctx, nir_phi_instr *nphi)
       nir_phi_src *src = list_entry(exec_list_get_head(&nphi->srcs),
                                     nir_phi_src, node);
       if (nphi->def.divergent == src->src.ssa->divergent) {
-         dst[0] = ir3_get_src(ctx, &src->src)[0];
+         dst[0] = ir3_get_src_maybe_shared(ctx, &src->src)[0];
          ir3_put_def(ctx, &nphi->def);
          return;
       }
@@ -4022,7 +4022,7 @@ emit_conditional_branch(struct ir3_context *ctx, nir_if *nif)
 static void
 emit_if(struct ir3_context *ctx, nir_if *nif)
 {
-   struct ir3_instruction *condition = ir3_get_src(ctx, &nif->condition)[0];
+   struct ir3_instruction *condition = ir3_get_src_maybe_shared(ctx, &nif->condition)[0];
 
    if (condition->opc == OPC_ANY_MACRO && condition->block == ctx->block) {
       struct ir3_instruction *pred = ssa(condition->srcs[0]);

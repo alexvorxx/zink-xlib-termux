@@ -389,8 +389,14 @@ validate_instr(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr)
 
    if (instr->opc == OPC_META_PARALLEL_COPY) {
       foreach_src_n (src, n, instr) {
-         validate_assert(ctx, reg_class_flags(src) ==
-                         reg_class_flags(instr->dsts[n]));
+         validate_assert(ctx, (src->flags & IR3_REG_HALF) ==
+                         (instr->dsts[n]->flags & IR3_REG_HALF));
+         if (instr->dsts[n]->flags & IR3_REG_SHARED) {
+            validate_assert(ctx, src->flags & (IR3_REG_SHARED | IR3_REG_CONST |
+                                               IR3_REG_IMMED));
+         } else {
+            validate_assert(ctx, !(src->flags & IR3_REG_SHARED));
+         }
       }
    }
 }

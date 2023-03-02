@@ -2130,8 +2130,7 @@ __ssa_src(struct ir3_instruction *instr, struct ir3_instruction *src,
           unsigned flags)
 {
    struct ir3_register *reg;
-   if (src->dsts[0]->flags & IR3_REG_HALF)
-      flags |= IR3_REG_HALF;
+   flags |= src->dsts[0]->flags & (IR3_REG_HALF | IR3_REG_SHARED);
    reg = ir3_src_create(instr, INVALID_REG, IR3_REG_SSA | flags);
    reg->def = src->dsts[0];
    reg->wrmask = src->dsts[0]->wrmask;
@@ -2229,14 +2228,14 @@ static inline struct ir3_instruction *
 ir3_MOV(struct ir3_block *block, struct ir3_instruction *src, type_t type)
 {
    struct ir3_instruction *instr = ir3_instr_create(block, OPC_MOV, 1, 1);
-   ir3_register_flags flags = type_flags(type);
+   ir3_register_flags flags = type_flags(type) | (src->dsts[0]->flags & IR3_REG_SHARED);
 
    __ssa_dst(instr)->flags |= flags;
    if (src->dsts[0]->flags & IR3_REG_ARRAY) {
       struct ir3_register *src_reg = __ssa_src(instr, src, IR3_REG_ARRAY);
       src_reg->array = src->dsts[0]->array;
    } else {
-      __ssa_src(instr, src, src->dsts[0]->flags & IR3_REG_SHARED);
+      __ssa_src(instr, src, 0);
    }
    assert(!(src->dsts[0]->flags & IR3_REG_RELATIV));
    instr->cat1.src_type = type;
@@ -2249,7 +2248,7 @@ ir3_COV(struct ir3_block *block, struct ir3_instruction *src, type_t src_type,
         type_t dst_type)
 {
    struct ir3_instruction *instr = ir3_instr_create(block, OPC_MOV, 1, 1);
-   ir3_register_flags dst_flags = type_flags(dst_type);
+   ir3_register_flags dst_flags = type_flags(dst_type) | (src->dsts[0]->flags & IR3_REG_SHARED);
    ASSERTED ir3_register_flags src_flags = type_flags(src_type);
 
    assert((src->dsts[0]->flags & IR3_REG_HALF) == src_flags);
@@ -2309,44 +2308,51 @@ static inline struct ir3_instruction *ir3_##name(struct ir3_block *block)      \
 #define INSTR0(name)     __INSTR0((ir3_instruction_flags)0, name, OPC_##name)
 
 /* clang-format off */
-#define __INSTR1(flag, dst_count, name, opc)                                   \
+#define __INSTR1(flag, dst_count, name, opc, scalar_alu)                       \
 static inline struct ir3_instruction *ir3_##name(                              \
    struct ir3_block *block, struct ir3_instruction *a, unsigned aflags)        \
 {                                                                              \
    struct ir3_instruction *instr =                                             \
       ir3_instr_create(block, opc, dst_count, 1);                              \
+   unsigned dst_flag = scalar_alu ? (a->dsts[0]->flags & IR3_REG_SHARED) : 0;  \
    for (unsigned i = 0; i < dst_count; i++)                                    \
-      __ssa_dst(instr);                                                        \
+      __ssa_dst(instr)->flags |= dst_flag;                                     \
    __ssa_src(instr, a, aflags);                                                \
    instr->flags |= flag;                                                       \
    return instr;                                                               \
 }
 /* clang-format on */
-#define INSTR1F(f, name)  __INSTR1(IR3_INSTR_##f, 1, name##_##f, OPC_##name)
-#define INSTR1(name)      __INSTR1((ir3_instruction_flags)0, 1, name, OPC_##name)
-#define INSTR1NODST(name) __INSTR1((ir3_instruction_flags)0, 0, name, OPC_##name)
+#define INSTR1F(f, name)  __INSTR1(IR3_INSTR_##f, 1, name##_##f, OPC_##name,   \
+                                   false)
+#define INSTR1(name)      __INSTR1((ir3_instruction_flags)0, 1, name, OPC_##name, false)
+#define INSTR1S(name)     __INSTR1((ir3_instruction_flags)0, 1, name, OPC_##name, true)
+#define INSTR1NODST(name) __INSTR1((ir3_instruction_flags)0, 0, name, OPC_##name, false)
 
 /* clang-format off */
-#define __INSTR2(flag, dst_count, name, opc)                                   \
+#define __INSTR2(flag, dst_count, name, opc, scalar_alu)                       \
 static inline struct ir3_instruction *ir3_##name(                              \
    struct ir3_block *block, struct ir3_instruction *a, unsigned aflags,        \
    struct ir3_instruction *b, unsigned bflags)                                 \
 {                                                                              \
    struct ir3_instruction *instr = ir3_instr_create(block, opc, dst_count, 2); \
+   unsigned dst_flag = scalar_alu ? (a->dsts[0]->flags & b->dsts[0]->flags &   \
+                                     IR3_REG_SHARED) : 0;                      \
    for (unsigned i = 0; i < dst_count; i++)                                    \
-      __ssa_dst(instr);                                                        \
+      __ssa_dst(instr)->flags |= dst_flag;                                     \
    __ssa_src(instr, a, aflags);                                                \
    __ssa_src(instr, b, bflags);                                                \
    instr->flags |= flag;                                                       \
    return instr;                                                               \
 }
 /* clang-format on */
-#define INSTR2F(f, name)   __INSTR2(IR3_INSTR_##f, 1, name##_##f, OPC_##name)
-#define INSTR2(name)       __INSTR2((ir3_instruction_flags)0, 1, name, OPC_##name)
-#define INSTR2NODST(name)  __INSTR2((ir3_instruction_flags)0, 0, name, OPC_##name)
+#define INSTR2F(f, name)   __INSTR2(IR3_INSTR_##f, 1, name##_##f, OPC_##name,  \
+                                    false)
+#define INSTR2(name)       __INSTR2((ir3_instruction_flags)0, 1, name, OPC_##name, false)
+#define INSTR2S(name)      __INSTR2((ir3_instruction_flags)0, 1, name, OPC_##name, true)
+#define INSTR2NODST(name)  __INSTR2((ir3_instruction_flags)0, 0, name, OPC_##name, false)
 
 /* clang-format off */
-#define __INSTR3(flag, dst_count, name, opc)                                   \
+#define __INSTR3(flag, dst_count, name, opc, scalar_alu)                       \
 static inline struct ir3_instruction *ir3_##name(                              \
    struct ir3_block *block, struct ir3_instruction *a, unsigned aflags,        \
    struct ir3_instruction *b, unsigned bflags, struct ir3_instruction *c,      \
@@ -2354,8 +2360,10 @@ static inline struct ir3_instruction *ir3_##name(                              \
 {                                                                              \
    struct ir3_instruction *instr =                                             \
       ir3_instr_create(block, opc, dst_count, 3);                              \
+   unsigned dst_flag = scalar_alu ? (a->dsts[0]->flags & b->dsts[0]->flags &   \
+                                     c->dsts[0]->flags & IR3_REG_SHARED) : 0;  \
    for (unsigned i = 0; i < dst_count; i++)                                    \
-      __ssa_dst(instr);                                                        \
+      __ssa_dst(instr)->flags |= dst_flag;                                     \
    __ssa_src(instr, a, aflags);                                                \
    __ssa_src(instr, b, bflags);                                                \
    __ssa_src(instr, c, cflags);                                                \
@@ -2363,9 +2371,11 @@ static inline struct ir3_instruction *ir3_##name(                              \
    return instr;                                                               \
 }
 /* clang-format on */
-#define INSTR3F(f, name)  __INSTR3(IR3_INSTR_##f, 1, name##_##f, OPC_##name)
-#define INSTR3(name)      __INSTR3((ir3_instruction_flags)0, 1, name, OPC_##name)
-#define INSTR3NODST(name) __INSTR3((ir3_instruction_flags)0, 0, name, OPC_##name)
+#define INSTR3F(f, name)  __INSTR3(IR3_INSTR_##f, 1, name##_##f, OPC_##name,   \
+                                   false)
+#define INSTR3(name)      __INSTR3((ir3_instruction_flags)0, 1, name, OPC_##name, false)
+#define INSTR3S(name)     __INSTR3((ir3_instruction_flags)0, 1, name, OPC_##name, true)
+#define INSTR3NODST(name) __INSTR3((ir3_instruction_flags)0, 0, name, OPC_##name, false)
 
 /* clang-format off */
 #define __INSTR4(flag, dst_count, name, opc)                                   \
@@ -2483,53 +2493,53 @@ ir3_SHPS_MACRO(struct ir3_block *block)
 }
 
 /* cat2 instructions, most 2 src but some 1 src: */
-INSTR2(ADD_F)
-INSTR2(MIN_F)
-INSTR2(MAX_F)
-INSTR2(MUL_F)
-INSTR1(SIGN_F)
-INSTR2(CMPS_F)
-INSTR1(ABSNEG_F)
-INSTR2(CMPV_F)
-INSTR1(FLOOR_F)
-INSTR1(CEIL_F)
-INSTR1(RNDNE_F)
-INSTR1(RNDAZ_F)
-INSTR1(TRUNC_F)
-INSTR2(ADD_U)
-INSTR2(ADD_S)
-INSTR2(SUB_U)
-INSTR2(SUB_S)
-INSTR2(CMPS_U)
-INSTR2(CMPS_S)
-INSTR2(MIN_U)
-INSTR2(MIN_S)
-INSTR2(MAX_U)
-INSTR2(MAX_S)
-INSTR1(ABSNEG_S)
-INSTR2(AND_B)
-INSTR2(OR_B)
-INSTR1(NOT_B)
-INSTR2(XOR_B)
-INSTR2(CMPV_U)
-INSTR2(CMPV_S)
-INSTR2(MUL_U24)
-INSTR2(MUL_S24)
-INSTR2(MULL_U)
-INSTR1(BFREV_B)
-INSTR1(CLZ_S)
-INSTR1(CLZ_B)
-INSTR2(SHL_B)
-INSTR2(SHR_B)
-INSTR2(ASHR_B)
+INSTR2S(ADD_F)
+INSTR2S(MIN_F)
+INSTR2S(MAX_F)
+INSTR2S(MUL_F)
+INSTR1S(SIGN_F)
+INSTR2S(CMPS_F)
+INSTR1S(ABSNEG_F)
+INSTR2S(CMPV_F)
+INSTR1S(FLOOR_F)
+INSTR1S(CEIL_F)
+INSTR1S(RNDNE_F)
+INSTR1S(RNDAZ_F)
+INSTR1S(TRUNC_F)
+INSTR2S(ADD_U)
+INSTR2S(ADD_S)
+INSTR2S(SUB_U)
+INSTR2S(SUB_S)
+INSTR2S(CMPS_U)
+INSTR2S(CMPS_S)
+INSTR2S(MIN_U)
+INSTR2S(MIN_S)
+INSTR2S(MAX_U)
+INSTR2S(MAX_S)
+INSTR1S(ABSNEG_S)
+INSTR2S(AND_B)
+INSTR2S(OR_B)
+INSTR1S(NOT_B)
+INSTR2S(XOR_B)
+INSTR2S(CMPV_U)
+INSTR2S(CMPV_S)
+INSTR2S(MUL_U24)
+INSTR2S(MUL_S24)
+INSTR2S(MULL_U)
+INSTR1S(BFREV_B)
+INSTR1S(CLZ_S)
+INSTR1S(CLZ_B)
+INSTR2S(SHL_B)
+INSTR2S(SHR_B)
+INSTR2S(ASHR_B)
 INSTR2(BARY_F)
 INSTR2(FLAT_B)
-INSTR2(MGEN_B)
-INSTR2(GETBIT_B)
+INSTR2S(MGEN_B)
+INSTR2S(GETBIT_B)
 INSTR1(SETRM)
-INSTR1(CBITS_B)
-INSTR2(SHB)
-INSTR2(MSAD)
+INSTR1S(CBITS_B)
+INSTR2S(SHB)
+INSTR2S(MSAD)
 
 /* cat3 instructions: */
 INSTR3(MAD_U16)
@@ -2543,26 +2553,26 @@ INSTR3(MAD_F32)
 INSTR3(DP2ACC)
 INSTR3(DP4ACC)
 /* NOTE: SEL_B32 checks for zero vs nonzero */
-INSTR3(SEL_B16)
-INSTR3(SEL_B32)
-INSTR3(SEL_S16)
-INSTR3(SEL_S32)
-INSTR3(SEL_F16)
-INSTR3(SEL_F32)
+INSTR3S(SEL_B16)
+INSTR3S(SEL_B32)
+INSTR3S(SEL_S16)
+INSTR3S(SEL_S32)
+INSTR3S(SEL_F16)
+INSTR3S(SEL_F32)
 INSTR3(SAD_S16)
 INSTR3(SAD_S32)
 
 /* cat4 instructions: */
-INSTR1(RCP)
-INSTR1(RSQ)
-INSTR1(HRSQ)
-INSTR1(LOG2)
-INSTR1(HLOG2)
-INSTR1(EXP2)
-INSTR1(HEXP2)
-INSTR1(SIN)
-INSTR1(COS)
-INSTR1(SQRT)
+INSTR1S(RCP)
+INSTR1S(RSQ)
+INSTR1S(HRSQ)
+INSTR1S(LOG2)
+INSTR1S(HLOG2)
+INSTR1S(EXP2)
+INSTR1S(HEXP2)
+INSTR1S(SIN)
+INSTR1S(COS)
+INSTR1S(SQRT)
 
 /* cat5 instructions: */
 INSTR1(DSX)

@@ -249,6 +249,7 @@ ir3_put_def(struct ir3_context *ctx, nir_def *def)
          continue;
       if (ctx->last_dst[i]->dsts[0]->flags & IR3_REG_SHARED) {
          ctx->last_dst[i] = ir3_MOV(ctx->block, ctx->last_dst[i], TYPE_U32);
+         ctx->last_dst[i]->dsts[0]->flags &= ~IR3_REG_SHARED;
       }
    }
 

@@ -425,6 +425,12 @@ setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
    if (result != VK_SUCCESS)
       return result;
 
+   if (device->physical->va.push_descriptor_buffer_pool.size > 0) {
+      result = pin_state_pool(device, execbuf, &device->push_descriptor_buffer_pool);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
    /* Add the BOs for all user allocated memory objects because we can't
     * track after binding updates of VK_EXT_descriptor_indexing and due to how
     * sparse resources work.

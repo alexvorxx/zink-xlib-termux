@@ -454,6 +454,9 @@ enum anv_bo_alloc_flags {
     * aligned to the AUX-TT requirements.
     */
    ANV_BO_ALLOC_AUX_CCS =                 (1 << 20),
+
+   /** For descriptor buffer pools */
+   ANV_BO_ALLOC_DESCRIPTOR_BUFFER_POOL =  (1 << 21),
 };
 
 /** Specifies that the BO should be cached and coherent. */
@@ -936,6 +939,8 @@ struct anv_memory_type {
    /* Standard bits passed on to the client */
    VkMemoryPropertyFlags   propertyFlags;
    uint32_t                heapIndex;
+   /* Whether this is the descriptor buffer memory type */
+   bool                    descriptor_buffer;
 };
 
 struct anv_memory_heap {
@@ -1085,6 +1090,12 @@ struct anv_physical_device {
 #ifdef SUPPORT_INTEL_INTEGRATED_GPUS
       bool                                      need_flush;
 #endif
+      /** Mask of memory types of normal allocations */
+      uint32_t                                  default_buffer_mem_types;
+      /** Mask of memory types of descriptor buffers */
+      uint32_t                                  desc_buffer_mem_types;
+      /** Mask of memory types of protected buffers/images */
+      uint32_t                                  protected_mem_types;
     } memory;
 
     struct {
@@ -1133,6 +1144,14 @@ struct anv_physical_device {
         * Instruction state pool
         */
        struct anv_va_range                      instruction_state_pool;
+       /**
+        * Descriptor buffers
+        */
+       struct anv_va_range                      descriptor_buffer_pool;
+       /**
+        * Push descriptor with descriptor buffers
+        */
+       struct anv_va_range                      push_descriptor_buffer_pool;
        /**
         * Client heap
         */
@@ -1681,6 +1700,7 @@ struct anv_device {
     struct util_vma_heap                        vma_lo;
     struct util_vma_heap                        vma_hi;
     struct util_vma_heap                        vma_desc;
+    struct util_vma_heap                        vma_desc_buf;
     struct util_vma_heap                        vma_samplers;
     struct util_vma_heap                        vma_trtt;
 
@@ -1707,6 +1727,7 @@ struct anv_device {
     struct anv_state_pool                       internal_surface_state_pool;
     struct anv_state_pool                       bindless_surface_state_pool;
     struct anv_state_pool                       indirect_push_descriptor_pool;
+    struct anv_state_pool                       push_descriptor_buffer_pool;
 
     struct anv_state_reserved_pool              custom_border_colors;
 
@@ -3702,6 +3723,7 @@ struct anv_cmd_buffer {
    struct anv_state_stream                      dynamic_state_stream;
    struct anv_state_stream                      general_state_stream;
    struct anv_state_stream                      indirect_push_descriptor_stream;
+   struct anv_state_stream                      push_descriptor_buffer_stream;
 
    VkCommandBufferUsageFlags                    usage_flags;
 

@@ -1845,6 +1845,34 @@ anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
    if (result != VK_SUCCESS)
       return result;
 
+   /* Replicate all non protected memory types for descriptor buffers because
+    * we want to identify memory allocations to place them in the right memory
+    * heap.
+    */
+   device->memory.default_buffer_mem_types =
+      BITFIELD_RANGE(0, device->memory.type_count);
+   device->memory.protected_mem_types = 0;
+   device->memory.desc_buffer_mem_types = 0;
+
+   uint32_t base_types_count = device->memory.type_count;
+   for (int i = 0; i < base_types_count; i++) {
+      if (device->memory.types[i].propertyFlags &
+          VK_MEMORY_PROPERTY_PROTECTED_BIT) {
+         device->memory.protected_mem_types |= BITFIELD_BIT(i);
+         continue;
+      }
+
+      assert(device->memory.type_count < ARRAY_SIZE(device->memory.types));
+
+      device->memory.desc_buffer_mem_types |=
+         BITFIELD_BIT(device->memory.type_count);
+
+      struct anv_memory_type *new_type =
+         &device->memory.types[device->memory.type_count++];
+      *new_type = device->memory.types[i];
+      new_type->descriptor_buffer = true;
+   }
+
    for (unsigned i = 0; i < device->memory.type_count; i++) {
       VkMemoryPropertyFlags props = device->memory.types[i].propertyFlags;
       if ((props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
@@ -3276,6 +3304,13 @@ VkResult anv_CreateDevice(
                          device->physical->va.bindless_surface_state_pool.size);
    }
 
+   /* Always initialized because the the memory types point to this and they
+    * are on the physical device.
+    */
+   util_vma_heap_init(&device->vma_desc_buf,
+                      device->physical->va.descriptor_buffer_pool.addr,
+                      device->physical->va.descriptor_buffer_pool.size);
+
    util_vma_heap_init(&device->vma_samplers,
                       device->physical->va.sampler_state_pool.addr,
                       device->physical->va.sampler_state_pool.size);
@@ -3461,11 +3496,28 @@ VkResult anv_CreateDevice(
          goto fail_binding_table_pool;
    }
 
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer &&
+       device->info->verx10 >= 125) {
+      /* On Gfx12.5+ because of the bindless stages (Mesh, Task, RT), the only
+       * way we can wire push descriptors is through the bindless heap. This
+       * state pool is a 1Gb carve out of the 4Gb HW heap.
+       */
+      result = anv_state_pool_init(&device->push_descriptor_buffer_pool, device,
+                                   &(struct anv_state_pool_params) {
+                                      .name         = "push descriptor buffer state pool",
+                                      .base_address = device->physical->va.push_descriptor_buffer_pool.addr,
+                                      .block_size   = 4096,
+                                      .max_size     = device->physical->va.push_descriptor_buffer_pool.size,
+                                   });
+      if (result != VK_SUCCESS)
+         goto fail_indirect_push_descriptor_pool;
+   }
+
    if (device->info->has_aux_map) {
       device->aux_map_ctx = intel_aux_map_init(device, &aux_map_allocator,
                                                &physical_device->info);
       if (!device->aux_map_ctx)
-         goto fail_indirect_push_descriptor_pool;
+         goto fail_push_descriptor_buffer_pool;
    }
 
    result = anv_device_alloc_bo(device, "workaround", 8192,
@@ -3721,6 +3773,10 @@ VkResult anv_CreateDevice(
       intel_aux_map_finish(device->aux_map_ctx);
       device->aux_map_ctx = NULL;
    }
+ fail_push_descriptor_buffer_pool:
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer &&
+       device->info->verx10 >= 125)
+      anv_state_pool_finish(&device->push_descriptor_buffer_pool);
  fail_indirect_push_descriptor_pool:
    if (device->physical->indirect_descriptors)
       anv_state_pool_finish(&device->indirect_push_descriptor_pool);
@@ -3754,6 +3810,7 @@ VkResult anv_CreateDevice(
    util_vma_heap_finish(&device->vma_trtt);
    if (!device->physical->indirect_descriptors)
       util_vma_heap_finish(&device->vma_samplers);
+   util_vma_heap_finish(&device->vma_desc_buf);
    util_vma_heap_finish(&device->vma_desc);
    util_vma_heap_finish(&device->vma_hi);
    util_vma_heap_finish(&device->vma_lo);
@@ -3851,6 +3908,9 @@ void anv_DestroyDevice(
       device->aux_map_ctx = NULL;
    }
 
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer &&
+       device->info->verx10 >= 125)
+      anv_state_pool_finish(&device->push_descriptor_buffer_pool);
    if (device->physical->indirect_descriptors)
       anv_state_pool_finish(&device->indirect_push_descriptor_pool);
    anv_state_pool_finish(&device->binding_table_pool);
@@ -3872,6 +3932,7 @@ void anv_DestroyDevice(
    util_vma_heap_finish(&device->vma_trtt);
    if (!device->physical->indirect_descriptors)
       util_vma_heap_finish(&device->vma_samplers);
+   util_vma_heap_finish(&device->vma_desc_buf);
    util_vma_heap_finish(&device->vma_desc);
    util_vma_heap_finish(&device->vma_hi);
    util_vma_heap_finish(&device->vma_lo);
@@ -3933,6 +3994,9 @@ anv_vma_heap_for_flags(struct anv_device *device,
    if (alloc_flags & ANV_BO_ALLOC_TRTT)
       return &device->vma_trtt;
 
+   if (alloc_flags & ANV_BO_ALLOC_DESCRIPTOR_BUFFER_POOL)
+      return &device->vma_desc_buf;
+
    if (alloc_flags & ANV_BO_ALLOC_32BIT_ADDRESS)
       return &device->vma_lo;
 
@@ -3959,6 +4023,7 @@ anv_vma_alloc(struct anv_device *device,
 
    if (alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS) {
       assert(*out_vma_heap == &device->vma_hi ||
+             *out_vma_heap == &device->vma_desc_buf ||
              *out_vma_heap == &device->vma_trtt);
 
       if (client_address) {
@@ -3994,6 +4059,7 @@ anv_vma_free(struct anv_device *device,
    assert(vma_heap == &device->vma_lo ||
           vma_heap == &device->vma_hi ||
           vma_heap == &device->vma_desc ||
+          vma_heap == &device->vma_desc_buf ||
           vma_heap == &device->vma_samplers ||
           vma_heap == &device->vma_trtt);
 
@@ -4172,6 +4238,9 @@ VkResult anv_AllocateMemory(
             alloc_flags |= ANV_BO_ALLOC_IMPLICIT_WRITE;
       }
    }
+
+   if (mem_type->descriptor_buffer)
+      alloc_flags |= ANV_BO_ALLOC_DESCRIPTOR_BUFFER_POOL;
 
    if (mem->vk.ahardware_buffer) {
       result = anv_import_ahw_memory(_device, mem);
@@ -4716,19 +4785,16 @@ anv_get_buffer_memory_requirements(struct anv_device *device,
     *    supported memory type for the resource. The bit `1<<i` is set if and
     *    only if the memory type `i` in the VkPhysicalDeviceMemoryProperties
     *    structure for the physical device is supported.
+    *
+    * We have special memory types for descriptor buffers.
     */
-   uint32_t memory_types = 0;
-   for (uint32_t i = 0; i < device->physical->memory.type_count; i++) {
-      /* Have the protected buffer bit match only the memory types with the
-       * equivalent bit.
-       */
-      if (!!(flags & VK_BUFFER_CREATE_PROTECTED_BIT) !=
-          !!(device->physical->memory.types[i].propertyFlags &
-             VK_MEMORY_PROPERTY_PROTECTED_BIT))
-         continue;
-
-      memory_types |= 1ull << i;
-   }
+   uint32_t memory_types =
+      (flags & VK_BUFFER_CREATE_PROTECTED_BIT) ?
+      device->physical->memory.protected_mem_types :
+      ((usage & (VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
+                 VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT)) ?
+       device->physical->memory.desc_buffer_mem_types :
+       device->physical->memory.default_buffer_mem_types);
 
    /* The GPU appears to write back to main memory in cachelines. Writes to a
     * buffers should not clobber with writes to another buffers so make sure

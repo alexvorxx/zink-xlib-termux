@@ -1828,6 +1828,7 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
    assert(anv_pipeline_is_mesh(pipeline));
 
    const struct anv_shader_bin *mesh_bin = pipeline->base.shaders[MESA_SHADER_MESH];
+   const struct brw_mesh_prog_data *mesh_prog_data = get_mesh_prog_data(pipeline);
 
    anv_pipeline_emit(pipeline, final.mesh_control,
                      GENX(3DSTATE_MESH_CONTROL), mc) {
@@ -1836,10 +1837,12 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
       mc.ScratchSpaceBuffer =
          get_scratch_surf(&pipeline->base.base, MESA_SHADER_MESH, mesh_bin);
       mc.MaximumNumberofThreadGroups = 511;
+#if GFX_VER >= 20
+      mc.VPandRTAIndexAutostripEnable = mesh_prog_data->autostrip_enable;
+#endif
    }
 
    const struct intel_device_info *devinfo = pipeline->base.base.device->info;
-   const struct brw_mesh_prog_data *mesh_prog_data = get_mesh_prog_data(pipeline);
    const struct intel_cs_dispatch_info mesh_dispatch =
       brw_cs_get_dispatch_info(devinfo, &mesh_prog_data->base, NULL);
 

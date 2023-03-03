@@ -1253,6 +1253,7 @@ struct brw_mesh_prog_data {
    enum brw_mesh_index_format index_format;
 
    bool uses_drawid;
+   bool autostrip_enable;
 };
 
 /* brw_any_prog_data is prog_data for any stage that maps to an API stage */

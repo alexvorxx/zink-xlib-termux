@@ -956,6 +956,21 @@ emit_load_payload_with_padding(const fs_builder &bld, const fs_reg &dst,
    return inst;
 }
 
+static bool
+shader_opcode_needs_header(opcode op)
+{
+   switch (op) {
+   case SHADER_OPCODE_TG4:
+   case SHADER_OPCODE_TG4_OFFSET:
+   case SHADER_OPCODE_SAMPLEINFO:
+      return true;
+   default:
+      break;
+   }
+
+   return false;
+}
+
 static void
 lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
                                 const fs_reg &coordinate,
@@ -992,9 +1007,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
    assert((surface.file == BAD_FILE) != (surface_handle.file == BAD_FILE));
    assert((sampler.file == BAD_FILE) != (sampler_handle.file == BAD_FILE));
 
-   if (op == SHADER_OPCODE_TG4 || op == SHADER_OPCODE_TG4_OFFSET ||
-       inst->offset != 0 || inst->eot ||
-       op == SHADER_OPCODE_SAMPLEINFO ||
+   if (shader_opcode_needs_header(op) || inst->offset != 0 || inst->eot ||
        sampler_handle.file != BAD_FILE ||
        is_high_sampler(devinfo, sampler) ||
        residency) {

@@ -30,6 +30,7 @@ bool intel_nir_lower_sparse_intrinsics(nir_shader *nir);
 
 struct intel_nir_lower_texture_opts {
    bool combined_lod_and_array_index;
+   bool combined_lod_or_bias_and_offset;
 };
 bool intel_nir_lower_texture(nir_shader *nir,
                              const struct intel_nir_lower_texture_opts *opts);

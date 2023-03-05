@@ -8088,6 +8088,7 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    ASSERTED bool got_lod = false;
    ASSERTED bool got_bias = false;
    bool pack_lod_and_array_index = false;
+   bool pack_lod_bias_and_offset = false;
    uint32_t header_bits = 0;
    for (unsigned i = 0; i < instr->num_srcs; i++) {
       nir_src nir_src = instr->src[i].src;
@@ -8218,6 +8219,16 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
          srcs[TEX_LOGICAL_SRC_MCS] = retype(src, BRW_REGISTER_TYPE_D);
          break;
 
+      /* If this parameter is present, we are packing offset U, V and LOD/Bias
+       * into a single (32-bit) value.
+       */
+      case nir_tex_src_backend2:
+         assert(instr->op == nir_texop_tg4);
+         pack_lod_bias_and_offset = true;
+         srcs[TEX_LOGICAL_SRC_LOD] =
+            retype(get_nir_src_imm(ntb, instr->src[i].src), BRW_REGISTER_TYPE_F);
+         break;
+
       /* If this parameter is present, we are packing either the explicit LOD
        * or LOD bias and the array index into a single (32-bit) value when
        * 32-bit texture coordinates are used.
@@ -8323,6 +8334,13 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
 
             if (got_lod)
                opcode = SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL;
+
+            if (pack_lod_bias_and_offset) {
+               if (got_lod)
+                  opcode = SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL;
+               if (got_bias)
+                  opcode = SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL;
+            }
          }
       }
       break;

@@ -277,6 +277,8 @@ fs_inst::is_control_source(unsigned arg) const
    case SHADER_OPCODE_TG4_BIAS:
    case SHADER_OPCODE_TG4_EXPLICIT_LOD:
    case SHADER_OPCODE_TG4_IMPLICIT_LOD:
+   case SHADER_OPCODE_TG4_OFFSET_LOD:
+   case SHADER_OPCODE_TG4_OFFSET_BIAS:
    case SHADER_OPCODE_SAMPLEINFO:
       return arg == 1 || arg == 2;
 
@@ -321,6 +323,8 @@ fs_inst::is_payload(unsigned arg) const
    case SHADER_OPCODE_TG4_BIAS:
    case SHADER_OPCODE_TG4_EXPLICIT_LOD:
    case SHADER_OPCODE_TG4_IMPLICIT_LOD:
+   case SHADER_OPCODE_TG4_OFFSET_LOD:
+   case SHADER_OPCODE_TG4_OFFSET_BIAS:
    case SHADER_OPCODE_SAMPLEINFO:
       return arg == 0;
 
@@ -728,6 +732,8 @@ fs_inst::components_read(unsigned i) const
    case SHADER_OPCODE_TG4_BIAS_LOGICAL:
    case SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL:
    case SHADER_OPCODE_SAMPLEINFO_LOGICAL:
       assert(src[TEX_LOGICAL_SRC_COORD_COMPONENTS].file == IMM &&
              src[TEX_LOGICAL_SRC_GRAD_COMPONENTS].file == IMM &&
@@ -962,6 +968,8 @@ fs_inst::size_read(int arg) const
    case SHADER_OPCODE_TG4_BIAS:
    case SHADER_OPCODE_TG4_EXPLICIT_LOD:
    case SHADER_OPCODE_TG4_IMPLICIT_LOD:
+   case SHADER_OPCODE_TG4_OFFSET_LOD:
+   case SHADER_OPCODE_TG4_OFFSET_BIAS:
    case SHADER_OPCODE_SAMPLEINFO:
       if (arg == 0 && src[0].file == VGRF)
          return mlen * REG_SIZE;
@@ -1095,6 +1103,8 @@ fs_inst::implied_mrf_writes() const
    case SHADER_OPCODE_TG4_BIAS:
    case SHADER_OPCODE_TG4_EXPLICIT_LOD:
    case SHADER_OPCODE_TG4_IMPLICIT_LOD:
+   case SHADER_OPCODE_TG4_OFFSET_LOD:
+   case SHADER_OPCODE_TG4_OFFSET_BIAS:
    case SHADER_OPCODE_TXL:
    case SHADER_OPCODE_TXS:
    case SHADER_OPCODE_LOD:
@@ -1133,6 +1143,8 @@ fs_inst::has_sampler_residency() const
    case SHADER_OPCODE_TG4_BIAS_LOGICAL:
    case SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL:
       assert(src[TEX_LOGICAL_SRC_RESIDENCY].file == IMM);
       return src[TEX_LOGICAL_SRC_RESIDENCY].ud != 0;
    default:

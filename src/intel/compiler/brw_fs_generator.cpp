@@ -1083,6 +1083,18 @@ fs_generator::generate_tex(fs_inst *inst, struct brw_reg dst,
          else
             msg_type = XE2_SAMPLER_MESSAGE_SAMPLE_GATHER4_I;
          break;
+      case SHADER_OPCODE_TG4_OFFSET_BIAS:
+         assert(devinfo->ver >= 20);
+         assert(!inst->shadow_compare);
+         msg_type = XE2_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO_B;
+         break;
+      case SHADER_OPCODE_TG4_OFFSET_LOD:
+         assert(devinfo->ver >= 20);
+         if (inst->shadow_compare)
+            msg_type = XE2_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO_L_C;
+         else
+            msg_type = XE2_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO_L;
+         break;
       case SHADER_OPCODE_SAMPLEINFO:
          msg_type = GFX6_SAMPLER_MESSAGE_SAMPLE_SAMPLEINFO;
          break;
@@ -2130,6 +2142,8 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       case SHADER_OPCODE_TG4_BIAS:
       case SHADER_OPCODE_TG4_EXPLICIT_LOD:
       case SHADER_OPCODE_TG4_IMPLICIT_LOD:
+      case SHADER_OPCODE_TG4_OFFSET_LOD:
+      case SHADER_OPCODE_TG4_OFFSET_BIAS:
       case SHADER_OPCODE_SAMPLEINFO:
          assert(inst->src[0].file == BAD_FILE);
          generate_tex(inst, dst, src[1], src[2]);

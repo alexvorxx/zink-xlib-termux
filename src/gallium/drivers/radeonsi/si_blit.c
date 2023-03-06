@@ -1056,7 +1056,7 @@ void si_gfx_copy_image(struct si_context *sctx, struct pipe_resource *dst,
    si_blitter_begin(sctx, SI_COPY);
    util_blitter_blit_generic(sctx->blitter, dst_view, &dstbox, src_view, src_box, src->width0,
                              src->height0, PIPE_MASK_RGBAZS, PIPE_TEX_FILTER_NEAREST, NULL,
-                             false, false, 0);
+                             false, false, 0, NULL);
    si_blitter_end(sctx);
 
    pipe_surface_reference(&dst_view, NULL);
@@ -1259,7 +1259,7 @@ void si_gfx_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
       sctx->sqtt_next_event = EventCmdBlitImage;
 
    si_blitter_begin(sctx, SI_BLIT | (info->render_condition_enable ? 0 : SI_DISABLE_RENDER_COND));
-   util_blitter_blit(sctx->blitter, info);
+   util_blitter_blit(sctx->blitter, info, NULL);
    si_blitter_end(sctx);
 }
 

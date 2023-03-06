@@ -690,7 +690,7 @@ try_blit(struct svga_context *svga, const struct pipe_blit_info *blit_info)
 
    svga_toggle_render_condition(svga, blit.render_condition_enable, false);
 
-   util_blitter_blit(svga->blitter, &blit);
+   util_blitter_blit(svga->blitter, &blit, NULL);
 
    svga_toggle_render_condition(svga, blit.render_condition_enable, true);
 

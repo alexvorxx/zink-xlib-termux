@@ -90,7 +90,7 @@ panfrost_blit_no_afbc_legalization(struct pipe_context *pipe,
    panfrost_blitter_save(ctx, info->render_condition_enable
                                  ? PAN_RENDER_BLIT_COND
                                  : PAN_RENDER_BLIT);
-   util_blitter_blit(ctx->blitter, info);
+   util_blitter_blit(ctx->blitter, info, NULL);
 }
 
 void

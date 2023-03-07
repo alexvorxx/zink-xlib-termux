@@ -2151,7 +2151,9 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                err |= control(file, "sampler message", gfx5_sampler_msg_type,
                               brw_sampler_desc_msg_type(devinfo, imm_desc),
                               &space);
-               err |= control(file, "sampler simd mode", gfx5_sampler_simd_mode,
+               err |= control(file, "sampler simd mode",
+                              devinfo->ver >= 20 ? xe2_sampler_simd_mode :
+                                                   gfx5_sampler_simd_mode,
                               brw_sampler_desc_simd_mode(devinfo, imm_desc),
                               &space);
                if (brw_sampler_desc_return_format(devinfo, imm_desc)) {

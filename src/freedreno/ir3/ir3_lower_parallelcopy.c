@@ -154,11 +154,7 @@ do_swap(struct ir3_compiler *compiler, struct ir3_instruction *instr,
    /* a5xx+ is known to support swz, which enables us to swap two registers
     * in-place. If unsupported we emulate it using the xor trick.
     */
-   if (compiler->gen < 5) {
-      /* Shared regs only exist since a5xx, so we don't have to provide a
-       * fallback path for them.
-       */
-      assert(!(entry->flags & IR3_REG_SHARED));
+   if (compiler->gen < 5 || (entry->flags & IR3_REG_SHARED)) {
       do_xor(instr, dst_num, dst_num, src_num, entry->flags);
       do_xor(instr, src_num, src_num, dst_num, entry->flags);
       do_xor(instr, dst_num, dst_num, src_num, entry->flags);

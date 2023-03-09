@@ -565,7 +565,7 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
       /* both tex/sfu appear to not always immediately consume
        * their src register(s):
        */
-      if (is_tex(n) || is_sfu(n) || is_mem(n)) {
+      if (is_tex(n) || is_mem(n) || is_ss_producer(n)) {
          foreach_src (reg, n) {
             regmask_set(&state->needs_ss_war, reg);
          }

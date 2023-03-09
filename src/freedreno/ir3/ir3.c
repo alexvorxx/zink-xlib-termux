@@ -1322,6 +1322,9 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
          if (instr->opc == OPC_LDG_A && (n < 2))
             return false;
 
+         if (instr->opc == OPC_STC && n != 0)
+            return false;
+
          /* as with atomics, these cat6 instrs can only have an immediate
           * for SSBO/IBO slot argument
           */

@@ -1822,7 +1822,8 @@ handle_block(struct ra_spill_ctx *ctx, struct ir3_block *block)
    }
 
    if (ctx->spilling) {
-      if (block->predecessors_count == 1) {
+      if (block->predecessors_count == 1 &&
+          block->predecessors[0]->successors[1]) {
          spill_single_pred_live_in(ctx, block);
       } else {
          spill_live_ins(ctx, block);

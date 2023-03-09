@@ -257,7 +257,10 @@ do_copy(struct ir3_compiler *compiler, struct ir3_instruction *instr,
       (entry->flags & IR3_REG_SHARED) ? OPC_READ_FIRST_MACRO : OPC_MOV;
    struct ir3_instruction *mov = ir3_instr_create(instr->block, opc, 1, 1);
    ir3_dst_create(mov, dst_num, entry->flags);
-   ir3_src_create(mov, src_num, entry->flags | entry->src.flags);
+   if (entry->src.flags & (IR3_REG_IMMED | IR3_REG_CONST))
+      ir3_src_create(mov, INVALID_REG, (entry->flags & IR3_REG_HALF) | entry->src.flags);
+   else
+      ir3_src_create(mov, src_num, entry->flags);
    mov->cat1.dst_type = (entry->flags & IR3_REG_HALF) ? TYPE_U16 : TYPE_U32;
    mov->cat1.src_type = (entry->flags & IR3_REG_HALF) ? TYPE_U16 : TYPE_U32;
    if (entry->src.flags & IR3_REG_IMMED)

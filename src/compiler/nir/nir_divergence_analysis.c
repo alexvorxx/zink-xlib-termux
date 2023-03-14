@@ -86,6 +86,25 @@ visit_alu(nir_alu_instr *instr, struct divergence_state *state)
    return false;
 }
 
+
+/* On some HW uniform loads where there is a pending store/atomic from another
+ * wave can "tear" so that different invocations see the pre-store value and
+ * the post-store value even though they are loading from the same location.
+ * This means we have to assume it's not uniform unless it's readonly.
+ *
+ * TODO The Vulkan memory model is much more strict here and requires an
+ * atomic or volatile load for the data race to be valid, which could allow us
+ * to do better if it's in use, however we currently don't have that
+ * information plumbed through.
+ */
+static bool
+load_may_tear(nir_shader *shader, nir_intrinsic_instr *instr)
+{
+   return (shader->options->divergence_analysis_options &
+           nir_divergence_uniform_load_tears) &&
+          !(nir_intrinsic_access(instr) & ACCESS_NON_WRITEABLE);
+}
+
 static bool
 visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
 {
@@ -420,11 +439,42 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
 
    case nir_intrinsic_load_ubo:
    case nir_intrinsic_load_ubo_vec4:
-   case nir_intrinsic_load_ssbo:
-   case nir_intrinsic_load_ssbo_ir3:
       is_divergent = (instr->src[0].ssa->divergent && (nir_intrinsic_access(instr) & ACCESS_NON_UNIFORM)) ||
                      instr->src[1].ssa->divergent;
       break;
+
+   case nir_intrinsic_load_ssbo:
+   case nir_intrinsic_load_ssbo_ir3:
+      is_divergent = (instr->src[0].ssa->divergent && (nir_intrinsic_access(instr) & ACCESS_NON_UNIFORM)) ||
+                     instr->src[1].ssa->divergent ||
+                     load_may_tear(state->shader, instr);
+      break;
+
+   case nir_intrinsic_load_shared:
+   case nir_intrinsic_load_shared_ir3:
+      is_divergent = instr->src[0].ssa->divergent ||
+         (state->shader->options->divergence_analysis_options &
+          nir_divergence_uniform_load_tears);
+      break;
+
+   case nir_intrinsic_load_global:
+   case nir_intrinsic_load_global_2x32:
+   case nir_intrinsic_load_global_ir3:
+   case nir_intrinsic_load_deref: {
+      if (load_may_tear(state->shader, instr)) {
+         is_divergent = true;
+         break;
+      }
+
+      unsigned num_srcs = nir_intrinsic_infos[instr->intrinsic].num_srcs;
+      for (unsigned i = 0; i < num_srcs; i++) {
+         if (instr->src[i].ssa->divergent) {
+            is_divergent = true;
+            break;
+         }
+      }
+      break;
+   }
 
    case nir_intrinsic_get_ssbo_size:
    case nir_intrinsic_deref_buffer_array_length:
@@ -438,7 +488,8 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_image_deref_fragment_mask_load_amd:
    case nir_intrinsic_bindless_image_fragment_mask_load_amd:
       is_divergent = (instr->src[0].ssa->divergent && (nir_intrinsic_access(instr) & ACCESS_NON_UNIFORM)) ||
-                     instr->src[1].ssa->divergent;
+                     instr->src[1].ssa->divergent ||
+                     load_may_tear(state->shader, instr);
       break;
 
    case nir_intrinsic_image_texel_address:
@@ -455,7 +506,8 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_image_deref_sparse_load:
    case nir_intrinsic_bindless_image_sparse_load:
       is_divergent = (instr->src[0].ssa->divergent && (nir_intrinsic_access(instr) & ACCESS_NON_UNIFORM)) ||
-                     instr->src[1].ssa->divergent || instr->src[2].ssa->divergent || instr->src[3].ssa->divergent;
+                     instr->src[1].ssa->divergent || instr->src[2].ssa->divergent || instr->src[3].ssa->divergent ||
+                     load_may_tear(state->shader, instr);
       break;
 
    case nir_intrinsic_optimization_barrier_vgpr_amd:
@@ -478,15 +530,9 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_quad_swap_diagonal:
    case nir_intrinsic_quad_vote_any:
    case nir_intrinsic_quad_vote_all:
-   case nir_intrinsic_load_deref:
-   case nir_intrinsic_load_shared:
    case nir_intrinsic_load_shared2_amd:
-   case nir_intrinsic_load_shared_ir3:
-   case nir_intrinsic_load_global:
-   case nir_intrinsic_load_global_2x32:
    case nir_intrinsic_load_global_constant:
    case nir_intrinsic_load_global_amd:
-   case nir_intrinsic_load_global_ir3:
    case nir_intrinsic_load_uniform:
    case nir_intrinsic_load_constant:
    case nir_intrinsic_load_sample_pos_from_id:

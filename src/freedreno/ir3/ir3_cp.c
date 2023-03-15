@@ -280,7 +280,7 @@ try_swap_mad_two_srcs(struct ir3_instruction *instr, unsigned new_flags)
    /* If the reason we couldn't fold without swapping is something
     * other than const source, then swapping won't help:
     */
-   if (!(new_flags & IR3_REG_CONST))
+   if (!(new_flags & (IR3_REG_CONST | IR3_REG_SHARED)))
       return false;
 
    instr->cat3.swapped = true;
@@ -338,6 +338,8 @@ reg_cp(struct ir3_cp_ctx *ctx, struct ir3_instruction *instr,
          unuse(src);
          reg->def->instr->use_count++;
 
+         return true;
+      } else if (n == 1 && try_swap_mad_two_srcs(instr, new_flags)) {
          return true;
       }
    } else if ((is_same_type_mov(src) || is_const_mov(src)) &&

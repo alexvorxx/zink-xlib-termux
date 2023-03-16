@@ -220,6 +220,9 @@ delay_update(struct ir3_legalize_state *state,
              unsigned cycle,
              bool mergedregs)
 {
+   if (writes_addr1(instr) && instr->block->in_early_preamble)
+      return;
+
    foreach_dst_n (dst, n, instr) {
       unsigned elems = post_ra_reg_elems(dst);
       unsigned num = post_ra_reg_num(dst);
@@ -495,6 +498,11 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
                apply_ss(n, state, mergedregs);
                last_input_needs_ss = false;
             }
+         } else if (reg_is_addr1(reg) && block->in_early_preamble) {
+            if (regmask_get(&state->needs_ss, reg)) {
+               apply_ss(n, state, mergedregs);
+               last_input_needs_ss = false;
+            }
          }
       }
 
@@ -506,6 +514,12 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
             last_input_needs_ss = false;
          }
       }
+
+      /* I'm not exactly what this is for, but it seems we need this on every
+       * mova1 in early preambles.
+       */
+      if (writes_addr1(n) && block->in_early_preamble)
+         n->srcs[0]->flags |= IR3_REG_R;
 
       /* cat5+ does not have an (ss) bit, if needed we need to
        * insert a nop to carry the sync flag.  Would be kinda
@@ -584,6 +598,8 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
             } else {
                regmask_set(&state->needs_ss, dst);
             }
+         } else if (reg_is_addr1(dst) && block->in_early_preamble) {
+            regmask_set(&state->needs_ss, dst);
          }
       }
 
@@ -1587,16 +1603,73 @@ ir3_legalize(struct ir3 *ir, struct ir3_shader_variant *so, int *max_bary)
     * a5xx and a6xx do automatically release varying storage at the end.
     */
    ctx->early_input_release = true;
+
    struct ir3_block *start_block = ir3_after_preamble(ir);
+
+   /* Gather information to determine whether we can enable early preamble.
+    */
+   bool gpr_in_preamble = false;
+   bool pred_in_preamble = false;
+   bool relative_in_preamble = false;
+   bool in_preamble = start_block != ir3_start_block(ir);
+   bool has_preamble = start_block != ir3_start_block(ir);
+
    foreach_block (block, &ir->block_list) {
+      if (block == start_block)
+         in_preamble = false;
+
       foreach_instr (instr, &block->instr_list) {
          if (is_input(instr)) {
             ctx->has_inputs = true;
             if (block != start_block) {
                ctx->early_input_release = false;
-               break;
             }
          }
+
+         if (is_meta(instr))
+            continue;
+
+         foreach_src (reg, instr) {
+            if (in_preamble) {
+               if (!(reg->flags & (IR3_REG_IMMED | IR3_REG_CONST | IR3_REG_SHARED)) &&
+                   is_reg_gpr(reg))
+                  gpr_in_preamble = true;
+               if (reg->flags & IR3_REG_RELATIV)
+                  relative_in_preamble = true;
+            }
+         }
+
+         foreach_dst (reg, instr) {
+            if (is_dest_gpr(reg)) {
+               if (in_preamble) {
+                  if (!(reg->flags & IR3_REG_SHARED))
+                     gpr_in_preamble = true;
+                  if (reg->flags & IR3_REG_RELATIV)
+                     relative_in_preamble = true;
+               }
+            }
+         }
+
+         if (in_preamble && writes_pred(instr)) {
+            pred_in_preamble = true;
+         }
+      }
+   }
+
+   so->info.early_preamble = has_preamble && !gpr_in_preamble &&
+      !pred_in_preamble && !relative_in_preamble &&
+      ir->compiler->has_early_preamble &&
+      !(ir3_shader_debug & IR3_DBG_NOEARLYPREAMBLE);
+
+   /* On a7xx, sync behavior for a1.x is different in the early preamble. RaW
+    * dependencies must be synchronized with (ss) there must be an extra
+    * (r) on the source of the mova1 instruction.
+    */
+   if (so->info.early_preamble && ir->compiler->gen >= 7) {
+      foreach_block (block, &ir->block_list) {
+         if (block == start_block)
+            break;
+         block->in_early_preamble = true;
       }
    }
 

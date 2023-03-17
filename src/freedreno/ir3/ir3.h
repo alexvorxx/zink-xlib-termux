@@ -2146,7 +2146,7 @@ __ssa_dst(struct ir3_instruction *instr)
    return reg;
 }
 
-static ir3_register_flags
+static BITMASK_ENUM(ir3_register_flags)
 type_flags(type_t type)
 {
    if (type_size(type) < 32)

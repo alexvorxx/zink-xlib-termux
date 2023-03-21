@@ -4643,13 +4643,25 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
       } else {
          assert(def->parent_instr->type == nir_instr_type_intrinsic &&
                 (nir_instr_as_intrinsic(def->parent_instr)->intrinsic ==
-                 nir_intrinsic_load_uniform));
+                 nir_intrinsic_load_uniform ||
+                 nir_instr_as_intrinsic(def->parent_instr)->intrinsic ==
+                 nir_intrinsic_load_reloc_const_intel));
          nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(def->parent_instr);
-         unsigned base_offset = nir_intrinsic_base(intrin);
-         unsigned load_offset = nir_src_as_uint(intrin->src[0]);
-         fs_reg src(UNIFORM, base_offset / 4, BRW_REGISTER_TYPE_UD);
-         src.offset = load_offset + base_offset % 4;
-         return src;
+         switch (intrin->intrinsic) {
+         case nir_intrinsic_load_uniform: {
+            unsigned base_offset = nir_intrinsic_base(intrin);
+            unsigned load_offset = nir_src_as_uint(intrin->src[0]);
+            fs_reg src(UNIFORM, base_offset / 4, BRW_REGISTER_TYPE_UD);
+            src.offset = load_offset + base_offset % 4;
+            return src;
+         }
+
+         default:
+            /* Execute the code below, since we have to generate new
+             * instructions.
+             */
+            break;
+         }
       }
    }
 
@@ -4757,6 +4769,14 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
             src.offset = load_offset + base_offset % 4;
             ntb.resource_insts[def->index] = ubld8.MOV(dst, src);
             break;
+         }
+
+         case nir_intrinsic_load_reloc_const_intel: {
+            uint32_t id = nir_intrinsic_param_idx(intrin);
+            fs_reg dst = ubld8.vgrf(BRW_REGISTER_TYPE_UD);
+            ntb.resource_insts[def->index] =
+               ubld8.emit(SHADER_OPCODE_MOV_RELOC_IMM, dst,
+                          brw_imm_ud(id), brw_imm_ud(0));
          }
 
          default:
@@ -8520,4 +8540,3 @@ nir_to_brw(fs_visitor *s)
 
    ralloc_free(ntb.mem_ctx);
 }
-

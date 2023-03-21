@@ -38,6 +38,8 @@
 
 struct intel_sample_positions;
 struct intel_urb_config;
+struct anv_embedded_sampler;
+struct anv_pipeline_embedded_sampler_binding;
 
 typedef struct nir_builder nir_builder;
 typedef struct nir_shader nir_shader;
@@ -374,3 +376,7 @@ genX(cmd_buffer_flush_push_descriptors)(struct anv_cmd_buffer *cmd_buffer,
    /* Return the binding table stages that need to be updated */
    return push_buffer_dirty | push_descriptor_dirty;
 }
+
+void genX(emit_embedded_sampler)(struct anv_device *device,
+                                 struct anv_embedded_sampler *sampler,
+                                 struct anv_pipeline_embedded_sampler_binding *binding);

@@ -180,6 +180,7 @@ struct intel_perf_query_result;
 #define MAX_PUSH_DESCRIPTORS 32 /* Minimum requirement */
 #define MAX_INLINE_UNIFORM_BLOCK_SIZE 4096
 #define MAX_INLINE_UNIFORM_BLOCK_DESCRIPTORS 32
+#define MAX_EMBEDDED_SAMPLERS 2048
 /* We need 16 for UBO block reads to work and 32 for push UBOs. However, we
  * use 64 here to avoid cache issues. This could most likely bring it back to
  * 32 if we had different virtual addresses for the different views on a given
@@ -1300,6 +1301,7 @@ struct anv_queue {
 
 struct nir_xfb_info;
 struct anv_pipeline_bind_map;
+struct anv_pipeline_sets_layout;
 struct anv_push_descriptor_info;
 enum anv_dynamic_push_bits;
 
@@ -2885,6 +2887,27 @@ struct anv_pipeline_binding {
    };
 };
 
+struct anv_pipeline_embedded_sampler_binding {
+   /** The descriptor set this sampler belongs to */
+   uint8_t set;
+
+   /** The binding in the set this sampler belongs to */
+   uint32_t binding;
+
+   /* No need to track binding elements for embedded samplers as :
+    *
+    *    VUID-VkDescriptorSetLayoutBinding-flags-08006:
+    *
+    *       "If VkDescriptorSetLayoutCreateInfo:flags contains
+    *        VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT,
+    *        descriptorCount must: less than or equal to 1"
+    */
+
+   uint32_t sampler_state[4];
+
+   uint32_t border_color[4];
+};
+
 struct anv_push_range {
    /** Index in the descriptor set */
    uint32_t index;
@@ -4122,11 +4145,13 @@ struct anv_pipeline_bind_map {
 
    uint32_t surface_count;
    uint32_t sampler_count;
+   uint32_t embedded_sampler_count;
    uint16_t kernel_args_size;
    uint16_t kernel_arg_count;
 
    struct anv_pipeline_binding *                surface_to_descriptor;
    struct anv_pipeline_binding *                sampler_to_descriptor;
+   struct anv_pipeline_embedded_sampler_binding* embedded_sampler_to_binding;
    struct brw_kernel_arg_desc *                 kernel_args;
 
    struct anv_push_range                        push_ranges[4];
@@ -4172,6 +4197,11 @@ struct anv_shader_upload_params {
    enum anv_dynamic_push_bits dynamic_push_values;
 };
 
+struct anv_embedded_sampler {
+   struct anv_state sampler_state;
+   struct anv_state border_color_state;
+};
+
 struct anv_shader_bin {
    struct vk_pipeline_cache_object base;
 
@@ -4193,21 +4223,13 @@ struct anv_shader_bin {
    struct anv_pipeline_bind_map bind_map;
 
    enum anv_dynamic_push_bits dynamic_push_values;
+
+   /* Not saved in the pipeline cache.
+    *
+    * Array of length bind_map.embedded_sampler_count
+    */
+   struct anv_embedded_sampler *embedded_samplers;
 };
-
-struct anv_shader_bin *
-anv_shader_bin_create(struct anv_device *device,
-                      gl_shader_stage stage,
-                      const void *key, uint32_t key_size,
-                      const void *kernel, uint32_t kernel_size,
-                      const struct brw_stage_prog_data *prog_data,
-                      uint32_t prog_data_size,
-                      const struct brw_compile_stats *stats, uint32_t num_stats,
-                      const struct nir_xfb_info *xfb_info,
-                      const struct anv_pipeline_bind_map *bind_map,
-                      const struct anv_push_descriptor_info *push_desc_info,
-                      enum anv_dynamic_push_bits dynamic_push_values);
-
 
 static inline struct anv_shader_bin *
 anv_shader_bin_ref(struct anv_shader_bin *shader)
@@ -5642,6 +5664,8 @@ struct anv_sampler {
 
    uint32_t                     state[3][4];
    uint32_t                     db_state[3][4];
+   /* Packed SAMPLER_STATE without the border color pointer. */
+   uint32_t                     state_no_bc[3][4];
    uint32_t                     n_planes;
 
    /* Blob of sampler state data which is guaranteed to be 32-byte aligned

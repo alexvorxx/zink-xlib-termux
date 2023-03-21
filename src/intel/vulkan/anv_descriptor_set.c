@@ -785,6 +785,12 @@ VkResult anv_CreateDescriptorSetLayout(
    set_layout->descriptor_buffer_surface_size = descriptor_buffer_surface_size;
    set_layout->descriptor_buffer_sampler_size = descriptor_buffer_sampler_size;
 
+   if (pCreateInfo->flags &
+       VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT) {
+      assert(set_layout->descriptor_buffer_surface_size == 0);
+      assert(set_layout->descriptor_buffer_sampler_size == 0);
+   }
+
    *pSetLayout = anv_descriptor_set_layout_to_handle(set_layout);
 
    return VK_SUCCESS;

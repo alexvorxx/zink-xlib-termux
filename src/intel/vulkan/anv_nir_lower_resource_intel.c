@@ -95,7 +95,16 @@ lower_resource_intel(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
    const bool is_sampler =
       (nir_intrinsic_resource_access_intel(intrin) &
        nir_resource_intel_sampler) != 0;
+   const bool is_embedded_sampler =
+      (nir_intrinsic_resource_access_intel(intrin) &
+       nir_resource_intel_sampler_embedded) != 0;
    const struct lower_resource_state *state = data;
+
+   /* Ignore binding table accesses & embedded samplers */
+   if (is_embedded_sampler) {
+      assert(state->desc_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER);
+      return false;
+   }
 
    if (!is_bindless)
       return true;
@@ -104,6 +113,7 @@ lower_resource_intel(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
 
    nir_def *set_offset = intrin->src[0].ssa;
    nir_def *binding_offset = intrin->src[1].ssa;
+   nir_def *sampler_base_offset = intrin->src[3].ssa;
 
    /* When using indirect descriptor, the surface handles are loaded from the
     * descriptor buffer and do not need any offset.
@@ -135,8 +145,12 @@ lower_resource_intel(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
           * set, resource_intel::src[0] has to be shifted right by 6 (bringing
           * it back in bytes).
           */
-         if (!is_sampler)
+         if (is_sampler) {
+            set_offset = nir_ushr_imm(b, set_offset, 6);
+            set_offset = nir_iadd(b, set_offset, sampler_base_offset);
+         } else {
             binding_offset = nir_ishl_imm(b, binding_offset, 6);
+         }
       }
 
       nir_src_rewrite(&intrin->src[1],

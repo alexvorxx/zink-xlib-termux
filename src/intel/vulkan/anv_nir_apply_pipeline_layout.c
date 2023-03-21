@@ -40,8 +40,9 @@
 #define sizeof_field(type, field) sizeof(((type *)0)->field)
 
 enum binding_property {
-   BINDING_PROPERTY_NORMAL   = BITFIELD_BIT(0),
-   BINDING_PROPERTY_PUSHABLE = BITFIELD_BIT(1),
+   BINDING_PROPERTY_NORMAL            = BITFIELD_BIT(0),
+   BINDING_PROPERTY_PUSHABLE          = BITFIELD_BIT(1),
+   BINDING_PROPERTY_EMBEDDED_SAMPLER  = BITFIELD_BIT(2),
 };
 
 struct apply_pipeline_layout_state {
@@ -71,6 +72,9 @@ struct apply_pipeline_layout_state {
 
          /* Sampler table offset */
          uint8_t sampler_offset;
+
+         /* Embedded sampler index */
+         uint16_t embedded_sampler_index;
 
          /* Properties of the binding */
          enum binding_property properties;
@@ -123,8 +127,10 @@ static void
 add_binding(struct apply_pipeline_layout_state *state,
             uint32_t set, uint32_t binding)
 {
+   const struct anv_descriptor_set_layout *set_layout =
+      state->layout->set[set].layout;
    const struct anv_descriptor_set_binding_layout *bind_layout =
-      &state->layout->set[set].layout->binding[binding];
+      &set_layout->binding[binding];
 
    assert(set < state->layout->num_sets);
    assert(binding < state->layout->set[set].layout->binding_count);
@@ -143,6 +149,9 @@ add_binding(struct apply_pipeline_layout_state *state,
       state->has_dynamic_buffers = true;
 
    state->set[set].binding[binding].properties |= BINDING_PROPERTY_NORMAL;
+
+   if (set_layout->flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT)
+      state->set[set].binding[binding].properties |= BINDING_PROPERTY_EMBEDDED_SAMPLER;
 }
 
 const VkDescriptorBindingFlags non_pushable_binding_flags =
@@ -262,6 +271,9 @@ descriptor_has_bti(nir_intrinsic_instr *intrin,
    uint32_t binding = nir_intrinsic_binding(intrin);
    const struct anv_descriptor_set_binding_layout *bind_layout =
       &state->layout->set[set].layout->binding[binding];
+
+   if (state->set[set].binding[binding].properties & BINDING_PROPERTY_EMBEDDED_SAMPLER)
+      return false;
 
    uint32_t surface_index;
    if (bind_layout->data & ANV_DESCRIPTOR_INLINE_UNIFORM)
@@ -867,7 +879,7 @@ build_surface_index_for_binding(nir_builder *b,
                              set_offset,
                              surface_index,
                              array_index,
-                             nir_undef(b, 1, 32) /* bindless_base_offset */,
+                             nir_imm_int(b, 0) /* bindless_base_offset */,
                              .desc_set = set,
                              .binding = binding,
                              .resource_block_intel = state->set[set].binding[binding].push_block,
@@ -892,11 +904,18 @@ build_sampler_handle_for_binding(nir_builder *b,
       binding_descriptor_offset(state, bind_layout, true /* sampler */);
    const unsigned descriptor_stride =
       binding_descriptor_stride(state, bind_layout, true /* sampler */);
+   const bool is_embedded =
+      state->set[set].binding[binding].properties & BINDING_PROPERTY_EMBEDDED_SAMPLER;
    const bool is_bindless =
       is_binding_bindless(set, binding, true /* sampler */, state);
-   nir_def *set_offset, *sampler_index;
+   nir_def *set_offset, *sampler_index, *sampler_base_offset = nir_imm_int(b, 0);
 
-   if (is_bindless) {
+   if (is_embedded) {
+      set_offset = nir_imm_int(b, 0xdeaddead);
+      sampler_index = nir_load_reloc_const_intel(
+         b, BRW_SHADER_RELOC_EMBEDDED_SAMPLER_HANDLE +
+         state->set[set].binding[binding].embedded_sampler_index);
+   } else if (is_bindless) {
       if (state->layout->type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_INDIRECT) {
          set_offset = nir_imm_int(b, 0xdeaddead);
 
@@ -947,17 +966,22 @@ build_sampler_handle_for_binding(nir_builder *b,
                       state->set[set].binding[binding].sampler_offset + plane);
    }
 
+   nir_resource_data_intel sampler_resource = nir_resource_intel_sampler;
+   if (is_bindless)
+      sampler_resource |= nir_resource_intel_bindless;
+   if (is_embedded)
+      sampler_resource |= nir_resource_intel_sampler_embedded;
+   if (non_uniform)
+      sampler_resource |= nir_resource_intel_non_uniform;
+
    return nir_resource_intel(b,
                              set_offset,
                              sampler_index,
                              array_index,
-                             nir_undef(b, 1, 32) /* bindless_base_offset */,
+                             sampler_base_offset,
                              .desc_set = set,
                              .binding = binding,
-                             .resource_access_intel =
-                                (is_bindless ? nir_resource_intel_bindless : 0) |
-                                (non_uniform ? nir_resource_intel_non_uniform : 0) |
-                                nir_resource_intel_sampler);
+                             .resource_access_intel = sampler_resource);
 }
 
 static nir_def *
@@ -1980,6 +2004,38 @@ add_push_entry(struct anv_pipeline_push_map *push_map,
    };
 }
 
+static void
+add_embedded_sampler_entry(struct apply_pipeline_layout_state *state,
+                           struct anv_pipeline_bind_map *map,
+                           uint32_t set, uint32_t binding)
+{
+   state->set[set].binding[binding].embedded_sampler_index =
+      map->embedded_sampler_count;
+   struct anv_pipeline_embedded_sampler_binding *sampler =
+      &map->embedded_sampler_to_binding[map->embedded_sampler_count++];
+   const struct anv_descriptor_set_layout *set_layout =
+      state->layout->set[set].layout;
+   const struct anv_descriptor_set_binding_layout *bind_layout =
+      &set_layout->binding[binding];
+
+   *sampler = (struct anv_pipeline_embedded_sampler_binding) {
+      .set = set,
+      .binding = binding,
+   };
+
+   assert(sizeof(sampler->sampler_state) ==
+          sizeof(bind_layout->immutable_samplers[0]->state_no_bc[0]));
+   memcpy(sampler->sampler_state,
+          bind_layout->immutable_samplers[0]->state_no_bc[0],
+          sizeof(sampler->sampler_state));
+
+   assert(sizeof(sampler->border_color) ==
+          sizeof(bind_layout->immutable_samplers[0]->vk.border_color_value.uint32));
+   memcpy(sampler->border_color,
+          bind_layout->immutable_samplers[0]->vk.border_color_value.uint32,
+          sizeof(sampler->border_color));
+}
+
 static bool
 binding_should_use_surface_binding_table(const struct apply_pipeline_layout_state *state,
                                          const struct anv_descriptor_set_binding_layout *binding)
@@ -2086,8 +2142,8 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
           sizeof(push_map->block_to_descriptor[0]) * map->surface_count);
    push_map->block_count = map->surface_count;
 
-   /* Count used bindings and add push blocks for promotion to push
-    * constants
+   /* Count used bindings, assign embedded sampler indices & add push blocks
+    * for promotion to push constants
     */
    unsigned used_binding_count = 0;
    for (uint32_t set = 0; set < layout->num_sets; set++) {
@@ -2103,15 +2159,18 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
 
          const struct anv_descriptor_set_binding_layout *bind_layout =
             &set_layout->binding[b];
-         if (!binding_is_promotable_to_push(bind_layout))
-            continue;
 
-         if (bind_layout->type != VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
-            state.set[set].binding[b].push_block = push_map->block_count;
-            for (unsigned i = 0; i < bind_layout->array_size; i++)
-               add_push_entry(push_map, set, b, i, layout, bind_layout);
-         } else {
-            state.set[set].binding[b].push_block = state.set[set].desc_offset;
+         if (state.set[set].binding[b].properties & BINDING_PROPERTY_EMBEDDED_SAMPLER)
+            add_embedded_sampler_entry(&state, map, set, b);
+
+         if (binding_is_promotable_to_push(bind_layout)) {
+            if (bind_layout->type != VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
+               state.set[set].binding[b].push_block = push_map->block_count;
+               for (unsigned i = 0; i < bind_layout->array_size; i++)
+                  add_push_entry(push_map, set, b, i, layout, bind_layout);
+            } else {
+               state.set[set].binding[b].push_block = state.set[set].desc_offset;
+            }
          }
       }
    }

@@ -420,6 +420,7 @@ struct anv_pipeline_stage {
 
    struct anv_pipeline_binding surface_to_descriptor[256];
    struct anv_pipeline_binding sampler_to_descriptor[256];
+   struct anv_pipeline_embedded_sampler_binding embedded_sampler_to_binding[2048];
    struct anv_pipeline_bind_map bind_map;
 
    bool uses_bt_for_push_descs;
@@ -2005,7 +2006,8 @@ anv_graphics_pipeline_load_nir(struct anv_graphics_base_pipeline *pipeline,
 
       stages[s].bind_map = (struct anv_pipeline_bind_map) {
          .surface_to_descriptor = stages[s].surface_to_descriptor,
-         .sampler_to_descriptor = stages[s].sampler_to_descriptor
+         .sampler_to_descriptor = stages[s].sampler_to_descriptor,
+         .embedded_sampler_to_binding = stages[s].embedded_sampler_to_binding,
       };
 
       /* Only use the create NIR from the pStages[] element if we don't have
@@ -2614,7 +2616,8 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
 
       stage.bind_map = (struct anv_pipeline_bind_map) {
          .surface_to_descriptor = stage.surface_to_descriptor,
-         .sampler_to_descriptor = stage.sampler_to_descriptor
+         .sampler_to_descriptor = stage.sampler_to_descriptor,
+         .embedded_sampler_to_binding = stage.embedded_sampler_to_binding,
       };
 
       /* Set up a binding for the gl_NumWorkGroups */
@@ -3018,7 +3021,8 @@ anv_graphics_pipeline_import_lib(struct anv_graphics_base_pipeline *pipeline,
 
       stages[s].bind_map = (struct anv_pipeline_bind_map) {
          .surface_to_descriptor = stages[s].surface_to_descriptor,
-         .sampler_to_descriptor = stages[s].sampler_to_descriptor
+         .sampler_to_descriptor = stages[s].sampler_to_descriptor,
+         .embedded_sampler_to_binding = stages[s].embedded_sampler_to_binding,
       };
    }
 
@@ -3411,9 +3415,6 @@ compile_upload_rt_shader(struct anv_ray_tracing_pipeline *pipeline,
    if (stage->code == NULL)
       return vk_error(pipeline, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   /* Ray-tracing shaders don't have a "real" bind map */
-   struct anv_pipeline_bind_map empty_bind_map = {};
-
    struct anv_shader_upload_params upload_params = {
       .stage               = stage->stage,
       .key_data            = &stage->cache_key,
@@ -3424,7 +3425,7 @@ compile_upload_rt_shader(struct anv_ray_tracing_pipeline *pipeline,
       .prog_data_size      = brw_prog_data_size(stage->stage),
       .stats               = stage->stats,
       .num_stats           = 1,
-      .bind_map            = &empty_bind_map,
+      .bind_map            = &stage->bind_map,
       .push_desc_info      = &stage->push_desc_info,
       .dynamic_push_values = stage->dynamic_push_values,
    };
@@ -3549,6 +3550,9 @@ anv_pipeline_init_ray_tracing_stages(struct anv_ray_tracing_pipeline *pipeline,
             .flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT,
          },
       };
+
+      stages[i].bind_map.embedded_sampler_to_binding =
+         stages[i].embedded_sampler_to_binding;
 
       pipeline->base.active_stages |= sinfo->stage;
 

@@ -1241,7 +1241,11 @@ VkResult genX(CreateSampler)(
             sampler->vk.reduction_mode != VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
       };
 
-      _mesa_sha1_update(&ctx, &sampler_state, sizeof(sampler_state));
+      /* Pack a version of the SAMPLER_STATE without the border color. We'll
+       * use it to store into the shader cache and also for hashing.
+       */
+      GENX(SAMPLER_STATE_pack)(NULL, sampler->state_no_bc[p], &sampler_state);
+      _mesa_sha1_update(&ctx, sampler->state_no_bc[p], sizeof(sampler->state_no_bc[p]));
 
       /* Put border color after the hashing, we don't want the allocation
        * order of border colors to influence the hash. We just need th
@@ -1287,6 +1291,34 @@ VkResult genX(CreateSampler)(
    *pSampler = anv_sampler_to_handle(sampler);
 
    return VK_SUCCESS;
+}
+
+void
+genX(emit_embedded_sampler)(struct anv_device *device,
+                            struct anv_embedded_sampler *sampler,
+                            struct anv_pipeline_embedded_sampler_binding *binding)
+{
+   sampler->border_color_state =
+      anv_state_pool_alloc(&device->dynamic_state_db_pool,
+                           sizeof(struct gfx8_border_color), 64);
+   memcpy(sampler->border_color_state.map,
+          binding->border_color,
+          sizeof(binding->border_color));
+
+   sampler->sampler_state =
+      anv_state_pool_alloc(&device->dynamic_state_db_pool,
+                           ANV_SAMPLER_STATE_SIZE, 32);
+
+   struct GENX(SAMPLER_STATE) sampler_state = {
+      .BorderColorPointer = sampler->border_color_state.offset,
+   };
+   uint32_t dwords[GENX(SAMPLER_STATE_length)];
+   GENX(SAMPLER_STATE_pack)(NULL, dwords, &sampler_state);
+
+   for (uint32_t i = 0; i < GENX(SAMPLER_STATE_length); i++) {
+      ((uint32_t *)sampler->sampler_state.map)[i] =
+         dwords[i] | binding->sampler_state[i];
+   }
 }
 
 /* Wa_14015814527

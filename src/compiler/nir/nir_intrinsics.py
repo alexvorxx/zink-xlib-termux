@@ -1997,9 +1997,9 @@ intrinsic("load_reloc_const_intel", dest_comp=1, bit_sizes=[32],
 # With this intrinsic, we can just check the surface_index src with
 # nir_src_is_const() and ignore set_offset.
 #
-# src[] = { set_offset, surface_index, array_index }
+# src[] = { set_offset, surface_index, array_index, bindless_base_offset }
 intrinsic("resource_intel", dest_comp=1, bit_sizes=[32],
-          src_comp=[1, 1, 1],
+          src_comp=[1, 1, 1, 1],
           indices=[DESC_SET, BINDING, RESOURCE_ACCESS_INTEL, RESOURCE_BLOCK_INTEL],
           flags=[CAN_ELIMINATE, CAN_REORDER])
 

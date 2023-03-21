@@ -1517,6 +1517,9 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
             case nir_resource_intel_non_uniform:
                fprintf(fp, "non-uniform");
                break;
+            case nir_resource_intel_sampler_embedded:
+               fprintf(fp, "sampler-embedded");
+               break;
             default:
                fprintf(fp, "unknown");
                break;

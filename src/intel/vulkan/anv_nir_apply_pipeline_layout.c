@@ -867,6 +867,7 @@ build_surface_index_for_binding(nir_builder *b,
                              set_offset,
                              surface_index,
                              array_index,
+                             nir_undef(b, 1, 32) /* bindless_base_offset */,
                              .desc_set = set,
                              .binding = binding,
                              .resource_block_intel = state->set[set].binding[binding].push_block,
@@ -946,7 +947,11 @@ build_sampler_handle_for_binding(nir_builder *b,
                       state->set[set].binding[binding].sampler_offset + plane);
    }
 
-   return nir_resource_intel(b, set_offset, sampler_index, array_index,
+   return nir_resource_intel(b,
+                             set_offset,
+                             sampler_index,
+                             array_index,
+                             nir_undef(b, 1, 32) /* bindless_base_offset */,
                              .desc_set = set,
                              .binding = binding,
                              .resource_access_intel =

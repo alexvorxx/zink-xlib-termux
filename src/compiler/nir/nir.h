@@ -268,6 +268,7 @@ typedef enum {
    nir_resource_intel_pushable = 1u << 1,
    nir_resource_intel_sampler = 1u << 2,
    nir_resource_intel_non_uniform = 1u << 3,
+   nir_resource_intel_sampler_embedded = 1u << 4,
 } nir_resource_data_intel;
 
 /**

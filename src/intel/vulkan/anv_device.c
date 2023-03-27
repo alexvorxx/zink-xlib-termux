@@ -340,6 +340,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_depth_clip_control                = true,
       .EXT_depth_range_unrestricted          = device->info.ver >= 20,
       .EXT_depth_clip_enable                 = true,
+      .EXT_descriptor_buffer                 = true,
       .EXT_descriptor_indexing               = true,
 #ifdef VK_USE_PLATFORM_DISPLAY_KHR
       .EXT_display_control                   = true,
@@ -894,6 +895,12 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_KHR_shader_expect_assume */
       .shaderExpectAssume = true,
+
+      /* VK_EXT_descriptor_buffer */
+      .descriptorBuffer = true,
+      .descriptorBufferCaptureReplay = true,
+      .descriptorBufferImageLayoutIgnored = false,
+      .descriptorBufferPushDescriptors = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -1490,6 +1497,57 @@ get_properties(const struct anv_physical_device *pdevice,
    /* VK_EXT_custom_border_color */
    {
       props->maxCustomBorderColorSamplers = MAX_CUSTOM_BORDER_COLORS;
+   }
+
+   /* VK_EXT_descriptor_buffer */
+   {
+      props->combinedImageSamplerDescriptorSingleArray = true;
+      props->bufferlessPushDescriptors = true;
+      /* Written to the buffer before a timeline semaphore is signaled, but
+       * after vkQueueSubmit().
+       */
+      props->allowSamplerImageViewPostSubmitCreation = true;
+      props->descriptorBufferOffsetAlignment = ANV_SURFACE_STATE_SIZE;
+
+      if (pdevice->uses_ex_bso) {
+         props->maxDescriptorBufferBindings = MAX_SETS;
+         props->maxResourceDescriptorBufferBindings = MAX_SETS;
+         props->maxSamplerDescriptorBufferBindings = MAX_SETS;
+         props->maxEmbeddedImmutableSamplerBindings = MAX_SETS;
+      } else {
+         props->maxDescriptorBufferBindings = 3; /* resources, samplers, push (we don't care about push) */
+         props->maxResourceDescriptorBufferBindings = 1;
+         props->maxSamplerDescriptorBufferBindings = 1;
+         props->maxEmbeddedImmutableSamplerBindings = 1;
+      }
+      props->maxEmbeddedImmutableSamplers = MAX_EMBEDDED_SAMPLERS;
+
+      props->bufferCaptureReplayDescriptorDataSize = 1;
+      props->imageCaptureReplayDescriptorDataSize = 1;
+      props->imageViewCaptureReplayDescriptorDataSize = 1;
+      props->samplerCaptureReplayDescriptorDataSize = 1;
+      props->accelerationStructureCaptureReplayDescriptorDataSize = 1;
+
+      props->samplerDescriptorSize = ANV_SAMPLER_STATE_SIZE;
+      props->combinedImageSamplerDescriptorSize = align(ANV_SURFACE_STATE_SIZE + ANV_SAMPLER_STATE_SIZE,
+                                                        ANV_SURFACE_STATE_SIZE);
+      props->sampledImageDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->storageImageDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->uniformTexelBufferDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->robustUniformTexelBufferDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->storageTexelBufferDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->robustStorageTexelBufferDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->uniformBufferDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->robustUniformBufferDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->storageBufferDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->robustStorageBufferDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->inputAttachmentDescriptorSize = ANV_SURFACE_STATE_SIZE;
+      props->accelerationStructureDescriptorSize = sizeof(struct anv_address_range_descriptor);
+      props->maxSamplerDescriptorBufferRange = pdevice->va.descriptor_buffer_pool.size;
+      props->maxResourceDescriptorBufferRange = anv_physical_device_bindless_heap_size(pdevice);
+      props->resourceDescriptorBufferAddressSpaceSize = pdevice->va.descriptor_buffer_pool.size;
+      props->descriptorBufferAddressSpaceSize = pdevice->va.descriptor_buffer_pool.size;
+      props->samplerDescriptorBufferAddressSpaceSize = pdevice->va.descriptor_buffer_pool.size;
    }
 
    /* VK_EXT_extended_dynamic_state3 */

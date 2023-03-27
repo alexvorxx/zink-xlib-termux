@@ -2202,8 +2202,7 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
          /* If the descriptor type doesn't support bindless then put it at the
           * beginning so we guarantee it gets a slot.
           */
-         if (!anv_descriptor_supports_bindless(pdevice, binding, true) ||
-             !anv_descriptor_supports_bindless(pdevice, binding, false))
+         if (!anv_descriptor_supports_bindless(pdevice, set_layout, binding))
             score |= 1 << 15;
 
          infos[used_binding_count++] = (struct binding_info) {
@@ -2223,8 +2222,10 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
    for (unsigned i = 0; i < used_binding_count; i++) {
       unsigned set = infos[i].set, b = infos[i].binding;
       assert(layout->set[set].layout);
+      const struct anv_descriptor_set_layout *set_layout =
+         layout->set[set].layout;
       const struct anv_descriptor_set_binding_layout *binding =
-            &layout->set[set].layout->binding[b];
+            &set_layout->binding[b];
 
       const uint32_t array_size = binding->array_size;
 
@@ -2240,12 +2241,12 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
 
       if (binding_should_use_surface_binding_table(&state, binding)) {
          if (map->surface_count + array_size * array_multiplier > MAX_BINDING_TABLE_SIZE ||
-             anv_descriptor_requires_bindless(pdevice, binding, false) ||
+             anv_descriptor_requires_bindless(pdevice, set_layout, binding) ||
              brw_shader_stage_requires_bindless_resources(shader->info.stage)) {
             /* If this descriptor doesn't fit in the binding table or if it
              * requires bindless for some reason, flag it as bindless.
              */
-            assert(anv_descriptor_supports_bindless(pdevice, binding, false));
+            assert(anv_descriptor_supports_bindless(pdevice, set_layout, binding));
          } else {
             state.set[set].binding[b].surface_offset = map->surface_count;
             if (binding->dynamic_offset_index < 0) {
@@ -2271,7 +2272,7 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
 
       if (binding_should_use_sampler_binding_table(&state, binding)) {
          if (map->sampler_count + array_size * array_multiplier > MAX_SAMPLER_TABLE_SIZE ||
-             anv_descriptor_requires_bindless(pdevice, binding, true) ||
+             anv_descriptor_requires_bindless(pdevice, set_layout, binding) ||
              brw_shader_stage_requires_bindless_resources(shader->info.stage)) {
             /* If this descriptor doesn't fit in the binding table or if it
              * requires bindless for some reason, flag it as bindless.
@@ -2280,7 +2281,7 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
              * using indirect sends thanks to bindless samplers being packed
              * less tightly than the sampler table.
              */
-            assert(anv_descriptor_supports_bindless(pdevice, binding, true));
+            assert(anv_descriptor_supports_bindless(pdevice, set_layout, binding));
          } else {
             state.set[set].binding[b].sampler_offset = map->sampler_count;
             uint8_t max_planes = bti_multiplier(&state, set, b);
@@ -2300,7 +2301,7 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
       fprintf(stderr, "set=%u binding=%u surface_offset=0x%08x require_bindless=%u type=%s\n",
               set, b,
               state.set[set].binding[b].surface_offset,
-              anv_descriptor_requires_bindless(pdevice, binding, false),
+              anv_descriptor_requires_bindless(pdevice, set_layout, binding),
               vk_DescriptorType_to_str(binding->type));
 #endif
    }

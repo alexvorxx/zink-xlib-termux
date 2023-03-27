@@ -1131,7 +1131,8 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
    NIR_PASS_V(nir, anv_nir_compute_push_layout,
               pdevice, stage->key.base.robust_flags,
               anv_graphics_pipeline_stage_fragment_dynamic(stage),
-              prog_data, &stage->bind_map, &push_map, mem_ctx);
+              prog_data, &stage->bind_map, &push_map,
+              pipeline->layout.type, mem_ctx);
 
    NIR_PASS_V(nir, anv_nir_lower_resource_intel, pdevice,
               pipeline->layout.type);
@@ -1631,6 +1632,12 @@ anv_pipeline_add_executable(struct anv_pipeline *pipeline,
 
             case ANV_DESCRIPTOR_SET_PUSH_CONSTANTS:
                fprintf(stream, "Vulkan push constants and API params");
+               break;
+
+            case ANV_DESCRIPTOR_SET_DESCRIPTORS_BUFFER:
+               fprintf(stream, "Descriptor buffer (desc buffer) for set %d (start=%dB)",
+                       stage->bind_map.push_ranges[i].index,
+                       stage->bind_map.push_ranges[i].start * 32);
                break;
 
             case ANV_DESCRIPTOR_SET_DESCRIPTORS:

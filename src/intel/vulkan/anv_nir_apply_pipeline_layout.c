@@ -154,6 +154,10 @@ add_binding(struct apply_pipeline_layout_state *state,
       state->set[set].binding[binding].properties |= BINDING_PROPERTY_EMBEDDED_SAMPLER;
 }
 
+const VkDescriptorSetLayoutCreateFlags non_pushable_set_flags =
+   VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT |
+   VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT;
+
 const VkDescriptorBindingFlags non_pushable_binding_flags =
    VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
    VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
@@ -165,8 +169,19 @@ add_binding_type(struct apply_pipeline_layout_state *state,
 {
    add_binding(state, set, binding);
 
-   if ((state->layout->set[set].layout->binding[binding].flags &
-        non_pushable_binding_flags) == 0 &&
+   const struct anv_descriptor_set_layout *set_layout =
+      state->layout->set[set].layout;
+   const struct anv_descriptor_set_binding_layout *bind_layout =
+      &set_layout->binding[binding];
+
+   /* We can't push descriptor buffers but we can for push descriptors */
+   const bool is_set_pushable =
+      (set_layout->flags & non_pushable_set_flags) == 0 ||
+      set_layout->flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+   const bool is_binding_pushable =
+      (bind_layout->flags & non_pushable_binding_flags) == 0;
+
+   if (is_set_pushable && is_binding_pushable &&
        (state->layout->set[set].layout->binding[binding].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
         state->layout->set[set].layout->binding[binding].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
         state->layout->set[set].layout->binding[binding].type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK ||
@@ -1912,8 +1927,16 @@ anv_validate_pipeline_layout(const struct anv_pipeline_sets_layout *layout,
 #endif
 
 static bool
-binding_is_promotable_to_push(const struct anv_descriptor_set_binding_layout *bind_layout)
+binding_is_promotable_to_push(const struct anv_descriptor_set_layout *set_layout,
+                              const struct anv_descriptor_set_binding_layout *bind_layout)
 {
+   if (set_layout->flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR)
+      return true;
+
+   if (set_layout->flags & (VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT |
+                            VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT))
+      return false;
+
    return (bind_layout->flags & non_pushable_binding_flags) == 0;
 }
 
@@ -2124,7 +2147,9 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
       } else if (state.set[s].desc_buffer_used) {
          map->surface_to_descriptor[map->surface_count] =
             (struct anv_pipeline_binding) {
-               .set = ANV_DESCRIPTOR_SET_DESCRIPTORS,
+               .set = (layout->type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER) ?
+                      ANV_DESCRIPTOR_SET_DESCRIPTORS_BUFFER :
+                      ANV_DESCRIPTOR_SET_DESCRIPTORS,
                .binding = UINT32_MAX,
                .index = s,
             };
@@ -2163,7 +2188,7 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
          if (state.set[set].binding[b].properties & BINDING_PROPERTY_EMBEDDED_SAMPLER)
             add_embedded_sampler_entry(&state, map, set, b);
 
-         if (binding_is_promotable_to_push(bind_layout)) {
+         if (binding_is_promotable_to_push(set_layout, bind_layout)) {
             if (bind_layout->type != VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
                state.set[set].binding[b].push_block = push_map->block_count;
                for (unsigned i = 0; i < bind_layout->array_size; i++)

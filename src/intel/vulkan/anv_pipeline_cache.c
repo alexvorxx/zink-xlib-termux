@@ -162,7 +162,12 @@ anv_shader_bin_create(struct anv_device *device,
       prog_data_in->const_data_offset;
 
    int rv_count = 0;
-   struct brw_shader_reloc_value reloc_values[6];
+   struct brw_shader_reloc_value reloc_values[7];
+   assert((device->physical->va.descriptor_buffer_pool.addr & 0xffffffff) == 0);
+   reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
+      .id = BRW_SHADER_RELOC_DESCRIPTORS_BUFFER_ADDR_HIGH,
+      .value = device->physical->va.descriptor_buffer_pool.addr >> 32,
+   };
    assert((device->physical->va.indirect_descriptor_pool.addr & 0xffffffff) == 0);
    assert((device->physical->va.internal_surface_state_pool.addr & 0xffffffff) == 0);
    reloc_values[rv_count++] = (struct brw_shader_reloc_value) {

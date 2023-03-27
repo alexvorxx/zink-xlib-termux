@@ -330,10 +330,10 @@ const struct vk_command_buffer_ops anv_cmd_buffer_ops = {
 };
 
 void
-anv_cmd_buffer_emit_state_base_address(struct anv_cmd_buffer *cmd_buffer)
+anv_cmd_buffer_emit_bt_pool_base_address(struct anv_cmd_buffer *cmd_buffer)
 {
    const struct intel_device_info *devinfo = cmd_buffer->device->info;
-   anv_genX(devinfo, cmd_buffer_emit_state_base_address)(cmd_buffer);
+   anv_genX(devinfo, cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
 }
 
 void

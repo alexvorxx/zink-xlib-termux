@@ -80,6 +80,8 @@ genX(load_image_clear_color)(struct anv_cmd_buffer *cmd_buffer,
                              struct anv_state surface_state,
                              const struct anv_image *image);
 
+void genX(cmd_buffer_emit_bt_pool_base_address)(struct anv_cmd_buffer *cmd_buffer);
+
 void genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer);
 
 void genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer);

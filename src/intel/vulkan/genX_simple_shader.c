@@ -291,7 +291,7 @@ genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
       /* Re-emit state base addresses so we get the new surface state base
        * address before we start emitting binding tables etc.
        */
-      genX(cmd_buffer_emit_state_base_address)(state->cmd_buffer);
+      genX(cmd_buffer_emit_bt_pool_base_address)(state->cmd_buffer);
 
       state->bt_state =
          anv_cmd_buffer_alloc_binding_table(state->cmd_buffer, 1, &bt_offset);

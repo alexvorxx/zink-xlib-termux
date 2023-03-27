@@ -4048,7 +4048,7 @@ anv_cmd_buffer_alloc_space(struct anv_cmd_buffer *cmd_buffer,
 VkResult
 anv_cmd_buffer_new_binding_table_block(struct anv_cmd_buffer *cmd_buffer);
 
-void anv_cmd_buffer_emit_state_base_address(struct anv_cmd_buffer *cmd_buffer);
+void anv_cmd_buffer_emit_bt_pool_base_address(struct anv_cmd_buffer *cmd_buffer);
 
 struct anv_state
 anv_cmd_buffer_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer);

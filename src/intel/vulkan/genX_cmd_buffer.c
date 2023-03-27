@@ -97,26 +97,13 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       return;
 
    struct anv_device *device = cmd_buffer->device;
-   uint32_t mocs = isl_mocs(&device->isl_dev, 0, false);
+   const uint32_t mocs = isl_mocs(&device->isl_dev, 0, false);
 
    /* If we are emitting a new state base address we probably need to re-emit
     * binding tables.
     */
    cmd_buffer->state.descriptors_dirty |= ~0;
 
-#if GFX_VERx10 >= 125
-   genx_batch_emit_pipe_control(&cmd_buffer->batch,
-                                cmd_buffer->device->info,
-                                cmd_buffer->state.current_pipeline,
-                                ANV_PIPE_CS_STALL_BIT);
-   anv_batch_emit(
-      &cmd_buffer->batch, GENX(3DSTATE_BINDING_TABLE_POOL_ALLOC), btpa) {
-      btpa.BindingTablePoolBaseAddress =
-         anv_cmd_buffer_surface_base_address(cmd_buffer);
-      btpa.BindingTablePoolBufferSize = device->physical->va.binding_table_pool.size / 4096;
-      btpa.MOCS = mocs;
-   }
-#else /* GFX_VERx10 < 125 */
    /* Emit a render target cache flush.
     *
     * This isn't documented anywhere in the PRM.  However, it seems to be
@@ -152,8 +139,15 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
 
       sba.StatelessDataPortAccessMOCS = mocs;
 
+#if GFX_VERx10 >= 125
+      sba.SurfaceStateBaseAddress =
+         (struct anv_address) { .offset =
+         device->physical->va.internal_surface_state_pool.addr,
+      };
+#else
       sba.SurfaceStateBaseAddress =
          anv_cmd_buffer_surface_base_address(cmd_buffer);
+#endif
       sba.SurfaceStateMOCS = mocs;
       sba.SurfaceStateBaseAddressModifyEnable = true;
 
@@ -229,7 +223,9 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       genX(flush_pipeline_select)(cmd_buffer, gfx12_wa_pipeline);
 #endif
 
-#endif /* GFX_VERx10 < 125 */
+#if GFX_VERx10 >= 125
+   genX(cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
+#endif
 
    /* After re-setting the surface state base address, we have to do some
     * cache flushing so that the sampler engine will pick up the new
@@ -297,6 +293,39 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
    genx_batch_emit_pipe_control(&cmd_buffer->batch, cmd_buffer->device->info,
                                 cmd_buffer->state.current_pipeline,
                                 bits);
+}
+
+void
+genX(cmd_buffer_emit_bt_pool_base_address)(struct anv_cmd_buffer *cmd_buffer)
+{
+   /* If we are emitting a new state base address we probably need to re-emit
+    * binding tables.
+    */
+   cmd_buffer->state.descriptors_dirty |= ~0;
+
+#if GFX_VERx10 >= 125
+   struct anv_device *device = cmd_buffer->device;
+   const uint32_t mocs = isl_mocs(&device->isl_dev, 0, false);
+
+   genx_batch_emit_pipe_control(&cmd_buffer->batch,
+                                cmd_buffer->device->info,
+                                cmd_buffer->state.current_pipeline,
+                                ANV_PIPE_CS_STALL_BIT);
+   anv_batch_emit(
+      &cmd_buffer->batch, GENX(3DSTATE_BINDING_TABLE_POOL_ALLOC), btpa) {
+      btpa.BindingTablePoolBaseAddress =
+         anv_cmd_buffer_surface_base_address(cmd_buffer);
+      btpa.BindingTablePoolBufferSize = device->physical->va.binding_table_pool.size / 4096;
+      btpa.MOCS = mocs;
+   }
+
+   genx_batch_emit_pipe_control(&cmd_buffer->batch,
+                                cmd_buffer->device->info,
+                                cmd_buffer->state.current_pipeline,
+                                ANV_PIPE_STATE_CACHE_INVALIDATE_BIT);
+#else /* GFX_VERx10 < 125 */
+   genX(cmd_buffer_emit_state_base_address)(cmd_buffer);
+#endif
 }
 
 static void
@@ -2228,10 +2257,10 @@ genX(cmd_buffer_flush_descriptor_sets)(struct anv_cmd_buffer *cmd_buffer,
       if (result != VK_SUCCESS)
          return 0;
 
-      /* Re-emit state base addresses so we get the new surface state base
+      /* Re-emit the BT base address so we get the new surface state base
        * address before we start emitting binding tables etc.
        */
-      genX(cmd_buffer_emit_state_base_address)(cmd_buffer);
+      genX(cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
 
       /* Re-emit all active binding tables */
       flushed = 0;

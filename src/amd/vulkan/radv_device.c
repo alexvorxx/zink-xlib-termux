@@ -710,7 +710,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    bool attachment_vrs_enabled = false;
    bool image_float32_atomics = false;
    bool vs_prologs = false;
-   UNUSED bool tcs_epilogs = false; /* TODO: Enable for shader object */
+   bool tcs_epilogs = false;
    bool ps_epilogs = false;
    bool global_bo_list = false;
    bool image_2d_view_of_3d = false;
@@ -839,6 +839,15 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
          const VkPhysicalDeviceMeshShaderFeaturesEXT *features = (const void *)ext;
          if (features->meshShaderQueries)
             mesh_shader_queries = true;
+         break;
+      }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT: {
+         const VkPhysicalDeviceShaderObjectFeaturesEXT *features = (const void *)ext;
+         if (features->shaderObject) {
+            vs_prologs = true;
+            tcs_epilogs = true;
+            ps_epilogs = true;
+         }
          break;
       }
       default:

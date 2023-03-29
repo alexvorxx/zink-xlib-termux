@@ -1879,9 +1879,9 @@ emit_indirect_descriptor_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: {
       if (desc->image_view) {
          const struct anv_surface_state *sstate =
-            (desc->layout == VK_IMAGE_LAYOUT_GENERAL) ?
-            &desc->image_view->planes[binding->plane].general_sampler :
-            &desc->image_view->planes[binding->plane].optimal_sampler;
+            anv_image_view_texture_surface_state(desc->image_view,
+                                                 binding->plane,
+                                                 desc->layout);
          surface_state = desc->image_view->use_surface_state_stream ?
             sstate->state :
             anv_bindless_state_for_binding_table(device, sstate->state);
@@ -1895,7 +1895,7 @@ emit_indirect_descriptor_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
    case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE: {
       if (desc->image_view) {
          const struct anv_surface_state *sstate =
-            &desc->image_view->planes[binding->plane].storage;
+            anv_image_view_storage_surface_state(desc->image_view);
          surface_state = desc->image_view->use_surface_state_stream ?
             sstate->state :
             anv_bindless_state_for_binding_table(device, sstate->state);

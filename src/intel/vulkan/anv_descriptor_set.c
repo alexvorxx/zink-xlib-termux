@@ -2030,9 +2030,8 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
       if (image_view) {
          for (unsigned p = 0; p < image_view->n_planes; p++) {
             const struct anv_surface_state *sstate =
-               (desc->layout == VK_IMAGE_LAYOUT_GENERAL) ?
-               &image_view->planes[p].general_sampler :
-               &image_view->planes[p].optimal_sampler;
+               anv_image_view_texture_surface_state(image_view, p,
+                                                    desc->layout);
             desc_data[p].image =
                anv_surface_state_to_handle(device->physical, sstate->state);
          }
@@ -2057,7 +2056,7 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
          struct anv_storage_image_descriptor desc_data = {
             .vanilla = anv_surface_state_to_handle(
                device->physical,
-               image_view->planes[0].storage.state),
+               anv_image_view_storage_surface_state(image_view)->state),
             .image_depth = image_view->vk.storage.z_slice_count,
          };
          memcpy(desc_surface_map, &desc_data, sizeof(desc_data));

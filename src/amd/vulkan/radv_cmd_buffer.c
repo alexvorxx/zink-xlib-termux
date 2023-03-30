@@ -1933,9 +1933,6 @@ radv_emit_graphics_pipeline(struct radv_cmd_buffer *cmd_buffer)
           radv_rast_prim_is_points_or_lines(pipeline->rast_prim))
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_GUARDBAND;
 
-      if (cmd_buffer->state.emitted_graphics_pipeline->custom_blend_mode != pipeline->custom_blend_mode)
-         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_LOGIC_OP | RADV_CMD_DIRTY_DYNAMIC_LOGIC_OP_ENABLE;
-
       if (cmd_buffer->state.emitted_graphics_pipeline->ms.min_sample_shading != pipeline->ms.min_sample_shading ||
           cmd_buffer->state.emitted_graphics_pipeline->uses_out_of_order_rast != pipeline->uses_out_of_order_rast ||
           cmd_buffer->state.emitted_graphics_pipeline->uses_vrs_attachment != pipeline->uses_vrs_attachment ||
@@ -6346,6 +6343,16 @@ radv_bind_multisample_state(struct radv_cmd_buffer *cmd_buffer, const struct rad
 }
 
 static void
+radv_bind_custom_blend_mode(struct radv_cmd_buffer *cmd_buffer, unsigned custom_blend_mode)
+{
+   /* Re-emit CB_COLOR_CONTROL when the custom blending mode changes. */
+   if (cmd_buffer->state.custom_blend_mode != custom_blend_mode)
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_LOGIC_OP | RADV_CMD_DIRTY_DYNAMIC_LOGIC_OP_ENABLE;
+
+   cmd_buffer->state.custom_blend_mode = custom_blend_mode;
+}
+
+static void
 radv_bind_pre_rast_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *shader)
 {
    bool mesh_shading = shader->info.stage == MESA_SHADER_MESH;
@@ -6701,7 +6708,8 @@ radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeline
 
       radv_bind_multisample_state(cmd_buffer, &graphics_pipeline->ms);
 
-      cmd_buffer->state.custom_blend_mode = graphics_pipeline->custom_blend_mode;
+      radv_bind_custom_blend_mode(cmd_buffer, graphics_pipeline->custom_blend_mode);
+
       cmd_buffer->state.db_render_control = graphics_pipeline->db_render_control;
 
       cmd_buffer->state.rast_prim = graphics_pipeline->rast_prim;

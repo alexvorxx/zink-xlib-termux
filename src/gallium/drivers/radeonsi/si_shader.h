@@ -326,6 +326,7 @@ unsigned si_get_num_shader_profiles(void);
 #define SI_PROFILE_VS_NO_BINNING             (1 << 3)
 #define SI_PROFILE_GFX9_GFX10_PS_NO_BINNING  (1 << 4)
 #define SI_PROFILE_CLAMP_DIV_BY_ZERO         (1 << 5)
+#define SI_PROFILE_NO_OPT_UNIFORM_VARYINGS   (1 << 6)
 
 enum si_shader_dump_type {
    SI_DUMP_SHADER_KEY,

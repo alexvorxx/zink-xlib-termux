@@ -271,10 +271,10 @@ disk_cache_create(const char *gpu_name, const char *driver_id,
 
    if (debug_get_bool_option("MESA_DISK_CACHE_SINGLE_FILE", false))
       cache_type = DISK_CACHE_SINGLE_FILE;
-   else if (debug_get_bool_option("MESA_DISK_CACHE_DATABASE", false))
-      cache_type = DISK_CACHE_DATABASE;
-   else
+   else if (debug_get_bool_option("MESA_DISK_CACHE_MULTI_FILE", false))
       cache_type = DISK_CACHE_MULTI_FILE;
+   else
+      cache_type = DISK_CACHE_DATABASE;
 
    /* Create main writable cache. */
    cache = disk_cache_type_create(gpu_name, driver_id, driver_flags,

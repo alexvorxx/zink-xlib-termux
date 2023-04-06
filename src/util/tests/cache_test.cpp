@@ -700,6 +700,8 @@ TEST_F(Cache, MultiFile)
    bool compress = true;
 
 run_tests:
+   setenv("MESA_DISK_CACHE_MULTI_FILE", "true", 1);
+
    if (!compress)
       driver_id = "make_check_uncompressed";
    else
@@ -710,6 +712,8 @@ run_tests:
    test_put_and_get(true, driver_id);
 
    test_put_key_and_get_key(driver_id);
+
+   setenv("MESA_DISK_CACHE_MULTI_FILE", "false", 1);
 
    int err = rmrf_local(CACHE_TEST_TMP);
    EXPECT_EQ(err, 0) << "Removing " CACHE_TEST_TMP " again";
@@ -769,7 +773,6 @@ TEST_F(Cache, Database)
    GTEST_SKIP() << "ENABLE_SHADER_CACHE not defined.";
 #else
    setenv("MESA_DISK_CACHE_DATABASE_NUM_PARTS", "1", 1);
-   setenv("MESA_DISK_CACHE_DATABASE", "true", 1);
 
    test_disk_cache_create(mem_ctx, CACHE_DIR_NAME_DB, driver_id);
 
@@ -793,7 +796,6 @@ TEST_F(Cache, Database)
 
    test_put_and_get_between_instances_with_eviction(driver_id);
 
-   setenv("MESA_DISK_CACHE_DATABASE", "false", 1);
    unsetenv("MESA_DISK_CACHE_DATABASE_NUM_PARTS");
 
    err = rmrf_local(CACHE_TEST_TMP);
@@ -820,7 +822,7 @@ TEST_F(Cache, Combined)
    GTEST_SKIP() << "ENABLE_SHADER_CACHE not defined.";
 #else
    setenv("MESA_DISK_CACHE_SINGLE_FILE", "true", 1);
-   setenv("MESA_DISK_CACHE_DATABASE", "false", 1);
+   setenv("MESA_DISK_CACHE_MULTI_FILE", "true", 1);
 
 #ifdef SHADER_CACHE_DISABLE_BY_DEFAULT
    setenv("MESA_SHADER_CACHE_DISABLE", "false", 1);
@@ -890,7 +892,7 @@ TEST_F(Cache, Combined)
    EXPECT_EQ(unlink(foz_rw_idx_file), 0);
 
    setenv("MESA_DISK_CACHE_SINGLE_FILE", "false", 1);
-   setenv("MESA_DISK_CACHE_DATABASE", "true", 1);
+   setenv("MESA_DISK_CACHE_MULTI_FILE", "false", 1);
 
    /* Create MESA-DB cache with enabled retrieval from the read-only
     * cache. */
@@ -959,7 +961,7 @@ TEST_F(Cache, Combined)
    disk_cache_destroy(cache_mesa_db);
 
    /* Create default multi-file cache. */
-   setenv("MESA_DISK_CACHE_DATABASE", "false", 1);
+   setenv("MESA_DISK_CACHE_MULTI_FILE", "true", 1);
 
    /* Enable read-only cache. */
    setenv("MESA_DISK_CACHE_COMBINE_RW_WITH_RO_FOZ", "true", 1);
@@ -1016,6 +1018,8 @@ TEST_F(Cache, Combined)
    free(result);
 
    disk_cache_destroy(cache_multifile);
+
+   unsetenv("MESA_DISK_CACHE_MULTI_FILE");
 
    int err = rmrf_local(CACHE_TEST_TMP);
    EXPECT_EQ(err, 0) << "Removing " CACHE_TEST_TMP " again";
@@ -1269,14 +1273,12 @@ TEST_F(Cache, DatabaseMultipartEviction)
    GTEST_SKIP() << "ENABLE_SHADER_CACHE not defined.";
 #else
    setenv("MESA_DISK_CACHE_DATABASE_NUM_PARTS", "3", 1);
-   setenv("MESA_DISK_CACHE_DATABASE", "true", 1);
 
    test_disk_cache_create(mem_ctx, CACHE_DIR_NAME_DB, driver_id);
 
    test_multipart_eviction(driver_id);
 
    unsetenv("MESA_DISK_CACHE_DATABASE_NUM_PARTS");
-   unsetenv("MESA_DISK_CACHE_DATABASE");
 
    int err = rmrf_local(CACHE_TEST_TMP);
    EXPECT_EQ(err, 0) << "Removing " CACHE_TEST_TMP " again";

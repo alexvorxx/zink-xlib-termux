@@ -205,8 +205,8 @@ Core Mesa environment variables
 
    if set, determines the directory to be used for the on-disk cache of
    compiled shader programs. If this variable is not set, then the cache
-   will be stored in ``$XDG_CACHE_HOME/mesa_shader_cache`` (if that
-   variable is set), or else within ``.cache/mesa_shader_cache`` within
+   will be stored in ``$XDG_CACHE_HOME/mesa_shader_cache_db`` (if that
+   variable is set), or else within ``.cache/mesa_shader_cache_db`` within
    the user's home directory.
 
 .. envvar:: MESA_SHADER_CACHE_SHOW_STATS
@@ -217,16 +217,25 @@ Core Mesa environment variables
 .. envvar:: MESA_DISK_CACHE_SINGLE_FILE
 
    if set to 1, enables the single file Fossilize DB on-disk shader
-   cache implementation instead of the default multi-file cache
-   implementation. This implementation reduces the overall disk usage by
-   the shader cache and also allows for loading of precompiled cache
-   DBs via :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS` or
+   cache implementation instead of the default Mesa-DB cache
+   implementation. This implementation allows for loading of precompiled
+   cache DBs via :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS` or
    :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST`. This
    implementation does not support cache size limits via
    :envvar:`MESA_SHADER_CACHE_MAX_SIZE`. If
    :envvar:`MESA_SHADER_CACHE_DIR` is not set, the cache will be stored
    in ``$XDG_CACHE_HOME/mesa_shader_cache_sf`` (if that variable is set)
    or else within ``.cache/mesa_shader_cache_sf`` within the user's home
+   directory.
+
+.. envvar:: MESA_DISK_CACHE_MULTI_FILE
+
+   if set to 1, enables the multi file on-disk shader cache implementation
+   instead of the default Mesa-DB cache implementation.
+   This implementation increases the overall disk usage.
+   If :envvar:`MESA_SHADER_CACHE_DIR` is not set, the cache will be stored
+   in ``$XDG_CACHE_HOME/mesa_shader_cache`` (if that variable is set)
+   or else within ``.cache/mesa_shader_cache`` within the user's home
    directory.
 
 .. envvar:: MESA_DISK_CACHE_READ_ONLY_FOZ_DBS
@@ -239,18 +248,6 @@ Core Mesa environment variables
    ``MESA_DISK_CACHE_SINGLE_FILE=filename1`` refers to ``filename1.foz``
    and ``filename1_idx.foz``. A limit of 8 DBs can be loaded and this limit
    is shared with :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST`.
-
-.. envvar:: MESA_DISK_CACHE_DATABASE
-
-   if set to 1, enables the Mesa-DB single file on-disk shader cache
-   implementation instead of the default multi-file cache implementation.
-   Like :envvar:`MESA_DISK_CACHE_SINGLE_FILE`, Mesa-DB reduces overall
-   disk usage but Mesa-DB supports cache size limits via
-   :envvar:`MESA_SHADER_CACHE_MAX_SIZE`. If
-   :envvar:`MESA_SHADER_CACHE_DIR` is not set, the cache will be stored
-   in ``$XDG_CACHE_HOME/mesa_shader_cache_db`` (if that variable is set)
-   or else within ``.cache/mesa_shader_cache_db`` within the user's home
-   directory.
 
 .. envvar:: MESA_DISK_CACHE_DATABASE_NUM_PARTS
 

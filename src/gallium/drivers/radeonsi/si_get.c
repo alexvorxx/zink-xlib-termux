@@ -1422,7 +1422,8 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
     */
    options->force_f2f16_rtz = true;
    options->io_options = nir_io_has_flexible_input_interpolation_except_flat |
-                         nir_io_glsl_lower_derefs;
+                         nir_io_glsl_lower_derefs |
+                         (sscreen->options.optimize_io ? nir_io_glsl_opt_varyings : 0);
    options->lower_mediump_io = sscreen->info.gfx_level >= GFX8 && sscreen->options.fp16 ?
                                   si_lower_mediump_io : NULL;
    /* HW supports indirect indexing for: | Enabled in driver

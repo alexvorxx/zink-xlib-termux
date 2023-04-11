@@ -935,8 +935,8 @@ iris_resource_configure_aux(struct iris_screen *screen,
          assert(res->aux.usage != ISL_AUX_USAGE_STC_CCS);
          initial_state =
             isl_drm_modifier_get_default_aux_state(res->mod_info->modifier);
-      } else if (devinfo->has_flat_ccs) {
-         assert(res->aux.surf.size_B == 0);
+      } else if (devinfo->ver >= 12) {
+         assert(!devinfo->has_illegal_ccs_values);
          /* From Bspec 47709, "MCS/CCS Buffers for Render Target(s)":
           *
           *    "CCS surface does not require initialization. Illegal CCS
@@ -964,7 +964,6 @@ iris_resource_configure_aux(struct iris_screen *screen,
           */
          initial_state = ISL_AUX_STATE_COMPRESSED_NO_CLEAR;
       } else {
-         assert(res->aux.surf.size_B > 0);
          /* When CCS is used, we need to ensure that it starts off in a valid
           * state. From the Sky Lake PRM, "MCS Buffer for Render Target(s)":
           *
@@ -999,9 +998,12 @@ static bool
 iris_resource_init_aux_buf(struct iris_screen *screen,
                            struct iris_resource *res)
 {
+   const struct intel_device_info *devinfo = screen->devinfo;
 
-   if (iris_resource_get_aux_state(res, 0, 0) != ISL_AUX_STATE_AUX_INVALID &&
-       res->aux.surf.size_B > 0) {
+   if (isl_aux_usage_has_ccs(res->aux.usage) && devinfo->ver <= 11) {
+      /* Initialize the CCS on BDW-ICL to the PASS_THROUGH state. This avoids
+       * the need to ambiguate in some cases.
+       */
       void* map = iris_bo_map(NULL, res->bo, MAP_WRITE | MAP_RAW);
       if (!map)
          return false;

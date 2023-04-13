@@ -6559,7 +6559,8 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
       const nir_src load_offset = is_ssbo ? instr->src[1] : instr->src[0];
       if (nir_src_is_const(load_offset)) {
-         fs_reg addr = ubld8.MOV(brw_imm_ud(nir_src_as_uint(load_offset)));
+         const fs_builder &ubld = devinfo->ver >= 20 ? ubld16 : ubld8;
+         fs_reg addr = ubld.MOV(brw_imm_ud(nir_src_as_uint(load_offset)));
          srcs[SURFACE_LOGICAL_SRC_ADDRESS] = component(addr, 0);
       } else {
          srcs[SURFACE_LOGICAL_SRC_ADDRESS] =

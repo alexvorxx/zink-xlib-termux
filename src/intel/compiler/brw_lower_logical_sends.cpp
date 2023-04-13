@@ -1677,7 +1677,6 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
       inst->opcode == SHADER_OPCODE_TYPED_ATOMIC_LOGICAL;
 
    unsigned num_components = 0;
-   bool has_dest = false;
 
    unsigned ex_mlen = 0;
    fs_reg payload, payload2;
@@ -1735,7 +1734,6 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
    case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
       num_components = arg.ud;
-      has_dest = true;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK,
                                 surf_type, LSC_ADDR_SIZE_A32,
                                 LSC_DATA_SIZE_D32, num_components,
@@ -1745,7 +1743,6 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
    case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
       num_components = arg.ud;
-      has_dest = false;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE_CMASK,
                                 surf_type, LSC_ADDR_SIZE_A32,
                                 LSC_DATA_SIZE_D32, num_components,
@@ -1762,7 +1759,6 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
       enum lsc_opcode opcode = (enum lsc_opcode) arg.ud;
 
       num_components = 1;
-      has_dest = !inst->dst.is_null();
       inst->desc = lsc_msg_desc(devinfo, opcode,
                                 surf_type, LSC_ADDR_SIZE_A32,
                                 lsc_bits_to_data_size(dst_sz * 8),
@@ -1774,7 +1770,6 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
    case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
       num_components = 1;
-      has_dest = true;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
                                 surf_type, LSC_ADDR_SIZE_A32,
                                 lsc_bits_to_data_size(arg.ud),
@@ -1785,7 +1780,6 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
    case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
       num_components = 1;
-      has_dest = false;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE,
                                 surf_type, LSC_ADDR_SIZE_A32,
                                 lsc_bits_to_data_size(arg.ud),
@@ -1806,9 +1800,6 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    inst->send_is_volatile = !has_side_effects;
    inst->send_ex_bso = surf_type == LSC_ADDR_SURFTYPE_BSS &&
                        compiler->extended_bindless_surface_offset;
-   inst->size_written = !has_dest ? 0 :
-      lsc_msg_dest_len(devinfo, lsc_msg_desc_data_size(devinfo, inst->desc),
-                       inst->exec_size * num_components) * REG_SIZE;
 
    inst->resize_sources(4);
 
@@ -1886,8 +1877,6 @@ lower_lsc_block_logical_send(const fs_builder &bld, fs_inst *inst)
                              LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
 
    inst->mlen = lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32, 1);
-   inst->size_written = write ? 0 :
-      lsc_msg_dest_len(devinfo, LSC_DATA_SIZE_D32, arg.ud) * REG_SIZE;
    inst->exec_size = 1;
    inst->ex_mlen = write ? DIV_ROUND_UP(arg.ud, 8) : 0;
    inst->header_size = 0;
@@ -2051,12 +2040,10 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    fs_reg payload2 = retype(bld.move_to_vgrf(src, src_comps), BRW_TYPE_UD);
    unsigned ex_mlen = src_comps * src_sz * inst->exec_size / REG_SIZE;
    unsigned num_components = 0;
-   bool has_dest = false;
 
    switch (inst->opcode) {
    case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
       num_components = arg;
-      has_dest = true;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 LSC_DATA_SIZE_D32, num_components,
@@ -2065,7 +2052,6 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       break;
    case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
       num_components = arg;
-      has_dest = false;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE_CMASK,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 LSC_DATA_SIZE_D32, num_components,
@@ -2074,7 +2060,6 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       break;
    case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
       num_components = 1;
-      has_dest = true;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 lsc_bits_to_data_size(arg),
@@ -2084,7 +2069,6 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       break;
    case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
       num_components = 1;
-      has_dest = false;
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 lsc_bits_to_data_size(arg),
@@ -2100,7 +2084,6 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
        */
       enum lsc_opcode opcode = (enum lsc_opcode) arg;
       num_components = 1;
-      has_dest = !inst->dst.is_null();
       inst->desc = lsc_msg_desc(devinfo, opcode,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 lsc_bits_to_data_size(dst_sz * 8),
@@ -2112,7 +2095,6 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
    case SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
       num_components = arg;
-      has_dest = true;
       inst->exec_size = 1;
       inst->desc = lsc_msg_desc(devinfo,
                                 LSC_OP_LOAD,
@@ -2125,7 +2107,6 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       break;
    case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
       num_components = arg;
-      has_dest = false;
       inst->exec_size = 1;
       inst->desc = lsc_msg_desc(devinfo,
                                 LSC_OP_STORE,
@@ -2151,10 +2132,6 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    inst->header_size = 0;
    inst->send_has_side_effects = has_side_effects;
    inst->send_is_volatile = !has_side_effects;
-
-   inst->size_written = !has_dest ? 0 :
-      lsc_msg_dest_len(devinfo, lsc_msg_desc_data_size(devinfo, inst->desc),
-                       inst->exec_size * num_components) * REG_SIZE;
 
    /* Set up SFID and descriptors */
    inst->sfid = GFX12_SFID_UGM;

@@ -266,14 +266,14 @@ instructions as images.  Samplers use a 16byte descriptor, and UBOs use an
 
 In the bindless model, descriptors are split into 5 descriptor sets, which are
 global across shader stages (but as with bindful IBO descriptors, separate for
-3d stages vs compute stage).  Each hw descriptor is an array of descriptors
+3d stages vs compute stage).  Each HW descriptor is an array of descriptors
 of configurable size (each descriptor set can be configured for a descriptor
 pitch of 8bytes or 64bytes).  Each descriptor can be of arbitrary format (ie.
-UBOs/IBOs/textures/samplers interleaved), it's interpretation by the hw is
+UBOs/IBOs/textures/samplers interleaved), it's interpretation by the HW is
 determined by the instruction that references the descriptor.  Each descriptor
 set can contain at least 2^^16 descriptors.
 
-The hw is configured with the base address of the descriptor set via an array
+The HW is configured with the base address of the descriptor set via an array
 of "BINDLESS_BASE" registers, ie ``SP_BINDLESS_BASE[n]``/``HLSQ_BINDLESS_BASE[n]``
 for 3d shader stages, or ``SP_CS_BINDLESS_BASE[n]``/``HLSQ_CS_BINDLESS_BASE[n]``
 for compute shaders, with the descriptor pitch encoded in the low bits.

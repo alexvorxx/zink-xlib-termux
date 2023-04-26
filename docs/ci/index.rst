@@ -302,7 +302,7 @@ and cancel the rest to avoid wasting resources.
 See ``bin/ci/ci_run_n_monitor.py --help`` for all the options.
 
 The ``--target`` argument takes a regex that you can use to select the
-jobs names you want to run, eg. ``--target 'zink.*'`` will run all the
+jobs names you want to run, e.g. ``--target 'zink.*'`` will run all the
 Zink jobs, leaving the other drivers' jobs free for others to use.
 
 Note that in fork pipelines, GitLab only adds the jobs for the files that have

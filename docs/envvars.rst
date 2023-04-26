@@ -401,7 +401,7 @@ Core Mesa environment variables
    - ``DRI_PRIME=vendor_id:device_id``: selects the first GPU matching these ids.
 
    For Vulkan it's possible to append ``!``, in which case only the selected GPU
-   will be exposed to the application (eg: DRI_PRIME=1!).
+   will be exposed to the application (e.g.: DRI_PRIME=1!).
 
    .. note::
 

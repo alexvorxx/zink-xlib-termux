@@ -111,7 +111,7 @@ The integer capabilities:
   features only present in the OpenGL compatibility profile.
   The only legacy features that Gallium drivers must implement are
   the legacy shader inputs and outputs (colors, texcoords, fog, clipvertex,
-  edgeflag).
+  edge flag).
 * ``PIPE_CAP_ESSL_FEATURE_LEVEL``: An optional cap to allow drivers to
   report a higher GLSL version for GLES contexts.  This is useful when a
   driver does not support all the required features for a higher GL version,

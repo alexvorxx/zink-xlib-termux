@@ -3253,7 +3253,7 @@ TGSI_SEMANTIC_EDGEFLAG
 For vertex shaders, this semantic label indicates that an input or
 output is a boolean edge flag.  The register layout is [F, x, x, x]
 where F is 0.0 or 1.0 and x = don't care.  Normally, the vertex shader
-simply copies the edge flag input to the edgeflag output.
+simply copies the edge flag input to the edge flag output.
 
 Edge flags are used to control which lines or points are actually
 drawn when the polygon mode converts triangles/quads/polygons into

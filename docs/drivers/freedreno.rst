@@ -628,7 +628,7 @@ the cases where stale data is read.
   ``cmdbuf``
     stomp registers at the start of each command buffer.
   ``renderpass``
-    stomp registers before each renderpass.
+    stomp registers before each render pass.
   ``inverse``
     changes ``TU_DEBUG_STALE_REGS_RANGE`` meaning to
     "regs that should NOT be stomped".

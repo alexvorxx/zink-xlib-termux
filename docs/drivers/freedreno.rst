@@ -225,7 +225,7 @@ register banks that were flipped between per draw.
 Bindless/Bindful Descriptors (a6xx+)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Starting with a6xx++, cat5 (texture) and cat6 (image/ssbo/ubo) instructions are
+Starting with a6xx++, cat5 (texture) and cat6 (image/SSBO/UBO) instructions are
 extended to support bindless descriptors.
 
 In the old bindful model, descriptors are separate for textures, samplers,

@@ -337,7 +337,7 @@ clip_plane_enable
 conservative_raster_mode
     The conservative rasterization mode.  For PIPE_CONSERVATIVE_RASTER_OFF,
     conservative rasterization is disabled.  For PIPE_CONSERVATIVE_RASTER_POST_SNAP
-    or PIPE_CONSERVATIVE_RASTER_PRE_SNAP, conservative rasterization is nabled.
+    or PIPE_CONSERVATIVE_RASTER_PRE_SNAP, conservative rasterization is enabled.
     When conservative rasterization is enabled, the polygon smooth, line smooth,
     point smooth and line stipple settings are ignored.
     With the post-snap mode, unlike the pre-snap mode, fragments are never

@@ -84,8 +84,8 @@ light_twoside
    along with the front/back information to set the final vertex colors
    prior to rasterization.
 
-   The frontface vertex shader color output is marked with TGSI semantic
-   COLOR[0], and backface COLOR[1].
+   The front-face vertex shader color output is marked with TGSI semantic
+   COLOR[0], and back-face COLOR[1].
 
 front_ccw
     Indicates whether the window order of front-facing polygons is

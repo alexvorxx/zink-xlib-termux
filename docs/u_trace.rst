@@ -39,7 +39,7 @@ u_trace is controlled by environment variables:
       traces can be collected without setting this but it may miss some
       events prior to the tracing session being started.
    ``markers``
-      enables marker instrumentation, will print utrace markers into
+      enables marker instrumentation, will print trace markers into
       the CS which can then be viewed by dumping the CS from the driver.
 
          - For Turnip, ``cffdump`` can be used to view the markers in

@@ -3265,7 +3265,8 @@ TGSI_SEMANTIC_STENCIL
 
 For fragment shaders, this semantic label indicates that an output
 is a writable stencil reference value. Only the Y component is writable.
-This allows the fragment shader to change the fragments stencilref value.
+This allows the fragment shader to change the fragments stencil reference
+value.
 
 
 TGSI_SEMANTIC_VIEWPORT_INDEX

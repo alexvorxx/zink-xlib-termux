@@ -548,7 +548,7 @@ Intel driver environment variables
    ``gs``
       dump shader assembly for geometry shaders
    ``heaps``
-      print information about the driver's heaps (Anv only)
+      print information about the driver's heaps (ANV only)
    ``hex``
       print instruction hex dump with the disassembly
    ``l3``

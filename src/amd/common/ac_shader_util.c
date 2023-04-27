@@ -1240,7 +1240,28 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
 
    bool scope_is_device = access & (ACCESS_COHERENT | ACCESS_VOLATILE);
 
-   if (info->gfx_level >= GFX11) {
+   if (info->gfx_level >= GFX12) {
+      if (access & ACCESS_CP_GE_COHERENT_AMD) {
+         result.gfx12.scope = info->cp_sdma_ge_use_system_memory_scope ?
+                                 gfx12_scope_memory : gfx12_scope_device;
+      } else if (scope_is_device) {
+         result.gfx12.scope = gfx12_scope_device;
+      } else {
+         result.gfx12.scope = gfx12_scope_cu;
+      }
+
+      if (access & ACCESS_NON_TEMPORAL) {
+         if (access & ACCESS_TYPE_LOAD) {
+            /* Don't use non_temporal for SMEM because it can't set regular_temporal for MALL. */
+            if (!(access & ACCESS_TYPE_SMEM))
+               result.gfx12.temporal_hint = gfx12_load_near_non_temporal_far_regular_temporal;
+         } else if (access & ACCESS_TYPE_STORE) {
+            result.gfx12.temporal_hint = gfx12_store_near_non_temporal_far_regular_temporal;
+         } else {
+            result.gfx12.temporal_hint = gfx12_atomic_non_temporal;
+         }
+      }
+   } else if (info->gfx_level >= GFX11) {
       /* GFX11 simplified it and exposes what is actually useful.
        *
        * GLC means device scope for loads only. (stores and atomics are always device scope)
@@ -1322,8 +1343,12 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
          result.value |= ac_glc;
    }
 
-   if (access & ACCESS_IS_SWIZZLED_AMD)
-      result.value |= ac_swizzled;
+   if (access & ACCESS_IS_SWIZZLED_AMD) {
+      if (info->gfx_level >= GFX12)
+         result.gfx12.swizzled = true;
+      else
+         result.value |= ac_swizzled;
+   }
 
    return result;
 }

@@ -2066,44 +2066,60 @@ void ac_build_waitcnt(struct ac_llvm_context *ctx, unsigned wait_flags)
    if (!wait_flags)
       return;
 
-   unsigned expcnt = 7;
-   unsigned lgkmcnt = 63;
-   unsigned vmcnt = ctx->gfx_level >= GFX9 ? 63 : 15;
-   unsigned vscnt = 63;
+   if (ctx->gfx_level >= GFX12) {
+      if (wait_flags & AC_WAIT_DS)
+         ac_build_intrinsic(ctx, "llvm.amdgcn.s.wait.dscnt", ctx->voidt, &ctx->i16_0, 1, 0);
+      if (wait_flags & AC_WAIT_KM)
+         ac_build_intrinsic(ctx, "llvm.amdgcn.s.wait.kmcnt", ctx->voidt, &ctx->i16_0, 1, 0);
+      if (wait_flags & AC_WAIT_EXP)
+         ac_build_intrinsic(ctx, "llvm.amdgcn.s.wait.expcnt", ctx->voidt, &ctx->i16_0, 1, 0);
+      if (wait_flags & AC_WAIT_LOAD)
+         ac_build_intrinsic(ctx, "llvm.amdgcn.s.wait.loadcnt", ctx->voidt, &ctx->i16_0, 1, 0);
+      if (wait_flags & AC_WAIT_STORE)
+         ac_build_intrinsic(ctx, "llvm.amdgcn.s.wait.storecnt", ctx->voidt, &ctx->i16_0, 1, 0);
+      if (wait_flags & AC_WAIT_SAMPLE)
+         ac_build_intrinsic(ctx, "llvm.amdgcn.s.wait.samplecnt", ctx->voidt, &ctx->i16_0, 1, 0);
+      if (wait_flags & AC_WAIT_BVH)
+         ac_build_intrinsic(ctx, "llvm.amdgcn.s.wait.bvhcnt", ctx->voidt, &ctx->i16_0, 1, 0);
+   } else {
+      unsigned expcnt = 7;
+      unsigned lgkmcnt = 63;
+      unsigned vmcnt = ctx->gfx_level >= GFX9 ? 63 : 15;
+      unsigned vscnt = 63;
 
-   if (wait_flags & AC_WAIT_EXP)
-      expcnt = 0;
-   if (wait_flags & AC_WAIT_LGKM)
-      lgkmcnt = 0;
-   if (wait_flags & AC_WAIT_VLOAD)
-      vmcnt = 0;
-
-   if (wait_flags & AC_WAIT_VSTORE) {
-      if (ctx->gfx_level >= GFX10)
-         vscnt = 0;
-      else
+      if (wait_flags & AC_WAIT_EXP)
+         expcnt = 0;
+      if (wait_flags & (AC_WAIT_DS | AC_WAIT_KM))
+         lgkmcnt = 0;
+      if (wait_flags & (AC_WAIT_LOAD | AC_WAIT_SAMPLE | AC_WAIT_BVH))
          vmcnt = 0;
+
+      if (wait_flags & AC_WAIT_STORE) {
+         if (ctx->gfx_level >= GFX10)
+            vscnt = 0;
+         else
+            vmcnt = 0;
+      }
+
+      /* There is no intrinsic for vscnt(0), so use a fence. It waits for everything except expcnt. */
+      if (vscnt == 0) {
+         assert(!(wait_flags & AC_WAIT_EXP));
+         LLVMBuildFence(ctx->builder, LLVMAtomicOrderingRelease, false, "");
+         return;
+      }
+
+      unsigned simm16;
+
+      if (ctx->gfx_level >= GFX11)
+         simm16 = expcnt | (lgkmcnt << 4) | (vmcnt << 10);
+      else
+         simm16 = (lgkmcnt << 8) | (expcnt << 4) | (vmcnt & 0xf) | ((vmcnt >> 4) << 14);
+
+      LLVMValueRef args[1] = {
+         LLVMConstInt(ctx->i32, simm16, false),
+      };
+      ac_build_intrinsic(ctx, "llvm.amdgcn.s.waitcnt", ctx->voidt, args, 1, 0);
    }
-
-   /* There is no intrinsic for vscnt(0), so use a fence. */
-   if ((wait_flags & AC_WAIT_LGKM && wait_flags & AC_WAIT_VLOAD && wait_flags & AC_WAIT_VSTORE) ||
-       vscnt == 0) {
-      assert(!(wait_flags & AC_WAIT_EXP));
-      LLVMBuildFence(ctx->builder, LLVMAtomicOrderingRelease, false, "");
-      return;
-   }
-
-   unsigned simm16;
-
-   if (ctx->gfx_level >= GFX11)
-      simm16 = expcnt | (lgkmcnt << 4) | (vmcnt << 10);
-   else
-      simm16 = (lgkmcnt << 8) | (expcnt << 4) | (vmcnt & 0xf) | ((vmcnt >> 4) << 14);
-
-   LLVMValueRef args[1] = {
-      LLVMConstInt(ctx->i32, simm16, false),
-   };
-   ac_build_intrinsic(ctx, "llvm.amdgcn.s.waitcnt", ctx->voidt, args, 1, 0);
 }
 
 LLVMValueRef ac_build_fsat(struct ac_llvm_context *ctx, LLVMValueRef src,

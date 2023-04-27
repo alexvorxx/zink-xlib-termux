@@ -3208,9 +3208,9 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
 
       unsigned wait_flags = 0;
       if (modes & (nir_var_mem_global | nir_var_mem_ssbo | nir_var_image))
-         wait_flags |= AC_WAIT_VLOAD | AC_WAIT_VSTORE;
+         wait_flags |= AC_WAIT_LOAD | AC_WAIT_STORE;
       if (modes & nir_var_mem_shared)
-         wait_flags |= AC_WAIT_LGKM;
+         wait_flags |= AC_WAIT_DS;
 
       if (wait_flags)
          ac_build_waitcnt(&ctx->ac, wait_flags);
@@ -3624,7 +3624,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       /* Set release=0 to start a GDS mutex. Set done=0 because it's not the last one. */
       ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.ds.ordered.add", ctx->ac.i32,
                          args, ARRAY_SIZE(args), 0);
-      ac_build_waitcnt(&ctx->ac, AC_WAIT_LGKM);
+      ac_build_waitcnt(&ctx->ac, AC_WAIT_DS);
 
       LLVMValueRef global_count[4];
       LLVMValueRef count_vec = get_src(ctx, instr->src[1]);
@@ -3644,7 +3644,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
          }
       }
 
-      ac_build_waitcnt(&ctx->ac, AC_WAIT_LGKM);
+      ac_build_waitcnt(&ctx->ac, AC_WAIT_DS);
 
       /* Set release=1 to end a GDS mutex. Set done=1 because it's the last one. */
       args[6] = args[7] = ctx->ac.i1true;

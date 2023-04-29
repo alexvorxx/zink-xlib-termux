@@ -878,8 +878,8 @@ iris_resource_configure_aux(struct iris_screen *screen,
       } else if (res->mod_info && res->mod_info->supports_media_compression) {
          res->aux.usage = ISL_AUX_USAGE_MC;
       } else if (want_ccs_e_for_format(devinfo, res->surf.format)) {
-         res->aux.usage = devinfo->ver < 12 ?
-            ISL_AUX_USAGE_CCS_E : ISL_AUX_USAGE_FCV_CCS_E;
+         res->aux.usage = intel_needs_workaround(devinfo, 1607794140) ?
+            ISL_AUX_USAGE_FCV_CCS_E : ISL_AUX_USAGE_CCS_E;
       } else {
          assert(isl_format_supports_ccs_d(devinfo, res->surf.format));
          res->aux.usage = ISL_AUX_USAGE_CCS_D;

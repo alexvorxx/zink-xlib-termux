@@ -1804,7 +1804,7 @@ radv_update_preambles(struct radv_queue_state *queue, struct radv_device *device
          : 0;
 
    if (pdev->info.gfx_level >= GFX11 && queue->qf == RADV_QUEUE_GENERAL) {
-      needs.attr_ring_size = pdev->info.attribute_ring_size_per_se * pdev->info.max_se;
+      needs.attr_ring_size = pdev->info.total_attribute_pos_prim_ring_size;
    }
 
    /* Return early if we already match these needs.

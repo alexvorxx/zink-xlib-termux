@@ -123,6 +123,8 @@ enum radeon_family
    CHIP_GFX1103_R2,
    CHIP_GFX1150,
    CHIP_GFX1151,
+   CHIP_GFX1200,
+   CHIP_GFX1201,
    CHIP_LAST,
 };
 
@@ -144,6 +146,7 @@ enum amd_gfx_level
    GFX10_3,
    GFX11,
    GFX11_5,
+   GFX12,
 
    NUM_GFX_VERSIONS,
 };

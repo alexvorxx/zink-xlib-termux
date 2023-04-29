@@ -91,7 +91,7 @@ nine_ff_get_projected_key(struct nine_context *context, unsigned num_stages)
         unsigned idx = context->ff.tex_stage[s][D3DTSS_TEXCOORDINDEX] & 7;
         unsigned proj = !!(context->ff.tex_stage[s][D3DTSS_TEXTURETRANSFORMFLAGS] & D3DTTFF_PROJECTED);
 
-        if (!context->vs) {
+        if (!context->programmable_vs) {
             if (dim > 4)
                 dim = input_texture_coord[idx];
 

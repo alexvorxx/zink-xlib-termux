@@ -2574,7 +2574,9 @@ static void emit_demote(struct ac_nir_context *ctx, const nir_intrinsic_instr *i
 static LLVMValueRef visit_load_subgroup_id(struct ac_nir_context *ctx)
 {
    if (gl_shader_stage_is_compute(ctx->stage)) {
-      if (ctx->ac.gfx_level >= GFX10_3)
+      if (ctx->ac.gfx_level >= GFX12)
+         return ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.wave.id", ctx->ac.i32, NULL, 0, 0);
+      else if (ctx->ac.gfx_level >= GFX10_3)
          return ac_unpack_param(&ctx->ac, ac_get_arg(&ctx->ac, ctx->args->tg_size), 20, 5);
       else
          return ac_unpack_param(&ctx->ac, ac_get_arg(&ctx->ac, ctx->args->tg_size), 6, 6);
@@ -3002,8 +3004,15 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       LLVMValueRef values[3] = {ctx->ac.i32_0, ctx->ac.i32_0, ctx->ac.i32_0};
 
       for (int i = 0; i < 3; i++) {
-         if (ctx->args->workgroup_ids[i].used)
-            values[i] = ac_get_arg(&ctx->ac, ctx->args->workgroup_ids[i]);
+         if (ctx->args->workgroup_ids[i].used) {
+            if (ctx->ac.gfx_level >= GFX12) {
+               char intr_name[256];
+               snprintf(intr_name, sizeof(intr_name), "llvm.amdgcn.workgroup.id.%c", "xyz"[i]);
+               values[i] = ac_build_intrinsic(&ctx->ac, intr_name, ctx->ac.i32, NULL, 0, 0);
+            } else {
+               values[i] = ac_get_arg(&ctx->ac, ctx->args->workgroup_ids[i]);
+            }
+         }
       }
       result = ac_build_gather_values(&ctx->ac, values, 3);
       break;

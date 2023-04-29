@@ -400,13 +400,15 @@ pervertex_lds_addr(nir_builder *b, nir_def *vertex_idx, unsigned per_vtx_bytes)
 
 static nir_def *
 emit_pack_ngg_prim_exp_arg(nir_builder *b, unsigned num_vertices_per_primitives,
-                           nir_def *vertex_indices[3], nir_def *is_null_prim)
+                           nir_def *vertex_indices[3], nir_def *is_null_prim,
+                           enum amd_gfx_level gfx_level)
 {
    nir_def *arg = nir_load_initial_edgeflags_amd(b);
 
    for (unsigned i = 0; i < num_vertices_per_primitives; ++i) {
       assert(vertex_indices[i]);
-      arg = nir_ior(b, arg, nir_ishl_imm(b, vertex_indices[i], 10u * i));
+      arg = nir_ior(b, arg, nir_ishl_imm(b, vertex_indices[i],
+                                         (gfx_level >= GFX12 ? 9u : 10u) * i));
    }
 
    if (is_null_prim) {
@@ -486,11 +488,16 @@ ngg_nogs_init_vertex_indices_vars(nir_builder *b, nir_function_impl *impl, lower
    for (unsigned v = 0; v < s->options->num_vertices_per_primitive; ++v) {
       s->gs_vtx_indices_vars[v] = nir_local_variable_create(impl, glsl_uint_type(), "gs_vtx_addr");
 
-      nir_def *vtx = s->options->passthrough ?
-         nir_ubfe_imm(b, nir_load_packed_passthrough_primitive_amd(b),
-                      10 * v, 9) :
-         nir_ubfe_imm(b, nir_load_gs_vertex_offset_amd(b, .base = v / 2u),
-                      (v & 1u) * 16u, 16u);
+      nir_def *vtx;
+
+      if (s->options->gfx_level >= GFX12) {
+         vtx = nir_ubfe_imm(b, nir_load_packed_passthrough_primitive_amd(b), 9 * v, 8);
+      } else if (s->options->passthrough) {
+         vtx = nir_ubfe_imm(b, nir_load_packed_passthrough_primitive_amd(b), 10 * v, 9);
+      } else {
+         vtx = nir_ubfe_imm(b, nir_load_gs_vertex_offset_amd(b, .base = v / 2u),
+                            (v & 1u) * 16u, 16u);
+      }
 
       nir_store_var(b, s->gs_vtx_indices_vars[v], vtx, 0x1);
    }
@@ -499,7 +506,7 @@ ngg_nogs_init_vertex_indices_vars(nir_builder *b, nir_function_impl *impl, lower
 static nir_def *
 emit_ngg_nogs_prim_exp_arg(nir_builder *b, lower_ngg_nogs_state *s)
 {
-   if (s->options->passthrough) {
+   if (s->options->gfx_level >= GFX12 || s->options->passthrough) {
       return nir_load_packed_passthrough_primitive_amd(b);
    } else {
       nir_def *vtx_idx[3] = {0};
@@ -507,7 +514,8 @@ emit_ngg_nogs_prim_exp_arg(nir_builder *b, lower_ngg_nogs_state *s)
       for (unsigned v = 0; v < s->options->num_vertices_per_primitive; ++v)
          vtx_idx[v] = nir_load_var(b, s->gs_vtx_indices_vars[v]);
 
-      return emit_pack_ngg_prim_exp_arg(b, s->options->num_vertices_per_primitive, vtx_idx, NULL);
+      return emit_pack_ngg_prim_exp_arg(b, s->options->num_vertices_per_primitive, vtx_idx, NULL,
+                                        s->options->gfx_level);
    }
 }
 
@@ -563,7 +571,7 @@ emit_ngg_nogs_prim_export(nir_builder *b, lower_ngg_nogs_state *s, nir_def *arg)
                             .memory_semantics = NIR_MEMORY_ACQ_REL,
                             .memory_modes = nir_var_mem_shared);
 
-         unsigned edge_flag_bits = ac_get_all_edge_flag_bits();
+         unsigned edge_flag_bits = ac_get_all_edge_flag_bits(s->options->gfx_level);
          nir_def *mask = nir_imm_intN_t(b, ~edge_flag_bits, 32);
 
          unsigned edge_flag_offset = 0;
@@ -578,7 +586,11 @@ emit_ngg_nogs_prim_export(nir_builder *b, lower_ngg_nogs_state *s, nir_def *arg)
             nir_def *vtx_idx = nir_load_var(b, s->gs_vtx_indices_vars[i]);
             nir_def *addr = pervertex_lds_addr(b, vtx_idx, s->pervertex_lds_bytes);
             nir_def *edge = nir_load_shared(b, 1, 32, addr, .base = edge_flag_offset);
-            mask = nir_ior(b, mask, nir_ishl_imm(b, edge, 9 + i * 10));
+
+            if (s->options->gfx_level >= GFX12)
+               mask = nir_ior(b, mask, nir_ishl_imm(b, edge, 8 + i * 9));
+            else
+               mask = nir_ior(b, mask, nir_ishl_imm(b, edge, 9 + i * 10));
          }
          arg = nir_iand(b, arg, mask);
       }
@@ -1032,7 +1044,7 @@ compact_vertices_after_culling(nir_builder *b,
 
       nir_def *prim_exp_arg =
          emit_pack_ngg_prim_exp_arg(b, s->options->num_vertices_per_primitive,
-                                    exporter_vtx_indices, NULL);
+                                    exporter_vtx_indices, NULL, s->options->gfx_level);
       nir_store_var(b, prim_exp_arg_var, prim_exp_arg, 0x1u);
    }
    nir_pop_if(b, if_gs_accepted);
@@ -2932,7 +2944,7 @@ ngg_gs_export_primitives(nir_builder *b, nir_def *max_num_out_prims, nir_def *ti
    }
 
    nir_def *arg = emit_pack_ngg_prim_exp_arg(b, s->num_vertices_per_primitive, vtx_indices,
-                                                 is_null_prim);
+                                             is_null_prim, s->options->gfx_level);
    ac_nir_export_primitive(b, arg, NULL);
    nir_pop_if(b, if_prim_export_thread);
 }
@@ -4200,7 +4212,7 @@ ms_prim_exp_arg_ch1(nir_builder *b, nir_def *invocation_index, nir_def *num_vtx,
       indices[i] = nir_umin(b, indices[i], max_vtx_idx);
    }
 
-   return emit_pack_ngg_prim_exp_arg(b, s->vertices_per_prim, indices, cull_flag);
+   return emit_pack_ngg_prim_exp_arg(b, s->vertices_per_prim, indices, cull_flag, s->gfx_level);
 }
 
 static nir_def *

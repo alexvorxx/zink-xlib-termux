@@ -1158,23 +1158,59 @@ LLVMValueRef ac_build_buffer_load_format(struct ac_llvm_context *ctx, LLVMValueR
    if (tfe) {
       assert(!d16);
 
-      unsigned cache_flags = get_cache_flags(ctx, access | ACCESS_TYPE_LOAD);
+      union ac_hw_cache_flags cache_flags =
+         ac_get_hw_cache_flags(ctx->info, access | ACCESS_TYPE_LOAD);
+      char code[1024];
 
-      char code[256];
       /* The definition in the assembly and the one in the constraint string
        * differs because of an assembler bug.
        */
-      snprintf(code, sizeof(code),
-               "v_mov_b32 v0, 0\n"
-               "v_mov_b32 v1, 0\n"
-               "v_mov_b32 v2, 0\n"
-               "v_mov_b32 v3, 0\n"
-               "v_mov_b32 v4, 0\n"
-               "buffer_load_format_xyzw v[0:3], $1, $2, 0, idxen offen %s %s tfe %s\n"
-               "s_waitcnt vmcnt(0)",
-               cache_flags & ac_glc ? "glc" : "",
-               cache_flags & ac_slc ? "slc" : "",
-               cache_flags & ac_dlc ? "dlc" : "");
+      if (ctx->gfx_level >= GFX12) {
+         const char *scope = "";
+         const char *temporal_hint = "";
+
+         if (cache_flags.gfx12.scope == gfx12_scope_se)
+            scope = "scope:SCOPE_SE";
+         else if (cache_flags.gfx12.scope == gfx12_scope_device)
+            scope = "scope:SCOPE_DEV";
+         else if (cache_flags.gfx12.scope == gfx12_scope_memory)
+            scope = "scope:SCOPE_SYS";
+
+         if (cache_flags.gfx12.temporal_hint == gfx12_load_non_temporal)
+            temporal_hint = "th:TH_LOAD_NT";
+         else if (cache_flags.gfx12.temporal_hint == gfx12_load_high_temporal)
+            temporal_hint = "th:TH_LOAD_HT";
+         else if (cache_flags.gfx12.temporal_hint == gfx12_load_last_use_discard)
+            temporal_hint = "th:TH_LOAD_LU";
+         else if (cache_flags.gfx12.temporal_hint == gfx12_load_near_non_temporal_far_regular_temporal)
+            temporal_hint = "th:TH_LOAD_NT_RT";
+         else if (cache_flags.gfx12.temporal_hint == gfx12_load_near_regular_temporal_far_non_temporal)
+            temporal_hint = "th:TH_LOAD_RT_NT";
+         else if (cache_flags.gfx12.temporal_hint == gfx12_load_near_non_temporal_far_high_temporal)
+            temporal_hint = "th:TH_LOAD_NT_HT";
+
+         snprintf(code, sizeof(code),
+                  "v_mov_b32 v0, 0\n"
+                  "v_mov_b32 v1, 0\n"
+                  "v_mov_b32 v2, 0\n"
+                  "v_mov_b32 v3, 0\n"
+                  "v_mov_b32 v4, 0\n"
+                  "buffer_load_format_xyzw v[0:3], $1, $2, 0, idxen offen %s %s tfe\n"
+                  "s_waitcnt vmcnt(0)",
+                  temporal_hint, scope);
+      } else {
+         snprintf(code, sizeof(code),
+                  "v_mov_b32 v0, 0\n"
+                  "v_mov_b32 v1, 0\n"
+                  "v_mov_b32 v2, 0\n"
+                  "v_mov_b32 v3, 0\n"
+                  "v_mov_b32 v4, 0\n"
+                  "buffer_load_format_xyzw v[0:3], $1, $2, 0, idxen offen %s %s tfe %s\n"
+                  "s_waitcnt vmcnt(0)",
+                  cache_flags.value & ac_glc ? "glc" : "",
+                  cache_flags.value & ac_slc ? "slc" : "",
+                  cache_flags.value & ac_dlc ? "dlc" : "");
+      }
 
       LLVMTypeRef param_types[] = {ctx->v2i32, ctx->v4i32};
       LLVMTypeRef calltype = LLVMFunctionType(LLVMVectorType(ctx->f32, 5), param_types, 2, false);

@@ -230,15 +230,13 @@ enum lvp_device_memory_type {
 struct lvp_device_memory {
    struct vk_object_base base;
    struct pipe_memory_allocation *pmem;
+   struct llvmpipe_memory_allocation mem_alloc;
    uint32_t                                     type_index;
    VkDeviceSize                                 map_size;
    VkDeviceSize                                 size;
    void *                                       map;
    enum lvp_device_memory_type memory_type;
    int                                          backed_fd;
-#ifdef PIPE_MEMORY_FD
-   struct llvmpipe_memory_fd_alloc              *alloc;
-#endif
 };
 
 struct lvp_pipe_sync {
@@ -579,10 +577,11 @@ struct lvp_event {
 struct lvp_buffer {
    struct vk_buffer vk;
 
-   struct pipe_memory_allocation *pmem;
+   struct lvp_device_memory *mem;
    struct pipe_resource *bo;
    uint64_t total_size;
    uint64_t offset;
+   void *map;
 };
 
 struct lvp_buffer_view {

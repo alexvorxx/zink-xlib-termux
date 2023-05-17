@@ -560,10 +560,9 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyBuffer(
    if (!_buffer)
      return;
 
-   char *ptr = (char*)buffer->pmem + buffer->offset;
-   if (ptr) {
+   if (buffer->map) {
       simple_mtx_lock(&device->bda_lock);
-      struct hash_entry *he = _mesa_hash_table_search(&device->bda, ptr);
+      struct hash_entry *he = _mesa_hash_table_search(&device->bda, buffer->map);
       if (he)
          _mesa_hash_table_remove(&device->bda, he);
       simple_mtx_unlock(&device->bda_lock);
@@ -578,12 +577,11 @@ VKAPI_ATTR VkDeviceAddress VKAPI_CALL lvp_GetBufferDeviceAddress(
 {
    LVP_FROM_HANDLE(lvp_device, device, _device);
    LVP_FROM_HANDLE(lvp_buffer, buffer, pInfo->buffer);
-   char *ptr = (char*)buffer->pmem + buffer->offset;
    simple_mtx_lock(&device->bda_lock);
-   _mesa_hash_table_insert(&device->bda, ptr, buffer);
+   _mesa_hash_table_insert(&device->bda, buffer->map, buffer);
    simple_mtx_unlock(&device->bda_lock);
 
-   return (VkDeviceAddress)(uintptr_t)ptr;
+   return (VkDeviceAddress)(uintptr_t)buffer->map;
 }
 
 VKAPI_ATTR uint64_t VKAPI_CALL lvp_GetBufferOpaqueCaptureAddress(

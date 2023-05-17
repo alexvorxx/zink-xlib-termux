@@ -28,6 +28,7 @@
 #include "vk_util.h"
 #include "util/u_math.h"
 #include "util/u_inlines.h"
+#include "lp_texture.h"
 
 static bool
 binding_has_immutable_samplers(const VkDescriptorSetLayoutBinding *binding)
@@ -250,7 +251,12 @@ get_buffer_resource(struct pipe_context *ctx, const VkDescriptorAddressInfoEXT *
    uint64_t size;
    struct pipe_resource *pres = pscreen->resource_create_unbacked(pscreen, &templ, &size);
    assert(size == bda->range);
-   pscreen->resource_bind_backing(pscreen, pres, (void *)(uintptr_t)bda->address, 0);
+
+   struct llvmpipe_memory_allocation alloc = {
+      .cpu_addr = (void *)(uintptr_t)bda->address,
+   };
+
+   pscreen->resource_bind_backing(pscreen, pres, (void *)&alloc, 0);
    return pres;
 }
 

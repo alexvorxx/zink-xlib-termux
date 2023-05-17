@@ -58,14 +58,6 @@ struct llvmpipe_screen;
 
 struct sw_displaytarget;
 
-struct llvmpipe_memory_fd_alloc {
-   void *data;
-   enum llvmpipe_memory_fd_type type;
-   int mem_fd;
-   int dmabuf_fd;
-   size_t size;
-};
-
 /**
  * llvmpipe subclass of pipe_resource.  A texture, drawing surface,
  * vertex buffer, const buffer, etc.
@@ -116,7 +108,7 @@ struct llvmpipe_resource
    uint64_t size_required;
    uint64_t backing_offset;
 #ifdef HAVE_LIBDRM
-   struct llvmpipe_memory_fd_alloc *dmabuf_alloc;
+   struct llvmpipe_memory_allocation *dmabuf_alloc;
 #endif
    bool backable;
    bool imported_memory;
@@ -132,6 +124,14 @@ struct llvmpipe_transfer
    struct pipe_transfer base;
 };
 
+struct llvmpipe_memory_allocation
+{
+   void *cpu_addr;
+   uint64_t size;
+   enum llvmpipe_memory_fd_type type;
+   int mem_fd;
+   int dmabuf_fd;
+};
 
 struct llvmpipe_memory_object
 {

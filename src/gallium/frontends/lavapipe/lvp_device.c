@@ -1767,7 +1767,7 @@ set_mem_priority(struct lvp_device_memory *mem, int priority)
       if (priority > 0)
          advice |= MADV_WILLNEED;
       if (advice)
-         madvise(mem->pmem, mem->size, advice);
+         madvise(mem->map, mem->size, advice);
    }
 #endif
 }
@@ -1844,22 +1844,25 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_AllocateMemory(
    mem->memory_type = LVP_DEVICE_MEMORY_TYPE_DEFAULT;
    mem->backed_fd = -1;
    mem->size = pAllocateInfo->allocationSize;
-
    if (host_ptr_info) {
-      mem->pmem = host_ptr_info->pHostPointer;
+      mem->mem_alloc = (struct llvmpipe_memory_allocation) {
+         .cpu_addr = host_ptr_info->pHostPointer,
+      };
+      mem->pmem = (void *)&mem->mem_alloc;
+      mem->map = host_ptr_info->pHostPointer;
       mem->memory_type = LVP_DEVICE_MEMORY_TYPE_USER_PTR;
    }
 #ifdef PIPE_MEMORY_FD
    else if(import_info && import_info->handleType) {
       bool dmabuf = import_info->handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
       uint64_t size;
-      if(!device->pscreen->import_memory_fd(device->pscreen, import_info->fd, (struct pipe_memory_allocation**)&mem->alloc, &size, dmabuf)) {
+      if(!device->pscreen->import_memory_fd(device->pscreen, import_info->fd, &mem->pmem, &size, dmabuf)) {
          close(import_info->fd);
          error = VK_ERROR_INVALID_EXTERNAL_HANDLE;
          goto fail;
       }
       if(size < pAllocateInfo->allocationSize) {
-         device->pscreen->free_memory_fd(device->pscreen, (struct pipe_memory_allocation*)mem->alloc);
+         device->pscreen->free_memory_fd(device->pscreen, mem->pmem);
          close(import_info->fd);
          goto fail;
       }
@@ -1871,17 +1874,17 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_AllocateMemory(
       }
 
       mem->size = size;
-      mem->pmem = mem->alloc->data;
+      mem->map = device->pscreen->map_memory(device->pscreen, mem->pmem);
       mem->memory_type = dmabuf ? LVP_DEVICE_MEMORY_TYPE_DMA_BUF : LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD;
    }
    else if (export_info && export_info->handleTypes) {
       bool dmabuf = export_info->handleTypes == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-      mem->alloc = (struct llvmpipe_memory_fd_alloc*)device->pscreen->allocate_memory_fd(device->pscreen, pAllocateInfo->allocationSize, &mem->backed_fd, dmabuf);
-      if (!mem->alloc || mem->backed_fd < 0) {
+      mem->pmem = device->pscreen->allocate_memory_fd(device->pscreen, pAllocateInfo->allocationSize, &mem->backed_fd, dmabuf);
+      if (!mem->pmem || mem->backed_fd < 0) {
           goto fail;
       }
 
-      mem->pmem = mem->alloc->data;
+      mem->map = device->pscreen->map_memory(device->pscreen, mem->pmem);
       mem->memory_type = dmabuf ? LVP_DEVICE_MEMORY_TYPE_DMA_BUF : LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD;
    }
 #endif
@@ -1890,9 +1893,11 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_AllocateMemory(
       if (!mem->pmem) {
          goto fail;
       }
-      if (device->poison_mem)
+      mem->map = device->pscreen->map_memory(device->pscreen, mem->pmem);
+      if (device->poison_mem) {
          /* this is a value that will definitely break things */
-         memset(mem->pmem, UINT8_MAX / 2 + 1, pAllocateInfo->allocationSize);
+         memset(mem->map, UINT8_MAX / 2 + 1, pAllocateInfo->allocationSize);
+      }
       set_mem_priority(mem, priority);
    }
 
@@ -1918,6 +1923,9 @@ VKAPI_ATTR void VKAPI_CALL lvp_FreeMemory(
    if (mem == NULL)
       return;
 
+   if (mem->memory_type != LVP_DEVICE_MEMORY_TYPE_USER_PTR)
+      device->pscreen->unmap_memory(device->pscreen, mem->pmem);
+
    switch(mem->memory_type) {
    case LVP_DEVICE_MEMORY_TYPE_DEFAULT:
       device->pscreen->free_memory(device->pscreen, mem->pmem);
@@ -1925,7 +1933,7 @@ VKAPI_ATTR void VKAPI_CALL lvp_FreeMemory(
 #ifdef PIPE_MEMORY_FD
    case LVP_DEVICE_MEMORY_TYPE_DMA_BUF:
    case LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD:
-      device->pscreen->free_memory_fd(device->pscreen, (struct pipe_memory_allocation*)mem->alloc);
+      device->pscreen->free_memory_fd(device->pscreen, mem->pmem);
       if(mem->backed_fd >= 0)
          close(mem->backed_fd);
       break;
@@ -1944,17 +1952,14 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_MapMemory2KHR(
     const VkMemoryMapInfoKHR*                   pMemoryMapInfo,
     void**                                      ppData)
 {
-   LVP_FROM_HANDLE(lvp_device, device, _device);
    LVP_FROM_HANDLE(lvp_device_memory, mem, pMemoryMapInfo->memory);
-   void *map;
+
    if (mem == NULL) {
       *ppData = NULL;
       return VK_SUCCESS;
    }
 
-   map = device->pscreen->map_memory(device->pscreen, mem->pmem);
-
-   *ppData = (char *)map + pMemoryMapInfo->offset;
+   *ppData = (char *)mem->map + pMemoryMapInfo->offset;
    return VK_SUCCESS;
 }
 
@@ -1962,13 +1967,6 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_UnmapMemory2KHR(
     VkDevice                                    _device,
     const VkMemoryUnmapInfoKHR*                 pMemoryUnmapInfo)
 {
-   LVP_FROM_HANDLE(lvp_device, device, _device);
-   LVP_FROM_HANDLE(lvp_device_memory, mem, pMemoryUnmapInfo->memory);
-
-   if (mem == NULL)
-      return VK_SUCCESS;
-
-   device->pscreen->unmap_memory(device->pscreen, mem->pmem);
    return VK_SUCCESS;
 }
 
@@ -2147,7 +2145,8 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_BindBufferMemory2(VkDevice _device,
       LVP_FROM_HANDLE(lvp_buffer, buffer, pBindInfos[i].buffer);
       VkBindMemoryStatusKHR *status = (void*)vk_find_struct_const(&pBindInfos[i], BIND_MEMORY_STATUS_KHR);
 
-      buffer->pmem = mem->pmem;
+      buffer->mem = mem;
+      buffer->map = (char*)mem->map + pBindInfos[i].memoryOffset;
       buffer->offset = pBindInfos[i].memoryOffset;
       device->pscreen->resource_bind_backing(device->pscreen,
                                              buffer->bo,

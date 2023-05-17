@@ -227,7 +227,12 @@ get_buffer_resource(struct pipe_context *ctx, void *mem)
 
    uint64_t size;
    struct pipe_resource *pres = pscreen->resource_create_unbacked(pscreen, &templ, &size);
-   pscreen->resource_bind_backing(pscreen, pres, mem, 0);
+
+   struct llvmpipe_memory_allocation alloc = {
+      .cpu_addr = mem,
+   };
+
+   pscreen->resource_bind_backing(pscreen, pres, (void *)&alloc, 0);
    return pres;
 }
 

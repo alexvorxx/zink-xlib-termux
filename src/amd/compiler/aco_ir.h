@@ -957,6 +957,7 @@ struct Pseudo_reduction_instruction;
 struct VALU_instruction;
 struct VINTERP_inreg_instruction;
 struct VINTRP_instruction;
+struct VOPD_instruction;
 struct DPP16_instruction;
 struct DPP8_instruction;
 struct SDWA_instruction;
@@ -1210,6 +1211,17 @@ struct Instruction {
       return *(VINTERP_inreg_instruction*)this;
    }
    constexpr bool isVINTERP_INREG() const noexcept { return format == Format::VINTERP_INREG; }
+   VOPD_instruction& vopd() noexcept
+   {
+      assert(isVOPD());
+      return *(VOPD_instruction*)this;
+   }
+   const VOPD_instruction& vopd() const noexcept
+   {
+      assert(isVOPD());
+      return *(VOPD_instruction*)this;
+   }
+   constexpr bool isVOPD() const noexcept { return format == Format::VOPD; }
    constexpr bool isVOP1() const noexcept { return (uint16_t)format & (uint16_t)Format::VOP1; }
    constexpr bool isVOP2() const noexcept { return (uint16_t)format & (uint16_t)Format::VOP2; }
    constexpr bool isVOPC() const noexcept { return (uint16_t)format & (uint16_t)Format::VOPC; }
@@ -1278,7 +1290,8 @@ struct Instruction {
    }
    constexpr bool isVALU() const noexcept
    {
-      return isVOP1() || isVOP2() || isVOPC() || isVOP3() || isVOP3P() || isVINTERP_INREG();
+      return isVOP1() || isVOP2() || isVOPC() || isVOP3() || isVOP3P() || isVINTERP_INREG() ||
+             isVOPD();
    }
 
    constexpr bool isSALU() const noexcept
@@ -1367,6 +1380,12 @@ struct VINTERP_inreg_instruction : public VALU_instruction {
 };
 static_assert(sizeof(VINTERP_inreg_instruction) == sizeof(VALU_instruction) + 4,
               "Unexpected padding");
+
+struct VOPD_instruction : public VALU_instruction {
+   aco_opcode opy;
+   uint16_t padding;
+};
+static_assert(sizeof(VOPD_instruction) == sizeof(VALU_instruction) + 4, "Unexpected padding");
 
 /**
  * Data Parallel Primitives Format:

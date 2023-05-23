@@ -22,8 +22,13 @@ html_docs = custom_target(
   build_by_default: get_option('html-docs').enabled(),
 )
 
+html_docs_path = get_option('html-docs-path')
+if html_docs_path == ''
+  html_docs_path = join_paths(get_option('datadir'), 'doc', 'mesa')
+endif
+
 install_subdir(html_docs.full_path(),
-  install_dir: join_paths(get_option('datadir'), 'doc', 'mesa'),
+  install_dir: html_docs_path,
   exclude_files: ['.buildinfo'],
   exclude_directories: ['.doctrees'],
   strip_directory: true

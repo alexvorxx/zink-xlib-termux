@@ -733,13 +733,25 @@ tu_cs_emit_draw_state(struct tu_cs *cs, uint32_t id, struct tu_draw_state state)
       enable_mask = CP_SET_DRAW_STATE__0_BINNING;
       break;
    case TU_DRAW_STATE_INPUT_ATTACHMENTS_GMEM:
-   case TU_DRAW_STATE_PRIM_MODE_GMEM:
       enable_mask = CP_SET_DRAW_STATE__0_GMEM;
+      break;
+   case TU_DRAW_STATE_PRIM_MODE_GMEM:
+      /* On a7xx the prim mode is the same for gmem and sysmem, and it no
+       * longer depends on dynamic state, so we reuse the gmem state for
+       * everything:
+       */
+      if (cs->device->physical_device->info->a6xx.has_coherent_ubwc_flag_caches) {
+         enable_mask = CP_SET_DRAW_STATE__0_GMEM |
+                       CP_SET_DRAW_STATE__0_SYSMEM |
+                       CP_SET_DRAW_STATE__0_BINNING;
+      } else {
+         enable_mask = CP_SET_DRAW_STATE__0_GMEM;
+      }
       break;
    case TU_DRAW_STATE_INPUT_ATTACHMENTS_SYSMEM:
       enable_mask = CP_SET_DRAW_STATE__0_SYSMEM;
       break;
-   case TU_DRAW_STATE_PRIM_MODE_SYSMEM:
+   case TU_DRAW_STATE_DYNAMIC + TU_DYNAMIC_STATE_PRIM_MODE_SYSMEM:
       /* By also applying the state during binning we ensure that there
        * is no rotation applied, by previous A6XX_GRAS_SC_CNTL::rotation.
        */
@@ -3418,7 +3430,6 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
    cmd->state.program = pipeline->program;
 
    cmd->state.load_state = pipeline->load_state;
-   cmd->state.prim_order_sysmem = pipeline->prim_order.state_sysmem;
    cmd->state.prim_order_gmem = pipeline->prim_order.state_gmem;
    cmd->state.pipeline_sysmem_single_prim_mode = pipeline->prim_order.sysmem_single_prim_mode;
    cmd->state.pipeline_has_tess = pipeline->active_stages & VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
@@ -3447,7 +3458,7 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
    if (!(cmd->state.dirty & TU_CMD_DIRTY_DRAW_STATE)) {
       uint32_t mask = pipeline->set_state_mask;
 
-      tu_cs_emit_pkt7(cs, CP_SET_DRAW_STATE, 3 * (11 + util_bitcount(mask)));
+      tu_cs_emit_pkt7(cs, CP_SET_DRAW_STATE, 3 * (10 + util_bitcount(mask)));
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_PROGRAM_CONFIG, pipeline->program.config_state);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_VS, pipeline->program.vs_state);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_VS_BINNING, pipeline->program.vs_binning_state);
@@ -3457,7 +3468,6 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_GS_BINNING, pipeline->program.gs_binning_state);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_FS, pipeline->program.fs_state);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_VPC, pipeline->program.vpc_state);
-      tu_cs_emit_draw_state(cs, TU_DRAW_STATE_PRIM_MODE_SYSMEM, pipeline->prim_order.state_sysmem);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_PRIM_MODE_GMEM, pipeline->prim_order.state_gmem);
 
       u_foreach_bit(i, mask)
@@ -3475,7 +3485,19 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
 
    if (gfx_pipeline->feedback_loops != cmd->state.pipeline_feedback_loops) {
       cmd->state.pipeline_feedback_loops = gfx_pipeline->feedback_loops;
-      cmd->state.dirty |= TU_CMD_DIRTY_LRZ;
+      cmd->state.dirty |= TU_CMD_DIRTY_FEEDBACK_LOOPS | TU_CMD_DIRTY_LRZ;
+   }
+
+   bool raster_order_attachment_access =
+      pipeline->output.raster_order_attachment_access ||
+      pipeline->ds.raster_order_attachment_access;
+   if (!cmd->state.raster_order_attachment_access_valid ||
+       raster_order_attachment_access !=
+       cmd->state.raster_order_attachment_access) {
+      cmd->state.raster_order_attachment_access =
+         raster_order_attachment_access;
+      cmd->state.dirty |= TU_CMD_DIRTY_RAST_ORDER;
+      cmd->state.raster_order_attachment_access_valid = true;
    }
 }
 
@@ -4974,7 +4996,9 @@ tu6_build_depth_plane_z_mode(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
    const struct tu_subpass *subpass = cmd->state.subpass;
 
    if ((fs->variant->has_kill ||
-        (cmd->state.pipeline_feedback_loops & VK_IMAGE_ASPECT_DEPTH_BIT)) &&
+        (cmd->state.pipeline_feedback_loops & VK_IMAGE_ASPECT_DEPTH_BIT) ||
+        (cmd->vk.dynamic_graphics_state.feedback_loops &
+         VK_IMAGE_ASPECT_DEPTH_BIT)) &&
        (depth_write || stencil_write)) {
       zmode = (cmd->state.lrz.valid && cmd->state.lrz.enabled)
                  ? A6XX_EARLY_LRZ_LATE_Z
@@ -5230,7 +5254,9 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
       BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
                   MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK) ||
       BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
-                  MESA_VK_DYNAMIC_MS_ALPHA_TO_COVERAGE_ENABLE);
+                  MESA_VK_DYNAMIC_MS_ALPHA_TO_COVERAGE_ENABLE) ||
+      BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
+                  MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE);
 
    if (dirty_lrz) {
       struct tu_cs cs;
@@ -5243,6 +5269,17 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
       tu6_update_simplified_stencil_state(cmd);
       tu6_emit_lrz<CHIP>(cmd, &cs);
       tu6_build_depth_plane_z_mode(cmd, &cs);
+   }
+
+   if (BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
+                   MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE)) {
+      if (cmd->vk.dynamic_graphics_state.feedback_loops &&
+          !cmd->state.rp.disable_gmem) {
+         perf_debug(
+            cmd->device,
+            "Disabling gmem due to VK_EXT_attachment_feedback_loop_layout");
+         cmd->state.rp.disable_gmem = true;
+      }
    }
 
    if (BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
@@ -5307,7 +5344,6 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_GS_BINNING, program->gs_binning_state);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_FS, program->fs_state);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_VPC, program->vpc_state);
-      tu_cs_emit_draw_state(cs, TU_DRAW_STATE_PRIM_MODE_SYSMEM, cmd->state.prim_order_sysmem);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_PRIM_MODE_GMEM, cmd->state.prim_order_gmem);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_CONST, cmd->state.shader_const);
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_DESC_SETS, cmd->state.desc_sets);

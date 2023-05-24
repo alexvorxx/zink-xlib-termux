@@ -221,6 +221,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_zero_initialize_workgroup_memory = true,
 
       .EXT_4444_formats = true,
+      .EXT_attachment_feedback_loop_dynamic_state = true,
       .EXT_attachment_feedback_loop_layout = true,
       .EXT_border_color_swizzle = true,
       .EXT_color_write_enable = true,
@@ -483,6 +484,9 @@ tu_get_features(struct tu_physical_device *pdevice,
    /* VK_EXT_4444_formats */
    features->formatA4R4G4B4 = true;
    features->formatA4B4G4R4 = true;
+
+   /* VK_EXT_attachment_feedback_loop_dynamic_state */
+   features->attachmentFeedbackLoopDynamicState = true;
 
    /* VK_EXT_attachment_feedback_loop_layout */
    features->attachmentFeedbackLoopLayout = true;

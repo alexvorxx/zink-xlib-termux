@@ -40,7 +40,6 @@ enum tu_draw_state_group_id
    TU_DRAW_STATE_INPUT_ATTACHMENTS_SYSMEM,
    TU_DRAW_STATE_LRZ_AND_DEPTH_PLANE,
    TU_DRAW_STATE_PRIM_MODE_GMEM,
-   TU_DRAW_STATE_PRIM_MODE_SYSMEM,
 
    /* dynamic state related draw states */
    TU_DRAW_STATE_DYNAMIC,
@@ -71,8 +70,10 @@ enum tu_cmd_dirty_bits
    TU_CMD_DIRTY_PER_VIEW_VIEWPORT = BIT(9),
    TU_CMD_DIRTY_TES = BIT(10),
    TU_CMD_DIRTY_PROGRAM = BIT(11),
+   TU_CMD_DIRTY_RAST_ORDER = BIT(12),
+   TU_CMD_DIRTY_FEEDBACK_LOOPS = BIT(13),
    /* all draw states were disabled and need to be re-enabled: */
-   TU_CMD_DIRTY_DRAW_STATE = BIT(12)
+   TU_CMD_DIRTY_DRAW_STATE = BIT(14)
 };
 
 /* There are only three cache domains we have to care about: the CCU, or
@@ -441,7 +442,7 @@ struct tu_cmd_state
    struct tu_draw_state desc_sets;
    struct tu_draw_state load_state;
    struct tu_draw_state compute_load_state;
-   struct tu_draw_state prim_order_sysmem, prim_order_gmem;
+   struct tu_draw_state prim_order_gmem;
 
    struct tu_draw_state vs_params;
    struct tu_draw_state fs_params;
@@ -509,6 +510,8 @@ struct tu_cmd_state
    bool pipeline_has_tess;
    bool pipeline_has_gs;
    bool pipeline_disable_gmem;
+   bool raster_order_attachment_access;
+   bool raster_order_attachment_access_valid;
    VkImageAspectFlags pipeline_feedback_loops;
 
    bool pipeline_blend_lrz, pipeline_bandwidth;

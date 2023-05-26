@@ -3870,12 +3870,8 @@ tu_pipeline_builder_build(struct tu_pipeline_builder *builder,
          &gfx_pipeline->sample_locations;
       vk_dynamic_graphics_state_fill(&gfx_pipeline->dynamic_state,
                                      &builder->graphics_state);
-      gfx_pipeline->feedback_loop_color =
-         (builder->graphics_state.pipeline_flags &
-          VK_PIPELINE_CREATE_2_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT);
-      gfx_pipeline->feedback_loop_ds =
-         (builder->graphics_state.pipeline_flags &
-          VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT);
+      gfx_pipeline->feedback_loops =
+         vk_pipeline_flags_feedback_loops(builder->graphics_state.pipeline_flags);
       gfx_pipeline->feedback_loop_may_involve_textures =
          builder->graphics_state.feedback_loop_not_input_only;
    }

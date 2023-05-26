@@ -204,7 +204,7 @@ struct tu_graphics_pipeline {
     */
    struct vk_sample_locations_state sample_locations;
 
-   bool feedback_loop_color, feedback_loop_ds;
+   VkImageAspectFlags feedback_loops;
    bool feedback_loop_may_involve_textures;
 };
 

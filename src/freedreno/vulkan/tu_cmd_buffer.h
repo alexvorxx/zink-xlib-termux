@@ -505,11 +505,11 @@ struct tu_cmd_state
    bool blend_reads_dest;
    bool stencil_front_write;
    bool stencil_back_write;
-   bool pipeline_feedback_loop_ds;
    bool pipeline_sysmem_single_prim_mode;
    bool pipeline_has_tess;
    bool pipeline_has_gs;
    bool pipeline_disable_gmem;
+   VkImageAspectFlags pipeline_feedback_loops;
 
    bool pipeline_blend_lrz, pipeline_bandwidth;
    uint32_t pipeline_draw_states;

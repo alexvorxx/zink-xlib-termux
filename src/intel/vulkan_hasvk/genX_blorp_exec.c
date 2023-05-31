@@ -57,7 +57,8 @@ static void blorp_measure_end(struct blorp_batch *_batch,
                          params->num_samples,
                          params->shader_pipeline,
                          params->dst.view.format,
-                         params->src.view.format);
+                         params->src.view.format,
+                         (_batch->flags & BLORP_BATCH_PREDICATE_ENABLE));
 }
 
 static void *

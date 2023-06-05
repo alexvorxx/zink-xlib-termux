@@ -211,7 +211,20 @@ get_fast_clear_rect(const struct isl_device *dev,
 
    /* Only single sampled surfaces need to (and actually can) be resolved. */
    if (surf->samples == 1) {
-      if (dev->info->verx10 >= 125) {
+      const uint32_t bs = isl_format_get_layout(surf->format)->bpb / 8;
+      if (dev->info->ver >= 20) {
+         /* From Bspec 57340, "MCS/CCS Buffers, Fast Clear for Render Target(s)":
+          *
+          *    Table "Tile4/Tile64 2D/2D Array/Cube Surface"
+          *    Table "Tile64 3D/Volumetric"
+          *
+          * The below calculation is derived from these tables.
+          */
+         assert(surf->tiling == ISL_TILING_4 ||
+                surf->tiling == ISL_TILING_64_XE2);
+         x_align = x_scaledown = 64 / bs;
+         y_align = y_scaledown = 4;
+      } else if (dev->info->verx10 >= 125) {
          /* From Bspec 47709, "MCS/CCS Buffer for Render Target(s)":
           *
           *    SW must ensure that clearing rectangle dimensions cover the
@@ -222,8 +235,6 @@ get_fast_clear_rect(const struct isl_device *dev,
           * The X and Y scale down factors in the table that follows are used
           * for both alignment and scaling down.
           */
-         const uint32_t bs = isl_format_get_layout(surf->format)->bpb / 8;
-
          if (surf->tiling == ISL_TILING_4) {
             x_align = x_scaledown = 1024 / bs;
             y_align = y_scaledown = 16;

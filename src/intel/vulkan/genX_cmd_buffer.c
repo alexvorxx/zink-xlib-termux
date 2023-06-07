@@ -3531,11 +3531,30 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
       const uint32_t level_count =
          vk_image_subresource_level_count(&image->vk, range);
 
+      VkImageLayout old_layout = img_barrier->oldLayout;
+      VkImageLayout new_layout = img_barrier->newLayout;
+
+      /* If we're inside a render pass, the runtime might have converted some
+       * layouts from GENERAL to FEEDBACK_LOOP. Check if that's the case and
+       * reconvert back to the original layout so that application barriers
+       * within renderpass are operating with consistent layouts.
+       */
+      if (!cmd_buffer->vk.runtime_rp_barrier &&
+          cmd_buffer->vk.render_pass != NULL) {
+         VkImageLayout subpass_att_layout, subpass_stencil_att_layout;
+
+         vk_command_buffer_get_attachment_layout(
+            &cmd_buffer->vk, &image->vk,
+            &subpass_att_layout, &subpass_stencil_att_layout);
+
+         old_layout = subpass_att_layout;
+         new_layout = subpass_att_layout;
+      }
+
       if (range->aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) {
          transition_depth_buffer(cmd_buffer, image,
                                  base_layer, layer_count,
-                                 img_barrier->oldLayout,
-                                 img_barrier->newLayout,
+                                 old_layout, new_layout,
                                  false /* will_full_fast_clear */);
       }
 
@@ -3543,8 +3562,7 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
          transition_stencil_buffer(cmd_buffer, image,
                                    range->baseMipLevel, level_count,
                                    base_layer, layer_count,
-                                   img_barrier->oldLayout,
-                                   img_barrier->newLayout,
+                                   old_layout, new_layout,
                                    false /* will_full_fast_clear */);
       }
 
@@ -3555,8 +3573,7 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
             transition_color_buffer(cmd_buffer, image, 1UL << aspect_bit,
                                     range->baseMipLevel, level_count,
                                     base_layer, layer_count,
-                                    img_barrier->oldLayout,
-                                    img_barrier->newLayout,
+                                    old_layout, new_layout,
                                     img_barrier->srcQueueFamilyIndex,
                                     img_barrier->dstQueueFamilyIndex,
                                     false /* will_full_fast_clear */);

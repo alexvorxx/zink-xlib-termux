@@ -1301,7 +1301,6 @@ enum anv_gfx_state_bits {
    ANV_GFX_STATE_DS,
    ANV_GFX_STATE_GS,
    ANV_GFX_STATE_PS,
-   ANV_GFX_STATE_PS_EXTRA,
    ANV_GFX_STATE_SBE_MESH,
    ANV_GFX_STATE_CLIP_MESH,
    ANV_GFX_STATE_MESH_CONTROL,
@@ -1335,6 +1334,7 @@ enum anv_gfx_state_bits {
    ANV_GFX_STATE_VIEWPORT_SF_CLIP,
    ANV_GFX_STATE_WM,
    ANV_GFX_STATE_WM_DEPTH_STENCIL,
+   ANV_GFX_STATE_PS_EXTRA,
    ANV_GFX_STATE_PMA_FIX, /* Fake state to implement workaround */
    ANV_GFX_STATE_WA_18019816803, /* Fake state to implement workaround */
    ANV_GFX_STATE_TBIMR_TILE_PASS_INFO,
@@ -1422,6 +1422,11 @@ struct anv_gfx_dynamic_state {
       float    LineStippleInverseRepeatCount;
       uint32_t LineStippleRepeatCount;
    } ls;
+
+   /* 3DSTATE_PS_EXTRA */
+   struct {
+      bool PixelShaderKillsPixel;
+   } ps_extra;
 
    /* 3DSTATE_PS_BLEND */
    struct {
@@ -4233,6 +4238,8 @@ struct anv_graphics_pipeline {
    uint32_t                                     view_mask;
    uint32_t                                     instance_multiplier;
 
+   bool                                         rp_has_ds_self_dep;
+
    bool                                         kill_pixel;
    bool                                         force_fragment_thread_dispatch;
    bool                                         uses_xfb;
@@ -4284,7 +4291,6 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  hs;
       struct anv_gfx_state_ptr                  ds;
       struct anv_gfx_state_ptr                  ps;
-      struct anv_gfx_state_ptr                  ps_extra;
 
       struct anv_gfx_state_ptr                  task_control;
       struct anv_gfx_state_ptr                  task_shader;
@@ -4303,6 +4309,7 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  clip;
       struct anv_gfx_state_ptr                  sf;
       struct anv_gfx_state_ptr                  raster;
+      struct anv_gfx_state_ptr                  ps_extra;
       struct anv_gfx_state_ptr                  wm;
       struct anv_gfx_state_ptr                  so;
       struct anv_gfx_state_ptr                  gs;

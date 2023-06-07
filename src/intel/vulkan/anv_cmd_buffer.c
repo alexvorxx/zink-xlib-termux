@@ -555,7 +555,6 @@ anv_cmd_buffer_flush_pipeline_state(struct anv_cmd_buffer *cmd_buffer,
    diff_fix_state(HS,                       final.hs);
    diff_fix_state(DS,                       final.ds);
    diff_fix_state(PS,                       final.ps);
-   diff_fix_state(PS_EXTRA,                 final.ps_extra);
 
    diff_fix_state(CLIP,                     partial.clip);
    diff_fix_state(SF,                       partial.sf);
@@ -565,6 +564,7 @@ anv_cmd_buffer_flush_pipeline_state(struct anv_cmd_buffer *cmd_buffer,
    diff_fix_state(GS,                       partial.gs);
    diff_fix_state(TE,                       partial.te);
    diff_fix_state(VFG,                      partial.vfg);
+   diff_fix_state(PS_EXTRA,                 partial.ps_extra);
 
    if (cmd_buffer->device->vk.enabled_extensions.EXT_mesh_shader) {
       diff_fix_state(TASK_CONTROL,          final.task_control);

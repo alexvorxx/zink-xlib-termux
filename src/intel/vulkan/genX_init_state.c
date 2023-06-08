@@ -1161,6 +1161,9 @@ VkResult genX(CreateSampler)(
    const bool seamless_cube =
       !(pCreateInfo->flags & VK_SAMPLER_CREATE_NON_SEAMLESS_CUBE_MAP_BIT_EXT);
 
+   struct mesa_sha1 ctx;
+   _mesa_sha1_init(&ctx);
+
    for (unsigned p = 0; p < sampler->n_planes; p++) {
       const bool plane_has_chroma =
          ycbcr_info && ycbcr_info->planes[p].has_chroma;
@@ -1217,8 +1220,6 @@ VkResult genX(CreateSampler)(
                                         pCreateInfo->compareOp : VK_COMPARE_OP_NEVER],
          .CubeSurfaceControlMode = seamless_cube ? OVERRIDE : PROGRAMMED,
 
-         .BorderColorPointer = border_color_offset,
-
          .LODClampMagnificationMode = MIPNONE,
 
          .MaximumAnisotropy = vk_to_intel_max_anisotropy(pCreateInfo->maxAnisotropy),
@@ -1239,6 +1240,8 @@ VkResult genX(CreateSampler)(
          .ReductionTypeEnable =
             sampler->vk.reduction_mode != VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
       };
+
+      _mesa_sha1_update(&ctx, &sampler_state, sizeof(sampler_state));
 
       /* Put border color after the hashing, we don't want the allocation
        * order of border colors to influence the hash. We just need th
@@ -1274,6 +1277,12 @@ VkResult genX(CreateSampler)(
                 sampler->n_planes * GENX(SAMPLER_STATE_length) * 4);
       }
    }
+
+   /* Hash the border color */
+   _mesa_sha1_update(&ctx, border_color_ptr,
+                     sizeof(union isl_color_value));
+
+   _mesa_sha1_final(&ctx, sampler->sha1);
 
    *pSampler = anv_sampler_to_handle(sampler);
 

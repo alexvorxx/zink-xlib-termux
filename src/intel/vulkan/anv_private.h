@@ -5635,6 +5635,11 @@ struct gfx8_border_color {
 struct anv_sampler {
    struct vk_sampler            vk;
 
+   /* Hash of the sampler state + border color, useful for embedded samplers
+    * and included in the descriptor layout hash.
+    */
+   unsigned char                sha1[20];
+
    uint32_t                     state[3][4];
    uint32_t                     db_state[3][4];
    uint32_t                     n_planes;

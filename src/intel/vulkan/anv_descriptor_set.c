@@ -930,18 +930,30 @@ anv_descriptor_set_layout_print(const struct anv_descriptor_set_layout *layout)
 
 static void
 sha1_update_immutable_sampler(struct mesa_sha1 *ctx,
+                              bool embedded_sampler,
                               const struct anv_sampler *sampler)
 {
    if (!sampler->vk.ycbcr_conversion)
       return;
 
-   /* The only thing that affects the shader is ycbcr conversion */
+   /* Hash the conversion if any as this affect placement of descriptors in
+    * the set due to the number of planes.
+    */
    SHA1_UPDATE_VALUE(ctx, sampler->vk.ycbcr_conversion->state);
+
+   /* For embedded samplers, we need to hash the sampler parameters as the
+    * sampler handle is baked into the shader and this ultimately is part of
+    * the shader hash key. We can only consider 2 shaders identical if all
+    * their embedded samplers parameters are identical.
+    */
+   if (embedded_sampler)
+      SHA1_UPDATE_VALUE(ctx, sampler->sha1);
 }
 
 static void
 sha1_update_descriptor_set_binding_layout(struct mesa_sha1 *ctx,
-   const struct anv_descriptor_set_binding_layout *layout)
+                                          bool embedded_samplers,
+                                          const struct anv_descriptor_set_binding_layout *layout)
 {
    SHA1_UPDATE_VALUE(ctx, layout->flags);
    SHA1_UPDATE_VALUE(ctx, layout->data);
@@ -954,8 +966,10 @@ sha1_update_descriptor_set_binding_layout(struct mesa_sha1 *ctx,
    SHA1_UPDATE_VALUE(ctx, layout->descriptor_sampler_offset);
 
    if (layout->immutable_samplers) {
-      for (uint16_t i = 0; i < layout->array_size; i++)
-         sha1_update_immutable_sampler(ctx, layout->immutable_samplers[i]);
+      for (uint16_t i = 0; i < layout->array_size; i++) {
+         sha1_update_immutable_sampler(ctx, embedded_samplers,
+                                       layout->immutable_samplers[i]);
+      }
    }
 }
 
@@ -972,8 +986,13 @@ sha1_update_descriptor_set_layout(struct mesa_sha1 *ctx,
    SHA1_UPDATE_VALUE(ctx, layout->descriptor_buffer_surface_size);
    SHA1_UPDATE_VALUE(ctx, layout->descriptor_buffer_sampler_size);
 
-   for (uint16_t i = 0; i < layout->binding_count; i++)
-      sha1_update_descriptor_set_binding_layout(ctx, &layout->binding[i]);
+   bool embedded_samplers =
+      layout->flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT;
+
+   for (uint16_t i = 0; i < layout->binding_count; i++) {
+      sha1_update_descriptor_set_binding_layout(ctx, embedded_samplers,
+                                                &layout->binding[i]);
+   }
 }
 
 /*

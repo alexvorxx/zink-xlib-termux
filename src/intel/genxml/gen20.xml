@@ -800,7 +800,7 @@
     <field name="Workload Partition Enable" start="9" end="9" type="bool" />
     <field name="Indirect Parameter Enable" start="10" end="10" type="bool" />
     <field name="Systolic Mode Enable" start="14" end="14" type="bool" />
-    <field name="CFE SubOpcode Variant" start="16" end="17" type="uint" default="0" />
+    <field name="CFE SubOpcode Variant" start="15" end="17" type="uint" default="0" />
     <field name="CFE SubOpcode" start="18" end="23" type="uint" default="2" />
     <field name="Compute Command Opcode" start="24" end="26" type="uint" default="2" />
     <field name="Pipeline" start="27" end="28" type="uint" default="2" />

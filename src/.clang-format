@@ -296,6 +296,7 @@ ForEachMacros:
   - bi_foreach_src
   - bi_foreach_ssa_src
   - bi_foreach_successor
+  - cs_emit
   - mir_foreach_block
   - mir_foreach_block_from
   - mir_foreach_bundle_in_block

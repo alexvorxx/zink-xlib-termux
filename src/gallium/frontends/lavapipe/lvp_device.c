@@ -137,6 +137,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_multiview                         = true,
    .KHR_push_descriptor                   = true,
    .KHR_pipeline_library                  = true,
+   .KHR_ray_query                         = true,
    .KHR_relaxed_block_layout              = true,
    .KHR_sampler_mirror_clamp_to_edge      = true,
    .KHR_sampler_ycbcr_conversion          = true,
@@ -462,6 +463,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* VK_EXT_attachment_feedback_loop_layout_dynamic_state */
       .attachmentFeedbackLoopDynamicState = true,
+
+      /* VK_KHR_ray_query */
+      .rayQuery = true,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,

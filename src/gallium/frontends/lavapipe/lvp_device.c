@@ -96,6 +96,7 @@ static const struct vk_instance_extension_table lvp_instance_extensions_supporte
 static const struct vk_device_extension_table lvp_device_extensions_supported = {
    .KHR_8bit_storage                      = true,
    .KHR_16bit_storage                     = true,
+   .KHR_acceleration_structure            = true,
    .KHR_bind_memory2                      = true,
    .KHR_buffer_device_address             = true,
    .KHR_create_renderpass2                = true,
@@ -395,6 +396,13 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       .dynamicRendering = true,
       .shaderIntegerDotProduct = true,
       .maintenance4 = true,
+
+      /* VK_KHR_acceleration_structure */
+      .accelerationStructure = true,
+      .accelerationStructureCaptureReplay = false,
+      .accelerationStructureIndirectBuild = false,
+      .accelerationStructureHostCommands = false,
+      .descriptorBindingAccelerationStructureUpdateAfterBind = true,
 
       /* VK_EXT_descriptor_buffer */
       .descriptorBuffer = true,
@@ -994,7 +1002,7 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
       .storageBufferDescriptorSize = sizeof(struct lp_descriptor),
       .robustStorageBufferDescriptorSize = sizeof(struct lp_descriptor),
       .inputAttachmentDescriptorSize = sizeof(struct lp_descriptor),
-      .accelerationStructureDescriptorSize = 0,
+      .accelerationStructureDescriptorSize = sizeof(struct lp_descriptor),
       .maxSamplerDescriptorBufferRange = UINT32_MAX,
       .maxResourceDescriptorBufferRange = UINT32_MAX,
       .resourceDescriptorBufferAddressSpaceSize = UINT32_MAX,
@@ -1053,6 +1061,16 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
       .maxExecutionGraphShaderPayloadCount = LVP_MAX_EXEC_GRAPH_PAYLOADS,
       .executionGraphDispatchAddressAlignment = 4,
 #endif
+
+      /* VK_KHR_acceleration_structure */
+      .maxGeometryCount = (1 << 24) - 1,
+      .maxInstanceCount = (1 << 24) - 1,
+      .maxPrimitiveCount = (1 << 24) - 1,
+      .maxPerStageDescriptorAccelerationStructures = MAX_DESCRIPTORS,
+      .maxPerStageDescriptorUpdateAfterBindAccelerationStructures = MAX_DESCRIPTORS,
+      .maxDescriptorSetAccelerationStructures = MAX_DESCRIPTORS,
+      .maxDescriptorSetUpdateAfterBindAccelerationStructures = MAX_DESCRIPTORS,
+      .minAccelerationStructureScratchOffsetAlignment = 128,
    };
 
    /* Vulkan 1.0 */

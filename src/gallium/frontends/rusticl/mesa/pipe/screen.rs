@@ -323,7 +323,7 @@ impl PipeScreen {
     }
 
     pub fn device_type(&self) -> pipe_loader_device_type {
-        unsafe { *self.ldev.ldev }.type_
+        self.ldev.device_type()
     }
 
     pub fn driver_uuid(&self) -> Option<[c_schar; UUID_SIZE]> {

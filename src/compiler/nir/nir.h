@@ -6698,6 +6698,22 @@ nir_store_reg_for_def(const nir_def *def)
    return intr;
 }
 
+struct nir_use_dominance_state;
+
+struct nir_use_dominance_state *
+nir_calc_use_dominance_impl(nir_function_impl *impl, bool post_dominance);
+
+nir_instr *
+nir_get_immediate_use_dominator(struct nir_use_dominance_state *state,
+                                nir_instr *instr);
+nir_instr *nir_use_dominance_lca(struct nir_use_dominance_state *state,
+                                 nir_instr *i1, nir_instr *i2);
+bool nir_instr_dominates_use(struct nir_use_dominance_state *state,
+                             nir_instr *parent, nir_instr *child);
+void nir_print_use_dominators(struct nir_use_dominance_state *state,
+                              nir_instr **instructions,
+                              unsigned num_instructions);
+
 #include "nir_inline_helpers.h"
 
 #ifdef __cplusplus

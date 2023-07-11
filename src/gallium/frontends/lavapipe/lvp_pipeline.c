@@ -444,6 +444,8 @@ lvp_shader_lower(struct lvp_device *pdevice, struct lvp_pipeline *pipeline, nir_
 
    lvp_lower_pipeline_layout(pdevice, layout, nir);
 
+   NIR_PASS(_, nir, lvp_nir_lower_ray_queries);
+
    if (nir->info.stage == MESA_SHADER_COMPUTE ||
        nir->info.stage == MESA_SHADER_TASK ||
        nir->info.stage == MESA_SHADER_MESH) {

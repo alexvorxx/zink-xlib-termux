@@ -56,6 +56,7 @@ typedef uint32_t xcb_window_t;
 #include <vulkan/vk_icd.h>
 
 #include "lvp_entrypoints.h"
+#include "vk_acceleration_structure.h"
 #include "vk_buffer.h"
 #include "vk_buffer_view.h"
 #include "vk_device.h"
@@ -581,12 +582,16 @@ struct lvp_buffer_view {
    struct lp_texture_handle *image_handle;
 };
 
+#define LVP_QUERY_ACCELERATION_STRUCTURE_COMPACTED_SIZE (PIPE_QUERY_TYPES)
+#define LVP_QUERY_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE (PIPE_QUERY_TYPES + 1)
+
 struct lvp_query_pool {
    struct vk_object_base base;
    VkQueryType type;
    uint32_t count;
    VkQueryPipelineStatisticFlags pipeline_stats;
    enum pipe_query_type base_type;
+   void *data; /* Used by queries that are not implemented by pipe_query */
    struct pipe_query *queries[0];
 };
 

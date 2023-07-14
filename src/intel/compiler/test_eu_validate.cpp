@@ -244,7 +244,6 @@ TEST_P(validation_test, invalid_type_encoding)
          enum brw_reg_type type;
          bool expected_result;
       } test_case[] = {
-         { BRW_REGISTER_TYPE_NF, devinfo.ver == 11 && file != IMM },
          { BRW_REGISTER_TYPE_DF, devinfo.has_64bit_float },
          { BRW_REGISTER_TYPE_F,  true },
          { BRW_REGISTER_TYPE_HF, true },
@@ -434,7 +433,6 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
       bool expected_result;
    } test_case[] = {
 #define E(x) ((unsigned)BRW_ALIGN1_3SRC_EXEC_TYPE_##x)
-      { BRW_REGISTER_TYPE_NF, E(FLOAT), devinfo.ver == 11 },
       { BRW_REGISTER_TYPE_DF, E(FLOAT), devinfo.has_64bit_float },
       { BRW_REGISTER_TYPE_F,  E(FLOAT), true  },
       { BRW_REGISTER_TYPE_HF, E(FLOAT), true  },

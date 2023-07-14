@@ -1507,7 +1507,6 @@ compact_immediate(const struct intel_device_info *devinfo,
          if (((short)imm >> 11) == 0 || ((short)imm >> 11) == -1)
             return imm & 0xfff;
          break;
-      case BRW_REGISTER_TYPE_NF:
       case BRW_REGISTER_TYPE_DF:
       case BRW_REGISTER_TYPE_Q:
       case BRW_REGISTER_TYPE_UQ:
@@ -1550,7 +1549,6 @@ uncompact_immediate(const struct intel_device_info *devinfo,
          /* Extend the 12th bit into the high 4 bits and replicate */
          return ((int)(compact_imm << 20) >> 4) |
                 ((unsigned short)((short)(compact_imm << 4) >> 4));
-      case BRW_REGISTER_TYPE_NF:
       case BRW_REGISTER_TYPE_DF:
       case BRW_REGISTER_TYPE_Q:
       case BRW_REGISTER_TYPE_UQ:

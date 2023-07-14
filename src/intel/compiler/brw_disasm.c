@@ -1229,9 +1229,6 @@ src0_3src(FILE *file, const struct intel_device_info *devinfo,
       } else if (brw_inst_3src_a1_src0_reg_file(devinfo, inst) ==
                  BRW_ALIGN1_3SRC_GENERAL_REGISTER_FILE) {
          _file = BRW_GENERAL_REGISTER_FILE;
-      } else if (brw_inst_3src_a1_src0_type(devinfo, inst) ==
-                 BRW_REGISTER_TYPE_NF) {
-         _file = BRW_ARCHITECTURE_REGISTER_FILE;
       } else {
          _file = BRW_IMMEDIATE_VALUE;
          uint16_t imm_val = brw_inst_3src_a1_src0_imm(devinfo, inst);
@@ -1587,7 +1584,6 @@ imm(FILE *file, const struct brw_isa_info *isa, enum brw_reg_type type,
       format(file, "/* %-gHF */",
              _mesa_half_to_float((uint16_t) brw_inst_imm_ud(devinfo, inst)));
       break;
-   case BRW_REGISTER_TYPE_NF:
    case BRW_REGISTER_TYPE_UB:
    case BRW_REGISTER_TYPE_B:
       format(file, "*** invalid immediate type %d ", type);

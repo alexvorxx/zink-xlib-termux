@@ -445,7 +445,6 @@ static enum brw_reg_type
 execution_type_for_type(enum brw_reg_type type)
 {
    switch (type) {
-   case BRW_REGISTER_TYPE_NF:
    case BRW_REGISTER_TYPE_DF:
    case BRW_REGISTER_TYPE_F:
    case BRW_REGISTER_TYPE_HF:
@@ -505,10 +504,6 @@ execution_type(const struct brw_isa_info *isa, const brw_inst *inst)
 
    if (src0_exec_type == src1_exec_type)
       return src0_exec_type;
-
-   if (src0_exec_type == BRW_REGISTER_TYPE_NF ||
-       src1_exec_type == BRW_REGISTER_TYPE_NF)
-      return BRW_REGISTER_TYPE_NF;
 
    if (src0_exec_type == BRW_REGISTER_TYPE_Q ||
        src1_exec_type == BRW_REGISTER_TYPE_Q)

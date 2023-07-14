@@ -366,7 +366,7 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> TYPE_Q TYPE_UQ
 %token <integer> TYPE_V TYPE_UV
 %token <integer> TYPE_F TYPE_HF
-%token <integer> TYPE_DF TYPE_NF
+%token <integer> TYPE_DF
 %token <integer> TYPE_VF
 
 /* label */
@@ -1875,7 +1875,6 @@ reg_type:
 	| TYPE_UQ 	{ $$ = BRW_REGISTER_TYPE_UQ; }
 	| TYPE_Q 	{ $$ = BRW_REGISTER_TYPE_Q;  }
 	| TYPE_HF 	{ $$ = BRW_REGISTER_TYPE_HF; }
-	| TYPE_NF 	{ $$ = BRW_REGISTER_TYPE_NF; }
 	;
 
 imm_type:

@@ -45,7 +45,6 @@ struct intel_device_info;
  */
 enum PACKED brw_reg_type {
    /** Floating-point types: @{ */
-   BRW_REGISTER_TYPE_NF, /* >64-bit (accumulator-only) native float (gfx11+) */
    BRW_REGISTER_TYPE_DF, /* 64-bit float (double float) */
    BRW_REGISTER_TYPE_F,  /* 32-bit float */
    BRW_REGISTER_TYPE_HF, /* 16-bit float (half float) */
@@ -72,7 +71,6 @@ static inline bool
 brw_reg_type_is_floating_point(enum brw_reg_type type)
 {
    switch (type) {
-   case BRW_REGISTER_TYPE_NF:
    case BRW_REGISTER_TYPE_DF:
    case BRW_REGISTER_TYPE_F:
    case BRW_REGISTER_TYPE_HF:

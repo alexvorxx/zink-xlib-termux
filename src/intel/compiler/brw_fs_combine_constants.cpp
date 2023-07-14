@@ -1097,7 +1097,6 @@ add_candidate_immediate(struct table *table, fs_inst *inst, unsigned ip,
 
    switch (inst->src[i].type) {
    case BRW_REGISTER_TYPE_DF:
-   case BRW_REGISTER_TYPE_NF:
    case BRW_REGISTER_TYPE_F:
    case BRW_REGISTER_TYPE_HF:
       v->type = float_only;

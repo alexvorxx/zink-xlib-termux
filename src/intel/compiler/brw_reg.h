@@ -265,7 +265,6 @@ brw_regs_negative_equal(const struct brw_reg *a, const struct brw_reg *b)
          return false;
       case BRW_REGISTER_TYPE_UB:
       case BRW_REGISTER_TYPE_B:
-      case BRW_REGISTER_TYPE_NF:
       default:
          unreachable("not reached");
       }
@@ -292,7 +291,6 @@ type_sz(unsigned type)
    case BRW_REGISTER_TYPE_UQ:
    case BRW_REGISTER_TYPE_Q:
    case BRW_REGISTER_TYPE_DF:
-   case BRW_REGISTER_TYPE_NF:
       return 8;
    case BRW_REGISTER_TYPE_UD:
    case BRW_REGISTER_TYPE_D:

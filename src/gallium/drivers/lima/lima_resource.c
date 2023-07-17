@@ -363,12 +363,11 @@ lima_resource_from_handle(struct pipe_screen *pscreen,
    /* check alignment for the buffer */
    if (res->tiled ||
        (pres->bind & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_DEPTH_STENCIL))) {
-      unsigned width, height, stride, size;
+      unsigned width, stride, size;
 
       width = align(pres->width0, 16);
-      height = align(pres->height0, 16);
       stride = util_format_get_stride(pres->format, width);
-      size = util_format_get_2d_size(pres->format, stride, height);
+      size = util_format_get_2d_size(pres->format, stride, pres->height0);
 
       if (res->tiled && res->levels[0].stride != stride) {
          fprintf(stderr, "tiled imported buffer has mismatching stride: %d (BO) != %d (expected)",

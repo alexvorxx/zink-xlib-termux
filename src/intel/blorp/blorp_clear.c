@@ -1437,10 +1437,27 @@ blorp_mcs_ambiguate(struct blorp_batch *batch,
    default: unreachable("Unexpected MCS format size for ambiguate");
    }
 
+   /* From Bspec 57340 (r59562):
+    *
+    *   To the calculated MCS size we add 4kb page to be used as clear value
+    *   storage.
+    *
+    * and
+    *
+    *   When allocating memory, MCS buffer size is extended by 4KB over its
+    *   original calculated size. First 4KB page of the MCS is reserved for
+    *   internal HW usage.
+    *
+    * We shift aux buffer's start address by 4KB, accordingly.
+    */
+   struct blorp_address aux_addr = surf->aux_addr;
+   if (ISL_GFX_VER(batch->blorp->isl_dev) >= 20)
+      aux_addr.offset += 4096;
+
    params.dst = (struct blorp_surface_info) {
       .enabled = true,
       .surf = *surf->aux_surf,
-      .addr = surf->aux_addr,
+      .addr = aux_addr,
       .view = {
          .usage = ISL_SURF_USAGE_RENDER_TARGET_BIT,
          .format = renderable_format,

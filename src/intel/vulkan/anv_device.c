@@ -302,6 +302,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_shader_float16_int8               = !device->instance->no_16bit,
       .KHR_shader_float_controls             = true,
       .KHR_shader_integer_dot_product        = true,
+      .KHR_shader_maximal_reconvergence      = true,
       .KHR_shader_non_semantic_info          = true,
       .KHR_shader_subgroup_extended_types    = true,
       .KHR_shader_subgroup_rotate            = true,
@@ -882,6 +883,8 @@ get_features(const struct anv_physical_device *pdevice,
       /* VK_KHR_cooperative_matrix */
       .cooperativeMatrix = anv_has_cooperative_matrix(pdevice),
 
+      /* VK_KHR_shader_maximal_reconvergence */
+      .shaderMaximalReconvergence = true,
 
       /* VK_KHR_shader_subgroup_rotate */
       .shaderSubgroupRotate = true,

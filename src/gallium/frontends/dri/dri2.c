@@ -235,12 +235,14 @@ dri_image_drawable_get_buffers(struct dri_drawable *drawable,
                                const enum st_attachment_type *statts,
                                unsigned statts_count)
 {
-   unsigned int image_format = __DRI_IMAGE_FORMAT_NONE;
-   enum pipe_format pf;
+   enum pipe_format color_format = PIPE_FORMAT_NONE;
    uint32_t buffer_mask = 0;
-   unsigned i, bind;
+   unsigned i;
 
    for (i = 0; i < statts_count; i++) {
+      enum pipe_format pf;
+      unsigned bind;
+
       dri_drawable_get_format(drawable, statts[i], &pf, &bind);
       if (pf == PIPE_FORMAT_NONE)
          continue;
@@ -248,62 +250,13 @@ dri_image_drawable_get_buffers(struct dri_drawable *drawable,
       switch (statts[i]) {
       case ST_ATTACHMENT_FRONT_LEFT:
          buffer_mask |= __DRI_IMAGE_BUFFER_FRONT;
+         color_format = pf;
          break;
       case ST_ATTACHMENT_BACK_LEFT:
          buffer_mask |= __DRI_IMAGE_BUFFER_BACK;
+         color_format = pf;
          break;
       default:
-         continue;
-      }
-
-      switch (pf) {
-      case PIPE_FORMAT_R16G16B16A16_FLOAT:
-         image_format = __DRI_IMAGE_FORMAT_ABGR16161616F;
-         break;
-      case PIPE_FORMAT_R16G16B16X16_FLOAT:
-         image_format = __DRI_IMAGE_FORMAT_XBGR16161616F;
-         break;
-      case PIPE_FORMAT_B5G5R5A1_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_ARGB1555;
-         break;
-      case PIPE_FORMAT_B5G6R5_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_RGB565;
-         break;
-      case PIPE_FORMAT_BGRX8888_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_XRGB8888;
-         break;
-      case PIPE_FORMAT_BGRA8888_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_ARGB8888;
-         break;
-      case PIPE_FORMAT_RGBX8888_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_XBGR8888;
-         break;
-      case PIPE_FORMAT_RGBA8888_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_ABGR8888;
-         break;
-      case PIPE_FORMAT_B10G10R10X2_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_XRGB2101010;
-         break;
-      case PIPE_FORMAT_B10G10R10A2_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_ARGB2101010;
-         break;
-      case PIPE_FORMAT_R10G10B10X2_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_XBGR2101010;
-         break;
-      case PIPE_FORMAT_R10G10B10A2_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_ABGR2101010;
-         break;
-      case PIPE_FORMAT_R5G5B5A1_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_ABGR1555;
-         break;
-      case PIPE_FORMAT_B4G4R4A4_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_ARGB4444;
-         break;
-      case PIPE_FORMAT_R4G4B4A4_UNORM:
-         image_format = __DRI_IMAGE_FORMAT_ABGR4444;
-         break;
-      default:
-         image_format = __DRI_IMAGE_FORMAT_NONE;
          break;
       }
    }
@@ -325,7 +278,7 @@ dri_image_drawable_get_buffers(struct dri_drawable *drawable,
     */
    return drawable->screen->image.loader->getBuffers(
                                           opaque_dri_drawable(drawable),
-                                          image_format,
+                                          color_format,
                                           (uint32_t *)&drawable->base.stamp,
                                           drawable->loaderPrivate, buffer_mask,
                                           images);

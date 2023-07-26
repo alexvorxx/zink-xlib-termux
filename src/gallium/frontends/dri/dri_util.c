@@ -53,6 +53,7 @@
 #include "main/errors.h"
 #include "loader/loader.h"
 #include "GL/internal/mesa_interface.h"
+#include "loader_dri_helper.h"
 
 driOptionDescription __dri2ConfigOptions[] = {
       DRI_CONF_SECTION_DEBUG

@@ -37,6 +37,7 @@
 #include "eglglobals.h"
 #include "kopper_interface.h"
 #include "loader.h"
+#include "loader_dri_helper.h"
 
 static __DRIimage *
 surfaceless_alloc_image(struct dri2_egl_display *dri2_dpy,

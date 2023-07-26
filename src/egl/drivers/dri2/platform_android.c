@@ -46,6 +46,7 @@
 #include "egl_dri2.h"
 #include "eglglobals.h"
 #include "loader.h"
+#include "loader_dri_helper.h"
 #include "platform_android.h"
 
 static __DRIimage *

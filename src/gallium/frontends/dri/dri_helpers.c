@@ -29,6 +29,7 @@
 #include "main/texobj.h"
 
 #include "dri_helpers.h"
+#include "loader_dri_helper.h"
 
 static bool
 dri2_is_opencl_interop_loaded_locked(struct dri_screen *screen)

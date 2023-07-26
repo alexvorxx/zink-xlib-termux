@@ -54,6 +54,7 @@
 #include "dri_helpers.h"
 #include "dri_drawable.h"
 #include "dri_query_renderer.h"
+#include "loader_dri_helper.h"
 
 #include "drm-uapi/drm_fourcc.h"
 

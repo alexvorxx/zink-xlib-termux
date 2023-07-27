@@ -352,7 +352,11 @@ static VAStatus vlVaPostProcBlit(vlVaDriver *drv, vlVaContext *context,
    if ((src->buffer_format == PIPE_FORMAT_B8G8R8X8_UNORM ||
         src->buffer_format == PIPE_FORMAT_B8G8R8A8_UNORM ||
         src->buffer_format == PIPE_FORMAT_R8G8B8X8_UNORM ||
-        src->buffer_format == PIPE_FORMAT_R8G8B8A8_UNORM) &&
+        src->buffer_format == PIPE_FORMAT_R8G8B8A8_UNORM ||
+        src->buffer_format == PIPE_FORMAT_B10G10R10X2_UNORM ||
+        src->buffer_format == PIPE_FORMAT_B10G10R10A2_UNORM ||
+        src->buffer_format == PIPE_FORMAT_R10G10B10X2_UNORM ||
+        src->buffer_format == PIPE_FORMAT_R10G10B10A2_UNORM) &&
        !src->interlaced)
       grab = true;
 

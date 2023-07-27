@@ -115,6 +115,10 @@ vlVaBeginPicture(VADriverContextP ctx, VAContextID context_id, VASurfaceID rende
           context->target->buffer_format != PIPE_FORMAT_R8G8B8A8_UNORM &&
           context->target->buffer_format != PIPE_FORMAT_B8G8R8X8_UNORM &&
           context->target->buffer_format != PIPE_FORMAT_R8G8B8X8_UNORM &&
+          context->target->buffer_format != PIPE_FORMAT_B10G10R10A2_UNORM &&
+          context->target->buffer_format != PIPE_FORMAT_R10G10B10A2_UNORM &&
+          context->target->buffer_format != PIPE_FORMAT_B10G10R10X2_UNORM &&
+          context->target->buffer_format != PIPE_FORMAT_R10G10B10X2_UNORM &&
           context->target->buffer_format != PIPE_FORMAT_NV12 &&
           context->target->buffer_format != PIPE_FORMAT_P010 &&
           context->target->buffer_format != PIPE_FORMAT_P016) {

@@ -334,7 +334,7 @@ dri2_create_image_from_renderbuffer2(__DRIcontext *context,
       return NULL;
    }
 
-   img->dri_format = driGLFormatToImageFormat(rb->Format);
+   img->dri_format = tex->format;
    img->internal_format = rb->InternalFormat;
    img->loader_private = loaderPrivate;
    img->screen = dri_ctx->screen;

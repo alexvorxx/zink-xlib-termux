@@ -322,7 +322,6 @@ dri_fill_in_modes(struct dri_screen *screen)
    unsigned depth_buffer_factor;
    unsigned i;
    struct pipe_screen *p_screen = screen->base.screen;
-   bool pf_z16, pf_x8z24, pf_z24x8, pf_s8z24, pf_z24s8, pf_z32;
    bool mixed_color_depth;
    bool allow_rgba_ordering;
    bool allow_rgb10;
@@ -349,28 +348,32 @@ dri_fill_in_modes(struct dri_screen *screen)
                                  PIPE_TEXTURE_2D, 0, 0, \
                                  PIPE_BIND_DEPTH_STENCIL)
 
-   pf_x8z24 = HAS_ZS(Z24X8_UNORM);
-   pf_z24x8 = HAS_ZS(X8Z24_UNORM),
-   pf_s8z24 = HAS_ZS(Z24_UNORM_S8_UINT);
-   pf_z24s8 = HAS_ZS(S8_UINT_Z24_UNORM);
-   pf_z16 = HAS_ZS(Z16_UNORM);
-   pf_z32 = HAS_ZS(Z32_UNORM);
-
-   if (pf_z16) {
+   if (HAS_ZS(Z16_UNORM)) {
       depth_bits_array[depth_buffer_factor] = 16;
       stencil_bits_array[depth_buffer_factor++] = 0;
    }
-   if (pf_x8z24 || pf_z24x8) {
+
+   if (HAS_ZS(Z24X8_UNORM)) {
       depth_bits_array[depth_buffer_factor] = 24;
       stencil_bits_array[depth_buffer_factor++] = 0;
-      screen->d_depth_bits_last = pf_x8z24;
+      screen->d_depth_bits_last = true;
+   } else if (HAS_ZS(X8Z24_UNORM)) {
+      depth_bits_array[depth_buffer_factor] = 24;
+      stencil_bits_array[depth_buffer_factor++] = 0;
+      screen->d_depth_bits_last = false;
    }
-   if (pf_s8z24 || pf_z24s8) {
+
+   if (HAS_ZS(Z24_UNORM_S8_UINT)) {
       depth_bits_array[depth_buffer_factor] = 24;
       stencil_bits_array[depth_buffer_factor++] = 8;
-      screen->sd_depth_bits_last = pf_s8z24;
+      screen->sd_depth_bits_last = true;
+   } else if (HAS_ZS(S8_UINT_Z24_UNORM)) {
+      depth_bits_array[depth_buffer_factor] = 24;
+      stencil_bits_array[depth_buffer_factor++] = 8;
+      screen->sd_depth_bits_last = false;
    }
-   if (pf_z32) {
+
+   if (HAS_ZS(Z32_UNORM)) {
       depth_bits_array[depth_buffer_factor] = 32;
       stencil_bits_array[depth_buffer_factor++] = 0;
    }

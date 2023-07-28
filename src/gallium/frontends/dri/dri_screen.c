@@ -218,6 +218,13 @@ driCreateConfigs(enum pipe_format format,
                     c++;
 
                     memset(modes, 0, sizeof *modes);
+                    modes->color_format = format;
+                    modes->zs_format = zs_formats[k];
+                    if (j > 0)
+                       modes->accum_format = PIPE_FORMAT_R16G16B16A16_SNORM;
+                    else
+                       modes->accum_format = PIPE_FORMAT_NONE;
+
                     modes->floatMode  = is_float;
                     modes->redBits    = color_bits[0];
                     modes->redShift   = shifts[0];

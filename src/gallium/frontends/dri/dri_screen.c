@@ -119,11 +119,9 @@ dri_loader_get_cap(struct dri_screen *screen, enum dri_loader_cap cap)
  *                      value will be unmodified, but some elements in the
  *                      linked list may be modified.
  * \param format        Mesa mesa_format enum describing the pixel format
- * \param depth_bits    Array of depth buffer sizes to be exposed.
- * \param stencil_bits  Array of stencil buffer sizes to be exposed.
- * \param num_depth_stencil_bits  Number of entries in both \c depth_bits and
- *                      \c stencil_bits.
- * \param db_modes      Array of double buffer modes.
+ * \param zs_formats    Array of depth/stencil formats to expose
+ * \param num_zs_formats Number of entries in \c depth_stencil_formats.
+ * \param db_modes      Array of buffer swap modes.
  * \param num_db_modes  Number of entries in \c db_modes.
  * \param msaa_samples  Array of msaa sample count. 0 represents a visual
  *                      without a multisample buffer.
@@ -141,8 +139,7 @@ dri_loader_get_cap(struct dri_screen *screen, enum dri_loader_cap cap)
  */
 static __DRIconfig **
 driCreateConfigs(enum pipe_format format,
-                 const uint8_t * depth_bits, const uint8_t * stencil_bits,
-                 unsigned num_depth_stencil_bits,
+                 enum pipe_format *zs_formats, unsigned num_zs_formats,
                  const bool *db_modes, unsigned num_db_modes,
                  const uint8_t * msaa_samples, unsigned num_msaa_modes,
                  GLboolean enable_accum, GLboolean color_depth_match)
@@ -178,25 +175,39 @@ driCreateConfigs(enum pipe_format format,
          masks[i] = ((1 << color_bits[i]) - 1) << shifts[i];
    }
 
-   num_modes = num_depth_stencil_bits * num_db_modes * num_accum_bits * num_msaa_modes;
+   num_modes = num_zs_formats * num_db_modes * num_accum_bits * num_msaa_modes;
    configs = calloc(num_modes + 1, sizeof *configs);
    if (configs == NULL)
        return NULL;
 
     c = configs;
-    for ( k = 0 ; k < num_depth_stencil_bits ; k++ ) {
+    for ( k = 0 ; k < num_zs_formats ; k++ ) {
+        unsigned depth_bits, stencil_bits;
+
+        if (zs_formats[k] != PIPE_FORMAT_NONE) {
+           depth_bits =
+              util_format_get_component_bits(zs_formats[k],
+                                          UTIL_FORMAT_COLORSPACE_ZS, 0);
+           stencil_bits =
+              util_format_get_component_bits(zs_formats[k],
+                                          UTIL_FORMAT_COLORSPACE_ZS, 1);
+        } else {
+           depth_bits = 0;
+           stencil_bits = 0;
+        }
+
         for ( i = 0 ; i < num_db_modes ; i++ ) {
             for ( h = 0 ; h < num_msaa_modes; h++ ) {
                 for ( j = 0 ; j < num_accum_bits ; j++ ) {
                     if (color_depth_match &&
-                        (depth_bits[k] || stencil_bits[k])) {
+                        (depth_bits || stencil_bits)) {
                         /* Depth can really only be 0, 16, 24, or 32. A 32-bit
                          * color format still matches 24-bit depth, as there
                          * is an implicit 8-bit stencil. So really we just
                          * need to make sure that color/depth are both 16 or
                          * both non-16.
                          */
-                        if ((depth_bits[k] + stencil_bits[k] == 16) !=
+                        if ((depth_bits + stencil_bits == 16) !=
                             (color_bits[0] + color_bits[1] +
                              color_bits[2] + color_bits[3] == 16))
                             continue;
@@ -228,8 +239,8 @@ driCreateConfigs(enum pipe_format format,
                     modes->accumBlueBits  = 16 * j;
                     modes->accumAlphaBits = 16 * j;
 
-                    modes->stencilBits = stencil_bits[k];
-                    modes->depthBits = depth_bits[k];
+                    modes->stencilBits = stencil_bits;
+                    modes->depthBits = depth_bits;
 
                     modes->doubleBufferMode = db_modes[i];
 
@@ -317,9 +328,8 @@ dri_fill_in_modes(struct dri_screen *screen)
       PIPE_FORMAT_R4G4B4A4_UNORM,
    };
    __DRIconfig **configs = NULL;
-   uint8_t depth_bits_array[5];
-   uint8_t stencil_bits_array[5];
-   unsigned depth_buffer_factor;
+   enum pipe_format zs_formats[5];
+   unsigned num_zs_formats = 0;
    unsigned i;
    struct pipe_screen *p_screen = screen->base.screen;
    bool mixed_color_depth;
@@ -329,15 +339,8 @@ dri_fill_in_modes(struct dri_screen *screen)
 
    static const bool db_modes[] = { false, true };
 
-   if (driQueryOptionb(&screen->dev->option_cache, "always_have_depth_buffer")) {
-      /* all visuals will have a depth buffer */
-      depth_buffer_factor = 0;
-   }
-   else {
-      depth_bits_array[0] = 0;
-      stencil_bits_array[0] = 0;
-      depth_buffer_factor = 1;
-   }
+   if (!driQueryOptionb(&screen->dev->option_cache, "always_have_depth_buffer"))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_NONE;
 
    allow_rgba_ordering = dri_loader_get_cap(screen, DRI_LOADER_CAP_RGBA_ORDERING);
    allow_rgb10 = driQueryOptionb(&screen->dev->option_cache, "allow_rgb10_configs");
@@ -348,35 +351,27 @@ dri_fill_in_modes(struct dri_screen *screen)
                                  PIPE_TEXTURE_2D, 0, 0, \
                                  PIPE_BIND_DEPTH_STENCIL)
 
-   if (HAS_ZS(Z16_UNORM)) {
-      depth_bits_array[depth_buffer_factor] = 16;
-      stencil_bits_array[depth_buffer_factor++] = 0;
-   }
+   if (HAS_ZS(Z16_UNORM))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_Z16_UNORM;
 
    if (HAS_ZS(Z24X8_UNORM)) {
-      depth_bits_array[depth_buffer_factor] = 24;
-      stencil_bits_array[depth_buffer_factor++] = 0;
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_Z24X8_UNORM;
       screen->d_depth_bits_last = true;
    } else if (HAS_ZS(X8Z24_UNORM)) {
-      depth_bits_array[depth_buffer_factor] = 24;
-      stencil_bits_array[depth_buffer_factor++] = 0;
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_X8Z24_UNORM;
       screen->d_depth_bits_last = false;
    }
 
    if (HAS_ZS(Z24_UNORM_S8_UINT)) {
-      depth_bits_array[depth_buffer_factor] = 24;
-      stencil_bits_array[depth_buffer_factor++] = 8;
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_Z24_UNORM_S8_UINT;
       screen->sd_depth_bits_last = true;
    } else if (HAS_ZS(S8_UINT_Z24_UNORM)) {
-      depth_bits_array[depth_buffer_factor] = 24;
-      stencil_bits_array[depth_buffer_factor++] = 8;
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_S8_UINT_Z24_UNORM;
       screen->sd_depth_bits_last = false;
    }
 
-   if (HAS_ZS(Z32_UNORM)) {
-      depth_bits_array[depth_buffer_factor] = 32;
-      stencil_bits_array[depth_buffer_factor++] = 0;
-   }
+   if (HAS_ZS(Z32_UNORM))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_Z32_UNORM;
 
 #undef HAS_ZS
 
@@ -432,8 +427,7 @@ dri_fill_in_modes(struct dri_screen *screen)
       if (num_msaa_modes) {
          /* Single-sample configs with an accumulation buffer. */
          new_configs = driCreateConfigs(pipe_formats[f],
-                                        depth_bits_array, stencil_bits_array,
-                                        depth_buffer_factor,
+                                        zs_formats, num_zs_formats,
                                         db_modes, ARRAY_SIZE(db_modes),
                                         msaa_modes, 1,
                                         GL_TRUE, !mixed_color_depth);
@@ -442,8 +436,7 @@ dri_fill_in_modes(struct dri_screen *screen)
          /* Multi-sample configs without an accumulation buffer. */
          if (num_msaa_modes > 1) {
             new_configs = driCreateConfigs(pipe_formats[f],
-                                           depth_bits_array, stencil_bits_array,
-                                           depth_buffer_factor,
+                                           zs_formats, num_zs_formats,
                                            db_modes, ARRAY_SIZE(db_modes),
                                            msaa_modes+1, num_msaa_modes-1,
                                            GL_FALSE, !mixed_color_depth);

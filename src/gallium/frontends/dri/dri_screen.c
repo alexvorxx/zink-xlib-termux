@@ -286,6 +286,11 @@ driCreateConfigs(enum pipe_format format,
    for (i = 0; i < 4; i++) {
       color_bits[i] =
          util_format_get_component_bits(format, UTIL_FORMAT_COLORSPACE_RGB, i);
+      int f_shift =
+         util_format_get_component_shift(format, UTIL_FORMAT_COLORSPACE_RGB, i);
+      assert(f_shift == shifts[i] || (f_shift == 0 && shifts[i] == -1));
+      uint32_t f_mask = ((1 << color_bits[i]) - 1) << f_shift;
+      assert(is_float || f_mask == masks[i]);
    }
 
    num_modes = num_depth_stencil_bits * num_db_modes * num_accum_bits * num_msaa_modes;

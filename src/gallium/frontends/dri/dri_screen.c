@@ -386,26 +386,27 @@ dri_fill_in_modes(struct dri_screen *screen)
 
       /* Expose only BGRA ordering if the loader doesn't support RGBA ordering. */
       if (!allow_rgba_ordering &&
-          (pipe_formats[f] == PIPE_FORMAT_RGBA8888_UNORM ||
-           pipe_formats[f] == PIPE_FORMAT_RGBX8888_UNORM ||
-           pipe_formats[f] == PIPE_FORMAT_RGBA8888_SRGB  ||
-           pipe_formats[f] == PIPE_FORMAT_RGBX8888_SRGB  ||
-           pipe_formats[f] == PIPE_FORMAT_R5G5B5A1_UNORM ||
-           pipe_formats[f] == PIPE_FORMAT_R5G5B5X1_UNORM ||
-           pipe_formats[f] == PIPE_FORMAT_R4G4B4A4_UNORM ||
-           pipe_formats[f] == PIPE_FORMAT_R4G4B4X4_UNORM))
+          util_format_get_component_shift(pipe_formats[f],
+                                          UTIL_FORMAT_COLORSPACE_RGB, 0)
+#if UTIL_ARCH_BIG_ENDIAN
+         >
+#else
+         <
+#endif
+          util_format_get_component_shift(pipe_formats[f],
+                                          UTIL_FORMAT_COLORSPACE_RGB, 2))
          continue;
 
       if (!allow_rgb10 &&
-          (pipe_formats[f] == PIPE_FORMAT_B10G10R10A2_UNORM ||
-           pipe_formats[f] == PIPE_FORMAT_B10G10R10X2_UNORM ||
-           pipe_formats[f] == PIPE_FORMAT_R10G10B10A2_UNORM ||
-           pipe_formats[f] == PIPE_FORMAT_R10G10B10X2_UNORM))
+          util_format_get_component_bits(pipe_formats[f],
+                                         UTIL_FORMAT_COLORSPACE_RGB, 0) == 10 &&
+          util_format_get_component_bits(pipe_formats[f],
+                                         UTIL_FORMAT_COLORSPACE_RGB, 1) == 10 &&
+          util_format_get_component_bits(pipe_formats[f],
+                                         UTIL_FORMAT_COLORSPACE_RGB, 2) == 10)
          continue;
 
-      if (!allow_fp16 &&
-          (pipe_formats[f] == PIPE_FORMAT_R16G16B16A16_FLOAT ||
-           pipe_formats[f] == PIPE_FORMAT_R16G16B16X16_FLOAT))
+      if (!allow_fp16 && util_format_is_float(pipe_formats[f]))
          continue;
 
       if (!p_screen->is_format_supported(p_screen, pipe_formats[f],

@@ -1378,31 +1378,6 @@ static const struct wl_callback_listener throttle_listener = {
    .done = wayland_throttle_callback,
 };
 
-static EGLBoolean
-get_fourcc(struct dri2_egl_display *dri2_dpy, __DRIimage *image, int *fourcc)
-{
-   EGLBoolean query;
-   int dri_format;
-   int visual_idx;
-
-   query =
-      dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FOURCC, fourcc);
-   if (query)
-      return true;
-
-   query = dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FORMAT,
-                                       &dri_format);
-   if (!query)
-      return false;
-
-   visual_idx = dri2_wl_visual_idx_from_dri_image_format(dri_format);
-   if (visual_idx == -1)
-      return false;
-
-   *fourcc = dri2_wl_visuals[visual_idx].wl_drm_format;
-   return true;
-}
-
 static struct wl_buffer *
 create_wl_buffer(struct dri2_egl_display *dri2_dpy,
                  struct dri2_egl_surface *dri2_surf, __DRIimage *image)
@@ -1416,7 +1391,8 @@ create_wl_buffer(struct dri2_egl_display *dri2_dpy,
    query = dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_WIDTH, &width);
    query &=
       dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_HEIGHT, &height);
-   query &= get_fourcc(dri2_dpy, image, &fourcc);
+   query &=
+      dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FOURCC, &fourcc);
    if (!query)
       return NULL;
 

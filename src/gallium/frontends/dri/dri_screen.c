@@ -199,17 +199,13 @@ driCreateConfigs(enum pipe_format format,
    };
 
    const uint32_t * masks;
-   mesa_format format_m = (mesa_format) format; /* aliased */
    const int * shifts;
+   int color_bits[4];
    __DRIconfig **configs, **c;
    struct gl_config *modes;
    unsigned i, j, k, h;
    unsigned num_modes;
    unsigned num_accum_bits = (enable_accum) ? 2 : 1;
-   int red_bits;
-   int green_bits;
-   int blue_bits;
-   int alpha_bits;
    bool is_srgb;
    bool is_float;
 
@@ -284,12 +280,13 @@ driCreateConfigs(enum pipe_format format,
       return NULL;
    }
 
-   red_bits = _mesa_get_format_bits(format_m, GL_RED_BITS);
-   green_bits = _mesa_get_format_bits(format_m, GL_GREEN_BITS);
-   blue_bits = _mesa_get_format_bits(format_m, GL_BLUE_BITS);
-   alpha_bits = _mesa_get_format_bits(format_m, GL_ALPHA_BITS);
-   is_srgb = _mesa_is_format_srgb(format_m);
-   is_float = _mesa_get_format_datatype(format_m) == GL_FLOAT;
+   is_srgb = util_format_is_srgb(format);
+   is_float = util_format_is_float(format);
+
+   for (i = 0; i < 4; i++) {
+      color_bits[i] =
+         util_format_get_component_bits(format, UTIL_FORMAT_COLORSPACE_RGB, i);
+   }
 
    num_modes = num_depth_stencil_bits * num_db_modes * num_accum_bits * num_msaa_modes;
    configs = calloc(num_modes + 1, sizeof *configs);
@@ -310,7 +307,8 @@ driCreateConfigs(enum pipe_format format,
                          * both non-16.
                          */
                         if ((depth_bits[k] + stencil_bits[k] == 16) !=
-                            (red_bits + green_bits + blue_bits + alpha_bits == 16))
+                            (color_bits[0] + color_bits[1] +
+                             color_bits[2] + color_bits[3] == 16))
                             continue;
                     }
 
@@ -319,18 +317,18 @@ driCreateConfigs(enum pipe_format format,
                     c++;
 
                     memset(modes, 0, sizeof *modes);
-                    modes->floatMode = is_float;
-                    modes->redBits   = red_bits;
-                    modes->greenBits = green_bits;
-                    modes->blueBits  = blue_bits;
-                    modes->alphaBits = alpha_bits;
-                    modes->redMask   = masks[0];
-                    modes->greenMask = masks[1];
-                    modes->blueMask  = masks[2];
-                    modes->alphaMask = masks[3];
+                    modes->floatMode  = is_float;
+                    modes->redBits    = color_bits[0];
                     modes->redShift   = shifts[0];
+                    modes->redMask    = masks[0];
+                    modes->greenBits  = color_bits[1];
                     modes->greenShift = shifts[1];
+                    modes->greenMask  = masks[1];
+                    modes->blueBits   = color_bits[2];
                     modes->blueShift  = shifts[2];
+                    modes->blueMask   = masks[2];
+                    modes->alphaBits  = color_bits[3];
+                    modes->alphaMask  = masks[3];
                     modes->alphaShift = shifts[3];
                     modes->rgbBits   = modes->redBits + modes->greenBits
                             + modes->blueBits + modes->alphaBits;

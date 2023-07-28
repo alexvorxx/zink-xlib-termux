@@ -140,7 +140,7 @@ dri_loader_get_cap(struct dri_screen *screen, enum dri_loader_cap cap)
  * \c format).
  */
 static __DRIconfig **
-driCreateConfigs(mesa_format format,
+driCreateConfigs(enum pipe_format format,
                  const uint8_t * depth_bits, const uint8_t * stencil_bits,
                  unsigned num_depth_stencil_bits,
                  const bool *db_modes, unsigned num_db_modes,
@@ -151,54 +151,55 @@ driCreateConfigs(mesa_format format,
       uint32_t masks[4];
       int shifts[4];
    } format_table[] = {
-      /* MESA_FORMAT_B5G6R5_UNORM */
+      /* PIPE_FORMAT_B5G6R5_UNORM */
       {{ 0x0000F800, 0x000007E0, 0x0000001F, 0x00000000 },
        { 11, 5, 0, -1 }},
-      /* MESA_FORMAT_B8G8R8X8_UNORM */
+      /* PIPE_FORMAT_BGRX8888_UNORM & _SRGB */
       {{ 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00000000 },
        { 16, 8, 0, -1 }},
-      /* MESA_FORMAT_B8G8R8A8_UNORM */
+      /* PIPE_FORMAT_BGRA8888_UNORM & SRGB */
       {{ 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000 },
        { 16, 8, 0, 24 }},
-      /* MESA_FORMAT_B10G10R10X2_UNORM */
+      /* PIPE_FORMAT_B10G10R10X2_UNORM */
       {{ 0x3FF00000, 0x000FFC00, 0x000003FF, 0x00000000 },
        { 20, 10, 0, -1 }},
-      /* MESA_FORMAT_B10G10R10A2_UNORM */
+      /* PIPE_FORMAT_B10G10R10A2_UNORM */
       {{ 0x3FF00000, 0x000FFC00, 0x000003FF, 0xC0000000 },
        { 20, 10, 0, 30 }},
-      /* MESA_FORMAT_R8G8B8A8_UNORM */
+      /* PIPE_FORMAT_RGBA8888_UNORM & SRGB */
       {{ 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000 },
        { 0, 8, 16, 24 }},
-      /* MESA_FORMAT_R8G8B8X8_UNORM */
+      /* PIPE_FORMAT_RGBX8888_UNORM & SRGB */
       {{ 0x000000FF, 0x0000FF00, 0x00FF0000, 0x00000000 },
        { 0, 8, 16, -1 }},
-      /* MESA_FORMAT_R10G10B10X2_UNORM */
+      /* PIPE_FORMAT_R10G10B10X2_UNORM */
       {{ 0x000003FF, 0x000FFC00, 0x3FF00000, 0x00000000 },
        { 0, 10, 20, -1 }},
-      /* MESA_FORMAT_R10G10B10A2_UNORM */
+      /* PIPE_FORMAT_R10G10B10A2_UNORM */
       {{ 0x000003FF, 0x000FFC00, 0x3FF00000, 0xC0000000 },
        { 0, 10, 20, 30 }},
-      /* MESA_FORMAT_RGBX_FLOAT16 */
+      /* PIPE_FORMAT_R16G16B16X16_FLOAT */
       {{ 0, 0, 0, 0},
-       { 0, 16, 32, -1 }},
-      /* MESA_FORMAT_RGBA_FLOAT16 */
+       { 0, 16, 32, -1 }}, /* XXX: flipped on big-endian */
+      /* PIPE_FORMAT_R16G16B16A16_FLOAT */
       {{ 0, 0, 0, 0},
-       { 0, 16, 32, 48 }},
-      /* MESA_FORMAT_B5G5R5A1_UNORM */
+       { 0, 16, 32, 48 }}, /* XXX: flipped on big-endian */
+      /* PIPE_FORMAT_B5G5R5A1_UNORM */
       {{ 0x00007C00, 0x000003E0, 0x0000001F, 0x00008000 },
        { 10, 5, 0, 15 }},
-      /* MESA_FORMAT_R5G5B5A1_UNORM */
+      /* PIPE_FORMAT_R5G5B5A1_UNORM */
       {{ 0x0000001F, 0x000003E0, 0x00007C00, 0x00008000 },
        { 0, 5, 10, 15 }},
-      /* MESA_FORMAT_B4G4R4A4_UNORM */
+      /* PIPE_FORMAT_B4G4R4A4_UNORM */
       {{ 0x00000F00, 0x000000F0, 0x0000000F, 0x0000F000 },
        { 8, 4, 0, 12 }},
-      /* MESA_FORMAT_R4G4B4A4_UNORM */
+      /* PIPE_FORMAT_R4G4B4A4_UNORM */
       {{ 0x0000000F, 0x000000F0, 0x00000F00, 0x0000F000 },
        { 0, 4, 8, 12 }},
    };
 
    const uint32_t * masks;
+   mesa_format format_m = (mesa_format) format; /* aliased */
    const int * shifts;
    __DRIconfig **configs, **c;
    struct gl_config *modes;
@@ -213,83 +214,82 @@ driCreateConfigs(mesa_format format,
    bool is_float;
 
    switch (format) {
-   case MESA_FORMAT_B5G6R5_UNORM:
+   case PIPE_FORMAT_B5G6R5_UNORM:
       masks = format_table[0].masks;
       shifts = format_table[0].shifts;
       break;
-   case MESA_FORMAT_B8G8R8X8_UNORM:
-   case MESA_FORMAT_B8G8R8X8_SRGB:
+   case PIPE_FORMAT_BGRX8888_UNORM:
+   case PIPE_FORMAT_BGRX8888_SRGB:
       masks = format_table[1].masks;
       shifts = format_table[1].shifts;
       break;
-   case MESA_FORMAT_B8G8R8A8_UNORM:
-   case MESA_FORMAT_B8G8R8A8_SRGB:
+   case PIPE_FORMAT_BGRA8888_UNORM:
+   case PIPE_FORMAT_BGRA8888_SRGB:
       masks = format_table[2].masks;
       shifts = format_table[2].shifts;
       break;
-   case MESA_FORMAT_R8G8B8A8_UNORM:
-   case MESA_FORMAT_R8G8B8A8_SRGB:
+   case PIPE_FORMAT_RGBA8888_UNORM:
+   case PIPE_FORMAT_RGBA8888_SRGB:
       masks = format_table[5].masks;
       shifts = format_table[5].shifts;
       break;
-   case MESA_FORMAT_R8G8B8X8_UNORM:
-   case MESA_FORMAT_R8G8B8X8_SRGB:
+   case PIPE_FORMAT_RGBX8888_UNORM:
+   case PIPE_FORMAT_RGBX8888_SRGB:
       masks = format_table[6].masks;
       shifts = format_table[6].shifts;
       break;
-   case MESA_FORMAT_B10G10R10X2_UNORM:
+   case PIPE_FORMAT_B10G10R10X2_UNORM:
       masks = format_table[3].masks;
       shifts = format_table[3].shifts;
       break;
-   case MESA_FORMAT_B10G10R10A2_UNORM:
+   case PIPE_FORMAT_B10G10R10A2_UNORM:
       masks = format_table[4].masks;
       shifts = format_table[4].shifts;
       break;
-   case MESA_FORMAT_RGBX_FLOAT16:
+   case PIPE_FORMAT_R16G16B16X16_FLOAT:
       masks = format_table[9].masks;
       shifts = format_table[9].shifts;
       break;
-   case MESA_FORMAT_RGBA_FLOAT16:
+   case PIPE_FORMAT_R16G16B16A16_FLOAT:
       masks = format_table[10].masks;
       shifts = format_table[10].shifts;
       break;
-   case MESA_FORMAT_R10G10B10X2_UNORM:
+   case PIPE_FORMAT_R10G10B10X2_UNORM:
       masks = format_table[7].masks;
       shifts = format_table[7].shifts;
       break;
-   case MESA_FORMAT_R10G10B10A2_UNORM:
+   case PIPE_FORMAT_R10G10B10A2_UNORM:
       masks = format_table[8].masks;
       shifts = format_table[8].shifts;
       break;
-   case MESA_FORMAT_B5G5R5A1_UNORM:
+   case PIPE_FORMAT_B5G5R5A1_UNORM:
       masks = format_table[11].masks;
       shifts = format_table[11].shifts;
       break;
-   case MESA_FORMAT_R5G5B5A1_UNORM:
+   case PIPE_FORMAT_R5G5B5A1_UNORM:
       masks = format_table[12].masks;
       shifts = format_table[12].shifts;
       break;
-   case MESA_FORMAT_B4G4R4A4_UNORM:
+   case PIPE_FORMAT_B4G4R4A4_UNORM:
       masks = format_table[13].masks;
       shifts = format_table[13].shifts;
       break;
-   case MESA_FORMAT_R4G4B4A4_UNORM:
+   case PIPE_FORMAT_R4G4B4A4_UNORM:
       masks = format_table[14].masks;
       shifts = format_table[14].shifts;
       break;
    default:
       fprintf(stderr, "[%s:%u] Unknown framebuffer type %s (%d).\n",
-              __func__, __LINE__,
-              _mesa_get_format_name(format), format);
+              __func__, __LINE__, util_format_name(format), format);
       return NULL;
    }
 
-   red_bits = _mesa_get_format_bits(format, GL_RED_BITS);
-   green_bits = _mesa_get_format_bits(format, GL_GREEN_BITS);
-   blue_bits = _mesa_get_format_bits(format, GL_BLUE_BITS);
-   alpha_bits = _mesa_get_format_bits(format, GL_ALPHA_BITS);
-   is_srgb = _mesa_is_format_srgb(format);
-   is_float = _mesa_get_format_datatype(format) == GL_FLOAT;
+   red_bits = _mesa_get_format_bits(format_m, GL_RED_BITS);
+   green_bits = _mesa_get_format_bits(format_m, GL_GREEN_BITS);
+   blue_bits = _mesa_get_format_bits(format_m, GL_BLUE_BITS);
+   alpha_bits = _mesa_get_format_bits(format_m, GL_ALPHA_BITS);
+   is_srgb = _mesa_is_format_srgb(format_m);
+   is_float = _mesa_get_format_datatype(format_m) == GL_FLOAT;
 
    num_modes = num_depth_stencil_bits * num_db_modes * num_accum_bits * num_msaa_modes;
    configs = calloc(num_modes + 1, sizeof *configs);

@@ -457,7 +457,6 @@ iris_resource_disable_aux(struct iris_resource *res)
    res->aux.usage = ISL_AUX_USAGE_NONE;
    res->aux.surf.size_B = 0;
    res->aux.bo = NULL;
-   res->aux.extra_aux.surf.size_B = 0;
    res->aux.clear_color_bo = NULL;
    res->aux.state = NULL;
 }
@@ -636,8 +635,6 @@ map_aux_addresses(struct iris_screen *screen, struct iris_resource *res,
       return;
 
    if (isl_aux_usage_has_ccs(res->aux.usage)) {
-      const unsigned aux_offset = res->aux.extra_aux.surf.size_B > 0 ?
-         res->aux.extra_aux.offset : res->aux.offset;
       const enum isl_format format =
          iris_format_for_usage(screen->devinfo, pfmt, res->surf.usage).fmt;
       const uint64_t format_bits =
@@ -645,7 +642,8 @@ map_aux_addresses(struct iris_screen *screen, struct iris_resource *res,
       const bool mapped =
          intel_aux_map_add_mapping(aux_map_ctx,
                                    res->bo->address + res->offset,
-                                   res->aux.bo->address + aux_offset,
+                                   res->aux.bo->address +
+                                   res->aux.comp_ctrl_surf_offset,
                                    res->surf.size_B, format_bits);
       assert(mapped);
       res->bo->aux_map_address = res->aux.bo->address;
@@ -820,37 +818,6 @@ iris_resource_configure_main(const struct iris_screen *screen,
    return true;
 }
 
-static bool
-iris_get_ccs_surf_or_support(const struct isl_device *dev,
-                             const struct isl_surf *surf,
-                             struct isl_surf *aux_surf,
-                             struct isl_surf *extra_aux_surf)
-{
-   assert(extra_aux_surf->size_B == 0);
-
-   struct isl_surf *ccs_surf;
-   const struct isl_surf *hiz_or_mcs_surf;
-   if (aux_surf->size_B > 0) {
-      assert(aux_surf->usage & (ISL_SURF_USAGE_HIZ_BIT |
-                                ISL_SURF_USAGE_MCS_BIT));
-      hiz_or_mcs_surf = aux_surf;
-      ccs_surf = extra_aux_surf;
-   } else {
-      hiz_or_mcs_surf = NULL;
-      ccs_surf = aux_surf;
-   }
-
-   if (dev->info->has_flat_ccs) {
-      /* CCS doesn't require VMA on XeHP. So, instead of creating a separate
-       * surface, we can just return whether CCS is supported for the given
-       * input surfaces.
-       */
-      return isl_surf_supports_ccs(dev, surf, hiz_or_mcs_surf);
-   } else  {
-      return isl_surf_get_ccs_surf(dev, surf, hiz_or_mcs_surf, ccs_surf, 0);
-   }
-}
-
 /**
  * Configure aux for the resource, but don't allocate it. For images which
  * might be shared with modifiers, we must allocate the image and aux data in
@@ -871,9 +838,9 @@ iris_resource_configure_aux(struct iris_screen *screen,
    const bool has_hiz =
       isl_surf_get_hiz_surf(&screen->isl_dev, &res->surf, &res->aux.surf);
 
-   const bool has_ccs =
-      iris_get_ccs_surf_or_support(&screen->isl_dev, &res->surf,
-                                   &res->aux.surf, &res->aux.extra_aux.surf);
+   const bool has_ccs = devinfo->has_aux_map || devinfo->has_flat_ccs ?
+      isl_surf_supports_ccs(&screen->isl_dev, &res->surf, &res->aux.surf) :
+      isl_surf_get_ccs_surf(&screen->isl_dev, &res->surf, NULL, &res->aux.surf, 0);
 
    if (has_mcs) {
       assert(!res->mod_info);
@@ -955,13 +922,13 @@ iris_resource_init_aux_buf(struct iris_screen *screen,
    if (!res->aux.state)
       return false;
 
-   if (res->aux.surf.size_B > 0) {
+   if (res->aux.offset > 0 || res->aux.comp_ctrl_surf_offset > 0) {
       res->aux.bo = res->bo;
       iris_bo_reference(res->aux.bo);
       map_aux_addresses(screen, res, res->internal_format, 0);
    }
 
-   if (iris_get_aux_clear_color_state_size(screen, res) > 0) {
+   if (res->aux.clear_color_offset > 0) {
       res->aux.clear_color_bo = res->bo;
       iris_bo_reference(res->aux.clear_color_bo);
       res->aux.clear_color_unknown = !res->aux.clear_color_bo->zeroed;
@@ -1101,11 +1068,11 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
       bo_size = res->aux.offset + res->aux.surf.size_B;
    }
 
-   /* Allocate space for the extra aux buffer. */
-   if (res->aux.extra_aux.surf.size_B > 0) {
-      res->aux.extra_aux.offset =
+   /* Allocate space for the compression control surface. */
+   if (devinfo->has_aux_map && isl_aux_usage_has_ccs(res->aux.usage)) {
+      res->aux.comp_ctrl_surf_offset =
          (uint32_t)align64(bo_size, INTEL_AUX_MAP_META_ALIGNMENT_B);
-      bo_size = res->aux.extra_aux.offset +
+      bo_size = res->aux.comp_ctrl_surf_offset +
                 res->surf.size_B / INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN;
    }
 
@@ -1331,6 +1298,9 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
             assert(isl_drm_modifier_has_aux(whandle->modifier));
             assert(!devinfo->has_flat_ccs);
 
+            iris_bo_reference(plane_res->bo);
+            res->aux.bo = plane_res->bo;
+
             if (devinfo->has_aux_map) {
                assert(plane_res->surf.row_pitch_B ==
                       main_res->surf.row_pitch_B /
@@ -1338,17 +1308,18 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
                assert(plane_res->bo->size >= plane_res->offset +
                       main_res->surf.size_B /
                       INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN);
+
+               main_res->aux.comp_ctrl_surf_offset = plane_res->offset;
+               map_aux_addresses(screen, main_res, whandle->format,
+                                 main_plane);
             } else {
                assert(plane_res->surf.row_pitch_B ==
                       main_res->aux.surf.row_pitch_B);
                assert(plane_res->bo->size >= plane_res->offset +
                       main_res->aux.surf.size_B);
-            }
 
-            iris_bo_reference(plane_res->bo);
-            main_res->aux.bo = plane_res->bo;
-            main_res->aux.offset = plane_res->offset;
-            map_aux_addresses(screen, main_res, whandle->format, main_plane);
+               main_res->aux.offset = plane_res->offset;
+            }
          } else {
             /* Fill out fields that are convenient to initialize now. */
             assert(plane == main_plane);
@@ -1556,8 +1527,7 @@ iris_reallocate_resource_inplace(struct iris_context *ice,
    old_res->aux.surf = new_res->aux.surf;
    old_res->aux.bo = new_res->aux.bo;
    old_res->aux.offset = new_res->aux.offset;
-   old_res->aux.extra_aux.surf = new_res->aux.extra_aux.surf;
-   old_res->aux.extra_aux.offset = new_res->aux.extra_aux.offset;
+   old_res->aux.comp_ctrl_surf_offset = new_res->aux.comp_ctrl_surf_offset;
    old_res->aux.clear_color_bo = new_res->aux.clear_color_bo;
    old_res->aux.clear_color_offset = new_res->aux.clear_color_offset;
    old_res->aux.usage = new_res->aux.usage;
@@ -1708,8 +1678,15 @@ iris_resource_get_param(struct pipe_screen *pscreen,
 
       return true;
    case PIPE_RESOURCE_PARAM_OFFSET:
-      *value = wants_cc ? res->aux.clear_color_offset :
-               wants_aux ? res->aux.offset : res->offset;
+      if (wants_cc) {
+         *value = res->aux.clear_color_offset;
+      } else if (wants_aux) {
+         *value = screen->devinfo->has_aux_map ?
+                  res->aux.comp_ctrl_surf_offset :
+                  res->aux.offset;
+      } else {
+         *value = res->offset;
+      }
       return true;
    case PIPE_RESOURCE_PARAM_MODIFIER:
       if (res->mod_info) {

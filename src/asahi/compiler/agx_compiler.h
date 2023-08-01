@@ -562,6 +562,13 @@ agx_num_predecessors(agx_block *block)
    return util_dynarray_num_elements(&block->predecessors, agx_block *);
 }
 
+static inline unsigned
+agx_num_successors(agx_block *block)
+{
+   STATIC_ASSERT(ARRAY_SIZE(block->successors) == 2);
+   return (block->successors[0] ? 1 : 0) + (block->successors[1] ? 1 : 0);
+}
+
 static inline agx_block *
 agx_start_block(agx_context *ctx)
 {

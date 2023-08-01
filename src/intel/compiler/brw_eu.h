@@ -41,6 +41,7 @@
 #include "brw_isa_info.h"
 #include "brw_reg.h"
 
+#include "intel_wa.h"
 #include "util/bitset.h"
 
 #ifdef __cplusplus
@@ -1276,6 +1277,11 @@ lsc_fence_msg_desc(UNUSED const struct intel_device_info *devinfo,
                    bool route_to_lsc)
 {
    assert(devinfo->has_lsc);
+
+#if INTEL_NEEDS_WA_22017182272
+   assert(flush_type != LSC_FLUSH_TYPE_DISCARD);
+#endif
+
    return SET_BITS(LSC_OP_FENCE, 5, 0) |
           SET_BITS(LSC_ADDR_SIZE_A32, 8, 7) |
           SET_BITS(scope, 11, 9) |

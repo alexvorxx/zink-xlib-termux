@@ -999,30 +999,16 @@ static bool
 iris_resource_init_aux_buf(struct iris_screen *screen,
                            struct iris_resource *res)
 {
-   void *map = NULL;
 
    if (iris_resource_get_aux_state(res, 0, 0) != ISL_AUX_STATE_AUX_INVALID &&
        res->aux.surf.size_B > 0) {
-      if (!map)
-         map = iris_bo_map(NULL, res->bo, MAP_WRITE | MAP_RAW);
+      void* map = iris_bo_map(NULL, res->bo, MAP_WRITE | MAP_RAW);
       if (!map)
          return false;
 
       memset((char*)map + res->aux.offset, 0, res->aux.surf.size_B);
-   }
-
-   if (res->aux.extra_aux.surf.size_B > 0) {
-      if (!map)
-         map = iris_bo_map(NULL, res->bo, MAP_WRITE | MAP_RAW);
-      if (!map)
-         return false;
-
-      memset((char*)map + res->aux.extra_aux.offset,
-             0, res->aux.extra_aux.surf.size_B);
-   }
-
-   if (map)
       iris_bo_unmap(res->bo);
+   }
 
    if (res->aux.surf.size_B > 0) {
       res->aux.bo = res->bo;

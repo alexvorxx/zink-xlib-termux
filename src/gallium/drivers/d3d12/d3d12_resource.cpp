@@ -300,6 +300,18 @@ init_texture(struct d3d12_screen *screen,
    HRESULT hres = E_FAIL;
    enum d3d12_residency_status init_residency;
 
+   if (heap) {
+      D3D12_FEATURE_DATA_PLACED_RESOURCE_SUPPORT_INFO capData;
+      capData.Dimension = desc.Dimension;
+      capData.Format = desc.Format;
+      capData.DestHeapProperties = heap->GetDesc().Properties;
+      capData.Supported = false;
+      if (FAILED(screen->dev->CheckFeatureSupport(D3D12_FEATURE_PLACED_RESOURCE_SUPPORT_INFO, &capData, sizeof(capData))) || !capData.Supported) {
+         debug_printf("D3D12: d3d12_resource_create_or_place cannot place a resource since D3D12_FEATURE_DATA_PLACED_RESOURCE_SUPPORT_INFO is not supported\n");
+         return false;
+      }
+   }
+
    if (screen->opts12.RelaxedFormatCastingSupported) {
       D3D12_RESOURCE_DESC1 desc1 = {
          desc.Dimension,

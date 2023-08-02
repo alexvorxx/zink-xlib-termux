@@ -93,7 +93,6 @@ d3d12_context_destroy(struct pipe_context *pctx)
       pctx->destroy_query(pctx, ctx->timestamp_query);
 
    util_unreference_framebuffer_state(&ctx->fb);
-   util_blitter_destroy(ctx->blitter);
    d3d12_end_batch(ctx, d3d12_current_batch(ctx));
    for (unsigned i = 0; i < ARRAY_SIZE(ctx->batches); ++i)
       d3d12_destroy_batch(ctx, &ctx->batches[i]);
@@ -102,33 +101,41 @@ d3d12_context_destroy(struct pipe_context *pctx)
       ctx->cmdlist2->Release();
    if (ctx->cmdlist8)
       ctx->cmdlist8->Release();
-   d3d12_descriptor_pool_free(ctx->sampler_pool);
-   util_primconvert_destroy(ctx->primconvert);
+
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
+   if ((screen->max_feature_level >= D3D_FEATURE_LEVEL_11_0) && !(ctx->flags & PIPE_CONTEXT_MEDIA_ONLY)) {
+      util_blitter_destroy(ctx->blitter);
+      d3d12_compute_pipeline_state_cache_destroy(ctx);
+      d3d12_root_signature_cache_destroy(ctx);
+      d3d12_cmd_signature_cache_destroy(ctx);
+      d3d12_compute_transform_cache_destroy(ctx);
+      d3d12_descriptor_pool_free(ctx->sampler_pool);
+      d3d12_gs_variant_cache_destroy(ctx);
+      d3d12_tcs_variant_cache_destroy(ctx);
+      d3d12_gfx_pipeline_state_cache_destroy(ctx);
+      util_primconvert_destroy(ctx->primconvert);
+      pipe_resource_reference(&ctx->pstipple.texture, nullptr);
+      pipe_sampler_view_reference(&ctx->pstipple.sampler_view, nullptr);
+      util_dynarray_fini(&ctx->recently_destroyed_bos);
+      FREE(ctx->pstipple.sampler_cso);
+      if (pctx->stream_uploader)
+         u_upload_destroy(pctx->stream_uploader);
+      if (pctx->const_uploader)
+         u_upload_destroy(pctx->const_uploader);
+      if (!ctx->queries_disabled) {
+         u_suballocator_destroy(&ctx->query_allocator);
+      }  
+   }
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
+
    slab_destroy_child(&ctx->transfer_pool);
    slab_destroy_child(&ctx->transfer_pool_unsync);
-   d3d12_gs_variant_cache_destroy(ctx);
-   d3d12_tcs_variant_cache_destroy(ctx);
-   d3d12_gfx_pipeline_state_cache_destroy(ctx);
-   d3d12_compute_pipeline_state_cache_destroy(ctx);
-   d3d12_root_signature_cache_destroy(ctx);
-   d3d12_cmd_signature_cache_destroy(ctx);
-   d3d12_compute_transform_cache_destroy(ctx);
    d3d12_context_state_table_destroy(ctx);
-   pipe_resource_reference(&ctx->pstipple.texture, nullptr);
-   pipe_sampler_view_reference(&ctx->pstipple.sampler_view, nullptr);
-   util_dynarray_fini(&ctx->recently_destroyed_bos);
-   FREE(ctx->pstipple.sampler_cso);
-
-   u_suballocator_destroy(&ctx->query_allocator);
-
-   if (pctx->stream_uploader)
-      u_upload_destroy(pctx->stream_uploader);
-   if (pctx->const_uploader)
-      u_upload_destroy(pctx->const_uploader);
 
    FREE(ctx);
 }
 
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
 static void *
 d3d12_create_vertex_elements_state(struct pipe_context *pctx,
                                    unsigned num_elements,
@@ -1823,6 +1830,8 @@ d3d12_set_shader_images(struct pipe_context *pctx,
    ctx->shader_dirty[shader] |= D3D12_SHADER_DIRTY_IMAGE;
 }
 
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
+
 void
 d3d12_invalidate_context_bindings(struct d3d12_context *ctx, struct d3d12_resource *res) {
    // For each shader type, if the resource is currently bound as CBV, SRV, or UAV
@@ -1845,6 +1854,8 @@ d3d12_invalidate_context_bindings(struct d3d12_context *ctx, struct d3d12_resour
       }
    }
 }
+
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
 
 bool
 d3d12_enable_fake_so_buffers(struct d3d12_context *ctx, unsigned factor)
@@ -2008,6 +2019,8 @@ d3d12_disable_fake_so_buffers(struct d3d12_context *ctx)
    return true;
 }
 
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
+
 void
 d3d12_flush_cmdlist(struct d3d12_context *ctx)
 {
@@ -2031,6 +2044,7 @@ d3d12_flush_cmdlist_and_wait(struct d3d12_context *ctx)
    d3d12_reset_batch(ctx, batch, OS_TIMEOUT_INFINITE);
 }
 
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
 static void
 d3d12_clear_render_target(struct pipe_context *pctx,
                           struct pipe_surface *psurf,
@@ -2193,6 +2207,8 @@ d3d12_clear(struct pipe_context *pctx,
    }
 }
 
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
+
 static void
 d3d12_flush(struct pipe_context *pipe,
             struct pipe_fence_handle **fence,
@@ -2239,6 +2255,8 @@ d3d12_wait(struct pipe_context *pipe, struct pipe_fence_handle *pfence)
    screen->cmdqueue->Wait(fence->cmdqueue_fence, fence->value);
 }
 
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
+
 static void
 d3d12_init_null_sampler(struct d3d12_context *ctx)
 {
@@ -2274,6 +2292,9 @@ d3d12_get_timestamp(struct pipe_context *pctx)
    return result.u64;
 }
 
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
+
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
 static void
 d3d12_rebind_buffer(struct d3d12_context *ctx, struct d3d12_resource *res)
 {
@@ -2300,9 +2321,9 @@ d3d12_rebind_buffer(struct d3d12_context *ctx, struct d3d12_resource *res)
          assert(!ctx->fake_so_targets[i] || ctx->fake_so_targets[i]->buffer != &res->base.b);
       }
    }
-
    d3d12_invalidate_context_bindings(ctx, res);
 }
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
 
 static void
 d3d12_replace_buffer_storage(struct pipe_context *pctx,
@@ -2312,7 +2333,6 @@ d3d12_replace_buffer_storage(struct pipe_context *pctx,
    uint32_t rebind_mask,
    uint32_t delete_buffer_id)
 {
-   struct d3d12_context *ctx = d3d12_context(pctx);
    struct d3d12_resource *dst = d3d12_resource(pdst);
    struct d3d12_resource *src = d3d12_resource(psrc);
 
@@ -2320,7 +2340,12 @@ d3d12_replace_buffer_storage(struct pipe_context *pctx,
    d3d12_bo_reference(src->bo);
    dst->bo = src->bo;
    p_atomic_inc(&dst->generation_id);
-   d3d12_rebind_buffer(ctx, dst);
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
+   struct d3d12_context *ctx = d3d12_context(pctx);
+   if ((d3d12_screen(pctx->screen)->max_feature_level >= D3D_FEATURE_LEVEL_11_0)
+      && !(ctx->flags & PIPE_CONTEXT_MEDIA_ONLY))
+      d3d12_rebind_buffer(ctx, dst);
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
    d3d12_bo_unreference(old_bo);
 }
 
@@ -2452,6 +2477,21 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       }
    }
 
+   if ((screen->max_feature_level < D3D_FEATURE_LEVEL_11_0) &&
+      !(flags & PIPE_CONTEXT_MEDIA_ONLY))
+   {
+      debug_printf("D3D12: Underlying screen maximum supported feature level is lower than D3D_FEATURE_LEVEL_11_0. The caller to context_create must pass PIPE_CONTEXT_MEDIA_ONLY in flags.\n");
+      return NULL;
+   }
+
+#ifndef HAVE_GALLIUM_D3D12_VIDEO
+   if (flags & PIPE_CONTEXT_MEDIA_ONLY)
+   {
+      debug_printf("D3D12: context_create passed PIPE_CONTEXT_MEDIA_ONLY in flags but no media support found.\n");
+      return NULL;
+   }
+#endif // ifndef HAVE_GALLIUM_D3D12_VIDEO
+
    struct d3d12_context *ctx = CALLOC_STRUCT(d3d12_context);
    if (!ctx)
       return NULL;
@@ -2460,150 +2500,182 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    ctx->base.priv = priv;
 
    ctx->base.destroy = d3d12_context_destroy;
-
-   ctx->base.create_vertex_elements_state = d3d12_create_vertex_elements_state;
-   ctx->base.bind_vertex_elements_state = d3d12_bind_vertex_elements_state;
-   ctx->base.delete_vertex_elements_state = d3d12_delete_vertex_elements_state;
-
-   ctx->base.create_blend_state = d3d12_create_blend_state;
-   ctx->base.bind_blend_state = d3d12_bind_blend_state;
-   ctx->base.delete_blend_state = d3d12_delete_blend_state;
-
-   ctx->base.create_depth_stencil_alpha_state = d3d12_create_depth_stencil_alpha_state;
-   ctx->base.bind_depth_stencil_alpha_state = d3d12_bind_depth_stencil_alpha_state;
-   ctx->base.delete_depth_stencil_alpha_state = d3d12_delete_depth_stencil_alpha_state;
-
-   ctx->base.create_rasterizer_state = d3d12_create_rasterizer_state;
-   ctx->base.bind_rasterizer_state = d3d12_bind_rasterizer_state;
-   ctx->base.delete_rasterizer_state = d3d12_delete_rasterizer_state;
-
-   ctx->base.create_sampler_state = d3d12_create_sampler_state;
-   ctx->base.bind_sampler_states = d3d12_bind_sampler_states;
-   ctx->base.delete_sampler_state = d3d12_delete_sampler_state;
-
-   ctx->base.create_sampler_view = d3d12_create_sampler_view;
-   ctx->base.set_sampler_views = d3d12_set_sampler_views;
-   ctx->base.sampler_view_destroy = d3d12_destroy_sampler_view;
-
-   ctx->base.create_vs_state = d3d12_create_vs_state;
-   ctx->base.bind_vs_state = d3d12_bind_vs_state;
-   ctx->base.delete_vs_state = d3d12_delete_vs_state;
-
-   ctx->base.create_fs_state = d3d12_create_fs_state;
-   ctx->base.bind_fs_state = d3d12_bind_fs_state;
-   ctx->base.delete_fs_state = d3d12_delete_fs_state;
-
-   ctx->base.create_gs_state = d3d12_create_gs_state;
-   ctx->base.bind_gs_state = d3d12_bind_gs_state;
-   ctx->base.delete_gs_state = d3d12_delete_gs_state;
-
-   ctx->base.create_tcs_state = d3d12_create_tcs_state;
-   ctx->base.bind_tcs_state = d3d12_bind_tcs_state;
-   ctx->base.delete_tcs_state = d3d12_delete_tcs_state;
-
-   ctx->base.create_tes_state = d3d12_create_tes_state;
-   ctx->base.bind_tes_state = d3d12_bind_tes_state;
-   ctx->base.delete_tes_state = d3d12_delete_tes_state;
-
-   ctx->base.set_patch_vertices = d3d12_set_patch_vertices;
-   ctx->base.set_tess_state = d3d12_set_tess_state;
-
-   ctx->base.create_compute_state = d3d12_create_compute_state;
-   ctx->base.bind_compute_state = d3d12_bind_compute_state;
-   ctx->base.delete_compute_state = d3d12_delete_compute_state;
-
-   ctx->base.set_polygon_stipple = d3d12_set_polygon_stipple;
-   ctx->base.set_vertex_buffers = d3d12_set_vertex_buffers;
-   ctx->base.set_viewport_states = d3d12_set_viewport_states;
-   ctx->base.set_scissor_states = d3d12_set_scissor_states;
-   ctx->base.set_constant_buffer = d3d12_set_constant_buffer;
-   ctx->base.set_framebuffer_state = d3d12_set_framebuffer_state;
-   ctx->base.set_clip_state = d3d12_set_clip_state;
-   ctx->base.set_blend_color = d3d12_set_blend_color;
-   ctx->base.set_sample_mask = d3d12_set_sample_mask;
-   ctx->base.set_stencil_ref = d3d12_set_stencil_ref;
-
-   ctx->base.create_stream_output_target = d3d12_create_stream_output_target;
-   ctx->base.stream_output_target_destroy = d3d12_stream_output_target_destroy;
-   ctx->base.set_stream_output_targets = d3d12_set_stream_output_targets;
-
-   ctx->base.set_shader_buffers = d3d12_set_shader_buffers;
-   ctx->base.set_shader_images = d3d12_set_shader_images;
-
-   ctx->base.get_timestamp = d3d12_get_timestamp;
-
-   ctx->base.clear = d3d12_clear;
-   ctx->base.clear_render_target = d3d12_clear_render_target;
-   ctx->base.clear_depth_stencil = d3d12_clear_depth_stencil;
-   ctx->base.draw_vbo = d3d12_draw_vbo;
-   ctx->base.launch_grid = d3d12_launch_grid;
    ctx->base.flush = d3d12_flush;
    ctx->base.flush_resource = d3d12_flush_resource;
-
    ctx->base.fence_server_signal = d3d12_signal;
    ctx->base.fence_server_sync = d3d12_wait;
-
    ctx->base.memory_barrier = d3d12_memory_barrier;
    ctx->base.texture_barrier = d3d12_texture_barrier;
 
-   ctx->base.get_sample_position = u_default_get_sample_position;
-
    ctx->base.get_device_reset_status = d3d12_get_reset_status;
-
-   ctx->gfx_pipeline_state.sample_mask = ~0;
-
    ctx->has_flat_varyings = false;
    ctx->missing_dual_src_outputs = false;
    ctx->manual_depth_range = false;
-
-   d3d12_context_surface_init(&ctx->base);
+   ctx->flags = flags;
    d3d12_context_resource_init(&ctx->base);
-   d3d12_context_query_init(&ctx->base);
    d3d12_context_blit_init(&ctx->base);
 
 #ifdef HAVE_GALLIUM_D3D12_VIDEO
-   // Add d3d12 video functions entrypoints
    ctx->base.create_video_codec = d3d12_video_create_codec;
    ctx->base.create_video_buffer = d3d12_video_buffer_create;
    ctx->base.video_buffer_from_handle = d3d12_video_buffer_from_handle;
 #endif
+
    slab_create_child(&ctx->transfer_pool, &d3d12_screen(pscreen)->transfer_pool);
    slab_create_child(&ctx->transfer_pool_unsync, &d3d12_screen(pscreen)->transfer_pool);
 
-   ctx->base.stream_uploader = u_upload_create_default(&ctx->base);
-   ctx->base.const_uploader = u_upload_create_default(&ctx->base);
    u_suballocator_init(&ctx->so_allocator, &ctx->base, 4096, 0,
-                       PIPE_USAGE_DEFAULT,
-                       0, false);
+                     PIPE_USAGE_DEFAULT,
+                     0, false);
 
-   struct primconvert_config cfg = {};
-   cfg.primtypes_mask = 1 << MESA_PRIM_POINTS |
-                        1 << MESA_PRIM_LINES |
-                        1 << MESA_PRIM_LINE_STRIP |
-                        1 << MESA_PRIM_TRIANGLES |
-                        1 << MESA_PRIM_TRIANGLE_STRIP;
-   cfg.restart_primtypes_mask = cfg.primtypes_mask;
-   cfg.fixed_prim_restart = true;
-   ctx->primconvert = util_primconvert_create_config(&ctx->base, &cfg);
-   if (!ctx->primconvert) {
-      debug_printf("D3D12: failed to create primconvert\n");
-      return NULL;
-   }
-
-   d3d12_gfx_pipeline_state_cache_init(ctx);
-   d3d12_compute_pipeline_state_cache_init(ctx);
-   d3d12_root_signature_cache_init(ctx);
-   d3d12_cmd_signature_cache_init(ctx);
-   d3d12_gs_variant_cache_init(ctx);
-   d3d12_tcs_variant_cache_init(ctx);
-   d3d12_compute_transform_cache_init(ctx);
-   d3d12_context_state_table_init(ctx);
-
-   ctx->D3D12SerializeVersionedRootSignature =
-      (PFN_D3D12_SERIALIZE_VERSIONED_ROOT_SIGNATURE)util_dl_get_proc_address(screen->d3d12_mod, "D3D12SerializeVersionedRootSignature");
 #ifndef _GAMING_XBOX
    (void)screen->dev->QueryInterface(&ctx->dev_config);
 #endif
+
+   d3d12_context_state_table_init(ctx);
+
+   ctx->queries_disabled = true; // Disabled by default, re-enable if supported FL below
+
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
+   if ((screen->max_feature_level >= D3D_FEATURE_LEVEL_11_0) && !(flags & PIPE_CONTEXT_MEDIA_ONLY)) {
+      ctx->base.create_compute_state = d3d12_create_compute_state;
+      ctx->base.bind_compute_state = d3d12_bind_compute_state;
+      ctx->base.delete_compute_state = d3d12_delete_compute_state;
+      ctx->base.set_shader_buffers = d3d12_set_shader_buffers;
+
+      d3d12_compute_pipeline_state_cache_init(ctx);
+      d3d12_root_signature_cache_init(ctx);
+      d3d12_cmd_signature_cache_init(ctx);
+      d3d12_compute_transform_cache_init(ctx);
+
+      ctx->D3D12SerializeVersionedRootSignature =
+         (PFN_D3D12_SERIALIZE_VERSIONED_ROOT_SIGNATURE)util_dl_get_proc_address(screen->d3d12_mod, "D3D12SerializeVersionedRootSignature");
+
+      ctx->base.create_sampler_view = d3d12_create_sampler_view;
+      ctx->base.sampler_view_destroy = d3d12_destroy_sampler_view;
+
+      ctx->base.stream_uploader = u_upload_create_default(&ctx->base);
+      ctx->base.const_uploader = u_upload_create_default(&ctx->base);
+
+      ctx->base.get_sample_position = u_default_get_sample_position;
+
+      ctx->base.create_vertex_elements_state = d3d12_create_vertex_elements_state;
+      ctx->base.bind_vertex_elements_state = d3d12_bind_vertex_elements_state;
+      ctx->base.delete_vertex_elements_state = d3d12_delete_vertex_elements_state;      
+
+      ctx->base.create_blend_state = d3d12_create_blend_state;
+      ctx->base.bind_blend_state = d3d12_bind_blend_state;
+      ctx->base.delete_blend_state = d3d12_delete_blend_state;
+
+      ctx->base.create_depth_stencil_alpha_state = d3d12_create_depth_stencil_alpha_state;
+      ctx->base.bind_depth_stencil_alpha_state = d3d12_bind_depth_stencil_alpha_state;
+      ctx->base.delete_depth_stencil_alpha_state = d3d12_delete_depth_stencil_alpha_state;
+
+      ctx->base.create_rasterizer_state = d3d12_create_rasterizer_state;
+      ctx->base.bind_rasterizer_state = d3d12_bind_rasterizer_state;
+      ctx->base.delete_rasterizer_state = d3d12_delete_rasterizer_state;
+
+      ctx->base.create_sampler_state = d3d12_create_sampler_state;
+      ctx->base.bind_sampler_states = d3d12_bind_sampler_states;
+      ctx->base.delete_sampler_state = d3d12_delete_sampler_state;
+
+      ctx->base.set_sampler_views = d3d12_set_sampler_views;
+
+      ctx->base.create_vs_state = d3d12_create_vs_state;
+      ctx->base.bind_vs_state = d3d12_bind_vs_state;
+      ctx->base.delete_vs_state = d3d12_delete_vs_state;
+
+      ctx->base.create_fs_state = d3d12_create_fs_state;
+      ctx->base.bind_fs_state = d3d12_bind_fs_state;
+      ctx->base.delete_fs_state = d3d12_delete_fs_state;
+
+      ctx->base.create_gs_state = d3d12_create_gs_state;
+      ctx->base.bind_gs_state = d3d12_bind_gs_state;
+      ctx->base.delete_gs_state = d3d12_delete_gs_state;
+
+      ctx->base.create_tcs_state = d3d12_create_tcs_state;
+      ctx->base.bind_tcs_state = d3d12_bind_tcs_state;
+      ctx->base.delete_tcs_state = d3d12_delete_tcs_state;
+
+      ctx->base.create_tes_state = d3d12_create_tes_state;
+      ctx->base.bind_tes_state = d3d12_bind_tes_state;
+      ctx->base.delete_tes_state = d3d12_delete_tes_state;
+
+      ctx->base.set_patch_vertices = d3d12_set_patch_vertices;
+      ctx->base.set_tess_state = d3d12_set_tess_state;
+
+      ctx->base.set_polygon_stipple = d3d12_set_polygon_stipple;
+      ctx->base.set_vertex_buffers = d3d12_set_vertex_buffers;
+      ctx->base.set_viewport_states = d3d12_set_viewport_states;
+      ctx->base.set_scissor_states = d3d12_set_scissor_states;
+      ctx->base.set_constant_buffer = d3d12_set_constant_buffer;
+      ctx->base.set_framebuffer_state = d3d12_set_framebuffer_state;
+      ctx->base.set_clip_state = d3d12_set_clip_state;
+      ctx->base.set_blend_color = d3d12_set_blend_color;
+      ctx->base.set_sample_mask = d3d12_set_sample_mask;
+      ctx->base.set_stencil_ref = d3d12_set_stencil_ref;
+
+      ctx->base.create_stream_output_target = d3d12_create_stream_output_target;
+      ctx->base.stream_output_target_destroy = d3d12_stream_output_target_destroy;
+      ctx->base.set_stream_output_targets = d3d12_set_stream_output_targets;
+      ctx->base.set_shader_images = d3d12_set_shader_images;
+
+      ctx->base.clear = d3d12_clear;
+      ctx->base.clear_render_target = d3d12_clear_render_target;
+      ctx->base.clear_depth_stencil = d3d12_clear_depth_stencil;
+      ctx->base.draw_vbo = d3d12_draw_vbo;
+      ctx->base.launch_grid = d3d12_launch_grid;
+      ctx->base.get_timestamp = d3d12_get_timestamp;
+      ctx->base.get_sample_position = u_default_get_sample_position;
+      ctx->gfx_pipeline_state.sample_mask = ~0;
+
+      d3d12_context_surface_init(&ctx->base);
+      d3d12_context_query_init(&ctx->base);
+      ctx->queries_disabled = false;
+
+      struct primconvert_config cfg = {};
+      cfg.primtypes_mask = 1 << MESA_PRIM_POINTS |
+                           1 << MESA_PRIM_LINES |
+                           1 << MESA_PRIM_LINE_STRIP |
+                           1 << MESA_PRIM_TRIANGLES |
+                           1 << MESA_PRIM_TRIANGLE_STRIP;
+      cfg.restart_primtypes_mask = cfg.primtypes_mask;
+      cfg.fixed_prim_restart = true;
+      ctx->primconvert = util_primconvert_create_config(&ctx->base, &cfg);
+      if (!ctx->primconvert) {
+         debug_printf("D3D12: failed to create primconvert\n");
+         return NULL;
+      }
+
+      d3d12_gfx_pipeline_state_cache_init(ctx);
+      d3d12_gs_variant_cache_init(ctx);
+      d3d12_tcs_variant_cache_init(ctx);
+
+      ctx->sampler_pool = d3d12_descriptor_pool_new(screen,
+                                                   D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,
+                                                   64);
+      if (!ctx->sampler_pool) {
+         FREE(ctx);
+         return NULL;
+      }
+      d3d12_init_null_sampler(ctx);
+
+      ctx->blitter = util_blitter_create(&ctx->base);
+      if (!ctx->blitter)
+         return NULL;
+
+      if (!d3d12_init_polygon_stipple(&ctx->base)) {
+         debug_printf("D3D12: failed to initialize polygon stipple resources\n");
+         FREE(ctx);
+         return NULL;
+      }
+#ifdef _WIN32
+         if (!(d3d12_debug & D3D12_DEBUG_EXPERIMENTAL) ||
+            (d3d12_debug & D3D12_DEBUG_DISASS))
+            ctx->dxil_validator = dxil_create_validator(NULL);
+#endif
+   }
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
 
    ctx->submit_id = (uint64_t)p_atomic_add_return(&screen->ctx_count, 1) << 32ull;
 
@@ -2614,31 +2686,6 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       }
    }
    d3d12_start_batch(ctx, &ctx->batches[0]);
-
-   ctx->sampler_pool = d3d12_descriptor_pool_new(screen,
-                                                 D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,
-                                                 64);
-   if (!ctx->sampler_pool) {
-      FREE(ctx);
-      return NULL;
-   }
-   d3d12_init_null_sampler(ctx);
-
-#ifdef _WIN32
-   if (!(d3d12_debug & D3D12_DEBUG_EXPERIMENTAL) ||
-       (d3d12_debug & D3D12_DEBUG_DISASS))
-      ctx->dxil_validator = dxil_create_validator(NULL);
-#endif
-
-   ctx->blitter = util_blitter_create(&ctx->base);
-   if (!ctx->blitter)
-      return NULL;
-
-   if (!d3d12_init_polygon_stipple(&ctx->base)) {
-      debug_printf("D3D12: failed to initialize polygon stipple resources\n");
-      FREE(ctx);
-      return NULL;
-   }
 
    mtx_lock(&screen->submit_mutex);
    list_addtail(&ctx->context_list_entry, &screen->context_list);

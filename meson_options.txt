@@ -679,6 +679,13 @@ option(
 )
 
 option(
+  'gallium-d3d12-graphics',
+  type : 'feature',
+  value : 'auto',
+  description : 'build gallium d3d12 with graphics pipeline support.',
+)
+
+option(
   'radv-build-id',
   type : 'string',
   value : '',

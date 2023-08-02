@@ -275,7 +275,7 @@ ensure_state_fixup_cmdlist(struct d3d12_context *ctx, ID3D12CommandAllocator *al
    if (!ctx->state_fixup_cmdlist) {
       struct d3d12_screen *screen = d3d12_screen(ctx->base.screen);
       screen->dev->CreateCommandList(0,
-                                     D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                     screen->queue_type,
                                      alloc,
                                      nullptr,
                                      IID_PPV_ARGS(&ctx->state_fixup_cmdlist));

@@ -396,6 +396,24 @@ is_16_bits(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
    return is_16_bits_with_scale(instr, src, num_components, swizzle, 1);
 }
 
+/** Like is_16_bits, but could 2 times the constant fit in 16 bits? */
+static inline bool
+is_2x_16_bits(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
+              unsigned src, unsigned num_components,
+              const uint8_t *swizzle)
+{
+   return is_16_bits_with_scale(instr, src, num_components, swizzle, 2);
+}
+
+/** Like is_16_bits, but could -2 times the constant fit in 16 bits? */
+static inline bool
+is_neg2x_16_bits(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
+                 unsigned src, unsigned num_components,
+                 const uint8_t *swizzle)
+{
+   return is_16_bits_with_scale(instr, src, num_components, swizzle, -2);
+}
+
 static inline bool
 is_not_const(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
              unsigned src, UNUSED unsigned num_components,

@@ -1029,21 +1029,23 @@ vlVaHandleSurfaceAllocate(vlVaDriver *drv, vlVaSurface *surface,
       return VA_STATUS_ERROR_ALLOCATION_FAILED;
 
    surfaces = surface->buffer->get_surfaces(surface->buffer);
-   for (i = 0; i < VL_MAX_SURFACES; ++i) {
-      union pipe_color_union c;
-      memset(&c, 0, sizeof(c));
+   if (surfaces) {
+      for (i = 0; i < VL_MAX_SURFACES; ++i) {
+         union pipe_color_union c;
+         memset(&c, 0, sizeof(c));
 
-      if (!surfaces[i])
-         continue;
+         if (!surfaces[i])
+            continue;
 
-      if (i > !!surface->buffer->interlaced)
-         c.f[0] = c.f[1] = c.f[2] = c.f[3] = 0.5f;
+         if (i > !!surface->buffer->interlaced)
+            c.f[0] = c.f[1] = c.f[2] = c.f[3] = 0.5f;
 
-      drv->pipe->clear_render_target(drv->pipe, surfaces[i], &c, 0, 0,
-				     surfaces[i]->width, surfaces[i]->height,
-				     false);
+         drv->pipe->clear_render_target(drv->pipe, surfaces[i], &c, 0, 0,
+                  surfaces[i]->width, surfaces[i]->height,
+                  false);
+      }
+      drv->pipe->flush(drv->pipe, NULL, 0);
    }
-   drv->pipe->flush(drv->pipe, NULL, 0);
 
    return VA_STATUS_SUCCESS;
 }

@@ -396,7 +396,7 @@ dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
    struct gl_context *ctx = st->ctx;
    struct pipe_context *p_ctx = st->pipe;
    struct gl_texture_object *obj;
-   struct pipe_resource *tex;
+   struct gl_texture_image *glimg;
    GLuint face = 0;
 
    /* Wait for glthread to finish to get up-to-date GL object lookups. */
@@ -404,12 +404,6 @@ dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
 
    obj = _mesa_lookup_texture(ctx, texture);
    if (!obj || obj->Target != target) {
-      *error = __DRI_IMAGE_ERROR_BAD_PARAMETER;
-      return NULL;
-   }
-
-   tex = st_get_texobj_resource(obj);
-   if (!tex) {
       *error = __DRI_IMAGE_ERROR_BAD_PARAMETER;
       return NULL;
    }
@@ -428,7 +422,13 @@ dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
       return NULL;
    }
 
-   if (target == GL_TEXTURE_3D && obj->Image[face][level]->Depth < depth) {
+   glimg = obj->Image[face][level];
+   if (!glimg || !glimg->pt) {
+      *error = __DRI_IMAGE_ERROR_BAD_PARAMETER;
+      return NULL;
+   }
+
+   if (target == GL_TEXTURE_3D && glimg->Depth < depth) {
       *error = __DRI_IMAGE_ERROR_BAD_MATCH;
       return NULL;
    }
@@ -442,20 +442,20 @@ dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
    img->level = level;
    img->layer = depth;
    img->in_fence_fd = -1;
-   img->dri_format = driGLFormatToImageFormat(obj->Image[face][level]->TexFormat);
-   img->internal_format = obj->Image[face][level]->InternalFormat;
+   img->dri_format = driGLFormatToImageFormat(glimg->TexFormat);
+   img->internal_format = glimg->InternalFormat;
 
    img->loader_private = loaderPrivate;
    img->screen = dri_ctx->screen;
 
-   pipe_resource_reference(&img->texture, tex);
+   pipe_resource_reference(&img->texture, glimg->pt);
 
    /* If the resource supports EGL_MESA_image_dma_buf_export, make sure that
     * it's in a shareable state. Do this now while we still have the access to
     * the context.
     */
    if (dri2_get_mapping_by_format(img->dri_format))
-      p_ctx->flush_resource(p_ctx, tex);
+      p_ctx->flush_resource(p_ctx, glimg->pt);
 
    ctx->Shared->HasExternallySharedImages = true;
    *error = __DRI_IMAGE_ERROR_SUCCESS;

@@ -936,7 +936,7 @@ static void virgl_flush_frontbuffer(struct pipe_screen *screen,
 
    if (vws->flush_frontbuffer) {
       virgl_flush_eq(vctx, vctx, NULL);
-      vws->flush_frontbuffer(vws, vres->hw_res, level, layer, winsys_drawable_handle,
+      vws->flush_frontbuffer(vws, vctx->cbuf, vres->hw_res, level, layer, winsys_drawable_handle,
                              sub_box);
    }
 }

@@ -135,6 +135,7 @@ struct virgl_winsys {
 
    /* for sw paths */
    void (*flush_frontbuffer)(struct virgl_winsys *vws,
+                             struct virgl_cmd_buf *cbuf,
                              struct virgl_hw_res *res,
                              unsigned level, unsigned layer,
                              void *winsys_drawable_handle,

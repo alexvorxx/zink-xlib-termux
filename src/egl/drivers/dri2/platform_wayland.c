@@ -44,6 +44,7 @@
 #include "util/anon_file.h"
 #include "util/u_vector.h"
 #include "util/format/u_formats.h"
+#include "main/glconfig.h"
 #include "egl_dri2.h"
 #include "eglglobals.h"
 #include "kopper_interface.h"
@@ -246,27 +247,23 @@ static const struct dri2_wl_visual {
 };
 
 static int
-dri2_wl_visual_idx_from_config(struct dri2_egl_display *dri2_dpy,
-                               const __DRIconfig *config)
+dri2_wl_visual_idx_from_pipe_format(enum pipe_format pipe_format)
 {
-   int shifts[4];
-   unsigned int sizes[4];
-
-   dri2_get_shifts_and_sizes(dri2_dpy->core, config, shifts, sizes);
-
-   for (unsigned int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
-      const struct dri2_wl_visual *wl_visual = &dri2_wl_visuals[i];
-
-      int cmp_rgba_shifts =
-         memcmp(shifts, wl_visual->rgba_shifts, 4 * sizeof(shifts[0]));
-      int cmp_rgba_sizes =
-         memcmp(sizes, wl_visual->rgba_sizes, 4 * sizeof(sizes[0]));
-
-      if (cmp_rgba_shifts == 0 && cmp_rgba_sizes == 0)
+   for (int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
+      if (dri2_wl_visuals[i].pipe_format == pipe_format)
          return i;
    }
 
    return -1;
+}
+
+static int
+dri2_wl_visual_idx_from_config(struct dri2_egl_display *dri2_dpy,
+                               const __DRIconfig *config)
+{
+   struct gl_config *gl_config = (struct gl_config *) config;
+
+   return dri2_wl_visual_idx_from_pipe_format(gl_config->color_format);
 }
 
 static int
@@ -276,17 +273,6 @@ dri2_wl_visual_idx_from_fourcc(uint32_t fourcc)
       /* wl_drm format codes overlap with DRIImage FourCC codes for all formats
        * we support. */
       if (dri2_wl_visuals[i].wl_drm_format == fourcc)
-         return i;
-   }
-
-   return -1;
-}
-
-static int
-dri2_wl_visual_idx_from_pipe_format(enum pipe_format pipe_format)
-{
-   for (int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
-      if (dri2_wl_visuals[i].pipe_format == pipe_format)
          return i;
    }
 

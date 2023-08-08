@@ -181,103 +181,32 @@ dri_image_drawable_get_buffers(struct dri_drawable *drawable,
                                unsigned statts_count);
 
 #ifdef VK_USE_PLATFORM_XCB_KHR
+/* Translate from the pipe_format enums used by Gallium to the DRM FourCC
+ * codes used by dmabuf import */
 static int
-get_dri_format(enum pipe_format pf)
+pipe_format_to_fourcc(enum pipe_format format)
 {
-   int image_format;
-   switch (pf) {
-   case PIPE_FORMAT_BGRA8888_SRGB:
-      image_format = __DRI_IMAGE_FORMAT_SARGB8;
-      break;
-   case PIPE_FORMAT_BGRX8888_SRGB:
-      image_format = __DRI_IMAGE_FORMAT_SXRGB8;
-      break;
-   case PIPE_FORMAT_RGBA8888_SRGB:
-      image_format = __DRI_IMAGE_FORMAT_SABGR8;
-      break;
-   case PIPE_FORMAT_B5G6R5_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_RGB565;
-      break;
-   case PIPE_FORMAT_BGRX8888_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_XRGB8888;
-      break;
-   case PIPE_FORMAT_BGRA8888_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ARGB8888;
-      break;
-   case PIPE_FORMAT_RGBA8888_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ABGR8888;
-      break;
-   case PIPE_FORMAT_RGBX8888_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_XBGR8888;
-      break;
-   case PIPE_FORMAT_B10G10R10X2_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_XRGB2101010;
-      break;
-   case PIPE_FORMAT_B10G10R10A2_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ARGB2101010;
-      break;
-   case PIPE_FORMAT_R10G10B10X2_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_XBGR2101010;
-      break;
-   case PIPE_FORMAT_R10G10B10A2_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ABGR2101010;
-      break;
-   case PIPE_FORMAT_R16G16B16A16_FLOAT:
-      image_format = __DRI_IMAGE_FORMAT_ABGR16161616F;
-      break;
-   case PIPE_FORMAT_R16G16B16X16_FLOAT:
-      image_format = __DRI_IMAGE_FORMAT_XBGR16161616F;
-      break;
-   case PIPE_FORMAT_B5G5R5A1_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ARGB1555;
-      break;
-   case PIPE_FORMAT_R5G5B5A1_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ABGR1555;
-      break;
-   case PIPE_FORMAT_B4G4R4A4_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ARGB4444;
-      break;
-   case PIPE_FORMAT_R4G4B4A4_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ABGR4444;
-      break;
-   default:
-      image_format = __DRI_IMAGE_FORMAT_NONE;
-      break;
-   }
-   return image_format;
-}
-
-/* the DRIimage createImage function takes __DRI_IMAGE_FORMAT codes, while
- * the createImageFromFds call takes DRM_FORMAT codes. To avoid
- * complete confusion, just deal in __DRI_IMAGE_FORMAT codes for now and
- * translate to DRM_FORMAT codes in the call to createImageFromFds
- */
-static int
-image_format_to_fourcc(int format)
-{
-
-   /* Convert from __DRI_IMAGE_FORMAT to DRM_FORMAT (sigh) */
    switch (format) {
-   case __DRI_IMAGE_FORMAT_SARGB8: return __DRI_IMAGE_FOURCC_SARGB8888;
-   case __DRI_IMAGE_FORMAT_SABGR8: return __DRI_IMAGE_FOURCC_SABGR8888;
-   case __DRI_IMAGE_FORMAT_SXRGB8: return __DRI_IMAGE_FOURCC_SXRGB8888;
-   case __DRI_IMAGE_FORMAT_RGB565: return DRM_FORMAT_RGB565;
-   case __DRI_IMAGE_FORMAT_XRGB8888: return DRM_FORMAT_XRGB8888;
-   case __DRI_IMAGE_FORMAT_ARGB8888: return DRM_FORMAT_ARGB8888;
-   case __DRI_IMAGE_FORMAT_ABGR8888: return DRM_FORMAT_ABGR8888;
-   case __DRI_IMAGE_FORMAT_XBGR8888: return DRM_FORMAT_XBGR8888;
-   case __DRI_IMAGE_FORMAT_XRGB2101010: return DRM_FORMAT_XRGB2101010;
-   case __DRI_IMAGE_FORMAT_ARGB2101010: return DRM_FORMAT_ARGB2101010;
-   case __DRI_IMAGE_FORMAT_XBGR2101010: return DRM_FORMAT_XBGR2101010;
-   case __DRI_IMAGE_FORMAT_ABGR2101010: return DRM_FORMAT_ABGR2101010;
-   case __DRI_IMAGE_FORMAT_XBGR16161616F: return DRM_FORMAT_XBGR16161616F;
-   case __DRI_IMAGE_FORMAT_ABGR16161616F: return DRM_FORMAT_ABGR16161616F;
-   case __DRI_IMAGE_FORMAT_ARGB1555: return DRM_FORMAT_ARGB1555;
-   case __DRI_IMAGE_FORMAT_ABGR1555: return DRM_FORMAT_ABGR1555;
-   case __DRI_IMAGE_FORMAT_ARGB4444: return DRM_FORMAT_ARGB4444;
-   case __DRI_IMAGE_FORMAT_ABGR4444: return DRM_FORMAT_ABGR4444;
+   case PIPE_FORMAT_BGRA8888_SRGB:      return __DRI_IMAGE_FOURCC_SABGR8888;
+   case PIPE_FORMAT_BGRX8888_SRGB:      return __DRI_IMAGE_FOURCC_SXRGB8888;
+   case PIPE_FORMAT_RGBA8888_SRGB:      return __DRI_IMAGE_FOURCC_SABGR8888;
+   case PIPE_FORMAT_B5G6R5_UNORM:       return DRM_FORMAT_RGB565;
+   case PIPE_FORMAT_BGRX8888_UNORM:     return DRM_FORMAT_XRGB8888;
+   case PIPE_FORMAT_BGRA8888_UNORM:     return DRM_FORMAT_ARGB8888;
+   case PIPE_FORMAT_RGBA8888_UNORM:     return DRM_FORMAT_ABGR8888;
+   case PIPE_FORMAT_RGBX8888_UNORM:     return DRM_FORMAT_XBGR8888;
+   case PIPE_FORMAT_B10G10R10X2_UNORM:  return DRM_FORMAT_XRGB2101010;
+   case PIPE_FORMAT_B10G10R10A2_UNORM:  return DRM_FORMAT_ARGB2101010;
+   case PIPE_FORMAT_R10G10B10X2_UNORM:  return DRM_FORMAT_XBGR2101010;
+   case PIPE_FORMAT_R10G10B10A2_UNORM:  return DRM_FORMAT_ABGR2101010;
+   case PIPE_FORMAT_R16G16B16A16_FLOAT: return DRM_FORMAT_XBGR16161616F;
+   case PIPE_FORMAT_R16G16B16X16_FLOAT: return DRM_FORMAT_ABGR16161616F;
+   case PIPE_FORMAT_B5G5R5A1_UNORM:     return DRM_FORMAT_ARGB1555;
+   case PIPE_FORMAT_R5G5B5A1_UNORM:     return DRM_FORMAT_ABGR1555;
+   case PIPE_FORMAT_B4G4R4A4_UNORM:     return DRM_FORMAT_ARGB4444;
+   case PIPE_FORMAT_R4G4B4A4_UNORM:     return DRM_FORMAT_ABGR4444;
+   default:                             return DRM_FORMAT_INVALID;
    }
-   return 0;
 }
 
 #ifdef HAVE_DRI3_MODIFIERS
@@ -402,8 +331,7 @@ kopper_get_pixmap_buffer(struct dri_drawable *drawable,
    xcb_drawable_t                       pixmap;
    int                                  width;
    int                                  height;
-   int format = get_dri_format(pf);
-   uint32_t fourcc = image_format_to_fourcc(format);
+   uint32_t fourcc = pipe_format_to_fourcc(pf);
    struct kopper_loader_info *info = &drawable->info;
    assert(info->bos.sType == VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR);
    VkXcbSurfaceCreateInfoKHR *xcb = (VkXcbSurfaceCreateInfoKHR *)&info->bos;

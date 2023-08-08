@@ -315,6 +315,14 @@ server_supports_format(struct dri2_wl_formats *formats, int idx)
 }
 
 static bool
+server_supports_pipe_format(struct dri2_wl_formats *formats,
+                            enum pipe_format format)
+{
+   return server_supports_format(formats,
+                                 dri2_wl_visual_idx_from_pipe_format(format));
+}
+
+static bool
 server_supports_fourcc(struct dri2_wl_formats *formats, uint32_t fourcc)
 {
    return server_supports_format(formats, dri2_wl_visual_idx_from_fourcc(fourcc));
@@ -2022,53 +2030,42 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
    unsigned int format_count[ARRAY_SIZE(dri2_wl_visuals)] = {0};
    unsigned int count = 0;
 
+   /* Try to create an EGLConfig for every config the driver declares */
    for (unsigned i = 0; dri2_dpy->driver_configs[i]; i++) {
-      bool assigned = false;
       struct dri2_egl_config *dri2_conf;
+      bool conversion = false;
       int idx = dri2_wl_visual_idx_from_config(dri2_dpy,
                                                dri2_dpy->driver_configs[i]);
 
-      if (!server_supports_format(&dri2_dpy->formats, idx))
-         continue;
-
-      dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
-                                  count + 1, EGL_WINDOW_BIT, NULL, NULL, NULL);
-      if (dri2_conf) {
-         if (dri2_conf->base.ConfigID == count + 1)
-            count++;
-         format_count[idx]++;
-         assigned = true;
-      }
-
-      /* No match for config. Try if we can blitImage convert to a visual */
-      if (!assigned && dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) {
-         struct dri2_egl_config *dri2_conf;
-         int alt_pipe_format, s;
-
-         /* Find optimal target visual for blitImage conversion, if any. */
-         alt_pipe_format = dri2_wl_visuals[idx].alt_pipe_format;
-         s = dri2_wl_visual_idx_from_pipe_format(alt_pipe_format);
-
-         if (!server_supports_format(&dri2_dpy->formats, s))
+      /* Check if the server natively supports the colour buffer format */
+      if (!server_supports_format(&dri2_dpy->formats, idx)) {
+         /* In multi-GPU scenarios, we usually have a different buffer, so a
+          * format conversion is easy compared to the overhead of the copy */
+         if (dri2_dpy->fd_render_gpu == dri2_dpy->fd_display_gpu)
             continue;
 
-         /* Visual s works for the Wayland server, and c can be converted into s
-          * by our client gpu during PRIME blitImage conversion to a linear
-          * wl_buffer, so add visual c as supported by the client renderer.
-          */
-         dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
-                                     count + 1, EGL_WINDOW_BIT, NULL, NULL, NULL);
-         if (dri2_conf) {
-            if (dri2_conf->base.ConfigID == count + 1)
-               count++;
-            format_count[idx]++;
-            if (format_count[idx] == 1)
-               _eglLog(_EGL_DEBUG,
-                       "Client format %s to server format %s via "
-                       "PRIME blitImage.",
-                       dri2_wl_visuals[idx].format_name,
-                       dri2_wl_visuals[s].format_name);
+         /* Check if the server supports the alternate format */
+         if (!server_supports_pipe_format(&dri2_dpy->formats,
+                                          dri2_wl_visuals[idx].alt_pipe_format)) {
+            continue;
          }
+
+         conversion = true;
+      }
+
+      /* The format is supported one way or another; add the EGLConfig */
+      dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
+                                  count + 1, EGL_WINDOW_BIT, NULL, NULL, NULL);
+      if (!dri2_conf)
+         continue;
+
+      if (dri2_conf->base.ConfigID == count + 1)
+         count++;
+      format_count[idx]++;
+
+      if (conversion && format_count[idx] == 1) {
+         _eglLog(_EGL_DEBUG, "Client format %s converted via PRIME blitImage.",
+                 dri2_wl_visuals[idx].format_name);
       }
    }
 

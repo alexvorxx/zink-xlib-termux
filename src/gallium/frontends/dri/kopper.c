@@ -186,6 +186,15 @@ get_dri_format(enum pipe_format pf)
 {
    int image_format;
    switch (pf) {
+   case PIPE_FORMAT_BGRA8888_SRGB:
+      image_format = __DRI_IMAGE_FORMAT_SARGB8;
+      break;
+   case PIPE_FORMAT_BGRX8888_SRGB:
+      image_format = __DRI_IMAGE_FORMAT_SXRGB8;
+      break;
+   case PIPE_FORMAT_RGBA8888_SRGB:
+      image_format = __DRI_IMAGE_FORMAT_SABGR8;
+      break;
    case PIPE_FORMAT_R16G16B16A16_FLOAT:
       image_format = __DRI_IMAGE_FORMAT_ABGR16161616F;
       break;

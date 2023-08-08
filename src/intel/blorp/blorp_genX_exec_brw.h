@@ -1907,6 +1907,7 @@ xy_bcb_surf_depth(const struct isl_surf *surf)
                                        : surf->logical_level0_px.array_len;
 }
 
+#if GFX_VER < 20
 static uint32_t
 xy_aux_mode(const struct blorp_surface_info *info)
 {
@@ -1921,7 +1922,8 @@ xy_aux_mode(const struct blorp_surface_info *info)
       unreachable("Unsupported aux mode");
    }
 }
-#endif
+#endif // GFX_VER < 20
+#endif // GFX_VERx10 >= 125
 
 UNUSED static void
 blorp_xy_block_copy_blt(struct blorp_batch *batch,
@@ -2010,15 +2012,19 @@ blorp_xy_block_copy_blt(struct blorp_batch *batch,
       blt.DestinationMipTailStartLOD = dst_surf->miptail_start_level;
       blt.DestinationHorizontalAlign = isl_encode_halign(dst_align.width);
       blt.DestinationVerticalAlign = isl_encode_valign(dst_align.height);
+#if GFX_VER < 20
       /* XY_BLOCK_COPY_BLT only supports AUX_CCS. */
       blt.DestinationDepthStencilResource =
          params->dst.aux_usage == ISL_AUX_USAGE_STC_CCS;
+#endif
       blt.DestinationTargetMemory =
          params->dst.addr.local_hint ? XY_MEM_LOCAL : XY_MEM_SYSTEM;
 
       if (params->dst.aux_usage != ISL_AUX_USAGE_NONE) {
+#if GFX_VER < 20
          blt.DestinationAuxiliarySurfaceMode = xy_aux_mode(&params->dst);
          blt.DestinationCompressionEnable = true;
+#endif
          blt.DestinationCompressionFormat =
             isl_get_render_compression_format(dst_surf->format);
          blt.DestinationClearValueEnable = !!params->dst.clear_color_addr.buffer;
@@ -2047,15 +2053,19 @@ blorp_xy_block_copy_blt(struct blorp_batch *batch,
       blt.SourceMipTailStartLOD = src_surf->miptail_start_level;
       blt.SourceHorizontalAlign = isl_encode_halign(src_align.width);
       blt.SourceVerticalAlign = isl_encode_valign(src_align.height);
+#if GFX_VER < 20
       /* XY_BLOCK_COPY_BLT only supports AUX_CCS. */
       blt.SourceDepthStencilResource =
          params->src.aux_usage == ISL_AUX_USAGE_STC_CCS;
+#endif
       blt.SourceTargetMemory =
          params->src.addr.local_hint ? XY_MEM_LOCAL : XY_MEM_SYSTEM;
 
       if (params->src.aux_usage != ISL_AUX_USAGE_NONE) {
+#if GFX_VER < 20
          blt.SourceAuxiliarySurfaceMode = xy_aux_mode(&params->src);
          blt.SourceCompressionEnable = true;
+#endif
          blt.SourceCompressionFormat =
             isl_get_render_compression_format(src_surf->format);
          blt.SourceClearValueEnable = !!params->src.clear_color_addr.buffer;

@@ -1651,11 +1651,11 @@ dri2_wl_create_wayland_buffer_from_image(_EGLDisplay *disp, _EGLImage *img)
    struct dri2_egl_image *dri2_img = dri2_egl_image(img);
    __DRIimage *image = dri2_img->dri_image;
    struct wl_buffer *buffer;
-   int format, visual_idx;
+   int fourcc, visual_idx;
 
    /* Check the upstream display supports this buffer's format. */
-   dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FORMAT, &format);
-   visual_idx = dri2_wl_visual_idx_from_pipe_format(format);
+   dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FOURCC, &fourcc);
+   visual_idx = dri2_wl_visual_idx_from_fourcc(fourcc);
    if (visual_idx == -1)
       goto bad_format;
 

@@ -361,10 +361,7 @@ dri2_initialize_surfaceless(_EGLDisplay *disp)
 #endif
    dri2_set_WL_bind_wayland_display(disp);
 
-   if (!dri2_add_pbuffer_configs_for_visuals(disp)) {
-      err = "DRI2: failed to add configs";
-      goto cleanup;
-   }
+   dri2_add_pbuffer_configs_for_visuals(disp);
 
    /* Fill vtbl last to prevent accidentally calling virtual function during
     * initialization.

@@ -619,7 +619,7 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config, int id,
    return conf;
 }
 
-EGLBoolean
+void
 dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -649,8 +649,6 @@ dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp)
                  dri2_pbuffer_visuals[i].format_name);
       }
    }
-
-   return (config_count != 0);
 }
 
 GLboolean

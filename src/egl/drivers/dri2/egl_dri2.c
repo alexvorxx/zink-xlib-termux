@@ -1180,6 +1180,12 @@ dri2_initialize(_EGLDisplay *disp)
    if (!ret)
       return EGL_FALSE;
 
+   if (_eglGetArraySize(disp->Configs) == 0) {
+      _eglError(EGL_NOT_INITIALIZED, "failed to add any EGLConfigs");
+      dri2_display_destroy(disp);
+      return EGL_FALSE;
+   }
+
    dri2_dpy = dri2_egl_display(disp);
    p_atomic_inc(&dri2_dpy->ref_count);
 

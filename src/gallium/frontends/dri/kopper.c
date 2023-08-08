@@ -275,7 +275,7 @@ image_format_to_fourcc(int format)
 static __DRIimage *
 dri3_create_image_from_buffers(xcb_connection_t *c,
                                xcb_dri3_buffers_from_pixmap_reply_t *bp_reply,
-                               unsigned int format,
+                               uint32_t fourcc,
                                struct dri_screen *screen,
                                const __DRIimageExtension *image,
                                void *loaderPrivate)
@@ -301,7 +301,7 @@ dri3_create_image_from_buffers(xcb_connection_t *c,
    ret = image->createImageFromDmaBufs2(opaque_dri_screen(screen),
                                         bp_reply->width,
                                         bp_reply->height,
-                                        image_format_to_fourcc(format),
+                                        fourcc,
                                         bp_reply->modifier,
                                         fds, bp_reply->nfd,
                                         strides, offsets,
@@ -318,7 +318,7 @@ dri3_create_image_from_buffers(xcb_connection_t *c,
 static __DRIimage *
 dri3_create_image(xcb_connection_t *c,
                   xcb_dri3_buffer_from_pixmap_reply_t *bp_reply,
-                  unsigned int format,
+                  uint32_t fourcc,
                   struct dri_screen *screen,
                   const __DRIimageExtension *image,
                   void *loaderPrivate)
@@ -342,7 +342,7 @@ dri3_create_image(xcb_connection_t *c,
    image_planar = image->createImageFromFds(opaque_dri_screen(screen),
                                             bp_reply->width,
                                             bp_reply->height,
-                                            image_format_to_fourcc(format),
+                                            fourcc,
                                             fds, 1,
                                             &stride, &offset, loaderPrivate);
    close(fds[0]);
@@ -394,6 +394,7 @@ kopper_get_pixmap_buffer(struct dri_drawable *drawable,
    int                                  width;
    int                                  height;
    int format = get_dri_format(pf);
+   uint32_t fourcc = image_format_to_fourcc(format);
    struct kopper_loader_info *info = &drawable->info;
    assert(info->bos.sType == VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR);
    VkXcbSurfaceCreateInfoKHR *xcb = (VkXcbSurfaceCreateInfoKHR *)&info->bos;
@@ -421,7 +422,7 @@ kopper_get_pixmap_buffer(struct dri_drawable *drawable,
          return NULL;
       }
       drawable->image =
-         dri3_create_image_from_buffers(conn, bps_reply, format,
+         dri3_create_image_from_buffers(conn, bps_reply, fourcc,
                                         screen, &driVkImageExtension,
                                         drawable);
       if (!drawable->image)
@@ -443,7 +444,7 @@ kopper_get_pixmap_buffer(struct dri_drawable *drawable,
          return NULL;
       }
 
-      drawable->image = dri3_create_image(conn, bp_reply, format,
+      drawable->image = dri3_create_image(conn, bp_reply, fourcc,
                                        screen, &driVkImageExtension,
                                        drawable);
       if (!drawable->image)

@@ -773,7 +773,7 @@ dri2_x11_authenticate(_EGLDisplay *disp, uint32_t id)
    return dri2_x11_do_authenticate(dri2_dpy, id);
 }
 
-static EGLBoolean
+static void
 dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
                                  _EGLDisplay *disp, bool supports_preserved)
 {
@@ -861,13 +861,6 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
 
       xcb_depth_next(&d);
    }
-
-   if (!config_count) {
-      _eglLog(_EGL_WARNING, "DRI2: failed to create any config");
-      return EGL_FALSE;
-   }
-
-   return EGL_TRUE;
 }
 
 static EGLBoolean
@@ -1573,8 +1566,7 @@ dri2_initialize_x11_swrast(_EGLDisplay *disp)
    disp->Extensions.EXT_buffer_age = EGL_TRUE;
    disp->Extensions.ANGLE_sync_control_rate = EGL_TRUE;
 
-   if (!dri2_x11_add_configs_for_visuals(dri2_dpy, disp, !disp->Options.Zink))
-      goto cleanup;
+   dri2_x11_add_configs_for_visuals(dri2_dpy, disp, !disp->Options.Zink);
 
    /* Fill vtbl last to prevent accidentally calling virtual function during
     * initialization.
@@ -1649,8 +1641,7 @@ dri2_initialize_x11_dri3(_EGLDisplay *disp)
 
    dri2_set_WL_bind_wayland_display(disp);
 
-   if (!dri2_x11_add_configs_for_visuals(dri2_dpy, disp, false))
-      goto cleanup;
+   dri2_x11_add_configs_for_visuals(dri2_dpy, disp, false);
 
    loader_init_screen_resources(&dri2_dpy->screen_resources, dri2_dpy->conn,
                                 dri2_dpy->screen);
@@ -1756,8 +1747,7 @@ dri2_initialize_x11_dri2(_EGLDisplay *disp)
 
    dri2_set_WL_bind_wayland_display(disp);
 
-   if (!dri2_x11_add_configs_for_visuals(dri2_dpy, disp, true))
-      goto cleanup;
+   dri2_x11_add_configs_for_visuals(dri2_dpy, disp, true);
 
    /* Fill vtbl last to prevent accidentally calling virtual function during
     * initialization.

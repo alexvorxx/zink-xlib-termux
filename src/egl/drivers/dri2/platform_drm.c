@@ -492,7 +492,7 @@ swrast_get_image(__DRIdrawable *driDrawable, int x, int y, int width,
    gbm_dri_bo_unmap_dumb(bo);
 }
 
-static EGLBoolean
+static void
 drm_add_configs_for_visuals(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -537,9 +537,9 @@ drm_add_configs_for_visuals(_EGLDisplay *disp)
             dri2_add_config(disp, dri2_dpy->driver_configs[i], config_count + 1,
                             EGL_WINDOW_BIT, attr_list, NULL, NULL);
          if (dri2_conf) {
+            format_count[j]++;
             if (dri2_conf->base.ConfigID == config_count + 1)
                config_count++;
-            format_count[j]++;
          }
       }
    }
@@ -551,8 +551,6 @@ drm_add_configs_for_visuals(_EGLDisplay *disp)
                  gbm_format_get_name(visuals[i].gbm_format, &desc));
       }
    }
-
-   return (config_count != 0);
 }
 
 static const struct dri2_egl_display_vtbl dri2_drm_display_vtbl = {
@@ -683,10 +681,7 @@ dri2_initialize_drm(_EGLDisplay *disp)
 
    dri2_setup_screen(disp);
 
-   if (!drm_add_configs_for_visuals(disp)) {
-      err = "DRI2: failed to add configs";
-      goto cleanup;
-   }
+   drm_add_configs_for_visuals(disp);
 
    disp->Extensions.KHR_image_pixmap = EGL_TRUE;
    if (dri2_dpy->image_driver)

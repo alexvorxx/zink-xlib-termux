@@ -1960,7 +1960,7 @@ static const __DRIextension *dri2_loader_extensions[] = {
    NULL,
 };
 
-static EGLBoolean
+static void
 dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -2012,8 +2012,6 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
                  util_format_name(dri2_wl_visuals[i].pipe_format));
       }
    }
-
-   return (count != 0);
 }
 
 static bool
@@ -2171,10 +2169,7 @@ dri2_initialize_wayland_drm(_EGLDisplay *disp)
       goto cleanup;
    }
 
-   if (!dri2_wl_add_configs_for_visuals(disp)) {
-      _eglError(EGL_NOT_INITIALIZED, "DRI2: failed to add configs");
-      goto cleanup;
-   }
+   dri2_wl_add_configs_for_visuals(disp);
 
    dri2_set_WL_bind_wayland_display(disp);
    /* When cannot convert EGLImage to wl_buffer when on a different gpu,
@@ -2698,10 +2693,7 @@ dri2_initialize_wayland_swrast(_EGLDisplay *disp)
 
    dri2_wl_setup_swap_interval(disp);
 
-   if (!dri2_wl_add_configs_for_visuals(disp)) {
-      _eglError(EGL_NOT_INITIALIZED, "DRI2: failed to add configs");
-      goto cleanup;
-   }
+   dri2_wl_add_configs_for_visuals(disp);
 
    if (disp->Options.Zink && dri2_dpy->fd_render_gpu >= 0 &&
        (dri2_dpy->wl_dmabuf || dri2_dpy->wl_drm))

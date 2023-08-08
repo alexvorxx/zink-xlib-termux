@@ -195,26 +195,8 @@ get_dri_format(enum pipe_format pf)
    case PIPE_FORMAT_RGBA8888_SRGB:
       image_format = __DRI_IMAGE_FORMAT_SABGR8;
       break;
-   case PIPE_FORMAT_R16G16B16A16_FLOAT:
-      image_format = __DRI_IMAGE_FORMAT_ABGR16161616F;
-      break;
-   case PIPE_FORMAT_R16G16B16X16_FLOAT:
-      image_format = __DRI_IMAGE_FORMAT_XBGR16161616F;
-      break;
    case PIPE_FORMAT_B5G6R5_UNORM:
       image_format = __DRI_IMAGE_FORMAT_RGB565;
-      break;
-   case PIPE_FORMAT_B5G5R5A1_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ARGB1555;
-      break;
-   case PIPE_FORMAT_R5G5B5A1_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ABGR1555;
-      break;
-   case PIPE_FORMAT_B4G4R4A4_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ARGB4444;
-      break;
-   case PIPE_FORMAT_R4G4B4A4_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_ABGR4444;
       break;
    case PIPE_FORMAT_BGRX8888_UNORM:
       image_format = __DRI_IMAGE_FORMAT_XRGB8888;
@@ -222,11 +204,11 @@ get_dri_format(enum pipe_format pf)
    case PIPE_FORMAT_BGRA8888_UNORM:
       image_format = __DRI_IMAGE_FORMAT_ARGB8888;
       break;
-   case PIPE_FORMAT_RGBX8888_UNORM:
-      image_format = __DRI_IMAGE_FORMAT_XBGR8888;
-      break;
    case PIPE_FORMAT_RGBA8888_UNORM:
       image_format = __DRI_IMAGE_FORMAT_ABGR8888;
+      break;
+   case PIPE_FORMAT_RGBX8888_UNORM:
+      image_format = __DRI_IMAGE_FORMAT_XBGR8888;
       break;
    case PIPE_FORMAT_B10G10R10X2_UNORM:
       image_format = __DRI_IMAGE_FORMAT_XRGB2101010;
@@ -239,6 +221,24 @@ get_dri_format(enum pipe_format pf)
       break;
    case PIPE_FORMAT_R10G10B10A2_UNORM:
       image_format = __DRI_IMAGE_FORMAT_ABGR2101010;
+      break;
+   case PIPE_FORMAT_R16G16B16A16_FLOAT:
+      image_format = __DRI_IMAGE_FORMAT_ABGR16161616F;
+      break;
+   case PIPE_FORMAT_R16G16B16X16_FLOAT:
+      image_format = __DRI_IMAGE_FORMAT_XBGR16161616F;
+      break;
+   case PIPE_FORMAT_B5G5R5A1_UNORM:
+      image_format = __DRI_IMAGE_FORMAT_ARGB1555;
+      break;
+   case PIPE_FORMAT_R5G5B5A1_UNORM:
+      image_format = __DRI_IMAGE_FORMAT_ABGR1555;
+      break;
+   case PIPE_FORMAT_B4G4R4A4_UNORM:
+      image_format = __DRI_IMAGE_FORMAT_ARGB4444;
+      break;
+   case PIPE_FORMAT_R4G4B4A4_UNORM:
+      image_format = __DRI_IMAGE_FORMAT_ABGR4444;
       break;
    default:
       image_format = __DRI_IMAGE_FORMAT_NONE;

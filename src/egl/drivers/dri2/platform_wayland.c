@@ -43,6 +43,7 @@
 
 #include "util/anon_file.h"
 #include "util/u_vector.h"
+#include "util/format/u_formats.h"
 #include "egl_dri2.h"
 #include "eglglobals.h"
 #include "kopper_interface.h"
@@ -63,15 +64,15 @@ static const struct dri2_wl_visual {
    const char *format_name;
    uint32_t wl_drm_format;
    uint32_t wl_shm_format;
-   int dri_image_format;
-   /* alt_dri_image_format is a substitute wl_buffer format to use for a
-    * wl-server unsupported dri_image_format, ie. some other dri_image_format in
+   int pipe_format;
+   /* alt_pipe_format is a substitute wl_buffer format to use for a
+    * wl-server unsupported pipe_format, ie. some other pipe_format in
     * the table, of the same precision but with different channel ordering, or
-    * __DRI_IMAGE_FORMAT_NONE if an alternate format is not needed or supported.
-    * The code checks if alt_dri_image_format can be used as a fallback for a
-    * dri_image_format for a given wl-server implementation.
+    * PIPE_FORMAT_NONE if an alternate format is not needed or supported.
+    * The code checks if alt_pipe_format can be used as a fallback for a
+    * pipe_format for a given wl-server implementation.
     */
-   int alt_dri_image_format;
+   int alt_pipe_format;
    int bpp;
    int rgba_shifts[4];
    unsigned int rgba_sizes[4];
@@ -80,8 +81,8 @@ static const struct dri2_wl_visual {
       "ABGR16F",
       WL_DRM_FORMAT_ABGR16F,
       WL_SHM_FORMAT_ABGR16161616F,
-      __DRI_IMAGE_FORMAT_ABGR16161616F,
-      0,
+      PIPE_FORMAT_R16G16B16A16_FLOAT,
+      PIPE_FORMAT_NONE,
       64,
       {0, 16, 32, 48},
       {16, 16, 16, 16},
@@ -90,8 +91,8 @@ static const struct dri2_wl_visual {
       "XBGR16F",
       WL_DRM_FORMAT_XBGR16F,
       WL_SHM_FORMAT_XBGR16161616F,
-      __DRI_IMAGE_FORMAT_XBGR16161616F,
-      0,
+      PIPE_FORMAT_R16G16B16X16_FLOAT,
+      PIPE_FORMAT_NONE,
       64,
       {0, 16, 32, -1},
       {16, 16, 16, 0},
@@ -100,8 +101,8 @@ static const struct dri2_wl_visual {
       "XRGB2101010",
       WL_DRM_FORMAT_XRGB2101010,
       WL_SHM_FORMAT_XRGB2101010,
-      __DRI_IMAGE_FORMAT_XRGB2101010,
-      __DRI_IMAGE_FORMAT_XBGR2101010,
+      PIPE_FORMAT_B10G10R10X2_UNORM,
+      PIPE_FORMAT_R10G10B10X2_UNORM,
       32,
       {20, 10, 0, -1},
       {10, 10, 10, 0},
@@ -110,8 +111,8 @@ static const struct dri2_wl_visual {
       "ARGB2101010",
       WL_DRM_FORMAT_ARGB2101010,
       WL_SHM_FORMAT_ARGB2101010,
-      __DRI_IMAGE_FORMAT_ARGB2101010,
-      __DRI_IMAGE_FORMAT_ABGR2101010,
+      PIPE_FORMAT_B10G10R10A2_UNORM,
+      PIPE_FORMAT_R10G10B10A2_UNORM,
       32,
       {20, 10, 0, 30},
       {10, 10, 10, 2},
@@ -120,8 +121,8 @@ static const struct dri2_wl_visual {
       "XBGR2101010",
       WL_DRM_FORMAT_XBGR2101010,
       WL_SHM_FORMAT_XBGR2101010,
-      __DRI_IMAGE_FORMAT_XBGR2101010,
-      __DRI_IMAGE_FORMAT_XRGB2101010,
+      PIPE_FORMAT_R10G10B10X2_UNORM,
+      PIPE_FORMAT_B10G10R10X2_UNORM,
       32,
       {0, 10, 20, -1},
       {10, 10, 10, 0},
@@ -130,8 +131,8 @@ static const struct dri2_wl_visual {
       "ABGR2101010",
       WL_DRM_FORMAT_ABGR2101010,
       WL_SHM_FORMAT_ABGR2101010,
-      __DRI_IMAGE_FORMAT_ABGR2101010,
-      __DRI_IMAGE_FORMAT_ARGB2101010,
+      PIPE_FORMAT_R10G10B10A2_UNORM,
+      PIPE_FORMAT_B10G10R10A2_UNORM,
       32,
       {0, 10, 20, 30},
       {10, 10, 10, 2},
@@ -140,8 +141,8 @@ static const struct dri2_wl_visual {
       "XRGB8888",
       WL_DRM_FORMAT_XRGB8888,
       WL_SHM_FORMAT_XRGB8888,
-      __DRI_IMAGE_FORMAT_XRGB8888,
-      __DRI_IMAGE_FORMAT_NONE,
+      PIPE_FORMAT_BGRX8888_UNORM,
+      PIPE_FORMAT_NONE,
       32,
       {16, 8, 0, -1},
       {8, 8, 8, 0},
@@ -150,8 +151,8 @@ static const struct dri2_wl_visual {
       "ARGB8888",
       WL_DRM_FORMAT_ARGB8888,
       WL_SHM_FORMAT_ARGB8888,
-      __DRI_IMAGE_FORMAT_ARGB8888,
-      __DRI_IMAGE_FORMAT_NONE,
+      PIPE_FORMAT_BGRA8888_UNORM,
+      PIPE_FORMAT_NONE,
       32,
       {16, 8, 0, 24},
       {8, 8, 8, 8},
@@ -160,8 +161,8 @@ static const struct dri2_wl_visual {
       "ABGR8888",
       WL_DRM_FORMAT_ABGR8888,
       WL_SHM_FORMAT_ABGR8888,
-      __DRI_IMAGE_FORMAT_ABGR8888,
-      __DRI_IMAGE_FORMAT_NONE,
+      PIPE_FORMAT_RGBA8888_UNORM,
+      PIPE_FORMAT_NONE,
       32,
       {0, 8, 16, 24},
       {8, 8, 8, 8},
@@ -170,8 +171,8 @@ static const struct dri2_wl_visual {
       "XBGR8888",
       WL_DRM_FORMAT_XBGR8888,
       WL_SHM_FORMAT_XBGR8888,
-      __DRI_IMAGE_FORMAT_XBGR8888,
-      __DRI_IMAGE_FORMAT_NONE,
+      PIPE_FORMAT_RGBX8888_UNORM,
+      PIPE_FORMAT_NONE,
       32,
       {0, 8, 16, -1},
       {8, 8, 8, 0},
@@ -180,8 +181,8 @@ static const struct dri2_wl_visual {
       "RGB565",
       WL_DRM_FORMAT_RGB565,
       WL_SHM_FORMAT_RGB565,
-      __DRI_IMAGE_FORMAT_RGB565,
-      __DRI_IMAGE_FORMAT_NONE,
+      PIPE_FORMAT_B5G6R5_UNORM,
+      PIPE_FORMAT_NONE,
       16,
       {11, 5, 0, -1},
       {5, 6, 5, 0},
@@ -190,8 +191,8 @@ static const struct dri2_wl_visual {
       "ARGB1555",
       WL_DRM_FORMAT_ARGB1555,
       WL_SHM_FORMAT_ARGB1555,
-      __DRI_IMAGE_FORMAT_ARGB1555,
-      __DRI_IMAGE_FORMAT_ABGR1555,
+      PIPE_FORMAT_B5G5R5A1_UNORM,
+      PIPE_FORMAT_R5G5B5A1_UNORM,
       16,
       {10, 5, 0, 15},
       {5, 5, 5, 1},
@@ -200,8 +201,8 @@ static const struct dri2_wl_visual {
       "XRGB1555",
       WL_DRM_FORMAT_XRGB1555,
       WL_SHM_FORMAT_XRGB1555,
-      __DRI_IMAGE_FORMAT_XRGB1555,
-      __DRI_IMAGE_FORMAT_XBGR1555,
+      PIPE_FORMAT_B5G5R5X1_UNORM,
+      PIPE_FORMAT_R5G5B5X1_UNORM,
       16,
       {10, 5, 0, -1},
       {5, 5, 5, 0},
@@ -210,8 +211,8 @@ static const struct dri2_wl_visual {
       "ARGB4444",
       WL_DRM_FORMAT_ARGB4444,
       WL_SHM_FORMAT_ARGB4444,
-      __DRI_IMAGE_FORMAT_ARGB4444,
-      __DRI_IMAGE_FORMAT_XBGR4444,
+      PIPE_FORMAT_B4G4R4A4_UNORM,
+      PIPE_FORMAT_R4G4B4A4_UNORM,
       16,
       {8, 4, 0, 12},
       {4, 4, 4, 4},
@@ -220,8 +221,8 @@ static const struct dri2_wl_visual {
       "XRGB4444",
       WL_DRM_FORMAT_XRGB4444,
       WL_SHM_FORMAT_XRGB4444,
-      __DRI_IMAGE_FORMAT_XRGB4444,
-      __DRI_IMAGE_FORMAT_XBGR4444,
+      PIPE_FORMAT_B4G4R4X4_UNORM,
+      PIPE_FORMAT_R4G4B4X4_UNORM,
       16,
       {8, 4, 0, -1},
       {4, 4, 4, 0},
@@ -269,10 +270,10 @@ dri2_wl_visual_idx_from_fourcc(uint32_t fourcc)
 }
 
 static int
-dri2_wl_visual_idx_from_dri_image_format(uint32_t dri_image_format)
+dri2_wl_visual_idx_from_pipe_format(enum pipe_format pipe_format)
 {
    for (int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
-      if (dri2_wl_visuals[i].dri_image_format == dri_image_format)
+      if (dri2_wl_visuals[i].pipe_format == pipe_format)
          return i;
    }
 
@@ -967,7 +968,7 @@ dri2_wl_release_buffers(struct dri2_egl_surface *dri2_surf)
 
 static void
 create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
-                                      unsigned int dri_image_format,
+                                      enum pipe_format pipe_format,
                                       uint32_t use_flags)
 {
    struct dri2_egl_display *dri2_dpy =
@@ -1016,7 +1017,7 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
 
       dri2_surf->back->dri_image = loader_dri_create_image(
          dri2_dpy->dri_screen_render_gpu, dri2_dpy->image,
-         dri2_surf->base.Width, dri2_surf->base.Height, dri_image_format,
+         dri2_surf->base.Width, dri2_surf->base.Height, pipe_format,
          (dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) ? 0 : flags,
          modifiers, num_modifiers, NULL);
 
@@ -1027,7 +1028,7 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
 
 static void
 create_dri_image(struct dri2_egl_surface *dri2_surf,
-                 unsigned int dri_image_format, uint32_t use_flags)
+                 enum pipe_format pipe_format, uint32_t use_flags)
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
@@ -1052,7 +1053,7 @@ create_dri_image(struct dri2_egl_surface *dri2_surf,
     * which is acceptable to the winsys. */
    dri2_surf->back->dri_image = loader_dri_create_image(
       dri2_dpy->dri_screen_render_gpu, dri2_dpy->image, dri2_surf->base.Width,
-      dri2_surf->base.Height, dri_image_format,
+      dri2_surf->base.Height, pipe_format,
       (dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) ? 0 : use_flags,
       modifiers, num_modifiers, NULL);
 }
@@ -1064,27 +1065,26 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
       dri2_egl_display(dri2_surf->base.Resource.Display);
    int use_flags;
    int visual_idx;
-   unsigned int dri_image_format;
-   unsigned int linear_dri_image_format;
+   unsigned int pipe_format;
+   unsigned int linear_pipe_format;
 
    visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
    assert(visual_idx != -1);
-   dri_image_format = dri2_wl_visuals[visual_idx].dri_image_format;
-   linear_dri_image_format = dri_image_format;
+   pipe_format = dri2_wl_visuals[visual_idx].pipe_format;
+   linear_pipe_format = pipe_format;
 
    /* Substitute dri image format if server does not support original format */
    if (!BITSET_TEST(dri2_dpy->formats.formats_bitmap, visual_idx))
-      linear_dri_image_format =
-         dri2_wl_visuals[visual_idx].alt_dri_image_format;
+      linear_pipe_format = dri2_wl_visuals[visual_idx].alt_pipe_format;
 
    /* These asserts hold, as long as dri2_wl_visuals[] is self-consistent and
     * the PRIME substitution logic in dri2_wl_add_configs_for_visuals() is free
     * of bugs.
     */
-   assert(linear_dri_image_format != __DRI_IMAGE_FORMAT_NONE);
+   assert(linear_pipe_format != PIPE_FORMAT_NONE);
    assert(BITSET_TEST(
       dri2_dpy->formats.formats_bitmap,
-      dri2_wl_visual_idx_from_dri_image_format(linear_dri_image_format)));
+      dri2_wl_visual_idx_from_pipe_format(linear_pipe_format)));
 
    /* There might be a buffer release already queued that wasn't processed */
    wl_display_dispatch_queue_pending(dri2_dpy->wl_dpy, dri2_surf->wl_queue);
@@ -1137,7 +1137,7 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
          linear_copy_display_gpu_image = loader_dri_create_image(
             dri2_dpy->dri_screen_display_gpu, dri2_dpy->image,
             dri2_surf->base.Width, dri2_surf->base.Height,
-            linear_dri_image_format, use_flags | __DRI_IMAGE_USE_LINEAR,
+            linear_pipe_format, use_flags | __DRI_IMAGE_USE_LINEAR,
             &linear_mod, 1, NULL);
 
          if (linear_copy_display_gpu_image) {
@@ -1164,8 +1164,8 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
                }
 
                buffer_fds[i] = -1;
-               ret = dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FD,
-                                                 &buffer_fds[i]);
+               ret &= dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FD,
+                                                  &buffer_fds[i]);
                ret &= dri2_dpy->image->queryImage(
                   image, __DRI_IMAGE_ATTRIB_STRIDE, &strides[i]);
                ret &= dri2_dpy->image->queryImage(
@@ -1222,7 +1222,7 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
          dri2_surf->back->linear_copy = loader_dri_create_image(
             dri2_dpy->dri_screen_render_gpu, dri2_dpy->image,
             dri2_surf->base.Width, dri2_surf->base.Height,
-            linear_dri_image_format, use_flags | __DRI_IMAGE_USE_LINEAR,
+            linear_pipe_format, use_flags | __DRI_IMAGE_USE_LINEAR,
             &linear_mod, 1, NULL);
       }
 
@@ -1232,10 +1232,10 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
 
    if (dri2_surf->back->dri_image == NULL) {
       if (dri2_surf->wl_dmabuf_feedback)
-         create_dri_image_from_dmabuf_feedback(dri2_surf, dri_image_format,
+         create_dri_image_from_dmabuf_feedback(dri2_surf, pipe_format,
                                                use_flags);
       if (dri2_surf->back->dri_image == NULL)
-         create_dri_image(dri2_surf, dri_image_format, use_flags);
+         create_dri_image(dri2_surf, pipe_format, use_flags);
       dri2_surf->back->age = 0;
    }
 
@@ -1687,7 +1687,7 @@ dri2_wl_create_wayland_buffer_from_image(_EGLDisplay *disp, _EGLImage *img)
 
    /* Check the upstream display supports this buffer's format. */
    dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FORMAT, &format);
-   visual_idx = dri2_wl_visual_idx_from_dri_image_format(format);
+   visual_idx = dri2_wl_visual_idx_from_pipe_format(format);
    if (visual_idx == -1)
       goto bad_format;
 
@@ -2069,7 +2069,7 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
 
       if (!assigned && dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) {
          struct dri2_egl_config *dri2_conf;
-         int alt_dri_image_format, c, s;
+         int alt_pipe_format, c, s;
 
          /* No match for config. Try if we can blitImage convert to a visual */
          c = dri2_wl_visual_idx_from_config(dri2_dpy,
@@ -2079,8 +2079,8 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
             continue;
 
          /* Find optimal target visual for blitImage conversion, if any. */
-         alt_dri_image_format = dri2_wl_visuals[c].alt_dri_image_format;
-         s = dri2_wl_visual_idx_from_dri_image_format(alt_dri_image_format);
+         alt_pipe_format = dri2_wl_visuals[c].alt_pipe_format;
+         s = dri2_wl_visual_idx_from_pipe_format(alt_pipe_format);
 
          if (s == -1 || !BITSET_TEST(dri2_dpy->formats.formats_bitmap, s))
             continue;

@@ -308,6 +308,18 @@ dri2_wl_is_format_supported(void *user_data, uint32_t format)
    return false;
 }
 
+static bool
+server_supports_format(struct dri2_wl_formats *formats, int idx)
+{
+   return idx >= 0 && BITSET_TEST(formats->formats_bitmap, idx);
+}
+
+static bool
+server_supports_fourcc(struct dri2_wl_formats *formats, uint32_t fourcc)
+{
+   return server_supports_format(formats, dri2_wl_visual_idx_from_fourcc(fourcc));
+}
+
 static int
 roundtrip(struct dri2_egl_display *dri2_dpy)
 {
@@ -1651,15 +1663,11 @@ dri2_wl_create_wayland_buffer_from_image(_EGLDisplay *disp, _EGLImage *img)
    struct dri2_egl_image *dri2_img = dri2_egl_image(img);
    __DRIimage *image = dri2_img->dri_image;
    struct wl_buffer *buffer;
-   int fourcc, visual_idx;
+   int fourcc;
 
    /* Check the upstream display supports this buffer's format. */
    dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FOURCC, &fourcc);
-   visual_idx = dri2_wl_visual_idx_from_fourcc(fourcc);
-   if (visual_idx == -1)
-      goto bad_format;
-
-   if (!BITSET_TEST(dri2_dpy->formats.formats_bitmap, visual_idx))
+   if (!server_supports_fourcc(&dri2_dpy->formats, fourcc))
       goto bad_format;
 
    buffer = create_wl_buffer(dri2_dpy, NULL, image);

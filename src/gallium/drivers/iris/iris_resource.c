@@ -1099,7 +1099,8 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
    if (res->aux.extra_aux.surf.size_B > 0) {
       res->aux.extra_aux.offset =
          (uint32_t)align64(bo_size, INTEL_AUX_MAP_META_ALIGNMENT_B);
-      bo_size = res->aux.extra_aux.offset + res->aux.extra_aux.surf.size_B;
+      bo_size = res->aux.extra_aux.offset +
+                res->surf.size_B / INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN;
    }
 
    /* Allocate space for the indirect clear color.
@@ -1323,16 +1324,19 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
             /* Fill out some aux surface fields. */
             assert(isl_drm_modifier_has_aux(whandle->modifier));
             assert(!devinfo->has_flat_ccs);
-            assert(plane_res->bo->size >= plane_res->offset +
-                   main_res->aux.surf.size_B);
 
             if (devinfo->has_aux_map) {
                assert(plane_res->surf.row_pitch_B ==
                       main_res->surf.row_pitch_B /
                       INTEL_AUX_MAP_MAIN_PITCH_SCALEDOWN);
+               assert(plane_res->bo->size >= plane_res->offset +
+                      main_res->surf.size_B /
+                      INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN);
             } else {
                assert(plane_res->surf.row_pitch_B ==
                       main_res->aux.surf.row_pitch_B);
+               assert(plane_res->bo->size >= plane_res->offset +
+                      main_res->aux.surf.size_B);
             }
 
             iris_bo_reference(plane_res->bo);

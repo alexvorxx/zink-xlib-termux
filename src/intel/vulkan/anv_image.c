@@ -704,11 +704,9 @@ add_compression_control_buffer(struct anv_device *device,
 {
    assert(device->info->has_aux_map);
 
-   uint64_t ratio = intel_aux_get_main_to_aux_ratio(device->aux_map_ctx);
-   assert(image->planes[plane].primary_surface.isl.size_B % ratio == 0);
-   uint64_t size = image->planes[plane].primary_surface.isl.size_B / ratio;
-
-   return image_binding_grow(device, image, binding, offset, size,
+   return image_binding_grow(device, image, binding, offset,
+                             image->planes[plane].primary_surface.isl.size_B /
+                             INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN,
                              INTEL_AUX_MAP_META_ALIGNMENT_B,
                              &image->planes[plane].compr_ctrl_memory_range);
 }

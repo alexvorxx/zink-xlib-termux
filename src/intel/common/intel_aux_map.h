@@ -56,6 +56,19 @@ struct intel_device_info;
 #define INTEL_AUX_MAP_MAIN_PITCH_SCALEDOWN (512 / 64)
 
 /**
+ * The ratio between the granularity of main surface and AUX data.
+ *
+ * The value is from Bspec 47709, MCS/CCS Buffers for Render Target(s):
+ *
+ *    "CCS is a linear buffer created for storing meta-data (AUX data) for
+ *    lossless compression. This buffer related information is mentioned in
+ *    Render Surface State. CCS buffer's size is based on the padded main
+ *    surface (after following Halign and Valign requirements mentioned in the
+ *    Render Surface State). CCS_Buffer_Size = Padded_Main_Surface_Size/256"
+ */
+#define INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN 256
+
+/**
  * The alignment at which the AUX data virtual addresses should start.
  *
  * The diagram in Bspec 44930 shows that the CCS is indexed in 256B chunks for
@@ -97,12 +110,6 @@ intel_aux_map_get_num_buffers(struct intel_aux_map_context *ctx);
  */
 uint64_t
 intel_aux_get_meta_address_mask(struct intel_aux_map_context *ctx);
-
-/**
- * Returns the ratio between the granularity of main surface and AUX data
- */
-uint64_t
-intel_aux_get_main_to_aux_ratio(struct intel_aux_map_context *ctx);
 
 /**
  * Takes a relative offset in the main surface and returns a relative offset

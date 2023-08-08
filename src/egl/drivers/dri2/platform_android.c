@@ -789,7 +789,7 @@ droid_destroy_loader_image_state(void *loaderPrivate)
 #endif
 }
 
-static EGLBoolean
+static void
 droid_add_configs_for_visuals(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -854,9 +854,9 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
             disp, dri2_dpy->driver_configs[j], config_count + 1, surface_type,
             config_attrs, visuals[i].rgba_shifts, visuals[i].rgba_sizes);
          if (dri2_conf) {
+            format_count[i]++;
             if (dri2_conf->base.ConfigID == config_count + 1)
                config_count++;
-            format_count[i]++;
          }
       }
       if (visuals[i].format == HAL_PIXEL_FORMAT_RGBA_8888 && format_count[i])
@@ -869,8 +869,6 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
                  visuals[i].format);
       }
    }
-
-   return (config_count != 0);
 }
 
 static const struct dri2_egl_display_vtbl droid_display_vtbl = {
@@ -1240,10 +1238,7 @@ dri2_initialize_android(_EGLDisplay *disp)
    /* Create configs *after* enabling extensions because presence of DRI
     * driver extensions can affect the capabilities of EGLConfigs.
     */
-   if (!droid_add_configs_for_visuals(disp)) {
-      err = "DRI2: failed to add configs";
-      goto cleanup;
-   }
+   droid_add_configs_for_visuals(disp);
 
    /* Fill vtbl last to prevent accidentally calling virtual function during
     * initialization.

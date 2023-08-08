@@ -2029,7 +2029,7 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
       for (unsigned j = 0; j < ARRAY_SIZE(dri2_wl_visuals); j++) {
          struct dri2_egl_config *dri2_conf;
 
-         if (!BITSET_TEST(dri2_dpy->formats.formats_bitmap, j))
+         if (!server_supports_format(&dri2_dpy->formats, j))
             continue;
 
          dri2_conf = dri2_add_config(
@@ -2058,7 +2058,7 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
          alt_pipe_format = dri2_wl_visuals[c].alt_pipe_format;
          s = dri2_wl_visual_idx_from_pipe_format(alt_pipe_format);
 
-         if (s == -1 || !BITSET_TEST(dri2_dpy->formats.formats_bitmap, s))
+         if (!server_supports_format(&dri2_dpy->formats, s))
             continue;
 
          /* Visual s works for the Wayland server, and c can be converted into s

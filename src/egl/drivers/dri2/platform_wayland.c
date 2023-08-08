@@ -2021,41 +2021,32 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    unsigned int format_count[ARRAY_SIZE(dri2_wl_visuals)] = {0};
    unsigned int count = 0;
-   bool assigned;
 
    for (unsigned i = 0; dri2_dpy->driver_configs[i]; i++) {
-      assigned = false;
+      bool assigned = false;
+      struct dri2_egl_config *dri2_conf;
+      int idx = dri2_wl_visual_idx_from_config(dri2_dpy,
+                                               dri2_dpy->driver_configs[i]);
 
-      for (unsigned j = 0; j < ARRAY_SIZE(dri2_wl_visuals); j++) {
-         struct dri2_egl_config *dri2_conf;
+      if (!server_supports_format(&dri2_dpy->formats, idx))
+         continue;
 
-         if (!server_supports_format(&dri2_dpy->formats, j))
-            continue;
-
-         dri2_conf = dri2_add_config(
-            disp, dri2_dpy->driver_configs[i], count + 1, EGL_WINDOW_BIT, NULL,
-            dri2_wl_visuals[j].rgba_shifts, dri2_wl_visuals[j].rgba_sizes);
-         if (dri2_conf) {
-            if (dri2_conf->base.ConfigID == count + 1)
-               count++;
-            format_count[j]++;
-            assigned = true;
-         }
+      dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
+                                  count + 1, EGL_WINDOW_BIT, NULL, NULL, NULL);
+      if (dri2_conf) {
+         if (dri2_conf->base.ConfigID == count + 1)
+            count++;
+         format_count[idx]++;
+         assigned = true;
       }
 
+      /* No match for config. Try if we can blitImage convert to a visual */
       if (!assigned && dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) {
          struct dri2_egl_config *dri2_conf;
-         int alt_pipe_format, c, s;
-
-         /* No match for config. Try if we can blitImage convert to a visual */
-         c = dri2_wl_visual_idx_from_config(dri2_dpy,
-                                            dri2_dpy->driver_configs[i]);
-
-         if (c == -1)
-            continue;
+         int alt_pipe_format, s;
 
          /* Find optimal target visual for blitImage conversion, if any. */
-         alt_pipe_format = dri2_wl_visuals[c].alt_pipe_format;
+         alt_pipe_format = dri2_wl_visuals[idx].alt_pipe_format;
          s = dri2_wl_visual_idx_from_pipe_format(alt_pipe_format);
 
          if (!server_supports_format(&dri2_dpy->formats, s))
@@ -2065,18 +2056,17 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
           * by our client gpu during PRIME blitImage conversion to a linear
           * wl_buffer, so add visual c as supported by the client renderer.
           */
-         dri2_conf = dri2_add_config(
-            disp, dri2_dpy->driver_configs[i], count + 1, EGL_WINDOW_BIT, NULL,
-            dri2_wl_visuals[c].rgba_shifts, dri2_wl_visuals[c].rgba_sizes);
+         dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
+                                     count + 1, EGL_WINDOW_BIT, NULL, NULL, NULL);
          if (dri2_conf) {
             if (dri2_conf->base.ConfigID == count + 1)
                count++;
-            format_count[c]++;
-            if (format_count[c] == 1)
+            format_count[idx]++;
+            if (format_count[idx] == 1)
                _eglLog(_EGL_DEBUG,
                        "Client format %s to server format %s via "
                        "PRIME blitImage.",
-                       dri2_wl_visuals[c].format_name,
+                       dri2_wl_visuals[idx].format_name,
                        dri2_wl_visuals[s].format_name);
          }
       }

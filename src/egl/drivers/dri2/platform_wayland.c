@@ -62,7 +62,6 @@
  * by our server.
  */
 static const struct dri2_wl_visual {
-   const char *format_name;
    uint32_t wl_drm_format;
    int pipe_format;
    /* alt_pipe_format is a substitute wl_buffer format to use for a
@@ -78,7 +77,6 @@ static const struct dri2_wl_visual {
    unsigned int rgba_sizes[4];
 } dri2_wl_visuals[] = {
    {
-      "ABGR16F",
       WL_DRM_FORMAT_ABGR16F,
       PIPE_FORMAT_R16G16B16A16_FLOAT,
       PIPE_FORMAT_NONE,
@@ -87,7 +85,6 @@ static const struct dri2_wl_visual {
       {16, 16, 16, 16},
    },
    {
-      "XBGR16F",
       WL_DRM_FORMAT_XBGR16F,
       PIPE_FORMAT_R16G16B16X16_FLOAT,
       PIPE_FORMAT_NONE,
@@ -96,7 +93,6 @@ static const struct dri2_wl_visual {
       {16, 16, 16, 0},
    },
    {
-      "XRGB2101010",
       WL_DRM_FORMAT_XRGB2101010,
       PIPE_FORMAT_B10G10R10X2_UNORM,
       PIPE_FORMAT_R10G10B10X2_UNORM,
@@ -105,7 +101,6 @@ static const struct dri2_wl_visual {
       {10, 10, 10, 0},
    },
    {
-      "ARGB2101010",
       WL_DRM_FORMAT_ARGB2101010,
       PIPE_FORMAT_B10G10R10A2_UNORM,
       PIPE_FORMAT_R10G10B10A2_UNORM,
@@ -114,7 +109,6 @@ static const struct dri2_wl_visual {
       {10, 10, 10, 2},
    },
    {
-      "XBGR2101010",
       WL_DRM_FORMAT_XBGR2101010,
       PIPE_FORMAT_R10G10B10X2_UNORM,
       PIPE_FORMAT_B10G10R10X2_UNORM,
@@ -123,7 +117,6 @@ static const struct dri2_wl_visual {
       {10, 10, 10, 0},
    },
    {
-      "ABGR2101010",
       WL_DRM_FORMAT_ABGR2101010,
       PIPE_FORMAT_R10G10B10A2_UNORM,
       PIPE_FORMAT_B10G10R10A2_UNORM,
@@ -132,7 +125,6 @@ static const struct dri2_wl_visual {
       {10, 10, 10, 2},
    },
    {
-      "XRGB8888",
       WL_DRM_FORMAT_XRGB8888,
       PIPE_FORMAT_BGRX8888_UNORM,
       PIPE_FORMAT_NONE,
@@ -141,7 +133,6 @@ static const struct dri2_wl_visual {
       {8, 8, 8, 0},
    },
    {
-      "ARGB8888",
       WL_DRM_FORMAT_ARGB8888,
       PIPE_FORMAT_BGRA8888_UNORM,
       PIPE_FORMAT_NONE,
@@ -150,7 +141,6 @@ static const struct dri2_wl_visual {
       {8, 8, 8, 8},
    },
    {
-      "ABGR8888",
       WL_DRM_FORMAT_ABGR8888,
       PIPE_FORMAT_RGBA8888_UNORM,
       PIPE_FORMAT_NONE,
@@ -159,7 +149,6 @@ static const struct dri2_wl_visual {
       {8, 8, 8, 8},
    },
    {
-      "XBGR8888",
       WL_DRM_FORMAT_XBGR8888,
       PIPE_FORMAT_RGBX8888_UNORM,
       PIPE_FORMAT_NONE,
@@ -168,7 +157,6 @@ static const struct dri2_wl_visual {
       {8, 8, 8, 0},
    },
    {
-      "RGB565",
       WL_DRM_FORMAT_RGB565,
       PIPE_FORMAT_B5G6R5_UNORM,
       PIPE_FORMAT_NONE,
@@ -177,7 +165,6 @@ static const struct dri2_wl_visual {
       {5, 6, 5, 0},
    },
    {
-      "ARGB1555",
       WL_DRM_FORMAT_ARGB1555,
       PIPE_FORMAT_B5G5R5A1_UNORM,
       PIPE_FORMAT_R5G5B5A1_UNORM,
@@ -186,7 +173,6 @@ static const struct dri2_wl_visual {
       {5, 5, 5, 1},
    },
    {
-      "XRGB1555",
       WL_DRM_FORMAT_XRGB1555,
       PIPE_FORMAT_B5G5R5X1_UNORM,
       PIPE_FORMAT_R5G5B5X1_UNORM,
@@ -195,7 +181,6 @@ static const struct dri2_wl_visual {
       {5, 5, 5, 0},
    },
    {
-      "ARGB4444",
       WL_DRM_FORMAT_ARGB4444,
       PIPE_FORMAT_B4G4R4A4_UNORM,
       PIPE_FORMAT_R4G4B4A4_UNORM,
@@ -204,7 +189,6 @@ static const struct dri2_wl_visual {
       {4, 4, 4, 4},
    },
    {
-      "XRGB4444",
       WL_DRM_FORMAT_XRGB4444,
       PIPE_FORMAT_B4G4R4X4_UNORM,
       PIPE_FORMAT_R4G4B4X4_UNORM,
@@ -2050,14 +2034,14 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
 
       if (conversion && format_count[idx] == 1) {
          _eglLog(_EGL_DEBUG, "Client format %s converted via PRIME blitImage.",
-                 dri2_wl_visuals[idx].format_name);
+                 util_format_name(dri2_wl_visuals[idx].pipe_format));
       }
    }
 
    for (unsigned i = 0; i < ARRAY_SIZE(format_count); i++) {
       if (!format_count[i]) {
          _eglLog(_EGL_DEBUG, "No DRI config supports native format %s",
-                 dri2_wl_visuals[i].format_name);
+                 util_format_name(dri2_wl_visuals[i].pipe_format));
       }
    }
 

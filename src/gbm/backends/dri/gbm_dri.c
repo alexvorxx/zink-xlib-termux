@@ -486,17 +486,6 @@ gbm_format_to_dri_format(uint32_t gbm_format)
    return 0;
 }
 
-static uint32_t
-gbm_dri_to_gbm_format(int dri_format)
-{
-   for (size_t i = 0; i < ARRAY_SIZE(gbm_dri_visuals_table); i++) {
-      if (gbm_dri_visuals_table[i].dri_image_format == dri_format)
-         return gbm_dri_visuals_table[i].gbm_format;
-   }
-
-   return 0;
-}
-
 static int
 gbm_dri_is_format_supported(struct gbm_device *gbm,
                             uint32_t format,
@@ -840,7 +829,6 @@ gbm_dri_bo_import(struct gbm_device *gbm,
 
    case GBM_BO_IMPORT_EGL_IMAGE:
    {
-      int dri_format;
       if (dri->lookup_image == NULL) {
          errno = EINVAL;
          return NULL;
@@ -848,9 +836,8 @@ gbm_dri_bo_import(struct gbm_device *gbm,
 
       image = dri->lookup_image(dri->screen, buffer, dri->lookup_user_data);
       image = dri->image->dupImage(image, NULL);
-      dri->image->queryImage(image, __DRI_IMAGE_ATTRIB_FORMAT, &dri_format);
-      gbm_format = gbm_dri_to_gbm_format(dri_format);
-      if (gbm_format == 0) {
+      dri->image->queryImage(image, __DRI_IMAGE_ATTRIB_FOURCC, &gbm_format);
+      if (gbm_format == DRM_FORMAT_INVALID) {
          errno = EINVAL;
          dri->image->destroyImage(image);
          return NULL;

@@ -38,6 +38,8 @@
 
 #include "util/os_file.h"
 
+#include "main/glconfig.h"
+
 #include "egl_dri2.h"
 #include "egldevice.h"
 #include "loader.h"
@@ -97,10 +99,8 @@ dri2_drm_config_is_compatible(struct dri2_egl_display *dri2_dpy,
                               const __DRIconfig *config,
                               struct gbm_surface *surface)
 {
+   const struct gl_config *gl_config = (struct gl_config *) config;
    const struct gbm_dri_visual *visual = NULL;
-   int shifts[4];
-   unsigned int sizes[4];
-   bool is_float;
    int i;
 
    /* Check that the EGLConfig being used to render to the surface is
@@ -108,10 +108,6 @@ dri2_drm_config_is_compatible(struct dri2_egl_display *dri2_dpy,
     * otherwise-compatible formats is relatively common, explicitly allow
     * this.
     */
-   dri2_get_shifts_and_sizes(dri2_dpy->core, config, shifts, sizes);
-
-   dri2_get_render_type_float(dri2_dpy->core, config, &is_float);
-
    for (i = 0; i < dri2_dpy->gbm_dri->num_visuals; i++) {
       visual = &dri2_dpy->gbm_dri->visual_table[i];
       if (visual->gbm_format == surface->v0.format)
@@ -121,21 +117,17 @@ dri2_drm_config_is_compatible(struct dri2_egl_display *dri2_dpy,
    if (i == dri2_dpy->gbm_dri->num_visuals)
       return false;
 
-   if (shifts[0] != visual->rgba_shifts.red ||
-       shifts[1] != visual->rgba_shifts.green ||
-       shifts[2] != visual->rgba_shifts.blue ||
-       (shifts[3] > -1 && visual->rgba_shifts.alpha > -1 &&
-        shifts[3] != visual->rgba_shifts.alpha) ||
-       sizes[0] != visual->rgba_sizes.red ||
-       sizes[1] != visual->rgba_sizes.green ||
-       sizes[2] != visual->rgba_sizes.blue ||
-       (sizes[3] > 0 && visual->rgba_sizes.alpha > 0 &&
-        sizes[3] != visual->rgba_sizes.alpha) ||
-       is_float != visual->is_float) {
-      return false;
-   }
 
-   return true;
+   const struct util_format_description *fmt_c =
+      util_format_description(gl_config->color_format);
+   const struct util_format_description *fmt_s =
+      util_format_description(visual->dri_image_format);
+
+   if (util_is_format_compatible(fmt_c, fmt_s) ||
+       util_is_format_compatible(fmt_s, fmt_c))
+      return true;
+
+   return false;
 }
 
 static _EGLSurface *
@@ -504,26 +496,12 @@ drm_add_configs_for_visuals(_EGLDisplay *disp)
 
    for (unsigned i = 0; dri2_dpy->driver_configs[i]; i++) {
       const __DRIconfig *config = dri2_dpy->driver_configs[i];
-      int shifts[4];
-      unsigned int sizes[4];
-      bool is_float;
-
-      dri2_get_shifts_and_sizes(dri2_dpy->core, config, shifts, sizes);
-
-      dri2_get_render_type_float(dri2_dpy->core, config, &is_float);
+      struct gl_config *gl_config = (struct gl_config *) config;
 
       for (unsigned j = 0; j < num_visuals; j++) {
          struct dri2_egl_config *dri2_conf;
 
-         if (visuals[j].rgba_shifts.red != shifts[0] ||
-             visuals[j].rgba_shifts.green != shifts[1] ||
-             visuals[j].rgba_shifts.blue != shifts[2] ||
-             visuals[j].rgba_shifts.alpha != shifts[3] ||
-             visuals[j].rgba_sizes.red != sizes[0] ||
-             visuals[j].rgba_sizes.green != sizes[1] ||
-             visuals[j].rgba_sizes.blue != sizes[2] ||
-             visuals[j].rgba_sizes.alpha != sizes[3] ||
-             visuals[j].is_float != is_float)
+         if (visuals[j].dri_image_format != gl_config->color_format)
             continue;
 
          const EGLint attr_list[] = {

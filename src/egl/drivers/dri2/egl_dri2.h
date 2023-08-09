@@ -96,6 +96,7 @@ struct zwp_linux_dmabuf_feedback_v1;
 #include "util/bitset.h"
 #include "util/u_dynarray.h"
 #include "util/u_vector.h"
+#include "util/format/u_format.h"
 
 struct wl_buffer;
 
@@ -413,7 +414,7 @@ struct dri2_egl_surface {
 
    /* surfaceless and device */
    __DRIimage *front;
-   unsigned int visual;
+   enum pipe_format visual;
 
    int out_fence_fd;
    EGLBoolean enable_out_fence;
@@ -515,7 +516,7 @@ void
 dri2_get_render_type_float(const __DRIcoreExtension *core,
                            const __DRIconfig *config, bool *is_float);
 
-unsigned int
+enum pipe_format
 dri2_image_format_for_pbuffer_config(struct dri2_egl_display *dri2_dpy,
                                      const __DRIconfig *config);
 

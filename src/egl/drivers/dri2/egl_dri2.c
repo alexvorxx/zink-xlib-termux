@@ -75,56 +75,14 @@
 
 #define NUM_ATTRIBS 16
 
-static const struct dri2_pbuffer_visual {
-   const char *format_name;
-   unsigned int dri_image_format;
-   int rgba_shifts[4];
-   unsigned int rgba_sizes[4];
-} dri2_pbuffer_visuals[] = {
-   /* clang-format off */
-   {
-      "ABGR16F",
-      __DRI_IMAGE_FORMAT_ABGR16161616F,
-      { 0, 16, 32, 48 },
-      { 16, 16, 16, 16 }
-   },
-   {
-      "XBGR16F",
-      __DRI_IMAGE_FORMAT_XBGR16161616F,
-      { 0, 16, 32, -1 },
-      { 16, 16, 16, 0 }
-   },
-   {
-      "A2RGB10",
-      __DRI_IMAGE_FORMAT_ARGB2101010,
-      { 20, 10, 0, 30 },
-      { 10, 10, 10, 2 }
-   },
-   {
-      "X2RGB10",
-      __DRI_IMAGE_FORMAT_XRGB2101010,
-      { 20, 10, 0, -1 },
-      { 10, 10, 10, 0 }
-   },
-   {
-      "ARGB8888",
-      __DRI_IMAGE_FORMAT_ARGB8888,
-      { 16, 8, 0, 24 },
-      { 8, 8, 8, 8 }
-   },
-   {
-      "RGB888",
-      __DRI_IMAGE_FORMAT_XRGB8888,
-      { 16, 8, 0, -1 },
-      { 8, 8, 8, 0 }
-   },
-   {
-      "RGB565",
-      __DRI_IMAGE_FORMAT_RGB565,
-      { 11, 5, 0, -1 },
-      { 5, 6, 5, 0 }
-   },
-   /* clang-format on */
+static const enum pipe_format dri2_pbuffer_visuals[] = {
+   PIPE_FORMAT_R16G16B16A16_FLOAT,
+   PIPE_FORMAT_R16G16B16X16_FLOAT,
+   PIPE_FORMAT_B10G10R10A2_UNORM,
+   PIPE_FORMAT_B10G10R10X2_UNORM,
+   PIPE_FORMAT_BGRA8888_UNORM,
+   PIPE_FORMAT_BGRX8888_UNORM,
+   PIPE_FORMAT_B5G6R5_UNORM,
 };
 
 static void
@@ -368,31 +326,12 @@ dri2_get_render_type_float(const __DRIcoreExtension *core,
    *is_float = (render_type & __DRI_ATTRIB_FLOAT_BIT) ? true : false;
 }
 
-unsigned int
+enum pipe_format
 dri2_image_format_for_pbuffer_config(struct dri2_egl_display *dri2_dpy,
                                      const __DRIconfig *config)
 {
-   int shifts[4];
-   unsigned int sizes[4];
-
-   dri2_get_shifts_and_sizes(dri2_dpy->core, config, shifts, sizes);
-
-   for (unsigned i = 0; i < ARRAY_SIZE(dri2_pbuffer_visuals); ++i) {
-      const struct dri2_pbuffer_visual *visual = &dri2_pbuffer_visuals[i];
-
-      if (shifts[0] == visual->rgba_shifts[0] &&
-          shifts[1] == visual->rgba_shifts[1] &&
-          shifts[2] == visual->rgba_shifts[2] &&
-          shifts[3] == visual->rgba_shifts[3] &&
-          sizes[0] == visual->rgba_sizes[0] &&
-          sizes[1] == visual->rgba_sizes[1] &&
-          sizes[2] == visual->rgba_sizes[2] &&
-          sizes[3] == visual->rgba_sizes[3]) {
-         return visual->dri_image_format;
-      }
-   }
-
-   return __DRI_IMAGE_FORMAT_NONE;
+   struct gl_config *gl_config = (struct gl_config *) config;
+   return gl_config->color_format;
 }
 
 struct dri2_egl_config *
@@ -619,6 +558,17 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config,
    return conf;
 }
 
+static int
+dri2_pbuffer_visual_index(enum pipe_format format)
+{
+   for (unsigned i = 0; i < ARRAY_SIZE(dri2_pbuffer_visuals); i++) {
+      if (dri2_pbuffer_visuals[i] == format)
+         return i;
+   }
+
+   return -1;
+}
+
 void
 dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp)
 {
@@ -626,23 +576,24 @@ dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp)
    unsigned int format_count[ARRAY_SIZE(dri2_pbuffer_visuals)] = {0};
 
    for (unsigned i = 0; dri2_dpy->driver_configs[i] != NULL; i++) {
-      for (unsigned j = 0; j < ARRAY_SIZE(dri2_pbuffer_visuals); j++) {
-         struct dri2_egl_config *dri2_conf;
+      struct dri2_egl_config *dri2_conf;
+      struct gl_config *gl_config =
+         (struct gl_config *) dri2_dpy->driver_configs[i];
+      int idx = dri2_pbuffer_visual_index(gl_config->color_format);
 
-         dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
-                                     EGL_PBUFFER_BIT, NULL,
-                                     dri2_pbuffer_visuals[j].rgba_shifts,
-                                     dri2_pbuffer_visuals[j].rgba_sizes);
+      if (idx == -1)
+         continue;
 
-         if (dri2_conf)
-            format_count[j]++;
-      }
+      dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
+                                  EGL_PBUFFER_BIT, NULL, NULL, NULL);
+      if (dri2_conf)
+         format_count[idx]++;
    }
 
    for (unsigned i = 0; i < ARRAY_SIZE(format_count); i++) {
       if (!format_count[i]) {
          _eglLog(_EGL_DEBUG, "No DRI config supports native format %s",
-                 dri2_pbuffer_visuals[i].format_name);
+                 util_format_name(dri2_pbuffer_visuals[i]));
       }
    }
 }

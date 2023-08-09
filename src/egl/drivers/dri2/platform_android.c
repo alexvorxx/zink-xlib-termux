@@ -808,7 +808,6 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
    };
 
    unsigned int format_count[ARRAY_SIZE(visuals)] = {0};
-   int config_count = 0;
 
    /* The nesting of loops is significant here. Also significant is the order
     * of the HAL pixel formats. Many Android apps (such as Google's official
@@ -851,13 +850,10 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
          };
 
          struct dri2_egl_config *dri2_conf = dri2_add_config(
-            disp, dri2_dpy->driver_configs[j], config_count + 1, surface_type,
+            disp, dri2_dpy->driver_configs[j], surface_type,
             config_attrs, visuals[i].rgba_shifts, visuals[i].rgba_sizes);
-         if (dri2_conf) {
+         if (dri2_conf)
             format_count[i]++;
-            if (dri2_conf->base.ConfigID == config_count + 1)
-               config_count++;
-         }
       }
       if (visuals[i].format == HAL_PIXEL_FORMAT_RGBA_8888 && format_count[i])
          has_rgba = true;

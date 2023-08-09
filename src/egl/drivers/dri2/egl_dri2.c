@@ -396,7 +396,7 @@ dri2_image_format_for_pbuffer_config(struct dri2_egl_display *dri2_dpy,
 }
 
 struct dri2_egl_config *
-dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config, int id,
+dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config,
                 EGLint surface_type, const EGLint *attr_list,
                 const int *rgba_shifts, const unsigned int *rgba_sizes)
 {
@@ -412,7 +412,7 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config, int id,
    EGLint num_configs = 0;
    EGLint config_id;
 
-   _eglInitConfig(&base, disp, id);
+   _eglInitConfig(&base, disp, _eglGetArraySize(disp->Configs) + 1);
 
    double_buffer = 0;
    bind_to_texture_rgb = 0;
@@ -579,7 +579,7 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config, int id,
    base.MaxSwapInterval = dri2_dpy->max_swap_interval;
 
    if (!_eglValidateConfig(&base, EGL_FALSE)) {
-      _eglLog(_EGL_DEBUG, "DRI2: failed to validate config %d", id);
+      _eglLog(_EGL_DEBUG, "DRI2: failed to validate config %d", base.ConfigID);
       return NULL;
    }
 
@@ -624,22 +624,18 @@ dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    unsigned int format_count[ARRAY_SIZE(dri2_pbuffer_visuals)] = {0};
-   unsigned int config_count = 0;
 
    for (unsigned i = 0; dri2_dpy->driver_configs[i] != NULL; i++) {
       for (unsigned j = 0; j < ARRAY_SIZE(dri2_pbuffer_visuals); j++) {
          struct dri2_egl_config *dri2_conf;
 
          dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
-                                     config_count + 1, EGL_PBUFFER_BIT, NULL,
+                                     EGL_PBUFFER_BIT, NULL,
                                      dri2_pbuffer_visuals[j].rgba_shifts,
                                      dri2_pbuffer_visuals[j].rgba_sizes);
 
-         if (dri2_conf) {
-            if (dri2_conf->base.ConfigID == config_count + 1)
-               config_count++;
+         if (dri2_conf)
             format_count[j]++;
-         }
       }
    }
 

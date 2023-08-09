@@ -499,7 +499,6 @@ drm_add_configs_for_visuals(_EGLDisplay *disp)
    const struct gbm_dri_visual *visuals = dri2_dpy->gbm_dri->visual_table;
    int num_visuals = dri2_dpy->gbm_dri->num_visuals;
    unsigned int format_count[num_visuals];
-   unsigned int config_count = 0;
 
    memset(format_count, 0, num_visuals * sizeof(unsigned int));
 
@@ -534,13 +533,10 @@ drm_add_configs_for_visuals(_EGLDisplay *disp)
          };
 
          dri2_conf =
-            dri2_add_config(disp, dri2_dpy->driver_configs[i], config_count + 1,
-                            EGL_WINDOW_BIT, attr_list, NULL, NULL);
-         if (dri2_conf) {
+            dri2_add_config(disp, dri2_dpy->driver_configs[i], EGL_WINDOW_BIT,
+                            attr_list, NULL, NULL);
+         if (dri2_conf)
             format_count[j]++;
-            if (dri2_conf->base.ConfigID == config_count + 1)
-               config_count++;
-         }
       }
    }
 

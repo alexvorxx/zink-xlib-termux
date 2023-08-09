@@ -1965,7 +1965,6 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    unsigned int format_count[ARRAY_SIZE(dri2_wl_visuals)] = {0};
-   unsigned int count = 0;
 
    /* Try to create an EGLConfig for every config the driver declares */
    for (unsigned i = 0; dri2_dpy->driver_configs[i]; i++) {
@@ -1992,12 +1991,10 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
 
       /* The format is supported one way or another; add the EGLConfig */
       dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
-                                  count + 1, EGL_WINDOW_BIT, NULL, NULL, NULL);
+                                  EGL_WINDOW_BIT, NULL, NULL, NULL);
       if (!dri2_conf)
          continue;
 
-      if (dri2_conf->base.ConfigID == count + 1)
-         count++;
       format_count[idx]++;
 
       if (conversion && format_count[idx] == 1) {

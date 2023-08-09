@@ -779,7 +779,6 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
 {
    xcb_depth_iterator_t d;
    xcb_visualtype_t *visuals;
-   int config_count = 0;
    EGLint surface_type;
 
    d = xcb_screen_allowed_depths_iterator(dri2_dpy->screen);
@@ -803,7 +802,6 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
          class_added[visuals[i]._class] = EGL_TRUE;
 
          for (int j = 0; dri2_dpy->driver_configs[j]; j++) {
-            struct dri2_egl_config *dri2_conf;
             const __DRIconfig *config = dri2_dpy->driver_configs[j];
 
             const EGLint config_attrs[] = {
@@ -828,12 +826,8 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
                0,
             };
 
-            dri2_conf =
-               dri2_add_config(disp, config, config_count + 1, surface_type,
-                               config_attrs, rgba_shifts, rgba_sizes);
-            if (dri2_conf)
-               if (dri2_conf->base.ConfigID == config_count + 1)
-                  config_count++;
+            dri2_add_config(disp, config, surface_type, config_attrs,
+                            rgba_shifts, rgba_sizes);
 
             /* Allow a 24-bit RGB visual to match a 32-bit RGBA EGLConfig.
              * Ditto for 30-bit RGB visuals to match a 32-bit RGBA EGLConfig.
@@ -849,12 +843,8 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
                     visuals[i].blue_mask);
                rgba_shifts[3] = ffs(rgba_mask) - 1;
                rgba_sizes[3] = util_bitcount(rgba_mask);
-               dri2_conf =
-                  dri2_add_config(disp, config, config_count + 1, surface_type,
-                                  config_attrs, rgba_shifts, rgba_sizes);
-               if (dri2_conf)
-                  if (dri2_conf->base.ConfigID == config_count + 1)
-                     config_count++;
+               dri2_add_config(disp, config, surface_type, config_attrs,
+                               rgba_shifts, rgba_sizes);
             }
          }
       }

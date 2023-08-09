@@ -1991,7 +1991,7 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
 
       /* The format is supported one way or another; add the EGLConfig */
       dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
-                                  EGL_WINDOW_BIT, NULL, NULL, NULL);
+                                  EGL_WINDOW_BIT, NULL);
       if (!dri2_conf)
          continue;
 

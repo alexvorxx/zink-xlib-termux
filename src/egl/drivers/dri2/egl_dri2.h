@@ -522,8 +522,7 @@ dri2_image_format_for_pbuffer_config(struct dri2_egl_display *dri2_dpy,
 
 struct dri2_egl_config *
 dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config,
-                EGLint surface_type, const EGLint *attr_list,
-                const int *rgba_shifts, const unsigned int *rgba_sizes);
+                EGLint surface_type, const EGLint *attr_list);
 
 void
 dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp);

@@ -336,8 +336,7 @@ dri2_image_format_for_pbuffer_config(struct dri2_egl_display *dri2_dpy,
 
 struct dri2_egl_config *
 dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config,
-                EGLint surface_type, const EGLint *attr_list,
-                const int *rgba_shifts, const unsigned int *rgba_sizes)
+                EGLint surface_type, const EGLint *attr_list)
 {
    struct dri2_egl_config *conf;
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -345,8 +344,6 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config,
    unsigned int attrib, value, double_buffer;
    bool srgb = false;
    EGLint key, bind_to_texture_rgb, bind_to_texture_rgba;
-   int dri_shifts[4] = {-1, -1, -1, -1};
-   unsigned int dri_sizes[4] = {0, 0, 0, 0};
    _EGLConfig *matching_config;
    EGLint num_configs = 0;
    EGLint config_id;
@@ -397,55 +394,19 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config,
          break;
 
       case __DRI_ATTRIB_RED_SIZE:
-         dri_sizes[0] = value;
          base.RedSize = value;
          break;
 
-      case __DRI_ATTRIB_RED_MASK:
-         dri_shifts[0] = ffs(value) - 1;
-         break;
-
-      case __DRI_ATTRIB_RED_SHIFT:
-         dri_shifts[0] = value;
-         break;
-
       case __DRI_ATTRIB_GREEN_SIZE:
-         dri_sizes[1] = value;
          base.GreenSize = value;
          break;
 
-      case __DRI_ATTRIB_GREEN_MASK:
-         dri_shifts[1] = ffs(value) - 1;
-         break;
-
-      case __DRI_ATTRIB_GREEN_SHIFT:
-         dri_shifts[1] = value;
-         break;
-
       case __DRI_ATTRIB_BLUE_SIZE:
-         dri_sizes[2] = value;
          base.BlueSize = value;
          break;
 
-      case __DRI_ATTRIB_BLUE_MASK:
-         dri_shifts[2] = ffs(value) - 1;
-         break;
-
-      case __DRI_ATTRIB_BLUE_SHIFT:
-         dri_shifts[2] = value;
-         break;
-
       case __DRI_ATTRIB_ALPHA_SIZE:
-         dri_sizes[3] = value;
          base.AlphaSize = value;
-         break;
-
-      case __DRI_ATTRIB_ALPHA_MASK:
-         dri_shifts[3] = ffs(value) - 1;
-         break;
-
-      case __DRI_ATTRIB_ALPHA_SHIFT:
-         dri_shifts[3] = value;
          break;
 
       case __DRI_ATTRIB_ACCUM_RED_SIZE:
@@ -484,12 +445,6 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config,
    if (attr_list)
       for (int i = 0; attr_list[i] != EGL_NONE; i += 2)
          _eglSetConfigKey(&base, attr_list[i], attr_list[i + 1]);
-
-   if (rgba_shifts && memcmp(rgba_shifts, dri_shifts, sizeof(dri_shifts)))
-      return NULL;
-
-   if (rgba_sizes && memcmp(rgba_sizes, dri_sizes, sizeof(dri_sizes)))
-      return NULL;
 
    base.NativeRenderable = EGL_TRUE;
 
@@ -585,7 +540,7 @@ dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp)
          continue;
 
       dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
-                                  EGL_PBUFFER_BIT, NULL, NULL, NULL);
+                                  EGL_PBUFFER_BIT, NULL);
       if (dri2_conf)
          format_count[idx]++;
    }

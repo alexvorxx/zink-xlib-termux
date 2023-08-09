@@ -855,8 +855,7 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
          };
 
          struct dri2_egl_config *dri2_conf = dri2_add_config(
-            disp, dri2_dpy->driver_configs[j], surface_type, config_attrs,
-            NULL, NULL);
+            disp, dri2_dpy->driver_configs[j], surface_type, config_attrs);
          if (dri2_conf)
             format_count[i]++;
       }

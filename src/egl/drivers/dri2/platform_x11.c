@@ -854,8 +854,7 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
                   continue;
             }
 
-            dri2_add_config(disp, config, surface_type, config_attrs,
-                            NULL, NULL);
+            dri2_add_config(disp, config, surface_type, config_attrs);
          }
       }
 

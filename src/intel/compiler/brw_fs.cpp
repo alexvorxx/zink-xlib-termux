@@ -2538,7 +2538,7 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
       fprintf(file, "***attr%d***", inst->dst.nr);
       break;
    case ARF:
-      switch (inst->dst.nr) {
+      switch (inst->dst.nr & 0xF0) {
       case BRW_ARF_NULL:
          fprintf(file, "null");
          break;
@@ -2546,7 +2546,11 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
          fprintf(file, "a0.%d", inst->dst.subnr);
          break;
       case BRW_ARF_ACCUMULATOR:
-         fprintf(file, "acc%d", inst->dst.subnr);
+         if (inst->dst.subnr == 0)
+            fprintf(file, "acc%d", inst->dst.nr & 0x0F);
+         else
+            fprintf(file, "acc%d.%d", inst->dst.nr & 0x0F, inst->dst.subnr);
+
          break;
       case BRW_ARF_FLAG:
          fprintf(file, "f%d.%d", inst->dst.nr & 0xf, inst->dst.subnr);
@@ -2636,7 +2640,7 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
          }
          break;
       case ARF:
-         switch (inst->src[i].nr) {
+         switch (inst->src[i].nr & 0xF0) {
          case BRW_ARF_NULL:
             fprintf(file, "null");
             break;
@@ -2644,7 +2648,11 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
             fprintf(file, "a0.%d", inst->src[i].subnr);
             break;
          case BRW_ARF_ACCUMULATOR:
-            fprintf(file, "acc%d", inst->src[i].subnr);
+            if (inst->src[i].subnr == 0)
+               fprintf(file, "acc%d", inst->src[i].nr & 0x0F);
+            else
+               fprintf(file, "acc%d.%d", inst->src[i].nr & 0x0F, inst->src[i].subnr);
+
             break;
          case BRW_ARF_FLAG:
             fprintf(file, "f%d.%d", inst->src[i].nr & 0xf, inst->src[i].subnr);

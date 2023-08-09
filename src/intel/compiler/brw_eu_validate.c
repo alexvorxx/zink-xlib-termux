@@ -1732,7 +1732,7 @@ special_requirements_for_handling_double_precision_data_types(
          ERROR_IF((address_mode == BRW_ADDRESS_DIRECT && file == BRW_ARCHITECTURE_REGISTER_FILE &&
                    reg != BRW_ARF_NULL && !(reg >= BRW_ARF_ACCUMULATOR && reg < BRW_ARF_FLAG)) ||
                   (dst_file == BRW_ARCHITECTURE_REGISTER_FILE &&
-                   dst_reg != BRW_ARF_NULL && dst_reg != BRW_ARF_ACCUMULATOR),
+                   dst_reg != BRW_ARF_NULL && (dst_reg & 0xF0) != BRW_ARF_ACCUMULATOR),
                   "Explicit ARF registers except null and accumulator must not "
                   "be used.");
       }

@@ -276,7 +276,7 @@ brw_set_src1(struct brw_codegen *p, brw_inst *inst, struct brw_reg reg)
        *    operands only."
        */
       assert(reg.file != BRW_ARCHITECTURE_REGISTER_FILE ||
-             reg.nr != BRW_ARF_ACCUMULATOR);
+             (reg.nr & 0xF0) != BRW_ARF_ACCUMULATOR);
 
       brw_inst_set_src1_file_type(devinfo, inst, reg.file, reg.type);
       brw_inst_set_src1_abs(devinfo, inst, reg.abs);
@@ -600,24 +600,19 @@ brw_alu3(struct brw_codegen *p, unsigned opcode, struct brw_reg dest,
    if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
       assert(dest.file == BRW_GENERAL_REGISTER_FILE ||
              (dest.file == BRW_ARCHITECTURE_REGISTER_FILE &&
-              dest.nr == BRW_ARF_ACCUMULATOR));
+              (dest.nr & 0xF0) == BRW_ARF_ACCUMULATOR));
 
-      if (devinfo->ver >= 12) {
-         brw_inst_set_3src_a1_dst_reg_file(devinfo, inst, dest.file);
-         brw_inst_set_3src_dst_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
-      } else {
-         if (dest.file == BRW_ARCHITECTURE_REGISTER_FILE) {
-            brw_inst_set_3src_a1_dst_reg_file(devinfo, inst,
-                                              BRW_ALIGN1_3SRC_ACCUMULATOR);
-            brw_inst_set_3src_dst_reg_nr(devinfo, inst, BRW_ARF_ACCUMULATOR);
-         } else {
-            brw_inst_set_3src_a1_dst_reg_file(devinfo, inst,
-                                              BRW_ALIGN1_3SRC_GENERAL_REGISTER_FILE);
-            brw_inst_set_3src_dst_reg_nr(devinfo, inst, dest.nr);
-         }
-      }
+      STATIC_ASSERT((BRW_ARCHITECTURE_REGISTER_FILE ^ 1) == BRW_ALIGN1_3SRC_ACCUMULATOR);
+      STATIC_ASSERT((BRW_GENERAL_REGISTER_FILE ^ 1) == BRW_ALIGN1_3SRC_GENERAL_REGISTER_FILE);
+
+      /* Gfx10 and Gfx11 bit encoding for the register file is the inversion of
+       * the actual register file (see the STATIC_ASSERTs above).
+       */
+      unsigned dst_reg_file = devinfo->ver >= 12 ? dest.file : dest.file ^ 1;
+
+      brw_inst_set_3src_a1_dst_reg_file(devinfo, inst, dst_reg_file);
+      brw_inst_set_3src_dst_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
       brw_inst_set_3src_a1_dst_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest) / 8);
-
       brw_inst_set_3src_a1_dst_hstride(devinfo, inst, BRW_ALIGN1_3SRC_DST_HORIZONTAL_STRIDE_1);
 
       if (brw_reg_type_is_floating_point(dest.type)) {

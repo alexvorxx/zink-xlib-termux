@@ -801,33 +801,37 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
 
          class_added[visuals[i]._class] = EGL_TRUE;
 
+         const int rgb_shifts[3] = {
+            ffs(visuals[i].red_mask) - 1,
+            ffs(visuals[i].green_mask) - 1,
+            ffs(visuals[i].blue_mask) - 1,
+         };
+
+         const unsigned int rgb_sizes[3] = {
+            util_bitcount(visuals[i].red_mask),
+            util_bitcount(visuals[i].green_mask),
+            util_bitcount(visuals[i].blue_mask),
+         };
+
+         const EGLint config_attrs[] = {
+            EGL_NATIVE_VISUAL_ID,
+            visuals[i].visual_id,
+            EGL_NATIVE_VISUAL_TYPE,
+            visuals[i]._class,
+            EGL_NONE,
+         };
+
          for (int j = 0; dri2_dpy->driver_configs[j]; j++) {
             const __DRIconfig *config = dri2_dpy->driver_configs[j];
+            int shifts[4];
+            unsigned int sizes[4];
 
-            const EGLint config_attrs[] = {
-               EGL_NATIVE_VISUAL_ID,
-               visuals[i].visual_id,
-               EGL_NATIVE_VISUAL_TYPE,
-               visuals[i]._class,
-               EGL_NONE,
-            };
+            dri2_get_shifts_and_sizes(dri2_dpy->core, config, shifts, sizes);
 
-            int rgba_shifts[4] = {
-               ffs(visuals[i].red_mask) - 1,
-               ffs(visuals[i].green_mask) - 1,
-               ffs(visuals[i].blue_mask) - 1,
-               -1,
-            };
-
-            unsigned int rgba_sizes[4] = {
-               util_bitcount(visuals[i].red_mask),
-               util_bitcount(visuals[i].green_mask),
-               util_bitcount(visuals[i].blue_mask),
-               0,
-            };
-
-            dri2_add_config(disp, config, surface_type, config_attrs,
-                            rgba_shifts, rgba_sizes);
+            if (memcmp(shifts, rgb_shifts, sizeof(rgb_shifts)) != 0 ||
+                memcmp(sizes, rgb_sizes, sizeof(rgb_sizes)) != 0) {
+               continue;
+            }
 
             /* Allow a 24-bit RGB visual to match a 32-bit RGBA EGLConfig.
              * Ditto for 30-bit RGB visuals to match a 32-bit RGBA EGLConfig.
@@ -837,15 +841,21 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
              * compositor.  This is probably not what the application
              * wants... especially on drivers that only have 32-bit RGBA
              * EGLConfigs! */
-            if (d.data->depth == 24 || d.data->depth == 30) {
+            if (sizes[3] != 0) {
+               if (d.data->depth != 24 && d.data->depth != 30)
+                  continue;
+
                unsigned int rgba_mask =
                   ~(visuals[i].red_mask | visuals[i].green_mask |
                     visuals[i].blue_mask);
-               rgba_shifts[3] = ffs(rgba_mask) - 1;
-               rgba_sizes[3] = util_bitcount(rgba_mask);
-               dri2_add_config(disp, config, surface_type, config_attrs,
-                               rgba_shifts, rgba_sizes);
+
+               if (shifts[3] != ffs(rgba_mask) - 1 ||
+                   sizes[3] != util_bitcount(rgba_mask))
+                  continue;
             }
+
+            dri2_add_config(disp, config, surface_type, config_attrs,
+                            NULL, NULL);
          }
       }
 

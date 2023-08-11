@@ -2254,10 +2254,12 @@ radv_graphics_shaders_nir_to_asm(struct radv_device *device, struct vk_pipeline_
 
       /* On GFX9+, TES is merged with GS and VS is merged with TCS or GS. */
       if (device->physical_device->rad_info.gfx_level >= GFX9 &&
-          (s == MESA_SHADER_TESS_CTRL || s == MESA_SHADER_GEOMETRY)) {
+          ((s == MESA_SHADER_GEOMETRY &&
+            (active_nir_stages & (VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT))) ||
+           (s == MESA_SHADER_TESS_CTRL && (active_nir_stages & VK_SHADER_STAGE_VERTEX_BIT)))) {
          gl_shader_stage pre_stage;
 
-         if (s == MESA_SHADER_GEOMETRY && stages[MESA_SHADER_TESS_EVAL].nir) {
+         if (s == MESA_SHADER_GEOMETRY && (active_nir_stages & VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT)) {
             pre_stage = MESA_SHADER_TESS_EVAL;
          } else {
             pre_stage = MESA_SHADER_VERTEX;

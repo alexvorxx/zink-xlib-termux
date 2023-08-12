@@ -705,6 +705,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_write_invocation_amd:
    case nir_intrinsic_mbcnt_amd:
    case nir_intrinsic_lane_permute_16_amd:
+   case nir_intrinsic_dpp16_shift_amd:
    case nir_intrinsic_elect:
    case nir_intrinsic_elect_any_ir3:
    case nir_intrinsic_load_tlb_color_brcm:

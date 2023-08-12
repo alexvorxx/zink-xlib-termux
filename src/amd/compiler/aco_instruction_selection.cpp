@@ -8594,6 +8594,20 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       set_wqm(ctx);
       break;
    }
+   case nir_intrinsic_dpp16_shift_amd: {
+      Temp src = as_vgpr(ctx, get_ssa_temp(ctx, instr->src[0].ssa));
+      Temp dst = get_ssa_temp(ctx, &instr->def);
+      int delta = nir_intrinsic_base(instr);
+      assert(delta >= -15 && delta <= 15 && delta != 0);
+      assert(instr->def.bit_size != 1 && instr->def.bit_size < 64);
+      assert(ctx->options->gfx_level >= GFX8);
+
+      uint16_t dpp_ctrl = delta < 0 ? dpp_row_sr(-delta) : dpp_row_sl(delta);
+      bld.vop1_dpp(aco_opcode::v_mov_b32, Definition(dst), src, dpp_ctrl);
+
+      set_wqm(ctx);
+      break;
+   }
    case nir_intrinsic_quad_broadcast:
    case nir_intrinsic_quad_swap_horizontal:
    case nir_intrinsic_quad_swap_vertical:

@@ -717,21 +717,28 @@ static struct pipe_resource *virgl_resource_from_handle(struct pipe_screen *scre
    uint32_t storage_size;
 
    struct virgl_screen *vs = virgl_screen(screen);
-   if (templ->target == PIPE_BUFFER)
+   if (templ && templ->target == PIPE_BUFFER)
       return NULL;
 
    struct virgl_resource *res = CALLOC_STRUCT(virgl_resource);
-   res->b = *templ;
+   if (templ)
+      res->b = *templ;
    res->b.screen = &vs->base;
    pipe_reference_init(&res->b.reference, 1);
 
    plane = winsys_stride = plane_offset = modifier = 0;
    res->hw_res = vs->vws->resource_create_from_handle(vs->vws, whandle,
+                                                      &res->b,
                                                       &plane,
                                                       &winsys_stride,
                                                       &plane_offset,
                                                       &modifier,
                                                       &res->blob_mem);
+
+   if (!res->hw_res) {
+      FREE(res);
+      return NULL;
+   }
 
    /* do not use winsys returns for guest storage info of classic resource */
    if (!res->blob_mem) {
@@ -742,10 +749,6 @@ static struct pipe_resource *virgl_resource_from_handle(struct pipe_screen *scre
 
    virgl_resource_layout(&res->b, &res->metadata, plane, winsys_stride,
                          plane_offset, modifier);
-   if (!res->hw_res) {
-      FREE(res);
-      return NULL;
-   }
 
    /*
    *  If the overall resource is larger than a single page in size, we can

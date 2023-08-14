@@ -3602,6 +3602,7 @@ typedef enum {
    nir_lower_find_lsb64 = (1 << 22),
    nir_lower_conv64 = (1 << 23),
    nir_lower_uadd_sat64 = (1 << 24),
+   nir_lower_iadd3_64 = (1 << 25),
 } nir_lower_int64_options;
 
 typedef enum {

@@ -1154,6 +1154,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       break;
 
    case nir_op_iadd3:
+      assert(instr->def.bit_size < 64);
       bld.ADD3(result, op[0], op[1], op[2]);
       break;
 

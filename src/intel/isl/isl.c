@@ -2607,6 +2607,20 @@ isl_calc_size(const struct isl_device *dev,
 
       size_B = (uint64_t) total_h_tl * tile_info->phys_extent_B.height *
                row_pitch_B;
+
+      /* Bspec 57340 (r59562):
+       *
+       *    When allocating memory, MCS buffer size is extended by 4KB over
+       *    its original calculated size. First 4KB page of the MCS is
+       *    reserved for internal HW usage.
+       *
+       * Allocate an extra 4KB page reserved for hardware at the beginning of
+       * MCS buffer on Xe2. The start address of MCS is the head of the 4KB
+       * page. Any manipulation on the content of MCS should start after 4KB
+       * from the start address.
+       */
+      if (dev->info->ver >= 20 && info->usage & ISL_SURF_USAGE_MCS_BIT)
+         size_B += 4096;
    }
 
    /* If for some reason we can't support the appropriate tiling format and

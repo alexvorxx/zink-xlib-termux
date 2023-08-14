@@ -1356,9 +1356,8 @@ zink_set_vertex_buffers(struct pipe_context *pctx,
    const bool have_input_state = zink_screen(pctx->screen)->info.have_EXT_vertex_input_dynamic_state;
    const bool need_state_change = !zink_screen(pctx->screen)->info.have_EXT_extended_dynamic_state &&
                                   !have_input_state;
-   uint32_t enabled_buffers = ctx->gfx_pipeline_state.vertex_buffers_enabled_mask;
-   unsigned last_count = util_last_bit(enabled_buffers);
-   enabled_buffers = u_bit_consecutive(0, num_buffers);
+   unsigned last_count = util_last_bit(ctx->gfx_pipeline_state.vertex_buffers_enabled_mask);
+   uint32_t enabled_buffers = BITFIELD_MASK(num_buffers);
 
    assert(!num_buffers || buffers);
 

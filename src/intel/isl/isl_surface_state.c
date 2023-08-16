@@ -1062,8 +1062,17 @@ isl_genX(buffer_fill_state_s)(const struct isl_device *dev, void *state,
     * address. Only enabled on Gfx9+ since Gfx8 has an Atom version with only
     * 32bits of address space.
     */
-   if (dev->buffer_length_in_aux_addr)
+   if (dev->buffer_length_in_aux_addr) {
+      assert(intel_needs_workaround(dev->info, 14019708328) == false);
       s.AuxiliarySurfaceBaseAddress = info->size_B << 32;
+   } else {
+      /* Wa_14019708328: all SURFTYPE_BUFFERs has
+       * AuxiliarySurfaceMode == AUX_NONE so no need to check for it.
+       * In case workaround is not needed and buffer_length_in_aux_addr is
+       * false, it will set AuxiliarySurfaceBaseAddress to 0.
+       */
+      s.AuxiliarySurfaceBaseAddress = dev->dummy_aux_address;
+   }
 #else
    assert(!dev->buffer_length_in_aux_addr);
 #endif

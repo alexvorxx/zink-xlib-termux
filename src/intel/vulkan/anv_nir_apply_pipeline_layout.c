@@ -499,6 +499,7 @@ build_load_render_surface_state_address(nir_builder *b,
 {
    if (state->pdevice->isl_dev.buffer_length_in_aux_addr)
       return build_optimized_load_render_surface_state_address(b, desc_addr, state);
+   /* Wa_14019708328 */
    return build_non_optimized_load_render_surface_state_address(b, desc_addr, state);
 }
 

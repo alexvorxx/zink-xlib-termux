@@ -2538,7 +2538,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       driQueryOptioni(&instance->dri_options, "shader_spilling_rate");
 
    isl_device_init(&device->isl_dev, &device->info);
-   device->isl_dev.buffer_length_in_aux_addr = true;
+   device->isl_dev.buffer_length_in_aux_addr = !intel_needs_workaround(device->isl_dev.info, 14019708328);
 
    result = anv_physical_device_init_uuids(device);
    if (result != VK_SUCCESS)
@@ -3712,6 +3712,17 @@ VkResult anv_CreateDevice(
    if (result != VK_SUCCESS)
       goto fail_surface_aux_map_pool;
 
+   if (intel_needs_workaround(device->info, 14019708328)) {
+      result = anv_device_alloc_bo(device, "dummy_aux", 4096,
+                                   0 /* alloc_flags */,
+                                   0 /* explicit_address */,
+                                   &device->dummy_aux_bo);
+      if (result != VK_SUCCESS)
+         goto fail_workaround_bo;
+
+      device->isl_dev.dummy_aux_address = device->dummy_aux_bo->offset;
+   }
+
    device->workaround_address = (struct anv_address) {
       .bo = device->workaround_bo,
       .offset = align(intel_debug_write_identifiers(device->workaround_bo->map,
@@ -3741,7 +3752,7 @@ VkResult anv_CreateDevice(
                                    0 /* explicit_address */,
                                    &device->ray_query_bo);
       if (result != VK_SUCCESS)
-         goto fail_workaround_bo;
+         goto fail_dummy_aux_bo;
    }
 
    result = anv_device_init_trivial_batch(device);
@@ -4005,6 +4016,9 @@ VkResult anv_CreateDevice(
  fail_ray_query_bo:
    if (device->ray_query_bo)
       anv_device_release_bo(device, device->ray_query_bo);
+ fail_dummy_aux_bo:
+   if (device->dummy_aux_bo)
+      anv_device_release_bo(device, device->dummy_aux_bo);
  fail_workaround_bo:
    anv_device_release_bo(device, device->workaround_bo);
  fail_surface_aux_map_pool:
@@ -4161,6 +4175,8 @@ void anv_DestroyDevice(
       anv_device_release_bo(device, device->ray_query_bo);
    }
    anv_device_release_bo(device, device->workaround_bo);
+   if (device->dummy_aux_bo)
+      anv_device_release_bo(device, device->dummy_aux_bo);
    anv_device_release_bo(device, device->trivial_batch_bo);
 
    if (device->info->has_aux_map) {

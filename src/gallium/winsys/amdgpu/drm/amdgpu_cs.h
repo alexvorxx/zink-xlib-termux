@@ -94,7 +94,7 @@ struct amdgpu_cs_context {
    unsigned                    last_added_bo_usage;
 
    struct amdgpu_seq_no_fences seq_no_dependencies;
-   struct amdgpu_fence_list    fence_dependencies;
+
    struct amdgpu_fence_list    syncobj_dependencies;
    struct amdgpu_fence_list    syncobj_to_signal;
 
@@ -154,13 +154,15 @@ struct amdgpu_cs {
 
 struct amdgpu_fence {
    struct pipe_reference reference;
-   /* If ctx == NULL, this fence is syncobj-based. */
    uint32_t syncobj;
 
    struct amdgpu_winsys *ws;
+
+   /* The following field aren't set for imported fences. */
    struct amdgpu_ctx *ctx;  /* submission context */
-   struct amdgpu_cs_fence fence;
+   uint32_t ip_type;
    uint64_t *user_fence_cpu_address;
+   uint64_t seq_no;
 
    /* If the fence has been submitted. This is unsignalled for deferred fences
     * (cs->next_fence) and while an IB is still being submitted in the submit

@@ -27,9 +27,9 @@
 
 void amdgpu_fence_destroy(struct amdgpu_fence *fence)
 {
-   if (amdgpu_fence_is_syncobj(fence))
-      amdgpu_cs_destroy_syncobj(fence->ws->dev, fence->syncobj);
-   else
+   amdgpu_cs_destroy_syncobj(fence->ws->dev, fence->syncobj);
+
+   if (fence->ctx)
       amdgpu_ctx_reference(&fence->ctx, NULL);
 
    util_queue_fence_destroy(&fence->submitted);
@@ -45,8 +45,13 @@ amdgpu_fence_create(struct amdgpu_cs *cs)
    fence->reference.count = 1;
    fence->ws = ctx->ws;
    amdgpu_ctx_reference(&fence->ctx, ctx);
-   fence->fence.context = ctx->ctx;
-   fence->fence.ip_type = cs->ip_type;
+   fence->ctx = ctx;
+   fence->ip_type = cs->ip_type;
+   if (amdgpu_cs_create_syncobj2(ctx->ws->dev, 0, &fence->syncobj)) {
+      free(fence);
+      return NULL;
+   }
+
    util_queue_fence_init(&fence->submitted);
    util_queue_fence_reset(&fence->submitted);
    fence->queue_index = cs->queue_index;
@@ -65,6 +70,7 @@ amdgpu_fence_import_syncobj(struct radeon_winsys *rws, int fd)
 
    pipe_reference_init(&fence->reference, 1);
    fence->ws = ws;
+   fence->ip_type = 0xffffffff;
 
    r = amdgpu_cs_import_syncobj(ws->dev, fd, &fence->syncobj);
    if (r) {
@@ -75,7 +81,6 @@ amdgpu_fence_import_syncobj(struct radeon_winsys *rws, int fd)
    util_queue_fence_init(&fence->submitted);
    fence->imported = true;
 
-   assert(amdgpu_fence_is_syncobj(fence));
    return (struct pipe_fence_handle*)fence;
 }
 
@@ -117,25 +122,13 @@ static int amdgpu_fence_export_sync_file(struct radeon_winsys *rws,
 {
    struct amdgpu_winsys *ws = amdgpu_winsys(rws);
    struct amdgpu_fence *fence = (struct amdgpu_fence*)pfence;
-
-   if (amdgpu_fence_is_syncobj(fence)) {
-      int fd, r;
-
-      /* Convert syncobj into sync_file. */
-      r = amdgpu_cs_syncobj_export_sync_file(ws->dev, fence->syncobj, &fd);
-      return r ? -1 : fd;
-   }
+   int fd, r;
 
    util_queue_fence_wait(&fence->submitted);
 
-   /* Convert the amdgpu fence into a fence FD. */
-   int fd;
-   if (amdgpu_cs_fence_to_handle(ws->dev, &fence->fence,
-                                 AMDGPU_FENCE_TO_HANDLE_GET_SYNC_FILE_FD,
-                                 (uint32_t*)&fd))
-      return -1;
-
-   return fd;
+   /* Convert syncobj into sync_file. */
+   r = amdgpu_cs_syncobj_export_sync_file(ws->dev, fence->syncobj, &fd);
+   return r ? -1 : fd;
 }
 
 static int amdgpu_export_signalled_sync_file(struct radeon_winsys *rws)
@@ -165,7 +158,7 @@ static void amdgpu_fence_submitted(struct pipe_fence_handle *fence,
 {
    struct amdgpu_fence *afence = (struct amdgpu_fence*)fence;
 
-   afence->fence.fence = seq_no;
+   afence->seq_no = seq_no;
    afence->user_fence_cpu_address = user_fence_cpu_address;
    util_queue_fence_signal(&afence->submitted);
 }
@@ -182,10 +175,8 @@ bool amdgpu_fence_wait(struct pipe_fence_handle *fence, uint64_t timeout,
                        bool absolute)
 {
    struct amdgpu_fence *afence = (struct amdgpu_fence*)fence;
-   uint32_t expired;
    int64_t abs_timeout;
    uint64_t *user_fence_cpu;
-   int r;
 
    if (afence->signalled)
       return true;
@@ -195,19 +186,6 @@ bool amdgpu_fence_wait(struct pipe_fence_handle *fence, uint64_t timeout,
    else
       abs_timeout = os_time_get_absolute_timeout(timeout);
 
-   /* Handle syncobjs. */
-   if (amdgpu_fence_is_syncobj(afence)) {
-      if (abs_timeout == OS_TIMEOUT_INFINITE)
-         abs_timeout = INT64_MAX;
-
-      if (amdgpu_cs_syncobj_wait(afence->ws->dev, &afence->syncobj, 1,
-                                 abs_timeout, 0, NULL))
-         return false;
-
-      afence->signalled = true;
-      return true;
-   }
-
    /* The fence might not have a number assigned if its IB is being
     * submitted in the other thread right now. Wait until the submission
     * is done. */
@@ -216,7 +194,7 @@ bool amdgpu_fence_wait(struct pipe_fence_handle *fence, uint64_t timeout,
 
    user_fence_cpu = afence->user_fence_cpu_address;
    if (user_fence_cpu) {
-      if (*user_fence_cpu >= afence->fence.fence) {
+      if (*user_fence_cpu >= afence->seq_no) {
          afence->signalled = true;
          return true;
       }
@@ -226,23 +204,16 @@ bool amdgpu_fence_wait(struct pipe_fence_handle *fence, uint64_t timeout,
          return false;
    }
 
-   /* Now use the libdrm query. */
-   r = amdgpu_cs_query_fence_status(&afence->fence,
-				    abs_timeout,
-				    AMDGPU_QUERY_FENCE_TIMEOUT_IS_ABSOLUTE,
-				    &expired);
-   if (r) {
-      fprintf(stderr, "amdgpu: amdgpu_cs_query_fence_status failed.\n");
-      return false;
-   }
+   if (abs_timeout == OS_TIMEOUT_INFINITE)
+      abs_timeout = INT64_MAX;
 
-   if (expired) {
-      /* This variable can only transition from false to true, so it doesn't
-       * matter if threads race for it. */
-      afence->signalled = true;
-      return true;
-   }
-   return false;
+   if (amdgpu_cs_syncobj_wait(afence->ws->dev, &afence->syncobj, 1,
+                              abs_timeout, 0, NULL))
+
+      return false;
+
+   afence->signalled = true;
+   return true;
 }
 
 static bool amdgpu_fence_wait_rel_timeout(struct radeon_winsys *rws,
@@ -907,7 +878,6 @@ static void amdgpu_cs_context_cleanup_buffers(struct amdgpu_winsys *ws, struct a
 static void amdgpu_cs_context_cleanup(struct amdgpu_winsys *ws, struct amdgpu_cs_context *cs)
 {
    cs->seq_no_dependencies.valid_fence_mask = 0;
-   cleanup_fence_list(&cs->fence_dependencies);
    cleanup_fence_list(&cs->syncobj_dependencies);
    cleanup_fence_list(&cs->syncobj_to_signal);
    amdgpu_fence_reference(&cs->fence, NULL);
@@ -920,7 +890,6 @@ static void amdgpu_destroy_cs_context(struct amdgpu_winsys *ws, struct amdgpu_cs
    amdgpu_cs_context_cleanup(ws, cs);
    for (unsigned i = 0; i < ARRAY_SIZE(cs->buffer_lists); i++)
       FREE(cs->buffer_lists[i].buffers);
-   FREE(cs->fence_dependencies.list);
    FREE(cs->syncobj_dependencies.list);
    FREE(cs->syncobj_to_signal.list);
 }
@@ -1205,10 +1174,9 @@ static void amdgpu_cs_add_fence_dependency(struct radeon_cmdbuf *rcs,
          add_seq_no_to_list(acs->ws, &cs->seq_no_dependencies, fence->queue_index,
                             fence->queue_seq_no);
       }
-   } else if (amdgpu_fence_is_syncobj(fence))
-      add_fence_to_list(&cs->syncobj_dependencies, fence);
+   }
    else
-      add_fence_to_list(&cs->fence_dependencies, fence);
+      add_fence_to_list(&cs->syncobj_dependencies, fence);
 }
 
 static void amdgpu_add_bo_fences_to_dependencies(struct amdgpu_cs *acs,
@@ -1244,8 +1212,6 @@ static void amdgpu_cs_add_syncobj_signal(struct radeon_cmdbuf *rws,
 {
    struct amdgpu_cs *acs = amdgpu_cs(rws);
    struct amdgpu_cs_context *cs = acs->csc;
-
-   assert(amdgpu_fence_is_syncobj((struct amdgpu_fence *)fence));
 
    add_fence_to_list(&cs->syncobj_to_signal, (struct amdgpu_fence*)fence);
 }
@@ -1396,7 +1362,7 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
          if (amdgpu_fence_wait(*fence, 0, false))
             amdgpu_fence_reference(fence, NULL);
          else
-            add_fence_to_list(&cs->fence_dependencies, (struct amdgpu_fence*)*fence);
+            add_fence_to_list(&cs->syncobj_dependencies, (struct amdgpu_fence*)*fence);
       }
    }
 
@@ -1471,26 +1437,6 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
    chunks[num_chunks].chunk_data = (uintptr_t)&bo_list_in;
    num_chunks++;
 
-   /* Fence dependencies. */
-   unsigned num_dependencies = cs->fence_dependencies.num;
-   if (num_dependencies) {
-      struct drm_amdgpu_cs_chunk_dep *dep_chunk =
-         alloca(num_dependencies * sizeof(*dep_chunk));
-
-      for (unsigned i = 0; i < num_dependencies; i++) {
-         struct amdgpu_fence *fence =
-            (struct amdgpu_fence*)cs->fence_dependencies.list[i];
-
-         assert(util_queue_fence_is_signalled(&fence->submitted));
-         amdgpu_cs_chunk_fence_to_dep(&fence->fence, &dep_chunk[i]);
-      }
-
-      chunks[num_chunks].chunk_id = AMDGPU_CHUNK_ID_DEPENDENCIES;
-      chunks[num_chunks].length_dw = sizeof(dep_chunk[0]) / 4 * num_dependencies;
-      chunks[num_chunks].chunk_data = (uintptr_t)dep_chunk;
-      num_chunks++;
-   }
-
    /* Syncobj dependencies. */
    unsigned num_syncobj_dependencies = cs->syncobj_dependencies.num;
    if (num_syncobj_dependencies) {
@@ -1500,9 +1446,6 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
       for (unsigned i = 0; i < num_syncobj_dependencies; i++) {
          struct amdgpu_fence *fence =
             (struct amdgpu_fence*)cs->syncobj_dependencies.list[i];
-
-         if (!amdgpu_fence_is_syncobj(fence))
-            continue;
 
          assert(util_queue_fence_is_signalled(&fence->submitted));
          sem_chunk[i].handle = fence->syncobj;
@@ -1515,25 +1458,22 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
    }
 
    /* Syncobj signals. */
-   unsigned num_syncobj_to_signal = cs->syncobj_to_signal.num;
-   if (num_syncobj_to_signal) {
-      struct drm_amdgpu_cs_chunk_sem *sem_chunk =
-         alloca(num_syncobj_to_signal * sizeof(sem_chunk[0]));
+   unsigned num_syncobj_to_signal = 1 + cs->syncobj_to_signal.num;
+   struct drm_amdgpu_cs_chunk_sem *sem_chunk =
+      alloca(num_syncobj_to_signal * sizeof(sem_chunk[0]));
 
-      for (unsigned i = 0; i < num_syncobj_to_signal; i++) {
-         struct amdgpu_fence *fence =
-            (struct amdgpu_fence*)cs->syncobj_to_signal.list[i];
+   for (unsigned i = 0; i < num_syncobj_to_signal - 1; i++) {
+      struct amdgpu_fence *fence =
+         (struct amdgpu_fence*)cs->syncobj_to_signal.list[i];
 
-         assert(amdgpu_fence_is_syncobj(fence));
-         sem_chunk[i].handle = fence->syncobj;
-      }
-
-      chunks[num_chunks].chunk_id = AMDGPU_CHUNK_ID_SYNCOBJ_OUT;
-      chunks[num_chunks].length_dw = sizeof(sem_chunk[0]) / 4
-                                     * num_syncobj_to_signal;
-      chunks[num_chunks].chunk_data = (uintptr_t)sem_chunk;
-      num_chunks++;
+      sem_chunk[i].handle = fence->syncobj;
    }
+   sem_chunk[cs->syncobj_to_signal.num].handle = ((struct amdgpu_fence*)cs->fence)->syncobj;
+
+   chunks[num_chunks].chunk_id = AMDGPU_CHUNK_ID_SYNCOBJ_OUT;
+   chunks[num_chunks].length_dw = sizeof(sem_chunk[0]) / 4 * num_syncobj_to_signal;
+   chunks[num_chunks].chunk_data = (uintptr_t)sem_chunk;
+   num_chunks++;
 
    if (ws->info.has_fw_based_shadowing && acs->mcbp_fw_shadow_chunk.shadow_va) {
       chunks[num_chunks].chunk_id = AMDGPU_CHUNK_ID_CP_GFX_SHADOW;

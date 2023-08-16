@@ -631,6 +631,13 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
       return false;
    }
 
+   uint64_t cap;
+   r = drmGetCap(fd, DRM_CAP_SYNCOBJ, &cap);
+   if (r != 0 || cap == 0) {
+      fprintf(stderr, "amdgpu: syncobj support is missing but is required.\n");
+      return false;
+   }
+
    /* Query hardware and driver information. */
    r = amdgpu_query_gpu_info(dev, &amdinfo);
    if (r) {

@@ -655,6 +655,7 @@ uint32_t iris_bufmgr_get_global_vm_id(struct iris_bufmgr *bufmgr);
 bool iris_bufmgr_use_global_vm_id(struct iris_bufmgr *bufmgr);
 struct intel_bind_timeline *iris_bufmgr_get_bind_timeline(struct iris_bufmgr *bufmgr);
 bool iris_bufmgr_compute_engine_supported(struct iris_bufmgr *bufmgr);
+uint64_t iris_bufmgr_get_dummy_aux_address(struct iris_bufmgr *bufmgr);
 
 enum iris_madvice {
    IRIS_MADVICE_WILL_NEED = 0,

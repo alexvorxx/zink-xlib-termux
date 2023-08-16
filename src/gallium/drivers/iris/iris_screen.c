@@ -850,6 +850,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
    screen->precompile = debug_get_bool_option("shader_precompile", true);
 
    isl_device_init(&screen->isl_dev, screen->devinfo);
+   screen->isl_dev.dummy_aux_address = iris_bufmgr_get_dummy_aux_address(screen->bufmgr);
 
    iris_compiler_init(screen);
 

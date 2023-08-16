@@ -240,6 +240,8 @@ struct iris_bufmgr {
    struct pb_slabs bo_slabs[NUM_SLAB_ALLOCATORS];
 
    struct iris_border_color_pool border_color_pool;
+
+   struct iris_bo *dummy_aux_bo;
 };
 
 static simple_mtx_t global_bufmgr_list_mutex = SIMPLE_MTX_INITIALIZER;
@@ -1803,6 +1805,8 @@ iris_bufmgr_destroy_global_vm(struct iris_bufmgr *bufmgr)
 static void
 iris_bufmgr_destroy(struct iris_bufmgr *bufmgr)
 {
+   iris_bo_unreference(bufmgr->dummy_aux_bo);
+
    iris_destroy_border_color_pool(&bufmgr->border_color_pool);
 
    /* Free aux-map buffers */
@@ -2441,8 +2445,20 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
 
    iris_init_border_color_pool(bufmgr, &bufmgr->border_color_pool);
 
+   if (intel_needs_workaround(devinfo, 14019708328)) {
+      bufmgr->dummy_aux_bo = iris_bo_alloc(bufmgr, "dummy_aux", 4096, 4096,
+                                           IRIS_MEMZONE_OTHER, BO_ALLOC_PLAIN);
+         if (!bufmgr->dummy_aux_bo)
+            goto error_dummy_aux;
+   }
+
    return bufmgr;
 
+error_dummy_aux:
+   iris_destroy_border_color_pool(&bufmgr->border_color_pool);
+   intel_aux_map_finish(bufmgr->aux_map_ctx);
+   _mesa_hash_table_destroy(bufmgr->handle_table, NULL);
+   _mesa_hash_table_destroy(bufmgr->name_table, NULL);
 error_slabs_init:
    for (unsigned i = 0; i < NUM_SLAB_ALLOCATORS; i++) {
       if (!bufmgr->bo_slabs[i].groups)
@@ -2623,4 +2639,10 @@ struct intel_bind_timeline *
 iris_bufmgr_get_bind_timeline(struct iris_bufmgr *bufmgr)
 {
    return &bufmgr->bind_timeline;
+}
+
+uint64_t
+iris_bufmgr_get_dummy_aux_address(struct iris_bufmgr *bufmgr)
+{
+   return bufmgr->dummy_aux_bo ? bufmgr->dummy_aux_bo->address : 0;
 }

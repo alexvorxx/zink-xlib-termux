@@ -1423,8 +1423,14 @@ iris_init_render_context(struct iris_batch *batch)
    iris_emit_cmd(batch, GENX(3DSTATE_TASK_CONTROL), foo);
 #endif
 
-   iris_alloc_push_constants(batch);
+#if INTEL_NEEDS_WA_14019857787
+   iris_emit_cmd(batch, GENX(3DSTATE_3D_MODE), p) {
+      p.EnableOOOreadsinRCPB = true;
+      p.EnableOOOreadsinRCPBMask = true;
+   }
+#endif
 
+   iris_alloc_push_constants(batch);
 
 #if GFX_VER >= 12
    init_aux_map_state(batch);

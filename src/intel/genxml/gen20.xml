@@ -335,11 +335,17 @@
     <field name="Subslice Hashing Table Enable" start="37" end="37" type="bool" />
     <field name="Slice Hashing Table Enable" start="38" end="38" type="bool" />
     <field name="DX10 OGL Border Mode for YCRCB" start="42" end="42" type="bool" />
+    <field name="Enable OOO reads in RCPB" start="43" end="43" type="bool" />
     <field name="Cross Slice Hashing Mode Mask" start="48" end="49" type="int" />
     <field name="3D Scoreboard Hashing Mode Mask" start="52" end="52" type="bool" />
     <field name="Subslice Hashing Table Enable Mask" start="53" end="53" type="bool" />
     <field name="Slice Hashing Table Enable Mask" start="54" end="54" type="bool" />
     <field name="DX10 OGL Border Mode for YCRCB Mask" start="58" end="58" type="bool" />
+    <field name="Enable OOO reads in RCPB Mask" start="59" end="59" type="bool" />
+    <field name="AMFS MOCS" start="64" end="70" type="uint" />
+    <field name="State Cache redirect to CS section enable" start="73" end="73" type="bool" />
+    <field name="AMFS MOCS Mask" start="80" end="86" type="uint" />
+    <field name="State Cache redirect to CS section enable Mask" start="89" end="89" type="bool" />
     <field name="RCC RHWO Optimization Disable" start="111" end="111" type="bool" />
     <field name="RCC RHWO Optimization Disable Mask" start="127" end="127" type="bool" />
   </instruction>

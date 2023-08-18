@@ -646,6 +646,10 @@ init_render_queue_state(struct anv_queue *queue, bool is_companion_rcs_batch)
    anv_batch_emit(batch, GENX(3DSTATE_3D_MODE), p) {
       p.DX10OGLBorderModeforYCRCB = true;
       p.DX10OGLBorderModeforYCRCBMask = true;
+#if INTEL_NEEDS_WA_14019857787
+      p.EnableOOOreadsinRCPB = true;
+      p.EnableOOOreadsinRCPBMask = true;
+#endif
    }
 #endif
 

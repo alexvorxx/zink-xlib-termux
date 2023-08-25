@@ -361,21 +361,15 @@ dri_fill_in_modes(struct dri_screen *screen)
    if (HAS_ZS(Z16_UNORM))
       zs_formats[num_zs_formats++] = PIPE_FORMAT_Z16_UNORM;
 
-   if (HAS_ZS(Z24X8_UNORM)) {
+   if (HAS_ZS(Z24X8_UNORM))
       zs_formats[num_zs_formats++] = PIPE_FORMAT_Z24X8_UNORM;
-      screen->d_depth_bits_last = true;
-   } else if (HAS_ZS(X8Z24_UNORM)) {
+   else if (HAS_ZS(X8Z24_UNORM))
       zs_formats[num_zs_formats++] = PIPE_FORMAT_X8Z24_UNORM;
-      screen->d_depth_bits_last = false;
-   }
 
-   if (HAS_ZS(Z24_UNORM_S8_UINT)) {
+   if (HAS_ZS(Z24_UNORM_S8_UINT))
       zs_formats[num_zs_formats++] = PIPE_FORMAT_Z24_UNORM_S8_UINT;
-      screen->sd_depth_bits_last = true;
-   } else if (HAS_ZS(S8_UINT_Z24_UNORM)) {
+   else if (HAS_ZS(S8_UINT_Z24_UNORM))
       zs_formats[num_zs_formats++] = PIPE_FORMAT_S8_UINT_Z24_UNORM;
-      screen->sd_depth_bits_last = false;
-   }
 
    if (HAS_ZS(Z32_UNORM))
       zs_formats[num_zs_formats++] = PIPE_FORMAT_Z32_UNORM;
@@ -474,103 +468,10 @@ dri_fill_st_visual(struct st_visual *stvis,
    if (!mode)
       return;
 
-   /* Deduce the color format. */
-   switch (mode->redMask) {
-   case 0:
-      /* Formats > 32 bpp */
-      assert(mode->floatMode);
-      if (mode->alphaShift > -1) {
-         assert(mode->alphaShift == 48);
-         stvis->color_format = PIPE_FORMAT_R16G16B16A16_FLOAT;
-      } else {
-         stvis->color_format = PIPE_FORMAT_R16G16B16X16_FLOAT;
-      }
-      break;
-
-   case 0x3FF00000:
-      if (mode->alphaMask) {
-         assert(mode->alphaMask == 0xC0000000);
-         stvis->color_format = PIPE_FORMAT_B10G10R10A2_UNORM;
-      } else {
-         stvis->color_format = PIPE_FORMAT_B10G10R10X2_UNORM;
-      }
-      break;
-
-   case 0x000003FF:
-      if (mode->alphaMask) {
-         assert(mode->alphaMask == 0xC0000000);
-         stvis->color_format = PIPE_FORMAT_R10G10B10A2_UNORM;
-      } else {
-         stvis->color_format = PIPE_FORMAT_R10G10B10X2_UNORM;
-      }
-      break;
-
-   case 0x00FF0000:
-      if (mode->alphaMask) {
-         assert(mode->alphaMask == 0xFF000000);
-         stvis->color_format = mode->sRGBCapable ?
-                                  PIPE_FORMAT_BGRA8888_SRGB :
-                                  PIPE_FORMAT_BGRA8888_UNORM;
-      } else {
-         stvis->color_format = mode->sRGBCapable ?
-                                  PIPE_FORMAT_BGRX8888_SRGB :
-                                  PIPE_FORMAT_BGRX8888_UNORM;
-      }
-      break;
-
-   case 0x000000FF:
-      if (mode->alphaMask) {
-         assert(mode->alphaMask == 0xFF000000);
-         stvis->color_format = mode->sRGBCapable ?
-                                  PIPE_FORMAT_RGBA8888_SRGB :
-                                  PIPE_FORMAT_RGBA8888_UNORM;
-      } else {
-         stvis->color_format = mode->sRGBCapable ?
-                                  PIPE_FORMAT_RGBX8888_SRGB :
-                                  PIPE_FORMAT_RGBX8888_UNORM;
-      }
-      break;
-
-   case 0x0000F800:
-      stvis->color_format = PIPE_FORMAT_B5G6R5_UNORM;
-      break;
-
-   case 0x00007C00:
-      assert(!mode->sRGBCapable);
-      if (mode->alphaMask)
-         stvis->color_format = PIPE_FORMAT_B5G5R5A1_UNORM;
-      else
-         stvis->color_format = PIPE_FORMAT_B5G5R5X1_UNORM;
-      break;
-
-   case 0x0000001F:
-      assert(!mode->sRGBCapable);
-      if (mode->alphaMask)
-         stvis->color_format = PIPE_FORMAT_R5G5B5A1_UNORM;
-      else
-         stvis->color_format = PIPE_FORMAT_R5G5B5X1_UNORM;
-      break;
-
-   case 0x00000F00:
-      assert(!mode->sRGBCapable);
-      if (mode->alphaMask)
-         stvis->color_format = PIPE_FORMAT_B4G4R4A4_UNORM;
-      else
-         stvis->color_format = PIPE_FORMAT_B4G4R4X4_UNORM;
-      break;
-
-   case 0x0000000F:
-      assert(!mode->sRGBCapable);
-      if (mode->alphaMask)
-         stvis->color_format = PIPE_FORMAT_R4G4B4A4_UNORM;
-      else
-         stvis->color_format = PIPE_FORMAT_R4G4B4X4_UNORM;
-      break;
-
-   default:
-      assert(!"unsupported visual: invalid red mask");
-      return;
-   }
+   assert(mode->color_format != PIPE_FORMAT_NONE);
+   stvis->color_format = mode->color_format;
+   stvis->accum_format = mode->accum_format;
+   stvis->depth_stencil_format = mode->zs_format;
 
    if (mode->samples > 0) {
       if (debug_get_bool_option("DRI_NO_MSAA", false))
@@ -578,33 +479,6 @@ dri_fill_st_visual(struct st_visual *stvis,
       else
          stvis->samples = mode->samples;
    }
-
-   switch (mode->depthBits) {
-   default:
-   case 0:
-      stvis->depth_stencil_format = PIPE_FORMAT_NONE;
-      break;
-   case 16:
-      stvis->depth_stencil_format = PIPE_FORMAT_Z16_UNORM;
-      break;
-   case 24:
-      if (mode->stencilBits == 0) {
-         stvis->depth_stencil_format = (screen->d_depth_bits_last) ?
-                                          PIPE_FORMAT_Z24X8_UNORM:
-                                          PIPE_FORMAT_X8Z24_UNORM;
-      } else {
-         stvis->depth_stencil_format = (screen->sd_depth_bits_last) ?
-                                          PIPE_FORMAT_Z24_UNORM_S8_UINT:
-                                          PIPE_FORMAT_S8_UINT_Z24_UNORM;
-      }
-      break;
-   case 32:
-      stvis->depth_stencil_format = PIPE_FORMAT_Z32_UNORM;
-      break;
-   }
-
-   stvis->accum_format = (mode->accumRedBits > 0) ?
-      PIPE_FORMAT_R16G16B16A16_SNORM : PIPE_FORMAT_NONE;
 
    stvis->buffer_mask |= ST_ATTACHMENT_FRONT_LEFT_MASK;
    if (mode->doubleBufferMode) {

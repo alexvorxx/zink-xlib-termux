@@ -878,6 +878,33 @@
     <field name="Argument Buffer Start Address" start="130" end="191" type="address" />
     <field name="COMPUTE_WALKER_BODY" start="192" end="1439" type="COMPUTE_WALKER_BODY" />
   </instruction>
+  <instruction name="MI_SEMAPHORE_WAIT" bias="2" length="5">
+    <field name="DWord Length" start="0" end="7" type="uint" default="3" />
+    <field name="Compare Operation" start="12" end="14" type="uint" prefix="COMPARE">
+      <value name="SAD_GREATER_THAN_SDD" value="0" />
+      <value name="SAD_GREATER_THAN_OR_EQUAL_SDD" value="1" />
+      <value name="SAD_LESS_THAN_SDD" value="2" />
+      <value name="SAD_LESS_THAN_OR_EQUAL_SDD" value="3" />
+      <value name="SAD_EQUAL_SDD" value="4" />
+      <value name="SAD_NOT_EQUAL_SDD" value="5" />
+    </field>
+    <field name="Wait Mode" start="15" end="15" type="uint">
+      <value name="Polling Mode" value="1" />
+      <value name="Signal Mode" value="0" />
+    </field>
+    <field name="Register Poll Mode" start="16" end="16" type="bool" />
+    <field name="Indirect Semaphore Data Dword" start="17" end="17" type="bool" />
+    <field name="Workload Partition ID Offset Enable" start="18" end="18" type="bool" />
+    <field name="Memory Type" start="22" end="22" type="uint">
+      <value name="Per Process Graphics Address" value="0" />
+      <value name="Global Graphics Address" value="1" />
+    </field>
+    <field name="MI Command Opcode" start="23" end="28" type="uint" default="28" />
+    <field name="Command Type" start="29" end="31" type="uint" default="0" />
+    <field name="Semaphore Data Dword" start="32" end="63" type="uint" />
+    <field name="Semaphore Address" start="66" end="127" type="address" />
+    <field name="Wait Token Number" start="130" end="137" type="uint" />
+  </instruction>
   <instruction name="PIPELINE_SELECT" bias="1" length="1" engine="render">
     <field name="Pipeline Selection" start="0" end="1" type="uint">
       <value name="3D" value="0" />

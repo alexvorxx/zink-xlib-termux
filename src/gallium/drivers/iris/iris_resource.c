@@ -476,7 +476,7 @@ iris_resource_disable_aux(struct iris_resource *res)
 static unsigned
 iris_resource_alloc_flags(const struct iris_screen *screen,
                           const struct pipe_resource *templ,
-                          enum isl_aux_usage aux_usage)
+                          struct iris_resource *res)
 {
    if (templ->flags & IRIS_RESOURCE_FLAG_DEVICE_MEM)
       return BO_ALLOC_PLAIN;
@@ -505,9 +505,14 @@ iris_resource_alloc_flags(const struct iris_screen *screen,
       flags |= BO_ALLOC_SMEM | BO_ALLOC_COHERENT;
 
    if (screen->devinfo->verx10 >= 125 && screen->devinfo->has_local_mem &&
-       isl_aux_usage_has_ccs(aux_usage)) {
+       isl_aux_usage_has_ccs(res->aux.usage)) {
       assert((flags & BO_ALLOC_SMEM) == 0);
       flags |= BO_ALLOC_LMEM;
+      /* For displayable surfaces with clear color,
+       * the KMD will need to access the clear color via CPU.
+       */
+      if (res->mod_info && res->mod_info->supports_clear_color)
+         flags |= BO_ALLOC_CPU_VISIBLE;
    }
 
    if ((templ->bind & PIPE_BIND_SHARED) ||
@@ -1078,7 +1083,7 @@ iris_resource_create_for_buffer(struct pipe_screen *pscreen,
       name = "scratch surface state";
    }
 
-   unsigned flags = iris_resource_alloc_flags(screen, templ, res->aux.usage);
+   unsigned flags = iris_resource_alloc_flags(screen, templ, res);
 
    res->bo = iris_bo_alloc(screen->bufmgr, name, templ->width0,
                            iris_buffer_alignment(templ->width0),
@@ -1142,7 +1147,7 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
    const char *name = "miptree";
    enum iris_memory_zone memzone = IRIS_MEMZONE_OTHER;
 
-   unsigned flags = iris_resource_alloc_flags(screen, templ, res->aux.usage);
+   unsigned flags = iris_resource_alloc_flags(screen, templ, res);
 
    /* These are for u_upload_mgr buffers only */
    assert(!(templ->flags & (IRIS_RESOURCE_FLAG_SHADER_MEMZONE |

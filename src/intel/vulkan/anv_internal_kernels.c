@@ -302,21 +302,22 @@ compile_upload_spirv(struct anv_device *device,
       assert(stats.sends == sends_count_expectation);
    }
 
-   struct anv_pipeline_bind_map dummy_bind_map;
-   memset(&dummy_bind_map, 0, sizeof(dummy_bind_map));
-
-   struct anv_push_descriptor_info push_desc_info = {};
+   struct anv_pipeline_bind_map empty_bind_map = {};
+   struct anv_push_descriptor_info empty_push_desc_info = {};
+   struct anv_shader_upload_params upload_params = {
+      .stage               = nir->info.stage,
+      .key_data            = hash_key,
+      .key_size            = hash_key_size,
+      .kernel_data         = program,
+      .kernel_size         = prog_data.base.program_size,
+      .prog_data           = &prog_data.base,
+      .prog_data_size      = sizeof(prog_data),
+      .bind_map            = &empty_bind_map,
+      .push_desc_info      = &empty_push_desc_info,
+   };
 
    struct anv_shader_bin *kernel =
-      anv_device_upload_kernel(device,
-                               device->internal_cache,
-                               nir->info.stage,
-                               hash_key, hash_key_size, program,
-                               prog_data.base.program_size,
-                               &prog_data.base, sizeof(prog_data),
-                               NULL, 0, NULL, &dummy_bind_map,
-                               &push_desc_info,
-                               0 /* dynamic_push_values */);
+      anv_device_upload_kernel(device, device->internal_cache, &upload_params);
 
    ralloc_free(temp_ctx);
    ralloc_free(nir);

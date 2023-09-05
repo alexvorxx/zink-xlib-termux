@@ -60,19 +60,22 @@ upload_blorp_shader(struct blorp_batch *batch, uint32_t stage,
    struct blorp_context *blorp = batch->blorp;
    struct anv_device *device = blorp->driver_ctx;
 
-   struct anv_pipeline_bind_map bind_map = {
-      .surface_count = 0,
-      .sampler_count = 0,
+   struct anv_pipeline_bind_map empty_bind_map = {};
+   struct anv_push_descriptor_info empty_push_desc_info = {};
+   struct anv_shader_upload_params upload_params = {
+      .stage               = stage,
+      .key_data            = key,
+      .key_size            = key_size,
+      .kernel_data         = kernel,
+      .kernel_size         = kernel_size,
+      .prog_data           = prog_data,
+      .prog_data_size      = prog_data_size,
+      .bind_map            = &empty_bind_map,
+      .push_desc_info      = &empty_push_desc_info,
    };
-   struct anv_push_descriptor_info push_desc_info = {};
 
    struct anv_shader_bin *bin =
-      anv_device_upload_kernel(device, device->internal_cache, stage,
-                               key, key_size, kernel, kernel_size,
-                               prog_data, prog_data_size,
-                               NULL, 0, NULL, &bind_map,
-                               &push_desc_info,
-                               0 /* dynamic_push_values */);
+      anv_device_upload_kernel(device, device->internal_cache, &upload_params);
 
    if (!bin)
       return false;

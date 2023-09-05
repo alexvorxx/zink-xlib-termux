@@ -1239,20 +1239,12 @@ anv_device_search_for_kernel(struct anv_device *device,
                              const void *key_data, uint32_t key_size,
                              bool *user_cache_bit);
 
+struct anv_shader_upload_params;
+
 struct anv_shader_bin *
 anv_device_upload_kernel(struct anv_device *device,
                          struct vk_pipeline_cache *cache,
-                         gl_shader_stage stage,
-                         const void *key_data, uint32_t key_size,
-                         const void *kernel_data, uint32_t kernel_size,
-                         const struct brw_stage_prog_data *prog_data,
-                         uint32_t prog_data_size,
-                         const struct brw_compile_stats *stats,
-                         uint32_t num_stats,
-                         const struct nir_xfb_info *xfb_info,
-                         const struct anv_pipeline_bind_map *bind_map,
-                         const struct anv_push_descriptor_info *push_desc_info,
-                         enum anv_dynamic_push_bits dynamic_push_values);
+                         const struct anv_shader_upload_params *params);
 
 struct nir_shader;
 struct nir_shader_compiler_options;
@@ -4177,6 +4169,30 @@ struct anv_push_descriptor_info {
 /* A list of values we push to implement some of the dynamic states */
 enum anv_dynamic_push_bits {
    ANV_DYNAMIC_PUSH_INPUT_VERTICES = BITFIELD_BIT(0),
+};
+
+struct anv_shader_upload_params {
+   gl_shader_stage stage;
+
+   const void *key_data;
+   uint32_t key_size;
+
+   const void *kernel_data;
+   uint32_t kernel_size;
+
+   const struct brw_stage_prog_data *prog_data;
+   uint32_t prog_data_size;
+
+   const struct brw_compile_stats *stats;
+   uint32_t num_stats;
+
+   const struct nir_xfb_info *xfb_info;
+
+   const struct anv_pipeline_bind_map *bind_map;
+
+   const struct anv_push_descriptor_info *push_desc_info;
+
+   enum anv_dynamic_push_bits dynamic_push_values;
 };
 
 struct anv_shader_bin {

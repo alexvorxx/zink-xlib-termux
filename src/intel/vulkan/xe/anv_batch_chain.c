@@ -411,12 +411,7 @@ xe_queue_exec_locked(struct anv_queue *queue,
                                                   wait_count, waits);
    }
 
-   if (result == VK_SUCCESS && queue->sync) {
-      result = vk_sync_wait(&device->vk, queue->sync, 0,
-                            VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
-      if (result != VK_SUCCESS)
-         result = vk_queue_set_lost(&queue->vk, "sync wait failed");
-   }
+   result = anv_queue_post_submit(queue, result);
 
    if (result == VK_SUCCESS && utrace_submit)
       result = xe_queue_exec_utrace_locked(queue, utrace_submit);

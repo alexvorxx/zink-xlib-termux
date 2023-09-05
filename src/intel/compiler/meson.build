@@ -28,6 +28,7 @@ intel_nir_files = files(
   'intel_nir_lower_conversions.c',
   'intel_nir_lower_non_uniform_barycentric_at_sample.c',
   'intel_nir_lower_non_uniform_resource_intel.c',
+  'intel_nir_lower_printf.c',
   'intel_nir_lower_shading_rate_output.c',
   'intel_nir_lower_sparse.c',
   'intel_nir_lower_texture.c',

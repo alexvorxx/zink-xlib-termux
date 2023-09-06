@@ -2144,6 +2144,13 @@ if with_perfetto
   pre_args += '-DHAVE_PERFETTO'
 endif
 
+with_teflon = get_option('teflon')
+if with_teflon and with_tests
+  dep_xtensor = dependency('xtensor')
+  dep_flatbuffers = dependency('flatbuffers')
+  prog_flatc = find_program('flatc')
+endif
+
 with_gpuvis = get_option('gpuvis')
 if with_gpuvis
   pre_args += '-DHAVE_GPUVIS'
@@ -2362,3 +2369,6 @@ if with_perfetto and with_any_datasource
   perfetto_summary += {'Data source': with_datasources}
 endif
 summary(perfetto_summary, section: 'Perfetto', bool_yn: true, list_sep: ' ')
+
+teflon_summary = {'Enabled': with_teflon}
+summary(teflon_summary, section: 'Teflon (TensorFlow Lite delegate)', bool_yn: true, list_sep: ' ')

@@ -592,6 +592,13 @@ option(
 )
 
 option(
+  'teflon',
+  type : 'boolean',
+  value : false,
+  description : 'Enable TensorFlow Lite delegate. Default: false'
+)
+
+option(
   'gpuvis',
   type : 'boolean',
   value : false,

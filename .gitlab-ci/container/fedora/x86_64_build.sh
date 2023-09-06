@@ -30,6 +30,7 @@ DEPS=(
     ccache
     clang-devel
     flex
+    flatbuffers-compiler
     gcc
     gcc-c++
     gettext
@@ -41,6 +42,7 @@ DEPS=(
     "pkgconfig(SPIRV-Tools)"
     "pkgconfig(dri2proto)"
     "pkgconfig(expat)"
+    "pkgconfig(flatbuffers)"
     "pkgconfig(glproto)"
     "pkgconfig(libclc)"
     "pkgconfig(libelf)"
@@ -66,6 +68,7 @@ DEPS=(
     "pkgconfig(xfixes)"
     "pkgconfig(xrandr)"
     "pkgconfig(xshmfence)"
+    "pkgconfig(xtensor)"
     "pkgconfig(xxf86vm)"
     "pkgconfig(zlib)"
     procps-ng

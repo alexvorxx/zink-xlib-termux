@@ -79,6 +79,8 @@ struct pipe_video_buffer;
 struct pipe_video_codec;
 struct pipe_viewport_state;
 struct pipe_compute_state;
+struct pipe_ml_operation;
+struct pipe_tensor;
 union pipe_color_union;
 union pipe_query_result;
 struct u_log_context;
@@ -1223,6 +1225,53 @@ struct pipe_context {
                                                      struct winsys_handle *handle,
                                                      unsigned usage );
 
+   /**
+    * Compiles a ML subgraph, to be executed later. The returned pipe_ml_subgraph
+    * should contain all information needed to execute the subgraph with as
+    * little effort as strictly needed.
+    *
+    * \param ctx         pipe context
+    * \param operations  array containing the definitions of the operations in the graph
+    * \param count       number of operations
+    * \return            a newly allocated pipe_ml_subgraph
+    */
+   struct pipe_ml_subgraph *(*ml_subgraph_create)(struct pipe_context *context,
+                                                  const struct pipe_ml_operation *operations,
+                                                  unsigned count);
+
+   /**
+    * Invokes a ML subgraph for a given input tensor.
+    *
+    * \param ctx         pipe context
+    * \param subgraph    previously-compiled subgraph
+    * \param input       tensor to use as the input
+    */
+   void (*ml_subgraph_invoke)(struct pipe_context *context,
+                              struct pipe_ml_subgraph *subgraph,
+                              struct pipe_tensor *input);
+
+   /**
+    * After a ML subgraph has been invoked, copy the contents of the output
+    * tensors to the provided buffers.
+    * 
+    * \param ctx           pipe context
+    * \param subgraph      previously-executed subgraph
+    * \param outputs_count number of output tensors to copy out
+    * \param output_idxs   array with the indices of output tensors
+    * \param outputs       array of buffers to copy the tensor data to
+    */
+   void (*ml_subgraph_read_output)(struct pipe_context *context,
+                                   struct pipe_ml_subgraph *subgraph,
+                                   unsigned outputs_count, unsigned output_idxs[], void *outputs[]);
+
+   /**
+    * Release all resources allocated by the implementation of ml_subgraph_create
+    * 
+    * \param ctx           pipe context
+    * \param subgraph      subgraph to release
+    */
+   void (*ml_subgraph_destroy)(struct pipe_context *context,
+                               struct pipe_ml_subgraph *subgraph);
 };
 
 

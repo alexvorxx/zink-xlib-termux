@@ -260,3 +260,8 @@ if with_swrast_vk
   subdir('frontends/lavapipe')
   subdir('targets/lavapipe')
 endif
+
+if with_teflon
+  subdir('frontends/teflon')
+  subdir('targets/teflon')
+endif

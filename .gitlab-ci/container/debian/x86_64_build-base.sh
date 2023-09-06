@@ -29,6 +29,7 @@ DEPS=(
     dpkg-cross
     findutils
     flex
+    flatbuffers-compiler
     g++
     cmake
     gcc
@@ -41,6 +42,7 @@ DEPS=(
     libelf-dev
     libepoxy-dev
     libexpat1-dev
+    libflatbuffers-dev
     libgtk-3-dev
     "libllvm${LLVM_VERSION}"
     libomxil-bellagio-dev
@@ -56,6 +58,7 @@ DEPS=(
     libxrandr-dev
     libxrender-dev
     libxshmfence-dev
+    libxtensor-dev
     libxxf86vm-dev
     libwayland-egl-backend-dev
     make

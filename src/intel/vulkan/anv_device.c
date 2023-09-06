@@ -3908,6 +3908,8 @@ VkResult anv_CreateDevice(
    }
    if (!intel_needs_workaround(device->info, 18019816803))
       BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_WA_18019816803);
+   if (!intel_needs_workaround(device->info, 14018283232))
+      BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_WA_14018283232);
    if (device->info->ver > 9)
       BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_PMA_FIX);
 

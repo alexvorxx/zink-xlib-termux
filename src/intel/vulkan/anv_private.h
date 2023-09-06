@@ -1451,6 +1451,7 @@ enum anv_gfx_state_bits {
    ANV_GFX_STATE_PS_EXTRA,
    ANV_GFX_STATE_PMA_FIX, /* Fake state to implement workaround */
    ANV_GFX_STATE_WA_18019816803, /* Fake state to implement workaround */
+   ANV_GFX_STATE_WA_14018283232, /* Fake state to implement workaround */
    ANV_GFX_STATE_TBIMR_TILE_PASS_INFO,
 
    ANV_GFX_STATE_MAX,
@@ -1748,6 +1749,11 @@ struct anv_gfx_dynamic_state {
     * DEPTH and STENCIL attachment write state for Wa_18019816803.
     */
    bool ds_write_state;
+
+   /**
+    * Toggle tracking for Wa_14018283232.
+    */
+   bool wa_14018283232_toggle;
 
    BITSET_DECLARE(dirty, ANV_GFX_STATE_MAX);
 };

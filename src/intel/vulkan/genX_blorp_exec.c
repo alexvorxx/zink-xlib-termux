@@ -338,6 +338,10 @@ blorp_exec_on_render(struct blorp_batch *batch,
    }
 #endif
 
+#if INTEL_WA_14018283232_GFX_VER
+   genX(cmd_buffer_ensure_wa_14018283232)(cmd_buffer, false);
+#endif
+
    if (params->depth.enabled &&
        !(batch->flags & BLORP_BATCH_NO_EMIT_DEPTH_STENCIL))
       genX(cmd_buffer_emit_gfx12_depth_wa)(cmd_buffer, &params->depth.surf);

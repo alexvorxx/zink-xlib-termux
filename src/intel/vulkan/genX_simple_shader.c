@@ -307,6 +307,10 @@ genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
    state->cmd_buffer->state.descriptors_dirty |= VK_SHADER_STAGE_FRAGMENT_BIT;
 #endif
 
+#if INTEL_WA_14018283232_GFX_VER
+   genX(cmd_buffer_ensure_wa_14018283232)(state->cmd_buffer, false);
+#endif
+
    /* Flag all the instructions emitted by the memcpy. */
    struct anv_gfx_dynamic_state *hw_state =
       &state->cmd_buffer->state.gfx.dyn_state;

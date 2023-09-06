@@ -312,6 +312,10 @@ genX(emit_so_memcpy_fini)(struct anv_memcpy_state *state)
       struct anv_gfx_dynamic_state *hw_state =
          &state->cmd_buffer->state.gfx.dyn_state;
 
+#if INTEL_WA_14018283232_GFX_VER
+      genX(cmd_buffer_ensure_wa_14018283232)(state->cmd_buffer, false);
+#endif
+
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_URB);
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_VF_STATISTICS);
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_VF);

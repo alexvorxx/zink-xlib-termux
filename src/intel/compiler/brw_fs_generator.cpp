@@ -1168,7 +1168,8 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 
       case SHADER_OPCODE_MOV_RELOC_IMM:
          assert(src[0].file == BRW_IMMEDIATE_VALUE);
-         brw_MOV_reloc_imm(p, dst, dst.type, src[0].ud);
+         assert(src[1].file == BRW_IMMEDIATE_VALUE);
+         brw_MOV_reloc_imm(p, dst, dst.type, src[0].ud, src[1].ud);
          break;
 
       case BRW_OPCODE_HALT:

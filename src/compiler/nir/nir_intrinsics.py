@@ -2094,7 +2094,7 @@ system_value("simd_width_intel", 1)
 
 # Load a relocatable 32-bit value
 intrinsic("load_reloc_const_intel", dest_comp=1, bit_sizes=[32],
-          indices=[PARAM_IDX], flags=[CAN_ELIMINATE, CAN_REORDER])
+          indices=[PARAM_IDX, BASE], flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # 1 component 32bit surface index that can be used for bindless or BTI heaps
 #

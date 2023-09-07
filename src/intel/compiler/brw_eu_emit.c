@@ -2117,13 +2117,14 @@ void
 brw_MOV_reloc_imm(struct brw_codegen *p,
                   struct brw_reg dst,
                   enum brw_reg_type src_type,
-                  uint32_t id)
+                  uint32_t id,
+                  uint32_t base)
 {
    assert(brw_type_size_bytes(src_type) == 4);
    assert(brw_type_size_bytes(dst.type) == 4);
 
    brw_add_reloc(p, id, BRW_SHADER_RELOC_TYPE_MOV_IMM,
-                 p->next_insn_offset, 0);
+                 p->next_insn_offset, base);
 
    brw_MOV(p, dst, retype(brw_imm_ud(DEFAULT_PATCH_IMM), src_type));
 }

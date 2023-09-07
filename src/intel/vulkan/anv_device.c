@@ -3821,10 +3821,16 @@ VkResult anv_CreateDevice(
       device->physical->instance->fp64_workaround_enabled)
       anv_load_fp64_shader(device);
 
+   if (INTEL_DEBUG(DEBUG_SHADER_PRINT)) {
+      result = anv_device_print_init(device);
+      if (result != VK_SUCCESS)
+         goto fail_internal_cache;
+   }
+
    result = anv_device_init_rt_shaders(device);
    if (result != VK_SUCCESS) {
       result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_internal_cache;
+      goto fail_print;
    }
 
 #if DETECT_OS_ANDROID
@@ -3917,6 +3923,9 @@ VkResult anv_CreateDevice(
       vk_common_DestroyCommandPool(anv_device_to_handle(device),
                                    device->companion_rcs_cmd_pool, NULL);
    }
+ fail_print:
+   if (INTEL_DEBUG(DEBUG_SHADER_PRINT))
+      anv_device_print_fini(device);
  fail_internal_cache:
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
  fail_default_pipeline_cache:
@@ -4036,6 +4045,9 @@ void anv_DestroyDevice(
    anv_device_finish_astc_emu(device);
 
    anv_device_finish_internal_kernels(device);
+
+   if (INTEL_DEBUG(DEBUG_SHADER_PRINT))
+      anv_device_print_fini(device);
 
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
    vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);

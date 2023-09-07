@@ -200,6 +200,46 @@ anv_shader_bin_rewrite_embedded_samplers(struct anv_device *device,
                            reloc_values, rv_count);
 }
 
+static uint32_t
+brw_stage_prog_data_printf_num_args(const struct brw_stage_prog_data *prog_data)
+{
+   uint32_t count = 0;
+   for (unsigned i = 0; i < prog_data->printf_info_count; i++)
+      count += prog_data->printf_info[i].num_args;
+   return count;
+}
+
+static uint32_t
+brw_stage_prog_data_printf_string_size(const struct brw_stage_prog_data *prog_data)
+{
+   uint32_t size = 0;
+   for (unsigned i = 0; i < prog_data->printf_info_count; i++)
+      size += prog_data->printf_info[i].string_size;
+   return size;
+}
+
+static void
+copy_uprintf(u_printf_info *out_infos,
+             unsigned *out_arg_sizes,
+             char  *out_strings,
+             const struct brw_stage_prog_data *prog_data)
+{
+   for (unsigned i = 0; i < prog_data->printf_info_count; i++) {
+      out_infos[i] = prog_data->printf_info[i];
+      out_infos[i].arg_sizes = out_arg_sizes;
+      memcpy(out_infos[i].arg_sizes,
+             prog_data->printf_info[i].arg_sizes,
+             sizeof(out_infos[i].arg_sizes[0]) * prog_data->printf_info[i].num_args);
+      out_infos[i].strings = out_strings;
+      memcpy(out_infos[i].strings,
+             prog_data->printf_info[i].strings,
+             prog_data->printf_info[i].string_size);
+
+      out_arg_sizes += prog_data->printf_info[i].num_args;
+      out_strings += prog_data->printf_info[i].string_size;
+   }
+}
+
 static struct anv_shader_bin *
 anv_shader_bin_create(struct anv_device *device,
                       gl_shader_stage stage,
@@ -237,6 +277,15 @@ anv_shader_bin_create(struct anv_device *device,
                       bind_map->kernel_arg_count);
    VK_MULTIALLOC_DECL(&ma, struct anv_embedded_sampler *, embedded_samplers,
                       bind_map->embedded_sampler_count);
+   VK_MULTIALLOC_DECL(&ma, u_printf_info, printf_infos,
+                      INTEL_DEBUG(DEBUG_SHADER_PRINT) ?
+                      prog_data_in->printf_info_count : 0);
+   VK_MULTIALLOC_DECL(&ma, unsigned, arg_sizes,
+                      INTEL_DEBUG(DEBUG_SHADER_PRINT) ?
+                      brw_stage_prog_data_printf_num_args(prog_data_in) : 0);
+   VK_MULTIALLOC_DECL(&ma, char, strings,
+                      INTEL_DEBUG(DEBUG_SHADER_PRINT) ?
+                      brw_stage_prog_data_printf_string_size(prog_data_in) : 0);
 
    if (!vk_multialloc_alloc(&ma, &device->vk.alloc,
                             VK_SYSTEM_ALLOCATION_SCOPE_DEVICE))
@@ -268,7 +317,7 @@ anv_shader_bin_create(struct anv_device *device,
       prog_data_in->const_data_offset;
 
    int rv_count = 0;
-   struct brw_shader_reloc_value reloc_values[7];
+   struct brw_shader_reloc_value reloc_values[9];
    assert((device->physical->va.descriptor_buffer_pool.addr & 0xffffffff) == 0);
    reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
       .id = BRW_SHADER_RELOC_DESCRIPTORS_BUFFER_ADDR_HIGH,
@@ -314,6 +363,39 @@ anv_shader_bin_create(struct anv_device *device,
       };
    }
 
+   if (INTEL_DEBUG(DEBUG_SHADER_PRINT) && prog_data_in->printf_info_count > 0) {
+      assert(device->printf.bo != NULL);
+
+      copy_uprintf(printf_infos, arg_sizes, strings, prog_data_in);
+
+      simple_mtx_lock(&device->printf.mutex);
+
+      uint32_t base_printf_idx =
+         util_dynarray_num_elements(&device->printf.prints, u_printf_info*);
+      for (uint32_t i = 0; i < prog_data_in->printf_info_count; i++) {
+         util_dynarray_append(&device->printf.prints, u_printf_info *,
+                              &printf_infos[i]);
+      }
+
+      simple_mtx_unlock(&device->printf.mutex);
+
+      /* u_printf expects the string IDs to start at 1. */
+      reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
+         .id = BRW_SHADER_RELOC_PRINTF_BASE_IDENTIFIER,
+         .value = base_printf_idx,
+      };
+      reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
+         .id = BRW_SHADER_RELOC_PRINTF_BUFFER_ADDR_LOW,
+         .value = device->printf.bo->offset & 0xffffffff,
+      };
+      reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
+         .id = BRW_SHADER_RELOC_PRINTF_BUFFER_ADDR_HIGH,
+         .value = device->printf.bo->offset >> 32,
+      };
+   } else if (prog_data_in->printf_info_count > 0) {
+      unreachable("shader with printf intrinsics requires INTEL_DEBUG=shader-print");
+   }
+
    brw_write_shader_relocs(&device->physical->compiler->isa,
                            shader->kernel.map, prog_data_in,
                            reloc_values, rv_count);
@@ -327,6 +409,7 @@ anv_shader_bin_create(struct anv_device *device,
    memset(prog_data_param, 0,
           prog_data->nr_params * sizeof(*prog_data_param));
    prog_data->param = prog_data_param;
+   prog_data->printf_info = printf_infos;
    shader->prog_data = prog_data;
    shader->prog_data_size = prog_data_size;
 
@@ -392,6 +475,8 @@ anv_shader_bin_serialize(struct vk_pipeline_cache_object *object,
    blob_write_bytes(blob, shader->prog_data->relocs,
                     shader->prog_data->num_relocs *
                     sizeof(shader->prog_data->relocs[0]));
+   nir_serialize_printf_info(blob, shader->prog_data->printf_info,
+                             shader->prog_data->printf_info_count);
 
    blob_write_uint32(blob, shader->num_stats);
    blob_write_bytes(blob, shader->stats,
@@ -469,6 +554,11 @@ anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
       blob_read_bytes(blob, prog_data.base.num_relocs *
                             sizeof(prog_data.base.relocs[0]));
 
+   void *mem_ctx = ralloc_context(NULL);
+   prog_data.base.printf_info =
+      nir_deserialize_printf_info(mem_ctx, blob,
+                                  &prog_data.base.printf_info_count);
+
    uint32_t num_stats = blob_read_uint32(blob);
    const struct brw_compile_stats *stats =
       blob_read_bytes(blob, num_stats * sizeof(stats[0]));
@@ -511,8 +601,10 @@ anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
                             sizeof(*bind_map.kernel_args));
    blob_copy_bytes(blob, bind_map.push_ranges, sizeof(bind_map.push_ranges));
 
-   if (blob->overrun)
+   if (blob->overrun) {
+      ralloc_free(mem_ctx);
       return NULL;
+   }
 
    struct anv_shader_bin *shader =
       anv_shader_bin_create(device, stage,
@@ -522,6 +614,9 @@ anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
                             stats, num_stats, xfb_info, &bind_map,
                             &push_desc_info,
                             dynamic_push_values);
+
+   ralloc_free(mem_ctx);
+
    if (shader == NULL)
       return NULL;
 

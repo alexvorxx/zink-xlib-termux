@@ -2034,6 +2034,21 @@ struct anv_device {
        simple_mtx_t                              mutex;
        struct hash_table                        *map;
     }                                            embedded_samplers;
+
+    struct {
+       /**
+        * Mutex for the printfs array
+        */
+       simple_mtx_t                              mutex;
+       /**
+        * Buffer in which the shader printfs are stored
+        */
+       struct anv_bo                            *bo;
+       /**
+        * Array of pointers to u_printf_info
+        */
+       struct util_dynarray                      prints;
+    } printf;
 };
 
 static inline uint32_t
@@ -2154,6 +2169,10 @@ anv_device_lookup_bo(struct anv_device *device, uint32_t gem_handle)
 VkResult anv_device_wait(struct anv_device *device, struct anv_bo *bo,
                          int64_t timeout);
 
+VkResult anv_device_print_init(struct anv_device *device);
+void anv_device_print_fini(struct anv_device *device);
+void anv_device_print_shader_prints(struct anv_device *device);
+
 VkResult anv_queue_init(struct anv_device *device, struct anv_queue *queue,
                         const VkDeviceQueueCreateInfo *pCreateInfo,
                         uint32_t index_in_family);
@@ -2192,6 +2211,9 @@ anv_queue_post_submit(struct anv_queue *queue, VkResult submit_result)
       if (result != VK_SUCCESS)
          result = vk_queue_set_lost(&queue->vk, "sync wait failed");
    }
+
+   if (INTEL_DEBUG(DEBUG_SHADER_PRINT))
+      anv_device_print_shader_prints(queue->device);
 
    return result;
 }

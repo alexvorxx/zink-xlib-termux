@@ -242,13 +242,17 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
       return PAN_MAX_MIP_LEVELS;
 
-   case PIPE_CAP_FS_COORD_ORIGIN_LOWER_LEFT:
+   /* pixel coord is in integer sysval on bifrost. */
    case PIPE_CAP_FS_COORD_PIXEL_CENTER_INTEGER:
-      /* Hardware is upper left. Pixel center at (0.5, 0.5) */
+      return dev->arch >= 6;
+   case PIPE_CAP_FS_COORD_PIXEL_CENTER_HALF_INTEGER:
+      return dev->arch < 6;
+
+   case PIPE_CAP_FS_COORD_ORIGIN_LOWER_LEFT:
+      /* Hardware is upper left */
       return 0;
 
    case PIPE_CAP_FS_COORD_ORIGIN_UPPER_LEFT:
-   case PIPE_CAP_FS_COORD_PIXEL_CENTER_HALF_INTEGER:
    case PIPE_CAP_TGSI_TEXCOORD:
       return 1;
 

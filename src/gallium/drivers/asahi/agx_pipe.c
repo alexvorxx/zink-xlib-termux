@@ -1670,13 +1670,13 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 12;
 
    case PIPE_CAP_FS_COORD_ORIGIN_UPPER_LEFT:
-   case PIPE_CAP_FS_COORD_PIXEL_CENTER_HALF_INTEGER:
+   case PIPE_CAP_FS_COORD_PIXEL_CENTER_INTEGER:
    case PIPE_CAP_TGSI_TEXCOORD:
    case PIPE_CAP_FS_FACE_IS_INTEGER_SYSVAL:
    case PIPE_CAP_FS_POSITION_IS_SYSVAL:
       return true;
    case PIPE_CAP_FS_COORD_ORIGIN_LOWER_LEFT:
-   case PIPE_CAP_FS_COORD_PIXEL_CENTER_INTEGER:
+   case PIPE_CAP_FS_COORD_PIXEL_CENTER_HALF_INTEGER:
    case PIPE_CAP_FS_POINT_IS_SYSVAL:
       return false;
 

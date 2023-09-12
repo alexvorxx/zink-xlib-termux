@@ -318,6 +318,9 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
 
    NIR_PASS_V(nir, nir_lower_compute_system_values, &options);
 
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      NIR_PASS_V(nir, nir_lower_wpos_center);
+
    NIR_PASS_V(nir, nir_split_var_copies);
    NIR_PASS_V(nir, nir_lower_var_copies);
 

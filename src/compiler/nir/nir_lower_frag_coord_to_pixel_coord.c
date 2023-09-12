@@ -13,13 +13,11 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, UNUSED void *data)
    if (intr->intrinsic != nir_intrinsic_load_frag_coord)
       return false;
 
-   /* load_pixel_coord gives the top-left corner of the pixel, but frag_coord
-    * should return the centre of the pixel.
+   /* Note: frag_coord should already have pixel-center lowering applied with
+    * nir_lower_wpos_center for VK, or PIPE_CAP_PIXEL_CENTER_INTEGER for GL.
     */
    b->cursor = nir_before_instr(&intr->instr);
-   nir_def *top_left_xy = nir_u2f32(b, nir_load_pixel_coord(b));
-   nir_def *xy = nir_fadd_imm(b, top_left_xy, 0.5);
-
+   nir_def *xy = nir_u2f32(b, nir_load_pixel_coord(b));
    nir_def *vec = nir_vec4(b, nir_channel(b, xy, 0), nir_channel(b, xy, 1),
                            nir_load_frag_coord_zw(b, .component = 2),
                            nir_load_frag_coord_zw(b, .component = 3));

@@ -37,6 +37,9 @@
 #include "vk_format.h"
 #include "vk_nir_convert_ycbcr.h"
 #include "vk_ycbcr_conversion.h"
+#if AMD_LLVM_AVAILABLE
+#include "ac_llvm_util.h"
+#endif
 
 bool
 radv_shader_need_indirect_descriptor_sets(const struct radv_shader *shader)
@@ -386,11 +389,17 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
 
    /* LLVM could support more of these in theory. */
    bool use_llvm = radv_use_llvm_for_stage(pdev, stage->stage);
+   bool has_inverse_ballot = true;
+#if AMD_LLVM_AVAILABLE
+   has_inverse_ballot = !use_llvm || LLVM_VERSION_MAJOR >= 17;
+#endif
    radv_nir_opt_tid_function_options tid_options = {
       .use_masked_swizzle_amd = true,
       .use_dpp16_shift_amd = !use_llvm && gfx_level >= GFX8,
       .use_clustered_rotate = !use_llvm,
       .hw_subgroup_size = stage->info.wave_size,
+      .hw_ballot_bit_size = has_inverse_ballot ? stage->info.wave_size : 0,
+      .hw_ballot_num_comp = has_inverse_ballot ? 1 : 0,
    };
    NIR_PASS(_, stage->nir, radv_nir_opt_tid_function, &tid_options);
 

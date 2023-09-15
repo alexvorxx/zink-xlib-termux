@@ -60,7 +60,6 @@
 #include "vk_drm_syncobj.h"
 #include "common/intel_aux_map.h"
 #include "common/intel_uuid.h"
-#include "common/i915/intel_gem.h"
 #include "perf/intel_perf.h"
 
 #include "i915/anv_device.h"

@@ -33,7 +33,7 @@ The minimum versions to build Rusticl are:
 
 -  Rust: 1.66
 -  Meson: 1.3.1
--  Bindgen: 0.62.0
+-  Bindgen: 0.65.0
 -  LLVM: 15.0.0
 -  Clang: 15.0.0
    Updating clang requires a rebuilt of mesa and rusticl if and only if the value of

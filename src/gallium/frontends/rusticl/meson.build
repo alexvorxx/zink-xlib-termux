@@ -253,9 +253,10 @@ rusticl_libc_bindings_rs = rust.bindgen(
   ]
 )
 
-rusticl_mesa_bindings_rs = rust.bindgen(
+rusticl_mesa_bindings = rust.bindgen(
   input : 'rusticl_mesa_bindings.h',
   output : 'rusticl_mesa_bindings.rs',
+  output_inline_wrapper : 'rusticl_mesa_bindings.c',
   include_directories : [
     inc_gallium,
     inc_gallium_aux,
@@ -336,12 +337,12 @@ rusticl_mesa_bindings_rs = rust.bindgen(
 rusticl_c = static_library(
   'rusticl_c',
   [
-    'rusticl_mesa_inline_bindings_wrapper.c',
-    'rusticl_mesa_inline_bindings_wrapper.h',
     'rusticl_nir.c',
     'rusticl_nir.h',
     'rusticl_system_bindings.c',
     'rusticl_system_bindings.h',
+    rusticl_mesa_bindings[1],
+    'rusticl_mesa_bindings.h',
     sha1_h,
   ],
   gnu_symbol_visibility : 'hidden',
@@ -355,6 +356,7 @@ rusticl_c = static_library(
   c_args : [
     pre_args,
     cl_c_args,
+    cc.get_supported_arguments('-Wno-missing-prototypes'),
   ],
   dependencies: [
     idep_nir_headers,
@@ -370,7 +372,7 @@ idep_rusticl_gen = declare_dependency(
 
 libmesa_rust_gen = static_library(
   'mesa_rust_gen',
-  rusticl_mesa_bindings_rs,
+  rusticl_mesa_bindings[0],
   gnu_symbol_visibility : 'hidden',
   link_with: [
     libgallium,

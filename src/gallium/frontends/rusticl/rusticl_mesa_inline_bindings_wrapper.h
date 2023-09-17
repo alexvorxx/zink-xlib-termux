@@ -41,7 +41,6 @@
 void blob_finish(struct blob *);
 char *mesa_bytes_to_hex(char *buf, const uint8_t *hex_id, unsigned size);
 bool disk_cache_get_function_identifier(void *ptr, struct mesa_sha1 *ctx);
-const char* mesa_version_string(void);
 nir_function_impl *nir_shader_get_entrypoint(const nir_shader *shader);
 void pipe_resource_reference(struct pipe_resource **dst, struct pipe_resource *src);
 bool should_skip_nir(const char *);

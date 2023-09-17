@@ -1,5 +1,4 @@
 #include "rusticl_mesa_inline_bindings_wrapper.h"
-#include "git_sha1.h"
 
 void
 blob_finish(struct blob *blob)
@@ -47,12 +46,6 @@ void
 util_format_pack_rgba(enum pipe_format format, void *dst, const void *src, unsigned w)
 {
     return __util_format_pack_rgba(format, dst, src, w);
-}
-
-const char*
-mesa_version_string(void)
-{
-    return PACKAGE_VERSION MESA_GIT_SHA1;
 }
 
 bool

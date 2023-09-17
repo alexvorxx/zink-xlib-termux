@@ -240,48 +240,6 @@ rusticl_llvm_gen = static_library(
   ],
 )
 
-rusticl_system_bindings_wrapper = static_library(
-  'system_bindings',
-  [
-    'rusticl_system_bindings.c',
-    'rusticl_system_bindings.h',
-  ],
-  gnu_symbol_visibility : 'hidden',
-  include_directories : [
-    inc_include,
-  ],
-  c_args : [
-    pre_args,
-  ],
-)
-
-rusticl_mesa_bindings_inline_wrapper = static_library(
-  'mesa_bindings_inline_wrapper',
-  [
-    'rusticl_mesa_inline_bindings_wrapper.c',
-    'rusticl_mesa_inline_bindings_wrapper.h',
-    'rusticl_nir.c',
-    'rusticl_nir.h',
-    sha1_h,
-  ],
-  gnu_symbol_visibility : 'hidden',
-  include_directories : [
-    inc_gallium,
-    inc_gallium_aux,
-    inc_include,
-    inc_nir,
-    inc_src,
-  ],
-  c_args : [
-    pre_args,
-    cl_c_args,
-  ],
-  dependencies: [
-    idep_nir_headers,
-    dep_valgrind,
-  ],
-)
-
 rusticl_libc_bindings_rs = rust.bindgen(
   input : 'rusticl_libc_bindings.h',
   output : 'rusticl_libc_bindings.rs',
@@ -381,6 +339,35 @@ rusticl_mesa_bindings_rs = rust.bindgen(
   ],
 )
 
+rusticl_c = static_library(
+  'rusticl_c',
+  [
+    'rusticl_mesa_inline_bindings_wrapper.c',
+    'rusticl_mesa_inline_bindings_wrapper.h',
+    'rusticl_nir.c',
+    'rusticl_nir.h',
+    'rusticl_system_bindings.c',
+    'rusticl_system_bindings.h',
+    sha1_h,
+  ],
+  gnu_symbol_visibility : 'hidden',
+  include_directories : [
+    inc_gallium,
+    inc_gallium_aux,
+    inc_include,
+    inc_nir,
+    inc_src,
+  ],
+  c_args : [
+    pre_args,
+    cl_c_args,
+  ],
+  dependencies: [
+    idep_nir_headers,
+    dep_valgrind,
+  ],
+)
+
 idep_rusticl_gen = declare_dependency(
   sources: [
     rusticl_opencl_bindings_rs,
@@ -435,8 +422,7 @@ libmesa_rust = static_library(
     libc_rust_gen,
     libmesa_rust_gen,
     libmesa_rust_util,
-    rusticl_mesa_bindings_inline_wrapper,
-    rusticl_system_bindings_wrapper,
+    rusticl_c,
   ]
 )
 

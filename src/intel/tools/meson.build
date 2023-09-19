@@ -156,9 +156,9 @@ if with_tools.contains('drm-shim')
 
   libintel_stub_gpu = shared_library(
     'intel_noop_drm_shim',
-    'intel_noop_drm_shim.c',
+    ['intel_noop_drm_shim.c', intel_dev_serialize_src],
     include_directories: [inc_include, inc_src, inc_intel],
-    dependencies: [dep_libdrm, dep_drm_shim, idep_mesautil, idep_libintel_common, idep_intel_dev],
+    dependencies: [dep_libdrm, dep_drm_shim, idep_mesautil, idep_libintel_common, idep_intel_dev, idep_parson],
     gnu_symbol_visibility : 'hidden',
     install : true,
   )

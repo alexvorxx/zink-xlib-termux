@@ -3292,10 +3292,14 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    }
    case nir_intrinsic_vote_all: {
       result = ac_build_vote_all(&ctx->ac, get_src(ctx, instr->src[0]));
+      if (ctx->info->stage == MESA_SHADER_FRAGMENT)
+         result = ac_build_wqm(&ctx->ac, result);
       break;
    }
    case nir_intrinsic_vote_any: {
       result = ac_build_vote_any(&ctx->ac, get_src(ctx, instr->src[0]));
+      if (ctx->info->stage == MESA_SHADER_FRAGMENT)
+         result = ac_build_wqm(&ctx->ac, result);
       break;
    }
    case nir_intrinsic_quad_vote_any: {

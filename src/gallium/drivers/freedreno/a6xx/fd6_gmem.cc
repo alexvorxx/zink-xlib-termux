@@ -821,7 +821,7 @@ struct bin_size_params {
    enum a6xx_render_mode render_mode;
    bool force_lrz_write_dis;
    enum a6xx_buffers_location buffers_location;
-   unsigned lrz_feedback_zmode_mask;
+   enum a6xx_lrz_feedback_mask lrz_feedback_zmode_mask;
 };
 
 template <chip CHIP>
@@ -1021,7 +1021,7 @@ fd6_emit_tile_init(struct fd_batch *batch) assert_dt
       set_bin_size<CHIP>(ring, gmem, {
             .render_mode = BINNING_PASS,
             .buffers_location = BUFFERS_IN_GMEM,
-            .lrz_feedback_zmode_mask = 0x6,
+            .lrz_feedback_zmode_mask = (a6xx_lrz_feedback_mask) (LRZ_FEEDBACK_LATE_Z | LRZ_FEEDBACK_EARLY_LRZ_LATE_Z),
       });
       update_render_cntl<CHIP>(batch, pfb, true);
       emit_binning_pass(batch);
@@ -1040,7 +1040,7 @@ fd6_emit_tile_init(struct fd_batch *batch) assert_dt
             .render_mode = RENDERING_PASS,
             .force_lrz_write_dis = true,
             .buffers_location = BUFFERS_IN_GMEM,
-            .lrz_feedback_zmode_mask = 0x6,
+            .lrz_feedback_zmode_mask = (a6xx_lrz_feedback_mask) (LRZ_FEEDBACK_LATE_Z | LRZ_FEEDBACK_EARLY_LRZ_LATE_Z),
       });
 
       OUT_PKT4(ring, REG_A6XX_VFD_MODE_CNTL, 1);
@@ -1061,7 +1061,7 @@ fd6_emit_tile_init(struct fd_batch *batch) assert_dt
       set_bin_size<CHIP>(ring, gmem, {
             .render_mode = RENDERING_PASS,
             .buffers_location = BUFFERS_IN_GMEM,
-            .lrz_feedback_zmode_mask = 0x6,
+            .lrz_feedback_zmode_mask = (a6xx_lrz_feedback_mask) (LRZ_FEEDBACK_LATE_Z | LRZ_FEEDBACK_EARLY_LRZ_LATE_Z),
       });
    }
 
@@ -1139,7 +1139,7 @@ fd6_emit_tile_prep(struct fd_batch *batch, const struct fd_tile *tile)
       set_bin_size<CHIP>(ring, gmem, {
             .render_mode = RENDERING_PASS,
             .buffers_location = BUFFERS_IN_GMEM,
-            .lrz_feedback_zmode_mask = 0x6,
+            .lrz_feedback_zmode_mask = (a6xx_lrz_feedback_mask) (LRZ_FEEDBACK_LATE_Z | LRZ_FEEDBACK_EARLY_LRZ_LATE_Z),
       });
 
       OUT_PKT7(ring, CP_SET_MODE, 1);

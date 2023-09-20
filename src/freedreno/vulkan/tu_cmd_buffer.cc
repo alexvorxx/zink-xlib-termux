@@ -504,7 +504,7 @@ struct tu_bin_size_params {
    enum a6xx_render_mode render_mode;
    bool force_lrz_write_dis;
    enum a6xx_buffers_location buffers_location;
-   unsigned lrz_feedback_zmode_mask;
+   enum a6xx_lrz_feedback_mask lrz_feedback_zmode_mask;
 };
 
 template <chip CHIP>
@@ -1860,7 +1860,7 @@ tu6_sysmem_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
       .render_mode = RENDERING_PASS,
       .force_lrz_write_dis = true,
       .buffers_location = BUFFERS_IN_SYSMEM,
-      .lrz_feedback_zmode_mask = 0x0,
+      .lrz_feedback_zmode_mask = LRZ_FEEDBACK_NONE,
    });
 
    if (CHIP == A7XX) {
@@ -1952,7 +1952,7 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
                               {
                                  .render_mode = BINNING_PASS,
                                  .buffers_location = BUFFERS_IN_GMEM,
-                                 .lrz_feedback_zmode_mask = 0x6,
+                                 .lrz_feedback_zmode_mask = (a6xx_lrz_feedback_mask) (LRZ_FEEDBACK_LATE_Z | LRZ_FEEDBACK_EARLY_LRZ_LATE_Z),
                               });
 
       tu6_emit_render_cntl<CHIP>(cmd, cmd->state.subpass, cs, true);
@@ -1964,7 +1964,7 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
                                  .render_mode = RENDERING_PASS,
                                  .force_lrz_write_dis = true,
                                  .buffers_location = BUFFERS_IN_GMEM,
-                                 .lrz_feedback_zmode_mask = 0x6,
+                                 .lrz_feedback_zmode_mask = (a6xx_lrz_feedback_mask) (LRZ_FEEDBACK_LATE_Z | LRZ_FEEDBACK_EARLY_LRZ_LATE_Z),
                               });
 
       tu_cs_emit_regs(cs,
@@ -1986,8 +1986,9 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
       tu6_emit_bin_size<CHIP>(cs, tiling->tile0.width, tiling->tile0.height,
                               {
                                  .render_mode = RENDERING_PASS,
+                                 .force_lrz_write_dis = true,
                                  .buffers_location = BUFFERS_IN_GMEM,
-                                 .lrz_feedback_zmode_mask = 0x6,
+                                 .lrz_feedback_zmode_mask = (a6xx_lrz_feedback_mask) (LRZ_FEEDBACK_LATE_Z | LRZ_FEEDBACK_EARLY_LRZ_LATE_Z),
                               });
 
       if (tiling->binning_possible) {

@@ -328,14 +328,8 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_b2f16:
                case nir_op_b2f32:
                case nir_op_mov: break;
-               case nir_op_fmul:
                case nir_op_fmulz:
-               case nir_op_fadd:
-               case nir_op_fsub:
-               case nir_op_ffma:
                case nir_op_ffmaz:
-               case nir_op_fmax:
-               case nir_op_fmin:
                case nir_op_fneg:
                case nir_op_fabs:
                case nir_op_fsat:
@@ -350,8 +344,6 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_f2f64:
                case nir_op_u2f64:
                case nir_op_i2f64:
-               case nir_op_pack_half_2x16_rtz_split:
-               case nir_op_pack_half_2x16_split:
                case nir_op_pack_unorm_2x16:
                case nir_op_pack_snorm_2x16:
                case nir_op_pack_uint_2x16:
@@ -379,6 +371,12 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_sdot_2x16_iadd:
                case nir_op_udot_2x16_uadd_sat:
                case nir_op_sdot_2x16_iadd_sat: type = RegType::vgpr; break;
+               case nir_op_fmul:
+               case nir_op_ffma:
+               case nir_op_fadd:
+               case nir_op_fsub:
+               case nir_op_fmax:
+               case nir_op_fmin:
                case nir_op_i2f16:
                case nir_op_i2f32:
                case nir_op_u2f16:
@@ -392,6 +390,8 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_fceil:
                case nir_op_ftrunc:
                case nir_op_fround_even:
+               case nir_op_pack_half_2x16_rtz_split:
+               case nir_op_pack_half_2x16_split:
                case nir_op_unpack_half_2x16_split_x:
                case nir_op_unpack_half_2x16_split_y: {
                   if (ctx->program->gfx_level < GFX11_5 ||

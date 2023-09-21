@@ -3046,7 +3046,14 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
    }
    case nir_op_f2i8:
    case nir_op_f2i16: {
-      if (instr->src[0].src.ssa->bit_size == 16) {
+      if (instr->src[0].src.ssa->bit_size <= 32 && dst.regClass() == s1 &&
+          ctx->program->gfx_level >= GFX11_5) {
+         Temp src = get_alu_src(ctx, instr->src[0]);
+         Temp tmp = bld.as_uniform(src);
+         if (instr->src[0].src.ssa->bit_size == 16)
+            tmp = bld.sop1(aco_opcode::s_cvt_f32_f16, bld.def(s1), tmp);
+         bld.sop1(aco_opcode::s_cvt_i32_f32, Definition(dst), tmp);
+      } else if (instr->src[0].src.ssa->bit_size == 16) {
          if (ctx->program->gfx_level >= GFX8) {
             emit_vop1_instruction(ctx, instr, aco_opcode::v_cvt_i16_f16, dst);
          } else {
@@ -3069,7 +3076,14 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
    }
    case nir_op_f2u8:
    case nir_op_f2u16: {
-      if (instr->src[0].src.ssa->bit_size == 16) {
+      if (instr->src[0].src.ssa->bit_size <= 32 && dst.regClass() == s1 &&
+          ctx->program->gfx_level >= GFX11_5) {
+         Temp src = get_alu_src(ctx, instr->src[0]);
+         Temp tmp = bld.as_uniform(src);
+         if (instr->src[0].src.ssa->bit_size == 16)
+            tmp = bld.sop1(aco_opcode::s_cvt_f32_f16, bld.def(s1), tmp);
+         bld.sop1(aco_opcode::s_cvt_u32_f32, Definition(dst), tmp);
+      } else if (instr->src[0].src.ssa->bit_size == 16) {
          if (ctx->program->gfx_level >= GFX8) {
             emit_vop1_instruction(ctx, instr, aco_opcode::v_cvt_u16_f16, dst);
          } else {
@@ -3092,7 +3106,13 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
    }
    case nir_op_f2i32: {
       Temp src = get_alu_src(ctx, instr->src[0]);
-      if (instr->src[0].src.ssa->bit_size == 16) {
+      if (instr->src[0].src.ssa->bit_size <= 32 && dst.regClass() == s1 &&
+          ctx->program->gfx_level >= GFX11_5) {
+         Temp tmp = bld.as_uniform(src);
+         if (instr->src[0].src.ssa->bit_size == 16)
+            tmp = bld.sop1(aco_opcode::s_cvt_f32_f16, bld.def(s1), tmp);
+         bld.sop1(aco_opcode::s_cvt_i32_f32, Definition(dst), tmp);
+      } else if (instr->src[0].src.ssa->bit_size == 16) {
          Temp tmp = bld.vop1(aco_opcode::v_cvt_f32_f16, bld.def(v1), src);
          if (dst.type() == RegType::vgpr) {
             bld.vop1(aco_opcode::v_cvt_i32_f32, Definition(dst), tmp);
@@ -3111,7 +3131,13 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
    }
    case nir_op_f2u32: {
       Temp src = get_alu_src(ctx, instr->src[0]);
-      if (instr->src[0].src.ssa->bit_size == 16) {
+      if (instr->src[0].src.ssa->bit_size <= 32 && dst.regClass() == s1 &&
+          ctx->program->gfx_level >= GFX11_5) {
+         Temp tmp = bld.as_uniform(src);
+         if (instr->src[0].src.ssa->bit_size == 16)
+            tmp = bld.sop1(aco_opcode::s_cvt_f32_f16, bld.def(s1), tmp);
+         bld.sop1(aco_opcode::s_cvt_u32_f32, Definition(dst), tmp);
+      } else if (instr->src[0].src.ssa->bit_size == 16) {
          Temp tmp = bld.vop1(aco_opcode::v_cvt_f32_f16, bld.def(v1), src);
          if (dst.type() == RegType::vgpr) {
             bld.vop1(aco_opcode::v_cvt_u32_f32, Definition(dst), tmp);

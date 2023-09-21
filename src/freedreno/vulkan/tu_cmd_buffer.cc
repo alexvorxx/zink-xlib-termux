@@ -1858,9 +1858,13 @@ tu6_sysmem_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
 
    tu6_emit_bin_size<CHIP>(cs, 0, 0, {
       .render_mode = RENDERING_PASS,
-      .force_lrz_write_dis = true,
+      .force_lrz_write_dis =
+         !cmd->device->physical_device->info->a6xx.has_lrz_feedback,
       .buffers_location = BUFFERS_IN_SYSMEM,
-      .lrz_feedback_zmode_mask = LRZ_FEEDBACK_NONE,
+      .lrz_feedback_zmode_mask =
+         cmd->device->physical_device->info->a6xx.has_lrz_feedback
+            ? LRZ_FEEDBACK_EARLY_Z_OR_EARLY_LRZ_LATE_Z
+            : LRZ_FEEDBACK_NONE,
    });
 
    if (CHIP == A7XX) {

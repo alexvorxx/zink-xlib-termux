@@ -433,6 +433,11 @@ template <chip CHIP>
 void
 tu_lrz_sysmem_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 {
+   if (cmd->device->physical_device->info->a6xx.has_lrz_feedback) {
+      tu_lrz_tiling_begin<CHIP>(cmd, cs);
+      return;
+   }
+
    if (!cmd->state.lrz.image_view)
       return;
 
@@ -473,6 +478,11 @@ template <chip CHIP>
 void
 tu_lrz_sysmem_end(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 {
+   if (cmd->device->physical_device->info->a6xx.has_lrz_feedback) {
+      tu_lrz_tiling_end<CHIP>(cmd, cs);
+      return;
+   }
+
    tu_emit_event_write<CHIP>(cmd, &cmd->cs, FD_LRZ_FLUSH);
 }
 TU_GENX(tu_lrz_sysmem_end);

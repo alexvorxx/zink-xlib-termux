@@ -347,16 +347,8 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_flog2:
                case nir_op_fsin_amd:
                case nir_op_fcos_amd:
-               case nir_op_f2f16:
-               case nir_op_f2f16_rtz:
-               case nir_op_f2f16_rtne:
-               case nir_op_f2f32:
                case nir_op_f2f64:
-               case nir_op_u2f16:
-               case nir_op_u2f32:
                case nir_op_u2f64:
-               case nir_op_i2f16:
-               case nir_op_i2f32:
                case nir_op_i2f64:
                case nir_op_pack_half_2x16_rtz_split:
                case nir_op_pack_half_2x16_split:
@@ -364,8 +356,6 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_pack_snorm_2x16:
                case nir_op_pack_uint_2x16:
                case nir_op_pack_sint_2x16:
-               case nir_op_unpack_half_2x16_split_x:
-               case nir_op_unpack_half_2x16_split_y:
                case nir_op_fddx:
                case nir_op_fddy:
                case nir_op_fddx_fine:
@@ -389,11 +379,21 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_sdot_2x16_iadd:
                case nir_op_udot_2x16_uadd_sat:
                case nir_op_sdot_2x16_iadd_sat: type = RegType::vgpr; break;
+               case nir_op_i2f16:
+               case nir_op_i2f32:
+               case nir_op_u2f16:
+               case nir_op_u2f32:
+               case nir_op_f2f16:
+               case nir_op_f2f16_rtz:
+               case nir_op_f2f16_rtne:
+               case nir_op_f2f32:
                case nir_op_ffract:
                case nir_op_ffloor:
                case nir_op_fceil:
                case nir_op_ftrunc:
-               case nir_op_fround_even: {
+               case nir_op_fround_even:
+               case nir_op_unpack_half_2x16_split_x:
+               case nir_op_unpack_half_2x16_split_y: {
                   if (ctx->program->gfx_level < GFX11_5 ||
                       alu_instr->src[0].src.ssa->bit_size > 32) {
                      type = RegType::vgpr;

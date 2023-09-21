@@ -310,7 +310,24 @@ init_context(isel_context* ctx, nir_shader* shader)
             case nir_instr_type_alu: {
                nir_alu_instr* alu_instr = nir_instr_as_alu(instr);
                RegType type = alu_instr->def.divergent ? RegType::vgpr : RegType::sgpr;
+
+               /* packed 16bit instructions have to be VGPR */
+               if (alu_instr->def.num_components == 2 &&
+                   nir_op_infos[alu_instr->op].output_size == 0)
+                  type = RegType::vgpr;
+
                switch (alu_instr->op) {
+               case nir_op_f2i16:
+               case nir_op_f2u16:
+               case nir_op_f2i32:
+               case nir_op_f2u32:
+               case nir_op_b2i8:
+               case nir_op_b2i16:
+               case nir_op_b2i32:
+               case nir_op_b2b32:
+               case nir_op_b2f16:
+               case nir_op_b2f32:
+               case nir_op_mov: break;
                case nir_op_fmul:
                case nir_op_fmulz:
                case nir_op_fadd:
@@ -328,11 +345,6 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_fsqrt:
                case nir_op_fexp2:
                case nir_op_flog2:
-               case nir_op_ffract:
-               case nir_op_ffloor:
-               case nir_op_fceil:
-               case nir_op_ftrunc:
-               case nir_op_fround_even:
                case nir_op_fsin_amd:
                case nir_op_fcos_amd:
                case nir_op_f2f16:
@@ -377,35 +389,18 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_sdot_2x16_iadd:
                case nir_op_udot_2x16_uadd_sat:
                case nir_op_sdot_2x16_iadd_sat: type = RegType::vgpr; break;
-               case nir_op_f2i16:
-               case nir_op_f2u16:
-               case nir_op_f2i32:
-               case nir_op_f2u32:
-               case nir_op_b2i8:
-               case nir_op_b2i16:
-               case nir_op_b2i32:
-               case nir_op_b2b32:
-               case nir_op_b2f16:
-               case nir_op_b2f32:
-               case nir_op_mov: break;
-               case nir_op_iabs:
-               case nir_op_iadd:
-               case nir_op_iadd_sat:
-               case nir_op_uadd_sat:
-               case nir_op_isub:
-               case nir_op_isub_sat:
-               case nir_op_usub_sat:
-               case nir_op_imul:
-               case nir_op_imin:
-               case nir_op_imax:
-               case nir_op_umin:
-               case nir_op_umax:
-               case nir_op_ishl:
-               case nir_op_ishr:
-               case nir_op_ushr:
-                  /* packed 16bit instructions have to be VGPR */
-                  type = alu_instr->def.num_components == 2 ? RegType::vgpr : type;
+               case nir_op_ffract:
+               case nir_op_ffloor:
+               case nir_op_fceil:
+               case nir_op_ftrunc:
+               case nir_op_fround_even: {
+                  if (ctx->program->gfx_level < GFX11_5 ||
+                      alu_instr->src[0].src.ssa->bit_size > 32) {
+                     type = RegType::vgpr;
+                     break;
+                  }
                   FALLTHROUGH;
+               }
                default:
                   for (unsigned i = 0; i < nir_op_infos[alu_instr->op].num_inputs; i++) {
                      if (regclasses[alu_instr->src[i].src.ssa->index].type() == RegType::vgpr)

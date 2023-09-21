@@ -617,6 +617,8 @@ alu_can_accept_constant(const aco_ptr<Instruction>& instr, unsigned operand)
       return false;
 
    switch (instr->opcode) {
+   case aco_opcode::s_fmac_f16:
+   case aco_opcode::s_fmac_f32:
    case aco_opcode::v_mac_f32:
    case aco_opcode::v_writelane_b32:
    case aco_opcode::v_writelane_b32_e64:

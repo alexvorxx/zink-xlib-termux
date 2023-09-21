@@ -1358,7 +1358,8 @@ get_op_fixed_to_def(Instruction* instr)
        instr->opcode == aco_opcode::v_fmac_legacy_f32 ||
        instr->opcode == aco_opcode::v_pk_fmac_f16 || instr->opcode == aco_opcode::v_writelane_b32 ||
        instr->opcode == aco_opcode::v_writelane_b32_e64 ||
-       instr->opcode == aco_opcode::v_dot4c_i32_i8) {
+       instr->opcode == aco_opcode::v_dot4c_i32_i8 || instr->opcode == aco_opcode::s_fmac_f32 ||
+       instr->opcode == aco_opcode::s_fmac_f16) {
       return 2;
    } else if (instr->opcode == aco_opcode::s_addk_i32 || instr->opcode == aco_opcode::s_mulk_i32 ||
               instr->opcode == aco_opcode::s_cmovk_i32) {

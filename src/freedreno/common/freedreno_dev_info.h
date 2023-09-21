@@ -139,6 +139,7 @@ struct fd_dev_info {
       bool enable_lrz_fast_clear;
       bool has_lrz_dir_tracking;
       bool lrz_track_quirk;
+      bool has_lrz_feedback;
 
       /* Some generations have a bit to add the multiview index to the
        * viewport index, which lets us implement different scaling for

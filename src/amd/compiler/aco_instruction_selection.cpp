@@ -2933,7 +2933,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          /* We emit s_round_mode/s_setreg_imm32 in lower_to_hw_instr to
           * keep value numbering and the scheduler simpler.
           */
-         bld.vop1(aco_opcode::p_cvt_f16_f32_rtne, Definition(dst), src);
+         bld.vop1(aco_opcode::p_v_cvt_f16_f32_rtne, Definition(dst), src);
       else
          bld.vop1(aco_opcode::v_cvt_f16_f32, Definition(dst), src);
       break;
@@ -3484,7 +3484,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
       Temp src = get_alu_src(ctx, instr->src[0]);
       Temp f16;
       if (ctx->block->fp_mode.round16_64 != fp_round_ne)
-         f16 = bld.vop1(aco_opcode::p_cvt_f16_f32_rtne, bld.def(v2b), src);
+         f16 = bld.vop1(aco_opcode::p_v_cvt_f16_f32_rtne, bld.def(v2b), src);
       else
          f16 = bld.vop1(aco_opcode::v_cvt_f16_f32, bld.def(v2b), src);
       Temp f32, cmp_res;

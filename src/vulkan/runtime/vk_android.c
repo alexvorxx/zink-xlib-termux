@@ -328,6 +328,28 @@ vk_android_get_anb_layout(
                                             out_layouts, max_planes);
 }
 
+VkResult
+vk_android_get_ahb_layout(
+   struct AHardwareBuffer *ahardware_buffer,
+   VkImageDrmFormatModifierExplicitCreateInfoEXT *out,
+   VkSubresourceLayout *out_layouts, int max_planes)
+{
+   AHardwareBuffer_Desc description;
+   const native_handle_t *handle =
+      AHardwareBuffer_getNativeHandle(ahardware_buffer);
+
+   AHardwareBuffer_describe(ahardware_buffer, &description);
+
+   struct u_gralloc_buffer_handle gr_handle = {
+      .handle = handle,
+      .pixel_stride = description.stride,
+      .hal_format = description.format,
+   };
+
+   return vk_gralloc_to_drm_explicit_layout(&gr_handle, out,
+                                            out_layouts, max_planes);
+}
+
 /* From the Android hardware_buffer.h header:
  *
  *    "The buffer will be written to by the GPU as a framebuffer attachment.

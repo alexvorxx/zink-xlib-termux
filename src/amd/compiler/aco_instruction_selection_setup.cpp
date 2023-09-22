@@ -332,7 +332,6 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_ffmaz:
                case nir_op_fneg:
                case nir_op_fabs:
-               case nir_op_fsign:
                case nir_op_frcp:
                case nir_op_frsq:
                case nir_op_fsqrt:
@@ -377,6 +376,7 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_fmax:
                case nir_op_fmin:
                case nir_op_fsat:
+               case nir_op_fsign:
                case nir_op_i2f16:
                case nir_op_i2f32:
                case nir_op_u2f16:

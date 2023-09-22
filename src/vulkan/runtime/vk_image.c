@@ -159,6 +159,12 @@ vk_image_destroy(struct vk_device *device,
                  const VkAllocationCallbacks *alloc,
                  struct vk_image *image)
 {
+#if DETECT_OS_ANDROID
+   if (image->anb_memory) {
+      device->dispatch_table.FreeMemory(
+         (VkDevice)device, image->anb_memory, alloc);
+   }
+#endif
    vk_object_free(device, alloc, image);
 }
 

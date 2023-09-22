@@ -23,6 +23,7 @@
 
 #include "vk_android.h"
 
+#include "vk_alloc.h"
 #include "vk_common_entrypoints.h"
 #include "vk_device.h"
 #include "vk_physical_device.h"
@@ -31,7 +32,10 @@
 #include "vk_queue.h"
 #include "vk_util.h"
 
+#include "drm-uapi/drm_fourcc.h"
 #include "util/libsync.h"
+#include "util/os_file.h"
+#include "util/u_gralloc/u_gralloc.h"
 
 #include <hardware/gralloc.h>
 
@@ -196,6 +200,132 @@ vk_common_GetSwapchainGrallocUsage2ANDROID(
    }
 
    return VK_SUCCESS;
+}
+
+static VkResult
+vk_gralloc_to_drm_explicit_layout(
+   struct u_gralloc_buffer_handle *in_hnd,
+   VkImageDrmFormatModifierExplicitCreateInfoEXT *out,
+   VkSubresourceLayout *out_layouts, int max_planes)
+{
+   struct u_gralloc_buffer_basic_info info;
+   struct u_gralloc *u_gralloc = vk_android_get_ugralloc();
+   assert(u_gralloc);
+
+   if (u_gralloc_get_buffer_basic_info(u_gralloc, in_hnd, &info) != 0)
+      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+
+   if (info.num_planes > max_planes)
+      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+
+   bool is_disjoint = false;
+   for (size_t i = 1; i < info.num_planes; i++) {
+      if (info.offsets[i] == 0) {
+         is_disjoint = true;
+         break;
+      }
+   }
+
+   if (is_disjoint) {
+      /* We don't support disjoint planes yet */
+      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+   }
+
+   memset(out, 0, sizeof(*out));
+   memset(out_layouts, 0, sizeof(*out_layouts) * max_planes);
+
+   out->sType =
+      VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT;
+   out->pPlaneLayouts = out_layouts;
+
+   out->drmFormatModifier = info.modifier;
+   out->drmFormatModifierPlaneCount = info.num_planes;
+   for (size_t i = 0; i < info.num_planes; i++) {
+      out_layouts[i].offset = info.offsets[i];
+      out_layouts[i].rowPitch = info.strides[i];
+   }
+
+   if (info.drm_fourcc == DRM_FORMAT_YVU420) {
+      /* Swap the U and V planes to match the
+       * VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM */
+      VkSubresourceLayout tmp = out_layouts[1];
+      out_layouts[1] = out_layouts[2];
+      out_layouts[2] = tmp;
+   }
+
+   return VK_SUCCESS;
+}
+
+VkResult
+vk_android_import_anb(struct vk_device *device,
+                      const VkImageCreateInfo *pCreateInfo,
+                      const VkAllocationCallbacks *alloc,
+                      struct vk_image *image)
+{
+   VkResult result;
+
+   const VkNativeBufferANDROID *native_buffer =
+      vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
+
+   assert(native_buffer);
+   assert(native_buffer->handle);
+   assert(native_buffer->handle->numFds > 0);
+
+   const VkMemoryDedicatedAllocateInfo ded_alloc = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
+      .pNext = NULL,
+      .buffer = VK_NULL_HANDLE,
+      .image = (VkImage)image};
+
+   const VkImportMemoryFdInfoKHR import_info = {
+      .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
+      .pNext = &ded_alloc,
+      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+      .fd = os_dupfd_cloexec(native_buffer->handle->data[0]),
+   };
+
+   result = device->dispatch_table.AllocateMemory(
+      (VkDevice)device,
+      &(VkMemoryAllocateInfo){
+         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+         .pNext = &import_info,
+         .allocationSize = lseek(import_info.fd, 0, SEEK_END),
+         .memoryTypeIndex = 0, /* Should we be smarter here? */
+      },
+      alloc, &image->anb_memory);
+
+   if (result != VK_SUCCESS) {
+      close(import_info.fd);
+      return result;
+   }
+
+   VkBindImageMemoryInfo bind_info = {
+      .sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO,
+      .image = (VkImage)image,
+      .memory = image->anb_memory,
+      .memoryOffset = 0,
+   };
+
+   return device->dispatch_table.BindImageMemory2((VkDevice)device, 1, &bind_info);
+}
+
+VkResult
+vk_android_get_anb_layout(
+   const VkImageCreateInfo *pCreateInfo,
+   VkImageDrmFormatModifierExplicitCreateInfoEXT *out,
+   VkSubresourceLayout *out_layouts, int max_planes)
+{
+   const VkNativeBufferANDROID *native_buffer =
+      vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
+
+   struct u_gralloc_buffer_handle gr_handle = {
+      .handle = native_buffer->handle,
+      .hal_format = native_buffer->format,
+      .pixel_stride = native_buffer->stride,
+   };
+
+   return vk_gralloc_to_drm_explicit_layout(&gr_handle, out,
+                                            out_layouts, max_planes);
 }
 
 /* From the Android hardware_buffer.h header:

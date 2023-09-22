@@ -343,7 +343,6 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_fddy_fine:
                case nir_op_fddx_coarse:
                case nir_op_fddy_coarse:
-               case nir_op_fquantize2f16:
                case nir_op_ldexp:
                case nir_op_frexp_sig:
                case nir_op_frexp_exp:
@@ -378,6 +377,7 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_f2f16_rtz:
                case nir_op_f2f16_rtne:
                case nir_op_f2f32:
+               case nir_op_fquantize2f16:
                case nir_op_ffract:
                case nir_op_ffloor:
                case nir_op_fceil:

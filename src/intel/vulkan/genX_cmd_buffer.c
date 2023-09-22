@@ -893,7 +893,7 @@ transition_color_buffer(struct anv_cmd_buffer *cmd_buffer,
          0 : src_queue_family].queueFlags;
    const VkQueueFlagBits dst_queue_flags =
       device->physical->queue.families[
-         (dst_queue_external || src_queue_family == VK_QUEUE_FAMILY_IGNORED) ?
+         (dst_queue_external || dst_queue_family == VK_QUEUE_FAMILY_IGNORED) ?
          0 : dst_queue_family].queueFlags;
 
    /* Simultaneous acquire and release on external queues is illegal. */

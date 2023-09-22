@@ -3652,34 +3652,38 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
             f16 = bld.vop1(aco_opcode::p_v_cvt_f16_f32_rtne, bld.def(v2b), src);
          else
             f16 = bld.vop1(aco_opcode::v_cvt_f16_f32, bld.def(v2b), src);
-         Temp f32, cmp_res;
 
+         if (ctx->block->fp_mode.denorm16_64 != fp_denorm_keep) {
+            bld.vop1(aco_opcode::v_cvt_f32_f16, Definition(dst), f16);
+            break;
+         }
+
+         Temp denorm_zero;
+         Temp f32 = bld.vop1(aco_opcode::v_cvt_f32_f16, bld.def(v1), f16);
          if (ctx->program->gfx_level >= GFX8) {
-            Temp mask =
-               bld.copy(bld.def(s1),
-                        Operand::c32(0x36Fu)); /* value is NOT negative/positive denormal value */
-            cmp_res = bld.vopc_e64(aco_opcode::v_cmp_class_f16, bld.def(bld.lm), f16, mask);
-            f32 = bld.vop1(aco_opcode::v_cvt_f32_f16, bld.def(v1), f16);
+            /* value is negative/positive denormal value/zero */
+            Instruction* tmp0 =
+               bld.vopc_e64(aco_opcode::v_cmp_class_f16, bld.def(bld.lm), f16, Operand::c32(0x30));
+            tmp0->valu().abs[0] = true;
+            tmp0->valu().neg[0] = true;
+            denorm_zero = tmp0->definitions[0].getTemp();
          } else {
             /* 0x38800000 is smallest half float value (2^-14) in 32-bit float,
              * so compare the result and flush to 0 if it's smaller.
              */
-            f32 = bld.vop1(aco_opcode::v_cvt_f32_f16, bld.def(v1), f16);
             Temp smallest = bld.copy(bld.def(s1), Operand::c32(0x38800000u));
             Instruction* tmp0 =
                bld.vopc_e64(aco_opcode::v_cmp_lt_f32, bld.def(bld.lm), f32, smallest);
             tmp0->valu().abs[0] = true;
-            Temp tmp1 = bld.vopc(aco_opcode::v_cmp_lg_f32, bld.def(bld.lm), Operand::zero(), f32);
-            cmp_res = bld.sop2(aco_opcode::s_nand_b64, bld.def(s2), bld.def(s1, scc),
-                               tmp0->definitions[0].getTemp(), tmp1);
+            denorm_zero = tmp0->definitions[0].getTemp();
          }
-
          if (ctx->block->fp_mode.preserve_signed_zero_inf_nan32) {
             Temp copysign_0 =
                bld.vop2(aco_opcode::v_mul_f32, bld.def(v1), Operand::zero(), as_vgpr(ctx, src));
-            bld.vop2(aco_opcode::v_cndmask_b32, Definition(dst), copysign_0, f32, cmp_res);
+            bld.vop2(aco_opcode::v_cndmask_b32, Definition(dst), f32, copysign_0, denorm_zero);
          } else {
-            bld.vop2(aco_opcode::v_cndmask_b32, Definition(dst), Operand::zero(), f32, cmp_res);
+            bld.vop2_e64(aco_opcode::v_cndmask_b32, Definition(dst), f32, Operand::zero(),
+                         denorm_zero);
          }
       } else if (dst.regClass() == s1) {
          Temp f16;

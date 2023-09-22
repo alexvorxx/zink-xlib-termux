@@ -2651,6 +2651,12 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          Instruction* add =
             bld.vop3(aco_opcode::v_add_f64_e64, Definition(dst), src, Operand::zero());
          add->valu().clamp = true;
+      } else if (dst.regClass() == s1 && instr->def.bit_size == 16) {
+         Temp low = bld.sop2(aco_opcode::s_max_f16, bld.def(s1), src, Operand::c16(0));
+         bld.sop2(aco_opcode::s_min_f16, Definition(dst), low, Operand::c16(0x3C00));
+      } else if (dst.regClass() == s1 && instr->def.bit_size == 32) {
+         Temp low = bld.sop2(aco_opcode::s_max_f32, bld.def(s1), src, Operand::c32(0));
+         bld.sop2(aco_opcode::s_min_f32, Definition(dst), low, Operand::c32(0x3f800000));
       } else {
          isel_err(&instr->instr, "Unimplemented NIR instr bit size");
       }

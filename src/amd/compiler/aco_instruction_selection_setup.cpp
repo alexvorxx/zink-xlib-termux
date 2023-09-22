@@ -332,13 +332,6 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_ffmaz:
                case nir_op_fneg:
                case nir_op_fabs:
-               case nir_op_frcp:
-               case nir_op_frsq:
-               case nir_op_fsqrt:
-               case nir_op_fexp2:
-               case nir_op_flog2:
-               case nir_op_fsin_amd:
-               case nir_op_fcos_amd:
                case nir_op_f2f64:
                case nir_op_u2f64:
                case nir_op_i2f64:
@@ -390,6 +383,13 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_fceil:
                case nir_op_ftrunc:
                case nir_op_fround_even:
+               case nir_op_frcp:
+               case nir_op_frsq:
+               case nir_op_fsqrt:
+               case nir_op_fexp2:
+               case nir_op_flog2:
+               case nir_op_fsin_amd:
+               case nir_op_fcos_amd:
                case nir_op_pack_half_2x16_rtz_split:
                case nir_op_pack_half_2x16_split:
                case nir_op_unpack_half_2x16_split_x:

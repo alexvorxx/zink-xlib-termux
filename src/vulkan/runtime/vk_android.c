@@ -25,6 +25,7 @@
 
 #include "vk_common_entrypoints.h"
 #include "vk_device.h"
+#include "vk_physical_device.h"
 #include "vk_image.h"
 #include "vk_log.h"
 #include "vk_queue.h"
@@ -62,8 +63,140 @@ vk_android_destroy_ugralloc(void)
    u_gralloc_destroy(&u_gralloc);
 }
 
+/* If any bits in test_mask are set, then unset them and return true. */
+static inline bool
+unmask32(uint32_t *inout_mask, uint32_t test_mask)
+{
+   uint32_t orig_mask = *inout_mask;
+   *inout_mask &= ~test_mask;
+   return *inout_mask != orig_mask;
+}
+
+static VkResult
+format_supported_with_usage(struct vk_device *device, VkFormat format,
+                            VkImageUsageFlags imageUsage)
+{
+   struct vk_physical_device *physical = device->physical;
+   VkResult result;
+
+   const VkPhysicalDeviceImageFormatInfo2 image_format_info = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
+      .format = format,
+      .type = VK_IMAGE_TYPE_2D,
+      .tiling = VK_IMAGE_TILING_OPTIMAL,
+      .usage = imageUsage,
+   };
+
+   VkImageFormatProperties2 image_format_props = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2,
+   };
+
+   /* Check that requested format and usage are supported. */
+   result = physical->dispatch_table.GetPhysicalDeviceImageFormatProperties2(
+      (VkPhysicalDevice)physical, &image_format_info, &image_format_props);
+   if (result != VK_SUCCESS)
+      return result;
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+setup_gralloc0_usage(struct vk_device *device, VkFormat format,
+                     VkImageUsageFlags imageUsage, int *grallocUsage)
+{
+   if (unmask32(&imageUsage, VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT))
+      *grallocUsage |= GRALLOC_USAGE_HW_RENDER;
+
+   if (unmask32(&imageUsage, VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                VK_IMAGE_USAGE_SAMPLED_BIT |
+                                VK_IMAGE_USAGE_STORAGE_BIT |
+                                VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
+      *grallocUsage |= GRALLOC_USAGE_HW_TEXTURE;
+
+   /* All VkImageUsageFlags not explicitly checked here are unsupported for
+    * gralloc swapchains.
+    */
+   if (imageUsage != 0) {
+      return vk_errorf(device, VK_ERROR_FORMAT_NOT_SUPPORTED,
+                       "unsupported VkImageUsageFlags(0x%x) for gralloc "
+                       "swapchain",
+                       imageUsage);
+   }
+
+   *grallocUsage |= GRALLOC_USAGE_HW_COMPOSER;
+
+   if (*grallocUsage == 0)
+      return VK_ERROR_FORMAT_NOT_SUPPORTED;
+
+   return VK_SUCCESS;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+vk_common_GetSwapchainGrallocUsageANDROID(VkDevice device_h, VkFormat format,
+                                          VkImageUsageFlags imageUsage,
+                                          int *grallocUsage)
+{
+   VK_FROM_HANDLE(vk_device, device, device_h);
+   VkResult result;
+
+   result = format_supported_with_usage(device, format, imageUsage);
+   if (result != VK_SUCCESS)
+      return result;
+
+   *grallocUsage = 0;
+   return setup_gralloc0_usage(device, format, imageUsage, grallocUsage);
+}
+
 #if ANDROID_API_LEVEL >= 26
 #include <vndk/hardware_buffer.h>
+
+VKAPI_ATTR VkResult VKAPI_CALL
+vk_common_GetSwapchainGrallocUsage2ANDROID(
+   VkDevice device_h, VkFormat format, VkImageUsageFlags imageUsage,
+   VkSwapchainImageUsageFlagsANDROID swapchainImageUsage,
+   uint64_t *grallocConsumerUsage, uint64_t *grallocProducerUsage)
+{
+   VK_FROM_HANDLE(vk_device, device, device_h);
+   VkResult result;
+
+   *grallocConsumerUsage = 0;
+   *grallocProducerUsage = 0;
+
+   result = format_supported_with_usage(device, format, imageUsage);
+   if (result != VK_SUCCESS)
+      return result;
+
+   int32_t grallocUsage = 0;
+   result = setup_gralloc0_usage(device, format, imageUsage, &grallocUsage);
+   if (result != VK_SUCCESS)
+      return result;
+
+   /* Setup gralloc1 usage flags from gralloc0 flags. */
+
+   if (grallocUsage & GRALLOC_USAGE_HW_RENDER)
+      *grallocProducerUsage |= GRALLOC1_PRODUCER_USAGE_GPU_RENDER_TARGET;
+
+   if (grallocUsage & GRALLOC_USAGE_HW_TEXTURE)
+      *grallocConsumerUsage |= GRALLOC1_CONSUMER_USAGE_GPU_TEXTURE;
+
+   if (grallocUsage & GRALLOC_USAGE_HW_COMPOSER) {
+      /* GPU composing case */
+      *grallocConsumerUsage |= GRALLOC1_CONSUMER_USAGE_GPU_TEXTURE;
+      /* Hardware composing case */
+      *grallocConsumerUsage |= GRALLOC1_CONSUMER_USAGE_HWCOMPOSER;
+   }
+
+   if ((swapchainImageUsage & VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_ANDROID) &&
+       vk_android_get_ugralloc() != NULL) {
+      uint64_t front_rendering_usage = 0;
+      u_gralloc_get_front_rendering_usage(vk_android_get_ugralloc(),
+                                          &front_rendering_usage);
+      *grallocProducerUsage |= front_rendering_usage;
+   }
+
+   return VK_SUCCESS;
+}
 
 /* From the Android hardware_buffer.h header:
  *

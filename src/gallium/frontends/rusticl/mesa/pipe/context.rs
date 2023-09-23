@@ -114,7 +114,10 @@ impl PipeContext {
 
     pub fn clear_buffer(&self, res: &PipeResource, pattern: &[u8], offset: u32, size: u32) {
         unsafe {
-            self.pipe.as_ref().clear_buffer.unwrap()(
+            self.pipe
+                .as_ref()
+                .clear_buffer
+                .unwrap_or(u_default_clear_buffer)(
                 self.pipe.as_ptr(),
                 res.pipe(),
                 offset,
@@ -672,7 +675,6 @@ fn has_required_cbs(context: &pipe_context) -> bool {
         & has_required_feature!(context, buffer_map)
         & has_required_feature!(context, buffer_subdata)
         & has_required_feature!(context, buffer_unmap)
-        & has_required_feature!(context, clear_buffer)
         & has_required_feature!(context, create_compute_state)
         & has_required_feature!(context, create_query)
         & has_required_feature!(context, delete_compute_state)

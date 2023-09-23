@@ -1456,6 +1456,8 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
         case nir_op_b2f32:
                 result = vir_AND(c, src[0], vir_uniform_f(c, 1.0));
                 break;
+        case nir_op_b2i8:
+        case nir_op_b2i16:
         case nir_op_b2i32:
                 result = vir_AND(c, src[0], vir_uniform_ui(c, 1));
                 break;
@@ -2231,6 +2233,12 @@ v3d_optimize_nir(struct v3d_compile *c, struct nir_shader *s)
                        progress |= local_progress;
                 }
         } while (progress);
+
+        /* needs to be outside of optimization loop, otherwise it fights with
+         * opt_algebraic optimizing the conversion lowering
+         */
+        NIR_PASS(progress, s, v3d_nir_lower_algebraic);
+        NIR_PASS(progress, s, nir_opt_cse);
 
         nir_move_options sink_opts =
                 nir_move_const_undef | nir_move_comparisons | nir_move_copies |

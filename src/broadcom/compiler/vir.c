@@ -679,6 +679,56 @@ v3d_nir_lower_null_pointers(nir_shader *s)
                                             nir_metadata_control_flow, NULL);
 }
 
+static unsigned
+lower_bit_size_cb(const nir_instr *instr, void *_data)
+{
+        if (instr->type != nir_instr_type_alu)
+                return 0;
+
+        nir_alu_instr *alu = nir_instr_as_alu(instr);
+
+        switch (alu->op) {
+        case nir_op_mov:
+        case nir_op_vec2:
+        case nir_op_vec3:
+        case nir_op_vec4:
+        case nir_op_vec5:
+        case nir_op_vec8:
+        case nir_op_vec16:
+        case nir_op_b2i8:
+        case nir_op_b2f16:
+        case nir_op_b2i16:
+        case nir_op_b2f32:
+        case nir_op_b2i32:
+        case nir_op_f2f16:
+        case nir_op_f2f16_rtne:
+        case nir_op_f2f16_rtz:
+        case nir_op_f2f32:
+        case nir_op_f2i32:
+        case nir_op_f2u32:
+        case nir_op_i2i8:
+        case nir_op_i2i16:
+        case nir_op_i2f16:
+        case nir_op_i2f32:
+        case nir_op_i2i32:
+        case nir_op_u2u8:
+        case nir_op_u2u16:
+        case nir_op_u2f16:
+        case nir_op_u2f32:
+        case nir_op_u2u32:
+        case nir_op_pack_32_2x16_split:
+        case nir_op_pack_32_4x8_split:
+        case nir_op_pack_half_2x16_split:
+                return 0;
+
+        /* we need to handle those here as they only work with 32 bits */
+        default:
+                if (alu->src[0].src.ssa->bit_size != 1 && alu->src[0].src.ssa->bit_size < 32)
+                        return 32;
+                return 0;
+        }
+}
+
 static void
 v3d_lower_nir(struct v3d_compile *c)
 {
@@ -726,6 +776,7 @@ v3d_lower_nir(struct v3d_compile *c)
         NIR_PASS(_, c->s, nir_lower_compute_system_values, NULL);
         NIR_PASS(_, c->s, nir_lower_is_helper_invocation);
         NIR_PASS(_, c->s, v3d_nir_lower_null_pointers);
+        NIR_PASS(_, c->s, nir_lower_bit_size, lower_bit_size_cb, NULL);
 }
 
 static void
@@ -1707,6 +1758,9 @@ v3d_attempt_compile(struct v3d_compile *c)
         NIR_PASS(_, c->s, nir_lower_wrmasks, should_split_wrmask, c->s);
         NIR_PASS(_, c->s, v3d_nir_lower_load_store_bitsize);
         NIR_PASS(_, c->s, v3d_nir_lower_scratch);
+
+        /* needs to run after load_store_bitsize */
+        NIR_PASS(_, c->s, nir_lower_pack);
 
         NIR_PASS(_, c->s, v3d_nir_lower_subgroup_intrinsics, c);
 

@@ -1526,12 +1526,14 @@ v3d_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
         if (v3d->prog.compute->prog_data.base->threads == 4)
                 submit.cfg[5] |= V3D_CSD_CFG5_THREADING;
 
-        if (v3d->prog.compute->prog_data.compute->shared_size) {
+        uint32_t shared_size = v3d->prog.compute->prog_data.compute->shared_size +
+                               info->variable_shared_mem;
+        if (shared_size) {
                 v3d->compute_shared_memory =
                         v3d_bo_alloc(v3d->screen,
-                                     v3d->prog.compute->prog_data.compute->shared_size *
-                                     num_wgs,
+                                     shared_size * num_wgs,
                                      "shared_vars");
+                v3d->shared_memory = shared_size;
         }
 
         util_dynarray_foreach(&v3d->global_buffers, struct pipe_resource *, res) {

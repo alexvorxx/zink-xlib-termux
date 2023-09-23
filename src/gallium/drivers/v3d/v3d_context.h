@@ -577,6 +577,7 @@ struct v3d_context {
         uint32_t compute_num_workgroups[3];
         uint32_t compute_workgroup_size[3];
         struct v3d_bo *compute_shared_memory;
+        uint32_t shared_memory;
 
         struct v3d_vertex_stateobj *vtx;
 

@@ -250,11 +250,70 @@ lower_load_store_bitsize(nir_builder *b, nir_intrinsic_instr *intr,
         }
 }
 
+/*
+ * The idea here is to lower bit_sizes until we meet the alignment of the data
+ * in order not having to use atomics. Also we keep load/stores we can operate
+ * on with a bit_size of 32 vectorized to up to 4 components at most.
+ */
+static nir_mem_access_size_align
+v3d_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
+                  uint8_t input_bit_size, uint32_t align,
+                  uint32_t align_offset, bool offset_is_const,
+                  const void *cb_data)
+{
+        align = nir_combined_align(align, align_offset);
+        assert(util_is_power_of_two_nonzero(align));
+
+        /* TODO: we could update the bit_size to 32 if possible, but that might
+         * cause suboptimal pack/unpack operations.
+         */
+        unsigned bit_size = MIN2(32, input_bit_size);
+
+        /* But if we're only aligned to 1 byte, use 8-bit loads. If we're only
+         * aligned to 2 bytes, use 16-bit loads, unless we needed 8-bit loads due to
+         * the size.
+         */
+        if (align == 1)
+                bit_size = 8;
+        else if (align == 2)
+                bit_size = MIN2(bit_size, 16);
+
+        /* But we only support single component loads for anything below 32 bit.
+         * And only up to 4 components for 32 bit.
+         */
+        unsigned num_components;
+        if (bit_size == 32) {
+                num_components = MIN2(bytes / 4, 4);
+
+                /* Now we have to reduce the num_components even further for unaligned
+                 * vector load/stores
+                 */
+                num_components = MIN2(align / 4, num_components);
+        } else {
+                num_components = 1;
+        }
+
+        return (nir_mem_access_size_align){
+                .num_components = num_components,
+                .bit_size = bit_size,
+                .align = (bit_size / 8) * (num_components == 3 ? 4 : num_components),
+        };
+}
+
 bool
 v3d_nir_lower_load_store_bitsize(nir_shader *s)
 {
-        return nir_shader_intrinsics_pass(s, lower_load_store_bitsize,
-                                            nir_metadata_block_index |
-                                            nir_metadata_dominance,
-                                            NULL);
+        nir_lower_mem_access_bit_sizes_options lower_options = {
+                .modes = nir_var_mem_global | nir_var_mem_ssbo |
+                         nir_var_mem_ubo | nir_var_mem_constant |
+                         nir_var_mem_shared,
+                .callback = v3d_size_align_cb,
+        };
+
+        bool res = nir_shader_intrinsics_pass(s, lower_load_store_bitsize,
+                                              nir_metadata_block_index |
+                                              nir_metadata_dominance,
+                                              NULL);
+        res |= nir_lower_mem_access_bit_sizes(s, &lower_options);
+        return res;
 }

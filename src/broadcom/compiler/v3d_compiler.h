@@ -329,6 +329,13 @@ enum quniform_contents {
         QUNIFORM_SHARED_OFFSET,
 
         /**
+         * OpenCL variable shared memory
+         *
+         * This will only be used when the shader declares variable_shared_memory.
+         */
+        QUNIFORM_SHARED_SIZE,
+
+        /**
          * Returns the number of layers in the framebuffer.
          *
          * This is used to cap gl_Layer in geometry shaders to avoid

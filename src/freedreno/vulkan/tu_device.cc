@@ -22,6 +22,7 @@
 #include "util/driconf.h"
 #include "util/os_misc.h"
 #include "util/u_process.h"
+#include "vk_android.h"
 #include "vk_shader_module.h"
 #include "vk_sampler.h"
 #include "vk_util.h"
@@ -41,6 +42,10 @@
 #include "tu_rmv.h"
 #include "tu_tracepoints.h"
 #include "tu_wsi.h"
+
+#if DETECT_OS_ANDROID
+#include "util/u_gralloc/u_gralloc.h"
+#endif
 
 static int
 tu_device_get_cache_uuid(struct tu_physical_device *device, void *uuid)
@@ -281,9 +286,6 @@ get_device_extensions(const struct tu_physical_device *device,
 
       /* For Graphics Flight Recorder (GFR) */
       .AMD_buffer_marker = true,
-#if DETECT_OS_ANDROID
-      .ANDROID_native_buffer = true,
-#endif
       .ARM_rasterization_order_attachment_access = true,
       .GOOGLE_decorate_string = true,
       .GOOGLE_hlsl_functionality1 = true,
@@ -291,6 +293,12 @@ get_device_extensions(const struct tu_physical_device *device,
       .IMG_filter_cubic = device->info->a6xx.has_tex_filter_cubic,
       .VALVE_mutable_descriptor_type = true,
    } };
+
+#if DETECT_OS_ANDROID
+   if (vk_android_get_ugralloc() != NULL) {
+      ext->ANDROID_native_buffer = true;
+   }
+#endif
 }
 
 static void

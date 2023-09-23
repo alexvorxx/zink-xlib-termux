@@ -13,10 +13,10 @@
 
 #include "util/u_debug.h"
 #include "util/format/u_format.h"
+#include "vk_android.h"
 #include "vk_util.h"
 #include "drm-uapi/drm_fourcc.h"
 
-#include "tu_android.h"
 #include "tu_cs.h"
 #include "tu_descriptor_set.h"
 #include "tu_device.h"
@@ -678,6 +678,7 @@ tu_CreateImage(VkDevice _device,
 {
    uint64_t modifier = DRM_FORMAT_MOD_INVALID;
    const VkSubresourceLayout *plane_layouts = NULL;
+   VkResult result;
 
    VK_FROM_HANDLE(tu_device, device, _device);
 
@@ -731,22 +732,30 @@ tu_CreateImage(VkDevice _device,
          modifier = DRM_FORMAT_MOD_LINEAR;
    }
 
-#if DETECT_OS_ANDROID
-   const VkNativeBufferANDROID *gralloc_info =
-      vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
-   int dma_buf;
-   if (gralloc_info) {
-      VkResult result = tu_gralloc_info(device, gralloc_info, &dma_buf, &modifier);
+   /* This section is removed by the optimizer for non-ANDROID builds */
+   VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
+   VkSubresourceLayout a_plane_layouts[TU_MAX_PLANE_COUNT];
+   if (vk_image_is_android_native_buffer(&image->vk)) {
+      result = vk_android_get_anb_layout(
+         pCreateInfo, &eci, a_plane_layouts, TU_MAX_PLANE_COUNT);
       if (result != VK_SUCCESS)
-         return result;
-   }
-#endif
+         goto fail;
 
-   VkResult result = tu_image_init(device, image, pCreateInfo, modifier,
+      plane_layouts = a_plane_layouts;
+      modifier = eci.drmFormatModifier;
+   }
+
+   result = tu_image_init(device, image, pCreateInfo, modifier,
                                    plane_layouts);
-   if (result != VK_SUCCESS) {
-      vk_object_free(&device->vk, alloc, image);
-      return result;
+   if (result != VK_SUCCESS)
+      goto fail;
+
+   /* This section is removed by the optimizer for non-ANDROID builds */
+   if (vk_image_is_android_native_buffer(&image->vk)) {
+      result = vk_android_import_anb(&device->vk, pCreateInfo, alloc,
+                                     &image->vk);
+      if (result != VK_SUCCESS)
+         goto fail;
    }
 
    TU_RMV(image_create, device, image);
@@ -757,12 +766,10 @@ tu_CreateImage(VkDevice _device,
 
    *pImage = tu_image_to_handle(image);
 
-#if DETECT_OS_ANDROID
-   if (gralloc_info)
-      return tu_import_memory_from_gralloc_handle(_device, dma_buf, alloc,
-                                                  *pImage);
-#endif
    return VK_SUCCESS;
+fail:
+   vk_image_destroy(&device->vk, alloc, &image->vk);
+   return result;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -780,11 +787,6 @@ tu_DestroyImage(VkDevice _device,
 
 #ifdef HAVE_PERFETTO
    tu_perfetto_log_destroy_image(device, image);
-#endif
-
-#if DETECT_OS_ANDROID
-   if (image->owned_memory != VK_NULL_HANDLE)
-      tu_FreeMemory(_device, image->owned_memory, pAllocator);
 #endif
 
    vk_image_destroy(&device->vk, pAllocator, &image->vk);

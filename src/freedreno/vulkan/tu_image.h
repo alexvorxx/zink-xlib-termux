@@ -12,6 +12,8 @@
 
 #include "tu_common.h"
 
+#define TU_MAX_PLANE_COUNT 3
+
 #define tu_image_view_stencil(iview, x) \
    ((iview->view.x & ~A6XX_##x##_COLOR_FORMAT__MASK) | A6XX_##x##_COLOR_FORMAT(FMT6_8_UINT))
 
@@ -24,11 +26,6 @@ struct tu_image
 
    struct fdl_layout layout[3];
    uint64_t total_size;
-
-#if DETECT_OS_ANDROID
-   /* For VK_ANDROID_native_buffer, the WSI image owns the memory, */
-   VkDeviceMemory owned_memory;
-#endif
 
    /* Set when bound */
    struct tu_bo *bo;

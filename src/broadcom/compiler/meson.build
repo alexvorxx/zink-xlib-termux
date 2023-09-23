@@ -44,9 +44,20 @@ libbroadcom_compiler_files = files(
   'v3d_packing.c',
 )
 
+v3d_nir_lower_algebraic_c = custom_target(
+  'v3d_nir_lower_algebraic.c',
+  input : 'v3d_nir_lower_algebraic.py',
+  output : 'v3d_nir_lower_algebraic.c',
+  command : [
+    prog_python, '@INPUT@', '-p', dir_compiler_nir,
+  ],
+  capture : true,
+  depend_files : nir_algebraic_depends,
+)
+
 libbroadcom_compiler = static_library(
   'broadcom_compiler',
-  [libbroadcom_compiler_files, v3d_xml_pack],
+  [libbroadcom_compiler_files, v3d_xml_pack, v3d_nir_lower_algebraic_c],
   include_directories : [inc_include, inc_src, inc_gallium, inc_gallium_aux, inc_broadcom],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',

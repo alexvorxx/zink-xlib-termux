@@ -498,9 +498,6 @@ v3d_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
                  */
                 RET((uint64_t []) { 256 });
 
-        case PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE:
-                RET((uint64_t []) { 1024 * 1024 * 1024 });
-
         case PIPE_COMPUTE_CAP_MAX_LOCAL_SIZE:
                 /* GL_MAX_COMPUTE_SHARED_MEMORY_SIZE */
                 RET((uint64_t []) { 32768 });
@@ -509,10 +506,16 @@ v3d_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
         case PIPE_COMPUTE_CAP_MAX_INPUT_SIZE:
                 RET((uint64_t []) { 4096 });
 
-        case PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE: {
+        case PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE: {
                 struct sysinfo si;
                 sysinfo(&si);
                 RET((uint64_t []) { si.totalram });
+        }
+
+        case PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE: {
+                struct sysinfo si;
+                sysinfo(&si);
+                RET((uint64_t []) { MIN2(V3D_MAX_BUFFER_RANGE, si.totalram) });
         }
 
         case PIPE_COMPUTE_CAP_MAX_CLOCK_FREQUENCY:

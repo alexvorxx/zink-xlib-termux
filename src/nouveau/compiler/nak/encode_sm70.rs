@@ -1763,11 +1763,13 @@ impl SM70Instr {
     }
 
     fn encode_ldg(&mut self, op: &OpLd) {
-        self.set_opcode(0x980);
+        self.set_opcode(0x381);
 
         self.set_dst(op.dst);
+        self.set_pred_dst(81..84, Dst::None);
+
         self.set_reg_src(24..32, op.addr);
-        self.set_field(32..64, op.offset);
+        self.set_field(40..64, op.offset);
 
         self.set_mem_access(&op.access);
     }
@@ -1829,11 +1831,11 @@ impl SM70Instr {
     }
 
     fn encode_stg(&mut self, op: &OpSt) {
-        self.set_opcode(0x385);
+        self.set_opcode(0x386);
 
         self.set_reg_src(24..32, op.addr);
-        self.set_field(32..64, op.offset);
-        self.set_reg_src(64..72, op.data);
+        self.set_reg_src(32..40, op.data);
+        self.set_field(40..64, op.offset);
 
         self.set_mem_access(&op.access);
     }
@@ -1907,12 +1909,12 @@ impl SM70Instr {
 
     fn encode_atomg(&mut self, op: &OpAtom) {
         if op.atom_op == AtomOp::CmpExch {
-            self.set_opcode(0x38b);
+            self.set_opcode(0x3a9);
 
             self.set_reg_src(32..40, op.cmpr);
             self.set_reg_src(64..72, op.data);
         } else {
-            self.set_opcode(0x38a);
+            self.set_opcode(0x3a8);
 
             self.set_reg_src(32..40, op.data);
 

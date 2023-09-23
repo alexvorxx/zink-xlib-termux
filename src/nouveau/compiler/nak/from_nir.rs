@@ -2433,7 +2433,7 @@ impl<'a> ShaderFromNir<'a> {
                     eviction_priority: self
                         .get_eviction_priority(intrin.access()),
                 };
-                let (addr, offset) = self.get_io_addr_offset(&srcs[0], 32);
+                let (addr, offset) = self.get_io_addr_offset(&srcs[0], 24);
                 let dst = b.alloc_ssa(RegFile::GPR, size_B.div_ceil(4));
 
                 b.push_op(OpLd {
@@ -2831,7 +2831,7 @@ impl<'a> ShaderFromNir<'a> {
                     eviction_priority: self
                         .get_eviction_priority(intrin.access()),
                 };
-                let (addr, offset) = self.get_io_addr_offset(&srcs[1], 32);
+                let (addr, offset) = self.get_io_addr_offset(&srcs[1], 24);
 
                 b.push_op(OpSt {
                     addr: addr,

@@ -364,6 +364,9 @@ v3d_uncompiled_shader_create(struct pipe_context *pctx,
                 s = tgsi_to_nir(ir, pctx->screen, false);
         }
 
+        if (s->info.stage == MESA_SHADER_KERNEL)
+                s->info.stage = MESA_SHADER_COMPUTE;
+
         if (s->info.stage != MESA_SHADER_VERTEX &&
             s->info.stage != MESA_SHADER_GEOMETRY) {
                 NIR_PASS(_, s, nir_lower_io,

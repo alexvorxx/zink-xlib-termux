@@ -35,6 +35,7 @@
 #include "pipe/p_state.h"
 #include "util/bitset.h"
 #include "util/slab.h"
+#include "util/u_dynarray.h"
 #include "xf86drm.h"
 #include "drm-uapi/v3d_drm.h"
 #include "v3d_screen.h"
@@ -638,6 +639,8 @@ struct v3d_context {
         int in_fence_fd;
         /** Handle of the syncobj that holds in_fence_fd for submission. */
         uint32_t in_syncobj;
+
+        struct util_dynarray global_buffers;
         /** @} */
 };
 

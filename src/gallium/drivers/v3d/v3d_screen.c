@@ -715,7 +715,17 @@ static const nir_shader_compiler_options v3d_nir_options = {
         .lower_mul_high = true,
         .lower_wpos_pntc = true,
         .lower_to_scalar = true,
-        .lower_int64_options = nir_lower_imul_2x32_64,
+        .lower_int64_options =
+                nir_lower_bcsel64 |
+                nir_lower_conv64 |
+                nir_lower_iadd64 |
+                nir_lower_icmp64 |
+                nir_lower_imul_2x32_64 |
+                nir_lower_imul64 |
+                nir_lower_ineg64 |
+                nir_lower_logic64 |
+                nir_lower_shift64 |
+                nir_lower_ufind_msb64,
         .lower_fquantize2f16 = true,
         .has_fsub = true,
         .has_isub = true,

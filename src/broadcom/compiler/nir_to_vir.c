@@ -4074,7 +4074,7 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
                 fprintf(stderr, "Unknown intrinsic: ");
                 nir_print_instr(&instr->instr, stderr);
                 fprintf(stderr, "\n");
-                break;
+                abort();
         }
 }
 

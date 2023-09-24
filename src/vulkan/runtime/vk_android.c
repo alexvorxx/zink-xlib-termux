@@ -32,10 +32,13 @@
 #include "vk_queue.h"
 #include "vk_util.h"
 
+#include "vulkan/util/vk_enum_defines.h"
+
 #include "drm-uapi/drm_fourcc.h"
 #include "util/libsync.h"
 #include "util/os_file.h"
 #include "util/u_gralloc/u_gralloc.h"
+#include "util/log.h"
 
 #include <hardware/gralloc.h>
 
@@ -523,6 +526,185 @@ vk_alloc_ahardware_buffer(const VkMemoryAllocateInfo *pAllocateInfo)
       return NULL;
 
    return ahb;
+}
+
+static VkResult
+get_ahb_buffer_format_properties2(
+   struct vk_device *device, const struct AHardwareBuffer *buffer,
+   VkAndroidHardwareBufferFormatProperties2ANDROID *pProperties)
+{
+   /* Get a description of buffer contents . */
+   AHardwareBuffer_Desc desc;
+   AHardwareBuffer_describe(buffer, &desc);
+
+   /* Verify description. */
+   bool gpu_usage = desc.usage & (AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE |
+                                  AHARDWAREBUFFER_USAGE_GPU_COLOR_OUTPUT |
+                                  AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER);
+
+   /* "Buffer must be a valid Android hardware buffer object with at least
+    * one of the AHARDWAREBUFFER_USAGE_GPU_* usage flags."
+    */
+   if (!gpu_usage)
+      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+
+   /* Fill properties fields based on description. */
+   VkAndroidHardwareBufferFormatProperties2ANDROID *p = pProperties;
+
+   p->samplerYcbcrConversionComponents.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+   p->samplerYcbcrConversionComponents.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+   p->samplerYcbcrConversionComponents.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+   p->samplerYcbcrConversionComponents.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+   p->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
+   p->suggestedYcbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+
+   p->suggestedXChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+   p->suggestedYChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+
+   VkFormatProperties2 format_properties = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2};
+
+   p->format = vk_ahb_format_to_image_format(desc.format);
+
+   VkFormat external_format = p->format;
+
+   if (p->format != VK_FORMAT_UNDEFINED)
+      goto finish;
+
+   /* External format only case
+    *
+    * From vkGetAndroidHardwareBufferPropertiesANDROID spec:
+    * "If the Android hardware buffer has one of the formats listed in the Format
+    * Equivalence table (see spec.), then format must have the equivalent Vulkan
+    * format listed in the table. Otherwise, format may be VK_FORMAT_UNDEFINED,
+    * indicating the Android hardware buffer can only be used with an external format."
+    *
+    * From SKIA source code analysis: p->format MUST be VK_FORMAT_UNDEFINED, if the
+    * format is not in the Equivalence table.
+    */
+
+   struct u_gralloc_buffer_handle gr_handle = {
+      .handle = AHardwareBuffer_getNativeHandle(buffer),
+      .pixel_stride = desc.stride,
+      .hal_format = desc.format,
+   };
+
+   struct u_gralloc_buffer_basic_info info;
+
+   if (u_gralloc_get_buffer_basic_info(vk_android_get_ugralloc(), &gr_handle, &info) != 0)
+      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+
+   switch (info.drm_fourcc) {
+   case DRM_FORMAT_YVU420:
+      /* Assuming that U and V planes are swapped earlier */
+      external_format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+      break;
+   case DRM_FORMAT_NV12:
+      external_format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+      break;
+   default:;
+      mesa_loge("Unsupported external DRM format: %d", info.drm_fourcc);
+      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+   }
+
+   struct u_gralloc_buffer_color_info color_info;
+   if (u_gralloc_get_buffer_color_info(vk_android_get_ugralloc(), &gr_handle, &color_info) == 0) {
+      switch (color_info.yuv_color_space) {
+      case __DRI_YUV_COLOR_SPACE_ITU_REC601:
+         p->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
+         break;
+      case __DRI_YUV_COLOR_SPACE_ITU_REC709:
+         p->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+         break;
+      case __DRI_YUV_COLOR_SPACE_ITU_REC2020:
+         p->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
+         break;
+      default:
+         break;
+      }
+
+      p->suggestedYcbcrRange = (color_info.sample_range == __DRI_YUV_NARROW_RANGE) ?
+         VK_SAMPLER_YCBCR_RANGE_ITU_NARROW : VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+      p->suggestedXChromaOffset = (color_info.horizontal_siting == __DRI_YUV_CHROMA_SITING_0_5) ?
+         VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN;
+      p->suggestedYChromaOffset = (color_info.vertical_siting == __DRI_YUV_CHROMA_SITING_0_5) ?
+         VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN;
+   }
+
+finish:
+
+   device->physical->dispatch_table.GetPhysicalDeviceFormatProperties2(
+      (VkPhysicalDevice)device->physical, external_format, &format_properties);
+
+   p->formatFeatures = format_properties.formatProperties.optimalTilingFeatures;
+   p->externalFormat = external_format;
+
+   /* From vkGetAndroidHardwareBufferPropertiesANDROID spec:
+    * "The formatFeatures member *must* include
+    *  VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT and at least one of
+    *  VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT or
+    *  VK_FORMAT_FEATURE_2_COSITED_CHROMA_SAMPLES_BIT"
+    */
+   p->formatFeatures |= VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT_KHR;
+
+   return VK_SUCCESS;
+}
+
+VkResult
+vk_common_GetAndroidHardwareBufferPropertiesANDROID(
+   VkDevice device_h, const struct AHardwareBuffer *buffer,
+   VkAndroidHardwareBufferPropertiesANDROID *pProperties)
+{
+   VK_FROM_HANDLE(vk_device, device, device_h);
+   struct vk_physical_device *pdevice = device->physical;
+
+   VkResult result;
+
+   VkAndroidHardwareBufferFormatPropertiesANDROID *format_prop =
+      vk_find_struct(pProperties->pNext, ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID);
+
+   /* Fill format properties of an Android hardware buffer. */
+   if (format_prop) {
+      VkAndroidHardwareBufferFormatProperties2ANDROID format_prop2 = {
+         .sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_2_ANDROID,
+      };
+      result = get_ahb_buffer_format_properties2(device, buffer, &format_prop2);
+      if (result != VK_SUCCESS)
+         return result;
+
+      format_prop->format                 = format_prop2.format;
+      format_prop->externalFormat         = format_prop2.externalFormat;
+      format_prop->formatFeatures         =
+         vk_format_features2_to_features(format_prop2.formatFeatures);
+      format_prop->samplerYcbcrConversionComponents =
+         format_prop2.samplerYcbcrConversionComponents;
+      format_prop->suggestedYcbcrModel    = format_prop2.suggestedYcbcrModel;
+      format_prop->suggestedYcbcrRange    = format_prop2.suggestedYcbcrRange;
+      format_prop->suggestedXChromaOffset = format_prop2.suggestedXChromaOffset;
+      format_prop->suggestedYChromaOffset = format_prop2.suggestedYChromaOffset;
+   }
+
+   VkAndroidHardwareBufferFormatProperties2ANDROID *format_prop2 =
+      vk_find_struct(pProperties->pNext, ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_2_ANDROID);
+   if (format_prop2) {
+      result = get_ahb_buffer_format_properties2(device, buffer, format_prop2);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   const native_handle_t *handle = AHardwareBuffer_getNativeHandle(buffer);
+   assert(handle && handle->numFds > 0);
+   pProperties->allocationSize = lseek(handle->data[0], 0, SEEK_END);
+
+   VkPhysicalDeviceMemoryProperties mem_props;
+
+   device->physical->dispatch_table.GetPhysicalDeviceMemoryProperties(
+      (VkPhysicalDevice)pdevice, &mem_props);
+
+   /* All memory types. (Should we be smarter than this?) */
+   pProperties->memoryTypeBits = (1u << mem_props.memoryTypeCount) - 1;
+
+   return VK_SUCCESS;
 }
 #endif /* ANDROID_API_LEVEL >= 26 */
 

@@ -593,6 +593,14 @@ st_link_glsl_to_nir(struct gl_context *ctx,
       const struct gl_shader_compiler_options *options =
             &ctx->Const.ShaderCompilerOptions[stage];
 
+      if (nir->info.io_lowered) {
+         /* Since IO is lowered, we won't need the IO variables from now on.
+          * nir_build_program_resource_list was the last pass that needed them.
+          */
+         NIR_PASS_V(nir, nir_remove_dead_variables,
+                    nir_var_shader_in | nir_var_shader_out, NULL);
+      }
+
       /* If there are forms of indirect addressing that the driver
        * cannot handle, perform the lowering pass.
        */
@@ -713,7 +721,8 @@ st_link_glsl_to_nir(struct gl_context *ctx,
       prog->info.num_abos = old_info.num_abos;
 
       if (prog->info.stage == MESA_SHADER_VERTEX) {
-         if (prog->nir->info.io_lowered) {
+         if (prog->nir->info.io_lowered &&
+             prog->nir->options->io_options & nir_io_glsl_opt_varyings) {
             prog->info.inputs_read = prog->nir->info.inputs_read;
             prog->DualSlotInputs = prog->nir->info.dual_slot_inputs;
          } else {
@@ -886,8 +895,11 @@ st_finalize_nir(struct st_context *st, struct gl_program *prog,
 
    /* Lower load_deref/store_deref of inputs and outputs.
     * This depends on st_nir_assign_varying_locations.
+    *
+    * TODO: remove this once nir_io_glsl_opt_varyings is enabled by default.
     */
-   if (nir->options->io_options & nir_io_glsl_lower_derefs) {
+   if (nir->options->io_options & nir_io_glsl_lower_derefs &&
+       !(nir->options->io_options & nir_io_glsl_opt_varyings)) {
       nir_lower_io_passes(nir, false);
       NIR_PASS(_, nir, nir_remove_dead_variables,
                  nir_var_shader_in | nir_var_shader_out, NULL);

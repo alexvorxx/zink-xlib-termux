@@ -23,6 +23,7 @@
 
 #include "nir.h"
 #include "nir_builder.h"
+#include "nir_xfb_info.h"
 #include "gl_nir.h"
 #include "gl_nir_linker.h"
 #include "gl_nir_link_varyings.h"
@@ -1278,6 +1279,131 @@ prelink_lowering(const struct gl_constants *consts,
    return true;
 }
 
+/**
+ * Lower load_deref and store_deref on input/output variables to load_input
+ * and store_output intrinsics, and perform varying optimizations and
+ * compaction.
+ */
+void
+gl_nir_lower_optimize_varyings(const struct gl_constants *consts,
+                               struct gl_shader_program *prog, bool spirv)
+{
+   nir_shader *shaders[MESA_SHADER_STAGES];
+   unsigned num_shaders = 0;
+   unsigned max_ubos = UINT_MAX;
+   unsigned max_uniform_comps = UINT_MAX;
+
+   for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
+      struct gl_linked_shader *shader = prog->_LinkedShaders[i];
+
+      if (!shader)
+         continue;
+
+      nir_shader *nir = shader->Program->nir;
+
+      if (nir->info.stage == MESA_SHADER_COMPUTE)
+         return;
+
+      if (!(nir->options->io_options & nir_io_glsl_lower_derefs) ||
+          !(nir->options->io_options & nir_io_glsl_opt_varyings))
+         return;
+
+      shaders[num_shaders] = nir;
+      max_uniform_comps = MIN2(max_uniform_comps,
+                               consts->Program[i].MaxUniformComponents);
+      max_ubos = MIN2(max_ubos, consts->Program[i].MaxUniformBlocks);
+      num_shaders++;
+   }
+
+   /* Lower IO derefs to load and store intrinsics. */
+   for (unsigned i = 0; i < num_shaders; i++) {
+      nir_shader *nir = shaders[i];
+
+      nir_lower_io_passes(nir, true);
+   }
+
+   /* There is nothing to optimize for only 1 shader. */
+   if (num_shaders == 1)
+      return;
+
+   for (unsigned i = 0; i < num_shaders; i++) {
+      nir_shader *nir = shaders[i];
+
+      /* nir_opt_varyings requires scalar IO. */
+      NIR_PASS_V(nir, nir_lower_io_to_scalar,
+                 (i != 0 ? nir_var_shader_in : 0) |
+                 (i != num_shaders - 1 ? nir_var_shader_out : 0), NULL, NULL);
+
+      /* nir_opt_varyings requires shaders to be optimized. */
+      gl_nir_opts(nir);
+   }
+
+   /* Optimize varyings from the first shader to the last shader first, and
+    * then in the opposite order from the last changed producer.
+    *
+    * For example, VS->GS->FS is optimized in this order first:
+    *    (VS,GS), (GS,FS)
+    *
+    * That ensures that constants and undefs (dead inputs) are propagated
+    * forward.
+    *
+    * If GS was changed while optimizing (GS,FS), (VS,GS) is optimized again
+    * because removing outputs in GS can cause a chain reaction in making
+    * GS inputs, VS outputs, and VS inputs dead.
+    */
+   unsigned highest_changed_producer = 0;
+   for (unsigned i = 0; i < num_shaders - 1; i++) {
+      nir_shader *producer = shaders[i];
+      nir_shader *consumer = shaders[i + 1];
+
+      nir_opt_varyings_progress progress =
+         nir_opt_varyings(producer, consumer, spirv, max_uniform_comps,
+                          max_ubos);
+
+      if (progress & nir_progress_producer) {
+         gl_nir_opts(producer);
+         highest_changed_producer = i;
+      }
+      if (progress & nir_progress_consumer)
+         gl_nir_opts(consumer);
+   }
+
+   /* Optimize varyings from the highest changed producer to the first
+    * shader.
+    */
+   for (unsigned i = highest_changed_producer; i > 0; i--) {
+      nir_shader *producer = shaders[i - 1];
+      nir_shader *consumer = shaders[i];
+
+      nir_opt_varyings_progress progress =
+         nir_opt_varyings(producer, consumer, spirv, max_uniform_comps,
+                          max_ubos);
+
+      if (progress & nir_progress_producer)
+         gl_nir_opts(producer);
+      if (progress & nir_progress_consumer)
+         gl_nir_opts(consumer);
+   }
+
+   /* Final cleanups. */
+   for (unsigned i = 0; i < num_shaders; i++) {
+      nir_shader *nir = shaders[i];
+
+      /* Recompute intrinsic bases, which are totally random after
+       * optimizations and compaction. Do that for all inputs and outputs,
+       * including VS inputs because those could have been removed too.
+       */
+      NIR_PASS_V(nir, nir_recompute_io_bases,
+                 nir_var_shader_in | nir_var_shader_out);
+
+      /* Regenerate transform feedback info because compaction in
+       * nir_opt_varyings always moves them to other slots.
+       */
+      if (nir->xfb_info)
+         nir_gather_xfb_info_from_intrinsics(nir);
+   }
+}
+
 bool
 gl_nir_link_spirv(const struct gl_constants *consts,
                   const struct gl_extensions *exts,
@@ -1300,14 +1426,18 @@ gl_nir_link_spirv(const struct gl_constants *consts,
    if (!prelink_lowering(consts, exts, prog, linked_shader, num_shaders))
       return false;
 
-   /* Linking the stages in the opposite order (from fragment to vertex)
-    * ensures that inter-shader outputs written to in an earlier stage
-    * are eliminated if they are (transitively) not used in a later
-    * stage.
-    */
-   for (int i = num_shaders - 2; i >= 0; i--) {
-      gl_nir_link_opts(linked_shader[i]->Program->nir,
-                       linked_shader[i + 1]->Program->nir);
+   gl_nir_lower_optimize_varyings(consts, prog, true);
+
+   if (!linked_shader[0]->Program->nir->info.io_lowered) {
+      /* Linking the stages in the opposite order (from fragment to vertex)
+       * ensures that inter-shader outputs written to in an earlier stage
+       * are eliminated if they are (transitively) not used in a later
+       * stage.
+       */
+      for (int i = num_shaders - 2; i >= 0; i--) {
+         gl_nir_link_opts(linked_shader[i]->Program->nir,
+                          linked_shader[i + 1]->Program->nir);
+      }
    }
 
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
@@ -1663,14 +1793,16 @@ gl_nir_link_glsl(const struct gl_constants *consts,
    if (prog->data->LinkStatus == LINKING_FAILURE)
       return false;
 
-   /* Linking the stages in the opposite order (from fragment to vertex)
-    * ensures that inter-shader outputs written to in an earlier stage
-    * are eliminated if they are (transitively) not used in a later
-    * stage.
-    */
-   for (int i = num_shaders - 2; i >= 0; i--) {
-      gl_nir_link_opts(linked_shader[i]->Program->nir,
-                       linked_shader[i + 1]->Program->nir);
+   if (!linked_shader[0]->Program->nir->info.io_lowered) {
+      /* Linking the stages in the opposite order (from fragment to vertex)
+       * ensures that inter-shader outputs written to in an earlier stage
+       * are eliminated if they are (transitively) not used in a later
+       * stage.
+       */
+      for (int i = num_shaders - 2; i >= 0; i--) {
+         gl_nir_link_opts(linked_shader[i]->Program->nir,
+                          linked_shader[i + 1]->Program->nir);
+      }
    }
 
    /* Tidy up any left overs from the linking process for single shaders.

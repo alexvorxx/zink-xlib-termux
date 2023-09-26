@@ -705,13 +705,18 @@ st_link_glsl_to_nir(struct gl_context *ctx,
       prog->info.num_abos = old_info.num_abos;
 
       if (prog->info.stage == MESA_SHADER_VERTEX) {
-         /* NIR expands dual-slot inputs out to two locations.  We need to
-          * compact things back down GL-style single-slot inputs to avoid
-          * confusing the state tracker.
-          */
-         prog->info.inputs_read =
-            nir_get_single_slot_attribs_mask(prog->nir->info.inputs_read,
-                                             prog->DualSlotInputs);
+         if (prog->nir->info.io_lowered) {
+            prog->info.inputs_read = prog->nir->info.inputs_read;
+            prog->DualSlotInputs = prog->nir->info.dual_slot_inputs;
+         } else {
+            /* NIR expands dual-slot inputs out to two locations.  We need to
+             * compact things back down GL-style single-slot inputs to avoid
+             * confusing the state tracker.
+             */
+            prog->info.inputs_read =
+               nir_get_single_slot_attribs_mask(prog->nir->info.inputs_read,
+                                                prog->DualSlotInputs);
+         }
 
          /* Initialize st_vertex_program members. */
          st_prepare_vertex_program(prog);

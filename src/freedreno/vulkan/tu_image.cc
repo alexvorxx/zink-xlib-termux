@@ -434,7 +434,6 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
               const VkImageCreateInfo *pCreateInfo, uint64_t modifier,
               const VkSubresourceLayout *plane_layouts)
 {
-   vk_image_init(&device->vk, &image->vk, pCreateInfo);
    image->vk.drm_format_mod = modifier;
 
    enum a6xx_tile_mode tile_mode = TILE6_3;
@@ -698,7 +697,7 @@ tu_CreateImage(VkDevice _device,
 #endif
 
    struct tu_image *image = (struct tu_image *)
-      vk_object_zalloc(&device->vk, alloc, sizeof(*image), VK_OBJECT_TYPE_IMAGE);
+      vk_image_create(&device->vk, pCreateInfo, alloc, sizeof(*image));
 
    if (!image)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -788,7 +787,7 @@ tu_DestroyImage(VkDevice _device,
       tu_FreeMemory(_device, image->owned_memory, pAllocator);
 #endif
 
-   vk_object_free(&device->vk, pAllocator, image);
+   vk_image_destroy(&device->vk, pAllocator, &image->vk);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -906,6 +905,7 @@ tu_GetDeviceImageMemoryRequirements(
 
    struct tu_image image = {0};
 
+   vk_image_init(&device->vk, &image.vk, pInfo->pCreateInfo);
    tu_image_init(device, &image, pInfo->pCreateInfo, DRM_FORMAT_MOD_INVALID,
                  NULL);
 
@@ -971,6 +971,7 @@ tu_GetDeviceImageSubresourceLayoutKHR(VkDevice _device,
 
    struct tu_image image = {0};
 
+   vk_image_init(&device->vk, &image.vk, pInfo->pCreateInfo);
    tu_image_init(device, &image, pInfo->pCreateInfo, DRM_FORMAT_MOD_INVALID,
                  NULL);
 

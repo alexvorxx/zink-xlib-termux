@@ -13,6 +13,7 @@
 #include "tu_common.h"
 
 #include "vk_buffer.h"
+#include "vk_device_memory.h"
 
 #include "tu_autotune.h"
 #include "tu_pass.h"
@@ -409,14 +410,14 @@ VK_DEFINE_HANDLE_CASTS(tu_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
 
 struct tu_device_memory
 {
-   struct vk_object_base base;
+   struct vk_device_memory vk;
 
    struct tu_bo *bo;
 
    /* for dedicated allocations */
    struct tu_image *image;
 };
-VK_DEFINE_NONDISP_HANDLE_CASTS(tu_device_memory, base, VkDeviceMemory,
+VK_DEFINE_NONDISP_HANDLE_CASTS(tu_device_memory, vk.base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 
 struct tu_buffer

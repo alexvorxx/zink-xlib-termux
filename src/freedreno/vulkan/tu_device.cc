@@ -2768,17 +2768,15 @@ tu_AllocateMemory(VkDevice _device,
    if (mem_heap_used > mem_heap->size)
       return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
 
-   mem = (struct tu_device_memory *) vk_object_alloc(
-      &device->vk, pAllocator, sizeof(*mem), VK_OBJECT_TYPE_DEVICE_MEMORY);
+   mem = (struct tu_device_memory *) vk_device_memory_create(
+      &device->vk, pAllocateInfo, pAllocator, sizeof(*mem));
    if (mem == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    const VkImportMemoryFdInfoKHR *fd_info =
       vk_find_struct_const(pAllocateInfo->pNext, IMPORT_MEMORY_FD_INFO_KHR);
-   if (fd_info && !fd_info->handleType)
-      fd_info = NULL;
 
-   if (fd_info) {
+   if (fd_info && fd_info->handleType) {
       assert(fd_info->handleType ==
                 VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT ||
              fd_info->handleType ==
@@ -2837,7 +2835,7 @@ tu_AllocateMemory(VkDevice _device,
    }
 
    if (result != VK_SUCCESS) {
-      vk_object_free(&device->vk, pAllocator, mem);
+      vk_device_memory_destroy(&device->vk, pAllocator, &mem->vk);
       return result;
    }
 
@@ -2885,7 +2883,7 @@ tu_FreeMemory(VkDevice _device,
 
    p_atomic_add(&device->physical_device->heap.used, -mem->bo->size);
    tu_bo_finish(device, mem->bo);
-   vk_object_free(&device->vk, pAllocator, mem);
+   vk_device_memory_destroy(&device->vk, pAllocator, &mem->vk);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

@@ -14,7 +14,7 @@ main(int argc, char *argv[])
       const char *name;
    } chipsets[] = {
 #undef CHIPSET
-#define CHIPSET(id, family, family_str, str_name) { .pci_id = id, .name = str_name, },
+#define CHIPSET(id, family, family_str, str_name, ...) { .pci_id = id, .name = str_name, },
 #include "pci_ids/iris_pci_ids.h"
 #include "pci_ids/crocus_pci_ids.h"
    };

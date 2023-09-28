@@ -1333,14 +1333,28 @@ intel_device_info_update_cs_workgroup_threads(struct intel_device_info *devinfo)
                                MIN2(devinfo->max_cs_threads, 64);
 }
 
+struct device_init_config {
+   bool require_force_probe;
+};
+
+/* Example PCI ID entry using FORCE_PROBE:
+ *
+ * CHIPSET(0x1234, foo, "FOO", "Intel(R) Graphics", FORCE_PROBE)
+ */
+#define FORCE_PROBE .require_force_probe = true
+
 static bool
 intel_device_info_init_common(int pci_id,
                               struct intel_device_info *devinfo)
 {
+   struct device_init_config device_config = { 0 };
    switch (pci_id) {
 #undef CHIPSET
-#define CHIPSET(id, family, fam_str, name) \
-      case id: *devinfo = intel_device_info_##family; break;
+#define CHIPSET(id, family, fam_str, name, ...)                         \
+      case id:                                                          \
+         *devinfo = intel_device_info_##family;                         \
+         device_config = *&(struct device_init_config) { __VA_ARGS__ }; \
+         break;
 #include "pci_ids/crocus_pci_ids.h"
 #include "pci_ids/iris_pci_ids.h"
 
@@ -1356,7 +1370,7 @@ intel_device_info_init_common(int pci_id,
 
    switch (pci_id) {
 #undef CHIPSET
-#define CHIPSET(_id, _family, _fam_str, _name) \
+#define CHIPSET(_id, _family, _fam_str, _name, ...) \
    case _id: \
       /* sizeof(str_literal) includes the null */ \
       STATIC_ASSERT(sizeof(_name) + sizeof(_fam_str) + 2 <= \
@@ -1368,6 +1382,9 @@ intel_device_info_init_common(int pci_id,
    default:
       strncpy(devinfo->name, "Intel Unknown", sizeof(devinfo->name));
    }
+
+   if (device_config.require_force_probe)
+      return false;
 
    devinfo->pci_device_id = pci_id;
 

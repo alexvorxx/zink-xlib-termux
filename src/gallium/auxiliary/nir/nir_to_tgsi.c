@@ -2349,7 +2349,7 @@ ntt_emit_store_output(struct ntt_compile *c, nir_intrinsic_instr *instr)
    }
 
    uint8_t swizzle[4] = { 0, 0, 0, 0 };
-   for (int i = frac; i <= 4; i++) {
+   for (int i = frac; i < 4; i++) {
       if (out.WriteMask & (1 << i))
          swizzle[i] = i - frac;
    }

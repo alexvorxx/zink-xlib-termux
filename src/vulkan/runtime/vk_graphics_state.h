@@ -103,10 +103,14 @@ enum mesa_vk_dynamic_graphics_state {
    MESA_VK_DYNAMIC_CB_WRITE_MASKS,
    MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS,
    MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE,
+   MESA_VK_DYNAMIC_COLOR_ATTACHMENT_MAP,
+   MESA_VK_DYNAMIC_INPUT_ATTACHMENT_MAP,
 
    /* Must be left at the end */
    MESA_VK_DYNAMIC_GRAPHICS_STATE_ENUM_MAX,
 };
+
+#define MESA_VK_ATTACHMENT_UNUSED (0xff)
 
 /** Populate a bitset with dynamic states
  *
@@ -664,6 +668,15 @@ struct vk_color_blend_state {
 };
 
 /***/
+struct vk_rendering_attachment_location_state {
+   /** VkRenderingAttachmentLocationInfoKHR::pColorAttachmentLocations
+    *
+    * MESA_VK_DYNAMIC_COLOR_ATTACHMENT_MAP
+    */
+   uint8_t color_map[MESA_VK_MAX_COLOR_ATTACHMENTS];
+};
+
+/***/
 struct vk_render_pass_state {
    /** Set of image aspects bound as color/depth/stencil attachments
     *
@@ -834,6 +847,18 @@ struct vk_dynamic_graphics_state {
    /** MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE */
    VkImageAspectFlags feedback_loops;
 
+   /** MESA_VK_DYNAMIC_COLOR_ATTACHMENT_MAP */
+   struct vk_rendering_attachment_location_state ral;
+
+   /** MESA_VK_DYNAMIC_INPUT_ATTACHMENT_MAP */
+   uint8_t color_input_attachment_map[MESA_VK_MAX_COLOR_ATTACHMENTS];
+
+   /** MESA_VK_DYNAMIC_INPUT_ATTACHMENT_MAP */
+   bool depth_input_attachment_unused;
+
+   /** MESA_VK_DYNAMIC_INPUT_ATTACHMENT_MAP */
+   bool stencil_input_attachment_unused;
+
    /** For pipelines, which bits of dynamic state are set */
    BITSET_DECLARE(set, MESA_VK_DYNAMIC_GRAPHICS_STATE_ENUM_MAX);
 
@@ -854,6 +879,7 @@ struct vk_graphics_pipeline_all_state {
    struct vk_sample_locations_state ms_sample_locations;
    struct vk_depth_stencil_state ds;
    struct vk_color_blend_state cb;
+   struct vk_rendering_attachment_location_state ral;
    struct vk_render_pass_state rp;
 };
 
@@ -910,6 +936,9 @@ struct vk_graphics_pipeline_state {
 
    /** Color blend state */
    const struct vk_color_blend_state *cb;
+
+   /** Color attachment mapping state */
+   const struct vk_rendering_attachment_location_state *ral;
 
    /** Render pass state */
    const struct vk_render_pass_state *rp;

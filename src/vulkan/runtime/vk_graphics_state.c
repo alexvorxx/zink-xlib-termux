@@ -23,7 +23,8 @@ enum mesa_vk_graphics_state_groups {
    MESA_VK_GRAPHICS_STATE_MULTISAMPLE_BIT             = (1 << 7),
    MESA_VK_GRAPHICS_STATE_DEPTH_STENCIL_BIT           = (1 << 8),
    MESA_VK_GRAPHICS_STATE_COLOR_BLEND_BIT             = (1 << 9),
-   MESA_VK_GRAPHICS_STATE_RENDER_PASS_BIT             = (1 << 10),
+   MESA_VK_GRAPHICS_STATE_COLOR_ATTACHMENT_MAP_BIT    = (1 << 10),
+   MESA_VK_GRAPHICS_STATE_RENDER_PASS_BIT             = (1 << 11),
 };
 
 static void
@@ -125,6 +126,9 @@ get_dynamic_state_groups(BITSET_WORD *dynamic,
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS);
    }
 
+   if (groups & MESA_VK_GRAPHICS_STATE_COLOR_ATTACHMENT_MAP_BIT)
+      BITSET_SET(dynamic, MESA_VK_DYNAMIC_COLOR_ATTACHMENT_MAP);
+
    if (groups & MESA_VK_GRAPHICS_STATE_RENDER_PASS_BIT)
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE);
 }
@@ -167,6 +171,9 @@ fully_dynamic_state_groups(const BITSET_WORD *dynamic)
        BITSET_TEST(dynamic, MESA_VK_DYNAMIC_CB_WRITE_MASKS) &&
        BITSET_TEST(dynamic, MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS))
       groups |= MESA_VK_GRAPHICS_STATE_COLOR_BLEND_BIT;
+
+   if (BITSET_TEST(dynamic, MESA_VK_DYNAMIC_COLOR_ATTACHMENT_MAP))
+      groups |= MESA_VK_GRAPHICS_STATE_COLOR_ATTACHMENT_MAP_BIT;
 
    return groups;
 }
@@ -1013,6 +1020,25 @@ vk_color_blend_state_init(struct vk_color_blend_state *cb,
 }
 
 static void
+vk_rendering_attachment_location_state_init(struct vk_rendering_attachment_location_state *ral,
+                                            const BITSET_WORD *dynamic,
+                                            const VkRenderingAttachmentLocationInfoKHR *ral_info)
+{
+   *ral = (struct vk_rendering_attachment_location_state) {
+      .color_map = { 0, 1, 2, 3, 4, 5, 6, 7 },
+   };
+   if (!ral_info)
+      return;
+
+   for (uint32_t a = 0; a < MIN2(ral_info->colorAttachmentCount,
+                                 MESA_VK_MAX_COLOR_ATTACHMENTS); a++) {
+      ral->color_map[a] =
+         ral_info->pColorAttachmentLocations[a] == VK_ATTACHMENT_UNUSED ?
+         MESA_VK_ATTACHMENT_UNUSED : ral_info->pColorAttachmentLocations[a];
+   }
+}
+
+static void
 vk_dynamic_graphics_state_init_cb(struct vk_dynamic_graphics_state *dst,
                                   const BITSET_WORD *needed,
                                   const struct vk_color_blend_state *cb)
@@ -1030,6 +1056,15 @@ vk_dynamic_graphics_state_init_cb(struct vk_dynamic_graphics_state *dst,
 
    if (IS_NEEDED(CB_BLEND_CONSTANTS))
       typed_memcpy(dst->cb.blend_constants, cb->blend_constants, 4);
+}
+
+static void
+vk_dynamic_graphics_state_init_ral(struct vk_dynamic_graphics_state *dst,
+                                   const BITSET_WORD *needed,
+                                   const struct vk_rendering_attachment_location_state *ral)
+{
+   if (IS_NEEDED(COLOR_ATTACHMENT_MAP))
+      typed_memcpy(dst->ral.color_map, ral->color_map, MESA_VK_MAX_COLOR_ATTACHMENTS);
 }
 
 static bool
@@ -1197,6 +1232,8 @@ vk_dynamic_graphics_state_init_rp(struct vk_dynamic_graphics_state *dst,
      vk_depth_stencil_state, ds);                        \
    f(MESA_VK_GRAPHICS_STATE_COLOR_BLEND_BIT,             \
      vk_color_blend_state, cb);                          \
+   f(MESA_VK_GRAPHICS_STATE_COLOR_ATTACHMENT_MAP_BIT,    \
+     vk_rendering_attachment_location_state, ral);       \
    f(MESA_VK_GRAPHICS_STATE_RENDER_PASS_BIT,             \
      vk_render_pass_state, rp);
 
@@ -1430,6 +1467,7 @@ vk_graphics_pipeline_state_fill(const struct vk_device *device,
 
    if (lib & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) {
       needs |= MESA_VK_GRAPHICS_STATE_FRAGMENT_SHADING_RATE_BIT;
+      needs |= MESA_VK_GRAPHICS_STATE_COLOR_ATTACHMENT_MAP_BIT;
 
       /* From the Vulkan 1.3.218 spec:
        *
@@ -1491,8 +1529,10 @@ vk_graphics_pipeline_state_fill(const struct vk_device *device,
    }
 
    if (lib & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT) {
-      if (rp.attachment_aspects & (VK_IMAGE_ASPECT_COLOR_BIT))
-         needs |= MESA_VK_GRAPHICS_STATE_COLOR_BLEND_BIT;
+      if (rp.attachment_aspects & (VK_IMAGE_ASPECT_COLOR_BIT)) {
+         needs |= MESA_VK_GRAPHICS_STATE_COLOR_BLEND_BIT |
+                  MESA_VK_GRAPHICS_STATE_COLOR_ATTACHMENT_MAP_BIT;
+      }
 
       needs |= MESA_VK_GRAPHICS_STATE_MULTISAMPLE_BIT;
    }
@@ -1618,6 +1658,9 @@ vk_graphics_pipeline_state_fill(const struct vk_device *device,
 
    const VkPipelineFragmentShadingRateStateCreateInfoKHR *fsr_info =
       vk_find_struct_const(info->pNext, PIPELINE_FRAGMENT_SHADING_RATE_STATE_CREATE_INFO_KHR);
+
+   const VkRenderingAttachmentLocationInfoKHR *ral_info =
+      vk_find_struct_const(info->pNext, RENDERING_ATTACHMENT_LOCATION_INFO_KHR);
 
    /*
     * Finally, fill out all the states
@@ -1796,6 +1839,9 @@ const struct vk_dynamic_graphics_state vk_default_dynamic_graphics_state = {
    .cb = {
       .color_write_enables = 0xffu,
       .attachment_count = MESA_VK_MAX_COLOR_ATTACHMENTS,
+   },
+   .ral = {
+      .color_map = { 0, 1, 2, 3, 4, 5, 6, 7 },
    },
 };
 
@@ -2093,6 +2139,11 @@ vk_dynamic_graphics_state_copy(struct vk_dynamic_graphics_state *dst,
    }
    if (IS_SET_IN_SRC(CB_BLEND_CONSTANTS))
       COPY_ARRAY(CB_BLEND_CONSTANTS, cb.blend_constants, 4);
+
+   if (IS_SET_IN_SRC(COLOR_ATTACHMENT_MAP)) {
+      COPY_ARRAY(COLOR_ATTACHMENT_MAP, ral.color_map,
+                 MESA_VK_MAX_COLOR_ATTACHMENTS);
+   }
 
    COPY_IF_SET(ATTACHMENT_FEEDBACK_LOOP_ENABLE, feedback_loops);
 
@@ -2971,6 +3022,48 @@ vk_common_CmdSetDepthBias2EXT(
    }
 }
 
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetRenderingAttachmentLocationsKHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkRenderingAttachmentLocationInfoKHR* pLocationInfo)
+{
+   VK_FROM_HANDLE(vk_command_buffer, cmd, commandBuffer);
+   struct vk_dynamic_graphics_state *dyn = &cmd->dynamic_graphics_state;
+
+   assert(pLocationInfo->colorAttachmentCount <= MESA_VK_MAX_COLOR_ATTACHMENTS);
+   for (uint32_t i = 0; i < pLocationInfo->colorAttachmentCount; i++) {
+      uint8_t val =
+         pLocationInfo->pColorAttachmentLocations[i] == VK_ATTACHMENT_UNUSED ?
+         MESA_VK_ATTACHMENT_UNUSED : pLocationInfo->pColorAttachmentLocations[i];
+      SET_DYN_VALUE(dyn, COLOR_ATTACHMENT_MAP, ral.color_map[i], val);
+   }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetRenderingInputAttachmentIndicesKHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkRenderingInputAttachmentIndexInfoKHR* pLocationInfo)
+{
+   VK_FROM_HANDLE(vk_command_buffer, cmd, commandBuffer);
+   struct vk_dynamic_graphics_state *dyn = &cmd->dynamic_graphics_state;
+
+   assert(pLocationInfo->colorAttachmentCount <= MESA_VK_MAX_COLOR_ATTACHMENTS);
+   for (uint32_t i = 0; i < pLocationInfo->colorAttachmentCount; i++) {
+      uint8_t val =
+         pLocationInfo->pColorAttachmentInputIndices[i] == VK_ATTACHMENT_UNUSED ?
+         MESA_VK_ATTACHMENT_UNUSED : pLocationInfo->pColorAttachmentInputIndices[i];
+      SET_DYN_VALUE(dyn, INPUT_ATTACHMENT_MAP,
+                    color_input_attachment_map[i], val);
+   }
+
+   SET_DYN_VALUE(dyn, INPUT_ATTACHMENT_MAP,
+                 depth_input_attachment_unused,
+                 pLocationInfo->pDepthInputAttachmentIndex == NULL);
+   SET_DYN_VALUE(dyn, INPUT_ATTACHMENT_MAP,
+                 stencil_input_attachment_unused,
+                 pLocationInfo->pStencilInputAttachmentIndex == NULL);
+}
+
 const char *
 vk_dynamic_graphic_state_to_str(enum mesa_vk_dynamic_graphics_state state)
 {
@@ -3036,6 +3129,7 @@ vk_dynamic_graphic_state_to_str(enum mesa_vk_dynamic_graphics_state state)
       NAME(CB_WRITE_MASKS);
       NAME(CB_BLEND_CONSTANTS);
       NAME(ATTACHMENT_FEEDBACK_LOOP_ENABLE);
+      NAME(COLOR_ATTACHMENT_MAP);
    default: unreachable("Invalid state");
    }
 

@@ -1,6 +1,7 @@
 #undef NDEBUG
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <assert.h>
 
 #include "intel_device_info.h"
@@ -21,7 +22,12 @@ main(int argc, char *argv[])
 
    for (uint32_t i = 0; i < ARRAY_SIZE(chipsets); i++) {
       struct intel_device_info devinfo = { 0, };
+      char force_probe[10];
+      int len = snprintf(force_probe, sizeof force_probe, "%x",
+                         chipsets[i].pci_id);
+      assert(len < sizeof force_probe);
 
+      setenv("INTEL_FORCE_PROBE", force_probe, 1);
       assert(intel_get_device_info_from_pci_id(chipsets[i].pci_id, &devinfo));
 
       verify_device_info(&devinfo);

@@ -1126,13 +1126,11 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
    if (result != VK_SUCCESS)
       return result;
 
-   uint32_t accel_struct_count = _mesa_hash_table_num_entries(device->rra_trace.accel_structs);
-
-   uint64_t *accel_struct_offsets = calloc(accel_struct_count, sizeof(uint64_t));
+   uint32_t struct_count = _mesa_hash_table_num_entries(device->rra_trace.accel_structs);
+   uint64_t *accel_struct_offsets = calloc(struct_count, sizeof(uint64_t));
    if (!accel_struct_offsets)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   uint32_t struct_count = _mesa_hash_table_num_entries(device->rra_trace.accel_structs);
    struct hash_entry **hash_entries = malloc(sizeof(*hash_entries) * struct_count);
    if (!hash_entries) {
       free(accel_struct_offsets);

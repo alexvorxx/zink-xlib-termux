@@ -100,7 +100,7 @@ rra_dump_chunk_description(uint64_t offset, uint64_t header_size, uint64_t data_
       .data_offset = offset + header_size,
       .data_size = data_size,
    };
-   strncpy(chunk.name, name, sizeof(chunk.name) - 1);
+   memcpy(chunk.name, name, strnlen(name, sizeof(chunk.name)));
    fwrite(&chunk, sizeof(struct rra_file_chunk_description), 1, output);
 }
 

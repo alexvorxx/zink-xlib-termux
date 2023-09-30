@@ -40,9 +40,9 @@ struct rra_file_header {
 
 static_assert(sizeof(struct rra_file_header) == 32, "rra_file_header does not match RRA spec");
 
-enum rra_chunk_type {
-   RADV_RRA_CHUNK_ID_ASIC_API_INFO = 0x1,
-   RADV_RRA_CHUNK_ID_ACCEL_STRUCT = 0xF0005,
+enum rra_chunk_version {
+   RADV_RRA_ASIC_API_INFO_CHUNK_VERSION = 0x1,
+   RADV_RRA_ACCEL_STRUCT_CHUNK_VERSION = 0xF0005,
 };
 
 enum rra_file_api {
@@ -59,7 +59,7 @@ enum rra_file_api {
 struct rra_file_chunk_description {
    char name[16];
    uint32_t is_zstd_compressed;
-   enum rra_chunk_type type;
+   enum rra_chunk_version version;
    uint64_t header_offset;
    uint64_t header_size;
    uint64_t data_offset;
@@ -91,10 +91,10 @@ rra_dump_header(FILE *output, uint64_t chunk_descriptions_offset, uint64_t chunk
 
 static void
 rra_dump_chunk_description(uint64_t offset, uint64_t header_size, uint64_t data_size, const char *name,
-                           enum rra_chunk_type type, FILE *output)
+                           enum rra_chunk_version version, FILE *output)
 {
    struct rra_file_chunk_description chunk = {
-      .type = type,
+      .version = version,
       .header_offset = offset,
       .header_size = header_size,
       .data_offset = offset + header_size,
@@ -1203,9 +1203,9 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
    rra_copy_context_finish(&copy_ctx);
 
    uint64_t chunk_info_offset = (uint64_t)ftell(file);
-   rra_dump_chunk_description(api_info_offset, 0, 8, "ApiInfo", RADV_RRA_CHUNK_ID_ASIC_API_INFO, file);
+   rra_dump_chunk_description(api_info_offset, 0, 8, "ApiInfo", RADV_RRA_ASIC_API_INFO_CHUNK_VERSION, file);
    rra_dump_chunk_description(asic_info_offset, 0, sizeof(struct rra_asic_info), "AsicInfo",
-                              RADV_RRA_CHUNK_ID_ASIC_API_INFO, file);
+                              RADV_RRA_ASIC_API_INFO_CHUNK_VERSION, file);
 
    for (uint32_t i = 0; i < written_accel_struct_count; ++i) {
       uint64_t accel_struct_size;
@@ -1215,7 +1215,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
          accel_struct_size = (uint64_t)(accel_struct_offsets[i + 1] - accel_struct_offsets[i]);
 
       rra_dump_chunk_description(accel_struct_offsets[i], sizeof(struct rra_accel_struct_chunk_header),
-                                 accel_struct_size, "RawAccelStruct", RADV_RRA_CHUNK_ID_ACCEL_STRUCT, file);
+                                 accel_struct_size, "RawAccelStruct", RADV_RRA_ACCEL_STRUCT_CHUNK_VERSION, file);
    }
 
    uint64_t file_end = (uint64_t)ftell(file);

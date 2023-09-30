@@ -326,6 +326,8 @@ radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
    struct radv_cmd_buffer *cmd_buffer = container_of(vk_cmd_buffer, struct radv_cmd_buffer, vk);
 
    if (cmd_buffer->qf != RADV_QUEUE_SPARSE) {
+      util_dynarray_fini(&cmd_buffer->ray_history);
+
       list_for_each_entry_safe (struct radv_cmd_buffer_upload, up, &cmd_buffer->upload.list, list) {
          radv_rmv_log_command_buffer_bo_destroy(cmd_buffer->device, up->upload_bo);
          cmd_buffer->device->ws->buffer_destroy(cmd_buffer->device->ws, up->upload_bo);
@@ -404,6 +406,8 @@ radv_create_cmd_buffer(struct vk_command_pool *pool, struct vk_command_buffer **
 
       for (unsigned i = 0; i < MAX_BIND_POINTS; i++)
          vk_object_base_init(&device->vk, &cmd_buffer->descriptors[i].push_set.set.base, VK_OBJECT_TYPE_DESCRIPTOR_SET);
+
+      util_dynarray_init(&cmd_buffer->ray_history, NULL);
    }
 
    *cmd_buffer_out = &cmd_buffer->vk;
@@ -437,6 +441,8 @@ radv_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer, UNUSED VkCommandB
       list_del(&up->list);
       free(up);
    }
+
+   util_dynarray_clear(&cmd_buffer->ray_history);
 
    cmd_buffer->push_constant_stages = 0;
    cmd_buffer->scratch_size_per_wave_needed = 0;
@@ -10334,6 +10340,71 @@ radv_indirect_dispatch(struct radv_cmd_buffer *cmd_buffer, struct radeon_winsys_
    radv_compute_dispatch(cmd_buffer, &info);
 }
 
+static void
+radv_trace_trace_rays(struct radv_cmd_buffer *cmd_buffer, const VkTraceRaysIndirectCommand2KHR *cmd,
+                      uint64_t indirect_va)
+{
+   if (!cmd || indirect_va)
+      return;
+
+   struct radv_rra_ray_history_data *data = malloc(sizeof(struct radv_rra_ray_history_data));
+   if (!data)
+      return;
+
+   uint32_t width = DIV_ROUND_UP(cmd->width, cmd_buffer->device->rra_trace.ray_history_resolution_scale);
+   uint32_t height = DIV_ROUND_UP(cmd->height, cmd_buffer->device->rra_trace.ray_history_resolution_scale);
+   uint32_t depth = DIV_ROUND_UP(cmd->depth, cmd_buffer->device->rra_trace.ray_history_resolution_scale);
+
+   struct radv_rra_ray_history_counter counter = {
+      .dispatch_size = {width, height, depth},
+      .hit_shader_count = cmd->hitShaderBindingTableSize / cmd->hitShaderBindingTableStride,
+      .miss_shader_count = cmd->missShaderBindingTableSize / cmd->missShaderBindingTableStride,
+      .shader_count = cmd_buffer->state.rt_pipeline->stage_count,
+      .pipeline_api_hash = cmd_buffer->state.rt_pipeline->base.base.pipeline_hash,
+      .mode = 1,
+      .stride = sizeof(uint32_t),
+      .data_size = 0,
+      .ray_id_begin = 0,
+      .ray_id_end = 0xFFFFFFFF,
+      .pipeline_type = RADV_RRA_PIPELINE_RAY_TRACING,
+   };
+
+   struct radv_rra_ray_history_dispatch_size dispatch_size = {
+      .size = {width, height, depth},
+   };
+
+   struct radv_rra_ray_history_traversal_flags traversal_flags = {0};
+
+   data->metadata = (struct radv_rra_ray_history_metadata){
+      .counter_info.type = RADV_RRA_COUNTER_INFO,
+      .counter_info.size = sizeof(struct radv_rra_ray_history_counter),
+      .counter = counter,
+
+      .dispatch_size_info.type = RADV_RRA_DISPATCH_SIZE,
+      .dispatch_size_info.size = sizeof(struct radv_rra_ray_history_dispatch_size),
+      .dispatch_size = dispatch_size,
+
+      .traversal_flags_info.type = RADV_RRA_TRAVERSAL_FLAGS,
+      .traversal_flags_info.size = sizeof(struct radv_rra_ray_history_traversal_flags),
+      .traversal_flags = traversal_flags,
+   };
+
+   uint32_t dispatch_index = util_dynarray_num_elements(&cmd_buffer->ray_history, struct radv_rra_ray_history_data *)
+                             << 16;
+
+   util_dynarray_append(&cmd_buffer->ray_history, struct radv_rra_ray_history_data *, data);
+
+   cmd_buffer->state.flush_bits |=
+      RADV_CMD_FLAG_INV_SCACHE | RADV_CMD_FLAG_CS_PARTIAL_FLUSH |
+      radv_src_access_flush(cmd_buffer, VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT, NULL) |
+      radv_dst_access_flush(cmd_buffer, VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT, NULL);
+
+   radv_update_buffer_cp(
+      cmd_buffer,
+      cmd_buffer->device->rra_trace.ray_history_addr + offsetof(struct radv_ray_history_header, dispatch_index),
+      &dispatch_index, sizeof(dispatch_index));
+}
+
 enum radv_rt_mode {
    radv_rt_mode_direct,
    radv_rt_mode_indirect,
@@ -10365,6 +10436,9 @@ radv_trace_rays(struct radv_cmd_buffer *cmd_buffer, VkTraceRaysIndirectCommand2K
 {
    if (cmd_buffer->device->instance->debug_flags & RADV_DEBUG_NO_RT)
       return;
+
+   if (unlikely(cmd_buffer->device->rra_trace.ray_history_buffer))
+      radv_trace_trace_rays(cmd_buffer, tables, indirect_va);
 
    struct radv_compute_pipeline *pipeline = &cmd_buffer->state.rt_pipeline->base;
    struct radv_shader *rt_prolog = cmd_buffer->state.rt_prolog;

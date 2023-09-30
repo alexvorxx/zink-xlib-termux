@@ -803,12 +803,13 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
       goto fail;
 
    bool keep_executable_info = radv_pipeline_capture_shaders(device, pipeline->base.base.create_flags);
+   bool emit_ray_history = !!device->rra_trace.ray_history_buffer;
 
    radv_hash_rt_shaders(device, pipeline->sha1, stages, pCreateInfo, pipeline->groups);
    pipeline->base.base.pipeline_hash = *(uint64_t *)pipeline->sha1;
 
    bool cache_hit = false;
-   if (!keep_executable_info)
+   if (!keep_executable_info && !emit_ray_history)
       cache_hit = radv_ray_tracing_pipeline_cache_search(device, cache, pipeline, pCreateInfo);
 
    if (!cache_hit) {
@@ -828,7 +829,7 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
 
    radv_rmv_log_rt_pipeline_create(device, pipeline);
 
-   if (!cache_hit)
+   if (!cache_hit && !emit_ray_history)
       radv_ray_tracing_pipeline_cache_insert(device, cache, pipeline, pCreateInfo->stageCount, pipeline->sha1);
 
    /* write shader VAs into group handles */

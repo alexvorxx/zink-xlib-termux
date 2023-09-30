@@ -630,28 +630,8 @@ capture_trace(VkQueue _queue)
 
    VkResult result = VK_SUCCESS;
 
-   char filename[2048];
-   struct tm now;
-   time_t t;
-
-   t = time(NULL);
-   now = *localtime(&t);
-
-   if (queue->device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) {
-      if (_mesa_hash_table_num_entries(queue->device->rra_trace.accel_structs) == 0) {
-         fprintf(stderr, "radv: No acceleration structures captured, not saving RRA trace.\n");
-      } else {
-         snprintf(filename, sizeof(filename), "/tmp/%s_%04d.%02d.%02d_%02d.%02d.%02d.rra", util_get_process_name(),
-                  1900 + now.tm_year, now.tm_mon + 1, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec);
-
-         result = radv_rra_dump_trace(_queue, filename);
-
-         if (result == VK_SUCCESS)
-            fprintf(stderr, "radv: RRA capture saved to '%s'\n", filename);
-         else
-            fprintf(stderr, "radv: Failed to save RRA capture!\n");
-      }
-   }
+   if (queue->device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA)
+      queue->device->rra_trace.triggered = true;
 
    if (queue->device->vk.memory_trace_data.is_enabled) {
       simple_mtx_lock(&queue->device->vk.memory_trace_data.token_mtx);
@@ -1064,7 +1044,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 
    if ((device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(physical_device, false)) {
-      radv_rra_trace_init(device);
+      result = radv_rra_trace_init(device);
+      if (result != VK_SUCCESS)
+         goto fail;
    }
 
    if (device->vk.enabled_features.rayTracingPipelineShaderGroupHandleCaptureReplay) {
@@ -1086,6 +1068,8 @@ fail:
    radv_printf_data_finish(device);
 
    radv_sqtt_finish(device);
+
+   radv_rra_trace_finish(radv_device_to_handle(device), &device->rra_trace);
 
    radv_spm_finish(device);
 

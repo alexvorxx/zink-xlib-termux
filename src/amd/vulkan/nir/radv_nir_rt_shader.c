@@ -855,6 +855,137 @@ radv_nir_lower_rt_io(nir_shader *nir, bool monolithic, uint32_t payload_offset)
    }
 }
 
+static nir_def *
+radv_build_token_begin(nir_builder *b, struct rt_variables *vars, nir_def *hit, enum radv_packed_token_type token_type,
+                       nir_def *token_size, uint32_t max_token_size)
+{
+   struct radv_rra_trace_data *rra_trace = &vars->device->rra_trace;
+   assert(rra_trace->ray_history_addr);
+   assert(rra_trace->ray_history_buffer_size >= max_token_size);
+
+   nir_def *ray_history_addr = nir_imm_int64(b, rra_trace->ray_history_addr);
+
+   nir_def *launch_id = nir_load_ray_launch_id(b);
+
+   nir_def *trace = nir_imm_true(b);
+   for (uint32_t i = 0; i < 3; i++) {
+      nir_def *remainder = nir_umod_imm(b, nir_channel(b, launch_id, i), rra_trace->ray_history_resolution_scale);
+      trace = nir_iand(b, trace, nir_ieq_imm(b, remainder, 0));
+   }
+   nir_push_if(b, trace);
+
+   static_assert(offsetof(struct radv_ray_history_header, offset) == 0, "Unexpected offset");
+   nir_def *base_offset = nir_global_atomic(b, 32, ray_history_addr, token_size, .atomic_op = nir_atomic_op_iadd);
+
+   /* Abuse the dword alignment of token_size to add an invalid bit to offset. */
+   trace = nir_ieq_imm(b, nir_iand_imm(b, base_offset, 1), 0);
+
+   nir_def *in_bounds = nir_ule_imm(b, base_offset, rra_trace->ray_history_buffer_size - max_token_size);
+   /* Make sure we don't overwrite the header in case of an overflow. */
+   in_bounds = nir_iand(b, in_bounds, nir_uge_imm(b, base_offset, sizeof(struct radv_ray_history_header)));
+
+   nir_push_if(b, nir_iand(b, trace, in_bounds));
+
+   nir_def *dst_addr = nir_iadd(b, ray_history_addr, nir_u2u64(b, base_offset));
+
+   nir_def *launch_size = nir_load_ray_launch_size(b);
+
+   nir_def *launch_id_comps[3];
+   nir_def *launch_size_comps[3];
+   for (uint32_t i = 0; i < 3; i++) {
+      launch_id_comps[i] = nir_udiv_imm(b, nir_channel(b, launch_id, i), rra_trace->ray_history_resolution_scale);
+      launch_size_comps[i] = nir_udiv_imm(b, nir_channel(b, launch_size, i), rra_trace->ray_history_resolution_scale);
+   }
+
+   nir_def *global_index =
+      nir_iadd(b, launch_id_comps[0],
+               nir_iadd(b, nir_imul(b, launch_id_comps[1], launch_size_comps[0]),
+                        nir_imul(b, launch_id_comps[2], nir_imul(b, launch_size_comps[0], launch_size_comps[1]))));
+   nir_def *launch_index_and_hit = nir_bcsel(b, hit, nir_ior_imm(b, global_index, 1u << 29u), global_index);
+   nir_build_store_global(b, nir_ior_imm(b, launch_index_and_hit, token_type << 30), dst_addr, .align_mul = 4);
+
+   return nir_iadd_imm(b, dst_addr, 4);
+}
+
+static void
+radv_build_token_end(nir_builder *b)
+{
+   nir_pop_if(b, NULL);
+   nir_pop_if(b, NULL);
+}
+
+static void
+radv_build_end_trace_token(nir_builder *b, struct rt_variables *vars, nir_def *tmax, nir_def *hit,
+                           nir_def *iteration_instance_count)
+{
+   nir_def *token_size = nir_bcsel(b, hit, nir_imm_int(b, sizeof(struct radv_packed_end_trace_token)),
+                                   nir_imm_int(b, offsetof(struct radv_packed_end_trace_token, primitive_id)));
+
+   nir_def *dst_addr = radv_build_token_begin(b, vars, hit, radv_packed_token_end_trace, token_size,
+                                              sizeof(struct radv_packed_end_trace_token));
+   {
+      nir_build_store_global(b, nir_load_var(b, vars->accel_struct), dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 8);
+
+      nir_def *dispatch_indices =
+         nir_load_smem_amd(b, 2, nir_imm_int64(b, vars->device->rra_trace.ray_history_addr),
+                           nir_imm_int(b, offsetof(struct radv_ray_history_header, dispatch_index)), .align_mul = 4);
+      nir_def *dispatch_index = nir_iadd(b, nir_channel(b, dispatch_indices, 0), nir_channel(b, dispatch_indices, 1));
+      nir_def *dispatch_and_flags = nir_iand_imm(b, nir_load_var(b, vars->cull_mask_and_flags), 0xFFFF);
+      dispatch_and_flags = nir_ior(b, dispatch_and_flags, dispatch_index);
+      nir_build_store_global(b, dispatch_and_flags, dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+      nir_def *shifted_cull_mask = nir_iand_imm(b, nir_load_var(b, vars->cull_mask_and_flags), 0xFF000000);
+
+      nir_def *packed_args = nir_load_var(b, vars->sbt_offset);
+      packed_args = nir_ior(b, packed_args, nir_ishl_imm(b, nir_load_var(b, vars->sbt_stride), 4));
+      packed_args = nir_ior(b, packed_args, nir_ishl_imm(b, nir_load_var(b, vars->miss_index), 8));
+      packed_args = nir_ior(b, packed_args, shifted_cull_mask);
+      nir_build_store_global(b, packed_args, dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+      nir_build_store_global(b, nir_load_var(b, vars->origin), dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 12);
+
+      nir_build_store_global(b, nir_load_var(b, vars->tmin), dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+      nir_build_store_global(b, nir_load_var(b, vars->direction), dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 12);
+
+      nir_build_store_global(b, tmax, dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+      nir_build_store_global(b, iteration_instance_count, dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+      nir_push_if(b, hit);
+      {
+         nir_build_store_global(b, nir_load_var(b, vars->primitive_id), dst_addr, .align_mul = 4);
+         dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+         nir_def *geometry_id = nir_iand_imm(b, nir_load_var(b, vars->geometry_id_and_flags), 0xFFFFFFF);
+         nir_build_store_global(b, geometry_id, dst_addr, .align_mul = 4);
+         dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+         nir_def *instance_id_and_hit_kind =
+            nir_build_load_global(b, 1, 32,
+                                  nir_iadd_imm(b, nir_load_var(b, vars->instance_addr),
+                                               offsetof(struct radv_bvh_instance_node, instance_id)));
+         instance_id_and_hit_kind =
+            nir_ior(b, instance_id_and_hit_kind, nir_ishl_imm(b, nir_load_var(b, vars->hit_kind), 24));
+         nir_build_store_global(b, instance_id_and_hit_kind, dst_addr, .align_mul = 4);
+         dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+         nir_build_store_global(b, nir_load_var(b, vars->tmax), dst_addr, .align_mul = 4);
+         dst_addr = nir_iadd_imm(b, dst_addr, 4);
+      }
+      nir_pop_if(b, NULL);
+   }
+   radv_build_token_end(b);
+}
+
 static nir_function_impl *
 lower_any_hit_for_intersection(nir_shader *any_hit)
 {
@@ -1432,6 +1563,14 @@ radv_build_traversal(struct radv_device *device, struct radv_ray_tracing_pipelin
       .sbt_offset_and_flags = nir_build_deref_var(b, trav_vars.sbt_offset_and_flags),
    };
 
+   nir_variable *iteration_instance_count = NULL;
+   if (vars->device->rra_trace.ray_history_addr) {
+      iteration_instance_count =
+         nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "iteration_instance_count");
+      nir_store_var(b, iteration_instance_count, nir_imm_int(b, 0), 0x1);
+      trav_vars_args.iteration_instance_count = nir_build_deref_var(b, iteration_instance_count);
+   }
+
    struct traversal_data data = {
       .device = device,
       .vars = vars,
@@ -1464,7 +1603,13 @@ radv_build_traversal(struct radv_device *device, struct radv_ray_tracing_pipelin
       .data = &data,
    };
 
+   nir_def *original_tmax = nir_load_var(b, vars->tmax);
+
    radv_build_ray_traversal(device, b, &args);
+
+   if (vars->device->rra_trace.ray_history_addr)
+      radv_build_end_trace_token(b, vars, original_tmax, nir_load_var(b, trav_vars.hit),
+                                 nir_load_var(b, iteration_instance_count));
 
    nir_metadata_preserve(nir_shader_get_entrypoint(b->shader), nir_metadata_none);
    radv_nir_lower_hit_attrib_derefs(b->shader);

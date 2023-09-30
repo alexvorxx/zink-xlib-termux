@@ -1126,22 +1126,25 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
    if (result != VK_SUCCESS)
       return result;
 
-   uint32_t struct_count = _mesa_hash_table_num_entries(device->rra_trace.accel_structs);
-   uint64_t *accel_struct_offsets = calloc(struct_count, sizeof(uint64_t));
-   if (!accel_struct_offsets)
-      return VK_ERROR_OUT_OF_HOST_MEMORY;
+   uint64_t *accel_struct_offsets = NULL;
+   struct hash_entry **hash_entries = NULL;
+   FILE *file = NULL;
 
-   struct hash_entry **hash_entries = malloc(sizeof(*hash_entries) * struct_count);
+   uint32_t struct_count = _mesa_hash_table_num_entries(device->rra_trace.accel_structs);
+   accel_struct_offsets = calloc(struct_count, sizeof(uint64_t));
+   if (!accel_struct_offsets)
+      result = VK_ERROR_OUT_OF_HOST_MEMORY;
+
+   hash_entries = malloc(sizeof(*hash_entries) * struct_count);
    if (!hash_entries) {
-      free(accel_struct_offsets);
-      return VK_ERROR_OUT_OF_HOST_MEMORY;
+      result = VK_ERROR_OUT_OF_HOST_MEMORY;
+      goto cleanup;
    }
 
-   FILE *file = fopen(filename, "w");
+   file = fopen(filename, "w");
    if (!file) {
-      free(accel_struct_offsets);
-      free(hash_entries);
-      return VK_ERROR_OUT_OF_HOST_MEMORY;
+      result = VK_ERROR_OUT_OF_HOST_MEMORY;
+      goto cleanup;
    }
 
    /*
@@ -1175,12 +1178,8 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
    };
 
    result = rra_copy_context_init(&copy_ctx);
-   if (result != VK_SUCCESS) {
-      free(accel_struct_offsets);
-      free(hash_entries);
-      fclose(file);
-      return result;
-   }
+   if (result != VK_SUCCESS)
+      goto cleanup;
 
    for (unsigned i = 0; i < struct_count; i++) {
       struct radv_rra_accel_struct_data *data = hash_entries[i]->data;
@@ -1221,8 +1220,13 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
    /* All info is available, dump header now */
    fseek(file, 0, SEEK_SET);
    rra_dump_header(file, chunk_info_offset, file_end - chunk_info_offset);
-   fclose(file);
+
+   result = VK_SUCCESS;
+cleanup:
+   if (file)
+      fclose(file);
+
    free(hash_entries);
    free(accel_struct_offsets);
-   return VK_SUCCESS;
+   return result;
 }

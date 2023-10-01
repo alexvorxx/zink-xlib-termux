@@ -45,6 +45,7 @@
 
 #if DETECT_OS_ANDROID
 #include "util/u_gralloc/u_gralloc.h"
+#include <vndk/hardware_buffer.h>
 #endif
 
 static int
@@ -296,6 +297,7 @@ get_device_extensions(const struct tu_physical_device *device,
 
 #if DETECT_OS_ANDROID
    if (vk_android_get_ugralloc() != NULL) {
+      ext->ANDROID_external_memory_android_hardware_buffer = true,
       ext->ANDROID_native_buffer = true;
    }
 #endif
@@ -2757,12 +2759,6 @@ tu_AllocateMemory(VkDevice _device,
 
    assert(pAllocateInfo->sType == VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO);
 
-   if (pAllocateInfo->allocationSize == 0) {
-      /* Apparently, this is allowed */
-      *pMem = VK_NULL_HANDLE;
-      return VK_SUCCESS;
-   }
-
    struct tu_memory_heap *mem_heap = &device->physical_device->heap;
    uint64_t mem_heap_used = p_atomic_read(&mem_heap->used);
    if (mem_heap_used > mem_heap->size)
@@ -2772,6 +2768,13 @@ tu_AllocateMemory(VkDevice _device,
       &device->vk, pAllocateInfo, pAllocator, sizeof(*mem));
    if (mem == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   if (pAllocateInfo->allocationSize == 0 && !mem->vk.ahardware_buffer) {
+      vk_device_memory_destroy(&device->vk, pAllocator, &mem->vk);
+      /* Apparently, this is allowed */
+      *pMem = VK_NULL_HANDLE;
+      return VK_SUCCESS;
+   }
 
    const VkImportMemoryFdInfoKHR *fd_info =
       vk_find_struct_const(pAllocateInfo->pNext, IMPORT_MEMORY_FD_INFO_KHR);
@@ -2793,6 +2796,15 @@ tu_AllocateMemory(VkDevice _device,
          /* take ownership and close the fd */
          close(fd_info->fd);
       }
+   } else if (mem->vk.ahardware_buffer) {
+#ifdef ANDROID
+      const native_handle_t *handle = AHardwareBuffer_getNativeHandle(mem->vk.ahardware_buffer);
+      assert(handle->numFds > 0);
+      size_t size = lseek(handle->data[0], 0, SEEK_END);
+      result = tu_bo_init_dmabuf(device, &mem->bo, size, handle->data[0]);
+#else
+      result = VK_ERROR_FEATURE_NOT_PRESENT;
+#endif
    } else {
       uint64_t client_address = 0;
       BITMASK_ENUM(tu_bo_alloc_flags) alloc_flags = TU_BO_ALLOC_NO_FLAGS;

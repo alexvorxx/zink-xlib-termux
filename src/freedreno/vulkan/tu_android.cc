@@ -5,8 +5,10 @@
 
 #include "tu_android.h"
 
+#include <android/hardware_buffer.h>
 #include <hardware/hardware.h>
 #include <hardware/hwvulkan.h>
+#include <stdbool.h>
 
 #include "util/u_gralloc/u_gralloc.h"
 #include "vk_android.h"
@@ -78,4 +80,3 @@ tu_hal_close(struct hw_device_t *dev)
    vk_android_destroy_ugralloc();
    return -1;
 }
-

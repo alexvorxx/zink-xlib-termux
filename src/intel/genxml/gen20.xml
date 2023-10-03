@@ -117,6 +117,19 @@
     <field name="BTD Mode" start="191" end="191" type="uint" />
     <field name="Preferred SLM Allocation Size" start="224" end="227" type="PREF_SLM_ALLOCATION_SIZE" />
   </struct>
+  <struct name="POSTSYNC_DATA" length="5">
+    <field name="Operation" start="0" end="1" type="uint" default="0">
+      <value name="No Write" value="0" />
+      <value name="Write Immediate Data" value="1" />
+      <value name="Write Timestamp" value="3" />
+    </field>
+    <field name="HDC Pipeline Flush" start="2" end="2" type="bool" />
+    <field name="MOCS" start="4" end="10" type="uint" nonzero="true" />
+    <field name="System Memory Fence Request" start="11" end="11" type="bool" />
+    <field name="Dataport Subslice Cache Flush" start="12" end="12" type="bool" />
+    <field name="Destination Address" start="32" end="95" type="address" />
+    <field name="Immediate Data" start="96" end="159" type="uint" />
+  </struct>
   <struct name="COMPUTE_WALKER_BODY" length="39">
     <field name="Indirect Data Length" start="32" end="48" type="uint" />
     <field name="L3 prefetch disable" start="49" end="49" type="bool" />

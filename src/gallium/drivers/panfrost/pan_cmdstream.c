@@ -3777,6 +3777,7 @@ GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
    screen->vtbl.context_init = JOBX(init_context);
    screen->vtbl.context_cleanup = JOBX(cleanup_context);
    screen->vtbl.init_batch = JOBX(init_batch);
+   screen->vtbl.cleanup_batch = JOBX(cleanup_batch);
    screen->vtbl.submit_batch = submit_batch;
    screen->vtbl.get_blend_shader = GENX(pan_blend_get_shader_locked);
    screen->vtbl.get_compiler_options = GENX(pan_shader_get_compiler_options);

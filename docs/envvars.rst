@@ -1390,6 +1390,16 @@ RADV driver environment variables
    enable validation of captured acceleration structures. Can be
    useful if RRA crashes upon opening a trace.
 
+.. envvar:: RADV_RRA_TRACE_HISTORY_SIZE
+
+   set the ray history buffer size when capturing RRA traces (default value is 100MiB,
+   small buffers may result in incomplete traces)
+
+.. envvar:: RADV_RRA_TRACE_RESOLUTION_SCALE
+
+   decrease the resolution used for dumping the ray history resolution when capturing
+   RRA traces. This allows for dumping every Nth invocation along each dispatch dimension.
+
 .. envvar:: ACO_DEBUG
 
    a comma-separated list of named flags, which do various things:

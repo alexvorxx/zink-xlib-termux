@@ -91,6 +91,11 @@ pub struct NirKernelBuild {
     pub printf_info: Option<NirPrintfInfo>,
 }
 
+// SAFETY: `CSOWrapper` is only safe to use if the device supports `PIPE_CAP_SHAREABLE_SHADERS` and
+//         we make sure to set `nir_or_cso` to `KernelDevStateVariant::Cso` only if that's the case.
+unsafe impl Send for NirKernelBuild {}
+unsafe impl Sync for NirKernelBuild {}
+
 pub struct ProgramBuild {
     pub builds: HashMap<&'static Device, ProgramDevBuild>,
     pub kernel_info: HashMap<String, KernelInfo>,

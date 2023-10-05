@@ -1170,7 +1170,6 @@ radv_link_shaders(const struct radv_device *device, struct radv_shader_stage *pr
    const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
    nir_shader *producer = producer_stage->nir;
    nir_shader *consumer = consumer_stage->nir;
-   bool progress;
 
    if (consumer->info.stage == MESA_SHADER_FRAGMENT) {
       /* Lower the viewport index to zero when the last vertex stage doesn't export it. */
@@ -1194,8 +1193,8 @@ radv_link_shaders(const struct radv_device *device, struct radv_shader_stage *pr
       nir_lower_direct_array_deref_of_vec_load | nir_lower_indirect_array_deref_of_vec_load |
       nir_lower_direct_array_deref_of_vec_store | nir_lower_indirect_array_deref_of_vec_store;
 
-   NIR_PASS(progress, producer, nir_lower_array_deref_of_vec, nir_var_shader_out, NULL, array_deref_of_vec_options);
-   NIR_PASS(progress, consumer, nir_lower_array_deref_of_vec, nir_var_shader_in, NULL, array_deref_of_vec_options);
+   NIR_PASS(_, producer, nir_lower_array_deref_of_vec, nir_var_shader_out, NULL, array_deref_of_vec_options);
+   NIR_PASS(_, consumer, nir_lower_array_deref_of_vec, nir_var_shader_in, NULL, array_deref_of_vec_options);
 
    nir_lower_io_arrays_to_elements(producer, consumer);
    nir_validate_shader(producer, "after nir_lower_io_arrays_to_elements");
@@ -1222,16 +1221,9 @@ radv_link_shaders(const struct radv_device *device, struct radv_shader_stage *pr
    NIR_PASS(_, producer, nir_remove_dead_variables, nir_var_shader_out, NULL);
    NIR_PASS(_, consumer, nir_remove_dead_variables, nir_var_shader_in, NULL);
 
-   progress = nir_remove_unused_varyings(producer, consumer);
+   nir_remove_unused_varyings(producer, consumer);
 
    nir_compact_varyings(producer, consumer, true);
-
-   /* nir_compact_varyings changes deleted varyings into shader_temp.
-    * We need to remove these otherwise we risk them being lowered to scratch.
-    * This can especially happen to arrayed outputs.
-    */
-   NIR_PASS(_, producer, nir_remove_dead_variables, nir_var_shader_temp, NULL);
-   NIR_PASS(_, consumer, nir_remove_dead_variables, nir_var_shader_temp, NULL);
 
    nir_validate_shader(producer, "after nir_compact_varyings");
    nir_validate_shader(consumer, "after nir_compact_varyings");
@@ -1259,23 +1251,6 @@ radv_link_shaders(const struct radv_device *device, struct radv_shader_stage *pr
    if (consumer->info.stage == MESA_SHADER_GEOMETRY || consumer->info.stage == MESA_SHADER_TESS_CTRL ||
        consumer->info.stage == MESA_SHADER_TESS_EVAL) {
       NIR_PASS(_, consumer, nir_lower_io_to_vector, nir_var_shader_in);
-   }
-
-   if (progress) {
-      progress = false;
-      NIR_PASS(progress, producer, nir_lower_global_vars_to_local);
-      if (progress) {
-         ac_nir_lower_indirect_derefs(producer, gfx_level);
-         /* remove dead writes, which can remove input loads */
-         NIR_PASS(_, producer, nir_lower_vars_to_ssa);
-         NIR_PASS(_, producer, nir_opt_dce);
-      }
-
-      progress = false;
-      NIR_PASS(progress, consumer, nir_lower_global_vars_to_local);
-      if (progress) {
-         ac_nir_lower_indirect_derefs(consumer, gfx_level);
-      }
    }
 }
 

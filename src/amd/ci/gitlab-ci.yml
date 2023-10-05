@@ -241,8 +241,7 @@ vkcts-navi21-valve:
     B2C_TIMEOUT_BOOT_MINUTES: 30
     B2C_TIMEOUT_OVERALL_MINUTES: 30
 
-# Disabled due to its extremelly-broken nature
-.vkcts-navi21-llvm-valve:
+vkcts-navi21-llvm-valve:
   extends:
     - .vkcts-test-valve
     - .navi21-test-valve

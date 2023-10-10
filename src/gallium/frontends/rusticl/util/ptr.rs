@@ -1,5 +1,55 @@
-use std::mem;
-use std::ptr;
+use std::{
+    hash::{Hash, Hasher},
+    mem,
+    ops::Deref,
+    ptr::{self, NonNull},
+};
+
+/// A wrapper around pointers to C data type which are considered thread safe.
+#[derive(Eq)]
+pub struct ThreadSafeCPtr<T>(NonNull<T>);
+
+impl<T> ThreadSafeCPtr<T> {
+    /// # Safety
+    ///
+    /// Only safe on `T` which are thread-safe C data types. That usually means the following:
+    /// * Fields are accessed in a thread-safe manner, either through atomic operations or
+    ///   functions
+    /// * Bugs and Data races caused by accessing the type in multiple threads is considered a bug.
+    ///
+    /// As nothing of this can actually be verified this solely relies on contracts made on those
+    /// types, either by a specification or by convention. In practical terms this means that a
+    /// pointer to `T` meets all requirements expected by [Send] and [Sync]
+    pub unsafe fn new(ptr: *mut T) -> Option<Self> {
+        Some(Self(NonNull::new(ptr)?))
+    }
+}
+
+impl<T> Deref for ThreadSafeCPtr<T> {
+    type Target = NonNull<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> Hash for ThreadSafeCPtr<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.as_ptr().hash(state)
+    }
+}
+
+impl<T> PartialEq for ThreadSafeCPtr<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_ptr() == other.0.as_ptr()
+    }
+}
+
+// SAFETY: safety requierements of Send fullfilled at [ThreadSafeCPtr::new] time
+unsafe impl<T> Send for ThreadSafeCPtr<T> {}
+
+// SAFETY: safety requierements of Sync fullfilled at [ThreadSafeCPtr::new] time
+unsafe impl<T> Sync for ThreadSafeCPtr<T> {}
 
 pub trait CheckedPtr<T> {
     /// # Safety

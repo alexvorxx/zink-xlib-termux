@@ -309,9 +309,7 @@ wsi_create_native_image_mem(const struct wsi_swapchain *chain,
 static VkResult
 wsi_configure_native_image(const struct wsi_swapchain *chain,
                            const VkSwapchainCreateInfoKHR *pCreateInfo,
-                           uint32_t num_modifier_lists,
-                           const uint32_t *num_modifiers,
-                           const uint64_t *const *modifiers,
+                           const struct wsi_drm_image_params *params,
                            struct wsi_image_info *info)
 {
    const struct wsi_device *wsi = chain->wsi;
@@ -323,7 +321,7 @@ wsi_configure_native_image(const struct wsi_swapchain *chain,
    if (result != VK_SUCCESS)
       return result;
 
-   if (num_modifier_lists == 0) {
+   if (params->num_modifier_lists == 0) {
       /* If we don't have modifiers, fall back to the legacy "scanout" flag */
       info->wsi.scanout = true;
    } else {
@@ -402,8 +400,8 @@ wsi_configure_native_image(const struct wsi_swapchain *chain,
       }
 
       uint32_t max_modifier_count = 0;
-      for (uint32_t l = 0; l < num_modifier_lists; l++)
-         max_modifier_count = MAX2(max_modifier_count, num_modifiers[l]);
+      for (uint32_t l = 0; l < params->num_modifier_lists; l++)
+         max_modifier_count = MAX2(max_modifier_count, params->num_modifiers[l]);
 
       uint64_t *image_modifiers =
          vk_alloc(&chain->alloc, sizeof(*image_modifiers) * max_modifier_count,
@@ -412,13 +410,13 @@ wsi_configure_native_image(const struct wsi_swapchain *chain,
          goto fail_oom;
 
       uint32_t image_modifier_count = 0;
-      for (uint32_t l = 0; l < num_modifier_lists; l++) {
+      for (uint32_t l = 0; l < params->num_modifier_lists; l++) {
          /* Walk the modifier lists and construct a list of supported
           * modifiers.
           */
-         for (uint32_t i = 0; i < num_modifiers[l]; i++) {
-            if (get_modifier_props(info, modifiers[l][i]))
-               image_modifiers[image_modifier_count++] = modifiers[l][i];
+         for (uint32_t i = 0; i < params->num_modifiers[l]; i++) {
+            if (get_modifier_props(info, params->modifiers[l][i]))
+               image_modifiers[image_modifier_count++] = params->modifiers[l][i];
          }
 
          /* We only want to take the modifiers from the first list */
@@ -641,9 +639,7 @@ wsi_drm_configure_image(const struct wsi_swapchain *chain,
                                        select_buffer_memory_type, info);
    } else {
       return wsi_configure_native_image(chain, pCreateInfo,
-                                        params->num_modifier_lists,
-                                        params->num_modifiers,
-                                        params->modifiers,
+                                        params,
                                         info);
    }
 }

@@ -1695,8 +1695,7 @@ VkResult
 wsi_create_buffer_blit_context(const struct wsi_swapchain *chain,
                                const struct wsi_image_info *info,
                                struct wsi_image *image,
-                               VkExternalMemoryHandleTypeFlags handle_types,
-                               bool implicit_sync)
+                               VkExternalMemoryHandleTypeFlags handle_types)
 {
    assert(chain->blit.type == WSI_SWAPCHAIN_BUFFER_BLIT);
 
@@ -1727,7 +1726,7 @@ wsi_create_buffer_blit_context(const struct wsi_swapchain *chain,
    struct wsi_memory_allocate_info memory_wsi_info = {
       .sType = VK_STRUCTURE_TYPE_WSI_MEMORY_ALLOCATE_INFO_MESA,
       .pNext = NULL,
-      .implicit_sync = implicit_sync,
+      .implicit_sync = !info->explicit_sync,
    };
    VkMemoryDedicatedAllocateInfo buf_mem_dedicated_info = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
@@ -2073,8 +2072,7 @@ wsi_create_cpu_buffer_image_mem(const struct wsi_swapchain *chain,
 {
    VkResult result;
 
-   result = wsi_create_buffer_blit_context(chain, info, image, 0,
-                                           false /* implicit_sync */);
+   result = wsi_create_buffer_blit_context(chain, info, image, 0);
    if (result != VK_SUCCESS)
       return result;
 
@@ -2124,6 +2122,7 @@ wsi_configure_cpu_image(const struct wsi_swapchain *chain,
                                  1 /* size_align */,
                                  info);
 
+      info->explicit_sync = true;
       info->select_blit_dst_memory_type = wsi_select_host_memory_type;
       info->select_image_memory_type = wsi_select_device_memory_type;
       info->create_mem = wsi_create_cpu_buffer_image_mem;

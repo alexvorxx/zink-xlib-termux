@@ -482,7 +482,7 @@ wsi_create_native_image_mem(const struct wsi_swapchain *chain,
    const struct wsi_memory_allocate_info memory_wsi_info = {
       .sType = VK_STRUCTURE_TYPE_WSI_MEMORY_ALLOCATE_INFO_MESA,
       .pNext = NULL,
-      .implicit_sync = true,
+      .implicit_sync = !info->explicit_sync,
    };
    const VkExportMemoryAllocateInfo memory_export_info = {
       .sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
@@ -570,8 +570,7 @@ wsi_create_prime_image_mem(const struct wsi_swapchain *chain,
 {
    VkResult result =
       wsi_create_buffer_blit_context(chain, info, image,
-                                     VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
-                                     true);
+                                     VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT);
    if (result != VK_SUCCESS)
       return result;
 

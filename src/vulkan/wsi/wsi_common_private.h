@@ -84,6 +84,7 @@ struct wsi_image_info {
    VkImageFormatListCreateInfo format_list;
    VkImageDrmFormatModifierListCreateInfoEXT drm_mod_list;
 
+   bool explicit_sync;
    bool prime_use_linear_modifier;
 
    /* Not really part of VkImageCreateInfo but needed to figure out the
@@ -266,8 +267,7 @@ VkResult
 wsi_create_buffer_blit_context(const struct wsi_swapchain *chain,
                                const struct wsi_image_info *info,
                                struct wsi_image *image,
-                               VkExternalMemoryHandleTypeFlags handle_types,
-                               bool implicit_sync);
+                               VkExternalMemoryHandleTypeFlags handle_types);
 
 VkResult
 wsi_finish_create_blit_context(const struct wsi_swapchain *chain,

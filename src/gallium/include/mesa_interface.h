@@ -1716,20 +1716,6 @@ struct __DRIimageExtensionRec {
                                             void *loaderPrivate);
 
    /**
-    * Like createImageFromFds, but with an added flag parameter.
-    *
-    * See __DRI_IMAGE_*_FLAG for valid definitions of flags.
-    *
-    * \since 20
-    */
-   __DRIimage *(*createImageFromFds2)(__DRIscreen *screen,
-                                      int width, int height, int fourcc,
-                                      int *fds, int num_fds,
-                                      uint32_t flags,
-                                      int *strides, int *offsets,
-                                      void *loaderPrivate);
-
-   /**
     * Set an in-fence-fd on the image.  If a fence-fd is already set
     * (but not yet consumed), the existing and new fence will be merged
     *

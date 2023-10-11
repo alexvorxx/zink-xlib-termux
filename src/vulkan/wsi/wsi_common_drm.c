@@ -321,6 +321,8 @@ wsi_configure_native_image(const struct wsi_swapchain *chain,
    if (result != VK_SUCCESS)
       return result;
 
+   info->explicit_sync = params->explicit_sync;
+
    if (params->num_modifier_lists == 0) {
       /* If we don't have modifiers, fall back to the legacy "scanout" flag */
       info->wsi.scanout = true;
@@ -599,6 +601,8 @@ wsi_configure_prime_image(UNUSED const struct wsi_swapchain *chain,
                                          0 /* handle_types */, info);
    if (result != VK_SUCCESS)
       return result;
+
+   info->explicit_sync = params->explicit_sync;
 
    wsi_configure_buffer_image(chain, pCreateInfo,
                               WSI_PRIME_LINEAR_STRIDE_ALIGN, 4096,

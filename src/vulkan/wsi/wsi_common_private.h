@@ -63,6 +63,7 @@ struct wsi_drm_image_params {
    struct wsi_base_image_params base;
 
    bool same_gpu;
+   bool explicit_sync;
 
    uint32_t num_modifier_lists;
    const uint32_t *num_modifiers;

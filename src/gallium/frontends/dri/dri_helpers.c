@@ -288,7 +288,7 @@ dri2_lookup_egl_image_validated(struct dri_screen *screen, void *handle)
 }
 
 __DRIimage *
-dri2_create_image_from_renderbuffer2(__DRIcontext *context,
+dri2_create_image_from_renderbuffer(__DRIcontext *context,
 				     int renderbuffer, void *loaderPrivate,
                                      unsigned *error)
 {
@@ -354,15 +354,6 @@ dri2_create_image_from_renderbuffer2(__DRIcontext *context,
    ctx->Shared->HasExternallySharedImages = true;
    *error = __DRI_IMAGE_ERROR_SUCCESS;
    return img;
-}
-
-__DRIimage *
-dri2_create_image_from_renderbuffer(__DRIcontext *context,
-				    int renderbuffer, void *loaderPrivate)
-{
-   unsigned error;
-   return dri2_create_image_from_renderbuffer2(context, renderbuffer,
-                                               loaderPrivate, &error);
 }
 
 void

@@ -2192,27 +2192,15 @@ dri2_create_image_khr_renderbuffer(_EGLDisplay *disp, _EGLContext *ctx,
       return EGL_NO_IMAGE_KHR;
    }
 
-   if (dri2_dpy->image->base.version >= 17 &&
-       dri2_dpy->image->createImageFromRenderbuffer2) {
-      unsigned error = ~0;
+   unsigned error = ~0;
+   dri_image = dri2_dpy->image->createImageFromRenderbuffer(
+      dri2_ctx->dri_context, renderbuffer, NULL, &error);
 
-      dri_image = dri2_dpy->image->createImageFromRenderbuffer2(
-         dri2_ctx->dri_context, renderbuffer, NULL, &error);
+   assert(!!dri_image == (error == __DRI_IMAGE_ERROR_SUCCESS));
 
-      assert(!!dri_image == (error == __DRI_IMAGE_ERROR_SUCCESS));
-
-      if (!dri_image) {
-         _eglError(egl_error_from_dri_image_error(error),
-                   "dri2_create_image_khr");
-         return EGL_NO_IMAGE_KHR;
-      }
-   } else {
-      dri_image = dri2_dpy->image->createImageFromRenderbuffer(
-         dri2_ctx->dri_context, renderbuffer, NULL);
-      if (!dri_image) {
-         _eglError(EGL_BAD_ALLOC, "dri2_create_image_khr");
-         return EGL_NO_IMAGE_KHR;
-      }
+   if (!dri_image) {
+      _eglError(egl_error_from_dri_image_error(error), "dri2_create_image_khr");
+      return EGL_NO_IMAGE_KHR;
    }
 
    return dri2_create_image_from_dri(disp, dri_image);

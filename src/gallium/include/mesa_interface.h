@@ -1432,11 +1432,6 @@ struct __DRIimageExtensionRec {
 				       int name, int pitch,
 				       void *loaderPrivate);
 
-    /* Deprecated since version 17; see createImageFromRenderbuffer2 */
-    __DRIimage *(*createImageFromRenderbuffer)(__DRIcontext *context,
-					       int renderbuffer,
-					       void *loaderPrivate);
-
     void (*destroyImage)(__DRIimage *image);
 
     __DRIimage *(*createImage)(__DRIscreen *screen,
@@ -1674,13 +1669,11 @@ struct __DRIimageExtensionRec {
     * \param loaderPrivate for callbacks into the loader related to the image
     * \param error         will be set to one of __DRI_IMAGE_ERROR_xxx
     * \return the newly created image on success, or NULL otherwise
-    *
-    * \since 17
     */
-    __DRIimage *(*createImageFromRenderbuffer2)(__DRIcontext *context,
-                                                int renderbuffer,
-                                                void *loaderPrivate,
-                                                unsigned *error);
+    __DRIimage *(*createImageFromRenderbuffer)(__DRIcontext *context,
+                                               int renderbuffer,
+                                               void *loaderPrivate,
+                                               unsigned *error);
 
    /**
     * Like createImageFromFds, but takes additional attributes.

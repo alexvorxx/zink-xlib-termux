@@ -55,17 +55,6 @@
 #include "wayland-drm.h"
 #endif
 
-static __DRIimage *
-dri_lookup_egl_image(__DRIscreen *screen, void *image, void *data)
-{
-   struct gbm_dri_device *dri = data;
-
-   if (dri->lookup_image == NULL)
-      return NULL;
-
-   return dri->lookup_image(screen, image, dri->lookup_user_data);
-}
-
 static GLboolean
 dri_validate_egl_image(void *image, void *data)
 {
@@ -205,7 +194,6 @@ static const __DRIuseInvalidateExtension use_invalidate = {
 static const __DRIimageLookupExtension image_lookup_extension = {
    .base = { __DRI_IMAGE_LOOKUP, 2 },
 
-   .lookupEGLImage          = dri_lookup_egl_image,
    .validateEGLImage        = dri_validate_egl_image,
    .lookupEGLImageValidated = dri_lookup_egl_image_validated,
 };
@@ -331,7 +319,6 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name, bool
       }
    }
 
-   dri->lookup_image = NULL;
    dri->lookup_user_data = NULL;
 
    return 0;
@@ -755,12 +742,16 @@ gbm_dri_bo_import(struct gbm_device *gbm,
 
    case GBM_BO_IMPORT_EGL_IMAGE:
    {
-      if (dri->lookup_image == NULL) {
+      if (dri->lookup_image_validated == NULL) {
          errno = EINVAL;
          return NULL;
       }
 
-      image = dri->lookup_image(dri->screen, buffer, dri->lookup_user_data);
+      if (!dri->validate_image(buffer, dri->lookup_user_data)) {
+         errno = EINVAL;
+         return NULL;
+      }
+      image = dri->lookup_image_validated(buffer, dri->lookup_user_data);
       image = dri->image->dupImage(image, NULL);
       dri->image->queryImage(image, __DRI_IMAGE_ATTRIB_FOURCC, &gbm_format);
       if (gbm_format == DRM_FORMAT_INVALID) {

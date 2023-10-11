@@ -69,7 +69,6 @@ struct gbm_dri_device {
    const __DRIextension **loader_extensions;
    const __DRIextension **driver_extensions;
 
-   __DRIimage *(*lookup_image)(__DRIscreen *screen, void *image, void *data);
    GLboolean (*validate_image)(void *image, void *data);
    __DRIimage *(*lookup_image_validated)(void *image, void *data);
    void *lookup_user_data;

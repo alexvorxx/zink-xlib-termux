@@ -1732,27 +1732,14 @@ struct __DRIimageLookupExtensionRec {
     __DRIextension base;
 
     /**
-     * Lookup EGLImage without validated. Equivalent to call
-     * validateEGLImage() then lookupEGLImageValidated().
-     *
-     * \since 1
-     */
-    __DRIimage *(*lookupEGLImage)(__DRIscreen *screen, void *image,
-				  void *loaderPrivate);
-
-    /**
      * Check if EGLImage is associated with the EGL display before lookup with
      * lookupEGLImageValidated(). It will hold EGLDisplay.Mutex, so is separated
-     * out from lookupEGLImage() to avoid deadlock.
-     *
-     * \since 2
+     * out from lookupEGLImageValidated() to avoid deadlock.
      */
     unsigned char (*validateEGLImage)(void *image, void *loaderPrivate);
 
     /**
      * Lookup EGLImage after validateEGLImage(). No lock in this function.
-     *
-     * \since 2
      */
     __DRIimage *(*lookupEGLImageValidated)(void *image, void *loaderPrivate);
 };

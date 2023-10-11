@@ -257,21 +257,6 @@ const __DRI2fenceExtension dri2FenceExtension = {
 };
 
 __DRIimage *
-dri2_lookup_egl_image(struct dri_screen *screen, void *handle)
-{
-   const __DRIimageLookupExtension *loader = screen->dri2.image;
-   __DRIimage *img;
-
-   if (!loader->lookupEGLImage)
-      return NULL;
-
-   img = loader->lookupEGLImage(opaque_dri_screen(screen),
-				handle, screen->loaderPrivate);
-
-   return img;
-}
-
-__DRIimage *
 dri2_create_image_from_renderbuffer(__DRIcontext *context,
 				     int renderbuffer, void *loaderPrivate,
                                      unsigned *error)

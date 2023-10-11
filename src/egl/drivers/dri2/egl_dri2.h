@@ -503,9 +503,6 @@ dri2_validate_egl_image(void *image, void *data);
 __DRIimage *
 dri2_lookup_egl_image_validated(void *image, void *data);
 
-__DRIimage *
-dri2_lookup_egl_image(__DRIscreen *screen, void *image, void *data);
-
 void
 dri2_get_shifts_and_sizes(const __DRIcoreExtension *core,
                           const __DRIconfig *config, int *shifts,

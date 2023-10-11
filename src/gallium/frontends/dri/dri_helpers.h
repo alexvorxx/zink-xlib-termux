@@ -59,9 +59,6 @@ bool
 dri2_yuv_dma_buf_supported(struct dri_screen *screen,
                            const struct dri2_format_mapping *map);
 
-__DRIimage *
-dri2_lookup_egl_image(struct dri_screen *screen, void *handle);
-
 bool
 dri2_validate_egl_image(struct dri_screen *screen, void *handle);
 

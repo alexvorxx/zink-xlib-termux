@@ -587,21 +587,9 @@ dri2_lookup_egl_image_validated(void *image, void *data)
    return dri2_img->dri_image;
 }
 
-__DRIimage *
-dri2_lookup_egl_image(__DRIscreen *screen, void *image, void *data)
-{
-   (void)screen;
-
-   if (!dri2_validate_egl_image(image, data))
-      return NULL;
-
-   return dri2_lookup_egl_image_validated(image, data);
-}
-
 const __DRIimageLookupExtension image_lookup_extension = {
    .base = {__DRI_IMAGE_LOOKUP, 2},
 
-   .lookupEGLImage = dri2_lookup_egl_image,
    .validateEGLImage = dri2_validate_egl_image,
    .lookupEGLImageValidated = dri2_lookup_egl_image_validated,
 };

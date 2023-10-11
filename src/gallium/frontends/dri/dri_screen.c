@@ -623,8 +623,6 @@ dri_init_screen(struct dri_screen *screen,
    screen->base.set_background_context = dri_set_background_context;
    screen->base.validate_egl_image = dri_validate_egl_image;
 
-   screen->lookup_egl_image = dri2_lookup_egl_image;
-
    if (pscreen->get_param(pscreen, PIPE_CAP_NPOT_TEXTURES))
       screen->target = PIPE_TEXTURE_2D;
    else

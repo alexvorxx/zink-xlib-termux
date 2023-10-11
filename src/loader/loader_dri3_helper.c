@@ -1618,15 +1618,16 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
        * need to make it visible to render GPU
        */
       buffer->linear_buffer =
-         draw->ext->image->createImageFromFds2(draw->dri_screen_render_gpu,
-                                               width,
-                                               height,
-                                               loader_image_format_to_fourcc(format),
-                                               &buffer_fds[0], num_planes,
-                                               __DRI_IMAGE_PRIME_LINEAR_BUFFER,
-                                               &buffer->strides[0],
-                                               &buffer->offsets[0],
-                                               buffer);
+         draw->ext->image->createImageFromDmaBufs(draw->dri_screen_render_gpu,
+                                                  width,
+                                                  height,
+                                                  loader_image_format_to_fourcc(format),
+                                                  DRM_FORMAT_MOD_INVALID,
+                                                  &buffer_fds[0], num_planes,
+                                                  &buffer->strides[0],
+                                                  &buffer->offsets[0],
+                                                  0, 0, 0, 0, __DRI_IMAGE_PRIME_LINEAR_BUFFER,
+                                                  NULL, buffer);
       if (!buffer->linear_buffer)
          goto no_buffer_attrib;
 
@@ -1839,17 +1840,20 @@ loader_dri3_create_image(xcb_connection_t *c,
    stride = bp_reply->stride;
    offset = 0;
 
-   /* createImageFromFds creates a wrapper __DRIimage structure which
+   /* createImageFromDmaBufs creates a wrapper __DRIimage structure which
     * can deal with multiple planes for things like Yuv images. So, once
     * we've gotten the planar wrapper, pull the single plane out of it and
     * discard the wrapper.
     */
-   image_planar = image->createImageFromFds2(dri_screen,
-                                             bp_reply->width,
-                                             bp_reply->height,
-                                             loader_image_format_to_fourcc(format),
-                                             fds, 1,
-                                             0, &stride, &offset, loaderPrivate);
+   image_planar = image->createImageFromDmaBufs(dri_screen,
+                                                bp_reply->width,
+                                                bp_reply->height,
+                                                loader_image_format_to_fourcc(format),
+                                                DRM_FORMAT_MOD_INVALID,
+                                                fds, 1,
+                                                &stride, &offset,
+                                                0, 0, 0, 0, 0,
+                                                NULL, loaderPrivate);
    close(fds[0]);
    if (!image_planar)
       return NULL;
@@ -1911,7 +1915,7 @@ loader_dri3_create_image_from_buffers(xcb_connection_t *c,
 /** dri3_get_pixmap_buffer
  *
  * Get the DRM object for a pixmap from the X server and
- * wrap that with a __DRIimage structure using createImageFromFds
+ * wrap that with a __DRIimage structure using createImageFromDmaBufs
  */
 static struct loader_dri3_buffer *
 dri3_get_pixmap_buffer(__DRIdrawable *driDrawable, unsigned int format,

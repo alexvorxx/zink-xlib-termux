@@ -2316,12 +2316,12 @@ dri2_initialize_wayland_drm(_EGLDisplay *disp)
    dri2_wl_setup_swap_interval(disp);
 
    if (dri2_dpy->wl_drm) {
-      /* To use Prime, we must have _DRI_IMAGE v7 at least. createImageFromFds
-       * support indicates that Prime export/import is supported by the driver.
-       * We deprecated the support to GEM names API, so we bail out if the
-       * driver does not support Prime. */
+      /* To use Prime, we must have _DRI_IMAGE v7 at least.
+       * createImageFromDmaBufs support indicates that Prime export/import is
+       * supported by the driver. We deprecated the support to GEM names API, so
+       * we bail out if the driver does not support Prime. */
       if (!(dri2_dpy->capabilities & WL_DRM_CAPABILITY_PRIME) ||
-          (dri2_dpy->image->createImageFromFds == NULL)) {
+          (dri2_dpy->image->createImageFromDmaBufs == NULL)) {
          _eglLog(_EGL_WARNING, "wayland-egl: display does not support prime");
          goto cleanup;
       }

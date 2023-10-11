@@ -1842,21 +1842,25 @@ dri2_from_dma_bufs(__DRIscreen *screen,
                     enum __DRISampleRange sample_range,
                     enum __DRIChromaSiting horizontal_siting,
                     enum __DRIChromaSiting vertical_siting,
-                    uint32_t flags,
+                    uint32_t dri_flags,
                     unsigned *error,
                     void *loaderPrivate)
 {
-   unsigned bind = 0;
    __DRIimage *img;
+   /* Allow a NULL error arg since many callers don't care. */
+   unsigned unused_error;
+   if (!error)
+      error = &unused_error;
 
-   if (flags & __DRI_IMAGE_PROTECTED_CONTENT_FLAG)
-      bind |= PIPE_BIND_PROTECTED;
-   if (flags & __DRI_IMAGE_PRIME_LINEAR_BUFFER)
-      bind |= PIPE_BIND_PRIME_BLIT_DST;
+   uint32_t flags = 0;
+   if (dri_flags & __DRI_IMAGE_PROTECTED_CONTENT_FLAG)
+      flags |= PIPE_BIND_PROTECTED;
+   if (dri_flags & __DRI_IMAGE_PRIME_LINEAR_BUFFER)
+      flags |= PIPE_BIND_PRIME_BLIT_DST;
 
    img = dri2_create_image_from_fd(screen, width, height, fourcc,
                                    modifier, fds, num_fds, strides, offsets,
-                                   bind, error, loaderPrivate);
+                                   flags, error, loaderPrivate);
    if (img == NULL)
       return NULL;
 
@@ -2115,6 +2119,7 @@ const __DRIimageExtension driVkImageExtensionSw = {
     .createImageFromTexture       = dri2_create_from_texture,
     .createImageFromFds           = dri2_from_fds,
     .createImageFromFds2          = dri2_from_fds2,
+    .createImageFromDmaBufs       = dri2_from_dma_bufs,
     .blitImage                    = dri2_blit_image,
     .getCapabilities              = dri2_get_capabilities,
     .mapImage                     = dri2_map_image,

@@ -3117,9 +3117,10 @@ dri2_wl_reference_buffer(void *user_data, uint32_t name, int fd,
          dri2_dpy->dri_screen_render_gpu, buffer->width, buffer->height,
          buffer->format, (int *)&name, 1, buffer->stride, buffer->offset, NULL);
    else
-      img = dri2_dpy->image->createImageFromFds2(
+      img = dri2_dpy->image->createImageFromDmaBufs(
          dri2_dpy->dri_screen_render_gpu, buffer->width, buffer->height,
-         buffer->format, &fd, 1, 0, buffer->stride, buffer->offset, NULL);
+         buffer->format, DRM_FORMAT_MOD_INVALID, &fd, 1, buffer->stride,
+         buffer->offset, 0, 0, 0, 0, 0, NULL, NULL);
 
    if (img == NULL)
       return;
@@ -3172,8 +3173,7 @@ dri2_bind_wayland_display_wl(_EGLDisplay *disp, struct wl_display *wl_dpy)
 
    if (drmGetCap(dri2_dpy->fd_render_gpu, DRM_CAP_PRIME, &cap) == 0 &&
        cap == (DRM_PRIME_CAP_IMPORT | DRM_PRIME_CAP_EXPORT) &&
-       dri2_dpy->image->base.version >= 7 &&
-       dri2_dpy->image->createImageFromFds != NULL)
+       dri2_dpy->image->createImageFromDmaBufs != NULL)
       flags |= WAYLAND_DRM_PRIME;
 
    dri2_dpy->wl_server_drm =

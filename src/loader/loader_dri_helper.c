@@ -116,9 +116,9 @@ bool dri_valid_swap_interval(__DRIscreen *driScreen,
 }
 
 /* the DRIimage createImage function takes __DRI_IMAGE_FORMAT codes, while
- * the createImageFromFds call takes DRM_FORMAT codes. To avoid
+ * the createImageFromDmaBufs call takes DRM_FORMAT codes. To avoid
  * complete confusion, just deal in __DRI_IMAGE_FORMAT codes for now and
- * translate to DRM_FORMAT codes in the call to createImageFromFds
+ * translate to DRM_FORMAT codes in the call to createImageFromDmaBufs
  */
 int
 loader_image_format_to_fourcc(int format)

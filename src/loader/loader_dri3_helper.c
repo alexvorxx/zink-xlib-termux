@@ -1617,27 +1617,16 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
       /* The linear buffer was created in the display GPU's vram, so we
        * need to make it visible to render GPU
        */
-      if (draw->ext->image->base.version >= 20)
-         buffer->linear_buffer =
-            draw->ext->image->createImageFromFds2(draw->dri_screen_render_gpu,
-                                                  width,
-                                                  height,
-                                                  loader_image_format_to_fourcc(format),
-                                                  &buffer_fds[0], num_planes,
-                                                  __DRI_IMAGE_PRIME_LINEAR_BUFFER,
-                                                  &buffer->strides[0],
-                                                  &buffer->offsets[0],
-                                                  buffer);
-      else
-         buffer->linear_buffer =
-            draw->ext->image->createImageFromFds(draw->dri_screen_render_gpu,
-                                                 width,
-                                                 height,
-                                                 loader_image_format_to_fourcc(format),
-                                                 &buffer_fds[0], num_planes,
-                                                 &buffer->strides[0],
-                                                 &buffer->offsets[0],
-                                                 buffer);
+      buffer->linear_buffer =
+         draw->ext->image->createImageFromFds2(draw->dri_screen_render_gpu,
+                                               width,
+                                               height,
+                                               loader_image_format_to_fourcc(format),
+                                               &buffer_fds[0], num_planes,
+                                               __DRI_IMAGE_PRIME_LINEAR_BUFFER,
+                                               &buffer->strides[0],
+                                               &buffer->offsets[0],
+                                               buffer);
       if (!buffer->linear_buffer)
          goto no_buffer_attrib;
 
@@ -1855,12 +1844,12 @@ loader_dri3_create_image(xcb_connection_t *c,
     * we've gotten the planar wrapper, pull the single plane out of it and
     * discard the wrapper.
     */
-   image_planar = image->createImageFromFds(dri_screen,
-                                            bp_reply->width,
-                                            bp_reply->height,
-                                            loader_image_format_to_fourcc(format),
-                                            fds, 1,
-                                            &stride, &offset, loaderPrivate);
+   image_planar = image->createImageFromFds2(dri_screen,
+                                             bp_reply->width,
+                                             bp_reply->height,
+                                             loader_image_format_to_fourcc(format),
+                                             fds, 1,
+                                             0, &stride, &offset, loaderPrivate);
    close(fds[0]);
    if (!image_planar)
       return NULL;

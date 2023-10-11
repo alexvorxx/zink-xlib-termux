@@ -3154,9 +3154,9 @@ dri2_wl_reference_buffer(void *user_data, uint32_t name, int fd,
          dri2_dpy->dri_screen_render_gpu, buffer->width, buffer->height,
          buffer->format, (int *)&name, 1, buffer->stride, buffer->offset, NULL);
    else
-      img = dri2_dpy->image->createImageFromFds(
+      img = dri2_dpy->image->createImageFromFds2(
          dri2_dpy->dri_screen_render_gpu, buffer->width, buffer->height,
-         buffer->format, &fd, 1, buffer->stride, buffer->offset, NULL);
+         buffer->format, &fd, 1, 0, buffer->stride, buffer->offset, NULL);
 
    if (img == NULL)
       return;

@@ -283,12 +283,12 @@ dri3_create_image(xcb_connection_t *c,
     * we've gotten the planar wrapper, pull the single plane out of it and
     * discard the wrapper.
     */
-   image_planar = image->createImageFromFds(opaque_dri_screen(screen),
-                                            bp_reply->width,
-                                            bp_reply->height,
-                                            fourcc,
-                                            fds, 1,
-                                            &stride, &offset, loaderPrivate);
+   image_planar = image->createImageFromFds2(opaque_dri_screen(screen),
+                                             bp_reply->width,
+                                             bp_reply->height,
+                                             fourcc,
+                                             fds, 1,
+                                             0, &stride, &offset, loaderPrivate);
    close(fds[0]);
    if (!image_planar)
       return NULL;

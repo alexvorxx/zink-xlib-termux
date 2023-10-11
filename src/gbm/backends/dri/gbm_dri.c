@@ -782,13 +782,14 @@ gbm_dri_bo_import(struct gbm_device *gbm,
        * the sARGB format. */
       fourcc = gbm_core.v0.format_canonicalize(fd_data->format);
 
-      image = dri->image->createImageFromFds(dri->screen,
-                                             fd_data->width,
-                                             fd_data->height,
-                                             fourcc,
-                                             &fd_data->fd, 1,
-                                             &stride, &offset,
-                                             NULL);
+      image = dri->image->createImageFromFds2(dri->screen,
+                                              fd_data->width,
+                                              fd_data->height,
+                                              fourcc,
+                                              &fd_data->fd, 1,
+                                              0,
+                                              &stride, &offset,
+                                              NULL);
       if (image == NULL) {
          errno = EINVAL;
          return NULL;

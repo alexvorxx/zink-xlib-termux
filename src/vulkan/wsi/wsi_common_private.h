@@ -114,6 +114,21 @@ struct wsi_image_info {
                              struct wsi_image *image);
 };
 
+enum wsi_explicit_sync_timelines
+{
+   WSI_ES_ACQUIRE,
+   WSI_ES_RELEASE,
+
+   WSI_ES_COUNT, 
+};
+
+struct wsi_image_explicit_sync_timeline {
+   VkSemaphore semaphore;
+   uint64_t timeline;
+   int fd;
+   uint32_t handle;
+};
+
 enum wsi_swapchain_blit_type {
    WSI_SWAPCHAIN_NO_BLIT,
    WSI_SWAPCHAIN_BUFFER_BLIT,
@@ -135,6 +150,8 @@ struct wsi_image {
     */
    bool acquired;
    uint64_t present_serial;
+
+   struct wsi_image_explicit_sync_timeline explicit_sync[WSI_ES_COUNT];
 
 #ifndef _WIN32
    uint64_t drm_modifier;
@@ -327,6 +344,26 @@ wsi_create_sync_for_dma_buf_wait(const struct wsi_swapchain *chain,
                                  const struct wsi_image *image,
                                  enum vk_sync_features sync_features,
                                  struct vk_sync **sync_out);
+VkResult
+wsi_create_sync_for_image_syncobj(const struct wsi_swapchain *chain,
+                                  const struct wsi_image *image,
+                                  enum vk_sync_features req_features,
+                                  struct vk_sync **sync_out);
+
+VkResult
+wsi_create_image_explicit_sync_drm(const struct wsi_swapchain *chain,
+                                   struct wsi_image *image);
+
+void
+wsi_destroy_image_explicit_sync_drm(const struct wsi_swapchain *chain,
+                                    struct wsi_image *image);
+
+VkResult
+wsi_drm_wait_for_explicit_sync_release(struct wsi_swapchain *chain,
+                                       uint32_t image_count,
+                                       struct wsi_image **images,
+                                       uint64_t rel_timeout_ns,
+                                       uint32_t *image_index);
 #endif
 
 struct wsi_interface {

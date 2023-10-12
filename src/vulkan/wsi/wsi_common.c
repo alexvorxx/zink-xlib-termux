@@ -716,6 +716,8 @@ wsi_create_image(const struct wsi_swapchain *chain,
 
 #ifndef _WIN32
    image->dma_buf_fd = -1;
+   for (uint32_t i = 0; i < WSI_ES_COUNT; i++)
+      image->explicit_sync[i].fd = -1;
 #endif
 
    result = wsi->CreateImage(chain->device, &info->create,
@@ -738,6 +740,17 @@ wsi_create_image(const struct wsi_swapchain *chain,
          goto fail;
    }
 
+   if (info->explicit_sync) {
+#if HAVE_LIBDRM
+      result = wsi_create_image_explicit_sync_drm(chain, image);
+      if (result != VK_SUCCESS)
+         goto fail;
+#else
+      result = VK_ERROR_FEATURE_NOT_PRESENT;
+      goto fail;
+#endif
+   }
+
    return VK_SUCCESS;
 
 fail:
@@ -755,6 +768,12 @@ wsi_destroy_image(const struct wsi_swapchain *chain,
    if (image->dma_buf_fd >= 0)
       close(image->dma_buf_fd);
 #endif
+
+   if (image->explicit_sync[WSI_ES_ACQUIRE].semaphore) {
+#if HAVE_LIBDRM
+      wsi_destroy_image_explicit_sync_drm(chain, image);
+#endif
+   }
 
    if (image->cpu_map != NULL) {
       wsi->UnmapMemory(chain->device, image->blit.buffer != VK_NULL_HANDLE ?
@@ -1162,9 +1181,13 @@ wsi_signal_semaphore_for_image(struct vk_device *device,
    vk_semaphore_reset_temporary(device, semaphore);
 
 #ifdef HAVE_LIBDRM
-   VkResult result = wsi_create_sync_for_dma_buf_wait(chain, image,
-                                                      VK_SYNC_FEATURE_GPU_WAIT,
-                                                      &semaphore->temporary);
+   VkResult result = chain->image_info.explicit_sync ?
+      wsi_create_sync_for_image_syncobj(chain, image,
+                                        VK_SYNC_FEATURE_GPU_WAIT,
+                                        &semaphore->temporary) :
+      wsi_create_sync_for_dma_buf_wait(chain, image,
+                                       VK_SYNC_FEATURE_GPU_WAIT,
+                                       &semaphore->temporary);
    if (result != VK_ERROR_FEATURE_NOT_PRESENT)
       return result;
 #endif
@@ -1194,9 +1217,13 @@ wsi_signal_fence_for_image(struct vk_device *device,
    vk_fence_reset_temporary(device, fence);
 
 #ifdef HAVE_LIBDRM
-   VkResult result = wsi_create_sync_for_dma_buf_wait(chain, image,
-                                                      VK_SYNC_FEATURE_CPU_WAIT,
-                                                      &fence->temporary);
+   VkResult result = chain->image_info.explicit_sync ?
+      wsi_create_sync_for_image_syncobj(chain, image,
+                                        VK_SYNC_FEATURE_CPU_WAIT,
+                                        &fence->temporary) :
+      wsi_create_sync_for_dma_buf_wait(chain, image,
+                                       VK_SYNC_FEATURE_CPU_WAIT,
+                                       &fence->temporary);
    if (result != VK_ERROR_FEATURE_NOT_PRESENT)
       return result;
 #endif
@@ -1394,6 +1421,10 @@ wsi_common_queue_present(const struct wsi_device *wsi,
       if (result != VK_SUCCESS)
          goto fail_present;
 
+      VkTimelineSemaphoreSubmitInfo timeline_submit_info = {
+         .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+      };
+
       VkSubmitInfo submit_info = {
          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
       };
@@ -1446,34 +1477,50 @@ wsi_common_queue_present(const struct wsi_device *wsi,
 
       VkFence fence = swapchain->fences[image_index];
 
+      struct wsi_memory_signal_submit_info mem_signal;
       bool has_signal_dma_buf = false;
-#ifdef HAVE_LIBDRM
-      result = wsi_prepare_signal_dma_buf_from_semaphore(swapchain, image);
-      if (result == VK_SUCCESS) {
+      bool explicit_sync = swapchain->image_info.explicit_sync;
+      if (explicit_sync) {
+         /* We will signal this acquire value ourselves when GPU work is done. */
+         image->explicit_sync[WSI_ES_ACQUIRE].timeline++;
+         /* The compositor will signal this value when it is done with the image. */
+         image->explicit_sync[WSI_ES_RELEASE].timeline++;
+
+         timeline_submit_info.signalSemaphoreValueCount = 1;
+         timeline_submit_info.pSignalSemaphoreValues = &image->explicit_sync[WSI_ES_ACQUIRE].timeline;
+
          assert(submit_info.signalSemaphoreCount == 0);
          submit_info.signalSemaphoreCount = 1;
-         submit_info.pSignalSemaphores = &swapchain->dma_buf_semaphore;
-         has_signal_dma_buf = true;
-      } else if (result == VK_ERROR_FEATURE_NOT_PRESENT) {
-         result = VK_SUCCESS;
-         has_signal_dma_buf = false;
+         submit_info.pSignalSemaphores = &image->explicit_sync[WSI_ES_ACQUIRE].semaphore;
+         __vk_append_struct(&submit_info, &timeline_submit_info);
       } else {
-         goto fail_present;
-      }
+#ifdef HAVE_LIBDRM
+         result = wsi_prepare_signal_dma_buf_from_semaphore(swapchain, image);
+         if (result == VK_SUCCESS) {
+            assert(submit_info.signalSemaphoreCount == 0);
+            submit_info.signalSemaphoreCount = 1;
+            submit_info.pSignalSemaphores = &swapchain->dma_buf_semaphore;
+            has_signal_dma_buf = true;
+         } else if (result == VK_ERROR_FEATURE_NOT_PRESENT) {
+            result = VK_SUCCESS;
+            has_signal_dma_buf = false;
+         } else {
+            goto fail_present;
+         }
 #endif
 
-      struct wsi_memory_signal_submit_info mem_signal;
-      if (!has_signal_dma_buf) {
-         /* If we don't have dma-buf signaling, signal the memory object by
-          * chaining wsi_memory_signal_submit_info into VkSubmitInfo.
-          */
-         result = VK_SUCCESS;
-         has_signal_dma_buf = false;
-         mem_signal = (struct wsi_memory_signal_submit_info) {
-            .sType = VK_STRUCTURE_TYPE_WSI_MEMORY_SIGNAL_SUBMIT_INFO_MESA,
-            .memory = image->memory,
-         };
-         __vk_append_struct(&submit_info, &mem_signal);
+         if (!has_signal_dma_buf) {
+            /* If we don't have dma-buf signaling, signal the memory object by
+            * chaining wsi_memory_signal_submit_info into VkSubmitInfo.
+            */
+            result = VK_SUCCESS;
+            has_signal_dma_buf = false;
+            mem_signal = (struct wsi_memory_signal_submit_info) {
+               .sType = VK_STRUCTURE_TYPE_WSI_MEMORY_SIGNAL_SUBMIT_INFO_MESA,
+               .memory = image->memory,
+            };
+            __vk_append_struct(&submit_info, &mem_signal);
+         }
       }
 
       result = wsi->QueueSubmit(submit_queue, 1, &submit_info, fence);
@@ -1485,15 +1532,17 @@ wsi_common_queue_present(const struct wsi_device *wsi,
       image->acquired = false;
       image->present_serial = ++swapchain->present_serial;
 
+      if (!explicit_sync) {
 #ifdef HAVE_LIBDRM
-      if (has_signal_dma_buf) {
-         result = wsi_signal_dma_buf_from_semaphore(swapchain, image);
-         if (result != VK_SUCCESS)
-            goto fail_present;
-      }
+         if (has_signal_dma_buf) {
+            result = wsi_signal_dma_buf_from_semaphore(swapchain, image);
+            if (result != VK_SUCCESS)
+               goto fail_present;
+         }
 #else
-      assert(!has_signal_dma_buf);
+         assert(!has_signal_dma_buf);
 #endif
+      }
 
       if (wsi->sw)
 	      wsi->WaitForFences(device, 1, &swapchain->fences[image_index],

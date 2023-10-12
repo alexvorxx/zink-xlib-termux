@@ -3122,6 +3122,81 @@ vk_common_CmdSetRenderingInputAttachmentIndicesKHR(
    SET_DYN_VALUE(dyn, INPUT_ATTACHMENT_MAP, ial.stencil_att, stencil_att);
 }
 
+/* These are stubs required by VK_EXT_shader_object */
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetViewportWScalingEnableNV(
+    VkCommandBuffer                             commandBuffer,
+    VkBool32                                    viewportWScalingEnable)
+{
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetCoverageReductionModeNV(
+    VkCommandBuffer                             commandBuffer,
+    VkCoverageReductionModeNV                   coverageReductionMode)
+{
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetCoverageToColorEnableNV(
+    VkCommandBuffer                             commandBuffer,
+    VkBool32                                    coverageToColorEnable)
+{
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetCoverageToColorLocationNV(
+    VkCommandBuffer                             commandBuffer,
+    uint32_t                                    coverageToColorLocation)
+{
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetCoverageModulationModeNV(
+    VkCommandBuffer                             commandBuffer,
+    VkCoverageModulationModeNV                  coverageModulationMode)
+{
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetCoverageModulationTableEnableNV(
+    VkCommandBuffer                             commandBuffer,
+    VkBool32                                    coverageModulationTableEnable)
+{
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetCoverageModulationTableNV(
+    VkCommandBuffer                             commandBuffer,
+    uint32_t                                    coverageModulationTableCount,
+    const float*                                pCoverageModulationTable)
+{
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetRepresentativeFragmentTestEnableNV(
+    VkCommandBuffer                             commandBuffer,
+    VkBool32                                    representativeFragmentTestEnable)
+{
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetShadingRateImageEnableNV(
+    VkCommandBuffer                             commandBuffer,
+    VkBool32                                    shadingRateImageEnable)
+{
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdSetViewportSwizzleNV(
+    VkCommandBuffer                             commandBuffer,
+    uint32_t                                    firstViewport,
+    uint32_t                                    viewportCount,
+    const VkViewportSwizzleNV*                  pViewportSwizzles)
+{
+}
+
 const char *
 vk_dynamic_graphic_state_to_str(enum mesa_vk_dynamic_graphics_state state)
 {

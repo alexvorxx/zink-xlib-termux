@@ -114,6 +114,7 @@ struct wsi_device {
    VkExternalSemaphoreHandleTypeFlags semaphore_export_handle_types;
 
    bool has_import_memory_host;
+   bool has_timeline_semaphore;
 
    /** Indicates if wsi_image_create_info::scanout is supported
     *

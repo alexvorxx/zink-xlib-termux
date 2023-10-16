@@ -144,6 +144,8 @@ wsi_device_init(struct wsi_device *wsi,
    wsi->khr_present_wait =
       supported_extensions->KHR_present_id &&
       supported_extensions->KHR_present_wait;
+   wsi->has_timeline_semaphore =
+      supported_extensions->KHR_timeline_semaphore;
 
    /* We cannot expose KHR_present_wait without timeline semaphores. */
    assert(!wsi->khr_present_wait || supported_extensions->KHR_timeline_semaphore);

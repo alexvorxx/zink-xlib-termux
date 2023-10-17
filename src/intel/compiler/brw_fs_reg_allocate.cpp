@@ -288,7 +288,7 @@ private:
                                 int node_start_ip, int node_end_ip);
    void setup_inst_interference(const fs_inst *inst);
 
-   void build_interference_graph(bool allow_spilling);
+   void build_interference_graph();
    void discard_interference_graph();
 
    fs_reg build_lane_offsets(const fs_builder &bld,
@@ -510,7 +510,7 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
 }
 
 void
-fs_reg_alloc::build_interference_graph(bool allow_spilling)
+fs_reg_alloc::build_interference_graph()
 {
    /* Compute the RA node layout */
    node_count = 0;
@@ -1073,7 +1073,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
 bool
 fs_reg_alloc::assign_regs(bool allow_spilling, bool spill_all)
 {
-   build_interference_graph(fs->spilled_any_registers || spill_all);
+   build_interference_graph();
 
    unsigned spilled = 0;
    while (1) {
@@ -1105,15 +1105,6 @@ fs_reg_alloc::assign_regs(bool allow_spilling, bool spill_all)
             if (j == 0)
                return false; /* Nothing to spill */
             break;
-         }
-
-         /* If we're going to spill but we've never spilled before, we need
-          * to re-build the interference graph with MRFs enabled to allow
-          * spilling.
-          */
-         if (!fs->spilled_any_registers) {
-            discard_interference_graph();
-            build_interference_graph(true);
          }
 
          spill_reg(reg);

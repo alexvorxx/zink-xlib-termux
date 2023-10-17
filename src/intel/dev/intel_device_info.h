@@ -81,6 +81,8 @@ enum intel_platform {
    INTEL_PLATFORM_GROUP_END(ATSM, INTEL_PLATFORM_ATSM_G11),
    INTEL_PLATFORM_GROUP_START(MTL, INTEL_PLATFORM_MTL_U),
    INTEL_PLATFORM_GROUP_END(MTL, INTEL_PLATFORM_MTL_H),
+   INTEL_PLATFORM_GROUP_START(ARL, INTEL_PLATFORM_ARL_U),
+   INTEL_PLATFORM_GROUP_END(ARL, INTEL_PLATFORM_ARL_H),
    INTEL_PLATFORM_LNL,
 };
 
@@ -103,6 +105,9 @@ enum intel_platform {
 
 #define intel_device_info_is_adln(devinfo) \
    (devinfo->is_adl_n == true)
+
+#define intel_device_info_is_arl(devinfo) \
+   intel_platform_in_range((devinfo)->platform, ARL)
 
 struct intel_memory_class_instance {
    /* Kernel backend specific class value, no translation needed yet */

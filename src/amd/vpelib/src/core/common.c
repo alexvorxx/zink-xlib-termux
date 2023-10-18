@@ -558,6 +558,10 @@ enum vpe_status vpe_cache_tone_map_params(
 
     stream_ctx->update_3dlut = stream_ctx->update_3dlut || param->streams->tm_params.update_3dlut;
 
+    if (param->streams->flags.geometric_scaling) {
+        stream_ctx->update_3dlut = true;
+    }
+
     return VPE_STATUS_OK;
 }
 

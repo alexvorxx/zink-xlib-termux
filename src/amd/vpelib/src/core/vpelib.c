@@ -299,6 +299,7 @@ static enum vpe_status handle_zero_input(struct vpe *vpe, const struct vpe_build
         stream->lower_luma_bound            = 0;
         stream->upper_luma_bound            = 0;
         stream->flags.hdr_metadata          = 0;
+        stream->flags.geometric_scaling     = 0;
         stream->use_external_scaling_coeffs = false;
         *out_param                          = vpe_priv->dummy_input_param;
     } else {

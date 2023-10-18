@@ -434,6 +434,8 @@ enum vpe_transfer_function {
     VPE_TF_PQ,
     VPE_TF_PQ_NORMALIZED,
     VPE_TF_HLG,
+    VPE_TF_SRGB,
+    VPE_TF_BT709,
     VPE_TF_COUNT
 };
 
@@ -572,7 +574,8 @@ struct vpe_stream {
 
     struct {
         uint32_t hdr_metadata : 1;
-        uint32_t reserved     : 31;
+        uint32_t geometric_scaling : 1;
+        uint32_t reserved : 30;
     } flags;
 };
 

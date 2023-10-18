@@ -780,6 +780,11 @@ enum vpe_status vpe_color_update_movable_cm(
         bool enable_3dlut = stream_ctx->stream.tm_params.enable_3dlut;
         bool update_3dlut = stream_ctx->stream.tm_params.update_3dlut;
 
+        if (param->streams->flags.geometric_scaling) {
+            enable_3dlut = false;
+            update_3dlut = true;
+        }
+
         if (stream_ctx->update_3dlut) {
 
             uint32_t                 pqNormFactor;
@@ -845,7 +850,10 @@ enum vpe_status vpe_color_update_movable_cm(
             vpe_convert_to_tetrahedral(vpe_priv, param->streams[stream_idx].tm_params.lut_data,
                 stream_ctx->lut3d_func, enable_3dlut);
 
-            stream_ctx->update_3dlut = false;
+            if (param->streams->flags.geometric_scaling)
+                stream_ctx->update_3dlut = true;
+            else
+                stream_ctx->update_3dlut = false;
         }
     }
 exit:
@@ -860,19 +868,37 @@ void vpe_color_get_color_space_and_tf(
     *cs = COLOR_SPACE_UNKNOWN;
     *tf = TRANSFER_FUNC_UNKNOWN;
 
+    switch (vcs->tf) {
+    case VPE_TF_G22:
+        *tf = TRANSFER_FUNC_SRGB;
+        break;
+    case VPE_TF_G24:
+        *tf = TRANSFER_FUNC_BT1886;
+        break;
+    case VPE_TF_PQ:
+        *tf = TRANSFER_FUNC_PQ2084;
+        break;
+    case VPE_TF_PQ_NORMALIZED:
+        *tf = TRANSFER_FUNC_NORMALIZED_PQ;
+        break;
+    case VPE_TF_G10:
+        *tf = TRANSFER_FUNC_LINEAR_0_125;
+        break;
+    case VPE_TF_SRGB:
+        *tf = TRANSFER_FUNC_SRGB;
+        break;
+    case VPE_TF_BT709:
+        *tf = TRANSFER_FUNC_BT709;
+        break;
+    default:
+        break;
+    }
+
     if (vcs->encoding == VPE_PIXEL_ENCODING_YCbCr) {
         switch (vcs->tf) {
         case VPE_TF_G22:
             *tf = TRANSFER_FUNC_BT709;
             break;
-        case VPE_TF_G24:
-            *tf = TRANSFER_FUNC_BT1886;
-            break;
-        case VPE_TF_PQ:
-            *tf = TRANSFER_FUNC_PQ2084;
-            break;
-        case VPE_TF_PQ_NORMALIZED:
-            *tf = TRANSFER_FUNC_NORMALIZED_PQ;
         default:
             break;
         }
@@ -897,26 +923,6 @@ void vpe_color_get_color_space_and_tf(
             break;
         }
     } else {
-        switch (vcs->tf) {
-        case VPE_TF_G22:
-            *tf = TRANSFER_FUNC_SRGB;
-            break;
-        case VPE_TF_G24:
-            *tf = TRANSFER_FUNC_BT1886;
-            break;
-        case VPE_TF_PQ:
-            *tf = TRANSFER_FUNC_PQ2084;
-            break;
-        case VPE_TF_PQ_NORMALIZED:
-            *tf = TRANSFER_FUNC_NORMALIZED_PQ;
-            break;
-        case VPE_TF_G10:
-            *tf = TRANSFER_FUNC_LINEAR_0_125;
-            break;
-        default:
-            break;
-        }
-
         switch (vcs->primaries) {
         case VPE_PRIMARIES_BT709:
             if (vcs->tf == VPE_TF_G10) {

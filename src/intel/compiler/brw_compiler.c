@@ -320,3 +320,28 @@ brw_write_shader_relocs(const struct brw_isa_info *isa,
       }
    }
 }
+
+void
+brw_stage_prog_data_add_printf(struct brw_stage_prog_data *prog_data,
+                               void *mem_ctx,
+                               const u_printf_info *print)
+{
+   prog_data->printf_info_count++;
+   prog_data->printf_info = reralloc(mem_ctx, prog_data->printf_info,
+                                     u_printf_info,
+                                     prog_data->printf_info_count);
+
+   prog_data->printf_info[prog_data->printf_info_count - 1] = *print;
+   if (print->string_size > 0) {
+      prog_data->printf_info[prog_data->printf_info_count - 1].strings =
+         ralloc_size(mem_ctx, print->string_size);
+      memcpy(prog_data->printf_info[prog_data->printf_info_count - 1].strings,
+             print->strings, print->string_size);
+   }
+   if (print->num_args > 0) {
+      prog_data->printf_info[prog_data->printf_info_count - 1].arg_sizes =
+         ralloc_array(mem_ctx, __typeof__(*print->arg_sizes), print->num_args);
+      memcpy(prog_data->printf_info[prog_data->printf_info_count - 1].arg_sizes,
+             print->arg_sizes, sizeof(print->arg_sizes[0]) *print->num_args);
+   }
+}

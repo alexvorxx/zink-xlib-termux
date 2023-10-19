@@ -553,14 +553,11 @@ enum vpe_status vpe_check_input_support(struct vpe *vpe, const struct vpe_stream
 }
 
 enum vpe_status vpe_cache_tone_map_params(
-    struct stream_ctx *stream_ctx, const struct vpe_build_param *param)
+    struct stream_ctx *stream_ctx, const struct vpe_stream *stream)
 {
 
-    stream_ctx->update_3dlut = stream_ctx->update_3dlut || param->streams->tm_params.update_3dlut;
-
-    if (param->streams->flags.geometric_scaling) {
-        stream_ctx->update_3dlut = true;
-    }
+    stream_ctx->update_3dlut = stream_ctx->update_3dlut || stream->tm_params.update_3dlut ||
+            (stream_ctx->stream.flags.geometric_scaling != stream->flags.geometric_scaling);
 
     return VPE_STATUS_OK;
 }

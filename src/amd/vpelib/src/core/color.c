@@ -778,11 +778,9 @@ enum vpe_status vpe_color_update_movable_cm(
         stream_ctx = &vpe_priv->stream_ctx[stream_idx];
 
         bool enable_3dlut = stream_ctx->stream.tm_params.enable_3dlut;
-        bool update_3dlut = stream_ctx->stream.tm_params.update_3dlut;
 
         if (param->streams->flags.geometric_scaling) {
             enable_3dlut = false;
-            update_3dlut = true;
         }
 
         if (stream_ctx->update_3dlut) {
@@ -850,10 +848,7 @@ enum vpe_status vpe_color_update_movable_cm(
             vpe_convert_to_tetrahedral(vpe_priv, param->streams[stream_idx].tm_params.lut_data,
                 stream_ctx->lut3d_func, enable_3dlut);
 
-            if (param->streams->flags.geometric_scaling)
-                stream_ctx->update_3dlut = true;
-            else
-                stream_ctx->update_3dlut = false;
+            stream_ctx->update_3dlut = false;
         }
     }
 exit:

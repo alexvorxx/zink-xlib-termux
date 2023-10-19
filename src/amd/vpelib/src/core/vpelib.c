@@ -182,6 +182,15 @@ void vpe_destroy(struct vpe **vpe)
     *vpe = NULL;
 }
 
+static enum vpe_status validate_geometric_scaling_support(const struct vpe_build_param *param)
+{
+    if(param->num_streams > 1 && param->streams[0].flags.geometric_scaling)
+    {
+        return VPE_STATUS_GEOMETRICSCALING_ERROR;
+    }
+    return VPE_STATUS_OK;
+}
+
 /*****************************************************************************************
  * handle_zero_input
  * handle any zero input stream but background output only
@@ -344,7 +353,7 @@ enum vpe_status vpe_check_support(
     //  Need a sticky bit to tell vpe to program the 3dlut on next jobs submission even
     //  if 3dlut has not changed
     for (i = 0; i < param->num_streams; i++) {
-        vpe_cache_tone_map_params(&vpe_priv->stream_ctx[i], param);
+        vpe_cache_tone_map_params(&vpe_priv->stream_ctx[i], &param->streams[i]);
     }
 
     if (status == VPE_STATUS_OK) {  
@@ -448,6 +457,10 @@ enum vpe_status vpe_check_support(
         vpe_priv->resource.get_bufs_req(vpe_priv, &vpe_priv->bufs_required);
         *req                  = vpe_priv->bufs_required;
         vpe_priv->ops_support = true;
+    }
+
+    if (status == VPE_STATUS_OK) {
+        status = validate_geometric_scaling_support(param);
     }
 
     if (vpe_priv->init.debug.assert_when_not_support)

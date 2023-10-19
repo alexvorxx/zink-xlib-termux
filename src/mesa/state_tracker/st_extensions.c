@@ -170,8 +170,6 @@ void st_init_limits(struct pipe_screen *screen,
 
    c->HasFBFetch = screen->get_param(screen, PIPE_CAP_FBFETCH);
 
-   c->SupportsReadingOutputs = screen->get_param(screen, PIPE_CAP_SHADER_CAN_READ_OUTPUTS);
-
    c->CombinedClipCullDistanceArrays = !screen->get_param(screen, PIPE_CAP_CULL_DISTANCE_NOCOMBINE);
 
    c->PointSizeFixed = screen->get_param(screen, PIPE_CAP_POINT_SIZE_FIXED) != PIPE_POINT_SIZE_LOWER_ALWAYS;

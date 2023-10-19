@@ -1249,7 +1249,8 @@ preprocess_shader(const struct gl_constants *consts,
       NIR_PASS(_, nir, nir_lower_io_to_temporaries,
                  nir_shader_get_entrypoint(nir),
                  true, true);
-   } else if (nir->info.stage == MESA_SHADER_FRAGMENT ||
+   } else if (nir->info.stage == MESA_SHADER_TESS_EVAL ||
+              nir->info.stage == MESA_SHADER_FRAGMENT ||
               !consts->SupportsReadingOutputs) {
       NIR_PASS(_, nir, nir_lower_io_to_temporaries,
                  nir_shader_get_entrypoint(nir),

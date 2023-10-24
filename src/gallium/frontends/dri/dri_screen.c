@@ -541,8 +541,12 @@ dri_validate_egl_image(struct pipe_frontend_screen *fscreen,
                        void *egl_image)
 {
    struct dri_screen *screen = (struct dri_screen *)fscreen;
+   const __DRIimageLookupExtension *loader = screen->dri2.image;
 
-   return screen->validate_egl_image(screen, egl_image);
+   if (loader)
+      return loader->validateEGLImage(egl_image, screen->loaderPrivate);
+   else
+      return true;
 }
 
 static int
@@ -623,7 +627,6 @@ dri_init_screen(struct dri_screen *screen,
    screen->base.validate_egl_image = dri_validate_egl_image;
 
    screen->lookup_egl_image = dri2_lookup_egl_image;
-   screen->validate_egl_image = dri2_validate_egl_image;
    const __DRIimageLookupExtension *image = screen->dri2.image;
    if (image &&
        image->base.version >= 2 &&

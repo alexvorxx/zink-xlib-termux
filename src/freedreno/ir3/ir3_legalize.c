@@ -1298,7 +1298,6 @@ helper_sched(struct ir3_legalize_ctx *ctx, struct ir3 *ir,
             bd->uses_helpers_beginning = true;
             if (instr->opc != OPC_META_TEX_PREFETCH) {
                non_prefetch_helpers = true;
-               break;
             }
          }
 

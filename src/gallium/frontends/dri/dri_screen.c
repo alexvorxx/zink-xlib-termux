@@ -500,14 +500,11 @@ dri_get_egl_image(struct pipe_frontend_screen *fscreen,
                   struct st_egl_image *stimg)
 {
    struct dri_screen *screen = (struct dri_screen *)fscreen;
+   const __DRIimageLookupExtension *loader = screen->dri2.image;
    __DRIimage *img = NULL;
    const struct dri2_format_mapping *map;
 
-   if (screen->lookup_egl_image_validated) {
-      img = screen->lookup_egl_image_validated(screen, egl_image);
-   } else if (screen->lookup_egl_image) {
-      img = screen->lookup_egl_image(screen, egl_image);
-   }
+   img = loader->lookupEGLImageValidated(egl_image, screen->loaderPrivate);
 
    if (!img)
       return false;
@@ -627,13 +624,6 @@ dri_init_screen(struct dri_screen *screen,
    screen->base.validate_egl_image = dri_validate_egl_image;
 
    screen->lookup_egl_image = dri2_lookup_egl_image;
-   const __DRIimageLookupExtension *image = screen->dri2.image;
-   if (image &&
-       image->base.version >= 2 &&
-       image->validateEGLImage &&
-       image->lookupEGLImageValidated) {
-      screen->lookup_egl_image_validated = dri2_lookup_egl_image_validated;
-   }
 
    if (pscreen->get_param(pscreen, PIPE_CAP_NPOT_TEXTURES))
       screen->target = PIPE_TEXTURE_2D;

@@ -66,9 +66,6 @@ bool
 dri2_validate_egl_image(struct dri_screen *screen, void *handle);
 
 __DRIimage *
-dri2_lookup_egl_image_validated(struct dri_screen *screen, void *handle);
-
-__DRIimage *
 dri2_create_image_from_renderbuffer(__DRIcontext *context,
 				     int renderbuffer, void *loaderPrivate,
                                      unsigned *error);

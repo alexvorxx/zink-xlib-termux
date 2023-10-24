@@ -1316,6 +1316,7 @@ helper_sched(struct ir3_legalize_ctx *ctx, struct ir3 *ir,
              terminator->opc == OPC_GETONE) {
             bd->uses_helpers_beginning = true;
             bd->uses_helpers_end = true;
+            non_prefetch_helpers = true;
          }
       }
 

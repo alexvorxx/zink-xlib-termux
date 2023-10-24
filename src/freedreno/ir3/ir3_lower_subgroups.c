@@ -479,6 +479,7 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
          mov->cat1.dst_type = TYPE_U32;
          mov->cat1.src_type =
             (new_src->flags & IR3_REG_HALF) ? TYPE_U16 : TYPE_U32;
+         mov->flags |= IR3_INSTR_NEEDS_HELPERS;
          break;
       }
 

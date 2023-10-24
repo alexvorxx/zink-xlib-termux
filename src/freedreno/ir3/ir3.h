@@ -346,6 +346,13 @@ typedef enum ir3_instruction_flags {
    IR3_INSTR_SHARED_SPILL = IR3_INSTR_MARK,
 
    IR3_INSTR_UNUSED = BIT(17),
+
+   /* Used to indicate that a mov comes from a lowered READ_FIRST/READ_COND
+    * and may broadcast a helper invocation's value from a vector register to a
+    * shared register that may be read by other invocations. This factors into
+    * (eq) calculations.
+    */
+   IR3_INSTR_NEEDS_HELPERS = BIT(18),
 } ir3_instruction_flags;
 
 struct ir3_instruction {
@@ -1168,8 +1175,7 @@ uses_helpers(struct ir3_instruction *instr)
 
    /* Catch lowered READ_FIRST/READ_COND. */
    case OPC_MOV:
-      return (instr->dsts[0]->flags & IR3_REG_SHARED) &&
-             !(instr->srcs[0]->flags & IR3_REG_SHARED);
+      return instr->flags & IR3_INSTR_NEEDS_HELPERS;
 
    default:
       return false;

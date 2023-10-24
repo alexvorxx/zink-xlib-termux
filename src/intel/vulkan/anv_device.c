@@ -2949,6 +2949,9 @@ decode_get_bo(void *v_batch, bool ppgtt, uint64_t address)
 
    if (get_bo_from_pool(&ret_bo, &device->dynamic_state_pool.block_pool, address))
       return ret_bo;
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer &&
+       get_bo_from_pool(&ret_bo, &device->dynamic_state_db_pool.block_pool, address))
+      return ret_bo;
    if (get_bo_from_pool(&ret_bo, &device->instruction_state_pool.block_pool, address))
       return ret_bo;
    if (get_bo_from_pool(&ret_bo, &device->binding_table_pool.block_pool, address))
@@ -3384,6 +3387,18 @@ VkResult anv_CreateDevice(
    if (result != VK_SUCCESS)
       goto fail_general_state_pool;
 
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+      result = anv_state_pool_init(&device->dynamic_state_db_pool, device,
+                                   &(struct anv_state_pool_params) {
+                                      .name         = "dynamic pool (db)",
+                                      .base_address = device->physical->va.dynamic_state_db_pool.addr,
+                                      .block_size   = 16384,
+                                      .max_size     = device->physical->va.dynamic_state_db_pool.size,
+                                   });
+      if (result != VK_SUCCESS)
+         goto fail_dynamic_state_pool;
+   }
+
    /* The border color pointer is limited to 24 bits, so we need to make
     * sure that any such color used at any point in the program doesn't
     * exceed that limit.
@@ -3403,7 +3418,7 @@ VkResult anv_CreateDevice(
                                    .max_size     = device->physical->va.instruction_state_pool.size,
                                 });
    if (result != VK_SUCCESS)
-      goto fail_dynamic_state_pool;
+      goto fail_dynamic_state_db_pool;
 
    if (device->info->verx10 >= 125) {
       /* Put the scratch surface states at the beginning of the internal
@@ -3792,8 +3807,11 @@ VkResult anv_CreateDevice(
       anv_state_pool_finish(&device->scratch_surface_state_pool);
  fail_instruction_state_pool:
    anv_state_pool_finish(&device->instruction_state_pool);
- fail_dynamic_state_pool:
+ fail_dynamic_state_db_pool:
    anv_state_reserved_pool_finish(&device->custom_border_colors);
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
+      anv_state_pool_finish(&device->dynamic_state_db_pool);
+ fail_dynamic_state_pool:
    anv_state_pool_finish(&device->dynamic_state_pool);
  fail_general_state_pool:
    anv_state_pool_finish(&device->general_state_pool);
@@ -3920,6 +3938,8 @@ void anv_DestroyDevice(
    if (device->physical->indirect_descriptors)
       anv_state_pool_finish(&device->bindless_surface_state_pool);
    anv_state_pool_finish(&device->instruction_state_pool);
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
+      anv_state_pool_finish(&device->dynamic_state_db_pool);
    anv_state_pool_finish(&device->dynamic_state_pool);
    anv_state_pool_finish(&device->general_state_pool);
 

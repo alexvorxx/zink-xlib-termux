@@ -1052,12 +1052,14 @@ void anv_CmdUpdateBuffer(
 
       struct anv_state tmp_data =
          anv_cmd_buffer_alloc_dynamic_state(cmd_buffer, copy_size, 64);
+      struct anv_address tmp_addr =
+         anv_cmd_buffer_dynamic_state_address(cmd_buffer, tmp_data);
 
       memcpy(tmp_data.map, pData, copy_size);
 
       struct blorp_address src = {
-         .buffer = cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-         .offset = tmp_data.offset,
+         .buffer = tmp_addr.bo,
+         .offset = tmp_addr.offset,
          .mocs = isl_mocs(&cmd_buffer->device->isl_dev,
                           ISL_SURF_USAGE_TEXTURE_BIT, false)
       };

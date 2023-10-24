@@ -1145,6 +1145,10 @@ struct anv_physical_device {
         */
        struct anv_va_range                      instruction_state_pool;
        /**
+        * Dynamic state pool when using descriptor buffers
+        */
+       struct anv_va_range                      dynamic_state_db_pool;
+       /**
         * Descriptor buffers
         */
        struct anv_va_range                      descriptor_buffer_pool;
@@ -1721,6 +1725,7 @@ struct anv_device {
 
     struct anv_state_pool                       general_state_pool;
     struct anv_state_pool                       dynamic_state_pool;
+    struct anv_state_pool                       dynamic_state_db_pool;
     struct anv_state_pool                       instruction_state_pool;
     struct anv_state_pool                       binding_table_pool;
     struct anv_state_pool                       scratch_surface_state_pool;
@@ -3721,6 +3726,7 @@ struct anv_cmd_buffer {
    /* Stream objects for storing temporary data */
    struct anv_state_stream                      surface_state_stream;
    struct anv_state_stream                      dynamic_state_stream;
+   struct anv_state_stream                      dynamic_state_db_stream;
    struct anv_state_stream                      general_state_stream;
    struct anv_state_stream                      indirect_push_descriptor_stream;
    struct anv_state_stream                      push_descriptor_buffer_stream;
@@ -3886,6 +3892,14 @@ anv_cmd_buffer_is_blitter_queue(const struct anv_cmd_buffer *cmd_buffer)
 {
    struct anv_queue_family *queue_family = cmd_buffer->queue_family;
    return queue_family->engine_class == INTEL_ENGINE_CLASS_COPY;
+}
+
+static inline struct anv_address
+anv_cmd_buffer_dynamic_state_address(struct anv_cmd_buffer *cmd_buffer,
+                                     struct anv_state state)
+{
+   return anv_state_pool_state_address(
+      &cmd_buffer->device->dynamic_state_pool, state);
 }
 
 VkResult anv_cmd_buffer_init_batch_bo_chain(struct anv_cmd_buffer *cmd_buffer);

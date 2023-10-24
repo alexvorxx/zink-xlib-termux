@@ -3700,7 +3700,7 @@ emit_loop(struct ir3_context *ctx, nir_loop *nloop)
    struct ir3_block *continue_blk = NULL;
 
    /* There's always one incoming edge from outside the loop, and if there
-    * are more than two backedges from inside the loop (so more than 2 total
+    * is more than one backedge from inside the loop (so more than 2 total
     * edges) then we need to create a continue block after the loop to ensure
     * that control reconverges at the end of each loop iteration.
     */

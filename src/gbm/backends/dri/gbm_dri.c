@@ -804,26 +804,26 @@ gbm_dri_bo_import(struct gbm_device *gbm,
       unsigned int error;
       int fourcc;
 
-      /* Import with modifier requires createImageFromDmaBufs2 */
-      if (dri->image->createImageFromDmaBufs2 == NULL) {
+      /* Import with modifier requires createImageFromDmaBufs */
+      if (dri->image->createImageFromDmaBufs == NULL) {
          errno = ENOSYS;
          return NULL;
       }
 
       /* GBM's GBM_FORMAT_* tokens are a strict superset of the DRI FourCC
-       * tokens accepted by createImageFromDmaBufs2, except for not supporting
+       * tokens accepted by createImageFromDmaBufs, except for not supporting
        * the sARGB format. */
       fourcc = gbm_core.v0.format_canonicalize(fd_data->format);
 
-      image = dri->image->createImageFromDmaBufs2(dri->screen, fd_data->width,
-                                                  fd_data->height, fourcc,
-                                                  fd_data->modifier,
-                                                  fd_data->fds,
-                                                  fd_data->num_fds,
-                                                  fd_data->strides,
-                                                  fd_data->offsets,
-                                                  0, 0, 0, 0,
-                                                  &error, NULL);
+      image = dri->image->createImageFromDmaBufs(dri->screen, fd_data->width,
+                                                 fd_data->height, fourcc,
+                                                 fd_data->modifier,
+                                                 fd_data->fds,
+                                                 fd_data->num_fds,
+                                                 fd_data->strides,
+                                                 fd_data->offsets,
+                                                 0, 0, 0, 0,
+                                                 0, &error, NULL);
       if (image == NULL) {
          errno = ENOSYS;
          return NULL;

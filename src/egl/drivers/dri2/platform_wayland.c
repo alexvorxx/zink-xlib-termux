@@ -1275,7 +1275,7 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
              * need to make it visible to render GPU
              */
             dri2_surf->back->linear_copy =
-               dri2_dpy->image->createImageFromDmaBufs3(
+               dri2_dpy->image->createImageFromDmaBufs(
                   dri2_dpy->dri_screen_render_gpu,
                   dri2_surf->base.Width, dri2_surf->base.Height,
                   fourcc, linear_mod,

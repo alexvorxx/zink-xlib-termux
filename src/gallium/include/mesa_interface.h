@@ -1410,7 +1410,7 @@ enum __DRIFixedRateCompression {
 #define __BLIT_FLAG_FINISH		0x0002
 
 /**
- * Flags for createImageFromDmaBufs3 and createImageFromFds2
+ * Flags for createImageFromDmaBufs
  */
 #define __DRI_IMAGE_PROTECTED_CONTENT_FLAG 0x00000001
 #define __DRI_IMAGE_PRIME_LINEAR_BUFFER    0x00000002
@@ -1513,24 +1513,6 @@ struct __DRIimageExtensionRec {
                                      void *loaderPrivate);
 
    /**
-    * Like createImageFromFds, but takes additional attributes.
-    *
-    * For EGL_EXT_image_dma_buf_import.
-    *
-    * \since 8
-    */
-   __DRIimage *(*createImageFromDmaBufs)(__DRIscreen *screen,
-                                         int width, int height, int fourcc,
-                                         int *fds, int num_fds,
-                                         int *strides, int *offsets,
-                                         enum __DRIYUVColorSpace color_space,
-                                         enum __DRISampleRange sample_range,
-                                         enum __DRIChromaSiting horiz_siting,
-                                         enum __DRIChromaSiting vert_siting,
-                                         unsigned *error,
-                                         void *loaderPrivate);
-
-   /**
     * Blit a part of a __DRIimage to another and flushes
     *
     * flush_flag:
@@ -1604,9 +1586,12 @@ struct __DRIimageExtensionRec {
                                            void *loaderPrivate);
 
    /*
-    * Like createImageFromDmaBufs, but takes also format modifiers.
+    * Like createImageFromDmaBufs, with fewer options.
     *
     * For EGL_EXT_image_dma_buf_import_modifiers.
+    *
+    * Used by ChromeOS's minigbm for AMD devices as of 2023.  This is
+    * deprecated, use the current createImageFromDmaBufs() instead.
     *
     * \since 15
     */
@@ -1697,25 +1682,23 @@ struct __DRIimageExtensionRec {
                                                 void *loaderPrivate,
                                                 unsigned *error);
 
-   /*
-    * Like createImageFromDmaBufs2, but with an added flags parameter.
+   /**
+    * Like createImageFromFds, but takes additional attributes.
     *
     * See __DRI_IMAGE_*_FLAG for valid definitions of flags.
-    *
-    * \since 18
     */
-   __DRIimage *(*createImageFromDmaBufs3)(__DRIscreen *screen,
-                                          int width, int height, int fourcc,
-                                          uint64_t modifier,
-                                          int *fds, int num_fds,
-                                          int *strides, int *offsets,
-                                          enum __DRIYUVColorSpace color_space,
-                                          enum __DRISampleRange sample_range,
-                                          enum __DRIChromaSiting horiz_siting,
-                                          enum __DRIChromaSiting vert_siting,
-                                          uint32_t flags,
-                                          unsigned *error,
-                                          void *loaderPrivate);
+   __DRIimage *(*createImageFromDmaBufs)(__DRIscreen *screen,
+                                         int width, int height, int fourcc,
+                                         uint64_t modifier,
+                                         int *fds, int num_fds,
+                                         int *strides, int *offsets,
+                                         enum __DRIYUVColorSpace color_space,
+                                         enum __DRISampleRange sample_range,
+                                         enum __DRIChromaSiting horiz_siting,
+                                         enum __DRIChromaSiting vert_siting,
+                                         uint32_t flags,
+                                         unsigned *error,
+                                         void *loaderPrivate);
 
    /**
     * Creates an image with implementation's favorite modifiers and the

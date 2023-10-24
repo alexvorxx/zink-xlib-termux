@@ -2789,7 +2789,6 @@ dri2_create_image_dma_buf(_EGLDisplay *disp, _EGLContext *ctx,
    int pitches[DMA_BUF_MAX_PLANES];
    int offsets[DMA_BUF_MAX_PLANES];
    uint64_t modifier;
-   bool has_modifier = false;
    unsigned error;
    EGLint egl_error;
 
@@ -2826,46 +2825,21 @@ dri2_create_image_dma_buf(_EGLDisplay *disp, _EGLContext *ctx,
    if (attrs.DMABufPlaneModifiersLo[0].IsPresent) {
       modifier = combine_u32_into_u64(attrs.DMABufPlaneModifiersHi[0].Value,
                                       attrs.DMABufPlaneModifiersLo[0].Value);
-      has_modifier = true;
-   }
-
-   if (attrs.ProtectedContent) {
-      if (dri2_dpy->image->base.version < 18 ||
-          dri2_dpy->image->createImageFromDmaBufs3 == NULL) {
-         _eglError(EGL_BAD_MATCH, "unsupported protected_content attribute");
-         return EGL_NO_IMAGE_KHR;
-      }
-      if (!has_modifier)
-         modifier = DRM_FORMAT_MOD_INVALID;
-
-      dri_image = dri2_dpy->image->createImageFromDmaBufs3(
-         dri2_dpy->dri_screen_render_gpu, attrs.Width, attrs.Height,
-         attrs.DMABufFourCC.Value, modifier, fds, num_fds, pitches, offsets,
-         attrs.DMABufYuvColorSpaceHint.Value, attrs.DMABufSampleRangeHint.Value,
-         attrs.DMABufChromaHorizontalSiting.Value,
-         attrs.DMABufChromaVerticalSiting.Value,
-         attrs.ProtectedContent ? __DRI_IMAGE_PROTECTED_CONTENT_FLAG : 0,
-         &error, NULL);
-   } else if (has_modifier) {
-      if (dri2_dpy->image->base.version < 15 ||
-          dri2_dpy->image->createImageFromDmaBufs2 == NULL) {
-         _eglError(EGL_BAD_MATCH, "unsupported dma_buf format modifier");
-         return EGL_NO_IMAGE_KHR;
-      }
-      dri_image = dri2_dpy->image->createImageFromDmaBufs2(
-         dri2_dpy->dri_screen_render_gpu, attrs.Width, attrs.Height,
-         attrs.DMABufFourCC.Value, modifier, fds, num_fds, pitches, offsets,
-         attrs.DMABufYuvColorSpaceHint.Value, attrs.DMABufSampleRangeHint.Value,
-         attrs.DMABufChromaHorizontalSiting.Value,
-         attrs.DMABufChromaVerticalSiting.Value, &error, NULL);
    } else {
-      dri_image = dri2_dpy->image->createImageFromDmaBufs(
-         dri2_dpy->dri_screen_render_gpu, attrs.Width, attrs.Height,
-         attrs.DMABufFourCC.Value, fds, num_fds, pitches, offsets,
-         attrs.DMABufYuvColorSpaceHint.Value, attrs.DMABufSampleRangeHint.Value,
-         attrs.DMABufChromaHorizontalSiting.Value,
-         attrs.DMABufChromaVerticalSiting.Value, &error, NULL);
+      modifier = DRM_FORMAT_MOD_INVALID;
    }
+
+   uint32_t flags = 0;
+   if (attrs.ProtectedContent)
+      flags |= __DRI_IMAGE_PROTECTED_CONTENT_FLAG;
+
+   dri_image = dri2_dpy->image->createImageFromDmaBufs(
+      dri2_dpy->dri_screen_render_gpu, attrs.Width, attrs.Height,
+      attrs.DMABufFourCC.Value, modifier, fds, num_fds, pitches, offsets,
+      attrs.DMABufYuvColorSpaceHint.Value, attrs.DMABufSampleRangeHint.Value,
+      attrs.DMABufChromaHorizontalSiting.Value,
+      attrs.DMABufChromaVerticalSiting.Value,
+      flags, &error, NULL);
 
    egl_error = egl_error_from_dri_image_error(error);
    if (egl_error != EGL_SUCCESS)
@@ -2878,6 +2852,7 @@ dri2_create_image_dma_buf(_EGLDisplay *disp, _EGLContext *ctx,
 
    return res;
 }
+
 static _EGLImage *
 dri2_create_drm_image_mesa(_EGLDisplay *disp, const EGLint *attr_list)
 {

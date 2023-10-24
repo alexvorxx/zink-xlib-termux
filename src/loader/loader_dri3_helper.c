@@ -1891,15 +1891,15 @@ loader_dri3_create_image_from_buffers(xcb_connection_t *c,
       offsets[i] = offsets_in[i];
    }
 
-   ret = image->createImageFromDmaBufs2(dri_screen,
-                                        bp_reply->width,
-                                        bp_reply->height,
-                                        loader_image_format_to_fourcc(format),
-                                        bp_reply->modifier,
-                                        fds, bp_reply->nfd,
-                                        strides, offsets,
-                                        0, 0, 0, 0, /* UNDEFINED */
-                                        &error, loaderPrivate);
+   ret = image->createImageFromDmaBufs(dri_screen,
+                                       bp_reply->width,
+                                       bp_reply->height,
+                                       loader_image_format_to_fourcc(format),
+                                       bp_reply->modifier,
+                                       fds, bp_reply->nfd,
+                                       strides, offsets,
+                                       0, 0, 0, 0, /* UNDEFINED */
+                                       0, &error, loaderPrivate);
 
    for (i = 0; i < bp_reply->nfd; i++)
       close(fds[i]);
@@ -1963,7 +1963,7 @@ dri3_get_pixmap_buffer(__DRIdrawable *driDrawable, unsigned int format,
 #ifdef HAVE_DRI3_MODIFIERS
    if (draw->multiplanes_available &&
        draw->ext->image->base.version >= 15 &&
-       draw->ext->image->createImageFromDmaBufs2) {
+       draw->ext->image->createImageFromDmaBufs) {
       xcb_dri3_buffers_from_pixmap_cookie_t bps_cookie;
       xcb_dri3_buffers_from_pixmap_reply_t *bps_reply;
 

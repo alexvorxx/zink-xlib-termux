@@ -1805,35 +1805,6 @@ dri2_query_dma_buf_format_modifier_attribs(__DRIscreen *_screen,
 }
 
 static __DRIimage *
-dri2_from_dma_bufs(__DRIscreen *screen,
-                   int width, int height, int fourcc,
-                   int *fds, int num_fds,
-                   int *strides, int *offsets,
-                   enum __DRIYUVColorSpace yuv_color_space,
-                   enum __DRISampleRange sample_range,
-                   enum __DRIChromaSiting horizontal_siting,
-                   enum __DRIChromaSiting vertical_siting,
-                   unsigned *error,
-                   void *loaderPrivate)
-{
-   __DRIimage *img;
-
-   img = dri2_create_image_from_fd(screen, width, height, fourcc,
-                                   DRM_FORMAT_MOD_INVALID, fds, num_fds,
-                                   strides, offsets, 0, error, loaderPrivate);
-   if (img == NULL)
-      return NULL;
-
-   img->yuv_color_space = yuv_color_space;
-   img->sample_range = sample_range;
-   img->horizontal_siting = horizontal_siting;
-   img->vertical_siting = vertical_siting;
-
-   *error = __DRI_IMAGE_ERROR_SUCCESS;
-   return img;
-}
-
-static __DRIimage *
 dri2_from_dma_bufs2(__DRIscreen *screen,
                     int width, int height, int fourcc,
                     uint64_t modifier, int *fds, int num_fds,
@@ -1863,7 +1834,7 @@ dri2_from_dma_bufs2(__DRIscreen *screen,
 }
 
 static __DRIimage *
-dri2_from_dma_bufs3(__DRIscreen *screen,
+dri2_from_dma_bufs(__DRIscreen *screen,
                     int width, int height, int fourcc,
                     uint64_t modifier, int *fds, int num_fds,
                     int *strides, int *offsets,
@@ -2093,7 +2064,6 @@ static const __DRIimageExtension dri2ImageExtensionTempl = {
     .unmapImage                   = dri2_unmap_image,
     .createImageWithModifiers     = NULL,
     .createImageFromDmaBufs2      = NULL,
-    .createImageFromDmaBufs3      = NULL,
     .queryDmaBufFormats           = NULL,
     .queryDmaBufModifiers         = NULL,
     .queryDmaBufFormatModifierAttribs = NULL,
@@ -2125,7 +2095,6 @@ const __DRIimageExtension driVkImageExtension = {
     .unmapImage                   = dri2_unmap_image,
     .createImageWithModifiers     = dri2_create_image_with_modifiers,
     .createImageFromDmaBufs2      = dri2_from_dma_bufs2,
-    .createImageFromDmaBufs3      = dri2_from_dma_bufs3,
     .queryDmaBufFormats           = dri2_query_dma_buf_formats,
     .queryDmaBufModifiers         = dri2_query_dma_buf_modifiers,
     .queryDmaBufFormatModifierAttribs = dri2_query_dma_buf_format_modifier_attribs,
@@ -2398,7 +2367,6 @@ dri2_init_screen_extensions(struct dri_screen *screen,
       screen->image_extension.createImageFromFds2 = dri2_from_fds2;
       screen->image_extension.createImageFromDmaBufs = dri2_from_dma_bufs;
       screen->image_extension.createImageFromDmaBufs2 = dri2_from_dma_bufs2;
-      screen->image_extension.createImageFromDmaBufs3 = dri2_from_dma_bufs3;
       screen->image_extension.queryDmaBufFormats =
          dri2_query_dma_buf_formats;
       screen->image_extension.queryDmaBufModifiers =

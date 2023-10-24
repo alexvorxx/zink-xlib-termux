@@ -156,6 +156,9 @@ anv_physical_device_init_va_ranges(struct anv_physical_device *device)
    assert(device->va.descriptor_buffer_pool.addr ==
           align64(device->va.descriptor_buffer_pool.addr, 4 * _1Gb));
 
+   address = align64(address, device->info.mem_alignment);
+   address = va_add(&device->va.aux_tt_pool, address, 2 * _1Gb);
+
    /* What's left to do for us is to set va.high_heap and va.trtt without
     * overlap, but there are a few things to be considered:
     *

@@ -1157,6 +1157,10 @@ struct anv_physical_device {
         */
        struct anv_va_range                      push_descriptor_buffer_pool;
        /**
+        * AUX-TT
+        */
+       struct anv_va_range                      aux_tt_pool;
+       /**
         * Client heap
         */
        struct anv_va_range                      high_heap;
@@ -1724,6 +1728,7 @@ struct anv_device {
     struct anv_bo_cache                         bo_cache;
 
     struct anv_state_pool                       general_state_pool;
+    struct anv_state_pool                       aux_tt_pool;
     struct anv_state_pool                       dynamic_state_pool;
     struct anv_state_pool                       dynamic_state_db_pool;
     struct anv_state_pool                       instruction_state_pool;

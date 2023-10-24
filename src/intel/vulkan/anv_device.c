@@ -2966,6 +2966,9 @@ decode_get_bo(void *v_batch, bool ppgtt, uint64_t address)
    if (device->physical->indirect_descriptors &&
        get_bo_from_pool(&ret_bo, &device->indirect_push_descriptor_pool.block_pool, address))
       return ret_bo;
+   if (device->info->has_aux_map &&
+       get_bo_from_pool(&ret_bo, &device->aux_tt_pool.block_pool, address))
+      return ret_bo;
 
    if (!device->cmd_buffer_being_decoded)
       return (struct intel_batch_decode_bo) { };
@@ -3021,7 +3024,7 @@ intel_aux_map_buffer_alloc(void *driver_ctx, uint32_t size)
 
    struct anv_device *device = (struct anv_device*)driver_ctx;
 
-   struct anv_state_pool *pool = &device->dynamic_state_pool;
+   struct anv_state_pool *pool = &device->aux_tt_pool;
    buf->state = anv_state_pool_alloc(pool, size, size);
 
    buf->base.gpu = pool->block_pool.bo->offset + buf->state.offset;
@@ -3036,7 +3039,7 @@ intel_aux_map_buffer_free(void *driver_ctx, struct intel_buffer *buffer)
 {
    struct intel_aux_map_buffer *buf = (struct intel_aux_map_buffer*)buffer;
    struct anv_device *device = (struct anv_device*)driver_ctx;
-   struct anv_state_pool *pool = &device->dynamic_state_pool;
+   struct anv_state_pool *pool = &device->aux_tt_pool;
    anv_state_pool_free(pool, buf->state);
    free(buf);
 }
@@ -3529,10 +3532,20 @@ VkResult anv_CreateDevice(
    }
 
    if (device->info->has_aux_map) {
+      result = anv_state_pool_init(&device->aux_tt_pool, device,
+                                   &(struct anv_state_pool_params) {
+                                      .name         = "aux-tt pool",
+                                      .base_address = device->physical->va.aux_tt_pool.addr,
+                                      .block_size   = 16384,
+                                      .max_size     = device->physical->va.aux_tt_pool.size,
+                                   });
+      if (result != VK_SUCCESS)
+         goto fail_push_descriptor_buffer_pool;
+
       device->aux_map_ctx = intel_aux_map_init(device, &aux_map_allocator,
                                                &physical_device->info);
       if (!device->aux_map_ctx)
-         goto fail_push_descriptor_buffer_pool;
+         goto fail_aux_tt_pool;
    }
 
    result = anv_device_alloc_bo(device, "workaround", 8192,
@@ -3788,6 +3801,9 @@ VkResult anv_CreateDevice(
       intel_aux_map_finish(device->aux_map_ctx);
       device->aux_map_ctx = NULL;
    }
+ fail_aux_tt_pool:
+   if (device->info->has_aux_map)
+      anv_state_pool_finish(&device->aux_tt_pool);
  fail_push_descriptor_buffer_pool:
    if (device->vk.enabled_extensions.EXT_descriptor_buffer &&
        device->info->verx10 >= 125)
@@ -3924,8 +3940,8 @@ void anv_DestroyDevice(
    if (device->info->has_aux_map) {
       intel_aux_map_finish(device->aux_map_ctx);
       device->aux_map_ctx = NULL;
+      anv_state_pool_finish(&device->aux_tt_pool);
    }
-
    if (device->vk.enabled_extensions.EXT_descriptor_buffer &&
        device->info->verx10 >= 125)
       anv_state_pool_finish(&device->push_descriptor_buffer_pool);

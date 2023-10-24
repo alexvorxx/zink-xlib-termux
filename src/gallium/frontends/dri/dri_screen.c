@@ -620,17 +620,15 @@ dri_init_screen(struct dri_screen *screen,
    screen->base.get_egl_image = dri_get_egl_image;
    screen->base.get_param = dri_get_param;
    screen->base.set_background_context = dri_set_background_context;
-
-   if (screen->validate_egl_image)
-      screen->base.validate_egl_image = dri_validate_egl_image;
+   screen->base.validate_egl_image = dri_validate_egl_image;
 
    screen->lookup_egl_image = dri2_lookup_egl_image;
+   screen->validate_egl_image = dri2_validate_egl_image;
    const __DRIimageLookupExtension *image = screen->dri2.image;
    if (image &&
        image->base.version >= 2 &&
        image->validateEGLImage &&
        image->lookupEGLImageValidated) {
-      screen->validate_egl_image = dri2_validate_egl_image;
       screen->lookup_egl_image_validated = dri2_lookup_egl_image_validated;
    }
 

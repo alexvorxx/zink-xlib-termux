@@ -276,7 +276,10 @@ dri2_validate_egl_image(struct dri_screen *screen, void *handle)
 {
    const __DRIimageLookupExtension *loader = screen->dri2.image;
 
-   return loader->validateEGLImage(handle, screen->loaderPrivate);
+   if (loader)
+      return loader->validateEGLImage(handle, screen->loaderPrivate);
+   else
+      return true;
 }
 
 __DRIimage *

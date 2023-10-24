@@ -979,7 +979,7 @@ gbm_dri_bo_create(struct gbm_device *gbm,
    /* Gallium drivers requires shared in order to get the handle/stride */
    dri_use |= __DRI_IMAGE_USE_SHARE;
 
-   if (modifiers && !dri->image->createImageWithModifiers) {
+   if (modifiers && !dri->image->createImageWithModifiers2) {
       errno = ENOSYS;
       goto failed;
    }
@@ -1164,7 +1164,7 @@ gbm_dri_surface_create(struct gbm_device *gbm,
    struct gbm_dri_device *dri = gbm_dri_device(gbm);
    struct gbm_dri_surface *surf;
 
-   if (modifiers && !dri->image->createImageWithModifiers) {
+   if (modifiers && !dri->image->createImageWithModifiers2) {
       errno = ENOSYS;
       return NULL;
    }

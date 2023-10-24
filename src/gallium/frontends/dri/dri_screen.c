@@ -624,6 +624,16 @@ dri_init_screen(struct dri_screen *screen,
    if (screen->validate_egl_image)
       screen->base.validate_egl_image = dri_validate_egl_image;
 
+   screen->lookup_egl_image = dri2_lookup_egl_image;
+   const __DRIimageLookupExtension *image = screen->dri2.image;
+   if (image &&
+       image->base.version >= 2 &&
+       image->validateEGLImage &&
+       image->lookupEGLImageValidated) {
+      screen->validate_egl_image = dri2_validate_egl_image;
+      screen->lookup_egl_image_validated = dri2_lookup_egl_image_validated;
+   }
+
    if (pscreen->get_param(pscreen, PIPE_CAP_NPOT_TEXTURES))
       screen->target = PIPE_TEXTURE_2D;
    else

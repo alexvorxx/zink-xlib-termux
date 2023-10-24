@@ -152,7 +152,6 @@ kopper_init_screen(struct dri_screen *screen, bool driver_name_is_inferred)
 
    assert(pscreen->get_param(pscreen, PIPE_CAP_DEVICE_RESET_STATUS_QUERY));
    screen->has_reset_status_query = true;
-   screen->lookup_egl_image = dri2_lookup_egl_image;
    screen->has_dmabuf = pscreen->get_param(pscreen, PIPE_CAP_DMABUF);
    screen->has_modifiers = pscreen->query_dmabuf_modifiers != NULL;
    screen->is_sw = zink_kopper_is_cpu(pscreen);
@@ -160,15 +159,6 @@ kopper_init_screen(struct dri_screen *screen, bool driver_name_is_inferred)
       screen->extensions = drivk_screen_extensions;
    else
       screen->extensions = drivk_sw_screen_extensions;
-
-   const __DRIimageLookupExtension *image = screen->dri2.image;
-   if (image &&
-       image->base.version >= 2 &&
-       image->validateEGLImage &&
-       image->lookupEGLImageValidated) {
-      screen->validate_egl_image = dri2_validate_egl_image;
-      screen->lookup_egl_image_validated = dri2_lookup_egl_image_validated;
-   }
 
    screen->create_drawable = kopper_create_drawable;
 

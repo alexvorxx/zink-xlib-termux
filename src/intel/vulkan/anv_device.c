@@ -1889,8 +1889,7 @@ anv_physical_device_init_uuids(struct anv_physical_device *device)
     */
    _mesa_sha1_init(&sha1_ctx);
    _mesa_sha1_update(&sha1_ctx, build_id_data(note), build_id_len);
-   _mesa_sha1_update(&sha1_ctx, &device->info.pci_device_id,
-                     sizeof(device->info.pci_device_id));
+   brw_device_sha1_update(&sha1_ctx, &device->info);
    _mesa_sha1_update(&sha1_ctx, &device->always_use_bindless,
                      sizeof(device->always_use_bindless));
    _mesa_sha1_final(&sha1_ctx, sha1);

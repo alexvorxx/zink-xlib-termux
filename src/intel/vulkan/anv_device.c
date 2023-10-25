@@ -3627,6 +3627,17 @@ VkResult anv_CreateDevice(
          goto fail_trivial_batch;
 
       anv_genX(device->info, init_cps_device_state)(device);
+
+      if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+         device->cps_states_db =
+            anv_state_pool_alloc(&device->dynamic_state_db_pool,
+                                 device->cps_states.alloc_size, 32);
+         if (device->cps_states_db.map == NULL)
+            goto fail_trivial_batch;
+
+         memcpy(device->cps_states_db.map, device->cps_states.map,
+                device->cps_states.alloc_size);
+      }
    }
 
    if (device->physical->indirect_descriptors) {
@@ -3933,6 +3944,7 @@ void anv_DestroyDevice(
    anv_state_pool_free(&device->dynamic_state_pool, device->cps_states);
    anv_state_pool_free(&device->dynamic_state_pool, device->breakpoint);
    if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+      anv_state_pool_free(&device->dynamic_state_db_pool, device->cps_states_db);
       anv_state_pool_free(&device->dynamic_state_db_pool, device->slice_hash_db);
       anv_state_pool_free(&device->dynamic_state_db_pool, device->border_colors_db);
       anv_state_reserved_pool_finish(&device->custom_border_colors_db);

@@ -2482,6 +2482,8 @@ genX(BeginCommandBuffer)(
 
    cmd_buffer->usage_flags = pBeginInfo->flags;
 
+   cmd_buffer->state.current_db_mode = ANV_CMD_DESCRIPTOR_BUFFER_MODE_LEGACY; 
+
    /* VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT must be ignored for
     * primary level command buffers.
     *

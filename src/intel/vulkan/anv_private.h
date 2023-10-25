@@ -3280,11 +3280,17 @@ struct anv_push_constants {
 
    /**
     * Base offsets for descriptor sets from
-    * INDIRECT_DESCRIPTOR_POOL_MIN_ADDRESS
     *
-    * In bits [0:5] : dynamic offset index in dynamic_offsets[] for the set
+    * The offset has different meaning depending on a number of factors :
     *
-    * In bits [6:63] : descriptor set address
+    *    - with descriptor sets (direct or indirect), this relative
+    *      pdevice->va.descriptor_pool
+    *
+    *    - with descriptor buffers on DG2+, relative
+    *      device->va.descriptor_buffer_pool
+    *
+    *    - with descriptor buffers prior to DG2, relative the programmed value
+    *      in STATE_BASE_ADDRESS::BindlessSurfaceStateBaseAddress
     */
    uint32_t desc_surface_offsets[MAX_SETS];
 
@@ -3478,6 +3484,26 @@ struct anv_simple_shader {
  */
 struct anv_cmd_pipeline_state {
    struct anv_descriptor_set *descriptors[MAX_SETS];
+   struct {
+      bool             bound;
+      /**
+       * Buffer index used by this descriptor set.
+       */
+      int32_t          buffer_index; /* -1 means push descriptor */
+      /**
+       * Offset of the descriptor set in the descriptor buffer.
+       */
+      uint32_t         buffer_offset;
+      /**
+       * Final computed address to be emitted in the descriptor set surface
+       * state.
+       */
+      uint64_t         address;
+      /**
+       * The descriptor set surface state.
+       */
+      struct anv_state state;
+   } descriptor_buffers[MAX_SETS];
    struct anv_push_descriptor_set push_descriptor;
 
    struct anv_push_constants push_constants;
@@ -3645,6 +3671,12 @@ struct anv_cmd_state {
     */
    enum anv_cmd_descriptor_buffer_mode          current_db_mode;
 
+   /**
+    * Whether the command buffer has pending descriptor buffers bound it. This
+    * variable changes before anv_device::current_db_mode.
+    */
+   enum anv_cmd_descriptor_buffer_mode          pending_db_mode;
+
    struct {
       /**
        * Tracks operations susceptible to interfere with queries in the
@@ -3667,6 +3699,14 @@ struct anv_cmd_state {
    VkShaderStageFlags                           descriptors_dirty;
    VkShaderStageFlags                           push_descriptors_dirty;
    VkShaderStageFlags                           push_constants_dirty;
+
+   struct {
+      uint64_t                                  surfaces_address;
+      uint64_t                                  samplers_address;
+      bool                                      dirty;
+      VkShaderStageFlags                        offsets_dirty;
+      uint64_t                                  address[MAX_SETS];
+   }                                            descriptor_buffers;
 
    struct anv_vertex_binding                    vertex_bindings[MAX_VBS];
    bool                                         xfb_enabled;
@@ -3954,8 +3994,23 @@ static inline struct anv_address
 anv_cmd_buffer_dynamic_state_address(struct anv_cmd_buffer *cmd_buffer,
                                      struct anv_state state)
 {
+   if (cmd_buffer->state.current_db_mode ==
+       ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) {
+      return anv_state_pool_state_address(
+         &cmd_buffer->device->dynamic_state_db_pool, state);
+   }
    return anv_state_pool_state_address(
       &cmd_buffer->device->dynamic_state_pool, state);
+}
+
+static inline uint64_t
+anv_cmd_buffer_descriptor_buffer_address(struct anv_cmd_buffer *cmd_buffer,
+                                         int32_t buffer_index)
+{
+   if (buffer_index == -1)
+      return cmd_buffer->device->physical->va.push_descriptor_buffer_pool.addr;
+
+   return cmd_buffer->state.descriptor_buffers.address[buffer_index];
 }
 
 VkResult anv_cmd_buffer_init_batch_bo_chain(struct anv_cmd_buffer *cmd_buffer);

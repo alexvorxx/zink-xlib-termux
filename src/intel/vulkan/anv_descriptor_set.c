@@ -1942,13 +1942,24 @@ anv_push_descriptor_set_init(struct anv_cmd_buffer *cmd_buffer,
        (push_set->set_used_on_gpu ||
         set->desc_surface_mem.alloc_size < layout->descriptor_buffer_surface_size)) {
       struct anv_physical_device *pdevice = cmd_buffer->device->physical;
-      struct anv_state_stream *push_stream =
-         pdevice->indirect_descriptors ?
-         &cmd_buffer->indirect_push_descriptor_stream :
-         &cmd_buffer->surface_state_stream;
-      uint64_t push_base_address = pdevice->indirect_descriptors ?
-         pdevice->va.indirect_push_descriptor_pool.addr :
-         pdevice->va.internal_surface_state_pool.addr;
+      struct anv_state_stream *push_stream;
+      uint64_t push_base_address;
+
+      if (layout->flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT) {
+         push_stream = pdevice->uses_ex_bso ?
+            &cmd_buffer->push_descriptor_buffer_stream :
+            &cmd_buffer->surface_state_stream;
+         push_base_address = pdevice->uses_ex_bso ?
+            pdevice->va.push_descriptor_buffer_pool.addr :
+            pdevice->va.internal_surface_state_pool.addr;
+      } else {
+         push_stream = pdevice->indirect_descriptors ?
+            &cmd_buffer->indirect_push_descriptor_stream :
+            &cmd_buffer->surface_state_stream;
+         push_base_address = pdevice->indirect_descriptors ?
+            pdevice->va.indirect_push_descriptor_pool.addr :
+            pdevice->va.internal_surface_state_pool.addr;
+      }
 
       uint32_t surface_size, sampler_size;
       anv_descriptor_set_layout_descriptor_buffer_size(layout, 0,
@@ -2868,7 +2879,7 @@ void anv_GetDescriptorEXT(
              (sampler = anv_sampler_from_handle(
                 pDescriptorInfo->data.pCombinedImageSampler->sampler))) {
             memcpy(pDescriptor + desc_offset + ANV_SURFACE_STATE_SIZE,
-                   sampler->bindless_state.map + i * ANV_SAMPLER_STATE_SIZE,
+                   sampler->db_state[i],
                    ANV_SAMPLER_STATE_SIZE);
          } else {
             memset(pDescriptor + desc_offset + ANV_SURFACE_STATE_SIZE,

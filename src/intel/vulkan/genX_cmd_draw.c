@@ -190,6 +190,14 @@ get_push_range_address(struct anv_cmd_buffer *cmd_buffer,
       return anv_descriptor_set_address(set);
    }
 
+   case ANV_DESCRIPTOR_SET_DESCRIPTORS_BUFFER: {
+      return anv_address_from_u64(
+         anv_cmd_buffer_descriptor_buffer_address(
+            cmd_buffer,
+            gfx_state->base.descriptor_buffers[range->index].buffer_index) +
+         gfx_state->base.descriptor_buffers[range->index].buffer_offset);
+   }
+
    case ANV_DESCRIPTOR_SET_PUSH_CONSTANTS: {
       if (gfx_state->base.push_constants_state.alloc_size == 0) {
          gfx_state->base.push_constants_state =
@@ -260,6 +268,10 @@ get_push_range_bound_size(struct anv_cmd_buffer *cmd_buffer,
       assert((range->start + range->length) * 32 <= state.alloc_size);
       return state.alloc_size;
    }
+
+   case ANV_DESCRIPTOR_SET_DESCRIPTORS_BUFFER:
+      return gfx_state->base.pipeline->layout.set[
+         range->index].layout->descriptor_buffer_surface_size;
 
    case ANV_DESCRIPTOR_SET_PUSH_CONSTANTS:
       return (range->start + range->length) * 32;
@@ -659,6 +671,8 @@ genX(cmd_buffer_flush_gfx_state)(struct anv_cmd_buffer *cmd_buffer)
    genX(cmd_buffer_config_l3)(cmd_buffer, pipeline->base.base.l3_config);
 
    genX(cmd_buffer_emit_hashing_mode)(cmd_buffer, UINT_MAX, UINT_MAX, 1);
+
+   genX(flush_descriptor_buffers)(cmd_buffer, &cmd_buffer->state.gfx.base);
 
    genX(flush_pipeline_select_3d)(cmd_buffer);
 

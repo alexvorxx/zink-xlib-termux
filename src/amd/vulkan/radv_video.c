@@ -338,6 +338,7 @@ radv_video_patch_session_parameters(struct vk_video_session_parameters *params)
    default:
       return;
    case VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR:
+   case VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR:
       radv_video_patch_encode_session_parameters(params);
       break;
    }
@@ -387,6 +388,31 @@ radv_CreateVideoSessionKHR(VkDevice _device, const VkVideoSessionCreateInfoKHR *
       vid->enc_session.encode_standard = RENCODE_ENCODE_STANDARD_H264;
       vid->enc_session.aligned_picture_width = align(vid->vk.max_coded.width, 16);
       vid->enc_session.aligned_picture_height = align(vid->vk.max_coded.height, 16);
+      vid->enc_session.padding_width = vid->enc_session.aligned_picture_width - vid->vk.max_coded.width;
+      vid->enc_session.padding_height = vid->enc_session.aligned_picture_height - vid->vk.max_coded.height;
+      vid->enc_session.display_remote = 0;
+      vid->enc_session.pre_encode_mode = 0;
+      vid->enc_session.pre_encode_chroma_enabled = 0;
+      switch (vid->vk.enc_usage.tuning_mode) {
+      case VK_VIDEO_ENCODE_TUNING_MODE_DEFAULT_KHR:
+      default:
+         vid->enc_preset_mode = RENCODE_PRESET_MODE_BALANCE;
+         break;
+      case VK_VIDEO_ENCODE_TUNING_MODE_LOW_LATENCY_KHR:
+      case VK_VIDEO_ENCODE_TUNING_MODE_ULTRA_LOW_LATENCY_KHR:
+         vid->enc_preset_mode = RENCODE_PRESET_MODE_SPEED;
+         break;
+      case VK_VIDEO_ENCODE_TUNING_MODE_HIGH_QUALITY_KHR:
+      case VK_VIDEO_ENCODE_TUNING_MODE_LOSSLESS_KHR:
+         vid->enc_preset_mode = RENCODE_PRESET_MODE_QUALITY;
+         break;
+      }
+      break;
+   case VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR:
+      vid->encode = true;
+      vid->enc_session.encode_standard = RENCODE_ENCODE_STANDARD_HEVC;
+      vid->enc_session.aligned_picture_width = align(vid->vk.max_coded.width, 64);
+      vid->enc_session.aligned_picture_height = align(vid->vk.max_coded.height, 64);
       vid->enc_session.padding_width = vid->enc_session.aligned_picture_width - vid->vk.max_coded.width;
       vid->enc_session.padding_height = vid->enc_session.aligned_picture_height - vid->vk.max_coded.height;
       vid->enc_session.display_remote = 0;
@@ -494,6 +520,10 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
       break;
    case VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR:
       cap = &pdev->info.enc_caps.codec_info[AMDGPU_INFO_VIDEO_CAPS_CODEC_IDX_MPEG4_AVC];
+      is_encode = true;
+      break;
+   case VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR:
+      cap = &pdev->info.enc_caps.codec_info[AMDGPU_INFO_VIDEO_CAPS_CODEC_IDX_HEVC];
       is_encode = true;
       break;
 #endif
@@ -654,6 +684,43 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
 
       strcpy(pCapabilities->stdHeaderVersion.extensionName, VK_STD_VULKAN_VIDEO_CODEC_H264_ENCODE_EXTENSION_NAME);
       pCapabilities->stdHeaderVersion.specVersion = VK_STD_VULKAN_VIDEO_CODEC_H264_ENCODE_SPEC_VERSION;
+      break;
+   }
+   case VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR: {
+      struct VkVideoEncodeH265CapabilitiesKHR *ext = (struct VkVideoEncodeH265CapabilitiesKHR *)vk_find_struct(
+         pCapabilities->pNext, VIDEO_ENCODE_H265_CAPABILITIES_KHR);
+      ext->flags = 0;
+      pCapabilities->maxDpbSlots = NUM_H2645_REFS;
+      pCapabilities->maxActiveReferencePictures = NUM_H2645_REFS;
+      ext->maxLevelIdc = cap ? cap->max_level : 0;
+      ext->maxSliceSegmentCount = 128;
+      ext->maxTiles.width = 1;
+      ext->maxTiles.height = 1;
+      ext->ctbSizes = VK_VIDEO_ENCODE_H265_CTB_SIZE_64_BIT_KHR;
+      ext->transformBlockSizes =
+         VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_4_BIT_KHR | VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_8_BIT_KHR |
+         VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_16_BIT_KHR | VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_32_BIT_KHR;
+      ext->maxPPictureL0ReferenceCount = 1;
+      ext->maxBPictureL0ReferenceCount = 0;
+      ext->maxL1ReferenceCount = 0;
+      ext->maxSubLayerCount = 1;
+      ext->expectDyadicTemporalSubLayerPattern = false;
+      ext->minQp = 0;
+      ext->maxQp = 51;
+      ext->prefersGopRemainingFrames = false;
+      ext->requiresGopRemainingFrames = false;
+      ext->stdSyntaxFlags = VK_VIDEO_ENCODE_H265_STD_CONSTRAINED_INTRA_PRED_FLAG_SET_BIT_KHR |
+                            VK_VIDEO_ENCODE_H265_STD_DEBLOCKING_FILTER_OVERRIDE_ENABLED_FLAG_SET_BIT_KHR |
+                            VK_VIDEO_ENCODE_H265_STD_CONSTRAINED_INTRA_PRED_FLAG_SET_BIT_KHR |
+                            VK_VIDEO_ENCODE_H265_STD_ENTROPY_CODING_SYNC_ENABLED_FLAG_SET_BIT_KHR;
+
+      if (pdev->enc_hw_ver >= RADV_VIDEO_ENC_HW_2)
+         ext->stdSyntaxFlags |= VK_VIDEO_ENCODE_H265_STD_SAMPLE_ADAPTIVE_OFFSET_ENABLED_FLAG_SET_BIT_KHR;
+
+      if (pdev->enc_hw_ver >= RADV_VIDEO_ENC_HW_3)
+         ext->stdSyntaxFlags |= VK_VIDEO_ENCODE_H265_STD_TRANSFORM_SKIP_ENABLED_FLAG_SET_BIT_KHR;
+      strcpy(pCapabilities->stdHeaderVersion.extensionName, VK_STD_VULKAN_VIDEO_CODEC_H265_ENCODE_EXTENSION_NAME);
+      pCapabilities->stdHeaderVersion.specVersion = VK_STD_VULKAN_VIDEO_CODEC_H265_ENCODE_SPEC_VERSION;
       break;
    }
    default:

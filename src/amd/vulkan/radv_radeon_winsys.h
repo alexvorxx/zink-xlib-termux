@@ -318,6 +318,13 @@ radeon_emit(struct radeon_cmdbuf *cs, uint32_t value)
 }
 
 static inline void
+radeon_emit_direct(struct radeon_cmdbuf *cs, uint32_t offset, uint32_t value)
+{
+   assert(offset < cs->reserved_dw);
+   cs->buf[offset] = value;
+}
+
+static inline void
 radeon_emit_array(struct radeon_cmdbuf *cs, const uint32_t *values, unsigned count)
 {
    assert(cs->cdw + count <= cs->reserved_dw);

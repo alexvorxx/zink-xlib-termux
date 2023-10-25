@@ -818,6 +818,17 @@ genX(init_device_state)(struct anv_device *device)
          return res;
    }
 
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer &&
+       device->slice_hash.alloc_size) {
+      device->slice_hash_db =
+         anv_state_pool_alloc(&device->dynamic_state_db_pool,
+                              device->slice_hash.alloc_size, 64);
+
+      memcpy(device->slice_hash_db.map,
+             device->slice_hash.map,
+             device->slice_hash.alloc_size);
+   }
+
    return res;
 }
 

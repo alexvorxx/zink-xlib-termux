@@ -3918,6 +3918,8 @@ void anv_DestroyDevice(
    anv_state_pool_free(&device->dynamic_state_pool, device->slice_hash);
    anv_state_pool_free(&device->dynamic_state_pool, device->cps_states);
    anv_state_pool_free(&device->dynamic_state_pool, device->breakpoint);
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
+      anv_state_pool_free(&device->dynamic_state_db_pool, device->slice_hash_db);
 #endif
 
    for (unsigned i = 0; i < ARRAY_SIZE(device->rt_scratch_bos); i++) {

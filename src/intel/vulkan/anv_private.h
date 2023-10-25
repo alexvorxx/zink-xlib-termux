@@ -1776,6 +1776,7 @@ struct anv_device {
     struct anv_state                            border_colors;
 
     struct anv_state                            slice_hash;
+    struct anv_state                            slice_hash_db;
 
     /** An array of CPS_STATE structures grouped by MAX_VIEWPORTS elements
      *

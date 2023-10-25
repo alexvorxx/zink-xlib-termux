@@ -72,6 +72,7 @@ void radv_vcn_sq_header(struct radeon_cmdbuf *cs, struct rvcn_sq_var *sq, bool e
 void radv_vcn_sq_tail(struct radeon_cmdbuf *cs, struct rvcn_sq_var *sq);
 
 void radv_init_physical_device_encoder(struct radv_physical_device *pdevice);
+void radv_probe_video_encode(struct radv_physical_device *pdev);
 void radv_video_enc_begin_coding(struct radv_cmd_buffer *cmd_buffer);
 void radv_video_enc_end_coding(struct radv_cmd_buffer *cmd_buffer);
 void radv_video_enc_control_video_coding(struct radv_cmd_buffer *cmd_buffer,

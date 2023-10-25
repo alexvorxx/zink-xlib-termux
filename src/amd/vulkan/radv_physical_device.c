@@ -250,6 +250,13 @@ radv_physical_device_init_queue_table(struct radv_physical_device *pdev)
       idx++;
    }
 
+   if (pdev->video_encode_enabled) {
+      if (pdev->info.ip[AMD_IP_VCN_ENC].num_queues > 0) {
+         pdev->vk_queue_to_radv[idx] = RADV_QUEUE_VIDEO_ENC;
+         idx++;
+      }
+   }
+
    if (radv_sparse_queue_enabled(pdev)) {
       pdev->vk_queue_to_radv[idx] = RADV_QUEUE_SPARSE;
       idx++;
@@ -568,6 +575,9 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_video_decode_queue = !!(instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
       .KHR_video_decode_h264 = VIDEO_CODEC_H264DEC && !!(instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
       .KHR_video_decode_h265 = VIDEO_CODEC_H265DEC && !!(instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
+      .KHR_video_encode_h264 = VIDEO_CODEC_H264ENC && pdev->video_encode_enabled,
+      .KHR_video_encode_h265 = VIDEO_CODEC_H265ENC && pdev->video_encode_enabled,
+      .KHR_video_encode_queue = pdev->video_encode_enabled,
       .KHR_vulkan_memory_model = true,
       .KHR_workgroup_memory_explicit_layout = true,
       .KHR_zero_initialize_workgroup_memory = true,
@@ -2069,6 +2079,8 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
          pdev->rt_wave_size = 64;
    }
 
+   radv_probe_video_encode(pdev);
+
    pdev->max_shared_size = pdev->info.gfx_level >= GFX7 ? 65536 : 32768;
 
    radv_physical_device_init_mem_types(pdev);
@@ -2123,6 +2135,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
       ac_print_gpu_info(&pdev->info, stdout);
 
    radv_init_physical_device_decoder(pdev);
+   radv_init_physical_device_encoder(pdev);
 
    radv_physical_device_init_queue_table(pdev);
 
@@ -2232,6 +2245,11 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
       num_queue_families++;
    }
 
+   if (pdev->video_encode_enabled) {
+     if (pdev->info.ip[AMD_IP_VCN_ENC].num_queues > 0)
+       num_queue_families++;
+   }
+
    if (radv_sparse_queue_enabled(pdev)) {
       num_queue_families++;
    }
@@ -2299,6 +2317,20 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
       }
    }
 
+   if (pdev->video_encode_enabled) {
+      if (pdev->info.ip[AMD_IP_VCN_ENC].num_queues > 0) {
+         if (*pCount > idx) {
+            *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
+               .queueFlags = VK_QUEUE_VIDEO_ENCODE_BIT_KHR,
+               .queueCount = pdev->info.ip[AMD_IP_VCN_ENC].num_queues,
+               .timestampValidBits = 64,
+               .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
+            };
+            idx++;
+         }
+      }
+   }
+
    if (radv_sparse_queue_enabled(pdev)) {
       if (*pCount > idx) {
          *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
@@ -2333,10 +2365,10 @@ radv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice, ui
    VkQueueFamilyProperties *properties[] = {
       &pQueueFamilyProperties[0].queueFamilyProperties, &pQueueFamilyProperties[1].queueFamilyProperties,
       &pQueueFamilyProperties[2].queueFamilyProperties, &pQueueFamilyProperties[3].queueFamilyProperties,
-      &pQueueFamilyProperties[4].queueFamilyProperties,
+      &pQueueFamilyProperties[4].queueFamilyProperties, &pQueueFamilyProperties[5].queueFamilyProperties,
    };
    radv_get_physical_device_queue_family_properties(pdev, pCount, properties);
-   assert(*pCount <= 5);
+   assert(*pCount <= 6);
 
    for (uint32_t i = 0; i < *pCount; i++) {
       vk_foreach_struct (ext, pQueueFamilyProperties[i].pNext) {
@@ -2364,6 +2396,12 @@ radv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice, ui
                if (VIDEO_CODEC_AV1DEC && pdev->info.vcn_ip_version >= VCN_3_0_0 &&
                    pdev->info.vcn_ip_version != VCN_3_0_33)
                   prop->videoCodecOperations |= VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR;
+            }
+            if (pQueueFamilyProperties[i].queueFamilyProperties.queueFlags & VK_QUEUE_VIDEO_ENCODE_BIT_KHR) {
+               if (VIDEO_CODEC_H264ENC)
+                  prop->videoCodecOperations |= VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR;
+               if (VIDEO_CODEC_H265ENC)
+                  prop->videoCodecOperations |= VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR;
             }
             break;
          }

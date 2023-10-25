@@ -2893,6 +2893,11 @@ anv_device_init_border_colors(struct anv_device *device)
    device->border_colors =
       anv_state_pool_emit_data(&device->dynamic_state_pool,
                                sizeof(border_colors), 64, border_colors);
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+      device->border_colors_db =
+         anv_state_pool_emit_data(&device->dynamic_state_db_pool,
+                                  sizeof(border_colors), 64, border_colors);
+   }
 }
 
 static VkResult
@@ -3412,6 +3417,12 @@ VkResult anv_CreateDevice(
                                 &device->dynamic_state_pool,
                                 MAX_CUSTOM_BORDER_COLORS,
                                 sizeof(struct gfx8_border_color), 64);
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+      anv_state_reserved_pool_init(&device->custom_border_colors_db,
+                                   &device->dynamic_state_db_pool,
+                                   MAX_CUSTOM_BORDER_COLORS,
+                                   sizeof(struct gfx8_border_color), 64);
+   }
 
    result = anv_state_pool_init(&device->instruction_state_pool, device,
                                 &(struct anv_state_pool_params) {
@@ -3825,8 +3836,10 @@ VkResult anv_CreateDevice(
    anv_state_pool_finish(&device->instruction_state_pool);
  fail_dynamic_state_db_pool:
    anv_state_reserved_pool_finish(&device->custom_border_colors);
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+      anv_state_reserved_pool_finish(&device->custom_border_colors_db);
       anv_state_pool_finish(&device->dynamic_state_db_pool);
+   }
  fail_dynamic_state_pool:
    anv_state_pool_finish(&device->dynamic_state_pool);
  fail_general_state_pool:
@@ -3915,11 +3928,15 @@ void anv_DestroyDevice(
     */
    anv_state_reserved_pool_finish(&device->custom_border_colors);
    anv_state_pool_free(&device->dynamic_state_pool, device->border_colors);
+   anv_state_pool_free(&device->dynamic_state_pool, device->border_colors_db);
    anv_state_pool_free(&device->dynamic_state_pool, device->slice_hash);
    anv_state_pool_free(&device->dynamic_state_pool, device->cps_states);
    anv_state_pool_free(&device->dynamic_state_pool, device->breakpoint);
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
       anv_state_pool_free(&device->dynamic_state_db_pool, device->slice_hash_db);
+      anv_state_pool_free(&device->dynamic_state_db_pool, device->border_colors_db);
+      anv_state_reserved_pool_finish(&device->custom_border_colors_db);
+   }
 #endif
 
    for (unsigned i = 0; i < ARRAY_SIZE(device->rt_scratch_bos); i++) {
@@ -5055,9 +5072,18 @@ void anv_DestroySampler(
                           sampler->bindless_state);
    }
 
+   if (sampler->bindless_state_db.map) {
+      anv_state_pool_free(&device->dynamic_state_db_pool,
+                          sampler->bindless_state_db);
+   }
+
    if (sampler->custom_border_color.map) {
       anv_state_reserved_pool_free(&device->custom_border_colors,
                                    sampler->custom_border_color);
+   }
+   if (sampler->custom_border_color_db.map) {
+      anv_state_reserved_pool_free(&device->custom_border_colors_db,
+                                   sampler->custom_border_color_db);
    }
 
    vk_sampler_destroy(&device->vk, pAllocator, &sampler->vk);

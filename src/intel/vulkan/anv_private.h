@@ -1740,6 +1740,7 @@ struct anv_device {
     struct anv_state_pool                       push_descriptor_buffer_pool;
 
     struct anv_state_reserved_pool              custom_border_colors;
+    struct anv_state_reserved_pool              custom_border_colors_db;
 
     /** BO used for various workarounds
      *
@@ -1774,6 +1775,7 @@ struct anv_device {
     struct blorp_context                        blorp;
 
     struct anv_state                            border_colors;
+    struct anv_state                            border_colors_db;
 
     struct anv_state                            slice_hash;
     struct anv_state                            slice_hash_db;
@@ -5620,14 +5622,17 @@ struct anv_sampler {
    struct vk_sampler            vk;
 
    uint32_t                     state[3][4];
+   uint32_t                     db_state[3][4];
    uint32_t                     n_planes;
 
    /* Blob of sampler state data which is guaranteed to be 32-byte aligned
     * and with a 32-byte stride for use as bindless samplers.
     */
    struct anv_state             bindless_state;
+   struct anv_state             bindless_state_db;
 
    struct anv_state             custom_border_color;
+   struct anv_state             custom_border_color_db;
 };
 
 #define ANV_PIPELINE_STATISTICS_MASK 0x000007ff

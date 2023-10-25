@@ -1111,16 +1111,23 @@ VkResult genX(CreateSampler)(
    sampler->n_planes = ycbcr_info ? ycbcr_info->n_planes : 1;
 
    uint32_t border_color_stride = 64;
-   uint32_t border_color_offset;
+   uint32_t border_color_offset, border_color_db_offset = 0;
+   void *border_color_ptr;
    if (sampler->vk.border_color <= VK_BORDER_COLOR_INT_OPAQUE_WHITE) {
       border_color_offset = device->border_colors.offset +
                             pCreateInfo->borderColor *
                             border_color_stride;
+      border_color_db_offset = device->border_colors_db.offset +
+                               pCreateInfo->borderColor *
+                               border_color_stride;
+      border_color_ptr = device->border_colors.map +
+                         pCreateInfo->borderColor * border_color_stride;
    } else {
       assert(vk_border_color_is_custom(sampler->vk.border_color));
       sampler->custom_border_color =
          anv_state_reserved_pool_alloc(&device->custom_border_colors);
       border_color_offset = sampler->custom_border_color.offset;
+      border_color_ptr = sampler->custom_border_color.map;
 
       union isl_color_value color = { .u32 = {
          sampler->vk.border_color_value.uint32[0],
@@ -1141,17 +1148,15 @@ VkResult genX(CreateSampler)(
          color = isl_color_value_swizzle(color, fmt_plane->swizzle, true);
       }
 
-      memcpy(sampler->custom_border_color.map, color.u32, sizeof(color));
-   }
+      memcpy(border_color_ptr, color.u32, sizeof(color));
 
-   /* If we have bindless, allocate enough samplers.  We allocate 32 bytes
-    * for each sampler instead of 16 bytes because we want all bindless
-    * samplers to be 32-byte aligned so we don't have to use indirect
-    * sampler messages on them.
-    */
-   sampler->bindless_state =
-      anv_state_pool_alloc(&device->dynamic_state_pool,
-                           sampler->n_planes * 32, 32);
+      if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+         sampler->custom_border_color_db =
+            anv_state_reserved_pool_alloc(&device->custom_border_colors_db);
+         border_color_db_offset = sampler->custom_border_color_db.offset;
+         memcpy(sampler->custom_border_color_db.map, color.u32, sizeof(color));
+      }
+   }
 
    const bool seamless_cube =
       !(pCreateInfo->flags & VK_SAMPLER_CREATE_NON_SEAMLESS_CUBE_MAP_BIT_EXT);
@@ -1235,11 +1240,38 @@ VkResult genX(CreateSampler)(
             sampler->vk.reduction_mode != VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
       };
 
+      /* Put border color after the hashing, we don't want the allocation
+       * order of border colors to influence the hash. We just need th
+       * parameters to be hashed.
+       */
+      sampler_state.BorderColorPointer = border_color_offset;
       GENX(SAMPLER_STATE_pack)(NULL, sampler->state[p], &sampler_state);
 
-      if (sampler->bindless_state.map) {
-         memcpy(sampler->bindless_state.map + p * 32,
-                sampler->state[p], GENX(SAMPLER_STATE_length) * 4);
+      if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+         sampler_state.BorderColorPointer = border_color_db_offset;
+         GENX(SAMPLER_STATE_pack)(NULL, sampler->db_state[p], &sampler_state);
+      }
+   }
+
+   /* If we have bindless, allocate enough samplers.  We allocate 32 bytes
+    * for each sampler instead of 16 bytes because we want all bindless
+    * samplers to be 32-byte aligned so we don't have to use indirect
+    * sampler messages on them.
+    */
+   sampler->bindless_state =
+      anv_state_pool_alloc(&device->dynamic_state_pool,
+                           sampler->n_planes * 32, 32);
+   if (sampler->bindless_state.map) {
+      memcpy(sampler->bindless_state.map, sampler->state,
+             sampler->n_planes * GENX(SAMPLER_STATE_length) * 4);
+   }
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+      sampler->bindless_state_db =
+         anv_state_pool_alloc(&device->dynamic_state_db_pool,
+                              sampler->n_planes * 32, 32);
+      if (sampler->bindless_state_db.map) {
+         memcpy(sampler->bindless_state_db.map, sampler->db_state,
+                sampler->n_planes * GENX(SAMPLER_STATE_length) * 4);
       }
    }
 

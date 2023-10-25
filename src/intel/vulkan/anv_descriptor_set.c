@@ -2066,6 +2066,16 @@ anv_image_view_surface_data_for_plane_layout(struct anv_image_view *image_view,
    unreachable("Invalid descriptor type");
 }
 
+static const uint32_t *
+anv_sampler_state_for_descriptor_set(const struct anv_sampler *sampler,
+                                     const struct anv_descriptor_set *set,
+                                     uint32_t plane)
+{
+   if (set->layout->flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT)
+      return sampler->db_state[plane];
+   return sampler->state[plane];
+}
+
 void
 anv_descriptor_set_write_image_view(struct anv_device *device,
                                     struct anv_descriptor_set *set,
@@ -2122,9 +2132,6 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
    void *desc_surface_map = set->desc_surface_mem.map +
       bind_layout->descriptor_surface_offset +
       element * bind_layout->descriptor_surface_stride;
-   void *desc_sampler_map = set->desc_sampler_mem.map +
-      bind_layout->descriptor_sampler_offset +
-      element * bind_layout->descriptor_sampler_stride;
 
    enum anv_descriptor_data data =
       bind_layout->type == VK_DESCRIPTOR_TYPE_MUTABLE_EXT ?
@@ -2175,13 +2182,19 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
    }
 
    if (data & ANV_DESCRIPTOR_SAMPLER) {
+      void *sampler_map =
+         set->layout->type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_DIRECT ?
+         (set->desc_sampler_mem.map +
+          bind_layout->descriptor_sampler_offset +
+          element * bind_layout->descriptor_sampler_stride) : desc_surface_map;
       if (sampler) {
          for (unsigned p = 0; p < sampler->n_planes; p++) {
-            memcpy(desc_sampler_map + p * ANV_SAMPLER_STATE_SIZE,
-                   sampler->state[p], ANV_SAMPLER_STATE_SIZE);
+            memcpy(sampler_map + p * ANV_SAMPLER_STATE_SIZE,
+                   anv_sampler_state_for_descriptor_set(sampler, set, p),
+                   ANV_SAMPLER_STATE_SIZE);
          }
       } else {
-         memset(desc_sampler_map, 0, bind_layout->descriptor_sampler_stride);
+         memset(sampler_map, 0, bind_layout->descriptor_sampler_stride);
       }
    }
 
@@ -2221,7 +2234,8 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
 
          if (sampler) {
             memcpy(plane_map + ANV_SURFACE_STATE_SIZE,
-                   sampler->state[p], ANV_SAMPLER_STATE_SIZE);
+                   anv_sampler_state_for_descriptor_set(sampler, set, p),
+                   ANV_SAMPLER_STATE_SIZE);
          } else {
             memset(plane_map + ANV_SURFACE_STATE_SIZE, 0,
                    ANV_SAMPLER_STATE_SIZE);

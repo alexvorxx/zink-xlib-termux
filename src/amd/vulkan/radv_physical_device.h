@@ -17,7 +17,7 @@
 #include "radv_instance.h"
 #include "radv_queue.h"
 #include "radv_radeon_winsys.h"
-
+#include "ac_vcn_enc.h"
 #include "wsi_common.h"
 
 #include "nir.h"
@@ -67,6 +67,13 @@ struct radv_physical_device_cache_key {
    uint32_t use_llvm : 1;
    uint32_t use_ngg : 1;
    uint32_t use_ngg_culling : 1;
+};
+
+enum radv_video_enc_hw_ver {
+   RADV_VIDEO_ENC_HW_1_2,
+   RADV_VIDEO_ENC_HW_2,
+   RADV_VIDEO_ENC_HW_3,
+   RADV_VIDEO_ENC_HW_4,
 };
 
 struct radv_physical_device {
@@ -171,6 +178,9 @@ struct radv_physical_device {
    uint32_t stream_handle_base;
    uint32_t stream_handle_counter;
    uint32_t av1_version;
+   rvcn_enc_cmd_t vcn_enc_cmds;
+   enum radv_video_enc_hw_ver enc_hw_ver;
+   uint32_t encoder_interface_version;
 
    struct radv_physical_device_cache_key cache_key;
 };

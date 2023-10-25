@@ -162,6 +162,7 @@ libradv_files = files(
   'radv_query.h',
   'radv_video.c',
   'radv_video.h',
+  'radv_video_enc.c',
   'radv_wsi.c',
   'radv_wsi.h',
 )

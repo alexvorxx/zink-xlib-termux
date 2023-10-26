@@ -383,6 +383,8 @@ check_ici(struct zink_screen *screen, VkImageCreateInfo *ici, uint64_t modifier)
       return USAGE_FAIL_ERROR;
    if (ici->arrayLayers > image_props.maxArrayLayers)
       return USAGE_FAIL_ERROR;
+   if (!(ici->samples & image_props.sampleCounts))
+      return USAGE_FAIL_ERROR;
    if (!optimalDeviceAccess)
       return USAGE_FAIL_SUBOPTIMAL;
    return USAGE_FAIL_NONE;

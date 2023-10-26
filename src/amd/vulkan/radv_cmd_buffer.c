@@ -11605,7 +11605,7 @@ write_event(struct radv_cmd_buffer *cmd_buffer, struct radv_event *event, VkPipe
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
    uint64_t va = radv_buffer_get_va(event->bo);
 
-   if (cmd_buffer->qf == RADV_QUEUE_VIDEO_DEC)
+   if (cmd_buffer->qf == RADV_QUEUE_VIDEO_DEC || cmd_buffer->qf == RADV_QUEUE_VIDEO_ENC)
       return;
 
    radv_emit_cache_flush(cmd_buffer);
@@ -11702,7 +11702,7 @@ radv_CmdWaitEvents2(VkCommandBuffer commandBuffer, uint32_t eventCount, const Vk
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
 
-   if (cmd_buffer->qf == RADV_QUEUE_VIDEO_DEC)
+   if (cmd_buffer->qf == RADV_QUEUE_VIDEO_DEC || cmd_buffer->qf == RADV_QUEUE_VIDEO_ENC)
       return;
 
    for (unsigned i = 0; i < eventCount; ++i) {

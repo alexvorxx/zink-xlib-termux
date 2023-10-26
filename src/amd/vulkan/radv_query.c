@@ -1280,6 +1280,9 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
          pool->stride = 16;
       }
       break;
+   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
+      pool->stride = 48;
+      break;
    default:
       unreachable("creating unhandled query type");
    }
@@ -1650,6 +1653,43 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
          }
          break;
       }
+      case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR: {
+         uint32_t *src32 = (uint32_t *)src;
+         uint32_t value;
+         do {
+            value = p_atomic_read(&src32[1]);
+         } while (value != 1 && (flags & VK_QUERY_RESULT_WAIT_BIT));
+
+         available = value != 0;
+
+         if (!available && !(flags & VK_QUERY_RESULT_PARTIAL_BIT))
+            result = VK_NOT_READY;
+
+         if (flags & VK_QUERY_RESULT_64_BIT) {
+            uint64_t *dest64 = (uint64_t *)dest;
+            if (available || (flags & VK_QUERY_RESULT_PARTIAL_BIT)) {
+               dest64[0] = src32[5];
+               dest64[1] = src32[6];
+            }
+            dest += 16;
+            if (flags & VK_QUERY_RESULT_WITH_STATUS_BIT_KHR) {
+               dest64[2] = 1;
+               dest += 8;
+            }
+         } else {
+            uint32_t *dest32 = (uint32_t *)dest;
+            if (available || (flags & VK_QUERY_RESULT_PARTIAL_BIT)) {
+               dest32[0] = src32[5];
+               dest32[1] = src32[6];
+            }
+            dest += 8;
+            if (flags & VK_QUERY_RESULT_WITH_STATUS_BIT_KHR) {
+               dest32[2] = 1;
+               dest += 4;
+            }
+         }
+         break;
+      }
       default:
          unreachable("trying to get results of unhandled query type");
       }
@@ -1705,6 +1745,9 @@ radv_query_result_size(const struct radv_query_pool *pool, VkQueryResultFlags fl
       values += 2;
       break;
    case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
+      values += 1;
+      break;
+   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
       values += 1;
       break;
    default:
@@ -1925,6 +1968,10 @@ radv_CmdResetQueryPool(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uin
    const struct radv_physical_device *pdev = radv_device_physical(device);
    uint32_t value = query_clear_value(pool->vk.query_type);
    uint32_t flush_bits = 0;
+
+   if (cmd_buffer->qf == RADV_QUEUE_VIDEO_DEC || cmd_buffer->qf == RADV_QUEUE_VIDEO_ENC)
+      /* video queries don't work like this */
+      return;
 
    /* Make sure to sync all previous work if the given command buffer has
     * pending active queries. Otherwise the GPU might write queries data
@@ -2272,6 +2319,9 @@ emit_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *poo
       }
       break;
    }
+   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
+      cmd_buffer->video.feedback_query_va = va;
+      break;
    default:
       unreachable("beginning unhandled query type");
    }
@@ -2489,6 +2539,9 @@ emit_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *pool,
       }
       break;
    }
+   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
+      cmd_buffer->video.feedback_query_va = 0;
+      break;
    default:
       unreachable("ending unhandled query type");
    }

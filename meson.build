@@ -860,6 +860,12 @@ if with_platform_x11
       pre_args += '-DGLX_USE_DRM'
     elif with_dri_platform == 'apple'
       pre_args += '-DGLX_USE_APPLEGL'
+      # Check to see if more than just the default 'swrast' is required
+      if (not with_gallium_softpipe) or 1 < gallium_drivers.length()
+        # Switch the MacOS code from "forwarding to the OpenGL.framework" mode
+        # and into actual Gallium Driver mode
+        pre_args += '-DGLX_USE_APPLE'
+      endif
     elif with_dri_platform == 'windows'
       pre_args += '-DGLX_USE_WINDOWSGL'
     endif

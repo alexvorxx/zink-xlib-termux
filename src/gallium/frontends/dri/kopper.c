@@ -370,6 +370,7 @@ kopper_get_pixmap_buffer(struct dri_drawable *drawable,
    } else
 #endif
    {
+#ifdef HAVE_DRI3
       xcb_dri3_buffer_from_pixmap_cookie_t bp_cookie;
       xcb_dri3_buffer_from_pixmap_reply_t *bp_reply;
       xcb_generic_error_t *error;
@@ -389,6 +390,9 @@ kopper_get_pixmap_buffer(struct dri_drawable *drawable,
       width = bp_reply->width;
       height = bp_reply->height;
       free(bp_reply);
+#else
+      return NULL;
+#endif
    }
 
    drawable->w = width;

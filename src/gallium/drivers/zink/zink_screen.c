@@ -1399,6 +1399,77 @@ zink_is_format_supported(struct pipe_screen *pscreen,
           if (!(screen->info.props.limits.storageImageSampleCounts & sample_mask))
              return false;
       }
+      VkResult ret;
+      VkImageFormatProperties image_props;
+      VkImageFormatProperties2 props2;
+      props2.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+      props2.pNext = NULL;
+      VkPhysicalDeviceImageFormatInfo2 info;
+      info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+      info.pNext = NULL;
+      info.format = vkformat;
+      info.flags = 0;
+      info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+      info.tiling = VK_IMAGE_TILING_OPTIMAL;
+      switch (target) {
+      case PIPE_TEXTURE_1D:
+      case PIPE_TEXTURE_1D_ARRAY: {
+         bool need_2D = false;
+         if (util_format_is_depth_or_stencil(format))
+            need_2D |= screen->need_2D_zs;
+         info.type = need_2D ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_1D;
+         break;
+      }
+
+      case PIPE_TEXTURE_CUBE:
+      case PIPE_TEXTURE_CUBE_ARRAY:
+         info.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+         FALLTHROUGH;
+      case PIPE_TEXTURE_2D:
+      case PIPE_TEXTURE_2D_ARRAY:
+      case PIPE_TEXTURE_RECT:
+         info.type = VK_IMAGE_TYPE_2D;
+         break;
+
+      case PIPE_TEXTURE_3D:
+         info.type = VK_IMAGE_TYPE_3D;
+         if (bind & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_DEPTH_STENCIL))
+            info.flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
+         if (screen->info.have_EXT_image_2d_view_of_3d)
+            info.flags |= VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT;
+         break;
+
+      default:
+         unreachable("unknown texture target");
+      }
+      u_foreach_bit(b, bind) {
+         switch (1<<b) {
+         case PIPE_BIND_RENDER_TARGET:
+            info.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+            break;
+         case PIPE_BIND_DEPTH_STENCIL:
+            info.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+            break;
+         case PIPE_BIND_SAMPLER_VIEW:
+            info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+            break;
+         }
+      }
+
+      if (VKSCR(GetPhysicalDeviceImageFormatProperties2)) {
+         ret = VKSCR(GetPhysicalDeviceImageFormatProperties2)(screen->pdev, &info, &props2);
+         /* this is using VK_IMAGE_CREATE_EXTENDED_USAGE_BIT and can't be validated */
+         if (vk_format_aspects(vkformat) & VK_IMAGE_ASPECT_PLANE_1_BIT)
+            ret = VK_SUCCESS;
+         image_props = props2.imageFormatProperties;
+      } else {
+         ret = VKSCR(GetPhysicalDeviceImageFormatProperties)(screen->pdev, vkformat, info.type,
+                                                             info.tiling, info.usage, info.flags, &image_props);
+      }
+      if (ret != VK_SUCCESS)
+         return false;
+      if (!(sample_count & image_props.sampleCounts))
+         return false;
    }
 
    struct zink_format_props props = screen->format_props[format];

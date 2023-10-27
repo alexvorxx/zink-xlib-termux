@@ -445,11 +445,10 @@ with_gbm = get_option('gbm') \
   .allowed()
 
 with_xlib_lease = get_option('xlib-lease') \
-  .require(with_platform_x11 and system_has_kms_drm, error_message : 'xlib-lease requires X11 and KMS/DRM support') \
+  .require(with_platform_x11 and (system_has_kms_drm or with_dri_platform == 'apple'), error_message : 'xlib-lease requires X11 and KMS/DRM support') \
   .allowed()
 
 with_egl = get_option('egl') \
-  .require(host_machine.system() != 'darwin', error_message : 'EGL not supported on MacOS') \
   .require(with_platform_windows or with_platform_haiku or with_dri or with_platform_android, error_message : 'EGL requires DRI, Haiku, Windows or Android') \
   .require(with_shared_glapi, error_message : 'EGL requires shared-glapi') \
   .require(with_glx != 'xlib', error_message :'EGL requires DRI, but GLX is being built with xlib support') \
@@ -559,7 +558,7 @@ if with_vulkan_icd_dir == ''
 endif
 
 # GNU/Hurd includes egl_dri2, without drm.
-with_dri2 = (with_dri or with_any_vk) and (with_dri_platform == 'drm' or
+with_dri2 = (with_dri or with_any_vk) and (with_dri_platform == 'drm' or with_dri_platform == 'apple' or
   host_machine.system() == 'gnu')
 with_dri3 = get_option('dri3').disable_auto_if(not (system_has_kms_drm and with_dri2)).allowed()
 
@@ -2068,6 +2067,7 @@ if with_platform_x11
       pre_args += '-DXCB_KEYSYMS_AVAILABLE'
     endif
     dep_x11_xcb = dependency('x11-xcb')
+    dep_xcb_dri2 = dependency('xcb-dri2', version : '>= 1.8')
     if with_dri_platform == 'drm' and not dep_libdrm.found()
       error('libdrm required for gallium video statetrackers when using x11')
     endif

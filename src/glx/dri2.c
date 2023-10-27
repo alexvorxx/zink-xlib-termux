@@ -42,6 +42,11 @@
 #include "glxclient.h"
 #include "GL/glxext.h"
 
+#if defined(__APPLE__) || defined(__MACOSX)
+#include "apple/appledri.h"
+#include "apple/appledristr.h"
+#endif
+
 /* Allow the build to work with an older versions of dri2proto.h and
  * dri2tokens.h.
  */
@@ -52,7 +57,11 @@
 #endif
 
 
+#if defined(__APPLE__) || defined(__MACOSX)
+static char dri2ExtensionName[] = APPLEDRINAME;
+#else
 static char dri2ExtensionName[] = DRI2_NAME;
+#endif
 static XExtensionInfo _dri2Info_data;
 static XExtensionInfo *dri2Info = &_dri2Info_data;
 static XEXT_GENERATE_CLOSE_DISPLAY (DRI2CloseDisplay, dri2Info)
@@ -207,6 +216,9 @@ DRI2Error(Display *display, xError *err, XExtCodes *codes, int *ret_code)
 Bool
 DRI2QueryExtension(Display * dpy, int *eventBase, int *errorBase)
 {
+#if defined(__APPLE__) || defined(__MACOSX)
+   return XAppleDRIQueryExtension(dpy, eventBase, errorBase);
+#else
    XExtDisplayInfo *info = DRI2FindDisplay(dpy);
 
    if (XextHasExtension(info)) {
@@ -216,11 +228,16 @@ DRI2QueryExtension(Display * dpy, int *eventBase, int *errorBase)
    }
 
    return False;
+#endif
 }
 
 Bool
 DRI2QueryVersion(Display * dpy, int *major, int *minor)
 {
+#if defined(__APPLE__) || defined(__MACOSX)
+  int patch;
+  return XAppleDRIQueryVersion(dpy, major, minor, &patch);
+#else
    XExtDisplayInfo *info = DRI2FindDisplay(dpy);
    xDRI2QueryVersionReply rep;
    xDRI2QueryVersionReq *req;
@@ -263,6 +280,7 @@ DRI2QueryVersion(Display * dpy, int *major, int *minor)
    }
 
    return True;
+#endif
 }
 
 Bool

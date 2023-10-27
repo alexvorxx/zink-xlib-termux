@@ -1194,6 +1194,10 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       device->capture_replay_arena_vas = _mesa_hash_table_u64_create(NULL);
    }
 
+   result = radv_printf_data_init(device);
+   if (result != VK_SUCCESS)
+      goto fail_cache;
+
    *pDevice = radv_device_to_handle(device);
    return VK_SUCCESS;
 
@@ -1202,6 +1206,8 @@ fail_cache:
 fail_meta:
    radv_device_finish_meta(device);
 fail:
+   radv_printf_data_finish(device);
+
    radv_sqtt_finish(device);
 
    radv_spm_finish(device);
@@ -1312,6 +1318,8 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    radv_finish_trace(device);
 
    radv_destroy_shader_arenas(device);
+
+   radv_printf_data_finish(device);
 
    radv_sqtt_finish(device);
 

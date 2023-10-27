@@ -1679,6 +1679,8 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
 
    queue->last_shader_upload_seq = MAX2(queue->last_shader_upload_seq, shader_upload_seq);
 
+   radv_dump_printf_data(queue->device);
+
 fail:
    free(cs_array);
    if (waits != submission->waits)

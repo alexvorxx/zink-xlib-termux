@@ -906,6 +906,39 @@ struct radv_device_cache_key {
    uint32_t use_ngg_culling : 1;
 };
 
+struct radv_printf_format {
+   char *string;
+   uint32_t divergence_mask;
+   uint8_t element_sizes[32];
+};
+
+struct radv_printf_data {
+   uint32_t buffer_size;
+   VkBuffer buffer;
+   VkDeviceMemory memory;
+   VkDeviceAddress buffer_addr;
+   void *data;
+   struct util_dynarray formats;
+};
+
+VkResult radv_printf_data_init(struct radv_device *device);
+
+void radv_printf_data_finish(struct radv_device *device);
+
+struct radv_printf_buffer_header {
+   uint32_t offset;
+   uint32_t size;
+};
+
+typedef struct nir_builder nir_builder;
+typedef struct nir_def nir_def;
+
+void radv_build_printf(nir_builder *b, nir_def *cond, const char *format, ...);
+
+void radv_dump_printf_data(struct radv_device *device);
+
+void radv_device_associate_nir(struct radv_device *device, nir_shader *nir);
+
 struct radv_device {
    struct vk_device vk;
 
@@ -1091,6 +1124,8 @@ struct radv_device {
 
    struct hash_table *rt_handles;
    simple_mtx_t rt_handles_mtx;
+
+   struct radv_printf_data printf;
 
    struct radv_device_cache_key cache_key;
    blake3_hash cache_hash;

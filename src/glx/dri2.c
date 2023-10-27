@@ -31,7 +31,7 @@
  */
 
 
-#ifdef GLX_DIRECT_RENDERING
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
 
 #include <stdio.h>
 #include <X11/Xlibint.h>
@@ -96,6 +96,7 @@ static XEXT_GENERATE_FIND_DISPLAY (DRI2FindDisplay,
 static Bool
 DRI2WireToEvent(Display *dpy, XEvent *event, xEvent *wire)
 {
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
    XExtDisplayInfo *info = DRI2FindDisplay(dpy);
    struct glx_drawable *glxDraw;
 
@@ -162,6 +163,7 @@ DRI2WireToEvent(Display *dpy, XEvent *event, xEvent *wire)
       /* client doesn't support server event */
       break;
    }
+#endif
 
    return False;
 }

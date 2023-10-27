@@ -68,7 +68,7 @@ extern void DRI_glXUseXFont(struct glx_context *ctx,
 
 #endif
 
-#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
 
 /**
  * Display dependent methods.  This structure is initialized during the
@@ -512,7 +512,7 @@ struct glx_screen
    bool allow_invalid_glx_destroy_window;
    bool keep_native_window_glx_drawable;
 
-#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
     /**
      * Per screen direct rendering interface functions and data.
      */
@@ -579,7 +579,7 @@ struct glx_display
 
    __glxHashTable *glXDrawHash;
 
-#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
    __glxHashTable *drawHash;
 
    /**
@@ -613,7 +613,7 @@ glx_screen_init(struct glx_screen *psc,
 extern void
 glx_screen_cleanup(struct glx_screen *psc);
 
-#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
 extern __GLXDRIdrawable *
 dri2GetGlxDrawableFromXDrawableId(Display *dpy, XID id);
 #endif
@@ -732,7 +732,7 @@ extern GLboolean __glXGetMscRateOML(Display * dpy, GLXDrawable drawable,
                                     int32_t * numerator,
                                     int32_t * denominator);
 
-#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
 extern GLboolean
 __glxGetMscRate(struct glx_screen *psc,
 		int32_t * numerator, int32_t * denominator);

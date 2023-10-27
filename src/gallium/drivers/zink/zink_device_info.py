@@ -322,7 +322,8 @@ EXTENSIONS = [
               features=True,
               conditions=["$feats.shaderDemoteToHelperInvocation"]),
     Extension("VK_KHR_shader_float_controls",
-              alias="float_controls")
+              alias="float_controls"),
+    Extension("VK_KHR_format_feature_flags2"),
 ]
 
 # constructor: Versions(device_version(major, minor, patch), struct_version(major, minor))

@@ -2229,15 +2229,28 @@ retry:
             props.pNext = &mod_props;
          }
          VkFormatProperties3 props3 = {0};
-         props3.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3;
-         props3.pNext = props.pNext;
-         props.pNext = &props3;
+         if (screen->info.have_KHR_format_feature_flags2 || screen->info.have_vulkan13) {
+           props3.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3;
+           props3.pNext = props.pNext;
+           props.pNext = &props3;
+         }
+
          VKSCR(GetPhysicalDeviceFormatProperties2)(screen->pdev, format, &props);
-         screen->format_props[i].linearTilingFeatures = props3.linearTilingFeatures;
-         screen->format_props[i].optimalTilingFeatures = props3.optimalTilingFeatures;
-         screen->format_props[i].bufferFeatures = props3.bufferFeatures;
-         if (props3.linearTilingFeatures & VK_FORMAT_FEATURE_2_LINEAR_COLOR_ATTACHMENT_BIT_NV)
-            screen->format_props[i].linearTilingFeatures |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+
+         if (screen->info.have_KHR_format_feature_flags2 || screen->info.have_vulkan13) {
+            screen->format_props[i].linearTilingFeatures = props3.linearTilingFeatures;
+            screen->format_props[i].optimalTilingFeatures = props3.optimalTilingFeatures;
+            screen->format_props[i].bufferFeatures = props3.bufferFeatures;
+
+            if (props3.linearTilingFeatures & VK_FORMAT_FEATURE_2_LINEAR_COLOR_ATTACHMENT_BIT_NV)
+               screen->format_props[i].linearTilingFeatures |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+         } else {
+           // MoltenVk is 1.2 API
+           screen->format_props[i].linearTilingFeatures = props.formatProperties.linearTilingFeatures;
+           screen->format_props[i].optimalTilingFeatures = props.formatProperties.optimalTilingFeatures;
+           screen->format_props[i].bufferFeatures = props.formatProperties.bufferFeatures;
+         }
+
          if (screen->info.have_EXT_image_drm_format_modifier && mod_props.drmFormatModifierCount) {
             screen->modifier_props[i].drmFormatModifierCount = mod_props.drmFormatModifierCount;
             screen->modifier_props[i].pDrmFormatModifierProperties = ralloc_array(screen, VkDrmFormatModifierPropertiesEXT, mod_props.drmFormatModifierCount);

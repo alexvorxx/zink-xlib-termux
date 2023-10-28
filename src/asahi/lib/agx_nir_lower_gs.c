@@ -131,15 +131,10 @@ add_counter(nir_builder *b, nir_def *counter, nir_def *increment)
 }
 
 /* Helpers for lowering I/O to variables */
-struct lower_output_to_var_state {
-   nir_variable *outputs[NUM_TOTAL_VARYING_SLOTS];
-   bool arrayed;
-};
-
-static bool
-lower_output_to_var(nir_builder *b, nir_instr *instr, void *data)
+bool
+agx_lower_output_to_var(nir_builder *b, nir_instr *instr, void *data)
 {
-   struct lower_output_to_var_state *state = data;
+   struct agx_lower_output_to_var_state *state = data;
    if (instr->type != nir_instr_type_intrinsic)
       return false;
 
@@ -201,7 +196,7 @@ load_instance_id(nir_builder *b)
 static bool
 lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
-   struct lower_output_to_var_state *vs_state = data;
+   struct agx_lower_output_to_var_state *vs_state = data;
    if (intr->intrinsic != nir_intrinsic_load_per_vertex_input)
       return false;
 
@@ -249,7 +244,7 @@ lower_id_in_prim(nir_builder *b, nir_instr *instr, void *data)
 static void
 agx_nir_link_vs_gs(nir_shader *vs, nir_shader *gs)
 {
-   struct lower_output_to_var_state state = {.arrayed = true};
+   struct agx_lower_output_to_var_state state = {.arrayed = true};
 
    /* Vertex shader outputs will be placed in arrays. Create those arrays. */
    u_foreach_bit64(slot, vs->info.outputs_written) {
@@ -278,7 +273,7 @@ agx_nir_link_vs_gs(nir_shader *vs, nir_shader *gs)
 
    /* The vertex shader needs to be expressed in terms of that index */
    nir_function_instructions_pass(
-      vs_function->impl, lower_output_to_var,
+      vs_function->impl, agx_lower_output_to_var,
       nir_metadata_block_index | nir_metadata_dominance, &state);
 
    nir_function_instructions_pass(
@@ -1144,7 +1139,7 @@ agx_nir_lower_gs(nir_shader *gs, nir_shader *vs, const nir_shader *libagx,
       *gs_count = NULL;
 
    /* Geometry shader outputs are staged to temporaries */
-   struct lower_output_to_var_state state = {.arrayed = false};
+   struct agx_lower_output_to_var_state state = {.arrayed = false};
 
    u_foreach_bit64(slot, gs->info.outputs_written) {
       const char *slot_name =
@@ -1165,7 +1160,7 @@ agx_nir_lower_gs(nir_shader *gs, nir_shader *vs, const nir_shader *libagx,
       gs_state.stride_B += size_B;
    }
 
-   NIR_PASS(_, gs, nir_shader_instructions_pass, lower_output_to_var,
+   NIR_PASS(_, gs, nir_shader_instructions_pass, agx_lower_output_to_var,
             nir_metadata_block_index | nir_metadata_dominance, &state);
 
    /* Set flatshade_first. For now this is always a constant, but in the future

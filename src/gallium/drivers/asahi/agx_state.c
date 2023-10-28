@@ -31,6 +31,8 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
 #include "pipe/p_state.h"
+#include "tessellator/p_tessellator.h"
+#include "util/bitscan.h"
 #include "util/bitset.h"
 #include "util/blend.h"
 #include "util/blob.h"
@@ -47,6 +49,7 @@
 #include "util/u_resource.h"
 #include "util/u_transfer.h"
 #include "util/u_upload_mgr.h"
+#include "agx_bo.h"
 #include "agx_device.h"
 #include "agx_disk_cache.h"
 #include "agx_nir_lower_gs.h"
@@ -183,6 +186,24 @@ agx_set_blend_color(struct pipe_context *pctx,
       memcpy(&ctx->blend_color, state, sizeof(*state));
 
    ctx->dirty |= AGX_DIRTY_BLEND_COLOR;
+}
+
+static void
+agx_set_patch_vertices(struct pipe_context *pctx, unsigned char n)
+{
+   struct agx_context *ctx = agx_context(pctx);
+   ctx->patch_vertices = n;
+}
+
+static void
+agx_set_tess_state(struct pipe_context *pctx,
+                   const float default_outer_level[4],
+                   const float default_inner_level[2])
+{
+   struct agx_context *ctx = agx_context(pctx);
+
+   memcpy(ctx->default_outer_level, default_outer_level, 4 * sizeof(float));
+   memcpy(ctx->default_inner_level, default_inner_level, 2 * sizeof(float));
 }
 
 static void *
@@ -586,6 +607,7 @@ static enum pipe_shader_type
 merged_stage(struct agx_context *ctx, enum pipe_shader_type stage)
 {
    switch (stage) {
+   case MESA_SHADER_VERTEX:
    case MESA_SHADER_GEOMETRY:
       return ctx->stage[PIPE_SHADER_TESS_EVAL].shader ? MESA_SHADER_TESS_EVAL
                                                       : MESA_SHADER_VERTEX;
@@ -1504,6 +1526,18 @@ asahi_fs_shader_key_equal(const void *a, const void *b)
    return memcmp(a, b, sizeof(struct asahi_fs_shader_key)) == 0;
 }
 
+static uint32_t
+asahi_tcs_shader_key_hash(const void *key)
+{
+   return _mesa_hash_data(key, sizeof(struct asahi_tcs_shader_key));
+}
+
+static bool
+asahi_tcs_shader_key_equal(const void *a, const void *b)
+{
+   return memcmp(a, b, sizeof(struct asahi_tcs_shader_key)) == 0;
+}
+
 /* No compute variants */
 static uint32_t
 asahi_cs_shader_key_hash(const void *key)
@@ -1837,6 +1871,22 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
          NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
                   nir_metadata_block_index | nir_metadata_dominance, NULL);
       }
+   } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {
+      struct asahi_tcs_shader_key *key = &key_->tcs;
+
+      /* TODO: Deduplicate this logic from the GS case! */
+      struct blob_reader vs_reader;
+      blob_reader_init(&vs_reader, linked_so->serialized_nir.data,
+                       linked_so->serialized_nir.size);
+      nir_shader *vs = nir_deserialize(NULL, &agx_nir_options, &vs_reader);
+
+      /* Apply the VS key to the VS before linking it in */
+      NIR_PASS_V(vs, agx_nir_lower_vbo, key->attribs);
+      NIR_PASS_V(vs, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
+      NIR_PASS_V(vs, agx_nir_lower_sysvals, false);
+
+      NIR_PASS_V(nir, agx_nir_lower_tcs, vs, dev->libagx, key->index_size_B);
+      ralloc_free(vs);
    } else if (nir->info.stage == MESA_SHADER_GEOMETRY) {
       struct asahi_gs_shader_key *key = &key_->gs;
 
@@ -2040,6 +2090,8 @@ agx_get_shader_variant(struct agx_screen *screen, struct pipe_context *pctx,
       memcpy(cloned_key, key, sizeof(struct asahi_vs_shader_key));
    } else if (so->type == PIPE_SHADER_GEOMETRY) {
       memcpy(cloned_key, key, sizeof(struct asahi_gs_shader_key));
+   } else if (so->type == PIPE_SHADER_TESS_CTRL) {
+      memcpy(cloned_key, key, sizeof(struct asahi_tcs_shader_key));
    } else {
       assert(gl_shader_stage_is_compute(so->type));
       /* No key */
@@ -2056,8 +2108,6 @@ agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
 {
    if (nir->info.stage == MESA_SHADER_KERNEL)
       nir->info.stage = MESA_SHADER_COMPUTE;
-
-   so->type = pipe_shader_type_from_mesa(nir->info.stage);
 
    blob_init(&so->early_serialized_nir);
    nir_serialize(&so->early_serialized_nir, nir, true);
@@ -2103,11 +2153,16 @@ agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
                nir_metadata_block_index | nir_metadata_dominance, NULL);
    }
 
+   if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
+      NIR_PASS(_, nir, agx_nir_lower_tes, dev->libagx);
+   }
+
    blob_init(&so->serialized_nir);
    nir_serialize(&so->serialized_nir, nir, true);
    _mesa_sha1_compute(so->serialized_nir.data, so->serialized_nir.size,
                       so->nir_sha1);
 
+   so->type = pipe_shader_type_from_mesa(nir->info.stage);
    so->has_xfb_info = (nir->xfb_info != NULL);
 
    static_assert(
@@ -2147,9 +2202,32 @@ agx_create_shader_state(struct pipe_context *pctx,
    } else if (nir->info.stage == MESA_SHADER_GEOMETRY) {
       so->variants = _mesa_hash_table_create(NULL, asahi_gs_shader_key_hash,
                                              asahi_gs_shader_key_equal);
+
+   } else if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
+      /* No variants */
+      so->variants = _mesa_hash_table_create(NULL, asahi_cs_shader_key_hash,
+                                             asahi_cs_shader_key_equal);
+   } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {
+      so->variants = _mesa_hash_table_create(NULL, asahi_tcs_shader_key_hash,
+                                             asahi_tcs_shader_key_equal);
    } else {
       so->variants = _mesa_hash_table_create(so, asahi_fs_shader_key_hash,
                                              asahi_fs_shader_key_equal);
+   }
+
+   if (nir->info.stage == MESA_SHADER_TESS_EVAL ||
+       nir->info.stage == MESA_SHADER_TESS_CTRL) {
+
+      so->tess.ccw = nir->info.tess.ccw;
+      so->tess.point_mode = nir->info.tess.point_mode;
+      so->tess.spacing = nir->info.tess.spacing;
+      so->tess.output_patch_size = nir->info.tess.tcs_vertices_out;
+      so->tess.primitive = nir->info.tess._primitive_mode;
+      so->tess.per_vertex_outputs = agx_tcs_per_vertex_outputs(nir);
+      so->tess.nr_patch_outputs =
+         util_last_bit(nir->info.patch_outputs_written);
+      if (nir->info.stage == MESA_SHADER_TESS_CTRL)
+         so->tess.output_stride = agx_tcs_output_stride(nir);
    }
 
    agx_shader_initialize(dev, so, nir, ctx->support_lod_bias);
@@ -2178,7 +2256,9 @@ agx_create_shader_state(struct pipe_context *pctx,
       }
 
       case PIPE_SHADER_GEOMETRY:
-         /* TODO: Geometry shaders with shader-db */
+      case PIPE_SHADER_TESS_CTRL:
+      case PIPE_SHADER_TESS_EVAL:
+         /* TODO: Geometry/tessellation shaders with shader-db */
          return so;
 
       case PIPE_SHADER_FRAGMENT:
@@ -2276,7 +2356,7 @@ agx_update_shader(struct agx_context *ctx, struct agx_compiled_shader **out,
    }
 
    struct agx_uncompiled_shader *linked_so = NULL;
-   if (stage == PIPE_SHADER_GEOMETRY)
+   if (stage == PIPE_SHADER_TESS_CTRL || stage == PIPE_SHADER_GEOMETRY)
       linked_so = ctx->stage[PIPE_SHADER_VERTEX].shader;
 
    struct agx_screen *screen = agx_screen(ctx->base.screen);
@@ -2349,6 +2429,30 @@ translate_ia_mode(enum mesa_prim prim)
    default:
       return prim;
    }
+}
+
+static bool
+agx_update_tcs(struct agx_context *ctx, const struct pipe_draw_info *info)
+{
+   assert(info->mode == MESA_PRIM_PATCHES);
+
+   /* We don't bother to dirty track yet, update! */
+   struct asahi_tcs_shader_key key = {
+      .index_size_B = info->index_size,
+   };
+
+   memcpy(key.attribs, ctx->attributes,
+          sizeof(key.attribs[0]) * AGX_MAX_ATTRIBS);
+
+   static_assert(sizeof(key.input_nir_sha1) ==
+                    sizeof(ctx->stage[PIPE_SHADER_VERTEX].shader->nir_sha1),
+                 "common size for shader sha-1");
+
+   memcpy(key.input_nir_sha1, ctx->stage[PIPE_SHADER_VERTEX].shader->nir_sha1,
+          sizeof(key.input_nir_sha1));
+
+   return agx_update_shader(ctx, &ctx->tcs, PIPE_SHADER_TESS_CTRL,
+                            (union asahi_shader_key *)&key);
 }
 
 /*
@@ -2485,6 +2589,18 @@ static void
 agx_bind_gs_state(struct pipe_context *pctx, void *cso)
 {
    agx_bind_shader_state(pctx, cso, PIPE_SHADER_GEOMETRY);
+}
+
+static void
+agx_bind_tcs_state(struct pipe_context *pctx, void *cso)
+{
+   agx_bind_shader_state(pctx, cso, PIPE_SHADER_TESS_CTRL);
+}
+
+static void
+agx_bind_tes_state(struct pipe_context *pctx, void *cso)
+{
+   agx_bind_shader_state(pctx, cso, PIPE_SHADER_TESS_EVAL);
 }
 
 static void
@@ -2850,7 +2966,7 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
 
    if (stage == PIPE_SHADER_FRAGMENT) {
       agx_usc_tilebuffer(&b, &batch->tilebuffer_layout);
-   } else if (stage == PIPE_SHADER_COMPUTE) {
+   } else if (stage == PIPE_SHADER_COMPUTE || stage == PIPE_SHADER_TESS_CTRL) {
       unsigned size = cs->info.local_size + variable_shared_mem;
 
       agx_usc_pack(&b, SHARED, cfg) {
@@ -4186,6 +4302,291 @@ util_draw_multi_upload_indirect(struct pipe_context *pctx,
 }
 
 static void
+agx_upload_draw_params(struct agx_batch *batch,
+                       const struct pipe_draw_indirect_info *indirect,
+                       const struct pipe_draw_start_count_bias *draws,
+                       const struct pipe_draw_info *info)
+{
+   if (indirect) {
+      struct agx_resource *indirect_rsrc = agx_resource(indirect->buffer);
+      uint64_t address = indirect_rsrc->bo->ptr.gpu + indirect->offset;
+      agx_batch_reads(batch, indirect_rsrc);
+
+      /* To implement draw parameters, we use the last 2 words of the
+       * indirect draw descriptor. Offset by 3 words for indexed draw (5
+       * total) and 2 words for non-indexed (4 total).  See the layouts of
+       * indexed vs non-indexed draw descriptors.
+       *
+       * This gives us a consistent layout
+       *
+       *    uint32_t first_vertex;
+       *    uint32_t base_instance;
+       *
+       * and we can implement load_first_vertex & load_base_instance without
+       * checking for indexing.
+       */
+      uint32_t offset = info->index_size ? 3 : 2;
+      batch->uniforms.tables[AGX_SYSVAL_TABLE_PARAMS] = address + offset * 4;
+   } else {
+      /* Upload just those two words. */
+      uint32_t params[2] = {
+         info->index_size ? draws->index_bias : draws->start,
+         info->start_instance,
+      };
+
+      batch->uniforms.tables[AGX_SYSVAL_TABLE_PARAMS] =
+         agx_pool_upload_aligned(&batch->pool, params, sizeof(params), 4);
+   }
+}
+
+static void
+agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
+                 unsigned drawid_offset,
+                 const struct pipe_draw_indirect_info *indirect,
+                 const struct pipe_draw_start_count_bias *draws,
+                 unsigned num_draws)
+{
+   struct agx_device *dev = agx_device(ctx->base.screen);
+   perf_debug(dev, "Tessellation");
+
+   struct agx_uncompiled_shader *tcs = ctx->stage[MESA_SHADER_TESS_CTRL].shader;
+   struct agx_uncompiled_shader *tes = ctx->stage[MESA_SHADER_TESS_EVAL].shader;
+
+   assert(tes != NULL && "required with patches");
+
+   unsigned patch_vertices = ctx->patch_vertices;
+
+   /* OpenGL allows omitting the tcs, fill in a passthrough program if needed.
+    * In principle, we could optimize this case, but I don't think it matters.
+    */
+   bool unbind_tcs_when_done = false;
+   if (!tcs) {
+      struct agx_uncompiled_shader *vs = ctx->stage[MESA_SHADER_VERTEX].shader;
+
+      assert(patch_vertices >= 1 &&
+             patch_vertices <= ARRAY_SIZE(vs->passthrough_tcs));
+
+      if (!vs->passthrough_tcs[patch_vertices - 1]) {
+         struct blob_reader reader;
+         blob_reader_init(&reader, vs->early_serialized_nir.data,
+                          vs->early_serialized_nir.size);
+         nir_shader *vs_nir = nir_deserialize(NULL, &agx_nir_options, &reader);
+         nir_shader *nir = nir_create_passthrough_tcs(&agx_nir_options, vs_nir,
+                                                      patch_vertices);
+         ralloc_free(vs_nir);
+
+         /* Lower the tess level sysvals and gather info, since mesa/st won't do
+          * either for us.
+          */
+         NIR_PASS(_, nir, nir_lower_system_values);
+
+         nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
+
+         vs->passthrough_tcs[patch_vertices - 1] =
+            pipe_shader_from_nir(&ctx->base, nir);
+      }
+
+      tcs = vs->passthrough_tcs[patch_vertices - 1];
+      ctx->base.bind_tcs_state(&ctx->base, tcs);
+      unbind_tcs_when_done = true;
+   }
+
+   unsigned in_vertices = draws->count;
+   unsigned in_patches = in_vertices / patch_vertices;
+
+   if (in_patches == 0)
+      return;
+
+   struct agx_batch *batch = agx_get_compute_batch(ctx);
+   agx_batch_init_state(batch);
+
+   struct pipe_resource *heap =
+      pipe_buffer_create(ctx->base.screen, PIPE_BIND_GLOBAL, PIPE_USAGE_DEFAULT,
+                         1024 * 1024 * 128);
+
+   uint64_t heap_gpu = agx_resource(heap)->bo->ptr.gpu;
+   uint8_t *heap_cpu = agx_resource(heap)->bo->ptr.cpu;
+
+   unsigned unrolled_patch_count = in_patches * info->instance_count;
+
+   uint32_t heap_water = 0;
+   uint32_t tcs_out_offs = heap_water;
+   heap_water += ALIGN(unrolled_patch_count * tcs->tess.output_stride, 4);
+
+   agx_batch_writes(batch, agx_resource(heap), 0);
+
+   uint64_t ib = 0;
+   size_t ib_extent = 0;
+
+   if (info->index_size)
+      ib = agx_index_buffer_ptr(batch, info, draws, &ib_extent);
+
+   agx_upload_ia_params(batch, info, indirect, ib, ib_extent, 0);
+   agx_upload_draw_params(batch, indirect, draws, info);
+
+   /* Setup parameters */
+   struct agx_tess_params tess_params = {
+      .tcs_buffer = heap_gpu + tcs_out_offs,
+      .input_patch_size = patch_vertices,
+      .output_patch_size = tcs->tess.output_patch_size,
+      .tcs_patch_constants = tcs->tess.nr_patch_outputs,
+      .tcs_per_vertex_outputs = tcs->tess.per_vertex_outputs,
+      .patch_coord_buffer = heap_gpu,
+      .patches_per_instance = in_patches,
+   };
+
+   memcpy(&tess_params.tess_level_outer_default, ctx->default_outer_level,
+          sizeof(ctx->default_outer_level));
+   memcpy(&tess_params.tess_level_inner_default, ctx->default_inner_level,
+          sizeof(ctx->default_inner_level));
+
+   batch->uniforms.tess_params =
+      agx_pool_upload(&batch->pool, &tess_params, sizeof(tess_params));
+
+   /* Run VS+TCS as compute */
+   agx_upload_vbos(batch);
+   agx_update_vs(ctx);
+   agx_update_tcs(ctx, info);
+   /* XXX */
+   ctx->stage[PIPE_SHADER_TESS_CTRL].dirty = ~0;
+   ctx->stage[PIPE_SHADER_TESS_EVAL].dirty = ~0;
+   agx_update_descriptors(batch, ctx->vs, PIPE_SHADER_VERTEX);
+   agx_update_descriptors(batch, ctx->tcs, PIPE_SHADER_TESS_CTRL);
+
+   struct pipe_grid_info tcs_grid = {
+      .block = {MAX2(patch_vertices, tcs->tess.output_patch_size), 1, 1},
+      .grid = {in_patches, info->instance_count, 1},
+      /* XXX */
+      .variable_shared_mem = 32768,
+   };
+
+   agx_launch(batch, &tcs_grid, ctx->tcs, PIPE_SHADER_TESS_CTRL);
+
+   agx_flush_all(ctx, "HACK");
+   agx_sync_all(ctx, "HACK");
+
+   /* Setup batch */
+   batch = agx_get_batch(ctx);
+
+   enum tess_primitive_mode mode =
+      MAX2(tcs->tess.primitive, tes->tess.primitive);
+   enum gl_tess_spacing spacing = MAX2(tcs->tess.spacing, tes->tess.spacing);
+
+   enum pipe_tess_spacing pspacing = spacing == TESS_SPACING_EQUAL
+                                        ? PIPE_TESS_SPACING_EQUAL
+                                     : spacing == TESS_SPACING_FRACTIONAL_ODD
+                                        ? PIPE_TESS_SPACING_FRACTIONAL_ODD
+                                        : PIPE_TESS_SPACING_FRACTIONAL_EVEN;
+
+   bool point_mode = MAX2(tcs->tess.point_mode, tes->tess.point_mode);
+   enum mesa_prim in_prim = mode == TESS_PRIMITIVE_ISOLINES ? MESA_PRIM_LINES
+                            : mode == TESS_PRIMITIVE_QUADS
+                               ? MESA_PRIM_QUADS
+                               : MESA_PRIM_TRIANGLES;
+   enum mesa_prim out_prim = point_mode ? MESA_PRIM_POINTS
+                             : mode == TESS_PRIMITIVE_ISOLINES
+                                ? MESA_PRIM_LINES
+                                : MESA_PRIM_TRIANGLES;
+
+   struct pipe_tessellator *tess =
+      p_tess_init(in_prim, pspacing, tes->tess.ccw, point_mode);
+
+   struct pipe_tessellator_data data = {0};
+
+   /* Mem allocate */
+   uint32_t patch_coord_offs_offs = heap_water;
+   tess_params.patch_coord_offs = heap_gpu + heap_water;
+   heap_water += align(4 * unrolled_patch_count, 4);
+
+   uint32_t draws_off = heap_water;
+   uint32_t *patch_draws = (uint32_t *)(heap_cpu + heap_water);
+   heap_water += align(sizeof(uint32_t) * 5 * unrolled_patch_count, 4);
+
+   uint32_t *patch_offs = (uint32_t *)(heap_cpu + patch_coord_offs_offs);
+
+   for (unsigned patch = 0; patch < unrolled_patch_count; ++patch) {
+      float *addr =
+         (float *)(heap_cpu + tcs_out_offs + tcs->tess.output_stride * patch);
+
+      struct pipe_tessellation_factors factors = {
+         .outer_tf = {addr[0], addr[1], addr[2], addr[3]},
+         .inner_tf = {addr[4], addr[5]},
+      };
+      p_tessellate(tess, &factors, &data);
+
+      /* Mem allocate indices */
+      uint32_t index_off = heap_water;
+      uint16_t *indices = (uint16_t *)(heap_cpu + heap_water);
+      heap_water += align(sizeof(*indices) * data.num_indices, 4);
+
+      for (unsigned idx = 0; idx < data.num_indices; ++idx) {
+         indices[idx] = data.indices[idx];
+      }
+
+      /* Mem allocate patch coords */
+      heap_water = align(heap_water, 8);
+      patch_offs[patch] = heap_water / 8;
+      float *patch_coords = (float *)(heap_cpu + heap_water);
+      heap_water += align(8 * data.num_domain_points, 4);
+
+      for (unsigned p = 0; p < data.num_domain_points; ++p) {
+         patch_coords[2 * p + 0] = data.domain_points_u[p];
+         patch_coords[2 * p + 1] = data.domain_points_v[p];
+      }
+      assert(data.num_indices < 32768);
+      assert(data.num_domain_points < 8192);
+
+      /* Generate a draw for the patch */
+      uint32_t *desc = patch_draws + (patch * 5);
+
+      desc[0] = data.num_indices;                   /* count */
+      desc[1] = 1;                                  /* instance_count */
+      desc[2] = index_off / sizeof(*indices);       /* start */
+      desc[3] = patch * LIBAGX_TES_PATCH_ID_STRIDE; /* index_bias */
+      desc[4] = 0;                                  /* start_instance */
+   }
+   p_tess_destroy(tess);
+
+   /* Run TES as VS */
+   agx_batch_init_state(batch);
+   void *vs_cso = ctx->stage[PIPE_SHADER_VERTEX].shader;
+   ctx->base.bind_vs_state(&ctx->base,
+                           ctx->stage[PIPE_SHADER_TESS_EVAL].shader);
+   agx_update_vs(ctx);
+   agx_update_descriptors(batch, ctx->vs, PIPE_SHADER_TESS_EVAL);
+
+   struct pipe_draw_info draw_info = {
+      .mode = out_prim,
+      .index_size = 2,
+      .index.resource = heap,
+      .instance_count = 1,
+      .view_mask = info->view_mask,
+   };
+
+   /* Wrap the pool allocation in a fake resource for meta-Gallium use */
+   struct pipe_draw_indirect_info copy_indirect = {
+      .buffer = heap,
+      .offset = draws_off,
+      .stride = 5 * sizeof(uint32_t),
+      .draw_count = in_patches * info->instance_count,
+   };
+
+   batch->uniforms.tess_params =
+      agx_pool_upload(&batch->pool, &tess_params, sizeof(tess_params));
+
+   ctx->base.draw_vbo(&ctx->base, &draw_info, 0, &copy_indirect, NULL, 1);
+
+   /* Restore vertex state */
+   ctx->base.bind_vs_state(&ctx->base, vs_cso);
+
+   pipe_resource_reference(&heap, NULL);
+
+   if (unbind_tcs_when_done) {
+      ctx->base.bind_tcs_state(&ctx->base, NULL);
+   }
+}
+
+static void
 agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
              unsigned drawid_offset,
              const struct pipe_draw_indirect_info *indirect,
@@ -4205,12 +4606,23 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       assert(drawid_offset == 0);
       assert(num_draws == 1);
 
-      util_draw_multi_upload_indirect(pctx, info, indirect, draws);
+      util_draw_multi_unroll_indirect(pctx, info, indirect, draws);
       return;
    }
 
    if (indirect && indirect->count_from_stream_output) {
       agx_draw_vbo_from_xfb(pctx, info, drawid_offset, indirect);
+      return;
+   }
+
+   /* TODO: stop cheating */
+   if (info->mode == MESA_PRIM_PATCHES && indirect) {
+      perf_debug_ctx(ctx, "indirect tessellation");
+      util_draw_indirect(pctx, info, indirect);
+   }
+
+   if (info->mode == MESA_PRIM_PATCHES) {
+      agx_draw_patches(ctx, info, drawid_offset, indirect, draws, num_draws);
       return;
    }
 
@@ -4330,39 +4742,9 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    enum mesa_prim mode = info->mode;
 
    if (ctx->vs->info.uses_base_param || ctx->gs) {
+      agx_upload_draw_params(batch, indirect, draws, info);
+
       batch->uniforms.is_indexed_draw = (idx_size > 0);
-
-      if (indirect) {
-         struct agx_resource *indirect_rsrc = agx_resource(indirect->buffer);
-         uint64_t address = indirect_rsrc->bo->ptr.gpu + indirect->offset;
-         agx_batch_reads(batch, indirect_rsrc);
-
-         /* To implement draw parameters, we use the last 2 words of the
-          * indirect draw descriptor. Offset by 3 words for indexed draw (5
-          * total) and 2 words for non-indexed (4 total).  See the layouts of
-          * indexed vs non-indexed draw descriptors.
-          *
-          * This gives us a consistent layout
-          *
-          *    uint32_t first_vertex;
-          *    uint32_t base_instance;
-          *
-          * and we can implement load_first_vertex & load_base_instance without
-          * checking for indexing.
-          */
-         uint32_t offset = idx_size ? 3 : 2;
-         batch->uniforms.tables[AGX_SYSVAL_TABLE_PARAMS] = address + offset * 4;
-      } else {
-         /* Upload just those two words. */
-         uint32_t params[2] = {
-            idx_size ? draws->index_bias : draws->start,
-            info->start_instance,
-         };
-
-         batch->uniforms.tables[AGX_SYSVAL_TABLE_PARAMS] =
-            agx_pool_upload_aligned(&batch->pool, params, sizeof(params), 4);
-      }
-
       ctx->dirty |= AGX_DIRTY_VS;
    }
 
@@ -4774,6 +5156,8 @@ agx_init_state_functions(struct pipe_context *ctx)
    ctx->create_vertex_elements_state = agx_create_vertex_elements;
    ctx->create_vs_state = agx_create_shader_state;
    ctx->create_gs_state = agx_create_shader_state;
+   ctx->create_tcs_state = agx_create_shader_state;
+   ctx->create_tes_state = agx_create_shader_state;
    ctx->create_compute_state = agx_create_compute_state;
    ctx->bind_blend_state = agx_bind_blend_state;
    ctx->bind_depth_stencil_alpha_state = agx_bind_zsa_state;
@@ -4783,6 +5167,8 @@ agx_init_state_functions(struct pipe_context *ctx)
    ctx->bind_vertex_elements_state = agx_bind_vertex_elements_state;
    ctx->bind_vs_state = agx_bind_vs_state;
    ctx->bind_gs_state = agx_bind_gs_state;
+   ctx->bind_tcs_state = agx_bind_tcs_state;
+   ctx->bind_tes_state = agx_bind_tes_state;
    ctx->bind_compute_state = agx_bind_cs_state;
    ctx->delete_blend_state = agx_delete_state;
    ctx->delete_depth_stencil_alpha_state = agx_delete_state;
@@ -4793,6 +5179,8 @@ agx_init_state_functions(struct pipe_context *ctx)
    ctx->delete_vertex_elements_state = agx_delete_state;
    ctx->delete_vs_state = agx_delete_shader_state;
    ctx->delete_gs_state = agx_delete_shader_state;
+   ctx->delete_tcs_state = agx_delete_shader_state;
+   ctx->delete_tes_state = agx_delete_shader_state;
    ctx->set_blend_color = agx_set_blend_color;
    ctx->set_clip_state = agx_set_clip_state;
    ctx->set_constant_buffer = agx_set_constant_buffer;
@@ -4801,6 +5189,7 @@ agx_init_state_functions(struct pipe_context *ctx)
    ctx->set_sampler_views = agx_set_sampler_views;
    ctx->set_framebuffer_state = agx_set_framebuffer_state;
    ctx->set_polygon_stipple = agx_set_polygon_stipple;
+   ctx->set_patch_vertices = agx_set_patch_vertices;
    ctx->set_sample_mask = agx_set_sample_mask;
    ctx->set_scissor_states = agx_set_scissor_states;
    ctx->set_stencil_ref = agx_set_stencil_ref;
@@ -4813,4 +5202,5 @@ agx_init_state_functions(struct pipe_context *ctx)
    ctx->set_global_binding = agx_set_global_binding;
    ctx->texture_barrier = agx_texture_barrier;
    ctx->get_compute_state_info = agx_get_compute_state_info;
+   ctx->set_tess_state = agx_set_tess_state;
 }

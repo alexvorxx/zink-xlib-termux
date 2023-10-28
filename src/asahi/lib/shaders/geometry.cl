@@ -40,7 +40,80 @@ libagx_xfb_vertex_address(global struct agx_geometry_params *p, uint base_index,
    return (uintptr_t)(p->xfb_base[buffer]) + xfb_offset;
 }
 
-/* TODO: Primitive restart */
+uint
+libagx_vertex_id_for_line_loop(uint prim, uint vert, uint num_prims)
+{
+   /* (0, 1), (1, 2), (2, 0) */
+   if (prim == (num_prims - 1) && vert == 1)
+      return 0;
+   else
+      return prim + vert;
+}
+
+uint
+libagx_vertex_id_for_tri_fan(uint prim, uint vert, bool flatshade_first)
+{
+   /* Vulkan spec section 20.1.7 gives (i + 1, i + 2, 0) for a provoking
+    * first. OpenGL instead wants (0, i + 1, i + 2) with a provoking last.
+    * Piglit clipflat expects us to switch between these orders depending on
+    * provoking vertex, to avoid trivializing the fan.
+    *
+    * Rotate accordingly.
+    */
+   if (flatshade_first)
+      vert = (vert + 1) % 3;
+
+   /* The simpler form assuming last is provoking. */
+   return (vert == 0) ? 0 : prim + vert;
+}
+
+uint
+libagx_vertex_id_for_tri_strip_adj(uint prim, uint vert, uint num_prims,
+                                   bool flatshade_first)
+{
+   /* See Vulkan spec section 20.1.11 "Triangle Strips With Adjancency".
+    *
+    * There are different cases for first/middle/last/only primitives and for
+    * odd/even primitives.  Determine which case we're in.
+    */
+   bool last = prim == (num_prims - 1);
+   bool first = prim == 0;
+   bool even = (prim & 1) == 0;
+   bool even_or_first = even || first;
+
+   /* When the last vertex is provoking, we rotate the primitives
+    * accordingly. This seems required for OpenGL.
+    */
+   if (!flatshade_first && !even_or_first) {
+      vert = (vert + 4u) % 6u;
+   }
+
+   /* Offsets per the spec. The spec lists 6 cases with 6 offsets. Luckily,
+    * there are lots of patterns we can exploit, avoiding a full 6x6 LUT.
+    *
+    * Here we assume the first vertex is provoking, the Vulkan default.
+    */
+   uint offsets[6] = {
+      0,
+      first ? 1 : (even ? -2 : 3),
+      even_or_first ? 2 : 4,
+      last ? 5 : 6,
+      even_or_first ? 4 : 2,
+      even_or_first ? 3 : -2,
+   };
+
+   /* Ensure NIR can see thru the local array */
+   uint offset = 0;
+   for (uint i = 1; i < 6; ++i) {
+      if (i == vert)
+         offset = offsets[i];
+   }
+
+   /* Finally add to the base of the primitive */
+   return (prim * 2) + offset;
+}
+
+/* Sync with agx_nir_lower_ia.c, this is for the restart unrolling */
 uint
 libagx_vertex_id_for_topology(enum mesa_prim mode, bool flatshade_first,
                               uint prim, uint vert, uint num_prims)
@@ -50,24 +123,17 @@ libagx_vertex_id_for_topology(enum mesa_prim mode, bool flatshade_first,
    case MESA_PRIM_LINES:
    case MESA_PRIM_TRIANGLES:
    case MESA_PRIM_LINES_ADJACENCY:
-   case MESA_PRIM_TRIANGLES_ADJACENCY: {
+   case MESA_PRIM_TRIANGLES_ADJACENCY:
       /* Regular primitive: every N vertices defines a primitive */
       return (prim * mesa_vertices_per_prim(mode)) + vert;
-   }
 
-   case MESA_PRIM_LINE_LOOP: {
-      /* (0, 1), (1, 2), (2, 0) */
-      if (prim == (num_prims - 1) && vert == 1)
-         return 0;
-      else
-         return prim + vert;
-   }
+   case MESA_PRIM_LINE_LOOP:
+      return libagx_vertex_id_for_line_loop(prim, vert, num_prims);
 
    case MESA_PRIM_LINE_STRIP:
-   case MESA_PRIM_LINE_STRIP_ADJACENCY: {
+   case MESA_PRIM_LINE_STRIP_ADJACENCY:
       /* (i, i + 1) or (i, ..., i + 3) */
       return prim + vert;
-   }
 
    case MESA_PRIM_TRIANGLE_STRIP: {
       /* Order depends on the provoking vert.
@@ -80,66 +146,14 @@ libagx_vertex_id_for_topology(enum mesa_prim mode, bool flatshade_first,
       return prim + libagx_map_vertex_in_tri_strip(prim, vert, flatshade_first);
    }
 
-   case MESA_PRIM_TRIANGLE_FAN: {
-      /* Vulkan spec section 20.1.7 gives (i + 1, i + 2, 0) for a provoking
-       * first. OpenGL instead wants (0, i + 1, i + 2) with a provoking last.
-       * Piglit clipflat expects us to switch between these orders depending on
-       * provoking vertex, to avoid trivializing the fan.
-       *
-       * Rotate accordingly.
-       */
-      if (flatshade_first)
-         vert = (vert + 1) % 3;
+   case MESA_PRIM_TRIANGLE_FAN:
+      return libagx_vertex_id_for_tri_fan(prim, vert, flatshade_first);
 
-      /* The simpler form assuming last is provoking. */
-      return (vert == 0) ? 0 : prim + vert;
-   }
-
-   case MESA_PRIM_TRIANGLE_STRIP_ADJACENCY: {
-      /* See Vulkan spec section 20.1.11 "Triangle Strips With Adjancency".
-       *
-       * There are different cases for first/middle/last/only primitives and for
-       * odd/even primitives.  Determine which case we're in.
-       */
-      bool last = prim == (num_prims - 1);
-      bool first = prim == 0;
-      bool even = (prim & 1) == 0;
-      bool even_or_first = even || first;
-
-      /* When the last vertex is provoking, we rotate the primitives
-       * accordingly. This seems required for OpenGL.
-       */
-      if (!flatshade_first && !even_or_first) {
-         vert = (vert + 4u) % 6u;
-      }
-
-      /* Offsets per the spec. The spec lists 6 cases with 6 offsets. Luckily,
-       * there are lots of patterns we can exploit, avoiding a full 6x6 LUT.
-       *
-       * Here we assume the first vertex is provoking, the Vulkan default.
-       */
-      uint offsets[6] = {
-         0,
-         first ? 1 : (even ? -2 : 3),
-         even_or_first ? 2 : 4,
-         last ? 5 : 6,
-         even_or_first ? 4 : 2,
-         even_or_first ? 3 : -2,
-      };
-
-      /* Ensure NIR can see thru the local array */
-      uint offset = 0;
-      for (uint i = 1; i < 6; ++i) {
-         if (i == vert)
-            offset = offsets[i];
-      }
-
-      /* Finally add to the base of the primitive */
-      return (prim * 2) + offset;
-   }
+   case MESA_PRIM_TRIANGLE_STRIP_ADJACENCY:
+      return libagx_vertex_id_for_tri_strip_adj(prim, vert, num_prims,
+                                                flatshade_first);
 
    default:
-      /* Invalid */
       return 0;
    }
 }

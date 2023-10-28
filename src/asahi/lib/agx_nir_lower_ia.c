@@ -12,6 +12,7 @@
 #include "nir.h"
 #include "nir_builder_opcodes.h"
 #include "nir_intrinsics.h"
+#include "shader_enums.h"
 
 /*
  * This file implements input assembly in software for geometry/tessellation
@@ -27,14 +28,60 @@
  * This multidraw implementation kicks off the prefix sum and lowered draw.
  */
 
+/*
+ * Sync with geometry.cl, this is preferred to avoid NIR needing to chew through
+ * the massive switch statement (bad for compile time).
+ */
+static nir_def *
+vertex_id_for_topology(nir_builder *b, struct agx_ia_key *key)
+{
+   nir_def *prim = nir_load_primitive_id(b);
+   nir_def *vert = nir_load_vertex_id_in_primitive_agx(b);
+   nir_def *flatshade_first = nir_imm_bool(b, key->flatshade_first);
+
+   switch (key->mode) {
+   case MESA_PRIM_POINTS:
+   case MESA_PRIM_LINES:
+   case MESA_PRIM_TRIANGLES:
+   case MESA_PRIM_LINES_ADJACENCY:
+   case MESA_PRIM_TRIANGLES_ADJACENCY:
+      return nir_iadd(
+         b, nir_imul_imm(b, prim, mesa_vertices_per_prim(key->mode)), vert);
+
+   case MESA_PRIM_LINE_LOOP:
+      return libagx_vertex_id_for_line_loop(b, prim, vert,
+                                            nir_load_num_vertices(b));
+
+   case MESA_PRIM_LINE_STRIP:
+   case MESA_PRIM_LINE_STRIP_ADJACENCY:
+      return nir_iadd(b, prim, vert);
+
+   case MESA_PRIM_TRIANGLE_STRIP: {
+      return nir_iadd(
+         b, prim,
+         libagx_map_vertex_in_tri_strip(b, prim, vert, flatshade_first));
+   }
+
+   case MESA_PRIM_TRIANGLE_FAN:
+      return libagx_vertex_id_for_tri_fan(b, prim, vert, flatshade_first);
+
+   case MESA_PRIM_TRIANGLE_STRIP_ADJACENCY:
+      return libagx_vertex_id_for_tri_strip_adj(
+         b, prim, vert, nir_load_num_vertices(b), flatshade_first);
+
+   case MESA_PRIM_PATCHES:
+      return nir_iadd(b, nir_imul(b, prim, nir_load_patch_vertices_in(b)),
+                      nir_load_invocation_id(b));
+
+   default:
+      unreachable("invalid mode");
+   }
+}
+
 static nir_def *
 load_vertex_id(nir_builder *b, struct agx_ia_key *key)
 {
-   /* Tessellate by primitive mode */
-   nir_def *id = libagx_vertex_id_for_topology(
-      b, nir_imm_int(b, key->mode), nir_imm_bool(b, key->flatshade_first),
-      nir_load_primitive_id(b), nir_load_vertex_id_in_primitive_agx(b),
-      nir_load_num_vertices(b));
+   nir_def *id = vertex_id_for_topology(b, key);
 
    /* If drawing with an index buffer, pull the vertex ID. Otherwise, the
     * vertex ID is just the index as-is.

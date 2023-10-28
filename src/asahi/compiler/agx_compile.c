@@ -2959,7 +2959,8 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
          out->inputs_flat_shaded = masks.flat;
          out->inputs_linear_shaded = masks.linear;
       }
-   } else if (nir->info.stage == MESA_SHADER_VERTEX) {
+   } else if (nir->info.stage == MESA_SHADER_VERTEX ||
+              nir->info.stage == MESA_SHADER_TESS_EVAL) {
       out->has_edgeflags = nir->info.outputs_written & VARYING_BIT_EDGE;
       out->cull_distance_size = nir->info.cull_distance_array_size;
 

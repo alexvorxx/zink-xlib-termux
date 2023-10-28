@@ -106,6 +106,9 @@ struct PACKED agx_draw_uniforms {
    /* Address of input assembly buffer if geom/tess is used, else 0 */
    uint64_t input_assembly;
 
+   /* Address of tessellation param buffer if tessellation is used, else 0 */
+   uint64_t tess_params;
+
    /* Address of geometry param buffer if geometry shaders are used, else 0 */
    uint64_t geometry_params;
 
@@ -213,6 +216,7 @@ struct agx_uncompiled_shader {
    struct agx_uncompiled_shader_info info;
    struct hash_table *variants;
    struct agx_uncompiled_shader *passthrough_progs[MESA_PRIM_COUNT][3][2];
+   struct agx_uncompiled_shader *passthrough_tcs[32];
 
    uint32_t xfb_strides[4];
    bool has_xfb_info;
@@ -222,6 +226,18 @@ struct agx_uncompiled_shader {
 
    /* Set on VS, passed to FS for linkage */
    unsigned base_varying;
+
+   /* Tessellation info */
+   struct {
+      uint64_t per_vertex_outputs;
+      uint32_t output_stride;
+      enum gl_tess_spacing spacing;
+      enum tess_primitive_mode primitive;
+      uint8_t output_patch_size;
+      uint8_t nr_patch_outputs;
+      bool ccw;
+      bool point_mode;
+   } tess;
 };
 
 enum agx_stage_dirty {
@@ -407,6 +423,18 @@ struct asahi_fs_shader_key {
    enum pipe_format rt_formats[PIPE_MAX_COLOR_BUFS];
 };
 
+struct asahi_tcs_shader_key {
+   /* Input assembly key. Simplified because we know we're operating on patches.
+    */
+   uint8_t index_size_B;
+
+   /* Vertex shader key */
+   struct agx_attribute attribs[AGX_MAX_VBUFS];
+
+   /* Tessellation control shaders must be linked with a vertex shader. */
+   uint8_t input_nir_sha1[20];
+};
+
 struct asahi_gs_shader_key {
    /* Input assembly key */
    struct agx_ia_key ia;
@@ -426,6 +454,7 @@ struct asahi_gs_shader_key {
 
 union asahi_shader_key {
    struct asahi_vs_shader_key vs;
+   struct asahi_tcs_shader_key tcs;
    struct asahi_gs_shader_key gs;
    struct asahi_fs_shader_key fs;
 };
@@ -498,7 +527,7 @@ struct asahi_blitter {
 
 struct agx_context {
    struct pipe_context base;
-   struct agx_compiled_shader *vs, *fs, *gs;
+   struct agx_compiled_shader *vs, *fs, *gs, *tcs, *tes;
    uint32_t dirty;
 
    /* Heap for dynamic memory allocation for geometry/tessellation shaders */
@@ -526,6 +555,10 @@ struct agx_context {
 
    struct pipe_vertex_buffer vertex_buffers[PIPE_MAX_ATTRIBS];
    uint32_t vb_mask;
+
+   unsigned patch_vertices;
+   float default_outer_level[4];
+   float default_inner_level[2];
 
    struct agx_stage stage[PIPE_SHADER_TYPES];
    struct agx_attribute *attributes;

@@ -46,6 +46,7 @@
 #include "agx_public.h"
 #include "agx_state.h"
 #include "agx_tilebuffer.h"
+#include "shader_enums.h"
 
 /* Fake values, pending UAPI upstreaming */
 #ifndef DRM_FORMAT_MOD_APPLE_TWIDDLED
@@ -1533,6 +1534,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_FS_FINE_DERIVATIVE:
    case PIPE_CAP_CULL_DISTANCE_NOCOMBINE:
    case PIPE_CAP_NIR_COMPACT_ARRAYS:
+   case PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS:
       return 1;
 
    case PIPE_CAP_CLIP_HALFZ:
@@ -1699,7 +1701,10 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_SHADER_BUFFER_OFFSET_ALIGNMENT:
       return 4;
 
+   case PIPE_CAP_MAX_SHADER_PATCH_VARYINGS:
+      return 32;
    case PIPE_CAP_MAX_VARYINGS:
+      /* TODO: Probably should bump to 32? */
       return 16;
 
    case PIPE_CAP_FLATSHADE:
@@ -1726,7 +1731,8 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
              BITFIELD_BIT(MESA_PRIM_LINES_ADJACENCY) |
              BITFIELD_BIT(MESA_PRIM_LINE_STRIP_ADJACENCY) |
              BITFIELD_BIT(MESA_PRIM_TRIANGLES_ADJACENCY) |
-             BITFIELD_BIT(MESA_PRIM_TRIANGLE_STRIP_ADJACENCY);
+             BITFIELD_BIT(MESA_PRIM_TRIANGLE_STRIP_ADJACENCY) |
+             BITFIELD_BIT(MESA_PRIM_PATCHES);
 
    case PIPE_CAP_MAP_UNSYNCHRONIZED_THREAD_SAFE:
       return 1;
@@ -1790,6 +1796,8 @@ agx_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type shader,
    case PIPE_SHADER_COMPUTE:
    case PIPE_SHADER_GEOMETRY:
       break;
+   case PIPE_SHADER_TESS_CTRL:
+   case PIPE_SHADER_TESS_EVAL:
    default:
       return false;
    }
@@ -1836,7 +1844,11 @@ agx_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type shader,
       return 1;
 
    case PIPE_SHADER_CAP_INDIRECT_INPUT_ADDR:
+      return shader == PIPE_SHADER_TESS_CTRL || shader == PIPE_SHADER_TESS_EVAL;
+
    case PIPE_SHADER_CAP_INDIRECT_OUTPUT_ADDR:
+      return shader == PIPE_SHADER_TESS_CTRL;
+
    case PIPE_SHADER_CAP_INDIRECT_TEMP_ADDR:
    case PIPE_SHADER_CAP_SUBROUTINES:
    case PIPE_SHADER_CAP_TGSI_SQRT_SUPPORTED:

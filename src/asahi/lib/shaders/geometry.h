@@ -8,13 +8,16 @@
 #include "libagx.h"
 
 #ifndef __OPENCL_VERSION__
+#include "util/bitscan.h"
 #include "util/macros.h"
-#define GLOBAL(type_) uint64_t
-#define CONST(type_)  uint64_t
+#define GLOBAL(type_)      uint64_t
+#define CONST(type_)       uint64_t
+#define libagx_popcount(x) util_bitcount64(x)
 #else
 #define PACKED
-#define GLOBAL(type_) global type_ *
-#define CONST(type_)  constant type_ *
+#define GLOBAL(type_)      global type_ *
+#define CONST(type_)       constant type_ *
+#define libagx_popcount(x) popcount(x)
 #endif
 
 #ifndef LIBAGX_GEOMETRY_H
@@ -155,5 +158,117 @@ struct agx_geometry_params {
     */
    uint32_t count_buffer_stride;
 } PACKED;
+
+struct agx_tess_params {
+   /* Persistent (cross-draw) geometry state */
+   GLOBAL(struct agx_geometry_state) state;
+
+   /* Patch coordinate offsets in patch_coord_buffer, indexed by patch ID. */
+   GLOBAL(uint) patch_coord_offs;
+
+   /* Patch coordinate buffer, indexed as:
+    *
+    *    patch_coord_offs[patch_ID] + vertex_in_patch
+    *
+    * Currently float2s, but we might be able to compact later?
+    */
+   GLOBAL(float2) patch_coord_buffer;
+
+   /* Tessellation control shader output buffer, indexed by patch ID. */
+   GLOBAL(uchar) tcs_buffer;
+
+   /* Bitfield of TCS per-vertex outputs */
+   uint64_t tcs_per_vertex_outputs;
+
+   /* Default tess levels used in OpenGL when there is no TCS in the pipeline.
+    * Unused in Vulkan and OpenGL ES.
+    */
+   float tess_level_outer_default[4];
+   float tess_level_inner_default[4];
+
+   /* Number of vertices in the input patch */
+   uint input_patch_size;
+
+   /* Number of vertices in the TCS output patch */
+   uint output_patch_size;
+
+   /* Number of patch constants written by TCS */
+   uint tcs_patch_constants;
+
+   /* Number of input patches per instance of the VS/TCS */
+   uint patches_per_instance;
+} PACKED;
+
+/* TCS shared memory layout:
+ *
+ *    vec4 vs_outputs[VERTICES_IN_INPUT_PATCH][TOTAL_VERTEX_OUTPUTS];
+ *
+ * TODO: compact.
+ */
+static inline ushort
+libagx_tcs_in_offs(uint vtx, gl_varying_slot location,
+                   uint64_t crosslane_vs_out_mask)
+{
+   uint base = vtx * libagx_popcount(crosslane_vs_out_mask);
+   uint offs = libagx_popcount(crosslane_vs_out_mask &
+                               (((uint64_t)(1) << location) - 1));
+
+   return (base + offs) * 16;
+}
+
+static inline uint
+libagx_tcs_in_size(uint32_t vertices_in_patch, uint64_t crosslane_vs_out_mask)
+{
+   return libagx_tcs_in_offs(vertices_in_patch - 1, VARYING_SLOT_VAR31,
+                             crosslane_vs_out_mask);
+}
+
+/*
+ * TCS out buffer layout, per-patch:
+ *
+ *    float tess_level_outer[4];
+ *    float tess_level_inner[2];
+ *    vec4 patch_out[MAX_PATCH_OUTPUTS];
+ *    vec4 vtx_out[OUT_PATCH_SIZE][TOTAL_VERTEX_OUTPUTS];
+ *
+ * Vertex out are compacted based on the mask of written out. Patch
+ * out are used as-is.
+ *
+ * Bounding boxes are ignored.
+ */
+static inline uint
+libagx_tcs_out_offs(uint vtx_id, gl_varying_slot location, uint nr_patch_out,
+                    uint out_patch_size, uint64_t vtx_out_mask)
+{
+   uint off = 0;
+   if (location == VARYING_SLOT_TESS_LEVEL_OUTER)
+      return off;
+
+   off += 4 * sizeof(float);
+   if (location == VARYING_SLOT_TESS_LEVEL_INNER)
+      return off;
+
+   off += 2 * sizeof(float);
+   if (location >= VARYING_SLOT_PATCH0)
+      return off + (16 * (location - VARYING_SLOT_PATCH0));
+
+   /* Anything else is a per-vtx output */
+   off += 16 * nr_patch_out;
+   off += 16 * vtx_id * libagx_popcount(vtx_out_mask);
+
+   uint idx = libagx_popcount(vtx_out_mask & (((uint64_t)(1) << location) - 1));
+   return off + (16 * idx);
+}
+
+static inline uint
+libagx_tcs_out_stride(uint nr_patch_out, uint out_patch_size,
+                      uint64_t vtx_out_mask)
+{
+   return libagx_tcs_out_offs(out_patch_size, VARYING_SLOT_VAR0, nr_patch_out,
+                              out_patch_size, vtx_out_mask);
+}
+
+/* In a tess eval shader, stride for hw vertex ID */
+#define LIBAGX_TES_PATCH_ID_STRIDE 8192
 
 #endif

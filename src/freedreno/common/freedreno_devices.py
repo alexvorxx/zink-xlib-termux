@@ -789,6 +789,10 @@ a7xx_740 = A7XXProps(
         has_event_write_sample_count = True,
     )
 
+a7xx_750 = A7XXProps(
+        has_event_write_sample_count = True,
+    )
+
 a730_magic_regs = dict(
         TPL1_DBG_ECO_CNTL = 0x1000000,
         GRAS_DBG_ECO_CNTL = 0x800,
@@ -928,6 +932,70 @@ add_gpus([
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_800A, 0x00000000],
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_800B, 0x00000000],
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_800C, 0x00000000],
+        ],
+    ))
+
+add_gpus([
+        GPUId(chip_id=0x43051401, name="FD750"), # KGSL, no speedbin data
+        GPUId(chip_id=0xffff43051401, name="FD750"), # Default no-speedbin fallback
+    ], A6xxGPUInfo(
+        CHIP.A7XX,
+        [a7xx_base, a7xx_750],
+        num_ccu = 6,
+        tile_align_w = 96,
+        tile_align_h = 32,
+        num_vsc_pipes = 32,
+        cs_shared_mem_size = 32 * 1024,
+        wave_granularity = 2,
+        fibers_per_sp = 128 * 2 * 16,
+        magic_regs = dict(
+            TPL1_DBG_ECO_CNTL = 0x11100000,
+            GRAS_DBG_ECO_CNTL = 0x00004800,
+            SP_CHICKEN_BITS = 0x10000400,
+            PC_MODE_CNTL = 0x00003f1f,
+            SP_DBG_ECO_CNTL = 0x10000000,
+            RB_DBG_ECO_CNTL = 0x00000001,
+            RB_DBG_ECO_CNTL_blit = 0x00000001,
+            RB_UNKNOWN_8E01 = 0x0,
+            VPC_DBG_ECO_CNTL = 0x02000000,
+            UCHE_UNKNOWN_0E12 = 0x40000000,
+
+            RB_UNKNOWN_8E06 = 0x02082000,
+        ),
+        raw_magic_regs = [
+            [A6XXRegs.REG_A6XX_UCHE_CACHE_WAYS, 0x00000000],
+            [A6XXRegs.REG_A7XX_UCHE_UNKNOWN_0E10, 0x00000000],
+            [A6XXRegs.REG_A7XX_UCHE_UNKNOWN_0E11, 0x00000080],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE08, 0x00000000],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE09, 0x00431800],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE0A, 0x00800000],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE6C, 0x00000000],
+            [A6XXRegs.REG_A6XX_PC_DBG_ECO_CNTL, 0x00100000],
+            [A6XXRegs.REG_A7XX_PC_UNKNOWN_9E24, 0x01585600],
+            [A6XXRegs.REG_A7XX_VFD_UNKNOWN_A600, 0x00008000],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE06, 0x00000000],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE6A, 0x00000000],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE6B, 0x00000080],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE73, 0x00000000],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AB02, 0x00000000],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AB01, 0x00000000],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AB22, 0x00000000],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_B310, 0x00000000],
+            [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_8120, 0x09510840],
+            [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_8121, 0x00000a62],
+            [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_8009, 0x00000000],
+            [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_800A, 0x00000000],
+            [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_800B, 0x00000000],
+            [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_800C, 0x00000000],
+
+            [A6XXRegs.REG_A7XX_VPC_ATTR_BUF_SIZE_GMEM, 0x00020000],
+            [A6XXRegs.REG_A7XX_VPC_ATTR_BUF_BASE_GMEM, 0x00240000],
+            [A6XXRegs.REG_A7XX_PC_ATTR_BUF_SIZE_GMEM, 0x00020000],
+
+            [0x930a, 0],
+            [0x960a, 1],
+            [A6XXRegs.REG_A7XX_SP_PS_ALIASED_COMPONENTS_CONTROL, 0],
+            [A6XXRegs.REG_A7XX_SP_PS_ALIASED_COMPONENTS, 0],
         ],
     ))
 

@@ -543,6 +543,7 @@ tu6_emit_render_cntl<A7XX>(struct tu_cmd_buffer *cmd,
    tu_cs_emit_regs(
       cs, A7XX_RB_RENDER_CNTL(.binning = binning, .raster_mode = TYPE_TILED,
                               .raster_direction = LR_TB));
+   tu_cs_emit_regs(cs, A7XX_GRAS_SU_RENDER_CNTL(.binning = binning));
 }
 
 static void

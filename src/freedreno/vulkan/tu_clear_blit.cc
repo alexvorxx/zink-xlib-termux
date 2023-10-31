@@ -889,6 +889,8 @@ r3d_common(struct tu_cmd_buffer *cmd, struct tu_cs *cs, enum r3d_type type,
    tu_cs_emit_regs(cs, PC_RASTER_CNTL(CHIP));
    if (CHIP == A6XX) {
       tu_cs_emit_regs(cs, A6XX_VPC_UNKNOWN_9107());
+   } else {
+      tu_cs_emit_regs(cs, A7XX_PC_RASTER_CNTL_V2());
    }
 
    tu_cs_emit_regs(cs,
@@ -1309,6 +1311,7 @@ r3d_dst(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer,
    tu_cs_emit_regs(cs, A6XX_GRAS_LRZ_MRT_BUF_INFO_0(.color_format = fmt));
 
    tu_cs_emit_regs(cs, A6XX_RB_RENDER_CNTL(.flag_mrts = iview->ubwc_enabled));
+   tu_cs_emit_regs(cs, A7XX_GRAS_SU_RENDER_CNTL());
 }
 
 static void
@@ -1323,6 +1326,7 @@ r3d_dst_depth(struct tu_cs *cs, const struct tu_image_view *iview, uint32_t laye
    tu_cs_image_flag_ref(cs, &iview->view, layer);
 
    tu_cs_emit_regs(cs, A6XX_RB_RENDER_CNTL(.flag_mrts = iview->view.ubwc_enabled));
+   tu_cs_emit_regs(cs, A7XX_GRAS_SU_RENDER_CNTL());
 }
 
 static void
@@ -1334,6 +1338,7 @@ r3d_dst_stencil(struct tu_cs *cs, const struct tu_image_view *iview, uint32_t la
    tu_cs_emit(cs, 0);
 
    tu_cs_emit_regs(cs, A6XX_RB_RENDER_CNTL());
+   tu_cs_emit_regs(cs, A7XX_GRAS_SU_RENDER_CNTL());
 }
 
 static void
@@ -1353,6 +1358,7 @@ r3d_dst_buffer(struct tu_cs *cs, enum pipe_format format, uint64_t va, uint32_t 
                    A6XX_RB_MRT_BASE_GMEM(0, 0));
 
    tu_cs_emit_regs(cs, A6XX_RB_RENDER_CNTL());
+   tu_cs_emit_regs(cs, A7XX_GRAS_SU_RENDER_CNTL());
 }
 
 static void
@@ -1390,6 +1396,7 @@ r3d_dst_gmem(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
                    A6XX_GRAS_LRZ_MRT_BUF_INFO_0(.color_format = color_format));
 
    tu_cs_emit_regs(cs, A6XX_RB_RENDER_CNTL());
+   tu_cs_emit_regs(cs, A7XX_GRAS_SU_RENDER_CNTL());
 }
 
 static uint8_t
@@ -1477,8 +1484,10 @@ r3d_setup(struct tu_cmd_buffer *cmd,
 
    tu_cs_emit_regs(cs, A6XX_RB_DEPTH_PLANE_CNTL());
    tu_cs_emit_regs(cs, A6XX_RB_DEPTH_CNTL());
+   tu_cs_emit_regs(cs, A6XX_GRAS_SU_DEPTH_CNTL());
    tu_cs_emit_regs(cs, A6XX_GRAS_SU_DEPTH_PLANE_CNTL());
    tu_cs_emit_regs(cs, A6XX_RB_STENCIL_CONTROL());
+   tu_cs_emit_regs(cs, A6XX_GRAS_SU_STENCIL_CNTL());
    tu_cs_emit_regs(cs, A6XX_RB_STENCILMASK());
    tu_cs_emit_regs(cs, A6XX_RB_STENCILWRMASK());
    tu_cs_emit_regs(cs, A6XX_RB_STENCILREF());
@@ -2907,11 +2916,13 @@ tu_clear_sysmem_attachments(struct tu_cmd_buffer *cmd,
          .z_test_enable = z_clear,
          .z_write_enable = z_clear,
          .zfunc = FUNC_ALWAYS));
+   tu_cs_emit_regs(cs, A6XX_GRAS_SU_DEPTH_CNTL(z_clear));
    tu_cs_emit_regs(cs, A6XX_GRAS_SU_DEPTH_PLANE_CNTL());
    tu_cs_emit_regs(cs, A6XX_RB_STENCIL_CONTROL(
          .stencil_enable = s_clear,
          .func = FUNC_ALWAYS,
          .zpass = STENCIL_REPLACE));
+   tu_cs_emit_regs(cs, A6XX_GRAS_SU_STENCIL_CNTL(s_clear));
    tu_cs_emit_regs(cs, A6XX_RB_STENCILMASK(.mask = 0xff));
    tu_cs_emit_regs(cs, A6XX_RB_STENCILWRMASK(.wrmask = 0xff));
    tu_cs_emit_regs(cs, A6XX_RB_STENCILREF(.ref = s_clear_val));

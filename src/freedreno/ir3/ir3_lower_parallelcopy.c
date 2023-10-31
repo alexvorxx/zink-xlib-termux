@@ -88,6 +88,9 @@ do_swap(struct ir3_compiler *compiler, struct ir3_instruction *instr,
    assert(!entry->src.flags);
 
    if (entry->flags & IR3_REG_HALF) {
+      const unsigned half_size =
+         (entry->flags & IR3_REG_SHARED) ? RA_SHARED_HALF_SIZE : RA_HALF_SIZE;
+
       /* We currently make sure to never emit parallel copies where the
        * source/destination is a half-reg above the range accessable to half
        * registers. However, when a full-reg source overlaps a half-reg
@@ -97,7 +100,7 @@ do_swap(struct ir3_compiler *compiler, struct ir3_instruction *instr,
        * "illegal" swap instead. This may also be useful for implementing
        * "spilling" half-regs to the inaccessable space.
        */
-      if (entry->src.reg >= RA_HALF_SIZE) {
+      if (entry->src.reg >= half_size) {
          /* Choose a temporary that doesn't overlap src or dst */
          physreg_t tmp = entry->dst < 2 ? 2 : 0;
 
@@ -137,7 +140,7 @@ do_swap(struct ir3_compiler *compiler, struct ir3_instruction *instr,
       /* If dst is not addressable, we only need to swap the arguments and
        * let the case above handle it.
        */
-      if (entry->dst >= RA_HALF_SIZE) {
+      if (entry->dst >= half_size) {
          do_swap(compiler, instr,
                  &(struct copy_entry){
                     .src = {.reg = entry->dst},
@@ -184,7 +187,9 @@ do_copy(struct ir3_compiler *compiler, struct ir3_instruction *instr,
 {
    if (entry->flags & IR3_REG_HALF) {
       /* See do_swap() for why this is here. */
-      if (entry->dst >= RA_HALF_SIZE) {
+      const unsigned half_size =
+         (entry->flags & IR3_REG_SHARED) ? RA_SHARED_HALF_SIZE : RA_HALF_SIZE;
+      if (entry->dst >= half_size) {
          /* TODO: is there a hw instruction we can use for this case? */
          physreg_t tmp = !entry->src.flags && entry->src.reg < 2 ? 2 : 0;
 
@@ -218,7 +223,7 @@ do_copy(struct ir3_compiler *compiler, struct ir3_instruction *instr,
          return;
       }
 
-      if (!entry->src.flags && entry->src.reg >= RA_HALF_SIZE) {
+      if (!entry->src.flags && entry->src.reg >= half_size) {
          unsigned src_num = ra_physreg_to_num(entry->src.reg & ~1u,
                                               entry->flags & ~IR3_REG_HALF);
          unsigned dst_num = ra_physreg_to_num(entry->dst, entry->flags);

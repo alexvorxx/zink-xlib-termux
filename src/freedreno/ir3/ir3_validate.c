@@ -69,6 +69,15 @@ reg_class_flags(struct ir3_register *reg)
 }
 
 static void
+validate_reg(struct ir3_validate_ctx *ctx, struct ir3_register *reg)
+{
+   if ((reg->flags & IR3_REG_SHARED) && reg->num != INVALID_REG) {
+      validate_assert(ctx, reg->num >= SHARED_REG_START);
+      validate_assert(ctx, reg->num - SHARED_REG_START < SHARED_REG_SIZE);
+   }
+}
+
+static void
 validate_src(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr,
              struct ir3_register *reg)
 {
@@ -104,6 +113,8 @@ validate_src(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr,
       validate_assert(ctx,
                       found && "tied register not in the same instruction");
    }
+
+   validate_reg(ctx, reg);
 }
 
 /* phi sources are logically read at the end of the predecessor basic block,
@@ -162,6 +173,8 @@ validate_dst(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr,
 
    if (reg->flags & IR3_REG_RELATIV)
       validate_assert(ctx, instr->address);
+
+   validate_reg(ctx, reg);
 }
 
 #define validate_reg_size(ctx, reg, type)                                      \

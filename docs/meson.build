@@ -1,3 +1,16 @@
+get_option('html-docs').require(
+  run_command(prog_python, '-c',
+  '''
+try:
+  from packaging.version import Version
+except:
+  from distutils.version import StrictVersion as Version
+import hawkmoth
+assert Version(hawkmoth.__version__) >= Version("0.16.0")
+  ''', check: false).returncode() == 0,
+  error_message: 'hawkmoth >= 0.16.0 required'
+)
+
 html_docs = custom_target(
   'html',
   depfile: 'docs.d',

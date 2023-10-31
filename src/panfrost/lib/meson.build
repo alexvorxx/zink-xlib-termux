@@ -55,6 +55,7 @@ libpanfrost_lib_files = files(
   'pan_encoder.h',
 
   'pan_afbc.c',
+  'pan_afrc.c',
   'pan_attributes.c',
   'pan_blend.c',
   'pan_clear.c',

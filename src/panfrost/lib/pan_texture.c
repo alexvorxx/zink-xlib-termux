@@ -735,3 +735,96 @@ GENX(pan_afbc_compression_mode)(enum pipe_format format)
    unreachable("all AFBC formats handled");
 }
 #endif
+
+#if PAN_ARCH >= 10
+enum mali_afrc_format
+GENX(pan_afrc_format)(struct pan_afrc_format_info info, uint64_t modifier,
+                      unsigned plane)
+{
+   bool scan = panfrost_afrc_is_scan(modifier);
+
+   assert(info.bpc == 8 || info.bpc == 10);
+   assert(info.num_comps > 0 && info.num_comps <= 4);
+
+   switch (info.ichange_fmt) {
+   case PAN_AFRC_ICHANGE_FORMAT_RAW:
+      assert(plane == 0);
+
+      if (info.bpc == 8)
+         return (scan ? MALI_AFRC_FORMAT_R8_SCAN : MALI_AFRC_FORMAT_R8_ROT) +
+                (info.num_comps - 1);
+
+      assert(info.num_comps == 4);
+      return (scan ? MALI_AFRC_FORMAT_R10G10B10A10_SCAN
+                   : MALI_AFRC_FORMAT_R10G10B10A10_ROT);
+
+   case PAN_AFRC_ICHANGE_FORMAT_YUV444:
+      if (info.bpc == 8) {
+         if (plane == 0 || info.num_planes == 3)
+            return (scan ? MALI_AFRC_FORMAT_R8_444_SCAN
+                         : MALI_AFRC_FORMAT_R8_444_ROT);
+
+         return (scan ? MALI_AFRC_FORMAT_R8G8_444_SCAN
+                      : MALI_AFRC_FORMAT_R8G8_444_ROT);
+      }
+
+      assert(info.num_planes == 3);
+      return (scan ? MALI_AFRC_FORMAT_R10_444_SCAN
+                   : MALI_AFRC_FORMAT_R10_444_ROT);
+
+   case PAN_AFRC_ICHANGE_FORMAT_YUV422:
+      if (info.bpc == 8) {
+         if (plane == 0 || info.num_planes == 3)
+            return (scan ? MALI_AFRC_FORMAT_R8_422_SCAN
+                         : MALI_AFRC_FORMAT_R8_422_ROT);
+
+         return (scan ? MALI_AFRC_FORMAT_R8G8_422_SCAN
+                      : MALI_AFRC_FORMAT_R8G8_422_ROT);
+      }
+
+      if (plane == 0 || info.num_planes == 3)
+         return (scan ? MALI_AFRC_FORMAT_R10_422_SCAN
+                      : MALI_AFRC_FORMAT_R10_422_ROT);
+
+      return (scan ? MALI_AFRC_FORMAT_R10G10_422_SCAN
+                   : MALI_AFRC_FORMAT_R10G10_422_ROT);
+
+   case PAN_AFRC_ICHANGE_FORMAT_YUV420:
+      if (info.bpc == 8) {
+         if (plane == 0 || info.num_planes == 3)
+            return (scan ? MALI_AFRC_FORMAT_R8_420_SCAN
+                         : MALI_AFRC_FORMAT_R8_420_ROT);
+
+         return (scan ? MALI_AFRC_FORMAT_R8G8_420_SCAN
+                      : MALI_AFRC_FORMAT_R8G8_420_ROT);
+      }
+
+      if (plane == 0 || info.num_planes == 3)
+         return (scan ? MALI_AFRC_FORMAT_R10_420_SCAN
+                      : MALI_AFRC_FORMAT_R10_420_ROT);
+
+      return (scan ? MALI_AFRC_FORMAT_R10G10_420_SCAN
+                   : MALI_AFRC_FORMAT_R10G10_420_ROT);
+
+   default:
+      return MALI_AFRC_FORMAT_INVALID;
+   }
+}
+
+enum mali_afrc_block_size
+GENX(pan_afrc_block_size)(uint64_t modifier, unsigned index)
+{
+   /* Clump size flag for planes 1 and 2 is shifted by 4 bits */
+   unsigned shift = index == 0 ? 0 : 4;
+   uint64_t flag = (modifier >> shift) & AFRC_FORMAT_MOD_CU_SIZE_MASK;
+
+   /* clang-format off */
+   switch (flag) {
+   case AFRC_FORMAT_MOD_CU_SIZE_16: return MALI_AFRC_BLOCK_SIZE_16;
+   case AFRC_FORMAT_MOD_CU_SIZE_24: return MALI_AFRC_BLOCK_SIZE_24;
+   case AFRC_FORMAT_MOD_CU_SIZE_32: return MALI_AFRC_BLOCK_SIZE_32;
+   default:                         unreachable("invalid code unit size");
+   }
+   /* clang-format on */
+}
+#endif

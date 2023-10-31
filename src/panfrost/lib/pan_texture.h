@@ -278,6 +278,29 @@ uint32_t pan_slice_align(uint64_t modifier);
 
 uint32_t pan_afbc_body_align(uint64_t modifier);
 
+/* AFRC */
+
+#define AFRC_CLUMPS_PER_TILE 64
+
+enum pan_afrc_interchange_format {
+   PAN_AFRC_ICHANGE_FORMAT_RAW,
+   PAN_AFRC_ICHANGE_FORMAT_YUV444,
+   PAN_AFRC_ICHANGE_FORMAT_YUV422,
+   PAN_AFRC_ICHANGE_FORMAT_YUV420,
+};
+
+struct pan_afrc_format_info {
+   unsigned bpc : 4;
+   unsigned num_comps : 3;
+   unsigned ichange_fmt : 2;
+   unsigned num_planes : 2;
+};
+
+struct pan_afrc_format_info
+panfrost_afrc_get_format_info(enum pipe_format format);
+
+bool panfrost_afrc_is_scan(uint64_t modifier);
+
 struct pan_block_size panfrost_block_size(uint64_t modifier,
                                           enum pipe_format format);
 
@@ -301,6 +324,10 @@ unsigned panfrost_texture_offset(const struct pan_image_layout *layout,
 #define drm_is_afbc(mod)                                                       \
    ((mod >> 52) ==                                                             \
     (DRM_FORMAT_MOD_ARM_TYPE_AFBC | (DRM_FORMAT_MOD_VENDOR_ARM << 4)))
+
+#define drm_is_afrc(mod)                                                       \
+   ((mod >> 52) ==                                                             \
+    (DRM_FORMAT_MOD_ARM_TYPE_AFRC | (DRM_FORMAT_MOD_VENDOR_ARM << 4)))
 
 struct pan_image_explicit_layout {
    unsigned offset;
@@ -335,6 +362,14 @@ void pan_iview_get_surface(const struct pan_image_view *iview, unsigned level,
 #if PAN_ARCH >= 9
 enum mali_afbc_compression_mode
 GENX(pan_afbc_compression_mode)(enum pipe_format format);
+#endif
+
+#if PAN_ARCH >= 10
+enum mali_afrc_format
+GENX(pan_afrc_format)(struct pan_afrc_format_info info, uint64_t modifier,
+                      unsigned plane);
+enum mali_afrc_block_size GENX(pan_afrc_block_size)(uint64_t modifier,
+                                                    unsigned index);
 #endif
 
 #ifdef __cplusplus

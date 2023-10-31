@@ -117,6 +117,16 @@ panfrost_afbc_subblock_size(uint64_t modifier)
 }
 
 /*
+ * Given an AFRC modifier, return whether the layout is optimized for scan
+ * order (vs rotation order).
+ */
+bool
+panfrost_afrc_is_scan(uint64_t modifier)
+{
+   return modifier & AFRC_FORMAT_MOD_LAYOUT_SCAN;
+}
+
+/*
  * Given a format, determine the tile size used for u-interleaving. For formats
  * that are already block compressed, this is 4x4. For all other formats, this
  * is 16x16, hence the modifier name.

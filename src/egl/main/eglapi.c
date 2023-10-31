@@ -555,6 +555,7 @@ _eglCreateExtensionsString(_EGLDisplay *disp)
    _EGL_CHECK_EXTENSION(EXT_protected_content);
    _EGL_CHECK_EXTENSION(EXT_protected_surface);
    _EGL_CHECK_EXTENSION(EXT_query_reset_notification_strategy);
+   _EGL_CHECK_EXTENSION(EXT_surface_compression);
    _EGL_CHECK_EXTENSION(EXT_surface_CTA861_3_metadata);
    _EGL_CHECK_EXTENSION(EXT_surface_SMPTE2086_metadata);
    _EGL_CHECK_EXTENSION(EXT_swap_buffers_with_damage);
@@ -2694,6 +2695,34 @@ eglQueryDmaBufModifiersEXT(EGLDisplay dpy, EGLint format, EGLint max_modifiers,
    egl_relax (disp) {
       ret = disp->Driver->QueryDmaBufModifiersEXT(
          disp, format, max_modifiers, modifiers, external_only, num_modifiers);
+   }
+
+   RETURN_EGL_EVAL(disp, ret);
+}
+
+static EGLBoolean EGLAPIENTRY
+eglQuerySupportedCompressionRatesEXT(EGLDisplay dpy, EGLConfig config,
+                                     const EGLAttrib *attrib_list,
+                                     EGLint *rates, EGLint rate_size,
+                                     EGLint *num_rates)
+{
+   _EGLDisplay *disp = _eglLockDisplay(dpy);
+   _EGLConfig *conf = _eglLookupConfig(config, disp);
+   EGLBoolean ret = EGL_FALSE;
+
+   _EGL_FUNC_START(NULL, EGL_NONE, NULL);
+
+   _EGL_CHECK_DISPLAY(disp, EGL_FALSE);
+   _EGL_CHECK_CONFIG(disp, conf, EGL_FALSE);
+
+   egl_relax (disp) {
+      if (disp->Driver->QuerySupportedCompressionRatesEXT) {
+         ret = disp->Driver->QuerySupportedCompressionRatesEXT(
+            disp, conf, attrib_list, rates, rate_size, num_rates);
+      } else {
+         *num_rates = 0;
+         ret = EGL_TRUE;
+      }
    }
 
    RETURN_EGL_EVAL(disp, ret);

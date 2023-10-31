@@ -892,15 +892,39 @@ dri2_wl_release_buffers(struct dri2_egl_surface *dri2_surf)
 }
 
 static void
+create_dri_image(struct dri2_egl_surface *dri2_surf,
+                 enum pipe_format pipe_format, uint32_t use_flags,
+                 struct u_vector *modifiers_set)
+{
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+   uint64_t *modifiers;
+   unsigned int num_modifiers;
+
+   modifiers = u_vector_tail(modifiers_set);
+   num_modifiers = u_vector_length(modifiers_set);
+
+   /* For the purposes of this function, an INVALID modifier on
+    * its own means the modifiers aren't supported. */
+   if (num_modifiers == 0 ||
+       (num_modifiers == 1 && modifiers[0] == DRM_FORMAT_MOD_INVALID)) {
+      num_modifiers = 0;
+      modifiers = NULL;
+   }
+
+   dri2_surf->back->dri_image = loader_dri_create_image(
+      dri2_dpy->dri_screen_render_gpu, dri2_dpy->image, dri2_surf->base.Width,
+      dri2_surf->base.Height, pipe_format,
+      (dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) ? 0 : use_flags,
+      modifiers, num_modifiers, NULL);
+}
+
+static void
 create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
                                       enum pipe_format pipe_format,
                                       uint32_t use_flags)
 {
-   struct dri2_egl_display *dri2_dpy =
-      dri2_egl_display(dri2_surf->base.Resource.Display);
    int visual_idx;
-   uint64_t *modifiers;
-   unsigned int num_modifiers;
    uint32_t flags;
 
    /* We don't have valid dma-buf feedback, so return */
@@ -925,26 +949,13 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
       /* Ignore tranches that do not contain dri2_surf->format */
       if (!BITSET_TEST(tranche->formats.formats_bitmap, visual_idx))
          continue;
-      modifiers = u_vector_tail(&tranche->formats.modifiers[visual_idx]);
-      num_modifiers = u_vector_length(&tranche->formats.modifiers[visual_idx]);
-
-      /* For the purposes of this function, an INVALID modifier on
-       * its own means the modifiers aren't supported. */
-      if (num_modifiers == 0 ||
-          (num_modifiers == 1 && modifiers[0] == DRM_FORMAT_MOD_INVALID)) {
-         num_modifiers = 0;
-         modifiers = NULL;
-      }
 
       flags = use_flags;
       if (tranche->flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SCANOUT)
          flags |= __DRI_IMAGE_USE_SCANOUT;
 
-      dri2_surf->back->dri_image = loader_dri_create_image(
-         dri2_dpy->dri_screen_render_gpu, dri2_dpy->image,
-         dri2_surf->base.Width, dri2_surf->base.Height, pipe_format,
-         (dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) ? 0 : flags,
-         modifiers, num_modifiers, NULL);
+      create_dri_image(dri2_surf, pipe_format, flags,
+                       &tranche->formats.modifiers[visual_idx]);
 
       if (dri2_surf->back->dri_image)
          return;
@@ -952,35 +963,16 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
 }
 
 static void
-create_dri_image(struct dri2_egl_surface *dri2_surf,
-                 enum pipe_format pipe_format, uint32_t use_flags)
+create_dri_image_from_formats(struct dri2_egl_surface *dri2_surf,
+                              enum pipe_format pipe_format, uint32_t use_flags)
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
    int visual_idx;
-   uint64_t *modifiers;
-   unsigned int num_modifiers;
 
    visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
-   modifiers = u_vector_tail(&dri2_dpy->formats.modifiers[visual_idx]);
-   num_modifiers = u_vector_length(&dri2_dpy->formats.modifiers[visual_idx]);
-
-   /* For the purposes of this function, an INVALID modifier on
-    * its own means the modifiers aren't supported. */
-   if (num_modifiers == 0 ||
-       (num_modifiers == 1 && modifiers[0] == DRM_FORMAT_MOD_INVALID)) {
-      num_modifiers = 0;
-      modifiers = NULL;
-   }
-
-   /* If our DRIImage implementation does not support createImageWithModifiers,
-    * then fall back to the old createImage, and hope it allocates an image
-    * which is acceptable to the winsys. */
-   dri2_surf->back->dri_image = loader_dri_create_image(
-      dri2_dpy->dri_screen_render_gpu, dri2_dpy->image, dri2_surf->base.Width,
-      dri2_surf->base.Height, pipe_format,
-      (dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) ? 0 : use_flags,
-      modifiers, num_modifiers, NULL);
+   create_dri_image(dri2_surf, pipe_format, use_flags,
+                    &dri2_dpy->formats.modifiers[visual_idx]);
 }
 
 static int
@@ -1160,7 +1152,7 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
          create_dri_image_from_dmabuf_feedback(dri2_surf, pipe_format,
                                                use_flags);
       if (dri2_surf->back->dri_image == NULL)
-         create_dri_image(dri2_surf, pipe_format, use_flags);
+         create_dri_image_from_formats(dri2_surf, pipe_format, use_flags);
       dri2_surf->back->age = 0;
    }
 

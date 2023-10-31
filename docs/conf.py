@@ -218,7 +218,7 @@ graphviz_output_format = 'svg'
 
 # -- Options for hawkmoth -------------------------------------------------
 
-hawkmoth_root = os.path.abspath('..')
+hawkmoth_root = os.path.abspath(os.pardir)
 hawkmoth_clang = [
   '-Idocs/header-stubs/',
   '-Iinclude/',

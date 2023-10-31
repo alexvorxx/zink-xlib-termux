@@ -616,14 +616,14 @@ ir3_create_array_store(struct ir3_context *ctx, struct ir3_array *arr, int n,
    mov->barrier_class = IR3_BARRIER_ARRAY_W;
    mov->barrier_conflict = IR3_BARRIER_ARRAY_R | IR3_BARRIER_ARRAY_W;
    dst = ir3_dst_create(
-      mov, 0,
+      mov, INVALID_REG,
       IR3_REG_SSA | IR3_REG_ARRAY | flags | COND(address, IR3_REG_RELATIV));
    dst->instr = mov;
    dst->size = arr->length;
    dst->array.id = arr->id;
    dst->array.offset = n;
    dst->array.base = INVALID_REG;
-   ir3_src_create(mov, 0, IR3_REG_SSA | flags)->def = src->dsts[0];
+   ir3_src_create(mov, INVALID_REG, IR3_REG_SSA | flags)->def = src->dsts[0];
 
    if (arr->last_write && arr->last_write->instr->block == block)
       ir3_reg_set_last_array(mov, dst, arr->last_write);

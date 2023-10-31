@@ -111,6 +111,7 @@ struct panfrost_device {
    struct panfrost_tiler_features tiler_features;
    const struct panfrost_model *model;
    bool has_afbc;
+   bool has_afrc;
 
    /* Table of formats, indexed by a PIPE format */
    const struct panfrost_format *formats;

@@ -100,6 +100,7 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
       panfrost_query_compressed_formats(&dev->kmod.props);
    dev->tiler_features = panfrost_query_tiler_features(&dev->kmod.props);
    dev->has_afbc = panfrost_query_afbc(&dev->kmod.props);
+   dev->has_afrc = panfrost_query_afrc(&dev->kmod.props);
    dev->formats = panfrost_format_table(dev->arch);
    dev->blendable_formats = panfrost_blendable_format_table(dev->arch);
 

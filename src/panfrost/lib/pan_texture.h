@@ -43,7 +43,7 @@
 extern "C" {
 #endif
 
-#define PAN_MODIFIER_COUNT 6
+#define PAN_MODIFIER_COUNT 12
 extern uint64_t pan_best_modifiers[PAN_MODIFIER_COUNT];
 
 struct pan_image_slice_layout {
@@ -299,7 +299,20 @@ struct pan_afrc_format_info {
 struct pan_afrc_format_info
 panfrost_afrc_get_format_info(enum pipe_format format);
 
+bool panfrost_format_supports_afrc(enum pipe_format format);
+
 bool panfrost_afrc_is_scan(uint64_t modifier);
+
+struct pan_block_size panfrost_afrc_clump_size(enum pipe_format format,
+                                               bool scan);
+
+struct pan_block_size panfrost_afrc_tile_size(enum pipe_format format,
+                                              uint64_t modifier);
+
+unsigned panfrost_afrc_block_size_from_modifier(uint64_t modifier);
+
+unsigned pan_afrc_row_stride(enum pipe_format format, uint64_t modifier,
+                             uint32_t width);
 
 struct pan_block_size panfrost_block_size(uint64_t modifier,
                                           enum pipe_format format);

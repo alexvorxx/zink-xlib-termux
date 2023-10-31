@@ -80,3 +80,15 @@ panfrost_afrc_get_format_info(enum pipe_format format)
    info.num_comps = util_format_get_nr_components(format);
    return info;
 }
+
+bool
+panfrost_format_supports_afrc(enum pipe_format format)
+{
+   const struct util_format_description *desc = util_format_description(format);
+   int c = util_format_get_first_non_void_channel(desc->format);
+
+   if (c == -1)
+      return false;
+
+   return desc->is_array && desc->channel[c].size == 8;
+}

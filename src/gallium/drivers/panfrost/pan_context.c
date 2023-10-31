@@ -280,9 +280,10 @@ panfrost_set_shader_images(struct pipe_context *pctx,
 
       struct panfrost_resource *rsrc = pan_resource(image->resource);
 
-      /* Images don't work with AFBC, since they require pixel-level granularity
-       */
-      if (drm_is_afbc(rsrc->image.layout.modifier)) {
+      /* Images don't work with AFBC/AFRC, since they require pixel-level
+       * granularity */
+      if (drm_is_afbc(rsrc->image.layout.modifier) ||
+          drm_is_afrc(rsrc->image.layout.modifier)) {
          pan_resource_modifier_convert(
             ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED, true,
             "Shader image");

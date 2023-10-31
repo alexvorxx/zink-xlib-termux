@@ -1120,8 +1120,9 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
    if (usage & PIPE_MAP_WRITE)
       rsrc->constant_stencil = false;
 
-   /* We don't have s/w routines for AFBC, so use a staging texture */
-   if (drm_is_afbc(rsrc->image.layout.modifier)) {
+   /* We don't have s/w routines for AFBC/AFRC, so use a staging texture */
+   if (drm_is_afbc(rsrc->image.layout.modifier) ||
+       drm_is_afrc(rsrc->image.layout.modifier)) {
       struct panfrost_resource *staging =
          pan_alloc_staging(ctx, rsrc, level, box);
       assert(staging);
@@ -1147,7 +1148,7 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
       if ((usage & PIPE_MAP_READ) &&
           (valid || panfrost_any_batch_writes_rsrc(ctx, rsrc))) {
          pan_blit_to_staging(pctx, transfer);
-         panfrost_flush_writer(ctx, staging, "AFBC read staging blit");
+         panfrost_flush_writer(ctx, staging, "AFBC/AFRC tex read staging blit");
          panfrost_bo_wait(staging->bo, INT64_MAX, false);
       }
 
@@ -1337,7 +1338,7 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
       };
 
       /* data_valid is not valid until flushed */
-      panfrost_flush_writer(ctx, rsrc, "AFBC decompressing blit");
+      panfrost_flush_writer(ctx, rsrc, "AFBC/AFRC decompressing blit");
 
       for (int i = 0; i <= rsrc->base.last_level; i++) {
          if (BITSET_TEST(rsrc->valid.data, i)) {
@@ -1355,7 +1356,7 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
       /* we lose track of tmp_rsrc after this point, and the BO migration
        * (from tmp_rsrc to rsrc) doesn't transfer the last_writer to rsrc
        */
-      panfrost_flush_writer(ctx, tmp_rsrc, "AFBC decompressing blit");
+      panfrost_flush_writer(ctx, tmp_rsrc, "AFBC/AFRC decompressing blit");
    }
 
    panfrost_bo_unreference(rsrc->bo);
@@ -1373,32 +1374,51 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
    pipe_resource_reference(&tmp_prsrc, NULL);
 }
 
-/* Validate that an AFBC resource may be used as a particular format. If it may
- * not, decompress it on the fly. Failure to do so can produce wrong results or
- * invalid data faults when sampling or rendering to AFBC */
+/* Validate that an AFBC/AFRC resource may be used as a particular format. If it
+ * may not, decompress it on the fly. Failure to do so can produce wrong results
+ * or invalid data faults when sampling or rendering to AFBC */
 
 void
-pan_legalize_afbc_format(struct panfrost_context *ctx,
-                         struct panfrost_resource *rsrc,
-                         enum pipe_format format, bool write, bool discard)
+pan_legalize_format(struct panfrost_context *ctx,
+                    struct panfrost_resource *rsrc, enum pipe_format format,
+                    bool write, bool discard)
 {
    struct panfrost_device *dev = pan_device(ctx->base.screen);
+   enum pipe_format old_format = rsrc->base.format;
+   enum pipe_format new_format = format;
+   bool compatible = true;
 
-   if (!drm_is_afbc(rsrc->image.layout.modifier))
+   if (!drm_is_afbc(rsrc->image.layout.modifier) &&
+       !drm_is_afrc(rsrc->image.layout.modifier))
       return;
 
-   if (panfrost_afbc_format(dev->arch, rsrc->base.format) !=
-       panfrost_afbc_format(dev->arch, format)) {
+   if (drm_is_afbc(rsrc->image.layout.modifier)) {
+      compatible = (panfrost_afbc_format(dev->arch, old_format) ==
+                    panfrost_afbc_format(dev->arch, new_format));
+   } else if (drm_is_afrc(rsrc->image.layout.modifier)) {
+      struct pan_afrc_format_info old_info =
+         panfrost_afrc_get_format_info(old_format);
+      struct pan_afrc_format_info new_info =
+         panfrost_afrc_get_format_info(new_format);
+      compatible = !memcmp(&old_info, &new_info, sizeof(old_info));
+   }
+
+   if (!compatible) {
       pan_resource_modifier_convert(
          ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED, !discard,
-         "Reinterpreting AFBC surface as incompatible format");
+         drm_is_afbc(rsrc->image.layout.modifier)
+            ? "Reinterpreting AFBC surface as incompatible format"
+            : "Reinterpreting AFRC surface as incompatible format");
       return;
    }
 
-   if (write && (rsrc->image.layout.modifier & AFBC_FORMAT_MOD_SPARSE) == 0)
+   /* Can't write to AFBC-P resources */
+   if (write && drm_is_afbc(rsrc->image.layout.modifier) &&
+      (rsrc->image.layout.modifier & AFBC_FORMAT_MOD_SPARSE) == 0) {
       pan_resource_modifier_convert(
          ctx, rsrc, rsrc->image.layout.modifier | AFBC_FORMAT_MOD_SPARSE,
          !discard, "Legalizing resource to allow writing");
+   }
 }
 
 static bool
@@ -1588,10 +1608,10 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
    if (transfer->usage & PIPE_MAP_WRITE)
       prsrc->valid.crc = false;
 
-   /* AFBC will use a staging resource. `initialized` will be set when the
-    * fragment job is created; this is deferred to prevent useless surface
+   /* AFBC/AFRC will use a staging resource. `initialized` will be set when
+    * the fragment job is created; this is deferred to prevent useless surface
     * reloads that can cascade into DATA_INVALID_FAULTs due to reading
-    * malformed AFBC data if uninitialized */
+    * malformed AFBC/AFRC data if uninitialized */
 
    if (trans->staging.rsrc) {
       if (transfer->usage & PIPE_MAP_WRITE) {
@@ -1608,8 +1628,8 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
          } else {
             bool discard = panfrost_can_discard(&prsrc->base, &transfer->box,
                                                 transfer->usage);
-            pan_legalize_afbc_format(ctx, prsrc, prsrc->image.layout.format,
-                                     true, discard);
+            pan_legalize_format(ctx, prsrc, prsrc->image.layout.format, true,
+                                discard);
             pan_blit_from_staging(pctx, trans);
             panfrost_flush_batches_accessing_rsrc(
                ctx, pan_resource(trans->staging.rsrc),

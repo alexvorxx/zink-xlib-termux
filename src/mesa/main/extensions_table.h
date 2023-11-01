@@ -343,6 +343,7 @@ EXT(EXT_texture_shadow_lod                  , EXT_texture_shadow_lod            
 EXT(EXT_texture_shared_exponent             , EXT_texture_shared_exponent            , GLL, GLC,  x ,  x , 2004)
 EXT(EXT_texture_snorm                       , EXT_texture_snorm                      , GLL, GLC,  x ,  x , 2009)
 EXT(EXT_texture_storage                     , dummy_true                             , GLL, GLC,  x , ES2, 2009)
+EXT(EXT_texture_storage_compression         , dummy_true                             ,  x ,  x ,  x ,  30, 2021)
 EXT(EXT_texture_swizzle                     , EXT_texture_swizzle                    , GLL, GLC,  x ,  x , 2008)
 EXT(EXT_texture_type_2_10_10_10_REV         , EXT_texture_type_2_10_10_10_REV        ,  x ,  x ,  x , ES2, 2008)
 EXT(EXT_texture_view                        , OES_texture_view                       ,  x ,  x ,  x ,  31, 2014)

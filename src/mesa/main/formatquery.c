@@ -143,6 +143,16 @@ _legal_parameters(struct gl_context *ctx, GLenum target, GLenum internalformat,
       }
       break;
 
+   case GL_NUM_SURFACE_COMPRESSION_FIXED_RATES_EXT:
+   case GL_SURFACE_COMPRESSION_EXT:
+      if (!_mesa_has_EXT_texture_storage_compression(ctx)) {
+         _mesa_error(ctx, GL_INVALID_ENUM,
+                     "glGetInternalformativ(pname=%s)",
+                     _mesa_enum_to_string(pname));
+         return false;
+      }
+      break;
+
    case GL_NUM_VIRTUAL_PAGE_SIZES_ARB:
    case GL_VIRTUAL_PAGE_SIZE_X_ARB:
    case GL_VIRTUAL_PAGE_SIZE_Y_ARB:
@@ -320,6 +330,7 @@ _set_default_response(GLenum pname, GLint buffer[16])
    switch(pname) {
    case GL_SAMPLES:
    case GL_TILING_TYPES_EXT:
+   case GL_SURFACE_COMPRESSION_EXT:
       break;
 
    case GL_MAX_COMBINED_DIMENSIONS:
@@ -350,6 +361,7 @@ _set_default_response(GLenum pname, GLint buffer[16])
    case GL_VIRTUAL_PAGE_SIZE_X_ARB:
    case GL_VIRTUAL_PAGE_SIZE_Y_ARB:
    case GL_VIRTUAL_PAGE_SIZE_Z_ARB:
+   case GL_NUM_SURFACE_COMPRESSION_FIXED_RATES_EXT:
       buffer[0] = 0;
       break;
 
@@ -510,6 +522,8 @@ _is_resource_supported(struct gl_context *ctx, GLenum target,
    case GL_COLOR_RENDERABLE:
    case GL_DEPTH_RENDERABLE:
    case GL_STENCIL_RENDERABLE:
+   case GL_NUM_SURFACE_COMPRESSION_FIXED_RATES_EXT:
+   case GL_SURFACE_COMPRESSION_EXT:
       return true;
    default:
       break;
@@ -1669,6 +1683,14 @@ _mesa_GetInternalformativ(GLenum target, GLenum internalformat, GLenum pname,
    case GL_VIRTUAL_PAGE_SIZE_Y_ARB:
    case GL_VIRTUAL_PAGE_SIZE_Z_ARB:
       st_QueryInternalFormat(ctx, target, internalformat, pname, buffer);
+      break;
+
+   case GL_NUM_SURFACE_COMPRESSION_FIXED_RATES_EXT:
+   case GL_SURFACE_COMPRESSION_EXT:
+      if (_mesa_has_EXT_texture_storage_compression(ctx)) {
+         st_QueryInternalFormat(ctx, target, internalformat, pname,
+                                buffer);
+      }
       break;
 
    default:

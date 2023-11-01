@@ -970,6 +970,9 @@ struct gl_texture_object
    GLint VirtualPageSizeIndex;
    GLint NumSparseLevels;
 
+   /** GL_EXT_texture_storage_compression */
+   GLint CompressionRate; /**< Fixed-rate compression bitrate */
+
    /* The texture must include at levels [0..lastLevel] once validated:
     */
    GLuint lastLevel;

@@ -21,9 +21,10 @@
  * IN THE SOFTWARE.
  */
 
+#include "dev/intel_device_info.h"
+#include "intel_nir.h"
 #include "isl/isl.h"
-
-#include "brw_nir.h"
+#include "nir_builder.h"
 
 static bool
 brw_nir_blockify_uniform_loads_instr(nir_builder *b,

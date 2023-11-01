@@ -29,7 +29,7 @@
  * lowered.
  */
 
-#include "brw_nir.h"
+#include "intel_nir.h"
 #include "compiler/nir/nir_builder.h"
 #include "compiler/nir/nir_deref.h"
 

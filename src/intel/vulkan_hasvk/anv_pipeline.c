@@ -33,7 +33,7 @@
 #include "common/intel_sample_positions.h"
 #include "compiler/brw_disasm.h"
 #include "anv_private.h"
-#include "compiler/brw_nir.h"
+#include "compiler/intel_nir.h"
 #include "compiler/brw_nir_rt.h"
 #include "anv_nir.h"
 #include "nir/nir_xfb_info.h"

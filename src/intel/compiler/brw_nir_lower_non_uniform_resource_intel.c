@@ -24,7 +24,7 @@
 #include "compiler/nir/nir_builder.h"
 #include "util/u_dynarray.h"
 
-#include "brw_nir.h"
+#include "intel_nir.h"
 
 static bool
 nir_instr_is_resource_intel(nir_instr *instr)

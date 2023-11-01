@@ -29,7 +29,7 @@
  * can assume divergence analysis here.
  */
 
-#include "brw_nir.h"
+#include "intel_nir.h"
 #include "compiler/nir/nir_builder.h"
 
 static bool

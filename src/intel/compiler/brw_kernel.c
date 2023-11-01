@@ -23,6 +23,7 @@
 
 #include "brw_kernel.h"
 #include "brw_nir.h"
+#include "intel_nir.h"
 
 #include "nir_clc_helpers.h"
 #include "compiler/nir/nir_builder.h"

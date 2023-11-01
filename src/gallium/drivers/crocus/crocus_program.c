@@ -45,6 +45,7 @@
 #include "intel/compiler/brw_compiler.h"
 #include "intel/compiler/brw_nir.h"
 #include "intel/compiler/brw_prim.h"
+#include "intel/compiler/intel_nir.h"
 #include "crocus_context.h"
 #include "nir/tgsi_to_nir.h"
 #include "program/prog_instruction.h"

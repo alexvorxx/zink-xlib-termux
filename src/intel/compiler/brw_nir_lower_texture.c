@@ -22,7 +22,7 @@
  */
 
 #include "compiler/nir/nir_builder.h"
-#include "brw_nir.h"
+#include "intel_nir.h"
 
 /**
  * Pack either the explicit LOD or LOD bias and the array index together.

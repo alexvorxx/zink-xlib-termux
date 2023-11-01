@@ -28,6 +28,7 @@
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
 #include "dev/intel_debug.h"
+#include "intel/compiler/intel_nir.h"
 #include "util/macros.h"
 
 #include "vk_nir.h"

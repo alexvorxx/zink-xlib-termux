@@ -18,6 +18,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+intel_nir_files = files(
+  'intel_nir.h',
+  'intel_nir.c',
+
+  'brw_nir_blockify_uniform_loads.c',
+  'brw_nir_clamp_image_1d_2d_array_sizes.c',
+  'brw_nir_clamp_per_vertex_loads.c',
+  'brw_nir_lower_conversions.c',
+  'brw_nir_lower_non_uniform_barycentric_at_sample.c',
+  'brw_nir_lower_non_uniform_resource_intel.c',
+  'brw_nir_lower_shading_rate_output.c',
+  'brw_nir_lower_sparse.c',
+  'brw_nir_lower_texture.c',
+  'brw_nir_opt_peephole_ffma.c',
+  'brw_nir_opt_peephole_imul32x16.c',
+  'brw_nir_tcs_workarounds.c',
+)
+
 libintel_compiler_files = files(
   'brw_cfg.cpp',
   'brw_cfg.h',
@@ -86,29 +104,17 @@ libintel_compiler_files = files(
   'brw_nir_analyze_boolean_resolves.c',
   'brw_nir_analyze_ubo_ranges.c',
   'brw_nir_attribute_workarounds.c',
-  'brw_nir_blockify_uniform_loads.c',
-  'brw_nir_clamp_per_vertex_loads.c',
-  'brw_nir_lower_conversions.c',
   'brw_nir_lower_cooperative_matrix.c',
   'brw_nir_lower_cs_intrinsics.c',
   'brw_nir_lower_alpha_to_coverage.c',
   'brw_nir_lower_intersection_shader.c',
-  'brw_nir_lower_non_uniform_resource_intel.c',
-  'brw_nir_lower_non_uniform_barycentric_at_sample.c',
   'brw_nir_lower_ray_queries.c',
   'brw_nir_lower_rt_intrinsics.c',
   'brw_nir_lower_shader_calls.c',
-  'brw_nir_lower_shading_rate_output.c',
-  'brw_nir_lower_sparse.c',
   'brw_nir_lower_storage_image.c',
-  'brw_nir_lower_texture.c',
-  'brw_nir_opt_peephole_ffma.c',
-  'brw_nir_opt_peephole_imul32x16.c',
   'brw_nir_rt.h',
   'brw_nir_rt.c',
   'brw_nir_rt_builder.h',
-  'brw_nir_tcs_workarounds.c',
-  'brw_nir_clamp_image_1d_2d_array_sizes.c',
   'brw_packed_float.c',
   'brw_predicated_break.cpp',
   'brw_prim.h',
@@ -169,7 +175,7 @@ brw_nir_trig = custom_target(
 
 libintel_compiler = static_library(
   'intel_compiler',
-  [libintel_compiler_files, brw_nir_trig, ir_expression_operation_h, [brw_device_sha1_gen_src]],
+  [libintel_compiler_files, intel_nir_files, brw_nir_trig, ir_expression_operation_h, [brw_device_sha1_gen_src]],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',

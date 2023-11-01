@@ -22,7 +22,7 @@
  */
 
 #include "compiler/nir/nir_builder.h"
-#include "brw_nir.h"
+#include "intel_nir.h"
 
 /**
  * Implements the WaPreventHSTessLevelsInterference workaround (for Gfx7-8).

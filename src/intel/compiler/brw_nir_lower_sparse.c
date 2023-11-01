@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "brw_nir.h"
+#include "intel_nir.h"
 #include "compiler/nir/nir_builder.h"
 
 /*

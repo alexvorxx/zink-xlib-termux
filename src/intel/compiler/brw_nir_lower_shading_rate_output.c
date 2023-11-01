@@ -43,7 +43,7 @@
  * This is never the case in our implementation.
  */
 
-#include "brw_nir.h"
+#include "intel_nir.h"
 #include "compiler/nir/nir_builder.h"
 
 static bool

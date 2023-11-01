@@ -1126,8 +1126,8 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
                   .callback = NULL,
                });
 
-      NIR_PASS(_, nir, brw_nir_lower_non_uniform_resource_intel);
-      NIR_PASS(_, nir, brw_nir_cleanup_resource_intel);
+      NIR_PASS(_, nir, intel_nir_lower_non_uniform_resource_intel);
+      NIR_PASS(_, nir, intel_nir_cleanup_resource_intel);
       NIR_PASS(_, nir, nir_opt_dce);
    }
 

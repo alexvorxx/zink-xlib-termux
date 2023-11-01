@@ -25,6 +25,7 @@
 #include "brw_nir.h"
 #include "intel_nir.h"
 
+#include "intel_nir.h"
 #include "nir_clc_helpers.h"
 #include "compiler/nir/nir_builder.h"
 #include "compiler/spirv/nir_spirv.h"

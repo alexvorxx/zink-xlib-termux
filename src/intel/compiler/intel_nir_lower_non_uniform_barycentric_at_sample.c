@@ -33,9 +33,9 @@
 #include "compiler/nir/nir_builder.h"
 
 static bool
-brw_nir_lower_non_uniform_barycentric_at_sample_instr(nir_builder *b,
-                                                      nir_instr *instr,
-                                                      void *cb_data)
+intel_nir_lower_non_uniform_barycentric_at_sample_instr(nir_builder *b,
+                                                        nir_instr *instr,
+                                                        void *cb_data)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
@@ -70,11 +70,11 @@ brw_nir_lower_non_uniform_barycentric_at_sample_instr(nir_builder *b,
 }
 
 bool
-brw_nir_lower_non_uniform_barycentric_at_sample(nir_shader *nir)
+intel_nir_lower_non_uniform_barycentric_at_sample(nir_shader *nir)
 {
    return nir_shader_instructions_pass(
       nir,
-      brw_nir_lower_non_uniform_barycentric_at_sample_instr,
+      intel_nir_lower_non_uniform_barycentric_at_sample_instr,
       nir_metadata_none,
       NULL);
 }

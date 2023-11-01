@@ -37,9 +37,9 @@
  */
 
 static bool
-brw_nir_clamp_image_1d_2d_array_sizes_instr(nir_builder *b,
-                                            nir_instr *instr,
-                                            UNUSED void *cb_data)
+intel_nir_clamp_image_1d_2d_array_sizes_instr(nir_builder *b,
+                                              nir_instr *instr,
+                                              UNUSED void *cb_data)
 {
    nir_def *image_size = NULL;
 
@@ -134,10 +134,10 @@ brw_nir_clamp_image_1d_2d_array_sizes_instr(nir_builder *b,
 }
 
 bool
-brw_nir_clamp_image_1d_2d_array_sizes(nir_shader *shader)
+intel_nir_clamp_image_1d_2d_array_sizes(nir_shader *shader)
 {
    return nir_shader_instructions_pass(shader,
-                                       brw_nir_clamp_image_1d_2d_array_sizes_instr,
+                                       intel_nir_clamp_image_1d_2d_array_sizes_instr,
                                        nir_metadata_block_index |
                                        nir_metadata_dominance,
                                        NULL);

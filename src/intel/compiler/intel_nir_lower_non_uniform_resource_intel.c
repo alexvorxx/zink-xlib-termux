@@ -76,9 +76,9 @@ find_resource_intel(struct util_dynarray *inst_array,
 }
 
 static bool
-brw_nir_lower_non_uniform_intrinsic(nir_builder *b,
-                                    nir_intrinsic_instr *intrin,
-                                    struct util_dynarray *inst_array)
+intel_nir_lower_non_uniform_intrinsic(nir_builder *b,
+                                      nir_intrinsic_instr *intrin,
+                                      struct util_dynarray *inst_array)
 {
    unsigned source;
    switch (intrin->intrinsic) {
@@ -138,9 +138,9 @@ brw_nir_lower_non_uniform_intrinsic(nir_builder *b,
 }
 
 static bool
-brw_nir_lower_non_uniform_tex(nir_builder *b,
-                              nir_tex_instr *tex,
-                              struct util_dynarray *inst_array)
+intel_nir_lower_non_uniform_tex(nir_builder *b,
+                                nir_tex_instr *tex,
+                                struct util_dynarray *inst_array)
 {
    b->cursor = nir_before_instr(&tex->instr);
 
@@ -175,22 +175,22 @@ brw_nir_lower_non_uniform_tex(nir_builder *b,
 }
 
 static bool
-brw_nir_lower_non_uniform_instr(nir_builder *b,
-                                nir_instr *instr,
-                                void *cb_data)
+intel_nir_lower_non_uniform_instr(nir_builder *b,
+                                  nir_instr *instr,
+                                  void *cb_data)
 {
    struct util_dynarray *inst_array = cb_data;
 
    switch (instr->type) {
    case nir_instr_type_intrinsic:
-      return brw_nir_lower_non_uniform_intrinsic(b,
-                                                 nir_instr_as_intrinsic(instr),
-                                                 inst_array);
+      return intel_nir_lower_non_uniform_intrinsic(b,
+                                                   nir_instr_as_intrinsic(instr),
+                                                   inst_array);
 
    case nir_instr_type_tex:
-      return brw_nir_lower_non_uniform_tex(b,
-                                           nir_instr_as_tex(instr),
-                                           inst_array);
+      return intel_nir_lower_non_uniform_tex(b,
+                                             nir_instr_as_tex(instr),
+                                             inst_array);
 
    default:
       return false;
@@ -216,7 +216,7 @@ brw_nir_lower_non_uniform_instr(nir_builder *b,
  * table or bindless access, etc...).
  */
 bool
-brw_nir_lower_non_uniform_resource_intel(nir_shader *shader)
+intel_nir_lower_non_uniform_resource_intel(nir_shader *shader)
 {
    void *mem_ctx = ralloc_context(NULL);
 
@@ -224,7 +224,7 @@ brw_nir_lower_non_uniform_resource_intel(nir_shader *shader)
    util_dynarray_init(&inst_array, mem_ctx);
 
    bool ret = nir_shader_instructions_pass(shader,
-                                           brw_nir_lower_non_uniform_instr,
+                                           intel_nir_lower_non_uniform_instr,
                                            nir_metadata_block_index |
                                            nir_metadata_dominance,
                                            &inst_array);
@@ -279,9 +279,9 @@ skip_resource_intel_cleanup(nir_instr *instr)
 }
 
 static bool
-brw_nir_cleanup_resource_intel_instr(nir_builder *b,
-                                     nir_intrinsic_instr *intrin,
-                                     void *cb_data)
+intel_nir_cleanup_resource_intel_instr(nir_builder *b,
+                                       nir_intrinsic_instr *intrin,
+                                       void *cb_data)
 {
    if (intrin->intrinsic != nir_intrinsic_resource_intel)
       return false;
@@ -300,18 +300,18 @@ brw_nir_cleanup_resource_intel_instr(nir_builder *b,
 
 /** This pass removes unnecessary resource_intel intrinsics
  *
- * This pass must not be run before brw_nir_lower_non_uniform_resource_intel.
+ * This pass must not be run before intel_nir_lower_non_uniform_resource_intel.
  */
 bool
-brw_nir_cleanup_resource_intel(nir_shader *shader)
+intel_nir_cleanup_resource_intel(nir_shader *shader)
 {
    void *mem_ctx = ralloc_context(NULL);
 
    bool ret = nir_shader_intrinsics_pass(shader,
-                                           brw_nir_cleanup_resource_intel_instr,
-                                           nir_metadata_block_index |
-                                           nir_metadata_dominance,
-                                           NULL);
+                                         intel_nir_cleanup_resource_intel_instr,
+                                         nir_metadata_block_index |
+                                         nir_metadata_dominance,
+                                         NULL);
 
    ralloc_free(mem_ctx);
 

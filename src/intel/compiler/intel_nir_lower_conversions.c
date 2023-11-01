@@ -106,7 +106,7 @@ lower_instr(nir_builder *b, nir_instr *instr, UNUSED void *cb_data)
 }
 
 bool
-brw_nir_lower_conversions(nir_shader *shader)
+intel_nir_lower_conversions(nir_shader *shader)
 {
    return nir_shader_instructions_pass(shader, lower_instr,
                                        nir_metadata_block_index |

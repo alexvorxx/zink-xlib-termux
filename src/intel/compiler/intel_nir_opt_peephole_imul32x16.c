@@ -184,9 +184,9 @@ signed_integer_range_analysis(nir_shader *shader, struct hash_table *range_ht,
 }
 
 static bool
-brw_nir_opt_peephole_imul32x16_instr(nir_builder *b,
-                                     nir_instr *instr,
-                                     void *cb_data)
+intel_nir_opt_peephole_imul32x16_instr(nir_builder *b,
+                                       nir_instr *instr,
+                                       void *cb_data)
 {
    struct pass_data *d = (struct pass_data *) cb_data;
    struct hash_table *range_ht = d->range_ht;
@@ -300,14 +300,14 @@ brw_nir_opt_peephole_imul32x16_instr(nir_builder *b,
 }
 
 bool
-brw_nir_opt_peephole_imul32x16(nir_shader *shader)
+intel_nir_opt_peephole_imul32x16(nir_shader *shader)
 {
    struct pass_data cb_data;
 
    cb_data.range_ht = _mesa_pointer_hash_table_create(NULL);
 
    bool progress = nir_shader_instructions_pass(shader,
-                                                brw_nir_opt_peephole_imul32x16_instr,
+                                                intel_nir_opt_peephole_imul32x16_instr,
                                                 nir_metadata_block_index |
                                                 nir_metadata_dominance,
                                                 &cb_data);

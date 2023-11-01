@@ -154,9 +154,9 @@ any_alu_src_is_a_constant(nir_alu_src srcs[])
 }
 
 static bool
-brw_nir_opt_peephole_ffma_instr(nir_builder *b,
-                                nir_instr *instr,
-                                UNUSED void *cb_data)
+intel_nir_opt_peephole_ffma_instr(nir_builder *b,
+                                  nir_instr *instr,
+                                  UNUSED void *cb_data)
 {
    if (instr->type != nir_instr_type_alu)
       return false;
@@ -244,9 +244,9 @@ brw_nir_opt_peephole_ffma_instr(nir_builder *b,
 }
 
 bool
-brw_nir_opt_peephole_ffma(nir_shader *shader)
+intel_nir_opt_peephole_ffma(nir_shader *shader)
 {
-   return nir_shader_instructions_pass(shader, brw_nir_opt_peephole_ffma_instr,
+   return nir_shader_instructions_pass(shader, intel_nir_opt_peephole_ffma_instr,
                                        nir_metadata_block_index |
                                        nir_metadata_dominance,
                                        NULL);

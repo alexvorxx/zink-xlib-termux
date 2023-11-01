@@ -100,7 +100,7 @@ lower_shading_rate_output_instr(nir_builder *b, nir_intrinsic_instr *intrin,
 }
 
 bool
-brw_nir_lower_shading_rate_output(nir_shader *nir)
+intel_nir_lower_shading_rate_output(nir_shader *nir)
 {
    return nir_shader_intrinsics_pass(nir, lower_shading_rate_output_instr,
                                        nir_metadata_block_index |

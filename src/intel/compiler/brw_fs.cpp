@@ -7652,7 +7652,7 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
     * pixel shading if we have any intrinsic that will result in a pixel
     * interpolater message at sample.
     */
-   if (brw_nir_pulls_at_sample(shader))
+   if (intel_nir_pulls_at_sample(shader))
       prog_data->coarse_pixel_dispatch = BRW_NEVER;
 
    /* We choose to always enable VMask prior to XeHP, as it would cause

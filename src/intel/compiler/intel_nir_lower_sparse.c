@@ -238,7 +238,7 @@ lower_sparse_intrinsics(nir_builder *b, nir_instr *instr, void *cb_data)
 }
 
 bool
-brw_nir_lower_sparse_intrinsics(nir_shader *nir)
+intel_nir_lower_sparse_intrinsics(nir_shader *nir)
 {
    return nir_shader_instructions_pass(nir, lower_sparse_intrinsics,
                                        nir_metadata_block_index |

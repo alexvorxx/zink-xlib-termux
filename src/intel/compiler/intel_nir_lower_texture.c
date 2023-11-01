@@ -97,12 +97,12 @@ pack_lod_and_array_index(nir_builder *b, nir_tex_instr *tex)
 }
 
 static bool
-brw_nir_lower_texture_instr(nir_builder *b, nir_instr *instr, void *cb_data)
+intel_nir_lower_texture_instr(nir_builder *b, nir_instr *instr, void *cb_data)
 {
    if (instr->type != nir_instr_type_tex)
       return false;
 
-   const struct brw_nir_lower_texture_opts *opts = cb_data;
+   const struct intel_nir_lower_texture_opts *opts = cb_data;
    nir_tex_instr *tex = nir_instr_as_tex(instr);
 
    switch (tex->op) {
@@ -123,11 +123,11 @@ brw_nir_lower_texture_instr(nir_builder *b, nir_instr *instr, void *cb_data)
 }
 
 bool
-brw_nir_lower_texture(nir_shader *shader,
-                      const struct brw_nir_lower_texture_opts *opts)
+intel_nir_lower_texture(nir_shader *shader,
+                        const struct intel_nir_lower_texture_opts *opts)
 {
    return nir_shader_instructions_pass(shader,
-                                       brw_nir_lower_texture_instr,
+                                       intel_nir_lower_texture_instr,
                                        nir_metadata_none,
                                        (void *)opts);
 }

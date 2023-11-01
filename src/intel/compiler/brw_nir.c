@@ -928,7 +928,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
     * So when robust image access is enabled, just avoid the workaround.
     */
    if (intel_needs_workaround(devinfo, 1806565034) && !opts->robust_image_access)
-      OPT(brw_nir_clamp_image_1d_2d_array_sizes);
+      OPT(intel_nir_clamp_image_1d_2d_array_sizes);
 
    const nir_lower_tex_options tex_options = {
       .lower_txp = ~0,
@@ -1043,7 +1043,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
     */
    if (nir->info.stage == MESA_SHADER_TESS_CTRL &&
        compiler->use_tcs_multi_patch)
-      OPT(brw_nir_clamp_per_vertex_loads);
+      OPT(intel_nir_clamp_per_vertex_loads);
 
    /* Get rid of split copies */
    brw_nir_optimize(nir, is_scalar, devinfo);
@@ -1510,7 +1510,7 @@ brw_vectorize_lower_mem_access(nir_shader *nir,
           *   - reduced register pressure
           */
          nir_divergence_analysis(nir);
-         if (OPT(brw_nir_blockify_uniform_loads, compiler->devinfo))
+         if (OPT(intel_nir_blockify_uniform_loads, compiler->devinfo))
             OPT(nir_opt_load_store_vectorize, &options);
          OPT(nir_opt_remove_phis);
       }
@@ -1568,7 +1568,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    UNUSED bool progress; /* Written by OPT */
 
-   OPT(brw_nir_lower_sparse_intrinsics);
+   OPT(intel_nir_lower_sparse_intrinsics);
 
    OPT(nir_lower_bit_size, lower_bit_size_callback, (void *)compiler);
 
@@ -1589,7 +1589,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    }
 
    if (gl_shader_stage_can_set_fragment_shading_rate(nir->info.stage))
-      NIR_PASS(_, nir, brw_nir_lower_shading_rate_output);
+      NIR_PASS(_, nir, intel_nir_lower_shading_rate_output);
 
    brw_nir_optimize(nir, is_scalar, devinfo);
 
@@ -1618,12 +1618,12 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
        *    vec1  ssa_1 = fneg ssa_0.x
        *    vec1  ssa_2 = ffma ssa_1, ...
        */
-      if (OPT(brw_nir_opt_peephole_ffma))
+      if (OPT(intel_nir_opt_peephole_ffma))
          OPT(nir_opt_shrink_vectors);
    }
 
    if (is_scalar)
-      OPT(brw_nir_opt_peephole_imul32x16);
+      OPT(intel_nir_opt_peephole_imul32x16);
 
    if (OPT(nir_opt_comparison_pre)) {
       OPT(nir_copy_prop);
@@ -1668,7 +1668,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
       }
    }
 
-   OPT(brw_nir_lower_conversions);
+   OPT(intel_nir_lower_conversions);
 
    if (is_scalar)
       OPT(nir_lower_alu_to_scalar, NULL, NULL);
@@ -1724,7 +1724,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
          NIR_PASS_V(nir, nir_divergence_analysis);
       }
 
-      OPT(brw_nir_lower_non_uniform_barycentric_at_sample);
+      OPT(intel_nir_lower_non_uniform_barycentric_at_sample);
    }
 
    /* Clean up LCSSA phis */
@@ -1896,10 +1896,10 @@ brw_nir_apply_key(nir_shader *nir,
 
    OPT(brw_nir_apply_sampler_key, compiler, &key->tex);
 
-   const struct brw_nir_lower_texture_opts tex_opts = {
+   const struct intel_nir_lower_texture_opts tex_opts = {
       .combined_lod_and_array_index = compiler->devinfo->ver >= 20,
    };
-   OPT(brw_nir_lower_texture, &tex_opts);
+   OPT(intel_nir_lower_texture, &tex_opts);
 
    const nir_lower_subgroups_options subgroups_options = {
       .subgroup_size = get_subgroup_size(&nir->info, max_subgroup_size),

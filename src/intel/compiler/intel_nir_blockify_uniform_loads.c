@@ -27,9 +27,9 @@
 #include "nir_builder.h"
 
 static bool
-brw_nir_blockify_uniform_loads_instr(nir_builder *b,
-                                     nir_instr *instr,
-                                     void *cb_data)
+intel_nir_blockify_uniform_loads_instr(nir_builder *b,
+                                       nir_instr *instr,
+                                       void *cb_data)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
@@ -104,11 +104,11 @@ brw_nir_blockify_uniform_loads_instr(nir_builder *b,
 }
 
 bool
-brw_nir_blockify_uniform_loads(nir_shader *shader,
-                               const struct intel_device_info *devinfo)
+intel_nir_blockify_uniform_loads(nir_shader *shader,
+                                 const struct intel_device_info *devinfo)
 {
    return nir_shader_instructions_pass(shader,
-                                       brw_nir_blockify_uniform_loads_instr,
+                                       intel_nir_blockify_uniform_loads_instr,
                                        nir_metadata_block_index |
                                        nir_metadata_dominance |
                                        nir_metadata_live_defs,

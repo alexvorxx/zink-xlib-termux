@@ -6,7 +6,7 @@
 #include "intel_nir.h"
 
 bool
-brw_nir_pulls_at_sample(nir_shader *shader)
+intel_nir_pulls_at_sample(nir_shader *shader)
 {
    nir_foreach_function_impl(impl, shader) {
       nir_foreach_block(block, impl) {

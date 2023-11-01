@@ -36,7 +36,7 @@ st_init_eglimage_functions(struct dd_function_table *functions,
                            bool has_egl_image_validate);
 
 bool st_get_egl_image(struct gl_context *ctx, GLeglImageOES image_handle,
-                      unsigned usage, const char *error,
+                      unsigned usage, bool tex_compression, const char *error,
                       struct st_egl_image *out, bool *native_supported);
 void st_bind_egl_image(struct gl_context *ctx,
                        struct gl_texture_object *texObj,

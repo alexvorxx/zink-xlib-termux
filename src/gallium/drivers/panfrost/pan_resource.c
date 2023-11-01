@@ -419,6 +419,50 @@ panfrost_should_tile(struct panfrost_device *dev,
    return can_tile && (pres->base.usage != PIPE_USAGE_STREAM);
 }
 
+static bool
+panfrost_should_afrc(struct panfrost_device *dev,
+                     const struct panfrost_resource *pres, enum pipe_format fmt)
+{
+   const unsigned valid_binding = PIPE_BIND_RENDER_TARGET |
+                                  PIPE_BIND_BLENDABLE | PIPE_BIND_SAMPLER_VIEW |
+                                  PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SHARED;
+
+   if (pres->base.bind & ~valid_binding)
+      return false;
+
+   /* AFRC support is optional */
+   if (!dev->has_afrc)
+      return false;
+
+   /* AFRC<-->staging is expensive */
+   if (pres->base.usage == PIPE_USAGE_STREAM)
+      return false;
+
+   /* Only a small selection of formats are AFRC'able */
+   if (!panfrost_format_supports_afrc(fmt))
+      return false;
+
+   /* AFRC does not support layered (GLES3 style) multisampling. Use
+    * EXT_multisampled_render_to_texture instead */
+   if (pres->base.nr_samples > 1)
+      return false;
+
+   switch (pres->base.target) {
+   case PIPE_TEXTURE_2D:
+   case PIPE_TEXTURE_RECT:
+   case PIPE_TEXTURE_2D_ARRAY:
+   case PIPE_TEXTURE_CUBE:
+   case PIPE_TEXTURE_CUBE_ARRAY:
+   case PIPE_TEXTURE_3D:
+      break;
+
+   default:
+      return false;
+   }
+
+   return true;
+}
+
 static uint64_t
 panfrost_best_modifier(struct panfrost_device *dev,
                        const struct panfrost_resource *pres,
@@ -427,6 +471,19 @@ panfrost_best_modifier(struct panfrost_device *dev,
    /* Force linear textures when debugging tiling/compression */
    if (unlikely(dev->debug & PAN_DBG_LINEAR))
       return DRM_FORMAT_MOD_LINEAR;
+
+   int afrc_rate = pres->base.compression_rate;
+   if (afrc_rate != PIPE_COMPRESSION_FIXED_RATE_NONE &&
+       panfrost_should_afrc(dev, pres, fmt)) {
+      uint64_t mod;
+      unsigned num_mods = 0;
+
+      STATIC_ASSERT(PIPE_COMPRESSION_FIXED_RATE_DEFAULT == PAN_AFRC_RATE_DEFAULT);
+      num_mods = panfrost_afrc_get_modifiers(fmt, afrc_rate, 1, &mod);
+      if (num_mods > 0) {
+         return mod;
+      }
+   }
 
    if (panfrost_should_afbc(dev, pres, fmt)) {
       uint64_t afbc = AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 | AFBC_FORMAT_MOD_SPARSE;
@@ -499,6 +556,10 @@ panfrost_resource_setup(struct panfrost_device *dev,
       .nr_slices = pres->base.last_level + 1,
       .crc = panfrost_should_checksum(dev, pres),
    };
+
+   /* Update the compression rate with the correct value as we
+    * want the real bitrate and not DEFAULT */
+   pres->base.compression_rate = panfrost_afrc_get_rate(fmt, chosen_mod);
 
    ASSERTED bool valid =
       pan_image_layout_init(dev->arch, &pres->image.layout, NULL);
@@ -837,6 +898,7 @@ pan_alloc_staging(struct panfrost_context *ctx, struct panfrost_resource *rsc,
    tmpl.last_level = 0;
    tmpl.bind |= PIPE_BIND_LINEAR;
    tmpl.bind &= ~PAN_BIND_SHARED_MASK;
+   tmpl.compression_rate = PIPE_COMPRESSION_FIXED_RATE_NONE;
 
    struct pipe_resource *pstaging =
       pctx->screen->resource_create(pctx->screen, &tmpl);

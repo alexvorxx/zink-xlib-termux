@@ -1636,4 +1636,6 @@
    </function>
 </category>
 
+<xi:include href="EXT_texture_storage_compression.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
+
 </OpenGLAPI>

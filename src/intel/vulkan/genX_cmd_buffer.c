@@ -3604,6 +3604,7 @@ anv_pipe_invalidate_bits_for_access_flags(struct anv_cmd_buffer *cmd_buffer,
           * tile cache flush to make sure any previous write is not going to
           * create WaW hazards.
           */
+         pipe_bits |= ANV_PIPE_DATA_CACHE_FLUSH_BIT;
          pipe_bits |= ANV_PIPE_TILE_CACHE_FLUSH_BIT;
          break;
       case VK_ACCESS_2_SHADER_STORAGE_READ_BIT:

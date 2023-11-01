@@ -891,18 +891,100 @@ dri2_wl_release_buffers(struct dri2_egl_surface *dri2_surf)
       dri2_egl_surface_free_local_buffers(dri2_surf);
 }
 
+/* Return list of modifiers that should be used to restrict the list of
+ * modifiers actually supported by the surface. As of now, it is only used
+ * to get the set of modifiers used for fixed-rate compression. */
+static uint64_t *
+get_surface_specific_modifiers(struct dri2_egl_surface *dri2_surf,
+                               int *modifiers_count)
+{
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+   int rate = dri2_surf->base.CompressionRate;
+   uint64_t *modifiers;
+
+   if (rate == EGL_SURFACE_COMPRESSION_FIXED_RATE_NONE_EXT ||
+       !dri2_surf->wl_win)
+      return NULL;
+
+   if (!dri2_dpy->image->queryCompressionModifiers(
+          dri2_dpy->dri_screen_render_gpu, dri2_surf->format, rate,
+          0, NULL, modifiers_count))
+      return NULL;
+
+   modifiers = malloc(*modifiers_count * sizeof(uint64_t));
+   if (!modifiers)
+      return NULL;
+
+   if (!dri2_dpy->image->queryCompressionModifiers(
+          dri2_dpy->dri_screen_render_gpu, dri2_surf->format, rate,
+          *modifiers_count, modifiers, modifiers_count)) {
+      free(modifiers);
+      return NULL;
+   }
+
+   return modifiers;
+}
+
+static void
+update_surface(struct dri2_egl_surface *dri2_surf, __DRIimage *dri_img)
+{
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+   int compression_rate;
+
+   if (!dri_img)
+      return;
+
+   /* Update the surface with the actual compression rate */
+   dri2_dpy->image->queryImage(dri_img, __DRI_IMAGE_ATTRIB_COMPRESSION_RATE,
+                               &compression_rate);
+   dri2_surf->base.CompressionRate = compression_rate;
+}
+
+static bool
+intersect_modifiers(struct u_vector *subset, struct u_vector *set,
+                    uint64_t *other_modifiers, int other_modifiers_count)
+{
+   if (!u_vector_init_pow2(subset, 4, sizeof(uint64_t)))
+      return false;
+
+   uint64_t *modifier_ptr, *mod;
+   u_vector_foreach(mod, set) {
+      for (int i = 0; i < other_modifiers_count; ++i) {
+         if (other_modifiers[i] != *mod)
+            continue;
+         modifier_ptr = u_vector_add(subset);
+         if (modifier_ptr)
+            *modifier_ptr = *mod;
+      }
+   }
+
+   return true;
+}
+
 static void
 create_dri_image(struct dri2_egl_surface *dri2_surf,
                  enum pipe_format pipe_format, uint32_t use_flags,
+                 uint64_t *surf_modifiers, int surf_modifiers_count,
                  struct u_vector *modifiers_set)
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
+   struct u_vector modifiers_subset;
    uint64_t *modifiers;
    unsigned int num_modifiers;
 
-   modifiers = u_vector_tail(modifiers_set);
-   num_modifiers = u_vector_length(modifiers_set);
+   if (surf_modifiers_count > 0) {
+      if (!intersect_modifiers(&modifiers_subset, modifiers_set, surf_modifiers,
+                               surf_modifiers_count))
+         return;
+      modifiers = u_vector_tail(&modifiers_subset);
+      num_modifiers = u_vector_length(&modifiers_subset);
+   } else {
+      modifiers = u_vector_tail(modifiers_set);
+      num_modifiers = u_vector_length(modifiers_set);
+   }
 
    /* For the purposes of this function, an INVALID modifier on
     * its own means the modifiers aren't supported. */
@@ -917,12 +999,19 @@ create_dri_image(struct dri2_egl_surface *dri2_surf,
       dri2_surf->base.Height, pipe_format,
       (dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) ? 0 : use_flags,
       modifiers, num_modifiers, NULL);
+
+   if (surf_modifiers_count > 0) {
+      u_vector_finish(&modifiers_subset);
+      update_surface(dri2_surf, dri2_surf->back->dri_image);
+   }
 }
 
 static void
 create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
                                       enum pipe_format pipe_format,
-                                      uint32_t use_flags)
+                                      uint32_t use_flags,
+                                      uint64_t *surf_modifiers,
+                                      int surf_modifiers_count)
 {
    int visual_idx;
    uint32_t flags;
@@ -954,7 +1043,8 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
       if (tranche->flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SCANOUT)
          flags |= __DRI_IMAGE_USE_SCANOUT;
 
-      create_dri_image(dri2_surf, pipe_format, flags,
+      create_dri_image(dri2_surf, pipe_format, flags, surf_modifiers,
+                       surf_modifiers_count,
                        &tranche->formats.modifiers[visual_idx]);
 
       if (dri2_surf->back->dri_image)
@@ -964,14 +1054,17 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
 
 static void
 create_dri_image_from_formats(struct dri2_egl_surface *dri2_surf,
-                              enum pipe_format pipe_format, uint32_t use_flags)
+                              enum pipe_format pipe_format, uint32_t use_flags,
+                              uint64_t *surf_modifiers,
+                              int surf_modifiers_count)
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
    int visual_idx;
 
    visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
-   create_dri_image(dri2_surf, pipe_format, use_flags,
+   create_dri_image(dri2_surf, pipe_format, use_flags, surf_modifiers,
+                    surf_modifiers_count,
                     &dri2_dpy->formats.modifiers[visual_idx]);
 }
 
@@ -1148,11 +1241,18 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
    }
 
    if (dri2_surf->back->dri_image == NULL) {
+      int modifiers_count = 0;
+      uint64_t *modifiers =
+         get_surface_specific_modifiers(dri2_surf, &modifiers_count);
+
       if (dri2_surf->wl_dmabuf_feedback)
-         create_dri_image_from_dmabuf_feedback(dri2_surf, pipe_format,
-                                               use_flags);
+         create_dri_image_from_dmabuf_feedback(
+            dri2_surf, pipe_format, use_flags, modifiers, modifiers_count);
       if (dri2_surf->back->dri_image == NULL)
-         create_dri_image_from_formats(dri2_surf, pipe_format, use_flags);
+         create_dri_image_from_formats(dri2_surf, pipe_format, use_flags,
+                                       modifiers, modifiers_count);
+
+      free(modifiers);
       dri2_surf->back->age = 0;
    }
 

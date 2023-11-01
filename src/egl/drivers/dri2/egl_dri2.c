@@ -845,6 +845,7 @@ dri2_setup_screen(_EGLDisplay *disp)
 
       disp->Extensions.MESA_x11_native_visual_id = EGL_TRUE;
 
+      disp->Extensions.EXT_surface_compression = EGL_TRUE;
       disp->Extensions.KHR_image_base = EGL_TRUE;
       disp->Extensions.KHR_gl_renderbuffer_image = EGL_TRUE;
       disp->Extensions.KHR_gl_texture_2D_image = EGL_TRUE;
@@ -3650,6 +3651,33 @@ dri2_interop_flush_objects(_EGLDisplay *disp, _EGLContext *ctx, unsigned count,
                                            objects, out);
 }
 
+static EGLBoolean
+dri2_query_supported_compression_rates(_EGLDisplay *disp, _EGLConfig *config,
+                                       const EGLAttrib *attr_list,
+                                       EGLint *rates, EGLint rate_size,
+                                       EGLint *num_rate)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   struct dri2_egl_config *conf = dri2_egl_config(config);
+   enum __DRIFixedRateCompression dri_rates[rate_size];
+
+   if (dri2_dpy->image->base.version >= 22 &&
+       dri2_dpy->image->queryCompressionRates) {
+      const __DRIconfig *dri_conf =
+         dri2_get_dri_config(conf, EGL_WINDOW_BIT, EGL_GL_COLORSPACE_LINEAR);
+      if (!dri2_dpy->image->queryCompressionRates(
+             dri2_dpy->dri_screen_render_gpu, dri_conf, rate_size, dri_rates,
+             num_rate))
+         return EGL_FALSE;
+
+      for (int i = 0; i < *num_rate && i < rate_size; ++i)
+         rates[i] = dri_rates[i];
+      return EGL_TRUE;
+   }
+   *num_rate = 0;
+   return EGL_TRUE;
+}
+
 const _EGLDriver _eglDriver = {
    .Initialize = dri2_initialize,
    .Terminate = dri2_terminate,
@@ -3703,4 +3731,5 @@ const _EGLDriver _eglDriver = {
    .GLInteropFlushObjects = dri2_interop_flush_objects,
    .DupNativeFenceFDANDROID = dri2_dup_native_fence_fd,
    .SetBlobCacheFuncsANDROID = dri2_set_blob_cache_funcs,
+   .QuerySupportedCompressionRatesEXT = dri2_query_supported_compression_rates,
 };

@@ -1092,7 +1092,8 @@ guess_and_alloc_texture(struct st_context *st,
                                  ptDepth,
                                  ptLayers, nr_samples,
                                  bindings,
-                                 false);
+                                 false,
+                                 PIPE_COMPRESSION_FIXED_RATE_NONE);
 
    stObj->lastLevel = lastLevel;
 
@@ -1189,7 +1190,8 @@ st_AllocTextureImageBuffer(struct gl_context *ctx,
                                       ptDepth,
                                       ptLayers, 0,
                                       bindings,
-                                      false);
+                                      false,
+                                      PIPE_COMPRESSION_FIXED_RATE_NONE);
       return stImage->pt != NULL;
    }
 }
@@ -3243,7 +3245,8 @@ st_finalize_texture(struct gl_context *ctx,
                                     ptDepth,
                                     ptLayers, ptNumSamples,
                                     bindings,
-                                    false);
+                                    false,
+                                    PIPE_COMPRESSION_FIXED_RATE_NONE);
 
       if (!tObj->pt) {
          _mesa_error(ctx, GL_OUT_OF_MEMORY, "glTexImage");
@@ -3457,7 +3460,8 @@ st_texture_storage(struct gl_context *ctx,
                                     ptDepth,
                                     ptLayers, num_samples,
                                     bindings,
-                                    texObj->IsSparse);
+                                    texObj->IsSparse,
+                                    PIPE_COMPRESSION_FIXED_RATE_NONE);
    }
 
    if (!texObj->pt) {

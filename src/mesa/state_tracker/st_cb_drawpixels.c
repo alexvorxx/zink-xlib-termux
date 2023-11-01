@@ -460,7 +460,8 @@ alloc_texture(struct st_context *st, GLsizei width, GLsizei height,
    struct pipe_resource *pt;
 
    pt = st_texture_create(st, st->internal_target, texFormat, 0,
-                          width, height, 1, 1, 0, bind, false);
+                          width, height, 1, 1, 0, bind, false,
+                          PIPE_COMPRESSION_FIXED_RATE_NONE);
 
    return pt;
 }

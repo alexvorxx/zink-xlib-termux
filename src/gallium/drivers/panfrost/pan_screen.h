@@ -118,6 +118,7 @@ struct panfrost_screen {
    struct disk_cache *disk_cache;
    unsigned max_afbc_packing_ratio;
    bool force_afbc_packing;
+   int force_afrc_rate;
 
    struct {
       unsigned chunk_size;

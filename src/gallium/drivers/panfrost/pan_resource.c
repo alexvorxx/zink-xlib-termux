@@ -464,15 +464,35 @@ panfrost_should_afrc(struct panfrost_device *dev,
 }
 
 static uint64_t
-panfrost_best_modifier(struct panfrost_device *dev,
+panfrost_best_modifier(struct pipe_screen *pscreen,
                        const struct panfrost_resource *pres,
                        enum pipe_format fmt)
 {
+   struct panfrost_screen *screen = pan_screen(pscreen);
+   struct panfrost_device *dev = pan_device(pscreen);
+
    /* Force linear textures when debugging tiling/compression */
    if (unlikely(dev->debug & PAN_DBG_LINEAR))
       return DRM_FORMAT_MOD_LINEAR;
 
-   int afrc_rate = pres->base.compression_rate;
+   int afrc_rate = screen->force_afrc_rate;
+   if (afrc_rate < 0)
+      afrc_rate = pres->base.compression_rate;
+   if (afrc_rate > PIPE_COMPRESSION_FIXED_RATE_NONE &&
+       panfrost_should_afrc(dev, pres, fmt)) {
+      /* It's not really possible to decide on a global AFRC-rate,
+       * because the set of valid AFRC rates varies from format to
+       * format. So instead, treat this as a minimum rate, and search
+       * for the next valid one.
+       */
+      for (int i = afrc_rate; i < 12; ++i) {
+         if (panfrost_afrc_get_modifiers(fmt, i, 0, NULL)) {
+            afrc_rate = i;
+            break;
+         }
+      }
+   }
+
    if (afrc_rate != PIPE_COMPRESSION_FIXED_RATE_NONE &&
        panfrost_should_afrc(dev, pres, fmt)) {
       uint64_t mod;
@@ -523,13 +543,14 @@ panfrost_should_checksum(const struct panfrost_device *dev,
 }
 
 static void
-panfrost_resource_setup(struct panfrost_device *dev,
+panfrost_resource_setup(struct pipe_screen *screen,
                         struct panfrost_resource *pres, uint64_t modifier,
                         enum pipe_format fmt)
 {
+   struct panfrost_device *dev = pan_device(screen);
    uint64_t chosen_mod = modifier != DRM_FORMAT_MOD_INVALID
                             ? modifier
-                            : panfrost_best_modifier(dev, pres, fmt);
+                            : panfrost_best_modifier(screen, pres, fmt);
    enum mali_texture_dimension dim =
       panfrost_translate_texture_dimension(pres->base.target);
 
@@ -715,7 +736,7 @@ panfrost_resource_create_with_modifier(struct pipe_screen *screen,
       so->modifier_constant = true;
    }
 
-   panfrost_resource_setup(dev, so, modifier, template->format);
+   panfrost_resource_setup(screen, so, modifier, template->format);
 
    /* Guess a label based on the bind */
    unsigned bind = template->bind;
@@ -1427,7 +1448,7 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
    rsrc->image.data.base = rsrc->bo->ptr.gpu;
    panfrost_bo_reference(rsrc->bo);
 
-   panfrost_resource_setup(pan_device(ctx->base.screen), rsrc, modifier,
+   panfrost_resource_setup(ctx->base.screen, rsrc, modifier,
                            tmp_rsrc->base.format);
    /* panfrost_resource_setup will force the modifier to stay constant when
     * called with a specific modifier. We don't want that here, we want to
@@ -1662,6 +1683,7 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
    /* Gallium expects writeback here, so we tile */
 
    struct panfrost_context *ctx = pan_context(pctx);
+   struct pipe_screen *screen = ctx->base.screen;
    struct panfrost_transfer *trans = pan_transfer(transfer);
    struct panfrost_resource *prsrc =
       (struct panfrost_resource *)transfer->resource;
@@ -1681,7 +1703,7 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
 
             panfrost_bo_unreference(prsrc->bo);
 
-            panfrost_resource_setup(dev, prsrc, DRM_FORMAT_MOD_LINEAR,
+            panfrost_resource_setup(screen, prsrc, DRM_FORMAT_MOD_LINEAR,
                                     prsrc->image.layout.format);
 
             prsrc->bo = pan_resource(trans->staging.rsrc)->bo;
@@ -1717,7 +1739,7 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
          if (prsrc->image.layout.modifier ==
              DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED) {
             if (panfrost_should_linear_convert(ctx, prsrc, transfer)) {
-               panfrost_resource_setup(dev, prsrc, DRM_FORMAT_MOD_LINEAR,
+               panfrost_resource_setup(screen, prsrc, DRM_FORMAT_MOD_LINEAR,
                                        prsrc->image.layout.format);
                if (prsrc->image.layout.data_size > panfrost_bo_size(bo)) {
                   const char *label = bo->label;

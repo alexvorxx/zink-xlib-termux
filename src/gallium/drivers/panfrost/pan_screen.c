@@ -918,6 +918,17 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
       screen->force_afbc_packing = driQueryOptionb(config->options,
                                                    "pan_force_afbc_packing");
 
+   const char *option = debug_get_option("PAN_AFRC_RATE", NULL);
+   if (!option) {
+      screen->force_afrc_rate = -1;
+   } else if (strcmp(option, "default") == 0) {
+      screen->force_afrc_rate = PIPE_COMPRESSION_FIXED_RATE_DEFAULT;
+   } else {
+      int64_t rate =
+         debug_parse_num_option(option, PIPE_COMPRESSION_FIXED_RATE_NONE);
+      screen->force_afrc_rate = rate;
+   }
+
    screen->csf_tiler_heap.chunk_size = driQueryOptioni(config->options,
                                                        "pan_csf_chunk_size");
    screen->csf_tiler_heap.initial_chunks = driQueryOptioni(config->options,

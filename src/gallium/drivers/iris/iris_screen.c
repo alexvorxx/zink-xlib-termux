@@ -429,9 +429,6 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
        */
       return devinfo->ver >= 11;
 
-   case PIPE_CAP_QUERY_TIMESTAMP_BITS:
-      return TIMESTAMP_BITS;
-
    case PIPE_CAP_TIMER_RESOLUTION:
       return DIV_ROUND_UP(1000000000ull, devinfo->timestamp_frequency);
 
@@ -657,7 +654,6 @@ iris_get_timestamp(struct pipe_screen *pscreen)
       return 0;
 
    result = intel_device_info_timebase_scale(screen->devinfo, result);
-   result &= (1ull << TIMESTAMP_BITS) - 1;
 
    return result;
 }

@@ -451,6 +451,9 @@ u_pipe_screen_get_param_defaults(struct pipe_screen *pscreen,
       return 0;
 #endif
 
+   case PIPE_CAP_CL_GL_SHARING:
+      return 0;
+
    case PIPE_CAP_TEXTURE_SHADOW_MAP: /* Enables ARB_shadow */
       return 1;
 

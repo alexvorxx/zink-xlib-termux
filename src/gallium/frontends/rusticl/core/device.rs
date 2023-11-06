@@ -725,7 +725,8 @@ impl Device {
     }
 
     pub fn is_gl_sharing_supported(&self) -> bool {
-        self.screen.param(pipe_cap::PIPE_CAP_DMABUF) != 0
+        self.screen.param(pipe_cap::PIPE_CAP_CL_GL_SHARING) != 0
+            && self.screen.param(pipe_cap::PIPE_CAP_DMABUF) != 0
             && !self.is_device_software()
             && self.screen.is_res_handle_supported()
             && self.screen.device_uuid().is_some()

@@ -639,8 +639,18 @@ option(
   choices : [
     'enabled', 'disabled', 'system',
   ],
-  description : 'Build the intel-clc compiler (enables Vulkan Intel ' +
-                'Ray Tracing on supported hardware).'
+  description : 'Build the intel-clc compiler.'
+)
+
+option(
+  'intel-rt',
+  type : 'combo',
+  deprecated: {'true': 'enabled', 'false': 'disabled'},
+  value : 'disabled',
+  choices : [
+    'enabled', 'disabled',
+  ],
+  description : 'Build Ray Tracing on supported hardware.'
 )
 
 option(

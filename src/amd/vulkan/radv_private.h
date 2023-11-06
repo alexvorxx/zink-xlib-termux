@@ -885,6 +885,9 @@ struct radv_packed_end_trace_token {
    uint32_t iteration_count : 16;
    uint32_t instance_count : 16;
 
+   uint32_t ahit_count : 16;
+   uint32_t isec_count : 16;
+
    uint32_t primitive_id;
    uint32_t geometry_id;
 
@@ -893,7 +896,7 @@ struct radv_packed_end_trace_token {
 
    float t;
 };
-static_assert(sizeof(struct radv_packed_end_trace_token) == 72, "Unexpected radv_packed_end_trace_token size");
+static_assert(sizeof(struct radv_packed_end_trace_token) == 76, "Unexpected radv_packed_end_trace_token size");
 
 enum radv_rra_ray_history_metadata_type {
    RADV_RRA_COUNTER_INFO = 1,

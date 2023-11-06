@@ -1421,9 +1421,10 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
               history_size_mb);
    }
 
+   uint32_t history_size = MIN2(history_header->offset, device->rra_trace.ray_history_buffer_size);
+
    uint32_t token_size;
-   for (uint32_t offset = sizeof(struct radv_ray_history_header); offset < history_header->offset;
-        offset += token_size) {
+   for (uint32_t offset = sizeof(struct radv_ray_history_header); offset < history_size; offset += token_size) {
       struct radv_packed_end_trace_token *src = (void *)(history + offset);
       token_size = src->header.hit ? sizeof(struct radv_packed_end_trace_token)
                                    : offsetof(struct radv_packed_end_trace_token, primitive_id);
@@ -1475,6 +1476,32 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
       fwrite(&begin_id, sizeof(begin_id), 1, file);
       fwrite(&begin_control, sizeof(begin_control), 1, file);
       fwrite(&begin, sizeof(begin), 1, file);
+
+      for (uint32_t i = 0; i < src->ahit_count; i++) {
+         struct rra_ray_history_id_token ahit_status_id = {
+            .id = src->header.launch_index,
+            .has_control = true,
+         };
+         struct rra_ray_history_control_token ahit_status_control = {
+            .type = rra_ray_history_token_ahit_status,
+            .data = i == src->ahit_count - 1 ? 2 : 0,
+         };
+         fwrite(&ahit_status_id, sizeof(ahit_status_id), 1, file);
+         fwrite(&ahit_status_control, sizeof(ahit_status_control), 1, file);
+      }
+
+      for (uint32_t i = 0; i < src->isec_count; i++) {
+         struct rra_ray_history_id_token isec_status_id = {
+            .id = src->header.launch_index,
+            .has_control = true,
+         };
+         struct rra_ray_history_control_token isec_status_control = {
+            .type = rra_ray_history_token_isec_status,
+            .data = i == src->ahit_count - 1 ? 2 : 0,
+         };
+         fwrite(&isec_status_id, sizeof(isec_status_id), 1, file);
+         fwrite(&isec_status_control, sizeof(isec_status_control), 1, file);
+      }
 
       struct rra_ray_history_id_token end_id = {
          .id = src->header.launch_index,

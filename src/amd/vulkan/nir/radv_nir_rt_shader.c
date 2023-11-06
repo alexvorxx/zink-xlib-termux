@@ -203,6 +203,8 @@ struct rt_variables {
 
    nir_variable *stack_ptr;
 
+   nir_variable *ahit_isec_count;
+
    /* global address of the SBT entry used for the shader */
    nir_variable *shader_record_ptr;
 
@@ -247,6 +249,9 @@ create_rt_variables(nir_shader *shader, struct radv_device *device, const VkPipe
    vars.stack_ptr = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "stack_ptr");
    vars.shader_record_ptr = nir_variable_create(shader, nir_var_shader_temp, glsl_uint64_t_type(), "shader_record_ptr");
 
+   if (device->rra_trace.ray_history_addr)
+      vars.ahit_isec_count = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "ahit_isec_count");
+
    const struct glsl_type *vec3_type = glsl_vector_type(GLSL_TYPE_FLOAT, 3);
    vars.accel_struct = nir_variable_create(shader, nir_var_shader_temp, glsl_uint64_t_type(), "accel_struct");
    vars.cull_mask_and_flags = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "cull_mask_and_flags");
@@ -283,6 +288,9 @@ map_rt_variables(struct hash_table *var_remap, struct rt_variables *src, const s
    _mesa_hash_table_insert(var_remap, src->arg, dst->arg);
    _mesa_hash_table_insert(var_remap, src->stack_ptr, dst->stack_ptr);
    _mesa_hash_table_insert(var_remap, src->shader_record_ptr, dst->shader_record_ptr);
+
+   if (dst->ahit_isec_count)
+      _mesa_hash_table_insert(var_remap, src->ahit_isec_count, dst->ahit_isec_count);
 
    _mesa_hash_table_insert(var_remap, src->accel_struct, dst->accel_struct);
    _mesa_hash_table_insert(var_remap, src->cull_mask_and_flags, dst->cull_mask_and_flags);
@@ -960,6 +968,9 @@ radv_build_end_trace_token(nir_builder *b, struct rt_variables *vars, nir_def *t
       nir_build_store_global(b, iteration_instance_count, dst_addr, .align_mul = 4);
       dst_addr = nir_iadd_imm(b, dst_addr, 4);
 
+      nir_build_store_global(b, nir_load_var(b, vars->ahit_isec_count), dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
       nir_push_if(b, hit);
       {
          nir_build_store_global(b, nir_load_var(b, vars->primitive_id), dst_addr, .align_mul = 4);
@@ -1402,6 +1413,10 @@ handle_candidate_triangle(nir_builder *b, struct radv_triangle_intersection *int
          .vars = &inner_vars,
       };
 
+      if (data->vars->ahit_isec_count)
+         nir_store_var(b, data->vars->ahit_isec_count, nir_iadd_imm(b, nir_load_var(b, data->vars->ahit_isec_count), 1),
+                       0x1);
+
       radv_visit_inlined_shaders(
          b, nir_load_var(b, inner_vars.idx),
          !(data->vars->flags & VK_PIPELINE_CREATE_2_RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_BIT_KHR), &case_data,
@@ -1462,6 +1477,10 @@ handle_candidate_aabb(nir_builder *b, struct radv_leaf_intersection *intersectio
 
    nir_store_var(b, data->vars->ahit_accept, nir_imm_false(b), 0x1);
    nir_store_var(b, data->vars->ahit_terminate, nir_imm_false(b), 0x1);
+
+   if (data->vars->ahit_isec_count)
+      nir_store_var(b, data->vars->ahit_isec_count,
+                    nir_iadd_imm(b, nir_load_var(b, data->vars->ahit_isec_count), 1 << 16), 0x1);
 
    struct radv_rt_case_data case_data = {
       .device = data->device,
@@ -1569,6 +1588,8 @@ radv_build_traversal(struct radv_device *device, struct radv_ray_tracing_pipelin
          nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "iteration_instance_count");
       nir_store_var(b, iteration_instance_count, nir_imm_int(b, 0), 0x1);
       trav_vars_args.iteration_instance_count = nir_build_deref_var(b, iteration_instance_count);
+
+      nir_store_var(b, vars->ahit_isec_count, nir_imm_int(b, 0), 0x1);
    }
 
    struct traversal_data data = {

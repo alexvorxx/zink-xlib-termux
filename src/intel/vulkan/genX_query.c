@@ -1799,20 +1799,18 @@ copy_query_results_with_shader(struct anv_cmd_buffer *cmd_buffer,
    }
 
    *params = (struct anv_query_copy_params) {
-      .copy = {
-         .flags              = copy_flags,
-         .num_queries        = query_count,
-         .num_items          = num_items,
-         .query_base         = first_query,
-         .query_stride       = pool->stride,
-         .query_data_offset  = data_offset,
-         .destination_stride = dest_stride,
-      },
-      .query_data_addr  = anv_address_physical(
+      .flags              = copy_flags,
+      .num_queries        = query_count,
+      .num_items          = num_items,
+      .query_base         = first_query,
+      .query_stride       = pool->stride,
+      .query_data_offset  = data_offset,
+      .destination_stride = dest_stride,
+      .query_data_addr    = anv_address_physical(
          (struct anv_address) {
             .bo = pool->bo,
          }),
-      .destination_addr = anv_address_physical(dest_addr),
+      .destination_addr   = anv_address_physical(dest_addr),
    };
 
    genX(emit_simple_shader_dispatch)(&state, query_count, push_data_state);

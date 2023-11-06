@@ -1635,20 +1635,6 @@ enum anv_internal_kernel_name {
    ANV_INTERNAL_KERNEL_COUNT,
 };
 
-struct anv_internal_kernel_bind_map {
-   uint32_t num_bindings;
-   struct {
-      /* Whether this binding is provided through push constants */
-      bool     push_constant;
-
-      /* When not provided by push constants, this is offset at which the
-       * 64bit address of the binding is located in the push constant data.
-       */
-      uint32_t address_offset;
-   } bindings[5];
-   uint32_t push_data_size;
-};
-
 enum anv_rt_bvh_build_method {
    ANV_BVH_BUILD_METHOD_TRIVIAL,
    ANV_BVH_BUILD_METHOD_NEW_SAH,

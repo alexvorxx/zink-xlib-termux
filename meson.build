@@ -298,7 +298,8 @@ with_any_broadcom = [
 if ['x86_64'].contains(host_machine.cpu_family()) and \
    get_option('intel-clc') != 'system'
   # Require intel-clc with Anv & Iris (for internal shaders)
-  with_intel_clc = get_option('intel-clc') == 'enabled'
+  with_intel_clc = get_option('intel-clc') == 'enabled' or \
+                   with_intel_vk
 else
   with_intel_clc = false
 endif

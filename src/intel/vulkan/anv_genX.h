@@ -39,6 +39,9 @@
 struct intel_sample_positions;
 struct intel_urb_config;
 
+typedef struct nir_builder nir_builder;
+typedef struct nir_shader nir_shader;
+
 extern const uint32_t genX(vk_to_intel_cullmode)[];
 
 extern const uint32_t genX(vk_to_intel_front_face)[];
@@ -58,6 +61,11 @@ void genX(init_physical_device_state)(struct anv_physical_device *device);
 VkResult genX(init_device_state)(struct anv_device *device);
 
 void genX(init_cps_device_state)(struct anv_device *device);
+
+nir_shader *genX(load_libanv_shader)(struct anv_device *device, void *mem_ctx);
+
+uint32_t genX(call_internal_shader)(nir_builder *b,
+                                    enum anv_internal_kernel_name shader_name);
 
 void
 genX(set_fast_clear_state)(struct anv_cmd_buffer *cmd_buffer,

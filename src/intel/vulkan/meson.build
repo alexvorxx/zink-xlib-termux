@@ -18,8 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-subdir('shaders')
-
 inc_anv = include_directories('.')
 
 anv_flags = [
@@ -110,6 +108,7 @@ anv_per_hw_ver_files = files(
   'genX_gfx_state.c',
   'genX_gpu_memcpy.c',
   'genX_init_state.c',
+  'genX_internal_kernels.c',
   'genX_pipeline.c',
   'genX_query.c',
   'genX_simple_shader.c',
@@ -121,7 +120,7 @@ endif
 foreach _gfx_ver : ['90', '110', '120', '125', '200']
   libanv_per_hw_ver_libs += static_library(
     'anv_per_hw_ver@0@'.format(_gfx_ver),
-    [anv_per_hw_ver_files, anv_entrypoints[0], anv_internal_spvs, ],
+    [anv_per_hw_ver_files, anv_entrypoints[0]],
     include_directories : [
       inc_include, inc_src, inc_intel,
     ],
@@ -131,7 +130,7 @@ foreach _gfx_ver : ['90', '110', '120', '125', '200']
       dep_libdrm, dep_valgrind, idep_nir_headers, idep_genxml,
       idep_vulkan_util_headers, idep_vulkan_wsi_headers,
       idep_vulkan_runtime_headers, idep_intel_driver_ds_headers,
-      idep_grl,
+      idep_grl, idep_intel_shaders,
     ],
   )
 endforeach
@@ -207,6 +206,7 @@ anv_deps = [
   idep_vulkan_util_headers,
   idep_vulkan_runtime_headers,
   idep_vulkan_wsi_headers,
+  idep_intel_shaders,
 ]
 
 if with_platform_x11
@@ -234,8 +234,7 @@ libanv_common = static_library(
   'anv_common',
   [
     libanv_files, anv_entrypoints, sha1_h,
-    gen_xml_pack, float64_spv_h,
-    anv_internal_spvs,
+    gen_xml_pack, intel_float64_spv_h,
   ],
   include_directories : [
     inc_include, inc_src, inc_intel,
@@ -298,7 +297,7 @@ if with_tests
     dependencies : [
       dep_thread, dep_dl, dep_m, anv_deps,
       idep_nir, idep_vulkan_util, idep_vulkan_wsi, idep_vulkan_runtime,
-      idep_mesautil, idep_intel_dev,
+      idep_mesautil, idep_intel_dev, idep_intel_shaders,
     ],
     c_args : anv_flags,
     gnu_symbol_visibility : 'hidden',
@@ -328,6 +327,7 @@ if with_tests
         idep_gtest, dep_libdrm, dep_thread, dep_m, dep_valgrind,
         idep_vulkan_util, idep_vulkan_wsi_headers,
         idep_vulkan_runtime, idep_intel_driver_ds, idep_intel_dev,
+        idep_intel_shaders,
       ],
       include_directories : [
         inc_include, inc_src, inc_intel,

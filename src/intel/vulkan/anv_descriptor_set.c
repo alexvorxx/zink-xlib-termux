@@ -478,6 +478,23 @@ anv_descriptor_set_layout_type_for_flags(const struct anv_physical_device *devic
       return ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_DIRECT;
 }
 
+static bool
+mutable_list_includes_type(const VkMutableDescriptorTypeCreateInfoEXT *mutable_info,
+                           uint32_t binding, VkDescriptorType type)
+{
+   if (!mutable_info || mutable_info->mutableDescriptorTypeListCount == 0)
+      return true;
+
+   const VkMutableDescriptorTypeListEXT *type_list =
+      &mutable_info->pMutableDescriptorTypeLists[binding];
+   for (uint32_t i = 0; i < type_list->descriptorTypeCount; i++) {
+      if (type_list->pDescriptorTypes[i] == type)
+         return true;
+   }
+
+   return false;
+}
+
 void anv_GetDescriptorSetLayoutSupport(
     VkDevice                                    _device,
     const VkDescriptorSetLayoutCreateInfo*      pCreateInfo,
@@ -507,6 +524,21 @@ void anv_GetDescriptorSetLayoutSupport(
       if (binding_flags_info && binding_flags_info->bindingCount > 0) {
          assert(binding_flags_info->bindingCount == pCreateInfo->bindingCount);
          flags = binding_flags_info->pBindingFlags[b];
+      }
+
+      /* Combined image/sampler descriptor are not supported with descriptor
+       * buffers & mutable descriptor types because we cannot know from the
+       * shader where to find the sampler structure. It can be written to the
+       * beginning of the descriptor (at offset 0) or in the second part (at
+       * offset 64bytes).
+       */
+      if ((pCreateInfo->flags &
+           VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT) &&
+          binding->descriptorType == VK_DESCRIPTOR_TYPE_MUTABLE_EXT &&
+          mutable_list_includes_type(mutable_info, b,
+                                     VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)) {
+         pSupport->supported = false;
+         return;
       }
 
       enum anv_descriptor_data desc_data =

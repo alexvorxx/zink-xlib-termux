@@ -352,7 +352,7 @@ agx_validate_sr(const agx_instr *I)
 {
    bool none = (I->op == AGX_OPCODE_GET_SR);
    bool coverage = (I->op == AGX_OPCODE_GET_SR_COVERAGE);
-   bool barrier = false; /* unused so far, will be GET_SR_BARRIER */
+   bool barrier = (I->op == AGX_OPCODE_GET_SR_BARRIER);
 
    /* Filter get_sr instructions */
    if (!(none || coverage || barrier))

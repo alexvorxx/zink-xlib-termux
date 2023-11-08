@@ -339,7 +339,7 @@ op("local_atomic",
 op("wait", (0x38, 0xFF, 2, _), dests = 0,
       can_eliminate = False, imms = [SCOREBOARD], schedule_class = "invalid")
 
-for (suffix, schedule_class) in [("", "none"), ("_coverage", "coverage")]:
+for (suffix, schedule_class) in [("", "none"), ("_coverage", "coverage"), ("_barrier", "barrier")]:
     op(f"get_sr{suffix}", (0x72, 0x7F | L, 4, _), dests = 1, imms = [SR],
        schedule_class = schedule_class, can_reorder = schedule_class == "none")
 

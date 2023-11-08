@@ -1309,6 +1309,18 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
       agx_emit_store_scratch(b, instr);
       return NULL;
 
+   case nir_intrinsic_load_core_id_agx:
+      return agx_get_sr_to(b, dst, AGX_SR_CORE_ID);
+
+   case nir_intrinsic_load_helper_op_id_agx:
+      return agx_get_sr_barrier_to(b, dst, AGX_SR_HELPER_OP);
+
+   case nir_intrinsic_load_helper_arg_lo_agx:
+      return agx_get_sr_barrier_to(b, dst, AGX_SR_HELPER_ARG_L);
+
+   case nir_intrinsic_load_helper_arg_hi_agx:
+      return agx_get_sr_barrier_to(b, dst, AGX_SR_HELPER_ARG_H);
+
    case nir_intrinsic_load_barycentric_sample:
    case nir_intrinsic_load_sample_id:
    case nir_intrinsic_load_sample_pos:

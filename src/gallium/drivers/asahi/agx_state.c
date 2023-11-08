@@ -3079,7 +3079,8 @@ agx_update_descriptors(struct agx_batch *batch, struct agx_compiled_shader *cs,
 
 static uint32_t
 agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
-                   enum pipe_shader_type stage, unsigned variable_shared_mem)
+                   enum pipe_shader_type stage, unsigned variable_shared_mem,
+                   size_t max_subgroups)
 {
    struct agx_context *ctx = batch->ctx;
    struct agx_usc_builder b =
@@ -3132,9 +3133,34 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
       cfg.unk_2 = (stage == PIPE_SHADER_FRAGMENT) ? 2 : 3;
    }
 
+   uint32_t spill_bucket = 0;
+
+   if (cs->info.scratch_size > 0) {
+      spill_bucket = agx_scratch_get_bucket(cs->info.scratch_size);
+
+      switch (stage) {
+      case PIPE_SHADER_FRAGMENT:
+         agx_scratch_alloc(&ctx->scratch_fs, cs->info.scratch_size,
+                           max_subgroups);
+         batch->fs_scratch = true;
+         break;
+      case PIPE_SHADER_VERTEX:
+         agx_scratch_alloc(&ctx->scratch_vs, cs->info.scratch_size,
+                           max_subgroups);
+         batch->vs_scratch = true;
+         break;
+      default:
+         agx_scratch_alloc(&ctx->scratch_cs, cs->info.scratch_size,
+                           max_subgroups);
+         batch->cs_scratch = true;
+         break;
+      }
+   }
+
    agx_usc_pack(&b, REGISTERS, cfg) {
       cfg.register_count = cs->info.nr_gprs;
       cfg.unk_1 = (stage == PIPE_SHADER_FRAGMENT);
+      cfg.spill_size = spill_bucket;
    }
 
    if (stage == PIPE_SHADER_FRAGMENT) {
@@ -3538,7 +3564,7 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out, bool is_lines,
       }
 
       agx_push(out, VDM_STATE_VERTEX_SHADER_WORD_1, cfg) {
-         cfg.pipeline = agx_build_pipeline(batch, vs, PIPE_SHADER_VERTEX, 0);
+         cfg.pipeline = agx_build_pipeline(batch, vs, PIPE_SHADER_VERTEX, 0, 0);
       }
 
       agx_push(out, VDM_STATE_VERTEX_OUTPUTS, cfg) {
@@ -3725,7 +3751,7 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out, bool is_lines,
 
       agx_ppp_push(&ppp, FRAGMENT_SHADER, cfg) {
          cfg.pipeline =
-            agx_build_pipeline(batch, ctx->fs, PIPE_SHADER_FRAGMENT, 0),
+            agx_build_pipeline(batch, ctx->fs, PIPE_SHADER_FRAGMENT, 0, 0),
          cfg.uniform_register_count = ctx->fs->info.push_count;
          cfg.preshader_register_count = ctx->fs->info.nr_preamble_gprs;
          cfg.texture_state_register_count =
@@ -5093,6 +5119,19 @@ agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
    agx_update_descriptors(batch, cs, PIPE_SHADER_COMPUTE);
    agx_upload_uniforms(batch);
 
+   // TODO: This is broken.
+   size_t subgroups_per_core = 0;
+#if 0
+   if (!info->indirect) {
+      size_t subgroups_per_workgroup =
+         DIV_ROUND_UP(info->block[0] * info->block[1] * info->block[2], 32);
+      subgroups_per_core =
+         local_workgroups *
+         DIV_ROUND_UP(info->grid[0] * info->grid[1] * info->grid[2],
+                     ctx->scratch_cs.num_cores);
+   }
+#endif
+
    /* TODO: Ensure space if we allow multiple kernels in a batch */
    uint8_t *out = batch->cdm.current;
 
@@ -5108,8 +5147,8 @@ agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
          agx_nr_tex_descriptors(batch, merged_stage(ctx, stage));
       cfg.sampler_state_register_count =
          translate_sampler_state_count(ctx, cs, stage);
-      cfg.pipeline =
-         agx_build_pipeline(batch, cs, stage, info->variable_shared_mem);
+      cfg.pipeline = agx_build_pipeline(
+         batch, cs, stage, info->variable_shared_mem, subgroups_per_core);
    }
 
    /* Added in G14X */

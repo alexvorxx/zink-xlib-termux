@@ -78,6 +78,7 @@ static const struct debug_named_value agx_debug_options[] = {
    {"noshadow",  AGX_DBG_NOSHADOW, "Force disable resource shadowing"},
    {"noclipctrl",AGX_DBG_NOCLIPCTRL,"Disable ARB_clip_control"},
    {"varyings",  AGX_DBG_VARYINGS,  "Validate varying linkage"},
+   {"scratch",   AGX_DBG_SCRATCH,  "Debug scratch memory usage"},
    DEBUG_NAMED_VALUE_END
 };
 /* clang-format on */

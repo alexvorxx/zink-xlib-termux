@@ -666,7 +666,7 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
    free(in_syncs);
    free(shared_bos);
 
-   if (dev->debug & (AGX_DBG_TRACE | AGX_DBG_SYNC)) {
+   if (dev->debug & (AGX_DBG_TRACE | AGX_DBG_SYNC | AGX_DBG_SCRATCH)) {
       /* Wait so we can get errors reported back */
       int ret = drmSyncobjWait(dev->fd, &batch->syncobj, 1, INT64_MAX, 0, NULL);
       assert(!ret);

@@ -117,6 +117,8 @@ struct agx_device {
       /* Number of hits/misses for the BO cache */
       uint64_t hits, misses;
    } bo_cache;
+
+   struct agx_bo *helper;
 };
 
 bool agx_open_device(void *memctx, struct agx_device *dev);

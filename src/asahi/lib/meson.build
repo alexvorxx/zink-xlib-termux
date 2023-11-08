@@ -22,6 +22,7 @@ libasahi_lib_files = files(
   'agx_nir_lower_vbo.c',
   'agx_nir_predicate_layer_id.c',
   'agx_ppp.h',
+  'agx_scratch.c',
   'pool.c',
 )
 
@@ -36,6 +37,7 @@ libagx_shader_files = files(
   'shaders/tessellation.cl',
   'shaders/tessellator.cl',
   'shaders/texture.cl',
+  'shaders/helper.cl',
 )
 
 agx_pack = custom_target(

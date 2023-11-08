@@ -1929,6 +1929,18 @@ intrinsic("stack_map_agx", src_comp=[1, 1])
 # dst[] = { stack_address }.
 intrinsic("stack_unmap_agx", src_comp=[1], dest_comp=1, bit_sizes=[32])
 
+# dst[] = { GPU core ID }.
+system_value("core_id_agx", 1, bit_sizes=[32])
+
+# dst[] = { Helper operation type }.
+load("helper_op_id_agx", [], [], [CAN_ELIMINATE])
+
+# dst[] = { Helper argument low 32 bits }.
+load("helper_arg_lo_agx", [], [], [CAN_ELIMINATE])
+
+# dst[] = { Helper argument high 32 bits }.
+load("helper_arg_hi_agx", [], [], [CAN_ELIMINATE])
+
 # Intel-specific query for loading from the brw_image_param struct passed
 # into the shader as a uniform.  The variable is a deref to the image
 # variable. The const index specifies which of the six parameters to load.

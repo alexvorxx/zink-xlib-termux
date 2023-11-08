@@ -708,7 +708,7 @@
     <field name="Tag" size="8" start="0" type="USC Control" default="Registers"/>
     <field name="Register count" size="5" start="8" type="uint" modifier="groups(8)"/>
     <field name="Unk 1" size="1" start="13" type="bool" default="false"/>
-    <field name="Spill size" size="8" start="16" type="hex" default="0"/> <!-- TODO: determine relation, see docs/table.py -->
+    <field name="Spill size" size="4" start="18" type="hex" default="0"/>
     <field name="Unk 4" size="8" start="24" type="hex" default="0x1"/>
   </struct>
 

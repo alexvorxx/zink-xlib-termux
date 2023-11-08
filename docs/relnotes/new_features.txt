@@ -1,0 +1,1 @@
+VK_KHR_dynamic_rendering_local_read on RADV

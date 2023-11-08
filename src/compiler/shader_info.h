@@ -95,6 +95,7 @@ struct spirv_supported_capabilities {
    bool physical_storage_buffer_address;
    bool post_depth_coverage;
    bool printf;
+   bool quad_control;
    bool ray_cull_mask;
    bool ray_query;
    bool ray_tracing;
@@ -429,6 +430,11 @@ typedef struct shader_info {
           * True if this fragment shader requires full quad invocations.
           */
          bool require_full_quads:1;
+
+         /**
+          * Whether the derivative group must be equivalent to the quad group.
+          */
+         bool quad_derivatives:1;
 
          /**
           * True if this fragment shader requires helper invocations.  This

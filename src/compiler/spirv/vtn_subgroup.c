@@ -380,6 +380,17 @@ vtn_handle_subgroup(struct vtn_builder *b, SpvOp opcode,
       break;
    }
 
+   case SpvOpGroupNonUniformQuadAllKHR: {
+      nir_def *dest = nir_quad_vote_all(&b->nb, 1, vtn_get_nir_ssa(b, w[3]));
+      vtn_push_nir_ssa(b, w[2], dest);
+      break;
+   }
+   case SpvOpGroupNonUniformQuadAnyKHR: {
+      nir_def *dest = nir_quad_vote_any(&b->nb, 1, vtn_get_nir_ssa(b, w[3]));
+      vtn_push_nir_ssa(b, w[2], dest);
+      break;
+   }
+
    case SpvOpGroupNonUniformIAdd:
    case SpvOpGroupNonUniformFAdd:
    case SpvOpGroupNonUniformIMul:

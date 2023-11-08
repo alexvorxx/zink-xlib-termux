@@ -13,6 +13,7 @@
 #include "asahi/lib/agx_device.h"
 #include "asahi/lib/agx_nir_lower_vbo.h"
 #include "asahi/lib/agx_pack.h"
+#include "asahi/lib/agx_scratch.h"
 #include "asahi/lib/agx_tilebuffer.h"
 #include "asahi/lib/pool.h"
 #include "asahi/lib/shaders/geometry.h"
@@ -381,6 +382,11 @@ struct agx_batch {
 
    /* Actual pointer in a uniform */
    struct agx_bo *geom_params_bo;
+
+   /* Whether each stage uses scratch */
+   bool vs_scratch;
+   bool fs_scratch;
+   bool cs_scratch;
 };
 
 struct agx_zsa {
@@ -633,6 +639,10 @@ struct agx_context {
    uint32_t dummy_syncobj;
    int in_sync_fd;
    uint32_t in_sync_obj;
+
+   struct agx_scratch scratch_vs;
+   struct agx_scratch scratch_fs;
+   struct agx_scratch scratch_cs;
 };
 
 static void

@@ -1289,6 +1289,9 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
       return;
    }
 
+   if (batch->cs_scratch)
+      agx_batch_add_bo(batch, ctx->scratch_cs.buf);
+
    assert(batch->initialized);
 
    /* Finalize the encoder */
@@ -1338,6 +1341,11 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
    } else {
       batch->occlusion_buffer.gpu = 0;
    }
+
+   if (batch->vs_scratch)
+      agx_batch_add_bo(batch, ctx->scratch_vs.buf);
+   if (batch->fs_scratch)
+      agx_batch_add_bo(batch, ctx->scratch_fs.buf);
 
    /* TODO: Linux UAPI submission */
    (void)dev;
@@ -1389,6 +1397,10 @@ agx_destroy_context(struct pipe_context *pctx)
    }
 
    pipe_resource_reference(&ctx->heap, NULL);
+
+   agx_scratch_fini(&ctx->scratch_vs);
+   agx_scratch_fini(&ctx->scratch_fs);
+   agx_scratch_fini(&ctx->scratch_cs);
 
    ralloc_free(ctx);
 }
@@ -1506,6 +1518,10 @@ agx_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
    ctx->support_lod_bias = !(flags & PIPE_CONTEXT_NO_LOD_BIAS);
    ctx->robust = (flags & PIPE_CONTEXT_ROBUST_BUFFER_ACCESS);
+
+   agx_scratch_init(agx_device(screen), &ctx->scratch_vs);
+   agx_scratch_init(agx_device(screen), &ctx->scratch_fs);
+   agx_scratch_init(agx_device(screen), &ctx->scratch_cs);
 
    return pctx;
 }

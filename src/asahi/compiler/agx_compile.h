@@ -114,6 +114,9 @@ struct agx_shader_info {
    /* Local memory allocation in bytes */
    unsigned local_size;
 
+   /* Scratch memory allocation in bytes */
+   unsigned scratch_size;
+
    /* Does the shader have a preamble? If so, it is at offset preamble_offset.
     * The main shader is at offset main_offset. The preamble is executed first.
     */

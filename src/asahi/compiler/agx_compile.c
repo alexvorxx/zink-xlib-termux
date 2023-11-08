@@ -3172,6 +3172,8 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
       nir_print_shader(nir, stdout);
 
    out->local_size = nir->info.shared_size;
+   if (nir->scratch_size > 0)
+      out->scratch_size = ALIGN(DIV_ROUND_UP(nir->scratch_size, 4) + 10, 4);
 
    nir_foreach_function_with_impl(func, impl, nir) {
       unsigned offset =

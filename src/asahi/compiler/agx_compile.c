@@ -1248,6 +1248,15 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
       return NULL;
    }
 
+   case nir_intrinsic_fence_helper_exit_agx: {
+      agx_memory_barrier(b);
+      agx_unknown_barrier_1(b);
+      agx_memory_barrier_2(b);
+      agx_unknown_barrier_2(b);
+      agx_memory_barrier_3(b);
+      return NULL;
+   }
+
    case nir_intrinsic_begin_invocation_interlock: {
       if (!b->shader->did_writeout &&
           !b->shader->key->fs.ignore_tib_dependencies)

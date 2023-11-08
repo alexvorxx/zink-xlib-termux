@@ -31,6 +31,7 @@ uint32_t nir_load_core_id_agx(void);
 uint32_t nir_load_helper_op_id_agx(void);
 uint32_t nir_load_helper_arg_lo_agx(void);
 uint32_t nir_load_helper_arg_hi_agx(void);
+uint32_t nir_fence_helper_exit_agx(void);
 
 #endif
 

@@ -1903,6 +1903,9 @@ barrier("fence_mem_to_tex_agx")
 # act like render target writes, in conjunction with fragment interlock.
 barrier("fence_pbe_to_tex_pixel_agx")
 
+# Unknown fence used in the helper program on exit.
+barrier("fence_helper_exit_agx")
+
 # Address of state for AGX input assembly lowering for geometry/tessellation
 system_value("input_assembly_buffer_agx", 1, bit_sizes=[64])
 

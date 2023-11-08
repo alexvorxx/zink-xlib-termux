@@ -27,6 +27,10 @@ uint32_t nir_interleave_agx(uint16_t x, uint16_t y);
 void nir_doorbell_agx(uint8_t value);
 void nir_stack_map_agx(uint16_t index, uint32_t address);
 uint32_t nir_stack_unmap_agx(uint16_t index);
+uint32_t nir_load_core_id_agx(void);
+uint32_t nir_load_helper_op_id_agx(void);
+uint32_t nir_load_helper_arg_lo_agx(void);
+uint32_t nir_load_helper_arg_hi_agx(void);
 
 #endif
 

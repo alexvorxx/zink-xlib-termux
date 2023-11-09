@@ -383,6 +383,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
                .multiview = true,
                .physical_storage_buffer_address = true,
                .post_depth_coverage = true,
+               .quad_control = true,
                .ray_cull_mask = true,
                .ray_query = true,
                .ray_tracing = true,

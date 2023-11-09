@@ -507,6 +507,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_shader_integer_dot_product = true,
       .KHR_shader_maximal_reconvergence = true,
       .KHR_shader_non_semantic_info = true,
+      .KHR_shader_quad_control = true,
       .KHR_shader_subgroup_extended_types = true,
       .KHR_shader_subgroup_rotate = true,
       .KHR_shader_subgroup_uniform_control_flow = true,
@@ -1139,6 +1140,9 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
 
       /* VK_KHR_shader_maximal_reconvergence */
       .shaderMaximalReconvergence = true,
+
+      /* VK_KHR_shader_quad_control */
+      .shaderQuadControl = true,
    };
 }
 

@@ -499,3 +499,18 @@ aco_nir_op_supports_packed_math_16bit(const nir_alu_instr* alu)
 }
 
 const aco_compiler_statistic_info* aco_statistic_infos = statistic_infos.data();
+
+void
+aco_print_asm(const struct radeon_info *info, unsigned wave_size,
+              uint32_t *binary, unsigned num_dw)
+{
+   std::vector<uint32_t> binarray(binary, binary + num_dw);
+   aco::Program prog;
+
+   prog.gfx_level = info->gfx_level;
+   prog.family = info->family;
+   prog.wave_size = wave_size;
+   prog.blocks.push_back(aco::Block());
+
+   aco::print_asm(&prog, binarray, num_dw, stderr);
+}

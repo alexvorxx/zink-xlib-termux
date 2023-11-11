@@ -3646,26 +3646,16 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       break;
    }
    case nir_intrinsic_ordered_xfb_counter_add_gfx11_amd: {
-      /* must be called in a single lane of a workgroup. */
-      LLVMTypeRef gdsptr = LLVMPointerType(ctx->ac.i32, AC_ADDR_SPACE_GDS);
-
       /* Gfx11 GDS instructions only operate on the first active lane. All other lanes are
        * ignored. So are their EXEC bits. This uses the mutex feature of ds_ordered_count
        * to emulate a multi-dword atomic.
        *
        * This is the expected code:
        *    ds_ordered_count release=0 done=0   // lock mutex
-       *    if (gfx_level >= GFX11) {
-       *       ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_0
-       *       ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_1
-       *       ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_2
-       *       ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_3
-       *    } else {
-       *       ds_add_rtn_u32 dwords_written0
-       *       ds_add_rtn_u32 dwords_written1
-       *       ds_add_rtn_u32 dwords_written2
-       *       ds_add_rtn_u32 dwords_written3
-       *    }
+       *    ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_0
+       *    ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_1
+       *    ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_2
+       *    ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_3
        *    ds_ordered_count release=1 done=1   // unlock mutex
        *
        * GDS_STRMOUT_DWORDS_WRITTEN_n are just general-purpose global registers. We use them
@@ -3673,7 +3663,8 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
        * save and restore GDS memory.
        */
       LLVMValueRef args[8] = {
-         LLVMBuildIntToPtr(ctx->ac.builder, get_src(ctx, instr->src[0]), gdsptr, ""),
+         LLVMBuildIntToPtr(ctx->ac.builder, get_src(ctx, instr->src[0]),
+                           LLVMPointerType(ctx->ac.i32, AC_ADDR_SPACE_GDS), ""),
          ctx->ac.i32_0,                             /* value to add */
          ctx->ac.i32_0,                             /* ordering */
          ctx->ac.i32_0,                             /* scope */

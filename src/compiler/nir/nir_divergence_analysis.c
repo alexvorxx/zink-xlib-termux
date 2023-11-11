@@ -630,8 +630,8 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_load_btd_stack_id_intel:
    case nir_intrinsic_load_topology_id_intel:
    case nir_intrinsic_load_scratch_base_ptr:
-   case nir_intrinsic_ordered_xfb_counter_add_amd:
-   case nir_intrinsic_xfb_counter_sub_amd:
+   case nir_intrinsic_ordered_xfb_counter_add_gfx11_amd:
+   case nir_intrinsic_xfb_counter_sub_gfx11_amd:
    case nir_intrinsic_load_stack:
    case nir_intrinsic_load_ray_launch_id:
    case nir_intrinsic_load_ray_instance_custom_index:

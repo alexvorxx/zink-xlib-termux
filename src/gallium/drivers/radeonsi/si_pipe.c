@@ -861,6 +861,8 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
          }
       }
       simple_mtx_unlock(&sscreen->async_compute_context_lock);
+
+      si_reset_debug_log_buffer(sctx);
    }
 
    sctx->initial_gfx_cs_size = sctx->gfx_cs.current.cdw;

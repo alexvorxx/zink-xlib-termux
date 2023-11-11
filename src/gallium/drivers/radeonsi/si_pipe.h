@@ -26,6 +26,8 @@ extern "C" {
 
 struct ac_llvm_compiler;
 
+#define SHADER_DEBUG_LOG 0
+
 #define ATI_VENDOR_ID         0x1002
 #define SI_NOT_QUERY          0xffffffff
 
@@ -1581,6 +1583,7 @@ void si_init_screen_get_functions(struct si_screen *sscreen);
 bool si_sdma_copy_image(struct si_context *ctx, struct si_texture *dst, struct si_texture *src);
 
 /* si_gfx_cs.c */
+void si_reset_debug_log_buffer(struct si_context *sctx);
 void si_flush_gfx_cs(struct si_context *ctx, unsigned flags, struct pipe_fence_handle **fence);
 void si_allocate_gds(struct si_context *ctx);
 void si_set_tracked_regs_to_clear_state(struct si_context *ctx);

@@ -433,8 +433,21 @@ aco_get_codegen_flags()
 bool
 aco_is_gpu_supported(const struct radeon_info* info)
 {
-   /* Does not support compute only cards yet. */
-   return info->gfx_level >= GFX6 && info->has_graphics;
+   switch (info->gfx_level) {
+   case GFX6:
+   case GFX7:
+   case GFX8:
+      return true;
+   case GFX9:
+      return info->has_graphics; /* no CDNA support */
+   case GFX10:
+   case GFX10_3:
+   case GFX11:
+   case GFX11_5:
+      return true;
+   default:
+      return false;
+   }
 }
 
 bool

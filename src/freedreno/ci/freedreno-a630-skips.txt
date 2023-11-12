@@ -73,3 +73,7 @@ spec@nv_copy_image@nv_copy_image.*
 
 # Exclude this test which might fail when a new extension is implemented.
 dEQP-VK.info.device_extensions
+
+# uprev Piglit in Mesa
+spec@ext_image_dma_buf_import@ext_image_dma_buf_import-modifiers.*
+

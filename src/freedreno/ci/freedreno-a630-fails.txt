@@ -30,8 +30,6 @@ glx@glx_arb_create_context_robustness@invalid reset notification strategy,Fail
 glx@glx-make-current,Fail
 glx@glx-multi-window-single-context,Fail
 glx@glx-swap-pixmap-bad,Fail
-glx@glx-visuals-depth -pixmap,Crash
-glx@glx-visuals-stencil -pixmap,Crash
 
 # "../src/freedreno/ir3/ir3_shader.h:968:ir3_link_add: Assertion `i < ARRAY_SIZE(l->var)' failed."
 shaders@glsl-max-varyings >max_varying_components,Crash
@@ -123,7 +121,6 @@ spec@egl_mesa_configless_context@basic,Fail
 # TU gmem mode gets fullscreen green.
 spec@ext_external_objects@vk-depth-display,Fail
 spec@ext_external_objects@vk-depth-display@D16,Fail
-spec@ext_external_objects@vk-depth-display@D24S8,Fail
 
 # "Failed to submit queue." from the test some of the time.  No validation failures.
 # When it doesn't fail with that message, gets a set of corrupted colors (supposed
@@ -376,3 +373,4 @@ stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.
 stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.geom.xfb.rast.line_strip_with_adjacency.pgq_default_xfb_1.single_draw.xfbq_first.after,Fail
 stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.geom.xfb.rast.triangle_strip_with_adjacency.pgq_default_xfb_1.single_draw.xfbq_first.before_2_queries,Fail
 stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.tese.xfb.rast.patch_list.pgq_default_xfb_default.two_draws.xfbq_first.none_2_queries,Fail
+

@@ -67,7 +67,6 @@ shaders@glsl-bug-22603,Fail
 shaders@glsl-fs-flat-color,Fail
 shaders@glsl-predication-on-large-array,Fail
 shaders@glsl-routing,Fail
-spec@arb_arrays_of_arrays@execution@glsl-arrays-copy-size-mismatch,Fail
 spec@arb_color_buffer_float@gl_rgba8-render,Fail
 spec@arb_color_buffer_float@gl_rgba8-render-sanity,Fail
 spec@arb_depth_texture@fbo-depth-gl_depth_component16-blit,Fail

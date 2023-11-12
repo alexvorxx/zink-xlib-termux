@@ -183,8 +183,6 @@ spec@!opengl 2.1@pbo,Fail
 spec@!opengl 2.1@pbo@test_polygon_stip,Fail
 spec@!opengl 2.1@polygon-stipple-fs,Fail
 spec@!opengl 3.0@clearbuffer-depth-cs-probe,Fail
-spec@!opengl 1.0@rasterpos@glsl_vs_gs_linked,Fail
-spec@!opengl 1.0@rasterpos@glsl_vs_tes_linked,Fail
 
 spec@!opengl 1.1@teximage-colors gl_sluminance8_alpha8,Fail
 spec@!opengl 1.1@teximage-colors gl_sluminance8_alpha8@GL_SLUMINANCE8_ALPHA8 texture with GL_ABGR_EXT and GL_BYTE,Fail
@@ -340,3 +338,7 @@ spec@!opengl 1.0@gl-1.0-polygon-line-aa,Fail
 
 # Regression noticed in https://gitlab.freedesktop.org/mesa/mesa/-/pipelines/891104
 spec@arb_viewport_array@display-list,Fail
+
+# uprev Piglit in Mesa
+spec@arb_tessellation_shader@execution@tesslevels-indirect,Crash
+

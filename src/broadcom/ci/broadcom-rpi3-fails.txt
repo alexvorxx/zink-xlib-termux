@@ -895,7 +895,6 @@ spec@!opengl 2.0@gl-2.0-edgeflag-immediate,Fail
 spec@!opengl 2.1@pbo,Fail
 spec@!opengl 2.1@pbo@test_polygon_stip,Fail
 spec@!opengl 2.1@polygon-stipple-fs,Fail
-spec@arb_arrays_of_arrays@execution@glsl-arrays-copy-size-mismatch,Fail
 spec@arb_depth_texture@depth-level-clamp,Fail
 spec@arb_depth_texture@texwrap formats,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT16,Fail
@@ -951,7 +950,6 @@ spec@arb_pixel_buffer_object@texsubimage-unpack pbo,Fail
 spec@arb_point_sprite@arb_point_sprite-mipmap,Fail
 spec@arb_provoking_vertex@arb-provoking-vertex-render,Fail
 spec@arb_sampler_objects@sampler-objects,Fail
-spec@arb_shader_texture_lod@execution@glsl-fs-texturelod-01,Fail
 spec@arb_texture_rectangle@1-1-linear-texture,Fail
 spec@arb_texture_rectangle@texrect-many,Crash
 spec@arb_vertex_program@minmax,Fail

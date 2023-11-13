@@ -457,7 +457,7 @@ static void si_sqtt_start(struct si_context *sctx, struct radeon_cmdbuf *cs)
 
    if (sctx->spm.bo) {
       si_pc_emit_spm_reset(cs);
-      si_pc_emit_shaders(cs, 0x7f);
+      si_pc_emit_shaders(cs, ac_sqtt_get_shader_mask(&sctx->screen->info));
       si_emit_spm_setup(sctx, cs);
    }
 

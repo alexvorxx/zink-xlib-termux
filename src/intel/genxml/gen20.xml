@@ -975,6 +975,64 @@
     <field name="Command Type" start="29" end="31" type="uint" default="3" />
     <field name="Byte Stride" start="34" end="63" type="uint" />
   </instruction>
+  <instruction name="STATE_COMPUTE_MODE" bias="2" length="3" engine="render|compute">
+    <field name="DWord Length" start="0" end="7" type="uint" default="1" />
+    <field name="3D Command Sub Opcode" start="16" end="23" type="uint" default="5" />
+    <field name="3D Command Opcode" start="24" end="26" type="uint" default="1" />
+    <field name="Command SubType" start="27" end="28" type="uint" default="0" />
+    <field name="Command Type" start="29" end="31" type="uint" default="3" />
+    <field name="Z Pass Async Compute Thread Limit" start="32" end="34" type="uint" prefix="ZPACTL">
+      <value name="Max 60" value="0" />
+      <value name="Max 64" value="1" />
+      <value name="Max 56" value="2" />
+      <value name="Max 48" value="3" />
+      <value name="Max 40" value="4" />
+      <value name="Max 32" value="5" />
+    </field>
+    <field name="Z Async Throttle settings" start="35" end="36" type="uint">
+      <value name="Max 32" value="1" />
+      <value name="Max 40" value="2" />
+      <value name="Max 48" value="3" />
+    </field>
+    <field name="Pixel Async Compute Thread Limit" start="39" end="41" type="uint" prefix="PACTL">
+      <value name="Disabled" value="0" />
+      <value name="Max 2" value="1" />
+      <value name="Max 8" value="2" />
+      <value name="Max 16" value="3" />
+      <value name="Max 24" value="4" />
+      <value name="Max 32" value="5" />
+      <value name="Max 40" value="6" />
+      <value name="Max 48" value="7" />
+    </field>
+    <field name="EU Thread Scheduling Mode Override" start="45" end="46" type="uint" />
+    <field name="Large GRF Mode" start="47" end="47" type="bool" />
+    <field name="Mask1" start="48" end="63" type="uint" />
+    <field name="Midthread Preemption Delay Timer" start="64" end="66" type="uint">
+      <value name="MTP_TIMER_VAL_0" value="0" />
+      <value name="MTP_TIMER_VAL_50" value="1" />
+      <value name="MTP_TIMER_VAL_100" value="2" />
+      <value name="MTP_TIMER_VAL_150" value="3" />
+    </field>
+    <field name="Midthread Preemption Overdispatch Thread group count" start="67" end="68" type="uint">
+      <value name="OD_TG_M2" value="0" />
+      <value name="OD_TG_M4" value="1" />
+      <value name="OD_TG_M8" value="2" />
+      <value name="OD_TG_M16" value="3" />
+    </field>
+    <field name="Midthread Preemption Overdispatch Test mode" start="69" end="69" type="uint">
+      <value name="Regular" value="0" />
+      <value name="Test mode" value="1" />
+    </field>
+    <field name="UAV Coherency Mode" start="70" end="70" type="uint">
+      <value name="Drain DataPort Mode" value="0" />
+      <value name="Flush Dataport L1" value="1" />
+    </field>
+    <field name="Memory allocation for Scratch and Midthread Preemption buffers" start="75" end="75" type="uint">
+      <value name="Full" value="0" />
+      <value name="Min" value="1" />
+    </field>
+    <field name="Mask2" start="80" end="95" type="uint" />
+  </instruction>
   <instruction name="XY_BLOCK_COPY_BLT" bias="2" length="22" engine="blitter">
     <field name="DWord Length" start="0" end="7" type="uint" default="20" />
     <field name="Special Mode of Operation" start="12" end="13" type="uint">

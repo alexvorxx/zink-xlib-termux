@@ -33,13 +33,13 @@ ac_sqtt_get_data_offset(const struct radeon_info *rad_info, const struct ac_sqtt
    return data_offset;
 }
 
-uint64_t
+static uint64_t
 ac_sqtt_get_info_va(uint64_t va, unsigned se)
 {
    return va + ac_sqtt_get_info_offset(se);
 }
 
-uint64_t
+static uint64_t
 ac_sqtt_get_data_va(const struct radeon_info *rad_info, const struct ac_sqtt *data,
                     unsigned se)
 {
@@ -230,14 +230,14 @@ ac_sqtt_get_next_cmdbuf_id(struct ac_sqtt *data, enum amd_ip_type ip_type)
    return cb_id;
 }
 
-bool
+static bool
 ac_sqtt_se_is_disabled(const struct radeon_info *info, unsigned se)
 {
    /* No active CU on the SE means it is disabled. */
    return info->cu_mask[se][0] == 0;
 }
 
-uint32_t
+static uint32_t
 ac_sqtt_get_active_cu(const struct radeon_info *info, unsigned se)
 {
    uint32_t cu_index;

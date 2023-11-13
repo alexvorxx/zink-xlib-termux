@@ -1064,6 +1064,7 @@ Rusticl environment variables
    - ``clc`` dumps all OpenCL C source being compiled
    - ``program`` dumps compilation logs to stderr
    - ``sync`` waits on the GPU to complete after every event
+   - ``validate`` validates any internally generated SPIR-Vs, e.g. through compiling OpenCL C code
 
 .. _clc-env-var:
 

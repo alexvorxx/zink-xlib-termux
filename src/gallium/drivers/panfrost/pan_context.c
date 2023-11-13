@@ -986,3 +986,10 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
    return gallium;
 }
+
+void
+panfrost_context_reinit(struct panfrost_context *ctx)
+{
+   pan_screen(ctx->base.screen)->vtbl.context_cleanup(ctx);
+   pan_screen(ctx->base.screen)->vtbl.context_init(ctx);
+}

@@ -335,9 +335,11 @@ pipe_panfrost_create_screen(int fd, const struct pipe_screen_config *config)
    return screen ? debug_screen_wrap(screen) : NULL;
 }
 DRM_DRIVER_DESCRIPTOR(panfrost, NULL, 0)
+DRM_DRIVER_DESCRIPTOR_ALIAS(panfrost, panthor, NULL, 0)
 
 #else
 DRM_DRIVER_DESCRIPTOR_STUB(panfrost)
+DRM_DRIVER_DESCRIPTOR_STUB(panthor)
 #endif
 
 #ifdef GALLIUM_ASAHI

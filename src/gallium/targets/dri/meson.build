@@ -112,7 +112,7 @@ foreach d : [[with_gallium_kmsro, [
              [with_gallium_softpipe and with_gallium_drisw_kms, 'kms_swrast_dri.so'],
              [with_gallium_v3d, 'v3d_dri.so'],
              [with_gallium_vc4, 'vc4_dri.so'],
-             [with_gallium_panfrost, 'panfrost_dri.so'],
+             [with_gallium_panfrost, ['panfrost_dri.so', 'panthor_dri.so']],
              [with_gallium_etnaviv, 'etnaviv_dri.so'],
              [with_gallium_tegra, 'tegra_dri.so'],
              [with_gallium_crocus, 'crocus_dri.so'],

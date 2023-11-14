@@ -533,8 +533,8 @@ panfrost_get_compute_state_info(struct pipe_context *pipe, void *cso,
    struct panfrost_compiled_shader *cs =
       util_dynarray_begin(&uncompiled->variants);
 
-   info->max_threads =
-      panfrost_max_thread_count(dev->arch, cs->info.work_reg_count);
+   info->max_threads = panfrost_compute_max_thread_count(
+      &dev->kmod.props, cs->info.work_reg_count);
    info->private_memory = cs->info.tls_size;
    info->simd_sizes = pan_subgroup_size(dev->arch);
    info->preferred_simd_size = info->simd_sizes;

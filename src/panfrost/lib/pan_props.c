@@ -24,6 +24,8 @@
  *   Alyssa Rosenzweig <alyssa.rosenzweig@collabora.com>
  */
 
+#include "util/macros.h"
+
 #include "kmod/pan_kmod.h"
 #include "panfrost/util/pan_ir.h"
 #include "pan_props.h"
@@ -126,11 +128,27 @@ panfrost_query_core_count(const struct pan_kmod_dev_props *props,
 unsigned
 panfrost_query_thread_tls_alloc(const struct pan_kmod_dev_props *props)
 {
-   unsigned tls = props->thread_tls_alloc;
+   return props->max_tls_instance_per_core ?: props->max_threads_per_core;
+}
 
-   return (tls > 0)
-             ? tls
-             : panfrost_max_thread_count(pan_arch(props->gpu_prod_id), 0);
+unsigned
+panfrost_compute_max_thread_count(const struct pan_kmod_dev_props *props,
+                                  unsigned work_reg_count)
+{
+   unsigned aligned_reg_count;
+
+   /* 4, 8 or 16 registers per shader on Midgard
+    * 32 or 64 registers per shader on Bifrost
+    */
+   if (pan_arch(props->gpu_prod_id) <= 5) {
+      aligned_reg_count = util_next_power_of_two(MAX2(work_reg_count, 4));
+      assert(aligned_reg_count <= 16);
+   } else {
+      aligned_reg_count = work_reg_count <= 32 ? 32 : 64;
+   }
+
+   return MIN3(props->max_threads_per_wg, props->max_threads_per_core,
+               props->num_registers_per_core / aligned_reg_count);
 }
 
 uint32_t

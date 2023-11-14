@@ -17,6 +17,9 @@
 
 #include "pan_kmod_backend.h"
 
+/* Only needed for pan_arch(), don't add per-arch stuff here. */
+#include "genxml/gen_macros.h"
+
 const struct pan_kmod_ops panfrost_kmod_ops;
 
 struct panfrost_kmod_vm {
@@ -92,6 +95,85 @@ panfrost_query_raw(int fd, enum drm_panfrost_param param, bool required,
 }
 
 static void
+panfrost_dev_query_thread_props(const struct pan_kmod_dev *dev,
+                                struct pan_kmod_dev_props *props)
+{
+   int fd = dev->fd;
+
+   props->max_threads_per_core =
+      panfrost_query_raw(fd, DRM_PANFROST_PARAM_MAX_THREADS, true, 0);
+   if (!props->max_threads_per_core) {
+      switch (pan_arch(props->gpu_prod_id)) {
+      case 4:
+      case 5:
+         props->max_threads_per_core = 256;
+         break;
+
+      case 6:
+         /* Bifrost, first generation */
+         props->max_threads_per_core = 384;
+         break;
+
+      case 7:
+         /* Bifrost, second generation (G31 is 512 but it doesn't matter) */
+         props->max_threads_per_core = 768;
+         break;
+
+      case 9:
+         /* Valhall, first generation. */
+         props->max_threads_per_core = 512;
+         break;
+
+      default:
+         assert(!"Unsupported arch");
+      }
+   }
+
+   props->max_threads_per_wg = panfrost_query_raw(
+      fd, DRM_PANFROST_PARAM_THREAD_MAX_WORKGROUP_SZ, true, 0);
+   if (!props->max_threads_per_wg)
+      props->max_threads_per_wg = props->max_threads_per_core;
+
+   uint32_t thread_features =
+      panfrost_query_raw(fd, DRM_PANFROST_PARAM_THREAD_FEATURES, true, 0);
+   props->num_registers_per_core = thread_features & 0xffff;
+   if (!props->num_registers_per_core) {
+      switch (pan_arch(props->gpu_prod_id)) {
+      case 4:
+      case 5:
+         /* Assume we can always schedule max_threads_per_core when using 4
+          * registers per-shader or less.
+          */
+         props->num_registers_per_core = props->max_threads_per_core * 4;
+         break;
+
+      case 6:
+         /* Assume we can always schedule max_threads_per_core for shader
+          * using the full per-shader register file (64 regs).
+          */
+         props->num_registers_per_core = props->max_threads_per_core * 64;
+         break;
+
+      case 7:
+      case 9:
+         /* Assume we can always schedule max_threads_per_core for shaders
+          * using half the per-shader register file (32 regs).
+          */
+         props->num_registers_per_core = props->max_threads_per_core * 32;
+         break;
+
+      default:
+         assert(!"Unsupported arch");
+      }
+   }
+
+   props->max_tls_instance_per_core =
+      panfrost_query_raw(fd, DRM_PANFROST_PARAM_THREAD_TLS_ALLOC, true, 0);
+   if (!props->max_tls_instance_per_core)
+      props->max_tls_instance_per_core = props->max_threads_per_core;
+}
+
+static void
 panfrost_dev_query_props(const struct pan_kmod_dev *dev,
                          struct pan_kmod_dev_props *props)
 {
@@ -116,10 +198,10 @@ panfrost_dev_query_props(const struct pan_kmod_dev *dev,
          fd, DRM_PANFROST_PARAM_TEXTURE_FEATURES0 + i, true, 0);
    }
 
-   props->thread_tls_alloc =
-      panfrost_query_raw(fd, DRM_PANFROST_PARAM_THREAD_TLS_ALLOC, true, 0);
    props->afbc_features =
       panfrost_query_raw(fd, DRM_PANFROST_PARAM_AFBC_FEATURES, true, 0);
+
+   panfrost_dev_query_thread_props(dev, props);
 }
 
 static uint32_t

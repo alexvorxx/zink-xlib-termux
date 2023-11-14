@@ -95,4 +95,8 @@ unsigned panfrost_query_optimal_tib_size(const struct panfrost_model *model);
 uint64_t panfrost_clamp_to_usable_va_range(const struct pan_kmod_dev *dev,
                                            uint64_t va);
 
+unsigned
+panfrost_compute_max_thread_count(const struct pan_kmod_dev_props *props,
+                                  unsigned work_reg_count);
+
 #endif

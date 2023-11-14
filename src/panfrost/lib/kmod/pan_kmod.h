@@ -154,7 +154,23 @@ struct pan_kmod_dev_props {
    uint32_t texture_features[4];
 
    /* Maximum number of threads per core. */
-   uint32_t thread_tls_alloc;
+   uint32_t max_threads_per_core;
+
+   /* Maximum number of threads per workgroup. */
+   uint32_t max_threads_per_wg;
+
+   /* Number of registers per core. Can be used to determine the maximum
+    * number of threads that can be allocated for a specific shader based on
+    * the number of registers assigned to this shader.
+    */
+   uint32_t num_registers_per_core;
+
+   /* Maximum number of thread-local storage instance per core.
+    * If the GPU doesn't have a THREAD_TLS_ALLOC register or the register
+    * value is zero, the backend should assign the value of max_threads_per_core
+    * here.
+    */
+   uint32_t max_tls_instance_per_core;
 
    /* AFBC feature bits. */
    uint32_t afbc_features;

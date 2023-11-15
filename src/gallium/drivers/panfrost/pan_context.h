@@ -50,6 +50,8 @@
 #include "compiler/shader_enums.h"
 #include "midgard/midgard_compile.h"
 
+#include "pan_csf.h"
+
 #define SET_BIT(lval, bit, cond)                                               \
    if (cond)                                                                   \
       lval |= (bit);                                                           \
@@ -230,6 +232,10 @@ struct panfrost_context {
 
    int in_sync_fd;
    uint32_t in_sync_obj;
+
+   union {
+      struct panfrost_csf_context csf;
+   };
 };
 
 /* Corresponds to the CSO */

@@ -46,6 +46,7 @@
 #include "pan_bo.h"
 #include "pan_cmdstream.h"
 #include "pan_context.h"
+#include "pan_csf.h"
 #include "pan_indirect_dispatch.h"
 #include "pan_jm.h"
 #include "pan_job.h"
@@ -60,6 +61,8 @@
  * functions. */
 #if PAN_ARCH <= 9
 #define JOBX(__suffix) GENX(jm_##__suffix)
+#elif PAN_ARCH <= 10
+#define JOBX(__suffix) GENX(csf_##__suffix)
 #else
 #error "Unsupported arch"
 #endif

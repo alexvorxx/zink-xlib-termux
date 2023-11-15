@@ -63,6 +63,8 @@ foreach ver : panfrost_versions
   files_panfrost_vx = ['pan_cmdstream.c', pan_packers]
   if ver in ['4', '5', '6', '7', '9']
     files_panfrost_vx += ['pan_jm.c']
+  elif ver in ['10']
+    files_panfrost_vx += ['pan_csf.c']
   endif
   libpanfrost_versions += static_library(
     'panfrost-v' + ver, files_panfrost_vx,

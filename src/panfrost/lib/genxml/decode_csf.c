@@ -951,6 +951,11 @@ GENX(pandecode_cs)(struct pandecode_context *ctx, mali_ptr queue, uint32_t size,
       .ip = cs,
       .end = cs + (size / 8),
       .gpu_id = gpu_id,
+
+      /* If this is a kernel mode queue, we don't see the root ring buffer and
+       * we must adjust the initial call stack depth accordingly.
+       */
+      .call_stack_depth = ctx->usermode_queue ? 0 : 1,
    };
 
    if (size) {

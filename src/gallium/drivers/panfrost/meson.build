@@ -56,7 +56,7 @@ compile_args_panfrost = [
   '-Wno-pointer-arith'
 ]
 
-panfrost_versions = ['4', '5', '6', '7', '9']
+panfrost_versions = ['4', '5', '6', '7', '9', '10']
 libpanfrost_versions = []
 
 foreach ver : panfrost_versions

@@ -24,6 +24,7 @@
 #include "nir/nir.h"
 #include "nir/nir_builder.h"
 
+#include "nir/radv_nir.h"
 #include "radv_debug.h"
 #include "radv_private.h"
 #include "radv_shader.h"
@@ -318,10 +319,11 @@ radv_create_merged_rt_create_info(const VkRayTracingPipelineCreateInfoKHR *pCrea
 }
 
 static bool
-should_move_rt_instruction(nir_intrinsic_op intrinsic)
+should_move_rt_instruction(nir_intrinsic_instr *instr)
 {
-   switch (intrinsic) {
+   switch (instr->intrinsic) {
    case nir_intrinsic_load_hit_attrib_amd:
+      return nir_intrinsic_base(instr) < RADV_MAX_HIT_ATTRIB_DWORDS;
    case nir_intrinsic_load_rt_arg_scratch_offset_amd:
    case nir_intrinsic_load_ray_flags:
    case nir_intrinsic_load_ray_object_origin:
@@ -348,7 +350,7 @@ move_rt_instructions(nir_shader *shader)
 
          nir_intrinsic_instr *intrinsic = nir_instr_as_intrinsic(instr);
 
-         if (!should_move_rt_instruction(intrinsic->intrinsic))
+         if (!should_move_rt_instruction(intrinsic))
             continue;
 
          nir_instr_move(target, instr);
@@ -367,6 +369,8 @@ radv_rt_nir_to_asm(struct radv_device *device, struct vk_pipeline_cache *cache,
    struct radv_shader_binary *binary;
    bool keep_executable_info = radv_pipeline_capture_shaders(device, pipeline->base.base.create_flags);
    bool keep_statistic_info = radv_pipeline_capture_shader_stats(device, pipeline->base.base.create_flags);
+
+   radv_nir_lower_rt_io(stage->nir, monolithic, 0);
 
    /* Gather shader info. */
    nir_shader_gather_info(stage->nir, nir_shader_get_entrypoint(stage->nir));
@@ -525,7 +529,9 @@ radv_rt_compile_shaders(struct radv_device *device, struct vk_pipeline_cache *ca
       radv_pipeline_stage_init(&pCreateInfo->pStages[i], pipeline_layout, &stage_keys[s], stage);
 
       /* precompile the shader */
-      stage->nir = radv_parse_rt_stage(device, stage);
+      stage->nir = radv_shader_spirv_to_nir(device, stage, NULL, false);
+
+      NIR_PASS(_, stage->nir, radv_nir_lower_hit_attrib_derefs);
 
       rt_stages[i].can_inline = radv_rt_can_inline_shader(stage->nir);
 

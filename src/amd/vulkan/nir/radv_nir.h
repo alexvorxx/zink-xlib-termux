@@ -51,6 +51,8 @@ void radv_nir_lower_abi(nir_shader *shader, enum amd_gfx_level gfx_level, const 
 
 bool radv_nir_lower_hit_attrib_derefs(nir_shader *shader);
 
+bool radv_nir_lower_ray_payload_derefs(nir_shader *shader, uint32_t offset);
+
 bool radv_nir_lower_ray_queries(nir_shader *shader, struct radv_device *device);
 
 bool radv_nir_lower_vs_inputs(nir_shader *shader, const struct radv_shader_stage *vs_stage,

@@ -206,6 +206,8 @@ struct etna_context {
 
    bool is_noop;
 
+   bool compute_only;
+
    /* conditional rendering */
    struct pipe_query *cond_query;
    bool cond_cond; /* inverted rendering condition */

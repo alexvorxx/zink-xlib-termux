@@ -436,6 +436,17 @@ etna_reset_gpu_state(struct etna_context *ctx)
    struct etna_screen *screen = ctx->screen;
    uint32_t dummy_attribs[VIVS_NFE_GENERIC_ATTRIB__LEN] = { 0 };
 
+   if (ctx->compute_only) {
+      /* compute only context does not make use of any of the dirty state tracking. */
+      assert(ctx->dirty == 0);
+      assert(ctx->dirty_sampler_views == 0);
+      assert(ctx->prev_active_samplers == 0);
+
+      etna_cmd_stream_mark_end_of_context_init(stream);
+
+      return;
+   }
+
    etna_set_state(stream, VIVS_GL_API_MODE, VIVS_GL_API_MODE_OPENGL);
    etna_set_state(stream, VIVS_PA_W_CLIP_LIMIT, 0x34000001);
    etna_set_state(stream, VIVS_PA_FLAGS, 0x00000000); /* blob sets ZCONVERT_BYPASS on GC3000+, this messes up z for us */
@@ -644,6 +655,8 @@ etna_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    ctx->screen = screen;
    /* need some sane default in case gallium frontends don't set some state: */
    ctx->sample_mask = 0xffff;
+
+   ctx->compute_only = flags & PIPE_CONTEXT_COMPUTE_ONLY;
 
    /*  Set sensible defaults for state */
    etna_reset_gpu_state(ctx);

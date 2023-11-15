@@ -2844,7 +2844,7 @@ panfrost_draw_get_vertex_count(struct panfrost_batch *batch,
       panfrost_increase_vertex_count(batch, vertex_count);
    }
 
-   if (info->instance_count > 1) {
+   if (PAN_ARCH <= 9 && info->instance_count > 1) {
       unsigned count = vertex_count;
 
       /* Index-Driven Vertex Shading requires different instances to

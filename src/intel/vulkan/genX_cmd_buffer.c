@@ -3284,6 +3284,13 @@ mask_is_write(const VkAccessFlags2 access)
                     VK_ACCESS_2_OPTICAL_FLOW_WRITE_BIT_NV);
 }
 
+static inline bool
+mask_is_transfer_write(const VkAccessFlags2 access)
+{
+   return access & (VK_ACCESS_2_TRANSFER_WRITE_BIT |
+                    VK_ACCESS_2_MEMORY_WRITE_BIT);
+}
+
 static void
 cmd_buffer_barrier_video(struct anv_cmd_buffer *cmd_buffer,
                         const VkDependencyInfo *dep_info)
@@ -3447,6 +3454,16 @@ cmd_buffer_barrier_blitter(struct anv_cmd_buffer *cmd_buffer,
 #endif
 }
 
+static inline bool
+cmd_buffer_has_pending_copy_query(struct anv_cmd_buffer *cmd_buffer)
+{
+   /* Query copies are only written with dataport, so we only need to check
+    * that flag.
+    */
+   return (cmd_buffer->state.queries.buffer_write_bits &
+           ANV_QUERY_WRITES_DATA_FLUSH) != 0;
+}
+
 static void
 cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
                    const VkDependencyInfo *dep_info,
@@ -3472,6 +3489,7 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
    VkAccessFlags2 dst_flags = 0;
 
    bool apply_sparse_flushes = false;
+   bool flush_query_copies = false;
 
    for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
       src_flags |= dep_info->pMemoryBarriers[i].srcAccessMask;
@@ -3486,6 +3504,11 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
          cmd_buffer->state.queries.buffer_write_bits |=
             ANV_QUERY_COMPUTE_WRITES_PENDING_BITS;
       }
+
+      if (stage_is_transfer(dep_info->pMemoryBarriers[i].srcStageMask) &&
+          mask_is_transfer_write(dep_info->pMemoryBarriers[i].srcAccessMask) &&
+          cmd_buffer_has_pending_copy_query(cmd_buffer))
+         flush_query_copies = true;
 
       /* There's no way of knowing if this memory barrier is related to sparse
        * buffers! This is pretty horrible.
@@ -3511,6 +3534,11 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
          cmd_buffer->state.queries.buffer_write_bits |=
             ANV_QUERY_COMPUTE_WRITES_PENDING_BITS;
       }
+
+      if (stage_is_transfer(buf_barrier->srcStageMask) &&
+          mask_is_transfer_write(buf_barrier->srcAccessMask) &&
+          cmd_buffer_has_pending_copy_query(cmd_buffer))
+         flush_query_copies = true;
 
       if (anv_buffer_is_sparse(buffer) && mask_is_write(src_flags))
          apply_sparse_flushes = true;
@@ -3626,6 +3654,14 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
     */
    if (apply_sparse_flushes)
       bits |= ANV_PIPE_FLUSH_BITS;
+
+   /* Copies from query pools are executed with a shader writing through the
+    * dataport.
+    */
+   if (flush_query_copies) {
+      bits |= (GFX_VER >= 12 ?
+               ANV_PIPE_HDC_PIPELINE_FLUSH_BIT : ANV_PIPE_DATA_CACHE_FLUSH_BIT);
+   }
 
    if (dst_flags & VK_ACCESS_INDIRECT_COMMAND_READ_BIT)
       genX(cmd_buffer_flush_generated_draws)(cmd_buffer);

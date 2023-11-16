@@ -13,6 +13,7 @@
 #include "etnaviv_debug.h"
 #include "etnaviv_emit.h"
 #include "etnaviv_ml_nn.h"
+#include "etnaviv_ml_tp.h"
 #include "etnaviv_ml.h"
 
 struct pipe_resource *
@@ -60,6 +61,16 @@ etna_ml_create_tensor(struct etna_ml_subgraph *subgraph, unsigned idx, unsigned 
    ML_DBG("created resource %p for tensor %d with size %d\n", res, idx, size);
 }
 
+static bool
+needs_reshuffle(const struct pipe_ml_operation *poperation)
+{
+   bool has_stride = poperation->conv.stride_x > 1 || poperation->conv.stride_y > 1;
+   bool pointwise = poperation->conv.pointwise;
+   unsigned input_width = poperation->input_tensor->dims[1];
+
+   return has_stride && !(poperation->conv.depthwise && (input_width > 5 || input_width < 3)) && !pointwise;
+}
+
 static void
 reference_tensor_with_offset(struct etna_ml_subgraph *subgraph,
                              unsigned src_tensor,
@@ -84,6 +95,10 @@ dump_graph(struct list_head *etna_operations)
    unsigned i = 0;
    list_for_each_entry(struct etna_operation, operation, etna_operations, link) {
       switch(operation->type) {
+      case ETNA_JOB_TYPE_TP:
+         ML_DBG("%3d %-4s %3d %3d",
+                i, "TP", operation->input_tensor, operation->output_tensor);
+         break;
       case ETNA_JOB_TYPE_NN:
          ML_DBG("%3d %-4s %3d %3d in2: %3d",
                 i, "NN", operation->input_tensor, operation->output_tensor, operation->add_input_tensor);
@@ -107,6 +122,12 @@ lower_operations(struct etna_ml_subgraph *subgraph,
       switch(poperation->type) {
          case PIPE_ML_OPERATION_TYPE_CONVOLUTION: {
             unsigned input_tensor = poperation->input_tensor->index;
+            if (needs_reshuffle(poperation)) {
+               struct etna_operation *operation = calloc(1, sizeof(*operation));
+               etna_ml_lower_reshuffle(subgraph, poperation, operation, &input_tensor);
+               list_addtail(&operation->link, etna_operations);
+            }
+
             struct etna_operation *operation = calloc(1, sizeof(*operation));
             etna_ml_lower_convolution(subgraph, poperation, operation);
             operation->input_tensor = input_tensor;
@@ -129,6 +150,7 @@ lower_operations(struct etna_ml_subgraph *subgraph,
       struct etna_operation *operation = calloc(1, sizeof(*operation));
       unsigned input_tensor = poperations[0].input_tensor->index;
       unsigned output_tensor;
+      etna_ml_lower_transpose(subgraph, &poperations[0], operation, &output_tensor);
       list_for_each_entry(struct etna_operation, operation, etna_operations, link) {
          if (operation->input_tensor == input_tensor)
             operation->input_tensor = output_tensor;
@@ -148,6 +170,22 @@ lower_operations(struct etna_ml_subgraph *subgraph,
                                       operation->input_tensor,
                                       operation->add_input_tensor,
                                       operation->input_tensor_size / 2);
+   }
+
+   /* Detranspose any output tensors that aren't inputs to other operations
+    * and have output channels, these are the outputs of the graph.
+    */
+   list_for_each_entry_safe(struct etna_operation, operation, etna_operations, link) {
+      struct pipe_resource *res = etna_ml_get_tensor(subgraph, operation->output_tensor);
+      if (res != NULL)
+         continue;
+
+      if (operation->output_channels > 1) {
+         struct etna_operation *transpose_operation = calloc(1, sizeof(*operation));
+         etna_ml_lower_detranspose(subgraph, operation, transpose_operation);
+         operation->output_tensor = transpose_operation->input_tensor;
+         list_add(&transpose_operation->link, &operation->link);
+      }
    }
 
    /* Create any output tensors that aren't inputs to other operations, these
@@ -235,6 +273,9 @@ etna_ml_subgraph_create(struct pipe_context *pcontext,
       switch(operation->type) {
          case ETNA_JOB_TYPE_NN:
             etna_ml_compile_operation_nn(subgraph, operation, &instruction);
+            break;
+         case ETNA_JOB_TYPE_TP:
+            etna_ml_compile_operation_tp(subgraph, operation, &instruction);
             break;
       }
 
@@ -359,6 +400,12 @@ etna_ml_subgraph_invoke(struct pipe_context *pctx, struct pipe_ml_subgraph *psub
 
       if (DBG_ENABLED(ETNA_DBG_DUMP_SHADERS)) {
          switch (operation->type) {
+            case ETNA_JOB_TYPE_TP:
+               for (unsigned j = 0; j < tp_core_count && operation->configs[j]; j++) {
+                  dump_buffer(operation->configs[j], "tp", dump_id);
+                  dump_id++;
+               }
+               break;
             case ETNA_JOB_TYPE_NN:
                dump_buffer(operation->configs[0], "nn", dump_id);
                dump_buffer(operation->coefficients, "compressed", dump_id);
@@ -389,6 +436,9 @@ etna_ml_subgraph_invoke(struct pipe_context *pctx, struct pipe_ml_subgraph *psub
       etna_cmd_stream_ref_bo(stream, etna_resource(operation->output)->bo, ETNA_RELOC_WRITE);
 
       switch (operation->type) {
+         case ETNA_JOB_TYPE_TP:
+            etna_ml_emit_operation_tp(subgraph, operation, i);
+            break;
          case ETNA_JOB_TYPE_NN:
             etna_ml_emit_operation_nn(subgraph, operation, i);
             break;

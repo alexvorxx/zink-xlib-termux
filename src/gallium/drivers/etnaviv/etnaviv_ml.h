@@ -13,6 +13,13 @@
 
 enum etna_job_type {
     ETNA_JOB_TYPE_NN,
+    ETNA_JOB_TYPE_TP,
+};
+
+enum etna_ml_tp_type {
+   ETNA_ML_TP_TRANSPOSE,
+   ETNA_ML_TP_DETRANSPOSE,
+   ETNA_ML_TP_RESHUFFLE,
 };
 
 struct etna_ml_subgraph {
@@ -40,6 +47,7 @@ struct etna_operation {
    struct list_head link;
 
    enum etna_job_type type;
+   enum etna_ml_tp_type tp_type;
 
    bool addition;
    bool depthwise;

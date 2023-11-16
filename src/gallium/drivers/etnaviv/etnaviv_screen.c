@@ -59,6 +59,7 @@ static const struct debug_named_value etna_debug_options[] = {
    {"resource_msgs",  ETNA_DBG_RESOURCE_MSGS, "Print resource messages"},
    {"compiler_msgs",  ETNA_DBG_COMPILER_MSGS, "Print compiler messages"},
    {"linker_msgs",    ETNA_DBG_LINKER_MSGS, "Print linker messages"},
+   {"ml_msgs",        ETNA_DBG_ML_MSGS, "Print ML messages"},
    {"dump_shaders",   ETNA_DBG_DUMP_SHADERS, "Dump shaders"},
    {"no_ts",          ETNA_DBG_NO_TS, "Disable TS"},
    {"no_autodisable", ETNA_DBG_NO_AUTODISABLE, "Disable autodisable"},
@@ -76,6 +77,8 @@ static const struct debug_named_value etna_debug_options[] = {
    {"msaa",           ETNA_DBG_MSAA, "Enable MSAA support"},
    {"shared_ts",      ETNA_DBG_SHARED_TS, "Enable TS sharing"},
    {"perf",           ETNA_DBG_PERF, "Enable performance warnings"},
+   {"npu_no_parallel",ETNA_DBG_NPU_NO_PARALLEL, "Disable parallelism inside NPU batches"},
+   {"npu_no_batching",ETNA_DBG_NPU_NO_BATCHING, "Disable batching NPU jobs"},
    DEBUG_NAMED_VALUE_END
 };
 

@@ -52,7 +52,7 @@ panvk_deps = []
 panvk_flags = []
 panvk_per_arch_libs = []
 
-foreach arch : ['6', '7']
+foreach arch : [6, 7]
   panvk_per_arch_libs += static_library(
     'panvk_v@0@'.format(arch),
     [

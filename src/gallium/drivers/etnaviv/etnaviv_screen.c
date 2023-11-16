@@ -898,6 +898,36 @@ etna_get_specs(struct etna_screen *screen)
    }
    screen->specs.max_varyings = MAX2(val, ETNA_NUM_VARYINGS);
 
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_NN_CORE_COUNT, &val)) {
+      DBG("could not get ETNA_GPU_NN_CORE_COUNT");
+      goto fail;
+   }
+   screen->specs.nn_core_count = val;
+
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_NN_MAD_PER_CORE, &val)) {
+      DBG("could not get ETNA_GPU_NN_MAD_PER_CORE");
+      goto fail;
+   }
+   screen->specs.nn_mad_per_core = val;
+
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_TP_CORE_COUNT, &val)) {
+      DBG("could not get ETNA_GPU_TP_CORE_COUNT");
+      goto fail;
+   }
+   screen->specs.tp_core_count = val;
+
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_ON_CHIP_SRAM_SIZE, &val)) {
+      DBG("could not get ETNA_GPU_ON_CHIP_SRAM_SIZE");
+      goto fail;
+   }
+   screen->specs.on_chip_sram_size = val;
+
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_AXI_SRAM_SIZE, &val)) {
+      DBG("could not get ETNA_GPU_AXI_SRAM_SIZE");
+      goto fail;
+   }
+   screen->specs.axi_sram_size = val;
+
    /* Figure out gross GPU architecture. See rnndb/common.xml for a specific
     * description of the differences. */
    if (VIV_FEATURE(screen, chipMinorFeatures5, HALTI5))

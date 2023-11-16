@@ -2739,6 +2739,7 @@ fs_visitor::invalidate_analysis(brw::analysis_dependency_class c)
    live_analysis.invalidate(c);
    regpressure_analysis.invalidate(c);
    idom_analysis.invalidate(c);
+   def_analysis.invalidate(c);
 }
 
 void

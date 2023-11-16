@@ -69,6 +69,51 @@ namespace brw {
 
       unsigned *regs_live_at_ip;
    };
+
+   class def_analysis {
+   public:
+      def_analysis(const fs_visitor *v);
+      ~def_analysis();
+
+      fs_inst *
+      get(const fs_reg &reg) const
+      {
+         return reg.file == VGRF && reg.nr < def_count ?
+                def_insts[reg.nr] : NULL;
+      }
+
+      bblock_t *
+      get_block(const fs_reg &reg) const
+      {
+         return reg.file == VGRF && reg.nr < def_count ?
+                def_blocks[reg.nr] : NULL;
+      }
+
+      unsigned count() const { return def_count; }
+
+      void print_stats(const fs_visitor *) const;
+
+      analysis_dependency_class
+      dependency_class() const
+      {
+         return DEPENDENCY_INSTRUCTION_IDENTITY |
+                DEPENDENCY_INSTRUCTION_DATA_FLOW |
+                DEPENDENCY_VARIABLES |
+                DEPENDENCY_BLOCKS;
+      }
+
+      bool validate(const fs_visitor *) const;
+
+   private:
+      void mark_invalid(int);
+      bool fully_defines(const fs_visitor *v, fs_inst *);
+      void update_for_reads(const idom_tree &idom, bblock_t *block, fs_inst *);
+      void update_for_write(const fs_visitor *v, bblock_t *block, fs_inst *);
+
+      fs_inst **def_insts;
+      bblock_t **def_blocks;
+      unsigned def_count;
+   };
 }
 
 #define UBO_START ((1 << 16) - 4)
@@ -349,6 +394,7 @@ public:
    brw_analysis<brw::register_pressure, fs_visitor> regpressure_analysis;
    brw_analysis<brw::performance, fs_visitor> performance_analysis;
    brw_analysis<brw::idom_tree, fs_visitor> idom_analysis;
+   brw_analysis<brw::def_analysis, fs_visitor> def_analysis;
 
    /** Number of uniform variable components visited. */
    unsigned uniforms;

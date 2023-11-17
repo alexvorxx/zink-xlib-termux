@@ -56,6 +56,12 @@
 extern "C" {
 #endif
 
+enum zink_context_modes {
+   ZINK_CONTEXT_THREADED = 1 << 1,
+   ZINK_CONTEXT_BASE = 1 << 2,
+   ZINK_CONTEXT_AUTO = 1 << 3,
+};
+
 struct blitter_context;
 struct list_head;
 

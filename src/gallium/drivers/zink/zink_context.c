@@ -4433,9 +4433,38 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    if (screen->info.dynamic_state2_feats.extendedDynamicState2PatchControlPoints)
       VKCTX(CmdSetPatchControlPointsEXT)(ctx->batch.state->cmdbuf, 1);
 
+   /* ZINK_CONTEXT_MODE 
+    * Options:
+    * threaded - force threaded context selection (default option)
+    * base - force base context selection
+    * auto - automatically select base or threaded context
+    */
+   const char *zink_context_string = getenv("ZINK_CONTEXT_MODE");
+   enum zink_context_modes context_mode;
+
+   if (!zink_context_string) {
+      mesa_logi("force threaded context selection");
+      context_mode = ZINK_CONTEXT_THREADED;
+   } else {
+      if (!strcmp(zink_context_string, "base")) {
+         context_mode = ZINK_CONTEXT_BASE;
+         mesa_logi("force base context selection");
+      }
+      else if (!strcmp(zink_context_string, "auto")) {
+         context_mode = ZINK_CONTEXT_AUTO;
+         mesa_logi("automatically select base or threaded context");
+      }
+      else {
+         mesa_logi("force threaded context selection");
+         context_mode = ZINK_CONTEXT_THREADED;
+      }
+   }
+
    if (!(flags & PIPE_CONTEXT_PREFER_THREADED) || flags & PIPE_CONTEXT_COMPUTE_ONLY) {
-      zink_xlib_context = &ctx->base;
-      
+      if (context_mode == ZINK_CONTEXT_BASE || context_mode == ZINK_CONTEXT_AUTO) {
+         zink_xlib_context = &ctx->base;
+         mesa_logi("base context %u created", (unsigned)zink_xlib_context);
+      }
       return &ctx->base;
    }
 
@@ -4454,7 +4483,10 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       ctx->base.set_context_param = zink_set_context_param;
    }
    
-   zink_xlib_context = (struct pipe_context*)tc;
+   if (context_mode == ZINK_CONTEXT_THREADED || context_mode == ZINK_CONTEXT_AUTO) {
+      mesa_logi("threaded context %u created", (unsigned)zink_xlib_context);
+      zink_xlib_context = (struct pipe_context*)tc; 
+   }
 
    return (struct pipe_context*)tc;
 

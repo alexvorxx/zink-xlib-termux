@@ -1,0 +1,197 @@
+############### LAVA
+# Run three jobs in parallel each running 1/30th of the test suite
+radv_stoney_vkcts:amd64:
+  extends:
+    - .lava-test:amd64
+    - .radv-rules
+  parallel: 3
+  variables:
+    DEQP_VER: vk
+    DEQP_FRACTION: 10
+    FDO_CI_CONCURRENT: 4
+    DEQP_EXPECTED_RENDERER: STONEY
+    DEVICE_TYPE: hp-11A-G6-EE-grunt
+    DTB: ""
+    GPU_VERSION: radv-stoney-aco
+    BOOT_METHOD: depthcharge
+    KERNEL_IMAGE_TYPE: ""
+    HWCI_KERNEL_MODULES: amdgpu
+    HWCI_FREQ_MAX: "true"
+    VK_DRIVER: radeon
+    DRIVER_NAME: radv
+    RUNNER_TAG: mesa-ci-x86-64-lava-hp-11A-G6-EE-grunt
+
+############### Valve Infra
+.test-radv:
+  extends:
+    - .radv-rules
+  variables:
+    VK_DRIVER: radeon
+    DRIVER_NAME: radv
+    # The SPIRV -> NIR code generator generates so many harmless
+    # warnings on the shaders in VK-CTS that jobs fail due to the log
+    # size getting too big. Since it's not feasible right now
+    # to fix these shaders in the CTS, instead, ignore warnings from
+    # the code generator.
+    MESA_SPIRV_LOG_LEVEL: error
+    ACO_DEBUG: validateir,validatera
+    MESA_VK_IGNORE_CONFORMANCE_WARNING: 1
+
+.b2c-test-radv:
+  extends:
+    - .test-radv
+    - .b2c-test
+
+############### VKCTS tests ###############
+
+# A note on the variables to control fractional VKCTS runs
+#  parallel: N means to split the test list into chunks of 1/N lines, and
+#  DEQP_FRACTION: M means to run every Mth test from the resulting lines.
+#  So parallel: 2 and DEQP_FRACTION: 5 would imply running 1/10th of the suite.
+.vkcts-test-valve:
+  extends:
+    - .b2c-test-radv
+    # Keep all the VKCTS jobs as manual trigger jobs for now, until we
+    # have enough resources to meet the throughput requirements for
+    # automatic pre-merge in the Mesa CI.
+    - .test-manual-mr
+  variables:
+    B2C_JOB_SUCCESS_REGEX: '^\+ DEQP_EXITCODE=0\r$'
+    B2C_TEST_SCRIPT: ./install/deqp-runner.sh
+    B2C_JOB_VOLUME_EXCLUSIONS: "*.shader_cache"
+    DEQP_VER: vk
+    RADV_PERFTEST: nv_ms
+
+# VKCTS never finishes on gfx7 due to all the GPU resets and hangs.
+# Hence, disable it for now.
+.vkcts-kabini-valve:
+  extends:
+    - .vkcts-test-valve
+  timeout: 6h 10m
+  variables:
+    # FIXME: Create this baseline for KABINI
+    GPU_VERSION: radv-kabini-aco
+    B2C_TIMEOUT_BOOT_MINUTES: 360
+    B2C_TIMEOUT_OVERALL_MINUTES: 360
+    B2C_TIMEOUT_BOOT_RETRIES: 0
+    B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=8g'
+  tags:
+    - amdgpu:codename:KABINI
+
+# Disabled for now due to Igalia farm issues.
+.vkcts-stoney-valve:
+  extends:
+    - .vkcts-test-valve
+  parallel: 2
+  # The thin clients can't manage a full run in less than an hour
+  # currently.  Interpolation suggests four more thin clients (6
+  # total) would get the runtime under 15 minutes.
+  timeout: 4h 10m
+  variables:
+    GPU_VERSION: radv-stoney-aco
+    # Note, it only has a wee 32g disk!
+    B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=8g'
+    B2C_TIMEOUT_BOOT_MINUTES: 240
+    B2C_TIMEOUT_OVERALL_MINUTES: 240
+    B2C_TIMEOUT_BOOT_RETRIES: 0
+  tags:
+    - amdgpu:codename:STONEY
+
+vkcts-polaris10-valve:
+  extends:
+    - .vkcts-test-valve
+  variables:
+    GPU_VERSION: radv-polaris10-aco
+    FDO_CI_CONCURRENT: 16
+    B2C_TIMEOUT_BOOT_RETRIES: 4
+    # (2022-01) tsc=unstable was added in response to this message in kmsg,
+    #    TSC found unstable after boot, most likely due to broken BIOS. Use 'tsc=unstable'.
+    B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=16g tsc=unstable'
+  tags:
+    - amdgpu:codename:POLARIS10
+
+vkcts-vega10-valve:
+  extends:
+    - .vkcts-test-valve
+  variables:
+    GPU_VERSION: radv-vega10-aco
+    FDO_CI_CONCURRENT: 16
+    B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=16g'
+  tags:
+    - amdgpu:codename:VEGA10
+
+vkcts-renoir-valve:
+  extends:
+    - .vkcts-test-valve
+  timeout: 2h 10m
+  variables:
+    GPU_VERSION: radv-renoir-aco
+    FDO_CI_CONCURRENT: 24
+    B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=16g'
+    B2C_TIMEOUT_BOOT_MINUTES: 60
+    B2C_TIMEOUT_OVERALL_MINUTES: 120
+  tags:
+    - amdgpu:codename:RENOIR
+
+vkcts-navi10-valve:
+  extends:
+    - .vkcts-test-valve
+  variables:
+    GPU_VERSION: radv-navi10-aco
+    FDO_CI_CONCURRENT: 24
+    # (2022-01) noapic is set because the serial adapter on this
+    # machine is using non-MSI IRQs and is generating a lot of
+    # IRQs. This tends to confuse the interrupt controller and breaks
+    # MSI IRQs leading to GPU hangs on amdgpu.
+    B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=16g noapic'
+  tags:
+    - amdgpu:codename:NAVI10
+
+vkcts-navi21-valve:
+  extends:
+    - .vkcts-test-valve
+  variables:
+    GPU_VERSION: radv-navi21-aco
+    FDO_CI_CONCURRENT: 16
+    B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=16g'
+  tags:
+    - amdgpu:codename:NAVI21
+
+vkcts-vangogh-valve:
+  extends:
+    - .vkcts-test-valve
+  timeout: 2h 10m
+  variables:
+    GPU_VERSION: radv-vangogh-aco
+    FDO_CI_CONCURRENT: 8
+    B2C_TIMEOUT_BOOT_MINUTES: 85
+    B2C_TIMEOUT_OVERALL_MINUTES: 120
+    B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=16g'
+  tags:
+    - amdgpu:codename:VANGOGH
+
+############### Fossilize
+radv-fossils:
+  extends:
+    - .test-vk
+    - .test-radv
+    - .fossilize-test
+  script:
+    # Pitcairn (GFX6)
+    - export RADV_FORCE_FAMILY="PITCAIRN"
+    - ./install/fossilize-runner.sh
+    # Bonaire (GFX7)
+    - export RADV_FORCE_FAMILY="BONAIRE"
+    - ./install/fossilize-runner.sh
+    # Polaris10 (GFX8)
+    - export RADV_FORCE_FAMILY="POLARIS10"
+    - ./install/fossilize-runner.sh
+    # Vega10 (GFX9): Currently fails, thus disabled
+    #- export RADV_FORCE_FAMILY="VEGA10"
+    #- ./install/fossilize-runner.sh
+    # Navi10 (GFX10)
+    - export RADV_FORCE_FAMILY="NAVI10"
+    - ./install/fossilize-runner.sh
+    # Navi21 (GFX10_3)
+    - export RADV_FORCE_FAMILY="NAVI21"
+    - ./install/fossilize-runner.sh

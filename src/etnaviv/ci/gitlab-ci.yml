@@ -1,0 +1,42 @@
+.etnaviv-armhf-test:
+  extends:
+    - .baremetal-test-armhf
+    - .use-debian/arm_test
+    - .etnaviv-rules
+  script:
+    - ./install/bare-metal/fastboot.sh
+  variables:
+    BM_CMDLINE: "ip=dhcp console=ttymxc0,115200n8 root=/dev/nfs rw nfsrootdebug init=/init $BM_KERNELARGS"
+    BM_KERNEL: /baremetal-files/zImage
+    FLAKES_CHANNEL: "#etnaviv-ci"
+  needs:
+    - debian/arm_test
+    - job: debian-armhf
+      artifacts: false
+
+.etnaviv-armhf-gc2000:
+  extends:
+    - .etnaviv-armhf-test
+  variables:
+    BM_DTB: /baremetal-files/imx6q-cubox-i.dtb
+    DEQP_EXPECTED_RENDERER: GC2000
+    GPU_VERSION: "etnaviv-gc2000"
+  tags:
+    - etnaviv-gc2000
+
+gc2000_gles2:
+  extends:
+    - .etnaviv-armhf-gc2000
+    - .test-manual-mr
+  variables:
+    HWCI_TEST_SCRIPT: "/install/deqp-runner.sh"
+    DEQP_VER: gles2
+
+gc2000_piglit:
+  extends:
+    - .piglit-test
+    - .etnaviv-armhf-gc2000
+    - .test-manual-mr
+  variables:
+    PIGLIT_PLATFORM: gbm
+    PIGLIT_PROFILES: gpu

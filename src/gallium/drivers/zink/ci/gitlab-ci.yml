@@ -1,0 +1,37 @@
+.zink-lvp-test:
+  extends:
+    - .zink-rules
+  variables:
+    MESA_LOADER_DRIVER_OVERRIDE: "zink"
+    LIBGL_ALWAYS_SOFTWARE: "true"
+    LVP_POISON_MEMORY: "1"
+    GPU_VERSION: zink-lvp
+    FLAKES_CHANNEL: "#zink-ci"
+    # Fix non-conformant llvmpipe filter defaults
+    GALLIVM_PERF: "no_quad_lod"
+
+zink:
+  tags:
+    - mesa-swrast
+  extends:
+    - .test-gl
+    - .deqp-test
+    - .zink-lvp-test
+  variables:
+    DEQP_SUITE: zink-lvp
+    PIGLIT_NO_WINDOW: 1
+  script:
+    - xvfb-run --server-args='-noreset' sh -c "GALLIUM_DRIVER=zink VK_DRIVER=lvp install/deqp-runner.sh"
+
+zink-anv-tgl:
+  extends:
+    - .anv-tgl-test
+    - .zink-anv-rules
+  variables:
+    FLAKES_CHANNEL: "#zink-ci"
+    MESA_LOADER_DRIVER_OVERRIDE: "zink"
+    DEQP_SUITE: zink-anv-tgl
+    PIGLIT_NO_WINDOW: 1
+    VK_DRIVER: intel
+    HWCI_START_XORG: 1
+    GPU_VERSION: zink-anv-tgl

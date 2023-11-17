@@ -117,8 +117,10 @@ tc_fence_finish(struct zink_context *ctx, struct zink_tc_fence *mfence, uint64_t
    return true;
 }
 
-static bool
-fence_wait(struct zink_screen *screen, struct zink_fence *fence, uint64_t timeout_ns)
+/*static bool
+fence_wait(struct zink_screen *screen, struct zink_fence *fence, uint64_t timeout_ns)*/
+bool
+zink_vkfence_wait(struct zink_screen *screen, struct zink_fence *fence, uint64_t timeout_ns)
 {
    if (screen->device_lost)
       return true;
@@ -128,7 +130,15 @@ fence_wait(struct zink_screen *screen, struct zink_fence *fence, uint64_t timeou
    assert(fence->batch_id);
    assert(fence->submitted);
 
-   bool success = zink_screen_timeline_wait(screen, fence->batch_id, timeout_ns);
+   //bool success = zink_screen_timeline_wait(screen, fence->batch_id, timeout_ns);
+   bool success = false;
+
+   VkResult ret;
+   if (timeout_ns)
+      ret = VKSCR(WaitForFences)(screen->dev, 1, &fence->fence, VK_TRUE, timeout_ns);
+   else
+      ret = VKSCR(GetFenceStatus)(screen->dev, fence->fence);
+   success = zink_screen_handle_vkresult(screen, ret);
 
    if (success) {
       p_atomic_set(&fence->completed, true);
@@ -179,7 +189,8 @@ zink_fence_finish(struct zink_screen *screen, struct pipe_context *pctx, struct 
    if (fence->submitted && zink_screen_check_last_finished(screen, fence->batch_id))
       return true;
 
-   return fence_wait(screen, fence, timeout_ns);
+   //return fence_wait(screen, fence, timeout_ns);
+   return zink_vkfence_wait(screen, fence, timeout_ns);
 }
 
 static bool

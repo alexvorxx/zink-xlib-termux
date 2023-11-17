@@ -1,28 +1,56 @@
 `Mesa <https://mesa3d.org>`_ - The 3D Graphics Library
 ======================================================
 
+======================================================
+
+Build dependencies (Termux)
+---------------
+
+Taken from (https://github.com/termux/termux-packages/issues/10103#issuecomment-1333002785).
+
+  $ pkg update && pkg upgrade
+
+  $ pkg install -y x11-repo
+
+  $ pkg install -y clang lld binutils cmake autoconf automake libtool '*ndk*' make python git libandroid-shmem-static ninja llvm bison flex libx11 xorgproto libdrm libpixman libxfixes libjpeg-turbo xtrans libxxf86vm xorg-xrandr xorg-font-util xorg-util-macros libxfont2 libxkbfile libpciaccess xcb-util-renderutil xcb-util-image xcb-util-keysyms xcb-util-wm xorg-xkbcomp xkeyboard-config libxdamage libxinerama libxshmfence
+
+  $ pip install meson mako
+
+Build Mesa Zink
+---------------
+
+Build Mesa Zink using this repository (https://github.com/alexvorxx/zink-xlib-termux).
+
+Go to the folder with Mesa code and run the commands:
+
+  $ LDFLAGS='-l:libandroid-shmem.a -llog' meson . build -Dgallium-va=false -Dgallium-drivers=virgl,zink,swrast -Ddri3=false -Dvulkan-drivers= -Dglx=xlib -Dplatforms=x11 -Dllvm=disabled -Dbuildtype=release
+  
+  $ ninja -C build install
+
+Usage Zink
+---------------
+
+To use Zink with built-in Android driver:
+
+  $ pkg install vulkan-loader-android
+
+To use Zink with Turnip Freedreno driver:
+
+  $ pkg install mesa-vulkan-icd-freedreno
+
+You also may compile it yourself.
+
+Before starting Zink, it is recommended to run the command:
+
+  $ export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
+
+======================================================
 
 Source
 ------
 
 This repository lives at https://gitlab.freedesktop.org/mesa/mesa.
-Other repositories are likely forks, and code found there is not supported.
-
-
-Build & install
----------------
-
-You can find more information in our documentation (`docs/install.rst
-<https://mesa3d.org/install.html>`_), but the recommended way is to use
-Meson (`docs/meson.rst <https://mesa3d.org/meson.html>`_):
-
-.. code-block:: sh
-
-  $ mkdir build
-  $ cd build
-  $ meson ..
-  $ sudo ninja install
-
+Other repositories are likely forks, and code found there is not supported.  
 
 Support
 -------

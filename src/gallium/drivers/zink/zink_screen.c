@@ -55,6 +55,8 @@
 
 #include "driver_trace/tr_context.h"
 
+#include "frontend/sw_winsys.h"
+
 #if DETECT_OS_WINDOWS
 #include <io.h>
 #define VK_LIBNAME "vulkan-1.dll"
@@ -1402,15 +1404,15 @@ zink_flush_frontbuffer(struct pipe_screen *pscreen,
 {
    struct zink_screen *screen = zink_screen(pscreen);
    struct zink_resource *res = zink_resource(pres);
-   struct zink_context *ctx = zink_context(pctx);
+   //struct zink_context *ctx = zink_context(pctx);
 
    /* if the surface has never been acquired, there's nothing to present,
     * so this is a no-op */
-   if (!res->obj->acquired && res->obj->last_dt_idx == UINT32_MAX)
-      return;
+   /*if (!res->obj->acquired && res->obj->last_dt_idx == UINT32_MAX)
+      return;*/
 
    /* need to get the actual zink_context, not the threaded context */
-   if (screen->threaded)
+   /*if (screen->threaded)
       pctx = threaded_context_unwrap_sync(pctx);
    pctx = trace_get_possibly_threaded_context(pctx);
    ctx = zink_context(pctx);
@@ -1430,7 +1432,30 @@ zink_flush_frontbuffer(struct pipe_screen *pscreen,
          zink_kopper_acquire_readback(ctx, res);
          zink_kopper_present_readback(ctx, res);
       }
+   }*/
+
+   struct sw_winsys *winsys = screen->winsys;
+
+   if (!winsys)
+     return;
+   void *map = winsys->displaytarget_map(winsys, res->dt, 0);
+
+   if (map) {
+      struct pipe_transfer *transfer = NULL;
+      void *res_map = pipe_texture_map(pctx, pres, level, layer, PIPE_MAP_READ, 0, 0,
+                                        u_minify(pres->width0, level),
+                                        u_minify(pres->height0, level),
+                                        &transfer);
+      if (res_map) {
+         util_copy_rect((ubyte*)map, pres->format, res->dt_stride, 0, 0,
+                        transfer->box.width, transfer->box.height,
+                        (const ubyte*)res_map, transfer->stride, 0, 0);
+         pipe_texture_unmap(pctx, transfer);
+      }
+      winsys->displaytarget_unmap(winsys, res->dt);
    }
+
+   winsys->displaytarget_display(winsys, res->dt, winsys_drawable_handle, sub_box);
 }
 
 bool
@@ -2346,6 +2371,7 @@ zink_create_screen(struct sw_winsys *winsys, const struct pipe_screen_config *co
 {
    struct zink_screen *ret = zink_internal_create_screen(config);
    if (ret) {
+      ret->winsys = winsys;
       ret->drm_fd = -1;
    }
 

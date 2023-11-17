@@ -1075,13 +1075,13 @@ enumerate_devices(struct vk_instance *vk_instance)
 }
 
 uint32_t
-v3dv_physical_device_vendor_id(struct v3dv_physical_device *dev)
+v3dv_physical_device_vendor_id(const struct v3dv_physical_device *dev)
 {
    return 0x14E4; /* Broadcom */
 }
 
 uint32_t
-v3dv_physical_device_device_id(struct v3dv_physical_device *dev)
+v3dv_physical_device_device_id(const struct v3dv_physical_device *dev)
 {
 #if using_v3d_simulator
    return dev->device_id;

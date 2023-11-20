@@ -53,16 +53,18 @@ brw_nir_lower_non_uniform_barycentric_at_sample_instr(nir_builder *b,
    b->cursor = nir_instr_remove(&intrin->instr);
 
    nir_push_loop(b);
+   {
+      nir_def *first_sample_id = nir_read_first_invocation(b, sample_id);
 
-   nir_def *first_sample_id = nir_read_first_invocation(b, sample_id);
+      nir_push_if(b, nir_ieq(b, sample_id, first_sample_id));
+      {
+         nir_builder_instr_insert(b, &intrin->instr);
 
-   nir_push_if(b, nir_ieq(b, sample_id, first_sample_id));
+         nir_src_rewrite(&intrin->src[0], first_sample_id);
 
-   nir_builder_instr_insert(b, &intrin->instr);
-
-   nir_src_rewrite(&intrin->src[0], first_sample_id);
-
-   nir_jump(b, nir_jump_break);
+         nir_jump(b, nir_jump_break);
+      }
+   }
 
    return true;
 }

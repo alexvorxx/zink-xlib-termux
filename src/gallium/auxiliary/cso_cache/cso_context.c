@@ -1336,8 +1336,8 @@ cso_set_vertex_buffers_and_elements(struct cso_context *cso,
             ctx->base.draw_vbo = u_vbuf_draw_vbo;
       }
 
-      u_vbuf_set_vertex_buffers(vbuf, vb_count, take_ownership, vbuffers);
       u_vbuf_set_vertex_elements(vbuf, velems);
+      u_vbuf_set_vertex_buffers(vbuf, vb_count, take_ownership, vbuffers);
       return;
    }
 
@@ -1349,8 +1349,8 @@ cso_set_vertex_buffers_and_elements(struct cso_context *cso,
          ctx->base.draw_vbo = pipe->draw_vbo;
    }
 
-   pipe->set_vertex_buffers(pipe, vb_count, take_ownership, vbuffers);
    cso_set_vertex_elements_direct(ctx, velems);
+   pipe->set_vertex_buffers(pipe, vb_count, take_ownership, vbuffers);
 }
 
 

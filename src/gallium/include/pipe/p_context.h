@@ -410,6 +410,15 @@ struct pipe_context {
    void * (*create_vertex_elements_state)(struct pipe_context *,
                                           unsigned num_elements,
                                           const struct pipe_vertex_element *);
+   /**
+    * Bind vertex elements state.
+    *
+    * Frontends MUST call set_vertex_buffers after bind_vertex_elements_state
+    * and before the next draw. This ensures the driver can apply the state
+    * change before the next draw. Drivers MAY use this constraint to merge
+    * vertex elements and vertex buffers in set_vertex_buffers instead of
+    * in draw_vbo.
+    */
    void   (*bind_vertex_elements_state)(struct pipe_context *, void *);
    void   (*delete_vertex_elements_state)(struct pipe_context *, void *);
 

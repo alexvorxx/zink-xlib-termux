@@ -642,6 +642,12 @@ void util_blitter_restore_vertex_states(struct blitter_context *blitter)
    struct pipe_context *pipe = ctx->base.pipe;
    unsigned i;
 
+   /* Vertex elements. */
+   if (ctx->base.saved_velem_state != INVALID_PTR) {
+      pipe->bind_vertex_elements_state(pipe, ctx->base.saved_velem_state);
+      ctx->base.saved_velem_state = INVALID_PTR;
+   }
+
    /* Vertex buffer. */
    if (ctx->base.saved_num_vb) {
       pipe->set_vertex_buffers(pipe, ctx->base.saved_num_vb, true,
@@ -649,12 +655,6 @@ void util_blitter_restore_vertex_states(struct blitter_context *blitter)
       memset(ctx->base.saved_vertex_buffers, 0,
              sizeof(ctx->base.saved_vertex_buffers[0]) * ctx->base.saved_num_vb);
       ctx->base.saved_num_vb = 0;
-   }
-
-   /* Vertex elements. */
-   if (ctx->base.saved_velem_state != INVALID_PTR) {
-      pipe->bind_vertex_elements_state(pipe, ctx->base.saved_velem_state);
-      ctx->base.saved_velem_state = INVALID_PTR;
    }
 
    /* Vertex shader. */
@@ -1411,8 +1411,8 @@ static void blitter_draw(struct blitter_context_priv *ctx,
       return;
    u_upload_unmap(pipe->stream_uploader);
 
-   pipe->set_vertex_buffers(pipe, 1, false, &vb);
    pipe->bind_vertex_elements_state(pipe, vertex_elements_cso);
+   pipe->set_vertex_buffers(pipe, 1, false, &vb);
    pipe->bind_vs_state(pipe, get_vs(&ctx->base));
 
    if (ctx->base.use_index_buffer) {
@@ -2633,10 +2633,11 @@ void util_blitter_clear_buffer(struct blitter_context *blitter,
    blitter_check_saved_vertex_states(ctx);
    blitter_disable_render_cond(ctx);
 
-   pipe->set_vertex_buffers(pipe, 1, false, &vb);
    pipe->bind_vertex_elements_state(pipe,
                                     ctx->velem_state_readbuf[num_channels-1]);
+   pipe->set_vertex_buffers(pipe, 1, false, &vb);
    bind_vs_pos_only(ctx, num_channels);
+
    if (ctx->has_geometry_shader)
       pipe->bind_gs_state(pipe, NULL);
    if (ctx->has_tessellation) {

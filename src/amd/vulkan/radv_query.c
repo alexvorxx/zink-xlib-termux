@@ -41,7 +41,6 @@
 
 #define TIMESTAMP_NOT_READY UINT64_MAX
 
-/* TODO: Add support for mesh/task queries on GFX11 */
 static const unsigned pipeline_statistics_indices[] = {7, 6, 3, 4, 5, 2, 1, 0, 8, 9, 10, 13, 11, 12};
 
 static unsigned

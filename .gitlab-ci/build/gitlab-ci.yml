@@ -265,7 +265,7 @@ alpine-build-testing:
       -D glx=disabled
       -D gbm=enabled
       -D egl=enabled
-      -D glvnd=false
+      -D glvnd=disabled
       -D platforms=wayland
     LLVM_VERSION: "16"
     GALLIUM_DRIVERS: "crocus,etnaviv,freedreno,iris,kmsro,lima,nouveau,panfrost,r300,r600,radeonsi,svga,swrast,tegra,v3d,vc4,virgl,zink"
@@ -305,7 +305,7 @@ fedora-release:
       -D glx=dri
       -D gbm=enabled
       -D egl=enabled
-      -D glvnd=true
+      -D glvnd=enabled
       -D platforms=x11,wayland
     EXTRA_OPTION: >
       -D b_lto=true
@@ -540,7 +540,7 @@ debian-clang:
       -D glx=dri
       -D gbm=enabled
       -D egl=enabled
-      -D glvnd=true
+      -D glvnd=enabled
       -D platforms=x11,wayland
     GALLIUM_ST: >
       -D dri3=enabled

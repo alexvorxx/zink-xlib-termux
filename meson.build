@@ -554,9 +554,7 @@ _glvnd = get_option('glvnd') \
            error_message: '''EGL lib suffix can't be used with libglvnd''')
 dep_glvnd = dependency('libglvnd', version : '>= 1.3.2', required : _glvnd)
 with_glvnd = dep_glvnd.found()
-if with_glvnd
-  pre_args += '-DUSE_LIBGLVND=1'
-endif
+pre_args += '-DUSE_LIBGLVND=@0@'.format(with_glvnd ? '1' : '0')
 glvnd_vendor_name = get_option('glvnd-vendor-name')
 
 if with_vulkan_icd_dir == ''

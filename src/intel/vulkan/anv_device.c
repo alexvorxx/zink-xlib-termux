@@ -304,6 +304,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_shader_integer_dot_product        = true,
       .KHR_shader_maximal_reconvergence      = true,
       .KHR_shader_non_semantic_info          = true,
+      .KHR_shader_quad_control               = true,
       .KHR_shader_subgroup_extended_types    = true,
       .KHR_shader_subgroup_rotate            = true,
       .KHR_shader_subgroup_uniform_control_flow = true,
@@ -909,6 +910,9 @@ get_features(const struct anv_physical_device *pdevice,
       .memoryMapPlaced = true,
       .memoryMapRangePlaced = false,
       .memoryUnmapReserve = true,
+
+      /* VK_KHR_shader_quad_control */
+      .shaderQuadControl = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without

@@ -5123,10 +5123,12 @@ radv_flush_shader_query_state_gfx(struct radv_cmd_buffer *cmd_buffer)
     * queries or if it's a secondary command buffer that inherits the number of generated
     * primitives.
     */
-   if (cmd_buffer->state.active_pipeline_gds_queries || (cmd_buffer->state.inherited_pipeline_statistics &
-                                                         (VK_QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT |
-                                                          VK_QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT |
-                                                          VK_QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT_EXT)))
+   if (cmd_buffer->state.active_pipeline_gds_queries ||
+       (cmd_buffer->state.inherited_pipeline_statistics &
+        (VK_QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT |
+         VK_QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT)) ||
+       (cmd_buffer->device->physical_device->emulate_mesh_shader_queries &&
+        (cmd_buffer->state.inherited_pipeline_statistics & VK_QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT_EXT)))
       shader_query_state |= radv_shader_query_pipeline_stat;
 
    if (cmd_buffer->state.active_prims_gen_gds_queries)
@@ -5171,7 +5173,8 @@ radv_flush_shader_query_state(struct radv_cmd_buffer *cmd_buffer)
 {
    radv_flush_shader_query_state_gfx(cmd_buffer);
 
-   if (radv_cmdbuf_has_stage(cmd_buffer, MESA_SHADER_TASK))
+   if (radv_cmdbuf_has_stage(cmd_buffer, MESA_SHADER_TASK) &&
+       cmd_buffer->device->physical_device->emulate_mesh_shader_queries)
       radv_flush_shader_query_state_ace(cmd_buffer, cmd_buffer->state.shaders[MESA_SHADER_TASK]);
 
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_SHADER_QUERY;

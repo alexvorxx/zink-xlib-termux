@@ -21,6 +21,7 @@
 libpankmod_lib_files = files(
   'pan_kmod.c',
   'panfrost_kmod.c',
+  'panthor_kmod.c',
 )
 
 libpankmod_lib = static_library(

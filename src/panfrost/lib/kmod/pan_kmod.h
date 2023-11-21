@@ -32,6 +32,8 @@
 #include "util/sparse_array.h"
 #include "util/u_atomic.h"
 
+#include "kmod/panthor_kmod.h"
+
 #if defined(__cplusplus)
 extern "C" {
 #endif

@@ -548,6 +548,8 @@ panfrost_destroy(struct pipe_context *pipe)
    struct panfrost_context *panfrost = pan_context(pipe);
    struct panfrost_device *dev = pan_device(pipe->screen);
 
+   pan_screen(pipe->screen)->vtbl.context_cleanup(panfrost);
+
    _mesa_hash_table_destroy(panfrost->writers, NULL);
 
    if (panfrost->blitter)
@@ -979,6 +981,8 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
    ctx->in_sync_fd = -1;
    ret = drmSyncobjCreate(panfrost_device_fd(dev), 0, &ctx->in_sync_obj);
    assert(!ret);
+
+   pan_screen(screen)->vtbl.context_init(ctx);
 
    return gallium;
 }

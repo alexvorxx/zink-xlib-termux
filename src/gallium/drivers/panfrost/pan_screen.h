@@ -70,6 +70,10 @@ struct panfrost_vtable {
    /* Populate context vtable */
    void (*context_populate_vtbl)(struct pipe_context *pipe);
 
+   /* Initialize/cleanup a Gallium context */
+   void (*context_init)(struct panfrost_context *ctx);
+   void (*context_cleanup)(struct panfrost_context *ctx);
+
    /* Device-dependent initialization of a panfrost_batch */
    void (*init_batch)(struct panfrost_batch *batch);
 

@@ -106,6 +106,9 @@ etna_screen_destroy(struct pipe_screen *pscreen)
    if (screen->pipe)
       etna_pipe_del(screen->pipe);
 
+   if (screen->npu && screen->npu != screen->gpu)
+      etna_gpu_del(screen->npu);
+
    if (screen->gpu)
       etna_gpu_del(screen->gpu);
 
@@ -1059,7 +1062,7 @@ etna_screen_get_fd(struct pipe_screen *pscreen)
 
 struct pipe_screen *
 etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
-                   struct renderonly *ro)
+                   struct etna_gpu *npu, struct renderonly *ro)
 {
    struct etna_screen *screen = CALLOC_STRUCT(etna_screen);
    struct pipe_screen *pscreen;
@@ -1067,9 +1070,13 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
    if (!screen)
       return NULL;
 
+   if (!gpu)
+      gpu = npu;
+
    pscreen = &screen->base;
    screen->dev = dev;
    screen->gpu = gpu;
+   screen->npu = npu;
    screen->ro = ro;
    screen->info = etna_gpu_get_core_info(gpu);
 

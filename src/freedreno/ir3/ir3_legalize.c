@@ -77,6 +77,15 @@ apply_ss(struct ir3_instruction *instr,
    state->needs_ss_for_const = false;
 }
 
+static inline void
+apply_sy(struct ir3_instruction *instr,
+         struct ir3_legalize_state *state,
+         bool mergedregs)
+{
+   instr->flags |= IR3_INSTR_SY;
+   regmask_init(&state->needs_sy, mergedregs);
+}
+
 /* We want to evaluate each block from the position of any other
  * predecessor block, in order that the flags set are the union of
  * all possible program paths.
@@ -176,9 +185,7 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
 
       if ((last_n && is_barrier(last_n)) || n->opc == OPC_SHPE) {
          apply_ss(n, state, mergedregs);
-
-         n->flags |= IR3_INSTR_SY;
-         regmask_init(&state->needs_sy, mergedregs);
+         apply_sy(n, state, mergedregs);
          last_input_needs_ss = false;
       }
 
@@ -211,12 +218,13 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
             }
 
             if (regmask_get(&state->needs_sy, reg)) {
-               n->flags |= IR3_INSTR_SY;
-               regmask_init(&state->needs_sy, mergedregs);
+               apply_sy(n, state, mergedregs);
             }
-         } else if ((reg->flags & IR3_REG_CONST) && state->needs_ss_for_const) {
-            apply_ss(n, state, mergedregs);
-            last_input_needs_ss = false;
+         } else if ((reg->flags & IR3_REG_CONST)) {
+            if (state->needs_ss_for_const) {
+               apply_ss(n, state, mergedregs);
+               last_input_needs_ss = false;
+            }
          }
       }
 

@@ -154,6 +154,16 @@ enum ir3_push_consts_type {
    IR3_PUSH_CONSTS_SHARED_PREAMBLE,
 };
 
+/* This represents an internal UBO filled out by the driver. There are a few
+ * common UBOs that must be filled out identically by all drivers, for example
+ * for shader linkage, but drivers can also add their own that they manage
+ * themselves.
+ */
+struct ir3_driver_ubo {
+   int32_t idx;
+   uint32_t size;
+};
+
 /**
  * Describes the layout of shader consts in the const register file.
  *
@@ -186,8 +196,11 @@ struct ir3_const_state {
    unsigned num_ubos;
    unsigned num_driver_params; /* scalar */
 
-   /* UBO that should be mapped to the NIR shader's constant_data (or -1). */
-   int32_t constant_data_ubo;
+   struct ir3_driver_ubo consts_ubo;
+   struct ir3_driver_ubo driver_params_ubo;
+   struct ir3_driver_ubo primitive_map_ubo, primitive_param_ubo;
+
+   int32_t constant_data_dynamic_offsets;
 
    struct {
       /* user const start at zero */

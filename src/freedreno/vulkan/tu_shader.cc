@@ -97,6 +97,13 @@ tu_spirv_to_nir(struct tu_device *dev,
    if (result != VK_SUCCESS)
       return NULL;
 
+   /* ir3 uses num_ubos and num_ssbos to track the number of *bindful*
+    * UBOs/SSBOs, but spirv_to_nir sets them to the total number of objects
+    * which is useless for us, so reset them here.
+    */
+   nir->info.num_ubos = 0;
+   nir->info.num_ssbos = 0;
+
    if (TU_DEBUG(NIR)) {
       fprintf(stderr, "translated nir:\n");
       nir_print_shader(nir, stderr);
@@ -175,6 +182,7 @@ lower_vulkan_resource_index(struct tu_device *dev, nir_builder *b,
                             struct tu_shader *shader,
                             const struct tu_pipeline_layout *layout)
 {
+   struct ir3_compiler *compiler = dev->compiler;
    nir_def *vulkan_idx = instr->src[0].ssa;
 
    unsigned set = nir_intrinsic_desc_set(instr);
@@ -209,9 +217,15 @@ lower_vulkan_resource_index(struct tu_device *dev, nir_builder *b,
           * get it from the const file instead.
           */
          base = nir_imm_int(b, binding_layout->dynamic_offset_offset / (4 * A6XX_TEX_CONST_DWORDS));
-         nir_def *dynamic_offset_start =
-            nir_load_uniform(b, 1, 32, nir_imm_int(b, 0),
-                             .base = shader->const_state.dynamic_offset_loc + set);
+         nir_def *dynamic_offset_start;
+         if (compiler->load_shader_consts_via_preamble) {
+            dynamic_offset_start =
+               ir3_load_driver_ubo(b, 1, &shader->const_state.dynamic_offsets_ubo, set);
+         } else {
+            dynamic_offset_start = 
+               nir_load_uniform(b, 1, 32, nir_imm_int(b, 0),
+                                .base = shader->const_state.dynamic_offset_loc + set);
+         }
          base = nir_iadd(b, base, dynamic_offset_start);
       } else {
          base = nir_imm_int(b, (offset +
@@ -271,7 +285,7 @@ lower_load_vulkan_descriptor(nir_builder *b, nir_intrinsic_instr *intrin)
    nir_instr_remove(&intrin->instr);
 }
 
-static void
+static bool
 lower_ssbo_ubo_intrinsic(struct tu_device *dev,
                          nir_builder *b, nir_intrinsic_instr *intrin)
 {
@@ -290,6 +304,10 @@ lower_ssbo_ubo_intrinsic(struct tu_device *dev,
    } else {
       buffer_src = 0;
    }
+
+   /* Don't lower non-bindless UBO loads of driver params */
+   if (intrin->src[buffer_src].ssa->num_components == 1)
+      return false;
 
    nir_scalar scalar_idx = nir_scalar_resolved(intrin->src[buffer_src].ssa, 0);
    nir_def *descriptor_idx = nir_channel(b, intrin->src[buffer_src].ssa, 1);
@@ -310,7 +328,7 @@ lower_ssbo_ubo_intrinsic(struct tu_device *dev,
       nir_def *bindless =
          nir_bindless_resource_ir3(b, 32, descriptor_idx, .desc_set = nir_scalar_as_uint(scalar_idx));
       nir_src_rewrite(&intrin->src[buffer_src], bindless);
-      return;
+      return true;
    }
 
    nir_def *base_idx = nir_channel(b, scalar_idx.def, scalar_idx.comp);
@@ -361,6 +379,7 @@ lower_ssbo_ubo_intrinsic(struct tu_device *dev,
    if (info->has_dest)
       nir_def_rewrite_uses(&intrin->def, result);
    nir_instr_remove(&intrin->instr);
+   return true;
 }
 
 static nir_def *
@@ -461,8 +480,7 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
    case nir_intrinsic_ssbo_atomic:
    case nir_intrinsic_ssbo_atomic_swap:
    case nir_intrinsic_get_ssbo_size:
-      lower_ssbo_ubo_intrinsic(dev, b, instr);
-      return true;
+      return lower_ssbo_ubo_intrinsic(dev, b, instr);
 
    case nir_intrinsic_image_deref_load:
    case nir_intrinsic_image_deref_store:
@@ -472,6 +490,37 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
    case nir_intrinsic_image_deref_samples:
       lower_image_deref(dev, b, instr, shader, layout);
       return true;
+
+   case nir_intrinsic_load_frag_size_ir3:
+   case nir_intrinsic_load_frag_offset_ir3: {
+      if (!dev->compiler->load_shader_consts_via_preamble)
+         return false;
+
+      enum ir3_driver_param param =
+         instr->intrinsic == nir_intrinsic_load_frag_size_ir3 ?
+         IR3_DP_FS_FRAG_SIZE : IR3_DP_FS_FRAG_OFFSET;
+
+      nir_def *view = instr->src[0].ssa;
+      nir_def *result =
+         ir3_load_driver_ubo_indirect(b, 2, &shader->const_state.fdm_ubo,
+                                      param, view, nir_intrinsic_range(instr));
+
+      nir_def_rewrite_uses(&instr->def, result);
+      nir_instr_remove(&instr->instr);
+      return true;
+   }
+   case nir_intrinsic_load_frag_invocation_count: {
+      if (!dev->compiler->load_shader_consts_via_preamble)
+         return false;
+
+      nir_def *result =
+         ir3_load_driver_ubo(b, 1, &shader->const_state.fdm_ubo,
+                             IR3_DP_FS_FRAG_INVOCATION_COUNT);
+
+      nir_def_rewrite_uses(&instr->def, result);
+      nir_instr_remove(&instr->instr);
+      return true;
+   }
 
    default:
       return false;
@@ -1219,6 +1268,7 @@ tu6_emit_xs(struct tu_cs *cs,
    unsigned immediate_size = tu_xs_get_immediates_packet_size_dwords(xs);
 
    if (immediate_size > 0) {
+      assert(!cs->device->physical_device->info->a7xx.load_shader_consts_via_preamble);
       tu_cs_emit_pkt7(cs, tu6_stage2opcode(stage), 3 + immediate_size);
       tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(base) |
                  CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
@@ -1231,13 +1281,14 @@ tu6_emit_xs(struct tu_cs *cs,
       tu_cs_emit_array(cs, const_state->immediates, immediate_size);
    }
 
-   if (const_state->constant_data_ubo != -1) {
+   if (const_state->consts_ubo.idx != -1) {
       uint64_t iova = binary_iova + xs->info.constant_data_offset;
+      uint32_t offset = const_state->consts_ubo.idx;
 
       /* Upload UBO state for the constant data. */
       tu_cs_emit_pkt7(cs, tu6_stage2opcode(stage), 5);
       tu_cs_emit(cs,
-                 CP_LOAD_STATE6_0_DST_OFF(const_state->constant_data_ubo) |
+                 CP_LOAD_STATE6_0_DST_OFF(offset) |
                  CP_LOAD_STATE6_0_STATE_TYPE(ST6_UBO)|
                  CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
                  CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(stage)) |
@@ -1252,30 +1303,50 @@ tu6_emit_xs(struct tu_cs *cs,
       /* Upload the constant data to the const file if needed. */
       const struct ir3_ubo_analysis_state *ubo_state = &const_state->ubo_state;
 
-      for (int i = 0; i < ubo_state->num_enabled; i++) {
-         if (ubo_state->range[i].ubo.block != const_state->constant_data_ubo ||
-             ubo_state->range[i].ubo.bindless) {
-            continue;
+      if (!cs->device->physical_device->info->a7xx.load_shader_consts_via_preamble) {
+         for (int i = 0; i < ubo_state->num_enabled; i++) {
+            if (ubo_state->range[i].ubo.block != offset ||
+                ubo_state->range[i].ubo.bindless) {
+               continue;
+            }
+
+            uint32_t start = ubo_state->range[i].start;
+            uint32_t end = ubo_state->range[i].end;
+            uint32_t size = MIN2(end - start,
+                                 (16 * xs->constlen) - ubo_state->range[i].offset);
+
+            tu_cs_emit_pkt7(cs, tu6_stage2opcode(stage), 3);
+            tu_cs_emit(cs,
+                     CP_LOAD_STATE6_0_DST_OFF(ubo_state->range[i].offset / 16) |
+                     CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
+                     CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
+                     CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(stage)) |
+                     CP_LOAD_STATE6_0_NUM_UNIT(size / 16));
+            tu_cs_emit_qw(cs, iova + start);
          }
-
-         uint32_t start = ubo_state->range[i].start;
-         uint32_t end = ubo_state->range[i].end;
-         uint32_t size = MIN2(end - start,
-                              (16 * xs->constlen) - ubo_state->range[i].offset);
-
-         tu_cs_emit_pkt7(cs, tu6_stage2opcode(stage), 3);
-         tu_cs_emit(cs,
-                    CP_LOAD_STATE6_0_DST_OFF(ubo_state->range[i].offset / 16) |
-                    CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-                    CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
-                    CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(stage)) |
-                    CP_LOAD_STATE6_0_NUM_UNIT(size / 16));
-         tu_cs_emit_qw(cs, iova + start);
       }
    }
 
    /* emit statically-known FS driver param */
-   if (stage == MESA_SHADER_FRAGMENT && const_state->num_driver_params > 0) {
+   if (stage == MESA_SHADER_FRAGMENT && const_state->driver_params_ubo.size > 0) {
+      uint32_t data[4] = {xs->info.double_threadsize ? 128 : 64, 0, 0, 0};
+      uint32_t size = ARRAY_SIZE(data);
+
+      /* A7XX TODO: Emit data via sub_cs instead of NOP */
+      uint64_t iova = tu_cs_emit_data_nop(cs, data, size, 4);
+      uint32_t base = const_state->driver_params_ubo.idx;
+
+      tu_cs_emit_pkt7(cs, tu6_stage2opcode(stage), 5);
+      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(base) |
+                 CP_LOAD_STATE6_0_STATE_TYPE(ST6_UBO) |
+                 CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+                 CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(stage)) |
+                 CP_LOAD_STATE6_0_NUM_UNIT(1));
+      tu_cs_emit(cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
+      tu_cs_emit(cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
+      int size_vec4s = DIV_ROUND_UP(size, 4);
+      tu_cs_emit_qw(cs, iova | ((uint64_t)A6XX_UBO_1_SIZE(size_vec4s) << 32));
+   } else if (stage == MESA_SHADER_FRAGMENT && const_state->num_driver_params > 0) {
       uint32_t base = const_state->offsets.driver_param;
       int32_t size = DIV_ROUND_UP(MAX2(const_state->num_driver_params, 4), 4);
       size = MAX2(MIN2(size + base, xs->constlen) - base, 0);
@@ -2175,6 +2246,9 @@ tu_shader_init(struct tu_device *dev, const void *key_data, size_t key_size)
 
    vk_pipeline_cache_object_init(&dev->vk, &shader->base,
                                  &tu_shader_ops, obj_key_data, key_size);
+
+   shader->const_state.fdm_ubo.idx = -1;
+   shader->const_state.dynamic_offsets_ubo.idx = -1;
 
    return shader;
 }

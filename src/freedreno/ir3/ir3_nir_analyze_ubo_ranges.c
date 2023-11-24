@@ -337,13 +337,18 @@ lower_ubo_load_to_uniform(nir_intrinsic_instr *instr, nir_builder *b,
 }
 
 static bool
-copy_ubo_to_uniform(nir_shader *nir, const struct ir3_const_state *const_state)
+copy_ubo_to_uniform(nir_shader *nir, const struct ir3_const_state *const_state,
+                    bool const_data_via_cp)
 {
    const struct ir3_ubo_analysis_state *state = &const_state->ubo_state;
 
-   if (state->num_enabled == 0 ||
-       (state->num_enabled == 1 && !state->range[0].ubo.bindless &&
-        state->range[0].ubo.block == const_state->constant_data_ubo))
+   if (state->num_enabled == 0)
+      return false;
+
+   if (state->num_enabled == 1 &&
+       !state->range[0].ubo.bindless &&
+       state->range[0].ubo.block == const_state->consts_ubo.idx &&
+       const_data_via_cp)
       return false;
 
    nir_function_impl *preamble = nir_shader_get_preamble(nir);
@@ -358,7 +363,8 @@ copy_ubo_to_uniform(nir_shader *nir, const struct ir3_const_state *const_state)
        * the CP do it for us.
        */
       if (!range->ubo.bindless &&
-          range->ubo.block == const_state->constant_data_ubo)
+          range->ubo.block == const_state->consts_ubo.idx &&
+          const_data_via_cp)
          continue;
 
       nir_def *ubo = nir_imm_int(b, range->ubo.block);
@@ -502,7 +508,8 @@ ir3_nir_lower_ubo_loads(nir_shader *nir, struct ir3_shader_variant *v)
       nir->info.num_ubos = num_ubos;
 
    if (compiler->has_preamble && push_ubos)
-      progress |= copy_ubo_to_uniform(nir, const_state);
+      progress |= copy_ubo_to_uniform(
+         nir, const_state, !compiler->load_shader_consts_via_preamble);
 
    return progress;
 }
@@ -584,15 +591,6 @@ ir3_nir_lower_load_const_instr(nir_builder *b, nir_instr *in_instr, void *data)
    struct ir3_const_state *const_state = data;
    nir_intrinsic_instr *instr = nir_instr_as_intrinsic(in_instr);
 
-   /* Pick a UBO index to use as our constant data.  Skip UBO 0 since that's
-    * reserved for gallium's cb0.
-    */
-   if (const_state->constant_data_ubo == -1) {
-      if (b->shader->info.num_ubos == 0)
-         b->shader->info.num_ubos++;
-      const_state->constant_data_ubo = b->shader->info.num_ubos++;
-   }
-
    unsigned num_components = instr->num_components;
    unsigned bit_size = instr->def.bit_size;
    if (instr->def.bit_size == 16) {
@@ -606,7 +604,7 @@ ir3_nir_lower_load_const_instr(nir_builder *b, nir_instr *in_instr, void *data)
       bit_size = 32;
    }
    unsigned base = nir_intrinsic_base(instr);
-   nir_def *index = nir_imm_int(b, const_state->constant_data_ubo);
+   nir_def *index = ir3_get_driver_ubo(b, &const_state->consts_ubo);
    nir_def *offset =
       nir_iadd_imm(b, instr->src[0].ssa, base);
 
@@ -639,8 +637,6 @@ bool
 ir3_nir_lower_load_constant(nir_shader *nir, struct ir3_shader_variant *v)
 {
    struct ir3_const_state *const_state = ir3_const_state(v);
-
-   const_state->constant_data_ubo = -1;
 
    bool progress = nir_shader_lower_instructions(
       nir, ir3_lower_load_const_filter, ir3_nir_lower_load_const_instr,

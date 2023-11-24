@@ -249,6 +249,8 @@ struct ir3_compiler {
    bool has_fs_tex_prefetch;
 
    bool stsc_duplication_quirk;
+
+   bool load_shader_consts_via_preamble;
 };
 
 void ir3_compiler_destroy(struct ir3_compiler *compiler);

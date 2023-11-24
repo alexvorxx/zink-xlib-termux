@@ -160,6 +160,9 @@ static bool
 lower_immed(struct ir3_cp_ctx *ctx, struct ir3_instruction *instr, unsigned n,
             struct ir3_register *reg, unsigned new_flags)
 {
+   if (ctx->shader->compiler->load_shader_consts_via_preamble)
+      return false;
+
    if (!(new_flags & IR3_REG_IMMED))
       return false;
 

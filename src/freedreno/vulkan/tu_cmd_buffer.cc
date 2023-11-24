@@ -4326,6 +4326,8 @@ tu6_emit_inline_ubo(struct tu_cs *cs,
                     gl_shader_stage type,
                     struct tu_descriptor_state *descriptors)
 {
+   assert(const_state->num_inline_ubos == 0 || !cs->device->physical_device->info->a7xx.load_shader_consts_via_preamble);
+
    /* Emit loads of inline uniforms. These load directly from the uniform's
     * storage space inside the descriptor set.
     */
@@ -4578,7 +4580,7 @@ fs_params_offset(struct tu_cmd_buffer *cmd)
       &cmd->state.program.link[MESA_SHADER_FRAGMENT];
    const struct ir3_const_state *const_state = &link->const_state;
 
-   if (const_state->num_driver_params <= IR3_DP_FS_DYNAMIC)
+   if (const_state->num_driver_params < IR3_DP_FS_DYNAMIC)
       return 0;
 
    if (const_state->offsets.driver_param + IR3_DP_FS_DYNAMIC / 4 >= link->constlen)
@@ -5412,102 +5414,193 @@ tu_emit_compute_driver_params(struct tu_cmd_buffer *cmd,
    const struct tu_shader *shader = cmd->state.shaders[MESA_SHADER_COMPUTE];
    const struct ir3_shader_variant *variant = shader->variant;
    const struct ir3_const_state *const_state = variant->const_state;
-   uint32_t offset = const_state->offsets.driver_param;
    unsigned subgroup_size = variant->info.subgroup_size;
    unsigned subgroup_shift = util_logbase2(subgroup_size);
 
-   if (variant->constlen <= offset)
-      return;
+   if (cmd->device->physical_device->info->a7xx.load_shader_consts_via_preamble) {
+      uint32_t num_consts = const_state->driver_params_ubo.size;
+      if (num_consts == 0)
+         return;
 
-   uint32_t num_consts = MIN2(const_state->num_driver_params,
-                              (variant->constlen - offset) * 4);
+      bool direct_indirect_load =
+         !(info->indirect_offset & 0xf) &&
+         !(info->indirect && num_consts > IR3_DP_BASE_GROUP_X);
 
-   if (!info->indirect) {
-      uint32_t driver_params[12] = {
-         [IR3_DP_NUM_WORK_GROUPS_X] = info->blocks[0],
-         [IR3_DP_NUM_WORK_GROUPS_Y] = info->blocks[1],
-         [IR3_DP_NUM_WORK_GROUPS_Z] = info->blocks[2],
-         [IR3_DP_WORK_DIM] = 0,
-         [IR3_DP_BASE_GROUP_X] = info->offsets[0],
-         [IR3_DP_BASE_GROUP_Y] = info->offsets[1],
-         [IR3_DP_BASE_GROUP_Z] = info->offsets[2],
-         [IR3_DP_CS_SUBGROUP_SIZE] = subgroup_size,
-         [IR3_DP_LOCAL_GROUP_SIZE_X] = 0,
-         [IR3_DP_LOCAL_GROUP_SIZE_Y] = 0,
-         [IR3_DP_LOCAL_GROUP_SIZE_Z] = 0,
-         [IR3_DP_SUBGROUP_ID_SHIFT] = subgroup_shift,
-      };
+      uint64_t iova = 0;
 
-      assert(num_consts <= ARRAY_SIZE(driver_params));
+      if (!info->indirect) {
+         uint32_t driver_params[12] = {
+            [IR3_DP_NUM_WORK_GROUPS_X] = info->blocks[0],
+            [IR3_DP_NUM_WORK_GROUPS_Y] = info->blocks[1],
+            [IR3_DP_NUM_WORK_GROUPS_Z] = info->blocks[2],
+            [IR3_DP_WORK_DIM] = 0,
+            [IR3_DP_BASE_GROUP_X] = info->offsets[0],
+            [IR3_DP_BASE_GROUP_Y] = info->offsets[1],
+            [IR3_DP_BASE_GROUP_Z] = info->offsets[2],
+            [IR3_DP_CS_SUBGROUP_SIZE] = subgroup_size,
+            [IR3_DP_LOCAL_GROUP_SIZE_X] = 0,
+            [IR3_DP_LOCAL_GROUP_SIZE_Y] = 0,
+            [IR3_DP_LOCAL_GROUP_SIZE_Z] = 0,
+            [IR3_DP_SUBGROUP_ID_SHIFT] = subgroup_shift,
+         };
 
-      /* push constants */
-      tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 3 + num_consts);
-      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
-                 CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-                 CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
-                 CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
-                 CP_LOAD_STATE6_0_NUM_UNIT(num_consts / 4));
-      tu_cs_emit(cs, 0);
-      tu_cs_emit(cs, 0);
-      uint32_t i;
-      for (i = 0; i < num_consts; i++)
-         tu_cs_emit(cs, driver_params[i]);
-   } else if (!(info->indirect_offset & 0xf)) {
-      tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 3);
-      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
-                  CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-                  CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
-                  CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
-                  CP_LOAD_STATE6_0_NUM_UNIT(1));
-      tu_cs_emit_qw(cs, info->indirect->iova + info->indirect_offset);
-   } else {
-      /* Vulkan guarantees only 4 byte alignment for indirect_offset.
-       * However, CP_LOAD_STATE.EXT_SRC_ADDR needs 16 byte alignment.
-       */
+         assert(num_consts <= ARRAY_SIZE(driver_params));
 
-      uint64_t indirect_iova = info->indirect->iova + info->indirect_offset;
+         struct tu_cs_memory consts;
+         uint32_t consts_vec4 = DIV_ROUND_UP(num_consts, 4);
+         VkResult result = tu_cs_alloc(&cmd->sub_cs, consts_vec4, 4, &consts);
+         if (result != VK_SUCCESS) {
+            vk_command_buffer_set_error(&cmd->vk, result);
+            return;
+         }
+         memcpy(consts.map, driver_params, num_consts * sizeof(uint32_t));
+         iova = consts.iova;
+      } else if (direct_indirect_load) {
+         iova = info->indirect->iova + info->indirect_offset;
+      } else {
+         /* Vulkan guarantees only 4 byte alignment for indirect_offset.
+          * However, CP_LOAD_STATE.EXT_SRC_ADDR needs 16 byte alignment.
+          */
 
-      for (uint32_t i = 0; i < 3; i++) {
-         tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 5);
-         tu_cs_emit(cs, 0);
-         tu_cs_emit_qw(cs, global_iova_arr(cmd, cs_indirect_xyz, i));
-         tu_cs_emit_qw(cs, indirect_iova + i * 4);
+         uint64_t indirect_iova = info->indirect->iova + info->indirect_offset;
+
+         for (uint32_t i = 0; i < 3; i++) {
+            tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 5);
+            tu_cs_emit(cs, 0);
+            tu_cs_emit_qw(cs, global_iova_arr(cmd, cs_indirect_xyz, i));
+            tu_cs_emit_qw(cs, indirect_iova + i * sizeof(uint32_t));
+         }
+
+         /* Fill out IR3_DP_CS_SUBGROUP_SIZE and IR3_DP_SUBGROUP_ID_SHIFT for
+          * indirect dispatch.
+          */
+         if (info->indirect && num_consts > IR3_DP_BASE_GROUP_X) {
+            uint32_t indirect_driver_params[8] = {
+               0, 0, 0, subgroup_size,
+               0, 0, 0, subgroup_shift,
+            };
+            bool emit_local = num_consts > IR3_DP_LOCAL_GROUP_SIZE_X;
+            uint32_t emit_size = emit_local ? 8 : 4;
+
+            tu_cs_emit_pkt7(cs, CP_MEM_WRITE, 2 + emit_size);
+            tu_cs_emit_qw(cs, global_iova_arr(cmd, cs_indirect_xyz, 0) + 4 * sizeof(uint32_t));
+            for (uint32_t i = 0; i < emit_size; i++) {
+               tu_cs_emit(cs, indirect_driver_params[i]);
+            }
+         }
+
+         tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
+         tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
+
+         iova = global_iova(cmd, cs_indirect_xyz[0]);
       }
 
-      tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
-      tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
+      tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 5);
+      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(const_state->driver_params_ubo.idx) |
+               CP_LOAD_STATE6_0_STATE_TYPE(ST6_UBO) |
+               CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+               CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
+               CP_LOAD_STATE6_0_NUM_UNIT(1));
+      tu_cs_emit(cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
+      tu_cs_emit(cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
+      int size_vec4s = DIV_ROUND_UP(num_consts, 4);
+      tu_cs_emit_qw(cs, iova | ((uint64_t)A6XX_UBO_1_SIZE(size_vec4s) << 32));
 
-      tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 3);
-      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
+   } else {
+      uint32_t offset = const_state->offsets.driver_param;
+      if (variant->constlen <= offset)
+         return;
+
+      uint32_t num_consts = MIN2(const_state->num_driver_params,
+                                 (variant->constlen - offset) * 4);
+
+      if (!info->indirect) {
+         uint32_t driver_params[12] = {
+            [IR3_DP_NUM_WORK_GROUPS_X] = info->blocks[0],
+            [IR3_DP_NUM_WORK_GROUPS_Y] = info->blocks[1],
+            [IR3_DP_NUM_WORK_GROUPS_Z] = info->blocks[2],
+            [IR3_DP_WORK_DIM] = 0,
+            [IR3_DP_BASE_GROUP_X] = info->offsets[0],
+            [IR3_DP_BASE_GROUP_Y] = info->offsets[1],
+            [IR3_DP_BASE_GROUP_Z] = info->offsets[2],
+            [IR3_DP_CS_SUBGROUP_SIZE] = subgroup_size,
+            [IR3_DP_LOCAL_GROUP_SIZE_X] = 0,
+            [IR3_DP_LOCAL_GROUP_SIZE_Y] = 0,
+            [IR3_DP_LOCAL_GROUP_SIZE_Z] = 0,
+            [IR3_DP_SUBGROUP_ID_SHIFT] = subgroup_shift,
+         };
+
+         assert(num_consts <= ARRAY_SIZE(driver_params));
+
+         /* push constants */
+         tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 3 + num_consts);
+         tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
                   CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-                  CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
+                  CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
                   CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
-                  CP_LOAD_STATE6_0_NUM_UNIT(1));
-      tu_cs_emit_qw(cs, global_iova(cmd, cs_indirect_xyz[0]));
-   }
+                  CP_LOAD_STATE6_0_NUM_UNIT(num_consts / 4));
+         tu_cs_emit(cs, 0);
+         tu_cs_emit(cs, 0);
+         uint32_t i;
+         for (i = 0; i < num_consts; i++)
+            tu_cs_emit(cs, driver_params[i]);
+      } else if (!(info->indirect_offset & 0xf)) {
+         tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 3);
+         tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
+                     CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
+                     CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
+                     CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
+                     CP_LOAD_STATE6_0_NUM_UNIT(1));
+         tu_cs_emit_qw(cs, info->indirect->iova + info->indirect_offset);
+      } else {
+         /* Vulkan guarantees only 4 byte alignment for indirect_offset.
+          * However, CP_LOAD_STATE.EXT_SRC_ADDR needs 16 byte alignment.
+          */
 
-   /* Fill out IR3_DP_CS_SUBGROUP_SIZE and IR3_DP_SUBGROUP_ID_SHIFT for
-    * indirect dispatch.
-    */
-   if (info->indirect && num_consts > IR3_DP_BASE_GROUP_X) {
-      bool emit_local = num_consts > IR3_DP_LOCAL_GROUP_SIZE_X;
-      tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 7 + (emit_local ? 4 : 0));
-      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset + (IR3_DP_BASE_GROUP_X / 4)) |
-                 CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-                 CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
-                 CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
-                 CP_LOAD_STATE6_0_NUM_UNIT((num_consts - IR3_DP_BASE_GROUP_X) / 4));
-      tu_cs_emit_qw(cs, 0);
-      tu_cs_emit(cs, 0); /* BASE_GROUP_X */
-      tu_cs_emit(cs, 0); /* BASE_GROUP_Y */
-      tu_cs_emit(cs, 0); /* BASE_GROUP_Z */
-      tu_cs_emit(cs, subgroup_size);
-      if (emit_local) {
-         assert(num_consts == align(IR3_DP_SUBGROUP_ID_SHIFT, 4));
-         tu_cs_emit(cs, 0); /* LOCAL_GROUP_SIZE_X */
-         tu_cs_emit(cs, 0); /* LOCAL_GROUP_SIZE_Y */
-         tu_cs_emit(cs, 0); /* LOCAL_GROUP_SIZE_Z */
-         tu_cs_emit(cs, subgroup_shift);
+         uint64_t indirect_iova = info->indirect->iova + info->indirect_offset;
+
+         for (uint32_t i = 0; i < 3; i++) {
+            tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 5);
+            tu_cs_emit(cs, 0);
+            tu_cs_emit_qw(cs, global_iova_arr(cmd, cs_indirect_xyz, i));
+            tu_cs_emit_qw(cs, indirect_iova + i * 4);
+         }
+
+         tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
+         tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
+
+         tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 3);
+         tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
+                     CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
+                     CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
+                     CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
+                     CP_LOAD_STATE6_0_NUM_UNIT(1));
+         tu_cs_emit_qw(cs, global_iova(cmd, cs_indirect_xyz[0]));
+      }
+
+      /* Fill out IR3_DP_CS_SUBGROUP_SIZE and IR3_DP_SUBGROUP_ID_SHIFT for
+       * indirect dispatch.
+       */
+      if (info->indirect && num_consts > IR3_DP_BASE_GROUP_X) {
+         bool emit_local = num_consts > IR3_DP_LOCAL_GROUP_SIZE_X;
+         tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 7 + (emit_local ? 4 : 0));
+         tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset + (IR3_DP_BASE_GROUP_X / 4)) |
+                  CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
+                  CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+                  CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
+                  CP_LOAD_STATE6_0_NUM_UNIT((num_consts - IR3_DP_BASE_GROUP_X) / 4));
+         tu_cs_emit_qw(cs, 0);
+         tu_cs_emit(cs, 0); /* BASE_GROUP_X */
+         tu_cs_emit(cs, 0); /* BASE_GROUP_Y */
+         tu_cs_emit(cs, 0); /* BASE_GROUP_Z */
+         tu_cs_emit(cs, subgroup_size);
+         if (emit_local) {
+            assert(num_consts == align(IR3_DP_SUBGROUP_ID_SHIFT, 4));
+            tu_cs_emit(cs, 0); /* LOCAL_GROUP_SIZE_X */
+            tu_cs_emit(cs, 0); /* LOCAL_GROUP_SIZE_Y */
+            tu_cs_emit(cs, 0); /* LOCAL_GROUP_SIZE_Z */
+            tu_cs_emit(cs, subgroup_shift);
+         }
       }
    }
 }

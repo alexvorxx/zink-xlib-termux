@@ -196,7 +196,7 @@ struct tu6_global
       uint32_t pad[7];
    } flush_base[4];
 
-   alignas(16) uint32_t cs_indirect_xyz[3];
+   alignas(16) uint32_t cs_indirect_xyz[12];
 
    volatile uint32_t vtx_stats_query_not_running;
 

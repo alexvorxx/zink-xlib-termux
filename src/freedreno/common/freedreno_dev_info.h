@@ -211,6 +211,9 @@ struct fd_dev_info {
        * command buffers. We copy this dispatch as is.
        */
       bool cmdbuf_start_a725_quirk;
+
+      bool load_inline_uniforms_via_preamble_ldgk;
+      bool load_shader_consts_via_preamble;
    } a7xx;
 };
 

@@ -408,22 +408,53 @@ tu6_emit_dynamic_offset(struct tu_cs *cs,
                         const struct tu_program_state *program)
 {
    const struct tu_physical_device *phys_dev = cs->device->physical_device;
-   if (!xs || shader->const_state.dynamic_offset_loc == UINT32_MAX)
+
+   if (!xs)
       return;
 
-   tu_cs_emit_pkt7(cs, tu6_stage2opcode(xs->type), 3 + phys_dev->usable_sets);
-   tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(shader->const_state.dynamic_offset_loc / 4) |
-              CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-              CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
-              CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(xs->type)) |
-              CP_LOAD_STATE6_0_NUM_UNIT(DIV_ROUND_UP(phys_dev->usable_sets, 4)));
-   tu_cs_emit(cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
-   tu_cs_emit(cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
+   if (cs->device->physical_device->info->a7xx.load_shader_consts_via_preamble) {
+      if (shader->const_state.dynamic_offsets_ubo.size == 0)
+         return;
 
-   for (unsigned i = 0; i < phys_dev->usable_sets; i++) {
-      unsigned dynamic_offset_start =
-         program->dynamic_descriptor_offsets[i] / (A6XX_TEX_CONST_DWORDS * 4);
-      tu_cs_emit(cs, dynamic_offset_start);
+      uint32_t offsets[MAX_SETS];
+      for (unsigned i = 0; i < phys_dev->usable_sets; i++) {
+         unsigned dynamic_offset_start =
+            program->dynamic_descriptor_offsets[i] / (A6XX_TEX_CONST_DWORDS * 4);
+         offsets[i] = dynamic_offset_start;
+      }
+
+      /* A7XX TODO: Emit data via sub_cs instead of NOP */
+      uint64_t iova = tu_cs_emit_data_nop(cs, offsets, phys_dev->usable_sets, 4);
+      uint32_t offset = shader->const_state.dynamic_offsets_ubo.idx;
+
+      tu_cs_emit_pkt7(cs, tu6_stage2opcode(xs->type), 5);
+      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
+               CP_LOAD_STATE6_0_STATE_TYPE(ST6_UBO) |
+               CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+               CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(xs->type)) |
+               CP_LOAD_STATE6_0_NUM_UNIT(1));
+      tu_cs_emit(cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
+      tu_cs_emit(cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
+      int size_vec4s = DIV_ROUND_UP(phys_dev->usable_sets, 4);
+      tu_cs_emit_qw(cs, iova | ((uint64_t)A6XX_UBO_1_SIZE(size_vec4s) << 32));
+   } else {
+      if (shader->const_state.dynamic_offset_loc == UINT32_MAX)
+         return;
+
+      tu_cs_emit_pkt7(cs, tu6_stage2opcode(xs->type), 3 + phys_dev->usable_sets);
+      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(shader->const_state.dynamic_offset_loc / 4) |
+               CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
+               CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+               CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(xs->type)) |
+               CP_LOAD_STATE6_0_NUM_UNIT(DIV_ROUND_UP(phys_dev->usable_sets, 4)));
+      tu_cs_emit(cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
+      tu_cs_emit(cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
+
+      for (unsigned i = 0; i < phys_dev->usable_sets; i++) {
+         unsigned dynamic_offset_start =
+            program->dynamic_descriptor_offsets[i] / (A6XX_TEX_CONST_DWORDS * 4);
+         tu_cs_emit(cs, dynamic_offset_start);
+      }
    }
 }
 
@@ -569,24 +600,77 @@ tu6_setup_streamout(struct tu_cs *cs,
    }
 }
 
+enum tu_geom_consts_type
+{
+   TU_CONSTS_PRIMITIVE_MAP,
+   TU_CONSTS_PRIMITIVE_PARAM,
+};
+
 static void
-tu6_emit_const(struct tu_cs *cs, uint32_t opcode, uint32_t base,
-               enum a6xx_state_block block, uint32_t offset,
-               uint32_t size, const uint32_t *dwords) {
+tu6_emit_const(struct tu_cs *cs, uint32_t opcode, enum tu_geom_consts_type type,
+               const struct ir3_const_state *const_state,
+               unsigned constlen, enum a6xx_state_block block,
+               uint32_t offset, uint32_t size, const uint32_t *dwords) {
    assert(size % 4 == 0);
-
-   tu_cs_emit_pkt7(cs, opcode, 3 + size);
-   tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(base) |
-         CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-         CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
-         CP_LOAD_STATE6_0_STATE_BLOCK(block) |
-         CP_LOAD_STATE6_0_NUM_UNIT(size / 4));
-
-   tu_cs_emit(cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
-   tu_cs_emit(cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
    dwords = (uint32_t *)&((uint8_t *)dwords)[offset];
 
-   tu_cs_emit_array(cs, dwords, size);
+   if (block == SB6_VS_SHADER || !cs->device->physical_device->info->a7xx.load_shader_consts_via_preamble) {
+      uint32_t base;
+      switch (type) {
+      case TU_CONSTS_PRIMITIVE_MAP:
+         base = const_state->offsets.primitive_map;
+         break;
+      case TU_CONSTS_PRIMITIVE_PARAM:
+         base = const_state->offsets.primitive_param;
+         break;
+      default:
+         unreachable("bad consts type");
+      }
+
+      int32_t adjusted_size = MIN2(base * 4 + size, constlen * 4) - base * 4;
+      if (adjusted_size <= 0)
+         return;
+
+      tu_cs_emit_pkt7(cs, opcode, 3 + adjusted_size);
+      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(base) |
+            CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
+            CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+            CP_LOAD_STATE6_0_STATE_BLOCK(block) |
+            CP_LOAD_STATE6_0_NUM_UNIT(adjusted_size / 4));
+
+      tu_cs_emit(cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
+      tu_cs_emit(cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
+
+      tu_cs_emit_array(cs, dwords, adjusted_size);
+   } else {
+      uint32_t base;
+      switch (type) {
+      case TU_CONSTS_PRIMITIVE_MAP:
+         base = const_state->primitive_map_ubo.idx;
+         break;
+      case TU_CONSTS_PRIMITIVE_PARAM:
+         base = const_state->primitive_param_ubo.idx;
+         break;
+      default:
+         unreachable("bad consts type");
+      }
+      if (base == -1)
+         return;
+
+      /* A7XX TODO: Emit data via sub_cs instead of NOP */
+      uint64_t iova = tu_cs_emit_data_nop(cs, dwords, size, 4);
+
+      tu_cs_emit_pkt7(cs, opcode, 5);
+      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(base) |
+               CP_LOAD_STATE6_0_STATE_TYPE(ST6_UBO) |
+               CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+               CP_LOAD_STATE6_0_STATE_BLOCK(block) |
+               CP_LOAD_STATE6_0_NUM_UNIT(1));
+      tu_cs_emit(cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
+      tu_cs_emit(cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
+      int size_vec4s = DIV_ROUND_UP(size, 4);
+      tu_cs_emit_qw(cs, iova | ((uint64_t)A6XX_UBO_1_SIZE(size_vec4s) << 32));
+   }
 }
 
 static void
@@ -596,15 +680,13 @@ tu6_emit_link_map(struct tu_cs *cs,
                   enum a6xx_state_block sb)
 {
    const struct ir3_const_state *const_state = ir3_const_state(consumer);
-   uint32_t base = const_state->offsets.primitive_map;
-   int size = DIV_ROUND_UP(consumer->input_size, 4);
+   uint32_t size = ALIGN(consumer->input_size, 4);
 
-   size = (MIN2(size + base, consumer->constlen) - base) * 4;
-   if (size <= 0)
+   if (size == 0)
       return;
 
-   tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, base, sb, 0, size,
-                         producer->output_loc);
+   tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, TU_CONSTS_PRIMITIVE_MAP,
+                  const_state, consumer->constlen, sb, 0, size, producer->output_loc);
 }
 
 static int
@@ -992,8 +1074,8 @@ tu6_emit_vs_params(struct tu_cs *cs,
       0,
       0,
    };
-   uint32_t vs_base = const_state->offsets.primitive_param;
-   tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, vs_base, SB6_VS_SHADER, 0,
+   tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, TU_CONSTS_PRIMITIVE_PARAM,
+                  const_state, constlen, SB6_VS_SHADER, 0,
                   ARRAY_SIZE(vs_params), vs_params);
 }
 
@@ -1018,6 +1100,8 @@ static const enum mesa_vk_dynamic_graphics_state tu_patch_control_points_state[]
    MESA_VK_DYNAMIC_TS_PATCH_CONTROL_POINTS,
 };
 
+#define HS_PARAMS_SIZE 8
+
 template <chip CHIP>
 static unsigned
 tu6_patch_control_points_size(struct tu_device *dev,
@@ -1027,10 +1111,17 @@ tu6_patch_control_points_size(struct tu_device *dev,
                               const struct tu_program_state *program,
                               uint32_t patch_control_points)
 {
-#define EMIT_CONST_DWORDS(const_dwords) (4 + const_dwords)
-   return EMIT_CONST_DWORDS(4) +
-      EMIT_CONST_DWORDS(program->hs_param_dwords) + 2 + 2 + 2;
+   if (dev->physical_device->info->a7xx.load_shader_consts_via_preamble) {
+#define EMIT_CONST_DWORDS(const_dwords) (5 + const_dwords + 4)
+      return EMIT_CONST_DWORDS(4) +
+         EMIT_CONST_DWORDS(HS_PARAMS_SIZE) + 2 + 2 + 2;
 #undef EMIT_CONST_DWORDS
+   } else {
+#define EMIT_CONST_DWORDS(const_dwords) (4 + const_dwords)
+      return EMIT_CONST_DWORDS(4) +
+         EMIT_CONST_DWORDS(HS_PARAMS_SIZE) + 2 + 2 + 2;
+#undef EMIT_CONST_DWORDS
+   }
 }
 
 template <chip CHIP>
@@ -1056,7 +1147,7 @@ tu6_emit_patch_control_points(struct tu_cs *cs,
    uint64_t tess_factor_iova, tess_param_iova;
    tu_get_tess_iova(dev, &tess_factor_iova, &tess_param_iova);
 
-   uint32_t hs_params[8] = {
+   uint32_t hs_params[HS_PARAMS_SIZE] = {
       vs->variant->output_size * patch_control_points * 4,  /* hs primitive stride */
       vs->variant->output_size * 4,                         /* hs vertex stride */
       tcs->variant->output_size,
@@ -1069,9 +1160,10 @@ tu6_emit_patch_control_points(struct tu_cs *cs,
 
    const struct ir3_const_state *hs_const =
       &program->link[MESA_SHADER_TESS_CTRL].const_state;
-   uint32_t hs_base = hs_const->offsets.primitive_param;
-   tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, hs_base, SB6_HS_SHADER, 0,
-                  program->hs_param_dwords, hs_params);
+   unsigned hs_constlen = program->link[MESA_SHADER_TESS_CTRL].constlen;
+   tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, TU_CONSTS_PRIMITIVE_PARAM,
+                  hs_const, hs_constlen, SB6_HS_SHADER, 0,
+                  ARRAY_SIZE(hs_params), hs_params);
 
    uint32_t patch_local_mem_size_16b =
       patch_control_points * vs->variant->output_size / 4;
@@ -1146,10 +1238,9 @@ tu6_emit_geom_tess_consts(struct tu_cs *cs,
          tess_factor_iova >> 32,
       };
 
-      uint32_t ds_base = ds->const_state->offsets.primitive_param;
-      uint32_t ds_param_dwords = MIN2((ds->constlen - ds_base) * 4, ARRAY_SIZE(ds_params));
-      tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, ds_base, SB6_DS_SHADER, 0,
-                     ds_param_dwords, ds_params);
+      tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, TU_CONSTS_PRIMITIVE_PARAM,
+                     ds->const_state, ds->constlen, SB6_DS_SHADER, 0,
+                     ARRAY_SIZE(ds_params), ds_params);
    }
 
    if (gs) {
@@ -1160,8 +1251,8 @@ tu6_emit_geom_tess_consts(struct tu_cs *cs,
          0,
          0,
       };
-      uint32_t gs_base = gs->const_state->offsets.primitive_param;
-      tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, gs_base, SB6_GS_SHADER, 0,
+      tu6_emit_const(cs, CP_LOAD_STATE6_GEOM, TU_CONSTS_PRIMITIVE_PARAM,
+                     gs->const_state, gs->constlen, SB6_GS_SHADER, 0,
                      ARRAY_SIZE(gs_params), gs_params);
    }
 }
@@ -2145,15 +2236,6 @@ tu_emit_program_state(struct tu_cs *sub_cs,
    tu6_emit_vpc<CHIP>(&prog_cs, vs, hs, ds, gs, fs);
    prog->vpc_state = tu_cs_end_draw_state(sub_cs, &prog_cs);
    
-   if (hs) {
-      const struct ir3_const_state *hs_const =
-         &prog->link[MESA_SHADER_TESS_CTRL].const_state;
-      unsigned hs_constlen =
-         prog->link[MESA_SHADER_TESS_CTRL].constlen;
-      uint32_t hs_base = hs_const->offsets.primitive_param;
-      prog->hs_param_dwords = MIN2((hs_constlen - hs_base) * 4, 8);
-   }
-
    const struct ir3_shader_variant *last_shader;
    if (gs)
       last_shader = gs;

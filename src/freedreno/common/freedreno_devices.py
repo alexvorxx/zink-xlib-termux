@@ -791,6 +791,8 @@ a7xx_740 = A7XXProps(
 
 a7xx_750 = A7XXProps(
         has_event_write_sample_count = True,
+        load_inline_uniforms_via_preamble_ldgk = True,
+        load_shader_consts_via_preamble = True,
     )
 
 a730_magic_regs = dict(

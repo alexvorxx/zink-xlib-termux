@@ -348,6 +348,11 @@ typedef struct shader_info {
    bool uses_printf:1;
 
    /**
+    * VK_KHR_shader_maximal_reconvergence
+    */
+   bool maximally_reconverges:1;
+
+   /**
      * Set if this shader uses legacy (DX9 or ARB assembly) math rules.
      *
      * From the ARB_fragment_program specification:

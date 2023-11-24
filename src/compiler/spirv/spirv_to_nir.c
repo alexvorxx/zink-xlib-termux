@@ -5521,6 +5521,10 @@ vtn_handle_execution_mode(struct vtn_builder *b, struct vtn_value *entry_point,
       break;
    }
 
+   case SpvExecutionModeMaximallyReconvergesKHR:
+      b->shader->info.maximally_reconverges = true;
+      break;
+
    case SpvExecutionModeLocalSizeId:
    case SpvExecutionModeLocalSizeHintId:
    case SpvExecutionModeSubgroupsPerWorkgroupId:

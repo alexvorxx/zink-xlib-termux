@@ -62,14 +62,21 @@ SPECIALIZED_PROPERTY_STRUCTS = [
     "HostImageCopyPropertiesEXT",
 ]
 
+# Properties not extending VkPhysicalDeviceProperties2 in the XML,
+# but which might still be present (in Android for instance)
+ANDROID_PROPERTIES = [
+    "VkPhysicalDevicePresentationPropertiesANDROID",
+]
+
 @dataclass
 class Property:
     decl: str
     name: str
     actual_name: str
     length: str
+    is_android: bool
 
-    def __init__(self, p, property_struct_name):
+    def __init__(self, p, property_struct_name, is_android=False):
         self.decl = ""
         for element in p:
             if element.tag != "comment":
@@ -85,11 +92,14 @@ class Property:
 
         self.decl = self.decl.replace(self.name, self.actual_name)
 
+        self.is_android = is_android
+
 @dataclass
 class PropertyStruct:
     c_type: str
     s_type: str
     name: str
+    is_android: bool
     properties: typing.List[Property]
 
 def copy_property(dst, src, decl, length="1"):
@@ -105,13 +115,23 @@ TEMPLATE_H = Template(COPYRIGHT + """
 #ifndef VK_PROPERTIES_H
 #define VK_PROPERTIES_H
 
+#if DETECT_OS_ANDROID
+#include "vulkan/vk_android_native_buffer.h"
+#endif /* DETECT_OS_ANDROID */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 struct vk_properties {
 % for prop in all_properties:
+% if prop.is_android:
+#if DETECT_OS_ANDROID
+% endif
    ${prop.decl};
+% if prop.is_android:
+#endif /* DETECT_OS_ANDROID */
+% endif
 % endfor
 };
 
@@ -144,6 +164,9 @@ vk_common_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
    vk_foreach_struct(ext, pProperties->pNext) {
       switch (ext->sType) {
 % for property_struct in property_structs:
+% if property_struct.is_android:
+#ifdef ANDROID
+% endif
 % if property_struct.name not in SPECIALIZED_PROPERTY_STRUCTS:
       case ${property_struct.s_type}: {
          ${property_struct.c_type} *properties = (void *)ext;
@@ -152,6 +175,9 @@ vk_common_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
 % endfor
          break;
       }
+% if property_struct.is_android:
+#endif /* ANDROID */
+% endif
 % endif
 % endfor
 
@@ -214,16 +240,23 @@ def get_property_structs(doc, api, beta):
 
     # parse all struct types where structextends VkPhysicalDeviceProperties2
     for _type in doc.findall("./types/type[@category=\"struct\"]"):
-        if _type.attrib.get("structextends") != "VkPhysicalDeviceProperties2":
-            continue
+        full_name = _type.attrib.get("name")
 
-        full_name = _type.attrib["name"]
+        if _type.attrib.get("structextends") != "VkPhysicalDeviceProperties2":
+            if full_name not in ANDROID_PROPERTIES:
+                continue
+
         if full_name not in required:
             continue
 
-        # Skip extensions with a define for now
         guard = required[full_name].guard
-        if guard is not None and (guard != "VK_ENABLE_BETA_EXTENSIONS" or beta != "true"):
+        is_android = full_name in ANDROID_PROPERTIES
+
+        if (guard is not None
+            # Skip beta extensions if not enabled
+            and (guard != "VK_ENABLE_BETA_EXTENSIONS" or beta != "true")
+            # Include android properties if included in ANDROID_PROPERTIES
+            and not is_android):
             continue
 
         # find Vulkan structure type
@@ -246,9 +279,10 @@ def get_property_structs(doc, api, beta):
             elif m_name == "sType":
                 s_type = p.attrib.get("values")
             else:
-                properties.append(Property(p, name))
+                properties.append(Property(p, name, is_android))
 
-        property_struct = PropertyStruct(c_type=full_name, s_type=s_type, name=name, properties=properties)
+        property_struct = PropertyStruct(c_type=full_name, s_type=s_type,
+            name=name, properties=properties, is_android=is_android)
         property_structs[property_struct.c_type] = property_struct
 
     return property_structs.values()

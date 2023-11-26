@@ -81,7 +81,7 @@
  *
  */
 
-#ifdef USE_LIBGLVND
+#if USE_LIBGLVND
 #define EGLAPI
 #undef PUBLIC
 #define PUBLIC

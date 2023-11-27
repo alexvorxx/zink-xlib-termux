@@ -15,6 +15,8 @@ from lava.utils.uart_job_definition import (
     fastboot_deploy_actions,
     tftp_boot_action,
     tftp_deploy_actions,
+    qemu_boot_action,
+    qemu_deploy_actions,
     uart_test_actions,
 )
 
@@ -71,6 +73,9 @@ class LAVAJobDefinition:
         if args.boot_method == "fastboot":
             deploy_actions = fastboot_deploy_actions(self, nfsrootfs)
             boot_action = fastboot_boot_action(args)
+        elif args.boot_method == "qemu-nfs":
+            deploy_actions = qemu_deploy_actions(self, nfsrootfs)
+            boot_action = qemu_boot_action(args)
         else:  # tftp
             deploy_actions = tftp_deploy_actions(self, nfsrootfs)
             boot_action = tftp_boot_action(args)
@@ -141,6 +146,10 @@ class LAVAJobDefinition:
 
         if self.job_submitter.lava_tags:
             values["tags"] = self.job_submitter.lava_tags.split(",")
+
+        # QEMU lava jobs mandate proper arch value in the context
+        if self.job_submitter.boot_method == "qemu-nfs":
+            values["context"]["arch"] = self.job_submitter.mesa_job_name.split(":")[1]
 
         return values
 

@@ -426,7 +426,7 @@ brw_kernel_from_spirv(struct brw_compiler *compiler,
 
    NIR_PASS_V(nir, nir_lower_convert_alu_types, NULL);
 
-   NIR_PASS_V(nir, brw_nir_lower_cs_intrinsics);
+   NIR_PASS_V(nir, brw_nir_lower_cs_intrinsics, devinfo, NULL);
    NIR_PASS_V(nir, lower_kernel_intrinsics);
 
    struct brw_cs_prog_key key = { };

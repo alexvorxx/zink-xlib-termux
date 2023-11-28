@@ -383,7 +383,8 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
    cs_prog_data->base.nr_params = nr_params;
    cs_prog_data->base.param = rzalloc_array(NULL, uint32_t, nr_params);
 
-   NIR_PASS_V(nir, brw_nir_lower_cs_intrinsics);
+   NIR_PASS_V(nir, brw_nir_lower_cs_intrinsics, compiler->devinfo,
+              cs_prog_data);
    NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_base_workgroup_id,
               nir_metadata_block_index | nir_metadata_dominance, NULL);
 

@@ -228,19 +228,21 @@ compile_upload_spirv(struct anv_device *device,
    NIR_PASS_V(nir, nir_opt_constant_folding);
    NIR_PASS_V(nir, nir_opt_dce);
 
-   if (stage == MESA_SHADER_COMPUTE) {
-      NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_load_ubo_to_uniforms,
-                 nir_metadata_block_index | nir_metadata_dominance,
-                 NULL);
-      NIR_PASS_V(nir, brw_nir_lower_cs_intrinsics);
-      nir->num_uniforms = bind_map->push_data_size;
-   }
-
    union brw_any_prog_key key;
    memset(&key, 0, sizeof(key));
 
    union brw_any_prog_data prog_data;
    memset(&prog_data, 0, sizeof(prog_data));
+
+   if (stage == MESA_SHADER_COMPUTE) {
+      NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_load_ubo_to_uniforms,
+                 nir_metadata_block_index | nir_metadata_dominance,
+                 NULL);
+      NIR_PASS_V(nir, brw_nir_lower_cs_intrinsics, device->info,
+                 &prog_data.cs);
+      nir->num_uniforms = bind_map->push_data_size;
+   }
+
    prog_data.base.nr_params = nir->num_uniforms / 4;
 
    brw_nir_analyze_ubo_ranges(compiler, nir, prog_data.base.ubo_ranges);

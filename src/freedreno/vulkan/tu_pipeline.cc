@@ -2412,8 +2412,8 @@ tu_fdm_per_bin_offset(VkExtent2D frag_area, VkRect2D bin)
 }
 
 static void
-fdm_apply_viewports(struct tu_cs *cs, void *data, VkRect2D bin, unsigned views,
-                    VkExtent2D *frag_areas)
+fdm_apply_viewports(struct tu_cmd_buffer *cmd, struct tu_cs *cs, void *data,
+                    VkRect2D bin, unsigned views, VkExtent2D *frag_areas)
 {
    const struct apply_viewport_state *state =
       (const struct apply_viewport_state *)data;
@@ -2517,8 +2517,8 @@ tu6_emit_scissor(struct tu_cs *cs, const struct vk_viewport_state *vp)
 }
 
 static void
-fdm_apply_scissors(struct tu_cs *cs, void *data, VkRect2D bin, unsigned views,
-                   VkExtent2D *frag_areas)
+fdm_apply_scissors(struct tu_cmd_buffer *cmd, struct tu_cs *cs, void *data,
+                   VkRect2D bin, unsigned views, VkExtent2D *frag_areas)
 {
    const struct apply_viewport_state *state =
       (const struct apply_viewport_state *)data;

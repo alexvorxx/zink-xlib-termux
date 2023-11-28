@@ -987,7 +987,7 @@ tu6_emit_tile_select(struct tu_cmd_buffer *cmd,
                              struct tu_fdm_bin_patchpoint, patch) {
          tu_cs_emit_pkt7(cs, CP_MEM_WRITE, 2 + patch->size);
          tu_cs_emit_qw(cs, patch->iova);
-         patch->apply(cs, patch->data, bin, views, frag_areas);
+         patch->apply(cmd, cs, patch->data, bin, views, frag_areas);
       }
 
       /* Make the CP wait until the CP_MEM_WRITE's to the command buffers
@@ -1368,7 +1368,7 @@ tu6_emit_binning_pass(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
                              struct tu_fdm_bin_patchpoint, patch) {
          tu_cs_emit_pkt7(cs, CP_MEM_WRITE, 2 + patch->size);
          tu_cs_emit_qw(cs, patch->iova);
-         patch->apply(cs, patch->data, bin, num_views, unscaled_frag_areas);
+         patch->apply(cmd, cs, patch->data, bin, num_views, unscaled_frag_areas);
       }
 
       tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
@@ -4602,7 +4602,11 @@ struct apply_fs_params_state {
 };
 
 static void
-fdm_apply_fs_params(struct tu_cs *cs, void *data, VkRect2D bin, unsigned views,
+fdm_apply_fs_params(struct tu_cmd_buffer *cmd,
+                    struct tu_cs *cs,
+                    void *data,
+                    VkRect2D bin,
+                    unsigned views,
                     VkExtent2D *frag_areas)
 {
    const struct apply_fs_params_state *state =

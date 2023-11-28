@@ -672,8 +672,12 @@ void tu6_apply_depth_bounds_workaround(struct tu_device *device,
 void
 update_stencil_mask(uint32_t *value, VkStencilFaceFlags face, uint32_t mask);
 
-typedef void (*tu_fdm_bin_apply_t)(struct tu_cs *cs, void *data, VkRect2D bin,
-                                   unsigned views, VkExtent2D *frag_areas);
+typedef void (*tu_fdm_bin_apply_t)(struct tu_cmd_buffer *cmd,
+                                   struct tu_cs *cs,
+                                   void *data,
+                                   VkRect2D bin,
+                                   unsigned views,
+                                   VkExtent2D *frag_areas);
 
 struct tu_fdm_bin_patchpoint {
    uint64_t iova;
@@ -709,7 +713,7 @@ _tu_create_fdm_bin_patchpoint(struct tu_cmd_buffer *cmd,
    for (unsigned i = 0; i < num_views; i++) {
       unscaled_frag_areas[i] = (VkExtent2D) { 1, 1 };
    }
-   apply(cs, state, (VkRect2D) {
+   apply(cmd, cs, state, (VkRect2D) {
          { 0, 0 },
          { MAX_VIEWPORT_SIZE, MAX_VIEWPORT_SIZE },
         }, num_views, unscaled_frag_areas);

@@ -359,6 +359,11 @@ emit_compute_walker(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 == 125
          .SystolicModeEnable             = prog_data->uses_systolic,
 #endif
+         .GenerateLocalID                = prog_data->generate_local_id != 0,
+         .EmitLocal                      = prog_data->generate_local_id,
+         .WalkOrder                      = prog_data->walk_order,
+         .TileLayout = prog_data->walk_order == BRW_WALK_ORDER_YXZ ?
+                       TileY32bpe : Linear,
          .LocalXMaximum                  = prog_data->local_size[0] - 1,
          .LocalYMaximum                  = prog_data->local_size[1] - 1,
          .LocalZMaximum                  = prog_data->local_size[2] - 1,

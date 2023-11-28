@@ -8677,6 +8677,14 @@ iris_upload_compute_walker(struct iris_context *ice,
          cw.PostSync.MOCS                  = iris_mocs(NULL, &screen->isl_dev, 0);
          cw.InterfaceDescriptor            = idd;
 
+#if GFX_VERx10 >= 125
+         cw.GenerateLocalID = cs_prog_data->generate_local_id != 0;
+         cw.EmitLocal       = cs_prog_data->generate_local_id;
+         cw.WalkOrder       = cs_prog_data->walk_order;
+         cw.TileLayout = cs_prog_data->walk_order == BRW_WALK_ORDER_YXZ ?
+                         TileY32bpe : Linear;
+#endif
+
          assert(brw_cs_push_const_total_size(cs_prog_data, dispatch.threads) == 0);
       }
    }

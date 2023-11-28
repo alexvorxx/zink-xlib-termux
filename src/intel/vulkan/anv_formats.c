@@ -1832,7 +1832,7 @@ void anv_GetPhysicalDeviceSparseImageFormatProperties2(
    VK_OUTARRAY_MAKE_TYPED(VkSparseImageFormatProperties2, props,
                           pProperties, pPropertyCount);
 
-   if (!physical_device->has_sparse) {
+   if (physical_device->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) {
       if (INTEL_DEBUG(DEBUG_SPARSE))
          fprintf(stderr, "=== [%s:%d] [%s]\n", __FILE__, __LINE__, __func__);
       return;

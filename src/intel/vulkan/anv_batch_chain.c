@@ -1385,7 +1385,7 @@ anv_queue_submit_sparse_bind_locked(struct anv_queue *queue,
     * supposed to be used by applications that request sparse to be enabled
     * but don't actually *use* it.
     */
-   if (!device->physical->has_sparse) {
+   if (device->physical->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) {
       if (INTEL_DEBUG(DEBUG_SPARSE))
          fprintf(stderr, "=== application submitting sparse operations: "
                "buffer_bind:%d image_opaque_bind:%d image_bind:%d\n",

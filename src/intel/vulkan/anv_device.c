@@ -439,8 +439,7 @@ get_features(const struct anv_physical_device *pdevice,
    const bool mesh_shader =
       pdevice->vk.supported_extensions.EXT_mesh_shader;
 
-   const bool has_sparse_or_fake = pdevice->instance->has_fake_sparse ||
-                                   pdevice->has_sparse;
+   const bool has_sparse_or_fake = pdevice->sparse_type != ANV_SPARSE_TYPE_NOT_SUPPORTED;
 
    *features = (struct vk_features) {
       /* Vulkan 1.0 */
@@ -1209,12 +1208,12 @@ get_properties(const struct anv_physical_device *pdevice,
    const uint32_t max_workgroup_size =
       MIN2(1024, 32 * devinfo->max_cs_workgroup_threads);
 
-   const bool has_sparse_or_fake = pdevice->instance->has_fake_sparse ||
-                                   pdevice->has_sparse;
+   const bool has_sparse_or_fake = pdevice->sparse_type != ANV_SPARSE_TYPE_NOT_SUPPORTED;
+   const bool sparse_uses_trtt = pdevice->sparse_type == ANV_SPARSE_TYPE_TRTT;
 
    uint64_t sparse_addr_space_size =
       !has_sparse_or_fake ? 0 :
-      pdevice->sparse_uses_trtt ? pdevice->va.trtt.size :
+      sparse_uses_trtt ? pdevice->va.trtt.size :
       pdevice->va.high_heap.size;
 
    VkSampleCountFlags sample_counts =
@@ -2095,8 +2094,7 @@ static void
 anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
 {
    uint32_t family_count = 0;
-   VkQueueFlags sparse_flags = (pdevice->instance->has_fake_sparse ||
-                                pdevice->has_sparse) ?
+   VkQueueFlags sparse_flags = pdevice->sparse_type != ANV_SPARSE_TYPE_NOT_SUPPORTED ?
                                VK_QUEUE_SPARSE_BINDING_BIT : 0;
 
    if (pdevice->engine_info) {
@@ -2110,7 +2108,7 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
       const bool kernel_supports_non_render_engines =
          pdevice->info.kmd_type == INTEL_KMD_TYPE_XE || pdevice->has_vm_control;
       const bool sparse_supports_non_render_engines =
-         !pdevice->has_sparse || !pdevice->sparse_uses_trtt;
+         pdevice->sparse_type != ANV_SPARSE_TYPE_TRTT;
       const bool can_use_non_render_engines =
          kernel_supports_non_render_engines &&
          sparse_supports_non_render_engines;
@@ -2408,15 +2406,20 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    /* While xe.ko can use both vm_bind and TR-TT, i915.ko only has TR-TT. */
    if (device->info.kmd_type == INTEL_KMD_TYPE_XE) {
-      device->has_sparse = true;
-      device->sparse_uses_trtt =
-         debug_get_bool_option("ANV_SPARSE_USE_TRTT", false);
+      if (debug_get_bool_option("ANV_SPARSE_USE_TRTT", false))
+         device->sparse_type = ANV_SPARSE_TYPE_TRTT;
+      else
+         device->sparse_type = ANV_SPARSE_TYPE_VM_BIND;
    } else {
-      device->has_sparse =
-         device->info.ver >= 12 &&
-         device->has_exec_timeline &&
-         debug_get_bool_option("ANV_SPARSE", true);
-      device->sparse_uses_trtt = true;
+      if (device->info.ver >= 12 &&
+          device->has_exec_timeline &&
+          debug_get_bool_option("ANV_SPARSE", true)) {
+         device->sparse_type = ANV_SPARSE_TYPE_TRTT;
+      } else if (instance->has_fake_sparse) {
+         device->sparse_type = ANV_SPARSE_TYPE_FAKE;
+      } else {
+         device->sparse_type = ANV_SPARSE_TYPE_NOT_SUPPORTED;
+      }
    }
 
    device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
@@ -5001,7 +5004,7 @@ void anv_GetDeviceBufferMemoryRequirements(
    const bool is_sparse =
       pInfo->pCreateInfo->flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT;
 
-   if (!device->physical->has_sparse &&
+   if ((device->physical->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) &&
        INTEL_DEBUG(DEBUG_SPARSE) &&
        pInfo->pCreateInfo->flags & (VK_BUFFER_CREATE_SPARSE_BINDING_BIT |
                                     VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT |
@@ -5026,7 +5029,7 @@ VkResult anv_CreateBuffer(
    ANV_FROM_HANDLE(anv_device, device, _device);
    struct anv_buffer *buffer;
 
-   if (!device->physical->has_sparse &&
+   if ((device->physical->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) &&
        INTEL_DEBUG(DEBUG_SPARSE) &&
        pCreateInfo->flags & (VK_BUFFER_CREATE_SPARSE_BINDING_BIT |
                              VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT |

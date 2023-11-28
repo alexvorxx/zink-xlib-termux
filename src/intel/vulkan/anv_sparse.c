@@ -625,7 +625,7 @@ anv_sparse_bind(struct anv_device *device,
          dump_anv_vm_bind(device, &submit->binds[b]);
    }
 
-   return device->physical->sparse_uses_trtt ?
+   return device->physical->sparse_type == ANV_SPARSE_TYPE_TRTT ?
             anv_sparse_bind_trtt(device, submit) :
             anv_sparse_bind_vm_bind(device, submit);
 }
@@ -640,7 +640,7 @@ anv_init_sparse_bindings(struct anv_device *device,
 {
    uint64_t size = align64(size_, ANV_SPARSE_BLOCK_SIZE);
 
-   if (device->physical->sparse_uses_trtt)
+   if (device->physical->sparse_type == ANV_SPARSE_TYPE_TRTT)
       alloc_flags |= ANV_BO_ALLOC_TRTT;
 
    sparse->address = anv_vma_alloc(device, size, ANV_SPARSE_BLOCK_SIZE,

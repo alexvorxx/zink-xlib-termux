@@ -663,7 +663,7 @@ enum vpe_status vpe_color_update_color_space_and_tf(
     status = vpe_allocate_cm_memory(vpe_priv, param);
     if (status == VPE_STATUS_OK) {
 
-        color_check_output_cm_update(vpe_priv, &param->dst_surface.cs);
+        color_check_output_cm_update(vpe_priv, &vpe_priv->output_ctx.surface.cs);
 
         for (stream_idx = 0; stream_idx < param->num_streams; stream_idx++) {
 
@@ -680,7 +680,7 @@ enum vpe_status vpe_color_update_color_space_and_tf(
 
             if (stream_ctx->dirty_bits.color_space) {
                 if (!color_update_input_cs(vpe_priv, stream_ctx->cs,
-                    &param->streams[stream_idx].color_adj, stream_ctx->input_cs,
+                    &stream_ctx->stream.color_adj, stream_ctx->input_cs,
                     &stream_ctx->color_adjustments, &new_matrix_scaling_factor)) {
                     vpe_log("err: input cs not being programmed!");
                 }
@@ -779,10 +779,6 @@ enum vpe_status vpe_color_update_movable_cm(
 
         bool enable_3dlut = stream_ctx->stream.tm_params.enable_3dlut;
 
-        if (param->streams->flags.geometric_scaling) {
-            enable_3dlut = false;
-        }
-
         if (stream_ctx->update_3dlut) {
 
             uint32_t                 pqNormFactor;
@@ -838,7 +834,7 @@ enum vpe_status vpe_color_update_movable_cm(
 
             vpe_color_update_shaper(SHAPER_EXP_MAX_IN, stream_ctx->in_shaper_func, enable_3dlut);
 
-            vpe_color_build_tm_cs(&stream_ctx->stream.tm_params, param->dst_surface, &tm_out_cs);
+            vpe_color_build_tm_cs(&stream_ctx->stream.tm_params, vpe_priv->output_ctx.surface, &tm_out_cs);
 
             vpe_color_get_color_space_and_tf(&tm_out_cs, &out_lut_cs, &tf);
 

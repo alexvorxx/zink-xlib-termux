@@ -667,10 +667,6 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
    free(shared_bos);
 
    if (dev->debug & (AGX_DBG_TRACE | AGX_DBG_SYNC | AGX_DBG_SCRATCH)) {
-      /* Wait so we can get errors reported back */
-      int ret = drmSyncobjWait(dev->fd, &batch->syncobj, 1, INT64_MAX, 0, NULL);
-      assert(!ret);
-
       if (dev->debug & AGX_DBG_TRACE) {
          /* agxdecode DRM commands */
          switch (cmd_type) {
@@ -679,6 +675,10 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
          }
          agxdecode_next_frame();
       }
+
+      /* Wait so we can get errors reported back */
+      int ret = drmSyncobjWait(dev->fd, &batch->syncobj, 1, INT64_MAX, 0, NULL);
+      assert(!ret);
 
       agx_batch_print_stats(dev, batch);
    }

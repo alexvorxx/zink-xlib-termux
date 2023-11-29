@@ -41,6 +41,13 @@ def str_removeprefix(s, prefix):
         return s[len(prefix):]
     return s
 
+# Some extensions have been promoted to core, their properties are renamed
+# in the following hashtable.
+# The hashtable takes the form:
+# (VkPhysicalDevice{PropertyStruct}, PropertyName): RenamedPropertyName
+# Drivers just have to fill the RenamedPropertyName field in their struct
+# vk_properties, the runtime will expose the data with the original/right
+# name to consumers.
 RENAMED_PROPERTIES = {
     ("DrmPropertiesEXT", "hasPrimary"): "drmHasPrimary",
     ("DrmPropertiesEXT", "primaryMajor"): "drmPrimaryMajor",

@@ -2031,6 +2031,12 @@ impl SM50Instr {
         self.set_reg_src(39..47, op.handle);
     }
 
+    fn encode_isberd(&mut self, op: &OpIsberd) {
+        self.set_opcode(0xefd0);
+        self.set_dst(op.dst);
+        self.set_reg_src(8..16, op.idx);
+    }
+
     pub fn encode(
         instr: &Instr,
         sm: u8,
@@ -2101,6 +2107,7 @@ impl SM50Instr {
             Op::Kill(op) => si.encode_kill(op),
             Op::CS2R(op) => si.encode_cs2r(op),
             Op::Nop(_) => si.encode_nop(),
+            Op::Isberd(op) => si.encode_isberd(&op),
             _ => panic!("Unhandled instruction {}", instr.op),
         }
 

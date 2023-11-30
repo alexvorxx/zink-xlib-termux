@@ -23,6 +23,7 @@
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <mutex>
@@ -59,6 +60,10 @@
 #include "glsl_types.h"
 
 #include "spirv.h"
+
+#if DETECT_OS_UNIX
+#include <dlfcn.h>
+#endif
 
 #ifdef USE_STATIC_OPENCL_C_H
 #include "opencl-c-base.h.h"
@@ -854,12 +859,24 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
       c->getPreprocessorOpts().Includes.push_back("opencl-c-base.h");
    }
 #else
+
+   Dl_info info;
+   if (dladdr((void *)clang::CompilerInvocation::CreateFromArgs, &info) == 0) {
+      clc_error(logger, "Couldn't find libclang path.\n");
+      return {};
+   }
+
+   char *clang_path = realpath(info.dli_fname, NULL);
+   if (clang_path == nullptr) {
+      clc_error(logger, "Couldn't find libclang path.\n");
+      return {};
+   }
+
    // GetResourcePath is a way to retrive the actual libclang resource dir based on a given binary
-   // or library. The path doesn't even need to exist, we just have to put something in there,
-   // because we might have linked clang statically.
-   auto libclang_path = fs::path(LLVM_LIB_DIR) / "libclang.so";
+   // or library.
    auto clang_res_path =
-      fs::path(Driver::GetResourcesPath(libclang_path.string(), CLANG_RESOURCE_DIR)) / "include";
+      fs::path(Driver::GetResourcesPath(std::string(clang_path), CLANG_RESOURCE_DIR)) / "include";
+   free(clang_path);
 
    c->getHeaderSearchOpts().UseBuiltinIncludes = true;
    c->getHeaderSearchOpts().UseStandardSystemIncludes = true;

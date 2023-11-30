@@ -288,6 +288,7 @@ brw_kernel_from_spirv(struct brw_compiler *compiler,
    struct spirv_to_nir_options spirv_options = {
       .environment = NIR_SPIRV_OPENCL,
       .capabilities = &spirv_caps,
+      .printf = true,
       .shared_addr_format = nir_address_format_62bit_generic,
       .global_addr_format = nir_address_format_62bit_generic,
       .temp_addr_format = nir_address_format_62bit_generic,
@@ -320,6 +321,12 @@ brw_kernel_from_spirv(struct brw_compiler *compiler,
       fprintf(stderr, "NIR (from SPIR-V) for kernel\n");
       nir_print_shader(nir, stderr);
    }
+
+   nir_lower_printf_options printf_opts = {
+      .ptr_bit_size               = 64,
+      .use_printf_base_identifier = true,
+   };
+   NIR_PASS_V(nir, nir_lower_printf, &printf_opts);
 
    NIR_PASS_V(nir, implement_intel_builtins);
    NIR_PASS_V(nir, nir_link_shader_functions, spirv_options.clc_shader);
@@ -600,6 +607,7 @@ brw_nir_from_spirv(void *mem_ctx, unsigned gfx_version, const uint32_t *spirv,
    struct spirv_to_nir_options spirv_options = {
       .environment = NIR_SPIRV_OPENCL,
       .capabilities = &spirv_caps,
+      .printf = true,
       .shared_addr_format = nir_address_format_62bit_generic,
       .global_addr_format = nir_address_format_62bit_generic,
       .temp_addr_format = nir_address_format_62bit_generic,

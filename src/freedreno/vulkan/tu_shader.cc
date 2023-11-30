@@ -1199,16 +1199,18 @@ tu6_emit_xs(struct tu_cs *cs,
       tu_cs_emit(cs, 0);
    }
 
-   uint32_t shader_preload_size =
-      MIN2(xs->instrlen, cs->device->physical_device->info->a6xx.instr_cache_size);
+   if (cs->device->physical_device->info->chip == A6XX) {
+      uint32_t shader_preload_size =
+         MIN2(xs->instrlen, cs->device->physical_device->info->a6xx.instr_cache_size);
 
-   tu_cs_emit_pkt7(cs, tu6_stage2opcode(stage), 3);
-   tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(0) |
-                  CP_LOAD_STATE6_0_STATE_TYPE(ST6_SHADER) |
-                  CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
-                  CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(stage)) |
-                  CP_LOAD_STATE6_0_NUM_UNIT(shader_preload_size));
-   tu_cs_emit_qw(cs, binary_iova);
+      tu_cs_emit_pkt7(cs, tu6_stage2opcode(stage), 3);
+      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(0) |
+                     CP_LOAD_STATE6_0_STATE_TYPE(ST6_SHADER) |
+                     CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
+                     CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(stage)) |
+                     CP_LOAD_STATE6_0_NUM_UNIT(shader_preload_size));
+      tu_cs_emit_qw(cs, binary_iova);
+   }
 
    /* emit immediates */
 

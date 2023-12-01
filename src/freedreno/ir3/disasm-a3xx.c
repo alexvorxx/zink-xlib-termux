@@ -400,6 +400,7 @@ static const struct opc_info {
    OPC(6, OPC_STC,          stc),
    OPC(6, OPC_STSC,         stsc),
    OPC(6, OPC_LDC_K,        ldc.k),
+   OPC(6, OPC_LDG_K,        ldg.k),
 
    OPC(6, OPC_SPILL_MACRO,  spill.macro),
    OPC(6, OPC_RELOAD_MACRO, reload.macro),

@@ -558,6 +558,7 @@ static void print_token(FILE *file, int type, YYSTYPE value)
 /* category 6: */
 %token <tok> T_OP_LDG
 %token <tok> T_OP_LDG_A
+%token <tok> T_OP_LDG_K
 %token <tok> T_OP_LDL
 %token <tok> T_OP_LDP
 %token <tok> T_OP_STG
@@ -1170,6 +1171,7 @@ cat6_a6xx_global_address:
 
 cat6_load:         T_OP_LDG   { new_instr(OPC_LDG); }   cat6_type dst_reg ',' 'g' '[' src cat6_offset ']' ',' immediate
 |                  T_OP_LDG_A { new_instr(OPC_LDG_A); } cat6_type dst_reg ',' 'g' '[' cat6_a6xx_global_address ']' ',' immediate
+|                  T_OP_LDG_K { new_instr(OPC_LDG_K); } cat6_type 'c' '[' const_dst ']' ',' 'g' '[' src cat6_offset ']' ',' immediate
 |                  T_OP_LDP   { new_instr(OPC_LDP); }   cat6_type dst_reg ',' 'p' '[' src cat6_offset ']' ',' immediate
 |                  T_OP_LDL   { new_instr(OPC_LDL); }   cat6_type dst_reg ',' 'l' '[' src cat6_offset ']' ',' immediate
 |                  T_OP_LDLW  { new_instr(OPC_LDLW); }  cat6_type dst_reg ',' 'l' '[' src cat6_offset ']' ',' immediate
@@ -1294,13 +1296,13 @@ cat6_bindless_ldc: cat6_bindless_ldc_opc '.' cat6_bindless_ldc_middle ',' cat6_r
                       swap(instr->srcs[0], instr->srcs[1]);
                    }
 
-stc_dst:          integer { new_src(0, IR3_REG_IMMED)->iim_val = $1; }
+const_dst:        integer { new_src(0, IR3_REG_IMMED)->iim_val = $1; }
 |                 T_A1 { new_src(0, IR3_REG_IMMED)->iim_val = 0; instr->flags |= IR3_INSTR_A1EN; }
 |                 T_A1 '+' integer { new_src(0, IR3_REG_IMMED)->iim_val = $3; instr->flags |= IR3_INSTR_A1EN; }
 
 cat6_stc:
-              T_OP_STC  { new_instr(OPC_STC); }  cat6_type 'c' '[' stc_dst ']' ',' src_reg ',' cat6_immed
-|             T_OP_STSC { new_instr(OPC_STSC); } cat6_type 'c' '[' stc_dst ']' ',' immediate ',' cat6_immed
+              T_OP_STC  { new_instr(OPC_STC); }  cat6_type 'c' '[' const_dst ']' ',' src_reg ',' cat6_immed
+|             T_OP_STSC { new_instr(OPC_STSC); } cat6_type 'c' '[' const_dst ']' ',' immediate ',' cat6_immed
 
 cat6_todo:         T_OP_G2L                 { new_instr(OPC_G2L); }
 |                  T_OP_L2G                 { new_instr(OPC_L2G); }

@@ -364,6 +364,7 @@ typedef enum {
 
    OPC_LDC_K           = _OPC(6, 81),
    OPC_STSC            = _OPC(6, 82),
+   OPC_LDG_K           = _OPC(6, 83),
 
    /* category 7: */
    OPC_BAR             = _OPC(7, 0),

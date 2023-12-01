@@ -393,6 +393,9 @@ static const struct test {
    /* Custom stp based on above to catch a disasm bug. */
    INSTR_6XX(c1465b00_0180022a, "stp.u32 p[r11.y+256], r5.y, 1"),
 
+   INSTR_6XX(c0160010_00b001a1, "ldg.k.u32 c[16], g[r48.x+208], 1"),
+   INSTR_6XX(c0160188_00b01261, "ldg.k.u32 c[a1.x+136], g[r48.x+2352], 1"),
+
    /* Atomic: */
 #if 0
    /* TODO our encoding differs in b53 for these two */

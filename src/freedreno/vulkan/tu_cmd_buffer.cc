@@ -681,6 +681,9 @@ tu6_emit_window_offset(struct tu_cs *cs, uint32_t x1, uint32_t y1)
 
    tu_cs_emit_regs(cs,
                    A6XX_SP_TP_WINDOW_OFFSET(.x = x1, .y = y1));
+
+   tu_cs_emit_regs(cs,
+                   A7XX_SP_PS_2D_WINDOW_OFFSET(.x = x1, .y = y1));
 }
 
 void

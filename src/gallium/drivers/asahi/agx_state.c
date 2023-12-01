@@ -4810,6 +4810,73 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
    }
 }
 
+/*
+ * From the ARB_texture_barrier spec:
+ *
+ *  Specifically, the values of rendered fragments are undefined if any
+ *  shader stage fetches texels and the same texels are written via fragment
+ *  shader outputs, even if the reads and writes are not in the same Draw
+ *  call, unless any of the following exceptions apply:
+ *
+ *  - The reads and writes are from/to disjoint sets of texels (after
+ *    accounting for texture filtering rules).
+ *
+ *  - There is only a single read and write of each texel, and the read is in
+ *    the fragment shader invocation that writes the same texel (e.g. using
+ *    "texelFetch2D(sampler, ivec2(gl_FragCoord.xy), 0);").
+ *
+ *  - If a texel has been written, then in order to safely read the result
+ *    a texel fetch must be in a subsequent Draw separated by the command
+ *
+ *      void TextureBarrier(void);
+ *
+ *    TextureBarrier() will guarantee that writes have completed and caches
+ *    have been invalidated before subsequent Draws are executed."
+ *
+ * The wording is subtle, but we are not required to flush implicitly for
+ * feedback loops, even though we're a tiler. What we are required to do is
+ * decompress framebuffers involved in feedback loops, because otherwise
+ * the hardware will race itself with exception #1, where we have a disjoint
+ * group texels that intersects a compressed tile being written out.
+ */
+static void
+agx_legalize_feedback_loops(struct agx_context *ctx)
+{
+   /* Trust that u_blitter knows what it's doing */
+   if (ctx->blitter->running)
+      return;
+
+   for (unsigned stage = 0; stage < ARRAY_SIZE(ctx->stage); ++stage) {
+      if (!(ctx->stage[stage].dirty & AGX_STAGE_DIRTY_IMAGE))
+         continue;
+
+      for (unsigned i = 0; i < ctx->stage[stage].texture_count; ++i) {
+         if (!ctx->stage[stage].textures[i])
+            continue;
+
+         struct agx_resource *rsrc = ctx->stage[stage].textures[i]->rsrc;
+
+         for (unsigned cb = 0; cb < ctx->framebuffer.nr_cbufs; ++cb) {
+            if (ctx->framebuffer.cbufs[cb] &&
+                agx_resource(ctx->framebuffer.cbufs[cb]->texture) == rsrc) {
+
+               if (rsrc->layout.tiling == AIL_TILING_TWIDDLED_COMPRESSED) {
+                  /* Decompress if we can and shadow if we can't. */
+                  if (rsrc->base.bind & PIPE_BIND_SHARED)
+                     unreachable("TODO");
+                  else
+                     agx_decompress(ctx, rsrc, "Texture feedback loop");
+               }
+
+               /* Not required by the spec, just for debug */
+               if (agx_device(ctx->base.screen)->debug & AGX_DBG_FEEDBACK)
+                  agx_flush_writer(ctx, rsrc, "Feedback loop");
+            }
+         }
+      }
+   }
+}
+
 static void
 agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
              unsigned drawid_offset,
@@ -4875,6 +4942,8 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
                                num_draws, xfb_passthrough);
       return;
    }
+
+   agx_legalize_feedback_loops(ctx);
 
    /* Only the rasterization stream counts */
    if (ctx->active_queries && ctx->prims_generated[0] &&

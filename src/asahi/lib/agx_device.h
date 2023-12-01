@@ -34,6 +34,7 @@ enum agx_dbg {
    AGX_DBG_VARYINGS = BITFIELD_BIT(17),
    AGX_DBG_SCRATCH = BITFIELD_BIT(18),
    AGX_DBG_COMPBLIT = BITFIELD_BIT(19),
+   AGX_DBG_FEEDBACK = BITFIELD_BIT(20),
 };
 
 /* Dummy partial declarations, pending real UAPI */

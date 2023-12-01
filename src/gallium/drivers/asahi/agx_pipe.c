@@ -75,6 +75,7 @@ static const struct debug_named_value agx_debug_options[] = {
    {"nowc",      AGX_DBG_NOWC,     "Disable write-combining"},
    {"synctvb",   AGX_DBG_SYNCTVB,  "Synchronous TVB growth"},
    {"smalltile", AGX_DBG_SMALLTILE,"Force 16x16 tiles"},
+   {"feedback",  AGX_DBG_FEEDBACK, "Debug feedback loops"},
    {"nomsaa",    AGX_DBG_NOMSAA,   "Force disable MSAA"},
    {"noshadow",  AGX_DBG_NOSHADOW, "Force disable resource shadowing"},
    {"varyings",  AGX_DBG_VARYINGS,  "Validate varying linkage"},
@@ -1569,6 +1570,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_PRIMITIVE_RESTART_FIXED_INDEX:
    case PIPE_CAP_ANISOTROPIC_FILTER:
    case PIPE_CAP_NATIVE_FENCE_FD:
+   case PIPE_CAP_TEXTURE_BARRIER:
       return true;
 
    case PIPE_CAP_TIMER_RESOLUTION:

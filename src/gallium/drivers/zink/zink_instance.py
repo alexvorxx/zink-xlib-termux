@@ -72,10 +72,11 @@ header_code = """
 
 #include <vulkan/vulkan_core.h>
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
+#include "MoltenVK/mvk_vulkan.h"
 // Source of MVK_VERSION
-#include "MoltenVK/vk_mvk_moltenvk.h"
-#endif
+#include "MoltenVK/mvk_config.h"
+#endif /* __APPLE__ */
 
 struct pipe_screen;
 struct zink_screen;

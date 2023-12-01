@@ -80,10 +80,14 @@ bool zink_tracing = false;
 #endif
 #endif
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
+#include "MoltenVK/mvk_vulkan.h"
 // Source of MVK_VERSION
-#include "MoltenVK/vk_mvk_moltenvk.h"
-#endif
+#include "MoltenVK/mvk_config.h"
+#define VK_NO_PROTOTYPES
+#include "MoltenVK/mvk_deprecated_api.h"
+#include "MoltenVK/mvk_private_api.h"
+#endif /* __APPLE__ */
 
 #ifdef HAVE_LIBDRM
 #include "drm-uapi/dma-buf.h"

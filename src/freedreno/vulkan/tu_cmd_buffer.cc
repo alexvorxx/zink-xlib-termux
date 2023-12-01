@@ -265,7 +265,7 @@ emit_rb_ccu_cntl(struct tu_cs *cs, struct tu_device *dev, bool gmem)
    uint32_t depth_offset_hi = depth_offset >> 21;
    depth_offset &= 0x1fffff;
 
-   enum a6xx_ccu_cache_size cache_size = !gmem ? CCU_CACHE_SIZE_FULL :
+   enum a6xx_ccu_cache_size color_cache_size = !gmem ? CCU_CACHE_SIZE_FULL : !gmem ? CCU_CACHE_SIZE_FULL :
       (a6xx_ccu_cache_size)(dev->physical_device->info->a6xx.gmem_ccu_color_cache_fraction);
    bool concurrent_resolve = dev->physical_device->info->a6xx.concurrent_resolve;
 
@@ -280,7 +280,7 @@ emit_rb_ccu_cntl(struct tu_cs *cs, struct tu_device *dev, bool gmem)
          .color_offset_hi = color_offset_hi,
          .depth_cache_size = CCU_CACHE_SIZE_FULL,
          .depth_offset = depth_offset,
-         .color_cache_size = cache_size,
+         .color_cache_size = color_cache_size,
          .color_offset = color_offset
       ));
 
@@ -309,7 +309,7 @@ emit_rb_ccu_cntl(struct tu_cs *cs, struct tu_device *dev, bool gmem)
          .color_offset_hi = color_offset_hi,
          .depth_cache_size = CCU_CACHE_SIZE_FULL,
          .depth_offset = 0,
-         .color_cache_size = cache_size,
+         .color_cache_size = color_cache_size,
          .color_offset = color_offset
       ));
    }

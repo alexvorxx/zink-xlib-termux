@@ -144,11 +144,18 @@ class A6xxGPUInfo(GPUInfo):
                  tile_align_w, tile_align_h, num_vsc_pipes,
                  cs_shared_mem_size, wave_granularity, fibers_per_sp,
                  magic_regs, raw_magic_regs = None):
+        if chip == CHIP.A6XX:
+            tile_max_w   = 1024 # max_bitfield_val(5, 0, 5)
+            tile_max_h   = max_bitfield_val(14, 8, 4) # 1008
+        else:
+            tile_max_w   = 1728
+            tile_max_h   = 1728
+
         super().__init__(chip, gmem_align_w = 16, gmem_align_h = 4,
                          tile_align_w = tile_align_w,
                          tile_align_h = tile_align_h,
-                         tile_max_w   = 1024, # max_bitfield_val(5, 0, 5)
-                         tile_max_h   = max_bitfield_val(14, 8, 4),
+                         tile_max_w   = tile_max_w,
+                         tile_max_h   = tile_max_h,
                          num_vsc_pipes = num_vsc_pipes,
                          cs_shared_mem_size = cs_shared_mem_size,
                          num_sp_cores = num_ccu, # The # of SP cores seems to always match # of CCU
@@ -909,7 +916,7 @@ add_gpus([
         CHIP.A7XX,
         [a7xx_base, a7xx_740],
         num_ccu = 6,
-        tile_align_w = 64,
+        tile_align_w = 96,
         tile_align_h = 32,
         num_vsc_pipes = 32,
         cs_shared_mem_size = 32 * 1024,

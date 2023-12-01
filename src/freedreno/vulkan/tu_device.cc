@@ -638,10 +638,10 @@ tu_physical_device_init(struct tu_physical_device *device,
       device->dev_info = info;
       device->info = &device->dev_info;
       uint32_t depth_cache_size =
-         device->info->num_ccu * device->info->a6xx.sysmem_per_ccu_cache_size;
+         device->info->num_ccu * device->info->a6xx.sysmem_per_ccu_depth_cache_size;
       uint32_t color_cache_size =
          (device->info->num_ccu *
-          device->info->a6xx.sysmem_per_ccu_cache_size) /
+          device->info->a6xx.sysmem_per_ccu_color_cache_size) /
          (1 << device->info->a6xx.gmem_ccu_color_cache_fraction);
 
       device->ccu_offset_bypass = depth_cache_size;

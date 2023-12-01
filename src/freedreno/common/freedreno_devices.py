@@ -314,7 +314,8 @@ a6xx_base = A6XXProps(
 
         supports_double_threadsize = True,
 
-        sysmem_per_ccu_cache_size = 64 * 1024,
+        sysmem_per_ccu_depth_cache_size = 64 * 1024,
+        sysmem_per_ccu_color_cache_size = 64 * 1024,
         gmem_ccu_color_cache_fraction = CCUColorCacheFraction.QUARTER.value,
 
         prim_alloc_threshold = 0x7,
@@ -337,7 +338,8 @@ a6xx_gen1_low = A6XXProps(
         has_hw_multiview = False,
         has_sampler_minmax = False,
         has_fs_tex_prefetch = False,
-        sysmem_per_ccu_cache_size = 8 * 1024,
+        sysmem_per_ccu_color_cache_size = 8 * 1024,
+        sysmem_per_ccu_depth_cache_size = 8 * 1024,
         gmem_ccu_color_cache_fraction = CCUColorCacheFraction.HALF.value,
         vs_max_inputs_count = 16,
         supports_double_threadsize = False,
@@ -751,8 +753,9 @@ a7xx_base = A6XXProps(
 
         supports_double_threadsize = True,
 
-        sysmem_per_ccu_cache_size = 64 * 1024,
-        gmem_ccu_color_cache_fraction = CCUColorCacheFraction.QUARTER.value,
+        sysmem_per_ccu_depth_cache_size = 256 * 1024,
+        sysmem_per_ccu_color_cache_size = 64 * 1024,
+        gmem_ccu_color_cache_fraction = CCUColorCacheFraction.EIGHTH.value,
 
         prim_alloc_threshold = 0x7,
         vs_max_inputs_count = 32,

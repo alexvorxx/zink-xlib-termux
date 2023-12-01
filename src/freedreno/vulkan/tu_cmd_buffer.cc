@@ -218,30 +218,66 @@ tu_emit_cache_flush_renderpass(struct tu_cmd_buffer *cmd_buffer)
 TU_GENX(tu_emit_cache_flush_renderpass);
 
 template <chip CHIP>
-static struct fd_reg_pair
-rb_ccu_cntl(struct tu_device *dev, bool gmem)
+static void
+emit_rb_ccu_cntl(struct tu_cs *cs, struct tu_device *dev, bool gmem)
 {
-   if (CHIP == A7XX) {
-      return A6XX_RB_CCU_CNTL(.dword = gmem ? 0x68 : 0);
-   }
-
+   /* The CCUs are a cache that allocates memory from GMEM while facilitating
+    * framebuffer caching for sysmem rendering. The CCU is split into two parts,
+    * one for color and one for depth. The size and offset of these in GMEM can
+    * be configured separately.
+    *
+    * The most common configuration for the CCU is to occupy as much as possible
+    * of GMEM (CACHE_SIZE_FULL) during sysmem rendering as GMEM is unused. On
+    * the other hand, when rendering to GMEM, the CCUs can be left enabled at
+    * any configuration as they don't interfere with GMEM rendering and only
+    * overwrite GMEM when sysmem operations are performed.
+    *
+    * The vast majority of GMEM rendering doesn't need any sysmem operations
+    * but there are some cases where it is required. For example, when the
+    * framebuffer isn't aligned to the tile size or with certain MSAA resolves.
+    *
+    * To correctly handle these cases, we need to be able to switch between
+    * sysmem and GMEM rendering. We do this by allocating a carveout at the
+    * end of GMEM for the color CCU (as none of these operations are depth)
+    * which the color CCU offset is set to and the GMEM size available to the
+    * GMEM layout calculations is adjusted accordingly.
+    */
    uint32_t color_offset = gmem ? dev->physical_device->ccu_offset_gmem
                                 : dev->physical_device->ccu_offset_bypass;
 
    uint32_t color_offset_hi = color_offset >> 21;
    color_offset &= 0x1fffff;
-   enum a6xx_ccu_color_cache_size cache_size =
-      (a6xx_ccu_color_cache_size)(dev->physical_device->info->a6xx.gmem_ccu_color_cache_fraction);
+   enum a6xx_ccu_cache_size cache_size =
+      (a6xx_ccu_cache_size)(dev->physical_device->info->a6xx.gmem_ccu_color_cache_fraction);
    bool concurrent_resolve = dev->physical_device->info->a6xx.concurrent_resolve;
-   return  A6XX_RB_CCU_CNTL(.gmem_fast_clear_disable =
-         !dev->physical_device->info->a6xx.has_gmem_fast_clear,
-      .concurrent_resolve = concurrent_resolve,
-      .depth_offset_hi = 0,
-      .color_offset_hi = color_offset_hi,
-      .depth_cache_size = 0,
-      .depth_offset = 0,
-      .color_cache_size = cache_size,
-      .color_offset = color_offset);
+
+   if (CHIP == A7XX) {
+      tu_cs_emit_regs(cs, A7XX_RB_CCU_CNTL(
+         .gmem_fast_clear_disable =
+            !dev->physical_device->info->a6xx.has_gmem_fast_clear,
+         .concurrent_resolve = concurrent_resolve,
+      ));
+      tu_cs_emit_regs(cs, A7XX_RB_CCU_CNTL2(
+         .depth_offset_hi = 0,
+         .color_offset_hi = color_offset_hi,
+         .depth_cache_size = CCU_CACHE_SIZE_FULL,
+         .depth_offset = 0,
+         .color_cache_size = cache_size,
+         .color_offset = color_offset
+      ));
+   } else {
+      tu_cs_emit_regs(cs, A6XX_RB_CCU_CNTL(
+         .gmem_fast_clear_disable =
+            !dev->physical_device->info->a6xx.has_gmem_fast_clear,
+         .concurrent_resolve = concurrent_resolve,
+         .depth_offset_hi = 0,
+         .color_offset_hi = color_offset_hi,
+         .depth_cache_size = CCU_CACHE_SIZE_FULL,
+         .depth_offset = 0,
+         .color_cache_size = cache_size,
+         .color_offset = color_offset
+      ));
+   }
 }
 
 /* Cache flushes for things that use the color/depth read/write path (i.e.
@@ -285,8 +321,8 @@ tu_emit_cache_flush_ccu(struct tu_cmd_buffer *cmd_buffer,
    tu6_emit_flushes<CHIP>(cmd_buffer, cs, &cmd_buffer->state.cache);
 
    if (ccu_state != cmd_buffer->state.ccu_state) {
-      tu_cs_emit_regs(cs, rb_ccu_cntl<CHIP>(cmd_buffer->device,
-                                            ccu_state == TU_CMD_CCU_GMEM));
+      emit_rb_ccu_cntl<CHIP>(cs, cmd_buffer->device,
+                             ccu_state == TU_CMD_CCU_GMEM);
       cmd_buffer->state.ccu_state = ccu_state;
    }
 }
@@ -1159,7 +1195,7 @@ tu6_init_hw(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
    cmd->state.cache.pending_flush_bits &=
       ~(TU_CMD_FLAG_WAIT_FOR_IDLE | TU_CMD_FLAG_CACHE_INVALIDATE);
 
-   tu_cs_emit_regs(cs, rb_ccu_cntl<CHIP>(cmd->device, false));
+   emit_rb_ccu_cntl<CHIP>(cs, cmd->device, false);
    cmd->state.ccu_state = TU_CMD_CCU_SYSMEM;
 
    for (size_t i = 0; i < ARRAY_SIZE(phys_dev->info->a6xx.magic_raw); i++) {
@@ -1650,8 +1686,6 @@ tu6_sysmem_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
    if (CHIP == A7XX) {
       tu_cs_emit_regs(cs,
                      A7XX_RB_UNKNOWN_8812(0x3ff)); // all buffers in sysmem
-      tu_cs_emit_regs(cs,
-                   A7XX_RB_UNKNOWN_88E5(0x50120004));
       tu_cs_emit_regs(cs,
          A7XX_RB_UNKNOWN_8E06(cmd->device->physical_device->info->a6xx.magic.RB_UNKNOWN_8E06));
 

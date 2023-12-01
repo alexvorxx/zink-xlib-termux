@@ -149,7 +149,8 @@ struct fd_dev_info {
 
       /* Per CCU GMEM amount reserved for each of DEPTH and COLOR caches
        * in sysmem rendering. */
-      uint32_t sysmem_per_ccu_cache_size;
+      uint32_t sysmem_per_ccu_depth_cache_size;
+      uint32_t sysmem_per_ccu_color_cache_size;
       /* Per CCU GMEM amount reserved for color cache used by GMEM resolves
        * which require color cache (non-BLIT event case).
        * The size is expressed as a fraction of ccu cache used by sysmem
@@ -157,7 +158,7 @@ struct fd_dev_info {
        * to make sure it will not overwrite pixel data in GMEM that is still
        * needed.
        */
-      /* see enum a6xx_ccu_color_cache_size */
+      /* see enum a6xx_ccu_cache_size */
       uint32_t gmem_ccu_color_cache_fraction;
 
       /* Corresponds to HLSQ_CONTROL_1_REG::PRIMALLOCTHRESHOLD */

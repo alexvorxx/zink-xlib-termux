@@ -2780,7 +2780,28 @@ to upconvert to 32b float internally?
 		<!-- Value conditioned based on predicate, changed before blits -->
 		<bitfield name="UNK0" pos="0" type="boolean"/>
 	</reg32>
-	<reg32 offset="0x88e5" name="RB_UNKNOWN_88E5" variants="A7XX-" usage="rp_blit"/>
+
+	<enum name="a6xx_ccu_cache_size">
+		<value value="0x0" name="CCU_CACHE_SIZE_FULL"/>
+		<value value="0x1" name="CCU_CACHE_SIZE_HALF"/>
+		<value value="0x2" name="CCU_CACHE_SIZE_QUARTER"/>
+		<value value="0x3" name="CCU_CACHE_SIZE_EIGHTH"/>
+	</enum>
+	<reg32 offset="0x88e5" name="RB_CCU_CNTL2" variants="A7XX-" usage="rp_blit">
+		<bitfield name="DEPTH_OFFSET_HI" pos="0" type="hex"/>
+		<bitfield name="COLOR_OFFSET_HI" pos="2" type="hex"/>
+		<bitfield name="DEPTH_CACHE_SIZE" low="10" high="11" type="a6xx_ccu_cache_size"/>
+		<!-- GMEM offset of CCU depth cache -->
+		<bitfield name="DEPTH_OFFSET" low="12" high="20" shr="12" type="hex"/>
+		<bitfield name="COLOR_CACHE_SIZE" low="21" high="22" type="a6xx_ccu_cache_size"/>
+		<!-- GMEM offset of CCU color cache
+			for GMEM rendering, we set it to GMEM size minus the minimum
+			CCU color cache size. CCU color cache will be needed in some
+			resolve cases, and in those cases we need to reserve the end
+			of GMEM for color cache.
+		-->
+		<bitfield name="COLOR_OFFSET" low="23" high="31" shr="12" type="hex"/>
+	</reg32>
 	<!-- 0x88e6-0x88ef invalid -->
 	<!-- always 0x0 ? -->
 	<reg32 offset="0x88f0" name="RB_UNKNOWN_88F0" low="0" high="11" usage="cmd"/>
@@ -2876,23 +2897,17 @@ to upconvert to 32b float internally?
 	<reg32 offset="0x8e05" name="RB_ADDR_MODE_CNTL" pos="0" type="a5xx_address_mode"/>
 	<!-- 0x02080000 in GMEM, zero otherwise?  -->
 	<reg32 offset="0x8e06" name="RB_UNKNOWN_8E06" variants="A7XX-" usage="cmd"/>
-	<enum name="a6xx_ccu_color_cache_size">
-		<value value="0x0" name="CCU_COLOR_CACHE_SIZE_FULL"/>
-		<value value="0x1" name="CCU_COLOR_CACHE_SIZE_HALF"/>
-		<value value="0x2" name="CCU_COLOR_CACHE_SIZE_QUARTER"/>
-		<value value="0x3" name="CCU_COLOR_CACHE_SIZE_EIGHTH"/>
-	</enum>
 
-	<reg32 offset="0x8e07" name="RB_CCU_CNTL" usage="cmd">
+	<reg32 offset="0x8e07" name="RB_CCU_CNTL" usage="cmd" variants="A6XX">
 		<bitfield name="GMEM_FAST_CLEAR_DISABLE" pos="0" type="boolean"/>
 		<!-- concurrent resolves are apparently a 2-bit enum on a650+ -->
 		<bitfield name="CONCURRENT_RESOLVE" pos="2" type="boolean"/>
 		<bitfield name="DEPTH_OFFSET_HI" pos="7" type="hex"/>
 		<bitfield name="COLOR_OFFSET_HI" pos="9" type="hex"/>
-		<bitfield name="DEPTH_CACHE_SIZE" low="10" high="11" type="uint"/>
+		<bitfield name="DEPTH_CACHE_SIZE" low="10" high="11" type="a6xx_ccu_cache_size"/>
 		<!-- GMEM offset of CCU depth cache -->
 		<bitfield name="DEPTH_OFFSET" low="12" high="20" shr="12" type="hex"/>
-		<bitfield name="COLOR_CACHE_SIZE" low="21" high="22" type="a6xx_ccu_color_cache_size"/>
+		<bitfield name="COLOR_CACHE_SIZE" low="21" high="22" type="a6xx_ccu_cache_size"/>
 		<!-- GMEM offset of CCU color cache
 			for GMEM rendering, we set it to GMEM size minus the minimum
 			CCU color cache size. CCU color cache will be needed in some
@@ -2901,6 +2916,11 @@ to upconvert to 32b float internally?
 		-->
 		<bitfield name="COLOR_OFFSET" low="23" high="31" shr="12" type="hex"/>
 		<!--TODO: valid mask 0xfffffc1f -->
+	</reg32>
+	<reg32 offset="0x8e07" name="RB_CCU_CNTL" usage="cmd" variants="A7XX-">
+		<bitfield name="GMEM_FAST_CLEAR_DISABLE" pos="0" type="boolean"/>
+		<bitfield name="CONCURRENT_RESOLVE" pos="2" type="boolean"/>
+		<!-- rest of the bits were moved to RB_CCU_CNTL2 -->
 	</reg32>
 	<reg32 offset="0x8e08" name="RB_NC_MODE_CNTL">
 		<bitfield name="MODE" pos="0" type="boolean"/>

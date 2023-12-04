@@ -1553,6 +1553,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_CULL_DISTANCE_NOCOMBINE:
    case PIPE_CAP_NIR_COMPACT_ARRAYS:
    case PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS:
+   case PIPE_CAP_DOUBLES:
       return 1;
 
    case PIPE_CAP_MAX_RENDER_TARGETS:
@@ -1610,6 +1611,8 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_MULTI_DRAW_INDIRECT:
    case PIPE_CAP_MULTI_DRAW_INDIRECT_PARAMS:
    case PIPE_CAP_CULL_DISTANCE:
+   case PIPE_CAP_GL_SPIRV:
+   case PIPE_CAP_POLYGON_OFFSET_CLAMP:
       return 1;
    case PIPE_CAP_SURFACE_SAMPLE_COUNT:
       /* TODO: MSRTT */
@@ -1619,7 +1622,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 1;
 
    case PIPE_CAP_COPY_BETWEEN_COMPRESSED_AND_PLAIN_FORMATS:
-      return 0;
+      return 1;
 
    case PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS:
       return PIPE_MAX_SO_BUFFERS;
@@ -1637,7 +1640,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    case PIPE_CAP_GLSL_FEATURE_LEVEL:
    case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
-      return 410;
+      return 460;
    case PIPE_CAP_ESSL_FEATURE_LEVEL:
       return 320;
 
@@ -1661,6 +1664,9 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    case PIPE_CAP_VERTEX_ATTRIB_ELEMENT_ALIGNED_ONLY:
       return 1;
+
+   case PIPE_CAP_QUERY_PIPELINE_STATISTICS_SINGLE:
+      return true;
 
    case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
       return 16384;
@@ -1691,6 +1697,10 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_ENDIANNESS:
       return PIPE_ENDIAN_LITTLE;
 
+   case PIPE_CAP_SHADER_GROUP_VOTE:
+   case PIPE_CAP_SHADER_BALLOT:
+      return true;
+
    case PIPE_CAP_MAX_TEXTURE_GATHER_COMPONENTS:
       return 4;
    case PIPE_CAP_MIN_TEXTURE_GATHER_OFFSET:
@@ -1700,6 +1710,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_DRAW_INDIRECT:
    case PIPE_CAP_TEXTURE_QUERY_SAMPLES:
    case PIPE_CAP_TEXTURE_QUERY_LOD:
+   case PIPE_CAP_TEXTURE_SHADOW_LOD:
       return true;
 
    case PIPE_CAP_MAX_VIEWPORTS:
@@ -1758,6 +1769,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 1;
 
    case PIPE_CAP_VS_LAYER_VIEWPORT:
+   case PIPE_CAP_TES_LAYER_VIEWPORT:
       return true;
 
    default:
@@ -1815,9 +1827,9 @@ agx_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type shader,
    case PIPE_SHADER_FRAGMENT:
    case PIPE_SHADER_COMPUTE:
    case PIPE_SHADER_GEOMETRY:
-      break;
    case PIPE_SHADER_TESS_CTRL:
    case PIPE_SHADER_TESS_EVAL:
+      break;
    default:
       return false;
    }

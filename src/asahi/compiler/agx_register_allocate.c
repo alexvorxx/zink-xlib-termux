@@ -6,6 +6,7 @@
 #include "util/u_dynarray.h"
 #include "util/u_qsort.h"
 #include "agx_builder.h"
+#include "agx_compile.h"
 #include "agx_compiler.h"
 #include "agx_debug.h"
 #include "agx_opcodes.h"
@@ -993,8 +994,31 @@ agx_ra(agx_context *ctx)
    unsigned demand =
       ALIGN_POT(agx_calc_register_demand(ctx, ncomps), reg_file_alignment);
 
+   unsigned max_possible_regs = AGX_NUM_REGS;
+
+   /* Compute shaders need to have their entire workgroup together, so our
+    * register usage is bounded by the workgroup size.
+    */
+   if (gl_shader_stage_is_compute(ctx->stage)) {
+      unsigned threads_per_workgroup;
+
+      /* If we don't know the workgroup size, worst case it. TODO: Optimize
+       * this, since it'll decimate opencl perf.
+       */
+      if (ctx->nir->info.workgroup_size_variable) {
+         threads_per_workgroup = 1024;
+      } else {
+         threads_per_workgroup = ctx->nir->info.workgroup_size[0] *
+                                 ctx->nir->info.workgroup_size[1] *
+                                 ctx->nir->info.workgroup_size[2];
+      }
+
+      max_possible_regs =
+         agx_max_registers_for_occupancy(threads_per_workgroup);
+   }
+
    /* TODO: Spilling. Abort so we don't smash the stack in release builds. */
-   if (demand > AGX_NUM_REGS) {
+   if (demand > max_possible_regs) {
       fprintf(stderr, "\n");
       fprintf(stderr, "------------------------------------------------\n");
       fprintf(stderr, "Asahi Linux shader compiler limitation!\n");
@@ -1019,6 +1043,7 @@ agx_ra(agx_context *ctx)
    /* ...but not too tightly */
    assert((max_regs % reg_file_alignment) == 0 && "occupancy limits aligned");
    assert(max_regs >= (6 * 2) && "space for vertex shader preloading");
+   assert(max_regs <= max_possible_regs);
 
    /* Assign registers in dominance-order. This coincides with source-order due
     * to a NIR invariant, so we do not need special handling for this.

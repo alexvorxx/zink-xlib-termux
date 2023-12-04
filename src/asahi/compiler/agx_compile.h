@@ -263,6 +263,7 @@ struct agx_occupancy {
 };
 
 struct agx_occupancy agx_occupancy_for_register_count(unsigned halfregs);
+unsigned agx_max_registers_for_occupancy(unsigned occupancy);
 
 static const nir_shader_compiler_options agx_nir_options = {
    .lower_fdiv = true,

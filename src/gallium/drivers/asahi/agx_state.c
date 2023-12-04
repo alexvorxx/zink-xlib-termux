@@ -2381,11 +2381,6 @@ agx_get_compute_state_info(struct pipe_context *pctx, void *cso,
    info->private_memory = 0;
    info->preferred_simd_size = 32;
    info->simd_sizes = 32;
-
-   /* HACK: Clamp max_threads to what we advertise. When we fix the CAP
-    * situation around block sizes, we can drop this.
-    */
-   info->max_threads = MIN2(info->max_threads, 256);
 }
 
 /* Does not take ownership of key. Clones if necessary. */

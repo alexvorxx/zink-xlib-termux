@@ -1949,10 +1949,10 @@ agx_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
       RET(((uint64_t[]){65535, 65535, 65535}));
 
    case PIPE_COMPUTE_CAP_MAX_BLOCK_SIZE:
-      RET(((uint64_t[]){256, 256, 256}));
+      RET(((uint64_t[]){1024, 1024, 1024}));
 
    case PIPE_COMPUTE_CAP_MAX_THREADS_PER_BLOCK:
-      RET((uint64_t[]){256});
+      RET((uint64_t[]){1024});
 
    case PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE:
    case PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE: {

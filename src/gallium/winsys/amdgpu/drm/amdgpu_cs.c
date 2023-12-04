@@ -617,32 +617,11 @@ amdgpu_do_add_buffer(struct amdgpu_cs_context *cs, struct amdgpu_winsys_bo *bo,
 
 static struct amdgpu_cs_buffer *
 amdgpu_lookup_or_add_buffer(struct amdgpu_cs_context *cs, struct amdgpu_winsys_bo *bo,
-                            enum amdgpu_bo_type type)
+                            struct amdgpu_buffer_list *list)
 {
-   struct amdgpu_buffer_list *list = &cs->buffer_lists[type];
    struct amdgpu_cs_buffer *buffer = amdgpu_lookup_buffer(cs, bo, list);
 
    return buffer ? buffer : amdgpu_do_add_buffer(cs, bo, list);
-}
-
-static struct amdgpu_cs_buffer *
-amdgpu_lookup_or_add_slab_buffer(struct amdgpu_cs_context *cs, struct amdgpu_winsys_bo *bo)
-{
-   struct amdgpu_buffer_list *list = &cs->buffer_lists[AMDGPU_BO_SLAB_ENTRY];
-   struct amdgpu_cs_buffer *buffer = amdgpu_lookup_buffer(cs, bo, list);
-
-   if (buffer)
-      return buffer;
-
-   struct amdgpu_cs_buffer *real_buffer =
-      amdgpu_lookup_or_add_buffer(cs, &get_slab_entry_real_bo(bo)->b, AMDGPU_BO_REAL);
-   if (!real_buffer)
-      return NULL;
-
-   buffer = amdgpu_do_add_buffer(cs, bo, list);
-   if (buffer)
-      buffer->slab_real_idx = real_buffer - cs->buffer_lists[AMDGPU_BO_REAL].buffers;
-   return buffer;
 }
 
 static unsigned amdgpu_cs_add_buffer(struct radeon_cmdbuf *rcs,
@@ -665,22 +644,9 @@ static unsigned amdgpu_cs_add_buffer(struct radeon_cmdbuf *rcs,
        (usage & cs->last_added_bo_usage) == usage)
       return 0;
 
-   if (bo->type == AMDGPU_BO_SLAB_ENTRY) {
-      buffer = amdgpu_lookup_or_add_slab_buffer(cs, bo);
-      if (!buffer)
-         return 0;
-
-      cs->buffer_lists[AMDGPU_BO_REAL].buffers[buffer->slab_real_idx].usage |=
-         usage & ~RADEON_USAGE_SYNCHRONIZED;
-   } else if (is_real_bo(bo)) {
-      buffer = amdgpu_lookup_or_add_buffer(cs, bo, AMDGPU_BO_REAL);
-      if (!buffer)
-         return 0;
-   } else {
-      buffer = amdgpu_lookup_or_add_buffer(cs, bo, AMDGPU_BO_SPARSE);
-      if (!buffer)
-         return 0;
-   }
+   buffer = amdgpu_lookup_or_add_buffer(cs, bo, &cs->buffer_lists[get_buf_list_idx(bo)]);
+   if (!buffer)
+      return 0;
 
    buffer->usage |= usage;
 
@@ -1125,10 +1091,36 @@ static bool amdgpu_cs_check_space(struct radeon_cmdbuf *rcs, unsigned dw)
    return true;
 }
 
+static void amdgpu_add_slab_backing_buffers(struct amdgpu_cs_context *cs)
+{
+   unsigned num_buffers = cs->buffer_lists[AMDGPU_BO_SLAB_ENTRY].num_buffers;
+   struct amdgpu_cs_buffer *buffers = cs->buffer_lists[AMDGPU_BO_SLAB_ENTRY].buffers;
+
+   for (unsigned i = 0; i < num_buffers; i++) {
+      struct amdgpu_cs_buffer *slab_buffer = &buffers[i];
+      struct amdgpu_cs_buffer *real_buffer =
+         amdgpu_lookup_or_add_buffer(cs, &get_slab_entry_real_bo(slab_buffer->bo)->b,
+                                     &cs->buffer_lists[AMDGPU_BO_REAL]);
+
+      /* We need to set the usage because it determines the BO priority.
+       *
+       * Mask out the SYNCHRONIZED flag because the backing buffer of slabs shouldn't add its
+       * BO fences to fence dependencies. Only the slab entries should do that.
+       */
+      real_buffer->usage |= slab_buffer->usage & ~RADEON_USAGE_SYNCHRONIZED;
+   }
+}
+
 static unsigned amdgpu_cs_get_buffer_list(struct radeon_cmdbuf *rcs,
                                           struct radeon_bo_list_item *list)
 {
     struct amdgpu_cs_context *cs = amdgpu_cs(rcs)->csc;
+
+    /* We do this in the CS thread, but since we need to return the final usage of all buffers
+     * here, do it here too. There is no harm in doing it again in the CS thread.
+     */
+    amdgpu_add_slab_backing_buffers(cs);
+
     struct amdgpu_buffer_list *real_buffers = &cs->buffer_lists[AMDGPU_BO_REAL];
     unsigned num_real_buffers = real_buffers->num_buffers;
 
@@ -1261,6 +1253,12 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
    int r;
    uint64_t seq_no = 0;
    bool has_user_fence = amdgpu_cs_has_user_fence(acs);
+   unsigned initial_num_real_buffers = cs->buffer_lists[AMDGPU_BO_REAL].num_buffers;
+
+   /* We didn't add any slab buffers into the real buffer list that will be submitted
+    * to the kernel. Do it now.
+    */
+   amdgpu_add_slab_backing_buffers(cs);
 
    simple_mtx_lock(&ws->bo_fence_lock);
    struct amdgpu_queue *queue = &ws->queues[acs->queue_index];
@@ -1377,7 +1375,6 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
 
    struct drm_amdgpu_bo_list_entry *bo_list = NULL;
    unsigned num_bo_handles = 0;
-   unsigned initial_num_real_buffers = cs->buffer_lists[AMDGPU_BO_REAL].num_buffers;
 
 #if DEBUG
    /* Prepare the buffer list. */

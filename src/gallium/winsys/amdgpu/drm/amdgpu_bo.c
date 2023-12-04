@@ -39,6 +39,8 @@ static bool amdgpu_bo_wait(struct radeon_winsys *rws,
    struct amdgpu_winsys_bo *bo = amdgpu_winsys_bo(_buf);
    int64_t abs_timeout = 0;
 
+   assert(p_atomic_read(&bo->num_active_ioctls) >= 0);
+
    if (timeout == 0) {
       if (p_atomic_read(&bo->num_active_ioctls))
          return false;

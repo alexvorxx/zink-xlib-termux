@@ -36,7 +36,6 @@ struct amdgpu_ctx {
 
 struct amdgpu_cs_buffer {
    struct amdgpu_winsys_bo *bo;
-   unsigned slab_real_idx; /* index of underlying real BO, used by slab buffers only */
    unsigned usage;
 };
 

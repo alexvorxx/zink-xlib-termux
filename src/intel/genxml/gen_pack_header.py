@@ -43,7 +43,11 @@ pack_header = """%(license)s
 #ifndef %(guard)s
 #define %(guard)s
 
+#ifndef __OPENCL_VERSION__
 #include <stdio.h>
+#else
+#define assert(cond)
+#endif
 
 #include "util/bitpack_helpers.h"
 
@@ -80,6 +84,7 @@ __gen_offset_nonzero(uint64_t v, uint32_t start, uint32_t end)
    return __gen_offset(v, start, end);
 }
 
+#ifndef __OPENCL_VERSION__
 static inline __attribute__((always_inline)) uint64_t
 __gen_address(__gen_user_data *data, void *location,
               __gen_address_type address, uint32_t delta,
@@ -95,6 +100,19 @@ __gen_address(__gen_user_data *data, void *location,
       return addr_u64;
    }
 }
+#else
+static inline __attribute__((always_inline)) uint64_t
+__gen_address(__gen_address_type address,
+              __attribute__((unused)) uint32_t start, uint32_t end)
+{
+   if (end < 63) {
+      const unsigned shift = 63 - end;
+      return (address << shift) >> shift;
+   } else {
+      return address;
+   }
+}
+#endif
 
 #ifndef __gen_address_type
 #error #define __gen_address_type before including this file
@@ -403,16 +421,26 @@ class Group(object):
 
             if dw.size == 32:
                 if dw.address:
-                    print("   dw[%d] = __gen_address(data, &dw[%d], values->%s, %s, %d, %d);" %
-                    (index, index, dw.address.name + field.dim, v,
-                     dw.address.start - dword_start, dw.address.end - dword_start))
+                    if self.parser.opencl:
+                        print("   dw[%d] = __gen_address(values->%s, %d, %d);" %
+                              (index, dw.address.name + field.dim,
+                               dw.address.start - dword_start, dw.address.end - dword_start))
+                    else:
+                        print("   dw[%d] = __gen_address(data, &dw[%d], values->%s, %s, %d, %d);" %
+                              (index, index, dw.address.name + field.dim, v,
+                               dw.address.start - dword_start, dw.address.end - dword_start))
                 continue
 
             if dw.address:
                 v_address = "v%d_address" % index
-                print("   const uint64_t %s =\n      __gen_address(data, &dw[%d], values->%s, %s, %d, %d);" %
-                      (v_address, index, dw.address.name + field.dim, v,
-                       dw.address.start - dword_start, dw.address.end - dword_start))
+                if self.parser.opencl:
+                    print("   const uint64_t %s =\n      __gen_address(values->%s, %d, %d);" %
+                          (v_address, dw.address.name + field.dim,
+                           dw.address.start - dword_start, dw.address.end - dword_start))
+                else:
+                    print("   const uint64_t %s =\n      __gen_address(data, &dw[%d], values->%s, %s, %d, %d);" %
+                          (v_address, index, dw.address.name + field.dim, v,
+                           dw.address.start - dword_start, dw.address.end - dword_start))
                 if len(dw.fields) > address_count:
                     print("   dw[%d] = %s;" % (index, v_address))
                     print("   dw[%d] = (%s >> 32) | (%s >> 32);" % (index + 1, v_address, v))
@@ -429,12 +457,13 @@ class Value(object):
         self.dont_use = int(attrs["dont_use"]) != 0 if "dont_use" in attrs else False
 
 class Parser(object):
-    def __init__(self):
+    def __init__(self, opencl):
         self.instruction = None
         self.structs = {}
         # Set of enum names we've seen.
         self.enums = set()
         self.registers = {}
+        self.opencl = opencl
 
     def gen_prefix(self, name):
         if name[0] == "_":
@@ -442,6 +471,8 @@ class Parser(object):
         return 'GFX%s_%s' % (self.gen, name)
 
     def gen_guard(self):
+        if self.opencl:
+            return self.gen_prefix("{0}_CL_PACK_H".format(self.platform))
         return self.gen_prefix("{0}_PACK_H".format(self.platform))
 
     def process_item(self, item):
@@ -526,7 +557,14 @@ class Parser(object):
 
     def emit_pack_function(self, name, group):
         name = self.gen_prefix(name)
-        print(textwrap.dedent("""\
+        if self.opencl:
+            print(textwrap.dedent("""\
+            static inline __attribute__((always_inline)) void
+            %s_pack(__attribute__((unused)) global void * restrict dst,
+                  %s__attribute__((unused)) const struct %s * restrict values)
+            {""") % (name, ' ' * len(name), name))
+        else:
+            print(textwrap.dedent("""\
             static inline __attribute__((always_inline)) void
             %s_pack(__attribute__((unused)) __gen_user_data *data,
                   %s__attribute__((unused)) void * restrict dst,
@@ -621,6 +659,9 @@ def parse_args():
                    help="Input xml file")
     p.add_argument('--engines', nargs='?', type=str, default='render',
                    help="Comma-separated list of engines whose instructions should be parsed (default: %(default)s)")
+    p.add_argument('--include-symbols', nargs='?', type=str, action='store',
+                   help="List of instruction/structures to generate")
+    p.add_argument('--opencl', action='store_true', help="Generate OpenCL code")
 
     pargs = p.parse_args()
 
@@ -642,9 +683,12 @@ def main():
         sys.exit(1)
 
     genxml = intel_genxml.GenXml(pargs.xml_source)
-    genxml.filter_engines(engines)
+
     genxml.merge_imported()
-    p = Parser()
+    genxml.filter_engines(engines)
+    if pargs.include_symbols:
+        genxml.filter_symbols(pargs.include_symbols.split(','))
+    p = Parser(pargs.opencl)
     p.emit_genxml(genxml)
 
 if __name__ == '__main__':

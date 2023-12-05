@@ -39,7 +39,7 @@ panvk_meta_copy_img_emit_texture(struct panfrost_device *pdev,
    struct panfrost_ptr surfaces = pan_pool_alloc_aligned(
       desc_pool, payload_size, pan_alignment(SURFACE_WITH_STRIDE));
 
-   GENX(panfrost_new_texture)(pdev, view, texture.cpu, &surfaces);
+   GENX(panfrost_new_texture)(view, texture.cpu, &surfaces);
 
    return texture.gpu;
 }

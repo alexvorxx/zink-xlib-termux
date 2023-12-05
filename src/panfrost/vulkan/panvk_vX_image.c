@@ -125,7 +125,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
 
       STATIC_ASSERT(sizeof(view->descs.tex) >= pan_size(TEXTURE));
       GENX(panfrost_new_texture)
-      (pdev, &view->pview, &view->descs.tex, &view->bo->ptr);
+      (&view->pview, &view->descs.tex, &view->bo->ptr);
    }
 
    if (view->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT) {

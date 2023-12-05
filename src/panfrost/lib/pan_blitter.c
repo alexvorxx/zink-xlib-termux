@@ -963,7 +963,7 @@ pan_blitter_emit_textures(struct pan_pool *pool, unsigned tex_count,
       struct panfrost_ptr surfaces =
          pan_pool_alloc_aligned(pool, payload_size, 64);
 
-      GENX(panfrost_new_texture)(pool->dev, views[i], texture, &surfaces);
+      GENX(panfrost_new_texture)(views[i], texture, &surfaces);
    }
 
    return textures.gpu;
@@ -980,7 +980,7 @@ pan_blitter_emit_textures(struct pan_pool *pool, unsigned tex_count,
          .gpu = texture.gpu + pan_size(TEXTURE),
       };
 
-      GENX(panfrost_new_texture)(pool->dev, views[i], texture.cpu, &surfaces);
+      GENX(panfrost_new_texture)(views[i], texture.cpu, &surfaces);
       textures[i] = texture.gpu;
    }
 

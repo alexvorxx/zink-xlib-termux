@@ -665,8 +665,7 @@ panfrost_modifier_to_layout(uint64_t modifier)
  * consists of a 32-byte header followed by pointers.
  */
 void
-GENX(panfrost_new_texture)(const struct panfrost_device *dev,
-                           const struct pan_image_view *iview, void *out,
+GENX(panfrost_new_texture)(const struct pan_image_view *iview, void *out,
                            const struct panfrost_ptr *payload)
 {
    const struct pan_image *base_image = pan_image_view_get_plane(iview, 0);

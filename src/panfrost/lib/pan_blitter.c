@@ -151,8 +151,8 @@ pan_blitter_emit_blend(const struct panfrost_device *dev, unsigned rt,
          nir_alu_type type = blit_shader->key.surfaces[rt].type;
 
          cfg.internal.fixed_function.num_comps = 4;
-         cfg.internal.fixed_function.conversion.memory_format =
-            panfrost_format_to_bifrost_blend(dev, iview->format, false);
+         cfg.internal.fixed_function.conversion.memory_format = GENX(
+            panfrost_dithered_format_from_pipe_format)(iview->format, false);
          cfg.internal.fixed_function.conversion.register_format =
             blit_type_to_reg_fmt(type);
 

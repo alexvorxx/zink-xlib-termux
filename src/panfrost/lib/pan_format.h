@@ -165,6 +165,20 @@ GENX(panfrost_blendable_format_from_pipe_format)(enum pipe_format f)
 {
    return &GENX(panfrost_blendable_formats)[f];
 }
+
+#if PAN_ARCH >= 6
+static inline unsigned
+GENX(panfrost_dithered_format_from_pipe_format)(enum pipe_format f, bool dithered)
+{
+   mali_pixel_format pixfmt =
+      GENX(panfrost_blendable_formats)[f].bifrost[dithered];
+
+   /* Formats requiring blend shaders are stored raw in the tilebuffer and will
+    * have 0 as their pixel format. Assumes dithering is set, I don't know of a
+    * case when it makes sense to turn off dithering. */
+   return pixfmt ?: GENX(panfrost_format_from_pipe_format)(f)->hw;
+}
+#endif
 #endif
 
 #endif

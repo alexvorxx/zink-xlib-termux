@@ -775,7 +775,7 @@ GENX(pan_blend_get_internal_desc)(const struct panfrost_device *dev,
       }
 
       cfg.fixed_function.conversion.memory_format =
-         panfrost_format_to_bifrost_blend(dev, fmt, dithered);
+         GENX(panfrost_dithered_format_from_pipe_format)(fmt, dithered);
    }
 
    return res;

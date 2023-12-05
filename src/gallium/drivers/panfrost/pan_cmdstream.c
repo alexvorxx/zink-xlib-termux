@@ -339,7 +339,6 @@ panfrost_emit_blend(struct panfrost_batch *batch, void *rts,
       }
 
 #if PAN_ARCH >= 6
-      const struct panfrost_device *dev = pan_device(ctx->base.screen);
       struct panfrost_compiled_shader *fs = ctx->prog[PIPE_SHADER_FRAGMENT];
 
       /* Words 2 and 3: Internal blend */
@@ -371,8 +370,8 @@ panfrost_emit_blend(struct panfrost_batch *batch, void *rts,
              * num_comps must be set to 4
              */
             cfg.fixed_function.num_comps = 4;
-            cfg.fixed_function.conversion.memory_format =
-               panfrost_format_to_bifrost_blend(dev, format, dithered);
+            cfg.fixed_function.conversion.memory_format = GENX(
+               panfrost_dithered_format_from_pipe_format)(format, dithered);
             cfg.fixed_function.rt = i;
 
 #if PAN_ARCH <= 7

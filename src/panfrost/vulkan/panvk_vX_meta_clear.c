@@ -111,7 +111,7 @@ panvk_meta_clear_color_attachment_emit_rsd(struct panfrost_device *pdev,
       cfg.internal.fixed_function.num_comps = 4;
       cfg.internal.fixed_function.rt = rt;
       cfg.internal.fixed_function.conversion.memory_format =
-         panfrost_format_to_bifrost_blend(pdev, format, false);
+         GENX(panfrost_dithered_format_from_pipe_format)(format, false);
       cfg.internal.fixed_function.conversion.register_format =
          shader_info->bifrost.blend[0].format;
    }

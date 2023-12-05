@@ -248,7 +248,7 @@ panvk_meta_copy_to_img_emit_rsd(struct panfrost_device *pdev,
       cfg.internal.fixed_function.num_comps = 4;
       if (!raw) {
          cfg.internal.fixed_function.conversion.memory_format =
-            panfrost_format_to_bifrost_blend(pdev, fmt, false);
+            GENX(panfrost_dithered_format_from_pipe_format)(fmt, false);
          cfg.internal.fixed_function.conversion.register_format =
             MALI_REGISTER_FILE_FORMAT_F32;
       } else {

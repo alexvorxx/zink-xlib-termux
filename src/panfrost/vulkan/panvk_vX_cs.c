@@ -627,7 +627,6 @@ panvk_per_arch(emit_blend)(const struct panvk_device *dev,
       cfg.load_destination = pan_blend_reads_dest(blend->rts[rt].equation);
       cfg.round_to_fb_precision = !dithered;
 
-      const struct panfrost_device *pdev = &dev->physical_device->pdev;
       const struct util_format_description *format_desc =
          util_format_description(rts->format);
       unsigned chan_size = 0;
@@ -660,7 +659,7 @@ panvk_per_arch(emit_blend)(const struct panvk_device *dev,
        */
       cfg.internal.fixed_function.num_comps = 4;
       cfg.internal.fixed_function.conversion.memory_format =
-         panfrost_format_to_bifrost_blend(pdev, rts->format, dithered);
+         GENX(panfrost_dithered_format_from_pipe_format)(rts->format, dithered);
       cfg.internal.fixed_function.conversion.register_format =
          bifrost_blend_type_from_nir(pipeline->fs.info.bifrost.blend[rt].type);
       cfg.internal.fixed_function.rt = rt;

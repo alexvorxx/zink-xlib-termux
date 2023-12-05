@@ -45,86 +45,13 @@ pack_header = """%(license)s
 
 #ifndef __OPENCL_VERSION__
 #include <stdio.h>
-#else
-#define assert(cond)
-#endif
-
 #include "util/bitpack_helpers.h"
-
-#ifndef __gen_validate_value
-#define __gen_validate_value(x)
-#endif
-
-#ifndef __intel_field_functions
-#define __intel_field_functions
-
-#ifdef NDEBUG
-#define NDEBUG_UNUSED __attribute__((unused))
+#include "genX_helpers.h"
 #else
-#define NDEBUG_UNUSED
-#endif
-
-static inline __attribute__((always_inline)) uint64_t
-__gen_offset(uint64_t v, NDEBUG_UNUSED uint32_t start, NDEBUG_UNUSED uint32_t end)
-{
-   __gen_validate_value(v);
-#ifndef NDEBUG
-   uint64_t mask = (~0ull >> (64 - (end - start + 1))) << start;
-
-   assert((v & ~mask) == 0);
-#endif
-
-   return v;
-}
-
-static inline __attribute__((always_inline)) uint64_t
-__gen_offset_nonzero(uint64_t v, uint32_t start, uint32_t end)
-{
-   assert(v != 0ull);
-   return __gen_offset(v, start, end);
-}
-
-#ifndef __OPENCL_VERSION__
-static inline __attribute__((always_inline)) uint64_t
-__gen_address(__gen_user_data *data, void *location,
-              __gen_address_type address, uint32_t delta,
-              __attribute__((unused)) uint32_t start, uint32_t end)
-{
-   uint64_t addr_u64 = __gen_combine_address(data, location, address, delta);
-   if (end == 31) {
-      return addr_u64;
-   } else if (end < 63) {
-      const unsigned shift = 63 - end;
-      return (addr_u64 << shift) >> shift;
-   } else {
-      return addr_u64;
-   }
-}
-#else
-static inline __attribute__((always_inline)) uint64_t
-__gen_address(__gen_address_type address,
-              __attribute__((unused)) uint32_t start, uint32_t end)
-{
-   if (end < 63) {
-      const unsigned shift = 63 - end;
-      return (address << shift) >> shift;
-   } else {
-      return address;
-   }
-}
-#endif
-
-#ifndef __gen_address_type
-#error #define __gen_address_type before including this file
-#endif
-
-#ifndef __gen_user_data
-#error #define __gen_combine_address before including this file
+#include "genX_cl_helpers.h"
 #endif
 
 #undef NDEBUG_UNUSED
-
-#endif
 
 """
 
@@ -190,7 +117,7 @@ class Field(object):
 
     def emit_template_struct(self, dim):
         if self.type == 'address':
-            type = '__gen_address_type'
+            type = 'uint64_t' if self.parser.opencl else '__gen_address_type'
         elif self.type == 'bool':
             type = 'bool'
         elif self.type == 'float':
@@ -290,7 +217,7 @@ class Group(object):
                 dwords[index + 1] = dwords[index]
                 index = index + 1
 
-    def collect_dwords_and_length(self):
+    def collect_dwords_and_length(self, repack=False):
         dwords = {}
         self.collect_dwords(dwords, 0, "")
 
@@ -307,7 +234,7 @@ class Group(object):
 
         return (dwords, length)
 
-    def emit_pack_function(self, dwords, length):
+    def emit_pack_function(self, dwords, length, repack=False):
         for index in range(length):
             # Handle MBZ dwords
             if not index in dwords:
@@ -331,8 +258,20 @@ class Group(object):
                 name = field.name + field.dim
                 if field.is_struct_type() and field.start % 32 == 0:
                     print("")
-                    print("   %s_pack(data, &dw[%d], &values->%s);" %
-                          (self.parser.gen_prefix(safe_name(field.type)), index, name))
+                    if repack:
+                        if self.parser.opencl:
+                            print("   %s_repack(&dw[%d], &origin[%d], &values->%s);" %
+                                  (self.parser.gen_prefix(safe_name(field.type)), index, index, name))
+                        else:
+                            print("   %s_pack(data, &dw[%d], &origin[%d], &values->%s);" %
+                                  (self.parser.gen_prefix(safe_name(field.type)), index, index, name))
+                    else:
+                        if self.parser.opencl:
+                            print("   %s_pack(&dw[%d], &values->%s);" %
+                                  (self.parser.gen_prefix(safe_name(field.type)), index, name))
+                        else:
+                            print("   %s_pack(data, &dw[%d], &values->%s);" %
+                                  (self.parser.gen_prefix(safe_name(field.type)), index, name))
                     continue
 
             # Pack any fields of struct type first so we have integer values
@@ -343,8 +282,20 @@ class Group(object):
                     name = field.name + field.dim
                     print("")
                     print("   uint32_t v%d_%d;" % (index, field_index))
-                    print("   %s_pack(data, &v%d_%d, &values->%s);" %
-                          (self.parser.gen_prefix(safe_name(field.type)), index, field_index, name))
+                    if repack:
+                        if self.parser.opencl:
+                            print("   %s_repack(&v%d_%d, &origin[%d], &values->%s);" %
+                                  (self.parser.gen_prefix(safe_name(field.type)), index, field_index, index, name))
+                        else:
+                            print("   %s_repack(data, &v%d_%d, &origin[%d], &values->%s);" %
+                                  (self.parser.gen_prefix(safe_name(field.type)), index, field_index, index, name))
+                    else:
+                        if self.parser.opencl:
+                            print("   %s_pack(&v%d_%d, &values->%s);" %
+                                  (self.parser.gen_prefix(safe_name(field.type)), index, field_index, name))
+                        else:
+                            print("   %s_pack(data, &v%d_%d, &values->%s);" %
+                                  (self.parser.gen_prefix(safe_name(field.type)), index, field_index, name))
                     field_index = field_index + 1
 
             print("")
@@ -364,7 +315,7 @@ class Group(object):
             if dw.size == 32 and dw.address == None:
                 v = None
                 print("   dw[%d] =" % index)
-            elif len(dw.fields) > address_count:
+            elif len(dw.fields) > address_count or repack:
                 v = "v%d" % index
                 print("   const uint%d_t %s =" % (dw.size, v))
             else:
@@ -372,13 +323,21 @@ class Group(object):
 
             field_index = 0
             non_address_fields = []
+
+            if repack:
+                non_address_fields.append("origin[%d]" % index)
+                if dw.size > 32:
+                    non_address_fields.append("((uint64_t)origin[%d] << 32)" % (index + 1))
+
             for field in dw.fields:
-                if field.type != "mbo" and field.type != "mbz":
+                if field.type != "mbo" and field.type != "mbz" and field.type != "repack":
                     name = field.name + field.dim
 
                 nz = "_nonzero" if field.nonzero else ""
 
-                if field.type == "mbo":
+                if field.type == "repack":
+                    non_address_fields.append("origin[%d]" % index)
+                elif field.type == "mbo":
                     non_address_fields.append("util_bitpack_ones(%d, %d)" % \
                         (field.start - dword_start, field.end - dword_start))
                 elif field.type == "mbz":
@@ -422,9 +381,9 @@ class Group(object):
             if dw.size == 32:
                 if dw.address:
                     if self.parser.opencl:
-                        print("   dw[%d] = __gen_address(values->%s, %d, %d);" %
+                        print("   dw[%d] = __gen_address(values->%s, %d, %d) | %s;" %
                               (index, dw.address.name + field.dim,
-                               dw.address.start - dword_start, dw.address.end - dword_start))
+                               dw.address.start - dword_start, dw.address.end - dword_start, v))
                     else:
                         print("   dw[%d] = __gen_address(data, &dw[%d], values->%s, %s, %d, %d);" %
                               (index, index, dw.address.name + field.dim, v,
@@ -434,9 +393,9 @@ class Group(object):
             if dw.address:
                 v_address = "v%d_address" % index
                 if self.parser.opencl:
-                    print("   const uint64_t %s =\n      __gen_address(values->%s, %d, %d);" %
+                    print("   const uint64_t %s =\n      __gen_address(values->%s, %d, %d) | %s;" %
                           (v_address, dw.address.name + field.dim,
-                           dw.address.start - dword_start, dw.address.end - dword_start))
+                           dw.address.start - dword_start, dw.address.end - dword_start, v))
                 else:
                     print("   const uint64_t %s =\n      __gen_address(data, &dw[%d], values->%s, %s, %d, %d);" %
                           (v_address, index, dw.address.name + field.dim, v,
@@ -457,13 +416,14 @@ class Value(object):
         self.dont_use = int(attrs["dont_use"]) != 0 if "dont_use" in attrs else False
 
 class Parser(object):
-    def __init__(self, opencl):
+    def __init__(self, opencl, repack):
         self.instruction = None
         self.structs = {}
         # Set of enum names we've seen.
         self.enums = set()
         self.registers = {}
         self.opencl = opencl
+        self.repack = repack
 
     def gen_prefix(self, name):
         if name[0] == "_":
@@ -555,28 +515,46 @@ class Parser(object):
         group.emit_template_struct("")
         print("};\n")
 
-    def emit_pack_function(self, name, group):
+    def emit_pack_function(self, name, group, repack=False):
         name = self.gen_prefix(name)
-        if self.opencl:
-            print(textwrap.dedent("""\
-            static inline __attribute__((always_inline)) void
-            %s_pack(__attribute__((unused)) global void * restrict dst,
-                  %s__attribute__((unused)) const struct %s * restrict values)
-            {""") % (name, ' ' * len(name), name))
+        if repack:
+            if self.opencl:
+                print(textwrap.dedent("""\
+                static inline __attribute__((always_inline)) void
+                %s_repack(__attribute__((unused)) global void * restrict dst,
+                        %s__attribute__((unused)) global const uint32_t * origin,
+                        %s__attribute__((unused)) const struct %s * restrict values)
+                {""") % (name, ' ' * len(name), ' ' * len(name), name))
+            else:
+                print(textwrap.dedent("""\
+                static inline __attribute__((always_inline)) void
+                %s_repack(__attribute__((unused)) __gen_user_data *data,
+                        %s__attribute__((unused)) void * restrict dst,
+                        %s__attribute__((unused)) global const uint32_t * origin,
+                        %s__attribute__((unused)) const struct %s * restrict values)
+                {""") % (name, ' ' * len(name), ' ' * len(name), ' ' * len(name), name))
         else:
-            print(textwrap.dedent("""\
-            static inline __attribute__((always_inline)) void
-            %s_pack(__attribute__((unused)) __gen_user_data *data,
-                  %s__attribute__((unused)) void * restrict dst,
-                  %s__attribute__((unused)) const struct %s * restrict values)
-            {""") % (name, ' ' * len(name), ' ' * len(name), name))
+            if self.opencl:
+                print(textwrap.dedent("""\
+                static inline __attribute__((always_inline)) void
+                %s_pack(__attribute__((unused)) global void * restrict dst,
+                      %s__attribute__((unused)) const struct %s * restrict values)
+                {""") % (name, ' ' * len(name), name))
+            else:
+                print(textwrap.dedent("""\
+                static inline __attribute__((always_inline)) void
+                %s_pack(__attribute__((unused)) __gen_user_data *data,
+                      %s__attribute__((unused)) void * restrict dst,
+                      %s__attribute__((unused)) const struct %s * restrict values)
+                {""") % (name, ' ' * len(name), ' ' * len(name), name))
 
-        (dwords, length) = group.collect_dwords_and_length()
+        (dwords, length) = group.collect_dwords_and_length(repack)
         if length:
             # Cast dst to make header C++ friendly
-            print("   uint32_t * restrict dw = (uint32_t * restrict) dst;")
+            type_name = "global uint32_t *" if self.opencl else "uint32_t * restrict"
+            print("   %s dw = (%s) dst;" % (type_name, type_name))
 
-            group.emit_pack_function(dwords, length)
+            group.emit_pack_function(dwords, length, repack)
 
         print("}\n")
 
@@ -609,8 +587,9 @@ class Parser(object):
             print('')
 
         self.emit_template_struct(self.instruction, self.group)
-
         self.emit_pack_function(self.instruction, self.group)
+        if self.repack:
+            self.emit_pack_function(self.instruction, self.group, repack=True)
 
     def emit_register(self):
         name = self.register
@@ -633,6 +612,8 @@ class Parser(object):
 
         self.emit_template_struct(self.struct, self.group)
         self.emit_pack_function(self.struct, self.group)
+        if self.repack:
+            self.emit_pack_function(self.struct, self.group, repack=True)
 
     def emit_enum(self):
         print('enum %s {' % self.gen_prefix(self.enum))
@@ -662,6 +643,7 @@ def parse_args():
     p.add_argument('--include-symbols', nargs='?', type=str, action='store',
                    help="List of instruction/structures to generate")
     p.add_argument('--opencl', action='store_true', help="Generate OpenCL code")
+    p.add_argument('--repack', action='store_true', help="Emit repacking code")
 
     pargs = p.parse_args()
 
@@ -688,7 +670,7 @@ def main():
     genxml.filter_engines(engines)
     if pargs.include_symbols:
         genxml.filter_symbols(pargs.include_symbols.split(','))
-    p = Parser(pargs.opencl)
+    p = Parser(pargs.opencl, pargs.repack)
     p.emit_genxml(genxml)
 
 if __name__ == '__main__':

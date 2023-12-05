@@ -132,7 +132,7 @@ if with_tests and not with_platform_android
       'genxml_test',
       ['tests/genxml_test.c', gentest_pack],
       include_directories : [inc_include, inc_src, inc_intel],
-      dependencies : [idep_mesautil, idep_intel_dev],
+      dependencies : [idep_mesautil, idep_intel_dev, idep_genxml],
       link_with : libintel_common,
       c_args : [
         '-DGENXML_DIR="@0@"'.format(fs.parent(genxml_path)),

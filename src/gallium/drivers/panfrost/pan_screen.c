@@ -619,7 +619,7 @@ panfrost_walk_dmabuf_modifiers(struct pipe_screen *screen,
    bool afbc =
       dev->has_afbc && panfrost_format_supports_afbc(dev->arch, format);
    bool ytr = panfrost_afbc_can_ytr(format);
-   bool tiled_afbc = panfrost_afbc_can_tile(dev);
+   bool tiled_afbc = panfrost_afbc_can_tile(dev->arch);
 
    unsigned count = 0;
 

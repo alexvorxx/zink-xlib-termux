@@ -240,7 +240,14 @@ bool panfrost_afbc_can_ytr(enum pipe_format format);
 
 bool panfrost_afbc_can_pack(enum pipe_format format);
 
-bool panfrost_afbc_can_tile(const struct panfrost_device *dev);
+/*
+ * Check if a gen supports AFBC with tiled headers (and hence also solid
+ * colour blocks).
+ */
+static inline bool panfrost_afbc_can_tile(unsigned arch)
+{
+   return arch >= 7;
+}
 
 /*
  * Represents the block size of a single plane. For AFBC, this represents the

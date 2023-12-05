@@ -380,7 +380,7 @@ static bool
 panfrost_should_tile_afbc(const struct panfrost_device *dev,
                           const struct panfrost_resource *pres)
 {
-   return panfrost_afbc_can_tile(dev) && pres->base.width0 >= 128 &&
+   return panfrost_afbc_can_tile(dev->arch) && pres->base.width0 >= 128 &&
           pres->base.height0 >= 128 && !(dev->debug & PAN_DBG_FORCE_PACK);
 }
 

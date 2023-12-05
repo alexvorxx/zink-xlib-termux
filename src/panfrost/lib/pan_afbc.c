@@ -191,13 +191,3 @@ panfrost_afbc_can_pack(enum pipe_format format)
 
    return desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB;
 }
-
-/*
- * Check if the device supports AFBC with tiled headers (and hence also solid
- * colour blocks).
- */
-bool
-panfrost_afbc_can_tile(const struct panfrost_device *dev)
-{
-   return (dev->arch >= 7);
-}

@@ -504,14 +504,14 @@ panvk_write_img_desc(struct panvk_device *dev, struct panvk_descriptor_set *set,
                      uint32_t binding, uint32_t elem,
                      const VkDescriptorImageInfo *pImageInfo)
 {
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
    VK_FROM_HANDLE(panvk_image_view, view, pImageInfo->imageView);
 
    unsigned img_idx = panvk_img_idx(set, binding, elem);
    void *attrib_buf = (uint8_t *)set->img_attrib_bufs +
                       (pan_size(ATTRIBUTE_BUFFER) * 2 * img_idx);
 
-   set->img_fmts[img_idx] = pdev->formats[view->pview.format].hw;
+   set->img_fmts[img_idx] =
+      GENX(panfrost_format_from_pipe_format)(view->pview.format)->hw;
    memcpy(attrib_buf, view->descs.img_attrib_buf,
           pan_size(ATTRIBUTE_BUFFER) * 2);
 
@@ -542,14 +542,14 @@ panvk_write_img_buf_desc(struct panvk_device *dev,
                          struct panvk_descriptor_set *set, uint32_t binding,
                          uint32_t elem, const VkBufferView bufferView)
 {
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
    VK_FROM_HANDLE(panvk_buffer_view, view, bufferView);
 
    unsigned img_idx = panvk_img_idx(set, binding, elem);
    void *attrib_buf = (uint8_t *)set->img_attrib_bufs +
                       (pan_size(ATTRIBUTE_BUFFER) * 2 * img_idx);
 
-   set->img_fmts[img_idx] = pdev->formats[view->fmt].hw;
+   set->img_fmts[img_idx] =
+      GENX(panfrost_format_from_pipe_format)(view->fmt)->hw;
    memcpy(attrib_buf, view->descs.img_attrib_buf,
           pan_size(ATTRIBUTE_BUFFER) * 2);
 

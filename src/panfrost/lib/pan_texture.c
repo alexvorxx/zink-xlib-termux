@@ -685,7 +685,7 @@ GENX(panfrost_new_texture)(const struct panfrost_device *dev,
    const struct pan_image *base_image = pan_image_view_get_plane(iview, 0);
    const struct pan_image_layout *layout = &base_image->layout;
    enum pipe_format format = iview->format;
-   uint32_t mali_format = dev->formats[format].hw;
+   uint32_t mali_format = GENX(panfrost_format_from_pipe_format)(format)->hw;
    unsigned char swizzle[4];
 
    ASSERTED const struct util_format_description *desc =

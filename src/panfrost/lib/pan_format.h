@@ -63,10 +63,13 @@ extern const struct pan_blendable_format
    panfrost_blendable_formats_v7[PIPE_FORMAT_COUNT];
 extern const struct pan_blendable_format
    panfrost_blendable_formats_v9[PIPE_FORMAT_COUNT];
+
+#define panfrost_pipe_format_v4 panfrost_pipe_format_v5
 extern const struct panfrost_format panfrost_pipe_format_v5[PIPE_FORMAT_COUNT];
 extern const struct panfrost_format panfrost_pipe_format_v6[PIPE_FORMAT_COUNT];
 extern const struct panfrost_format panfrost_pipe_format_v7[PIPE_FORMAT_COUNT];
 extern const struct panfrost_format panfrost_pipe_format_v9[PIPE_FORMAT_COUNT];
+#define panfrost_pipe_format_v10 panfrost_pipe_format_v9
 
 /* Helpers to construct swizzles */
 
@@ -146,6 +149,14 @@ struct pan_decomposed_swizzle
    (MALI_RGB_COMPONENT_ORDER_##swizzle) | ((MALI_##mali) << 12) |              \
       (((MALI_SRGB_##srgb)) << 20)
 
+#endif
+
+#ifdef PAN_ARCH
+static inline const struct panfrost_format *
+GENX(panfrost_format_from_pipe_format)(enum pipe_format f)
+{
+   return &GENX(panfrost_pipe_format)[f];
+}
 #endif
 
 #endif

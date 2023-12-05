@@ -886,7 +886,8 @@ pan_blitter_emit_varying(struct pan_pool *pool)
    pan_pack(varying.cpu, ATTRIBUTE, cfg) {
       cfg.buffer_index = 0;
       cfg.offset_enable = PAN_ARCH <= 5;
-      cfg.format = pool->dev->formats[PIPE_FORMAT_R32G32B32_FLOAT].hw;
+      cfg.format =
+         GENX(panfrost_format_from_pipe_format)(PIPE_FORMAT_R32G32B32_FLOAT)->hw;
 
 #if PAN_ARCH >= 9
       cfg.attribute_type = MALI_ATTRIBUTE_TYPE_1D;

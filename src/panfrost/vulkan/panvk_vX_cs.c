@@ -77,7 +77,6 @@ panvk_varying_hw_format(const struct panvk_device *dev,
                         const struct panvk_varyings_info *varyings,
                         gl_shader_stage stage, unsigned idx)
 {
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
    gl_varying_slot loc = varyings->stage[stage].loc[idx];
 
    switch (loc) {
@@ -95,8 +94,11 @@ panvk_varying_hw_format(const struct panvk_device *dev,
       return (MALI_SNAP_4 << 12) | MALI_RGB_COMPONENT_ORDER_RGBA;
 #endif
    default:
-      if (varyings->varying[loc].format != PIPE_FORMAT_NONE)
-         return pdev->formats[varyings->varying[loc].format].hw;
+      if (varyings->varying[loc].format != PIPE_FORMAT_NONE) {
+         enum pipe_format f = varyings->varying[loc].format;
+
+         return GENX(panfrost_format_from_pipe_format)(f)->hw;
+      }
 #if PAN_ARCH >= 7
       return (MALI_CONSTANT << 12) | MALI_RGB_COMPONENT_ORDER_0000;
 #else
@@ -279,7 +281,7 @@ panvk_emit_attrib(const struct panvk_device *dev,
                   const struct panvk_attrib_buf *bufs, unsigned buf_count,
                   unsigned idx, void *attrib)
 {
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
+   enum pipe_format f = attribs->attrib[idx].format;
    unsigned buf_idx = attribs->attrib[idx].buf;
    const struct panvk_attrib_buf_info *buf_info = &attribs->buf[buf_idx];
 
@@ -290,7 +292,7 @@ panvk_emit_attrib(const struct panvk_device *dev,
       if (buf_info->per_instance)
          cfg.offset += draw->first_instance * buf_info->stride;
 
-      cfg.format = pdev->formats[attribs->attrib[idx].format].hw;
+      cfg.format = GENX(panfrost_format_from_pipe_format)(f)->hw;
    }
 }
 

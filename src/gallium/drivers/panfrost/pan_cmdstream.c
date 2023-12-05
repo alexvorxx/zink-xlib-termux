@@ -192,7 +192,8 @@ panfrost_create_sampler_state(struct pipe_context *pctx,
     * hardware otherwise supports. When packing border colours, we need to
     * undo this bijection, by swizzling with its inverse.
     */
-   unsigned mali_format = panfrost_pipe_format_v7[cso->border_color_format].hw;
+   unsigned mali_format =
+      GENX(panfrost_format_from_pipe_format)(cso->border_color_format)->hw;
    enum mali_rgb_component_order order = mali_format & BITFIELD_MASK(12);
 
    unsigned char inverted_swizzle[4];
@@ -1142,7 +1143,8 @@ panfrost_upload_rt_conversion_sysval(struct panfrost_batch *batch,
          GENX(pan_blend_get_internal_desc)(dev, format, rt, size, false) >> 32;
    } else {
       pan_pack(&uniform->u[0], INTERNAL_CONVERSION, cfg)
-         cfg.memory_format = dev->formats[PIPE_FORMAT_NONE].hw;
+         cfg.memory_format =
+            GENX(panfrost_format_from_pipe_format)(PIPE_FORMAT_NONE)->hw;
    }
 }
 #endif
@@ -1708,7 +1710,6 @@ static void
 emit_image_attribs(struct panfrost_context *ctx, enum pipe_shader_type shader,
                    struct mali_attribute_packed *attribs, unsigned first_buf)
 {
-   struct panfrost_device *dev = pan_device(ctx->base.screen);
    unsigned last_bit = util_last_bit(ctx->image_mask[shader]);
 
    for (unsigned i = 0; i < last_bit; ++i) {
@@ -1718,7 +1719,7 @@ emit_image_attribs(struct panfrost_context *ctx, enum pipe_shader_type shader,
          /* Continuation record means 2 buffers per image */
          cfg.buffer_index = first_buf + (i * 2);
          cfg.offset_enable = (PAN_ARCH <= 5);
-         cfg.format = dev->formats[format].hw;
+         cfg.format = GENX(panfrost_format_from_pipe_format)(format)->hw;
       }
    }
 }
@@ -2252,7 +2253,8 @@ panfrost_emit_varying(const struct panfrost_device *dev,
     * dEQP-GLES3.functional.shaders.conditionals.if.sequence_statements_vertex
     */
    gl_varying_slot loc = varying.location;
-   mali_pixel_format format = dev->formats[pipe_format].hw;
+   mali_pixel_format format =
+      GENX(panfrost_format_from_pipe_format)(pipe_format)->hw;
 
    if (util_varying_is_point_coord(loc, point_sprite_mask)) {
       pan_emit_vary_special(dev, out, present, PAN_VARY_PNTCOORD);
@@ -3181,7 +3183,7 @@ panfrost_pack_attribute(struct panfrost_device *dev,
       cfg.frequency = (el.instance_divisor > 0)
                          ? MALI_ATTRIBUTE_FREQUENCY_INSTANCE
                          : MALI_ATTRIBUTE_FREQUENCY_VERTEX;
-      cfg.format = dev->formats[el.src_format].hw;
+      cfg.format = GENX(panfrost_format_from_pipe_format)(el.src_format)->hw;
       cfg.offset = el.src_offset;
       cfg.buffer_index = el.vertex_buffer_index;
       cfg.stride = el.src_stride;
@@ -3214,7 +3216,7 @@ panfrost_create_vertex_elements_state(struct pipe_context *pctx,
                                       const struct pipe_vertex_element *elements)
 {
    struct panfrost_vertex_state *so = CALLOC_STRUCT(panfrost_vertex_state);
-   struct panfrost_device *dev = pan_device(pctx->screen);
+   UNUSED struct panfrost_device *dev = pan_device(pctx->screen);
 
    so->num_elements = num_elements;
    memcpy(so->pipe, elements, sizeof(*elements) * num_elements);
@@ -3235,14 +3237,16 @@ panfrost_create_vertex_elements_state(struct pipe_context *pctx,
 
    for (int i = 0; i < num_elements; ++i) {
       enum pipe_format fmt = elements[i].src_format;
-      so->formats[i] = dev->formats[fmt].hw;
+      so->formats[i] = GENX(panfrost_format_from_pipe_format)(fmt)->hw;
 
       assert(MALI_EXTRACT_INDEX(so->formats[i]) && "format must be supported");
    }
 
    /* Let's also prepare vertex builtins */
-   so->formats[PAN_VERTEX_ID] = dev->formats[PIPE_FORMAT_R32_UINT].hw;
-   so->formats[PAN_INSTANCE_ID] = dev->formats[PIPE_FORMAT_R32_UINT].hw;
+   so->formats[PAN_VERTEX_ID] =
+      GENX(panfrost_format_from_pipe_format)(PIPE_FORMAT_R32_UINT)->hw;
+   so->formats[PAN_INSTANCE_ID] =
+      GENX(panfrost_format_from_pipe_format)(PIPE_FORMAT_R32_UINT)->hw;
 #endif
 
    return so;

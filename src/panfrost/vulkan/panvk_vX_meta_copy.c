@@ -80,8 +80,10 @@ panvk_meta_copy_emit_varying(struct pan_pool *pool, mali_ptr coordinates,
       ;
 
    pan_pack(varying.cpu, ATTRIBUTE, cfg) {
+      enum pipe_format f = PIPE_FORMAT_R32G32B32_FLOAT;
+
       cfg.buffer_index = 0;
-      cfg.format = pool->dev->formats[PIPE_FORMAT_R32G32B32_FLOAT].hw;
+      cfg.format = GENX(panfrost_format_from_pipe_format)(f)->hw;
    }
 
    *varyings = varying.gpu;

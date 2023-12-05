@@ -204,7 +204,7 @@ panvk_per_arch(CreateBufferView)(VkDevice _device,
 
       pan_pack(view->descs.tex, TEXTURE, cfg) {
          cfg.dimension = MALI_TEXTURE_DIMENSION_1D;
-         cfg.format = pdev->formats[view->fmt].hw;
+         cfg.format = GENX(panfrost_format_from_pipe_format)(view->fmt)->hw;
          cfg.width = view->elems;
          cfg.depth = cfg.height = 1;
          cfg.swizzle = PAN_V6_SWIZZLE(R, G, B, A);

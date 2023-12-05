@@ -249,20 +249,8 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
    dev->compressed_formats = panfrost_query_compressed_formats(dev);
    dev->tiler_features = panfrost_query_tiler_features(dev);
    dev->has_afbc = panfrost_query_afbc(dev, dev->arch);
-
-   if (dev->arch <= 5) {
-      dev->formats = panfrost_pipe_format_v5;
-      dev->blendable_formats = panfrost_blendable_formats_v5;
-   } else if (dev->arch == 6) {
-      dev->formats = panfrost_pipe_format_v6;
-      dev->blendable_formats = panfrost_blendable_formats_v6;
-   } else if (dev->arch <= 7) {
-      dev->formats = panfrost_pipe_format_v7;
-      dev->blendable_formats = panfrost_blendable_formats_v7;
-   } else {
-      dev->formats = panfrost_pipe_format_v9;
-      dev->blendable_formats = panfrost_blendable_formats_v9;
-   }
+   dev->formats = panfrost_format_table(dev->arch);
+   dev->blendable_formats = panfrost_blendable_format_table(dev->arch);
 
    util_sparse_array_init(&dev->bo_map, sizeof(struct panfrost_bo), 512);
 

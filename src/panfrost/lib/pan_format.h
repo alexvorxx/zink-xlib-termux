@@ -66,12 +66,48 @@ extern const struct pan_blendable_format
    panfrost_blendable_formats_v9[PIPE_FORMAT_COUNT];
 #define panfrost_blendable_formats_v10 panfrost_blendable_formats_v9
 
+static inline const struct pan_blendable_format *
+panfrost_blendable_format_table(unsigned arch)
+{
+   switch (arch) {
+#define FMT_TABLE(x) case x: return panfrost_blendable_formats_v ## x
+   FMT_TABLE(4);
+   FMT_TABLE(5);
+   FMT_TABLE(6);
+   FMT_TABLE(7);
+   FMT_TABLE(9);
+   FMT_TABLE(10);
+#undef FMT_TABLE
+   default:
+      assert(!"Unsupported architecture");
+      return NULL;
+   }
+}
+
 #define panfrost_pipe_format_v4 panfrost_pipe_format_v5
 extern const struct panfrost_format panfrost_pipe_format_v5[PIPE_FORMAT_COUNT];
 extern const struct panfrost_format panfrost_pipe_format_v6[PIPE_FORMAT_COUNT];
 extern const struct panfrost_format panfrost_pipe_format_v7[PIPE_FORMAT_COUNT];
 extern const struct panfrost_format panfrost_pipe_format_v9[PIPE_FORMAT_COUNT];
 #define panfrost_pipe_format_v10 panfrost_pipe_format_v9
+
+static inline const struct panfrost_format *
+panfrost_format_table(unsigned arch)
+{
+   switch (arch) {
+#define FMT_TABLE(x) case x: return panfrost_pipe_format_v ## x
+   FMT_TABLE(4);
+   FMT_TABLE(5);
+   FMT_TABLE(6);
+   FMT_TABLE(7);
+   FMT_TABLE(9);
+   FMT_TABLE(10);
+#undef FMT_TABLE
+   default:
+      assert(!"Unsupported architecture");
+      return NULL;
+   }
+}
 
 /* Helpers to construct swizzles */
 

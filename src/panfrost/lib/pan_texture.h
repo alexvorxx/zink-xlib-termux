@@ -286,9 +286,6 @@ unsigned panfrost_texture_offset(const struct pan_image_layout *layout,
                                  unsigned level, unsigned array_idx,
                                  unsigned surface_idx);
 
-struct pan_pool;
-struct pan_jc;
-
 /* DRM modifier helper */
 
 #define drm_is_afbc(mod)                                                       \

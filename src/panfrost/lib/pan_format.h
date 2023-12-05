@@ -189,6 +189,16 @@ struct pan_decomposed_swizzle
 
 #endif
 
+static inline bool panfrost_format_is_yuv(enum pipe_format f)
+{
+   enum util_format_layout layout = util_format_description(f)->layout;
+
+   /* Mesa's subsampled RGB formats are considered YUV formats on Mali */
+   return layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED ||
+          layout == UTIL_FORMAT_LAYOUT_PLANAR2 ||
+          layout == UTIL_FORMAT_LAYOUT_PLANAR3;
+}
+
 #ifdef PAN_ARCH
 static inline const struct panfrost_format *
 GENX(panfrost_format_from_pipe_format)(enum pipe_format f)

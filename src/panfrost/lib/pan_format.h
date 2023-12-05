@@ -55,6 +55,7 @@ struct pan_blendable_format {
    mali_pixel_format bifrost[2];
 };
 
+#define panfrost_blendable_formats_v4 panfrost_blendable_formats_v5
 extern const struct pan_blendable_format
    panfrost_blendable_formats_v5[PIPE_FORMAT_COUNT];
 extern const struct pan_blendable_format
@@ -63,6 +64,7 @@ extern const struct pan_blendable_format
    panfrost_blendable_formats_v7[PIPE_FORMAT_COUNT];
 extern const struct pan_blendable_format
    panfrost_blendable_formats_v9[PIPE_FORMAT_COUNT];
+#define panfrost_blendable_formats_v10 panfrost_blendable_formats_v9
 
 #define panfrost_pipe_format_v4 panfrost_pipe_format_v5
 extern const struct panfrost_format panfrost_pipe_format_v5[PIPE_FORMAT_COUNT];
@@ -156,6 +158,12 @@ static inline const struct panfrost_format *
 GENX(panfrost_format_from_pipe_format)(enum pipe_format f)
 {
    return &GENX(panfrost_pipe_format)[f];
+}
+
+static inline const struct pan_blendable_format *
+GENX(panfrost_blendable_format_from_pipe_format)(enum pipe_format f)
+{
+   return &GENX(panfrost_blendable_formats)[f];
 }
 #endif
 

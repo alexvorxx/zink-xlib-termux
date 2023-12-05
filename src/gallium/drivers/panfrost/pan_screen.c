@@ -616,7 +616,8 @@ panfrost_walk_dmabuf_modifiers(struct pipe_screen *screen,
 {
    /* Query AFBC status */
    struct panfrost_device *dev = pan_device(screen);
-   bool afbc = dev->has_afbc && panfrost_format_supports_afbc(dev, format);
+   bool afbc =
+      dev->has_afbc && panfrost_format_supports_afbc(dev->arch, format);
    bool ytr = panfrost_afbc_can_ytr(format);
    bool tiled_afbc = panfrost_afbc_can_tile(dev);
 

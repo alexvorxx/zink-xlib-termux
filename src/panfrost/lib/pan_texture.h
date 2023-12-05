@@ -224,10 +224,15 @@ enum pan_afbc_mode {
    PAN_AFBC_MODE_INVALID
 };
 
-bool panfrost_format_supports_afbc(const struct panfrost_device *dev,
-                                   enum pipe_format format);
-
 enum pan_afbc_mode panfrost_afbc_format(unsigned arch, enum pipe_format format);
+
+/* A format may be compressed as AFBC if it has an AFBC internal format */
+
+static inline bool
+panfrost_format_supports_afbc(unsigned arch, enum pipe_format format)
+{
+   return panfrost_afbc_format(arch, format) != PAN_AFBC_MODE_INVALID;
+}
 
 #define AFBC_HEADER_BYTES_PER_TILE 16
 

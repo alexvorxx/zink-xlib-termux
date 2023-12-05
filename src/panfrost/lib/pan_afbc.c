@@ -163,15 +163,6 @@ panfrost_afbc_format(unsigned arch, enum pipe_format format)
    /* clang-format on */
 }
 
-/* A format may be compressed as AFBC if it has an AFBC internal format */
-
-bool
-panfrost_format_supports_afbc(const struct panfrost_device *dev,
-                              enum pipe_format format)
-{
-   return panfrost_afbc_format(dev->arch, format) != PAN_AFBC_MODE_INVALID;
-}
-
 /* The lossless colour transform (AFBC_FORMAT_MOD_YTR) requires RGB. */
 
 bool

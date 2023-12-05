@@ -166,7 +166,7 @@ panvk_image_select_mod(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
       return DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
 
    /* Only a small selection of formats are AFBC'able */
-   if (!panfrost_format_supports_afbc(pdev, fmt))
+   if (!panfrost_format_supports_afbc(pdev->arch, fmt))
       return DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
 
    /* 3D AFBC is only supported on Bifrost v7+. It's supposed to

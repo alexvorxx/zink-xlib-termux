@@ -1565,6 +1565,18 @@ panfrost_create_sampler_view_bo(struct panfrost_sampler_view *so,
       payload.gpu += pan_size(TEXTURE);
    }
 
+   if ((device->debug & PAN_DBG_YUV) && panfrost_format_is_yuv(format)) {
+      const struct util_format_description *desc =
+         util_format_description(format);
+
+      if (desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
+         iview.swizzle[2] = PIPE_SWIZZLE_1;
+      } else if (desc->layout == UTIL_FORMAT_LAYOUT_PLANAR2) {
+         iview.swizzle[1] = PIPE_SWIZZLE_0;
+         iview.swizzle[2] = PIPE_SWIZZLE_0;
+      }
+   }
+
    GENX(panfrost_new_texture)(device, &iview, tex, &payload);
 }
 

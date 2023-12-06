@@ -24,10 +24,6 @@
 #ifndef INTEL_GEM_H
 #define INTEL_GEM_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <assert.h>
 #include <time.h>
 #include <errno.h>
@@ -40,6 +36,10 @@ extern "C" {
 #include "intel_engine.h"
 #include "drm-uapi/drm.h"
 #include "util/macros.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define RCS_TIMESTAMP 0x2358
 

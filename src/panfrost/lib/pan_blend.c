@@ -625,8 +625,7 @@ pan_inline_blend_constants(nir_builder *b, nir_intrinsic_instr *intr,
 }
 
 static nir_shader *
-pan_blend_create_shader(const struct panfrost_device *dev,
-                        const struct pan_blend_state *state,
+pan_blend_create_shader(const struct pan_blend_state *state,
                         nir_alu_type src0_type, nir_alu_type src1_type,
                         unsigned rt)
 {
@@ -872,8 +871,7 @@ GENX(pan_blend_get_shader_locked)(const struct panfrost_device *dev,
 
    memcpy(variant->constants, state->constants, sizeof(variant->constants));
 
-   nir_shader *nir =
-      pan_blend_create_shader(dev, state, src0_type, src1_type, rt);
+   nir_shader *nir = pan_blend_create_shader(state, src0_type, src1_type, rt);
 
    /* Compile the NIR shader */
    struct panfrost_compile_inputs inputs = {

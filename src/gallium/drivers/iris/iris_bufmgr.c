@@ -234,6 +234,7 @@ struct iris_bufmgr {
    struct intel_bind_timeline bind_timeline; /* Xe only */
    bool bo_reuse:1;
    bool use_global_vm:1;
+   bool compute_engine_supported:1;
 
    struct intel_aux_map_context *aux_map_ctx;
 
@@ -2330,6 +2331,11 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
    bufmgr->devinfo.has_compute_engine = engine_info &&
                                         intel_engines_count(engine_info,
                                                             INTEL_ENGINE_CLASS_COMPUTE);
+   bufmgr->compute_engine_supported = bufmgr->devinfo.has_compute_engine &&
+                                      intel_engines_supported_count(bufmgr->fd,
+                                                                    &bufmgr->devinfo,
+                                                                    engine_info,
+                                                                    INTEL_ENGINE_CLASS_COMPUTE);
    free(engine_info);
 
    if (!iris_bufmgr_init_global_vm(bufmgr))
@@ -2582,6 +2588,12 @@ bool
 iris_bufmgr_use_global_vm_id(struct iris_bufmgr *bufmgr)
 {
    return bufmgr->use_global_vm;
+}
+
+bool
+iris_bufmgr_compute_engine_supported(struct iris_bufmgr *bufmgr)
+{
+   return bufmgr->compute_engine_supported;
 }
 
 /**

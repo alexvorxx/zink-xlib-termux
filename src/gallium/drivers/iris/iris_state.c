@@ -6238,7 +6238,6 @@ static void
 init_aux_map_state(struct iris_batch *batch)
 {
    struct iris_screen *screen = batch->screen;
-   const struct intel_device_info *devinfo = screen->devinfo;
    void *aux_map_ctx = iris_bufmgr_get_aux_map_context(screen->bufmgr);
    if (!aux_map_ctx)
       return;
@@ -6249,8 +6248,7 @@ init_aux_map_state(struct iris_batch *batch)
    uint32_t reg = 0;
    switch (batch->name) {
    case IRIS_BATCH_COMPUTE:
-      if (devinfo->has_compute_engine &&
-          debug_get_bool_option("INTEL_COMPUTE_CLASS", false)) {
+      if (iris_bufmgr_compute_engine_supported(screen->bufmgr)) {
          reg = GENX(COMPCS0_AUX_TABLE_BASE_ADDR_num);
          break;
       }

@@ -149,11 +149,6 @@ void pan_blend_shaders_cleanup(struct panfrost_device *dev);
 
 #ifdef PAN_ARCH
 
-nir_shader *GENX(pan_blend_create_shader)(const struct panfrost_device *dev,
-                                          const struct pan_blend_state *state,
-                                          nir_alu_type src0_type,
-                                          nir_alu_type src1_type, unsigned rt);
-
 #if PAN_ARCH >= 6
 uint64_t GENX(pan_blend_get_internal_desc)(enum pipe_format fmt, unsigned rt,
                                            unsigned force_size, bool dithered);

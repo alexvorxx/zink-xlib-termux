@@ -96,3 +96,10 @@ i915_engine_get_info(int fd)
    free(i915_engines_info);
    return intel_engines_info;
 }
+
+bool
+i915_engines_is_guc_semaphore_functional(int fd, const struct intel_device_info *info)
+{
+   /* TODO */
+   return false;
+}

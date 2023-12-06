@@ -44,3 +44,12 @@ intel_engine_get_info(int fd, enum intel_kmd_type type);
 int intel_engines_count(const struct intel_query_engine_info *info,
                         enum intel_engine_class engine_class);
 const char *intel_engines_class_to_string(enum intel_engine_class engine_class);
+
+/* Taking into consideration KMD, platform and debug options check for
+ * restrictions and return the number of engines of giving engine class
+ * can actually be used.
+ */
+int
+intel_engines_supported_count(int fd, const struct intel_device_info *info,
+                              const struct intel_query_engine_info *engine_info,
+                              enum intel_engine_class engine_class);

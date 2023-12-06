@@ -102,3 +102,10 @@ error_free_xe_engines:
    free(xe_engines);
    return NULL;
 }
+
+bool
+xe_engines_is_guc_semaphore_functional(int fd, const struct intel_device_info *info)
+{
+   /* TODO */
+   return false;
+}

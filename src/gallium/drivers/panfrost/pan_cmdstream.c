@@ -1131,15 +1131,13 @@ panfrost_upload_rt_conversion_sysval(struct panfrost_batch *batch,
                                      unsigned size_and_rt,
                                      struct sysval_uniform *uniform)
 {
-   struct panfrost_context *ctx = batch->ctx;
-   struct panfrost_device *dev = pan_device(ctx->base.screen);
    unsigned rt = size_and_rt & 0xF;
    unsigned size = size_and_rt >> 4;
 
    if (rt < batch->key.nr_cbufs && batch->key.cbufs[rt]) {
       enum pipe_format format = batch->key.cbufs[rt]->format;
       uniform->u[0] =
-         GENX(pan_blend_get_internal_desc)(dev, format, rt, size, false) >> 32;
+         GENX(pan_blend_get_internal_desc)(format, rt, size, false) >> 32;
    } else {
       pan_pack(&uniform->u[0], INTERNAL_CONVERSION, cfg)
          cfg.memory_format =

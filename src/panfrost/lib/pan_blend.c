@@ -726,8 +726,7 @@ GENX(pan_blend_create_shader)(const struct panfrost_device *dev,
 
 #if PAN_ARCH >= 6
 uint64_t
-GENX(pan_blend_get_internal_desc)(const struct panfrost_device *dev,
-                                  enum pipe_format fmt, unsigned rt,
+GENX(pan_blend_get_internal_desc)(enum pipe_format fmt, unsigned rt,
                                   unsigned force_size, bool dithered)
 {
    const struct util_format_description *desc = util_format_description(fmt);
@@ -795,8 +794,8 @@ inline_rt_conversion(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    struct rt_conversion_inputs *inputs = data;
    unsigned rt = nir_intrinsic_base(intr);
    unsigned size = nir_alu_type_get_type_size(nir_intrinsic_src_type(intr));
-   uint64_t conversion = GENX(pan_blend_get_internal_desc)(
-      inputs->dev, inputs->formats[rt], rt, size, false);
+   uint64_t conversion =
+      GENX(pan_blend_get_internal_desc)(inputs->formats[rt], rt, size, false);
 
    b->cursor = nir_after_instr(&intr->instr);
    nir_def_rewrite_uses(&intr->def, nir_imm_int(b, conversion >> 32));
@@ -888,7 +887,7 @@ GENX(pan_blend_get_shader_locked)(const struct panfrost_device *dev,
 
 #if PAN_ARCH >= 6
    inputs.blend.bifrost_blend_desc =
-      GENX(pan_blend_get_internal_desc)(dev, key.format, key.rt, 0, false);
+      GENX(pan_blend_get_internal_desc)(key.format, key.rt, 0, false);
 #endif
 
    struct pan_shader_info info;

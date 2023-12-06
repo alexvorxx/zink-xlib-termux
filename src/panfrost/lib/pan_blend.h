@@ -155,8 +155,7 @@ nir_shader *GENX(pan_blend_create_shader)(const struct panfrost_device *dev,
                                           nir_alu_type src1_type, unsigned rt);
 
 #if PAN_ARCH >= 6
-uint64_t GENX(pan_blend_get_internal_desc)(const struct panfrost_device *dev,
-                                           enum pipe_format fmt, unsigned rt,
+uint64_t GENX(pan_blend_get_internal_desc)(enum pipe_format fmt, unsigned rt,
                                            unsigned force_size, bool dithered);
 
 bool GENX(pan_inline_rt_conversion)(nir_shader *s,

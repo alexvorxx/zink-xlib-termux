@@ -6089,7 +6089,9 @@ batch_emit_fast_color_dummy_blit(struct iris_batch *batch)
 #if GFX_VERx10 >= 125
    iris_emit_cmd(batch, GENX(XY_FAST_COLOR_BLT), blt) {
       blt.DestinationBaseAddress = batch->screen->workaround_address;
-      blt.DestinationMOCS = batch->screen->isl_dev.mocs.blitter_dst;
+      blt.DestinationMOCS = iris_mocs(batch->screen->workaround_address.bo,
+                                      &batch->screen->isl_dev,
+                                      ISL_SURF_USAGE_BLITTER_DST_BIT);
       blt.DestinationPitch = 63;
       blt.DestinationX2 = 1;
       blt.DestinationY2 = 4;

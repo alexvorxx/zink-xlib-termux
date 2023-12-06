@@ -1998,10 +1998,6 @@ blorp_xy_block_copy_blt(struct blorp_batch *batch,
          blt.SourceClearValueEnable = !!params->src.clear_color_addr.buffer;
          blt.SourceClearAddress = params->src.clear_color_addr;
       }
-
-      /* XeHP needs special MOCS values for the blitter */
-      blt.DestinationMOCS = isl_dev->mocs.blitter_dst;
-      blt.SourceMOCS = isl_dev->mocs.blitter_src;
 #endif
    }
 #endif
@@ -2084,8 +2080,7 @@ blorp_xy_fast_color_blit(struct blorp_batch *batch,
          blt.DestinationClearAddress = params->dst.clear_color_addr;
       }
 
-      /* XeHP needs special MOCS values for the blitter */
-      blt.DestinationMOCS = isl_dev->mocs.blitter_dst;
+      blt.DestinationMOCS = params->dst.addr.mocs;
 #endif
    }
 #endif

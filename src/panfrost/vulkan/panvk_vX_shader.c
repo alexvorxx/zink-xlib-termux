@@ -365,7 +365,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
       for (unsigned rt = 0; rt < MAX_RTS; ++rt)
          rt_formats[rt] = blend_state->rts[rt].format;
 
-      NIR_PASS_V(nir, GENX(pan_inline_rt_conversion), pdev, rt_formats);
+      NIR_PASS_V(nir, GENX(pan_inline_rt_conversion), rt_formats);
    }
 
    GENX(pan_shader_compile)(nir, &inputs, &shader->binary, &shader->info);

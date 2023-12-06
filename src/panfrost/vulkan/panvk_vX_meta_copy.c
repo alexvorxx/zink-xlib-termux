@@ -427,7 +427,7 @@ panvk_meta_copy_img2img_shader(struct panfrost_device *pdev,
 
    util_dynarray_init(&binary, NULL);
    pan_shader_preprocess(b.shader, inputs.gpu_id);
-   NIR_PASS_V(b.shader, GENX(pan_inline_rt_conversion), pdev, &dstfmt);
+   NIR_PASS_V(b.shader, GENX(pan_inline_rt_conversion), &dstfmt);
    GENX(pan_shader_compile)(b.shader, &inputs, &binary, shader_info);
 
    shader_info->fs.sample_shading = is_ms;
@@ -971,7 +971,7 @@ panvk_meta_copy_buf2img_shader(struct panfrost_device *pdev,
    pan_shader_preprocess(b.shader, inputs.gpu_id);
 
    enum pipe_format rt_formats[8] = {key.imgfmt};
-   NIR_PASS_V(b.shader, GENX(pan_inline_rt_conversion), pdev, rt_formats);
+   NIR_PASS_V(b.shader, GENX(pan_inline_rt_conversion), rt_formats);
 
    GENX(pan_shader_compile)(b.shader, &inputs, &binary, shader_info);
    shader_info->push.count =

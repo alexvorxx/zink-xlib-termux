@@ -779,22 +779,17 @@ GENX(pan_blend_get_internal_desc)(enum pipe_format fmt, unsigned rt,
    return res;
 }
 
-struct rt_conversion_inputs {
-   const struct panfrost_device *dev;
-   enum pipe_format *formats;
-};
-
 static bool
 inline_rt_conversion(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
    if (intr->intrinsic != nir_intrinsic_load_rt_conversion_pan)
       return false;
 
-   struct rt_conversion_inputs *inputs = data;
+   enum pipe_format *formats = data;
    unsigned rt = nir_intrinsic_base(intr);
    unsigned size = nir_alu_type_get_type_size(nir_intrinsic_src_type(intr));
    uint64_t conversion =
-      GENX(pan_blend_get_internal_desc)(inputs->formats[rt], rt, size, false);
+      GENX(pan_blend_get_internal_desc)(formats[rt], rt, size, false);
 
    b->cursor = nir_after_instr(&intr->instr);
    nir_def_rewrite_uses(&intr->def, nir_imm_int(b, conversion >> 32));
@@ -802,13 +797,11 @@ inline_rt_conversion(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 }
 
 bool
-GENX(pan_inline_rt_conversion)(nir_shader *s, const struct panfrost_device *dev,
-                               enum pipe_format *formats)
+GENX(pan_inline_rt_conversion)(nir_shader *s, enum pipe_format *formats)
 {
    return nir_shader_intrinsics_pass(
       s, inline_rt_conversion,
-      nir_metadata_block_index | nir_metadata_dominance,
-      &(struct rt_conversion_inputs){.dev = dev, .formats = formats});
+      nir_metadata_block_index | nir_metadata_dominance, formats);
 }
 #endif
 
@@ -892,7 +885,7 @@ GENX(pan_blend_get_shader_locked)(const struct panfrost_device *dev,
    pan_shader_preprocess(nir, inputs.gpu_id);
 
 #if PAN_ARCH >= 6
-   NIR_PASS_V(nir, GENX(pan_inline_rt_conversion), dev, rt_formats);
+   NIR_PASS_V(nir, GENX(pan_inline_rt_conversion), rt_formats);
 #else
    NIR_PASS_V(nir, pan_lower_framebuffer, rt_formats,
               pan_raw_format_mask_midgard(rt_formats), MAX2(key.nr_samples, 1),

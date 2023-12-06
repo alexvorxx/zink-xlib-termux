@@ -153,9 +153,7 @@ void pan_blend_shaders_cleanup(struct panfrost_device *dev);
 uint64_t GENX(pan_blend_get_internal_desc)(enum pipe_format fmt, unsigned rt,
                                            unsigned force_size, bool dithered);
 
-bool GENX(pan_inline_rt_conversion)(nir_shader *s,
-                                    const struct panfrost_device *dev,
-                                    enum pipe_format *formats);
+bool GENX(pan_inline_rt_conversion)(nir_shader *s, enum pipe_format *formats);
 #endif
 
 /* Take blend_shaders.lock before calling this function and release it when

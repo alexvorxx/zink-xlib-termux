@@ -222,7 +222,8 @@ panfrost_get_blend(struct panfrost_batch *batch, unsigned rti,
    pthread_mutex_lock(&dev->blend_shaders.lock);
    struct pan_blend_shader_variant *shader =
       pan_screen(ctx->base.screen)
-         ->vtbl.get_blend_shader(dev, &pan_blend, col0_type, col1_type, rti);
+         ->vtbl.get_blend_shader(&dev->blend_shaders, &pan_blend, col0_type,
+                                 col1_type, rti);
 
    /* Size check and upload */
    unsigned offset = *shader_offset;

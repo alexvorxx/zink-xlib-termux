@@ -482,17 +482,20 @@ pan_blend_shader_key_equal(const void *a, const void *b)
 }
 
 void
-pan_blend_shaders_init(struct panfrost_device *dev)
+pan_blend_shader_cache_init(struct pan_blend_shader_cache *cache,
+                            unsigned gpu_id)
 {
-   dev->blend_shaders.shaders = _mesa_hash_table_create(
-      NULL, pan_blend_shader_key_hash, pan_blend_shader_key_equal);
-   pthread_mutex_init(&dev->blend_shaders.lock, NULL);
+   cache->gpu_id = gpu_id;
+   cache->shaders = _mesa_hash_table_create(NULL, pan_blend_shader_key_hash,
+                                            pan_blend_shader_key_equal);
+   pthread_mutex_init(&cache->lock, NULL);
 }
 
 void
-pan_blend_shaders_cleanup(struct panfrost_device *dev)
+pan_blend_shader_cache_cleanup(struct pan_blend_shader_cache *cache)
 {
-   _mesa_hash_table_destroy(dev->blend_shaders.shaders, NULL);
+   _mesa_hash_table_destroy(cache->shaders, NULL);
+   pthread_mutex_destroy(&cache->lock);
 }
 
 #else /* ifndef PAN_ARCH */
@@ -806,7 +809,7 @@ GENX(pan_inline_rt_conversion)(nir_shader *s, enum pipe_format *formats)
 #endif
 
 struct pan_blend_shader_variant *
-GENX(pan_blend_get_shader_locked)(const struct panfrost_device *dev,
+GENX(pan_blend_get_shader_locked)(struct pan_blend_shader_cache *cache,
                                   const struct pan_blend_state *state,
                                   nir_alu_type src0_type,
                                   nir_alu_type src1_type, unsigned rt)
@@ -824,19 +827,19 @@ GENX(pan_blend_get_shader_locked)(const struct panfrost_device *dev,
    };
 
    /* Blend shaders should only be used for blending on Bifrost onwards */
-   assert(dev->arch <= 5 || state->logicop_enable ||
+   assert(PAN_ARCH <= 5 || state->logicop_enable ||
           !pan_blend_is_opaque(state->rts[rt].equation));
    assert(state->rts[rt].equation.color_mask != 0);
 
    struct hash_entry *he =
-      _mesa_hash_table_search(dev->blend_shaders.shaders, &key);
+      _mesa_hash_table_search(cache->shaders, &key);
    struct pan_blend_shader *shader = he ? he->data : NULL;
 
    if (!shader) {
-      shader = rzalloc(dev->blend_shaders.shaders, struct pan_blend_shader);
+      shader = rzalloc(cache->shaders, struct pan_blend_shader);
       shader->key = key;
       list_inithead(&shader->variants);
-      _mesa_hash_table_insert(dev->blend_shaders.shaders, &shader->key, shader);
+      _mesa_hash_table_insert(cache->shaders, &shader->key, shader);
    }
 
    list_for_each_entry(struct pan_blend_shader_variant, iter, &shader->variants,
@@ -868,7 +871,7 @@ GENX(pan_blend_get_shader_locked)(const struct panfrost_device *dev,
 
    /* Compile the NIR shader */
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = panfrost_device_gpu_id(dev),
+      .gpu_id = cache->gpu_id,
       .is_blend = true,
       .blend.nr_samples = key.nr_samples,
    };
@@ -889,7 +892,7 @@ GENX(pan_blend_get_shader_locked)(const struct panfrost_device *dev,
 #else
    NIR_PASS_V(nir, pan_lower_framebuffer, rt_formats,
               pan_raw_format_mask_midgard(rt_formats), MAX2(key.nr_samples, 1),
-              panfrost_device_gpu_id(dev) < 0x700);
+              cache->gpu_id < 0x700);
 #endif
 
    GENX(pan_shader_compile)(nir, &inputs, &variant->binary, &info);

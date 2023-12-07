@@ -35,7 +35,12 @@
 #include "panfrost/util/pan_ir.h"
 
 struct MALI_BLEND_EQUATION;
-struct panfrost_device;
+
+struct pan_blend_shader_cache {
+   unsigned gpu_id;
+   struct hash_table *shaders;
+   pthread_mutex_t lock;
+};
 
 struct pan_blend_equation {
    unsigned blend_enable                  : 1;
@@ -143,9 +148,10 @@ void pan_blend_to_fixed_function_equation(const struct pan_blend_equation eq,
 
 uint32_t pan_pack_blend(const struct pan_blend_equation equation);
 
-void pan_blend_shaders_init(struct panfrost_device *dev);
+void pan_blend_shader_cache_init(struct pan_blend_shader_cache *cache,
+                                 unsigned gpu_id);
 
-void pan_blend_shaders_cleanup(struct panfrost_device *dev);
+void pan_blend_shader_cache_cleanup(struct pan_blend_shader_cache *cache);
 
 #ifdef PAN_ARCH
 
@@ -160,7 +166,7 @@ bool GENX(pan_inline_rt_conversion)(nir_shader *s, enum pipe_format *formats);
  * you're done with the shader variant object.
  */
 struct pan_blend_shader_variant *GENX(pan_blend_get_shader_locked)(
-   const struct panfrost_device *dev, const struct pan_blend_state *state,
+   struct pan_blend_shader_cache *cache, const struct pan_blend_state *state,
    nir_alu_type src0_type, nir_alu_type src1_type, unsigned rt);
 #endif
 

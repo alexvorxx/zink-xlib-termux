@@ -38,6 +38,7 @@
 #include "util/u_dynarray.h"
 
 #include "panfrost/util/pan_ir.h"
+#include "pan_blend.h"
 #include "pan_pool.h"
 #include "pan_util.h"
 
@@ -74,11 +75,6 @@ struct pan_blitter {
       struct hash_table *rsds;
       pthread_mutex_t lock;
    } rsds;
-};
-
-struct pan_blend_shaders {
-   struct hash_table *shaders;
-   pthread_mutex_t lock;
 };
 
 struct pan_indirect_dispatch {
@@ -197,7 +193,7 @@ struct panfrost_device {
    } bo_cache;
 
    struct pan_blitter blitter;
-   struct pan_blend_shaders blend_shaders;
+   struct pan_blend_shader_cache blend_shaders;
    struct pan_indirect_dispatch indirect_dispatch;
 
    /* Tiler heap shared across all tiler jobs, allocated against the

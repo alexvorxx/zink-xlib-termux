@@ -359,7 +359,7 @@ pan_blitter_get_blend_shaders(struct panfrost_device *dev, unsigned rt_count,
 
       pthread_mutex_lock(&dev->blend_shaders.lock);
       struct pan_blend_shader_variant *b = GENX(pan_blend_get_shader_locked)(
-         dev, &blend_state, blit_shader->blend_types[i],
+         &dev->blend_shaders, &blend_state, blit_shader->blend_types[i],
          nir_type_float32, /* unused */
          i);
 

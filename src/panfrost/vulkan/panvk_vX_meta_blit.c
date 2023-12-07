@@ -226,7 +226,8 @@ panvk_per_arch(meta_blit_init)(struct panvk_physical_device *dev)
                    false);
    panvk_pool_init(&dev->meta.blitter.desc_pool, &dev->pdev, NULL, 0, 16 * 1024,
                    "panvk_meta blitter descriptor pool", false);
-   pan_blend_shaders_init(&dev->pdev);
+   pan_blend_shader_cache_init(&dev->pdev.blend_shaders,
+                               panfrost_device_gpu_id(&dev->pdev));
    GENX(pan_blitter_init)
    (&dev->pdev, &dev->meta.blitter.bin_pool.base,
     &dev->meta.blitter.desc_pool.base);
@@ -236,7 +237,7 @@ void
 panvk_per_arch(meta_blit_cleanup)(struct panvk_physical_device *dev)
 {
    GENX(pan_blitter_cleanup)(&dev->pdev);
-   pan_blend_shaders_cleanup(&dev->pdev);
+   pan_blend_shader_cache_cleanup(&dev->pdev.blend_shaders);
    panvk_pool_cleanup(&dev->meta.blitter.desc_pool);
    panvk_pool_cleanup(&dev->meta.blitter.bin_pool);
 }

@@ -1213,8 +1213,9 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    batch->tlsinfo.tls.size = pipeline->tls_size;
    batch->tlsinfo.wls.size = pipeline->wls_size;
    if (batch->tlsinfo.wls.size) {
-      batch->wls_total_size =
-         pan_wls_mem_size(pdev, &dispatch.wg_count, batch->tlsinfo.wls.size);
+      batch->wls_total_size = pan_wls_adjust_size(batch->tlsinfo.wls.size) *
+                              pan_wls_instances(&dispatch.wg_count) *
+                              pdev->core_id_range;
    }
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);

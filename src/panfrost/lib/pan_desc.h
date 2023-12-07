@@ -154,15 +154,6 @@ pan_wls_adjust_size(unsigned wls_size)
    return util_next_power_of_two(MAX2(wls_size, 128));
 }
 
-static inline unsigned
-pan_wls_mem_size(const struct panfrost_device *dev,
-                 const struct pan_compute_dim *dim, unsigned wls_size)
-{
-   unsigned instances = pan_wls_instances(dim);
-
-   return pan_wls_adjust_size(wls_size) * instances * dev->core_id_range;
-}
-
 #ifdef PAN_ARCH
 
 #if PAN_ARCH >= 5

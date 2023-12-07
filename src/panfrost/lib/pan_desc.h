@@ -81,6 +81,10 @@ struct pan_tiler_context {
          bool disable;
          bool no_hierarchical_tiling;
          struct panfrost_bo *polygon_list;
+         struct {
+            mali_ptr start;
+            unsigned size;
+         } heap;
       } midgard;
    };
 };

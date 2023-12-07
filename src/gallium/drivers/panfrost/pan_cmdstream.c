@@ -3709,6 +3709,8 @@ batch_get_polygon_list(struct panfrost_batch *batch)
       batch->tiler_ctx.midgard.disable = !has_draws;
       batch->tiler_ctx.midgard.no_hierarchical_tiling =
          dev->model->quirks.no_hierarchical_tiling;
+      batch->tiler_ctx.midgard.heap.start = dev->tiler_heap->ptr.gpu;
+      batch->tiler_ctx.midgard.heap.size = panfrost_bo_size(dev->tiler_heap);
    }
 
    return batch->tiler_ctx.midgard.polygon_list->ptr.gpu;

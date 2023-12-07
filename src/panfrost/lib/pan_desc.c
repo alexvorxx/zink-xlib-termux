@@ -571,7 +571,7 @@ pan_emit_midgard_tiler(const struct panfrost_device *dev,
                        const struct pan_fb_info *fb,
                        const struct pan_tiler_context *tiler_ctx, void *out)
 {
-   bool hierarchy = !dev->model->quirks.no_hierarchical_tiling;
+   bool hierarchy = !tiler_ctx->midgard.no_hierarchical_tiling;
 
    assert(tiler_ctx->midgard.polygon_list->ptr.gpu);
 

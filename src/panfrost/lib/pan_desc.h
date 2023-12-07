@@ -79,6 +79,7 @@ struct pan_tiler_context {
       mali_ptr bifrost;
       struct {
          bool disable;
+         bool no_hierarchical_tiling;
          struct panfrost_bo *polygon_list;
       } midgard;
    };

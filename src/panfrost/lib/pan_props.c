@@ -34,6 +34,7 @@
 #include "pan_bo.h"
 #include "pan_device.h"
 #include "pan_encoder.h"
+#include "pan_samples.h"
 #include "pan_texture.h"
 #include "pan_util.h"
 #include "wrap.h"
@@ -274,7 +275,9 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
    pthread_mutex_init(&dev->submit_lock, NULL);
 
    /* Done once on init */
-   panfrost_upload_sample_positions(dev);
+   dev->sample_positions = panfrost_bo_create(
+      dev, panfrost_sample_positions_buffer_size(), 0, "Sample positions");
+   panfrost_upload_sample_positions(dev->sample_positions->ptr.cpu);
    return;
 
 err_free_kmod_dev:

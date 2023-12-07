@@ -34,6 +34,7 @@
 #include "pan_blitter.h"
 #include "pan_desc.h"
 #include "pan_encoder.h"
+#include "pan_samples.h"
 
 #include "util/rounding.h"
 #include "util/u_pack_color.h"
@@ -132,9 +133,11 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
       GENX(pan_emit_tls)(&batch->tlsinfo, batch->tls.cpu);
 
    if (batch->fb.desc.cpu) {
-      fbinfo->sample_positions =
-         panfrost_sample_positions(&cmdbuf->device->physical_device->pdev,
-                                   pan_sample_pattern(fbinfo->nr_samples));
+      struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
+
+      fbinfo->sample_positions = pdev->sample_positions->ptr.gpu +
+                                 panfrost_sample_positions_offset(
+                                    pan_sample_pattern(fbinfo->nr_samples));
 
       batch->fb.desc.gpu |=
          GENX(pan_emit_fbd)(&cmdbuf->state.fb.info, &batch->tlsinfo,

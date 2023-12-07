@@ -51,6 +51,7 @@
 #include "pan_job.h"
 #include "pan_pool.h"
 #include "pan_resource.h"
+#include "pan_samples.h"
 #include "pan_shader.h"
 #include "pan_texture.h"
 #include "pan_util.h"
@@ -1114,7 +1115,8 @@ panfrost_upload_sample_positions_sysval(struct panfrost_batch *batch,
 
    unsigned samples = util_framebuffer_get_num_samples(&batch->key);
    uniform->du[0] =
-      panfrost_sample_positions(dev, panfrost_sample_pattern(samples));
+      dev->sample_positions->ptr.gpu +
+      panfrost_sample_positions_offset(panfrost_sample_pattern(samples));
 }
 
 static void
@@ -2502,7 +2504,8 @@ emit_fbd(struct panfrost_batch *batch, struct pan_fb_info *fb)
 
 #if PAN_ARCH >= 6
    fb->sample_positions =
-      panfrost_sample_positions(dev, pan_sample_pattern(fb->nr_samples));
+      dev->sample_positions->ptr.gpu +
+      panfrost_sample_positions_offset(pan_sample_pattern(fb->nr_samples));
 #endif
 
    batch->framebuffer.gpu |=

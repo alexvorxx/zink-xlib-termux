@@ -256,11 +256,6 @@ void panfrost_close_device(struct panfrost_device *dev);
 bool panfrost_supports_compressed_format(struct panfrost_device *dev,
                                          unsigned fmt);
 
-void panfrost_upload_sample_positions(struct panfrost_device *dev);
-
-mali_ptr panfrost_sample_positions(const struct panfrost_device *dev,
-                                   enum mali_sample_pattern pattern);
-
 unsigned panfrost_query_l2_slices(const struct panfrost_device *dev);
 
 static inline struct panfrost_bo *

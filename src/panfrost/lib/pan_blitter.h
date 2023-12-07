@@ -25,14 +25,11 @@
 #ifndef __PAN_BLITTER_H
 #define __PAN_BLITTER_H
 
-#include "genxml/gen_macros.h"
-
 #include "util/format/u_format.h"
 #include "pan_desc.h"
 #include "pan_pool.h"
 #include "pan_texture.h"
 #include "pan_util.h"
-#include "panfrost-job.h"
 
 struct pan_fb_info;
 struct pan_jc;

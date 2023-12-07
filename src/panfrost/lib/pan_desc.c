@@ -307,8 +307,7 @@ pan_emit_zs_crc_ext(const struct pan_fb_info *fb, int rt_crc, void *zs_crc_ext)
 /* Measure format as it appears in the tile buffer */
 
 static unsigned
-pan_bytes_per_pixel_tib(const struct panfrost_device *dev,
-                        enum pipe_format format)
+pan_bytes_per_pixel_tib(enum pipe_format format)
 {
    const struct pan_blendable_format *bf =
      GENX(panfrost_blendable_format_from_pipe_format)(format);
@@ -326,8 +325,7 @@ pan_bytes_per_pixel_tib(const struct panfrost_device *dev,
 }
 
 static unsigned
-pan_cbuf_bytes_per_pixel(const struct panfrost_device *dev,
-                         const struct pan_fb_info *fb)
+pan_cbuf_bytes_per_pixel(const struct pan_fb_info *fb)
 {
    unsigned sum = 0;
 
@@ -337,7 +335,7 @@ pan_cbuf_bytes_per_pixel(const struct panfrost_device *dev,
       if (!rt)
          continue;
 
-      sum += pan_bytes_per_pixel_tib(dev, rt->format) * rt->nr_samples;
+      sum += pan_bytes_per_pixel_tib(rt->format) * rt->nr_samples;
    }
 
    return sum;
@@ -387,8 +385,7 @@ pan_mfbd_raw_format(unsigned bits)
 }
 
 static void
-pan_rt_init_format(const struct panfrost_device *dev,
-                   const struct pan_image_view *rt,
+pan_rt_init_format(const struct pan_image_view *rt,
                    struct MALI_RENDER_TARGET *cfg)
 {
    /* Explode details on the format */
@@ -435,7 +432,7 @@ pan_rt_init_format(const struct panfrost_device *dev,
 }
 
 static void
-pan_prepare_rt(const struct panfrost_device *dev, const struct pan_fb_info *fb,
+pan_prepare_rt(const struct pan_fb_info *fb,
                unsigned idx, unsigned cbuf_offset,
                struct MALI_RENDER_TARGET *cfg)
 {
@@ -478,7 +475,7 @@ pan_prepare_rt(const struct panfrost_device *dev, const struct pan_fb_info *fb,
 
    cfg->writeback_msaa = mali_sampling_mode(rt);
 
-   pan_rt_init_format(dev, rt, cfg);
+   pan_rt_init_format(rt, cfg);
 
    cfg->writeback_block_format = mod_to_block_fmt(image->layout.modifier);
 
@@ -567,8 +564,7 @@ GENX(pan_emit_tls)(const struct pan_tls_info *info, void *out)
 
 #if PAN_ARCH <= 5
 static void
-pan_emit_midgard_tiler(const struct panfrost_device *dev,
-                       const struct pan_fb_info *fb,
+pan_emit_midgard_tiler(const struct pan_fb_info *fb,
                        const struct pan_tiler_context *tiler_ctx, void *out)
 {
    bool hierarchy = !tiler_ctx->midgard.no_hierarchical_tiling;
@@ -592,9 +588,8 @@ pan_emit_midgard_tiler(const struct panfrost_device *dev,
             fb->width, fb->height, cfg.hierarchy_mask, hierarchy);
          cfg.polygon_list_size = panfrost_tiler_full_size(
             fb->width, fb->height, cfg.hierarchy_mask, hierarchy);
-         cfg.heap_start = dev->tiler_heap->ptr.gpu;
-         cfg.heap_end =
-            dev->tiler_heap->ptr.gpu + panfrost_bo_size(dev->tiler_heap);
+         cfg.heap_start = tiler_ctx->midgard.heap.start;
+         cfg.heap_end = cfg.heap_start + tiler_ctx->midgard.heap.size;
       }
 
       cfg.polygon_list = tiler_ctx->midgard.polygon_list->ptr.gpu;
@@ -605,11 +600,11 @@ pan_emit_midgard_tiler(const struct panfrost_device *dev,
 
 #if PAN_ARCH >= 5
 static void
-pan_emit_rt(const struct panfrost_device *dev, const struct pan_fb_info *fb,
+pan_emit_rt(const struct pan_fb_info *fb,
             unsigned idx, unsigned cbuf_offset, void *out)
 {
    pan_pack(out, RENDER_TARGET, cfg) {
-      pan_prepare_rt(dev, fb, idx, cbuf_offset, &cfg);
+      pan_prepare_rt(fb, idx, cbuf_offset, &cfg);
    }
 }
 
@@ -678,8 +673,7 @@ pan_force_clean_write(const struct pan_fb_info *fb, unsigned tile_size)
 #endif
 
 unsigned
-GENX(pan_emit_fbd)(const struct panfrost_device *dev,
-                   const struct pan_fb_info *fb, const struct pan_tls_info *tls,
+GENX(pan_emit_fbd)(const struct pan_fb_info *fb, const struct pan_tls_info *tls,
                    const struct pan_tiler_context *tiler_ctx, void *out)
 {
    void *fbd = out;
@@ -689,7 +683,7 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
    GENX(pan_emit_tls)(tls, pan_section_ptr(fbd, FRAMEBUFFER, LOCAL_STORAGE));
 #endif
 
-   unsigned bytes_per_pixel = pan_cbuf_bytes_per_pixel(dev, fb);
+   unsigned bytes_per_pixel = pan_cbuf_bytes_per_pixel(fb);
    unsigned tile_size =
       pan_select_max_tile_size(fb->tile_buf_budget, bytes_per_pixel);
 
@@ -787,7 +781,7 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
    pan_section_pack(fbd, FRAMEBUFFER, PADDING, padding)
       ;
 #else
-   pan_emit_midgard_tiler(dev, fb, tiler_ctx,
+   pan_emit_midgard_tiler(fb, tiler_ctx,
                           pan_section_ptr(fbd, FRAMEBUFFER, TILER));
 
    /* All weights set to 0, nothing to do here */
@@ -803,12 +797,12 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
    unsigned rt_count = MAX2(fb->rt_count, 1);
    unsigned cbuf_offset = 0;
    for (unsigned i = 0; i < rt_count; i++) {
-      pan_emit_rt(dev, fb, i, cbuf_offset, rtd);
+      pan_emit_rt(fb, i, cbuf_offset, rtd);
       rtd += pan_size(RENDER_TARGET);
       if (!fb->rts[i].view)
          continue;
 
-      cbuf_offset += pan_bytes_per_pixel_tib(dev, fb->rts[i].view->format) *
+      cbuf_offset += pan_bytes_per_pixel_tib(fb->rts[i].view->format) *
                      tile_size * pan_image_view_get_nr_samples(fb->rts[i].view);
 
       if (i != crc_rt)
@@ -824,8 +818,7 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
 }
 #else /* PAN_ARCH == 4 */
 unsigned
-GENX(pan_emit_fbd)(const struct panfrost_device *dev,
-                   const struct pan_fb_info *fb, const struct pan_tls_info *tls,
+GENX(pan_emit_fbd)(const struct pan_fb_info *fb, const struct pan_tls_info *tls,
                    const struct pan_tiler_context *tiler_ctx, void *fbd)
 {
    assert(fb->rt_count <= 1);
@@ -921,7 +914,7 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
          cfg.msaa = mali_sampling_mode(fb->rts[0].view);
    }
 
-   pan_emit_midgard_tiler(dev, fb, tiler_ctx,
+   pan_emit_midgard_tiler(fb, tiler_ctx,
                           pan_section_ptr(fbd, FRAMEBUFFER, TILER));
 
    /* All weights set to 0, nothing to do here */

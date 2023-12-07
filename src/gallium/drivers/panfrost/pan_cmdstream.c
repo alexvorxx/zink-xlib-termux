@@ -2505,8 +2505,8 @@ emit_fbd(struct panfrost_batch *batch, struct pan_fb_info *fb)
       panfrost_sample_positions(dev, pan_sample_pattern(fb->nr_samples));
 #endif
 
-   batch->framebuffer.gpu |= GENX(pan_emit_fbd)(
-      dev, fb, &tls, &batch->tiler_ctx, batch->framebuffer.cpu);
+   batch->framebuffer.gpu |=
+      GENX(pan_emit_fbd)(fb, &tls, &batch->tiler_ctx, batch->framebuffer.cpu);
 }
 
 /* Mark a surface as written */

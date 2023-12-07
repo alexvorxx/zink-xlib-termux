@@ -137,7 +137,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
                                    pan_sample_pattern(fbinfo->nr_samples));
 
       batch->fb.desc.gpu |=
-         GENX(pan_emit_fbd)(pdev, &cmdbuf->state.fb.info, &batch->tlsinfo,
+         GENX(pan_emit_fbd)(&cmdbuf->state.fb.info, &batch->tlsinfo,
                             &batch->tiler.ctx, batch->fb.desc.cpu);
 
       panvk_cmd_prepare_fragment_job(cmdbuf);

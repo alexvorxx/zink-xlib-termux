@@ -136,7 +136,7 @@ panfrost_resource_from_handle(struct pipe_screen *pscreen,
    };
 
    bool valid =
-      pan_image_layout_init(dev, &rsc->image.layout, &explicit_layout);
+      pan_image_layout_init(dev->arch, &rsc->image.layout, &explicit_layout);
 
    if (!valid) {
       FREE(rsc);
@@ -504,7 +504,8 @@ panfrost_resource_setup(struct panfrost_device *dev,
       .crc = panfrost_should_checksum(dev, pres),
    };
 
-   ASSERTED bool valid = pan_image_layout_init(dev, &pres->image.layout, NULL);
+   ASSERTED bool valid =
+      pan_image_layout_init(dev->arch, &pres->image.layout, NULL);
    assert(valid);
 }
 

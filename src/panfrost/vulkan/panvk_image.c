@@ -89,7 +89,7 @@ panvk_image_create(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
       .nr_slices = image->vk.mip_levels,
    };
 
-   pan_image_layout_init(pdev, &image->pimage.layout, NULL);
+   pan_image_layout_init(pdev->arch, &image->pimage.layout, NULL);
 
    *pImage = panvk_image_to_handle(image);
    return VK_SUCCESS;

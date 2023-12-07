@@ -36,7 +36,6 @@
 #include "genxml/gen_macros.h"
 #include "util/format/u_format.h"
 #include "pan_bo.h"
-#include "pan_device.h"
 #include "pan_format.h"
 #include "pan_util.h"
 
@@ -309,8 +308,7 @@ struct pan_image_explicit_layout {
 };
 
 bool
-pan_image_layout_init(const struct panfrost_device *dev,
-                      struct pan_image_layout *layout,
+pan_image_layout_init(unsigned arch, struct pan_image_layout *layout,
                       const struct pan_image_explicit_layout *explicit_layout);
 
 unsigned panfrost_get_legacy_stride(const struct pan_image_layout *layout,

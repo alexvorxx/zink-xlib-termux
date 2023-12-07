@@ -205,13 +205,12 @@ pan_afbc_body_align(uint64_t modifier)
 }
 
 static inline unsigned
-format_minimum_alignment(const struct panfrost_device *dev,
-                         enum pipe_format format, bool afbc)
+format_minimum_alignment(unsigned arch, enum pipe_format format, bool afbc)
 {
    if (afbc)
       return 16;
 
-   if (dev->arch < 7)
+   if (arch < 7)
       return 64;
 
    switch (format) {
@@ -304,8 +303,7 @@ panfrost_texture_offset(const struct pan_image_layout *layout, unsigned level,
 }
 
 bool
-pan_image_layout_init(const struct panfrost_device *dev,
-                      struct pan_image_layout *layout,
+pan_image_layout_init(unsigned arch, struct pan_image_layout *layout,
                       const struct pan_image_explicit_layout *explicit_layout)
 {
    /* Explicit stride only work with non-mipmap, non-array, single-sample
@@ -318,7 +316,7 @@ pan_image_layout_init(const struct panfrost_device *dev,
       return false;
 
    bool afbc = drm_is_afbc(layout->modifier);
-   int align_req = format_minimum_alignment(dev, layout->format, afbc);
+   int align_req = format_minimum_alignment(arch, layout->format, afbc);
 
    /* Mandate alignment */
    if (explicit_layout) {
@@ -326,7 +324,7 @@ pan_image_layout_init(const struct panfrost_device *dev,
 
       int align_mask = align_req - 1;
 
-      if (dev->arch >= 7) {
+      if (arch >= 7) {
          rejected = ((explicit_layout->offset & align_mask) ||
                      (explicit_layout->row_stride & align_mask));
       } else {
@@ -386,7 +384,7 @@ pan_image_layout_init(const struct panfrost_device *dev,
       unsigned row_stride = fmt_blocksize * effective_width * block_size.height;
 
       /* On v7+ row_stride and offset alignment requirement are equal */
-      if (dev->arch >= 7) {
+      if (arch >= 7) {
          row_stride = ALIGN_POT(row_stride, align_req);
       }
 

@@ -308,7 +308,8 @@ pan_blitter_emit_rsd(const struct pan_blit_shader_data *blit_shader,
 
 #if PAN_ARCH <= 5
 static void
-pan_blitter_get_blend_shaders(struct panfrost_device *dev, unsigned rt_count,
+pan_blitter_get_blend_shaders(struct pan_blitter_cache *cache,
+                              unsigned rt_count,
                               const struct pan_image_view **rts,
                               const struct pan_blit_shader_data *blit_shader,
                               mali_ptr *blend_shaders)
@@ -331,18 +332,18 @@ pan_blitter_get_blend_shaders(struct panfrost_device *dev, unsigned rt_count,
          .type = blit_shader->blend_types[i],
       };
 
-      pthread_mutex_lock(&dev->blitter.shaders.lock);
+      pthread_mutex_lock(&cache->shaders.lock);
       struct hash_entry *he =
-         _mesa_hash_table_search(dev->blitter.shaders.blend, &key);
+         _mesa_hash_table_search(cache->shaders.blend, &key);
       struct pan_blit_blend_shader_data *blend_shader = he ? he->data : NULL;
       if (blend_shader) {
          blend_shaders[i] = blend_shader->address;
-         pthread_mutex_unlock(&dev->blitter.shaders.lock);
+         pthread_mutex_unlock(&cache->shaders.lock);
          continue;
       }
 
       blend_shader =
-         rzalloc(dev->blitter.shaders.blend, struct pan_blit_blend_shader_data);
+         rzalloc(cache->shaders.blend, struct pan_blit_blend_shader_data);
       blend_shader->key = key;
 
       blend_state.rts[i] = (struct pan_blend_rt_state){
@@ -355,22 +356,22 @@ pan_blitter_get_blend_shaders(struct panfrost_device *dev, unsigned rt_count,
             },
       };
 
-      pthread_mutex_lock(&dev->blend_shaders.lock);
+      pthread_mutex_lock(&cache->blend_shader_cache->lock);
       struct pan_blend_shader_variant *b = GENX(pan_blend_get_shader_locked)(
-         &dev->blend_shaders, &blend_state, blit_shader->blend_types[i],
+         cache->blend_shader_cache, &blend_state, blit_shader->blend_types[i],
          nir_type_float32, /* unused */
          i);
 
       assert(b->work_reg_count <= 4);
       struct panfrost_ptr bin =
-         pan_pool_alloc_aligned(dev->blitter.shaders.pool, b->binary.size, 64);
+         pan_pool_alloc_aligned(cache->shaders.pool, b->binary.size, 64);
       memcpy(bin.cpu, b->binary.data, b->binary.size);
 
       blend_shader->address = bin.gpu | b->first_tag;
-      pthread_mutex_unlock(&dev->blend_shaders.lock);
-      _mesa_hash_table_insert(dev->blitter.shaders.blend, &blend_shader->key,
+      pthread_mutex_unlock(&cache->blend_shader_cache->lock);
+      _mesa_hash_table_insert(cache->shaders.blend, &blend_shader->key,
                               blend_shader);
-      pthread_mutex_unlock(&dev->blitter.shaders.lock);
+      pthread_mutex_unlock(&cache->shaders.lock);
       blend_shaders[i] = blend_shader->address;
    }
 }
@@ -402,12 +403,12 @@ lower_sampler_parameters(nir_builder *b, nir_intrinsic_instr *intr,
 }
 
 static const struct pan_blit_shader_data *
-pan_blitter_get_blit_shader(struct panfrost_device *dev,
+pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
                             const struct pan_blit_shader_key *key)
 {
-   pthread_mutex_lock(&dev->blitter.shaders.lock);
+   pthread_mutex_lock(&cache->shaders.lock);
    struct hash_entry *he =
-      _mesa_hash_table_search(dev->blitter.shaders.blit, key);
+      _mesa_hash_table_search(cache->shaders.blit, key);
    struct pan_blit_shader_data *shader = he ? he->data : NULL;
 
    if (shader)
@@ -604,7 +605,7 @@ pan_blitter_get_blit_shader(struct panfrost_device *dev,
    }
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = panfrost_device_gpu_id(dev),
+      .gpu_id = cache->gpu_id,
       .is_blit = true,
       .no_idvs = true,
    };
@@ -612,7 +613,7 @@ pan_blitter_get_blit_shader(struct panfrost_device *dev,
 
    util_dynarray_init(&binary, NULL);
 
-   shader = rzalloc(dev->blitter.shaders.blit, struct pan_blit_shader_data);
+   shader = rzalloc(cache->shaders.blit, struct pan_blit_shader_data);
 
    nir_shader_gather_info(b.shader, nir_shader_get_entrypoint(b.shader));
 
@@ -630,7 +631,7 @@ pan_blitter_get_blit_shader(struct panfrost_device *dev,
 
    shader->key = *key;
    shader->address =
-      pan_pool_upload_aligned(dev->blitter.shaders.pool, binary.data,
+      pan_pool_upload_aligned(cache->shaders.pool, binary.data,
                               binary.size, PAN_ARCH >= 6 ? 128 : 64);
 
    util_dynarray_fini(&binary);
@@ -644,10 +645,10 @@ pan_blitter_get_blit_shader(struct panfrost_device *dev,
    }
 #endif
 
-   _mesa_hash_table_insert(dev->blitter.shaders.blit, &shader->key, shader);
+   _mesa_hash_table_insert(cache->shaders.blit, &shader->key, shader);
 
 out:
-   pthread_mutex_unlock(&dev->blitter.shaders.lock);
+   pthread_mutex_unlock(&cache->shaders.lock);
    return shader;
 }
 
@@ -703,7 +704,7 @@ pan_blitter_get_key(struct pan_blitter_views *views)
 
 #if PAN_ARCH <= 7
 static mali_ptr
-pan_blitter_get_rsd(struct panfrost_device *dev,
+pan_blitter_get_rsd(struct pan_blitter_cache *cache,
                     struct pan_blitter_views *views)
 {
    struct pan_blit_rsd_key rsd_key = {0};
@@ -745,42 +746,43 @@ pan_blitter_get_rsd(struct panfrost_device *dev,
       rsd_key.rts[i].array = blit_key.surfaces[i].array;
    }
 
-   pthread_mutex_lock(&dev->blitter.rsds.lock);
+   pthread_mutex_lock(&cache->rsds.lock);
    struct hash_entry *he =
-      _mesa_hash_table_search(dev->blitter.rsds.rsds, &rsd_key);
+      _mesa_hash_table_search(cache->rsds.rsds, &rsd_key);
    struct pan_blit_rsd_data *rsd = he ? he->data : NULL;
    if (rsd)
       goto out;
 
-   rsd = rzalloc(dev->blitter.rsds.rsds, struct pan_blit_rsd_data);
+   rsd = rzalloc(cache->rsds.rsds, struct pan_blit_rsd_data);
    rsd->key = rsd_key;
 
    unsigned bd_count = PAN_ARCH >= 5 ? MAX2(views->rt_count, 1) : 0;
    struct panfrost_ptr rsd_ptr = pan_pool_alloc_desc_aggregate(
-      dev->blitter.rsds.pool, PAN_DESC(RENDERER_STATE),
+      cache->rsds.pool, PAN_DESC(RENDERER_STATE),
       PAN_DESC_ARRAY(bd_count, BLEND));
 
    mali_ptr blend_shaders[8] = {0};
 
    const struct pan_blit_shader_data *blit_shader =
-      pan_blitter_get_blit_shader(dev, &blit_key);
+      pan_blitter_get_blit_shader(cache, &blit_key);
 
 #if PAN_ARCH <= 5
-   pan_blitter_get_blend_shaders(dev, views->rt_count, views->dst_rts,
-                                 blit_shader, blend_shaders);
+   pan_blitter_get_blend_shaders(cache,
+                                 views->rt_count, views->dst_rts, blit_shader,
+                                 blend_shaders);
 #endif
 
    pan_blitter_emit_rsd(blit_shader, views, blend_shaders, rsd_ptr.cpu);
    rsd->address = rsd_ptr.gpu;
-   _mesa_hash_table_insert(dev->blitter.rsds.rsds, &rsd->key, rsd);
+   _mesa_hash_table_insert(cache->rsds.rsds, &rsd->key, rsd);
 
 out:
-   pthread_mutex_unlock(&dev->blitter.rsds.lock);
+   pthread_mutex_unlock(&cache->rsds.lock);
    return rsd->address;
 }
 
 static mali_ptr
-pan_blit_get_rsd(struct panfrost_device *dev,
+pan_blit_get_rsd(struct pan_blitter_cache *cache,
                  const struct pan_image_view *src_views,
                  const struct pan_image_view *dst_view)
 {
@@ -808,7 +810,7 @@ pan_blit_get_rsd(struct panfrost_device *dev,
       views.dst_rts[0] = dst_view;
    }
 
-   return pan_blitter_get_rsd(dev, &views);
+   return pan_blitter_get_rsd(cache, &views);
 }
 #endif
 
@@ -1089,7 +1091,8 @@ pan_blitter_emit_viewport(struct pan_pool *pool, uint16_t minx, uint16_t miny,
 #endif
 
 static void
-pan_preload_emit_dcd(struct pan_pool *pool, struct pan_fb_info *fb, bool zs,
+pan_preload_emit_dcd(struct pan_blitter_cache *cache,
+                     struct pan_pool *pool, struct pan_fb_info *fb, bool zs,
                      mali_ptr coordinates, mali_ptr tsd, void *out,
                      bool always_write)
 {
@@ -1128,7 +1131,7 @@ pan_preload_emit_dcd(struct pan_pool *pool, struct pan_fb_info *fb, bool zs,
       }
 
       cfg.thread_storage = tsd;
-      cfg.state = pan_blitter_get_rsd(pool->dev, &views);
+      cfg.state = pan_blitter_get_rsd(cache, &views);
 
       cfg.position = coordinates;
       cfg.viewport = pan_blitter_emit_viewport(pool, minx, miny, maxx, maxy);
@@ -1160,7 +1163,7 @@ pan_preload_emit_dcd(struct pan_pool *pool, struct pan_fb_info *fb, bool zs,
 
    struct pan_blit_shader_key key = pan_blitter_get_key(&views);
    const struct pan_blit_shader_data *blit_shader =
-      pan_blitter_get_blit_shader(pool->dev, &key);
+      pan_blitter_get_blit_shader(cache, &key);
 
    bool z = fb->zs.preload.z;
    bool s = fb->zs.preload.s;
@@ -1259,7 +1262,8 @@ pan_preload_fb_alloc_pre_post_dcds(struct pan_pool *desc_pool,
 }
 
 static void
-pan_preload_emit_pre_frame_dcd(struct pan_pool *desc_pool,
+pan_preload_emit_pre_frame_dcd(struct pan_blitter_cache *cache,
+                               struct pan_pool *desc_pool,
                                struct pan_fb_info *fb, bool zs, mali_ptr coords,
                                mali_ptr tsd)
 {
@@ -1287,7 +1291,8 @@ pan_preload_emit_pre_frame_dcd(struct pan_pool *desc_pool,
          always_write = true;
    }
 
-   pan_preload_emit_dcd(desc_pool, fb, zs, coords, tsd, dcd, always_write);
+   pan_preload_emit_dcd(cache, desc_pool, fb, zs, coords, tsd, dcd,
+                        always_write);
    if (zs) {
       enum pipe_format fmt = fb->zs.view.zs
                                 ? fb->zs.view.zs->planes[0]->layout.format
@@ -1312,7 +1317,7 @@ pan_preload_emit_pre_frame_dcd(struct pan_pool *desc_pool,
        * earlier), so let's leave it like that for now.
        */
       fb->bifrost.pre_post.modes[dcd_idx] =
-         desc_pool->dev->arch > 6
+         PAN_ARCH > 6
             ? MALI_PRE_POST_FRAME_SHADER_MODE_EARLY_ZS_ALWAYS
          : always ? MALI_PRE_POST_FRAME_SHADER_MODE_ALWAYS
                   : MALI_PRE_POST_FRAME_SHADER_MODE_INTERSECT;
@@ -1324,13 +1329,13 @@ pan_preload_emit_pre_frame_dcd(struct pan_pool *desc_pool,
 }
 #else
 static struct panfrost_ptr
-pan_preload_emit_tiler_job(struct pan_pool *desc_pool, struct pan_jc *jc,
+pan_preload_emit_tiler_job(struct pan_blitter_cache *cache, struct pan_pool *desc_pool, struct pan_jc *jc,
                            struct pan_fb_info *fb, bool zs, mali_ptr coords,
                            mali_ptr tsd)
 {
    struct panfrost_ptr job = pan_pool_alloc_desc(desc_pool, TILER_JOB);
 
-   pan_preload_emit_dcd(desc_pool, fb, zs, coords, tsd,
+   pan_preload_emit_dcd(cache, desc_pool, fb, zs, coords, tsd,
                         pan_section_ptr(job.cpu, TILER_JOB, DRAW), false);
 
    pan_section_pack(job.cpu, TILER_JOB, PRIMITIVE, cfg) {
@@ -1353,24 +1358,24 @@ pan_preload_emit_tiler_job(struct pan_pool *desc_pool, struct pan_jc *jc,
 #endif
 
 static struct panfrost_ptr
-pan_preload_fb_part(struct pan_pool *pool, struct pan_jc *jc,
-                    struct pan_fb_info *fb, bool zs, mali_ptr coords,
-                    mali_ptr tsd, mali_ptr tiler)
+pan_preload_fb_part(struct pan_blitter_cache *cache, struct pan_pool *pool,
+                    struct pan_jc *jc, struct pan_fb_info *fb, bool zs,
+                    mali_ptr coords, mali_ptr tsd, mali_ptr tiler)
 {
    struct panfrost_ptr job = {0};
 
 #if PAN_ARCH >= 6
-   pan_preload_emit_pre_frame_dcd(pool, fb, zs, coords, tsd);
+   pan_preload_emit_pre_frame_dcd(cache, pool, fb, zs, coords, tsd);
 #else
-   job = pan_preload_emit_tiler_job(pool, jc, fb, zs, coords, tsd);
+   job = pan_preload_emit_tiler_job(cache, pool, jc, fb, zs, coords, tsd);
 #endif
    return job;
 }
 
 unsigned
-GENX(pan_preload_fb)(struct pan_pool *pool, struct pan_jc *jc,
-                     struct pan_fb_info *fb, mali_ptr tsd, mali_ptr tiler,
-                     struct panfrost_ptr *jobs)
+GENX(pan_preload_fb)(struct pan_blitter_cache *cache, struct pan_pool *pool,
+                     struct pan_jc *jc, struct pan_fb_info *fb, mali_ptr tsd,
+                     mali_ptr tiler, struct panfrost_ptr *jobs)
 {
    bool preload_zs = pan_preload_needed(fb, true);
    bool preload_rts = pan_preload_needed(fb, false);
@@ -1389,14 +1394,14 @@ GENX(pan_preload_fb)(struct pan_pool *pool, struct pan_jc *jc,
    unsigned njobs = 0;
    if (preload_zs) {
       struct panfrost_ptr job =
-         pan_preload_fb_part(pool, jc, fb, true, coords, tsd, tiler);
+         pan_preload_fb_part(cache, pool, jc, fb, true, coords, tsd, tiler);
       if (jobs && job.cpu)
          jobs[njobs++] = job;
    }
 
    if (preload_rts) {
       struct panfrost_ptr job =
-         pan_preload_fb_part(pool, jc, fb, false, coords, tsd, tiler);
+         pan_preload_fb_part(cache, pool, jc, fb, false, coords, tsd, tiler);
       if (jobs && job.cpu)
          jobs[njobs++] = job;
    }
@@ -1406,7 +1411,7 @@ GENX(pan_preload_fb)(struct pan_pool *pool, struct pan_jc *jc,
 
 #if PAN_ARCH <= 7
 void
-GENX(pan_blit_ctx_init)(struct panfrost_device *dev,
+GENX(pan_blit_ctx_init)(struct pan_blitter_cache *cache,
                         const struct pan_blit_info *info,
                         struct pan_pool *blit_pool,
                         struct pan_blit_context *ctx)
@@ -1515,7 +1520,7 @@ GENX(pan_blit_ctx_init)(struct panfrost_device *dev,
       sviews[1].planes[0] = info->src.planes[1].image;
    }
 
-   ctx->rsd = pan_blit_get_rsd(dev, sviews, &dview);
+   ctx->rsd = pan_blit_get_rsd(cache, sviews, &dview);
 
    ASSERTED unsigned nlayers = info->src.end.layer - info->src.start.layer + 1;
 
@@ -1640,7 +1645,7 @@ pan_blit_rsd_key_equal(const void *a, const void *b)
 }
 
 static void
-pan_blitter_prefill_blit_shader_cache(struct panfrost_device *dev)
+pan_blitter_prefill_blit_shader_cache(struct pan_blitter_cache *cache)
 {
    static const struct pan_blit_shader_key prefill[] = {
       {
@@ -1676,33 +1681,38 @@ pan_blitter_prefill_blit_shader_cache(struct panfrost_device *dev)
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(prefill); i++)
-      pan_blitter_get_blit_shader(dev, &prefill[i]);
+      pan_blitter_get_blit_shader(cache, &prefill[i]);
 }
 
 void
-GENX(pan_blitter_init)(struct panfrost_device *dev, struct pan_pool *bin_pool,
-                       struct pan_pool *desc_pool)
+GENX(pan_blitter_cache_init)(struct pan_blitter_cache *cache,
+                             unsigned gpu_id,
+                             struct pan_blend_shader_cache *blend_shader_cache,
+                             struct pan_pool *bin_pool,
+                             struct pan_pool *desc_pool)
 {
-   dev->blitter.shaders.blit = _mesa_hash_table_create(
-      NULL, pan_blit_shader_key_hash, pan_blit_shader_key_equal);
-   dev->blitter.shaders.blend = _mesa_hash_table_create(
+   cache->gpu_id = gpu_id;
+   cache->shaders.blit = _mesa_hash_table_create(NULL, pan_blit_shader_key_hash,
+                                                 pan_blit_shader_key_equal);
+   cache->shaders.blend = _mesa_hash_table_create(
       NULL, pan_blit_blend_shader_key_hash, pan_blit_blend_shader_key_equal);
-   dev->blitter.shaders.pool = bin_pool;
-   pthread_mutex_init(&dev->blitter.shaders.lock, NULL);
-   pan_blitter_prefill_blit_shader_cache(dev);
+   cache->shaders.pool = bin_pool;
+   pthread_mutex_init(&cache->shaders.lock, NULL);
+   pan_blitter_prefill_blit_shader_cache(cache);
 
-   dev->blitter.rsds.pool = desc_pool;
-   dev->blitter.rsds.rsds = _mesa_hash_table_create(NULL, pan_blit_rsd_key_hash,
-                                                    pan_blit_rsd_key_equal);
-   pthread_mutex_init(&dev->blitter.rsds.lock, NULL);
+   cache->rsds.pool = desc_pool;
+   cache->rsds.rsds = _mesa_hash_table_create(NULL, pan_blit_rsd_key_hash,
+                                              pan_blit_rsd_key_equal);
+   pthread_mutex_init(&cache->rsds.lock, NULL);
+   cache->blend_shader_cache = blend_shader_cache;
 }
 
 void
-GENX(pan_blitter_cleanup)(struct panfrost_device *dev)
+GENX(pan_blitter_cache_cleanup)(struct pan_blitter_cache *cache)
 {
-   _mesa_hash_table_destroy(dev->blitter.shaders.blit, NULL);
-   _mesa_hash_table_destroy(dev->blitter.shaders.blend, NULL);
-   pthread_mutex_destroy(&dev->blitter.shaders.lock);
-   _mesa_hash_table_destroy(dev->blitter.rsds.rsds, NULL);
-   pthread_mutex_destroy(&dev->blitter.rsds.lock);
+   _mesa_hash_table_destroy(cache->shaders.blit, NULL);
+   _mesa_hash_table_destroy(cache->shaders.blend, NULL);
+   pthread_mutex_destroy(&cache->shaders.lock);
+   _mesa_hash_table_destroy(cache->rsds.rsds, NULL);
+   pthread_mutex_destroy(&cache->rsds.lock);
 }

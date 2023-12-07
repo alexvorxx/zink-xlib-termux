@@ -39,6 +39,7 @@
 
 #include "panfrost/util/pan_ir.h"
 #include "pan_blend.h"
+#include "pan_blitter.h"
 #include "pan_pool.h"
 #include "pan_util.h"
 
@@ -62,20 +63,6 @@ extern "C" {
 
 /* Fencepost problem, hence the off-by-one */
 #define NR_BO_CACHE_BUCKETS (MAX_BO_CACHE_BUCKET - MIN_BO_CACHE_BUCKET + 1)
-
-struct pan_blitter {
-   struct {
-      struct pan_pool *pool;
-      struct hash_table *blit;
-      struct hash_table *blend;
-      pthread_mutex_t lock;
-   } shaders;
-   struct {
-      struct pan_pool *pool;
-      struct hash_table *rsds;
-      pthread_mutex_t lock;
-   } rsds;
-};
 
 struct pan_indirect_dispatch {
    struct panfrost_ubo_push push;
@@ -192,7 +179,7 @@ struct panfrost_device {
       struct list_head buckets[NR_BO_CACHE_BUCKETS];
    } bo_cache;
 
-   struct pan_blitter blitter;
+   struct pan_blitter_cache blitter;
    struct pan_blend_shader_cache blend_shaders;
    struct pan_indirect_dispatch indirect_dispatch;
 

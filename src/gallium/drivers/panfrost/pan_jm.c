@@ -232,9 +232,11 @@ done:
 void
 GENX(jm_preload_fb)(struct panfrost_batch *batch, struct pan_fb_info *fb)
 {
+   struct panfrost_device *dev = pan_device(batch->ctx->base.screen);
+
    GENX(pan_preload_fb)
-   (&batch->pool.base, &batch->jm.jobs.vtc_jc, fb, batch->tls.gpu,
-    PAN_ARCH >= 6 ? batch->tiler_ctx.bifrost : 0, NULL);
+   (&dev->blitter, &batch->pool.base, &batch->jm.jobs.vtc_jc, fb,
+    batch->tls.gpu, PAN_ARCH >= 6 ? batch->tiler_ctx.bifrost : 0, NULL);
 }
 
 void

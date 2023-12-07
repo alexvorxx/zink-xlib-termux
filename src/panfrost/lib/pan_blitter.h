@@ -78,21 +78,6 @@ struct pan_blit_context {
    float z_scale;
 };
 
-void GENX(pan_blitter_init)(struct panfrost_device *dev,
-                            struct pan_pool *bin_pool,
-                            struct pan_pool *desc_pool);
-
-void GENX(pan_blitter_cleanup)(struct panfrost_device *dev);
-
-unsigned GENX(pan_preload_fb)(struct pan_pool *desc_pool, struct pan_jc *jc,
-                              struct pan_fb_info *fb, mali_ptr tsd,
-                              mali_ptr tiler, struct panfrost_ptr *jobs);
-
-void GENX(pan_blit_ctx_init)(struct panfrost_device *dev,
-                             const struct pan_blit_info *info,
-                             struct pan_pool *blit_pool,
-                             struct pan_blit_context *ctx);
-
 static inline bool
 pan_blit_next_surface(struct pan_blit_context *ctx)
 {
@@ -111,8 +96,25 @@ pan_blit_next_surface(struct pan_blit_context *ctx)
    return true;
 }
 
+#ifdef PAN_ARCH
+void GENX(pan_blitter_init)(struct panfrost_device *dev,
+                            struct pan_pool *bin_pool,
+                            struct pan_pool *desc_pool);
+
+void GENX(pan_blitter_cleanup)(struct panfrost_device *dev);
+
+unsigned GENX(pan_preload_fb)(struct pan_pool *desc_pool, struct pan_jc *jc,
+                              struct pan_fb_info *fb, mali_ptr tsd,
+                              mali_ptr tiler, struct panfrost_ptr *jobs);
+
+void GENX(pan_blit_ctx_init)(struct panfrost_device *dev,
+                             const struct pan_blit_info *info,
+                             struct pan_pool *blit_pool,
+                             struct pan_blit_context *ctx);
+
 struct panfrost_ptr GENX(pan_blit)(struct pan_blit_context *ctx,
                                    struct pan_pool *pool, struct pan_jc *jc,
                                    mali_ptr tsd, mali_ptr tiler);
+#endif
 
 #endif

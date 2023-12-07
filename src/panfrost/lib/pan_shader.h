@@ -32,8 +32,6 @@
 #include "genxml/gen_macros.h"
 #include "pan_device.h"
 
-struct panfrost_device;
-
 void bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id);
 void midgard_preprocess_nir(nir_shader *nir, unsigned gpu_id);
 

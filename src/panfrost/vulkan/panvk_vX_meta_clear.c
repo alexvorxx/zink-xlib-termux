@@ -332,6 +332,7 @@ panvk_meta_clear_color_img(struct panvk_cmd_buffer *cmdbuf,
 
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
+      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
       .nr_samples = img->pimage.layout.nr_samples,
       .rt_count = 1,
       .rts[0].view = &view,
@@ -401,6 +402,7 @@ panvk_meta_clear_zs_img(struct panvk_cmd_buffer *cmdbuf,
 
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
+      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
       .nr_samples = img->pimage.layout.nr_samples,
       .rt_count = 1,
       .zs.clear_value.depth = value->depth,

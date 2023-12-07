@@ -482,6 +482,7 @@ panvk_cmd_fb_info_init(struct panvk_cmd_buffer *cmdbuf)
    memset(cmdbuf->state.fb.crc_valid, 0, sizeof(cmdbuf->state.fb.crc_valid));
 
    *fbinfo = (struct pan_fb_info){
+      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
       .width = fb->width,
       .height = fb->height,
       .extent.maxx = fb->width - 1,

@@ -125,6 +125,9 @@ struct pan_fb_info {
       struct pan_fb_bifrost_info bifrost;
    };
 
+   /* Optimal tile buffer size. */
+   unsigned tile_buf_budget;
+
    /* Only used on Valhall */
    bool sprite_coord_origin;
    bool first_provoking_vertex;

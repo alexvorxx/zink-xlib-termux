@@ -627,6 +627,7 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
       u_minify(dst->pimage.layout.height, region->dstSubresource.mipLevel);
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
+      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
       .width = width,
       .height = height,
       .extent.minx = minx & ~31,
@@ -1057,6 +1058,7 @@ panvk_meta_copy_buf2img(struct panvk_cmd_buffer *cmdbuf,
    /* TODO: don't force preloads of dst resources if unneeded */
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
+      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
       .width =
          u_minify(img->pimage.layout.width, region->imageSubresource.mipLevel),
       .height =

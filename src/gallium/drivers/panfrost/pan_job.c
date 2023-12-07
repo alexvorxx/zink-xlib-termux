@@ -451,11 +451,14 @@ panfrost_batch_to_fb_info(const struct panfrost_batch *batch,
                           struct pan_image_view *zs, struct pan_image_view *s,
                           bool reserve)
 {
+   struct panfrost_device *dev = pan_device(batch->ctx->base.screen);
+
    memset(fb, 0, sizeof(*fb));
    memset(rts, 0, sizeof(*rts) * 8);
    memset(zs, 0, sizeof(*zs));
    memset(s, 0, sizeof(*s));
 
+   fb->tile_buf_budget = dev->optimal_tib_size;
    fb->width = batch->key.width;
    fb->height = batch->key.height;
    fb->extent.minx = batch->minx;

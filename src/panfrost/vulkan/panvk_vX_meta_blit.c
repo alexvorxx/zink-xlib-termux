@@ -53,6 +53,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
    };
 
    *fbinfo = (struct pan_fb_info){
+      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
       .width = u_minify(blitinfo->dst.planes[0].image->layout.width,
                         blitinfo->dst.level),
       .height = u_minify(blitinfo->dst.planes[0].image->layout.height,

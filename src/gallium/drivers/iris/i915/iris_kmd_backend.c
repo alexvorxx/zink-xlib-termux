@@ -95,6 +95,18 @@ i915_gem_create(struct iris_bufmgr *bufmgr,
    if (iris_bufmgr_vram_size(bufmgr) > 0 &&
        !intel_vram_all_mappable(devinfo) &&
        heap == IRIS_HEAP_DEVICE_LOCAL_PREFERRED)
+      /* For lmem + smem placements, the NEEDS_CPU_ACCESS flag will avoid a
+       * page fault when the CPU tries to access the BO.
+       * Although it's counterintuitive, we cannot set this flag for
+       * IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR because i915 does not
+       * accept that flag for lmem only placements.
+       * When lmem only BOs are accessed by the CPU, i915 will fault and
+       * automatically migrate the BO to the lmem portion that is CPU
+       * accessible.
+       * The CPU_VISIBLE heap is still valuable for other reasons however
+       * (e.g., it tells the functions which calculate the iris_mmap_mode
+       * that it can be mapped).
+       */
       create.flags |= I915_GEM_CREATE_EXT_FLAG_NEEDS_CPU_ACCESS;
 
    /* Protected param */

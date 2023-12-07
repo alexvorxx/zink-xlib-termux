@@ -54,7 +54,8 @@ xe_gem_create(struct iris_bufmgr *bufmgr,
    if (alloc_flags & BO_ALLOC_SCANOUT)
       flags |= DRM_XE_GEM_CREATE_FLAG_SCANOUT;
    if (!intel_vram_all_mappable(iris_bufmgr_get_device_info(bufmgr)) &&
-       heap_flags == IRIS_HEAP_DEVICE_LOCAL_PREFERRED)
+       (heap_flags == IRIS_HEAP_DEVICE_LOCAL_PREFERRED ||
+        heap_flags == IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR))
       flags |= DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM;
 
    struct drm_xe_gem_create gem_create = {

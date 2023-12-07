@@ -780,6 +780,8 @@ iris_slab_alloc(void *priv,
       flags = BO_ALLOC_SMEM;
    else if (heap == IRIS_HEAP_DEVICE_LOCAL)
       flags = BO_ALLOC_LMEM;
+   else if (heap == IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR)
+      flags = BO_ALLOC_LMEM | BO_ALLOC_CPU_VISIBLE;
    else
       flags = BO_ALLOC_PLAIN;
 
@@ -846,8 +848,13 @@ flags_to_heap(struct iris_bufmgr *bufmgr, unsigned flags)
          return IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT;
 
       if ((flags & BO_ALLOC_LMEM) ||
-          ((flags & BO_ALLOC_SCANOUT) && !(flags & BO_ALLOC_SHARED)))
+          ((flags & BO_ALLOC_SCANOUT) && !(flags & BO_ALLOC_SHARED))) {
+
+         if ((flags & BO_ALLOC_CPU_VISIBLE) && !intel_vram_all_mappable(devinfo))
+            return IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR;
+
          return IRIS_HEAP_DEVICE_LOCAL;
+      }
 
       return IRIS_HEAP_DEVICE_LOCAL_PREFERRED;
    } else if (devinfo->has_llc) {
@@ -1104,6 +1111,7 @@ alloc_fresh_bo(struct iris_bufmgr *bufmgr, uint64_t bo_size, unsigned flags)
          regions[num_regions++] = bufmgr->sys.region;
          break;
       case IRIS_HEAP_DEVICE_LOCAL:
+      case IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR:
          regions[num_regions++] = bufmgr->vram.region;
          break;
       case IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT:
@@ -1139,6 +1147,7 @@ iris_heap_to_string[IRIS_HEAP_MAX] = {
    [IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT] = "system-cached-coherent",
    [IRIS_HEAP_SYSTEM_MEMORY_UNCACHED] = "system-uncached",
    [IRIS_HEAP_DEVICE_LOCAL] = "local",
+   [IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR] = "local-cpu-visible-small-bar",
    [IRIS_HEAP_DEVICE_LOCAL_PREFERRED] = "local-preferred",
 };
 
@@ -1150,6 +1159,7 @@ heap_to_mmap_mode(struct iris_bufmgr *bufmgr, enum iris_heap heap)
    switch (heap) {
    case IRIS_HEAP_DEVICE_LOCAL:
       return intel_vram_all_mappable(devinfo) ? IRIS_MMAP_WC : IRIS_MMAP_NONE;
+   case IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR:
    case IRIS_HEAP_DEVICE_LOCAL_PREFERRED:
       return IRIS_MMAP_WC;
    case IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT:
@@ -2581,6 +2591,7 @@ iris_heap_to_pat_entry(const struct intel_device_info *devinfo,
    case IRIS_HEAP_SYSTEM_MEMORY_UNCACHED:
       return &devinfo->pat.writecombining;
    case IRIS_HEAP_DEVICE_LOCAL:
+   case IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR:
    case IRIS_HEAP_DEVICE_LOCAL_PREFERRED:
       return &devinfo->pat.writecombining;
    default:

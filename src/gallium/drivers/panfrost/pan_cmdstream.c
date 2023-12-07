@@ -3681,8 +3681,8 @@ batch_get_polygon_list(struct panfrost_batch *batch)
    if (!batch->tiler_ctx.midgard.polygon_list) {
       bool has_draws = batch->draw_count > 0;
       unsigned size = panfrost_tiler_get_polygon_list_size(
-         dev, batch->key.width, batch->key.height,
-         batch->tiler_ctx.vertex_count);
+         batch->key.width, batch->key.height, batch->tiler_ctx.vertex_count,
+         !dev->model->quirks.no_hierarchical_tiling);
 
       /* Create the BO as invisible if we can. If there are no draws,
        * we need to write the polygon list manually because there's

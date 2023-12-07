@@ -708,8 +708,7 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
 #if PAN_ARCH >= 6
       bool force_clean_write = pan_force_clean_write(fb, tile_size);
 
-      cfg.sample_locations =
-         panfrost_sample_positions(dev, pan_sample_pattern(fb->nr_samples));
+      cfg.sample_locations = fb->sample_positions;
       cfg.pre_frame_0 = pan_fix_frame_shader_mode(fb->bifrost.pre_post.modes[0],
                                                   force_clean_write);
       cfg.pre_frame_1 = pan_fix_frame_shader_mode(fb->bifrost.pre_post.modes[1],

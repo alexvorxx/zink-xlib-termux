@@ -128,6 +128,9 @@ struct pan_fb_info {
    /* Optimal tile buffer size. */
    unsigned tile_buf_budget;
 
+   /* Sample position array. */
+   mali_ptr sample_positions;
+
    /* Only used on Valhall */
    bool sprite_coord_origin;
    bool first_provoking_vertex;

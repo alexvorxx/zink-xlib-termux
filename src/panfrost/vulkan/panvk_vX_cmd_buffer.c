@@ -72,7 +72,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    if (!batch)
       return;
 
-   const struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
+   struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
 
    assert(batch);
 
@@ -132,6 +132,10 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
       GENX(pan_emit_tls)(&batch->tlsinfo, batch->tls.cpu);
 
    if (batch->fb.desc.cpu) {
+      fbinfo->sample_positions =
+         panfrost_sample_positions(&cmdbuf->device->physical_device->pdev,
+                                   pan_sample_pattern(fbinfo->nr_samples));
+
       batch->fb.desc.gpu |=
          GENX(pan_emit_fbd)(pdev, &cmdbuf->state.fb.info, &batch->tlsinfo,
                             &batch->tiler.ctx, batch->fb.desc.cpu);

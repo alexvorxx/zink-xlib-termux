@@ -115,7 +115,7 @@ struct pan_blit_rsd_data {
 
 #if PAN_ARCH >= 5
 static void
-pan_blitter_emit_blend(const struct panfrost_device *dev, unsigned rt,
+pan_blitter_emit_blend(unsigned rt,
                        const struct pan_image_view *iview,
                        const struct pan_blit_shader_data *blit_shader,
                        mali_ptr blend_shader, void *out)
@@ -199,8 +199,7 @@ pan_blitter_is_ms(struct pan_blitter_views *views)
 
 #if PAN_ARCH >= 5
 static void
-pan_blitter_emit_blends(const struct panfrost_device *dev,
-                        const struct pan_blit_shader_data *blit_shader,
+pan_blitter_emit_blends(const struct pan_blit_shader_data *blit_shader,
                         struct pan_blitter_views *views,
                         mali_ptr *blend_shaders, void *out)
 {
@@ -209,15 +208,14 @@ pan_blitter_emit_blends(const struct panfrost_device *dev,
       const struct pan_image_view *rt_view = views->dst_rts[i];
       mali_ptr blend_shader = blend_shaders ? blend_shaders[i] : 0;
 
-      pan_blitter_emit_blend(dev, i, rt_view, blit_shader, blend_shader, dest);
+      pan_blitter_emit_blend(i, rt_view, blit_shader, blend_shader, dest);
    }
 }
 #endif
 
 #if PAN_ARCH <= 7
 static void
-pan_blitter_emit_rsd(const struct panfrost_device *dev,
-                     const struct pan_blit_shader_data *blit_shader,
+pan_blitter_emit_rsd(const struct pan_blit_shader_data *blit_shader,
                      struct pan_blitter_views *views, mali_ptr *blend_shaders,
                      void *out)
 {
@@ -302,7 +300,7 @@ pan_blitter_emit_rsd(const struct panfrost_device *dev,
    }
 
 #if PAN_ARCH >= 5
-   pan_blitter_emit_blends(dev, blit_shader, views, blend_shaders,
+   pan_blitter_emit_blends(blit_shader, views, blend_shaders,
                            out + pan_size(RENDERER_STATE));
 #endif
 }
@@ -772,7 +770,7 @@ pan_blitter_get_rsd(struct panfrost_device *dev,
                                  blit_shader, blend_shaders);
 #endif
 
-   pan_blitter_emit_rsd(dev, blit_shader, views, blend_shaders, rsd_ptr.cpu);
+   pan_blitter_emit_rsd(blit_shader, views, blend_shaders, rsd_ptr.cpu);
    rsd->address = rsd_ptr.gpu;
    _mesa_hash_table_insert(dev->blitter.rsds.rsds, &rsd->key, rsd);
 
@@ -1181,7 +1179,7 @@ pan_preload_emit_dcd(struct pan_pool *pool, struct pan_fb_info *fb, bool zs,
    struct panfrost_ptr blend = pan_pool_alloc_desc_array(pool, bd_count, BLEND);
 
    if (!zs) {
-      pan_blitter_emit_blends(pool->dev, blit_shader, &views, NULL, blend.cpu);
+      pan_blitter_emit_blends(blit_shader, &views, NULL, blend.cpu);
    }
 
    pan_pack(out, DRAW, cfg) {

@@ -924,6 +924,10 @@ anv_use_generated_draws(const struct anv_cmd_buffer *cmd_buffer, uint32_t count)
    const struct anv_graphics_pipeline *pipeline =
       anv_pipeline_to_graphics(cmd_buffer->state.gfx.base.pipeline);
 
+   /* We cannot generate readable commands in protected mode. */
+   if (cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT)
+      return false;
+
    /* Limit generated draws to pipelines without HS stage. This makes things
     * simpler for implementing Wa_1306463417, Wa_16011107343.
     */

@@ -335,6 +335,7 @@ GENX(jm_launch_grid)(struct panfrost_batch *batch,
    unsigned indirect_dep = 0;
 #if PAN_GPU_INDIRECTS
    if (info->indirect) {
+      struct panfrost_device *dev = pan_device(batch->ctx->base.screen);
       struct pan_indirect_dispatch_info indirect = {
          .job = t.gpu,
          .indirect_dim = pan_resource(info->indirect)->image.data.bo->ptr.gpu +
@@ -348,7 +349,8 @@ GENX(jm_launch_grid)(struct panfrost_batch *batch,
       };
 
       indirect_dep = GENX(pan_indirect_dispatch_emit)(
-         &batch->pool.base, &batch->jm.jobs.vtc_jc, &indirect);
+         &dev->indirect_dispatch, &batch->pool.base, &batch->jm.jobs.vtc_jc,
+         &indirect);
    }
 #endif
 

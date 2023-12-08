@@ -3634,9 +3634,6 @@ screen_destroy(struct pipe_screen *pscreen)
 {
    struct panfrost_device *dev = pan_device(pscreen);
    GENX(pan_blitter_cache_cleanup)(&dev->blitter);
-#if PAN_GPU_INDIRECTS
-   GENX(pan_indirect_dispatch_cleanup)(dev);
-#endif
 }
 
 static void
@@ -3768,4 +3765,10 @@ GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
    GENX(pan_blitter_cache_init)
    (&dev->blitter, panfrost_device_gpu_id(dev), &dev->blend_shaders,
     &screen->blitter.bin_pool.base, &screen->blitter.desc_pool.base);
+
+#if PAN_GPU_INDIRECTS
+   pan_indirect_dispatch_meta_init(
+      &dev->indirect_dispatch, panfrost_device_gpu_id(dev),
+      &screen->blitter.bin_pool.base, &screen->blitter.desc_pool.base);
+#endif
 }

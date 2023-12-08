@@ -40,6 +40,7 @@
 #include "panfrost/util/pan_ir.h"
 #include "pan_blend.h"
 #include "pan_blitter.h"
+#include "pan_indirect_dispatch.h"
 #include "pan_pool.h"
 #include "pan_util.h"
 
@@ -63,12 +64,6 @@ extern "C" {
 
 /* Fencepost problem, hence the off-by-one */
 #define NR_BO_CACHE_BUCKETS (MAX_BO_CACHE_BUCKET - MIN_BO_CACHE_BUCKET + 1)
-
-struct pan_indirect_dispatch {
-   struct panfrost_ubo_push push;
-   struct panfrost_bo *bin;
-   struct panfrost_bo *descs;
-};
 
 /** Implementation-defined tiler features */
 struct panfrost_tiler_features {
@@ -181,7 +176,7 @@ struct panfrost_device {
 
    struct pan_blitter_cache blitter;
    struct pan_blend_shader_cache blend_shaders;
-   struct pan_indirect_dispatch indirect_dispatch;
+   struct pan_indirect_dispatch_meta indirect_dispatch;
 
    /* Tiler heap shared across all tiler jobs, allocated against the
     * device since there's only a single tiler. Since this is invisible to

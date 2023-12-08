@@ -57,8 +57,8 @@ panvk_pool_alloc_backing(struct panvk_pool *pool, size_t bo_sz)
        * flags to this function and keep the read/write,
        * fragment/vertex+tiler pools separate.
        */
-      bo = panfrost_bo_create(pool->base.dev, bo_sz, pool->base.create_flags,
-                              pool->base.label);
+      bo =
+         panfrost_bo_create(pool->dev, bo_sz, pool->create_flags, pool->label);
    }
 
    if (panfrost_bo_size(bo) == pool->base.slab_size)
@@ -104,7 +104,10 @@ panvk_pool_init(struct panvk_pool *pool, struct panfrost_device *dev,
                 size_t slab_size, const char *label, bool prealloc)
 {
    memset(pool, 0, sizeof(*pool));
-   pan_pool_init(&pool->base, dev, create_flags, slab_size, label);
+   pan_pool_init(&pool->base, slab_size);
+   pool->dev = dev;
+   pool->create_flags = create_flags;
+   pool->label = label;
    pool->bo_pool = bo_pool;
 
    util_dynarray_init(&pool->bos, NULL);

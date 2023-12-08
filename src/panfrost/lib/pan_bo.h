@@ -30,6 +30,8 @@
 #include "util/list.h"
 #include "panfrost-job.h"
 
+#include "pan_pool.h"
+
 #include "kmod/pan_kmod.h"
 
 /* Flags for allocated memory */
@@ -77,14 +79,6 @@
 typedef uint8_t pan_bo_access;
 
 struct panfrost_device;
-
-struct panfrost_ptr {
-   /* CPU address */
-   void *cpu;
-
-   /* GPU address */
-   mali_ptr gpu;
-};
 
 struct panfrost_bo {
    /* Must be first for casting */

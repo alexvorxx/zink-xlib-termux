@@ -26,6 +26,7 @@
 #define __PANVK_POOL_H__
 
 #include "pan_pool.h"
+#include "pan_bo.h"
 
 struct panvk_bo_pool {
    struct util_dynarray free_bos;
@@ -51,6 +52,15 @@ panvk_bo_pool_cleanup(struct panvk_bo_pool *bo_pool)
 struct panvk_pool {
    /* Inherit from pan_pool */
    struct pan_pool base;
+
+   /* Parent device for allocation */
+   struct panfrost_device *dev;
+
+   /* Label for created BOs */
+   const char *label;
+
+   /* BO flags to use in the pool */
+   unsigned create_flags;
 
    /* Before allocating a new BO, check if the BO pool has free BOs.
     * When returning BOs, if bo_pool != NULL, return them to this bo_pool.

@@ -2292,7 +2292,7 @@ panfrost_emit_varying_descs(struct panfrost_pool *pool,
                             struct panfrost_compiled_shader *consumer,
                             uint16_t point_coord_mask, struct pan_linkage *out)
 {
-   struct panfrost_device *dev = pool->base.dev;
+   struct panfrost_device *dev = pool->dev;
    unsigned producer_count = producer->info.varyings.output_count;
    unsigned consumer_count = consumer->info.varyings.input_count;
 

@@ -224,10 +224,6 @@ nvk_GetPhysicalDeviceImageFormatProperties2(
        pImageFormatInfo->type != VK_IMAGE_TYPE_2D)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
-   if (vk_format_is_compressed(pImageFormatInfo->format) &&
-       pImageFormatInfo->type != VK_IMAGE_TYPE_2D)
-      return VK_ERROR_FORMAT_NOT_SUPPORTED;
-
    if (ycbcr_info && pImageFormatInfo->type != VK_IMAGE_TYPE_2D)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
 

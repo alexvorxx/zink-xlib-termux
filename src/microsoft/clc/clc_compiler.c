@@ -804,7 +804,7 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
          var->data.driver_location + size);
       if (out_dxil->kernel->args[i].address_qualifier == CLC_KERNEL_ARG_ADDRESS_GLOBAL ||
           out_dxil->kernel->args[i].address_qualifier == CLC_KERNEL_ARG_ADDRESS_CONSTANT) {
-         metadata->args[i].globconstptr.buf_id = uav_id++;
+         metadata->args[i].globconstptr.buf_id = var->data.binding = uav_id++;
       } else if (glsl_type_is_sampler(var->type)) {
          unsigned address_mode = conf ? conf->args[i].sampler.addressing_mode : 0u;
          int_sampler_states[sampler_id].wrap[0] =
@@ -905,6 +905,8 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
       } while (progress);
    }
    NIR_PASS_V(nir, nir_lower_memcpy);
+
+   NIR_PASS_V(nir, clc_nir_lower_global_pointers_to_constants);
 
    // Attempt to preserve derefs to constants by moving them to shader_temp
    NIR_PASS_V(nir, dxil_nir_lower_constant_to_temp);

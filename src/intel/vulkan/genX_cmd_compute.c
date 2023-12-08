@@ -1020,23 +1020,23 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
        */
       btd.PerDSSMemoryBackedBufferSize = 6;
       btd.MemoryBackedBufferBasePointer = (struct anv_address) { .bo = device->btd_fifo_bo };
-      if (pipeline->scratch_size > 0) {
+      if (pipeline->base.scratch_size > 0) {
          struct anv_bo *scratch_bo =
             anv_scratch_pool_alloc(device,
                                    &device->scratch_pool,
                                    MESA_SHADER_COMPUTE,
-                                   pipeline->scratch_size);
+                                   pipeline->base.scratch_size);
          anv_reloc_list_add_bo(cmd_buffer->batch.relocs,
                                scratch_bo);
          uint32_t scratch_surf =
             anv_scratch_pool_get_surf(cmd_buffer->device,
                                       &device->scratch_pool,
-                                      pipeline->scratch_size);
+                                      pipeline->base.scratch_size);
          btd.ScratchSpaceBuffer = scratch_surf >> 4;
       }
    }
 
-   genX(cmd_buffer_ensure_cfe_state)(cmd_buffer, pipeline->scratch_size);
+   genX(cmd_buffer_ensure_cfe_state)(cmd_buffer, pipeline->base.scratch_size);
 
    const struct brw_cs_prog_data *cs_prog_data =
       brw_cs_prog_data_const(device->rt_trampoline->prog_data);

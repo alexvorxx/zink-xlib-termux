@@ -3328,39 +3328,39 @@ get_resource_handle(struct ntd_context *ctx, nir_src *src, enum dxil_resource_cl
 {
    /* This source might be one of:
     * 1. Constant resource index - just look it up in precomputed handle arrays
-    *    If it's null in that array, create a handle, and store the result
+    *    If it's null in that array, create a handle
     * 2. A handle from load_vulkan_descriptor - just get the stored SSA value
     * 3. Dynamic resource index - create a handle for it here
     */
    assert(src->ssa->num_components == 1 && src->ssa->bit_size == 32);
    nir_const_value *const_block_index = nir_src_as_const_value(*src);
-   const struct dxil_value **handle_entry = NULL;
+   const struct dxil_value *handle_entry = NULL;
    if (const_block_index) {
       assert(ctx->opts->environment != DXIL_ENVIRONMENT_VULKAN);
       switch (kind) {
       case DXIL_RESOURCE_KIND_CBUFFER:
-         handle_entry = &ctx->cbv_handles[const_block_index->u32];
+         handle_entry = ctx->cbv_handles[const_block_index->u32];
          break;
       case DXIL_RESOURCE_KIND_RAW_BUFFER:
          if (class == DXIL_RESOURCE_CLASS_UAV)
-            handle_entry = &ctx->ssbo_handles[const_block_index->u32];
+            handle_entry = ctx->ssbo_handles[const_block_index->u32];
          else
-            handle_entry = &ctx->srv_handles[const_block_index->u32];
+            handle_entry = ctx->srv_handles[const_block_index->u32];
          break;
       case DXIL_RESOURCE_KIND_SAMPLER:
-         handle_entry = &ctx->sampler_handles[const_block_index->u32];
+         handle_entry = ctx->sampler_handles[const_block_index->u32];
          break;
       default:
          if (class == DXIL_RESOURCE_CLASS_UAV)
-            handle_entry = &ctx->image_handles[const_block_index->u32];
+            handle_entry = ctx->image_handles[const_block_index->u32];
          else
-            handle_entry = &ctx->srv_handles[const_block_index->u32];
+            handle_entry = ctx->srv_handles[const_block_index->u32];
          break;
       }
    }
 
-   if (handle_entry && *handle_entry)
-      return *handle_entry;
+   if (handle_entry)
+      return handle_entry;
 
    if (nir_src_as_deref(*src) ||
        ctx->opts->environment == DXIL_ENVIRONMENT_VULKAN) {
@@ -3395,8 +3395,6 @@ get_resource_handle(struct ntd_context *ctx, nir_src *src, enum dxil_resource_cl
    const struct dxil_value *value = get_src(ctx, src, 0, nir_type_uint);
    const struct dxil_value *handle = emit_createhandle_call_dynamic(ctx, class,
       space, base_binding, value, !const_block_index);
-   if (handle_entry)
-      *handle_entry = handle;
 
    return handle;
 }

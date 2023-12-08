@@ -42,6 +42,7 @@
 #include "pan_blitter.h"
 #include "pan_indirect_dispatch.h"
 #include "pan_pool.h"
+#include "pan_props.h"
 #include "pan_util.h"
 
 #include "kmod/pan_kmod.h"
@@ -64,45 +65,6 @@ extern "C" {
 
 /* Fencepost problem, hence the off-by-one */
 #define NR_BO_CACHE_BUCKETS (MAX_BO_CACHE_BUCKET - MIN_BO_CACHE_BUCKET + 1)
-
-/** Implementation-defined tiler features */
-struct panfrost_tiler_features {
-   /** Number of bytes per tiler bin */
-   unsigned bin_size;
-
-   /** Maximum number of levels that may be simultaneously enabled.
-    * Invariant: bitcount(hierarchy_mask) <= max_levels */
-   unsigned max_levels;
-};
-
-struct panfrost_model {
-   /* GPU ID */
-   uint32_t gpu_id;
-
-   /* Marketing name for the GPU, used as the GL_RENDERER */
-   const char *name;
-
-   /* Set of associated performance counters */
-   const char *performance_counters;
-
-   /* Minimum GPU revision required for anisotropic filtering. ~0 and 0
-    * means "no revisions support anisotropy" and "all revisions support
-    * anistropy" respectively -- so checking for anisotropy is simply
-    * comparing the reivsion.
-    */
-   uint32_t min_rev_anisotropic;
-
-   /* Default tilebuffer size in bytes for the model. */
-   unsigned tilebuffer_size;
-
-   struct {
-      /* The GPU lacks the capability for hierarchical tiling, without
-       * an "Advanced Tiling Unit", instead requiring a single bin
-       * size for the entire framebuffer be selected by the driver
-       */
-      bool no_hierarchical_tiling;
-   } quirks;
-};
 
 struct panfrost_device {
    /* For ralloc */
@@ -238,8 +200,6 @@ void panfrost_close_device(struct panfrost_device *dev);
 bool panfrost_supports_compressed_format(struct panfrost_device *dev,
                                          unsigned fmt);
 
-unsigned panfrost_query_l2_slices(const struct panfrost_device *dev);
-
 static inline struct panfrost_bo *
 pan_lookup_bo(struct panfrost_device *dev, uint32_t gem_handle)
 {
@@ -251,8 +211,6 @@ pan_is_bifrost(const struct panfrost_device *dev)
 {
    return dev->arch >= 6 && dev->arch <= 7;
 }
-
-const struct panfrost_model *panfrost_get_model(uint32_t gpu_id);
 
 #if defined(__cplusplus)
 } // extern "C"

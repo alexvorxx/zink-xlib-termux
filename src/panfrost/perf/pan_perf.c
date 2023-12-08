@@ -25,6 +25,7 @@
 
 #include <drm-uapi/panfrost_drm.h>
 #include <lib/pan_device.h>
+#include <lib/pan_props.h>
 #include <pan_perf_metrics.h>
 
 #define PAN_COUNTERS_PER_CATEGORY 64
@@ -76,7 +77,7 @@ panfrost_perf_init(struct panfrost_perf *perf, struct panfrost_device *dev)
 
    // Generally counter blocks are laid out in the following order:
    // Job manager, tiler, one or more L2 caches, and one or more shader cores.
-   unsigned l2_slices = panfrost_query_l2_slices(dev);
+   unsigned l2_slices = panfrost_query_l2_slices(&dev->kmod.props);
    uint32_t n_blocks = 2 + l2_slices + dev->core_id_range;
    perf->n_counter_values = PAN_COUNTERS_PER_CATEGORY * n_blocks;
    perf->counter_values = ralloc_array(perf, uint32_t, perf->n_counter_values);

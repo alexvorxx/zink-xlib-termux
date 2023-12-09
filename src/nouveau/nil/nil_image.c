@@ -256,6 +256,30 @@ image_level_extent_B(const struct nil_image *image, uint32_t level)
    return nil_extent4d_el_to_B(level_extent_el, B_per_el);
 }
 
+uint64_t
+nil_image_level_size_B(const struct nil_image *image,
+                       uint32_t level)
+{
+   assert(level < image->num_levels);
+
+   /* See the nil_image::levels[] computations */
+   struct nil_extent4d lvl_ext_B = image_level_extent_B(image, level);
+
+   if (image->levels[level].tiling.is_tiled) {
+      struct nil_extent4d lvl_tiling_ext_B =
+         nil_tiling_extent_B(image->levels[level].tiling);
+      lvl_ext_B = nil_extent4d_align(lvl_ext_B, lvl_tiling_ext_B);
+
+      return (uint64_t)lvl_ext_B.w *
+             (uint64_t)lvl_ext_B.h *
+             (uint64_t)lvl_ext_B.d;
+   } else {
+      assert(lvl_ext_B.d == 1);
+      return (uint64_t)image->levels[level].row_stride_B *
+             (uint64_t)lvl_ext_B.h;
+   }
+}
+
 static uint8_t
 tu102_choose_pte_kind(enum pipe_format format, bool compressed)
 {
@@ -434,10 +458,6 @@ nil_image_init(struct nv_device_info *dev,
             .tiling = lvl_tiling,
             .row_stride_B = lvl_ext_B.width,
          };
-
-         layer_size_B += (uint64_t)lvl_ext_B.w *
-                         (uint64_t)lvl_ext_B.h *
-                         (uint64_t)lvl_ext_B.d;
       } else {
          /* Linear images need to be 2D */
          assert(image->dim == NIL_IMAGE_DIM_2D);
@@ -452,12 +472,8 @@ nil_image_init(struct nv_device_info *dev,
             /* Row stride needs to be aligned to 128B for render to work */
             .row_stride_B = align(lvl_ext_B.width, 128),
          };
-
-         assert(lvl_ext_B.d == 1);
-         layer_size_B += (uint64_t)image->levels[l].row_stride_B * 
-                         (uint64_t)lvl_ext_B.h;
-
       }
+      layer_size_B += nil_image_level_size_B(image, l);
    }
 
    /* Align the image and array stride to a single level0 tile */
@@ -485,22 +501,6 @@ nil_image_init(struct nv_device_info *dev,
 
    image->size_B = align64(image->size_B, image->align_B);
    return true;
-}
-
-uint64_t
-nil_image_level_size_B(const struct nil_image *image, uint32_t level)
-{
-   assert(level < image->num_levels);
-
-   /* See the nil_image::levels[] computations */
-   struct nil_extent4d lvl_ext_B = image_level_extent_B(image, level);
-   struct nil_extent4d lvl_tiling_ext_B =
-      nil_tiling_extent_B(image->levels[level].tiling);
-   lvl_ext_B = nil_extent4d_align(lvl_ext_B, lvl_tiling_ext_B);
-
-   return (uint64_t)lvl_ext_B.w *
-          (uint64_t)lvl_ext_B.h *
-          (uint64_t)lvl_ext_B.d;
 }
 
 uint64_t

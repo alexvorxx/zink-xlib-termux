@@ -2922,8 +2922,12 @@ void
 agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
                    bool allow_mediump, struct agx_uncompiled_shader_info *out)
 {
-   if (out)
+   if (out) {
       memset(out, 0, sizeof(*out));
+
+      out->nr_bindful_textures = BITSET_LAST_BIT(nir->info.textures_used);
+      out->nr_bindful_images = BITSET_LAST_BIT(nir->info.images_used);
+   }
 
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
 
@@ -3035,9 +3039,6 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    assert(nir->info.io_lowered &&
           "agx_preprocess_nir is called first, then the shader is specalized,"
           "then the specialized shader is compiled");
-
-   out->nr_bindful_textures = BITSET_LAST_BIT(nir->info.textures_used);
-   out->nr_bindful_images = BITSET_LAST_BIT(nir->info.images_used);
 
    /* If required, tag writes will be enabled by instruction selection */
    if (nir->info.stage == MESA_SHADER_FRAGMENT)

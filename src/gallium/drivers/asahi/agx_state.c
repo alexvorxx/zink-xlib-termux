@@ -2702,17 +2702,21 @@ agx_set_null_pbe(struct agx_pbe_packed *pbe, uint64_t sink)
 }
 
 static uint32_t
-agx_nr_tex_descriptors_without_spilled_rts(const struct agx_compiled_shader *cs)
+agx_nr_tex_descriptors_without_spilled_rts(
+   const struct agx_uncompiled_shader *cs)
 {
+   if (!cs)
+      return 0;
+
    /* 2 descriptors per image, 1 descriptor per texture */
    return cs->info.nr_bindful_textures + (2 * cs->info.nr_bindful_images);
 }
 
 static uint32_t
-agx_nr_tex_descriptors(struct agx_batch *batch, enum pipe_shader_type stage,
-                       const struct agx_compiled_shader *cs)
+agx_nr_tex_descriptors(struct agx_batch *batch, enum pipe_shader_type stage)
 {
-   unsigned n = agx_nr_tex_descriptors_without_spilled_rts(cs);
+   unsigned n = agx_nr_tex_descriptors_without_spilled_rts(
+      batch->ctx->stage[stage].shader);
 
    /* We add on texture/PBE descriptors for spilled render targets */
    bool spilled_rt = stage == PIPE_SHADER_FRAGMENT &&
@@ -2754,11 +2758,18 @@ agx_upload_textures(struct agx_batch *batch, struct agx_compiled_shader *cs,
                     enum pipe_shader_type stage)
 {
    struct agx_context *ctx = batch->ctx;
-   unsigned nr_textures = cs->info.nr_bindful_textures;
+
+   if (!ctx->stage[stage].shader) {
+      batch->texture_count[stage] = 0;
+      batch->textures[stage] = 0;
+      return;
+   }
+
+   unsigned nr_textures = ctx->stage[stage].shader->info.nr_bindful_textures;
 
    unsigned nr_active_textures = ctx->stage[stage].texture_count;
-   unsigned nr_tex_descriptors = agx_nr_tex_descriptors(batch, stage, cs);
-   unsigned nr_images = cs->info.nr_bindful_images;
+   unsigned nr_tex_descriptors = agx_nr_tex_descriptors(batch, stage);
+   unsigned nr_images = ctx->stage[stage].shader->info.nr_bindful_images;
 
    struct agx_ptr T_tex = agx_pool_alloc_aligned(
       &batch->pool, AGX_TEXTURE_LENGTH * nr_tex_descriptors, 64);
@@ -2790,8 +2801,7 @@ agx_upload_textures(struct agx_batch *batch, struct agx_compiled_shader *cs,
    for (unsigned i = 0; i < nr_images; ++i) {
       /* Image descriptors come in pairs after the textures */
       struct agx_texture_packed *texture =
-         ((struct agx_texture_packed *)T_tex.cpu) +
-         cs->info.nr_bindful_textures + (2 * i);
+         ((struct agx_texture_packed *)T_tex.cpu) + nr_textures + (2 * i);
 
       struct agx_pbe_packed *pbe = (struct agx_pbe_packed *)(texture + 1);
 
@@ -2822,7 +2832,7 @@ agx_upload_textures(struct agx_batch *batch, struct agx_compiled_shader *cs,
 
       struct agx_texture_packed *out =
          ((struct agx_texture_packed *)T_tex.cpu) +
-         agx_nr_tex_descriptors_without_spilled_rts(cs);
+         agx_nr_tex_descriptors_without_spilled_rts(ctx->stage[stage].shader);
 
       agx_upload_spilled_rt_descriptors(out, batch);
    }
@@ -3386,7 +3396,7 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out, bool is_lines,
          cfg.uniform_register_count = vs->info.push_count;
          cfg.preshader_register_count = vs->info.nr_preamble_gprs;
          cfg.texture_state_register_count =
-            agx_nr_tex_descriptors(batch, PIPE_SHADER_VERTEX, vs);
+            agx_nr_tex_descriptors(batch, PIPE_SHADER_VERTEX);
          cfg.sampler_state_register_count =
             translate_sampler_state_count(ctx, vs, PIPE_SHADER_VERTEX);
       }
@@ -3583,7 +3593,7 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out, bool is_lines,
          cfg.uniform_register_count = ctx->fs->info.push_count;
          cfg.preshader_register_count = ctx->fs->info.nr_preamble_gprs;
          cfg.texture_state_register_count =
-            agx_nr_tex_descriptors(batch, PIPE_SHADER_FRAGMENT, ctx->fs);
+            agx_nr_tex_descriptors(batch, PIPE_SHADER_FRAGMENT);
          cfg.sampler_state_register_count =
             translate_sampler_state_count(ctx, ctx->fs, PIPE_SHADER_FRAGMENT);
          cfg.cf_binding_count = ctx->fs->info.varyings.fs.nr_bindings;
@@ -4973,7 +4983,7 @@ agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
       cfg.uniform_register_count = cs->info.push_count;
       cfg.preshader_register_count = cs->info.nr_preamble_gprs;
       cfg.texture_state_register_count =
-         agx_nr_tex_descriptors(batch, stage, cs);
+         agx_nr_tex_descriptors(batch, merged_stage(ctx, stage));
       cfg.sampler_state_register_count =
          translate_sampler_state_count(ctx, cs, stage);
       cfg.pipeline =

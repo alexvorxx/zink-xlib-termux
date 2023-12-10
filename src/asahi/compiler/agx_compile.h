@@ -100,6 +100,9 @@ struct agx_uncompiled_shader_info {
    uint64_t inputs_linear_shaded;
    uint8_t cull_distance_size;
    bool has_edgeflags;
+
+   /* Number of bindful textures, images used */
+   unsigned nr_bindful_textures, nr_bindful_images;
 };
 
 struct agx_shader_info {
@@ -153,9 +156,6 @@ struct agx_shader_info {
    /* Shader uses txf, requiring a workaround sampler in the given location */
    bool uses_txf;
    unsigned txf_sampler;
-
-   /* Number of bindful textures, images used */
-   unsigned nr_bindful_textures, nr_bindful_images;
 
    /* Number of 16-bit registers used by the main shader and preamble
     * respectively.

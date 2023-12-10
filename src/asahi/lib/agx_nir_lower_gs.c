@@ -290,6 +290,10 @@ agx_nir_link_vs_gs(nir_shader *vs, nir_shader *gs)
 
    /* Copy texture info. We force bindless on GS for now. */
    gs->info.num_textures = vs->info.num_textures;
+   gs->info.num_images = vs->info.num_images;
+   BITSET_COPY(gs->info.textures_used, vs->info.textures_used);
+   BITSET_COPY(gs->info.textures_used_by_txf, vs->info.textures_used_by_txf);
+   BITSET_COPY(gs->info.images_used, vs->info.images_used);
 
    /* Inline the VS into the GS */
    nir_inline_functions(gs);

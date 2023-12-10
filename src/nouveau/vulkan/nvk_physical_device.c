@@ -1127,6 +1127,16 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
          .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
          .heapIndex = vram_heap_idx,
       };
+
+      if (pdev->info.cls_eng3d >= MAXWELL_A &&
+          pdev->info.bar_size_B >= pdev->info.vram_size_B) {
+         pdev->mem_types[pdev->mem_type_count++] = (VkMemoryType) {
+            .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            .heapIndex = vram_heap_idx,
+         };
+      }
    }
 
    uint32_t sysmem_heap_idx = pdev->mem_heap_count++;

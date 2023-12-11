@@ -29,7 +29,6 @@
 
 #include "genxml/gen_macros.h"
 
-#include "pan_bo.h"
 #include "pan_desc.h"
 #include "pan_encoder.h"
 #include "pan_texture.h"
@@ -570,7 +569,7 @@ pan_emit_midgard_tiler(const struct pan_fb_info *fb,
 {
    bool hierarchy = !tiler_ctx->midgard.no_hierarchical_tiling;
 
-   assert(tiler_ctx->midgard.polygon_list->ptr.gpu);
+   assert(tiler_ctx->midgard.polygon_list);
 
    pan_pack(out, TILER_CONTEXT, cfg) {
       unsigned header_size;
@@ -580,8 +579,8 @@ pan_emit_midgard_tiler(const struct pan_fb_info *fb,
             hierarchy ? MALI_MIDGARD_TILER_DISABLED : MALI_MIDGARD_TILER_USER;
          header_size = MALI_MIDGARD_TILER_MINIMUM_HEADER_SIZE;
          cfg.polygon_list_size = header_size + (hierarchy ? 0 : 4);
-         cfg.heap_start = tiler_ctx->midgard.polygon_list->ptr.gpu;
-         cfg.heap_end = tiler_ctx->midgard.polygon_list->ptr.gpu;
+         cfg.heap_start = tiler_ctx->midgard.polygon_list;
+         cfg.heap_end = tiler_ctx->midgard.polygon_list;
       } else {
          cfg.hierarchy_mask = panfrost_choose_hierarchy_mask(
             fb->width, fb->height, tiler_ctx->vertex_count, hierarchy);
@@ -593,7 +592,7 @@ pan_emit_midgard_tiler(const struct pan_fb_info *fb,
          cfg.heap_end = cfg.heap_start + tiler_ctx->midgard.heap.size;
       }
 
-      cfg.polygon_list = tiler_ctx->midgard.polygon_list->ptr.gpu;
+      cfg.polygon_list = tiler_ctx->midgard.polygon_list;
       cfg.polygon_list_body = cfg.polygon_list + header_size;
    }
 }

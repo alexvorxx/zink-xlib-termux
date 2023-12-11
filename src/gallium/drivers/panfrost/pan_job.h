@@ -154,6 +154,9 @@ struct panfrost_batch {
    /* Tiler context */
    struct pan_tiler_context tiler_ctx;
 
+   /* Only used on midgard. */
+   struct panfrost_bo *polygon_list_bo;
+
    /* Keep the num_work_groups sysval around for indirect dispatch */
    mali_ptr num_wg_sysval[3];
 

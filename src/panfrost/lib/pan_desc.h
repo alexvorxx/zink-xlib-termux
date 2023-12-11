@@ -80,7 +80,7 @@ struct pan_tiler_context {
       struct {
          bool disable;
          bool no_hierarchical_tiling;
-         struct panfrost_bo *polygon_list;
+         mali_ptr polygon_list;
          struct {
             mali_ptr start;
             unsigned size;

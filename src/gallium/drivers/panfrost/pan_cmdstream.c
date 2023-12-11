@@ -3686,23 +3686,24 @@ batch_get_polygon_list(struct panfrost_batch *batch)
        * no WRITE_VALUE job in the chain
        */
       bool init_polygon_list = !has_draws;
-      batch->tiler_ctx.midgard.polygon_list = panfrost_batch_create_bo(
+      batch->polygon_list_bo = panfrost_batch_create_bo(
          batch, size, init_polygon_list ? 0 : PAN_BO_INVISIBLE,
          PIPE_SHADER_VERTEX, "Polygon list");
-      panfrost_batch_add_bo(batch, batch->tiler_ctx.midgard.polygon_list,
+      batch->tiler_ctx.midgard.polygon_list = batch->polygon_list_bo->ptr.gpu;
+      panfrost_batch_add_bo(batch, batch->polygon_list_bo,
                             PIPE_SHADER_FRAGMENT);
 
       if (init_polygon_list && dev->model->quirks.no_hierarchical_tiling) {
-         assert(batch->tiler_ctx.midgard.polygon_list->ptr.cpu);
+         assert(batch->polygon_list_bo->ptr.cpu);
          uint32_t *polygon_list_body =
-            batch->tiler_ctx.midgard.polygon_list->ptr.cpu +
+            batch->polygon_list_bo->ptr.cpu +
             MALI_MIDGARD_TILER_MINIMUM_HEADER_SIZE;
 
          /* Magic for Mali T720 */
          polygon_list_body[0] = 0xa0000000;
       } else if (init_polygon_list) {
-         assert(batch->tiler_ctx.midgard.polygon_list->ptr.cpu);
-         uint32_t *header = batch->tiler_ctx.midgard.polygon_list->ptr.cpu;
+         assert(batch->polygon_list_bo->ptr.cpu);
+         uint32_t *header = batch->polygon_list_bo->ptr.cpu;
          memset(header, 0, size);
       }
 
@@ -3713,7 +3714,7 @@ batch_get_polygon_list(struct panfrost_batch *batch)
       batch->tiler_ctx.midgard.heap.size = panfrost_bo_size(dev->tiler_heap);
    }
 
-   return batch->tiler_ctx.midgard.polygon_list->ptr.gpu;
+   return batch->tiler_ctx.midgard.polygon_list;
 }
 #endif
 

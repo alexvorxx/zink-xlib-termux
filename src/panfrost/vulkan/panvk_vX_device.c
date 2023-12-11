@@ -255,10 +255,10 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
          }
 
          if (batch->blit.src)
-            bos[bo_idx++] = panfrost_bo_handle(batch->blit.src);
+            bos[bo_idx++] = pan_kmod_bo_handle(batch->blit.src);
 
          if (batch->blit.dst)
-            bos[bo_idx++] = panfrost_bo_handle(batch->blit.dst);
+            bos[bo_idx++] = pan_kmod_bo_handle(batch->blit.dst);
 
          if (batch->jc.first_tiler)
             bos[bo_idx++] = panfrost_bo_handle(pdev->tiler_heap);

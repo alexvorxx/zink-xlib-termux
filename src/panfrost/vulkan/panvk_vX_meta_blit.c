@@ -127,8 +127,8 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
 
       views[0].first_layer = views[0].last_layer = ctx.dst.cur_layer;
       views[1].first_layer = views[1].last_layer = views[0].first_layer;
-      batch->blit.src = src_img->bo;
-      batch->blit.dst = dst_img->bo;
+      batch->blit.src = src_img->bo->kmod_bo;
+      batch->blit.dst = dst_img->bo->kmod_bo;
       panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
       panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
       panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf);

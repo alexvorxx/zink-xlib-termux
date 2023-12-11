@@ -323,7 +323,7 @@ struct panvk_batch {
       struct panfrost_ptr desc;
    } fb;
    struct {
-      struct panfrost_bo *src, *dst;
+      struct pan_kmod_bo *src, *dst;
    } blit;
    struct panfrost_ptr tls;
    mali_ptr fragment_job;

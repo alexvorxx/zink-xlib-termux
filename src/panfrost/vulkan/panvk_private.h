@@ -855,8 +855,8 @@ struct panvk_pipeline {
 
    uint32_t dynamic_state_mask;
 
-   struct panfrost_bo *binary_bo;
-   struct panfrost_bo *state_bo;
+   struct panvk_priv_bo *binary_bo;
+   struct panvk_priv_bo *state_bo;
 
    mali_ptr vpd;
    mali_ptr rsds[MESA_SHADER_STAGES];

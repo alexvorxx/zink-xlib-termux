@@ -125,7 +125,7 @@ modifier_is_supported(const struct intel_device_info *devinfo,
    case I915_FORMAT_MOD_4_TILED_MTL_RC_CCS:
    case I915_FORMAT_MOD_4_TILED_MTL_MC_CCS:
    case I915_FORMAT_MOD_4_TILED_MTL_RC_CCS_CC:
-      if (!intel_device_info_is_mtl(devinfo))
+      if (!intel_device_info_is_mtl_or_arl(devinfo))
          return false;
       break;
    case DRM_FORMAT_MOD_INVALID:

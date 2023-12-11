@@ -40,7 +40,6 @@
 #include "vk_descriptors.h"
 #include "vk_util.h"
 
-#include "pan_bo.h"
 #include "panvk_cs.h"
 
 #define PANVK_DESCRIPTOR_ALIGN 8
@@ -303,14 +302,14 @@ panvk_per_arch(descriptor_set_create)(
 
    if (layout->desc_ubo_size) {
       set->desc_bo =
-         panfrost_bo_create(&device->pdev,
-                            layout->desc_ubo_size, 0, "Descriptor set");
+         panvk_priv_bo_create(device, layout->desc_ubo_size, 0, NULL,
+                              VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       if (!set->desc_bo)
          goto err_free_set;
 
       struct mali_uniform_buffer_packed *ubos = set->ubos;
 
-      panvk_per_arch(emit_ubo)(set->desc_bo->ptr.gpu, layout->desc_ubo_size,
+      panvk_per_arch(emit_ubo)(set->desc_bo->addr.dev, layout->desc_ubo_size,
                                &ubos[layout->desc_ubo_index]);
    }
 
@@ -337,7 +336,7 @@ err_free_set:
    vk_free(&device->vk.alloc, set->img_fmts);
    vk_free(&device->vk.alloc, set->img_attrib_bufs);
    if (set->desc_bo)
-      panfrost_bo_unreference(set->desc_bo);
+      panvk_priv_bo_destroy(set->desc_bo, NULL);
    vk_object_free(&device->vk, NULL, set);
    return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 }
@@ -383,7 +382,7 @@ panvk_desc_ubo_data(struct panvk_descriptor_set *set, uint32_t binding,
    const struct panvk_descriptor_set_binding_layout *binding_layout =
       &set->layout->bindings[binding];
 
-   return (char *)set->desc_bo->ptr.cpu + binding_layout->desc_ubo_offset +
+   return (char *)set->desc_bo->addr.host + binding_layout->desc_ubo_offset +
           elem * binding_layout->desc_ubo_stride;
 }
 

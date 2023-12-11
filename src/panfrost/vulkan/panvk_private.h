@@ -371,7 +371,7 @@ struct panvk_descriptor_set {
    void *img_attrib_bufs;
    uint32_t *img_fmts;
 
-   struct panfrost_bo *desc_bo;
+   struct panvk_priv_bo *desc_bo;
 };
 
 #define MAX_SETS 4

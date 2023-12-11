@@ -127,6 +127,9 @@ panfrost_bo_handle(struct panfrost_bo *bo)
    return bo->kmod_bo->handle;
 }
 
+struct panfrost_bo *panfrost_bo_from_kmod_bo(struct panfrost_device *dev,
+                                             struct pan_kmod_bo *kmod_bo);
+
 bool panfrost_bo_wait(struct panfrost_bo *bo, int64_t timeout_ns,
                       bool wait_readers);
 void panfrost_bo_reference(struct panfrost_bo *bo);

@@ -521,3 +521,16 @@ panfrost_bo_export(struct panfrost_bo *bo)
 
    return ret;
 }
+
+struct panfrost_bo *
+panfrost_bo_from_kmod_bo(struct panfrost_device *dev,
+                         struct pan_kmod_bo *kmod_bo)
+{
+   if (!kmod_bo)
+      return NULL;
+
+   struct panfrost_bo *bo = pan_lookup_bo(dev, pan_kmod_bo_handle(kmod_bo));
+   assert(bo->kmod_bo == kmod_bo);
+
+   return bo;
+}

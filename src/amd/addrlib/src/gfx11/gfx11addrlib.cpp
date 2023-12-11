@@ -740,7 +740,7 @@ ChipFamily Gfx11Lib::HwlConvertChipFamily(
             }
             break;
         case FAMILY_GFX1150:
-            if (ASICREV_IS_GFX1150(chipRevision))
+            if (ASICREV_IS_GFX1150(chipRevision) || ASICREV_IS_GFX1151(chipRevision))
             {
                 m_settings.isGfx1150 = 1;
             }

@@ -102,7 +102,8 @@
 #define AMDGPU_GFX1103_R1_RANGE 0x01, 0x80 //# 1 <= x < 128
 #define AMDGPU_GFX1103_R2_RANGE 0x80, 0xFF //# 128 <= x < max
 
-#define AMDGPU_GFX1150_RANGE    0x01, 0xFF //# 1 <= x < max
+#define AMDGPU_GFX1150_RANGE    0x01, 0x40 //# 1 <= x < 64
+#define AMDGPU_GFX1151_RANGE    0xC0, 0xFF //# 192 <= x < max
 
 #define AMDGPU_REMBRANDT_RANGE  0x01, 0xFF //# 01 <= x < 255
 
@@ -176,6 +177,7 @@
 #define ASICREV_IS_GFX1103_R1(r)       ASICREV_IS(r, GFX1103_R1)
 #define ASICREV_IS_GFX1103_R2(r)       ASICREV_IS(r, GFX1103_R2)
 #define ASICREV_IS_GFX1150(r)          ASICREV_IS(r, GFX1150)
+#define ASICREV_IS_GFX1151(r)          ASICREV_IS(r, GFX1151)
 
 #define ASICREV_IS_REMBRANDT(r)        ASICREV_IS(r, REMBRANDT)
 

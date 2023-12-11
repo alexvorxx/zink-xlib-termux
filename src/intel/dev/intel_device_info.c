@@ -1598,7 +1598,7 @@ intel_device_info_calc_engine_prefetch(const struct intel_device_info *devinfo,
       }
    }
 
-   if (intel_device_info_is_mtl(devinfo)) {
+   if (intel_device_info_is_mtl_or_arl(devinfo)) {
       switch (engine_class) {
       case INTEL_ENGINE_CLASS_RENDER:
          return 2048;

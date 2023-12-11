@@ -48,7 +48,7 @@ panvk_debug_adjust_bo_flags(const struct panvk_device *device,
    uint32_t debug_flags = device->physical_device->instance->debug_flags;
 
    if (debug_flags & PANVK_DEBUG_DUMP)
-      bo_flags &= ~PAN_BO_INVISIBLE;
+      bo_flags &= ~PAN_KMOD_BO_FLAG_NO_MMAP;
 
    return bo_flags;
 }
@@ -1122,17 +1122,16 @@ panvk_create_cmdbuf(struct vk_command_pool *vk_pool,
 
    cmdbuf->device = device;
 
-   panvk_pool_init(&cmdbuf->desc_pool, &device->pdev,
-                   &pool->desc_bo_pool, 0, 64 * 1024,
-                   "Command buffer descriptor pool", true);
-   panvk_pool_init(&cmdbuf->tls_pool, &device->pdev,
-                   &pool->tls_bo_pool,
-                   panvk_debug_adjust_bo_flags(device, PAN_BO_INVISIBLE),
-                   64 * 1024, "TLS pool", false);
-   panvk_pool_init(&cmdbuf->varying_pool, &device->pdev,
-                   &pool->varying_bo_pool,
-                   panvk_debug_adjust_bo_flags(device, PAN_BO_INVISIBLE),
-                   64 * 1024, "Varyings pool", false);
+   panvk_pool_init(&cmdbuf->desc_pool, device, &pool->desc_bo_pool, 0,
+                   64 * 1024, "Command buffer descriptor pool", true);
+   panvk_pool_init(
+      &cmdbuf->tls_pool, device, &pool->tls_bo_pool,
+      panvk_debug_adjust_bo_flags(device, PAN_KMOD_BO_FLAG_NO_MMAP), 64 * 1024,
+      "TLS pool", false);
+   panvk_pool_init(
+      &cmdbuf->varying_pool, device, &pool->varying_bo_pool,
+      panvk_debug_adjust_bo_flags(device, PAN_KMOD_BO_FLAG_NO_MMAP), 64 * 1024,
+      "Varyings pool", false);
    list_inithead(&cmdbuf->batches);
    *cmdbuf_out = &cmdbuf->vk;
    return VK_SUCCESS;

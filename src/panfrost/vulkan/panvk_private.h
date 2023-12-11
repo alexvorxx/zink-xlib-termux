@@ -68,6 +68,7 @@
 
 #include "pan_blend.h"
 #include "pan_blitter.h"
+#include "pan_bo.h"
 #include "pan_desc.h"
 #include "pan_device.h"
 #include "pan_jc.h"

@@ -227,10 +227,10 @@ panvk_per_arch(CmdResolveImage2)(VkCommandBuffer commandBuffer,
 void
 panvk_per_arch(meta_blit_init)(struct panvk_device *dev)
 {
-   panvk_pool_init(&dev->meta.blitter.bin_pool, &dev->pdev, NULL,
-                   PAN_BO_EXECUTE, 16 * 1024, "panvk_meta blitter binary pool",
-                   false);
-   panvk_pool_init(&dev->meta.blitter.desc_pool, &dev->pdev, NULL, 0, 16 * 1024,
+   panvk_pool_init(&dev->meta.blitter.bin_pool, dev, NULL,
+                   PAN_KMOD_BO_FLAG_EXECUTABLE, 16 * 1024,
+                   "panvk_meta blitter binary pool", false);
+   panvk_pool_init(&dev->meta.blitter.desc_pool, dev, NULL, 0, 16 * 1024,
                    "panvk_meta blitter descriptor pool", false);
    pan_blend_shader_cache_init(&dev->meta.blend_shader_cache,
                                dev->physical_device->kmod.props.gpu_prod_id);

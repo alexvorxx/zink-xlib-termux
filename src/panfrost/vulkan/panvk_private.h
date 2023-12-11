@@ -253,6 +253,11 @@ struct panvk_queue {
 struct panvk_device {
    struct vk_device vk;
 
+   struct {
+      struct pan_kmod_vm *vm;
+      struct pan_kmod_dev *dev;
+   } kmod;
+
    struct panfrost_device pdev;
 
    struct panvk_meta meta;

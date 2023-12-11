@@ -939,6 +939,8 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
 
    panfrost_open_device(NULL, dup(physical_device->kmod.dev->fd),
                         &device->pdev);
+   device->kmod.dev = device->pdev.kmod.dev;
+   device->kmod.vm = device->pdev.kmod.vm;
    vk_device_set_drm_fd(&device->vk, device->pdev.kmod.dev->fd);
 
    panvk_arch_dispatch(arch, meta_init, device);

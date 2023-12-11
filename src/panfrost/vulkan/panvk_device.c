@@ -862,6 +862,58 @@ panvk_queue_finish(struct panvk_queue *queue)
    vk_queue_finish(&queue->vk);
 }
 
+struct panvk_priv_bo *panvk_priv_bo_create(struct panvk_device *dev,
+                                           size_t size, uint32_t flags,
+                                           const struct VkAllocationCallbacks *alloc,
+                                           VkSystemAllocationScope scope)
+{
+   struct panfrost_device *pdev = &dev->pdev;
+   uint32_t conv_flags = 0;
+
+   if (flags & PAN_KMOD_BO_FLAG_EXECUTABLE)
+      conv_flags |= PAN_BO_EXECUTE;
+
+   if (flags & PAN_KMOD_BO_FLAG_NO_MMAP)
+      conv_flags |= PAN_BO_INVISIBLE;
+
+   if (flags & PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT)
+      conv_flags |= PAN_BO_GROWABLE;
+
+   struct panvk_priv_bo *priv_bo =
+      vk_zalloc2(&dev->vk.alloc, alloc, sizeof(*priv_bo), 8, scope);
+
+   if (!priv_bo)
+      return NULL;
+
+   struct panfrost_bo *bo =
+      panfrost_bo_create(pdev, size, conv_flags, "Private BO");
+   if (!bo) {
+      vk_free2(&dev->vk.alloc, alloc, priv_bo);
+      return NULL;
+   }
+
+   priv_bo->bo = bo->kmod_bo;
+   priv_bo->dev = dev;
+   priv_bo->addr.host = bo->ptr.cpu;
+   priv_bo->addr.dev = bo->ptr.gpu;
+   return priv_bo;
+}
+
+void
+panvk_priv_bo_destroy(struct panvk_priv_bo *priv_bo,
+                      const VkAllocationCallbacks *alloc)
+{
+   if (!priv_bo)
+      return;
+
+   struct panvk_device *dev = priv_bo->dev;
+   struct panfrost_device *pdev = &dev->pdev;
+   struct panfrost_bo *bo = panfrost_bo_from_kmod_bo(pdev, priv_bo->bo);
+
+   panfrost_bo_unreference(bo);
+   vk_free2(&dev->vk.alloc, alloc, priv_bo);
+}
+
 VkResult
 panvk_CreateDevice(VkPhysicalDevice physicalDevice,
                    const VkDeviceCreateInfo *pCreateInfo,

@@ -899,6 +899,25 @@ struct panvk_priv_bo *panvk_priv_bo_create(struct panvk_device *dev,
    return priv_bo;
 }
 
+static struct panvk_priv_bo *
+panvk_priv_bo_from_pan_bo(struct panvk_device *dev, struct panfrost_bo *bo,
+                          const struct VkAllocationCallbacks *alloc,
+                          VkSystemAllocationScope scope)
+{
+   struct panvk_priv_bo *priv_bo =
+      vk_zalloc2(&dev->vk.alloc, alloc, sizeof(*priv_bo), 8, scope);
+
+   if (!priv_bo)
+      return NULL;
+
+   panfrost_bo_reference(bo);
+   priv_bo->bo = bo->kmod_bo;
+   priv_bo->dev = dev;
+   priv_bo->addr.host = bo->ptr.cpu;
+   priv_bo->addr.dev = bo->ptr.gpu;
+   return priv_bo;
+}
+
 void
 panvk_priv_bo_destroy(struct panvk_priv_bo *priv_bo,
                       const VkAllocationCallbacks *alloc)
@@ -993,6 +1012,12 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
                         &device->pdev);
    device->kmod.dev = device->pdev.kmod.dev;
    device->kmod.vm = device->pdev.kmod.vm;
+   device->tiler_heap = panvk_priv_bo_from_pan_bo(
+      device, device->pdev.tiler_heap, &device->vk.alloc,
+      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   device->sample_positions = panvk_priv_bo_from_pan_bo(
+      device, device->pdev.sample_positions, &device->vk.alloc,
+      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    vk_device_set_drm_fd(&device->vk, device->pdev.kmod.dev->fd);
 
    panvk_arch_dispatch(arch, meta_init, device);
@@ -1038,6 +1063,8 @@ fail:
 
    panvk_arch_dispatch(pan_arch(physical_device->kmod.props.gpu_prod_id),
                        meta_cleanup, device);
+   panvk_priv_bo_destroy(device->tiler_heap, &device->vk.alloc);
+   panvk_priv_bo_destroy(device->sample_positions, &device->vk.alloc);
    panfrost_close_device(&device->pdev);
 
    vk_free(&device->vk.alloc, device);
@@ -1062,6 +1089,8 @@ panvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    panvk_arch_dispatch(pan_arch(physical_device->kmod.props.gpu_prod_id),
                        meta_cleanup, device);
+   panvk_priv_bo_destroy(device->tiler_heap, &device->vk.alloc);
+   panvk_priv_bo_destroy(device->sample_positions, &device->vk.alloc);
    panfrost_close_device(&device->pdev);
    vk_free(&device->vk.alloc, device);
 }

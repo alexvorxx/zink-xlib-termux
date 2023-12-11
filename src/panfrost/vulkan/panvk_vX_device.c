@@ -204,7 +204,7 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
                              struct vk_queue_submit *submit)
 {
    struct panvk_queue *queue = container_of(vk_queue, struct panvk_queue, vk);
-   const struct panfrost_device *pdev = &queue->device->pdev;
+   struct panvk_device *dev = queue->device;
 
    unsigned nr_semaphores = submit->wait_count + 1;
    uint32_t semaphores[nr_semaphores];
@@ -261,9 +261,9 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
             bos[bo_idx++] = pan_kmod_bo_handle(batch->blit.dst);
 
          if (batch->jc.first_tiler)
-            bos[bo_idx++] = panfrost_bo_handle(pdev->tiler_heap);
+            bos[bo_idx++] = pan_kmod_bo_handle(dev->tiler_heap->bo);
 
-         bos[bo_idx++] = panfrost_bo_handle(pdev->sample_positions);
+         bos[bo_idx++] = pan_kmod_bo_handle(dev->sample_positions->bo);
          assert(bo_idx == nr_bos);
 
          /* Merge identical BO entries. */

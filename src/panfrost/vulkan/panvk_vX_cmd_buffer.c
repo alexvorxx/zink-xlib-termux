@@ -142,9 +142,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
       GENX(pan_emit_tls)(&batch->tlsinfo, batch->tls.cpu);
 
    if (batch->fb.desc.cpu) {
-      struct panfrost_device *pdev = &cmdbuf->device->pdev;
-
-      fbinfo->sample_positions = pdev->sample_positions->ptr.gpu +
+      fbinfo->sample_positions = cmdbuf->device->sample_positions->addr.dev +
                                  panfrost_sample_positions_offset(
                                     pan_sample_pattern(fbinfo->nr_samples));
 

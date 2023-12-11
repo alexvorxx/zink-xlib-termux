@@ -827,13 +827,11 @@ panvk_per_arch(emit_tiler_context)(const struct panvk_device *dev,
                                    unsigned width, unsigned height,
                                    const struct panfrost_ptr *descs)
 {
-   const struct panfrost_device *pdev = &dev->pdev;
-
    pan_pack(descs->cpu + pan_size(TILER_CONTEXT), TILER_HEAP, cfg) {
-      cfg.size = panfrost_bo_size(pdev->tiler_heap);
-      cfg.base = pdev->tiler_heap->ptr.gpu;
-      cfg.bottom = pdev->tiler_heap->ptr.gpu;
-      cfg.top = pdev->tiler_heap->ptr.gpu + panfrost_bo_size(pdev->tiler_heap);
+      cfg.size = pan_kmod_bo_size(dev->tiler_heap->bo);
+      cfg.base = dev->tiler_heap->addr.dev;
+      cfg.bottom = dev->tiler_heap->addr.dev;
+      cfg.top = cfg.base + cfg.size;
    }
 
    pan_pack(descs->cpu, TILER_CONTEXT, cfg) {

@@ -279,6 +279,9 @@ struct panvk_device {
       struct pan_kmod_dev *dev;
    } kmod;
 
+   struct panvk_priv_bo *tiler_heap;
+   struct panvk_priv_bo *sample_positions;
+
    struct panfrost_device pdev;
 
    struct panvk_meta meta;

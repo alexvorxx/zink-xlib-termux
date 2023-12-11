@@ -58,6 +58,8 @@ struct panfrost_resource {
    /* Description of the resource layout */
    struct pan_image image;
 
+   struct panfrost_bo *bo;
+
    struct {
       /* Is the checksum for this image valid? Implicitly refers to
        * the first slice; we only checksum non-mipmapped 2D images */

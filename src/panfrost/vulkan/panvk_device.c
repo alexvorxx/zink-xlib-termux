@@ -1225,12 +1225,12 @@ panvk_BindImageMemory2(VkDevice device, uint32_t bindInfoCount,
       VK_FROM_HANDLE(panvk_device_memory, mem, pBindInfos[i].memory);
 
       if (mem) {
-         image->pimage.data.bo = mem->bo;
+         image->bo = mem->bo;
+         image->pimage.data.base = mem->bo->ptr.gpu;
          image->pimage.data.offset = pBindInfos[i].memoryOffset;
          /* Reset the AFBC headers */
          if (drm_is_afbc(image->pimage.layout.modifier)) {
-            void *base =
-               image->pimage.data.bo->ptr.cpu + image->pimage.data.offset;
+            void *base = image->bo->ptr.cpu + image->pimage.data.offset;
 
             for (unsigned layer = 0; layer < image->pimage.layout.array_size;
                  layer++) {
@@ -1245,7 +1245,7 @@ panvk_BindImageMemory2(VkDevice device, uint32_t bindInfoCount,
             }
          }
       } else {
-         image->pimage.data.bo = NULL;
+         image->bo = NULL;
          image->pimage.data.offset = pBindInfos[i].memoryOffset;
       }
    }

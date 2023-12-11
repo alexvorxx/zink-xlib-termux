@@ -338,7 +338,7 @@ GENX(jm_launch_grid)(struct panfrost_batch *batch,
       struct panfrost_device *dev = pan_device(batch->ctx->base.screen);
       struct pan_indirect_dispatch_info indirect = {
          .job = t.gpu,
-         .indirect_dim = pan_resource(info->indirect)->image.data.bo->ptr.gpu +
+         .indirect_dim = pan_resource(info->indirect)->image.data.base +
                          info->indirect_offset,
          .num_wg_sysval =
             {
@@ -485,7 +485,7 @@ jm_emit_tiler_draw(void *out, struct panfrost_batch *batch, bool fs_required,
 
          struct panfrost_resource *rsrc =
             pan_resource(ctx->occlusion_query->rsrc);
-         cfg.occlusion = rsrc->image.data.bo->ptr.gpu;
+         cfg.occlusion = rsrc->image.data.base;
          panfrost_batch_write_rsrc(ctx->batch, rsrc, PIPE_SHADER_FRAGMENT);
       }
 

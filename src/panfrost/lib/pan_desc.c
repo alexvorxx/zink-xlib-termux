@@ -29,6 +29,7 @@
 
 #include "genxml/gen_macros.h"
 
+#include "pan_bo.h"
 #include "pan_desc.h"
 #include "pan_encoder.h"
 #include "pan_texture.h"
@@ -279,7 +280,7 @@ pan_prepare_crc(const struct pan_fb_info *fb, int rt_crc,
       &image->layout.slices[rt->first_level];
 
    ext->crc_base =
-      image->data.bo->ptr.gpu + image->data.offset + slice->crc.offset;
+      image->data.base + image->data.offset + slice->crc.offset;
    ext->crc_row_stride = slice->crc.stride;
 
 #if PAN_ARCH >= 7
@@ -886,7 +887,7 @@ GENX(pan_emit_fbd)(const struct pan_fb_info *fb, const struct pan_tls_info *tls,
 
             cfg.crc_buffer.row_stride = slice->crc.stride;
             cfg.crc_buffer.base =
-               image->data.bo->ptr.gpu + image->data.offset + slice->crc.offset;
+               image->data.base + image->data.offset + slice->crc.offset;
          }
       }
 

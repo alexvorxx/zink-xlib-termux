@@ -896,6 +896,7 @@ struct panvk_pipeline {
 
 struct panvk_image {
    struct vk_image vk;
+   struct panfrost_bo *bo;
 
    struct pan_image pimage;
 };

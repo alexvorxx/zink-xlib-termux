@@ -29,7 +29,9 @@
 
 static void
 panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
-                const struct pan_blit_info *blitinfo)
+                const struct pan_blit_info *blitinfo,
+                const struct panvk_image *src_img, 
+                const struct panvk_image *dst_img)
 {
    struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
@@ -122,8 +124,8 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
 
       views[0].first_layer = views[0].last_layer = ctx.dst.cur_layer;
       views[1].first_layer = views[1].last_layer = views[0].first_layer;
-      batch->blit.src = blitinfo->src.planes[0].image->data.bo;
-      batch->blit.dst = blitinfo->dst.planes[0].image->data.bo;
+      batch->blit.src = src_img->bo;
+      batch->blit.dst = dst_img->bo;
       panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
       panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
       panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf);
@@ -208,7 +210,7 @@ panvk_per_arch(CmdBlitImage2)(VkCommandBuffer commandBuffer,
          info.dst.planes[0].format =
             util_format_get_depth_only(info.dst.planes[0].format);
 
-      panvk_meta_blit(cmdbuf, &info);
+      panvk_meta_blit(cmdbuf, &info, src, dst);
    }
 }
 

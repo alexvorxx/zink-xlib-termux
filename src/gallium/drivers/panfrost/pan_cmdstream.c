@@ -821,7 +821,7 @@ panfrost_emit_vertex_buffers(struct panfrost_batch *batch)
       panfrost_batch_read_rsrc(batch, rsrc, PIPE_SHADER_VERTEX);
 
       pan_pack(buffers + i, BUFFER, cfg) {
-         cfg.address = rsrc->image.data.bo->ptr.gpu + vb.buffer_offset;
+         cfg.address = rsrc->image.data.base + vb.buffer_offset;
 
          cfg.size = prsrc->width0 - vb.buffer_offset;
       }
@@ -909,7 +909,7 @@ panfrost_map_constant_buffer_gpu(struct panfrost_batch *batch,
 
       /* Alignment gauranteed by
        * PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT */
-      return rsrc->image.data.bo->ptr.gpu + cb->buffer_offset;
+      return rsrc->image.data.base + cb->buffer_offset;
    } else if (cb->user_buffer) {
       return pan_pool_upload_aligned(&batch->pool.base,
                                      cb->user_buffer + cb->buffer_offset,
@@ -1038,7 +1038,7 @@ panfrost_upload_ssbo_sysval(struct panfrost_batch *batch,
 
    /* Compute address */
    struct panfrost_resource *rsrc = pan_resource(sb.buffer);
-   struct panfrost_bo *bo = rsrc->image.data.bo;
+   struct panfrost_bo *bo = rsrc->bo;
 
    panfrost_batch_write_rsrc(batch, rsrc, st);
 
@@ -1205,7 +1205,7 @@ panfrost_upload_sysvals(struct panfrost_batch *batch, void *ptr_cpu,
 
          panfrost_batch_write_rsrc(batch, rsrc, PIPE_SHADER_VERTEX);
 
-         uniforms[i].du[0] = rsrc->image.data.bo->ptr.gpu + offset;
+         uniforms[i].du[0] = rsrc->image.data.base + offset;
          break;
       }
 
@@ -1269,11 +1269,11 @@ panfrost_map_constant_buffer_cpu(struct panfrost_context *ctx,
    struct panfrost_resource *rsrc = pan_resource(cb->buffer);
 
    if (rsrc) {
-      panfrost_bo_mmap(rsrc->image.data.bo);
+      panfrost_bo_mmap(rsrc->bo);
       panfrost_flush_writer(ctx, rsrc, "CPU constant buffer mapping");
-      panfrost_bo_wait(rsrc->image.data.bo, INT64_MAX, false);
+      panfrost_bo_wait(rsrc->bo, INT64_MAX, false);
 
-      return rsrc->image.data.bo->ptr.cpu + cb->buffer_offset;
+      return rsrc->bo->ptr.cpu + cb->buffer_offset;
    } else if (cb->user_buffer) {
       return cb->user_buffer + cb->buffer_offset;
    } else
@@ -1491,7 +1491,7 @@ panfrost_create_sampler_view_bo(struct panfrost_sampler_view *so,
    struct panfrost_context *ctx = pan_context(pctx);
    struct panfrost_resource *prsrc = (struct panfrost_resource *)texture;
    enum pipe_format format = so->base.format;
-   assert(prsrc->image.data.bo);
+   assert(prsrc->bo);
 
    /* Format to access the stencil/depth portion of a Z32_S8 texture */
    if (format == PIPE_FORMAT_X32_S8X24_UINT) {
@@ -1503,7 +1503,7 @@ panfrost_create_sampler_view_bo(struct panfrost_sampler_view *so,
       format = PIPE_FORMAT_Z32_FLOAT;
    }
 
-   so->texture_bo = prsrc->image.data.bo->ptr.gpu;
+   so->texture_bo = prsrc->image.data.base;
    so->modifier = prsrc->image.layout.modifier;
 
    /* MSAA only supported for 2D textures */
@@ -1585,7 +1585,7 @@ panfrost_update_sampler_view(struct panfrost_sampler_view *view,
                              struct pipe_context *pctx)
 {
    struct panfrost_resource *rsrc = pan_resource(view->base.texture);
-   if (view->texture_bo != rsrc->image.data.bo->ptr.gpu ||
+   if (view->texture_bo != rsrc->image.data.base ||
        view->modifier != rsrc->image.layout.modifier) {
       panfrost_bo_unreference(view->state.bo);
       panfrost_create_sampler_view_bo(view, pctx, &rsrc->base);
@@ -1787,9 +1787,9 @@ emit_image_bufs(struct panfrost_batch *batch, enum pipe_shader_type shader,
 
       pan_pack(bufs + (i * 2), ATTRIBUTE_BUFFER, cfg) {
          cfg.type = pan_modifier_to_attr_type(rsrc->image.layout.modifier);
-         cfg.pointer = rsrc->image.data.bo->ptr.gpu + offset;
+         cfg.pointer = rsrc->image.data.base + offset;
          cfg.stride = util_format_get_blocksize(image->format);
-         cfg.size = panfrost_bo_size(rsrc->image.data.bo) - offset;
+         cfg.size = panfrost_bo_size(rsrc->bo) - offset;
       }
 
       if (is_buffer) {
@@ -1927,7 +1927,7 @@ panfrost_emit_vertex_data(struct panfrost_batch *batch, mali_ptr *buffers)
       panfrost_batch_read_rsrc(batch, rsrc, PIPE_SHADER_VERTEX);
 
       /* Mask off lower bits, see offset fixup below */
-      mali_ptr raw_addr = rsrc->image.data.bo->ptr.gpu + buf->buffer_offset;
+      mali_ptr raw_addr = rsrc->image.data.base + buf->buffer_offset;
       mali_ptr addr = raw_addr & ~63;
 
       /* Since we advanced the base pointer, we shrink the buffer
@@ -3124,7 +3124,7 @@ panfrost_afbc_size(struct panfrost_batch *batch, struct panfrost_resource *src,
    struct pan_image_slice_layout *slice = &src->image.layout.slices[level];
    struct panfrost_afbc_size_info consts = {
       .src =
-         src->image.data.bo->ptr.gpu + src->image.data.offset + slice->offset,
+         src->image.data.base + src->image.data.offset + slice->offset,
       .metadata = metadata->ptr.gpu + offset,
    };
 
@@ -3143,7 +3143,7 @@ panfrost_afbc_pack(struct panfrost_batch *batch, struct panfrost_resource *src,
 {
    struct pan_image_slice_layout *src_slice = &src->image.layout.slices[level];
    struct panfrost_afbc_pack_info consts = {
-      .src = src->image.data.bo->ptr.gpu + src->image.data.offset +
+      .src = src->image.data.base + src->image.data.offset +
              src_slice->offset,
       .dst = dst->ptr.gpu + dst_slice->offset,
       .metadata = metadata->ptr.gpu + metadata_offset,

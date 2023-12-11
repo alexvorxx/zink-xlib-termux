@@ -35,8 +35,8 @@
 #include "drm-uapi/drm_fourcc.h"
 #include "genxml/gen_macros.h"
 #include "util/format/u_format.h"
-#include "pan_bo.h"
 #include "pan_format.h"
+#include "pan_pool.h"
 #include "pan_util.h"
 
 #ifdef __cplusplus
@@ -115,7 +115,7 @@ struct pan_image_layout {
 };
 
 struct pan_image_mem {
-   struct panfrost_bo *bo;
+   mali_ptr base;
    unsigned offset;
 };
 

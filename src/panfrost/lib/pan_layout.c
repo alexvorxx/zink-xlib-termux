@@ -23,6 +23,7 @@
  *
  */
 
+#include "util/log.h"
 #include "util/macros.h"
 #include "util/u_math.h"
 #include "pan_texture.h"
@@ -488,7 +489,7 @@ pan_iview_get_surface(const struct pan_image_view *iview, unsigned level,
 
    bool is_3d = image->layout.dim == MALI_TEXTURE_DIMENSION_3D;
    const struct pan_image_slice_layout *slice = &image->layout.slices[level];
-   mali_ptr base = image->data.bo->ptr.gpu + image->data.offset;
+   mali_ptr base = image->data.base + image->data.offset;
 
    if (drm_is_afbc(image->layout.modifier)) {
       assert(!sample);

@@ -544,7 +544,7 @@ panfrost_emit_surface(const struct pan_image_view *iview, unsigned level,
          break;
       }
 
-      mali_ptr base = base_image->data.bo->ptr.gpu + base_image->data.offset;
+      mali_ptr base = base_image->data.base + base_image->data.offset;
 
       if (iview->buf.size) {
          assert(iview->dim == MALI_TEXTURE_DIMENSION_1D);

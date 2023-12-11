@@ -967,7 +967,7 @@ struct panvk_image_view {
 
    struct pan_image_view pview;
 
-   struct panfrost_bo *bo;
+   struct panvk_priv_bo *bo;
    struct {
       uint32_t tex[TEXTURE_DESC_WORDS];
       uint32_t img_attrib_buf[ATTRIB_BUF_DESC_WORDS * 2];
@@ -983,7 +983,7 @@ struct panvk_sampler {
 
 struct panvk_buffer_view {
    struct vk_object_base base;
-   struct panfrost_bo *bo;
+   struct panvk_priv_bo *bo;
    struct {
       uint32_t tex[TEXTURE_DESC_WORDS];
       uint32_t img_attrib_buf[ATTRIB_BUF_DESC_WORDS * 2];

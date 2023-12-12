@@ -75,6 +75,8 @@
 #include "panvk_varyings.h"
 #include "vk_extensions.h"
 
+#include "kmod/pan_kmod.h"
+
 /* Pre-declarations needed for WSI entrypoints */
 struct wl_surface;
 struct wl_display;
@@ -129,6 +131,7 @@ panvk_meta_copy_tex_type(unsigned dim, bool isarray)
 }
 
 struct panvk_meta {
+
    struct panvk_pool bin_pool;
    struct panvk_pool desc_pool;
 
@@ -172,10 +175,8 @@ struct panvk_meta {
 struct panvk_physical_device {
    struct vk_physical_device vk;
 
-   /* The API agnostic device object. */
-   struct panfrost_device pdev;
-
    struct {
+      struct pan_kmod_dev *dev;
       struct pan_kmod_dev_props props;
    } kmod;
 
@@ -196,7 +197,6 @@ struct panvk_physical_device {
    const struct vk_sync_type *sync_types[2];
 
    struct wsi_device wsi_device;
-   struct panvk_meta meta;
 
    int master_fd;
 };
@@ -218,6 +218,10 @@ struct panvk_instance {
    uint32_t api_version;
 
    enum panvk_debug_flags debug_flags;
+
+   struct {
+      struct pan_kmod_allocator allocator;
+   } kmod;
 };
 
 VkResult panvk_wsi_init(struct panvk_physical_device *physical_device);
@@ -244,6 +248,10 @@ struct panvk_queue {
 
 struct panvk_device {
    struct vk_device vk;
+
+   struct panfrost_device pdev;
+
+   struct panvk_meta meta;
 
    struct vk_device_dispatch_table cmd_dispatch;
 

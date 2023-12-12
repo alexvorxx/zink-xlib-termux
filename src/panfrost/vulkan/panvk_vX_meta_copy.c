@@ -283,7 +283,7 @@ panvk_meta_copy_to_buf_emit_rsd(struct pan_pool *desc_pool, mali_ptr shader,
 }
 
 static mali_ptr
-panvk_meta_copy_img2img_shader(struct panvk_physical_device *dev,
+panvk_meta_copy_img2img_shader(struct panvk_device *dev,
                                enum pipe_format srcfmt, enum pipe_format dstfmt,
                                unsigned dstmask, unsigned texdim,
                                bool texisarray, bool is_ms,
@@ -416,7 +416,7 @@ panvk_meta_copy_img2img_shader(struct panvk_physical_device *dev,
    nir_store_var(&b, out, texel, 0xff);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = dev->kmod.props.gpu_prod_id,
+      .gpu_id = dev->physical_device->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -570,7 +570,7 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
    unsigned ms = dst->pimage.layout.nr_samples > 1 ? 1 : 0;
 
    mali_ptr rsd =
-      cmdbuf->device->physical_device->meta.copy.img2img[ms][texdimidx][fmtidx]
+      cmdbuf->device->meta.copy.img2img[ms][texdimidx][fmtidx]
          .rsd;
 
    struct pan_image_view srcview = {
@@ -692,7 +692,7 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
 }
 
 static void
-panvk_meta_copy_img2img_init(struct panvk_physical_device *dev, bool is_ms)
+panvk_meta_copy_img2img_init(struct panvk_device *dev, bool is_ms)
 {
    STATIC_ASSERT(ARRAY_SIZE(panvk_meta_copy_img2img_fmts) ==
                  PANVK_META_COPY_IMG2IMG_NUM_FORMATS);
@@ -849,7 +849,7 @@ struct panvk_meta_copy_buf2img_info {
       .range = ~0)
 
 static mali_ptr
-panvk_meta_copy_buf2img_shader(struct panvk_physical_device *dev,
+panvk_meta_copy_buf2img_shader(struct panvk_device *dev,
                                struct panvk_meta_copy_format_info key,
                                struct pan_shader_info *shader_info)
 {
@@ -957,7 +957,7 @@ panvk_meta_copy_buf2img_shader(struct panvk_physical_device *dev,
    nir_store_var(&b, out, texel, 0xff);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = dev->kmod.props.gpu_prod_id,
+      .gpu_id = dev->physical_device->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -1027,7 +1027,7 @@ panvk_meta_copy_buf2img(struct panvk_cmd_buffer *cmdbuf,
    unsigned fmtidx = panvk_meta_copy_buf2img_format_idx(key);
 
    mali_ptr rsd =
-      cmdbuf->device->physical_device->meta.copy.buf2img[fmtidx].rsd;
+      cmdbuf->device->meta.copy.buf2img[fmtidx].rsd;
 
    const struct vk_image_buffer_layout buflayout =
       vk_image_buffer_copy_layout(&img->vk, region);
@@ -1129,7 +1129,7 @@ panvk_meta_copy_buf2img(struct panvk_cmd_buffer *cmdbuf,
 }
 
 static void
-panvk_meta_copy_buf2img_init(struct panvk_physical_device *dev)
+panvk_meta_copy_buf2img_init(struct panvk_device *dev)
 {
    STATIC_ASSERT(ARRAY_SIZE(panvk_meta_copy_buf2img_fmts) ==
                  PANVK_META_COPY_BUF2IMG_NUM_FORMATS);
@@ -1237,7 +1237,7 @@ struct panvk_meta_copy_img2buf_info {
       .range = ~0)
 
 static mali_ptr
-panvk_meta_copy_img2buf_shader(struct panvk_physical_device *dev,
+panvk_meta_copy_img2buf_shader(struct panvk_device *dev,
                                struct panvk_meta_copy_format_info key,
                                unsigned texdim, unsigned texisarray,
                                struct pan_shader_info *shader_info)
@@ -1416,7 +1416,7 @@ panvk_meta_copy_img2buf_shader(struct panvk_physical_device *dev,
    nir_pop_if(&b, NULL);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = dev->kmod.props.gpu_prod_id,
+      .gpu_id = dev->physical_device->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -1467,7 +1467,7 @@ panvk_meta_copy_img2buf(struct panvk_cmd_buffer *cmdbuf,
    unsigned fmtidx = panvk_meta_copy_img2buf_format_idx(key);
 
    mali_ptr rsd =
-      cmdbuf->device->physical_device->meta.copy.img2buf[texdimidx][fmtidx].rsd;
+      cmdbuf->device->meta.copy.img2buf[texdimidx][fmtidx].rsd;
 
    struct panvk_meta_copy_img2buf_info info = {
       .buf.ptr = panvk_buffer_gpu_ptr(buf, region->bufferOffset),
@@ -1555,7 +1555,7 @@ panvk_meta_copy_img2buf(struct panvk_cmd_buffer *cmdbuf,
 }
 
 static void
-panvk_meta_copy_img2buf_init(struct panvk_physical_device *dev)
+panvk_meta_copy_img2buf_init(struct panvk_device *dev)
 {
    STATIC_ASSERT(ARRAY_SIZE(panvk_meta_copy_img2buf_fmts) ==
                  PANVK_META_COPY_IMG2BUF_NUM_FORMATS);
@@ -1615,7 +1615,7 @@ struct panvk_meta_copy_buf2buf_info {
       .range = ~0)
 
 static mali_ptr
-panvk_meta_copy_buf2buf_shader(struct panvk_physical_device *dev,
+panvk_meta_copy_buf2buf_shader(struct panvk_device *dev,
                                unsigned blksz,
                                struct pan_shader_info *shader_info)
 {
@@ -1644,7 +1644,7 @@ panvk_meta_copy_buf2buf_shader(struct panvk_physical_device *dev,
                     (1 << ncomps) - 1);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = dev->kmod.props.gpu_prod_id,
+      .gpu_id = dev->physical_device->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -1668,7 +1668,7 @@ panvk_meta_copy_buf2buf_shader(struct panvk_physical_device *dev,
 }
 
 static void
-panvk_meta_copy_buf2buf_init(struct panvk_physical_device *dev)
+panvk_meta_copy_buf2buf_init(struct panvk_device *dev)
 {
    for (unsigned i = 0; i < ARRAY_SIZE(dev->meta.copy.buf2buf); i++) {
       struct pan_shader_info shader_info;
@@ -1694,9 +1694,9 @@ panvk_meta_copy_buf2buf(struct panvk_cmd_buffer *cmdbuf,
    unsigned log2blksz = alignment ? alignment - 1 : 4;
 
    assert(log2blksz <
-          ARRAY_SIZE(cmdbuf->device->physical_device->meta.copy.buf2buf));
+          ARRAY_SIZE(cmdbuf->device->meta.copy.buf2buf));
    mali_ptr rsd =
-      cmdbuf->device->physical_device->meta.copy.buf2buf[log2blksz].rsd;
+      cmdbuf->device->meta.copy.buf2buf[log2blksz].rsd;
 
    mali_ptr pushconsts =
       pan_pool_upload_aligned(&cmdbuf->desc_pool.base, &info, sizeof(info), 16);
@@ -1748,7 +1748,7 @@ struct panvk_meta_fill_buf_info {
       .base = offsetof(struct panvk_meta_fill_buf_info, field), .range = ~0)
 
 static mali_ptr
-panvk_meta_fill_buf_shader(struct panvk_physical_device *dev,
+panvk_meta_fill_buf_shader(struct panvk_device *dev,
                            struct pan_shader_info *shader_info)
 {
    struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
@@ -1771,7 +1771,7 @@ panvk_meta_fill_buf_shader(struct panvk_physical_device *dev,
    nir_store_global(&b, ptr, sizeof(uint32_t), val, 1);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = dev->kmod.props.gpu_prod_id,
+      .gpu_id = dev->physical_device->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -1795,7 +1795,7 @@ panvk_meta_fill_buf_shader(struct panvk_physical_device *dev,
 }
 
 static mali_ptr
-panvk_meta_fill_buf_emit_rsd(struct panvk_physical_device *dev)
+panvk_meta_fill_buf_emit_rsd(struct panvk_device *dev)
 {
    struct pan_pool *desc_pool = &dev->meta.desc_pool.base;
    struct pan_shader_info shader_info;
@@ -1813,7 +1813,7 @@ panvk_meta_fill_buf_emit_rsd(struct panvk_physical_device *dev)
 }
 
 static void
-panvk_meta_fill_buf_init(struct panvk_physical_device *dev)
+panvk_meta_fill_buf_init(struct panvk_device *dev)
 {
    dev->meta.copy.fillbuf.rsd = panvk_meta_fill_buf_emit_rsd(dev);
 }
@@ -1842,7 +1842,7 @@ panvk_meta_fill_buf(struct panvk_cmd_buffer *cmdbuf,
    assert(!(offset & 3) && !(size & 3));
 
    unsigned nwords = size / sizeof(uint32_t);
-   mali_ptr rsd = cmdbuf->device->physical_device->meta.copy.fillbuf.rsd;
+   mali_ptr rsd = cmdbuf->device->meta.copy.fillbuf.rsd;
 
    mali_ptr pushconsts =
       pan_pool_upload_aligned(&cmdbuf->desc_pool.base, &info, sizeof(info), 16);
@@ -1891,7 +1891,7 @@ panvk_meta_update_buf(struct panvk_cmd_buffer *cmdbuf,
    unsigned log2blksz = ffs(sizeof(uint32_t)) - 1;
 
    mali_ptr rsd =
-      cmdbuf->device->physical_device->meta.copy.buf2buf[log2blksz].rsd;
+      cmdbuf->device->meta.copy.buf2buf[log2blksz].rsd;
 
    mali_ptr pushconsts =
       pan_pool_upload_aligned(&cmdbuf->desc_pool.base, &info, sizeof(info), 16);
@@ -1929,7 +1929,7 @@ panvk_per_arch(CmdUpdateBuffer)(VkCommandBuffer commandBuffer,
 }
 
 void
-panvk_per_arch(meta_copy_init)(struct panvk_physical_device *dev)
+panvk_per_arch(meta_copy_init)(struct panvk_device *dev)
 {
    panvk_meta_copy_img2img_init(dev, false);
    panvk_meta_copy_img2img_init(dev, true);

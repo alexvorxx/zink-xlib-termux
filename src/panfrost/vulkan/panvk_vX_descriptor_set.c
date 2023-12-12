@@ -303,7 +303,7 @@ panvk_per_arch(descriptor_set_create)(
 
    if (layout->desc_ubo_size) {
       set->desc_bo =
-         panfrost_bo_create(&device->physical_device->pdev,
+         panfrost_bo_create(&device->pdev,
                             layout->desc_ubo_size, 0, "Descriptor set");
       if (!set->desc_bo)
          goto err_free_set;

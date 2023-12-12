@@ -827,7 +827,7 @@ panvk_per_arch(emit_tiler_context)(const struct panvk_device *dev,
                                    unsigned width, unsigned height,
                                    const struct panfrost_ptr *descs)
 {
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
+   const struct panfrost_device *pdev = &dev->pdev;
 
    pan_pack(descs->cpu + pan_size(TILER_CONTEXT), TILER_HEAP, cfg) {
       cfg.size = panfrost_bo_size(pdev->tiler_heap);

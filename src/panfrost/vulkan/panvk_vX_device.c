@@ -42,7 +42,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 {
    const struct panvk_device *dev = queue->device;
    unsigned debug = dev->physical_device->instance->debug_flags;
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
+   const struct panfrost_device *pdev = &dev->pdev;
    int ret;
 
    /* Reset the batch if it's already been issued */
@@ -205,7 +205,7 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
                              struct vk_queue_submit *submit)
 {
    struct panvk_queue *queue = container_of(vk_queue, struct panvk_queue, vk);
-   const struct panfrost_device *pdev = &queue->device->physical_device->pdev;
+   const struct panfrost_device *pdev = &queue->device->pdev;
 
    unsigned nr_semaphores = submit->wait_count + 1;
    uint32_t semaphores[nr_semaphores];

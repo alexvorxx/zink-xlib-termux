@@ -48,7 +48,7 @@ panvk_per_arch(meta_emit_viewport)(struct pan_pool *pool, uint16_t minx,
 }
 
 void
-panvk_per_arch(meta_init)(struct panvk_physical_device *dev)
+panvk_per_arch(meta_init)(struct panvk_device *dev)
 {
    panvk_pool_init(&dev->meta.bin_pool, &dev->pdev, NULL, PAN_BO_EXECUTE,
                    16 * 1024, "panvk_meta binary pool", false);
@@ -60,7 +60,7 @@ panvk_per_arch(meta_init)(struct panvk_physical_device *dev)
 }
 
 void
-panvk_per_arch(meta_cleanup)(struct panvk_physical_device *dev)
+panvk_per_arch(meta_cleanup)(struct panvk_device *dev)
 {
    panvk_per_arch(meta_blit_cleanup)(dev);
    panvk_pool_cleanup(&dev->meta.desc_pool);

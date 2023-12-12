@@ -297,9 +297,7 @@ panvk_physical_device_finish(struct panvk_physical_device *device)
 {
    panvk_wsi_finish(device);
 
-   panvk_arch_dispatch(pan_arch(device->kmod.props.gpu_prod_id), meta_cleanup,
-                       device);
-   panfrost_close_device(&device->pdev);
+   pan_kmod_dev_destroy(device->kmod.dev);
    if (device->master_fd != -1)
       close(device->master_fd);
 
@@ -311,6 +309,25 @@ panvk_destroy_physical_device(struct vk_physical_device *device)
 {
    panvk_physical_device_finish((struct panvk_physical_device *)device);
    vk_free(&device->instance->alloc, device);
+}
+
+static void *
+panvk_kmod_zalloc(const struct pan_kmod_allocator *allocator,
+                  size_t size, bool transient)
+{
+   const VkAllocationCallbacks *vkalloc = allocator->priv;
+
+   return vk_zalloc(vkalloc, size, 8,
+                    transient ? VK_SYSTEM_ALLOCATION_SCOPE_COMMAND
+                              : VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+}
+
+static void
+panvk_kmod_free(const struct pan_kmod_allocator *allocator, void *data)
+{
+   const VkAllocationCallbacks *vkalloc = allocator->priv;
+
+   return vk_free(vkalloc, data);
 }
 
 VkResult
@@ -341,6 +358,12 @@ panvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
       vk_free(pAllocator, instance);
       return vk_error(NULL, result);
    }
+
+   instance->kmod.allocator = (struct pan_kmod_allocator){
+      .zalloc = panvk_kmod_zalloc,
+      .free = panvk_kmod_free,
+      .priv = &instance->vk.alloc,
+   };
 
    instance->vk.physical_devices.try_create_for_drm =
       panvk_physical_device_try_create;
@@ -448,14 +471,10 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    }
 
    device->master_fd = master_fd;
-   if (instance->debug_flags & PANVK_DEBUG_TRACE)
-      device->pdev.debug |= PAN_DBG_TRACE;
 
-   device->pdev.debug |= PAN_DBG_NO_CACHE;
-   panfrost_open_device(NULL, fd, &device->pdev);
-   fd = -1;
-
-   pan_kmod_dev_query_props(device->pdev.kmod.dev, &device->kmod.props);
+   device->kmod.dev = pan_kmod_dev_create(fd, PAN_KMOD_DEV_FLAG_OWNS_FD,
+                                          &instance->kmod.allocator);
+   pan_kmod_dev_query_props(device->kmod.dev, &device->kmod.props);
 
    unsigned arch = pan_arch(device->kmod.props.gpu_prod_id);
 
@@ -468,8 +487,6 @@ panvk_physical_device_init(struct panvk_physical_device *device,
                          "%s not supported", device->model->name);
       goto fail;
    }
-
-   panvk_arch_dispatch(arch, meta_init, device);
 
    memset(device->name, 0, sizeof(device->name));
    sprintf(device->name, "%s", device->model->name);
@@ -487,7 +504,7 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    panvk_get_device_uuid(&device->device_uuid);
 
    device->drm_syncobj_type =
-      vk_drm_syncobj_get_type(panfrost_device_fd(&device->pdev));
+      vk_drm_syncobj_get_type(device->kmod.dev->fd);
    /* We don't support timelines in the uAPI yet and we don't want it getting
     * suddenly turned on by vk_drm_syncobj_get_type() without us adding panvk
     * code for it first.
@@ -507,7 +524,7 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    return VK_SUCCESS;
 
 fail_close_device:
-   panfrost_close_device(&device->pdev);
+   pan_kmod_dev_destroy(device->kmod.dev);
 fail:
    if (fd != -1)
       close(fd);
@@ -849,6 +866,7 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
                    const VkAllocationCallbacks *pAllocator, VkDevice *pDevice)
 {
    VK_FROM_HANDLE(panvk_physical_device, physical_device, physicalDevice);
+   struct panvk_instance *instance = physical_device->instance;
    VkResult result;
    struct panvk_device *device;
 
@@ -913,8 +931,15 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
    device->instance = physical_device->instance;
    device->physical_device = physical_device;
 
-   const struct panfrost_device *pdev = &physical_device->pdev;
-   vk_device_set_drm_fd(&device->vk, panfrost_device_fd(pdev));
+   device->pdev.debug |= PAN_DBG_NO_CACHE;
+   if (instance->debug_flags & PANVK_DEBUG_TRACE)
+      device->pdev.debug |= PAN_DBG_TRACE;
+
+   panfrost_open_device(NULL, dup(physical_device->kmod.dev->fd),
+                        &device->pdev);
+   vk_device_set_drm_fd(&device->vk, device->pdev.kmod.dev->fd);
+
+   panvk_arch_dispatch(arch, meta_init, device);
 
    for (unsigned i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
       const VkDeviceQueueCreateInfo *queue_create =
@@ -953,6 +978,10 @@ fail:
          vk_object_free(&device->vk, NULL, device->queues[i]);
    }
 
+   panvk_arch_dispatch(pan_arch(physical_device->kmod.props.gpu_prod_id),
+                       meta_cleanup, device);
+   panfrost_close_device(&device->pdev);
+
    vk_free(&device->vk.alloc, device);
    return result;
 }
@@ -961,6 +990,7 @@ void
 panvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
+   struct panvk_physical_device *physical_device = device->physical_device;
 
    if (!device)
       return;
@@ -972,6 +1002,9 @@ panvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
          vk_object_free(&device->vk, NULL, device->queues[i]);
    }
 
+   panvk_arch_dispatch(pan_arch(physical_device->kmod.props.gpu_prod_id),
+                       meta_cleanup, device);
+   panfrost_close_device(&device->pdev);
    vk_free(&device->vk.alloc, device);
 }
 
@@ -1086,13 +1119,13 @@ panvk_AllocateMemory(VkDevice _device,
        * reference counting.  We need to maintain a per-instance handle-to-bo
        * table and add reference count to panvk_bo.
        */
-      mem->bo = panfrost_bo_import(&device->physical_device->pdev, fd_info->fd);
+      mem->bo = panfrost_bo_import(&device->pdev, fd_info->fd);
       /* take ownership and close the fd */
       close(fd_info->fd);
    } else {
-      mem->bo = panfrost_bo_create(
-         &device->physical_device->pdev, pAllocateInfo->allocationSize,
-         can_be_exported ? PAN_BO_SHAREABLE : 0, "User-requested memory");
+      mem->bo = panfrost_bo_create(&device->pdev, pAllocateInfo->allocationSize,
+                                   can_be_exported ? PAN_BO_SHAREABLE : 0,
+                                   "User-requested memory");
    }
 
    assert(mem->bo);

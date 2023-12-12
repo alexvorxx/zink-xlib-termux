@@ -161,7 +161,7 @@ panvk_pipeline_builder_upload_shaders(struct panvk_pipeline_builder *builder,
       return VK_SUCCESS;
 
    struct panfrost_bo *bin_bo =
-      panfrost_bo_create(&builder->device->physical_device->pdev,
+      panfrost_bo_create(&builder->device->pdev,
                          builder->shader_total_size, PAN_BO_EXECUTE, "Shader");
 
    pipeline->binary_bo = bin_bo;
@@ -184,7 +184,7 @@ static void
 panvk_pipeline_builder_alloc_static_state_bo(
    struct panvk_pipeline_builder *builder, struct panvk_pipeline *pipeline)
 {
-   struct panfrost_device *pdev = &builder->device->physical_device->pdev;
+   struct panfrost_device *pdev = &builder->device->pdev;
    unsigned bo_size = 0;
 
    for (uint32_t i = 0; i < MESA_SHADER_STAGES; i++) {

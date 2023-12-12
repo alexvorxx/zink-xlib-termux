@@ -113,7 +113,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
    };
    panvk_convert_swizzle(&view->vk.swizzle, view->pview.swizzle);
 
-   struct panfrost_device *pdev = &device->physical_device->pdev;
+   struct panfrost_device *pdev = &device->pdev;
 
    if (view->vk.usage &
        (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) {
@@ -185,7 +185,7 @@ panvk_per_arch(CreateBufferView)(VkDevice _device,
 
    view->fmt = vk_format_to_pipe_format(pCreateInfo->format);
 
-   struct panfrost_device *pdev = &device->physical_device->pdev;
+   struct panfrost_device *pdev = &device->pdev;
    mali_ptr address = panvk_buffer_gpu_ptr(buffer, pCreateInfo->offset);
    unsigned size =
       panvk_buffer_range(buffer, pCreateInfo->offset, pCreateInfo->range);

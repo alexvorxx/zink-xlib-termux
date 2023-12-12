@@ -33,7 +33,7 @@
 #include "vk_format.h"
 
 static mali_ptr
-panvk_meta_clear_color_attachment_shader(struct panvk_physical_device *dev,
+panvk_meta_clear_color_attachment_shader(struct panvk_device *dev,
                                          enum glsl_base_type base_type,
                                          struct pan_shader_info *shader_info)
 {
@@ -53,7 +53,7 @@ panvk_meta_clear_color_attachment_shader(struct panvk_physical_device *dev,
    nir_store_var(&b, out, clear_values, 0xff);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = dev->kmod.props.gpu_prod_id,
+      .gpu_id = dev->physical_device->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -255,7 +255,7 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf,
                             const VkClearValue *clear_value,
                             const VkClearRect *clear_rect)
 {
-   struct panvk_meta *meta = &cmdbuf->device->physical_device->meta;
+   struct panvk_meta *meta = &cmdbuf->device->meta;
    struct panvk_batch *batch = cmdbuf->state.batch;
    const struct panvk_render_pass *pass = cmdbuf->state.pass;
    const struct panvk_render_pass_attachment *att =
@@ -493,7 +493,7 @@ panvk_per_arch(CmdClearAttachments)(VkCommandBuffer commandBuffer,
 }
 
 static void
-panvk_meta_clear_attachment_init(struct panvk_physical_device *dev)
+panvk_meta_clear_attachment_init(struct panvk_device *dev)
 {
    dev->meta.clear_attachment.color[GLSL_TYPE_UINT].shader =
       panvk_meta_clear_color_attachment_shader(
@@ -512,7 +512,7 @@ panvk_meta_clear_attachment_init(struct panvk_physical_device *dev)
 }
 
 void
-panvk_per_arch(meta_clear_init)(struct panvk_physical_device *dev)
+panvk_per_arch(meta_clear_init)(struct panvk_device *dev)
 {
    panvk_meta_clear_attachment_init(dev);
 }

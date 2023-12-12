@@ -34,6 +34,7 @@
 #include "pan_blitter.h"
 #include "pan_desc.h"
 #include "pan_encoder.h"
+#include "pan_props.h"
 #include "pan_samples.h"
 
 #include "util/rounding.h"
@@ -101,6 +102,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
       return;
    }
 
+   struct panvk_device *dev = cmdbuf->device;
    struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
 
    list_addtail(&batch->node, &cmdbuf->batches);
@@ -115,8 +117,15 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    }
 
    if (batch->tlsinfo.tls.size) {
+      unsigned thread_tls_alloc =
+         panfrost_query_thread_tls_alloc(&dev->physical_device->kmod.props);
+      unsigned core_id_range;
+
+      panfrost_query_core_count(&dev->physical_device->kmod.props,
+                                &core_id_range);
+
       unsigned size = panfrost_get_total_stack_size(
-         batch->tlsinfo.tls.size, pdev->thread_tls_alloc, pdev->core_id_range);
+         batch->tlsinfo.tls.size, thread_tls_alloc, core_id_range);
       batch->tlsinfo.tls.ptr =
          pan_pool_alloc_aligned(&cmdbuf->tls_pool.base, size, 4096).gpu;
    }
@@ -1169,13 +1178,13 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
                             uint32_t y, uint32_t z)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   const struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
    struct panvk_dispatch_info dispatch = {
       .wg_count = {x, y, z},
    };
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
    struct panvk_batch *batch = panvk_cmd_open_batch(cmdbuf);
+   struct panvk_device *dev = cmdbuf->device;
 
    struct panvk_cmd_bind_point_state *bind_point_state =
       panvk_cmd_get_bind_point_state(cmdbuf, COMPUTE);
@@ -1216,9 +1225,13 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    batch->tlsinfo.tls.size = pipeline->tls_size;
    batch->tlsinfo.wls.size = pipeline->wls_size;
    if (batch->tlsinfo.wls.size) {
+      unsigned core_id_range;
+
+      panfrost_query_core_count(&dev->physical_device->kmod.props,
+                                &core_id_range);
       batch->wls_total_size = pan_wls_adjust_size(batch->tlsinfo.wls.size) *
                               pan_wls_instances(&dispatch.wg_count) *
-                              pdev->core_id_range;
+                              core_id_range;
    }
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);

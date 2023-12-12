@@ -25,6 +25,7 @@
 
 #include "nir/nir_builder.h"
 #include "pan_encoder.h"
+#include "pan_props.h"
 #include "pan_shader.h"
 
 #include "panvk_private.h"
@@ -289,7 +290,6 @@ panvk_meta_copy_img2img_shader(struct panvk_physical_device *dev,
                                struct pan_shader_info *shader_info)
 {
    struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
-   struct panfrost_device *pdev = &dev->pdev;
 
    nir_builder b = nir_builder_init_simple_shader(
       MESA_SHADER_FRAGMENT, GENX(pan_shader_get_compiler_options)(),
@@ -416,7 +416,7 @@ panvk_meta_copy_img2img_shader(struct panvk_physical_device *dev,
    nir_store_var(&b, out, texel, 0xff);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = panfrost_device_gpu_id(pdev),
+      .gpu_id = dev->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -624,7 +624,8 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
       u_minify(dst->pimage.layout.height, region->dstSubresource.mipLevel);
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
+      .tile_buf_budget = panfrost_query_optimal_tib_size(
+         cmdbuf->device->physical_device->model),
       .width = width,
       .height = height,
       .extent.minx = minx & ~31,
@@ -853,7 +854,6 @@ panvk_meta_copy_buf2img_shader(struct panvk_physical_device *dev,
                                struct pan_shader_info *shader_info)
 {
    struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
-   struct panfrost_device *pdev = &dev->pdev;
 
    nir_builder b = nir_builder_init_simple_shader(
       MESA_SHADER_FRAGMENT, GENX(pan_shader_get_compiler_options)(),
@@ -957,7 +957,7 @@ panvk_meta_copy_buf2img_shader(struct panvk_physical_device *dev,
    nir_store_var(&b, out, texel, 0xff);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = panfrost_device_gpu_id(pdev),
+      .gpu_id = dev->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -1054,7 +1054,8 @@ panvk_meta_copy_buf2img(struct panvk_cmd_buffer *cmdbuf,
    /* TODO: don't force preloads of dst resources if unneeded */
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
+      .tile_buf_budget = panfrost_query_optimal_tib_size(
+         cmdbuf->device->physical_device->model),
       .width =
          u_minify(img->pimage.layout.width, region->imageSubresource.mipLevel),
       .height =
@@ -1244,7 +1245,6 @@ panvk_meta_copy_img2buf_shader(struct panvk_physical_device *dev,
    unsigned imgtexelsz = util_format_get_blocksize(key.imgfmt);
    unsigned buftexelsz = panvk_meta_copy_buf_texelsize(key.imgfmt, key.mask);
    struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
-   struct panfrost_device *pdev = &dev->pdev;
 
    /* FIXME: Won't work on compute queues, but we can't do that with
     * a compute shader if the destination is an AFBC surface.
@@ -1416,7 +1416,7 @@ panvk_meta_copy_img2buf_shader(struct panvk_physical_device *dev,
    nir_pop_if(&b, NULL);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = panfrost_device_gpu_id(pdev),
+      .gpu_id = dev->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -1620,7 +1620,6 @@ panvk_meta_copy_buf2buf_shader(struct panvk_physical_device *dev,
                                struct pan_shader_info *shader_info)
 {
    struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
-   struct panfrost_device *pdev = &dev->pdev;
 
    /* FIXME: Won't work on compute queues, but we can't do that with
     * a compute shader if the destination is an AFBC surface.
@@ -1645,7 +1644,7 @@ panvk_meta_copy_buf2buf_shader(struct panvk_physical_device *dev,
                     (1 << ncomps) - 1);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = panfrost_device_gpu_id(pdev),
+      .gpu_id = dev->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -1753,7 +1752,6 @@ panvk_meta_fill_buf_shader(struct panvk_physical_device *dev,
                            struct pan_shader_info *shader_info)
 {
    struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
-   struct panfrost_device *pdev = &dev->pdev;
 
    /* FIXME: Won't work on compute queues, but we can't do that with
     * a compute shader if the destination is an AFBC surface.
@@ -1773,7 +1771,7 @@ panvk_meta_fill_buf_shader(struct panvk_physical_device *dev,
    nir_store_global(&b, ptr, sizeof(uint32_t), val, 1);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = panfrost_device_gpu_id(pdev),
+      .gpu_id = dev->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };

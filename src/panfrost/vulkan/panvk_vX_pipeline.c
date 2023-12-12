@@ -394,7 +394,7 @@ panvk_pipeline_builder_parse_input_assembly(
 }
 
 bool
-panvk_per_arch(blend_needs_lowering)(const struct panfrost_device *dev,
+panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
                                      const struct pan_blend_state *state,
                                      unsigned rt)
 {
@@ -418,7 +418,8 @@ panvk_per_arch(blend_needs_lowering)(const struct panfrost_device *dev,
    if (!pan_blend_is_homogenous_constant(constant_mask, state->constants))
       return true;
 
-   bool supports_2src = pan_blend_supports_2src(dev->arch);
+   unsigned arch = pan_arch(dev->physical_device->kmod.props.gpu_prod_id);
+   bool supports_2src = pan_blend_supports_2src(arch);
    return !pan_blend_can_fixed_function(state->rts[rt].equation, supports_2src);
 }
 
@@ -426,7 +427,6 @@ static void
 panvk_pipeline_builder_parse_color_blend(struct panvk_pipeline_builder *builder,
                                          struct panvk_pipeline *pipeline)
 {
-   struct panfrost_device *pdev = &builder->device->physical_device->pdev;
    pipeline->blend.state.logicop_enable =
       builder->create_info.gfx->pColorBlendState->logicOpEnable;
    pipeline->blend.state.logicop_func =
@@ -475,10 +475,10 @@ panvk_pipeline_builder_parse_color_blend(struct panvk_pipeline_builder *builder,
 
       pipeline->blend.reads_dest |= pan_blend_reads_dest(out->equation);
 
-      unsigned constant_mask =
-         panvk_per_arch(blend_needs_lowering)(pdev, &pipeline->blend.state, i)
-            ? 0
-            : pan_blend_constant_mask(out->equation);
+      unsigned constant_mask = panvk_per_arch(blend_needs_lowering)(
+                                  builder->device, &pipeline->blend.state, i)
+                                  ? 0
+                                  : pan_blend_constant_mask(out->equation);
       pipeline->blend.constant[i].index = ffs(constant_mask) - 1;
       if (constant_mask) {
          /* On Bifrost, the blend constant is expressed with a UNORM of the

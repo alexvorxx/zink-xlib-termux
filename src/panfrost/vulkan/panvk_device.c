@@ -297,7 +297,8 @@ panvk_physical_device_finish(struct panvk_physical_device *device)
 {
    panvk_wsi_finish(device);
 
-   panvk_arch_dispatch(device->pdev.arch, meta_cleanup, device);
+   panvk_arch_dispatch(pan_arch(device->kmod.props.gpu_prod_id), meta_cleanup,
+                       device);
    panfrost_close_device(&device->pdev);
    if (device->master_fd != -1)
       close(device->master_fd);
@@ -454,18 +455,26 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    panfrost_open_device(NULL, fd, &device->pdev);
    fd = -1;
 
-   if (device->pdev.arch <= 5 || device->pdev.arch >= 8) {
+   pan_kmod_dev_query_props(device->pdev.kmod.dev, &device->kmod.props);
+
+   unsigned arch = pan_arch(device->kmod.props.gpu_prod_id);
+
+   device->model = panfrost_get_model(device->kmod.props.gpu_prod_id);
+   device->formats.all = panfrost_format_table(arch);
+   device->formats.blendable = panfrost_blendable_format_table(arch);
+
+   if (arch <= 5 || arch >= 8) {
       result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
-                         "%s not supported", device->pdev.model->name);
+                         "%s not supported", device->model->name);
       goto fail;
    }
 
-   panvk_arch_dispatch(device->pdev.arch, meta_init, device);
+   panvk_arch_dispatch(arch, meta_init, device);
 
    memset(device->name, 0, sizeof(device->name));
-   sprintf(device->name, "%s", device->pdev.model->name);
+   sprintf(device->name, "%s", device->model->name);
 
-   if (panvk_device_get_cache_uuid(panfrost_device_gpu_id(&device->pdev),
+   if (panvk_device_get_cache_uuid(device->kmod.props.gpu_prod_id,
                                    device->cache_uuid)) {
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
                          "cannot generate UUID");
@@ -814,7 +823,9 @@ panvk_queue_init(struct panvk_device *device, struct panvk_queue *queue,
       return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
 
-   switch (pdev->arch) {
+   unsigned arch = pan_arch(device->physical_device->kmod.props.gpu_prod_id);
+
+   switch (arch) {
    case 6:
       queue->vk.driver_submit = panvk_v6_queue_submit;
       break;
@@ -852,8 +863,9 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
    const struct vk_device_entrypoint_table *dev_entrypoints;
    const struct vk_command_buffer_ops *cmd_buffer_ops;
    struct vk_device_dispatch_table dispatch_table;
+   unsigned arch = pan_arch(physical_device->kmod.props.gpu_prod_id);
 
-   switch (physical_device->pdev.arch) {
+   switch (arch) {
    case 6:
       dev_entrypoints = &panvk_v6_device_entrypoints;
       cmd_buffer_ops = &panvk_v6_cmd_buffer_ops;

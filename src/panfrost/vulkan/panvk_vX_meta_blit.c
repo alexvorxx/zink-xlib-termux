@@ -24,13 +24,14 @@
 #include "gen_macros.h"
 
 #include "pan_blitter.h"
+#include "pan_props.h"
 
 #include "panvk_private.h"
 
 static void
 panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
                 const struct pan_blit_info *blitinfo,
-                const struct panvk_image *src_img, 
+                const struct panvk_image *src_img,
                 const struct panvk_image *dst_img)
 {
    struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
@@ -55,7 +56,8 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
    };
 
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
+      .tile_buf_budget = panfrost_query_optimal_tib_size(
+         cmdbuf->device->physical_device->model),
       .width = u_minify(blitinfo->dst.planes[0].image->layout.width,
                         blitinfo->dst.level),
       .height = u_minify(blitinfo->dst.planes[0].image->layout.height,
@@ -114,7 +116,8 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
 
-   GENX(pan_blit_ctx_init)(&pdev->blitter, blitinfo, &cmdbuf->desc_pool.base, &ctx);
+   GENX(pan_blit_ctx_init)
+   (&pdev->blitter, blitinfo, &cmdbuf->desc_pool.base, &ctx);
    do {
       if (ctx.dst.cur_layer < 0)
          continue;
@@ -230,11 +233,10 @@ panvk_per_arch(meta_blit_init)(struct panvk_physical_device *dev)
    panvk_pool_init(&dev->meta.blitter.desc_pool, &dev->pdev, NULL, 0, 16 * 1024,
                    "panvk_meta blitter descriptor pool", false);
    pan_blend_shader_cache_init(&dev->pdev.blend_shaders,
-                               panfrost_device_gpu_id(&dev->pdev));
+                               dev->kmod.props.gpu_prod_id);
    GENX(pan_blitter_cache_init)
-   (&dev->pdev.blitter, panfrost_device_gpu_id(&dev->pdev),
-    &dev->pdev.blend_shaders, &dev->meta.blitter.bin_pool.base,
-    &dev->meta.blitter.desc_pool.base);
+   (&dev->pdev.blitter, dev->kmod.props.gpu_prod_id, &dev->pdev.blend_shaders,
+    &dev->meta.blitter.bin_pool.base, &dev->meta.blitter.desc_pool.base);
 }
 
 void

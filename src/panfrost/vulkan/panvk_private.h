@@ -175,6 +175,16 @@ struct panvk_physical_device {
    /* The API agnostic device object. */
    struct panfrost_device pdev;
 
+   struct {
+      struct pan_kmod_dev_props props;
+   } kmod;
+
+   const struct panfrost_model *model;
+   struct {
+      const struct pan_blendable_format *blendable;
+      const struct panfrost_format *all;
+   } formats;
+
    struct panvk_instance *instance;
 
    char name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
@@ -1095,7 +1105,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_sampler, base, VkSampler,
 #endif
 
 #ifdef PAN_ARCH
-bool panvk_per_arch(blend_needs_lowering)(const struct panfrost_device *dev,
+bool panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
                                           const struct pan_blend_state *state,
                                           unsigned rt);
 

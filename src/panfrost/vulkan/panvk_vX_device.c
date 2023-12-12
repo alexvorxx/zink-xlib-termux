@@ -79,7 +79,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 
       if (debug & PANVK_DEBUG_TRACE) {
          pandecode_jc(pdev->decode_ctx, batch->jc.first_job,
-                      panfrost_device_gpu_id(pdev));
+                      dev->physical_device->kmod.props.gpu_prod_id);
       }
 
       if (debug & PANVK_DEBUG_DUMP)
@@ -114,7 +114,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 
       if (debug & PANVK_DEBUG_TRACE)
          pandecode_jc(pdev->decode_ctx, batch->fragment_job,
-                      panfrost_device_gpu_id(pdev));
+                      dev->physical_device->kmod.props.gpu_prod_id);
 
       if (debug & PANVK_DEBUG_DUMP)
          pandecode_dump_mappings(pdev->decode_ctx);

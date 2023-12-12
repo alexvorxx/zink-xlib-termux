@@ -24,6 +24,7 @@
 #include "nir/nir_builder.h"
 #include "pan_blitter.h"
 #include "pan_encoder.h"
+#include "pan_props.h"
 #include "pan_shader.h"
 
 #include "panvk_private.h"
@@ -37,7 +38,6 @@ panvk_meta_clear_color_attachment_shader(struct panvk_physical_device *dev,
                                          struct pan_shader_info *shader_info)
 {
    struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
-   struct panfrost_device *pdev = &dev->pdev;
 
    nir_builder b = nir_builder_init_simple_shader(
       MESA_SHADER_FRAGMENT, GENX(pan_shader_get_compiler_options)(),
@@ -53,7 +53,7 @@ panvk_meta_clear_color_attachment_shader(struct panvk_physical_device *dev,
    nir_store_var(&b, out, clear_values, 0xff);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = panfrost_device_gpu_id(pdev),
+      .gpu_id = dev->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -330,7 +330,8 @@ panvk_meta_clear_color_img(struct panvk_cmd_buffer *cmdbuf,
 
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
+      .tile_buf_budget = panfrost_query_optimal_tib_size(
+         cmdbuf->device->physical_device->model),
       .nr_samples = img->pimage.layout.nr_samples,
       .rt_count = 1,
       .rts[0].view = &view,
@@ -400,7 +401,8 @@ panvk_meta_clear_zs_img(struct panvk_cmd_buffer *cmdbuf,
 
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = cmdbuf->device->physical_device->pdev.optimal_tib_size,
+      .tile_buf_budget = panfrost_query_optimal_tib_size(
+         cmdbuf->device->physical_device->model),
       .nr_samples = img->pimage.layout.nr_samples,
       .rt_count = 1,
       .zs.clear_value.depth = value->depth,

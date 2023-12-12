@@ -30,8 +30,7 @@
 #include "panvk_private.h"
 
 static mali_ptr
-panvk_meta_copy_img_emit_texture(struct panfrost_device *pdev,
-                                 struct pan_pool *desc_pool,
+panvk_meta_copy_img_emit_texture(struct pan_pool *desc_pool,
                                  const struct pan_image_view *view)
 {
    struct panfrost_ptr texture = pan_pool_alloc_desc(desc_pool, TEXTURE);
@@ -45,8 +44,7 @@ panvk_meta_copy_img_emit_texture(struct panfrost_device *pdev,
 }
 
 static mali_ptr
-panvk_meta_copy_img_emit_sampler(struct panfrost_device *pdev,
-                                 struct pan_pool *desc_pool)
+panvk_meta_copy_img_emit_sampler(struct pan_pool *desc_pool)
 {
    struct panfrost_ptr sampler = pan_pool_alloc_desc(desc_pool, SAMPLER);
 
@@ -194,8 +192,7 @@ panvk_meta_copy_img_bifrost_raw_format(unsigned texelsize)
 }
 
 static mali_ptr
-panvk_meta_copy_to_img_emit_rsd(struct panfrost_device *pdev,
-                                struct pan_pool *desc_pool, mali_ptr shader,
+panvk_meta_copy_to_img_emit_rsd(struct pan_pool *desc_pool, mali_ptr shader,
                                 const struct pan_shader_info *shader_info,
                                 enum pipe_format fmt, unsigned wrmask,
                                 bool from_img)
@@ -266,8 +263,7 @@ panvk_meta_copy_to_img_emit_rsd(struct panfrost_device *pdev,
 }
 
 static mali_ptr
-panvk_meta_copy_to_buf_emit_rsd(struct panfrost_device *pdev,
-                                struct pan_pool *desc_pool, mali_ptr shader,
+panvk_meta_copy_to_buf_emit_rsd(struct pan_pool *desc_pool, mali_ptr shader,
                                 const struct pan_shader_info *shader_info,
                                 bool from_img)
 {
@@ -556,7 +552,6 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
                         const struct panvk_image *dst,
                         const VkImageCopy2 *region)
 {
-   struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
    struct panvk_meta_copy_img2img_format_info key = {
       .srcfmt = panvk_meta_copy_img_format(src->pimage.layout.format),
@@ -642,9 +637,8 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
    };
 
    mali_ptr texture =
-      panvk_meta_copy_img_emit_texture(pdev, &cmdbuf->desc_pool.base, &srcview);
-   mali_ptr sampler =
-      panvk_meta_copy_img_emit_sampler(pdev, &cmdbuf->desc_pool.base);
+      panvk_meta_copy_img_emit_texture(&cmdbuf->desc_pool.base, &srcview);
+   mali_ptr sampler = panvk_meta_copy_img_emit_sampler(&cmdbuf->desc_pool.base);
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
 
@@ -718,7 +712,7 @@ panvk_meta_copy_img2img_init(struct panvk_physical_device *dev, bool is_ms)
             &shader_info);
          dev->meta.copy.img2img[is_ms][texdimidx][i].rsd =
             panvk_meta_copy_to_img_emit_rsd(
-               &dev->pdev, &dev->meta.desc_pool.base, shader, &shader_info,
+               &dev->meta.desc_pool.base, shader, &shader_info,
                panvk_meta_copy_img2img_fmts[i].dstfmt,
                panvk_meta_copy_img2img_fmts[i].dstmask, true);
          if (texdim == 3)
@@ -735,7 +729,7 @@ panvk_meta_copy_img2img_init(struct panvk_physical_device *dev, bool is_ms)
             &shader_info);
          dev->meta.copy.img2img[is_ms][texdimidx][i].rsd =
             panvk_meta_copy_to_img_emit_rsd(
-               &dev->pdev, &dev->meta.desc_pool.base, shader, &shader_info,
+               &dev->meta.desc_pool.base, shader, &shader_info,
                panvk_meta_copy_img2img_fmts[i].dstfmt,
                panvk_meta_copy_img2img_fmts[i].dstmask, true);
       }
@@ -1143,7 +1137,7 @@ panvk_meta_copy_buf2img_init(struct panvk_physical_device *dev)
          &dev->pdev, &dev->meta.bin_pool.base, panvk_meta_copy_buf2img_fmts[i],
          &shader_info);
       dev->meta.copy.buf2img[i].rsd = panvk_meta_copy_to_img_emit_rsd(
-         &dev->pdev, &dev->meta.desc_pool.base, shader, &shader_info,
+         &dev->meta.desc_pool.base, shader, &shader_info,
          panvk_meta_copy_buf2img_fmts[i].imgfmt,
          panvk_meta_copy_buf2img_fmts[i].mask, false);
    }
@@ -1460,7 +1454,6 @@ panvk_meta_copy_img2buf(struct panvk_cmd_buffer *cmdbuf,
                         const struct panvk_image *img,
                         const VkBufferImageCopy2 *region)
 {
-   struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
    struct panvk_meta_copy_format_info key = {
       .imgfmt = panvk_meta_copy_img2buf_format(img->pimage.layout.format),
       .mask = panvk_meta_copy_img_mask(img->pimage.layout.format,
@@ -1518,9 +1511,8 @@ panvk_meta_copy_img2buf(struct panvk_cmd_buffer *cmdbuf,
    };
 
    mali_ptr texture =
-      panvk_meta_copy_img_emit_texture(pdev, &cmdbuf->desc_pool.base, &view);
-   mali_ptr sampler =
-      panvk_meta_copy_img_emit_sampler(pdev, &cmdbuf->desc_pool.base);
+      panvk_meta_copy_img_emit_texture(&cmdbuf->desc_pool.base, &view);
+   mali_ptr sampler = panvk_meta_copy_img_emit_sampler(&cmdbuf->desc_pool.base);
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
 
@@ -1576,8 +1568,7 @@ panvk_meta_copy_img2buf_init(struct panvk_physical_device *dev)
             &dev->pdev, &dev->meta.bin_pool.base,
             panvk_meta_copy_img2buf_fmts[i], texdim, false, &shader_info);
          dev->meta.copy.img2buf[texdimidx][i].rsd =
-            panvk_meta_copy_to_buf_emit_rsd(&dev->pdev,
-                                            &dev->meta.desc_pool.base, shader,
+            panvk_meta_copy_to_buf_emit_rsd(&dev->meta.desc_pool.base, shader,
                                             &shader_info, true);
 
          if (texdim == 3)
@@ -1590,8 +1581,7 @@ panvk_meta_copy_img2buf_init(struct panvk_physical_device *dev)
             &dev->pdev, &dev->meta.bin_pool.base,
             panvk_meta_copy_img2buf_fmts[i], texdim, true, &shader_info);
          dev->meta.copy.img2buf[texdimidx][i].rsd =
-            panvk_meta_copy_to_buf_emit_rsd(&dev->pdev,
-                                            &dev->meta.desc_pool.base, shader,
+            panvk_meta_copy_to_buf_emit_rsd(&dev->meta.desc_pool.base, shader,
                                             &shader_info, true);
       }
    }
@@ -1683,7 +1673,7 @@ panvk_meta_copy_buf2buf_init(struct panvk_physical_device *dev)
       mali_ptr shader = panvk_meta_copy_buf2buf_shader(
          &dev->pdev, &dev->meta.bin_pool.base, 1 << i, &shader_info);
       dev->meta.copy.buf2buf[i].rsd = panvk_meta_copy_to_buf_emit_rsd(
-         &dev->pdev, &dev->meta.desc_pool.base, shader, &shader_info, false);
+         &dev->meta.desc_pool.base, shader, &shader_info, false);
    }
 }
 

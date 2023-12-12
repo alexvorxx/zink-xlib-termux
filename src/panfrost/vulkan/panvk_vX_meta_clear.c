@@ -74,8 +74,7 @@ panvk_meta_clear_color_attachment_shader(struct panfrost_device *pdev,
 }
 
 static mali_ptr
-panvk_meta_clear_color_attachment_emit_rsd(struct panfrost_device *pdev,
-                                           struct pan_pool *desc_pool,
+panvk_meta_clear_color_attachment_emit_rsd(struct pan_pool *desc_pool,
                                            enum pipe_format format, unsigned rt,
                                            struct pan_shader_info *shader_info,
                                            mali_ptr shader)
@@ -120,8 +119,7 @@ panvk_meta_clear_color_attachment_emit_rsd(struct panfrost_device *pdev,
 }
 
 static mali_ptr
-panvk_meta_clear_zs_attachment_emit_rsd(struct panfrost_device *pdev,
-                                        struct pan_pool *desc_pool,
+panvk_meta_clear_zs_attachment_emit_rsd(struct pan_pool *desc_pool,
                                         VkImageAspectFlags mask,
                                         VkClearDepthStencilValue value)
 {
@@ -255,8 +253,6 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf,
                             const VkClearValue *clear_value,
                             const VkClearRect *clear_rect)
 {
-   struct panvk_physical_device *dev = cmdbuf->device->physical_device;
-   struct panfrost_device *pdev = &dev->pdev;
    struct panvk_meta *meta = &cmdbuf->device->physical_device->meta;
    struct panvk_batch *batch = cmdbuf->state.batch;
    const struct panvk_render_pass *pass = cmdbuf->state.pass;
@@ -299,10 +295,10 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf,
                                            sizeof(*clear_value), 16);
 
       rsd = panvk_meta_clear_color_attachment_emit_rsd(
-         pdev, &cmdbuf->desc_pool.base, att->format, rt, shader_info, shader);
+         &cmdbuf->desc_pool.base, att->format, rt, shader_info, shader);
    } else {
       rsd = panvk_meta_clear_zs_attachment_emit_rsd(
-         pdev, &cmdbuf->desc_pool.base, mask, clear_value->depthStencil);
+         &cmdbuf->desc_pool.base, mask, clear_value->depthStencil);
    }
 
    struct panfrost_ptr job;

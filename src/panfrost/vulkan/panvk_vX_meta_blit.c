@@ -34,7 +34,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
                 const struct panvk_image *src_img,
                 const struct panvk_image *dst_img)
 {
-   struct panfrost_device *pdev = &cmdbuf->device->pdev;
+   struct panvk_device *dev = cmdbuf->device;
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
    struct pan_blit_context ctx;
    struct pan_image_view views[2] = {
@@ -117,7 +117,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
    panvk_per_arch(cmd_close_batch)(cmdbuf);
 
    GENX(pan_blit_ctx_init)
-   (&pdev->blitter, blitinfo, &cmdbuf->desc_pool.base, &ctx);
+   (&dev->meta.blitter.cache, blitinfo, &cmdbuf->desc_pool.base, &ctx);
    do {
       if (ctx.dst.cur_layer < 0)
          continue;
@@ -232,19 +232,19 @@ panvk_per_arch(meta_blit_init)(struct panvk_device *dev)
                    false);
    panvk_pool_init(&dev->meta.blitter.desc_pool, &dev->pdev, NULL, 0, 16 * 1024,
                    "panvk_meta blitter descriptor pool", false);
-   pan_blend_shader_cache_init(&dev->pdev.blend_shaders,
+   pan_blend_shader_cache_init(&dev->meta.blend_shader_cache,
                                dev->physical_device->kmod.props.gpu_prod_id);
    GENX(pan_blitter_cache_init)
-   (&dev->pdev.blitter, dev->physical_device->kmod.props.gpu_prod_id,
-    &dev->pdev.blend_shaders, &dev->meta.blitter.bin_pool.base,
+   (&dev->meta.blitter.cache, dev->physical_device->kmod.props.gpu_prod_id,
+    &dev->meta.blend_shader_cache, &dev->meta.blitter.bin_pool.base,
     &dev->meta.blitter.desc_pool.base);
 }
 
 void
 panvk_per_arch(meta_blit_cleanup)(struct panvk_device *dev)
 {
-   GENX(pan_blitter_cache_cleanup)(&dev->pdev.blitter);
-   pan_blend_shader_cache_cleanup(&dev->pdev.blend_shaders);
+   GENX(pan_blitter_cache_cleanup)(&dev->meta.blitter.cache);
+   pan_blend_shader_cache_cleanup(&dev->meta.blend_shader_cache);
    panvk_pool_cleanup(&dev->meta.blitter.desc_pool);
    panvk_pool_cleanup(&dev->meta.blitter.bin_pool);
 }

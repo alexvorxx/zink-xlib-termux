@@ -67,6 +67,7 @@
 #include "drm-uapi/panfrost_drm.h"
 
 #include "pan_blend.h"
+#include "pan_blitter.h"
 #include "pan_desc.h"
 #include "pan_device.h"
 #include "pan_jc.h"
@@ -142,7 +143,10 @@ struct panvk_meta {
    struct {
       struct panvk_pool bin_pool;
       struct panvk_pool desc_pool;
+      struct pan_blitter_cache cache;
    } blitter;
+
+   struct pan_blend_shader_cache blend_shader_cache;
 
    struct {
       struct {

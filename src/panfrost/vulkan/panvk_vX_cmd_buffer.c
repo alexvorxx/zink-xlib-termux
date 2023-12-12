@@ -103,15 +103,15 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    }
 
    struct panvk_device *dev = cmdbuf->device;
-   struct panfrost_device *pdev = &cmdbuf->device->pdev;
 
    list_addtail(&batch->node, &cmdbuf->batches);
 
    if (batch->jc.first_tiler) {
       struct panfrost_ptr preload_jobs[2];
       unsigned num_preload_jobs = GENX(pan_preload_fb)(
-         &pdev->blitter, &cmdbuf->desc_pool.base, &batch->jc, &cmdbuf->state.fb.info,
-         batch->tls.gpu, batch->tiler.descs.gpu, preload_jobs);
+         &dev->meta.blitter.cache, &cmdbuf->desc_pool.base, &batch->jc,
+         &cmdbuf->state.fb.info, batch->tls.gpu, batch->tiler.descs.gpu,
+         preload_jobs);
       for (unsigned i = 0; i < num_preload_jobs; i++)
          util_dynarray_append(&batch->jobs, void *, preload_jobs[i].cpu);
    }

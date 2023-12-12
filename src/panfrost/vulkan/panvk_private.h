@@ -261,6 +261,11 @@ struct panvk_device {
    int queue_count[PANVK_MAX_QUEUE_FAMILIES];
 
    struct panvk_physical_device *physical_device;
+
+   struct {
+      struct pandecode_context *decode_ctx;
+   } debug;
+
    int _lost;
 };
 

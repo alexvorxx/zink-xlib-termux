@@ -28,6 +28,8 @@
 
 #include "panvk_private.h"
 
+#include "decode.h"
+
 #include "pan_bo.h"
 #include "pan_encoder.h"
 #include "pan_util.h"
@@ -966,6 +968,8 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
             goto fail;
       }
    }
+
+   device->debug.decode_ctx = device->pdev.decode_ctx;
 
    *pDevice = panvk_device_to_handle(device);
    return VK_SUCCESS;

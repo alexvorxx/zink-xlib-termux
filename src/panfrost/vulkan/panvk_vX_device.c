@@ -42,7 +42,6 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 {
    const struct panvk_device *dev = queue->device;
    unsigned debug = dev->physical_device->instance->debug_flags;
-   const struct panfrost_device *pdev = &dev->pdev;
    int ret;
 
    /* Reset the batch if it's already been issued */
@@ -77,12 +76,12 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
       }
 
       if (debug & PANVK_DEBUG_TRACE) {
-         pandecode_jc(pdev->decode_ctx, batch->jc.first_job,
+         pandecode_jc(dev->debug.decode_ctx, batch->jc.first_job,
                       dev->physical_device->kmod.props.gpu_prod_id);
       }
 
       if (debug & PANVK_DEBUG_DUMP)
-         pandecode_dump_mappings(pdev->decode_ctx);
+         pandecode_dump_mappings(dev->debug.decode_ctx);
    }
 
    if (batch->fragment_job) {
@@ -111,15 +110,15 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
       }
 
       if (debug & PANVK_DEBUG_TRACE)
-         pandecode_jc(pdev->decode_ctx, batch->fragment_job,
+         pandecode_jc(dev->debug.decode_ctx, batch->fragment_job,
                       dev->physical_device->kmod.props.gpu_prod_id);
 
       if (debug & PANVK_DEBUG_DUMP)
-         pandecode_dump_mappings(pdev->decode_ctx);
+         pandecode_dump_mappings(dev->debug.decode_ctx);
    }
 
    if (debug & PANVK_DEBUG_TRACE)
-      pandecode_next_frame(pdev->decode_ctx);
+      pandecode_next_frame(dev->debug.decode_ctx);
 
    batch->issued = true;
 }

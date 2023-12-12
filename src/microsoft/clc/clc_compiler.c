@@ -634,6 +634,7 @@ clc_libclc_new(const struct clc_logger *logger, const struct clc_libclc_options 
          .int16 = true,
          .int64 = true,
          .kernel = true,
+         .linkage = true,
       },
    };
 

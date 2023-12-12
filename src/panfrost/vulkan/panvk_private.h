@@ -68,9 +68,7 @@
 
 #include "pan_blend.h"
 #include "pan_blitter.h"
-#include "pan_bo.h"
 #include "pan_desc.h"
-#include "pan_device.h"
 #include "pan_jc.h"
 #include "pan_texture.h"
 #include "panvk_mempool.h"
@@ -277,12 +275,11 @@ struct panvk_device {
    struct {
       struct pan_kmod_vm *vm;
       struct pan_kmod_dev *dev;
+      struct pan_kmod_allocator allocator;
    } kmod;
 
    struct panvk_priv_bo *tiler_heap;
    struct panvk_priv_bo *sample_positions;
-
-   struct panfrost_device pdev;
 
    struct panvk_meta meta;
 
@@ -353,7 +350,11 @@ struct panvk_event_op {
 
 struct panvk_device_memory {
    struct vk_object_base base;
-   struct panfrost_bo *bo;
+   struct pan_kmod_bo *bo;
+   struct {
+      mali_ptr dev;
+      void *host;
+   } addr;
 };
 
 struct panvk_buffer_desc {

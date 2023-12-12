@@ -147,7 +147,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
                        : MALI_ATTRIBUTE_TYPE_3D_INTERLEAVED;
          cfg.pointer = image->pimage.data.base + offset;
          cfg.stride = util_format_get_blocksize(view->pview.format);
-         cfg.size = panfrost_bo_size(image->bo) - offset;
+         cfg.size = pan_kmod_bo_size(image->bo) - offset;
       }
 
       attrib_buf += pan_size(ATTRIBUTE_BUFFER);

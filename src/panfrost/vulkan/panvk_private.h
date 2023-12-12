@@ -949,7 +949,11 @@ struct panvk_pipeline {
 
 struct panvk_image {
    struct vk_image vk;
-   struct panfrost_bo *bo;
+
+   /* TODO: See if we can rework the synchronization logic so we don't need to
+    * pass BOs around.
+    */
+   struct pan_kmod_bo *bo;
 
    struct pan_image pimage;
 };

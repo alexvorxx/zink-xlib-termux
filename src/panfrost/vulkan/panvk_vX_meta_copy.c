@@ -669,8 +669,8 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
       struct panvk_batch *batch = panvk_cmd_open_batch(cmdbuf);
 
       dstview.first_layer = dstview.last_layer = l + first_dst_layer;
-      batch->blit.src = src->bo->kmod_bo;
-      batch->blit.dst = dst->bo->kmod_bo;
+      batch->blit.src = src->bo;
+      batch->blit.dst = dst->bo;
       panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
       panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
       panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf);
@@ -1107,7 +1107,7 @@ panvk_meta_copy_buf2img(struct panvk_cmd_buffer *cmdbuf,
 
       view.first_layer = view.last_layer = l + first_layer;
       batch->blit.src = buf->bo->kmod_bo;
-      batch->blit.dst = img->bo->kmod_bo;
+      batch->blit.dst = img->bo;
       panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
       panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
       panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf);
@@ -1522,7 +1522,7 @@ panvk_meta_copy_img2buf(struct panvk_cmd_buffer *cmdbuf,
 
    struct pan_tls_info tlsinfo = {0};
 
-   batch->blit.src = img->bo->kmod_bo;
+   batch->blit.src = img->bo;
    batch->blit.dst = buf->bo->kmod_bo;
    batch->tls = pan_pool_alloc_desc(&cmdbuf->desc_pool.base, LOCAL_STORAGE);
    GENX(pan_emit_tls)(&tlsinfo, batch->tls.cpu);

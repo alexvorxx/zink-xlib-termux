@@ -250,7 +250,7 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
                struct panvk_image *img =
                   container_of(iview->vk.image, struct panvk_image, vk);
 
-               bos[bo_idx++] = panfrost_bo_handle(img->bo);
+               bos[bo_idx++] = pan_kmod_bo_handle(img->bo);
             }
          }
 

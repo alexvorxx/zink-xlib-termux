@@ -215,6 +215,9 @@ panvk_DestroyImage(VkDevice _device, VkImage _image,
    if (!image)
       return;
 
+   if (image->bo)
+      pan_kmod_bo_put(image->bo);
+
    vk_image_destroy(&device->vk, pAllocator, &image->vk);
 }
 

@@ -811,12 +811,11 @@ panvk_index_minmax_search(struct panvk_cmd_buffer *cmdbuf, uint32_t start,
                           uint32_t count, bool restart, uint32_t *min,
                           uint32_t *max)
 {
-   void *ptr = cmdbuf->state.ib.buffer->bo->ptr.cpu +
-               cmdbuf->state.ib.buffer->bo_offset + cmdbuf->state.ib.offset;
+   void *ptr = cmdbuf->state.ib.buffer->host_ptr + cmdbuf->state.ib.offset;
 
    assert(cmdbuf->state.ib.buffer);
    assert(cmdbuf->state.ib.buffer->bo);
-   assert(cmdbuf->state.ib.buffer->bo->ptr.cpu);
+   assert(cmdbuf->state.ib.buffer->host_ptr);
 
    uint32_t debug_flags =
       cmdbuf->device->physical_device->instance->debug_flags;

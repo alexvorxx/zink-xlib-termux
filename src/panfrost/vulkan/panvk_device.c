@@ -1304,13 +1304,20 @@ panvk_BindBufferMemory2(VkDevice device, uint32_t bindInfoCount,
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       VK_FROM_HANDLE(panvk_device_memory, mem, pBindInfos[i].memory);
       VK_FROM_HANDLE(panvk_buffer, buffer, pBindInfos[i].buffer);
+      struct pan_kmod_bo *old_bo = buffer->bo;
 
       if (mem) {
-         buffer->bo = mem->bo;
-         buffer->bo_offset = pBindInfos[i].memoryOffset;
+         buffer->bo = pan_kmod_bo_get(mem->bo->kmod_bo);
+         buffer->dev_addr = mem->bo->ptr.gpu + pBindInfos[i].memoryOffset;
+         if (buffer->vk.usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+            buffer->host_ptr = mem->bo->ptr.cpu + pBindInfos[i].memoryOffset;
       } else {
          buffer->bo = NULL;
+         buffer->dev_addr = 0;
+         buffer->host_ptr = NULL;
       }
+
+      pan_kmod_bo_put(old_bo);
    }
    return VK_SUCCESS;
 }
@@ -1490,6 +1497,7 @@ panvk_DestroyBuffer(VkDevice _device, VkBuffer _buffer,
    if (!buffer)
       return;
 
+   pan_kmod_bo_put(buffer->bo);
    vk_buffer_destroy(&device->vk, pAllocator, &buffer->vk);
 }
 

@@ -920,67 +920,10 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
 
    unsigned num_global_inputs = uav_id;
 
-   // Second pass over inputs to calculate image bindings
-   unsigned srv_id = 0;
-   nir_foreach_image_variable(var, nir) {
-      int i = var->data.location;
-      if (i < 0)
-         continue;
-
-      assert(glsl_type_is_image(var->type));
-
-      if (var->data.access == ACCESS_NON_WRITEABLE) {
-         metadata->args[i].image.buf_ids[0] = srv_id++;
-      } else {
-         // Write or read-write are UAVs
-         metadata->args[i].image.buf_ids[0] = uav_id++;
-      }
-
-      metadata->args[i].image.num_buf_ids = 0;
-      var->data.binding = metadata->args[i].image.buf_ids[0];
-
-      // Assign location that'll be used for uniforms for format/order
-      var->data.driver_location = metadata->kernel_inputs_buf_size;
-      metadata->args[i].offset = metadata->kernel_inputs_buf_size;
-      metadata->args[i].size = 8;
-      metadata->kernel_inputs_buf_size += metadata->args[i].size;
-   }
-
    // Before removing dead uniforms, dedupe inline samplers to make more dead uniforms
    NIR_PASS_V(nir, nir_dedup_inline_samplers);
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_uniform | nir_var_mem_ubo |
               nir_var_mem_constant | nir_var_function_temp | nir_var_image, NULL);
-
-   // Fill out inline sampler metadata, now that they've been deduped and dead ones removed
-   nir_foreach_variable_with_modes(var, nir, nir_var_uniform) {
-      if (glsl_type_is_sampler(var->type) && var->data.sampler.is_inline_sampler) {
-         int_sampler_states[sampler_id].wrap[0] =
-            int_sampler_states[sampler_id].wrap[1] =
-            int_sampler_states[sampler_id].wrap[2] =
-            wrap_from_cl_addressing(var->data.sampler.addressing_mode);
-         int_sampler_states[sampler_id].is_nonnormalized_coords =
-            !var->data.sampler.normalized_coordinates;
-         int_sampler_states[sampler_id].is_linear_filtering =
-            var->data.sampler.filter_mode == SAMPLER_FILTER_MODE_LINEAR;
-         var->data.binding = sampler_id++;
-
-         assert(metadata->num_const_samplers < CLC_MAX_SAMPLERS);
-         metadata->const_samplers[metadata->num_const_samplers].sampler_id = var->data.binding;
-         metadata->const_samplers[metadata->num_const_samplers].addressing_mode = var->data.sampler.addressing_mode;
-         metadata->const_samplers[metadata->num_const_samplers].normalized_coords = var->data.sampler.normalized_coordinates;
-         metadata->const_samplers[metadata->num_const_samplers].filter_mode = var->data.sampler.filter_mode;
-         metadata->num_const_samplers++;
-      }
-   }
-
-   // Needs to come before lower_explicit_io
-   NIR_PASS_V(nir, nir_lower_readonly_images_to_tex, false);
-   struct clc_image_lower_context image_lower_context = { metadata, &srv_id, &uav_id };
-   NIR_PASS_V(nir, clc_lower_images, &image_lower_context);
-   NIR_PASS_V(nir, clc_lower_nonnormalized_samplers, int_sampler_states);
-   NIR_PASS_V(nir, nir_lower_samplers);
-   NIR_PASS_V(nir, dxil_lower_sample_to_txf_for_integer_tex,
-              sampler_id, int_sampler_states, NULL, 14.0f);
 
    nir->scratch_size = 0;
    NIR_PASS_V(nir, nir_lower_vars_to_explicit_types,
@@ -1030,6 +973,63 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
    NIR_PASS_V(nir, dxil_nir_lower_deref_ssbo);
 
    NIR_PASS_V(nir, dxil_nir_split_unaligned_loads_stores, nir_var_mem_shared | nir_var_function_temp);
+
+   // Second pass over inputs to calculate image bindings
+   unsigned srv_id = 0;
+   nir_foreach_image_variable(var, nir) {
+      int i = var->data.location;
+      if (i < 0)
+         continue;
+
+      assert(glsl_type_is_image(var->type));
+
+      if (var->data.access == ACCESS_NON_WRITEABLE) {
+         metadata->args[i].image.buf_ids[0] = srv_id++;
+      } else {
+         // Write or read-write are UAVs
+         metadata->args[i].image.buf_ids[0] = uav_id++;
+      }
+
+      metadata->args[i].image.num_buf_ids = 0;
+      var->data.binding = metadata->args[i].image.buf_ids[0];
+
+      // Assign location that'll be used for uniforms for format/order
+      var->data.driver_location = metadata->kernel_inputs_buf_size;
+      metadata->args[i].offset = metadata->kernel_inputs_buf_size;
+      metadata->args[i].size = 8;
+      metadata->kernel_inputs_buf_size += metadata->args[i].size;
+   }
+
+   // Fill out inline sampler metadata, now that they've been deduped and dead ones removed
+   nir_foreach_variable_with_modes(var, nir, nir_var_uniform) {
+      if (glsl_type_is_sampler(var->type) && var->data.sampler.is_inline_sampler) {
+         int_sampler_states[sampler_id].wrap[0] =
+            int_sampler_states[sampler_id].wrap[1] =
+            int_sampler_states[sampler_id].wrap[2] =
+            wrap_from_cl_addressing(var->data.sampler.addressing_mode);
+         int_sampler_states[sampler_id].is_nonnormalized_coords =
+            !var->data.sampler.normalized_coordinates;
+         int_sampler_states[sampler_id].is_linear_filtering =
+            var->data.sampler.filter_mode == SAMPLER_FILTER_MODE_LINEAR;
+         var->data.binding = sampler_id++;
+
+         assert(metadata->num_const_samplers < CLC_MAX_SAMPLERS);
+         metadata->const_samplers[metadata->num_const_samplers].sampler_id = var->data.binding;
+         metadata->const_samplers[metadata->num_const_samplers].addressing_mode = var->data.sampler.addressing_mode;
+         metadata->const_samplers[metadata->num_const_samplers].normalized_coords = var->data.sampler.normalized_coordinates;
+         metadata->const_samplers[metadata->num_const_samplers].filter_mode = var->data.sampler.filter_mode;
+         metadata->num_const_samplers++;
+      }
+   }
+
+   // Needs to come before lower_explicit_io
+   NIR_PASS_V(nir, nir_lower_readonly_images_to_tex, false);
+   struct clc_image_lower_context image_lower_context = { metadata, &srv_id, &uav_id };
+   NIR_PASS_V(nir, clc_lower_images, &image_lower_context);
+   NIR_PASS_V(nir, clc_lower_nonnormalized_samplers, int_sampler_states);
+   NIR_PASS_V(nir, nir_lower_samplers);
+   NIR_PASS_V(nir, dxil_lower_sample_to_txf_for_integer_tex,
+              sampler_id, int_sampler_states, NULL, 14.0f);
 
    assert(nir->info.cs.ptr_size == 64);
    NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_ssbo,

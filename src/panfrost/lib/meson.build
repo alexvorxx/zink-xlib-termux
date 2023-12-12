@@ -73,10 +73,8 @@ libpanfrost_lib_files = files(
 
   'pan_afbc.c',
   'pan_attributes.c',
-  'pan_bo.c',
   'pan_blend.c',
   'pan_clear.c',
-  'pan_device.c',
   'pan_earlyzs.c',
   'pan_samples.c',
   'pan_tiler.c',

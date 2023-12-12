@@ -83,7 +83,7 @@ panfrost_bo_alloc(struct panfrost_device *dev, size_t size, uint32_t flags,
    assert(kmod_bo);
 
    bo = pan_lookup_bo(dev, kmod_bo->handle);
-   assert(!memcmp(bo, &((struct panfrost_bo){}), sizeof(*bo)));
+   assert(!memcmp(bo, &((struct panfrost_bo){0}), sizeof(*bo)));
    bo->kmod_bo = kmod_bo;
 
    struct pan_kmod_vm_op vm_op = {

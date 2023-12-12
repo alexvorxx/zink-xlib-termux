@@ -282,13 +282,15 @@ panvk_meta_copy_to_buf_emit_rsd(struct pan_pool *desc_pool, mali_ptr shader,
 }
 
 static mali_ptr
-panvk_meta_copy_img2img_shader(struct panfrost_device *pdev,
-                               struct pan_pool *bin_pool,
+panvk_meta_copy_img2img_shader(struct panvk_physical_device *dev,
                                enum pipe_format srcfmt, enum pipe_format dstfmt,
                                unsigned dstmask, unsigned texdim,
                                bool texisarray, bool is_ms,
                                struct pan_shader_info *shader_info)
 {
+   struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
+   struct panfrost_device *pdev = &dev->pdev;
+
    nir_builder b = nir_builder_init_simple_shader(
       MESA_SHADER_FRAGMENT, GENX(pan_shader_get_compiler_options)(),
       "panvk_meta_copy_img2img(srcfmt=%s,dstfmt=%s,%dD%s%s)",
@@ -705,8 +707,7 @@ panvk_meta_copy_img2img_init(struct panvk_physical_device *dev, bool is_ms)
 
          struct pan_shader_info shader_info;
          mali_ptr shader = panvk_meta_copy_img2img_shader(
-            &dev->pdev, &dev->meta.bin_pool.base,
-            panvk_meta_copy_img2img_fmts[i].srcfmt,
+            dev, panvk_meta_copy_img2img_fmts[i].srcfmt,
             panvk_meta_copy_img2img_fmts[i].dstfmt,
             panvk_meta_copy_img2img_fmts[i].dstmask, texdim, false, is_ms,
             &shader_info);
@@ -722,8 +723,7 @@ panvk_meta_copy_img2img_init(struct panvk_physical_device *dev, bool is_ms)
          texdimidx = panvk_meta_copy_tex_type(texdim, true);
          assert(texdimidx < ARRAY_SIZE(dev->meta.copy.img2img[0]));
          shader = panvk_meta_copy_img2img_shader(
-            &dev->pdev, &dev->meta.bin_pool.base,
-            panvk_meta_copy_img2img_fmts[i].srcfmt,
+            dev, panvk_meta_copy_img2img_fmts[i].srcfmt,
             panvk_meta_copy_img2img_fmts[i].dstfmt,
             panvk_meta_copy_img2img_fmts[i].dstmask, texdim, true, is_ms,
             &shader_info);
@@ -848,11 +848,13 @@ struct panvk_meta_copy_buf2img_info {
       .range = ~0)
 
 static mali_ptr
-panvk_meta_copy_buf2img_shader(struct panfrost_device *pdev,
-                               struct pan_pool *bin_pool,
+panvk_meta_copy_buf2img_shader(struct panvk_physical_device *dev,
                                struct panvk_meta_copy_format_info key,
                                struct pan_shader_info *shader_info)
 {
+   struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
+   struct panfrost_device *pdev = &dev->pdev;
+
    nir_builder b = nir_builder_init_simple_shader(
       MESA_SHADER_FRAGMENT, GENX(pan_shader_get_compiler_options)(),
       "panvk_meta_copy_buf2img(imgfmt=%s,mask=%x)",
@@ -1134,8 +1136,7 @@ panvk_meta_copy_buf2img_init(struct panvk_physical_device *dev)
    for (unsigned i = 0; i < ARRAY_SIZE(panvk_meta_copy_buf2img_fmts); i++) {
       struct pan_shader_info shader_info;
       mali_ptr shader = panvk_meta_copy_buf2img_shader(
-         &dev->pdev, &dev->meta.bin_pool.base, panvk_meta_copy_buf2img_fmts[i],
-         &shader_info);
+         dev, panvk_meta_copy_buf2img_fmts[i], &shader_info);
       dev->meta.copy.buf2img[i].rsd = panvk_meta_copy_to_img_emit_rsd(
          &dev->meta.desc_pool.base, shader, &shader_info,
          panvk_meta_copy_buf2img_fmts[i].imgfmt,
@@ -1235,14 +1236,15 @@ struct panvk_meta_copy_img2buf_info {
       .range = ~0)
 
 static mali_ptr
-panvk_meta_copy_img2buf_shader(struct panfrost_device *pdev,
-                               struct pan_pool *bin_pool,
+panvk_meta_copy_img2buf_shader(struct panvk_physical_device *dev,
                                struct panvk_meta_copy_format_info key,
                                unsigned texdim, unsigned texisarray,
                                struct pan_shader_info *shader_info)
 {
    unsigned imgtexelsz = util_format_get_blocksize(key.imgfmt);
    unsigned buftexelsz = panvk_meta_copy_buf_texelsize(key.imgfmt, key.mask);
+   struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
+   struct panfrost_device *pdev = &dev->pdev;
 
    /* FIXME: Won't work on compute queues, but we can't do that with
     * a compute shader if the destination is an AFBC surface.
@@ -1565,8 +1567,7 @@ panvk_meta_copy_img2buf_init(struct panvk_physical_device *dev)
 
          struct pan_shader_info shader_info;
          mali_ptr shader = panvk_meta_copy_img2buf_shader(
-            &dev->pdev, &dev->meta.bin_pool.base,
-            panvk_meta_copy_img2buf_fmts[i], texdim, false, &shader_info);
+            dev, panvk_meta_copy_img2buf_fmts[i], texdim, false, &shader_info);
          dev->meta.copy.img2buf[texdimidx][i].rsd =
             panvk_meta_copy_to_buf_emit_rsd(&dev->meta.desc_pool.base, shader,
                                             &shader_info, true);
@@ -1578,8 +1579,7 @@ panvk_meta_copy_img2buf_init(struct panvk_physical_device *dev)
          texdimidx = panvk_meta_copy_tex_type(texdim, true);
          assert(texdimidx < ARRAY_SIZE(dev->meta.copy.img2buf));
          shader = panvk_meta_copy_img2buf_shader(
-            &dev->pdev, &dev->meta.bin_pool.base,
-            panvk_meta_copy_img2buf_fmts[i], texdim, true, &shader_info);
+            dev, panvk_meta_copy_img2buf_fmts[i], texdim, true, &shader_info);
          dev->meta.copy.img2buf[texdimidx][i].rsd =
             panvk_meta_copy_to_buf_emit_rsd(&dev->meta.desc_pool.base, shader,
                                             &shader_info, true);
@@ -1615,10 +1615,13 @@ struct panvk_meta_copy_buf2buf_info {
       .range = ~0)
 
 static mali_ptr
-panvk_meta_copy_buf2buf_shader(struct panfrost_device *pdev,
-                               struct pan_pool *bin_pool, unsigned blksz,
+panvk_meta_copy_buf2buf_shader(struct panvk_physical_device *dev,
+                               unsigned blksz,
                                struct pan_shader_info *shader_info)
 {
+   struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
+   struct panfrost_device *pdev = &dev->pdev;
+
    /* FIXME: Won't work on compute queues, but we can't do that with
     * a compute shader if the destination is an AFBC surface.
     */
@@ -1670,8 +1673,8 @@ panvk_meta_copy_buf2buf_init(struct panvk_physical_device *dev)
 {
    for (unsigned i = 0; i < ARRAY_SIZE(dev->meta.copy.buf2buf); i++) {
       struct pan_shader_info shader_info;
-      mali_ptr shader = panvk_meta_copy_buf2buf_shader(
-         &dev->pdev, &dev->meta.bin_pool.base, 1 << i, &shader_info);
+      mali_ptr shader =
+         panvk_meta_copy_buf2buf_shader(dev, 1 << i, &shader_info);
       dev->meta.copy.buf2buf[i].rsd = panvk_meta_copy_to_buf_emit_rsd(
          &dev->meta.desc_pool.base, shader, &shader_info, false);
    }
@@ -1746,10 +1749,12 @@ struct panvk_meta_fill_buf_info {
       .base = offsetof(struct panvk_meta_fill_buf_info, field), .range = ~0)
 
 static mali_ptr
-panvk_meta_fill_buf_shader(struct panfrost_device *pdev,
-                           struct pan_pool *bin_pool,
+panvk_meta_fill_buf_shader(struct panvk_physical_device *dev,
                            struct pan_shader_info *shader_info)
 {
+   struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
+   struct panfrost_device *pdev = &dev->pdev;
+
    /* FIXME: Won't work on compute queues, but we can't do that with
     * a compute shader if the destination is an AFBC surface.
     */
@@ -1792,13 +1797,12 @@ panvk_meta_fill_buf_shader(struct panfrost_device *pdev,
 }
 
 static mali_ptr
-panvk_meta_fill_buf_emit_rsd(struct panfrost_device *pdev,
-                             struct pan_pool *bin_pool,
-                             struct pan_pool *desc_pool)
+panvk_meta_fill_buf_emit_rsd(struct panvk_physical_device *dev)
 {
+   struct pan_pool *desc_pool = &dev->meta.desc_pool.base;
    struct pan_shader_info shader_info;
 
-   mali_ptr shader = panvk_meta_fill_buf_shader(pdev, bin_pool, &shader_info);
+   mali_ptr shader = panvk_meta_fill_buf_shader(dev, &shader_info);
 
    struct panfrost_ptr rsd_ptr =
       pan_pool_alloc_desc_aggregate(desc_pool, PAN_DESC(RENDERER_STATE));
@@ -1813,8 +1817,7 @@ panvk_meta_fill_buf_emit_rsd(struct panfrost_device *pdev,
 static void
 panvk_meta_fill_buf_init(struct panvk_physical_device *dev)
 {
-   dev->meta.copy.fillbuf.rsd = panvk_meta_fill_buf_emit_rsd(
-      &dev->pdev, &dev->meta.bin_pool.base, &dev->meta.desc_pool.base);
+   dev->meta.copy.fillbuf.rsd = panvk_meta_fill_buf_emit_rsd(dev);
 }
 
 static void

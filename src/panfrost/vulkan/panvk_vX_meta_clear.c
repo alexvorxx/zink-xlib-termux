@@ -32,11 +32,13 @@
 #include "vk_format.h"
 
 static mali_ptr
-panvk_meta_clear_color_attachment_shader(struct panfrost_device *pdev,
-                                         struct pan_pool *bin_pool,
+panvk_meta_clear_color_attachment_shader(struct panvk_physical_device *dev,
                                          enum glsl_base_type base_type,
                                          struct pan_shader_info *shader_info)
 {
+   struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
+   struct panfrost_device *pdev = &dev->pdev;
+
    nir_builder b = nir_builder_init_simple_shader(
       MESA_SHADER_FRAGMENT, GENX(pan_shader_get_compiler_options)(),
       "panvk_meta_clear_attachment(base_type=%d)", base_type);
@@ -493,17 +495,17 @@ panvk_meta_clear_attachment_init(struct panvk_physical_device *dev)
 {
    dev->meta.clear_attachment.color[GLSL_TYPE_UINT].shader =
       panvk_meta_clear_color_attachment_shader(
-         &dev->pdev, &dev->meta.bin_pool.base, GLSL_TYPE_UINT,
+         dev, GLSL_TYPE_UINT,
          &dev->meta.clear_attachment.color[GLSL_TYPE_UINT].shader_info);
 
    dev->meta.clear_attachment.color[GLSL_TYPE_INT].shader =
       panvk_meta_clear_color_attachment_shader(
-         &dev->pdev, &dev->meta.bin_pool.base, GLSL_TYPE_INT,
+         dev, GLSL_TYPE_INT,
          &dev->meta.clear_attachment.color[GLSL_TYPE_INT].shader_info);
 
    dev->meta.clear_attachment.color[GLSL_TYPE_FLOAT].shader =
       panvk_meta_clear_color_attachment_shader(
-         &dev->pdev, &dev->meta.bin_pool.base, GLSL_TYPE_FLOAT,
+         dev, GLSL_TYPE_FLOAT,
          &dev->meta.clear_attachment.color[GLSL_TYPE_FLOAT].shader_info);
 }
 

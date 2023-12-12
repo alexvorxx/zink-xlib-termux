@@ -805,8 +805,6 @@ static VkResult
 panvk_queue_init(struct panvk_device *device, struct panvk_queue *queue,
                  int idx, const VkDeviceQueueCreateInfo *create_info)
 {
-   const struct panfrost_device *pdev = &device->physical_device->pdev;
-
    VkResult result = vk_queue_init(&queue->vk, &device->vk, create_info, idx);
    if (result != VK_SUCCESS)
       return result;
@@ -816,8 +814,7 @@ panvk_queue_init(struct panvk_device *device, struct panvk_queue *queue,
       .flags = DRM_SYNCOBJ_CREATE_SIGNALED,
    };
 
-   int ret =
-      drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_CREATE, &create);
+   int ret = drmIoctl(device->vk.drm_fd, DRM_IOCTL_SYNCOBJ_CREATE, &create);
    if (ret) {
       vk_queue_finish(&queue->vk);
       return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -994,7 +991,6 @@ panvk_QueueWaitIdle(VkQueue _queue)
    if (panvk_device_is_lost(queue->device))
       return VK_ERROR_DEVICE_LOST;
 
-   const struct panfrost_device *pdev = &queue->device->physical_device->pdev;
    struct drm_syncobj_wait wait = {
       .handles = (uint64_t)(uintptr_t)(&queue->sync),
       .count_handles = 1,
@@ -1003,7 +999,7 @@ panvk_QueueWaitIdle(VkQueue _queue)
    };
    int ret;
 
-   ret = drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_WAIT, &wait);
+   ret = drmIoctl(queue->vk.base.device->drm_fd, DRM_IOCTL_SYNCOBJ_WAIT, &wait);
    assert(!ret);
 
    return VK_SUCCESS;
@@ -1270,7 +1266,6 @@ panvk_CreateEvent(VkDevice _device, const VkEventCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkEvent *pEvent)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
-   const struct panfrost_device *pdev = &device->physical_device->pdev;
    struct panvk_event *event = vk_object_zalloc(
       &device->vk, pAllocator, sizeof(*event), VK_OBJECT_TYPE_EVENT);
    if (!event)
@@ -1280,8 +1275,7 @@ panvk_CreateEvent(VkDevice _device, const VkEventCreateInfo *pCreateInfo,
       .flags = 0,
    };
 
-   int ret =
-      drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_CREATE, &create);
+   int ret = drmIoctl(device->vk.drm_fd, DRM_IOCTL_SYNCOBJ_CREATE, &create);
    if (ret)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
@@ -1297,13 +1291,12 @@ panvk_DestroyEvent(VkDevice _device, VkEvent _event,
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
    VK_FROM_HANDLE(panvk_event, event, _event);
-   const struct panfrost_device *pdev = &device->physical_device->pdev;
 
    if (!event)
       return;
 
    struct drm_syncobj_destroy destroy = {.handle = event->syncobj};
-   drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_DESTROY, &destroy);
+   drmIoctl(device->vk.drm_fd, DRM_IOCTL_SYNCOBJ_DESTROY, &destroy);
 
    vk_object_free(&device->vk, pAllocator, event);
 }
@@ -1313,7 +1306,6 @@ panvk_GetEventStatus(VkDevice _device, VkEvent _event)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
    VK_FROM_HANDLE(panvk_event, event, _event);
-   const struct panfrost_device *pdev = &device->physical_device->pdev;
    bool signaled;
 
    struct drm_syncobj_wait wait = {
@@ -1323,7 +1315,7 @@ panvk_GetEventStatus(VkDevice _device, VkEvent _event)
       .flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
    };
 
-   int ret = drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_WAIT, &wait);
+   int ret = drmIoctl(device->vk.drm_fd, DRM_IOCTL_SYNCOBJ_WAIT, &wait);
    if (ret) {
       if (errno == ETIME)
          signaled = false;
@@ -1342,7 +1334,6 @@ panvk_SetEvent(VkDevice _device, VkEvent _event)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
    VK_FROM_HANDLE(panvk_event, event, _event);
-   const struct panfrost_device *pdev = &device->physical_device->pdev;
 
    struct drm_syncobj_array objs = {
       .handles = (uint64_t)(uintptr_t)&event->syncobj,
@@ -1354,7 +1345,7 @@ panvk_SetEvent(VkDevice _device, VkEvent _event)
     * command executes.
     * https://www.khronos.org/registry/vulkan/specs/1.2/html/chap6.html#commandbuffers-submission-progress
     */
-   if (drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_SIGNAL, &objs))
+   if (drmIoctl(device->vk.drm_fd, DRM_IOCTL_SYNCOBJ_SIGNAL, &objs))
       return VK_ERROR_DEVICE_LOST;
 
    return VK_SUCCESS;
@@ -1365,13 +1356,12 @@ panvk_ResetEvent(VkDevice _device, VkEvent _event)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
    VK_FROM_HANDLE(panvk_event, event, _event);
-   const struct panfrost_device *pdev = &device->physical_device->pdev;
 
    struct drm_syncobj_array objs = {
       .handles = (uint64_t)(uintptr_t)&event->syncobj,
       .count_handles = 1};
 
-   if (drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_RESET, &objs))
+   if (drmIoctl(device->vk.drm_fd, DRM_IOCTL_SYNCOBJ_RESET, &objs))
       return VK_ERROR_DEVICE_LOST;
 
    return VK_SUCCESS;

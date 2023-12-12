@@ -67,13 +67,12 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
          .jc = batch->jc.first_job,
       };
 
-      ret =
-         drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_PANFROST_SUBMIT, &submit);
+      ret = drmIoctl(dev->vk.drm_fd, DRM_IOCTL_PANFROST_SUBMIT, &submit);
       assert(!ret);
 
       if (debug & (PANVK_DEBUG_TRACE | PANVK_DEBUG_SYNC)) {
-         ret = drmSyncobjWait(panfrost_device_fd(pdev), &submit.out_sync, 1,
-                              INT64_MAX, 0, NULL);
+         ret = drmSyncobjWait(dev->vk.drm_fd, &submit.out_sync, 1, INT64_MAX, 0,
+                              NULL);
          assert(!ret);
       }
 
@@ -103,12 +102,11 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
          submit.in_sync_count = nr_in_fences;
       }
 
-      ret =
-         drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_PANFROST_SUBMIT, &submit);
+      ret = drmIoctl(dev->vk.drm_fd, DRM_IOCTL_PANFROST_SUBMIT, &submit);
       assert(!ret);
       if (debug & (PANVK_DEBUG_TRACE | PANVK_DEBUG_SYNC)) {
-         ret = drmSyncobjWait(panfrost_device_fd(pdev), &submit.out_sync, 1,
-                              INT64_MAX, 0, NULL);
+         ret = drmSyncobjWait(dev->vk.drm_fd, &submit.out_sync, 1, INT64_MAX, 0,
+                              NULL);
          assert(!ret);
       }
 
@@ -129,7 +127,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 static void
 panvk_queue_transfer_sync(struct panvk_queue *queue, uint32_t syncobj)
 {
-   const struct panfrost_device *pdev = &queue->device->physical_device->pdev;
+   struct panvk_device *dev = queue->device;
    int ret;
 
    struct drm_syncobj_handle handle = {
@@ -138,14 +136,12 @@ panvk_queue_transfer_sync(struct panvk_queue *queue, uint32_t syncobj)
       .fd = -1,
    };
 
-   ret = drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD,
-                  &handle);
+   ret = drmIoctl(dev->vk.drm_fd, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD, &handle);
    assert(!ret);
    assert(handle.fd >= 0);
 
    handle.handle = syncobj;
-   ret = drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_FD_TO_HANDLE,
-                  &handle);
+   ret = drmIoctl(dev->vk.drm_fd, DRM_IOCTL_SYNCOBJ_FD_TO_HANDLE, &handle);
    assert(!ret);
 
    close(handle.fd);
@@ -176,7 +172,7 @@ static void
 panvk_signal_event_syncobjs(struct panvk_queue *queue,
                             struct panvk_batch *batch)
 {
-   const struct panfrost_device *pdev = &queue->device->physical_device->pdev;
+   struct panvk_device *dev = queue->device;
 
    util_dynarray_foreach(&batch->event_ops, struct panvk_event_op, op) {
       switch (op->type) {
@@ -191,8 +187,7 @@ panvk_signal_event_syncobjs(struct panvk_queue *queue,
             .handles = (uint64_t)(uintptr_t)&event->syncobj,
             .count_handles = 1};
 
-         int ret =
-            drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_RESET, &objs);
+         int ret = drmIoctl(dev->vk.drm_fd, DRM_IOCTL_SYNCOBJ_RESET, &objs);
          assert(!ret);
          break;
       }

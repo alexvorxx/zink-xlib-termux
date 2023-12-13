@@ -32,7 +32,6 @@
  * 2. gamut remapping, the input primiaries/range will be used for output.
  * 3. tone mapping, tone mapping will be disabled.
  * 4. blending, blending will be disabled.
- * 5. color adjustment, color adjustment will be set to default.
  *
  */
 
@@ -48,11 +47,5 @@ void geometric_scaling_feature_skip(struct vpe_priv *vpe_priv, const struct vpe_
 
     /* disable blending */
     vpe_priv->stream_ctx[0].stream.blend_info.blending = false;
-
-    /* set color adjustment to default */
-    vpe_priv->stream_ctx[0].stream.color_adj.brightness = 0.0f;
-    vpe_priv->stream_ctx[0].stream.color_adj.contrast = 1.0f;
-    vpe_priv->stream_ctx[0].stream.color_adj.hue = 0.0f;
-    vpe_priv->stream_ctx[0].stream.color_adj.saturation = 1.0f;
 
 }

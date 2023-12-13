@@ -276,7 +276,7 @@ panvk_DestroyBufferView(VkDevice _device, VkBufferView bufferView,
       return;
 
    panvk_priv_bo_destroy(view->bo, pAllocator);
-   vk_object_free(&device->vk, pAllocator, view);
+   vk_buffer_view_destroy(&device->vk, pAllocator, &view->vk);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

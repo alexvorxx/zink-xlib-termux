@@ -50,6 +50,7 @@
 #include "util/macros.h"
 #include "vk_alloc.h"
 #include "vk_buffer.h"
+#include "vk_buffer_view.h"
 #include "vk_command_buffer.h"
 #include "vk_command_pool.h"
 #include "vk_descriptor_set_layout.h"
@@ -974,14 +975,12 @@ struct panvk_sampler {
 };
 
 struct panvk_buffer_view {
-   struct vk_object_base base;
+   struct vk_buffer_view vk;
    struct panvk_priv_bo *bo;
    struct {
       uint32_t tex[TEXTURE_DESC_WORDS];
       uint32_t img_attrib_buf[ATTRIB_BUF_DESC_WORDS * 2];
    } descs;
-   enum pipe_format fmt;
-   uint32_t elems;
 };
 
 struct panvk_attachment_info {
@@ -1054,7 +1053,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_cmd_pool, vk.base, VkCommandPool,
                                VK_OBJECT_TYPE_COMMAND_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer, vk.base, VkBuffer,
                                VK_OBJECT_TYPE_BUFFER)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer_view, base, VkBufferView,
+VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer_view, vk.base, VkBufferView,
                                VK_OBJECT_TYPE_BUFFER_VIEW)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_pool, base, VkDescriptorPool,
                                VK_OBJECT_TYPE_DESCRIPTOR_POOL)

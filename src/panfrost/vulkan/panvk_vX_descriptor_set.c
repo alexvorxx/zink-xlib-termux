@@ -38,6 +38,7 @@
 #include "util/mesa-sha1.h"
 #include "vk_descriptor_update_template.h"
 #include "vk_descriptors.h"
+#include "vk_format.h"
 #include "vk_util.h"
 
 #include "panvk_cs.h"
@@ -52,7 +53,7 @@ static void
 panvk_fill_bview_desc(struct panvk_bview_desc *desc,
                       struct panvk_buffer_view *view)
 {
-   desc->elems = view->elems;
+   desc->elems = view->vk.elements;
 }
 
 struct panvk_image_desc {
@@ -526,9 +527,9 @@ panvk_write_img_buf_desc(struct panvk_descriptor_set *set, uint32_t binding,
    unsigned img_idx = panvk_img_idx(set, binding, elem);
    void *attrib_buf = (uint8_t *)set->img_attrib_bufs +
                       (pan_size(ATTRIBUTE_BUFFER) * 2 * img_idx);
+   enum pipe_format pfmt = vk_format_to_pipe_format(view->vk.format);
 
-   set->img_fmts[img_idx] =
-      GENX(panfrost_format_from_pipe_format)(view->fmt)->hw;
+   set->img_fmts[img_idx] = GENX(panfrost_format_from_pipe_format)(pfmt)->hw;
    memcpy(attrib_buf, view->descs.img_attrib_buf,
           pan_size(ATTRIBUTE_BUFFER) * 2);
 

@@ -42,6 +42,7 @@
 #include "vk_format.h"
 #include "vk_util.h"
 
+#include "panvk_buffer.h"
 #include "panvk_cs.h"
 
 #define PANVK_DESCRIPTOR_ALIGN 8

@@ -34,6 +34,7 @@
 #include "pan_pool.h"
 #include "pan_shader.h"
 
+#include "panvk_buffer.h"
 #include "panvk_cs.h"
 #include "panvk_private.h"
 #include "panvk_varyings.h"

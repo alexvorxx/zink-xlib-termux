@@ -26,6 +26,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "panvk_buffer.h"
 #include "panvk_private.h"
 
 #include "pan_encoder.h"

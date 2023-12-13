@@ -28,6 +28,7 @@
 
 #include "genxml/gen_macros.h"
 
+#include "panvk_buffer.h"
 #include "panvk_image.h"
 #include "panvk_private.h"
 

@@ -295,21 +295,7 @@ struct panvk_device {
    struct {
       struct pandecode_context *decode_ctx;
    } debug;
-
-   int _lost;
 };
-
-VkResult _panvk_device_set_lost(struct panvk_device *device, const char *file,
-                                int line, const char *msg, ...)
-   PRINTFLIKE(4, 5);
-#define panvk_device_set_lost(dev, ...)                                        \
-   _panvk_device_set_lost(dev, __FILE__, __LINE__, __VA_ARGS__)
-
-static inline bool
-panvk_device_is_lost(struct panvk_device *device)
-{
-   return unlikely(p_atomic_read(&device->_lost));
-}
 
 #define TILER_DESC_WORDS 56
 

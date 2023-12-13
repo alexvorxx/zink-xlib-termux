@@ -63,28 +63,6 @@
 
 #include "panvk_cs.h"
 
-VkResult
-_panvk_device_set_lost(struct panvk_device *device, const char *file, int line,
-                       const char *msg, ...)
-{
-   /* Set the flag indicating that waits should return in finite time even
-    * after device loss.
-    */
-   p_atomic_inc(&device->_lost);
-
-   /* TODO: Report the log message through VkDebugReportCallbackEXT instead */
-   fprintf(stderr, "%s:%d: ", file, line);
-   va_list ap;
-   va_start(ap, msg);
-   vfprintf(stderr, msg, ap);
-   va_end(ap);
-
-   if (debug_get_bool_option("PANVK_ABORT_ON_DEVICE_LOSS", false))
-      abort();
-
-   return VK_ERROR_DEVICE_LOST;
-}
-
 static int
 panvk_device_get_cache_uuid(uint16_t family, void *uuid)
 {
@@ -1174,7 +1152,7 @@ panvk_QueueWaitIdle(VkQueue _queue)
 {
    VK_FROM_HANDLE(panvk_queue, queue, _queue);
 
-   if (panvk_device_is_lost(queue->device))
+   if (vk_device_is_lost(&queue->device->vk))
       return VK_ERROR_DEVICE_LOST;
 
    struct drm_syncobj_wait wait = {

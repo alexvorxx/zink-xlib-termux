@@ -53,7 +53,7 @@ panvk_per_arch(CreateBufferView)(VkDevice _device,
          cfg.pointer = address;
       }
 
-      pan_pack(view->descs.tex, TEXTURE, cfg) {
+      pan_pack(view->descs.tex.opaque, TEXTURE, cfg) {
          cfg.dimension = MALI_TEXTURE_DIMENSION_1D;
          cfg.format = GENX(panfrost_format_from_pipe_format)(pfmt)->hw;
          cfg.width = view->vk.elements;
@@ -68,17 +68,15 @@ panvk_per_arch(CreateBufferView)(VkDevice _device,
    }
 
    if (buffer->vk.usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) {
-      uint8_t *attrib_buf = (uint8_t *)view->descs.img_attrib_buf;
-
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER, cfg) {
+      pan_pack(view->descs.img_attrib_buf[0].opaque, ATTRIBUTE_BUFFER, cfg) {
          cfg.type = MALI_ATTRIBUTE_TYPE_3D_LINEAR;
          cfg.pointer = address;
          cfg.stride = blksz;
          cfg.size = view->vk.elements * blksz;
       }
 
-      attrib_buf += pan_size(ATTRIBUTE_BUFFER);
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER_CONTINUATION_3D, cfg) {
+      pan_pack(view->descs.img_attrib_buf[1].opaque,
+               ATTRIBUTE_BUFFER_CONTINUATION_3D, cfg) {
          cfg.s_dimension = view->vk.elements;
          cfg.t_dimension = 1;
          cfg.r_dimension = 1;

@@ -915,15 +915,6 @@ struct panvk_sampler {
    uint32_t desc[SAMPLER_DESC_WORDS];
 };
 
-struct panvk_buffer_view {
-   struct vk_buffer_view vk;
-   struct panvk_priv_bo *bo;
-   struct {
-      uint32_t tex[TEXTURE_DESC_WORDS];
-      uint32_t img_attrib_buf[ATTRIB_BUF_DESC_WORDS * 2];
-   } descs;
-};
-
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
 VK_DEFINE_HANDLE_CASTS(panvk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
@@ -935,8 +926,6 @@ VK_DEFINE_HANDLE_CASTS(panvk_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_cmd_pool, vk.base, VkCommandPool,
                                VK_OBJECT_TYPE_COMMAND_POOL)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer_view, vk.base, VkBufferView,
-                               VK_OBJECT_TYPE_BUFFER_VIEW)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_pool, base, VkDescriptorPool,
                                VK_OBJECT_TYPE_DESCRIPTOR_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set, base, VkDescriptorSet,

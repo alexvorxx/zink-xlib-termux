@@ -28,7 +28,6 @@
 
 #include "genxml/gen_macros.h"
 
-#include "panvk_buffer.h"
 #include "panvk_image.h"
 #include "panvk_private.h"
 
@@ -171,75 +170,5 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
    }
 
    *pView = panvk_image_view_to_handle(view);
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-panvk_per_arch(CreateBufferView)(VkDevice _device,
-                                 const VkBufferViewCreateInfo *pCreateInfo,
-                                 const VkAllocationCallbacks *pAllocator,
-                                 VkBufferView *pView)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   VK_FROM_HANDLE(panvk_buffer, buffer, pCreateInfo->buffer);
-
-   struct panvk_buffer_view *view = vk_object_zalloc(
-      &device->vk, pAllocator, sizeof(*view), VK_OBJECT_TYPE_BUFFER_VIEW);
-
-   if (!view)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   vk_buffer_view_init(&device->vk, &view->vk, pCreateInfo);
-
-   enum pipe_format pfmt = vk_format_to_pipe_format(view->vk.format);
-
-   mali_ptr address = panvk_buffer_gpu_ptr(buffer, pCreateInfo->offset);
-   unsigned blksz = vk_format_get_blocksize(pCreateInfo->format);
-
-   assert(!(address & 63));
-
-   if (buffer->vk.usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) {
-      unsigned bo_size = pan_size(SURFACE_WITH_STRIDE);
-      view->bo = panvk_priv_bo_create(device, bo_size, 0, pAllocator,
-                                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-
-      pan_pack(view->bo->addr.host, SURFACE_WITH_STRIDE, cfg) {
-         cfg.pointer = address;
-      }
-
-      pan_pack(view->descs.tex, TEXTURE, cfg) {
-         cfg.dimension = MALI_TEXTURE_DIMENSION_1D;
-         cfg.format = GENX(panfrost_format_from_pipe_format)(pfmt)->hw;
-         cfg.width = view->vk.elements;
-         cfg.depth = cfg.height = 1;
-         cfg.swizzle = PAN_V6_SWIZZLE(R, G, B, A);
-         cfg.texel_ordering = MALI_TEXTURE_LAYOUT_LINEAR;
-         cfg.levels = 1;
-         cfg.array_size = 1;
-         cfg.surfaces = view->bo->addr.dev;
-         cfg.maximum_lod = cfg.minimum_lod = 0;
-      }
-   }
-
-   if (buffer->vk.usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) {
-      uint8_t *attrib_buf = (uint8_t *)view->descs.img_attrib_buf;
-
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER, cfg) {
-         cfg.type = MALI_ATTRIBUTE_TYPE_3D_LINEAR;
-         cfg.pointer = address;
-         cfg.stride = blksz;
-         cfg.size = view->vk.elements * blksz;
-      }
-
-      attrib_buf += pan_size(ATTRIBUTE_BUFFER);
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER_CONTINUATION_3D, cfg) {
-         cfg.s_dimension = view->vk.elements;
-         cfg.t_dimension = 1;
-         cfg.r_dimension = 1;
-         cfg.row_stride = view->vk.elements * blksz;
-      }
-   }
-
-   *pView = panvk_buffer_view_to_handle(view);
    return VK_SUCCESS;
 }

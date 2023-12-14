@@ -417,8 +417,9 @@ void radv_ray_tracing_pipeline_cache_insert(struct radv_device *device, struct v
                                             struct radv_ray_tracing_pipeline *pipeline, unsigned num_stages,
                                             const unsigned char *sha1);
 
-struct vk_pipeline_cache_object *
-radv_pipeline_cache_search_nir(struct radv_device *device, struct vk_pipeline_cache *cache, const unsigned char *sha1);
+struct vk_pipeline_cache_object *radv_pipeline_cache_lookup_nir_handle(struct radv_device *device,
+                                                                       struct vk_pipeline_cache *cache,
+                                                                       const unsigned char *sha1);
 
 struct vk_pipeline_cache_object *radv_pipeline_cache_nir_to_handle(struct radv_device *device,
                                                                    struct vk_pipeline_cache *cache,

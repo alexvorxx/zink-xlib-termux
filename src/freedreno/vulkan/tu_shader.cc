@@ -21,6 +21,8 @@
 #include "tu_pipeline.h"
 #include "tu_lrz.h"
 
+#include <initializer_list>
+
 nir_shader *
 tu_spirv_to_nir(struct tu_device *dev,
                 void *mem_ctx,
@@ -1525,6 +1527,32 @@ tu6_emit_fs_inputs(struct tu_cs *cs, const struct ir3_shader_variant *fs)
                          .zwcoordregid = zwcoord_regid),
       HLSQ_CONTROL_5_REG(CHIP, .dword = 0xfcfc), );
 
+   if (CHIP >= A7XX) {
+      uint32_t sysval_regs = 0;
+      for (unsigned i = 0; i < ARRAY_SIZE(ij_regid); i++) {
+         if (VALIDREG(ij_regid[i])) {
+            if (i == IJ_PERSP_CENTER_RHW)
+               sysval_regs += 1;
+            else
+               sysval_regs += 2;
+         }
+      }
+
+      for (uint32_t sysval : { face_regid, samp_id_regid, smask_in_regid }) {
+         if (VALIDREG(sysval))
+            sysval_regs += 1;
+      }
+
+      for (uint32_t sysval : { coord_regid, zwcoord_regid }) {
+         if (VALIDREG(sysval))
+            sysval_regs += 2;
+      }
+
+      tu_cs_emit_regs(cs, A7XX_HLSQ_UNKNOWN_A9AE(.sysval_regs_count = sysval_regs,
+                                                 .unk8 = 1,
+                                                 .unk9 = 1));
+   }
+
    enum a6xx_threadsize thrsz = fs->info.double_threadsize ? THREAD128 : THREAD64;
    tu_cs_emit_regs(cs, HLSQ_FS_CNTL_0(CHIP, .threadsize = thrsz, .varyings = enable_varyings));
 
@@ -1846,7 +1874,6 @@ tu6_emit_fs(struct tu_cs *cs,
    tu_cs_emit_regs(cs, A6XX_PC_PS_CNTL(.primitiveiden = fs && fs->reads_primid));
 
    if (CHIP >= A7XX) {
-      tu_cs_emit_regs(cs, A7XX_HLSQ_UNKNOWN_A9AE(.unk0 = 0x2, .unk8 = 1));
       tu_cs_emit_regs(cs, A6XX_GRAS_UNKNOWN_8110(0x2));
       tu_cs_emit_regs(cs, A7XX_HLSQ_FS_UNKNOWN_A9AA(.consts_load_disable = false));
    }

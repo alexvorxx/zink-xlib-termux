@@ -642,6 +642,14 @@ struct bvh_state {
    struct rs_push_scatter push_scatter;
 };
 
+struct radv_bvh_batch_state {
+   bool any_compact;
+   bool any_non_compact;
+   bool any_ploc;
+   bool any_lbvh;
+   bool any_update;
+};
+
 static uint32_t
 pack_geometry_id_and_flags(uint32_t geometry_id, uint32_t flags)
 {
@@ -1181,14 +1189,18 @@ encode_nodes(VkCommandBuffer commandBuffer, uint32_t infoCount,
 
 static void
 init_header(VkCommandBuffer commandBuffer, uint32_t infoCount,
-            const VkAccelerationStructureBuildGeometryInfoKHR *pInfos, struct bvh_state *bvh_states)
+            const VkAccelerationStructureBuildGeometryInfoKHR *pInfos, struct bvh_state *bvh_states,
+            struct radv_bvh_batch_state *batch_state)
 {
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
 
-   radv_write_user_event_marker(cmd_buffer, UserEventPush, "header");
+   if (batch_state->any_compact) {
+      radv_write_user_event_marker(cmd_buffer, UserEventPush, "header");
 
-   cmd_buffer->device->vk.dispatch_table.CmdBindPipeline(
-      commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, cmd_buffer->device->meta_state.accel_struct_build.header_pipeline);
+      cmd_buffer->device->vk.dispatch_table.CmdBindPipeline(
+         commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+         cmd_buffer->device->meta_state.accel_struct_build.header_pipeline);
+   }
 
    for (uint32_t i = 0; i < infoCount; ++i) {
       if (bvh_states[i].config.internal_type == INTERNAL_BUILD_TYPE_UPDATE)
@@ -1239,7 +1251,8 @@ init_header(VkCommandBuffer commandBuffer, uint32_t infoCount,
                             (const char *)&header + base, sizeof(header) - base);
    }
 
-   radv_write_user_event_marker(cmd_buffer, UserEventPop, NULL);
+   if (batch_state->any_compact)
+      radv_write_user_event_marker(cmd_buffer, UserEventPop, NULL);
 }
 
 static void
@@ -1350,6 +1363,8 @@ radv_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t i
 
    radv_describe_begin_accel_struct_build(cmd_buffer, infoCount);
 
+   struct radv_bvh_batch_state batch_state = {0};
+
    for (uint32_t i = 0; i < infoCount; ++i) {
       uint32_t leaf_node_count = 0;
       for (uint32_t j = 0; j < pInfos[i].geometryCount; ++j) {
@@ -1358,7 +1373,24 @@ radv_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t i
 
       get_build_layout(cmd_buffer->device, leaf_node_count, pInfos + i, &bvh_states[i].accel_struct,
                        &bvh_states[i].scratch);
-      bvh_states[i].config = build_config(leaf_node_count, pInfos + i);
+
+      struct build_config config = build_config(leaf_node_count, pInfos + i);
+      bvh_states[i].config = config;
+
+      if (config.compact)
+         batch_state.any_compact = true;
+      else
+         batch_state.any_non_compact = true;
+
+      if (config.internal_type == INTERNAL_BUILD_TYPE_PLOC) {
+         batch_state.any_ploc = true;
+      } else if (config.internal_type == INTERNAL_BUILD_TYPE_LBVH) {
+         batch_state.any_lbvh = true;
+      } else if (config.internal_type == INTERNAL_BUILD_TYPE_UPDATE) {
+         batch_state.any_update = true;
+      } else {
+         unreachable("Unknown internal_build_type");
+      }
 
       if (bvh_states[i].config.internal_type != INTERNAL_BUILD_TYPE_UPDATE) {
          /* The internal node count is updated in lbvh_build_internal for LBVH
@@ -1409,21 +1441,26 @@ radv_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t i
 
    lbvh_build_internal(commandBuffer, infoCount, pInfos, bvh_states, flush_bits);
 
-   ploc_build_internal(commandBuffer, infoCount, pInfos, bvh_states);
+   if (batch_state.any_ploc)
+      ploc_build_internal(commandBuffer, infoCount, pInfos, bvh_states);
 
    cmd_buffer->state.flush_bits |= flush_bits;
 
-   encode_nodes(commandBuffer, infoCount, pInfos, bvh_states, false);
-   encode_nodes(commandBuffer, infoCount, pInfos, bvh_states, true);
+   if (batch_state.any_non_compact)
+      encode_nodes(commandBuffer, infoCount, pInfos, bvh_states, false);
+
+   if (batch_state.any_compact)
+      encode_nodes(commandBuffer, infoCount, pInfos, bvh_states, true);
 
    cmd_buffer->state.flush_bits |= flush_bits;
 
-   init_header(commandBuffer, infoCount, pInfos, bvh_states);
+   init_header(commandBuffer, infoCount, pInfos, bvh_states, &batch_state);
 
    if (cmd_buffer->device->rra_trace.accel_structs)
       init_geometry_infos(commandBuffer, infoCount, pInfos, bvh_states, ppBuildRangeInfos);
 
-   update(commandBuffer, infoCount, pInfos, ppBuildRangeInfos, bvh_states);
+   if (batch_state.any_update)
+      update(commandBuffer, infoCount, pInfos, ppBuildRangeInfos, bvh_states);
 
    radv_describe_end_accel_struct_build(cmd_buffer);
 

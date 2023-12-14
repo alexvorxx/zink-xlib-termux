@@ -2460,6 +2460,7 @@ radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cac
                               struct radv_shader **shaders, struct radv_shader_binary **binaries,
                               struct radv_shader **gs_copy_shader, struct radv_shader_binary **gs_copy_binary)
 {
+   const bool nir_cache = device->instance->perftest_flags & RADV_PERFTEST_NIR_CACHE;
    for (unsigned s = 0; s < MESA_VULKAN_SHADER_STAGES; s++) {
       if (!stages[s].entrypoint)
          continue;
@@ -2473,7 +2474,17 @@ radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cac
             .fix_dual_src_mrt1_export =
                gfx_state->ps.epilog.mrt0_is_dual_src && device->instance->drirc.dual_color_blend_by_location,
          };
-         stages[s].nir = radv_shader_spirv_to_nir(device, &stages[s], &options, is_internal);
+         blake3_hash key;
+
+         if (nir_cache) {
+            radv_hash_graphics_spirv_to_nir(key, &stages[s], &options);
+            stages[s].nir = radv_pipeline_cache_lookup_nir(device, cache, s, key);
+         }
+         if (!stages[s].nir) {
+            stages[s].nir = radv_shader_spirv_to_nir(device, &stages[s], &options, is_internal);
+            if (nir_cache)
+               radv_pipeline_cache_insert_nir(device, cache, key, stages[s].nir);
+         }
       }
 
       stages[s].feedback.duration += os_time_get_nano() - stage_start;

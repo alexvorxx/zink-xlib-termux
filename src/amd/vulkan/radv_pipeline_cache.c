@@ -74,6 +74,18 @@ radv_hash_shaders(const struct radv_device *device, unsigned char *hash, const s
 }
 
 void
+radv_hash_graphics_spirv_to_nir(blake3_hash hash, const struct radv_shader_stage *stage,
+                                const struct radv_spirv_to_nir_options *options)
+{
+   struct mesa_blake3 ctx;
+   _mesa_blake3_init(&ctx);
+   _mesa_blake3_update(&ctx, &stage->key, sizeof(stage->key));
+   _mesa_blake3_update(&ctx, options, sizeof(*options));
+   _mesa_blake3_update(&ctx, stage->shader_sha1, sizeof(stage->shader_sha1));
+   _mesa_blake3_final(&ctx, hash);
+}
+
+void
 radv_hash_rt_shaders(const struct radv_device *device, unsigned char *hash, const struct radv_ray_tracing_stage *stages,
                      const VkRayTracingPipelineCreateInfoKHR *pCreateInfo, const struct radv_ray_tracing_group *groups)
 {
@@ -514,6 +526,33 @@ radv_ray_tracing_pipeline_cache_insert(struct radv_device *device, struct vk_pip
 
    /* Add the object to the cache */
    pipeline->base.base.cache_object = vk_pipeline_cache_add_object(cache, &pipeline_obj->base);
+}
+
+nir_shader *
+radv_pipeline_cache_lookup_nir(struct radv_device *device, struct vk_pipeline_cache *cache, gl_shader_stage stage,
+                               const blake3_hash key)
+{
+   if (radv_is_cache_disabled(device))
+      return NULL;
+
+   if (!cache)
+      cache = device->mem_cache;
+
+   return vk_pipeline_cache_lookup_nir(cache, key, sizeof(blake3_hash), &device->physical_device->nir_options[stage],
+                                       NULL, NULL);
+}
+
+void
+radv_pipeline_cache_insert_nir(struct radv_device *device, struct vk_pipeline_cache *cache, const blake3_hash key,
+                               const nir_shader *nir)
+{
+   if (radv_is_cache_disabled(device))
+      return;
+
+   if (!cache)
+      cache = device->mem_cache;
+
+   vk_pipeline_cache_add_nir(cache, key, sizeof(blake3_hash), nir);
 }
 
 struct vk_pipeline_cache_object *

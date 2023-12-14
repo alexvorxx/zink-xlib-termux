@@ -417,6 +417,12 @@ void radv_ray_tracing_pipeline_cache_insert(struct radv_device *device, struct v
                                             struct radv_ray_tracing_pipeline *pipeline, unsigned num_stages,
                                             const unsigned char *sha1);
 
+nir_shader *radv_pipeline_cache_lookup_nir(struct radv_device *device, struct vk_pipeline_cache *cache,
+                                           gl_shader_stage stage, const blake3_hash key);
+
+void radv_pipeline_cache_insert_nir(struct radv_device *device, struct vk_pipeline_cache *cache, const blake3_hash key,
+                                    const nir_shader *nir);
+
 struct vk_pipeline_cache_object *radv_pipeline_cache_lookup_nir_handle(struct radv_device *device,
                                                                        struct vk_pipeline_cache *cache,
                                                                        const unsigned char *sha1);
@@ -2052,6 +2058,9 @@ struct radv_ray_tracing_group;
 
 void radv_pipeline_stage_init(const VkPipelineShaderStageCreateInfo *sinfo, const struct radv_pipeline_layout *layout,
                               const struct radv_shader_stage_key *stage_key, struct radv_shader_stage *out_stage);
+
+void radv_hash_graphics_spirv_to_nir(blake3_hash hash, const struct radv_shader_stage *stage,
+                                     const struct radv_spirv_to_nir_options *options);
 
 void radv_hash_shaders(const struct radv_device *device, unsigned char *hash, const struct radv_shader_stage *stages,
                        uint32_t stage_count, const struct radv_pipeline_layout *layout,

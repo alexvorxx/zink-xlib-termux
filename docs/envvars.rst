@@ -1347,6 +1347,8 @@ RADV driver environment variables
       enable local BOs
    ``nggc``
       enable NGG culling on GPUs where it's not enabled by default (GFX10.1 only).
+   ``nircache``
+      cache per-stage NIR for graphics pipelines
    ``nosam``
       disable optimizations that get enabled when all VRAM is CPU visible.
    ``pswave32``

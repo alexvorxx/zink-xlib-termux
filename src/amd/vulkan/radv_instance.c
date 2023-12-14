@@ -102,6 +102,7 @@ static const struct debug_control radv_perftest_options[] = {{"localbos", RADV_P
                                                              {"gsfastlaunch2", RADV_PERFTEST_GS_FAST_LAUNCH_2},
                                                              {"transfer_queue", RADV_PERFTEST_TRANSFER_QUEUE},
                                                              {"shader_object", RADV_PERFTEST_SHADER_OBJECT},
+                                                             {"nircache", RADV_PERFTEST_NIR_CACHE},
                                                              {NULL, 0}};
 
 const char *

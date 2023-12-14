@@ -325,38 +325,35 @@ radv_CopyAccelerationStructureKHR(VkDevice _device, VkDeferredOperationKHR defer
 void
 radv_device_finish_accel_struct_build_state(struct radv_device *device)
 {
+   VkDevice _device = radv_device_to_handle(device);
    struct radv_meta_state *state = &device->meta_state;
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.copy_pipeline, &state->alloc);
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.ploc_pipeline, &state->alloc);
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.lbvh_generate_ir_pipeline,
-                        &state->alloc);
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.lbvh_main_pipeline, &state->alloc);
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.leaf_pipeline, &state->alloc);
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.encode_pipeline, &state->alloc);
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.encode_compact_pipeline,
-                        &state->alloc);
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.header_pipeline, &state->alloc);
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.morton_pipeline, &state->alloc);
-   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.update_pipeline, &state->alloc);
-   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->accel_struct_build.copy_p_layout, &state->alloc);
-   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->accel_struct_build.ploc_p_layout, &state->alloc);
-   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->accel_struct_build.lbvh_generate_ir_p_layout,
-                              &state->alloc);
-   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->accel_struct_build.lbvh_main_p_layout,
-                              &state->alloc);
-   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->accel_struct_build.leaf_p_layout, &state->alloc);
-   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->accel_struct_build.encode_p_layout, &state->alloc);
-   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->accel_struct_build.header_p_layout, &state->alloc);
-   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->accel_struct_build.morton_p_layout, &state->alloc);
-   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->accel_struct_build.update_p_layout, &state->alloc);
+
+   radv_DestroyPipeline(_device, state->accel_struct_build.copy_pipeline, &state->alloc);
+   radv_DestroyPipeline(_device, state->accel_struct_build.ploc_pipeline, &state->alloc);
+   radv_DestroyPipeline(_device, state->accel_struct_build.lbvh_generate_ir_pipeline, &state->alloc);
+   radv_DestroyPipeline(_device, state->accel_struct_build.lbvh_main_pipeline, &state->alloc);
+   radv_DestroyPipeline(_device, state->accel_struct_build.leaf_pipeline, &state->alloc);
+   radv_DestroyPipeline(_device, state->accel_struct_build.encode_pipeline, &state->alloc);
+   radv_DestroyPipeline(_device, state->accel_struct_build.encode_compact_pipeline, &state->alloc);
+   radv_DestroyPipeline(_device, state->accel_struct_build.header_pipeline, &state->alloc);
+   radv_DestroyPipeline(_device, state->accel_struct_build.morton_pipeline, &state->alloc);
+   radv_DestroyPipeline(_device, state->accel_struct_build.update_pipeline, &state->alloc);
+   radv_DestroyPipelineLayout(_device, state->accel_struct_build.copy_p_layout, &state->alloc);
+   radv_DestroyPipelineLayout(_device, state->accel_struct_build.ploc_p_layout, &state->alloc);
+   radv_DestroyPipelineLayout(_device, state->accel_struct_build.lbvh_generate_ir_p_layout, &state->alloc);
+   radv_DestroyPipelineLayout(_device, state->accel_struct_build.lbvh_main_p_layout, &state->alloc);
+   radv_DestroyPipelineLayout(_device, state->accel_struct_build.leaf_p_layout, &state->alloc);
+   radv_DestroyPipelineLayout(_device, state->accel_struct_build.encode_p_layout, &state->alloc);
+   radv_DestroyPipelineLayout(_device, state->accel_struct_build.header_p_layout, &state->alloc);
+   radv_DestroyPipelineLayout(_device, state->accel_struct_build.morton_p_layout, &state->alloc);
+   radv_DestroyPipelineLayout(_device, state->accel_struct_build.update_p_layout, &state->alloc);
 
    if (state->accel_struct_build.radix_sort)
-      radix_sort_vk_destroy(state->accel_struct_build.radix_sort, radv_device_to_handle(device), &state->alloc);
+      radix_sort_vk_destroy(state->accel_struct_build.radix_sort, _device, &state->alloc);
 
-   radv_DestroyBuffer(radv_device_to_handle(device), state->accel_struct_build.null.buffer, &state->alloc);
-   radv_FreeMemory(radv_device_to_handle(device), state->accel_struct_build.null.memory, &state->alloc);
-   vk_common_DestroyAccelerationStructureKHR(radv_device_to_handle(device), state->accel_struct_build.null.accel_struct,
-                                             &state->alloc);
+   radv_DestroyBuffer(_device, state->accel_struct_build.null.buffer, &state->alloc);
+   radv_FreeMemory(_device, state->accel_struct_build.null.memory, &state->alloc);
+   vk_common_DestroyAccelerationStructureKHR(_device, state->accel_struct_build.null.accel_struct, &state->alloc);
 }
 
 static VkResult
@@ -365,6 +362,8 @@ create_build_pipeline_spv(struct radv_device *device, const uint32_t *spv, uint3
 {
    if (*pipeline)
       return VK_SUCCESS;
+
+   VkDevice _device = radv_device_to_handle(device);
 
    const VkPipelineLayoutCreateInfo pl_create_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -382,14 +381,13 @@ create_build_pipeline_spv(struct radv_device *device, const uint32_t *spv, uint3
    };
 
    VkShaderModule module;
-   VkResult result = device->vk.dispatch_table.CreateShaderModule(radv_device_to_handle(device), &module_info,
-                                                                  &device->meta_state.alloc, &module);
+   VkResult result =
+      device->vk.dispatch_table.CreateShaderModule(_device, &module_info, &device->meta_state.alloc, &module);
    if (result != VK_SUCCESS)
       return result;
 
    if (!*layout) {
-      result =
-         radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc, layout);
+      result = radv_CreatePipelineLayout(_device, &pl_create_info, &device->meta_state.alloc, layout);
       if (result != VK_SUCCESS)
          goto cleanup;
    }
@@ -409,11 +407,11 @@ create_build_pipeline_spv(struct radv_device *device, const uint32_t *spv, uint3
       .layout = *layout,
    };
 
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &pipeline_info,
-                                         &device->meta_state.alloc, pipeline);
+   result = radv_compute_pipeline_create(_device, device->meta_state.cache, &pipeline_info, &device->meta_state.alloc,
+                                         pipeline);
 
 cleanup:
-   device->vk.dispatch_table.DestroyShaderModule(radv_device_to_handle(device), module, &device->meta_state.alloc);
+   device->vk.dispatch_table.DestroyShaderModule(_device, module, &device->meta_state.alloc);
    return result;
 }
 

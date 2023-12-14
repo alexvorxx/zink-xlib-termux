@@ -1061,20 +1061,6 @@ sqtt_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, VkQueryPool queryPoo
 #define EVENT_RT_MARKER_ALIAS(cmd_name, event_name, flags, ...)                                                        \
    EVENT_MARKER_BASE(cmd_name, Dispatch, event_name | flags, __VA_ARGS__);
 
-static uint32_t
-radv_get_ray_tracing_type(VkCommandBuffer commandBuffer)
-{
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-
-   struct radv_ray_tracing_pipeline *pipeline = cmd_buffer->state.rt_pipeline;
-
-   bool monolithic = true;
-   for (uint32_t i = 0; i < pipeline->stage_count; i++)
-      monolithic &= pipeline->stages[i].can_inline;
-
-   return monolithic ? 0 : ApiRayTracingSeparateCompiled;
-}
-
 VKAPI_ATTR void VKAPI_CALL
 sqtt_CmdTraceRaysKHR(VkCommandBuffer commandBuffer, const VkStridedDeviceAddressRegionKHR *pRaygenShaderBindingTable,
                      const VkStridedDeviceAddressRegionKHR *pMissShaderBindingTable,
@@ -1082,7 +1068,7 @@ sqtt_CmdTraceRaysKHR(VkCommandBuffer commandBuffer, const VkStridedDeviceAddress
                      const VkStridedDeviceAddressRegionKHR *pCallableShaderBindingTable, uint32_t width,
                      uint32_t height, uint32_t depth)
 {
-   EVENT_RT_MARKER(TraceRaysKHR, radv_get_ray_tracing_type(commandBuffer), commandBuffer, pRaygenShaderBindingTable,
+   EVENT_RT_MARKER(TraceRaysKHR, ApiRayTracingSeparateCompiled, commandBuffer, pRaygenShaderBindingTable,
                    pMissShaderBindingTable, pHitShaderBindingTable, pCallableShaderBindingTable, width, height, depth);
 }
 
@@ -1094,16 +1080,15 @@ sqtt_CmdTraceRaysIndirectKHR(VkCommandBuffer commandBuffer,
                              const VkStridedDeviceAddressRegionKHR *pCallableShaderBindingTable,
                              VkDeviceAddress indirectDeviceAddress)
 {
-   EVENT_RT_MARKER(TraceRaysIndirectKHR, radv_get_ray_tracing_type(commandBuffer), commandBuffer,
-                   pRaygenShaderBindingTable, pMissShaderBindingTable, pHitShaderBindingTable,
-                   pCallableShaderBindingTable, indirectDeviceAddress);
+   EVENT_RT_MARKER(TraceRaysIndirectKHR, ApiRayTracingSeparateCompiled, commandBuffer, pRaygenShaderBindingTable,
+                   pMissShaderBindingTable, pHitShaderBindingTable, pCallableShaderBindingTable, indirectDeviceAddress);
 }
 
 VKAPI_ATTR void VKAPI_CALL
 sqtt_CmdTraceRaysIndirect2KHR(VkCommandBuffer commandBuffer, VkDeviceAddress indirectDeviceAddress)
 {
-   EVENT_RT_MARKER_ALIAS(TraceRaysIndirect2KHR, TraceRaysIndirectKHR, radv_get_ray_tracing_type(commandBuffer),
-                         commandBuffer, indirectDeviceAddress);
+   EVENT_RT_MARKER_ALIAS(TraceRaysIndirect2KHR, TraceRaysIndirectKHR, ApiRayTracingSeparateCompiled, commandBuffer,
+                         indirectDeviceAddress);
 }
 
 VKAPI_ATTR void VKAPI_CALL

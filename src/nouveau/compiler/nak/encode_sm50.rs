@@ -2037,6 +2037,36 @@ impl SM50Instr {
         self.set_reg_src(8..16, op.idx);
     }
 
+    fn encode_out(&mut self, op: &OpOut) {
+        match &op.stream.src_ref {
+            SrcRef::Imm32(imm32) => {
+                self.set_opcode(0xf6e0);
+                self.set_src_imm_i20(20..39, 56, *imm32);
+            }
+            SrcRef::CBuf(cbuf) => {
+                self.set_opcode(0xebe0);
+                self.set_src_cb(20..39, cbuf);
+            }
+            SrcRef::Zero | SrcRef::Reg(_) => {
+                self.set_opcode(0xfbe0);
+                self.set_reg_src(20..28, op.stream);
+            }
+            src => panic!("Unsupported src type for OUT: {src}"),
+        }
+
+        self.set_field(
+            39..41,
+            match op.out_type {
+                OutType::Emit => 1_u8,
+                OutType::Cut => 2_u8,
+                OutType::EmitThenCut => 3_u8,
+            },
+        );
+
+        self.set_reg_src(8..16, op.handle);
+        self.set_dst(op.dst);
+    }
+
     pub fn encode(
         instr: &Instr,
         sm: u8,
@@ -2108,6 +2138,7 @@ impl SM50Instr {
             Op::CS2R(op) => si.encode_cs2r(op),
             Op::Nop(_) => si.encode_nop(),
             Op::Isberd(op) => si.encode_isberd(&op),
+            Op::Out(op) => si.encode_out(&op),
             _ => panic!("Unhandled instruction {}", instr.op),
         }
 

@@ -3102,6 +3102,9 @@ void radv_describe_layout_transition(struct radv_cmd_buffer *cmd_buffer, const s
 
 void radv_sqtt_emit_relocated_shaders(struct radv_cmd_buffer *cmd_buffer, struct radv_graphics_pipeline *pipeline);
 
+void radv_write_user_event_marker(struct radv_cmd_buffer *cmd_buffer, enum rgp_sqtt_marker_user_event_type type,
+                                  const char *str);
+
 struct radv_indirect_command_layout {
    struct vk_object_base base;
 

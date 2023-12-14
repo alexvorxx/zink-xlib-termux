@@ -286,10 +286,13 @@ radv_write_event_with_dims_marker(struct radv_cmd_buffer *cmd_buffer, enum rgp_s
    radv_emit_sqtt_userdata(cmd_buffer, &marker, sizeof(marker) / 4);
 }
 
-static void
+void
 radv_write_user_event_marker(struct radv_cmd_buffer *cmd_buffer, enum rgp_sqtt_marker_user_event_type type,
                              const char *str)
 {
+   if (likely(!cmd_buffer->device->sqtt.bo))
+      return;
+
    if (type == UserEventPop) {
       assert(str == NULL);
       struct rgp_sqtt_marker_user_event marker = {0};

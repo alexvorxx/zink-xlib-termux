@@ -524,6 +524,23 @@ radv_describe_layout_transition(struct radv_cmd_buffer *cmd_buffer, const struct
    cmd_buffer->state.num_layout_transitions++;
 }
 
+void
+radv_describe_begin_accel_struct_build(struct radv_cmd_buffer *cmd_buffer, uint32_t count)
+{
+   if (likely(!cmd_buffer->device->sqtt.bo))
+      return;
+
+   char marker[64];
+   snprintf(marker, sizeof(marker), "vkCmdBuildAccelerationStructuresKHR(%u)", count);
+   radv_write_user_event_marker(cmd_buffer, UserEventPush, marker);
+}
+
+void
+radv_describe_end_accel_struct_build(struct radv_cmd_buffer *cmd_buffer)
+{
+   radv_write_user_event_marker(cmd_buffer, UserEventPop, NULL);
+}
+
 static void
 radv_describe_pipeline_bind(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint pipelineBindPoint,
                             struct radv_pipeline *pipeline)
@@ -1087,14 +1104,6 @@ sqtt_CmdTraceRaysIndirect2KHR(VkCommandBuffer commandBuffer, VkDeviceAddress ind
 {
    EVENT_RT_MARKER_ALIAS(TraceRaysIndirect2KHR, TraceRaysIndirectKHR, radv_get_ray_tracing_type(commandBuffer),
                          commandBuffer, indirectDeviceAddress);
-}
-
-VKAPI_ATTR void VKAPI_CALL
-sqtt_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t infoCount,
-                                       const VkAccelerationStructureBuildGeometryInfoKHR *pInfos,
-                                       const VkAccelerationStructureBuildRangeInfoKHR *const *ppBuildRangeInfos)
-{
-   EVENT_RT_MARKER(BuildAccelerationStructuresKHR, 0, commandBuffer, infoCount, pInfos, ppBuildRangeInfos);
 }
 
 VKAPI_ATTR void VKAPI_CALL

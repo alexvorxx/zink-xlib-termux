@@ -3099,6 +3099,8 @@ void radv_describe_barrier_start(struct radv_cmd_buffer *cmd_buffer, enum rgp_ba
 void radv_describe_barrier_end(struct radv_cmd_buffer *cmd_buffer);
 void radv_describe_barrier_end_delayed(struct radv_cmd_buffer *cmd_buffer);
 void radv_describe_layout_transition(struct radv_cmd_buffer *cmd_buffer, const struct radv_barrier_data *barrier);
+void radv_describe_begin_accel_struct_build(struct radv_cmd_buffer *cmd_buffer, uint32_t count);
+void radv_describe_end_accel_struct_build(struct radv_cmd_buffer *cmd_buffer);
 
 void radv_sqtt_emit_relocated_shaders(struct radv_cmd_buffer *cmd_buffer, struct radv_graphics_pipeline *pipeline);
 

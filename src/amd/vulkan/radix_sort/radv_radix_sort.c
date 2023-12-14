@@ -132,14 +132,15 @@ vkCreateComputePipelines(VkDevice _device, VkPipelineCache pipelineCache, uint32
                          VkPipeline *pPipelines)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
-   return radv_CreateComputePipelines(_device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines);
+   return device->vk.dispatch_table.CreateComputePipelines(_device, pipelineCache, createInfoCount, pCreateInfos,
+                                                           pAllocator, pPipelines);
 }
 
 VKAPI_ATTR void VKAPI_CALL
 vkDestroyPipeline(VkDevice _device, VkPipeline pipeline, const VkAllocationCallbacks *pAllocator)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
-   radv_DestroyPipeline(_device, pipeline, pAllocator);
+   device->vk.dispatch_table.DestroyPipeline(_device, pipeline, pAllocator);
 }
 
 VKAPI_ATTR void VKAPI_CALL

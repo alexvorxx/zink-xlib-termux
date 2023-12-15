@@ -75,7 +75,7 @@ panvk_per_arch(CreateSampler)(VkDevice _device,
    VkClearColorValue border_color =
       vk_sampler_border_color_value(pCreateInfo, NULL);
 
-   pan_pack(sampler->desc, SAMPLER, cfg) {
+   pan_pack(sampler->desc.opaque, SAMPLER, cfg) {
       cfg.magnify_nearest = pCreateInfo->magFilter == VK_FILTER_NEAREST;
       cfg.minify_nearest = pCreateInfo->minFilter == VK_FILTER_NEAREST;
       cfg.mipmap_mode =

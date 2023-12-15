@@ -229,13 +229,12 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
 
       list_for_each_entry(struct panvk_batch, batch, &cmdbuf->batches, node) {
          /* FIXME: should be done at the batch level */
-         unsigned nr_bos =
-            panvk_pool_num_bos(&cmdbuf->desc_pool) +
-            panvk_pool_num_bos(&cmdbuf->varying_pool) +
-            panvk_pool_num_bos(&cmdbuf->tls_pool) +
-            (batch->fb.info ? batch->fb.info->attachment_count : 0) +
-            (batch->blit.src ? 1 : 0) + (batch->blit.dst ? 1 : 0) +
-            (batch->jc.first_tiler ? 1 : 0) + 1;
+         unsigned nr_bos = panvk_pool_num_bos(&cmdbuf->desc_pool) +
+                           panvk_pool_num_bos(&cmdbuf->varying_pool) +
+                           panvk_pool_num_bos(&cmdbuf->tls_pool) +
+                           batch->fb.bo_count + (batch->blit.src ? 1 : 0) +
+                           (batch->blit.dst ? 1 : 0) +
+                           (batch->jc.first_tiler ? 1 : 0) + 1;
          unsigned bo_idx = 0;
          uint32_t bos[nr_bos];
 
@@ -248,16 +247,8 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
          panvk_pool_get_bo_handles(&cmdbuf->tls_pool, &bos[bo_idx]);
          bo_idx += panvk_pool_num_bos(&cmdbuf->tls_pool);
 
-         if (batch->fb.info) {
-            for (unsigned i = 0; i < batch->fb.info->attachment_count; i++) {
-               VK_FROM_HANDLE(panvk_image_view, iview,
-                              batch->fb.info->attachments[i]);
-               struct panvk_image *img =
-                  container_of(iview->vk.image, struct panvk_image, vk);
-
-               bos[bo_idx++] = pan_kmod_bo_handle(img->bo);
-            }
-         }
+         for (unsigned i = 0; i < batch->fb.bo_count; i++)
+            bos[bo_idx++] = pan_kmod_bo_handle(batch->fb.bos[i]);
 
          if (batch->blit.src)
             bos[bo_idx++] = pan_kmod_bo_handle(batch->blit.src);

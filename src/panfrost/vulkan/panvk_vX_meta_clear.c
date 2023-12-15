@@ -31,6 +31,7 @@
 #include "panvk_vX_meta.h"
 
 #include "vk_format.h"
+#include "vk_render_pass.h"
 
 static mali_ptr
 panvk_meta_clear_color_attachment_shader(struct panvk_device *dev,
@@ -251,8 +252,7 @@ panvk_meta_get_format_type(enum pipe_format format)
 }
 
 static void
-panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf,
-                            unsigned attachment, unsigned rt,
+panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf, unsigned rt,
                             VkImageAspectFlags mask,
                             const VkClearValue *clear_value,
                             const VkClearRect *clear_rect)
@@ -260,9 +260,7 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_meta *meta = &dev->meta;
    struct panvk_batch *batch = cmdbuf->state.batch;
-   const struct panvk_render_pass *pass = cmdbuf->state.pass;
-   const struct panvk_render_pass_attachment *att =
-      &pass->attachments[attachment];
+   enum pipe_format pfmt = cmdbuf->state.fb.info.rts[rt].view->format;
    unsigned minx = MAX2(clear_rect->rect.offset.x, 0);
    unsigned miny = MAX2(clear_rect->rect.offset.y, 0);
    unsigned maxx =
@@ -284,7 +282,7 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf,
    mali_ptr coordinates =
       pan_pool_upload_aligned(&cmdbuf->desc_pool.base, rect, sizeof(rect), 64);
 
-   enum glsl_base_type base_type = panvk_meta_get_format_type(att->format);
+   enum glsl_base_type base_type = panvk_meta_get_format_type(pfmt);
 
    mali_ptr tiler = batch->tiler.descs.gpu;
    mali_ptr tsd = batch->tls.gpu;
@@ -300,7 +298,7 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf,
                                            sizeof(*clear_value), 16);
 
       rsd = panvk_meta_clear_color_attachment_emit_rsd(
-         &cmdbuf->desc_pool.base, att->format, rt, shader_info, shader);
+         &cmdbuf->desc_pool.base, pfmt, rt, shader_info, shader);
    } else {
       rsd = panvk_meta_clear_zs_attachment_emit_rsd(
          &cmdbuf->desc_pool.base, mask, clear_value->depthStencil);
@@ -476,24 +474,24 @@ panvk_per_arch(CmdClearAttachments)(VkCommandBuffer commandBuffer,
                                     const VkClearRect *pRects)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   const struct panvk_subpass *subpass = cmdbuf->state.subpass;
+   const struct vk_subpass *subpass =
+      &cmdbuf->vk.render_pass->subpasses[cmdbuf->vk.subpass_idx];
 
    for (unsigned i = 0; i < attachmentCount; i++) {
       for (unsigned j = 0; j < rectCount; j++) {
 
-         uint32_t attachment, rt = 0;
+         uint32_t attachment = VK_ATTACHMENT_UNUSED, rt = 0;
          if (pAttachments[i].aspectMask & VK_IMAGE_ASPECT_COLOR_BIT) {
             rt = pAttachments[i].colorAttachment;
-            attachment = subpass->color_attachments[rt].idx;
-         } else {
-            attachment = subpass->zs_attachment.idx;
+            attachment = subpass->color_attachments[rt].attachment;
+         } else if (subpass->depth_stencil_attachment) {
+            attachment = subpass->depth_stencil_attachment->attachment;
          }
 
          if (attachment == VK_ATTACHMENT_UNUSED)
             continue;
 
-         panvk_meta_clear_attachment(cmdbuf, attachment, rt,
-                                     pAttachments[i].aspectMask,
+         panvk_meta_clear_attachment(cmdbuf, rt, pAttachments[i].aspectMask,
                                      &pAttachments[i].clearValue, &pRects[j]);
       }
    }

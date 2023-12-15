@@ -39,6 +39,7 @@
 #include "vk_blend.h"
 #include "vk_format.h"
 #include "vk_pipeline_cache.h"
+#include "vk_render_pass.h"
 #include "vk_util.h"
 
 #include "panfrost/util/pan_lower_framebuffer.h"
@@ -874,24 +875,24 @@ panvk_pipeline_builder_init_graphics(
    } else {
       builder->samples = create_info->pMultisampleState->rasterizationSamples;
 
-      const struct panvk_render_pass *pass =
-         panvk_render_pass_from_handle(create_info->renderPass);
-      const struct panvk_subpass *subpass =
-         &pass->subpasses[create_info->subpass];
+      VK_FROM_HANDLE(vk_render_pass, pass, create_info->renderPass);
+      const struct vk_subpass *subpass = &pass->subpasses[create_info->subpass];
 
       builder->use_depth_stencil_attachment =
-         subpass->zs_attachment.idx != VK_ATTACHMENT_UNUSED;
+         subpass->depth_stencil_attachment &&
+         subpass->depth_stencil_attachment->attachment != VK_ATTACHMENT_UNUSED;
 
       assert(subpass->color_count <=
              create_info->pColorBlendState->attachmentCount);
       builder->active_color_attachments = 0;
       for (uint32_t i = 0; i < subpass->color_count; i++) {
-         uint32_t idx = subpass->color_attachments[i].idx;
+         uint32_t idx = subpass->color_attachments[i].attachment;
          if (idx == VK_ATTACHMENT_UNUSED)
             continue;
 
          builder->active_color_attachments |= 1 << i;
-         builder->color_attachment_formats[i] = pass->attachments[idx].format;
+         builder->color_attachment_formats[i] =
+            vk_format_to_pipe_format(pass->attachments[idx].format);
       }
    }
 }

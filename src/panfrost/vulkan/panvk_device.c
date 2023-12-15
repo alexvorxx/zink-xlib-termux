@@ -1208,6 +1208,7 @@ panvk_AllocateMemory(VkDevice _device,
    VK_FROM_HANDLE(panvk_device, device, _device);
    struct panvk_device_memory *mem;
    bool can_be_exported = false;
+   VkResult result;
 
    assert(pAllocateInfo->sType == VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO);
 
@@ -1251,12 +1252,18 @@ panvk_AllocateMemory(VkDevice _device,
        * table and add reference count to panvk_bo.
        */
       mem->bo = pan_kmod_bo_import(device->kmod.dev, fd_info->fd, 0);
-      /* take ownership and close the fd */
-      close(fd_info->fd);
+      if (!mem->bo) {
+         result = vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
+         goto err_destroy_mem;
+      }
    } else {
       mem->bo = pan_kmod_bo_alloc(device->kmod.dev,
                                   can_be_exported ? NULL : device->kmod.vm,
                                   pAllocateInfo->allocationSize, 0);
+      if (!mem->bo) {
+         result = vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+         goto err_destroy_mem;
+      }
    }
 
    /* Always GPU-map at creation time. */
@@ -1272,11 +1279,27 @@ panvk_AllocateMemory(VkDevice _device,
       },
    };
 
-   ASSERTED int ret =
+   int ret =
       pan_kmod_vm_bind(device->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &op, 1);
-   assert(!ret);
+   if (ret) {
+      result = vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+      goto err_put_bo;
+   }
 
    mem->addr.dev = op.va.start;
+
+   if (fd_info) {
+      /* From the Vulkan spec:
+       *
+       *    "Importing memory from a file descriptor transfers ownership of
+       *    the file descriptor from the application to the Vulkan
+       *    implementation. The application must not perform any operations on
+       *    the file descriptor after a successful import."
+       *
+       * If the import fails, we leave the file descriptor open.
+       */
+      close(fd_info->fd);
+   }
 
    if (device->debug.decode_ctx) {
       pandecode_inject_mmap(device->debug.decode_ctx, mem->addr.dev, NULL,
@@ -1286,6 +1309,13 @@ panvk_AllocateMemory(VkDevice _device,
    *pMem = panvk_device_memory_to_handle(mem);
 
    return VK_SUCCESS;
+
+err_put_bo:
+   pan_kmod_bo_put(mem->bo);
+
+err_destroy_mem:
+   vk_device_memory_destroy(&device->vk, pAllocator, &mem->vk);
+   return result;
 }
 
 VKAPI_ATTR void VKAPI_CALL

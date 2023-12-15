@@ -284,6 +284,7 @@ print_usage(char *exec_name, FILE *f)
 "  -i, --in <filename>     Specify one input filename. Accepted multiple times.\n"
 "  -s, --spv <filename>    Specify the output filename for spirv.\n"
 "  -n, --nir               Specify whether to output serialized NIR instead of ISA.\n"
+"  -t, --text <filename>   Specify the output filename for the parsed text\n"
 "  -v, --verbose           Print more information during compilation.\n"
    , exec_name);
 }
@@ -295,6 +296,7 @@ struct intel_clc_params {
    char *platform;
    char *outfile;
    char *spv_outfile;
+   char *txt_outfile;
    char *prefix;
 
    bool output_nir;
@@ -447,6 +449,7 @@ int main(int argc, char **argv)
       {"in",         required_argument,   0, 'i'},
       {"out",        required_argument,   0, 'o'},
       {"spv",        required_argument,   0, 's'},
+      {"text",       required_argument,   0, 't'},
       {"nir",        no_argument,         0, 'n'},
       {"verbose",    no_argument,         0, 'v'},
       {0, 0, 0, 0}
@@ -467,7 +470,7 @@ int main(int argc, char **argv)
    util_dynarray_init(&input_files, params.mem_ctx);
 
    int ch;
-   while ((ch = getopt_long(argc, argv, "he:p:s:i:no:v", long_options, NULL)) != -1)
+   while ((ch = getopt_long(argc, argv, "he:p:s:t:i:no:v", long_options, NULL)) != -1)
    {
       switch (ch)
       {
@@ -491,6 +494,9 @@ int main(int argc, char **argv)
          break;
       case 's':
          params.spv_outfile = optarg;
+         break;
+      case 't':
+         params.txt_outfile = optarg;
          break;
       case 'v':
          params.print_info = true;
@@ -541,6 +547,12 @@ int main(int argc, char **argv)
       close(fd);
       total_size = new_size;
       all_inputs[total_size] = '\0';
+   }
+
+   if (params.txt_outfile) {
+      FILE *fp = fopen(params.txt_outfile, "w");
+      fwrite(all_inputs, total_size, 1, fp);
+      fclose(fp);
    }
 
    const char *allowed_spirv_extensions[] = {

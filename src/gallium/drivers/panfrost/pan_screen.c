@@ -37,6 +37,7 @@
 #include "util/u_process.h"
 #include "util/u_screen.h"
 #include "util/u_video.h"
+#include "util/xmlconfig.h"
 
 #include <fcntl.h>
 
@@ -833,6 +834,9 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
       return NULL;
 
    struct panfrost_device *dev = pan_device(&screen->base);
+
+   driParseConfigFiles(config->options, config->options_info, 0,
+                       "panfrost", NULL, NULL, NULL, 0, NULL, 0);
 
    /* Debug must be set first for pandecode to work correctly */
    dev->debug =

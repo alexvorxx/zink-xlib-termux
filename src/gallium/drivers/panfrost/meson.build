@@ -20,6 +20,7 @@
 # SOFTWARE.
 
 files_panfrost = files(
+  'driinfo_panfrost.h',
   'pan_afbc_cso.c',
   'pan_bo.c',
   'pan_device.c',

@@ -331,11 +331,15 @@ pipe_panfrost_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen;
 
-   screen = panfrost_drm_screen_create(fd);
+   screen = panfrost_drm_screen_create(fd, config);
    return screen ? debug_screen_wrap(screen) : NULL;
 }
-DRM_DRIVER_DESCRIPTOR(panfrost, NULL, 0)
-DRM_DRIVER_DESCRIPTOR_ALIAS(panfrost, panthor, NULL, 0)
+
+const driOptionDescription pan_driconf[] = {
+      #include "panfrost/driinfo_panfrost.h"
+};
+DRM_DRIVER_DESCRIPTOR(panfrost, pan_driconf, ARRAY_SIZE(pan_driconf))
+DRM_DRIVER_DESCRIPTOR_ALIAS(panfrost, panthor, pan_driconf, ARRAY_SIZE(pan_driconf))
 
 #else
 DRM_DRIVER_DESCRIPTOR_STUB(panfrost)
@@ -455,6 +459,9 @@ const driOptionDescription kmsro_driconf[] = {
 #endif
 #ifdef GALLIUM_FREEDRENO
       #include "freedreno/driinfo_freedreno.h"
+#endif
+#ifdef GALLIUM_PANFROST
+      #include "panfrost/driinfo_panfrost.h"
 #endif
 };
 DRM_DRIVER_DESCRIPTOR(kmsro, kmsro_driconf, ARRAY_SIZE(kmsro_driconf))

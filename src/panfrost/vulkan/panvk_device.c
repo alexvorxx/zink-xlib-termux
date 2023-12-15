@@ -1229,8 +1229,8 @@ panvk_AllocateMemory(VkDevice _device,
          can_be_exported = true;
    }
 
-   mem = vk_object_zalloc(&device->vk, pAllocator, sizeof(*mem),
-                          VK_OBJECT_TYPE_DEVICE_MEMORY);
+   mem = vk_device_memory_create(&device->vk, pAllocateInfo, pAllocator,
+                                 sizeof(*mem));
    if (mem == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -1316,7 +1316,7 @@ panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
    assert(!ret);
 
    pan_kmod_bo_put(mem->bo);
-   vk_object_free(&device->vk, pAllocator, mem);
+   vk_device_memory_destroy(&device->vk, pAllocator, &mem->vk);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

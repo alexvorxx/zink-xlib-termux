@@ -55,6 +55,7 @@
 #include "vk_command_pool.h"
 #include "vk_descriptor_set_layout.h"
 #include "vk_device.h"
+#include "vk_device_memory.h"
 #include "vk_image.h"
 #include "vk_instance.h"
 #include "vk_log.h"
@@ -331,7 +332,7 @@ struct panvk_cmd_event_op {
 };
 
 struct panvk_device_memory {
-   struct vk_object_base base;
+   struct vk_device_memory vk;
    struct pan_kmod_bo *bo;
    struct {
       mali_ptr dev;
@@ -1062,7 +1063,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set, base, VkDescriptorSet,
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set_layout, vk.base,
                                VkDescriptorSetLayout,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_device_memory, base, VkDeviceMemory,
+VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_device_memory, vk.base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image, vk.base, VkImage,

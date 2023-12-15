@@ -1361,14 +1361,37 @@ panvk_MapMemory(VkDevice _device, VkDeviceMemory _memory, VkDeviceSize offset,
       return VK_SUCCESS;
    }
 
-   /* Already mapped. */
+   size = vk_device_memory_range(&mem->vk, offset, size);
+
+   /* From the Vulkan spec version 1.0.32 docs for MapMemory:
+    *
+    *  * If size is not equal to VK_WHOLE_SIZE, size must be greater than 0
+    *    assert(size != 0);
+    *  * If size is not equal to VK_WHOLE_SIZE, size must be less than or
+    *    equal to the size of the memory minus offset
+    */
+   assert(size > 0);
+   assert(offset + size <= mem->bo->size);
+
+   if (size != (size_t)size) {
+      return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED,
+                       "requested size 0x%" PRIx64 " does not fit in %u bits",
+                       size, (unsigned)(sizeof(size_t) * 8));
+   }
+
+   /* From the Vulkan 1.2.194 spec:
+    *
+    *    "memory must not be currently host mapped"
+    */
    if (mem->addr.host)
-      return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
+      return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED,
+                       "Memory object already mapped.");
 
    void *addr = pan_kmod_bo_mmap(mem->bo, 0, pan_kmod_bo_size(mem->bo),
                                  PROT_READ | PROT_WRITE, MAP_SHARED, NULL);
    if (addr == MAP_FAILED)
-      return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
+      return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED,
+                       "Memory object couldn't be mapped.");
 
    mem->addr.host = addr;
    *ppData = mem->addr.host + offset;

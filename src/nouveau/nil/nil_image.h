@@ -187,6 +187,10 @@ struct nil_view {
    float min_lod_clamp;
 };
 
+struct nil_extent4d
+nil_tiling_extent_px(struct nil_tiling tiling, enum pipe_format format,
+                     enum nil_sample_layout sample_layout);
+
 bool nil_image_init(struct nv_device_info *dev,
                     struct nil_image *image,
                     const struct nil_image_init_info *restrict info);

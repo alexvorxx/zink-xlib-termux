@@ -172,6 +172,28 @@ nil_tiling_extent_B(struct nil_tiling tiling)
    }
 }
 
+struct nil_extent4d
+nil_tiling_extent_px(struct nil_tiling tiling, enum pipe_format format,
+                     enum nil_sample_layout sample_layout)
+{
+   const struct nil_extent4d tiling_extent_B = nil_tiling_extent_B(tiling);
+   const struct nil_extent4d el_extent_sa = nil_el_extent_sa(format);
+   const uint32_t blocksize_B = util_format_get_blocksize(format);
+
+   const struct nil_extent4d tiling_extent_el = {
+      .w = tiling_extent_B.w / blocksize_B,
+      .h = tiling_extent_B.h,
+      .d = tiling_extent_B.d,
+      .a = 1,
+   };
+
+   struct nil_extent4d tiling_extent_sa =
+      nil_extent4d_mul(tiling_extent_el, el_extent_sa);
+
+   return nil_extent4d_div_round_up(tiling_extent_sa,
+                                    nil_px_extent_sa(sample_layout));
+}
+
 enum nil_sample_layout
 nil_choose_sample_layout(uint32_t samples)
 {

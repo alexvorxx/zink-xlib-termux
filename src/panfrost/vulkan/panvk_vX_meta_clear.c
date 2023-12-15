@@ -367,7 +367,7 @@ panvk_meta_clear_color_img(struct panvk_cmd_buffer *cmdbuf,
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdClearColorImage)(VkCommandBuffer commandBuffer, VkImage image,
                                    VkImageLayout imageLayout,
                                    const VkClearColorValue *pColor,
@@ -446,7 +446,7 @@ panvk_meta_clear_zs_img(struct panvk_cmd_buffer *cmdbuf,
    memset(fbinfo, 0, sizeof(*fbinfo));
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdClearDepthStencilImage)(
    VkCommandBuffer commandBuffer, VkImage image, VkImageLayout imageLayout,
    const VkClearDepthStencilValue *pDepthStencil, uint32_t rangeCount,
@@ -461,7 +461,7 @@ panvk_per_arch(CmdClearDepthStencilImage)(
       panvk_meta_clear_zs_img(cmdbuf, img, pDepthStencil, &pRanges[i]);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdClearAttachments)(VkCommandBuffer commandBuffer,
                                     uint32_t attachmentCount,
                                     const VkClearAttachment *pAttachments,

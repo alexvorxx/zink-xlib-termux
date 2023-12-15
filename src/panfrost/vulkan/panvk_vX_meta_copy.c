@@ -735,7 +735,7 @@ panvk_meta_copy_img2img_init(struct panvk_device *dev, bool is_ms)
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdCopyImage2)(VkCommandBuffer commandBuffer,
                               const VkCopyImageInfo2 *pCopyImageInfo)
 {
@@ -1142,7 +1142,7 @@ panvk_meta_copy_buf2img_init(struct panvk_device *dev)
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdCopyBufferToImage2)(
    VkCommandBuffer commandBuffer,
    const VkCopyBufferToImageInfo2 *pCopyBufferToImageInfo)
@@ -1583,7 +1583,7 @@ panvk_meta_copy_img2buf_init(struct panvk_device *dev)
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdCopyImageToBuffer2)(
    VkCommandBuffer commandBuffer,
    const VkCopyImageToBufferInfo2 *pCopyImageToBufferInfo)
@@ -1716,7 +1716,7 @@ panvk_meta_copy_buf2buf(struct panvk_cmd_buffer *cmdbuf,
    panvk_per_arch(cmd_close_batch)(cmdbuf);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdCopyBuffer2)(VkCommandBuffer commandBuffer,
                                const VkCopyBufferInfo2 *pCopyBufferInfo)
 {
@@ -1860,7 +1860,7 @@ panvk_meta_fill_buf(struct panvk_cmd_buffer *cmdbuf,
    panvk_per_arch(cmd_close_batch)(cmdbuf);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdFillBuffer)(VkCommandBuffer commandBuffer, VkBuffer dstBuffer,
                               VkDeviceSize dstOffset, VkDeviceSize fillSize,
                               uint32_t data)
@@ -1909,7 +1909,7 @@ panvk_meta_update_buf(struct panvk_cmd_buffer *cmdbuf,
    panvk_per_arch(cmd_close_batch)(cmdbuf);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdUpdateBuffer)(VkCommandBuffer commandBuffer,
                                 VkBuffer dstBuffer, VkDeviceSize dstOffset,
                                 VkDeviceSize dataSize, const void *pData)

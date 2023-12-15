@@ -156,7 +156,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    cmdbuf->state.batch = NULL;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdNextSubpass2)(VkCommandBuffer commandBuffer,
                                 const VkSubpassBeginInfo *pSubpassBeginInfo,
                                 const VkSubpassEndInfo *pSubpassEndInfo)
@@ -170,7 +170,7 @@ panvk_per_arch(CmdNextSubpass2)(VkCommandBuffer commandBuffer,
    panvk_cmd_open_batch(cmdbuf);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdNextSubpass)(VkCommandBuffer cmd, VkSubpassContents contents)
 {
    VkSubpassBeginInfo binfo = {.sType = VK_STRUCTURE_TYPE_SUBPASS_BEGIN_INFO,
@@ -779,7 +779,7 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    desc_state->dirty = cmdbuf->state.dirty = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdDraw)(VkCommandBuffer commandBuffer, uint32_t vertexCount,
                         uint32_t instanceCount, uint32_t firstVertex,
                         uint32_t firstInstance)
@@ -852,7 +852,7 @@ panvk_index_minmax_search(struct panvk_cmd_buffer *cmdbuf, uint32_t start,
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdDrawIndexed)(VkCommandBuffer commandBuffer,
                                uint32_t indexCount, uint32_t instanceCount,
                                uint32_t firstIndex, int32_t vertexOffset,
@@ -893,7 +893,7 @@ panvk_per_arch(CmdDrawIndexed)(VkCommandBuffer commandBuffer,
    panvk_cmd_draw(cmdbuf, &draw);
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(EndCommandBuffer)(VkCommandBuffer commandBuffer)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
@@ -903,7 +903,7 @@ panvk_per_arch(EndCommandBuffer)(VkCommandBuffer commandBuffer)
    return vk_command_buffer_end(&cmdbuf->vk);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdEndRenderPass2)(VkCommandBuffer commandBuffer,
                                   const VkSubpassEndInfo *pSubpassEndInfo)
 {
@@ -918,7 +918,7 @@ panvk_per_arch(CmdEndRenderPass2)(VkCommandBuffer commandBuffer,
    cmdbuf->state.clear = NULL;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdEndRenderPass)(VkCommandBuffer cmd)
 {
    VkSubpassEndInfo einfo = {
@@ -928,7 +928,7 @@ panvk_per_arch(CmdEndRenderPass)(VkCommandBuffer cmd)
    panvk_per_arch(CmdEndRenderPass2)(cmd, &einfo);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
                                     const VkDependencyInfo *pDependencyInfo)
 {
@@ -1006,7 +1006,7 @@ panvk_add_wait_event_operation(struct panvk_cmd_buffer *cmdbuf,
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdSetEvent2)(VkCommandBuffer commandBuffer, VkEvent _event,
                              const VkDependencyInfo *pDependencyInfo)
 {
@@ -1019,7 +1019,7 @@ panvk_per_arch(CmdSetEvent2)(VkCommandBuffer commandBuffer, VkEvent _event,
    panvk_add_set_event_operation(cmdbuf, event, PANVK_EVENT_OP_SET);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdResetEvent2)(VkCommandBuffer commandBuffer, VkEvent _event,
                                VkPipelineStageFlags2 stageMask)
 {
@@ -1032,7 +1032,7 @@ panvk_per_arch(CmdResetEvent2)(VkCommandBuffer commandBuffer, VkEvent _event,
    panvk_add_set_event_operation(cmdbuf, event, PANVK_EVENT_OP_RESET);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdWaitEvents2)(VkCommandBuffer commandBuffer,
                                uint32_t eventCount, const VkEvent *pEvents,
                                const VkDependencyInfo *pDependencyInfos)
@@ -1140,7 +1140,7 @@ const struct vk_command_buffer_ops panvk_per_arch(cmd_buffer_ops) = {
    .destroy = panvk_destroy_cmdbuf,
 };
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(BeginCommandBuffer)(VkCommandBuffer commandBuffer,
                                    const VkCommandBufferBeginInfo *pBeginInfo)
 {
@@ -1153,7 +1153,7 @@ panvk_per_arch(BeginCommandBuffer)(VkCommandBuffer commandBuffer,
    return VK_SUCCESS;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(DestroyCommandPool)(VkDevice _device, VkCommandPool commandPool,
                                    const VkAllocationCallbacks *pAllocator)
 {
@@ -1169,7 +1169,7 @@ panvk_per_arch(DestroyCommandPool)(VkDevice _device, VkCommandPool commandPool,
    vk_free2(&device->vk.alloc, pAllocator, pool);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
                             uint32_t y, uint32_t z)
 {

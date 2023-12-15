@@ -38,7 +38,7 @@
 #include "vk_format.h"
 #include "vk_util.h"
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyPipeline(VkDevice _device, VkPipeline _pipeline,
                       const VkAllocationCallbacks *pAllocator)
 {

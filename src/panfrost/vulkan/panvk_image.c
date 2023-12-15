@@ -193,7 +193,7 @@ panvk_image_select_mod(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
    return DRM_FORMAT_MOD_ARM_AFBC(afbc_type);
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkImage *pImage)
 {
@@ -205,7 +205,7 @@ panvk_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
                              plane_layouts);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyImage(VkDevice _device, VkImage _image,
                    const VkAllocationCallbacks *pAllocator)
 {
@@ -236,7 +236,7 @@ panvk_plane_index(VkFormat format, VkImageAspectFlags aspect_mask)
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_GetImageSubresourceLayout(VkDevice _device, VkImage _image,
                                 const VkImageSubresource *pSubresource,
                                 VkSubresourceLayout *pLayout)
@@ -258,7 +258,7 @@ panvk_GetImageSubresourceLayout(VkDevice _device, VkImage _image,
    pLayout->depthPitch = slice_layout->surface_stride;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyImageView(VkDevice _device, VkImageView _view,
                        const VkAllocationCallbacks *pAllocator)
 {
@@ -272,7 +272,7 @@ panvk_DestroyImageView(VkDevice _device, VkImageView _view,
    vk_image_view_destroy(&device->vk, pAllocator, &view->vk);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyBufferView(VkDevice _device, VkBufferView bufferView,
                         const VkAllocationCallbacks *pAllocator)
 {
@@ -286,7 +286,7 @@ panvk_DestroyBufferView(VkDevice _device, VkBufferView bufferView,
    vk_object_free(&device->vk, pAllocator, view);
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_GetImageDrmFormatModifierPropertiesEXT(
    VkDevice device, VkImage _image,
    VkImageDrmFormatModifierPropertiesEXT *pProperties)

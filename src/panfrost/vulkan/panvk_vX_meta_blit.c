@@ -143,7 +143,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
    } while (pan_blit_next_surface(&ctx));
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdBlitImage2)(VkCommandBuffer commandBuffer,
                               const VkBlitImageInfo2 *pBlitImageInfo)
 {
@@ -217,7 +217,7 @@ panvk_per_arch(CmdBlitImage2)(VkCommandBuffer commandBuffer,
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdResolveImage2)(VkCommandBuffer commandBuffer,
                                  const VkResolveImageInfo2 *pResolveImageInfo)
 {

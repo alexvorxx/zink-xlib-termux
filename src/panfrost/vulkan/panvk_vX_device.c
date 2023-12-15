@@ -304,7 +304,7 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
    return VK_SUCCESS;
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateSampler)(VkDevice _device,
                               const VkSamplerCreateInfo *pCreateInfo,
                               const VkAllocationCallbacks *pAllocator,

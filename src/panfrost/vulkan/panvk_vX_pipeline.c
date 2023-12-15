@@ -893,7 +893,7 @@ panvk_pipeline_builder_init_graphics(
    }
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateGraphicsPipelines)(
    VkDevice device, VkPipelineCache pipelineCache, uint32_t count,
    const VkGraphicsPipelineCreateInfo *pCreateInfos,
@@ -944,7 +944,7 @@ panvk_pipeline_builder_init_compute(
    };
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateComputePipelines)(
    VkDevice device, VkPipelineCache pipelineCache, uint32_t count,
    const VkComputePipelineCreateInfo *pCreateInfos,

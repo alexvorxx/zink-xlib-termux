@@ -86,7 +86,7 @@ panvk_convert_swizzle(const VkComponentMapping *in, unsigned char *out)
    }
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateImageView)(VkDevice _device,
                                 const VkImageViewCreateInfo *pCreateInfo,
                                 const VkAllocationCallbacks *pAllocator,
@@ -172,7 +172,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
    return VK_SUCCESS;
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateBufferView)(VkDevice _device,
                                  const VkBufferViewCreateInfo *pCreateInfo,
                                  const VkAllocationCallbacks *pAllocator,

@@ -80,7 +80,7 @@ panvk_fill_image_desc(struct panvk_image_desc *desc,
       desc->depth = view->vk.layer_count - 1;
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateDescriptorSetLayout)(
    VkDevice _device, const VkDescriptorSetLayoutCreateInfo *pCreateInfo,
    const VkAllocationCallbacks *pAllocator, VkDescriptorSetLayout *pSetLayout)
@@ -341,7 +341,7 @@ err_free_set:
    return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(AllocateDescriptorSets)(
    VkDevice _device, const VkDescriptorSetAllocateInfo *pAllocateInfo,
    VkDescriptorSet *pDescriptorSets)
@@ -683,7 +683,7 @@ panvk_copy_dyn_ssbo_desc(struct panvk_descriptor_set *dst_set,
       *panvk_dyn_ssbo_desc(src_set, src_binding, src_elem);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(UpdateDescriptorSets)(
    VkDevice _device, uint32_t descriptorWriteCount,
    const VkWriteDescriptorSet *pDescriptorWrites, uint32_t descriptorCopyCount,
@@ -886,7 +886,7 @@ panvk_per_arch(UpdateDescriptorSets)(
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(UpdateDescriptorSetWithTemplate)(
    VkDevice _device, VkDescriptorSet descriptorSet,
    VkDescriptorUpdateTemplate descriptorUpdateTemplate, const void *data)

@@ -25,6 +25,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 #include "panvk_private.h"
+#include "panvk_sampler.h"
 
 #include <assert.h>
 #include <fcntl.h>

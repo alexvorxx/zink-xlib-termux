@@ -41,38 +41,6 @@
 
 #include "vk_sampler.h"
 
-static enum mali_mipmap_mode
-panvk_translate_sampler_mipmap_mode(VkSamplerMipmapMode mode)
-{
-   switch (mode) {
-   case VK_SAMPLER_MIPMAP_MODE_NEAREST:
-      return MALI_MIPMAP_MODE_NEAREST;
-   case VK_SAMPLER_MIPMAP_MODE_LINEAR:
-      return MALI_MIPMAP_MODE_TRILINEAR;
-   default:
-      unreachable("Invalid mipmap mode");
-   }
-}
-
-static unsigned
-panvk_translate_sampler_address_mode(VkSamplerAddressMode mode)
-{
-   switch (mode) {
-   case VK_SAMPLER_ADDRESS_MODE_REPEAT:
-      return MALI_WRAP_MODE_REPEAT;
-   case VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:
-      return MALI_WRAP_MODE_MIRRORED_REPEAT;
-   case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:
-      return MALI_WRAP_MODE_CLAMP_TO_EDGE;
-   case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:
-      return MALI_WRAP_MODE_CLAMP_TO_BORDER;
-   case VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE:
-      return MALI_WRAP_MODE_MIRRORED_CLAMP_TO_EDGE;
-   default:
-      unreachable("Invalid wrap");
-   }
-}
-
 static mali_pixel_format
 panvk_varying_hw_format(const struct panvk_device *dev,
                         const struct panvk_varyings_info *varyings,
@@ -242,37 +210,6 @@ panvk_per_arch(emit_attrib_bufs)(const struct panvk_attribs_info *info,
    for (unsigned i = 0; i < info->buf_count; i++) {
       panvk_emit_attrib_buf(info, draw, bufs, buf_count, i, buf);
       buf += 2;
-   }
-}
-
-void
-panvk_per_arch(emit_sampler)(const VkSamplerCreateInfo *pCreateInfo, void *desc)
-{
-   VkClearColorValue border_color =
-      vk_sampler_border_color_value(pCreateInfo, NULL);
-
-   pan_pack(desc, SAMPLER, cfg) {
-      cfg.magnify_nearest = pCreateInfo->magFilter == VK_FILTER_NEAREST;
-      cfg.minify_nearest = pCreateInfo->minFilter == VK_FILTER_NEAREST;
-      cfg.mipmap_mode =
-         panvk_translate_sampler_mipmap_mode(pCreateInfo->mipmapMode);
-      cfg.normalized_coordinates = !pCreateInfo->unnormalizedCoordinates;
-
-      cfg.lod_bias = pCreateInfo->mipLodBias;
-      cfg.minimum_lod = pCreateInfo->minLod;
-      cfg.maximum_lod = pCreateInfo->maxLod;
-      cfg.wrap_mode_s =
-         panvk_translate_sampler_address_mode(pCreateInfo->addressModeU);
-      cfg.wrap_mode_t =
-         panvk_translate_sampler_address_mode(pCreateInfo->addressModeV);
-      cfg.wrap_mode_r =
-         panvk_translate_sampler_address_mode(pCreateInfo->addressModeW);
-      cfg.compare_function =
-         panvk_per_arch(translate_sampler_compare_func)(pCreateInfo);
-      cfg.border_color_r = border_color.uint32[0];
-      cfg.border_color_g = border_color.uint32[1];
-      cfg.border_color_b = border_color.uint32[2];
-      cfg.border_color_a = border_color.uint32[3];
    }
 }
 

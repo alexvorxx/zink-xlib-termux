@@ -71,18 +71,6 @@ panvk_per_arch(translate_compare_func)(VkCompareOp comp)
 
    return (enum mali_func)comp;
 }
-
-static inline enum mali_func
-panvk_per_arch(translate_sampler_compare_func)(
-   const VkSamplerCreateInfo *pCreateInfo)
-{
-   if (!pCreateInfo->compareEnable)
-      return MALI_FUNC_NEVER;
-
-   enum mali_func f =
-      panvk_per_arch(translate_compare_func)(pCreateInfo->compareOp);
-   return panfrost_flip_compare_func(f);
-}
 #endif
 
 void panvk_sysval_upload_viewport_scale(const VkViewport *viewport,

@@ -300,26 +300,3 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
 
    return VK_SUCCESS;
 }
-
-VKAPI_ATTR VkResult VKAPI_CALL
-panvk_per_arch(CreateSampler)(VkDevice _device,
-                              const VkSamplerCreateInfo *pCreateInfo,
-                              const VkAllocationCallbacks *pAllocator,
-                              VkSampler *pSampler)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   struct panvk_sampler *sampler;
-
-   assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
-
-   sampler =
-      vk_sampler_create(&device->vk, pCreateInfo, pAllocator, sizeof(*sampler));
-   if (!sampler)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   STATIC_ASSERT(sizeof(sampler->desc) >= pan_size(SAMPLER));
-   panvk_per_arch(emit_sampler)(pCreateInfo, &sampler->desc);
-   *pSampler = panvk_sampler_to_handle(sampler);
-
-   return VK_SUCCESS;
-}

@@ -1426,19 +1426,6 @@ panvk_ResetEvent(VkDevice _device, VkEvent _event)
 }
 
 VKAPI_ATTR void VKAPI_CALL
-panvk_DestroySampler(VkDevice _device, VkSampler _sampler,
-                     const VkAllocationCallbacks *pAllocator)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   VK_FROM_HANDLE(panvk_sampler, sampler, _sampler);
-
-   if (!sampler)
-      return;
-
-   vk_sampler_destroy(&device->vk, pAllocator, &sampler->vk);
-}
-
-VKAPI_ATTR void VKAPI_CALL
 panvk_GetPhysicalDeviceExternalSemaphoreProperties(
    VkPhysicalDevice physicalDevice,
    const VkPhysicalDeviceExternalSemaphoreInfo *pExternalSemaphoreInfo,

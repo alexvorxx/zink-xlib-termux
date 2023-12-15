@@ -63,9 +63,6 @@ void panvk_per_arch(emit_ubos)(const struct panvk_pipeline *pipeline,
                                const struct panvk_descriptor_state *state,
                                void *descs);
 
-void panvk_per_arch(emit_sampler)(const VkSamplerCreateInfo *pCreateInfo,
-                                  void *desc);
-
 void panvk_per_arch(emit_vertex_job)(const struct panvk_pipeline *pipeline,
                                      const struct panvk_draw_info *draw,
                                      void *job);

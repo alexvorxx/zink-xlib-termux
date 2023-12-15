@@ -899,13 +899,6 @@ struct panvk_image_view {
    } descs;
 };
 
-#define SAMPLER_DESC_WORDS 8
-
-struct panvk_sampler {
-   struct vk_sampler vk;
-   uint32_t desc[SAMPLER_DESC_WORDS];
-};
-
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
 VK_DEFINE_HANDLE_CASTS(panvk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
@@ -931,8 +924,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline,
                                VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
                                VK_OBJECT_TYPE_PIPELINE_LAYOUT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_sampler, vk.base, VkSampler,
-                               VK_OBJECT_TYPE_SAMPLER)
 
 #ifdef PAN_ARCH
 #include "panvk_vX_cmd_buffer.h"

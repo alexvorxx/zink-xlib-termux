@@ -4,6 +4,7 @@
  */
 
 #include "panvk_buffer.h"
+#include "panvk_device_memory.h"
 #include "panvk_private.h"
 
 VKAPI_ATTR VkDeviceAddress VKAPI_CALL

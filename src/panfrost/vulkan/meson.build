@@ -39,6 +39,7 @@ libpanvk_files = files(
   'panvk_cmd_buffer.c',
   'panvk_cs.c',
   'panvk_device.c',
+  'panvk_device_memory.c',
   'panvk_descriptor_set.c',
   'panvk_formats.c',
   'panvk_image.c',

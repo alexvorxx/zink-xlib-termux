@@ -796,6 +796,9 @@ a7xx_750 = A7XXProps(
         has_event_write_sample_count = True,
         load_inline_uniforms_via_preamble_ldgk = True,
         load_shader_consts_via_preamble = True,
+        has_gmem_vpc_attr_buf = True,
+        sysmem_vpc_attr_buf_size = 0x20000,
+        gmem_vpc_attr_buf_size = 0xc000,
     )
 
 a730_magic_regs = dict(
@@ -992,10 +995,6 @@ add_gpus([
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_800A, 0x00000000],
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_800B, 0x00000000],
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_800C, 0x00000000],
-
-            [A6XXRegs.REG_A7XX_VPC_ATTR_BUF_SIZE_GMEM, 0x00020000],
-            [A6XXRegs.REG_A7XX_VPC_ATTR_BUF_BASE_GMEM, 0x00240000],
-            [A6XXRegs.REG_A7XX_PC_ATTR_BUF_SIZE_GMEM, 0x00020000],
 
             [0x930a, 0],
             [0x960a, 1],

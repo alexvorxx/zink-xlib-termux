@@ -215,6 +215,11 @@ struct fd_dev_info {
 
       bool load_inline_uniforms_via_preamble_ldgk;
       bool load_shader_consts_via_preamble;
+
+      bool has_gmem_vpc_attr_buf;
+      /* Size of buffer in gmem for VPC attributes */
+      uint32_t sysmem_vpc_attr_buf_size;
+      uint32_t gmem_vpc_attr_buf_size;
    } a7xx;
 };
 

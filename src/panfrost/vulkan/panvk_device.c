@@ -1728,7 +1728,7 @@ panvk_DestroySampler(VkDevice _device, VkSampler _sampler,
    if (!sampler)
       return;
 
-   vk_object_free(&device->vk, pAllocator, sampler);
+   vk_sampler_destroy(&device->vk, pAllocator, &sampler->vk);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

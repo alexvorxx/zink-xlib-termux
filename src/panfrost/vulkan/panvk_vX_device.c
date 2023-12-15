@@ -316,8 +316,8 @@ panvk_per_arch(CreateSampler)(VkDevice _device,
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
 
-   sampler = vk_object_alloc(&device->vk, pAllocator, sizeof(*sampler),
-                             VK_OBJECT_TYPE_SAMPLER);
+   sampler =
+      vk_sampler_create(&device->vk, pCreateInfo, pAllocator, sizeof(*sampler));
    if (!sampler)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 

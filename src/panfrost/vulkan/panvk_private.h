@@ -63,6 +63,7 @@
 #include "vk_physical_device.h"
 #include "vk_pipeline_layout.h"
 #include "vk_queue.h"
+#include "vk_sampler.h"
 #include "vk_sync.h"
 #include "wsi_common.h"
 
@@ -971,7 +972,7 @@ struct panvk_image_view {
 #define SAMPLER_DESC_WORDS 8
 
 struct panvk_sampler {
-   struct vk_object_base base;
+   struct vk_sampler vk;
    uint32_t desc[SAMPLER_DESC_WORDS];
 };
 
@@ -1076,7 +1077,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
                                VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_render_pass, base, VkRenderPass,
                                VK_OBJECT_TYPE_RENDER_PASS)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_sampler, base, VkSampler,
+VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_sampler, vk.base, VkSampler,
                                VK_OBJECT_TYPE_SAMPLER)
 
 #define panvk_arch_name(name, version) panvk_##version##_##name

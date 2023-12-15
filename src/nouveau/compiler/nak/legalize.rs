@@ -195,6 +195,7 @@ fn legalize_sm50_instr(
             let [ref mut src0, ref mut src1] = op.srcs;
             swap_srcs_if_not_reg(src0, src1);
             copy_alu_src_if_not_reg(b, src1, SrcType::F32);
+            copy_alu_src_if_not_reg(b, src0, SrcType::F32);
         }
         Op::FMul(op) => {
             copy_alu_src_if_not_reg(b, &mut op.srcs[0], SrcType::F32);

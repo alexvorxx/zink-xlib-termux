@@ -142,6 +142,39 @@ nil_extent4d_el_to_B(struct nil_extent4d extent_el,
    return extent_B;
 }
 
+static struct nil_offset4d
+nil_offset4d_el_to_B(struct nil_offset4d offset_el,
+                     uint32_t B_per_el)
+{
+   struct nil_offset4d offset_B = offset_el;
+   offset_B.x *= B_per_el;
+   return offset_B;
+}
+
+static struct nil_extent4d
+nil_extent4d_px_to_B(struct nil_extent4d extent_px,
+                     enum pipe_format format,
+                     enum nil_sample_layout sample_layout)
+{
+   const struct nil_extent4d extent_el =
+      nil_extent4d_px_to_el(extent_px, format, sample_layout);
+   const uint32_t B_per_el = util_format_get_blocksize(format);
+
+   return nil_extent4d_el_to_B(extent_el, B_per_el);
+}
+
+static struct nil_offset4d
+nil_offset4d_px_to_B(struct nil_offset4d offset_px,
+                     enum pipe_format format,
+                     enum nil_sample_layout sample_layout)
+{
+   const struct nil_offset4d offset_el =
+      nil_offset4d_px_to_el(offset_px, format, sample_layout);
+   const uint32_t B_per_el = util_format_get_blocksize(format);
+
+   return nil_offset4d_el_to_B(offset_el, B_per_el);
+}
+
 static struct nil_extent4d
 nil_extent4d_B_to_GOB(struct nil_extent4d extent_B,
                       bool gob_height_8)
@@ -170,28 +203,6 @@ nil_tiling_extent_B(struct nil_tiling tiling)
       /* We handle linear images in nil_image_create */
       return nil_extent4d(1, 1, 1, 1);
    }
-}
-
-struct nil_extent4d
-nil_tiling_extent_px(struct nil_tiling tiling, enum pipe_format format,
-                     enum nil_sample_layout sample_layout)
-{
-   const struct nil_extent4d tiling_extent_B = nil_tiling_extent_B(tiling);
-   const struct nil_extent4d el_extent_sa = nil_el_extent_sa(format);
-   const uint32_t blocksize_B = util_format_get_blocksize(format);
-
-   const struct nil_extent4d tiling_extent_el = {
-      .w = tiling_extent_B.w / blocksize_B,
-      .h = tiling_extent_B.h,
-      .d = tiling_extent_B.d,
-      .a = 1,
-   };
-
-   struct nil_extent4d tiling_extent_sa =
-      nil_extent4d_mul(tiling_extent_el, el_extent_sa);
-
-   return nil_extent4d_div_round_up(tiling_extent_sa,
-                                    nil_px_extent_sa(sample_layout));
 }
 
 enum nil_sample_layout
@@ -250,6 +261,32 @@ nil_extent4d_B_to_tl(struct nil_extent4d extent_B,
 }
 
 struct nil_extent4d
+nil_extent4d_px_to_tl(struct nil_extent4d extent_px,
+                      struct nil_tiling tiling, enum pipe_format format,
+                      enum nil_sample_layout sample_layout)
+{
+   const struct nil_extent4d extent_B =
+      nil_extent4d_px_to_B(extent_px, format, sample_layout);
+
+   const struct nil_extent4d tiling_extent_B = nil_tiling_extent_B(tiling);
+
+   return nil_extent4d_div_round_up(extent_B, tiling_extent_B);
+}
+
+struct nil_offset4d
+nil_offset4d_px_to_tl(struct nil_offset4d offset_px,
+                      struct nil_tiling tiling, enum pipe_format format,
+                      enum nil_sample_layout sample_layout)
+{
+   const struct nil_offset4d offset_B =
+      nil_offset4d_px_to_B(offset_px, format, sample_layout);
+
+   const struct nil_extent4d tiling_extent_B = nil_tiling_extent_B(tiling);
+
+   return nil_offset4d_div_round_down(offset_B, tiling_extent_B);
+}
+
+struct nil_extent4d
 nil_image_level_extent_px(const struct nil_image *image, uint32_t level)
 {
    assert(level == 0 || image->sample_layout == NIL_SAMPLE_LAYOUT_1X1);
@@ -271,11 +308,9 @@ image_level_extent_B(const struct nil_image *image, uint32_t level)
 {
    const struct nil_extent4d level_extent_px =
       nil_image_level_extent_px(image, level);
-   const struct nil_extent4d level_extent_el =
-      nil_extent4d_px_to_el(level_extent_px, image->format,
-                            image->sample_layout);
-   const uint32_t B_per_el = util_format_get_blocksize(image->format);
-   return nil_extent4d_el_to_B(level_extent_el, B_per_el);
+
+   return nil_extent4d_px_to_B(level_extent_px, image->format,
+                               image->sample_layout);
 }
 
 uint64_t

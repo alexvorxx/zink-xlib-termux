@@ -189,7 +189,7 @@ nil_extent4d_B_to_GOB(struct nil_extent4d extent_B,
    return nil_extent4d_div_round_up(extent_B, gob_extent_B);
 }
 
-static struct nil_extent4d
+struct nil_extent4d
 nil_tiling_extent_B(struct nil_tiling tiling)
 {
    if (tiling.is_tiled) {
@@ -246,7 +246,7 @@ choose_tiling(struct nil_extent4d extent_B,
    return tiling;
 }
 
-static uint32_t
+uint32_t
 nil_tiling_size_B(struct nil_tiling tiling)
 {
    const struct nil_extent4d extent_B = nil_tiling_extent_B(tiling);

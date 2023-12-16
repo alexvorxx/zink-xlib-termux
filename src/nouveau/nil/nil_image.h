@@ -188,6 +188,12 @@ struct nil_view {
 };
 
 struct nil_extent4d
+nil_tiling_extent_B(struct nil_tiling tiling);
+
+uint32_t
+nil_tiling_size_B(struct nil_tiling tiling);
+
+struct nil_extent4d
 nil_tiling_extent_px(struct nil_tiling tiling, enum pipe_format format,
                      enum nil_sample_layout sample_layout);
 

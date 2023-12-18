@@ -359,6 +359,9 @@ fn legalize_sm50_instr(
             copy_alu_src_if_not_reg(b, &mut op.handle, SrcType::GPR);
             copy_alu_src_if_i20_overflow(b, &mut op.stream, SrcType::ALU);
         }
+        Op::Bfe(op) => {
+            copy_alu_src_if_not_reg(b, &mut op.base, SrcType::ALU);
+        }
         _ => {
             let src_types = instr.src_types();
             for (i, src) in instr.srcs_mut().iter_mut().enumerate() {

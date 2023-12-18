@@ -2067,6 +2067,37 @@ impl SM50Instr {
         self.set_dst(op.dst);
     }
 
+    fn encode_bfe(&mut self, op: &OpBfe) {
+        match &op.range.src_ref {
+            SrcRef::Imm32(imm32) => {
+                self.set_opcode(0x3800);
+                // We guarantee that imm32 is 16bits, as it's a result of a PRMT
+                // instruction that only fills the bottom two bytes.
+                self.set_src_imm_i20(20..39, 56, *imm32 & 0xffff);
+            }
+            SrcRef::CBuf(cbuf) => {
+                self.set_opcode(0x4c00);
+                self.set_src_cb(20..39, cbuf);
+            }
+            SrcRef::Zero | SrcRef::Reg(_) => {
+                self.set_opcode(0x5c00);
+                self.set_reg_src(20..28, op.range);
+            }
+            src => panic!("Unsupported src type for BFE: {src}"),
+        }
+
+        if op.signed {
+            self.set_bit(48, true);
+        }
+
+        if op.reverse {
+            self.set_bit(40, true);
+        }
+
+        self.set_reg_src(8..16, op.base);
+        self.set_dst(op.dst);
+    }
+
     pub fn encode(
         instr: &Instr,
         sm: u8,
@@ -2139,6 +2170,7 @@ impl SM50Instr {
             Op::Nop(_) => si.encode_nop(),
             Op::Isberd(op) => si.encode_isberd(&op),
             Op::Out(op) => si.encode_out(&op),
+            Op::Bfe(op) => si.encode_bfe(&op),
             _ => panic!("Unhandled instruction {}", instr.op),
         }
 

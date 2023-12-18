@@ -2640,6 +2640,50 @@ impl DisplayOp for OpBRev {
 }
 impl_display_for_op!(OpBRev);
 
+/// Bitfield extract. Extracts all bits from `base` starting at `offset` into
+/// `dst`.
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpBfe {
+    /// Where to insert the bits.
+    pub dst: Dst,
+
+    /// The source of bits to extract.
+    #[src_type(ALU)]
+    pub base: Src,
+
+    /// The range of bits to extract. This source is interpreted as four
+    /// separate bytes, [b0, b1, b2, b3].
+    ///
+    /// b0 and b1: unused
+    /// b2: the number of bits to extract.
+    /// b3: the offset of the first bit to extract.
+    ///
+    /// This matches the way the hardware works.
+    #[src_type(ALU)]
+    pub range: Src,
+
+    /// Whether the output is signed
+    pub signed: bool,
+
+    /// Whether to reverse the bits before inserting them into `dst`.
+    pub reverse: bool,
+}
+
+impl DisplayOp for OpBfe {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "bfe")?;
+        if self.signed {
+            write!(f, ".s")?;
+        }
+        if self.reverse {
+            write!(f, ".rev")?;
+        }
+        write!(f, " {} {}", self.base, self.range,)
+    }
+}
+impl_display_for_op!(OpBfe);
+
 #[repr(C)]
 #[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpFlo {
@@ -4824,6 +4868,7 @@ pub enum Op {
     DSetP(OpDSetP),
     BMsk(OpBMsk),
     BRev(OpBRev),
+    Bfe(OpBfe),
     Flo(OpFlo),
     IAbs(OpIAbs),
     INeg(OpINeg),
@@ -5277,7 +5322,8 @@ impl Instr {
             | Op::Lop3(_)
             | Op::Shf(_)
             | Op::Shl(_)
-            | Op::Shr(_) => true,
+            | Op::Shr(_)
+            | Op::Bfe(_) => true,
 
             // Conversions are variable latency?!?
             Op::F2F(_) | Op::F2I(_) | Op::I2F(_) | Op::I2I(_) | Op::FRnd(_) => {

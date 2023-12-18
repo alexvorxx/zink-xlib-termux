@@ -505,11 +505,7 @@ panvk_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
    cmdbuf->state.subpass = pass->subpasses;
    cmdbuf->state.framebuffer = fb;
    cmdbuf->state.render_area = pRenderPassBegin->renderArea;
-   cmdbuf->state.batch =
-      vk_zalloc(&cmdbuf->vk.pool->alloc, sizeof(*cmdbuf->state.batch), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   util_dynarray_init(&cmdbuf->state.batch->jobs, NULL);
-   util_dynarray_init(&cmdbuf->state.batch->event_ops, NULL);
+   panvk_cmd_open_batch(cmdbuf);
    assert(pRenderPassBegin->clearValueCount <= pass->attachment_count);
    cmdbuf->state.clear =
       vk_zalloc(&cmdbuf->vk.pool->alloc,

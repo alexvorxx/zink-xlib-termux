@@ -27,6 +27,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "panvk_pipeline_layout.h"
 #include "panvk_private.h"
 
 #include "nir.h"
@@ -109,8 +110,8 @@ build_res_index(nir_builder *b, uint32_t set, uint32_t binding,
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC: {
       assert(addr_format == nir_address_format_32bit_index_offset);
 
-      const unsigned ubo_idx =
-         panvk_pipeline_layout_ubo_index(ctx->layout, set, binding, 0);
+      const unsigned ubo_idx = panvk_per_arch(pipeline_layout_ubo_index)(
+         ctx->layout, set, binding, 0);
 
       const uint32_t packed = (array_size - 1) << 16 | ubo_idx;
 
@@ -122,7 +123,7 @@ build_res_index(nir_builder *b, uint32_t set, uint32_t binding,
              addr_format == nir_address_format_64bit_global_32bit_offset);
 
       const unsigned set_ubo_idx =
-         panvk_pipeline_layout_ubo_start(ctx->layout, set, false) +
+         panvk_per_arch(pipeline_layout_ubo_start)(ctx->layout, set, false) +
          set_layout->desc_ubo_index;
 
       const uint32_t packed =
@@ -325,7 +326,7 @@ load_resource_deref_desc(nir_builder *b, nir_deref_instr *deref,
       index_ssa = nir_imm_int(b, index_imm);
 
    const unsigned set_ubo_idx =
-      panvk_pipeline_layout_ubo_start(ctx->layout, set, false) +
+      panvk_per_arch(pipeline_layout_ubo_start)(ctx->layout, set, false) +
       set_layout->desc_ubo_index;
 
    nir_def *desc_ubo_offset =

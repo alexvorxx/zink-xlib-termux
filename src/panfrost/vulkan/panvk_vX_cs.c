@@ -37,6 +37,7 @@
 #include "panvk_buffer.h"
 #include "panvk_cs.h"
 #include "panvk_pipeline.h"
+#include "panvk_pipeline_layout.h"
 #include "panvk_private.h"
 #include "panvk_varyings.h"
 
@@ -284,7 +285,7 @@ panvk_per_arch(emit_ubos)(const struct panvk_pipeline *pipeline,
       const struct panvk_descriptor_set *set = state->sets[s];
 
       unsigned ubo_start =
-         panvk_pipeline_layout_ubo_start(pipeline->layout, s, false);
+         panvk_per_arch(pipeline_layout_ubo_start)(pipeline->layout, s, false);
 
       if (!set) {
          unsigned all_ubos = set_layout->num_ubos + set_layout->num_dyn_ubos;
@@ -293,8 +294,8 @@ panvk_per_arch(emit_ubos)(const struct panvk_pipeline *pipeline,
          memcpy(&ubos[ubo_start], set->ubos,
                 set_layout->num_ubos * sizeof(*ubos));
 
-         unsigned dyn_ubo_start =
-            panvk_pipeline_layout_ubo_start(pipeline->layout, s, true);
+         unsigned dyn_ubo_start = panvk_per_arch(pipeline_layout_ubo_start)(
+            pipeline->layout, s, true);
 
          for (unsigned i = 0; i < set_layout->num_dyn_ubos; i++) {
             const struct panvk_buffer_desc *bdesc =

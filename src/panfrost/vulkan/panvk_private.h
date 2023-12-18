@@ -72,6 +72,7 @@
 #include "panvk_macros.h"
 #include "panvk_mempool.h"
 #include "panvk_pipeline.h"
+#include "panvk_pipeline_layout.h"
 #include "panvk_varyings.h"
 #include "vk_extensions.h"
 
@@ -90,20 +91,16 @@ typedef uint32_t xcb_window_t;
 
 #include "panvk_entrypoints.h"
 
-#define MAX_BIND_POINTS             2 /* compute + graphics */
-#define MAX_VBS                     16
-#define MAX_VERTEX_ATTRIBS          16
-#define MAX_VSC_PIPES               32
-#define MAX_SCISSORS                16
-#define MAX_DISCARD_RECTANGLES      4
-#define MAX_PUSH_CONSTANTS_SIZE     128
-#define MAX_DYNAMIC_UNIFORM_BUFFERS 16
-#define MAX_DYNAMIC_STORAGE_BUFFERS 8
-#define MAX_DYNAMIC_BUFFERS                                                    \
-   (MAX_DYNAMIC_UNIFORM_BUFFERS + MAX_DYNAMIC_STORAGE_BUFFERS)
-#define MAX_SAMPLES_LOG2 4
-#define NUM_META_FS_KEYS 13
-#define MAX_VIEWS        8
+#define MAX_BIND_POINTS         2 /* compute + graphics */
+#define MAX_VBS                 16
+#define MAX_VERTEX_ATTRIBS      16
+#define MAX_VSC_PIPES           32
+#define MAX_SCISSORS            16
+#define MAX_DISCARD_RECTANGLES  4
+#define MAX_PUSH_CONSTANTS_SIZE 128
+#define MAX_SAMPLES_LOG2        4
+#define NUM_META_FS_KEYS        13
+#define MAX_VIEWS               8
 
 #define NUM_DEPTH_CLEAR_PIPELINES 3
 
@@ -112,6 +109,7 @@ typedef uint32_t xcb_window_t;
 #define PANVK_NUM_BUILTIN_UBOS     2
 
 struct panvk_device;
+struct panvk_pipeline_layout;
 
 /* Used for internal object allocation. */
 struct panvk_priv_bo {
@@ -337,69 +335,6 @@ struct panvk_cmd_event_op {
    enum panvk_cmd_event_op_type type;
    struct panvk_event *event;
 };
-
-#define MAX_SETS 4
-
-struct panvk_pipeline_layout {
-   struct vk_pipeline_layout vk;
-
-   unsigned char sha1[20];
-
-   unsigned num_samplers;
-   unsigned num_textures;
-   unsigned num_ubos;
-   unsigned num_dyn_ubos;
-   unsigned num_dyn_ssbos;
-   uint32_t num_imgs;
-
-   struct {
-      uint32_t size;
-   } push_constants;
-
-   struct {
-      unsigned sampler_offset;
-      unsigned tex_offset;
-      unsigned ubo_offset;
-      unsigned dyn_ubo_offset;
-      unsigned dyn_ssbo_offset;
-      unsigned img_offset;
-   } sets[MAX_SETS];
-};
-
-static unsigned
-panvk_pipeline_layout_ubo_start(const struct panvk_pipeline_layout *layout,
-                                unsigned set, bool is_dynamic)
-{
-   const struct panvk_descriptor_set_layout *set_layout =
-      vk_to_panvk_descriptor_set_layout(layout->vk.set_layouts[set]);
-
-   unsigned offset = PANVK_NUM_BUILTIN_UBOS + layout->sets[set].ubo_offset +
-                     layout->sets[set].dyn_ubo_offset;
-
-   if (is_dynamic)
-      offset += set_layout->num_ubos;
-
-   return offset;
-}
-
-static unsigned
-panvk_pipeline_layout_ubo_index(const struct panvk_pipeline_layout *layout,
-                                unsigned set, unsigned binding,
-                                unsigned array_index)
-{
-   const struct panvk_descriptor_set_layout *set_layout =
-      vk_to_panvk_descriptor_set_layout(layout->vk.set_layouts[set]);
-   const struct panvk_descriptor_set_binding_layout *binding_layout =
-      &set_layout->bindings[binding];
-
-   const bool is_dynamic =
-      binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-   const uint32_t ubo_idx =
-      is_dynamic ? binding_layout->dyn_ubo_idx : binding_layout->ubo_idx;
-
-   return panvk_pipeline_layout_ubo_start(layout, set, is_dynamic) + ubo_idx +
-          array_index;
-}
 
 enum panvk_dynamic_state_bits {
    PANVK_DYNAMIC_VIEWPORT = 1 << 0,
@@ -648,8 +583,6 @@ VK_DEFINE_HANDLE_CASTS(panvk_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_cmd_pool, vk.base, VkCommandPool,
                                VK_OBJECT_TYPE_COMMAND_POOL)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
-                               VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 
 #ifdef PAN_ARCH
 #include "panvk_vX_cmd_buffer.h"

@@ -29,6 +29,7 @@
 
 #include "genxml/gen_macros.h"
 
+#include "panvk_pipeline_layout.h"
 #include "panvk_private.h"
 
 #include "spirv/nir_spirv.h"

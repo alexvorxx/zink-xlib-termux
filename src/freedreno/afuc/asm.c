@@ -85,7 +85,7 @@ __instruction_case(struct encode_state *s, const struct afuc_instr *instr)
 int gpuver;
 
 /* bit lame to hard-code max but fw sizes are small */
-static struct afuc_instr instructions[0x2000];
+static struct afuc_instr instructions[0x4000];
 static unsigned num_instructions;
 
 static struct asm_label labels[0x512];

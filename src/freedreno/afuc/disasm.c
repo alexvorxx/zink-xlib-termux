@@ -353,6 +353,7 @@ disasm(struct emu *emu)
    }
 
    if (bv_offset) {
+      printf("\n.section BV\n");
       printf(";\n");
       printf("; BV microcode:\n");
       printf(";\n");
@@ -390,6 +391,7 @@ disasm(struct emu *emu)
    }
 
    if (lpac_offset) {
+      printf("\n.section LPAC\n");
       printf(";\n");
       printf("; LPAC microcode:\n");
       printf(";\n");

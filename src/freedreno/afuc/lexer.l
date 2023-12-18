@@ -99,6 +99,7 @@ extern YYSTYPE yylval;
 
 ".align"                          return TOKEN(T_ALIGN);
 ".jumptbl"                        return TOKEN(T_JUMPTBL);
+".section"                        return TOKEN(T_SECTION);
 
 ","                               return ',';
 "["                               return '[';

@@ -93,11 +93,14 @@ static unsigned instr_offset;
 static struct asm_label labels[0x512];
 static unsigned num_labels;
 
+static int outfd;
+
 struct afuc_instr *
 next_instr(afuc_opc opc)
 {
    struct afuc_instr *ai = &instructions[num_instructions++];
    assert(num_instructions < ARRAY_SIZE(instructions));
+   memset(ai, 0, sizeof(*ai));
    instr_offset++;
    ai->opc = opc;
    return ai;
@@ -181,12 +184,6 @@ emit_instructions(int outfd)
       .gen = gpuver,
    };
 
-   /* there is an extra 0x00000000 which kernel strips off.. we could
-    * perhaps use it for versioning.
-    */
-   i = 0;
-   write(outfd, &i, 4);
-
    /* Expand some meta opcodes, and resolve branch targets */
    for (i = 0; i < num_instructions; i++) {
       struct afuc_instr *ai = &instructions[i];
@@ -247,6 +244,19 @@ emit_instructions(int outfd)
    }
 }
 
+void next_section(void)
+{
+   /* Sections must be aligned to 32 bytes */
+   align_instr(32);
+
+   emit_instructions(outfd);
+
+   num_instructions = 0;
+   instr_offset = 0;
+   num_labels = 0;
+}
+
+
 unsigned
 parse_control_reg(const char *name)
 {
@@ -275,7 +285,7 @@ main(int argc, char **argv)
 {
    FILE *in;
    char *file, *outfile;
-   int c, ret, outfd;
+   int c, ret;
 
    /* Argument parsing: */
    while ((c = getopt(argc, argv, "g:")) != -1) {
@@ -325,6 +335,12 @@ main(int argc, char **argv)
    if (ret < 0) {
       usage();
    }
+
+   /* there is an extra 0x00000000 which kernel strips off.. we could
+    * perhaps use it for versioning.
+    */
+   uint32_t zero = 0;
+   write(outfd, &zero, 4);
 
    ret = yyparse();
    if (ret) {

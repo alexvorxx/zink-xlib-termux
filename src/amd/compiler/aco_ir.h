@@ -1930,14 +1930,16 @@ struct RegisterDemand {
 
 /* CFG */
 struct Block {
+   using edge_vec = small_vec<uint32_t, 2>;
+
    float_mode fp_mode;
    unsigned index;
    unsigned offset = 0;
    std::vector<aco_ptr<Instruction>> instructions;
-   std::vector<unsigned> logical_preds;
-   std::vector<unsigned> linear_preds;
-   std::vector<unsigned> logical_succs;
-   std::vector<unsigned> linear_succs;
+   edge_vec logical_preds;
+   edge_vec linear_preds;
+   edge_vec logical_succs;
+   edge_vec linear_succs;
    RegisterDemand register_demand = RegisterDemand();
    uint32_t kind = 0;
    int32_t logical_idom = -1;

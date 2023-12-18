@@ -74,9 +74,8 @@ struct pr_opt_ctx {
          instr_idx_by_regs(std::unique_ptr<Idx_array[]>{new Idx_array[p->blocks.size()]})
    {}
 
-   ALWAYS_INLINE void reset_block_regs(const std::vector<uint32_t>& preds,
-                                       const unsigned block_index, const unsigned min_reg,
-                                       const unsigned num_regs)
+   ALWAYS_INLINE void reset_block_regs(const Block::edge_vec& preds, const unsigned block_index,
+                                       const unsigned min_reg, const unsigned num_regs)
    {
       const unsigned num_preds = preds.size();
       const unsigned first_pred = preds[0];

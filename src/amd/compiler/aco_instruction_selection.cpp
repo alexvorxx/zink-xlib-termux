@@ -10021,7 +10021,7 @@ visit_phi(isel_context* ctx, nir_phi_instr* instr)
    nir_foreach_phi_src (src, instr)
       phi_src[src->pred->index] = src->src.ssa;
 
-   std::vector<unsigned>& preds = logical ? ctx->block->logical_preds : ctx->block->linear_preds;
+   Block::edge_vec& preds = logical ? ctx->block->logical_preds : ctx->block->linear_preds;
    unsigned num_operands = 0;
    Operand* const operands = (Operand*)alloca(
       (std::max(exec_list_length(&instr->srcs), (unsigned)preds.size()) + 1) * sizeof(Operand));

@@ -89,7 +89,7 @@ collect_parallelcopies(cssa_ctx& ctx)
          if (!def.isTemp())
             continue;
 
-         std::vector<unsigned>& preds =
+         Block::edge_vec& preds =
             phi->opcode == aco_opcode::p_phi ? block.logical_preds : block.linear_preds;
          uint32_t index = ctx.merge_sets.size();
          merge_set set;
@@ -194,9 +194,9 @@ intersects(cssa_ctx& ctx, Temp var, Temp parent)
    /* parent is defined in a different block than var */
    if (node_parent.defined_at < node_var.defined_at) {
       /* if the parent is not live-in, they don't interfere */
-      std::vector<uint32_t>& preds = var.type() == RegType::vgpr
-                                        ? ctx.program->blocks[block_idx].logical_preds
-                                        : ctx.program->blocks[block_idx].linear_preds;
+      Block::edge_vec& preds = var.type() == RegType::vgpr
+                                  ? ctx.program->blocks[block_idx].logical_preds
+                                  : ctx.program->blocks[block_idx].linear_preds;
       for (uint32_t pred : preds) {
          if (!ctx.live_out[pred].count(parent.id()))
             return false;

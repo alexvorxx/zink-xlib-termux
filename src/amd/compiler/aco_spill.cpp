@@ -259,7 +259,7 @@ next_uses_per_block(spill_ctx& ctx, unsigned block_idx, uint32_t& worklist)
       }
       uint32_t distance = pair.second.second;
       uint32_t dom = pair.second.first;
-      std::vector<unsigned>& preds = temp.is_linear() ? block->linear_preds : block->logical_preds;
+      Block::edge_vec& preds = temp.is_linear() ? block->linear_preds : block->logical_preds;
       for (unsigned pred_idx : preds) {
          if (ctx.program->blocks[pred_idx].loop_nest_depth > block->loop_nest_depth)
             distance += 0xFFFF;
@@ -664,8 +664,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
 
    /* keep variables spilled on all incoming paths */
    for (const std::pair<const Temp, std::pair<uint32_t, uint32_t>>& pair : next_use_distances) {
-      std::vector<unsigned>& preds =
-         pair.first.is_linear() ? block->linear_preds : block->logical_preds;
+      Block::edge_vec& preds = pair.first.is_linear() ? block->linear_preds : block->logical_preds;
       /* If it can be rematerialized, keep the variable spilled if all predecessors do not reload
        * it. Otherwise, if any predecessor reloads it, ensure it's reloaded on all other
        * predecessors. The idea is that it's better in practice to rematerialize redundantly than to
@@ -708,7 +707,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       if (!phi->definitions[0].isTemp())
          continue;
 
-      std::vector<unsigned>& preds =
+      Block::edge_vec& preds =
          phi->opcode == aco_opcode::p_phi ? block->logical_preds : block->linear_preds;
       bool is_all_spilled = true;
       for (unsigned i = 0; i < phi->operands.size(); i++) {
@@ -877,7 +876,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
          continue;
       }
 
-      std::vector<unsigned>& preds =
+      Block::edge_vec& preds =
          phi->opcode == aco_opcode::p_phi ? block->logical_preds : block->linear_preds;
       uint32_t def_spill_id = ctx.spills_entry[block_idx][phi->definitions[0].getTemp()];
 
@@ -945,8 +944,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
    /* iterate all (other) spilled variables for which to spill at the predecessor */
    // TODO: would be better to have them sorted: first vgprs and first with longest distance
    for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx]) {
-      std::vector<unsigned> preds =
-         pair.first.is_linear() ? block->linear_preds : block->logical_preds;
+      Block::edge_vec& preds = pair.first.is_linear() ? block->linear_preds : block->logical_preds;
 
       for (unsigned pred_idx : preds) {
          /* variable is already spilled at predecessor */
@@ -1000,7 +998,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
       assert(!phi->definitions[0].isTemp() ||
              !ctx.spills_entry[block_idx].count(phi->definitions[0].getTemp()));
 
-      std::vector<unsigned>& preds =
+      Block::edge_vec& preds =
          phi->opcode == aco_opcode::p_phi ? block->logical_preds : block->linear_preds;
       for (unsigned i = 0; i < phi->operands.size(); i++) {
          if (!phi->operands[i].isTemp())
@@ -1060,8 +1058,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
       /* skip spilled variables */
       if (ctx.spills_entry[block_idx].count(pair.first))
          continue;
-      std::vector<unsigned> preds =
-         pair.first.is_linear() ? block->linear_preds : block->logical_preds;
+      Block::edge_vec& preds = pair.first.is_linear() ? block->linear_preds : block->logical_preds;
 
       /* variable is dead at predecessor, it must be from a phi */
       bool is_dead = false;

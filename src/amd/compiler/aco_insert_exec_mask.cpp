@@ -174,7 +174,7 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
 {
    unsigned idx = block->index;
    Builder bld(ctx.program, &instructions);
-   std::vector<unsigned>& preds = block->linear_preds;
+   Block::edge_vec& preds = block->linear_preds;
    bool restore_exec = false;
 
    /* start block */
@@ -270,7 +270,7 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
          assert(ctx.info[pred].exec.size() >= info.num_exec_masks);
 
       /* fill the loop header phis */
-      std::vector<unsigned>& header_preds = header->linear_preds;
+      Block::edge_vec& header_preds = header->linear_preds;
       int instr_idx = 0;
       if (info.has_discard && header_preds.size() > 1) {
          while (instr_idx < info.num_exec_masks - 1) {

@@ -1054,6 +1054,7 @@ public:
 
    constexpr small_vec() = default;
    constexpr small_vec(const small_vec&) = delete;
+   constexpr small_vec(small_vec&& other) { *this = std::move(other); }
 
    ~small_vec()
    {
@@ -1062,6 +1063,15 @@ public:
    }
 
    constexpr small_vec& operator=(const small_vec&) = delete;
+   constexpr small_vec& operator=(small_vec&& other)
+   {
+      clear();
+      void* ptr = this;
+      memcpy(ptr, &other, sizeof(*this));
+      other.length = 0;
+      other.capacity = Size;
+      return *this;
+   }
 
    constexpr iterator begin() noexcept { return capacity > Size ? data : inline_data; }
 
@@ -1145,19 +1155,33 @@ public:
       --length;
    }
 
-   template <typename... Args> constexpr void emplace_back(Args... args) noexcept
+   constexpr void reserve(size_type n)
    {
-      if (length == capacity) {
+      if (n > capacity) {
          if (capacity > Size) {
-            capacity *= 2;
-            data = (T*)realloc(data, sizeof(T) * capacity);
+            data = (T*)realloc(data, sizeof(T) * n);
          } else {
-            capacity *= 2;
-            T* ptr = (T*)malloc(sizeof(T) * capacity);
+            T* ptr = (T*)malloc(sizeof(T) * n);
             memcpy(ptr, inline_data, sizeof(T) * length);
             data = ptr;
          }
+         capacity = n;
       }
+   }
+
+   constexpr void push_back(const value_type& val) noexcept
+   {
+      if (length == capacity)
+         reserve(2 * capacity);
+
+      *std::next(begin(), length++) = val;
+   }
+
+   template <typename... Args> constexpr void emplace_back(Args... args) noexcept
+   {
+      if (length == capacity)
+         reserve(2 * capacity);
+
       *std::next(begin(), length++) = T(args...);
    }
 
@@ -1166,7 +1190,18 @@ public:
       if (capacity > Size)
          free(data);
       length = 0;
-      capacity = 0;
+      capacity = Size;
+   }
+
+   constexpr bool operator==(const small_vec& other) const
+   {
+      if (size() != other.size())
+         return false;
+      for (unsigned i = 0; i < size(); i++) {
+         if (*(std::next(begin(), i)) != other[i])
+            return false;
+      }
+      return true;
    }
 
 private:

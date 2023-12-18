@@ -173,6 +173,8 @@ label(const char *str)
 %token <num> T_XMOV
 %token <num> T_SDS
 
+%token <tok> T_JUMPTBL
+
 %type <num> reg
 %type <num> immediate
 %type <num> xmov
@@ -188,10 +190,11 @@ instrs:            instrs instr_or_label
 |                  instr_or_label
 
 instr_or_label:    instr_r
-|                  T_REP instr_r    { instr->rep = true; }
+|                  T_REP instr_r       { instr->rep = true; }
 |                  branch_instr
 |                  other_instr
-|                  T_LABEL_DECL   { decl_label($1); }
+|                  T_LABEL_DECL        { decl_label($1); }
+|                  T_JUMPTBL           { decl_jumptbl(); }
 
 xmov:              T_XMOV { $$ = $1; }
 |                  { $$ = 0; }
@@ -295,6 +298,7 @@ other_instr:       T_OP_CALL T_LABEL_REF { new_instr(OPC_CALL); label($2); }
 |                  T_OP_WAITIN           { new_instr(OPC_WAITIN); }
 |                  T_OP_NOP              { new_instr(OPC_NOP); }
 |                  T_LITERAL             { new_instr(OPC_RAW_LITERAL); literal($1); }
+|                  '[' T_LABEL_REF ']'   { new_instr(OPC_RAW_LITERAL); label($2); }
 
 reg:               T_REGISTER
 

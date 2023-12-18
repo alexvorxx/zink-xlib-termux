@@ -88,6 +88,8 @@ int gpuver;
 static struct afuc_instr instructions[0x4000];
 static unsigned num_instructions;
 
+static unsigned instr_offset;
+
 static struct asm_label labels[0x512];
 static unsigned num_labels;
 
@@ -96,6 +98,7 @@ next_instr(afuc_opc opc)
 {
    struct afuc_instr *ai = &instructions[num_instructions++];
    assert(num_instructions < ARRAY_SIZE(instructions));
+   instr_offset++;
    ai->opc = opc;
    return ai;
 }
@@ -107,8 +110,17 @@ decl_label(const char *str)
 
    assert(num_labels < ARRAY_SIZE(labels));
 
-   label->offset = num_instructions;
+   label->offset = instr_offset;
    label->label = str;
+}
+
+void
+decl_jumptbl(void)
+{
+   struct afuc_instr *ai = &instructions[num_instructions++];
+   assert(num_instructions < ARRAY_SIZE(instructions));
+   ai->opc = OPC_JUMPTBL;
+   instr_offset += 0x80;
 }
 
 static int
@@ -126,6 +138,30 @@ resolve_label(const char *str)
 
    fprintf(stderr, "Undeclared label: %s\n", str);
    exit(2);
+}
+
+static void
+emit_jumptable(int outfd)
+{
+   uint32_t jmptable[0x80] = {0};
+   int i;
+
+   for (i = 0; i < num_labels; i++) {
+      struct asm_label *label = &labels[i];
+      int id = afuc_pm4_id(label->label);
+
+      /* if it doesn't match a known PM4 packet-id, try to match UNKN%d: */
+      if (id < 0) {
+         if (sscanf(label->label, "UNKN%d", &id) != 1) {
+            /* if still not found, must not belong in jump-table: */
+            continue;
+         }
+      }
+
+      jmptable[id] = label->offset;
+   }
+
+   write(outfd, jmptable, sizeof(jmptable));
 }
 
 static void
@@ -185,16 +221,15 @@ emit_instructions(int outfd)
          break;
       }
 
-      /* special case, 2nd dword is patched up w/ # of instructions
-       * (ie. offset of jmptbl)
-       */
-      if (i == 1) {
-         assert(ai->opc == OPC_RAW_LITERAL);
-         ai->literal &= ~0xffff;
-         ai->literal |= num_instructions;
+      if (ai->opc == OPC_JUMPTBL) {
+         emit_jumptable(outfd);
+         continue;
       }
 
       if (ai->opc == OPC_RAW_LITERAL) {
+         if (ai->label) {
+            ai->literal = afuc_nop_literal(resolve_label(ai->label), gpuver);
+         }
          write(outfd, &ai->literal, 4);
          continue;
       }
@@ -216,30 +251,6 @@ parse_sqe_reg(const char *name)
 {
    /* skip leading "%" */
    return afuc_sqe_reg(name + 1);
-}
-
-static void
-emit_jumptable(int outfd)
-{
-   uint32_t jmptable[0x80] = {0};
-   int i;
-
-   for (i = 0; i < num_labels; i++) {
-      struct asm_label *label = &labels[i];
-      int id = afuc_pm4_id(label->label);
-
-      /* if it doesn't match a known PM4 packet-id, try to match UNKN%d: */
-      if (id < 0) {
-         if (sscanf(label->label, "UNKN%d", &id) != 1) {
-            /* if still not found, must not belong in jump-table: */
-            continue;
-         }
-      }
-
-      jmptable[id] = label->offset;
-   }
-
-   write(outfd, jmptable, sizeof(jmptable));
 }
 
 static void
@@ -314,7 +325,6 @@ main(int argc, char **argv)
    }
 
    emit_instructions(outfd);
-   emit_jumptable(outfd);
 
    close(outfd);
 

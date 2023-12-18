@@ -374,10 +374,16 @@ fn legalize_sm50_instr(
                     | SrcType::F64
                     | SrcType::I32
                     | SrcType::B32 => {
-                        panic!("ALU srcs must be legalized explicitly");
+                        panic!(
+                            "({}): ALU srcs must be legalized explicitly",
+                            &mut instr.op
+                        );
                     }
                     SrcType::Pred => {
-                        panic!("Predicates must be legalized explicitly");
+                        panic!(
+                            "({}): Predicates must be legalized explicitly",
+                            &mut instr.op
+                        );
                     }
                     SrcType::Bar => panic!("Barrier regs are Volta+"),
                 }

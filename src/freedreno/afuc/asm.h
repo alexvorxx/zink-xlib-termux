@@ -38,6 +38,7 @@ struct asm_label {
 struct afuc_instr *next_instr(afuc_opc opc);
 void decl_label(const char *str);
 void decl_jumptbl(void);
+void align_instr(unsigned alignment);
 
 static inline uint32_t
 parse_reg(const char *str)

@@ -98,6 +98,7 @@ extern YYSTYPE yylval;
 "(sds"[1-3]")"                    yylval.num = yytext[4] - '0'; return T_SDS;
 "(peek)"                          return TOKEN(T_PEEK);
 
+".align"                          return TOKEN(T_ALIGN);
 ".jumptbl"                        return TOKEN(T_JUMPTBL);
 
 ","                               return ',';

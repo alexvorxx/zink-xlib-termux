@@ -334,6 +334,15 @@ disasm(struct emu *emu)
 
    /* print jump table */
    if (jumptbl_offset != ~0) {
+      if (gpuver >= 7) {
+         /* The BV/LPAC microcode must be aligned to 32 bytes. On a7xx, by
+          * convention the firmware aligns the jumptable preceding it instead
+          * of the microcode itself, with nop instructions. Insert this
+          * directive to make sure that it stays aligned when reassembling
+          * even if the user modifies the BR microcode.
+          */
+         printf(".align 32\n");
+      }
       printf("jumptbl:\n");
       printf(".jumptbl\n");
 
@@ -367,6 +376,7 @@ disasm(struct emu *emu)
       isa_disasm(emu->instrs, MIN2(sizedwords, jumptbl_offset) * 4, stdout, &options);
 
       if (jumptbl_offset != ~0) {
+         printf(".align 32\n");
          printf("jumptbl:\n");
          printf(".jumptbl\n");
          if (jumptbl_offset + ARRAY_SIZE(emu->jmptbl) != sizedwords) {

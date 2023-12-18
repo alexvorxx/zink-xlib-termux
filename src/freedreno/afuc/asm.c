@@ -123,6 +123,14 @@ decl_jumptbl(void)
    instr_offset += 0x80;
 }
 
+void
+align_instr(unsigned alignment)
+{
+   while (instr_offset % (alignment / 4) != 0) {
+      next_instr(OPC_NOP);
+   }
+}
+
 static int
 resolve_label(const char *str)
 {

@@ -173,6 +173,7 @@ label(const char *str)
 %token <num> T_XMOV
 %token <num> T_SDS
 
+%token <tok> T_ALIGN
 %token <tok> T_JUMPTBL
 
 %type <num> reg
@@ -194,6 +195,7 @@ instr_or_label:    instr_r
 |                  branch_instr
 |                  other_instr
 |                  T_LABEL_DECL        { decl_label($1); }
+|                  T_ALIGN immediate   { align_instr($2); }
 |                  T_JUMPTBL           { decl_jumptbl(); }
 
 xmov:              T_XMOV { $$ = $1; }

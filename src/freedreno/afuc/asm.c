@@ -70,6 +70,7 @@ __instruction_case(struct encode_state *s, const struct afuc_instr *instr)
    ALU(MIN)
    ALU(MAX)
    ALU(CMP)
+   ALU(BIC)
 #undef ALU
 
    default:

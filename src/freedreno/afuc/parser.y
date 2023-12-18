@@ -184,7 +184,7 @@ label(const char *str)
 
 %%
 
-instrs:            instr_or_label instrs
+instrs:            instrs instr_or_label
 |                  instr_or_label
 
 instr_or_label:    instr_r

@@ -507,14 +507,14 @@ panvk_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
    cmdbuf->state.render_area = pRenderPassBegin->renderArea;
    cmdbuf->state.batch =
       vk_zalloc(&cmdbuf->vk.pool->alloc, sizeof(*cmdbuf->state.batch), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    util_dynarray_init(&cmdbuf->state.batch->jobs, NULL);
    util_dynarray_init(&cmdbuf->state.batch->event_ops, NULL);
    assert(pRenderPassBegin->clearValueCount <= pass->attachment_count);
    cmdbuf->state.clear =
       vk_zalloc(&cmdbuf->vk.pool->alloc,
                 sizeof(*cmdbuf->state.clear) * pass->attachment_count, 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    panvk_cmd_prepare_clear_values(cmdbuf, pRenderPassBegin->pClearValues);
    panvk_cmd_fb_info_init(cmdbuf);
    panvk_cmd_fb_info_set_subpass(cmdbuf);
@@ -550,7 +550,7 @@ panvk_cmd_open_batch(struct panvk_cmd_buffer *cmdbuf)
    assert(!cmdbuf->state.batch);
    cmdbuf->state.batch =
       vk_zalloc(&cmdbuf->vk.pool->alloc, sizeof(*cmdbuf->state.batch), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    assert(cmdbuf->state.batch);
    return cmdbuf->state.batch;
 }

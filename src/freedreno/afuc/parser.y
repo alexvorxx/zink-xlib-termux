@@ -246,10 +246,8 @@ alu_2src_op:       T_OP_ADD       { new_instr(OPC_ADD); }
 alu_2src_instr:    alu_2src_op reg ',' reg ',' reg { dst($2); src1($4); src2($6); }
 |                  alu_2src_op reg ',' reg ',' immediate { dst($2); src1($4); immed($6); }
 
-alu_setbit_src2:    T_BIT { bit($1); instr->opc = OPC_SETBITI; }
-|                   reg   { src2($1); }
-
-alu_clrsetbit_instr: T_OP_SETBIT reg ',' reg ',' alu_setbit_src2 { new_instr(OPC_SETBIT); dst($2); src1($4); }
+alu_clrsetbit_instr: T_OP_SETBIT reg ',' reg ',' T_BIT { new_instr(OPC_SETBITI); dst($2); src1($4); bit($6); }
+|                    T_OP_SETBIT reg ',' reg ',' reg { new_instr(OPC_SETBIT); dst($2); src1($4); src2($6); }
 |                    T_OP_CLRBIT reg ',' reg ',' T_BIT { new_instr(OPC_CLRBIT); dst($2); src1($4); bit($6); }
 
 alu_bitfield_op:  T_OP_UBFX { new_instr(OPC_UBFX); }

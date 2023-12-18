@@ -585,6 +585,19 @@ In testing with other control registers, ``(sdsN)`` causes the source to be
 read ``N`` extra times and then thrown away. Only when used in combination with
 ``@DRAW_STATE_SET_HDR`` do the extra source reads have an effect.
 
+.. _afuc-peek:
+
+Peek
+----
+
+``(peek)`` is valid on ALU instructions without an immediate. It modifies what
+``$data`` (and possibly ``$memdata`` and ``$regdata``) do by making them avoid
+consuming the word. The next read to ``$data`` will return the same thing. This
+is used solely by ``CP_INDIRECT_BUFFER`` to test if there is a subsequent IB
+that can be prefetched while the first IB is executed without actually
+consuming the header for the next packet. It is introduced on a7xx, and
+replaces the use of a special control register.
+
 Packet Table
 ============
 

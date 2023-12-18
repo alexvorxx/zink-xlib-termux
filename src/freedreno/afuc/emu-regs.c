@@ -188,7 +188,7 @@ get_reg_addr(struct emu *emu)
 
 /* Handle reads for special streaming regs: */
 static uint32_t
-emu_get_fifo_reg(struct emu *emu, unsigned n)
+emu_get_fifo_reg(struct emu *emu, unsigned n, bool peek)
 {
    /* TODO the fifo regs are slurping out of a FIFO that the hw is filling
     * in parallel.. we can use `struct emu_queue` to emulate what is actually
@@ -203,7 +203,7 @@ emu_get_fifo_reg(struct emu *emu, unsigned n)
       unsigned  read_dwords = emu_get_reg32(emu, &MEM_READ_DWORDS);
       uintptr_t read_addr   = emu_get_reg64(emu, &MEM_READ_ADDR);
 
-      if (read_dwords > 0) {
+      if (read_dwords > 0 && !peek) {
          emu_set_reg32(emu, &MEM_READ_DWORDS, read_dwords - 1);
          emu_set_reg64(emu, &MEM_READ_ADDR,   read_addr + 4);
       }
@@ -221,7 +221,7 @@ emu_get_fifo_reg(struct emu *emu, unsigned n)
        * REG_READ_ADDR, it just ends up with a single value written
        * into the FIFO that $regdata is consuming from:
        */
-      if (read_dwords > 0) {
+      if (read_dwords > 0 && !peek) {
          emu_set_reg32(emu, &REG_READ_DWORDS, read_dwords - 1);
          emu_set_reg32(emu, &REG_READ_ADDR,   read_addr + 1);
       }
@@ -234,9 +234,14 @@ emu_get_fifo_reg(struct emu *emu, unsigned n)
          assert(rem >= 0);
 
          uint32_t val;
-         if (emu_queue_pop(&emu->roq, &val)) {
-            emu_set_gpr_reg(emu, REG_REM, --rem);
-            return val;
+         if (peek) {
+            if (emu_queue_peek(&emu->roq, &val))
+               return val;
+         } else {
+            if (emu_queue_pop(&emu->roq, &val)) {
+               emu_set_gpr_reg(emu, REG_REM, --rem);
+               return val;
+            }
          }
 
          /* If FIFO is empty, prompt for more input: */
@@ -301,7 +306,7 @@ emu_set_fifo_reg(struct emu *emu, unsigned n, uint32_t val)
 }
 
 uint32_t
-emu_get_gpr_reg(struct emu *emu, unsigned n)
+emu_get_gpr_reg_alu(struct emu *emu, unsigned n, bool peek)
 {
    assert(n < ARRAY_SIZE(emu->gpr_regs.val));
 
@@ -312,10 +317,16 @@ emu_get_gpr_reg(struct emu *emu, unsigned n)
    case REG_MEMDATA:
    case REG_REGDATA:
    case REG_DATA:
-      return emu_get_fifo_reg(emu, n);
+      return emu_get_fifo_reg(emu, n, peek);
    default:
       return emu->gpr_regs.val[n];
    }
+}
+
+uint32_t
+emu_get_gpr_reg(struct emu *emu, unsigned n)
+{
+   return emu_get_gpr_reg_alu(emu, n, false);
 }
 
 void

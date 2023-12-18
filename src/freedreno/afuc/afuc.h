@@ -178,6 +178,7 @@ struct afuc_instr {
    bool is_literal : 1;
    bool rep : 1;
    bool preincrement : 1;
+   bool peek : 1;
 };
 
 void print_control_reg(uint32_t id);

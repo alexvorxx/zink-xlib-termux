@@ -108,6 +108,17 @@ emu_queue_pop(struct emu_queue *q, uint32_t *val)
    return true;
 }
 
+static inline bool
+emu_queue_peek(struct emu_queue *q, uint32_t *val)
+{
+   if (!q->count)
+      return false;
+
+   *val = q->fifo[q->tail];
+
+   return true;
+}
+
 /**
  * Draw-state (ie. CP_SET_DRAW_STATE) related emulation
  */
@@ -249,6 +260,7 @@ void emu_dump_state_change(struct emu *emu);
 /* Registers: */
 uint32_t emu_get_gpr_reg(struct emu *emu, unsigned n);
 void emu_set_gpr_reg(struct emu *emu, unsigned n, uint32_t val);
+uint32_t emu_get_gpr_reg_alu(struct emu *emu, unsigned n, bool peek);
 
 void emu_set_gpu_reg(struct emu *emu, unsigned n, uint32_t val);
 

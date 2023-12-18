@@ -169,11 +169,14 @@ label(const char *str)
 %token <tok> T_OP_SETSECURE
 %token <tok> T_LSHIFT
 %token <tok> T_REP
+%token <tok> T_PEEK
 %token <num> T_XMOV
 %token <num> T_SDS
 
 %type <num> reg
 %type <num> immediate
+%type <num> xmov
+%type <num> peek
 
 %error-verbose
 
@@ -190,9 +193,14 @@ instr_or_label:    instr_r
 |                  other_instr
 |                  T_LABEL_DECL   { decl_label($1); }
 
+xmov:              T_XMOV { $$ = $1; }
+|                  { $$ = 0; }
+
+peek:              T_PEEK { $$ = 1; }
+|                  { $$ = 0; }
+
 /* instructions that can optionally have (rep) flag: */
-instr_r:           alu_instr           { instr->xmov = 0; }
-|                  T_XMOV alu_instr    { instr->xmov = $1; }
+instr_r:           xmov peek alu_instr    { instr->xmov = $1; instr->peek = $2; }
 |                  load_instr
 |                  store_instr
 

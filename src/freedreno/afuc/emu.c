@@ -145,7 +145,7 @@ emu_instr(struct emu *emu, struct afuc_instr *instr)
       uint32_t val = emu_alu(emu, instr->opc,
                              emu_get_gpr_reg(emu, instr->src1),
                              instr->has_immed ? instr->immed : 
-                             emu_get_gpr_reg(emu, instr->src2));
+                             emu_get_gpr_reg_alu(emu, instr->src2, instr->peek));
       emu_set_gpr_reg(emu, instr->dst, val);
 
       if (instr->xmov) {

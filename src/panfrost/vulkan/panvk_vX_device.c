@@ -34,6 +34,7 @@
 #include "panvk_private.h"
 
 #include "vk_drm_syncobj.h"
+#include "vk_framebuffer.h"
 
 static void
 panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
@@ -245,8 +246,8 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
 
          if (batch->fb.info) {
             for (unsigned i = 0; i < batch->fb.info->attachment_count; i++) {
-               struct panvk_image_view *iview =
-                  batch->fb.info->attachments[i].iview;
+               VK_FROM_HANDLE(panvk_image_view, iview,
+                              batch->fb.info->attachments[i]);
                struct panvk_image *img =
                   container_of(iview->vk.image, struct panvk_image, vk);
 

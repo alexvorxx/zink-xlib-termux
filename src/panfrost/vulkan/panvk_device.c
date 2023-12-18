@@ -1660,49 +1660,6 @@ panvk_DestroyBuffer(VkDevice _device, VkBuffer _buffer,
    vk_buffer_destroy(&device->vk, pAllocator, &buffer->vk);
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL
-panvk_CreateFramebuffer(VkDevice _device,
-                        const VkFramebufferCreateInfo *pCreateInfo,
-                        const VkAllocationCallbacks *pAllocator,
-                        VkFramebuffer *pFramebuffer)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   struct panvk_framebuffer *framebuffer;
-
-   assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO);
-
-   size_t size = sizeof(*framebuffer) + sizeof(struct panvk_attachment_info) *
-                                           pCreateInfo->attachmentCount;
-   framebuffer = vk_object_alloc(&device->vk, pAllocator, size,
-                                 VK_OBJECT_TYPE_FRAMEBUFFER);
-   if (framebuffer == NULL)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   framebuffer->attachment_count = pCreateInfo->attachmentCount;
-   framebuffer->width = pCreateInfo->width;
-   framebuffer->height = pCreateInfo->height;
-   framebuffer->layers = pCreateInfo->layers;
-   for (uint32_t i = 0; i < pCreateInfo->attachmentCount; i++) {
-      VkImageView _iview = pCreateInfo->pAttachments[i];
-      struct panvk_image_view *iview = panvk_image_view_from_handle(_iview);
-      framebuffer->attachments[i].iview = iview;
-   }
-
-   *pFramebuffer = panvk_framebuffer_to_handle(framebuffer);
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_DestroyFramebuffer(VkDevice _device, VkFramebuffer _fb,
-                         const VkAllocationCallbacks *pAllocator)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   VK_FROM_HANDLE(panvk_framebuffer, fb, _fb);
-
-   if (fb)
-      vk_object_free(&device->vk, pAllocator, fb);
-}
-
 VKAPI_ATTR void VKAPI_CALL
 panvk_DestroySampler(VkDevice _device, VkSampler _sampler,
                      const VkAllocationCallbacks *pAllocator)

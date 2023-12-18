@@ -305,7 +305,7 @@ struct panvk_batch {
    struct util_dynarray event_ops;
    struct pan_jc jc;
    struct {
-      const struct panvk_framebuffer *info;
+      const struct vk_framebuffer *info;
       struct panfrost_ptr desc;
    } fb;
    struct {
@@ -754,7 +754,7 @@ struct panvk_cmd_state {
 
    const struct panvk_render_pass *pass;
    const struct panvk_subpass *subpass;
-   const struct panvk_framebuffer *framebuffer;
+   const struct vk_framebuffer *framebuffer;
    VkRect2D render_area;
 
    struct panvk_clear_value *clear;
@@ -993,17 +993,6 @@ struct panvk_attachment_info {
    struct panvk_image_view *iview;
 };
 
-struct panvk_framebuffer {
-   struct vk_object_base base;
-
-   uint32_t width;
-   uint32_t height;
-   uint32_t layers;
-
-   uint32_t attachment_count;
-   struct panvk_attachment_info attachments[0];
-};
-
 struct panvk_clear_value {
    union {
       uint32_t color[4];
@@ -1082,8 +1071,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set_layout, vk.base,
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_device_memory, base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_framebuffer, base, VkFramebuffer,
-                               VK_OBJECT_TYPE_FRAMEBUFFER)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image, vk.base, VkImage,
                                VK_OBJECT_TYPE_IMAGE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image_view, vk.base, VkImageView,

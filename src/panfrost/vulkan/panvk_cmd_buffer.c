@@ -551,6 +551,8 @@ panvk_cmd_open_batch(struct panvk_cmd_buffer *cmdbuf)
    cmdbuf->state.batch =
       vk_zalloc(&cmdbuf->vk.pool->alloc, sizeof(*cmdbuf->state.batch), 8,
                 VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   util_dynarray_init(&cmdbuf->state.batch->jobs, NULL);
+   util_dynarray_init(&cmdbuf->state.batch->event_ops, NULL);
    assert(cmdbuf->state.batch);
    return cmdbuf->state.batch;
 }

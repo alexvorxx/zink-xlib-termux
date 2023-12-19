@@ -69,6 +69,7 @@
 #include "pan_texture.h"
 #include "panvk_macros.h"
 #include "panvk_mempool.h"
+#include "panvk_pipeline.h"
 #include "panvk_varyings.h"
 #include "vk_extensions.h"
 
@@ -90,7 +91,6 @@ typedef uint32_t xcb_window_t;
 #define MAX_BIND_POINTS             2 /* compute + graphics */
 #define MAX_VBS                     16
 #define MAX_VERTEX_ATTRIBS          16
-#define MAX_RTS                     8
 #define MAX_VSC_PIPES               32
 #define MAX_SCISSORS                16
 #define MAX_DISCARD_RECTANGLES      4
@@ -631,31 +631,6 @@ struct panvk_dispatch_info {
    mali_ptr samplers;
 };
 
-struct panvk_attrib_info {
-   unsigned buf;
-   unsigned offset;
-   enum pipe_format format;
-};
-
-struct panvk_attrib_buf_info {
-   bool special;
-   union {
-      struct {
-         unsigned stride;
-         bool per_instance;
-         uint32_t instance_divisor;
-      };
-      unsigned special_id;
-   };
-};
-
-struct panvk_attribs_info {
-   struct panvk_attrib_info attrib[PAN_MAX_ATTRIBUTE];
-   unsigned attrib_count;
-   struct panvk_attrib_buf_info buf[PAN_MAX_ATTRIBUTE];
-   unsigned buf_count;
-};
-
 struct panvk_attrib_buf {
    mali_ptr address;
    unsigned size;
@@ -779,111 +754,6 @@ panvk_shader_create(struct panvk_device *dev, gl_shader_stage stage,
 void panvk_shader_destroy(struct panvk_device *dev, struct panvk_shader *shader,
                           const VkAllocationCallbacks *alloc);
 
-#define RSD_WORDS        16
-#define BLEND_DESC_WORDS 4
-
-struct panvk_pipeline {
-   struct vk_object_base base;
-
-   struct panvk_varyings_info varyings;
-   struct panvk_attribs_info attribs;
-
-   const struct panvk_pipeline_layout *layout;
-
-   unsigned active_stages;
-
-   uint32_t dynamic_state_mask;
-
-   struct panvk_priv_bo *binary_bo;
-   struct panvk_priv_bo *state_bo;
-
-   mali_ptr vpd;
-   mali_ptr rsds[MESA_SHADER_STAGES];
-
-   /* shader stage bit is set of the stage accesses storage images */
-   uint32_t img_access_mask;
-
-   unsigned num_ubos;
-
-   struct {
-      unsigned ubo_idx;
-   } sysvals[MESA_SHADER_STAGES];
-
-   unsigned tls_size;
-   unsigned wls_size;
-
-   struct {
-      mali_ptr address;
-      struct pan_shader_info info;
-      uint32_t rsd_template[RSD_WORDS];
-      bool required;
-      bool dynamic_rsd;
-      uint8_t rt_mask;
-   } fs;
-
-   struct {
-      struct pan_compute_dim local_size;
-   } cs;
-
-   struct {
-      unsigned topology;
-      bool writes_point_size;
-      bool primitive_restart;
-   } ia;
-
-   struct {
-      bool clamp_depth;
-      float line_width;
-      struct {
-         bool enable;
-         float constant_factor;
-         float clamp;
-         float slope_factor;
-      } depth_bias;
-      bool front_ccw;
-      bool cull_front_face;
-      bool cull_back_face;
-      bool enable;
-   } rast;
-
-   struct {
-      bool z_test;
-      bool z_write;
-      unsigned z_compare_func;
-      bool s_test;
-      struct {
-         unsigned fail_op;
-         unsigned pass_op;
-         unsigned z_fail_op;
-         unsigned compare_func;
-         uint8_t compare_mask;
-         uint8_t write_mask;
-         uint8_t ref;
-      } s_front, s_back;
-   } zs;
-
-   struct {
-      uint8_t rast_samples;
-      uint8_t min_samples;
-      uint16_t sample_mask;
-      bool alpha_to_coverage;
-      bool alpha_to_one;
-   } ms;
-
-   struct {
-      struct pan_blend_state state;
-      uint32_t bd_template[8][BLEND_DESC_WORDS];
-      struct {
-         uint8_t index;
-         uint16_t bifrost_factor;
-      } constant[8];
-      bool reads_dest;
-   } blend;
-
-   VkViewport viewport;
-   VkRect2D scissor;
-};
-
 #define TEXTURE_DESC_WORDS    8
 #define ATTRIB_BUF_DESC_WORDS 4
 
@@ -920,8 +790,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set_layout, vk.base,
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image_view, vk.base, VkImageView,
                                VK_OBJECT_TYPE_IMAGE_VIEW);
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline,
-                               VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
                                VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 

@@ -32,6 +32,8 @@
 #include "compiler/shader_enums.h"
 #include <vulkan/vulkan.h>
 
+struct panvk_attribs_info;
+
 void panvk_per_arch(emit_varying)(const struct panvk_device *dev,
                                   const struct panvk_varyings_info *varyings,
                                   gl_shader_stage stage, unsigned idx,

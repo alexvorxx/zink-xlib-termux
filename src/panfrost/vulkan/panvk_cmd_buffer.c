@@ -27,6 +27,7 @@
  */
 
 #include "panvk_buffer.h"
+#include "panvk_pipeline.h"
 #include "panvk_private.h"
 
 #include "pan_encoder.h"

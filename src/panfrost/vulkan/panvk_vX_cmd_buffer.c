@@ -84,7 +84,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
 
    if (!clear && !batch->jc.first_job) {
       if (util_dynarray_num_elements(&batch->event_ops,
-                                     struct panvk_event_op) == 0) {
+                                     struct panvk_cmd_event_op) == 0) {
          /* Content-less batch, let's drop it */
          vk_free(&cmdbuf->vk.pool->alloc, batch);
       } else {
@@ -950,9 +950,9 @@ panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
 static void
 panvk_add_set_event_operation(struct panvk_cmd_buffer *cmdbuf,
                               struct panvk_event *event,
-                              enum panvk_event_op_type type)
+                              enum panvk_cmd_event_op_type type)
 {
-   struct panvk_event_op op = {
+   struct panvk_cmd_event_op op = {
       .type = type,
       .event = event,
    };
@@ -963,14 +963,14 @@ panvk_add_set_event_operation(struct panvk_cmd_buffer *cmdbuf,
        */
       panvk_cmd_open_batch(cmdbuf);
       util_dynarray_append(&cmdbuf->state.batch->event_ops,
-                           struct panvk_event_op, op);
+                           struct panvk_cmd_event_op, op);
       panvk_per_arch(cmd_close_batch)(cmdbuf);
    } else {
       /* Let's close the current batch so the operation executes before any
        * future commands.
        */
       util_dynarray_append(&cmdbuf->state.batch->event_ops,
-                           struct panvk_event_op, op);
+                           struct panvk_cmd_event_op, op);
       panvk_per_arch(cmd_close_batch)(cmdbuf);
       panvk_cmd_preload_fb_after_batch_split(cmdbuf);
       panvk_cmd_open_batch(cmdbuf);
@@ -981,7 +981,7 @@ static void
 panvk_add_wait_event_operation(struct panvk_cmd_buffer *cmdbuf,
                                struct panvk_event *event)
 {
-   struct panvk_event_op op = {
+   struct panvk_cmd_event_op op = {
       .type = PANVK_EVENT_OP_WAIT,
       .event = event,
    };
@@ -990,7 +990,7 @@ panvk_add_wait_event_operation(struct panvk_cmd_buffer *cmdbuf,
       /* No open batch, let's create a new one and have it wait for this event. */
       panvk_cmd_open_batch(cmdbuf);
       util_dynarray_append(&cmdbuf->state.batch->event_ops,
-                           struct panvk_event_op, op);
+                           struct panvk_cmd_event_op, op);
    } else {
       /* Let's close the current batch so any future commands wait on the
        * event signal operation.
@@ -1002,7 +1002,7 @@ panvk_add_wait_event_operation(struct panvk_cmd_buffer *cmdbuf,
          panvk_cmd_open_batch(cmdbuf);
       }
       util_dynarray_append(&cmdbuf->state.batch->event_ops,
-                           struct panvk_event_op, op);
+                           struct panvk_cmd_event_op, op);
    }
 }
 

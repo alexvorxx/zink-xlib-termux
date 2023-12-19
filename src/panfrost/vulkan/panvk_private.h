@@ -323,14 +323,14 @@ struct panvk_batch {
    bool issued;
 };
 
-enum panvk_event_op_type {
+enum panvk_cmd_event_op_type {
    PANVK_EVENT_OP_SET,
    PANVK_EVENT_OP_RESET,
    PANVK_EVENT_OP_WAIT,
 };
 
-struct panvk_event_op {
-   enum panvk_event_op_type type;
+struct panvk_cmd_event_op {
+   enum panvk_cmd_event_op_type type;
    struct panvk_event *event;
 };
 

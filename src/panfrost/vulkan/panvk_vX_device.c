@@ -150,7 +150,7 @@ static void
 panvk_add_wait_event_syncobjs(struct panvk_batch *batch, uint32_t *in_fences,
                               unsigned *nr_in_fences)
 {
-   util_dynarray_foreach(&batch->event_ops, struct panvk_event_op, op) {
+   util_dynarray_foreach(&batch->event_ops, struct panvk_cmd_event_op, op) {
       switch (op->type) {
       case PANVK_EVENT_OP_SET:
          /* Nothing to do yet */
@@ -162,7 +162,7 @@ panvk_add_wait_event_syncobjs(struct panvk_batch *batch, uint32_t *in_fences,
          in_fences[(*nr_in_fences)++] = op->event->syncobj;
          break;
       default:
-         unreachable("bad panvk_event_op type\n");
+         unreachable("bad panvk_cmd_event_op type\n");
       }
    }
 }
@@ -173,7 +173,7 @@ panvk_signal_event_syncobjs(struct panvk_queue *queue,
 {
    struct panvk_device *dev = queue->device;
 
-   util_dynarray_foreach(&batch->event_ops, struct panvk_event_op, op) {
+   util_dynarray_foreach(&batch->event_ops, struct panvk_cmd_event_op, op) {
       switch (op->type) {
       case PANVK_EVENT_OP_SET: {
          panvk_queue_transfer_sync(queue, op->event->syncobj);
@@ -194,7 +194,7 @@ panvk_signal_event_syncobjs(struct panvk_queue *queue,
          /* Nothing left to do */
          break;
       default:
-         unreachable("bad panvk_event_op type\n");
+         unreachable("bad panvk_cmd_event_op type\n");
       }
    }
 }
@@ -278,7 +278,7 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
 
          unsigned nr_in_fences = 0;
          unsigned max_wait_event_syncobjs = util_dynarray_num_elements(
-            &batch->event_ops, struct panvk_event_op);
+            &batch->event_ops, struct panvk_cmd_event_op);
          uint32_t in_fences[nr_semaphores + max_wait_event_syncobjs];
          memcpy(in_fences, semaphores, nr_semaphores * sizeof(*in_fences));
          nr_in_fences += nr_semaphores;

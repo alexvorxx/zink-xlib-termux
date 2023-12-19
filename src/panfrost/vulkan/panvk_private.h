@@ -368,59 +368,6 @@ struct panvk_descriptor_state {
    mali_ptr non_vs_attrib_bufs;
 };
 
-#define INVOCATION_DESC_WORDS 2
-
-struct panvk_draw_info {
-   unsigned first_index;
-   unsigned index_count;
-   unsigned index_size;
-   unsigned first_vertex;
-   unsigned vertex_count;
-   unsigned vertex_range;
-   unsigned padded_vertex_count;
-   unsigned first_instance;
-   unsigned instance_count;
-   int vertex_offset;
-   unsigned offset_start;
-   uint32_t invocation[INVOCATION_DESC_WORDS];
-   struct {
-      mali_ptr varyings;
-      mali_ptr attributes;
-      mali_ptr attribute_bufs;
-      mali_ptr push_constants;
-   } stages[MESA_SHADER_STAGES];
-   mali_ptr varying_bufs;
-   mali_ptr textures;
-   mali_ptr samplers;
-   mali_ptr ubos;
-   mali_ptr position;
-   mali_ptr indices;
-   union {
-      mali_ptr psiz;
-      float line_width;
-   };
-   mali_ptr tls;
-   mali_ptr fb;
-   const struct pan_tiler_context *tiler_ctx;
-   mali_ptr fs_rsd;
-   mali_ptr viewport;
-   struct {
-      struct panfrost_ptr vertex;
-      struct panfrost_ptr tiler;
-   } jobs;
-};
-
-struct panvk_dispatch_info {
-   struct pan_compute_dim wg_count;
-   mali_ptr attributes;
-   mali_ptr attribute_bufs;
-   mali_ptr tsd;
-   mali_ptr ubos;
-   mali_ptr push_uniforms;
-   mali_ptr textures;
-   mali_ptr samplers;
-};
-
 struct panvk_attrib_buf {
    mali_ptr address;
    unsigned size;

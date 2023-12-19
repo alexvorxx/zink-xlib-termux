@@ -46,6 +46,57 @@
 #include "util/u_pack_color.h"
 #include "vk_format.h"
 
+struct panvk_draw_info {
+   unsigned first_index;
+   unsigned index_count;
+   unsigned index_size;
+   unsigned first_vertex;
+   unsigned vertex_count;
+   unsigned vertex_range;
+   unsigned padded_vertex_count;
+   unsigned first_instance;
+   unsigned instance_count;
+   int vertex_offset;
+   unsigned offset_start;
+   struct mali_invocation_packed invocation;
+   struct {
+      mali_ptr varyings;
+      mali_ptr attributes;
+      mali_ptr attribute_bufs;
+      mali_ptr push_constants;
+   } stages[MESA_SHADER_STAGES];
+   mali_ptr varying_bufs;
+   mali_ptr textures;
+   mali_ptr samplers;
+   mali_ptr ubos;
+   mali_ptr position;
+   mali_ptr indices;
+   union {
+      mali_ptr psiz;
+      float line_width;
+   };
+   mali_ptr tls;
+   mali_ptr fb;
+   const struct pan_tiler_context *tiler_ctx;
+   mali_ptr fs_rsd;
+   mali_ptr viewport;
+   struct {
+      struct panfrost_ptr vertex;
+      struct panfrost_ptr tiler;
+   } jobs;
+};
+
+struct panvk_dispatch_info {
+   struct pan_compute_dim wg_count;
+   mali_ptr attributes;
+   mali_ptr attribute_bufs;
+   mali_ptr tsd;
+   mali_ptr ubos;
+   mali_ptr push_uniforms;
+   mali_ptr textures;
+   mali_ptr samplers;
+};
+
 static uint32_t
 panvk_debug_adjust_bo_flags(const struct panvk_device *device,
                             uint32_t bo_flags)
@@ -1183,11 +1234,9 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    draw->textures = desc_state->textures;
    draw->samplers = desc_state->samplers;
 
-   STATIC_ASSERT(sizeof(draw->invocation) >=
-                 sizeof(struct mali_invocation_packed));
-   panfrost_pack_work_groups_compute(
-      (struct mali_invocation_packed *)&draw->invocation, 1, draw->vertex_range,
-      draw->instance_count, 1, 1, 1, true, false);
+   panfrost_pack_work_groups_compute(&draw->invocation, 1, draw->vertex_range,
+                                     draw->instance_count, 1, 1, 1, true,
+                                     false);
 
    panvk_draw_prepare_fs_rsd(cmdbuf, draw);
    panvk_draw_prepare_varyings(cmdbuf, draw);

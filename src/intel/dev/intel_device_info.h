@@ -109,6 +109,9 @@ enum intel_platform {
 #define intel_device_info_is_arl(devinfo) \
    intel_platform_in_range((devinfo)->platform, ARL)
 
+#define intel_device_info_is_mtl_or_arl(devinfo) \
+   (intel_device_info_is_mtl(devinfo) || intel_device_info_is_arl(devinfo))
+
 struct intel_memory_class_instance {
    /* Kernel backend specific class value, no translation needed yet */
    uint16_t klass;

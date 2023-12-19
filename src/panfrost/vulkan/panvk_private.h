@@ -754,21 +754,6 @@ panvk_shader_create(struct panvk_device *dev, gl_shader_stage stage,
 void panvk_shader_destroy(struct panvk_device *dev, struct panvk_shader *shader,
                           const VkAllocationCallbacks *alloc);
 
-#define TEXTURE_DESC_WORDS    8
-#define ATTRIB_BUF_DESC_WORDS 4
-
-struct panvk_image_view {
-   struct vk_image_view vk;
-
-   struct pan_image_view pview;
-
-   struct panvk_priv_bo *bo;
-   struct {
-      uint32_t tex[TEXTURE_DESC_WORDS];
-      uint32_t img_attrib_buf[ATTRIB_BUF_DESC_WORDS * 2];
-   } descs;
-};
-
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
 VK_DEFINE_HANDLE_CASTS(panvk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
@@ -788,8 +773,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set_layout, vk.base,
                                VkDescriptorSetLayout,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image_view, vk.base, VkImageView,
-                               VK_OBJECT_TYPE_IMAGE_VIEW);
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
                                VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 

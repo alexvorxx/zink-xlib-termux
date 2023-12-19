@@ -32,6 +32,7 @@
 
 #include "panvk_cs.h"
 #include "panvk_image.h"
+#include "panvk_image_view.h"
 #include "panvk_private.h"
 
 #include "vk_drm_syncobj.h"

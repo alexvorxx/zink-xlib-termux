@@ -260,20 +260,6 @@ panvk_GetImageSubresourceLayout(VkDevice _device, VkImage _image,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-panvk_DestroyImageView(VkDevice _device, VkImageView _view,
-                       const VkAllocationCallbacks *pAllocator)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   VK_FROM_HANDLE(panvk_image_view, view, _view);
-
-   if (!view)
-      return;
-
-   panvk_priv_bo_destroy(view->bo, NULL);
-   vk_image_view_destroy(&device->vk, pAllocator, &view->vk);
-}
-
-VKAPI_ATTR void VKAPI_CALL
 panvk_GetImageMemoryRequirements2(VkDevice device,
                                   const VkImageMemoryRequirementsInfo2 *pInfo,
                                   VkMemoryRequirements2 *pMemoryRequirements)

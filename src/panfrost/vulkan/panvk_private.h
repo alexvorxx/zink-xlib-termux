@@ -427,13 +427,6 @@ struct panvk_cmd_state {
    struct panvk_batch *batch;
 };
 
-struct panvk_cmd_pool {
-   struct vk_command_pool vk;
-   struct panvk_bo_pool desc_bo_pool;
-   struct panvk_bo_pool varying_bo_pool;
-   struct panvk_bo_pool tls_bo_pool;
-};
-
 struct panvk_cmd_bind_point_state {
    struct panvk_descriptor_state desc_state;
    const struct panvk_pipeline *pipeline;
@@ -475,9 +468,6 @@ VK_DEFINE_HANDLE_CASTS(panvk_instance, vk.base, VkInstance,
 VK_DEFINE_HANDLE_CASTS(panvk_physical_device, vk.base, VkPhysicalDevice,
                        VK_OBJECT_TYPE_PHYSICAL_DEVICE)
 VK_DEFINE_HANDLE_CASTS(panvk_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
-
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_cmd_pool, vk.base, VkCommandPool,
-                               VK_OBJECT_TYPE_COMMAND_POOL)
 
 #ifdef PAN_ARCH
 #include "panvk_vX_cmd_buffer.h"

@@ -29,6 +29,7 @@
 #include "genxml/gen_macros.h"
 
 #include "panvk_buffer.h"
+#include "panvk_cmd_pool.h"
 #include "panvk_event.h"
 #include "panvk_image.h"
 #include "panvk_image_view.h"
@@ -1606,22 +1607,6 @@ panvk_per_arch(BeginCommandBuffer)(VkCommandBuffer commandBuffer,
    memset(&cmdbuf->state, 0, sizeof(cmdbuf->state));
 
    return VK_SUCCESS;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(DestroyCommandPool)(VkDevice _device, VkCommandPool commandPool,
-                                   const VkAllocationCallbacks *pAllocator)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   VK_FROM_HANDLE(panvk_cmd_pool, pool, commandPool);
-
-   vk_command_pool_finish(&pool->vk);
-
-   panvk_bo_pool_cleanup(&pool->desc_bo_pool);
-   panvk_bo_pool_cleanup(&pool->varying_bo_pool);
-   panvk_bo_pool_cleanup(&pool->tls_bo_pool);
-
-   vk_free2(&device->vk.alloc, pAllocator, pool);
 }
 
 VKAPI_ATTR void VKAPI_CALL

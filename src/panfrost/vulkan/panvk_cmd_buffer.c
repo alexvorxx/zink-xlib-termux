@@ -27,6 +27,7 @@
  */
 
 #include "panvk_buffer.h"
+#include "panvk_cmd_pool.h"
 #include "panvk_pipeline.h"
 #include "panvk_pipeline_layout.h"
 #include "panvk_private.h"
@@ -361,34 +362,6 @@ panvk_CmdSetStencilReference(VkCommandBuffer commandBuffer,
 
    cmdbuf->state.dirty |= PANVK_DYNAMIC_STENCIL_REFERENCE;
    cmdbuf->state.fs_rsd = 0;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-panvk_CreateCommandPool(VkDevice _device,
-                        const VkCommandPoolCreateInfo *pCreateInfo,
-                        const VkAllocationCallbacks *pAllocator,
-                        VkCommandPool *pCmdPool)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   struct panvk_cmd_pool *pool;
-
-   pool = vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*pool), 8,
-                    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   if (pool == NULL)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   VkResult result =
-      vk_command_pool_init(&device->vk, &pool->vk, pCreateInfo, pAllocator);
-   if (result != VK_SUCCESS) {
-      vk_free2(&device->vk.alloc, pAllocator, pool);
-      return result;
-   }
-
-   panvk_bo_pool_init(&pool->desc_bo_pool);
-   panvk_bo_pool_init(&pool->varying_bo_pool);
-   panvk_bo_pool_init(&pool->tls_bo_pool);
-   *pCmdPool = panvk_cmd_pool_to_handle(pool);
-   return VK_SUCCESS;
 }
 
 void

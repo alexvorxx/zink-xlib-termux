@@ -6,24 +6,7 @@
  * Copyright © 2016 Bas Nieuwenhuizen
  * Copyright © 2015 Intel Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "genxml/gen_macros.h"
@@ -34,6 +17,7 @@
 #include "panvk_image.h"
 #include "panvk_image_view.h"
 #include "panvk_private.h"
+#include "panvk_queue.h"
 
 #include "vk_drm_syncobj.h"
 #include "vk_framebuffer.h"
@@ -206,9 +190,8 @@ panvk_signal_event_syncobjs(struct panvk_queue *queue,
    }
 }
 
-VkResult
-panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
-                             struct vk_queue_submit *submit)
+static VkResult
+panvk_queue_submit(struct vk_queue *vk_queue, struct vk_queue_submit *submit)
 {
    struct panvk_queue *queue = container_of(vk_queue, struct panvk_queue, vk);
    struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
@@ -298,6 +281,42 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
 
       panvk_queue_transfer_sync(queue, syncobj->syncobj);
    }
+
+   return VK_SUCCESS;
+}
+
+VkResult
+panvk_per_arch(queue_init)(struct panvk_device *device,
+                           struct panvk_queue *queue, int idx,
+                           const VkDeviceQueueCreateInfo *create_info)
+{
+   VkResult result = vk_queue_init(&queue->vk, &device->vk, create_info, idx);
+   if (result != VK_SUCCESS)
+      return result;
+
+   int ret = drmSyncobjCreate(device->vk.drm_fd, DRM_SYNCOBJ_CREATE_SIGNALED,
+                              &queue->sync);
+   if (ret) {
+      vk_queue_finish(&queue->vk);
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
+   }
+
+   queue->vk.driver_submit = panvk_queue_submit;
+   return VK_SUCCESS;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+panvk_per_arch(QueueWaitIdle)(VkQueue _queue)
+{
+   VK_FROM_HANDLE(panvk_queue, queue, _queue);
+   struct panvk_device *dev = panvk_queue_get_device(queue);
+
+   if (vk_device_is_lost(&dev->vk))
+      return VK_ERROR_DEVICE_LOST;
+
+   int ret = drmSyncobjWait(queue->vk.base.device->drm_fd, &queue->sync, 1,
+                            INT64_MAX, DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL, NULL);
+   assert(!ret);
 
    return VK_SUCCESS;
 }

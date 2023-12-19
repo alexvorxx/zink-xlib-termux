@@ -29,6 +29,7 @@
 #include "panvk_device_memory.h"
 #include "panvk_image.h"
 #include "panvk_private.h"
+#include "panvk_queue.h"
 
 #include "decode.h"
 
@@ -923,50 +924,6 @@ panvk_GetPhysicalDeviceMemoryProperties2(
    };
 }
 
-static VkResult
-panvk_queue_init(struct panvk_device *device, struct panvk_queue *queue,
-                 int idx, const VkDeviceQueueCreateInfo *create_info)
-{
-   struct panvk_physical_device *phys_dev =
-      to_panvk_physical_device(device->vk.physical);
-
-   VkResult result = vk_queue_init(&queue->vk, &device->vk, create_info, idx);
-   if (result != VK_SUCCESS)
-      return result;
-
-   struct drm_syncobj_create create = {
-      .flags = DRM_SYNCOBJ_CREATE_SIGNALED,
-   };
-
-   int ret = drmIoctl(device->vk.drm_fd, DRM_IOCTL_SYNCOBJ_CREATE, &create);
-   if (ret) {
-      vk_queue_finish(&queue->vk);
-      return VK_ERROR_OUT_OF_HOST_MEMORY;
-   }
-
-   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
-
-   switch (arch) {
-   case 6:
-      queue->vk.driver_submit = panvk_v6_queue_submit;
-      break;
-   case 7:
-      queue->vk.driver_submit = panvk_v7_queue_submit;
-      break;
-   default:
-      unreachable("Unsupported architecture");
-   }
-
-   queue->sync = create.handle;
-   return VK_SUCCESS;
-}
-
-static void
-panvk_queue_finish(struct panvk_queue *queue)
-{
-   vk_queue_finish(&queue->vk);
-}
-
 struct panvk_priv_bo *
 panvk_priv_bo_create(struct panvk_device *dev, size_t size, uint32_t flags,
                      const struct VkAllocationCallbacks *alloc,
@@ -1071,6 +1028,13 @@ panvk_priv_bo_destroy(struct panvk_priv_bo *priv_bo,
 /* Always reserve the lower 32MB. */
 #define PANVK_VA_RESERVE_BOTTOM 0x2000000ull
 
+VkResult panvk_v6_queue_init(struct panvk_device *device,
+                             struct panvk_queue *queue, int idx,
+                             const VkDeviceQueueCreateInfo *create_info);
+VkResult panvk_v7_queue_init(struct panvk_device *device,
+                             struct panvk_queue *queue, int idx,
+                             const VkDeviceQueueCreateInfo *create_info);
+
 VKAPI_ATTR VkResult VKAPI_CALL
 panvk_CreateDevice(VkPhysicalDevice physicalDevice,
                    const VkDeviceCreateInfo *pCreateInfo,
@@ -1091,15 +1055,19 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
    const struct vk_command_buffer_ops *cmd_buffer_ops;
    struct vk_device_dispatch_table dispatch_table;
    unsigned arch = pan_arch(physical_device->kmod.props.gpu_prod_id);
+   VkResult (*qinit)(struct panvk_device *, struct panvk_queue *, int,
+                     const VkDeviceQueueCreateInfo *);
 
    switch (arch) {
    case 6:
       dev_entrypoints = &panvk_v6_device_entrypoints;
       cmd_buffer_ops = &panvk_v6_cmd_buffer_ops;
+      qinit = panvk_v6_queue_init;
       break;
    case 7:
       dev_entrypoints = &panvk_v7_device_entrypoints;
       cmd_buffer_ops = &panvk_v7_cmd_buffer_ops;
+      qinit = panvk_v7_queue_init;
       break;
    default:
       unreachable("Unsupported architecture");
@@ -1197,8 +1165,7 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
       device->queue_count[qfi] = queue_create->queueCount;
 
       for (unsigned q = 0; q < queue_create->queueCount; q++) {
-         result =
-            panvk_queue_init(device, &device->queues[qfi][q], q, queue_create);
+         result = qinit(device, &device->queues[qfi][q], q, queue_create);
          if (result != VK_SUCCESS)
             goto fail;
       }
@@ -1261,29 +1228,6 @@ panvk_EnumerateInstanceLayerProperties(uint32_t *pPropertyCount,
                                        VkLayerProperties *pProperties)
 {
    *pPropertyCount = 0;
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-panvk_QueueWaitIdle(VkQueue _queue)
-{
-   VK_FROM_HANDLE(panvk_queue, queue, _queue);
-   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
-
-   if (vk_device_is_lost(&dev->vk))
-      return VK_ERROR_DEVICE_LOST;
-
-   struct drm_syncobj_wait wait = {
-      .handles = (uint64_t)(uintptr_t)(&queue->sync),
-      .count_handles = 1,
-      .timeout_nsec = INT64_MAX,
-      .flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL,
-   };
-   int ret;
-
-   ret = drmIoctl(queue->vk.base.device->drm_fd, DRM_IOCTL_SYNCOBJ_WAIT, &wait);
-   assert(!ret);
-
    return VK_SUCCESS;
 }
 

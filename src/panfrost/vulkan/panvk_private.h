@@ -107,6 +107,7 @@ typedef uint32_t xcb_window_t;
 
 struct panvk_device;
 struct panvk_pipeline_layout;
+struct panvk_queue;
 
 /* Used for internal object allocation. */
 struct panvk_priv_bo {
@@ -257,11 +258,6 @@ panvk_physical_device_extension_supported(struct panvk_physical_device *dev,
                                           const char *name);
 
 #define PANVK_MAX_QUEUE_FAMILIES 1
-
-struct panvk_queue {
-   struct vk_queue vk;
-   uint32_t sync;
-};
 
 struct panvk_device {
    struct vk_device vk;
@@ -467,7 +463,6 @@ VK_DEFINE_HANDLE_CASTS(panvk_instance, vk.base, VkInstance,
                        VK_OBJECT_TYPE_INSTANCE)
 VK_DEFINE_HANDLE_CASTS(panvk_physical_device, vk.base, VkPhysicalDevice,
                        VK_OBJECT_TYPE_PHYSICAL_DEVICE)
-VK_DEFINE_HANDLE_CASTS(panvk_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 
 #ifdef PAN_ARCH
 #include "panvk_vX_cmd_buffer.h"

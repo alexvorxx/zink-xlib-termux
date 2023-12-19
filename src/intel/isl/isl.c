@@ -123,7 +123,7 @@ isl_device_setup_mocs(struct isl_device *dev)
       dev->mocs.blitter_dst = 1 << 1;
       dev->mocs.blitter_src = 1 << 1;
    } else if (dev->info->ver >= 12) {
-      if (intel_device_info_is_mtl(dev->info)) {
+      if (intel_device_info_is_mtl_or_arl(dev->info)) {
          /* Cached L3+L4; BSpec: 45101 */
          dev->mocs.internal = 1 << 1;
          /* Displayables cached to L3+L4:WT */
@@ -270,7 +270,7 @@ isl_mocs(const struct isl_device *dev, isl_surf_usage_flags_t usage,
    if (external)
       return dev->mocs.external | mask;
 
-   if (intel_device_info_is_mtl(dev->info) &&
+   if (intel_device_info_is_mtl_or_arl(dev->info) &&
        (usage & ISL_SURF_USAGE_STREAM_OUT_BIT))
       return dev->mocs.uncached | mask;
 

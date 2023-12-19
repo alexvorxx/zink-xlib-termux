@@ -26,6 +26,7 @@
  */
 
 #include "panvk_instance.h"
+#include "panvk_physical_device.h"
 #include "panvk_private.h"
 
 #include "vk_util.h"

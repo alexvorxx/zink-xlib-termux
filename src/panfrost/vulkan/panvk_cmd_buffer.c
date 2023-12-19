@@ -28,6 +28,7 @@
 
 #include "panvk_buffer.h"
 #include "panvk_cmd_pool.h"
+#include "panvk_physical_device.h"
 #include "panvk_pipeline.h"
 #include "panvk_pipeline_layout.h"
 #include "panvk_private.h"

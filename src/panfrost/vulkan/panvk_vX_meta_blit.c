@@ -27,6 +27,7 @@
 #include "pan_props.h"
 
 #include "panvk_image.h"
+#include "panvk_physical_device.h"
 #include "panvk_private.h"
 
 static void

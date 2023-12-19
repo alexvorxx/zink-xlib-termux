@@ -14,6 +14,7 @@
 
 #include "panvk_entrypoints.h"
 #include "panvk_instance.h"
+#include "panvk_physical_device.h"
 #include "panvk_private.h"
 
 static const struct debug_control panvk_debug_options[] = {

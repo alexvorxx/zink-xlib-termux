@@ -72,6 +72,7 @@
 #include "panvk_instance.h"
 #include "panvk_macros.h"
 #include "panvk_mempool.h"
+#include "panvk_physical_device.h"
 #include "panvk_pipeline.h"
 #include "panvk_pipeline_layout.h"
 #include "panvk_shader.h"
@@ -187,51 +188,8 @@ struct panvk_meta {
    } copy;
 };
 
-struct panvk_physical_device {
-   struct vk_physical_device vk;
-
-   struct {
-      struct pan_kmod_dev *dev;
-      struct pan_kmod_dev_props props;
-   } kmod;
-
-   const struct panfrost_model *model;
-   struct {
-      const struct pan_blendable_format *blendable;
-      const struct panfrost_format *all;
-   } formats;
-
-   char name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
-   uint8_t driver_uuid[VK_UUID_SIZE];
-   uint8_t device_uuid[VK_UUID_SIZE];
-   uint8_t cache_uuid[VK_UUID_SIZE];
-
-   struct vk_sync_type drm_syncobj_type;
-   const struct vk_sync_type *sync_types[2];
-
-   struct wsi_device wsi_device;
-
-   int master_fd;
-};
-
-static inline struct panvk_physical_device *
-to_panvk_physical_device(struct vk_physical_device *phys_dev)
-{
-   return container_of(phys_dev, struct panvk_physical_device, vk);
-}
-
 VkResult panvk_wsi_init(struct panvk_physical_device *physical_device);
 void panvk_wsi_finish(struct panvk_physical_device *physical_device);
-
-uint32_t panvk_physical_device_api_version(struct panvk_physical_device *dev);
-bool
-panvk_physical_device_extension_supported(struct panvk_physical_device *dev,
-                                          const char *name);
-
-void panvk_physical_device_finish(struct panvk_physical_device *device);
-VkResult panvk_physical_device_init(struct panvk_physical_device *device,
-                                    struct panvk_instance *instance,
-                                    drmDevicePtr drm_device);
 
 #define PANVK_MAX_QUEUE_FAMILIES 1
 
@@ -446,8 +404,6 @@ void panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf);
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
 VK_DEFINE_HANDLE_CASTS(panvk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
-VK_DEFINE_HANDLE_CASTS(panvk_physical_device, vk.base, VkPhysicalDevice,
-                       VK_OBJECT_TYPE_PHYSICAL_DEVICE)
 
 #ifdef PAN_ARCH
 #include "panvk_vX_cmd_buffer.h"

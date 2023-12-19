@@ -105,18 +105,15 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
       view->bo = panvk_priv_bo_create(device, bo_size, 0, pAllocator,
                                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
 
-      STATIC_ASSERT(sizeof(view->descs.tex) >= pan_size(TEXTURE));
-
       struct panfrost_ptr ptr = {
          .gpu = view->bo->addr.dev,
          .cpu = view->bo->addr.host,
       };
 
-      GENX(panfrost_new_texture)(&view->pview, &view->descs.tex, &ptr);
+      GENX(panfrost_new_texture)(&view->pview, view->descs.tex.opaque, &ptr);
    }
 
    if (view->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT) {
-      uint8_t *attrib_buf = (uint8_t *)view->descs.img_attrib_buf;
       bool is_3d = image->pimage.layout.dim == MALI_TEXTURE_DIMENSION_3D;
       unsigned offset = image->pimage.data.offset;
       offset +=
@@ -124,7 +121,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
                                  is_3d ? 0 : view->pview.first_layer,
                                  is_3d ? view->pview.first_layer : 0);
 
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER, cfg) {
+      pan_pack(view->descs.img_attrib_buf[0].opaque, ATTRIBUTE_BUFFER, cfg) {
          cfg.type = image->pimage.layout.modifier == DRM_FORMAT_MOD_LINEAR
                        ? MALI_ATTRIBUTE_TYPE_3D_LINEAR
                        : MALI_ATTRIBUTE_TYPE_3D_INTERLEAVED;
@@ -133,8 +130,8 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
          cfg.size = pan_kmod_bo_size(image->bo) - offset;
       }
 
-      attrib_buf += pan_size(ATTRIBUTE_BUFFER);
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER_CONTINUATION_3D, cfg) {
+      pan_pack(view->descs.img_attrib_buf[1].opaque,
+               ATTRIBUTE_BUFFER_CONTINUATION_3D, cfg) {
          unsigned level = view->pview.first_level;
 
          cfg.s_dimension = u_minify(image->pimage.layout.width, level);

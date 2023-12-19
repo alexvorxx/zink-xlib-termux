@@ -296,7 +296,7 @@ panvk_write_tex_desc(struct panvk_descriptor_set *set, uint32_t binding,
 {
    VK_FROM_HANDLE(panvk_image_view, view, pImageInfo->imageView);
 
-   memcpy(panvk_tex_desc(set, binding, elem), view->descs.tex,
+   memcpy(panvk_tex_desc(set, binding, elem), view->descs.tex.opaque,
           pan_size(TEXTURE));
 
    panvk_fill_image_desc(panvk_desc_ubo_data(set, binding, elem), view);

@@ -50,7 +50,7 @@
     BM_CMDLINE: "console=ttyS0,115200n8 rw nfsrootdebug init=/init ip=dhcp root=/dev/nfs nfsroot=,tcp,nfsvers=4.2"
     BM_DTB: tegra124-jetson-tk1
     BM_KERNEL: zImage
-    DEVICE_TYPE: anholt-jetson
+    DEVICE_TYPE: tegra124-jetson-tk1
     FARM: anholt
     GPU_VERSION: nouveau-gk20a
     # 4 CPUs, but spawn a couple extra threads to make sure they stay busy while
@@ -71,6 +71,7 @@
     BM_CMDLINE: "console=ttyS0,115200n8 rw nfsrootdebug init=/init nfsroot=,tcp,nfsvers=4.2"
     BM_DTB: tegra210-p3450-0000
     BM_KERNEL: Image
+    DEVICE_TYPE: tegra210-p3450-0000
     GPU_VERSION: nouveau-gm20b
     # 4 CPUs, but spawn a couple extra threads to make sure they stay busy while
     # some are waiting for the GPU.

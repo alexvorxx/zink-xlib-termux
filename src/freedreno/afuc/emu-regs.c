@@ -240,6 +240,11 @@ emu_get_fifo_reg(struct emu *emu, unsigned n, bool peek)
       return emu_get_gpu_reg(emu, read_addr);
    } else if (n == REG_DATA) {
       /* $data */
+      if (emu->bootstrap_mode) {
+         emu->bootstrap_finished = true;
+         return 0;
+      }
+
       do {
          uint32_t rem = emu->gpr_regs.val[REG_REM];
          assert(rem >= 0);

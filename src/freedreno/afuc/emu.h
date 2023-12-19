@@ -203,6 +203,14 @@ struct emu {
    /* (r)un mode, don't stop for input until next waitin: */
    bool run_mode;
 
+   /* Don't prompt on a read from $data with an empty queue and instead assume
+    * the bootstrap routine has finished and return a dummy value while
+    * setting bootstrap_finished.
+    */
+   bool bootstrap_mode;
+
+   bool bootstrap_finished;
+
    /* carry-bits for add/sub for addhi/subhi
     * TODO: this is probably in a SQE register somewhere
     */

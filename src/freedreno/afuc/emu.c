@@ -460,20 +460,23 @@ emu_step(struct emu *emu)
 void
 emu_run_bootstrap(struct emu *emu)
 {
-   EMU_CONTROL_REG(PACKET_TABLE_WRITE_ADDR);
    EMU_CONTROL_REG(THREAD_SYNC);
 
    emu->quiet = true;
    emu->run_mode = true;
+   emu->bootstrap_mode = true;
+   emu->bootstrap_finished = false;
 
    if (gpuver == 6 && emu->processor == EMU_PROC_LPAC) {
       /* Emulate what the SQE bootstrap routine does after launching LPAC */
       emu_set_reg32(emu, &THREAD_SYNC, 1u << 0);
    }
 
-   while (emu_get_reg32(emu, &PACKET_TABLE_WRITE_ADDR) < 0x80) {
+   while (!emu->bootstrap_finished && !emu->waitin) {
       emu_step(emu);
    }
+
+   emu->bootstrap_mode = false;
 }
 
 

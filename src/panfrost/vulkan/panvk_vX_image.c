@@ -116,8 +116,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
    if (view->vk.usage &
        (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) {
       unsigned bo_size =
-         GENX(panfrost_estimate_texture_payload_size)(&view->pview) +
-         pan_size(TEXTURE);
+         GENX(panfrost_estimate_texture_payload_size)(&view->pview);
 
       view->bo = panvk_priv_bo_create(device, bo_size, 0, pAllocator,
                                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);

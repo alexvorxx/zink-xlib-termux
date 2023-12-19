@@ -256,11 +256,6 @@ bool
 panvk_physical_device_extension_supported(struct panvk_physical_device *dev,
                                           const char *name);
 
-struct panvk_pipeline_cache {
-   struct vk_object_base base;
-   VkAllocationCallbacks alloc;
-};
-
 #define PANVK_MAX_QUEUE_FAMILIES 1
 
 struct panvk_queue {
@@ -1075,8 +1070,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image, vk.base, VkImage,
                                VK_OBJECT_TYPE_IMAGE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image_view, vk.base, VkImageView,
                                VK_OBJECT_TYPE_IMAGE_VIEW);
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_cache, base, VkPipelineCache,
-                               VK_OBJECT_TYPE_PIPELINE_CACHE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline,
                                VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,

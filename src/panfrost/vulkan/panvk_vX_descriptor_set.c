@@ -46,13 +46,10 @@
 
 #include "panvk_buffer.h"
 #include "panvk_cs.h"
+#include "panvk_descriptor_set.h"
 #include "panvk_sampler.h"
 
 #define PANVK_DESCRIPTOR_ALIGN 8
-
-struct panvk_bview_desc {
-   uint32_t elems;
-};
 
 static void
 panvk_fill_bview_desc(struct panvk_bview_desc *desc,
@@ -60,14 +57,6 @@ panvk_fill_bview_desc(struct panvk_bview_desc *desc,
 {
    desc->elems = view->vk.elements;
 }
-
-struct panvk_image_desc {
-   uint16_t width;
-   uint16_t height;
-   uint16_t depth;
-   uint8_t levels;
-   uint8_t samples;
-};
 
 static void
 panvk_fill_image_desc(struct panvk_image_desc *desc,

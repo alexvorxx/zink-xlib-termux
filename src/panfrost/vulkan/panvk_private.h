@@ -730,11 +730,6 @@ struct panvk_batch *panvk_cmd_open_batch(struct panvk_cmd_buffer *cmdbuf);
 
 void panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf);
 
-struct panvk_event {
-   struct vk_object_base base;
-   uint32_t syncobj;
-};
-
 struct panvk_shader {
    struct pan_shader_info info;
    struct util_dynarray binary;
@@ -772,7 +767,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set, base, VkDescriptorSet,
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set_layout, vk.base,
                                VkDescriptorSetLayout,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
                                VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 

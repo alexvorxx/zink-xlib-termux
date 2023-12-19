@@ -24,6 +24,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "panvk_shader.h"
 #include "panvk_private.h"
 
 #include "pan_shader.h"

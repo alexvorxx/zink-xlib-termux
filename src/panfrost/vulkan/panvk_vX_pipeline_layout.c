@@ -11,6 +11,7 @@
 #include "panvk_pipeline_layout.h"
 #include "panvk_private.h"
 #include "panvk_sampler.h"
+#include "panvk_shader.h"
 
 #include "util/mesa-sha1.h"
 

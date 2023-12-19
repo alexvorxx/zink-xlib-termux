@@ -73,6 +73,7 @@
 #include "panvk_mempool.h"
 #include "panvk_pipeline.h"
 #include "panvk_pipeline_layout.h"
+#include "panvk_shader.h"
 #include "panvk_varyings.h"
 #include "vk_extensions.h"
 
@@ -103,10 +104,6 @@ typedef uint32_t xcb_window_t;
 #define MAX_VIEWS               8
 
 #define NUM_DEPTH_CLEAR_PIPELINES 3
-
-#define PANVK_SYSVAL_UBO_INDEX     0
-#define PANVK_PUSH_CONST_UBO_INDEX 1
-#define PANVK_NUM_BUILTIN_UBOS     2
 
 struct panvk_device;
 struct panvk_pipeline_layout;
@@ -352,36 +349,6 @@ enum panvk_dynamic_state_bits {
    PANVK_DYNAMIC_ALL = (1 << 12) - 1,
 };
 
-union panvk_sysval_vec4 {
-   float f32[4];
-   uint32_t u32[4];
-};
-
-struct panvk_sysvals {
-   union {
-      struct {
-         /* Only for graphics */
-         union panvk_sysval_vec4 viewport_scale;
-         union panvk_sysval_vec4 viewport_offset;
-         union panvk_sysval_vec4 blend_constants;
-
-         uint32_t first_vertex;
-         uint32_t base_vertex;
-         uint32_t base_instance;
-      };
-
-      struct {
-         /* Only for compute */
-         union panvk_sysval_vec4 num_work_groups;
-         union panvk_sysval_vec4 local_group_size;
-      };
-   };
-
-   /* The back-end compiler doesn't know about any sysvals after this point */
-
-   struct panvk_ssbo_addr dyn_ssbos[MAX_DYNAMIC_STORAGE_BUFFERS];
-};
-
 struct panvk_descriptor_state {
    uint32_t dirty;
    const struct panvk_descriptor_set *sets[MAX_SETS];
@@ -553,25 +520,6 @@ struct panvk_batch *panvk_cmd_open_batch(struct panvk_cmd_buffer *cmdbuf);
 
 void panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf);
 
-struct panvk_shader {
-   struct pan_shader_info info;
-   struct util_dynarray binary;
-   unsigned sysval_ubo;
-   struct pan_compute_dim local_size;
-   bool has_img_access;
-};
-
-struct panvk_shader *
-panvk_shader_create(struct panvk_device *dev, gl_shader_stage stage,
-                    const VkPipelineShaderStageCreateInfo *stage_info,
-                    const struct panvk_pipeline_layout *layout,
-                    unsigned sysval_ubo, struct pan_blend_state *blend_state,
-                    bool static_blend_constants,
-                    const VkAllocationCallbacks *alloc);
-
-void panvk_shader_destroy(struct panvk_device *dev, struct panvk_shader *shader,
-                          const VkAllocationCallbacks *alloc);
-
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
 VK_DEFINE_HANDLE_CASTS(panvk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
@@ -606,24 +554,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_cmd_pool, vk.base, VkCommandPool,
 #include "panvk_vX_meta.h"
 #undef PAN_ARCH
 #undef panvk_per_arch
-#endif
-
-#ifdef PAN_ARCH
-bool panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
-                                          const struct pan_blend_state *state,
-                                          unsigned rt);
-
-struct panvk_shader *panvk_per_arch(shader_create)(
-   struct panvk_device *dev, gl_shader_stage stage,
-   const VkPipelineShaderStageCreateInfo *stage_info,
-   const struct panvk_pipeline_layout *layout, unsigned sysval_ubo,
-   struct pan_blend_state *blend_state, bool static_blend_constants,
-   const VkAllocationCallbacks *alloc);
-struct nir_shader;
-
-bool panvk_per_arch(nir_lower_descriptors)(
-   struct nir_shader *nir, struct panvk_device *dev,
-   const struct panvk_pipeline_layout *layout, bool *has_img_access_out);
 #endif
 
 #endif /* PANVK_PRIVATE_H */

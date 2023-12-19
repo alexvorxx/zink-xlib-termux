@@ -7285,12 +7285,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       const fs_reg value = retype(get_nir_src(ntb, instr->src[0]),
                                   BRW_REGISTER_TYPE_UD);
       struct brw_reg flag = brw_flag_reg(0, 0);
-      /* FIXME: For SIMD32 programs, this causes us to stomp on f0.1 as well
-       * as f0.0.  This is a problem for fragment programs as we currently use
-       * f0.1 for discards.  Fortunately, we don't support SIMD32 fragment
-       * programs yet so this isn't a problem.  When we do, something will
-       * have to change.
-       */
+
       if (s.dispatch_width == 32)
          flag.type = BRW_REGISTER_TYPE_UD;
 

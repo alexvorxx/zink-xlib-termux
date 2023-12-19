@@ -561,8 +561,8 @@ main(int argc, char **argv)
     * around, and behavior of special regs is a bit different.  Right
     * now we only bother to support the a6xx variant.
     */
-   if (emulator && (gpuver != 6)) {
-      fprintf(stderr, "Emulator only supported on a6xx!\n");
+   if (emulator && (gpuver < 6 || gpuver > 7)) {
+      fprintf(stderr, "Emulator only supported on a6xx-a7xx!\n");
       return 1;
    }
 

@@ -278,8 +278,13 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* TODO: shaderResourceResidency */
       .shaderResourceMinLod = info->cls_eng3d >= VOLTA_A,
       .sparseBinding = true,
+      .sparseResidency2Samples = info->cls_eng3d >= MAXWELL_A,
+      .sparseResidency4Samples = info->cls_eng3d >= MAXWELL_A,
+      .sparseResidency8Samples = info->cls_eng3d >= MAXWELL_A,
+      .sparseResidencyAliased = info->cls_eng3d >= MAXWELL_A,
       .sparseResidencyBuffer = info->cls_eng3d >= MAXWELL_A,
-      /* TODO: sparseResidency* */
+      .sparseResidencyImage2D = info->cls_eng3d >= MAXWELL_A,
+      .sparseResidencyImage3D = info->cls_eng3d >= MAXWELL_A,
       .variableMultisampleRate = true,
       .inheritedQueries = true,
 
@@ -702,6 +707,10 @@ nvk_get_device_properties(const struct nvk_instance *instance,
 
       /* Vulkan 1.0 sparse properties */
       .sparseResidencyNonResidentStrict = true,
+      .sparseResidencyAlignedMipSize = true,
+      .sparseResidencyStandard2DBlockShape = true,
+      .sparseResidencyStandard2DMultisampleBlockShape = true,
+      .sparseResidencyStandard3DBlockShape = true,
 
       /* Vulkan 1.1 properties */
       .subgroupSize = 32,

@@ -36,13 +36,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef HAVE_VALGRIND
-#include <memcheck.h>
-#include <valgrind.h>
-#define VG(x) x
-#else
-#define VG(x)
-#endif
 
 #include "c11/threads.h"
 #include "compiler/shader_enums.h"
@@ -74,6 +67,7 @@
 #include "pan_desc.h"
 #include "pan_jc.h"
 #include "pan_texture.h"
+#include "panvk_macros.h"
 #include "panvk_mempool.h"
 #include "panvk_varyings.h"
 #include "vk_extensions.h"
@@ -114,8 +108,6 @@ typedef uint32_t xcb_window_t;
 #define PANVK_SYSVAL_UBO_INDEX     0
 #define PANVK_PUSH_CONST_UBO_INDEX 1
 #define PANVK_NUM_BUILTIN_UBOS     2
-
-#define panvk_stub() assert(!"stub")
 
 struct panvk_device;
 
@@ -1022,28 +1014,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_sampler, vk.base, VkSampler,
                                VK_OBJECT_TYPE_SAMPLER)
 
-#define panvk_arch_name(name, version) panvk_##version##_##name
-
-#define panvk_arch_dispatch(arch, name, ...)                                   \
-   do {                                                                        \
-      switch (arch) {                                                          \
-      case 6:                                                                  \
-         panvk_arch_name(name, v6)(__VA_ARGS__);                               \
-         break;                                                                \
-      case 7:                                                                  \
-         panvk_arch_name(name, v7)(__VA_ARGS__);                               \
-         break;                                                                \
-      default:                                                                 \
-         unreachable("Unsupported architecture");                              \
-      }                                                                        \
-   } while (0)
-
 #ifdef PAN_ARCH
-#if PAN_ARCH == 6
-#define panvk_per_arch(name) panvk_arch_name(name, v6)
-#elif PAN_ARCH == 7
-#define panvk_per_arch(name) panvk_arch_name(name, v7)
-#endif
 #include "panvk_vX_cmd_buffer.h"
 #include "panvk_vX_cs.h"
 #include "panvk_vX_device.h"

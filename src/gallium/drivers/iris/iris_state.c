@@ -1143,9 +1143,6 @@ iris_init_common_context(struct iris_batch *batch)
       reg.BindingTableAlignment = BTP_18_8;
       reg.BindingTableAlignmentMask = true;
    }
-#define IRIS_BT_OFFSET_SHIFT 3
-#else
-#define IRIS_BT_OFFSET_SHIFT 0
 #endif
 
 #if GFX_VERx10 == 125

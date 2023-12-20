@@ -80,6 +80,12 @@ __gen_get_batch_address(struct iris_batch *batch, void *location)
 #include "genxml/gen_macros.h"
 #include "genxml/genX_bits.h"
 
+#if GFX_VER >= 11 && GFX_VERx10 < 125
+#define IRIS_BT_OFFSET_SHIFT 3
+#else
+#define IRIS_BT_OFFSET_SHIFT 0
+#endif
+
 /* CS_GPR(15) is reserved for combining conditional rendering predicates
  * with GL_ARB_indirect_parameters draw number predicates.
  */

@@ -678,12 +678,19 @@ lower_inline_ubo(nir_builder *b, nir_intrinsic_instr *intrin, void *cb_data)
    unsigned base = UINT_MAX;
    unsigned range;
    bool use_load = false;
+   bool use_ldg_k =
+      params->dev->physical_device->info->a7xx.load_inline_uniforms_via_preamble_ldgk;
+
    for (unsigned i = 0; i < const_state->num_inline_ubos; i++) {
       if (const_state->ubos[i].base == binding.desc_set &&
           const_state->ubos[i].offset == binding_layout->offset) {
-         base = const_state->ubos[i].const_offset_vec4 * 4;
-         use_load = const_state->ubos[i].push_address;
          range = const_state->ubos[i].size_vec4 * 4;
+         if (use_ldg_k) {
+            base = i * 2;
+         } else {
+            use_load = const_state->ubos[i].push_address;
+            base = const_state->ubos[i].const_offset_vec4 * 4;
+         }
          break;
       }
    }
@@ -703,9 +710,15 @@ lower_inline_ubo(nir_builder *b, nir_intrinsic_instr *intrin, void *cb_data)
    b->cursor = nir_before_instr(&intrin->instr);
    nir_def *val;
 
-   if (use_load) {
-      nir_def *base_addr =
-         nir_load_uniform(b, 2, 32, nir_imm_int(b, 0), .base = base);
+   if (use_load || use_ldg_k) {
+      nir_def *base_addr;
+      if (use_ldg_k) {
+         base_addr = ir3_load_driver_ubo(b, 2,
+                                         &params->shader->const_state.inline_uniforms_ubo,
+                                         base);
+      } else {
+         base_addr = nir_load_uniform(b, 2, 32, nir_imm_int(b, 0), .base = base);
+      }
       val = nir_load_global_ir3(b, intrin->num_components,
                                 intrin->def.bit_size,
                                 base_addr, nir_ishr_imm(b, offset, 2),
@@ -847,6 +860,8 @@ tu_lower_io(nir_shader *shader, struct tu_device *dev,
    /* Reserve space for inline uniforms, so we can always load them from
     * constants and not setup a UBO descriptor for them.
     */
+   bool use_ldg_k =
+      dev->physical_device->info->a7xx.load_inline_uniforms_via_preamble_ldgk;
    for (unsigned set = 0; set < layout->num_sets; set++) {
       const struct tu_descriptor_set_layout *desc_layout =
          layout->set[set].layout;
@@ -883,7 +898,7 @@ tu_lower_io(nir_shader *shader, struct tu_device *dev,
           * executed. Given the small max size, there shouldn't be much reason
           * to use variable size anyway.
           */
-         bool push_address = desc_layout->has_variable_descriptors &&
+         bool push_address = !use_ldg_k && desc_layout->has_variable_descriptors &&
             b == desc_layout->binding_count - 1;
 
          if (push_address) {
@@ -902,7 +917,8 @@ tu_lower_io(nir_shader *shader, struct tu_device *dev,
             .size_vec4 = size_vec4,
          };
 
-         reserved_consts_vec4 += align(size_vec4, dev->compiler->const_upload_unit);
+         if (!use_ldg_k)
+            reserved_consts_vec4 += align(size_vec4, dev->compiler->const_upload_unit);
       }
    }
 
@@ -2259,6 +2275,7 @@ tu_shader_init(struct tu_device *dev, const void *key_data, size_t key_size)
 
    shader->const_state.fdm_ubo.idx = -1;
    shader->const_state.dynamic_offsets_ubo.idx = -1;
+   shader->const_state.inline_uniforms_ubo.idx = -1;
 
    return shader;
 }

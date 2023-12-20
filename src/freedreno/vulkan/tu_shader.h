@@ -52,6 +52,7 @@ struct tu_const_state
 
    struct ir3_driver_ubo fdm_ubo;
    struct ir3_driver_ubo dynamic_offsets_ubo;
+   struct ir3_driver_ubo inline_uniforms_ubo;
 };
 
 struct tu_shader

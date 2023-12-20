@@ -4279,6 +4279,7 @@ TU_GENX(tu_CmdNextSubpass2);
 
 static uint32_t
 tu6_user_consts_size(const struct tu_const_state *const_state,
+                     bool ldgk,
                      gl_shader_stage type)
 {
    uint32_t dwords = 0;
@@ -4289,7 +4290,11 @@ tu6_user_consts_size(const struct tu_const_state *const_state,
       assert(num_units > 0);
    }
 
-   dwords += 8 * const_state->num_inline_ubos;
+   if (ldgk) {
+      dwords += 6 + (2 * const_state->num_inline_ubos + 4);
+   } else {
+      dwords += 8 * const_state->num_inline_ubos;
+   }
 
    return dwords;
 }
@@ -4358,6 +4363,60 @@ tu6_emit_inline_ubo(struct tu_cs *cs,
 }
 
 static void
+tu7_emit_inline_ubo(struct tu_cs *cs,
+                    const struct tu_const_state *const_state,
+                    const struct ir3_const_state *ir_const_state,
+                    unsigned constlen,
+                    gl_shader_stage type,
+                    struct tu_descriptor_state *descriptors)
+{
+   uint64_t addresses[7] = {0};
+   unsigned offset = const_state->inline_uniforms_ubo.idx;
+
+   if (offset == -1)
+      return;
+
+   for (unsigned i = 0; i < const_state->num_inline_ubos; i++) {
+      const struct tu_inline_ubo *ubo = &const_state->ubos[i];
+
+      uint64_t va = descriptors->set_iova[ubo->base] & ~0x3f;
+      addresses[i] = va + ubo->offset;
+   }
+
+   /* A7XX TODO: Emit data via sub_cs instead of NOP */
+   uint64_t iova = tu_cs_emit_data_nop(cs, (uint32_t *)addresses, const_state->num_inline_ubos * 2, 4);
+
+   tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 5);
+   tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
+            CP_LOAD_STATE6_0_STATE_TYPE(ST6_UBO) |
+            CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+            CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
+            CP_LOAD_STATE6_0_NUM_UNIT(1));
+   tu_cs_emit(cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
+   tu_cs_emit(cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
+   int size_vec4s = DIV_ROUND_UP(const_state->num_inline_ubos * 2, 4);
+   tu_cs_emit_qw(cs, iova | ((uint64_t)A6XX_UBO_1_SIZE(size_vec4s) << 32));
+}
+
+static void
+tu_emit_inline_ubo(struct tu_cs *cs,
+                   const struct tu_const_state *const_state,
+                   const struct ir3_const_state *ir_const_state,
+                   unsigned constlen,
+                   gl_shader_stage type,
+                   struct tu_descriptor_state *descriptors)
+{
+   if (!const_state->num_inline_ubos)
+      return;
+
+   if (cs->device->physical_device->info->a7xx.load_inline_uniforms_via_preamble_ldgk) {
+      tu7_emit_inline_ubo(cs, const_state, ir_const_state, constlen, type, descriptors);
+   } else {
+      tu6_emit_inline_ubo(cs, const_state, constlen, type, descriptors);
+   }
+}
+
+static void
 tu6_emit_shared_consts(struct tu_cs *cs,
                        const struct tu_push_constant_range *shared_consts,
                        uint32_t *push_constants,
@@ -4410,12 +4469,13 @@ tu6_const_size(struct tu_cmd_buffer *cmd,
       dwords += shared_consts->dwords + 1;
    }
 
+   bool ldgk = cmd->device->physical_device->info->a7xx.load_inline_uniforms_via_preamble_ldgk;
    if (compute) {
       dwords +=
-         tu6_user_consts_size(&cmd->state.shaders[MESA_SHADER_COMPUTE]->const_state, MESA_SHADER_COMPUTE);
+         tu6_user_consts_size(&cmd->state.shaders[MESA_SHADER_COMPUTE]->const_state, ldgk, MESA_SHADER_COMPUTE);
    } else {
       for (uint32_t type = MESA_SHADER_VERTEX; type <= MESA_SHADER_FRAGMENT; type++)
-         dwords += tu6_user_consts_size(&cmd->state.shaders[type]->const_state, (gl_shader_stage) type);
+         dwords += tu6_user_consts_size(&cmd->state.shaders[type]->const_state, ldgk, (gl_shader_stage) type);
    }
 
    return dwords;
@@ -4447,8 +4507,9 @@ tu_emit_consts(struct tu_cmd_buffer *cmd, bool compute)
       tu6_emit_per_stage_push_consts(
          &cs, &cmd->state.shaders[MESA_SHADER_COMPUTE]->const_state,
          MESA_SHADER_COMPUTE, cmd->push_constants);
-      tu6_emit_inline_ubo(
+      tu_emit_inline_ubo(
          &cs, &cmd->state.shaders[MESA_SHADER_COMPUTE]->const_state,
+         cmd->state.shaders[MESA_SHADER_COMPUTE]->variant->const_state,
          cmd->state.shaders[MESA_SHADER_COMPUTE]->variant->constlen,
          MESA_SHADER_COMPUTE,
          tu_get_descriptors_state(cmd, VK_PIPELINE_BIND_POINT_COMPUTE));
@@ -4461,8 +4522,9 @@ tu_emit_consts(struct tu_cmd_buffer *cmd, bool compute)
          tu6_emit_per_stage_push_consts(&cs, &link->tu_const_state,
                                         (gl_shader_stage) type,
                                         cmd->push_constants);
-         tu6_emit_inline_ubo(&cs, &link->tu_const_state, link->constlen,
-                             (gl_shader_stage) type, descriptors);
+         tu_emit_inline_ubo(&cs, &link->tu_const_state,
+                            &link->const_state, link->constlen,
+                            (gl_shader_stage) type, descriptors);
       }
    }
 

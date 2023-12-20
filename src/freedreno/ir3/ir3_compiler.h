@@ -251,6 +251,7 @@ struct ir3_compiler {
    bool stsc_duplication_quirk;
 
    bool load_shader_consts_via_preamble;
+   bool load_inline_uniforms_via_preamble_ldgk;
 };
 
 void ir3_compiler_destroy(struct ir3_compiler *compiler);

@@ -1713,6 +1713,18 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
       divergence_analysis_dirty = true;
    }
 
+   /* nir_opt_uniform_subgroup can create some operations (e.g.,
+    * load_subgroup_lt_mask) that need to be lowered again.
+    */
+   if (OPT(nir_opt_uniform_subgroup)) {
+      const nir_lower_subgroups_options subgroups_options = {
+         .ballot_bit_size = 32,
+         .ballot_components = 1,
+         .lower_subgroup_masks = true,
+      };
+      OPT(nir_lower_subgroups, &subgroups_options);
+   }
+
    /* Do this only after the last opt_gcm. GCM will undo this lowering. */
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       if (divergence_analysis_dirty) {

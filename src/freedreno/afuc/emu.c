@@ -554,7 +554,7 @@ emu_init(struct emu *emu)
       break;
    }
 
-   if (emu->gpu_id == 730) {
+   if (emu->gpu_id == 730 || emu->gpu_id == 740) {
       emu_set_control_reg(emu, 0xef, 1 << 21);
       emu_set_control_reg(emu, 0, 7 << 28);
    } else if (emu->gpu_id == 660) {

@@ -881,6 +881,9 @@ void vpe_color_get_color_space_and_tf(
     case VPE_TF_BT709:
         *tf = TRANSFER_FUNC_BT709;
         break;
+    case VPE_TF_HLG:
+        *tf = TRANSFER_FUNC_HLG;
+        break;
     default:
         break;
     }
@@ -974,7 +977,7 @@ void vpe_convert_full_range_color_enum(enum color_space *cs)
 bool vpe_is_HDR(enum color_transfer_func tf)
 {
 
-    return (tf == TRANSFER_FUNC_PQ2084 || tf == TRANSFER_FUNC_LINEAR_0_125);
+    return (tf == TRANSFER_FUNC_PQ2084 || tf == TRANSFER_FUNC_LINEAR_0_125 || tf == TRANSFER_FUNC_HLG);
 }
 
 /*

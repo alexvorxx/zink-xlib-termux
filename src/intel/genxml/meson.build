@@ -123,6 +123,7 @@ genX_cl_included_symbols = [
   '3DSTATE_VERTEX_BUFFERS',
   '3DPRIMITIVE',
   '3DPRIMITIVE_EXTENDED',
+  'MI_ARB_CHECK',
   'MI_BATCH_BUFFER_START',
   # structures
   'VERTEX_BUFFER_STATE',

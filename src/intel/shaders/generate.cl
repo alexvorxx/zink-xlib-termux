@@ -38,7 +38,6 @@ void genX(write_VERTEX_BUFFER_STATE)(global void *dst_ptr,
    GENX(VERTEX_BUFFER_STATE_pack)(dst_ptr, &v);
 }
 
-#if GFX_VER == 9
 void genX(write_3DPRIMITIVE)(global void *dst_ptr,
                              bool is_predicated,
                              bool is_indexed,
@@ -64,7 +63,6 @@ void genX(write_3DPRIMITIVE)(global void *dst_ptr,
    };
    GENX(3DPRIMITIVE_pack)(dst_ptr, &v);
 }
-#endif
 
 #if GFX_VER >= 11
 void genX(write_3DPRIMITIVE_EXTENDED)(global void *dst_ptr,

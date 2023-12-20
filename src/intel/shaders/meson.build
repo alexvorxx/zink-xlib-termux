@@ -19,6 +19,7 @@ intel_shader_files = files(
   'libintel_shaders.h',
   'generate.cl',
   'generate_draws.cl',
+  'generate_draws_iris.cl',
   'memcpy.cl',
   'query_copy.cl',
 )

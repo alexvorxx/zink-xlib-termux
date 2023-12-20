@@ -120,7 +120,7 @@ void genX(write_draw)(global uint32_t *dst_ptr,
                       bool uses_drawid,
                       uint32_t mocs)
 {
-#if GFX_VER == 9
+#if GFX_VER <= 9
    if (uses_base || uses_drawid) {
       uint32_t vertex_buffer_count =
          (uses_base ? 1 : 0) + (uses_drawid ? 1 : 0);

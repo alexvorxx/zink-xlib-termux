@@ -29,7 +29,8 @@ foreach input_arg : intel_shader_files
   prepended_input_args += ['--in', input_arg]
 endforeach
 
-intel_shaders_gens = [ [ 90,   9],
+intel_shaders_gens = [ [ 80,   8],
+                       [ 90,   9],
                        [110,  11],
                        [120,  12],
                        [125, 125],

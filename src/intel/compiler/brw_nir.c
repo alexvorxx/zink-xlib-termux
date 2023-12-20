@@ -1699,12 +1699,14 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    NIR_PASS(_, nir, nir_convert_to_lcssa, true, true);
    NIR_PASS_V(nir, nir_divergence_analysis);
 
+   static const nir_lower_subgroups_options subgroups_options = {
+      .ballot_bit_size = 32,
+      .ballot_components = 1,
+      .lower_elect = true,
+      .lower_subgroup_masks = true,
+   };
+
    if (OPT(nir_opt_uniform_atomics)) {
-      const nir_lower_subgroups_options subgroups_options = {
-         .ballot_bit_size = 32,
-         .ballot_components = 1,
-         .lower_elect = true,
-      };
       OPT(nir_lower_subgroups, &subgroups_options);
 
       if (OPT(nir_lower_int64))
@@ -1716,12 +1718,13 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    /* nir_opt_uniform_subgroup can create some operations (e.g.,
     * load_subgroup_lt_mask) that need to be lowered again.
     */
-   if (OPT(nir_opt_uniform_subgroup)) {
-      const nir_lower_subgroups_options subgroups_options = {
-         .ballot_bit_size = 32,
-         .ballot_components = 1,
-         .lower_subgroup_masks = true,
-      };
+   if (OPT(nir_opt_uniform_subgroup, &subgroups_options)) {
+      /* Some of the optimizations can generate 64-bit integer multiplication
+       * that must be lowered.
+       */
+      if (OPT(nir_lower_int64))
+         brw_nir_optimize(nir, is_scalar, devinfo);
+
       OPT(nir_lower_subgroups, &subgroups_options);
    }
 

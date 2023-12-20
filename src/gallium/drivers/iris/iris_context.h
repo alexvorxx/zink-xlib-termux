@@ -560,6 +560,13 @@ struct iris_compiled_shader {
    uint8_t derived_data[0];
 };
 
+static inline uint64_t
+KSP(const struct iris_compiled_shader *shader)
+{
+   struct iris_resource *res = (void *) shader->assembly.res;
+   return iris_bo_offset_from_base_address(res->bo) + shader->assembly.offset;
+}
+
 /**
  * API context state that is replicated per shader stage.
  */

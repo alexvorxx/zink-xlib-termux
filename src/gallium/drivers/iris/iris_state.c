@@ -4877,13 +4877,6 @@ iris_populate_cs_key(const struct iris_context *ice,
 {
 }
 
-static uint64_t
-KSP(const struct iris_compiled_shader *shader)
-{
-   struct iris_resource *res = (void *) shader->assembly.res;
-   return iris_bo_offset_from_base_address(res->bo) + shader->assembly.offset;
-}
-
 static uint32_t
 encode_sampler_count(const struct iris_compiled_shader *shader)
 {

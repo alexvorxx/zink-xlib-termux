@@ -8537,6 +8537,189 @@ iris_upload_indirect_render_state(struct iris_context *ice,
 }
 
 static void
+iris_upload_indirect_shader_render_state(struct iris_context *ice,
+                                         const struct pipe_draw_info *draw,
+                                         const struct pipe_draw_indirect_info *indirect,
+                                         const struct pipe_draw_start_count_bias *sc)
+{
+   assert(indirect);
+
+   struct iris_batch *batch = &ice->batches[IRIS_BATCH_RENDER];
+   UNUSED struct iris_screen *screen = batch->screen;
+   UNUSED const struct intel_device_info *devinfo = screen->devinfo;
+
+   if (ice->state.dirty & IRIS_DIRTY_VERTEX_BUFFER_FLUSHES)
+      flush_vbos(ice, batch);
+
+   iris_batch_sync_region_start(batch);
+
+   /* Always pin the binder.  If we're emitting new binding table pointers,
+    * we need it.  If not, we're probably inheriting old tables via the
+    * context, and need it anyway.  Since true zero-bindings cases are
+    * practically non-existent, just pin it and avoid last_res tracking.
+    */
+   iris_use_pinned_bo(batch, ice->state.binder.bo, false,
+                      IRIS_DOMAIN_NONE);
+
+   if (!batch->contains_draw) {
+      if (GFX_VER == 12) {
+         /* Re-emit constants when starting a new batch buffer in order to
+          * work around push constant corruption on context switch.
+          *
+          * XXX - Provide hardware spec quotation when available.
+          */
+         ice->state.stage_dirty |= (IRIS_STAGE_DIRTY_CONSTANTS_VS  |
+                                    IRIS_STAGE_DIRTY_CONSTANTS_TCS |
+                                    IRIS_STAGE_DIRTY_CONSTANTS_TES |
+                                    IRIS_STAGE_DIRTY_CONSTANTS_GS  |
+                                    IRIS_STAGE_DIRTY_CONSTANTS_FS);
+      }
+      batch->contains_draw = true;
+   }
+
+   if (!batch->contains_draw_with_next_seqno) {
+      iris_restore_render_saved_bos(ice, batch, draw);
+      batch->contains_draw_with_next_seqno = true;
+   }
+
+   if (draw->index_size > 0)
+      iris_emit_index_buffer(ice, batch, draw, sc);
+
+   /* Make sure we have enough space to keep all the commands in the single BO
+    * (because of the jumps)
+    */
+   iris_require_command_space(batch, 2000);
+
+#ifndef NDEBUG
+   struct iris_bo *command_bo = batch->bo;
+#endif
+
+   /* Jump point to generate more draw if we run out of space in the ring
+    * buffer.
+    */
+   uint64_t gen_addr = iris_batch_current_address_u64(batch);
+
+   iris_handle_always_flush_cache(batch);
+
+#if GFX_VER == 9
+   iris_emit_pipe_control_flush(batch, "before generation",
+                                PIPE_CONTROL_VF_CACHE_INVALIDATE);
+#endif
+
+   struct iris_address params_addr;
+   struct iris_gen_indirect_params *params =
+      genX(emit_indirect_generate)(batch, draw, indirect, sc,
+                                   &params_addr);
+
+   iris_emit_pipe_control_flush(batch, "after generation flush",
+                                ((ice->state.vs_uses_draw_params ||
+                                  ice->state.vs_uses_derived_draw_params) ?
+                                 PIPE_CONTROL_VF_CACHE_INVALIDATE : 0) |
+                                PIPE_CONTROL_STALL_AT_SCOREBOARD |
+                                PIPE_CONTROL_DATA_CACHE_FLUSH |
+                                PIPE_CONTROL_CS_STALL);
+
+   trace_intel_begin_draw(&batch->trace);
+
+   /* Always pin the binder.  If we're emitting new binding table pointers,
+    * we need it.  If not, we're probably inheriting old tables via the
+    * context, and need it anyway.  Since true zero-bindings cases are
+    * practically non-existent, just pin it and avoid last_res tracking.
+    */
+   iris_use_pinned_bo(batch, ice->state.binder.bo, false,
+                      IRIS_DOMAIN_NONE);
+
+   /* Wa_1306463417 - Send HS state for every primitive on gfx11.
+    * Wa_16011107343 (same for gfx12)
+    * We implement this by setting TCS dirty on each draw.
+    */
+   if ((INTEL_NEEDS_WA_1306463417 || INTEL_NEEDS_WA_16011107343) &&
+       ice->shaders.prog[MESA_SHADER_TESS_CTRL]) {
+      ice->state.stage_dirty |= IRIS_STAGE_DIRTY_TCS;
+   }
+
+   iris_upload_dirty_render_state(ice, batch, draw, true);
+
+   iris_measure_snapshot(ice, batch, INTEL_SNAPSHOT_DRAW, draw, indirect, sc);
+
+   genX(maybe_emit_breakpoint)(batch, true);
+
+#if GFX_VER >= 12
+   iris_emit_cmd(batch, GENX(MI_ARB_CHECK), arb) {
+      arb.PreParserDisableMask = true;
+      arb.PreParserDisable = true;
+   }
+#endif
+
+   iris_emit_cmd(batch, GENX(MI_BATCH_BUFFER_START), bbs) {
+      bbs.AddressSpaceIndicator = ASI_PPGTT;
+      bbs.BatchBufferStartAddress = (struct iris_address) {
+         .bo = ice->draw.generation.ring_bo,
+      };
+   }
+
+   /* Run the ring buffer one more time with the next set of commands */
+   uint64_t inc_addr = iris_batch_current_address_u64(batch);
+   {
+      iris_emit_pipe_control_flush(batch,
+                                   "post generated draws wait",
+                                   PIPE_CONTROL_STALL_AT_SCOREBOARD |
+                                   PIPE_CONTROL_CS_STALL);
+
+      struct mi_builder b;
+      mi_builder_init(&b, batch->screen->devinfo, batch);
+
+      struct iris_address draw_base_addr = iris_address_add(
+         params_addr,
+         offsetof(struct iris_gen_indirect_params, draw_base));
+
+      const uint32_t mocs =
+         iris_mocs(draw_base_addr.bo, &screen->isl_dev, 0);
+      mi_builder_set_mocs(&b, mocs);
+
+      mi_store(&b, mi_mem32(draw_base_addr),
+                   mi_iadd(&b, mi_mem32(draw_base_addr),
+                               mi_imm(params->ring_count)));
+
+      iris_emit_pipe_control_flush(batch,
+                                   "post generation base increment",
+                                   PIPE_CONTROL_CS_STALL |
+                                   PIPE_CONTROL_CONST_CACHE_INVALIDATE);
+
+      iris_emit_cmd(batch, GENX(MI_BATCH_BUFFER_START), bbs) {
+         bbs.AddressSpaceIndicator = ASI_PPGTT;
+         bbs.BatchBufferStartAddress = (struct iris_address) {
+            .offset = gen_addr,
+         };
+      }
+   }
+
+   /* Exit of the ring buffer */
+   uint64_t end_addr = iris_batch_current_address_u64(batch);
+
+#ifndef NDEBUG
+   assert(command_bo == batch->bo);
+#endif
+
+   genX(emit_3dprimitive_was)(batch, indirect, ice->state.prim_mode, sc->count);
+   genX(maybe_emit_breakpoint)(batch, false);
+
+   iris_emit_pipe_control_flush(batch,
+                                "post generated draws wait",
+                                PIPE_CONTROL_STALL_AT_SCOREBOARD |
+                                PIPE_CONTROL_CS_STALL);
+
+   params->gen_addr = inc_addr;
+   params->end_addr = end_addr;
+
+   iris_batch_sync_region_end(batch);
+
+   uint32_t count = (sc) ? sc->count : 0;
+   count *= draw->instance_count ? draw->instance_count : 1;
+   trace_intel_end_draw(&batch->trace, count);
+}
+
+static void
 iris_load_indirect_location(struct iris_context *ice,
                             struct iris_batch *batch,
                             const struct pipe_grid_info *grid)
@@ -8916,6 +9099,8 @@ iris_destroy_state(struct iris_context *ice)
 
    pipe_resource_reference(&ice->draw.draw_params.res, NULL);
    pipe_resource_reference(&ice->draw.derived_draw_params.res, NULL);
+   pipe_resource_reference(&ice->draw.generation.params.res, NULL);
+   pipe_resource_reference(&ice->draw.generation.vertices.res, NULL);
 
    /* Loop over all VBOs, including ones for draw parameters */
    for (unsigned i = 0; i < ARRAY_SIZE(genx->vertex_buffers); i++) {
@@ -9974,6 +10159,7 @@ genX(init_screen_state)(struct iris_screen *screen)
    screen->vtbl.init_copy_context = iris_init_copy_context;
    screen->vtbl.upload_render_state = iris_upload_render_state;
    screen->vtbl.upload_indirect_render_state = iris_upload_indirect_render_state;
+   screen->vtbl.upload_indirect_shader_render_state = iris_upload_indirect_shader_render_state;
    screen->vtbl.update_binder_address = iris_update_binder_address;
    screen->vtbl.upload_compute_state = iris_upload_compute_state;
    screen->vtbl.emit_raw_pipe_control = iris_emit_raw_pipe_control;

@@ -74,3 +74,12 @@ void genX(math_add32_gpr0)(struct iris_context *ice,
 void genX(math_div32_gpr0)(struct iris_context *ice,
                            struct iris_batch *batch,
                            uint32_t D);
+
+/* iris_indirect_gen.c */
+void genX(init_screen_gen_state)(struct iris_screen *screen);
+struct iris_gen_indirect_params *
+genX(emit_indirect_generate)(struct iris_batch *batch,
+                             const struct pipe_draw_info *draw,
+                             const struct pipe_draw_indirect_info *indirect,
+                             const struct pipe_draw_start_count_bias *sc,
+                             struct iris_address *out_params_addr);

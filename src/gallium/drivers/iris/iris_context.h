@@ -714,6 +714,28 @@ struct iris_context {
        * drawid and is_indexed_draw. They will go in their own vertex element.
        */
       struct iris_state_ref derived_draw_params;
+
+      struct {
+         /**
+          * Generation fragment shader
+          */
+         struct iris_compiled_shader *shader;
+
+         /**
+          * Ring buffer where to generate indirect draw commands
+          */
+         struct iris_bo *ring_bo;
+
+         /**
+          * Allocated iris_gen_indirect_params
+          */
+         struct iris_state_ref params;
+
+         /**
+          * Vertices used to dispatch the generated fragment shaders
+          */
+         struct iris_state_ref vertices;
+      } generation;
    } draw;
 
    struct {
@@ -930,6 +952,60 @@ struct iris_context {
    } state;
 };
 
+/**
+ * Push constant data handed over to the indirect draw generation shader
+ */
+struct iris_gen_indirect_params {
+   /**
+    * Address of iris_context:draw:generation:ring_bo
+    */
+   uint64_t generated_cmds_addr;
+   /**
+    * Address of indirect data to draw with
+    */
+   uint64_t indirect_data_addr;
+   /**
+    * Address inside iris_context:draw:generation:ring_bo where to draw ids
+    */
+   uint64_t draw_id_addr;
+   /**
+    * Address of the indirect count (can be null, in which case max_draw_count
+    * is used)
+    */
+   uint64_t draw_count_addr;
+   /**
+    * Address to jump to in order to generate more draws
+    */
+   uint64_t gen_addr;
+   /**
+    * Address to jump to to end generated draws
+    */
+   uint64_t end_addr;
+   /**
+    * Stride between the indirect draw data
+    */
+   uint32_t indirect_data_stride;
+   /**
+    * Base index of the current generated draws in the ring buffer (increments
+    * by ring_count)
+    */
+   uint32_t draw_base;
+   /**
+    * Maximum number of generated draw if draw_count_addr is null
+    */
+   uint32_t max_draw_count;
+   /**
+    * bits 0-7:   ANV_GENERATED_FLAG_*
+    * bits 8-15:  vertex buffer mocs
+    * bits 16-23: stride between generated commands
+    */
+   uint32_t flags;
+   /**
+    * Number of items to generate in the ring buffer
+    */
+   uint32_t ring_count;
+};
+
 #define perf_debug(dbg, ...) do {                      \
    if (INTEL_DEBUG(DEBUG_PERF))                        \
       dbg_printf(__VA_ARGS__);                         \
@@ -1133,6 +1209,9 @@ bool iris_blorp_upload_shader(struct blorp_batch *blorp_batch, uint32_t stage,
                               uint32_t prog_data_size,
                               uint32_t *kernel_out,
                               void *prog_data_out);
+
+void iris_ensure_indirect_generation_shader(struct iris_batch *batch);
+
 
 /* iris_resolve.c */
 

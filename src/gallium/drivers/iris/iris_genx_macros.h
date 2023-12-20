@@ -162,3 +162,10 @@ rw_bo(struct iris_bo *bo, uint64_t offset, enum iris_domain access)
    return (struct iris_address) { .bo = bo, .offset = offset,
                                   .access = access };
 }
+
+UNUSED static struct iris_address
+iris_address_add(struct iris_address addr, uint64_t offset)
+{
+   addr.offset += offset;
+   return addr;
+}

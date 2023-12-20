@@ -243,6 +243,12 @@ iris_batch_bytes_used(struct iris_batch *batch)
    return batch->map_next - batch->map;
 }
 
+static inline uint64_t
+iris_batch_current_address_u64(struct iris_batch *batch)
+{
+   return batch->bo->address + (batch->map_next - batch->map);
+}
+
 /**
  * Ensure the current command buffer has \param size bytes of space
  * remaining.  If not, this creates a secondary batch buffer and emits

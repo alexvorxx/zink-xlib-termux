@@ -874,6 +874,34 @@ iris_emit_l3_config(struct iris_batch *batch,
 #endif /* GFX_VER < 20 */
 }
 
+void
+genX(emit_urb_config)(struct iris_batch *batch,
+                      bool has_tess_eval,
+                      bool has_geometry)
+{
+   struct iris_screen *screen = batch->screen;
+   struct iris_context *ice = batch->ice;
+
+   intel_get_urb_config(screen->devinfo,
+                        screen->l3_config_3d,
+                        has_tess_eval,
+                        has_geometry,
+                        &ice->shaders.urb.cfg,
+                        &ice->state.urb_deref_block_size,
+                        &ice->shaders.urb.constrained);
+
+   genX(urb_workaround)(batch, &ice->shaders.urb.cfg);
+
+   for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
+      iris_emit_cmd(batch, GENX(3DSTATE_URB_VS), urb) {
+         urb._3DCommandSubOpcode += i;
+         urb.VSURBStartingAddress     = ice->shaders.urb.cfg.start[i];
+         urb.VSURBEntryAllocationSize = ice->shaders.urb.cfg.size[i] - 1;
+         urb.VSNumberofURBEntries     = ice->shaders.urb.cfg.entries[i];
+      }
+   }
+}
+
 #if GFX_VER == 9
 static void
 iris_enable_obj_preemption(struct iris_batch *batch, bool enable)
@@ -6814,24 +6842,9 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          assert(ice->shaders.urb.cfg.size[i] != 0);
       }
 
-      intel_get_urb_config(screen->devinfo,
-                           screen->l3_config_3d,
-                           ice->shaders.prog[MESA_SHADER_TESS_EVAL] != NULL,
-                           ice->shaders.prog[MESA_SHADER_GEOMETRY] != NULL,
-                           &ice->shaders.urb.cfg,
-                           &ice->state.urb_deref_block_size,
-                           &ice->shaders.urb.constrained);
-
-      genX(urb_workaround)(batch, &ice->shaders.urb.cfg);
-
-      for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
-         iris_emit_cmd(batch, GENX(3DSTATE_URB_VS), urb) {
-            urb._3DCommandSubOpcode += i;
-            urb.VSURBStartingAddress     = ice->shaders.urb.cfg.start[i];
-            urb.VSURBEntryAllocationSize = ice->shaders.urb.cfg.size[i] - 1;
-            urb.VSNumberofURBEntries     = ice->shaders.urb.cfg.entries[i];
-         }
-      }
+      genX(emit_urb_config)(batch,
+                            ice->shaders.prog[MESA_SHADER_TESS_EVAL] != NULL,
+                            ice->shaders.prog[MESA_SHADER_GEOMETRY] != NULL);
    }
 
    if (dirty & IRIS_DIRTY_BLEND_STATE) {

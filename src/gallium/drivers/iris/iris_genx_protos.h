@@ -34,6 +34,9 @@ void genX(emit_hashing_mode)(struct iris_context *ice,
                              struct iris_batch *batch,
                              unsigned width, unsigned height,
                              unsigned scale);
+void genX(emit_urb_config)(struct iris_batch *batch,
+                           bool has_tess_eval,
+                           bool has_geometry);
 void genX(emit_depth_state_workarounds)(struct iris_context *ice,
                                         struct iris_batch *batch,
                                         const struct isl_surf *surf);
@@ -71,4 +74,3 @@ void genX(math_add32_gpr0)(struct iris_context *ice,
 void genX(math_div32_gpr0)(struct iris_context *ice,
                            struct iris_batch *batch,
                            uint32_t D);
-

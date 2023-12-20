@@ -12,6 +12,7 @@
 #include "vk_cmd_enqueue_entrypoints.h"
 #include "vk_common_entrypoints.h"
 
+#include "panvk_instance.h"
 #include "panvk_macros.h"
 #include "panvk_private.h"
 #include "panvk_queue.h"

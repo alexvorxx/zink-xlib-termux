@@ -30,6 +30,7 @@
 
 #include "panvk_device_memory.h"
 #include "panvk_image.h"
+#include "panvk_instance.h"
 #include "panvk_private.h"
 
 #include "drm-uapi/drm_fourcc.h"

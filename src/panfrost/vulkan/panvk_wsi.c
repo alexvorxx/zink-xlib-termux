@@ -25,6 +25,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "panvk_instance.h"
 #include "panvk_private.h"
 
 #include "vk_util.h"

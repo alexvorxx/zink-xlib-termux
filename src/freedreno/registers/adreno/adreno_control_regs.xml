@@ -271,6 +271,8 @@ xsi:schemaLocation="http://nouveau.freedesktop.org/ rules-ng.xsd">
 
 	<!-- new in gen3+ -->
 	<reg32 name="PRED_REG" offset="0x17f"/>
+
+	<reg32 name="THREAD_SYNC" offset="0x200"/>
 </domain>
 
 <domain name="A7XX_CONTROL_REG" width="32">

@@ -160,11 +160,22 @@ emu_get_gpu_reg(struct emu *emu, unsigned n)
 void
 emu_set_gpu_reg(struct emu *emu, unsigned n, uint32_t val)
 {
+   EMU_GPU_REG(CP_LPAC_SQE_CNTL);
+   EMU_CONTROL_REG(THREAD_SYNC);
+
    if (n >= ARRAY_SIZE(emu->gpu_regs.val))
       return;
    assert(n < ARRAY_SIZE(emu->gpu_regs.val));
    BITSET_SET(emu->gpu_regs.written, n);
    emu->gpu_regs.val[n] = val;
+
+   if (n == emu_reg_offset(&CP_LPAC_SQE_CNTL)) {
+      /* This is sort-of a hack, but emulate what the LPAC bootstrap routine
+       * does so that the main bootstrap routine doesn't get stuck.
+       */
+      emu_set_reg32(emu, &THREAD_SYNC,
+                    emu_get_reg32(emu, &THREAD_SYNC) | (1u << 1));
+   }
 }
 
 static bool

@@ -662,6 +662,32 @@ At the end is the standard go-to-next-packet sequence::
   waitin
   mov $01, $data
 
+Reassembling Firmwares
+======================
+
+Of course, the main use of assembling is to take the firmware you're using,
+modify it to test something, and reassemble it. Reassembling a firmware should
+work out-of-the-box, and should give you back an identical firmware, but there
+is a caveat if you want to reassemble a modified firmware and use preemption.
+The preemption routines contain a few tables embedded in the firmware, and they
+load the offset of the table with a ``mov`` instruction that needs to be turned
+into a relocation and then add it to ``CP_SQE_INSTR_BASE``. ``afuc-asm``
+supports using labels as immediates for this::
+
+  foo:
+  [00000000]
+  ...
+
+  mov $02, #foo << 2 ; #foo will be replaced with the offset in words
+
+However, you have to manually insert the labels and replace the constant. On
+a7xx there are multiple tables next to each other that look like one table, so
+be careful to make sure you've found all the places it offsets from
+``CP_SQE_INSTR_BASE``! There are also tables in the BV microcode on a7xx. To
+check that the relocations are correct, check that reassembling an otherwise
+unmodified firmware still gives an identical result after adding the
+relocations.
+
 A6XX NOTES
 ==========
 

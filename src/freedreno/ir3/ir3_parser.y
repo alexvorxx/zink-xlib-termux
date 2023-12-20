@@ -932,19 +932,23 @@ cat1_movmsk:       T_OP_MOVMSK '.' T_W {
                        instr->dsts[0]->wrmask = (1 << num) - 1;
                    }
 
+mova_src:          src_reg_or_const_or_rel
+|                  immediate_cat1
+|                  src_reg_flags immediate_cat1
+
 cat1_mova1:        T_OP_MOVA1 T_A1 ',' {
                        new_instr(OPC_MOV);
                        instr->cat1.src_type = TYPE_U16;
                        instr->cat1.dst_type = TYPE_U16;
                        new_dst((61 << 3) + 2, IR3_REG_HALF);
-                   } cat1_src
+                   } mova_src
 
 cat1_mova:         T_OP_MOVA T_A0 ',' {
                        new_instr(OPC_MOV);
                        instr->cat1.src_type = TYPE_S16;
                        instr->cat1.dst_type = TYPE_S16;
                        new_dst((61 << 3), IR3_REG_HALF);
-                   } cat1_src
+                   } mova_src
 
 cat1_swz:          T_OP_SWZ '.' T_CAT1_TYPE_TYPE { parse_type_type(new_instr(OPC_SWZ), $3); } dst_reg ',' dst_reg ',' src_reg ',' src_reg
 

@@ -26,6 +26,7 @@
  */
 
 #include "panvk_descriptor_set.h"
+#include "panvk_device.h"
 #include "panvk_private.h"
 
 #include <assert.h>

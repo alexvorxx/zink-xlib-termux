@@ -11,6 +11,7 @@
 
 #include "vk_format.h"
 
+#include "panvk_device.h"
 #include "panvk_image.h"
 #include "panvk_image_view.h"
 #include "panvk_private.h"

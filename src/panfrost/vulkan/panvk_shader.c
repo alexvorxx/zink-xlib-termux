@@ -25,6 +25,7 @@
  */
 
 #include "panvk_shader.h"
+#include "panvk_device.h"
 #include "panvk_private.h"
 
 #include "pan_shader.h"

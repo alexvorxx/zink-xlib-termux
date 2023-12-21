@@ -30,6 +30,7 @@
 
 #include "panvk_buffer.h"
 #include "panvk_cmd_pool.h"
+#include "panvk_device.h"
 #include "panvk_event.h"
 #include "panvk_image.h"
 #include "panvk_image_view.h"

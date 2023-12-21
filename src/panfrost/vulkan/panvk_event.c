@@ -4,6 +4,7 @@
  */
 
 #include "panvk_event.h"
+#include "panvk_device.h"
 #include "panvk_private.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL

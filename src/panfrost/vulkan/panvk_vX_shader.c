@@ -29,6 +29,7 @@
 
 #include "genxml/gen_macros.h"
 
+#include "panvk_device.h"
 #include "panvk_instance.h"
 #include "panvk_physical_device.h"
 #include "panvk_pipeline_layout.h"

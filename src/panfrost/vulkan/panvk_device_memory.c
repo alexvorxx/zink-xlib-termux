@@ -7,6 +7,7 @@
 
 #include "vulkan/util/vk_util.h"
 
+#include "panvk_device.h"
 #include "panvk_device_memory.h"
 #include "panvk_private.h"
 

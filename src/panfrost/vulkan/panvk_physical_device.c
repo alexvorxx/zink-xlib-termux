@@ -18,6 +18,8 @@
 #include "vk_log.h"
 #include "vk_util.h"
 
+#include "panvk_device.h"
+#include "panvk_instance.h"
 #include "panvk_physical_device.h"
 #include "panvk_private.h"
 

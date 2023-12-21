@@ -133,49 +133,6 @@ void panvk_priv_bo_destroy(struct panvk_priv_bo *bo,
 VkResult panvk_wsi_init(struct panvk_physical_device *physical_device);
 void panvk_wsi_finish(struct panvk_physical_device *physical_device);
 
-#define PANVK_MAX_QUEUE_FAMILIES 1
-
-struct panvk_device {
-   struct vk_device vk;
-
-   struct {
-      struct pan_kmod_vm *vm;
-      struct pan_kmod_dev *dev;
-      struct pan_kmod_allocator allocator;
-   } kmod;
-
-   struct panvk_priv_bo *tiler_heap;
-   struct panvk_priv_bo *sample_positions;
-
-   struct panvk_meta meta;
-
-   struct vk_device_dispatch_table cmd_dispatch;
-
-   struct panvk_queue *queues[PANVK_MAX_QUEUE_FAMILIES];
-   int queue_count[PANVK_MAX_QUEUE_FAMILIES];
-
-   struct {
-      struct pandecode_context *decode_ctx;
-   } debug;
-};
-
-static inline struct panvk_device *
-to_panvk_device(struct vk_device *dev)
-{
-   return container_of(dev, struct panvk_device, vk);
-}
-
-#if PAN_ARCH
-VkResult
-panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
-                              const VkDeviceCreateInfo *pCreateInfo,
-                              const VkAllocationCallbacks *pAllocator,
-                              VkDevice *pDevice);
-
-void panvk_per_arch(destroy_device)(struct panvk_device *device,
-                                    const VkAllocationCallbacks *pAllocator);
-#endif
-
 #define TILER_DESC_WORDS 56
 
 struct panvk_batch {
@@ -345,7 +302,6 @@ void panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf);
 
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
-VK_DEFINE_HANDLE_CASTS(panvk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
 
 #ifdef PAN_ARCH
 #include "panvk_vX_cmd_buffer.h"

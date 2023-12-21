@@ -26,6 +26,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "panvk_device.h"
 #include "panvk_device_memory.h"
 #include "panvk_image.h"
 #include "panvk_instance.h"

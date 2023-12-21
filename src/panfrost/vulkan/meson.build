@@ -65,6 +65,7 @@ foreach arch : ['6', '7']
       'panvk_vX_cmd_buffer.c',
       'panvk_vX_descriptor_set.c',
       'panvk_vX_descriptor_set_layout.c',
+      'panvk_vX_device.c',
       'panvk_vX_image_view.c',
       'panvk_vX_meta.c',
       'panvk_vX_meta_blit.c',

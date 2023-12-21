@@ -26,6 +26,7 @@
 #include "pan_blitter.h"
 #include "pan_props.h"
 
+#include "panvk_cmd_buffer.h"
 #include "panvk_device.h"
 #include "panvk_image.h"
 #include "panvk_physical_device.h"

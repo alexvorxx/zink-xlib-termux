@@ -13,6 +13,7 @@
 
 #include "decode.h"
 
+#include "panvk_cmd_buffer.h"
 #include "panvk_device.h"
 #include "panvk_event.h"
 #include "panvk_image.h"

@@ -26,6 +26,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "panvk_cmd_buffer.h"
 #include "panvk_buffer.h"
 #include "panvk_cmd_pool.h"
 #include "panvk_device.h"

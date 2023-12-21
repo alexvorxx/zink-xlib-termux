@@ -27,6 +27,7 @@
 #include "pan_props.h"
 #include "pan_shader.h"
 
+#include "panvk_cmd_buffer.h"
 #include "panvk_device.h"
 #include "panvk_image.h"
 #include "panvk_meta.h"

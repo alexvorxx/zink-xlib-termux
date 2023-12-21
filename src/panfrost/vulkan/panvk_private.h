@@ -72,6 +72,7 @@
 #include "panvk_instance.h"
 #include "panvk_macros.h"
 #include "panvk_mempool.h"
+#include "panvk_meta.h"
 #include "panvk_physical_device.h"
 #include "panvk_pipeline.h"
 #include "panvk_pipeline_layout.h"
@@ -128,65 +129,6 @@ struct panvk_priv_bo *panvk_priv_bo_create(struct panvk_device *dev,
 
 void panvk_priv_bo_destroy(struct panvk_priv_bo *bo,
                            const VkAllocationCallbacks *alloc);
-
-#define PANVK_META_COPY_BUF2IMG_NUM_FORMATS  12
-#define PANVK_META_COPY_IMG2BUF_NUM_FORMATS  12
-#define PANVK_META_COPY_IMG2IMG_NUM_FORMATS  14
-#define PANVK_META_COPY_NUM_TEX_TYPES        5
-#define PANVK_META_COPY_BUF2BUF_NUM_BLKSIZES 5
-
-static inline unsigned
-panvk_meta_copy_tex_type(unsigned dim, bool isarray)
-{
-   assert(dim > 0 && dim <= 3);
-   assert(dim < 3 || !isarray);
-   return (((dim - 1) << 1) | (isarray ? 1 : 0));
-}
-
-struct panvk_meta {
-
-   struct panvk_pool bin_pool;
-   struct panvk_pool desc_pool;
-
-   /* Access to the blitter pools are protected by the blitter
-    * shader/rsd locks. They can't be merged with other binary/desc
-    * pools unless we patch pan_blitter.c to external pool locks.
-    */
-   struct {
-      struct panvk_pool bin_pool;
-      struct panvk_pool desc_pool;
-      struct pan_blitter_cache cache;
-   } blitter;
-
-   struct pan_blend_shader_cache blend_shader_cache;
-
-   struct {
-      struct {
-         mali_ptr shader;
-         struct pan_shader_info shader_info;
-      } color[3]; /* 3 base types */
-   } clear_attachment;
-
-   struct {
-      struct {
-         mali_ptr rsd;
-      } buf2img[PANVK_META_COPY_BUF2IMG_NUM_FORMATS];
-      struct {
-         mali_ptr rsd;
-      } img2buf[PANVK_META_COPY_NUM_TEX_TYPES]
-               [PANVK_META_COPY_IMG2BUF_NUM_FORMATS];
-      struct {
-         mali_ptr rsd;
-      } img2img[2][PANVK_META_COPY_NUM_TEX_TYPES]
-               [PANVK_META_COPY_IMG2IMG_NUM_FORMATS];
-      struct {
-         mali_ptr rsd;
-      } buf2buf[PANVK_META_COPY_BUF2BUF_NUM_BLKSIZES];
-      struct {
-         mali_ptr rsd;
-      } fillbuf;
-   } copy;
-};
 
 VkResult panvk_wsi_init(struct panvk_physical_device *physical_device);
 void panvk_wsi_finish(struct panvk_physical_device *physical_device);
@@ -408,20 +350,17 @@ VK_DEFINE_HANDLE_CASTS(panvk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
 #ifdef PAN_ARCH
 #include "panvk_vX_cmd_buffer.h"
 #include "panvk_vX_device.h"
-#include "panvk_vX_meta.h"
 #else
 #define PAN_ARCH             6
 #define panvk_per_arch(name) panvk_arch_name(name, v6)
 #include "panvk_vX_cmd_buffer.h"
 #include "panvk_vX_device.h"
-#include "panvk_vX_meta.h"
 #undef PAN_ARCH
 #undef panvk_per_arch
 #define PAN_ARCH             7
 #define panvk_per_arch(name) panvk_arch_name(name, v7)
 #include "panvk_vX_cmd_buffer.h"
 #include "panvk_vX_device.h"
-#include "panvk_vX_meta.h"
 #undef PAN_ARCH
 #undef panvk_per_arch
 #endif

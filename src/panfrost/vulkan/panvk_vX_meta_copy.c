@@ -31,9 +31,9 @@
 #include "panvk_buffer.h"
 #include "panvk_cmd_buffer.h"
 #include "panvk_device.h"
+#include "panvk_entrypoints.h"
 #include "panvk_image.h"
 #include "panvk_physical_device.h"
-#include "panvk_private.h"
 
 static mali_ptr
 panvk_meta_copy_img_emit_texture(struct pan_pool *desc_pool,

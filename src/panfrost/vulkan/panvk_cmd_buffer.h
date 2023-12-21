@@ -16,7 +16,6 @@
 #include "panvk_macros.h"
 #include "panvk_mempool.h"
 #include "panvk_pipeline.h"
-#include "panvk_private.h"
 #include "panvk_shader.h"
 
 #include "pan_jc.h"

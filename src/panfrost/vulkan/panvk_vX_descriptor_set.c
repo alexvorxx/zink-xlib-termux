@@ -29,10 +29,10 @@
 
 #include "panvk_buffer_view.h"
 #include "panvk_device.h"
+#include "panvk_entrypoints.h"
 #include "panvk_image.h"
 #include "panvk_image_view.h"
 #include "panvk_priv_bo.h"
-#include "panvk_private.h"
 
 #include <assert.h>
 #include <fcntl.h>
@@ -41,9 +41,11 @@
 #include <unistd.h>
 
 #include "util/mesa-sha1.h"
+#include "vk_alloc.h"
 #include "vk_descriptor_update_template.h"
 #include "vk_descriptors.h"
 #include "vk_format.h"
+#include "vk_log.h"
 #include "vk_util.h"
 
 #include "panvk_buffer.h"

@@ -5,7 +5,9 @@
 
 #include "panvk_event.h"
 #include "panvk_device.h"
-#include "panvk_private.h"
+#include "panvk_entrypoints.h"
+
+#include "vk_log.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
 panvk_CreateEvent(VkDevice _device, const VkEventCreateInfo *pCreateInfo,

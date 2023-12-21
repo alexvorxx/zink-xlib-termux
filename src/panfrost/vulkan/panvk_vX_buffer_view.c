@@ -14,10 +14,11 @@
 #include "panvk_buffer.h"
 #include "panvk_buffer_view.h"
 #include "panvk_device.h"
+#include "panvk_entrypoints.h"
 #include "panvk_priv_bo.h"
-#include "panvk_private.h"
 
 #include "vk_format.h"
+#include "vk_log.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateBufferView)(VkDevice _device,

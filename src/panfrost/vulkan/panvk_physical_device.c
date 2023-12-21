@@ -13,15 +13,16 @@
 
 #include "util/disk_cache.h"
 
+#include "vk_device.h"
 #include "vk_drm_syncobj.h"
 #include "vk_format.h"
 #include "vk_log.h"
 #include "vk_util.h"
 
 #include "panvk_device.h"
+#include "panvk_entrypoints.h"
 #include "panvk_instance.h"
 #include "panvk_physical_device.h"
-#include "panvk_private.h"
 #include "panvk_wsi.h"
 
 #include "pan_format.h"

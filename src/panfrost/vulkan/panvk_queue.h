@@ -10,8 +10,6 @@
 
 #include "vk_queue.h"
 
-#include "panvk_private.h"
-
 struct panvk_queue {
    struct vk_queue vk;
    uint32_t sync;

@@ -29,10 +29,10 @@
 
 #include "panvk_cmd_buffer.h"
 #include "panvk_device.h"
+#include "panvk_entrypoints.h"
 #include "panvk_image.h"
 #include "panvk_meta.h"
 #include "panvk_physical_device.h"
-#include "panvk_private.h"
 
 #include "vk_format.h"
 #include "vk_render_pass.h"

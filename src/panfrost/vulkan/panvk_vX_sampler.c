@@ -6,10 +6,12 @@
 #include "genxml/gen_macros.h"
 
 #include "panvk_device.h"
-#include "panvk_private.h"
+#include "panvk_entrypoints.h"
 #include "panvk_sampler.h"
 
 #include "pan_encoder.h"
+
+#include "vk_log.h"
 
 static enum mali_mipmap_mode
 panvk_translate_sampler_mipmap_mode(VkSamplerMipmapMode mode)

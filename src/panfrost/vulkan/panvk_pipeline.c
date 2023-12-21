@@ -28,8 +28,8 @@
 
 #include "panvk_pipeline.h"
 #include "panvk_device.h"
+#include "panvk_entrypoints.h"
 #include "panvk_priv_bo.h"
-#include "panvk_private.h"
 
 #include "nir/nir.h"
 #include "nir/nir_builder.h"

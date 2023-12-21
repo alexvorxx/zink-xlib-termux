@@ -10,12 +10,13 @@
  */
 
 #include "vk_format.h"
+#include "vk_log.h"
 
 #include "panvk_device.h"
+#include "panvk_entrypoints.h"
 #include "panvk_image.h"
 #include "panvk_image_view.h"
 #include "panvk_priv_bo.h"
-#include "panvk_private.h"
 
 #include "genxml/gen_macros.h"
 

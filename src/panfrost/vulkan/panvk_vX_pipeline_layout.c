@@ -6,11 +6,12 @@
 
 #include "genxml/gen_macros.h"
 
+#include "vk_log.h"
+
 #include "panvk_device.h"
 #include "panvk_entrypoints.h"
 #include "panvk_macros.h"
 #include "panvk_pipeline_layout.h"
-#include "panvk_private.h"
 #include "panvk_sampler.h"
 #include "panvk_shader.h"
 

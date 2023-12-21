@@ -15,7 +15,14 @@
 #include "panvk_entrypoints.h"
 #include "panvk_instance.h"
 #include "panvk_physical_device.h"
-#include "panvk_private.h"
+
+#ifdef HAVE_VALGRIND
+#include <memcheck.h>
+#include <valgrind.h>
+#define VG(x) x
+#else
+#define VG(x)
+#endif
 
 static const struct debug_control panvk_debug_options[] = {
    {"startup", PANVK_DEBUG_STARTUP},

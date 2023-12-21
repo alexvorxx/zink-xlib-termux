@@ -25,6 +25,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "panvk_wsi.h"
 #include "panvk_instance.h"
 #include "panvk_physical_device.h"
 #include "panvk_private.h"

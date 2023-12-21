@@ -109,7 +109,4 @@ struct panvk_device;
 struct panvk_pipeline_layout;
 struct panvk_queue;
 
-VkResult panvk_wsi_init(struct panvk_physical_device *physical_device);
-void panvk_wsi_finish(struct panvk_physical_device *physical_device);
-
 #endif /* PANVK_PRIVATE_H */

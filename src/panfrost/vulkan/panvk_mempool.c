@@ -24,6 +24,7 @@
  */
 
 #include "panvk_mempool.h"
+#include "panvk_priv_bo.h"
 #include "panvk_private.h"
 
 void

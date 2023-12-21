@@ -20,6 +20,7 @@
 #include "panvk_image_view.h"
 #include "panvk_instance.h"
 #include "panvk_physical_device.h"
+#include "panvk_priv_bo.h"
 #include "panvk_private.h"
 #include "panvk_queue.h"
 

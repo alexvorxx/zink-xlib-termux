@@ -109,24 +109,6 @@ struct panvk_device;
 struct panvk_pipeline_layout;
 struct panvk_queue;
 
-/* Used for internal object allocation. */
-struct panvk_priv_bo {
-   struct panvk_device *dev;
-   struct pan_kmod_bo *bo;
-   struct {
-      mali_ptr dev;
-      void *host;
-   } addr;
-};
-
-struct panvk_priv_bo *panvk_priv_bo_create(struct panvk_device *dev,
-                                           size_t size, uint32_t flags,
-                                           const VkAllocationCallbacks *alloc,
-                                           VkSystemAllocationScope scope);
-
-void panvk_priv_bo_destroy(struct panvk_priv_bo *bo,
-                           const VkAllocationCallbacks *alloc);
-
 VkResult panvk_wsi_init(struct panvk_physical_device *physical_device);
 void panvk_wsi_finish(struct panvk_physical_device *physical_device);
 

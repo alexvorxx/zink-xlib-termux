@@ -2374,7 +2374,7 @@ _isl_notify_failure(const struct isl_surf_init_info *surf_info,
 
    snprintf(msg + ret, sizeof(msg) - ret,
             " extent=%ux%ux%u dim=%s msaa=%ux levels=%u rpitch=%u fmt=%s "
-            "usages=%s%s%s%s%s%s%s%s%s%s%s%s%s%s "
+            "usages=%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s "
             "tiling_flags=%s%s%s%s%s%s%s%s%s%s%s%s%s",
             surf_info->width, surf_info->height,
             surf_info->dim == ISL_SURF_DIM_3D ?
@@ -2399,6 +2399,7 @@ _isl_notify_failure(const struct isl_surf_init_info *surf_info,
             PRINT_USAGE(INDEX_BUFFER,    "ib"),
             PRINT_USAGE(CONSTANT_BUFFER, "const"),
             PRINT_USAGE(STAGING,         "stage"),
+            PRINT_USAGE(SPARSE,          "sparse"),
 
             PRINT_TILING(LINEAR,         "linear"),
             PRINT_TILING(W,              "W"),

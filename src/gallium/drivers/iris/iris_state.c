@@ -6685,7 +6685,8 @@ emit_wa_18020335297_dummy_draw(struct iris_batch *batch)
 static void
 iris_upload_dirty_render_state(struct iris_context *ice,
                                struct iris_batch *batch,
-                               const struct pipe_draw_info *draw)
+                               const struct pipe_draw_info *draw,
+                               bool skip_vb_params)
 {
    struct iris_screen *screen = batch->screen;
    struct iris_border_color_pool *border_color_pool =
@@ -7747,7 +7748,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
       int count = util_bitcount64(ice->state.bound_vertex_buffers);
       uint64_t dynamic_bound = ice->state.bound_vertex_buffers;
 
-      if (ice->state.vs_uses_draw_params) {
+      if (ice->state.vs_uses_draw_params && !skip_vb_params) {
          assert(ice->draw.draw_params.res);
 
          struct iris_vertex_buffer_state *state =
@@ -7773,7 +7774,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          count++;
       }
 
-      if (ice->state.vs_uses_derived_draw_params) {
+      if (ice->state.vs_uses_derived_draw_params && !skip_vb_params) {
          struct iris_vertex_buffer_state *state =
             &(ice->state.genx->vertex_buffers[count]);
          pipe_resource_reference(&state->resource,
@@ -8283,7 +8284,7 @@ iris_upload_render_state(struct iris_context *ice,
       ice->state.stage_dirty |= IRIS_STAGE_DIRTY_TCS;
    }
 
-   iris_upload_dirty_render_state(ice, batch, draw);
+   iris_upload_dirty_render_state(ice, batch, draw, false);
 
    if (draw->index_size > 0)
       iris_emit_index_buffer(ice, batch, draw, sc);
@@ -8489,7 +8490,7 @@ iris_upload_indirect_render_state(struct iris_context *ice,
       ice->state.stage_dirty |= IRIS_STAGE_DIRTY_TCS;
    }
 
-   iris_upload_dirty_render_state(ice, batch, draw);
+   iris_upload_dirty_render_state(ice, batch, draw, false);
 
    if (draw->index_size > 0)
       iris_emit_index_buffer(ice, batch, draw, sc);

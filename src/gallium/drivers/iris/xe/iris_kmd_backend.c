@@ -113,11 +113,6 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
       .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
       .flags = DRM_XE_SYNC_FLAG_SIGNAL,
    };
-   struct drm_syncobj_timeline_wait syncobj_wait = {
-      .timeout_nsec = INT64_MAX,
-      .handles = (uintptr_t)&xe_sync.handle,
-      .count_handles = 1,
-   };
    uint64_t range, obj_offset = 0;
    int ret, fd;
 
@@ -155,11 +150,6 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
    xe_sync.timeline_value = intel_bind_timeline_bind_begin(bind_timeline);
    ret = intel_ioctl(fd, DRM_IOCTL_XE_VM_BIND, &args);
    intel_bind_timeline_bind_end(bind_timeline);
-
-   if (ret == 0) {
-      syncobj_wait.points = (uintptr_t)&xe_sync.timeline_value;
-      ret = intel_ioctl(fd, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &syncobj_wait);
-   }
 
    if (ret)
       DBG("vm_bind_op: DRM_IOCTL_XE_VM_BIND failed(%i)", ret);
@@ -338,11 +328,12 @@ static int
 xe_batch_submit(struct iris_batch *batch)
 {
    struct iris_bufmgr *bufmgr = batch->screen->bufmgr;
+   struct intel_bind_timeline *bind_timeline = iris_bufmgr_get_bind_timeline(bufmgr);
    simple_mtx_t *bo_deps_lock = iris_bufmgr_get_bo_deps_lock(bufmgr);
    struct iris_implicit_sync implicit_sync = {};
    struct drm_xe_sync *syncs = NULL;
    unsigned long sync_len;
-   int ret;
+   int ret, i;
 
    iris_bo_unmap(batch->bo);
 
@@ -362,27 +353,26 @@ xe_batch_submit(struct iris_batch *batch)
    if (ret)
       goto error_implicit_sync_import;
 
-   sync_len = iris_batch_num_fences(batch);
-   if (sync_len) {
-      unsigned long i = 0;
-
-      syncs = calloc(sync_len, sizeof(*syncs));
-      if (!syncs) {
-         ret = -ENOMEM;
-         goto error_no_sync_mem;
-      }
-
-      util_dynarray_foreach(&batch->exec_fences, struct iris_batch_fence,
-                            fence) {
-
-         if (fence->flags & IRIS_BATCH_FENCE_SIGNAL)
-            syncs[i].flags = DRM_XE_SYNC_FLAG_SIGNAL;
-
-         syncs[i].handle = fence->handle;
-         syncs[i].type = DRM_XE_SYNC_TYPE_SYNCOBJ;
-         i++;
-      }
+   sync_len = iris_batch_num_fences(batch) + 1 /* vm bind sync */;
+   syncs = calloc(sync_len, sizeof(*syncs));
+   if (!syncs) {
+      ret = -ENOMEM;
+      goto error_no_sync_mem;
    }
+
+   i = 0;
+   util_dynarray_foreach(&batch->exec_fences, struct iris_batch_fence, fence) {
+      if (fence->flags & IRIS_BATCH_FENCE_SIGNAL)
+         syncs[i].flags = DRM_XE_SYNC_FLAG_SIGNAL;
+
+      syncs[i].handle = fence->handle;
+      syncs[i].type = DRM_XE_SYNC_TYPE_SYNCOBJ;
+      i++;
+   }
+
+   syncs[i].handle = intel_bind_timeline_get_syncobj(bind_timeline);
+   syncs[i].type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ;
+   syncs[i].timeline_value = intel_bind_timeline_get_last_point(bind_timeline);
 
    if ((INTEL_DEBUG(DEBUG_BATCH) &&
         intel_debug_batch_in_range(batch->ice->frame)) ||

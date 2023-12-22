@@ -116,7 +116,8 @@ xe_vm_bind_op(struct anv_device *device,
               struct anv_sparse_submission *submit)
 {
    struct drm_xe_sync xe_sync = {
-      .type = DRM_XE_SYNC_TYPE_SYNCOBJ,
+      .handle = intel_bind_timeline_get_syncobj(&device->bind_timeline),
+      .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
       .flags = DRM_XE_SYNC_FLAG_SIGNAL,
    };
    struct drm_xe_vm_bind args = {
@@ -126,10 +127,9 @@ xe_vm_bind_op(struct anv_device *device,
       .num_syncs = 1,
       .syncs = (uintptr_t)&xe_sync,
    };
-   struct drm_syncobj_create syncobj_create = {};
-   struct drm_syncobj_destroy syncobj_destroy = {};
-   struct drm_syncobj_wait syncobj_wait = {
+   struct drm_syncobj_timeline_wait syncobj_wait = {
       .timeout_nsec = INT64_MAX,
+      .handles = (uintptr_t)&xe_sync.handle,
       .count_handles = 1,
    };
    int ret;
@@ -183,23 +183,18 @@ xe_vm_bind_op(struct anv_device *device,
          xe_bind->userptr = (uintptr_t)bo->map;
    }
 
-   ret = intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_CREATE, &syncobj_create);
+   xe_sync.timeline_value = intel_bind_timeline_bind_begin(&device->bind_timeline);
+   ret = intel_ioctl(device->fd, DRM_IOCTL_XE_VM_BIND, &args);
+   intel_bind_timeline_bind_end(&device->bind_timeline);
+
    if (ret)
       goto out_stackarray;
 
-   xe_sync.handle = syncobj_create.handle;
-   ret = intel_ioctl(device->fd, DRM_IOCTL_XE_VM_BIND, &args);
-   if (ret)
-      goto out_destroy_syncobj;
-
    ANV_RMV(vm_binds, device, submit->binds, submit->binds_len);
 
-   syncobj_wait.handles = (uintptr_t)&xe_sync.handle;
-   ret = intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_WAIT, &syncobj_wait);
+   syncobj_wait.points = (uintptr_t)&xe_sync.timeline_value;
+   ret = intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &syncobj_wait);
 
-out_destroy_syncobj:
-   syncobj_destroy.handle = xe_sync.handle;
-   intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_DESTROY, &syncobj_destroy);
 out_stackarray:
    STACK_ARRAY_FINISH(xe_binds_stackarray);
 

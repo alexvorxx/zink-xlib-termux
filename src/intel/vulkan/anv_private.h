@@ -41,6 +41,7 @@
 #endif
 
 #include "common/intel_aux_map.h"
+#include "common/intel_bind_timeline.h"
 #include "common/intel_decoder.h"
 #include "common/intel_engine.h"
 #include "common/intel_gem.h"
@@ -1873,6 +1874,8 @@ struct anv_device {
     bool                                         using_sparse;
 
     struct anv_device_astc_emu                   astc_emu;
+
+    struct intel_bind_timeline bind_timeline; /* Xe only */
 };
 
 static inline uint32_t

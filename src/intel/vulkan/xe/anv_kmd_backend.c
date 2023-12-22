@@ -127,11 +127,6 @@ xe_vm_bind_op(struct anv_device *device,
       .num_syncs = 1,
       .syncs = (uintptr_t)&xe_sync,
    };
-   struct drm_syncobj_timeline_wait syncobj_wait = {
-      .timeout_nsec = INT64_MAX,
-      .handles = (uintptr_t)&xe_sync.handle,
-      .count_handles = 1,
-   };
    int ret;
 
    STACK_ARRAY(struct drm_xe_vm_bind_op, xe_binds_stackarray,
@@ -191,9 +186,6 @@ xe_vm_bind_op(struct anv_device *device,
       goto out_stackarray;
 
    ANV_RMV(vm_binds, device, submit->binds, submit->binds_len);
-
-   syncobj_wait.points = (uintptr_t)&xe_sync.timeline_value;
-   ret = intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &syncobj_wait);
 
 out_stackarray:
    STACK_ARRAY_FINISH(xe_binds_stackarray);

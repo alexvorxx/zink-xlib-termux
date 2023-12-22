@@ -1150,6 +1150,7 @@ typedef uint64_t isl_surf_usage_flags_t;
 #define ISL_SURF_USAGE_STREAM_OUT_BIT          (1u << 18)
 #define ISL_SURF_USAGE_2D_3D_COMPATIBLE_BIT    (1u << 19)
 #define ISL_SURF_USAGE_SPARSE_BIT              (1u << 20)
+#define ISL_SURF_USAGE_NO_AUX_TT_ALIGNMENT_BIT (1u << 21)
 /** @} */
 
 /**

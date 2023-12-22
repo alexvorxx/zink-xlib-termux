@@ -104,27 +104,24 @@ xe_gem_mmap(struct iris_bufmgr *bufmgr, struct iris_bo *bo)
 static inline int
 xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
 {
-   const struct intel_device_info *devinfo = iris_bufmgr_get_device_info(bo->bufmgr);
+   struct iris_bufmgr *bufmgr = bo->bufmgr;
+   struct intel_bind_timeline *bind_timeline = iris_bufmgr_get_bind_timeline(bufmgr);
+   const struct intel_device_info *devinfo = iris_bufmgr_get_device_info(bufmgr);
    uint32_t handle = op == DRM_XE_VM_BIND_OP_UNMAP ? 0 : bo->gem_handle;
    struct drm_xe_sync xe_sync = {
-      .type = DRM_XE_SYNC_TYPE_SYNCOBJ,
+      .handle = intel_bind_timeline_get_syncobj(bind_timeline),
+      .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
       .flags = DRM_XE_SYNC_FLAG_SIGNAL,
    };
-   struct drm_syncobj_create syncobj_create = {};
-   struct drm_syncobj_destroy syncobj_destroy = {};
-   struct drm_syncobj_wait syncobj_wait = {
+   struct drm_syncobj_timeline_wait syncobj_wait = {
       .timeout_nsec = INT64_MAX,
+      .handles = (uintptr_t)&xe_sync.handle,
       .count_handles = 1,
    };
    uint64_t range, obj_offset = 0;
    int ret, fd;
 
-   fd = iris_bufmgr_get_fd(bo->bufmgr);
-   ret = intel_ioctl(fd, DRM_IOCTL_SYNCOBJ_CREATE, &syncobj_create);
-   if (ret)
-      return ret;
-
-   xe_sync.handle = syncobj_create.handle;
+   fd = iris_bufmgr_get_fd(bufmgr);
 
    if (iris_bo_is_imported(bo))
       range = bo->size;
@@ -143,7 +140,7 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
       pat_index = iris_heap_to_pat_entry(devinfo, bo->real.heap)->index;
 
    struct drm_xe_vm_bind args = {
-      .vm_id = iris_bufmgr_get_global_vm_id(bo->bufmgr),
+      .vm_id = iris_bufmgr_get_global_vm_id(bufmgr),
       .num_syncs = 1,
       .syncs = (uintptr_t)&xe_sync,
       .num_binds = 1,
@@ -154,16 +151,18 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
       .bind.op = op,
       .bind.pat_index = pat_index,
    };
+
+   xe_sync.timeline_value = intel_bind_timeline_bind_begin(bind_timeline);
    ret = intel_ioctl(fd, DRM_IOCTL_XE_VM_BIND, &args);
+   intel_bind_timeline_bind_end(bind_timeline);
+
    if (ret == 0) {
-      syncobj_wait.handles = (uintptr_t)&xe_sync.handle;
-      ret = intel_ioctl(fd, DRM_IOCTL_SYNCOBJ_WAIT, &syncobj_wait);
-   } else {
-      DBG("vm_bind_op: DRM_IOCTL_XE_VM_BIND failed(%i)", ret);
+      syncobj_wait.points = (uintptr_t)&xe_sync.timeline_value;
+      ret = intel_ioctl(fd, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &syncobj_wait);
    }
 
-   syncobj_destroy.handle = xe_sync.handle;
-   intel_ioctl(fd, DRM_IOCTL_SYNCOBJ_DESTROY, &syncobj_destroy);
+   if (ret)
+      DBG("vm_bind_op: DRM_IOCTL_XE_VM_BIND failed(%i)", ret);
 
    return ret;
 }

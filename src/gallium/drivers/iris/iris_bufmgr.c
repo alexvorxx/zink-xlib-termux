@@ -231,6 +231,7 @@ struct iris_bufmgr {
 
    struct intel_device_info devinfo;
    const struct iris_kmd_backend *kmd_backend;
+   struct intel_bind_timeline bind_timeline; /* Xe only */
    bool bo_reuse:1;
    bool use_global_vm:1;
 
@@ -1769,6 +1770,7 @@ iris_bufmgr_destroy_global_vm(struct iris_bufmgr *bufmgr)
       /* Nothing to do in i915 */
       break;
    case INTEL_KMD_TYPE_XE:
+      intel_bind_timeline_finish(&bufmgr->bind_timeline, bufmgr->fd);
       iris_xe_destroy_global_vm(bufmgr);
       break;
    default:
@@ -2269,6 +2271,9 @@ iris_bufmgr_init_global_vm(struct iris_bufmgr *bufmgr)
       /* i915 don't require VM, so returning true even if use_global_vm is false */
       return true;
    case INTEL_KMD_TYPE_XE:
+      if (!intel_bind_timeline_init(&bufmgr->bind_timeline, bufmgr->fd))
+         return false;
+
       bufmgr->use_global_vm = iris_xe_init_global_vm(bufmgr, &bufmgr->global_vm_id);
       /* Xe requires VM */
       return bufmgr->use_global_vm;
@@ -2572,4 +2577,10 @@ iris_heap_to_pat_entry(const struct intel_device_info *devinfo,
    default:
       unreachable("invalid heap for platforms using PAT entries");
    }
+}
+
+struct intel_bind_timeline *
+iris_bufmgr_get_bind_timeline(struct iris_bufmgr *bufmgr)
+{
+   return &bufmgr->bind_timeline;
 }

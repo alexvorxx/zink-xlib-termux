@@ -102,6 +102,7 @@ literal(uint32_t num)
 {
 	instr->literal = num;
 	instr->is_literal = true;
+        parse_version(instr);
 }
 
 static void

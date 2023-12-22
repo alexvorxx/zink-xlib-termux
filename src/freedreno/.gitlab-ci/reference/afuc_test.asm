@@ -1,7 +1,7 @@
 ; a6xx microcode
-; Version: 01000001
+; Version: 016ee001
 
-[01000001]
+[016ee001]
 [#jumptbl]
 mov $01, 0x830	; CP_SQE_INSTR_BASE
 mov $02, 0x2

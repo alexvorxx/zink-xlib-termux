@@ -1,7 +1,7 @@
 ; a7xx microcode
-; Version: 01000001
+; Version: 01730001
 
-[01000001]
+[01730001]
 [#jumptbl]
 mov $01, 0x830	; CP_SQE_INSTR_BASE
 mov $02, 0x2

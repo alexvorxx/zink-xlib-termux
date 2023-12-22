@@ -23,7 +23,7 @@
 ; This file is the source for a simple mock firmware used to regression test
 ; the afuc assembler/disassembler. This is the a7xx variant, for testing new
 ; features introduced in a7xx.
-[01000001]
+[01730001]
 [#jumptbl]
 loc02:
 ; packet table loading:

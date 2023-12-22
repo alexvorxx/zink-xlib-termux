@@ -40,6 +40,7 @@ void decl_label(const char *str);
 void decl_jumptbl(void);
 void align_instr(unsigned alignment);
 void next_section(void);
+void parse_version(struct afuc_instr *instr);
 
 static inline uint32_t
 parse_reg(const char *str)

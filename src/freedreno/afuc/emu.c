@@ -554,12 +554,12 @@ emu_init(struct emu *emu)
       break;
    }
 
-   if (emu->gpu_id == 730 || emu->gpu_id == 740) {
+   if (emu->fw_id == AFUC_A730 || emu->fw_id == AFUC_A740) {
       emu_set_control_reg(emu, 0xef, 1 << 21);
       emu_set_control_reg(emu, 0, 7 << 28);
-   } else if (emu->gpu_id == 660) {
+   } else if (emu->fw_id == AFUC_A660) {
       emu_set_control_reg(emu, 0, 3 << 28);
-   } else if (emu->gpu_id == 650) {
+   } else if (emu->fw_id == AFUC_A650) {
       emu_set_control_reg(emu, 0, 1 << 28);
    }
 }
@@ -569,12 +569,12 @@ emu_fini(struct emu *emu)
 {
    uint32_t *instrs = emu->instrs;
    unsigned sizedwords = emu->sizedwords;
-   unsigned gpu_id = emu->gpu_id;
+   unsigned fw_id = emu->fw_id;
 
    munmap(emu->gpumem, EMU_MEMORY_SIZE);
    memset(emu, 0, sizeof(*emu));
 
    emu->instrs = instrs;
    emu->sizedwords = sizedwords;
-   emu->gpu_id = gpu_id;
+   emu->fw_id = fw_id;
 }

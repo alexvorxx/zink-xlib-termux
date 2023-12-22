@@ -26,7 +26,7 @@
 ; binary, then disassambled and compared to the reference disassembly. We do
 ; this to avoid having to host the actual firmware, especially the disassembled
 ; version, in Mesa.
-[01000001]
+[016ee001]
 [#jumptbl]
 loc02:
 ; packet table loading:

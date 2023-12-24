@@ -411,7 +411,6 @@ glsl_interp_mode_name(enum glsl_interp_mode qual)
       ENUM(INTERP_MODE_FLAT),
       ENUM(INTERP_MODE_NOPERSPECTIVE),
       ENUM(INTERP_MODE_EXPLICIT),
-      ENUM(INTERP_MODE_COLOR),
    };
    STATIC_ASSERT(ARRAY_SIZE(names) == INTERP_MODE_COUNT);
    return NAME(qual);

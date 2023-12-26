@@ -760,8 +760,12 @@ validate_intrinsic_instr(nir_intrinsic_instr *instr, validate_state *state)
       validate_assert(state,
                       (nir_slot_is_sysval_output(sem.location, MESA_SHADER_NONE) &&
                        !sem.no_sysval_output) ||
-                         (nir_slot_is_varying(sem.location) && !sem.no_varying) ||
-                         nir_instr_xfb_write_mask(instr));
+                      (nir_slot_is_varying(sem.location) && !sem.no_varying) ||
+                      nir_instr_xfb_write_mask(instr) ||
+                      /* TCS can set no_varying and no_sysval_output, meaning
+                       * that the output is only read by TCS and not TES.
+                       */
+                      state->shader->info.stage == MESA_SHADER_TESS_CTRL);
    }
 }
 

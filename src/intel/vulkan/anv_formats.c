@@ -1873,7 +1873,8 @@ void anv_GetPhysicalDeviceSparseImageFormatProperties2(
          VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT;
 
       isl_surf_usage_flags_t isl_usage =
-         anv_image_choose_isl_surf_usage(vk_create_flags, pFormatInfo->usage,
+         anv_image_choose_isl_surf_usage(physical_device,
+                                         vk_create_flags, pFormatInfo->usage,
                                          0, aspect);
 
       const enum isl_surf_dim isl_surf_dim =

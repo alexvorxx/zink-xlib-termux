@@ -447,6 +447,13 @@ enum anv_bo_alloc_flags {
 
    /** Specify whether this BO is internal to the driver */
    ANV_BO_ALLOC_INTERNAL =                (1 << 19),
+
+   /** Allocate with CCS AUX requirements
+    *
+    * This pads the BO include CCS data mapppable through the AUX-TT and
+    * aligned to the AUX-TT requirements.
+    */
+   ANV_BO_ALLOC_AUX_CCS =                 (1 << 20),
 };
 
 /** Specifies that the BO should be cached and coherent. */
@@ -485,6 +492,9 @@ struct anv_bo {
 
    /** Size of the buffer */
    uint64_t size;
+
+   /** Offset at which the CCS data is stored */
+   uint64_t ccs_offset;
 
    /* Map for internally mapped BOs.
     *
@@ -1018,6 +1028,25 @@ struct anv_physical_device {
     bool                                        uses_ex_bso;
 
     bool                                        always_flush_cache;
+
+    /** True if application memory is allocated with extra AUX memory
+     *
+     * Applications quite often pool image allocations together in a single
+     * VkDeviceMemory object. On platforms like MTL, the alignment of images
+     * with compression mapped through the AUX translation tables is large :
+     * 1MB. This can create a lot of wasted space in the application memory
+     * objects.
+     *
+     * To workaround this problem, we allocate CCS data at the end of
+     * VkDeviceMemory objects. This would not work well for TGL-like platforms
+     * because the AUX translation tables also contain the format of the
+     * images, but on MTL the HW ignore those values. So we can share the AUX
+     * TT entries between different images without problem.
+     *
+     * This should be only true for platforms with AUX TT.
+     */
+    bool                                         alloc_aux_tt_mem;
+
     /**
      * True if the descriptors buffers are holding one of the following :
      *    - anv_sampled_image_descriptor
@@ -5232,7 +5261,8 @@ anv_image_ccs_op(struct anv_cmd_buffer *cmd_buffer,
                  bool predicate);
 
 isl_surf_usage_flags_t
-anv_image_choose_isl_surf_usage(VkImageCreateFlags vk_create_flags,
+anv_image_choose_isl_surf_usage(struct anv_physical_device *device,
+                                VkImageCreateFlags vk_create_flags,
                                 VkImageUsageFlags vk_usage,
                                 isl_surf_usage_flags_t isl_extra_usage,
                                 VkImageAspectFlagBits aspect);

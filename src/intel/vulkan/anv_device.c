@@ -2298,6 +2298,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       !device->uses_ex_bso ||
       driQueryOptionb(&instance->dri_options, "force_indirect_descriptors");
 
+   device->alloc_aux_tt_mem =
+      device->info.has_aux_map && device->info.verx10 >= 125;
    /* Check if we can read the GPU timestamp register from the CPU */
    uint64_t u64_ignore;
    device->has_reg_timestamp = intel_gem_read_render_timestamp(fd,
@@ -4101,6 +4103,18 @@ VkResult anv_AllocateMemory(
     */
    if (device->info->has_aux_map)
       alloc_flags |= ANV_BO_ALLOC_AUX_TT_ALIGNED;
+
+   /* If the allocation is not dedicated, allocate additional CCS space.
+    *
+    * TODO: If we ever ship VK_EXT_descriptor_buffer (ahahah... :() we could
+    * drop this flag in the descriptor buffer case as we don't need any
+    * compression there.
+    *
+    * TODO: We could also create new memory types for allocations that don't
+    * need any compression.
+    */
+   if (device->physical->alloc_aux_tt_mem && dedicated_info == NULL)
+      alloc_flags |= ANV_BO_ALLOC_AUX_CCS;
 
    /* TODO: Android, ChromeOS and other applications may need another way to
     * allocate buffers that can be scanout to display but it should pretty

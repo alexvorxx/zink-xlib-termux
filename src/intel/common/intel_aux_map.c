@@ -248,6 +248,13 @@ intel_aux_get_main_to_aux_ratio(struct intel_aux_map_context *ctx)
    return ctx->format->main_to_aux_ratio;
 }
 
+uint64_t
+intel_aux_main_to_aux_offset(struct intel_aux_map_context *ctx,
+                             uint64_t main_offset)
+{
+   return main_offset / ctx->format->main_to_aux_ratio;
+}
+
 static const struct aux_format_info *
 get_format(enum intel_aux_map_format format)
 {

@@ -447,10 +447,12 @@ enum anv_bo_alloc_flags {
 
    /** Specify whether this BO is internal to the driver */
    ANV_BO_ALLOC_INTERNAL =                (1 << 19),
-
-   /** Specifies that the BO should be cached and coherent. */
-   ANV_BO_ALLOC_HOST_CACHED_COHERENT =    (ANV_BO_ALLOC_HOST_COHERENT | ANV_BO_ALLOC_HOST_CACHED),
 };
+
+/** Specifies that the BO should be cached and coherent. */
+#define ANV_BO_ALLOC_HOST_CACHED_COHERENT (ANV_BO_ALLOC_HOST_COHERENT | \
+                                           ANV_BO_ALLOC_HOST_CACHED)
+
 
 struct anv_bo {
    const char *name;

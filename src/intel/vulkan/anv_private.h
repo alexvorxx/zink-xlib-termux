@@ -5139,7 +5139,7 @@ anv_address_allows_aux_map(const struct anv_device *device,
     * into on the BO, but we don't have that information here. As a heuristic,
     * rely on the BO offset instead.
     */
-   if (((addr.bo ? addr.bo->offset : 0) + addr.offset) %
+   if (anv_address_physical(addr) %
        intel_aux_map_get_alignment(device->aux_map_ctx) != 0)
       return false;
 

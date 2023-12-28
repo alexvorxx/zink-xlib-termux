@@ -1396,6 +1396,8 @@ VkResult anv_CreateDescriptorPool(
 
    list_inithead(&pool->desc_sets);
 
+   ANV_RMV(descriptor_pool_create, device, pCreateInfo, pool, false);
+
    *pDescriptorPool = anv_descriptor_pool_to_handle(pool);
 
    return VK_SUCCESS;
@@ -1411,6 +1413,8 @@ void anv_DestroyDescriptorPool(
 
    if (!pool)
       return;
+
+   ANV_RMV(resource_destroy, device, pool);
 
    list_for_each_entry_safe(struct anv_descriptor_set, set,
                             &pool->desc_sets, pool_link) {

@@ -192,6 +192,8 @@ xe_vm_bind_op(struct anv_device *device,
    if (ret)
       goto out_destroy_syncobj;
 
+   ANV_RMV(vm_binds, device, submit->binds, submit->binds_len);
+
    syncobj_wait.handles = (uintptr_t)&xe_sync.handle;
    ret = intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_WAIT, &syncobj_wait);
 

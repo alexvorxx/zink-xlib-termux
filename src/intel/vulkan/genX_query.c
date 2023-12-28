@@ -258,6 +258,8 @@ VkResult genX(CreateQueryPool)(
       }
    }
 
+   ANV_RMV(query_pool_create, device, pool, false);
+
    *pQueryPool = anv_query_pool_to_handle(pool);
 
    return VK_SUCCESS;
@@ -278,6 +280,8 @@ void genX(DestroyQueryPool)(
 
    if (!pool)
       return;
+
+   ANV_RMV(resource_destroy, device, pool);
 
    anv_device_release_bo(device, pool->bo);
    vk_object_free(&device->vk, pAllocator, pool);

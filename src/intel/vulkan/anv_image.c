@@ -1898,6 +1898,8 @@ VkResult anv_CreateImage(
       return result;
    }
 
+   ANV_RMV(image_create, device, false, image);
+
    *pImage = anv_image_to_handle(image);
 
    return result;
@@ -1912,6 +1914,8 @@ anv_DestroyImage(VkDevice _device, VkImage _image,
 
    if (!image)
       return;
+
+   ANV_RMV(image_destroy, device, image);
 
    assert(&device->vk == image->vk.base.device);
    anv_image_finish(image);
@@ -2290,6 +2294,9 @@ anv_bind_image_memory(struct anv_device *device,
             .offset = bind_info->memoryOffset,
          };
 
+         ANV_RMV(image_bind, device, image,
+                 binding - image->bindings);
+
          did_bind = true;
          break;
       }
@@ -2352,6 +2359,9 @@ anv_bind_image_memory(struct anv_device *device,
          .bo = mem->bo,
          .offset = bind_info->memoryOffset,
       };
+
+      ANV_RMV(image_bind, device, image,
+              ANV_IMAGE_MEMORY_BINDING_MAIN);
 
       did_bind = true;
    }

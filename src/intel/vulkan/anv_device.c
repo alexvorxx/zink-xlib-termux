@@ -3103,6 +3103,12 @@ VkResult anv_CreateDevice(
                                              true);
    override_initial_entrypoints = false;
 #endif
+   if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
+      vk_device_dispatch_table_from_entrypoints(&dispatch_table,
+                                                &anv_rmv_device_entrypoints,
+                                                true);
+      override_initial_entrypoints = false;
+   }
    vk_device_dispatch_table_from_entrypoints(&dispatch_table,
       anv_genX(&physical_device->info, device_entrypoints),
       override_initial_entrypoints);
@@ -3110,6 +3116,7 @@ VkResult anv_CreateDevice(
       &anv_device_entrypoints, false);
    vk_device_dispatch_table_from_entrypoints(&dispatch_table,
       &wsi_device_entrypoints, false);
+
 
    result = vk_device_init(&device->vk, &physical_device->vk,
                            &dispatch_table, pCreateInfo, pAllocator);
@@ -3249,6 +3256,9 @@ VkResult anv_CreateDevice(
       goto fail_mutex;
    }
    pthread_condattr_destroy(&condattr);
+
+   if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV)
+      anv_memory_trace_init(device);
 
    result = anv_bo_cache_init(&device->bo_cache, device);
    if (result != VK_SUCCESS)
@@ -3723,6 +3733,8 @@ void anv_DestroyDevice(
    u_gralloc_destroy(&device->u_gralloc);
 #endif
 
+   anv_memory_trace_finish(device);
+
    struct anv_physical_device *pdevice = device->physical;
 
    for (uint32_t i = 0; i < device->queue_count; i++)
@@ -4184,6 +4196,8 @@ VkResult anv_AllocateMemory(
    list_addtail(&mem->link, &device->memory_objects);
    pthread_mutex_unlock(&device->mutex);
 
+   ANV_RMV(heap_create, device, mem, false, 0);
+
    *pMem = anv_device_memory_to_handle(mem);
 
    return VK_SUCCESS;
@@ -4288,6 +4302,8 @@ void anv_FreeMemory(
                 -mem->bo->size);
 
    anv_device_release_bo(device, mem->bo);
+
+   ANV_RMV(resource_destroy, device, mem);
 
    vk_device_memory_destroy(&device->vk, pAllocator, &mem->vk);
 }
@@ -4456,7 +4472,8 @@ void anv_GetDeviceMemoryCommitment(
 }
 
 static void
-anv_bind_buffer_memory(const VkBindBufferMemoryInfo *pBindInfo)
+anv_bind_buffer_memory(struct anv_device *device,
+                       const VkBindBufferMemoryInfo *pBindInfo)
 {
    ANV_FROM_HANDLE(anv_device_memory, mem, pBindInfo->memory);
    ANV_FROM_HANDLE(anv_buffer, buffer, pBindInfo->buffer);
@@ -4478,17 +4495,21 @@ anv_bind_buffer_memory(const VkBindBufferMemoryInfo *pBindInfo)
       buffer->address = ANV_NULL_ADDRESS;
    }
 
+   ANV_RMV(buffer_bind, device, buffer);
+
    if (bind_status)
       *bind_status->pResult = VK_SUCCESS;
 }
 
 VkResult anv_BindBufferMemory2(
-    VkDevice                                    device,
+    VkDevice                                    _device,
     uint32_t                                    bindInfoCount,
     const VkBindBufferMemoryInfo*               pBindInfos)
 {
+   ANV_FROM_HANDLE(anv_device, device, _device);
+
    for (uint32_t i = 0; i < bindInfoCount; i++)
-      anv_bind_buffer_memory(&pBindInfos[i]);
+      anv_bind_buffer_memory(device, &pBindInfos[i]);
 
    return VK_SUCCESS;
 }
@@ -4515,6 +4536,8 @@ VkResult anv_CreateEvent(
                                        sizeof(uint64_t), 8);
    *(uint64_t *)event->state.map = VK_EVENT_RESET;
 
+   ANV_RMV(event_create, device, event, pCreateInfo->flags, false);
+
    *pEvent = anv_event_to_handle(event);
 
    return VK_SUCCESS;
@@ -4530,6 +4553,8 @@ void anv_DestroyEvent(
 
    if (!event)
       return;
+
+   ANV_RMV(resource_destroy, device, event);
 
    anv_state_pool_free(&device->dynamic_state_pool, event->state);
 
@@ -4728,6 +4753,8 @@ VkResult anv_CreateBuffer(
       }
    }
 
+   ANV_RMV(buffer_create, device, false, buffer);
+
    *pBuffer = anv_buffer_to_handle(buffer);
 
    return VK_SUCCESS;
@@ -4743,6 +4770,8 @@ void anv_DestroyBuffer(
 
    if (!buffer)
       return;
+
+   ANV_RMV(buffer_destroy, device, buffer);
 
    if (anv_buffer_is_sparse(buffer)) {
       assert(buffer->address.offset == buffer->sparse_data.address);

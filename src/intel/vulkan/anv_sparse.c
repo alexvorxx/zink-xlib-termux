@@ -594,6 +594,9 @@ anv_sparse_bind_trtt(struct anv_device *device,
    if (trtt_submit.l3l2_binds_len || trtt_submit.l1_binds_len)
       result = anv_genX(device->info, write_trtt_entries)(&trtt_submit);
 
+   if (result == VK_SUCCESS)
+      ANV_RMV(vm_binds, device, sparse_submit->binds, sparse_submit->binds_len);
+
 out:
    pthread_mutex_unlock(&trtt->mutex);
    STACK_ARRAY_FINISH(l1_binds);

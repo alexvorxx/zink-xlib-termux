@@ -327,6 +327,8 @@ void anv_DestroyPipeline(
    if (!pipeline)
       return;
 
+   ANV_RMV(resource_destroy, device, pipeline);
+
    switch (pipeline->type) {
    case ANV_PIPELINE_GRAPHICS_LIB: {
       struct anv_graphics_lib_pipeline *gfx_pipeline =
@@ -2765,6 +2767,8 @@ anv_compute_pipeline_create(struct anv_device *device,
 
    anv_genX(device->info, compute_pipeline_emit)(pipeline);
 
+   ANV_RMV(compute_pipeline_create, device, pipeline, false);
+
    *pPipeline = anv_pipeline_to_handle(&pipeline->base);
 
    return pipeline->base.batch.status;
@@ -3289,6 +3293,8 @@ anv_graphics_pipeline_create(struct anv_device *device,
 
    anv_fill_pipeline_creation_feedback(&pipeline->base, &pipeline_feedback,
                                        pCreateInfo, stages);
+
+   ANV_RMV(graphics_pipeline_create, device, pipeline, false);
 
    *pPipeline = anv_pipeline_to_handle(&pipeline->base.base);
 
@@ -4145,6 +4151,8 @@ anv_ray_tracing_pipeline_create(
    anv_genX(device->info, ray_tracing_pipeline_emit)(pipeline);
 
    ralloc_free(tmp_ctx);
+
+   ANV_RMV(rt_pipeline_create, device, pipeline, false);
 
    *pPipeline = anv_pipeline_to_handle(&pipeline->base);
 

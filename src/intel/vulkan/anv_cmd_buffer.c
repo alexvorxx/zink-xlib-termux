@@ -239,6 +239,8 @@ anv_cmd_buffer_destroy(struct vk_command_buffer *vk_cmd_buffer)
       cmd_buffer->companion_rcs_cmd_buffer = NULL;
    }
 
+   ANV_RMV(cmd_buffer_destroy, cmd_buffer->device, cmd_buffer);
+
    destroy_cmd_buffer(cmd_buffer);
    pthread_mutex_unlock(&device->mutex);
 }
@@ -301,6 +303,8 @@ anv_cmd_buffer_reset(struct vk_command_buffer *vk_cmd_buffer,
       destroy_cmd_buffer(cmd_buffer->companion_rcs_cmd_buffer);
       cmd_buffer->companion_rcs_cmd_buffer = NULL;
    }
+
+   ANV_RMV(cmd_buffer_destroy, cmd_buffer->device, cmd_buffer);
 
    reset_cmd_buffer(cmd_buffer, flags);
 }

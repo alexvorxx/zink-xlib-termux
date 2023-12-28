@@ -2815,6 +2815,8 @@ genX(EndCommandBuffer)(
        status = end_command_buffer(cmd_buffer->companion_rcs_cmd_buffer);
    }
 
+   ANV_RMV(cmd_buffer_create, cmd_buffer->device, cmd_buffer);
+
    return status;
 }
 

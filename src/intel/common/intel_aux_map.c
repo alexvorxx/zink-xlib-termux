@@ -75,6 +75,8 @@
  *  - TM (Tile-mode): 0=Ys, 1=Y, 2=rsvd, 3=rsvd
  *  - aux-data-addr: VMA/GPU address for the aux-data
  *  - V: entry is valid
+ *
+ * BSpec 44930
  */
 
 #include "intel_aux_map.h"

@@ -742,6 +742,9 @@ struct anv_state_stream {
    /* Offset into the current block at which to allocate the next state */
    uint32_t next;
 
+   /* Sum of all the blocks in all_blocks */
+   uint32_t total_size;
+
    /* List of all blocks allocated from this pool */
    struct util_dynarray all_blocks;
 };

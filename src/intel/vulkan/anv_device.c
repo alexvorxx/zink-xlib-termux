@@ -2821,7 +2821,8 @@ anv_device_init_trivial_batch(struct anv_device *device)
 {
    VkResult result = anv_device_alloc_bo(device, "trivial-batch", 4096,
                                          ANV_BO_ALLOC_MAPPED |
-                                         ANV_BO_ALLOC_HOST_COHERENT,
+                                         ANV_BO_ALLOC_HOST_COHERENT |
+                                         ANV_BO_ALLOC_INTERNAL,
                                          0 /* explicit_address */,
                                          &device->trivial_batch_bo);
    if (result != VK_SUCCESS)
@@ -3409,7 +3410,8 @@ VkResult anv_CreateDevice(
    result = anv_device_alloc_bo(device, "workaround", 8192,
                                 ANV_BO_ALLOC_CAPTURE |
                                 ANV_BO_ALLOC_HOST_COHERENT |
-                                ANV_BO_ALLOC_MAPPED,
+                                ANV_BO_ALLOC_MAPPED |
+                                ANV_BO_ALLOC_INTERNAL,
                                 0 /* explicit_address */,
                                 &device->workaround_bo);
    if (result != VK_SUCCESS)
@@ -3440,7 +3442,7 @@ VkResult anv_CreateDevice(
 
       result = anv_device_alloc_bo(device, "ray queries",
                                    ray_queries_size,
-                                   0,
+                                   ANV_BO_ALLOC_INTERNAL,
                                    0 /* explicit_address */,
                                    &device->ray_query_bo);
       if (result != VK_SUCCESS)
@@ -3513,7 +3515,7 @@ VkResult anv_CreateDevice(
       result = anv_device_alloc_bo(device,
                                    "rt-btd-fifo",
                                    btd_fifo_bo_size,
-                                   0 /* alloc_flags */,
+                                   ANV_BO_ALLOC_INTERNAL,
                                    0 /* explicit_address */,
                                    &device->btd_fifo_bo);
       if (result != VK_SUCCESS)

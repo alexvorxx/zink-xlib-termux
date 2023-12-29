@@ -378,7 +378,8 @@ anv_block_pool_init(struct anv_block_pool *pool,
       ANV_BO_ALLOC_FIXED_ADDRESS |
       ANV_BO_ALLOC_MAPPED |
       ANV_BO_ALLOC_HOST_CACHED_COHERENT |
-      ANV_BO_ALLOC_CAPTURE;
+      ANV_BO_ALLOC_CAPTURE |
+      ANV_BO_ALLOC_INTERNAL;
 
    result = anv_block_pool_expand_range(pool, initial_size);
    if (result != VK_SUCCESS)
@@ -1262,7 +1263,8 @@ anv_scratch_pool_alloc(struct anv_device *device, struct anv_scratch_pool *pool,
     * so nothing will ever touch the top page.
     */
    const enum anv_bo_alloc_flags alloc_flags =
-      devinfo->verx10 < 125 ? ANV_BO_ALLOC_32BIT_ADDRESS : 0;
+      ANV_BO_ALLOC_INTERNAL |
+      (devinfo->verx10 < 125 ? ANV_BO_ALLOC_32BIT_ADDRESS : 0);
    VkResult result = anv_device_alloc_bo(device, "scratch", size,
                                          alloc_flags,
                                          0 /* explicit_address */,

@@ -4534,19 +4534,6 @@ agx_apply_passthrough_gs(struct agx_context *ctx,
 
    assert(ctx->stage[PIPE_SHADER_GEOMETRY].shader == NULL);
 
-   /* We can split XFB from main vertex shader to avoid GS costs, at the expense
-    * of additional VS invocations. This probably needs tuning for perf...
-    * slight hit to Manhattan but eliminates spilling in the CTS.
-    */
-   bool split_xfb = (ctx->stage[PIPE_SHADER_VERTEX].shader->has_xfb_info &&
-                     ctx->streamout.num_targets);
-
-   struct agx_rasterizer *saved_rast = ctx->rast;
-   if (split_xfb) {
-      ctx->base.bind_rasterizer_state(
-         &ctx->base, util_blitter_get_discard_rasterizer_state(ctx->blitter));
-   }
-
    /* Draw with passthrough */
    ctx->base.bind_gs_state(
       &ctx->base,
@@ -4554,25 +4541,6 @@ agx_apply_passthrough_gs(struct agx_context *ctx,
    ctx->base.draw_vbo(&ctx->base, info, drawid_offset, indirect, draws,
                       num_draws);
    ctx->base.bind_gs_state(&ctx->base, NULL);
-
-   /* Draw without XFB */
-   if (split_xfb) {
-      unsigned saved_targets = ctx->streamout.num_targets;
-      struct agx_query *prim_queries[ARRAY_SIZE(ctx->prims_generated)];
-      memcpy(prim_queries, ctx->prims_generated, sizeof(prim_queries));
-
-      ctx->base.bind_rasterizer_state(&ctx->base, saved_rast);
-      ctx->streamout.num_targets = 0;
-      memset(ctx->prims_generated, 0, sizeof(ctx->prims_generated));
-
-      if (!saved_rast->base.rasterizer_discard) {
-         ctx->base.draw_vbo(&ctx->base, info, drawid_offset, indirect, draws,
-                            num_draws);
-      }
-
-      ctx->streamout.num_targets = saved_targets;
-      memcpy(ctx->prims_generated, prim_queries, sizeof(prim_queries));
-   }
 }
 
 static void

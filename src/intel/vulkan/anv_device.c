@@ -3083,17 +3083,23 @@ VkResult anv_CreateDevice(
    bool override_initial_entrypoints = true;
    if (physical_device->instance->vk.app_info.app_name &&
        !strcmp(physical_device->instance->vk.app_info.app_name, "HITMAN3.exe")) {
-      vk_device_dispatch_table_from_entrypoints(&dispatch_table, &hitman3_device_entrypoints, true);
+      vk_device_dispatch_table_from_entrypoints(&dispatch_table,
+                                                &anv_hitman3_device_entrypoints,
+                                                true);
       override_initial_entrypoints = false;
    }
    if (physical_device->info.ver < 12 &&
        physical_device->instance->vk.app_info.app_name &&
        !strcmp(physical_device->instance->vk.app_info.app_name, "DOOM 64")) {
-      vk_device_dispatch_table_from_entrypoints(&dispatch_table, &doom64_device_entrypoints, true);
+      vk_device_dispatch_table_from_entrypoints(&dispatch_table,
+                                                &anv_doom64_device_entrypoints,
+                                                true);
       override_initial_entrypoints = false;
    }
 #ifdef ANDROID
-   vk_device_dispatch_table_from_entrypoints(&dispatch_table, &android_device_entrypoints, true);
+   vk_device_dispatch_table_from_entrypoints(&dispatch_table,
+                                             &anv_android_device_entrypoints,
+                                             true);
    override_initial_entrypoints = false;
 #endif
    vk_device_dispatch_table_from_entrypoints(&dispatch_table,

@@ -495,7 +495,7 @@ static int si_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_typ
    case PIPE_SHADER_CAP_FP16_DERIVATIVES:
    case PIPE_SHADER_CAP_GLSL_16BIT_CONSTS:
    case PIPE_SHADER_CAP_INT16:
-      return sscreen->info.gfx_level >= GFX8 && sscreen->options.fp16;
+      return sscreen->nir_options->lower_mediump_io != NULL;
 
    /* Unsupported boolean features. */
    case PIPE_SHADER_CAP_SUBROUTINES:
@@ -1423,6 +1423,8 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
    options->force_f2f16_rtz = true;
    options->io_options = nir_io_has_flexible_input_interpolation_except_flat |
                          nir_io_glsl_lower_derefs;
+   options->lower_mediump_io = sscreen->info.gfx_level >= GFX8 && sscreen->options.fp16 ?
+                                  si_lower_mediump_io : NULL;
    /* HW supports indirect indexing for: | Enabled in driver
     * -------------------------------------------------------
     * TCS inputs                         | Yes

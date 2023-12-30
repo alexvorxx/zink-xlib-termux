@@ -4063,6 +4063,11 @@ typedef struct nir_shader_compiler_options {
 
    /** Options determining lowering and behavior of inputs and outputs. */
    nir_io_options io_options;
+
+   /** Driver callback where drivers can define how to lower mediump.
+    *  Used by nir_lower_io_passes.
+    */
+   void (*lower_mediump_io)(struct nir_shader *nir);
 } nir_shader_compiler_options;
 
 typedef struct nir_shader {

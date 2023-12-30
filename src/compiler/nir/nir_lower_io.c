@@ -3259,5 +3259,8 @@ nir_lower_io_passes(nir_shader *nir, bool renumber_vs_inputs)
    if (nir->xfb_info)
       NIR_PASS_V(nir, nir_io_add_intrinsic_xfb_info);
 
+   if (nir->options->lower_mediump_io)
+      nir->options->lower_mediump_io(nir);
+
    nir->info.io_lowered = true;
 }

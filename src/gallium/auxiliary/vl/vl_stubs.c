@@ -155,9 +155,3 @@ vl_create_mpeg12_decoder(struct pipe_context *pipe,
    assert(0);
    return NULL;
 }
-
-/*
- * vl_zscan
- */
-const int vl_zscan_normal[] = {0};
-const int vl_zscan_alternate[] = {0};

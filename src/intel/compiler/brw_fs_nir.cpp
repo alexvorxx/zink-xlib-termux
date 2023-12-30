@@ -1934,37 +1934,40 @@ fs_nir_emit_load_const(nir_to_brw_state &ntb,
       brw_type_with_size(BRW_TYPE_D, instr->def.bit_size);
    fs_reg reg = bld.vgrf(reg_type, instr->def.num_components);
 
+   fs_reg comps[instr->def.num_components];
+
    switch (instr->def.bit_size) {
    case 8:
       for (unsigned i = 0; i < instr->def.num_components; i++)
-         bld.MOV(offset(reg, bld, i), setup_imm_b(bld, instr->value[i].i8));
+         comps[i] = setup_imm_b(bld, instr->value[i].i8);
       break;
 
    case 16:
       for (unsigned i = 0; i < instr->def.num_components; i++)
-         bld.MOV(offset(reg, bld, i), brw_imm_w(instr->value[i].i16));
+         comps[i] = brw_imm_w(instr->value[i].i16);
       break;
 
    case 32:
       for (unsigned i = 0; i < instr->def.num_components; i++)
-         bld.MOV(offset(reg, bld, i), brw_imm_d(instr->value[i].i32));
+         comps[i] = brw_imm_d(instr->value[i].i32);
       break;
 
    case 64:
       if (!devinfo->has_64bit_int) {
-         for (unsigned i = 0; i < instr->def.num_components; i++) {
-            bld.MOV(retype(offset(reg, bld, i), BRW_TYPE_DF),
-                    brw_imm_df(instr->value[i].f64));
-         }
+         reg.type = BRW_TYPE_DF;
+         for (unsigned i = 0; i < instr->def.num_components; i++)
+            comps[i] = brw_imm_df(instr->value[i].f64);
       } else {
          for (unsigned i = 0; i < instr->def.num_components; i++)
-            bld.MOV(offset(reg, bld, i), brw_imm_q(instr->value[i].i64));
+            comps[i] = brw_imm_q(instr->value[i].i64);
       }
       break;
 
    default:
       unreachable("Invalid bit size");
    }
+
+   bld.VEC(reg, comps, instr->def.num_components);
 
    ntb.ssa_values[instr->def.index] = reg;
 }

@@ -3564,6 +3564,14 @@ typedef enum {
     * location, and then also as centroid, at_offset, and at_sample.
     */
    nir_io_has_flexible_input_interpolation_except_flat = BITFIELD_BIT(0),
+
+   /* Options affecting the GLSL compiler are below. */
+
+   /**
+    * Lower load_deref/store_deref to load_input/store_output/etc. intrinsics.
+    * This is only affects GLSL compilation.
+    */
+   nir_io_glsl_lower_derefs = BITFIELD_BIT(16),
 } nir_io_options;
 
 /** An instruction filtering callback
@@ -4013,15 +4021,9 @@ typedef struct nir_shader_compiler_options {
    nir_divergence_options divergence_analysis_options;
 
    /**
-    * Lower load_deref/store_deref of inputs and outputs into
-    * load_input/store_input intrinsics. This is used by nir_lower_io_passes.
-    */
-   bool lower_io_variables;
-
-   /**
     * The masks of shader stages that support indirect indexing with
-    * load_input and store_output intrinsics. It's used when
-    * lower_io_variables is true. This is used by nir_lower_io_passes.
+    * load_input and store_output intrinsics. It's used by
+    * nir_lower_io_passes.
     */
    uint8_t support_indirect_inputs;
    uint8_t support_indirect_outputs;

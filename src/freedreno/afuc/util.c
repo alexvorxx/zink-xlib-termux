@@ -275,6 +275,13 @@ int afuc_util_init(enum afuc_fwid fw_id, int *gpuver_out, bool colors)
    char *pipe_reg_name = NULL;
 
    switch (fw_id) {
+   case AFUC_A750:
+      name = "A6XX";
+      variant = "A7XX";
+      control_reg_name = "A7XX_GEN3_CONTROL_REG";
+      pipe_reg_name = "A7XX_PIPE_REG";
+      *gpuver_out = 7;
+      break;
    case AFUC_A730:
    case AFUC_A740:
       name = "A6XX";

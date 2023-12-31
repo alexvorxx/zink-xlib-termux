@@ -72,6 +72,8 @@ mov $01, $data
 CP_SET_SECURE_MODE:
 mov $02, $data
 setsecure $02, #l61
+
+fxn59:
 l59:
 jump #l59
 nop
@@ -149,7 +151,7 @@ IN_PREEMPT:
 cread $02, [$00 + 0x101]
 brne $02, 0x1, #l125
 nop
-preemptleave #l59
+bl #fxn59
 nop
 nop
 nop

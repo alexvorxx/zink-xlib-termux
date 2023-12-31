@@ -349,7 +349,20 @@ emu_instr(struct emu *emu, struct afuc_instr *instr)
       emu->waitin = true;
       break;
    }
-   /* OPC_PREEMPTLEAVE6 */
+   case OPC_BL: {
+      emu_set_gpr_reg(emu, REG_LR, emu->gpr_regs.pc + 2);
+      emu->branch_target = instr->literal;
+      break;
+   }
+   case OPC_JUMPR: {
+      emu->branch_target = emu_get_gpr_reg(emu, instr->src1);
+      break;
+   }
+   case OPC_SRET: {
+      emu->branch_target = emu_get_gpr_reg(emu, REG_LR);
+      /* TODO: read $sp and check for stack overflow? */
+      break;
+   }
    case OPC_SETSECURE: {
       // TODO this acts like a conditional branch, but in which case
       // does it branch?

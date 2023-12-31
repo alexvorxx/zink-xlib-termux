@@ -228,7 +228,8 @@ emit_instructions(int outfd)
          break;
 
       case OPC_CALL:
-      case OPC_PREEMPTLEAVE:
+      case OPC_BL:
+      case OPC_JUMPA:
          ai->literal = resolve_label(ai->label);
          break;
 

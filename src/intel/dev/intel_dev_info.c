@@ -36,6 +36,7 @@
 #include "util/libdrm.h"
 
 #include "intel_device_info.h"
+#include "intel_device_info_serialize.h"
 #include "intel_hwconfig.h"
 
 static int
@@ -179,12 +180,13 @@ main(int argc, char *argv[])
    drmDevicePtr devices[8];
    int max_devices, i;
    char c;
-   bool help = false, print_hwconfig = false, all = false, print_workarounds = false;
+   bool help = false, print_hwconfig = false, all = false, print_workarounds = false, print_json = false;
    const char *platform = NULL;
    const struct option opts[] = {
       { "help",              no_argument,  (int *) &help,              true },
       { "platform",    required_argument,  NULL,                       false },
       { "hwconfig",          no_argument,  (int *) &print_hwconfig,    true },
+      { "json",              no_argument,  (int *) &print_json,        true },
       { "workarounds",       no_argument,  (int *) &print_workarounds, true },
       { "all",               no_argument,  (int *) &all,               true },
    };
@@ -211,6 +213,7 @@ main(int argc, char *argv[])
               "      --help / h        display this help and exit\n"
               "      --platform <name> print a given platform's info (skl, icl, tgl, etc...)\n"
               "      --hwconfig        print the hwconfig table\n"
+              "      --json            print json representation of device info\n"
               "      --workarounds     print the list of hardware workarounds for the system\n"
               "      --all / -a        print all optional details\n");
       exit(0);
@@ -254,6 +257,15 @@ main(int argc, char *argv[])
 
          if (!success)
             continue;
+
+         if (print_json) {
+            JSON_Value *json = intel_device_info_dump_json(&devinfo);
+            char *pretty_string = json_serialize_to_string_pretty(json);
+            printf("%s", pretty_string);
+            json_free_serialized_string(pretty_string);
+            json_value_free(json);
+            continue;
+         }
 
          fprintf(stdout, "%s:\n", path);
 

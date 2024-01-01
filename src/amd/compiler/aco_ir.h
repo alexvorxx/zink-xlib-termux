@@ -2203,10 +2203,6 @@ void select_tcs_epilog(Program* program, void* pinfo, ac_shader_config* config,
                        const struct aco_compiler_options* options,
                        const struct aco_shader_info* info, const struct ac_shader_args* args);
 
-void select_gl_vs_prolog(Program* program, void* pinfo, ac_shader_config* config,
-                         const struct aco_compiler_options* options,
-                         const struct aco_shader_info* info, const struct ac_shader_args* args);
-
 void select_ps_prolog(Program* program, void* pinfo, ac_shader_config* config,
                       const struct aco_compiler_options* options,
                       const struct aco_shader_info* info, const struct ac_shader_args* args);

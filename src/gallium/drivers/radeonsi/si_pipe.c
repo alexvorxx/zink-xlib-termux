@@ -787,16 +787,11 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    if (sctx->gfx_level >= GFX9) {
       /* The LS output / HS input layout can be communicated
        * directly instead of via user SGPRs for merged LS-HS.
-       * This also enables jumping over the VS prolog for HS-only waves.
-       *
-       * When the LS VGPR fix is needed, monolithic shaders can:
-       *  - avoid initializing EXEC in both the LS prolog
-       *    and the LS main part when !vs_needs_prolog
-       *  - remove the fixup for unused input VGPRs
+       * This also enables jumping over the VS for HS-only waves.
        */
       sctx->shader.tcs.key.ge.opt.prefer_mono = 1;
 
-      /* This enables jumping over the VS prolog for GS-only waves. */
+      /* This enables jumping over the VS for GS-only waves. */
       sctx->shader.gs.key.ge.opt.prefer_mono = 1;
    }
 
@@ -962,8 +957,8 @@ static struct pipe_context *si_pipe_create_context(struct pipe_screen *screen, v
 static void si_destroy_screen(struct pipe_screen *pscreen)
 {
    struct si_screen *sscreen = (struct si_screen *)pscreen;
-   struct si_shader_part *parts[] = {sscreen->vs_prologs, sscreen->tcs_epilogs,
-                                     sscreen->ps_prologs, sscreen->ps_epilogs};
+   struct si_shader_part *parts[] = {sscreen->tcs_epilogs, sscreen->ps_prologs,
+                                     sscreen->ps_epilogs};
    unsigned i;
 
    if (!sscreen->ws->unref(sscreen->ws))

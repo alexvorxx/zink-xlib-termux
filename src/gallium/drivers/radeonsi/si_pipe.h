@@ -670,7 +670,6 @@ struct si_screen {
    } barrier_flags;
 
    simple_mtx_t shader_parts_mutex;
-   struct si_shader_part *vs_prologs;
    struct si_shader_part *tcs_epilogs;
    struct si_shader_part *ps_prologs;
    struct si_shader_part *ps_epilogs;

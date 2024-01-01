@@ -105,16 +105,6 @@ struct aco_tcs_epilog_info {
    struct ac_arg tcs_offchip_layout;
 };
 
-struct aco_gl_vs_prolog_info {
-   uint16_t instance_divisor_is_one;
-   uint16_t instance_divisor_is_fetched;
-   unsigned instance_diviser_buf_offset;
-   unsigned num_inputs;
-   bool as_ls;
-
-   struct ac_arg internal_bindings;
-};
-
 struct aco_ps_prolog_info {
    bool poly_stipple;
    unsigned poly_stipple_buf_offset;

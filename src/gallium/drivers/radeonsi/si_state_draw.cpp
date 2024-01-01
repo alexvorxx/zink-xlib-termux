@@ -2131,13 +2131,12 @@ static void si_draw(struct pipe_context *ctx,
 
    if (IS_DRAW_VERTEX_STATE) {
       /* draw_vertex_state doesn't use the current vertex buffers and vertex elements,
-       * so disable any non-trivial VS prolog that is based on them, such as vertex
-       * format lowering.
+       * so disable all VS input lowering.
        */
       if (!sctx->force_trivial_vs_inputs) {
          sctx->force_trivial_vs_inputs = true;
 
-         /* Update shaders to disable the non-trivial VS prolog. */
+         /* Update shaders to disable VS input lowering. */
          if (sctx->uses_nontrivial_vs_inputs) {
             si_vs_key_update_inputs(sctx);
             sctx->do_update_shaders = true;
@@ -2147,7 +2146,7 @@ static void si_draw(struct pipe_context *ctx,
       if (sctx->force_trivial_vs_inputs) {
          sctx->force_trivial_vs_inputs = false;
 
-         /* Update shaders to enable the non-trivial VS prolog. */
+         /* Update shaders to possibly enable VS input lowering. */
          if (sctx->uses_nontrivial_vs_inputs) {
             si_vs_key_update_inputs(sctx);
             sctx->do_update_shaders = true;

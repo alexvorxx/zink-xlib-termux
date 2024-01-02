@@ -611,6 +611,12 @@ glsl_type_is_integer_16_32_64(const glsl_type *t)
 }
 
 static inline bool
+glsl_type_is_float_16(const glsl_type *t)
+{
+   return t->base_type == GLSL_TYPE_FLOAT16;
+}
+
+static inline bool
 glsl_type_is_float_16_32(const glsl_type *t)
 {
    return t->base_type == GLSL_TYPE_FLOAT16 || glsl_type_is_float(t);

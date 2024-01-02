@@ -60,6 +60,13 @@ vk_pipeline_shader_stage_to_nir(struct vk_device *device,
                                 const struct nir_shader_compiler_options *nir_options,
                                 void *mem_ctx, struct nir_shader **nir_out);
 
+enum gl_subgroup_size
+vk_get_subgroup_size(uint32_t spirv_version,
+                     gl_shader_stage stage,
+                     const void *info_pNext,
+                     bool allow_varying,
+                     bool require_full);
+
 struct vk_pipeline_robustness_state {
    VkPipelineRobustnessBufferBehaviorEXT storage_buffers;
    VkPipelineRobustnessBufferBehaviorEXT uniform_buffers;

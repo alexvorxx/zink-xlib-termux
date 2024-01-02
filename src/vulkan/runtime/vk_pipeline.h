@@ -199,6 +199,10 @@ void vk_pipeline_free(struct vk_device *device,
                       const VkAllocationCallbacks *alloc,
                       struct vk_pipeline *pipeline);
 
+void
+vk_cmd_unbind_pipelines_for_stages(struct vk_command_buffer *cmd_buffer,
+                                   VkShaderStageFlags stages);
+
 #ifdef __cplusplus
 }
 #endif

@@ -369,7 +369,10 @@ vk_common_GetShaderBinaryDataEXT(VkDevice _device,
    return result;
 }
 
-#define VK_MAX_LINKED_SHADER_STAGES 5
+/* The only place where we have "real" linking is graphics shaders and there
+ * is a limit as to how many of them can be linked together at one time.
+ */
+#define VK_MAX_LINKED_SHADER_STAGES MESA_VK_MAX_GRAPHICS_PIPELINE_STAGES
 
 VKAPI_ATTR VkResult VKAPI_CALL
 vk_common_CreateShadersEXT(VkDevice _device,
@@ -552,10 +555,16 @@ vk_common_CmdBindShadersEXT(VkCommandBuffer commandBuffer,
    STACK_ARRAY(gl_shader_stage, stages, stageCount);
    STACK_ARRAY(struct vk_shader *, shaders, stageCount);
 
+   VkShaderStageFlags vk_stages = 0;
    for (uint32_t i = 0; i < stageCount; i++) {
+      vk_stages |= pStages[i];
       stages[i] = vk_to_mesa_shader_stage(pStages[i]);
       shaders[i] = pShaders != NULL ? vk_shader_from_handle(pShaders[i]) : NULL;
    }
+
+   vk_cmd_unbind_pipelines_for_stages(cmd_buffer, vk_stages);
+   if (vk_stages & ~VK_SHADER_STAGE_COMPUTE_BIT)
+      vk_cmd_set_rp_attachments(cmd_buffer, ~0);
 
    ops->cmd_bind_shaders(cmd_buffer, stageCount, stages, shaders);
 }

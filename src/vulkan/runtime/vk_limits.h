@@ -24,6 +24,9 @@
 #ifndef VK_LIMITS_H
 #define VK_LIMITS_H
 
+/* Maximun number of shader stages in a single graphics pipeline */
+#define MESA_VK_MAX_GRAPHICS_PIPELINE_STAGES 5
+
 #define MESA_VK_MAX_DESCRIPTOR_SETS 32
 
 /* From the Vulkan 1.3.274 spec:

@@ -4982,12 +4982,12 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
 }
 
 bool
-fs_visitor::lower_simd_width()
+brw_fs_lower_simd_width(fs_visitor &s)
 {
    bool progress = false;
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
-      const unsigned lower_width = get_lowered_simd_width(this, inst);
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
+      const unsigned lower_width = get_lowered_simd_width(&s, inst);
 
       if (lower_width != inst->exec_size) {
          /* Builder matching the original instruction.  We may also need to
@@ -4997,7 +4997,7 @@ fs_visitor::lower_simd_width()
           */
          const unsigned max_width = MAX2(inst->exec_size, lower_width);
 
-         const fs_builder bld = fs_builder(this).at_end();
+         const fs_builder bld = fs_builder(&s).at_end();
          const fs_builder ibld = bld.at(block, inst)
                                     .exec_all(inst->force_writemask_all)
                                     .group(max_width, inst->group / max_width);
@@ -5007,7 +5007,7 @@ fs_visitor::lower_simd_width()
           */
          const unsigned n = DIV_ROUND_UP(inst->exec_size, lower_width);
          const unsigned residency_size = inst->has_sampler_residency() ?
-            (reg_unit(devinfo) * REG_SIZE) : 0;
+            (reg_unit(s.devinfo) * REG_SIZE) : 0;
          const unsigned dst_size =
             (inst->size_written - residency_size) /
             inst->dst.component_size(inst->exec_size);
@@ -5094,7 +5094,7 @@ fs_visitor::lower_simd_width()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }
@@ -5701,7 +5701,7 @@ fs_visitor::optimize()
       OPT(brw_fs_opt_dead_code_eliminate, *this);
    }
 
-   OPT(lower_simd_width);
+   OPT(brw_fs_lower_simd_width, *this);
    OPT(lower_barycentrics);
    OPT(lower_logical_sends);
 
@@ -5744,7 +5744,7 @@ fs_visitor::optimize()
          OPT(brw_fs_opt_algebraic, *this);
 
       OPT(brw_fs_opt_register_coalesce, *this);
-      OPT(lower_simd_width);
+      OPT(brw_fs_lower_simd_width, *this);
       OPT(brw_fs_opt_dead_code_eliminate, *this);
    }
 
@@ -5765,7 +5765,7 @@ fs_visitor::optimize()
       if (OPT(brw_fs_opt_copy_propagation, *this))
          OPT(brw_fs_opt_algebraic, *this);
       OPT(brw_fs_opt_dead_code_eliminate, *this);
-      OPT(lower_simd_width);
+      OPT(brw_fs_lower_simd_width, *this);
    }
 
    OPT(fixup_sends_duplicate_payload);

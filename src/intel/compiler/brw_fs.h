@@ -277,7 +277,6 @@ public:
    bool lower_regioning();
    bool lower_logical_sends();
    bool lower_integer_multiplication();
-   bool lower_simd_width();
    bool lower_barycentrics();
    bool lower_derivatives();
    bool lower_find_live_channel();
@@ -606,6 +605,7 @@ void nir_to_brw(fs_visitor *s);
 
 bool brw_fs_lower_constant_loads(fs_visitor &s);
 bool brw_fs_lower_pack(fs_visitor &s);
+bool brw_fs_lower_simd_width(fs_visitor &s);
 
 bool brw_fs_opt_algebraic(fs_visitor &s);
 bool brw_fs_opt_bank_conflicts(fs_visitor &s);

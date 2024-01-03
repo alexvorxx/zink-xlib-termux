@@ -241,7 +241,6 @@ public:
    void fixup_3src_null_dest();
    void emit_dummy_memory_fence_before_eot();
    void emit_dummy_mov_instruction();
-   bool fixup_nomask_control_flow();
    void assign_curb_setup();
    void assign_urb_setup();
    void convert_attr_sources_to_hw_regs(fs_inst *inst);
@@ -624,5 +623,7 @@ bool brw_fs_opt_saturate_propagation(fs_visitor &s);
 bool brw_fs_opt_split_sends(fs_visitor &s);
 bool brw_fs_opt_split_virtual_grfs(fs_visitor &s);
 bool brw_fs_opt_zero_samples(fs_visitor &s);
+
+bool brw_fs_workaround_nomask_control_flow(fs_visitor &s);
 
 #endif /* BRW_FS_H */

@@ -5718,7 +5718,7 @@ fs_visitor::optimize()
       OPT(brw_fs_opt_algebraic, *this);
 
    OPT(brw_fs_opt_split_sends, *this);
-   OPT(fixup_nomask_control_flow);
+   OPT(brw_fs_workaround_nomask_control_flow, *this);
 
    if (progress) {
       if (OPT(brw_fs_opt_copy_propagation, *this))
@@ -5993,31 +5993,31 @@ find_halt_control_flow_region_start(const fs_visitor *v)
  * all channels of the program are disabled.
  */
 bool
-fs_visitor::fixup_nomask_control_flow()
+brw_fs_workaround_nomask_control_flow(fs_visitor &s)
 {
-   if (devinfo->ver != 12)
+   if (s.devinfo->ver != 12)
       return false;
 
-   const brw_predicate pred = dispatch_width > 16 ? BRW_PREDICATE_ALIGN1_ANY32H :
-                              dispatch_width > 8 ? BRW_PREDICATE_ALIGN1_ANY16H :
+   const brw_predicate pred = s.dispatch_width > 16 ? BRW_PREDICATE_ALIGN1_ANY32H :
+                              s.dispatch_width > 8 ? BRW_PREDICATE_ALIGN1_ANY16H :
                               BRW_PREDICATE_ALIGN1_ANY8H;
-   const fs_inst *halt_start = find_halt_control_flow_region_start(this);
+   const fs_inst *halt_start = find_halt_control_flow_region_start(&s);
    unsigned depth = 0;
    bool progress = false;
 
-   const fs_live_variables &live_vars = live_analysis.require();
+   const fs_live_variables &live_vars = s.live_analysis.require();
 
    /* Scan the program backwards in order to be able to easily determine
     * whether the flag register is live at any point.
     */
-   foreach_block_reverse_safe(block, cfg) {
+   foreach_block_reverse_safe(block, s.cfg) {
       BITSET_WORD flag_liveout = live_vars.block_data[block->num]
                                                .flag_liveout[0];
       STATIC_ASSERT(ARRAY_SIZE(live_vars.block_data[0].flag_liveout) == 1);
 
       foreach_inst_in_block_reverse_safe(fs_inst, inst, block) {
          if (!inst->predicate && inst->exec_size >= 8)
-            flag_liveout &= ~inst->flags_written(devinfo);
+            flag_liveout &= ~inst->flags_written(s.devinfo);
 
          switch (inst->opcode) {
          case BRW_OPCODE_DO:
@@ -6064,8 +6064,8 @@ fs_visitor::fixup_nomask_control_flow()
                 * instruction), in order to avoid getting a right-shifted
                 * value.
                 */
-               const fs_builder ubld = fs_builder(this, block, inst)
-                                       .exec_all().group(dispatch_width, 0);
+               const fs_builder ubld = fs_builder(&s, block, inst)
+                                       .exec_all().group(s.dispatch_width, 0);
                const fs_reg flag = retype(brw_flag_reg(0, 0),
                                           BRW_REGISTER_TYPE_UD);
 
@@ -6073,7 +6073,7 @@ fs_visitor::fixup_nomask_control_flow()
                 * and restore the flag register if it's live.
                 */
                const bool save_flag = flag_liveout &
-                                      flag_mask(flag, dispatch_width / 8);
+                                      flag_mask(flag, s.dispatch_width / 8);
                const fs_reg tmp = ubld.group(8, 0).vgrf(flag.type);
 
                if (save_flag) {
@@ -6098,12 +6098,12 @@ fs_visitor::fixup_nomask_control_flow()
          if (inst == halt_start)
             depth--;
 
-         flag_liveout |= inst->flags_read(devinfo);
+         flag_liveout |= inst->flags_read(s.devinfo);
       }
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }

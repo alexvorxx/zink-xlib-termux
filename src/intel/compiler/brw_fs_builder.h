@@ -789,6 +789,18 @@ namespace brw {
          return inst;
       }
 
+      void
+      VEC(const fs_reg &dst, const fs_reg *src, unsigned sources) const
+      {
+         /* For now, this emits a series of MOVs to ease the transition
+          * to the new helper.  The intention is to have this emit either
+          * a single MOV or a LOAD_PAYLOAD to fully initialize dst from a
+          * the list of sources.
+          */
+         for (unsigned i = 0; i < sources; i++)
+            MOV(offset(dst, dispatch_width(), i), src[i]);
+      }
+
       fs_inst *
       SYNC(enum tgl_sync_function sync) const
       {

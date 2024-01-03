@@ -2062,22 +2062,22 @@ fs_visitor::assign_gs_urb_setup()
  * elimination and coalescing.
  */
 bool
-fs_visitor::split_virtual_grfs()
+brw_fs_opt_split_virtual_grfs(fs_visitor &s)
 {
    /* Compact the register file so we eliminate dead vgrfs.  This
     * only defines split points for live registers, so if we have
     * too large dead registers they will hit assertions later.
     */
-   compact_virtual_grfs();
+   brw_fs_opt_compact_virtual_grfs(s);
 
-   unsigned num_vars = this->alloc.count;
+   unsigned num_vars = s.alloc.count;
 
    /* Count the total number of registers */
    unsigned reg_count = 0;
    unsigned vgrf_to_reg[num_vars];
    for (unsigned i = 0; i < num_vars; i++) {
       vgrf_to_reg[i] = reg_count;
-      reg_count += alloc.sizes[i];
+      reg_count += s.alloc.sizes[i];
    }
 
    /* An array of "split points".  For each register slot, this indicates
@@ -2090,23 +2090,23 @@ fs_visitor::split_virtual_grfs()
    memset(split_points, 0, reg_count * sizeof(*split_points));
 
    /* Mark all used registers as fully splittable */
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       if (inst->dst.file == VGRF) {
          unsigned reg = vgrf_to_reg[inst->dst.nr];
-         for (unsigned j = 1; j < this->alloc.sizes[inst->dst.nr]; j++)
+         for (unsigned j = 1; j < s.alloc.sizes[inst->dst.nr]; j++)
             split_points[reg + j] = true;
       }
 
       for (unsigned i = 0; i < inst->sources; i++) {
          if (inst->src[i].file == VGRF) {
             unsigned reg = vgrf_to_reg[inst->src[i].nr];
-            for (unsigned j = 1; j < this->alloc.sizes[inst->src[i].nr]; j++)
+            for (unsigned j = 1; j < s.alloc.sizes[inst->src[i].nr]; j++)
                split_points[reg + j] = true;
          }
       }
    }
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       /* We fix up undef instructions later */
       if (inst->opcode == SHADER_OPCODE_UNDEF) {
          assert(inst->dst.file == VGRF);
@@ -2146,15 +2146,15 @@ fs_visitor::split_virtual_grfs()
       unsigned offset = 1;
 
       /* j > 0 case */
-      for (unsigned j = 1; j < alloc.sizes[i]; j++) {
+      for (unsigned j = 1; j < s.alloc.sizes[i]; j++) {
          /* If this is a split point, reset the offset to 0 and allocate a
           * new virtual GRF for the previous offset many registers
           */
          if (split_points[reg]) {
             has_splits = true;
             vgrf_has_split[i] = true;
-            assert(offset <= MAX_VGRF_SIZE(devinfo));
-            unsigned grf = alloc.allocate(offset);
+            assert(offset <= MAX_VGRF_SIZE(s.devinfo));
+            unsigned grf = s.alloc.allocate(offset);
             for (unsigned k = reg - offset; k < reg; k++)
                new_virtual_grf[k] = grf;
             offset = 0;
@@ -2165,8 +2165,8 @@ fs_visitor::split_virtual_grfs()
       }
 
       /* The last one gets the original register number */
-      assert(offset <= MAX_VGRF_SIZE(devinfo));
-      alloc.sizes[i] = offset;
+      assert(offset <= MAX_VGRF_SIZE(s.devinfo));
+      s.alloc.sizes[i] = offset;
       for (unsigned k = reg - offset; k < reg; k++)
          new_virtual_grf[k] = i;
    }
@@ -2178,11 +2178,11 @@ fs_visitor::split_virtual_grfs()
       goto cleanup;
    }
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       if (inst->opcode == SHADER_OPCODE_UNDEF) {
          assert(inst->dst.file == VGRF);
          if (vgrf_has_split[inst->dst.nr]) {
-            const fs_builder ibld(this, block, inst);
+            const fs_builder ibld(&s, block, inst);
             assert(inst->size_written % REG_SIZE == 0);
             unsigned reg_offset = inst->dst.offset / REG_SIZE;
             unsigned size_written = 0;
@@ -2212,7 +2212,7 @@ fs_visitor::split_virtual_grfs()
             inst->dst.nr = new_virtual_grf[reg];
             inst->dst.offset = new_reg_offset[reg] * REG_SIZE +
                                inst->dst.offset % REG_SIZE;
-            assert(new_reg_offset[reg] < alloc.sizes[new_virtual_grf[reg]]);
+            assert(new_reg_offset[reg] < s.alloc.sizes[new_virtual_grf[reg]]);
          } else {
             assert(new_reg_offset[reg] == inst->dst.offset / REG_SIZE);
             assert(new_virtual_grf[reg] == inst->dst.nr);
@@ -2227,14 +2227,14 @@ fs_visitor::split_virtual_grfs()
             inst->src[i].nr = new_virtual_grf[reg];
             inst->src[i].offset = new_reg_offset[reg] * REG_SIZE +
                                   inst->src[i].offset % REG_SIZE;
-            assert(new_reg_offset[reg] < alloc.sizes[new_virtual_grf[reg]]);
+            assert(new_reg_offset[reg] < s.alloc.sizes[new_virtual_grf[reg]]);
          } else {
             assert(new_reg_offset[reg] == inst->src[i].offset / REG_SIZE);
             assert(new_virtual_grf[reg] == inst->src[i].nr);
          }
       }
    }
-   invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL | DEPENDENCY_VARIABLES);
+   s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL | DEPENDENCY_VARIABLES);
 
    progress = true;
 
@@ -2257,14 +2257,14 @@ cleanup:
  * overhead.
  */
 bool
-fs_visitor::compact_virtual_grfs()
+brw_fs_opt_compact_virtual_grfs(fs_visitor &s)
 {
    bool progress = false;
-   int *remap_table = new int[this->alloc.count];
-   memset(remap_table, -1, this->alloc.count * sizeof(int));
+   int *remap_table = new int[s.alloc.count];
+   memset(remap_table, -1, s.alloc.count * sizeof(int));
 
    /* Mark which virtual GRFs are used. */
-   foreach_block_and_inst(block, const fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, const fs_inst, inst, s.cfg) {
       if (inst->dst.file == VGRF)
          remap_table[inst->dst.nr] = 0;
 
@@ -2276,7 +2276,7 @@ fs_visitor::compact_virtual_grfs()
 
    /* Compact the GRF arrays. */
    int new_index = 0;
-   for (unsigned i = 0; i < this->alloc.count; i++) {
+   for (unsigned i = 0; i < s.alloc.count; i++) {
       if (remap_table[i] == -1) {
          /* We just found an unused register.  This means that we are
           * actually going to compact something.
@@ -2284,16 +2284,16 @@ fs_visitor::compact_virtual_grfs()
          progress = true;
       } else {
          remap_table[i] = new_index;
-         alloc.sizes[new_index] = alloc.sizes[i];
-         invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL | DEPENDENCY_VARIABLES);
+         s.alloc.sizes[new_index] = s.alloc.sizes[i];
+         s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL | DEPENDENCY_VARIABLES);
          ++new_index;
       }
    }
 
-   this->alloc.count = new_index;
+   s.alloc.count = new_index;
 
    /* Patch all the instructions to use the newly renumbered registers */
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       if (inst->dst.file == VGRF)
          inst->dst.nr = remap_table[inst->dst.nr];
 
@@ -2307,12 +2307,12 @@ fs_visitor::compact_virtual_grfs()
     * allocation.  If they're unused, switch them to BAD_FILE so we don't
     * think some random VGRF is delta_xy.
     */
-   for (unsigned i = 0; i < ARRAY_SIZE(delta_xy); i++) {
-      if (delta_xy[i].file == VGRF) {
-         if (remap_table[delta_xy[i].nr] != -1) {
-            delta_xy[i].nr = remap_table[delta_xy[i].nr];
+   for (unsigned i = 0; i < ARRAY_SIZE(s.delta_xy); i++) {
+      if (s.delta_xy[i].file == VGRF) {
+         if (remap_table[s.delta_xy[i].nr] != -1) {
+            s.delta_xy[i].nr = remap_table[s.delta_xy[i].nr];
          } else {
-            delta_xy[i].file = BAD_FILE;
+            s.delta_xy[i].file = BAD_FILE;
          }
       }
    }
@@ -5661,7 +5661,7 @@ fs_visitor::optimize()
    if (compiler->lower_dpas)
       OPT(brw_lower_dpas, *this);
 
-   OPT(split_virtual_grfs);
+   OPT(brw_fs_opt_split_virtual_grfs, *this);
 
    /* Before anything else, eliminate dead code.  The results of some NIR
     * instructions may effectively be calculated twice.  Once when the
@@ -5690,7 +5690,7 @@ fs_visitor::optimize()
       OPT(register_coalesce);
       OPT(eliminate_find_live_channel);
 
-      OPT(compact_virtual_grfs);
+      OPT(brw_fs_opt_compact_virtual_grfs, *this);
    } while (progress);
 
    progress = false;
@@ -5737,7 +5737,7 @@ fs_visitor::optimize()
    OPT(brw_fs_opt_remove_redundant_halts, *this);
 
    if (OPT(lower_load_payload)) {
-      OPT(split_virtual_grfs);
+      OPT(brw_fs_opt_split_virtual_grfs, *this);
 
       /* Lower 64 bit MOVs generated by payload lowering. */
       if (!devinfo->has_64bit_float || !devinfo->has_64bit_int)
@@ -6178,7 +6178,7 @@ fs_visitor::allocate_registers(bool allow_spilling)
    uint32_t best_register_pressure = UINT32_MAX;
    enum instruction_scheduler_mode best_sched = SCHEDULE_NONE;
 
-   compact_virtual_grfs();
+   brw_fs_opt_compact_virtual_grfs(*this);
 
    if (needs_register_pressure)
       shader_stats.max_register_pressure = compute_max_register_pressure();

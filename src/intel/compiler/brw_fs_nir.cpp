@@ -2489,11 +2489,13 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
        4 * (base_offset + nir_src_as_uint(offset_src)) < push_reg_count) {
       int imm_offset = (base_offset + nir_src_as_uint(offset_src)) * 4 +
                        nir_src_as_uint(vertex_src) * push_reg_count;
+
+      fs_reg comps[num_components];
       const fs_reg attr = fs_reg(ATTR, 0, dst.type);
       for (unsigned i = 0; i < num_components; i++) {
-         ntb.bld.MOV(offset(dst, bld, i),
-                     offset(attr, bld, imm_offset + i + first_component));
+         comps[i] = offset(attr, bld, imm_offset + i + first_component);
       }
+      bld.VEC(dst, comps, num_components);
       return;
    }
 
@@ -2581,10 +2583,11 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
                          ARRAY_SIZE(srcs));
          inst->size_written = read_components *
                               tmp.component_size(inst->exec_size);
+         fs_reg comps[num_components];
          for (unsigned i = 0; i < num_components; i++) {
-            bld.MOV(offset(dst, bld, i),
-                    offset(tmp, bld, i + first_component));
+            comps[i] = offset(tmp, bld, i + first_component);
          }
+         bld.VEC(dst, comps, num_components);
       } else {
          inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst, srcs,
                          ARRAY_SIZE(srcs));
@@ -2610,10 +2613,11 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
                          srcs, ARRAY_SIZE(srcs));
          inst->size_written = read_components *
                               tmp.component_size(inst->exec_size);
+         fs_reg comps[num_components];
          for (unsigned i = 0; i < num_components; i++) {
-            bld.MOV(offset(dst, bld, i),
-                    offset(tmp, bld, i + first_component));
+            comps[i] = offset(tmp, bld, i + first_component);
          }
+         bld.VEC(dst, comps, num_components);
       } else {
          inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst,
                          srcs, ARRAY_SIZE(srcs));
@@ -2672,8 +2676,11 @@ fs_nir_emit_vs_intrinsic(nir_to_brw_state &ntb,
                                 nir_intrinsic_component(instr) +
                                 nir_src_as_uint(instr->src[0]));
 
-      for (unsigned i = 0; i < instr->num_components; i++)
-         bld.MOV(offset(dest, bld, i), offset(src, bld, i));
+      fs_reg comps[instr->num_components];
+      for (unsigned i = 0; i < instr->num_components; i++) {
+         comps[i] = offset(src, bld, i);
+      }
+      bld.VEC(dest, comps, instr->num_components);
       break;
    }
 
@@ -2958,10 +2965,11 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
             fs_reg tmp = bld.vgrf(dst.type, read_components);
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp, srcs,
                             ARRAY_SIZE(srcs));
+            fs_reg comps[num_components];
             for (unsigned i = 0; i < num_components; i++) {
-               bld.MOV(offset(dst, bld, i),
-                       offset(tmp, bld, i + first_component));
+               comps[i] = offset(tmp, bld, i + first_component);
             }
+            bld.VEC(dst, comps, num_components);
          } else {
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst, srcs,
                             ARRAY_SIZE(srcs));
@@ -2976,10 +2984,11 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
             fs_reg tmp = bld.vgrf(dst.type, read_components);
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                             srcs, ARRAY_SIZE(srcs));
+            fs_reg comps[num_components];
             for (unsigned i = 0; i < num_components; i++) {
-               bld.MOV(offset(dst, bld, i),
-                       offset(tmp, bld, i + first_component));
+               comps[i] = offset(tmp, bld, i + first_component);
             }
+            bld.VEC(dst, comps, num_components);
          } else {
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst,
                             srcs, ARRAY_SIZE(srcs));
@@ -3027,10 +3036,11 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
                inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                                srcs, ARRAY_SIZE(srcs));
                inst->size_written = read_components * REG_SIZE * reg_unit(devinfo);
+               fs_reg comps[instr->num_components];
                for (unsigned i = 0; i < instr->num_components; i++) {
-                  bld.MOV(offset(dst, bld, i),
-                          offset(tmp, bld, i + first_component));
+                  comps[i] = offset(tmp, bld, i + first_component);
                }
+               bld.VEC(dst, comps, instr->num_components);
             } else {
                inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst,
                                srcs, ARRAY_SIZE(srcs));
@@ -3051,10 +3061,11 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                             srcs, ARRAY_SIZE(srcs));
             inst->size_written = read_components * REG_SIZE * reg_unit(devinfo);
+            fs_reg comps[instr->num_components];
             for (unsigned i = 0; i < instr->num_components; i++) {
-               bld.MOV(offset(dst, bld, i),
-                       offset(tmp, bld, i + first_component));
+               comps[i] = offset(tmp, bld, i + first_component);
             }
+            bld.VEC(dst, comps, instr->num_components);
          } else {
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst,
                             srcs, ARRAY_SIZE(srcs));
@@ -3163,8 +3174,11 @@ fs_nir_emit_tes_intrinsic(nir_to_brw_state &ntb,
          if (imm_offset < max_push_slots) {
             const fs_reg src = horiz_offset(fs_reg(ATTR, 0, dest.type),
                                             4 * imm_offset + first_component);
-            for (int i = 0; i < instr->num_components; i++)
-               bld.MOV(offset(dest, bld, i), component(src, i));
+            fs_reg comps[instr->num_components];
+            for (unsigned i = 0; i < instr->num_components; i++) {
+               comps[i] = component(src, i);
+            }
+            bld.VEC(dest, comps, instr->num_components);
 
             tes_prog_data->base.urb_read_length =
                MAX2(tes_prog_data->base.urb_read_length,
@@ -3181,10 +3195,11 @@ fs_nir_emit_tes_intrinsic(nir_to_brw_state &ntb,
                inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                                srcs, ARRAY_SIZE(srcs));
                inst->size_written = read_components * REG_SIZE * reg_unit(devinfo);
+               fs_reg comps[instr->num_components];
                for (unsigned i = 0; i < instr->num_components; i++) {
-                  bld.MOV(offset(dest, bld, i),
-                          offset(tmp, bld, i + first_component));
+                  comps[i] = offset(tmp, bld, i + first_component);
                }
+               bld.VEC(dest, comps, instr->num_components);
             } else {
                inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dest,
                                srcs, ARRAY_SIZE(srcs));
@@ -3211,10 +3226,11 @@ fs_nir_emit_tes_intrinsic(nir_to_brw_state &ntb,
             fs_reg tmp = bld.vgrf(dest.type, read_components);
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                             srcs, ARRAY_SIZE(srcs));
-            for (unsigned i = 0; i < num_components; i++) {
-               bld.MOV(offset(dest, bld, i),
-                       offset(tmp, bld, i + first_component));
+            fs_reg comps[instr->num_components];
+            for (unsigned i = 0; i < instr->num_components; i++) {
+               comps[i] = offset(tmp, bld, i + first_component);
             }
+            bld.VEC(dest, comps, instr->num_components);
          } else {
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dest,
                             srcs, ARRAY_SIZE(srcs));
@@ -3921,11 +3937,11 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
       else
          emit_non_coherent_fb_read(ntb, bld, tmp, target);
 
-      for (unsigned j = 0; j < instr->num_components; j++) {
-         bld.MOV(offset(dest, bld, j),
-                 offset(tmp, bld, nir_intrinsic_component(instr) + j));
+      fs_reg comps[instr->num_components];
+      for (unsigned i = 0; i < instr->num_components; i++) {
+         comps[i] = offset(tmp, bld, i + nir_intrinsic_component(instr));
       }
-
+      bld.VEC(dest, comps, instr->num_components);
       break;
    }
 

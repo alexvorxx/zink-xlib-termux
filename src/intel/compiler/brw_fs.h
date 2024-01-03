@@ -299,7 +299,6 @@ public:
    void emit_repclear_shader();
    void emit_interpolation_setup_gfx4();
    void emit_interpolation_setup_gfx6();
-   bool opt_peephole_sel();
    bool opt_zero_samples();
 
    void set_tcs_invocation_id();
@@ -624,6 +623,7 @@ bool brw_fs_opt_combine_constants(fs_visitor &s);
 bool brw_fs_opt_copy_propagation(fs_visitor &s);
 bool brw_fs_opt_cse(fs_visitor &s);
 bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
+bool brw_fs_opt_peephole_sel(fs_visitor &s);
 bool brw_fs_opt_saturate_propagation(fs_visitor &s);
 
 #endif /* BRW_FS_H */

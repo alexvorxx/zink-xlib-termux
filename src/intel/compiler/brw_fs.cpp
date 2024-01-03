@@ -6271,7 +6271,7 @@ fs_visitor::allocate_registers(bool allow_spilling)
    if (failed)
       return;
 
-   opt_bank_conflicts();
+   brw_fs_opt_bank_conflicts(*this);
 
    schedule_instructions_post_ra();
 

@@ -907,27 +907,27 @@ namespace {
 }
 
 bool
-fs_visitor::opt_bank_conflicts()
+brw_fs_opt_bank_conflicts(fs_visitor &s)
 {
-   assert(grf_used || !"Must be called after register allocation");
+   assert(s.grf_used || !"Must be called after register allocation");
 
    /* TODO: Re-work this pass for Gfx20+. */
-   if (devinfo->ver >= 20)
+   if (s.devinfo->ver >= 20)
       return false;
 
    /* No ternary instructions -- No bank conflicts. */
-   if (devinfo->ver < 6)
+   if (s.devinfo->ver < 6)
       return false;
 
-   const partitioning p = shader_reg_partitioning(this);
-   const bool *constrained = shader_reg_constraints(this, p);
+   const partitioning p = shader_reg_partitioning(&s);
+   const bool *constrained = shader_reg_constraints(&s, p);
    const weight_vector_type *conflicts =
-      shader_conflict_weight_matrix(this, p);
+      shader_conflict_weight_matrix(&s, p);
    const permutation map =
       optimize_reg_permutation(p, constrained, conflicts,
                                identity_reg_permutation(p));
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       inst->dst = transform(p, map, inst->dst);
 
       for (int i = 0; i < inst->sources; i++)

@@ -62,6 +62,12 @@ struct vk_pipeline_layout {
    /** Array of pointers to descriptor set layouts, indexed by set index */
    struct vk_descriptor_set_layout *set_layouts[MESA_VK_MAX_DESCRIPTOR_SETS];
 
+   /** Number of push constant ranges in this pipeline layout */
+   uint32_t push_range_count;
+
+   /** Array of push constant ranges */
+   VkPushConstantRange push_ranges[MESA_VK_MAX_PUSH_CONSTANT_RANGES];
+
    /** Destroy callback
     *
     * Will be initially set to vk_pipeline_layout_destroy() but may be set to

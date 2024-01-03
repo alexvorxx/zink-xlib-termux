@@ -55,6 +55,12 @@ vk_pipeline_layout_init(struct vk_device *device,
       else
          layout->set_layouts[s] = NULL;
    }
+
+   assert(pCreateInfo->pushConstantRangeCount <
+          MESA_VK_MAX_PUSH_CONSTANT_RANGES);
+   layout->push_range_count = pCreateInfo->pushConstantRangeCount;
+   for (uint32_t r = 0; r < pCreateInfo->pushConstantRangeCount; r++)
+      layout->push_ranges[r] = pCreateInfo->pPushConstantRanges[r];
 }
 
 void *

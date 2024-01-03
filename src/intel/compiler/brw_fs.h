@@ -272,7 +272,6 @@ public:
    bool opt_cse();
    bool opt_cse_local(const brw::fs_live_variables &live, bblock_t *block, int &ip);
 
-   bool opt_copy_propagation();
    bool opt_bank_conflicts();
    bool opt_split_sends();
    bool register_coalesce();
@@ -625,5 +624,7 @@ int brw_get_subgroup_id_param_index(const intel_device_info *devinfo,
 bool brw_lower_dpas(fs_visitor &v);
 
 void nir_to_brw(fs_visitor *s);
+
+bool brw_fs_opt_copy_propagation(fs_visitor &s);
 
 #endif /* BRW_FS_H */

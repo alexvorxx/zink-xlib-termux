@@ -1399,22 +1399,22 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
 }
 
 bool
-fs_visitor::opt_copy_propagation()
+brw_fs_opt_copy_propagation(fs_visitor &s)
 {
    bool progress = false;
    void *copy_prop_ctx = ralloc_context(NULL);
    linear_ctx *lin_ctx = linear_context(copy_prop_ctx);
-   struct acp out_acp[cfg->num_blocks];
+   struct acp out_acp[s.cfg->num_blocks];
 
-   const fs_live_variables &live = live_analysis.require();
+   const fs_live_variables &live = s.live_analysis.require();
 
    /* First, walk through each block doing local copy propagation and getting
     * the set of copies available at the end of the block.
     */
-   foreach_block (block, cfg) {
-      progress = opt_copy_propagation_local(compiler, lin_ctx, block,
-                                            out_acp[block->num], alloc,
-                                            max_polygons) || progress;
+   foreach_block (block, s.cfg) {
+      progress = opt_copy_propagation_local(s.compiler, lin_ctx, block,
+                                            out_acp[block->num], s.alloc,
+                                            s.max_polygons) || progress;
 
       /* If the destination of an ACP entry exists only within this block,
        * then there's no need to keep it for dataflow analysis.  We can delete
@@ -1437,12 +1437,12 @@ fs_visitor::opt_copy_propagation()
    }
 
    /* Do dataflow analysis for those available copies. */
-   fs_copy_prop_dataflow dataflow(lin_ctx, cfg, live, out_acp);
+   fs_copy_prop_dataflow dataflow(lin_ctx, s.cfg, live, out_acp);
 
    /* Next, re-run local copy propagation, this time with the set of copies
     * provided by the dataflow analysis available at the start of a block.
     */
-   foreach_block (block, cfg) {
+   foreach_block (block, s.cfg) {
       struct acp in_acp;
 
       for (int i = 0; i < dataflow.num_acp; i++) {
@@ -1453,16 +1453,16 @@ fs_visitor::opt_copy_propagation()
          }
       }
 
-      progress = opt_copy_propagation_local(compiler, lin_ctx, block,
-                                            in_acp, alloc, max_polygons) ||
+      progress = opt_copy_propagation_local(s.compiler, lin_ctx, block,
+                                            in_acp, s.alloc, s.max_polygons) ||
                  progress;
    }
 
    ralloc_free(copy_prop_ctx);
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
-                          DEPENDENCY_INSTRUCTION_DETAIL);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
+                            DEPENDENCY_INSTRUCTION_DETAIL);
 
    return progress;
 }

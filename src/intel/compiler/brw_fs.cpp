@@ -5679,7 +5679,7 @@ fs_visitor::optimize()
 
       OPT(opt_algebraic);
       OPT(opt_cse);
-      OPT(opt_copy_propagation);
+      OPT(brw_fs_opt_copy_propagation, *this);
       OPT(opt_predicated_break, this);
       OPT(opt_cmod_propagation);
       OPT(dead_code_eliminate);
@@ -5706,20 +5706,20 @@ fs_visitor::optimize()
 
    /* After logical SEND lowering. */
 
-   if (OPT(opt_copy_propagation))
+   if (OPT(brw_fs_opt_copy_propagation, *this))
       OPT(opt_algebraic);
 
    /* Identify trailing zeros LOAD_PAYLOAD of sampler messages.
     * Do this before splitting SENDs.
     */
-   if (OPT(opt_zero_samples) && OPT(opt_copy_propagation))
+   if (OPT(opt_zero_samples) && OPT(brw_fs_opt_copy_propagation, *this))
       OPT(opt_algebraic);
 
    OPT(opt_split_sends);
    OPT(fixup_nomask_control_flow);
 
    if (progress) {
-      if (OPT(opt_copy_propagation))
+      if (OPT(brw_fs_opt_copy_propagation, *this))
          OPT(opt_algebraic);
 
       /* Run after logical send lowering to give it a chance to CSE the
@@ -5761,7 +5761,7 @@ fs_visitor::optimize()
    OPT(lower_derivatives);
    OPT(lower_regioning);
    if (progress) {
-      if (OPT(opt_copy_propagation))
+      if (OPT(brw_fs_opt_copy_propagation, *this))
          OPT(opt_algebraic);
       OPT(dead_code_eliminate);
       OPT(lower_simd_width);

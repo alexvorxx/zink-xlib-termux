@@ -298,7 +298,6 @@ public:
    bool lower_find_live_channel();
    bool lower_scoreboard();
    bool lower_sub_sat();
-   bool opt_combine_constants();
 
    void emit_repclear_shader();
    void emit_interpolation_setup_gfx4();
@@ -623,6 +622,7 @@ bool brw_lower_dpas(fs_visitor &v);
 void nir_to_brw(fs_visitor *s);
 
 bool brw_fs_opt_cmod_propagation(fs_visitor &s);
+bool brw_fs_opt_combine_constants(fs_visitor &s);
 bool brw_fs_opt_copy_propagation(fs_visitor &s);
 bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
 bool brw_fs_opt_saturate_propagation(fs_visitor &s);

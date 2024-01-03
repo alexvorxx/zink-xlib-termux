@@ -1305,8 +1305,9 @@ parcel_out_registers(struct imm *imm, unsigned len, const bblock_t *cur_block,
 }
 
 bool
-fs_visitor::opt_combine_constants()
+brw_fs_opt_combine_constants(fs_visitor &s)
 {
+   const intel_device_info *devinfo = s.devinfo;
    void *const_ctx = ralloc_context(NULL);
 
    struct table table;
@@ -1325,14 +1326,14 @@ fs_visitor::opt_combine_constants()
    table.num_boxes = 0;
    table.boxes = ralloc_array(const_ctx, fs_inst_box, table.size_boxes);
 
-   const brw::idom_tree &idom = idom_analysis.require();
+   const brw::idom_tree &idom = s.idom_analysis.require();
    unsigned ip = -1;
 
    /* Make a pass through all instructions and count the number of times each
     * constant is used by coissueable instructions or instructions that cannot
     * take immediate arguments.
     */
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       ip++;
 
       switch (inst->opcode) {
@@ -1548,7 +1549,7 @@ fs_visitor::opt_combine_constants()
       ralloc_free(const_ctx);
       return false;
    }
-   if (cfg->num_blocks != 1)
+   if (s.cfg->num_blocks != 1)
       qsort(table.imm, table.len, sizeof(struct imm), compare);
 
    if (devinfo->ver > 7) {
@@ -1560,14 +1561,14 @@ fs_visitor::opt_combine_constants()
          regs[i].avail = 0xffff;
       }
 
-      foreach_block(block, cfg) {
+      foreach_block(block, s.cfg) {
          parcel_out_registers(table.imm, table.len, block, regs, table.len,
-                              alloc, devinfo->ver);
+                              s.alloc, devinfo->ver);
       }
 
       free(regs);
    } else {
-      fs_reg reg(VGRF, alloc.allocate(1));
+      fs_reg reg(VGRF, s.alloc.allocate(1));
       reg.stride = 0;
 
       for (int i = 0; i < table.len; i++) {
@@ -1581,7 +1582,7 @@ fs_visitor::opt_combine_constants()
 
          /* Ensure we have enough space in the register to copy the immediate */
          if (reg.offset + imm->size > REG_SIZE) {
-            reg.nr = alloc.allocate(1);
+            reg.nr = s.alloc.allocate(1);
             reg.offset = 0;
          }
 
@@ -1661,7 +1662,7 @@ fs_visitor::opt_combine_constants()
        * both HF slots within a DWord with the constant.
        */
       const uint32_t width = devinfo->ver == 8 && imm->is_half_float ? 2 : 1;
-      const fs_builder ibld = fs_builder(this, width).at(insert_block, n).exec_all();
+      const fs_builder ibld = fs_builder(&s, width).at(insert_block, n).exec_all();
 
       fs_reg reg(VGRF, imm->nr);
       reg.offset = imm->subreg_offset;
@@ -1680,7 +1681,7 @@ fs_visitor::opt_combine_constants()
 
       ibld.MOV(retype(reg, imm_reg.type), imm_reg);
    }
-   shader_stats.promoted_constants = table.len;
+   s.shader_stats.promoted_constants = table.len;
 
    /* Rewrite the immediate sources to refer to the new GRFs. */
    for (int i = 0; i < table.len; i++) {
@@ -1839,20 +1840,20 @@ fs_visitor::opt_combine_constants()
        * is used for membership in that list and in a block list.  So we need
        * to pull them back before rebuilding the CFG.
        */
-      assert(exec_list_length(&instructions) == 0);
-      foreach_block(block, cfg) {
-         exec_list_append(&instructions, &block->instructions);
+      assert(exec_list_length(&s.instructions) == 0);
+      foreach_block(block, s.cfg) {
+         exec_list_append(&s.instructions, &block->instructions);
       }
 
-      delete cfg;
-      cfg = NULL;
-      calculate_cfg();
+      delete s.cfg;
+      s.cfg = NULL;
+      s.calculate_cfg();
    }
 
    ralloc_free(const_ctx);
 
-   invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES |
-                       (rebuild_cfg ? DEPENDENCY_BLOCKS : DEPENDENCY_NOTHING));
+   s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES |
+                         (rebuild_cfg ? DEPENDENCY_BLOCKS : DEPENDENCY_NOTHING));
 
    return true;
 }

@@ -5747,7 +5747,7 @@ fs_visitor::optimize()
       OPT(brw_fs_opt_dead_code_eliminate, *this);
    }
 
-   OPT(opt_combine_constants);
+   OPT(brw_fs_opt_combine_constants, *this);
    if (OPT(lower_integer_multiplication)) {
       /* If lower_integer_multiplication made progress, it may have produced
        * some 32x32-bit MULs in the process of lowering 64-bit MULs.  Run it

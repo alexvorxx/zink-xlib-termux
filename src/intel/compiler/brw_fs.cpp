@@ -5116,20 +5116,21 @@ brw_fs_lower_simd_width(fs_visitor &s)
  * component layout.
  */
 bool
-fs_visitor::lower_barycentrics()
+brw_fs_lower_barycentrics(fs_visitor &s)
 {
+   const intel_device_info *devinfo = s.devinfo;
    const bool has_interleaved_layout = devinfo->has_pln ||
       (devinfo->ver >= 7 && devinfo->ver < 20);
    bool progress = false;
 
-   if (stage != MESA_SHADER_FRAGMENT || !has_interleaved_layout)
+   if (s.stage != MESA_SHADER_FRAGMENT || !has_interleaved_layout)
       return false;
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       if (inst->exec_size < 16)
          continue;
 
-      const fs_builder ibld(this, block, inst);
+      const fs_builder ibld(&s, block, inst);
       const fs_builder ubld = ibld.exec_all().group(8, 0);
 
       switch (inst->opcode) {
@@ -5176,7 +5177,7 @@ fs_visitor::lower_barycentrics()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }
@@ -5702,7 +5703,7 @@ fs_visitor::optimize()
    }
 
    OPT(brw_fs_lower_simd_width, *this);
-   OPT(lower_barycentrics);
+   OPT(brw_fs_lower_barycentrics, *this);
    OPT(lower_logical_sends);
 
    /* After logical SEND lowering. */

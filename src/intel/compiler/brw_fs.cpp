@@ -5668,7 +5668,7 @@ fs_visitor::optimize()
     * encountered.  Wipe those away before algebraic optimizations and
     * especially copy propagation can mix things up.
     */
-   OPT(dead_code_eliminate);
+   OPT(brw_fs_opt_dead_code_eliminate, *this);
 
    OPT(remove_extra_rounding_modes);
 
@@ -5682,7 +5682,7 @@ fs_visitor::optimize()
       OPT(brw_fs_opt_copy_propagation, *this);
       OPT(opt_predicated_break, this);
       OPT(brw_fs_opt_cmod_propagation, *this);
-      OPT(dead_code_eliminate);
+      OPT(brw_fs_opt_dead_code_eliminate, *this);
       OPT(opt_peephole_sel);
       OPT(dead_control_flow_eliminate, this);
       OPT(brw_fs_opt_saturate_propagation, *this);
@@ -5697,7 +5697,7 @@ fs_visitor::optimize()
 
    if (OPT(lower_pack)) {
       OPT(register_coalesce);
-      OPT(dead_code_eliminate);
+      OPT(brw_fs_opt_dead_code_eliminate, *this);
    }
 
    OPT(lower_simd_width);
@@ -5729,7 +5729,7 @@ fs_visitor::optimize()
        */
       OPT(opt_cse);
       OPT(register_coalesce);
-      OPT(dead_code_eliminate);
+      OPT(brw_fs_opt_dead_code_eliminate, *this);
       OPT(opt_peephole_sel);
    }
 
@@ -5744,7 +5744,7 @@ fs_visitor::optimize()
 
       OPT(register_coalesce);
       OPT(lower_simd_width);
-      OPT(dead_code_eliminate);
+      OPT(brw_fs_opt_dead_code_eliminate, *this);
    }
 
    OPT(opt_combine_constants);
@@ -5763,7 +5763,7 @@ fs_visitor::optimize()
    if (progress) {
       if (OPT(brw_fs_opt_copy_propagation, *this))
          OPT(opt_algebraic);
-      OPT(dead_code_eliminate);
+      OPT(brw_fs_opt_dead_code_eliminate, *this);
       OPT(lower_simd_width);
    }
 

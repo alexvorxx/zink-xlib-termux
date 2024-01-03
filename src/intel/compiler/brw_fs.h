@@ -276,7 +276,6 @@ public:
    bool opt_split_sends();
    bool register_coalesce();
    bool eliminate_find_live_channel();
-   bool dead_code_eliminate();
    bool remove_extra_rounding_modes();
 
    fs_instruction_scheduler *prepare_scheduler(void *mem_ctx);
@@ -625,6 +624,7 @@ void nir_to_brw(fs_visitor *s);
 
 bool brw_fs_opt_cmod_propagation(fs_visitor &s);
 bool brw_fs_opt_copy_propagation(fs_visitor &s);
+bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
 bool brw_fs_opt_saturate_propagation(fs_visitor &s);
 
 #endif /* BRW_FS_H */

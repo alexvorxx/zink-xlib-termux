@@ -5696,7 +5696,7 @@ fs_visitor::optimize()
    progress = false;
    pass_num = 0;
 
-   if (OPT(lower_pack)) {
+   if (OPT(brw_fs_lower_pack, *this)) {
       OPT(brw_fs_opt_register_coalesce, *this);
       OPT(brw_fs_opt_dead_code_eliminate, *this);
    }

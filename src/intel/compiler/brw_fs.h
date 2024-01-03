@@ -274,7 +274,6 @@ public:
    void limit_dispatch_width(unsigned n, const char *msg);
    bool lower_uniform_pull_constant_loads();
    bool lower_load_payload();
-   bool lower_pack();
    bool lower_regioning();
    bool lower_logical_sends();
    bool lower_integer_multiplication();
@@ -606,6 +605,7 @@ bool brw_lower_dpas(fs_visitor &v);
 void nir_to_brw(fs_visitor *s);
 
 bool brw_fs_lower_constant_loads(fs_visitor &s);
+bool brw_fs_lower_pack(fs_visitor &s);
 
 bool brw_fs_opt_algebraic(fs_visitor &s);
 bool brw_fs_opt_bank_conflicts(fs_visitor &s);

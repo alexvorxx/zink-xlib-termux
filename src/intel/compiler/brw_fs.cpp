@@ -5704,7 +5704,7 @@ fs_visitor::optimize()
 
    OPT(brw_fs_lower_simd_width, *this);
    OPT(brw_fs_lower_barycentrics, *this);
-   OPT(lower_logical_sends);
+   OPT(brw_fs_lower_logical_sends, *this);
 
    /* After logical SEND lowering. */
 

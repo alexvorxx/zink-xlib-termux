@@ -3076,20 +3076,21 @@ lower_get_buffer_size(const fs_builder &bld, fs_inst *inst)
 }
 
 bool
-fs_visitor::lower_logical_sends()
+brw_fs_lower_logical_sends(fs_visitor &s)
 {
+   const intel_device_info *devinfo = s.devinfo;
    bool progress = false;
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
-      const fs_builder ibld(this, block, inst);
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
+      const fs_builder ibld(&s, block, inst);
 
       switch (inst->opcode) {
       case FS_OPCODE_FB_WRITE_LOGICAL:
-         assert(stage == MESA_SHADER_FRAGMENT);
+         assert(s.stage == MESA_SHADER_FRAGMENT);
          lower_fb_write_logical_send(ibld, inst,
-                                     brw_wm_prog_data(prog_data),
-                                     (const brw_wm_prog_key *)key,
-                                     fs_payload());
+                                     brw_wm_prog_data(s.prog_data),
+                                     (const brw_wm_prog_key *)s.key,
+                                     s.fs_payload());
          break;
 
       case FS_OPCODE_FB_READ_LOGICAL:
@@ -3204,7 +3205,7 @@ fs_visitor::lower_logical_sends()
          break;
 
       case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
-         if (devinfo->has_lsc && !compiler->indirect_ubos_use_sampler)
+         if (devinfo->has_lsc && !s.compiler->indirect_ubos_use_sampler)
             lower_lsc_varying_pull_constant_logical_send(ibld, inst);
          else
             lower_varying_pull_constant_logical_send(ibld, inst);
@@ -3239,8 +3240,8 @@ fs_visitor::lower_logical_sends()
       case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
       case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
          lower_interpolator_logical_send(ibld, inst,
-                                         (const brw_wm_prog_key *)key,
-                                         brw_wm_prog_data(prog_data));
+                                         (const brw_wm_prog_key *)s.key,
+                                         brw_wm_prog_data(s.prog_data));
          break;
 
       case SHADER_OPCODE_BTD_SPAWN_LOGICAL:
@@ -3275,7 +3276,7 @@ fs_visitor::lower_logical_sends()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }

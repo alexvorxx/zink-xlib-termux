@@ -326,7 +326,6 @@ bo_create_internal(struct zink_screen *screen,
    bo->base.vtbl = &bo_vtbl;
    bo->base.base.placement = mem_type_idx;
    bo->base.base.usage = flags;
-   bo->unique_id = p_atomic_inc_return(&screen->pb.next_bo_unique_id);
 
    return bo;
 
@@ -636,6 +635,7 @@ zink_bo_create(struct zink_screen *screen, uint64_t size, unsigned alignment, en
       assert(bo->base.base.placement == mem_type_idx);
       pipe_reference_init(&bo->base.base.reference, 1);
       bo->base.base.size = size;
+      bo->unique_id = p_atomic_inc_return(&screen->pb.next_bo_unique_id);
       assert(alignment <= 1 << bo->base.base.alignment_log2);
 
       return &bo->base;
@@ -1193,7 +1193,6 @@ static struct pb_slab *
 bo_slab_alloc(void *priv, unsigned mem_type_idx, unsigned entry_size, unsigned group_index, bool encrypted)
 {
    struct zink_screen *screen = priv;
-   uint32_t base_id;
    unsigned slab_size = 0;
    struct zink_slab *slab = CALLOC_STRUCT(zink_slab);
 
@@ -1249,7 +1248,6 @@ bo_slab_alloc(void *priv, unsigned mem_type_idx, unsigned entry_size, unsigned g
 
    list_inithead(&slab->base.free);
 
-   base_id = p_atomic_fetch_add(&screen->pb.next_bo_unique_id, slab->base.num_entries);
    for (unsigned i = 0; i < slab->base.num_entries; ++i) {
       struct zink_bo *bo = &slab->entries[i];
 
@@ -1258,7 +1256,6 @@ bo_slab_alloc(void *priv, unsigned mem_type_idx, unsigned entry_size, unsigned g
       bo->base.base.size = entry_size;
       bo->base.vtbl = &bo_slab_vtbl;
       bo->offset = slab->buffer->offset + i * entry_size;
-      bo->unique_id = base_id + i;
       bo->u.slab.entry.slab = &slab->base;
 
       if (slab->buffer->mem) {

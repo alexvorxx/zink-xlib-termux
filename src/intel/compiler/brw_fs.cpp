@@ -3124,14 +3124,14 @@ fs_visitor::opt_split_sends()
  * halt-target
  */
 bool
-fs_visitor::opt_redundant_halt()
+brw_fs_opt_remove_redundant_halts(fs_visitor &s)
 {
    bool progress = false;
 
    unsigned halt_count = 0;
    fs_inst *halt_target = NULL;
    bblock_t *halt_target_block = NULL;
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       if (inst->opcode == BRW_OPCODE_HALT)
          halt_count++;
 
@@ -3162,7 +3162,7 @@ fs_visitor::opt_redundant_halt()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
 
    return progress;
 }
@@ -5733,7 +5733,7 @@ fs_visitor::optimize()
       OPT(brw_fs_opt_peephole_sel, *this);
    }
 
-   OPT(opt_redundant_halt);
+   OPT(brw_fs_opt_remove_redundant_halts, *this);
 
    if (OPT(lower_load_payload)) {
       OPT(split_virtual_grfs);

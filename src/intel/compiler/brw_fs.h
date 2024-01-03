@@ -268,7 +268,6 @@ public:
 #endif
 
    bool opt_algebraic();
-   bool opt_redundant_halt();
 
    bool opt_split_sends();
    bool register_coalesce();
@@ -624,6 +623,7 @@ bool brw_fs_opt_copy_propagation(fs_visitor &s);
 bool brw_fs_opt_cse(fs_visitor &s);
 bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
 bool brw_fs_opt_peephole_sel(fs_visitor &s);
+bool brw_fs_opt_remove_redundant_halts(fs_visitor &s);
 bool brw_fs_opt_saturate_propagation(fs_visitor &s);
 
 #endif /* BRW_FS_H */

@@ -5681,7 +5681,7 @@ fs_visitor::optimize()
       OPT(opt_cse);
       OPT(brw_fs_opt_copy_propagation, *this);
       OPT(opt_predicated_break, this);
-      OPT(opt_cmod_propagation);
+      OPT(brw_fs_opt_cmod_propagation, *this);
       OPT(dead_code_eliminate);
       OPT(opt_peephole_sel);
       OPT(dead_control_flow_eliminate, this);

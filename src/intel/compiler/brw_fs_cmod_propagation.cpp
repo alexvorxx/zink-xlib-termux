@@ -550,18 +550,18 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
 }
 
 bool
-fs_visitor::opt_cmod_propagation()
+brw_fs_opt_cmod_propagation(fs_visitor &s)
 {
    bool progress = false;
 
-   foreach_block_reverse(block, cfg) {
-      progress = opt_cmod_propagation_local(devinfo, block) || progress;
+   foreach_block_reverse(block, s.cfg) {
+      progress = opt_cmod_propagation_local(s.devinfo, block) || progress;
    }
 
    if (progress) {
-      cfg->adjust_block_ips();
+      s.cfg->adjust_block_ips();
 
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
    }
 
    return progress;

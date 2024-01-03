@@ -306,7 +306,6 @@ public:
    void emit_interpolation_setup_gfx6();
    bool opt_peephole_sel();
    bool opt_saturate_propagation();
-   bool opt_cmod_propagation();
    bool opt_zero_samples();
 
    void set_tcs_invocation_id();
@@ -625,6 +624,7 @@ bool brw_lower_dpas(fs_visitor &v);
 
 void nir_to_brw(fs_visitor *s);
 
+bool brw_fs_opt_cmod_propagation(fs_visitor &s);
 bool brw_fs_opt_copy_propagation(fs_visitor &s);
 
 #endif /* BRW_FS_H */

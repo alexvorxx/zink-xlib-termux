@@ -267,8 +267,6 @@ public:
    void validate() {}
 #endif
 
-   bool opt_algebraic();
-
    bool opt_split_sends();
    bool register_coalesce();
    bool eliminate_find_live_channel();
@@ -616,6 +614,7 @@ bool brw_lower_dpas(fs_visitor &v);
 
 void nir_to_brw(fs_visitor *s);
 
+bool brw_fs_opt_algebraic(fs_visitor &s);
 bool brw_fs_opt_bank_conflicts(fs_visitor &s);
 bool brw_fs_opt_cmod_propagation(fs_visitor &s);
 bool brw_fs_opt_combine_constants(fs_visitor &s);

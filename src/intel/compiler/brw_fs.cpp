@@ -3174,13 +3174,13 @@ brw_fs_opt_remove_redundant_halts(fs_visitor &s)
  * analysis.
  */
 bool
-fs_visitor::eliminate_find_live_channel()
+brw_fs_opt_eliminate_find_live_channel(fs_visitor &s)
 {
    bool progress = false;
    unsigned depth = 0;
 
-   if (!brw_stage_has_packed_dispatch(devinfo, stage, max_polygons,
-                                      stage_prog_data)) {
+   if (!brw_stage_has_packed_dispatch(s.devinfo, s.stage, s.max_polygons,
+                                      s.stage_prog_data)) {
       /* The optimization below assumes that channel zero is live on thread
        * dispatch, which may not be the case if the fixed function dispatches
        * threads sparsely.
@@ -3188,7 +3188,7 @@ fs_visitor::eliminate_find_live_channel()
       return false;
    }
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       switch (inst->opcode) {
       case BRW_OPCODE_IF:
       case BRW_OPCODE_DO:
@@ -3223,7 +3223,7 @@ fs_visitor::eliminate_find_live_channel()
 
 out:
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL);
 
    return progress;
 }
@@ -5688,7 +5688,7 @@ fs_visitor::optimize()
       OPT(dead_control_flow_eliminate, this);
       OPT(brw_fs_opt_saturate_propagation, *this);
       OPT(register_coalesce);
-      OPT(eliminate_find_live_channel);
+      OPT(brw_fs_opt_eliminate_find_live_channel, *this);
 
       OPT(brw_fs_opt_compact_virtual_grfs, *this);
    } while (progress);

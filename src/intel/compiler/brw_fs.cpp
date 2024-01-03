@@ -2963,14 +2963,14 @@ load_payload_sources_read_for_size(fs_inst *lp, unsigned size_read)
  * set up the zero value.
  */
 bool
-fs_visitor::opt_zero_samples()
+brw_fs_opt_zero_samples(fs_visitor &s)
 {
    /* Implementation supports only SENDs, so applicable to Gfx7+ only. */
-   assert(devinfo->ver >= 7);
+   assert(s.devinfo->ver >= 7);
 
    bool progress = false;
 
-   foreach_block_and_inst(block, fs_inst, send, cfg) {
+   foreach_block_and_inst(block, fs_inst, send, s.cfg) {
       if (send->opcode != SHADER_OPCODE_SEND ||
           send->sfid != BRW_SFID_SAMPLER)
          continue;
@@ -3011,7 +3011,7 @@ fs_visitor::opt_zero_samples()
          zero_size += lp->exec_size * type_sz(lp->src[i].type) * lp->dst.stride;
       }
 
-      const unsigned zero_len = zero_size / (reg_unit(devinfo) * REG_SIZE);
+      const unsigned zero_len = zero_size / (reg_unit(s.devinfo) * REG_SIZE);
       if (zero_len > 0) {
          send->mlen -= zero_len;
          progress = true;
@@ -3019,7 +3019,7 @@ fs_visitor::opt_zero_samples()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL);
 
    return progress;
 }
@@ -5713,7 +5713,7 @@ fs_visitor::optimize()
    /* Identify trailing zeros LOAD_PAYLOAD of sampler messages.
     * Do this before splitting SENDs.
     */
-   if (OPT(opt_zero_samples) && OPT(brw_fs_opt_copy_propagation, *this))
+   if (OPT(brw_fs_opt_zero_samples, *this) && OPT(brw_fs_opt_copy_propagation, *this))
       OPT(brw_fs_opt_algebraic, *this);
 
    OPT(brw_fs_opt_split_sends, *this);

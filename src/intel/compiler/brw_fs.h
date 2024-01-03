@@ -293,7 +293,6 @@ public:
    void emit_repclear_shader();
    void emit_interpolation_setup_gfx4();
    void emit_interpolation_setup_gfx6();
-   bool opt_zero_samples();
 
    void set_tcs_invocation_id();
 
@@ -624,5 +623,6 @@ bool brw_fs_opt_remove_redundant_halts(fs_visitor &s);
 bool brw_fs_opt_saturate_propagation(fs_visitor &s);
 bool brw_fs_opt_split_sends(fs_visitor &s);
 bool brw_fs_opt_split_virtual_grfs(fs_visitor &s);
+bool brw_fs_opt_zero_samples(fs_visitor &s);
 
 #endif /* BRW_FS_H */

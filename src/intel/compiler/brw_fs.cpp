@@ -3310,10 +3310,10 @@ fs_visitor::emit_repclear_shader()
  * mode once is enough for the full vector/matrix
  */
 bool
-fs_visitor::remove_extra_rounding_modes()
+brw_fs_opt_remove_extra_rounding_modes(fs_visitor &s)
 {
    bool progress = false;
-   unsigned execution_mode = this->nir->info.float_controls_execution_mode;
+   unsigned execution_mode = s.nir->info.float_controls_execution_mode;
 
    brw_rnd_mode base_mode = BRW_RND_MODE_UNSPECIFIED;
    if ((FLOAT_CONTROLS_ROUNDING_MODE_RTE_FP16 |
@@ -3327,7 +3327,7 @@ fs_visitor::remove_extra_rounding_modes()
        execution_mode)
       base_mode = BRW_RND_MODE_RTZ;
 
-   foreach_block (block, cfg) {
+   foreach_block (block, s.cfg) {
       brw_rnd_mode prev_mode = base_mode;
 
       foreach_inst_in_block_safe (fs_inst, inst, block) {
@@ -3345,7 +3345,7 @@ fs_visitor::remove_extra_rounding_modes()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
 
    return progress;
 }
@@ -5671,7 +5671,7 @@ fs_visitor::optimize()
     */
    OPT(brw_fs_opt_dead_code_eliminate, *this);
 
-   OPT(remove_extra_rounding_modes);
+   OPT(brw_fs_opt_remove_extra_rounding_modes, *this);
 
    do {
       progress = false;

@@ -789,16 +789,11 @@ namespace brw {
          return inst;
       }
 
-      void
+      fs_inst *
       VEC(const fs_reg &dst, const fs_reg *src, unsigned sources) const
       {
-         /* For now, this emits a series of MOVs to ease the transition
-          * to the new helper.  The intention is to have this emit either
-          * a single MOV or a LOAD_PAYLOAD to fully initialize dst from a
-          * the list of sources.
-          */
-         for (unsigned i = 0; i < sources; i++)
-            MOV(offset(dst, dispatch_width(), i), src[i]);
+         return sources == 1 ? MOV(dst, src[0])
+                             : LOAD_PAYLOAD(dst, src, sources, 0);
       }
 
       fs_inst *

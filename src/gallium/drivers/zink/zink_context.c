@@ -5200,6 +5200,7 @@ zink_get_dummy_pipe_surface(struct zink_context *ctx, int samples_index)
    if (!ctx->dummy_surface[samples_index]) {
       unsigned size = calc_max_dummy_fbo_size(ctx);
       ctx->dummy_surface[samples_index] = zink_surface_create_null(ctx, PIPE_TEXTURE_2D, size, size, BITFIELD_BIT(samples_index));
+      assert(ctx->dummy_surface[samples_index]);
       /* This is possibly used with imageLoad which according to GL spec must return 0 */
       if (!samples_index) {
          union pipe_color_union color = {0};

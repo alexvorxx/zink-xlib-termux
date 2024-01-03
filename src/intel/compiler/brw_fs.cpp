@@ -5685,7 +5685,7 @@ fs_visitor::optimize()
       OPT(dead_code_eliminate);
       OPT(opt_peephole_sel);
       OPT(dead_control_flow_eliminate, this);
-      OPT(opt_saturate_propagation);
+      OPT(brw_fs_opt_saturate_propagation, *this);
       OPT(register_coalesce);
       OPT(eliminate_find_live_channel);
 

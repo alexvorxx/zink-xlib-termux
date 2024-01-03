@@ -150,12 +150,12 @@ opt_saturate_propagation_local(const fs_live_variables &live, bblock_t *block)
 }
 
 bool
-fs_visitor::opt_saturate_propagation()
+brw_fs_opt_saturate_propagation(fs_visitor &s)
 {
-   const fs_live_variables &live = live_analysis.require();
+   const fs_live_variables &live = s.live_analysis.require();
    bool progress = false;
 
-   foreach_block (block, cfg) {
+   foreach_block (block, s.cfg) {
       progress = opt_saturate_propagation_local(live, block) || progress;
    }
 

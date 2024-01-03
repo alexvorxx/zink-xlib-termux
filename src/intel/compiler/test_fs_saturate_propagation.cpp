@@ -108,7 +108,7 @@ saturate_propagation(fs_visitor *v)
       v->cfg->dump();
    }
 
-   bool ret = v->opt_saturate_propagation();
+   bool ret = brw_fs_opt_saturate_propagation(*v);
 
    if (print) {
       fprintf(stderr, "\n= After =\n");

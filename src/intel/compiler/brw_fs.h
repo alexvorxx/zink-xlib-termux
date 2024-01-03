@@ -265,8 +265,6 @@ public:
    void validate() {}
 #endif
 
-   bool register_coalesce();
-
    fs_instruction_scheduler *prepare_scheduler(void *mem_ctx);
    void schedule_instructions_pre_ra(fs_instruction_scheduler *sched,
                                      instruction_scheduler_mode mode);
@@ -618,6 +616,7 @@ bool brw_fs_opt_cse(fs_visitor &s);
 bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
 bool brw_fs_opt_eliminate_find_live_channel(fs_visitor &s);
 bool brw_fs_opt_peephole_sel(fs_visitor &s);
+bool brw_fs_opt_register_coalesce(fs_visitor &s);
 bool brw_fs_opt_remove_extra_rounding_modes(fs_visitor &s);
 bool brw_fs_opt_remove_redundant_halts(fs_visitor &s);
 bool brw_fs_opt_saturate_propagation(fs_visitor &s);

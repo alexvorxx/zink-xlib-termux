@@ -5687,7 +5687,7 @@ fs_visitor::optimize()
       OPT(brw_fs_opt_peephole_sel, *this);
       OPT(dead_control_flow_eliminate, this);
       OPT(brw_fs_opt_saturate_propagation, *this);
-      OPT(register_coalesce);
+      OPT(brw_fs_opt_register_coalesce, *this);
       OPT(brw_fs_opt_eliminate_find_live_channel, *this);
 
       OPT(brw_fs_opt_compact_virtual_grfs, *this);
@@ -5697,7 +5697,7 @@ fs_visitor::optimize()
    pass_num = 0;
 
    if (OPT(lower_pack)) {
-      OPT(register_coalesce);
+      OPT(brw_fs_opt_register_coalesce, *this);
       OPT(brw_fs_opt_dead_code_eliminate, *this);
    }
 
@@ -5729,7 +5729,7 @@ fs_visitor::optimize()
        * whole logical instruction.
        */
       OPT(brw_fs_opt_cse, *this);
-      OPT(register_coalesce);
+      OPT(brw_fs_opt_register_coalesce, *this);
       OPT(brw_fs_opt_dead_code_eliminate, *this);
       OPT(brw_fs_opt_peephole_sel, *this);
    }
@@ -5743,7 +5743,7 @@ fs_visitor::optimize()
       if (!devinfo->has_64bit_float || !devinfo->has_64bit_int)
          OPT(brw_fs_opt_algebraic, *this);
 
-      OPT(register_coalesce);
+      OPT(brw_fs_opt_register_coalesce, *this);
       OPT(lower_simd_width);
       OPT(brw_fs_opt_dead_code_eliminate, *this);
    }

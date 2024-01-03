@@ -244,9 +244,10 @@ create_copy_instr(const fs_builder &bld, fs_inst *inst, fs_reg src, bool negate)
    assert(regs_written(copy) == written);
 }
 
-bool
-fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &ip)
+static bool
+brw_fs_opt_cse_local(fs_visitor &s, const fs_live_variables &live, bblock_t *block, int &ip)
 {
+   const intel_device_info *devinfo = s.devinfo;
    bool progress = false;
    exec_list aeb;
 
@@ -254,7 +255,7 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
 
    foreach_inst_in_block(fs_inst, inst, block) {
       /* Skip some cases. */
-      if (is_expression(this, inst) && !inst->is_partial_write() &&
+      if (is_expression(&s, inst) && !inst->is_partial_write() &&
           ((inst->dst.file != ARF && inst->dst.file != FIXED_GRF) ||
            inst->dst.is_null()))
       {
@@ -288,11 +289,11 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
              */
             bool no_existing_temp = entry->tmp.file == BAD_FILE;
             if (no_existing_temp && !entry->generator->dst.is_null()) {
-               const fs_builder ibld = fs_builder(this, block, entry->generator)
+               const fs_builder ibld = fs_builder(&s, block, entry->generator)
                                        .at(block, entry->generator->next);
                int written = regs_written(entry->generator);
 
-               entry->tmp = fs_reg(VGRF, alloc.allocate(written),
+               entry->tmp = fs_reg(VGRF, s.alloc.allocate(written),
                                    entry->generator->dst.type);
 
                create_copy_instr(ibld, entry->generator, entry->tmp, false);
@@ -304,7 +305,7 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
             if (!inst->dst.is_null()) {
                assert(inst->size_written == entry->generator->size_written);
                assert(inst->dst.type == entry->tmp.type);
-               const fs_builder ibld(this, block, inst);
+               const fs_builder ibld(&s, block, inst);
 
                create_copy_instr(ibld, inst, entry->tmp, negate);
             }
@@ -379,18 +380,18 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
 }
 
 bool
-fs_visitor::opt_cse()
+brw_fs_opt_cse(fs_visitor &s)
 {
-   const fs_live_variables &live = live_analysis.require();
+   const fs_live_variables &live = s.live_analysis.require();
    bool progress = false;
    int ip = 0;
 
-   foreach_block (block, cfg) {
-      progress = opt_cse_local(live, block, ip) || progress;
+   foreach_block (block, s.cfg) {
+      progress = brw_fs_opt_cse_local(s, live, block, ip) || progress;
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }

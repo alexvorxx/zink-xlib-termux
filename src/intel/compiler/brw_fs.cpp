@@ -5678,7 +5678,7 @@ fs_visitor::optimize()
       iteration++;
 
       OPT(opt_algebraic);
-      OPT(opt_cse);
+      OPT(brw_fs_opt_cse, *this);
       OPT(brw_fs_opt_copy_propagation, *this);
       OPT(opt_predicated_break, this);
       OPT(brw_fs_opt_cmod_propagation, *this);
@@ -5727,7 +5727,7 @@ fs_visitor::optimize()
        * e.g. texturing messages in cases where it wasn't possible to CSE the
        * whole logical instruction.
        */
-      OPT(opt_cse);
+      OPT(brw_fs_opt_cse, *this);
       OPT(register_coalesce);
       OPT(brw_fs_opt_dead_code_eliminate, *this);
       OPT(opt_peephole_sel);

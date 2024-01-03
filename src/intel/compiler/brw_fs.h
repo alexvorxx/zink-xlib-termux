@@ -256,7 +256,6 @@ public:
    void assign_constant_locations();
    bool get_pull_locs(const fs_reg &src, unsigned *out_surf_index,
                       unsigned *out_pull_index);
-   bool lower_constant_loads();
    virtual void invalidate_analysis(brw::analysis_dependency_class c);
 
 #ifndef NDEBUG
@@ -605,6 +604,8 @@ int brw_get_subgroup_id_param_index(const intel_device_info *devinfo,
 bool brw_lower_dpas(fs_visitor &v);
 
 void nir_to_brw(fs_visitor *s);
+
+bool brw_fs_lower_constant_loads(fs_visitor &s);
 
 bool brw_fs_opt_algebraic(fs_visitor &s);
 bool brw_fs_opt_bank_conflicts(fs_visitor &s);

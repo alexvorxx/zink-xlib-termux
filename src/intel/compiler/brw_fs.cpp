@@ -2412,14 +2412,14 @@ fs_visitor::get_pull_locs(const fs_reg &src,
  * or VARYING_PULL_CONSTANT_LOAD instructions which load values into VGRFs.
  */
 bool
-fs_visitor::lower_constant_loads()
+brw_fs_lower_constant_loads(fs_visitor &s)
 {
    unsigned index, pull_index;
    bool progress = false;
 
-   foreach_block_and_inst_safe (block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe (block, fs_inst, inst, s.cfg) {
       /* Set up the annotation tracking for new generated instructions. */
-      const fs_builder ibld(this, block, inst);
+      const fs_builder ibld(&s, block, inst);
 
       for (int i = 0; i < inst->sources; i++) {
 	 if (inst->src[i].file != UNIFORM)
@@ -2429,7 +2429,7 @@ fs_visitor::lower_constant_loads()
          if (inst->opcode == SHADER_OPCODE_MOV_INDIRECT && i == 0)
             continue;
 
-         if (!get_pull_locs(inst->src[i], &index, &pull_index))
+         if (!s.get_pull_locs(inst->src[i], &index, &pull_index))
 	    continue;
 
          assert(inst->src[i].stride == 0);
@@ -2460,20 +2460,20 @@ fs_visitor::lower_constant_loads()
       if (inst->opcode == SHADER_OPCODE_MOV_INDIRECT &&
           inst->src[0].file == UNIFORM) {
 
-         if (!get_pull_locs(inst->src[0], &index, &pull_index))
+         if (!s.get_pull_locs(inst->src[0], &index, &pull_index))
             continue;
 
-         VARYING_PULL_CONSTANT_LOAD(ibld, inst->dst,
-                                    brw_imm_ud(index),
-                                    fs_reg() /* surface_handle */,
-                                    inst->src[1],
-                                    pull_index * 4, 4, 1);
+         s.VARYING_PULL_CONSTANT_LOAD(ibld, inst->dst,
+                                      brw_imm_ud(index),
+                                      fs_reg() /* surface_handle */,
+                                      inst->src[1],
+                                      pull_index * 4, 4, 1);
          inst->remove(block);
 
          progress = true;
       }
    }
-   invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
+   s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
 
    return progress;
 }
@@ -5654,7 +5654,7 @@ fs_visitor::optimize()
    })
 
    assign_constant_locations();
-   OPT(lower_constant_loads);
+   OPT(brw_fs_lower_constant_loads, *this);
 
    validate();
 

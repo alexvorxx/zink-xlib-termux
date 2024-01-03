@@ -23,6 +23,8 @@
 
 #include "vk_pipeline.h"
 
+#include "vk_common_entrypoints.h"
+#include "vk_command_buffer.h"
 #include "vk_device.h"
 #include "vk_log.h"
 #include "vk_nir.h"
@@ -314,4 +316,106 @@ vk_pipeline_robustness_state_fill(const struct vk_device *device,
 
    if (rs->images == VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_DEVICE_DEFAULT_EXT)
       rs->images = vk_device_default_robust_image_behavior(device);
+}
+
+void *
+vk_pipeline_zalloc(struct vk_device *device,
+                   const struct vk_pipeline_ops *ops,
+                   VkPipelineBindPoint bind_point,
+                   VkPipelineCreateFlags2KHR flags,
+                   const VkAllocationCallbacks *alloc,
+                   size_t size)
+{
+   struct vk_pipeline *pipeline;
+
+   pipeline = vk_object_zalloc(device, alloc, size, VK_OBJECT_TYPE_PIPELINE);
+   if (pipeline == NULL)
+      return NULL;
+
+   pipeline->ops = ops;
+   pipeline->bind_point = bind_point;
+   pipeline->flags = flags;
+
+   return pipeline;
+}
+
+void
+vk_pipeline_free(struct vk_device *device,
+                 const VkAllocationCallbacks *alloc,
+                 struct vk_pipeline *pipeline)
+{
+   vk_object_free(device, alloc, &pipeline->base);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_DestroyPipeline(VkDevice _device,
+                          VkPipeline _pipeline,
+                          const VkAllocationCallbacks *pAllocator)
+{
+   VK_FROM_HANDLE(vk_device, device, _device);
+   VK_FROM_HANDLE(vk_pipeline, pipeline, _pipeline);
+
+   if (pipeline == NULL)
+      return;
+
+   pipeline->ops->destroy(device, pipeline, pAllocator);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+vk_common_GetPipelineExecutablePropertiesKHR(
+   VkDevice _device,
+   const VkPipelineInfoKHR *pPipelineInfo,
+   uint32_t *pExecutableCount,
+   VkPipelineExecutablePropertiesKHR *pProperties)
+{
+   VK_FROM_HANDLE(vk_device, device, _device);
+   VK_FROM_HANDLE(vk_pipeline, pipeline, pPipelineInfo->pipeline);
+
+   return pipeline->ops->get_executable_properties(device, pipeline,
+                                                   pExecutableCount,
+                                                   pProperties);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+vk_common_GetPipelineExecutableStatisticsKHR(
+    VkDevice _device,
+    const VkPipelineExecutableInfoKHR *pExecutableInfo,
+    uint32_t *pStatisticCount,
+    VkPipelineExecutableStatisticKHR *pStatistics)
+{
+   VK_FROM_HANDLE(vk_device, device, _device);
+   VK_FROM_HANDLE(vk_pipeline, pipeline, pExecutableInfo->pipeline);
+
+   return pipeline->ops->get_executable_statistics(device, pipeline,
+                                                   pExecutableInfo->executableIndex,
+                                                   pStatisticCount, pStatistics);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+vk_common_GetPipelineExecutableInternalRepresentationsKHR(
+    VkDevice _device,
+    const VkPipelineExecutableInfoKHR *pExecutableInfo,
+    uint32_t *pInternalRepresentationCount,
+    VkPipelineExecutableInternalRepresentationKHR* pInternalRepresentations)
+{
+   VK_FROM_HANDLE(vk_device, device, _device);
+   VK_FROM_HANDLE(vk_pipeline, pipeline, pExecutableInfo->pipeline);
+
+   return pipeline->ops->get_internal_representations(device, pipeline,
+                                                      pExecutableInfo->executableIndex,
+                                                      pInternalRepresentationCount,
+                                                      pInternalRepresentations);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdBindPipeline(VkCommandBuffer commandBuffer,
+                          VkPipelineBindPoint pipelineBindPoint,
+                          VkPipeline _pipeline)
+{
+   VK_FROM_HANDLE(vk_command_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(vk_pipeline, pipeline, _pipeline);
+
+   assert(pipeline->bind_point == pipelineBindPoint);
+
+   pipeline->ops->cmd_bind(cmd_buffer, pipeline);
 }

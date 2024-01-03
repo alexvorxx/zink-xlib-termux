@@ -689,8 +689,8 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     * anything that would make it impossible to satisfy that restriction.
     */
    if (inst->eot) {
-      /* Avoid propagating a FIXED_GRF register, as that's already pinned. */
-      if (entry->src.file == FIXED_GRF)
+      /* Don't propagate things that are already pinned. */
+      if (entry->src.file != VGRF)
          return false;
 
       /* We might be propagating from a large register, while the SEND only

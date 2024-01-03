@@ -265,7 +265,6 @@ public:
    void validate() {}
 #endif
 
-   bool opt_split_sends();
    bool register_coalesce();
    bool eliminate_find_live_channel();
    bool remove_extra_rounding_modes();
@@ -623,6 +622,7 @@ bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
 bool brw_fs_opt_peephole_sel(fs_visitor &s);
 bool brw_fs_opt_remove_redundant_halts(fs_visitor &s);
 bool brw_fs_opt_saturate_propagation(fs_visitor &s);
+bool brw_fs_opt_split_sends(fs_visitor &s);
 bool brw_fs_opt_split_virtual_grfs(fs_visitor &s);
 
 #endif /* BRW_FS_H */

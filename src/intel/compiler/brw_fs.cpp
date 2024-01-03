@@ -3041,16 +3041,16 @@ fs_visitor::opt_zero_samples()
  * payload concatenation altogether.
  */
 bool
-fs_visitor::opt_split_sends()
+brw_fs_opt_split_sends(fs_visitor &s)
 {
-   if (devinfo->ver < 9)
+   if (s.devinfo->ver < 9)
       return false;
 
    bool progress = false;
 
-   foreach_block_and_inst(block, fs_inst, send, cfg) {
+   foreach_block_and_inst(block, fs_inst, send, s.cfg) {
       if (send->opcode != SHADER_OPCODE_SEND ||
-          send->mlen <= reg_unit(devinfo) || send->ex_mlen > 0)
+          send->mlen <= reg_unit(s.devinfo) || send->ex_mlen > 0)
          continue;
 
       assert(send->src[2].file == VGRF);
@@ -3089,7 +3089,7 @@ fs_visitor::opt_split_sends()
       if (end <= mid)
          continue;
 
-      const fs_builder ibld(this, block, lp);
+      const fs_builder ibld(&s, block, lp);
       fs_inst *lp1 = ibld.LOAD_PAYLOAD(lp->dst, &lp->src[0], mid, lp->header_size);
       fs_inst *lp2 = ibld.LOAD_PAYLOAD(lp->dst, &lp->src[mid], end - mid, 0);
 
@@ -3097,8 +3097,8 @@ fs_visitor::opt_split_sends()
       assert(lp2->size_written % REG_SIZE == 0);
       assert((lp1->size_written + lp2->size_written) / REG_SIZE == send->mlen);
 
-      lp1->dst = fs_reg(VGRF, alloc.allocate(lp1->size_written / REG_SIZE), lp1->dst.type);
-      lp2->dst = fs_reg(VGRF, alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
+      lp1->dst = fs_reg(VGRF, s.alloc.allocate(lp1->size_written / REG_SIZE), lp1->dst.type);
+      lp2->dst = fs_reg(VGRF, s.alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
 
       send->resize_sources(4);
       send->src[2] = lp1->dst;
@@ -3110,7 +3110,7 @@ fs_visitor::opt_split_sends()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }
@@ -5716,7 +5716,7 @@ fs_visitor::optimize()
    if (OPT(opt_zero_samples) && OPT(brw_fs_opt_copy_propagation, *this))
       OPT(brw_fs_opt_algebraic, *this);
 
-   OPT(opt_split_sends);
+   OPT(brw_fs_opt_split_sends, *this);
    OPT(fixup_nomask_control_flow);
 
    if (progress) {

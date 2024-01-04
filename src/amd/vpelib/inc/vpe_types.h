@@ -550,6 +550,7 @@ struct vpe_tonemap_params {
     enum vpe_transfer_function lut_out_tf;
     enum vpe_color_primaries   lut_in_gamut;
     enum vpe_color_primaries   lut_out_gamut;
+    uint16_t                   input_pq_norm_factor;
     uint16_t                   lut_dim;
     uint16_t                  *lut_data;
 

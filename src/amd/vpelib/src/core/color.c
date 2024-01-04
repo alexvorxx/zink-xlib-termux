@@ -781,7 +781,7 @@ enum vpe_status vpe_color_update_movable_cm(
 
         if (stream_ctx->update_3dlut) {
 
-            uint32_t                 pqNormFactor;
+            uint32_t                 pq_norm_factor;
             struct vpe_color_space   tm_out_cs;
             enum color_space         out_lut_cs;
             enum color_transfer_func tf;
@@ -825,11 +825,14 @@ enum vpe_status vpe_color_update_movable_cm(
             //Blendgam is updated by output vpe_update_output_gamma_sequence
 
             if (param->streams[stream_idx].tm_params.shaper_tf == VPE_TF_PQ_NORMALIZED)
-                pqNormFactor = stream_ctx->stream.hdr_metadata.max_mastering;
+                if (!param->streams[stream_idx].tm_params.input_pq_norm_factor)
+                    pq_norm_factor = stream_ctx->stream.hdr_metadata.max_mastering;
+                else
+                    pq_norm_factor = param->streams[stream_idx].tm_params.input_pq_norm_factor;
             else
-                pqNormFactor = HDR_PEAK_WHITE;
+                pq_norm_factor = HDR_PEAK_WHITE;
 
-            vpe_color_tm_update_hdr_mult(SHAPER_EXP_MAX_IN, pqNormFactor,
+            vpe_color_tm_update_hdr_mult(SHAPER_EXP_MAX_IN, pq_norm_factor,
                 &stream_ctx->lut3d_func->hdr_multiplier, enable_3dlut);
 
             vpe_color_update_shaper(SHAPER_EXP_MAX_IN, stream_ctx->in_shaper_func, enable_3dlut);

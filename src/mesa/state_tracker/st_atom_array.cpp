@@ -81,14 +81,14 @@ setup_arrays(struct st_context *st,
              const struct gl_vertex_array_object *vao,
              const GLbitfield dual_slot_inputs,
              const GLbitfield inputs_read,
-             const GLbitfield enabled_attribs,
+             const GLbitfield enabled_arrays,
              struct cso_velems_state *velements,
              struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
 {
    struct gl_context *ctx = st->ctx;
 
    /* Process attribute array data. */
-   GLbitfield mask = inputs_read & enabled_attribs;
+   GLbitfield mask = inputs_read & enabled_arrays;
 
    if (vao->IsDynamic) {
       while (mask) {
@@ -179,11 +179,11 @@ st_setup_arrays(struct st_context *st,
                 struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
 {
    struct gl_context *ctx = st->ctx;
-   GLbitfield enabled_attribs = _mesa_get_enabled_vertex_arrays(ctx);
+   GLbitfield enabled_arrays = _mesa_get_enabled_vertex_arrays(ctx);
 
    setup_arrays<POPCNT_NO, UPDATE_ALL>
       (st, ctx->Array._DrawVAO, vp->Base.DualSlotInputs,
-       vp_variant->vert_attrib_mask, enabled_attribs,
+       vp_variant->vert_attrib_mask, enabled_arrays,
        velements, vbuffer, num_vbuffers);
 }
 
@@ -197,14 +197,14 @@ template<util_popcnt POPCNT, st_update_flag UPDATE> void ALWAYS_INLINE
 st_setup_current(struct st_context *st,
                  const GLbitfield inputs_read,
                  const GLbitfield dual_slot_inputs,
-                 const GLbitfield enabled_attribs,
+                 const GLbitfield enabled_arrays,
                  struct cso_velems_state *velements,
                  struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
 {
    struct gl_context *ctx = st->ctx;
 
    /* Process values that should have better been uniforms in the application */
-   GLbitfield curmask = inputs_read & ~enabled_attribs;
+   GLbitfield curmask = inputs_read & ~enabled_arrays;
    if (curmask) {
       unsigned num_attribs = util_bitcount_fast<POPCNT>(curmask);
       unsigned num_dual_attribs = util_bitcount_fast<POPCNT>(curmask &
@@ -274,12 +274,12 @@ st_setup_current_user(struct st_context *st,
                       struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
 {
    struct gl_context *ctx = st->ctx;
-   const GLbitfield enabled_attribs = _mesa_get_enabled_vertex_arrays(ctx);
+   const GLbitfield enabled_arrays = _mesa_get_enabled_vertex_arrays(ctx);
    const GLbitfield inputs_read = vp_variant->vert_attrib_mask;
    const GLbitfield dual_slot_inputs = vp->Base.DualSlotInputs;
 
    /* Process values that should have better been uniforms in the application */
-   GLbitfield curmask = inputs_read & ~enabled_attribs;
+   GLbitfield curmask = inputs_read & ~enabled_arrays;
    /* For each attribute, make an own user buffer binding. */
    while (curmask) {
       const gl_vert_attrib attr = (gl_vert_attrib)u_bit_scan(&curmask);
@@ -299,9 +299,9 @@ st_setup_current_user(struct st_context *st,
 
 template<util_popcnt POPCNT, st_update_flag UPDATE> void ALWAYS_INLINE
 st_update_array_templ(struct st_context *st,
-                      const GLbitfield enabled_attribs,
-                      const GLbitfield enabled_user_attribs,
-                      const GLbitfield nonzero_divisor_attribs)
+                      const GLbitfield enabled_arrays,
+                      const GLbitfield enabled_user_arrays,
+                      const GLbitfield nonzero_divisor_arrays)
 {
    struct gl_context *ctx = st->ctx;
 
@@ -312,11 +312,11 @@ st_update_array_templ(struct st_context *st,
    const struct st_common_variant *vp_variant = st->vp_variant;
    const GLbitfield inputs_read = vp_variant->vert_attrib_mask;
    const GLbitfield dual_slot_inputs = vp->Base.DualSlotInputs;
-   const GLbitfield userbuf_attribs = inputs_read & enabled_user_attribs;
-   bool uses_user_vertex_buffers = userbuf_attribs != 0;
+   const GLbitfield userbuf_arrays = inputs_read & enabled_user_arrays;
+   bool uses_user_vertex_buffers = userbuf_arrays != 0;
 
    st->draw_needs_minmax_index =
-      (userbuf_attribs & ~nonzero_divisor_attribs) != 0;
+      (userbuf_arrays & ~nonzero_divisor_arrays) != 0;
 
    struct pipe_vertex_buffer vbuffer[PIPE_MAX_ATTRIBS];
    unsigned num_vbuffers = 0;
@@ -326,12 +326,12 @@ st_update_array_templ(struct st_context *st,
    /* Setup arrays */
    setup_arrays<POPCNT, UPDATE>
       (st, ctx->Array._DrawVAO, dual_slot_inputs, inputs_read,
-       enabled_attribs, &velements, vbuffer, &num_vbuffers);
+       enabled_arrays, &velements, vbuffer, &num_vbuffers);
 
    /* _NEW_CURRENT_ATTRIB */
    /* Setup zero-stride attribs. */
    st_setup_current<POPCNT, UPDATE>(st, inputs_read, dual_slot_inputs,
-                                    enabled_attribs,
+                                    enabled_arrays,
                                     &velements, vbuffer, &num_vbuffers);
 
    struct cso_context *cso = st->cso_context;
@@ -358,9 +358,9 @@ st_update_array_impl(struct st_context *st)
 {
    struct gl_context *ctx = st->ctx;
    struct gl_vertex_array_object *vao = ctx->Array._DrawVAO;
-   const GLbitfield enabled_attribs = _mesa_get_enabled_vertex_arrays(ctx);
-   GLbitfield enabled_user_attribs;
-   GLbitfield nonzero_divisor_attribs;
+   const GLbitfield enabled_arrays = _mesa_get_enabled_vertex_arrays(ctx);
+   GLbitfield enabled_user_arrays;
+   GLbitfield nonzero_divisor_arrays;
 
    assert(vao->_EnabledWithMapMode ==
           _mesa_vao_enable_to_vp_inputs(vao->_AttributeMapMode, vao->Enabled));
@@ -368,8 +368,8 @@ st_update_array_impl(struct st_context *st)
    if (!vao->IsDynamic && !vao->SharedAndImmutable)
       _mesa_update_vao_derived_arrays(ctx, vao);
 
-   _mesa_get_derived_vao_masks(ctx, enabled_attribs, &enabled_user_attribs,
-                               &nonzero_divisor_attribs);
+   _mesa_get_derived_vao_masks(ctx, enabled_arrays, &enabled_user_arrays,
+                               &nonzero_divisor_arrays);
 
    /* Changing from user to non-user buffers and vice versa can switch between
     * cso and u_vbuf, which means that we need to update vertex elements even
@@ -377,12 +377,12 @@ st_update_array_impl(struct st_context *st)
     */
    if (ctx->Array.NewVertexElements ||
        st->uses_user_vertex_buffers !=
-       !!(st->vp_variant->vert_attrib_mask & enabled_user_attribs)) {
+       !!(st->vp_variant->vert_attrib_mask & enabled_user_arrays)) {
       st_update_array_templ<POPCNT, UPDATE_ALL>
-         (st, enabled_attribs, enabled_user_attribs, nonzero_divisor_attribs);
+         (st, enabled_arrays, enabled_user_arrays, nonzero_divisor_arrays);
    } else {
       st_update_array_templ<POPCNT, UPDATE_BUFFERS_ONLY>
-         (st, enabled_attribs, enabled_user_attribs, nonzero_divisor_attribs);
+         (st, enabled_arrays, enabled_user_arrays, nonzero_divisor_arrays);
    }
 }
 
@@ -402,10 +402,10 @@ struct pipe_vertex_state *
 st_create_gallium_vertex_state(struct gl_context *ctx,
                                const struct gl_vertex_array_object *vao,
                                struct gl_buffer_object *indexbuf,
-                               uint32_t enabled_attribs)
+                               uint32_t enabled_arrays)
 {
    struct st_context *st = st_context(ctx);
-   const GLbitfield inputs_read = enabled_attribs;
+   const GLbitfield inputs_read = enabled_arrays;
    const GLbitfield dual_slot_inputs = 0; /* always zero */
    struct pipe_vertex_buffer vbuffer[PIPE_MAX_ATTRIBS];
    unsigned num_vbuffers = 0;
@@ -427,7 +427,7 @@ st_create_gallium_vertex_state(struct gl_context *ctx,
                                   velements.count,
                                   indexbuf ?
                                   indexbuf->buffer : NULL,
-                                  enabled_attribs);
+                                  enabled_arrays);
 
    for (unsigned i = 0; i < num_vbuffers; i++)
       pipe_vertex_buffer_unreference(&vbuffer[i]);

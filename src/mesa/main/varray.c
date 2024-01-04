@@ -304,10 +304,10 @@ _mesa_bind_vertex_buffer(struct gl_context *ctx,
 
       if (vao->Enabled & binding->_BoundArrays) {
          ctx->NewDriverState |= ST_NEW_VERTEX_ARRAYS;
-         /* Non-dynamic VAOs merge vertex buffers, which affects vertex elements.
-          * stride changes also require new vertex elements
+         /* The slow path merges vertex buffers, which affects vertex elements.
+          * Stride changes also require new vertex elements.
           */
-         if (!vao->IsDynamic || stride_changed)
+         if (!ctx->Const.UseVAOFastPath || stride_changed)
             ctx->Array.NewVertexElements = true;
       }
 
@@ -1123,8 +1123,10 @@ update_array(struct gl_context *ctx,
 
       if (vao->Enabled & VERT_BIT(attrib)) {
          ctx->NewDriverState |= ST_NEW_VERTEX_ARRAYS;
-         /* Non-dynamic VAOs merge vertex buffers, which affects vertex elements. */
-         if (!vao->IsDynamic)
+         /* The slow path merges vertex buffers, which affects vertex
+          * elements.
+          */
+         if (!ctx->Const.UseVAOFastPath)
             ctx->Array.NewVertexElements = true;
       }
 

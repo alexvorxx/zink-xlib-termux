@@ -82,10 +82,11 @@ setup_arrays(struct gl_context *ctx,
              const GLbitfield inputs_read,
              GLbitfield mask,
              struct cso_velems_state *velements,
-             struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
+             struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers,
+             bool use_vao_fast_path)
 {
-   /* Process attribute array data. */
-   if (vao->IsDynamic) {
+   /* Set up enabled vertex arrays. */
+   if (use_vao_fast_path) {
       const GLubyte *attribute_map =
          _mesa_vao_attribute_map[vao->_AttributeMapMode];
 
@@ -183,7 +184,7 @@ st_setup_arrays(struct st_context *st,
       (ctx, ctx->Array._DrawVAO, vp->Base.DualSlotInputs,
        vp_variant->vert_attrib_mask,
        vp_variant->vert_attrib_mask & enabled_arrays,
-       velements, vbuffer, num_vbuffers);
+       velements, vbuffer, num_vbuffers, ctx->Const.UseVAOFastPath);
 }
 
 /* ALWAYS_INLINE helps the compiler realize that most of the parameters are
@@ -323,7 +324,8 @@ st_update_array_templ(struct st_context *st,
    /* Setup arrays */
    setup_arrays<POPCNT, UPDATE_VELEMS>
       (ctx, ctx->Array._DrawVAO, dual_slot_inputs, inputs_read,
-       inputs_read & enabled_arrays, &velements, vbuffer, &num_vbuffers);
+       inputs_read & enabled_arrays, &velements, vbuffer, &num_vbuffers,
+       ctx->Const.UseVAOFastPath);
 
    /* _NEW_CURRENT_ATTRIB */
    /* Setup zero-stride attribs. */
@@ -362,8 +364,8 @@ st_update_array_impl(struct st_context *st)
    assert(vao->_EnabledWithMapMode ==
           _mesa_vao_enable_to_vp_inputs(vao->_AttributeMapMode, vao->Enabled));
 
-   if (!vao->IsDynamic && !vao->SharedAndImmutable)
-      _mesa_update_vao_derived_arrays(ctx, vao);
+   if (!ctx->Const.UseVAOFastPath && !vao->SharedAndImmutable)
+      _mesa_update_vao_derived_arrays(ctx, vao, false);
 
    _mesa_get_derived_vao_masks(ctx, enabled_arrays, &enabled_user_arrays,
                                &nonzero_divisor_arrays);
@@ -410,7 +412,7 @@ st_create_gallium_vertex_state(struct gl_context *ctx,
 
    setup_arrays<POPCNT_NO, UPDATE_VELEMS_ON>
       (ctx, vao, dual_slot_inputs, inputs_read, inputs_read, &velements,
-       vbuffer, &num_vbuffers);
+       vbuffer, &num_vbuffers, false);
 
    if (num_vbuffers != 1) {
       assert(!"this should never happen with display lists");

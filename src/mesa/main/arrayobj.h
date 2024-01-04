@@ -89,7 +89,8 @@ _mesa_initialize_vao(struct gl_context *ctx,
 
 extern void
 _mesa_update_vao_derived_arrays(struct gl_context *ctx,
-                                struct gl_vertex_array_object *vao);
+                                struct gl_vertex_array_object *vao,
+                                bool display_list);
 
 extern void
 _mesa_vao_map_arrays(struct gl_context *ctx, struct gl_vertex_array_object *vao,

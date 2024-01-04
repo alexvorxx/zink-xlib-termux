@@ -973,8 +973,11 @@ struct gl_constants
    /** Whether out-of-order draw (Begin/End) optimizations are allowed. */
    bool AllowDrawOutOfOrder;
 
-   /** Whether to allow the fast path for frequently updated VAOs. */
-   bool AllowDynamicVAOFastPath;
+   /** Whether to force the fast path for binding VAOs. It has much lower
+    *  overhead due to not spending CPU cycles on trying to find interleaved
+    *  vertex attribs and binding them.
+    */
+   bool UseVAOFastPath;
 
    /** Whether the driver can support primitive restart with a fixed index.
     * This is essentially a subset of NV_primitive_restart with enough support

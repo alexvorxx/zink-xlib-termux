@@ -515,9 +515,10 @@ compute_vbo_offset_range(const struct gl_vertex_array_object *vao,
  */
 void
 _mesa_update_vao_derived_arrays(struct gl_context *ctx,
-                                struct gl_vertex_array_object *vao)
+                                struct gl_vertex_array_object *vao,
+                                bool display_list)
 {
-   assert(!vao->IsDynamic);
+   assert(display_list || !ctx->Const.UseVAOFastPath);
    /* Make sure we do not run into problems with shared objects */
    assert(!vao->SharedAndImmutable);
 
@@ -542,14 +543,6 @@ _mesa_update_vao_derived_arrays(struct gl_context *ctx,
    const GLbitfield enabled = vao->Enabled;
    /* VBO array bits. */
    const GLbitfield vbos = vao->VertexAttribBufferMask;
-
-   /* More than 4 updates turn the VAO to dynamic. */
-   if (ctx->Const.AllowDynamicVAOFastPath && ++vao->NumUpdates > 4) {
-      vao->IsDynamic = true;
-      /* IsDynamic changes how vertex elements map to vertex buffers. */
-      ctx->Array.NewVertexElements = true;
-      return;
-   }
 
    /* Walk those enabled arrays that have a real vbo attached */
    GLbitfield mask = enabled;

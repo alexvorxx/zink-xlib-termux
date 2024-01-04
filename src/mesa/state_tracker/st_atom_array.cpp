@@ -89,10 +89,13 @@ setup_arrays(struct st_context *st,
 
    /* Process attribute array data. */
    if (vao->IsDynamic) {
+      const GLubyte *attribute_map =
+         _mesa_vao_attribute_map[vao->_AttributeMapMode];
+
       while (mask) {
          const gl_vert_attrib attr = (gl_vert_attrib)u_bit_scan(&mask);
          const struct gl_array_attributes *const attrib =
-            _mesa_draw_array_attrib(vao, attr);
+            &vao->VertexAttrib[attribute_map[attr]];
          const struct gl_vertex_buffer_binding *const binding =
             &vao->BufferBinding[attrib->BufferBindingIndex];
          const unsigned bufidx = (*num_vbuffers)++;

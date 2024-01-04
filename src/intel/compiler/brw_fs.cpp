@@ -5686,11 +5686,11 @@ fs_visitor::optimize()
       OPT(brw_fs_opt_algebraic, *this);
       OPT(brw_fs_opt_cse, *this);
       OPT(brw_fs_opt_copy_propagation, *this);
-      OPT(opt_predicated_break, this);
+      OPT(opt_predicated_break, *this);
       OPT(brw_fs_opt_cmod_propagation, *this);
       OPT(brw_fs_opt_dead_code_eliminate, *this);
       OPT(brw_fs_opt_peephole_sel, *this);
-      OPT(dead_control_flow_eliminate, this);
+      OPT(dead_control_flow_eliminate, *this);
       OPT(brw_fs_opt_saturate_propagation, *this);
       OPT(brw_fs_opt_register_coalesce, *this);
       OPT(brw_fs_opt_eliminate_find_live_channel, *this);

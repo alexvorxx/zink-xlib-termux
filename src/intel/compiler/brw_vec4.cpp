@@ -2440,10 +2440,10 @@ vec4_visitor::run()
       pass_num = 0;
       iteration++;
 
-      OPT(opt_predicated_break, this);
+      OPT(opt_predicated_break, *this);
       OPT(opt_reduce_swizzle);
       OPT(dead_code_eliminate);
-      OPT(dead_control_flow_eliminate, this);
+      OPT(dead_control_flow_eliminate, *this);
       OPT(opt_copy_propagation);
       OPT(opt_cmod_propagation);
       OPT(opt_cse);

@@ -93,6 +93,8 @@ public:
    virtual void invalidate_analysis(brw::analysis_dependency_class c);
 };
 
+bool opt_predicated_break(backend_shader &s);
+
 #else
 struct backend_shader;
 #endif /* __cplusplus */
@@ -104,8 +106,6 @@ const char *brw_instruction_name(const struct brw_isa_info *isa,
 bool brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg);
 bool brw_negate_immediate(enum brw_reg_type type, struct brw_reg *reg);
 bool brw_abs_immediate(enum brw_reg_type type, struct brw_reg *reg);
-
-bool opt_predicated_break(struct backend_shader *s);
 
 #ifdef __cplusplus
 extern "C" {

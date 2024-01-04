@@ -26,6 +26,6 @@
 
 #include "brw_shader.h"
 
-bool dead_control_flow_eliminate(backend_shader *s);
+bool dead_control_flow_eliminate(backend_shader &s);
 
 #endif /* BRW_DEAD_CONTROL_FLOW_H */

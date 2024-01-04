@@ -99,12 +99,12 @@ has_continue(const struct loop_continue_tracking *s)
 }
 
 bool
-opt_predicated_break(backend_shader *s)
+opt_predicated_break(backend_shader &s)
 {
    bool progress = false;
    struct loop_continue_tracking state = { {0, }, 0 };
 
-   foreach_block (block, s->cfg) {
+   foreach_block (block, s.cfg) {
       /* DO instructions, by definition, can only be found at the beginning of
        * basic blocks.
        */
@@ -168,7 +168,7 @@ opt_predicated_break(backend_shader *s)
                 earlier_block->start()->opcode != BRW_OPCODE_DO);
 
          earlier_block->unlink_children();
-         earlier_block->add_successor(s->cfg->mem_ctx, jump_block,
+         earlier_block->add_successor(s.cfg->mem_ctx, jump_block,
                                       bblock_link_logical);
       }
 
@@ -198,7 +198,7 @@ opt_predicated_break(backend_shader *s)
       }
 
       if (need_to_link) {
-         jump_block->add_successor(s->cfg->mem_ctx, later_block,
+         jump_block->add_successor(s.cfg->mem_ctx, later_block,
                                    bblock_link_logical);
       }
 
@@ -237,7 +237,7 @@ opt_predicated_break(backend_shader *s)
    }
 
    if (progress)
-      s->invalidate_analysis(DEPENDENCY_BLOCKS | DEPENDENCY_INSTRUCTIONS);
+      s.invalidate_analysis(DEPENDENCY_BLOCKS | DEPENDENCY_INSTRUCTIONS);
 
    return progress;
 }

@@ -36,12 +36,10 @@
  * Internal functions
  */
 
-static inline struct pipe_resource *
+static ALWAYS_INLINE struct pipe_resource *
 _mesa_get_bufferobj_reference(struct gl_context *ctx, struct gl_buffer_object *obj)
 {
-   if (unlikely(!obj))
-      return NULL;
-
+   assert(obj);
    struct pipe_resource *buffer = obj->buffer;
 
    /* Only one context is using the fast path. All other contexts must use

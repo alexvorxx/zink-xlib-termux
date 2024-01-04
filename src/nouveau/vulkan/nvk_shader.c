@@ -643,7 +643,7 @@ nvk_hash_shader(unsigned char *hash,
       for (int i = 0; i < layout->set_count; i++) {
          struct nvk_descriptor_set_layout *set =
             vk_to_nvk_descriptor_set_layout(layout->set_layouts[i]);
-         _mesa_sha1_update(&ctx, &set->sha1, sizeof(set->sha1));
+         _mesa_sha1_update(&ctx, &set->vk.blake3, sizeof(set->vk.blake3));
       }
    }
 

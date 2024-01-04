@@ -274,7 +274,6 @@ public:
    bool lower_uniform_pull_constant_loads();
    bool lower_load_payload();
    bool lower_regioning();
-   bool lower_integer_multiplication();
    bool lower_derivatives();
    bool lower_find_live_channel();
    bool lower_scoreboard();
@@ -414,10 +413,6 @@ public:
    unsigned api_subgroup_size; /**< 0, 8, 16, 32 */
 
    struct shader_stats shader_stats;
-
-   void lower_mul_dword_inst(fs_inst *inst, bblock_t *block);
-   void lower_mul_qword_inst(fs_inst *inst, bblock_t *block);
-   void lower_mulh_inst(fs_inst *inst, bblock_t *block);
 
    unsigned workgroup_size() const;
 
@@ -602,6 +597,7 @@ void nir_to_brw(fs_visitor *s);
 
 bool brw_fs_lower_barycentrics(fs_visitor &s);
 bool brw_fs_lower_constant_loads(fs_visitor &s);
+bool brw_fs_lower_integer_multiplication(fs_visitor &s);
 bool brw_fs_lower_logical_sends(fs_visitor &s);
 bool brw_fs_lower_pack(fs_visitor &s);
 bool brw_fs_lower_simd_width(fs_visitor &s);

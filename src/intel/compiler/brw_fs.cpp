@@ -3588,10 +3588,11 @@ factor_uint32(uint32_t x, unsigned *result_a, unsigned *result_b)
    }
 }
 
-void
-fs_visitor::lower_mul_dword_inst(fs_inst *inst, bblock_t *block)
+static void
+brw_fs_lower_mul_dword_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
 {
-   const fs_builder ibld(this, block, inst);
+   const intel_device_info *devinfo = s.devinfo;
+   const fs_builder ibld(&s, block, inst);
 
    /* It is correct to use inst->src[1].d in both end of the comparison.
     * Using .ud in the UINT16_MAX comparison would cause any negative value to
@@ -3608,7 +3609,7 @@ fs_visitor::lower_mul_dword_inst(fs_inst *inst, bblock_t *block)
        */
       const bool ud = (inst->src[1].d >= 0);
       if (devinfo->ver < 7) {
-         fs_reg imm(VGRF, alloc.allocate(dispatch_width / 8), inst->dst.type);
+         fs_reg imm(VGRF, s.alloc.allocate(s.dispatch_width / 8), inst->dst.type);
          ibld.MOV(imm, inst->src[1]);
          ibld.MUL(inst->dst, imm, inst->src[0]);
       } else {
@@ -3678,12 +3679,12 @@ fs_visitor::lower_mul_dword_inst(fs_inst *inst, bblock_t *block)
                           inst->src[1], inst->size_read(1)) ||
           inst->dst.stride >= 4) {
          needs_mov = true;
-         low = fs_reg(VGRF, alloc.allocate(regs_written(inst)),
+         low = fs_reg(VGRF, s.alloc.allocate(regs_written(inst)),
                       inst->dst.type);
       }
 
       /* Get a new VGRF but keep the same stride as inst->dst */
-      fs_reg high(VGRF, alloc.allocate(regs_written(inst)), inst->dst.type);
+      fs_reg high(VGRF, s.alloc.allocate(regs_written(inst)), inst->dst.type);
       high.stride = inst->dst.stride;
       high.offset = inst->dst.offset % REG_SIZE;
 
@@ -3703,7 +3704,7 @@ fs_visitor::lower_mul_dword_inst(fs_inst *inst, bblock_t *block)
 
          if (inst->src[1].abs || (inst->src[1].negate &&
                                   source_mods_unsupported))
-            lower_src_modifiers(this, block, inst, 1);
+            lower_src_modifiers(&s, block, inst, 1);
 
          if (inst->src[1].file == IMM) {
             unsigned a;
@@ -3745,7 +3746,7 @@ fs_visitor::lower_mul_dword_inst(fs_inst *inst, bblock_t *block)
          }
       } else {
          if (inst->src[0].abs)
-            lower_src_modifiers(this, block, inst, 0);
+            lower_src_modifiers(&s, block, inst, 0);
 
          ibld.MUL(low, subscript(inst->src[0], BRW_REGISTER_TYPE_UW, 0),
                   inst->src[1]);
@@ -3764,10 +3765,11 @@ fs_visitor::lower_mul_dword_inst(fs_inst *inst, bblock_t *block)
    }
 }
 
-void
-fs_visitor::lower_mul_qword_inst(fs_inst *inst, bblock_t *block)
+static void
+brw_fs_lower_mul_qword_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
 {
-   const fs_builder ibld(this, block, inst);
+   const intel_device_info *devinfo = s.devinfo;
+   const fs_builder ibld(&s, block, inst);
 
    /* Considering two 64-bit integers ab and cd where each letter        ab
     * corresponds to 32 bits, we get a 128-bit result WXYZ. We         * cd
@@ -3782,17 +3784,17 @@ fs_visitor::lower_mul_qword_inst(fs_inst *inst, bblock_t *block)
    unsigned int q_regs = regs_written(inst);
    unsigned int d_regs = (q_regs + 1) / 2;
 
-   fs_reg bd(VGRF, alloc.allocate(q_regs), BRW_REGISTER_TYPE_UQ);
-   fs_reg ad(VGRF, alloc.allocate(d_regs), BRW_REGISTER_TYPE_UD);
-   fs_reg bc(VGRF, alloc.allocate(d_regs), BRW_REGISTER_TYPE_UD);
+   fs_reg bd(VGRF, s.alloc.allocate(q_regs), BRW_REGISTER_TYPE_UQ);
+   fs_reg ad(VGRF, s.alloc.allocate(d_regs), BRW_REGISTER_TYPE_UD);
+   fs_reg bc(VGRF, s.alloc.allocate(d_regs), BRW_REGISTER_TYPE_UD);
 
    /* Here we need the full 64 bit result for 32b * 32b. */
    if (devinfo->has_integer_dword_mul) {
       ibld.MUL(bd, subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 0),
                subscript(inst->src[1], BRW_REGISTER_TYPE_UD, 0));
    } else {
-      fs_reg bd_high(VGRF, alloc.allocate(d_regs), BRW_REGISTER_TYPE_UD);
-      fs_reg bd_low(VGRF, alloc.allocate(d_regs), BRW_REGISTER_TYPE_UD);
+      fs_reg bd_high(VGRF, s.alloc.allocate(d_regs), BRW_REGISTER_TYPE_UD);
+      fs_reg bd_low(VGRF, s.alloc.allocate(d_regs), BRW_REGISTER_TYPE_UD);
       const unsigned acc_width = reg_unit(devinfo) * 8;
       fs_reg acc = suboffset(retype(brw_acc_reg(inst->exec_size), BRW_REGISTER_TYPE_UD),
                              inst->group % acc_width);
@@ -3832,10 +3834,11 @@ fs_visitor::lower_mul_qword_inst(fs_inst *inst, bblock_t *block)
    }
 }
 
-void
-fs_visitor::lower_mulh_inst(fs_inst *inst, bblock_t *block)
+static void
+brw_fs_lower_mulh_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
 {
-   const fs_builder ibld(this, block, inst);
+   const intel_device_info *devinfo = s.devinfo;
+   const fs_builder ibld(&s, block, inst);
 
    /* According to the BDW+ BSpec page for the "Multiply Accumulate
     * High" instruction:
@@ -3847,10 +3850,10 @@ fs_visitor::lower_mulh_inst(fs_inst *inst, bblock_t *block)
     *      mach (8) r5.0<1>:d r2.0<8;8,1>:d r3.0<8;8,1>:d"
     */
    if (devinfo->ver >= 8 && (inst->src[1].negate || inst->src[1].abs))
-      lower_src_modifiers(this, block, inst, 1);
+      lower_src_modifiers(&s, block, inst, 1);
 
    /* Should have been lowered to 8-wide. */
-   assert(inst->exec_size <= get_lowered_simd_width(this, inst));
+   assert(inst->exec_size <= get_lowered_simd_width(&s, inst));
    const unsigned acc_width = reg_unit(devinfo) * 8;
    const fs_reg acc = suboffset(retype(brw_acc_reg(inst->exec_size), inst->dst.type),
                                 inst->group % acc_width);
@@ -3900,16 +3903,17 @@ fs_visitor::lower_mulh_inst(fs_inst *inst, bblock_t *block)
 }
 
 bool
-fs_visitor::lower_integer_multiplication()
+brw_fs_lower_integer_multiplication(fs_visitor &s)
 {
+   const intel_device_info *devinfo = s.devinfo;
    bool progress = false;
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       if (inst->opcode == BRW_OPCODE_MUL) {
          /* If the instruction is already in a form that does not need lowering,
           * return early.
           */
-         if (devinfo->ver >= 7) {
+         if (s.devinfo->ver >= 7) {
             if (type_sz(inst->src[1].type) < 4 && type_sz(inst->src[0].type) <= 4)
                continue;
          } else {
@@ -3923,7 +3927,7 @@ fs_visitor::lower_integer_multiplication()
               inst->src[0].type == BRW_REGISTER_TYPE_UQ) &&
              (inst->src[1].type == BRW_REGISTER_TYPE_Q ||
               inst->src[1].type == BRW_REGISTER_TYPE_UQ)) {
-            lower_mul_qword_inst(inst, block);
+            brw_fs_lower_mul_qword_inst(s, inst, block);
             inst->remove(block);
             progress = true;
          } else if (!inst->dst.is_accumulator() &&
@@ -3931,12 +3935,12 @@ fs_visitor::lower_integer_multiplication()
                      inst->dst.type == BRW_REGISTER_TYPE_UD) &&
                     (!devinfo->has_integer_dword_mul ||
                      devinfo->verx10 >= 125)) {
-            lower_mul_dword_inst(inst, block);
+            brw_fs_lower_mul_dword_inst(s, inst, block);
             inst->remove(block);
             progress = true;
          }
       } else if (inst->opcode == SHADER_OPCODE_MULH) {
-         lower_mulh_inst(inst, block);
+         brw_fs_lower_mulh_inst(s, inst, block);
          inst->remove(block);
          progress = true;
       }
@@ -3944,7 +3948,7 @@ fs_visitor::lower_integer_multiplication()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }
@@ -5750,12 +5754,12 @@ fs_visitor::optimize()
    }
 
    OPT(brw_fs_opt_combine_constants, *this);
-   if (OPT(lower_integer_multiplication)) {
+   if (OPT(brw_fs_lower_integer_multiplication, *this)) {
       /* If lower_integer_multiplication made progress, it may have produced
        * some 32x32-bit MULs in the process of lowering 64-bit MULs.  Run it
        * one more time to clean those up if they exist.
        */
-      OPT(lower_integer_multiplication);
+      OPT(brw_fs_lower_integer_multiplication, *this);
    }
    OPT(lower_sub_sat);
 

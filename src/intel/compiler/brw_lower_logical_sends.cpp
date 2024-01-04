@@ -3298,11 +3298,12 @@ brw_fs_lower_logical_sends(fs_visitor &s)
  * source operand for all 8 or 16 of its channels.
  */
 bool
-fs_visitor::lower_uniform_pull_constant_loads()
+brw_fs_lower_uniform_pull_constant_loads(fs_visitor &s)
 {
+   const intel_device_info *devinfo = s.devinfo;
    bool progress = false;
 
-   foreach_block_and_inst (block, fs_inst, inst, cfg) {
+   foreach_block_and_inst (block, fs_inst, inst, s.cfg) {
       if (inst->opcode != FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD)
          continue;
 
@@ -3316,7 +3317,7 @@ fs_visitor::lower_uniform_pull_constant_loads()
 
       if (devinfo->has_lsc) {
          const fs_builder ubld =
-            fs_builder(this, block, inst).group(8, 0).exec_all();
+            fs_builder(&s, block, inst).group(8, 0).exec_all();
 
          const fs_reg payload = ubld.vgrf(BRW_REGISTER_TYPE_UD);
          ubld.MOV(payload, offset_B);
@@ -3339,7 +3340,7 @@ fs_visitor::lower_uniform_pull_constant_loads()
          inst->opcode = SHADER_OPCODE_SEND;
          inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
          inst->send_ex_bso = surface_handle.file != BAD_FILE &&
-                             compiler->extended_bindless_surface_offset;
+                             s.compiler->extended_bindless_surface_offset;
          inst->ex_mlen = 0;
          inst->header_size = 0;
          inst->send_has_side_effects = false;
@@ -3354,10 +3355,10 @@ fs_visitor::lower_uniform_pull_constant_loads()
                                        surface : surface_handle);
          inst->src[2] = payload;
 
-         invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+         s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
       } else if (devinfo->ver >= 7) {
-         const fs_builder ubld = fs_builder(this, block, inst).exec_all();
-         fs_reg header = fs_builder(this, 8).exec_all().vgrf(BRW_REGISTER_TYPE_UD);
+         const fs_builder ubld = fs_builder(&s, block, inst).exec_all();
+         fs_reg header = fs_builder(&s, 8).exec_all().vgrf(BRW_REGISTER_TYPE_UD);
 
          ubld.group(8, 0).MOV(header,
                               retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD));
@@ -3380,7 +3381,7 @@ fs_visitor::lower_uniform_pull_constant_loads()
          inst->src[2] = header;
          inst->src[3] = fs_reg(); /* unused for reads */
 
-         invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+         s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
       } else {
          assert(surface_handle.file == BAD_FILE);
          /* Before register allocation, we didn't tell the scheduler about the

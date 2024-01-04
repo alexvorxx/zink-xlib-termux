@@ -270,7 +270,6 @@ public:
    void vfail(const char *msg, va_list args);
    void fail(const char *msg, ...);
    void limit_dispatch_width(unsigned n, const char *msg);
-   bool lower_uniform_pull_constant_loads();
    bool lower_load_payload();
    bool lower_find_live_channel();
    bool lower_scoreboard();
@@ -601,6 +600,7 @@ bool brw_fs_lower_regioning(fs_visitor &s);
 bool brw_fs_lower_sends_overlapping_payload(fs_visitor &s);
 bool brw_fs_lower_simd_width(fs_visitor &s);
 bool brw_fs_lower_sub_sat(fs_visitor &s);
+bool brw_fs_lower_uniform_pull_constant_loads(fs_visitor &s);
 
 bool brw_fs_opt_algebraic(fs_visitor &s);
 bool brw_fs_opt_bank_conflicts(fs_visitor &s);

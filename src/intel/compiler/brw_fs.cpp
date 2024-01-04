@@ -5775,7 +5775,7 @@ fs_visitor::optimize()
 
    OPT(brw_fs_lower_sends_overlapping_payload, *this);
 
-   OPT(lower_uniform_pull_constant_loads);
+   OPT(brw_fs_lower_uniform_pull_constant_loads, *this);
 
    OPT(lower_find_live_channel);
 

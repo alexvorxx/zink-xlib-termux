@@ -5191,10 +5191,10 @@ brw_fs_lower_barycentrics(fs_visitor &s)
  * swizzles of the source, specified as \p swz0 and \p swz1.
  */
 static bool
-lower_derivative(fs_visitor *v, bblock_t *block, fs_inst *inst,
+lower_derivative(fs_visitor &s, bblock_t *block, fs_inst *inst,
                  unsigned swz0, unsigned swz1)
 {
-   const fs_builder ubld = fs_builder(v, block, inst).exec_all();
+   const fs_builder ubld = fs_builder(&s, block, inst).exec_all();
    const fs_reg tmp0 = ubld.vgrf(inst->src[0].type);
    const fs_reg tmp1 = ubld.vgrf(inst->src[0].type);
 
@@ -5214,33 +5214,33 @@ lower_derivative(fs_visitor *v, bblock_t *block, fs_inst *inst,
  * them efficiently (i.e. XeHP).
  */
 bool
-fs_visitor::lower_derivatives()
+brw_fs_lower_derivatives(fs_visitor &s)
 {
    bool progress = false;
 
-   if (devinfo->verx10 < 125)
+   if (s.devinfo->verx10 < 125)
       return false;
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       if (inst->opcode == FS_OPCODE_DDX_COARSE)
-         progress |= lower_derivative(this, block, inst,
+         progress |= lower_derivative(s, block, inst,
                                       BRW_SWIZZLE_XXXX, BRW_SWIZZLE_YYYY);
 
       else if (inst->opcode == FS_OPCODE_DDX_FINE)
-         progress |= lower_derivative(this, block, inst,
+         progress |= lower_derivative(s, block, inst,
                                       BRW_SWIZZLE_XXZZ, BRW_SWIZZLE_YYWW);
 
       else if (inst->opcode == FS_OPCODE_DDY_COARSE)
-         progress |= lower_derivative(this, block, inst,
+         progress |= lower_derivative(s, block, inst,
                                       BRW_SWIZZLE_XXXX, BRW_SWIZZLE_ZZZZ);
 
       else if (inst->opcode == FS_OPCODE_DDY_FINE)
-         progress |= lower_derivative(this, block, inst,
+         progress |= lower_derivative(s, block, inst,
                                       BRW_SWIZZLE_XYXY, BRW_SWIZZLE_ZWZW);
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }
@@ -5764,7 +5764,7 @@ fs_visitor::optimize()
    OPT(brw_fs_lower_sub_sat, *this);
 
    progress = false;
-   OPT(lower_derivatives);
+   OPT(brw_fs_lower_derivatives, *this);
    OPT(lower_regioning);
    if (progress) {
       if (OPT(brw_fs_opt_copy_propagation, *this))

@@ -94,10 +94,6 @@ VkShaderStageFlags nvk_nak_stages(const struct nv_device_info *info);
 uint64_t
 nvk_physical_device_compiler_flags(const struct nvk_physical_device *pdev);
 
-const nir_shader_compiler_options *
-nvk_physical_device_nir_options(const struct nvk_physical_device *pdev,
-                                gl_shader_stage stage);
-
 static inline nir_address_format
 nvk_buffer_addr_format(VkPipelineRobustnessBufferBehaviorEXT robustness)
 {
@@ -111,10 +107,6 @@ nvk_buffer_addr_format(VkPipelineRobustnessBufferBehaviorEXT robustness)
       unreachable("Invalid robust buffer access behavior");
    }
 }
-
-struct spirv_to_nir_options
-nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
-                                  const struct vk_pipeline_robustness_state *rs);
 
 bool
 nvk_nir_lower_descriptors(nir_shader *nir,

@@ -98,20 +98,28 @@ nvk_physical_device_compiler_flags(const struct nvk_physical_device *pdev)
       | (nak_flags << 48);
 }
 
-const nir_shader_compiler_options *
-nvk_physical_device_nir_options(const struct nvk_physical_device *pdev,
-                                gl_shader_stage stage)
+static const nir_shader_compiler_options *
+nvk_get_nir_options(struct vk_physical_device *vk_pdev,
+                    gl_shader_stage stage,
+                    UNUSED const struct vk_pipeline_robustness_state *rs)
 {
+   const struct nvk_physical_device *pdev =
+      container_of(vk_pdev, struct nvk_physical_device, vk);
+
    if (use_nak(pdev, stage))
       return nak_nir_options(pdev->nak);
    else
       return nvk_cg_nir_options(pdev, stage);
 }
 
-struct spirv_to_nir_options
-nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
-                                  const struct vk_pipeline_robustness_state *rs)
+static struct spirv_to_nir_options
+nvk_get_spirv_options(struct vk_physical_device *vk_pdev,
+                      UNUSED gl_shader_stage stage,
+                      const struct vk_pipeline_robustness_state *rs)
 {
+   const struct nvk_physical_device *pdev =
+      container_of(vk_pdev, struct nvk_physical_device, vk);
+
    return (struct spirv_to_nir_options) {
       .caps = {
          .demote_to_helper_invocation = true,
@@ -160,6 +168,21 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
       .min_ssbo_alignment = NVK_MIN_SSBO_ALIGNMENT,
       .min_ubo_alignment = nvk_min_cbuf_alignment(&pdev->info),
    };
+}
+
+static void
+nvk_preprocess_nir(struct vk_physical_device *vk_pdev, nir_shader *nir)
+{
+   const struct nvk_physical_device *pdev =
+      container_of(vk_pdev, struct nvk_physical_device, vk);
+
+   NIR_PASS_V(nir, nir_lower_io_to_temporaries,
+              nir_shader_get_entrypoint(nir), true, false);
+
+   if (use_nak(pdev, nir->info.stage))
+      nak_preprocess_nir(nir, pdev->nak);
+   else
+      nvk_cg_preprocess_nir(nir);
 }
 
 static bool
@@ -248,7 +271,7 @@ nvk_shader_stage_to_nir(struct nvk_device *dev,
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
    const gl_shader_stage stage = vk_to_mesa_shader_stage(sinfo->stage);
    const nir_shader_compiler_options *nir_options =
-      nvk_physical_device_nir_options(pdev, stage);
+      nvk_get_nir_options(&pdev->vk, stage, rstate);
 
    unsigned char stage_sha1[SHA1_DIGEST_LENGTH];
    vk_pipeline_hash_shader_stage(sinfo, rstate, stage_sha1);
@@ -266,7 +289,7 @@ nvk_shader_stage_to_nir(struct nvk_device *dev,
    }
 
    const struct spirv_to_nir_options spirv_options =
-      nvk_physical_device_spirv_options(pdev, rstate);
+      nvk_get_spirv_options(&pdev->vk, stage, rstate);
 
    VkResult result = vk_pipeline_shader_stage_to_nir(&dev->vk, sinfo,
                                                      &spirv_options,
@@ -275,13 +298,7 @@ nvk_shader_stage_to_nir(struct nvk_device *dev,
    if (result != VK_SUCCESS)
       return result;
 
-   NIR_PASS_V(nir, nir_lower_io_to_temporaries,
-              nir_shader_get_entrypoint(nir), true, false);
-
-   if (use_nak(dev->pdev, nir->info.stage))
-      nak_preprocess_nir(nir, NULL);
-   else
-      nvk_cg_preprocess_nir(nir);
+   nvk_preprocess_nir(&dev->pdev->vk, nir);
 
    vk_pipeline_cache_add_nir(cache, stage_sha1, sizeof(stage_sha1), nir);
 

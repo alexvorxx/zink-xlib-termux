@@ -1,4 +1,3 @@
-
 /**************************************************************************
  *
  * Copyright 2007 VMware, Inc.
@@ -77,7 +76,7 @@ init_velement(struct pipe_vertex_element *velements,
  * on the stack.
  */
 template<util_popcnt POPCNT, st_update_flag UPDATE> void ALWAYS_INLINE
-setup_arrays(struct st_context *st,
+setup_arrays(struct gl_context *ctx,
              const struct gl_vertex_array_object *vao,
              const GLbitfield dual_slot_inputs,
              const GLbitfield inputs_read,
@@ -85,8 +84,6 @@ setup_arrays(struct st_context *st,
              struct cso_velems_state *velements,
              struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
 {
-   struct gl_context *ctx = st->ctx;
-
    /* Process attribute array data. */
    if (vao->IsDynamic) {
       const GLubyte *attribute_map =
@@ -183,7 +180,7 @@ st_setup_arrays(struct st_context *st,
    GLbitfield enabled_arrays = _mesa_get_enabled_vertex_arrays(ctx);
 
    setup_arrays<POPCNT_NO, UPDATE_ALL>
-      (st, ctx->Array._DrawVAO, vp->Base.DualSlotInputs,
+      (ctx, ctx->Array._DrawVAO, vp->Base.DualSlotInputs,
        vp_variant->vert_attrib_mask,
        vp_variant->vert_attrib_mask & enabled_arrays,
        velements, vbuffer, num_vbuffers);
@@ -203,10 +200,9 @@ st_setup_current(struct st_context *st,
                  struct cso_velems_state *velements,
                  struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
 {
-   struct gl_context *ctx = st->ctx;
-
    /* Process values that should have better been uniforms in the application */
    if (curmask) {
+      struct gl_context *ctx = st->ctx;
       unsigned num_attribs = util_bitcount_fast<POPCNT>(curmask);
       unsigned num_dual_attribs = util_bitcount_fast<POPCNT>(curmask &
                                                              dual_slot_inputs);
@@ -326,7 +322,7 @@ st_update_array_templ(struct st_context *st,
    /* ST_NEW_VERTEX_ARRAYS */
    /* Setup arrays */
    setup_arrays<POPCNT, UPDATE>
-      (st, ctx->Array._DrawVAO, dual_slot_inputs, inputs_read,
+      (ctx, ctx->Array._DrawVAO, dual_slot_inputs, inputs_read,
        inputs_read & enabled_arrays, &velements, vbuffer, &num_vbuffers);
 
    /* _NEW_CURRENT_ATTRIB */
@@ -412,8 +408,9 @@ st_create_gallium_vertex_state(struct gl_context *ctx,
    unsigned num_vbuffers = 0;
    struct cso_velems_state velements;
 
-   setup_arrays<POPCNT_NO, UPDATE_ALL>(st, vao, dual_slot_inputs, inputs_read,
-                                inputs_read, &velements, vbuffer, &num_vbuffers);
+   setup_arrays<POPCNT_NO, UPDATE_ALL>
+      (ctx, vao, dual_slot_inputs, inputs_read, inputs_read, &velements,
+       vbuffer, &num_vbuffers);
 
    if (num_vbuffers != 1) {
       assert(!"this should never happen with display lists");

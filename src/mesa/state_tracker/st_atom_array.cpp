@@ -48,9 +48,9 @@
 #include "main/varray.h"
 #include "main/arrayobj.h"
 
-enum st_update_flag {
-   UPDATE_ALL,
-   UPDATE_BUFFERS_ONLY,
+enum st_update_velems {
+   UPDATE_VELEMS_OFF,         /* specialized version (faster) */
+   UPDATE_VELEMS_ON,          /* always works */
 };
 
 /* Always inline the non-64bit element code, so that the compiler can see
@@ -75,7 +75,7 @@ init_velement(struct pipe_vertex_element *velements,
 /* ALWAYS_INLINE helps the compiler realize that most of the parameters are
  * on the stack.
  */
-template<util_popcnt POPCNT, st_update_flag UPDATE> void ALWAYS_INLINE
+template<util_popcnt POPCNT, st_update_velems UPDATE_VELEMS> void ALWAYS_INLINE
 setup_arrays(struct gl_context *ctx,
              const struct gl_vertex_array_object *vao,
              const GLbitfield dual_slot_inputs,
@@ -110,7 +110,7 @@ setup_arrays(struct gl_context *ctx,
             vbuffer[bufidx].buffer_offset = 0;
          }
 
-         if (UPDATE == UPDATE_BUFFERS_ONLY)
+         if (!UPDATE_VELEMS)
             continue;
 
          /* Set the vertex element. */
@@ -151,7 +151,7 @@ setup_arrays(struct gl_context *ctx,
       /* We can assume that we have array for the binding */
       assert(attrmask);
 
-      if (UPDATE == UPDATE_BUFFERS_ONLY)
+      if (!UPDATE_VELEMS)
          continue;
 
       /* Walk attributes belonging to the binding */
@@ -179,7 +179,7 @@ st_setup_arrays(struct st_context *st,
    struct gl_context *ctx = st->ctx;
    GLbitfield enabled_arrays = _mesa_get_enabled_vertex_arrays(ctx);
 
-   setup_arrays<POPCNT_NO, UPDATE_ALL>
+   setup_arrays<POPCNT_NO, UPDATE_VELEMS_ON>
       (ctx, ctx->Array._DrawVAO, vp->Base.DualSlotInputs,
        vp_variant->vert_attrib_mask,
        vp_variant->vert_attrib_mask & enabled_arrays,
@@ -192,7 +192,7 @@ st_setup_arrays(struct st_context *st,
  * Return the index of the vertex buffer where current attribs have been
  * uploaded.
  */
-template<util_popcnt POPCNT, st_update_flag UPDATE> void ALWAYS_INLINE
+template<util_popcnt POPCNT, st_update_velems UPDATE_VELEMS> void ALWAYS_INLINE
 st_setup_current(struct st_context *st,
                  const GLbitfield dual_slot_inputs,
                  const GLbitfield inputs_read,
@@ -248,7 +248,7 @@ st_setup_current(struct st_context *st,
          assert(size % 4 == 0); /* assume a hw-friendly alignment */
          memcpy(cursor, attrib->Ptr, size);
 
-         if (UPDATE == UPDATE_ALL) {
+         if (UPDATE_VELEMS) {
             init_velement(velements->velems, &attrib->Format, cursor - ptr,
                           0, 0, bufidx, dual_slot_inputs & BITFIELD_BIT(attr),
                           util_bitcount_fast<POPCNT>(inputs_read & BITFIELD_MASK(attr)));
@@ -294,7 +294,7 @@ st_setup_current_user(struct st_context *st,
    }
 }
 
-template<util_popcnt POPCNT, st_update_flag UPDATE> void ALWAYS_INLINE
+template<util_popcnt POPCNT, st_update_velems UPDATE_VELEMS> void ALWAYS_INLINE
 st_update_array_templ(struct st_context *st,
                       const GLbitfield enabled_arrays,
                       const GLbitfield enabled_user_arrays,
@@ -321,19 +321,19 @@ st_update_array_templ(struct st_context *st,
 
    /* ST_NEW_VERTEX_ARRAYS */
    /* Setup arrays */
-   setup_arrays<POPCNT, UPDATE>
+   setup_arrays<POPCNT, UPDATE_VELEMS>
       (ctx, ctx->Array._DrawVAO, dual_slot_inputs, inputs_read,
        inputs_read & enabled_arrays, &velements, vbuffer, &num_vbuffers);
 
    /* _NEW_CURRENT_ATTRIB */
    /* Setup zero-stride attribs. */
-   st_setup_current<POPCNT, UPDATE>(st, dual_slot_inputs, inputs_read,
-                                    inputs_read & ~enabled_arrays,
-                                    &velements, vbuffer, &num_vbuffers);
+   st_setup_current<POPCNT, UPDATE_VELEMS>
+      (st, dual_slot_inputs, inputs_read, inputs_read & ~enabled_arrays,
+       &velements, vbuffer, &num_vbuffers);
 
    struct cso_context *cso = st->cso_context;
 
-   if (UPDATE == UPDATE_ALL) {
+   if (UPDATE_VELEMS) {
       velements.count = vp->num_inputs + vp_variant->key.passthrough_edgeflags;
 
       /* Set vertex buffers and elements. */
@@ -375,10 +375,10 @@ st_update_array_impl(struct st_context *st)
    if (ctx->Array.NewVertexElements ||
        st->uses_user_vertex_buffers !=
        !!(st->vp_variant->vert_attrib_mask & enabled_user_arrays)) {
-      st_update_array_templ<POPCNT, UPDATE_ALL>
+      st_update_array_templ<POPCNT, UPDATE_VELEMS_ON>
          (st, enabled_arrays, enabled_user_arrays, nonzero_divisor_arrays);
    } else {
-      st_update_array_templ<POPCNT, UPDATE_BUFFERS_ONLY>
+      st_update_array_templ<POPCNT, UPDATE_VELEMS_OFF>
          (st, enabled_arrays, enabled_user_arrays, nonzero_divisor_arrays);
    }
 }
@@ -408,7 +408,7 @@ st_create_gallium_vertex_state(struct gl_context *ctx,
    unsigned num_vbuffers = 0;
    struct cso_velems_state velements;
 
-   setup_arrays<POPCNT_NO, UPDATE_ALL>
+   setup_arrays<POPCNT_NO, UPDATE_VELEMS_ON>
       (ctx, vao, dual_slot_inputs, inputs_read, inputs_read, &velements,
        vbuffer, &num_vbuffers);
 

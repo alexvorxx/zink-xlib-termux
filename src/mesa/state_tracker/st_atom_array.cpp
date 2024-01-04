@@ -194,16 +194,15 @@ st_setup_arrays(struct st_context *st,
  */
 template<util_popcnt POPCNT, st_update_flag UPDATE> void ALWAYS_INLINE
 st_setup_current(struct st_context *st,
-                 const GLbitfield inputs_read,
                  const GLbitfield dual_slot_inputs,
-                 const GLbitfield enabled_arrays,
+                 const GLbitfield inputs_read,
+                 GLbitfield curmask,
                  struct cso_velems_state *velements,
                  struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
 {
    struct gl_context *ctx = st->ctx;
 
    /* Process values that should have better been uniforms in the application */
-   GLbitfield curmask = inputs_read & ~enabled_arrays;
    if (curmask) {
       unsigned num_attribs = util_bitcount_fast<POPCNT>(curmask);
       unsigned num_dual_attribs = util_bitcount_fast<POPCNT>(curmask &
@@ -329,8 +328,8 @@ st_update_array_templ(struct st_context *st,
 
    /* _NEW_CURRENT_ATTRIB */
    /* Setup zero-stride attribs. */
-   st_setup_current<POPCNT, UPDATE>(st, inputs_read, dual_slot_inputs,
-                                    enabled_arrays,
+   st_setup_current<POPCNT, UPDATE>(st, dual_slot_inputs, inputs_read,
+                                    inputs_read & ~enabled_arrays,
                                     &velements, vbuffer, &num_vbuffers);
 
    struct cso_context *cso = st->cso_context;

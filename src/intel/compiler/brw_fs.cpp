@@ -5765,7 +5765,7 @@ fs_visitor::optimize()
 
    progress = false;
    OPT(brw_fs_lower_derivatives, *this);
-   OPT(lower_regioning);
+   OPT(brw_fs_lower_regioning, *this);
    if (progress) {
       if (OPT(brw_fs_opt_copy_propagation, *this))
          OPT(brw_fs_opt_algebraic, *this);

@@ -273,7 +273,6 @@ public:
    void limit_dispatch_width(unsigned n, const char *msg);
    bool lower_uniform_pull_constant_loads();
    bool lower_load_payload();
-   bool lower_regioning();
    bool lower_find_live_channel();
    bool lower_scoreboard();
 
@@ -599,6 +598,7 @@ bool brw_fs_lower_derivatives(fs_visitor &s);
 bool brw_fs_lower_integer_multiplication(fs_visitor &s);
 bool brw_fs_lower_logical_sends(fs_visitor &s);
 bool brw_fs_lower_pack(fs_visitor &s);
+bool brw_fs_lower_regioning(fs_visitor &s);
 bool brw_fs_lower_simd_width(fs_visitor &s);
 bool brw_fs_lower_sub_sat(fs_visitor &s);
 

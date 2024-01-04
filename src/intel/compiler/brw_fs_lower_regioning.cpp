@@ -663,15 +663,15 @@ namespace {
 }
 
 bool
-fs_visitor::lower_regioning()
+brw_fs_lower_regioning(fs_visitor &s)
 {
    bool progress = false;
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg)
-      progress |= lower_instruction(this, block, inst);
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg)
+      progress |= lower_instruction(&s, block, inst);
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }

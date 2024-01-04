@@ -3673,8 +3673,7 @@ anv_fill_buffer_view_surface_state(struct anv_device *device,
 {
    anv_fill_buffer_surface_state(device,
                                  state->state_data.data,
-                                 format, swizzle,
-                                 ISL_SURF_USAGE_TEXTURE_BIT,
+                                 format, swizzle, usage,
                                  address, range, stride);
 
    if (state->state.map)

@@ -277,7 +277,6 @@ public:
    bool lower_derivatives();
    bool lower_find_live_channel();
    bool lower_scoreboard();
-   bool lower_sub_sat();
 
    void emit_repclear_shader();
    void emit_interpolation_setup_gfx4();
@@ -601,6 +600,7 @@ bool brw_fs_lower_integer_multiplication(fs_visitor &s);
 bool brw_fs_lower_logical_sends(fs_visitor &s);
 bool brw_fs_lower_pack(fs_visitor &s);
 bool brw_fs_lower_simd_width(fs_visitor &s);
+bool brw_fs_lower_sub_sat(fs_visitor &s);
 
 bool brw_fs_opt_algebraic(fs_visitor &s);
 bool brw_fs_opt_bank_conflicts(fs_visitor &s);

@@ -3954,12 +3954,12 @@ brw_fs_lower_integer_multiplication(fs_visitor &s)
 }
 
 bool
-fs_visitor::lower_sub_sat()
+brw_fs_lower_sub_sat(fs_visitor &s)
 {
    bool progress = false;
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
-      const fs_builder ibld(this, block, inst);
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
+      const fs_builder ibld(&s, block, inst);
 
       if (inst->opcode == SHADER_OPCODE_USUB_SAT ||
           inst->opcode == SHADER_OPCODE_ISUB_SAT) {
@@ -4037,7 +4037,7 @@ fs_visitor::lower_sub_sat()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }
@@ -5761,7 +5761,7 @@ fs_visitor::optimize()
        */
       OPT(brw_fs_lower_integer_multiplication, *this);
    }
-   OPT(lower_sub_sat);
+   OPT(brw_fs_lower_sub_sat, *this);
 
    progress = false;
    OPT(lower_derivatives);

@@ -798,15 +798,6 @@ _mesa_update_vao_derived_arrays(struct gl_context *ctx,
 }
 
 
-void
-_mesa_set_vao_immutable(struct gl_context *ctx,
-                        struct gl_vertex_array_object *vao)
-{
-   _mesa_update_vao_derived_arrays(ctx, vao);
-   vao->SharedAndImmutable = true;
-}
-
-
 /**
  * Map buffer objects used in attribute arrays.
  */

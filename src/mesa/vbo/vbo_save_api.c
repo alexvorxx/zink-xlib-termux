@@ -389,7 +389,8 @@ update_vao(struct gl_context *ctx,
    assert((vao_enabled & ~(*vao)->VertexAttribBufferMask) == 0);
 
    /* Finalize and freeze the VAO */
-   _mesa_set_vao_immutable(ctx, *vao);
+   _mesa_update_vao_derived_arrays(ctx, *vao);
+   (*vao)->SharedAndImmutable = true;
 }
 
 static void wrap_filled_vertex(struct gl_context *ctx);

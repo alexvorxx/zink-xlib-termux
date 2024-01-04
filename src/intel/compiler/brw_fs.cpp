@@ -5246,21 +5246,21 @@ brw_fs_lower_derivatives(fs_visitor &s)
 }
 
 bool
-fs_visitor::lower_find_live_channel()
+brw_fs_lower_find_live_channel(fs_visitor &s)
 {
    bool progress = false;
 
-   if (devinfo->ver < 8)
+   if (s.devinfo->ver < 8)
       return false;
 
    bool packed_dispatch =
-      brw_stage_has_packed_dispatch(devinfo, stage, max_polygons,
-                                    stage_prog_data);
+      brw_stage_has_packed_dispatch(s.devinfo, s.stage, s.max_polygons,
+                                    s.stage_prog_data);
    bool vmask =
-      stage == MESA_SHADER_FRAGMENT &&
-      brw_wm_prog_data(stage_prog_data)->uses_vmask;
+      s.stage == MESA_SHADER_FRAGMENT &&
+      brw_wm_prog_data(s.stage_prog_data)->uses_vmask;
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       if (inst->opcode != SHADER_OPCODE_FIND_LIVE_CHANNEL &&
           inst->opcode != SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL)
          continue;
@@ -5275,11 +5275,11 @@ fs_visitor::lower_find_live_channel()
        */
       fs_reg exec_mask(retype(brw_mask_reg(0), BRW_REGISTER_TYPE_UD));
 
-      const fs_builder ibld(this, block, inst);
+      const fs_builder ibld(&s, block, inst);
       if (!inst->is_partial_write())
          ibld.emit_undef_for_dst(inst);
 
-      const fs_builder ubld = fs_builder(this, block, inst).exec_all().group(1, 0);
+      const fs_builder ubld = fs_builder(&s, block, inst).exec_all().group(1, 0);
 
       /* ce0 doesn't consider the thread dispatch mask (DMask or VMask),
        * so combine the execution and dispatch masks to obtain the true mask.
@@ -5318,7 +5318,7 @@ fs_visitor::lower_find_live_channel()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }
@@ -5777,7 +5777,7 @@ fs_visitor::optimize()
 
    OPT(brw_fs_lower_uniform_pull_constant_loads, *this);
 
-   OPT(lower_find_live_channel);
+   OPT(brw_fs_lower_find_live_channel, *this);
 
    validate();
 }

@@ -271,7 +271,6 @@ public:
    void fail(const char *msg, ...);
    void limit_dispatch_width(unsigned n, const char *msg);
    bool lower_load_payload();
-   bool lower_find_live_channel();
    bool lower_scoreboard();
 
    void emit_repclear_shader();
@@ -593,6 +592,7 @@ void nir_to_brw(fs_visitor *s);
 bool brw_fs_lower_barycentrics(fs_visitor &s);
 bool brw_fs_lower_constant_loads(fs_visitor &s);
 bool brw_fs_lower_derivatives(fs_visitor &s);
+bool brw_fs_lower_find_live_channel(fs_visitor &s);
 bool brw_fs_lower_integer_multiplication(fs_visitor &s);
 bool brw_fs_lower_logical_sends(fs_visitor &s);
 bool brw_fs_lower_pack(fs_visitor &s);

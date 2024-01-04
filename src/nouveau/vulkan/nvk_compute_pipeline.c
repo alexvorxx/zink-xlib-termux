@@ -214,7 +214,9 @@ nvk_compute_pipeline_create(struct nvk_device *dev,
       if(shader == NULL)
          return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-      nvk_lower_nir(dev, nir, &robustness, false, pipeline_layout,
+      nvk_lower_nir(dev, nir, &robustness, false,
+                    pipeline_layout->set_count,
+                    pipeline_layout->set_layouts,
                     &shader->cbuf_map);
 
       result = nvk_compile_nir(dev, nir, pipeline_flags, &robustness, NULL, cache, shader);

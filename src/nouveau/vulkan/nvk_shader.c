@@ -259,14 +259,20 @@ lower_load_global_constant_offset_instr(nir_builder *b,
    return true;
 }
 
+struct lower_ycbcr_state {
+   uint32_t set_layout_count;
+   struct vk_descriptor_set_layout * const *set_layouts;
+};
+
 static const struct vk_ycbcr_conversion_state *
-lookup_ycbcr_conversion(const void *_layout, uint32_t set,
+lookup_ycbcr_conversion(const void *_state, uint32_t set,
                         uint32_t binding, uint32_t array_index)
 {
-   const struct vk_pipeline_layout *pipeline_layout = _layout;
-   assert(set < pipeline_layout->set_count);
+   const struct lower_ycbcr_state *state = _state;
+   assert(set < state->set_layout_count);
+   assert(state->set_layouts[set] != NULL);
    const struct nvk_descriptor_set_layout *set_layout =
-      vk_to_nvk_descriptor_set_layout(pipeline_layout->set_layouts[set]);
+      vk_to_nvk_descriptor_set_layout(state->set_layouts[set]);
    assert(binding < set_layout->binding_count);
 
    const struct nvk_descriptor_set_binding_layout *bind_layout =
@@ -343,7 +349,8 @@ void
 nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
               const struct vk_pipeline_robustness_state *rs,
               bool is_multiview,
-              const struct vk_pipeline_layout *layout,
+              uint32_t set_layout_count,
+              struct vk_descriptor_set_layout * const *set_layouts,
               struct nvk_cbuf_map *cbuf_map_out)
 {
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
@@ -358,7 +365,12 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
                });
    }
 
-   NIR_PASS(_, nir, nir_vk_lower_ycbcr_tex, lookup_ycbcr_conversion, layout);
+   const struct lower_ycbcr_state ycbcr_state = {
+      .set_layout_count = set_layout_count,
+      .set_layouts = set_layouts,
+   };
+   NIR_PASS(_, nir, nir_vk_lower_ycbcr_tex,
+            lookup_ycbcr_conversion, &ycbcr_state);
 
    nir_lower_compute_system_values_options csv_options = {
       .has_base_workgroup_id = true,
@@ -417,7 +429,7 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
    }
 
    NIR_PASS(_, nir, nvk_nir_lower_descriptors, rs,
-            layout->set_count, layout->set_layouts, cbuf_map);
+            set_layout_count, set_layouts, cbuf_map);
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,
             nir_address_format_64bit_global);
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ssbo,

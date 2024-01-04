@@ -521,7 +521,7 @@ struct opt_ctx {
    Program* program;
    float_mode fp_mode;
    std::vector<aco_ptr<Instruction>> instructions;
-   ssa_info* info;
+   std::vector<ssa_info> info;
    std::pair<uint32_t, Temp> last_literal;
    std::vector<mad_info> mad_infos;
    std::vector<uint16_t> uses;
@@ -3116,6 +3116,7 @@ combine_add_sub_b2i(opt_ctx& ctx, aco_ptr<Instruction>& instr, aco_opcode new_op
              * uses properly initialized to 0.
              */
             ctx.uses.push_back(0);
+            ctx.info.push_back(ssa_info{});
          }
          new_instr->operands[0] = Operand::zero();
          new_instr->operands[1] = instr->operands[!i];
@@ -4616,6 +4617,91 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    }
 }
 
+struct remat_entry {
+   Instruction* instr;
+   uint32_t block;
+};
+
+inline bool
+is_constant(Instruction* instr)
+{
+   if (instr->opcode != aco_opcode::p_parallelcopy || instr->operands.size() != 1)
+      return false;
+
+   return instr->operands[0].isConstant() && instr->definitions[0].isTemp();
+}
+
+void
+remat_constants_instr(opt_ctx& ctx, aco::map<Temp, remat_entry>& constants, Instruction* instr,
+                      uint32_t block_idx)
+{
+   for (Operand& op : instr->operands) {
+      if (!op.isTemp())
+         continue;
+
+      auto it = constants.find(op.getTemp());
+      if (it == constants.end())
+         continue;
+
+      /* Check if we already emitted the same constant in this block. */
+      if (it->second.block != block_idx) {
+         /* Rematerialize the constant. */
+         Builder bld(ctx.program, &ctx.instructions);
+         Operand const_op = it->second.instr->operands[0];
+         it->second.instr = bld.copy(bld.def(op.regClass()), const_op);
+         it->second.block = block_idx;
+         ctx.uses.push_back(0);
+         ctx.info.push_back(ctx.info[op.tempId()]);
+      }
+
+      /* Use the rematerialized constant and update information about latest use. */
+      if (op.getTemp() != it->second.instr->definitions[0].getTemp()) {
+         ctx.uses[op.tempId()]--;
+         op.setTemp(it->second.instr->definitions[0].getTemp());
+         ctx.uses[op.tempId()]++;
+      }
+   }
+}
+
+/**
+ * This pass implements a simple constant rematerialization.
+ * As common subexpression elimination (CSE) might increase the live-ranges
+ * of loaded constants over large distances, this pass splits the live-ranges
+ * again by re-emitting constants in every basic block.
+ */
+void
+rematerialize_constants(opt_ctx& ctx)
+{
+   aco::monotonic_buffer_resource memory(1024);
+   aco::map<Temp, remat_entry> constants(memory);
+
+   for (Block& block : ctx.program->blocks) {
+      if (block.logical_idom == -1)
+         continue;
+
+      if (block.logical_idom == (int)block.index)
+         constants.clear();
+
+      ctx.instructions.reserve(block.instructions.size());
+
+      for (aco_ptr<Instruction>& instr : block.instructions) {
+         if (is_dead(ctx.uses, instr.get()))
+            continue;
+
+         if (is_constant(instr.get())) {
+            Temp tmp = instr->definitions[0].getTemp();
+            constants[tmp] = {instr.get(), block.index};
+         } else if (!is_phi(instr)) {
+            remat_constants_instr(ctx, constants, instr.get(), block.index);
+         }
+
+         ctx.instructions.emplace_back(instr.release());
+      }
+
+      block.instructions = std::move(ctx.instructions);
+   }
+}
+
 bool
 to_uniform_bool_instr(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 {
@@ -5301,8 +5387,7 @@ optimize(Program* program)
 {
    opt_ctx ctx;
    ctx.program = program;
-   std::vector<ssa_info> info(program->peekAllocationId());
-   ctx.info = info.data();
+   ctx.info = std::vector<ssa_info>(program->peekAllocationId());
 
    /* 1. Bottom-Up DAG pass (forward) to label all ssa-defs */
    for (Block& block : program->blocks) {
@@ -5313,14 +5398,17 @@ optimize(Program* program)
 
    ctx.uses = dead_code_analysis(program);
 
-   /* 2. Combine v_mad, omod, clamp and propagate sgpr on VALU instructions */
+   /* 2. Rematerialize constants in every block. */
+   rematerialize_constants(ctx);
+
+   /* 3. Combine v_mad, omod, clamp and propagate sgpr on VALU instructions */
    for (Block& block : program->blocks) {
       ctx.fp_mode = block.fp_mode;
       for (aco_ptr<Instruction>& instr : block.instructions)
          combine_instruction(ctx, instr);
    }
 
-   /* 3. Top-Down DAG pass (backward) to select instructions (includes DCE) */
+   /* 4. Top-Down DAG pass (backward) to select instructions (includes DCE) */
    for (auto block_rit = program->blocks.rbegin(); block_rit != program->blocks.rend();
         ++block_rit) {
       Block* block = &(*block_rit);
@@ -5330,7 +5418,7 @@ optimize(Program* program)
          select_instruction(ctx, *instr_rit);
    }
 
-   /* 4. Add literals to instructions */
+   /* 5. Add literals to instructions */
    for (Block& block : program->blocks) {
       ctx.instructions.reserve(block.instructions.size());
       ctx.fp_mode = block.fp_mode;

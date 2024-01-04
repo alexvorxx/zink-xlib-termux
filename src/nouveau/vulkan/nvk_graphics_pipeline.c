@@ -4,7 +4,6 @@
  */
 #include "nvk_pipeline.h"
 
-#include "nvk_cmd_buffer.h"
 #include "nvk_device.h"
 #include "nvk_mme.h"
 #include "nvk_physical_device.h"
@@ -23,28 +22,6 @@
 #include "nvk_cl9097.h"
 #include "nvk_clb197.h"
 #include "nvk_clc397.h"
-
-static void
-nvk_populate_fs_key(struct nak_fs_key *key,
-                    const struct vk_multisample_state *ms,
-                    const struct vk_graphics_pipeline_state *state)
-{
-   memset(key, 0, sizeof(*key));
-
-   key->sample_locations_cb = 0;
-   key->sample_locations_offset = nvk_root_descriptor_offset(draw.sample_locations);
-
-   if (state->pipeline_flags &
-       VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
-      key->zs_self_dep = true;
-
-   if (ms == NULL || ms->rasterization_samples <= 1)
-      return;
-
-   if (ms->sample_shading_enable &&
-       (ms->rasterization_samples * ms->min_sample_shading) > 1.0)
-      key->force_sample_shading = true;
-}
 
 static void
 emit_pipeline_ct_write_state(struct nv_push *p,
@@ -188,7 +165,7 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
    struct vk_pipeline_cache_object *cache_objs[MESA_SHADER_STAGES] = {};
 
    struct nak_fs_key fs_key_tmp, *fs_key = NULL;
-   nvk_populate_fs_key(&fs_key_tmp, state.ms, &state);
+   nvk_populate_fs_key(&fs_key_tmp, &state);
    fs_key = &fs_key_tmp;
 
    for (uint32_t i = 0; i < pCreateInfo->stageCount; i++) {

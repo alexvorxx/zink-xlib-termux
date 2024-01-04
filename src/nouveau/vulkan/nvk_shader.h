@@ -19,6 +19,7 @@ struct nvk_device;
 struct nvk_physical_device;
 struct nvk_pipeline_compilation_ctx;
 struct vk_descriptor_set_layout;
+struct vk_graphics_pipeline_state;
 struct vk_pipeline_cache;
 struct vk_pipeline_layout;
 struct vk_pipeline_robustness_state;
@@ -121,6 +122,10 @@ nvk_shader_stage_to_nir(struct nvk_device *dev,
                         const struct vk_pipeline_robustness_state *rstate,
                         struct vk_pipeline_cache *cache,
                         void *mem_ctx, struct nir_shader **nir_out);
+
+void
+nvk_populate_fs_key(struct nak_fs_key *key,
+                    const struct vk_graphics_pipeline_state *state);
 
 void
 nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,

@@ -4,6 +4,7 @@
  */
 #include "nvk_shader.h"
 
+#include "nvk_cmd_buffer.h"
 #include "nvk_descriptor_set_layout.h"
 #include "nvk_device.h"
 #include "nvk_physical_device.h"
@@ -183,6 +184,28 @@ nvk_preprocess_nir(struct vk_physical_device *vk_pdev, nir_shader *nir)
       nak_preprocess_nir(nir, pdev->nak);
    else
       nvk_cg_preprocess_nir(nir);
+}
+
+void
+nvk_populate_fs_key(struct nak_fs_key *key,
+                    const struct vk_graphics_pipeline_state *state)
+{
+   memset(key, 0, sizeof(*key));
+
+   key->sample_locations_cb = 0;
+   key->sample_locations_offset = nvk_root_descriptor_offset(draw.sample_locations);
+
+   if (state->pipeline_flags &
+       VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
+      key->zs_self_dep = true;
+
+   const struct vk_multisample_state *ms = state->ms;
+   if (ms == NULL || ms->rasterization_samples <= 1)
+      return;
+
+   if (ms->sample_shading_enable &&
+       (ms->rasterization_samples * ms->min_sample_shading) > 1.0)
+      key->force_sample_shading = true;
 }
 
 static bool

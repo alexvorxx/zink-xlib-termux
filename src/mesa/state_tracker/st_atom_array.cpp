@@ -81,15 +81,13 @@ setup_arrays(struct st_context *st,
              const struct gl_vertex_array_object *vao,
              const GLbitfield dual_slot_inputs,
              const GLbitfield inputs_read,
-             const GLbitfield enabled_arrays,
+             GLbitfield mask,
              struct cso_velems_state *velements,
              struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
 {
    struct gl_context *ctx = st->ctx;
 
    /* Process attribute array data. */
-   GLbitfield mask = inputs_read & enabled_arrays;
-
    if (vao->IsDynamic) {
       while (mask) {
          const gl_vert_attrib attr = (gl_vert_attrib)u_bit_scan(&mask);
@@ -183,7 +181,8 @@ st_setup_arrays(struct st_context *st,
 
    setup_arrays<POPCNT_NO, UPDATE_ALL>
       (st, ctx->Array._DrawVAO, vp->Base.DualSlotInputs,
-       vp_variant->vert_attrib_mask, enabled_arrays,
+       vp_variant->vert_attrib_mask,
+       vp_variant->vert_attrib_mask & enabled_arrays,
        velements, vbuffer, num_vbuffers);
 }
 
@@ -326,7 +325,7 @@ st_update_array_templ(struct st_context *st,
    /* Setup arrays */
    setup_arrays<POPCNT, UPDATE>
       (st, ctx->Array._DrawVAO, dual_slot_inputs, inputs_read,
-       enabled_arrays, &velements, vbuffer, &num_vbuffers);
+       inputs_read & enabled_arrays, &velements, vbuffer, &num_vbuffers);
 
    /* _NEW_CURRENT_ATTRIB */
    /* Setup zero-stride attribs. */

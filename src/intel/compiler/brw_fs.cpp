@@ -5773,7 +5773,7 @@ fs_visitor::optimize()
       OPT(brw_fs_lower_simd_width, *this);
    }
 
-   OPT(fixup_sends_duplicate_payload);
+   OPT(brw_fs_lower_sends_overlapping_payload, *this);
 
    OPT(lower_uniform_pull_constant_loads);
 
@@ -5793,20 +5793,20 @@ fs_visitor::optimize()
  * just adds a new vgrf for the second payload and copies it over.
  */
 bool
-fs_visitor::fixup_sends_duplicate_payload()
+brw_fs_lower_sends_overlapping_payload(fs_visitor &s)
 {
    bool progress = false;
 
-   foreach_block_and_inst_safe (block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe (block, fs_inst, inst, s.cfg) {
       if (inst->opcode == SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
           regions_overlap(inst->src[2], inst->mlen * REG_SIZE,
                           inst->src[3], inst->ex_mlen * REG_SIZE)) {
-         fs_reg tmp = fs_reg(VGRF, alloc.allocate(inst->ex_mlen),
+         fs_reg tmp = fs_reg(VGRF, s.alloc.allocate(inst->ex_mlen),
                              BRW_REGISTER_TYPE_UD);
          /* Sadly, we've lost all notion of channels and bit sizes at this
           * point.  Just WE_all it.
           */
-         const fs_builder ibld = fs_builder(this, block, inst).exec_all().group(16, 0);
+         const fs_builder ibld = fs_builder(&s, block, inst).exec_all().group(16, 0);
          fs_reg copy_src = retype(inst->src[3], BRW_REGISTER_TYPE_UD);
          fs_reg copy_dst = tmp;
          for (unsigned i = 0; i < inst->ex_mlen; i += 2) {
@@ -5825,7 +5825,7 @@ fs_visitor::fixup_sends_duplicate_payload()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }

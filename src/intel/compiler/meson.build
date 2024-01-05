@@ -77,6 +77,7 @@ libintel_compiler_brw_files = files(
   'brw_fs_live_variables.h',
   'brw_fs_lower.cpp',
   'brw_fs_lower_dpas.cpp',
+  'brw_fs_lower_integer_multiplication.cpp',
   'brw_fs_lower_pack.cpp',
   'brw_fs_lower_regioning.cpp',
   'brw_fs_nir.cpp',

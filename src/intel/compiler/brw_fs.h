@@ -623,4 +623,8 @@ bool brw_fs_workaround_emit_dummy_mov_instruction(fs_visitor &s);
 bool brw_fs_workaround_memory_fence_before_eot(fs_visitor &s);
 bool brw_fs_workaround_nomask_control_flow(fs_visitor &s);
 
+/* Helpers. */
+unsigned brw_fs_get_lowered_simd_width(const fs_visitor *shader,
+                                       const fs_inst *inst);
+
 #endif /* BRW_FS_H */

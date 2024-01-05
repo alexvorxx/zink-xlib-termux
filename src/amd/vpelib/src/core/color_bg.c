@@ -581,8 +581,7 @@ enum vpe_status vpe_bg_color_outside_cs_gamut(
     return VPE_STATUS_OK;
 }
 
-
-inline bool is_target_rect_equal_to_dest_rect(const struct vpe_priv *vpe_priv)
+static inline bool is_target_rect_equal_to_dest_rect(const struct vpe_priv *vpe_priv)
 {
     const struct vpe_rect *target_rect = &vpe_priv->output_ctx.target_rect;
     const struct vpe_rect *dst_rect = &vpe_priv->stream_ctx[0].stream.scaling_info.dst_rect;

@@ -1349,13 +1349,13 @@ namespace {
 }
 
 bool
-fs_visitor::lower_scoreboard()
+brw_fs_lower_scoreboard(fs_visitor &s)
 {
-   if (devinfo->ver >= 12) {
-      const ordered_address *jps = ordered_inst_addresses(this);
-      const dependency_list *deps0 = gather_inst_dependencies(this, jps);
-      const dependency_list *deps1 = allocate_inst_dependencies(this, deps0);
-      emit_inst_dependencies(this, jps, deps1);
+   if (s.devinfo->ver >= 12) {
+      const ordered_address *jps = ordered_inst_addresses(&s);
+      const dependency_list *deps0 = gather_inst_dependencies(&s, jps);
+      const dependency_list *deps1 = allocate_inst_dependencies(&s, deps0);
+      emit_inst_dependencies(&s, jps, deps1);
       delete[] deps1;
       delete[] deps0;
       delete[] jps;

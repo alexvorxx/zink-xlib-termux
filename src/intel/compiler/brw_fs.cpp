@@ -5926,18 +5926,18 @@ fs_visitor::emit_dummy_mov_instruction()
  * TODO/FINISHME: According to Curro we could avoid the fence in some cases.
  *                We probably need a better criteria in needs_dummy_fence().
  */
-void
-fs_visitor::emit_dummy_memory_fence_before_eot()
+bool
+brw_fs_workaround_memory_fence_before_eot(fs_visitor &s)
 {
    bool progress = false;
    bool has_ugm_write_or_atomic = false;
 
-   if (!intel_needs_workaround(devinfo, 22013689345))
-      return;
+   if (!intel_needs_workaround(s.devinfo, 22013689345))
+      return false;
 
-   foreach_block_and_inst_safe (block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe (block, fs_inst, inst, s.cfg) {
       if (!inst->eot) {
-         if (needs_dummy_fence(devinfo, inst))
+         if (needs_dummy_fence(s.devinfo, inst))
             has_ugm_write_or_atomic = true;
          continue;
       }
@@ -5945,7 +5945,7 @@ fs_visitor::emit_dummy_memory_fence_before_eot()
       if (!has_ugm_write_or_atomic)
          break;
 
-      const fs_builder ibld(this, block, inst);
+      const fs_builder ibld(&s, block, inst);
       const fs_builder ubld = ibld.exec_all().group(1, 0);
 
       fs_reg dst = ubld.vgrf(BRW_REGISTER_TYPE_UD);
@@ -5954,7 +5954,7 @@ fs_visitor::emit_dummy_memory_fence_before_eot()
                                        /* commit enable */ brw_imm_ud(1),
                                        /* bti */ brw_imm_ud(0));
       dummy_fence->sfid = GFX12_SFID_UGM;
-      dummy_fence->desc = lsc_fence_msg_desc(devinfo, LSC_FENCE_TILE,
+      dummy_fence->desc = lsc_fence_msg_desc(s.devinfo, LSC_FENCE_TILE,
                                              LSC_FLUSH_TYPE_NONE_6, false);
       ubld.emit(FS_OPCODE_SCHEDULING_FENCE, ubld.null_reg_ud(), dst);
       progress = true;
@@ -5963,9 +5963,11 @@ fs_visitor::emit_dummy_memory_fence_before_eot()
    }
 
    if (progress) {
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS |
-                          DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS |
+                            DEPENDENCY_VARIABLES);
    }
+
+   return progress;
 }
 
 /**
@@ -6349,7 +6351,7 @@ fs_visitor::run_vs()
    assign_vs_urb_setup();
 
    brw_fs_lower_3src_null_dest(*this);
-   emit_dummy_memory_fence_before_eot();
+   brw_fs_workaround_memory_fence_before_eot(*this);
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6479,7 +6481,7 @@ fs_visitor::run_tcs()
    assign_tcs_urb_setup();
 
    brw_fs_lower_3src_null_dest(*this);
-   emit_dummy_memory_fence_before_eot();
+   brw_fs_workaround_memory_fence_before_eot(*this);
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6511,7 +6513,7 @@ fs_visitor::run_tes()
    assign_tes_urb_setup();
 
    brw_fs_lower_3src_null_dest(*this);
-   emit_dummy_memory_fence_before_eot();
+   brw_fs_workaround_memory_fence_before_eot(*this);
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6560,7 +6562,7 @@ fs_visitor::run_gs()
    assign_gs_urb_setup();
 
    brw_fs_lower_3src_null_dest(*this);
-   emit_dummy_memory_fence_before_eot();
+   brw_fs_workaround_memory_fence_before_eot(*this);
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6668,7 +6670,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
       assign_urb_setup();
 
       brw_fs_lower_3src_null_dest(*this);
-      emit_dummy_memory_fence_before_eot();
+      brw_fs_workaround_memory_fence_before_eot(*this);
 
       /* Wa_14015360517 */
       emit_dummy_mov_instruction();
@@ -6709,7 +6711,7 @@ fs_visitor::run_cs(bool allow_spilling)
    assign_curb_setup();
 
    brw_fs_lower_3src_null_dest(*this);
-   emit_dummy_memory_fence_before_eot();
+   brw_fs_workaround_memory_fence_before_eot(*this);
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6741,7 +6743,7 @@ fs_visitor::run_bs(bool allow_spilling)
    assign_curb_setup();
 
    brw_fs_lower_3src_null_dest(*this);
-   emit_dummy_memory_fence_before_eot();
+   brw_fs_workaround_memory_fence_before_eot(*this);
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6774,7 +6776,7 @@ fs_visitor::run_task(bool allow_spilling)
    assign_curb_setup();
 
    brw_fs_lower_3src_null_dest(*this);
-   emit_dummy_memory_fence_before_eot();
+   brw_fs_workaround_memory_fence_before_eot(*this);
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6807,7 +6809,7 @@ fs_visitor::run_mesh(bool allow_spilling)
    assign_curb_setup();
 
    brw_fs_lower_3src_null_dest(*this);
-   emit_dummy_memory_fence_before_eot();
+   brw_fs_workaround_memory_fence_before_eot(*this);
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();

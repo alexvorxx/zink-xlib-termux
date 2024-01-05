@@ -5894,28 +5894,29 @@ needs_dummy_fence(const intel_device_info *devinfo, fs_inst *inst)
  * The first instruction of any kernel should have non-zero emask.
  * Make sure this happens by introducing a dummy mov instruction.
  */
-void
-fs_visitor::emit_dummy_mov_instruction()
+bool
+brw_fs_workaround_emit_dummy_mov_instruction(fs_visitor &s)
 {
-   if (!intel_needs_workaround(devinfo, 14015360517))
-      return;
+   if (!intel_needs_workaround(s.devinfo, 14015360517))
+      return false;
 
    struct backend_instruction *first_inst =
-      cfg->first_block()->start();
+      s.cfg->first_block()->start();
 
    /* We can skip the WA if first instruction is marked with
     * force_writemask_all or exec_size equals dispatch_width.
     */
    if (first_inst->force_writemask_all ||
-       first_inst->exec_size == dispatch_width)
-      return;
+       first_inst->exec_size == s.dispatch_width)
+      return false;
 
    /* Insert dummy mov as first instruction. */
    const fs_builder ubld =
-      fs_builder(this, cfg->first_block(), (fs_inst *)first_inst).exec_all().group(8, 0);
+      fs_builder(&s, s.cfg->first_block(), (fs_inst *)first_inst).exec_all().group(8, 0);
    ubld.MOV(ubld.null_reg_ud(), brw_imm_ud(0u));
 
-   invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+   s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+   return true;
 }
 
 /* Wa_22013689345
@@ -6352,9 +6353,7 @@ fs_visitor::run_vs()
 
    brw_fs_lower_3src_null_dest(*this);
    brw_fs_workaround_memory_fence_before_eot(*this);
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
+   brw_fs_workaround_emit_dummy_mov_instruction(*this);
 
    allocate_registers(true /* allow_spilling */);
 
@@ -6482,9 +6481,7 @@ fs_visitor::run_tcs()
 
    brw_fs_lower_3src_null_dest(*this);
    brw_fs_workaround_memory_fence_before_eot(*this);
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
+   brw_fs_workaround_emit_dummy_mov_instruction(*this);
 
    allocate_registers(true /* allow_spilling */);
 
@@ -6514,9 +6511,7 @@ fs_visitor::run_tes()
 
    brw_fs_lower_3src_null_dest(*this);
    brw_fs_workaround_memory_fence_before_eot(*this);
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
+   brw_fs_workaround_emit_dummy_mov_instruction(*this);
 
    allocate_registers(true /* allow_spilling */);
 
@@ -6563,9 +6558,7 @@ fs_visitor::run_gs()
 
    brw_fs_lower_3src_null_dest(*this);
    brw_fs_workaround_memory_fence_before_eot(*this);
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
+   brw_fs_workaround_emit_dummy_mov_instruction(*this);
 
    allocate_registers(true /* allow_spilling */);
 
@@ -6671,9 +6664,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
 
       brw_fs_lower_3src_null_dest(*this);
       brw_fs_workaround_memory_fence_before_eot(*this);
-
-      /* Wa_14015360517 */
-      emit_dummy_mov_instruction();
+      brw_fs_workaround_emit_dummy_mov_instruction(*this);
 
       allocate_registers(allow_spilling);
    }
@@ -6712,9 +6703,7 @@ fs_visitor::run_cs(bool allow_spilling)
 
    brw_fs_lower_3src_null_dest(*this);
    brw_fs_workaround_memory_fence_before_eot(*this);
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
+   brw_fs_workaround_emit_dummy_mov_instruction(*this);
 
    allocate_registers(allow_spilling);
 
@@ -6744,9 +6733,7 @@ fs_visitor::run_bs(bool allow_spilling)
 
    brw_fs_lower_3src_null_dest(*this);
    brw_fs_workaround_memory_fence_before_eot(*this);
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
+   brw_fs_workaround_emit_dummy_mov_instruction(*this);
 
    allocate_registers(allow_spilling);
 
@@ -6777,9 +6764,7 @@ fs_visitor::run_task(bool allow_spilling)
 
    brw_fs_lower_3src_null_dest(*this);
    brw_fs_workaround_memory_fence_before_eot(*this);
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
+   brw_fs_workaround_emit_dummy_mov_instruction(*this);
 
    allocate_registers(allow_spilling);
 
@@ -6810,9 +6795,7 @@ fs_visitor::run_mesh(bool allow_spilling)
 
    brw_fs_lower_3src_null_dest(*this);
    brw_fs_workaround_memory_fence_before_eot(*this);
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
+   brw_fs_workaround_emit_dummy_mov_instruction(*this);
 
    allocate_registers(allow_spilling);
 

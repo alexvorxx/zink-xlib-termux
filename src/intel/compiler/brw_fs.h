@@ -237,7 +237,6 @@ public:
    void optimize();
    void allocate_registers(bool allow_spilling);
    uint32_t compute_max_register_pressure();
-   void emit_dummy_mov_instruction();
    void assign_curb_setup();
    void assign_urb_setup();
    void convert_attr_sources_to_hw_regs(fs_inst *inst);
@@ -619,6 +618,7 @@ bool brw_fs_opt_split_sends(fs_visitor &s);
 bool brw_fs_opt_split_virtual_grfs(fs_visitor &s);
 bool brw_fs_opt_zero_samples(fs_visitor &s);
 
+bool brw_fs_workaround_emit_dummy_mov_instruction(fs_visitor &s);
 bool brw_fs_workaround_memory_fence_before_eot(fs_visitor &s);
 bool brw_fs_workaround_nomask_control_flow(fs_visitor &s);
 

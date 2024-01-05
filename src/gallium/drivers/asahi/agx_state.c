@@ -918,9 +918,13 @@ agx_set_clip_state(struct pipe_context *ctx,
 }
 
 static void
-agx_set_polygon_stipple(struct pipe_context *ctx,
+agx_set_polygon_stipple(struct pipe_context *pctx,
                         const struct pipe_poly_stipple *state)
 {
+   struct agx_context *ctx = agx_context(pctx);
+
+   memcpy(ctx->poly_stipple, state->stipple, sizeof(ctx->poly_stipple));
+   ctx->dirty |= AGX_DIRTY_POLY_STIPPLE;
 }
 
 static void
@@ -1758,6 +1762,46 @@ agx_compile_nir(struct agx_device *dev, nir_shader *nir,
    return compiled;
 }
 
+/*
+ * Insert code into a fragment shader to lower polygon stipple. The stipple is
+ * passed in a sideband, rather than requiring a texture binding. This is
+ * simpler for drivers to integrate and might be more efficient.
+ */
+static bool
+agx_nir_lower_poly_stipple(nir_shader *s)
+{
+   assert(s->info.stage == MESA_SHADER_FRAGMENT);
+
+   /* Insert at the beginning for performance. */
+   nir_builder b_ =
+      nir_builder_at(nir_before_impl(nir_shader_get_entrypoint(s)));
+   nir_builder *b = &b_;
+
+   /* The stipple coordinate is defined at the window coordinate mod 32. It's
+    * reversed along the X-axis to simplify the driver, hence the NOT.
+    */
+   nir_def *raw = nir_u2u32(b, nir_load_pixel_coord(b));
+   nir_def *coord = nir_umod_imm(
+      b,
+      nir_vec2(b, nir_inot(b, nir_channel(b, raw, 0)), nir_channel(b, raw, 1)),
+      32);
+
+   /* Load the stipple pattern for the row */
+   nir_def *pattern = nir_load_polygon_stipple_agx(b, nir_channel(b, coord, 1));
+
+   /* Extract the column from the packed bitfield */
+   nir_def *bit = nir_ubitfield_extract(b, pattern, nir_channel(b, coord, 0),
+                                        nir_imm_int(b, 1));
+
+   /* Discard fragments where the pattern is 0 */
+   nir_discard_if(b, nir_ieq_imm(b, bit, 0));
+   s->info.fs.uses_discard = true;
+
+   nir_metadata_preserve(b->impl,
+                         nir_metadata_dominance | nir_metadata_block_index);
+   return true;
+}
+
 /* Does not take ownership of key. Clones if necessary. */
 static struct agx_compiled_shader *
 agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
@@ -1889,6 +1933,11 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       if (key->cull_distance_size) {
          NIR_PASS(_, nir, agx_nir_lower_cull_distance_fs,
                   key->cull_distance_size);
+      }
+
+      /* Similarly for polygon stipple */
+      if (key->polygon_stipple) {
+         NIR_PASS_V(nir, agx_nir_lower_poly_stipple);
       }
 
       /* Discards must be lowering before lowering MSAA to handle discards */
@@ -2377,6 +2426,12 @@ agx_update_fs(struct agx_batch *batch)
       .cull_distance_size =
          ctx->stage[MESA_SHADER_VERTEX].shader->info.cull_distance_size,
       .clip_plane_enable = ctx->rast->base.clip_plane_enable,
+
+      .polygon_stipple =
+         ctx->rast->base.poly_stipple_enable &&
+         rast_prim(batch->reduced_prim, ctx->rast->base.fill_front) ==
+            MESA_PRIM_TRIANGLES,
+
       .nr_samples = nr_samples,
 
       /* Only lower sample mask if at least one sample is masked out */
@@ -4326,6 +4381,13 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
    if (IS_DIRTY(RS)) {
       batch->uniforms.fixed_point_size = ctx->rast->base.point_size;
+   }
+
+   if (IS_DIRTY(POLY_STIPPLE)) {
+      STATIC_ASSERT(sizeof(ctx->poly_stipple) == 32 * 4);
+
+      batch->uniforms.polygon_stipple = agx_pool_upload_aligned(
+         &batch->pool, ctx->poly_stipple, sizeof(ctx->poly_stipple), 4);
    }
 
    if (IS_DIRTY(VS) || IS_DIRTY(FS) || ctx->gs || IS_DIRTY(VERTEX) ||

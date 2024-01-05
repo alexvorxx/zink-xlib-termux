@@ -1863,6 +1863,11 @@ intrinsic("sample_mask_agx", src_comp=[1, 1])
 # sample_mask_agx also triggers depth/stencil testing.
 intrinsic("discard_agx", src_comp=[1])
 
+# For a given row of the polygon stipple given as an integer source in [0, 31],
+# load the 32-bit stipple pattern for that row.
+intrinsic("load_polygon_stipple_agx", src_comp=[1], dest_comp=1, bit_sizes=[32],
+          flags=[CAN_ELIMINATE, CAN_ELIMINATE])
+
 # The fixed-function sample mask specified in the API (e.g. glSampleMask)
 system_value("api_sample_mask_agx", 1, bit_sizes=[16])
 

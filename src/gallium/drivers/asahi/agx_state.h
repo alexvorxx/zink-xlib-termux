@@ -109,6 +109,9 @@ struct PACKED agx_draw_uniforms {
    /* Address of geometry param buffer if geometry shaders are used, else 0 */
    uint64_t geometry_params;
 
+   /* Address of polygon stipple mask if used */
+   uint64_t polygon_stipple;
+
    /* Blend constant if any */
    float blend_constant[4];
 
@@ -396,6 +399,7 @@ struct asahi_fs_shader_key {
     * don't want to emit lowering code for it, since it would disable early-Z.
     */
    bool api_sample_mask;
+   bool polygon_stipple;
 
    uint8_t cull_distance_size;
    uint8_t clip_plane_enable;
@@ -449,6 +453,7 @@ enum agx_dirty {
    AGX_DIRTY_XFB = BITFIELD_BIT(14),
    AGX_DIRTY_SAMPLE_MASK = BITFIELD_BIT(15),
    AGX_DIRTY_BLEND_COLOR = BITFIELD_BIT(16),
+   AGX_DIRTY_POLY_STIPPLE = BITFIELD_BIT(17),
 };
 
 /* Maximum number of in-progress + under-construction GPU batches.
@@ -534,6 +539,8 @@ struct agx_context {
    struct agx_streamout streamout;
    uint16_t sample_mask;
    struct pipe_framebuffer_state framebuffer;
+
+   uint32_t poly_stipple[32];
 
    struct pipe_query *cond_query;
    bool cond_cond;

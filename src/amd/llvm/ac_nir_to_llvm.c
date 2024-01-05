@@ -542,41 +542,11 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
 {
    LLVMValueRef src[16], result = NULL;
    unsigned num_components = instr->def.num_components;
-   unsigned src_components;
    LLVMTypeRef def_type = get_def_type(ctx, &instr->def);
 
    assert(nir_op_infos[instr->op].num_inputs <= ARRAY_SIZE(src));
-   switch (instr->op) {
-   case nir_op_vec2:
-   case nir_op_vec3:
-   case nir_op_vec4:
-   case nir_op_vec5:
-   case nir_op_vec8:
-   case nir_op_vec16:
-   case nir_op_unpack_32_4x8:
-   case nir_op_unpack_32_2x16:
-   case nir_op_unpack_64_2x32:
-   case nir_op_unpack_64_4x16:
-      src_components = 1;
-      break;
-   case nir_op_pack_snorm_2x16:
-   case nir_op_pack_unorm_2x16:
-   case nir_op_pack_uint_2x16:
-   case nir_op_pack_sint_2x16:
-      src_components = 2;
-      break;
-   case nir_op_cube_amd:
-      src_components = 3;
-      break;
-   case nir_op_pack_32_4x8:
-      src_components = 4;
-      break;
-   default:
-      src_components = num_components;
-      break;
-   }
    for (unsigned i = 0; i < nir_op_infos[instr->op].num_inputs; i++)
-      src[i] = get_alu_src(ctx, instr->src[i], src_components);
+      src[i] = get_alu_src(ctx, instr->src[i], nir_ssa_alu_instr_src_components(instr, i));
 
    switch (instr->op) {
    case nir_op_mov:
@@ -1256,6 +1226,17 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
    case nir_op_msad_4x8:
       result = ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.msad.u8", ctx->ac.i32,
                                   (LLVMValueRef[]){src[1], src[0], src[2]}, 3, 0);
+      break;
+
+   case nir_op_mqsad_4x8:
+      src[1] = LLVMBuildBitCast(ctx->ac.builder, src[1], ctx->ac.i64, "");
+      result = ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.mqsad.u32.u8", ctx->ac.v4i32,
+                                  (LLVMValueRef[]){src[1], src[0], src[2]}, 3, 0);
+      break;
+
+   case nir_op_shfr:
+      result = ac_build_intrinsic(&ctx->ac, "llvm.fshr.i32", ctx->ac.i32,
+                                  (LLVMValueRef[]){src[0], src[1], src[2]}, 3, 0);
       break;
 
    default:

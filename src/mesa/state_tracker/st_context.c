@@ -477,11 +477,6 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
 #include "st_atom_list.h"
 #undef ST_STATE
 
-   if (util_get_cpu_caps()->has_popcnt) {
-      st->update_functions[ST_NEW_VERTEX_ARRAYS_INDEX] =
-         st_update_array_with_popcnt;
-   }
-
    st_init_clear(st);
    {
       enum pipe_texture_transfer_mode val = screen->get_param(screen, PIPE_CAP_TEXTURE_TRANSFER_MODES);
@@ -775,6 +770,7 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    _vbo_CreateContext(ctx);
 
    st_init_driver_flags(st);
+   st_init_update_array(st);
 
    /* Initialize context's winsys buffers list */
    list_inithead(&st->winsys_buffers);

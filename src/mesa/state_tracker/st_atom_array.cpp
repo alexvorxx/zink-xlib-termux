@@ -41,12 +41,18 @@
 #include "st_program.h"
 
 #include "cso_cache/cso_context.h"
+#include "util/u_cpu_detect.h"
 #include "util/u_math.h"
 #include "util/u_upload_mgr.h"
 #include "main/bufferobj.h"
 #include "main/glformats.h"
 #include "main/varray.h"
 #include "main/arrayobj.h"
+
+enum st_use_vao_fast_path {
+   VAO_FAST_PATH_OFF,         /* more complicated version (slower) */
+   VAO_FAST_PATH_ON,          /* always works (faster) */
+};
 
 enum st_update_velems {
    UPDATE_VELEMS_OFF,         /* specialized version (faster) */
@@ -75,18 +81,19 @@ init_velement(struct pipe_vertex_element *velements,
 /* ALWAYS_INLINE helps the compiler realize that most of the parameters are
  * on the stack.
  */
-template<util_popcnt POPCNT, st_update_velems UPDATE_VELEMS> void ALWAYS_INLINE
+template<util_popcnt POPCNT,
+         st_use_vao_fast_path USE_VAO_FAST_PATH,
+         st_update_velems UPDATE_VELEMS> void ALWAYS_INLINE
 setup_arrays(struct gl_context *ctx,
              const struct gl_vertex_array_object *vao,
              const GLbitfield dual_slot_inputs,
              const GLbitfield inputs_read,
              GLbitfield mask,
              struct cso_velems_state *velements,
-             struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers,
-             bool use_vao_fast_path)
+             struct pipe_vertex_buffer *vbuffer, unsigned *num_vbuffers)
 {
    /* Set up enabled vertex arrays. */
-   if (use_vao_fast_path) {
+   if (USE_VAO_FAST_PATH) {
       const GLubyte *attribute_map =
          _mesa_vao_attribute_map[vao->_AttributeMapMode];
 
@@ -123,6 +130,11 @@ setup_arrays(struct gl_context *ctx,
       }
       return;
    }
+
+   /* The slow path needs more fields initialized, which is not done if it's
+    * disabled.
+    */
+   assert(!ctx->Const.UseVAOFastPath || vao->SharedAndImmutable);
 
    while (mask) {
       /* The attribute index to start pulling a binding */
@@ -180,11 +192,11 @@ st_setup_arrays(struct st_context *st,
    struct gl_context *ctx = st->ctx;
    GLbitfield enabled_arrays = _mesa_get_enabled_vertex_arrays(ctx);
 
-   setup_arrays<POPCNT_NO, UPDATE_VELEMS_ON>
+   setup_arrays<POPCNT_NO, VAO_FAST_PATH_ON, UPDATE_VELEMS_ON>
       (ctx, ctx->Array._DrawVAO, vp->Base.DualSlotInputs,
        vp_variant->vert_attrib_mask,
        vp_variant->vert_attrib_mask & enabled_arrays,
-       velements, vbuffer, num_vbuffers, ctx->Const.UseVAOFastPath);
+       velements, vbuffer, num_vbuffers);
 }
 
 /* ALWAYS_INLINE helps the compiler realize that most of the parameters are
@@ -295,7 +307,9 @@ st_setup_current_user(struct st_context *st,
    }
 }
 
-template<util_popcnt POPCNT, st_update_velems UPDATE_VELEMS> void ALWAYS_INLINE
+template<util_popcnt POPCNT,
+         st_use_vao_fast_path USE_VAO_FAST_PATH,
+         st_update_velems UPDATE_VELEMS> void ALWAYS_INLINE
 st_update_array_templ(struct st_context *st,
                       const GLbitfield enabled_arrays,
                       const GLbitfield enabled_user_arrays,
@@ -322,10 +336,9 @@ st_update_array_templ(struct st_context *st,
 
    /* ST_NEW_VERTEX_ARRAYS */
    /* Setup arrays */
-   setup_arrays<POPCNT, UPDATE_VELEMS>
+   setup_arrays<POPCNT, USE_VAO_FAST_PATH, UPDATE_VELEMS>
       (ctx, ctx->Array._DrawVAO, dual_slot_inputs, inputs_read,
-       inputs_read & enabled_arrays, &velements, vbuffer, &num_vbuffers,
-       ctx->Const.UseVAOFastPath);
+       inputs_read & enabled_arrays, &velements, vbuffer, &num_vbuffers);
 
    /* _NEW_CURRENT_ATTRIB */
    /* Setup zero-stride attribs. */
@@ -352,7 +365,8 @@ st_update_array_templ(struct st_context *st,
    }
 }
 
-template<util_popcnt POPCNT> void ALWAYS_INLINE
+template<util_popcnt POPCNT,
+         st_use_vao_fast_path USE_VAO_FAST_PATH> void ALWAYS_INLINE
 st_update_array_impl(struct st_context *st)
 {
    struct gl_context *ctx = st->ctx;
@@ -364,7 +378,7 @@ st_update_array_impl(struct st_context *st)
    assert(vao->_EnabledWithMapMode ==
           _mesa_vao_enable_to_vp_inputs(vao->_AttributeMapMode, vao->Enabled));
 
-   if (!ctx->Const.UseVAOFastPath && !vao->SharedAndImmutable)
+   if (!USE_VAO_FAST_PATH && !vao->SharedAndImmutable)
       _mesa_update_vao_derived_arrays(ctx, vao, false);
 
    _mesa_get_derived_vao_masks(ctx, enabled_arrays, &enabled_user_arrays,
@@ -377,24 +391,39 @@ st_update_array_impl(struct st_context *st)
    if (ctx->Array.NewVertexElements ||
        st->uses_user_vertex_buffers !=
        !!(st->vp_variant->vert_attrib_mask & enabled_user_arrays)) {
-      st_update_array_templ<POPCNT, UPDATE_VELEMS_ON>
+      st_update_array_templ<POPCNT, USE_VAO_FAST_PATH, UPDATE_VELEMS_ON>
          (st, enabled_arrays, enabled_user_arrays, nonzero_divisor_arrays);
    } else {
-      st_update_array_templ<POPCNT, UPDATE_VELEMS_OFF>
+      st_update_array_templ<POPCNT, USE_VAO_FAST_PATH, UPDATE_VELEMS_OFF>
          (st, enabled_arrays, enabled_user_arrays, nonzero_divisor_arrays);
    }
 }
 
+/* The default callback that must be present before st_init_update_array
+ * selects the driver-dependent variant.
+ */
 void
 st_update_array(struct st_context *st)
 {
-   st_update_array_impl<POPCNT_NO>(st);
+   unreachable("st_init_update_array not called");
 }
 
 void
-st_update_array_with_popcnt(struct st_context *st)
+st_init_update_array(struct st_context *st)
 {
-   st_update_array_impl<POPCNT_YES>(st);
+   st_update_func_t *func = &st->update_functions[ST_NEW_VERTEX_ARRAYS_INDEX];
+
+   if (util_get_cpu_caps()->has_popcnt) {
+      if (st->ctx->Const.UseVAOFastPath)
+         *func = st_update_array_impl<POPCNT_YES, VAO_FAST_PATH_ON>;
+      else
+         *func = st_update_array_impl<POPCNT_YES, VAO_FAST_PATH_OFF>;
+   } else {
+      if (st->ctx->Const.UseVAOFastPath)
+         *func = st_update_array_impl<POPCNT_NO, VAO_FAST_PATH_ON>;
+      else
+         *func = st_update_array_impl<POPCNT_NO, VAO_FAST_PATH_OFF>;
+   }
 }
 
 struct pipe_vertex_state *
@@ -410,9 +439,12 @@ st_create_gallium_vertex_state(struct gl_context *ctx,
    unsigned num_vbuffers = 0;
    struct cso_velems_state velements;
 
-   setup_arrays<POPCNT_NO, UPDATE_VELEMS_ON>
+   /* This should use the slow path because there is only 1 interleaved
+    * vertex buffers.
+    */
+   setup_arrays<POPCNT_NO, VAO_FAST_PATH_OFF, UPDATE_VELEMS_ON>
       (ctx, vao, dual_slot_inputs, inputs_read, inputs_read, &velements,
-       vbuffer, &num_vbuffers, false);
+       vbuffer, &num_vbuffers);
 
    if (num_vbuffers != 1) {
       assert(!"this should never happen with display lists");

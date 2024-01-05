@@ -999,38 +999,6 @@ namespace {
          }
       }
    }
-
-   /* Return the subset of flag registers that an instruction could
-    * potentially read or write based on the execution controls and flag
-    * subregister number of the instruction.
-    */
-   unsigned
-   flag_mask(const fs_inst *inst, unsigned width)
-   {
-      assert(util_is_power_of_two_nonzero(width));
-      const unsigned start = (inst->flag_subreg * 16 + inst->group) &
-                             ~(width - 1);
-      const unsigned end = start + ALIGN(inst->exec_size, width);
-      return ((1 << DIV_ROUND_UP(end, 8)) - 1) & ~((1 << (start / 8)) - 1);
-   }
-
-   unsigned
-   bit_mask(unsigned n)
-   {
-      return (n >= CHAR_BIT * sizeof(bit_mask(n)) ? ~0u : (1u << n) - 1);
-   }
-
-   unsigned
-   flag_mask(const fs_reg &r, unsigned sz)
-   {
-      if (r.file == ARF) {
-         const unsigned start = (r.nr - BRW_ARF_FLAG) * 4 + r.subnr;
-         const unsigned end = start + sz;
-         return bit_mask(end) & ~bit_mask(start);
-      } else {
-         return 0;
-      }
-   }
 }
 
 unsigned
@@ -1042,13 +1010,13 @@ fs_inst::flags_read(const intel_device_info *devinfo) const
        * f0.0 and f1.0 on Gfx7+, and f0.0 and f0.1 on older hardware.
        */
       const unsigned shift = devinfo->ver >= 7 ? 4 : 2;
-      return flag_mask(this, 1) << shift | flag_mask(this, 1);
+      return brw_fs_flag_mask(this, 1) << shift | brw_fs_flag_mask(this, 1);
    } else if (predicate) {
-      return flag_mask(this, predicate_width(devinfo, predicate));
+      return brw_fs_flag_mask(this, predicate_width(devinfo, predicate));
    } else {
       unsigned mask = 0;
       for (int i = 0; i < sources; i++) {
-         mask |= flag_mask(src[i], size_read(i));
+         mask |= brw_fs_flag_mask(src[i], size_read(i));
       }
       return mask;
    }
@@ -1066,13 +1034,13 @@ fs_inst::flags_written(const intel_device_info *devinfo) const
                             opcode != BRW_OPCODE_IF &&
                             opcode != BRW_OPCODE_WHILE)) ||
        opcode == FS_OPCODE_FB_WRITE) {
-      return flag_mask(this, 1);
+      return brw_fs_flag_mask(this, 1);
    } else if (opcode == SHADER_OPCODE_FIND_LIVE_CHANNEL ||
               opcode == SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL ||
               opcode == FS_OPCODE_LOAD_LIVE_CHANNELS) {
-      return flag_mask(this, 32);
+      return brw_fs_flag_mask(this, 32);
    } else {
-      return flag_mask(dst, size_written);
+      return brw_fs_flag_mask(dst, size_written);
    }
 }
 
@@ -2968,7 +2936,7 @@ needs_src_copy(const fs_builder &lbld, const fs_inst *inst, unsigned i)
             (inst->components_read(i) == 1 &&
              lbld.dispatch_width() <= inst->exec_size)) ||
           (inst->flags_written(lbld.shader->devinfo) &
-           flag_mask(inst->src[i], type_sz(inst->src[i].type)));
+           brw_fs_flag_mask(inst->src[i], type_sz(inst->src[i].type)));
 }
 
 /**
@@ -3801,7 +3769,7 @@ brw_fs_workaround_nomask_control_flow(fs_visitor &s)
                 * and restore the flag register if it's live.
                 */
                const bool save_flag = flag_liveout &
-                                      flag_mask(flag, s.dispatch_width / 8);
+                                      brw_fs_flag_mask(flag, s.dispatch_width / 8);
                const fs_reg tmp = ubld.group(8, 0).vgrf(flag.type);
 
                if (save_flag) {

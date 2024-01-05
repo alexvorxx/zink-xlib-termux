@@ -1681,11 +1681,6 @@ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo, int min
    drmFreeDevice(&drmdev);
    devinfo->no_hw = debug_get_bool_option("INTEL_NO_HW", false);
 
-   if (devinfo->ver == 10) {
-      mesa_loge("Gfx10 support is redacted.");
-      return false;
-   }
-
    devinfo->kmd_type = intel_get_kmd_type(fd);
    if (devinfo->kmd_type == INTEL_KMD_TYPE_INVALID) {
       mesa_loge("Unknown kernel mode driver");

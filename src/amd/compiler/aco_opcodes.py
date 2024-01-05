@@ -1185,7 +1185,7 @@ VOP3 = {
    ("v_qsad_pk_u16_u8",        False, False, dst(2), src(2, 1, 2), op(0x172, gfx8=0x1e5, gfx10=0x172, gfx11=0x23a)),
    ("v_mqsad_pk_u16_u8",       False, False, dst(2), src(2, 1, 2), op(0x173, gfx8=0x1e6, gfx10=0x173, gfx11=0x23b)),
    ("v_trig_preop_f64",        False, False, dst(2), src(2, 2), op(0x174, gfx8=0x292, gfx10=0x174, gfx11=0x32f), InstrClass.ValuDouble),
-   ("v_mqsad_u32_u8",          False, False, dst(4), src(2, 1, 4), op(gfx7=0x175, gfx8=0x1e7, gfx10=0x175, gfx11=0x23d)),
+   ("v_mqsad_u32_u8",          False, False, dst(4), src(2, 1, 4), op(gfx7=0x175, gfx8=0x1e7, gfx10=0x175, gfx11=0x23d), InstrClass.ValuQuarterRate32),
    ("v_mad_u64_u32",           False, False, dst(2, VCC), src(1, 1, 2), op(gfx7=0x176, gfx8=0x1e8, gfx10=0x176, gfx11=0x2fe), InstrClass.Valu64),
    ("v_mad_i64_i32",           False, False, dst(2, VCC), src(1, 1, 2), op(gfx7=0x177, gfx8=0x1e9, gfx10=0x177, gfx11=0x2ff), InstrClass.Valu64),
    ("v_mad_legacy_f16",        True, True, dst(1), src(1, 1, 1), op(gfx8=0x1ea, gfx10=-1)),

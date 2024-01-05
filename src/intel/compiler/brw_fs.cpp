@@ -5834,22 +5834,24 @@ brw_fs_lower_sends_overlapping_payload(fs_visitor &s)
  * Three source instruction must have a GRF/MRF destination register.
  * ARF NULL is not allowed.  Fix that up by allocating a temporary GRF.
  */
-void
-fs_visitor::fixup_3src_null_dest()
+bool
+brw_fs_lower_3src_null_dest(fs_visitor &s)
 {
    bool progress = false;
 
-   foreach_block_and_inst_safe (block, fs_inst, inst, cfg) {
-      if (inst->is_3src(compiler) && inst->dst.is_null()) {
-         inst->dst = fs_reg(VGRF, alloc.allocate(dispatch_width / 8),
+   foreach_block_and_inst_safe (block, fs_inst, inst, s.cfg) {
+      if (inst->is_3src(s.compiler) && inst->dst.is_null()) {
+         inst->dst = fs_reg(VGRF, s.alloc.allocate(s.dispatch_width / 8),
                             inst->dst.type);
          progress = true;
       }
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL |
-                          DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL |
+                            DEPENDENCY_VARIABLES);
+
+   return progress;
 }
 
 static bool
@@ -6346,7 +6348,7 @@ fs_visitor::run_vs()
    assign_curb_setup();
    assign_vs_urb_setup();
 
-   fixup_3src_null_dest();
+   brw_fs_lower_3src_null_dest(*this);
    emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
@@ -6476,7 +6478,7 @@ fs_visitor::run_tcs()
    assign_curb_setup();
    assign_tcs_urb_setup();
 
-   fixup_3src_null_dest();
+   brw_fs_lower_3src_null_dest(*this);
    emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
@@ -6508,7 +6510,7 @@ fs_visitor::run_tes()
    assign_curb_setup();
    assign_tes_urb_setup();
 
-   fixup_3src_null_dest();
+   brw_fs_lower_3src_null_dest(*this);
    emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
@@ -6557,7 +6559,7 @@ fs_visitor::run_gs()
    assign_curb_setup();
    assign_gs_urb_setup();
 
-   fixup_3src_null_dest();
+   brw_fs_lower_3src_null_dest(*this);
    emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
@@ -6665,7 +6667,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
 
       assign_urb_setup();
 
-      fixup_3src_null_dest();
+      brw_fs_lower_3src_null_dest(*this);
       emit_dummy_memory_fence_before_eot();
 
       /* Wa_14015360517 */
@@ -6706,7 +6708,7 @@ fs_visitor::run_cs(bool allow_spilling)
 
    assign_curb_setup();
 
-   fixup_3src_null_dest();
+   brw_fs_lower_3src_null_dest(*this);
    emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
@@ -6738,7 +6740,7 @@ fs_visitor::run_bs(bool allow_spilling)
 
    assign_curb_setup();
 
-   fixup_3src_null_dest();
+   brw_fs_lower_3src_null_dest(*this);
    emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
@@ -6771,7 +6773,7 @@ fs_visitor::run_task(bool allow_spilling)
 
    assign_curb_setup();
 
-   fixup_3src_null_dest();
+   brw_fs_lower_3src_null_dest(*this);
    emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
@@ -6804,7 +6806,7 @@ fs_visitor::run_mesh(bool allow_spilling)
 
    assign_curb_setup();
 
-   fixup_3src_null_dest();
+   brw_fs_lower_3src_null_dest(*this);
    emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */

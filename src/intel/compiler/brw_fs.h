@@ -237,7 +237,6 @@ public:
    void optimize();
    void allocate_registers(bool allow_spilling);
    uint32_t compute_max_register_pressure();
-   void fixup_3src_null_dest();
    void emit_dummy_memory_fence_before_eot();
    void emit_dummy_mov_instruction();
    void assign_curb_setup();
@@ -588,6 +587,7 @@ bool brw_lower_dpas(fs_visitor &v);
 
 void nir_to_brw(fs_visitor *s);
 
+bool brw_fs_lower_3src_null_dest(fs_visitor &s);
 bool brw_fs_lower_barycentrics(fs_visitor &s);
 bool brw_fs_lower_constant_loads(fs_visitor &s);
 bool brw_fs_lower_derivatives(fs_visitor &s);

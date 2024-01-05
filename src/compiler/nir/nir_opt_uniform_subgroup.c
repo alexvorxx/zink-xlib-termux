@@ -29,6 +29,8 @@ opt_uniform_subgroup_filter(const nir_instr *instr, const void *_state)
    case nir_intrinsic_quad_swap_diagonal:
    case nir_intrinsic_quad_swizzle_amd:
    case nir_intrinsic_masked_swizzle_amd:
+   case nir_intrinsic_vote_all:
+   case nir_intrinsic_vote_any:
       return !nir_src_is_divergent(intrin->src[0]);
 
    case nir_intrinsic_reduce:

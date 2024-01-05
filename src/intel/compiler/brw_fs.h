@@ -234,7 +234,6 @@ public:
    bool run_bs(bool allow_spilling);
    bool run_task(bool allow_spilling);
    bool run_mesh(bool allow_spilling);
-   void optimize();
    void allocate_registers(bool allow_spilling);
    uint32_t compute_max_register_pressure();
    void assign_curb_setup();
@@ -583,6 +582,8 @@ int brw_get_subgroup_id_param_index(const intel_device_info *devinfo,
 bool brw_lower_dpas(fs_visitor &v);
 
 void nir_to_brw(fs_visitor *s);
+
+void brw_fs_optimize(fs_visitor &s);
 
 bool brw_fs_lower_3src_null_dest(fs_visitor &s);
 bool brw_fs_lower_barycentrics(fs_visitor &s);

@@ -5634,12 +5634,15 @@ fs_visitor::debug_optimizer(const nir_shader *nir,
 }
 
 void
-fs_visitor::optimize()
+brw_fs_optimize(fs_visitor &s)
 {
-   debug_optimizer(nir, "start", 0, 0);
+   const intel_device_info *devinfo = s.devinfo;
+   const nir_shader *nir = s.nir;
+
+   s.debug_optimizer(nir, "start", 0, 0);
 
    /* Start by validating the shader we currently have. */
-   validate();
+   s.validate();
 
    bool progress = false;
    int iteration = 0;
@@ -5647,23 +5650,23 @@ fs_visitor::optimize()
 
 #define OPT(pass, ...) ({                                               \
       pass_num++;                                                       \
-      bool this_progress = pass(*this, ##__VA_ARGS__);                  \
+      bool this_progress = pass(s, ##__VA_ARGS__);                      \
                                                                         \
       if (this_progress)                                                \
-         debug_optimizer(nir, #pass, iteration, pass_num);              \
+         s.debug_optimizer(nir, #pass, iteration, pass_num);            \
                                                                         \
-      validate();                                                       \
+      s.validate();                                                     \
                                                                         \
       progress = progress || this_progress;                             \
       this_progress;                                                    \
    })
 
-   assign_constant_locations();
+   s.assign_constant_locations();
    OPT(brw_fs_lower_constant_loads);
 
-   validate();
+   s.validate();
 
-   if (compiler->lower_dpas)
+   if (s.compiler->lower_dpas)
       OPT(brw_lower_dpas);
 
    OPT(brw_fs_opt_split_virtual_grfs);
@@ -5779,7 +5782,7 @@ fs_visitor::optimize()
 
    OPT(brw_fs_lower_find_live_channel);
 
-   validate();
+   s.validate();
 }
 
 /**
@@ -6346,7 +6349,7 @@ fs_visitor::run_vs()
 
    calculate_cfg();
 
-   optimize();
+   brw_fs_optimize(*this);
 
    assign_curb_setup();
    assign_vs_urb_setup();
@@ -6474,7 +6477,7 @@ fs_visitor::run_tcs()
 
    calculate_cfg();
 
-   optimize();
+   brw_fs_optimize(*this);
 
    assign_curb_setup();
    assign_tcs_urb_setup();
@@ -6504,7 +6507,7 @@ fs_visitor::run_tes()
 
    calculate_cfg();
 
-   optimize();
+   brw_fs_optimize(*this);
 
    assign_curb_setup();
    assign_tes_urb_setup();
@@ -6551,7 +6554,7 @@ fs_visitor::run_gs()
 
    calculate_cfg();
 
-   optimize();
+   brw_fs_optimize(*this);
 
    assign_curb_setup();
    assign_gs_urb_setup();
@@ -6653,7 +6656,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
 
       calculate_cfg();
 
-      optimize();
+      brw_fs_optimize(*this);
 
       assign_curb_setup();
 
@@ -6697,7 +6700,7 @@ fs_visitor::run_cs(bool allow_spilling)
 
    calculate_cfg();
 
-   optimize();
+   brw_fs_optimize(*this);
 
    assign_curb_setup();
 
@@ -6727,7 +6730,7 @@ fs_visitor::run_bs(bool allow_spilling)
 
    calculate_cfg();
 
-   optimize();
+   brw_fs_optimize(*this);
 
    assign_curb_setup();
 
@@ -6758,7 +6761,7 @@ fs_visitor::run_task(bool allow_spilling)
 
    calculate_cfg();
 
-   optimize();
+   brw_fs_optimize(*this);
 
    assign_curb_setup();
 
@@ -6789,7 +6792,7 @@ fs_visitor::run_mesh(bool allow_spilling)
 
    calculate_cfg();
 
-   optimize();
+   brw_fs_optimize(*this);
 
    assign_curb_setup();
 

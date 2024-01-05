@@ -827,22 +827,6 @@ tc_add_to_buffer_list(struct tc_buffer_list *next, struct pipe_resource *buf)
    BITSET_SET(next->buffer_list, id & TC_BUFFER_ID_MASK);
 }
 
-/* Set a buffer binding and add it to the buffer list. */
-static void
-tc_bind_buffer(uint32_t *binding, struct tc_buffer_list *next, struct pipe_resource *buf)
-{
-   uint32_t id = threaded_resource(buf)->buffer_id_unique;
-   *binding = id;
-   BITSET_SET(next->buffer_list, id & TC_BUFFER_ID_MASK);
-}
-
-/* Reset a buffer binding. */
-static void
-tc_unbind_buffer(uint32_t *binding)
-{
-   *binding = 0;
-}
-
 /* Reset a range of buffer binding slots. */
 static void
 tc_unbind_buffers(uint32_t *binding, unsigned count)
@@ -2191,6 +2175,22 @@ tc_set_vertex_buffers(struct pipe_context *_pipe, unsigned count,
     * after num_vertex_buffers.
     */
    tc->num_vertex_buffers = count;
+}
+
+struct pipe_vertex_buffer *
+tc_add_set_vertex_buffers_call(struct pipe_context *_pipe, unsigned count)
+{
+   struct threaded_context *tc = threaded_context(_pipe);
+
+   /* We don't need to unbind trailing buffers because we never touch bindings
+    * after num_vertex_buffers.
+    */
+   tc->num_vertex_buffers = count;
+
+   struct tc_vertex_buffers *p =
+      tc_add_slot_based_call(tc, TC_CALL_set_vertex_buffers, tc_vertex_buffers, count);
+   p->count = count;
+   return p->slot;
 }
 
 struct tc_stream_outputs {

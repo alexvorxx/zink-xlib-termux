@@ -710,6 +710,8 @@ threaded_context_flush(struct pipe_context *_pipe,
 struct tc_draw_single *
 tc_add_draw_single_call(struct pipe_context *_pipe,
                         struct pipe_resource *index_bo);
+struct pipe_vertex_buffer *
+tc_add_set_vertex_buffers_call(struct pipe_context *_pipe, unsigned count);
 
 void
 tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
@@ -793,6 +795,44 @@ tc_buffer_write(struct pipe_context *pipe,
                 const void *data)
 {
    pipe->buffer_subdata(pipe, buf, PIPE_MAP_WRITE | TC_TRANSFER_MAP_NO_INVALIDATE, offset, size, data);
+}
+
+static inline struct tc_buffer_list *
+tc_get_next_buffer_list(struct pipe_context *_pipe)
+{
+   struct threaded_context *tc = threaded_context(_pipe);
+
+   return &tc->buffer_lists[tc->next_buf_list];
+}
+
+/* Set a buffer binding and add it to the buffer list. */
+static inline void
+tc_bind_buffer(uint32_t *binding, struct tc_buffer_list *next, struct pipe_resource *buf)
+{
+   uint32_t id = threaded_resource(buf)->buffer_id_unique;
+   *binding = id;
+   BITSET_SET(next->buffer_list, id & TC_BUFFER_ID_MASK);
+}
+
+/* Reset a buffer binding. */
+static inline void
+tc_unbind_buffer(uint32_t *binding)
+{
+   *binding = 0;
+}
+
+static inline void
+tc_track_vertex_buffer(struct pipe_context *_pipe, unsigned index,
+                         struct pipe_resource *buf,
+                         struct tc_buffer_list *next_buffer_list)
+{
+   struct threaded_context *tc = threaded_context(_pipe);
+
+   if (buf) {
+      tc_bind_buffer(&tc->vertex_buffers[index], next_buffer_list, buf);
+   } else {
+      tc_unbind_buffer(&tc->vertex_buffers[index]);
+   }
 }
 
 #ifdef __cplusplus

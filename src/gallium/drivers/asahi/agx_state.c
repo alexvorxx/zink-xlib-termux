@@ -4970,13 +4970,6 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       agx_dirty_all(ctx);
 #endif
 
-   /* We don't support side effects in vertex stages (only used internally for
-    * transform feedback lowering), so this is trivial.
-    */
-   if (ctx->rast->base.rasterizer_discard &&
-       !ctx->stage[PIPE_SHADER_GEOMETRY].shader)
-      return;
-
    agx_batch_init_state(batch);
 
    /* Dirty track the reduced prim: lines vs points vs triangles. Happens before

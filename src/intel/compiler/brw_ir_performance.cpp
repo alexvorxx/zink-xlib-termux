@@ -723,6 +723,7 @@ namespace {
 
       case SHADER_OPCODE_FIND_LIVE_CHANNEL:
       case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
+      case SHADER_OPCODE_LOAD_LIVE_CHANNELS:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 2, 0, 0, 2, 0,
                                   0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);

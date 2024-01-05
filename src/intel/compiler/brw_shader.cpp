@@ -376,8 +376,10 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return "find_live_channel";
    case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
       return "find_last_live_channel";
-   case FS_OPCODE_LOAD_LIVE_CHANNELS:
+   case SHADER_OPCODE_LOAD_LIVE_CHANNELS:
       return "load_live_channels";
+   case FS_OPCODE_LOAD_LIVE_CHANNELS:
+      return "fs_load_live_channels";
 
    case SHADER_OPCODE_BROADCAST:
       return "broadcast";

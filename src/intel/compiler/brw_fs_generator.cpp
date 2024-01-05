@@ -2269,6 +2269,10 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          brw_find_live_channel(p, dst, true);
          break;
 
+      case SHADER_OPCODE_LOAD_LIVE_CHANNELS:
+         unreachable("Should be lowered by lower_find_live_channel()");
+         break;
+
       case FS_OPCODE_LOAD_LIVE_CHANNELS: {
          assert(devinfo->ver >= 8);
          assert(inst->force_writemask_all && inst->group == 0);

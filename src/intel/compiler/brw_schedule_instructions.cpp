@@ -1176,6 +1176,7 @@ has_cross_lane_access(const fs_inst *inst)
        inst->opcode == SHADER_OPCODE_CLUSTER_BROADCAST ||
        inst->opcode == SHADER_OPCODE_SHUFFLE ||
        inst->opcode == FS_OPCODE_LOAD_LIVE_CHANNELS ||
+       inst->opcode == SHADER_OPCODE_LOAD_LIVE_CHANNELS ||
        inst->opcode == SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL ||
        inst->opcode == SHADER_OPCODE_FIND_LIVE_CHANNEL)
       return true;

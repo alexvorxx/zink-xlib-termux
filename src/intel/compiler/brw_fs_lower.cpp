@@ -473,7 +473,8 @@ brw_fs_lower_find_live_channel(fs_visitor &s)
 
    foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       if (inst->opcode != SHADER_OPCODE_FIND_LIVE_CHANNEL &&
-          inst->opcode != SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL)
+          inst->opcode != SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL &&
+          inst->opcode != SHADER_OPCODE_LOAD_LIVE_CHANNELS)
          continue;
 
       bool first = inst->opcode == SHADER_OPCODE_FIND_LIVE_CHANNEL;
@@ -515,13 +516,25 @@ brw_fs_lower_find_live_channel(fs_visitor &s)
          exec_mask = mask;
       }
 
-      if (first) {
+      switch (inst->opcode) {
+      case SHADER_OPCODE_FIND_LIVE_CHANNEL:
          ubld.FBL(inst->dst, exec_mask);
-      } else {
+         break;
+
+      case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL: {
          fs_reg tmp = ubld.vgrf(BRW_REGISTER_TYPE_UD, 1);
          ubld.UNDEF(tmp);
          ubld.LZD(tmp, exec_mask);
          ubld.ADD(inst->dst, negate(tmp), brw_imm_uw(31));
+         break;
+      }
+
+      case SHADER_OPCODE_LOAD_LIVE_CHANNELS:
+         ubld.MOV(inst->dst, exec_mask);
+         break;
+
+      default:
+         unreachable("Impossible.");
       }
 
       inst->remove(block);

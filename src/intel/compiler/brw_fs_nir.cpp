@@ -7282,6 +7282,21 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
    }
 
    case nir_intrinsic_ballot: {
+      if (instr->def.bit_size > 32) {
+         dest.type = BRW_REGISTER_TYPE_UQ;
+      } else {
+         dest.type = BRW_REGISTER_TYPE_UD;
+      }
+
+      /* Implement a fast-path for ballot(true). */
+      if (nir_src_is_const(instr->src[0]) &&
+          nir_src_as_bool(instr->src[0])) {
+         fs_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
+         bld.exec_all().emit(SHADER_OPCODE_LOAD_LIVE_CHANNELS, tmp);
+         bld.MOV(dest, fs_reg(component(tmp, 0)));
+         break;
+      }
+
       const fs_reg value = retype(get_nir_src(ntb, instr->src[0]),
                                   BRW_REGISTER_TYPE_UD);
       struct brw_reg flag = brw_flag_reg(0, 0);
@@ -7291,12 +7306,6 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
       bld.exec_all().group(1, 0).MOV(flag, retype(brw_imm_ud(0u), flag.type));
       bld.CMP(bld.null_reg_ud(), value, brw_imm_ud(0u), BRW_CONDITIONAL_NZ);
-
-      if (instr->def.bit_size > 32) {
-         dest.type = BRW_REGISTER_TYPE_UQ;
-      } else {
-         dest.type = BRW_REGISTER_TYPE_UD;
-      }
       bld.MOV(dest, flag);
       break;
    }

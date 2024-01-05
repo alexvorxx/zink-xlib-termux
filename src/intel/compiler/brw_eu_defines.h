@@ -490,6 +490,14 @@ enum opcode {
    SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL,
 
    /**
+    * Return the current execution mask and assign it to the first component
+    * of the destination.
+    *
+    * \sa opcode::FS_OPCODE_LOAD_LIVE_CHANNELS
+    */
+   SHADER_OPCODE_LOAD_LIVE_CHANNELS,
+
+   /**
     * Return the current execution mask in the specified flag subregister.
     * Can be CSE'ed more easily than a plain MOV from the ce0 ARF register.
     */

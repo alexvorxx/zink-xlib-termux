@@ -100,8 +100,13 @@ struct PACKED agx_draw_uniforms {
    /* Pointers to the system value tables themselves (for indirection) */
    uint64_t tables[AGX_NUM_SYSVAL_TABLES];
 
-   /* Vertex buffer object bases, if present */
-   uint64_t vbo_base[PIPE_MAX_ATTRIBS];
+   /* Vertex buffer object bases, if present. If vertex robustness is disabled,
+    * attrib_base maps VBOs directly and attrib_max_index is undefined. If
+    * vertex robustness is enabled, attrib_base maps attributes and
+    * attrib_clamp is an inclusive clamp on vertex/divided instance indices.
+    */
+   uint64_t attrib_base[PIPE_MAX_ATTRIBS];
+   uint32_t attrib_clamp[PIPE_MAX_ATTRIBS];
 
    /* Address of input assembly buffer if geom/tess is used, else 0 */
    uint64_t input_assembly;
@@ -400,12 +405,29 @@ struct agx_blend {
    uint32_t store;
 };
 
+/* These parts of the vertex element affect the generated code */
+struct agx_velem_key {
+   uint32_t divisor;
+   uint16_t stride;
+   uint8_t format;
+   uint8_t pad;
+};
+
 struct asahi_vs_shader_key {
-   struct agx_attribute attribs[AGX_MAX_VBUFS];
+   struct agx_velem_key attribs[AGX_MAX_VBUFS];
    bool clip_halfz;
    bool fixed_point_size;
    uint64_t outputs_flat_shaded;
    uint64_t outputs_linear_shaded;
+};
+
+struct agx_vertex_elements {
+   unsigned num_attribs;
+   struct agx_velem_key key[PIPE_MAX_ATTRIBS];
+
+   /* These parts do not affect the generated code so are not in the key */
+   uint16_t src_offsets[PIPE_MAX_ATTRIBS];
+   uint16_t buffers[PIPE_MAX_ATTRIBS];
 };
 
 struct asahi_fs_shader_key {
@@ -429,7 +451,7 @@ struct asahi_tcs_shader_key {
    uint8_t index_size_B;
 
    /* Vertex shader key */
-   struct agx_attribute attribs[AGX_MAX_VBUFS];
+   struct agx_velem_key attribs[AGX_MAX_VBUFS];
 
    /* Tessellation control shaders must be linked with a vertex shader. */
    uint8_t input_nir_sha1[20];
@@ -440,7 +462,7 @@ struct asahi_gs_shader_key {
    struct agx_ia_key ia;
 
    /* Vertex shader key */
-   struct agx_attribute attribs[AGX_MAX_VBUFS];
+   struct agx_velem_key attribs[AGX_MAX_VBUFS];
 
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;
@@ -561,7 +583,7 @@ struct agx_context {
    float default_inner_level[2];
 
    struct agx_stage stage[PIPE_SHADER_TYPES];
-   struct agx_attribute *attributes;
+   struct agx_vertex_elements *attributes;
    struct agx_rasterizer *rast;
    struct agx_zsa *zs;
    struct agx_blend *blend;

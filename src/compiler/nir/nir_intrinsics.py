@@ -1839,9 +1839,15 @@ store("agx", [1, 1], [ACCESS, BASE, FORMAT, SIGN_EXTEND])
 # Logical complement of load_front_face, mapping to an AGX system value
 system_value("back_face_agx", 1, bit_sizes=[1, 32])
 
-# Load the base address of an indexed VBO (for lowering VBOs)
+# Load the base address of an indexed vertex attribute (for lowering).
 intrinsic("load_vbo_base_agx", src_comp=[1], dest_comp=1, bit_sizes=[64],
           flags=[CAN_ELIMINATE, CAN_REORDER])
+
+# When vertex robustness is enabled, loads the maximum valid attribute index for
+# a given attribute. This is unsigned: the driver ensures that at least one
+# vertex is always valid to load, directing loads to a zero sink if necessary.
+intrinsic("load_attrib_clamp_agx", src_comp=[1], dest_comp=1,
+          bit_sizes=[32], flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # Load a driver-internal system value from a given system value set at a given
 # binding within the set. This is used for correctness when lowering things like

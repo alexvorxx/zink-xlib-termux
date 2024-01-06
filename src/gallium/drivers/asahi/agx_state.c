@@ -53,6 +53,7 @@
 #include "agx_device.h"
 #include "agx_disk_cache.h"
 #include "agx_nir_lower_gs.h"
+#include "agx_nir_lower_vbo.h"
 #include "agx_tilebuffer.h"
 #include "nir_builder.h"
 #include "nir_builder_opcodes.h"
@@ -1461,7 +1462,8 @@ agx_create_vertex_elements(struct pipe_context *ctx, unsigned count,
 {
    assert(count <= AGX_MAX_ATTRIBS);
 
-   struct agx_attribute *attribs = calloc(sizeof(*attribs), AGX_MAX_ATTRIBS);
+   struct agx_vertex_elements *so = calloc(1, sizeof(*so));
+
    for (unsigned i = 0; i < count; ++i) {
       const struct pipe_vertex_element ve = state[i];
 
@@ -1470,16 +1472,17 @@ agx_create_vertex_elements(struct pipe_context *ctx, unsigned count,
       unsigned chan_size = desc->channel[0].size / 8;
       assert((ve.src_offset & (chan_size - 1)) == 0);
 
-      attribs[i] = (struct agx_attribute){
-         .buf = ve.vertex_buffer_index,
-         .src_offset = ve.src_offset,
+      so->buffers[i] = ve.vertex_buffer_index;
+      so->src_offsets[i] = ve.src_offset;
+
+      so->key[i] = (struct agx_velem_key){
          .stride = ve.src_stride,
          .format = ve.src_format,
          .divisor = ve.instance_divisor,
       };
    }
 
-   return attribs;
+   return so;
 }
 
 static void
@@ -1836,6 +1839,22 @@ agx_nir_lower_poly_stipple(nir_shader *s)
    return true;
 }
 
+static bool
+lower_vbo(nir_shader *s, struct agx_velem_key *key)
+{
+   struct agx_attribute out[AGX_MAX_VBUFS];
+
+   for (unsigned i = 0; i < AGX_MAX_VBUFS; ++i) {
+      out[i] = (struct agx_attribute){
+         .divisor = key[i].divisor,
+         .stride = key[i].stride,
+         .format = key[i].format,
+      };
+   }
+
+   return agx_nir_lower_vbo(s, out);
+}
+
 /* Does not take ownership of key. Clones if necessary. */
 static struct agx_compiled_shader *
 agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
@@ -1864,7 +1883,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
    if (nir->info.stage == MESA_SHADER_VERTEX) {
       struct asahi_vs_shader_key *key = &key_->vs;
 
-      NIR_PASS(_, nir, agx_nir_lower_vbo, key->attribs);
+      NIR_PASS(_, nir, lower_vbo, key->attribs);
       NIR_PASS(_, nir, agx_nir_lower_point_size, key->fixed_point_size);
 
       if (should_lower_clip_m1_1(dev, key->clip_halfz)) {
@@ -1881,7 +1900,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       nir_shader *vs = nir_deserialize(NULL, &agx_nir_options, &vs_reader);
 
       /* Apply the VS key to the VS before linking it in */
-      NIR_PASS_V(vs, agx_nir_lower_vbo, key->attribs);
+      NIR_PASS_V(vs, lower_vbo, key->attribs);
       NIR_PASS_V(vs, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
       NIR_PASS_V(vs, agx_nir_lower_sysvals, false);
 
@@ -1903,7 +1922,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       nir_shader *vs = nir_deserialize(NULL, &agx_nir_options, &vs_reader);
 
       /* Apply the VS key to the VS before linking it in */
-      NIR_PASS(_, vs, agx_nir_lower_vbo, key->attribs);
+      NIR_PASS(_, vs, lower_vbo, key->attribs);
       NIR_PASS(_, vs, agx_nir_lower_ia, &key->ia);
 
       NIR_PASS(_, vs, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
@@ -2245,8 +2264,7 @@ agx_create_shader_state(struct pipe_context *pctx,
       switch (so->type) {
       case PIPE_SHADER_VERTEX: {
          for (unsigned i = 0; i < AGX_MAX_VBUFS; ++i) {
-            key.vs.attribs[i] = (struct agx_attribute){
-               .buf = i,
+            key.vs.attribs[i] = (struct agx_velem_key){
                .stride = 16,
                .format = PIPE_FORMAT_R32G32B32A32_FLOAT,
             };
@@ -2409,8 +2427,7 @@ agx_update_vs(struct agx_context *ctx)
          ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_linear_shaded,
    };
 
-   memcpy(key.attribs, ctx->attributes,
-          sizeof(key.attribs[0]) * AGX_MAX_ATTRIBS);
+   memcpy(key.attribs, &ctx->attributes->key, sizeof(key.attribs));
 
    return agx_update_shader(ctx, &ctx->vs, PIPE_SHADER_VERTEX,
                             (union asahi_shader_key *)&key);
@@ -2441,8 +2458,7 @@ agx_update_tcs(struct agx_context *ctx, const struct pipe_draw_info *info)
       .index_size_B = info->index_size,
    };
 
-   memcpy(key.attribs, ctx->attributes,
-          sizeof(key.attribs[0]) * AGX_MAX_ATTRIBS);
+   memcpy(key.attribs, &ctx->attributes->key, sizeof(key.attribs));
 
    static_assert(sizeof(key.input_nir_sha1) ==
                     sizeof(ctx->stage[PIPE_SHADER_VERTEX].shader->nir_sha1),
@@ -2491,8 +2507,7 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
       .rasterizer_discard = ctx->rast->base.rasterizer_discard,
    };
 
-   memcpy(key.attribs, ctx->attributes,
-          sizeof(key.attribs[0]) * AGX_MAX_ATTRIBS);
+   memcpy(key.attribs, &ctx->attributes->key, sizeof(key.attribs));
 
    static_assert(sizeof(key.input_nir_sha1) ==
                     sizeof(ctx->stage[PIPE_SHADER_VERTEX].shader->nir_sha1),

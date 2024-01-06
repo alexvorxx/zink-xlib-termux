@@ -4,7 +4,9 @@
  */
 #include <stdio.h>
 #include "asahi/lib/agx_pack.h"
+#include "util/format/u_format.h"
 #include "agx_state.h"
+#include "pool.h"
 
 static uint64_t
 agx_const_buffer_ptr(struct agx_batch *batch, struct pipe_constant_buffer *cb)
@@ -38,7 +40,13 @@ void
 agx_upload_vbos(struct agx_batch *batch)
 {
    struct agx_context *ctx = batch->ctx;
+   struct agx_vertex_elements *attribs = ctx->attributes;
+   uint64_t buffers[PIPE_MAX_ATTRIBS] = {0};
+   size_t buf_sizes[PIPE_MAX_ATTRIBS] = {0};
 
+   /* TODO: To handle null vertex buffers, we use robustness always. Once we
+    * support soft fault in the kernel, we can optimize this.
+    */
    u_foreach_bit(vbo, ctx->vb_mask) {
       struct pipe_vertex_buffer vb = ctx->vertex_buffers[vbo];
       assert(!vb.is_user_buffer);
@@ -47,9 +55,51 @@ agx_upload_vbos(struct agx_batch *batch)
          struct agx_resource *rsrc = agx_resource(vb.buffer.resource);
          agx_batch_reads(batch, rsrc);
 
-         batch->uniforms.vbo_base[vbo] = rsrc->bo->ptr.gpu + vb.buffer_offset;
+         buffers[vbo] = rsrc->bo->ptr.gpu + vb.buffer_offset;
+         buf_sizes[vbo] = rsrc->layout.size_B - vb.buffer_offset;
+      }
+   }
+
+   for (unsigned i = 0; i < PIPE_MAX_ATTRIBS; ++i) {
+      unsigned buffer_size = buf_sizes[attribs->buffers[i]];
+
+      /* Determine the maximum vertex/divided instance index.  For robustness,
+       * the index will be clamped to this before reading (if soft fault is
+       * disabled).
+       *
+       * Index i accesses up to (exclusive) offset:
+       *
+       *    src_offset + (i * stride) + elsize_B
+       *
+       * so we require
+       *
+       *    src_offset + (i * stride) + elsize_B <= size
+       *
+       * <==>
+       *
+       *    i <= floor((size - src_offset - elsize_B) / stride)
+       */
+      unsigned elsize_B = util_format_get_blocksize(attribs->key[i].format);
+      unsigned subtracted = attribs->src_offsets[i] + elsize_B;
+
+      if (buffer_size >= subtracted) {
+         /* At least one index is valid, determine the max. If this is zero,
+          * only 1 index is valid.
+          */
+         unsigned max_index =
+            (buffer_size - subtracted) / attribs->key[i].stride;
+
+         batch->uniforms.attrib_base[i] =
+            buffers[attribs->buffers[i]] + attribs->src_offsets[i];
+
+         batch->uniforms.attrib_clamp[i] = max_index;
       } else {
-         batch->uniforms.vbo_base[vbo] = 0;
+         /* No indices are valid. Direct reads to a single zero. */
+         uint32_t zeroes[4] = {0};
+         uint64_t sink = agx_pool_upload_aligned(&batch->pool, &zeroes, 16, 16);
+
+         batch->uniforms.attrib_base[i] = sink;
+         batch->uniforms.attrib_clamp[i] = 0;
       }
    }
 }

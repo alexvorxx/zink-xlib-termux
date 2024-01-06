@@ -2123,7 +2123,7 @@ agx_get_shader_variant(struct agx_screen *screen, struct pipe_context *pctx,
 
 static void
 agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
-                      nir_shader *nir, bool support_lod_bias)
+                      nir_shader *nir, bool support_lod_bias, bool robust)
 {
    if (nir->info.stage == MESA_SHADER_KERNEL)
       nir->info.stage = MESA_SHADER_COMPUTE;
@@ -2138,6 +2138,11 @@ agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
        */
       .lower_buffer_image = true,
       .lower_image_atomic = true,
+
+      /* Buffer access is based on raw pointers and hence needs lowering to be
+         robust */
+      .lower_ubo = robust,
+      .lower_ssbo = robust,
    };
 
    /* We need to lower robustness before bindings, since robustness lowering
@@ -2249,7 +2254,7 @@ agx_create_shader_state(struct pipe_context *pctx,
          so->tess.output_stride = agx_tcs_output_stride(nir);
    }
 
-   agx_shader_initialize(dev, so, nir, ctx->support_lod_bias);
+   agx_shader_initialize(dev, so, nir, ctx->support_lod_bias, ctx->robust);
 
    /* We're done with the NIR, throw it away */
    ralloc_free(nir);
@@ -2326,7 +2331,7 @@ agx_create_compute_state(struct pipe_context *pctx,
    assert(cso->ir_type == PIPE_SHADER_IR_NIR && "TGSI kernels unsupported");
    nir_shader *nir = (void *)cso->prog;
 
-   agx_shader_initialize(dev, so, nir, ctx->support_lod_bias);
+   agx_shader_initialize(dev, so, nir, ctx->support_lod_bias, ctx->robust);
    agx_get_shader_variant(agx_screen(pctx->screen), pctx, so, &pctx->debug,
                           &key, NULL);
 

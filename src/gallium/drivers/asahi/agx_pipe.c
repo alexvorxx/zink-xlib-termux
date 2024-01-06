@@ -1501,6 +1501,7 @@ agx_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
    ctx->sample_mask = ~0;
 
    ctx->support_lod_bias = !(flags & PIPE_CONTEXT_NO_LOD_BIAS);
+   ctx->robust = (flags & PIPE_CONTEXT_ROBUST_BUFFER_ACCESS);
 
    return pctx;
 }
@@ -1707,6 +1708,10 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
       return (int)(system_memory >> 20);
    }
+
+   case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
+   case PIPE_CAP_ROBUST_BUFFER_ACCESS_BEHAVIOR:
+      return true;
 
    case PIPE_CAP_SHADER_BUFFER_OFFSET_ALIGNMENT:
       return 4;

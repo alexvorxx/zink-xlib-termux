@@ -557,6 +557,7 @@ struct agx_context {
 
    /* Acts as a context-level shader key */
    bool support_lod_bias;
+   bool robust;
 
    /* Set of batches. When full, the LRU entry (the batch with the smallest
     * seqnum) is flushed to free a slot.

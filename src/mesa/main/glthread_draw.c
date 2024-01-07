@@ -406,9 +406,15 @@ get_user_buffer_mask(struct gl_context *ctx)
 static ALWAYS_INLINE void
 draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
             GLsizei instance_count, GLuint baseinstance,
-            bool compiled_into_dlist)
+            bool compiled_into_dlist, bool no_error)
 {
    GET_CURRENT_CONTEXT(ctx);
+
+   /* The main benefit of no_error is that we can discard no-op draws
+    * immediately.
+    */
+   if (no_error && (count <= 0 || instance_count <= 0))
+      return;
 
    if (unlikely(compiled_into_dlist && ctx->GLThread.ListMode)) {
       _mesa_glthread_finish_before(ctx, "DrawArrays");
@@ -425,11 +431,12 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
     * This is also an error path. Zero counts should still call the driver
     * for possible GL errors.
     */
-   if (!user_buffer_mask || count <= 0 || instance_count <= 0 ||
-       /* This will just generate GL_INVALID_OPERATION, as it should. */
-       ctx->GLThread.inside_begin_end ||
-       ctx->Dispatch.Current == ctx->Dispatch.ContextLost ||
-       ctx->GLThread.ListMode) {
+   if (!user_buffer_mask ||
+       (!no_error &&
+        (count <= 0 || instance_count <= 0 ||   /* GL_INVALID_VALUE / no-op */
+         ctx->GLThread.inside_begin_end ||      /* GL_INVALID_OPERATION */
+         ctx->Dispatch.Current == ctx->Dispatch.ContextLost || /* GL_INVALID_OPERATION */
+         ctx->GLThread.ListMode))) {            /* GL_INVALID_OPERATION */
       if (instance_count == 1 && baseinstance == 0 && drawid == 0) {
          int cmd_size = sizeof(struct marshal_cmd_DrawArrays);
          struct marshal_cmd_DrawArrays *cmd =
@@ -1269,7 +1276,7 @@ lower_draw_arrays_indirect(struct gl_context *ctx, GLenum mode,
                   params[i * stride / 4 + 2],
                   params[i * stride / 4 + 0],
                   params[i * stride / 4 + 1],
-                  params[i * stride / 4 + 3], false);
+                  params[i * stride / 4 + 3], false, false);
    }
 
    unmap_draw_indirect_params(ctx);
@@ -1600,14 +1607,27 @@ _mesa_marshal_MultiDrawElementsIndirectCountARB(GLenum mode, GLenum type,
 void GLAPIENTRY
 _mesa_marshal_DrawArrays(GLenum mode, GLint first, GLsizei count)
 {
-   draw_arrays(0, mode, first, count, 1, 0, true);
+   draw_arrays(0, mode, first, count, 1, 0, true, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawArrays_no_error(GLenum mode, GLint first, GLsizei count)
+{
+   draw_arrays(0, mode, first, count, 1, 0, true, true);
 }
 
 void GLAPIENTRY
 _mesa_marshal_DrawArraysInstanced(GLenum mode, GLint first, GLsizei count,
                                   GLsizei instance_count)
 {
-   draw_arrays(0, mode, first, count, instance_count, 0, false);
+   draw_arrays(0, mode, first, count, instance_count, 0, false, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawArraysInstanced_no_error(GLenum mode, GLint first, GLsizei count,
+                                           GLsizei instance_count)
+{
+   draw_arrays(0, mode, first, count, instance_count, 0, false, true);
 }
 
 void GLAPIENTRY
@@ -1615,7 +1635,15 @@ _mesa_marshal_DrawArraysInstancedBaseInstance(GLenum mode, GLint first,
                                               GLsizei count, GLsizei instance_count,
                                               GLuint baseinstance)
 {
-   draw_arrays(0, mode, first, count, instance_count, baseinstance, false);
+   draw_arrays(0, mode, first, count, instance_count, baseinstance, false, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawArraysInstancedBaseInstance_no_error(GLenum mode, GLint first,
+                                                       GLsizei count, GLsizei instance_count,
+                                                       GLuint baseinstance)
+{
+   draw_arrays(0, mode, first, count, instance_count, baseinstance, false, true);
 }
 
 void GLAPIENTRY

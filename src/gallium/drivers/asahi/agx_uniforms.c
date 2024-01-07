@@ -4,6 +4,7 @@
  */
 #include <stdio.h>
 #include "asahi/lib/agx_pack.h"
+#include "pipe/p_state.h"
 #include "util/format/u_format.h"
 #include "agx_state.h"
 #include "pool.h"
@@ -16,21 +17,6 @@ agx_const_buffer_ptr(struct agx_batch *batch, struct pipe_constant_buffer *cb)
       agx_batch_reads(batch, rsrc);
 
       return rsrc->bo->ptr.gpu + cb->buffer_offset;
-   } else {
-      return 0;
-   }
-}
-
-static uint64_t
-agx_shader_buffer_ptr(struct agx_batch *batch, struct pipe_shader_buffer *sb)
-{
-   if (sb->buffer) {
-      struct agx_resource *rsrc = agx_resource(sb->buffer);
-
-      /* Assume SSBOs are written. TODO: Optimize read-only SSBOs */
-      agx_batch_writes(batch, rsrc, 0);
-
-      return rsrc->bo->ptr.gpu + sb->buffer_offset;
    } else {
       return 0;
    }
@@ -156,9 +142,29 @@ agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
       uniforms.ubo_size[cb] = st->cb[cb].buffer_size;
    }
 
-   u_foreach_bit(cb, st->ssbo_mask) {
-      uniforms.ssbo_base[cb] = agx_shader_buffer_ptr(batch, &st->ssbo[cb]);
-      uniforms.ssbo_size[cb] = st->ssbo[cb].buffer_size;
+   /* Single element sink. TODO: Optimize with soft fault. */
+   uint32_t zeroes[4] = {0};
+   uint64_t sink = agx_pool_upload_aligned(&batch->pool, &zeroes, 16, 16);
+
+   /* Consider all shader buffers, needed to avoid faults with
+    * e.g. arb_shader_storage_buffer_object-array-ssbo-binding.
+    */
+   for (unsigned cb = 0; cb < PIPE_MAX_SHADER_BUFFERS; ++cb) {
+      struct pipe_shader_buffer *sb = &st->ssbo[cb];
+
+      if (sb->buffer && st->ssbo[cb].buffer_size) {
+         struct agx_resource *rsrc = agx_resource(sb->buffer);
+
+         /* Assume SSBOs are written. TODO: Optimize read-only SSBOs */
+         agx_batch_writes(batch, rsrc, 0);
+
+         uniforms.ssbo_base[cb] = rsrc->bo->ptr.gpu + sb->buffer_offset;
+         uniforms.ssbo_size[cb] = st->ssbo[cb].buffer_size;
+      } else {
+         /* Invalid, so use the sink */
+         uniforms.ssbo_base[cb] = sink;
+         uniforms.ssbo_size[cb] = 0;
+      }
    }
 
    memcpy(root_ptr.cpu, &uniforms, sizeof(uniforms));

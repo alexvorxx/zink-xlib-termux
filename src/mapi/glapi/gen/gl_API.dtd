@@ -45,6 +45,7 @@
                    marshal_call_before CDATA #IMPLIED>
                    marshal_call_after  CDATA #IMPLIED>
                    marshal_struct      CDATA #IMPLIED>
+                   marshal_no_error    CDATA #IMPLIED>
 <!ATTLIST size     name                NMTOKEN #REQUIRED
                    count               NMTOKEN #IMPLIED
                    mode                (get | set) "set">
@@ -143,6 +144,8 @@ param:
         header file instead of the C file. It's done even with
         marshal="custom", in which case you don't have to define the structure
         manually.
+     marshal_no_error - indicate that a no_error marshal function will be
+        generated, only useful with marshal="custom"
 
 glx:
      rop - Opcode value for "render" commands

@@ -116,6 +116,7 @@ class marshal_function(gl_XML.gl_function):
         self.marshal_call_before = element.get('marshal_call_before')
         self.marshal_call_after = element.get('marshal_call_after')
         self.marshal_struct = element.get('marshal_struct')
+        self.marshal_no_error = gl_XML.is_attr_true(element, 'marshal_no_error')
 
     def marshal_flavor(self):
         """Find out how this function should be marshalled between

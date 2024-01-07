@@ -76,6 +76,8 @@ class PrintCode(gl_XML.gl_print_base):
 
             if flavor in ('custom', 'async', 'sync') and not func.marshal_is_static():
                 print('{0} GLAPIENTRY _mesa_marshal_{1}({2});'.format(func.return_type, func.name, func.get_parameter_string()))
+                if func.marshal_no_error:
+                    print('{0} GLAPIENTRY _mesa_marshal_{1}_no_error({2});'.format(func.return_type, func.name, func.get_parameter_string()))
 
 
 def show_usage():

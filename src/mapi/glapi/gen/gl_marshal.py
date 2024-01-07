@@ -279,8 +279,16 @@ class PrintCode(gl_XML.gl_print_base):
                 if not condition:
                     continue
 
-                settings_by_condition[condition].append(
-                    'SET_{0}(table, _mesa_marshal_{0});'.format(func.name))
+                if func.marshal_no_error:
+                    no_error_condition = '_mesa_is_no_error_enabled(ctx) && ({0})'.format(condition)
+                    error_condition = '!_mesa_is_no_error_enabled(ctx) && ({0})'.format(condition)
+                    settings_by_condition[no_error_condition].append(
+                        'SET_{0}(table, _mesa_marshal_{0}_no_error);'.format(func.name))
+                    settings_by_condition[error_condition].append(
+                        'SET_{0}(table, _mesa_marshal_{0});'.format(func.name))
+                else:
+                    settings_by_condition[condition].append(
+                        'SET_{0}(table, _mesa_marshal_{0});'.format(func.name))
 
             # Print out an if statement for each unique condition, with
             # the SET_* calls nested inside it.

@@ -745,13 +745,19 @@ should_convert_to_begin_end(struct gl_context *ctx, unsigned count,
           !(vao->NonZeroDivisorMask & vao->BufferEnabled); /* no instanced attribs */
 }
 
-static void
+static ALWAYS_INLINE void
 draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
               const GLvoid *indices, GLsizei instance_count, GLint basevertex,
               GLuint baseinstance, bool index_bounds_valid, GLuint min_index,
-              GLuint max_index, bool compiled_into_dlist)
+              GLuint max_index, bool compiled_into_dlist, bool no_error)
 {
    GET_CURRENT_CONTEXT(ctx);
+
+   /* The main benefit of no_error is that we can discard no-op draws
+    * immediately. These are plentiful in Viewperf2020/Catia1.
+    */
+   if (no_error && (count <= 0 || instance_count <= 0))
+      return;
 
    if (unlikely(compiled_into_dlist && ctx->GLThread.ListMode)) {
       _mesa_glthread_finish_before(ctx, "DrawElements");
@@ -769,7 +775,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
       return;
    }
 
-   if (unlikely(index_bounds_valid && max_index < min_index)) {
+   if (unlikely(!no_error && index_bounds_valid && max_index < min_index)) {
       _mesa_marshal_InternalSetError(GL_INVALID_VALUE);
       return;
    }
@@ -784,13 +790,14 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
     * This is also an error path. Zero counts should still call the driver
     * for possible GL errors.
     */
-   if (count <= 0 || instance_count <= 0 ||
-       !is_index_type_valid(type) ||
-       (!user_buffer_mask && !has_user_indices) ||
-       ctx->Dispatch.Current == ctx->Dispatch.ContextLost ||
-       /* This will just generate GL_INVALID_OPERATION, as it should. */
-       ctx->GLThread.inside_begin_end ||
-       ctx->GLThread.ListMode) {
+   if ((!user_buffer_mask && !has_user_indices) ||
+       (!no_error &&
+        /* zeros are discarded for no_error at the beginning */
+        (count <= 0 || instance_count <= 0 ||   /* GL_INVALID_VALUE / no-op */
+         !is_index_type_valid(type) ||          /* GL_INVALID_VALUE */
+         ctx->Dispatch.Current == ctx->Dispatch.ContextLost || /* GL_INVALID_OPERATION */
+         ctx->GLThread.inside_begin_end ||      /* GL_INVALID_OPERATION */
+         ctx->GLThread.ListMode))) {            /* GL_INVALID_OPERATION */
       if (instance_count == 1 && baseinstance == 0 && drawid == 0) {
          int cmd_size = sizeof(struct marshal_cmd_DrawElementsBaseVertex);
          struct marshal_cmd_DrawElementsBaseVertex *cmd =
@@ -1289,7 +1296,7 @@ lower_draw_elements_indirect(struct gl_context *ctx, GLenum mode, GLenum type,
                     params[i * stride / 4 + 1],
                     params[i * stride / 4 + 3],
                     params[i * stride / 4 + 4],
-                    false, 0, 0, false);
+                    false, 0, 0, false, false);
    }
    unmap_draw_indirect_params(ctx);
 }
@@ -1615,7 +1622,16 @@ void GLAPIENTRY
 _mesa_marshal_DrawElements(GLenum mode, GLsizei count, GLenum type,
                            const GLvoid *indices)
 {
-   draw_elements(0, mode, count, type, indices, 1, 0, 0, false, 0, 0, true);
+   draw_elements(0, mode, count, type, indices, 1, 0,
+                 0, false, 0, 0, true, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawElements_no_error(GLenum mode, GLsizei count, GLenum type,
+                                    const GLvoid *indices)
+{
+   draw_elements(0, mode, count, type, indices, 1, 0,
+                 0, false, 0, 0, true, true);
 }
 
 void GLAPIENTRY
@@ -1623,21 +1639,51 @@ _mesa_marshal_DrawRangeElements(GLenum mode, GLuint start, GLuint end,
                                 GLsizei count, GLenum type,
                                 const GLvoid *indices)
 {
-   draw_elements(0, mode, count, type, indices, 1, 0, 0, true, start, end, true);
+   draw_elements(0, mode, count, type, indices, 1, 0,
+                 0, true, start, end, true, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawRangeElements_no_error(GLenum mode, GLuint start, GLuint end,
+                                         GLsizei count, GLenum type,
+                                         const GLvoid *indices)
+{
+   draw_elements(0, mode, count, type, indices, 1, 0,
+                 0, true, start, end, true, true);
 }
 
 void GLAPIENTRY
 _mesa_marshal_DrawElementsInstanced(GLenum mode, GLsizei count, GLenum type,
                                     const GLvoid *indices, GLsizei instance_count)
 {
-   draw_elements(0, mode, count, type, indices, instance_count, 0, 0, false, 0, 0, false);
+   draw_elements(0, mode, count, type, indices, instance_count, 0,
+                 0, false, 0, 0, false, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawElementsInstanced_no_error(GLenum mode, GLsizei count,
+                                             GLenum type, const GLvoid *indices,
+                                             GLsizei instance_count)
+{
+   draw_elements(0, mode, count, type, indices, instance_count, 0,
+                 0, false, 0, 0, false, true);
 }
 
 void GLAPIENTRY
 _mesa_marshal_DrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type,
                                      const GLvoid *indices, GLint basevertex)
 {
-   draw_elements(0, mode, count, type, indices, 1, basevertex, 0, false, 0, 0, true);
+   draw_elements(0, mode, count, type, indices, 1, basevertex,
+                 0, false, 0, 0, true, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawElementsBaseVertex_no_error(GLenum mode, GLsizei count,
+                                              GLenum type, const GLvoid *indices,
+                                              GLint basevertex)
+{
+   draw_elements(0, mode, count, type, indices, 1, basevertex,
+                 0, false, 0, 0, true, true);
 }
 
 void GLAPIENTRY
@@ -1645,7 +1691,17 @@ _mesa_marshal_DrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end,
                                           GLsizei count, GLenum type,
                                           const GLvoid *indices, GLint basevertex)
 {
-   draw_elements(0, mode, count, type, indices, 1, basevertex, 0, true, start, end, true);
+   draw_elements(0, mode, count, type, indices, 1, basevertex,
+                 0, true, start, end, true, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawRangeElementsBaseVertex_no_error(GLenum mode, GLuint start,
+                                                   GLuint end, GLsizei count, GLenum type,
+                                                   const GLvoid *indices, GLint basevertex)
+{
+   draw_elements(0, mode, count, type, indices, 1, basevertex,
+                 0, true, start, end, true, true);
 }
 
 void GLAPIENTRY
@@ -1653,7 +1709,17 @@ _mesa_marshal_DrawElementsInstancedBaseVertex(GLenum mode, GLsizei count,
                                               GLenum type, const GLvoid *indices,
                                               GLsizei instance_count, GLint basevertex)
 {
-   draw_elements(0, mode, count, type, indices, instance_count, basevertex, 0, false, 0, 0, false);
+   draw_elements(0, mode, count, type, indices, instance_count, basevertex,
+                 0, false, 0, 0, false, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawElementsInstancedBaseVertex_no_error(GLenum mode, GLsizei count,
+                                                       GLenum type, const GLvoid *indices,
+                                                       GLsizei instance_count, GLint basevertex)
+{
+   draw_elements(0, mode, count, type, indices, instance_count, basevertex,
+                 0, false, 0, 0, false, true);
 }
 
 void GLAPIENTRY
@@ -1661,7 +1727,17 @@ _mesa_marshal_DrawElementsInstancedBaseInstance(GLenum mode, GLsizei count,
                                                 GLenum type, const GLvoid *indices,
                                                 GLsizei instance_count, GLuint baseinstance)
 {
-   draw_elements(0, mode, count, type, indices, instance_count, 0, baseinstance, false, 0, 0, false);
+   draw_elements(0, mode, count, type, indices, instance_count, 0,
+                 baseinstance, false, 0, 0, false, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawElementsInstancedBaseInstance_no_error(GLenum mode, GLsizei count,
+                                                         GLenum type, const GLvoid *indices,
+                                                         GLsizei instance_count, GLuint baseinstance)
+{
+   draw_elements(0, mode, count, type, indices, instance_count, 0,
+                 baseinstance, false, 0, 0, false, true);
 }
 
 void GLAPIENTRY
@@ -1670,7 +1746,18 @@ _mesa_marshal_DrawElementsInstancedBaseVertexBaseInstance(GLenum mode, GLsizei c
                                                           GLsizei instance_count, GLint basevertex,
                                                           GLuint baseinstance)
 {
-   draw_elements(0, mode, count, type, indices, instance_count, basevertex, baseinstance, false, 0, 0, false);
+   draw_elements(0, mode, count, type, indices, instance_count, basevertex,
+                 baseinstance, false, 0, 0, false, false);
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawElementsInstancedBaseVertexBaseInstance_no_error(GLenum mode, GLsizei count,
+                                                                   GLenum type, const GLvoid *indices,
+                                                                   GLsizei instance_count,
+                                                                   GLint basevertex, GLuint baseinstance)
+{
+   draw_elements(0, mode, count, type, indices, instance_count, basevertex,
+                 baseinstance, false, 0, 0, false, true);
 }
 
 void GLAPIENTRY

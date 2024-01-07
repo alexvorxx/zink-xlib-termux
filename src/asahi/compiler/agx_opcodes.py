@@ -463,9 +463,6 @@ op("stack_store",
 # Convenient aliases.
 op("mov", _, srcs = 1)
 op("not", _, srcs = 1)
-op("xor", _, srcs = 2)
-op("and", _, srcs = 2)
-op("or", _, srcs = 2)
 
 op("collect", _, srcs = VARIABLE)
 op("split", _, srcs = 1, dests = VARIABLE)

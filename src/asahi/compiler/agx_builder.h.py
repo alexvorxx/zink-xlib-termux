@@ -129,6 +129,34 @@ enum agx_bitop_table {
    AGX_BITOP_OR    = 0xE
 };
 
+#define BINOP_BITOP(name, table)                                                     \
+   static inline agx_instr *                                                         \
+   agx_## name ##_to(agx_builder *b, agx_index dst0, agx_index src0, agx_index src1) \
+   {                                                                                 \
+      return agx_bitop_to(b, dst0, src0, src1, AGX_BITOP_ ## table);                 \
+   }                                                                                 \
+                                                                                     \
+   static inline agx_index                                                           \
+   agx_## name (agx_builder *b, agx_index src0, agx_index src1)                      \
+   {                                                                                 \
+      agx_index tmp = agx_temp(b->shader, src0.size);                                \
+      agx_##name##_to(b, tmp, src0, src1);                                           \
+      return tmp;                                                                    \
+   }
+
+BINOP_BITOP(nor, NOR)
+BINOP_BITOP(andn2, ANDN2)
+BINOP_BITOP(andn1, ANDN1)
+BINOP_BITOP(xor, XOR)
+BINOP_BITOP(nand, NAND)
+BINOP_BITOP(and, AND)
+BINOP_BITOP(xnor, XNOR)
+BINOP_BITOP(orn2, ORN2)
+BINOP_BITOP(orn1, ORN1)
+BINOP_BITOP(or, OR)
+
+#undef BINOP_BITOP
+
 static inline agx_instr *
 agx_fmov_to(agx_builder *b, agx_index dst0, agx_index src0)
 {

@@ -56,15 +56,6 @@ lower(agx_builder *b, agx_instr *I)
    case AGX_OPCODE_NOT:
       return agx_bitop_to(b, I->dest[0], I->src[0], agx_zero(), AGX_BITOP_NOT);
 
-   case AGX_OPCODE_AND:
-      return agx_bitop_to(b, I->dest[0], I->src[0], I->src[1], AGX_BITOP_AND);
-
-   case AGX_OPCODE_XOR:
-      return agx_bitop_to(b, I->dest[0], I->src[0], I->src[1], AGX_BITOP_XOR);
-
-   case AGX_OPCODE_OR:
-      return agx_bitop_to(b, I->dest[0], I->src[0], I->src[1], AGX_BITOP_OR);
-
    /* Unfused comparisons are fused with a 0/1 select */
    case AGX_OPCODE_ICMP:
       return agx_icmpsel_to(b, I->dest[0], I->src[0], I->src[1],

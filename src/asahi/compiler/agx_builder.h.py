@@ -115,11 +115,18 @@ agx_${opcode}(agx_builder *b
 /* Convenience methods */
 
 enum agx_bitop_table {
-   AGX_BITOP_NOT = 0x5,
-   AGX_BITOP_XOR = 0x6,
-   AGX_BITOP_AND = 0x8,
-   AGX_BITOP_MOV = 0xA,
-   AGX_BITOP_OR  = 0xE
+   AGX_BITOP_NOR   = 0x1,
+   AGX_BITOP_ANDN2 = 0x2,
+   AGX_BITOP_ANDN1 = 0x4,
+   AGX_BITOP_NOT   = 0x5,
+   AGX_BITOP_XOR   = 0x6,
+   AGX_BITOP_NAND  = 0x7,
+   AGX_BITOP_AND   = 0x8,
+   AGX_BITOP_XNOR  = 0x9,
+   AGX_BITOP_MOV   = 0xA,
+   AGX_BITOP_ORN2  = 0xB,
+   AGX_BITOP_ORN1  = 0xD,
+   AGX_BITOP_OR    = 0xE
 };
 
 static inline agx_instr *

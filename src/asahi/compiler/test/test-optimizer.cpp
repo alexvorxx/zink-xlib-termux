@@ -128,6 +128,15 @@ TEST_F(Optimizer, FusedFnegCancel)
           agx_fmul_to(b, out, wx, agx_abs(wx)));
 }
 
+TEST_F(Optimizer, FusedNot)
+{
+   CASE32(agx_not_to(b, out, agx_and(b, wx, wx)), agx_nand_to(b, out, wx, wx));
+
+   CASE32(agx_not_to(b, out, agx_or(b, wx, wx)), agx_nor_to(b, out, wx, wx));
+
+   CASE32(agx_not_to(b, out, agx_xor(b, wx, wx)), agx_xnor_to(b, out, wx, wx));
+}
+
 TEST_F(Optimizer, FmulFsatF2F16)
 {
    CASE16(

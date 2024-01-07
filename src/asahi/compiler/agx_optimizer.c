@@ -186,6 +186,27 @@ agx_optimizer_inline_imm(agx_instr **defs, agx_instr *I, bool is_float)
    }
 }
 
+/*
+ * Fuse not into and/or/xor. Specifically, acts on not and fuses:
+ *
+ *    not(and(x, y) -> nand(x, y)
+ *    not(or(x, y) -> nor(x, y)
+ *    not(xor(x, y) -> xnor(x, y)
+ */
+static bool
+agx_optimizer_not(agx_instr *I, agx_instr *use)
+{
+   /* Check for bit op and use of not op */
+   if (I->op != AGX_OPCODE_BITOP || use->op != AGX_OPCODE_NOT)
+      return false;
+
+   /* Remap operation to the appropriate one */
+   I->truth_table ^= 0xF;
+   I->dest[0] = use->dest[0];
+
+   return true;
+}
+
 static bool
 agx_optimizer_fmov_rev(agx_instr *I, agx_instr *use)
 {
@@ -444,6 +465,11 @@ agx_optimizer_backward(agx_context *ctx)
 
       if (!use || BITSET_TEST(multiple, I->dest[0].value))
          continue;
+
+      if (agx_optimizer_not(I, use)) {
+         agx_remove_instruction(use);
+         continue;
+      }
 
       /* Destination has a single use, try to propagate */
       if (info.is_float && agx_optimizer_fmov_rev(I, use)) {

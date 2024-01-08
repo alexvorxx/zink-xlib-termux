@@ -43,6 +43,9 @@ def get_marshal_type(func_name, param):
         if (type, param.name) == ('GLsizei', 'stride'):
             return 'GLclamped16i'
 
+        if (type, param.name) == ('GLint', 'size'):
+            return 'GLpacked16i'
+
     return type
 
 def get_type_size(func_name, param):
@@ -60,6 +63,7 @@ def get_type_size(func_name, param):
         'GLushort': 2,
         'GLhalfNV': 2,
         'GLclamped16i': 2, # clamped by glthread
+        'GLpacked16i': 2, # clamped by glthread
         'GLint': 4,
         'GLuint': 4,
         'GLbitfield': 4,

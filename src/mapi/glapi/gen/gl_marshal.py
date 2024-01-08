@@ -229,6 +229,8 @@ class PrintCode(gl_XML.gl_print_base):
                     out('cmd->{0} = MIN2({0}, 0xffff); /* clamped to 0xffff (invalid enum) */'.format(p.name))
                 elif type == 'GLclamped16i':
                     out('cmd->{0} = CLAMP({0}, INT16_MIN, INT16_MAX);'.format(p.name))
+                elif type == 'GLpacked16i':
+                    out('cmd->{0} = {0} < 0 ? UINT16_MAX : MIN2({0}, UINT16_MAX);'.format(p.name))
                 else:
                     out('cmd->{0} = {0};'.format(p.name))
             if variable_params:

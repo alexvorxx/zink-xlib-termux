@@ -35,6 +35,12 @@
 #include "main/macros.h"
 #include "main/matrix.h"
 
+/* 32-bit signed integer clamped to 0..UINT16_MAX to compress parameters
+ * for glthread. All values < 0 and >= UINT16_MAX are expected to throw
+ * GL_INVALID_VALUE. Negative values are mapped to UINT16_MAX.
+ */
+typedef uint16_t GLpacked16i;
+
 /* 32-bit signed integer clamped to 16 bits. */
 typedef int16_t GLclamped16i;
 

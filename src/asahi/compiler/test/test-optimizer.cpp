@@ -135,6 +135,34 @@ TEST_F(Optimizer, FusedNot)
    CASE32(agx_not_to(b, out, agx_or(b, wx, wx)), agx_nor_to(b, out, wx, wx));
 
    CASE32(agx_not_to(b, out, agx_xor(b, wx, wx)), agx_xnor_to(b, out, wx, wx));
+
+   CASE32(agx_xor_to(b, out, agx_not(b, wx), agx_not(b, wx)),
+          agx_xor_to(b, out, wx, wx));
+
+   CASE32(agx_xor_to(b, out, agx_not(b, wx), wx), agx_xnor_to(b, out, wx, wx));
+
+   CASE32(agx_xor_to(b, out, wx, agx_not(b, wx)), agx_xnor_to(b, out, wx, wx));
+
+   CASE32(agx_nand_to(b, out, agx_not(b, wx), agx_not(b, wx)),
+          agx_or_to(b, out, wx, wx));
+
+   CASE32(agx_andn1_to(b, out, agx_not(b, wx), wx), agx_and_to(b, out, wx, wx));
+
+   CASE32(agx_andn1_to(b, out, wx, agx_not(b, wx)), agx_nor_to(b, out, wx, wx));
+
+   CASE32(agx_andn2_to(b, out, agx_not(b, wx), wx), agx_nor_to(b, out, wx, wx));
+
+   CASE32(agx_andn2_to(b, out, wx, agx_not(b, wx)), agx_and_to(b, out, wx, wx));
+
+   CASE32(agx_xor_to(b, out, agx_not(b, wx), agx_uniform(8, AGX_SIZE_32)),
+          agx_xnor_to(b, out, wx, agx_uniform(8, AGX_SIZE_32)));
+
+   CASE32(agx_or_to(b, out, agx_immediate(123), agx_not(b, wx)),
+          agx_orn2_to(b, out, agx_immediate(123), wx));
+
+   CASE32(agx_xor_to(b, out, wx, agx_not(b, wy)), agx_xnor_to(b, out, wx, wy));
+
+   CASE32(agx_xor_to(b, out, wy, agx_not(b, wx)), agx_xnor_to(b, out, wy, wx));
 }
 
 TEST_F(Optimizer, FmulFsatF2F16)

@@ -396,6 +396,33 @@ agx_optimizer_ballot(agx_context *ctx, agx_instr **defs, agx_instr *I)
    agx_remove_instruction(I);
 }
 
+/*
+ * Fuse not srcs into bitop.
+ */
+static void
+agx_optimizer_bitop(agx_instr **defs, agx_instr *I)
+{
+   agx_foreach_ssa_src(I, s) {
+      agx_index src = I->src[s];
+      agx_instr *def = defs[src.value];
+
+      /* Check for not src */
+      if (def->op != AGX_OPCODE_NOT)
+         continue;
+
+      /* Select new operation */
+      if (s == 0) {
+         I->truth_table =
+            ((I->truth_table & 0x5) << 1) | ((I->truth_table & 0xa) >> 1);
+      } else if (s == 1) {
+         I->truth_table = ((I->truth_table & 0x3) << 2) | (I->truth_table >> 2);
+      }
+
+      /* Fuse */
+      I->src[s] = def->src[0];
+   }
+}
+
 static void
 agx_optimizer_forward(agx_context *ctx)
 {
@@ -430,6 +457,8 @@ agx_optimizer_forward(agx_context *ctx)
          agx_optimizer_cmpsel(defs, I);
       else if (I->op == AGX_OPCODE_BALLOT || I->op == AGX_OPCODE_QUAD_BALLOT)
          agx_optimizer_ballot(ctx, defs, I);
+      else if (I->op == AGX_OPCODE_BITOP)
+         agx_optimizer_bitop(defs, I);
    }
 
    free(defs);

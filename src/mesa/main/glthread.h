@@ -274,7 +274,8 @@ struct glthread_state
 
    /** The last added call of the given function. */
    struct marshal_cmd_CallList *LastCallList;
-   struct marshal_cmd_BindBuffer *LastBindBuffer;
+   struct marshal_cmd_BindBuffer *LastBindBuffer1;
+   struct marshal_cmd_BindBuffer *LastBindBuffer2;
 
    /** Global mutex update info. */
    unsigned GlobalLockUpdateBatchCounter;

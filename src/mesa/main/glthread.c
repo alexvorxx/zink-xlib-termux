@@ -347,7 +347,8 @@ glthread_finalize_batch(struct glthread_state *glthread,
    glthread->used = 0;
 
    glthread->LastCallList = NULL;
-   glthread->LastBindBuffer = NULL;
+   glthread->LastBindBuffer1 = NULL;
+   glthread->LastBindBuffer2 = NULL;
 }
 
 void

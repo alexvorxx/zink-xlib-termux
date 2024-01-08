@@ -5410,7 +5410,7 @@
     <function name="GetActiveAttrib" es2="2.0">
         <param name="program" type="GLuint"/>
         <param name="index" type="GLuint"/>
-        <param name="bufSize" type="GLsizei "/>
+        <param name="bufSize" type="GLsizei"/>
         <param name="length" type="GLsizei *" output="true"/>
         <param name="size" type="GLint *" output="true"/>
         <param name="type" type="GLenum *" output="true"/>

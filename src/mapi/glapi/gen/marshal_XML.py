@@ -24,6 +24,7 @@
 # building thread marshalling code.
 
 import gl_XML
+import sys
 
 # We decrease the type size when it's safe, such as when the maximum value
 # and all greater values are invalid.
@@ -95,10 +96,11 @@ def get_type_size(func_name, param):
         'GLuint64': 8,
         'GLuint64EXT': 8,
         'GLsync': 8,
+        'GLDEBUGPROC': 8,
     }
     val = mapping.get(type, 9999)
     if val == 9999:
-        print('Unhandled type in marshal_XML.get_type_size: ' + type, file=sys.stderr)
+        print('Unhandled type in marshal_XML.get_type_size: "{0}"'.format(type), file=sys.stderr)
         assert False
     return val
 

@@ -35,6 +35,9 @@
 #include "main/macros.h"
 #include "main/matrix.h"
 
+/* 32-bit signed integer clamped to 16 bits. */
+typedef int16_t GLclamped16i;
+
 struct marshal_cmd_base
 {
    /**

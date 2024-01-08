@@ -33,10 +33,15 @@ def get_marshal_type(func_name, param):
     if type == 'GLenum':
         return 'GLenum16' # clamped to 0xffff (always invalid enum)
 
-    # Use int16_t for the vertex stride, the max value is usually 2048.
-    if ((type, param.name) == ('GLsizei', 'stride') and
-        ('Vertex' in func_name or 'Pointer' in func_name or 'Interleaved' in func_name)):
-        return 'int16_t' # clamped to INT16_MAX (always invalid value)
+    if (func_name == 'InterleavedArrays' or
+        func_name.endswith('VertexBuffer') or
+        func_name.endswith('VertexBufferEXT') or
+        func_name.endswith('Pointer') or
+        func_name.endswith('PointerEXT') or
+        func_name.endswith('PointerOES') or
+        func_name.endswith('OffsetEXT')):
+        if (type, param.name) == ('GLsizei', 'stride'):
+            return 'GLclamped16i'
 
     return type
 
@@ -54,7 +59,7 @@ def get_type_size(func_name, param):
         'GLshort': 2,
         'GLushort': 2,
         'GLhalfNV': 2,
-        'int16_t': 2, # clamped by glthread
+        'GLclamped16i': 2, # clamped by glthread
         'GLint': 4,
         'GLuint': 4,
         'GLbitfield': 4,

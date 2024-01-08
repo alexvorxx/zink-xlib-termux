@@ -64,8 +64,8 @@ struct marshal_cmd_DrawElementsUserBuf
 {
    struct marshal_cmd_base cmd_base;
    GLenum8 mode;
+   GLindextype type;
    uint16_t num_slots;
-   GLenum16 type;
    GLsizei count;
    GLsizei instance_count;
    GLint basevertex;
@@ -95,6 +95,12 @@ _mesa_glthread_allocate_command(struct gl_context *ctx,
    glthread->used += num_elements;
    cmd_base->cmd_id = cmd_id;
    return cmd_base;
+}
+
+static inline GLenum
+_mesa_decode_index_type(GLindextype type)
+{
+   return (GLenum)type.value + GL_UNSIGNED_BYTE - 1;
 }
 
 static inline struct marshal_cmd_base *

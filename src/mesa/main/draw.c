@@ -1950,7 +1950,7 @@ _mesa_DrawElementsUserBuf(const GLvoid *ptr)
       (const struct marshal_cmd_DrawElementsUserBuf *)ptr;
    const GLenum mode = cmd->mode;
    const GLsizei count = cmd->count;
-   const GLenum type = cmd->type;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
    const GLsizei instance_count = cmd->instance_count;
 
    if (!_mesa_is_no_error_enabled(ctx) &&

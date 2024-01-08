@@ -40,6 +40,25 @@ get_index_size(GLenum type)
    return 1 << _mesa_get_index_size_shift(type);
 }
 
+static inline GLindextype
+encode_index_type(GLenum type)
+{
+   /* Map invalid values less than GL_UNSIGNED_BYTE to GL_UNSIGNED_BYTE - 1,
+    * and invalid values greater than GL_UNSIGNED_INT to GL_UNSIGNED_INT + 1,
+    * Then subtract GL_UNSIGNED_BYTE - 1. Final encoding:
+    *    0 = invalid value
+    *    1 = GL_UNSIGNED_BYTE
+    *    2 = invalid value
+    *    3 = GL_UNSIGNED_SHORT
+    *    4 = invalid value
+    *    5 = GL_UNSIGNED_INT
+    *    6 = invalid value
+    */
+   const unsigned min = GL_UNSIGNED_BYTE - 1;
+   const unsigned max = GL_UNSIGNED_INT + 1;
+   return (GLindextype){CLAMP(type, min, max) - min};
+}
+
 static ALWAYS_INLINE struct gl_buffer_object *
 upload_indices(struct gl_context *ctx, unsigned count, unsigned index_size,
                const GLvoid **indices)
@@ -603,7 +622,7 @@ _mesa_unmarshal_DrawElementsInstanced(struct gl_context *ctx,
 {
    const GLenum mode = cmd->mode;
    const GLsizei count = cmd->count;
-   const GLenum type = cmd->type;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
    const GLvoid *indices = cmd->indices;
    const GLsizei instance_count = cmd->instance_count;
 
@@ -619,7 +638,7 @@ _mesa_unmarshal_DrawElementsBaseVertex(struct gl_context *ctx,
 {
    const GLenum mode = cmd->mode;
    const GLsizei count = cmd->count;
-   const GLenum type = cmd->type;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
    const GLvoid *indices = cmd->indices;
    const GLint basevertex = cmd->basevertex;
 
@@ -635,7 +654,7 @@ _mesa_unmarshal_DrawElementsInstancedBaseVertexBaseInstance(struct gl_context *c
 {
    const GLenum mode = cmd->mode;
    const GLsizei count = cmd->count;
-   const GLenum type = cmd->type;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
    const GLvoid *indices = cmd->indices;
    const GLsizei instance_count = cmd->instance_count;
    const GLint basevertex = cmd->basevertex;
@@ -652,7 +671,7 @@ struct marshal_cmd_DrawElementsInstancedBaseVertexBaseInstanceDrawID
 {
    struct marshal_cmd_base cmd_base;
    GLenum8 mode;
-   GLenum16 type;
+   GLindextype type;
    GLsizei count;
    GLsizei instance_count;
    GLint basevertex;
@@ -667,7 +686,7 @@ _mesa_unmarshal_DrawElementsInstancedBaseVertexBaseInstanceDrawID(struct gl_cont
 {
    const GLenum mode = cmd->mode;
    const GLsizei count = cmd->count;
-   const GLenum type = cmd->type;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
    const GLvoid *indices = cmd->indices;
    const GLsizei instance_count = cmd->instance_count;
    const GLint basevertex = cmd->basevertex;
@@ -780,7 +799,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
             _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsBaseVertex, cmd_size);
 
          cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-         cmd->type = MIN2(type, 0xffff);
+         cmd->type = encode_index_type(type);
          cmd->count = count;
          cmd->indices = indices;
          cmd->basevertex = basevertex;
@@ -791,7 +810,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
                _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsInstanced, cmd_size);
 
             cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-            cmd->type = MIN2(type, 0xffff);
+            cmd->type = encode_index_type(type);
             cmd->count = count;
             cmd->instance_count = instance_count;
             cmd->indices = indices;
@@ -801,7 +820,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
                _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsInstancedBaseVertexBaseInstance, cmd_size);
 
             cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-            cmd->type = MIN2(type, 0xffff);
+            cmd->type = encode_index_type(type);
             cmd->count = count;
             cmd->instance_count = instance_count;
             cmd->basevertex = basevertex;
@@ -813,7 +832,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
                _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsInstancedBaseVertexBaseInstanceDrawID, cmd_size);
 
             cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-            cmd->type = MIN2(type, 0xffff);
+            cmd->type = encode_index_type(type);
             cmd->count = count;
             cmd->instance_count = instance_count;
             cmd->basevertex = basevertex;
@@ -891,7 +910,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
    cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsUserBuf, cmd_size);
    cmd->num_slots = align(cmd_size, 8) / 8;
    cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-   cmd->type = MIN2(type, 0xffff);
+   cmd->type = encode_index_type(type);
    cmd->count = count;
    cmd->indices = indices;
    cmd->instance_count = instance_count;
@@ -910,7 +929,7 @@ struct marshal_cmd_MultiDrawElementsUserBuf
    struct marshal_cmd_base cmd_base;
    bool has_base_vertex;
    GLenum8 mode;
-   GLenum16 type;
+   GLindextype type;
    uint16_t num_slots;
    GLsizei draw_count;
    GLuint user_buffer_mask;
@@ -944,7 +963,7 @@ _mesa_unmarshal_MultiDrawElementsUserBuf(struct gl_context *ctx,
 
    /* Draw. */
    const GLenum mode = cmd->mode;
-   const GLenum type = cmd->type;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
    struct gl_buffer_object *index_buffer = cmd->index_buffer;
 
    CALL_MultiDrawElementsUserBuf(ctx->Dispatch.Current,
@@ -977,7 +996,7 @@ multi_draw_elements_async(struct gl_context *ctx, GLenum mode,
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawElementsUserBuf, cmd_size);
       cmd->num_slots = align(cmd_size, 8) / 8;
       cmd->mode = MIN2(mode, 0xff); /* primitive types go from 0 to 14 */
-      cmd->type = MIN2(type, 0xffff);
+      cmd->type = encode_index_type(type);
       cmd->draw_count = draw_count;
       cmd->user_buffer_mask = user_buffer_mask;
       cmd->index_buffer = index_buffer;
@@ -1332,7 +1351,7 @@ _mesa_unmarshal_DrawElementsIndirect(struct gl_context *ctx,
                                      const struct marshal_cmd_DrawElementsIndirect *cmd)
 {
    GLenum mode = cmd->mode;
-   GLenum type = cmd->type;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
    const GLvoid * indirect = cmd->indirect;
 
    CALL_DrawElementsIndirect(ctx->Dispatch.Current, (mode, type, indirect));
@@ -1354,7 +1373,7 @@ _mesa_marshal_DrawElementsIndirect(GLenum mode, GLenum type, const GLvoid *indir
 
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsIndirect, cmd_size);
       cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-      cmd->type = MIN2(type, 0xffff); /* clamped to 0xffff (invalid enum) */
+      cmd->type = encode_index_type(type);
       cmd->indirect = indirect;
       return;
    }
@@ -1410,7 +1429,7 @@ _mesa_unmarshal_MultiDrawElementsIndirect(struct gl_context *ctx,
                                           const struct marshal_cmd_MultiDrawElementsIndirect *cmd)
 {
    GLenum mode = cmd->mode;
-   GLenum type = cmd->type;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
    const GLvoid * indirect = cmd->indirect;
    GLsizei primcount = cmd->primcount;
    GLsizei stride = cmd->stride;
@@ -1439,7 +1458,7 @@ _mesa_marshal_MultiDrawElementsIndirect(GLenum mode, GLenum type,
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawElementsIndirect,
                                             cmd_size);
       cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-      cmd->type = MIN2(type, 0xffff); /* clamped to 0xffff (invalid enum) */
+      cmd->type = encode_index_type(type);
       cmd->indirect = indirect;
       cmd->primcount = primcount;
       cmd->stride = stride;
@@ -1508,7 +1527,7 @@ _mesa_unmarshal_MultiDrawElementsIndirectCountARB(struct gl_context *ctx,
                                                   const struct marshal_cmd_MultiDrawElementsIndirectCountARB *cmd)
 {
    GLenum mode = cmd->mode;
-   GLenum type = cmd->type;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
    GLintptr indirect = cmd->indirect;
    GLintptr drawcount = cmd->drawcount;
    GLsizei maxdrawcount = cmd->maxdrawcount;
@@ -1541,7 +1560,7 @@ _mesa_marshal_MultiDrawElementsIndirectCountARB(GLenum mode, GLenum type,
          _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawElementsIndirectCountARB, cmd_size);
 
       cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-      cmd->type = MIN2(type, 0xffff); /* clamped to 0xffff (invalid enum) */
+      cmd->type = encode_index_type(type);
       cmd->indirect = indirect;
       cmd->drawcount = drawcount;
       cmd->maxdrawcount = maxdrawcount;

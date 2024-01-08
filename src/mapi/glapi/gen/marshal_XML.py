@@ -37,6 +37,9 @@ def get_marshal_type(func_name, param):
         if (type, param.name) == ('GLenum', 'mode'):
             return 'GLenum8'
 
+        if (type, param.name) == ('GLenum', 'type'):
+            return 'GLindextype'
+
     if type == 'GLenum':
         return 'GLenum16' # clamped to 0xffff (always invalid enum)
 
@@ -66,6 +69,7 @@ def get_type_size(func_name, param):
         'GLbyte': 1,
         'GLubyte': 1,
         'GLenum8': 1, # clamped by glthread
+        'GLindextype': 1,
         'GLenum16': 2, # clamped by glthread
         'GLshort': 2,
         'GLushort': 2,

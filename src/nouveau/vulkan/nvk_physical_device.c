@@ -209,6 +209,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
                                        nvk_use_nak(info),
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_module_identifier = true,
+      .EXT_shader_object = true,
       .EXT_shader_subgroup_ballot = true,
       .EXT_shader_subgroup_vote = true,
       .EXT_shader_viewport_index_layer = info->cls_eng3d >= MAXWELL_B,
@@ -526,6 +527,9 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_EXT_shader_module_identifier */
       .shaderModuleIdentifier = true,
+
+      /* VK_EXT_shader_object */
+      .shaderObject = true,
 
       /* VK_EXT_texel_buffer_alignment */
       .texelBufferAlignment = true,
@@ -854,6 +858,9 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .sampleLocationSubPixelBits = 4,
       .variableSampleLocations = true,
 
+      /* VK_EXT_shader_object */
+      .shaderBinaryVersion = 0,
+
       /* VK_EXT_transform_feedback */
       .maxTransformFeedbackStreams = 4,
       .maxTransformFeedbackBuffers = 4,
@@ -924,6 +931,7 @@ nvk_physical_device_init_pipeline_cache(struct nvk_physical_device *pdev)
 
    STATIC_ASSERT(SHA1_DIGEST_LENGTH >= VK_UUID_SIZE);
    memcpy(pdev->vk.properties.pipelineCacheUUID, sha, VK_UUID_SIZE);
+   memcpy(pdev->vk.properties.shaderBinaryUUID, sha, VK_UUID_SIZE);
 
 #ifdef ENABLE_SHADER_CACHE
    char renderer[10];

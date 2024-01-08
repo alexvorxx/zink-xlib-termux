@@ -179,9 +179,11 @@ class marshal_function(gl_XML.gl_function):
         # path towards handling PBOs in glthread, which use marshal_sync to check whether
         # a PBO is bound.
         if self.marshal_sync:
-            return self.fixed_params + self.variable_params
+            list = self.fixed_params + self.variable_params
         else:
-            return self.fixed_params
+            list = self.fixed_params
+
+        return sorted(list, key=lambda p: get_type_size(self.name, p))
 
     def get_variable_params(self):
         if self.marshal_sync:
@@ -200,8 +202,7 @@ class marshal_function(gl_XML.gl_function):
             if variable_params:
                 print('   uint16_t num_slots;')
 
-            # Sort the parameters according to their size to pack the structure optimally
-            for p in sorted(fixed_params, key=lambda p: get_type_size(self.name, p)):
+            for p in fixed_params:
                 if p.count:
                     print('   {0} {1}[{2}];'.format(
                             p.get_base_type_string(), p.name, p.count))

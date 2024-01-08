@@ -800,7 +800,9 @@ a730_magic_regs = dict(
         RB_DBG_ECO_CNTL_blit = 0x00000000,  # is it even needed?
         RB_UNKNOWN_8E01 = 0x0,
         VPC_DBG_ECO_CNTL = 0x02000000,
-        UCHE_UNKNOWN_0E12 = 0x3200000
+        UCHE_UNKNOWN_0E12 = 0x3200000,
+
+        RB_UNKNOWN_8E06 = 0x02080000,
     )
 
 a730_raw_magic_regs = [
@@ -893,7 +895,9 @@ add_gpus([
             # HLSQ_DBG_ECO_CNTL = 0x0,
             RB_UNKNOWN_8E01 = 0x0,
             VPC_DBG_ECO_CNTL = 0x02000000,
-            UCHE_UNKNOWN_0E12 = 0x00000000
+            UCHE_UNKNOWN_0E12 = 0x00000000,
+
+            RB_UNKNOWN_8E06 = 0x02080000,
         ),
         raw_magic_regs = [
             [A6XXRegs.REG_A6XX_UCHE_CACHE_WAYS, 0x00040004],

@@ -63,8 +63,8 @@ extern const char *_mesa_unmarshal_func_name[NUM_DISPATCH_CMD];
 struct marshal_cmd_DrawElementsUserBuf
 {
    struct marshal_cmd_base cmd_base;
+   GLenum8 mode;
    uint16_t num_slots;
-   GLenum16 mode;
    GLenum16 type;
    GLsizei count;
    GLsizei instance_count;

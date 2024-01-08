@@ -294,7 +294,7 @@ _mesa_unmarshal_DrawArraysInstancedBaseInstance(struct gl_context *ctx,
 struct marshal_cmd_DrawArraysInstancedBaseInstanceDrawID
 {
    struct marshal_cmd_base cmd_base;
-   GLenum mode;
+   GLenum8 mode;
    GLint first;
    GLsizei count;
    GLsizei instance_count;
@@ -324,8 +324,8 @@ _mesa_unmarshal_DrawArraysInstancedBaseInstanceDrawID(struct gl_context *ctx,
 struct marshal_cmd_DrawArraysUserBuf
 {
    struct marshal_cmd_base cmd_base;
+   GLenum8 mode;
    uint16_t num_slots;
-   GLenum mode;
    GLint first;
    GLsizei count;
    GLsizei instance_count;
@@ -416,7 +416,7 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
          struct marshal_cmd_DrawArrays *cmd =
             _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArrays, cmd_size);
 
-         cmd->mode = mode;
+         cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
          cmd->first = first;
          cmd->count = count;
       } else if (drawid == 0) {
@@ -424,7 +424,7 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
          struct marshal_cmd_DrawArraysInstancedBaseInstance *cmd =
             _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArraysInstancedBaseInstance, cmd_size);
 
-         cmd->mode = mode;
+         cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
          cmd->first = first;
          cmd->count = count;
          cmd->instance_count = instance_count;
@@ -434,7 +434,7 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
          struct marshal_cmd_DrawArraysInstancedBaseInstanceDrawID *cmd =
             _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArraysInstancedBaseInstanceDrawID, cmd_size);
 
-         cmd->mode = mode;
+         cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
          cmd->first = first;
          cmd->count = count;
          cmd->instance_count = instance_count;
@@ -459,7 +459,7 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
    cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArraysUserBuf,
                                          cmd_size);
    cmd->num_slots = align(cmd_size, 8) / 8;
-   cmd->mode = mode;
+   cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
    cmd->first = first;
    cmd->count = count;
    cmd->instance_count = instance_count;
@@ -475,8 +475,8 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
 struct marshal_cmd_MultiDrawArraysUserBuf
 {
    struct marshal_cmd_base cmd_base;
+   GLenum8 mode;
    uint16_t num_slots;
-   GLenum mode;
    GLsizei draw_count;
    GLuint user_buffer_mask;
 };
@@ -571,7 +571,7 @@ _mesa_marshal_MultiDrawArrays(GLenum mode, const GLint *first,
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawArraysUserBuf,
                                             cmd_size);
       cmd->num_slots = align(cmd_size, 8) / 8;
-      cmd->mode = mode;
+      cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
       cmd->draw_count = draw_count;
       cmd->user_buffer_mask = user_buffer_mask;
 
@@ -651,7 +651,7 @@ _mesa_unmarshal_DrawElementsInstancedBaseVertexBaseInstance(struct gl_context *c
 struct marshal_cmd_DrawElementsInstancedBaseVertexBaseInstanceDrawID
 {
    struct marshal_cmd_base cmd_base;
-   GLenum16 mode;
+   GLenum8 mode;
    GLenum16 type;
    GLsizei count;
    GLsizei instance_count;
@@ -779,7 +779,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
          struct marshal_cmd_DrawElementsBaseVertex *cmd =
             _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsBaseVertex, cmd_size);
 
-         cmd->mode = MIN2(mode, 0xffff);
+         cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
          cmd->type = MIN2(type, 0xffff);
          cmd->count = count;
          cmd->indices = indices;
@@ -790,7 +790,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
             struct marshal_cmd_DrawElementsInstanced *cmd =
                _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsInstanced, cmd_size);
 
-            cmd->mode = MIN2(mode, 0xffff);
+            cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
             cmd->type = MIN2(type, 0xffff);
             cmd->count = count;
             cmd->instance_count = instance_count;
@@ -800,7 +800,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
             struct marshal_cmd_DrawElementsInstancedBaseVertexBaseInstance *cmd =
                _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsInstancedBaseVertexBaseInstance, cmd_size);
 
-            cmd->mode = MIN2(mode, 0xffff);
+            cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
             cmd->type = MIN2(type, 0xffff);
             cmd->count = count;
             cmd->instance_count = instance_count;
@@ -812,7 +812,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
             struct marshal_cmd_DrawElementsInstancedBaseVertexBaseInstanceDrawID *cmd =
                _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsInstancedBaseVertexBaseInstanceDrawID, cmd_size);
 
-            cmd->mode = MIN2(mode, 0xffff);
+            cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
             cmd->type = MIN2(type, 0xffff);
             cmd->count = count;
             cmd->instance_count = instance_count;
@@ -890,7 +890,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
 
    cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsUserBuf, cmd_size);
    cmd->num_slots = align(cmd_size, 8) / 8;
-   cmd->mode = MIN2(mode, 0xffff);
+   cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
    cmd->type = MIN2(type, 0xffff);
    cmd->count = count;
    cmd->indices = indices;
@@ -908,10 +908,10 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
 struct marshal_cmd_MultiDrawElementsUserBuf
 {
    struct marshal_cmd_base cmd_base;
-   uint16_t num_slots;
    bool has_base_vertex;
    GLenum8 mode;
    GLenum16 type;
+   uint16_t num_slots;
    GLsizei draw_count;
    GLuint user_buffer_mask;
    struct gl_buffer_object *index_buffer;
@@ -1318,7 +1318,7 @@ _mesa_marshal_DrawArraysIndirect(GLenum mode, const GLvoid *indirect)
       struct marshal_cmd_DrawArraysIndirect *cmd;
 
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArraysIndirect, cmd_size);
-      cmd->mode = MIN2(mode, 0xffff); /* clamped to 0xffff (invalid enum) */
+      cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
       cmd->indirect = indirect;
       return;
    }
@@ -1353,7 +1353,7 @@ _mesa_marshal_DrawElementsIndirect(GLenum mode, GLenum type, const GLvoid *indir
       struct marshal_cmd_DrawElementsIndirect *cmd;
 
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsIndirect, cmd_size);
-      cmd->mode = MIN2(mode, 0xffff); /* clamped to 0xffff (invalid enum) */
+      cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
       cmd->type = MIN2(type, 0xffff); /* clamped to 0xffff (invalid enum) */
       cmd->indirect = indirect;
       return;
@@ -1393,7 +1393,7 @@ _mesa_marshal_MultiDrawArraysIndirect(GLenum mode, const GLvoid *indirect,
 
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawArraysIndirect,
                                             cmd_size);
-      cmd->mode = MIN2(mode, 0xffff); /* clamped to 0xffff (invalid enum) */
+      cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
       cmd->indirect = indirect;
       cmd->primcount = primcount;
       cmd->stride = stride;
@@ -1438,7 +1438,7 @@ _mesa_marshal_MultiDrawElementsIndirect(GLenum mode, GLenum type,
 
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawElementsIndirect,
                                             cmd_size);
-      cmd->mode = MIN2(mode, 0xffff); /* clamped to 0xffff (invalid enum) */
+      cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
       cmd->type = MIN2(type, 0xffff); /* clamped to 0xffff (invalid enum) */
       cmd->indirect = indirect;
       cmd->primcount = primcount;
@@ -1489,7 +1489,7 @@ _mesa_marshal_MultiDrawArraysIndirectCountARB(GLenum mode, GLintptr indirect,
          _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawArraysIndirectCountARB,
                                          cmd_size);
 
-      cmd->mode = MIN2(mode, 0xffff); /* clamped to 0xffff (invalid enum) */
+      cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
       cmd->indirect = indirect;
       cmd->drawcount = drawcount;
       cmd->maxdrawcount = maxdrawcount;
@@ -1540,7 +1540,7 @@ _mesa_marshal_MultiDrawElementsIndirectCountARB(GLenum mode, GLenum type,
       struct marshal_cmd_MultiDrawElementsIndirectCountARB *cmd =
          _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawElementsIndirectCountARB, cmd_size);
 
-      cmd->mode = MIN2(mode, 0xffff); /* clamped to 0xffff (invalid enum) */
+      cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
       cmd->type = MIN2(type, 0xffff); /* clamped to 0xffff (invalid enum) */
       cmd->indirect = indirect;
       cmd->drawcount = drawcount;

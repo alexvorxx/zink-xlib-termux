@@ -30,6 +30,13 @@ import gl_XML
 def get_marshal_type(func_name, param):
     type = param.type_string()
 
+    if ('Draw' in func_name and
+        ('Arrays' in func_name or
+         'Elements' in func_name or
+         'TransformFeedback' in func_name)):
+        if (type, param.name) == ('GLenum', 'mode'):
+            return 'GLenum8'
+
     if type == 'GLenum':
         return 'GLenum16' # clamped to 0xffff (always invalid enum)
 
@@ -58,6 +65,7 @@ def get_type_size(func_name, param):
         'GLboolean': 1,
         'GLbyte': 1,
         'GLubyte': 1,
+        'GLenum8': 1, # clamped by glthread
         'GLenum16': 2, # clamped by glthread
         'GLshort': 2,
         'GLushort': 2,

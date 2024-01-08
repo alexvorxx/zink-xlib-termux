@@ -225,6 +225,8 @@ class PrintCode(gl_XML.gl_print_base):
                 if p.count:
                     out('memcpy(cmd->{0}, {0}, {1});'.format(
                             p.name, p.size_string()))
+                elif type == 'GLenum8':
+                    out('cmd->{0} = MIN2({0}, 0xff); /* clamped to 0xff (invalid enum) */'.format(p.name))
                 elif type == 'GLenum16':
                     out('cmd->{0} = MIN2({0}, 0xffff); /* clamped to 0xffff (invalid enum) */'.format(p.name))
                 elif type == 'GLclamped16i':

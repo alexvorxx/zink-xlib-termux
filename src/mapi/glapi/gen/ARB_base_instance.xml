@@ -18,7 +18,7 @@
   </function>
 
   <function name="DrawElementsInstancedBaseInstance" marshal="custom" exec="dlist"
-            marshal_no_error="true">
+            marshal_no_error="true" marshal_struct="public">
     <param name="mode" type="GLenum"/>
     <param name="count" type="GLsizei"/>
     <param name="type" type="GLenum"/>
@@ -28,7 +28,7 @@
   </function>
 
   <function name="DrawElementsInstancedBaseVertexBaseInstance" marshal="custom" exec="dlist"
-            marshal_struct="public" marshal_no_error="true">
+            marshal_no_error="true">
     <param name="mode" type="GLenum"/>
     <param name="count" type="GLsizei"/>
     <param name="type" type="GLenum"/>

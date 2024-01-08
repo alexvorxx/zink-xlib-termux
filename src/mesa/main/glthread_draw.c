@@ -634,6 +634,19 @@ _mesa_unmarshal_DrawElements(struct gl_context *ctx,
 }
 
 uint32_t
+_mesa_unmarshal_DrawElementsPacked(struct gl_context *ctx,
+                                   const struct marshal_cmd_DrawElementsPacked *restrict cmd)
+{
+   const GLenum mode = cmd->mode;
+   const GLsizei count = cmd->count;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
+   const GLvoid *indices = (void*)(uintptr_t)cmd->indices;
+
+   CALL_DrawElements(ctx->Dispatch.Current, (mode, count, type, indices));
+   return align(sizeof(*cmd), 8) / 8;
+}
+
+uint32_t
 _mesa_unmarshal_DrawElementsInstancedBaseVertex(struct gl_context *ctx,
                                                 const struct marshal_cmd_DrawElementsInstancedBaseVertex *restrict cmd)
 {
@@ -784,14 +797,29 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
          ctx->GLThread.ListMode))) {            /* GL_INVALID_OPERATION */
       if (drawid == 0 && baseinstance == 0) {
          if (instance_count == 1 && basevertex == 0) {
-            int cmd_size = sizeof(struct marshal_cmd_DrawElements);
-            struct marshal_cmd_DrawElements *cmd =
-                  _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElements, cmd_size);
+            if ((count & 0xffff) == count && (uintptr_t)indices <= UINT16_MAX) {
+               /* Packed version of DrawElements: 16-bit count and 16-bit index offset,
+                * reducing the call size by 8 bytes.
+                * This is the most common case in Viewperf2020/Catia1.
+                */
+               int cmd_size = sizeof(struct marshal_cmd_DrawElementsPacked);
+               struct marshal_cmd_DrawElementsPacked *cmd =
+                     _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsPacked, cmd_size);
 
-            cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-            cmd->type = encode_index_type(type);
-            cmd->count = count;
-            cmd->indices = indices;
+               cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
+               cmd->type = encode_index_type(type);
+               cmd->count = count;
+               cmd->indices = (uintptr_t)indices;
+            } else {
+               int cmd_size = sizeof(struct marshal_cmd_DrawElements);
+               struct marshal_cmd_DrawElements *cmd =
+                     _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElements, cmd_size);
+
+               cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
+               cmd->type = encode_index_type(type);
+               cmd->count = count;
+               cmd->indices = indices;
+            }
          } else {
             int cmd_size = sizeof(struct marshal_cmd_DrawElementsInstancedBaseVertex);
             struct marshal_cmd_DrawElementsInstancedBaseVertex *cmd =
@@ -1921,6 +1949,12 @@ _mesa_marshal_DrawArraysInstancedBaseInstanceDrawID(void)
    unreachable("should never end up here");
 }
 
+void GLAPIENTRY _mesa_marshal_DrawElementsPacked(GLenum mode, GLenum type,
+                                                 GLushort count, GLushort indices)
+{
+   unreachable("should never end up here");
+}
+
 void GLAPIENTRY
 _mesa_marshal_DrawElementsInstancedBaseVertexBaseInstanceDrawID(GLenum mode, GLsizei count,
                                                                 GLenum type, const GLvoid *indices,
@@ -1948,6 +1982,12 @@ _mesa_DrawArraysInstancedBaseInstanceDrawID(void)
    unreachable("should never end up here");
 }
 
+void GLAPIENTRY _mesa_DrawElementsPacked(GLenum mode, GLenum type,
+                                         GLushort count, GLushort indices)
+{
+   unreachable("should never end up here");
+}
+
 void GLAPIENTRY
 _mesa_DrawElementsInstancedBaseVertexBaseInstanceDrawID(GLenum mode, GLsizei count,
                                                         GLenum type, const GLvoid *indices,
@@ -1965,6 +2005,8 @@ _mesa_unmarshal_PushMatrix(struct gl_context *ctx,
    const unsigned mult_matrixf_size = 9;
    const unsigned draw_elements_size =
       (align(sizeof(struct marshal_cmd_DrawElements), 8) / 8);
+   const unsigned draw_elements_packed_size =
+      (align(sizeof(struct marshal_cmd_DrawElementsPacked), 8) / 8);
    const unsigned pop_matrix_size = 1;
    uint64_t *next1 = _mesa_glthread_next_cmd((uint64_t *)cmd, push_matrix_size);
    uint64_t *next2;
@@ -1986,6 +2028,16 @@ _mesa_unmarshal_PushMatrix(struct gl_context *ctx,
          /* The beauty of this is that this is inlined. */
          _mesa_unmarshal_DrawElements(ctx, (void*)next1);
          return push_matrix_size + draw_elements_size + pop_matrix_size;
+      }
+      break;
+
+   case DISPATCH_CMD_DrawElementsPacked:
+      next2 = _mesa_glthread_next_cmd(next1, draw_elements_packed_size);
+
+      if (_mesa_glthread_get_cmd(next2)->cmd_id == DISPATCH_CMD_PopMatrix) {
+         /* The beauty of this is that this is inlined. */
+         _mesa_unmarshal_DrawElementsPacked(ctx, (void*)next1);
+         return push_matrix_size + draw_elements_packed_size + pop_matrix_size;
       }
       break;
 

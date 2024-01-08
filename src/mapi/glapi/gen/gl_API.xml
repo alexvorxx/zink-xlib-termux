@@ -12973,6 +12973,14 @@
         <param name="drawid" type="GLuint"/>
     </function>
 
+    <function name="DrawElementsPacked" es1="1.0" es2="2.0" marshal="custom"
+              marshal_struct="public">
+        <param name="mode" type="GLenum"/>
+        <param name="type" type="GLenum"/>
+        <param name="count" type="GLushort"/>
+        <param name="indices" type="GLushort"/>
+    </function>
+
     <!-- Internal function for glthread to implement ancillary buffer invalidation. -->
     <function name="InternalInvalidateFramebufferAncillaryMESA" es2="3.0">
     </function>

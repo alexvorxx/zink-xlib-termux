@@ -1018,20 +1018,6 @@ check_array_data(struct gl_context *ctx, struct gl_vertex_array_object *vao,
 }
 
 
-static inline unsigned
-get_index_size_shift(GLenum type)
-{
-   /* The type is already validated, so use a fast conversion.
-    *
-    * GL_UNSIGNED_BYTE  - GL_UNSIGNED_BYTE = 0
-    * GL_UNSIGNED_SHORT - GL_UNSIGNED_BYTE = 2
-    * GL_UNSIGNED_INT   - GL_UNSIGNED_BYTE = 4
-    *
-    * Divide by 2 to get 0,1,2.
-    */
-   return (type - GL_UNSIGNED_BYTE) >> 1;
-}
-
 /**
  * Examine the array's data for NaNs, etc.
  * For debug purposes; not normally used.
@@ -1620,7 +1606,7 @@ _mesa_validated_drawrangeelements(struct gl_context *ctx,
       assert(end == ~0u);
    }
 
-   unsigned index_size_shift = get_index_size_shift(type);
+   unsigned index_size_shift = _mesa_get_index_size_shift(type);
 
    if (index_bo) {
       if (!indices_aligned(index_size_shift, indices))
@@ -2018,7 +2004,7 @@ _mesa_validated_multidrawelements(struct gl_context *ctx,
    if (primcount == 0)
       return;
 
-   unsigned index_size_shift = get_index_size_shift(type);
+   unsigned index_size_shift = _mesa_get_index_size_shift(type);
 
    min_index_ptr = (uintptr_t) indices[0];
    max_index_ptr = 0;
@@ -2531,7 +2517,7 @@ _mesa_MultiDrawElementsIndirect(GLenum mode, GLenum type,
            !_mesa_validate_DrawElements(ctx, mode, 1, type)))
          return;
 
-      unsigned index_size_shift = get_index_size_shift(type);
+      unsigned index_size_shift = _mesa_get_index_size_shift(type);
 
       struct pipe_draw_info info;
       info.mode = mode;

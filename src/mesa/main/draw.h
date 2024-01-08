@@ -100,6 +100,20 @@ _mesa_bitmap(struct gl_context *ctx, GLsizei width, GLsizei height,
              GLfloat xorig, GLfloat yorig, GLfloat xmove, GLfloat ymove,
              const GLubyte *bitmap, struct pipe_resource *tex);
 
+static inline unsigned
+_mesa_get_index_size_shift(GLenum type)
+{
+   /* The type is already validated, so use a fast conversion.
+    *
+    * GL_UNSIGNED_BYTE  - GL_UNSIGNED_BYTE = 0
+    * GL_UNSIGNED_SHORT - GL_UNSIGNED_BYTE = 2
+    * GL_UNSIGNED_INT   - GL_UNSIGNED_BYTE = 4
+    *
+    * Divide by 2 to get 0,1,2.
+    */
+   return (type - GL_UNSIGNED_BYTE) >> 1;
+}
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

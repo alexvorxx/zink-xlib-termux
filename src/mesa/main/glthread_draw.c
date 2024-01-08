@@ -37,13 +37,7 @@
 static inline unsigned
 get_index_size(GLenum type)
 {
-   /* GL_UNSIGNED_BYTE  - GL_UNSIGNED_BYTE = 0
-    * GL_UNSIGNED_SHORT - GL_UNSIGNED_BYTE = 2
-    * GL_UNSIGNED_INT   - GL_UNSIGNED_BYTE = 4
-    *
-    * Divide by 2 to get n=0,1,2, then the index size is: 1 << n
-    */
-   return 1 << ((type - GL_UNSIGNED_BYTE) >> 1);
+   return 1 << _mesa_get_index_size_shift(type);
 }
 
 static inline bool

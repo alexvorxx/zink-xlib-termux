@@ -9,7 +9,7 @@
 <category name="GL_ARB_draw_instanced" number="44">
 
   <function name="DrawArraysInstanced" marshal="custom" exec="dlist" es2="2.0"
-            marshal_no_error="true">
+            marshal_no_error="true" marshal_struct="public">
     <param name="mode" type="GLenum"/>
     <param name="first" type="GLint"/>
     <param name="count" type="GLsizei"/>

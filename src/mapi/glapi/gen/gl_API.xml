@@ -3211,7 +3211,7 @@
     </function>
 
     <function name="DrawArrays" es1="1.0" es2="2.0" marshal="custom" exec="dlist"
-              marshal_struct="public" marshal_no_error="true">
+              marshal_no_error="true">
         <param name="mode" type="GLenum"/>
         <param name="first" type="GLint"/>
         <param name="count" type="GLsizei"/>

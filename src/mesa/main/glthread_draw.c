@@ -280,33 +280,17 @@ upload_vertices(struct gl_context *ctx, unsigned user_buffer_mask,
    return true;
 }
 
-/* DrawArrays without user buffers. */
+/* DrawArraysInstanced without user buffers. */
 uint32_t
-_mesa_unmarshal_DrawArrays(struct gl_context *ctx,
-                           const struct marshal_cmd_DrawArrays *restrict cmd)
+_mesa_unmarshal_DrawArraysInstanced(struct gl_context *ctx,
+                                    const struct marshal_cmd_DrawArraysInstanced *restrict cmd)
 {
    const GLenum mode = cmd->mode;
    const GLint first = cmd->first;
    const GLsizei count = cmd->count;
+   const GLsizei instance_count = cmd->primcount;
 
-   CALL_DrawArrays(ctx->Dispatch.Current, (mode, first, count));
-   return align(sizeof(*cmd), 8) / 8;
-}
-
-/* DrawArraysInstancedBaseInstance without user buffers. */
-uint32_t
-_mesa_unmarshal_DrawArraysInstancedBaseInstance(struct gl_context *ctx,
-                                                const struct marshal_cmd_DrawArraysInstancedBaseInstance *restrict cmd)
-{
-   const GLenum mode = cmd->mode;
-   const GLint first = cmd->first;
-   const GLsizei count = cmd->count;
-   const GLsizei instance_count = cmd->instance_count;
-   const GLuint baseinstance = cmd->baseinstance;
-
-   CALL_DrawArraysInstancedBaseInstance(ctx->Dispatch.Current,
-                                        (mode, first, count, instance_count,
-                                         baseinstance));
+   CALL_DrawArraysInstanced(ctx->Dispatch.Current, (mode, first, count, instance_count));
    return align(sizeof(*cmd), 8) / 8;
 }
 
@@ -430,24 +414,15 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
          ctx->GLThread.inside_begin_end ||      /* GL_INVALID_OPERATION */
          ctx->Dispatch.Current == ctx->Dispatch.ContextLost || /* GL_INVALID_OPERATION */
          ctx->GLThread.ListMode))) {            /* GL_INVALID_OPERATION */
-      if (instance_count == 1 && baseinstance == 0 && drawid == 0) {
-         int cmd_size = sizeof(struct marshal_cmd_DrawArrays);
-         struct marshal_cmd_DrawArrays *cmd =
-            _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArrays, cmd_size);
+      if (baseinstance == 0 && drawid == 0) {
+         int cmd_size = sizeof(struct marshal_cmd_DrawArraysInstanced);
+         struct marshal_cmd_DrawArraysInstanced *cmd =
+            _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArraysInstanced, cmd_size);
 
          cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
          cmd->first = first;
          cmd->count = count;
-      } else if (drawid == 0) {
-         int cmd_size = sizeof(struct marshal_cmd_DrawArraysInstancedBaseInstance);
-         struct marshal_cmd_DrawArraysInstancedBaseInstance *cmd =
-            _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArraysInstancedBaseInstance, cmd_size);
-
-         cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-         cmd->first = first;
-         cmd->count = count;
-         cmd->instance_count = instance_count;
-         cmd->baseinstance = baseinstance;
+         cmd->primcount = instance_count;
       } else {
          int cmd_size = sizeof(struct marshal_cmd_DrawArraysInstancedBaseInstanceDrawID);
          struct marshal_cmd_DrawArraysInstancedBaseInstanceDrawID *cmd =
@@ -1749,8 +1724,16 @@ _mesa_marshal_MultiDrawElements(GLenum mode, const GLsizei *count,
 }
 
 uint32_t
-_mesa_unmarshal_DrawArraysInstanced(struct gl_context *ctx,
-                                    const struct marshal_cmd_DrawArraysInstanced *restrict cmd)
+_mesa_unmarshal_DrawArrays(struct gl_context *ctx,
+                           const struct marshal_cmd_DrawArrays *restrict cmd)
+{
+   unreachable("should never end up here");
+   return 0;
+}
+
+uint32_t
+_mesa_unmarshal_DrawArraysInstancedBaseInstance(struct gl_context *ctx,
+                                                const struct marshal_cmd_DrawArraysInstancedBaseInstance *restrict cmd)
 {
    unreachable("should never end up here");
    return 0;

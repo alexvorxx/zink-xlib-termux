@@ -223,18 +223,7 @@ valid_prim_mode_indexed(struct gl_context *ctx, GLenum mode)
 static GLenum
 valid_elements_type(struct gl_context *ctx, GLenum type)
 {
-   /* GL_UNSIGNED_BYTE  = 0x1401
-    * GL_UNSIGNED_SHORT = 0x1403
-    * GL_UNSIGNED_INT   = 0x1405
-    *
-    * The trick is that bit 1 and bit 2 mean USHORT and UINT, respectively.
-    * After clearing those two bits (with ~6), we should get UBYTE.
-    * Both bits can't be set, because the enum would be greater than UINT.
-    */
-   if (!(type <= GL_UNSIGNED_INT && (type & ~6) == GL_UNSIGNED_BYTE))
-      return GL_INVALID_ENUM;
-
-   return GL_NO_ERROR;
+   return _mesa_is_index_type_valid(type) ? GL_NO_ERROR : GL_INVALID_ENUM;
 }
 
 static inline bool

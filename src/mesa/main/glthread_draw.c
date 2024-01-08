@@ -40,20 +40,6 @@ get_index_size(GLenum type)
    return 1 << _mesa_get_index_size_shift(type);
 }
 
-static inline bool
-is_index_type_valid(GLenum type)
-{
-   /* GL_UNSIGNED_BYTE  = 0x1401
-    * GL_UNSIGNED_SHORT = 0x1403
-    * GL_UNSIGNED_INT   = 0x1405
-    *
-    * The trick is that bit 1 and bit 2 mean USHORT and UINT, respectively.
-    * After clearing those two bits (with ~6), we should get UBYTE.
-    * Both bits can't be set, because the enum would be greater than UINT.
-    */
-   return type <= GL_UNSIGNED_INT && (type & ~6) == GL_UNSIGNED_BYTE;
-}
-
 static ALWAYS_INLINE struct gl_buffer_object *
 upload_indices(struct gl_context *ctx, unsigned count, unsigned index_size,
                const GLvoid **indices)
@@ -784,7 +770,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
        (!no_error &&
         /* zeros are discarded for no_error at the beginning */
         (count <= 0 || instance_count <= 0 ||   /* GL_INVALID_VALUE / no-op */
-         !is_index_type_valid(type) ||          /* GL_INVALID_VALUE */
+         !_mesa_is_index_type_valid(type) ||    /* GL_INVALID_VALUE */
          ctx->Dispatch.Current == ctx->Dispatch.ContextLost || /* GL_INVALID_OPERATION */
          ctx->GLThread.inside_begin_end ||      /* GL_INVALID_OPERATION */
          ctx->GLThread.ListMode))) {            /* GL_INVALID_OPERATION */
@@ -1057,7 +1043,7 @@ _mesa_marshal_MultiDrawElementsBaseVertex(GLenum mode, const GLsizei *count,
     * When nothing needs to be uploaded or the draw is no-op or generates
     * a GL error, we don't upload anything.
     */
-   if (draw_count > 0 && is_index_type_valid(type) &&
+   if (draw_count > 0 && _mesa_is_index_type_valid(type) &&
        ctx->Dispatch.Current != ctx->Dispatch.ContextLost &&
        !ctx->GLThread.inside_begin_end) {
       user_buffer_mask = _mesa_is_desktop_gl_core(ctx) ? 0 : get_user_buffer_mask(ctx);
@@ -1362,7 +1348,7 @@ _mesa_marshal_DrawElementsIndirect(GLenum mode, GLenum type, const GLvoid *indir
       _mesa_is_gles31(ctx) ? 0 : vao->UserPointerMask & vao->BufferEnabled;
 
    if (draw_indirect_async_allowed(ctx, user_buffer_mask) ||
-       !is_index_type_valid(type)) {
+       !_mesa_is_index_type_valid(type)) {
       int cmd_size = sizeof(struct marshal_cmd_DrawElementsIndirect);
       struct marshal_cmd_DrawElementsIndirect *cmd;
 
@@ -1446,7 +1432,7 @@ _mesa_marshal_MultiDrawElementsIndirect(GLenum mode, GLenum type,
 
    if (draw_indirect_async_allowed(ctx, user_buffer_mask) ||
        primcount <= 0 ||
-       !is_index_type_valid(type)) {
+       !_mesa_is_index_type_valid(type)) {
       int cmd_size = sizeof(struct marshal_cmd_MultiDrawElementsIndirect);
       struct marshal_cmd_MultiDrawElementsIndirect *cmd;
 
@@ -1549,7 +1535,7 @@ _mesa_marshal_MultiDrawElementsIndirectCountARB(GLenum mode, GLenum type,
        /* This will just generate GL_INVALID_OPERATION because Draw*IndirectCount
         * functions forbid a user indirect buffer in the Compat profile. */
        !ctx->GLThread.CurrentDrawIndirectBufferName ||
-       !is_index_type_valid(type)) {
+       !_mesa_is_index_type_valid(type)) {
       int cmd_size = sizeof(struct marshal_cmd_MultiDrawElementsIndirectCountARB);
       struct marshal_cmd_MultiDrawElementsIndirectCountARB *cmd =
          _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawElementsIndirectCountARB, cmd_size);

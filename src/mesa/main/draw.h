@@ -114,6 +114,20 @@ _mesa_get_index_size_shift(GLenum type)
    return (type - GL_UNSIGNED_BYTE) >> 1;
 }
 
+static inline bool
+_mesa_is_index_type_valid(GLenum type)
+{
+   /* GL_UNSIGNED_BYTE  = 0x1401
+    * GL_UNSIGNED_SHORT = 0x1403
+    * GL_UNSIGNED_INT   = 0x1405
+    *
+    * The trick is that bit 1 and bit 2 mean USHORT and UINT, respectively.
+    * After clearing those two bits (with ~6), we should get UBYTE.
+    * Both bits can't be set, because the enum would be greater than UINT.
+    */
+   return type <= GL_UNSIGNED_INT && (type & ~6) == GL_UNSIGNED_BYTE;
+}
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

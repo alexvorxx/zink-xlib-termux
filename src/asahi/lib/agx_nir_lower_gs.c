@@ -1021,6 +1021,7 @@ link_libagx(nir_shader *nir, const nir_shader *libagx)
    NIR_PASS(_, nir, nir_inline_functions);
    nir_remove_non_entrypoints(nir);
    NIR_PASS(_, nir, nir_lower_indirect_derefs, nir_var_function_temp, 64);
+   NIR_PASS(_, nir, nir_opt_dce);
    NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
             nir_var_shader_temp | nir_var_function_temp | nir_var_mem_shared |
                nir_var_mem_global,

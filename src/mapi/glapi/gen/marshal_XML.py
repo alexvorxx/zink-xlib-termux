@@ -26,83 +26,6 @@
 import gl_XML
 import sys
 
-# We decrease the type size when it's safe, such as when the maximum value
-# and all greater values are invalid.
-def get_marshal_type(func_name, param):
-    type = param.type_string()
-
-    if ('Draw' in func_name and
-        ('Arrays' in func_name or
-         'Elements' in func_name or
-         'TransformFeedback' in func_name)):
-        if (type, param.name) == ('GLenum', 'mode'):
-            return 'GLenum8'
-
-        if (type, param.name) == ('GLenum', 'type'):
-            return 'GLindextype'
-
-    if type == 'GLenum':
-        return 'GLenum16' # clamped to 0xffff (always invalid enum)
-
-    if (func_name == 'InterleavedArrays' or
-        func_name.endswith('VertexBuffer') or
-        func_name.endswith('VertexBufferEXT') or
-        func_name.endswith('Pointer') or
-        func_name.endswith('PointerEXT') or
-        func_name.endswith('PointerOES') or
-        func_name.endswith('OffsetEXT')):
-        if (type, param.name) == ('GLsizei', 'stride'):
-            return 'GLclamped16i'
-
-        if (type, param.name) == ('GLint', 'size'):
-            return 'GLpacked16i'
-
-    return type
-
-def get_type_size(func_name, param):
-    type = get_marshal_type(func_name, param)
-
-    if type.find('*') != -1:
-        return 8;
-
-    mapping = {
-        'GLboolean': 1,
-        'GLbyte': 1,
-        'GLubyte': 1,
-        'GLenum8': 1, # clamped by glthread
-        'GLindextype': 1,
-        'GLenum16': 2, # clamped by glthread
-        'GLshort': 2,
-        'GLushort': 2,
-        'GLhalfNV': 2,
-        'GLclamped16i': 2, # clamped by glthread
-        'GLpacked16i': 2, # clamped by glthread
-        'GLint': 4,
-        'GLuint': 4,
-        'GLbitfield': 4,
-        'GLsizei': 4,
-        'GLfloat': 4,
-        'GLclampf': 4,
-        'GLfixed': 4,
-        'GLclampx': 4,
-        'GLhandleARB': 4,
-        'int': 4,
-        'float': 4,
-        'GLdouble': 8,
-        'GLclampd': 8,
-        'GLintptr': 8,
-        'GLsizeiptr': 8,
-        'GLint64': 8,
-        'GLuint64': 8,
-        'GLuint64EXT': 8,
-        'GLsync': 8,
-        'GLDEBUGPROC': 8,
-    }
-    val = mapping.get(type, 9999)
-    if val == 9999:
-        print('Unhandled type in marshal_XML.get_type_size: "{0}"'.format(type), file=sys.stderr)
-        assert False
-    return val
 
 class marshal_item_factory(gl_XML.gl_item_factory):
     """Factory to create objects derived from gl_item containing
@@ -113,6 +36,78 @@ class marshal_item_factory(gl_XML.gl_item_factory):
 
 
 class marshal_function(gl_XML.gl_function):
+    # We decrease the type size when it's safe, such as when the maximum value
+    # and all greater values are invalid.
+    def get_marshal_type(self, param):
+        type = param.type_string()
+
+        if ('Draw' in self.name and
+            ('Arrays' in self.name or
+             'Elements' in self.name or
+             'TransformFeedback' in self.name)):
+            if (type, param.name) == ('GLenum', 'mode'):
+                return 'GLenum8'
+
+            if (type, param.name) == ('GLenum', 'type'):
+                return 'GLindextype'
+
+        if type == 'GLenum':
+            return 'GLenum16' # clamped to 0xffff (always invalid enum)
+
+        if self.is_vertex_pointer_call:
+            if (type, param.name) == ('GLsizei', 'stride'):
+                return 'GLclamped16i'
+
+            if (type, param.name) == ('GLint', 'size'):
+                return 'GLpacked16i'
+
+        return type
+
+    def get_type_size(self, param):
+        type = self.get_marshal_type(param)
+
+        if type.find('*') != -1:
+            return 8;
+
+        mapping = {
+            'GLboolean': 1,
+            'GLbyte': 1,
+            'GLubyte': 1,
+            'GLenum8': 1, # clamped by glthread
+            'GLindextype': 1,
+            'GLenum16': 2, # clamped by glthread
+            'GLshort': 2,
+            'GLushort': 2,
+            'GLhalfNV': 2,
+            'GLclamped16i': 2, # clamped by glthread
+            'GLpacked16i': 2, # clamped by glthread
+            'GLint': 4,
+            'GLuint': 4,
+            'GLbitfield': 4,
+            'GLsizei': 4,
+            'GLfloat': 4,
+            'GLclampf': 4,
+            'GLfixed': 4,
+            'GLclampx': 4,
+            'GLhandleARB': 4,
+            'int': 4,
+            'float': 4,
+            'GLdouble': 8,
+            'GLclampd': 8,
+            'GLintptr': 8,
+            'GLsizeiptr': 8,
+            'GLint64': 8,
+            'GLuint64': 8,
+            'GLuint64EXT': 8,
+            'GLsync': 8,
+            'GLDEBUGPROC': 8,
+        }
+        val = mapping.get(type, 9999)
+        if val == 9999:
+            print('Unhandled type in marshal_XML.get_type_size: "{0}"'.format(type), file=sys.stderr)
+            assert False
+        return val
+
     def process_element(self, element):
         # Do normal processing.
         super(marshal_function, self).process_element(element)
@@ -140,6 +135,13 @@ class marshal_function(gl_XML.gl_function):
         self.marshal_call_after = element.get('marshal_call_after')
         self.marshal_struct = element.get('marshal_struct')
         self.marshal_no_error = gl_XML.is_attr_true(element, 'marshal_no_error')
+        self.is_vertex_pointer_call = (self.name == 'InterleavedArrays' or
+                                       self.name.endswith('VertexBuffer') or
+                                       self.name.endswith('VertexBufferEXT') or
+                                       self.name.endswith('Pointer') or
+                                       self.name.endswith('PointerEXT') or
+                                       self.name.endswith('PointerOES') or
+                                       self.name.endswith('OffsetEXT'))
 
     def marshal_flavor(self):
         """Find out how this function should be marshalled between
@@ -183,7 +185,7 @@ class marshal_function(gl_XML.gl_function):
         else:
             list = self.fixed_params
 
-        return sorted(list, key=lambda p: get_type_size(self.name, p))
+        return sorted(list, key=lambda p: self.get_type_size(p))
 
     def get_variable_params(self):
         if self.marshal_sync:
@@ -207,7 +209,7 @@ class marshal_function(gl_XML.gl_function):
                     print('   {0} {1}[{2}];'.format(
                             p.get_base_type_string(), p.name, p.count))
                 else:
-                    print('   {0} {1};'.format(get_marshal_type(self.name, p), p.name))
+                    print('   {0} {1};'.format(self.get_marshal_type(p), p.name))
 
             for p in variable_params:
                 if p.img_null_flag:

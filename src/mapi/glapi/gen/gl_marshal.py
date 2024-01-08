@@ -121,7 +121,7 @@ class PrintCode(gl_XML.gl_print_base):
                             p.get_base_type_string(), p.name)
                 else:
                     p_decl = '{0} {1} = cmd->{1};'.format(
-                            marshal_XML.get_marshal_type(func.name, p), p.name)
+                            func.get_marshal_type(p), p.name)
 
                 if not p_decl.startswith('const ') and p.count:
                     # Declare all local function variables as const, even if
@@ -220,7 +220,7 @@ class PrintCode(gl_XML.gl_print_base):
                 out('cmd->num_slots = align(cmd_size, 8) / 8;')
 
             for p in fixed_params:
-                type = marshal_XML.get_marshal_type(func.name, p)
+                type = func.get_marshal_type(p)
 
                 if p.count:
                     out('memcpy(cmd->{0}, {0}, {1});'.format(

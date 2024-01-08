@@ -291,9 +291,7 @@ _mesa_unmarshal_DrawArrays(struct gl_context *ctx,
    const GLsizei count = cmd->count;
 
    CALL_DrawArrays(ctx->Dispatch.Current, (mode, first, count));
-   const unsigned cmd_size = align(sizeof(*cmd), 8) / 8;
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(*cmd), 8) / 8;
 }
 
 /* DrawArraysInstancedBaseInstance without user buffers. */
@@ -310,9 +308,7 @@ _mesa_unmarshal_DrawArraysInstancedBaseInstance(struct gl_context *ctx,
    CALL_DrawArraysInstancedBaseInstance(ctx->Dispatch.Current,
                                         (mode, first, count, instance_count,
                                          baseinstance));
-   const unsigned cmd_size = align(sizeof(*cmd), 8) / 8;
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(*cmd), 8) / 8;
 }
 
 struct marshal_cmd_DrawArraysInstancedBaseInstanceDrawID
@@ -341,16 +337,14 @@ _mesa_unmarshal_DrawArraysInstancedBaseInstanceDrawID(struct gl_context *ctx,
                                         (mode, first, count, instance_count,
                                          baseinstance));
    ctx->DrawID = 0;
-
-   const unsigned cmd_size = align(sizeof(*cmd), 8) / 8;
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(*cmd), 8) / 8;
 }
 
 /* DrawArraysInstancedBaseInstance with user buffers. */
 struct marshal_cmd_DrawArraysUserBuf
 {
    struct marshal_cmd_base cmd_base;
+   uint16_t num_slots;
    GLenum mode;
    GLint first;
    GLsizei count;
@@ -383,7 +377,7 @@ _mesa_unmarshal_DrawArraysUserBuf(struct gl_context *ctx,
                                         (mode, first, count, instance_count,
                                          baseinstance));
    ctx->DrawID = 0;
-   return cmd->cmd_base.cmd_size;
+   return cmd->num_slots;
 }
 
 static inline unsigned
@@ -484,6 +478,7 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
 
    cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArraysUserBuf,
                                          cmd_size);
+   cmd->num_slots = align(cmd_size, 8) / 8;
    cmd->mode = mode;
    cmd->first = first;
    cmd->count = count;
@@ -500,6 +495,7 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
 struct marshal_cmd_MultiDrawArraysUserBuf
 {
    struct marshal_cmd_base cmd_base;
+   uint16_t num_slots;
    GLenum mode;
    GLsizei draw_count;
    GLuint user_buffer_mask;
@@ -527,7 +523,7 @@ _mesa_unmarshal_MultiDrawArraysUserBuf(struct gl_context *ctx,
 
    CALL_MultiDrawArrays(ctx->Dispatch.Current,
                         (mode, first, count, draw_count));
-   return cmd->cmd_base.cmd_size;
+   return cmd->num_slots;
 }
 
 void GLAPIENTRY
@@ -594,6 +590,7 @@ _mesa_marshal_MultiDrawArrays(GLenum mode, const GLint *first,
    if (cmd_size <= MARSHAL_MAX_CMD_SIZE) {
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawArraysUserBuf,
                                             cmd_size);
+      cmd->num_slots = align(cmd_size, 8) / 8;
       cmd->mode = mode;
       cmd->draw_count = draw_count;
       cmd->user_buffer_mask = user_buffer_mask;
@@ -632,9 +629,7 @@ _mesa_unmarshal_DrawElementsInstanced(struct gl_context *ctx,
 
    CALL_DrawElementsInstanced(ctx->Dispatch.Current,
                               (mode, count, type, indices, instance_count));
-   const unsigned cmd_size = align(sizeof(*cmd), 8) / 8;
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(*cmd), 8) / 8;
 }
 
 /* DrawElementsBaseVertex without user buffers. */
@@ -650,9 +645,7 @@ _mesa_unmarshal_DrawElementsBaseVertex(struct gl_context *ctx,
 
    CALL_DrawElementsBaseVertex(ctx->Dispatch.Current,
                                (mode, count, type, indices, basevertex));
-   const unsigned cmd_size = align(sizeof(*cmd), 8) / 8;
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(*cmd), 8) / 8;
 }
 
 /* DrawElementsInstancedBaseVertexBaseInstance without user buffers. */
@@ -672,9 +665,7 @@ _mesa_unmarshal_DrawElementsInstancedBaseVertexBaseInstance(struct gl_context *c
                                                     (mode, count, type, indices,
                                                      instance_count, basevertex,
                                                      baseinstance));
-   const unsigned cmd_size = align(sizeof(*cmd), 8) / 8;
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(*cmd), 8) / 8;
 }
 
 struct marshal_cmd_DrawElementsInstancedBaseVertexBaseInstanceDrawID
@@ -709,9 +700,7 @@ _mesa_unmarshal_DrawElementsInstancedBaseVertexBaseInstanceDrawID(struct gl_cont
                                                      baseinstance));
    ctx->DrawID = 0;
 
-   const unsigned cmd_size = align(sizeof(*cmd), 8) / 8;
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(*cmd), 8) / 8;
 }
 
 uint32_t
@@ -731,7 +720,7 @@ _mesa_unmarshal_DrawElementsUserBuf(struct gl_context *ctx,
 
    struct gl_buffer_object *index_buffer = cmd->index_buffer;
    _mesa_reference_buffer_object(ctx, &index_buffer, NULL);
-   return cmd->cmd_base.cmd_size;
+   return cmd->num_slots;
 }
 
 static inline bool
@@ -920,6 +909,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
    struct marshal_cmd_DrawElementsUserBuf *cmd;
 
    cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsUserBuf, cmd_size);
+   cmd->num_slots = align(cmd_size, 8) / 8;
    cmd->mode = MIN2(mode, 0xffff);
    cmd->type = MIN2(type, 0xffff);
    cmd->count = count;
@@ -938,6 +928,7 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
 struct marshal_cmd_MultiDrawElementsUserBuf
 {
    struct marshal_cmd_base cmd_base;
+   uint16_t num_slots;
    bool has_base_vertex;
    GLenum8 mode;
    GLenum16 type;
@@ -980,7 +971,7 @@ _mesa_unmarshal_MultiDrawElementsUserBuf(struct gl_context *ctx,
                                  ((GLintptr)index_buffer, mode, count, type,
                                   indices, draw_count, basevertex));
    _mesa_reference_buffer_object(ctx, &index_buffer, NULL);
-   return cmd->cmd_base.cmd_size;
+   return cmd->num_slots;
 }
 
 static void
@@ -1004,6 +995,7 @@ multi_draw_elements_async(struct gl_context *ctx, GLenum mode,
    /* Make sure cmd can fit the queue buffer */
    if (cmd_size <= MARSHAL_MAX_CMD_SIZE) {
       cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_MultiDrawElementsUserBuf, cmd_size);
+      cmd->num_slots = align(cmd_size, 8) / 8;
       cmd->mode = MIN2(mode, 0xff); /* primitive types go from 0 to 14 */
       cmd->type = MIN2(type, 0xffff);
       cmd->draw_count = draw_count;
@@ -1330,10 +1322,7 @@ _mesa_unmarshal_DrawArraysIndirect(struct gl_context *ctx,
 
    CALL_DrawArraysIndirect(ctx->Dispatch.Current, (mode, indirect));
 
-   const unsigned cmd_size =
-      (align(sizeof(struct marshal_cmd_DrawArraysIndirect), 8) / 8);
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(struct marshal_cmd_DrawArraysIndirect), 8) / 8;
 }
 
 void GLAPIENTRY
@@ -1367,11 +1356,7 @@ _mesa_unmarshal_DrawElementsIndirect(struct gl_context *ctx,
    const GLvoid * indirect = cmd->indirect;
 
    CALL_DrawElementsIndirect(ctx->Dispatch.Current, (mode, type, indirect));
-
-   const unsigned cmd_size =
-      (align(sizeof(struct marshal_cmd_DrawElementsIndirect), 8) / 8);
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(struct marshal_cmd_DrawElementsIndirect), 8) / 8;
 }
 
 void GLAPIENTRY
@@ -1409,11 +1394,7 @@ _mesa_unmarshal_MultiDrawArraysIndirect(struct gl_context *ctx,
 
    CALL_MultiDrawArraysIndirect(ctx->Dispatch.Current,
                                 (mode, indirect, primcount, stride));
-
-   const unsigned cmd_size =
-      (align(sizeof(struct marshal_cmd_MultiDrawArraysIndirect), 8) / 8);
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(struct marshal_cmd_MultiDrawArraysIndirect), 8) / 8;
 }
 
 void GLAPIENTRY
@@ -1456,11 +1437,7 @@ _mesa_unmarshal_MultiDrawElementsIndirect(struct gl_context *ctx,
 
    CALL_MultiDrawElementsIndirect(ctx->Dispatch.Current,
                                   (mode, type, indirect, primcount, stride));
-
-   const unsigned cmd_size =
-      (align(sizeof(struct marshal_cmd_MultiDrawElementsIndirect), 8) / 8);
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(struct marshal_cmd_MultiDrawElementsIndirect), 8) / 8;
 }
 
 void GLAPIENTRY
@@ -1508,11 +1485,7 @@ _mesa_unmarshal_MultiDrawArraysIndirectCountARB(struct gl_context *ctx,
    CALL_MultiDrawArraysIndirectCountARB(ctx->Dispatch.Current,
                                         (mode, indirect, drawcount,
                                          maxdrawcount, stride));
-
-   const unsigned cmd_size =
-      (align(sizeof(struct marshal_cmd_MultiDrawArraysIndirectCountARB), 8) / 8);
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(struct marshal_cmd_MultiDrawArraysIndirectCountARB), 8) / 8;
 }
 
 void GLAPIENTRY
@@ -1563,9 +1536,7 @@ _mesa_unmarshal_MultiDrawElementsIndirectCountARB(struct gl_context *ctx,
 
    CALL_MultiDrawElementsIndirectCountARB(ctx->Dispatch.Current, (mode, type, indirect, drawcount, maxdrawcount, stride));
 
-   const unsigned cmd_size = (align(sizeof(struct marshal_cmd_MultiDrawElementsIndirectCountARB), 8) / 8);
-   assert(cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(struct marshal_cmd_MultiDrawElementsIndirectCountARB), 8) / 8;
 }
 
 void GLAPIENTRY
@@ -1975,8 +1946,6 @@ _mesa_unmarshal_PushMatrix(struct gl_context *ctx,
       next2 = _mesa_glthread_next_cmd(next1, draw_elements_size);
 
       if (_mesa_glthread_get_cmd(next2)->cmd_id == DISPATCH_CMD_PopMatrix) {
-         assert(_mesa_glthread_get_cmd(next2)->cmd_size == pop_matrix_size);
-
          /* The beauty of this is that this is inlined. */
          _mesa_unmarshal_DrawElementsBaseVertex(ctx, (void*)next1);
          return push_matrix_size + draw_elements_size + pop_matrix_size;
@@ -1991,10 +1960,8 @@ _mesa_unmarshal_PushMatrix(struct gl_context *ctx,
        */
       next2 = _mesa_glthread_next_cmd(next1, mult_matrixf_size);
 
-      if (_mesa_glthread_get_cmd(next2)->cmd_id == DISPATCH_CMD_PopMatrix) {
-         assert(_mesa_glthread_get_cmd(next2)->cmd_size == pop_matrix_size);
+      if (_mesa_glthread_get_cmd(next2)->cmd_id == DISPATCH_CMD_PopMatrix)
          return push_matrix_size + mult_matrixf_size + pop_matrix_size;
-      }
       break;
    }
 

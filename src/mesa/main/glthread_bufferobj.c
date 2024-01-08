@@ -240,9 +240,7 @@ _mesa_unmarshal_BindBuffer(struct gl_context *ctx,
    if (cmd->target[1])
       CALL_BindBuffer(ctx->Dispatch.Current, (cmd->target[1], cmd->buffer[1]));
 
-   const unsigned cmd_size = (align(sizeof(struct marshal_cmd_BindBuffer), 8) / 8);
-   assert (cmd_size == cmd->cmd_base.cmd_size);
-   return cmd_size;
+   return align(sizeof(struct marshal_cmd_BindBuffer), 8) / 8;
 }
 
 void GLAPIENTRY
@@ -251,11 +249,13 @@ _mesa_marshal_BindBuffer(GLenum target, GLuint buffer)
    GET_CURRENT_CONTEXT(ctx);
    struct glthread_state *glthread = &ctx->GLThread;
    struct marshal_cmd_BindBuffer *last = glthread->LastBindBuffer;
+   int cmd_size = sizeof(struct marshal_cmd_BindBuffer);
 
    _mesa_glthread_BindBuffer(ctx, target, buffer);
 
    /* If the last call is BindBuffer... */
-   if (_mesa_glthread_call_is_last(glthread, &last->cmd_base)) {
+   if (_mesa_glthread_call_is_last(glthread, &last->cmd_base,
+                                   align(cmd_size, 8) / 8)) {
       /* If the target is in the last call and unbinding the buffer, overwrite
        * the buffer ID there.
        *
@@ -279,7 +279,6 @@ _mesa_marshal_BindBuffer(GLenum target, GLuint buffer)
       }
    }
 
-   int cmd_size = sizeof(struct marshal_cmd_BindBuffer);
    struct marshal_cmd_BindBuffer *cmd =
       _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_BindBuffer, cmd_size);
 
@@ -319,6 +318,7 @@ _mesa_glthread_DeleteBuffers(struct gl_context *ctx, GLsizei n,
 struct marshal_cmd_BufferData
 {
    struct marshal_cmd_base cmd_base;
+   uint16_t num_slots;
    GLuint target_or_name;
    GLsizeiptr size;
    GLenum usage;
@@ -355,7 +355,7 @@ _mesa_unmarshal_BufferData(struct gl_context *ctx,
       CALL_BufferData(ctx->Dispatch.Current,
                       (target_or_name, size, data, usage));
    }
-   return cmd->cmd_base.cmd_size;
+   return cmd->num_slots;
 }
 
 uint32_t
@@ -401,7 +401,7 @@ _mesa_marshal_BufferData_merged(GLuint target_or_name, GLsizeiptr size,
    struct marshal_cmd_BufferData *cmd =
       _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_BufferData,
                                       cmd_size);
-
+   cmd->num_slots = align(cmd_size, 8) / 8;
    cmd->target_or_name = target_or_name;
    cmd->size = size;
    cmd->usage = usage;
@@ -445,6 +445,7 @@ _mesa_marshal_NamedBufferDataEXT(GLuint buffer, GLsizeiptr size,
 struct marshal_cmd_BufferSubData
 {
    struct marshal_cmd_base cmd_base;
+   uint16_t num_slots;
    GLenum target_or_name;
    GLintptr offset;
    GLsizeiptr size;
@@ -472,7 +473,7 @@ _mesa_unmarshal_BufferSubData(struct gl_context *ctx,
       CALL_BufferSubData(ctx->Dispatch.Current,
                          (target_or_name, offset, size, data));
    }
-   return cmd->cmd_base.cmd_size;
+   return cmd->num_slots;
 }
 
 uint32_t
@@ -542,6 +543,7 @@ _mesa_marshal_BufferSubData_merged(GLuint target_or_name, GLintptr offset,
    struct marshal_cmd_BufferSubData *cmd =
       _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_BufferSubData,
                                       cmd_size);
+   cmd->num_slots = align(cmd_size, 8) / 8;
    cmd->target_or_name = target_or_name;
    cmd->offset = offset;
    cmd->size = size;

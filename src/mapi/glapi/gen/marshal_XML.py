@@ -174,6 +174,8 @@ class marshal_function(gl_XML.gl_function):
             print('struct marshal_cmd_{0}'.format(self.name))
             print('{')
             print('   struct marshal_cmd_base cmd_base;')
+            if variable_params:
+                print('   uint16_t num_slots;')
 
             # Sort the parameters according to their size to pack the structure optimally
             for p in sorted(fixed_params, key=lambda p: get_type_size(self.name, p)):

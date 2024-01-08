@@ -154,12 +154,10 @@ class PrintCode(gl_XML.gl_print_base):
 
             self.print_call(func, unmarshal=1)
             if variable_params:
-                out('return cmd->cmd_base.cmd_size;')
+                out('return cmd->num_slots;')
             else:
                 struct = 'struct marshal_cmd_{0}'.format(func.name)
-                out('const unsigned cmd_size = (align(sizeof({0}), 8) / 8);'.format(struct))
-                out('assert(cmd_size == cmd->cmd_base.cmd_size);')
-                out('return cmd_size;')
+                out('return align(sizeof({0}), 8) / 8;'.format(struct))
         out('}')
 
         out('{0}{1} GLAPIENTRY'.format('static ' if func.marshal_is_static() else '', func.return_type))
@@ -218,6 +216,8 @@ class PrintCode(gl_XML.gl_print_base):
             # Add the call into the batch.
             out('cmd = _mesa_glthread_allocate_command(ctx, '
                 'DISPATCH_CMD_{0}, cmd_size);'.format(func.name))
+            if variable_params:
+                out('cmd->num_slots = align(cmd_size, 8) / 8;')
 
             for p in fixed_params:
                 type = marshal_XML.get_marshal_type(func.name, p)

@@ -143,6 +143,20 @@ class marshal_function(gl_XML.gl_function):
                                        self.name.endswith('PointerOES') or
                                        self.name.endswith('OffsetEXT'))
 
+        # marshal_sync means whether a function should be called to determine
+        # whether we should sync.
+        if self.marshal_sync:
+            # This is a case of a pointer with an unknown size. Move
+            # variable-sized pointer parameters to fixed parameters because
+            # they will be passed as-is if the marshal_sync function evaluates
+            # to true.
+            self.fixed_params = self.fixed_params + self.variable_params
+            self.variable_params = []
+
+        # Sort the parameters, so that the marshal structure fields are sorted
+        # from smallest to biggest.
+        self.fixed_params = sorted(self.fixed_params, key=lambda p: self.get_type_size(p))
+
     def marshal_flavor(self):
         """Find out how this function should be marshalled between
         client and server threads."""
@@ -174,49 +188,27 @@ class marshal_function(gl_XML.gl_function):
                 self.name[0:8] != 'Internal' and
                 self.exec_flavor != 'beginend')
 
-    def get_fixed_params(self):
-        # We want glthread to ignore variable-sized parameters if the only thing
-        # we want is to pass the pointer parameter as-is, e.g. when a PBO is bound.
-        # Making it conditional on marshal_sync is kinda hacky, but it's the easiest
-        # path towards handling PBOs in glthread, which use marshal_sync to check whether
-        # a PBO is bound.
-        if self.marshal_sync:
-            list = self.fixed_params + self.variable_params
-        else:
-            list = self.fixed_params
-
-        return sorted(list, key=lambda p: self.get_type_size(p))
-
-    def get_variable_params(self):
-        if self.marshal_sync:
-            return []
-        else:
-            return self.variable_params
-
     def print_struct(self, is_header=False):
-        fixed_params = self.get_fixed_params()
-        variable_params = self.get_variable_params()
-
         if (self.marshal_struct == 'public') == is_header:
             print('struct marshal_cmd_{0}'.format(self.name))
             print('{')
             print('   struct marshal_cmd_base cmd_base;')
-            if variable_params:
+            if self.variable_params:
                 print('   uint16_t num_slots;')
 
-            for p in fixed_params:
+            for p in self.fixed_params:
                 if p.count:
                     print('   {0} {1}[{2}];'.format(
                             p.get_base_type_string(), p.name, p.count))
                 else:
                     print('   {0} {1};'.format(self.get_marshal_type(p), p.name))
 
-            for p in variable_params:
+            for p in self.variable_params:
                 if p.img_null_flag:
                     print('   bool {0}_null; /* If set, no data follows '
                         'for "{0}" */'.format(p.name))
 
-            for p in variable_params:
+            for p in self.variable_params:
                 if p.count_scale != 1:
                     print(('   /* Next {0} bytes are '
                          '{1} {2}[{3}][{4}] */').format(

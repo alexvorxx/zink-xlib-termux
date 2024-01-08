@@ -104,9 +104,6 @@ class PrintCode(gl_XML.gl_print_base):
         out('')
 
     def print_async_body(self, func):
-        fixed_params = func.get_fixed_params()
-        variable_params = func.get_variable_params()
-
         out('/* {0}: marshalled asynchronously */'.format(func.name))
         func.print_struct()
 
@@ -115,7 +112,7 @@ class PrintCode(gl_XML.gl_print_base):
              'const struct marshal_cmd_{0} *restrict cmd)').format(func.name))
         out('{')
         with indent():
-            for p in fixed_params:
+            for p in func.fixed_params:
                 if p.count:
                     p_decl = '{0} *{1} = cmd->{1};'.format(
                             p.get_base_type_string(), p.name)
@@ -130,13 +127,13 @@ class PrintCode(gl_XML.gl_print_base):
 
                 out(p_decl)
 
-            if variable_params:
-                for p in variable_params:
+            if func.variable_params:
+                for p in func.variable_params:
                     out('{0} *{1};'.format(
                             p.get_base_type_string(), p.name))
                 out('const char *variable_data = (const char *) (cmd + 1);')
                 i = 1
-                for p in variable_params:
+                for p in func.variable_params:
                     out('{0} = ({1} *) variable_data;'.format(
                             p.name, p.get_base_type_string()))
 
@@ -144,16 +141,16 @@ class PrintCode(gl_XML.gl_print_base):
                         out('if (cmd->{0}_null)'.format(p.name))
                         with indent():
                             out('{0} = NULL;'.format(p.name))
-                        if i < len(variable_params):
+                        if i < len(func.variable_params):
                             out('else')
                             with indent():
                                 out('variable_data += {0};'.format(p.size_string(False, marshal=1)))
-                    elif i < len(variable_params):
+                    elif i < len(func.variable_params):
                         out('variable_data += {0};'.format(p.size_string(False, marshal=1)))
                     i += 1
 
             self.print_call(func, unmarshal=1)
-            if variable_params:
+            if func.variable_params:
                 out('return cmd->num_slots;')
             else:
                 struct = 'struct marshal_cmd_{0}'.format(func.name)
@@ -216,10 +213,10 @@ class PrintCode(gl_XML.gl_print_base):
             # Add the call into the batch.
             out('cmd = _mesa_glthread_allocate_command(ctx, '
                 'DISPATCH_CMD_{0}, cmd_size);'.format(func.name))
-            if variable_params:
+            if func.variable_params:
                 out('cmd->num_slots = align(cmd_size, 8) / 8;')
 
-            for p in fixed_params:
+            for p in func.fixed_params:
                 type = func.get_marshal_type(p)
 
                 if p.count:
@@ -235,25 +232,25 @@ class PrintCode(gl_XML.gl_print_base):
                     out('cmd->{0} = {0} < 0 ? UINT16_MAX : MIN2({0}, UINT16_MAX);'.format(p.name))
                 else:
                     out('cmd->{0} = {0};'.format(p.name))
-            if variable_params:
+            if func.variable_params:
                 out('char *variable_data = (char *) (cmd + 1);')
                 i = 1
-                for p in variable_params:
+                for p in func.variable_params:
                     if p.img_null_flag:
                         out('cmd->{0}_null = !{0};'.format(p.name))
                         out('if (!cmd->{0}_null) {{'.format(p.name))
                         with indent():
                             out(('memcpy(variable_data, {0}, {0}_size);').format(p.name))
-                            if i < len(variable_params):
+                            if i < len(func.variable_params):
                                 out('variable_data += {0}_size;'.format(p.name))
                         out('}')
                     else:
                         out(('memcpy(variable_data, {0}, {0}_size);').format(p.name))
-                        if i < len(variable_params):
+                        if i < len(func.variable_params):
                             out('variable_data += {0}_size;'.format(p.name))
                     i += 1
 
-            if not fixed_params and not variable_params:
+            if not func.fixed_params and not func.variable_params:
                 out('(void) cmd;')
 
             if func.marshal_call_after:

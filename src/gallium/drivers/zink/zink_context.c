@@ -494,8 +494,8 @@ zink_create_sampler_state(struct pipe_context *pctx,
       sci.maxLod = MAX2(state->max_lod, state->min_lod);
    } else {
       sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-      sci.minLod = 0;
-      sci.maxLod = 0.25f;
+      sci.minLod = CLAMP(state->min_lod, 0.0f, 0.25f);
+      sci.maxLod = CLAMP(state->max_lod, 0.0f, 0.25f);
    }
 
    if (!sci.unnormalizedCoordinates) {

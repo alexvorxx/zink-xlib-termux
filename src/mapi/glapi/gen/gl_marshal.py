@@ -166,22 +166,11 @@ class PrintCode(gl_XML.gl_print_base):
             if func.marshal_call_before:
                 out(func.marshal_call_before);
 
-            if not func.marshal_sync:
-                for p in func.variable_params:
-                    out('int {0}_size = {1};'.format(p.name, p.size_string(marshal=1)))
-
             struct = 'struct marshal_cmd_{0}'.format(func.name)
-            size_terms = ['sizeof({0})'.format(struct)]
-            if not func.marshal_sync:
-                for p in func.variable_params:
-                    if p.img_null_flag:
-                        size_terms.append('({0} ? {0}_size : 0)'.format(p.name))
-                    else:
-                        size_terms.append('{0}_size'.format(p.name))
-            out('int cmd_size = {0};'.format(' + '.join(size_terms)))
-            out('{0} *cmd;'.format(struct))
 
             if func.marshal_sync:
+                out('int cmd_size = sizeof({0});'.format(struct))
+
                 out('if ({0}) {{'.format(func.marshal_sync))
                 with indent():
                     out('_mesa_glthread_finish_before(ctx, "{0}");'.format(func.name))
@@ -189,6 +178,16 @@ class PrintCode(gl_XML.gl_print_base):
                     out('return;')
                 out('}')
             else:
+                size_terms = ['sizeof({0})'.format(struct)]
+                for p in func.variable_params:
+                    out('int {0}_size = {1};'.format(p.name, p.size_string(marshal=1)))
+                    if p.img_null_flag:
+                        size_terms.append('({0} ? {0}_size : 0)'.format(p.name))
+                    else:
+                        size_terms.append('{0}_size'.format(p.name))
+
+                out('int cmd_size = {0};'.format(' + '.join(size_terms)))
+
                 # Fall back to syncing if variable-length sizes can't be handled.
                 #
                 # Check that any counts for variable-length arguments might be < 0, in
@@ -211,8 +210,8 @@ class PrintCode(gl_XML.gl_print_base):
                     out('}')
 
             # Add the call into the batch.
-            out('cmd = _mesa_glthread_allocate_command(ctx, '
-                'DISPATCH_CMD_{0}, cmd_size);'.format(func.name))
+            out('{0} *cmd = _mesa_glthread_allocate_command(ctx, '
+                'DISPATCH_CMD_{1}, cmd_size);'.format(struct, func.name))
             if func.variable_params:
                 out('cmd->num_slots = align(cmd_size, 8) / 8;')
 

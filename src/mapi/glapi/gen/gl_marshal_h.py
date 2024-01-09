@@ -86,18 +86,14 @@ def show_usage():
 
 
 if __name__ == '__main__':
-    file_name = 'gl_API.xml'
-
     try:
-        (args, trail) = getopt.getopt(sys.argv[1:], 'm:f:')
+        file_name = sys.argv[1]
+        pointer_size = int(sys.argv[2])
     except Exception:
         show_usage()
 
-    for (arg,val) in args:
-        if arg == '-f':
-            file_name = val
-
     printer = PrintCode()
 
-    api = gl_XML.parse_GL_API(file_name, marshal_XML.marshal_item_factory())
+    assert pointer_size != 0
+    api = gl_XML.parse_GL_API(file_name, marshal_XML.marshal_item_factory(), pointer_size)
     printer.Print(api)

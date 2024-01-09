@@ -89,10 +89,12 @@ def show_usage():
 if __name__ == '__main__':
     try:
         file_name = sys.argv[1]
+        pointer_size = int(sys.argv[2])
     except Exception:
         show_usage()
 
     printer = PrintCode()
 
-    api = gl_XML.parse_GL_API(file_name, marshal_XML.marshal_item_factory())
+    assert pointer_size != 0
+    api = gl_XML.parse_GL_API(file_name, marshal_XML.marshal_item_factory(), pointer_size)
     printer.Print(api)

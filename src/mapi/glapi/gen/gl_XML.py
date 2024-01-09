@@ -33,13 +33,13 @@ import typeexpr
 import static_data
 
 
-def parse_GL_API( file_name, factory = None ):
+def parse_GL_API(file_name, factory=None, pointer_size=0):
 
     if not factory:
         factory = gl_item_factory()
 
-    api = factory.create_api()
-    api.parse_file( file_name )
+    api = factory.create_api(pointer_size)
+    api.parse_file(file_name)
 
     # After the XML has been processed, we need to go back and assign
     # dispatch offsets to the functions that request that their offsets
@@ -855,12 +855,12 @@ class gl_item_factory(object):
     def create_parameter(self, element, context):
         return gl_parameter(element, context)
 
-    def create_api(self):
-        return gl_api(self)
+    def create_api(self, pointer_size):
+        return gl_api(self, pointer_size)
 
 
 class gl_api(object):
-    def __init__(self, factory):
+    def __init__(self, factory, pointer_size):
         self.functions_by_name = OrderedDict()
         self.enums_by_name = {}
         self.types_by_name = {}
@@ -871,6 +871,7 @@ class gl_api(object):
         self.factory = factory
 
         self.next_offset = 0
+        self.pointer_size = pointer_size
 
         typeexpr.create_initial_types()
         return

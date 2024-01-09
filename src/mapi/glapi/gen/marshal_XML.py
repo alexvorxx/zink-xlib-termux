@@ -92,15 +92,15 @@ class marshal_function(gl_XML.gl_function):
             'GLhandleARB': 4,
             'int': 4,
             'float': 4,
+            'GLintptr': self.context.pointer_size,
+            'GLsizeiptr': self.context.pointer_size,
+            'GLsync': self.context.pointer_size,
+            'GLDEBUGPROC': self.context.pointer_size,
             'GLdouble': 8,
             'GLclampd': 8,
-            'GLintptr': 8,
-            'GLsizeiptr': 8,
             'GLint64': 8,
             'GLuint64': 8,
             'GLuint64EXT': 8,
-            'GLsync': 8,
-            'GLDEBUGPROC': 8,
         }
         val = mapping.get(type, 9999)
         if val == 9999:

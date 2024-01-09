@@ -37,6 +37,8 @@ project(
 cc = meson.get_compiler('c')
 cpp = meson.get_compiler('cpp')
 
+sizeof_pointer = meson.get_compiler('c', native : true).sizeof('void*').to_string()
+
 null_dep = dependency('', required : false)
 
 if get_option('layout') != 'mirror'

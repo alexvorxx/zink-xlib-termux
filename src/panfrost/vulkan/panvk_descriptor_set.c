@@ -291,15 +291,9 @@ panvk_descriptor_set_destroy(struct panvk_device *device,
                              struct panvk_descriptor_pool *pool,
                              struct panvk_descriptor_set *set)
 {
-   vk_free(&device->vk.alloc, set->textures);
-   vk_free(&device->vk.alloc, set->samplers);
-   vk_free(&device->vk.alloc, set->ubos);
-   vk_free(&device->vk.alloc, set->dyn_ubos);
-   vk_free(&device->vk.alloc, set->dyn_ssbos);
-   vk_free(&device->vk.alloc, set->img_fmts);
-   vk_free(&device->vk.alloc, set->img_attrib_bufs);
    if (set->desc_bo)
       panvk_priv_bo_destroy(set->desc_bo, NULL);
+
    vk_object_free(&device->vk, NULL, set);
 }
 

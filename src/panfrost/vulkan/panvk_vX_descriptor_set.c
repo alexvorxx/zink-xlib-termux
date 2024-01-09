@@ -229,76 +229,68 @@ static void panvk_write_sampler_desc_raw(struct panvk_descriptor_set *set,
                                          uint32_t binding, uint32_t elem,
                                          struct panvk_sampler *sampler);
 
+static struct panvk_descriptor_set *
+panvk_descriptor_set_alloc(const struct panvk_descriptor_set_layout *layout,
+                           const VkAllocationCallbacks *alloc,
+                           VkSystemAllocationScope scope)
+{
+   VK_MULTIALLOC(ma);
+   VK_MULTIALLOC_DECL(&ma, struct panvk_descriptor_set, set, 1);
+   VK_MULTIALLOC_DECL(&ma, struct panvk_buffer_desc, dyn_ssbos,
+                      layout->num_dyn_ssbos);
+   VK_MULTIALLOC_DECL(&ma, struct mali_uniform_buffer_packed, ubos,
+                      layout->num_ubos);
+   VK_MULTIALLOC_DECL(&ma, struct panvk_buffer_desc, dyn_ubos,
+                      layout->num_dyn_ubos);
+   VK_MULTIALLOC_DECL(&ma, struct mali_sampler_packed, samplers,
+                      layout->num_samplers);
+   VK_MULTIALLOC_DECL(&ma, struct mali_texture_packed, textures,
+                      layout->num_textures);
+   VK_MULTIALLOC_DECL(&ma, struct mali_attribute_buffer_packed, img_attrib_bufs,
+                      layout->num_imgs * 2);
+   VK_MULTIALLOC_DECL(&ma, uint32_t, img_fmts, layout->num_imgs);
+
+   if (!vk_multialloc_zalloc(&ma, alloc, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT))
+      return NULL;
+
+   set->layout = layout;
+
+   if (layout->num_dyn_ssbos)
+      set->dyn_ssbos = dyn_ssbos;
+
+   if (layout->num_ubos)
+      set->ubos = ubos;
+
+   if (layout->num_dyn_ubos)
+      set->dyn_ubos = dyn_ubos;
+
+   if (layout->num_samplers)
+      set->samplers = samplers;
+
+   if (layout->num_textures)
+      set->textures = textures;
+
+   if (layout->num_imgs) {
+      set->img_attrib_bufs = img_attrib_bufs;
+      set->img_fmts = img_fmts;
+   }
+
+   return set;
+}
+
 static VkResult
 panvk_per_arch(descriptor_set_create)(
    struct panvk_device *device, struct panvk_descriptor_pool *pool,
    const struct panvk_descriptor_set_layout *layout,
    struct panvk_descriptor_set **out_set)
 {
-   struct panvk_descriptor_set *set;
-
    /* TODO: Allocate from the pool! */
-   set =
-      vk_object_zalloc(&device->vk, NULL, sizeof(struct panvk_descriptor_set),
-                       VK_OBJECT_TYPE_DESCRIPTOR_SET);
+   struct panvk_descriptor_set *set = panvk_descriptor_set_alloc(
+      layout, &device->vk.alloc, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!set)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   set->layout = layout;
-
-   if (layout->num_ubos) {
-      set->ubos = vk_zalloc(&device->vk.alloc,
-                            pan_size(UNIFORM_BUFFER) * layout->num_ubos, 8,
-                            VK_OBJECT_TYPE_DESCRIPTOR_SET);
-      if (!set->ubos)
-         goto err_free_set;
-   }
-
-   if (layout->num_dyn_ubos) {
-      set->dyn_ubos = vk_zalloc(&device->vk.alloc,
-                                sizeof(*set->dyn_ubos) * layout->num_dyn_ubos,
-                                8, VK_OBJECT_TYPE_DESCRIPTOR_SET);
-      if (!set->dyn_ubos)
-         goto err_free_set;
-   }
-
-   if (layout->num_dyn_ssbos) {
-      set->dyn_ssbos = vk_zalloc(
-         &device->vk.alloc, sizeof(*set->dyn_ssbos) * layout->num_dyn_ssbos, 8,
-         VK_OBJECT_TYPE_DESCRIPTOR_SET);
-      if (!set->dyn_ssbos)
-         goto err_free_set;
-   }
-
-   if (layout->num_samplers) {
-      set->samplers =
-         vk_zalloc(&device->vk.alloc, pan_size(SAMPLER) * layout->num_samplers,
-                   8, VK_OBJECT_TYPE_DESCRIPTOR_SET);
-      if (!set->samplers)
-         goto err_free_set;
-   }
-
-   if (layout->num_textures) {
-      set->textures =
-         vk_zalloc(&device->vk.alloc, pan_size(TEXTURE) * layout->num_textures,
-                   8, VK_OBJECT_TYPE_DESCRIPTOR_SET);
-      if (!set->textures)
-         goto err_free_set;
-   }
-
-   if (layout->num_imgs) {
-      set->img_fmts =
-         vk_zalloc(&device->vk.alloc, sizeof(*set->img_fmts) * layout->num_imgs,
-                   8, VK_OBJECT_TYPE_DESCRIPTOR_SET);
-      if (!set->img_fmts)
-         goto err_free_set;
-
-      set->img_attrib_bufs = vk_zalloc(
-         &device->vk.alloc, pan_size(ATTRIBUTE_BUFFER) * 2 * layout->num_imgs,
-         8, VK_OBJECT_TYPE_DESCRIPTOR_SET);
-      if (!set->img_attrib_bufs)
-         goto err_free_set;
-   }
+   vk_object_base_init(&device->vk, &set->base, VK_OBJECT_TYPE_DESCRIPTOR_SET);
 
    if (layout->desc_ubo_size) {
       set->desc_bo =
@@ -328,13 +320,6 @@ panvk_per_arch(descriptor_set_create)(
    return VK_SUCCESS;
 
 err_free_set:
-   vk_free(&device->vk.alloc, set->textures);
-   vk_free(&device->vk.alloc, set->samplers);
-   vk_free(&device->vk.alloc, set->ubos);
-   vk_free(&device->vk.alloc, set->dyn_ubos);
-   vk_free(&device->vk.alloc, set->dyn_ssbos);
-   vk_free(&device->vk.alloc, set->img_fmts);
-   vk_free(&device->vk.alloc, set->img_attrib_bufs);
    if (set->desc_bo)
       panvk_priv_bo_destroy(set->desc_bo, NULL);
    vk_object_free(&device->vk, NULL, set);

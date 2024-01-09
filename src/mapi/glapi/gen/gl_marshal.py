@@ -155,92 +155,91 @@ class PrintCode(gl_XML.gl_print_base):
         out('}')
 
     def print_marshal_async_code(self, func):
-        if True:
-            struct = 'struct marshal_cmd_{0}'.format(func.name)
+        struct = 'struct marshal_cmd_{0}'.format(func.name)
 
-            if func.marshal_sync:
-                out('int cmd_size = sizeof({0});'.format(struct))
+        if func.marshal_sync:
+            out('int cmd_size = sizeof({0});'.format(struct))
 
-                out('if ({0}) {{'.format(func.marshal_sync))
+            out('if ({0}) {{'.format(func.marshal_sync))
+            with indent():
+                out('_mesa_glthread_finish_before(ctx, "{0}");'.format(func.name))
+                self.print_call(func)
+                out('return;')
+            out('}')
+        else:
+            size_terms = ['sizeof({0})'.format(struct)]
+            for p in func.variable_params:
+                out('int {0}_size = {1};'.format(p.name, p.size_string(marshal=1)))
+                if p.img_null_flag:
+                    size_terms.append('({0} ? {0}_size : 0)'.format(p.name))
+                else:
+                    size_terms.append('{0}_size'.format(p.name))
+
+            out('int cmd_size = {0};'.format(' + '.join(size_terms)))
+
+            # Fall back to syncing if variable-length sizes can't be handled.
+            #
+            # Check that any counts for variable-length arguments might be < 0, in
+            # which case the command alloc or the memcpy would blow up before we
+            # get to the validation in Mesa core.
+            list = []
+            for p in func.parameters:
+                if p.is_variable_length():
+                    list.append('{0}_size < 0'.format(p.name))
+                    list.append('({0}_size > 0 && !{0})'.format(p.name))
+
+            if len(list) != 0:
+                list.append('(unsigned)cmd_size > MARSHAL_MAX_CMD_SIZE')
+
+                out('if (unlikely({0})) {{'.format(' || '.join(list)))
                 with indent():
                     out('_mesa_glthread_finish_before(ctx, "{0}");'.format(func.name))
                     self.print_call(func)
                     out('return;')
                 out('}')
+
+        # Add the call into the batch.
+        out('{0} *cmd = _mesa_glthread_allocate_command(ctx, '
+            'DISPATCH_CMD_{1}, cmd_size);'.format(struct, func.name))
+        if func.variable_params:
+            out('cmd->num_slots = align(cmd_size, 8) / 8;')
+
+        for p in func.fixed_params:
+            type = func.get_marshal_type(p)
+
+            if p.count:
+                out('memcpy(cmd->{0}, {0}, {1});'.format(
+                        p.name, p.size_string()))
+            elif type == 'GLenum8':
+                out('cmd->{0} = MIN2({0}, 0xff); /* clamped to 0xff (invalid enum) */'.format(p.name))
+            elif type == 'GLenum16':
+                out('cmd->{0} = MIN2({0}, 0xffff); /* clamped to 0xffff (invalid enum) */'.format(p.name))
+            elif type == 'GLclamped16i':
+                out('cmd->{0} = CLAMP({0}, INT16_MIN, INT16_MAX);'.format(p.name))
+            elif type == 'GLpacked16i':
+                out('cmd->{0} = {0} < 0 ? UINT16_MAX : MIN2({0}, UINT16_MAX);'.format(p.name))
             else:
-                size_terms = ['sizeof({0})'.format(struct)]
-                for p in func.variable_params:
-                    out('int {0}_size = {1};'.format(p.name, p.size_string(marshal=1)))
-                    if p.img_null_flag:
-                        size_terms.append('({0} ? {0}_size : 0)'.format(p.name))
-                    else:
-                        size_terms.append('{0}_size'.format(p.name))
-
-                out('int cmd_size = {0};'.format(' + '.join(size_terms)))
-
-                # Fall back to syncing if variable-length sizes can't be handled.
-                #
-                # Check that any counts for variable-length arguments might be < 0, in
-                # which case the command alloc or the memcpy would blow up before we
-                # get to the validation in Mesa core.
-                list = []
-                for p in func.parameters:
-                    if p.is_variable_length():
-                        list.append('{0}_size < 0'.format(p.name))
-                        list.append('({0}_size > 0 && !{0})'.format(p.name))
-
-                if len(list) != 0:
-                    list.append('(unsigned)cmd_size > MARSHAL_MAX_CMD_SIZE')
-
-                    out('if (unlikely({0})) {{'.format(' || '.join(list)))
+                out('cmd->{0} = {0};'.format(p.name))
+        if func.variable_params:
+            out('char *variable_data = (char *) (cmd + 1);')
+            i = 1
+            for p in func.variable_params:
+                if p.img_null_flag:
+                    out('cmd->{0}_null = !{0};'.format(p.name))
+                    out('if (!cmd->{0}_null) {{'.format(p.name))
                     with indent():
-                        out('_mesa_glthread_finish_before(ctx, "{0}");'.format(func.name))
-                        self.print_call(func)
-                        out('return;')
-                    out('}')
-
-            # Add the call into the batch.
-            out('{0} *cmd = _mesa_glthread_allocate_command(ctx, '
-                'DISPATCH_CMD_{1}, cmd_size);'.format(struct, func.name))
-            if func.variable_params:
-                out('cmd->num_slots = align(cmd_size, 8) / 8;')
-
-            for p in func.fixed_params:
-                type = func.get_marshal_type(p)
-
-                if p.count:
-                    out('memcpy(cmd->{0}, {0}, {1});'.format(
-                            p.name, p.size_string()))
-                elif type == 'GLenum8':
-                    out('cmd->{0} = MIN2({0}, 0xff); /* clamped to 0xff (invalid enum) */'.format(p.name))
-                elif type == 'GLenum16':
-                    out('cmd->{0} = MIN2({0}, 0xffff); /* clamped to 0xffff (invalid enum) */'.format(p.name))
-                elif type == 'GLclamped16i':
-                    out('cmd->{0} = CLAMP({0}, INT16_MIN, INT16_MAX);'.format(p.name))
-                elif type == 'GLpacked16i':
-                    out('cmd->{0} = {0} < 0 ? UINT16_MAX : MIN2({0}, UINT16_MAX);'.format(p.name))
-                else:
-                    out('cmd->{0} = {0};'.format(p.name))
-            if func.variable_params:
-                out('char *variable_data = (char *) (cmd + 1);')
-                i = 1
-                for p in func.variable_params:
-                    if p.img_null_flag:
-                        out('cmd->{0}_null = !{0};'.format(p.name))
-                        out('if (!cmd->{0}_null) {{'.format(p.name))
-                        with indent():
-                            out(('memcpy(variable_data, {0}, {0}_size);').format(p.name))
-                            if i < len(func.variable_params):
-                                out('variable_data += {0}_size;'.format(p.name))
-                        out('}')
-                    else:
                         out(('memcpy(variable_data, {0}, {0}_size);').format(p.name))
                         if i < len(func.variable_params):
                             out('variable_data += {0}_size;'.format(p.name))
-                    i += 1
+                    out('}')
+                else:
+                    out(('memcpy(variable_data, {0}, {0}_size);').format(p.name))
+                    if i < len(func.variable_params):
+                        out('variable_data += {0}_size;'.format(p.name))
+                i += 1
 
-            if not func.fixed_params and not func.variable_params:
-                out('(void) cmd;')
+        if not func.fixed_params and not func.variable_params:
+            out('(void) cmd;')
 
     def print_async_body(self, func):
         out('/* {0}: marshalled asynchronously */'.format(func.name))

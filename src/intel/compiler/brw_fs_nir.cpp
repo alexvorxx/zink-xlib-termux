@@ -3161,6 +3161,13 @@ fs_nir_emit_gs_intrinsic(nir_to_brw_state &ntb,
 
    case nir_intrinsic_emit_vertex_with_counter:
       emit_gs_vertex(ntb, instr->src[0], nir_intrinsic_stream_id(instr));
+
+      /* After an EmitVertex() call, the values of all outputs are undefined.
+       * If this is not in control flow, recreate a fresh set of output
+       * registers to keep their live ranges separate.
+       */
+      if (instr->instr.block->cf_node.parent->type == nir_cf_node_function)
+         fs_nir_setup_outputs(ntb);
       break;
 
    case nir_intrinsic_end_primitive_with_counter:

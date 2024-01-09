@@ -2601,11 +2601,6 @@ public:
          return visit_continue;
 
       foreach_in_list(ir_variable, param, &ir->parameters) {
-         if (!glsl_type_is_vector_or_scalar(param->type)) {
-            unsupported = true;
-            return visit_stop;
-         }
-
          if (param->data.mode != ir_var_function_in &&
              param->data.mode != ir_var_const_in)
             continue;

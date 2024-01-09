@@ -664,9 +664,6 @@ nir_visitor::create_function(ir_function_signature *ir)
    }
 
    foreach_in_list(ir_variable, param, &ir->parameters) {
-      /* FINISHME: pass arrays, structs, etc by reference? */
-      assert(glsl_type_is_vector(param->type) || glsl_type_is_scalar(param->type));
-
       func->params[np].num_components = 1;
       func->params[np].bit_size = 32;
       np++;
@@ -1526,9 +1523,13 @@ nir_visitor::visit(ir_call *ir)
 
       if (sig_param->data.mode == ir_var_function_in ||
           sig_param->data.mode == ir_var_function_inout) {
-         nir_store_deref(&b, param_deref,
-                         evaluate_rvalue(param_rvalue),
-                         ~0);
+         if (glsl_type_is_vector_or_scalar(param->type)) {
+            nir_store_deref(&b, param_deref,
+                            evaluate_rvalue(param_rvalue),
+                            ~0);
+         } else {
+            nir_copy_deref(&b, param_deref, evaluate_deref(param_rvalue));
+         }
       }
 
       call->params[i] = nir_src_for_ssa(&param_deref->def);
@@ -1549,9 +1550,14 @@ nir_visitor::visit(ir_call *ir)
 
       if (sig_param->data.mode == ir_var_function_out ||
           sig_param->data.mode == ir_var_function_inout) {
-         nir_store_deref(&b, evaluate_deref(param_rvalue),
-                         nir_load_deref(&b, nir_src_as_deref(call->params[i])),
-                         ~0);
+         if (glsl_type_is_vector_or_scalar(sig_param->type)) {
+            nir_store_deref(&b, evaluate_deref(param_rvalue),
+                            nir_load_deref(&b, nir_src_as_deref(call->params[i])),
+                            ~0);
+         } else {
+            nir_copy_deref(&b, evaluate_deref(param_rvalue),
+                           nir_src_as_deref(call->params[i]));
+         }
       }
 
       i++;

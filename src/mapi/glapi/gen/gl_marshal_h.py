@@ -61,6 +61,8 @@ class PrintCode(gl_XML.gl_print_base):
             if flavor in ('skip', 'sync'):
                 continue
             print('   DISPATCH_CMD_{0},'.format(func.name))
+            if func.packed_fixed_params:
+                print('   DISPATCH_CMD_{0}_packed,'.format(func.name))
         print('   NUM_DISPATCH_CMD,')
         print('};')
         print('')
@@ -71,8 +73,9 @@ class PrintCode(gl_XML.gl_print_base):
             flavor = func.marshal_flavor()
 
             if flavor in ('custom', 'async'):
-                print(('uint32_t _mesa_unmarshal_{0}(struct gl_context *ctx, '
-                       'const struct marshal_cmd_{0} *restrict cmd);').format(func.name))
+                func.print_unmarshal_prototype(suffix=';')
+                if func.packed_fixed_params:
+                    func.print_unmarshal_prototype(suffix=';', is_packed=True)
 
             if flavor in ('custom', 'async', 'sync') and not func.marshal_is_static():
                 print('{0} GLAPIENTRY _mesa_marshal_{1}({2});'.format(func.return_type, func.name, func.get_parameter_string()))

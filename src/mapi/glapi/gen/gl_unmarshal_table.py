@@ -68,6 +68,8 @@ class PrintCode(gl_XML.gl_print_base):
                 if func.marshal_flavor() in ('skip', 'sync'):
                     continue
                 out('[DISPATCH_CMD_{0}] = (_mesa_unmarshal_func)_mesa_unmarshal_{0},'.format(func.name))
+                if func.packed_fixed_params:
+                    out('[DISPATCH_CMD_{0}_packed] = (_mesa_unmarshal_func)_mesa_unmarshal_{0}_packed,'.format(func.name))
         out('};')
 
         # Print the string table of function names.
@@ -78,6 +80,8 @@ class PrintCode(gl_XML.gl_print_base):
                 if func.marshal_flavor() in ('skip', 'sync'):
                     continue
                 out('[DISPATCH_CMD_{0}] = "{0}",'.format(func.name))
+                if func.packed_fixed_params:
+                    out('[DISPATCH_CMD_{0}_packed] = "{0}_packed",'.format(func.name))
         out('};')
 
 

@@ -103,19 +103,23 @@ class PrintCode(gl_XML.gl_print_base):
         out('')
         out('')
 
-    def print_unmarshal_func(self, func):
-        out('uint32_t')
-        out(('_mesa_unmarshal_{0}(struct gl_context *ctx, '
-             'const struct marshal_cmd_{0} *restrict cmd)').format(func.name))
+    def print_unmarshal_func(self, func, is_packed=False):
+        func.print_unmarshal_prototype(is_packed=is_packed)
         out('{')
         with indent():
             for p in func.fixed_params:
+                type = func.get_marshal_type(p)
+
                 if p.count:
                     p_decl = '{0} *{1} = cmd->{1};'.format(
                             p.get_base_type_string(), p.name)
+                elif is_packed and func.packed_param_name == p.name:
+                    if func.packed_param_size == 0:
+                        p_decl = '{0} {1} = ({0})(uintptr_t)0;'.format(type, p.name)
+                    else:
+                        p_decl = '{0} {1} = ({0})(uintptr_t)cmd->{1};'.format(type, p.name)
                 else:
-                    p_decl = '{0} {1} = cmd->{1};'.format(
-                            func.get_marshal_type(p), p.name)
+                    p_decl = '{0} {1} = cmd->{1};'.format(type, p.name)
 
                 if not p_decl.startswith('const ') and p.count:
                     # Declare all local function variables as const, even if
@@ -150,12 +154,14 @@ class PrintCode(gl_XML.gl_print_base):
             if func.variable_params:
                 out('return cmd->num_slots;')
             else:
-                struct = 'struct marshal_cmd_{0}'.format(func.name)
-                out('return align(sizeof({0}), 8) / 8;'.format(struct))
+                out('return align(sizeof({0}), 8) / 8;'.format(func.get_marshal_struct_name(is_packed)))
         out('}')
 
-    def print_marshal_async_code(self, func):
-        struct = 'struct marshal_cmd_{0}'.format(func.name)
+        if not is_packed and func.packed_fixed_params:
+            self.print_unmarshal_func(func, is_packed=True)
+
+    def print_marshal_async_code(self, func, is_packed=False):
+        struct = func.get_marshal_struct_name(is_packed)
 
         if func.marshal_sync:
             out('int cmd_size = sizeof({0});'.format(struct))
@@ -205,17 +211,24 @@ class PrintCode(gl_XML.gl_print_base):
                 out('assert(cmd_size >= 0 && cmd_size <= MARSHAL_MAX_CMD_SIZE);')
 
         # Add the call into the batch.
-        out('{0} *cmd = _mesa_glthread_allocate_command(ctx, '
-            'DISPATCH_CMD_{1}, cmd_size);'.format(struct, func.name))
+        dispatch_cmd = 'DISPATCH_CMD_{0}{1}'.format(func.name, '_packed' if is_packed else '')
+        if func.get_fixed_params(is_packed) or func.variable_params:
+            out('{0} *cmd = _mesa_glthread_allocate_command(ctx, {1}, cmd_size);'
+                .format(struct, dispatch_cmd))
+        else:
+            out('_mesa_glthread_allocate_command(ctx, {0}, cmd_size);'.format(dispatch_cmd))
+
         if func.variable_params:
             out('cmd->num_slots = align(cmd_size, 8) / 8;')
 
-        for p in func.fixed_params:
+        for p in func.get_fixed_params(is_packed):
             type = func.get_marshal_type(p)
 
             if p.count:
                 out('memcpy(cmd->{0}, {0}, {1});'.format(
                         p.name, p.size_string()))
+            elif is_packed and p.name == func.packed_param_name:
+                out('cmd->{0} = (uintptr_t){0}; /* truncated */'.format(p.name))
             elif type == 'GLenum8':
                 out('cmd->{0} = MIN2({0}, 0xff); /* clamped to 0xff (invalid enum) */'.format(p.name))
             elif type == 'GLenum16':
@@ -226,6 +239,7 @@ class PrintCode(gl_XML.gl_print_base):
                 out('cmd->{0} = {0} < 0 ? UINT16_MAX : MIN2({0}, UINT16_MAX);'.format(p.name))
             else:
                 out('cmd->{0} = {0};'.format(p.name))
+
         if func.variable_params:
             out('char *variable_data = (char *) (cmd + 1);')
             i = 1
@@ -244,9 +258,6 @@ class PrintCode(gl_XML.gl_print_base):
                         out('variable_data += {0}_size;'.format(p.name))
                 i += 1
 
-        if not func.fixed_params and not func.variable_params:
-            out('(void) cmd;')
-
     def print_async_body(self, func):
         out('/* {0}: marshalled asynchronously */'.format(func.name))
         func.print_struct()
@@ -261,7 +272,22 @@ class PrintCode(gl_XML.gl_print_base):
             if func.marshal_call_before:
                 out(func.marshal_call_before);
 
-            self.print_marshal_async_code(func)
+            if func.packed_fixed_params:
+                if func.packed_param_size > 0:
+                    out('if (((uintptr_t){0} & 0x{1}) == (uintptr_t){0}) {{'
+                        .format(func.packed_param_name,
+                                'ff' * func.packed_param_size))
+                else:
+                    out('if (!{0}) {{'.format(func.packed_param_name))
+
+                with indent():
+                    self.print_marshal_async_code(func, is_packed=True)
+                out('} else {')
+                with indent():
+                    self.print_marshal_async_code(func)
+                out('}')
+            else:
+                self.print_marshal_async_code(func)
 
             if func.marshal_call_after:
                 out(func.marshal_call_after)

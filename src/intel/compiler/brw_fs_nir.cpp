@@ -3549,30 +3549,6 @@ emit_is_helper_invocation(nir_to_brw_state &ntb, fs_reg result)
    }
 }
 
-static void
-emit_fragcoord_interpolation(nir_to_brw_state &ntb, fs_reg wpos)
-{
-   const fs_builder &bld = ntb.bld;
-   fs_visitor &s = ntb.s;
-
-   assert(s.stage == MESA_SHADER_FRAGMENT);
-
-   /* gl_FragCoord.x */
-   bld.MOV(wpos, s.pixel_x);
-   wpos = offset(wpos, bld, 1);
-
-   /* gl_FragCoord.y */
-   bld.MOV(wpos, s.pixel_y);
-   wpos = offset(wpos, bld, 1);
-
-   /* gl_FragCoord.z */
-   bld.MOV(wpos, s.pixel_z);
-   wpos = offset(wpos, bld, 1);
-
-   /* gl_FragCoord.w: Already set up in emit_interpolation */
-   bld.MOV(wpos, s.wpos_w);
-}
-
 static fs_reg
 emit_frontfacing_interpolation(nir_to_brw_state &ntb)
 {
@@ -4211,9 +4187,11 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
       break;
    }
 
-   case nir_intrinsic_load_frag_coord:
-      emit_fragcoord_interpolation(ntb, dest);
+   case nir_intrinsic_load_frag_coord: {
+      fs_reg comps[4] = { s.pixel_x, s.pixel_y, s.pixel_z, s.wpos_w };
+      bld.VEC(dest, comps, 4);
       break;
+   }
 
    case nir_intrinsic_load_interpolated_input: {
       assert(instr->src[0].ssa &&

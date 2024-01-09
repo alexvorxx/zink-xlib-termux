@@ -698,7 +698,8 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
        * We need to pin both split SEND sources in g112-g126/127, so only
        * allow this if the registers aren't too large.
        */
-      if (inst->opcode == SHADER_OPCODE_SEND && entry->src.file == VGRF) {
+      if (inst->opcode == SHADER_OPCODE_SEND && inst->sources >= 4 &&
+          entry->src.file == VGRF) {
          int other_src = arg == 2 ? 3 : 2;
          unsigned other_size = inst->src[other_src].file == VGRF ?
                                alloc.sizes[inst->src[other_src].nr] :

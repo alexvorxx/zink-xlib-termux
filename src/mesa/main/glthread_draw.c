@@ -481,13 +481,14 @@ _mesa_unmarshal_MultiDrawArraysUserBuf(struct gl_context *ctx,
 {
    const GLenum mode = cmd->mode;
    const GLsizei draw_count = cmd->draw_count;
+   const GLsizei real_draw_count = MAX2(draw_count, 0);
    const GLuint user_buffer_mask = cmd->user_buffer_mask;
 
    const char *variable_data = (const char *)(cmd + 1);
    const GLint *first = (GLint *)variable_data;
-   variable_data += sizeof(GLint) * draw_count;
+   variable_data += sizeof(GLint) * real_draw_count;
    const GLsizei *count = (GLsizei *)variable_data;
-   variable_data += sizeof(GLsizei) * draw_count;
+   variable_data += sizeof(GLsizei) * real_draw_count;
    const struct glthread_attrib_binding *buffers =
       (const struct glthread_attrib_binding *)variable_data;
 
@@ -897,18 +898,19 @@ _mesa_unmarshal_MultiDrawElementsUserBuf(struct gl_context *ctx,
                                          const struct marshal_cmd_MultiDrawElementsUserBuf *restrict cmd)
 {
    const GLsizei draw_count = cmd->draw_count;
+   const GLsizei real_draw_count = MAX2(draw_count, 0);
    const GLuint user_buffer_mask = cmd->user_buffer_mask;
    const bool has_base_vertex = cmd->has_base_vertex;
 
    const char *variable_data = (const char *)(cmd + 1);
    const GLsizei *count = (GLsizei *)variable_data;
-   variable_data += sizeof(GLsizei) * draw_count;
+   variable_data += sizeof(GLsizei) * real_draw_count;
    const GLvoid *const *indices = (const GLvoid *const *)variable_data;
-   variable_data += sizeof(const GLvoid *const *) * draw_count;
+   variable_data += sizeof(const GLvoid *const *) * real_draw_count;
    const GLsizei *basevertex = NULL;
    if (has_base_vertex) {
       basevertex = (GLsizei *)variable_data;
-      variable_data += sizeof(GLsizei) * draw_count;
+      variable_data += sizeof(GLsizei) * real_draw_count;
    }
    const struct glthread_attrib_binding *buffers =
       (const struct glthread_attrib_binding *)variable_data;

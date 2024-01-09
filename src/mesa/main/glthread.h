@@ -90,11 +90,6 @@ union gl_vertex_format_user {
       .Doubles = doubles \
    }}
 
-struct glthread_attrib_binding {
-   struct gl_buffer_object *buffer; /**< where non-VBO data was uploaded */
-   int offset;                      /**< offset to uploaded non-VBO data */
-};
-
 struct glthread_attrib {
    /* Per attrib: */
    uint8_t ElementSize;       /**< max 32 */

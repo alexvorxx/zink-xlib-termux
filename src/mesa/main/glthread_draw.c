@@ -118,7 +118,7 @@ static ALWAYS_INLINE bool
 upload_vertices(struct gl_context *ctx, unsigned user_buffer_mask,
                 unsigned start_vertex, unsigned num_vertices,
                 unsigned start_instance, unsigned num_instances,
-                struct glthread_attrib_binding *buffers)
+                struct gl_buffer_object **buffers, int *offsets)
 {
    struct glthread_vao *vao = ctx->GLThread.CurrentVAO;
    unsigned attrib_mask_iter = vao->Enabled;
@@ -206,14 +206,14 @@ upload_vertices(struct gl_context *ctx, unsigned user_buffer_mask,
                                &upload_buffer, NULL, ctx->Const.VertexBufferOffsetIsInt32 ? 0 : start);
          if (!upload_buffer) {
             for (unsigned i = 0; i < num_buffers; i++)
-               _mesa_reference_buffer_object(ctx, &buffers[i].buffer, NULL);
+               _mesa_reference_buffer_object(ctx, &buffers[i], NULL);
 
             _mesa_marshal_InternalSetError(GL_OUT_OF_MEMORY);
             return false;
          }
 
-         buffers[num_buffers].buffer = upload_buffer;
-         buffers[num_buffers].offset = upload_offset - start;
+         buffers[num_buffers] = upload_buffer;
+         offsets[num_buffers] = upload_offset - start;
          num_buffers++;
       }
 
@@ -266,14 +266,14 @@ upload_vertices(struct gl_context *ctx, unsigned user_buffer_mask,
                             ctx->Const.VertexBufferOffsetIsInt32 ? 0 : offset);
       if (!upload_buffer) {
          for (unsigned i = 0; i < num_buffers; i++)
-            _mesa_reference_buffer_object(ctx, &buffers[i].buffer, NULL);
+            _mesa_reference_buffer_object(ctx, &buffers[i], NULL);
 
          _mesa_marshal_InternalSetError(GL_OUT_OF_MEMORY);
          return false;
       }
 
-      buffers[num_buffers].buffer = upload_buffer;
-      buffers[num_buffers].offset = upload_offset - offset;
+      buffers[num_buffers] = upload_buffer;
+      offsets[num_buffers] = upload_offset - offset;
       num_buffers++;
    }
 
@@ -342,12 +342,14 @@ _mesa_unmarshal_DrawArraysUserBuf(struct gl_context *ctx,
                                   const struct marshal_cmd_DrawArraysUserBuf *restrict cmd)
 {
    const GLuint user_buffer_mask = cmd->user_buffer_mask;
-   const struct glthread_attrib_binding *buffers =
-      (const struct glthread_attrib_binding *)(cmd + 1);
 
    /* Bind uploaded buffers if needed. */
-   if (user_buffer_mask)
-      _mesa_InternalBindVertexBuffers(ctx, buffers, user_buffer_mask);
+   if (user_buffer_mask) {
+      struct gl_buffer_object **buffers = (struct gl_buffer_object **)(cmd + 1);
+      const int *offsets = (const int *)(buffers + util_bitcount(user_buffer_mask));
+
+      _mesa_InternalBindVertexBuffers(ctx, buffers, offsets, user_buffer_mask);
+   }
 
    const GLenum mode = cmd->mode;
    const GLint first = cmd->first;
@@ -439,15 +441,18 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
    }
 
    /* Upload and draw. */
-   struct glthread_attrib_binding buffers[VERT_ATTRIB_MAX];
+   struct gl_buffer_object *buffers[VERT_ATTRIB_MAX];
+   int offsets[VERT_ATTRIB_MAX];
 
    if (!upload_vertices(ctx, user_buffer_mask, first, count, baseinstance,
-                        instance_count, buffers))
+                        instance_count, buffers, offsets))
       return; /* the error is set by upload_vertices */
 
-   int buffers_size = util_bitcount(user_buffer_mask) * sizeof(buffers[0]);
+   unsigned num_buffers = util_bitcount(user_buffer_mask);
+   int buffers_size = num_buffers * sizeof(buffers[0]);
+   int offsets_size = num_buffers * sizeof(int);
    int cmd_size = sizeof(struct marshal_cmd_DrawArraysUserBuf) +
-                  buffers_size;
+                  buffers_size + offsets_size;
    struct marshal_cmd_DrawArraysUserBuf *cmd;
 
    cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawArraysUserBuf,
@@ -461,8 +466,12 @@ draw_arrays(GLuint drawid, GLenum mode, GLint first, GLsizei count,
    cmd->drawid = drawid;
    cmd->user_buffer_mask = user_buffer_mask;
 
-   if (user_buffer_mask)
-      memcpy(cmd + 1, buffers, buffers_size);
+   if (user_buffer_mask) {
+      char *variable_data = (char*)(cmd + 1);
+      memcpy(variable_data, buffers, buffers_size);
+      variable_data += buffers_size;
+      memcpy(variable_data, offsets, offsets_size);
+   }
 }
 
 /* MultiDrawArrays with user buffers. */
@@ -488,13 +497,21 @@ _mesa_unmarshal_MultiDrawArraysUserBuf(struct gl_context *ctx,
    const GLint *first = (GLint *)variable_data;
    variable_data += sizeof(GLint) * real_draw_count;
    const GLsizei *count = (GLsizei *)variable_data;
-   variable_data += sizeof(GLsizei) * real_draw_count;
-   const struct glthread_attrib_binding *buffers =
-      (const struct glthread_attrib_binding *)variable_data;
 
    /* Bind uploaded buffers if needed. */
-   if (user_buffer_mask)
-      _mesa_InternalBindVertexBuffers(ctx, buffers, user_buffer_mask);
+   if (user_buffer_mask) {
+      variable_data += sizeof(GLsizei) * real_draw_count;
+      const int *offsets = (const int *)variable_data;
+      variable_data += sizeof(int) * util_bitcount(user_buffer_mask);
+
+      /* Align for pointers. */
+      if ((uintptr_t)variable_data % sizeof(uintptr_t))
+         variable_data += 4;
+
+      struct gl_buffer_object **buffers = (struct gl_buffer_object **)variable_data;
+
+      _mesa_InternalBindVertexBuffers(ctx, buffers, offsets, user_buffer_mask);
+   }
 
    CALL_MultiDrawArrays(ctx->Dispatch.Current,
                         (mode, first, count, draw_count));
@@ -514,7 +531,8 @@ _mesa_marshal_MultiDrawArrays(GLenum mode, const GLint *first,
       return;
    }
 
-   struct glthread_attrib_binding buffers[VERT_ATTRIB_MAX];
+   struct gl_buffer_object *buffers[VERT_ATTRIB_MAX];
+   int offsets[VERT_ATTRIB_MAX];
    unsigned user_buffer_mask =
       _mesa_is_desktop_gl_core(ctx) || draw_count <= 0 ||
       ctx->Dispatch.Current == ctx->Dispatch.ContextLost ||
@@ -547,7 +565,7 @@ _mesa_marshal_MultiDrawArrays(GLenum mode, const GLint *first,
          unsigned num_vertices = max_index_exclusive - min_index;
 
          if (!upload_vertices(ctx, user_buffer_mask, min_index, num_vertices,
-                              0, 1, buffers))
+                              0, 1, buffers, offsets))
             return; /* the error is set by upload_vertices */
       }
    }
@@ -556,9 +574,11 @@ _mesa_marshal_MultiDrawArrays(GLenum mode, const GLint *first,
    int real_draw_count = MAX2(draw_count, 0);
    int first_size = sizeof(GLint) * real_draw_count;
    int count_size = sizeof(GLsizei) * real_draw_count;
-   int buffers_size = util_bitcount(user_buffer_mask) * sizeof(buffers[0]);
+   unsigned num_buffers = util_bitcount(user_buffer_mask);
+   int buffers_size = num_buffers * sizeof(buffers[0]);
+   int offsets_size = num_buffers * sizeof(int);
    int cmd_size = sizeof(struct marshal_cmd_MultiDrawArraysUserBuf) +
-                  first_size + count_size + buffers_size;
+                  first_size + count_size + buffers_size + offsets_size;
    struct marshal_cmd_MultiDrawArraysUserBuf *cmd;
 
    /* Make sure cmd can fit in the batch buffer */
@@ -577,14 +597,23 @@ _mesa_marshal_MultiDrawArrays(GLenum mode, const GLint *first,
 
       if (user_buffer_mask) {
          variable_data += count_size;
+         memcpy(variable_data, offsets, offsets_size);
+         variable_data += offsets_size;
+
+         /* Align for pointers. */
+         if ((uintptr_t)variable_data % sizeof(uintptr_t))
+            variable_data += 4;
+
          memcpy(variable_data, buffers, buffers_size);
       }
    } else {
       /* The call is too large, so sync and execute the unmarshal code here. */
       _mesa_glthread_finish_before(ctx, "MultiDrawArrays");
 
-      if (user_buffer_mask)
-         _mesa_InternalBindVertexBuffers(ctx, buffers, user_buffer_mask);
+      if (user_buffer_mask) {
+         _mesa_InternalBindVertexBuffers(ctx, buffers, offsets,
+                                         user_buffer_mask);
+      }
 
       CALL_MultiDrawArrays(ctx->Dispatch.Current,
                            (mode, first, count, draw_count));
@@ -665,12 +694,14 @@ _mesa_unmarshal_DrawElementsUserBuf(struct gl_context *ctx,
                                     const struct marshal_cmd_DrawElementsUserBuf *restrict cmd)
 {
    const GLuint user_buffer_mask = cmd->user_buffer_mask;
-   const struct glthread_attrib_binding *buffers =
-      (const struct glthread_attrib_binding *)(cmd + 1);
 
    /* Bind uploaded buffers if needed. */
-   if (user_buffer_mask)
-      _mesa_InternalBindVertexBuffers(ctx, buffers, user_buffer_mask);
+   if (user_buffer_mask) {
+      struct gl_buffer_object **buffers = (struct gl_buffer_object **)(cmd + 1);
+      const int *offsets = (const int *)(buffers + util_bitcount(user_buffer_mask));
+
+      _mesa_InternalBindVertexBuffers(ctx, buffers, offsets, user_buffer_mask);
+   }
 
    /* Draw. */
    CALL_DrawElementsUserBuf(ctx->Dispatch.Current, (cmd));
@@ -843,10 +874,12 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
       return;
    }
 
-   struct glthread_attrib_binding buffers[VERT_ATTRIB_MAX];
+   struct gl_buffer_object *buffers[VERT_ATTRIB_MAX];
+   int offsets[VERT_ATTRIB_MAX];
+
    if (user_buffer_mask) {
       if (!upload_vertices(ctx, user_buffer_mask, start_vertex, num_vertices,
-                           baseinstance, instance_count, buffers))
+                           baseinstance, instance_count, buffers, offsets))
          return; /* the error is set by upload_vertices */
    }
 
@@ -859,9 +892,11 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
    }
 
    /* Draw asynchronously. */
-   int buffers_size = util_bitcount(user_buffer_mask) * sizeof(buffers[0]);
+   unsigned num_buffers = util_bitcount(user_buffer_mask);
+   int buffers_size = num_buffers * sizeof(buffers[0]);
+   int offsets_size = num_buffers * sizeof(int);
    int cmd_size = sizeof(struct marshal_cmd_DrawElementsUserBuf) +
-                  buffers_size;
+                  buffers_size + offsets_size;
    struct marshal_cmd_DrawElementsUserBuf *cmd;
 
    cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsUserBuf, cmd_size);
@@ -877,8 +912,12 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
    cmd->index_buffer = index_buffer;
    cmd->drawid = drawid;
 
-   if (user_buffer_mask)
-      memcpy(cmd + 1, buffers, buffers_size);
+   if (user_buffer_mask) {
+      char *variable_data = (char*)(cmd + 1);
+      memcpy(variable_data, buffers, buffers_size);
+      variable_data += buffers_size;
+      memcpy(variable_data, offsets, offsets_size);
+   }
 }
 
 struct marshal_cmd_MultiDrawElementsUserBuf
@@ -905,19 +944,30 @@ _mesa_unmarshal_MultiDrawElementsUserBuf(struct gl_context *ctx,
    const char *variable_data = (const char *)(cmd + 1);
    const GLsizei *count = (GLsizei *)variable_data;
    variable_data += sizeof(GLsizei) * real_draw_count;
-   const GLvoid *const *indices = (const GLvoid *const *)variable_data;
-   variable_data += sizeof(const GLvoid *const *) * real_draw_count;
    const GLsizei *basevertex = NULL;
    if (has_base_vertex) {
       basevertex = (GLsizei *)variable_data;
       variable_data += sizeof(GLsizei) * real_draw_count;
    }
-   const struct glthread_attrib_binding *buffers =
-      (const struct glthread_attrib_binding *)variable_data;
+   const int *offsets = NULL;
+   if (user_buffer_mask) {
+      offsets = (const int *)variable_data;
+      variable_data += sizeof(int) * util_bitcount(user_buffer_mask);
+   }
+
+   /* Align for pointers. */
+   if ((uintptr_t)variable_data % sizeof(uintptr_t))
+      variable_data += 4;
+
+   const GLvoid *const *indices = (const GLvoid *const *)variable_data;
+   variable_data += sizeof(const GLvoid *const *) * real_draw_count;
 
    /* Bind uploaded buffers if needed. */
-   if (user_buffer_mask)
-      _mesa_InternalBindVertexBuffers(ctx, buffers, user_buffer_mask);
+   if (user_buffer_mask) {
+      struct gl_buffer_object **buffers = (struct gl_buffer_object **)variable_data;
+
+      _mesa_InternalBindVertexBuffers(ctx, buffers, offsets, user_buffer_mask);
+   }
 
    /* Draw. */
    const GLenum mode = cmd->mode;
@@ -938,15 +988,19 @@ multi_draw_elements_async(struct gl_context *ctx, GLenum mode,
                           const GLsizei *basevertex,
                           struct gl_buffer_object *index_buffer,
                           unsigned user_buffer_mask,
-                          const struct glthread_attrib_binding *buffers)
+                          struct gl_buffer_object **buffers,
+                          const int *offsets)
 {
    int real_draw_count = MAX2(draw_count, 0);
    int count_size = sizeof(GLsizei) * real_draw_count;
    int indices_size = sizeof(indices[0]) * real_draw_count;
    int basevertex_size = basevertex ? sizeof(GLsizei) * real_draw_count : 0;
-   int buffers_size = util_bitcount(user_buffer_mask) * sizeof(buffers[0]);
+   unsigned num_buffers = util_bitcount(user_buffer_mask);
+   int buffers_size = num_buffers * sizeof(buffers[0]);
+   int offsets_size = num_buffers * sizeof(int);
    int cmd_size = sizeof(struct marshal_cmd_MultiDrawElementsUserBuf) +
-                  count_size + indices_size + basevertex_size + buffers_size;
+                  count_size + indices_size + basevertex_size + buffers_size +
+                  offsets_size;
    struct marshal_cmd_MultiDrawElementsUserBuf *cmd;
 
    /* Make sure cmd can fit the queue buffer */
@@ -963,13 +1017,21 @@ multi_draw_elements_async(struct gl_context *ctx, GLenum mode,
       char *variable_data = (char*)(cmd + 1);
       memcpy(variable_data, count, count_size);
       variable_data += count_size;
-      memcpy(variable_data, indices, indices_size);
-      variable_data += indices_size;
-
       if (basevertex) {
          memcpy(variable_data, basevertex, basevertex_size);
          variable_data += basevertex_size;
       }
+      if (user_buffer_mask) {
+         memcpy(variable_data, offsets, offsets_size);
+         variable_data += offsets_size;
+      }
+
+      /* Align for pointers. */
+      if ((uintptr_t)variable_data % sizeof(uintptr_t))
+         variable_data += 4;
+
+      memcpy(variable_data, indices, indices_size);
+      variable_data += indices_size;
 
       if (user_buffer_mask)
          memcpy(variable_data, buffers, buffers_size);
@@ -978,8 +1040,10 @@ multi_draw_elements_async(struct gl_context *ctx, GLenum mode,
       _mesa_glthread_finish_before(ctx, "DrawElements");
 
       /* Bind uploaded buffers if needed. */
-      if (user_buffer_mask)
-         _mesa_InternalBindVertexBuffers(ctx, buffers, user_buffer_mask);
+      if (user_buffer_mask) {
+         _mesa_InternalBindVertexBuffers(ctx, buffers, offsets,
+                                         user_buffer_mask);
+      }
 
       /* Draw. */
       CALL_MultiDrawElementsUserBuf(ctx->Dispatch.Current,
@@ -1030,7 +1094,7 @@ _mesa_marshal_MultiDrawElementsBaseVertex(GLenum mode, const GLsizei *count,
    /* Fast path when we don't need to upload anything. */
    if (!user_buffer_mask && !has_user_indices) {
       multi_draw_elements_async(ctx, mode, count, type, indices,
-                                draw_count, basevertex, NULL, 0, NULL);
+                                draw_count, basevertex, NULL, 0, NULL, NULL);
       return;
    }
 
@@ -1054,7 +1118,7 @@ _mesa_marshal_MultiDrawElementsBaseVertex(GLenum mode, const GLsizei *count,
          if (vertex_count < 0) {
             /* Just call the driver to set the error. */
             multi_draw_elements_async(ctx, mode, count, type, indices, draw_count,
-                                      basevertex, NULL, 0, NULL);
+                                      basevertex, NULL, 0, NULL, NULL);
             return;
          }
          if (vertex_count == 0)
@@ -1092,7 +1156,7 @@ _mesa_marshal_MultiDrawElementsBaseVertex(GLenum mode, const GLsizei *count,
       if (total_count == 0 || num_vertices == 0) {
          /* Nothing to do, but call the driver to set possible GL errors. */
          multi_draw_elements_async(ctx, mode, count, type, indices, draw_count,
-                                   basevertex, NULL, 0, NULL);
+                                   basevertex, NULL, 0, NULL, NULL);
          return;
       }
    } else if (has_user_indices) {
@@ -1103,7 +1167,7 @@ _mesa_marshal_MultiDrawElementsBaseVertex(GLenum mode, const GLsizei *count,
          if (vertex_count < 0) {
             /* Just call the driver to set the error. */
             multi_draw_elements_async(ctx, mode, count, type, indices, draw_count,
-                                      basevertex, NULL, 0, NULL);
+                                      basevertex, NULL, 0, NULL, NULL);
             return;
          }
          if (vertex_count == 0)
@@ -1115,16 +1179,18 @@ _mesa_marshal_MultiDrawElementsBaseVertex(GLenum mode, const GLsizei *count,
       if (total_count == 0) {
          /* Nothing to do, but call the driver to set possible GL errors. */
          multi_draw_elements_async(ctx, mode, count, type, indices, draw_count,
-                                   basevertex, NULL, 0, NULL);
+                                   basevertex, NULL, 0, NULL, NULL);
          return;
       }
    }
 
    /* Upload vertices. */
-   struct glthread_attrib_binding buffers[VERT_ATTRIB_MAX];
+   struct gl_buffer_object *buffers[VERT_ATTRIB_MAX];
+   int offsets[VERT_ATTRIB_MAX];
+
    if (user_buffer_mask) {
       if (!upload_vertices(ctx, user_buffer_mask, min_index, num_vertices,
-                           0, 1, buffers))
+                           0, 1, buffers, offsets))
          return; /* the error is set by upload_vertices */
    }
 
@@ -1145,7 +1211,7 @@ _mesa_marshal_MultiDrawElementsBaseVertex(GLenum mode, const GLsizei *count,
    /* Draw asynchronously. */
    multi_draw_elements_async(ctx, mode, count, type, indices, draw_count,
                              basevertex, index_buffer, user_buffer_mask,
-                             buffers);
+                             buffers, offsets);
 }
 
 void GLAPIENTRY

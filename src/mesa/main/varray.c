@@ -3547,18 +3547,18 @@ _mesa_BindVertexBuffers(GLuint first, GLsizei count, const GLuint *buffers,
 
 void
 _mesa_InternalBindVertexBuffers(struct gl_context *ctx,
-                                const struct glthread_attrib_binding *buffers,
-                                GLbitfield buffer_mask)
+                                struct gl_buffer_object **buffers,
+                                const int *offsets, GLbitfield buffer_mask)
 {
    struct gl_vertex_array_object *vao = ctx->Array.VAO;
    unsigned param_index = 0;
 
    while (buffer_mask) {
       unsigned i = u_bit_scan(&buffer_mask);
-      struct gl_buffer_object *buf = buffers[param_index].buffer;
+      struct gl_buffer_object *buf = buffers[param_index];
 
       /* The buffer reference is passed to _mesa_bind_vertex_buffer. */
-      _mesa_bind_vertex_buffer(ctx, vao, i, buf, buffers[param_index].offset,
+      _mesa_bind_vertex_buffer(ctx, vao, i, buf, offsets[param_index],
                                vao->BufferBinding[i].Stride, true, true);
       param_index++;
    }

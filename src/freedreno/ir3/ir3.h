@@ -1001,6 +1001,21 @@ is_tex(struct ir3_instruction *instr)
 }
 
 static inline bool
+is_tex_shuffle(struct ir3_instruction *instr)
+{
+   switch (instr->opc) {
+   case OPC_BRCST_ACTIVE:
+   case OPC_QUAD_SHUFFLE_BRCST:
+   case OPC_QUAD_SHUFFLE_HORIZ:
+   case OPC_QUAD_SHUFFLE_VERT:
+   case OPC_QUAD_SHUFFLE_DIAG:
+      return true;
+   default:
+      return false;
+   }
+}
+
+static inline bool
 is_tex_or_prefetch(struct ir3_instruction *instr)
 {
    return is_tex(instr) || (instr->opc == OPC_META_TEX_PREFETCH);

@@ -358,6 +358,8 @@ print_instr(struct log_stream *stream, struct ir3_instruction *instr, int lvl)
    print_instr_name(stream, instr, true);
 
    if (is_tex(instr)) {
+      if (instr->opc == OPC_BRCST_ACTIVE)
+         mesa_log_stream_printf(stream, ".w%d", instr->cat5.cluster_size);
       mesa_log_stream_printf(stream, " (%s)(", type_name(instr->cat5.type));
       for (unsigned i = 0; i < 4; i++)
          if (instr->dsts[0]->wrmask & (1 << i))
@@ -391,7 +393,8 @@ print_instr(struct log_stream *stream, struct ir3_instruction *instr, int lvl)
       }
    }
 
-   if (is_tex(instr) && !(instr->flags & IR3_INSTR_S2EN)) {
+   if (is_tex(instr) && !(instr->flags & IR3_INSTR_S2EN) &&
+       !is_tex_shuffle(instr)) {
       if (!!(instr->flags & IR3_INSTR_B) && !!(instr->flags & IR3_INSTR_A1EN)) {
          mesa_log_stream_printf(stream, ", s#%d", instr->cat5.samp);
       } else {

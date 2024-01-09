@@ -220,11 +220,7 @@ emit_system_values_block(nir_to_brw_state &ntb, nir_block *block)
          assert(s.stage == MESA_SHADER_GEOMETRY);
          reg = &ntb.system_values[SYSTEM_VALUE_INVOCATION_ID];
          if (reg->file == BAD_FILE) {
-            const fs_builder abld = ntb.bld.annotate("gl_InvocationID", NULL);
-            fs_reg g1(retype(brw_vec8_grf(1, 0), BRW_REGISTER_TYPE_UD));
-            fs_reg iid = abld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-            abld.SHR(iid, g1, brw_imm_ud(27u));
-            *reg = iid;
+            *reg = s.gs_payload().instance_id;
          }
          break;
 

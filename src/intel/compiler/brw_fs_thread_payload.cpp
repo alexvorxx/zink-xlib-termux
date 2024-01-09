@@ -113,6 +113,11 @@ gs_thread_payload::gs_thread_payload(fs_visitor &v)
    urb_handles = bld.vgrf(BRW_REGISTER_TYPE_UD);
    bld.AND(urb_handles, brw_ud8_grf(r, 0),
          v.devinfo->ver >= 20 ? brw_imm_ud(0xFFFFFF) : brw_imm_ud(0xFFFF));
+
+   /* R1: Instance ID stored in bits 31:27 */
+   instance_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
+   bld.SHR(instance_id, brw_ud8_grf(r, 0), brw_imm_ud(27u));
+
    r += reg_unit(v.devinfo);
 
    if (gs_prog_data->include_primitive_id) {

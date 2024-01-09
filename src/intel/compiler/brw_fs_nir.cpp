@@ -7289,7 +7289,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       if (s.dispatch_width == 32)
          flag.type = BRW_REGISTER_TYPE_UD;
 
-      bld.exec_all().group(1, 0).MOV(flag, brw_imm_ud(0u));
+      bld.exec_all().group(1, 0).MOV(flag, retype(brw_imm_ud(0u), flag.type));
       bld.CMP(bld.null_reg_ud(), value, brw_imm_ud(0u), BRW_CONDITIONAL_NZ);
 
       if (instr->def.bit_size > 32) {

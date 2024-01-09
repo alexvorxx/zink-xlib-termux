@@ -4408,3 +4408,39 @@ isl_tiling_to_name(enum isl_tiling tiling)
    assert(tiling < ARRAY_SIZE(names));
    return names[tiling];
 }
+
+const char *
+isl_aux_usage_to_name(enum isl_aux_usage usage)
+{
+   static const char *names[] = {
+      [ISL_AUX_USAGE_NONE]       = "none",
+      [ISL_AUX_USAGE_HIZ]        = "hiz",
+      [ISL_AUX_USAGE_MCS]        = "mcs",
+      [ISL_AUX_USAGE_CCS_D]      = "ccs-d",
+      [ISL_AUX_USAGE_CCS_E]      = "ccs-e",
+      [ISL_AUX_USAGE_FCV_CCS_E]  = "fcv-ccs-e",
+      [ISL_AUX_USAGE_MC]         = "mc",
+      [ISL_AUX_USAGE_HIZ_CCS_WT] = "hiz-ccs-wt",
+      [ISL_AUX_USAGE_HIZ_CCS]    = "hiz-ccs",
+      [ISL_AUX_USAGE_MCS_CCS]    = "mcs-ccs",
+      [ISL_AUX_USAGE_STC_CCS]    = "stc-ccs",
+   };
+   assert(usage < ARRAY_SIZE(names));
+   return names[usage];
+}
+
+const char *
+isl_aux_state_to_name(enum isl_aux_state state)
+{
+   static const char *names[] = {
+      [ISL_AUX_STATE_CLEAR]               = "clear",
+      [ISL_AUX_STATE_PARTIAL_CLEAR]       = "partial_clear",
+      [ISL_AUX_STATE_COMPRESSED_CLEAR]    = "compressed_clear",
+      [ISL_AUX_STATE_COMPRESSED_NO_CLEAR] = "compressed_no_clear",
+      [ISL_AUX_STATE_RESOLVED]            = "resolved",
+      [ISL_AUX_STATE_PASS_THROUGH]        = "pass-through",
+      [ISL_AUX_STATE_AUX_INVALID]         = "invalid",
+   };
+   assert(state < ARRAY_SIZE(names));
+   return names[state];
+}

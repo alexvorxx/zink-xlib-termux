@@ -3133,6 +3133,12 @@ isl_aux_op_to_name(enum isl_aux_op op);
 const char *
 isl_tiling_to_name(enum isl_tiling tiling);
 
+const char *
+isl_aux_usage_to_name(enum isl_aux_usage usage);
+
+const char *
+isl_aux_state_to_name(enum isl_aux_state state);
+
 #ifdef __cplusplus
 }
 #endif

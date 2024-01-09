@@ -154,20 +154,8 @@ class PrintCode(gl_XML.gl_print_base):
                 out('return align(sizeof({0}), 8) / 8;'.format(struct))
         out('}')
 
-    def print_async_body(self, func):
-        out('/* {0}: marshalled asynchronously */'.format(func.name))
-        func.print_struct()
-        self.print_unmarshal_func(func)
-
-        out('{0}{1} GLAPIENTRY'.format('static ' if func.marshal_is_static() else '', func.return_type))
-        out('_mesa_marshal_{0}({1})'.format(
-                func.name, func.get_parameter_string()))
-        out('{')
-        with indent():
-            out('GET_CURRENT_CONTEXT(ctx);')
-            if func.marshal_call_before:
-                out(func.marshal_call_before);
-
+    def print_marshal_async_code(self, func):
+        if True:
             struct = 'struct marshal_cmd_{0}'.format(func.name)
 
             if func.marshal_sync:
@@ -253,6 +241,22 @@ class PrintCode(gl_XML.gl_print_base):
 
             if not func.fixed_params and not func.variable_params:
                 out('(void) cmd;')
+
+    def print_async_body(self, func):
+        out('/* {0}: marshalled asynchronously */'.format(func.name))
+        func.print_struct()
+        self.print_unmarshal_func(func)
+
+        out('{0}{1} GLAPIENTRY'.format('static ' if func.marshal_is_static() else '', func.return_type))
+        out('_mesa_marshal_{0}({1})'.format(
+                func.name, func.get_parameter_string()))
+        out('{')
+        with indent():
+            out('GET_CURRENT_CONTEXT(ctx);')
+            if func.marshal_call_before:
+                out(func.marshal_call_before);
+
+            self.print_marshal_async_code(func)
 
             if func.marshal_call_after:
                 out(func.marshal_call_after)

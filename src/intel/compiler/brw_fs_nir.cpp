@@ -6716,10 +6716,11 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
       fs_reg new_dest = retype(offset(s.outputs[instr->const_index[0]], bld,
                                       4 * store_offset), src.type);
-      for (unsigned j = 0; j < num_components; j++) {
-         bld.MOV(offset(new_dest, bld, j + first_component),
-                 offset(src, bld, j));
+      fs_reg comps[num_components];
+      for (unsigned i = 0; i < num_components; i++) {
+         comps[i] = offset(src, bld, i);
       }
+      bld.VEC(offset(new_dest, bld, first_component), comps, num_components);
       break;
    }
 

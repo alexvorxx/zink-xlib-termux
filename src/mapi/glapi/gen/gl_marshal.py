@@ -103,10 +103,7 @@ class PrintCode(gl_XML.gl_print_base):
         out('')
         out('')
 
-    def print_async_body(self, func):
-        out('/* {0}: marshalled asynchronously */'.format(func.name))
-        func.print_struct()
-
+    def print_unmarshal_func(self, func):
         out('uint32_t')
         out(('_mesa_unmarshal_{0}(struct gl_context *ctx, '
              'const struct marshal_cmd_{0} *restrict cmd)').format(func.name))
@@ -156,6 +153,11 @@ class PrintCode(gl_XML.gl_print_base):
                 struct = 'struct marshal_cmd_{0}'.format(func.name)
                 out('return align(sizeof({0}), 8) / 8;'.format(struct))
         out('}')
+
+    def print_async_body(self, func):
+        out('/* {0}: marshalled asynchronously */'.format(func.name))
+        func.print_struct()
+        self.print_unmarshal_func(func)
 
         out('{0}{1} GLAPIENTRY'.format('static ' if func.marshal_is_static() else '', func.return_type))
         out('_mesa_marshal_{0}({1})'.format(

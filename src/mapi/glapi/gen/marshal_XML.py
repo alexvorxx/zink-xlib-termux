@@ -61,6 +61,12 @@ class marshal_function(gl_XML.gl_function):
             if (type, param.name) == ('GLint', 'size'):
                 return 'GLpacked16i'
 
+            # glVertexAttrib*Pointer(index)
+            # glVertexArrayVertexBuffer(bindingindex)
+            if ((type, param.name) == ('GLuint', 'index') or
+                (type, param.name) == ('GLuint', 'bindingindex')):
+                return 'GLenum8' # clamped to 0xff
+
         return type
 
     def get_type_size(self, param):

@@ -12944,6 +12944,10 @@
         <param name="cmd" type="const GLvoid *"/> <!-- struct marshal_cmd_DrawElementsUserBuf -->
     </function>
 
+    <function name="DrawElementsUserBufPacked" es1="1.0" es2="2.0" marshal="custom">
+        <param name="cmd" type="const GLvoid *"/> <!-- struct marshal_cmd_DrawElementsUserBufPacked -->
+    </function>
+
     <function name="MultiDrawArraysUserBuf" es1="1.0" es2="2.0" marshal="custom">
     </function>
 

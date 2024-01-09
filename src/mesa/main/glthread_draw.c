@@ -724,6 +724,28 @@ _mesa_unmarshal_DrawElementsUserBuf(struct gl_context *ctx,
    return cmd->num_slots;
 }
 
+uint32_t
+_mesa_unmarshal_DrawElementsUserBufPacked(struct gl_context *ctx,
+                                    const struct marshal_cmd_DrawElementsUserBufPacked *restrict cmd)
+{
+   const GLuint user_buffer_mask = cmd->user_buffer_mask;
+
+   /* Bind uploaded buffers if needed. */
+   if (user_buffer_mask) {
+      struct gl_buffer_object **buffers = (struct gl_buffer_object **)(cmd + 1);
+      const int *offsets = (const int *)(buffers + util_bitcount(user_buffer_mask));
+
+      _mesa_InternalBindVertexBuffers(ctx, buffers, offsets, user_buffer_mask);
+   }
+
+   /* Draw. */
+   CALL_DrawElementsUserBufPacked(ctx->Dispatch.Current, (cmd));
+
+   struct gl_buffer_object *index_buffer = cmd->index_buffer;
+   _mesa_reference_buffer_object(ctx, &index_buffer, NULL);
+   return cmd->num_slots;
+}
+
 static inline bool
 should_convert_to_begin_end(struct gl_context *ctx, unsigned count,
                             unsigned num_upload_vertices,
@@ -923,25 +945,45 @@ draw_elements(GLuint drawid, GLenum mode, GLsizei count, GLenum type,
    unsigned num_buffers = util_bitcount(user_buffer_mask);
    int buffers_size = num_buffers * sizeof(buffers[0]);
    int offsets_size = num_buffers * sizeof(int);
-   int cmd_size = sizeof(struct marshal_cmd_DrawElementsUserBuf) +
-                  buffers_size + offsets_size;
-   struct marshal_cmd_DrawElementsUserBuf *cmd;
+   char *variable_data;
 
-   cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsUserBuf, cmd_size);
-   cmd->num_slots = align(cmd_size, 8) / 8;
-   cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
-   cmd->type = encode_index_type(type);
-   cmd->count = count;
-   cmd->indices = indices;
-   cmd->instance_count = instance_count;
-   cmd->basevertex = basevertex;
-   cmd->baseinstance = baseinstance;
-   cmd->user_buffer_mask = user_buffer_mask;
-   cmd->index_buffer = index_buffer;
-   cmd->drawid = drawid;
+   if (instance_count == 1 && basevertex == 0 && baseinstance == 0 &&
+       drawid == 0 && (count & 0xffff) == count &&
+       (uintptr_t)indices <= UINT32_MAX) {
+      int cmd_size = sizeof(struct marshal_cmd_DrawElementsUserBufPacked) +
+                     buffers_size + offsets_size;
+      struct marshal_cmd_DrawElementsUserBufPacked *cmd;
+
+      cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsUserBufPacked, cmd_size);
+      cmd->num_slots = align(cmd_size, 8) / 8;
+      cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
+      cmd->type = encode_index_type(type);
+      cmd->count = count; /* truncated */
+      cmd->indices = (uintptr_t)indices; /* truncated */
+      cmd->user_buffer_mask = user_buffer_mask;
+      cmd->index_buffer = index_buffer;
+      variable_data = (char*)(cmd + 1);
+   } else {
+      int cmd_size = sizeof(struct marshal_cmd_DrawElementsUserBuf) +
+                     buffers_size + offsets_size;
+      struct marshal_cmd_DrawElementsUserBuf *cmd;
+
+      cmd = _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawElementsUserBuf, cmd_size);
+      cmd->num_slots = align(cmd_size, 8) / 8;
+      cmd->mode = MIN2(mode, 0xff); /* clamped to 0xff (invalid enum) */
+      cmd->type = encode_index_type(type);
+      cmd->count = count;
+      cmd->indices = indices;
+      cmd->instance_count = instance_count;
+      cmd->basevertex = basevertex;
+      cmd->baseinstance = baseinstance;
+      cmd->user_buffer_mask = user_buffer_mask;
+      cmd->index_buffer = index_buffer;
+      cmd->drawid = drawid;
+      variable_data = (char*)(cmd + 1);
+   }
 
    if (user_buffer_mask) {
-      char *variable_data = (char*)(cmd + 1);
       memcpy(variable_data, buffers, buffers_size);
       variable_data += buffers_size;
       memcpy(variable_data, offsets, offsets_size);
@@ -1923,6 +1965,12 @@ _mesa_marshal_DrawArraysUserBuf(void)
 
 void GLAPIENTRY
 _mesa_marshal_DrawElementsUserBuf(const GLvoid *cmd)
+{
+   unreachable("should never end up here");
+}
+
+void GLAPIENTRY
+_mesa_marshal_DrawElementsUserBufPacked(const GLvoid *cmd)
 {
    unreachable("should never end up here");
 }

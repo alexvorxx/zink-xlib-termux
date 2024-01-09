@@ -76,6 +76,18 @@ struct marshal_cmd_DrawElementsUserBuf
    struct gl_buffer_object *index_buffer;
 };
 
+struct marshal_cmd_DrawElementsUserBufPacked
+{
+   struct marshal_cmd_base cmd_base;
+   GLenum8 mode;
+   GLindextype type;
+   uint16_t num_slots;
+   GLushort count;
+   GLuint user_buffer_mask;
+   GLuint indices;
+   struct gl_buffer_object *index_buffer;
+};
+
 static inline void *
 _mesa_glthread_allocate_command(struct gl_context *ctx,
                                 uint16_t cmd_id,

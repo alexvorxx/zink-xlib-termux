@@ -1973,6 +1973,40 @@ _mesa_DrawElementsUserBuf(const GLvoid *ptr)
    ctx->DrawID = 0;
 }
 
+/**
+ * Same as glDrawElementsInstancedBaseVertexBaseInstance, but the index
+ * buffer is set by the indexBuf parameter instead of using the bound
+ * GL_ELEMENT_ARRAY_BUFFER if indexBuf != NULL.
+ */
+void GLAPIENTRY
+_mesa_DrawElementsUserBufPacked(const GLvoid *ptr)
+{
+   GET_CURRENT_CONTEXT(ctx);
+   FLUSH_FOR_DRAW(ctx);
+
+   _mesa_set_varying_vp_inputs(ctx, ctx->VertexProgram._VPModeInputFilter &
+                               ctx->Array._DrawVAO->_EnabledWithMapMode);
+   if (ctx->NewState)
+      _mesa_update_state(ctx);
+
+   const struct marshal_cmd_DrawElementsUserBufPacked *cmd =
+      (const struct marshal_cmd_DrawElementsUserBufPacked *)ptr;
+   const GLenum mode = cmd->mode;
+   const GLsizei count = cmd->count;
+   const GLenum type = _mesa_decode_index_type(cmd->type);
+
+   if (!_mesa_is_no_error_enabled(ctx) &&
+       !_mesa_validate_DrawElements(ctx, mode, count, type))
+      return;
+
+   struct gl_buffer_object *index_bo =
+      cmd->index_buffer ? cmd->index_buffer : ctx->Array.VAO->IndexBufferObj;
+
+   const GLvoid *indices = (void*)(uintptr_t)cmd->indices;
+
+   _mesa_validated_drawrangeelements(ctx, index_bo, mode, false, 0, ~0,
+                                     count, type, indices, 0, 1, 0);
+}
 
 /**
  * Inner support for both _mesa_MultiDrawElements() and

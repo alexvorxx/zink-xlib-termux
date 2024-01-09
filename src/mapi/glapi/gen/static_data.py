@@ -1705,6 +1705,7 @@ offsets = {
     "DrawElementsInstancedBaseVertexBaseInstanceDrawID": 1669,
     "InternalInvalidateFramebufferAncillaryMESA": 1670,
     "DrawElementsPacked": 1671,
+    "DrawElementsUserBufPacked": 1672,
 }
 
 functions = [

@@ -619,11 +619,12 @@ struct ir3_array {
 struct ir3_array *ir3_lookup_array(struct ir3 *ir, unsigned id);
 
 enum ir3_branch_type {
-   IR3_BRANCH_COND,   /* condition */
-   IR3_BRANCH_ANY,    /* subgroupAny(condition) */
-   IR3_BRANCH_ALL,    /* subgroupAll(condition) */
-   IR3_BRANCH_GETONE, /* subgroupElect() */
-   IR3_BRANCH_SHPS,   /* preamble start */
+   IR3_BRANCH_COND,    /* condition */
+   IR3_BRANCH_ANY,     /* subgroupAny(condition) */
+   IR3_BRANCH_ALL,     /* subgroupAll(condition) */
+   IR3_BRANCH_GETONE,  /* subgroupElect() */
+   IR3_BRANCH_GETLAST, /* getlast.w8 */
+   IR3_BRANCH_SHPS,    /* preamble start */
 };
 
 struct ir3_block {
@@ -2328,6 +2329,7 @@ INSTR1NODST(PREDT)
 INSTR0(PREDF)
 INSTR0(PREDE)
 INSTR0(GETONE)
+INSTR0(GETLAST)
 INSTR0(SHPS)
 INSTR0(SHPE)
 
@@ -2479,6 +2481,26 @@ ir3_SAM(struct ir3_block *block, opc_t opc, type_t type, unsigned wrmask,
    sam->cat5.type = type;
 
    return sam;
+}
+
+/* brcst.active rx, ry behaves like a conditional move: rx either keeps its
+ * value or is set to ry. In order to model this in SSA form, we add an extra
+ * argument (the initial value of rx) and tie it to the destination.
+ */
+static inline struct ir3_instruction *
+ir3_BRCST_ACTIVE(struct ir3_block *block, unsigned cluster_size,
+                 struct ir3_instruction *src,
+                 struct ir3_instruction *dst_default)
+{
+   struct ir3_instruction *brcst =
+      ir3_instr_create(block, OPC_BRCST_ACTIVE, 1, 2);
+   brcst->cat5.cluster_size = cluster_size;
+   brcst->cat5.type = TYPE_U32;
+   struct ir3_register *brcst_dst = __ssa_dst(brcst);
+   __ssa_src(brcst, src, 0);
+   struct ir3_register *default_src = __ssa_src(brcst, dst_default, 0);
+   ir3_reg_tie(brcst_dst, default_src);
+   return brcst;
 }
 
 /* cat6 instructions: */

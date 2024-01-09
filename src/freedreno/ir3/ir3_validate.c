@@ -249,6 +249,27 @@ validate_instr(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr)
          validate_assert(ctx, reg_class_flags(instr->dsts[1]) ==
                               reg_class_flags(instr->srcs[0]));
          validate_assert(ctx, reg_class_flags(instr->dsts[2]) == IR3_REG_SHARED);
+      } else if (instr->opc == OPC_SCAN_CLUSTERS_MACRO) {
+         validate_assert(ctx, instr->dsts_count >= 2 && instr->dsts_count < 5);
+         validate_assert(ctx, instr->srcs_count >= 2 && instr->srcs_count < 4);
+         validate_assert(ctx,
+                         reg_class_flags(instr->dsts[0]) == IR3_REG_SHARED);
+         validate_assert(ctx, reg_class_flags(instr->dsts[1]) ==
+                                 reg_class_flags(instr->srcs[1]));
+
+         /* exclusive scan */
+         if (instr->srcs_count == 3) {
+            validate_assert(ctx, instr->dsts_count >= 3);
+            validate_assert(ctx, reg_class_flags(instr->srcs[2]) ==
+                                    reg_class_flags(instr->srcs[1]));
+            validate_assert(ctx, reg_class_flags(instr->dsts[2]) ==
+                                    reg_class_flags(instr->srcs[1]));
+         }
+
+         /* scratch register */
+         validate_assert(ctx,
+                         reg_class_flags(instr->dsts[instr->dsts_count - 1]) ==
+                            reg_class_flags(instr->srcs[1]));
       } else {
          foreach_dst (dst, instr)
             validate_reg_size(ctx, dst, instr->cat1.dst_type);

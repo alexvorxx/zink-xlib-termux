@@ -740,6 +740,8 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
       progress |= OPT(s, nir_opt_constant_folding);
    }
 
+   OPT(s, ir3_nir_opt_subgroups, so);
+
    /* Do the preamble before analysing UBO ranges, because it's usually
     * higher-value and because it can result in eliminating some indirect UBO
     * accesses where otherwise we'd have to push the whole range. However we

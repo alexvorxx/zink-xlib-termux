@@ -137,7 +137,8 @@ print_instr_name(struct log_stream *stream, struct ir3_instruction *instr,
                                 disasm_a3xx_instr_name(instr->opc));
       }
 
-      if (instr->opc == OPC_SCAN_MACRO) {
+      if (instr->opc == OPC_SCAN_MACRO ||
+          instr->opc == OPC_SCAN_CLUSTERS_MACRO) {
          switch (instr->cat1.reduce_op) {
          case REDUCE_OP_ADD_U:
             mesa_log_stream_printf(stream, ".add.u");
@@ -547,6 +548,9 @@ print_block(struct ir3_block *block, int lvl)
          break;
       case IR3_BRANCH_GETONE:
          mesa_log_stream_printf(stream, "getone ");
+         break;
+      case IR3_BRANCH_GETLAST:
+         mesa_log_stream_printf(stream, "getlast ");
          break;
       case IR3_BRANCH_SHPS:
          mesa_log_stream_printf(stream, "shps ");

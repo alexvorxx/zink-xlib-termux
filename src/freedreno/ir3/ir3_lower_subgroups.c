@@ -22,6 +22,7 @@
  */
 
 #include "ir3.h"
+#include "ir3_nir.h"
 #include "util/ralloc.h"
 
 /* Lower several macro-instructions needed for shader subgroup support that
@@ -241,6 +242,7 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
    case OPC_READ_COND_MACRO:
    case OPC_SWZ_SHARED_MACRO:
    case OPC_SCAN_MACRO:
+   case OPC_SCAN_CLUSTERS_MACRO:
       break;
    case OPC_READ_FIRST_MACRO:
       /* Moves to shared registers read the first active fiber, so we can just
@@ -313,6 +315,79 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
       mov_reg(exit, exclusive, reduce);
       do_reduce(exit, instr->cat1.reduce_op, inclusive, src, exclusive);
       mov_reg(exit, reduce, inclusive);
+   } else if (instr->opc == OPC_SCAN_CLUSTERS_MACRO) {
+      /* The pseudo-code for the scan macro is:
+       *
+       * while (true) {
+       *    body:
+       *    scratch = reduce;
+       *
+       *    inclusive = inclusive_src OP scratch;
+       *
+       *    static if (is exclusive scan)
+       *       exclusive = exclusive_src OP scratch
+       *
+       *    if (getlast()) {
+       *       store:
+       *       reduce = inclusive;
+       *       if (elect())
+       *           break;
+       *    } else {
+       *       break;
+       *    }
+       * }
+       * after_block:
+       */
+      struct ir3_block *body = ir3_block_create(ir);
+      list_add(&body->node, &before_block->node);
+
+      struct ir3_block *store = ir3_block_create(ir);
+      list_add(&store->node, &body->node);
+
+      link_blocks(before_block, body, 0);
+
+      link_blocks(body, store, 0);
+      link_blocks(body, after_block, 1);
+      body->brtype = IR3_BRANCH_GETLAST;
+
+      link_blocks(store, after_block, 0);
+      link_blocks(store, body, 1);
+      store->brtype = IR3_BRANCH_GETONE;
+
+      struct ir3_register *reduce = instr->dsts[0];
+      struct ir3_register *inclusive = instr->dsts[1];
+      struct ir3_register *inclusive_src = instr->srcs[1];
+
+      /* We need to perform the following operations:
+       *  - inclusive = inclusive_src OP reduce
+       *  - exclusive = exclusive_src OP reduce (iff exclusive scan)
+       * Since reduce is initially in a shared register, we need to copy it to a
+       * scratch register before performing the operations.
+       *
+       * The scratch register used is:
+       *  - an explicitly allocated one if op is 32b mul_u.
+       *    - necessary because we cannot do 'foo = foo mul_u bar' since mul_u
+       *      clobbers its destination.
+       *  - exclusive if this is an exclusive scan (and not 32b mul_u).
+       *    - since we calculate inclusive first.
+       *  - inclusive otherwise.
+       *
+       * In all cases, this is the last destination.
+       */
+      struct ir3_register *scratch = instr->dsts[instr->dsts_count - 1];
+
+      mov_reg(body, scratch, reduce);
+      do_reduce(body, instr->cat1.reduce_op, inclusive, inclusive_src, scratch);
+
+      /* exclusive scan */
+      if (instr->srcs_count == 3) {
+         struct ir3_register *exclusive_src = instr->srcs[2];
+         struct ir3_register *exclusive = instr->dsts[2];
+         do_reduce(body, instr->cat1.reduce_op, exclusive, exclusive_src,
+                   scratch);
+      }
+
+      mov_reg(store, reduce, inclusive);
    } else {
       struct ir3_block *then_block = create_if(ir, before_block, after_block);
 
@@ -446,4 +521,66 @@ ir3_lower_subgroups(struct ir3 *ir)
       progress |= lower_block(ir, &block);
 
    return progress;
+}
+
+static bool
+filter_scan_reduce(const nir_instr *instr, const void *data)
+{
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+
+   nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+
+   switch (intrin->intrinsic) {
+   case nir_intrinsic_reduce:
+   case nir_intrinsic_inclusive_scan:
+   case nir_intrinsic_exclusive_scan:
+      return true;
+   default:
+      return false;
+   }
+}
+
+static nir_def *
+lower_scan_reduce(struct nir_builder *b, nir_instr *instr, void *data)
+{
+   nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+   unsigned bit_size = intrin->def.bit_size;
+
+   nir_op op = nir_intrinsic_reduction_op(intrin);
+   nir_const_value ident_val = nir_alu_binop_identity(op, bit_size);
+   nir_def *ident = nir_build_imm(b, 1, bit_size, &ident_val);
+   nir_def *inclusive = intrin->src[0].ssa;
+   nir_def *exclusive = ident;
+
+   for (unsigned cluster_size = 2; cluster_size <= 8; cluster_size *= 2) {
+      nir_def *brcst = nir_brcst_active_ir3(b, ident, inclusive,
+                                            .cluster_size = cluster_size);
+      inclusive = nir_build_alu2(b, op, inclusive, brcst);
+
+      if (intrin->intrinsic == nir_intrinsic_exclusive_scan)
+         exclusive = nir_build_alu2(b, op, exclusive, brcst);
+   }
+
+   switch (intrin->intrinsic) {
+   case nir_intrinsic_reduce:
+      return nir_reduce_clusters_ir3(b, inclusive, .reduction_op = op);
+   case nir_intrinsic_inclusive_scan:
+      return nir_inclusive_scan_clusters_ir3(b, inclusive, .reduction_op = op);
+   case nir_intrinsic_exclusive_scan:
+      return nir_exclusive_scan_clusters_ir3(b, inclusive, exclusive,
+                                             .reduction_op = op);
+   default:
+      unreachable("filtered intrinsic");
+   }
+}
+
+bool
+ir3_nir_opt_subgroups(nir_shader *nir, struct ir3_shader_variant *v)
+{
+   if (!v->compiler->has_getfiberid)
+      return false;
+
+   return nir_shader_lower_instructions(nir, filter_scan_reduce,
+                                        lower_scan_reduce, NULL);
 }

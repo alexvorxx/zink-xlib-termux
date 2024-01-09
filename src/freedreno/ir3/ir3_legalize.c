@@ -695,6 +695,7 @@ block_sched(struct ir3 *ir)
          struct ir3_instruction *br1, *br2;
 
          if (block->brtype == IR3_BRANCH_GETONE ||
+             block->brtype == IR3_BRANCH_GETLAST ||
              block->brtype == IR3_BRANCH_SHPS) {
             /* getone/shps can't be inverted, and it wouldn't even make sense
              * to follow it with an inverted branch, so follow it by an
@@ -703,6 +704,8 @@ block_sched(struct ir3 *ir)
             assert(!block->condition);
             if (block->brtype == IR3_BRANCH_GETONE)
                br1 = ir3_GETONE(block);
+            else if (block->brtype == IR3_BRANCH_GETLAST)
+               br1 = ir3_GETLAST(block);
             else
                br1 = ir3_SHPS(block);
             br1->cat0.target = block->successors[1];
@@ -740,6 +743,7 @@ block_sched(struct ir3 *ir)
                br2->cat0.brtype = BRANCH_ANY;
                break;
             case IR3_BRANCH_GETONE:
+            case IR3_BRANCH_GETLAST:
             case IR3_BRANCH_SHPS:
                unreachable("can't get here");
             }

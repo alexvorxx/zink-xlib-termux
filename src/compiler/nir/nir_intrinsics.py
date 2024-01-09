@@ -1357,6 +1357,15 @@ intrinsic("copy_ubo_to_uniform_ir3", [1, 1], indices=[BASE, RANGE])
 # Should be used in the shader preamble.
 intrinsic("copy_push_const_to_uniform_ir3", [1], indices=[BASE, RANGE])
 
+intrinsic("brcst_active_ir3", dest_comp=1, src_comp=[1, 1], bit_sizes=src0,
+          indices=[CLUSTER_SIZE])
+intrinsic("reduce_clusters_ir3", dest_comp=1, src_comp=[1], bit_sizes=src0,
+          indices=[REDUCTION_OP])
+intrinsic("inclusive_scan_clusters_ir3", dest_comp=1, src_comp=[1],
+          bit_sizes=src0, indices=[REDUCTION_OP])
+intrinsic("exclusive_scan_clusters_ir3", dest_comp=1, src_comp=[1, 1],
+          bit_sizes=src0, indices=[REDUCTION_OP])
+
 # Intrinsics used by the Midgard/Bifrost blend pipeline. These are defined
 # within a blend shader to read/write the raw value from the tile buffer,
 # without applying any format conversion in the process. If the shader needs

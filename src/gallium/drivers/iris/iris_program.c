@@ -1145,7 +1145,7 @@ check_urb_size(struct iris_context *ice,
                unsigned needed_size,
                gl_shader_stage stage)
 {
-   unsigned last_allocated_size = ice->shaders.urb.size[stage];
+   unsigned last_allocated_size = ice->shaders.urb.cfg.size[stage];
 
    /* If the last URB allocation wasn't large enough for our needs,
     * flag it as needing to be reconfigured.  Otherwise, we can use

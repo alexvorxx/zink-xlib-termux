@@ -376,22 +376,24 @@ genX(emit_urb_setup)(struct anv_device *device, struct anv_batch *batch,
 {
    const struct intel_device_info *devinfo = device->info;
 
-   unsigned entries[4];
-   unsigned start[4];
+   struct intel_urb_config urb_cfg = {
+      .size = { entry_size[0], entry_size[1], entry_size[2], entry_size[3], },
+   };
+
    bool constrained;
    intel_get_urb_config(devinfo, l3_config,
                         active_stages &
                            VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
                         active_stages & VK_SHADER_STAGE_GEOMETRY_BIT,
-                        entry_size, entries, start, deref_block_size,
+                        &urb_cfg, deref_block_size,
                         &constrained);
 
    for (int i = 0; i <= MESA_SHADER_GEOMETRY; i++) {
       anv_batch_emit(batch, GENX(3DSTATE_URB_VS), urb) {
          urb._3DCommandSubOpcode      += i;
-         urb.VSURBStartingAddress      = start[i];
-         urb.VSURBEntryAllocationSize  = entry_size[i] - 1;
-         urb.VSNumberofURBEntries      = entries[i];
+         urb.VSURBStartingAddress      = urb_cfg.start[i];
+         urb.VSURBEntryAllocationSize  = urb_cfg.size[i] - 1;
+         urb.VSNumberofURBEntries      = urb_cfg.entries[i];
       }
    }
 #if GFX_VERx10 >= 125
@@ -458,21 +460,19 @@ emit_urb_setup(struct anv_graphics_pipeline *pipeline,
       return;
    }
 #endif
-
-   unsigned entry_size[4];
+   struct intel_urb_config urb_cfg;
    for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
       const struct brw_vue_prog_data *prog_data =
          !anv_pipeline_has_stage(pipeline, i) ? NULL :
          (const struct brw_vue_prog_data *) pipeline->base.shaders[i]->prog_data;
 
-      entry_size[i] = prog_data ? prog_data->urb_entry_size : 1;
+      urb_cfg.size[i] = prog_data ? prog_data->urb_entry_size : 1;
    }
 
    struct anv_device *device = pipeline->base.base.device;
    const struct intel_device_info *devinfo = device->info;
 
-   unsigned entries[4];
-   unsigned start[4];
+
    bool constrained;
    intel_get_urb_config(devinfo,
                         pipeline->base.base.l3_config,
@@ -480,15 +480,15 @@ emit_urb_setup(struct anv_graphics_pipeline *pipeline,
                            VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
                         pipeline->base.base.active_stages &
                            VK_SHADER_STAGE_GEOMETRY_BIT,
-                        entry_size, entries, start, deref_block_size,
+                        &urb_cfg, deref_block_size,
                         &constrained);
 
    for (int i = 0; i <= MESA_SHADER_GEOMETRY; i++) {
       anv_pipeline_emit(pipeline, final.urb, GENX(3DSTATE_URB_VS), urb) {
          urb._3DCommandSubOpcode      += i;
-         urb.VSURBStartingAddress      = start[i];
-         urb.VSURBEntryAllocationSize  = entry_size[i] - 1;
-         urb.VSNumberofURBEntries      = entries[i];
+         urb.VSURBStartingAddress      = urb_cfg.start[i];
+         urb.VSURBEntryAllocationSize  = urb_cfg.size[i] - 1;
+         urb.VSNumberofURBEntries      = urb_cfg.entries[i];
       }
    }
 #if GFX_VERx10 >= 125

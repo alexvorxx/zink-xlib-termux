@@ -714,9 +714,7 @@ struct iris_context {
       struct iris_compiled_shader *prog[MESA_SHADER_STAGES];
       struct iris_compiled_shader *last_vue_shader;
       struct {
-         unsigned size[4];
-         unsigned entries[4];
-         unsigned start[4];
+         struct intel_urb_config cfg;
          bool constrained;
       } urb;
 

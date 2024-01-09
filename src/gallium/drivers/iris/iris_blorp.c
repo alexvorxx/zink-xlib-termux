@@ -410,8 +410,8 @@ iris_blorp_exec_render(struct blorp_batch *blorp_batch,
    ice->state.dirty |= ~skip_bits;
    ice->state.stage_dirty |= ~skip_stage_bits;
 
-   for (int i = 0; i < ARRAY_SIZE(ice->shaders.urb.size); i++)
-      ice->shaders.urb.size[i] = 0;
+   for (int i = 0; i < ARRAY_SIZE(ice->shaders.urb.cfg.size); i++)
+      ice->shaders.urb.cfg.size[i] = 0;
 
    if (params->src.enabled)
       iris_bo_bump_seqno(params->src.addr.buffer, batch->next_seqno,

@@ -241,14 +241,16 @@ emit_urb_config(struct blorp_batch *batch,
 
 #if GFX_VER >= 7
    assert(sf_entry_size == 0);
-   const unsigned entry_size[4] = { vs_entry_size, 1, 1, 1 };
 
-   unsigned entries[4], start[4];
+   struct intel_urb_config urb_cfg = {
+      .size = { vs_entry_size, 1, 1, 1 },
+   };
+
    bool constrained;
    intel_get_urb_config(batch->blorp->compiler->devinfo,
                         blorp_get_l3_config(batch),
-                        false, false, entry_size,
-                        entries, start, deref_block_size, &constrained);
+                        false, false, &urb_cfg,
+                        deref_block_size, &constrained);
 
 #if GFX_VERx10 == 70
    /* From the IVB PRM Vol. 2, Part 1, Section 3.2.1:
@@ -269,9 +271,9 @@ emit_urb_config(struct blorp_batch *batch,
    for (int i = 0; i <= MESA_SHADER_GEOMETRY; i++) {
       blorp_emit(batch, GENX(3DSTATE_URB_VS), urb) {
          urb._3DCommandSubOpcode      += i;
-         urb.VSURBStartingAddress      = start[i];
-         urb.VSURBEntryAllocationSize  = entry_size[i] - 1;
-         urb.VSNumberofURBEntries      = entries[i];
+         urb.VSURBStartingAddress      = urb_cfg.start[i];
+         urb.VSURBEntryAllocationSize  = urb_cfg.size[i] - 1;
+         urb.VSNumberofURBEntries      = urb_cfg.entries[i];
       }
    }
 

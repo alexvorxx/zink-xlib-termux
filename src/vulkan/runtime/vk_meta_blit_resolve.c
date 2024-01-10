@@ -362,6 +362,7 @@ get_blit_pipeline_layout(struct vk_device *device,
 
    const VkDescriptorSetLayoutCreateInfo desc_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+      .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
       .bindingCount = ARRAY_SIZE(bindings),
       .pBindings = bindings,
    };

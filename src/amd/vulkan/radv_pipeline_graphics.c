@@ -2505,7 +2505,13 @@ radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cac
 
    radv_foreach_stage(i, active_nir_stages)
    {
-      gl_shader_stage next_stage = radv_get_next_stage(i, active_nir_stages);
+      gl_shader_stage next_stage;
+
+      if (stages[i].next_stage != MESA_SHADER_NONE) {
+         next_stage = stages[i].next_stage;
+      } else {
+         next_stage = radv_get_next_stage(i, active_nir_stages);
+      }
 
       radv_nir_shader_info_init(i, next_stage, &stages[i].info);
    }
@@ -2638,6 +2644,7 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
       stages[i].entrypoint = NULL;
       stages[i].nir = NULL;
       stages[i].spirv.size = 0;
+      stages[i].next_stage = MESA_SHADER_NONE;
    }
 
    for (uint32_t i = 0; i < pCreateInfo->stageCount; i++) {

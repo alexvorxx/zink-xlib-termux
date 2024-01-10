@@ -227,6 +227,7 @@ radv_pipeline_stage_init(const VkPipelineShaderStageCreateInfo *sinfo,
    memset(out_stage, 0, sizeof(*out_stage));
 
    out_stage->stage = vk_to_mesa_shader_stage(sinfo->stage);
+   out_stage->next_stage = MESA_SHADER_NONE;
    out_stage->entrypoint = sinfo->pName;
    out_stage->spec_info = sinfo->pSpecializationInfo;
    out_stage->feedback.flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;

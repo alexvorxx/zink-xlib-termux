@@ -2285,6 +2285,7 @@ struct radv_shader_layout {
 
 struct radv_shader_stage {
    gl_shader_stage stage;
+   gl_shader_stage next_stage;
 
    struct {
       const struct vk_object_base *object;

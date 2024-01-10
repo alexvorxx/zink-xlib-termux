@@ -6432,6 +6432,10 @@ radv_bind_tess_ctrl_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv
     * bound because a bunch of parameters (user SGPRs, TCS vertices out, ccw, etc) can be different.
     */
    cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_PATCH_CONTROL_POINTS | RADV_CMD_DIRTY_DYNAMIC_TESS_DOMAIN_ORIGIN;
+
+   /* Re-emit the TCS epilog when a new tessellation control shader is bound. */
+   if (tcs->info.has_epilog)
+      cmd_buffer->state.emitted_tcs_epilog = NULL;
 }
 
 static void

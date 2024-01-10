@@ -103,6 +103,7 @@ enum mesa_vk_dynamic_graphics_state {
    MESA_VK_DYNAMIC_CB_BLEND_EQUATIONS,
    MESA_VK_DYNAMIC_CB_WRITE_MASKS,
    MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS,
+   MESA_VK_DYNAMIC_RP_ATTACHMENTS,
    MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE,
    MESA_VK_DYNAMIC_COLOR_ATTACHMENT_MAP,
    MESA_VK_DYNAMIC_INPUT_ATTACHMENT_MAP,
@@ -897,6 +898,10 @@ struct vk_dynamic_graphics_state {
    /** Color blend state */
    struct vk_color_blend_state cb;
 
+   struct {
+      enum vk_rp_attachment_flags attachments;
+   } rp;
+
    /** MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE */
    VkImageAspectFlags feedback_loops;
 
@@ -1236,6 +1241,15 @@ vk_cmd_set_vertex_binding_strides(struct vk_command_buffer *cmd,
 void
 vk_cmd_set_cb_attachment_count(struct vk_command_buffer *cmd,
                                uint32_t attachment_count);
+
+/* Set render pass attachments on a command buffer.
+ *
+ * This is required for VK_EXT_shader_object in order to disable attachments
+ * based on bound shaders.
+ */
+void
+vk_cmd_set_rp_attachments(struct vk_command_buffer *cmd,
+                          enum vk_rp_attachment_flags attachments);
 
 const char *
 vk_dynamic_graphic_state_to_str(enum mesa_vk_dynamic_graphics_state state);

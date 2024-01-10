@@ -133,8 +133,10 @@ get_dynamic_state_groups(BITSET_WORD *dynamic,
    if (groups & MESA_VK_GRAPHICS_STATE_INPUT_ATTACHMENT_MAP_BIT)
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_INPUT_ATTACHMENT_MAP);
 
-   if (groups & MESA_VK_GRAPHICS_STATE_RENDER_PASS_BIT)
+   if (groups & MESA_VK_GRAPHICS_STATE_RENDER_PASS_BIT) {
+      BITSET_SET(dynamic, MESA_VK_DYNAMIC_RP_ATTACHMENTS);
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE);
+   }
 }
 
 static enum mesa_vk_graphics_state_groups
@@ -1247,7 +1249,9 @@ static void
 vk_dynamic_graphics_state_init_rp(struct vk_dynamic_graphics_state *dst,
                                   const BITSET_WORD *needed,
                                   const struct vk_render_pass_state *rp)
-{ }
+{
+   dst->rp.attachments = rp->attachments;
+}
 
 #define FOREACH_STATE_GROUP(f)                           \
    f(MESA_VK_GRAPHICS_STATE_VERTEX_INPUT_BIT,            \
@@ -2188,6 +2192,8 @@ vk_dynamic_graphics_state_copy(struct vk_dynamic_graphics_state *dst,
    if (IS_SET_IN_SRC(CB_BLEND_CONSTANTS))
       COPY_ARRAY(CB_BLEND_CONSTANTS, cb.blend_constants, 4);
 
+   COPY_IF_SET(RP_ATTACHMENTS, rp.attachments);
+
    if (IS_SET_IN_SRC(COLOR_ATTACHMENT_MAP)) {
       COPY_ARRAY(COLOR_ATTACHMENT_MAP, cal.color_map,
                  MESA_VK_MAX_COLOR_ATTACHMENTS);
@@ -3008,6 +3014,15 @@ vk_cmd_set_cb_attachment_count(struct vk_command_buffer *cmd,
    struct vk_dynamic_graphics_state *dyn = &cmd->dynamic_graphics_state;
 
    SET_DYN_VALUE(dyn, CB_ATTACHMENT_COUNT, cb.attachment_count, attachment_count);
+}
+
+void
+vk_cmd_set_rp_attachments(struct vk_command_buffer *cmd,
+                          enum vk_rp_attachment_flags attachments)
+{
+   struct vk_dynamic_graphics_state *dyn = &cmd->dynamic_graphics_state;
+
+   SET_DYN_VALUE(dyn, RP_ATTACHMENTS, rp.attachments, attachments);
 }
 
 VKAPI_ATTR void VKAPI_CALL

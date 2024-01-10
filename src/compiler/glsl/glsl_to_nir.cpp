@@ -789,8 +789,11 @@ nir_visitor::visit(ir_return *ir)
          nir_build_deref_cast(&b, nir_load_param(&b, 0),
                               nir_var_function_temp, ir->value->type, 0);
 
-      nir_def *val = evaluate_rvalue(ir->value);
-      nir_store_deref(&b, ret_deref, val, ~0);
+      if (glsl_type_is_vector_or_scalar(ir->value->type)) {
+         nir_store_deref(&b, ret_deref, evaluate_rvalue(ir->value), ~0);
+      } else {
+         nir_copy_deref(&b, ret_deref, evaluate_deref(ir->value));
+      }
    }
 
    nir_jump_instr *instr = nir_jump_instr_create(this->shader, nir_jump_return);
@@ -1564,8 +1567,14 @@ nir_visitor::visit(ir_call *ir)
    }
 
 
-   if (ir->return_deref)
-      nir_store_deref(&b, evaluate_deref(ir->return_deref), nir_load_deref(&b, ret_deref), ~0);
+   if (ir->return_deref) {
+      if (glsl_type_is_vector_or_scalar(ir->return_deref->type)) {
+         nir_store_deref(&b, evaluate_deref(ir->return_deref),
+                         nir_load_deref(&b, ret_deref), ~0);
+      } else {
+         nir_copy_deref(&b, evaluate_deref(ir->return_deref), ret_deref);
+      }
+   }
 }
 
 void

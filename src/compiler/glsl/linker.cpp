@@ -2633,12 +2633,6 @@ public:
          }
       }
 
-      if (!glsl_type_is_vector_or_scalar(ir->return_type) &&
-          !glsl_type_is_void(ir->return_type)) {
-         unsupported = true;
-         return visit_stop;
-      }
-
       return visit_continue;
    }
 

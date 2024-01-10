@@ -29,6 +29,7 @@
 #include "vk_limits.h"
 
 #include "util/bitset.h"
+#include "util/enum_operators.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -667,6 +668,31 @@ struct vk_color_blend_state {
    float blend_constants[4];
 };
 
+enum vk_rp_attachment_flags {
+   MESA_VK_RP_ATTACHMENT_NONE                      = 0,
+
+   MESA_VK_RP_ATTACHMENT_COLOR_0_BIT               = (1 << 0),
+   MESA_VK_RP_ATTACHMENT_COLOR_1_BIT               = (1 << 1),
+   MESA_VK_RP_ATTACHMENT_COLOR_2_BIT               = (1 << 2),
+   MESA_VK_RP_ATTACHMENT_COLOR_3_BIT               = (1 << 3),
+   MESA_VK_RP_ATTACHMENT_COLOR_4_BIT               = (1 << 4),
+   MESA_VK_RP_ATTACHMENT_COLOR_5_BIT               = (1 << 5),
+   MESA_VK_RP_ATTACHMENT_COLOR_6_BIT               = (1 << 6),
+   MESA_VK_RP_ATTACHMENT_COLOR_7_BIT               = (1 << 7),
+   MESA_VK_RP_ATTACHMENT_ANY_COLOR_BITS            = 0xff,
+
+   MESA_VK_RP_ATTACHMENT_DEPTH_BIT                 = (1 << 8),
+   MESA_VK_RP_ATTACHMENT_STENCIL_BIT               = (1 << 9),
+
+   MESA_VK_RP_ATTACHMENT_INFO_INVALID = 0xffff,
+};
+MESA_DEFINE_CPP_ENUM_BITFIELD_OPERATORS(vk_rp_attachment_flags)
+static_assert(MESA_VK_MAX_COLOR_ATTACHMENTS == 8,
+              "This enum must match the global runtime limit");
+
+#define MESA_VK_RP_ATTACHMENT_COLOR_BIT(n) \
+   ((enum vk_rp_attachment_flags)(MESA_VK_RP_ATTACHMENT_COLOR_0_BIT << (n)))
+
 /***/
 struct vk_input_attachment_location_state {
    /** VkRenderingInputAttachmentIndexInfoKHR::pColorAttachmentLocations
@@ -701,10 +727,10 @@ struct vk_color_attachment_location_state {
 struct vk_render_pass_state {
    /** Set of image aspects bound as color/depth/stencil attachments
     *
-    * Set to VK_IMAGE_ASPECT_METADATA_BIT to indicate that attachment info
-    * is invalid.
+    * Set to MESA_VK_RP_ATTACHMENT_INFO_INVALID to indicate that attachment
+    * info is invalid.
     */
-   VkImageAspectFlags attachment_aspects;
+   enum vk_rp_attachment_flags attachments;
 
    /** VkPipelineRenderingCreateInfo::viewMask */
    uint32_t view_mask;
@@ -731,7 +757,7 @@ struct vk_render_pass_state {
 static inline bool
 vk_render_pass_state_has_attachment_info(const struct vk_render_pass_state *rp)
 {
-   return rp->attachment_aspects != VK_IMAGE_ASPECT_METADATA_BIT;
+   return rp->attachments != MESA_VK_RP_ATTACHMENT_INFO_INVALID;
 }
 
 static inline VkImageAspectFlags

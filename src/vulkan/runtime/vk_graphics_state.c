@@ -1211,7 +1211,7 @@ vk_render_pass_state_init(struct vk_render_pass_state *rp,
     */
    if (info->renderPass == VK_NULL_HANDLE &&
        !(lib & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT)) {
-      rp->attachment_aspects = VK_IMAGE_ASPECT_METADATA_BIT;
+      rp->attachments = MESA_VK_RP_ATTACHMENT_INFO_INVALID;
       return;
    }
 
@@ -1220,16 +1220,16 @@ vk_render_pass_state_init(struct vk_render_pass_state *rp,
    for (uint32_t i = 0; i < r_info->colorAttachmentCount; i++) {
       rp->color_attachment_formats[i] = r_info->pColorAttachmentFormats[i];
       if (r_info->pColorAttachmentFormats[i] != VK_FORMAT_UNDEFINED)
-         rp->attachment_aspects |= VK_IMAGE_ASPECT_COLOR_BIT;
+         rp->attachments |= MESA_VK_RP_ATTACHMENT_COLOR_BIT(i);
    }
 
    rp->depth_attachment_format = r_info->depthAttachmentFormat;
    if (r_info->depthAttachmentFormat != VK_FORMAT_UNDEFINED)
-      rp->attachment_aspects |= VK_IMAGE_ASPECT_DEPTH_BIT;
+      rp->attachments |= MESA_VK_RP_ATTACHMENT_DEPTH_BIT;
 
    rp->stencil_attachment_format = r_info->stencilAttachmentFormat;
    if (r_info->stencilAttachmentFormat != VK_FORMAT_UNDEFINED)
-      rp->attachment_aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+      rp->attachments |= MESA_VK_RP_ATTACHMENT_STENCIL_BIT;
 
    const VkAttachmentSampleCountInfoAMD *asc_info =
       vk_get_pipeline_sample_count_info_amd(info);
@@ -1561,18 +1561,17 @@ vk_graphics_pipeline_state_fill(const struct vk_device *device,
        * where we only have fragment shader state and no render pass, the
        * vk_render_pass_state will be incomplete.
        */
-      if ((rp.attachment_aspects & (VK_IMAGE_ASPECT_DEPTH_BIT |
-                                    VK_IMAGE_ASPECT_STENCIL_BIT)) ||
-          !vk_render_pass_state_has_attachment_info(&rp))
+      if (!vk_render_pass_state_has_attachment_info(&rp) ||
+          (rp.attachments & (MESA_VK_RP_ATTACHMENT_DEPTH_BIT |
+                             MESA_VK_RP_ATTACHMENT_STENCIL_BIT)))
          needs |= MESA_VK_GRAPHICS_STATE_DEPTH_STENCIL_BIT;
 
       needs |= MESA_VK_GRAPHICS_STATE_INPUT_ATTACHMENT_MAP_BIT;
    }
 
    if (lib & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT) {
-      if (rp.attachment_aspects & (VK_IMAGE_ASPECT_COLOR_BIT)) {
+      if (rp.attachments & MESA_VK_RP_ATTACHMENT_ANY_COLOR_BITS)
          needs |= MESA_VK_GRAPHICS_STATE_COLOR_BLEND_BIT;
-      }
 
       needs |= MESA_VK_GRAPHICS_STATE_MULTISAMPLE_BIT;
 
@@ -1978,7 +1977,7 @@ vk_dynamic_graphics_state_fill(struct vk_dynamic_graphics_state *dyn,
     * the other blend states will be initialized. Normally this would be
     * initialized with the other blend states.
     */
-   if (!p->rp || !(p->rp->attachment_aspects & VK_IMAGE_ASPECT_COLOR_BIT)) {
+   if (!p->rp || !(p->rp->attachments & MESA_VK_RP_ATTACHMENT_ANY_COLOR_BITS)) {
       dyn->cb.attachment_count = 0;
       BITSET_SET(dyn->set, MESA_VK_DYNAMIC_CB_ATTACHMENT_COUNT);
    }

@@ -3333,6 +3333,8 @@ struct anv_simple_shader {
    struct anv_shader_bin *kernel;
    /* L3 config used by the shader */
    const struct intel_l3_config *l3_config;
+   /* Current URB config */
+   const struct intel_urb_config *urb_cfg;
 
    /* Managed by the simpler shader helper*/
    struct anv_state bt_state;
@@ -3442,6 +3444,8 @@ struct anv_cmd_graphics_state {
     * State tracking for Wa_18020335297.
     */
    bool                                         viewport_set;
+
+   struct intel_urb_config urb_cfg;
 
    uint32_t n_occlusion_queries;
 
@@ -4274,6 +4278,9 @@ struct anv_graphics_pipeline {
     * anv_cmd_buffer.
     */
    uint32_t                                     batch_data[416];
+
+   /* Urb setup utilized by this pipeline. */
+   struct intel_urb_config urb_cfg;
 
    /* Fully backed instructions, ready to be emitted in the anv_cmd_buffer */
    struct {

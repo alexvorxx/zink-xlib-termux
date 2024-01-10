@@ -2956,6 +2956,7 @@ genX(CmdExecuteCommands)(
    container->state.current_hash_scale = 0;
    container->state.gfx.push_constant_stages = 0;
    container->state.gfx.ds_write_state = false;
+   memset(&container->state.gfx.urb_cfg, 0, sizeof(struct intel_urb_config));
    memcpy(container->state.gfx.dyn_state.dirty,
           device->gfx_dirty_state,
           sizeof(container->state.gfx.dyn_state.dirty));
@@ -5509,6 +5510,30 @@ genX(batch_emit_fast_color_dummy_blit)(struct anv_batch *batch,
       blt.DestinationSurfaceType = XY_SURFTYPE_2D;
       blt.DestinationSurfaceQPitch = 4;
       blt.DestinationTiling = XY_TILE_LINEAR;
+   }
+#endif
+}
+
+void
+genX(urb_workaround)(struct anv_cmd_buffer *cmd_buffer,
+                     const struct intel_urb_config *urb_cfg)
+{
+#if INTEL_NEEDS_WA_16014912113
+   const struct intel_urb_config *current =
+      &cmd_buffer->state.gfx.urb_cfg;
+   if (intel_urb_setup_changed(urb_cfg, current, MESA_SHADER_TESS_EVAL) &&
+       current->size[0] != 0) {
+      for (int i = 0; i <= MESA_SHADER_GEOMETRY; i++) {
+         anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_URB_VS), urb) {
+            urb._3DCommandSubOpcode      += i;
+            urb.VSURBStartingAddress      = current->start[i];
+            urb.VSURBEntryAllocationSize  = current->size[i] - 1;
+            urb.VSNumberofURBEntries      = i == 0 ? 256 : 0;
+         }
+      }
+      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+         pc.HDCPipelineFlushEnable = true;
+      }
    }
 #endif
 }

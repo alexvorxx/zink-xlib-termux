@@ -119,6 +119,20 @@ void intel_get_urb_config(const struct intel_device_info *devinfo,
                           enum intel_urb_deref_block_size *deref_block_size,
                           bool *constrained);
 
+/* Returns if URB changed for given shader stage. */
+static inline bool
+intel_urb_setup_changed(const struct intel_urb_config *a,
+                        const struct intel_urb_config *b,
+                        gl_shader_stage stage)
+{
+   if (a->size[stage] != b->size[stage] ||
+       a->entries[stage] != b->entries[stage] ||
+       a->start[stage] != b->start[stage])
+      return true;
+
+   return false;
+}
+
 struct intel_mesh_urb_allocation {
    unsigned task_entries;
    unsigned task_entry_size_64b;

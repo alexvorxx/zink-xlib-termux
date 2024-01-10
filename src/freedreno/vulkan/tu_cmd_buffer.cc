@@ -5011,8 +5011,24 @@ tu6_emit_vs_params(struct tu_cmd_buffer *cmd,
       return;
    }
 
+   uint64_t consts_iova = 0;
+   if (offset) {
+      struct tu_cs_memory consts;
+      VkResult result = tu_cs_alloc(&cmd->sub_cs, 1, 4, &consts);
+      if (result != VK_SUCCESS) {
+         vk_command_buffer_set_error(&cmd->vk, result);
+         return;
+      }
+      consts.map[0] = draw_id;
+      consts.map[1] = vertex_offset;
+      consts.map[2] = first_instance;
+      consts.map[3] = 0;
+
+      consts_iova = consts.iova;
+   }
+
    struct tu_cs cs;
-   VkResult result = tu_cs_begin_sub_stream(&cmd->sub_cs, 3 + (offset ? 8 : 0), &cs);
+   VkResult result = tu_cs_begin_sub_stream(&cmd->sub_cs, 3 + (offset ? 4 : 0), &cs);
    if (result != VK_SUCCESS) {
       vk_command_buffer_set_error(&cmd->vk, result);
       return;
@@ -5022,20 +5038,19 @@ tu6_emit_vs_params(struct tu_cmd_buffer *cmd,
                    A6XX_VFD_INDEX_OFFSET(vertex_offset),
                    A6XX_VFD_INSTANCE_START_OFFSET(first_instance));
 
+   /* It is implemented as INDIRECT load even on a750+ because with UBO
+    * lowering it would be tricky to get const offset for to use in multidraw,
+    * also we would need to ensure the offset is not 0.
+    * TODO/A7XX: Rework vs params to use UBO lowering.
+    */
    if (offset) {
-      tu_cs_emit_pkt7(&cs, CP_LOAD_STATE6_GEOM, 3 + 4);
+      tu_cs_emit_pkt7(&cs, CP_LOAD_STATE6_GEOM, 3);
       tu_cs_emit(&cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
             CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-            CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+            CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
             CP_LOAD_STATE6_0_STATE_BLOCK(SB6_VS_SHADER) |
             CP_LOAD_STATE6_0_NUM_UNIT(1));
-      tu_cs_emit(&cs, 0);
-      tu_cs_emit(&cs, 0);
-
-      tu_cs_emit(&cs, draw_id);
-      tu_cs_emit(&cs, vertex_offset);
-      tu_cs_emit(&cs, first_instance);
-      tu_cs_emit(&cs, 0);
+      tu_cs_emit_qw(&cs, consts_iova);
    }
 
    cmd->state.last_vs_params.vertex_offset = vertex_offset;

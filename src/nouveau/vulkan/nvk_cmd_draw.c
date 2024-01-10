@@ -1706,19 +1706,14 @@ void
 nvk_mme_set_write_mask(struct mme_builder *b)
 {
    struct mme_value count = mme_load(b);
-   struct mme_value pipeline = nvk_mme_load_scratch(b, WRITE_MASK_PIPELINE);
-   struct mme_value dynamic = nvk_mme_load_scratch(b, WRITE_MASK_DYN);
+   struct mme_value mask = mme_load(b);
 
    /*
-      dynamic and pipeline are both bit fields
-
-      attachment index 88887777666655554444333322221111
-      component        abgrabgrabgrabgrabgrabgrabgrabgr
+    * mask is a bit field
+    *
+    * attachment index 88887777666655554444333322221111
+    * component        abgrabgrabgrabgrabgrabgrabgrabgr
    */
-
-   struct mme_value mask = mme_and(b, pipeline, dynamic);
-   mme_free_reg(b, pipeline);
-   mme_free_reg(b, dynamic);
 
    struct mme_value common_mask = mme_mov(b, mme_imm(1));
    struct mme_value first = mme_and(b, mask, mme_imm(BITFIELD_RANGE(0, 4)));
@@ -1806,22 +1801,29 @@ nvk_flush_cb_state(struct nvk_cmd_buffer *cmd)
    }
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_WRITE_MASKS) ||
-       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_COLOR_WRITE_ENABLES)) {
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_COLOR_WRITE_ENABLES) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RP_ATTACHMENTS)) {
       uint32_t color_write_enables = 0x0;
       for (uint8_t a = 0; a < render->color_att_count; a++) {
          if (dyn->cb.color_write_enables & BITFIELD_BIT(a))
             color_write_enables |= 0xf << (4 * a);
       }
 
-      uint32_t att_write_mask = 0x0;
+      uint32_t cb_att_write_mask = 0x0;
       for (uint8_t a = 0; a < render->color_att_count; a++)
-         att_write_mask |= dyn->cb.attachments[a].write_mask << (a * 4);
+         cb_att_write_mask |= dyn->cb.attachments[a].write_mask << (a * 4);
 
-      P_IMMD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_WRITE_MASK_DYN),
-             color_write_enables & att_write_mask);
+      uint32_t rp_att_write_mask = 0x0;
+      for (uint8_t a = 0; a < MESA_VK_MAX_COLOR_ATTACHMENTS; a++) {
+         if (dyn->rp.attachments & (MESA_VK_RP_ATTACHMENT_COLOR_0_BIT << a))
+            rp_att_write_mask |= 0xf << (4 * a);
+      }
 
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SET_WRITE_MASK));
       P_INLINE_DATA(p, render->color_att_count);
+      P_INLINE_DATA(p, color_write_enables &
+                       cb_att_write_mask &
+                       rp_att_write_mask);
    }
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS)) {

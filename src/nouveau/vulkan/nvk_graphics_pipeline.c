@@ -24,30 +24,6 @@
 #include "nvk_clc397.h"
 
 static void
-emit_pipeline_ct_write_state(struct nv_push *p,
-                             const struct vk_color_blend_state *cb,
-                             const struct vk_render_pass_state *rp)
-{
-   uint32_t write_mask = 0;
-   uint32_t att_count = 0;
-
-   if (rp != NULL) {
-      att_count = rp->color_attachment_count;
-      for (uint32_t a = 0; a < rp->color_attachment_count; a++) {
-         VkFormat att_format = rp->color_attachment_formats[a];
-         if (att_format != VK_FORMAT_UNDEFINED)
-            write_mask |= 0xf << (4 * a);
-      }
-   }
-
-   P_IMMD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_WRITE_MASK_PIPELINE),
-          write_mask);
-
-   P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SET_WRITE_MASK));
-   P_INLINE_DATA(p, att_count);
-}
-
-static void
 emit_pipeline_xfb_state(struct nv_push *p, const struct nak_xfb_info *xfb)
 {
    for (uint8_t b = 0; b < ARRAY_SIZE(xfb->attr_count); b++) {
@@ -401,8 +377,6 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
    });
 
    emit_pipeline_xfb_state(&push, &last_geom->info.vtg.xfb);
-
-   emit_pipeline_ct_write_state(&push, state.cb, state.rp);
 
    pipeline->push_dw_count = nv_push_dw_count(&push);
 

@@ -17,12 +17,22 @@ from lava.utils.log_section import LogSectionType
 class LAVALogHints:
     log_follower: LogFollower
     r8152_issue_consecutive_counter: int = field(default=0, init=False)
+    reboot_counter: int = field(default=0, init=False)
+
+    def raise_known_issue(self, message) -> None:
+        raise MesaCIKnownIssueException(
+            "Found known issue: "
+            f"{CONSOLE_LOG['FG_MAGENTA']}"
+            f"{message}"
+            f"{CONSOLE_LOG['RESET']}"
+        )
 
     def detect_failure(self, new_lines: list[dict[str, Any]]):
         for line in new_lines:
             if line["msg"] == LOG_DEBUG_FEEDBACK_NOISE:
                 continue
             self.detect_r8152_issue(line)
+            self.detect_forced_reboot(line)
 
     def detect_r8152_issue(self, line):
         if self.log_follower.phase in (
@@ -38,11 +48,22 @@ class LAVALogHints:
                     r"nfs: server \d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3} not responding, still trying",
                     line["msg"],
                 ):
-                    raise MesaCIKnownIssueException(
-                        f"{CONSOLE_LOG['FG_MAGENTA']}"
+                    self.raise_known_issue(
                         "Probable network issue failure encountered, retrying the job"
-                        f"{CONSOLE_LOG['RESET']}"
                     )
 
         # Reset the status, as the `nfs... still trying` complaint was not detected
         self.r8152_issue_consecutive_counter = 0
+
+    def detect_forced_reboot(self, line: dict[str, Any]) -> None:
+        if (
+            self.log_follower.phase == LogSectionType.TEST_CASE
+            and line["lvl"] == "feedback"
+        ):
+            if re.search(r"^Reboot requested", line["msg"]):
+                self.reboot_counter += 1
+
+                if self.reboot_counter > 0:
+                    self.raise_known_issue(
+                        "Forced reboot detected during test phase, failing the job..."
+                    )

@@ -5755,6 +5755,9 @@ radv_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBegi
    cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_ALL | RADV_CMD_DIRTY_GUARDBAND | RADV_CMD_DIRTY_OCCLUSION_QUERY |
                               RADV_CMD_DIRTY_DB_SHADER_CONTROL;
 
+   if (cmd_buffer->qf == RADV_QUEUE_GENERAL)
+      vk_dynamic_graphics_state_init(&cmd_buffer->state.dynamic.vk);
+
    if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX7) {
       uint32_t pred_value = 0;
       uint32_t pred_offset;

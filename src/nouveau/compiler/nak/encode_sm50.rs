@@ -756,10 +756,6 @@ impl SM50Instr {
     }
 
     fn encode_imad(&mut self, op: &OpIMad) {
-        assert!(op.srcs[0].is_reg_or_zero());
-        assert!(op.srcs[1].is_reg_or_zero());
-        assert!(op.srcs[2].is_reg_or_zero());
-
         let neg_1_bit = 51;
         let neg_2_bit = 52;
 
@@ -1427,9 +1423,6 @@ impl SM50Instr {
     }
 
     fn encode_fmnmx(&mut self, op: &OpFMnMx) {
-        assert!(op.srcs[0].is_reg_or_zero());
-        assert!(op.srcs[1].is_reg_or_zero());
-
         match &op.srcs[1].src_ref {
             SrcRef::Imm32(imm32) => {
                 self.set_opcode(0x3860);
@@ -1453,9 +1446,6 @@ impl SM50Instr {
     }
 
     fn encode_fmul(&mut self, op: &OpFMul) {
-        assert!(op.srcs[0].is_reg_or_zero());
-        assert!(op.srcs[1].is_reg_or_zero());
-
         if let Some(imm32) = op.srcs[1].as_imm_not_f20() {
             self.set_opcode(0x1e00);
 
@@ -1565,9 +1555,6 @@ impl SM50Instr {
     }
 
     fn encode_fset(&mut self, op: &OpFSet) {
-        assert!(op.srcs[0].is_reg_or_zero());
-        assert!(op.srcs[1].is_reg_or_zero());
-
         match &op.srcs[1].src_ref {
             SrcRef::Imm32(imm32) => {
                 self.set_opcode(0x3000);
@@ -1593,8 +1580,6 @@ impl SM50Instr {
     }
 
     fn encode_fsetp(&mut self, op: &OpFSetP) {
-        assert!(op.srcs[0].is_reg_or_zero());
-
         match &op.srcs[1].src_ref {
             SrcRef::Imm32(imm32) => {
                 self.set_opcode(0x36b0);
@@ -1926,10 +1911,6 @@ impl SM50Instr {
     }
 
     fn encode_prmt(&mut self, op: &OpPrmt) {
-        assert!(op.srcs[0].is_reg_or_zero());
-        assert!(op.sel.is_reg_or_zero());
-        assert!(op.srcs[1].is_reg_or_zero());
-
         match &op.sel.src_ref {
             SrcRef::Imm32(imm) => {
                 self.set_opcode(0x36c0);

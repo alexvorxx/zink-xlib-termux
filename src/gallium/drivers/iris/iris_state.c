@@ -6836,6 +6836,8 @@ iris_upload_dirty_render_state(struct iris_context *ice,
                            &ice->state.urb_deref_block_size,
                            &ice->shaders.urb.constrained);
 
+      genX(urb_workaround)(batch, &ice->shaders.urb.cfg);
+
       for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
          iris_emit_cmd(batch, GENX(3DSTATE_URB_VS), urb) {
             urb._3DCommandSubOpcode += i;
@@ -8133,6 +8135,35 @@ genX(emit_3dprimitive_was)(struct iris_batch *batch,
       }
    }
 #endif
+}
+
+void
+genX(urb_workaround)(struct iris_batch *batch,
+                     const struct intel_urb_config *urb_cfg)
+{
+#if INTEL_NEEDS_WA_16014912113
+   if (intel_urb_setup_changed(urb_cfg, &batch->ice->shaders.last_urb,
+                               MESA_SHADER_TESS_EVAL) &&
+       batch->ice->shaders.last_urb.size[0] != 0) {
+      for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
+         iris_emit_cmd(batch, GENX(3DSTATE_URB_VS), urb) {
+            urb._3DCommandSubOpcode += i;
+            urb.VSURBStartingAddress =
+               batch->ice->shaders.last_urb.start[i];
+            urb.VSURBEntryAllocationSize =
+               batch->ice->shaders.last_urb.size[i] - 1;
+            urb.VSNumberofURBEntries = i == 0 ? 256 : 0;
+         }
+      }
+      iris_emit_cmd(batch, GENX(PIPE_CONTROL), pc) {
+         pc.HDCPipelineFlushEnable = true;
+      }
+   }
+#endif
+
+   /* Update current urb config. */
+   memcpy(&batch->ice->shaders.last_urb, &batch->ice->shaders.urb.cfg,
+          sizeof(struct intel_urb_config));
 }
 
 static void

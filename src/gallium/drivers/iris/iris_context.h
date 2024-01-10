@@ -718,6 +718,9 @@ struct iris_context {
          bool constrained;
       } urb;
 
+      /** Last urb emitted by the driver. */
+      struct intel_urb_config last_urb;
+
       /** Uploader for shader assembly from the driver thread */
       struct u_upload_mgr *uploader_driver;
       /** Uploader for shader assembly from the threaded context */

@@ -728,6 +728,12 @@ struct vk_render_pass_state {
    uint8_t depth_stencil_attachment_samples;
 };
 
+static inline bool
+vk_render_pass_state_has_attachment_info(const struct vk_render_pass_state *rp)
+{
+   return rp->attachment_aspects != VK_IMAGE_ASPECT_METADATA_BIT;
+}
+
 static inline VkImageAspectFlags
 vk_pipeline_flags_feedback_loops(VkPipelineCreateFlags2KHR flags)
 {

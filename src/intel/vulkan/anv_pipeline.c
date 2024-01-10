@@ -577,7 +577,7 @@ populate_mesh_prog_key(struct anv_pipeline_stage *stage,
 static uint32_t
 rp_color_mask(const struct vk_render_pass_state *rp)
 {
-   if (rp == NULL || rp->attachment_aspects == VK_IMAGE_ASPECT_METADATA_BIT)
+   if (rp == NULL || !vk_render_pass_state_has_attachment_info(rp))
       return ((1u << MAX_RTS) - 1);
 
    uint32_t color_mask = 0;

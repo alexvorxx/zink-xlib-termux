@@ -3272,8 +3272,7 @@ tu_pipeline_builder_emit_state(struct tu_pipeline_builder *builder,
               builder->graphics_state.rs);
    bool attachments_valid =
       builder->graphics_state.rp &&
-      !(builder->graphics_state.rp->attachment_aspects &
-                              VK_IMAGE_ASPECT_METADATA_BIT);
+      vk_render_pass_state_has_attachment_info(builder->graphics_state.rp);
    struct vk_color_blend_state dummy_cb = {};
    const struct vk_color_blend_state *cb = builder->graphics_state.cb;
    if (attachments_valid &&

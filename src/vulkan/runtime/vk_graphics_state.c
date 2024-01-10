@@ -1111,12 +1111,6 @@ vk_dynamic_graphics_state_init_cal(struct vk_dynamic_graphics_state *dst,
       typed_memcpy(dst->cal.color_map, cal->color_map, MESA_VK_MAX_COLOR_ATTACHMENTS);
 }
 
-static bool
-vk_render_pass_state_is_complete(const struct vk_render_pass_state *rp)
-{
-   return rp->attachment_aspects != VK_IMAGE_ASPECT_METADATA_BIT;
-}
-
 static void
 vk_pipeline_flags_init(struct vk_graphics_pipeline_state *state,
                        VkPipelineCreateFlags2KHR driver_rp_flags,
@@ -1176,7 +1170,7 @@ vk_render_pass_state_init(struct vk_render_pass_state *rp,
     * it's complete and we don't need a new one.  The one caveat here is that
     * we may need to add in some rendering flags.
     */
-   if (old_rp != NULL && vk_render_pass_state_is_complete(old_rp)) {
+   if (old_rp != NULL && vk_render_pass_state_has_attachment_info(old_rp)) {
       *rp = *old_rp;
       return;
    }
@@ -1477,8 +1471,8 @@ vk_graphics_pipeline_state_fill(const struct vk_device *device,
        * to NULL so it gets replaced with the new version.
        */
       if (state->rp != NULL &&
-          !vk_render_pass_state_is_complete(state->rp) &&
-          vk_render_pass_state_is_complete(&rp))
+          !vk_render_pass_state_has_attachment_info(state->rp) &&
+          !vk_render_pass_state_has_attachment_info(&rp))
          state->rp = NULL;
    }
 
@@ -1569,7 +1563,7 @@ vk_graphics_pipeline_state_fill(const struct vk_device *device,
        */
       if ((rp.attachment_aspects & (VK_IMAGE_ASPECT_DEPTH_BIT |
                                     VK_IMAGE_ASPECT_STENCIL_BIT)) ||
-          !vk_render_pass_state_is_complete(&rp))
+          !vk_render_pass_state_has_attachment_info(&rp))
          needs |= MESA_VK_GRAPHICS_STATE_DEPTH_STENCIL_BIT;
 
       needs |= MESA_VK_GRAPHICS_STATE_INPUT_ATTACHMENT_MAP_BIT;
@@ -1759,8 +1753,8 @@ vk_graphics_pipeline_state_merge(struct vk_graphics_pipeline_state *dst,
     * incomplete (view mask only).  See vk_render_pass_state_init().
     */
    if (dst->rp != NULL && src->rp != NULL &&
-       !vk_render_pass_state_is_complete(dst->rp) &&
-       vk_render_pass_state_is_complete(src->rp))
+       !vk_render_pass_state_has_attachment_info(dst->rp) &&
+       vk_render_pass_state_has_attachment_info(src->rp))
       dst->rp = src->rp;
 
 #define MERGE(STATE, type, state) \

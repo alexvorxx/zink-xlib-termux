@@ -91,6 +91,7 @@ enum panvk_dynamic_state_bits {
 struct panvk_descriptor_state {
    uint32_t dirty;
    const struct panvk_descriptor_set *sets[MAX_SETS];
+   struct panvk_push_descriptor_set *push_sets[MAX_SETS];
    struct panvk_sysvals sysvals;
    struct {
       struct panvk_buffer_desc ubos[MAX_DYNAMIC_UNIFORM_BUFFERS];

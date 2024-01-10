@@ -50,6 +50,8 @@
 
 #include "util/rounding.h"
 #include "util/u_pack_color.h"
+
+#include "vk_descriptor_update_template.h"
 #include "vk_format.h"
 
 struct panvk_draw_info {
@@ -356,6 +358,59 @@ panvk_cmd_prepare_push_constants(
    memcpy(push_constants.cpu, cmdbuf->push_constants,
           pipeline->layout->push_constants.size);
    desc_state->push_constants = push_constants.gpu;
+}
+
+static void
+panvk_cmd_prepare_push_sets(struct panvk_cmd_buffer *cmdbuf,
+                            struct panvk_cmd_bind_point_state *bind_point_state)
+{
+   struct panvk_descriptor_state *desc_state = &bind_point_state->desc_state;
+   const struct panvk_pipeline *pipeline = bind_point_state->pipeline;
+   const struct panvk_pipeline_layout *playout = pipeline->layout;
+
+   for (unsigned i = 0; i < playout->vk.set_count; i++) {
+      const struct panvk_descriptor_set_layout *slayout =
+         vk_to_panvk_descriptor_set_layout(playout->vk.set_layouts[i]);
+      bool is_push_set =
+         slayout->flags &
+         VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+
+      if (desc_state->sets[i] || !is_push_set || !desc_state->push_sets[i])
+         continue;
+
+      struct panvk_descriptor_set *set = &desc_state->push_sets[i]->set;
+
+      panvk_per_arch(push_descriptor_set_assign_layout)(desc_state->push_sets[i],
+                                                        slayout);
+      if (slayout->desc_ubo_size) {
+         struct panfrost_ptr desc_ubo = pan_pool_alloc_aligned(
+            &cmdbuf->desc_pool.base, slayout->desc_ubo_size, 16);
+         struct mali_uniform_buffer_packed *ubos = set->ubos;
+
+         memcpy(desc_ubo.cpu, set->desc_ubo.addr.host, slayout->desc_ubo_size);
+         set->desc_ubo.addr.dev = desc_ubo.gpu;
+         set->desc_ubo.addr.host = desc_ubo.cpu;
+
+         pan_pack(&ubos[slayout->desc_ubo_index], UNIFORM_BUFFER, cfg) {
+            cfg.pointer = set->desc_ubo.addr.dev;
+            cfg.entries = DIV_ROUND_UP(slayout->desc_ubo_size, 16);
+         }
+      }
+
+      desc_state->sets[i] = &desc_state->push_sets[i]->set;
+   }
+}
+
+static void
+panvk_cmd_unprepare_push_sets(struct panvk_cmd_buffer *cmdbuf,
+                              struct panvk_cmd_bind_point_state *bind_point_state)
+{
+   struct panvk_descriptor_state *desc_state = &bind_point_state->desc_state;
+
+   for (unsigned i = 0; i < ARRAY_SIZE(desc_state->sets); i++) {
+      if (desc_state->push_sets[i] && &desc_state->push_sets[i]->set == desc_state->sets[i])
+         desc_state->sets[i] = NULL;
+   }
 }
 
 static void
@@ -1270,6 +1325,7 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
 
    panvk_cmd_prepare_draw_sysvals(cmdbuf, bind_point_state, draw);
+   panvk_cmd_prepare_push_sets(cmdbuf, bind_point_state);
    panvk_cmd_prepare_ubos(cmdbuf, bind_point_state);
    panvk_cmd_prepare_textures(cmdbuf, bind_point_state);
    panvk_cmd_prepare_samplers(cmdbuf, bind_point_state);
@@ -1309,6 +1365,7 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
 
    /* Clear the dirty flags all at once */
    desc_state->dirty = cmdbuf->state.dirty = 0;
+   panvk_cmd_unprepare_push_sets(cmdbuf, bind_point_state);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -1587,6 +1644,14 @@ panvk_destroy_cmdbuf(struct vk_command_buffer *vk_cmdbuf)
       container_of(vk_cmdbuf, struct panvk_cmd_buffer, vk);
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
 
+   for (unsigned i = 0; i < MAX_BIND_POINTS; i++) {
+      for (unsigned j = 0; j < MAX_SETS; j++) {
+         if (cmdbuf->bind_points[i].desc_state.push_sets[j])
+            vk_free(&cmdbuf->vk.pool->alloc,
+                    cmdbuf->bind_points[i].desc_state.push_sets[j]);
+      }
+   }
+
    list_for_each_entry_safe(struct panvk_batch, batch, &cmdbuf->batches, node) {
       list_del(&batch->node);
       util_dynarray_fini(&batch->jobs);
@@ -1692,6 +1757,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, false);
    dispatch.tsd = batch->tls.gpu;
 
+   panvk_cmd_prepare_push_sets(cmdbuf, bind_point_state);
    panvk_prepare_non_vs_attribs(cmdbuf, bind_point_state);
    dispatch.attributes = desc_state->non_vs_attribs;
    dispatch.attribute_bufs = desc_state->non_vs_attrib_bufs;
@@ -1744,6 +1810,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
    desc_state->dirty = 0;
+   panvk_cmd_unprepare_push_sets(cmdbuf, bind_point_state);
 }
 
 static void
@@ -2259,4 +2326,77 @@ panvk_per_arch(CmdDispatchIndirect)(VkCommandBuffer commandBuffer,
                                     VkBuffer _buffer, VkDeviceSize offset)
 {
    panvk_stub();
+}
+
+static struct panvk_push_descriptor_set *
+panvk_cmd_push_descriptors(struct panvk_cmd_buffer *cmdbuf,
+                           VkPipelineBindPoint bind_point,
+                           uint32_t set)
+{
+   struct panvk_cmd_bind_point_state *bind_point_state =
+      &cmdbuf->bind_points[bind_point];
+   struct panvk_descriptor_state *desc_state = &bind_point_state->desc_state;
+
+   assert(set < MAX_SETS);
+   if (unlikely(desc_state->push_sets[set] == NULL)) {
+      desc_state->push_sets[set] =
+         vk_zalloc(&cmdbuf->vk.pool->alloc, sizeof(*desc_state->push_sets[0]),
+                   8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      if (unlikely(desc_state->push_sets[set] == NULL)) {
+         vk_command_buffer_set_error(&cmdbuf->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
+         return NULL;
+      }
+   }
+
+   /* Pushing descriptors replaces whatever sets are bound */
+   desc_state->sets[set] = NULL;
+
+   /* Reset all descs to force emission of new tables on the next draw/dispatch.
+    * TODO: Be smarter and only reset those when required.
+    */
+   desc_state->ubos = 0;
+   desc_state->textures = 0;
+   desc_state->samplers = 0;
+   desc_state->vs_attrib_bufs = desc_state->non_vs_attrib_bufs = 0;
+   desc_state->vs_attribs = desc_state->non_vs_attribs = 0;
+   return desc_state->push_sets[set];
+}
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_per_arch(CmdPushDescriptorSetKHR)(
+   VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint,
+   VkPipelineLayout layout, uint32_t set, uint32_t descriptorWriteCount,
+   const VkWriteDescriptorSet *pDescriptorWrites)
+{
+   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(panvk_pipeline_layout, playout, layout);
+   const struct panvk_descriptor_set_layout *set_layout =
+      vk_to_panvk_descriptor_set_layout(playout->vk.set_layouts[set]);
+   struct panvk_push_descriptor_set *push_set =
+      panvk_cmd_push_descriptors(cmdbuf, pipelineBindPoint, set);
+   if (!push_set)
+      return;
+
+   panvk_per_arch(push_descriptor_set)(push_set, set_layout,
+                                       descriptorWriteCount, pDescriptorWrites);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_per_arch(CmdPushDescriptorSetWithTemplateKHR)(
+   VkCommandBuffer commandBuffer,
+   VkDescriptorUpdateTemplate descriptorUpdateTemplate, VkPipelineLayout layout,
+   uint32_t set, const void *pData)
+{
+   VK_FROM_HANDLE(vk_descriptor_update_template, template, descriptorUpdateTemplate);
+   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(panvk_pipeline_layout, playout, layout);
+   const struct panvk_descriptor_set_layout *set_layout =
+      vk_to_panvk_descriptor_set_layout(playout->vk.set_layouts[set]);
+   struct panvk_push_descriptor_set *push_set =
+      panvk_cmd_push_descriptors(cmdbuf, template->bind_point, set);
+   if (!push_set)
+      return;
+
+   panvk_per_arch(push_descriptor_set_with_template)(
+      push_set, set_layout, descriptorUpdateTemplate, pData);
 }

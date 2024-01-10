@@ -71,6 +71,7 @@ get_device_extensions(const struct panvk_physical_device *device,
       .KHR_shader_expect_assume = true,
       .KHR_storage_buffer_storage_class = true,
       .KHR_descriptor_update_template = true,
+      .KHR_push_descriptor = true,
 #ifdef PANVK_USE_WSI_PLATFORM
       .KHR_swapchain = true,
 #endif
@@ -665,7 +666,8 @@ panvk_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR: {
          VkPhysicalDevicePushDescriptorPropertiesKHR *properties =
             (VkPhysicalDevicePushDescriptorPropertiesKHR *)ext;
-         properties->maxPushDescriptors = 0;
+         /* Software limit. */
+         properties->maxPushDescriptors = 32;
          break;
       }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT: {

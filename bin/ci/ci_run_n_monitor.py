@@ -407,6 +407,28 @@ if __name__ == "__main__":
                 REV = mesa_project.mergerequests.get(args.mr).sha
             else:
                 REV = check_output(['git', 'rev-parse', REV]).decode('ascii').strip()
+
+                if args.rev == 'HEAD':
+                    branch_name = check_output([
+                        'git', 'symbolic-ref', '-q', 'HEAD',
+                    ]).decode('ascii').strip()
+
+                    tracked_remote = check_output([
+                        'git', 'for-each-ref', '--format=%(upstream)',
+                        branch_name,
+                    ]).decode('ascii').strip()
+
+                    remote_rev = check_output([
+                        'git', 'rev-parse', tracked_remote,
+                    ]).decode('ascii').strip()
+
+                    if REV != remote_rev:
+                        print(
+                            f"Local HEAD commit {REV[:10]} is different than "
+                            f"tracked remote HEAD commit {remote_rev[:10]}"
+                        )
+                        print("Did you forget to `git push` ?")
+
                 projects.append(get_gitlab_project(gl, args.project))
             (pipe, cur_project) = wait_for_pipeline(projects, REV)
 

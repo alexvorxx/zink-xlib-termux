@@ -1699,19 +1699,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    NIR_PASS(_, nir, nir_convert_to_lcssa, true, true);
    NIR_PASS_V(nir, nir_divergence_analysis);
 
-   /* TODO: Enable nir_opt_uniform_atomics on Gfx7.x too.
-    * It currently fails Vulkan tests on Haswell for an unknown reason.
-    *
-    * TODO: Using this optimization on RT/OpenCL kernels also seems to cause
-    *       issues. Until we can understand those issues, disable it.
-    */
-   bool opt_uniform_atomic_stage_allowed =
-      devinfo->ver >= 8 &&
-      nir->info.stage != MESA_SHADER_KERNEL &&
-      nir->info.stage != MESA_SHADER_RAYGEN &&
-      !gl_shader_stage_is_callable(nir->info.stage);
-
-   if (opt_uniform_atomic_stage_allowed && OPT(nir_opt_uniform_atomics)) {
+   if (OPT(nir_opt_uniform_atomics)) {
       const nir_lower_subgroups_options subgroups_options = {
          .ballot_bit_size = 32,
          .ballot_components = 1,

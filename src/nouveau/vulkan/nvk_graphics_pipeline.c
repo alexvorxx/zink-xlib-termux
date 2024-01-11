@@ -224,7 +224,6 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
    }
 
    if (nir[MESA_SHADER_TESS_CTRL] && nir[MESA_SHADER_TESS_EVAL]) {
-      nir_lower_patch_vertices(nir[MESA_SHADER_TESS_EVAL], nir[MESA_SHADER_TESS_CTRL]->info.tess.tcs_vertices_out, NULL);
       merge_tess_info(&nir[MESA_SHADER_TESS_EVAL]->info, &nir[MESA_SHADER_TESS_CTRL]->info);
    }
 

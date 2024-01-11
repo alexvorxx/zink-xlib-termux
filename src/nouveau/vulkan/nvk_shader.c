@@ -365,6 +365,11 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
                });
    }
 
+   if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
+      NIR_PASS(_, nir, nir_lower_patch_vertices,
+               nir->info.tess.tcs_vertices_out, NULL);
+   }
+
    const struct lower_ycbcr_state ycbcr_state = {
       .set_layout_count = set_layout_count,
       .set_layouts = set_layouts,

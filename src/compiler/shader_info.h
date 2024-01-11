@@ -389,6 +389,9 @@ typedef struct shader_info {
           */
          uint8_t blit_sgprs_amd:4;
 
+         /* Software TES executing as HW VS */
+         bool tes_agx:1;
+
          /* True if the shader writes position in window space coordinates pre-transform */
          bool window_space_position:1;
 

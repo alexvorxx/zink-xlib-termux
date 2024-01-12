@@ -287,8 +287,6 @@ struct iris_bo {
 
    union {
       struct {
-         uint64_t kflags;
-
          time_t free_time;
 
          /** Mapped address for the buffer, saved across map/unmap cycles */
@@ -327,6 +325,9 @@ struct iris_bo {
 
          /** Boolean of whether this buffer is protected (HW encryption) */
          bool protected;
+
+         /** Boolean of whether this buffer needs to be captured in error dump */
+         bool capture;
       } real;
       struct {
          struct pb_slab_entry entry;

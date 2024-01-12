@@ -549,8 +549,7 @@ ensure_ring_bo(struct iris_context *ice, struct iris_screen *screen)
       iris_bo_alloc(bufmgr, "gen ring",
                     RING_SIZE, 8, IRIS_MEMZONE_OTHER,
                     BO_ALLOC_NO_SUBALLOC);
-   iris_get_backing_bo(ice->draw.generation.ring_bo)->real.kflags |= EXEC_OBJECT_CAPTURE;
-
+   iris_get_backing_bo(ice->draw.generation.ring_bo)->real.capture = true;
 }
 
 struct iris_gen_indirect_params *

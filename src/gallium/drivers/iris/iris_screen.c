@@ -46,7 +46,6 @@
 #include "util/u_upload_mgr.h"
 #include "util/ralloc.h"
 #include "util/xmlconfig.h"
-#include "drm-uapi/i915_drm.h"
 #include "iris_context.h"
 #include "iris_defines.h"
 #include "iris_fence.h"

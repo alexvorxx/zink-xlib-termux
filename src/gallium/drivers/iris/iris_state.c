@@ -94,7 +94,6 @@
 #include "util/u_viewport.h"
 #include "util/u_memory.h"
 #include "util/u_trace_gallium.h"
-#include "drm-uapi/i915_drm.h"
 #include "nir.h"
 #include "intel/common/intel_aux_map.h"
 #include "intel/common/intel_l3_config.h"

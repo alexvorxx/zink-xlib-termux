@@ -345,6 +345,36 @@ agx_optimizer_cmpsel(agx_instr **defs, agx_instr *I)
    }
 }
 
+/*
+ * Fuse conditions into ballots:
+ *
+ *    ballot(cmp(x, y)) -> ballot_cmp(x, y)
+ */
+static void
+agx_optimizer_ballot(agx_context *ctx, agx_instr **defs, agx_instr *I)
+{
+   agx_instr *def = defs[I->src[0].value];
+   if (!def || (def->op != AGX_OPCODE_ICMP && def->op != AGX_OPCODE_FCMP))
+      return;
+
+   bool quad = I->op == AGX_OPCODE_QUAD_BALLOT;
+   assert(quad || I->op == AGX_OPCODE_BALLOT);
+
+   /* Replace with a fused instruction since the # of sources changes */
+   agx_builder b = agx_init_builder(ctx, agx_before_instr(I));
+
+   agx_instr *fused = agx_icmp_ballot_to(
+      &b, I->dest[0], def->src[0], def->src[1], def->icond, def->invert_cond);
+
+   if (def->op == AGX_OPCODE_ICMP) {
+      fused->op = quad ? AGX_OPCODE_ICMP_QUAD_BALLOT : AGX_OPCODE_ICMP_BALLOT;
+   } else {
+      fused->op = quad ? AGX_OPCODE_FCMP_QUAD_BALLOT : AGX_OPCODE_FCMP_BALLOT;
+   }
+
+   agx_remove_instruction(I);
+}
+
 static void
 agx_optimizer_forward(agx_context *ctx)
 {
@@ -377,6 +407,8 @@ agx_optimizer_forward(agx_context *ctx)
          agx_optimizer_if_cmp(defs, I);
       else if (I->op == AGX_OPCODE_ICMPSEL)
          agx_optimizer_cmpsel(defs, I);
+      else if (I->op == AGX_OPCODE_BALLOT || I->op == AGX_OPCODE_QUAD_BALLOT)
+         agx_optimizer_ballot(ctx, defs, I);
    }
 
    free(defs);

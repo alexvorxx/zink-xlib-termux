@@ -111,6 +111,16 @@ xe_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
                device->fd, args.offset);
 }
 
+static inline uint32_t
+capture_vm_in_error_dump(struct anv_device *device, struct anv_bo *bo)
+{
+   enum anv_bo_alloc_flags alloc_flags = bo ? bo->alloc_flags : 0;
+   bool capture = INTEL_DEBUG(DEBUG_CAPTURE_ALL) ||
+                  (alloc_flags & ANV_BO_ALLOC_CAPTURE);
+
+   return capture ? DRM_XE_VM_BIND_FLAG_DUMPABLE : 0;
+}
+
 static inline int
 xe_vm_bind_op(struct anv_device *device,
               struct anv_sparse_submission *submit)
@@ -153,7 +163,7 @@ xe_vm_bind_op(struct anv_device *device,
          .range = bind->size,
          .addr = intel_48b_address(bind->address),
          .op = DRM_XE_VM_BIND_OP_UNMAP,
-         .flags = 0,
+         .flags = capture_vm_in_error_dump(device, bo),
          .prefetch_mem_region_instance = 0,
       };
 

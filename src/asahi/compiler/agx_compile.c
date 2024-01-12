@@ -1260,6 +1260,10 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_subgroup_invocation:
       return agx_get_sr_to(b, dst, AGX_SR_THREAD_INDEX_IN_SUBGROUP);
 
+   case nir_intrinsic_load_active_subgroup_invocation_agx:
+      return agx_get_sr_coverage_to(b, dst,
+                                    AGX_SR_ACTIVE_THREAD_INDEX_IN_SUBGROUP);
+
    case nir_intrinsic_reduce: {
       assert(nir_intrinsic_reduction_op(instr) == nir_op_iadd &&
              "other reductions todo");

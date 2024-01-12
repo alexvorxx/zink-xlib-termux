@@ -276,10 +276,13 @@ vn_tls_get_ring(struct vn_instance *instance)
    /* only need a small ring for synchronous cmds on tls ring */
    static const size_t buf_size = 16 * 1024;
 
+   /* single cmd can use the entire ring shmem on tls ring */
+   static const uint8_t direct_order = 0;
+
    struct vn_ring_layout layout;
    vn_ring_get_layout(buf_size, extra_size, &layout);
 
-   tls_ring->ring = vn_ring_create(instance, &layout);
+   tls_ring->ring = vn_ring_create(instance, &layout, direct_order);
    if (!tls_ring->ring) {
       free(tls_ring);
       return NULL;

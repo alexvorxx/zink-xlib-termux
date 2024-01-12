@@ -1215,6 +1215,18 @@ vn_graphics_pipeline_state_fill(
       state->gpl.fragment_output = true;
    }
 
+   /* Pipeline Derivatives
+    *
+    *    VUID-VkGraphicsPipelineCreateInfo-flags-07984
+    *
+    *    If flags contains the VK_PIPELINE_CREATE_DERIVATIVE_BIT flag, and
+    *    basePipelineIndex is -1, basePipelineHandle must be a valid graphics
+    *    VkPipeline handle
+    */
+   if ((info->flags & VK_PIPELINE_CREATE_DERIVATIVE_BIT) &&
+       info->basePipelineIndex == -1)
+      valid.self.base_pipeline_handle = true;
+
    *out_fix_desc = (struct vn_graphics_pipeline_fix_desc) {
       .self = {
          /* clang-format off */

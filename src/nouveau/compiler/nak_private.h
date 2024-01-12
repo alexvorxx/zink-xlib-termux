@@ -205,6 +205,18 @@ bool nak_nir_add_barriers(nir_shader *nir, const struct nak_compiler *nak);
 
 #define NAK_FS_OUT_COLOR(n) (NAK_FS_OUT_COLOR0 + (n) * 16)
 
+struct nak_memstream {
+   FILE *stream;
+   char *buffer;
+   size_t written;
+};
+
+void nak_open_memstream(struct nak_memstream *memstream);
+void nak_close_memstream(struct nak_memstream *memstream);
+void nak_flush_memstream(struct nak_memstream *memstream);
+void nak_clear_memstream(struct nak_memstream *memstream);
+void nak_nir_asprint_instr(struct nak_memstream *memstream, const nir_instr *instr);
+
 #ifdef __cplusplus
 }
 #endif

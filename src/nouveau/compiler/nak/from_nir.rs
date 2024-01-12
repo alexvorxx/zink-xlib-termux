@@ -6,6 +6,7 @@
 use crate::cfg::CFGBuilder;
 use crate::ir::*;
 use crate::nir::*;
+use crate::nir_instr_printer::NirInstrPrinter;
 use crate::sph::{OutputTopology, PixelImap};
 
 use nak_bindings::*;
@@ -239,6 +240,7 @@ struct ShaderFromNir<'a> {
     end_block_id: u32,
     ssa_map: HashMap<u32, Vec<SSAValue>>,
     saturated: HashSet<*const nir_def>,
+    nir_instr_printer: NirInstrPrinter,
 }
 
 impl<'a> ShaderFromNir<'a> {
@@ -255,6 +257,7 @@ impl<'a> ShaderFromNir<'a> {
             end_block_id: 0,
             ssa_map: HashMap::new(),
             saturated: HashSet::new(),
+            nir_instr_printer: NirInstrPrinter::new(),
         }
     }
 

@@ -76,6 +76,14 @@ lower(agx_builder *b, agx_instr *I)
                             agx_immediate(I->invert_cond ? 0 : 1),
                             agx_immediate(I->invert_cond ? 1 : 0), I->fcond);
 
+   case AGX_OPCODE_BALLOT:
+      return agx_icmp_ballot_to(b, I->dest[0], I->src[0], agx_zero(),
+                                AGX_ICOND_UEQ, true /* invert */);
+
+   case AGX_OPCODE_QUAD_BALLOT:
+      return agx_icmp_quad_ballot_to(b, I->dest[0], I->src[0], agx_zero(),
+                                     AGX_ICOND_UEQ, true /* invert */);
+
    /* Writes to the nesting counter lowered to the real register */
    case AGX_OPCODE_BEGIN_CF:
       return agx_mov_imm_to(b, agx_register(0, AGX_SIZE_16), 0);

@@ -259,8 +259,11 @@ op("simd_shuffle",
                    0xFF | L | (1 << 47) | (3 << 38) | (3 << 26), 6, _),
     srcs = 2)
 
-for T, T_bit, cond in [('f', 0, FCOND), ('i', 1, ICOND)]:
-    for window, w_bit in [('quad_', 0), ('', 1)]:
+for window, w_bit in [('quad_', 0), ('', 1)]:
+    # Pseudo-instruction ballotting a boolean
+    op(f"{window}ballot", _, srcs = 1)
+
+    for T, T_bit, cond in [('f', 0, FCOND), ('i', 1, ICOND)]:
         op(f"{T}cmp_{window}ballot",
            encoding_32 = (0b0100010 | (T_bit << 4) | (w_bit << 48), 0, 8, _),
            srcs = 2, imms = [cond, INVERT_COND])

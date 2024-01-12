@@ -89,6 +89,13 @@ namespace brw {
                 def_blocks[reg.nr] : NULL;
       }
 
+      uint32_t
+      get_use_count(const fs_reg &reg) const
+      {
+         return reg.file == VGRF && reg.nr < def_count ?
+                def_use_counts[reg.nr] : 0;
+      }
+
       unsigned count() const { return def_count; }
 
       void print_stats(const fs_visitor *) const;
@@ -112,6 +119,7 @@ namespace brw {
 
       fs_inst **def_insts;
       bblock_t **def_blocks;
+      uint32_t *def_use_counts;
       unsigned def_count;
    };
 }

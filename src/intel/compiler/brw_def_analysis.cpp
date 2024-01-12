@@ -73,6 +73,8 @@ def_analysis::update_for_reads(const idom_tree &idom,
          continue;
       }
 
+      def_use_counts[nr]++;
+
       if (def_insts[nr]) {
          /* Mark the source def invalid in two cases:
           *
@@ -130,8 +132,9 @@ def_analysis::def_analysis(const fs_visitor *v)
 
    def_count = v->alloc.count;
 
-   def_insts   = new fs_inst*[def_count]();
-   def_blocks  = new bblock_t*[def_count]();
+   def_insts      = new fs_inst*[def_count]();
+   def_blocks     = new bblock_t*[def_count]();
+   def_use_counts = new uint32_t[def_count]();
 
    for (unsigned i = 0; i < def_count; i++)
       def_insts[i] = UNSEEN;
@@ -177,6 +180,7 @@ def_analysis::~def_analysis()
 {
    delete[] def_insts;
    delete[] def_blocks;
+   delete[] def_use_counts;
 }
 
 bool

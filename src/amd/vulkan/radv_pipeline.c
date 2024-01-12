@@ -722,9 +722,14 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
       sink_opts |= nir_move_comparisons | nir_move_load_ubo | nir_move_load_ssbo | nir_move_alu;
       NIR_PASS(_, stage->nir, nir_opt_sink, sink_opts);
 
-      nir_move_options move_opts =
-         nir_move_const_undef | nir_move_load_ubo | nir_move_load_input | nir_move_comparisons | nir_move_copies;
+      nir_move_options move_opts = nir_move_const_undef | nir_move_load_ubo | nir_move_load_input |
+                                   nir_move_comparisons | nir_move_copies | nir_move_alu;
       NIR_PASS(_, stage->nir, nir_opt_move, move_opts);
+
+      /* Run nir_opt_move again to make sure that comparision are as close as possible to the first use to prevent SCC
+       * spilling.
+       */
+      NIR_PASS(_, stage->nir, nir_opt_move, nir_move_comparisons);
    }
 }
 

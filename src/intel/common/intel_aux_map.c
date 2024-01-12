@@ -85,7 +85,6 @@
 #include "dev/intel_device_info.h"
 #include "isl/isl.h"
 
-#include "drm-uapi/i915_drm.h"
 #include "util/list.h"
 #include "util/ralloc.h"
 #include "util/u_atomic.h"

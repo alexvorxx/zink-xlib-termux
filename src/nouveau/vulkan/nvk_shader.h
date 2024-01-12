@@ -14,6 +14,8 @@
 #include "nir.h"
 #include "nouveau_bo.h"
 
+#include "vk_shader.h"
+
 struct nak_shader_bin;
 struct nvk_device;
 struct nvk_physical_device;
@@ -57,10 +59,13 @@ struct nvk_cbuf_map {
 };
 
 struct nvk_shader {
-   struct vk_pipeline_cache_object base;
+   struct vk_shader vk;
 
    struct nak_shader_info info;
    struct nvk_cbuf_map cbuf_map;
+
+   /* Only relevant for fragment shaders */
+   float min_sample_shading;
 
    struct nak_shader_bin *nak;
    const void *code_ptr;
@@ -84,11 +89,7 @@ struct nvk_shader {
    uint64_t data_addr;
 };
 
-static inline bool
-nvk_shader_is_enabled(const struct nvk_shader *shader)
-{
-   return shader && shader->upload_size > 0;
-}
+extern const struct vk_device_shader_ops nvk_device_shader_ops;
 
 VkShaderStageFlags nvk_nak_stages(const struct nv_device_info *info);
 
@@ -115,18 +116,6 @@ nvk_nir_lower_descriptors(nir_shader *nir,
                           uint32_t set_layout_count,
                           struct vk_descriptor_set_layout * const *set_layouts,
                           struct nvk_cbuf_map *cbuf_map_out);
-
-VkResult
-nvk_shader_stage_to_nir(struct nvk_device *dev,
-                        const VkPipelineShaderStageCreateInfo *sinfo,
-                        const struct vk_pipeline_robustness_state *rstate,
-                        struct vk_pipeline_cache *cache,
-                        void *mem_ctx, struct nir_shader **nir_out);
-
-void
-nvk_populate_fs_key(struct nak_fs_key *key,
-                    const struct vk_graphics_pipeline_state *state);
-
 void
 nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
               const struct vk_pipeline_robustness_state *rs,
@@ -136,35 +125,7 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
               struct nvk_cbuf_map *cbuf_map_out);
 
 VkResult
-nvk_compile_nir(struct nvk_device *dev, nir_shader *nir,
-                VkPipelineCreateFlagBits2KHR pipeline_flags,
-                const struct vk_pipeline_robustness_state *rstate,
-                const struct nak_fs_key *fs_key,
-                struct vk_pipeline_cache *cache,
-                struct nvk_shader *shader);
-
-VkResult
 nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader);
-
-struct nvk_shader *
-nvk_shader_init(struct nvk_device *dev, const void *key_data, size_t key_size);
-
-extern const struct vk_pipeline_cache_object_ops nvk_shader_ops;
-
-void
-nvk_shader_finish(struct nvk_device *dev, struct nvk_shader *shader);
-
-void
-nvk_hash_shader(unsigned char *hash,
-                const VkPipelineShaderStageCreateInfo *sinfo,
-                const struct vk_pipeline_robustness_state *rstate,
-                bool is_multiview,
-                const struct vk_pipeline_layout *layout,
-                const struct nak_fs_key *fs_key);
-
-void
-nvk_shader_destroy(struct vk_device *dev,
-                   struct vk_pipeline_cache_object *object);
 
 /* Codegen wrappers.
  *

@@ -8,12 +8,11 @@
 #include "nvk_descriptor_set_layout.h"
 #include "nvk_device.h"
 #include "nvk_physical_device.h"
-#include "nvk_pipeline.h"
 #include "nvk_sampler.h"
+#include "nvk_shader.h"
 
 #include "vk_nir_convert_ycbcr.h"
 #include "vk_pipeline.h"
-#include "vk_pipeline_cache.h"
 #include "vk_pipeline_layout.h"
 #include "vk_shader_module.h"
 #include "vk_ycbcr_conversion.h"
@@ -186,7 +185,7 @@ nvk_preprocess_nir(struct vk_physical_device *vk_pdev, nir_shader *nir)
       nvk_cg_preprocess_nir(nir);
 }
 
-void
+static void
 nvk_populate_fs_key(struct nak_fs_key *key,
                     const struct vk_graphics_pipeline_state *state)
 {
@@ -194,6 +193,9 @@ nvk_populate_fs_key(struct nak_fs_key *key,
 
    key->sample_locations_cb = 0;
    key->sample_locations_offset = nvk_root_descriptor_offset(draw.sample_locations);
+
+   if (state == NULL)
+      return;
 
    if (state->pipeline_flags &
        VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
@@ -206,6 +208,25 @@ nvk_populate_fs_key(struct nak_fs_key *key,
    if (ms->sample_shading_enable &&
        (ms->rasterization_samples * ms->min_sample_shading) > 1.0)
       key->force_sample_shading = true;
+}
+
+static void
+nvk_hash_graphics_state(struct vk_physical_device *device,
+                        const struct vk_graphics_pipeline_state *state,
+                        VkShaderStageFlags stages,
+                        blake3_hash blake3_out)
+{
+   struct mesa_blake3 blake3_ctx;
+   _mesa_blake3_init(&blake3_ctx);
+   if (stages & VK_SHADER_STAGE_FRAGMENT_BIT) {
+      struct nak_fs_key key;
+      nvk_populate_fs_key(&key, state);
+      _mesa_blake3_update(&blake3_ctx, &key, sizeof(key));
+
+      const bool is_multiview = state->rp->view_mask != 0;
+      _mesa_blake3_update(&blake3_ctx, &is_multiview, sizeof(is_multiview));
+   }
+   _mesa_blake3_final(&blake3_ctx, blake3_out);
 }
 
 static bool
@@ -288,52 +309,6 @@ lookup_ycbcr_conversion(const void *_state, uint32_t set,
 
    return sampler && sampler->vk.ycbcr_conversion ?
           &sampler->vk.ycbcr_conversion->state : NULL;
-}
-
-VkResult
-nvk_shader_stage_to_nir(struct nvk_device *dev,
-                        const VkPipelineShaderStageCreateInfo *sinfo,
-                        const struct vk_pipeline_robustness_state *rstate,
-                        struct vk_pipeline_cache *cache,
-                        void *mem_ctx, struct nir_shader **nir_out)
-{
-   struct nvk_physical_device *pdev = nvk_device_physical(dev);
-   const gl_shader_stage stage = vk_to_mesa_shader_stage(sinfo->stage);
-   const nir_shader_compiler_options *nir_options =
-      nvk_get_nir_options(&pdev->vk, stage, rstate);
-
-   unsigned char stage_sha1[SHA1_DIGEST_LENGTH];
-   vk_pipeline_hash_shader_stage(sinfo, rstate, stage_sha1);
-
-   if (cache == NULL)
-      cache = dev->mem_cache;
-
-   nir_shader *nir = vk_pipeline_cache_lookup_nir(cache, stage_sha1,
-                                                  sizeof(stage_sha1),
-                                                  nir_options, NULL,
-                                                  mem_ctx);
-   if (nir != NULL) {
-      *nir_out = nir;
-      return VK_SUCCESS;
-   }
-
-   const struct spirv_to_nir_options spirv_options =
-      nvk_get_spirv_options(&pdev->vk, stage, rstate);
-
-   VkResult result = vk_pipeline_shader_stage_to_nir(&dev->vk, sinfo,
-                                                     &spirv_options,
-                                                     nir_options,
-                                                     mem_ctx, &nir);
-   if (result != VK_SUCCESS)
-      return result;
-
-   nvk_preprocess_nir(&dev->pdev->vk, nir);
-
-   vk_pipeline_cache_add_nir(cache, stage_sha1, sizeof(stage_sha1), nir);
-
-   *nir_out = nir;
-
-   return VK_SUCCESS;
 }
 
 static inline bool
@@ -493,13 +468,13 @@ nvk_shader_dump(struct nvk_shader *shader)
 static VkResult
 nvk_compile_nir_with_nak(struct nvk_physical_device *pdev,
                          nir_shader *nir,
-                         VkPipelineCreateFlagBits2KHR pipeline_flags,
+                         VkShaderCreateFlagsEXT shader_flags,
                          const struct vk_pipeline_robustness_state *rs,
                          const struct nak_fs_key *fs_key,
                          struct nvk_shader *shader)
 {
    const bool dump_asm =
-      pipeline_flags & VK_PIPELINE_CREATE_2_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR;
+      shader_flags & VK_SHADER_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_MESA;
 
    nir_variable_mode robust2_modes = 0;
    if (rs->uniform_buffers == VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT)
@@ -515,38 +490,18 @@ nvk_compile_nir_with_nak(struct nvk_physical_device *pdev,
    return VK_SUCCESS;
 }
 
-struct nvk_shader *
-nvk_shader_init(struct nvk_device *dev, const void *key_data, size_t key_size)
-{
-   VK_MULTIALLOC(ma);
-   VK_MULTIALLOC_DECL(&ma, struct nvk_shader, shader, 1);
-   VK_MULTIALLOC_DECL_SIZE(&ma, char, obj_key_data, key_size);
-
-   if (!vk_multialloc_zalloc(&ma, &dev->vk.alloc,
-                             VK_SYSTEM_ALLOCATION_SCOPE_DEVICE))
-      return NULL;
-
-   memcpy(obj_key_data, key_data, key_size);
-
-   vk_pipeline_cache_object_init(&dev->vk, &shader->base,
-                                 &nvk_shader_ops, obj_key_data, key_size);
-
-   return shader;
-}
-
-VkResult
+static VkResult
 nvk_compile_nir(struct nvk_device *dev, nir_shader *nir,
-                VkPipelineCreateFlagBits2KHR pipeline_flags,
+                VkShaderCreateFlagsEXT shader_flags,
                 const struct vk_pipeline_robustness_state *rs,
                 const struct nak_fs_key *fs_key,
-                struct vk_pipeline_cache *cache,
                 struct nvk_shader *shader)
 {
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
    VkResult result;
 
    if (use_nak(pdev, nir->info.stage)) {
-      result = nvk_compile_nir_with_nak(pdev, nir, pipeline_flags, rs,
+      result = nvk_compile_nir_with_nak(pdev, nir, shader_flags, rs,
                                        fs_key, shader);
    } else {
       result = nvk_cg_compile_nir(pdev, nir, fs_key, shader);
@@ -555,7 +510,7 @@ nvk_compile_nir(struct nvk_device *dev, nir_shader *nir,
       return result;
 
    if (nir->constant_data_size > 0) {
-      uint32_t data_align = nvk_min_cbuf_alignment(&dev->pdev->info);
+      uint32_t data_align = nvk_min_cbuf_alignment(&pdev->info);
       uint32_t data_size = align(nir->constant_data_size, data_align);
 
       void *data = malloc(data_size);
@@ -650,11 +605,15 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
    return result;
 }
 
-void
-nvk_shader_finish(struct nvk_device *dev, struct nvk_shader *shader)
+static const struct vk_shader_ops nvk_shader_ops;
+
+static void
+nvk_shader_destroy(struct vk_device *vk_dev,
+                   struct vk_shader *vk_shader,
+                   const VkAllocationCallbacks* pAllocator)
 {
-   if (shader == NULL)
-      return;
+   struct nvk_device *dev = container_of(vk_dev, struct nvk_device, vk);
+   struct nvk_shader *shader = container_of(vk_shader, struct nvk_shader, vk);
 
    if (shader->upload_size > 0) {
       nvk_heap_free(dev, &dev->shader_heap,
@@ -671,127 +630,330 @@ nvk_shader_finish(struct nvk_device *dev, struct nvk_shader *shader)
 
    free((void *)shader->data_ptr);
 
-   vk_free(&dev->vk.alloc, shader);
+   vk_shader_free(&dev->vk, pAllocator, &shader->vk);
 }
 
-void
-nvk_hash_shader(unsigned char *hash,
-                const VkPipelineShaderStageCreateInfo *sinfo,
-                const struct vk_pipeline_robustness_state *rs,
-                bool is_multiview,
-                const struct vk_pipeline_layout *layout,
-                const struct nak_fs_key *fs_key)
+static VkResult
+nvk_compile_shader(struct nvk_device *dev,
+                   struct vk_shader_compile_info *info,
+                   const struct vk_graphics_pipeline_state *state,
+                   const VkAllocationCallbacks* pAllocator,
+                   struct vk_shader **shader_out)
 {
-   struct mesa_sha1 ctx;
+   struct nvk_shader *shader;
+   VkResult result;
 
-   _mesa_sha1_init(&ctx);
+   /* We consume the NIR, regardless of success or failure */
+   nir_shader *nir = info->nir;
 
-   unsigned char stage_sha1[SHA1_DIGEST_LENGTH];
-   vk_pipeline_hash_shader_stage(sinfo, rs, stage_sha1);
+   shader = vk_shader_zalloc(&dev->vk, &nvk_shader_ops, info->stage,
+                             pAllocator, sizeof(*shader));
+   if (shader == NULL) {
+      ralloc_free(nir);
+      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
 
-   _mesa_sha1_update(&ctx, stage_sha1, sizeof(stage_sha1));
+   /* TODO: Multiview with ESO */
+   const bool is_multiview = state && state->rp->view_mask != 0;
 
-   _mesa_sha1_update(&ctx, &is_multiview, sizeof(is_multiview));
+   nvk_lower_nir(dev, nir, info->robustness, is_multiview,
+                 info->set_layout_count, info->set_layouts,
+                 &shader->cbuf_map);
 
-   if (layout) {
-      _mesa_sha1_update(&ctx, &layout->create_flags,
-                        sizeof(layout->create_flags));
-      _mesa_sha1_update(&ctx, &layout->set_count, sizeof(layout->set_count));
-      for (int i = 0; i < layout->set_count; i++) {
-         struct nvk_descriptor_set_layout *set =
-            vk_to_nvk_descriptor_set_layout(layout->set_layouts[i]);
-         _mesa_sha1_update(&ctx, &set->vk.blake3, sizeof(set->vk.blake3));
+   struct nak_fs_key fs_key_tmp, *fs_key = NULL;
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      nvk_populate_fs_key(&fs_key_tmp, state);
+      fs_key = &fs_key_tmp;
+   }
+
+   result = nvk_compile_nir(dev, nir, info->flags, info->robustness,
+                            fs_key, shader);
+   ralloc_free(nir);
+   if (result != VK_SUCCESS) {
+      nvk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+      return result;
+   }
+
+   result = nvk_shader_upload(dev, shader);
+   if (result != VK_SUCCESS) {
+      nvk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+      return result;
+   }
+
+   if (info->stage == MESA_SHADER_FRAGMENT) {
+      if (shader->info.fs.reads_sample_mask ||
+          shader->info.fs.uses_sample_shading) {
+         shader->min_sample_shading = 1;
+      } else if (state != NULL && state->ms != NULL &&
+                 state->ms->sample_shading_enable) {
+         shader->min_sample_shading =
+            CLAMP(state->ms->min_sample_shading, 0, 1);
+      } else {
+         shader->min_sample_shading = 0;
       }
    }
 
-   if(fs_key)
-      _mesa_sha1_update(&ctx, fs_key, sizeof(*fs_key));
+   *shader_out = &shader->vk;
 
-   _mesa_sha1_final(&ctx, hash);
+   return VK_SUCCESS;
 }
 
-static bool
-nvk_shader_serialize(struct vk_pipeline_cache_object *object,
-                     struct blob *blob);
-
-static struct vk_pipeline_cache_object *
-nvk_shader_deserialize(struct vk_pipeline_cache *cache,
-                       const void *key_data,
-                       size_t key_size,
-                       struct blob_reader *blob);
-
-void
-nvk_shader_destroy(struct vk_device *_dev,
-                   struct vk_pipeline_cache_object *object)
+static VkResult
+nvk_compile_shaders(struct vk_device *vk_dev,
+                    uint32_t shader_count,
+                    struct vk_shader_compile_info *infos,
+                    const struct vk_graphics_pipeline_state *state,
+                    const VkAllocationCallbacks* pAllocator,
+                    struct vk_shader **shaders_out)
 {
-   struct nvk_device *dev =
-      container_of(_dev, struct nvk_device, vk);
-   struct nvk_shader *shader =
-      container_of(object, struct nvk_shader, base);
+   struct nvk_device *dev = container_of(vk_dev, struct nvk_device, vk);
 
-   nvk_shader_finish(dev, shader);
+   for (uint32_t i = 0; i < shader_count; i++) {
+      VkResult result = nvk_compile_shader(dev, &infos[i], state,
+                                           pAllocator, &shaders_out[i]);
+      if (result != VK_SUCCESS) {
+         /* Clean up all the shaders before this point */
+         for (uint32_t j = 0; j < i; j++)
+            nvk_shader_destroy(&dev->vk, shaders_out[j], pAllocator);
+
+         /* Clean up all the NIR after this point */
+         for (uint32_t j = i + 1; j < shader_count; j++)
+            ralloc_free(infos[j].nir);
+
+         /* Memset the output array */
+         memset(shaders_out, 0, shader_count * sizeof(*shaders_out));
+
+         return result;
+      }
+   }
+
+   return VK_SUCCESS;
 }
 
-const struct vk_pipeline_cache_object_ops nvk_shader_ops = {
-   .serialize = nvk_shader_serialize,
-   .deserialize = nvk_shader_deserialize,
-   .destroy = nvk_shader_destroy,
-};
+static VkResult
+nvk_deserialize_shader(struct vk_device *vk_dev,
+                       struct blob_reader *blob,
+                       uint32_t binary_version,
+                       const VkAllocationCallbacks* pAllocator,
+                       struct vk_shader **shader_out)
+{
+   struct nvk_device *dev = container_of(vk_dev, struct nvk_device, vk);
+   struct nvk_shader *shader;
+   VkResult result;
+
+   struct nak_shader_info info;
+   blob_copy_bytes(blob, &info, sizeof(info));
+
+   struct nvk_cbuf_map cbuf_map;
+   blob_copy_bytes(blob, &cbuf_map, sizeof(cbuf_map));
+
+   float min_sample_shading;
+   blob_copy_bytes(blob, &min_sample_shading, sizeof(min_sample_shading));
+
+   const uint32_t code_size = blob_read_uint32(blob);
+   const uint32_t data_size = blob_read_uint32(blob);
+   if (blob->overrun)
+      return vk_error(dev, VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT);
+
+   shader = vk_shader_zalloc(&dev->vk, &nvk_shader_ops, info.stage,
+                             pAllocator, sizeof(*shader));
+   if (shader == NULL)
+      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   shader->info = info;
+   shader->cbuf_map = cbuf_map;
+   shader->min_sample_shading = min_sample_shading;
+   shader->code_size = code_size;
+   shader->data_size = data_size;
+
+   shader->code_ptr = malloc(code_size);
+   if (shader->code_ptr == NULL) {
+      nvk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+
+   shader->data_ptr = malloc(data_size);
+   if (shader->data_ptr == NULL) {
+      nvk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+
+   blob_copy_bytes(blob, (void *)shader->code_ptr, shader->code_size);
+   blob_copy_bytes(blob, (void *)shader->data_ptr, shader->data_size);
+   if (blob->overrun) {
+      nvk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+      return vk_error(dev, VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT);
+   }
+
+   result = nvk_shader_upload(dev, shader);
+   if (result != VK_SUCCESS) {
+      nvk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+      return result;
+   }
+
+   *shader_out = &shader->vk;
+
+   return VK_SUCCESS;
+}
 
 static bool
-nvk_shader_serialize(struct vk_pipeline_cache_object *object,
+nvk_shader_serialize(struct vk_device *vk_dev,
+                     const struct vk_shader *vk_shader,
                      struct blob *blob)
 {
-   struct nvk_shader *shader =
-      container_of(object, struct nvk_shader, base);
+   struct nvk_shader *shader = container_of(vk_shader, struct nvk_shader, vk);
+
+   /* We can't currently cache assmbly */
+   if (shader->nak != NULL && shader->nak->asm_str != NULL)
+      return false;
 
    blob_write_bytes(blob, &shader->info, sizeof(shader->info));
    blob_write_bytes(blob, &shader->cbuf_map, sizeof(shader->cbuf_map));
+   blob_write_bytes(blob, &shader->min_sample_shading,
+                    sizeof(shader->min_sample_shading));
+
    blob_write_uint32(blob, shader->code_size);
-   blob_write_bytes(blob, shader->code_ptr, shader->code_size);
    blob_write_uint32(blob, shader->data_size);
+   blob_write_bytes(blob, shader->code_ptr, shader->code_size);
    blob_write_bytes(blob, shader->data_ptr, shader->data_size);
 
+   return !blob->out_of_memory;
+}
+
+#define WRITE_STR(field, ...) ({                               \
+   memset(field, 0, sizeof(field));                            \
+   UNUSED int i = snprintf(field, sizeof(field), __VA_ARGS__); \
+   assert(i > 0 && i < sizeof(field));                         \
+})
+
+static VkResult
+nvk_shader_get_executable_properties(
+   UNUSED struct vk_device *device,
+   const struct vk_shader *vk_shader,
+   uint32_t *executable_count,
+   VkPipelineExecutablePropertiesKHR *properties)
+{
+   struct nvk_shader *shader = container_of(vk_shader, struct nvk_shader, vk);
+   VK_OUTARRAY_MAKE_TYPED(VkPipelineExecutablePropertiesKHR, out,
+                          properties, executable_count);
+
+   vk_outarray_append_typed(VkPipelineExecutablePropertiesKHR, &out, props) {
+      props->stages = mesa_to_vk_shader_stage(shader->info.stage);
+      props->subgroupSize = 32;
+      WRITE_STR(props->name, "%s",
+                _mesa_shader_stage_to_string(shader->info.stage));
+      WRITE_STR(props->description, "%s shader",
+                _mesa_shader_stage_to_string(shader->info.stage));
+   }
+
+   return vk_outarray_status(&out);
+}
+
+static VkResult
+nvk_shader_get_executable_statistics(
+   UNUSED struct vk_device *device,
+   const struct vk_shader *vk_shader,
+   uint32_t executable_index,
+   uint32_t *statistic_count,
+   VkPipelineExecutableStatisticKHR *statistics)
+{
+   struct nvk_shader *shader = container_of(vk_shader, struct nvk_shader, vk);
+   VK_OUTARRAY_MAKE_TYPED(VkPipelineExecutableStatisticKHR, out,
+                          statistics, statistic_count);
+
+   assert(executable_index == 0);
+
+   vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {
+      WRITE_STR(stat->name, "Code Size");
+      WRITE_STR(stat->description,
+                "Size of the compiled shader binary, in bytes");
+      stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
+      stat->value.u64 = shader->code_size;
+   }
+
+   vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {
+      WRITE_STR(stat->name, "Number of GPRs");
+      WRITE_STR(stat->description, "Number of GPRs used by this pipeline");
+      stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
+      stat->value.u64 = shader->info.num_gprs;
+   }
+
+   vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {
+      WRITE_STR(stat->name, "SLM Size");
+      WRITE_STR(stat->description,
+                "Size of shader local (scratch) memory, in bytes");
+      stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
+      stat->value.u64 = shader->info.slm_size;
+   }
+
+   return vk_outarray_status(&out);
+}
+
+static bool
+write_ir_text(VkPipelineExecutableInternalRepresentationKHR* ir,
+              const char *data)
+{
+   ir->isText = VK_TRUE;
+
+   size_t data_len = strlen(data) + 1;
+
+   if (ir->pData == NULL) {
+      ir->dataSize = data_len;
+      return true;
+   }
+
+   strncpy(ir->pData, data, ir->dataSize);
+   if (ir->dataSize < data_len)
+      return false;
+
+   ir->dataSize = data_len;
    return true;
 }
 
-static struct vk_pipeline_cache_object *
-nvk_shader_deserialize(struct vk_pipeline_cache *cache,
-                       const void *key_data,
-                       size_t key_size,
-                       struct blob_reader *blob)
+static VkResult
+nvk_shader_get_executable_internal_representations(
+   UNUSED struct vk_device *device,
+   const struct vk_shader *vk_shader,
+   uint32_t executable_index,
+   uint32_t *internal_representation_count,
+   VkPipelineExecutableInternalRepresentationKHR *internal_representations)
 {
-   struct nvk_device *dev =
-      container_of(cache->base.device, struct nvk_device, vk);
-   struct nvk_shader *shader =
-      nvk_shader_init(dev, key_data, key_size);
+   struct nvk_shader *shader = container_of(vk_shader, struct nvk_shader, vk);
+   VK_OUTARRAY_MAKE_TYPED(VkPipelineExecutableInternalRepresentationKHR, out,
+                          internal_representations,
+                          internal_representation_count);
+   bool incomplete_text = false;
 
-   if (!shader)
-      return NULL;
+   assert(executable_index == 0);
 
-   blob_copy_bytes(blob, &shader->info, sizeof(shader->info));
-   blob_copy_bytes(blob, &shader->cbuf_map, sizeof(shader->cbuf_map));
+   if (shader->nak != NULL && shader->nak->asm_str != NULL) {
+      vk_outarray_append_typed(VkPipelineExecutableInternalRepresentationKHR, &out, ir) {
+         WRITE_STR(ir->name, "NAK assembly");
+         WRITE_STR(ir->description, "NAK assembly");
+         if (!write_ir_text(ir, shader->nak->asm_str))
+            incomplete_text = true;
+      }
+   }
 
-   shader->code_size = blob_read_uint32(blob);
-   void *code_ptr = malloc(shader->code_size);
-   if (!code_ptr)
-      goto fail;
-
-   blob_copy_bytes(blob, code_ptr, shader->code_size);
-   shader->code_ptr = code_ptr;
-
-   shader->data_size = blob_read_uint32(blob);
-   void *data_ptr = malloc(shader->data_size);
-   if (!data_ptr)
-      goto fail;
-
-   blob_copy_bytes(blob, data_ptr, shader->data_size);
-   shader->data_ptr = data_ptr;
-
-   return &shader->base;
-
-fail:
-   /* nvk_shader_destroy frees both shader and shader->xfb */
-   nvk_shader_destroy(cache->base.device, &shader->base);
-   return NULL;
+   return incomplete_text ? VK_INCOMPLETE : vk_outarray_status(&out);
 }
+
+static const struct vk_shader_ops nvk_shader_ops = {
+   .destroy = nvk_shader_destroy,
+   .serialize = nvk_shader_serialize,
+   .get_executable_properties = nvk_shader_get_executable_properties,
+   .get_executable_statistics = nvk_shader_get_executable_statistics,
+   .get_executable_internal_representations =
+      nvk_shader_get_executable_internal_representations,
+};
+
+const struct vk_device_shader_ops nvk_device_shader_ops = {
+   .get_nir_options = nvk_get_nir_options,
+   .get_spirv_options = nvk_get_spirv_options,
+   .preprocess_nir = nvk_preprocess_nir,
+   .hash_graphics_state = nvk_hash_graphics_state,
+   .compile = nvk_compile_shaders,
+   .deserialize = nvk_deserialize_shader,
+   .cmd_set_dynamic_graphics_state = vk_cmd_set_dynamic_graphics_state,
+   .cmd_bind_shaders = nvk_cmd_bind_shaders,
+};

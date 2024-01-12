@@ -8,6 +8,7 @@
 #include "nvk_entrypoints.h"
 #include "nvk_instance.h"
 #include "nvk_physical_device.h"
+#include "nvk_shader.h"
 
 #include "vk_pipeline_cache.h"
 #include "vulkan/wsi/wsi_common.h"
@@ -145,6 +146,8 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
                            pCreateInfo, pAllocator);
    if (result != VK_SUCCESS)
       goto fail_alloc;
+
+   dev->vk.shader_ops = &nvk_device_shader_ops;
 
    drmDevicePtr drm_device = NULL;
    int ret = drmGetDeviceFromDevId(pdev->render_dev, 0, &drm_device);

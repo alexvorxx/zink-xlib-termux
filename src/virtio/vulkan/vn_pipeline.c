@@ -848,10 +848,6 @@ vn_render_pass_state_update(
     * we don't read it, the host driver may read it.
     */
 
-   /* XXX: Should this ignore the render pass for some state subsets when
-    * rasterization is statically disabled? The spec suggests "yes" and "no".
-    */
-
    /* VUID-VkGraphicsPipelineCreateInfo-flags-06643
     *
     * If VkGraphicsPipelineLibraryCreateInfoEXT::flags includes
@@ -1524,10 +1520,6 @@ vn_CreateGraphicsPipelines(VkDevice device,
 
    for (uint32_t i = 0; i < createInfoCount; i++) {
       struct vn_pipeline *pipeline = vn_pipeline_from_handle(pPipelines[i]);
-
-      /* Grab a refcount on the pipeline layout when needed. Take care; the
-       * pipeline layout may be omitted or ignored in incomplete pipelines.
-       */
       struct vn_pipeline_layout *layout =
          vn_pipeline_layout_from_handle(pCreateInfos[i].layout);
       if (layout && (layout->push_descriptor_set_layout ||

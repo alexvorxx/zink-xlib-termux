@@ -47,7 +47,6 @@
 #include "xe/iris_batch.h"
 
 #include "common/intel_aux_map.h"
-#include "common/intel_defines.h"
 #include "intel/common/intel_gem.h"
 #include "intel/compiler/brw_compiler.h"
 #include "intel/ds/intel_tracepoints.h"

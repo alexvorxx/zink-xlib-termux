@@ -356,7 +356,7 @@ vn_CreatePipelineLayout(VkDevice device,
       }
    }
 
-   layout->has_push_constant_ranges = pCreateInfo->pPushConstantRanges > 0;
+   layout->has_push_constant_ranges = pCreateInfo->pushConstantRangeCount > 0;
 
    VkPipelineLayout layout_handle = vn_pipeline_layout_to_handle(layout);
    vn_async_vkCreatePipelineLayout(dev->primary_ring, device, pCreateInfo,

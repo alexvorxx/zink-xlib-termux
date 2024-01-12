@@ -504,11 +504,13 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
          reg--;
       }
 
+      assert(reg >= 112);
       ra_set_node_reg(g, first_vgrf_node + vgrf, reg);
 
       if (inst->ex_mlen > 0) {
          const int vgrf = inst->src[3].nr;
          reg -= DIV_ROUND_UP(fs->alloc.sizes[vgrf], reg_unit(devinfo));
+         assert(reg >= 112);
          ra_set_node_reg(g, first_vgrf_node + vgrf, reg);
       }
    }

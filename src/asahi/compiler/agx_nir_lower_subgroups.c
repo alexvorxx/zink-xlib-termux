@@ -28,6 +28,14 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       return true;
    }
 
+   case nir_intrinsic_first_invocation: {
+      nir_def *active_id = nir_load_active_subgroup_invocation_agx(b);
+      nir_def *is_first = nir_ieq_imm(b, active_id, 0);
+      nir_def *first_bit = nir_ballot(b, 1, 32, is_first);
+      nir_def_rewrite_uses(&intr->def, nir_ufind_msb(b, first_bit));
+      return true;
+   }
+
    default:
       return false;
    }
@@ -41,7 +49,6 @@ agx_nir_lower_subgroups(nir_shader *s)
       .lower_vote_eq = true,
       .lower_vote_bool_eq = true,
       .lower_read_first_invocation = true,
-      .lower_first_invocation_to_ballot = true,
       .lower_to_scalar = true,
       .lower_subgroup_masks = true,
       .ballot_components = 1,

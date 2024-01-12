@@ -1839,29 +1839,18 @@ iris_gem_get_tiling(struct iris_bo *bo, uint32_t *tiling)
    struct iris_bufmgr *bufmgr = bo->bufmgr;
 
    if (!bufmgr->devinfo.has_tiling_uapi) {
-      *tiling = I915_TILING_NONE;
+      *tiling = 0;
       return 0;
    }
 
-   struct drm_i915_gem_get_tiling ti = { .handle = bo->gem_handle };
-   int ret = intel_ioctl(bufmgr->fd, DRM_IOCTL_I915_GEM_GET_TILING, &ti);
-
-   if (ret) {
-      DBG("gem_get_tiling failed for BO %u: %s\n",
-          bo->gem_handle, strerror(errno));
-   }
-
-   *tiling = ti.tiling_mode;
-
-   return ret;
+   assert(iris_bufmgr_get_device_info(bo->bufmgr)->kmd_type == INTEL_KMD_TYPE_I915);
+   return iris_i915_bo_get_tiling(bo, tiling);
 }
 
 int
 iris_gem_set_tiling(struct iris_bo *bo, const struct isl_surf *surf)
 {
    struct iris_bufmgr *bufmgr = bo->bufmgr;
-   uint32_t tiling_mode = isl_tiling_to_i915_tiling(surf->tiling);
-   int ret;
 
    /* If we can't do map_gtt, the set/get_tiling API isn't useful. And it's
     * actually not supported by the kernel in those cases.
@@ -1869,22 +1858,8 @@ iris_gem_set_tiling(struct iris_bo *bo, const struct isl_surf *surf)
    if (!bufmgr->devinfo.has_tiling_uapi)
       return 0;
 
-   /* GEM_SET_TILING is slightly broken and overwrites the input on the
-    * error path, so we have to open code intel_ioctl().
-    */
-   struct drm_i915_gem_set_tiling set_tiling = {
-      .handle = bo->gem_handle,
-      .tiling_mode = tiling_mode,
-      .stride = surf->row_pitch_B,
-   };
-
-   ret = intel_ioctl(bufmgr->fd, DRM_IOCTL_I915_GEM_SET_TILING, &set_tiling);
-   if (ret) {
-      DBG("gem_set_tiling failed for BO %u: %s\n",
-          bo->gem_handle, strerror(errno));
-   }
-
-   return ret;
+   assert(iris_bufmgr_get_device_info(bo->bufmgr)->kmd_type == INTEL_KMD_TYPE_I915);
+   return iris_i915_bo_set_tiling(bo, surf);
 }
 
 struct iris_bo *

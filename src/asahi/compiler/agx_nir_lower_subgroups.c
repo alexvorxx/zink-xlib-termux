@@ -43,8 +43,10 @@ agx_nir_lower_subgroups(nir_shader *s)
       .lower_read_first_invocation = true,
       .lower_first_invocation_to_ballot = true,
       .lower_to_scalar = true,
+      .lower_subgroup_masks = true,
       .ballot_components = 1,
       .ballot_bit_size = 32,
+      .subgroup_size = 32,
    };
 
    bool progress = nir_lower_subgroups(s, &opts);

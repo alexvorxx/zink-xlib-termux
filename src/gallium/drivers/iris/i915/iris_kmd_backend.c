@@ -302,12 +302,14 @@ i915_batch_submit(struct iris_batch *batch)
          if (written)
             validation_list[prev_index].flags |= EXEC_OBJECT_WRITE;
       } else {
+         uint32_t flags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED;
          index_for_handle[bo->gem_handle] = validation_count;
          validation_list[validation_count] =
             (struct drm_i915_gem_exec_object2) {
                .handle = bo->gem_handle,
                .offset = bo->address,
-               .flags  = bo->real.kflags | (written ? EXEC_OBJECT_WRITE : 0) |
+               .flags  = flags | bo->real.kflags |
+                         (written ? EXEC_OBJECT_WRITE : 0) |
                          (iris_bo_is_external(bo) ? 0 : EXEC_OBJECT_ASYNC),
             };
          ++validation_count;

@@ -1226,14 +1226,14 @@ iris_bo_alloc(struct iris_bufmgr *bufmgr,
    bo->real.reusable = bucket && bufmgr->bo_reuse;
    bo->real.protected = flags & BO_ALLOC_PROTECTED;
    bo->index = -1;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED;
+   bo->real.kflags = 0;
    bo->real.prime_fd = -1;
 
    /* By default, capture all driver-internal buffers like shader kernels,
     * surface states, dynamic states, border colors, and so on.
     */
    if (memzone < IRIS_MEMZONE_OTHER || INTEL_DEBUG(DEBUG_CAPTURE_ALL))
-      bo->real.kflags |= EXEC_OBJECT_CAPTURE;
+      bo->real.kflags = EXEC_OBJECT_CAPTURE;
 
    assert(bo->real.map == NULL || bo->real.mmap_mode == mmap_mode);
    bo->real.mmap_mode = mmap_mode;
@@ -1294,10 +1294,9 @@ iris_bo_create_userptr(struct iris_bufmgr *bufmgr, const char *name,
    bo->real.userptr = true;
 
    bo->bufmgr = bufmgr;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED;
 
    if (INTEL_DEBUG(DEBUG_CAPTURE_ALL))
-      bo->real.kflags |= EXEC_OBJECT_CAPTURE;
+      bo->real.kflags = EXEC_OBJECT_CAPTURE;
 
    simple_mtx_lock(&bufmgr->lock);
    bo->address = vma_alloc(bufmgr, memzone, size, 1);
@@ -1414,9 +1413,8 @@ iris_bo_gem_create_from_name(struct iris_bufmgr *bufmgr,
    /* Xe KMD expects at least 1-way coherency for imports */
    bo->real.heap = IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT;
    bo->real.mmap_mode = IRIS_MMAP_NONE;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED;
    if (INTEL_DEBUG(DEBUG_CAPTURE_ALL))
-      bo->real.kflags |= EXEC_OBJECT_CAPTURE;
+      bo->real.kflags = EXEC_OBJECT_CAPTURE;
    bo->address = vma_alloc(bufmgr, IRIS_MEMZONE_OTHER, bo->size, 1);
    if (bo->address == 0ull)
       goto err_free;
@@ -1938,9 +1936,8 @@ iris_bo_import_dmabuf(struct iris_bufmgr *bufmgr, int prime_fd,
    /* Xe KMD expects at least 1-way coherency for imports */
    bo->real.heap = IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT;
    bo->real.mmap_mode = IRIS_MMAP_NONE;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED;
    if (INTEL_DEBUG(DEBUG_CAPTURE_ALL))
-      bo->real.kflags |= EXEC_OBJECT_CAPTURE;
+      bo->real.kflags = EXEC_OBJECT_CAPTURE;
    bo->gem_handle = handle;
    bo->real.prime_fd = needs_prime_fd(bufmgr) ? dup(prime_fd) : -1;
 
@@ -2212,8 +2209,7 @@ intel_aux_map_buffer_alloc(void *driver_ctx, uint32_t size)
    bo->name = "aux-map";
    p_atomic_set(&bo->refcount, 1);
    bo->index = -1;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED |
-                     EXEC_OBJECT_CAPTURE;
+   bo->real.kflags = EXEC_OBJECT_CAPTURE;
    bo->real.mmap_mode = heap_to_mmap_mode(bufmgr, bo->real.heap);
    bo->real.prime_fd = -1;
 

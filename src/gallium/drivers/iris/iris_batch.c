@@ -378,7 +378,6 @@ iris_use_pinned_bo(struct iris_batch *batch,
                    struct iris_bo *bo,
                    bool writable, enum iris_domain access)
 {
-   assert(iris_get_backing_bo(bo)->real.kflags & EXEC_OBJECT_PINNED);
    assert(bo != batch->bo);
 
    /* Never mark the workaround BO with EXEC_OBJECT_WRITE.  We don't care

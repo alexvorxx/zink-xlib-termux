@@ -377,6 +377,36 @@ select_instruction(const SchedILPContext& ctx)
    return idx;
 }
 
+template <typename It>
+void
+do_schedule(SchedILPContext& ctx, It& insert_it, It& remove_it, It instructions_begin,
+            It instructions_end)
+{
+   for (unsigned i = 0; i < num_nodes; i++) {
+      if (remove_it == instructions_end)
+         break;
+
+      add_entry(ctx, (remove_it++)->get(), i);
+   }
+
+   while (ctx.active_mask) {
+      unsigned next_idx = select_instruction(ctx);
+      Instruction* next_instr = ctx.nodes[next_idx].instr;
+
+      (insert_it++)->reset(next_instr);
+
+      remove_entry(ctx, next_instr, next_idx);
+      ctx.nodes[next_idx].instr = NULL;
+
+      if (remove_it != instructions_end) {
+         add_entry(ctx, (remove_it++)->get(), next_idx);
+      } else if (ctx.last_non_reorderable != UINT8_MAX) {
+         ctx.nodes[ctx.last_non_reorderable].potential_clause = false;
+         ctx.last_non_reorderable = UINT8_MAX;
+      }
+   }
+}
+
 } // namespace
 
 void
@@ -386,29 +416,9 @@ schedule_ilp(Program* program)
 
    for (Block& block : program->blocks) {
       auto it = block.instructions.begin();
-      for (unsigned i = 0; i < num_nodes; i++) {
-         if (it == block.instructions.end())
-            break;
-
-         add_entry(ctx, (it++)->get(), i);
-      }
-
       auto insert_it = block.instructions.begin();
-      while (insert_it != block.instructions.end()) {
-         unsigned next_idx = select_instruction(ctx);
-         Instruction* next_instr = ctx.nodes[next_idx].instr;
-         remove_entry(ctx, next_instr, next_idx);
-         (insert_it++)->reset(next_instr);
-         ctx.nodes[next_idx].instr = NULL;
-
-         if (it != block.instructions.end()) {
-            add_entry(ctx, (it++)->get(), next_idx);
-         } else if (ctx.last_non_reorderable != UINT8_MAX) {
-            ctx.nodes[ctx.last_non_reorderable].potential_clause = false;
-            ctx.last_non_reorderable = UINT8_MAX;
-         }
-      }
-      assert(it == block.instructions.end());
+      do_schedule(ctx, insert_it, it, block.instructions.begin(), block.instructions.end());
+      block.instructions.resize(insert_it - block.instructions.begin());
    }
 }
 

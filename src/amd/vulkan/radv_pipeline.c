@@ -719,7 +719,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    NIR_PASS(_, stage->nir, nir_opt_dce);
 
    if (!stage->key.optimisations_disabled) {
-      sink_opts |= nir_move_comparisons | nir_move_load_ubo | nir_move_load_ssbo;
+      sink_opts |= nir_move_comparisons | nir_move_load_ubo | nir_move_load_ssbo | nir_move_alu;
       NIR_PASS(_, stage->nir, nir_opt_sink, sink_opts);
 
       nir_move_options move_opts =

@@ -40,7 +40,9 @@
 #include "util/format/u_format.h"
 #include "util/format_srgb.h"
 #include "util/half_float.h"
+#include "util/hash_table.h"
 #include "util/macros.h"
+#include "util/ralloc.h"
 #include "util/u_dump.h"
 #include "util/u_inlines.h"
 #include "util/u_math.h"
@@ -2660,6 +2662,92 @@ agx_delete_shader_state(struct pipe_context *ctx, void *cso)
    ralloc_free(so);
 }
 
+struct agx_generic_meta_key {
+   meta_shader_builder_t builder;
+   size_t key_size;
+   uint8_t key[];
+};
+
+static uint32_t
+meta_key_hash(const void *key_)
+{
+   const struct agx_generic_meta_key *key = key_;
+
+   return _mesa_hash_data(key,
+                          sizeof(struct agx_generic_meta_key) + key->key_size);
+}
+
+static bool
+meta_key_equal(const void *a_, const void *b_)
+{
+   const struct agx_generic_meta_key *a = a_;
+   const struct agx_generic_meta_key *b = b_;
+
+   return a->builder == b->builder && a->key_size == b->key_size &&
+          memcmp(a->key, b->key, a->key_size) == 0;
+}
+
+void
+agx_init_meta_shaders(struct agx_context *ctx)
+{
+   ctx->generic_meta =
+      _mesa_hash_table_create(ctx, meta_key_hash, meta_key_equal);
+}
+
+void
+agx_destroy_meta_shaders(struct agx_context *ctx)
+{
+   _mesa_hash_table_destroy(ctx->generic_meta, agx_delete_compiled_shader);
+}
+
+static struct agx_compiled_shader *
+agx_build_meta_shader(struct agx_context *ctx, meta_shader_builder_t builder,
+                      void *data, size_t data_size)
+{
+   /* Build the meta shader key */
+   size_t total_key_size = sizeof(struct agx_generic_meta_key) + data_size;
+   struct agx_generic_meta_key *key = alloca(total_key_size);
+
+   *key = (struct agx_generic_meta_key){
+      .builder = builder,
+      .key_size = data_size,
+   };
+
+   if (data_size)
+      memcpy(key->key, data, data_size);
+
+   /* Try to get the cached shader */
+   struct hash_entry *ent = _mesa_hash_table_search(ctx->generic_meta, key);
+   if (ent)
+      return ent->data;
+
+   /* Otherwise, compile the shader fresh */
+   nir_builder b = nir_builder_init_simple_shader(
+      MESA_SHADER_COMPUTE, &agx_nir_options, "AGX meta shader");
+
+   builder(&b, data);
+
+   struct agx_device *dev = agx_device(ctx->base.screen);
+   UNUSED struct agx_uncompiled_shader_info info;
+   agx_preprocess_nir(b.shader, dev->libagx, false, &info);
+
+   struct agx_shader_key base_key = {0};
+   struct agx_compiled_shader *shader =
+      agx_compile_nir(dev, b.shader, &base_key, NULL);
+
+   ralloc_free(b.shader);
+
+   /* ..and cache it before we return. The key is on the stack right now, so
+    * clone it before using it as a hash table key. The clone is logically owned
+    * by the hash table.
+    */
+   void *cloned_key = rzalloc_size(ctx->generic_meta, total_key_size);
+   memcpy(cloned_key, key, total_key_size);
+
+   _mesa_hash_table_insert(ctx->generic_meta, cloned_key, shader);
+   return shader;
+}
+
 static unsigned
 sampler_count(struct agx_context *ctx, struct agx_compiled_shader *cs,
               enum pipe_shader_type stage)
@@ -3955,23 +4043,19 @@ agx_launch_gs(struct agx_batch *batch, const struct pipe_draw_info *info,
    if (indirect) {
       assert(indirect->buffer && "drawauto already handled");
 
-      bool multidraw = (indirect->indirect_draw_count != NULL);
-
-      if (!ctx->gs_setup_indirect[info->mode][multidraw]) {
-         struct agx_shader_key base_key = {0};
-
-         ctx->gs_setup_indirect[info->mode][multidraw] = agx_compile_nir(
-            dev, agx_nir_gs_setup_indirect(dev->libagx, info->mode, multidraw),
-            &base_key, NULL);
-      }
+      struct agx_gs_setup_indirect_key key = {
+         .prim = info->mode,
+         .multidraw = (indirect->indirect_draw_count != NULL),
+      };
 
       const struct pipe_grid_info grid_setup = {
-         .block = {multidraw ? 32 : 1, 1, 1},
+         .block = {key.multidraw ? 32 : 1, 1, 1},
          .grid = {1, 1, 1},
       };
 
       agx_launch(batch, &grid_setup,
-                 ctx->gs_setup_indirect[info->mode][multidraw],
+                 agx_build_meta_shader(ctx, agx_nir_gs_setup_indirect, &key,
+                                       sizeof(key)),
                  PIPE_SHADER_COMPUTE);
 
       /* Wrap the pool allocation in a fake resource for meta-Gallium use */
@@ -3994,21 +4078,15 @@ agx_launch_gs(struct agx_batch *batch, const struct pipe_draw_info *info,
       perf_debug(dev, "Geometry shader count");
       agx_launch(batch, &grid, gs->gs_count, PIPE_SHADER_GEOMETRY);
 
-      assert(gs->gs_count_words < ARRAY_SIZE(ctx->gs_prefix_sums));
-      if (!ctx->gs_prefix_sums[gs->gs_count_words]) {
-         struct agx_shader_key base_key = {0};
-
-         ctx->gs_prefix_sums[gs->gs_count_words] = agx_compile_nir(
-            dev, agx_nir_prefix_sum_gs(dev->libagx, gs->gs_count_words),
-            &base_key, NULL);
-      }
-
+      unsigned words = gs->gs_count_words;
       agx_launch(batch,
                  &(const struct pipe_grid_info){
                     .block = {32, gs->gs_count_words, 1},
                     .grid = {1, 1, 1},
                  },
-                 ctx->gs_prefix_sums[gs->gs_count_words], PIPE_SHADER_COMPUTE);
+                 agx_build_meta_shader(ctx, agx_nir_prefix_sum_gs, &words,
+                                       sizeof(words)),
+                 PIPE_SHADER_COMPUTE);
    }
 
    /* Pre-GS shader */
@@ -4099,19 +4177,13 @@ agx_draw_without_restart(struct agx_batch *batch,
    }
 
    /* Next, we unroll the index buffer used by the indirect draw */
-   uint8_t log2_idx_size = util_logbase2(info->index_size);
-   assert(log2_idx_size <= 2);
-
    if (!batch->cdm.bo)
       batch->cdm = agx_encoder_allocate(batch, dev);
 
-   if (!ctx->gs_unroll_restart[info->mode][log2_idx_size]) {
-      struct agx_shader_key base_key = {0};
-
-      ctx->gs_unroll_restart[info->mode][log2_idx_size] = agx_compile_nir(
-         dev, agx_nir_unroll_restart(dev->libagx, info->mode, info->index_size),
-         &base_key, NULL);
-   }
+   struct agx_unroll_restart_key key = {
+      .prim = info->mode,
+      .index_size_B = info->index_size,
+   };
 
    /* Allocate output indirect draw descriptors. This is exact. */
    struct agx_resource out_draws_rsrc = {0};
@@ -4127,9 +4199,10 @@ agx_draw_without_restart(struct agx_batch *batch,
       .grid = {indirect->draw_count, 1, 1},
    };
 
-   agx_launch(batch, &grid_setup,
-              ctx->gs_unroll_restart[info->mode][log2_idx_size],
-              PIPE_SHADER_COMPUTE);
+   agx_launch(
+      batch, &grid_setup,
+      agx_build_meta_shader(ctx, agx_nir_unroll_restart, &key, sizeof(key)),
+      PIPE_SHADER_COMPUTE);
 
    /* Now draw the results without restart */
    struct pipe_draw_info new_info = *info;

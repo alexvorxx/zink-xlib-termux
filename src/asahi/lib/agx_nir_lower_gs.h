@@ -36,16 +36,21 @@ bool agx_nir_lower_gs(struct nir_shader *gs, struct nir_shader *vs,
                       struct nir_shader **gs_copy, struct nir_shader **pre_gs,
                       enum mesa_prim *out_mode, unsigned *out_count_words);
 
-struct nir_shader *agx_nir_prefix_sum_gs(const struct nir_shader *libagx,
-                                         unsigned words);
+void agx_nir_prefix_sum_gs(struct nir_builder *b, const void *data);
 
-struct nir_shader *agx_nir_gs_setup_indirect(const struct nir_shader *libagx,
-                                             enum mesa_prim prim,
-                                             bool multidraw);
+struct agx_gs_setup_indirect_key {
+   enum mesa_prim prim;
+   bool multidraw;
+};
 
-struct nir_shader *agx_nir_unroll_restart(const struct nir_shader *libagx,
-                                          enum mesa_prim prim,
-                                          unsigned index_size_B);
+void agx_nir_gs_setup_indirect(struct nir_builder *b, const void *key);
+
+struct agx_unroll_restart_key {
+   enum mesa_prim prim;
+   unsigned index_size_B;
+};
+
+void agx_nir_unroll_restart(struct nir_builder *b, const void *key);
 
 bool agx_nir_lower_tcs(struct nir_shader *tcs, const struct nir_shader *vs,
                        const struct nir_shader *libagx, uint8_t index_size_B);

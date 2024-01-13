@@ -1221,70 +1221,52 @@ agx_nir_lower_gs(nir_shader *gs, nir_shader *vs, const nir_shader *libagx,
    return true;
 }
 
-nir_shader *
-agx_nir_prefix_sum_gs(const nir_shader *libagx, unsigned words)
+void
+agx_nir_prefix_sum_gs(nir_builder *b, const void *data)
 {
-   nir_builder b = nir_builder_init_simple_shader(
-      MESA_SHADER_COMPUTE, &agx_nir_options, "GS prefix sum");
+   const unsigned *words = data;
 
    uint32_t subgroup_size = 32;
-   b.shader->info.workgroup_size[0] = subgroup_size;
-   b.shader->info.workgroup_size[1] = words;
+   b->shader->info.workgroup_size[0] = subgroup_size;
+   b->shader->info.workgroup_size[1] = *words;
 
-   libagx_prefix_sum(&b, load_geometry_param(&b, count_buffer),
-                     load_geometry_param(&b, input_primitives),
-                     nir_imm_int(&b, words),
-                     nir_trim_vector(&b, nir_load_local_invocation_id(&b), 2));
-
-   UNUSED struct agx_uncompiled_shader_info info;
-   agx_preprocess_nir(b.shader, libagx, false, &info);
-   return b.shader;
+   libagx_prefix_sum(b, load_geometry_param(b, count_buffer),
+                     load_geometry_param(b, input_primitives),
+                     nir_imm_int(b, *words),
+                     nir_trim_vector(b, nir_load_local_invocation_id(b), 2));
 }
 
-nir_shader *
-agx_nir_gs_setup_indirect(const nir_shader *libagx, enum mesa_prim prim,
-                          bool multidraw)
+void
+agx_nir_gs_setup_indirect(nir_builder *b, const void *data)
 {
-   nir_builder b = nir_builder_init_simple_shader(
-      MESA_SHADER_COMPUTE, &agx_nir_options, "GS indirect setup");
+   const struct agx_gs_setup_indirect_key *key = data;
 
-   if (multidraw) {
+   if (key->multidraw) {
       uint32_t subgroup_size = 32;
-      b.shader->info.workgroup_size[0] = subgroup_size;
+      b->shader->info.workgroup_size[0] = subgroup_size;
    }
 
-   libagx_gs_setup_indirect(
-      &b, nir_load_geometry_param_buffer_agx(&b),
-      nir_load_input_assembly_buffer_agx(&b), nir_imm_int(&b, prim),
-      nir_channel(&b, nir_load_local_invocation_id(&b), 0),
-      nir_imm_bool(&b, multidraw));
-
-   UNUSED struct agx_uncompiled_shader_info info;
-   agx_preprocess_nir(b.shader, libagx, false, &info);
-   return b.shader;
+   libagx_gs_setup_indirect(b, nir_load_geometry_param_buffer_agx(b),
+                            nir_load_input_assembly_buffer_agx(b),
+                            nir_imm_int(b, key->prim),
+                            nir_channel(b, nir_load_local_invocation_id(b), 0),
+                            nir_imm_bool(b, key->multidraw));
 }
 
-nir_shader *
-agx_nir_unroll_restart(const nir_shader *libagx, enum mesa_prim prim,
-                       unsigned index_size_B)
+void
+agx_nir_unroll_restart(nir_builder *b, const void *data)
 {
-   nir_builder b = nir_builder_init_simple_shader(
-      MESA_SHADER_COMPUTE, &agx_nir_options, "Primitive restart unroll");
+   const struct agx_unroll_restart_key *key = data;
+   nir_def *ia = nir_load_input_assembly_buffer_agx(b);
+   nir_def *draw = nir_channel(b, nir_load_workgroup_id(b), 0);
+   nir_def *mode = nir_imm_int(b, key->prim);
 
-   nir_def *ia = nir_load_input_assembly_buffer_agx(&b);
-   nir_def *draw = nir_channel(&b, nir_load_workgroup_id(&b), 0);
-   nir_def *mode = nir_imm_int(&b, prim);
-
-   if (index_size_B == 1)
-      libagx_unroll_restart_u8(&b, ia, mode, draw);
-   else if (index_size_B == 2)
-      libagx_unroll_restart_u16(&b, ia, mode, draw);
-   else if (index_size_B == 4)
-      libagx_unroll_restart_u32(&b, ia, mode, draw);
+   if (key->index_size_B == 1)
+      libagx_unroll_restart_u8(b, ia, mode, draw);
+   else if (key->index_size_B == 2)
+      libagx_unroll_restart_u16(b, ia, mode, draw);
+   else if (key->index_size_B == 4)
+      libagx_unroll_restart_u32(b, ia, mode, draw);
    else
       unreachable("invalid index size");
-
-   UNUSED struct agx_uncompiled_shader_info info;
-   agx_preprocess_nir(b.shader, libagx, false, &info);
-   return b.shader;
 }

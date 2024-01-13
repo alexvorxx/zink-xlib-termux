@@ -1374,6 +1374,7 @@ agx_destroy_context(struct pipe_context *pctx)
    util_unreference_framebuffer_state(&ctx->framebuffer);
 
    agx_meta_cleanup(&ctx->meta);
+   agx_destroy_meta_shaders(ctx);
 
    agx_bo_unreference(ctx->result_buf);
 
@@ -1478,6 +1479,7 @@ agx_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
    agx_init_streamout_functions(pctx);
 
    agx_meta_init(&ctx->meta, agx_device(screen));
+   agx_init_meta_shaders(ctx);
 
    ctx->blitter = util_blitter_create(pctx);
 

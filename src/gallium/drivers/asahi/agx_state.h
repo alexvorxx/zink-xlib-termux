@@ -624,9 +624,7 @@ struct agx_context {
    /* Bound CL global buffers */
    struct util_dynarray global_buffers;
 
-   struct agx_compiled_shader *gs_prefix_sums[16];
-   struct agx_compiled_shader *gs_setup_indirect[MESA_PRIM_MAX][2];
-   struct agx_compiled_shader *gs_unroll_restart[MESA_PRIM_MAX][3];
+   struct hash_table *generic_meta;
    struct agx_meta_cache meta;
 
    bool any_faults;
@@ -1089,5 +1087,11 @@ agx_texture_buffer_size_el(enum pipe_format format, uint32_t size)
 
    return MIN2(AGX_TEXTURE_BUFFER_MAX_SIZE, size / blocksize);
 }
+
+typedef void (*meta_shader_builder_t)(struct nir_builder *b, const void *key);
+
+void agx_init_meta_shaders(struct agx_context *ctx);
+
+void agx_destroy_meta_shaders(struct agx_context *ctx);
 
 #endif

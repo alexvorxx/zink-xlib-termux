@@ -42,7 +42,10 @@ static void
 agx_stream_output_target_destroy(struct pipe_context *pctx,
                                  struct pipe_stream_output_target *target)
 {
-   pipe_resource_reference(&target->buffer, NULL);
+   struct agx_streamout_target *tgt = agx_so_target(target);
+
+   pipe_resource_reference(&tgt->base.buffer, NULL);
+   pipe_resource_reference(&tgt->offset, NULL);
    ralloc_free(target);
 }
 

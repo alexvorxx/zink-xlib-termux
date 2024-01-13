@@ -210,6 +210,7 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
                                                                                \
       uint count = in_draw[0];                                                 \
       constant INDEX *in = (constant INDEX *)ia->index_buffer;                 \
+      in += in_draw[2];                                                        \
                                                                                \
       global INDEX *out =                                                      \
          setup_unroll_for_draw(ia, in_draw, draw, mode, sizeof(INDEX));        \

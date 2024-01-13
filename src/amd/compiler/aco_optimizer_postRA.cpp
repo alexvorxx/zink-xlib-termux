@@ -197,7 +197,8 @@ last_writer_idx(pr_opt_ctx& ctx, const Operand& op)
  * Note that the decision is made based on registers and not on SSA IDs.
  */
 bool
-is_overwritten_since(pr_opt_ctx& ctx, PhysReg reg, RegClass rc, const Idx& since_idx)
+is_overwritten_since(pr_opt_ctx& ctx, PhysReg reg, RegClass rc, const Idx& since_idx,
+                     bool inclusive = false)
 {
    /* If we didn't find an instruction, assume that the register is overwritten. */
    if (!since_idx.found())
@@ -222,7 +223,8 @@ is_overwritten_since(pr_opt_ctx& ctx, PhysReg reg, RegClass rc, const Idx& since
 
       assert(i.found());
 
-      if (i.block > since_idx.block || (i.block == since_idx.block && i.instr > since_idx.instr))
+      bool since_instr = inclusive ? i.instr >= since_idx.instr : i.instr > since_idx.instr;
+      if (i.block > since_idx.block || (i.block == since_idx.block && since_instr))
          return true;
    }
 
@@ -231,9 +233,9 @@ is_overwritten_since(pr_opt_ctx& ctx, PhysReg reg, RegClass rc, const Idx& since
 
 template <typename T>
 bool
-is_overwritten_since(pr_opt_ctx& ctx, const T& t, const Idx& idx)
+is_overwritten_since(pr_opt_ctx& ctx, const T& t, const Idx& idx, bool inclusive = false)
 {
-   return is_overwritten_since(ctx, t.physReg(), t.regClass(), idx);
+   return is_overwritten_since(ctx, t.physReg(), t.regClass(), idx, inclusive);
 }
 
 void
@@ -474,6 +476,99 @@ try_optimize_scc_nocompare(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
       ctx.uses[instr->operands[scc_op_idx].tempId()]--;
       instr->operands[scc_op_idx] = wr_instr->operands[0];
    }
+}
+
+static bool
+is_scc_copy(const Instruction* instr)
+{
+   return instr->opcode == aco_opcode::p_parallelcopy && instr->operands.size() == 1 &&
+          instr->operands[0].isTemp() && instr->operands[0].physReg().reg() == scc;
+}
+
+void
+save_scc_copy_producer(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
+{
+   if (!is_scc_copy(instr.get()))
+      return;
+
+   Idx wr_idx = last_writer_idx(ctx, instr->operands[0]);
+   if (wr_idx.found() && wr_idx.block == ctx.current_block->index)
+      instr->pass_flags = wr_idx.instr;
+   else
+      instr->pass_flags = UINT32_MAX;
+}
+
+void
+try_eliminate_scc_copy(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
+{
+   /* Try to eliminate an SCC copy by duplicating the instruction that produced the SCC. */
+
+   if (instr->opcode != aco_opcode::p_parallelcopy || instr->definitions.size() != 1 ||
+       instr->definitions[0].physReg().reg() != scc)
+      return;
+
+   /* Find the instruction that copied SCC into an SGPR. */
+   Idx wr_idx = last_writer_idx(ctx, instr->operands[0]);
+   if (!wr_idx.found())
+      return;
+
+   const Instruction* wr_instr = ctx.get(wr_idx);
+   if (!is_scc_copy(wr_instr) || wr_instr->pass_flags == UINT32_MAX)
+      return;
+
+   Idx producer_idx = {wr_idx.block, wr_instr->pass_flags};
+   Instruction* producer_instr = ctx.get(producer_idx);
+
+   if (!producer_instr)
+      return;
+
+   /* Verify that the operands of the producer instruction haven't been overwritten. */
+   for (const Operand& op : producer_instr->operands) {
+      if (is_overwritten_since(ctx, op, producer_idx, true))
+         return;
+   }
+
+   /* Verify that the definitions (except SCC) of the producer haven't been overwritten. */
+   for (const Definition& def : producer_instr->definitions) {
+      if (def.physReg().reg() == scc)
+         continue;
+      if (is_overwritten_since(ctx, def, producer_idx))
+         return;
+   }
+
+   /* Duplicate the original producer of the SCC */
+   if (producer_instr->isSOP1())
+      instr.reset(create_instruction<SOP1_instruction>(producer_instr->opcode, Format::SOP1,
+                                                       producer_instr->operands.size(),
+                                                       producer_instr->definitions.size()));
+   else if (producer_instr->isSOP2())
+      instr.reset(create_instruction<SOP2_instruction>(producer_instr->opcode, Format::SOP2,
+                                                       producer_instr->operands.size(),
+                                                       producer_instr->definitions.size()));
+   else if (producer_instr->isSOPC())
+      instr.reset(create_instruction<SOPC_instruction>(producer_instr->opcode, Format::SOPC,
+                                                       producer_instr->operands.size(),
+                                                       producer_instr->definitions.size()));
+   else
+      return;
+
+   /* The copy is no longer needed. */
+   if (--ctx.uses[wr_instr->definitions[0].tempId()] == 0)
+      ctx.uses[wr_instr->operands[0].tempId()]--;
+
+   /* Copy the operands of the original producer. */
+   for (unsigned i = 0; i < producer_instr->operands.size(); ++i) {
+      instr->operands[i] = producer_instr->operands[i];
+      if (producer_instr->operands[i].isTemp() && !is_dead(ctx.uses, producer_instr))
+         ctx.uses[producer_instr->operands[i].tempId()]++;
+   }
+
+   /* Copy the definitions of the original producer,
+    * but mark them as non-temp to keep SSA quasi-intact.
+    */
+   for (unsigned i = 0; i < producer_instr->definitions.size(); ++i)
+      instr->definitions[i] = Definition(producer_instr->definitions[i].physReg(),
+                                         producer_instr->definitions[i].regClass());
 }
 
 void
@@ -767,8 +862,11 @@ process_instruction(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
 
    try_convert_fma_to_vop2(ctx, instr);
 
-   if (instr)
-      save_reg_writes(ctx, instr);
+   try_eliminate_scc_copy(ctx, instr);
+
+   save_scc_copy_producer(ctx, instr);
+
+   save_reg_writes(ctx, instr);
 
    ctx.current_instr_idx++;
 }

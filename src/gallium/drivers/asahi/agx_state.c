@@ -2078,6 +2078,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
    compiled->gs_count_words = gs_out_count_words;
 
    ralloc_free(nir);
+   ralloc_free(pre_gs);
    ralloc_free(gs_count);
    return compiled;
 }

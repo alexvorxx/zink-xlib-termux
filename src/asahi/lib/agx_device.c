@@ -359,6 +359,7 @@ agx_close_device(struct agx_device *dev)
 
    util_vma_heap_finish(&dev->main_heap);
    util_vma_heap_finish(&dev->usc_heap);
+   glsl_type_singleton_decref();
 
    close(dev->fd);
 }

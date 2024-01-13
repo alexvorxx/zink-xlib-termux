@@ -2652,6 +2652,11 @@ agx_delete_shader_state(struct pipe_context *ctx, void *cso)
       }
    }
 
+   for (unsigned i = 0; i < ARRAY_SIZE(so->passthrough_tcs); ++i) {
+      if (so->passthrough_tcs[i])
+         agx_delete_shader_state(ctx, so->passthrough_tcs[i]);
+   }
+
    ralloc_free(so);
 }
 

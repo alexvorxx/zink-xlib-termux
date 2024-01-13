@@ -2661,6 +2661,7 @@ agx_delete_uncompiled_shader(struct agx_uncompiled_shader *so)
 {
    _mesa_hash_table_destroy(so->variants, agx_delete_compiled_shader);
    blob_finish(&so->serialized_nir);
+   blob_finish(&so->early_serialized_nir);
 
    for (unsigned i = 0; i < MESA_PRIM_COUNT; ++i) {
       for (unsigned j = 0; j < 3; ++j) {

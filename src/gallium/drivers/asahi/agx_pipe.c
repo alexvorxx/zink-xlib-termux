@@ -1388,6 +1388,8 @@ agx_destroy_context(struct pipe_context *pctx)
          drmSyncobjDestroy(dev->fd, ctx->batches.slots[i].syncobj);
    }
 
+   pipe_resource_reference(&ctx->heap, NULL);
+
    ralloc_free(ctx);
 }
 

@@ -1215,6 +1215,19 @@ vn_graphics_pipeline_state_fill(
       state->gpl.fragment_output = true;
    }
 
+   /* After direct_gpl states collection, check the final state to validate
+    * VkPipelineLayout in case of being the final layout in linked pipeline.
+    *
+    * From the Vulkan 1.3.275 spec:
+    *    VUID-VkGraphicsPipelineCreateInfo-layout-06602
+    *
+    *    If the pipeline requires fragment shader state or pre-rasterization
+    *    shader state, layout must be a valid VkPipelineLayout handle
+    */
+   if ((state->gpl.fragment_shader && !is_raster_statically_disabled) ||
+       state->gpl.pre_raster_shaders)
+      valid.self.pipeline_layout = true;
+
    /* Pipeline Derivatives
     *
     *    VUID-VkGraphicsPipelineCreateInfo-flags-07984

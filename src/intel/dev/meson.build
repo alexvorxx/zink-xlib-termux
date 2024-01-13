@@ -45,6 +45,12 @@ intel_dev_info_gen_src = custom_target('intel_device_info_gen.h',
                                        output : ['intel_device_info_gen.h'],
                                        command : [prog_python, '@INPUT0@', '--outdir', meson.current_build_dir()])
 
+intel_dev_serialize_src = custom_target('intel_device_info_serialize_gen.c',
+                                        input : 'intel_device_info_serialize_gen_c.py',
+                                        depend_files: 'intel_device_info.py',
+                                        output : ['intel_device_info_serialize_gen.c'],
+                                        command : [prog_python, '@INPUT@', '@OUTPUT@'])
+
 # ensures intel_wa.h exists before implementation files are compiled
 idep_intel_dev_wa = declare_dependency(sources : [intel_dev_wa_src[0]])
 

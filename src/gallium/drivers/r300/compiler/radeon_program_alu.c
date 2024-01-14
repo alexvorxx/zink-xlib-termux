@@ -213,13 +213,6 @@ static void transform_RSQ(struct radeon_compiler* c,
 	inst->U.I.SrcReg[0] = absolute(inst->U.I.SrcReg[0]);
 }
 
-static void transform_SUB(struct radeon_compiler* c,
-	struct rc_instruction* inst)
-{
-	inst->U.I.Opcode = RC_OPCODE_ADD;
-	inst->U.I.SrcReg[1] = negate(inst->U.I.SrcReg[1]);
-}
-
 static void transform_KILP(struct radeon_compiler * c,
 	struct rc_instruction * inst)
 {
@@ -230,11 +223,6 @@ static void transform_KILP(struct radeon_compiler * c,
 /**
  * Can be used as a transformation for @ref radeonClauseLocalTransform,
  * no userData necessary.
- *
- * Eliminates the following ALU instructions:
- *  SUB
- * using:
- *  ADD
  *
  * Transforms RSQ to Radeon's native RSQ by explicitly setting
  * absolute value.
@@ -254,7 +242,6 @@ int radeonTransformALU(
 	case RC_OPCODE_SGE: unreachable();
 	case RC_OPCODE_SLT: unreachable();
 	case RC_OPCODE_SNE: unreachable();
-	case RC_OPCODE_SUB: transform_SUB(c, inst); return 1;
 	default:
 		return 0;
 	}
@@ -398,7 +385,6 @@ int r300_transform_vertex_alu(
 			return 1;
 		}
 		return 0;
-	case RC_OPCODE_SUB: transform_SUB(c, inst); return 1;
 	default:
 		return 0;
 	}

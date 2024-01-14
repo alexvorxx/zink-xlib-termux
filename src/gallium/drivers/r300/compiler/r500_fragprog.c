@@ -145,7 +145,9 @@ static void r500_transform_IF_instr(
 				break;
 			}
 			if (!preserve_opcode) {
-				writer->Inst->U.I.Opcode = RC_OPCODE_SUB;
+				writer->Inst->U.I.Opcode = RC_OPCODE_ADD;
+				writer->Inst->U.I.SrcReg[1].Negate =
+					~writer->Inst->U.I.SrcReg[1].Negate;
 			}
 			writer->Inst->U.I.DstReg.WriteMask = 0;
 			writer->Inst->U.I.DstReg.File = RC_FILE_NONE;

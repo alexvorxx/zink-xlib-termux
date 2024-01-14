@@ -262,13 +262,6 @@ const struct rc_opcode_info rc_opcodes[MAX_RC_OPCODE] = {
 		.IsComponentwise = 1
 	},
 	{
-		.Opcode = RC_OPCODE_SUB,
-		.Name = "SUB",
-		.NumSrcRegs = 2,
-		.HasDstReg = 1,
-		.IsComponentwise = 1
-	},
-	{
 		.Opcode = RC_OPCODE_TEX,
 		.Name = "TEX",
 		.HasTexture = 1,

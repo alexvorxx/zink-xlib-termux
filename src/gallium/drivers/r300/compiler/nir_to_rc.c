@@ -2465,6 +2465,8 @@ const void *nir_to_rc_options(struct nir_shader *s,
       else
          NIR_PASS_V(s, r300_nir_lower_fcsel_r300);
       NIR_PASS_V(s, r300_nir_lower_flrp);
+   } else {
+      NIR_PASS_V(s, r300_nir_lower_comparison_fs);
    }
    NIR_PASS_V(s, r300_nir_opt_algebraic_late);
    NIR_PASS_V(s, nir_opt_dce);

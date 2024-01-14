@@ -137,6 +137,9 @@ r300_optimize_nir(struct nir_shader *s, struct pipe_screen *screen)
                                     nir_metadata_block_index |
                                     nir_metadata_dominance, NULL);
       NIR_PASS(progress, s, nir_opt_peephole_select, is_r500 ? 8 : ~0, true, true);
+      if (s->info.stage == MESA_SHADER_FRAGMENT) {
+         NIR_PASS(progress, s, r300_nir_lower_bool_to_float_fs);
+      }
       NIR_PASS(progress, s, nir_opt_algebraic);
       NIR_PASS(progress, s, nir_opt_constant_folding);
       nir_load_store_vectorize_options vectorize_opts = {

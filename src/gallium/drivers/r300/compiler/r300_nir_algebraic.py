@@ -93,6 +93,9 @@ r300_nir_opt_algebraic_late = [
         # does not and blows up. Clean this up.
         (('fneg', ('fneg', a)), a),
         (('fabs', ('fneg', a)), ('fabs', a)),
+        # Some cleanups after comparison lowering if one of the operands is 0.
+        (('fadd', a, 0.0), a),
+        (('fadd', a, ('fneg', 0.0)), a)
 ]
 
 # This is very late flrp lowering to clean up after bcsel->fcsel->flrp.
@@ -103,6 +106,20 @@ r300_nir_lower_flrp = [
 # Lower fcsel_ge from ftrunc on r300
 r300_nir_lower_fcsel_r300 = [
         (('fcsel_ge', a, b, c), ('flrp', c, b, ('sge', a, 0.0)))
+]
+
+# Fragment shaders have no comparison opcodes. However, we can encode the comparison
+# in the aluresults operation, which is than used by next if. So if the comparison result
+# is used only in a single if, we can handle it just fine on R500.
+r300_nir_lower_comparison_fs = [
+        (('seq(is_not_used_in_single_if)', 'a@32', 'b@32'),
+            ('fcsel_ge', ('fneg', ('fabs', ('fadd', a, ('fneg', b)))), 1.0, 0.0)),
+        (('sne(is_not_used_in_single_if)', 'a@32', 'b@32'),
+            ('fcsel_ge', ('fneg', ('fabs', ('fadd', a, ('fneg', b)))), 0.0, 1.0)),
+        (('slt(is_not_used_in_single_if)', 'a@32', 'b@32'),
+            ('fcsel_ge', ('fadd', a, ('fneg', b)), 0.0, 1.0)),
+        (('sge(is_not_used_in_single_if)', 'a@32', 'b@32'),
+            ('fcsel_ge', ('fadd', a, ('fneg', b)), 1.0, 0.0)),
 ]
 
 r300_nir_post_integer_lowering = [
@@ -148,7 +165,26 @@ def main():
              ('fcsel', ('slt', a, b), c, d), "options->has_fused_comp_and_csel"),
         (('bcsel@32(is_only_used_as_float)', ('fge', 'a@32', 'b@32'), c, d),
              ('fcsel', ('sge', a, b), c, d), "options->has_fused_comp_and_csel"),
-]
+    ]
+
+    r300_nir_lower_bool_to_float_fs = [
+        (('bcsel@32(r300_is_only_used_as_float)', ignore_exact('feq', 'a@32', 'b@32'), c, d),
+             ('fcsel_ge', ('fneg', ('fabs', ('fadd', a, ('fneg', b)))), c, d)),
+        (('bcsel@32(r300_is_only_used_as_float)', ignore_exact('fneu', 'a@32', 'b@32'), c, d),
+             ('fcsel_ge', ('fneg', ('fabs', ('fadd', a, ('fneg', b)))), d, c)),
+        (('bcsel@32(r300_is_only_used_as_float)', ignore_exact('flt', 'a@32', 'b@32'), c, d),
+             ('fcsel_ge', ('fadd', a, ('fneg', b)), d, c)),
+        (('bcsel@32(r300_is_only_used_as_float)', ignore_exact('fge', 'a@32', 'b@32'), c, d),
+             ('fcsel_ge', ('fadd', a, ('fneg', b)), c, d)),
+        (('b2f32', ('feq', 'a@32', 'b@32')),
+             ('fcsel_ge', ('fneg', ('fabs', ('fadd', a, ('fneg', b)))), 1.0, 0.0)),
+        (('b2f32', ('fneu', 'a@32', 'b@32')),
+             ('fcsel_ge', ('fneg', ('fabs', ('fadd', a, ('fneg', b)))), 0.0, 1.0)),
+        (('b2f32', ('flt', 'a@32', 'b@32')),
+             ('fcsel_ge', ('fadd', a, ('fneg', b)), 0.0, 1.0)),
+        (('b2f32', ('fge', 'a@32', 'b@32')),
+             ('fcsel_ge', ('fadd', a, ('fneg', b)), 1.0, 0.0)),
+    ]
 
     with open(args.output, 'w') as f:
         f.write('#include "compiler/r300_nir.h"')
@@ -165,6 +201,9 @@ def main():
         f.write(nir_algebraic.AlgebraicPass("r300_nir_lower_bool_to_float",
                                             r300_nir_lower_bool_to_float).render())
 
+        f.write(nir_algebraic.AlgebraicPass("r300_nir_lower_bool_to_float_fs",
+                                            r300_nir_lower_bool_to_float_fs).render())
+
         f.write(nir_algebraic.AlgebraicPass("r300_nir_prepare_presubtract",
                                             r300_nir_prepare_presubtract).render())
 
@@ -179,6 +218,9 @@ def main():
 
         f.write(nir_algebraic.AlgebraicPass("r300_nir_lower_fcsel_r300",
                                             r300_nir_lower_fcsel_r300).render())
+
+        f.write(nir_algebraic.AlgebraicPass("r300_nir_lower_comparison_fs",
+                                            r300_nir_lower_comparison_fs).render())
 
 if __name__ == '__main__':
     main()

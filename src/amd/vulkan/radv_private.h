@@ -2364,13 +2364,17 @@ struct radv_ray_tracing_group {
    struct radv_pipeline_group_handle handle;
 };
 
+struct radv_ray_tracing_stage_info {
+   bool can_inline;
+};
+
 struct radv_ray_tracing_stage {
    struct vk_pipeline_cache_object *nir;
    struct radv_shader *shader;
    gl_shader_stage stage;
    uint32_t stack_size;
 
-   bool can_inline;
+   struct radv_ray_tracing_stage_info info;
 
    uint8_t sha1[SHA1_DIGEST_LENGTH];
 };

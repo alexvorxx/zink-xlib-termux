@@ -274,6 +274,7 @@ radv_rt_fill_stage_info(const VkRayTracingPipelineCreateInfoKHR *pCreateInfo, st
 
             stages[idx].stage = library_pipeline->stages[j].stage;
             stages[idx].stack_size = library_pipeline->stages[j].stack_size;
+            stages[idx].info = library_pipeline->stages[j].info;
             memcpy(stages[idx].sha1, library_pipeline->stages[j].sha1, SHA1_DIGEST_LENGTH);
             idx++;
          }
@@ -471,15 +472,12 @@ radv_rt_nir_to_asm(struct radv_device *device, struct vk_pipeline_cache *cache,
    return shader ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
 }
 
-static bool
-radv_rt_can_inline_shader(nir_shader *nir)
+static struct radv_ray_tracing_stage_info
+radv_gather_ray_tracing_stage_info(nir_shader *nir)
 {
-   if (nir->info.stage == MESA_SHADER_RAYGEN || nir->info.stage == MESA_SHADER_ANY_HIT ||
-       nir->info.stage == MESA_SHADER_INTERSECTION)
-      return true;
-
-   if (nir->info.stage == MESA_SHADER_CALLABLE)
-      return false;
+   struct radv_ray_tracing_stage_info info = {
+      .can_inline = true,
+   };
 
    nir_function_impl *impl = nir_shader_get_entrypoint(nir);
    nir_foreach_block (block, impl) {
@@ -487,12 +485,21 @@ radv_rt_can_inline_shader(nir_shader *nir)
          if (instr->type != nir_instr_type_intrinsic)
             continue;
 
-         if (nir_instr_as_intrinsic(instr)->intrinsic == nir_intrinsic_trace_ray)
-            return false;
+         nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+         if (intr->intrinsic != nir_intrinsic_trace_ray)
+            continue;
+
+         info.can_inline = false;
       }
    }
 
-   return true;
+   if (nir->info.stage == MESA_SHADER_RAYGEN || nir->info.stage == MESA_SHADER_ANY_HIT ||
+       nir->info.stage == MESA_SHADER_INTERSECTION)
+      info.can_inline = true;
+   else if (nir->info.stage == MESA_SHADER_CALLABLE)
+      info.can_inline = false;
+
+   return info;
 }
 
 static inline bool
@@ -538,7 +545,7 @@ radv_rt_compile_shaders(struct radv_device *device, struct vk_pipeline_cache *ca
 
       NIR_PASS(_, stage->nir, radv_nir_lower_hit_attrib_derefs);
 
-      rt_stages[i].can_inline = radv_rt_can_inline_shader(stage->nir);
+      rt_stages[i].info = radv_gather_ray_tracing_stage_info(stage->nir);
 
       stage->feedback.duration = os_time_get_nano() - stage_start;
    }
@@ -548,7 +555,7 @@ radv_rt_compile_shaders(struct radv_device *device, struct vk_pipeline_cache *ca
    bool raygen_imported = false;
    for (uint32_t i = 0; i < pipeline->stage_count; i++) {
       has_callable |= rt_stages[i].stage == MESA_SHADER_CALLABLE;
-      monolithic &= rt_stages[i].can_inline;
+      monolithic &= rt_stages[i].info.can_inline;
 
       if (i > pCreateInfo->stageCount)
          raygen_imported |= rt_stages[i].stage == MESA_SHADER_RAYGEN;

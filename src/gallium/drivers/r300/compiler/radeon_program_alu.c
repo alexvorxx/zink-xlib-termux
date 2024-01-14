@@ -107,11 +107,6 @@ static struct rc_dst_register dstregtmpmask(int index, int mask)
 	return dst;
 }
 
-static const struct rc_src_register builtin_zero = {
-	.File = RC_FILE_NONE,
-	.Index = 0,
-	.Swizzle = RC_SWIZZLE_0000
-};
 static const struct rc_src_register builtin_one = {
 	.File = RC_FILE_NONE,
 	.Index = 0,
@@ -218,54 +213,6 @@ static void transform_RSQ(struct radeon_compiler* c,
 	inst->U.I.SrcReg[0] = absolute(inst->U.I.SrcReg[0]);
 }
 
-static void transform_SEQ(struct radeon_compiler* c,
-	struct rc_instruction* inst)
-{
-	struct rc_dst_register dst = new_dst_reg(c, inst);
-
-	emit2(c, inst->Prev, RC_OPCODE_ADD, NULL, dst, inst->U.I.SrcReg[0], negate(inst->U.I.SrcReg[1]));
-	emit3(c, inst->Prev, RC_OPCODE_CMP, &inst->U.I, inst->U.I.DstReg,
-		negate(absolute(srcreg(RC_FILE_TEMPORARY, dst.Index))), builtin_zero, builtin_one);
-
-	rc_remove_instruction(inst);
-}
-
-static void transform_SGE(struct radeon_compiler* c,
-	struct rc_instruction* inst)
-{
-	struct rc_dst_register dst = new_dst_reg(c, inst);
-
-	emit2(c, inst->Prev, RC_OPCODE_ADD, NULL, dst, inst->U.I.SrcReg[0], negate(inst->U.I.SrcReg[1]));
-	emit3(c, inst->Prev, RC_OPCODE_CMP, &inst->U.I, inst->U.I.DstReg,
-		srcreg(RC_FILE_TEMPORARY, dst.Index), builtin_zero, builtin_one);
-
-	rc_remove_instruction(inst);
-}
-
-static void transform_SLT(struct radeon_compiler* c,
-	struct rc_instruction* inst)
-{
-	struct rc_dst_register dst = new_dst_reg(c, inst);
-
-	emit2(c, inst->Prev, RC_OPCODE_ADD, NULL, dst, inst->U.I.SrcReg[0], negate(inst->U.I.SrcReg[1]));
-	emit3(c, inst->Prev, RC_OPCODE_CMP, &inst->U.I, inst->U.I.DstReg,
-		srcreg(RC_FILE_TEMPORARY, dst.Index), builtin_one, builtin_zero);
-
-	rc_remove_instruction(inst);
-}
-
-static void transform_SNE(struct radeon_compiler* c,
-	struct rc_instruction* inst)
-{
-	struct rc_dst_register dst = new_dst_reg(c, inst);
-
-	emit2(c, inst->Prev, RC_OPCODE_ADD, NULL, dst, inst->U.I.SrcReg[0], negate(inst->U.I.SrcReg[1]));
-	emit3(c, inst->Prev, RC_OPCODE_CMP, &inst->U.I, inst->U.I.DstReg,
-		negate(absolute(srcreg(RC_FILE_TEMPORARY, dst.Index))), builtin_one, builtin_zero);
-
-	rc_remove_instruction(inst);
-}
-
 static void transform_SUB(struct radeon_compiler* c,
 	struct rc_instruction* inst)
 {
@@ -285,9 +232,9 @@ static void transform_KILP(struct radeon_compiler * c,
  * no userData necessary.
  *
  * Eliminates the following ALU instructions:
- *  LRP, SEQ, SGE, SLT, SNE, SUB
+ *  SUB
  * using:
- *  MOV, ADD, MUL, MAD, FRC, DP3, LG2, EX2, CMP
+ *  ADD
  *
  * Transforms RSQ to Radeon's native RSQ by explicitly setting
  * absolute value.
@@ -303,10 +250,10 @@ int radeonTransformALU(
 	case RC_OPCODE_DP2: transform_DP2(c, inst); return 1;
 	case RC_OPCODE_KILP: transform_KILP(c, inst); return 1;
 	case RC_OPCODE_RSQ: transform_RSQ(c, inst); return 1;
-	case RC_OPCODE_SEQ: transform_SEQ(c, inst); return 1;
-	case RC_OPCODE_SGE: transform_SGE(c, inst); return 1;
-	case RC_OPCODE_SLT: transform_SLT(c, inst); return 1;
-	case RC_OPCODE_SNE: transform_SNE(c, inst); return 1;
+	case RC_OPCODE_SEQ: unreachable();
+	case RC_OPCODE_SGE: unreachable();
+	case RC_OPCODE_SLT: unreachable();
+	case RC_OPCODE_SNE: unreachable();
 	case RC_OPCODE_SUB: transform_SUB(c, inst); return 1;
 	default:
 		return 0;

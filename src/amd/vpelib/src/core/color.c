@@ -426,7 +426,7 @@ static enum vpe_status vpe_update_blnd_gamma(
 
     is_studio = (param->dst_surface.cs.range == VPE_COLOR_RANGE_STUDIO);
     output_ctx = &vpe_priv->output_ctx;
-    lut3d_enabled = tm_params->enable_3dlut;
+    lut3d_enabled = tm_params->UID != 0 || tm_params->enable_3dlut;
 
     if (is_studio) {
 
@@ -686,7 +686,7 @@ enum vpe_status vpe_color_update_color_space_and_tf(
 
             color_check_input_cm_update(vpe_priv, stream_ctx,
                 &param->streams[stream_idx].surface_info.cs, &param->streams[stream_idx].color_adj,
-                param->streams[stream_idx].tm_params.enable_3dlut);
+                param->streams[stream_idx].tm_params.UID != 0 || param->streams[stream_idx].tm_params.enable_3dlut);
 
             build_scale_and_bias(stream_ctx->bias_scale,
                 &param->streams[stream_idx].surface_info.cs,
@@ -714,13 +714,14 @@ enum vpe_status vpe_color_update_color_space_and_tf(
                     vpe_priv->stream_ctx->tf_scaling_factor,
                     vpe_fixpt_one,
                     vpe_fixpt_zero,
-                    stream_ctx->stream.tm_params.enable_3dlut, // By Pass degamma if 3DLUT is enabled
+                    stream_ctx->stream.tm_params.UID != 0 || stream_ctx->stream.tm_params.enable_3dlut, // By Pass degamma if 3DLUT is enabled
                     stream_ctx->input_tf);
             }
 
             if (stream_ctx->dirty_bits.color_space || output_ctx->dirty_bits.color_space) {
                 status = vpe_color_update_gamut(vpe_priv, stream_ctx->cs, output_ctx->cs,
-                    stream_ctx->gamut_remap, stream_ctx->stream.tm_params.enable_3dlut);
+                    stream_ctx->gamut_remap,
+                    stream_ctx->stream.tm_params.UID != 0 || stream_ctx->stream.tm_params.enable_3dlut);
             }
 
             
@@ -791,9 +792,9 @@ enum vpe_status vpe_color_update_movable_cm(
     for (stream_idx = 0; stream_idx < param->num_streams; stream_idx++) {
         stream_ctx = &vpe_priv->stream_ctx[stream_idx];
 
-        bool enable_3dlut = stream_ctx->stream.tm_params.enable_3dlut;
+        bool enable_3dlut = stream_ctx->stream.tm_params.UID != 0 || stream_ctx->stream.tm_params.enable_3dlut;
 
-        if (stream_ctx->update_3dlut) {
+        if (stream_ctx->update_3dlut || stream_ctx->UID_3DLUT != stream_ctx->stream.tm_params.UID) {
 
             uint32_t                 shaper_norm_factor;
             struct vpe_color_space   tm_out_cs;
@@ -857,6 +858,7 @@ enum vpe_status vpe_color_update_movable_cm(
                 stream_ctx->lut3d_func, enable_3dlut);
 
             stream_ctx->update_3dlut = false;
+            stream_ctx->UID_3DLUT = param->streams[stream_idx].tm_params.UID;
         }
     }
 exit:

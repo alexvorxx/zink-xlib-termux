@@ -129,6 +129,7 @@ struct stream_ctx {
     enum color_space         cs;
     bool                     enable_3dlut;
     bool                     update_3dlut;
+    uint64_t                 UID_3DLUT;                 // UID for current 3D LUT params
 
     union {
         struct {

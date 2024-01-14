@@ -556,7 +556,7 @@ enum vpe_status vpe_cache_tone_map_params(
     struct stream_ctx *stream_ctx, const struct vpe_stream *stream)
 {
     stream_ctx->update_3dlut = stream_ctx->update_3dlut || stream->tm_params.update_3dlut ||
-            (stream_ctx->stream.flags.geometric_scaling != stream->flags.geometric_scaling);
+            stream->tm_params.UID || (stream_ctx->stream.flags.geometric_scaling != stream->flags.geometric_scaling);
 
     return VPE_STATUS_OK;
 }
@@ -566,7 +566,7 @@ enum vpe_status vpe_check_tone_map_support(
 {
     enum vpe_status status = VPE_STATUS_OK;
     bool input_is_hdr = is_HDR(stream->surface_info.cs.tf);
-    bool is_3D_lut_enabled = stream->tm_params.enable_3dlut;
+    bool is_3D_lut_enabled = stream->tm_params.enable_3dlut || stream->tm_params.UID;
     bool is_hlg = stream->tm_params.shaper_tf == VPE_TF_HLG;
     bool is_in_lum_greater_than_out_lum = stream->hdr_metadata.max_mastering > param->hdr_metadata.max_mastering;
 

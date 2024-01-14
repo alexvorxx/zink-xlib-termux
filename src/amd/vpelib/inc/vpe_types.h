@@ -546,6 +546,7 @@ struct vpe_hdr_metadata {
 };
 
 struct vpe_tonemap_params {
+    uint64_t                   UID;          /* Unique ID for tonemap params */
     enum vpe_transfer_function shaper_tf;
     enum vpe_transfer_function lut_out_tf;
     enum vpe_color_primaries   lut_in_gamut;

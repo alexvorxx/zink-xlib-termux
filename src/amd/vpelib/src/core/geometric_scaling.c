@@ -43,6 +43,7 @@ void geometric_scaling_feature_skip(struct vpe_priv *vpe_priv, const struct vpe_
     vpe_priv->output_ctx.surface.cs.tf = param->streams[0].surface_info.cs.tf;
 
     /* skip tone mapping */
+    vpe_priv->stream_ctx[0].stream.tm_params.UID = 0;
     vpe_priv->stream_ctx[0].stream.tm_params.enable_3dlut = false;
 
     /* disable blending */

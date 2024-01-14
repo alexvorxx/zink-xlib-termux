@@ -276,11 +276,9 @@ agx_get_query_result_resource(struct pipe_context *pipe, struct pipe_query *q,
    switch (query->type) {
    case PIPE_QUERY_OCCLUSION_PREDICATE:
    case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
-      result.u32 = result.b;
-      break;
    case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
    case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
-      result.u32 = (bool)(result.u32 > 0);
+      result.u64 = result.b;
       break;
    default:
       break;

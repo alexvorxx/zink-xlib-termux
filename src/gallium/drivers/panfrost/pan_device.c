@@ -85,9 +85,9 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
    uint64_t user_va_end =
       panfrost_clamp_to_usable_va_range(dev->kmod.dev, 1ull << 32);
 
-   dev->kmod.vm =
-      pan_kmod_vm_create(dev->kmod.dev, PAN_KMOD_VM_FLAG_AUTO_VA, user_va_start,
-                         user_va_end - user_va_start);
+   dev->kmod.vm = pan_kmod_vm_create(
+      dev->kmod.dev, PAN_KMOD_VM_FLAG_AUTO_VA | PAN_KMOD_VM_FLAG_TRACK_ACTIVITY,
+      user_va_start, user_va_end - user_va_start);
    if (!dev->kmod.vm)
       goto err_free_kmod_dev;
 

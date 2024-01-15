@@ -45,6 +45,11 @@ enum pan_kmod_vm_flags {
     * must have va=PAN_KMOD_VM_MAP_AUTO_VA.
     */
    PAN_KMOD_VM_FLAG_AUTO_VA = BITFIELD_BIT(0),
+
+   /* Let the backend know whether it should track the VM activity or not.
+    * Needed if PAN_KMOD_VM_OP_MODE_DEFER_TO_NEXT_IDLE_POINT is used.
+    */
+   PAN_KMOD_VM_FLAG_TRACK_ACTIVITY = BITFIELD_BIT(1),
 };
 
 /* Object representing a GPU VM. */

@@ -1035,21 +1035,33 @@ wsi_CreateXlibSurfaceKHR(VkInstance _instance,
    return VK_SUCCESS;
 }
 
+struct x11_image_pending_completion {
+   uint32_t serial;
+   uint64_t signal_present_id;
+};
+
 struct x11_image {
    struct wsi_image                          base;
    xcb_pixmap_t                              pixmap;
    xcb_xfixes_region_t                       update_region; /* long lived XID */
    xcb_xfixes_region_t                       update_area;   /* the above or None */
-   bool                                      present_queued;
    struct xshmfence *                        shm_fence;
    uint32_t                                  sync_fence;
-   uint32_t                                  serial;
    xcb_shm_seg_t                             shmseg;
    int                                       shmid;
    uint8_t *                                 shmaddr;
    uint64_t                                  present_id;
-   uint64_t                                  signal_present_id;
    VkPresentModeKHR                          present_mode;
+
+   /* In IMMEDIATE and MAILBOX modes, we can have multiple pending presentations per image.
+    * We need to keep track of them when considering present ID. */
+
+   /* This is arbitrarily chosen. With IMMEDIATE on a 3 deep swapchain,
+    * we allow up to 48 outstanding presentations per vblank, which is more than enough
+    * for any reasonable application. */
+#define X11_SWAPCHAIN_MAX_PENDING_COMPLETIONS 16
+   uint32_t                                  present_queued_count;
+   struct x11_image_pending_completion       pending_completions[X11_SWAPCHAIN_MAX_PENDING_COMPLETIONS];
 };
 
 struct x11_swapchain {
@@ -1101,22 +1113,32 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(x11_swapchain, base.base, VkSwapchainKHR,
                                VK_OBJECT_TYPE_SWAPCHAIN_KHR)
 
 static void x11_present_complete(struct x11_swapchain *swapchain,
-                                 struct x11_image *image)
+                                 struct x11_image *image, uint32_t index)
 {
-   if (image->signal_present_id) {
+   uint64_t signal_present_id = image->pending_completions[index].signal_present_id;
+   if (signal_present_id) {
       pthread_mutex_lock(&swapchain->present_progress_mutex);
-      if (image->signal_present_id > swapchain->present_id) {
-         swapchain->present_id = image->signal_present_id;
+      if (signal_present_id > swapchain->present_id) {
+         swapchain->present_id = signal_present_id;
          pthread_cond_broadcast(&swapchain->present_progress_cond);
       }
       pthread_mutex_unlock(&swapchain->present_progress_mutex);
    }
+
+   image->present_queued_count--;
+   if (image->present_queued_count) {
+      memmove(image->pending_completions + index,
+              image->pending_completions + index + 1,
+              (image->present_queued_count - index) *
+              sizeof(image->pending_completions[0]));
+   }
+
+   pthread_cond_signal(&swapchain->thread_state_cond);
 }
 
 static void x11_notify_pending_present(struct x11_swapchain *swapchain,
                                        struct x11_image *image)
 {
-   image->signal_present_id = image->present_id;
    pthread_cond_signal(&swapchain->thread_state_cond);
 }
 
@@ -1242,13 +1264,13 @@ x11_handle_dri3_present_event(struct x11_swapchain *chain,
    case XCB_PRESENT_EVENT_COMPLETE_NOTIFY: {
       xcb_present_complete_notify_event_t *complete = (void *) event;
       if (complete->kind == XCB_PRESENT_COMPLETE_KIND_PIXMAP) {
-         unsigned i;
+         unsigned i, j;
          for (i = 0; i < chain->base.image_count; i++) {
             struct x11_image *image = &chain->images[i];
-            if (image->present_queued && image->serial == complete->serial) {
-               x11_present_complete(chain, &chain->images[i]);
-               image->present_queued = false;
-               pthread_cond_signal(&chain->thread_state_cond);
+            for (j = 0; j < image->present_queued_count; j++) {
+               if (image->pending_completions[j].serial == complete->serial) {
+                  x11_present_complete(chain, image, j);
+               }
             }
          }
          chain->last_present_msc = complete->msc;
@@ -1343,13 +1365,19 @@ x11_present_to_x11_dri3(struct x11_swapchain *chain, uint32_t image_index,
    assert(chain->sent_image_count <= chain->base.image_count);
 
    ++chain->send_sbc;
-   image->present_queued = true;
-   image->serial = (uint32_t) chain->send_sbc;
+   uint32_t serial = (uint32_t)chain->send_sbc;
+
+   assert(image->present_queued_count < ARRAY_SIZE(image->pending_completions));
+   image->pending_completions[image->present_queued_count++] =
+      (struct x11_image_pending_completion) {
+         .signal_present_id = image->present_id,
+         .serial = serial,
+      };
 
    xcb_present_pixmap(chain->conn,
                       chain->window,
                       image->pixmap,
-                      image->serial,
+                      serial,
                       0,                            /* valid */
                       image->update_area,           /* update */
                       0,                            /* x_off */
@@ -1691,7 +1719,7 @@ x11_manage_event_queue(void *state)
       bool assume_forward_progress = false;
 
       for (uint32_t i = 0; i < chain->base.image_count; i++) {
-         if (chain->images[i].present_queued) {
+         if (chain->images[i].present_queued_count != 0) {
             /* We must pump through a present wait and unblock FIFO thread if using FIFO mode. */
             assume_forward_progress = true;
             break;
@@ -1796,10 +1824,11 @@ x11_manage_present_queue(void *state)
 
       pthread_mutex_lock(&chain->thread_state_lock);
 
-      /* In IMMEDIATE and MAILBOX modes, don't try to present the same image again
-       * until we have observed COMPLETE.
-       * That way we avoid overriding the pending signal_present_id. */
-      while (chain->status >= 0 && chain->images[image_index].present_queued) {
+      /* In IMMEDIATE and MAILBOX modes, there is a risk that we have exhausted the presentation queue,
+       * since IDLE could return multiple times before observing a COMPLETE. */
+      while (chain->status >= 0 &&
+             chain->images[image_index].present_queued_count ==
+             ARRAY_SIZE(chain->images[image_index].pending_completions)) {
          pthread_cond_wait(&chain->thread_state_cond, &chain->thread_state_lock);
       }
 
@@ -1819,7 +1848,7 @@ x11_manage_present_queue(void *state)
           present_mode == VK_PRESENT_MODE_FIFO_RELAXED_KHR) {
          MESA_TRACE_SCOPE("wait present");
 
-         while (chain->status >= 0 && chain->images[image_index].present_queued) {
+         while (chain->status >= 0 && chain->images[image_index].present_queued_count != 0) {
             /* In FIFO mode, we need to make sure we observe a COMPLETE before queueing up
              * another present. */
             pthread_cond_wait(&chain->thread_state_cond, &chain->thread_state_lock);

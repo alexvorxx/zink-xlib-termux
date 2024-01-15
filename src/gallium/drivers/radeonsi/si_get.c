@@ -904,7 +904,7 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
       return 1;
    case PIPE_VIDEO_CAP_MIN_WIDTH:
    case PIPE_VIDEO_CAP_MIN_HEIGHT:
-      return 64;
+      return (codec == PIPE_VIDEO_FORMAT_AV1) ? 16 : 64;
    case PIPE_VIDEO_CAP_MAX_WIDTH:
       if (codec != PIPE_VIDEO_FORMAT_UNKNOWN && QUERYABLE_KERNEL)
             return KERNEL_DEC_CAP(codec, max_width);

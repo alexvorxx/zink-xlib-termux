@@ -884,8 +884,10 @@ static unsigned si_get_ia_multi_vgt_param(struct si_context *sctx,
           sctx->family == CHIP_HAWAII && G_028AA8_SWITCH_ON_EOI(ia_multi_vgt_param) &&
           num_instanced_prims_less_than<IS_DRAW_VERTEX_STATE>(indirect, prim, min_vertex_count,
                                                               instance_count, 2, sctx->patch_vertices)) {
-         sctx->flags |= SI_CONTEXT_VGT_FLUSH;
-         si_mark_atom_dirty(sctx, &sctx->atoms.s.cache_flush);
+         /* The cache flushes should have been emitted already. */
+         assert(sctx->flags == 0);
+         sctx->flags = SI_CONTEXT_VGT_FLUSH;
+         si_emit_cache_flush_direct(sctx);
       }
    }
 
@@ -2227,12 +2229,13 @@ static void si_draw(struct pipe_context *ctx,
 
    /* Emit states. */
    si_emit_rasterizer_prim_state<GFX_VERSION, HAS_GS, NGG>(sctx);
-   /* This must be done before si_emit_all_states because it can set cache flush flags. */
+   /* This emits states and flushes caches. */
+   si_emit_all_states(sctx, masked_atoms);
+   /* This can be done after si_emit_all_states because it doesn't set cache flush flags. */
    si_emit_draw_registers<GFX_VERSION, HAS_TESS, HAS_GS, NGG, IS_DRAW_VERTEX_STATE>
          (sctx, indirect, prim, index_size, instance_count, primitive_restart,
           info->restart_index, min_direct_count);
-   /* This emits states and flushes caches. */
-   si_emit_all_states(sctx, masked_atoms);
+
    /* <-- CUs are idle here if the cache_flush state waited. */
 
    /* This must be done after si_emit_all_states, which can affect this. */

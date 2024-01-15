@@ -239,10 +239,23 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
    case OPC_ALL_MACRO:
    case OPC_ELECT_MACRO:
    case OPC_READ_COND_MACRO:
-   case OPC_READ_FIRST_MACRO:
    case OPC_SWZ_SHARED_MACRO:
    case OPC_SCAN_MACRO:
       break;
+   case OPC_READ_FIRST_MACRO:
+      /* Moves to shared registers read the first active fiber, so we can just
+       * turn read_first.macro into a move. However we must still use the macro
+       * and lower it late because in ir3_cp we need to distinguish between
+       * moves where all source fibers contain the same value, which can be copy
+       * propagated, and moves generated from API-level ReadFirstInvocation
+       * which cannot.
+       */
+      assert(instr->dsts[0]->flags & IR3_REG_SHARED);
+      instr->opc = OPC_MOV;
+      instr->cat1.dst_type = TYPE_U32;
+      instr->cat1.src_type =
+         (instr->srcs[0]->flags & IR3_REG_HALF) ? TYPE_U16 : TYPE_U32;
+      return false;
    default:
       return false;
    }
@@ -343,7 +356,6 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
          before_block->brtype = IR3_BRANCH_ALL;
          break;
       case OPC_ELECT_MACRO:
-      case OPC_READ_FIRST_MACRO:
       case OPC_SWZ_SHARED_MACRO:
          before_block->brtype = IR3_BRANCH_GETONE;
          after_block->reconvergence_point = true;
@@ -369,14 +381,12 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
          break;
       }
 
-      case OPC_READ_COND_MACRO:
-      case OPC_READ_FIRST_MACRO: {
+      case OPC_READ_COND_MACRO: {
          struct ir3_instruction *mov =
             ir3_instr_create(then_block, OPC_MOV, 1, 1);
-         unsigned src = instr->opc == OPC_READ_COND_MACRO ? 1 : 0;
          ir3_dst_create(mov, instr->dsts[0]->num, instr->dsts[0]->flags);
          struct ir3_register *new_src = ir3_src_create(mov, 0, 0);
-         *new_src = *instr->srcs[src];
+         *new_src = *instr->srcs[1];
          mov->cat1.dst_type = TYPE_U32;
          mov->cat1.src_type =
             (new_src->flags & IR3_REG_HALF) ? TYPE_U16 : TYPE_U32;

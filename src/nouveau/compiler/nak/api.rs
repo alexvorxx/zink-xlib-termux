@@ -424,6 +424,8 @@ pub extern "C" fn nak_compile_shader(
         write!(asm, "{}", s).expect("Failed to dump assembly");
     }
 
+    s.remove_annotations();
+
     let code = if nak.sm >= 70 {
         s.encode_sm70()
     } else if nak.sm >= 50 {

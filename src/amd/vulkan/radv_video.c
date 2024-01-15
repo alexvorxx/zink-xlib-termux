@@ -60,7 +60,7 @@ radv_vid_buffer_upload_alloc(struct radv_cmd_buffer *cmd_buffer, unsigned size, 
 }
 
 /* vcn unified queue (sq) ib header */
-static void
+void
 radv_vcn_sq_header(struct radeon_cmdbuf *cs, struct rvcn_sq_var *sq, bool enc)
 {
    /* vcn ib signature */
@@ -78,7 +78,7 @@ radv_vcn_sq_header(struct radeon_cmdbuf *cs, struct rvcn_sq_var *sq, bool enc)
    radeon_emit(cs, 0);
 }
 
-static void
+void
 radv_vcn_sq_tail(struct radeon_cmdbuf *cs, struct rvcn_sq_var *sq)
 {
    uint32_t *end;

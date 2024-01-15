@@ -17,6 +17,7 @@
 #define VL_MACROBLOCK_HEIGHT 16
 
 struct radv_physical_device;
+struct rvcn_sq_var;
 
 struct radv_vid_mem {
    struct radv_device_memory *mem;
@@ -52,5 +53,9 @@ void radv_init_physical_device_decoder(struct radv_physical_device *pdev);
 
 void radv_video_get_profile_alignments(struct radv_physical_device *pdev, const VkVideoProfileListInfoKHR *profile_list,
                                        uint32_t *width_align_out, uint32_t *height_align_out);
+
+void radv_vcn_sq_header(struct radeon_cmdbuf *cs, struct rvcn_sq_var *sq, bool enc);
+
+void radv_vcn_sq_tail(struct radeon_cmdbuf *cs, struct rvcn_sq_var *sq);
 
 #endif /* RADV_VIDEO_H */

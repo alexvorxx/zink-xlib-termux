@@ -2049,7 +2049,7 @@ static void si_draw(struct pipe_context *ctx,
 
          si_compute_shorten_ubyte_buffer(sctx, indexbuf, info->index.resource,
                                          start_offset, index_offset + start, count,
-                                         SI_OP_SYNC_AFTER);
+                                         SI_OP_SKIP_CACHE_INV_BEFORE | SI_OP_SYNC_AFTER);
 
          index_offset = 0;
          index_size = 2;

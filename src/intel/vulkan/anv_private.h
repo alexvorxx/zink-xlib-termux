@@ -4832,7 +4832,10 @@ struct anv_image {
        */
       bool can_non_zero_fast_clear;
 
-      bool aux_ccs_mapped;
+      struct {
+         /** Whether the image has CCS data mapped through AUX-TT. */
+         bool mapped;
+      } aux_tt;
    } planes[3];
 
    struct anv_image_memory_range vid_dmv_top_surface;

@@ -1767,7 +1767,7 @@ anv_image_finish(struct anv_image *image)
     * mapping.
     */
    for (int p = 0; p < image->n_planes; ++p) {
-      if (!image->planes[p].aux_ccs_mapped)
+      if (!image->planes[p].aux_tt.mapped)
          continue;
 
       const struct anv_address main_addr =
@@ -2271,7 +2271,7 @@ anv_image_map_aux_tt(struct anv_device *device,
                                     anv_address_physical(main_addr),
                                     anv_address_physical(aux_addr),
                                     surf->size_B, format_bits)) {
-         image->planes[plane].aux_ccs_mapped = true;
+         image->planes[plane].aux_tt.mapped = true;
          return true;
       }
    }

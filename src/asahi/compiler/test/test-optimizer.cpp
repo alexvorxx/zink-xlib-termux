@@ -163,6 +163,10 @@ TEST_F(Optimizer, FusedNot)
    CASE32(agx_xor_to(b, out, wx, agx_not(b, wy)), agx_xnor_to(b, out, wx, wy));
 
    CASE32(agx_xor_to(b, out, wy, agx_not(b, wx)), agx_xnor_to(b, out, wy, wx));
+
+   CASE32(agx_and_to(b, out, agx_not(b, wx), wy), agx_andn1_to(b, out, wx, wy));
+
+   CASE32(agx_or_to(b, out, wx, agx_not(b, wy)), agx_orn2_to(b, out, wx, wy));
 }
 
 TEST_F(Optimizer, FmulFsatF2F16)

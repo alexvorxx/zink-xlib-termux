@@ -778,10 +778,15 @@ bool radv_shader_should_clear_lds(const struct radv_device *device, const nir_sh
 
 void radv_nir_lower_rt_io(nir_shader *shader, bool monolithic, uint32_t payload_offset);
 
+struct radv_ray_tracing_stage_info;
+
 void radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                            const struct radv_shader_args *args, const struct radv_shader_info *info,
                            uint32_t *stack_size, bool resume_shader, struct radv_device *device,
-                           struct radv_ray_tracing_pipeline *pipeline, bool monolithic);
+                           struct radv_ray_tracing_pipeline *pipeline, bool monolithic,
+                           const struct radv_ray_tracing_stage_info *traversal_info);
+
+void radv_gather_unused_args(struct radv_ray_tracing_stage_info *info, nir_shader *nir);
 
 struct radv_shader_stage;
 

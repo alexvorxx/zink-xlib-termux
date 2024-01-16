@@ -1884,11 +1884,20 @@ select_next_shader(nir_builder *b, nir_def *shader_addr, unsigned wave_size)
    return nir_iand_imm(b, next, ~radv_rt_priority_mask);
 }
 
+static void
+radv_store_arg(nir_builder *b, const struct radv_shader_args *args, const struct radv_ray_tracing_stage_info *info,
+               struct ac_arg arg, nir_def *value)
+{
+   /* Do not pass unused data to the next stage. */
+   if (!info || !BITSET_TEST(info->unused_args, arg.arg_index))
+      ac_nir_store_arg(b, &args->ac, arg, value);
+}
+
 void
 radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                       const struct radv_shader_args *args, const struct radv_shader_info *info, uint32_t *stack_size,
                       bool resume_shader, struct radv_device *device, struct radv_ray_tracing_pipeline *pipeline,
-                      bool monolithic)
+                      bool monolithic, const struct radv_ray_tracing_stage_info *traversal_info)
 {
    nir_function_impl *impl = nir_shader_get_entrypoint(shader);
 
@@ -1996,22 +2005,24 @@ radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKH
       /* store back all variables to registers */
       ac_nir_store_arg(&b, &args->ac, args->ac.rt.dynamic_callable_stack_base, nir_load_var(&b, vars.stack_ptr));
       ac_nir_store_arg(&b, &args->ac, args->ac.rt.shader_addr, shader_addr);
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.shader_record, nir_load_var(&b, vars.shader_record_ptr));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.payload_offset, nir_load_var(&b, vars.arg));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.accel_struct, nir_load_var(&b, vars.accel_struct));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.cull_mask_and_flags, nir_load_var(&b, vars.cull_mask_and_flags));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.sbt_offset, nir_load_var(&b, vars.sbt_offset));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.sbt_stride, nir_load_var(&b, vars.sbt_stride));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.miss_index, nir_load_var(&b, vars.miss_index));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.ray_origin, nir_load_var(&b, vars.origin));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.ray_tmin, nir_load_var(&b, vars.tmin));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.ray_direction, nir_load_var(&b, vars.direction));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.ray_tmax, nir_load_var(&b, vars.tmax));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.shader_record, nir_load_var(&b, vars.shader_record_ptr));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.payload_offset, nir_load_var(&b, vars.arg));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.accel_struct, nir_load_var(&b, vars.accel_struct));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.cull_mask_and_flags,
+                     nir_load_var(&b, vars.cull_mask_and_flags));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.sbt_offset, nir_load_var(&b, vars.sbt_offset));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.sbt_stride, nir_load_var(&b, vars.sbt_stride));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.miss_index, nir_load_var(&b, vars.miss_index));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.ray_origin, nir_load_var(&b, vars.origin));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.ray_tmin, nir_load_var(&b, vars.tmin));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.ray_direction, nir_load_var(&b, vars.direction));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.ray_tmax, nir_load_var(&b, vars.tmax));
 
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.primitive_id, nir_load_var(&b, vars.primitive_id));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.instance_addr, nir_load_var(&b, vars.instance_addr));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.geometry_id_and_flags, nir_load_var(&b, vars.geometry_id_and_flags));
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.hit_kind, nir_load_var(&b, vars.hit_kind));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.primitive_id, nir_load_var(&b, vars.primitive_id));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.instance_addr, nir_load_var(&b, vars.instance_addr));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.geometry_id_and_flags,
+                     nir_load_var(&b, vars.geometry_id_and_flags));
+      radv_store_arg(&b, args, traversal_info, args->ac.rt.hit_kind, nir_load_var(&b, vars.hit_kind));
    }
 
    nir_metadata_preserve(impl, nir_metadata_none);
@@ -2021,4 +2032,51 @@ radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKH
    NIR_PASS_V(shader, nir_lower_vars_to_ssa);
    if (shader->info.stage == MESA_SHADER_CLOSEST_HIT || shader->info.stage == MESA_SHADER_INTERSECTION)
       NIR_PASS_V(shader, lower_hit_attribs, NULL, info->wave_size);
+}
+
+static bool
+radv_arg_def_is_unused(nir_def *def)
+{
+   nir_foreach_use (use, def) {
+      nir_instr *use_instr = nir_src_parent_instr(use);
+      if (use_instr->type == nir_instr_type_intrinsic) {
+         nir_intrinsic_instr *use_intr = nir_instr_as_intrinsic(use_instr);
+         if (use_intr->intrinsic == nir_intrinsic_store_scalar_arg_amd ||
+             use_intr->intrinsic == nir_intrinsic_store_vector_arg_amd)
+            continue;
+      } else if (use_instr->type == nir_instr_type_phi) {
+         nir_cf_node *prev_node = nir_cf_node_prev(&use_instr->block->cf_node);
+         if (!prev_node)
+            return false;
+
+         nir_phi_instr *phi = nir_instr_as_phi(use_instr);
+         if (radv_arg_def_is_unused(&phi->def))
+            continue;
+      }
+
+      return false;
+   }
+
+   return true;
+}
+
+static bool
+radv_gather_unused_args_instr(nir_builder *b, nir_intrinsic_instr *instr, void *data)
+{
+   if (instr->intrinsic != nir_intrinsic_load_scalar_arg_amd && instr->intrinsic != nir_intrinsic_load_vector_arg_amd)
+      return false;
+
+   if (!radv_arg_def_is_unused(&instr->def)) {
+      /* This arg is used for more than passing data to the next stage. */
+      struct radv_ray_tracing_stage_info *info = data;
+      BITSET_CLEAR(info->unused_args, nir_intrinsic_base(instr));
+   }
+
+   return false;
+}
+
+void
+radv_gather_unused_args(struct radv_ray_tracing_stage_info *info, nir_shader *nir)
+{
+   nir_shader_intrinsics_pass(nir, radv_gather_unused_args_instr, nir_metadata_all, info);
 }

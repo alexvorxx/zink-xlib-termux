@@ -2366,6 +2366,8 @@ struct radv_ray_tracing_group {
 
 struct radv_ray_tracing_stage_info {
    bool can_inline;
+
+   BITSET_DECLARE(unused_args, AC_MAX_ARGS);
 };
 
 struct radv_ray_tracing_stage {

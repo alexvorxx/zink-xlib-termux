@@ -87,11 +87,12 @@ for multiplier in [2.0, 4.0, 8.0, 16.0, 0.5, 0.25, 0.125, 0.0625]:
         (('fmul', a, ('fmul(is_used_once)', 'b(is_ubo_or_input)', multiplier)), ('fmul', multiplier, ('fmul', a, b))),
 ])
 
-# Previous prepare_presubtract pass can sometimes produce double fneg patterns.
-# The backend copy propagate could handle it, but the nir to tgsi translation
-# does not and blows up. Just run a simple pass to clean it up.
-r300_nir_clean_double_fneg = [
-        (('fneg', ('fneg', a)), a)
+r300_nir_opt_algebraic_late = [
+        # Previous prepare_presubtract pass can sometimes produce double fneg patterns.
+        # The backend copy propagate could handle it, but the nir to tgsi translation
+        # does not and blows up. Clean this up.
+        (('fneg', ('fneg', a)), a),
+        (('fabs', ('fneg', a)), ('fabs', a)),
 ]
 
 # This is very late flrp lowering to clean up after bcsel->fcsel->flrp.
@@ -167,8 +168,8 @@ def main():
         f.write(nir_algebraic.AlgebraicPass("r300_nir_prepare_presubtract",
                                             r300_nir_prepare_presubtract).render())
 
-        f.write(nir_algebraic.AlgebraicPass("r300_nir_clean_double_fneg",
-                                            r300_nir_clean_double_fneg).render())
+        f.write(nir_algebraic.AlgebraicPass("r300_nir_opt_algebraic_late",
+                                            r300_nir_opt_algebraic_late).render())
 
         f.write(nir_algebraic.AlgebraicPass("r300_nir_post_integer_lowering",
                                             r300_nir_post_integer_lowering).render())

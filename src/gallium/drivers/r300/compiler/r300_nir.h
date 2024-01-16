@@ -79,7 +79,7 @@ extern bool r300_nir_lower_bool_to_float(struct nir_shader *shader);
 
 extern bool r300_nir_prepare_presubtract(struct nir_shader *shader);
 
-extern bool r300_nir_clean_double_fneg(struct nir_shader *shader);
+extern bool r300_nir_opt_algebraic_late(struct nir_shader *shader);
 
 extern bool r300_nir_post_integer_lowering(struct nir_shader *shader);
 

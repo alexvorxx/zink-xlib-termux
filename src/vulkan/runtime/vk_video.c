@@ -59,6 +59,14 @@ vk_video_session_init(struct vk_device *device,
       vid->h265.profile_idc = h265_profile->stdProfileIdc;
       break;
    }
+   case VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR: {
+      const struct VkVideoDecodeAV1ProfileInfoKHR *av1_profile =
+         vk_find_struct_const(create_info->pVideoProfile->pNext,
+                              VIDEO_DECODE_AV1_PROFILE_INFO_KHR);
+      vid->av1.profile = av1_profile->stdProfile;
+      vid->av1.film_grain_support = av1_profile->filmGrainSupport;
+      break;
+   };
    case VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR: {
       const struct VkVideoEncodeH264ProfileInfoKHR *h264_profile =
          vk_find_struct_const(create_info->pVideoProfile->pNext, VIDEO_ENCODE_H264_PROFILE_INFO_KHR);
@@ -411,6 +419,21 @@ init_add_h265_enc_session_parameters(struct vk_video_session_parameters *params,
    }
 }
 
+static void
+vk_video_deep_copy_av1_seq_hdr(struct vk_video_av1_seq_hdr *dst,
+                               const StdVideoAV1SequenceHeader *src)
+{
+   memcpy(&dst->base, src, sizeof(StdVideoAV1SequenceHeader));
+   if (src->pColorConfig) {
+      memcpy(&dst->color_config, src->pColorConfig, sizeof(StdVideoAV1ColorConfig));
+      dst->base.pColorConfig = &dst->color_config;
+   }
+   if (src->pTimingInfo) {
+      memcpy(&dst->timing_info, src->pTimingInfo, sizeof(StdVideoAV1TimingInfo));
+      dst->base.pTimingInfo = &dst->timing_info;
+   }
+}
+
 VkResult
 vk_video_session_parameters_init(struct vk_device *device,
                                  struct vk_video_session_parameters *params,
@@ -468,6 +491,15 @@ vk_video_session_parameters_init(struct vk_device *device,
       }
 
       init_add_h265_dec_session_parameters(params, h265_create->pParametersAddInfo, templ);
+      break;
+   }
+   case VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR: {
+      const struct VkVideoDecodeAV1SessionParametersCreateInfoKHR *av1_create =
+         vk_find_struct_const(create_info->pNext, VIDEO_DECODE_AV1_SESSION_PARAMETERS_CREATE_INFO_KHR);
+      if (av1_create && av1_create->pStdSequenceHeader) {
+         vk_video_deep_copy_av1_seq_hdr(&params->av1_dec.seq_hdr,
+                                        av1_create->pStdSequenceHeader);
+      }
       break;
    }
    case VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR: {
@@ -1338,6 +1370,10 @@ vk_video_get_profile_alignments(const VkVideoProfileListInfoKHR *profile_list,
          ) {
          width_align = MAX2(width_align, VK_VIDEO_H265_CTU_MAX_WIDTH);
          height_align = MAX2(height_align, VK_VIDEO_H265_CTU_MAX_HEIGHT);
+      }
+      if (profile_list->pProfiles[i].videoCodecOperation == VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR) {
+         width_align = MAX2(width_align, VK_VIDEO_AV1_BLOCK_WIDTH);
+         height_align = MAX2(height_align, VK_VIDEO_AV1_BLOCK_HEIGHT);
       }
    }
    *width_align_out = width_align;

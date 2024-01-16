@@ -861,17 +861,8 @@ open_error_state_file(const char *path)
                break;
          }
       }
-      if (!file) {
-         fprintf(stderr, "Failed to find i915_error_state beneath %s\n",
-                 path);
-         exit(EXIT_FAILURE);
-      }
    } else {
       file = fopen(path, "r");
-      if (!file) {
-         fprintf(stderr, "Failed to open %s: %s\n", path, strerror(errno));
-         exit(EXIT_FAILURE);
-      }
    }
 
    return file;

@@ -105,15 +105,16 @@ was installed.
 By default, drm-shim mocks a Mali-G52 system. To select a specific Mali GPU,
 set the ``PAN_GPU_ID`` environment variable to the desired GPU ID:
 
-=========  ============ =======
-Product    Architecture GPU ID
-=========  ============ =======
-Mali-T720  Midgard (v4) 720
-Mali-T860  Midgard (v5) 860
-Mali-G72   Bifrost (v6) 6221
-Mali-G52   Bifrost (v7) 7212
-Mali-G57   Valhall (v9) 9093
-=========  ============ =======
+=========  ============= =======
+Product    Architecture  GPU ID
+=========  ============= =======
+Mali-T720  Midgard (v4)  720
+Mali-T860  Midgard (v5)  860
+Mali-G72   Bifrost (v6)  6221
+Mali-G52   Bifrost (v7)  7212
+Mali-G57   Valhall (v9)  9093
+Mali-G610  Valhall (v10) a867
+=========  ============= =======
 
 Additional GPU IDs are enumerated in the ``panfrost_model_list`` list in
 ``src/panfrost/lib/pan_props.c``.

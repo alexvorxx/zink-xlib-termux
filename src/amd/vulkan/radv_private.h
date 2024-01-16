@@ -366,6 +366,7 @@ struct radv_physical_device {
    uint32_t vid_addr_gfx_mode;
    uint32_t stream_handle_base;
    uint32_t stream_handle_counter;
+   uint32_t av1_version;
 
    struct radv_physical_device_cache_key cache_key;
 };

@@ -553,6 +553,9 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_variable_pointers = true,
       .KHR_vertex_attribute_divisor = true,
       .KHR_video_queue = !!(device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
+      .KHR_video_decode_av1 =
+         (device->rad_info.vcn_ip_version >= VCN_3_0_0 && device->rad_info.vcn_ip_version != VCN_3_0_33 &&
+          VIDEO_CODEC_AV1DEC && !!(device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE)),
       .KHR_video_decode_queue = !!(device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
       .KHR_video_decode_h264 = VIDEO_CODEC_H264DEC && !!(device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
       .KHR_video_decode_h265 = VIDEO_CODEC_H265DEC && !!(device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
@@ -2328,6 +2331,9 @@ radv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice, ui
                   prop->videoCodecOperations |= VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR;
                if (VIDEO_CODEC_H265DEC)
                   prop->videoCodecOperations |= VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR;
+               if (VIDEO_CODEC_AV1DEC && pdevice->rad_info.vcn_ip_version >= VCN_3_0_0 &&
+                   pdevice->rad_info.vcn_ip_version != VCN_3_0_33)
+                  prop->videoCodecOperations |= VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR;
             }
             break;
          }

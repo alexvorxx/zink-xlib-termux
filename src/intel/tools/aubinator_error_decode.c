@@ -824,6 +824,25 @@ print_help(const char *progname, FILE *file)
 }
 
 static FILE *
+try_open_file(const char *format, ...)
+{
+   ASSERTED int ret;
+   char *filename;
+   FILE *file;
+   va_list args;
+
+   va_start(args, format);
+   ret = vasprintf(&filename, format, args);
+   va_end(args);
+
+   assert(ret > 0);
+   file = fopen(filename, "r");
+   free(filename);
+
+   return file;
+}
+
+static FILE *
 open_error_state_file(const char *path)
 {
    FILE *file;
@@ -833,21 +852,11 @@ open_error_state_file(const char *path)
       return NULL;
 
    if (S_ISDIR(st.st_mode)) {
-      ASSERTED int ret;
-      char *filename;
-
-      ret = asprintf(&filename, "%s/i915_error_state", path);
-      assert(ret > 0);
-      file = fopen(filename, "r");
-      free(filename);
+      file = try_open_file("%s/i915_error_state", path);
       if (!file) {
          int minor;
          for (minor = 0; minor < 64; minor++) {
-            ret = asprintf(&filename, "%s/%d/i915_error_state", path, minor);
-            assert(ret > 0);
-
-            file = fopen(filename, "r");
-            free(filename);
+            file = try_open_file("%s/%d/i915_error_state", path, minor);
             if (file)
                break;
          }

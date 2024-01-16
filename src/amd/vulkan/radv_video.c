@@ -329,6 +329,17 @@ calc_ctx_size_av1(struct radv_device *device, struct radv_video_session *vid)
    return ctx_size;
 }
 
+static void
+radv_video_patch_session_parameters(struct vk_video_session_parameters *params)
+{
+   switch (params->op) {
+   case VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR:
+   case VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR:
+   default:
+      return;
+   }
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateVideoSessionKHR(VkDevice _device, const VkVideoSessionCreateInfoKHR *pCreateInfo,
                            const VkAllocationCallbacks *pAllocator, VkVideoSessionKHR *pVideoSession)
@@ -416,6 +427,8 @@ radv_CreateVideoSessionParametersKHR(VkDevice _device, const VkVideoSessionParam
       vk_free2(&device->vk.alloc, pAllocator, params);
       return result;
    }
+
+   radv_video_patch_session_parameters(&params->vk);
 
    *pVideoSessionParameters = radv_video_session_params_to_handle(params);
    return VK_SUCCESS;
@@ -710,7 +723,11 @@ radv_UpdateVideoSessionParametersKHR(VkDevice _device, VkVideoSessionParametersK
 {
    VK_FROM_HANDLE(radv_video_session_params, params, videoSessionParameters);
 
-   return vk_video_session_parameters_update(&params->vk, pUpdateInfo);
+   VkResult result = vk_video_session_parameters_update(&params->vk, pUpdateInfo);
+   if (result != VK_SUCCESS)
+      return result;
+   radv_video_patch_session_parameters(&params->vk);
+   return result;
 }
 
 static void

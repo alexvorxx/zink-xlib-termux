@@ -64,6 +64,7 @@ static const struct debug_named_value agx_debug_options[] = {
 #ifndef NDEBUG
    {"dirty",     AGX_DBG_DIRTY,    "Disable dirty tracking"},
 #endif
+   {"compblit",  AGX_DBG_COMPBLIT, "Enable compute blitter"},
    {"precompile",AGX_DBG_PRECOMPILE,"Precompile shaders for shader-db"},
    {"nocompress",AGX_DBG_NOCOMPRESS,"Disable lossless compression"},
    {"nocluster", AGX_DBG_NOCLUSTER,"Disable vertex clustering"},

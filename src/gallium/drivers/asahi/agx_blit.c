@@ -102,9 +102,6 @@ asahi_blit_compute_shader(struct pipe_context *ctx, enum asahi_blit_clamp clamp,
 static bool
 asahi_compute_blit_supported(const struct pipe_blit_info *info)
 {
-   /* XXX: Hot fix. compute blits broken on G13X? needs investigation */
-   return false;
-#if 0
    return (info->src.box.depth == info->dst.box.depth) && !info->alpha_blend &&
           !info->num_window_rectangles && !info->sample0_only &&
           !info->scissor_enable && !info->window_rectangle_include &&
@@ -121,7 +118,6 @@ asahi_compute_blit_supported(const struct pipe_blit_info *info)
           info->dst.format != PIPE_FORMAT_R5G6B5_UNORM &&
           info->dst.format != PIPE_FORMAT_R5G5B5A1_UNORM &&
           info->dst.format != PIPE_FORMAT_R5G5B5X1_UNORM;
-#endif
 }
 
 static void
@@ -383,6 +379,7 @@ agx_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
                             info->src.format);
 
    if (asahi_compute_blit_supported(info) &&
+       (agx_device(pipe->screen)->debug & AGX_DBG_COMPBLIT) &&
        !(ail_is_compressed(&agx_resource(info->dst.resource)->layout) &&
          util_format_get_blocksize(info->dst.format) == 16)) {
 

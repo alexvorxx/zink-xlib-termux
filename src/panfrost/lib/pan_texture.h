@@ -37,6 +37,7 @@
 #include "util/format/u_format.h"
 #include "pan_format.h"
 #include "pan_pool.h"
+#include "pan_props.h"
 #include "pan_util.h"
 
 #ifdef __cplusplus
@@ -282,6 +283,23 @@ uint32_t pan_afbc_body_align(uint64_t modifier);
 
 #define AFRC_CLUMPS_PER_TILE 64
 
+enum pan_afrc_rate {
+   PAN_AFRC_RATE_NONE,
+   PAN_AFRC_RATE_1BPC,
+   PAN_AFRC_RATE_2BPC,
+   PAN_AFRC_RATE_3BPC,
+   PAN_AFRC_RATE_4BPC,
+   PAN_AFRC_RATE_5BPC,
+   PAN_AFRC_RATE_6BPC,
+   PAN_AFRC_RATE_7BPC,
+   PAN_AFRC_RATE_8BPC,
+   PAN_AFRC_RATE_9BPC,
+   PAN_AFRC_RATE_10BPC,
+   PAN_AFRC_RATE_11BPC,
+   PAN_AFRC_RATE_12BPC,
+   PAN_AFRC_RATE_DEFAULT = 0xF
+};
+
 enum pan_afrc_interchange_format {
    PAN_AFRC_ICHANGE_FORMAT_RAW,
    PAN_AFRC_ICHANGE_FORMAT_YUV444,
@@ -313,6 +331,14 @@ unsigned panfrost_afrc_block_size_from_modifier(uint64_t modifier);
 
 unsigned pan_afrc_row_stride(enum pipe_format format, uint64_t modifier,
                              uint32_t width);
+
+unsigned panfrost_afrc_query_rates(enum pipe_format format, unsigned max,
+                                   uint32_t *rates);
+
+unsigned panfrost_afrc_get_modifiers(enum pipe_format format, uint32_t rate,
+                                     unsigned max, uint64_t *modifiers);
+
+uint32_t panfrost_afrc_get_rate(enum pipe_format format, uint64_t modifier);
 
 struct pan_block_size panfrost_block_size(uint64_t modifier,
                                           enum pipe_format format);

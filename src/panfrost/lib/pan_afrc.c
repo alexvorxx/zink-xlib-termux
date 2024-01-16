@@ -92,3 +92,127 @@ panfrost_format_supports_afrc(enum pipe_format format)
 
    return desc->is_array && desc->channel[c].size == 8;
 }
+
+struct panfrost_afrc_block_size {
+   unsigned size;          /* Block size in bytes */
+   unsigned alignment;     /* Buffer alignment */
+   uint64_t modifier_flag; /* Part of the modifier for CU size */
+};
+
+#define BLOCK_SIZE(block_size, buffer_alignment)                               \
+   {                                                                           \
+      .size = block_size, .alignment = buffer_alignment,                       \
+      .modifier_flag = AFRC_FORMAT_MOD_CU_SIZE_##block_size,                   \
+   }
+
+/* clang-format off */
+const struct panfrost_afrc_block_size panfrost_afrc_block_sizes[] = {
+   BLOCK_SIZE(16, 1024),
+   BLOCK_SIZE(24, 512),
+   BLOCK_SIZE(32, 2048),
+};
+/* clang-format on */
+
+/* Total number of components in a AFRC coding unit */
+static unsigned
+panfrost_afrc_clump_get_nr_components(enum pipe_format format, bool scan)
+{
+   const struct util_format_description *desc = util_format_description(format);
+   struct pan_block_size clump_sz = panfrost_afrc_clump_size(format, scan);
+   return clump_sz.width * clump_sz.height * desc->nr_channels;
+}
+
+unsigned
+panfrost_afrc_query_rates(enum pipe_format format, unsigned max,
+                          uint32_t *rates)
+{
+   if (!panfrost_format_supports_afrc(format))
+      return 0;
+
+   unsigned clump_comps = panfrost_afrc_clump_get_nr_components(format, false);
+   unsigned nr_rates = 0;
+
+   /**
+    * From EGL_EXT_surface_compression:
+    *
+    * "For pixel formats with different number of bits per component, the
+    * specified fixed-rate compression rate applies to the component with
+    * the highest number of bits."
+    *
+    * We only support formats where all components have the same size for now.
+    * Let's just use the first component size for calculation.
+    */
+   unsigned uncompressed_rate =
+      util_format_get_component_bits(format, UTIL_FORMAT_COLORSPACE_RGB, 0);
+
+   for (unsigned i = 0; i < ARRAY_SIZE(panfrost_afrc_block_sizes); ++i) {
+      unsigned clump_sz = panfrost_afrc_block_sizes[i].size * 8;
+      unsigned rate = clump_sz / clump_comps;
+
+      if (rate >= uncompressed_rate)
+         continue;
+
+      if (nr_rates < max)
+         rates[nr_rates] = rate;
+      nr_rates++;
+
+      if (max > 0 && nr_rates == max)
+         break;
+   }
+
+   return nr_rates;
+}
+
+unsigned
+panfrost_afrc_get_modifiers(enum pipe_format format, uint32_t rate,
+                            unsigned max, uint64_t *modifiers)
+{
+   if (!panfrost_format_supports_afrc(format))
+      return 0;
+
+   /* For now, the number of components in a clump is always the same no
+    * matter the layout for all supported formats */
+   unsigned clump_comps = panfrost_afrc_clump_get_nr_components(format, false);
+   unsigned count = 0;
+
+   /* FIXME Choose a more sensitive default compression rate? */
+   if (rate == PAN_AFRC_RATE_DEFAULT) {
+      if (max > 0)
+         modifiers[0] = DRM_FORMAT_MOD_ARM_AFRC(AFRC_FORMAT_MOD_CU_SIZE_24);
+
+      if (max > 1)
+         modifiers[1] = DRM_FORMAT_MOD_ARM_AFRC(AFRC_FORMAT_MOD_CU_SIZE_24 |
+                                                AFRC_FORMAT_MOD_LAYOUT_SCAN);
+
+      return 2;
+   }
+
+   for (unsigned i = 0; i < ARRAY_SIZE(panfrost_afrc_block_sizes); ++i) {
+      unsigned clump_sz = panfrost_afrc_block_sizes[i].size * 8;
+      if (rate == clump_sz / clump_comps) {
+         for (unsigned scan = 0; scan < 2; ++scan) {
+            if (count < max) {
+               modifiers[count] = DRM_FORMAT_MOD_ARM_AFRC(
+                  panfrost_afrc_block_sizes[i].modifier_flag |
+                  (scan ? AFRC_FORMAT_MOD_LAYOUT_SCAN : 0));
+            }
+            count++;
+         }
+      }
+   }
+
+   return count;
+}
+
+uint32_t
+panfrost_afrc_get_rate(enum pipe_format format, uint64_t modifier)
+{
+   if (!drm_is_afrc(modifier) || !panfrost_format_supports_afrc(format))
+      return PAN_AFRC_RATE_NONE;
+
+   bool scan = panfrost_afrc_is_scan(modifier);
+   unsigned block_comps = panfrost_afrc_clump_get_nr_components(format, scan);
+   uint32_t block_sz = panfrost_afrc_block_size_from_modifier(modifier) * 8;
+
+   return block_sz / block_comps;
+}

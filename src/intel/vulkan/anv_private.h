@@ -407,8 +407,8 @@ enum anv_bo_alloc_flags {
    /** Has an address which is visible to the client */
    ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS =  (1 << 8),
 
-   /** This BO will be dedicated to a buffer or an image */
-   ANV_BO_ALLOC_DEDICATED =               (1 << 9),
+   /** Align the BO's virtual address to match AUX-TT requirements */
+   ANV_BO_ALLOC_AUX_TT_ALIGNED =          (1 << 9),
 
    /** This buffer is allocated from local memory and should be cpu visible */
    ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE =   (1 << 10),
@@ -5089,14 +5089,7 @@ anv_bo_allows_aux_map(const struct anv_device *device,
    if (device->aux_map_ctx == NULL)
       return false;
 
-   /* Technically, we really only care about what offset the image is bound
-    * into on the BO, but we don't have that information here. As a heuristic,
-    * rely on the BO offset instead.
-    */
-   if (bo->offset % intel_aux_map_get_alignment(device->aux_map_ctx) != 0)
-      return false;
-
-   return true;
+   return (bo->alloc_flags & ANV_BO_ALLOC_AUX_TT_ALIGNED) != 0;
 }
 
 static inline bool

@@ -4860,18 +4860,36 @@ emit_instructions(struct ir3_context *ctx)
       ir3_declare_array(ctx, decl);
    }
 
-   if (ctx->so->type == MESA_SHADER_TESS_CTRL &&
-       ctx->compiler->tess_use_shared) {
-      struct ir3_instruction *barrier = ir3_BAR(ctx->block);
-      barrier->flags = IR3_INSTR_SS | IR3_INSTR_SY;
-      barrier->barrier_class = IR3_BARRIER_EVERYTHING;
-      array_insert(ctx->block, ctx->block->keeps, barrier);
-      ctx->so->has_barrier = true;
-   }
-
    /* And emit the body: */
    ctx->impl = fxn;
    emit_function(ctx, fxn);
+
+   if (ctx->so->type == MESA_SHADER_TESS_CTRL &&
+       ctx->compiler->tess_use_shared) {
+      /* Anything before shpe seems to be ignored in the main shader when early
+       * preamble is enabled on a7xx, so we have to put the barrier after.
+       */
+      struct ir3_block *block = ir3_after_preamble(ctx->ir);
+
+      struct ir3_instruction *barrier = ir3_BAR(block);
+      barrier->flags = IR3_INSTR_SS | IR3_INSTR_SY;
+      barrier->barrier_class = IR3_BARRIER_EVERYTHING;
+      array_insert(block, block->keeps, barrier);
+      ctx->so->has_barrier = true;
+
+      /* Move the barrier to the beginning of the block but after any phi/input
+       * meta instructions that must be at the beginning. It must be before we
+       * load VS outputs.
+       */
+      foreach_instr (instr, &block->instr_list) {
+         if (instr->opc != OPC_META_INPUT &&
+             instr->opc != OPC_META_TEX_PREFETCH &&
+             instr->opc != OPC_META_PHI) {
+            ir3_instr_move_before(barrier, instr);
+            break;
+         }
+      }
+   }
 }
 
 /* Fixup tex sampler state for astc/srgb workaround instructions.  We

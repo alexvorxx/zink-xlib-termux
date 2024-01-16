@@ -60,7 +60,10 @@ static const uint32_t isl_encode_ds_surftype[] = {
 
 #if GFX_VER >= 9
 static const uint8_t isl_encode_tiling[] = {
-#if GFX_VERx10 >= 125
+#if GFX_VER >= 20
+   [ISL_TILING_4]          = TILE4,
+   [ISL_TILING_64_XE2]     = TILE64,
+#elif GFX_VERx10 >= 125
    [ISL_TILING_4]          = TILE4,
    [ISL_TILING_64]         = TILE64,
 #else

@@ -2587,7 +2587,7 @@ iris_transfer_map(struct pipe_context *ctx,
       usage |= PIPE_MAP_DIRECTLY;
 
    /* TODO: Teach iris_map_tiled_memcpy about Tile64... */
-   if (res->surf.tiling == ISL_TILING_64)
+   if (isl_tiling_is_64(res->surf.tiling))
       usage &= ~PIPE_MAP_DIRECTLY;
 
    if (!(usage & PIPE_MAP_DIRECTLY)) {
@@ -2715,7 +2715,7 @@ iris_texture_subdata(struct pipe_context *ctx,
     * TODO: Teach isl_memcpy_linear_to_tiled about Tile64...
     */
    if (surf->tiling == ISL_TILING_LINEAR ||
-       surf->tiling == ISL_TILING_64 ||
+       isl_tiling_is_64(res->surf.tiling) ||
        isl_aux_usage_has_compression(res->aux.usage) ||
        resource_is_busy(ice, res) ||
        iris_bo_mmap_mode(res->bo) == IRIS_MMAP_NONE) {

@@ -2335,6 +2335,7 @@ xy_bcb_tiling(const struct isl_surf *surf)
    case ISL_TILING_4:
       return XY_TILE_4;
    case ISL_TILING_64:
+   case ISL_TILING_64_XE2:
       return XY_TILE_64;
 #else
    case ISL_TILING_Y0:

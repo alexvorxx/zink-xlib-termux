@@ -2838,7 +2838,7 @@ blorp_surf_convert_to_uncompressed(const struct isl_device *isl_dev,
     * tilings don't need intratile offsets because each subresource is aligned
     * to a bpb-based tile boundary or miptail slot offset.
     */
-  if (info->surf.tiling == ISL_TILING_64 ||
+  if (isl_tiling_is_64(info->surf.tiling) ||
       isl_tiling_is_std_y(info->surf.tiling)) {
       assert(info->tile_x_sa == 0 && info->tile_y_sa == 0);
    } else {

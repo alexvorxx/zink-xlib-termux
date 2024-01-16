@@ -588,6 +588,8 @@ enum isl_tiling {
    ISL_TILING_4,
    /** 64K tiling.*/
    ISL_TILING_64,
+   /** Xe2 64K tiling.*/
+   ISL_TILING_64_XE2,
    /** Tiling format for HiZ surfaces */
    ISL_TILING_HIZ,
    /** Tiling format for CCS surfaces */
@@ -611,6 +613,7 @@ typedef uint32_t isl_tiling_flags_t;
 #define ISL_TILING_ICL_Ys_BIT             (1u << ISL_TILING_ICL_Ys)
 #define ISL_TILING_4_BIT                  (1u << ISL_TILING_4)
 #define ISL_TILING_64_BIT                 (1u << ISL_TILING_64)
+#define ISL_TILING_64_XE2_BIT             (1u << ISL_TILING_64_XE2)
 #define ISL_TILING_HIZ_BIT                (1u << ISL_TILING_HIZ)
 #define ISL_TILING_CCS_BIT                (1u << ISL_TILING_CCS)
 #define ISL_TILING_GFX12_CCS_BIT          (1u << ISL_TILING_GFX12_CCS)
@@ -629,6 +632,11 @@ typedef uint32_t isl_tiling_flags_t;
                                            ISL_TILING_SKL_Ys_BIT | \
                                            ISL_TILING_ICL_Yf_BIT | \
                                            ISL_TILING_ICL_Ys_BIT)
+
+/** Any Tiling 64 */
+#define ISL_TILING_STD_64_MASK            (ISL_TILING_64_BIT | \
+                                           ISL_TILING_64_XE2_BIT)
+
 /** @} */
 
 /**
@@ -2205,6 +2213,12 @@ static inline bool
 isl_tiling_is_std_y(enum isl_tiling tiling)
 {
    return (1u << tiling) & ISL_TILING_STD_Y_MASK;
+}
+
+static inline bool
+isl_tiling_is_64(enum isl_tiling tiling)
+{
+   return (1u << tiling) & ISL_TILING_STD_64_MASK;
 }
 
 uint32_t

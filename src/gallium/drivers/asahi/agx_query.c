@@ -316,8 +316,8 @@ agx_add_query_to_batch(struct agx_batch *batch, struct agx_query *query,
     * could avoid this flush by merging query results.
     */
    if (query->writer && query->writer != batch) {
-      agx_flush_batch_for_reason(batch->ctx, query->writer,
-                                 "Multiple query writers");
+      agx_sync_batch_for_reason(batch->ctx, query->writer,
+                                "Multiple query writers");
    }
 
    /* Allocate if needed */

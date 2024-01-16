@@ -843,9 +843,36 @@ try_open_file(const char *format, ...)
 }
 
 static FILE *
-open_error_state_file(const char *path)
+open_xe_error_state_file(const char *path)
 {
-   FILE *file;
+   FILE *file = NULL;
+
+   if (path) {
+      struct stat st;
+
+      if (stat(path, &st))
+         return NULL;
+
+      if (S_ISDIR(st.st_mode)) {
+         file = try_open_file("%s/data", path);
+      } else {
+         file = fopen(path, "r");
+      }
+   } else {
+      for (int minor = 0; minor < 64; minor++) {
+         file = try_open_file("/sys/class/drm/card%i/device/devcoredump/data", minor);
+         if (file)
+            break;
+      }
+   }
+
+   return file;
+}
+
+static FILE *
+open_i915_error_state_file(const char *path)
+{
+   FILE *file = NULL;
    struct stat st;
 
    if (stat(path, &st))
@@ -919,15 +946,16 @@ main(int argc, char *argv[])
 
    if (optind >= argc) {
       if (isatty(0)) {
-         file = open_error_state_file("/sys/class/drm/card0/error");
+         file = open_i915_error_state_file("/sys/class/drm/card0/error");
          if (!file)
-            file = open_error_state_file("/debug/dri");
+            file = open_i915_error_state_file("/debug/dri");
          if (!file)
-            file = open_error_state_file("/sys/kernel/debug/dri");
-
+            file = open_i915_error_state_file("/sys/kernel/debug/dri");
+         if (!file)
+            file = open_xe_error_state_file(NULL);
          if (file == NULL) {
             errx(1,
-                 "Couldn't find i915 debugfs directory.\n\n"
+                 "Couldn't find i915 or Xe error dump.\n\n"
                  "Is debugfs mounted? You might try mounting it with a command such as:\n\n"
                  "\tsudo mount -t debugfs debugfs /sys/kernel/debug\n");
          }
@@ -939,11 +967,17 @@ main(int argc, char *argv[])
       if (strcmp(path, "-") == 0) {
          file = stdin;
       } else {
-         file = open_error_state_file(path);
-         if (file == NULL) {
+         FILE *i915, *xe;
+
+         i915 = open_i915_error_state_file(path);
+         xe = open_xe_error_state_file(path);
+
+         if (i915 == NULL && xe == NULL) {
             fprintf(stderr, "Error opening %s: %s\n", path, strerror(errno));
             exit(EXIT_FAILURE);
          }
+
+         file = i915 ? i915 : xe;
       }
    }
 

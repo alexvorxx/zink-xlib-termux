@@ -63,7 +63,6 @@ void ac_set_nir_options(struct radeon_info *info, bool use_llvm,
    options->lower_unpack_half_2x16 = true;
    options->lower_fpow = true;
    options->lower_mul_2x32_64 = true;
-   options->lower_rotate = true;
    options->lower_iadd_sat = info->gfx_level <= GFX8;
    options->lower_hadd = true;
    options->lower_mul_32x16 = true;

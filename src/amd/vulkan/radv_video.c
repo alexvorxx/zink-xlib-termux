@@ -1160,7 +1160,6 @@ rvcn_dec_message_decode(struct radv_cmd_buffer *cmd_buffer, struct radv_video_se
    header->num_buffers = 1;
 
    index_codec->offset = offset_codec;
-   index_codec->size = sizeof(rvcn_dec_message_avc_t);
    index_codec->filled = 0;
    ++header->num_buffers;
 
@@ -1221,6 +1220,7 @@ rvcn_dec_message_decode(struct radv_cmd_buffer *cmd_buffer, struct radv_video_se
    *slice_offset = 0;
    switch (vid->vk.op) {
    case VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR: {
+      index_codec->size = sizeof(rvcn_dec_message_avc_t);
       rvcn_dec_message_avc_t avc = get_h264_msg(vid, params, frame_info, slice_offset, &decode->width_in_samples,
                                                 &decode->height_in_samples, it_probs_ptr);
       memcpy(codec, (void *)&avc, sizeof(rvcn_dec_message_avc_t));
@@ -1228,6 +1228,7 @@ rvcn_dec_message_decode(struct radv_cmd_buffer *cmd_buffer, struct radv_video_se
       break;
    }
    case VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR: {
+      index_codec->size = sizeof(rvcn_dec_message_hevc_t);
       rvcn_dec_message_hevc_t hevc = get_h265_msg(device, vid, params, frame_info, it_probs_ptr);
       memcpy(codec, (void *)&hevc, sizeof(rvcn_dec_message_hevc_t));
       index_codec->message_id = RDECODE_MESSAGE_HEVC;

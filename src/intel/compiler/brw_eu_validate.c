@@ -734,6 +734,29 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
                 src_type == BRW_REGISTER_TYPE_UQ) &&
                !devinfo->has_64bit_int,
                "64-bit int source, but platform does not support it");
+      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16 &&
+          num_sources == 3 && type_sz(src_type) > 4) {
+         /* From the Broadwell PRM, Volume 7 "3D Media GPGPU", page 944:
+          *
+          *    "This is applicable to 32b datatypes and 16b datatype. 64b
+          *    datatypes cannot use the replicate control."
+          */
+         switch (s) {
+         case 0:
+            ERROR_IF(brw_inst_3src_a16_src0_rep_ctrl(devinfo, inst),
+                     "RepCtrl must be zero for 64-bit source 0");
+            break;
+         case 1:
+            ERROR_IF(brw_inst_3src_a16_src1_rep_ctrl(devinfo, inst),
+                     "RepCtrl must be zero for 64-bit source 1");
+            break;
+         case 2:
+            ERROR_IF(brw_inst_3src_a16_src2_rep_ctrl(devinfo, inst),
+                     "RepCtrl must be zero for 64-bit source 2");
+            break;
+         default: unreachable("invalid src");
+         }
+      }
    }
 
    if (num_sources == 3)

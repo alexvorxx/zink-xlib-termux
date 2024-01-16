@@ -65,6 +65,8 @@ is_only_used_by_load_ubo_vec4(const nir_alu_instr *instr)
    return true;
 }
 
+bool r300_is_only_used_as_float(const nir_alu_instr *instr);
+
 char *r300_finalize_nir(struct pipe_screen *pscreen, void *nir);
 
 extern bool r300_transform_vs_trig_input(struct nir_shader *shader);

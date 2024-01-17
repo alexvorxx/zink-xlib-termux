@@ -552,6 +552,7 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_intrinsic_quad_swap_diagonal:
                case nir_intrinsic_quad_swizzle_amd:
                case nir_intrinsic_masked_swizzle_amd:
+               case nir_intrinsic_rotate:
                case nir_intrinsic_inclusive_scan:
                case nir_intrinsic_exclusive_scan:
                case nir_intrinsic_reduce:

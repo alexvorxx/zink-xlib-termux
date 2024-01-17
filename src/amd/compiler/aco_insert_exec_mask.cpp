@@ -425,11 +425,12 @@ void
 process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>& instructions,
                      unsigned idx)
 {
+   block_info& info = ctx.info[block->index];
    WQMState state;
-   if (ctx.info[block->index].exec.back().second & mask_type_wqm) {
+   if (info.exec.back().second & mask_type_wqm) {
       state = WQM;
    } else {
-      assert(!ctx.handle_wqm || ctx.info[block->index].exec.back().second & mask_type_exact);
+      assert(!ctx.handle_wqm || info.exec.back().second & mask_type_exact);
       state = Exact;
    }
 
@@ -455,14 +456,14 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
 
          if (block->instructions[idx + 1]->opcode == aco_opcode::p_end_wqm) {
             /* Transition to Exact without extra instruction. */
-            ctx.info[block->index].exec.resize(1);
-            assert(ctx.info[block->index].exec[0].second == (mask_type_exact | mask_type_global));
-            current_exec = get_exec_op(ctx.info[block->index].exec[0].first);
-            ctx.info[block->index].exec[0].first = Operand(bld.lm);
+            info.exec.resize(1);
+            assert(info.exec[0].second == (mask_type_exact | mask_type_global));
+            current_exec = get_exec_op(info.exec[0].first);
+            info.exec[0].first = Operand(bld.lm);
             state = Exact;
-         } else if (ctx.info[block->index].exec.size() >= 2 && ctx.handle_wqm) {
+         } else if (info.exec.size() >= 2 && ctx.handle_wqm) {
             /* Preserve the WQM mask */
-            ctx.info[block->index].exec[1].second &= ~mask_type_global;
+            info.exec[1].second &= ~mask_type_global;
          }
 
          Temp cond, exit_cond;
@@ -483,17 +484,17 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
          }
 
          /* discard from inner to outer exec mask on stack */
-         int num = ctx.info[block->index].exec.size() - 2;
+         int num = info.exec.size() - 2;
          for (int i = num; i >= 0; i--) {
             Instruction* andn2 = bld.sop2(Builder::s_andn2, bld.def(bld.lm), bld.def(s1, scc),
-                                          ctx.info[block->index].exec[i].first, cond);
-            ctx.info[block->index].exec[i].first = Operand(andn2->definitions[0].getTemp());
+                                          info.exec[i].first, cond);
+            info.exec[i].first = Operand(andn2->definitions[0].getTemp());
             exit_cond = andn2->definitions[1].getTemp();
          }
 
          instr->opcode = aco_opcode::p_exit_early_if;
          instr->operands[0] = bld.scc(exit_cond);
-         assert(!ctx.handle_wqm || (ctx.info[block->index].exec[0].second & mask_type_wqm) == 0);
+         assert(!ctx.handle_wqm || (info.exec[0].second & mask_type_wqm) == 0);
 
       } else if (instr->opcode == aco_opcode::p_is_helper) {
          Definition dst = instr->definitions[0];
@@ -504,7 +505,7 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
             instr->operands[0] = Operand::zero();
             instr->definitions[0] = dst;
          } else {
-            std::pair<Operand, uint8_t>& exact_mask = ctx.info[block->index].exec[0];
+            std::pair<Operand, uint8_t>& exact_mask = info.exec[0];
             assert(exact_mask.second & mask_type_exact);
 
             instr.reset(create_instruction<SOP2_instruction>(bld.w64or32(Builder::s_andn2),
@@ -516,8 +517,8 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
          }
       } else if (instr->opcode == aco_opcode::p_demote_to_helper) {
          /* turn demote into discard_if with only exact masks */
-         assert((ctx.info[block->index].exec[0].second & mask_type_exact) &&
-                (ctx.info[block->index].exec[0].second & mask_type_global));
+         assert((info.exec[0].second & mask_type_exact) &&
+                (info.exec[0].second & mask_type_global));
 
          int num;
          Operand src;
@@ -529,35 +530,35 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
             src = bld.sop1(Builder::s_and_saveexec, bld.def(bld.lm), bld.scc(Definition(exit_cond)),
                            Definition(exec, bld.lm), Operand::zero(), Operand(exec, bld.lm));
 
-            num = ctx.info[block->index].exec.size() - 2;
-            if (!(ctx.info[block->index].exec.back().second & mask_type_exact)) {
-               ctx.info[block->index].exec.back().first = src;
-               ctx.info[block->index].exec.emplace_back(Operand(bld.lm), mask_type_exact);
+            num = info.exec.size() - 2;
+            if (!(info.exec.back().second & mask_type_exact)) {
+               info.exec.back().first = src;
+               info.exec.emplace_back(Operand(bld.lm), mask_type_exact);
             }
          } else {
             /* demote_if: transition to exact */
-            if (block->kind & block_kind_top_level && ctx.info[block->index].exec.size() == 2 &&
-                ctx.info[block->index].exec.back().second & mask_type_global) {
+            if (block->kind & block_kind_top_level && info.exec.size() == 2 &&
+                info.exec.back().second & mask_type_global) {
                /* We don't need to actually copy anything into exec, since the s_andn2
                 * instructions later will do that.
                 */
-               ctx.info[block->index].exec.pop_back();
+               info.exec.pop_back();
             } else {
                transition_to_Exact(ctx, bld, block->index);
             }
             src = instr->operands[0];
-            num = ctx.info[block->index].exec.size() - 1;
+            num = info.exec.size() - 1;
          }
 
          for (int i = num; i >= 0; i--) {
-            if (ctx.info[block->index].exec[i].second & mask_type_exact) {
+            if (info.exec[i].second & mask_type_exact) {
                Instruction* andn2 =
                   bld.sop2(Builder::s_andn2, bld.def(bld.lm), bld.def(s1, scc),
-                           get_exec_op(ctx.info[block->index].exec[i].first), src);
-               if (i == (int)ctx.info[block->index].exec.size() - 1)
+                           get_exec_op(info.exec[i].first), src);
+               if (i == (int)info.exec.size() - 1)
                   andn2->definitions[0] = Definition(exec, bld.lm);
 
-               ctx.info[block->index].exec[i].first = Operand(andn2->definitions[0].getTemp());
+               info.exec[i].first = Operand(andn2->definitions[0].getTemp());
                exit_cond = andn2->definitions[1].getTemp();
             } else {
                assert(i != 0);
@@ -568,7 +569,7 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
          state = Exact;
 
       } else if (instr->opcode == aco_opcode::p_elect) {
-         bool all_lanes_enabled = ctx.info[block->index].exec.back().first.constantEquals(-1u);
+         bool all_lanes_enabled = info.exec.back().first.constantEquals(-1u);
          Definition dst = instr->definitions[0];
 
          if (all_lanes_enabled) {
@@ -581,9 +582,9 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
          continue;
       } else if (instr->opcode == aco_opcode::p_end_wqm) {
          assert(block->kind & block_kind_top_level);
-         assert(ctx.info[block->index].exec.size() <= 2);
+         assert(info.exec.size() <= 2);
          /* This instruction indicates the end of WQM mode. */
-         ctx.info[block->index].exec.back().second |= mask_type_global;
+         info.exec.back().second |= mask_type_global;
          transition_to_Exact(ctx, bld, block->index);
          state = Exact;
          ctx.handle_wqm = false;

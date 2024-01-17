@@ -9,11 +9,19 @@
 #include "agx_pack.h"
 #include "libagx.h"
 
+// Enable this to debug core mappings.
+// #define SCRATCH_DEBUG_CORES 512
+
 #define AGX_SPILL_SIZE_BUCKETS 16
 
 #define AGX_MAX_CORES_PER_CLUSTER 16
 #define AGX_MAX_CLUSTERS          8
-#define AGX_MAX_CORE_ID           (AGX_MAX_CLUSTERS * AGX_MAX_CORES_PER_CLUSTER)
+
+#ifdef SCRATCH_DEBUG_CORES
+#define AGX_MAX_CORE_ID SCRATCH_DEBUG_CORES
+#else
+#define AGX_MAX_CORE_ID (AGX_MAX_CLUSTERS * AGX_MAX_CORES_PER_CLUSTER)
+#endif
 
 struct agx_helper_block {
    uint32_t blocks[4];

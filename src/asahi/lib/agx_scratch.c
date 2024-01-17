@@ -173,6 +173,7 @@ agx_scratch_realloc(struct agx_scratch *scratch)
    unsigned num_cores = 0;
    unsigned core_id;
    for (core_id = 0; core_id < AGX_MAX_CORE_ID; core_id++) {
+#ifndef SCRATCH_DEBUG_CORES
       unsigned cores_per_cluster =
          util_next_power_of_two(scratch->dev->params.num_cores_per_cluster);
       unsigned cluster = core_id / cores_per_cluster;
@@ -182,6 +183,7 @@ agx_scratch_realloc(struct agx_scratch *scratch)
       if (core >= scratch->dev->params.num_cores_per_cluster ||
           !(scratch->dev->params.core_masks[cluster] & BITFIELD_BIT(core)))
          continue;
+#endif
       num_cores++;
 #ifdef SCRATCH_DEBUG
       scratch->core_present[core_id] = true;
@@ -304,10 +306,14 @@ agx_scratch_init(struct agx_device *dev, struct agx_scratch *scratch)
    memset(scratch, 0, sizeof(*scratch));
 
    scratch->dev = dev;
+#ifdef SCRATCH_DEBUG_CORES
+   scratch->num_cores = SCRATCH_DEBUG_CORES;
+#else
    scratch->num_cores = 0;
    for (unsigned cl = 0; cl < dev->params.num_clusters_total; cl++) {
       scratch->num_cores += util_bitcount(dev->params.core_masks[cl]);
    }
+#endif
 }
 
 void

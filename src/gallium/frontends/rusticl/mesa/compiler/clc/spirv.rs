@@ -191,7 +191,7 @@ impl SPIRVBin {
         let res = unsafe { clc_link_spirv(&linker_args, &logger, &mut out) };
 
         let info;
-        if !library {
+        if !library && res {
             let mut pspirv = clc_parsed_spirv::default();
             let res = unsafe { clc_parse_spirv(&out, &logger, &mut pspirv) };
 

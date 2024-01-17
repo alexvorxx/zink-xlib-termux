@@ -322,7 +322,10 @@ validate_ir(Program* program)
          }
 
          /* check opsel */
-         if (instr->isVOP3() || instr->isVOP1() || instr->isVOP2() || instr->isVOPC()) {
+         if (instr->opcode == aco_opcode::v_permlane16_b32 ||
+             instr->opcode == aco_opcode::v_permlanex16_b32) {
+            check(instr->valu().opsel <= 0x3, "Unexpected opsel for permlane", instr.get());
+         } else if (instr->isVOP3() || instr->isVOP1() || instr->isVOP2() || instr->isVOPC()) {
             VALU_instruction& valu = instr->valu();
             check(valu.opsel == 0 || program->gfx_level >= GFX9, "Opsel is only supported on GFX9+",
                   instr.get());

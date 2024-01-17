@@ -9,13 +9,9 @@
 
 #ifndef __OPENCL_VERSION__
 #include "util/bitscan.h"
-#include "util/macros.h"
-#define GLOBAL(type_)      uint64_t
 #define CONST(type_)       uint64_t
 #define libagx_popcount(x) util_bitcount64(x)
 #else
-#define PACKED
-#define GLOBAL(type_)      global type_ *
 #define CONST(type_)       constant type_ *
 #define libagx_popcount(x) popcount(x)
 #endif

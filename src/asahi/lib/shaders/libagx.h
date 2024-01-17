@@ -9,8 +9,12 @@
 /* Define stdint types compatible between the CPU and GPU for shared headers */
 #ifndef __OPENCL_VERSION__
 #include <stdint.h>
+#include "util/macros.h"
+#define GLOBAL(type_) uint64_t
 #else
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
+#define PACKED
+#define GLOBAL(type_) global type_ *
 
 typedef ulong uint64_t;
 typedef uint uint32_t;

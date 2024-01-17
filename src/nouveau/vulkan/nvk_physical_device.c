@@ -571,6 +571,7 @@ nvk_min_cbuf_alignment(const struct nv_device_info *info)
 static void
 nvk_get_device_properties(const struct nvk_instance *instance,
                           const struct nv_device_info *info,
+                          bool conformant,
                           struct vk_properties *properties)
 {
    const VkSampleCountFlagBits sample_counts = VK_SAMPLE_COUNT_1_BIT |
@@ -730,12 +731,9 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .independentResolveNone = true,
       .independentResolve = true,
       .driverID = VK_DRIVER_ID_MESA_NVK,
-      .conformanceVersion = (VkConformanceVersion) { /* TODO: conf version */
-         .major = 0,
-         .minor = 0,
-         .subminor = 0,
-         .patch = 0,
-      },
+      .conformanceVersion =
+         conformant ? (VkConformanceVersion) { 1, 3, 7, 3 }
+                    : (VkConformanceVersion) { 0, 0, 0, 0 },
       .denormBehaviorIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL,
       .roundingModeIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL,
       .shaderSignedZeroInfNanPreserveFloat16 = true,
@@ -1044,8 +1042,11 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
       goto fail_ws_dev;
    }
 
-   if ((info.type != NV_DEVICE_TYPE_DIS ||
-        info.cls_eng3d < TURING_A || info.cls_eng3d > ADA_A) &&
+   bool conformant =
+      info.type == NV_DEVICE_TYPE_DIS &&
+      info.cls_eng3d >= TURING_A && info.cls_eng3d <= ADA_A;
+
+   if (!conformant &&
        !debug_get_bool_option("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", false)) {
       result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
                          "WARNING: NVK is not well-tested on %s, pass "
@@ -1100,7 +1101,7 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    nvk_get_device_features(&info, &supported_extensions, &supported_features);
 
    struct vk_properties properties;
-   nvk_get_device_properties(instance, &info, &properties);
+   nvk_get_device_properties(instance, &info, conformant, &properties);
 
    properties.drmHasRender = true;
    properties.drmRenderMajor = major(render_dev);

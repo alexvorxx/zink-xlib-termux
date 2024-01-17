@@ -464,6 +464,10 @@ radv_rt_nir_to_asm(struct radv_device *device, struct vk_pipeline_cache *cache,
    free(binary);
 
    *out_shader = shader;
+
+   if (radv_can_dump_shader_stats(device, stage->nir))
+      radv_dump_shader_stats(device, &pipeline->base.base, shader, stage->nir->info.stage, stderr);
+
    return shader ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
 }
 

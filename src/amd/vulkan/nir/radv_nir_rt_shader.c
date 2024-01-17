@@ -1915,6 +1915,18 @@ radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKH
    /* initialize variables */
    nir_builder b = nir_builder_at(nir_before_impl(impl));
 
+   nir_def *descriptor_sets = ac_nir_load_arg(&b, &args->ac, args->descriptor_sets[0]);
+   nir_def *push_constants = ac_nir_load_arg(&b, &args->ac, args->ac.push_constants);
+   nir_def *sbt_descriptors = ac_nir_load_arg(&b, &args->ac, args->ac.rt.sbt_descriptors);
+   nir_def *launch_size = ac_nir_load_arg(&b, &args->ac, args->ac.rt.launch_size);
+   nir_def *scratch_offset = NULL;
+   if (args->ac.scratch_offset.used)
+      scratch_offset = ac_nir_load_arg(&b, &args->ac, args->ac.scratch_offset);
+   nir_def *ring_offsets = NULL;
+   if (args->ac.ring_offsets.used)
+      ring_offsets = ac_nir_load_arg(&b, &args->ac, args->ac.ring_offsets);
+   nir_def *launch_id = ac_nir_load_arg(&b, &args->ac, args->ac.rt.launch_id);
+
    nir_def *traversal_addr = ac_nir_load_arg(&b, &args->ac, args->ac.rt.traversal_shader_addr);
    nir_store_var(&b, vars.traversal_addr, nir_pack_64_2x32(&b, traversal_addr), 1);
 
@@ -1969,6 +1981,17 @@ radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKH
       shader_addr = nir_load_var(&b, vars.shader_addr);
       nir_def *next = select_next_shader(&b, shader_addr, info->wave_size);
       ac_nir_store_arg(&b, &args->ac, args->ac.rt.uniform_shader_addr, next);
+
+      ac_nir_store_arg(&b, &args->ac, args->descriptor_sets[0], descriptor_sets);
+      ac_nir_store_arg(&b, &args->ac, args->ac.push_constants, push_constants);
+      ac_nir_store_arg(&b, &args->ac, args->ac.rt.sbt_descriptors, sbt_descriptors);
+      ac_nir_store_arg(&b, &args->ac, args->ac.rt.traversal_shader_addr, traversal_addr);
+      ac_nir_store_arg(&b, &args->ac, args->ac.rt.launch_size, launch_size);
+      if (scratch_offset)
+         ac_nir_store_arg(&b, &args->ac, args->ac.scratch_offset, scratch_offset);
+      if (ring_offsets)
+         ac_nir_store_arg(&b, &args->ac, args->ac.ring_offsets, ring_offsets);
+      ac_nir_store_arg(&b, &args->ac, args->ac.rt.launch_id, launch_id);
 
       /* store back all variables to registers */
       ac_nir_store_arg(&b, &args->ac, args->ac.rt.dynamic_callable_stack_base, nir_load_var(&b, vars.stack_ptr));

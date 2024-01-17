@@ -204,6 +204,10 @@ struct device {
 
    struct u_vector wrbufs;
 
+#ifdef FD_REPLAY_MSM
+   uint32_t queue_id;
+#endif
+
 #ifdef FD_REPLAY_KGSL
    uint32_t context_id;
 #endif
@@ -460,6 +464,19 @@ device_create(uint64_t base_addr)
       printf("Allocated iova %" PRIx64 "\n", dev->va_iova);
    }
 
+   struct drm_msm_submitqueue req_queue = {
+      .flags = 0,
+      .prio = 0,
+   };
+
+   ret = drmCommandWriteRead(dev->fd, DRM_MSM_SUBMITQUEUE_NEW, &req_queue,
+                             sizeof(req_queue));
+   if (ret) {
+      err(1, "DRM_MSM_SUBMITQUEUE_NEW failure");
+   }
+
+   dev->queue_id = req_queue.id;
+
    rb_tree_init(&dev->buffers);
    util_vma_heap_init(&dev->vma, va_start, ROUND_DOWN_TO(va_size, 4096));
    u_vector_init(&dev->cmdstreams, 8, sizeof(struct cmdstream));
@@ -543,7 +560,7 @@ device_submit_cmdstreams(struct device *dev)
 
    struct drm_msm_gem_submit submit_req = {
       .flags = MSM_PIPE_3D0,
-      .queueid = 0,
+      .queueid = dev->queue_id,
       .bos = (uint64_t)(uintptr_t)bo_list,
       .nr_bos = bo_count,
       .cmds = (uint64_t)(uintptr_t)cmds,
@@ -568,7 +585,7 @@ device_submit_cmdstreams(struct device *dev)
     */
    struct drm_msm_wait_fence wait_req = {
       .fence = submit_req.fence,
-      .queueid = 0,
+      .queueid = dev->queue_id,
    };
    get_abs_timeout(&wait_req.timeout, 1000000000);
 

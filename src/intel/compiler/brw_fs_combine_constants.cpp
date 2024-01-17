@@ -1378,6 +1378,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
 
       case BRW_OPCODE_ASR:
       case BRW_OPCODE_BFI1:
+      case BRW_OPCODE_MUL:
       case BRW_OPCODE_ROL:
       case BRW_OPCODE_ROR:
       case BRW_OPCODE_SHL:

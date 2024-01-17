@@ -1017,12 +1017,12 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
          inst->src[arg] = val;
          progress = true;
       } else if (arg == 0 && inst->src[1].file != IMM) {
-         /* Don't copy propagate the constant in situations like
+         /* We used to not copy propagate the constant in situations like
           *
           *    mov(8)          g8<1>D          0x7fffffffD
           *    mul(8)          g16<1>D         g8<8,8,1>D      g15<16,8,2>W
           *
-          * On platforms that only have a 32x16 multiplier, this will
+          * On platforms that only have a 32x16 multiplier, this would
           * result in lowering the multiply to
           *
           *    mul(8)          g15<1>D         g14<8,8,1>D     0xffffUW
@@ -1030,7 +1030,7 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
           *    add(8)          g15.1<2>UW      g15.1<16,8,2>UW g16<16,8,2>UW
           *
           * On Gfx8 and Gfx9, which have the full 32x32 multiplier, it
-          * results in
+          * would results in
           *
           *    mul(8)          g16<1>D         g15<16,8,2>W    0x7fffffffD
           *
@@ -1038,11 +1038,19 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
           *
           *    When multiplying a DW and any lower precision integer, the
           *    DW operand must on src0.
+          *
+          * So it would have been invalid. However, brw_fs_combine_constants
+          * will now "fix" the constant.
           */
          if (inst->opcode == BRW_OPCODE_MUL &&
              type_sz(inst->src[1].type) < 4 &&
-             type_sz(val.type) == 4)
+             (inst->src[0].type == BRW_REGISTER_TYPE_D ||
+              inst->src[0].type == BRW_REGISTER_TYPE_UD)) {
+            inst->src[0] = val;
+            inst->src[0].type = BRW_REGISTER_TYPE_D;
+            progress = true;
             break;
+         }
 
          /* Fit this constant in by commuting the operands.
           * Exception: we can't do this for 32-bit integer MUL/MACH

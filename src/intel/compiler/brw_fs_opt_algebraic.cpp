@@ -148,7 +148,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
          break;
 
       case BRW_OPCODE_MUL:
-         if (inst->src[1].file != IMM)
+         if (inst->src[0].file != IMM && inst->src[1].file != IMM)
             continue;
 
          if (brw_reg_type_is_floating_point(inst->src[1].type))
@@ -177,6 +177,15 @@ brw_fs_opt_algebraic(fs_visitor &s)
               inst->writes_accumulator_implicitly(devinfo)))
             break;
 
+         if (inst->src[0].is_zero() || inst->src[1].is_zero()) {
+            inst->opcode = BRW_OPCODE_MOV;
+            inst->sources = 1;
+            inst->src[0] = brw_imm_d(0);
+            inst->src[1] = reg_undef;
+            progress = true;
+            break;
+         }
+
          /* a * 1.0 = a */
          if (inst->src[1].is_one()) {
             inst->opcode = BRW_OPCODE_MOV;
@@ -187,6 +196,16 @@ brw_fs_opt_algebraic(fs_visitor &s)
          }
 
          /* a * -1.0 = -a */
+         if (inst->src[0].is_negative_one()) {
+            inst->opcode = BRW_OPCODE_MOV;
+            inst->sources = 1;
+            inst->src[0] = inst->src[1];
+            inst->src[0].negate = !inst->src[0].negate;
+            inst->src[1] = reg_undef;
+            progress = true;
+            break;
+         }
+
          if (inst->src[1].is_negative_one()) {
             inst->opcode = BRW_OPCODE_MOV;
             inst->sources = 1;

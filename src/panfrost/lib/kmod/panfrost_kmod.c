@@ -41,6 +41,13 @@ static struct pan_kmod_dev *
 panfrost_kmod_dev_create(int fd, uint32_t flags, drmVersionPtr version,
                          const struct pan_kmod_allocator *allocator)
 {
+   if (version->version_major < 1 ||
+       (version->version_major == 1 && version->version_minor < 1)) {
+      mesa_loge("kernel driver is too old (requires at least 1.1, found %d.%d)",
+                version->version_major, version->version_minor);
+      return NULL;
+   }
+
    struct panfrost_kmod_dev *panfrost_dev =
       pan_kmod_alloc(allocator, sizeof(*panfrost_dev));
    if (!panfrost_dev) {
@@ -96,44 +103,23 @@ panfrost_dev_query_props(const struct pan_kmod_dev *dev,
    props->gpu_revision =
       panfrost_query_raw(fd, DRM_PANFROST_PARAM_GPU_REVISION, true, 0);
    props->shader_present =
-      panfrost_query_raw(fd, DRM_PANFROST_PARAM_SHADER_PRESENT, false, 0xffff);
+      panfrost_query_raw(fd, DRM_PANFROST_PARAM_SHADER_PRESENT, true, 0);
    props->tiler_features =
-      panfrost_query_raw(fd, DRM_PANFROST_PARAM_TILER_FEATURES, false, 0x809);
+      panfrost_query_raw(fd, DRM_PANFROST_PARAM_TILER_FEATURES, true, 0);
    props->mem_features =
       panfrost_query_raw(fd, DRM_PANFROST_PARAM_MEM_FEATURES, true, 0);
    props->mmu_features =
-      panfrost_query_raw(fd, DRM_PANFROST_PARAM_MMU_FEATURES, false, 0);
+      panfrost_query_raw(fd, DRM_PANFROST_PARAM_MMU_FEATURES, true, 0);
 
    for (unsigned i = 0; i < ARRAY_SIZE(props->texture_features); i++) {
-      /* If unspecified, assume ASTC/ETC only. Factory default for Juno, and
-       * should exist on any Mali configuration. All hardware should report
-       * these texture formats but the kernel might not be new enough. */
-      static const uint32_t default_tex_features[4] = {
-         (1 << 1) |     // ETC2 RGB8
-            (1 << 2) |  // ETC2 R11 UNORM
-            (1 << 3) |  // ETC2 RGBA8
-            (1 << 4) |  // ETC2 RG11 UNORM
-            (1 << 17) | // ETC2 R11 SNORM
-            (1 << 18) | // ETC2 RG11 SNORM
-            (1 << 19) | // ETC2 RGB8A1
-            (1 << 20) | // ASTC 3D LDR
-            (1 << 21) | // ASTC 3D HDR
-            (1 << 22) | // ASTC 2D LDR
-            (1 << 23),  // ASTC 2D HDR
-         0,
-         0,
-         0,
-      };
-
-      props->texture_features[i] =
-         panfrost_query_raw(fd, DRM_PANFROST_PARAM_TEXTURE_FEATURES0 + i, false,
-                            default_tex_features[i]);
+      props->texture_features[i] = panfrost_query_raw(
+         fd, DRM_PANFROST_PARAM_TEXTURE_FEATURES0 + i, true, 0);
    }
 
    props->thread_tls_alloc =
-      panfrost_query_raw(fd, DRM_PANFROST_PARAM_THREAD_TLS_ALLOC, false, 0);
+      panfrost_query_raw(fd, DRM_PANFROST_PARAM_THREAD_TLS_ALLOC, true, 0);
    props->afbc_features =
-      panfrost_query_raw(fd, DRM_PANFROST_PARAM_AFBC_FEATURES, false, 0);
+      panfrost_query_raw(fd, DRM_PANFROST_PARAM_AFBC_FEATURES, true, 0);
 }
 
 static uint32_t

@@ -108,10 +108,6 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
    /* Native MRT is introduced with v5 */
    bool has_mrt = (dev->arch >= 5);
 
-   /* Only kernel drivers >= 1.1 can allocate HEAP BOs */
-   bool has_heap = panfrost_device_kmod_version_major(dev) > 1 ||
-                   panfrost_device_kmod_version_minor(dev) >= 1;
-
    switch (param) {
    case PIPE_CAP_NPOT_TEXTURES:
    case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
@@ -333,7 +329,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 0;
 
    case PIPE_CAP_DRAW_INDIRECT:
-      return has_heap;
+      return 1;
 
    case PIPE_CAP_START_INSTANCE:
    case PIPE_CAP_DRAW_PARAMETERS:

@@ -2228,6 +2228,7 @@ void ssa_elimination(Program* program);
 void lower_to_hw_instr(Program* program);
 void schedule_program(Program* program, live& live_vars);
 void schedule_ilp(Program* program);
+void schedule_vopd(Program* program);
 void spill(Program* program, live& live_vars);
 void insert_wait_states(Program* program);
 bool dealloc_vgprs(Program* program);

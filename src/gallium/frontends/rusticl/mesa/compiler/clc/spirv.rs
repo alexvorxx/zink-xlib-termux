@@ -194,24 +194,15 @@ impl SPIRVBin {
         if !library && res {
             let mut pspirv = clc_parsed_spirv::default();
             let res = unsafe { clc_parse_spirv(&out, &logger, &mut pspirv) };
-
-            if res {
-                info = Some(pspirv);
-            } else {
-                info = None;
-            }
+            info = res.then_some(pspirv);
         } else {
             info = None;
         }
 
-        let res = if res {
-            Some(SPIRVBin {
-                spirv: out,
-                info: info,
-            })
-        } else {
-            None
-        };
+        let res = res.then_some(SPIRVBin {
+            spirv: out,
+            info: info,
+        });
         (res, msgs.join("\n"))
     }
 

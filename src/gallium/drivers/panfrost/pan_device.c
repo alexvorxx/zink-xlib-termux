@@ -71,7 +71,8 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
    pan_kmod_dev_query_props(dev->kmod.dev, &dev->kmod.props);
 
    dev->arch = pan_arch(dev->kmod.props.gpu_prod_id);
-   dev->model = panfrost_get_model(dev->kmod.props.gpu_prod_id);
+   dev->model = panfrost_get_model(dev->kmod.props.gpu_prod_id,
+                                   dev->kmod.props.gpu_variant);
 
    /* If we don't recognize the model, bail early */
    if (!dev->model)

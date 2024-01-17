@@ -137,6 +137,9 @@ struct pan_kmod_dev_props {
    /* GPU revision. */
    uint32_t gpu_revision;
 
+   /* GPU variant. */
+   uint32_t gpu_variant;
+
    /* Bitmask encoding the number of shader cores exposed by the GPU. */
    uint64_t shader_present;
 

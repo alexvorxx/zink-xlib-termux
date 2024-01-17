@@ -78,7 +78,8 @@ panfrost_perf_init(struct panfrost_perf *perf, int fd)
    struct pan_kmod_dev_props props = {};
    pan_kmod_dev_query_props(perf->dev, &props);
 
-   const struct panfrost_model *model = panfrost_get_model(props.gpu_prod_id);
+   const struct panfrost_model *model =
+      panfrost_get_model(props.gpu_prod_id, props.gpu_variant);
    if (model == NULL)
       unreachable("Invalid GPU ID");
 

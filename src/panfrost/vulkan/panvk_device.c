@@ -489,7 +489,8 @@ panvk_physical_device_init(struct panvk_physical_device *device,
 
    unsigned arch = pan_arch(device->kmod.props.gpu_prod_id);
 
-   device->model = panfrost_get_model(device->kmod.props.gpu_prod_id);
+   device->model = panfrost_get_model(device->kmod.props.gpu_prod_id,
+                                      device->kmod.props.gpu_variant);
    device->formats.all = panfrost_format_table(arch);
    device->formats.blendable = panfrost_blendable_format_table(arch);
 

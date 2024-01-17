@@ -47,6 +47,9 @@ struct panfrost_model {
    /* GPU ID */
    uint32_t gpu_id;
 
+   /* GPU variant. */
+   uint32_t gpu_variant;
+
    /* Marketing name for the GPU, used as the GL_RENDERER */
    const char *name;
 
@@ -72,7 +75,8 @@ struct panfrost_model {
    } quirks;
 };
 
-const struct panfrost_model *panfrost_get_model(uint32_t gpu_id);
+const struct panfrost_model *panfrost_get_model(uint32_t gpu_id,
+                                                uint32_t gpu_variant);
 
 unsigned panfrost_query_l2_slices(const struct pan_kmod_dev_props *props);
 

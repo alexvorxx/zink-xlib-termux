@@ -123,7 +123,7 @@ SR = enum("sr", {
    8:  'dispatch_threads_per_threadgroup.x',
    9:  'dispatch_threads_per_threadgroup.y',
    10: 'dispatch_threads_per_threadgroup.z',
-   20: 'core_index',
+   20: 'core_id',
    21: 'vm_slot',
    48: 'thread_position_in_threadgroup.x',
    49: 'thread_position_in_threadgroup.y',
@@ -140,9 +140,9 @@ SR = enum("sr", {
    81: 'thread_position_in_grid.y',
    82: 'thread_position_in_grid.z',
    124: 'input_sample_mask',
-   144: 'opfifo_cmd',
-   146: 'opfifo_data_l',
-   147: 'opfifo_data_h',
+   144: 'helper_op',
+   146: 'helper_arg_l',
+   147: 'helper_arg_h',
 })
 
 ATOMIC_OPC = enum("atomic_opc", {

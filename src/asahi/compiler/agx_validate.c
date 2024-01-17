@@ -365,9 +365,9 @@ agx_validate_sr(const agx_instr *I)
    case AGX_SR_IS_ACTIVE_THREAD:
       return coverage;
 
-   case AGX_SR_OPFIFO_CMD:
-   case AGX_SR_OPFIFO_DATA_L:
-   case AGX_SR_OPFIFO_DATA_H:
+   case AGX_SR_HELPER_OP:
+   case AGX_SR_HELPER_ARG_L:
+   case AGX_SR_HELPER_ARG_H:
       return barrier;
 
    default:

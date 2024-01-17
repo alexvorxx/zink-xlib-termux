@@ -39,6 +39,7 @@
 #include "util/u_atomic.h"
 #include "util/u_thread.h"
 #include "util/u_cpu_detect.h"
+#include "util/thread_sched.h"
 
 #include "state_tracker/st_context.h"
 
@@ -236,6 +237,10 @@ _mesa_glthread_init(struct gl_context *ctx)
                       glthread_thread_initialization, NULL, 0);
    util_queue_fence_wait(&fence);
    util_queue_fence_destroy(&fence);
+
+   glthread->thread_sched_enabled = ctx->pipe->set_context_param &&
+                                    util_thread_scheduler_enabled();
+   util_thread_scheduler_init_state(&glthread->thread_sched_state);
 }
 
 static void
@@ -316,25 +321,21 @@ _mesa_glthread_flush_batch(struct gl_context *ctx)
    if (!glthread->used)
       return; /* the batch is empty */
 
-   /* Pin threads regularly to the same Zen CCX that the main thread is
-    * running on. The main thread can move between CCXs.
+   /* Apply our thread scheduling policy for better multithreading
+    * performance.
     */
-   if (util_get_cpu_caps()->num_L3_caches > 1 &&
-       /* driver support */
-       ctx->pipe->set_context_param &&
+   if (glthread->thread_sched_enabled &&
        ++glthread->pin_thread_counter % 128 == 0) {
       int cpu = util_get_current_cpu();
 
-      if (cpu >= 0) {
-         uint16_t L3_cache = util_get_cpu_caps()->cpu_to_L3[cpu];
-         if (L3_cache != U_CPU_INVALID_L3) {
-            util_set_thread_affinity(glthread->queue.threads[0],
-                                     util_get_cpu_caps()->L3_affinity_mask[L3_cache],
-                                     NULL, util_get_cpu_caps()->num_cpu_mask_bits);
-            ctx->pipe->set_context_param(ctx->pipe,
-                                         PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE,
-                                         L3_cache);
-         }
+      if (cpu >= 0 &&
+          util_thread_sched_apply_policy(glthread->queue.threads[0],
+                                         UTIL_THREAD_GLTHREAD, cpu,
+                                         &glthread->thread_sched_state)) {
+         /* If it's successful, apply the policy to the driver threads too. */
+         ctx->pipe->set_context_param(ctx->pipe,
+                                      PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE,
+                                      cpu);
       }
    }
 

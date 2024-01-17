@@ -89,8 +89,8 @@ st_prepare_draw(struct gl_context *ctx, uint64_t state_mask)
    /* Validate state. */
    st_validate_state(st, state_mask);
 
-   /* Pin threads regularly to the same Zen CCX that the main thread is
-    * running on. The main thread can move between CCXs.
+   /* Apply our thread scheduling policy for better multithreading
+    * performance.
     */
    if (unlikely(st->pin_thread_counter != ST_L3_PINNING_DISABLED &&
                 /* do it occasionally */
@@ -105,7 +105,7 @@ st_prepare_draw(struct gl_context *ctx, uint64_t state_mask)
          if (L3_cache != U_CPU_INVALID_L3) {
             pipe->set_context_param(pipe,
                                     PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE,
-                                    L3_cache);
+                                    cpu);
          }
       }
    }

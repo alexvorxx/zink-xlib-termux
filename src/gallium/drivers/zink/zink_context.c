@@ -52,6 +52,7 @@
 #include "util/u_thread.h"
 #include "util/perf/u_trace.h"
 #include "util/u_cpu_detect.h"
+#include "util/thread_sched.h"
 #include "util/strndup.h"
 #include "nir.h"
 #include "nir_builder.h"
@@ -330,9 +331,8 @@ zink_set_context_param(struct pipe_context *pctx, enum pipe_context_param param,
    switch (param) {
    case PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE:
       if (screen->threaded_submit)
-         util_set_thread_affinity(screen->flush_queue.threads[0],
-                                 util_get_cpu_caps()->L3_affinity_mask[value],
-                                 NULL, util_get_cpu_caps()->num_cpu_mask_bits);
+         util_thread_sched_apply_policy(screen->flush_queue.threads[0],
+                                        UTIL_THREAD_DRIVER_SUBMIT, value, NULL);
       break;
    default:
       break;

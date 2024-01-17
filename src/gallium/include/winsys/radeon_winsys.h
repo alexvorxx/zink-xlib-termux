@@ -314,7 +314,7 @@ struct radeon_winsys {
     * L3 caches. This is needed for good multithreading performance on
     * AMD Zen CPUs.
     */
-   void (*pin_threads_to_L3_cache)(struct radeon_winsys *ws, unsigned cache);
+   void (*pin_threads_to_L3_cache)(struct radeon_winsys *ws, unsigned cpu);
 
    /**************************************************************************
     * Buffer management. Buffer attributes are mostly fixed over its lifetime.

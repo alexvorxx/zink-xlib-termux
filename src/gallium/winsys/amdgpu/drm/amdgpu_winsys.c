@@ -14,6 +14,7 @@
 #include "util/u_cpu_detect.h"
 #include "util/u_hash_table.h"
 #include "util/hash_table.h"
+#include "util/thread_sched.h"
 #include "util/xmlconfig.h"
 #include "drm-uapi/amdgpu_drm.h"
 #include <xf86drm.h>
@@ -270,13 +271,12 @@ static bool amdgpu_winsys_unref(struct radeon_winsys *rws)
 }
 
 static void amdgpu_pin_threads_to_L3_cache(struct radeon_winsys *rws,
-                                           unsigned cache)
+                                           unsigned cpu)
 {
    struct amdgpu_winsys *ws = amdgpu_winsys(rws);
 
-   util_set_thread_affinity(ws->cs_queue.threads[0],
-                            util_get_cpu_caps()->L3_affinity_mask[cache],
-                            NULL, util_get_cpu_caps()->num_cpu_mask_bits);
+   util_thread_sched_apply_policy(ws->cs_queue.threads[0],
+                                  UTIL_THREAD_DRIVER_SUBMIT, cpu, NULL);
 }
 
 static uint32_t kms_handle_hash(const void *key)

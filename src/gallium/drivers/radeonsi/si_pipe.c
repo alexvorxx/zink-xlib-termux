@@ -470,7 +470,7 @@ static void si_set_context_param(struct pipe_context *ctx, enum pipe_context_par
    struct radeon_winsys *ws = ((struct si_context *)ctx)->ws;
 
    switch (param) {
-   case PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE:
+   case PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING:
       ws->pin_threads_to_L3_cache(ws, value);
       break;
    default:;

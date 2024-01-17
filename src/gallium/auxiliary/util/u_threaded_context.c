@@ -3552,7 +3552,7 @@ tc_set_context_param(struct pipe_context *_pipe,
 {
    struct threaded_context *tc = threaded_context(_pipe);
 
-   if (param == PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE) {
+   if (param == PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING) {
       util_thread_sched_apply_policy(tc->queue.threads[0],
                                      UTIL_THREAD_THREADED_CONTEXT, value,
                                      NULL);

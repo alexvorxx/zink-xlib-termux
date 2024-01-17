@@ -1101,13 +1101,10 @@ enum pipe_resource_param
  */
 enum pipe_context_param
 {
-   /* A hint for the driver that it should pin its execution threads to
-    * a group of cores sharing a specific L3 cache if the CPU has multiple
-    * L3 caches. This is needed for good multithreading performance on
-    * AMD Zen CPUs. "value" is the L3 cache index. Drivers that don't have
-    * any internal threads or don't run on affected CPUs can ignore this.
+   /* Call util_thread_sched_apply_policy() for each driver thread that
+    * benefits from it.
     */
-   PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE,
+   PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING,
 };
 
 /**

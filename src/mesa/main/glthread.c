@@ -334,7 +334,7 @@ _mesa_glthread_flush_batch(struct gl_context *ctx)
                                          &glthread->thread_sched_state)) {
          /* If it's successful, apply the policy to the driver threads too. */
          ctx->pipe->set_context_param(ctx->pipe,
-                                      PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE,
+                                      PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING,
                                       cpu);
       }
    }

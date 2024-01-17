@@ -329,7 +329,7 @@ zink_set_context_param(struct pipe_context *pctx, enum pipe_context_param param,
    struct zink_screen *screen = zink_screen(ctx->base.screen);
 
    switch (param) {
-   case PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE:
+   case PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING:
       if (screen->threaded_submit)
          util_thread_sched_apply_policy(screen->flush_queue.threads[0],
                                         UTIL_THREAD_DRIVER_SUBMIT, value, NULL);

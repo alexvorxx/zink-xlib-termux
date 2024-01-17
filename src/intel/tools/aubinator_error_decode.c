@@ -38,12 +38,15 @@
 #include <getopt.h>
 #include <zlib.h>
 
+#include "aubinator_error_decode_xe.h"
 #include "compiler/brw_compiler.h"
 #include "decoder/intel_decoder.h"
 #include "dev/intel_debug.h"
 #include "util/macros.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+#define XE_KMD_ERROR_DUMP_IDENTIFIER "**** Xe Device Coredump ****"
 
 /* options */
 
@@ -427,7 +430,7 @@ dump_shader_binary(void *user_data, const char *short_name,
 }
 
 static void
-read_data_file(FILE *file)
+read_i915_data_file(FILE *file)
 {
    struct intel_spec *spec = NULL;
    long long unsigned fence;
@@ -901,6 +904,9 @@ main(int argc, char *argv[])
    FILE *file;
    int c, i;
    bool help = false, pager = true;
+   char *line = NULL;
+   size_t line_size;
+
    const struct option aubinator_opts[] = {
       { "help",       no_argument,       (int *) &help,                 true },
       { "no-pager",   no_argument,       (int *) &pager,                false },
@@ -987,7 +993,13 @@ main(int argc, char *argv[])
    if (isatty(1) && pager)
       setup_pager();
 
-   read_data_file(file);
+   getline(&line, &line_size, file);
+   rewind(file);
+   if (strncmp(line, XE_KMD_ERROR_DUMP_IDENTIFIER, strlen(XE_KMD_ERROR_DUMP_IDENTIFIER)) == 0)
+      read_xe_data_file(file);
+   else
+      read_i915_data_file(file);
+   free(line);
    fclose(file);
 
    /* close the stdout which is opened to write the output */

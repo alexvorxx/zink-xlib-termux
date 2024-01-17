@@ -42,7 +42,9 @@ aubinator = executable(
 
 aubinator_error_decode = executable(
   'aubinator_error_decode',
-  files('aubinator_error_decode.c'),
+  files('aubinator_error_decode.c',
+        'aubinator_error_decode_xe.c',
+        'aubinator_error_decode_xe.h'),
   dependencies : [idep_mesautil, dep_zlib, dep_thread, idep_intel_dev, idep_intel_decoder],
   include_directories : [inc_include, inc_src, inc_intel],
   link_with : [libintel_common, libintel_compiler],

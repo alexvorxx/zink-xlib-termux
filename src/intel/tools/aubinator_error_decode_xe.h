@@ -6,7 +6,13 @@
 #pragma once
 
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "decoder/intel_decoder.h"
 
-void read_xe_data_file(FILE *file, enum intel_batch_decode_flags batch_flags);
+void
+read_xe_data_file(FILE *file,
+                  enum intel_batch_decode_flags batch_flags,
+                  const char *spec_xml_path,
+                  bool option_dump_kernels,
+                  bool option_print_all_bb);

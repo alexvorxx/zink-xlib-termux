@@ -92,7 +92,7 @@ st_prepare_draw(struct gl_context *ctx, uint64_t state_mask)
    /* Apply our thread scheduling policy for better multithreading
     * performance.
     */
-   if (unlikely(st->pin_thread_counter != ST_L3_PINNING_DISABLED &&
+   if (unlikely(st->pin_thread_counter != ST_THREAD_SCHEDULER_DISABLED &&
                 /* do it occasionally */
                 ++st->pin_thread_counter % 512 == 0)) {
       st->pin_thread_counter = 0;

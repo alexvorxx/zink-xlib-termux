@@ -226,7 +226,7 @@ _mesa_glthread_init(struct gl_context *ctx)
    _mesa_glthread_init_call_fence(&glthread->LastDListChangeBatchIndex);
 
    /* glthread takes over all L3 pinning */
-   ctx->st->pin_thread_counter = ST_L3_PINNING_DISABLED;
+   ctx->st->pin_thread_counter = ST_THREAD_SCHEDULER_DISABLED;
 
    _mesa_glthread_enable(ctx);
 

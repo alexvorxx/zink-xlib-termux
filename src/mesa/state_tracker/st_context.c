@@ -732,7 +732,7 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    st->shader_has_one_variant[MESA_SHADER_COMPUTE] = st->has_shareable_shaders;
 
    if (!st->pipe->set_context_param || !util_thread_scheduler_enabled())
-      st->pin_thread_counter = ST_L3_PINNING_DISABLED;
+      st->pin_thread_counter = ST_THREAD_SCHEDULER_DISABLED;
 
    st->bitmap.cache.empty = true;
 

@@ -516,57 +516,60 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
             instr->definitions[1] = bld.def(s1, scc);
          }
       } else if (instr->opcode == aco_opcode::p_demote_to_helper) {
-         /* turn demote into discard_if with only exact masks */
          assert((info.exec[0].second & mask_type_exact) &&
                 (info.exec[0].second & mask_type_global));
 
-         int num;
-         Operand src;
-         Temp exit_cond;
-         if (instr->operands[0].isConstant() && !(block->kind & block_kind_top_level)) {
-            assert(instr->operands[0].constantValue() == -1u);
-            /* transition to exact and set exec to zero */
-            exit_cond = bld.tmp(s1);
-            src = bld.sop1(Builder::s_and_saveexec, bld.def(bld.lm), bld.scc(Definition(exit_cond)),
-                           Definition(exec, bld.lm), Operand::zero(), Operand(exec, bld.lm));
-
-            num = info.exec.size() - 2;
-            if (!(info.exec.back().second & mask_type_exact)) {
-               info.exec.back().first = src;
-               info.exec.emplace_back(Operand(bld.lm), mask_type_exact);
-            }
-         } else {
-            /* demote_if: transition to exact */
-            if (block->kind & block_kind_top_level && info.exec.size() == 2 &&
-                info.exec.back().second & mask_type_global) {
-               /* We don't need to actually copy anything into exec, since the s_andn2
-                * instructions later will do that.
-                */
-               info.exec.pop_back();
-            } else {
-               transition_to_Exact(ctx, bld, block->index);
-            }
-            src = instr->operands[0];
-            num = info.exec.size() - 1;
+         const bool nested_cf = !(info.exec.back().second & mask_type_global);
+         if (ctx.handle_wqm && state == Exact && nested_cf) {
+            /* Transition back to WQM without extra instruction. */
+            info.exec.pop_back();
+            state = WQM;
+         } else if (block->instructions[idx + 1]->opcode == aco_opcode::p_end_wqm) {
+            /* Transition to Exact without extra instruction. */
+            info.exec.resize(1);
+            state = Exact;
+         } else if (nested_cf) {
+            /* Save curent exec temporarily. */
+            info.exec.back().first = bld.copy(bld.def(bld.lm), Operand(exec, bld.lm));
          }
 
-         for (int i = num; i >= 0; i--) {
-            if (info.exec[i].second & mask_type_exact) {
-               Instruction* andn2 =
-                  bld.sop2(Builder::s_andn2, bld.def(bld.lm), bld.def(s1, scc),
-                           get_exec_op(info.exec[i].first), src);
-               if (i == (int)info.exec.size() - 1)
-                  andn2->definitions[0] = Definition(exec, bld.lm);
+         /* Remove invocations from global exact mask. */
+         Definition def = state == Exact ? Definition(exec, bld.lm) : bld.def(bld.lm);
+         Operand src = instr->operands[0].isConstant() ? Operand(exec, bld.lm) : instr->operands[0];
 
-               info.exec[i].first = Operand(andn2->definitions[0].getTemp());
-               exit_cond = andn2->definitions[1].getTemp();
-            } else {
-               assert(i != 0);
-            }
+         Definition exit_cond =
+            bld.sop2(Builder::s_andn2, def, bld.def(s1, scc), get_exec_op(info.exec[0].first), src)
+               .def(1);
+         info.exec[0].first = Operand(def.getTemp());
+
+         /* Update global WQM mask and store in exec. */
+         if (state == WQM) {
+            assert(info.exec.size() > 1);
+            exit_cond =
+               bld.sop1(Builder::s_wqm, Definition(exec, bld.lm), bld.def(s1, scc), def.getTemp())
+                  .def(1);
          }
+
+         /* End shader if global mask is zero. */
          instr->opcode = aco_opcode::p_exit_early_if;
-         instr->operands[0] = bld.scc(exit_cond);
-         state = Exact;
+         instr->operands[0] = bld.scc(exit_cond.getTemp());
+         bld.insert(std::move(instr));
+
+         /* Update all other exec masks. */
+         if (nested_cf) {
+            const unsigned global_idx = state == WQM ? 1 : 0;
+            for (unsigned i = global_idx + 1; i < info.exec.size() - 1; i++) {
+               info.exec[i].first =
+                  bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc),
+                           get_exec_op(info.exec[i].first), Operand(exec, bld.lm));
+            }
+            /* Update current exec and save WQM mask. */
+            info.exec[global_idx].first =
+               bld.sop1(Builder::s_and_saveexec, bld.def(bld.lm), bld.def(s1, scc),
+                        Definition(exec, bld.lm), info.exec.back().first, Operand(exec, bld.lm));
+            info.exec.back().first = Operand(bld.lm);
+         }
+         continue;
 
       } else if (instr->opcode == aco_opcode::p_elect) {
          bool all_lanes_enabled = info.exec.back().first.constantEquals(-1u);

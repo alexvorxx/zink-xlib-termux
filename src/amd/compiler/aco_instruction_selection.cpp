@@ -9308,11 +9308,13 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       break;
    }
    case nir_intrinsic_store_scalar_arg_amd: {
+      BITSET_SET(ctx->output_args, nir_intrinsic_base(instr));
       ctx->arg_temps[nir_intrinsic_base(instr)] =
          bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
       break;
    }
    case nir_intrinsic_store_vector_arg_amd: {
+      BITSET_SET(ctx->output_args, nir_intrinsic_base(instr));
       ctx->arg_temps[nir_intrinsic_base(instr)] =
          as_vgpr(ctx, get_ssa_temp(ctx, instr->src[0].ssa));
       break;
@@ -11668,19 +11670,27 @@ merged_wave_info_to_mask(isel_context* ctx, unsigned i)
 static void
 insert_rt_jump_next(isel_context& ctx, const struct ac_shader_args* args)
 {
-   unsigned src_count = ctx.args->arg_count;
+   unsigned src_count = 0;
+   for (unsigned i = 0; i < ctx.args->arg_count; i++)
+      src_count += !!BITSET_TEST(ctx.output_args, i);
+
    Pseudo_instruction* ret =
       create_instruction<Pseudo_instruction>(aco_opcode::p_return, Format::PSEUDO, src_count, 0);
    ctx.block->instructions.emplace_back(ret);
 
-   for (unsigned i = 0; i < src_count; i++) {
+   src_count = 0;
+   for (unsigned i = 0; i < ctx.args->arg_count; i++) {
+      if (!BITSET_TEST(ctx.output_args, i))
+         continue;
+
       enum ac_arg_regfile file = ctx.args->args[i].file;
       unsigned size = ctx.args->args[i].size;
       unsigned reg = ctx.args->args[i].offset + (file == AC_ARG_SGPR ? 0 : 256);
       RegClass type = RegClass(file == AC_ARG_SGPR ? RegType::sgpr : RegType::vgpr, size);
       Operand op = ctx.arg_temps[i].id() ? Operand(ctx.arg_temps[i], PhysReg{reg})
                                          : Operand(PhysReg{reg}, type);
-      ret->operands[i] = op;
+      ret->operands[src_count] = op;
+      src_count++;
    }
 
    Builder bld(ctx.program, ctx.block);

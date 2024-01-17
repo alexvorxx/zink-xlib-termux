@@ -2342,8 +2342,19 @@ void radv_emit_compute_shader(const struct radv_physical_device *pdevice, struct
 bool radv_mem_vectorize_callback(unsigned align_mul, unsigned align_offset, unsigned bit_size, unsigned num_components,
                                  nir_intrinsic_instr *low, nir_intrinsic_instr *high, void *data);
 
+void radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cache *cache,
+                                   struct radv_shader_stage *stages, const struct radv_graphics_state_key *gfx_state,
+                                   bool keep_executable_info, bool keep_statistic_info, bool is_internal,
+                                   struct radv_retained_shaders *retained_shaders, bool noop_fs,
+                                   struct radv_shader **shaders, struct radv_shader_binary **binaries,
+                                   struct radv_shader **gs_copy_shader, struct radv_shader_binary **gs_copy_binary);
+
 void radv_compute_pipeline_init(const struct radv_device *device, struct radv_compute_pipeline *pipeline,
                                 const struct radv_pipeline_layout *layout, struct radv_shader *shader);
+
+struct radv_shader *radv_compile_cs(struct radv_device *device, struct vk_pipeline_cache *cache,
+                                    struct radv_shader_stage *cs_stage, bool keep_executable_info,
+                                    bool keep_statistic_info, bool is_internal, struct radv_shader_binary **cs_binary);
 
 struct radv_graphics_pipeline_create_info {
    bool use_rectlist;
@@ -3564,6 +3575,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline, base, VkPipeline, VK_OBJECT_TYPE_P
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline_layout, base, VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_query_pool, vk.base, VkQueryPool, VK_OBJECT_TYPE_QUERY_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_sampler, vk.base, VkSampler, VK_OBJECT_TYPE_SAMPLER)
+VK_DEFINE_NONDISP_HANDLE_CASTS(radv_shader_object, base, VkShaderEXT, VK_OBJECT_TYPE_SHADER_EXT);
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_video_session, vk.base, VkVideoSessionKHR, VK_OBJECT_TYPE_VIDEO_SESSION_KHR)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_video_session_params, vk.base, VkVideoSessionParametersKHR,

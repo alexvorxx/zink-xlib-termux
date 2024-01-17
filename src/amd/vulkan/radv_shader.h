@@ -715,6 +715,50 @@ struct radv_shader_dma_submission {
    uint64_t seq;
 };
 
+struct radv_shader_object {
+   struct vk_object_base base;
+
+   gl_shader_stage stage;
+
+   /* Main shader */
+   struct radv_shader *shader;
+   struct radv_shader_binary *binary;
+
+   /* Shader variants */
+   union {
+      struct {
+         /* VS + TCS */
+         struct {
+            struct radv_shader *shader;
+            struct radv_shader_binary *binary;
+         } as_ls;
+
+         /* VS + GS */
+         struct {
+            struct radv_shader *shader;
+            struct radv_shader_binary *binary;
+         } as_es;
+      } vs;
+
+      struct {
+         /* TES + GS */
+         struct {
+            struct radv_shader *shader;
+            struct radv_shader_binary *binary;
+         } as_es;
+      } tes;
+
+      struct {
+         /* GS copy shader */
+         struct radv_shader *copy_shader;
+         struct radv_shader_binary *copy_binary;
+      } gs;
+   };
+
+   uint32_t push_constant_size;
+   uint32_t dynamic_offset_count;
+};
+
 struct radv_pipeline_layout;
 struct radv_shader_stage;
 

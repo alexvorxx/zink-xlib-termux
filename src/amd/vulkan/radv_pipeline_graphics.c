@@ -2452,7 +2452,7 @@ radv_skip_graphics_pipeline_compile(const struct radv_device *device, const stru
    return binary_stages == pipeline->active_stages;
 }
 
-static void
+void
 radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cache *cache,
                               struct radv_shader_stage *stages, const struct radv_graphics_state_key *gfx_state,
                               bool keep_executable_info, bool keep_statistic_info, bool is_internal,

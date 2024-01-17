@@ -119,7 +119,7 @@ radv_compute_pipeline_init(const struct radv_device *device, struct radv_compute
    radv_compute_generate_pm4(device, pipeline, shader);
 }
 
-static struct radv_shader *
+struct radv_shader *
 radv_compile_cs(struct radv_device *device, struct vk_pipeline_cache *cache, struct radv_shader_stage *cs_stage,
                 bool keep_executable_info, bool keep_statistic_info, bool is_internal,
                 struct radv_shader_binary **cs_binary)

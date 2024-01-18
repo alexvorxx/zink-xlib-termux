@@ -35,6 +35,7 @@
 #include <xcb/shm.h>
 
 #include "util/macros.h"
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -1086,7 +1087,7 @@ struct x11_swapchain {
    uint32_t                                     stamp;
    uint32_t                                     sent_image_count;
 
-   VkResult                                     status;
+   atomic_int                                   status;
    bool                                         copy_is_suboptimal;
    struct wsi_queue                             present_queue;
    struct wsi_queue                             acquire_queue;
@@ -1501,12 +1502,11 @@ x11_capture_trace(struct x11_swapchain *chain)
 #endif
 }
 
+/* Use a trivial helper here to make it easier to read in code
+ * where we're intending to access chain->status outside the thread lock. */
 static VkResult x11_swapchain_read_status_atomic(struct x11_swapchain *chain)
 {
-   pthread_mutex_lock(&chain->thread_state_lock);
-   VkResult status = chain->status;
-   pthread_mutex_unlock(&chain->thread_state_lock);
-   return status;
+   return chain->status;
 }
 
 /**
@@ -1612,9 +1612,13 @@ x11_acquire_next_image(struct wsi_swapchain *anv_chain,
    if (result == VK_TIMEOUT)
       return info->timeout ? VK_TIMEOUT : VK_NOT_READY;
 
-   pthread_mutex_lock(&chain->thread_state_lock);
-   result = x11_swapchain_result(chain, result);
-   pthread_mutex_unlock(&chain->thread_state_lock);
+   if (result < 0) {
+      pthread_mutex_lock(&chain->thread_state_lock);
+      result = x11_swapchain_result(chain, result);
+      pthread_mutex_unlock(&chain->thread_state_lock);
+   } else {
+      result = x11_swapchain_read_status_atomic(chain);
+   }
 
    if (result < 0)
       return result;

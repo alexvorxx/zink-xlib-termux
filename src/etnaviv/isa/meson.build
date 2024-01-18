@@ -5,6 +5,7 @@
 
 isa_depend_files = [
   'etnaviv.xml',
+  isaspec_py_deps,
 ]
 
 etnaviv_isa = custom_target(

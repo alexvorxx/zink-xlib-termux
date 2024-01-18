@@ -23,6 +23,7 @@ if with_tests
       files(
         'tests/test-layout.cpp',
         'tests/test-generated.cpp',
+        'tests/test-twiddling.cpp',
       ),
       c_args : [c_msvc_compat_args, no_override_init_args],
       gnu_symbol_visibility : 'hidden',

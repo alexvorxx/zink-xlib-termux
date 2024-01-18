@@ -9691,11 +9691,39 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
       }
 
       if (radv_cmd_buffer_uses_mec(cmd_buffer)) {
+         uint64_t indirect_va = info->va;
+
          radv_cs_emit_compute_predication(&cmd_buffer->state, cs, cmd_buffer->mec_inv_pred_va,
                                           &cmd_buffer->mec_inv_pred_emitted, 4 /* DISPATCH_INDIRECT size */);
+
+         if (cmd_buffer->device->physical_device->rad_info.has_async_compute_align32_bug &&
+             cmd_buffer->qf == RADV_QUEUE_COMPUTE && !radv_is_aligned(indirect_va, 32)) {
+            const uint64_t unaligned_va = indirect_va;
+            UNUSED void *ptr;
+            uint32_t offset;
+
+            if (!radv_cmd_buffer_upload_alloc_aligned(cmd_buffer, sizeof(VkDispatchIndirectCommand), 32, &offset, &ptr))
+               return;
+
+            indirect_va = radv_buffer_get_va(cmd_buffer->upload.upload_bo) + offset;
+
+            for (uint32_t i = 0; i < 3; i++) {
+               const uint64_t src_va = unaligned_va + i * 4;
+               const uint64_t dst_va = indirect_va + i * 4;
+
+               radeon_emit(cs, PKT3(PKT3_COPY_DATA, 4, 0));
+               radeon_emit(cs, COPY_DATA_SRC_SEL(COPY_DATA_SRC_MEM) | COPY_DATA_DST_SEL(COPY_DATA_DST_MEM) |
+                                  COPY_DATA_WR_CONFIRM);
+               radeon_emit(cs, src_va);
+               radeon_emit(cs, src_va >> 32);
+               radeon_emit(cs, dst_va);
+               radeon_emit(cs, dst_va >> 32);
+            }
+         }
+
          radeon_emit(cs, PKT3(PKT3_DISPATCH_INDIRECT, 2, 0) | PKT3_SHADER_TYPE_S(1));
-         radeon_emit(cs, info->va);
-         radeon_emit(cs, info->va >> 32);
+         radeon_emit(cs, indirect_va);
+         radeon_emit(cs, indirect_va >> 32);
          radeon_emit(cs, dispatch_initiator);
       } else {
          radeon_emit(cs, PKT3(PKT3_SET_BASE, 2, 0) | PKT3_SHADER_TYPE_S(1));

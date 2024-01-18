@@ -3219,6 +3219,8 @@ radv_get_num_vertices_per_prim(const struct radv_graphics_state_key *gfx_state)
    }
 }
 
+uint32_t radv_get_vgt_gs_out(struct radv_shader **shaders, uint32_t primitive_topology);
+
 static inline uint32_t
 radv_translate_fill(VkPolygonMode func)
 {

@@ -3775,27 +3775,37 @@ radv_pipeline_init_shader_stages_state(const struct radv_device *device, struct 
    }
 }
 
-static uint32_t
-radv_pipeline_init_vgt_gs_out(struct radv_graphics_pipeline *pipeline, const struct vk_graphics_pipeline_state *state)
+uint32_t
+radv_get_vgt_gs_out(struct radv_shader **shaders, uint32_t primitive_topology)
 {
    uint32_t gs_out;
 
-   if (radv_pipeline_has_stage(pipeline, MESA_SHADER_GEOMETRY)) {
-      gs_out = radv_conv_gl_prim_to_gs_out(pipeline->base.shaders[MESA_SHADER_GEOMETRY]->info.gs.output_prim);
-   } else if (radv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_CTRL)) {
-      if (pipeline->base.shaders[MESA_SHADER_TESS_EVAL]->info.tes.point_mode) {
+   if (shaders[MESA_SHADER_GEOMETRY]) {
+      gs_out = radv_conv_gl_prim_to_gs_out(shaders[MESA_SHADER_GEOMETRY]->info.gs.output_prim);
+   } else if (shaders[MESA_SHADER_TESS_CTRL]) {
+      if (shaders[MESA_SHADER_TESS_EVAL]->info.tes.point_mode) {
          gs_out = V_028A6C_POINTLIST;
       } else {
-         gs_out =
-            radv_conv_tess_prim_to_gs_out(pipeline->base.shaders[MESA_SHADER_TESS_EVAL]->info.tes._primitive_mode);
+         gs_out = radv_conv_tess_prim_to_gs_out(shaders[MESA_SHADER_TESS_EVAL]->info.tes._primitive_mode);
       }
-   } else if (radv_pipeline_has_stage(pipeline, MESA_SHADER_MESH)) {
-      gs_out = radv_conv_gl_prim_to_gs_out(pipeline->base.shaders[MESA_SHADER_MESH]->info.ms.output_prim);
+   } else if (shaders[MESA_SHADER_MESH]) {
+      gs_out = radv_conv_gl_prim_to_gs_out(shaders[MESA_SHADER_MESH]->info.ms.output_prim);
    } else {
-      gs_out = radv_conv_prim_to_gs_out(radv_translate_prim(state->ia->primitive_topology), false);
+      gs_out = radv_conv_prim_to_gs_out(primitive_topology, false);
    }
 
    return gs_out;
+}
+
+static uint32_t
+radv_pipeline_init_vgt_gs_out(struct radv_graphics_pipeline *pipeline, const struct vk_graphics_pipeline_state *state)
+{
+   uint32_t primitive_topology = 0;
+
+   if (pipeline->last_vgt_api_stage == MESA_SHADER_VERTEX)
+      primitive_topology = radv_translate_prim(state->ia->primitive_topology);
+
+   return radv_get_vgt_gs_out(pipeline->base.shaders, primitive_topology);
 }
 
 static void

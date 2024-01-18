@@ -454,7 +454,8 @@ validate_ir(Program* program)
                      continue;
                   }
                   if (instr->opcode == aco_opcode::v_permlane16_b32 ||
-                      instr->opcode == aco_opcode::v_permlanex16_b32) {
+                      instr->opcode == aco_opcode::v_permlanex16_b32 ||
+                      instr->opcode == aco_opcode::v_permlane64_b32) {
                      check(i != 0 || op.isOfType(RegType::vgpr),
                            "Operand 0 of v_permlane must be VGPR", instr.get());
                      check(i == 0 || op.isOfType(RegType::sgpr) || op.isConstant(),

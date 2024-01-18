@@ -938,6 +938,13 @@ get_format_feature_flags(VkImageCreateInfo ici, struct zink_screen *screen, cons
    return feats;
 }
 
+#if !defined(_WIN32)
+   #define ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT
+#else
+   #define ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
+#endif
+
+
 static struct zink_resource_object *
 resource_object_create(struct zink_screen *screen, const struct pipe_resource *templ, struct winsys_handle *whandle, bool *linear,
                        uint64_t *modifiers, int modifiers_count, const void *loader_private, const void *user_mem)
@@ -969,11 +976,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
 
    bool need_dedicated = false;
    bool shared = templ->bind & PIPE_BIND_SHARED;
-#if !defined(_WIN32)
-   VkExternalMemoryHandleTypeFlags export_types = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
-#else
-   VkExternalMemoryHandleTypeFlags export_types = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
-#endif
+   VkExternalMemoryHandleTypeFlags export_types = ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT;
    unsigned num_planes = util_format_get_num_planes(templ->format);
    VkExternalMemoryHandleTypeFlags external = 0;
    bool needs_export = (templ->bind & (ZINK_BIND_VIDEO | ZINK_BIND_DMABUF)) != 0;
@@ -985,11 +988,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    }
    if (needs_export) {
       if (whandle && whandle->type == ZINK_EXTERNAL_MEMORY_HANDLE) {
-#if !defined(_WIN32)
-         external = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
-#else
-         external = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
-#endif
+         external = ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT;
       } else if (screen->info.have_EXT_external_memory_dma_buf) {
          external = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
          export_types |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;

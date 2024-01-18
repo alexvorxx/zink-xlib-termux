@@ -768,6 +768,62 @@ init_ici(struct zink_screen *screen, VkImageCreateInfo *ici, const struct pipe_r
       ici->arrayLayers *= 6;
 }
 
+static inline bool
+create_buffer(struct zink_screen *screen, struct zink_resource_object *obj, const struct pipe_resource *templ,
+              uint64_t *modifiers, int modifiers_count,
+              const void *user_mem,VkMemoryPropertyFlags *flags, VkMemoryRequirements *reqs)
+{
+   VkBufferCreateInfo bci = create_bci(screen, templ, templ->bind);
+   VkExternalMemoryBufferCreateInfo embci;
+
+   if (user_mem) {
+      embci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+      embci.pNext = bci.pNext;
+      embci.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      bci.pNext = &embci;
+   }
+
+   if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->buffer) != VK_SUCCESS) {
+      mesa_loge("ZINK: vkCreateBuffer failed");
+      return false;
+   }
+
+   if (!(templ->bind & (PIPE_BIND_SHADER_IMAGE | ZINK_BIND_DESCRIPTOR))) {
+       bci.usage |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+     if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->storage_buffer) != VK_SUCCESS) {
+        mesa_loge("ZINK: vkCreateBuffer failed");
+        VKSCR(DestroyBuffer)(screen->dev, obj->buffer, NULL);
+        return false;
+     }
+   }
+
+   if (modifiers_count) {
+      assert(modifiers_count == 3);
+      /* this is the DGC path because there's no other way to pass mem bits and I don't wanna copy/paste everything around */
+      reqs->size = modifiers[0];
+      reqs->alignment = modifiers[1];
+      reqs->memoryTypeBits = modifiers[2];
+   } else {
+      VKSCR(GetBufferMemoryRequirements)(screen->dev, obj->buffer, reqs);
+   }
+
+   if (templ->usage == PIPE_USAGE_STAGING)
+      *flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+   else if (templ->usage == PIPE_USAGE_STREAM)
+      *flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+   else if (templ->usage == PIPE_USAGE_IMMUTABLE)
+      *flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+   else
+      *flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+   obj->is_buffer = true;
+   obj->transfer_dst = true;
+   obj->vkflags = bci.flags;
+   obj->vkusage = bci.usage;
+
+   return true;
+}
+
 static struct zink_resource_object *
 resource_object_create(struct zink_screen *screen, const struct pipe_resource *templ, struct winsys_handle *whandle, bool *linear,
                        uint64_t *modifiers, int modifiers_count, const void *loader_private, const void *user_mem)
@@ -849,50 +905,9 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       obj->transfer_dst = true;
       return obj;
    } else if (templ->target == PIPE_BUFFER) {
-      VkBufferCreateInfo bci = create_bci(screen, templ, templ->bind);
-      VkExternalMemoryBufferCreateInfo embci;
-
-      if (user_mem) {
-         embci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
-         embci.pNext = bci.pNext;
-         embci.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
-         bci.pNext = &embci;
-      }
-
-      if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->buffer) != VK_SUCCESS) {
-         mesa_loge("ZINK: vkCreateBuffer failed");
+      if (!create_buffer(screen, obj, templ, modifiers, modifiers_count, user_mem,
+                         &flags, &reqs))
          goto fail1;
-      }
-
-      if (!(templ->bind & (PIPE_BIND_SHADER_IMAGE | ZINK_BIND_DESCRIPTOR))) {
-         bci.usage |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
-         if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->storage_buffer) != VK_SUCCESS) {
-            mesa_loge("ZINK: vkCreateBuffer failed");
-            goto fail2;
-         }
-      }
-
-      if (modifiers_count) {
-         assert(modifiers_count == 3);
-         /* this is the DGC path because there's no other way to pass mem bits and I don't wanna copy/paste everything around */
-         reqs.size = modifiers[0];
-         reqs.alignment = modifiers[1];
-         reqs.memoryTypeBits = modifiers[2];
-      } else {
-         VKSCR(GetBufferMemoryRequirements)(screen->dev, obj->buffer, &reqs);
-      }
-      if (templ->usage == PIPE_USAGE_STAGING)
-         flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-      else if (templ->usage == PIPE_USAGE_STREAM)
-         flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-      else if (templ->usage == PIPE_USAGE_IMMUTABLE)
-         flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-      else
-         flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-      obj->is_buffer = true;
-      obj->transfer_dst = true;
-      obj->vkflags = bci.flags;
-      obj->vkusage = bci.usage;
       max_level = 1;
    } else {
       max_level = templ->last_level + 1;

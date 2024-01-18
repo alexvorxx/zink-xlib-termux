@@ -857,6 +857,46 @@ create_sampler_conversion(VkImageCreateInfo ici, struct zink_screen *screen,
    }
    return true;
 }
+
+static const VkImageAspectFlags plane_aspects[] = {
+   VK_IMAGE_ASPECT_PLANE_0_BIT,
+   VK_IMAGE_ASPECT_PLANE_1_BIT,
+   VK_IMAGE_ASPECT_PLANE_2_BIT,
+};
+static inline VkFormatFeatureFlags
+get_format_feature_flags(VkImageCreateInfo ici, struct zink_screen *screen, const struct pipe_resource *templ)
+{
+   VkFormatFeatureFlags feats = 0;
+   switch (ici.tiling) {
+   case VK_IMAGE_TILING_LINEAR:
+      feats = screen->format_props[templ->format].linearTilingFeatures;
+      break;
+   case VK_IMAGE_TILING_OPTIMAL:
+      feats = screen->format_props[templ->format].optimalTilingFeatures;
+      break;
+   case VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT:
+      feats = VK_FORMAT_FEATURE_FLAG_BITS_MAX_ENUM;
+      /*
+         If is tiling then VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, the value of
+         imageCreateFormatFeatures is found by calling vkGetPhysicalDeviceFormatProperties2
+         with VkImageFormatProperties::format equal to VkImageCreateInfo::format and with
+         VkDrmFormatModifierPropertiesListEXT chained into VkImageFormatProperties2; by
+         collecting all members of the returned array
+         VkDrmFormatModifierPropertiesListEXT::pDrmFormatModifierProperties
+         whose drmFormatModifier belongs to imageCreateDrmFormatModifiers; and by taking the bitwise
+         intersection, over the collected array members, of drmFormatModifierTilingFeatures.
+         (The resultant imageCreateFormatFeatures may be empty).
+         * -Chapter 12. Resource Creation
+       */
+      for (unsigned i = 0; i < screen->modifier_props[templ->format].drmFormatModifierCount; i++)
+         feats &= screen->modifier_props[templ->format].pDrmFormatModifierProperties[i].drmFormatModifierTilingFeatures;
+      break;
+   default:
+         unreachable("unknown tiling");
+   }
+   return feats;
+}
+
 static struct zink_resource_object *
 resource_object_create(struct zink_screen *screen, const struct pipe_resource *templ, struct winsys_handle *whandle, bool *linear,
                        uint64_t *modifiers, int modifiers_count, const void *loader_private, const void *user_mem)
@@ -894,11 +934,6 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    VkExternalMemoryHandleTypeFlags export_types = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
 #endif
    unsigned num_planes = util_format_get_num_planes(templ->format);
-   VkImageAspectFlags plane_aspects[] = {
-      VK_IMAGE_ASPECT_PLANE_0_BIT,
-      VK_IMAGE_ASPECT_PLANE_1_BIT,
-      VK_IMAGE_ASPECT_PLANE_2_BIT,
-   };
    VkExternalMemoryHandleTypeFlags external = 0;
    bool needs_export = (templ->bind & (ZINK_BIND_VIDEO | ZINK_BIND_DMABUF)) != 0;
    if (whandle) {
@@ -1072,35 +1107,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       }
 #endif
 
-      VkFormatFeatureFlags feats = 0;
-      switch (ici.tiling) {
-      case VK_IMAGE_TILING_LINEAR:
-         feats = screen->format_props[templ->format].linearTilingFeatures;
-         break;
-      case VK_IMAGE_TILING_OPTIMAL:
-         feats = screen->format_props[templ->format].optimalTilingFeatures;
-         break;
-      case VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT:
-         feats = VK_FORMAT_FEATURE_FLAG_BITS_MAX_ENUM;
-         /*
-            If is tiling then VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, the value of
-            imageCreateFormatFeatures is found by calling vkGetPhysicalDeviceFormatProperties2
-            with VkImageFormatProperties::format equal to VkImageCreateInfo::format and with
-            VkDrmFormatModifierPropertiesListEXT chained into VkImageFormatProperties2; by
-            collecting all members of the returned array
-            VkDrmFormatModifierPropertiesListEXT::pDrmFormatModifierProperties
-            whose drmFormatModifier belongs to imageCreateDrmFormatModifiers; and by taking the bitwise
-            intersection, over the collected array members, of drmFormatModifierTilingFeatures.
-            (The resultant imageCreateFormatFeatures may be empty).
-            * -Chapter 12. Resource Creation
-          */
-         for (unsigned i = 0; i < screen->modifier_props[templ->format].drmFormatModifierCount; i++)
-            feats &= screen->modifier_props[templ->format].pDrmFormatModifierProperties[i].drmFormatModifierTilingFeatures;
-         break;
-      default:
-         unreachable("unknown tiling");
-      }
-      obj->vkfeats = feats;
+      obj->vkfeats = get_format_feature_flags(ici, screen, templ);;
       if (util_format_is_yuv(templ->format)) {
          if (!create_sampler_conversion(ici, screen, obj))
             goto fail1;

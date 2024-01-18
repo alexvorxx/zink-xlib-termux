@@ -8,6 +8,7 @@
 #include "asahi/lib/decode.h"
 #include "util/bitset.h"
 #include "util/u_dynarray.h"
+#include "util/u_range.h"
 #include "agx_state.h"
 
 #define foreach_active(ctx, idx)                                               \
@@ -479,9 +480,9 @@ agx_batch_reads(struct agx_batch *batch, struct agx_resource *rsrc)
                            false);
 }
 
-void
-agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc,
-                 unsigned level)
+static void
+agx_batch_writes_internal(struct agx_batch *batch, struct agx_resource *rsrc,
+                          unsigned level)
 {
    struct agx_context *ctx = batch->ctx;
    struct agx_batch *writer = agx_writer_get(ctx, rsrc->bo->handle);
@@ -511,12 +512,29 @@ agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc,
     */
    agx_writer_remove(ctx, rsrc->bo->handle);
    agx_writer_add(ctx, agx_batch_idx(batch), rsrc->bo->handle);
+}
+
+void
+agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc,
+                 unsigned level)
+{
+   agx_batch_writes_internal(batch, rsrc, level);
 
    if (rsrc->base.target == PIPE_BUFFER) {
       /* Assume BOs written by the GPU are fully valid */
       rsrc->valid_buffer_range.start = 0;
       rsrc->valid_buffer_range.end = ~0;
    }
+}
+
+void
+agx_batch_writes_range(struct agx_batch *batch, struct agx_resource *rsrc,
+                       unsigned offset, unsigned size)
+{
+   assert(rsrc->base.target == PIPE_BUFFER);
+   agx_batch_writes_internal(batch, rsrc, 0);
+   util_range_add(&rsrc->base, &rsrc->valid_buffer_range, offset,
+                  offset + size);
 }
 
 static int

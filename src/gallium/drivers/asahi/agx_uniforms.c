@@ -156,7 +156,8 @@ agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
          struct agx_resource *rsrc = agx_resource(sb->buffer);
 
          /* Assume SSBOs are written. TODO: Optimize read-only SSBOs */
-         agx_batch_writes(batch, rsrc, 0);
+         agx_batch_writes_range(batch, rsrc, sb->buffer_offset,
+                                sb->buffer_size);
 
          uniforms.ssbo_base[cb] = rsrc->bo->ptr.gpu + sb->buffer_offset;
          uniforms.ssbo_size[cb] = st->ssbo[cb].buffer_size;

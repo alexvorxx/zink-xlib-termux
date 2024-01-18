@@ -111,7 +111,8 @@ agx_batch_get_so_address(struct agx_batch *batch, unsigned buffer,
 
    /* Otherwise, write the target */
    struct agx_resource *rsrc = agx_resource(target->buffer);
-   agx_batch_writes(batch, rsrc, 0);
+   agx_batch_writes_range(batch, rsrc, target->buffer_offset,
+                          target->buffer_size);
 
    *size = target->buffer_size;
    return rsrc->bo->ptr.gpu + target->buffer_offset;

@@ -1015,6 +1015,8 @@ void agx_sync_batch_for_reason(struct agx_context *ctx, struct agx_batch *batch,
 void agx_batch_reads(struct agx_batch *batch, struct agx_resource *rsrc);
 void agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc,
                       unsigned level);
+void agx_batch_writes_range(struct agx_batch *batch, struct agx_resource *rsrc,
+                            unsigned offset, unsigned size);
 void agx_batch_track_image(struct agx_batch *batch,
                            struct pipe_image_view *image);
 

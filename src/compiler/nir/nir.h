@@ -3875,6 +3875,9 @@ typedef struct nir_shader_compiler_options {
     * to imul with masked inputs */
    bool has_umul24;
 
+   /** Backend supports 32-bit imad */
+   bool has_imad32;
+
    /** Backend supports umad24, if not set  umad24 will automatically be lowered
     * to imul with masked inputs and iadd */
    bool has_umad24;

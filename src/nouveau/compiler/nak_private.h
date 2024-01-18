@@ -205,6 +205,21 @@ enum nak_fs_out {
 
 bool nak_nir_add_barriers(nir_shader *nir, const struct nak_compiler *nak);
 
+static inline bool
+nak_is_only_used_by_iadd(const nir_alu_instr *instr)
+{
+   nir_foreach_use(src, &instr->def) {
+      nir_instr *use = nir_src_parent_instr(src);
+      if (use->type != nir_instr_type_alu)
+         return false;
+
+      if (nir_instr_as_alu(use)->op != nir_op_iadd)
+         return false;
+   }
+
+   return true;
+}
+
 struct nak_memstream {
    FILE *stream;
    char *buffer;

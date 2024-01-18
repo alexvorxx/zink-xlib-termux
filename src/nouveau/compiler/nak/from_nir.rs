@@ -1091,6 +1091,16 @@ impl<'a> ShaderFromNir<'a> {
                     b.isetp(cmp_type, cmp_op, x.into(), y.into())
                 }
             }
+            nir_op_imad => {
+                assert!(alu.def.bit_size() == 32);
+                let dst = b.alloc_ssa(RegFile::GPR, 1);
+                b.push_op(OpIMad {
+                    dst: dst.into(),
+                    srcs: [srcs[0], srcs[1], srcs[2]],
+                    signed: false,
+                });
+                dst
+            }
             nir_op_imax | nir_op_imin | nir_op_umax | nir_op_umin => {
                 let (tp, min) = match alu.op {
                     nir_op_imax => (IntCmpType::I32, SrcRef::False),

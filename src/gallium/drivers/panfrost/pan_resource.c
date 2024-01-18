@@ -1618,7 +1618,7 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
                ctx, pan_resource(trans->staging.rsrc),
                "AFBC write staging blit");
 
-            if (dev->debug & PAN_DBG_FORCE_PACK) {
+            if (pan_screen(pctx->screen)->force_afbc_packing) {
                if (panfrost_should_pack_afbc(dev, prsrc))
                   panfrost_pack_afbc(ctx, prsrc);
             }

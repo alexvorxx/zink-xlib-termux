@@ -852,6 +852,8 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
       return NULL;
    }
 
+   screen->force_afbc_packing = dev->debug & PAN_DBG_FORCE_PACK;
+
    dev->ro = ro;
 
    screen->base.destroy = panfrost_destroy_screen;

@@ -66,72 +66,87 @@ ail_space_mask(unsigned x)
    return MOD_POT(0x55555555, x * x);
 }
 
-#define TILED_UNALIGNED_TYPE(element_t, is_store)                              \
-   {                                                                           \
-      enum pipe_format format = tiled_layout->format;                          \
-      unsigned linear_pitch_el = linear_pitch_B / blocksize_B;                 \
-      unsigned stride_el = tiled_layout->stride_el[level];                     \
-      unsigned sx_el = util_format_get_nblocksx(format, sx_px);                \
-      unsigned sy_el = util_format_get_nblocksy(format, sy_px);                \
-      unsigned swidth_el = util_format_get_nblocksx(format, swidth_px);        \
-      unsigned sheight_el = util_format_get_nblocksy(format, sheight_px);      \
-      unsigned sx_end_el = sx_el + swidth_el;                                  \
-      unsigned sy_end_el = sy_el + sheight_el;                                 \
-                                                                               \
-      struct ail_tile tile_size = tiled_layout->tilesize_el[level];            \
-      unsigned tile_area_el = tile_size.width_el * tile_size.height_el;        \
-      unsigned tiles_per_row = DIV_ROUND_UP(stride_el, tile_size.width_el);    \
-      unsigned y_offs_el = ail_space_bits(MOD_POT(sy_el, tile_size.height_el)) \
-                           << 1;                                               \
-      unsigned x_offs_start_el =                                               \
-         ail_space_bits(MOD_POT(sx_el, tile_size.width_el));                   \
-      unsigned space_mask_x = ail_space_mask(tile_size.width_el);              \
-      unsigned space_mask_y = ail_space_mask(tile_size.height_el) << 1;        \
-      unsigned log2_tile_width_el = util_logbase2(tile_size.width_el);         \
-      unsigned log2_tile_height_el = util_logbase2(tile_size.height_el);       \
-                                                                               \
-      element_t *linear = (element_t *)_linear;                                \
-      element_t *tiled = (element_t *)_tiled;                                  \
-                                                                               \
-      for (unsigned y_el = sy_el; y_el < sy_end_el; ++y_el) {                  \
-         unsigned y_rowtile = y_el >> log2_tile_height_el;                     \
-         unsigned y_tile = y_rowtile * tiles_per_row;                          \
-         unsigned x_offs_el = x_offs_start_el;                                 \
-                                                                               \
-         element_t *linear_row = linear;                                       \
-                                                                               \
-         for (unsigned x_el = sx_el; x_el < sx_end_el; ++x_el) {               \
-            unsigned tile_idx = (y_tile + (x_el >> log2_tile_width_el));       \
-            unsigned tile_offset_el = tile_idx * tile_area_el;                 \
-                                                                               \
-            element_t *ptiled =                                                \
-               &tiled[tile_offset_el + y_offs_el + x_offs_el];                 \
-            element_t *plinear = (linear_row++);                               \
-            element_t *outp = (element_t *)(is_store ? ptiled : plinear);      \
-            element_t *inp = (element_t *)(is_store ? plinear : ptiled);       \
-            *outp = *inp;                                                      \
-            x_offs_el = (x_offs_el - space_mask_x) & space_mask_x;             \
-         }                                                                     \
-                                                                               \
-         y_offs_el = (y_offs_el - space_mask_y) & space_mask_y;                \
-         linear += linear_pitch_el;                                            \
-      }                                                                        \
+template <typename T, bool is_store>
+void
+memcpy_small(void *_tiled, void *_linear, struct ail_layout *tiled_layout,
+             unsigned level, unsigned linear_pitch_B, unsigned sx_px,
+             unsigned sy_px, unsigned swidth_px, unsigned sheight_px)
+{
+   enum pipe_format format = tiled_layout->format;
+   unsigned linear_pitch_el = linear_pitch_B / sizeof(T);
+   unsigned stride_el = tiled_layout->stride_el[level];
+   unsigned sx_el = util_format_get_nblocksx(format, sx_px);
+   unsigned sy_el = util_format_get_nblocksy(format, sy_px);
+   unsigned swidth_el = util_format_get_nblocksx(format, swidth_px);
+   unsigned sheight_el = util_format_get_nblocksy(format, sheight_px);
+   unsigned sx_end_el = sx_el + swidth_el;
+   unsigned sy_end_el = sy_el + sheight_el;
+
+   struct ail_tile tile_size = tiled_layout->tilesize_el[level];
+   unsigned tile_area_el = tile_size.width_el * tile_size.height_el;
+   unsigned tiles_per_row = DIV_ROUND_UP(stride_el, tile_size.width_el);
+   unsigned y_offs_el = ail_space_bits(MOD_POT(sy_el, tile_size.height_el))
+                        << 1;
+   unsigned x_offs_start_el =
+      ail_space_bits(MOD_POT(sx_el, tile_size.width_el));
+   unsigned space_mask_x = ail_space_mask(tile_size.width_el);
+   unsigned space_mask_y = ail_space_mask(tile_size.height_el) << 1;
+   unsigned log2_tile_width_el = util_logbase2(tile_size.width_el);
+   unsigned log2_tile_height_el = util_logbase2(tile_size.height_el);
+
+   T *linear = (T *)_linear;
+   T *tiled = (T *)_tiled;
+
+   for (unsigned y_el = sy_el; y_el < sy_end_el; ++y_el) {
+      unsigned y_rowtile = y_el >> log2_tile_height_el;
+      unsigned y_tile = y_rowtile * tiles_per_row;
+      unsigned x_offs_el = x_offs_start_el;
+
+      T *linear_row = linear;
+
+      for (unsigned x_el = sx_el; x_el < sx_end_el; ++x_el) {
+         unsigned tile_idx = (y_tile + (x_el >> log2_tile_width_el));
+         unsigned tile_offset_el = tile_idx * tile_area_el;
+
+         T *ptiled = &tiled[tile_offset_el + y_offs_el + x_offs_el];
+         T *plinear = (linear_row++);
+
+         if (is_store)
+            *ptiled = *plinear;
+         else
+            *plinear = *ptiled;
+
+         x_offs_el = (x_offs_el - space_mask_x) & space_mask_x;
+      }
+
+      y_offs_el = (y_offs_el - space_mask_y) & space_mask_y;
+      linear += linear_pitch_el;
    }
+}
 
 #define TILED_UNALIGNED_TYPES(blocksize_B, store)                              \
-   {                                                                           \
-      if (blocksize_B == 1)                                                    \
-         TILED_UNALIGNED_TYPE(uint8_t, store)                                  \
-      else if (blocksize_B == 2)                                               \
-         TILED_UNALIGNED_TYPE(uint16_t, store)                                 \
-      else if (blocksize_B == 4)                                               \
-         TILED_UNALIGNED_TYPE(uint32_t, store)                                 \
-      else if (blocksize_B == 8)                                               \
-         TILED_UNALIGNED_TYPE(uint64_t, store)                                 \
-      else if (blocksize_B == 16)                                              \
-         TILED_UNALIGNED_TYPE(ail_uint128_t, store)                            \
-      else                                                                     \
-         unreachable("Invalid block size");                                    \
+   if (blocksize_B == 1) {                                                     \
+      memcpy_small<uint8_t, store>(_tiled, _linear, tiled_layout, level,       \
+                                   linear_pitch_B, sx_px, sy_px, swidth_px,    \
+                                   sheight_px);                                \
+   } else if (blocksize_B == 2) {                                              \
+      memcpy_small<uint16_t, store>(_tiled, _linear, tiled_layout, level,      \
+                                    linear_pitch_B, sx_px, sy_px, swidth_px,   \
+                                    sheight_px);                               \
+   } else if (blocksize_B == 4) {                                              \
+      memcpy_small<uint32_t, store>(_tiled, _linear, tiled_layout, level,      \
+                                    linear_pitch_B, sx_px, sy_px, swidth_px,   \
+                                    sheight_px);                               \
+   } else if (blocksize_B == 8) {                                              \
+      memcpy_small<uint64_t, store>(_tiled, _linear, tiled_layout, level,      \
+                                    linear_pitch_B, sx_px, sy_px, swidth_px,   \
+                                    sheight_px);                               \
+   } else if (blocksize_B == 16) {                                             \
+      memcpy_small<ail_uint128_t, store>(_tiled, _linear, tiled_layout, level, \
+                                         linear_pitch_B, sx_px, sy_px,         \
+                                         swidth_px, sheight_px);               \
+   } else {                                                                    \
+      unreachable("Invalid block size");                                       \
    }
 
 void

@@ -90,8 +90,8 @@ ail_space_mask(unsigned x)
       unsigned log2_tile_width_el = util_logbase2(tile_size.width_el);         \
       unsigned log2_tile_height_el = util_logbase2(tile_size.height_el);       \
                                                                                \
-      element_t *linear = _linear;                                             \
-      element_t *tiled = _tiled;                                               \
+      element_t *linear = (element_t *)_linear;                                \
+      element_t *tiled = (element_t *)_tiled;                                  \
                                                                                \
       for (unsigned y_el = sy_el; y_el < sy_end_el; ++y_el) {                  \
          unsigned y_rowtile = y_el >> log2_tile_height_el;                     \

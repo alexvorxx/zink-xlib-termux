@@ -3,7 +3,7 @@
 
 libasahi_layout_files = files(
   'layout.c',
-  'tiling.c',
+  'tiling.cc',
 )
 
 libasahi_layout = static_library(

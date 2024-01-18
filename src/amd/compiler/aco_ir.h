@@ -58,6 +58,7 @@ enum {
    DEBUG_FORCE_WAITDEPS = 0x200,
    DEBUG_NO_VALIDATE_IR = 0x400,
    DEBUG_NO_SCHED_ILP = 0x800,
+   DEBUG_NO_SCHED_VOPD = 0x1000,
 };
 
 enum storage_class : uint8_t {

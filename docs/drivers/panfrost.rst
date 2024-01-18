@@ -22,6 +22,7 @@ Mali G51   Bifrost (v7)  3.1          3.1
 Mali G52   Bifrost (v7)  3.1          3.1
 Mali G76   Bifrost (v7)  3.1          3.1
 Mali G57   Valhall (v9)  3.1          3.1
+Mali G310  Valhall (v10) 3.1          3.1
 Mali G610  Valhall (v10) 3.1          3.1
 =========  ============= ============ =======
 

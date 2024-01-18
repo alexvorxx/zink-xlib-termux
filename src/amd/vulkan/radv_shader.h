@@ -1019,8 +1019,11 @@ bool radv_consider_culling(const struct radv_physical_device *pdevice, struct ni
 
 void radv_get_nir_options(struct radv_physical_device *device);
 
+struct radv_ray_tracing_stage_info;
+
 nir_shader *radv_build_traversal_shader(struct radv_device *device, struct radv_ray_tracing_pipeline *pipeline,
-                                        const VkRayTracingPipelineCreateInfoKHR *pCreateInfo);
+                                        const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
+                                        struct radv_ray_tracing_stage_info *info);
 
 enum radv_rt_priority {
    radv_rt_priority_raygen = 0,

@@ -480,6 +480,37 @@ radv_rt_nir_to_asm(struct radv_device *device, struct vk_pipeline_cache *cache,
    return shader ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
 }
 
+static void
+radv_update_const_info(enum radv_rt_const_arg_state *state, bool equal)
+{
+   if (*state == RADV_RT_CONST_ARG_STATE_UNINITIALIZED)
+      *state = RADV_RT_CONST_ARG_STATE_VALID;
+   else if (*state == RADV_RT_CONST_ARG_STATE_VALID && !equal)
+      *state = RADV_RT_CONST_ARG_STATE_INVALID;
+}
+
+static void
+radv_gather_trace_ray_src(struct radv_rt_const_arg_info *info, nir_src src)
+{
+   if (nir_src_is_const(src)) {
+      radv_update_const_info(&info->state, info->value == nir_src_as_uint(src));
+      info->value = nir_src_as_uint(src);
+   } else {
+      info->state = RADV_RT_CONST_ARG_STATE_INVALID;
+   }
+}
+
+static void
+radv_rt_const_arg_info_combine(struct radv_rt_const_arg_info *dst, const struct radv_rt_const_arg_info *src)
+{
+   if (src->state != RADV_RT_CONST_ARG_STATE_UNINITIALIZED) {
+      radv_update_const_info(&dst->state, dst->value == src->value);
+      if (src->state == RADV_RT_CONST_ARG_STATE_INVALID)
+         dst->state = RADV_RT_CONST_ARG_STATE_INVALID;
+      dst->value = src->value;
+   }
+}
+
 static struct radv_ray_tracing_stage_info
 radv_gather_ray_tracing_stage_info(nir_shader *nir)
 {
@@ -498,6 +529,12 @@ radv_gather_ray_tracing_stage_info(nir_shader *nir)
             continue;
 
          info.can_inline = false;
+
+         radv_gather_trace_ray_src(&info.tmin, intr->src[7]);
+         radv_gather_trace_ray_src(&info.tmax, intr->src[9]);
+         radv_gather_trace_ray_src(&info.sbt_offset, intr->src[3]);
+         radv_gather_trace_ray_src(&info.sbt_stride, intr->src[4]);
+         radv_gather_trace_ray_src(&info.miss_index, intr->src[5]);
       }
    }
 
@@ -651,12 +688,18 @@ radv_rt_compile_shaders(struct radv_device *device, struct vk_pipeline_cache *ca
       struct radv_ray_tracing_stage_info *info = &pipeline->stages[i].info;
 
       BITSET_AND(traversal_info.unused_args, traversal_info.unused_args, info->unused_args);
+
+      radv_rt_const_arg_info_combine(&traversal_info.tmin, &info->tmin);
+      radv_rt_const_arg_info_combine(&traversal_info.tmax, &info->tmax);
+      radv_rt_const_arg_info_combine(&traversal_info.sbt_offset, &info->sbt_offset);
+      radv_rt_const_arg_info_combine(&traversal_info.sbt_stride, &info->sbt_stride);
+      radv_rt_const_arg_info_combine(&traversal_info.miss_index, &info->miss_index);
    }
 
    /* create traversal shader */
    struct vk_shader_module traversal_module = {
       .base.type = VK_OBJECT_TYPE_SHADER_MODULE,
-      .nir = radv_build_traversal_shader(device, pipeline, pCreateInfo),
+      .nir = radv_build_traversal_shader(device, pipeline, pCreateInfo, &traversal_info),
    };
    const VkPipelineShaderStageCreateInfo pStage = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,

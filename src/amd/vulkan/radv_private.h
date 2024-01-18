@@ -2364,10 +2364,29 @@ struct radv_ray_tracing_group {
    struct radv_pipeline_group_handle handle;
 };
 
+enum radv_rt_const_arg_state {
+   RADV_RT_CONST_ARG_STATE_UNINITIALIZED,
+   RADV_RT_CONST_ARG_STATE_VALID,
+   RADV_RT_CONST_ARG_STATE_INVALID,
+};
+
+struct radv_rt_const_arg_info {
+   enum radv_rt_const_arg_state state;
+   uint32_t value;
+};
+
 struct radv_ray_tracing_stage_info {
    bool can_inline;
 
    BITSET_DECLARE(unused_args, AC_MAX_ARGS);
+
+   struct radv_rt_const_arg_info tmin;
+   struct radv_rt_const_arg_info tmax;
+
+   struct radv_rt_const_arg_info sbt_offset;
+   struct radv_rt_const_arg_info sbt_stride;
+
+   struct radv_rt_const_arg_info miss_index;
 };
 
 struct radv_ray_tracing_stage {

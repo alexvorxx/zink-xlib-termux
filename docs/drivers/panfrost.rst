@@ -6,23 +6,24 @@ GPUs based on the Midgard and Bifrost microarchitectures. It is **conformant**
 on Mali-G52 and Mali-G57 but **non-conformant** on other GPUs. The following
 hardware is currently supported:
 
-=========  ============ ============ =======
-Product    Architecture OpenGL ES    OpenGL
-=========  ============ ============ =======
-Mali T620  Midgard (v4) 2.0          2.1
-Mali T720  Midgard (v4) 2.0          2.1
-Mali T760  Midgard (v5) 3.1          3.1
-Mali T820  Midgard (v5) 3.1          3.1
-Mali T830  Midgard (v5) 3.1          3.1
-Mali T860  Midgard (v5) 3.1          3.1
-Mali T880  Midgard (v5) 3.1          3.1
-Mali G72   Bifrost (v6) 3.1          3.1
-Mali G31   Bifrost (v7) 3.1          3.1
-Mali G51   Bifrost (v7) 3.1          3.1
-Mali G52   Bifrost (v7) 3.1          3.1
-Mali G76   Bifrost (v7) 3.1          3.1
-Mali G57   Valhall (v9) 3.1          3.1
-=========  ============ ============ =======
+=========  ============= ============ =======
+Product    Architecture  OpenGL ES    OpenGL
+=========  ============= ============ =======
+Mali T620  Midgard (v4)  2.0          2.1
+Mali T720  Midgard (v4)  2.0          2.1
+Mali T760  Midgard (v5)  3.1          3.1
+Mali T820  Midgard (v5)  3.1          3.1
+Mali T830  Midgard (v5)  3.1          3.1
+Mali T860  Midgard (v5)  3.1          3.1
+Mali T880  Midgard (v5)  3.1          3.1
+Mali G72   Bifrost (v6)  3.1          3.1
+Mali G31   Bifrost (v7)  3.1          3.1
+Mali G51   Bifrost (v7)  3.1          3.1
+Mali G52   Bifrost (v7)  3.1          3.1
+Mali G76   Bifrost (v7)  3.1          3.1
+Mali G57   Valhall (v9)  3.1          3.1
+Mali G610  Valhall (v10) 3.1          3.1
+=========  ============= ============ =======
 
 Other Midgard and Bifrost chips (T604, G71) are not yet supported.
 

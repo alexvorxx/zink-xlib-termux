@@ -66,6 +66,8 @@ const struct panfrost_model panfrost_model_list[] = {
         MODEL(0x7402, 0, "G52 r1", "TGOx", HAS_ANISO,         16384, {}),
         MODEL(0x9091, 0, "G57",    "TNAx", HAS_ANISO,         16384, {}),
         MODEL(0x9093, 0, "G57",    "TNAx", HAS_ANISO,         16384, {}),
+
+        MODEL(0xa867, 0, "G610",   "TVIx", HAS_ANISO,         32768, {}),
 };
 /* clang-format on */
 

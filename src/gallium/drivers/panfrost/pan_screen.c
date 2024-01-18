@@ -857,6 +857,9 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
    }
 
    screen->force_afbc_packing = dev->debug & PAN_DBG_FORCE_PACK;
+   if (!screen->force_afbc_packing)
+      screen->force_afbc_packing = driQueryOptionb(config->options,
+                                                   "pan_force_afbc_packing");
 
    dev->ro = ro;
 

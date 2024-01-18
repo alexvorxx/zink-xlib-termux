@@ -1035,9 +1035,14 @@ impl<'a> ShaderFromNir<'a> {
             }
             nir_op_iabs => b.iabs(srcs[0]),
             nir_op_iadd => match alu.def.bit_size {
-                32 => b.iadd(srcs[0], srcs[1]),
-                64 => b.iadd64(srcs[0], srcs[1]),
+                32 => b.iadd(srcs[0], srcs[1], 0.into()),
+                64 => b.iadd64(srcs[0], srcs[1], 0.into()),
                 x => panic!("unsupported bit size for nir_op_iadd: {x}"),
+            },
+            nir_op_iadd3 => match alu.def.bit_size {
+                32 => b.iadd(srcs[0], srcs[1], srcs[2]),
+                64 => b.iadd64(srcs[0], srcs[1], srcs[2]),
+                x => panic!("unsupported bit size for nir_op_iadd3: {x}"),
             },
             nir_op_iand => b.lop2(LogicOp2::And, srcs[0], srcs[1]),
             nir_op_ieq => {

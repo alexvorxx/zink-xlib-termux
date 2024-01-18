@@ -104,7 +104,7 @@ rm -rf _build
 meson setup _build \
       --native-file=native.file \
       --wrap-mode=nofallback \
-      --force-fallback-for perfetto,syn,paste \
+      --force-fallback-for perfetto,syn,paste,pest,pest_derive,pest_generator,pest_meta \
       ${CROSS+--cross "$CROSS_FILE"} \
       -D prefix=$PWD/install \
       -D libdir=lib \

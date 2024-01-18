@@ -863,6 +863,47 @@ static const VkImageAspectFlags plane_aspects[] = {
    VK_IMAGE_ASPECT_PLANE_1_BIT,
    VK_IMAGE_ASPECT_PLANE_2_BIT,
 };
+
+static inline bool
+get_image_memory_requirement(struct zink_screen *screen, struct zink_resource_object *obj,
+                             unsigned num_planes, VkMemoryRequirements *reqs)
+{
+   bool need_dedicated = false;
+   if (VKSCR(GetImageMemoryRequirements2)) {
+      VkMemoryRequirements2 req2;
+      req2.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+      VkImageMemoryRequirementsInfo2 info2;
+      info2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2;
+      info2.pNext = NULL;
+      info2.image = obj->image;
+      VkMemoryDedicatedRequirements ded;
+      ded.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
+      ded.pNext = NULL;
+      req2.pNext = &ded;
+      VkImagePlaneMemoryRequirementsInfo plane;
+      plane.sType = VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO;
+      plane.pNext = NULL;
+      if (num_planes > 1)
+         info2.pNext = &plane;
+      unsigned offset = 0;
+      for (unsigned i = 0; i < num_planes; i++) {
+         assert(i < ARRAY_SIZE(plane_aspects));
+         plane.planeAspect = plane_aspects[i];
+         VKSCR(GetImageMemoryRequirements2)(screen->dev, &info2, &req2);
+         if (!i)
+            reqs->alignment = req2.memoryRequirements.alignment;
+         obj->plane_offsets[i] = offset;
+         offset += req2.memoryRequirements.size;
+         reqs->size += req2.memoryRequirements.size;
+         reqs->memoryTypeBits |= req2.memoryRequirements.memoryTypeBits;
+         need_dedicated |= ded.prefersDedicatedAllocation || ded.requiresDedicatedAllocation;
+      }
+   } else {
+      VKSCR(GetImageMemoryRequirements)(screen->dev, obj->image, reqs);
+   }
+   return need_dedicated;
+}
+
 static inline VkFormatFeatureFlags
 get_format_feature_flags(VkImageCreateInfo ici, struct zink_screen *screen, const struct pipe_resource *templ)
 {
@@ -1141,38 +1182,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          assert(num_dmabuf_planes <= 4);
       }
 
-      if (VKSCR(GetImageMemoryRequirements2)) {
-         VkMemoryRequirements2 req2;
-         req2.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
-         VkImageMemoryRequirementsInfo2 info2;
-         info2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2;
-         info2.pNext = NULL;
-         info2.image = obj->image;
-         VkMemoryDedicatedRequirements ded;
-         ded.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
-         ded.pNext = NULL;
-         req2.pNext = &ded;
-         VkImagePlaneMemoryRequirementsInfo plane;
-         plane.sType = VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO;
-         plane.pNext = NULL;
-         if (num_planes > 1)
-            info2.pNext = &plane;
-         unsigned offset = 0;
-         for (unsigned i = 0; i < num_planes; i++) {
-            assert(i < ARRAY_SIZE(plane_aspects));
-            plane.planeAspect = plane_aspects[i];
-            VKSCR(GetImageMemoryRequirements2)(screen->dev, &info2, &req2);
-            if (!i)
-               reqs.alignment = req2.memoryRequirements.alignment;
-            obj->plane_offsets[i] = offset;
-            offset += req2.memoryRequirements.size;
-            reqs.size += req2.memoryRequirements.size;
-            reqs.memoryTypeBits |= req2.memoryRequirements.memoryTypeBits;
-            need_dedicated |= ded.prefersDedicatedAllocation || ded.requiresDedicatedAllocation;
-         }
-      } else {
-         VKSCR(GetImageMemoryRequirements)(screen->dev, obj->image, &reqs);
-      }
+      need_dedicated = get_image_memory_requirement(screen, obj, num_planes, &reqs);
       if (templ->usage == PIPE_USAGE_STAGING && ici.tiling == VK_IMAGE_TILING_LINEAR)
         flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
       else

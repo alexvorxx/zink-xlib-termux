@@ -70,9 +70,8 @@ agx_disk_cache_store(struct disk_cache *cache,
    if (!cache)
       return;
 
-   /* TODO: Support caching GS/TCS */
-   if (uncompiled->type == PIPE_SHADER_GEOMETRY ||
-       uncompiled->type == PIPE_SHADER_TESS_CTRL)
+   /* TODO: Support caching GS */
+   if (uncompiled->type == PIPE_SHADER_GEOMETRY)
       return;
 
    assert(binary->bo->ptr.cpu != NULL && "shaders must be CPU mapped");

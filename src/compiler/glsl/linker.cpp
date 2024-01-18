@@ -2618,19 +2618,6 @@ public:
             unsupported = true;
             return visit_stop;
          }
-
-         /* For opaque types, we want the inlined variable references
-          * referencing the passed in variable, since that will have
-          * the location information, which an assignment of an opaque
-          * variable wouldn't.
-          *
-          * We have no way to handle this in NIR or the glsl to nir pass
-          * currently so let the GLSL IR lowering handle it.
-          */
-         if (glsl_contains_opaque(param->type)) {
-            unsupported = true;
-            return visit_stop;
-         }
       }
 
       return visit_continue;

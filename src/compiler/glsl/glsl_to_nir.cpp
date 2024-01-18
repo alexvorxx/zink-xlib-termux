@@ -1519,19 +1519,25 @@ nir_visitor::visit(ir_call *ir)
       ir_rvalue *param_rvalue = (ir_rvalue *) actual_node;
       ir_variable *sig_param = (ir_variable *) formal_node;
 
-      nir_variable *param =
-         nir_local_variable_create(this->impl, sig_param->type, "param");
-      param->data.precision = sig_param->data.precision;
-      nir_deref_instr *param_deref = nir_build_deref_var(&b, param);
+      nir_deref_instr *param_deref;
+      if (sig_param->data.mode == ir_var_function_in &&
+          glsl_contains_opaque(sig_param->type)) {
+         param_deref = evaluate_deref(param_rvalue);
+      } else {
+         nir_variable *param =
+            nir_local_variable_create(this->impl, sig_param->type, "param");
+         param->data.precision = sig_param->data.precision;
+         param_deref = nir_build_deref_var(&b, param);
 
-      if (sig_param->data.mode == ir_var_function_in ||
-          sig_param->data.mode == ir_var_function_inout) {
-         if (glsl_type_is_vector_or_scalar(param->type)) {
-            nir_store_deref(&b, param_deref,
-                            evaluate_rvalue(param_rvalue),
-                            ~0);
-         } else {
-            nir_copy_deref(&b, param_deref, evaluate_deref(param_rvalue));
+         if (sig_param->data.mode == ir_var_function_in ||
+             sig_param->data.mode == ir_var_function_inout) {
+            if (glsl_type_is_vector_or_scalar(param->type)) {
+               nir_store_deref(&b, param_deref,
+                               evaluate_rvalue(param_rvalue),
+                               ~0);
+            } else {
+               nir_copy_deref(&b, param_deref, evaluate_deref(param_rvalue));
+            }
          }
       }
 
@@ -2381,7 +2387,8 @@ nir_visitor::visit(ir_texture *ir)
 
    /* check for bindless handles */
    if (!nir_deref_mode_is(sampler_deref, nir_var_uniform) ||
-       nir_deref_instr_get_variable(sampler_deref)->data.bindless) {
+       (nir_deref_instr_get_variable(sampler_deref) &&
+        nir_deref_instr_get_variable(sampler_deref)->data.bindless)) {
       nir_def *load = nir_load_deref(&b, sampler_deref);
       instr->src[0] = nir_tex_src_for_ssa(nir_tex_src_texture_handle, load);
       instr->src[1] = nir_tex_src_for_ssa(nir_tex_src_sampler_handle, load);
@@ -2517,8 +2524,13 @@ nir_visitor::visit(ir_dereference_variable *ir)
          i++;
       }
 
+      nir_variable_mode mode =
+         glsl_contains_opaque(ir->variable_referenced()->type) &&
+         ir->variable_referenced()->data.mode == ir_var_function_in ?
+            nir_var_uniform : nir_var_function_temp;
+
       this->deref = nir_build_deref_cast(&b, nir_load_param(&b, i),
-                                         nir_var_function_temp, ir->type, 0);
+                                         mode, ir->type, 0);
       return;
    }
 

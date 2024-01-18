@@ -1199,13 +1199,6 @@ emit_interp_state(struct fd_ringbuffer *ring, const struct fd6_program_state *st
                   bool rasterflat, bool sprite_coord_mode,
                   uint32_t sprite_coord_enable)
 {
-   enum {
-      INTERP_SMOOTH = 0,
-      INTERP_FLAT = 1,
-      INTERP_ZERO = 2,
-      INTERP_ONE = 3,
-   };
-
    const struct ir3_shader_variant *fs = state->fs;
    uint32_t vinterp[8], vpsrepl[8];
 

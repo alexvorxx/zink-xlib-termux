@@ -3044,11 +3044,27 @@ to upconvert to 32b float internally?
 	<reg32 offset="0x910b" name="VPC_MULTIVIEW_MASK" type="hex" low="0" high="15" variants="A7XX-" usage="rp_blit"/>
 	<reg32 offset="0x910c" name="VPC_MULTIVIEW_CNTL" type="a6xx_multiview_cntl" variants="A7XX-" usage="rp_blit"/>
 
+	<enum name="a6xx_varying_interp_mode">
+		<value value="0" name="INTERP_SMOOTH"/>
+		<value value="1" name="INTERP_FLAT"/>
+		<value value="2" name="INTERP_ZERO"/>
+		<value value="3" name="INTERP_ONE"/>
+	</enum>
+
+	<enum name="a6xx_varying_ps_repl_mode">
+		<value value="0" name="PS_REPL_NONE"/>
+		<value value="1" name="PS_REPL_S"/>
+		<value value="2" name="PS_REPL_T"/>
+		<value value="3" name="PS_REPL_ONE_MINUS_T"/>
+	</enum>
+
 	<!-- 0x9109-0x91ff invalid -->
 	<array offset="0x9200" name="VPC_VARYING_INTERP" stride="1" length="8" usage="rp_blit">
+		<doc>Packed array of a6xx_varying_interp_mode</doc>
 		<reg32 offset="0x0" name="MODE"/>
 	</array>
 	<array offset="0x9208" name="VPC_VARYING_PS_REPL" stride="1" length="8" usage="rp_blit">
+		<doc>Packed array of a6xx_varying_ps_repl_mode</doc>
 		<reg32 offset="0x0" name="MODE"/>
 	</array>
 

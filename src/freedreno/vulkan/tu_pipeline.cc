@@ -696,21 +696,6 @@ tu6_vpc_varying_mode(const struct ir3_shader_variant *fs,
                      uint8_t *interp_mode,
                      uint8_t *ps_repl_mode)
 {
-   enum
-   {
-      INTERP_SMOOTH = 0,
-      INTERP_FLAT = 1,
-      INTERP_ZERO = 2,
-      INTERP_ONE = 3,
-   };
-   enum
-   {
-      PS_REPL_NONE = 0,
-      PS_REPL_S = 1,
-      PS_REPL_T = 2,
-      PS_REPL_ONE_MINUS_T = 3,
-   };
-
    const uint32_t compmask = fs->inputs[index].compmask;
 
    /* NOTE: varyings are packed, so if compmask is 0xb then first, second, and

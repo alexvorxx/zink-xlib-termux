@@ -781,21 +781,30 @@ x11_surface_get_capabilities2(VkIcdSurfaceBase *icd_surface,
       }
 
       case VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_COMPATIBILITY_EXT: {
-         /* To be able to toggle between FIFO and non-FIFO, we would need a rewrite to always use FIFO thread
-          * mechanism. For now, only return the input, making this effectively unsupported. */
+         /* All present modes are compatible with each other. */
          VkSurfacePresentModeCompatibilityEXT *compat = (void *)ext;
          if (compat->pPresentModes) {
-            if (compat->presentModeCount) {
-               assert(present_mode);
-               compat->pPresentModes[0] = present_mode->presentMode;
-               compat->presentModeCount = 1;
+            assert(present_mode);
+            VK_OUTARRAY_MAKE_TYPED(VkPresentModeKHR, modes, compat->pPresentModes, &compat->presentModeCount);
+            /* Must always return queried present mode even when truncating. */
+            vk_outarray_append_typed(VkPresentModeKHR, &modes, mode) {
+               *mode = present_mode->presentMode;
+            }
+
+            for (uint32_t i = 0; i < ARRAY_SIZE(present_modes); i++) {
+               if (present_modes[i] != present_mode->presentMode) {
+                  vk_outarray_append_typed(VkPresentModeKHR, &modes, mode) {
+                     *mode = present_modes[i];
+                  }
+               }
             }
          } else {
             if (!present_mode)
                wsi_common_vk_warn_once("Use of VkSurfacePresentModeCompatibilityEXT "
                                        "without a VkSurfacePresentModeEXT set. This is an "
                                        "application bug.\n");
-            compat->presentModeCount = 1;
+
+            compat->presentModeCount = ARRAY_SIZE(present_modes);
          }
          break;
       }
@@ -1540,6 +1549,14 @@ x11_release_images(struct wsi_swapchain *wsi_chain,
    }
 
    return VK_SUCCESS;
+}
+
+static void
+x11_set_present_mode(struct wsi_swapchain *wsi_chain,
+                     VkPresentModeKHR mode)
+{
+   struct x11_swapchain *chain = (struct x11_swapchain *)wsi_chain;
+   chain->base.present_mode = mode;
 }
 
 /**
@@ -2404,6 +2421,7 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
    chain->base.queue_present = x11_queue_present;
    chain->base.wait_for_present = x11_wait_for_present;
    chain->base.release_images = x11_release_images;
+   chain->base.set_present_mode = x11_set_present_mode;
    chain->base.present_mode = present_mode;
    chain->base.image_count = num_images;
    chain->conn = conn;

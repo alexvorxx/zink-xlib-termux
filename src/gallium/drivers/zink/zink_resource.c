@@ -824,6 +824,39 @@ create_buffer(struct zink_screen *screen, struct zink_resource_object *obj, cons
    return true;
 }
 
+static inline bool
+create_sampler_conversion(VkImageCreateInfo ici, struct zink_screen *screen,
+                          struct zink_resource_object *obj)
+{
+   if (obj->vkfeats & VK_FORMAT_FEATURE_DISJOINT_BIT)
+      ici.flags |= VK_IMAGE_CREATE_DISJOINT_BIT;
+   VkSamplerYcbcrConversionCreateInfo sycci = {0};
+   sycci.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO;
+   sycci.pNext = NULL;
+   sycci.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+   sycci.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+   sycci.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+   sycci.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+   sycci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+   sycci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+   sycci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+   if (!obj->vkfeats || (obj->vkfeats & VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT)) {
+      sycci.xChromaOffset = VK_CHROMA_LOCATION_COSITED_EVEN;
+      sycci.yChromaOffset = VK_CHROMA_LOCATION_COSITED_EVEN;
+   } else {
+      assert(obj->vkfeats & VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT);
+      sycci.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+      sycci.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+   }
+   sycci.chromaFilter = VK_FILTER_LINEAR;
+   sycci.forceExplicitReconstruction = VK_FALSE;
+   VkResult res = VKSCR(CreateSamplerYcbcrConversion)(screen->dev, &sycci, NULL, &obj->sampler_conversion);
+   if (res != VK_SUCCESS) {
+      mesa_loge("ZINK: vkCreateSamplerYcbcrConversion failed");
+      return false;
+   }
+   return true;
+}
 static struct zink_resource_object *
 resource_object_create(struct zink_screen *screen, const struct pipe_resource *templ, struct winsys_handle *whandle, bool *linear,
                        uint64_t *modifiers, int modifiers_count, const void *loader_private, const void *user_mem)
@@ -1069,33 +1102,8 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       }
       obj->vkfeats = feats;
       if (util_format_is_yuv(templ->format)) {
-         if (feats & VK_FORMAT_FEATURE_DISJOINT_BIT)
-            ici.flags |= VK_IMAGE_CREATE_DISJOINT_BIT;
-         VkSamplerYcbcrConversionCreateInfo sycci = {0};
-         sycci.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO;
-         sycci.pNext = NULL;
-         sycci.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-         sycci.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
-         sycci.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
-         sycci.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-         sycci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-         sycci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-         sycci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-         if (!feats || (feats & VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT)) {
-            sycci.xChromaOffset = VK_CHROMA_LOCATION_COSITED_EVEN;
-            sycci.yChromaOffset = VK_CHROMA_LOCATION_COSITED_EVEN;
-         } else {
-            assert(feats & VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT);
-            sycci.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
-            sycci.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
-         }
-         sycci.chromaFilter = VK_FILTER_LINEAR;
-         sycci.forceExplicitReconstruction = VK_FALSE;
-         VkResult res = VKSCR(CreateSamplerYcbcrConversion)(screen->dev, &sycci, NULL, &obj->sampler_conversion);
-         if (res != VK_SUCCESS) {
-            mesa_loge("ZINK: vkCreateSamplerYcbcrConversion failed");
+         if (!create_sampler_conversion(ici, screen, obj))
             goto fail1;
-         }
       } else if (whandle) {
          obj->plane_strides[whandle->plane] = whandle->stride;
       }

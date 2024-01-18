@@ -914,7 +914,6 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       bool winsys_modifier = (export_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT) && whandle && whandle->modifier != DRM_FORMAT_MOD_INVALID;
       uint64_t *ici_modifiers = winsys_modifier ? &whandle->modifier : modifiers;
       unsigned ici_modifier_count = winsys_modifier ? 1 : modifiers_count;
-      bool success = false;
       VkImageCreateInfo ici;
       enum pipe_format srgb = PIPE_FORMAT_NONE;
       /* we often need to be able to mutate between srgb and linear, but we don't need general
@@ -946,11 +945,16 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          ici.pNext = NULL;
       }
       init_ici(screen, &ici, templ, templ->bind, ici_modifier_count);
+
+      bool success = false;
       uint64_t mod = eval_ici(screen, &ici, templ, templ->bind, ici_modifier_count, ici_modifiers, &success);
       if (ici.format == VK_FORMAT_A8_UNORM_KHR && !success) {
          ici.format = zink_get_format(screen, zink_format_get_emulated_alpha(templ->format));
          mod = eval_ici(screen, &ici, templ, templ->bind, ici_modifier_count, ici_modifiers, &success);
       }
+      if (!success)
+         goto fail1;
+
       if (ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT && srgb &&
           util_format_get_nr_components(srgb) == 4 &&
           !(ici.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
@@ -968,8 +972,6 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          .arrayPitch = 0,
          .depthPitch = 0,
       };
-      if (!success)
-         goto fail1;
 
       obj->render_target = (ici.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0;
 

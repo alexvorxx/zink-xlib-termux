@@ -2387,6 +2387,9 @@ struct radv_ray_tracing_stage_info {
    struct radv_rt_const_arg_info sbt_stride;
 
    struct radv_rt_const_arg_info miss_index;
+
+   uint32_t set_flags;
+   uint32_t unset_flags;
 };
 
 struct radv_ray_tracing_stage {

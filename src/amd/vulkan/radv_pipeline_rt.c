@@ -516,6 +516,8 @@ radv_gather_ray_tracing_stage_info(nir_shader *nir)
 {
    struct radv_ray_tracing_stage_info info = {
       .can_inline = true,
+      .set_flags = 0xFFFFFFFF,
+      .unset_flags = 0xFFFFFFFF,
    };
 
    nir_function_impl *impl = nir_shader_get_entrypoint(nir);
@@ -535,6 +537,15 @@ radv_gather_ray_tracing_stage_info(nir_shader *nir)
          radv_gather_trace_ray_src(&info.sbt_offset, intr->src[3]);
          radv_gather_trace_ray_src(&info.sbt_stride, intr->src[4]);
          radv_gather_trace_ray_src(&info.miss_index, intr->src[5]);
+
+         nir_src flags = intr->src[1];
+         if (nir_src_is_const(flags)) {
+            info.set_flags &= nir_src_as_uint(flags);
+            info.unset_flags &= ~nir_src_as_uint(flags);
+         } else {
+            info.set_flags = 0;
+            info.unset_flags = 0;
+         }
       }
    }
 
@@ -677,7 +688,10 @@ radv_rt_compile_shaders(struct radv_device *device, struct vk_pipeline_cache *ca
    if (!traversal_needed)
       return VK_SUCCESS;
 
-   struct radv_ray_tracing_stage_info traversal_info = {0};
+   struct radv_ray_tracing_stage_info traversal_info = {
+      .set_flags = 0xFFFFFFFF,
+      .unset_flags = 0xFFFFFFFF,
+   };
 
    memset(traversal_info.unused_args, 0xFF, sizeof(traversal_info.unused_args));
 
@@ -694,6 +708,9 @@ radv_rt_compile_shaders(struct radv_device *device, struct vk_pipeline_cache *ca
       radv_rt_const_arg_info_combine(&traversal_info.sbt_offset, &info->sbt_offset);
       radv_rt_const_arg_info_combine(&traversal_info.sbt_stride, &info->sbt_stride);
       radv_rt_const_arg_info_combine(&traversal_info.miss_index, &info->miss_index);
+
+      traversal_info.set_flags &= info->set_flags;
+      traversal_info.unset_flags &= info->unset_flags;
    }
 
    /* create traversal shader */

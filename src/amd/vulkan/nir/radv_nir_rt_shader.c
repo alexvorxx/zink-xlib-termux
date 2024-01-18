@@ -1529,7 +1529,7 @@ load_stack_entry(nir_builder *b, nir_def *index, const struct radv_ray_traversal
 static void
 radv_build_traversal(struct radv_device *device, struct radv_ray_tracing_pipeline *pipeline,
                      const VkRayTracingPipelineCreateInfoKHR *pCreateInfo, bool monolithic, nir_builder *b,
-                     struct rt_variables *vars, bool ignore_cull_mask)
+                     struct rt_variables *vars, bool ignore_cull_mask, struct radv_ray_tracing_stage_info *info)
 {
    nir_variable *barycentrics =
       nir_variable_create(b->shader, nir_var_ray_hit_attrib, glsl_vector_type(GLSL_TYPE_FLOAT, 2), "barycentrics");
@@ -1613,6 +1613,8 @@ radv_build_traversal(struct radv_device *device, struct radv_ray_tracing_pipelin
       .stack_entries = MAX_STACK_ENTRY_COUNT,
       .stack_base = 0,
       .ignore_cull_mask = ignore_cull_mask,
+      .set_flags = info ? info->set_flags : 0,
+      .unset_flags = info ? info->unset_flags : 0,
       .stack_store_cb = store_stack_entry,
       .stack_load_cb = load_stack_entry,
       .aabb_cb = (pipeline->base.base.create_flags & VK_PIPELINE_CREATE_2_RAY_TRACING_SKIP_AABBS_BIT_KHR)
@@ -1746,7 +1748,7 @@ radv_build_traversal_shader(struct radv_device *device, struct radv_ray_tracing_
    nir_store_var(&b, vars.arg, nir_load_rt_arg_scratch_offset_amd(&b), 0x1);
    nir_store_var(&b, vars.stack_ptr, nir_imm_int(&b, 0), 0x1);
 
-   radv_build_traversal(device, pipeline, pCreateInfo, false, &b, &vars, false);
+   radv_build_traversal(device, pipeline, pCreateInfo, false, &b, &vars, false, info);
 
    /* Deal with all the inline functions. */
    nir_index_ssa_defs(nir_shader_get_entrypoint(b.shader));
@@ -1804,7 +1806,7 @@ lower_rt_instruction_monolithic(nir_builder *b, nir_instr *instr, void *data)
       nir_def *stack_ptr = nir_load_var(b, vars->stack_ptr);
       nir_store_var(b, vars->stack_ptr, nir_iadd_imm(b, stack_ptr, b->shader->scratch_size), 0x1);
 
-      radv_build_traversal(state->device, state->pipeline, state->pCreateInfo, true, b, vars, ignore_cull_mask);
+      radv_build_traversal(state->device, state->pipeline, state->pCreateInfo, true, b, vars, ignore_cull_mask, NULL);
       b->shader->info.shared_size = MAX2(b->shader->info.shared_size, state->device->physical_device->rt_wave_size *
                                                                          MAX_STACK_ENTRY_COUNT * sizeof(uint32_t));
 

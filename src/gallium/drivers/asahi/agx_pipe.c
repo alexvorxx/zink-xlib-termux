@@ -791,6 +791,12 @@ agx_prepare_for_map(struct agx_context *ctx, struct agx_resource *rsrc,
    if (usage & PIPE_MAP_UNSYNCHRONIZED)
       return;
 
+   /* If the range being accessed is uninitialized, we do not need to sync. */
+   if (rsrc->base.target == PIPE_BUFFER && !(rsrc->bo->flags & AGX_BO_SHARED) &&
+       !util_ranges_intersect(&rsrc->valid_buffer_range, box->x,
+                              box->x + box->width))
+      return;
+
    /* Everything after this needs the context, which is not safe for
     * unsynchronized transfers when we claim
     * PIPE_CAP_MAP_UNSYNCHRONIZED_THREAD_SAFE.
@@ -802,12 +808,6 @@ agx_prepare_for_map(struct agx_context *ctx, struct agx_resource *rsrc,
 
    /* Additionally, writing needs readers synced. */
    if (!(usage & PIPE_MAP_WRITE))
-      return;
-
-   /* If the range being written is uninitialized, we do not need to sync. */
-   if (rsrc->base.target == PIPE_BUFFER && !(rsrc->bo->flags & AGX_BO_SHARED) &&
-       !util_ranges_intersect(&rsrc->valid_buffer_range, box->x,
-                              box->x + box->width))
       return;
 
    /* If there are no readers, we're done. We check at the start to

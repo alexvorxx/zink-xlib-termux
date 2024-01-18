@@ -5014,6 +5014,16 @@ anv_image_has_private_binding(const struct anv_image *image)
    return private_binding.memory_range.size != 0;
 }
 
+static inline bool
+anv_image_format_is_d16_or_s8(const struct anv_image *image)
+{
+   return image->vk.format == VK_FORMAT_D16_UNORM ||
+      image->vk.format == VK_FORMAT_D16_UNORM_S8_UINT ||
+      image->vk.format == VK_FORMAT_D24_UNORM_S8_UINT ||
+      image->vk.format == VK_FORMAT_D32_SFLOAT_S8_UINT ||
+      image->vk.format == VK_FORMAT_S8_UINT;
+}
+
 /* The ordering of this enum is important */
 enum anv_fast_clear_type {
    /** Image does not have/support any fast-clear blocks */

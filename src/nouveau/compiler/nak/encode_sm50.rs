@@ -1341,6 +1341,12 @@ impl SM50Instr {
         self.set_pred_src(39..42, 42, SrcRef::True.into());
     }
 
+    fn encode_cs2r(&mut self, op: &OpCS2R) {
+        self.set_opcode(0x50c8);
+        self.set_dst(op.dst);
+        self.set_field(20..28, op.idx);
+    }
+
     fn encode_kill(&mut self, _op: &OpKill) {
         self.set_opcode(0xe330);
         self.set_field(0..5, 0x0f_u8);
@@ -2096,6 +2102,7 @@ impl SM50Instr {
             Op::SuLd(op) => si.encode_suld(&op),
             Op::SuAtom(op) => si.encode_suatom(&op),
             Op::Kill(op) => si.encode_kill(&op),
+            Op::CS2R(op) => si.encode_cs2r(&op),
             _ => panic!("Unhandled instruction {}", instr.op),
         }
 

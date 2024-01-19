@@ -4116,8 +4116,11 @@ anv_ray_tracing_pipeline_create(
                          pCreateInfo->pLibraryInfo->pLibraries[l]);
          struct anv_ray_tracing_pipeline *rt_library =
             anv_pipeline_to_ray_tracing(library);
-         for (uint32_t lg = 0; lg < rt_library->group_count; lg++)
-            pipeline->groups[g++] = rt_library->groups[lg];
+         for (uint32_t lg = 0; lg < rt_library->group_count; lg++) {
+            pipeline->groups[g] = rt_library->groups[lg];
+            pipeline->groups[g].imported = true;
+            g++;
+         }
 
          /* Account for shaders in the library. */
          util_dynarray_foreach(&rt_library->shaders,

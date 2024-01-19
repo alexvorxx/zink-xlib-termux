@@ -4320,6 +4320,9 @@ struct anv_compute_pipeline {
 struct anv_rt_shader_group {
    VkRayTracingShaderGroupTypeKHR type;
 
+   /* Whether this group was imported from another pipeline */
+   bool imported;
+
    struct anv_shader_bin *general;
    struct anv_shader_bin *closest_hit;
    struct anv_shader_bin *any_hit;

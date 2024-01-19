@@ -40,21 +40,29 @@ intel_dev_wa_src = custom_target('intel_wa.[ch]',
                                  output : ['intel_wa.h', 'intel_wa.c'],
                                  command : [prog_python, '@INPUT@', '@OUTPUT@'])
 
+intel_dev_info_gen_src = custom_target('intel_device_info_gen.h',
+                                       input : ['intel_device_info_gen_h.py', 'intel_device_info.py'],
+                                       output : ['intel_device_info_gen.h'],
+                                       command : [prog_python, '@INPUT0@', '--outdir', meson.current_build_dir()])
+
 # ensures intel_wa.h exists before implementation files are compiled
 idep_intel_dev_wa = declare_dependency(sources : [intel_dev_wa_src[0]])
+
+idep_intel_dev_info_gen = declare_dependency(sources : [intel_dev_info_gen_src[0]])
 
 libintel_dev = static_library(
   'intel_dev',
   [files_libintel_dev, sha1_h, [intel_dev_wa_src]],
   include_directories : [inc_include, inc_src, inc_intel],
-  dependencies : [dep_libdrm, idep_mesautil, idep_intel_dev_wa],
+  dependencies : [dep_libdrm, idep_mesautil, idep_intel_dev_wa,
+                  idep_intel_dev_info_gen],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
 )
 
 idep_intel_dev = declare_dependency(
   link_with : libintel_dev,
-  dependencies : idep_intel_dev_wa,
+  dependencies : [idep_intel_dev_wa, idep_intel_dev_info_gen]
 )
 
 if with_tests

@@ -9066,6 +9066,8 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
    struct radv_vgt_shader_key vgt_shader_cfg_key = {
       .tess = !!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL],
       .gs = !!cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY],
+      .ngg = last_vgt_shader->info.is_ngg,
+      .ngg_passthrough = last_vgt_shader->info.is_ngg_passthrough,
    };
 
    radv_emit_vgt_gs_mode(device, cs, last_vgt_shader);

@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_GFX_VER_ENUM_H
-#define BRW_GFX_VER_ENUM_H
+#ifndef INTEL_GFX_VER_ENUM_H
+#define INTEL_GFX_VER_ENUM_H
 
 #include "util/macros.h"
 #include "dev/intel_device_info.h"

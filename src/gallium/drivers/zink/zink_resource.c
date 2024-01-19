@@ -975,6 +975,152 @@ get_export_flags(struct zink_screen *screen, const struct pipe_resource *templ,
    return true;
 }
 
+struct mem_alloc_info {
+   struct winsys_handle *whandle;
+   VkMemoryPropertyFlags flags;
+   enum zink_alloc_flag aflags;
+   bool need_dedicated;
+   bool shared;
+   const void *user_mem;
+   VkExternalMemoryHandleTypeFlags external;
+   VkExternalMemoryHandleTypeFlags export_types;
+};
+
+static inline int
+allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
+            VkMemoryRequirements *reqs, struct zink_resource_object *obj,
+            struct mem_alloc_info *alloc_info)
+{
+   VkMemoryAllocateInfo mai;
+   mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+   mai.pNext = NULL;
+   mai.allocationSize = reqs->size;
+   enum zink_heap heap = zink_heap_from_domain_flags(alloc_info->flags, alloc_info->aflags);
+
+   VkMemoryDedicatedAllocateInfo ded_alloc_info = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
+      .pNext = mai.pNext,
+      .image = obj->image,
+      .buffer = VK_NULL_HANDLE,
+   };
+
+   if (screen->info.have_KHR_dedicated_allocation && alloc_info->need_dedicated) {
+      ded_alloc_info.pNext = mai.pNext;
+      mai.pNext = &ded_alloc_info;
+   }
+
+   VkExportMemoryAllocateInfo emai;
+   if ((templ->bind & ZINK_BIND_VIDEO) || ((templ->bind & PIPE_BIND_SHARED) && alloc_info->shared) || (templ->bind & ZINK_BIND_DMABUF)) {
+      emai.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+      emai.handleTypes = alloc_info->export_types;
+
+      emai.pNext = mai.pNext;
+      mai.pNext = &emai;
+      obj->exportable = true;
+   }
+
+#ifdef ZINK_USE_DMABUF
+
+#if !defined(_WIN32)
+   VkImportMemoryFdInfoKHR imfi = {
+      VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
+      NULL,
+   };
+
+   if (alloc_info->whandle) {
+      imfi.pNext = NULL;
+      imfi.handleType = alloc_info->external;
+      imfi.fd = os_dupfd_cloexec(alloc_info->whandle->handle);
+      if (imfi.fd < 0) {
+         mesa_loge("ZINK: failed to dup dmabuf fd: %s\n", strerror(errno));
+         return -2;
+      }
+
+      imfi.pNext = mai.pNext;
+      mai.pNext = &imfi;
+   }
+#else
+   VkImportMemoryWin32HandleInfoKHR imfi = {
+      VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR,
+      NULL,
+   };
+
+   if (alloc_info->whandle) {
+      HANDLE source_target = GetCurrentProcess();
+      HANDLE out_handle;
+
+      bool result = DuplicateHandle(source_target, alloc_info->whandle->handle, source_target, &out_handle, 0, false, DUPLICATE_SAME_ACCESS);
+
+      if (!result || !out_handle) {
+         mesa_loge("ZINK: failed to DuplicateHandle with winerr: %08x\n", (int)GetLastError());
+         return -2;
+      }
+
+      imfi.pNext = NULL;
+      imfi.handleType = alloc_info->external;
+      imfi.handle = out_handle;
+
+      imfi.pNext = mai.pNext;
+      mai.pNext = &imfi;
+   }
+#endif
+
+#endif
+
+   VkImportMemoryHostPointerInfoEXT imhpi = {
+      VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT,
+      NULL,
+   };
+   if (alloc_info->user_mem) {
+      imhpi.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      imhpi.pHostPointer = (void*)alloc_info->user_mem;
+      imhpi.pNext = mai.pNext;
+      mai.pNext = &imhpi;
+   }
+
+   unsigned alignment = MAX2(reqs->alignment, 256);
+   if (templ->usage == PIPE_USAGE_STAGING && obj->is_buffer)
+      alignment = MAX2(alignment, screen->info.props.limits.minMemoryMapAlignment);
+   obj->alignment = alignment;
+
+   if (zink_mem_type_idx_from_bits(screen, heap, reqs->memoryTypeBits) == UINT32_MAX) {
+      /* not valid based on reqs; demote to more compatible type */
+      switch (heap) {
+      case ZINK_HEAP_DEVICE_LOCAL_VISIBLE:
+         heap = ZINK_HEAP_DEVICE_LOCAL;
+         break;
+      case ZINK_HEAP_HOST_VISIBLE_COHERENT_CACHED:
+         heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
+         break;
+      default:
+         break;
+      }
+      assert(zink_mem_type_idx_from_bits(screen, heap, reqs->memoryTypeBits) != UINT32_MAX);
+   }
+
+retry:
+   /* iterate over all available memory types to reduce chance of oom */
+   for (unsigned i = 0; !obj->bo && i < screen->heap_count[heap]; i++) {
+      if (!(reqs->memoryTypeBits & BITFIELD_BIT(screen->heap_map[heap][i])))
+         continue;
+
+      mai.memoryTypeIndex = screen->heap_map[heap][i];
+      obj->bo = zink_bo(zink_bo_create(screen, reqs->size, alignment, heap, mai.pNext ? ZINK_ALLOC_NO_SUBALLOC : 0, mai.memoryTypeIndex, mai.pNext));
+      if (!obj->bo) {
+         if (heap == ZINK_HEAP_DEVICE_LOCAL_VISIBLE) {
+            /* demote BAR allocations to a different heap on failure to avoid oom */
+            if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
+               heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
+            else
+               heap = ZINK_HEAP_DEVICE_LOCAL;
+            goto retry;
+         }
+      }
+   }
+
+   return obj->bo ? 0: -2;
+}
+
 static struct zink_resource_object *
 resource_object_create(struct zink_screen *screen, const struct pipe_resource *templ, struct winsys_handle *whandle, bool *linear,
                        uint64_t *modifiers, int modifiers_count, const void *loader_private, const void *user_mem)
@@ -992,7 +1138,15 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    obj->last_dt_idx = obj->dt_idx = UINT32_MAX; //TODO: unionize
 
    VkMemoryRequirements reqs = {0};
-   VkMemoryPropertyFlags flags;
+
+   struct mem_alloc_info alloc_info = {
+      .whandle = whandle,
+      .need_dedicated = false,
+      .external = 0,
+      .export_types = ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT,
+      .shared = templ->bind & PIPE_BIND_SHARED,
+      .user_mem = user_mem
+   };
 
    /* figure out aux plane count */
    if (whandle && whandle->plane >= util_format_get_num_planes(whandle->format))
@@ -1004,14 +1158,9 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          break;
    }
 
-   bool need_dedicated = false;
-   bool shared = templ->bind & PIPE_BIND_SHARED;
-
-   VkExternalMemoryHandleTypeFlags external = 0;
-   VkExternalMemoryHandleTypeFlags export_types = ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT;
    unsigned num_planes = util_format_get_num_planes(templ->format);
 
-   if (!get_export_flags(screen, templ, whandle, &external, &export_types)) {
+   if (!get_export_flags(screen, templ, whandle, &alloc_info.external, &alloc_info.export_types)) {
       /* can't export anything, fail early */
       return NULL;
    }
@@ -1028,12 +1177,12 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       return obj;
    } else if (templ->target == PIPE_BUFFER) {
       if (!create_buffer(screen, obj, templ, modifiers, modifiers_count, user_mem,
-                         &flags, &reqs))
+                         &alloc_info.flags, &reqs))
          goto fail1;
       max_level = 1;
    } else {
       max_level = templ->last_level + 1;
-      bool winsys_modifier = (export_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT) && whandle && whandle->modifier != DRM_FORMAT_MOD_INVALID;
+      bool winsys_modifier = (alloc_info.export_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT) && whandle && whandle->modifier != DRM_FORMAT_MOD_INVALID;
       uint64_t *ici_modifiers = winsys_modifier ? &whandle->modifier : modifiers;
       unsigned ici_modifier_count = winsys_modifier ? 1 : modifiers_count;
       VkImageCreateInfo ici;
@@ -1097,10 +1246,10 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
 
       obj->render_target = (ici.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0;
 
-      if (shared || external) {
+      if (alloc_info.shared || alloc_info.external) {
          emici.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
          emici.pNext = ici.pNext;
-         emici.handleTypes = export_types;
+         emici.handleTypes = alloc_info.export_types;
          ici.pNext = &emici;
 
          assert(ici.tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT || mod != DRM_FORMAT_MOD_INVALID);
@@ -1131,7 +1280,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
             idfmlci.pDrmFormatModifiers = modifiers;
             ici.pNext = &idfmlci;
          } else if (ici.tiling == VK_IMAGE_TILING_OPTIMAL) {
-            shared = false;
+            alloc_info.shared = false;
          }
       } else if (user_mem) {
          emici.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
@@ -1195,11 +1344,11 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          assert(num_dmabuf_planes <= 4);
       }
 
-      need_dedicated = get_image_memory_requirement(screen, obj, num_planes, &reqs);
+      alloc_info.need_dedicated = get_image_memory_requirement(screen, obj, num_planes, &reqs);
       if (templ->usage == PIPE_USAGE_STAGING && ici.tiling == VK_IMAGE_TILING_LINEAR)
-        flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        alloc_info.flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
       else
-        flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
       obj->vkflags = ici.flags;
       obj->vkusage = ici.usage;
@@ -1207,13 +1356,13 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    obj->alignment = reqs.alignment;
 
    if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
-      flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-   else if (!(flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
+      alloc_info.flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+   else if (!(alloc_info.flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
             templ->usage == PIPE_USAGE_STAGING)
-      flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+      alloc_info.flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
    if (templ->bind & ZINK_BIND_TRANSIENT)
-      flags |= VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+      alloc_info.flags |= VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
 
    if (user_mem) {
       VkExternalMemoryHandleTypeFlagBits handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
@@ -1226,139 +1375,20 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          goto fail1;
       }
       reqs.memoryTypeBits &= memory_host_pointer_properties.memoryTypeBits;
-      flags &= ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+      alloc_info.flags &= ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
    }
 
-   VkMemoryAllocateInfo mai;
-   enum zink_alloc_flag aflags = templ->flags & PIPE_RESOURCE_FLAG_SPARSE ? ZINK_ALLOC_SPARSE : 0;
-   mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-   mai.pNext = NULL;
-   mai.allocationSize = reqs.size;
-   enum zink_heap heap = zink_heap_from_domain_flags(flags, aflags);
+   alloc_info.aflags = templ->flags & PIPE_RESOURCE_FLAG_SPARSE ? ZINK_ALLOC_SPARSE : 0;
 
-   VkMemoryDedicatedAllocateInfo ded_alloc_info = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
-      .pNext = mai.pNext,
-      .image = obj->image,
-      .buffer = VK_NULL_HANDLE,
+   int retval = allocate_bo(screen, templ, &reqs, obj, &alloc_info);
+   switch (retval) {
+   case -1: goto fail1;
+   case -2: goto fail2;
+   default:
+     assert(obj->bo);
    };
 
-   if (screen->info.have_KHR_dedicated_allocation && need_dedicated) {
-      ded_alloc_info.pNext = mai.pNext;
-      mai.pNext = &ded_alloc_info;
-   }
-
-   VkExportMemoryAllocateInfo emai;
-   if ((templ->bind & ZINK_BIND_VIDEO) || ((templ->bind & PIPE_BIND_SHARED) && shared) || (templ->bind & ZINK_BIND_DMABUF)) {
-      emai.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
-      emai.handleTypes = export_types;
-
-      emai.pNext = mai.pNext;
-      mai.pNext = &emai;
-      obj->exportable = true;
-   }
-
-#ifdef ZINK_USE_DMABUF
-
-#if !defined(_WIN32)
-   VkImportMemoryFdInfoKHR imfi = {
-      VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
-      NULL,
-   };
-
-   if (whandle) {
-      imfi.pNext = NULL;
-      imfi.handleType = external;
-      imfi.fd = os_dupfd_cloexec(whandle->handle);
-      if (imfi.fd < 0) {
-         mesa_loge("ZINK: failed to dup dmabuf fd: %s\n", strerror(errno));
-         goto fail1;
-      }
-
-      imfi.pNext = mai.pNext;
-      mai.pNext = &imfi;
-   }
-#else
-   VkImportMemoryWin32HandleInfoKHR imfi = {
-      VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR,
-      NULL,
-   };
-
-   if (whandle) {
-      HANDLE source_target = GetCurrentProcess();
-      HANDLE out_handle;
-
-      bool result = DuplicateHandle(source_target, whandle->handle, source_target, &out_handle, 0, false, DUPLICATE_SAME_ACCESS);
-
-      if (!result || !out_handle) {
-         mesa_loge("ZINK: failed to DuplicateHandle with winerr: %08x\n", (int)GetLastError());
-         goto fail1;
-      }
-
-      imfi.pNext = NULL;
-      imfi.handleType = external;
-      imfi.handle = out_handle;
-
-      imfi.pNext = mai.pNext;
-      mai.pNext = &imfi;
-   }
-#endif
-
-#endif
-
-   VkImportMemoryHostPointerInfoEXT imhpi = {
-      VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT,
-      NULL,
-   };
-   if (user_mem) {
-      imhpi.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
-      imhpi.pHostPointer = (void*)user_mem;
-      imhpi.pNext = mai.pNext;
-      mai.pNext = &imhpi;
-   }
-
-   unsigned alignment = MAX2(reqs.alignment, 256);
-   if (templ->usage == PIPE_USAGE_STAGING && obj->is_buffer)
-      alignment = MAX2(alignment, screen->info.props.limits.minMemoryMapAlignment);
-   obj->alignment = alignment;
-
-   if (zink_mem_type_idx_from_bits(screen, heap, reqs.memoryTypeBits) == UINT32_MAX) {
-      /* not valid based on reqs; demote to more compatible type */
-      switch (heap) {
-      case ZINK_HEAP_DEVICE_LOCAL_VISIBLE:
-         heap = ZINK_HEAP_DEVICE_LOCAL;
-         break;
-      case ZINK_HEAP_HOST_VISIBLE_COHERENT_CACHED:
-         heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
-         break;
-      default:
-         break;
-      }
-      assert(zink_mem_type_idx_from_bits(screen, heap, reqs.memoryTypeBits) != UINT32_MAX);
-   }
-
-retry:
-   /* iterate over all available memory types to reduce chance of oom */
-   for (unsigned i = 0; !obj->bo && i < screen->heap_count[heap]; i++) {
-      if (!(reqs.memoryTypeBits & BITFIELD_BIT(screen->heap_map[heap][i])))
-         continue;
-
-      mai.memoryTypeIndex = screen->heap_map[heap][i];
-      obj->bo = zink_bo(zink_bo_create(screen, reqs.size, alignment, heap, mai.pNext ? ZINK_ALLOC_NO_SUBALLOC : 0, mai.memoryTypeIndex, mai.pNext));
-      if (!obj->bo) {
-         if (heap == ZINK_HEAP_DEVICE_LOCAL_VISIBLE) {
-            /* demote BAR allocations to a different heap on failure to avoid oom */
-            if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
-               heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
-            else
-               heap = ZINK_HEAP_DEVICE_LOCAL;
-            goto retry;
-         }
-      }
-   }
-   if (!obj->bo)
-      goto fail2;
-   if (aflags == ZINK_ALLOC_SPARSE) {
+   if (alloc_info.aflags == ZINK_ALLOC_SPARSE) {
       obj->size = templ->width0;
    } else {
       obj->offset = zink_bo_get_offset(obj->bo);

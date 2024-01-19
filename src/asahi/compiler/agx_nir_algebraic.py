@@ -83,7 +83,16 @@ lower_pack = [
       ('isub', 32, 'bits'))),
 ]
 
-lower_selects = []
+# Rewriting bcsel(a || b, ...) in terms of bcsel(a, ...) and bcsel(b, ...) lets
+# our rules to fuse compare-and-select do a better job, assuming that a and b
+# are comparisons themselves.
+lower_selects = [
+        (('bcsel', ('ior(is_used_once)', a, b), c, d),
+         ('bcsel', a, c, ('bcsel', b, c, d))),
+
+        (('bcsel', ('iand(is_used_once)', a, b), c, d),
+         ('bcsel', a, ('bcsel', b, c, d), d)),
+]
 
 for T, sizes, one in [('f', [16, 32], 1.0),
                       ('i', [8, 16, 32], 1),

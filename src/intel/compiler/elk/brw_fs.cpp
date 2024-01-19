@@ -3490,8 +3490,6 @@ fs_visitor::emit_repclear_shader()
    calculate_cfg();
 
    this->first_non_payload_grf = payload().num_regs;
-
-   lower_scoreboard();
 }
 
 /**
@@ -6823,8 +6821,6 @@ fs_visitor::allocate_registers(bool allow_spilling)
        */
       assert(prog_data->total_scratch < max_scratch_size);
    }
-
-   lower_scoreboard();
 }
 
 bool

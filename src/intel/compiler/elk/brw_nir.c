@@ -23,7 +23,6 @@
 
 #include "intel_nir.h"
 #include "brw_nir.h"
-#include "brw_nir_rt.h"
 #include "brw_shader.h"
 #include "dev/intel_debug.h"
 #include "compiler/glsl_types.h"
@@ -1769,15 +1768,6 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
       OPT(nir_opt_dce);
 
    OPT(nir_opt_dce);
-
-   /* The mesh stages require this pass to be called at the last minute,
-    * but if anything is done by it, it will also constant fold, and that
-    * undoes the work done by nir_trivialize_registers, so call it right
-    * before that one instead.
-    */
-   if (nir->info.stage == MESA_SHADER_MESH ||
-       nir->info.stage == MESA_SHADER_TASK)
-      brw_nir_adjust_payload(nir);
 
    nir_trivialize_registers(nir);
 

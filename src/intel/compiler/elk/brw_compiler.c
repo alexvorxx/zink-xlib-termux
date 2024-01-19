@@ -105,6 +105,8 @@ const struct nir_shader_compiler_options brw_vector_nir_options = {
 struct brw_compiler *
 brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
 {
+   assert(devinfo->ver <= 8);
+
    struct brw_compiler *compiler = rzalloc(mem_ctx, struct brw_compiler);
 
    compiler->devinfo = devinfo;

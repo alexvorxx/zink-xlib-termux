@@ -321,3 +321,4 @@ brw_disasm_tool = executable(
 
 endif
 
+subdir('elk')

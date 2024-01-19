@@ -29,11 +29,11 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "compiler/brw_reg.h"
-#include "compiler/brw_reg_type.h"
-#include "compiler/brw_eu_defines.h"
-#include "compiler/brw_inst.h"
-#include "compiler/brw_eu.h"
+#include "brw_reg.h"
+#include "brw_reg_type.h"
+#include "brw_eu_defines.h"
+#include "brw_inst.h"
+#include "brw_eu.h"
 #include "dev/intel_device_info.h"
 #include "util/list.h"
 

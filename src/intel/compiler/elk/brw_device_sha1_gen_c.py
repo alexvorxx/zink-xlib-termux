@@ -32,7 +32,7 @@ import sys
 from mako.template import Template
 from mako import exceptions
 
-sys.path.append(f"{os.path.dirname(sys.argv[0])}/../dev")
+sys.path.append(f"{os.path.dirname(sys.argv[0])}/../../dev")
 import intel_device_info
 
 template = COPYRIGHT + """

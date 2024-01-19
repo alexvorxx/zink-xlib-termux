@@ -22,12 +22,9 @@
 #include "nouveau_context.h"
 
 #include "nvk_cl902d.h"
-#include "nvk_cl9039.h"
+#include "nvk_cl9097.h"
 #include "nvk_cl90b5.h"
 #include "nvk_cl90c0.h"
-#include "nvk_clb0c0.h"
-
-#include "nvk_cl9097.h"
 #include "nvk_cla097.h"
 #include "nvk_clb097.h"
 #include "nvk_clb197.h"
@@ -80,37 +77,20 @@ nvk_mme_set_priv_reg(struct mme_builder *b)
 }
 
 VkResult
-nvk_queue_init_context_draw_state(struct nvk_queue *queue)
+nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
 {
-   struct nvk_device *dev = nvk_queue_device(queue);
-
-   uint32_t push_data[2048];
-   struct nv_push push;
-   nv_push_init(&push, push_data, ARRAY_SIZE(push_data));
-   struct nv_push *p = &push;
-
-   /* M2MF state */
-   if (dev->pdev->info.cls_m2mf <= FERMI_MEMORY_TO_MEMORY_FORMAT_A) {
-      /* we absolutely do not support Fermi, but if somebody wants to toy
-       * around with it, this is a must
-       */
-      P_MTHD(p, NV9039, SET_OBJECT);
-      P_NV9039_SET_OBJECT(p, {
-         .class_id = dev->pdev->info.cls_m2mf,
-         .engine_id = 0,
-      });
-   }
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
    /* 3D state */
    P_MTHD(p, NV9097, SET_OBJECT);
    P_NV9097_SET_OBJECT(p, {
-      .class_id = dev->pdev->info.cls_eng3d,
+      .class_id = pdev->info.cls_eng3d,
       .engine_id = 0,
    });
 
    for (uint32_t mme = 0, mme_pos = 0; mme < NVK_MME_COUNT; mme++) {
       size_t size;
-      uint32_t *dw = nvk_build_mme(&nvk_device_physical(dev)->info, mme, &size);
+      uint32_t *dw = nvk_build_mme(&pdev->info, mme, &size);
       if (dw == NULL)
          return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -439,18 +419,7 @@ nvk_queue_init_context_draw_state(struct nvk_queue *queue)
    if (dev->pdev->info.cls_eng3d == MAXWELL_A)
       P_IMMD(p, NVB097, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
 
-   /* Compute state */
-   P_MTHD(p, NV90C0, SET_OBJECT);
-   P_NV90C0_SET_OBJECT(p, {
-      .class_id = dev->pdev->info.cls_compute,
-      .engine_id = 0,
-   });
-
-   if (dev->pdev->info.cls_compute == MAXWELL_COMPUTE_A)
-      P_IMMD(p, NVB0C0, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
-
-   return nvk_queue_submit_simple(queue, nv_push_dw_count(&push), push_data,
-                                  0, NULL);
+   return VK_SUCCESS;
 }
 
 static void

@@ -13,6 +13,7 @@
 
 #include <xf86drm.h>
 
+#include "nvk_cl9039.h"
 #include "nvk_cl9097.h"
 #include "nvk_cl90b5.h"
 #include "nvk_cla0c0.h"
@@ -312,6 +313,42 @@ nvk_queue_submit(struct vk_queue *vk_queue,
    return VK_SUCCESS;
 }
 
+static VkResult
+nvk_queue_init_context_state(struct nvk_queue *queue)
+{
+   struct nvk_device *dev = nvk_queue_device(queue);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+   VkResult result;
+
+   uint32_t push_data[2048];
+   struct nv_push push;
+   nv_push_init(&push, push_data, ARRAY_SIZE(push_data));
+   struct nv_push *p = &push;
+
+   /* M2MF state */
+   if (pdev->info.cls_m2mf <= FERMI_MEMORY_TO_MEMORY_FORMAT_A) {
+      /* we absolutely do not support Fermi, but if somebody wants to toy
+       * around with it, this is a must
+       */
+      P_MTHD(p, NV9039, SET_OBJECT);
+      P_NV9039_SET_OBJECT(p, {
+         .class_id = dev->pdev->info.cls_m2mf,
+         .engine_id = 0,
+      });
+   }
+
+   result = nvk_push_draw_state_init(dev, p);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = nvk_push_dispatch_state_init(dev, p);
+   if (result != VK_SUCCESS)
+      return result;
+
+   return nvk_queue_submit_simple(queue, nv_push_dw_count(&push),
+                                  push_data, 0, NULL);
+}
+
 VkResult
 nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
                const VkDeviceQueueCreateInfo *pCreateInfo,
@@ -331,7 +368,7 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
    if (result != VK_SUCCESS)
       goto fail_init;
 
-   result = nvk_queue_init_context_draw_state(queue);
+   result = nvk_queue_init_context_state(queue);
    if (result != VK_SUCCESS)
       goto fail_drm;
 

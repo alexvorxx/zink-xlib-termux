@@ -12,6 +12,7 @@
 struct novueau_ws_bo;
 struct nouveau_ws_context;
 struct novueau_ws_push;
+struct nv_push;
 struct nvk_device;
 
 struct nvk_queue_state {
@@ -68,7 +69,11 @@ VkResult nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
 
 void nvk_queue_finish(struct nvk_device *dev, struct nvk_queue *queue);
 
-VkResult nvk_queue_init_context_draw_state(struct nvk_queue *queue);
+VkResult nvk_push_draw_state_init(struct nvk_device *dev,
+                                  struct nv_push *p);
+
+VkResult nvk_push_dispatch_state_init(struct nvk_device *dev,
+                                      struct nv_push *p);
 
 /* this always syncs, so only use when that doesn't matter */
 VkResult nvk_queue_submit_simple(struct nvk_queue *queue,

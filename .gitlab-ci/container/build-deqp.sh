@@ -10,18 +10,8 @@
 
 set -ex -o pipefail
 
+
 DEQP_VERSION=vulkan-cts-1.3.7.0
-
-git config --global user.email "mesa@example.com"
-git config --global user.name "Mesa CI"
-git clone \
-    https://github.com/KhronosGroup/VK-GL-CTS.git \
-    -b $DEQP_VERSION \
-    --depth 1 \
-    /VK-GL-CTS
-pushd /VK-GL-CTS
-
-mkdir -p /deqp
 
 # Patches to VulkanCTS may come from commits in their repo (listed in
 # cts_commits_to_backport) or patch files stored in our repo (in the patch
@@ -43,14 +33,6 @@ cts_commits_to_backport=(
     c5453824b498c981c6ba42017d119f5de02a3e34
 )
 
-for commit in "${cts_commits_to_backport[@]}"
-do
-  PATCH_URL="https://github.com/KhronosGroup/VK-GL-CTS/commit/$commit.patch"
-  echo "Apply patch to VK-GL-CTS from $PATCH_URL"
-  curl -L --retry 4 -f --retry-all-errors --retry-delay 60 $PATCH_URL | \
-    git am -
-done
-
 cts_patch_files=(
   # Android specific patches.
   build-deqp_Allow-running-on-Android-from-the-command-line.patch
@@ -60,6 +42,29 @@ cts_patch_files=(
   # Forward-port of b61f15f09adb6b7c9eefc7f7c44612c0c390abe5 into modern dEQP codebase
   build-deqp_Change-zlib-URL-because-the-one-from-zlib.net-requir.patch
 )
+
+
+### Careful editing anything below this line
+
+
+git config --global user.email "mesa@example.com"
+git config --global user.name "Mesa CI"
+git clone \
+    https://github.com/KhronosGroup/VK-GL-CTS.git \
+    -b $DEQP_VERSION \
+    --depth 1 \
+    /VK-GL-CTS
+pushd /VK-GL-CTS
+
+mkdir -p /deqp
+
+for commit in "${cts_commits_to_backport[@]}"
+do
+  PATCH_URL="https://github.com/KhronosGroup/VK-GL-CTS/commit/$commit.patch"
+  echo "Apply patch to VK-GL-CTS from $PATCH_URL"
+  curl -L --retry 4 -f --retry-all-errors --retry-delay 60 $PATCH_URL | \
+    git am -
+done
 
 for patch in "${cts_patch_files[@]}"
 do

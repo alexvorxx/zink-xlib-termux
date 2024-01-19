@@ -246,7 +246,7 @@ push_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
       assert(pb->req.sig_count < NVK_PUSH_MAX_SYNCS);
       pb->req_sig[pb->req.sig_count++] = (struct drm_nouveau_sync) {
          .flags = DRM_NOUVEAU_SYNC_SYNCOBJ,
-         .handle = queue->syncobj_handle,
+         .handle = queue->drm.syncobj,
          .timeline_value = 0,
       };
    }
@@ -262,7 +262,7 @@ push_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
    }
    if (sync) {
       err = drmSyncobjWait(pb->dev->ws_dev->fd,
-                           &queue->syncobj_handle, 1, INT64_MAX,
+                           &queue->drm.syncobj, 1, INT64_MAX,
                            DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
                            NULL);
       if (err) {
@@ -283,6 +283,33 @@ push_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
       }
    }
    return VK_SUCCESS;
+}
+
+VkResult
+nvk_queue_init_drm_nouveau(struct nvk_device *dev,
+                           struct nvk_queue *queue)
+{
+   VkResult result;
+   int err;
+
+   err = drmSyncobjCreate(dev->ws_dev->fd, 0, &queue->drm.syncobj);
+   if (err < 0) {
+      result = vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto fail_init;
+   }
+
+   return VK_SUCCESS;
+
+fail_init:
+   return result;
+}
+
+void
+nvk_queue_finish_drm_nouveau(struct nvk_device *dev,
+                             struct nvk_queue *queue)
+{
+   ASSERTED int err = drmSyncobjDestroy(dev->ws_dev->fd, queue->drm.syncobj);
+   assert(err == 0);
 }
 
 VkResult

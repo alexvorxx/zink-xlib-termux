@@ -323,23 +323,22 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
    if (result != VK_SUCCESS)
       return result;
 
+   queue->vk.driver_submit = nvk_queue_submit;
+
    nvk_queue_state_init(&queue->state);
 
-   queue->vk.driver_submit = nvk_queue_submit;
-   int err = drmSyncobjCreate(dev->ws_dev->fd, 0, &queue->syncobj_handle);
-   if (err < 0) {
-      result = vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+   result = nvk_queue_init_drm_nouveau(dev, queue);
+   if (result != VK_SUCCESS)
       goto fail_init;
-   }
-
 
    result = nvk_queue_init_context_draw_state(queue);
    if (result != VK_SUCCESS)
-      goto fail_empty_push;
+      goto fail_drm;
 
    return VK_SUCCESS;
 
-fail_empty_push:
+fail_drm:
+   nvk_queue_finish_drm_nouveau(dev, queue);
 fail_init:
    vk_queue_finish(&queue->vk);
 
@@ -350,8 +349,7 @@ void
 nvk_queue_finish(struct nvk_device *dev, struct nvk_queue *queue)
 {
    nvk_queue_state_finish(dev, &queue->state);
-   ASSERTED int err = drmSyncobjDestroy(dev->ws_dev->fd, queue->syncobj_handle);
-   assert(err == 0);
+   nvk_queue_finish_drm_nouveau(dev, queue);
    vk_queue_finish(&queue->vk);
 }
 

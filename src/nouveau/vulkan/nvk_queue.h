@@ -47,10 +47,11 @@ VkResult nvk_queue_state_update(struct nvk_device *dev,
 struct nvk_queue {
    struct vk_queue vk;
 
+   struct {
+      uint32_t syncobj;
+   } drm;
+
    struct nvk_queue_state state;
-
-
-   uint32_t syncobj_handle;
 };
 
 static inline struct nvk_device *
@@ -72,6 +73,12 @@ VkResult nvk_queue_submit_simple(struct nvk_queue *queue,
                                  uint32_t dw_count, const uint32_t *dw,
                                  uint32_t extra_bo_count,
                                  struct nouveau_ws_bo **extra_bos);
+
+VkResult nvk_queue_init_drm_nouveau(struct nvk_device *dev,
+                                    struct nvk_queue *queue);
+
+void nvk_queue_finish_drm_nouveau(struct nvk_device *dev,
+                                  struct nvk_queue *queue);
 
 VkResult nvk_queue_submit_simple_drm_nouveau(struct nvk_queue *queue,
                                              uint32_t push_dw_count,

@@ -177,6 +177,8 @@ agx_set_shader_buffers(struct pipe_context *pctx, enum pipe_shader_type shader,
                                 count);
 
    ctx->stage[shader].dirty |= AGX_STAGE_DIRTY_SSBO;
+   ctx->stage[shader].ssbo_writable_mask &= ~(BITFIELD_MASK(count) << start);
+   ctx->stage[shader].ssbo_writable_mask |= writable_bitmask << start;
 }
 
 static void

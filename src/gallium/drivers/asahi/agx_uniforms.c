@@ -6,6 +6,7 @@
 #include "asahi/lib/agx_pack.h"
 #include "pipe/p_state.h"
 #include "util/format/u_format.h"
+#include "util/macros.h"
 #include "agx_state.h"
 #include "pool.h"
 
@@ -155,9 +156,12 @@ agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
       if (sb->buffer && st->ssbo[cb].buffer_size) {
          struct agx_resource *rsrc = agx_resource(sb->buffer);
 
-         /* Assume SSBOs are written. TODO: Optimize read-only SSBOs */
-         agx_batch_writes_range(batch, rsrc, sb->buffer_offset,
-                                sb->buffer_size);
+         if (st->ssbo_writable_mask & BITFIELD_BIT(cb)) {
+            agx_batch_writes_range(batch, rsrc, sb->buffer_offset,
+                                   sb->buffer_size);
+         } else {
+            agx_batch_reads(batch, rsrc);
+         }
 
          uniforms.ssbo_base[cb] = rsrc->bo->ptr.gpu + sb->buffer_offset;
          uniforms.ssbo_size[cb] = st->ssbo[cb].buffer_size;

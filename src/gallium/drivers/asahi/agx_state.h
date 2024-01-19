@@ -261,6 +261,7 @@ struct agx_stage {
    uint32_t cb_mask;
 
    struct pipe_shader_buffer ssbo[PIPE_MAX_SHADER_BUFFERS];
+   uint32_t ssbo_writable_mask;
    uint32_t ssbo_mask;
 
    struct pipe_image_view images[PIPE_MAX_SHADER_IMAGES];

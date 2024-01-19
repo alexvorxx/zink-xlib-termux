@@ -3089,9 +3089,39 @@ enum anv_query_bits {
 
 /* PIPE_CONTROL bits that should be set only in Media/GPGPU RCS mode.
  * For more details see genX(emit_apply_pipe_flushes).
+ *
+ * Documentation says that untyped L1 dataport cache flush is controlled by
+ * HDC pipeline flush in 3D mode according to HDC_CHICKEN0 register:
+ *
+ * BSpec 47112: PIPE_CONTROL::HDC Pipeline Flush:
+ *
+ *    "When the "Pipeline Select" mode in PIPELINE_SELECT command is set to
+ *     "3D", HDC Pipeline Flush can also flush/invalidate the LSC Untyped L1
+ *     cache based on the programming of HDC_Chicken0 register bits 13:11."
+ *
+ *    "When the 'Pipeline Select' mode is set to 'GPGPU', the LSC Untyped L1
+ *     cache flush is controlled by 'Untyped Data-Port Cache Flush' bit in the
+ *     PIPE_CONTROL command."
+ *
+ *    As part of Wa_22010960976 & Wa_14013347512, i915 is programming
+ *    HDC_CHICKEN0[11:13] = 0 ("Untyped L1 is flushed, for both 3D Pipecontrol
+ *    Dataport flush, and UAV coherency barrier event"). So there is no need
+ *    to set "Untyped Data-Port Cache" in 3D mode.
+ *
+ * On MTL the HDC_CHICKEN0 default values changed to match what was programmed
+ * by Wa_22010960976 & Wa_14013347512 on DG2, but experiments show that the
+ * change runs a bit deeper. Even manually writing to the HDC_CHICKEN0
+ * register to force L1 untyped flush with HDC pipeline flush has no effect on
+ * MTL.
+ *
+ * It seems like the HW change completely disconnected L1 untyped flush from
+ * HDC pipeline flush with no way to bring that behavior back. So leave the L1
+ * untyped flush active in 3D mode on all platforms since it doesn't seems to
+ * cause issues there too.
+ *
+ * Maybe we'll have some GPGPU only bits here at some point.
  */
-#define ANV_PIPE_GPGPU_BITS ( \
-   (GFX_VERx10 >= 125 ? ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT : 0))
+#define ANV_PIPE_GPGPU_BITS (0)
 
 enum intel_ds_stall_flag
 anv_pipe_flush_bit_to_ds_stall_flag(enum anv_pipe_bits bits);

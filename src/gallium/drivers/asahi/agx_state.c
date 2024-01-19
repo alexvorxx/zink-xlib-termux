@@ -4165,7 +4165,10 @@ agx_launch_gs(struct agx_batch *batch, const struct pipe_draw_info *info,
    struct agx_device *dev = agx_device(ctx->base.screen);
    struct agx_compiled_shader *gs = ctx->gs;
 
-   perf_debug(dev, "Geometry shader or XFB");
+   if (ctx->stage[PIPE_SHADER_GEOMETRY].shader->is_xfb_passthrough)
+      perf_debug(dev, "Transform feedbck");
+   else
+      perf_debug(dev, "Geometry shader");
 
    /* This is a graphics batch, so it may not have had a CDM encoder allocated
     * yet. Allocate that so we can start enqueueing compute work.
@@ -4377,7 +4380,8 @@ agx_draw_without_restart(struct agx_batch *batch,
 static bool
 agx_needs_passthrough_gs(struct agx_context *ctx,
                          const struct pipe_draw_info *info,
-                         const struct pipe_draw_indirect_info *indirect)
+                         const struct pipe_draw_indirect_info *indirect,
+                         bool *xfb_only)
 {
    /* If there is already a geometry shader in the pipeline, we do not need to
     * apply a passthrough GS of our own.
@@ -4426,22 +4430,26 @@ agx_needs_passthrough_gs(struct agx_context *ctx,
       return true;
    }
 
-   /* Transform feedback is layered on geometry shaders, so if transform
-    * feedback is used, we need a GS.
-    */
-   if (ctx->stage[PIPE_SHADER_VERTEX].shader->has_xfb_info &&
-       ctx->streamout.num_targets)
-      return true;
-
    /* Edge flags are emulated with a geometry shader */
-   if (has_edgeflags(ctx, info->mode))
+   if (has_edgeflags(ctx, info->mode)) {
+      perf_debug_ctx(ctx, "Using passthrough GS due to edge flags");
       return true;
+   }
 
    /* Various pipeline statistics are implemented in the pre-GS shader. */
    if (ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_PRIMITIVES] ||
        ctx->pipeline_statistics[PIPE_STAT_QUERY_C_PRIMITIVES] ||
        ctx->pipeline_statistics[PIPE_STAT_QUERY_C_INVOCATIONS]) {
       perf_debug_ctx(ctx, "Using passthrough GS due to pipeline statistics");
+      return true;
+   }
+
+   /* Transform feedback is layered on geometry shaders, so if transform
+    * feedback is used, we need a GS.
+    */
+   if (ctx->stage[PIPE_SHADER_VERTEX].shader->has_xfb_info &&
+       ctx->streamout.num_targets) {
+      *xfb_only = true;
       return true;
    }
 
@@ -4452,7 +4460,7 @@ agx_needs_passthrough_gs(struct agx_context *ctx,
 static struct agx_uncompiled_shader *
 agx_get_passthrough_gs(struct agx_context *ctx,
                        struct agx_uncompiled_shader *prev_cso,
-                       enum mesa_prim mode)
+                       enum mesa_prim mode, bool xfb_passthrough)
 {
    bool edgeflags = has_edgeflags(ctx, mode);
 
@@ -4480,6 +4488,7 @@ agx_get_passthrough_gs(struct agx_context *ctx,
    ralloc_free(prev);
 
    struct agx_uncompiled_shader *cso = pipe_shader_from_nir(&ctx->base, gs);
+   cso->is_xfb_passthrough = xfb_passthrough;
    prev_cso->passthrough_progs[mode][poly_mode][edgeflags] = cso;
    return cso;
 }
@@ -4490,7 +4499,7 @@ agx_apply_passthrough_gs(struct agx_context *ctx,
                          unsigned drawid_offset,
                          const struct pipe_draw_indirect_info *indirect,
                          const struct pipe_draw_start_count_bias *draws,
-                         unsigned num_draws)
+                         unsigned num_draws, bool xfb_passthrough)
 {
    enum pipe_shader_type prev_stage = ctx->stage[PIPE_SHADER_TESS_EVAL].shader
                                          ? PIPE_SHADER_TESS_EVAL
@@ -4513,8 +4522,9 @@ agx_apply_passthrough_gs(struct agx_context *ctx,
    }
 
    /* Draw with passthrough */
-   ctx->base.bind_gs_state(&ctx->base,
-                           agx_get_passthrough_gs(ctx, prev_cso, info->mode));
+   ctx->base.bind_gs_state(
+      &ctx->base,
+      agx_get_passthrough_gs(ctx, prev_cso, info->mode, xfb_passthrough));
    ctx->base.draw_vbo(&ctx->base, info, drawid_offset, indirect, draws,
                       num_draws);
    ctx->base.bind_gs_state(&ctx->base, NULL);
@@ -4920,9 +4930,10 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       return;
    }
 
-   if (agx_needs_passthrough_gs(ctx, info, indirect)) {
+   bool xfb_passthrough = false;
+   if (agx_needs_passthrough_gs(ctx, info, indirect, &xfb_passthrough)) {
       agx_apply_passthrough_gs(ctx, info, drawid_offset, indirect, draws,
-                               num_draws);
+                               num_draws, xfb_passthrough);
       return;
    }
 

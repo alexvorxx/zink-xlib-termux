@@ -230,6 +230,7 @@ struct agx_uncompiled_shader {
 
    uint32_t xfb_strides[4];
    bool has_xfb_info;
+   bool is_xfb_passthrough;
 
    /* Whether the shader accesses indexed samplers via the bindless heap */
    bool uses_bindless_samplers;

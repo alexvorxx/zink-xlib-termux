@@ -1544,10 +1544,13 @@ radv_link_task(const struct radv_device *device, struct radv_shader_stage *task_
                struct radv_shader_stage *mesh_stage, const struct radv_graphics_state_key *gfx_state)
 {
    assert(task_stage->nir->info.stage == MESA_SHADER_TASK);
-   assert(mesh_stage->nir->info.stage == MESA_SHADER_MESH);
 
-   /* Linking task and mesh shaders shouldn't do anything for now but keep it for consistency. */
-   radv_link_shaders(device, task_stage, mesh_stage, gfx_state);
+   if (mesh_stage) {
+      assert(mesh_stage->nir->info.stage == MESA_SHADER_MESH);
+
+      /* Linking task and mesh shaders shouldn't do anything for now but keep it for consistency. */
+      radv_link_shaders(device, task_stage, mesh_stage, gfx_state);
+   }
 }
 
 static void

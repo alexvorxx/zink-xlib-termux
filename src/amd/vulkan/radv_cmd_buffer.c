@@ -8758,7 +8758,9 @@ radv_get_needed_dynamic_states(struct radv_cmd_buffer *cmd_buffer)
       dynamic_states &= ~RADV_DYNAMIC_PATCH_CONTROL_POINTS;
    if (!cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL])
       dynamic_states &= ~RADV_DYNAMIC_TESS_DOMAIN_ORIGIN;
-   dynamic_states &= ~RADV_DYNAMIC_FRAGMENT_SHADING_RATE;
+
+   if (cmd_buffer->device->physical_device->rad_info.gfx_level < GFX10_3)
+      dynamic_states &= ~RADV_DYNAMIC_FRAGMENT_SHADING_RATE;
 
    return dynamic_states;
 }

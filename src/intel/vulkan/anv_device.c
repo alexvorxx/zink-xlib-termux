@@ -509,10 +509,12 @@ get_features(const struct anv_physical_device *pdevice,
       .sparseResidencyBuffer                    = has_sparse_or_fake,
       .sparseResidencyImage2D                   = has_sparse_or_fake,
       .sparseResidencyImage3D                   = has_sparse_or_fake,
-      .sparseResidency2Samples                  = false,
-      .sparseResidency4Samples                  = false,
-      .sparseResidency8Samples                  = false,
-      .sparseResidency16Samples                 = false,
+      .sparseResidency2Samples                  = has_sparse_or_fake,
+      .sparseResidency4Samples                  = has_sparse_or_fake,
+      .sparseResidency8Samples                  = has_sparse_or_fake &&
+                                                  pdevice->info.verx10 != 125,
+      .sparseResidency16Samples                 = has_sparse_or_fake &&
+                                                  pdevice->info.verx10 != 125,
       .variableMultisampleRate                  = true,
       .inheritedQueries                         = true,
 

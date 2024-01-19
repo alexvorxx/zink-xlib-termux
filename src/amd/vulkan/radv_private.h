@@ -2375,6 +2375,9 @@ void radv_emit_geometry_shader(const struct radv_device *device, struct radeon_c
                                const struct radv_shader *gs, const struct radv_shader *es,
                                const struct radv_shader *gs_copy_shader);
 
+void radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
+                           const struct radv_shader *ms);
+
 void radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cache *cache,
                                    struct radv_shader_stage *stages, const struct radv_graphics_state_key *gfx_state,
                                    bool keep_executable_info, bool keep_statistic_info, bool is_internal,

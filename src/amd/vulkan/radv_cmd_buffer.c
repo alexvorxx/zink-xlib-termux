@@ -9069,6 +9069,13 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
          radv_emit_fragment_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]);
          radv_emit_ps_inputs(device, cs, last_vgt_shader, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]);
          break;
+      case MESA_SHADER_MESH:
+         radv_emit_mesh_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_MESH]);
+         break;
+      case MESA_SHADER_TASK:
+         radv_emit_compute_shader(device->physical_device, cmd_buffer->gang.cs,
+                                  cmd_buffer->state.shaders[MESA_SHADER_TASK]);
+         break;
       default:
          unreachable("invalid bind stage");
       }
@@ -9082,6 +9089,11 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
       .ngg = last_vgt_shader->info.is_ngg,
       .ngg_passthrough = last_vgt_shader->info.is_ngg_passthrough,
    };
+
+   if (cmd_buffer->state.shaders[MESA_SHADER_MESH]) {
+      vgt_shader_cfg_key.mesh = 1;
+      vgt_shader_cfg_key.mesh_scratch_ring = cmd_buffer->state.shaders[MESA_SHADER_MESH]->info.ms.needs_ms_scratch_ring;
+   }
 
    radv_emit_vgt_gs_mode(device, cs, last_vgt_shader);
    radv_emit_vgt_vertex_reuse(device, cs, radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL));
@@ -9224,8 +9236,11 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    if (cmd_buffer->state.graphics_pipeline)
       return;
 
-   for (unsigned s = 0; s < MESA_SHADER_COMPUTE; s++) {
+   for (unsigned s = 0; s <= MESA_SHADER_MESH; s++) {
       const struct radv_shader_object *shader_obj = cmd_buffer->state.shader_objs[s];
+
+      if (s == MESA_SHADER_COMPUTE)
+         continue;
 
       if (!shader_obj) {
          radv_bind_shader(cmd_buffer, NULL, s);
@@ -9416,6 +9431,10 @@ radv_before_taskmesh_draw(struct radv_cmd_buffer *cmd_buffer, const struct radv_
     */
    if (unlikely(!info->count))
       return false;
+
+   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_SHADERS) {
+      radv_bind_graphics_shaders(cmd_buffer);
+   }
 
    struct radeon_cmdbuf *ace_cs = cmd_buffer->gang.cs;
    struct radv_shader *task_shader = cmd_buffer->state.shaders[MESA_SHADER_TASK];

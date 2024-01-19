@@ -3237,7 +3237,7 @@ radv_emit_geometry_shader(const struct radv_device *device, struct radeon_cmdbuf
    radeon_set_context_reg(ctx_cs, R_028B38_VGT_GS_MAX_VERT_OUT, gs->info.gs.vertices_out);
 }
 
-static void
+void
 radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
                       const struct radv_shader *ms)
 {

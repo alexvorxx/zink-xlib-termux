@@ -3532,7 +3532,7 @@ radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx
    }
 }
 
-static void
+void
 gfx103_emit_vgt_draw_payload_cntl(struct radeon_cmdbuf *ctx_cs, const struct radv_shader *mesh_shader, bool enable_vrs)
 {
    bool enable_prim_payload = false;
@@ -3568,7 +3568,7 @@ gfx103_pipeline_vrs_coarse_shading(const struct radv_device *device, const struc
    return true;
 }
 
-static void
+void
 gfx103_emit_vrs_state(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *ps,
                       bool enable_vrs, bool enable_vrs_coarse_shading, bool force_vrs_per_vertex)
 {

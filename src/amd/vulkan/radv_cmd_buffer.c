@@ -9077,6 +9077,11 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
    radv_emit_vgt_shader_config(device, cs, &vgt_shader_cfg_key);
    radv_emit_vgt_gs_out(device, cs, vgt_gs_out);
 
+   if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX10_3) {
+      gfx103_emit_vgt_draw_payload_cntl(cs, cmd_buffer->state.shaders[MESA_SHADER_MESH], false);
+      gfx103_emit_vrs_state(device, cs, NULL, false, false, false);
+   }
+
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_SHADERS;
 }
 

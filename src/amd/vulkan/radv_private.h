@@ -2365,6 +2365,12 @@ void radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf
 void radv_emit_vgt_gs_mode(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                            const struct radv_shader *last_vgt_api_shader);
 
+void gfx103_emit_vgt_draw_payload_cntl(struct radeon_cmdbuf *ctx_cs, const struct radv_shader *mesh_shader,
+                                       bool enable_vrs);
+
+void gfx103_emit_vrs_state(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *ps,
+                           bool enable_vrs, bool enable_vrs_coarse_shading, bool force_vrs_per_vertex);
+
 void radv_emit_geometry_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
                                const struct radv_shader *gs, const struct radv_shader *es,
                                const struct radv_shader *gs_copy_shader);

@@ -91,7 +91,7 @@ mme_hw_runner::set_up_hw(uint16_t min_cls, uint16_t max_cls)
 
    devinfo = &dev->info;
 
-   int ret = nouveau_ws_context_create(dev, &ctx);
+   int ret = nouveau_ws_context_create(dev, NOUVEAU_WS_ENGINE_3D, &ctx);
    if (ret)
       return false;
 

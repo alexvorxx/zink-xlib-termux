@@ -121,7 +121,9 @@ nouveau_ws_channel_dealloc(int fd, int channel)
 }
 
 int
-nouveau_ws_context_create(struct nouveau_ws_device *dev, struct nouveau_ws_context **out)
+nouveau_ws_context_create(struct nouveau_ws_device *dev,
+                          enum nouveau_ws_engines engines,
+                          struct nouveau_ws_context **out)
 {
    struct drm_nouveau_channel_alloc req = { };
    uint32_t classes[NOUVEAU_WS_CONTEXT_MAX_CLASSES];
@@ -141,32 +143,47 @@ nouveau_ws_context_create(struct nouveau_ws_device *dev, struct nouveau_ws_conte
 
    base = (0xbeef + req.channel) << 16;
 
-   uint32_t obj_class = nouveau_ws_context_find_class(classes, 0xb5);
-   ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, 0, obj_class, &(*out)->copy);
-   if (ret)
-      goto fail_subchan;
+   if (engines & NOUVEAU_WS_ENGINE_COPY) {
+      uint32_t obj_class = nouveau_ws_context_find_class(classes, 0xb5);
+      ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, 0,
+                                     obj_class, &(*out)->copy);
+      if (ret)
+         goto fail_subchan;
+   }
 
-   obj_class = nouveau_ws_context_find_class(classes, 0x2d);
-   ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, base | 0x902d, obj_class, &(*out)->eng2d);
-   if (ret)
-      goto fail_subchan;
+   if (engines & NOUVEAU_WS_ENGINE_2D) {
+      uint32_t obj_class = nouveau_ws_context_find_class(classes, 0x2d);
+      ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, base | 0x902d,
+                                     obj_class, &(*out)->eng2d);
+      if (ret)
+         goto fail_subchan;
+   }
 
-   obj_class = nouveau_ws_context_find_class(classes, 0x97);
-   ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, base | 0x003d, obj_class, &(*out)->eng3d);
-   if (ret)
-      goto fail_subchan;
+   if (engines & NOUVEAU_WS_ENGINE_3D) {
+      uint32_t obj_class = nouveau_ws_context_find_class(classes, 0x97);
+      ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, base | 0x003d,
+                                     obj_class, &(*out)->eng3d);
+      if (ret)
+         goto fail_subchan;
+   }
 
-   obj_class = nouveau_ws_context_find_class(classes, 0x40);
-   if (!obj_class)
-      obj_class = nouveau_ws_context_find_class(classes, 0x39);
-   ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, base | 0x323f, obj_class, &(*out)->m2mf);
-   if (ret)
-      goto fail_subchan;
+   if (engines & NOUVEAU_WS_ENGINE_M2MF) {
+      uint32_t obj_class = nouveau_ws_context_find_class(classes, 0x40);
+      if (!obj_class)
+         obj_class = nouveau_ws_context_find_class(classes, 0x39);
+      ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, base | 0x323f,
+                                     obj_class, &(*out)->m2mf);
+      if (ret)
+         goto fail_subchan;
+   }
 
-   obj_class = nouveau_ws_context_find_class(classes, 0xc0);
-   ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, base | 0x00c0, obj_class, &(*out)->compute);
-   if (ret)
-      goto fail_subchan;
+   if (engines & NOUVEAU_WS_ENGINE_COMPUTE) {
+      uint32_t obj_class = nouveau_ws_context_find_class(classes, 0xc0);
+      ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, base | 0x00c0,
+                                     obj_class, &(*out)->compute);
+      if (ret)
+         goto fail_subchan;
+   }
 
    (*out)->channel = req.channel;
    (*out)->dev = dev;

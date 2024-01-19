@@ -166,7 +166,12 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    dev->vk.command_buffer_ops = &nvk_cmd_buffer_ops;
    dev->pdev = pdev;
 
-   ret = nouveau_ws_context_create(dev->ws_dev, &dev->ws_ctx);
+   const enum nouveau_ws_engines engines =
+      NOUVEAU_WS_ENGINE_COPY |
+      NOUVEAU_WS_ENGINE_3D |
+      NOUVEAU_WS_ENGINE_COMPUTE;
+
+   ret = nouveau_ws_context_create(dev->ws_dev, engines, &dev->ws_ctx);
    if (ret) {
       if (ret == -ENOSPC)
          result = vk_error(dev, VK_ERROR_TOO_MANY_OBJECTS);

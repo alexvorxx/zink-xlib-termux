@@ -111,6 +111,9 @@ radv_shader_object_init_graphics(struct radv_shader_object *shader_obj, struct r
    gfx_state.dynamic_line_rast_mode = true;
    gfx_state.dynamic_patch_control_points = true;
 
+   if (device->physical_device->rad_info.gfx_level >= GFX11)
+      gfx_state.ms.alpha_to_coverage_via_mrtz = true;
+
    const VkShaderRequiredSubgroupSizeCreateInfoEXT *const subgroup_size =
       vk_find_struct_const(pCreateInfo->pNext, SHADER_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT);
 
@@ -414,6 +417,9 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
    gfx_state.dynamic_provoking_vtx_mode = true;
    gfx_state.dynamic_line_rast_mode = true;
    gfx_state.dynamic_patch_control_points = true;
+
+   if (device->physical_device->rad_info.gfx_level >= GFX11)
+      gfx_state.ms.alpha_to_coverage_via_mrtz = true;
 
    for (unsigned i = 0; i < createInfoCount; i++) {
       const VkShaderCreateInfoEXT *pCreateInfo = &pCreateInfos[i];

@@ -141,8 +141,12 @@ radv_meta_save(struct radv_meta_saved_state *state, struct radv_cmd_buffer *cmd_
 
       state->old_graphics_pipeline = cmd_buffer->state.graphics_pipeline;
 
-      for (unsigned i = 0; i < MESA_SHADER_COMPUTE; i++)
+      for (unsigned i = 0; i <= MESA_SHADER_MESH; i++) {
+         if (i == MESA_SHADER_COMPUTE)
+            continue;
+
          state->old_shader_objs[i] = cmd_buffer->state.shader_objs[i];
+      }
 
       /* Save all dynamic states. */
       state->dynamic = cmd_buffer->state.dynamic;
@@ -192,7 +196,10 @@ radv_meta_restore(const struct radv_meta_saved_state *state, struct radv_cmd_buf
       } else {
          cmd_buffer->state.graphics_pipeline = NULL;
 
-         for (unsigned i = 0; i < MESA_SHADER_COMPUTE; i++) {
+         for (unsigned i = 0; i <= MESA_SHADER_MESH; i++) {
+            if (i == MESA_SHADER_COMPUTE)
+               continue;
+
             if (!state->old_shader_objs[i])
                continue;
 

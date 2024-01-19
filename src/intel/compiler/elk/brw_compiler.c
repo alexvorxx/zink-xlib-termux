@@ -136,9 +136,6 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
          i == MESA_SHADER_FRAGMENT || i == MESA_SHADER_COMPUTE;
    }
 
-   for (int i = MESA_SHADER_TASK; i < MESA_VULKAN_SHADER_STAGES; i++)
-      compiler->scalar_stage[i] = true;
-
    nir_lower_int64_options int64_options =
       nir_lower_imul64 |
       nir_lower_isign64 |
@@ -233,11 +230,6 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       compiler->nir_options[i] = nir_options;
    }
 
-   compiler->mesh.mue_header_packing =
-         (unsigned)debug_get_num_option("INTEL_MESH_HEADER_PACKING", 3);
-   compiler->mesh.mue_compaction =
-         debug_get_bool_option("INTEL_MESH_COMPACTION", true);
-
    return compiler;
 }
 
@@ -257,8 +249,6 @@ brw_get_compiler_config_value(const struct brw_compiler *compiler)
    bits++;
    insert_u64_bit(&config, compiler->lower_dpas);
    bits++;
-   insert_u64_bit(&config, compiler->mesh.mue_compaction);
-   bits++;
 
    uint64_t mask = DEBUG_DISK_CACHE_MASK;
    bits += util_bitcount64(mask);
@@ -275,9 +265,6 @@ brw_get_compiler_config_value(const struct brw_compiler *compiler)
    mask = 3;
    bits += util_bitcount64(mask);
 
-   u_foreach_bit64(bit, mask)
-      insert_u64_bit(&config, (compiler->mesh.mue_header_packing & (1ULL << bit)) != 0);
-
    assert(bits <= util_bitcount64(UINT64_MAX));
 
    return config;
@@ -293,15 +280,6 @@ brw_prog_data_size(gl_shader_stage stage)
       [MESA_SHADER_GEOMETRY]     = sizeof(struct brw_gs_prog_data),
       [MESA_SHADER_FRAGMENT]     = sizeof(struct brw_wm_prog_data),
       [MESA_SHADER_COMPUTE]      = sizeof(struct brw_cs_prog_data),
-      [MESA_SHADER_TASK]         = sizeof(struct brw_task_prog_data),
-      [MESA_SHADER_MESH]         = sizeof(struct brw_mesh_prog_data),
-      [MESA_SHADER_RAYGEN]       = sizeof(struct brw_bs_prog_data),
-      [MESA_SHADER_ANY_HIT]      = sizeof(struct brw_bs_prog_data),
-      [MESA_SHADER_CLOSEST_HIT]  = sizeof(struct brw_bs_prog_data),
-      [MESA_SHADER_MISS]         = sizeof(struct brw_bs_prog_data),
-      [MESA_SHADER_INTERSECTION] = sizeof(struct brw_bs_prog_data),
-      [MESA_SHADER_CALLABLE]     = sizeof(struct brw_bs_prog_data),
-      [MESA_SHADER_KERNEL]       = sizeof(struct brw_cs_prog_data),
    };
    assert((int)stage >= 0 && stage < ARRAY_SIZE(stage_sizes));
    return stage_sizes[stage];
@@ -317,15 +295,6 @@ brw_prog_key_size(gl_shader_stage stage)
       [MESA_SHADER_GEOMETRY]     = sizeof(struct brw_gs_prog_key),
       [MESA_SHADER_FRAGMENT]     = sizeof(struct brw_wm_prog_key),
       [MESA_SHADER_COMPUTE]      = sizeof(struct brw_cs_prog_key),
-      [MESA_SHADER_TASK]         = sizeof(struct brw_task_prog_key),
-      [MESA_SHADER_MESH]         = sizeof(struct brw_mesh_prog_key),
-      [MESA_SHADER_RAYGEN]       = sizeof(struct brw_bs_prog_key),
-      [MESA_SHADER_ANY_HIT]      = sizeof(struct brw_bs_prog_key),
-      [MESA_SHADER_CLOSEST_HIT]  = sizeof(struct brw_bs_prog_key),
-      [MESA_SHADER_MISS]         = sizeof(struct brw_bs_prog_key),
-      [MESA_SHADER_INTERSECTION] = sizeof(struct brw_bs_prog_key),
-      [MESA_SHADER_CALLABLE]     = sizeof(struct brw_bs_prog_key),
-      [MESA_SHADER_KERNEL]       = sizeof(struct brw_cs_prog_key),
    };
    assert((int)stage >= 0 && stage < ARRAY_SIZE(stage_sizes));
    return stage_sizes[stage];

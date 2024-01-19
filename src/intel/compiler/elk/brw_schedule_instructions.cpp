@@ -608,16 +608,6 @@ schedule_node::set_latency_gfx7(const struct brw_isa_info *isa)
          }
          break;
 
-      case GEN_RT_SFID_BINDLESS_THREAD_DISPATCH:
-      case GEN_RT_SFID_RAY_TRACE_ACCELERATOR:
-         /* TODO.
-          *
-          * We'll assume for the moment that this is pretty quick as it
-          * doesn't actually return any data.
-          */
-         latency = 200;
-         break;
-
       case BRW_SFID_URB:
          latency = 200;
          break;

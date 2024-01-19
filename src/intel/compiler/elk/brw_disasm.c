@@ -325,7 +325,6 @@ static const char *const gfx6_sfid[16] = {
    [GFX7_SFID_PIXEL_INTERPOLATOR]      = "pixel interp",
    [HSW_SFID_DATAPORT_DATA_CACHE_1]    = "dp data 1",
    [HSW_SFID_CRE]                      = "cre",
-   [GEN_RT_SFID_RAY_TRACE_ACCELERATOR] = "rt accel",
    [GFX12_SFID_SLM]                    = "slm",
    [GFX12_SFID_TGM]                    = "tgm",
    [GFX12_SFID_UGM]                    = "ugm",
@@ -2708,15 +2707,6 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                       brw_inst_pi_nopersp(devinfo, inst) ? "linear" : "persp",
                       pixel_interpolator_msg_types[brw_inst_pi_message_type(devinfo, inst)],
                       brw_inst_pi_message_data(devinfo, inst));
-            } else {
-               unsupported = true;
-            }
-            break;
-
-         case GEN_RT_SFID_RAY_TRACE_ACCELERATOR:
-            if (devinfo->has_ray_tracing) {
-               format(file, " SIMD%d,",
-                      brw_rt_trace_ray_desc_exec_size(devinfo, imm_desc));
             } else {
                unsupported = true;
             }

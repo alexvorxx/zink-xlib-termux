@@ -1686,13 +1686,6 @@ brw_rt_trace_ray_desc(ASSERTED const struct intel_device_info *devinfo,
           SET_BITS(brw_mdc_sm2(exec_size), 8, 8);
 }
 
-static inline uint32_t
-brw_rt_trace_ray_desc_exec_size(UNUSED const struct intel_device_info *devinfo,
-                                uint32_t desc)
-{
-   return brw_mdc_sm2_exec_size(GET_BITS(desc, 8, 8));
-}
-
 /**
  * Construct a message descriptor immediate with the specified pixel
  * interpolator function controls.

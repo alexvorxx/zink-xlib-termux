@@ -62,8 +62,6 @@ get_prog_data(brw_simd_selection_state &state)
 {
    if (std::holds_alternative<struct brw_cs_prog_data *>(state.prog_data))
       return &std::get<struct brw_cs_prog_data *>(state.prog_data)->base;
-   else if (std::holds_alternative<struct brw_bs_prog_data *>(state.prog_data))
-      return &std::get<struct brw_bs_prog_data *>(state.prog_data)->base;
    else
       return nullptr;
 }
@@ -148,20 +146,6 @@ brw_simd_should_compile(brw_simd_selection_state &state, unsigned simd)
    switch (prog_data->stage) {
    case MESA_SHADER_COMPUTE:
       start = DEBUG_CS_SIMD8;
-      break;
-   case MESA_SHADER_TASK:
-      start = DEBUG_TS_SIMD8;
-      break;
-   case MESA_SHADER_MESH:
-      start = DEBUG_MS_SIMD8;
-      break;
-   case MESA_SHADER_RAYGEN:
-   case MESA_SHADER_ANY_HIT:
-   case MESA_SHADER_CLOSEST_HIT:
-   case MESA_SHADER_MISS:
-   case MESA_SHADER_INTERSECTION:
-   case MESA_SHADER_CALLABLE:
-      start = DEBUG_RT_SIMD8;
       break;
    default:
       unreachable("unknown shader stage in brw_simd_should_compile");

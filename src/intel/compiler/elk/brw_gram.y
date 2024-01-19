@@ -1133,7 +1133,6 @@ sharedfunction:
 	| CRE 		        { $$ = HSW_SFID_CRE; }
 	| SAMPLER	        { $$ = BRW_SFID_SAMPLER; }
 	| DP_SAMPLER	        { $$ = GFX6_SFID_DATAPORT_SAMPLER_CACHE; }
-	| RT_ACCEL		{ $$ = GEN_RT_SFID_RAY_TRACE_ACCELERATOR; }
 	| SLM			{ $$ = GFX12_SFID_SLM; }
 	| TGM			{ $$ = GFX12_SFID_TGM; }
 	| UGM			{ $$ = GFX12_SFID_UGM; }

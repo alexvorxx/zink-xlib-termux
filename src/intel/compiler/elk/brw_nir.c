@@ -613,14 +613,6 @@ brw_nir_optimize(nir_shader *nir, bool is_scalar,
 
    do {
       progress = false;
-      /* This pass is causing problems with types used by OpenCL :
-       *    https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/13955
-       *
-       * Running with it disabled made no difference in the resulting assembly
-       * code.
-       */
-      if (nir->info.stage != MESA_SHADER_KERNEL)
-         OPT(nir_split_array_vars, nir_var_function_temp);
       OPT(nir_shrink_vec_array_vars, nir_var_function_temp);
       OPT(nir_opt_deref);
       if (OPT(nir_opt_memcpy))
@@ -1087,115 +1079,11 @@ brw_nir_zero_inputs(nir_shader *shader, uint64_t *zero_inputs)
                                      zero_inputs);
 }
 
-/* Code for Wa_18019110168 may have created input/output variables beyond
- * VARYING_SLOT_MAX and removed uses of variables below VARYING_SLOT_MAX.
- * Clean it up, so they all stay below VARYING_SLOT_MAX.
- */
-static void
-brw_mesh_compact_io(nir_shader *mesh, nir_shader *frag)
-{
-   gl_varying_slot mapping[VARYING_SLOT_MAX] = {0, };
-   gl_varying_slot cur = VARYING_SLOT_VAR0;
-   bool compact = false;
-
-   nir_foreach_shader_out_variable(var, mesh) {
-      gl_varying_slot location = var->data.location;
-      if (location < VARYING_SLOT_VAR0)
-         continue;
-      assert(location < ARRAY_SIZE(mapping));
-
-      const struct glsl_type *type = var->type;
-      if (nir_is_arrayed_io(var, MESA_SHADER_MESH) || var->data.per_view) {
-         assert(glsl_type_is_array(type));
-         type = glsl_get_array_element(type);
-      }
-
-      if (mapping[location])
-         continue;
-
-      unsigned num_slots = glsl_count_attribute_slots(type, false);
-
-      compact |= location + num_slots > VARYING_SLOT_MAX;
-
-      mapping[location] = cur;
-      cur += num_slots;
-   }
-
-   if (!compact)
-      return;
-
-   /* The rest of this function should be hit only for Wa_18019110168. */
-
-   nir_foreach_shader_out_variable(var, mesh) {
-      gl_varying_slot location = var->data.location;
-      if (location < VARYING_SLOT_VAR0)
-         continue;
-      location = mapping[location];
-      if (location == 0)
-         continue;
-      var->data.location = location;
-   }
-
-   nir_foreach_shader_in_variable(var, frag) {
-      gl_varying_slot location = var->data.location;
-      if (location < VARYING_SLOT_VAR0)
-         continue;
-      location = mapping[location];
-      if (location == 0)
-         continue;
-      var->data.location = location;
-   }
-
-   nir_shader_gather_info(mesh, nir_shader_get_entrypoint(mesh));
-   nir_shader_gather_info(frag, nir_shader_get_entrypoint(frag));
-
-   if (should_print_nir(mesh)) {
-      printf("%s\n", __func__);
-      nir_print_shader(mesh, stdout);
-   }
-   if (should_print_nir(frag)) {
-      printf("%s\n", __func__);
-      nir_print_shader(frag, stdout);
-   }
-}
-
 void
 brw_nir_link_shaders(const struct brw_compiler *compiler,
                      nir_shader *producer, nir_shader *consumer)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
-
-   if (producer->info.stage == MESA_SHADER_MESH &&
-       consumer->info.stage == MESA_SHADER_FRAGMENT) {
-      uint64_t fs_inputs = 0, ms_outputs = 0;
-      /* gl_MeshPerPrimitiveEXT[].gl_ViewportIndex, gl_PrimitiveID and gl_Layer
-       * are per primitive, but fragment shader does not have them marked as
-       * such. Add the annotation here.
-       */
-      nir_foreach_shader_in_variable(var, consumer) {
-         fs_inputs |= BITFIELD64_BIT(var->data.location);
-
-         switch (var->data.location) {
-            case VARYING_SLOT_LAYER:
-            case VARYING_SLOT_PRIMITIVE_ID:
-            case VARYING_SLOT_VIEWPORT:
-               var->data.per_primitive = 1;
-               break;
-            default:
-               continue;
-         }
-      }
-
-      nir_foreach_shader_out_variable(var, producer)
-         ms_outputs |= BITFIELD64_BIT(var->data.location);
-
-      uint64_t zero_inputs = ~ms_outputs & fs_inputs;
-      zero_inputs &= BITFIELD64_BIT(VARYING_SLOT_LAYER) |
-                     BITFIELD64_BIT(VARYING_SLOT_VIEWPORT);
-
-      if (zero_inputs)
-         NIR_PASS(_, consumer, brw_nir_zero_inputs, &zero_inputs);
-   }
 
    nir_lower_io_arrays_to_elements(producer, consumer);
    nir_validate_shader(producer, "after nir_lower_io_arrays_to_elements");
@@ -1243,11 +1131,6 @@ brw_nir_link_shaders(const struct brw_compiler *compiler,
 
       brw_nir_optimize(producer, p_is_scalar, devinfo);
       brw_nir_optimize(consumer, c_is_scalar, devinfo);
-
-      if (producer->info.stage == MESA_SHADER_MESH &&
-            consumer->info.stage == MESA_SHADER_FRAGMENT) {
-         brw_mesh_compact_io(producer, consumer);
-      }
    }
 
    NIR_PASS(_, producer, nir_lower_io_to_vector, nir_var_shader_out);
@@ -1259,42 +1142,18 @@ brw_nir_link_shaders(const struct brw_compiler *compiler,
    NIR_PASS(_, producer, nir_opt_combine_stores, nir_var_shader_out);
    NIR_PASS(_, consumer, nir_lower_io_to_vector, nir_var_shader_in);
 
-   if (producer->info.stage != MESA_SHADER_TESS_CTRL &&
-       producer->info.stage != MESA_SHADER_MESH &&
-       producer->info.stage != MESA_SHADER_TASK) {
+   if (producer->info.stage != MESA_SHADER_TESS_CTRL) {
       /* Calling lower_io_to_vector creates output variable writes with
        * write-masks.  On non-TCS outputs, the back-end can't handle it and we
        * need to call nir_lower_io_to_temporaries to get rid of them.  This,
        * in turn, creates temporary variables and extra copy_deref intrinsics
        * that we need to clean up.
-       *
-       * Note Mesh/Task don't support I/O as temporaries (I/O is shared
-       * between whole workgroup, possibly using multiple HW threads). For
-       * those write-mask in output is handled by I/O lowering.
        */
       NIR_PASS_V(producer, nir_lower_io_to_temporaries,
                  nir_shader_get_entrypoint(producer), true, false);
       NIR_PASS(_, producer, nir_lower_global_vars_to_local);
       NIR_PASS(_, producer, nir_split_var_copies);
       NIR_PASS(_, producer, nir_lower_var_copies);
-   }
-
-   if (producer->info.stage == MESA_SHADER_TASK &&
-         consumer->info.stage == MESA_SHADER_MESH) {
-
-      for (unsigned i = 0; i < 3; ++i)
-         assert(producer->info.mesh.ts_mesh_dispatch_dimensions[i] <= UINT16_MAX);
-
-      nir_lower_compute_system_values_options options = {
-            .lower_workgroup_id_to_index = true,
-            .num_workgroups[0] = producer->info.mesh.ts_mesh_dispatch_dimensions[0],
-            .num_workgroups[1] = producer->info.mesh.ts_mesh_dispatch_dimensions[1],
-            .num_workgroups[2] = producer->info.mesh.ts_mesh_dispatch_dimensions[2],
-            /* nir_lower_idiv generates expensive code */
-            .shortcut_1d_workgroup_id = compiler->devinfo->verx10 >= 125,
-      };
-
-      NIR_PASS(_, consumer, nir_lower_compute_system_values, &options);
    }
 }
 
@@ -1412,16 +1271,6 @@ get_mem_access_size_align(nir_intrinsic_op intrin, uint8_t bytes,
       }
       break;
 
-   case nir_intrinsic_load_task_payload:
-      if (bytes < 4 || align < 4) {
-         return (nir_mem_access_size_align) {
-            .bit_size = 32,
-            .num_components = 1,
-            .align = 4,
-         };
-      }
-      break;
-
    default:
       break;
    }
@@ -1476,8 +1325,7 @@ brw_vectorize_lower_mem_access(nir_shader *nir,
    if (is_scalar) {
       nir_load_store_vectorize_options options = {
          .modes = nir_var_mem_ubo | nir_var_mem_ssbo |
-                  nir_var_mem_global | nir_var_mem_shared |
-                  nir_var_mem_task_payload,
+                  nir_var_mem_global | nir_var_mem_shared,
          .callback = brw_nir_should_vectorize_mem,
          .robust_modes = (nir_variable_mode)0,
       };
@@ -1518,7 +1366,6 @@ brw_vectorize_lower_mem_access(nir_shader *nir,
    nir_lower_mem_access_bit_sizes_options mem_access_options = {
       .modes = nir_var_mem_ssbo |
                nir_var_mem_constant |
-               nir_var_mem_task_payload |
                nir_var_shader_temp |
                nir_var_function_temp |
                nir_var_mem_global |
@@ -1692,15 +1539,8 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    /* TODO: Enable nir_opt_uniform_atomics on Gfx7.x too.
     * It currently fails Vulkan tests on Haswell for an unknown reason.
-    *
-    * TODO: Using this optimization on RT/OpenCL kernels also seems to cause
-    *       issues. Until we can understand those issues, disable it.
     */
-   bool opt_uniform_atomic_stage_allowed =
-      devinfo->ver >= 8 &&
-      nir->info.stage != MESA_SHADER_KERNEL &&
-      nir->info.stage != MESA_SHADER_RAYGEN &&
-      !gl_shader_stage_is_callable(nir->info.stage);
+   bool opt_uniform_atomic_stage_allowed = devinfo->ver >= 8;
 
    if (opt_uniform_atomic_stage_allowed && OPT(nir_opt_uniform_atomics)) {
       const nir_lower_subgroups_options subgroups_options = {

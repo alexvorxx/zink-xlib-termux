@@ -1435,9 +1435,6 @@ enum brw_message_target {
    GFX12_SFID_TGM                      = 13, /* Typed Global Memory */
    GFX12_SFID_SLM                      = 14, /* Shared Local Memory */
    GFX12_SFID_UGM                      = 15, /* Untyped Global Memory */
-
-   GEN_RT_SFID_BINDLESS_THREAD_DISPATCH = 7,
-   GEN_RT_SFID_RAY_TRACE_ACCELERATOR = 8,
 };
 
 #define GFX7_MESSAGE_TARGET_DP_DATA_CACHE     10
@@ -1862,18 +1859,6 @@ enum ENUM_PACKED brw_rnd_mode {
 #define GFX7_BYTE_SCATTERED_DATA_ELEMENT_BYTE     0
 #define GFX7_BYTE_SCATTERED_DATA_ELEMENT_WORD     1
 #define GFX7_BYTE_SCATTERED_DATA_ELEMENT_DWORD    2
-
-#define GEN_RT_BTD_MESSAGE_SPAWN 1
-
-#define GEN_RT_TRACE_RAY_INITAL       0
-#define GEN_RT_TRACE_RAY_INSTANCE     1
-#define GEN_RT_TRACE_RAY_COMMIT       2
-#define GEN_RT_TRACE_RAY_CONTINUE     3
-
-#define GEN_RT_BTD_SHADER_TYPE_ANY_HIT        0
-#define GEN_RT_BTD_SHADER_TYPE_CLOSEST_HIT    1
-#define GEN_RT_BTD_SHADER_TYPE_MISS           2
-#define GEN_RT_BTD_SHADER_TYPE_INTERSECTION   3
 
 /* Starting with Xe-HPG, the old dataport was massively reworked dataport.
  * The new thing, called Load/Store Cache or LSC, has a significantly improved

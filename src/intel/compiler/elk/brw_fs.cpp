@@ -1475,10 +1475,6 @@ fs_visitor::assign_curb_setup()
 void
 brw_compute_urb_setup_index(struct brw_wm_prog_data *wm_prog_data)
 {
-   /* TODO(mesh): Review usage of this in the context of Mesh, we may want to
-    * skip per-primitive attributes here.
-    */
-
    /* Make sure uint8_t is sufficient */
    STATIC_ASSERT(VARYING_SLOT_MAX <= 0xff);
    uint8_t index = 0;
@@ -1494,8 +1490,7 @@ static void
 calculate_urb_setup(const struct intel_device_info *devinfo,
                     const struct brw_wm_prog_key *key,
                     struct brw_wm_prog_data *prog_data,
-                    const nir_shader *nir,
-                    const struct brw_mue_map *mue_map)
+                    const nir_shader *nir)
 {
    memset(prog_data->urb_setup, -1, sizeof(prog_data->urb_setup));
    memset(prog_data->urb_setup_channel, 0, sizeof(prog_data->urb_setup_channel));
@@ -1506,153 +1501,7 @@ calculate_urb_setup(const struct intel_device_info *devinfo,
       nir->info.inputs_read & ~nir->info.per_primitive_inputs;
 
    /* Figure out where each of the incoming setup attributes lands. */
-   if (key->mesh_input != BRW_NEVER) {
-      /* Per-Primitive Attributes are laid out by Hardware before the regular
-       * attributes, so order them like this to make easy later to map setup
-       * into real HW registers.
-       */
-      if (nir->info.per_primitive_inputs) {
-         uint64_t per_prim_inputs_read =
-               nir->info.inputs_read & nir->info.per_primitive_inputs;
-
-         /* In Mesh, PRIMITIVE_SHADING_RATE, VIEWPORT and LAYER slots
-          * are always at the beginning, because they come from MUE
-          * Primitive Header, not Per-Primitive Attributes.
-          */
-         const uint64_t primitive_header_bits = VARYING_BIT_VIEWPORT |
-                                                VARYING_BIT_LAYER |
-                                                VARYING_BIT_PRIMITIVE_SHADING_RATE;
-
-         if (mue_map) {
-            unsigned per_prim_start_dw = mue_map->per_primitive_start_dw;
-            unsigned per_prim_size_dw = mue_map->per_primitive_pitch_dw;
-
-            bool reads_header = (per_prim_inputs_read & primitive_header_bits) != 0;
-
-            if (reads_header || mue_map->user_data_in_primitive_header) {
-               /* Primitive Shading Rate, Layer and Viewport live in the same
-                * 4-dwords slot (psr is dword 0, layer is dword 1, and viewport
-                * is dword 2).
-                */
-               if (per_prim_inputs_read & VARYING_BIT_PRIMITIVE_SHADING_RATE)
-                  prog_data->urb_setup[VARYING_SLOT_PRIMITIVE_SHADING_RATE] = 0;
-
-               if (per_prim_inputs_read & VARYING_BIT_LAYER)
-                  prog_data->urb_setup[VARYING_SLOT_LAYER] = 0;
-
-               if (per_prim_inputs_read & VARYING_BIT_VIEWPORT)
-                  prog_data->urb_setup[VARYING_SLOT_VIEWPORT] = 0;
-
-               per_prim_inputs_read &= ~primitive_header_bits;
-            } else {
-               /* If fs doesn't need primitive header, then it won't be made
-                * available through SBE_MESH, so we have to skip them when
-                * calculating offset from start of per-prim data.
-                */
-               per_prim_start_dw += mue_map->per_primitive_header_size_dw;
-               per_prim_size_dw -= mue_map->per_primitive_header_size_dw;
-            }
-
-            u_foreach_bit64(i, per_prim_inputs_read) {
-               int start = mue_map->start_dw[i];
-
-               assert(start >= 0);
-               assert(mue_map->len_dw[i] > 0);
-
-               assert(unsigned(start) >= per_prim_start_dw);
-               unsigned pos_dw = unsigned(start) - per_prim_start_dw;
-
-               prog_data->urb_setup[i] = urb_next + pos_dw / 4;
-               prog_data->urb_setup_channel[i] = pos_dw % 4;
-            }
-
-            urb_next = per_prim_size_dw / 4;
-         } else {
-            /* With no MUE map, we never read the primitive header, and
-             * per-primitive attributes won't be packed either, so just lay
-             * them in varying order.
-             */
-            per_prim_inputs_read &= ~primitive_header_bits;
-
-            for (unsigned i = 0; i < VARYING_SLOT_MAX; i++) {
-               if (per_prim_inputs_read & BITFIELD64_BIT(i)) {
-                  prog_data->urb_setup[i] = urb_next++;
-               }
-            }
-
-            /* The actual setup attributes later must be aligned to a full GRF. */
-            urb_next = ALIGN(urb_next, 2);
-         }
-
-         prog_data->num_per_primitive_inputs = urb_next;
-      }
-
-      const uint64_t clip_dist_bits = VARYING_BIT_CLIP_DIST0 |
-                                      VARYING_BIT_CLIP_DIST1;
-
-      uint64_t unique_fs_attrs = inputs_read & BRW_FS_VARYING_INPUT_MASK;
-
-      if (inputs_read & clip_dist_bits) {
-         assert(!mue_map || mue_map->per_vertex_header_size_dw > 8);
-         unique_fs_attrs &= ~clip_dist_bits;
-      }
-
-      if (mue_map) {
-         unsigned per_vertex_start_dw = mue_map->per_vertex_start_dw;
-         unsigned per_vertex_size_dw = mue_map->per_vertex_pitch_dw;
-
-         /* Per-Vertex header is available to fragment shader only if there's
-          * user data there.
-          */
-         if (!mue_map->user_data_in_vertex_header) {
-            per_vertex_start_dw += 8;
-            per_vertex_size_dw -= 8;
-         }
-
-         /* In Mesh, CLIP_DIST slots are always at the beginning, because
-          * they come from MUE Vertex Header, not Per-Vertex Attributes.
-          */
-         if (inputs_read & clip_dist_bits) {
-            prog_data->urb_setup[VARYING_SLOT_CLIP_DIST0] = urb_next;
-            prog_data->urb_setup[VARYING_SLOT_CLIP_DIST1] = urb_next + 1;
-         } else if (mue_map && mue_map->per_vertex_header_size_dw > 8) {
-            /* Clip distances are in MUE, but we are not reading them in FS. */
-            per_vertex_start_dw += 8;
-            per_vertex_size_dw -= 8;
-         }
-
-         /* Per-Vertex attributes are laid out ordered.  Because we always link
-          * Mesh and Fragment shaders, the which slots are written and read by
-          * each of them will match. */
-         u_foreach_bit64(i, unique_fs_attrs) {
-            int start = mue_map->start_dw[i];
-
-            assert(start >= 0);
-            assert(mue_map->len_dw[i] > 0);
-
-            assert(unsigned(start) >= per_vertex_start_dw);
-            unsigned pos_dw = unsigned(start) - per_vertex_start_dw;
-
-            prog_data->urb_setup[i] = urb_next + pos_dw / 4;
-            prog_data->urb_setup_channel[i] = pos_dw % 4;
-         }
-
-         urb_next += per_vertex_size_dw / 4;
-      } else {
-         /* If we don't have an MUE map, just lay down the inputs the FS reads
-          * in varying order, as we do for the legacy pipeline.
-          */
-         if (inputs_read & clip_dist_bits) {
-            prog_data->urb_setup[VARYING_SLOT_CLIP_DIST0] = urb_next++;
-            prog_data->urb_setup[VARYING_SLOT_CLIP_DIST1] = urb_next++;
-         }
-
-         for (unsigned int i = 0; i < VARYING_SLOT_MAX; i++) {
-            if (unique_fs_attrs & BITFIELD64_BIT(i))
-               prog_data->urb_setup[i] = urb_next++;
-         }
-      }
-   } else if (devinfo->ver >= 6) {
+   if (devinfo->ver >= 6) {
       assert(!nir->info.per_primitive_inputs);
 
       uint64_t vue_header_bits =
@@ -7215,104 +7064,6 @@ fs_visitor::run_cs(bool allow_spilling)
    return !failed;
 }
 
-bool
-fs_visitor::run_bs(bool allow_spilling)
-{
-   assert(stage >= MESA_SHADER_RAYGEN && stage <= MESA_SHADER_CALLABLE);
-
-   payload_ = new bs_thread_payload(*this);
-
-   nir_to_brw(this);
-
-   if (failed)
-      return false;
-
-   /* TODO(RT): Perhaps rename this? */
-   emit_cs_terminate();
-
-   calculate_cfg();
-
-   optimize();
-
-   assign_curb_setup();
-
-   fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
-
-   allocate_registers(allow_spilling);
-
-   return !failed;
-}
-
-bool
-fs_visitor::run_task(bool allow_spilling)
-{
-   assert(stage == MESA_SHADER_TASK);
-
-   payload_ = new task_mesh_thread_payload(*this);
-
-   nir_to_brw(this);
-
-   if (failed)
-      return false;
-
-   emit_urb_fence();
-
-   emit_cs_terminate();
-
-   calculate_cfg();
-
-   optimize();
-
-   assign_curb_setup();
-
-   fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
-
-   allocate_registers(allow_spilling);
-
-   return !failed;
-}
-
-bool
-fs_visitor::run_mesh(bool allow_spilling)
-{
-   assert(stage == MESA_SHADER_MESH);
-
-   payload_ = new task_mesh_thread_payload(*this);
-
-   nir_to_brw(this);
-
-   if (failed)
-      return false;
-
-   emit_urb_fence();
-
-   emit_cs_terminate();
-
-   calculate_cfg();
-
-   optimize();
-
-   assign_curb_setup();
-
-   fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
-
-   allocate_registers(allow_spilling);
-
-   return !failed;
-}
-
 static bool
 is_used_in_not_interp_frag_coord(nir_def *def)
 {
@@ -7510,8 +7261,7 @@ static void
 brw_nir_populate_wm_prog_data(nir_shader *shader,
                               const struct intel_device_info *devinfo,
                               const struct brw_wm_prog_key *key,
-                              struct brw_wm_prog_data *prog_data,
-                              const struct brw_mue_map *mue_map)
+                              struct brw_wm_prog_data *prog_data)
 {
    /* key->alpha_test_func means simulating alpha testing via discards,
     * so the shader definitely kills pixels.
@@ -7663,7 +7413,7 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
       BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD) &&
       prog_data->coarse_pixel_dispatch != BRW_NEVER;
 
-   calculate_urb_setup(devinfo, key, prog_data, shader, mue_map);
+   calculate_urb_setup(devinfo, key, prog_data, shader);
    brw_compute_flat_inputs(prog_data, shader);
 }
 
@@ -7721,8 +7471,7 @@ brw_compile_fs(const struct brw_compiler *compiler,
    brw_postprocess_nir(nir, compiler, debug_enabled,
                        key->base.robust_flags);
 
-   brw_nir_populate_wm_prog_data(nir, compiler->devinfo, key, prog_data,
-                                 params->mue_map);
+   brw_nir_populate_wm_prog_data(nir, compiler->devinfo, key, prog_data);
 
    std::unique_ptr<fs_visitor> v8, v16, v32, vmulti;
    cfg_t *simd8_cfg = NULL, *simd16_cfg = NULL, *simd32_cfg = NULL,
@@ -8263,95 +8012,6 @@ brw_cs_get_dispatch_info(const struct intel_device_info *devinfo,
    return info;
 }
 
-static uint8_t
-compile_single_bs(const struct brw_compiler *compiler,
-                  struct brw_compile_bs_params *params,
-                  const struct brw_bs_prog_key *key,
-                  struct brw_bs_prog_data *prog_data,
-                  nir_shader *shader,
-                  fs_generator *g,
-                  struct brw_compile_stats *stats,
-                  int *prog_offset)
-{
-   const bool debug_enabled = brw_should_print_shader(shader, DEBUG_RT);
-
-   prog_data->base.stage = shader->info.stage;
-   prog_data->max_stack_size = MAX2(prog_data->max_stack_size,
-                                    shader->scratch_size);
-
-   const unsigned max_dispatch_width = 16;
-   brw_nir_apply_key(shader, compiler, &key->base, max_dispatch_width);
-   brw_postprocess_nir(shader, compiler, debug_enabled,
-                       key->base.robust_flags);
-
-   brw_simd_selection_state simd_state{
-      .devinfo = compiler->devinfo,
-      .prog_data = prog_data,
-
-      /* Since divergence is a lot more likely in RT than compute, it makes
-       * sense to limit ourselves to the smallest available SIMD for now.
-       */
-      .required_width = compiler->devinfo->ver >= 20 ? 16u : 8u,
-   };
-
-   std::unique_ptr<fs_visitor> v[2];
-
-   for (unsigned simd = 0; simd < ARRAY_SIZE(v); simd++) {
-      if (!brw_simd_should_compile(simd_state, simd))
-         continue;
-
-      const unsigned dispatch_width = 8u << simd;
-
-      if (dispatch_width == 8 && compiler->devinfo->ver >= 20)
-         continue;
-
-      v[simd] = std::make_unique<fs_visitor>(compiler, &params->base,
-                                             &key->base,
-                                             &prog_data->base, shader,
-                                             dispatch_width,
-                                             stats != NULL,
-                                             debug_enabled);
-
-      const bool allow_spilling = !brw_simd_any_compiled(simd_state);
-      if (v[simd]->run_bs(allow_spilling)) {
-         brw_simd_mark_compiled(simd_state, simd, v[simd]->spilled_any_registers);
-      } else {
-         simd_state.error[simd] = ralloc_strdup(params->base.mem_ctx,
-                                                v[simd]->fail_msg);
-         if (simd > 0) {
-            brw_shader_perf_log(compiler, params->base.log_data,
-                                "SIMD%u shader failed to compile: %s",
-                                dispatch_width, v[simd]->fail_msg);
-         }
-      }
-   }
-
-   const int selected_simd = brw_simd_select(simd_state);
-   if (selected_simd < 0) {
-      params->base.error_str =
-         ralloc_asprintf(params->base.mem_ctx,
-                         "Can't compile shader: "
-                         "SIMD8 '%s' and SIMD16 '%s'.\n",
-                         simd_state.error[0], simd_state.error[1]);
-      return 0;
-   }
-
-   assert(selected_simd < int(ARRAY_SIZE(v)));
-   fs_visitor *selected = v[selected_simd].get();
-   assert(selected);
-
-   const unsigned dispatch_width = selected->dispatch_width;
-
-   int offset = g->generate_code(selected->cfg, dispatch_width, selected->shader_stats,
-                                 selected->performance_analysis.require(), stats);
-   if (prog_offset)
-      *prog_offset = offset;
-   else
-      assert(offset == 0);
-
-   return dispatch_width;
-}
-
 uint64_t
 brw_bsr(const struct intel_device_info *devinfo,
         uint32_t offset, uint8_t simd_size, uint8_t local_arg_offset)
@@ -8363,83 +8023,6 @@ brw_bsr(const struct intel_device_info *devinfo,
    return offset |
           SET_BITS(simd_size == 8, 4, 4) |
           SET_BITS(local_arg_offset / 8, 2, 0);
-}
-
-const unsigned *
-brw_compile_bs(const struct brw_compiler *compiler,
-               struct brw_compile_bs_params *params)
-{
-   nir_shader *shader = params->base.nir;
-   struct brw_bs_prog_data *prog_data = params->prog_data;
-   unsigned num_resume_shaders = params->num_resume_shaders;
-   nir_shader **resume_shaders = params->resume_shaders;
-   const bool debug_enabled = brw_should_print_shader(shader, DEBUG_RT);
-
-   prog_data->base.stage = shader->info.stage;
-   prog_data->base.ray_queries = shader->info.ray_queries;
-   prog_data->base.total_scratch = 0;
-
-   prog_data->max_stack_size = 0;
-   prog_data->num_resume_shaders = num_resume_shaders;
-
-   fs_generator g(compiler, &params->base, &prog_data->base,
-                  false, shader->info.stage);
-   if (unlikely(debug_enabled)) {
-      char *name = ralloc_asprintf(params->base.mem_ctx,
-                                   "%s %s shader %s",
-                                   shader->info.label ?
-                                      shader->info.label : "unnamed",
-                                   gl_shader_stage_name(shader->info.stage),
-                                   shader->info.name);
-      g.enable_debug(name);
-   }
-
-   prog_data->simd_size =
-      compile_single_bs(compiler, params, params->key, prog_data,
-                        shader, &g, params->base.stats, NULL);
-   if (prog_data->simd_size == 0)
-      return NULL;
-
-   uint64_t *resume_sbt = ralloc_array(params->base.mem_ctx,
-                                       uint64_t, num_resume_shaders);
-   for (unsigned i = 0; i < num_resume_shaders; i++) {
-      if (INTEL_DEBUG(DEBUG_RT)) {
-         char *name = ralloc_asprintf(params->base.mem_ctx,
-                                      "%s %s resume(%u) shader %s",
-                                      shader->info.label ?
-                                         shader->info.label : "unnamed",
-                                      gl_shader_stage_name(shader->info.stage),
-                                      i, shader->info.name);
-         g.enable_debug(name);
-      }
-
-      /* TODO: Figure out shader stats etc. for resume shaders */
-      int offset = 0;
-      uint8_t simd_size =
-         compile_single_bs(compiler, params, params->key,
-                           prog_data, resume_shaders[i], &g, NULL, &offset);
-      if (simd_size == 0)
-         return NULL;
-
-      assert(offset > 0);
-      resume_sbt[i] = brw_bsr(compiler->devinfo, offset, simd_size, 0);
-   }
-
-   /* We only have one constant data so we want to make sure they're all the
-    * same.
-    */
-   for (unsigned i = 0; i < num_resume_shaders; i++) {
-      assert(resume_shaders[i]->constant_data_size ==
-             shader->constant_data_size);
-      assert(memcmp(resume_shaders[i]->constant_data,
-                    shader->constant_data,
-                    shader->constant_data_size) == 0);
-   }
-
-   g.add_const_data(shader->constant_data, shader->constant_data_size);
-   g.add_resume_sbt(num_resume_shaders, resume_sbt);
-
-   return g.get_assembly();
 }
 
 /**

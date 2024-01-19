@@ -153,28 +153,6 @@ protected:
    fs_reg subgroup_id_;
 };
 
-struct task_mesh_thread_payload : public cs_thread_payload {
-   task_mesh_thread_payload(fs_visitor &v);
-
-   fs_reg extended_parameter_0;
-   fs_reg local_index;
-   fs_reg inline_parameter;
-
-   fs_reg urb_output;
-
-   /* URB to read Task memory inputs. Only valid for MESH stage. */
-   fs_reg task_urb_input;
-};
-
-struct bs_thread_payload : public thread_payload {
-   bs_thread_payload(const fs_visitor &v);
-
-   fs_reg global_arg_ptr;
-   fs_reg local_arg_ptr;
-
-   void load_shader_type(const brw::fs_builder &bld, fs_reg &dest) const;
-};
-
 class fs_instruction_scheduler;
 
 /**
@@ -231,9 +209,6 @@ public:
    bool run_tes();
    bool run_gs();
    bool run_cs(bool allow_spilling);
-   bool run_bs(bool allow_spilling);
-   bool run_task(bool allow_spilling);
-   bool run_mesh(bool allow_spilling);
    void optimize();
    void allocate_registers(bool allow_spilling);
    uint32_t compute_max_register_pressure();
@@ -413,16 +388,6 @@ public:
       return *static_cast<cs_thread_payload *>(this->payload_);
    }
 
-   task_mesh_thread_payload &task_mesh_payload() {
-      assert(stage == MESA_SHADER_TASK || stage == MESA_SHADER_MESH);
-      return *static_cast<task_mesh_thread_payload *>(this->payload_);
-   }
-
-   bs_thread_payload &bs_payload() {
-      assert(stage >= MESA_SHADER_RAYGEN && stage <= MESA_SHADER_CALLABLE);
-      return *static_cast<bs_thread_payload *>(this->payload_);
-   }
-
    bool source_depth_to_render_target;
    bool runtime_check_aads_emit;
 
@@ -495,7 +460,6 @@ public:
                      struct brw_compile_stats *stats,
                      unsigned max_polygons = 0);
    void add_const_data(void *data, unsigned size);
-   void add_resume_sbt(unsigned num_resume_shaders, uint64_t *sbt);
    const unsigned *get_assembly();
 
 private:

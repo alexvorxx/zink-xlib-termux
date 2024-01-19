@@ -1185,11 +1185,6 @@ namespace {
                abort();
             }
 
-         case GEN_RT_SFID_BINDLESS_THREAD_DISPATCH:
-         case GEN_RT_SFID_RAY_TRACE_ACCELERATOR:
-            return calculate_desc(info, EU_UNIT_SPAWNER, 2, 0, 0, 0 /* XXX */, 0,
-                                  10 /* XXX */, 0, 0, 0, 0, 0);
-
          case BRW_SFID_URB:
             return calculate_desc(info, EU_UNIT_URB, 2, 0, 0, 0, 6 /* XXX */,
                                   32 /* XXX */, 200 /* XXX */, 0, 0, 0, 0);

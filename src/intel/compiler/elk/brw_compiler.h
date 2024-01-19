@@ -149,11 +149,6 @@ struct brw_compiler {
    int spilling_rate;
 
    struct nir_shader *clc_shader;
-
-   struct {
-      unsigned mue_header_packing;
-      bool mue_compaction;
-   } mesh;
 };
 
 #define brw_shader_debug_log(compiler, data, fmt, ... ) do {    \
@@ -174,19 +169,6 @@ struct brw_compiler {
  * disabled.
  */
 #define BRW_SUBGROUP_SIZE 32
-
-static inline bool
-brw_shader_stage_is_bindless(gl_shader_stage stage)
-{
-   return stage >= MESA_SHADER_RAYGEN &&
-          stage <= MESA_SHADER_CALLABLE;
-}
-
-static inline bool
-brw_shader_stage_requires_bindless_resources(gl_shader_stage stage)
-{
-   return brw_shader_stage_is_bindless(stage) || gl_shader_stage_is_mesh(stage);
-}
 
 /**
  * Program key structures.
@@ -429,19 +411,6 @@ struct brw_gs_prog_key
    unsigned padding:27;
 };
 
-struct brw_task_prog_key
-{
-   struct brw_base_prog_key base;
-};
-
-struct brw_mesh_prog_key
-{
-   struct brw_base_prog_key base;
-
-   bool compact_mue:1;
-   unsigned padding:31;
-};
-
 enum brw_sf_primitive {
    BRW_SF_PRIM_POINTS = 0,
    BRW_SF_PRIM_LINES = 1,
@@ -568,28 +537,15 @@ struct brw_wm_prog_key {
 
    enum brw_sometimes line_aa:2;
 
-   /* Whether the preceding shader stage is mesh */
-   enum brw_sometimes mesh_input:2;
-
    bool coherent_fb_fetch:1;
    bool ignore_sample_mask_out:1;
    bool coarse_pixel:1;
 
-   uint64_t padding:53;
+   uint64_t padding:55;
 };
 
 struct brw_cs_prog_key {
    struct brw_base_prog_key base;
-};
-
-struct brw_bs_prog_key {
-   struct brw_base_prog_key base;
-
-   /* Represents enum enum brw_rt_ray_flags values given at pipeline creation
-    * to be combined with ray_flags handed to the traceRayEXT() calls by the
-    * shader.
-    */
-   uint32_t pipeline_ray_flags;
 };
 
 struct brw_ff_gs_prog_key {
@@ -633,9 +589,6 @@ union brw_any_prog_key {
    struct brw_gs_prog_key gs;
    struct brw_wm_prog_key wm;
    struct brw_cs_prog_key cs;
-   struct brw_bs_prog_key bs;
-   struct brw_task_prog_key task;
-   struct brw_mesh_prog_key mesh;
 };
 
 PRAGMA_DIAGNOSTIC_POP
@@ -732,8 +685,6 @@ enum brw_shader_reloc_id {
    BRW_SHADER_RELOC_CONST_DATA_ADDR_LOW,
    BRW_SHADER_RELOC_CONST_DATA_ADDR_HIGH,
    BRW_SHADER_RELOC_SHADER_START_OFFSET,
-   BRW_SHADER_RELOC_RESUME_SBT_ADDR_LOW,
-   BRW_SHADER_RELOC_RESUME_SBT_ADDR_HIGH,
    BRW_SHADER_RELOC_DESCRIPTORS_ADDR_HIGH,
 };
 
@@ -1298,22 +1249,6 @@ brw_cs_prog_data_prog_offset(const struct brw_cs_prog_data *prog_data,
    return prog_data->prog_offset[index];
 }
 
-struct brw_bs_prog_data {
-   struct brw_stage_prog_data base;
-
-   /** SIMD size of the root shader */
-   uint8_t simd_size;
-
-   /** Maximum stack size of all shaders */
-   uint32_t max_stack_size;
-
-   /** Offset into the shader where the resume SBT is located */
-   uint32_t resume_sbt_offset;
-
-   /** Number of resume shaders */
-   uint32_t num_resume_shaders;
-};
-
 struct brw_ff_gs_prog_data {
    unsigned urb_read_length;
    unsigned total_grf;
@@ -1541,58 +1476,6 @@ struct brw_clip_prog_data {
    uint32_t total_grf;
 };
 
-struct brw_tue_map {
-   uint32_t size_dw;
-
-   uint32_t per_task_data_start_dw;
-};
-
-struct brw_mue_map {
-   int32_t start_dw[VARYING_SLOT_MAX];
-   uint32_t len_dw[VARYING_SLOT_MAX];
-   uint32_t per_primitive_indices_dw;
-
-   uint32_t size_dw;
-
-   uint32_t max_primitives;
-   uint32_t per_primitive_start_dw;
-   uint32_t per_primitive_header_size_dw;
-   uint32_t per_primitive_data_size_dw;
-   uint32_t per_primitive_pitch_dw;
-   bool user_data_in_primitive_header;
-
-   uint32_t max_vertices;
-   uint32_t per_vertex_start_dw;
-   uint32_t per_vertex_header_size_dw;
-   uint32_t per_vertex_data_size_dw;
-   uint32_t per_vertex_pitch_dw;
-   bool user_data_in_vertex_header;
-};
-
-struct brw_task_prog_data {
-   struct brw_cs_prog_data base;
-   struct brw_tue_map map;
-   bool uses_drawid;
-};
-
-enum brw_mesh_index_format {
-   BRW_INDEX_FORMAT_U32,
-   BRW_INDEX_FORMAT_U888X,
-};
-
-struct brw_mesh_prog_data {
-   struct brw_cs_prog_data base;
-   struct brw_mue_map map;
-
-   uint32_t clip_distance_mask;
-   uint32_t cull_distance_mask;
-   uint16_t primitive_type;
-
-   enum brw_mesh_index_format index_format;
-
-   bool uses_drawid;
-};
-
 /* brw_any_prog_data is prog_data for any stage that maps to an API stage */
 union brw_any_prog_data {
    struct brw_stage_prog_data base;
@@ -1603,9 +1486,6 @@ union brw_any_prog_data {
    struct brw_gs_prog_data gs;
    struct brw_wm_prog_data wm;
    struct brw_cs_prog_data cs;
-   struct brw_bs_prog_data bs;
-   struct brw_task_prog_data task;
-   struct brw_mesh_prog_data mesh;
 };
 
 #define DEFINE_PROG_DATA_DOWNCAST(STAGE, CHECK)                            \
@@ -1630,15 +1510,11 @@ DEFINE_PROG_DATA_DOWNCAST(tes, prog_data->stage == MESA_SHADER_TESS_EVAL)
 DEFINE_PROG_DATA_DOWNCAST(gs,  prog_data->stage == MESA_SHADER_GEOMETRY)
 DEFINE_PROG_DATA_DOWNCAST(wm,  prog_data->stage == MESA_SHADER_FRAGMENT)
 DEFINE_PROG_DATA_DOWNCAST(cs,  gl_shader_stage_uses_workgroup(prog_data->stage))
-DEFINE_PROG_DATA_DOWNCAST(bs,  brw_shader_stage_is_bindless(prog_data->stage))
 
 DEFINE_PROG_DATA_DOWNCAST(vue, prog_data->stage == MESA_SHADER_VERTEX ||
                                prog_data->stage == MESA_SHADER_TESS_CTRL ||
                                prog_data->stage == MESA_SHADER_TESS_EVAL ||
                                prog_data->stage == MESA_SHADER_GEOMETRY)
-
-DEFINE_PROG_DATA_DOWNCAST(task, prog_data->stage == MESA_SHADER_TASK)
-DEFINE_PROG_DATA_DOWNCAST(mesh, prog_data->stage == MESA_SHADER_MESH)
 
 /* These are not really brw_stage_prog_data. */
 DEFINE_PROG_DATA_DOWNCAST(ff_gs, true)
@@ -1817,29 +1693,6 @@ brw_compile_clip(const struct brw_compiler *compiler,
                  struct intel_vue_map *vue_map,
                  unsigned *final_assembly_size);
 
-struct brw_compile_task_params {
-   struct brw_compile_params base;
-
-   const struct brw_task_prog_key *key;
-   struct brw_task_prog_data *prog_data;
-};
-
-const unsigned *
-brw_compile_task(const struct brw_compiler *compiler,
-                 struct brw_compile_task_params *params);
-
-struct brw_compile_mesh_params {
-   struct brw_compile_params base;
-
-   const struct brw_mesh_prog_key *key;
-   struct brw_mesh_prog_data *prog_data;
-   const struct brw_tue_map *tue_map;
-};
-
-const unsigned *
-brw_compile_mesh(const struct brw_compiler *compiler,
-                 struct brw_compile_mesh_params *params);
-
 /**
  * Parameters for compiling a fragment shader.
  *
@@ -1888,30 +1741,6 @@ struct brw_compile_cs_params {
 const unsigned *
 brw_compile_cs(const struct brw_compiler *compiler,
                struct brw_compile_cs_params *params);
-
-/**
- * Parameters for compiling a Bindless shader.
- *
- * Some of these will be modified during the shader compilation.
- */
-struct brw_compile_bs_params {
-   struct brw_compile_params base;
-
-   const struct brw_bs_prog_key *key;
-   struct brw_bs_prog_data *prog_data;
-
-   unsigned num_resume_shaders;
-   struct nir_shader **resume_shaders;
-};
-
-/**
- * Compile a Bindless shader.
- *
- * Returns the final assembly and updates the parameters structure.
- */
-const unsigned *
-brw_compile_bs(const struct brw_compiler *compiler,
-               struct brw_compile_bs_params *params);
 
 /**
  * Compile a fixed function geometry shader.
@@ -2082,15 +1911,6 @@ brw_compute_first_urb_slot_required(uint64_t inputs_read,
 
    return 0;
 }
-
-/* From InlineData in 3DSTATE_TASK_SHADER_DATA and 3DSTATE_MESH_SHADER_DATA. */
-#define BRW_TASK_MESH_INLINE_DATA_SIZE_DW 8
-
-/* InlineData[0-1] is used for Vulkan descriptor. */
-#define BRW_TASK_MESH_PUSH_CONSTANTS_START_DW 2
-
-#define BRW_TASK_MESH_PUSH_CONSTANTS_SIZE_DW \
-   (BRW_TASK_MESH_INLINE_DATA_SIZE_DW - BRW_TASK_MESH_PUSH_CONSTANTS_START_DW)
 
 /**
  * This enum is used as the base indice of the nir_load_topology_id_intel

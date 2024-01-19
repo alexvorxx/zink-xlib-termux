@@ -2907,9 +2907,8 @@ brw_compact_instructions(struct brw_codegen *p, int start_offset,
       if (try_compact_instruction(&c, dst, &inst)) {
          compacted_count++;
 
-         if (INTEL_DEBUG(DEBUG_VS | DEBUG_GS | DEBUG_TCS | DEBUG_TASK |
-                         DEBUG_WM | DEBUG_CS | DEBUG_TES | DEBUG_MESH |
-                         DEBUG_RT)) {
+         if (INTEL_DEBUG(DEBUG_VS | DEBUG_GS | DEBUG_TCS |
+                         DEBUG_WM | DEBUG_CS | DEBUG_TES)) {
             brw_inst uncompacted;
             uncompact_instruction(&c, &uncompacted, dst);
             if (memcmp(&saved, &uncompacted, sizeof(uncompacted))) {

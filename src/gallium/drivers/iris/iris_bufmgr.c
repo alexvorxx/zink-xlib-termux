@@ -2478,7 +2478,7 @@ iris_bufmgr_get_for_fd(int fd, bool bo_reuse)
       }
    }
 
-   if (!intel_get_device_info_from_fd(fd, &devinfo))
+   if (!intel_get_device_info_from_fd(fd, &devinfo, 8, -1))
       return NULL;
 
    if (devinfo.ver < 8 || devinfo.platform == INTEL_PLATFORM_CHV)

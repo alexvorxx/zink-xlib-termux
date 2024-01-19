@@ -1618,7 +1618,7 @@ intel_device_info_calc_engine_prefetch(const struct intel_device_info *devinfo,
 }
 
 bool
-intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo)
+intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo, int min_ver, int max_ver)
 {
    /* Get PCI info.
     *
@@ -1639,6 +1639,12 @@ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo)
       drmFreeDevice(&drmdev);
       return false;
    }
+   
+   if ((min_ver > 0 && devinfo->ver < min_ver) || (max_ver > 0 && devinfo->ver > max_ver)) {
+      drmFreeDevice(&drmdev);
+      return false;
+   }
+
    devinfo->pci_domain = drmdev->businfo.pci->domain;
    devinfo->pci_bus = drmdev->businfo.pci->bus;
    devinfo->pci_dev = drmdev->businfo.pci->dev;

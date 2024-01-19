@@ -641,7 +641,7 @@ intel_vram_all_mappable(const struct intel_device_info *devinfo)
    return devinfo->mem.vram.unmappable.size == 0;
 }
 
-bool intel_get_device_info_from_fd(int fh, struct intel_device_info *devinfo);
+bool intel_get_device_info_from_fd(int fh, struct intel_device_info *devinfo, int min_ver, int max_ver);
 bool intel_get_device_info_from_pci_id(int pci_id,
                                        struct intel_device_info *devinfo);
 

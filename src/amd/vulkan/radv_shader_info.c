@@ -681,8 +681,7 @@ gather_shader_info_gs(struct radv_device *device, const nir_shader *nir, struct 
 }
 
 static void
-gather_shader_info_mesh(struct radv_device *device, const nir_shader *nir,
-                        const struct radv_graphics_state_key *gfx_state, struct radv_shader_info *info)
+gather_shader_info_mesh(struct radv_device *device, const nir_shader *nir, struct radv_shader_info *info)
 {
    struct gfx10_ngg_info *ngg_info = &info->ngg_info;
 
@@ -1214,7 +1213,7 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
       gather_shader_info_vs(device, nir, gfx_state, stage_key, info);
       break;
    case MESA_SHADER_MESH:
-      gather_shader_info_mesh(device, nir, gfx_state, info);
+      gather_shader_info_mesh(device, nir, info);
       break;
    default:
       if (gl_shader_stage_is_rt(nir->info.stage))

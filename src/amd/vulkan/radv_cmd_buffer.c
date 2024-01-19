@@ -9063,8 +9063,8 @@ radv_get_needed_dynamic_states(struct radv_cmd_buffer *cmd_buffer)
 {
    uint64_t dynamic_states = RADV_DYNAMIC_ALL;
 
-   if (cmd_buffer->state.emitted_graphics_pipeline)
-      return cmd_buffer->state.emitted_graphics_pipeline->needed_dynamic_state;
+   if (cmd_buffer->state.graphics_pipeline)
+      return cmd_buffer->state.graphics_pipeline->needed_dynamic_state;
 
    /* Clear unnecessary dynamic states for shader objects. */
    if (!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL])

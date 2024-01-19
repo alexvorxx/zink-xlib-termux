@@ -8,17 +8,17 @@ http://0x04.net/cgit/index.cgi/rules-ng-ng
 git clone git://0x04.net/rules-ng-ng
 
 The rules-ng-ng source files this header was generated from are:
-- state.xml     (  28218 bytes, from 2023-11-13 11:29:31)
-- common.xml    (  35465 bytes, from 2023-11-13 11:29:31)
-- common_3d.xml (  15069 bytes, from 2023-11-13 11:29:31)
-- state_hi.xml  (  34935 bytes, from 2023-11-13 11:29:31)
-- copyright.xml (   1597 bytes, from 2018-02-10 13:09:26)
-- state_2d.xml  (  52271 bytes, from 2023-09-13 13:37:23)
-- state_3d.xml  (  86123 bytes, from 2023-11-13 12:42:26)
-- state_blt.xml (  14424 bytes, from 2023-09-13 13:37:23)
-- state_vg.xml  (   5975 bytes, from 2018-02-10 13:09:26)
+- state.xml     (  29355 bytes, from 2024-01-19 15:52:43)
+- common.xml    (  35664 bytes, from 2024-01-19 15:52:43)
+- common_3d.xml (  15069 bytes, from 2024-01-19 15:52:43)
+- state_hi.xml  (  35854 bytes, from 2024-01-19 15:52:43)
+- copyright.xml (   1597 bytes, from 2022-05-20 05:37:53)
+- state_2d.xml  (  52271 bytes, from 2024-01-19 15:52:43)
+- state_3d.xml  (  89522 bytes, from 2024-01-19 15:52:43)
+- state_blt.xml (  14592 bytes, from 2024-01-19 15:52:43)
+- state_vg.xml  (   5975 bytes, from 2022-05-20 05:37:53)
 
-Copyright (C) 2012-2023 by the following authors:
+Copyright (C) 2012-2024 by the following authors:
 - Wladimir J. van der Laan <laanwj@gmail.com>
 - Christian Gmeiner <christian.gmeiner@gmail.com>
 - Lucas Stach <l.stach@pengutronix.de>
@@ -243,6 +243,8 @@ DEALINGS IN THE SOFTWARE.
 
 #define VIVS_FE_ROBUSTNESS_UNK007F8				0x000007f8
 
+#define VIVS_FE_MULTI_CLUSTER_UNK007FC				0x000007fc
+
 #define VIVS_GL							0x00000000
 
 #define VIVS_GL_PIPE_SELECT					0x00003800
@@ -284,6 +286,7 @@ DEALINGS IN THE SOFTWARE.
 #define VIVS_GL_FLUSH_CACHE_UNK11				0x00000800
 #define VIVS_GL_FLUSH_CACHE_DESCRIPTOR_UNK12			0x00001000
 #define VIVS_GL_FLUSH_CACHE_DESCRIPTOR_UNK13			0x00002000
+#define VIVS_GL_FLUSH_CACHE_UNK14				0x00004000
 
 #define VIVS_GL_FLUSH_MMU					0x00003810
 #define VIVS_GL_FLUSH_MMU_FLUSH_FEMMU				0x00000001
@@ -443,6 +446,18 @@ DEALINGS IN THE SOFTWARE.
 
 #define VIVS_GL_SECURITY_UNK3904				0x00003904
 
+#define VIVS_GL_MULTI_CLUSTER_UNK3908				0x00003908
+#define VIVS_GL_MULTI_CLUSTER_UNK3908_UNK0__MASK		0x00000007
+#define VIVS_GL_MULTI_CLUSTER_UNK3908_UNK0__SHIFT		0
+#define VIVS_GL_MULTI_CLUSTER_UNK3908_UNK0(x)			(((x) << VIVS_GL_MULTI_CLUSTER_UNK3908_UNK0__SHIFT) & VIVS_GL_MULTI_CLUSTER_UNK3908_UNK0__MASK)
+
+#define VIVS_GL_MULTI_CLUSTER_UNK3910(i0)		       (0x00003910 + 0x4*(i0))
+#define VIVS_GL_MULTI_CLUSTER_UNK3910__ESIZE			0x00000004
+#define VIVS_GL_MULTI_CLUSTER_UNK3910__LEN			0x00000004
+#define VIVS_GL_MULTI_CLUSTER_UNK3910_CLUSTER_ALIVE_MASK__MASK	0x000000ff
+#define VIVS_GL_MULTI_CLUSTER_UNK3910_CLUSTER_ALIVE_MASK__SHIFT	0
+#define VIVS_GL_MULTI_CLUSTER_UNK3910_CLUSTER_ALIVE_MASK(x)	(((x) << VIVS_GL_MULTI_CLUSTER_UNK3910_CLUSTER_ALIVE_MASK__SHIFT) & VIVS_GL_MULTI_CLUSTER_UNK3910_CLUSTER_ALIVE_MASK__MASK)
+
 #define VIVS_GL_NN_CONFIG					0x00003930
 #define VIVS_GL_NN_CONFIG_UNK0__MASK				0x00000003
 #define VIVS_GL_NN_CONFIG_UNK0__SHIFT				0
@@ -467,7 +482,12 @@ DEALINGS IN THE SOFTWARE.
 
 #define VIVS_GL_TP_CONFIG					0x0000394c
 
+#define VIVS_GL_UNK03950					0x00003950
+
 #define VIVS_GL_UNK03A00					0x00003a00
+#define VIVS_GL_UNK03A00_UNK0__MASK				0x00000007
+#define VIVS_GL_UNK03A00_UNK0__SHIFT				0
+#define VIVS_GL_UNK03A00_UNK0(x)				(((x) << VIVS_GL_UNK03A00_UNK0__SHIFT) & VIVS_GL_UNK03A00_UNK0__MASK)
 
 #define VIVS_GL_UNK03A04					0x00003a04
 
@@ -543,6 +563,13 @@ DEALINGS IN THE SOFTWARE.
 #define VIVS_DUMMY						0x00000000
 
 #define VIVS_DUMMY_DUMMY					0x0003fffc
+
+#define VIVS_WD							0x00000000
+
+#define VIVS_WD_UNK18404					0x00018404
+#define VIVS_WD_UNK18404_UNK0__MASK				0x00000003
+#define VIVS_WD_UNK18404_UNK0__SHIFT				0
+#define VIVS_WD_UNK18404_UNK0(x)				(((x) << VIVS_WD_UNK18404_UNK0__SHIFT) & VIVS_WD_UNK18404_UNK0__MASK)
 
 
 #endif /* STATE_XML */

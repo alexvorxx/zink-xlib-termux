@@ -1086,6 +1086,15 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    assert(pdev->mem_heap_count <= ARRAY_SIZE(pdev->mem_heaps));
    assert(pdev->mem_type_count <= ARRAY_SIZE(pdev->mem_types));
 
+   pdev->queue_families[pdev->queue_family_count++] = (struct nvk_queue_family) {
+      .queue_flags = VK_QUEUE_GRAPHICS_BIT |
+                     VK_QUEUE_COMPUTE_BIT |
+                     VK_QUEUE_TRANSFER_BIT |
+                     VK_QUEUE_SPARSE_BINDING_BIT,
+      .queue_count = 1,
+   };
+   assert(pdev->queue_family_count <= ARRAY_SIZE(pdev->queue_families));
+
    unsigned st_idx = 0;
    pdev->syncobj_sync_type = syncobj_sync_type;
    pdev->sync_types[st_idx++] = &pdev->syncobj_sync_type;
@@ -1157,18 +1166,20 @@ nvk_GetPhysicalDeviceQueueFamilyProperties2(
    uint32_t *pQueueFamilyPropertyCount,
    VkQueueFamilyProperties2 *pQueueFamilyProperties)
 {
-   // VK_FROM_HANDLE(nvk_physical_device, pdev, physicalDevice);
-   VK_OUTARRAY_MAKE_TYPED(
-      VkQueueFamilyProperties2, out, pQueueFamilyProperties, pQueueFamilyPropertyCount);
+   VK_FROM_HANDLE(nvk_physical_device, pdev, physicalDevice);
+   VK_OUTARRAY_MAKE_TYPED(VkQueueFamilyProperties2, out, pQueueFamilyProperties,
+                          pQueueFamilyPropertyCount);
 
-   vk_outarray_append_typed(VkQueueFamilyProperties2, &out, p) {
-      p->queueFamilyProperties.queueFlags = VK_QUEUE_GRAPHICS_BIT |
-                                            VK_QUEUE_COMPUTE_BIT |
-                                            VK_QUEUE_TRANSFER_BIT;
-      p->queueFamilyProperties.queueFlags |= VK_QUEUE_SPARSE_BINDING_BIT;
-      p->queueFamilyProperties.queueCount = 1;
-      p->queueFamilyProperties.timestampValidBits = 64;
-      p->queueFamilyProperties.minImageTransferGranularity = (VkExtent3D){1, 1, 1};
+   for (uint8_t i = 0; i < pdev->queue_family_count; i++) {
+      const struct nvk_queue_family *queue_family = &pdev->queue_families[i];
+
+      vk_outarray_append_typed(VkQueueFamilyProperties2, &out, p) {
+         p->queueFamilyProperties.queueFlags = queue_family->queue_flags;
+         p->queueFamilyProperties.queueCount = queue_family->queue_count;
+         p->queueFamilyProperties.timestampValidBits = 64;
+         p->queueFamilyProperties.minImageTransferGranularity =
+            (VkExtent3D){1, 1, 1};
+      }
    }
 }
 

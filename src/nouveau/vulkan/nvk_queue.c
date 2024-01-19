@@ -314,7 +314,8 @@ nvk_queue_submit(struct vk_queue *vk_queue,
 }
 
 static VkResult
-nvk_queue_init_context_state(struct nvk_queue *queue)
+nvk_queue_init_context_state(struct nvk_queue *queue,
+                             VkQueueFlags queue_flags)
 {
    struct nvk_device *dev = nvk_queue_device(queue);
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
@@ -337,13 +338,17 @@ nvk_queue_init_context_state(struct nvk_queue *queue)
       });
    }
 
-   result = nvk_push_draw_state_init(dev, p);
-   if (result != VK_SUCCESS)
-      return result;
+   if (queue_flags & VK_QUEUE_GRAPHICS_BIT) {
+      result = nvk_push_draw_state_init(dev, p);
+      if (result != VK_SUCCESS)
+         return result;
+   }
 
-   result = nvk_push_dispatch_state_init(dev, p);
-   if (result != VK_SUCCESS)
-      return result;
+   if (queue_flags & VK_QUEUE_COMPUTE_BIT) {
+      result = nvk_push_dispatch_state_init(dev, p);
+      if (result != VK_SUCCESS)
+         return result;
+   }
 
    return nvk_queue_submit_simple(queue, nv_push_dw_count(&push),
                                   push_data, 0, NULL);
@@ -354,7 +359,22 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
                const VkDeviceQueueCreateInfo *pCreateInfo,
                uint32_t index_in_family)
 {
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
    VkResult result;
+
+   assert(pCreateInfo->queueFamilyIndex < pdev->queue_family_count);
+   const struct nvk_queue_family *queue_family =
+      &pdev->queue_families[pCreateInfo->queueFamilyIndex];
+
+   VkQueueFlags queue_flags = queue_family->queue_flags;
+
+   /* We rely on compute shaders for queries */
+   if (queue_family->queue_flags & VK_QUEUE_GRAPHICS_BIT)
+      queue_flags |= VK_QUEUE_COMPUTE_BIT;
+
+   /* We currently rely on 3D engine MMEs for indirect dispatch */
+   if (queue_family->queue_flags & VK_QUEUE_COMPUTE_BIT)
+      queue_flags |= VK_QUEUE_GRAPHICS_BIT;
 
    result = vk_queue_init(&queue->vk, &dev->vk, pCreateInfo, index_in_family);
    if (result != VK_SUCCESS)
@@ -364,11 +384,11 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
 
    nvk_queue_state_init(&queue->state);
 
-   result = nvk_queue_init_drm_nouveau(dev, queue);
+   result = nvk_queue_init_drm_nouveau(dev, queue, queue_flags);
    if (result != VK_SUCCESS)
       goto fail_init;
 
-   result = nvk_queue_init_context_state(queue);
+   result = nvk_queue_init_context_state(queue, queue_flags);
    if (result != VK_SUCCESS)
       goto fail_drm;
 

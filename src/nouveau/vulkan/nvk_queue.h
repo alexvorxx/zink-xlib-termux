@@ -82,7 +82,8 @@ VkResult nvk_queue_submit_simple(struct nvk_queue *queue,
                                  struct nouveau_ws_bo **extra_bos);
 
 VkResult nvk_queue_init_drm_nouveau(struct nvk_device *dev,
-                                    struct nvk_queue *queue);
+                                    struct nvk_queue *queue,
+                                    VkQueueFlags queue_flags);
 
 void nvk_queue_finish_drm_nouveau(struct nvk_device *dev,
                                   struct nvk_queue *queue);

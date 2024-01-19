@@ -291,15 +291,19 @@ push_submit(struct nvk_queue *queue, struct push_builder *pb, bool sync)
 
 VkResult
 nvk_queue_init_drm_nouveau(struct nvk_device *dev,
-                           struct nvk_queue *queue)
+                           struct nvk_queue *queue,
+                           VkQueueFlags queue_flags)
 {
    VkResult result;
    int err;
 
-   const enum nouveau_ws_engines engines =
-      NOUVEAU_WS_ENGINE_COPY |
-      NOUVEAU_WS_ENGINE_3D |
-      NOUVEAU_WS_ENGINE_COMPUTE;
+   enum nouveau_ws_engines engines = 0;
+   if (queue_flags & VK_QUEUE_GRAPHICS_BIT)
+      engines |= NOUVEAU_WS_ENGINE_3D;
+   if (queue_flags & VK_QUEUE_COMPUTE_BIT)
+      engines |= NOUVEAU_WS_ENGINE_COMPUTE;
+   if (queue_flags & VK_QUEUE_TRANSFER_BIT)
+      engines |= NOUVEAU_WS_ENGINE_COPY;
 
    err = nouveau_ws_context_create(dev->ws_dev, engines, &queue->drm.ws_ctx);
    if (err != 0) {

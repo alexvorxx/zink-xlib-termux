@@ -97,20 +97,9 @@ llvmpipe_create_texture_handle(struct pipe_context *pctx, struct pipe_sampler_vi
 }
 
 static void
-llvmpipe_delete_texture_handle(struct pipe_context *pctx, uint64_t _handle)
+llvmpipe_delete_texture_handle(struct pipe_context *pctx, uint64_t handle)
 {
-   if (!_handle)
-      return;
-
-   struct lp_texture_handle *handle = (void *)(uintptr_t)_handle;
-
-   struct lp_texture_functions *functions = handle->functions;
-   if (functions) {
-      assert(functions->ref_count);
-      functions->ref_count--;
-   }
-
-   free(handle);
+   free((void *)(uintptr_t)handle);
 }
 
 static uint64_t
@@ -589,7 +578,7 @@ compile_sample_functions(struct llvmpipe_context *ctx, struct lp_static_texture_
 
    struct lp_sampler_matrix *matrix = &ctx->sampler_matrix;
    for (uint32_t sample_key = 0; sample_key < LP_SAMPLE_KEY_COUNT; sample_key++) {
-      if (!matrix->sampler_keys[sample_key])
+      if (!BITSET_TEST(matrix->sample_keys, sample_key))
          continue;
 
       enum lp_sampler_op_type op_type = (sample_key & LP_SAMPLER_OP_TYPE_MASK) >> LP_SAMPLER_OP_TYPE_SHIFT;
@@ -613,9 +602,7 @@ llvmpipe_register_texture(struct llvmpipe_context *ctx, struct lp_static_texture
          continue;
 
       bool has_functions = sampled ? matrix->textures[i]->sampled : matrix->textures[i]->storage;
-
-      uint32_t prev_ref_count = matrix->textures[i]->ref_count++;
-      if (has_functions && prev_ref_count)
+      if (has_functions)
          return;
 
       packed = false;
@@ -631,7 +618,6 @@ llvmpipe_register_texture(struct llvmpipe_context *ctx, struct lp_static_texture
       entry = calloc(1, sizeof(struct lp_texture_functions));
       matrix->textures[dst_index] = entry;
 
-      entry->ref_count = 1;
       entry->state = *state;
       entry->image_functions = calloc(LP_TOTAL_IMAGE_OP_COUNT, sizeof(void **));
    } else {
@@ -694,7 +680,7 @@ llvmpipe_register_sampler(struct llvmpipe_context *ctx, struct lp_static_sampler
 
    for (uint32_t i = 0; i < matrix->texture_count; i++) {
       struct lp_texture_functions *texture = matrix->textures[i];
-      if (!texture->ref_count || !texture->sampled)
+      if (!texture->sampled)
          continue;
 
       texture->sampler_count = matrix->sampler_count;
@@ -722,27 +708,25 @@ static void
 register_sample_key(struct llvmpipe_context *ctx, uint32_t sample_key)
 {
    struct lp_sampler_matrix *matrix = &ctx->sampler_matrix;
-
-   uint32_t prev_ref_count = matrix->sampler_keys[sample_key]++;
-   if (prev_ref_count)
+   if (BITSET_TEST(matrix->sample_keys, sample_key))
       return;
+
+   BITSET_SET(matrix->sample_keys, sample_key);
 
    for (uint32_t texture_index = 0; texture_index < matrix->texture_count; texture_index++) {
       struct lp_texture_functions *texture = matrix->textures[texture_index];
-      if (!texture->ref_count || !texture->sampled)
+      if (!texture->sampled)
          continue;
 
       enum lp_sampler_op_type op_type = (sample_key & LP_SAMPLER_OP_TYPE_MASK) >> LP_SAMPLER_OP_TYPE_SHIFT;
       if (op_type == LP_SAMPLER_OP_FETCH) {
-         if (!texture->fetch_functions[sample_key]) {
-            struct lp_static_sampler_state dummy_sampler = { 0 };
-            texture->fetch_functions[sample_key] = compile_sample_function(ctx, &texture->state, &dummy_sampler, sample_key);
-         }
+         struct lp_static_sampler_state dummy_sampler = { 0 };
+         texture->fetch_functions[sample_key] = compile_sample_function(ctx, &texture->state, &dummy_sampler, sample_key);
          continue;
       }
 
       if (texture->state.format == PIPE_FORMAT_NONE) {
-         if (matrix->sampler_count && !texture->sample_functions[0][sample_key]) {
+         if (matrix->sampler_count) {
             struct lp_static_sampler_state dummy_sampler = { 0 };
             texture->sample_functions[0][sample_key] = compile_sample_function(ctx, &texture->state, &dummy_sampler, sample_key);
          }
@@ -750,21 +734,10 @@ register_sample_key(struct llvmpipe_context *ctx, uint32_t sample_key)
       }
 
       for (uint32_t sampler_index = 0; sampler_index < matrix->sampler_count; sampler_index++) {
-         if (!texture->sample_functions[sampler_index][sample_key]) {
-            texture->sample_functions[sampler_index][sample_key] = compile_sample_function(
-               ctx, &texture->state, matrix->samplers + sampler_index, sample_key);
-         }
+         texture->sample_functions[sampler_index][sample_key] = compile_sample_function(
+            ctx, &texture->state, matrix->samplers + sampler_index, sample_key);
       }
    }
-}
-
-static void
-unregister_sample_key(struct llvmpipe_context *ctx, uint32_t sample_key)
-{
-   struct lp_sampler_matrix *matrix = &ctx->sampler_matrix;
-
-   assert(matrix->sampler_keys[sample_key]);
-   matrix->sampler_keys[sample_key]--;
 }
 
 static void
@@ -778,29 +751,21 @@ register_image_op(struct llvmpipe_context *ctx, uint32_t op)
 
    for (uint32_t texture_index = 0; texture_index < matrix->texture_count; texture_index++) {
       struct lp_texture_functions *texture = matrix->textures[texture_index];
-      if (texture->ref_count && texture->storage)
+      if (texture->storage)
          texture->image_functions[op] = compile_image_function(ctx, &texture->state, op);
    }
 }
 
-struct register_shader_state {
-   struct llvmpipe_context *ctx;
-   bool unregister;
-};
-
 static bool
-register_instr(nir_builder *b, nir_instr *instr, void *_state)
+register_instr(nir_builder *b, nir_instr *instr, void *data)
 {
-   struct register_shader_state *state = _state;
+   struct llvmpipe_context *ctx = data;
 
    if (instr->type == nir_instr_type_tex) {
       nir_tex_instr *tex = nir_instr_as_tex(instr);
       uint32_t sample_key = lp_build_nir_sample_key(b->shader->info.stage, tex);
 
-      if (state->unregister)
-         unregister_sample_key(state->ctx, sample_key);
-      else
-         register_sample_key(state->ctx, sample_key);
+      register_sample_key(ctx, sample_key);
    } else if (instr->type == nir_instr_type_intrinsic) {
       nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
 
@@ -820,21 +785,15 @@ register_instr(nir_builder *b, nir_instr *instr, void *_state)
           nir_intrinsic_image_dim(intrin) == GLSL_SAMPLER_DIM_SUBPASS_MS)
          op += LP_TOTAL_IMAGE_OP_COUNT / 2;
 
-      register_image_op(state->ctx, op);
+      register_image_op(ctx, op);
    }
 
    return false;
 }
 
 void
-llvmpipe_register_shader(struct pipe_context *ctx, const struct pipe_shader_state *shader, bool unregister)
+llvmpipe_register_shader(struct pipe_context *ctx, const struct pipe_shader_state *shader)
 {
-   if (shader->type != PIPE_SHADER_IR_NIR)
-      return;
-
-   struct register_shader_state state = {
-      .ctx = llvmpipe_context(ctx),
-      .unregister = unregister,
-   };
-   nir_shader_instructions_pass(shader->ir.nir, register_instr, nir_metadata_all, &state);
+   if (shader->type == PIPE_SHADER_IR_NIR)
+      nir_shader_instructions_pass(shader->ir.nir, register_instr, nir_metadata_all, ctx);
 }

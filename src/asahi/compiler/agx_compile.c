@@ -1576,24 +1576,6 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
    case nir_op_bcsel:
       return agx_icmpsel_to(b, dst, s0, i0, s2, s1, AGX_ICOND_UEQ);
 
-   case nir_op_b2i32:
-   case nir_op_b2i16:
-   case nir_op_b2i8:
-      return agx_icmpsel_to(b, dst, s0, i0, i0, i1, AGX_ICOND_UEQ);
-
-   case nir_op_b2b32:
-      return agx_icmpsel_to(b, dst, s0, i0, i0, agx_mov_imm(b, 32, 0xFFFFFFFF),
-                            AGX_ICOND_UEQ);
-
-   case nir_op_b2f16:
-   case nir_op_b2f32: {
-      /* At this point, boolean is just zero/nonzero, so compare with zero */
-      agx_index f1 = (sz == 16) ? agx_mov_imm(b, 16, _mesa_float_to_half(1.0))
-                                : agx_mov_imm(b, 32, fui(1.0));
-
-      return agx_fcmpsel_to(b, dst, s0, i0, i0, f1, AGX_FCOND_EQ);
-   }
-
    case nir_op_i2i32: {
       if (src_sz == 8) {
          /* Sign extend in software, NIR likes 8-bit conversions */

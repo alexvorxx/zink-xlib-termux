@@ -9025,11 +9025,19 @@ radv_emit_streamout_enable_state(struct radv_cmd_buffer *cmd_buffer)
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_STREAMOUT_ENABLE;
 }
 
+static gl_shader_stage
+radv_cmdbuf_get_last_vgt_api_stage(const struct radv_cmd_buffer *cmd_buffer)
+{
+   if (cmd_buffer->state.active_stages & VK_SHADER_STAGE_MESH_BIT_EXT)
+      return MESA_SHADER_MESH;
+
+   return util_last_bit(cmd_buffer->state.active_stages & BITFIELD_MASK(MESA_SHADER_FRAGMENT)) - 1;
+}
+
 static void
 radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
 {
-   const gl_shader_stage last_vgt_api_stage =
-      util_last_bit(cmd_buffer->state.active_stages & BITFIELD_MASK(MESA_SHADER_FRAGMENT)) - 1;
+   const gl_shader_stage last_vgt_api_stage = radv_cmdbuf_get_last_vgt_api_stage(cmd_buffer);
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    const struct radv_device *device = cmd_buffer->device;
@@ -9265,8 +9273,7 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    }
 
    /* Determine the last VGT shader. */
-   const gl_shader_stage last_vgt_api_stage =
-      util_last_bit(cmd_buffer->state.active_stages & BITFIELD_MASK(MESA_SHADER_FRAGMENT)) - 1;
+   const gl_shader_stage last_vgt_api_stage = radv_cmdbuf_get_last_vgt_api_stage(cmd_buffer);
 
    cmd_buffer->state.last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
 

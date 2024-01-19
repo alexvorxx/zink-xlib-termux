@@ -471,12 +471,16 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
          }
          break;
       case MESA_SHADER_GEOMETRY:
+      case MESA_SHADER_MESH:
          if (stages[MESA_SHADER_FRAGMENT].entrypoint) {
             stages[i].next_stage = MESA_SHADER_FRAGMENT;
          }
          break;
       case MESA_SHADER_FRAGMENT:
          stages[i].next_stage = MESA_SHADER_NONE;
+         break;
+      case MESA_SHADER_TASK:
+         stages[i].next_stage = MESA_SHADER_MESH;
          break;
       default:
          assert(0);

@@ -704,11 +704,11 @@ agx_shadow(struct agx_context *ctx, struct agx_resource *rsrc, bool needs_copy)
       return false;
 
    /* Do not shadow resources that are too large */
-   if (size > MAX_SHADOW_BYTES)
+   if (size > MAX_SHADOW_BYTES && needs_copy)
       return false;
 
    /* Do not shadow resources too much */
-   if (rsrc->shadowed_bytes >= MAX_TOTAL_SHADOW_BYTES)
+   if (rsrc->shadowed_bytes >= MAX_TOTAL_SHADOW_BYTES && needs_copy)
       return false;
 
    rsrc->shadowed_bytes += size;
@@ -815,9 +815,14 @@ agx_prepare_for_map(struct agx_context *ctx, struct agx_resource *rsrc,
       return;
    }
 
-   /* There are readers. Try to shadow the resource to avoid a sync */
+   /* There are readers. Try to invalidate the resource to avoid a sync */
+   if ((usage & PIPE_MAP_DISCARD_WHOLE_RESOURCE) &&
+       agx_shadow(ctx, rsrc, false))
+      return;
+
+   /* Or try to shadow it */
    if (!(rsrc->base.flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT) &&
-       agx_shadow(ctx, rsrc, !(usage & PIPE_MAP_DISCARD_WHOLE_RESOURCE)))
+       agx_shadow(ctx, rsrc, true))
       return;
 
    /* Otherwise, we need to sync */

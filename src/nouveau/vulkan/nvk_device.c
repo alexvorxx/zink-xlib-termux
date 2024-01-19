@@ -166,25 +166,11 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    dev->vk.command_buffer_ops = &nvk_cmd_buffer_ops;
    dev->pdev = pdev;
 
-   const enum nouveau_ws_engines engines =
-      NOUVEAU_WS_ENGINE_COPY |
-      NOUVEAU_WS_ENGINE_3D |
-      NOUVEAU_WS_ENGINE_COMPUTE;
-
-   ret = nouveau_ws_context_create(dev->ws_dev, engines, &dev->ws_ctx);
-   if (ret) {
-      if (ret == -ENOSPC)
-         result = vk_error(dev, VK_ERROR_TOO_MANY_OBJECTS);
-      else
-         result = vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_ws_dev;
-   }
-
    result = nvk_descriptor_table_init(dev, &dev->images,
                                       8 * 4 /* tic entry size */,
                                       1024, 1024 * 1024);
    if (result != VK_SUCCESS)
-      goto fail_ws_ctx;
+      goto fail_ws_dev;
 
    /* Reserve the descriptor at offset 0 to be the null descriptor */
    uint32_t null_image[8] = { 0, };
@@ -282,8 +268,6 @@ fail_samplers:
    nvk_descriptor_table_finish(dev, &dev->samplers);
 fail_images:
    nvk_descriptor_table_finish(dev, &dev->images);
-fail_ws_ctx:
-   nouveau_ws_context_destroy(dev->ws_ctx);
 fail_ws_dev:
    nouveau_ws_device_destroy(dev->ws_dev);
 fail_init:
@@ -314,7 +298,6 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    nvk_heap_finish(dev, &dev->shader_heap);
    nvk_descriptor_table_finish(dev, &dev->samplers);
    nvk_descriptor_table_finish(dev, &dev->images);
-   nouveau_ws_context_destroy(dev->ws_ctx);
    nouveau_ws_device_destroy(dev->ws_dev);
    vk_free(&dev->vk.alloc, dev);
 }

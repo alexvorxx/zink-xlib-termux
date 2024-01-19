@@ -45,7 +45,7 @@ push_builder_init(struct nvk_queue *queue,
    pb->max_push = is_vmbind ? 0 :
       MIN2(NVK_PUSH_MAX_PUSH, dev->ws_dev->max_push);
    pb->req = (struct drm_nouveau_exec) {
-      .channel = dev->ws_ctx->channel,
+      .channel = queue->drm.ws_ctx->channel,
       .push_count = 0,
       .wait_count = 0,
       .sig_count = 0,
@@ -296,15 +296,30 @@ nvk_queue_init_drm_nouveau(struct nvk_device *dev,
    VkResult result;
    int err;
 
+   const enum nouveau_ws_engines engines =
+      NOUVEAU_WS_ENGINE_COPY |
+      NOUVEAU_WS_ENGINE_3D |
+      NOUVEAU_WS_ENGINE_COMPUTE;
+
+   err = nouveau_ws_context_create(dev->ws_dev, engines, &queue->drm.ws_ctx);
+   if (err != 0) {
+      if (err == -ENOSPC)
+         return vk_error(dev, VK_ERROR_TOO_MANY_OBJECTS);
+      else
+         return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+
    err = drmSyncobjCreate(dev->ws_dev->fd, 0, &queue->drm.syncobj);
    if (err < 0) {
       result = vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_init;
+      goto fail_context;
    }
 
    return VK_SUCCESS;
 
-fail_init:
+fail_context:
+   nouveau_ws_context_destroy(queue->drm.ws_ctx);
+
    return result;
 }
 
@@ -314,6 +329,7 @@ nvk_queue_finish_drm_nouveau(struct nvk_device *dev,
 {
    ASSERTED int err = drmSyncobjDestroy(dev->ws_dev->fd, queue->drm.syncobj);
    assert(err == 0);
+   nouveau_ws_context_destroy(queue->drm.ws_ctx);
 }
 
 VkResult

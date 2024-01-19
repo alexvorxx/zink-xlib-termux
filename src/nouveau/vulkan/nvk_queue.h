@@ -10,6 +10,7 @@
 #include "vk_queue.h"
 
 struct novueau_ws_bo;
+struct nouveau_ws_context;
 struct novueau_ws_push;
 struct nvk_device;
 
@@ -48,6 +49,7 @@ struct nvk_queue {
    struct vk_queue vk;
 
    struct {
+      struct nouveau_ws_context *ws_ctx;
       uint32_t syncobj;
    } drm;
 

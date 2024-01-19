@@ -3533,19 +3533,19 @@ radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx
 }
 
 static void
-gfx103_pipeline_emit_vgt_draw_payload_cntl(struct radeon_cmdbuf *ctx_cs, const struct radv_graphics_pipeline *pipeline,
-                                           const struct vk_graphics_pipeline_state *state)
+gfx103_emit_vgt_draw_payload_cntl(struct radeon_cmdbuf *ctx_cs, const struct radv_shader *mesh_shader, bool enable_vrs)
 {
-   const struct radv_vs_output_info *outinfo = get_vs_output_info(pipeline);
-
-   bool enable_vrs = radv_is_vrs_enabled(pipeline, state);
+   bool enable_prim_payload = false;
 
    /* Enables the second channel of the primitive export instruction.
     * This channel contains: VRS rate x, y, viewport and layer.
     */
-   bool enable_prim_payload =
-      outinfo && (outinfo->writes_viewport_index_per_primitive || outinfo->writes_layer_per_primitive ||
-                  outinfo->writes_primitive_shading_rate_per_primitive);
+   if (mesh_shader) {
+      const struct radv_vs_output_info *outinfo = &mesh_shader->info.outinfo;
+
+      enable_prim_payload = (outinfo->writes_viewport_index_per_primitive || outinfo->writes_layer_per_primitive ||
+                             outinfo->writes_primitive_shading_rate_per_primitive);
+   }
 
    radeon_set_context_reg(ctx_cs, R_028A98_VGT_DRAW_PAYLOAD_CNTL,
                           S_028A98_EN_VRS_RATE(enable_vrs) | S_028A98_EN_PRIM_PAYLOAD(enable_prim_payload));
@@ -3670,7 +3670,8 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
    radv_emit_vgt_gs_out(device, ctx_cs, vgt_gs_out_prim_type);
 
    if (pdevice->rad_info.gfx_level >= GFX10_3) {
-      gfx103_pipeline_emit_vgt_draw_payload_cntl(ctx_cs, pipeline, state);
+      gfx103_emit_vgt_draw_payload_cntl(ctx_cs, pipeline->base.shaders[MESA_SHADER_MESH],
+                                        radv_is_vrs_enabled(pipeline, state));
       gfx103_pipeline_emit_vrs_state(device, ctx_cs, pipeline, state);
    }
 

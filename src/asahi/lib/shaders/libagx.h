@@ -30,4 +30,7 @@ uint32_t nir_stack_unmap_agx(uint16_t index);
 
 #endif
 
+#define AGX_STATIC_ASSERT(_COND)                                               \
+   typedef char static_assertion_##__line__[(_COND) ? 1 : -1]
+
 #endif

@@ -25,7 +25,6 @@
 #define NVK_PUSH_MAX_PUSH 1024
 
 struct push_builder {
-   struct nvk_device *dev;
    uint32_t max_push;
    struct drm_nouveau_sync req_wait[NVK_PUSH_MAX_SYNCS];
    struct drm_nouveau_sync req_sig[NVK_PUSH_MAX_SYNCS];
@@ -37,10 +36,12 @@ struct push_builder {
 };
 
 static void
-push_builder_init(struct nvk_device *dev, struct push_builder *pb,
+push_builder_init(struct nvk_queue *queue,
+                  struct push_builder *pb,
                   bool is_vmbind)
 {
-   pb->dev = dev;
+   struct nvk_device *dev = nvk_queue_device(queue);
+
    pb->max_push = is_vmbind ? 0 :
       MIN2(NVK_PUSH_MAX_PUSH, dev->ws_dev->max_push);
    pb->req = (struct drm_nouveau_exec) {
@@ -222,13 +223,14 @@ push_add_push(struct push_builder *pb, uint64_t addr, uint32_t range,
 }
 
 static VkResult
-bind_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
+bind_submit(struct nvk_queue *queue, struct push_builder *pb, bool sync)
 {
+   struct nvk_device *dev = nvk_queue_device(queue);
    int err;
 
    pb->vmbind.wait_count = pb->req.wait_count;
    pb->vmbind.sig_count = pb->req.sig_count;
-   err = drmCommandWriteRead(pb->dev->ws_dev->fd,
+   err = drmCommandWriteRead(dev->ws_dev->fd,
                              DRM_NOUVEAU_VM_BIND,
                              &pb->vmbind, sizeof(pb->vmbind));
    if (err) {
@@ -239,8 +241,10 @@ bind_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
 }
 
 static VkResult
-push_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
+push_submit(struct nvk_queue *queue, struct push_builder *pb, bool sync)
 {
+   struct nvk_device *dev = nvk_queue_device(queue);
+
    int err;
    if (sync) {
       assert(pb->req.sig_count < NVK_PUSH_MAX_SYNCS);
@@ -250,7 +254,7 @@ push_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
          .timeline_value = 0,
       };
    }
-   err = drmCommandWriteRead(pb->dev->ws_dev->fd,
+   err = drmCommandWriteRead(dev->ws_dev->fd,
                              DRM_NOUVEAU_EXEC,
                              &pb->req, sizeof(pb->req));
    if (err) {
@@ -261,7 +265,7 @@ push_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
                        "DRM_NOUVEAU_EXEC failed: %m");
    }
    if (sync) {
-      err = drmSyncobjWait(pb->dev->ws_dev->fd,
+      err = drmSyncobjWait(dev->ws_dev->fd,
                            &queue->drm.syncobj, 1, INT64_MAX,
                            DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
                            NULL);
@@ -274,7 +278,7 @@ push_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
       struct drm_nouveau_exec empty = {
          .channel = pb->req.channel,
       };
-      err = drmCommandWriteRead(pb->dev->ws_dev->fd,
+      err = drmCommandWriteRead(dev->ws_dev->fd,
                                 DRM_NOUVEAU_EXEC,
                                 &empty, sizeof(empty));
       if (err) {
@@ -319,14 +323,12 @@ nvk_queue_submit_simple_drm_nouveau(struct nvk_queue *queue,
                                     uint32_t extra_bo_count,
                                     struct nouveau_ws_bo **extra_bos)
 {
-   struct nvk_device *dev = nvk_queue_device(queue);
-
    struct push_builder pb;
-   push_builder_init(dev, &pb, false);
+   push_builder_init(queue, &pb, false);
 
    push_add_push(&pb, push_bo->offset, push_dw_count * 4, false);
 
-   return push_submit(&pb, queue, true);
+   return push_submit(queue, &pb, true);
 }
 
 static void
@@ -341,12 +343,11 @@ nvk_queue_submit_drm_nouveau(struct nvk_queue *queue,
                              struct vk_queue_submit *submit,
                              bool sync)
 {
-   struct nvk_device *dev = nvk_queue_device(queue);
    struct push_builder pb;
 
    const bool is_vmbind = submit->buffer_bind_count > 0 ||
                           submit->image_opaque_bind_count > 0;
-   push_builder_init(dev, &pb, is_vmbind);
+   push_builder_init(queue, &pb, is_vmbind);
 
    for (uint32_t i = 0; i < submit->wait_count; i++)
       push_add_sync_wait(&pb, &submit->waits[i]);
@@ -374,11 +375,11 @@ nvk_queue_submit_drm_nouveau(struct nvk_queue *queue,
                continue;
 
             if (pb.req.push_count >= pb.max_push) {
-               VkResult result = push_submit(&pb, queue, sync);
+               VkResult result = push_submit(queue, &pb, sync);
                if (result != VK_SUCCESS)
                   return result;
 
-               push_builder_init(dev, &pb, is_vmbind);
+               push_builder_init(queue, &pb, is_vmbind);
             }
 
             push_add_push(&pb, push->addr, push->range, push->no_prefetch);
@@ -390,7 +391,7 @@ nvk_queue_submit_drm_nouveau(struct nvk_queue *queue,
       push_add_sync_signal(&pb, &submit->signals[i]);
 
    if (is_vmbind)
-      return bind_submit(&pb, queue, sync);
+      return bind_submit(queue, &pb, sync);
    else
-      return push_submit(&pb, queue, sync);
+      return push_submit(queue, &pb, sync);
 }

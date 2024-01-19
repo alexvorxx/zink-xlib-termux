@@ -98,6 +98,9 @@ struct radv_shader_stage_key {
 
    /* Shader version (up to 8) to force re-compilation when RADV_BUILD_ID_OVERRIDE is enabled. */
    uint8_t version : 3;
+
+   /* Whether the mesh shader is used with a task shader. */
+   uint8_t has_task_shader : 1;
 };
 
 struct radv_ps_epilog_key {

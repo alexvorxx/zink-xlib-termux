@@ -681,7 +681,8 @@ gather_shader_info_gs(struct radv_device *device, const nir_shader *nir, struct 
 }
 
 static void
-gather_shader_info_mesh(struct radv_device *device, const nir_shader *nir, struct radv_shader_info *info)
+gather_shader_info_mesh(struct radv_device *device, const nir_shader *nir,
+                        const struct radv_shader_stage_key *stage_key, struct radv_shader_info *info)
 {
    struct gfx10_ngg_info *ngg_info = &info->ngg_info;
 
@@ -722,6 +723,7 @@ gather_shader_info_mesh(struct radv_device *device, const nir_shader *nir, struc
    ngg_info->vgt_esgs_ring_itemsize = 1;
 
    info->ms.has_query = device->cache_key.mesh_shader_queries;
+   info->ms.has_task = stage_key->has_task_shader;
 }
 
 static void
@@ -1213,7 +1215,7 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
       gather_shader_info_vs(device, nir, gfx_state, stage_key, info);
       break;
    case MESA_SHADER_MESH:
-      gather_shader_info_mesh(device, nir, info);
+      gather_shader_info_mesh(device, nir, stage_key, info);
       break;
    default:
       if (gl_shader_stage_is_rt(nir->info.stage))
@@ -1670,11 +1672,6 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
 
       if (!gfx_state->dynamic_patch_control_points)
          tes_stage->info.num_tess_patches = tcs_stage->info.num_tess_patches;
-   }
-
-   /* Task/mesh I/O uses the task ring buffers. */
-   if (producer->stage == MESA_SHADER_TASK) {
-      consumer->info.ms.has_task = true;
    }
 }
 

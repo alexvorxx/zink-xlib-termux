@@ -1977,6 +1977,9 @@ radv_generate_graphics_pipeline_key(const struct radv_device *device, const stru
       gl_shader_stage s = vk_to_mesa_shader_stage(stage->stage);
 
       key.stage_info[s] = radv_pipeline_get_shader_key(device, stage, pipeline->base.create_flags, pCreateInfo->pNext);
+
+      if (s == MESA_SHADER_MESH && (pipeline->active_stages & VK_SHADER_STAGE_TASK_BIT_EXT))
+         key.stage_info[s].has_task_shader = true;
    }
 
    return key;

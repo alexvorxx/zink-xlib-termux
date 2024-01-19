@@ -37,7 +37,7 @@
 #include "brw_cfg.h"
 #include "brw_dead_control_flow.h"
 #include "brw_private.h"
-#include "intel_nir.h"
+#include "../intel_nir.h"
 #include "shader_enums.h"
 #include "dev/intel_debug.h"
 #include "dev/intel_wa.h"

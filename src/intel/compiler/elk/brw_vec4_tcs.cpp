@@ -27,7 +27,7 @@
  * Tessellaton control shader specific code derived from the vec4_visitor class.
  */
 
-#include "intel_nir.h"
+#include "../intel_nir.h"
 #include "brw_nir.h"
 #include "brw_vec4_tcs.h"
 #include "brw_fs.h"

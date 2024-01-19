@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "intel_nir.h"
+#include "../intel_nir.h"
 #include "brw_nir.h"
 #include "brw_shader.h"
 #include "dev/intel_debug.h"

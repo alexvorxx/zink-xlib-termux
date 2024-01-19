@@ -1465,7 +1465,7 @@ intel_device_info_compute_system_memory(struct intel_device_info *devinfo, bool 
 }
 
 static void
-intel_device_info_ajust_memory(struct intel_device_info *devinfo)
+intel_device_info_adjust_memory(struct intel_device_info *devinfo)
 {
    uint64_t available;
 
@@ -1691,7 +1691,7 @@ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo)
       return false;
    }
 
-   intel_device_info_ajust_memory(devinfo);
+   intel_device_info_adjust_memory(devinfo);
 
    /* Gfx7 and older do not support EU/Subslice info */
    assert(devinfo->subslice_total >= 1 || devinfo->ver <= 7);
@@ -1726,7 +1726,7 @@ bool intel_device_info_update_memory_info(struct intel_device_info *devinfo, int
    }
 
    if (ret)
-      intel_device_info_ajust_memory(devinfo);
+      intel_device_info_adjust_memory(devinfo);
    return ret;
 }
 

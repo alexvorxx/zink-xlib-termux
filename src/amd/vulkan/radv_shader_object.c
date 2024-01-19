@@ -99,6 +99,10 @@ radv_shader_stage_init(const VkShaderCreateInfoEXT *sinfo, struct radv_shader_st
    if (sinfo->flags & VK_SHADER_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT) {
       out_stage->key.subgroup_require_full = 1;
    }
+
+   if (out_stage->stage == MESA_SHADER_MESH) {
+      out_stage->key.has_task_shader = !(sinfo->flags & VK_SHADER_CREATE_NO_TASK_SHADER_BIT_EXT);
+   }
 }
 
 static VkResult

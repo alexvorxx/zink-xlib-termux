@@ -2103,6 +2103,7 @@ impl SM50Instr {
             Op::SuAtom(op) => si.encode_suatom(&op),
             Op::Kill(op) => si.encode_kill(&op),
             Op::CS2R(op) => si.encode_cs2r(&op),
+            Op::Nop(_) => si.encode_nop(),
             _ => panic!("Unhandled instruction {}", instr.op),
         }
 

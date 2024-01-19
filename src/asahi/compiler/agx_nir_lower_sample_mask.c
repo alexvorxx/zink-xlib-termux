@@ -206,8 +206,15 @@ bool
 agx_nir_lower_sample_mask(nir_shader *shader, unsigned nr_samples)
 {
    if (shader->info.fs.early_fragment_tests) {
-      /* run tests early */
-      run_tests_at_start(shader);
+      /* run tests early, if we need testing */
+      if (shader->info.fs.uses_discard ||
+          (shader->info.outputs_written &
+           (BITFIELD64_BIT(FRAG_RESULT_STENCIL) |
+            BITFIELD64_BIT(FRAG_RESULT_DEPTH))) ||
+          shader->info.writes_memory) {
+
+         run_tests_at_start(shader);
+      }
    } else if (shader->info.fs.uses_discard) {
       /* sample_mask can't be used with zs_emit, so lower sample_mask to zs_emit.
        * We ignore depth/stencil writes with early fragment testing though.

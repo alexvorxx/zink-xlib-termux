@@ -2254,11 +2254,13 @@ void anv_GetDeviceImageSparseMemoryRequirements(
     * without having to actually create the image, maybe by reworking ISL to
     * separate creation from parameter computing.
     */
-
-   ASSERTED VkResult result =
+   VkResult result =
       anv_image_init_from_create_info(device, &image, pInfo->pCreateInfo,
                                       true /* no_private_binding_alloc */);
-   assert(result == VK_SUCCESS);
+   if (result != VK_SUCCESS) {
+      *pSparseMemoryRequirementCount = 0;
+      return;
+   }
 
    /* The spec says:
     *  "planeAspect is a VkImageAspectFlagBits value specifying the aspect

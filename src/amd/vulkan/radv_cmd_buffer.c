@@ -8745,6 +8745,24 @@ radv_emit_indirect_draw_packets(struct radv_cmd_buffer *cmd_buffer, const struct
    }
 }
 
+static uint64_t
+radv_get_needed_dynamic_states(struct radv_cmd_buffer *cmd_buffer)
+{
+   uint64_t dynamic_states = RADV_DYNAMIC_ALL;
+
+   if (cmd_buffer->state.graphics_pipeline)
+      return cmd_buffer->state.graphics_pipeline->needed_dynamic_state;
+
+   /* Clear unnecessary dynamic states for shader objects. */
+   if (!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL])
+      dynamic_states &= ~RADV_DYNAMIC_PATCH_CONTROL_POINTS;
+   if (!cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL])
+      dynamic_states &= ~RADV_DYNAMIC_TESS_DOMAIN_ORIGIN;
+   dynamic_states &= ~RADV_DYNAMIC_FRAGMENT_SHADING_RATE;
+
+   return dynamic_states;
+}
+
 /*
  * Vega and raven have a bug which triggers if there are multiple context
  * register contexts active at the same time with different scissor values.
@@ -8767,7 +8785,7 @@ radv_need_late_scissor_emission(struct radv_cmd_buffer *cmd_buffer, const struct
    if (cmd_buffer->state.context_roll_without_scissor_emitted || info->strmout_buffer)
       return true;
 
-   uint64_t used_states = cmd_buffer->state.graphics_pipeline->needed_dynamic_state | ~RADV_CMD_DIRTY_DYNAMIC_ALL;
+   uint64_t used_states = radv_get_needed_dynamic_states(cmd_buffer) | ~RADV_CMD_DIRTY_DYNAMIC_ALL;
 
    /* Index, vertex and streamout buffers don't change context regs.
     * We assume that any other dirty flag causes context rolls.
@@ -9056,24 +9074,6 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
    radv_emit_vgt_gs_out(device, cs, vgt_gs_out);
 
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_SHADERS;
-}
-
-static uint64_t
-radv_get_needed_dynamic_states(struct radv_cmd_buffer *cmd_buffer)
-{
-   uint64_t dynamic_states = RADV_DYNAMIC_ALL;
-
-   if (cmd_buffer->state.graphics_pipeline)
-      return cmd_buffer->state.graphics_pipeline->needed_dynamic_state;
-
-   /* Clear unnecessary dynamic states for shader objects. */
-   if (!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL])
-      dynamic_states &= ~RADV_DYNAMIC_PATCH_CONTROL_POINTS;
-   if (!cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL])
-      dynamic_states &= ~RADV_DYNAMIC_TESS_DOMAIN_ORIGIN;
-   dynamic_states &= ~RADV_DYNAMIC_FRAGMENT_SHADING_RATE;
-
-   return dynamic_states;
 }
 
 static void

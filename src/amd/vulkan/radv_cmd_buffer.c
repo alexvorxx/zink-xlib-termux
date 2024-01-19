@@ -8757,8 +8757,13 @@ radv_get_needed_dynamic_states(struct radv_cmd_buffer *cmd_buffer)
    if (!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL])
       dynamic_states &= ~(RADV_DYNAMIC_PATCH_CONTROL_POINTS | RADV_DYNAMIC_TESS_DOMAIN_ORIGIN);
 
-   if (cmd_buffer->device->physical_device->rad_info.gfx_level < GFX10_3)
+   if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX10_3) {
+      if (cmd_buffer->state.shaders[MESA_SHADER_MESH])
+         dynamic_states &= ~(RADV_DYNAMIC_VERTEX_INPUT | RADV_DYNAMIC_VERTEX_INPUT_BINDING_STRIDE |
+                             RADV_DYNAMIC_PRIMITIVE_RESTART_ENABLE | RADV_DYNAMIC_PRIMITIVE_TOPOLOGY);
+   } else {
       dynamic_states &= ~RADV_DYNAMIC_FRAGMENT_SHADING_RATE;
+   }
 
    return dynamic_states;
 }

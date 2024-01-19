@@ -3569,22 +3569,20 @@ gfx103_pipeline_vrs_coarse_shading(const struct radv_device *device, const struc
 }
 
 static void
-gfx103_pipeline_emit_vrs_state(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                               const struct radv_graphics_pipeline *pipeline,
-                               const struct vk_graphics_pipeline_state *state)
+gfx103_emit_vrs_state(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *ps,
+                      bool enable_vrs, bool enable_vrs_coarse_shading, bool force_vrs_per_vertex)
 {
    const struct radv_physical_device *pdevice = device->physical_device;
    uint32_t mode = V_028064_SC_VRS_COMB_MODE_PASSTHRU;
    uint8_t rate_x = 0, rate_y = 0;
-   bool enable_vrs = radv_is_vrs_enabled(pipeline, state);
 
-   if (!enable_vrs && gfx103_pipeline_vrs_coarse_shading(device, pipeline)) {
+   if (!enable_vrs && enable_vrs_coarse_shading) {
       /* When per-draw VRS is not enabled at all, try enabling VRS coarse shading 2x2 if the driver
        * determined that it's safe to enable.
        */
       mode = V_028064_SC_VRS_COMB_MODE_OVERRIDE;
       rate_x = rate_y = 1;
-   } else if (pipeline->force_vrs_per_vertex) {
+   } else if (force_vrs_per_vertex) {
       /* Otherwise, if per-draw VRS is not enabled statically, try forcing per-vertex VRS if
        * requested by the user. Note that vkd3d-proton always has to declare VRS as dynamic because
        * in DX12 it's fully dynamic.
@@ -3596,8 +3594,6 @@ gfx103_pipeline_emit_vrs_state(const struct radv_device *device, struct radeon_c
       /* If the shader is using discard, turn off coarse shading because discard at 2x2 pixel
        * granularity degrades quality too much. MIN allows sample shading but not coarse shading.
        */
-      struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
-
       mode = ps->info.ps.can_discard ? V_028064_SC_VRS_COMB_MODE_MIN : V_028064_SC_VRS_COMB_MODE_PASSTHRU;
    }
 
@@ -3670,9 +3666,11 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
    radv_emit_vgt_gs_out(device, ctx_cs, vgt_gs_out_prim_type);
 
    if (pdevice->rad_info.gfx_level >= GFX10_3) {
-      gfx103_emit_vgt_draw_payload_cntl(ctx_cs, pipeline->base.shaders[MESA_SHADER_MESH],
-                                        radv_is_vrs_enabled(pipeline, state));
-      gfx103_pipeline_emit_vrs_state(device, ctx_cs, pipeline, state);
+      const bool enable_vrs = radv_is_vrs_enabled(pipeline, state);
+
+      gfx103_emit_vgt_draw_payload_cntl(ctx_cs, pipeline->base.shaders[MESA_SHADER_MESH], enable_vrs);
+      gfx103_emit_vrs_state(device, ctx_cs, pipeline->base.shaders[MESA_SHADER_FRAGMENT], enable_vrs,
+                            gfx103_pipeline_vrs_coarse_shading(device, pipeline), pipeline->force_vrs_per_vertex);
    }
 
    pipeline->base.ctx_cs_hash = _mesa_hash_data(ctx_cs->buf, ctx_cs->cdw * 4);

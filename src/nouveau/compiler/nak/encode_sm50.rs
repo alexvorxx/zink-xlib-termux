@@ -1341,6 +1341,11 @@ impl SM50Instr {
         self.set_pred_src(39..42, 42, SrcRef::True.into());
     }
 
+    fn encode_kill(&mut self, _op: &OpKill) {
+        self.set_opcode(0xe330);
+        self.set_field(0..5, 0x0f_u8);
+    }
+
     fn encode_nop(&mut self) {
         self.set_opcode(0x50b0);
 
@@ -2090,6 +2095,7 @@ impl SM50Instr {
             Op::Bar(op) => si.encode_bar(&op),
             Op::SuLd(op) => si.encode_suld(&op),
             Op::SuAtom(op) => si.encode_suatom(&op),
+            Op::Kill(op) => si.encode_kill(&op),
             _ => panic!("Unhandled instruction {}", instr.op),
         }
 

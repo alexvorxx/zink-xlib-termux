@@ -1122,6 +1122,188 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
    return obj->bo ? 0: -2;
 }
 
+static inline int
+create_image(struct zink_screen *screen, struct zink_resource_object *obj,
+             const struct pipe_resource *templ, bool *linear,
+             uint64_t *modifiers, int modifiers_count,
+             unsigned num_planes,
+             const void *user_mem, struct mem_alloc_info *alloc_info,
+             VkMemoryRequirements *reqs)
+{
+   bool winsys_modifier = (alloc_info->export_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT) &&
+                          alloc_info->whandle &&
+                          alloc_info->whandle->modifier != DRM_FORMAT_MOD_INVALID;
+   uint64_t *ici_modifiers = winsys_modifier ? &alloc_info->whandle->modifier : modifiers;
+   unsigned ici_modifier_count = winsys_modifier ? 1 : modifiers_count;
+   VkImageCreateInfo ici;
+   enum pipe_format srgb = PIPE_FORMAT_NONE;
+   /* we often need to be able to mutate between srgb and linear, but we don't need general
+    * image view/shader image format compatibility (that path means losing fast clears or compression on some hardware).
+    */
+   if (!(templ->bind & ZINK_BIND_MUTABLE)) {
+      srgb = util_format_is_srgb(templ->format) ? util_format_linear(templ->format) : util_format_srgb(templ->format);
+      /* why do these helpers have different default return values? */
+      if (srgb == templ->format)
+         srgb = PIPE_FORMAT_NONE;
+   }
+   VkFormat formats[2];
+   VkImageFormatListCreateInfo format_list;
+   if (srgb) {
+      formats[0] = zink_get_format(screen, templ->format);
+      formats[1] = zink_get_format(screen, srgb);
+      /* only use format list if both formats have supported vk equivalents */
+      if (formats[0] && formats[1]) {
+         format_list.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
+         format_list.pNext = NULL;
+         format_list.viewFormatCount = 2;
+         format_list.pViewFormats = formats;
+         ici.pNext = &format_list;
+      } else {
+         ici.pNext = NULL;
+      }
+   } else {
+      ici.pNext = NULL;
+   }
+   init_ici(screen, &ici, templ, templ->bind, ici_modifier_count);
+
+   bool success = false;
+   uint64_t mod = eval_ici(screen, &ici, templ, templ->bind, ici_modifier_count, ici_modifiers, &success);
+   if (ici.format == VK_FORMAT_A8_UNORM_KHR && !success) {
+      ici.format = zink_get_format(screen, zink_format_get_emulated_alpha(templ->format));
+      mod = eval_ici(screen, &ici, templ, templ->bind, ici_modifier_count, ici_modifiers, &success);
+   }
+   if (!success)
+      return -1;
+
+   if (ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT && srgb &&
+      util_format_get_nr_components(srgb) == 4 &&
+      !(ici.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
+         mesa_loge("zink: refusing to create possibly-srgb dmabuf due to missing driver support: %s not supported!", util_format_name(srgb));
+         return -1;
+   }
+   VkExternalMemoryImageCreateInfo emici;
+   VkImageDrmFormatModifierExplicitCreateInfoEXT idfmeci;
+   VkImageDrmFormatModifierListCreateInfoEXT idfmlci;
+   VkSubresourceLayout plane_layouts[4];
+   VkSubresourceLayout plane_layout = {
+      .offset = alloc_info->whandle ? alloc_info->whandle->offset : 0,
+      .size = 0,
+      .rowPitch = alloc_info->whandle ? alloc_info->whandle->stride : 0,
+      .arrayPitch = 0,
+      .depthPitch = 0,
+   };
+
+   obj->render_target = (ici.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0;
+
+   if (alloc_info->shared || alloc_info->external) {
+      emici.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+      emici.pNext = ici.pNext;
+      emici.handleTypes = alloc_info->export_types;
+      ici.pNext = &emici;
+
+      assert(ici.tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT || mod != DRM_FORMAT_MOD_INVALID);
+      if (alloc_info->whandle && ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
+         assert(mod == alloc_info->whandle->modifier || !winsys_modifier);
+         idfmeci.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT;
+         idfmeci.pNext = ici.pNext;
+         idfmeci.drmFormatModifier = mod;
+         idfmeci.drmFormatModifierPlaneCount = obj->plane_count;
+
+         plane_layouts[0] = plane_layout;
+         struct pipe_resource *pnext = templ->next;
+         for (unsigned i = 1; i < obj->plane_count; i++, pnext = pnext->next) {
+            struct zink_resource *next = zink_resource(pnext);
+            obj->plane_offsets[i] = plane_layouts[i].offset = next->obj->plane_offsets[i];
+            obj->plane_strides[i] = plane_layouts[i].rowPitch = next->obj->plane_strides[i];
+            plane_layouts[i].size = 0;
+            plane_layouts[i].arrayPitch = 0;
+            plane_layouts[i].depthPitch = 0;
+         }
+         idfmeci.pPlaneLayouts = plane_layouts;
+
+         ici.pNext = &idfmeci;
+      } else if (ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
+         idfmlci.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT;
+         idfmlci.pNext = ici.pNext;
+         idfmlci.drmFormatModifierCount = modifiers_count;
+         idfmlci.pDrmFormatModifiers = modifiers;
+         ici.pNext = &idfmlci;
+      } else if (ici.tiling == VK_IMAGE_TILING_OPTIMAL) {
+         alloc_info->shared = false;
+      }
+   } else if (user_mem) {
+      emici.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+      emici.pNext = ici.pNext;
+      emici.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      ici.pNext = &emici;
+   }
+
+   if (linear)
+      *linear = ici.tiling == VK_IMAGE_TILING_LINEAR;
+
+   if (ici.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+      obj->transfer_dst = true;
+
+#if defined(ZINK_USE_DMABUF) && !defined(_WIN32)
+   if (obj->is_aux) {
+      obj->modifier = mod;
+      obj->modifier_aspect = VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT << alloc_info->whandle->plane;
+      obj->plane_offsets[alloc_info->whandle->plane] = alloc_info->whandle->offset;
+      obj->plane_strides[alloc_info->whandle->plane] = alloc_info->whandle->stride;
+      obj->handle = os_dupfd_cloexec(alloc_info->whandle->handle);
+      if (obj->handle < 0) {
+         mesa_loge("ZINK: failed to dup dmabuf fd: %s\n", strerror(errno));
+         return -1;
+      }
+      return 1;
+   }
+#endif
+
+   obj->vkfeats = get_format_feature_flags(ici, screen, templ);;
+   if (util_format_is_yuv(templ->format)) {
+      if (!create_sampler_conversion(ici, screen, obj))
+         return -1;
+   } else if (alloc_info->whandle) {
+      obj->plane_strides[alloc_info->whandle->plane] = alloc_info->whandle->stride;
+   }
+
+   VkResult result = VKSCR(CreateImage)(screen->dev, &ici, NULL, &obj->image);
+   if (result != VK_SUCCESS) {
+      mesa_loge("ZINK: vkCreateImage failed (%s)", vk_Result_to_str(result));
+      return -1;
+   }
+
+   if (ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
+      VkImageDrmFormatModifierPropertiesEXT modprops = {0};
+      modprops.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT;
+      result = VKSCR(GetImageDrmFormatModifierPropertiesEXT)(screen->dev, obj->image, &modprops);
+      if (result != VK_SUCCESS) {
+         mesa_loge("ZINK: vkGetImageDrmFormatModifierPropertiesEXT failed");
+         return -1;
+      }
+      obj->modifier = modprops.drmFormatModifier;
+      unsigned num_dmabuf_planes = screen->base.get_dmabuf_modifier_planes(&screen->base, obj->modifier, templ->format);
+      obj->modifier_aspect = VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT;
+      if (num_dmabuf_planes > 1)
+         obj->modifier_aspect |= VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT;
+      if (num_dmabuf_planes > 2)
+         obj->modifier_aspect |= VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT;
+      if (num_dmabuf_planes > 3)
+         obj->modifier_aspect |= VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT;
+      assert(num_dmabuf_planes <= 4);
+   }
+
+   alloc_info->need_dedicated = get_image_memory_requirement(screen, obj, num_planes, reqs);
+   if (templ->usage == PIPE_USAGE_STAGING && ici.tiling == VK_IMAGE_TILING_LINEAR)
+      alloc_info->flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+   else
+      alloc_info->flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+   obj->vkflags = ici.flags;
+   obj->vkusage = ici.usage;
+   return 0;
+}
+
 static struct zink_resource_object *
 resource_object_create(struct zink_screen *screen, const struct pipe_resource *templ, struct winsys_handle *whandle, bool *linear,
                        uint64_t *modifiers, int modifiers_count, const void *loader_private, const void *user_mem)
@@ -1183,176 +1365,11 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       max_level = 1;
    } else {
       max_level = templ->last_level + 1;
-      bool winsys_modifier = (alloc_info.export_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT) && whandle && whandle->modifier != DRM_FORMAT_MOD_INVALID;
-      uint64_t *ici_modifiers = winsys_modifier ? &whandle->modifier : modifiers;
-      unsigned ici_modifier_count = winsys_modifier ? 1 : modifiers_count;
-      VkImageCreateInfo ici;
-      enum pipe_format srgb = PIPE_FORMAT_NONE;
-      /* we often need to be able to mutate between srgb and linear, but we don't need general
-       * image view/shader image format compatibility (that path means losing fast clears or compression on some hardware).
-       */
-      if (!(templ->bind & ZINK_BIND_MUTABLE)) {
-         srgb = util_format_is_srgb(templ->format) ? util_format_linear(templ->format) : util_format_srgb(templ->format);
-         /* why do these helpers have different default return values? */
-         if (srgb == templ->format)
-            srgb = PIPE_FORMAT_NONE;
+      switch (create_image(screen, obj, templ, linear, modifiers, modifiers_count,
+                             num_planes, user_mem, &alloc_info, &reqs)) {
+      case -1: goto fail1;
+      case 1: return obj;
       }
-      VkFormat formats[2];
-      VkImageFormatListCreateInfo format_list;
-      if (srgb) {
-         formats[0] = zink_get_format(screen, templ->format);
-         formats[1] = zink_get_format(screen, srgb);
-         /* only use format list if both formats have supported vk equivalents */
-         if (formats[0] && formats[1]) {
-            format_list.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
-            format_list.pNext = NULL;
-            format_list.viewFormatCount = 2;
-            format_list.pViewFormats = formats;
-
-            ici.pNext = &format_list;
-         } else {
-            ici.pNext = NULL;
-         }
-      } else {
-         ici.pNext = NULL;
-      }
-      init_ici(screen, &ici, templ, templ->bind, ici_modifier_count);
-
-      bool success = false;
-      uint64_t mod = eval_ici(screen, &ici, templ, templ->bind, ici_modifier_count, ici_modifiers, &success);
-      if (ici.format == VK_FORMAT_A8_UNORM_KHR && !success) {
-         ici.format = zink_get_format(screen, zink_format_get_emulated_alpha(templ->format));
-         mod = eval_ici(screen, &ici, templ, templ->bind, ici_modifier_count, ici_modifiers, &success);
-      }
-      if (!success)
-         goto fail1;
-
-      if (ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT && srgb &&
-          util_format_get_nr_components(srgb) == 4 &&
-          !(ici.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
-         mesa_loge("zink: refusing to create possibly-srgb dmabuf due to missing driver support: %s not supported!", util_format_name(srgb));
-         goto fail1;
-      }
-      VkExternalMemoryImageCreateInfo emici;
-      VkImageDrmFormatModifierExplicitCreateInfoEXT idfmeci;
-      VkImageDrmFormatModifierListCreateInfoEXT idfmlci;
-      VkSubresourceLayout plane_layouts[4];
-      VkSubresourceLayout plane_layout = {
-         .offset = whandle ? whandle->offset : 0,
-         .size = 0,
-         .rowPitch = whandle ? whandle->stride : 0,
-         .arrayPitch = 0,
-         .depthPitch = 0,
-      };
-
-      obj->render_target = (ici.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0;
-
-      if (alloc_info.shared || alloc_info.external) {
-         emici.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-         emici.pNext = ici.pNext;
-         emici.handleTypes = alloc_info.export_types;
-         ici.pNext = &emici;
-
-         assert(ici.tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT || mod != DRM_FORMAT_MOD_INVALID);
-         if (whandle && ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
-            assert(mod == whandle->modifier || !winsys_modifier);
-            idfmeci.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT;
-            idfmeci.pNext = ici.pNext;
-            idfmeci.drmFormatModifier = mod;
-
-            idfmeci.drmFormatModifierPlaneCount = obj->plane_count;
-            plane_layouts[0] = plane_layout;
-            pnext = templ->next;
-            for (unsigned i = 1; i < obj->plane_count; i++, pnext = pnext->next) {
-               struct zink_resource *next = zink_resource(pnext);
-               obj->plane_offsets[i] = plane_layouts[i].offset = next->obj->plane_offsets[i];
-               obj->plane_strides[i] = plane_layouts[i].rowPitch = next->obj->plane_strides[i];
-               plane_layouts[i].size = 0;
-               plane_layouts[i].arrayPitch = 0;
-               plane_layouts[i].depthPitch = 0;
-            }
-            idfmeci.pPlaneLayouts = plane_layouts;
-
-            ici.pNext = &idfmeci;
-         } else if (ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
-            idfmlci.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT;
-            idfmlci.pNext = ici.pNext;
-            idfmlci.drmFormatModifierCount = modifiers_count;
-            idfmlci.pDrmFormatModifiers = modifiers;
-            ici.pNext = &idfmlci;
-         } else if (ici.tiling == VK_IMAGE_TILING_OPTIMAL) {
-            alloc_info.shared = false;
-         }
-      } else if (user_mem) {
-         emici.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-         emici.pNext = ici.pNext;
-         emici.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
-         ici.pNext = &emici;
-      }
-
-      if (linear)
-         *linear = ici.tiling == VK_IMAGE_TILING_LINEAR;
-
-      if (ici.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
-         obj->transfer_dst = true;
-
-#if defined(ZINK_USE_DMABUF) && !defined(_WIN32)
-      if (obj->is_aux) {
-         obj->modifier = mod;
-         obj->modifier_aspect = VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT << whandle->plane;
-         obj->plane_offsets[whandle->plane] = whandle->offset;
-         obj->plane_strides[whandle->plane] = whandle->stride;
-         obj->handle = os_dupfd_cloexec(whandle->handle);
-         if (obj->handle < 0) {
-            mesa_loge("ZINK: failed to dup dmabuf fd: %s\n", strerror(errno));
-            goto fail1;
-         }
-         return obj;
-      }
-#endif
-
-      obj->vkfeats = get_format_feature_flags(ici, screen, templ);;
-      if (util_format_is_yuv(templ->format)) {
-         if (!create_sampler_conversion(ici, screen, obj))
-            goto fail1;
-      } else if (whandle) {
-         obj->plane_strides[whandle->plane] = whandle->stride;
-      }
-
-      VkResult result = VKSCR(CreateImage)(screen->dev, &ici, NULL, &obj->image);
-      if (result != VK_SUCCESS) {
-         mesa_loge("ZINK: vkCreateImage failed (%s)", vk_Result_to_str(result));
-         goto fail1;
-      }
-
-      if (ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
-         VkImageDrmFormatModifierPropertiesEXT modprops = {0};
-         modprops.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT;
-         result = VKSCR(GetImageDrmFormatModifierPropertiesEXT)(screen->dev, obj->image, &modprops);
-         if (result != VK_SUCCESS) {
-            mesa_loge("ZINK: vkGetImageDrmFormatModifierPropertiesEXT failed");
-            goto fail1;
-         }
-         obj->modifier = modprops.drmFormatModifier;
-         unsigned num_dmabuf_planes = screen->base.get_dmabuf_modifier_planes(&screen->base, obj->modifier, templ->format);
-         obj->modifier_aspect = VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT;
-         if (num_dmabuf_planes > 1)
-            obj->modifier_aspect |= VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT;
-         if (num_dmabuf_planes > 2)
-            obj->modifier_aspect |= VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT;
-         if (num_dmabuf_planes > 3)
-            obj->modifier_aspect |= VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT;
-         assert(num_dmabuf_planes <= 4);
-      }
-
-      alloc_info.need_dedicated = get_image_memory_requirement(screen, obj, num_planes, &reqs);
-      if (templ->usage == PIPE_USAGE_STAGING && ici.tiling == VK_IMAGE_TILING_LINEAR)
-        alloc_info.flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-      else
-        alloc_info.flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-
-      obj->vkflags = ici.flags;
-      obj->vkusage = ici.usage;
    }
    obj->alignment = reqs.alignment;
 

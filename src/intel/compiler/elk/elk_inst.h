@@ -28,8 +28,8 @@
  * get and set various fields.  This is the actual hardware format.
  */
 
-#ifndef BRW_INST_H
-#define BRW_INST_H
+#ifndef ELK_INST_H
+#define ELK_INST_H
 
 #include <assert.h>
 #include <stdint.h>

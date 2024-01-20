@@ -39,8 +39,8 @@
  * the abstract brw_reg type into the actual hardware instruction encoding.
  */
 
-#ifndef BRW_REG_H
-#define BRW_REG_H
+#ifndef ELK_REG_H
+#define ELK_REG_H
 
 #include <stdbool.h>
 #include "util/compiler.h"

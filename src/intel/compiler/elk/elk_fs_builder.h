@@ -22,8 +22,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_FS_BUILDER_H
-#define BRW_FS_BUILDER_H
+#ifndef ELK_FS_BUILDER_H
+#define ELK_FS_BUILDER_H
 
 #include "elk_ir_fs.h"
 #include "elk_shader.h"

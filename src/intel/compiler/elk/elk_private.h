@@ -22,8 +22,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_PRIVATE_H
-#define BRW_PRIVATE_H
+#ifndef ELK_PRIVATE_H
+#define ELK_PRIVATE_H
 
 #include "elk_compiler.h"
 
@@ -73,4 +73,4 @@ int brw_simd_select_for_workgroup_size(const struct intel_device_info *devinfo,
 
 bool brw_should_print_shader(const nir_shader *shader, uint64_t debug_flag);
 
-#endif // BRW_PRIVATE_H
+#endif // ELK_PRIVATE_H

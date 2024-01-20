@@ -22,8 +22,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_VEC4_SURFACE_BUILDER_H
-#define BRW_VEC4_SURFACE_BUILDER_H
+#ifndef ELK_VEC4_SURFACE_BUILDER_H
+#define ELK_VEC4_SURFACE_BUILDER_H
 
 #include "elk_vec4_builder.h"
 

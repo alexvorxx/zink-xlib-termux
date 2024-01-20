@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_VEC4_H
-#define BRW_VEC4_H
+#ifndef ELK_VEC4_H
+#define ELK_VEC4_H
 
 #include "elk_shader.h"
 
@@ -347,4 +347,4 @@ private:
 } /* namespace brw */
 #endif /* __cplusplus */
 
-#endif /* BRW_VEC4_H */
+#endif /* ELK_VEC4_H */

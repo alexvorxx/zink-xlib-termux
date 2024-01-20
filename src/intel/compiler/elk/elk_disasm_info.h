@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef _INTEL_ASM_ANNOTATION_H
-#define _INTEL_ASM_ANNOTATION_H
+#ifndef ELK_DISASM_INFO_H
+#define ELK_DISASM_INFO_H
 
 #include "compiler/glsl/list.h"
 
@@ -87,4 +87,4 @@ disasm_insert_error(struct disasm_info *disasm, unsigned offset,
 } /* extern "C" */
 #endif
 
-#endif /* _INTEL_ASM_ANNOTATION_H */
+#endif /* ELK_DISASM_INFO_H */

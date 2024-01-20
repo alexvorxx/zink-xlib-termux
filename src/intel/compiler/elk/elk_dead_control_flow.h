@@ -21,11 +21,11 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_DEAD_CONTROL_FLOW_H
-#define BRW_DEAD_CONTROL_FLOW_H
+#ifndef ELK_DEAD_CONTROL_FLOW_H
+#define ELK_DEAD_CONTROL_FLOW_H
 
 #include "elk_shader.h"
 
 bool dead_control_flow_eliminate(backend_shader *s);
 
-#endif /* BRW_DEAD_CONTROL_FLOW_H */
+#endif /* ELK_DEAD_CONTROL_FLOW_H */

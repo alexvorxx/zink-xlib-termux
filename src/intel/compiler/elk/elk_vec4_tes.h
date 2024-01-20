@@ -27,8 +27,8 @@
  * The vec4 mode tessellation evaluation shader compiler backend.
  */
 
-#ifndef BRW_VEC4_TES_H
-#define BRW_VEC4_TES_H
+#ifndef ELK_VEC4_TES_H
+#define ELK_VEC4_TES_H
 
 #include "elk_vec4.h"
 
@@ -62,4 +62,4 @@ private:
 } /* namespace brw */
 #endif /* __cplusplus */
 
-#endif /* BRW_VEC4_TES_H */
+#endif /* ELK_VEC4_TES_H */

@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_COMPILER_H
-#define BRW_COMPILER_H
+#ifndef ELK_COMPILER_H
+#define ELK_COMPILER_H
 
 #include <stdio.h>
 #include "c11/threads.h"
@@ -1934,4 +1934,4 @@ enum brw_topology_id
 } /* extern "C" */
 #endif
 
-#endif /* BRW_COMPILER_H */
+#endif /* ELK_COMPILER_H */

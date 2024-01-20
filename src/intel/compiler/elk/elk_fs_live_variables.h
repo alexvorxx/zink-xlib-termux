@@ -25,8 +25,8 @@
  *
  */
 
-#ifndef BRW_FS_LIVE_VARIABLES_H
-#define BRW_FS_LIVE_VARIABLES_H
+#ifndef ELK_FS_LIVE_VARIABLES_H
+#define ELK_FS_LIVE_VARIABLES_H
 
 #include "elk_ir_analysis.h"
 #include "elk_ir_fs.h"
@@ -145,4 +145,4 @@ protected:
 
 } /* namespace brw */
 
-#endif /* BRW_FS_LIVE_VARIABLES_H */
+#endif /* ELK_FS_LIVE_VARIABLES_H */

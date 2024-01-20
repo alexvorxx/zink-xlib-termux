@@ -29,8 +29,8 @@
   *   Keith Whitwell <keithw@vmware.com>
   */
 
-#ifndef BRW_CLIP_H
-#define BRW_CLIP_H
+#ifndef ELK_CLIP_H
+#define ELK_CLIP_H
 
 #include "elk_compiler.h"
 #include "elk_eu.h"

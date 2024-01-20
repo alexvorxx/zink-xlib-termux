@@ -22,8 +22,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_VEC4_BUILDER_H
-#define BRW_VEC4_BUILDER_H
+#ifndef ELK_VEC4_BUILDER_H
+#define ELK_VEC4_BUILDER_H
 
 #include "elk_ir_vec4.h"
 #include "elk_ir_allocator.h"

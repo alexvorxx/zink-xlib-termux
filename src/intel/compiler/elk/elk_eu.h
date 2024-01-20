@@ -30,8 +30,8 @@
   */
 
 
-#ifndef BRW_EU_H
-#define BRW_EU_H
+#ifndef ELK_EU_H
+#define ELK_EU_H
 
 #include <stdbool.h>
 #include <stdio.h>

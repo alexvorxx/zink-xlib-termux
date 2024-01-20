@@ -22,8 +22,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_IR_FS_H
-#define BRW_IR_FS_H
+#ifndef ELK_IR_FS_H
+#define ELK_IR_FS_H
 
 #include "elk_shader.h"
 

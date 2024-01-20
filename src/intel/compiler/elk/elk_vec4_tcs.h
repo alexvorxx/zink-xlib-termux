@@ -27,8 +27,8 @@
  * The vec4-mode tessellation control shader compiler backend.
  */
 
-#ifndef BRW_VEC4_TCS_H
-#define BRW_VEC4_TCS_H
+#ifndef ELK_VEC4_TCS_H
+#define ELK_VEC4_TCS_H
 
 #include "elk_compiler.h"
 #include "elk_eu.h"
@@ -80,4 +80,4 @@ protected:
 } /* namespace brw */
 #endif /* __cplusplus */
 
-#endif /* BRW_VEC4_TCS_H */
+#endif /* ELK_VEC4_TCS_H */

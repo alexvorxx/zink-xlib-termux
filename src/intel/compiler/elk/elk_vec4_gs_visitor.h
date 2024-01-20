@@ -27,8 +27,8 @@
  * Geometry-shader-specific code derived from the vec4_visitor class.
  */
 
-#ifndef BRW_VEC4_GS_VISITOR_H
-#define BRW_VEC4_GS_VISITOR_H
+#ifndef ELK_VEC4_GS_VISITOR_H
+#define ELK_VEC4_GS_VISITOR_H
 
 #include "elk_vec4.h"
 
@@ -72,4 +72,4 @@ protected:
 } /* namespace brw */
 #endif /* __cplusplus */
 
-#endif /* BRW_VEC4_GS_VISITOR_H */
+#endif /* ELK_VEC4_GS_VISITOR_H */

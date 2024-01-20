@@ -25,8 +25,8 @@
  *
  */
 
-#ifndef BRW_FS_H
-#define BRW_FS_H
+#ifndef ELK_FS_H
+#define ELK_FS_H
 
 #include "elk_shader.h"
 #include "elk_ir_fs.h"
@@ -598,4 +598,4 @@ bool brw_lower_dpas(fs_visitor &v);
 
 void nir_to_brw(fs_visitor *s);
 
-#endif /* BRW_FS_H */
+#endif /* ELK_FS_H */

@@ -29,8 +29,8 @@
   *   Keith Whitwell <keithw@vmware.com>
   */
 
-#ifndef BRW_EU_DEFINES_H
-#define BRW_EU_DEFINES_H
+#ifndef ELK_EU_DEFINES_H
+#define ELK_EU_DEFINES_H
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -2200,4 +2200,4 @@ enum ENUM_PACKED lsc_vect_size {
 
 #define LSC_ONE_ADDR_REG   1
 
-#endif /* BRW_EU_DEFINES_H */
+#endif /* ELK_EU_DEFINES_H */

@@ -22,8 +22,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_IR_H
-#define BRW_IR_H
+#ifndef ELK_IR_H
+#define ELK_IR_H
 
 #include <assert.h>
 #include "elk_reg.h"

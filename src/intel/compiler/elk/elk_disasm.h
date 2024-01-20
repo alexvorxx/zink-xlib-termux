@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef BRW_DISASM_H
-#define BRW_DISASM_H
+#ifndef ELK_DISASM_H
+#define ELK_DISASM_H
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -39,4 +39,4 @@ void brw_disassemble_with_errors(const struct brw_isa_info *isa,
 } /* extern "C" */
 #endif
 
-#endif /* BRW_DISASM_H */
+#endif /* ELK_DISASM_H */

@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_REG_TYPE_H
-#define BRW_REG_TYPE_H
+#ifndef ELK_REG_TYPE_H
+#define ELK_REG_TYPE_H
 
 #include <stdbool.h>
 

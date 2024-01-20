@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_NIR_H
-#define BRW_NIR_H
+#ifndef ELK_NIR_H
+#define ELK_NIR_H
 
 #include "elk_reg.h"
 #include "compiler/nir/nir.h"
@@ -295,4 +295,4 @@ void brw_nir_adjust_payload(nir_shader *shader);
 }
 #endif
 
-#endif /* BRW_NIR_H */
+#endif /* ELK_NIR_H */

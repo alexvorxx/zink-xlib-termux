@@ -20,8 +20,8 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#ifndef BRW_ISA_ENCODING_H
-#define BRW_ISA_ENCODING_H
+#ifndef ELK_ISA_ENCODING_H
+#define ELK_ISA_ENCODING_H
 
 #include "dev/intel_device_info.h"
 #include "elk_eu_defines.h"

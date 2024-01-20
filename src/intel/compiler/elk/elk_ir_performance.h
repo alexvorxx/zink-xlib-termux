@@ -22,8 +22,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_IR_PERFORMANCE_H
-#define BRW_IR_PERFORMANCE_H
+#ifndef ELK_IR_PERFORMANCE_H
+#define ELK_IR_PERFORMANCE_H
 
 class fs_visitor;
 

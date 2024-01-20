@@ -25,8 +25,8 @@
  *
  */
 
-#ifndef BRW_CFG_H
-#define BRW_CFG_H
+#ifndef ELK_CFG_H
+#define ELK_CFG_H
 
 #include "elk_ir.h"
 #ifdef __cplusplus
@@ -529,4 +529,4 @@ namespace brw {
 }
 #endif
 
-#endif /* BRW_CFG_H */
+#endif /* ELK_CFG_H */

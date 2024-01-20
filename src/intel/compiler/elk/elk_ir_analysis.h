@@ -22,8 +22,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_IR_ANALYSIS_H
-#define BRW_IR_ANALYSIS_H
+#ifndef ELK_IR_ANALYSIS_H
+#define ELK_IR_ANALYSIS_H
 
 namespace brw {
    /**

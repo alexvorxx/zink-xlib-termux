@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_SHADER_H
-#define BRW_SHADER_H
+#ifndef ELK_SHADER_H
+#define ELK_SHADER_H
 
 #include <stdint.h>
 #include "elk_cfg.h"
@@ -191,4 +191,4 @@ struct brw_gs_compile
 }
 #endif
 
-#endif /* BRW_SHADER_H */
+#endif /* ELK_SHADER_H */

@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BRW_PRIM_H
-#define BRW_PRIM_H
+#ifndef ELK_PRIM_H
+#define ELK_PRIM_H
 
 #define _3DPRIM_POINTLIST         0x01
 #define _3DPRIM_LINELIST          0x02
@@ -47,4 +47,4 @@
 #define _3DPRIM_TRIFAN_NOSTIPPLE  0x16
 #define _3DPRIM_PATCHLIST(n) ({ assert(n > 0 && n <= 32); 0x20 + (n - 1); })
 
-#endif /* BRW_PRIM_H */
+#endif /* ELK_PRIM_H */

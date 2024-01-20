@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef GFX6_GS_VISITOR_H
-#define GFX6_GS_VISITOR_H
+#ifndef ELK_GFX6_GS_VISITOR_H
+#define ELK_GFX6_GS_VISITOR_H
 
 #include "elk_vec4.h"
 #include "elk_vec4_gs_visitor.h"
@@ -81,4 +81,4 @@ private:
 
 #endif /* __cplusplus */
 
-#endif /* GFX6_GS_VISITOR_H */
+#endif /* ELK_GFX6_GS_VISITOR_H */

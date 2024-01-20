@@ -46,12 +46,12 @@ namespace { /* avoid conflict with opt_copy_propagation_elements */
 struct acp_entry {
    struct rb_node by_dst;
    struct rb_node by_src;
-   fs_reg dst;
-   fs_reg src;
+   elk_fs_reg dst;
+   elk_fs_reg src;
    unsigned global_idx;
    unsigned size_written;
    unsigned size_read;
-   enum opcode opcode;
+   enum elk_opcode opcode;
    bool is_partial_write;
    bool force_writemask_all;
 };
@@ -265,7 +265,7 @@ struct block_data {
 class fs_copy_prop_dataflow
 {
 public:
-   fs_copy_prop_dataflow(linear_ctx *lin_ctx, cfg_t *cfg,
+   fs_copy_prop_dataflow(linear_ctx *lin_ctx, elk_cfg_t *cfg,
                          const fs_live_variables &live,
                          struct acp *out_acp);
 
@@ -274,7 +274,7 @@ public:
 
    void dump_block_data() const UNUSED;
 
-   cfg_t *cfg;
+   elk_cfg_t *cfg;
    const fs_live_variables &live;
 
    acp_entry **acp;
@@ -285,7 +285,7 @@ public:
 };
 } /* anonymous namespace */
 
-fs_copy_prop_dataflow::fs_copy_prop_dataflow(linear_ctx *lin_ctx, cfg_t *cfg,
+fs_copy_prop_dataflow::fs_copy_prop_dataflow(linear_ctx *lin_ctx, elk_cfg_t *cfg,
                                              const fs_live_variables &live,
                                              struct acp *out_acp)
    : cfg(cfg), live(live)
@@ -338,7 +338,7 @@ fs_copy_prop_dataflow::fs_copy_prop_dataflow(linear_ctx *lin_ctx, cfg_t *cfg,
  * Like reg_offset, but register must be VGRF or FIXED_GRF.
  */
 static inline unsigned
-grf_reg_offset(const fs_reg &r)
+grf_reg_offset(const elk_fs_reg &r)
 {
    return (r.file == VGRF ? 0 : r.nr) * REG_SIZE +
           r.offset +
@@ -349,7 +349,7 @@ grf_reg_offset(const fs_reg &r)
  * Like regions_overlap, but register must be VGRF or FIXED_GRF.
  */
 static inline bool
-grf_regions_overlap(const fs_reg &r, unsigned dr, const fs_reg &s, unsigned ds)
+grf_regions_overlap(const elk_fs_reg &r, unsigned dr, const elk_fs_reg &s, unsigned ds)
 {
    return reg_space(r) == reg_space(s) &&
           !(grf_reg_offset(r) + dr <= grf_reg_offset(s) ||
@@ -374,7 +374,7 @@ fs_copy_prop_dataflow::setup_initial_values()
          acp_table.add(acp[i]);
 
       foreach_block (block, cfg) {
-         foreach_inst_in_block(fs_inst, inst, block) {
+         foreach_inst_in_block(elk_fs_inst, inst, block) {
             if (inst->dst.file != VGRF &&
                 inst->dst.file != FIXED_GRF)
                continue;
@@ -463,8 +463,8 @@ fs_copy_prop_dataflow::run()
              * parent blocks, it's live coming in to this block.
              */
             bd[block->num].livein[i] = ~0u;
-            foreach_list_typed(bblock_link, parent_link, link, &block->parents) {
-               bblock_t *parent = parent_link->block;
+            foreach_list_typed(elk_bblock_link, parent_link, link, &block->parents) {
+               elk_bblock_t *parent = parent_link->block;
                /* Consider ACP entries with a known-undefined destination to
                 * be available from the parent.  This is valid because we're
                 * free to set the undefined variable equal to the source of
@@ -521,8 +521,8 @@ fs_copy_prop_dataflow::run()
              * inconsistent execution masking, the start of this block
              * is reachable by such an overwrite as well.
              */
-            foreach_list_typed(bblock_link, parent_link, link, &block->parents) {
-               bblock_t *parent = parent_link->block;
+            foreach_list_typed(elk_bblock_link, parent_link, link, &block->parents) {
+               elk_bblock_t *parent = parent_link->block;
                bd[block->num].exec_mismatch[i] |= (bd[parent->num].exec_mismatch[i] &
                                                    bd[parent->num].reachin[i]);
             }
@@ -546,8 +546,8 @@ fs_copy_prop_dataflow::dump_block_data() const
    foreach_block (block, cfg) {
       fprintf(stderr, "Block %d [%d, %d] (parents ", block->num,
              block->start_ip, block->end_ip);
-      foreach_list_typed(bblock_link, link, link, &block->parents) {
-         bblock_t *parent = link->block;
+      foreach_list_typed(elk_bblock_link, link, link, &block->parents) {
+         elk_bblock_t *parent = link->block;
          fprintf(stderr, "%d ", parent->num);
       }
       fprintf(stderr, "):\n");
@@ -568,18 +568,18 @@ fs_copy_prop_dataflow::dump_block_data() const
 }
 
 static bool
-is_logic_op(enum opcode opcode)
+is_logic_op(enum elk_opcode opcode)
 {
-   return (opcode == BRW_OPCODE_AND ||
-           opcode == BRW_OPCODE_OR  ||
-           opcode == BRW_OPCODE_XOR ||
-           opcode == BRW_OPCODE_NOT);
+   return (opcode == ELK_OPCODE_AND ||
+           opcode == ELK_OPCODE_OR  ||
+           opcode == ELK_OPCODE_XOR ||
+           opcode == ELK_OPCODE_NOT);
 }
 
 static bool
-can_take_stride(fs_inst *inst, brw_reg_type dst_type,
+can_take_stride(elk_fs_inst *inst, elk_reg_type dst_type,
                 unsigned arg, unsigned stride,
-                const struct brw_compiler *compiler)
+                const struct elk_compiler *compiler)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
 
@@ -606,7 +606,7 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
     *    This is applicable to 32b datatypes and 16b datatype. 64b datatypes
     *    cannot use the replicate control.
     */
-   if (inst->is_3src(compiler)) {
+   if (inst->elk_is_3src(compiler)) {
       if (type_sz(inst->src[arg].type) > 4)
          return stride == 1;
       else
@@ -643,14 +643,14 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
 }
 
 static bool
-instruction_requires_packed_data(fs_inst *inst)
+instruction_requires_packed_data(elk_fs_inst *inst)
 {
    switch (inst->opcode) {
-   case FS_OPCODE_DDX_FINE:
-   case FS_OPCODE_DDX_COARSE:
-   case FS_OPCODE_DDY_FINE:
-   case FS_OPCODE_DDY_COARSE:
-   case SHADER_OPCODE_QUAD_SWIZZLE:
+   case ELK_FS_OPCODE_DDX_FINE:
+   case ELK_FS_OPCODE_DDX_COARSE:
+   case ELK_FS_OPCODE_DDY_FINE:
+   case ELK_FS_OPCODE_DDY_COARSE:
+   case ELK_SHADER_OPCODE_QUAD_SWIZZLE:
       return true;
    default:
       return false;
@@ -658,7 +658,7 @@ instruction_requires_packed_data(fs_inst *inst)
 }
 
 static bool
-try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
+try_copy_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
                    acp_entry *entry, int arg,
                    const elk::simple_allocator &alloc,
                    uint8_t max_polygons)
@@ -685,7 +685,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     * optimization loop.  Avoid this by detecting LOAD_PAYLOAD copies from CSE
     * temporaries which should match is_coalescing_payload().
     */
-   if (entry->opcode == SHADER_OPCODE_LOAD_PAYLOAD &&
+   if (entry->opcode == ELK_SHADER_OPCODE_LOAD_PAYLOAD &&
        (is_coalescing_payload(alloc, inst) || is_multi_copy_payload(inst)))
       return false;
 
@@ -714,7 +714,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
        * We need to pin both split SEND sources in g112-g126/127, so only
        * allow this if the registers aren't too large.
        */
-      if (inst->opcode == SHADER_OPCODE_SEND && entry->src.file == VGRF) {
+      if (inst->opcode == ELK_SHADER_OPCODE_SEND && entry->src.file == VGRF) {
          int other_src = arg == 2 ? 3 : 2;
          unsigned other_size = inst->src[other_src].file == VGRF ?
                                alloc.sizes[inst->src[other_src].nr] :
@@ -731,15 +731,15 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     */
    if (devinfo->has_pln && devinfo->ver <= 6 &&
        entry->src.file == FIXED_GRF && (entry->src.nr & 1) &&
-       inst->opcode == FS_OPCODE_LINTERP && arg == 0)
+       inst->opcode == ELK_FS_OPCODE_LINTERP && arg == 0)
       return false;
 
    /* we can't generally copy-propagate UD negations because we
     * can end up accessing the resulting values as signed integers
     * instead. See also resolve_ud_negate() and comment in
-    * fs_generator::generate_code.
+    * elk_fs_generator::generate_code.
     */
-   if (entry->src.type == BRW_REGISTER_TYPE_UD &&
+   if (entry->src.type == ELK_REGISTER_TYPE_UD &&
        entry->src.negate)
       return false;
 
@@ -757,7 +757,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
    }
 
    if (has_source_modifiers &&
-       inst->opcode == SHADER_OPCODE_GFX4_SCRATCH_WRITE)
+       inst->opcode == ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE)
       return false;
 
    /* Some instructions implemented in the generator backend, such as
@@ -769,7 +769,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
    if (instruction_requires_packed_data(inst) && entry_stride != 1)
       return false;
 
-   const brw_reg_type dst_type = (has_source_modifiers &&
+   const elk_reg_type dst_type = (has_source_modifiers &&
                                   entry->dst.type != inst->src[arg].type) ?
       entry->dst.type : inst->dst.type;
 
@@ -810,7 +810,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
    if (entry->src.file == ATTR && max_polygons > 1 &&
        (has_dst_aligned_region_restriction(devinfo, inst, dst_type) ||
 	instruction_requires_packed_data(inst) ||
-	(inst->is_3src(compiler) && arg == 2) ||
+	(inst->elk_is_3src(compiler) && arg == 2) ||
 	entry->dst.type != inst->src[arg].type))
       return false;
 
@@ -833,7 +833,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     */
    if ((type_sz(entry->dst.type) < type_sz(inst->src[arg].type) ||
         entry->is_partial_write) &&
-       inst->opcode != BRW_OPCODE_MOV) {
+       inst->opcode != ELK_OPCODE_MOV) {
       return false;
    }
 
@@ -900,7 +900,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
       inst->src[arg].stride = 1;
 
       /* Hopefully no Align16 around here... */
-      assert(entry->src.swizzle == BRW_SWIZZLE_XYZW);
+      assert(entry->src.swizzle == ELK_SWIZZLE_XYZW);
       inst->src[arg].swizzle = entry->src.swizzle;
    } else {
       inst->src[arg].stride *= entry->src.stride;
@@ -909,7 +909,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
    /* Compute the first component of the copy that the instruction is
     * reading, and the base byte offset within that component.
     */
-   assert((entry->dst.offset % REG_SIZE == 0 || inst->opcode == BRW_OPCODE_MOV) &&
+   assert((entry->dst.offset % REG_SIZE == 0 || inst->opcode == ELK_OPCODE_MOV) &&
            entry->dst.stride == 1);
    const unsigned component = rel_offset / type_sz(entry->dst.type);
    const unsigned suboffset = rel_offset % type_sz(entry->dst.type);
@@ -943,7 +943,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
 
 
 static bool
-try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
+try_constant_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
                        acp_entry *entry, int arg)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
@@ -973,7 +973,7 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
    if (type_sz(inst->src[arg].type) > type_sz(entry->dst.type))
       return false;
 
-   fs_reg val = entry->src;
+   elk_fs_reg val = entry->src;
 
    /* If the size of the use type is smaller than the size of the entry,
     * clamp the value to the range of the use type.  This enables constant
@@ -1003,27 +1003,27 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
 
    if (inst->src[arg].abs) {
       if ((devinfo->ver >= 8 && is_logic_op(inst->opcode)) ||
-          !brw_abs_immediate(val.type, &val.as_brw_reg())) {
+          !elk_abs_immediate(val.type, &val.as_elk_reg())) {
          return false;
       }
    }
 
    if (inst->src[arg].negate) {
       if ((devinfo->ver >= 8 && is_logic_op(inst->opcode)) ||
-          !brw_negate_immediate(val.type, &val.as_brw_reg())) {
+          !elk_negate_immediate(val.type, &val.as_elk_reg())) {
          return false;
       }
    }
 
    switch (inst->opcode) {
-   case BRW_OPCODE_MOV:
-   case SHADER_OPCODE_LOAD_PAYLOAD:
-   case FS_OPCODE_PACK:
+   case ELK_OPCODE_MOV:
+   case ELK_SHADER_OPCODE_LOAD_PAYLOAD:
+   case ELK_FS_OPCODE_PACK:
       inst->src[arg] = val;
       progress = true;
       break;
 
-   case SHADER_OPCODE_POW:
+   case ELK_SHADER_OPCODE_POW:
       /* Allow constant propagation into src1 (except on Gen 6 which
        * doesn't support scalar source math), and let constant combining
        * promote the constant on Gen < 8.
@@ -1037,19 +1037,19 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       }
       break;
 
-   case BRW_OPCODE_SUBB:
+   case ELK_OPCODE_SUBB:
       if (arg == 1) {
          inst->src[arg] = val;
          progress = true;
       }
       break;
 
-   case BRW_OPCODE_MACH:
-   case BRW_OPCODE_MUL:
-   case SHADER_OPCODE_MULH:
-   case BRW_OPCODE_ADD:
-   case BRW_OPCODE_XOR:
-   case BRW_OPCODE_ADDC:
+   case ELK_OPCODE_MACH:
+   case ELK_OPCODE_MUL:
+   case ELK_SHADER_OPCODE_MULH:
+   case ELK_OPCODE_ADD:
+   case ELK_OPCODE_XOR:
+   case ELK_OPCODE_ADDC:
       if (arg == 1) {
          inst->src[arg] = val;
          progress = true;
@@ -1076,7 +1076,7 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
           *    When multiplying a DW and any lower precision integer, the
           *    DW operand must on src0.
           */
-         if (inst->opcode == BRW_OPCODE_MUL &&
+         if (inst->opcode == ELK_OPCODE_MUL &&
              type_sz(inst->src[1].type) < 4 &&
              type_sz(val.type) == 4)
             break;
@@ -1092,11 +1092,11 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
           * Integer MUL with a non-accumulator destination will be lowered
           * by lower_integer_multiplication(), so don't restrict it.
           */
-         if (((inst->opcode == BRW_OPCODE_MUL &&
+         if (((inst->opcode == ELK_OPCODE_MUL &&
                inst->dst.is_accumulator()) ||
-              inst->opcode == BRW_OPCODE_MACH) &&
-             (inst->src[1].type == BRW_REGISTER_TYPE_D ||
-              inst->src[1].type == BRW_REGISTER_TYPE_UD))
+              inst->opcode == ELK_OPCODE_MACH) &&
+             (inst->src[1].type == ELK_REGISTER_TYPE_D ||
+              inst->src[1].type == ELK_REGISTER_TYPE_UD))
             break;
          inst->src[0] = inst->src[1];
          inst->src[1] = val;
@@ -1104,16 +1104,16 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       }
       break;
 
-   case BRW_OPCODE_ADD3:
+   case ELK_OPCODE_ADD3:
       /* add3 can have a single imm16 source. Proceed if the source type is
        * already W or UW or the value can be coerced to one of those types.
        */
-      if (val.type == BRW_REGISTER_TYPE_W || val.type == BRW_REGISTER_TYPE_UW)
+      if (val.type == ELK_REGISTER_TYPE_W || val.type == ELK_REGISTER_TYPE_UW)
          ; /* Nothing to do. */
       else if (val.ud <= 0xffff)
-         val = brw_imm_uw(val.ud);
+         val = elk_imm_uw(val.ud);
       else if (val.d >= -0x8000 && val.d <= 0x7fff)
-         val = brw_imm_w(val.d);
+         val = elk_imm_w(val.d);
       else
          break;
 
@@ -1128,16 +1128,16 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
 
       break;
 
-   case BRW_OPCODE_CMP:
-   case BRW_OPCODE_IF:
+   case ELK_OPCODE_CMP:
+   case ELK_OPCODE_IF:
       if (arg == 1) {
          inst->src[arg] = val;
          progress = true;
       } else if (arg == 0 && inst->src[1].file != IMM) {
-         enum brw_conditional_mod new_cmod;
+         enum elk_conditional_mod new_cmod;
 
-         new_cmod = brw_swap_cmod(inst->conditional_mod);
-         if (new_cmod != BRW_CONDITIONAL_NONE) {
+         new_cmod = elk_swap_cmod(inst->conditional_mod);
+         if (new_cmod != ELK_CONDITIONAL_NONE) {
             /* Fit this constant in by swapping the operands and
              * flipping the test
              */
@@ -1149,23 +1149,23 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       }
       break;
 
-   case BRW_OPCODE_SEL:
+   case ELK_OPCODE_SEL:
       if (arg == 1) {
          inst->src[arg] = val;
          progress = true;
       } else if (arg == 0) {
          if (inst->src[1].file != IMM &&
-             (inst->conditional_mod == BRW_CONDITIONAL_NONE ||
+             (inst->conditional_mod == ELK_CONDITIONAL_NONE ||
               /* Only GE and L are commutative. */
-              inst->conditional_mod == BRW_CONDITIONAL_GE ||
-              inst->conditional_mod == BRW_CONDITIONAL_L)) {
+              inst->conditional_mod == ELK_CONDITIONAL_GE ||
+              inst->conditional_mod == ELK_CONDITIONAL_L)) {
             inst->src[0] = inst->src[1];
             inst->src[1] = val;
 
             /* If this was predicated, flipping operands means
              * we also need to flip the predicate.
              */
-            if (inst->conditional_mod == BRW_CONDITIONAL_NONE) {
+            if (inst->conditional_mod == ELK_CONDITIONAL_NONE) {
                inst->predicate_inverse =
                   !inst->predicate_inverse;
             }
@@ -1177,8 +1177,8 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       }
       break;
 
-   case FS_OPCODE_FB_WRITE_LOGICAL:
-      /* The stencil and omask sources of FS_OPCODE_FB_WRITE_LOGICAL are
+   case ELK_FS_OPCODE_FB_WRITE_LOGICAL:
+      /* The stencil and omask sources of ELK_FS_OPCODE_FB_WRITE_LOGICAL are
        * bit-cast using a strided region so they cannot be immediates.
        */
       if (arg != FB_WRITE_LOGICAL_SRC_SRC_STENCIL &&
@@ -1188,8 +1188,8 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       }
       break;
 
-   case SHADER_OPCODE_INT_QUOTIENT:
-   case SHADER_OPCODE_INT_REMAINDER:
+   case ELK_SHADER_OPCODE_INT_QUOTIENT:
+   case ELK_SHADER_OPCODE_INT_REMAINDER:
       /* Allow constant propagation into either source (except on Gen 6
        * which doesn't support scalar source math). Constant combining
        * promote the src1 constant on Gen < 8, and it will promote the src0
@@ -1199,46 +1199,46 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
          break;
 
       FALLTHROUGH;
-   case BRW_OPCODE_AND:
-   case BRW_OPCODE_ASR:
-   case BRW_OPCODE_BFE:
-   case BRW_OPCODE_BFI1:
-   case BRW_OPCODE_BFI2:
-   case BRW_OPCODE_ROL:
-   case BRW_OPCODE_ROR:
-   case BRW_OPCODE_SHL:
-   case BRW_OPCODE_SHR:
-   case BRW_OPCODE_OR:
-   case SHADER_OPCODE_TEX_LOGICAL:
-   case SHADER_OPCODE_TXD_LOGICAL:
-   case SHADER_OPCODE_TXF_LOGICAL:
-   case SHADER_OPCODE_TXL_LOGICAL:
-   case SHADER_OPCODE_TXS_LOGICAL:
-   case FS_OPCODE_TXB_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
-   case SHADER_OPCODE_TXF_UMS_LOGICAL:
-   case SHADER_OPCODE_TXF_MCS_LOGICAL:
-   case SHADER_OPCODE_LOD_LOGICAL:
-   case SHADER_OPCODE_TG4_LOGICAL:
-   case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
-   case SHADER_OPCODE_SAMPLEINFO_LOGICAL:
-   case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
-   case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
-   case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
-   case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
-   case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
-   case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
-   case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
-   case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
-   case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
-   case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
-   case SHADER_OPCODE_BROADCAST:
-   case BRW_OPCODE_MAD:
-   case BRW_OPCODE_LRP:
-   case FS_OPCODE_PACK_HALF_2x16_SPLIT:
-   case SHADER_OPCODE_SHUFFLE:
+   case ELK_OPCODE_AND:
+   case ELK_OPCODE_ASR:
+   case ELK_OPCODE_BFE:
+   case ELK_OPCODE_BFI1:
+   case ELK_OPCODE_BFI2:
+   case ELK_OPCODE_ROL:
+   case ELK_OPCODE_ROR:
+   case ELK_OPCODE_SHL:
+   case ELK_OPCODE_SHR:
+   case ELK_OPCODE_OR:
+   case ELK_SHADER_OPCODE_TEX_LOGICAL:
+   case ELK_SHADER_OPCODE_TXD_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_LOGICAL:
+   case ELK_SHADER_OPCODE_TXL_LOGICAL:
+   case ELK_SHADER_OPCODE_TXS_LOGICAL:
+   case ELK_FS_OPCODE_TXB_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_CMS_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_CMS_W_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_UMS_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_MCS_LOGICAL:
+   case ELK_SHADER_OPCODE_LOD_LOGICAL:
+   case ELK_SHADER_OPCODE_TG4_LOGICAL:
+   case ELK_SHADER_OPCODE_TG4_OFFSET_LOGICAL:
+   case ELK_SHADER_OPCODE_SAMPLEINFO_LOGICAL:
+   case ELK_SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
+   case ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
+   case ELK_SHADER_OPCODE_BROADCAST:
+   case ELK_OPCODE_MAD:
+   case ELK_OPCODE_LRP:
+   case ELK_FS_OPCODE_PACK_HALF_2x16_SPLIT:
+   case ELK_SHADER_OPCODE_SHUFFLE:
       inst->src[arg] = val;
       progress = true;
       break;
@@ -1251,9 +1251,9 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
 }
 
 static bool
-can_propagate_from(fs_inst *inst)
+can_propagate_from(elk_fs_inst *inst)
 {
-   return (inst->opcode == BRW_OPCODE_MOV &&
+   return (inst->opcode == ELK_OPCODE_MOV &&
            inst->dst.file == VGRF &&
            ((inst->src[0].file == VGRF &&
              !grf_regions_overlap(inst->dst, inst->size_written,
@@ -1274,14 +1274,14 @@ can_propagate_from(fs_inst *inst)
  * list.
  */
 static bool
-opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
-                           bblock_t *block, struct acp &acp,
+opt_copy_propagation_local(const elk_compiler *compiler, linear_ctx *lin_ctx,
+                           elk_bblock_t *block, struct acp &acp,
                            const elk::simple_allocator &alloc,
                            uint8_t max_polygons)
 {
    bool progress = false;
 
-   foreach_inst_in_block(fs_inst, inst, block) {
+   foreach_inst_in_block(elk_fs_inst, inst, block) {
       /* Try propagating into this instruction. */
       bool instruction_progress = false;
       for (int i = inst->sources - 1; i >= 0; i--) {
@@ -1310,7 +1310,7 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
          progress = true;
 
          /* ADD3 can only have the immediate as src0. */
-         if (inst->opcode == BRW_OPCODE_ADD3) {
+         if (inst->opcode == ELK_OPCODE_ADD3) {
             if (inst->src[2].file == IMM) {
                const auto src0 = inst->src[0];
                inst->src[0] = inst->src[2];
@@ -1366,7 +1366,7 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
          entry->is_partial_write = inst->is_partial_write();
          entry->force_writemask_all = inst->force_writemask_all;
          acp.add(entry);
-      } else if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD &&
+      } else if (inst->opcode == ELK_SHADER_OPCODE_LOAD_PAYLOAD &&
                  inst->dst.file == VGRF) {
          int offset = 0;
          for (int i = 0; i < inst->sources; i++) {
@@ -1376,9 +1376,9 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
             if (inst->src[i].file == VGRF ||
                 (inst->src[i].file == FIXED_GRF &&
                  inst->src[i].is_contiguous())) {
-               const brw_reg_type t = i < inst->header_size ?
-                  BRW_REGISTER_TYPE_UD : inst->src[i].type;
-               fs_reg dst = byte_offset(retype(inst->dst, t), offset);
+               const elk_reg_type t = i < inst->header_size ?
+                  ELK_REGISTER_TYPE_UD : inst->src[i].type;
+               elk_fs_reg dst = byte_offset(retype(inst->dst, t), offset);
                if (!dst.equals(inst->src[i])) {
                   acp_entry *entry = linear_zalloc(lin_ctx, acp_entry);
                   entry->dst = dst;
@@ -1399,7 +1399,7 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
 }
 
 bool
-fs_visitor::opt_copy_propagation()
+elk_fs_visitor::opt_copy_propagation()
 {
    bool progress = false;
    void *copy_prop_ctx = ralloc_context(NULL);

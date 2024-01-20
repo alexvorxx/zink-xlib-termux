@@ -34,23 +34,23 @@
 #include "elk_eu.h"
 
 
-void brw_math_invert( struct brw_codegen *p,
-			     struct brw_reg dst,
-			     struct brw_reg src)
+void elk_math_invert( struct elk_codegen *p,
+			     struct elk_reg dst,
+			     struct elk_reg src)
 {
-   gfx4_math(p,
+   elk_gfx4_math(p,
 	     dst,
-	     BRW_MATH_FUNCTION_INV,
+	     ELK_MATH_FUNCTION_INV,
 	     0,
 	     src,
-	     BRW_MATH_PRECISION_FULL);
+	     ELK_MATH_PRECISION_FULL);
 }
 
 
 
-void brw_copy4(struct brw_codegen *p,
-	       struct brw_reg dst,
-	       struct brw_reg src,
+void elk_copy4(struct elk_codegen *p,
+	       struct elk_reg dst,
+	       struct elk_reg src,
 	       unsigned count)
 {
    unsigned i;
@@ -61,15 +61,15 @@ void brw_copy4(struct brw_codegen *p,
    for (i = 0; i < count; i++)
    {
       unsigned delta = i*32;
-      brw_MOV(p, byte_offset(dst, delta),    byte_offset(src, delta));
-      brw_MOV(p, byte_offset(dst, delta+16), byte_offset(src, delta+16));
+      elk_MOV(p, byte_offset(dst, delta),    byte_offset(src, delta));
+      elk_MOV(p, byte_offset(dst, delta+16), byte_offset(src, delta+16));
    }
 }
 
 
-void brw_copy8(struct brw_codegen *p,
-	       struct brw_reg dst,
-	       struct brw_reg src,
+void elk_copy8(struct elk_codegen *p,
+	       struct elk_reg dst,
+	       struct elk_reg src,
 	       unsigned count)
 {
    unsigned i;
@@ -80,14 +80,14 @@ void brw_copy8(struct brw_codegen *p,
    for (i = 0; i < count; i++)
    {
       unsigned delta = i*32;
-      brw_MOV(p, byte_offset(dst, delta),    byte_offset(src, delta));
+      elk_MOV(p, byte_offset(dst, delta),    byte_offset(src, delta));
    }
 }
 
 
-void brw_copy_indirect_to_indirect(struct brw_codegen *p,
-				   struct brw_indirect dst_ptr,
-				   struct brw_indirect src_ptr,
+void elk_copy_indirect_to_indirect(struct elk_codegen *p,
+				   struct elk_indirect dst_ptr,
+				   struct elk_indirect src_ptr,
 				   unsigned count)
 {
    unsigned i;
@@ -95,15 +95,15 @@ void brw_copy_indirect_to_indirect(struct brw_codegen *p,
    for (i = 0; i < count; i++)
    {
       unsigned delta = i*32;
-      brw_MOV(p, deref_4f(dst_ptr, delta),    deref_4f(src_ptr, delta));
-      brw_MOV(p, deref_4f(dst_ptr, delta+16), deref_4f(src_ptr, delta+16));
+      elk_MOV(p, deref_4f(dst_ptr, delta),    deref_4f(src_ptr, delta));
+      elk_MOV(p, deref_4f(dst_ptr, delta+16), deref_4f(src_ptr, delta+16));
    }
 }
 
 
-void brw_copy_from_indirect(struct brw_codegen *p,
-			    struct brw_reg dst,
-			    struct brw_indirect ptr,
+void elk_copy_from_indirect(struct elk_codegen *p,
+			    struct elk_reg dst,
+			    struct elk_indirect ptr,
 			    unsigned count)
 {
    unsigned i;
@@ -113,7 +113,7 @@ void brw_copy_from_indirect(struct brw_codegen *p,
    for (i = 0; i < count; i++)
    {
       unsigned delta = i*32;
-      brw_MOV(p, byte_offset(dst, delta),    deref_4f(ptr, delta));
-      brw_MOV(p, byte_offset(dst, delta+16), deref_4f(ptr, delta+16));
+      elk_MOV(p, byte_offset(dst, delta),    deref_4f(ptr, delta));
+      elk_MOV(p, byte_offset(dst, delta+16), deref_4f(ptr, delta+16));
    }
 }

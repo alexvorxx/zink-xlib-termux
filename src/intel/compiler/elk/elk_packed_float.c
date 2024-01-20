@@ -33,7 +33,7 @@ union fu {
 };
 
 int
-brw_float_to_vf(float f)
+elk_float_to_vf(float f)
 {
    union fu fu = { .f = f };
 
@@ -57,7 +57,7 @@ brw_float_to_vf(float f)
 }
 
 float
-brw_vf_to_float(unsigned char vf)
+elk_vf_to_float(unsigned char vf)
 {
    union fu fu;
 

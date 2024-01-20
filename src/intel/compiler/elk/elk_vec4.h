@@ -42,11 +42,11 @@ extern "C" {
 #endif
 
 const unsigned *
-brw_vec4_generate_assembly(const struct brw_compiler *compiler,
-                           const struct brw_compile_params *params,
+elk_vec4_generate_assembly(const struct elk_compiler *compiler,
+                           const struct elk_compile_params *params,
                            const nir_shader *nir,
-                           struct brw_vue_prog_data *prog_data,
-                           const struct cfg_t *cfg,
+                           struct elk_vue_prog_data *prog_data,
+                           const struct elk_cfg_t *cfg,
                            const elk::performance &perf,
                            bool debug_enabled);
 
@@ -60,39 +60,39 @@ namespace elk {
  * Translates either GLSL IR or Mesa IR (for ARB_vertex_program and
  * fixed-function) into VS IR.
  */
-class vec4_visitor : public backend_shader
+class vec4_visitor : public elk_backend_shader
 {
 public:
-   vec4_visitor(const struct brw_compiler *compiler,
-                const struct brw_compile_params *params,
-                const struct brw_sampler_prog_key_data *key,
-                struct brw_vue_prog_data *prog_data,
+   vec4_visitor(const struct elk_compiler *compiler,
+                const struct elk_compile_params *params,
+                const struct elk_sampler_prog_key_data *key,
+                struct elk_vue_prog_data *prog_data,
                 const nir_shader *shader,
                 bool no_spills,
                 bool debug_enabled);
 
    dst_reg dst_null_f()
    {
-      return dst_reg(brw_null_reg());
+      return dst_reg(elk_null_reg());
    }
 
    dst_reg dst_null_df()
    {
-      return dst_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_DF));
+      return dst_reg(retype(elk_null_reg(), ELK_REGISTER_TYPE_DF));
    }
 
    dst_reg dst_null_d()
    {
-      return dst_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_D));
+      return dst_reg(retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
    }
 
    dst_reg dst_null_ud()
    {
-      return dst_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_UD));
+      return dst_reg(retype(elk_null_reg(), ELK_REGISTER_TYPE_UD));
    }
 
-   const struct brw_sampler_prog_key_data * const key_tex;
-   struct brw_vue_prog_data * const prog_data;
+   const struct elk_sampler_prog_key_data * const key_tex;
+   struct elk_vue_prog_data * const prog_data;
    char *fail_msg;
    bool failed;
 
@@ -107,8 +107,8 @@ public:
    unsigned ubo_push_start[4];
    unsigned push_length;
    unsigned int max_grf;
-   brw_analysis<elk::vec4_live_variables, backend_shader> live_analysis;
-   brw_analysis<elk::performance, vec4_visitor> performance_analysis;
+   elk_analysis<elk::vec4_live_variables, elk_backend_shader> live_analysis;
+   elk_analysis<elk::performance, vec4_visitor> performance_analysis;
 
    /* Regs for vertex results.  Generated at ir_variable visiting time
     * for the ir->location's used.
@@ -138,7 +138,7 @@ public:
    bool dead_code_eliminate();
    bool opt_cmod_propagation();
    bool opt_copy_propagation(bool do_constant_prop = true);
-   bool opt_cse_local(bblock_t *block, const vec4_live_variables &live);
+   bool opt_cse_local(elk_bblock_t *block, const vec4_live_variables &live);
    bool opt_cse();
    bool opt_algebraic();
    bool opt_register_coalesce();
@@ -153,22 +153,22 @@ public:
    bool lower_simd_width();
    bool scalarize_df();
    bool lower_64bit_mad_to_mul_add();
-   void apply_logical_swizzle(struct brw_reg *hw_reg,
+   void apply_logical_swizzle(struct elk_reg *hw_reg,
                               vec4_instruction *inst, int arg);
 
    vec4_instruction *emit(vec4_instruction *inst);
 
-   vec4_instruction *emit(enum opcode opcode);
-   vec4_instruction *emit(enum opcode opcode, const dst_reg &dst);
-   vec4_instruction *emit(enum opcode opcode, const dst_reg &dst,
+   vec4_instruction *emit(enum elk_opcode opcode);
+   vec4_instruction *emit(enum elk_opcode opcode, const dst_reg &dst);
+   vec4_instruction *emit(enum elk_opcode opcode, const dst_reg &dst,
                           const src_reg &src0);
-   vec4_instruction *emit(enum opcode opcode, const dst_reg &dst,
+   vec4_instruction *emit(enum elk_opcode opcode, const dst_reg &dst,
                           const src_reg &src0, const src_reg &src1);
-   vec4_instruction *emit(enum opcode opcode, const dst_reg &dst,
+   vec4_instruction *emit(enum elk_opcode opcode, const dst_reg &dst,
                           const src_reg &src0, const src_reg &src1,
                           const src_reg &src2);
 
-   vec4_instruction *emit_before(bblock_t *block,
+   vec4_instruction *emit_before(elk_bblock_t *block,
                                  vec4_instruction *inst,
 				 vec4_instruction *new_inst);
 
@@ -197,10 +197,10 @@ public:
    EMIT2(SHR)
    EMIT2(ASR)
    vec4_instruction *CMP(dst_reg dst, src_reg src0, src_reg src1,
-			 enum brw_conditional_mod condition);
+			 enum elk_conditional_mod condition);
    vec4_instruction *IF(src_reg src0, src_reg src1,
-                        enum brw_conditional_mod condition);
-   vec4_instruction *IF(enum brw_predicate predicate);
+                        enum elk_conditional_mod condition);
+   vec4_instruction *IF(enum elk_predicate predicate);
    EMIT1(SCRATCH_READ)
    EMIT2(SCRATCH_WRITE)
    EMIT3(LRP)
@@ -221,7 +221,7 @@ public:
 #undef EMIT2
 #undef EMIT3
 
-   vec4_instruction *emit_minmax(enum brw_conditional_mod conditionalmod, dst_reg dst,
+   vec4_instruction *emit_minmax(enum elk_conditional_mod conditionalmod, dst_reg dst,
                                  src_reg src0, src_reg src1);
 
    /**
@@ -235,7 +235,7 @@ public:
 
    src_reg fix_3src_operand(const src_reg &src);
 
-   vec4_instruction *emit_math(enum opcode opcode, const dst_reg &dst, const src_reg &src0,
+   vec4_instruction *emit_math(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0,
                                const src_reg &src1 = src_reg());
 
    src_reg fix_math_operand(const src_reg &src);
@@ -255,20 +255,20 @@ public:
    vec4_instruction *emit_generic_urb_slot(dst_reg reg, int varying, int comp);
    virtual void emit_urb_slot(dst_reg reg, int varying);
 
-   src_reg get_scratch_offset(bblock_t *block, vec4_instruction *inst,
+   src_reg get_scratch_offset(elk_bblock_t *block, vec4_instruction *inst,
 			      src_reg *reladdr, int reg_offset);
-   void emit_scratch_read(bblock_t *block, vec4_instruction *inst,
+   void emit_scratch_read(elk_bblock_t *block, vec4_instruction *inst,
 			  dst_reg dst,
 			  src_reg orig_src,
 			  int base_offset);
-   void emit_scratch_write(bblock_t *block, vec4_instruction *inst,
+   void emit_scratch_write(elk_bblock_t *block, vec4_instruction *inst,
 			   int base_offset);
    void emit_pull_constant_load_reg(dst_reg dst,
                                     src_reg surf_index,
                                     src_reg offset,
-                                    bblock_t *before_block,
+                                    elk_bblock_t *before_block,
                                     vec4_instruction *before_inst);
-   src_reg emit_resolve_reladdr(int scratch_loc[], bblock_t *block,
+   src_reg emit_resolve_reladdr(int scratch_loc[], elk_bblock_t *block,
                                 vec4_instruction *inst, src_reg src);
 
    void resolve_ud_negate(src_reg *reg);
@@ -279,9 +279,9 @@ public:
 
    src_reg get_timestamp();
 
-   virtual void dump_instruction_to_file(const backend_instruction *inst, FILE *file) const;
+   virtual void dump_instruction_to_file(const elk_backend_instruction *inst, FILE *file) const;
 
-   bool optimize_predicate(nir_alu_instr *instr, enum brw_predicate *predicate);
+   bool optimize_predicate(nir_alu_instr *instr, enum elk_predicate *predicate);
 
    void emit_conversion_from_double(dst_reg dst, src_reg src);
    void emit_conversion_to_double(dst_reg dst, src_reg src);
@@ -289,7 +289,7 @@ public:
    vec4_instruction *shuffle_64bit_data(dst_reg dst, src_reg src,
                                         bool for_write,
                                         bool for_scratch = false,
-                                        bblock_t *block = NULL,
+                                        elk_bblock_t *block = NULL,
                                         vec4_instruction *ref = NULL);
 
    virtual void emit_nir_code();
@@ -309,10 +309,10 @@ public:
    virtual void nir_emit_undef(nir_undef_instr *instr);
    virtual void nir_emit_ssbo_atomic(int op, nir_intrinsic_instr *instr);
 
-   dst_reg get_nir_def(const nir_def &def, enum brw_reg_type type);
+   dst_reg get_nir_def(const nir_def &def, enum elk_reg_type type);
    dst_reg get_nir_def(const nir_def &def, nir_alu_type type);
    dst_reg get_nir_def(const nir_def &def);
-   src_reg get_nir_src(const nir_src &src, enum brw_reg_type type,
+   src_reg get_nir_src(const nir_src &src, enum elk_reg_type type,
                        unsigned num_components = 4);
    src_reg get_nir_src(const nir_src &src, nir_alu_type type,
                        unsigned num_components = 4);

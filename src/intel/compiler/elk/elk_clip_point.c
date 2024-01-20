@@ -34,12 +34,12 @@
 
 /* Point clipping, nothing to do?
  */
-void brw_emit_point_clip( struct brw_clip_compile *c )
+void elk_emit_point_clip( struct elk_clip_compile *c )
 {
    /* Send an empty message to kill the thread:
     */
-   brw_clip_tri_alloc_regs(c, 0);
-   brw_clip_init_ff_sync(c);
+   elk_clip_tri_alloc_regs(c, 0);
+   elk_clip_init_ff_sync(c);
 
-   brw_clip_kill_thread(c);
+   elk_clip_kill_thread(c);
 }

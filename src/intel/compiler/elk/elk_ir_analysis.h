@@ -131,19 +131,19 @@ namespace elk {
  *    is currently only used for validation in debug builds.
  */
 template<class T, class C>
-class brw_analysis {
+class elk_analysis {
 public:
    /**
     * Construct a program analysis.  \p c is an arbitrary object
     * passed as argument to the constructor of the analysis result
     * object of type \p T.
     */
-   brw_analysis(const C *c) : c(c), p(NULL) {}
+   elk_analysis(const C *c) : c(c), p(NULL) {}
 
    /**
     * Destroy a program analysis.
     */
-   ~brw_analysis()
+   ~elk_analysis()
    {
       delete p;
    }
@@ -167,7 +167,7 @@ public:
    const T &
    require() const
    {
-      return const_cast<brw_analysis<T, C> *>(this)->require();
+      return const_cast<elk_analysis<T, C> *>(this)->require();
    }
 
    /**

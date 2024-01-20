@@ -47,12 +47,12 @@
 extern "C" {
 #endif
 
-struct disasm_info;
+struct elk_disasm_info;
 
-#define BRW_EU_MAX_INSN_STACK 5
+#define ELK_EU_MAX_INSN_STACK 5
 
-struct brw_insn_state {
-   /* One of BRW_EXECUTE_* */
+struct elk_insn_state {
+   /* One of ELK_EXECUTE_* */
    unsigned exec_size:3;
 
    /* Group in units of channels */
@@ -61,7 +61,7 @@ struct brw_insn_state {
    /* Compression control on gfx4-5 */
    bool compressed:1;
 
-   /* One of BRW_MASK_* */
+   /* One of ELK_MASK_* */
    unsigned mask_control:1;
 
    /* Scheduling info for Gfx12+ */
@@ -69,11 +69,11 @@ struct brw_insn_state {
 
    bool saturate:1;
 
-   /* One of BRW_ALIGN_* */
+   /* One of ELK_ALIGN_* */
    unsigned access_mode:1;
 
-   /* One of BRW_PREDICATE_* */
-   enum brw_predicate predicate:4;
+   /* One of ELK_PREDICATE_* */
+   enum elk_predicate predicate:4;
 
    bool pred_inv:1;
 
@@ -88,10 +88,10 @@ struct brw_insn_state {
  * to set various bits on an instruction without having to create temporary
  * variable and assign the emitted instruction to those.
  */
-#define brw_last_inst (&p->store[p->nr_insn - 1])
+#define elk_last_inst (&p->store[p->nr_insn - 1])
 
-struct brw_codegen {
-   brw_inst *store;
+struct elk_codegen {
+   elk_inst *store;
    int store_size;
    unsigned nr_insn;
    unsigned int next_insn_offset;
@@ -100,21 +100,21 @@ struct brw_codegen {
 
    /* Allow clients to push/pop instruction state:
     */
-   struct brw_insn_state stack[BRW_EU_MAX_INSN_STACK];
-   struct brw_insn_state *current;
+   struct elk_insn_state stack[ELK_EU_MAX_INSN_STACK];
+   struct elk_insn_state *current;
 
    /** Whether or not the user wants automatic exec sizes
     *
     * If true, codegen will try to automatically infer the exec size of an
     * instruction from the width of the destination register.  If false, it
-    * will take whatever is set by brw_set_default_exec_size verbatim.
+    * will take whatever is set by elk_set_default_exec_size verbatim.
     *
-    * This is set to true by default in brw_init_codegen.
+    * This is set to true by default in elk_init_codegen.
     */
    bool automatic_exec_sizes;
 
    bool single_program_flow;
-   const struct brw_isa_info *isa;
+   const struct elk_isa_info *isa;
    const struct intel_device_info *devinfo;
 
    /* Control flow stacks:
@@ -142,88 +142,88 @@ struct brw_codegen {
    int loop_stack_depth;
    int loop_stack_array_size;
 
-   struct brw_shader_reloc *relocs;
+   struct elk_shader_reloc *relocs;
    int num_relocs;
    int reloc_array_size;
 };
 
-struct brw_label {
+struct elk_label {
    int offset;
    int number;
-   struct brw_label *next;
+   struct elk_label *next;
 };
 
-void brw_pop_insn_state( struct brw_codegen *p );
-void brw_push_insn_state( struct brw_codegen *p );
-unsigned brw_get_default_exec_size(struct brw_codegen *p);
-unsigned brw_get_default_group(struct brw_codegen *p);
-unsigned brw_get_default_access_mode(struct brw_codegen *p);
-struct tgl_swsb brw_get_default_swsb(struct brw_codegen *p);
-void brw_set_default_exec_size(struct brw_codegen *p, unsigned value);
-void brw_set_default_mask_control( struct brw_codegen *p, unsigned value );
-void brw_set_default_saturate( struct brw_codegen *p, bool enable );
-void brw_set_default_access_mode( struct brw_codegen *p, unsigned access_mode );
-void brw_inst_set_compression(const struct intel_device_info *devinfo,
-                              brw_inst *inst, bool on);
-void brw_set_default_compression(struct brw_codegen *p, bool on);
-void brw_inst_set_group(const struct intel_device_info *devinfo,
-                        brw_inst *inst, unsigned group);
-void brw_set_default_group(struct brw_codegen *p, unsigned group);
-void brw_set_default_compression_control(struct brw_codegen *p, enum brw_compression c);
-void brw_set_default_predicate_control(struct brw_codegen *p, enum brw_predicate pc);
-void brw_set_default_predicate_inverse(struct brw_codegen *p, bool predicate_inverse);
-void brw_set_default_flag_reg(struct brw_codegen *p, int reg, int subreg);
-void brw_set_default_acc_write_control(struct brw_codegen *p, unsigned value);
-void brw_set_default_swsb(struct brw_codegen *p, struct tgl_swsb value);
+void elk_pop_insn_state( struct elk_codegen *p );
+void elk_push_insn_state( struct elk_codegen *p );
+unsigned elk_get_default_exec_size(struct elk_codegen *p);
+unsigned elk_get_default_group(struct elk_codegen *p);
+unsigned elk_get_default_access_mode(struct elk_codegen *p);
+struct tgl_swsb elk_get_default_swsb(struct elk_codegen *p);
+void elk_set_default_exec_size(struct elk_codegen *p, unsigned value);
+void elk_set_default_mask_control( struct elk_codegen *p, unsigned value );
+void elk_set_default_saturate( struct elk_codegen *p, bool enable );
+void elk_set_default_access_mode( struct elk_codegen *p, unsigned access_mode );
+void elk_inst_set_compression(const struct intel_device_info *devinfo,
+                              elk_inst *inst, bool on);
+void elk_set_default_compression(struct elk_codegen *p, bool on);
+void elk_inst_set_group(const struct intel_device_info *devinfo,
+                        elk_inst *inst, unsigned group);
+void elk_set_default_group(struct elk_codegen *p, unsigned group);
+void elk_set_default_compression_control(struct elk_codegen *p, enum elk_compression c);
+void elk_set_default_predicate_control(struct elk_codegen *p, enum elk_predicate pc);
+void elk_set_default_predicate_inverse(struct elk_codegen *p, bool predicate_inverse);
+void elk_set_default_flag_reg(struct elk_codegen *p, int reg, int subreg);
+void elk_set_default_acc_write_control(struct elk_codegen *p, unsigned value);
+void elk_set_default_swsb(struct elk_codegen *p, struct tgl_swsb value);
 
-void brw_init_codegen(const struct brw_isa_info *isa,
-                      struct brw_codegen *p, void *mem_ctx);
-bool brw_has_jip(const struct intel_device_info *devinfo, enum opcode opcode);
-bool brw_has_uip(const struct intel_device_info *devinfo, enum opcode opcode);
-const struct brw_shader_reloc *brw_get_shader_relocs(struct brw_codegen *p,
+void elk_init_codegen(const struct elk_isa_info *isa,
+                      struct elk_codegen *p, void *mem_ctx);
+bool elk_has_jip(const struct intel_device_info *devinfo, enum elk_opcode opcode);
+bool elk_has_uip(const struct intel_device_info *devinfo, enum elk_opcode opcode);
+const struct elk_shader_reloc *elk_get_shader_relocs(struct elk_codegen *p,
                                                      unsigned *num_relocs);
-const unsigned *brw_get_program( struct brw_codegen *p, unsigned *sz );
+const unsigned *elk_get_program( struct elk_codegen *p, unsigned *sz );
 
-bool brw_should_dump_shader_bin(void);
-void brw_dump_shader_bin(void *assembly, int start_offset, int end_offset,
+bool elk_should_dump_shader_bin(void);
+void elk_dump_shader_bin(void *assembly, int start_offset, int end_offset,
                          const char *identifier);
 
-bool brw_try_override_assembly(struct brw_codegen *p, int start_offset,
+bool elk_try_override_assembly(struct elk_codegen *p, int start_offset,
                                const char *identifier);
 
-void brw_realign(struct brw_codegen *p, unsigned alignment);
-int brw_append_data(struct brw_codegen *p, void *data,
+void elk_realign(struct elk_codegen *p, unsigned alignment);
+int elk_append_data(struct elk_codegen *p, void *data,
                     unsigned size, unsigned alignment);
-brw_inst *brw_next_insn(struct brw_codegen *p, unsigned opcode);
-void brw_add_reloc(struct brw_codegen *p, uint32_t id,
-                   enum brw_shader_reloc_type type,
+elk_inst *elk_next_insn(struct elk_codegen *p, unsigned opcode);
+void elk_add_reloc(struct elk_codegen *p, uint32_t id,
+                   enum elk_shader_reloc_type type,
                    uint32_t offset, uint32_t delta);
-void brw_set_dest(struct brw_codegen *p, brw_inst *insn, struct brw_reg dest);
-void brw_set_src0(struct brw_codegen *p, brw_inst *insn, struct brw_reg reg);
+void elk_set_dest(struct elk_codegen *p, elk_inst *insn, struct elk_reg dest);
+void elk_set_src0(struct elk_codegen *p, elk_inst *insn, struct elk_reg reg);
 
-void gfx6_resolve_implied_move(struct brw_codegen *p,
-			       struct brw_reg *src,
+void elk_gfx6_resolve_implied_move(struct elk_codegen *p,
+			       struct elk_reg *src,
 			       unsigned msg_reg_nr);
 
 /* Helpers for regular instructions:
  */
 #define ALU1(OP)				\
-brw_inst *brw_##OP(struct brw_codegen *p,	\
-	      struct brw_reg dest,		\
-	      struct brw_reg src0);
+elk_inst *elk_##OP(struct elk_codegen *p,	\
+	      struct elk_reg dest,		\
+	      struct elk_reg src0);
 
 #define ALU2(OP)				\
-brw_inst *brw_##OP(struct brw_codegen *p,	\
-	      struct brw_reg dest,		\
-	      struct brw_reg src0,		\
-	      struct brw_reg src1);
+elk_inst *elk_##OP(struct elk_codegen *p,	\
+	      struct elk_reg dest,		\
+	      struct elk_reg src0,		\
+	      struct elk_reg src1);
 
 #define ALU3(OP)				\
-brw_inst *brw_##OP(struct brw_codegen *p,	\
-	      struct brw_reg dest,		\
-	      struct brw_reg src0,		\
-	      struct brw_reg src1,		\
-	      struct brw_reg src2);
+elk_inst *elk_##OP(struct elk_codegen *p,	\
+	      struct elk_reg dest,		\
+	      struct elk_reg src0,		\
+	      struct elk_reg src1,		\
+	      struct elk_reg src2);
 
 ALU1(MOV)
 ALU2(SEL)
@@ -290,7 +290,7 @@ reg_unit(const struct intel_device_info *devinfo)
  * descriptor controls.
  */
 static inline uint32_t
-brw_message_desc(const struct intel_device_info *devinfo,
+elk_message_desc(const struct intel_device_info *devinfo,
                  unsigned msg_length,
                  unsigned response_length,
                  bool header_present)
@@ -308,7 +308,7 @@ brw_message_desc(const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-brw_message_desc_mlen(const struct intel_device_info *devinfo, uint32_t desc)
+elk_message_desc_mlen(const struct intel_device_info *devinfo, uint32_t desc)
 {
    if (devinfo->ver >= 5)
       return GET_BITS(desc, 28, 25) * reg_unit(devinfo);
@@ -317,7 +317,7 @@ brw_message_desc_mlen(const struct intel_device_info *devinfo, uint32_t desc)
 }
 
 static inline unsigned
-brw_message_desc_rlen(const struct intel_device_info *devinfo, uint32_t desc)
+elk_message_desc_rlen(const struct intel_device_info *devinfo, uint32_t desc)
 {
    if (devinfo->ver >= 5)
       return GET_BITS(desc, 24, 20) * reg_unit(devinfo);
@@ -326,7 +326,7 @@ brw_message_desc_rlen(const struct intel_device_info *devinfo, uint32_t desc)
 }
 
 static inline bool
-brw_message_desc_header_present(ASSERTED
+elk_message_desc_header_present(ASSERTED
                                 const struct intel_device_info *devinfo,
                                 uint32_t desc)
 {
@@ -335,7 +335,7 @@ brw_message_desc_header_present(ASSERTED
 }
 
 static inline unsigned
-brw_message_ex_desc(const struct intel_device_info *devinfo,
+elk_message_ex_desc(const struct intel_device_info *devinfo,
                     unsigned ex_msg_length)
 {
    assert(ex_msg_length % reg_unit(devinfo) == 0);
@@ -343,14 +343,14 @@ brw_message_ex_desc(const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-brw_message_ex_desc_ex_mlen(const struct intel_device_info *devinfo,
+elk_message_ex_desc_ex_mlen(const struct intel_device_info *devinfo,
                             uint32_t ex_desc)
 {
    return GET_BITS(ex_desc, 9, 6) * reg_unit(devinfo);
 }
 
 static inline uint32_t
-brw_urb_desc(const struct intel_device_info *devinfo,
+elk_urb_desc(const struct intel_device_info *devinfo,
              unsigned msg_type,
              bool per_slot_offset_present,
              bool channel_mask_present,
@@ -372,7 +372,7 @@ brw_urb_desc(const struct intel_device_info *devinfo,
 }
 
 static inline uint32_t
-brw_urb_desc_msg_type(ASSERTED const struct intel_device_info *devinfo,
+elk_urb_desc_msg_type(ASSERTED const struct intel_device_info *devinfo,
                       uint32_t desc)
 {
    assert(devinfo->ver >= 7);
@@ -380,10 +380,10 @@ brw_urb_desc_msg_type(ASSERTED const struct intel_device_info *devinfo,
 }
 
 static inline uint32_t
-brw_urb_fence_desc(const struct intel_device_info *devinfo)
+elk_urb_fence_desc(const struct intel_device_info *devinfo)
 {
    assert(devinfo->has_lsc);
-   return brw_urb_desc(devinfo, GFX125_URB_OPCODE_FENCE, false, false, 0);
+   return elk_urb_desc(devinfo, GFX125_URB_OPCODE_FENCE, false, false, 0);
 }
 
 /**
@@ -391,7 +391,7 @@ brw_urb_fence_desc(const struct intel_device_info *devinfo)
  * function controls.
  */
 static inline uint32_t
-brw_sampler_desc(const struct intel_device_info *devinfo,
+elk_sampler_desc(const struct intel_device_info *devinfo,
                  unsigned binding_table_index,
                  unsigned sampler,
                  unsigned msg_type,
@@ -440,7 +440,7 @@ brw_sampler_desc(const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-brw_sampler_desc_binding_table_index(UNUSED
+elk_sampler_desc_binding_table_index(UNUSED
                                      const struct intel_device_info *devinfo,
                                      uint32_t desc)
 {
@@ -448,14 +448,14 @@ brw_sampler_desc_binding_table_index(UNUSED
 }
 
 static inline unsigned
-brw_sampler_desc_sampler(UNUSED const struct intel_device_info *devinfo,
+elk_sampler_desc_sampler(UNUSED const struct intel_device_info *devinfo,
                          uint32_t desc)
 {
    return GET_BITS(desc, 11, 8);
 }
 
 static inline unsigned
-brw_sampler_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
+elk_sampler_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
 {
    if (devinfo->ver >= 20)
       return GET_BITS(desc, 31, 31) << 5 | GET_BITS(desc, 16, 12);
@@ -468,7 +468,7 @@ brw_sampler_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc
 }
 
 static inline unsigned
-brw_sampler_desc_simd_mode(const struct intel_device_info *devinfo,
+elk_sampler_desc_simd_mode(const struct intel_device_info *devinfo,
                            uint32_t desc)
 {
    assert(devinfo->ver >= 5);
@@ -481,7 +481,7 @@ brw_sampler_desc_simd_mode(const struct intel_device_info *devinfo,
 }
 
 static  inline unsigned
-brw_sampler_desc_return_format(ASSERTED const struct intel_device_info *devinfo,
+elk_sampler_desc_return_format(ASSERTED const struct intel_device_info *devinfo,
                                uint32_t desc)
 {
    assert(devinfo->verx10 == 40 || devinfo->ver >= 8);
@@ -495,7 +495,7 @@ brw_sampler_desc_return_format(ASSERTED const struct intel_device_info *devinfo,
  * Construct a message descriptor for the dataport
  */
 static inline uint32_t
-brw_dp_desc(const struct intel_device_info *devinfo,
+elk_dp_desc(const struct intel_device_info *devinfo,
             unsigned binding_table_index,
             unsigned msg_type,
             unsigned msg_control)
@@ -518,14 +518,14 @@ brw_dp_desc(const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-brw_dp_desc_binding_table_index(UNUSED const struct intel_device_info *devinfo,
+elk_dp_desc_binding_table_index(UNUSED const struct intel_device_info *devinfo,
                                 uint32_t desc)
 {
    return GET_BITS(desc, 7, 0);
 }
 
 static inline unsigned
-brw_dp_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
+elk_dp_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
 {
    assert(devinfo->ver >= 6);
    if (devinfo->ver >= 8)
@@ -537,7 +537,7 @@ brw_dp_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
 }
 
 static inline unsigned
-brw_dp_desc_msg_control(const struct intel_device_info *devinfo, uint32_t desc)
+elk_dp_desc_msg_control(const struct intel_device_info *devinfo, uint32_t desc)
 {
    assert(devinfo->ver >= 6);
    if (devinfo->ver >= 7)
@@ -551,14 +551,14 @@ brw_dp_desc_msg_control(const struct intel_device_info *devinfo, uint32_t desc)
  * function controls.
  */
 static inline uint32_t
-brw_dp_read_desc(const struct intel_device_info *devinfo,
+elk_dp_read_desc(const struct intel_device_info *devinfo,
                  unsigned binding_table_index,
                  unsigned msg_control,
                  unsigned msg_type,
                  unsigned target_cache)
 {
    if (devinfo->ver >= 6)
-      return brw_dp_desc(devinfo, binding_table_index, msg_type, msg_control);
+      return elk_dp_desc(devinfo, binding_table_index, msg_type, msg_control);
    else if (devinfo->verx10 >= 45)
       return (SET_BITS(binding_table_index, 7, 0) |
               SET_BITS(msg_control, 10, 8) |
@@ -572,11 +572,11 @@ brw_dp_read_desc(const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-brw_dp_read_desc_msg_type(const struct intel_device_info *devinfo,
+elk_dp_read_desc_msg_type(const struct intel_device_info *devinfo,
                           uint32_t desc)
 {
    if (devinfo->ver >= 6)
-      return brw_dp_desc_msg_type(devinfo, desc);
+      return elk_dp_desc_msg_type(devinfo, desc);
    else if (devinfo->verx10 >= 45)
       return GET_BITS(desc, 13, 11);
    else
@@ -584,11 +584,11 @@ brw_dp_read_desc_msg_type(const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-brw_dp_read_desc_msg_control(const struct intel_device_info *devinfo,
+elk_dp_read_desc_msg_control(const struct intel_device_info *devinfo,
                              uint32_t desc)
 {
    if (devinfo->ver >= 6)
-      return brw_dp_desc_msg_control(devinfo, desc);
+      return elk_dp_desc_msg_control(devinfo, desc);
    else if (devinfo->verx10 >= 45)
       return GET_BITS(desc, 10, 8);
    else
@@ -600,7 +600,7 @@ brw_dp_read_desc_msg_control(const struct intel_device_info *devinfo,
  * function controls.
  */
 static inline uint32_t
-brw_dp_write_desc(const struct intel_device_info *devinfo,
+elk_dp_write_desc(const struct intel_device_info *devinfo,
                   unsigned binding_table_index,
                   unsigned msg_control,
                   unsigned msg_type,
@@ -608,7 +608,7 @@ brw_dp_write_desc(const struct intel_device_info *devinfo,
 {
    assert(devinfo->ver <= 6 || !send_commit_msg);
    if (devinfo->ver >= 6) {
-      return brw_dp_desc(devinfo, binding_table_index, msg_type, msg_control) |
+      return elk_dp_desc(devinfo, binding_table_index, msg_type, msg_control) |
              SET_BITS(send_commit_msg, 17, 17);
    } else {
       return (SET_BITS(binding_table_index, 7, 0) |
@@ -619,27 +619,27 @@ brw_dp_write_desc(const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-brw_dp_write_desc_msg_type(const struct intel_device_info *devinfo,
+elk_dp_write_desc_msg_type(const struct intel_device_info *devinfo,
                            uint32_t desc)
 {
    if (devinfo->ver >= 6)
-      return brw_dp_desc_msg_type(devinfo, desc);
+      return elk_dp_desc_msg_type(devinfo, desc);
    else
       return GET_BITS(desc, 14, 12);
 }
 
 static inline unsigned
-brw_dp_write_desc_msg_control(const struct intel_device_info *devinfo,
+elk_dp_write_desc_msg_control(const struct intel_device_info *devinfo,
                               uint32_t desc)
 {
    if (devinfo->ver >= 6)
-      return brw_dp_desc_msg_control(devinfo, desc);
+      return elk_dp_desc_msg_control(devinfo, desc);
    else
       return GET_BITS(desc, 11, 8);
 }
 
 static inline bool
-brw_dp_write_desc_write_commit(const struct intel_device_info *devinfo,
+elk_dp_write_desc_write_commit(const struct intel_device_info *devinfo,
                                uint32_t desc)
 {
    assert(devinfo->ver <= 6);
@@ -654,17 +654,17 @@ brw_dp_write_desc_write_commit(const struct intel_device_info *devinfo,
  * surface function controls.
  */
 static inline uint32_t
-brw_dp_surface_desc(const struct intel_device_info *devinfo,
+elk_dp_surface_desc(const struct intel_device_info *devinfo,
                     unsigned msg_type,
                     unsigned msg_control)
 {
    assert(devinfo->ver >= 7);
    /* We'll OR in the binding table index later */
-   return brw_dp_desc(devinfo, 0, msg_type, msg_control);
+   return elk_dp_desc(devinfo, 0, msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_untyped_atomic_desc(const struct intel_device_info *devinfo,
+elk_dp_untyped_atomic_desc(const struct intel_device_info *devinfo,
                            unsigned exec_size, /**< 0 for SIMD4x2 */
                            unsigned atomic_op,
                            bool response_expected)
@@ -687,11 +687,11 @@ brw_dp_untyped_atomic_desc(const struct intel_device_info *devinfo,
       SET_BITS(0 < exec_size && exec_size <= 8, 4, 4) |
       SET_BITS(response_expected, 5, 5);
 
-   return brw_dp_surface_desc(devinfo, msg_type, msg_control);
+   return elk_dp_surface_desc(devinfo, msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_untyped_atomic_float_desc(const struct intel_device_info *devinfo,
+elk_dp_untyped_atomic_float_desc(const struct intel_device_info *devinfo,
                                  unsigned exec_size,
                                  unsigned atomic_op,
                                  bool response_expected)
@@ -707,11 +707,11 @@ brw_dp_untyped_atomic_float_desc(const struct intel_device_info *devinfo,
       SET_BITS(exec_size <= 8, 4, 4) |
       SET_BITS(response_expected, 5, 5);
 
-   return brw_dp_surface_desc(devinfo, msg_type, msg_control);
+   return elk_dp_surface_desc(devinfo, msg_type, msg_control);
 }
 
 static inline unsigned
-brw_mdc_cmask(unsigned num_channels)
+elk_mdc_cmask(unsigned num_channels)
 {
    /* See also MDC_CMASK in the SKL PRM Vol 2d. */
    return 0xf & (0xf << num_channels);
@@ -725,7 +725,7 @@ lsc_cmask(unsigned num_channels)
 }
 
 static inline uint32_t
-brw_dp_untyped_surface_rw_desc(const struct intel_device_info *devinfo,
+elk_dp_untyped_surface_rw_desc(const struct intel_device_info *devinfo,
                                unsigned exec_size, /**< 0 for SIMD4x2 */
                                unsigned num_channels,
                                bool write)
@@ -757,14 +757,14 @@ brw_dp_untyped_surface_rw_desc(const struct intel_device_info *devinfo,
                               exec_size <= 8 ? 2 : 1;
 
    const unsigned msg_control =
-      SET_BITS(brw_mdc_cmask(num_channels), 3, 0) |
+      SET_BITS(elk_mdc_cmask(num_channels), 3, 0) |
       SET_BITS(simd_mode, 5, 4);
 
-   return brw_dp_surface_desc(devinfo, msg_type, msg_control);
+   return elk_dp_surface_desc(devinfo, msg_type, msg_control);
 }
 
 static inline unsigned
-brw_mdc_ds(unsigned bit_size)
+elk_mdc_ds(unsigned bit_size)
 {
    switch (bit_size) {
    case 8:
@@ -779,7 +779,7 @@ brw_mdc_ds(unsigned bit_size)
 }
 
 static inline uint32_t
-brw_dp_byte_scattered_rw_desc(const struct intel_device_info *devinfo,
+elk_dp_byte_scattered_rw_desc(const struct intel_device_info *devinfo,
                               unsigned exec_size,
                               unsigned bit_size,
                               bool write)
@@ -794,13 +794,13 @@ brw_dp_byte_scattered_rw_desc(const struct intel_device_info *devinfo,
    assert(exec_size > 0);
    const unsigned msg_control =
       SET_BITS(exec_size == 16, 0, 0) |
-      SET_BITS(brw_mdc_ds(bit_size), 3, 2);
+      SET_BITS(elk_mdc_ds(bit_size), 3, 2);
 
-   return brw_dp_surface_desc(devinfo, msg_type, msg_control);
+   return elk_dp_surface_desc(devinfo, msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_dword_scattered_rw_desc(const struct intel_device_info *devinfo,
+elk_dp_dword_scattered_rw_desc(const struct intel_device_info *devinfo,
                                unsigned exec_size,
                                bool write)
 {
@@ -811,7 +811,7 @@ brw_dp_dword_scattered_rw_desc(const struct intel_device_info *devinfo,
       if (devinfo->ver >= 6) {
          msg_type = GFX6_DATAPORT_WRITE_MESSAGE_DWORD_SCATTERED_WRITE;
       } else {
-         msg_type = BRW_DATAPORT_WRITE_MESSAGE_DWORD_SCATTERED_WRITE;
+         msg_type = ELK_DATAPORT_WRITE_MESSAGE_DWORD_SCATTERED_WRITE;
       }
    } else {
       if (devinfo->ver >= 7) {
@@ -819,7 +819,7 @@ brw_dp_dword_scattered_rw_desc(const struct intel_device_info *devinfo,
       } else if (devinfo->verx10 >= 45) {
          msg_type = G45_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ;
       } else {
-         msg_type = BRW_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ;
+         msg_type = ELK_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ;
       }
    }
 
@@ -827,11 +827,11 @@ brw_dp_dword_scattered_rw_desc(const struct intel_device_info *devinfo,
       SET_BITS(1, 1, 1) | /* Legacy SIMD Mode */
       SET_BITS(exec_size == 16, 0, 0);
 
-   return brw_dp_surface_desc(devinfo, msg_type, msg_control);
+   return elk_dp_surface_desc(devinfo, msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_oword_block_rw_desc(const struct intel_device_info *devinfo,
+elk_dp_oword_block_rw_desc(const struct intel_device_info *devinfo,
                            bool align_16B,
                            unsigned num_dwords,
                            bool write)
@@ -845,13 +845,13 @@ brw_dp_oword_block_rw_desc(const struct intel_device_info *devinfo,
                   GFX7_DATAPORT_DC_UNALIGNED_OWORD_BLOCK_READ;
 
    const unsigned msg_control =
-      SET_BITS(BRW_DATAPORT_OWORD_BLOCK_DWORDS(num_dwords), 2, 0);
+      SET_BITS(ELK_DATAPORT_OWORD_BLOCK_DWORDS(num_dwords), 2, 0);
 
-   return brw_dp_surface_desc(devinfo, msg_type, msg_control);
+   return elk_dp_surface_desc(devinfo, msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_a64_untyped_surface_rw_desc(const struct intel_device_info *devinfo,
+elk_dp_a64_untyped_surface_rw_desc(const struct intel_device_info *devinfo,
                                    unsigned exec_size, /**< 0 for SIMD4x2 */
                                    unsigned num_channels,
                                    bool write)
@@ -868,15 +868,15 @@ brw_dp_a64_untyped_surface_rw_desc(const struct intel_device_info *devinfo,
                               exec_size <= 8 ? 2 : 1;
 
    const unsigned msg_control =
-      SET_BITS(brw_mdc_cmask(num_channels), 3, 0) |
+      SET_BITS(elk_mdc_cmask(num_channels), 3, 0) |
       SET_BITS(simd_mode, 5, 4);
 
-   return brw_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
+   return elk_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
                       msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_a64_oword_block_rw_desc(const struct intel_device_info *devinfo,
+elk_dp_a64_oword_block_rw_desc(const struct intel_device_info *devinfo,
                                bool align_16B,
                                unsigned num_dwords,
                                bool write)
@@ -890,9 +890,9 @@ brw_dp_a64_oword_block_rw_desc(const struct intel_device_info *devinfo,
 
    unsigned msg_control =
       SET_BITS(!align_16B, 4, 3) |
-      SET_BITS(BRW_DATAPORT_OWORD_BLOCK_DWORDS(num_dwords), 2, 0);
+      SET_BITS(ELK_DATAPORT_OWORD_BLOCK_DWORDS(num_dwords), 2, 0);
 
-   return brw_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
+   return elk_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
                       msg_type, msg_control);
 }
 
@@ -901,7 +901,7 @@ brw_dp_a64_oword_block_rw_desc(const struct intel_device_info *devinfo,
  * Skylake PRM).
  */
 static inline uint32_t
-brw_mdc_a64_ds(unsigned elems)
+elk_mdc_a64_ds(unsigned elems)
 {
    switch (elems) {
    case 1:  return 0;
@@ -914,7 +914,7 @@ brw_mdc_a64_ds(unsigned elems)
 }
 
 static inline uint32_t
-brw_dp_a64_byte_scattered_rw_desc(const struct intel_device_info *devinfo,
+elk_dp_a64_byte_scattered_rw_desc(const struct intel_device_info *devinfo,
                                   unsigned exec_size, /**< 0 for SIMD4x2 */
                                   unsigned bit_size,
                                   bool write)
@@ -928,15 +928,15 @@ brw_dp_a64_byte_scattered_rw_desc(const struct intel_device_info *devinfo,
 
    const unsigned msg_control =
       SET_BITS(GFX8_A64_SCATTERED_SUBTYPE_BYTE, 1, 0) |
-      SET_BITS(brw_mdc_a64_ds(bit_size / 8), 3, 2) |
+      SET_BITS(elk_mdc_a64_ds(bit_size / 8), 3, 2) |
       SET_BITS(exec_size == 16, 4, 4);
 
-   return brw_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
+   return elk_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
                       msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_a64_untyped_atomic_desc(const struct intel_device_info *devinfo,
+elk_dp_a64_untyped_atomic_desc(const struct intel_device_info *devinfo,
                                ASSERTED unsigned exec_size, /**< 0 for SIMD4x2 */
                                unsigned bit_size,
                                unsigned atomic_op,
@@ -956,12 +956,12 @@ brw_dp_a64_untyped_atomic_desc(const struct intel_device_info *devinfo,
       SET_BITS(bit_size == 64, 4, 4) |
       SET_BITS(response_expected, 5, 5);
 
-   return brw_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
+   return elk_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
                       msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_a64_untyped_atomic_float_desc(const struct intel_device_info *devinfo,
+elk_dp_a64_untyped_atomic_float_desc(const struct intel_device_info *devinfo,
                                      ASSERTED unsigned exec_size,
                                      unsigned bit_size,
                                      unsigned atomic_op,
@@ -981,12 +981,12 @@ brw_dp_a64_untyped_atomic_float_desc(const struct intel_device_info *devinfo,
       SET_BITS(atomic_op, 1, 0) |
       SET_BITS(response_expected, 5, 5);
 
-   return brw_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
+   return elk_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
                       msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_typed_atomic_desc(const struct intel_device_info *devinfo,
+elk_dp_typed_atomic_desc(const struct intel_device_info *devinfo,
                          unsigned exec_size,
                          unsigned exec_group,
                          unsigned atomic_op,
@@ -1015,11 +1015,11 @@ brw_dp_typed_atomic_desc(const struct intel_device_info *devinfo,
       SET_BITS(high_sample_mask, 4, 4) |
       SET_BITS(response_expected, 5, 5);
 
-   return brw_dp_surface_desc(devinfo, msg_type, msg_control);
+   return elk_dp_surface_desc(devinfo, msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_dp_typed_surface_rw_desc(const struct intel_device_info *devinfo,
+elk_dp_typed_surface_rw_desc(const struct intel_device_info *devinfo,
                              unsigned exec_size,
                              unsigned exec_group,
                              unsigned num_channels,
@@ -1054,7 +1054,7 @@ brw_dp_typed_surface_rw_desc(const struct intel_device_info *devinfo,
                                   1 + ((exec_group / 8) % 2);
 
       msg_control =
-         SET_BITS(brw_mdc_cmask(num_channels), 3, 0) |
+         SET_BITS(elk_mdc_cmask(num_channels), 3, 0) |
          SET_BITS(slot_group, 5, 4);
    } else {
       /* SIMD4x2 typed surface R/W messages only exist on HSW+ */
@@ -1062,15 +1062,15 @@ brw_dp_typed_surface_rw_desc(const struct intel_device_info *devinfo,
       const unsigned slot_group = ((exec_group / 8) % 2);
 
       msg_control =
-         SET_BITS(brw_mdc_cmask(num_channels), 3, 0) |
+         SET_BITS(elk_mdc_cmask(num_channels), 3, 0) |
          SET_BITS(slot_group, 5, 5);
    }
 
-   return brw_dp_surface_desc(devinfo, msg_type, msg_control);
+   return elk_dp_surface_desc(devinfo, msg_type, msg_control);
 }
 
 static inline uint32_t
-brw_fb_desc(const struct intel_device_info *devinfo,
+elk_fb_desc(const struct intel_device_info *devinfo,
             unsigned binding_table_index,
             unsigned msg_type,
             unsigned msg_control)
@@ -1090,14 +1090,14 @@ brw_fb_desc(const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-brw_fb_desc_binding_table_index(UNUSED const struct intel_device_info *devinfo,
+elk_fb_desc_binding_table_index(UNUSED const struct intel_device_info *devinfo,
                                 uint32_t desc)
 {
    return GET_BITS(desc, 7, 0);
 }
 
 static inline uint32_t
-brw_fb_desc_msg_control(const struct intel_device_info *devinfo, uint32_t desc)
+elk_fb_desc_msg_control(const struct intel_device_info *devinfo, uint32_t desc)
 {
    assert(devinfo->ver >= 6);
    if (devinfo->ver >= 7)
@@ -1107,7 +1107,7 @@ brw_fb_desc_msg_control(const struct intel_device_info *devinfo, uint32_t desc)
 }
 
 static inline unsigned
-brw_fb_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
+elk_fb_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
 {
    assert(devinfo->ver >= 6);
    if (devinfo->ver >= 7)
@@ -1117,7 +1117,7 @@ brw_fb_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
 }
 
 static inline uint32_t
-brw_fb_read_desc(const struct intel_device_info *devinfo,
+elk_fb_read_desc(const struct intel_device_info *devinfo,
                  unsigned binding_table_index,
                  unsigned msg_control,
                  unsigned exec_size,
@@ -1126,14 +1126,14 @@ brw_fb_read_desc(const struct intel_device_info *devinfo,
    assert(devinfo->ver >= 9);
    assert(exec_size == 8 || exec_size == 16);
 
-   return brw_fb_desc(devinfo, binding_table_index,
+   return elk_fb_desc(devinfo, binding_table_index,
                       GFX9_DATAPORT_RC_RENDER_TARGET_READ, msg_control) |
           SET_BITS(per_sample, 13, 13) |
           SET_BITS(exec_size == 8, 8, 8) /* Render Target Message Subtype */;
 }
 
 static inline uint32_t
-brw_fb_write_desc(const struct intel_device_info *devinfo,
+elk_fb_write_desc(const struct intel_device_info *devinfo,
                   unsigned binding_table_index,
                   unsigned msg_control,
                   bool last_render_target,
@@ -1142,12 +1142,12 @@ brw_fb_write_desc(const struct intel_device_info *devinfo,
    const unsigned msg_type =
       devinfo->ver >= 6 ?
       GFX6_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE :
-      BRW_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE;
+      ELK_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE;
 
    assert(devinfo->ver >= 10 || !coarse_write);
 
    if (devinfo->ver >= 6) {
-      return brw_fb_desc(devinfo, binding_table_index, msg_type, msg_control) |
+      return elk_fb_desc(devinfo, binding_table_index, msg_type, msg_control) |
              SET_BITS(last_render_target, 12, 12) |
              SET_BITS(coarse_write, 18, 18);
    } else {
@@ -1159,27 +1159,27 @@ brw_fb_write_desc(const struct intel_device_info *devinfo,
 }
 
 static inline unsigned
-brw_fb_write_desc_msg_type(const struct intel_device_info *devinfo,
+elk_fb_write_desc_msg_type(const struct intel_device_info *devinfo,
                            uint32_t desc)
 {
    if (devinfo->ver >= 6)
-      return brw_fb_desc_msg_type(devinfo, desc);
+      return elk_fb_desc_msg_type(devinfo, desc);
    else
       return GET_BITS(desc, 14, 12);
 }
 
 static inline unsigned
-brw_fb_write_desc_msg_control(const struct intel_device_info *devinfo,
+elk_fb_write_desc_msg_control(const struct intel_device_info *devinfo,
                               uint32_t desc)
 {
    if (devinfo->ver >= 6)
-      return brw_fb_desc_msg_control(devinfo, desc);
+      return elk_fb_desc_msg_control(devinfo, desc);
    else
       return GET_BITS(desc, 11, 8);
 }
 
 static inline bool
-brw_fb_write_desc_last_render_target(const struct intel_device_info *devinfo,
+elk_fb_write_desc_last_render_target(const struct intel_device_info *devinfo,
                                      uint32_t desc)
 {
    if (devinfo->ver >= 6)
@@ -1189,7 +1189,7 @@ brw_fb_write_desc_last_render_target(const struct intel_device_info *devinfo,
 }
 
 static inline bool
-brw_fb_write_desc_write_commit(const struct intel_device_info *devinfo,
+elk_fb_write_desc_write_commit(const struct intel_device_info *devinfo,
                                uint32_t desc)
 {
    assert(devinfo->ver <= 6);
@@ -1200,7 +1200,7 @@ brw_fb_write_desc_write_commit(const struct intel_device_info *devinfo,
 }
 
 static inline bool
-brw_fb_write_desc_coarse_write(const struct intel_device_info *devinfo,
+elk_fb_write_desc_coarse_write(const struct intel_device_info *devinfo,
                                uint32_t desc)
 {
    assert(devinfo->ver >= 10);
@@ -1208,26 +1208,26 @@ brw_fb_write_desc_coarse_write(const struct intel_device_info *devinfo,
 }
 
 static inline bool
-lsc_opcode_has_cmask(enum lsc_opcode opcode)
+elk_lsc_opcode_has_cmask(enum elk_lsc_opcode opcode)
 {
    return opcode == LSC_OP_LOAD_CMASK || opcode == LSC_OP_STORE_CMASK;
 }
 
 static inline bool
-lsc_opcode_has_transpose(enum lsc_opcode opcode)
+elk_lsc_opcode_has_transpose(enum elk_lsc_opcode opcode)
 {
    return opcode == LSC_OP_LOAD || opcode == LSC_OP_STORE;
 }
 
 static inline bool
-lsc_opcode_is_store(enum lsc_opcode opcode)
+elk_lsc_opcode_is_store(enum elk_lsc_opcode opcode)
 {
    return opcode == LSC_OP_STORE ||
           opcode == LSC_OP_STORE_CMASK;
 }
 
 static inline bool
-lsc_opcode_is_atomic(enum lsc_opcode opcode)
+elk_lsc_opcode_is_atomic(enum elk_lsc_opcode opcode)
 {
    switch (opcode) {
    case LSC_OP_ATOMIC_INC:
@@ -1257,7 +1257,7 @@ lsc_opcode_is_atomic(enum lsc_opcode opcode)
 }
 
 static inline bool
-lsc_opcode_is_atomic_float(enum lsc_opcode opcode)
+elk_lsc_opcode_is_atomic_float(enum elk_lsc_opcode opcode)
 {
    switch (opcode) {
    case LSC_OP_ATOMIC_FADD:
@@ -1275,7 +1275,7 @@ lsc_opcode_is_atomic_float(enum lsc_opcode opcode)
 static inline unsigned
 lsc_op_num_data_values(unsigned _op)
 {
-   enum lsc_opcode op = (enum lsc_opcode) _op;
+   enum elk_lsc_opcode op = (enum elk_lsc_opcode) _op;
 
    switch (op) {
    case LSC_OP_ATOMIC_CMPXCHG:
@@ -1296,44 +1296,44 @@ lsc_op_num_data_values(unsigned _op)
 static inline unsigned
 lsc_op_to_legacy_atomic(unsigned _op)
 {
-   enum lsc_opcode op = (enum lsc_opcode) _op;
+   enum elk_lsc_opcode op = (enum elk_lsc_opcode) _op;
 
    switch (op) {
    case LSC_OP_ATOMIC_INC:
-      return BRW_AOP_INC;
+      return ELK_AOP_INC;
    case LSC_OP_ATOMIC_DEC:
-      return BRW_AOP_DEC;
+      return ELK_AOP_DEC;
    case LSC_OP_ATOMIC_STORE:
-      return BRW_AOP_MOV;
+      return ELK_AOP_MOV;
    case LSC_OP_ATOMIC_ADD:
-      return BRW_AOP_ADD;
+      return ELK_AOP_ADD;
    case LSC_OP_ATOMIC_SUB:
-      return BRW_AOP_SUB;
+      return ELK_AOP_SUB;
    case LSC_OP_ATOMIC_MIN:
-      return BRW_AOP_IMIN;
+      return ELK_AOP_IMIN;
    case LSC_OP_ATOMIC_MAX:
-      return BRW_AOP_IMAX;
+      return ELK_AOP_IMAX;
    case LSC_OP_ATOMIC_UMIN:
-      return BRW_AOP_UMIN;
+      return ELK_AOP_UMIN;
    case LSC_OP_ATOMIC_UMAX:
-      return BRW_AOP_UMAX;
+      return ELK_AOP_UMAX;
    case LSC_OP_ATOMIC_CMPXCHG:
-      return BRW_AOP_CMPWR;
+      return ELK_AOP_CMPWR;
    case LSC_OP_ATOMIC_FADD:
-      return BRW_AOP_FADD;
+      return ELK_AOP_FADD;
    case LSC_OP_ATOMIC_FMIN:
-      return BRW_AOP_FMIN;
+      return ELK_AOP_FMIN;
    case LSC_OP_ATOMIC_FMAX:
-      return BRW_AOP_FMAX;
+      return ELK_AOP_FMAX;
    case LSC_OP_ATOMIC_FCMPXCHG:
-      return BRW_AOP_FCMPWR;
+      return ELK_AOP_FCMPWR;
    case LSC_OP_ATOMIC_AND:
-      return BRW_AOP_AND;
+      return ELK_AOP_AND;
    case LSC_OP_ATOMIC_OR:
-      return BRW_AOP_OR;
+      return ELK_AOP_OR;
    case LSC_OP_ATOMIC_XOR:
-      return BRW_AOP_XOR;
-   /* No LSC op maps to BRW_AOP_PREDEC */
+      return ELK_AOP_XOR;
+   /* No LSC op maps to ELK_AOP_PREDEC */
    case LSC_OP_ATOMIC_LOAD:
    case LSC_OP_ATOMIC_FSUB:
       unreachable("no corresponding legacy atomic operation");
@@ -1416,7 +1416,7 @@ lsc_vect_size(unsigned vect_size)
 
 static inline uint32_t
 lsc_msg_desc_wcmask(UNUSED const struct intel_device_info *devinfo,
-             enum lsc_opcode opcode, unsigned simd_size,
+             enum elk_lsc_opcode opcode, unsigned simd_size,
              enum lsc_addr_surface_type addr_type,
              enum lsc_addr_size addr_sz, unsigned num_coordinates,
              enum lsc_data_size data_sz, unsigned num_channels,
@@ -1432,7 +1432,7 @@ lsc_msg_desc_wcmask(UNUSED const struct intel_device_info *devinfo,
       DIV_ROUND_UP(lsc_addr_size_bytes(addr_sz) * num_coordinates * simd_size,
                    reg_unit(devinfo) * REG_SIZE);
 
-   assert(!transpose || lsc_opcode_has_transpose(opcode));
+   assert(!transpose || elk_lsc_opcode_has_transpose(opcode));
 
    unsigned msg_desc =
       SET_BITS(opcode, 5, 0) |
@@ -1444,7 +1444,7 @@ lsc_msg_desc_wcmask(UNUSED const struct intel_device_info *devinfo,
       SET_BITS(src0_length, 28, 25) |
       SET_BITS(addr_type, 30, 29);
 
-   if (lsc_opcode_has_cmask(opcode))
+   if (elk_lsc_opcode_has_cmask(opcode))
       msg_desc |= SET_BITS(cmask ? cmask : lsc_cmask(num_channels), 15, 12);
    else
       msg_desc |= SET_BITS(lsc_vect_size(num_channels), 14, 12);
@@ -1454,7 +1454,7 @@ lsc_msg_desc_wcmask(UNUSED const struct intel_device_info *devinfo,
 
 static inline uint32_t
 lsc_msg_desc(UNUSED const struct intel_device_info *devinfo,
-             enum lsc_opcode opcode, unsigned simd_size,
+             enum elk_lsc_opcode opcode, unsigned simd_size,
              enum lsc_addr_surface_type addr_type,
              enum lsc_addr_size addr_sz, unsigned num_coordinates,
              enum lsc_data_size data_sz, unsigned num_channels,
@@ -1465,12 +1465,12 @@ lsc_msg_desc(UNUSED const struct intel_device_info *devinfo,
          has_dest, 0);
 }
 
-static inline enum lsc_opcode
+static inline enum elk_lsc_opcode
 lsc_msg_desc_opcode(UNUSED const struct intel_device_info *devinfo,
                     uint32_t desc)
 {
    assert(devinfo->has_lsc);
-   return (enum lsc_opcode) GET_BITS(desc, 5, 0);
+   return (enum elk_lsc_opcode) GET_BITS(desc, 5, 0);
 }
 
 static inline enum lsc_addr_size
@@ -1494,7 +1494,7 @@ lsc_msg_desc_vect_size(UNUSED const struct intel_device_info *devinfo,
                        uint32_t desc)
 {
    assert(devinfo->has_lsc);
-   assert(!lsc_opcode_has_cmask(lsc_msg_desc_opcode(devinfo, desc)));
+   assert(!elk_lsc_opcode_has_cmask(lsc_msg_desc_opcode(devinfo, desc)));
    return (enum lsc_vect_size) GET_BITS(desc, 14, 12);
 }
 
@@ -1503,7 +1503,7 @@ lsc_msg_desc_cmask(UNUSED const struct intel_device_info *devinfo,
                    uint32_t desc)
 {
    assert(devinfo->has_lsc);
-   assert(lsc_opcode_has_cmask(lsc_msg_desc_opcode(devinfo, desc)));
+   assert(elk_lsc_opcode_has_cmask(lsc_msg_desc_opcode(devinfo, desc)));
    return (enum lsc_cmask) GET_BITS(desc, 15, 12);
 }
 
@@ -1635,21 +1635,21 @@ lsc_bss_ex_desc_index(const struct intel_device_info *devinfo,
 }
 
 static inline uint32_t
-brw_mdc_sm2(unsigned exec_size)
+elk_mdc_sm2(unsigned exec_size)
 {
    assert(exec_size == 8 || exec_size == 16);
    return exec_size > 8;
 }
 
 static inline uint32_t
-brw_mdc_sm2_exec_size(uint32_t sm2)
+elk_mdc_sm2_exec_size(uint32_t sm2)
 {
    assert(sm2 <= 1);
    return 8 << sm2;
 }
 
 static inline uint32_t
-brw_btd_spawn_desc(ASSERTED const struct intel_device_info *devinfo,
+elk_btd_spawn_desc(ASSERTED const struct intel_device_info *devinfo,
                    unsigned exec_size, unsigned msg_type)
 {
    assert(devinfo->has_ray_tracing);
@@ -1657,25 +1657,25 @@ brw_btd_spawn_desc(ASSERTED const struct intel_device_info *devinfo,
 
    return SET_BITS(0, 19, 19) | /* No header */
           SET_BITS(msg_type, 17, 14) |
-          SET_BITS(brw_mdc_sm2(exec_size), 8, 8);
+          SET_BITS(elk_mdc_sm2(exec_size), 8, 8);
 }
 
 static inline uint32_t
-brw_btd_spawn_msg_type(UNUSED const struct intel_device_info *devinfo,
+elk_btd_spawn_msg_type(UNUSED const struct intel_device_info *devinfo,
                        uint32_t desc)
 {
    return GET_BITS(desc, 17, 14);
 }
 
 static inline uint32_t
-brw_btd_spawn_exec_size(UNUSED const struct intel_device_info *devinfo,
+elk_btd_spawn_exec_size(UNUSED const struct intel_device_info *devinfo,
                         uint32_t desc)
 {
-   return brw_mdc_sm2_exec_size(GET_BITS(desc, 8, 8));
+   return elk_mdc_sm2_exec_size(GET_BITS(desc, 8, 8));
 }
 
 static inline uint32_t
-brw_rt_trace_ray_desc(ASSERTED const struct intel_device_info *devinfo,
+elk_rt_trace_ray_desc(ASSERTED const struct intel_device_info *devinfo,
                       unsigned exec_size)
 {
    assert(devinfo->has_ray_tracing);
@@ -1683,7 +1683,7 @@ brw_rt_trace_ray_desc(ASSERTED const struct intel_device_info *devinfo,
 
    return SET_BITS(0, 19, 19) | /* No header */
           SET_BITS(0, 17, 14) | /* Message type */
-          SET_BITS(brw_mdc_sm2(exec_size), 8, 8);
+          SET_BITS(elk_mdc_sm2(exec_size), 8, 8);
 }
 
 /**
@@ -1691,7 +1691,7 @@ brw_rt_trace_ray_desc(ASSERTED const struct intel_device_info *devinfo,
  * interpolator function controls.
  */
 static inline uint32_t
-brw_pixel_interp_desc(UNUSED const struct intel_device_info *devinfo,
+elk_pixel_interp_desc(UNUSED const struct intel_device_info *devinfo,
                       unsigned msg_type,
                       bool noperspective,
                       bool coarse_pixel_rate,
@@ -1710,11 +1710,11 @@ brw_pixel_interp_desc(UNUSED const struct intel_device_info *devinfo,
            SET_BITS(simd_mode, 16, 16));
 }
 
-void brw_urb_WRITE(struct brw_codegen *p,
-		   struct brw_reg dest,
+void elk_urb_WRITE(struct elk_codegen *p,
+		   struct elk_reg dest,
 		   unsigned msg_reg_nr,
-		   struct brw_reg src0,
-                   enum brw_urb_write_flags flags,
+		   struct elk_reg src0,
+                   enum elk_urb_write_flags flags,
 		   unsigned msg_length,
 		   unsigned response_length,
 		   unsigned offset,
@@ -1726,46 +1726,46 @@ void brw_urb_WRITE(struct brw_codegen *p,
  * address register using an OR instruction.
  */
 void
-brw_send_indirect_message(struct brw_codegen *p,
+elk_send_indirect_message(struct elk_codegen *p,
                           unsigned sfid,
-                          struct brw_reg dst,
-                          struct brw_reg payload,
-                          struct brw_reg desc,
+                          struct elk_reg dst,
+                          struct elk_reg payload,
+                          struct elk_reg desc,
                           unsigned desc_imm,
                           bool eot);
 
 void
-brw_send_indirect_split_message(struct brw_codegen *p,
+elk_send_indirect_split_message(struct elk_codegen *p,
                                 unsigned sfid,
-                                struct brw_reg dst,
-                                struct brw_reg payload0,
-                                struct brw_reg payload1,
-                                struct brw_reg desc,
+                                struct elk_reg dst,
+                                struct elk_reg payload0,
+                                struct elk_reg payload1,
+                                struct elk_reg desc,
                                 unsigned desc_imm,
-                                struct brw_reg ex_desc,
+                                struct elk_reg ex_desc,
                                 unsigned ex_desc_imm,
                                 bool ex_desc_scratch,
                                 bool ex_bso,
                                 bool eot);
 
-void brw_ff_sync(struct brw_codegen *p,
-		   struct brw_reg dest,
+void elk_ff_sync(struct elk_codegen *p,
+		   struct elk_reg dest,
 		   unsigned msg_reg_nr,
-		   struct brw_reg src0,
+		   struct elk_reg src0,
 		   bool allocate,
 		   unsigned response_length,
 		   bool eot);
 
-void brw_svb_write(struct brw_codegen *p,
-                   struct brw_reg dest,
+void elk_svb_write(struct elk_codegen *p,
+                   struct elk_reg dest,
                    unsigned msg_reg_nr,
-                   struct brw_reg src0,
+                   struct elk_reg src0,
                    unsigned binding_table_index,
                    bool   send_commit_msg);
 
-brw_inst *brw_fb_WRITE(struct brw_codegen *p,
-                       struct brw_reg payload,
-                       struct brw_reg implied_header,
+elk_inst *elk_fb_WRITE(struct elk_codegen *p,
+                       struct elk_reg payload,
+                       struct elk_reg implied_header,
                        unsigned msg_control,
                        unsigned binding_table_index,
                        unsigned msg_length,
@@ -1774,18 +1774,18 @@ brw_inst *brw_fb_WRITE(struct brw_codegen *p,
                        bool last_render_target,
                        bool header_present);
 
-brw_inst *gfx9_fb_READ(struct brw_codegen *p,
-                       struct brw_reg dst,
-                       struct brw_reg payload,
+elk_inst *elk_gfx9_fb_READ(struct elk_codegen *p,
+                       struct elk_reg dst,
+                       struct elk_reg payload,
                        unsigned binding_table_index,
                        unsigned msg_length,
                        unsigned response_length,
                        bool per_sample);
 
-void brw_SAMPLE(struct brw_codegen *p,
-		struct brw_reg dest,
+void elk_SAMPLE(struct elk_codegen *p,
+		struct elk_reg dest,
 		unsigned msg_reg_nr,
-		struct brw_reg src0,
+		struct elk_reg src0,
 		unsigned binding_table_index,
 		unsigned sampler,
 		unsigned msg_type,
@@ -1795,44 +1795,44 @@ void brw_SAMPLE(struct brw_codegen *p,
 		unsigned simd_mode,
 		unsigned return_format);
 
-void brw_adjust_sampler_state_pointer(struct brw_codegen *p,
-                                      struct brw_reg header,
-                                      struct brw_reg sampler_index);
+void elk_adjust_sampler_state_pointer(struct elk_codegen *p,
+                                      struct elk_reg header,
+                                      struct elk_reg sampler_index);
 
-void gfx4_math(struct brw_codegen *p,
-	       struct brw_reg dest,
+void elk_gfx4_math(struct elk_codegen *p,
+	       struct elk_reg dest,
 	       unsigned function,
 	       unsigned msg_reg_nr,
-	       struct brw_reg src,
+	       struct elk_reg src,
 	       unsigned precision );
 
-void gfx6_math(struct brw_codegen *p,
-	       struct brw_reg dest,
+void elk_gfx6_math(struct elk_codegen *p,
+	       struct elk_reg dest,
 	       unsigned function,
-	       struct brw_reg src0,
-	       struct brw_reg src1);
+	       struct elk_reg src0,
+	       struct elk_reg src1);
 
-void brw_oword_block_read(struct brw_codegen *p,
-			  struct brw_reg dest,
-			  struct brw_reg mrf,
+void elk_oword_block_read(struct elk_codegen *p,
+			  struct elk_reg dest,
+			  struct elk_reg mrf,
 			  uint32_t offset,
 			  uint32_t bind_table_index);
 
-unsigned brw_scratch_surface_idx(const struct brw_codegen *p);
+unsigned elk_scratch_surface_idx(const struct elk_codegen *p);
 
-void brw_oword_block_read_scratch(struct brw_codegen *p,
-				  struct brw_reg dest,
-				  struct brw_reg mrf,
+void elk_oword_block_read_scratch(struct elk_codegen *p,
+				  struct elk_reg dest,
+				  struct elk_reg mrf,
 				  int num_regs,
 				  unsigned offset);
 
-void brw_oword_block_write_scratch(struct brw_codegen *p,
-				   struct brw_reg mrf,
+void elk_oword_block_write_scratch(struct elk_codegen *p,
+				   struct elk_reg mrf,
 				   int num_regs,
 				   unsigned offset);
 
-void gfx7_block_read_scratch(struct brw_codegen *p,
-                             struct brw_reg dest,
+void elk_gfx7_block_read_scratch(struct elk_codegen *p,
+                             struct elk_reg dest,
                              int num_regs,
                              unsigned offset);
 
@@ -1844,7 +1844,7 @@ void gfx7_block_read_scratch(struct brw_codegen *p,
  * instruction.
  */
 static inline unsigned
-brw_jump_scale(const struct intel_device_info *devinfo)
+elk_jump_scale(const struct intel_device_info *devinfo)
 {
    /* Broadwell measures jump targets in bytes. */
    if (devinfo->ver >= 8)
@@ -1860,214 +1860,214 @@ brw_jump_scale(const struct intel_device_info *devinfo)
    return 1;
 }
 
-void brw_barrier(struct brw_codegen *p, struct brw_reg src);
+void elk_barrier(struct elk_codegen *p, struct elk_reg src);
 
 /* If/else/endif.  Works by manipulating the execution flags on each
  * channel.
  */
-brw_inst *brw_IF(struct brw_codegen *p, unsigned execute_size);
-brw_inst *gfx6_IF(struct brw_codegen *p, enum brw_conditional_mod conditional,
-                  struct brw_reg src0, struct brw_reg src1);
+elk_inst *elk_IF(struct elk_codegen *p, unsigned execute_size);
+elk_inst *elk_gfx6_IF(struct elk_codegen *p, enum elk_conditional_mod conditional,
+                  struct elk_reg src0, struct elk_reg src1);
 
-void brw_ELSE(struct brw_codegen *p);
-void brw_ENDIF(struct brw_codegen *p);
+void elk_ELSE(struct elk_codegen *p);
+void elk_ENDIF(struct elk_codegen *p);
 
 /* DO/WHILE loops:
  */
-brw_inst *brw_DO(struct brw_codegen *p, unsigned execute_size);
+elk_inst *elk_DO(struct elk_codegen *p, unsigned execute_size);
 
-brw_inst *brw_WHILE(struct brw_codegen *p);
+elk_inst *elk_WHILE(struct elk_codegen *p);
 
-brw_inst *brw_BREAK(struct brw_codegen *p);
-brw_inst *brw_CONT(struct brw_codegen *p);
-brw_inst *brw_HALT(struct brw_codegen *p);
+elk_inst *elk_BREAK(struct elk_codegen *p);
+elk_inst *elk_CONT(struct elk_codegen *p);
+elk_inst *elk_HALT(struct elk_codegen *p);
 
 /* Forward jumps:
  */
-void brw_land_fwd_jump(struct brw_codegen *p, int jmp_insn_idx);
+void elk_land_fwd_jump(struct elk_codegen *p, int jmp_insn_idx);
 
-brw_inst *brw_JMPI(struct brw_codegen *p, struct brw_reg index,
+elk_inst *elk_JMPI(struct elk_codegen *p, struct elk_reg index,
                    unsigned predicate_control);
 
-void brw_NOP(struct brw_codegen *p);
+void elk_NOP(struct elk_codegen *p);
 
-void brw_WAIT(struct brw_codegen *p);
+void elk_WAIT(struct elk_codegen *p);
 
-void brw_SYNC(struct brw_codegen *p, enum tgl_sync_function func);
+void elk_SYNC(struct elk_codegen *p, enum tgl_sync_function func);
 
 /* Special case: there is never a destination, execution size will be
  * taken from src0:
  */
-void brw_CMP(struct brw_codegen *p,
-	     struct brw_reg dest,
+void elk_CMP(struct elk_codegen *p,
+	     struct elk_reg dest,
 	     unsigned conditional,
-	     struct brw_reg src0,
-	     struct brw_reg src1);
+	     struct elk_reg src0,
+	     struct elk_reg src1);
 
-void brw_CMPN(struct brw_codegen *p,
-              struct brw_reg dest,
+void elk_CMPN(struct elk_codegen *p,
+              struct elk_reg dest,
               unsigned conditional,
-              struct brw_reg src0,
-              struct brw_reg src1);
+              struct elk_reg src0,
+              struct elk_reg src1);
 
-brw_inst *brw_DPAS(struct brw_codegen *p, enum gfx12_systolic_depth sdepth,
-                   unsigned rcount, struct brw_reg dest, struct brw_reg src0,
-                   struct brw_reg src1, struct brw_reg src2);
+elk_inst *elk_DPAS(struct elk_codegen *p, enum elk_gfx12_systolic_depth sdepth,
+                   unsigned rcount, struct elk_reg dest, struct elk_reg src0,
+                   struct elk_reg src1, struct elk_reg src2);
 
 void
-brw_untyped_atomic(struct brw_codegen *p,
-                   struct brw_reg dst,
-                   struct brw_reg payload,
-                   struct brw_reg surface,
+elk_untyped_atomic(struct elk_codegen *p,
+                   struct elk_reg dst,
+                   struct elk_reg payload,
+                   struct elk_reg surface,
                    unsigned atomic_op,
                    unsigned msg_length,
                    bool response_expected,
                    bool header_present);
 
 void
-brw_untyped_surface_read(struct brw_codegen *p,
-                         struct brw_reg dst,
-                         struct brw_reg payload,
-                         struct brw_reg surface,
+elk_untyped_surface_read(struct elk_codegen *p,
+                         struct elk_reg dst,
+                         struct elk_reg payload,
+                         struct elk_reg surface,
                          unsigned msg_length,
                          unsigned num_channels);
 
 void
-brw_untyped_surface_write(struct brw_codegen *p,
-                          struct brw_reg payload,
-                          struct brw_reg surface,
+elk_untyped_surface_write(struct elk_codegen *p,
+                          struct elk_reg payload,
+                          struct elk_reg surface,
                           unsigned msg_length,
                           unsigned num_channels,
                           bool header_present);
 
 void
-brw_memory_fence(struct brw_codegen *p,
-                 struct brw_reg dst,
-                 struct brw_reg src,
-                 enum opcode send_op,
-                 enum brw_message_target sfid,
+elk_memory_fence(struct elk_codegen *p,
+                 struct elk_reg dst,
+                 struct elk_reg src,
+                 enum elk_opcode send_op,
+                 enum elk_message_target sfid,
                  uint32_t desc,
                  bool commit_enable,
                  unsigned bti);
 
 void
-brw_pixel_interpolator_query(struct brw_codegen *p,
-                             struct brw_reg dest,
-                             struct brw_reg mrf,
+elk_pixel_interpolator_query(struct elk_codegen *p,
+                             struct elk_reg dest,
+                             struct elk_reg mrf,
                              bool noperspective,
                              bool coarse_pixel_rate,
                              unsigned mode,
-                             struct brw_reg data,
+                             struct elk_reg data,
                              unsigned msg_length,
                              unsigned response_length);
 
 void
-brw_find_live_channel(struct brw_codegen *p,
-                      struct brw_reg dst,
+elk_find_live_channel(struct elk_codegen *p,
+                      struct elk_reg dst,
                       bool last);
 
 void
-brw_broadcast(struct brw_codegen *p,
-              struct brw_reg dst,
-              struct brw_reg src,
-              struct brw_reg idx);
+elk_broadcast(struct elk_codegen *p,
+              struct elk_reg dst,
+              struct elk_reg src,
+              struct elk_reg idx);
 
 void
-brw_float_controls_mode(struct brw_codegen *p,
+elk_float_controls_mode(struct elk_codegen *p,
                         unsigned mode, unsigned mask);
 
 void
-brw_update_reloc_imm(const struct brw_isa_info *isa,
-                     brw_inst *inst,
+elk_update_reloc_imm(const struct elk_isa_info *isa,
+                     elk_inst *inst,
                      uint32_t value);
 
 void
-brw_MOV_reloc_imm(struct brw_codegen *p,
-                  struct brw_reg dst,
-                  enum brw_reg_type src_type,
+elk_MOV_reloc_imm(struct elk_codegen *p,
+                  struct elk_reg dst,
+                  enum elk_reg_type src_type,
                   uint32_t id);
 
 unsigned
-brw_num_sources_from_inst(const struct brw_isa_info *isa,
-                          const brw_inst *inst);
+elk_num_sources_from_inst(const struct elk_isa_info *isa,
+                          const elk_inst *inst);
 
 /***********************************************************************
- * brw_eu_util.c:
+ * elk_eu_util.c:
  */
 
-void brw_copy_indirect_to_indirect(struct brw_codegen *p,
-				   struct brw_indirect dst_ptr,
-				   struct brw_indirect src_ptr,
+void elk_copy_indirect_to_indirect(struct elk_codegen *p,
+				   struct elk_indirect dst_ptr,
+				   struct elk_indirect src_ptr,
 				   unsigned count);
 
-void brw_copy_from_indirect(struct brw_codegen *p,
-			    struct brw_reg dst,
-			    struct brw_indirect ptr,
+void elk_copy_from_indirect(struct elk_codegen *p,
+			    struct elk_reg dst,
+			    struct elk_indirect ptr,
 			    unsigned count);
 
-void brw_copy4(struct brw_codegen *p,
-	       struct brw_reg dst,
-	       struct brw_reg src,
+void elk_copy4(struct elk_codegen *p,
+	       struct elk_reg dst,
+	       struct elk_reg src,
 	       unsigned count);
 
-void brw_copy8(struct brw_codegen *p,
-	       struct brw_reg dst,
-	       struct brw_reg src,
+void elk_copy8(struct elk_codegen *p,
+	       struct elk_reg dst,
+	       struct elk_reg src,
 	       unsigned count);
 
-void brw_math_invert( struct brw_codegen *p,
-		      struct brw_reg dst,
-		      struct brw_reg src);
+void elk_math_invert( struct elk_codegen *p,
+		      struct elk_reg dst,
+		      struct elk_reg src);
 
-void brw_set_src1(struct brw_codegen *p, brw_inst *insn, struct brw_reg reg);
+void elk_set_src1(struct elk_codegen *p, elk_inst *insn, struct elk_reg reg);
 
-void brw_set_desc_ex(struct brw_codegen *p, brw_inst *insn,
+void elk_set_desc_ex(struct elk_codegen *p, elk_inst *insn,
                      unsigned desc, unsigned ex_desc);
 
 static inline void
-brw_set_desc(struct brw_codegen *p, brw_inst *insn, unsigned desc)
+elk_set_desc(struct elk_codegen *p, elk_inst *insn, unsigned desc)
 {
-   brw_set_desc_ex(p, insn, desc, 0);
+   elk_set_desc_ex(p, insn, desc, 0);
 }
 
-void brw_set_uip_jip(struct brw_codegen *p, int start_offset);
+void elk_set_uip_jip(struct elk_codegen *p, int start_offset);
 
-enum brw_conditional_mod brw_negate_cmod(enum brw_conditional_mod cmod);
-enum brw_conditional_mod brw_swap_cmod(enum brw_conditional_mod cmod);
+enum elk_conditional_mod elk_negate_cmod(enum elk_conditional_mod cmod);
+enum elk_conditional_mod elk_swap_cmod(enum elk_conditional_mod cmod);
 
-/* brw_eu_compact.c */
-void brw_compact_instructions(struct brw_codegen *p, int start_offset,
-                              struct disasm_info *disasm);
-void brw_uncompact_instruction(const struct brw_isa_info *isa,
-                               brw_inst *dst, brw_compact_inst *src);
-bool brw_try_compact_instruction(const struct brw_isa_info *isa,
-                                 brw_compact_inst *dst, const brw_inst *src);
+/* elk_eu_compact.c */
+void elk_compact_instructions(struct elk_codegen *p, int start_offset,
+                              struct elk_disasm_info *disasm);
+void elk_uncompact_instruction(const struct elk_isa_info *isa,
+                               elk_inst *dst, elk_compact_inst *src);
+bool elk_try_compact_instruction(const struct elk_isa_info *isa,
+                                 elk_compact_inst *dst, const elk_inst *src);
 
-void brw_debug_compact_uncompact(const struct brw_isa_info *isa,
-                                 brw_inst *orig, brw_inst *uncompacted);
+void elk_debug_compact_uncompact(const struct elk_isa_info *isa,
+                                 elk_inst *orig, elk_inst *uncompacted);
 
-/* brw_eu_validate.c */
-bool brw_validate_instruction(const struct brw_isa_info *isa,
-                              const brw_inst *inst, int offset,
+/* elk_eu_validate.c */
+bool elk_validate_instruction(const struct elk_isa_info *isa,
+                              const elk_inst *inst, int offset,
                               unsigned inst_size,
-                              struct disasm_info *disasm);
-bool brw_validate_instructions(const struct brw_isa_info *isa,
+                              struct elk_disasm_info *disasm);
+bool elk_validate_instructions(const struct elk_isa_info *isa,
                                const void *assembly, int start_offset, int end_offset,
-                               struct disasm_info *disasm);
+                               struct elk_disasm_info *disasm);
 
 static inline int
 next_offset(const struct intel_device_info *devinfo, void *store, int offset)
 {
-   brw_inst *insn = (brw_inst *)((char *)store + offset);
+   elk_inst *insn = (elk_inst *)((char *)store + offset);
 
-   if (brw_inst_cmpt_control(devinfo, insn))
+   if (elk_inst_cmpt_control(devinfo, insn))
       return offset + 8;
    else
       return offset + 16;
 }
 
 /** Maximum SEND message length */
-#define BRW_MAX_MSG_LENGTH 15
+#define ELK_MAX_MSG_LENGTH 15
 
 /** First MRF register used by pull loads */
 #define FIRST_SPILL_MRF(gen) ((gen) == 6 ? 21 : 13)

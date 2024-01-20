@@ -480,7 +480,7 @@ namespace {
     * possibly incur bank conflicts.
     */
    bool
-   is_grf(const fs_reg &r)
+   is_grf(const elk_fs_reg &r)
    {
       return r.file == VGRF || r.file == FIXED_GRF;
    }
@@ -492,7 +492,7 @@ namespace {
     * allocation or whether it was part of a VGRF allocation.
     */
    unsigned
-   reg_of(const fs_reg &r)
+   reg_of(const elk_fs_reg &r)
    {
       assert(is_grf(r));
       if (r.file == VGRF)
@@ -507,11 +507,11 @@ namespace {
     * the program.
     */
    partitioning
-   shader_reg_partitioning(const fs_visitor *v)
+   shader_reg_partitioning(const elk_fs_visitor *v)
    {
-      partitioning p(BRW_MAX_GRF);
+      partitioning p(ELK_MAX_GRF);
 
-      foreach_block_and_inst(block, fs_inst, inst, v->cfg) {
+      foreach_block_and_inst(block, elk_fs_inst, inst, v->cfg) {
          if (is_grf(inst->dst))
             p.require_contiguous(reg_of(inst->dst), regs_written(inst));
 
@@ -529,7 +529,7 @@ namespace {
     * original location to avoid violating hardware or software assumptions.
     */
    bool *
-   shader_reg_constraints(const fs_visitor *v, const partitioning &p)
+   shader_reg_constraints(const elk_fs_visitor *v, const partitioning &p)
    {
       bool *constrained = new bool[p.num_atoms()]();
 
@@ -552,7 +552,7 @@ namespace {
       if (v->devinfo->ver >= 8)
          constrained[p.atom_of_reg(127)] = true;
 
-      foreach_block_and_inst(block, fs_inst, inst, v->cfg) {
+      foreach_block_and_inst(block, elk_fs_inst, inst, v->cfg) {
          /* Assume that anything referenced via fixed GRFs is baked into the
           * hardware's fixed-function logic and may be unsafe to move around.
           * Also take into account the source GRF restrictions of EOT
@@ -572,7 +572,7 @@ namespace {
           * barycentrics allow the PLN instruction to be used.
           */
          if (v->devinfo->has_pln && v->devinfo->ver <= 6 &&
-             inst->opcode == FS_OPCODE_LINTERP)
+             inst->opcode == ELK_FS_OPCODE_LINTERP)
             constrained[p.atom_of_reg(reg_of(inst->src[0]))] = true;
 
          /* The location of the Gfx7 MRF hack registers is hard-coded in the
@@ -598,7 +598,7 @@ namespace {
     */
    bool
    is_conflict_optimized_out(const intel_device_info *devinfo,
-                             const fs_inst *inst)
+                             const elk_fs_inst *inst)
    {
       return devinfo->ver >= 9 &&
          ((is_grf(inst->src[0]) && (reg_of(inst->src[0]) == reg_of(inst->src[1]) ||
@@ -627,7 +627,7 @@ namespace {
     *           helpful than not optimizing at all.
     */
    weight_vector_type *
-   shader_conflict_weight_matrix(const fs_visitor *v, const partitioning &p)
+   shader_conflict_weight_matrix(const elk_fs_visitor *v, const partitioning &p)
    {
       weight_vector_type *conflicts = new weight_vector_type[p.num_atoms()];
       for (unsigned r = 0; r < p.num_atoms(); r++)
@@ -638,14 +638,14 @@ namespace {
        */
       unsigned block_scale = 1;
 
-      foreach_block_and_inst(block, fs_inst, inst, v->cfg) {
-         if (inst->opcode == BRW_OPCODE_DO) {
+      foreach_block_and_inst(block, elk_fs_inst, inst, v->cfg) {
+         if (inst->opcode == ELK_OPCODE_DO) {
             block_scale *= 10;
 
-         } else if (inst->opcode == BRW_OPCODE_WHILE) {
+         } else if (inst->opcode == ELK_OPCODE_WHILE) {
             block_scale /= 10;
 
-         } else if (inst->is_3src(v->compiler) &&
+         } else if (inst->elk_is_3src(v->compiler) &&
                     is_grf(inst->src[1]) && is_grf(inst->src[2])) {
             const unsigned r = p.atom_of_reg(reg_of(inst->src[1]));
             const unsigned s = p.atom_of_reg(reg_of(inst->src[2]));
@@ -892,8 +892,8 @@ namespace {
     * Apply the GRF atom permutation given by \p map to register \p r and
     * return the result.
     */
-   fs_reg
-   transform(const partitioning &p, const permutation &map, fs_reg r)
+   elk_fs_reg
+   transform(const partitioning &p, const permutation &map, elk_fs_reg r)
    {
       if (r.file == VGRF) {
          const unsigned reg = reg_of(r);
@@ -907,7 +907,7 @@ namespace {
 }
 
 bool
-fs_visitor::opt_bank_conflicts()
+elk_fs_visitor::opt_bank_conflicts()
 {
    assert(grf_used || !"Must be called after register allocation");
 
@@ -927,7 +927,7 @@ fs_visitor::opt_bank_conflicts()
       optimize_reg_permutation(p, constrained, conflicts,
                                identity_reg_permutation(p));
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, elk_fs_inst, inst, cfg) {
       inst->dst = transform(p, map, inst->dst);
 
       for (int i = 0; i < inst->sources; i++)
@@ -946,9 +946,9 @@ fs_visitor::opt_bank_conflicts()
  * we don't know which bank each VGRF is going to end up aligned to.
  */
 bool
-has_bank_conflict(const struct brw_isa_info *isa, const fs_inst *inst)
+elk_has_bank_conflict(const struct elk_isa_info *isa, const elk_fs_inst *inst)
 {
-   return is_3src(isa, inst->opcode) &&
+   return elk_is_3src(isa, inst->opcode) &&
           is_grf(inst->src[1]) && is_grf(inst->src[2]) &&
           bank_of(reg_of(inst->src[1])) == bank_of(reg_of(inst->src[2])) &&
           !is_conflict_optimized_out(isa->devinfo, inst);

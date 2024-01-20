@@ -31,22 +31,22 @@ class copy_propagation_vec4_test : public ::testing::Test {
    virtual void TearDown();
 
 public:
-   struct brw_compiler *compiler;
-   struct brw_compile_params params;
+   struct elk_compiler *compiler;
+   struct elk_compile_params params;
    struct intel_device_info *devinfo;
    void *ctx;
    struct gl_shader_program *shader_prog;
-   struct brw_vue_prog_data *prog_data;
+   struct elk_vue_prog_data *prog_data;
    vec4_visitor *v;
 };
 
 class copy_propagation_vec4_visitor : public vec4_visitor
 {
 public:
-   copy_propagation_vec4_visitor(struct brw_compiler *compiler,
-                                 struct brw_compile_params *params,
+   copy_propagation_vec4_visitor(struct elk_compiler *compiler,
+                                 struct elk_compile_params *params,
                                  nir_shader *shader,
-                                 struct brw_vue_prog_data *prog_data)
+                                 struct elk_vue_prog_data *prog_data)
       : vec4_visitor(compiler, params, NULL, prog_data, shader,
                      false /* no_spills */, false)
    {
@@ -89,14 +89,14 @@ protected:
 void copy_propagation_vec4_test::SetUp()
 {
    ctx = ralloc_context(NULL);
-   compiler = rzalloc(ctx, struct brw_compiler);
+   compiler = rzalloc(ctx, struct elk_compiler);
    devinfo = rzalloc(ctx, struct intel_device_info);
    compiler->devinfo = devinfo;
 
    params = {};
    params.mem_ctx = ctx;
 
-   prog_data = ralloc(ctx, struct brw_vue_prog_data);
+   prog_data = ralloc(ctx, struct elk_vue_prog_data);
    nir_shader *shader =
       nir_shader_create(ctx, MESA_SHADER_VERTEX, NULL, NULL);
 
@@ -143,25 +143,25 @@ TEST_F(copy_propagation_vec4_test, test_swizzle_swizzle)
 
    v->emit(v->ADD(a, src_reg(a), src_reg(a)));
 
-   v->emit(v->MOV(b, swizzle(src_reg(a), BRW_SWIZZLE4(BRW_SWIZZLE_Y,
-                                                      BRW_SWIZZLE_Z,
-                                                      BRW_SWIZZLE_W,
-                                                      BRW_SWIZZLE_X))));
+   v->emit(v->MOV(b, swizzle(src_reg(a), ELK_SWIZZLE4(ELK_SWIZZLE_Y,
+                                                      ELK_SWIZZLE_Z,
+                                                      ELK_SWIZZLE_W,
+                                                      ELK_SWIZZLE_X))));
 
    vec4_instruction *test_mov =
-      v->MOV(c, swizzle(src_reg(b), BRW_SWIZZLE4(BRW_SWIZZLE_Y,
-                                                 BRW_SWIZZLE_Z,
-                                                 BRW_SWIZZLE_W,
-                                                 BRW_SWIZZLE_X)));
+      v->MOV(c, swizzle(src_reg(b), ELK_SWIZZLE4(ELK_SWIZZLE_Y,
+                                                 ELK_SWIZZLE_Z,
+                                                 ELK_SWIZZLE_W,
+                                                 ELK_SWIZZLE_X)));
    v->emit(test_mov);
 
    copy_propagation(v);
 
    EXPECT_EQ(test_mov->src[0].nr, a.nr);
-   EXPECT_EQ(test_mov->src[0].swizzle, BRW_SWIZZLE4(BRW_SWIZZLE_Z,
-                                                    BRW_SWIZZLE_W,
-                                                    BRW_SWIZZLE_X,
-                                                    BRW_SWIZZLE_Y));
+   EXPECT_EQ(test_mov->src[0].swizzle, ELK_SWIZZLE4(ELK_SWIZZLE_Z,
+                                                    ELK_SWIZZLE_W,
+                                                    ELK_SWIZZLE_X,
+                                                    ELK_SWIZZLE_Y));
 }
 
 TEST_F(copy_propagation_vec4_test, test_swizzle_writemask)
@@ -170,26 +170,26 @@ TEST_F(copy_propagation_vec4_test, test_swizzle_writemask)
    dst_reg b = dst_reg(v, glsl_vec4_type());
    dst_reg c = dst_reg(v, glsl_vec4_type());
 
-   v->emit(v->MOV(b, swizzle(src_reg(a), BRW_SWIZZLE4(BRW_SWIZZLE_X,
-                                                      BRW_SWIZZLE_Y,
-                                                      BRW_SWIZZLE_X,
-                                                      BRW_SWIZZLE_Z))));
+   v->emit(v->MOV(b, swizzle(src_reg(a), ELK_SWIZZLE4(ELK_SWIZZLE_X,
+                                                      ELK_SWIZZLE_Y,
+                                                      ELK_SWIZZLE_X,
+                                                      ELK_SWIZZLE_Z))));
 
-   v->emit(v->MOV(writemask(a, WRITEMASK_XYZ), brw_imm_f(1.0f)));
+   v->emit(v->MOV(writemask(a, WRITEMASK_XYZ), elk_imm_f(1.0f)));
 
    vec4_instruction *test_mov =
-      v->MOV(c, swizzle(src_reg(b), BRW_SWIZZLE4(BRW_SWIZZLE_W,
-                                                 BRW_SWIZZLE_W,
-                                                 BRW_SWIZZLE_W,
-                                                 BRW_SWIZZLE_W)));
+      v->MOV(c, swizzle(src_reg(b), ELK_SWIZZLE4(ELK_SWIZZLE_W,
+                                                 ELK_SWIZZLE_W,
+                                                 ELK_SWIZZLE_W,
+                                                 ELK_SWIZZLE_W)));
    v->emit(test_mov);
 
    copy_propagation(v);
 
    /* should not copy propagate */
    EXPECT_EQ(test_mov->src[0].nr, b.nr);
-   EXPECT_EQ(test_mov->src[0].swizzle, BRW_SWIZZLE4(BRW_SWIZZLE_W,
-                                                    BRW_SWIZZLE_W,
-                                                    BRW_SWIZZLE_W,
-                                                    BRW_SWIZZLE_W));
+   EXPECT_EQ(test_mov->src[0].swizzle, ELK_SWIZZLE4(ELK_SWIZZLE_W,
+                                                    ELK_SWIZZLE_W,
+                                                    ELK_SWIZZLE_W,
+                                                    ELK_SWIZZLE_W));
 }

@@ -701,13 +701,13 @@ lower_image_size_instr(nir_builder *b,
 }
 
 static bool
-brw_nir_lower_storage_image_instr(nir_builder *b,
+elk_nir_lower_storage_image_instr(nir_builder *b,
                                   nir_instr *instr,
                                   void *cb_data)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
-   const struct brw_nir_lower_storage_image_opts *opts = cb_data;
+   const struct elk_nir_lower_storage_image_opts *opts = cb_data;
 
    nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
    switch (intrin->intrinsic) {
@@ -744,8 +744,8 @@ brw_nir_lower_storage_image_instr(nir_builder *b,
 }
 
 bool
-brw_nir_lower_storage_image(nir_shader *shader,
-                            const struct brw_nir_lower_storage_image_opts *opts)
+elk_nir_lower_storage_image(nir_shader *shader,
+                            const struct elk_nir_lower_storage_image_opts *opts)
 {
    bool progress = false;
 
@@ -757,7 +757,7 @@ brw_nir_lower_storage_image(nir_shader *shader,
    progress |= nir_lower_image(shader, &image_options);
 
    progress |= nir_shader_instructions_pass(shader,
-                                            brw_nir_lower_storage_image_instr,
+                                            elk_nir_lower_storage_image_instr,
                                             nir_metadata_none,
                                             (void *)opts);
 

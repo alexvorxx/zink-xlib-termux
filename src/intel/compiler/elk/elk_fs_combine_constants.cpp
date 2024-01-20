@@ -62,7 +62,7 @@ struct value {
    /**
     * Which source of instr is this value?
     *
-    * \note This field is not actually used by \c brw_combine_constants, but
+    * \note This field is not actually used by \c elk_combine_constants, but
     * it is generally very useful to callers.
     */
    uint8_t src;
@@ -107,10 +107,10 @@ struct value {
 
    /**
     * \name UtilCombineConstantsPrivate
-    * Private data used only by brw_combine_constants
+    * Private data used only by elk_combine_constants
     *
     * Any data stored in these fields will be overwritten by the call to
-    * \c brw_combine_constants.  No assumptions should be made about the
+    * \c elk_combine_constants.  No assumptions should be made about the
     * state of these fields after that function returns.
     */
    /**@{*/
@@ -156,7 +156,7 @@ struct combine_constants_value {
 };
 
 struct combine_constants_user {
-   /** Index into the array of values passed to brw_combine_constants. */
+   /** Index into the array of values passed to elk_combine_constants. */
    unsigned index;
 
    /**
@@ -757,7 +757,7 @@ combine_constants_greedy(struct value *candidates, unsigned num_candidates)
 }
 
 static combine_constants_result *
-brw_combine_constants(struct value *candidates, unsigned num_candidates)
+elk_combine_constants(struct value *candidates, unsigned num_candidates)
 {
    preprocess_candidates(candidates, num_candidates);
 
@@ -768,12 +768,12 @@ brw_combine_constants(struct value *candidates, unsigned num_candidates)
  * replaced with a GRF source.
  */
 static bool
-could_coissue(const struct intel_device_info *devinfo, const fs_inst *inst)
+could_coissue(const struct intel_device_info *devinfo, const elk_fs_inst *inst)
 {
-   assert(inst->opcode == BRW_OPCODE_MOV ||
-          inst->opcode == BRW_OPCODE_CMP ||
-          inst->opcode == BRW_OPCODE_ADD ||
-          inst->opcode == BRW_OPCODE_MUL);
+   assert(inst->opcode == ELK_OPCODE_MOV ||
+          inst->opcode == ELK_OPCODE_CMP ||
+          inst->opcode == ELK_OPCODE_ADD ||
+          inst->opcode == ELK_OPCODE_MUL);
 
    if (devinfo->ver != 7)
       return false;
@@ -784,19 +784,19 @@ could_coissue(const struct intel_device_info *devinfo, const fs_inst *inst)
     * (based on the source types), so we take the conservative choice of
     * only promoting when both destination and source are float.
     */
-   return inst->dst.type == BRW_REGISTER_TYPE_F &&
-          inst->src[0].type == BRW_REGISTER_TYPE_F;
+   return inst->dst.type == ELK_REGISTER_TYPE_F &&
+          inst->src[0].type == ELK_REGISTER_TYPE_F;
 }
 
 /**
- * Box for storing fs_inst and some other necessary data
+ * Box for storing elk_fs_inst and some other necessary data
  *
  * \sa box_instruction
  */
 struct fs_inst_box {
-   fs_inst *inst;
+   elk_fs_inst *inst;
    unsigned ip;
-   bblock_t *block;
+   elk_bblock_t *block;
    bool must_promote;
 };
 
@@ -804,18 +804,18 @@ struct fs_inst_box {
 struct reg_link {
    DECLARE_RALLOC_CXX_OPERATORS(reg_link)
 
-   reg_link(fs_inst *inst, unsigned src, bool negate, enum interpreted_type type)
+   reg_link(elk_fs_inst *inst, unsigned src, bool negate, enum interpreted_type type)
    : inst(inst), src(src), negate(negate), type(type) {}
 
    struct exec_node link;
-   fs_inst *inst;
+   elk_fs_inst *inst;
    uint8_t src;
    bool negate;
    enum interpreted_type type;
 };
 
 static struct exec_node *
-link(void *mem_ctx, fs_inst *inst, unsigned src, bool negate,
+link(void *mem_ctx, elk_fs_inst *inst, unsigned src, bool negate,
      enum interpreted_type type)
 {
    reg_link *l = new(mem_ctx) reg_link(inst, src, negate, type);
@@ -827,13 +827,13 @@ link(void *mem_ctx, fs_inst *inst, unsigned src, bool negate,
  */
 struct imm {
    /** The common ancestor of all blocks using this immediate value. */
-   bblock_t *block;
+   elk_bblock_t *block;
 
    /**
     * The instruction generating the immediate value, if all uses are contained
     * within a single basic block. Otherwise, NULL.
     */
-   fs_inst *inst;
+   elk_fs_inst *inst;
 
    /**
     * A list of fs_regs that refer to this immediate.  If we promote it, we'll
@@ -908,8 +908,8 @@ new_value(struct table *table, void *mem_ctx)
  * \returns the index into the dynamic array of boxes for the instruction.
  */
 static unsigned
-box_instruction(struct table *table, void *mem_ctx, fs_inst *inst,
-                unsigned ip, bblock_t *block, bool must_promote)
+box_instruction(struct table *table, void *mem_ctx, elk_fs_inst *inst,
+                unsigned ip, elk_bblock_t *block, bool must_promote)
 {
    /* It is common for box_instruction to be called consecutively for each
     * source of an instruction.  As a result, the most common case for finding
@@ -967,16 +967,16 @@ compare(const void *_a, const void *_b)
    return a->first_use_ip - b->first_use_ip;
 }
 
-static struct brw_reg
+static struct elk_reg
 build_imm_reg_for_copy(struct imm *imm)
 {
    switch (imm->size) {
    case 8:
-      return brw_imm_d(imm->d64);
+      return elk_imm_d(imm->d64);
    case 4:
-      return brw_imm_d(imm->d);
+      return elk_imm_d(imm->d);
    case 2:
-      return brw_imm_w(imm->w);
+      return elk_imm_w(imm->w);
    default:
       unreachable("not implemented");
    }
@@ -1030,22 +1030,22 @@ representable_as_uw(unsigned ud, uint16_t *uw)
 }
 
 static bool
-supports_src_as_imm(const struct intel_device_info *devinfo, const fs_inst *inst)
+supports_src_as_imm(const struct intel_device_info *devinfo, const elk_fs_inst *inst)
 {
    if (devinfo->ver < 12)
       return false;
 
    switch (inst->opcode) {
-   case BRW_OPCODE_ADD3:
+   case ELK_OPCODE_ADD3:
       /* ADD3 only exists on Gfx12.5+. */
       return true;
 
-   case BRW_OPCODE_MAD:
+   case ELK_OPCODE_MAD:
       /* Integer types can always mix sizes. Floating point types can mix
        * sizes on Gfx12. On Gfx12.5, floating point sources must all be HF or
        * all be F.
        */
-      return devinfo->verx10 < 125 || inst->src[0].type != BRW_REGISTER_TYPE_F;
+      return devinfo->verx10 < 125 || inst->src[0].type != ELK_REGISTER_TYPE_F;
 
    default:
       return false;
@@ -1053,7 +1053,7 @@ supports_src_as_imm(const struct intel_device_info *devinfo, const fs_inst *inst
 }
 
 static bool
-can_promote_src_as_imm(const struct intel_device_info *devinfo, fs_inst *inst,
+can_promote_src_as_imm(const struct intel_device_info *devinfo, elk_fs_inst *inst,
                        unsigned src_idx)
 {
    bool can_promote = false;
@@ -1073,33 +1073,33 @@ can_promote_src_as_imm(const struct intel_device_info *devinfo, fs_inst *inst,
     *        since HF/F mixed mode has been removed from the hardware.
     */
    switch (inst->src[src_idx].type) {
-   case BRW_REGISTER_TYPE_F: {
+   case ELK_REGISTER_TYPE_F: {
       uint16_t hf;
       if (representable_as_hf(inst->src[src_idx].f, &hf)) {
-         inst->src[src_idx] = retype(brw_imm_uw(hf), BRW_REGISTER_TYPE_HF);
+         inst->src[src_idx] = retype(elk_imm_uw(hf), ELK_REGISTER_TYPE_HF);
          can_promote = true;
       }
       break;
    }
-   case BRW_REGISTER_TYPE_D: {
+   case ELK_REGISTER_TYPE_D: {
       int16_t w;
       if (representable_as_w(inst->src[src_idx].d, &w)) {
-         inst->src[src_idx] = brw_imm_w(w);
+         inst->src[src_idx] = elk_imm_w(w);
          can_promote = true;
       }
       break;
    }
-   case BRW_REGISTER_TYPE_UD: {
+   case ELK_REGISTER_TYPE_UD: {
       uint16_t uw;
       if (representable_as_uw(inst->src[src_idx].ud, &uw)) {
-         inst->src[src_idx] = brw_imm_uw(uw);
+         inst->src[src_idx] = elk_imm_uw(uw);
          can_promote = true;
       }
       break;
    }
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_W:
+   case ELK_REGISTER_TYPE_UW:
+   case ELK_REGISTER_TYPE_HF:
       can_promote = true;
       break;
    default:
@@ -1110,11 +1110,11 @@ can_promote_src_as_imm(const struct intel_device_info *devinfo, fs_inst *inst,
 }
 
 static void
-add_candidate_immediate(struct table *table, fs_inst *inst, unsigned ip,
+add_candidate_immediate(struct table *table, elk_fs_inst *inst, unsigned ip,
                         unsigned i,
                         bool must_promote,
                         bool allow_one_constant,
-                        bblock_t *block,
+                        elk_bblock_t *block,
                         const struct intel_device_info *devinfo,
                         void *const_ctx)
 {
@@ -1134,32 +1134,32 @@ add_candidate_immediate(struct table *table, fs_inst *inst, unsigned ip,
     * allow negations on a right shift if the source type is already signed.
     */
    v->no_negations = !inst->can_do_source_mods(devinfo) ||
-                     ((inst->opcode == BRW_OPCODE_SHR ||
-                       inst->opcode == BRW_OPCODE_ASR) &&
-                      brw_reg_type_is_unsigned_integer(inst->src[i].type));
+                     ((inst->opcode == ELK_OPCODE_SHR ||
+                       inst->opcode == ELK_OPCODE_ASR) &&
+                      elk_reg_type_is_unsigned_integer(inst->src[i].type));
 
    switch (inst->src[i].type) {
-   case BRW_REGISTER_TYPE_DF:
-   case BRW_REGISTER_TYPE_NF:
-   case BRW_REGISTER_TYPE_F:
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_DF:
+   case ELK_REGISTER_TYPE_NF:
+   case ELK_REGISTER_TYPE_F:
+   case ELK_REGISTER_TYPE_HF:
       v->type = float_only;
       break;
 
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
-   case BRW_REGISTER_TYPE_UD:
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_W:
+   case ELK_REGISTER_TYPE_UQ:
+   case ELK_REGISTER_TYPE_Q:
+   case ELK_REGISTER_TYPE_UD:
+   case ELK_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_UW:
+   case ELK_REGISTER_TYPE_W:
       v->type = integer_only;
       break;
 
-   case BRW_REGISTER_TYPE_VF:
-   case BRW_REGISTER_TYPE_UV:
-   case BRW_REGISTER_TYPE_V:
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
+   case ELK_REGISTER_TYPE_VF:
+   case ELK_REGISTER_TYPE_UV:
+   case ELK_REGISTER_TYPE_V:
+   case ELK_REGISTER_TYPE_UB:
+   case ELK_REGISTER_TYPE_B:
    default:
       unreachable("not reached");
    }
@@ -1168,8 +1168,8 @@ add_candidate_immediate(struct table *table, fs_inst *inst, unsigned ip,
     * that has no conditional modifier, no source modifiers, and no saturate
     * modifer.
     */
-   if (inst->opcode == BRW_OPCODE_SEL &&
-       inst->conditional_mod == BRW_CONDITIONAL_NONE &&
+   if (inst->opcode == ELK_OPCODE_SEL &&
+       inst->conditional_mod == ELK_CONDITIONAL_NONE &&
        !inst->src[0].negate && !inst->src[0].abs &&
        !inst->src[1].negate && !inst->src[1].abs &&
        !inst->saturate) {
@@ -1190,7 +1190,7 @@ struct register_allocation {
    uint16_t avail;
 };
 
-static fs_reg
+static elk_fs_reg
 allocate_slots(struct register_allocation *regs, unsigned num_regs,
                unsigned bytes, unsigned align_bytes,
                elk::simple_allocator &alloc)
@@ -1212,7 +1212,7 @@ allocate_slots(struct register_allocation *regs, unsigned num_regs,
 
             regs[i].avail &= ~(mask << j);
 
-            fs_reg reg(VGRF, regs[i].nr);
+            elk_fs_reg reg(VGRF, regs[i].nr);
             reg.offset = j * 2;
 
             return reg;
@@ -1246,7 +1246,7 @@ deallocate_slots(struct register_allocation *regs, unsigned num_regs,
 }
 
 static void
-parcel_out_registers(struct imm *imm, unsigned len, const bblock_t *cur_block,
+parcel_out_registers(struct imm *imm, unsigned len, const elk_bblock_t *cur_block,
                      struct register_allocation *regs, unsigned num_regs,
                      elk::simple_allocator &alloc, unsigned ver)
 {
@@ -1283,7 +1283,7 @@ parcel_out_registers(struct imm *imm, unsigned len, const bblock_t *cur_block,
              */
             const unsigned width = ver == 8 && imm[i].is_half_float ? 2 : 1;
 
-            const fs_reg reg = allocate_slots(regs, num_regs,
+            const elk_fs_reg reg = allocate_slots(regs, num_regs,
                                               imm[i].size * width,
                                               get_alignment_for_imm(&imm[i]),
                                               alloc);
@@ -1305,7 +1305,7 @@ parcel_out_registers(struct imm *imm, unsigned len, const bblock_t *cur_block,
 }
 
 bool
-fs_visitor::opt_combine_constants()
+elk_fs_visitor::opt_combine_constants()
 {
    void *const_ctx = ralloc_context(NULL);
 
@@ -1332,15 +1332,15 @@ fs_visitor::opt_combine_constants()
     * constant is used by coissueable instructions or instructions that cannot
     * take immediate arguments.
     */
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, elk_fs_inst, inst, cfg) {
       ip++;
 
       switch (inst->opcode) {
-      case SHADER_OPCODE_INT_QUOTIENT:
-      case SHADER_OPCODE_INT_REMAINDER:
-      case SHADER_OPCODE_POW:
+      case ELK_SHADER_OPCODE_INT_QUOTIENT:
+      case ELK_SHADER_OPCODE_INT_REMAINDER:
+      case ELK_SHADER_OPCODE_POW:
          if (inst->src[0].file == IMM) {
-            assert(inst->opcode != SHADER_OPCODE_POW);
+            assert(inst->opcode != ELK_SHADER_OPCODE_POW);
 
             add_candidate_immediate(&table, inst, ip, 0, true, false, block,
                                     devinfo, const_ctx);
@@ -1353,8 +1353,8 @@ fs_visitor::opt_combine_constants()
 
          break;
 
-      case BRW_OPCODE_ADD3:
-      case BRW_OPCODE_MAD: {
+      case ELK_OPCODE_ADD3:
+      case ELK_OPCODE_MAD: {
          for (int i = 0; i < inst->sources; i++) {
             if (inst->src[i].file != IMM)
                continue;
@@ -1369,9 +1369,9 @@ fs_visitor::opt_combine_constants()
          break;
       }
 
-      case BRW_OPCODE_BFE:
-      case BRW_OPCODE_BFI2:
-      case BRW_OPCODE_LRP:
+      case ELK_OPCODE_BFE:
+      case ELK_OPCODE_BFI2:
+      case ELK_OPCODE_LRP:
          for (int i = 0; i < inst->sources; i++) {
             if (inst->src[i].file != IMM)
                continue;
@@ -1382,16 +1382,16 @@ fs_visitor::opt_combine_constants()
 
          break;
 
-      case BRW_OPCODE_SEL:
+      case ELK_OPCODE_SEL:
          if (inst->src[0].file == IMM) {
             /* It is possible to have src0 be immediate but src1 not be
              * immediate for the non-commutative conditional modifiers (e.g.,
              * G).
              */
-            if (inst->conditional_mod == BRW_CONDITIONAL_NONE ||
+            if (inst->conditional_mod == ELK_CONDITIONAL_NONE ||
                 /* Only GE and L are commutative. */
-                inst->conditional_mod == BRW_CONDITIONAL_GE ||
-                inst->conditional_mod == BRW_CONDITIONAL_L) {
+                inst->conditional_mod == ELK_CONDITIONAL_GE ||
+                inst->conditional_mod == ELK_CONDITIONAL_L) {
                assert(inst->src[1].file == IMM);
 
                add_candidate_immediate(&table, inst, ip, 0, true, true, block,
@@ -1405,28 +1405,28 @@ fs_visitor::opt_combine_constants()
          }
          break;
 
-      case BRW_OPCODE_ASR:
-      case BRW_OPCODE_BFI1:
-      case BRW_OPCODE_ROL:
-      case BRW_OPCODE_ROR:
-      case BRW_OPCODE_SHL:
-      case BRW_OPCODE_SHR:
+      case ELK_OPCODE_ASR:
+      case ELK_OPCODE_BFI1:
+      case ELK_OPCODE_ROL:
+      case ELK_OPCODE_ROR:
+      case ELK_OPCODE_SHL:
+      case ELK_OPCODE_SHR:
          if (inst->src[0].file == IMM) {
             add_candidate_immediate(&table, inst, ip, 0, true, false, block,
                                     devinfo, const_ctx);
          }
          break;
 
-      case BRW_OPCODE_MOV:
+      case ELK_OPCODE_MOV:
          if (could_coissue(devinfo, inst) && inst->src[0].file == IMM) {
             add_candidate_immediate(&table, inst, ip, 0, false, false, block,
                                     devinfo, const_ctx);
          }
          break;
 
-      case BRW_OPCODE_CMP:
-      case BRW_OPCODE_ADD:
-      case BRW_OPCODE_MUL:
+      case ELK_OPCODE_CMP:
+      case ELK_OPCODE_ADD:
+      case ELK_OPCODE_MUL:
          assert(inst->src[0].file != IMM);
 
          if (could_coissue(devinfo, inst) && inst->src[1].file == IMM) {
@@ -1446,7 +1446,7 @@ fs_visitor::opt_combine_constants()
    }
 
    combine_constants_result *result =
-      brw_combine_constants(table.values, table.num_values);
+      elk_combine_constants(table.values, table.num_values);
 
    table.imm = ralloc_array(const_ctx, struct imm, result->num_values_to_emit);
    table.len = 0;
@@ -1499,7 +1499,7 @@ fs_visitor::opt_combine_constants()
             imm->last_use_ip = ib->ip;
             imm->used_in_single_block = true;
          } else {
-            bblock_t *intersection = idom.intersect(ib->block,
+            elk_bblock_t *intersection = idom.intersect(ib->block,
                                                     imm->block);
 
             if (ib->block != imm->block)
@@ -1531,7 +1531,7 @@ fs_visitor::opt_combine_constants()
             imm->block = intersection;
          }
 
-         if (ib->inst->src[src].type == BRW_REGISTER_TYPE_HF)
+         if (ib->inst->src[src].type == ELK_REGISTER_TYPE_HF)
             imm->is_half_float = true;
       }
 
@@ -1567,7 +1567,7 @@ fs_visitor::opt_combine_constants()
 
       free(regs);
    } else {
-      fs_reg reg(VGRF, alloc.allocate(1));
+      elk_fs_reg reg(VGRF, alloc.allocate(1));
       reg.stride = 0;
 
       for (int i = 0; i < table.len; i++) {
@@ -1602,17 +1602,17 @@ fs_visitor::opt_combine_constants()
        * or after the last non-control flow instruction of the common ancestor.
        */
       exec_node *n;
-      bblock_t *insert_block;
+      elk_bblock_t *insert_block;
       if (imm->inst != nullptr) {
          n = imm->inst;
          insert_block = imm->block;
       } else {
-         if (imm->block->start()->opcode == BRW_OPCODE_DO) {
+         if (imm->block->start()->opcode == ELK_OPCODE_DO) {
             /* DO blocks are weird. They can contain only the single DO
              * instruction. As a result, MOV instructions cannot be added to
              * the DO block.
              */
-            bblock_t *next_block = imm->block->next();
+            elk_bblock_t *next_block = imm->block->next();
             if (next_block->starts_with_control_flow()) {
                /* This is the difficult case. This occurs for code like
                 *
@@ -1663,7 +1663,7 @@ fs_visitor::opt_combine_constants()
       const uint32_t width = devinfo->ver == 8 && imm->is_half_float ? 2 : 1;
       const fs_builder ibld = fs_builder(this, width).at(insert_block, n).exec_all();
 
-      fs_reg reg(VGRF, imm->nr);
+      elk_fs_reg reg(VGRF, imm->nr);
       reg.offset = imm->subreg_offset;
       reg.stride = 0;
 
@@ -1673,7 +1673,7 @@ fs_visitor::opt_combine_constants()
        */
       assert(reg.offset == ALIGN(reg.offset, get_alignment_for_imm(imm)));
 
-      struct brw_reg imm_reg = build_imm_reg_for_copy(imm);
+      struct elk_reg imm_reg = build_imm_reg_for_copy(imm);
 
       /* Ensure we have enough space in the register to copy the immediate */
       assert(reg.offset + type_sz(imm_reg.type) * width <= REG_SIZE);
@@ -1685,70 +1685,70 @@ fs_visitor::opt_combine_constants()
    /* Rewrite the immediate sources to refer to the new GRFs. */
    for (int i = 0; i < table.len; i++) {
       foreach_list_typed(reg_link, link, link, table.imm[i].uses) {
-         fs_reg *reg = &link->inst->src[link->src];
+         elk_fs_reg *reg = &link->inst->src[link->src];
 
-         if (link->inst->opcode == BRW_OPCODE_SEL) {
+         if (link->inst->opcode == ELK_OPCODE_SEL) {
             if (link->type == either_type) {
                /* Do not change the register type. */
             } else if (link->type == integer_only) {
-               reg->type = brw_int_type(type_sz(reg->type), true);
+               reg->type = elk_int_type(type_sz(reg->type), true);
             } else {
                assert(link->type == float_only);
 
                switch (type_sz(reg->type)) {
                case 2:
-                  reg->type = BRW_REGISTER_TYPE_HF;
+                  reg->type = ELK_REGISTER_TYPE_HF;
                   break;
                case 4:
-                  reg->type = BRW_REGISTER_TYPE_F;
+                  reg->type = ELK_REGISTER_TYPE_F;
                   break;
                case 8:
-                  reg->type = BRW_REGISTER_TYPE_DF;
+                  reg->type = ELK_REGISTER_TYPE_DF;
                   break;
                default:
                   unreachable("Bad type size");
                }
             }
-         } else if ((link->inst->opcode == BRW_OPCODE_SHL ||
-                     link->inst->opcode == BRW_OPCODE_ASR) &&
+         } else if ((link->inst->opcode == ELK_OPCODE_SHL ||
+                     link->inst->opcode == ELK_OPCODE_ASR) &&
                     link->negate) {
-            reg->type = brw_int_type(type_sz(reg->type), true);
+            reg->type = elk_int_type(type_sz(reg->type), true);
          }
 
 #ifdef DEBUG
          switch (reg->type) {
-         case BRW_REGISTER_TYPE_DF:
+         case ELK_REGISTER_TYPE_DF:
             assert((isnan(reg->df) && isnan(table.imm[i].df)) ||
                    (fabs(reg->df) == fabs(table.imm[i].df)));
             break;
-         case BRW_REGISTER_TYPE_F:
+         case ELK_REGISTER_TYPE_F:
             assert((isnan(reg->f) && isnan(table.imm[i].f)) ||
                    (fabsf(reg->f) == fabsf(table.imm[i].f)));
             break;
-         case BRW_REGISTER_TYPE_HF:
+         case ELK_REGISTER_TYPE_HF:
             assert((isnan(_mesa_half_to_float(reg->d & 0xffffu)) &&
                     isnan(_mesa_half_to_float(table.imm[i].w))) ||
                    (fabsf(_mesa_half_to_float(reg->d & 0xffffu)) ==
                     fabsf(_mesa_half_to_float(table.imm[i].w))));
             break;
-         case BRW_REGISTER_TYPE_Q:
+         case ELK_REGISTER_TYPE_Q:
             assert(abs(reg->d64) == abs(table.imm[i].d64));
             break;
-         case BRW_REGISTER_TYPE_UQ:
+         case ELK_REGISTER_TYPE_UQ:
             assert(!link->negate);
             assert(reg->d64 == table.imm[i].d64);
             break;
-         case BRW_REGISTER_TYPE_D:
+         case ELK_REGISTER_TYPE_D:
             assert(abs(reg->d) == abs(table.imm[i].d));
             break;
-         case BRW_REGISTER_TYPE_UD:
+         case ELK_REGISTER_TYPE_UD:
             assert(!link->negate);
             assert(reg->d == table.imm[i].d);
             break;
-         case BRW_REGISTER_TYPE_W:
+         case ELK_REGISTER_TYPE_W:
             assert(abs((int16_t) (reg->d & 0xffff)) == table.imm[i].w);
             break;
-         case BRW_REGISTER_TYPE_UW:
+         case ELK_REGISTER_TYPE_UW:
             assert(!link->negate);
             assert((reg->ud & 0xffffu) == (uint16_t) table.imm[i].w);
             break;
@@ -1773,9 +1773,9 @@ fs_visitor::opt_combine_constants()
     * so the other source (and destination) must be changed to match.
     */
    for (unsigned i = 0; i < table.num_boxes; i++) {
-      fs_inst *inst = table.boxes[i].inst;
+      elk_fs_inst *inst = table.boxes[i].inst;
 
-      if (inst->opcode != BRW_OPCODE_SEL)
+      if (inst->opcode != ELK_OPCODE_SEL)
          continue;
 
       /* If both sources have negation, the types had better be the same! */
@@ -1799,18 +1799,18 @@ fs_visitor::opt_combine_constants()
          continue;
 
       assert(inst->src[1].file != IMM);
-      assert(inst->conditional_mod == BRW_CONDITIONAL_NONE ||
-             inst->conditional_mod == BRW_CONDITIONAL_GE ||
-             inst->conditional_mod == BRW_CONDITIONAL_L);
+      assert(inst->conditional_mod == ELK_CONDITIONAL_NONE ||
+             inst->conditional_mod == ELK_CONDITIONAL_GE ||
+             inst->conditional_mod == ELK_CONDITIONAL_L);
 
-      fs_reg temp = inst->src[0];
+      elk_fs_reg temp = inst->src[0];
       inst->src[0] = inst->src[1];
       inst->src[1] = temp;
 
       /* If this was predicated, flipping operands means we also need to flip
        * the predicate.
        */
-      if (inst->conditional_mod == BRW_CONDITIONAL_NONE)
+      if (inst->conditional_mod == ELK_CONDITIONAL_NONE)
          inst->predicate_inverse = !inst->predicate_inverse;
    }
 
@@ -1835,7 +1835,7 @@ fs_visitor::opt_combine_constants()
 
    if (rebuild_cfg) {
       /* When the CFG is initially built, the instructions are removed from
-       * the list of instructions stored in fs_visitor -- the same exec_node
+       * the list of instructions stored in elk_fs_visitor -- the same exec_node
        * is used for membership in that list and in a block list.  So we need
        * to pull them back before rebuilding the CFG.
        */

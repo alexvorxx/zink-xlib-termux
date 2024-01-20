@@ -295,9 +295,9 @@ lower_cs_intrinsics_convert_impl(struct lower_intrinsics_state *state)
 }
 
 bool
-brw_nir_lower_cs_intrinsics(nir_shader *nir,
+elk_nir_lower_cs_intrinsics(nir_shader *nir,
                             const struct intel_device_info *devinfo,
-                            struct brw_cs_prog_data *prog_data)
+                            struct elk_cs_prog_data *prog_data)
 {
    assert(gl_shader_stage_uses_workgroup(nir->info.stage));
 

@@ -234,7 +234,7 @@ remap_patch_urb_offsets(nir_block *block, nir_builder *b,
 }
 
 void
-brw_nir_lower_vs_inputs(nir_shader *nir,
+elk_nir_lower_vs_inputs(nir_shader *nir,
                         bool edgeflag_is_last,
                         const uint8_t *vs_attrib_wa_flags)
 {
@@ -246,7 +246,7 @@ brw_nir_lower_vs_inputs(nir_shader *nir,
     * loaded as one vec4 or dvec4 per element (or matrix column), depending on
     * whether it is a double-precision type or not.
     */
-   nir_lower_io(nir, nir_var_shader_in, type_size_vec4,
+   nir_lower_io(nir, nir_var_shader_in, elk_type_size_vec4,
                 nir_lower_io_lower_64bit_to_32);
 
    /* This pass needs actual constants */
@@ -254,7 +254,7 @@ brw_nir_lower_vs_inputs(nir_shader *nir,
 
    nir_io_add_const_offset_to_base(nir, nir_var_shader_in);
 
-   brw_nir_apply_attribute_workarounds(nir, vs_attrib_wa_flags);
+   elk_nir_apply_attribute_workarounds(nir, vs_attrib_wa_flags);
 
    /* The last step is to remap VERT_ATTRIB_* to actual registers */
 
@@ -365,14 +365,14 @@ brw_nir_lower_vs_inputs(nir_shader *nir,
 }
 
 void
-brw_nir_lower_vue_inputs(nir_shader *nir,
+elk_nir_lower_vue_inputs(nir_shader *nir,
                          const struct intel_vue_map *vue_map)
 {
    nir_foreach_shader_in_variable(var, nir)
       var->data.driver_location = var->data.location;
 
-   /* Inputs are stored in vec4 slots, so use type_size_vec4(). */
-   nir_lower_io(nir, nir_var_shader_in, type_size_vec4,
+   /* Inputs are stored in vec4 slots, so use elk_type_size_vec4(). */
+   nir_lower_io(nir, nir_var_shader_in, elk_type_size_vec4,
                 nir_lower_io_lower_64bit_to_32);
 
    /* This pass needs actual constants */
@@ -415,12 +415,12 @@ brw_nir_lower_vue_inputs(nir_shader *nir,
 }
 
 void
-brw_nir_lower_tes_inputs(nir_shader *nir, const struct intel_vue_map *vue_map)
+elk_nir_lower_tes_inputs(nir_shader *nir, const struct intel_vue_map *vue_map)
 {
    nir_foreach_shader_in_variable(var, nir)
       var->data.driver_location = var->data.location;
 
-   nir_lower_io(nir, nir_var_shader_in, type_size_vec4,
+   nir_lower_io(nir, nir_var_shader_in, elk_type_size_vec4,
                 nir_lower_io_lower_64bit_to_32);
 
    /* This pass needs actual constants */
@@ -490,9 +490,9 @@ lower_barycentric_at_offset(nir_builder *b, nir_intrinsic_instr *intrin,
 }
 
 void
-brw_nir_lower_fs_inputs(nir_shader *nir,
+elk_nir_lower_fs_inputs(nir_shader *nir,
                         const struct intel_device_info *devinfo,
-                        const struct brw_wm_prog_key *key)
+                        const struct elk_wm_prog_key *key)
 {
    nir_foreach_shader_in_variable(var, nir) {
       var->data.driver_location = var->data.location;
@@ -521,14 +521,14 @@ brw_nir_lower_fs_inputs(nir_shader *nir,
       }
    }
 
-   nir_lower_io(nir, nir_var_shader_in, type_size_vec4,
+   nir_lower_io(nir, nir_var_shader_in, elk_type_size_vec4,
                 nir_lower_io_lower_64bit_to_32);
    if (devinfo->ver >= 11)
       nir_lower_interpolation(nir, ~0);
 
-   if (key->multisample_fbo == BRW_NEVER) {
+   if (key->multisample_fbo == ELK_NEVER) {
       nir_lower_single_sampled(nir);
-   } else if (key->persample_interp == BRW_ALWAYS) {
+   } else if (key->persample_interp == ELK_ALWAYS) {
       nir_shader_intrinsics_pass(nir, lower_barycentric_per_sample,
                                    nir_metadata_block_index |
                                    nir_metadata_dominance,
@@ -547,25 +547,25 @@ brw_nir_lower_fs_inputs(nir_shader *nir,
 }
 
 void
-brw_nir_lower_vue_outputs(nir_shader *nir)
+elk_nir_lower_vue_outputs(nir_shader *nir)
 {
    nir_foreach_shader_out_variable(var, nir) {
       var->data.driver_location = var->data.location;
    }
 
-   nir_lower_io(nir, nir_var_shader_out, type_size_vec4,
+   nir_lower_io(nir, nir_var_shader_out, elk_type_size_vec4,
                 nir_lower_io_lower_64bit_to_32);
 }
 
 void
-brw_nir_lower_tcs_outputs(nir_shader *nir, const struct intel_vue_map *vue_map,
+elk_nir_lower_tcs_outputs(nir_shader *nir, const struct intel_vue_map *vue_map,
                           enum tess_primitive_mode tes_primitive_mode)
 {
    nir_foreach_shader_out_variable(var, nir) {
       var->data.driver_location = var->data.location;
    }
 
-   nir_lower_io(nir, nir_var_shader_out, type_size_vec4,
+   nir_lower_io(nir, nir_var_shader_out, elk_type_size_vec4,
                 nir_lower_io_lower_64bit_to_32);
 
    /* This pass needs actual constants */
@@ -582,15 +582,15 @@ brw_nir_lower_tcs_outputs(nir_shader *nir, const struct intel_vue_map *vue_map,
 }
 
 void
-brw_nir_lower_fs_outputs(nir_shader *nir)
+elk_nir_lower_fs_outputs(nir_shader *nir)
 {
    nir_foreach_shader_out_variable(var, nir) {
       var->data.driver_location =
-         SET_FIELD(var->data.index, BRW_NIR_FRAG_OUTPUT_INDEX) |
-         SET_FIELD(var->data.location, BRW_NIR_FRAG_OUTPUT_LOCATION);
+         SET_FIELD(var->data.index, ELK_NIR_FRAG_OUTPUT_INDEX) |
+         SET_FIELD(var->data.location, ELK_NIR_FRAG_OUTPUT_LOCATION);
    }
 
-   nir_lower_io(nir, nir_var_shader_out, type_size_dvec4, 0);
+   nir_lower_io(nir, nir_var_shader_out, elk_type_size_dvec4, 0);
 }
 
 #define OPT(pass, ...) ({                                  \
@@ -602,7 +602,7 @@ brw_nir_lower_fs_outputs(nir_shader *nir)
 })
 
 void
-brw_nir_optimize(nir_shader *nir, bool is_scalar,
+elk_nir_optimize(nir_shader *nir, bool is_scalar,
                  const struct intel_device_info *devinfo)
 {
    bool progress;
@@ -729,7 +729,7 @@ brw_nir_optimize(nir_shader *nir, bool is_scalar,
 static unsigned
 lower_bit_size_callback(const nir_instr *instr, UNUSED void *data)
 {
-   const struct brw_compiler *compiler = (const struct brw_compiler *) data;
+   const struct elk_compiler *compiler = (const struct elk_compiler *) data;
    const struct intel_device_info *devinfo = compiler->devinfo;
 
    switch (instr->type) {
@@ -888,15 +888,15 @@ lower_xehp_tg4_offset_filter(const nir_instr *instr, UNUSED const void *data)
  * it is not at all generator-specific.
  */
 void
-brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
-                   const struct brw_nir_compiler_opts *opts)
+elk_preprocess_nir(const struct elk_compiler *compiler, nir_shader *nir,
+                   const struct elk_nir_compiler_opts *opts)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
    UNUSED bool progress; /* Written by OPT */
 
    const bool is_scalar = compiler->scalar_stage[nir->info.stage];
 
-   nir_validate_ssa_dominance(nir, "before brw_preprocess_nir");
+   nir_validate_ssa_dominance(nir, "before elk_preprocess_nir");
 
    OPT(nir_lower_frexp);
 
@@ -907,10 +907,10 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
    if (nir->info.stage == MESA_SHADER_GEOMETRY)
       OPT(nir_lower_gs_intrinsics, 0);
 
-   /* See also brw_nir_trig_workarounds.py */
+   /* See also elk_nir_trig_workarounds.py */
    if (compiler->precise_trig &&
        !(devinfo->ver >= 10 || devinfo->platform == INTEL_PLATFORM_KBL))
-      OPT(brw_nir_apply_trig_workarounds);
+      OPT(elk_nir_apply_trig_workarounds);
 
    /* This workaround existing for performance reasons. Since it requires not
     * setting RENDER_SURFACE_STATE::SurfaceArray when the array length is 1,
@@ -953,7 +953,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
    OPT(nir_split_var_copies);
    OPT(nir_split_struct_vars, nir_var_function_temp);
 
-   brw_nir_optimize(nir, is_scalar, devinfo);
+   elk_nir_optimize(nir, is_scalar, devinfo);
 
    OPT(nir_lower_doubles, opts->softfp64, nir->options->lower_doubles_options);
    if (OPT(nir_lower_int64_float_conversions)) {
@@ -998,7 +998,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
    OPT(nir_lower_subgroups, &subgroups_options);
 
    nir_variable_mode indirect_mask =
-      brw_nir_no_indirect_mask(compiler, nir->info.stage);
+      elk_nir_no_indirect_mask(compiler, nir->info.stage);
    OPT(nir_lower_indirect_derefs, indirect_mask, UINT32_MAX);
 
    /* Even in cases where we can handle indirect temporaries via scratch, we
@@ -1037,11 +1037,11 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
       OPT(intel_nir_clamp_per_vertex_loads);
 
    /* Get rid of split copies */
-   brw_nir_optimize(nir, is_scalar, devinfo);
+   elk_nir_optimize(nir, is_scalar, devinfo);
 }
 
 static bool
-brw_nir_zero_inputs_instr(struct nir_builder *b, nir_intrinsic_instr *intrin,
+elk_nir_zero_inputs_instr(struct nir_builder *b, nir_intrinsic_instr *intrin,
                           void *data)
 {
    if (intrin->intrinsic != nir_intrinsic_load_deref)
@@ -1072,15 +1072,15 @@ brw_nir_zero_inputs_instr(struct nir_builder *b, nir_intrinsic_instr *intrin,
 }
 
 static bool
-brw_nir_zero_inputs(nir_shader *shader, uint64_t *zero_inputs)
+elk_nir_zero_inputs(nir_shader *shader, uint64_t *zero_inputs)
 {
-   return nir_shader_intrinsics_pass(shader, brw_nir_zero_inputs_instr,
+   return nir_shader_intrinsics_pass(shader, elk_nir_zero_inputs_instr,
                                      nir_metadata_block_index | nir_metadata_dominance,
                                      zero_inputs);
 }
 
 void
-brw_nir_link_shaders(const struct brw_compiler *compiler,
+elk_nir_link_shaders(const struct elk_compiler *compiler,
                      nir_shader *producer, nir_shader *consumer)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
@@ -1095,12 +1095,12 @@ brw_nir_link_shaders(const struct brw_compiler *compiler,
    if (p_is_scalar && c_is_scalar) {
       NIR_PASS(_, producer, nir_lower_io_to_scalar_early, nir_var_shader_out);
       NIR_PASS(_, consumer, nir_lower_io_to_scalar_early, nir_var_shader_in);
-      brw_nir_optimize(producer, p_is_scalar, devinfo);
-      brw_nir_optimize(consumer, c_is_scalar, devinfo);
+      elk_nir_optimize(producer, p_is_scalar, devinfo);
+      elk_nir_optimize(consumer, c_is_scalar, devinfo);
    }
 
    if (nir_link_opt_varyings(producer, consumer))
-      brw_nir_optimize(consumer, c_is_scalar, devinfo);
+      elk_nir_optimize(consumer, c_is_scalar, devinfo);
 
    NIR_PASS(_, producer, nir_remove_dead_variables, nir_var_shader_out, NULL);
    NIR_PASS(_, consumer, nir_remove_dead_variables, nir_var_shader_in, NULL);
@@ -1123,14 +1123,14 @@ brw_nir_link_shaders(const struct brw_compiler *compiler,
        * varyings we have demoted here.
        */
       NIR_PASS(_, producer, nir_lower_indirect_derefs,
-                  brw_nir_no_indirect_mask(compiler, producer->info.stage),
+                  elk_nir_no_indirect_mask(compiler, producer->info.stage),
                   UINT32_MAX);
       NIR_PASS(_, consumer, nir_lower_indirect_derefs,
-                  brw_nir_no_indirect_mask(compiler, consumer->info.stage),
+                  elk_nir_no_indirect_mask(compiler, consumer->info.stage),
                   UINT32_MAX);
 
-      brw_nir_optimize(producer, p_is_scalar, devinfo);
-      brw_nir_optimize(consumer, c_is_scalar, devinfo);
+      elk_nir_optimize(producer, p_is_scalar, devinfo);
+      elk_nir_optimize(consumer, c_is_scalar, devinfo);
    }
 
    NIR_PASS(_, producer, nir_lower_io_to_vector, nir_var_shader_out);
@@ -1158,7 +1158,7 @@ brw_nir_link_shaders(const struct brw_compiler *compiler,
 }
 
 bool
-brw_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
+elk_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
                              unsigned bit_size,
                              unsigned num_components,
                              nir_intrinsic_instr *low,
@@ -1189,7 +1189,7 @@ brw_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
       }
    } else {
       /* We can handle at most a vec4 right now.  Anything bigger would get
-       * immediately split by brw_nir_lower_mem_access_bit_sizes anyway.
+       * immediately split by elk_nir_lower_mem_access_bit_sizes anyway.
        */
       if (num_components > 4)
          return false;
@@ -1315,9 +1315,9 @@ get_mem_access_size_align(nir_intrinsic_op intrin, uint8_t bytes,
 }
 
 static void
-brw_vectorize_lower_mem_access(nir_shader *nir,
-                               const struct brw_compiler *compiler,
-                               enum brw_robustness_flags robust_flags)
+elk_vectorize_lower_mem_access(nir_shader *nir,
+                               const struct elk_compiler *compiler,
+                               enum elk_robustness_flags robust_flags)
 {
    bool progress = false;
    const bool is_scalar = compiler->scalar_stage[nir->info.stage];
@@ -1326,13 +1326,13 @@ brw_vectorize_lower_mem_access(nir_shader *nir,
       nir_load_store_vectorize_options options = {
          .modes = nir_var_mem_ubo | nir_var_mem_ssbo |
                   nir_var_mem_global | nir_var_mem_shared,
-         .callback = brw_nir_should_vectorize_mem,
+         .callback = elk_nir_should_vectorize_mem,
          .robust_modes = (nir_variable_mode)0,
       };
 
-      if (robust_flags & BRW_ROBUSTNESS_UBO)
+      if (robust_flags & ELK_ROBUSTNESS_UBO)
          options.robust_modes |= nir_var_mem_ubo | nir_var_mem_global;
-      if (robust_flags & BRW_ROBUSTNESS_SSBO)
+      if (robust_flags & ELK_ROBUSTNESS_SSBO)
          options.robust_modes |= nir_var_mem_ssbo | nir_var_mem_global;
 
       OPT(nir_opt_load_store_vectorize, &options);
@@ -1405,9 +1405,9 @@ nir_shader_has_local_variables(const nir_shader *nir)
  * will not work.
  */
 void
-brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
+elk_postprocess_nir(nir_shader *nir, const struct elk_compiler *compiler,
                     bool debug_enabled,
-                    enum brw_robustness_flags robust_flags)
+                    enum elk_robustness_flags robust_flags)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
    const bool is_scalar = compiler->scalar_stage[nir->info.stage];
@@ -1437,20 +1437,20 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    if (gl_shader_stage_can_set_fragment_shading_rate(nir->info.stage))
       NIR_PASS(_, nir, intel_nir_lower_shading_rate_output);
 
-   brw_nir_optimize(nir, is_scalar, devinfo);
+   elk_nir_optimize(nir, is_scalar, devinfo);
 
    if (is_scalar && nir_shader_has_local_variables(nir)) {
       OPT(nir_lower_vars_to_explicit_types, nir_var_function_temp,
           glsl_get_natural_size_align_bytes);
       OPT(nir_lower_explicit_io, nir_var_function_temp,
           nir_address_format_32bit_offset);
-      brw_nir_optimize(nir, is_scalar, devinfo);
+      elk_nir_optimize(nir, is_scalar, devinfo);
    }
 
-   brw_vectorize_lower_mem_access(nir, compiler, robust_flags);
+   elk_vectorize_lower_mem_access(nir, compiler, robust_flags);
 
    if (OPT(nir_lower_int64))
-      brw_nir_optimize(nir, is_scalar, devinfo);
+      elk_nir_optimize(nir, is_scalar, devinfo);
 
    if (devinfo->ver >= 6) {
       /* Try and fuse multiply-adds, if successful, run shrink_vectors to
@@ -1481,7 +1481,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
        * instruction from one of the branches of the if-statement, so now it
        * might be under the threshold of conversion to bcsel.
        *
-       * See brw_nir_optimize for the explanation of is_vec4_tessellation.
+       * See elk_nir_optimize for the explanation of is_vec4_tessellation.
        */
       const bool is_vec4_tessellation = !is_scalar &&
          (nir->info.stage == MESA_SHADER_TESS_CTRL ||
@@ -1510,7 +1510,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    if (OPT(nir_lower_fp16_casts, nir_lower_fp16_split_fp64)) {
       if (OPT(nir_lower_int64)) {
-         brw_nir_optimize(nir, is_scalar, devinfo);
+         elk_nir_optimize(nir, is_scalar, devinfo);
       }
    }
 
@@ -1551,7 +1551,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
       OPT(nir_lower_subgroups, &subgroups_options);
 
       if (OPT(nir_lower_int64))
-         brw_nir_optimize(nir, is_scalar, devinfo);
+         elk_nir_optimize(nir, is_scalar, devinfo);
 
       divergence_analysis_dirty = true;
    }
@@ -1617,7 +1617,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
     * want that to be squashed by other NIR passes.
     */
    if (devinfo->ver <= 5)
-      brw_nir_analyze_boolean_resolves(nir);
+      elk_nir_analyze_boolean_resolves(nir);
 
    nir_sweep(nir);
 
@@ -1629,9 +1629,9 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 }
 
 static bool
-brw_nir_apply_sampler_key(nir_shader *nir,
-                          const struct brw_compiler *compiler,
-                          const struct brw_sampler_prog_key_data *key_tex)
+elk_nir_apply_sampler_key(nir_shader *nir,
+                          const struct elk_compiler *compiler,
+                          const struct elk_sampler_prog_key_data *key_tex)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
    nir_lower_tex_options tex_options = {
@@ -1664,13 +1664,13 @@ get_subgroup_size(const struct shader_info *info, unsigned max_subgroup_size)
    switch (info->subgroup_size) {
    case SUBGROUP_SIZE_API_CONSTANT:
       /* We have to use the global constant size. */
-      return BRW_SUBGROUP_SIZE;
+      return ELK_SUBGROUP_SIZE;
 
    case SUBGROUP_SIZE_UNIFORM:
       /* It has to be uniform across all invocations but can vary per stage
        * if we want.  This gives us a bit more freedom.
        *
-       * For compute, brw_nir_apply_key is called per-dispatch-width so this
+       * For compute, elk_nir_apply_key is called per-dispatch-width so this
        * is the actual subgroup size and not a maximum.  However, we only
        * invoke one size of any given compute shader so it's still guaranteed
        * to be uniform across invocations.
@@ -1680,7 +1680,7 @@ get_subgroup_size(const struct shader_info *info, unsigned max_subgroup_size)
    case SUBGROUP_SIZE_VARYING:
       /* The subgroup size is allowed to be fully varying.  For geometry
        * stages, we know it's always 8 which is max_subgroup_size so we can
-       * return that.  For compute, brw_nir_apply_key is called once per
+       * return that.  For compute, elk_nir_apply_key is called once per
        * dispatch-width so max_subgroup_size is the real subgroup size.
        *
        * For fragment, we return 0 and let it fall through to the back-end
@@ -1710,21 +1710,21 @@ get_subgroup_size(const struct shader_info *info, unsigned max_subgroup_size)
 }
 
 unsigned
-brw_nir_api_subgroup_size(const nir_shader *nir,
+elk_nir_api_subgroup_size(const nir_shader *nir,
                           unsigned hw_subgroup_size)
 {
    return get_subgroup_size(&nir->info, hw_subgroup_size);
 }
 
 void
-brw_nir_apply_key(nir_shader *nir,
-                  const struct brw_compiler *compiler,
-                  const struct brw_base_prog_key *key,
+elk_nir_apply_key(nir_shader *nir,
+                  const struct elk_compiler *compiler,
+                  const struct elk_base_prog_key *key,
                   unsigned max_subgroup_size)
 {
    bool progress = false;
 
-   OPT(brw_nir_apply_sampler_key, compiler, &key->tex);
+   OPT(elk_nir_apply_sampler_key, compiler, &key->tex);
 
    const struct intel_nir_lower_texture_opts tex_opts = {
       .combined_lod_and_array_index = compiler->devinfo->ver >= 20,
@@ -1740,16 +1740,16 @@ brw_nir_apply_key(nir_shader *nir,
    OPT(nir_lower_subgroups, &subgroups_options);
 
    if (key->limit_trig_input_range)
-      OPT(brw_nir_limit_trig_input_range_workaround);
+      OPT(elk_nir_limit_trig_input_range_workaround);
 
    if (progress) {
       const bool is_scalar = compiler->scalar_stage[nir->info.stage];
-      brw_nir_optimize(nir, is_scalar, compiler->devinfo);
+      elk_nir_optimize(nir, is_scalar, compiler->devinfo);
    }
 }
 
-enum brw_conditional_mod
-brw_cmod_for_nir_comparison(nir_op op)
+enum elk_conditional_mod
+elk_cmod_for_nir_comparison(nir_op op)
 {
    switch (op) {
    case nir_op_flt:
@@ -1758,7 +1758,7 @@ brw_cmod_for_nir_comparison(nir_op op)
    case nir_op_ilt32:
    case nir_op_ult:
    case nir_op_ult32:
-      return BRW_CONDITIONAL_L;
+      return ELK_CONDITIONAL_L;
 
    case nir_op_fge:
    case nir_op_fge32:
@@ -1766,7 +1766,7 @@ brw_cmod_for_nir_comparison(nir_op op)
    case nir_op_ige32:
    case nir_op_uge:
    case nir_op_uge32:
-      return BRW_CONDITIONAL_GE;
+      return ELK_CONDITIONAL_GE;
 
    case nir_op_feq:
    case nir_op_feq32:
@@ -1778,7 +1778,7 @@ brw_cmod_for_nir_comparison(nir_op op)
    case nir_op_b32all_iequal3:
    case nir_op_b32all_fequal4:
    case nir_op_b32all_iequal4:
-      return BRW_CONDITIONAL_Z;
+      return ELK_CONDITIONAL_Z;
 
    case nir_op_fneu:
    case nir_op_fneu32:
@@ -1790,15 +1790,15 @@ brw_cmod_for_nir_comparison(nir_op op)
    case nir_op_b32any_inequal3:
    case nir_op_b32any_fnequal4:
    case nir_op_b32any_inequal4:
-      return BRW_CONDITIONAL_NZ;
+      return ELK_CONDITIONAL_NZ;
 
    default:
       unreachable("Unsupported NIR comparison op");
    }
 }
 
-enum lsc_opcode
-lsc_aop_for_nir_intrinsic(const nir_intrinsic_instr *atomic)
+enum elk_lsc_opcode
+elk_lsc_aop_for_nir_intrinsic(const nir_intrinsic_instr *atomic)
 {
    switch (nir_intrinsic_atomic_op(atomic)) {
    case nir_atomic_op_iadd: {
@@ -1849,48 +1849,48 @@ lsc_aop_for_nir_intrinsic(const nir_intrinsic_instr *atomic)
    }
 }
 
-enum brw_reg_type
-brw_type_for_nir_type(const struct intel_device_info *devinfo,
+enum elk_reg_type
+elk_type_for_nir_type(const struct intel_device_info *devinfo,
                       nir_alu_type type)
 {
    switch (type) {
    case nir_type_uint:
    case nir_type_uint32:
-      return BRW_REGISTER_TYPE_UD;
+      return ELK_REGISTER_TYPE_UD;
    case nir_type_bool:
    case nir_type_int:
    case nir_type_bool32:
    case nir_type_int32:
-      return BRW_REGISTER_TYPE_D;
+      return ELK_REGISTER_TYPE_D;
    case nir_type_float:
    case nir_type_float32:
-      return BRW_REGISTER_TYPE_F;
+      return ELK_REGISTER_TYPE_F;
    case nir_type_float16:
-      return BRW_REGISTER_TYPE_HF;
+      return ELK_REGISTER_TYPE_HF;
    case nir_type_float64:
-      return BRW_REGISTER_TYPE_DF;
+      return ELK_REGISTER_TYPE_DF;
    case nir_type_int64:
-      return devinfo->ver < 8 ? BRW_REGISTER_TYPE_DF : BRW_REGISTER_TYPE_Q;
+      return devinfo->ver < 8 ? ELK_REGISTER_TYPE_DF : ELK_REGISTER_TYPE_Q;
    case nir_type_uint64:
-      return devinfo->ver < 8 ? BRW_REGISTER_TYPE_DF : BRW_REGISTER_TYPE_UQ;
+      return devinfo->ver < 8 ? ELK_REGISTER_TYPE_DF : ELK_REGISTER_TYPE_UQ;
    case nir_type_int16:
-      return BRW_REGISTER_TYPE_W;
+      return ELK_REGISTER_TYPE_W;
    case nir_type_uint16:
-      return BRW_REGISTER_TYPE_UW;
+      return ELK_REGISTER_TYPE_UW;
    case nir_type_int8:
-      return BRW_REGISTER_TYPE_B;
+      return ELK_REGISTER_TYPE_B;
    case nir_type_uint8:
-      return BRW_REGISTER_TYPE_UB;
+      return ELK_REGISTER_TYPE_UB;
    default:
       unreachable("unknown type");
    }
 
-   return BRW_REGISTER_TYPE_F;
+   return ELK_REGISTER_TYPE_F;
 }
 
 nir_shader *
-brw_nir_create_passthrough_tcs(void *mem_ctx, const struct brw_compiler *compiler,
-                               const struct brw_tcs_prog_key *key)
+elk_nir_create_passthrough_tcs(void *mem_ctx, const struct elk_compiler *compiler,
+                               const struct elk_tcs_prog_key *key)
 {
    assert(key->input_vertices > 0);
 
@@ -1914,16 +1914,16 @@ brw_nir_create_passthrough_tcs(void *mem_ctx, const struct brw_compiler *compile
 
    nir->info.inputs_read = inputs_read;
    nir->info.tess._primitive_mode = key->_tes_primitive_mode;
-   nir_validate_shader(nir, "in brw_nir_create_passthrough_tcs");
+   nir_validate_shader(nir, "in elk_nir_create_passthrough_tcs");
 
-   struct brw_nir_compiler_opts opts = {};
-   brw_preprocess_nir(compiler, nir, &opts);
+   struct elk_nir_compiler_opts opts = {};
+   elk_preprocess_nir(compiler, nir, &opts);
 
    return nir;
 }
 
 nir_def *
-brw_nir_load_global_const(nir_builder *b, nir_intrinsic_instr *load_uniform,
+elk_nir_load_global_const(nir_builder *b, nir_intrinsic_instr *load_uniform,
       nir_def *base_addr, unsigned off)
 {
    assert(load_uniform->intrinsic == nir_intrinsic_load_uniform);
@@ -1967,7 +1967,7 @@ brw_nir_load_global_const(nir_builder *b, nir_intrinsic_instr *load_uniform,
 }
 
 const struct glsl_type *
-brw_nir_get_var_type(const struct nir_shader *nir, nir_variable *var)
+elk_nir_get_var_type(const struct nir_shader *nir, nir_variable *var)
 {
    const struct glsl_type *type = var->interface_type;
    if (!type) {

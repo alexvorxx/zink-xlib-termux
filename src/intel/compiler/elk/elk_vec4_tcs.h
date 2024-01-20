@@ -40,10 +40,10 @@ namespace elk {
 class vec4_tcs_visitor : public vec4_visitor
 {
 public:
-   vec4_tcs_visitor(const struct brw_compiler *compiler,
-                    const struct brw_compile_params *params,
-                    const struct brw_tcs_prog_key *key,
-                    struct brw_tcs_prog_data *prog_data,
+   vec4_tcs_visitor(const struct elk_compiler *compiler,
+                    const struct elk_compile_params *params,
+                    const struct elk_tcs_prog_key *key,
+                    struct elk_tcs_prog_data *prog_data,
                     const nir_shader *nir,
                     bool debug_enabled);
 
@@ -73,7 +73,7 @@ protected:
    virtual void emit_urb_write_header(int /* mrf */) {}
    virtual vec4_instruction *emit_urb_write_opcode(bool /* complete */) { return NULL; }
 
-   const struct brw_tcs_prog_key *key;
+   const struct elk_tcs_prog_key *key;
    src_reg invocation_id;
 };
 

@@ -38,7 +38,7 @@ using namespace elk;
 
 static void
 assign_reg(const struct intel_device_info *devinfo,
-           unsigned *reg_hw_locations, fs_reg *reg)
+           unsigned *reg_hw_locations, elk_fs_reg *reg)
 {
    if (reg->file == VGRF) {
       reg->nr = reg_unit(devinfo) * reg_hw_locations[reg->nr] + reg->offset / REG_SIZE;
@@ -47,7 +47,7 @@ assign_reg(const struct intel_device_info *devinfo,
 }
 
 void
-fs_visitor::assign_regs_trivial()
+elk_fs_visitor::assign_regs_trivial()
 {
    unsigned hw_reg_mapping[this->alloc.count + 1];
    unsigned i;
@@ -62,7 +62,7 @@ fs_visitor::assign_regs_trivial()
    }
    this->grf_used = hw_reg_mapping[this->alloc.count];
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, elk_fs_inst, inst, cfg) {
       assign_reg(devinfo, hw_reg_mapping, &inst->dst);
       for (i = 0; i < inst->sources; i++) {
          assign_reg(devinfo, hw_reg_mapping, &inst->src[i]);
@@ -88,10 +88,10 @@ aligned_bary_size(unsigned dispatch_width)
 }
 
 static void
-brw_alloc_reg_set(struct brw_compiler *compiler, int dispatch_width)
+elk_alloc_reg_set(struct elk_compiler *compiler, int dispatch_width)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
-   int base_reg_count = BRW_MAX_GRF;
+   int base_reg_count = ELK_MAX_GRF;
    const int index = util_logbase2(dispatch_width / 8);
 
    if (dispatch_width > 8 && devinfo->ver >= 7) {
@@ -123,7 +123,7 @@ brw_alloc_reg_set(struct brw_compiler *compiler, int dispatch_width)
    for (unsigned i = 0; i < REG_CLASS_COUNT; i++)
       class_sizes[i] = i + 1;
 
-   struct ra_regs *regs = ra_alloc_reg_set(compiler, BRW_MAX_GRF, false);
+   struct ra_regs *regs = ra_alloc_reg_set(compiler, ELK_MAX_GRF, false);
    if (devinfo->ver >= 6)
       ra_set_allocate_round_robin(regs);
    struct ra_class **classes = ralloc_array(compiler, struct ra_class *,
@@ -178,17 +178,17 @@ brw_alloc_reg_set(struct brw_compiler *compiler, int dispatch_width)
 }
 
 void
-brw_fs_alloc_reg_sets(struct brw_compiler *compiler)
+elk_fs_alloc_reg_sets(struct elk_compiler *compiler)
 {
-   brw_alloc_reg_set(compiler, 8);
-   brw_alloc_reg_set(compiler, 16);
-   brw_alloc_reg_set(compiler, 32);
+   elk_alloc_reg_set(compiler, 8);
+   elk_alloc_reg_set(compiler, 16);
+   elk_alloc_reg_set(compiler, 32);
 }
 
 static int
-count_to_loop_end(const bblock_t *block)
+count_to_loop_end(const elk_bblock_t *block)
 {
-   if (block->end()->opcode == BRW_OPCODE_WHILE)
+   if (block->end()->opcode == ELK_OPCODE_WHILE)
       return block->end_ip;
 
    int depth = 1;
@@ -198,9 +198,9 @@ count_to_loop_end(const bblock_t *block)
    for (block = block->next();
         depth > 0;
         block = block->next()) {
-      if (block->start()->opcode == BRW_OPCODE_DO)
+      if (block->start()->opcode == ELK_OPCODE_DO)
          depth++;
-      if (block->end()->opcode == BRW_OPCODE_WHILE) {
+      if (block->end()->opcode == ELK_OPCODE_WHILE) {
          depth--;
          if (depth == 0)
             return block->end_ip;
@@ -209,7 +209,7 @@ count_to_loop_end(const bblock_t *block)
    unreachable("not reached");
 }
 
-void fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
+void elk_fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
                                           int *payload_last_use_ip) const
 {
    int loop_depth = 0;
@@ -219,9 +219,9 @@ void fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
       payload_last_use_ip[i] = -1;
 
    int ip = 0;
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, elk_fs_inst, inst, cfg) {
       switch (inst->opcode) {
-      case BRW_OPCODE_DO:
+      case ELK_OPCODE_DO:
          loop_depth++;
 
          /* Since payload regs are deffed only at the start of the shader
@@ -232,7 +232,7 @@ void fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
          if (loop_depth == 1)
             loop_end_ip = count_to_loop_end(block);
          break;
-      case BRW_OPCODE_WHILE:
+      case ELK_OPCODE_WHILE:
          loop_depth--;
          break;
       default:
@@ -280,7 +280,7 @@ void fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
 
       /* Special case instructions which have extra implied registers used. */
       switch (inst->opcode) {
-      case CS_OPCODE_CS_TERMINATE:
+      case ELK_CS_OPCODE_CS_TERMINATE:
          payload_last_use_ip[0] = use_ip;
          break;
 
@@ -302,9 +302,9 @@ void fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
    }
 }
 
-class fs_reg_alloc {
+class elk_fs_reg_alloc {
 public:
-   fs_reg_alloc(fs_visitor *fs):
+   elk_fs_reg_alloc(elk_fs_visitor *fs):
       fs(fs), devinfo(fs->devinfo), compiler(fs->compiler),
       live(fs->live_analysis.require()), g(NULL),
       have_spill_costs(false)
@@ -345,7 +345,7 @@ public:
       spill_node_count = 0;
    }
 
-   ~fs_reg_alloc()
+   ~elk_fs_reg_alloc()
    {
       ralloc_free(mem_ctx);
    }
@@ -355,31 +355,31 @@ public:
 private:
    void setup_live_interference(unsigned node,
                                 int node_start_ip, int node_end_ip);
-   void setup_inst_interference(const fs_inst *inst);
+   void setup_inst_interference(const elk_fs_inst *inst);
 
    void build_interference_graph(bool allow_spilling);
    void discard_interference_graph();
 
-   fs_reg build_lane_offsets(const fs_builder &bld,
+   elk_fs_reg build_lane_offsets(const fs_builder &bld,
                              uint32_t spill_offset, int ip);
-   fs_reg build_single_offset(const fs_builder &bld,
+   elk_fs_reg build_single_offset(const fs_builder &bld,
                               uint32_t spill_offset, int ip);
 
    void emit_unspill(const fs_builder &bld, struct shader_stats *stats,
-                     fs_reg dst, uint32_t spill_offset, unsigned count, int ip);
+                     elk_fs_reg dst, uint32_t spill_offset, unsigned count, int ip);
    void emit_spill(const fs_builder &bld, struct shader_stats *stats,
-                   fs_reg src, uint32_t spill_offset, unsigned count, int ip);
+                   elk_fs_reg src, uint32_t spill_offset, unsigned count, int ip);
 
    void set_spill_costs();
    int choose_spill_reg();
-   fs_reg alloc_scratch_header();
-   fs_reg alloc_spill_reg(unsigned size, int ip);
+   elk_fs_reg alloc_scratch_header();
+   elk_fs_reg alloc_spill_reg(unsigned size, int ip);
    void spill_reg(unsigned spill_reg);
 
    void *mem_ctx;
-   fs_visitor *fs;
+   elk_fs_visitor *fs;
    const intel_device_info *devinfo;
-   const brw_compiler *compiler;
+   const elk_compiler *compiler;
    const fs_live_variables &live;
    int live_instr_count;
 
@@ -407,7 +407,7 @@ private:
    int spill_vgrf_ip_alloc;
    int spill_node_count;
 
-   fs_reg scratch_header;
+   elk_fs_reg scratch_header;
 };
 
 /**
@@ -419,18 +419,18 @@ private:
  * contents.
  */
 static void
-get_used_mrfs(const fs_visitor *v, bool *mrf_used)
+get_used_mrfs(const elk_fs_visitor *v, bool *mrf_used)
 {
    int reg_width = v->dispatch_width / 8;
 
-   memset(mrf_used, 0, BRW_MAX_MRF(v->devinfo->ver) * sizeof(bool));
+   memset(mrf_used, 0, ELK_MAX_MRF(v->devinfo->ver) * sizeof(bool));
 
-   foreach_block_and_inst(block, fs_inst, inst, v->cfg) {
+   foreach_block_and_inst(block, elk_fs_inst, inst, v->cfg) {
       if (inst->dst.file == MRF) {
-         int reg = inst->dst.nr & ~BRW_MRF_COMPR4;
+         int reg = inst->dst.nr & ~ELK_MRF_COMPR4;
          mrf_used[reg] = true;
          if (reg_width == 2) {
-            if (inst->dst.nr & BRW_MRF_COMPR4) {
+            if (inst->dst.nr & ELK_MRF_COMPR4) {
                mrf_used[reg + 4] = true;
             } else {
                mrf_used[reg + 1] = true;
@@ -463,7 +463,7 @@ namespace {
     * into multiple (force_writemask_all) scratch messages.
     */
    unsigned
-   spill_max_size(const backend_shader *s)
+   spill_max_size(const elk_backend_shader *s)
    {
       /* LSC is limited to SIMD16 sends */
       if (s->devinfo->has_lsc)
@@ -475,26 +475,26 @@ namespace {
        *            scratch write header).
        */
       /* FINISHME - The shader's dispatch width probably belongs in
-       *            backend_shader (or some nonexistent fs_shader class?)
+       *            elk_backend_shader (or some nonexistent fs_shader class?)
        *            rather than in the visitor class.
        */
-      return static_cast<const fs_visitor *>(s)->dispatch_width / 8;
+      return static_cast<const elk_fs_visitor *>(s)->dispatch_width / 8;
    }
 
    /**
     * First MRF register available for spilling.
     */
    unsigned
-   spill_base_mrf(const backend_shader *s)
+   spill_base_mrf(const elk_backend_shader *s)
    {
       /* We don't use the MRF hack on Gfx9+ */
       assert(s->devinfo->ver < 9);
-      return BRW_MAX_MRF(s->devinfo->ver) - spill_max_size(s) - 1;
+      return ELK_MAX_MRF(s->devinfo->ver) - spill_max_size(s) - 1;
    }
 }
 
 void
-fs_reg_alloc::setup_live_interference(unsigned node,
+elk_fs_reg_alloc::setup_live_interference(unsigned node,
                                       int node_start_ip, int node_end_ip)
 {
    /* Mark any virtual grf that is live between the start of the program and
@@ -516,7 +516,7 @@ fs_reg_alloc::setup_live_interference(unsigned node,
     * MRF registers.
     */
    if (first_mrf_hack_node >= 0) {
-      for (int i = spill_base_mrf(fs); i < BRW_MAX_MRF(devinfo->ver); i++)
+      for (int i = spill_base_mrf(fs); i < ELK_MAX_MRF(devinfo->ver); i++)
          ra_add_node_interference(g, node, first_mrf_hack_node + i);
    }
 
@@ -538,7 +538,7 @@ fs_reg_alloc::setup_live_interference(unsigned node,
 }
 
 void
-fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
+elk_fs_reg_alloc::setup_inst_interference(const elk_fs_inst *inst)
 {
    /* Certain instructions can't safely use the same register for their
     * sources and destination.  Add interference.
@@ -597,8 +597,8 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
        * message as source. So as we will have an overlap for sure, we create
        * an interference between destination and grf127.
        */
-      if ((inst->opcode == SHADER_OPCODE_GFX7_SCRATCH_READ ||
-           inst->opcode == SHADER_OPCODE_GFX4_SCRATCH_READ) &&
+      if ((inst->opcode == ELK_SHADER_OPCODE_GFX7_SCRATCH_READ ||
+           inst->opcode == ELK_SHADER_OPCODE_GFX4_SCRATCH_READ) &&
           inst->dst.file == VGRF)
          ra_add_node_interference(g, first_vgrf_node + inst->dst.nr,
                                      grf127_send_hack_node);
@@ -616,7 +616,7 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
     * interference here.
     */
    if (devinfo->ver >= 9) {
-      if (inst->opcode == SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
+      if (inst->opcode == ELK_SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
           inst->src[2].file == VGRF && inst->src[3].file == VGRF &&
           inst->src[2].nr != inst->src[3].nr)
          ra_add_node_interference(g, first_vgrf_node + inst->src[2].nr,
@@ -633,17 +633,17 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
     * register that works.
     */
    if (inst->eot) {
-      const int vgrf = inst->opcode == SHADER_OPCODE_SEND ?
+      const int vgrf = inst->opcode == ELK_SHADER_OPCODE_SEND ?
                        inst->src[2].nr : inst->src[0].nr;
       const int size = DIV_ROUND_UP(fs->alloc.sizes[vgrf], reg_unit(devinfo));
-      int reg = BRW_MAX_GRF - size;
+      int reg = ELK_MAX_GRF - size;
 
       if (first_mrf_hack_node >= 0) {
          /* If something happened to spill, we want to push the EOT send
           * register early enough in the register file that we don't
           * conflict with any used MRF hack registers.
           */
-         reg -= BRW_MAX_MRF(devinfo->ver) - spill_base_mrf(fs);
+         reg -= ELK_MAX_MRF(devinfo->ver) - spill_base_mrf(fs);
       } else if (grf127_send_hack_node >= 0) {
          /* Avoid r127 which might be unusable if the node was previously
           * written by a SIMD8 SEND message with source/destination overlap.
@@ -662,7 +662,7 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
 }
 
 void
-fs_reg_alloc::build_interference_graph(bool allow_spilling)
+elk_fs_reg_alloc::build_interference_graph(bool allow_spilling)
 {
    /* Compute the RA node layout */
    node_count = 0;
@@ -670,7 +670,7 @@ fs_reg_alloc::build_interference_graph(bool allow_spilling)
    node_count += payload_node_count;
    if (devinfo->ver >= 7 && devinfo->ver < 9 && allow_spilling) {
       first_mrf_hack_node = node_count;
-      node_count += BRW_MAX_GRF - GFX7_MRF_HACK_START;
+      node_count += ELK_MAX_GRF - GFX7_MRF_HACK_START;
    } else {
       first_mrf_hack_node = -1;
    }
@@ -708,7 +708,7 @@ fs_reg_alloc::build_interference_graph(bool allow_spilling)
        * The alternative would be to have per-physical-register classes,
        * which would just be silly.
        */
-      for (int i = 0; i < BRW_MAX_MRF(devinfo->ver); i++) {
+      for (int i = 0; i < ELK_MAX_MRF(devinfo->ver); i++) {
          ra_set_node_reg(g, first_mrf_hack_node + i,
                             GFX7_MRF_HACK_START + i);
       }
@@ -733,8 +733,8 @@ fs_reg_alloc::build_interference_graph(bool allow_spilling)
     * special register class aligned_bary_class to handle this case.
     */
    if (compiler->fs_reg_sets[rsi].aligned_bary_class) {
-      foreach_block_and_inst(block, fs_inst, inst, fs->cfg) {
-         if (inst->opcode == FS_OPCODE_LINTERP && inst->src[0].file == VGRF &&
+      foreach_block_and_inst(block, elk_fs_inst, inst, fs->cfg) {
+         if (inst->opcode == ELK_FS_OPCODE_LINTERP && inst->src[0].file == VGRF &&
              fs->alloc.sizes[inst->src[0].nr] ==
                aligned_bary_size(fs->dispatch_width)) {
             ra_set_node_class(g, first_vgrf_node + inst->src[0].nr,
@@ -752,29 +752,29 @@ fs_reg_alloc::build_interference_graph(bool allow_spilling)
 
    /* Add interference based on the instructions in which a register is used.
     */
-   foreach_block_and_inst(block, fs_inst, inst, fs->cfg)
+   foreach_block_and_inst(block, elk_fs_inst, inst, fs->cfg)
       setup_inst_interference(inst);
 }
 
 void
-fs_reg_alloc::discard_interference_graph()
+elk_fs_reg_alloc::discard_interference_graph()
 {
    ralloc_free(g);
    g = NULL;
    have_spill_costs = false;
 }
 
-fs_reg
-fs_reg_alloc::build_single_offset(const fs_builder &bld, uint32_t spill_offset, int ip)
+elk_fs_reg
+elk_fs_reg_alloc::build_single_offset(const fs_builder &bld, uint32_t spill_offset, int ip)
 {
-   fs_reg offset = retype(alloc_spill_reg(1, ip), BRW_REGISTER_TYPE_UD);
-   fs_inst *inst = bld.MOV(offset, brw_imm_ud(spill_offset));
+   elk_fs_reg offset = retype(alloc_spill_reg(1, ip), ELK_REGISTER_TYPE_UD);
+   elk_fs_inst *inst = bld.MOV(offset, elk_imm_ud(spill_offset));
    _mesa_set_add(spill_insts, inst);
    return offset;
 }
 
-fs_reg
-fs_reg_alloc::build_lane_offsets(const fs_builder &bld, uint32_t spill_offset, int ip)
+elk_fs_reg
+elk_fs_reg_alloc::build_lane_offsets(const fs_builder &bld, uint32_t spill_offset, int ip)
 {
    /* LSC messages are limited to SIMD16 */
    assert(bld.dispatch_width() <= 16);
@@ -782,14 +782,14 @@ fs_reg_alloc::build_lane_offsets(const fs_builder &bld, uint32_t spill_offset, i
    const fs_builder ubld = bld.exec_all();
    const unsigned reg_count = ubld.dispatch_width() / 8;
 
-   fs_reg offset = retype(alloc_spill_reg(reg_count, ip), BRW_REGISTER_TYPE_UD);
-   fs_inst *inst;
+   elk_fs_reg offset = retype(alloc_spill_reg(reg_count, ip), ELK_REGISTER_TYPE_UD);
+   elk_fs_inst *inst;
 
    /* Build an offset per lane in SIMD8 */
-   inst = ubld.group(8, 0).MOV(retype(offset, BRW_REGISTER_TYPE_UW),
-                               brw_imm_uv(0x76543210));
+   inst = ubld.group(8, 0).MOV(retype(offset, ELK_REGISTER_TYPE_UW),
+                               elk_imm_uv(0x76543210));
    _mesa_set_add(spill_insts, inst);
-   inst = ubld.group(8, 0).MOV(offset, retype(offset, BRW_REGISTER_TYPE_UW));
+   inst = ubld.group(8, 0).MOV(offset, retype(offset, ELK_REGISTER_TYPE_UW));
    _mesa_set_add(spill_insts, inst);
 
    /* Build offsets in the upper 8 lanes of SIMD16 */
@@ -797,25 +797,25 @@ fs_reg_alloc::build_lane_offsets(const fs_builder &bld, uint32_t spill_offset, i
       inst = ubld.group(8, 0).ADD(
          byte_offset(offset, REG_SIZE),
          byte_offset(offset, 0),
-         brw_imm_ud(8));
+         elk_imm_ud(8));
       _mesa_set_add(spill_insts, inst);
    }
 
    /* Make the offset a dword */
-   inst = ubld.SHL(offset, offset, brw_imm_ud(2));
+   inst = ubld.SHL(offset, offset, elk_imm_ud(2));
    _mesa_set_add(spill_insts, inst);
 
    /* Add the base offset */
-   inst = ubld.ADD(offset, offset, brw_imm_ud(spill_offset));
+   inst = ubld.ADD(offset, offset, elk_imm_ud(spill_offset));
    _mesa_set_add(spill_insts, inst);
 
    return offset;
 }
 
 void
-fs_reg_alloc::emit_unspill(const fs_builder &bld,
+elk_fs_reg_alloc::emit_unspill(const fs_builder &bld,
                            struct shader_stats *stats,
-                           fs_reg dst,
+                           elk_fs_reg dst,
                            uint32_t spill_offset, unsigned count, int ip)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
@@ -826,14 +826,14 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
    for (unsigned i = 0; i < count / reg_size; i++) {
       ++stats->fill_count;
 
-      fs_inst *unspill_inst;
+      elk_fs_inst *unspill_inst;
       if (devinfo->verx10 >= 125) {
          /* LSC is limited to SIMD16 load/store but we can load more using
           * transpose messages.
           */
          const bool use_transpose = bld.dispatch_width() > 16;
          const fs_builder ubld = use_transpose ? bld.exec_all().group(1, 0) : bld;
-         fs_reg offset;
+         elk_fs_reg offset;
          if (use_transpose) {
             offset = build_single_offset(ubld, spill_offset, ip);
          } else {
@@ -844,14 +844,14 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
           * register. That way we don't need to burn an additional register
           * for register allocation spill/fill.
           */
-         fs_reg srcs[] = {
-            brw_imm_ud(0), /* desc */
-            brw_imm_ud(0), /* ex_desc */
+         elk_fs_reg srcs[] = {
+            elk_imm_ud(0), /* desc */
+            elk_imm_ud(0), /* ex_desc */
             offset,        /* payload */
-            fs_reg(),      /* payload2 */
+            elk_fs_reg(),      /* payload2 */
          };
 
-         unspill_inst = ubld.emit(SHADER_OPCODE_SEND, dst,
+         unspill_inst = ubld.emit(ELK_SHADER_OPCODE_SEND, dst,
                                   srcs, ARRAY_SIZE(srcs));
          unspill_inst->sfid = GFX12_SFID_UGM;
          unspill_inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
@@ -874,18 +874,18 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
          unspill_inst->send_is_volatile = true;
          unspill_inst->send_ex_desc_scratch = true;
       } else if (devinfo->ver >= 9) {
-         fs_reg header = this->scratch_header;
+         elk_fs_reg header = this->scratch_header;
          fs_builder ubld = bld.exec_all().group(1, 0);
          assert(spill_offset % 16 == 0);
          unspill_inst = ubld.MOV(component(header, 2),
-                                 brw_imm_ud(spill_offset / 16));
+                                 elk_imm_ud(spill_offset / 16));
          _mesa_set_add(spill_insts, unspill_inst);
 
          const unsigned bti = GFX8_BTI_STATELESS_NON_COHERENT;
-         const fs_reg ex_desc = brw_imm_ud(0);
+         const elk_fs_reg ex_desc = elk_imm_ud(0);
 
-         fs_reg srcs[] = { brw_imm_ud(0), ex_desc, header };
-         unspill_inst = bld.emit(SHADER_OPCODE_SEND, dst,
+         elk_fs_reg srcs[] = { elk_imm_ud(0), ex_desc, header };
+         unspill_inst = bld.emit(ELK_SHADER_OPCODE_SEND, dst,
                                  srcs, ARRAY_SIZE(srcs));
          unspill_inst->mlen = 1;
          unspill_inst->header_size = 1;
@@ -894,9 +894,9 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
          unspill_inst->send_is_volatile = true;
          unspill_inst->sfid = GFX7_SFID_DATAPORT_DATA_CACHE;
          unspill_inst->desc =
-            brw_dp_desc(devinfo, bti,
-                        BRW_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ,
-                        BRW_DATAPORT_OWORD_BLOCK_DWORDS(reg_size * 8));
+            elk_dp_desc(devinfo, bti,
+                        ELK_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ,
+                        ELK_DATAPORT_OWORD_BLOCK_DWORDS(reg_size * 8));
       } else if (devinfo->ver >= 7 && spill_offset < (1 << 12) * REG_SIZE) {
          /* The Gfx7 descriptor-based offset is 12 bits of HWORD units.
           * Because the Gfx7-style scratch block read is hardwired to BTI 255,
@@ -905,10 +905,10 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
           * the address as part of the message header, so we're better off
           * using plain old oword block reads.
           */
-         unspill_inst = bld.emit(SHADER_OPCODE_GFX7_SCRATCH_READ, dst);
+         unspill_inst = bld.emit(ELK_SHADER_OPCODE_GFX7_SCRATCH_READ, dst);
          unspill_inst->offset = spill_offset;
       } else {
-         unspill_inst = bld.emit(SHADER_OPCODE_GFX4_SCRATCH_READ, dst);
+         unspill_inst = bld.emit(ELK_SHADER_OPCODE_GFX4_SCRATCH_READ, dst);
          unspill_inst->offset = spill_offset;
          unspill_inst->base_mrf = spill_base_mrf(bld.shader);
          unspill_inst->mlen = 1; /* header contains offset */
@@ -921,9 +921,9 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
 }
 
 void
-fs_reg_alloc::emit_spill(const fs_builder &bld,
+elk_fs_reg_alloc::emit_spill(const fs_builder &bld,
                          struct shader_stats *stats,
-                         fs_reg src,
+                         elk_fs_reg src,
                          uint32_t spill_offset, unsigned count, int ip)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
@@ -934,21 +934,21 @@ fs_reg_alloc::emit_spill(const fs_builder &bld,
    for (unsigned i = 0; i < count / reg_size; i++) {
       ++stats->spill_count;
 
-      fs_inst *spill_inst;
+      elk_fs_inst *spill_inst;
       if (devinfo->verx10 >= 125) {
-         fs_reg offset = build_lane_offsets(bld, spill_offset, ip);
+         elk_fs_reg offset = build_lane_offsets(bld, spill_offset, ip);
          /* We leave the extended descriptor empty and flag the instruction
           * relocate the extended descriptor. That way the surface offset is
           * directly put into the instruction and we don't need to use a
           * register to hold it.
           */
-         fs_reg srcs[] = {
-            brw_imm_ud(0),        /* desc */
-            brw_imm_ud(0),        /* ex_desc */
+         elk_fs_reg srcs[] = {
+            elk_imm_ud(0),        /* desc */
+            elk_imm_ud(0),        /* ex_desc */
             offset,               /* payload */
             src,                  /* payload2 */
          };
-         spill_inst = bld.emit(SHADER_OPCODE_SEND, bld.null_reg_f(),
+         spill_inst = bld.emit(ELK_SHADER_OPCODE_SEND, bld.null_reg_f(),
                                srcs, ARRAY_SIZE(srcs));
          spill_inst->sfid = GFX12_SFID_UGM;
          spill_inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE,
@@ -969,18 +969,18 @@ fs_reg_alloc::emit_spill(const fs_builder &bld,
          spill_inst->send_is_volatile = false;
          spill_inst->send_ex_desc_scratch = true;
       } else if (devinfo->ver >= 9) {
-         fs_reg header = this->scratch_header;
+         elk_fs_reg header = this->scratch_header;
          fs_builder ubld = bld.exec_all().group(1, 0);
          assert(spill_offset % 16 == 0);
          spill_inst = ubld.MOV(component(header, 2),
-                               brw_imm_ud(spill_offset / 16));
+                               elk_imm_ud(spill_offset / 16));
          _mesa_set_add(spill_insts, spill_inst);
 
          const unsigned bti = GFX8_BTI_STATELESS_NON_COHERENT;
-         const fs_reg ex_desc = brw_imm_ud(0);
+         const elk_fs_reg ex_desc = elk_imm_ud(0);
 
-         fs_reg srcs[] = { brw_imm_ud(0), ex_desc, header, src };
-         spill_inst = bld.emit(SHADER_OPCODE_SEND, bld.null_reg_f(),
+         elk_fs_reg srcs[] = { elk_imm_ud(0), ex_desc, header, src };
+         spill_inst = bld.emit(ELK_SHADER_OPCODE_SEND, bld.null_reg_f(),
                                srcs, ARRAY_SIZE(srcs));
          spill_inst->mlen = 1;
          spill_inst->ex_mlen = reg_size;
@@ -990,11 +990,11 @@ fs_reg_alloc::emit_spill(const fs_builder &bld,
          spill_inst->send_is_volatile = false;
          spill_inst->sfid = GFX7_SFID_DATAPORT_DATA_CACHE;
          spill_inst->desc =
-            brw_dp_desc(devinfo, bti,
+            elk_dp_desc(devinfo, bti,
                         GFX6_DATAPORT_WRITE_MESSAGE_OWORD_BLOCK_WRITE,
-                        BRW_DATAPORT_OWORD_BLOCK_DWORDS(reg_size * 8));
+                        ELK_DATAPORT_OWORD_BLOCK_DWORDS(reg_size * 8));
       } else {
-         spill_inst = bld.emit(SHADER_OPCODE_GFX4_SCRATCH_WRITE,
+         spill_inst = bld.emit(ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE,
                                bld.null_reg_f(), src);
          spill_inst->offset = spill_offset;
          spill_inst->mlen = 1 + reg_size; /* header, value */
@@ -1008,7 +1008,7 @@ fs_reg_alloc::emit_spill(const fs_builder &bld,
 }
 
 void
-fs_reg_alloc::set_spill_costs()
+elk_fs_reg_alloc::set_spill_costs()
 {
    float block_scale = 1.0;
    float spill_costs[fs->alloc.count];
@@ -1023,7 +1023,7 @@ fs_reg_alloc::set_spill_costs()
     * spill/unspill we'll have to do, and guess that the insides of
     * loops run 10 times.
     */
-   foreach_block_and_inst(block, fs_inst, inst, fs->cfg) {
+   foreach_block_and_inst(block, elk_fs_inst, inst, fs->cfg) {
       for (unsigned int i = 0; i < inst->sources; i++) {
 	 if (inst->src[i].file == VGRF)
             spill_costs[inst->src[i].nr] += regs_read(inst, i) * block_scale;
@@ -1044,20 +1044,20 @@ fs_reg_alloc::set_spill_costs()
 
       switch (inst->opcode) {
 
-      case BRW_OPCODE_DO:
+      case ELK_OPCODE_DO:
 	 block_scale *= 10;
 	 break;
 
-      case BRW_OPCODE_WHILE:
+      case ELK_OPCODE_WHILE:
 	 block_scale /= 10;
 	 break;
 
-      case BRW_OPCODE_IF:
-      case BRW_OPCODE_IFF:
+      case ELK_OPCODE_IF:
+      case ELK_OPCODE_IFF:
          block_scale *= 0.5;
          break;
 
-      case BRW_OPCODE_ENDIF:
+      case ELK_OPCODE_ENDIF:
          block_scale /= 0.5;
          break;
 
@@ -1095,7 +1095,7 @@ fs_reg_alloc::set_spill_costs()
 }
 
 int
-fs_reg_alloc::choose_spill_reg()
+elk_fs_reg_alloc::choose_spill_reg()
 {
    if (!have_spill_costs)
       set_spill_costs();
@@ -1108,8 +1108,8 @@ fs_reg_alloc::choose_spill_reg()
    return node - first_vgrf_node;
 }
 
-fs_reg
-fs_reg_alloc::alloc_scratch_header()
+elk_fs_reg
+elk_fs_reg_alloc::alloc_scratch_header()
 {
    int vgrf = fs->alloc.allocate(1);
    assert(first_vgrf_node + vgrf == scratch_header_node);
@@ -1118,11 +1118,11 @@ fs_reg_alloc::alloc_scratch_header()
 
    setup_live_interference(scratch_header_node, 0, INT_MAX);
 
-   return fs_reg(VGRF, vgrf, BRW_REGISTER_TYPE_UD);
+   return elk_fs_reg(VGRF, vgrf, ELK_REGISTER_TYPE_UD);
 }
 
-fs_reg
-fs_reg_alloc::alloc_spill_reg(unsigned size, int ip)
+elk_fs_reg
+elk_fs_reg_alloc::alloc_spill_reg(unsigned size, int ip)
 {
    int vgrf = fs->alloc.allocate(ALIGN(size, reg_unit(devinfo)));
    int class_idx = DIV_ROUND_UP(size, reg_unit(devinfo)) - 1;
@@ -1151,11 +1151,11 @@ fs_reg_alloc::alloc_spill_reg(unsigned size, int ip)
    }
    spill_vgrf_ip[spill_node_count++] = ip;
 
-   return fs_reg(VGRF, vgrf);
+   return elk_fs_reg(VGRF, vgrf);
 }
 
 void
-fs_reg_alloc::spill_reg(unsigned spill_reg)
+elk_fs_reg_alloc::spill_reg(unsigned spill_reg)
 {
    int size = fs->alloc.sizes[spill_reg];
    unsigned int spill_offset = fs->last_scratch;
@@ -1176,14 +1176,14 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
          fs_builder ubld = fs_builder(fs, 8).exec_all().at(
             fs->cfg->first_block(), fs->cfg->first_block()->start());
 
-         fs_inst *inst = ubld.emit(SHADER_OPCODE_SCRATCH_HEADER,
+         elk_fs_inst *inst = ubld.emit(ELK_SHADER_OPCODE_SCRATCH_HEADER,
                                    this->scratch_header);
          _mesa_set_add(spill_insts, inst);
       } else {
-         bool mrf_used[BRW_MAX_MRF(devinfo->ver)];
+         bool mrf_used[ELK_MAX_MRF(devinfo->ver)];
          get_used_mrfs(fs, mrf_used);
 
-         for (int i = spill_base_mrf(fs); i < BRW_MAX_MRF(devinfo->ver); i++) {
+         for (int i = spill_base_mrf(fs); i < ELK_MAX_MRF(devinfo->ver); i++) {
             if (mrf_used[i]) {
                fs->fail("Register spilling not supported with m%d used", i);
              return;
@@ -1208,7 +1208,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
     * could just spill/unspill the GRF being accessed.
     */
    int ip = 0;
-   foreach_block_and_inst (block, fs_inst, inst, fs->cfg) {
+   foreach_block_and_inst (block, elk_fs_inst, inst, fs->cfg) {
       const fs_builder ibld = fs_builder(fs, block, inst);
       exec_node *before = inst->prev;
       exec_node *after = inst->next;
@@ -1219,7 +1219,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
             int count = regs_read(inst, i);
             int subset_spill_offset = spill_offset +
                ROUND_DOWN_TO(inst->src[i].offset, REG_SIZE);
-            fs_reg unspill_dst = alloc_spill_reg(count, ip);
+            elk_fs_reg unspill_dst = alloc_spill_reg(count, ip);
 
             inst->src[i].nr = unspill_dst.nr;
             inst->src[i].offset %= REG_SIZE;
@@ -1245,10 +1245,10 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
 
       if (inst->dst.file == VGRF &&
           inst->dst.nr == spill_reg &&
-          inst->opcode != SHADER_OPCODE_UNDEF) {
+          inst->opcode != ELK_SHADER_OPCODE_UNDEF) {
          int subset_spill_offset = spill_offset +
             ROUND_DOWN_TO(inst->dst.offset, REG_SIZE);
-         fs_reg spill_src = alloc_spill_reg(regs_written(inst), ip);
+         elk_fs_reg spill_src = alloc_spill_reg(regs_written(inst), ip);
 
          inst->dst.nr = spill_src.nr;
          inst->dst.offset %= REG_SIZE;
@@ -1301,8 +1301,8 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
                     subset_spill_offset, regs_written(inst), ip);
       }
 
-      for (fs_inst *inst = (fs_inst *)before->next;
-           inst != after; inst = (fs_inst *)inst->next)
+      for (elk_fs_inst *inst = (elk_fs_inst *)before->next;
+           inst != after; inst = (elk_fs_inst *)inst->next)
          setup_inst_interference(inst);
 
       /* We don't advance the ip for scratch read/write instructions
@@ -1319,7 +1319,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
 }
 
 bool
-fs_reg_alloc::assign_regs(bool allow_spilling, bool spill_all)
+elk_fs_reg_alloc::assign_regs(bool allow_spilling, bool spill_all)
 {
    build_interference_graph(fs->spilled_any_registers || spill_all);
 
@@ -1387,7 +1387,7 @@ fs_reg_alloc::assign_regs(bool allow_spilling, bool spill_all)
                                                            reg_unit(devinfo)));
    }
 
-   foreach_block_and_inst(block, fs_inst, inst, fs->cfg) {
+   foreach_block_and_inst(block, elk_fs_inst, inst, fs->cfg) {
       assign_reg(devinfo, hw_reg_mapping, &inst->dst);
       for (int i = 0; i < inst->sources; i++) {
          assign_reg(devinfo, hw_reg_mapping, &inst->src[i]);
@@ -1400,9 +1400,9 @@ fs_reg_alloc::assign_regs(bool allow_spilling, bool spill_all)
 }
 
 bool
-fs_visitor::assign_regs(bool allow_spilling, bool spill_all)
+elk_fs_visitor::assign_regs(bool allow_spilling, bool spill_all)
 {
-   fs_reg_alloc alloc(this);
+   elk_fs_reg_alloc alloc(this);
    bool success = alloc.assign_regs(allow_spilling, spill_all);
    if (!success && allow_spilling) {
       fail("no register to spill:\n");

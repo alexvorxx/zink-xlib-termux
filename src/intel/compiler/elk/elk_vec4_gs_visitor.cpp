@@ -39,10 +39,10 @@
 
 namespace elk {
 
-vec4_gs_visitor::vec4_gs_visitor(const struct brw_compiler *compiler,
-                                 const struct brw_compile_params *params,
-                                 struct brw_gs_compile *c,
-                                 struct brw_gs_prog_data *prog_data,
+vec4_gs_visitor::vec4_gs_visitor(const struct elk_compiler *compiler,
+                                 const struct elk_compile_params *params,
+                                 struct elk_gs_compile *c,
+                                 struct elk_gs_prog_data *prog_data,
                                  const nir_shader *shader,
                                  bool no_spills,
                                  bool debug_enabled)
@@ -55,16 +55,16 @@ vec4_gs_visitor::vec4_gs_visitor(const struct brw_compiler *compiler,
 }
 
 
-static inline struct brw_reg
-attribute_to_hw_reg(int attr, brw_reg_type type, bool interleaved)
+static inline struct elk_reg
+attribute_to_hw_reg(int attr, elk_reg_type type, bool interleaved)
 {
-   struct brw_reg reg;
+   struct elk_reg reg;
 
    unsigned width = REG_SIZE / 2 / MAX2(4, type_sz(type));
    if (interleaved) {
-      reg = stride(brw_vecn_grf(width, attr / 2, (attr % 2) * 4), 0, width, 1);
+      reg = stride(elk_vecn_grf(width, attr / 2, (attr % 2) * 4), 0, width, 1);
    } else {
-      reg = brw_vecn_grf(width, attr, 0);
+      reg = elk_vecn_grf(width, attr, 0);
    }
 
    reg.type = type;
@@ -88,7 +88,7 @@ vec4_gs_visitor::setup_varying_inputs(int payload_reg,
                                       int attributes_per_reg)
 {
    /* For geometry shaders there are N copies of the input attributes, where N
-    * is the number of input vertices.  attribute_map[BRW_VARYING_SLOT_COUNT *
+    * is the number of input vertices.  attribute_map[ELK_VARYING_SLOT_COUNT *
     * i + j] represents attribute j for vertex i.
     *
     * Note that GS inputs are read from the VUE 256 bits (2 vec4's) at a time,
@@ -108,11 +108,11 @@ vec4_gs_visitor::setup_varying_inputs(int payload_reg,
          int grf = payload_reg * attributes_per_reg +
                    inst->src[i].nr + inst->src[i].offset / REG_SIZE;
 
-         struct brw_reg reg =
+         struct elk_reg reg =
             attribute_to_hw_reg(grf, inst->src[i].type, attributes_per_reg > 1);
          reg.swizzle = inst->src[i].swizzle;
          if (inst->src[i].abs)
-            reg = brw_abs(reg);
+            reg = elk_abs(reg);
          if (inst->src[i].negate)
             reg = negate(reg);
 
@@ -166,8 +166,8 @@ vec4_gs_visitor::emit_prolog()
     * the shader.
     */
    this->current_annotation = "clear r0.2";
-   dst_reg r0(retype(brw_vec4_grf(0, 0), BRW_REGISTER_TYPE_UD));
-   vec4_instruction *inst = emit(GS_OPCODE_SET_DWORD_2, r0, brw_imm_ud(0u));
+   dst_reg r0(retype(elk_vec4_grf(0, 0), ELK_REGISTER_TYPE_UD));
+   vec4_instruction *inst = emit(ELK_GS_OPCODE_SET_DWORD_2, r0, elk_imm_ud(0u));
    inst->force_writemask_all = true;
 
    /* Create a virtual register to hold the vertex count */
@@ -175,7 +175,7 @@ vec4_gs_visitor::emit_prolog()
 
    /* Initialize the vertex_count register to 0 */
    this->current_annotation = "initialize vertex_count";
-   inst = emit(MOV(dst_reg(this->vertex_count), brw_imm_ud(0u)));
+   inst = emit(MOV(dst_reg(this->vertex_count), elk_imm_ud(0u)));
    inst->force_writemask_all = true;
 
    if (c->control_data_header_size_bits > 0) {
@@ -190,7 +190,7 @@ vec4_gs_visitor::emit_prolog()
        */
       if (c->control_data_header_size_bits <= 32) {
          this->current_annotation = "initialize control data bits";
-         inst = emit(MOV(dst_reg(this->control_data_bits), brw_imm_ud(0u)));
+         inst = emit(MOV(dst_reg(this->control_data_bits), elk_imm_ud(0u)));
          inst->force_writemask_all = true;
       }
    }
@@ -218,11 +218,11 @@ vec4_gs_visitor::emit_thread_end()
 
    current_annotation = "thread end";
    dst_reg mrf_reg(MRF, base_mrf);
-   src_reg r0(retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD));
+   src_reg r0(retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD));
    vec4_instruction *inst = emit(MOV(mrf_reg, r0));
    inst->force_writemask_all = true;
-   emit(GS_OPCODE_SET_VERTEX_COUNT, mrf_reg, this->vertex_count);
-   inst = emit(GS_OPCODE_THREAD_END);
+   emit(ELK_GS_OPCODE_SET_VERTEX_COUNT, mrf_reg, this->vertex_count);
+   inst = emit(ELK_GS_OPCODE_THREAD_END);
    inst->base_mrf = base_mrf;
    inst->mlen = 1;
 }
@@ -240,12 +240,12 @@ vec4_gs_visitor::emit_urb_write_header(int mrf)
     * values.
     */
    dst_reg mrf_reg(MRF, mrf);
-   src_reg r0(retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD));
+   src_reg r0(retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD));
    this->current_annotation = "URB write header";
    vec4_instruction *inst = emit(MOV(mrf_reg, r0));
    inst->force_writemask_all = true;
-   emit(GS_OPCODE_SET_WRITE_OFFSET, mrf_reg, this->vertex_count,
-        brw_imm_ud(gs_prog_data->output_vertex_size_hwords));
+   emit(ELK_GS_OPCODE_SET_WRITE_OFFSET, mrf_reg, this->vertex_count,
+        elk_imm_ud(gs_prog_data->output_vertex_size_hwords));
 }
 
 
@@ -258,10 +258,10 @@ vec4_gs_visitor::emit_urb_write_opcode(bool complete)
     */
    (void) complete;
 
-   vec4_instruction *inst = emit(VEC4_GS_OPCODE_URB_WRITE);
+   vec4_instruction *inst = emit(ELK_VEC4_GS_OPCODE_URB_WRITE);
    inst->offset = gs_prog_data->control_data_header_size_hwords;
 
-   inst->urb_write_flags = BRW_URB_WRITE_PER_SLOT_OFFSET;
+   inst->urb_write_flags = ELK_URB_WRITE_PER_SLOT_OFFSET;
    return inst;
 }
 
@@ -299,11 +299,11 @@ vec4_gs_visitor::emit_control_data_bits()
     * channel masking.  But that's not a problem since in this case the
     * hardware only pays attention to the first DWORD.
     */
-   enum brw_urb_write_flags urb_write_flags = BRW_URB_WRITE_OWORD;
+   enum elk_urb_write_flags urb_write_flags = ELK_URB_WRITE_OWORD;
    if (c->control_data_header_size_bits > 32)
-      urb_write_flags = urb_write_flags | BRW_URB_WRITE_USE_CHANNEL_MASKS;
+      urb_write_flags = urb_write_flags | ELK_URB_WRITE_USE_CHANNEL_MASKS;
    if (c->control_data_header_size_bits > 128)
-      urb_write_flags = urb_write_flags | BRW_URB_WRITE_PER_SLOT_OFFSET;
+      urb_write_flags = urb_write_flags | ELK_URB_WRITE_PER_SLOT_OFFSET;
 
    /* If we are using either channel masks or a per-slot offset, then we
     * need to figure out which DWORD we are trying to write to, using the
@@ -320,11 +320,11 @@ vec4_gs_visitor::emit_control_data_bits()
    if (urb_write_flags) {
       src_reg prev_count(this, glsl_uint_type());
       emit(ADD(dst_reg(prev_count), this->vertex_count,
-               brw_imm_ud(0xffffffffu)));
+               elk_imm_ud(0xffffffffu)));
       unsigned log2_bits_per_vertex =
          util_last_bit(c->control_data_bits_per_vertex);
       emit(SHR(dst_reg(dword_index), prev_count,
-               brw_imm_ud(6 - log2_bits_per_vertex)));
+               elk_imm_ud(6 - log2_bits_per_vertex)));
    }
 
    /* Start building the URB write message.  The first MRF gets a copy of
@@ -332,47 +332,47 @@ vec4_gs_visitor::emit_control_data_bits()
     */
    int base_mrf = 1;
    dst_reg mrf_reg(MRF, base_mrf);
-   src_reg r0(retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD));
+   src_reg r0(retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD));
    vec4_instruction *inst = emit(MOV(mrf_reg, r0));
    inst->force_writemask_all = true;
 
-   if (urb_write_flags & BRW_URB_WRITE_PER_SLOT_OFFSET) {
+   if (urb_write_flags & ELK_URB_WRITE_PER_SLOT_OFFSET) {
       /* Set the per-slot offset to dword_index / 4, to that we'll write to
        * the appropriate OWORD within the control data header.
        */
       src_reg per_slot_offset(this, glsl_uint_type());
-      emit(SHR(dst_reg(per_slot_offset), dword_index, brw_imm_ud(2u)));
-      emit(GS_OPCODE_SET_WRITE_OFFSET, mrf_reg, per_slot_offset,
-           brw_imm_ud(1u));
+      emit(SHR(dst_reg(per_slot_offset), dword_index, elk_imm_ud(2u)));
+      emit(ELK_GS_OPCODE_SET_WRITE_OFFSET, mrf_reg, per_slot_offset,
+           elk_imm_ud(1u));
    }
 
-   if (urb_write_flags & BRW_URB_WRITE_USE_CHANNEL_MASKS) {
+   if (urb_write_flags & ELK_URB_WRITE_USE_CHANNEL_MASKS) {
       /* Set the channel masks to 1 << (dword_index % 4), so that we'll
        * write to the appropriate DWORD within the OWORD.  We need to do
        * this computation with force_writemask_all, otherwise garbage data
        * from invocation 0 might clobber the mask for invocation 1 when
-       * GS_OPCODE_PREPARE_CHANNEL_MASKS tries to OR the two masks
+       * ELK_GS_OPCODE_PREPARE_CHANNEL_MASKS tries to OR the two masks
        * together.
        */
       src_reg channel(this, glsl_uint_type());
-      inst = emit(AND(dst_reg(channel), dword_index, brw_imm_ud(3u)));
+      inst = emit(AND(dst_reg(channel), dword_index, elk_imm_ud(3u)));
       inst->force_writemask_all = true;
       src_reg one(this, glsl_uint_type());
-      inst = emit(MOV(dst_reg(one), brw_imm_ud(1u)));
+      inst = emit(MOV(dst_reg(one), elk_imm_ud(1u)));
       inst->force_writemask_all = true;
       src_reg channel_mask(this, glsl_uint_type());
       inst = emit(SHL(dst_reg(channel_mask), one, channel));
       inst->force_writemask_all = true;
-      emit(GS_OPCODE_PREPARE_CHANNEL_MASKS, dst_reg(channel_mask),
+      emit(ELK_GS_OPCODE_PREPARE_CHANNEL_MASKS, dst_reg(channel_mask),
                                             channel_mask);
-      emit(GS_OPCODE_SET_CHANNEL_MASKS, mrf_reg, channel_mask);
+      emit(ELK_GS_OPCODE_SET_CHANNEL_MASKS, mrf_reg, channel_mask);
    }
 
    /* Store the control data bits in the message payload and send it. */
    dst_reg mrf_reg2(MRF, base_mrf + 1);
    inst = emit(MOV(mrf_reg2, this->control_data_bits));
    inst->force_writemask_all = true;
-   inst = emit(VEC4_GS_OPCODE_URB_WRITE);
+   inst = emit(ELK_VEC4_GS_OPCODE_URB_WRITE);
    inst->urb_write_flags = urb_write_flags;
    inst->base_mrf = base_mrf;
    inst->mlen = 2;
@@ -401,11 +401,11 @@ vec4_gs_visitor::set_stream_control_data_bits(unsigned stream_id)
 
    /* reg::sid = stream_id */
    src_reg sid(this, glsl_uint_type());
-   emit(MOV(dst_reg(sid), brw_imm_ud(stream_id)));
+   emit(MOV(dst_reg(sid), elk_imm_ud(stream_id)));
 
    /* reg:shift_count = 2 * (vertex_count - 1) */
    src_reg shift_count(this, glsl_uint_type());
-   emit(SHL(dst_reg(shift_count), this->vertex_count, brw_imm_ud(1u)));
+   emit(SHL(dst_reg(shift_count), this->vertex_count, elk_imm_ud(1u)));
 
    /* Note: we're relying on the fact that the GEN SHL instruction only pays
     * attention to the lower 5 bits of its second source argument, so on this
@@ -464,19 +464,19 @@ vec4_gs_visitor::gs_emit_vertex(int stream_id)
        */
       vec4_instruction *inst =
          emit(AND(dst_null_ud(), this->vertex_count,
-                  brw_imm_ud(32 / c->control_data_bits_per_vertex - 1)));
-      inst->conditional_mod = BRW_CONDITIONAL_Z;
+                  elk_imm_ud(32 / c->control_data_bits_per_vertex - 1)));
+      inst->conditional_mod = ELK_CONDITIONAL_Z;
 
-      emit(IF(BRW_PREDICATE_NORMAL));
+      emit(IF(ELK_PREDICATE_NORMAL));
       {
          /* If vertex_count is 0, then no control data bits have been
           * accumulated yet, so we skip emitting them.
           */
-         emit(CMP(dst_null_ud(), this->vertex_count, brw_imm_ud(0u),
-                  BRW_CONDITIONAL_NEQ));
-         emit(IF(BRW_PREDICATE_NORMAL));
+         emit(CMP(dst_null_ud(), this->vertex_count, elk_imm_ud(0u),
+                  ELK_CONDITIONAL_NEQ));
+         emit(IF(ELK_PREDICATE_NORMAL));
          emit_control_data_bits();
-         emit(BRW_OPCODE_ENDIF);
+         emit(ELK_OPCODE_ENDIF);
 
          /* Reset control_data_bits to 0 so we can start accumulating a new
           * batch.
@@ -485,10 +485,10 @@ vec4_gs_visitor::gs_emit_vertex(int stream_id)
           * effect of any call to EndPrimitive() that the shader may have
           * made before outputting its first vertex.
           */
-         inst = emit(MOV(dst_reg(this->control_data_bits), brw_imm_ud(0u)));
+         inst = emit(MOV(dst_reg(this->control_data_bits), elk_imm_ud(0u)));
          inst->force_writemask_all = true;
       }
-      emit(BRW_OPCODE_ENDIF);
+      emit(ELK_OPCODE_ENDIF);
    }
 
    this->current_annotation = "emit vertex: vertex data";
@@ -549,9 +549,9 @@ vec4_gs_visitor::gs_end_primitive()
 
    /* control_data_bits |= 1 << ((vertex_count - 1) % 32) */
    src_reg one(this, glsl_uint_type());
-   emit(MOV(dst_reg(one), brw_imm_ud(1u)));
+   emit(MOV(dst_reg(one), elk_imm_ud(1u)));
    src_reg prev_count(this, glsl_uint_type());
-   emit(ADD(dst_reg(prev_count), this->vertex_count, brw_imm_ud(0xffffffffu)));
+   emit(ADD(dst_reg(prev_count), this->vertex_count, elk_imm_ud(0xffffffffu)));
    src_reg mask(this, glsl_uint_type());
    /* Note: we're relying on the fact that the GEN SHL instruction only pays
     * attention to the lower 5 bits of its second source argument, so on this
@@ -582,19 +582,19 @@ static const GLuint gl_prim_to_hw_prim[MESA_PRIM_TRIANGLE_STRIP_ADJACENCY+1] = {
 } /* namespace elk */
 
 extern "C" const unsigned *
-brw_compile_gs(const struct brw_compiler *compiler,
-               struct brw_compile_gs_params *params)
+elk_compile_gs(const struct elk_compiler *compiler,
+               struct elk_compile_gs_params *params)
 {
    nir_shader *nir = params->base.nir;
-   const struct brw_gs_prog_key *key = params->key;
-   struct brw_gs_prog_data *prog_data = params->prog_data;
+   const struct elk_gs_prog_key *key = params->key;
+   struct elk_gs_prog_data *prog_data = params->prog_data;
 
-   struct brw_gs_compile c;
+   struct elk_gs_compile c;
    memset(&c, 0, sizeof(c));
    c.key = *key;
 
    const bool is_scalar = compiler->scalar_stage[MESA_SHADER_GEOMETRY];
-   const bool debug_enabled = brw_should_print_shader(nir, DEBUG_GS);
+   const bool debug_enabled = elk_should_print_shader(nir, DEBUG_GS);
 
    prog_data->base.base.stage = MESA_SHADER_GEOMETRY;
    prog_data->base.base.ray_queries = nir->info.ray_queries;
@@ -609,14 +609,14 @@ brw_compile_gs(const struct brw_compiler *compiler,
     * locations, so we can rely on rendezvous-by-location making this work.
     */
    GLbitfield64 inputs_read = nir->info.inputs_read;
-   brw_compute_vue_map(compiler->devinfo,
+   elk_compute_vue_map(compiler->devinfo,
                        &c.input_vue_map, inputs_read,
                        nir->info.separate_shader, 1);
 
-   brw_nir_apply_key(nir, compiler, &key->base, 8);
-   brw_nir_lower_vue_inputs(nir, &c.input_vue_map);
-   brw_nir_lower_vue_outputs(nir);
-   brw_postprocess_nir(nir, compiler, debug_enabled,
+   elk_nir_apply_key(nir, compiler, &key->base, 8);
+   elk_nir_lower_vue_inputs(nir, &c.input_vue_map);
+   elk_nir_lower_vue_outputs(nir);
+   elk_postprocess_nir(nir, compiler, debug_enabled,
                        key->base.robust_flags);
 
    prog_data->base.clip_distance_mask =
@@ -813,13 +813,13 @@ brw_compile_gs(const struct brw_compiler *compiler,
     */
    if (unlikely(debug_enabled)) {
       fprintf(stderr, "GS Input ");
-      brw_print_vue_map(stderr, &c.input_vue_map, MESA_SHADER_GEOMETRY);
+      elk_print_vue_map(stderr, &c.input_vue_map, MESA_SHADER_GEOMETRY);
       fprintf(stderr, "GS Output ");
-      brw_print_vue_map(stderr, &prog_data->base.vue_map, MESA_SHADER_GEOMETRY);
+      elk_print_vue_map(stderr, &prog_data->base.vue_map, MESA_SHADER_GEOMETRY);
    }
 
    if (is_scalar) {
-      fs_visitor v(compiler, &params->base, &c, prog_data, nir,
+      elk_fs_visitor v(compiler, &params->base, &c, prog_data, nir,
                    params->base.stats != NULL, debug_enabled);
       if (v.run_gs()) {
          prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
@@ -828,7 +828,7 @@ brw_compile_gs(const struct brw_compiler *compiler,
          prog_data->base.base.dispatch_grf_start_reg =
             v.payload().num_regs / reg_unit(compiler->devinfo);
 
-         fs_generator g(compiler, &params->base,
+         elk_fs_generator g(compiler, &params->base,
                         &prog_data->base.base, false, MESA_SHADER_GEOMETRY);
          if (unlikely(debug_enabled)) {
             const char *label =
@@ -875,7 +875,7 @@ brw_compile_gs(const struct brw_compiler *compiler,
          if (v.run()) {
             /* Success! Backup is not needed */
             ralloc_free(param);
-            return brw_vec4_generate_assembly(compiler, &params->base,
+            return elk_vec4_generate_assembly(compiler, &params->base,
                                               nir, &prog_data->base,
                                               v.cfg,
                                               v.performance_analysis.require(),
@@ -940,7 +940,7 @@ brw_compile_gs(const struct brw_compiler *compiler,
       params->base.error_str =
          ralloc_strdup(params->base.mem_ctx, gs->fail_msg);
    } else {
-      ret = brw_vec4_generate_assembly(compiler, &params->base, nir,
+      ret = elk_vec4_generate_assembly(compiler, &params->base, nir,
                                        &prog_data->base, gs->cfg,
                                        gs->performance_analysis.require(),
                                        debug_enabled);

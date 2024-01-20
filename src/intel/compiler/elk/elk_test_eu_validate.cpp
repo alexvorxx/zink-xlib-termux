@@ -68,14 +68,14 @@ public:
    validation_test();
    virtual ~validation_test();
 
-   struct brw_isa_info isa;
-   struct brw_codegen *p;
+   struct elk_isa_info isa;
+   struct elk_codegen *p;
    struct intel_device_info devinfo;
 };
 
 validation_test::validation_test()
 {
-   p = rzalloc(NULL, struct brw_codegen);
+   p = rzalloc(NULL, struct elk_codegen);
    memset(&devinfo, 0, sizeof(devinfo));
 }
 
@@ -91,9 +91,9 @@ void validation_test::SetUp()
 
    intel_get_device_info_from_pci_id(devid, &devinfo);
 
-   brw_init_isa_info(&isa, &devinfo);
+   elk_init_isa_info(&isa, &devinfo);
 
-   brw_init_codegen(&isa, p, p);
+   elk_init_codegen(&isa, p, p);
 }
 
 struct gfx_name {
@@ -111,21 +111,21 @@ INSTANTIATE_TEST_SUITE_P(
 );
 
 static bool
-validate(struct brw_codegen *p)
+validate(struct elk_codegen *p)
 {
    const bool print = getenv("TEST_DEBUG");
-   struct disasm_info *disasm = disasm_initialize(p->isa, NULL);
+   struct elk_disasm_info *disasm = elk_disasm_initialize(p->isa, NULL);
 
    if (print) {
-      disasm_new_inst_group(disasm, 0);
-      disasm_new_inst_group(disasm, p->next_insn_offset);
+      elk_disasm_new_inst_group(disasm, 0);
+      elk_disasm_new_inst_group(disasm, p->next_insn_offset);
    }
 
-   bool ret = brw_validate_instructions(p->isa, p->store, 0,
+   bool ret = elk_validate_instructions(p->isa, p->store, 0,
                                         p->next_insn_offset, disasm);
 
    if (print) {
-      dump_assembly(p->store, 0, p->next_insn_offset, disasm, NULL);
+      elk_dump_assembly(p->store, 0, p->next_insn_offset, disasm, NULL);
    }
    ralloc_free(disasm);
 
@@ -133,13 +133,13 @@ validate(struct brw_codegen *p)
 }
 
 #define last_inst    (&p->store[p->nr_insn - 1])
-#define g0           brw_vec8_grf(0, 0)
-#define acc0         brw_acc_reg(8)
-#define null         brw_null_reg()
-#define zero         brw_imm_f(0.0f)
+#define g0           elk_vec8_grf(0, 0)
+#define acc0         elk_acc_reg(8)
+#define null         elk_null_reg()
+#define zero         elk_imm_f(0.0f)
 
 static void
-clear_instructions(struct brw_codegen *p)
+clear_instructions(struct elk_codegen *p)
 {
    p->next_insn_offset = 0;
    p->nr_insn = 0;
@@ -147,21 +147,21 @@ clear_instructions(struct brw_codegen *p)
 
 TEST_P(validation_test, sanity)
 {
-   brw_ADD(p, g0, g0, g0);
+   elk_ADD(p, g0, g0, g0);
 
    EXPECT_TRUE(validate(p));
 }
 
 TEST_P(validation_test, src0_null_reg)
 {
-   brw_MOV(p, g0, null);
+   elk_MOV(p, g0, null);
 
    EXPECT_FALSE(validate(p));
 }
 
 TEST_P(validation_test, src1_null_reg)
 {
-   brw_ADD(p, g0, g0, null);
+   elk_ADD(p, g0, g0, null);
 
    EXPECT_FALSE(validate(p));
 }
@@ -169,9 +169,9 @@ TEST_P(validation_test, src1_null_reg)
 TEST_P(validation_test, math_src0_null_reg)
 {
    if (devinfo.ver >= 6) {
-      gfx6_math(p, g0, BRW_MATH_FUNCTION_SIN, null, null);
+      elk_gfx6_math(p, g0, ELK_MATH_FUNCTION_SIN, null, null);
    } else {
-      gfx4_math(p, g0, BRW_MATH_FUNCTION_SIN, 0, null, BRW_MATH_PRECISION_FULL);
+      elk_gfx4_math(p, g0, ELK_MATH_FUNCTION_SIN, 0, null, ELK_MATH_PRECISION_FULL);
    }
 
    EXPECT_FALSE(validate(p));
@@ -180,11 +180,11 @@ TEST_P(validation_test, math_src0_null_reg)
 TEST_P(validation_test, math_src1_null_reg)
 {
    if (devinfo.ver >= 6) {
-      gfx6_math(p, g0, BRW_MATH_FUNCTION_POW, g0, null);
+      elk_gfx6_math(p, g0, ELK_MATH_FUNCTION_POW, g0, null);
       EXPECT_FALSE(validate(p));
    } else {
       /* Math instructions on Gfx4/5 are actually SEND messages with payloads.
-       * src1 is an immediate message descriptor set by gfx4_math.
+       * src1 is an immediate message descriptor set by elk_gfx4_math.
        */
    }
 }
@@ -196,7 +196,7 @@ TEST_P(validation_test, opcode46)
     *              reserved on Gen 7
     *              "goto" on Gfx8+
     */
-   brw_next_insn(p, brw_opcode_decode(&isa, 46));
+   elk_next_insn(p, elk_opcode_decode(&isa, 46));
 
    if (devinfo.ver == 7) {
       EXPECT_FALSE(validate(p));
@@ -208,35 +208,35 @@ TEST_P(validation_test, opcode46)
 TEST_P(validation_test, invalid_exec_size_encoding)
 {
    const struct {
-      enum brw_execution_size exec_size;
+      enum elk_execution_size exec_size;
       bool expected_result;
    } test_case[] = {
-      { BRW_EXECUTE_1,      true  },
-      { BRW_EXECUTE_2,      true  },
-      { BRW_EXECUTE_4,      true  },
-      { BRW_EXECUTE_8,      true  },
-      { BRW_EXECUTE_16,     true  },
-      { BRW_EXECUTE_32,     true  },
+      { ELK_EXECUTE_1,      true  },
+      { ELK_EXECUTE_2,      true  },
+      { ELK_EXECUTE_4,      true  },
+      { ELK_EXECUTE_8,      true  },
+      { ELK_EXECUTE_16,     true  },
+      { ELK_EXECUTE_32,     true  },
 
-      { (enum brw_execution_size)((int)BRW_EXECUTE_32 + 1), false },
-      { (enum brw_execution_size)((int)BRW_EXECUTE_32 + 2), false },
+      { (enum elk_execution_size)((int)ELK_EXECUTE_32 + 1), false },
+      { (enum elk_execution_size)((int)ELK_EXECUTE_32 + 2), false },
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
-      brw_MOV(p, g0, g0);
+      elk_MOV(p, g0, g0);
 
-      brw_inst_set_exec_size(&devinfo, last_inst, test_case[i].exec_size);
-      brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-      brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
+      elk_inst_set_exec_size(&devinfo, last_inst, test_case[i].exec_size);
+      elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+      elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
 
-      if (test_case[i].exec_size == BRW_EXECUTE_1) {
-         brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_0);
-         brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_1);
-         brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
+      if (test_case[i].exec_size == ELK_EXECUTE_1) {
+         elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_0);
+         elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_1);
+         elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
       } else {
-         brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_2);
-         brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_2);
-         brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+         elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_2);
+         elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_2);
+         elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
       }
 
       EXPECT_EQ(test_case[i].expected_result, validate(p));
@@ -251,8 +251,8 @@ TEST_P(validation_test, invalid_file_encoding)
    if (devinfo.ver >= 12)
       return;
 
-   brw_MOV(p, g0, g0);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_MESSAGE_REGISTER_FILE, BRW_REGISTER_TYPE_F);
+   elk_MOV(p, g0, g0);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_MESSAGE_REGISTER_FILE, ELK_REGISTER_TYPE_F);
 
    if (devinfo.ver > 6) {
       EXPECT_FALSE(validate(p));
@@ -263,11 +263,11 @@ TEST_P(validation_test, invalid_file_encoding)
    clear_instructions(p);
 
    if (devinfo.ver < 6) {
-      gfx4_math(p, g0, BRW_MATH_FUNCTION_SIN, 0, g0, BRW_MATH_PRECISION_FULL);
+      elk_gfx4_math(p, g0, ELK_MATH_FUNCTION_SIN, 0, g0, ELK_MATH_PRECISION_FULL);
    } else {
-      gfx6_math(p, g0, BRW_MATH_FUNCTION_SIN, g0, null);
+      elk_gfx6_math(p, g0, ELK_MATH_FUNCTION_SIN, g0, null);
    }
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_MESSAGE_REGISTER_FILE, BRW_REGISTER_TYPE_F);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_MESSAGE_REGISTER_FILE, ELK_REGISTER_TYPE_F);
 
    if (devinfo.ver > 6) {
       EXPECT_FALSE(validate(p));
@@ -278,13 +278,13 @@ TEST_P(validation_test, invalid_file_encoding)
 
 TEST_P(validation_test, invalid_type_encoding)
 {
-   enum brw_reg_file files[2] = {
-      BRW_GENERAL_REGISTER_FILE,
-      BRW_IMMEDIATE_VALUE,
+   enum elk_reg_file files[2] = {
+      ELK_GENERAL_REGISTER_FILE,
+      ELK_IMMEDIATE_VALUE,
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(files); i++) {
-      const enum brw_reg_file file = files[i];
+      const enum elk_reg_file file = files[i];
       const int num_bits = devinfo.ver >= 8 ? 4 : 3;
       const int num_encodings = 1 << num_bits;
 
@@ -295,34 +295,34 @@ TEST_P(validation_test, invalid_type_encoding)
       BITSET_DECLARE(invalid_encodings, num_encodings);
 
       const struct {
-         enum brw_reg_type type;
+         enum elk_reg_type type;
          bool expected_result;
       } test_case[] = {
-         { BRW_REGISTER_TYPE_NF, devinfo.ver == 11 && file != IMM },
-         { BRW_REGISTER_TYPE_DF, devinfo.has_64bit_float && (devinfo.ver >= 8 || file != IMM) },
-         { BRW_REGISTER_TYPE_F,  true },
-         { BRW_REGISTER_TYPE_HF, devinfo.ver >= 8 },
-         { BRW_REGISTER_TYPE_VF, file == IMM },
-         { BRW_REGISTER_TYPE_Q,  devinfo.has_64bit_int },
-         { BRW_REGISTER_TYPE_UQ, devinfo.has_64bit_int },
-         { BRW_REGISTER_TYPE_D,  true },
-         { BRW_REGISTER_TYPE_UD, true },
-         { BRW_REGISTER_TYPE_W,  true },
-         { BRW_REGISTER_TYPE_UW, true },
-         { BRW_REGISTER_TYPE_B,  file == FIXED_GRF },
-         { BRW_REGISTER_TYPE_UB, file == FIXED_GRF },
-         { BRW_REGISTER_TYPE_V,  file == IMM },
-         { BRW_REGISTER_TYPE_UV, devinfo.ver >= 6 && file == IMM },
+         { ELK_REGISTER_TYPE_NF, devinfo.ver == 11 && file != IMM },
+         { ELK_REGISTER_TYPE_DF, devinfo.has_64bit_float && (devinfo.ver >= 8 || file != IMM) },
+         { ELK_REGISTER_TYPE_F,  true },
+         { ELK_REGISTER_TYPE_HF, devinfo.ver >= 8 },
+         { ELK_REGISTER_TYPE_VF, file == IMM },
+         { ELK_REGISTER_TYPE_Q,  devinfo.has_64bit_int },
+         { ELK_REGISTER_TYPE_UQ, devinfo.has_64bit_int },
+         { ELK_REGISTER_TYPE_D,  true },
+         { ELK_REGISTER_TYPE_UD, true },
+         { ELK_REGISTER_TYPE_W,  true },
+         { ELK_REGISTER_TYPE_UW, true },
+         { ELK_REGISTER_TYPE_B,  file == FIXED_GRF },
+         { ELK_REGISTER_TYPE_UB, file == FIXED_GRF },
+         { ELK_REGISTER_TYPE_V,  file == IMM },
+         { ELK_REGISTER_TYPE_UV, devinfo.ver >= 6 && file == IMM },
       };
 
       /* Initially assume all hardware encodings are invalid */
       BITSET_ONES(invalid_encodings);
 
-      brw_set_default_exec_size(p, BRW_EXECUTE_4);
+      elk_set_default_exec_size(p, ELK_EXECUTE_4);
 
       for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
          if (test_case[i].expected_result) {
-            unsigned hw_type = brw_reg_type_to_hw_type(&devinfo, file, test_case[i].type);
+            unsigned hw_type = elk_reg_type_to_hw_type(&devinfo, file, test_case[i].type);
             if (hw_type != INVALID_REG_TYPE) {
                /* ... and remove valid encodings from the set */
                assert(BITSET_TEST(invalid_encodings, hw_type));
@@ -330,31 +330,31 @@ TEST_P(validation_test, invalid_type_encoding)
             }
 
             if (file == FIXED_GRF) {
-               struct brw_reg g = retype(g0, test_case[i].type);
-               brw_MOV(p, g, g);
-               brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-               brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-               brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+               struct elk_reg g = retype(g0, test_case[i].type);
+               elk_MOV(p, g, g);
+               elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+               elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+               elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
             } else {
-               enum brw_reg_type t;
+               enum elk_reg_type t;
 
                switch (test_case[i].type) {
-               case BRW_REGISTER_TYPE_V:
-                  t = BRW_REGISTER_TYPE_W;
+               case ELK_REGISTER_TYPE_V:
+                  t = ELK_REGISTER_TYPE_W;
                   break;
-               case BRW_REGISTER_TYPE_UV:
-                  t = BRW_REGISTER_TYPE_UW;
+               case ELK_REGISTER_TYPE_UV:
+                  t = ELK_REGISTER_TYPE_UW;
                   break;
-               case BRW_REGISTER_TYPE_VF:
-                  t = BRW_REGISTER_TYPE_F;
+               case ELK_REGISTER_TYPE_VF:
+                  t = ELK_REGISTER_TYPE_F;
                   break;
                default:
                   t = test_case[i].type;
                   break;
                }
 
-               struct brw_reg g = retype(g0, t);
-               brw_MOV(p, g, retype(brw_imm_w(0), test_case[i].type));
+               struct elk_reg g = retype(g0, t);
+               elk_MOV(p, g, retype(elk_imm_w(0), test_case[i].type));
             }
 
             EXPECT_TRUE(validate(p));
@@ -364,21 +364,21 @@ TEST_P(validation_test, invalid_type_encoding)
       }
 
       /* The remaining encodings in invalid_encodings do not have a mapping
-       * from BRW_REGISTER_TYPE_* and must be invalid. Verify that invalid
+       * from ELK_REGISTER_TYPE_* and must be invalid. Verify that invalid
        * encodings are rejected by the validator.
        */
       int e;
       BITSET_FOREACH_SET(e, invalid_encodings, num_encodings) {
          if (file == FIXED_GRF) {
-            brw_MOV(p, g0, g0);
-            brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-            brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-            brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+            elk_MOV(p, g0, g0);
+            elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+            elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+            elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
          } else {
-            brw_MOV(p, g0, brw_imm_w(0));
+            elk_MOV(p, g0, elk_imm_w(0));
          }
-         brw_inst_set_dst_reg_hw_type(&devinfo, last_inst, e);
-         brw_inst_set_src0_reg_hw_type(&devinfo, last_inst, e);
+         elk_inst_set_dst_reg_hw_type(&devinfo, last_inst, e);
+         elk_inst_set_src0_reg_hw_type(&devinfo, last_inst, e);
 
          EXPECT_FALSE(validate(p));
 
@@ -403,36 +403,36 @@ TEST_P(validation_test, invalid_type_encoding_3src_a16)
    BITSET_DECLARE(invalid_encodings, num_encodings);
 
    const struct {
-      enum brw_reg_type type;
+      enum elk_reg_type type;
       bool expected_result;
    } test_case[] = {
-      { BRW_REGISTER_TYPE_DF, devinfo.ver >= 7  },
-      { BRW_REGISTER_TYPE_F,  true },
-      { BRW_REGISTER_TYPE_HF, devinfo.ver >= 8  },
-      { BRW_REGISTER_TYPE_D,  devinfo.ver >= 7  },
-      { BRW_REGISTER_TYPE_UD, devinfo.ver >= 7  },
+      { ELK_REGISTER_TYPE_DF, devinfo.ver >= 7  },
+      { ELK_REGISTER_TYPE_F,  true },
+      { ELK_REGISTER_TYPE_HF, devinfo.ver >= 8  },
+      { ELK_REGISTER_TYPE_D,  devinfo.ver >= 7  },
+      { ELK_REGISTER_TYPE_UD, devinfo.ver >= 7  },
    };
 
    /* Initially assume all hardware encodings are invalid */
    BITSET_ONES(invalid_encodings);
 
-   brw_set_default_access_mode(p, BRW_ALIGN_16);
-   brw_set_default_exec_size(p, BRW_EXECUTE_4);
+   elk_set_default_access_mode(p, ELK_ALIGN_16);
+   elk_set_default_exec_size(p, ELK_EXECUTE_4);
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
       if (test_case[i].expected_result) {
-         unsigned hw_type = brw_reg_type_to_a16_hw_3src_type(&devinfo, test_case[i].type);
+         unsigned hw_type = elk_reg_type_to_a16_hw_3src_type(&devinfo, test_case[i].type);
          if (hw_type != INVALID_HW_REG_TYPE) {
             /* ... and remove valid encodings from the set */
             assert(BITSET_TEST(invalid_encodings, hw_type));
             BITSET_CLEAR(invalid_encodings, hw_type);
          }
 
-         struct brw_reg g = retype(g0, test_case[i].type);
-         if (!brw_reg_type_is_integer(test_case[i].type)) {
-            brw_MAD(p, g, g, g, g);
+         struct elk_reg g = retype(g0, test_case[i].type);
+         if (!elk_reg_type_is_integer(test_case[i].type)) {
+            elk_MAD(p, g, g, g, g);
          } else {
-            brw_BFE(p, g, g, g, g);
+            elk_BFE(p, g, g, g, g);
          }
 
          EXPECT_TRUE(validate(p));
@@ -442,20 +442,20 @@ TEST_P(validation_test, invalid_type_encoding_3src_a16)
    }
 
    /* The remaining encodings in invalid_encodings do not have a mapping
-    * from BRW_REGISTER_TYPE_* and must be invalid. Verify that invalid
+    * from ELK_REGISTER_TYPE_* and must be invalid. Verify that invalid
     * encodings are rejected by the validator.
     */
    int e;
    BITSET_FOREACH_SET(e, invalid_encodings, num_encodings) {
       for (unsigned i = 0; i < 2; i++) {
          if (i == 0) {
-            brw_MAD(p, g0, g0, g0, g0);
+            elk_MAD(p, g0, g0, g0, g0);
          } else {
-            brw_BFE(p, g0, g0, g0, g0);
+            elk_BFE(p, g0, g0, g0, g0);
          }
 
-         brw_inst_set_3src_a16_dst_hw_type(&devinfo, last_inst, e);
-         brw_inst_set_3src_a16_src_hw_type(&devinfo, last_inst, e);
+         elk_inst_set_3src_a16_dst_hw_type(&devinfo, last_inst, e);
+         elk_inst_set_3src_a16_src_hw_type(&devinfo, last_inst, e);
 
          EXPECT_FALSE(validate(p));
 
@@ -483,36 +483,36 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
    BITSET_DECLARE(invalid_encodings, num_encodings);
 
    const struct {
-      enum brw_reg_type type;
+      enum elk_reg_type type;
       unsigned exec_type;
       bool expected_result;
    } test_case[] = {
-#define E(x) ((unsigned)BRW_ALIGN1_3SRC_EXEC_TYPE_##x)
-      { BRW_REGISTER_TYPE_NF, E(FLOAT), devinfo.ver == 11 },
-      { BRW_REGISTER_TYPE_DF, E(FLOAT), devinfo.has_64bit_float },
-      { BRW_REGISTER_TYPE_F,  E(FLOAT), true  },
-      { BRW_REGISTER_TYPE_HF, E(FLOAT), true  },
-      { BRW_REGISTER_TYPE_D,  E(INT),   true  },
-      { BRW_REGISTER_TYPE_UD, E(INT),   true  },
-      { BRW_REGISTER_TYPE_W,  E(INT),   true  },
-      { BRW_REGISTER_TYPE_UW, E(INT),   true  },
+#define E(x) ((unsigned)ELK_ALIGN1_3SRC_EXEC_TYPE_##x)
+      { ELK_REGISTER_TYPE_NF, E(FLOAT), devinfo.ver == 11 },
+      { ELK_REGISTER_TYPE_DF, E(FLOAT), devinfo.has_64bit_float },
+      { ELK_REGISTER_TYPE_F,  E(FLOAT), true  },
+      { ELK_REGISTER_TYPE_HF, E(FLOAT), true  },
+      { ELK_REGISTER_TYPE_D,  E(INT),   true  },
+      { ELK_REGISTER_TYPE_UD, E(INT),   true  },
+      { ELK_REGISTER_TYPE_W,  E(INT),   true  },
+      { ELK_REGISTER_TYPE_UW, E(INT),   true  },
 
       /* There are no ternary instructions that can operate on B-type sources
        * on Gfx11-12. Src1/Src2 cannot be B-typed either.
        */
-      { BRW_REGISTER_TYPE_B,  E(INT),   false },
-      { BRW_REGISTER_TYPE_UB, E(INT),   false },
+      { ELK_REGISTER_TYPE_B,  E(INT),   false },
+      { ELK_REGISTER_TYPE_UB, E(INT),   false },
    };
 
    /* Initially assume all hardware encodings are invalid */
    BITSET_ONES(invalid_encodings);
 
-   brw_set_default_access_mode(p, BRW_ALIGN_1);
-   brw_set_default_exec_size(p, BRW_EXECUTE_4);
+   elk_set_default_access_mode(p, ELK_ALIGN_1);
+   elk_set_default_exec_size(p, ELK_EXECUTE_4);
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
       if (test_case[i].expected_result) {
-         unsigned hw_type = brw_reg_type_to_a1_hw_3src_type(&devinfo, test_case[i].type);
+         unsigned hw_type = elk_reg_type_to_a1_hw_3src_type(&devinfo, test_case[i].type);
          unsigned hw_exec_type = hw_type | (test_case[i].exec_type << 3);
          if (hw_type != INVALID_HW_REG_TYPE) {
             /* ... and remove valid encodings from the set */
@@ -520,11 +520,11 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
             BITSET_CLEAR(invalid_encodings, hw_exec_type);
          }
 
-         struct brw_reg g = retype(g0, test_case[i].type);
-         if (!brw_reg_type_is_integer(test_case[i].type)) {
-            brw_MAD(p, g, g, g, g);
+         struct elk_reg g = retype(g0, test_case[i].type);
+         if (!elk_reg_type_is_integer(test_case[i].type)) {
+            elk_MAD(p, g, g, g, g);
          } else {
-            brw_BFE(p, g, g, g, g);
+            elk_BFE(p, g, g, g, g);
          }
 
          EXPECT_TRUE(validate(p));
@@ -534,7 +534,7 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
    }
 
    /* The remaining encodings in invalid_encodings do not have a mapping
-    * from BRW_REGISTER_TYPE_* and must be invalid. Verify that invalid
+    * from ELK_REGISTER_TYPE_* and must be invalid. Verify that invalid
     * encodings are rejected by the validator.
     */
    int e;
@@ -544,19 +544,19 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
 
       for (unsigned i = 0; i < 2; i++) {
          if (i == 0) {
-            brw_MAD(p, g0, g0, g0, g0);
-            brw_inst_set_3src_a1_exec_type(&devinfo, last_inst, BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT);
+            elk_MAD(p, g0, g0, g0, g0);
+            elk_inst_set_3src_a1_exec_type(&devinfo, last_inst, ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT);
          } else {
-            brw_CSEL(p, g0, g0, g0, g0);
-            brw_inst_set_3src_cond_modifier(&devinfo, last_inst, BRW_CONDITIONAL_NZ);
-            brw_inst_set_3src_a1_exec_type(&devinfo, last_inst, BRW_ALIGN1_3SRC_EXEC_TYPE_INT);
+            elk_CSEL(p, g0, g0, g0, g0);
+            elk_inst_set_3src_cond_modifier(&devinfo, last_inst, ELK_CONDITIONAL_NZ);
+            elk_inst_set_3src_a1_exec_type(&devinfo, last_inst, ELK_ALIGN1_3SRC_EXEC_TYPE_INT);
          }
 
-         brw_inst_set_3src_a1_exec_type(&devinfo, last_inst, exec_type);
-         brw_inst_set_3src_a1_dst_hw_type (&devinfo, last_inst, hw_type);
-         brw_inst_set_3src_a1_src0_hw_type(&devinfo, last_inst, hw_type);
-         brw_inst_set_3src_a1_src1_hw_type(&devinfo, last_inst, hw_type);
-         brw_inst_set_3src_a1_src2_hw_type(&devinfo, last_inst, hw_type);
+         elk_inst_set_3src_a1_exec_type(&devinfo, last_inst, exec_type);
+         elk_inst_set_3src_a1_dst_hw_type (&devinfo, last_inst, hw_type);
+         elk_inst_set_3src_a1_src0_hw_type(&devinfo, last_inst, hw_type);
+         elk_inst_set_3src_a1_src1_hw_type(&devinfo, last_inst, hw_type);
+         elk_inst_set_3src_a1_src2_hw_type(&devinfo, last_inst, hw_type);
 
          EXPECT_FALSE(validate(p));
 
@@ -579,16 +579,16 @@ TEST_P(validation_test, 3src_inst_access_mode)
       unsigned mode;
       bool expected_result;
    } test_case[] = {
-      { BRW_ALIGN_1,  devinfo.ver >= 10 },
-      { BRW_ALIGN_16, devinfo.ver <= 10 },
+      { ELK_ALIGN_1,  devinfo.ver >= 10 },
+      { ELK_ALIGN_16, devinfo.ver <= 10 },
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
       if (devinfo.ver < 10)
-         brw_set_default_access_mode(p, BRW_ALIGN_16);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
 
-      brw_MAD(p, g0, g0, g0, g0);
-      brw_inst_set_access_mode(&devinfo, last_inst, test_case[i].mode);
+      elk_MAD(p, g0, g0, g0, g0);
+      elk_inst_set_access_mode(&devinfo, last_inst, test_case[i].mode);
 
       EXPECT_EQ(test_case[i].expected_result, validate(p));
 
@@ -602,20 +602,20 @@ TEST_P(validation_test, 3src_inst_access_mode)
  */
 TEST_P(validation_test, dest_stride_must_be_equal_to_the_ratio_of_exec_size_to_dest_size)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
 
    EXPECT_TRUE(validate(p));
 }
@@ -626,30 +626,30 @@ TEST_P(validation_test, dest_stride_must_be_equal_to_the_ratio_of_exec_size_to_d
  */
 TEST_P(validation_test, dst_subreg_must_be_aligned_to_exec_type_size)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 2);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 2);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_4);
-   brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 8);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_4);
+   elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 8);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
    EXPECT_TRUE(validate(p));
 }
@@ -657,15 +657,15 @@ TEST_P(validation_test, dst_subreg_must_be_aligned_to_exec_type_size)
 /* ExecSize must be greater than or equal to Width. */
 TEST_P(validation_test, exec_size_less_than_width)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_16);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_16);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_16);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_16);
 
    EXPECT_FALSE(validate(p));
 }
@@ -675,15 +675,15 @@ TEST_P(validation_test, exec_size_less_than_width)
  */
 TEST_P(validation_test, vertical_stride_is_width_by_horizontal_stride)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
 
    EXPECT_FALSE(validate(p));
 }
@@ -693,19 +693,19 @@ TEST_P(validation_test, vertical_stride_is_width_by_horizontal_stride)
  */
 TEST_P(validation_test, horizontal_stride_must_be_0_if_width_is_1)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_0);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_1);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_0);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_1);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_0);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_1);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_0);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_1);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
    EXPECT_FALSE(validate(p));
 }
@@ -713,23 +713,23 @@ TEST_P(validation_test, horizontal_stride_must_be_0_if_width_is_1)
 /* If ExecSize = Width = 1, both VertStride and HorzStride must be 0. */
 TEST_P(validation_test, scalar_region_must_be_0_1_0)
 {
-   struct brw_reg g0_0 = brw_vec1_grf(0, 0);
+   struct elk_reg g0_0 = elk_vec1_grf(0, 0);
 
-   brw_ADD(p, g0, g0, g0_0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_1);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_1);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_1);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
+   elk_ADD(p, g0, g0, g0_0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_1);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_1);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_1);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0_0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_1);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_1);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_1);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
+   elk_ADD(p, g0, g0_0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_1);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_1);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_1);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
 
    EXPECT_FALSE(validate(p));
 }
@@ -739,19 +739,19 @@ TEST_P(validation_test, scalar_region_must_be_0_1_0)
  */
 TEST_P(validation_test, zero_stride_implies_0_1_0)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_0);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_2);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_0);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_2);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_0);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_2);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_0);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_2);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
 
    EXPECT_FALSE(validate(p));
 }
@@ -759,8 +759,8 @@ TEST_P(validation_test, zero_stride_implies_0_1_0)
 /* Dst.HorzStride must not be 0. */
 TEST_P(validation_test, dst_horizontal_stride_0)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
 
    EXPECT_FALSE(validate(p));
 
@@ -770,46 +770,46 @@ TEST_P(validation_test, dst_horizontal_stride_0)
    if (devinfo.ver >= 11)
       return;
 
-   brw_set_default_access_mode(p, BRW_ALIGN_16);
+   elk_set_default_access_mode(p, ELK_ALIGN_16);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
 
    EXPECT_FALSE(validate(p));
 }
 
-/* VertStride must be used to cross BRW_GENERAL_REGISTER_FILE register boundaries. This rule implies
- * that elements within a 'Width' cannot cross BRW_GENERAL_REGISTER_FILE boundaries.
+/* VertStride must be used to cross ELK_GENERAL_REGISTER_FILE register boundaries. This rule implies
+ * that elements within a 'Width' cannot cross ELK_GENERAL_REGISTER_FILE boundaries.
  */
 TEST_P(validation_test, must_not_cross_grf_boundary_in_a_width)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, 4);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, 4);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src1_da1_subreg_nr(&devinfo, last_inst, 4);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src1_da1_subreg_nr(&devinfo, last_inst, 4);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
 
    EXPECT_FALSE(validate(p));
 }
@@ -821,17 +821,17 @@ TEST_P(validation_test, dst_hstride_on_align16_must_be_1)
    if (devinfo.ver >= 11)
       return;
 
-   brw_set_default_access_mode(p, BRW_ALIGN_16);
+   elk_set_default_access_mode(p, ELK_ALIGN_16);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
    EXPECT_TRUE(validate(p));
 }
@@ -844,24 +844,24 @@ TEST_P(validation_test, vstride_on_align16_must_be_0_or_4)
       return;
 
    const struct {
-      enum brw_vertical_stride vstride;
+      enum elk_vertical_stride vstride;
       bool expected_result;
    } vstride[] = {
-      { BRW_VERTICAL_STRIDE_0, true },
-      { BRW_VERTICAL_STRIDE_1, false },
-      { BRW_VERTICAL_STRIDE_2, devinfo.verx10 >= 75 },
-      { BRW_VERTICAL_STRIDE_4, true },
-      { BRW_VERTICAL_STRIDE_8, false },
-      { BRW_VERTICAL_STRIDE_16, false },
-      { BRW_VERTICAL_STRIDE_32, false },
-      { BRW_VERTICAL_STRIDE_ONE_DIMENSIONAL, false },
+      { ELK_VERTICAL_STRIDE_0, true },
+      { ELK_VERTICAL_STRIDE_1, false },
+      { ELK_VERTICAL_STRIDE_2, devinfo.verx10 >= 75 },
+      { ELK_VERTICAL_STRIDE_4, true },
+      { ELK_VERTICAL_STRIDE_8, false },
+      { ELK_VERTICAL_STRIDE_16, false },
+      { ELK_VERTICAL_STRIDE_32, false },
+      { ELK_VERTICAL_STRIDE_ONE_DIMENSIONAL, false },
    };
 
-   brw_set_default_access_mode(p, BRW_ALIGN_16);
+   elk_set_default_access_mode(p, ELK_ALIGN_16);
 
    for (unsigned i = 0; i < ARRAY_SIZE(vstride); i++) {
-      brw_ADD(p, g0, g0, g0);
-      brw_inst_set_src0_vstride(&devinfo, last_inst, vstride[i].vstride);
+      elk_ADD(p, g0, g0, g0);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, vstride[i].vstride);
 
       EXPECT_EQ(vstride[i].expected_result, validate(p));
 
@@ -869,8 +869,8 @@ TEST_P(validation_test, vstride_on_align16_must_be_0_or_4)
    }
 
    for (unsigned i = 0; i < ARRAY_SIZE(vstride); i++) {
-      brw_ADD(p, g0, g0, g0);
-      brw_inst_set_src1_vstride(&devinfo, last_inst, vstride[i].vstride);
+      elk_ADD(p, g0, g0, g0);
+      elk_inst_set_src1_vstride(&devinfo, last_inst, vstride[i].vstride);
 
       EXPECT_EQ(vstride[i].expected_result, validate(p));
 
@@ -878,71 +878,71 @@ TEST_P(validation_test, vstride_on_align16_must_be_0_or_4)
    }
 }
 
-/* In Direct Addressing mode, a source cannot span more than 2 adjacent BRW_GENERAL_REGISTER_FILE
+/* In Direct Addressing mode, a source cannot span more than 2 adjacent ELK_GENERAL_REGISTER_FILE
  * registers.
  */
 TEST_P(validation_test, source_cannot_span_more_than_2_registers)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_32);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_16);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_8);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_32);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_16);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_8);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_16);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_8);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
-   brw_inst_set_src1_da1_subreg_nr(&devinfo, last_inst, 2);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_16);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_8);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
+   elk_inst_set_src1_da1_subreg_nr(&devinfo, last_inst, 2);
 
    EXPECT_TRUE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
 
    EXPECT_TRUE(validate(p));
 }
 
-/* A destination cannot span more than 2 adjacent BRW_GENERAL_REGISTER_FILE registers. */
+/* A destination cannot span more than 2 adjacent ELK_GENERAL_REGISTER_FILE registers. */
 TEST_P(validation_test, destination_cannot_span_more_than_2_registers)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_32);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_32);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_8);
-   brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 6);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_4);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_16);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_16);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_8);
+   elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 6);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_4);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_16);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_16);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
    EXPECT_TRUE(validate(p));
 }
@@ -950,59 +950,59 @@ TEST_P(validation_test, destination_cannot_span_more_than_2_registers)
 TEST_P(validation_test, src_region_spans_two_regs_dst_region_spans_one)
 {
    /* Writes to dest are to the lower OWord */
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_16);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_16);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
 
    EXPECT_TRUE(validate(p));
 
    clear_instructions(p);
 
    /* Writes to dest are to the upper OWord */
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 16);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_16);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 16);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_16);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
 
    EXPECT_TRUE(validate(p));
 
    clear_instructions(p);
 
    /* Writes to dest are evenly split between OWords */
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_16);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_8);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_16);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_8);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
 
    EXPECT_TRUE(validate(p));
 
    clear_instructions(p);
 
    /* Writes to dest are uneven between OWords */
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_4);
-   brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 10);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_16);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_2);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_4);
+   elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 10);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_16);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_2);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
    if (devinfo.ver >= 9) {
       EXPECT_TRUE(validate(p));
@@ -1013,8 +1013,8 @@ TEST_P(validation_test, src_region_spans_two_regs_dst_region_spans_one)
 
 TEST_P(validation_test, dst_elements_must_be_evenly_split_between_registers)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 4);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 4);
 
    if (devinfo.ver >= 9 && devinfo.verx10 < 125) {
       EXPECT_TRUE(validate(p));
@@ -1024,22 +1024,22 @@ TEST_P(validation_test, dst_elements_must_be_evenly_split_between_registers)
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
 
    EXPECT_TRUE(validate(p));
 
    clear_instructions(p);
 
    if (devinfo.ver >= 6) {
-      gfx6_math(p, g0, BRW_MATH_FUNCTION_SIN, g0, null);
+      elk_gfx6_math(p, g0, ELK_MATH_FUNCTION_SIN, g0, null);
 
       EXPECT_TRUE(validate(p));
 
       clear_instructions(p);
 
-      gfx6_math(p, g0, BRW_MATH_FUNCTION_SIN, g0, null);
-      brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 4);
+      elk_gfx6_math(p, g0, ELK_MATH_FUNCTION_SIN, g0, null);
+      elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 4);
 
       EXPECT_FALSE(validate(p));
    }
@@ -1047,16 +1047,16 @@ TEST_P(validation_test, dst_elements_must_be_evenly_split_between_registers)
 
 TEST_P(validation_test, two_src_two_dst_source_offsets_must_be_same)
 {
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_4);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_4);
-   brw_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, 16);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_2);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_1);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_4);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_4);
+   elk_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, 16);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_2);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_1);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
   if (devinfo.ver <= 7 || devinfo.verx10 >= 125) {
       EXPECT_FALSE(validate(p));
@@ -1066,15 +1066,15 @@ TEST_P(validation_test, two_src_two_dst_source_offsets_must_be_same)
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_4);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_4);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_1);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_8);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_2);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_4);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_4);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_1);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_8);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_2);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
    if (devinfo.verx10 >= 125)
       EXPECT_FALSE(validate(p));
@@ -1084,15 +1084,15 @@ TEST_P(validation_test, two_src_two_dst_source_offsets_must_be_same)
 
 TEST_P(validation_test, two_src_two_dst_each_dst_must_be_derived_from_one_src)
 {
-   brw_MOV(p, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, 8);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_MOV(p, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, 8);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
    if (devinfo.ver <= 7) {
       EXPECT_FALSE(validate(p));
@@ -1102,12 +1102,12 @@ TEST_P(validation_test, two_src_two_dst_each_dst_must_be_derived_from_one_src)
 
    clear_instructions(p);
 
-   brw_MOV(p, g0, g0);
-   brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 16);
-   brw_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, 8);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_2);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_2);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+   elk_MOV(p, g0, g0);
+   elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 16);
+   elk_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, 8);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_2);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_2);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
    if (devinfo.ver <= 7 || devinfo.verx10 >= 125) {
       EXPECT_FALSE(validate(p));
@@ -1118,30 +1118,30 @@ TEST_P(validation_test, two_src_two_dst_each_dst_must_be_derived_from_one_src)
 
 TEST_P(validation_test, one_src_two_dst)
 {
-   struct brw_reg g0_0 = brw_vec1_grf(0, 0);
+   struct elk_reg g0_0 = elk_vec1_grf(0, 0);
 
-   brw_ADD(p, g0, g0_0, g0_0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
-
-   EXPECT_TRUE(validate(p));
-
-   clear_instructions(p);
-
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
+   elk_ADD(p, g0, g0_0, g0_0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
 
    EXPECT_TRUE(validate(p));
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+
+   EXPECT_TRUE(validate(p));
+
+   clear_instructions(p);
+
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
 
    if (devinfo.ver >= 8) {
       EXPECT_TRUE(validate(p));
@@ -1151,11 +1151,11 @@ TEST_P(validation_test, one_src_two_dst)
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_D);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
 
    if (devinfo.ver >= 8) {
       EXPECT_TRUE(validate(p));
@@ -1165,15 +1165,15 @@ TEST_P(validation_test, one_src_two_dst)
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_0);
-   brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_1);
-   brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_0);
+   elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_1);
+   elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
 
    if (devinfo.ver >= 8) {
       EXPECT_TRUE(validate(p));
@@ -1183,15 +1183,15 @@ TEST_P(validation_test, one_src_two_dst)
 
    clear_instructions(p);
 
-   brw_ADD(p, g0, g0, g0);
-   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_0);
-   brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_1);
-   brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
+   elk_ADD(p, g0, g0, g0);
+   elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_16);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
+   elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
+   elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_0);
+   elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_1);
+   elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_0);
+   elk_inst_set_src1_file_type(&devinfo, last_inst, ELK_GENERAL_REGISTER_FILE, ELK_REGISTER_TYPE_W);
 
    if (devinfo.ver >= 8) {
       EXPECT_TRUE(validate(p));
@@ -1203,83 +1203,83 @@ TEST_P(validation_test, one_src_two_dst)
 TEST_P(validation_test, packed_byte_destination)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src_type;
       bool neg, abs, sat;
       bool expected_result;
    } move[] = {
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_UB, 0, 0, 0, true },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_B , 0, 0, 0, true },
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_B , 0, 0, 0, true },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_UB, 0, 0, 0, true },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_UB, 0, 0, 0, true },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_B , 0, 0, 0, true },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_B , 0, 0, 0, true },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_UB, 0, 0, 0, true },
 
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_UB, 1, 0, 0, false },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_B , 1, 0, 0, false },
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_B , 1, 0, 0, false },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_UB, 1, 0, 0, false },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_UB, 1, 0, 0, false },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_B , 1, 0, 0, false },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_B , 1, 0, 0, false },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_UB, 1, 0, 0, false },
 
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_UB, 0, 1, 0, false },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_B , 0, 1, 0, false },
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_B , 0, 1, 0, false },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_UB, 0, 1, 0, false },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_UB, 0, 1, 0, false },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_B , 0, 1, 0, false },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_B , 0, 1, 0, false },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_UB, 0, 1, 0, false },
 
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_UB, 0, 0, 1, false },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_B , 0, 0, 1, false },
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_B , 0, 0, 1, false },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_UB, 0, 0, 1, false },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_UB, 0, 0, 1, false },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_B , 0, 0, 1, false },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_B , 0, 0, 1, false },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_UB, 0, 0, 1, false },
 
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_UW, 0, 0, 0, false },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_W , 0, 0, 0, false },
-      { BRW_REGISTER_TYPE_UB, BRW_REGISTER_TYPE_UD, 0, 0, 0, false },
-      { BRW_REGISTER_TYPE_B , BRW_REGISTER_TYPE_D , 0, 0, 0, false },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_UW, 0, 0, 0, false },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_W , 0, 0, 0, false },
+      { ELK_REGISTER_TYPE_UB, ELK_REGISTER_TYPE_UD, 0, 0, 0, false },
+      { ELK_REGISTER_TYPE_B , ELK_REGISTER_TYPE_D , 0, 0, 0, false },
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(move); i++) {
-      brw_MOV(p, retype(g0, move[i].dst_type), retype(g0, move[i].src_type));
-      brw_inst_set_src0_negate(&devinfo, last_inst, move[i].neg);
-      brw_inst_set_src0_abs(&devinfo, last_inst, move[i].abs);
-      brw_inst_set_saturate(&devinfo, last_inst, move[i].sat);
+      elk_MOV(p, retype(g0, move[i].dst_type), retype(g0, move[i].src_type));
+      elk_inst_set_src0_negate(&devinfo, last_inst, move[i].neg);
+      elk_inst_set_src0_abs(&devinfo, last_inst, move[i].abs);
+      elk_inst_set_saturate(&devinfo, last_inst, move[i].sat);
 
       EXPECT_EQ(move[i].expected_result, validate(p));
 
       clear_instructions(p);
    }
 
-   brw_SEL(p, retype(g0, BRW_REGISTER_TYPE_UB),
-              retype(g0, BRW_REGISTER_TYPE_UB),
-              retype(g0, BRW_REGISTER_TYPE_UB));
-   brw_inst_set_pred_control(&devinfo, last_inst, BRW_PREDICATE_NORMAL);
+   elk_SEL(p, retype(g0, ELK_REGISTER_TYPE_UB),
+              retype(g0, ELK_REGISTER_TYPE_UB),
+              retype(g0, ELK_REGISTER_TYPE_UB));
+   elk_inst_set_pred_control(&devinfo, last_inst, ELK_PREDICATE_NORMAL);
 
    EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
-   brw_SEL(p, retype(g0, BRW_REGISTER_TYPE_B),
-              retype(g0, BRW_REGISTER_TYPE_B),
-              retype(g0, BRW_REGISTER_TYPE_B));
-   brw_inst_set_pred_control(&devinfo, last_inst, BRW_PREDICATE_NORMAL);
+   elk_SEL(p, retype(g0, ELK_REGISTER_TYPE_B),
+              retype(g0, ELK_REGISTER_TYPE_B),
+              retype(g0, ELK_REGISTER_TYPE_B));
+   elk_inst_set_pred_control(&devinfo, last_inst, ELK_PREDICATE_NORMAL);
 
    EXPECT_FALSE(validate(p));
 }
 
 TEST_P(validation_test, byte_destination_relaxed_alignment)
 {
-   brw_SEL(p, retype(g0, BRW_REGISTER_TYPE_B),
-              retype(g0, BRW_REGISTER_TYPE_W),
-              retype(g0, BRW_REGISTER_TYPE_W));
-   brw_inst_set_pred_control(&devinfo, last_inst, BRW_PREDICATE_NORMAL);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
+   elk_SEL(p, retype(g0, ELK_REGISTER_TYPE_B),
+              retype(g0, ELK_REGISTER_TYPE_W),
+              retype(g0, ELK_REGISTER_TYPE_W));
+   elk_inst_set_pred_control(&devinfo, last_inst, ELK_PREDICATE_NORMAL);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
 
    EXPECT_TRUE(validate(p));
 
    clear_instructions(p);
 
-   brw_SEL(p, retype(g0, BRW_REGISTER_TYPE_B),
-              retype(g0, BRW_REGISTER_TYPE_W),
-              retype(g0, BRW_REGISTER_TYPE_W));
-   brw_inst_set_pred_control(&devinfo, last_inst, BRW_PREDICATE_NORMAL);
-   brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
-   brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 1);
+   elk_SEL(p, retype(g0, ELK_REGISTER_TYPE_B),
+              retype(g0, ELK_REGISTER_TYPE_W),
+              retype(g0, ELK_REGISTER_TYPE_W));
+   elk_inst_set_pred_control(&devinfo, last_inst, ELK_PREDICATE_NORMAL);
+   elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
+   elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 1);
 
    if (devinfo.verx10 >= 45) {
       EXPECT_TRUE(validate(p));
@@ -1291,16 +1291,16 @@ TEST_P(validation_test, byte_destination_relaxed_alignment)
 TEST_P(validation_test, byte_64bit_conversion)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src_type;
       unsigned dst_stride;
       bool expected_result;
    } inst[] = {
 #define INST(dst_type, src_type, dst_stride, expected_result)             \
       {                                                                   \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src_type,                                    \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src_type,                                    \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                              \
          expected_result,                                                 \
       }
 
@@ -1333,16 +1333,16 @@ TEST_P(validation_test, byte_64bit_conversion)
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
       if (!devinfo.has_64bit_float &&
-          inst[i].src_type == BRW_REGISTER_TYPE_DF)
+          inst[i].src_type == ELK_REGISTER_TYPE_DF)
          continue;
 
       if (!devinfo.has_64bit_int &&
-          (inst[i].src_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].src_type == BRW_REGISTER_TYPE_UQ))
+          (inst[i].src_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].src_type == ELK_REGISTER_TYPE_UQ))
          continue;
 
-      brw_MOV(p, retype(g0, inst[i].dst_type), retype(g0, inst[i].src_type));
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_MOV(p, retype(g0, inst[i].dst_type), retype(g0, inst[i].src_type));
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
       EXPECT_EQ(inst[i].expected_result, validate(p));
 
       clear_instructions(p);
@@ -1352,8 +1352,8 @@ TEST_P(validation_test, byte_64bit_conversion)
 TEST_P(validation_test, half_float_conversion)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src_type;
       unsigned dst_stride;
       unsigned dst_subnr;
       bool expected_result_bdw;
@@ -1364,9 +1364,9 @@ TEST_P(validation_test, half_float_conversion)
              expected_result_bdw, expected_result_chv_gfx9,                 \
              expected_result_gfx125)                                        \
       {                                                                     \
-         BRW_REGISTER_TYPE_##dst_type,                                      \
-         BRW_REGISTER_TYPE_##src_type,                                      \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                \
+         ELK_REGISTER_TYPE_##dst_type,                                      \
+         ELK_REGISTER_TYPE_##src_type,                                      \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                                \
          dst_subnr,                                                         \
          expected_result_bdw,                                               \
          expected_result_chv_gfx9,                                          \
@@ -1428,32 +1428,32 @@ TEST_P(validation_test, half_float_conversion)
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
       if (!devinfo.has_64bit_float &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_DF ||
-           inst[i].src_type == BRW_REGISTER_TYPE_DF))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_DF ||
+           inst[i].src_type == ELK_REGISTER_TYPE_DF))
          continue;
 
       if (!devinfo.has_64bit_int &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].dst_type == BRW_REGISTER_TYPE_UQ ||
-           inst[i].src_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].src_type == BRW_REGISTER_TYPE_UQ))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].dst_type == ELK_REGISTER_TYPE_UQ ||
+           inst[i].src_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].src_type == ELK_REGISTER_TYPE_UQ))
          continue;
 
-      brw_MOV(p, retype(g0, inst[i].dst_type), retype(g0, inst[i].src_type));
+      elk_MOV(p, retype(g0, inst[i].dst_type), retype(g0, inst[i].src_type));
 
-      brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_4);
+      elk_inst_set_exec_size(&devinfo, last_inst, ELK_EXECUTE_4);
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
-      brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, inst[i].dst_subnr);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, inst[i].dst_subnr);
 
-      if (inst[i].src_type == BRW_REGISTER_TYPE_B) {
-         brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-         brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_2);
-         brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
+      if (inst[i].src_type == ELK_REGISTER_TYPE_B) {
+         elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+         elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_2);
+         elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_2);
       } else {
-         brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-         brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-         brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+         elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+         elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+         elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
       }
 
       if (devinfo.verx10 >= 125) {
@@ -1474,9 +1474,9 @@ TEST_P(validation_test, half_float_conversion)
 TEST_P(validation_test, mixed_float_source_indirect_addressing)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       unsigned dst_stride;
       bool dst_indirect;
       bool src0_indirect;
@@ -1487,10 +1487,10 @@ TEST_P(validation_test, mixed_float_source_indirect_addressing)
              dst_stride, dst_indirect, src0_indirect, expected_result,    \
              gfx125_expected_result)                                      \
       {                                                                   \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src0_type,                                   \
-         BRW_REGISTER_TYPE_##src1_type,                                   \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src0_type,                                   \
+         ELK_REGISTER_TYPE_##src1_type,                                   \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                              \
          dst_indirect,                                                    \
          src0_indirect,                                                   \
          expected_result,                                                 \
@@ -1523,13 +1523,13 @@ TEST_P(validation_test, mixed_float_source_indirect_addressing)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      brw_ADD(p, retype(g0, inst[i].dst_type),
+      elk_ADD(p, retype(g0, inst[i].dst_type),
                  retype(g0, inst[i].src0_type),
                  retype(g0, inst[i].src1_type));
 
-      brw_inst_set_dst_address_mode(&devinfo, last_inst, inst[i].dst_indirect);
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
-      brw_inst_set_src0_address_mode(&devinfo, last_inst, inst[i].src0_indirect);
+      elk_inst_set_dst_address_mode(&devinfo, last_inst, inst[i].dst_indirect);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_src0_address_mode(&devinfo, last_inst, inst[i].src0_indirect);
 
       if (devinfo.verx10 >= 125) {
          EXPECT_EQ(inst[i].gfx125_expected_result, validate(p));
@@ -1545,9 +1545,9 @@ TEST_P(validation_test, mixed_float_align1_simd16)
 {
    static const struct {
       unsigned exec_size;
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       unsigned dst_stride;
       bool expected_result;
       bool gfx125_expected_result;
@@ -1555,11 +1555,11 @@ TEST_P(validation_test, mixed_float_align1_simd16)
 #define INST(exec_size, dst_type, src0_type, src1_type,                   \
              dst_stride, expected_result, gfx125_expected_result)         \
       {                                                                   \
-         BRW_EXECUTE_##exec_size,                                         \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src0_type,                                   \
-         BRW_REGISTER_TYPE_##src1_type,                                   \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
+         ELK_EXECUTE_##exec_size,                                         \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src0_type,                                   \
+         ELK_REGISTER_TYPE_##src1_type,                                   \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                              \
          expected_result,                                                 \
          gfx125_expected_result,                                          \
       }
@@ -1583,13 +1583,13 @@ TEST_P(validation_test, mixed_float_align1_simd16)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      brw_ADD(p, retype(g0, inst[i].dst_type),
+      elk_ADD(p, retype(g0, inst[i].dst_type),
                  retype(g0, inst[i].src0_type),
                  retype(g0, inst[i].src1_type));
 
-      brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
+      elk_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
       if (devinfo.verx10 >= 125) {
          EXPECT_EQ(inst[i].gfx125_expected_result, validate(p));
@@ -1604,9 +1604,9 @@ TEST_P(validation_test, mixed_float_align1_simd16)
 TEST_P(validation_test, mixed_float_align1_packed_fp16_dst_acc_read_offset_0)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       unsigned dst_stride;
       bool read_acc;
       unsigned subnr;
@@ -1618,10 +1618,10 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst_acc_read_offset_0)
              expected_result_bdw, expected_result_chv_skl,                  \
              expected_result_gfx125)                                        \
       {                                                                     \
-         BRW_REGISTER_TYPE_##dst_type,                                      \
-         BRW_REGISTER_TYPE_##src0_type,                                     \
-         BRW_REGISTER_TYPE_##src1_type,                                     \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                \
+         ELK_REGISTER_TYPE_##dst_type,                                      \
+         ELK_REGISTER_TYPE_##src0_type,                                     \
+         ELK_REGISTER_TYPE_##src1_type,                                     \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                                \
          read_acc,                                                          \
          subnr,                                                             \
          expected_result_bdw,                                               \
@@ -1657,13 +1657,13 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst_acc_read_offset_0)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      brw_ADD(p, retype(g0, inst[i].dst_type),
+      elk_ADD(p, retype(g0, inst[i].dst_type),
                  retype(inst[i].read_acc ? acc0 : g0, inst[i].src0_type),
                  retype(g0, inst[i].src1_type));
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
-      brw_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, inst[i].subnr);
+      elk_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, inst[i].subnr);
 
       if (devinfo.verx10 >= 125)
          EXPECT_EQ(inst[i].expected_result_gfx125, validate(p));
@@ -1681,9 +1681,9 @@ TEST_P(validation_test, mixed_float_fp16_dest_with_acc)
    static const struct {
       unsigned exec_size;
       unsigned opcode;
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       unsigned dst_stride;
       bool read_acc;
       bool expected_result_bdw;
@@ -1694,12 +1694,12 @@ TEST_P(validation_test, mixed_float_fp16_dest_with_acc)
              dst_stride, read_acc,expected_result_bdw,                    \
              expected_result_chv_skl, expected_result_gfx125)             \
       {                                                                   \
-         BRW_EXECUTE_##exec_size,                                         \
-         BRW_OPCODE_##opcode,                                             \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src0_type,                                   \
-         BRW_REGISTER_TYPE_##src1_type,                                   \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
+         ELK_EXECUTE_##exec_size,                                         \
+         ELK_OPCODE_##opcode,                                             \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src0_type,                                   \
+         ELK_REGISTER_TYPE_##src1_type,                                   \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                              \
          read_acc,                                                        \
          expected_result_bdw,                                             \
          expected_result_chv_skl,                                         \
@@ -1737,20 +1737,20 @@ TEST_P(validation_test, mixed_float_fp16_dest_with_acc)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      if (inst[i].opcode == BRW_OPCODE_MAC) {
-         brw_MAC(p, retype(g0, inst[i].dst_type),
+      if (inst[i].opcode == ELK_OPCODE_MAC) {
+         elk_MAC(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].src0_type),
                     retype(g0, inst[i].src1_type));
       } else {
-         assert(inst[i].opcode == BRW_OPCODE_ADD);
-         brw_ADD(p, retype(g0, inst[i].dst_type),
+         assert(inst[i].opcode == ELK_OPCODE_ADD);
+         elk_ADD(p, retype(g0, inst[i].dst_type),
                     retype(inst[i].read_acc ? acc0: g0, inst[i].src0_type),
                     retype(g0, inst[i].src1_type));
       }
 
-      brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
+      elk_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
       if (devinfo.verx10 >= 125)
          EXPECT_EQ(inst[i].expected_result_gfx125, validate(p));
@@ -1766,9 +1766,9 @@ TEST_P(validation_test, mixed_float_fp16_dest_with_acc)
 TEST_P(validation_test, mixed_float_align1_math_strided_fp16_inputs)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       unsigned dst_stride;
       unsigned src0_stride;
       unsigned src1_stride;
@@ -1779,12 +1779,12 @@ TEST_P(validation_test, mixed_float_align1_math_strided_fp16_inputs)
              dst_stride, src0_stride, src1_stride, expected_result,       \
              expected_result_125)                                         \
       {                                                                   \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src0_type,                                   \
-         BRW_REGISTER_TYPE_##src1_type,                                   \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
-         BRW_HORIZONTAL_STRIDE_##src0_stride,                             \
-         BRW_HORIZONTAL_STRIDE_##src1_stride,                             \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src0_type,                                   \
+         ELK_REGISTER_TYPE_##src1_type,                                   \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                              \
+         ELK_HORIZONTAL_STRIDE_##src0_stride,                             \
+         ELK_HORIZONTAL_STRIDE_##src1_stride,                             \
          expected_result,                                                 \
          expected_result_125,                                             \
       }
@@ -1809,20 +1809,20 @@ TEST_P(validation_test, mixed_float_align1_math_strided_fp16_inputs)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      gfx6_math(p, retype(g0, inst[i].dst_type),
-                   BRW_MATH_FUNCTION_POW,
+      elk_gfx6_math(p, retype(g0, inst[i].dst_type),
+                   ELK_MATH_FUNCTION_POW,
                    retype(g0, inst[i].src0_type),
                    retype(g0, inst[i].src1_type));
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-      brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-      brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src0_stride);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+      elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+      elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src0_stride);
 
-      brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-      brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
-      brw_inst_set_src1_hstride(&devinfo, last_inst, inst[i].src1_stride);
+      elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+      elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_4);
+      elk_inst_set_src1_hstride(&devinfo, last_inst, inst[i].src1_stride);
 
       if (devinfo.verx10 >= 125)
          EXPECT_EQ(inst[i].expected_result_gfx125, validate(p));
@@ -1837,9 +1837,9 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst)
 {
    static const struct {
       unsigned exec_size;
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       unsigned dst_stride;
       unsigned dst_subnr;
       bool expected_result_bdw;
@@ -1850,11 +1850,11 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst)
              expected_result_bdw, expected_result_chv_skl,                     \
              expected_result_gfx125)                                           \
       {                                                                        \
-         BRW_EXECUTE_##exec_size,                                              \
-         BRW_REGISTER_TYPE_##dst_type,                                         \
-         BRW_REGISTER_TYPE_##src0_type,                                        \
-         BRW_REGISTER_TYPE_##src1_type,                                        \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
+         ELK_EXECUTE_##exec_size,                                              \
+         ELK_REGISTER_TYPE_##dst_type,                                         \
+         ELK_REGISTER_TYPE_##src0_type,                                        \
+         ELK_REGISTER_TYPE_##src1_type,                                        \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                                   \
          dst_subnr,                                                            \
          expected_result_bdw,                                                  \
          expected_result_chv_skl,                                              \
@@ -1890,22 +1890,22 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      brw_ADD(p, retype(g0, inst[i].dst_type),
+      elk_ADD(p, retype(g0, inst[i].dst_type),
                  retype(g0, inst[i].src0_type),
                  retype(g0, inst[i].src1_type));
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
-      brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, inst[i].dst_subnr);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, inst[i].dst_subnr);
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-      brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
-      brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+      elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_4);
+      elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
-      brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-      brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
-      brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+      elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+      elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_4);
+      elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
-      brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
+      elk_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
 
       if (devinfo.verx10 >= 125)
          EXPECT_EQ(inst[i].expected_result_gfx125, validate(p));
@@ -1921,9 +1921,9 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst)
 TEST_P(validation_test, mixed_float_align16_packed_data)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       unsigned src0_vstride;
       unsigned src1_vstride;
       bool expected_result;
@@ -1931,11 +1931,11 @@ TEST_P(validation_test, mixed_float_align16_packed_data)
 #define INST(dst_type, src0_type, src1_type,                              \
              src0_vstride, src1_vstride, expected_result)                 \
       {                                                                   \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src0_type,                                   \
-         BRW_REGISTER_TYPE_##src1_type,                                   \
-         BRW_VERTICAL_STRIDE_##src0_vstride,                              \
-         BRW_VERTICAL_STRIDE_##src1_vstride,                              \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src0_type,                                   \
+         ELK_REGISTER_TYPE_##src1_type,                                   \
+         ELK_VERTICAL_STRIDE_##src0_vstride,                              \
+         ELK_VERTICAL_STRIDE_##src1_vstride,                              \
          expected_result,                                                 \
       }
 
@@ -1960,15 +1960,15 @@ TEST_P(validation_test, mixed_float_align16_packed_data)
    if (devinfo.ver < 8 || devinfo.ver >= 11)
       return;
 
-   brw_set_default_access_mode(p, BRW_ALIGN_16);
+   elk_set_default_access_mode(p, ELK_ALIGN_16);
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      brw_ADD(p, retype(g0, inst[i].dst_type),
+      elk_ADD(p, retype(g0, inst[i].dst_type),
                  retype(g0, inst[i].src0_type),
                  retype(g0, inst[i].src1_type));
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src0_vstride);
-      brw_inst_set_src1_vstride(&devinfo, last_inst, inst[i].src1_vstride);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src0_vstride);
+      elk_inst_set_src1_vstride(&devinfo, last_inst, inst[i].src1_vstride);
 
       EXPECT_EQ(inst[i].expected_result, validate(p));
 
@@ -1980,17 +1980,17 @@ TEST_P(validation_test, mixed_float_align16_no_simd16)
 {
    static const struct {
       unsigned exec_size;
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       bool expected_result;
    } inst[] = {
 #define INST(exec_size, dst_type, src0_type, src1_type, expected_result)  \
       {                                                                   \
-         BRW_EXECUTE_##exec_size,                                         \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src0_type,                                   \
-         BRW_REGISTER_TYPE_##src1_type,                                   \
+         ELK_EXECUTE_##exec_size,                                         \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src0_type,                                   \
+         ELK_REGISTER_TYPE_##src1_type,                                   \
          expected_result,                                                 \
       }
 
@@ -2011,17 +2011,17 @@ TEST_P(validation_test, mixed_float_align16_no_simd16)
    if (devinfo.ver < 8 || devinfo.ver >= 11)
       return;
 
-   brw_set_default_access_mode(p, BRW_ALIGN_16);
+   elk_set_default_access_mode(p, ELK_ALIGN_16);
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      brw_ADD(p, retype(g0, inst[i].dst_type),
+      elk_ADD(p, retype(g0, inst[i].dst_type),
                  retype(g0, inst[i].src0_type),
                  retype(g0, inst[i].src1_type));
 
-      brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
+      elk_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-      brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+      elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
 
       EXPECT_EQ(inst[i].expected_result, validate(p));
 
@@ -2032,17 +2032,17 @@ TEST_P(validation_test, mixed_float_align16_no_simd16)
 TEST_P(validation_test, mixed_float_align16_no_acc_read)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       bool read_acc;
       bool expected_result;
    } inst[] = {
 #define INST(dst_type, src0_type, src1_type, read_acc, expected_result)   \
       {                                                                   \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src0_type,                                   \
-         BRW_REGISTER_TYPE_##src1_type,                                   \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src0_type,                                   \
+         ELK_REGISTER_TYPE_##src1_type,                                   \
          read_acc,                                                        \
          expected_result,                                                 \
       }
@@ -2062,15 +2062,15 @@ TEST_P(validation_test, mixed_float_align16_no_acc_read)
    if (devinfo.ver < 8 || devinfo.ver >= 11)
       return;
 
-   brw_set_default_access_mode(p, BRW_ALIGN_16);
+   elk_set_default_access_mode(p, ELK_ALIGN_16);
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      brw_ADD(p, retype(g0, inst[i].dst_type),
+      elk_ADD(p, retype(g0, inst[i].dst_type),
                  retype(inst[i].read_acc ? acc0 : g0, inst[i].src0_type),
                  retype(g0, inst[i].src1_type));
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
-      brw_inst_set_src1_vstride(&devinfo, last_inst, BRW_VERTICAL_STRIDE_4);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
+      elk_inst_set_src1_vstride(&devinfo, last_inst, ELK_VERTICAL_STRIDE_4);
 
       EXPECT_EQ(inst[i].expected_result, validate(p));
 
@@ -2081,9 +2081,9 @@ TEST_P(validation_test, mixed_float_align16_no_acc_read)
 TEST_P(validation_test, mixed_float_align16_math_packed_format)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
       unsigned src0_vstride;
       unsigned src1_vstride;
       bool expected_result;
@@ -2091,11 +2091,11 @@ TEST_P(validation_test, mixed_float_align16_math_packed_format)
 #define INST(dst_type, src0_type, src1_type,                              \
              src0_vstride, src1_vstride, expected_result)                 \
       {                                                                   \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src0_type,                                   \
-         BRW_REGISTER_TYPE_##src1_type,                                   \
-         BRW_VERTICAL_STRIDE_##src0_vstride,                              \
-         BRW_VERTICAL_STRIDE_##src1_vstride,                              \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src0_type,                                   \
+         ELK_REGISTER_TYPE_##src1_type,                                   \
+         ELK_VERTICAL_STRIDE_##src0_vstride,                              \
+         ELK_VERTICAL_STRIDE_##src1_vstride,                              \
          expected_result,                                                 \
       }
 
@@ -2117,16 +2117,16 @@ TEST_P(validation_test, mixed_float_align16_math_packed_format)
    if (devinfo.ver < 9 || devinfo.ver >= 11)
       return;
 
-   brw_set_default_access_mode(p, BRW_ALIGN_16);
+   elk_set_default_access_mode(p, ELK_ALIGN_16);
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      gfx6_math(p, retype(g0, inst[i].dst_type),
-                   BRW_MATH_FUNCTION_POW,
+      elk_gfx6_math(p, retype(g0, inst[i].dst_type),
+                   ELK_MATH_FUNCTION_POW,
                    retype(g0, inst[i].src0_type),
                    retype(g0, inst[i].src1_type));
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src0_vstride);
-      brw_inst_set_src1_vstride(&devinfo, last_inst, inst[i].src1_vstride);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src0_vstride);
+      elk_inst_set_src1_vstride(&devinfo, last_inst, inst[i].src1_vstride);
 
       EXPECT_EQ(inst[i].expected_result, validate(p));
 
@@ -2137,34 +2137,34 @@ TEST_P(validation_test, mixed_float_align16_math_packed_format)
 TEST_P(validation_test, vector_immediate_destination_alignment)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src_type;
       unsigned subnr;
       unsigned exec_size;
       bool expected_result;
    } move[] = {
-      { BRW_REGISTER_TYPE_F, BRW_REGISTER_TYPE_VF,  0, BRW_EXECUTE_4, true  },
-      { BRW_REGISTER_TYPE_F, BRW_REGISTER_TYPE_VF, 16, BRW_EXECUTE_4, true  },
-      { BRW_REGISTER_TYPE_F, BRW_REGISTER_TYPE_VF,  1, BRW_EXECUTE_4, false },
+      { ELK_REGISTER_TYPE_F, ELK_REGISTER_TYPE_VF,  0, ELK_EXECUTE_4, true  },
+      { ELK_REGISTER_TYPE_F, ELK_REGISTER_TYPE_VF, 16, ELK_EXECUTE_4, true  },
+      { ELK_REGISTER_TYPE_F, ELK_REGISTER_TYPE_VF,  1, ELK_EXECUTE_4, false },
 
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_V,   0, BRW_EXECUTE_8, true  },
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_V,  16, BRW_EXECUTE_8, true  },
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_V,   1, BRW_EXECUTE_8, false },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_V,   0, ELK_EXECUTE_8, true  },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_V,  16, ELK_EXECUTE_8, true  },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_V,   1, ELK_EXECUTE_8, false },
 
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_UV,  0, BRW_EXECUTE_8, true  },
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_UV, 16, BRW_EXECUTE_8, true  },
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_UV,  1, BRW_EXECUTE_8, false },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_UV,  0, ELK_EXECUTE_8, true  },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_UV, 16, ELK_EXECUTE_8, true  },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_UV,  1, ELK_EXECUTE_8, false },
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(move); i++) {
       /* UV type is Gfx6+ */
       if (devinfo.ver < 6 &&
-          move[i].src_type == BRW_REGISTER_TYPE_UV)
+          move[i].src_type == ELK_REGISTER_TYPE_UV)
          continue;
 
-      brw_MOV(p, retype(g0, move[i].dst_type), retype(zero, move[i].src_type));
-      brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, move[i].subnr);
-      brw_inst_set_exec_size(&devinfo, last_inst, move[i].exec_size);
+      elk_MOV(p, retype(g0, move[i].dst_type), retype(zero, move[i].src_type));
+      elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, move[i].subnr);
+      elk_inst_set_exec_size(&devinfo, last_inst, move[i].exec_size);
 
       EXPECT_EQ(move[i].expected_result, validate(p));
 
@@ -2175,37 +2175,37 @@ TEST_P(validation_test, vector_immediate_destination_alignment)
 TEST_P(validation_test, vector_immediate_destination_stride)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src_type;
       unsigned stride;
       bool expected_result;
    } move[] = {
-      { BRW_REGISTER_TYPE_F, BRW_REGISTER_TYPE_VF, BRW_HORIZONTAL_STRIDE_1, true  },
-      { BRW_REGISTER_TYPE_F, BRW_REGISTER_TYPE_VF, BRW_HORIZONTAL_STRIDE_2, false },
-      { BRW_REGISTER_TYPE_D, BRW_REGISTER_TYPE_VF, BRW_HORIZONTAL_STRIDE_1, true  },
-      { BRW_REGISTER_TYPE_D, BRW_REGISTER_TYPE_VF, BRW_HORIZONTAL_STRIDE_2, false },
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_VF, BRW_HORIZONTAL_STRIDE_2, true  },
-      { BRW_REGISTER_TYPE_B, BRW_REGISTER_TYPE_VF, BRW_HORIZONTAL_STRIDE_4, true  },
+      { ELK_REGISTER_TYPE_F, ELK_REGISTER_TYPE_VF, ELK_HORIZONTAL_STRIDE_1, true  },
+      { ELK_REGISTER_TYPE_F, ELK_REGISTER_TYPE_VF, ELK_HORIZONTAL_STRIDE_2, false },
+      { ELK_REGISTER_TYPE_D, ELK_REGISTER_TYPE_VF, ELK_HORIZONTAL_STRIDE_1, true  },
+      { ELK_REGISTER_TYPE_D, ELK_REGISTER_TYPE_VF, ELK_HORIZONTAL_STRIDE_2, false },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_VF, ELK_HORIZONTAL_STRIDE_2, true  },
+      { ELK_REGISTER_TYPE_B, ELK_REGISTER_TYPE_VF, ELK_HORIZONTAL_STRIDE_4, true  },
 
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_V,  BRW_HORIZONTAL_STRIDE_1, true  },
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_V,  BRW_HORIZONTAL_STRIDE_2, false },
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_V,  BRW_HORIZONTAL_STRIDE_4, false },
-      { BRW_REGISTER_TYPE_B, BRW_REGISTER_TYPE_V,  BRW_HORIZONTAL_STRIDE_2, true  },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_V,  ELK_HORIZONTAL_STRIDE_1, true  },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_V,  ELK_HORIZONTAL_STRIDE_2, false },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_V,  ELK_HORIZONTAL_STRIDE_4, false },
+      { ELK_REGISTER_TYPE_B, ELK_REGISTER_TYPE_V,  ELK_HORIZONTAL_STRIDE_2, true  },
 
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_UV, BRW_HORIZONTAL_STRIDE_1, true  },
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_UV, BRW_HORIZONTAL_STRIDE_2, false },
-      { BRW_REGISTER_TYPE_W, BRW_REGISTER_TYPE_UV, BRW_HORIZONTAL_STRIDE_4, false },
-      { BRW_REGISTER_TYPE_B, BRW_REGISTER_TYPE_UV, BRW_HORIZONTAL_STRIDE_2, true  },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_UV, ELK_HORIZONTAL_STRIDE_1, true  },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_UV, ELK_HORIZONTAL_STRIDE_2, false },
+      { ELK_REGISTER_TYPE_W, ELK_REGISTER_TYPE_UV, ELK_HORIZONTAL_STRIDE_4, false },
+      { ELK_REGISTER_TYPE_B, ELK_REGISTER_TYPE_UV, ELK_HORIZONTAL_STRIDE_2, true  },
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(move); i++) {
       /* UV type is Gfx6+ */
       if (devinfo.ver < 6 &&
-          move[i].src_type == BRW_REGISTER_TYPE_UV)
+          move[i].src_type == ELK_REGISTER_TYPE_UV)
          continue;
 
-      brw_MOV(p, retype(g0, move[i].dst_type), retype(zero, move[i].src_type));
-      brw_inst_set_dst_hstride(&devinfo, last_inst, move[i].stride);
+      elk_MOV(p, retype(g0, move[i].dst_type), retype(zero, move[i].src_type));
+      elk_inst_set_dst_hstride(&devinfo, last_inst, move[i].stride);
 
       EXPECT_EQ(move[i].expected_result, validate(p));
 
@@ -2216,14 +2216,14 @@ TEST_P(validation_test, vector_immediate_destination_stride)
 TEST_P(validation_test, qword_low_power_align1_regioning_restrictions)
 {
    static const struct {
-      enum opcode opcode;
+      enum elk_opcode opcode;
       unsigned exec_size;
 
-      enum brw_reg_type dst_type;
+      enum elk_reg_type dst_type;
       unsigned dst_subreg;
       unsigned dst_stride;
 
-      enum brw_reg_type src_type;
+      enum elk_reg_type src_type;
       unsigned src_subreg;
       unsigned src_vstride;
       unsigned src_width;
@@ -2234,16 +2234,16 @@ TEST_P(validation_test, qword_low_power_align1_regioning_restrictions)
 #define INST(opcode, exec_size, dst_type, dst_subreg, dst_stride, src_type,    \
              src_subreg, src_vstride, src_width, src_hstride, expected_result) \
       {                                                                        \
-         BRW_OPCODE_##opcode,                                                  \
-         BRW_EXECUTE_##exec_size,                                              \
-         BRW_REGISTER_TYPE_##dst_type,                                         \
+         ELK_OPCODE_##opcode,                                                  \
+         ELK_EXECUTE_##exec_size,                                              \
+         ELK_REGISTER_TYPE_##dst_type,                                         \
          dst_subreg,                                                           \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
-         BRW_REGISTER_TYPE_##src_type,                                         \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                                   \
+         ELK_REGISTER_TYPE_##src_type,                                         \
          src_subreg,                                                           \
-         BRW_VERTICAL_STRIDE_##src_vstride,                                    \
-         BRW_WIDTH_##src_width,                                                \
-         BRW_HORIZONTAL_STRIDE_##src_hstride,                                  \
+         ELK_VERTICAL_STRIDE_##src_vstride,                                    \
+         ELK_WIDTH_##src_width,                                                \
+         ELK_HORIZONTAL_STRIDE_##src_hstride,                                  \
          expected_result,                                                      \
       }
 
@@ -2360,36 +2360,36 @@ TEST_P(validation_test, qword_low_power_align1_regioning_restrictions)
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
       if (!devinfo.has_64bit_float &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_DF ||
-           inst[i].src_type == BRW_REGISTER_TYPE_DF))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_DF ||
+           inst[i].src_type == ELK_REGISTER_TYPE_DF))
          continue;
 
       if (!devinfo.has_64bit_int &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].dst_type == BRW_REGISTER_TYPE_UQ ||
-           inst[i].src_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].src_type == BRW_REGISTER_TYPE_UQ))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].dst_type == ELK_REGISTER_TYPE_UQ ||
+           inst[i].src_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].src_type == ELK_REGISTER_TYPE_UQ))
          continue;
 
-      if (inst[i].opcode == BRW_OPCODE_MOV) {
-         brw_MOV(p, retype(g0, inst[i].dst_type),
+      if (inst[i].opcode == ELK_OPCODE_MOV) {
+         elk_MOV(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].src_type));
       } else {
-         assert(inst[i].opcode == BRW_OPCODE_MUL);
-         brw_MUL(p, retype(g0, inst[i].dst_type),
+         assert(inst[i].opcode == ELK_OPCODE_MUL);
+         elk_MUL(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].src_type),
                     retype(zero, inst[i].src_type));
       }
-      brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
+      elk_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
 
-      brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, inst[i].dst_subreg);
-      brw_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, inst[i].src_subreg);
+      elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, inst[i].dst_subreg);
+      elk_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, inst[i].src_subreg);
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src_vstride);
-      brw_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
-      brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src_vstride);
+      elk_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
+      elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
 
       if (devinfo.platform == INTEL_PLATFORM_CHV ||
           intel_device_info_is_9lp(&devinfo)) {
@@ -2405,14 +2405,14 @@ TEST_P(validation_test, qword_low_power_align1_regioning_restrictions)
 TEST_P(validation_test, qword_low_power_no_indirect_addressing)
 {
    static const struct {
-      enum opcode opcode;
+      enum elk_opcode opcode;
       unsigned exec_size;
 
-      enum brw_reg_type dst_type;
+      enum elk_reg_type dst_type;
       bool dst_is_indirect;
       unsigned dst_stride;
 
-      enum brw_reg_type src_type;
+      enum elk_reg_type src_type;
       bool src_is_indirect;
       unsigned src_vstride;
       unsigned src_width;
@@ -2424,16 +2424,16 @@ TEST_P(validation_test, qword_low_power_no_indirect_addressing)
              src_type, src_is_indirect, src_vstride, src_width, src_hstride,   \
              expected_result)                                                  \
       {                                                                        \
-         BRW_OPCODE_##opcode,                                                  \
-         BRW_EXECUTE_##exec_size,                                              \
-         BRW_REGISTER_TYPE_##dst_type,                                         \
+         ELK_OPCODE_##opcode,                                                  \
+         ELK_EXECUTE_##exec_size,                                              \
+         ELK_REGISTER_TYPE_##dst_type,                                         \
          dst_is_indirect,                                                      \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
-         BRW_REGISTER_TYPE_##src_type,                                         \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                                   \
+         ELK_REGISTER_TYPE_##src_type,                                         \
          src_is_indirect,                                                      \
-         BRW_VERTICAL_STRIDE_##src_vstride,                                    \
-         BRW_WIDTH_##src_width,                                                \
-         BRW_HORIZONTAL_STRIDE_##src_hstride,                                  \
+         ELK_VERTICAL_STRIDE_##src_vstride,                                    \
+         ELK_WIDTH_##src_width,                                                \
+         ELK_HORIZONTAL_STRIDE_##src_hstride,                                  \
          expected_result,                                                      \
       }
 
@@ -2493,36 +2493,36 @@ TEST_P(validation_test, qword_low_power_no_indirect_addressing)
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
       if (!devinfo.has_64bit_float &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_DF ||
-           inst[i].src_type == BRW_REGISTER_TYPE_DF))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_DF ||
+           inst[i].src_type == ELK_REGISTER_TYPE_DF))
          continue;
 
       if (!devinfo.has_64bit_int &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].dst_type == BRW_REGISTER_TYPE_UQ ||
-           inst[i].src_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].src_type == BRW_REGISTER_TYPE_UQ))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].dst_type == ELK_REGISTER_TYPE_UQ ||
+           inst[i].src_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].src_type == ELK_REGISTER_TYPE_UQ))
          continue;
 
-      if (inst[i].opcode == BRW_OPCODE_MOV) {
-         brw_MOV(p, retype(g0, inst[i].dst_type),
+      if (inst[i].opcode == ELK_OPCODE_MOV) {
+         elk_MOV(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].src_type));
       } else {
-         assert(inst[i].opcode == BRW_OPCODE_MUL);
-         brw_MUL(p, retype(g0, inst[i].dst_type),
+         assert(inst[i].opcode == ELK_OPCODE_MUL);
+         elk_MUL(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].src_type),
                     retype(zero, inst[i].src_type));
       }
-      brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
+      elk_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
 
-      brw_inst_set_dst_address_mode(&devinfo, last_inst, inst[i].dst_is_indirect);
-      brw_inst_set_src0_address_mode(&devinfo, last_inst, inst[i].src_is_indirect);
+      elk_inst_set_dst_address_mode(&devinfo, last_inst, inst[i].dst_is_indirect);
+      elk_inst_set_src0_address_mode(&devinfo, last_inst, inst[i].src_is_indirect);
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src_vstride);
-      brw_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
-      brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src_vstride);
+      elk_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
+      elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
 
       if (devinfo.platform == INTEL_PLATFORM_CHV ||
           intel_device_info_is_9lp(&devinfo)) {
@@ -2538,15 +2538,15 @@ TEST_P(validation_test, qword_low_power_no_indirect_addressing)
 TEST_P(validation_test, qword_low_power_no_64bit_arf)
 {
    static const struct {
-      enum opcode opcode;
+      enum elk_opcode opcode;
       unsigned exec_size;
 
-      struct brw_reg dst;
-      enum brw_reg_type dst_type;
+      struct elk_reg dst;
+      enum elk_reg_type dst_type;
       unsigned dst_stride;
 
-      struct brw_reg src;
-      enum brw_reg_type src_type;
+      struct elk_reg src;
+      enum elk_reg_type src_type;
       unsigned src_vstride;
       unsigned src_width;
       unsigned src_hstride;
@@ -2558,16 +2558,16 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
              src, src_type, src_vstride, src_width, src_hstride,               \
              acc_wr, expected_result)                                          \
       {                                                                        \
-         BRW_OPCODE_##opcode,                                                  \
-         BRW_EXECUTE_##exec_size,                                              \
+         ELK_OPCODE_##opcode,                                                  \
+         ELK_EXECUTE_##exec_size,                                              \
          dst,                                                                  \
-         BRW_REGISTER_TYPE_##dst_type,                                         \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
+         ELK_REGISTER_TYPE_##dst_type,                                         \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                                   \
          src,                                                                  \
-         BRW_REGISTER_TYPE_##src_type,                                         \
-         BRW_VERTICAL_STRIDE_##src_vstride,                                    \
-         BRW_WIDTH_##src_width,                                                \
-         BRW_HORIZONTAL_STRIDE_##src_hstride,                                  \
+         ELK_REGISTER_TYPE_##src_type,                                         \
+         ELK_VERTICAL_STRIDE_##src_vstride,                                    \
+         ELK_WIDTH_##src_width,                                                \
+         ELK_HORIZONTAL_STRIDE_##src_hstride,                                  \
          acc_wr,                                                               \
          expected_result,                                                      \
       }
@@ -2642,35 +2642,35 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
       if (!devinfo.has_64bit_float &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_DF ||
-           inst[i].src_type == BRW_REGISTER_TYPE_DF))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_DF ||
+           inst[i].src_type == ELK_REGISTER_TYPE_DF))
          continue;
 
       if (!devinfo.has_64bit_int &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].dst_type == BRW_REGISTER_TYPE_UQ ||
-           inst[i].src_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].src_type == BRW_REGISTER_TYPE_UQ))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].dst_type == ELK_REGISTER_TYPE_UQ ||
+           inst[i].src_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].src_type == ELK_REGISTER_TYPE_UQ))
          continue;
 
-      if (inst[i].opcode == BRW_OPCODE_MOV) {
-         brw_MOV(p, retype(inst[i].dst, inst[i].dst_type),
+      if (inst[i].opcode == ELK_OPCODE_MOV) {
+         elk_MOV(p, retype(inst[i].dst, inst[i].dst_type),
                     retype(inst[i].src, inst[i].src_type));
       } else {
-         assert(inst[i].opcode == BRW_OPCODE_MUL);
-         brw_MUL(p, retype(inst[i].dst, inst[i].dst_type),
+         assert(inst[i].opcode == ELK_OPCODE_MUL);
+         elk_MUL(p, retype(inst[i].dst, inst[i].dst_type),
                     retype(inst[i].src, inst[i].src_type),
                     retype(zero, inst[i].src_type));
-         brw_inst_set_opcode(&isa, last_inst, inst[i].opcode);
+         elk_inst_set_opcode(&isa, last_inst, inst[i].opcode);
       }
-      brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
-      brw_inst_set_acc_wr_control(&devinfo, last_inst, inst[i].acc_wr);
+      elk_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
+      elk_inst_set_acc_wr_control(&devinfo, last_inst, inst[i].acc_wr);
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src_vstride);
-      brw_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
-      brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src_vstride);
+      elk_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
+      elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
 
       /* Note: The Broadwell PRM also lists the restriction that destination
        * of DWord multiplication cannot be the accumulator.
@@ -2678,9 +2678,9 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
       if (devinfo.platform == INTEL_PLATFORM_CHV ||
           intel_device_info_is_9lp(&devinfo) ||
           (devinfo.ver == 8 &&
-           inst[i].opcode == BRW_OPCODE_MUL &&
-           brw_inst_dst_reg_file(&devinfo, last_inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
-           brw_inst_dst_da_reg_nr(&devinfo, last_inst) != BRW_ARF_NULL)) {
+           inst[i].opcode == ELK_OPCODE_MUL &&
+           elk_inst_dst_reg_file(&devinfo, last_inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
+           elk_inst_dst_da_reg_nr(&devinfo, last_inst) != ELK_ARF_NULL)) {
          EXPECT_EQ(inst[i].expected_result, validate(p));
       } else {
          EXPECT_TRUE(validate(p));
@@ -2693,9 +2693,9 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
       return;
 
    /* MAC implicitly reads the accumulator */
-   brw_MAC(p, retype(g0, BRW_REGISTER_TYPE_DF),
-              retype(stride(g0, 4, 4, 1), BRW_REGISTER_TYPE_DF),
-              retype(stride(g0, 4, 4, 1), BRW_REGISTER_TYPE_DF));
+   elk_MAC(p, retype(g0, ELK_REGISTER_TYPE_DF),
+              retype(stride(g0, 4, 4, 1), ELK_REGISTER_TYPE_DF),
+              retype(stride(g0, 4, 4, 1), ELK_REGISTER_TYPE_DF));
    if (devinfo.platform == INTEL_PLATFORM_CHV ||
        intel_device_info_is_9lp(&devinfo)) {
       EXPECT_FALSE(validate(p));
@@ -2707,20 +2707,20 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
 TEST_P(validation_test, align16_64_bit_integer)
 {
    static const struct {
-      enum opcode opcode;
+      enum elk_opcode opcode;
       unsigned exec_size;
 
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src_type;
 
       bool expected_result;
    } inst[] = {
 #define INST(opcode, exec_size, dst_type, src_type, expected_result)           \
       {                                                                        \
-         BRW_OPCODE_##opcode,                                                  \
-         BRW_EXECUTE_##exec_size,                                              \
-         BRW_REGISTER_TYPE_##dst_type,                                         \
-         BRW_REGISTER_TYPE_##src_type,                                         \
+         ELK_OPCODE_##opcode,                                                  \
+         ELK_EXECUTE_##exec_size,                                              \
+         ELK_REGISTER_TYPE_##dst_type,                                         \
+         ELK_REGISTER_TYPE_##src_type,                                         \
          expected_result,                                                      \
       }
 
@@ -2758,19 +2758,19 @@ TEST_P(validation_test, align16_64_bit_integer)
    if (devinfo.ver >= 11)
       return;
 
-   brw_set_default_access_mode(p, BRW_ALIGN_16);
+   elk_set_default_access_mode(p, ELK_ALIGN_16);
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      if (inst[i].opcode == BRW_OPCODE_MOV) {
-         brw_MOV(p, retype(g0, inst[i].dst_type),
+      if (inst[i].opcode == ELK_OPCODE_MOV) {
+         elk_MOV(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].src_type));
       } else {
-         assert(inst[i].opcode == BRW_OPCODE_ADD);
-         brw_ADD(p, retype(g0, inst[i].dst_type),
+         assert(inst[i].opcode == ELK_OPCODE_ADD);
+         elk_ADD(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].src_type),
                     retype(g0, inst[i].src_type));
       }
-      brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
+      elk_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
 
       EXPECT_EQ(inst[i].expected_result, validate(p));
 
@@ -2781,13 +2781,13 @@ TEST_P(validation_test, align16_64_bit_integer)
 TEST_P(validation_test, qword_low_power_no_depctrl)
 {
    static const struct {
-      enum opcode opcode;
+      enum elk_opcode opcode;
       unsigned exec_size;
 
-      enum brw_reg_type dst_type;
+      enum elk_reg_type dst_type;
       unsigned dst_stride;
 
-      enum brw_reg_type src_type;
+      enum elk_reg_type src_type;
       unsigned src_vstride;
       unsigned src_width;
       unsigned src_hstride;
@@ -2801,14 +2801,14 @@ TEST_P(validation_test, qword_low_power_no_depctrl)
              src_type, src_vstride, src_width, src_hstride,                    \
              no_dd_check, no_dd_clear, expected_result)                        \
       {                                                                        \
-         BRW_OPCODE_##opcode,                                                  \
-         BRW_EXECUTE_##exec_size,                                              \
-         BRW_REGISTER_TYPE_##dst_type,                                         \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
-         BRW_REGISTER_TYPE_##src_type,                                         \
-         BRW_VERTICAL_STRIDE_##src_vstride,                                    \
-         BRW_WIDTH_##src_width,                                                \
-         BRW_HORIZONTAL_STRIDE_##src_hstride,                                  \
+         ELK_OPCODE_##opcode,                                                  \
+         ELK_EXECUTE_##exec_size,                                              \
+         ELK_REGISTER_TYPE_##dst_type,                                         \
+         ELK_HORIZONTAL_STRIDE_##dst_stride,                                   \
+         ELK_REGISTER_TYPE_##src_type,                                         \
+         ELK_VERTICAL_STRIDE_##src_vstride,                                    \
+         ELK_WIDTH_##src_width,                                                \
+         ELK_HORIZONTAL_STRIDE_##src_hstride,                                  \
          no_dd_check,                                                          \
          no_dd_clear,                                                          \
          expected_result,                                                      \
@@ -2868,36 +2868,36 @@ TEST_P(validation_test, qword_low_power_no_depctrl)
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
       if (!devinfo.has_64bit_float &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_DF ||
-           inst[i].src_type == BRW_REGISTER_TYPE_DF))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_DF ||
+           inst[i].src_type == ELK_REGISTER_TYPE_DF))
          continue;
 
       if (!devinfo.has_64bit_int &&
-          (inst[i].dst_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].dst_type == BRW_REGISTER_TYPE_UQ ||
-           inst[i].src_type == BRW_REGISTER_TYPE_Q ||
-           inst[i].src_type == BRW_REGISTER_TYPE_UQ))
+          (inst[i].dst_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].dst_type == ELK_REGISTER_TYPE_UQ ||
+           inst[i].src_type == ELK_REGISTER_TYPE_Q ||
+           inst[i].src_type == ELK_REGISTER_TYPE_UQ))
          continue;
 
-      if (inst[i].opcode == BRW_OPCODE_MOV) {
-         brw_MOV(p, retype(g0, inst[i].dst_type),
+      if (inst[i].opcode == ELK_OPCODE_MOV) {
+         elk_MOV(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].src_type));
       } else {
-         assert(inst[i].opcode == BRW_OPCODE_MUL);
-         brw_MUL(p, retype(g0, inst[i].dst_type),
+         assert(inst[i].opcode == ELK_OPCODE_MUL);
+         elk_MUL(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].src_type),
                     retype(zero, inst[i].src_type));
       }
-      brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
+      elk_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
-      brw_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src_vstride);
-      brw_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
-      brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
+      elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].src_vstride);
+      elk_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
+      elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
 
-      brw_inst_set_no_dd_check(&devinfo, last_inst, inst[i].no_dd_check);
-      brw_inst_set_no_dd_clear(&devinfo, last_inst, inst[i].no_dd_clear);
+      elk_inst_set_no_dd_check(&devinfo, last_inst, inst[i].no_dd_check);
+      elk_inst_set_no_dd_clear(&devinfo, last_inst, inst[i].no_dd_clear);
 
       if (devinfo.platform == INTEL_PLATFORM_CHV ||
           intel_device_info_is_9lp(&devinfo)) {
@@ -2913,12 +2913,12 @@ TEST_P(validation_test, qword_low_power_no_depctrl)
 TEST_P(validation_test, gfx11_no_byte_src_1_2)
 {
    static const struct {
-      enum opcode opcode;
+      enum elk_opcode opcode;
       unsigned access_mode;
 
-      enum brw_reg_type dst_type;
+      enum elk_reg_type dst_type;
       struct {
-         enum brw_reg_type type;
+         enum elk_reg_type type;
          unsigned vstride;
          unsigned width;
          unsigned hstride;
@@ -2933,24 +2933,24 @@ TEST_P(validation_test, gfx11_no_byte_src_1_2)
              src2_type,                                                 \
              gfx_ver, expected_result)                                  \
       {                                                                 \
-         BRW_OPCODE_##opcode,                                           \
-         BRW_ALIGN_##access_mode,                                       \
-         BRW_REGISTER_TYPE_##dst_type,                                  \
+         ELK_OPCODE_##opcode,                                           \
+         ELK_ALIGN_##access_mode,                                       \
+         ELK_REGISTER_TYPE_##dst_type,                                  \
          {                                                              \
             {                                                           \
-               BRW_REGISTER_TYPE_##src0_type,                           \
-               BRW_VERTICAL_STRIDE_##src0_vstride,                      \
-               BRW_WIDTH_##src0_width,                                  \
-               BRW_HORIZONTAL_STRIDE_##src0_hstride,                    \
+               ELK_REGISTER_TYPE_##src0_type,                           \
+               ELK_VERTICAL_STRIDE_##src0_vstride,                      \
+               ELK_WIDTH_##src0_width,                                  \
+               ELK_HORIZONTAL_STRIDE_##src0_hstride,                    \
             },                                                          \
             {                                                           \
-               BRW_REGISTER_TYPE_##src1_type,                           \
-               BRW_VERTICAL_STRIDE_##src1_vstride,                      \
-               BRW_WIDTH_##src1_width,                                  \
-               BRW_HORIZONTAL_STRIDE_##src1_hstride,                    \
+               ELK_REGISTER_TYPE_##src1_type,                           \
+               ELK_VERTICAL_STRIDE_##src1_vstride,                      \
+               ELK_WIDTH_##src1_width,                                  \
+               ELK_HORIZONTAL_STRIDE_##src1_hstride,                    \
             },                                                          \
             {                                                           \
-               BRW_REGISTER_TYPE_##src2_type,                           \
+               ELK_REGISTER_TYPE_##src2_type,                           \
             },                                                          \
          },                                                             \
          gfx_ver,                                                       \
@@ -2981,49 +2981,49 @@ TEST_P(validation_test, gfx11_no_byte_src_1_2)
       if (devinfo.ver != inst[i].gfx_ver)
          continue;
 
-      brw_push_insn_state(p);
+      elk_push_insn_state(p);
 
-      brw_set_default_exec_size(p, BRW_EXECUTE_8);
-      brw_set_default_access_mode(p, inst[i].access_mode);
+      elk_set_default_exec_size(p, ELK_EXECUTE_8);
+      elk_set_default_access_mode(p, inst[i].access_mode);
 
       switch (inst[i].opcode) {
-      case BRW_OPCODE_MOV:
-         brw_MOV(p, retype(g0, inst[i].dst_type),
+      case ELK_OPCODE_MOV:
+         elk_MOV(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].srcs[0].type));
-         brw_inst_set_src0_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
-         brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
+         elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
+         elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
          break;
-      case BRW_OPCODE_ADD:
-         brw_ADD(p, retype(g0, inst[i].dst_type),
+      case ELK_OPCODE_ADD:
+         elk_ADD(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].srcs[0].type),
                     retype(g0, inst[i].srcs[1].type));
-         brw_inst_set_src0_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
-         brw_inst_set_src0_width(&devinfo, last_inst, inst[i].srcs[0].width);
-         brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
-         brw_inst_set_src1_vstride(&devinfo, last_inst, inst[i].srcs[1].vstride);
-         brw_inst_set_src1_width(&devinfo, last_inst, inst[i].srcs[1].width);
-         brw_inst_set_src1_hstride(&devinfo, last_inst, inst[i].srcs[1].hstride);
+         elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
+         elk_inst_set_src0_width(&devinfo, last_inst, inst[i].srcs[0].width);
+         elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
+         elk_inst_set_src1_vstride(&devinfo, last_inst, inst[i].srcs[1].vstride);
+         elk_inst_set_src1_width(&devinfo, last_inst, inst[i].srcs[1].width);
+         elk_inst_set_src1_hstride(&devinfo, last_inst, inst[i].srcs[1].hstride);
          break;
-      case BRW_OPCODE_MAD:
-         brw_MAD(p, retype(g0, inst[i].dst_type),
+      case ELK_OPCODE_MAD:
+         elk_MAD(p, retype(g0, inst[i].dst_type),
                     retype(g0, inst[i].srcs[0].type),
                     retype(g0, inst[i].srcs[1].type),
                     retype(g0, inst[i].srcs[2].type));
-         brw_inst_set_3src_a1_src0_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
-         brw_inst_set_3src_a1_src0_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
-         brw_inst_set_3src_a1_src1_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
-         brw_inst_set_3src_a1_src1_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
+         elk_inst_set_3src_a1_src0_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
+         elk_inst_set_3src_a1_src0_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
+         elk_inst_set_3src_a1_src1_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
+         elk_inst_set_3src_a1_src1_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
          break;
       default:
          unreachable("invalid opcode");
       }
 
-      brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
+      elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
-      brw_inst_set_src0_width(&devinfo, last_inst, inst[i].srcs[0].width);
-      brw_inst_set_src1_width(&devinfo, last_inst, inst[i].srcs[1].width);
+      elk_inst_set_src0_width(&devinfo, last_inst, inst[i].srcs[0].width);
+      elk_inst_set_src1_width(&devinfo, last_inst, inst[i].srcs[1].width);
 
-      brw_pop_insn_state(p);
+      elk_pop_insn_state(p);
 
       EXPECT_EQ(inst[i].expected_result, validate(p));
 
@@ -3034,18 +3034,18 @@ TEST_P(validation_test, gfx11_no_byte_src_1_2)
 TEST_P(validation_test, add3_source_types)
 {
    static const struct {
-      enum brw_reg_type dst_type;
-      enum brw_reg_type src0_type;
-      enum brw_reg_type src1_type;
-      enum brw_reg_type src2_type;
+      enum elk_reg_type dst_type;
+      enum elk_reg_type src0_type;
+      enum elk_reg_type src1_type;
+      enum elk_reg_type src2_type;
       bool expected_result;
    } inst[] = {
 #define INST(dst_type, src0_type, src1_type, src2_type, expected_result)  \
       {                                                                   \
-         BRW_REGISTER_TYPE_##dst_type,                                    \
-         BRW_REGISTER_TYPE_##src0_type,                                   \
-         BRW_REGISTER_TYPE_##src1_type,                                   \
-         BRW_REGISTER_TYPE_##src2_type,                                   \
+         ELK_REGISTER_TYPE_##dst_type,                                    \
+         ELK_REGISTER_TYPE_##src0_type,                                   \
+         ELK_REGISTER_TYPE_##src1_type,                                   \
+         ELK_REGISTER_TYPE_##src2_type,                                   \
          expected_result,                                                 \
       }
 
@@ -3071,7 +3071,7 @@ TEST_P(validation_test, add3_source_types)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      brw_ADD3(p,
+      elk_ADD3(p,
                retype(g0, inst[i].dst_type),
                retype(g0, inst[i].src0_type),
                retype(g0, inst[i].src1_type),
@@ -3086,15 +3086,15 @@ TEST_P(validation_test, add3_source_types)
 TEST_P(validation_test, add3_immediate_types)
 {
    static const struct {
-      enum brw_reg_type reg_type;
-      enum brw_reg_type imm_type;
+      enum elk_reg_type reg_type;
+      enum elk_reg_type imm_type;
       unsigned imm_src;
       bool expected_result;
    } inst[] = {
 #define INST(reg_type, imm_type, imm_src, expected_result)                \
       {                                                                   \
-         BRW_REGISTER_TYPE_##reg_type,                                    \
-         BRW_REGISTER_TYPE_##imm_type,                                    \
+         ELK_REGISTER_TYPE_##reg_type,                                    \
+         ELK_REGISTER_TYPE_##imm_type,                                    \
          imm_src,                                                         \
          expected_result,                                                 \
       }
@@ -3124,12 +3124,12 @@ TEST_P(validation_test, add3_immediate_types)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      brw_ADD3(p,
+      elk_ADD3(p,
                retype(g0, inst[i].reg_type),
-               inst[i].imm_src == 0 ? retype(brw_imm_d(0x1234), inst[i].imm_type)
+               inst[i].imm_src == 0 ? retype(elk_imm_d(0x1234), inst[i].imm_type)
                                     : retype(g0, inst[i].reg_type),
                retype(g0, inst[i].reg_type),
-               inst[i].imm_src == 2 ? retype(brw_imm_d(0x2143), inst[i].imm_type)
+               inst[i].imm_src == 2 ? retype(elk_imm_d(0x2143), inst[i].imm_type)
                                     : retype(g0, inst[i].reg_type));
 
       EXPECT_EQ(inst[i].expected_result, validate(p));
@@ -3143,23 +3143,23 @@ TEST_P(validation_test, dpas_sdepth)
    if (devinfo.verx10 < 125)
       return;
 
-   static const enum gfx12_systolic_depth depth[] = {
-      BRW_SYSTOLIC_DEPTH_16,
-      BRW_SYSTOLIC_DEPTH_2,
-      BRW_SYSTOLIC_DEPTH_4,
-      BRW_SYSTOLIC_DEPTH_8,
+   static const enum elk_gfx12_systolic_depth depth[] = {
+      ELK_SYSTOLIC_DEPTH_16,
+      ELK_SYSTOLIC_DEPTH_2,
+      ELK_SYSTOLIC_DEPTH_4,
+      ELK_SYSTOLIC_DEPTH_8,
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(depth); i++) {
-      brw_DPAS(p,
+      elk_DPAS(p,
                depth[i],
                8,
-               retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_F),
+               retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_F),
                null,
-               retype(brw_vec8_grf(16, 0), BRW_REGISTER_TYPE_HF),
-               retype(brw_vec8_grf(32, 0), BRW_REGISTER_TYPE_HF));
+               retype(elk_vec8_grf(16, 0), ELK_REGISTER_TYPE_HF),
+               retype(elk_vec8_grf(32, 0), ELK_REGISTER_TYPE_HF));
 
-      const bool expected_result = depth[i] == BRW_SYSTOLIC_DEPTH_8;
+      const bool expected_result = depth[i] == ELK_SYSTOLIC_DEPTH_8;
 
       EXPECT_EQ(expected_result, validate(p)) <<
          "Encoded systolic depth value is: " << depth[i];
@@ -3173,27 +3173,27 @@ TEST_P(validation_test, dpas_exec_size)
    if (devinfo.verx10 < 125)
       return;
 
-   static const enum brw_execution_size test_vectors[] = {
-      BRW_EXECUTE_1,
-      BRW_EXECUTE_2,
-      BRW_EXECUTE_4,
-      BRW_EXECUTE_8,
-      BRW_EXECUTE_16,
-      BRW_EXECUTE_32,
+   static const enum elk_execution_size test_vectors[] = {
+      ELK_EXECUTE_1,
+      ELK_EXECUTE_2,
+      ELK_EXECUTE_4,
+      ELK_EXECUTE_8,
+      ELK_EXECUTE_16,
+      ELK_EXECUTE_32,
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
-      brw_set_default_exec_size(p, test_vectors[i]);
+      elk_set_default_exec_size(p, test_vectors[i]);
 
-      brw_DPAS(p,
-               BRW_SYSTOLIC_DEPTH_8,
+      elk_DPAS(p,
+               ELK_SYSTOLIC_DEPTH_8,
                8,
-               retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_F),
+               retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_F),
                null,
-               retype(brw_vec8_grf(16, 0), BRW_REGISTER_TYPE_HF),
-               retype(brw_vec8_grf(32, 0), BRW_REGISTER_TYPE_HF));
+               retype(elk_vec8_grf(16, 0), ELK_REGISTER_TYPE_HF),
+               retype(elk_vec8_grf(32, 0), ELK_REGISTER_TYPE_HF));
 
-      const bool expected_result = test_vectors[i] == BRW_EXECUTE_8;
+      const bool expected_result = test_vectors[i] == ELK_EXECUTE_8;
 
       EXPECT_EQ(expected_result, validate(p)) <<
          "Exec size = " << (1u << test_vectors[i]);
@@ -3201,7 +3201,7 @@ TEST_P(validation_test, dpas_exec_size)
       clear_instructions(p);
    }
 
-   brw_set_default_exec_size(p, BRW_EXECUTE_8);
+   elk_set_default_exec_size(p, ELK_EXECUTE_8);
 }
 
 TEST_P(validation_test, dpas_sub_byte_precision)
@@ -3210,114 +3210,114 @@ TEST_P(validation_test, dpas_sub_byte_precision)
       return;
 
    static const struct {
-      brw_reg_type dst_type;
-      brw_reg_type src0_type;
-      brw_reg_type src1_type;
+      elk_reg_type dst_type;
+      elk_reg_type src0_type;
+      elk_reg_type src1_type;
       enum gfx12_sub_byte_precision src1_prec;
-      brw_reg_type src2_type;
+      elk_reg_type src2_type;
       enum gfx12_sub_byte_precision src2_prec;
       bool expected_result;
    } test_vectors[] = {
       {
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
          true,
       },
       {
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_4BIT,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_4BIT,
          false,
       },
       {
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_2BIT,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_2BIT,
          false,
       },
       {
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_4BIT,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_4BIT,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
          false,
       },
       {
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_F,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_2BIT,
-         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_F,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_2BIT,
+         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
          false,
       },
 
       {
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
          true,
       },
       {
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_4BIT,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_4BIT,
          true,
       },
       {
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_2BIT,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_2BIT,
          true,
       },
       {
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
-         BRW_REGISTER_TYPE_UB, (enum gfx12_sub_byte_precision) 3,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_UB, (enum gfx12_sub_byte_precision) 3,
          false,
       },
       {
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_4BIT,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_4BIT,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
          true,
       },
       {
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_2BIT,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_2BIT,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
          true,
       },
       {
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UD,
-         BRW_REGISTER_TYPE_UB, (enum gfx12_sub_byte_precision) 3,
-         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UD,
+         ELK_REGISTER_TYPE_UB, (enum gfx12_sub_byte_precision) 3,
+         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
          false,
       },
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
-      brw_inst *inst =
-         brw_DPAS(p,
-                  BRW_SYSTOLIC_DEPTH_8,
+      elk_inst *inst =
+         elk_DPAS(p,
+                  ELK_SYSTOLIC_DEPTH_8,
                   8,
-                  retype(brw_vec8_grf(0, 0), test_vectors[i].dst_type),
-                  retype(brw_vec8_grf(16, 0), test_vectors[i].src0_type),
-                  retype(brw_vec8_grf(32, 0), test_vectors[i].src1_type),
-                  retype(brw_vec8_grf(48, 0), test_vectors[i].src2_type));
+                  retype(elk_vec8_grf(0, 0), test_vectors[i].dst_type),
+                  retype(elk_vec8_grf(16, 0), test_vectors[i].src0_type),
+                  retype(elk_vec8_grf(32, 0), test_vectors[i].src1_type),
+                  retype(elk_vec8_grf(48, 0), test_vectors[i].src2_type));
 
-      brw_inst_set_dpas_3src_src1_subbyte(&devinfo, inst,
+      elk_inst_set_dpas_3src_src1_subbyte(&devinfo, inst,
                                           test_vectors[i].src1_prec);
-      brw_inst_set_dpas_3src_src2_subbyte(&devinfo, inst,
+      elk_inst_set_dpas_3src_src2_subbyte(&devinfo, inst,
                                           test_vectors[i].src2_prec);
 
       EXPECT_EQ(test_vectors[i].expected_result, validate(p)) <<
@@ -3333,15 +3333,15 @@ TEST_P(validation_test, dpas_types)
       return;
 
 #define TV(a, b, c, d, r)                              \
-   { BRW_REGISTER_TYPE_ ## a, BRW_REGISTER_TYPE_ ## b, \
-     BRW_REGISTER_TYPE_ ## c, BRW_REGISTER_TYPE_ ## d, \
+   { ELK_REGISTER_TYPE_ ## a, ELK_REGISTER_TYPE_ ## b, \
+     ELK_REGISTER_TYPE_ ## c, ELK_REGISTER_TYPE_ ## d, \
      r }
 
    static const struct {
-      brw_reg_type dst_type;
-      brw_reg_type src0_type;
-      brw_reg_type src1_type;
-      brw_reg_type src2_type;
+      elk_reg_type dst_type;
+      elk_reg_type src0_type;
+      elk_reg_type src1_type;
+      elk_reg_type src2_type;
       bool expected_result;
    } test_vectors[] = {
       TV( F,  F, HF, HF, true),
@@ -3400,13 +3400,13 @@ TEST_P(validation_test, dpas_types)
 #undef TV
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
-      brw_DPAS(p,
-               BRW_SYSTOLIC_DEPTH_8,
+      elk_DPAS(p,
+               ELK_SYSTOLIC_DEPTH_8,
                8,
-               retype(brw_vec8_grf(0, 0), test_vectors[i].dst_type),
-               retype(brw_vec8_grf(16, 0), test_vectors[i].src0_type),
-               retype(brw_vec8_grf(32, 0), test_vectors[i].src1_type),
-               retype(brw_vec8_grf(48, 0), test_vectors[i].src2_type));
+               retype(elk_vec8_grf(0, 0), test_vectors[i].dst_type),
+               retype(elk_vec8_grf(16, 0), test_vectors[i].src0_type),
+               retype(elk_vec8_grf(32, 0), test_vectors[i].src1_type),
+               retype(elk_vec8_grf(48, 0), test_vectors[i].src2_type));
 
       EXPECT_EQ(test_vectors[i].expected_result, validate(p)) <<
          "test vector index = " << i;
@@ -3421,17 +3421,17 @@ TEST_P(validation_test, dpas_src_subreg_nr)
       return;
 
 #define TV(dt, od, t0, o0, t1, o1, o2, r) {  \
-      BRW_REGISTER_TYPE_ ## dt, od,          \
-      BRW_REGISTER_TYPE_ ## t0, o0,          \
-      BRW_REGISTER_TYPE_ ## t1, o1, o2,      \
+      ELK_REGISTER_TYPE_ ## dt, od,          \
+      ELK_REGISTER_TYPE_ ## t0, o0,          \
+      ELK_REGISTER_TYPE_ ## t1, o1, o2,      \
       r }
 
    static const struct {
-      brw_reg_type dst_type;
+      elk_reg_type dst_type;
       unsigned dst_subnr;
-      brw_reg_type src0_type;
+      elk_reg_type src0_type;
       unsigned src0_subnr;
-      brw_reg_type src1_src2_type;
+      elk_reg_type src1_src2_type;
       unsigned src1_subnr;
       unsigned src2_subnr;
       bool expected_result;
@@ -3491,7 +3491,7 @@ TEST_P(validation_test, dpas_src_subreg_nr)
 
       /* These meet the requirements, but they specify a subnr that is part of
        * the next register. It is currently not possible to specify a subnr of
-       * 32 for the B and UB values because brw_reg::subnr is only 5 bits.
+       * 32 for the B and UB values because elk_reg::subnr is only 5 bits.
        */
       TV( F, 16,  F,  0, HF,  0,  0, false),
       TV( F,  0,  F, 16, HF,  0,  0, false),
@@ -3504,14 +3504,14 @@ TEST_P(validation_test, dpas_src_subreg_nr)
 #undef TV
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
-      struct brw_reg dst =
-         retype(brw_vec8_grf( 0, 0), test_vectors[i].dst_type);
-      struct brw_reg src0 =
-         retype(brw_vec8_grf(16, 0), test_vectors[i].src0_type);
-      struct brw_reg src1 =
-         retype(brw_vec8_grf(32, 0), test_vectors[i].src1_src2_type);
-      struct brw_reg src2 =
-         retype(brw_vec8_grf(48, 0), test_vectors[i].src1_src2_type);
+      struct elk_reg dst =
+         retype(elk_vec8_grf( 0, 0), test_vectors[i].dst_type);
+      struct elk_reg src0 =
+         retype(elk_vec8_grf(16, 0), test_vectors[i].src0_type);
+      struct elk_reg src1 =
+         retype(elk_vec8_grf(32, 0), test_vectors[i].src1_src2_type);
+      struct elk_reg src2 =
+         retype(elk_vec8_grf(48, 0), test_vectors[i].src1_src2_type);
 
       /* subnr for DPAS is in units of datatype precision instead of bytes as
        * it is for every other instruction. Set the value by hand instead of
@@ -3522,7 +3522,7 @@ TEST_P(validation_test, dpas_src_subreg_nr)
       src1.subnr = test_vectors[i].src1_subnr;
       src2.subnr = test_vectors[i].src2_subnr;
 
-      brw_DPAS(p, BRW_SYSTOLIC_DEPTH_8, 8, dst, src0, src1, src2);
+      elk_DPAS(p, ELK_SYSTOLIC_DEPTH_8, 8, dst, src0, src1, src2);
 
       EXPECT_EQ(test_vectors[i].expected_result, validate(p)) <<
          "test vector index = " << i;

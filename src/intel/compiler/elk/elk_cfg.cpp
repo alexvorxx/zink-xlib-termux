@@ -37,25 +37,25 @@
 
 using namespace elk;
 
-static bblock_t *
+static elk_bblock_t *
 pop_stack(exec_list *list)
 {
-   bblock_link *link = (bblock_link *)list->get_tail();
-   bblock_t *block = link->block;
+   elk_bblock_link *link = (elk_bblock_link *)list->get_tail();
+   elk_bblock_t *block = link->block;
    link->link.remove();
 
    return block;
 }
 
 static exec_node *
-link(void *mem_ctx, bblock_t *block, enum bblock_link_kind kind)
+link(void *mem_ctx, elk_bblock_t *block, enum bblock_link_kind kind)
 {
-   bblock_link *l = new(mem_ctx) bblock_link(block, kind);
+   elk_bblock_link *l = new(mem_ctx) elk_bblock_link(block, kind);
    return &l->link;
 }
 
 void
-push_stack(exec_list *list, void *mem_ctx, bblock_t *block)
+push_stack(exec_list *list, void *mem_ctx, elk_bblock_t *block)
 {
    /* The kind of the link is immaterial, but we need to provide one since
     * this is (ab)using the edge data structure in order to implement a stack.
@@ -63,7 +63,7 @@ push_stack(exec_list *list, void *mem_ctx, bblock_t *block)
    list->push_tail(link(mem_ctx, block, bblock_link_logical));
 }
 
-bblock_t::bblock_t(cfg_t *cfg) :
+elk_bblock_t::elk_bblock_t(elk_cfg_t *cfg) :
    cfg(cfg), start_ip(0), end_ip(0), end_ip_delta(0), num(0)
 {
    instructions.make_empty();
@@ -72,7 +72,7 @@ bblock_t::bblock_t(cfg_t *cfg) :
 }
 
 void
-bblock_t::add_successor(void *mem_ctx, bblock_t *successor,
+elk_bblock_t::add_successor(void *mem_ctx, elk_bblock_t *successor,
                         enum bblock_link_kind kind)
 {
    successor->parents.push_tail(::link(mem_ctx, this, kind));
@@ -80,10 +80,10 @@ bblock_t::add_successor(void *mem_ctx, bblock_t *successor,
 }
 
 bool
-bblock_t::is_predecessor_of(const bblock_t *block,
+elk_bblock_t::is_predecessor_of(const elk_bblock_t *block,
                             enum bblock_link_kind kind) const
 {
-   foreach_list_typed_safe (bblock_link, parent, link, &block->parents) {
+   foreach_list_typed_safe (elk_bblock_link, parent, link, &block->parents) {
       if (parent->block == this && parent->kind <= kind) {
          return true;
       }
@@ -93,10 +93,10 @@ bblock_t::is_predecessor_of(const bblock_t *block,
 }
 
 bool
-bblock_t::is_successor_of(const bblock_t *block,
+elk_bblock_t::is_successor_of(const elk_bblock_t *block,
                           enum bblock_link_kind kind) const
 {
-   foreach_list_typed_safe (bblock_link, child, link, &block->children) {
+   foreach_list_typed_safe (elk_bblock_link, child, link, &block->children) {
       if (child->block == this && child->kind <= kind) {
          return true;
       }
@@ -106,31 +106,31 @@ bblock_t::is_successor_of(const bblock_t *block,
 }
 
 static bool
-ends_block(const backend_instruction *inst)
+ends_block(const elk_backend_instruction *inst)
 {
-   enum opcode op = inst->opcode;
+   enum elk_opcode op = inst->opcode;
 
-   return op == BRW_OPCODE_IF ||
-          op == BRW_OPCODE_ELSE ||
-          op == BRW_OPCODE_CONTINUE ||
-          op == BRW_OPCODE_BREAK ||
-          op == BRW_OPCODE_DO ||
-          op == BRW_OPCODE_WHILE;
+   return op == ELK_OPCODE_IF ||
+          op == ELK_OPCODE_ELSE ||
+          op == ELK_OPCODE_CONTINUE ||
+          op == ELK_OPCODE_BREAK ||
+          op == ELK_OPCODE_DO ||
+          op == ELK_OPCODE_WHILE;
 }
 
 static bool
-starts_block(const backend_instruction *inst)
+starts_block(const elk_backend_instruction *inst)
 {
-   enum opcode op = inst->opcode;
+   enum elk_opcode op = inst->opcode;
 
-   return op == BRW_OPCODE_DO ||
-          op == BRW_OPCODE_ENDIF;
+   return op == ELK_OPCODE_DO ||
+          op == ELK_OPCODE_ENDIF;
 }
 
 bool
-bblock_t::can_combine_with(const bblock_t *that) const
+elk_bblock_t::can_combine_with(const elk_bblock_t *that) const
 {
-   if ((const bblock_t *)this->link.next != that)
+   if ((const elk_bblock_t *)this->link.next != that)
       return false;
 
    if (ends_block(this->end()) ||
@@ -141,10 +141,10 @@ bblock_t::can_combine_with(const bblock_t *that) const
 }
 
 void
-bblock_t::combine_with(bblock_t *that)
+elk_bblock_t::combine_with(elk_bblock_t *that)
 {
    assert(this->can_combine_with(that));
-   foreach_list_typed (bblock_link, link, link, &that->parents) {
+   foreach_list_typed (elk_bblock_link, link, link, &that->parents) {
       assert(link->block == this);
    }
 
@@ -155,12 +155,12 @@ bblock_t::combine_with(bblock_t *that)
 }
 
 void
-bblock_t::dump(FILE *file) const
+elk_bblock_t::dump(FILE *file) const
 {
-   const backend_shader *s = this->cfg->s;
+   const elk_backend_shader *s = this->cfg->s;
 
    int ip = this->start_ip;
-   foreach_inst_in_block(backend_instruction, inst, this) {
+   foreach_inst_in_block(elk_backend_instruction, inst, this) {
       fprintf(file, "%5d: ", ip);
       s->dump_instruction(inst, file);
       ip++;
@@ -168,16 +168,16 @@ bblock_t::dump(FILE *file) const
 }
 
 void
-bblock_t::unlink_list(exec_list *list)
+elk_bblock_t::unlink_list(exec_list *list)
 {
    assert(list == &parents || list == &children);
    const bool remove_parent = list == &children;
 
-   foreach_list_typed_safe(bblock_link, link, link, list) {
+   foreach_list_typed_safe(elk_bblock_link, link, link, list) {
       /* Also break the links from the other block back to this block. */
       exec_list *sub_list = remove_parent ? &link->block->parents : &link->block->children;
 
-      foreach_list_typed_safe(bblock_link, sub_link, link, sub_list) {
+      foreach_list_typed_safe(elk_bblock_link, sub_link, link, sub_list) {
          if (sub_link->block == this) {
             sub_link->link.remove();
             ralloc_free(sub_link);
@@ -189,7 +189,7 @@ bblock_t::unlink_list(exec_list *list)
    }
 }
 
-cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
+elk_cfg_t::elk_cfg_t(const elk_backend_shader *s, exec_list *instructions) :
    s(s)
 {
    mem_ctx = ralloc_context(NULL);
@@ -197,27 +197,27 @@ cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
    blocks = NULL;
    num_blocks = 0;
 
-   bblock_t *cur = NULL;
+   elk_bblock_t *cur = NULL;
    int ip = 0;
 
-   bblock_t *entry = new_block();
-   bblock_t *cur_if = NULL;    /**< BB ending with IF. */
-   bblock_t *cur_else = NULL;  /**< BB ending with ELSE. */
-   bblock_t *cur_do = NULL;    /**< BB starting with DO. */
-   bblock_t *cur_while = NULL; /**< BB immediately following WHILE. */
+   elk_bblock_t *entry = new_block();
+   elk_bblock_t *cur_if = NULL;    /**< BB ending with IF. */
+   elk_bblock_t *cur_else = NULL;  /**< BB ending with ELSE. */
+   elk_bblock_t *cur_do = NULL;    /**< BB starting with DO. */
+   elk_bblock_t *cur_while = NULL; /**< BB immediately following WHILE. */
    exec_list if_stack, else_stack, do_stack, while_stack;
-   bblock_t *next;
+   elk_bblock_t *next;
 
    set_next_block(&cur, entry, ip);
 
-   foreach_in_list_safe(backend_instruction, inst, instructions) {
+   foreach_in_list_safe(elk_backend_instruction, inst, instructions) {
       /* set_next_block wants the post-incremented ip */
       ip++;
 
       inst->exec_node::remove();
 
       switch (inst->opcode) {
-      case BRW_OPCODE_IF:
+      case ELK_OPCODE_IF:
          cur->instructions.push_tail(inst);
 
 	 /* Push our information onto a stack so we can recover from
@@ -238,7 +238,7 @@ cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
 	 set_next_block(&cur, next, ip);
 	 break;
 
-      case BRW_OPCODE_ELSE:
+      case ELK_OPCODE_ELSE:
          cur->instructions.push_tail(inst);
 
          cur_else = cur;
@@ -251,8 +251,8 @@ cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
 	 set_next_block(&cur, next, ip);
 	 break;
 
-      case BRW_OPCODE_ENDIF: {
-         bblock_t *cur_endif;
+      case ELK_OPCODE_ENDIF: {
+         elk_bblock_t *cur_endif;
 
          if (cur->instructions.is_empty()) {
             /* New block was just created; use it. */
@@ -274,15 +274,15 @@ cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
             cur_if->add_successor(mem_ctx, cur_endif, bblock_link_logical);
          }
 
-         assert(cur_if->end()->opcode == BRW_OPCODE_IF);
-         assert(!cur_else || cur_else->end()->opcode == BRW_OPCODE_ELSE);
+         assert(cur_if->end()->opcode == ELK_OPCODE_IF);
+         assert(!cur_else || cur_else->end()->opcode == ELK_OPCODE_ELSE);
 
 	 /* Pop the stack so we're in the previous if/else/endif */
 	 cur_if = pop_stack(&if_stack);
 	 cur_else = pop_stack(&else_stack);
 	 break;
       }
-      case BRW_OPCODE_DO:
+      case ELK_OPCODE_DO:
 	 /* Push our information onto a stack so we can recover from
 	  * nested loops.
 	  */
@@ -339,7 +339,7 @@ cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
          set_next_block(&cur, next, ip);
 	 break;
 
-      case BRW_OPCODE_CONTINUE:
+      case ELK_OPCODE_CONTINUE:
          cur->instructions.push_tail(inst);
 
          /* A conditional CONTINUE may start a region of divergent control
@@ -367,7 +367,7 @@ cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
 	 set_next_block(&cur, next, ip);
 	 break;
 
-      case BRW_OPCODE_BREAK:
+      case ELK_OPCODE_BREAK:
          cur->instructions.push_tail(inst);
 
          /* A conditional BREAK instruction may start a region of divergent
@@ -393,7 +393,7 @@ cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
 	 set_next_block(&cur, next, ip);
 	 break;
 
-      case BRW_OPCODE_WHILE:
+      case ELK_OPCODE_WHILE:
          cur->instructions.push_tail(inst);
 
          assert(cur_do != NULL && cur_while != NULL);
@@ -431,16 +431,16 @@ cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
    make_block_array();
 }
 
-cfg_t::~cfg_t()
+elk_cfg_t::~elk_cfg_t()
 {
    ralloc_free(mem_ctx);
 }
 
 void
-cfg_t::remove_block(bblock_t *block)
+elk_cfg_t::remove_block(elk_bblock_t *block)
 {
-   foreach_list_typed_safe (bblock_link, predecessor, link, &block->parents) {
-      /* cfg_t::validate checks that predecessor and successor lists are well
+   foreach_list_typed_safe (elk_bblock_link, predecessor, link, &block->parents) {
+      /* elk_cfg_t::validate checks that predecessor and successor lists are well
        * formed, so it is known that the loop here would find exactly one
        * block. Set old_link_kind to silence "variable used but not set"
        * warnings.
@@ -448,7 +448,7 @@ cfg_t::remove_block(bblock_t *block)
       bblock_link_kind old_link_kind = bblock_link_logical;
 
       /* Remove block from all of its predecessors' successor lists. */
-      foreach_list_typed_safe (bblock_link, successor, link,
+      foreach_list_typed_safe (elk_bblock_link, successor, link,
                                &predecessor->block->children) {
          if (block == successor->block) {
             old_link_kind = successor->kind;
@@ -459,11 +459,11 @@ cfg_t::remove_block(bblock_t *block)
       }
 
       /* Add removed-block's successors to its predecessors' successor lists. */
-      foreach_list_typed (bblock_link, successor, link, &block->children) {
+      foreach_list_typed (elk_bblock_link, successor, link, &block->children) {
          bool need_to_link = true;
          bblock_link_kind new_link_kind = MAX2(old_link_kind, successor->kind);
 
-         foreach_list_typed_safe (bblock_link, child, link, &predecessor->block->children) {
+         foreach_list_typed_safe (elk_bblock_link, child, link, &predecessor->block->children) {
             /* There is already a link between the two blocks. If the links
              * are the same kind or the link is logical, do nothing. If the
              * existing link is physical and the proposed new link is logical,
@@ -487,8 +487,8 @@ cfg_t::remove_block(bblock_t *block)
       }
    }
 
-   foreach_list_typed_safe (bblock_link, successor, link, &block->children) {
-      /* cfg_t::validate checks that predecessor and successor lists are well
+   foreach_list_typed_safe (elk_bblock_link, successor, link, &block->children) {
+      /* elk_cfg_t::validate checks that predecessor and successor lists are well
        * formed, so it is known that the loop here would find exactly one
        * block. Set old_link_kind to silence "variable used but not set"
        * warnings.
@@ -496,7 +496,7 @@ cfg_t::remove_block(bblock_t *block)
       bblock_link_kind old_link_kind = bblock_link_logical;
 
       /* Remove block from all of its childrens' parents lists. */
-      foreach_list_typed_safe (bblock_link, predecessor, link,
+      foreach_list_typed_safe (elk_bblock_link, predecessor, link,
                                &successor->block->parents) {
          if (block == predecessor->block) {
             old_link_kind = predecessor->kind;
@@ -506,11 +506,11 @@ cfg_t::remove_block(bblock_t *block)
       }
 
       /* Add removed-block's predecessors to its successors' predecessor lists. */
-      foreach_list_typed (bblock_link, predecessor, link, &block->parents) {
+      foreach_list_typed (elk_bblock_link, predecessor, link, &block->parents) {
          bool need_to_link = true;
          bblock_link_kind new_link_kind = MAX2(old_link_kind, predecessor->kind);
 
-         foreach_list_typed_safe (bblock_link, parent, link, &successor->block->parents) {
+         foreach_list_typed_safe (elk_bblock_link, parent, link, &successor->block->parents) {
             /* There is already a link between the two blocks. If the links
              * are the same kind or the link is logical, do nothing. If the
              * existing link is physical and the proposed new link is logical,
@@ -545,16 +545,16 @@ cfg_t::remove_block(bblock_t *block)
    this->num_blocks--;
 }
 
-bblock_t *
-cfg_t::new_block()
+elk_bblock_t *
+elk_cfg_t::new_block()
 {
-   bblock_t *block = new(mem_ctx) bblock_t(this);
+   elk_bblock_t *block = new(mem_ctx) elk_bblock_t(this);
 
    return block;
 }
 
 void
-cfg_t::set_next_block(bblock_t **cur, bblock_t *block, int ip)
+elk_cfg_t::set_next_block(elk_bblock_t **cur, elk_bblock_t *block, int ip)
 {
    if (*cur) {
       (*cur)->end_ip = ip - 1;
@@ -567,9 +567,9 @@ cfg_t::set_next_block(bblock_t **cur, bblock_t *block, int ip)
 }
 
 void
-cfg_t::make_block_array()
+elk_cfg_t::make_block_array()
 {
-   blocks = ralloc_array(mem_ctx, bblock_t *, num_blocks);
+   blocks = ralloc_array(mem_ctx, elk_bblock_t *, num_blocks);
 
    int i = 0;
    foreach_block (block, this) {
@@ -602,7 +602,7 @@ void
 sort_links(util_dynarray *scratch, exec_list *list)
 {
    util_dynarray_clear(scratch);
-   foreach_list_typed(bblock_link, link, link, list) {
+   foreach_list_typed(elk_bblock_link, link, link, list) {
       link_desc l;
       l.kind = link->kind == bblock_link_logical ? '-' : '~';
       l.num = link->block->num;
@@ -615,7 +615,7 @@ sort_links(util_dynarray *scratch, exec_list *list)
 } /* namespace */
 
 void
-cfg_t::dump(FILE *file)
+elk_cfg_t::dump(FILE *file)
 {
    const idom_tree *idom = (s ? &s->idom_analysis.require() : NULL);
 
@@ -658,9 +658,9 @@ cfg_t::dump(FILE *file)
  * (less than 1000 nodes) that this algorithm is significantly faster than
  * others like Lengauer-Tarjan.
  */
-idom_tree::idom_tree(const backend_shader *s) :
+idom_tree::idom_tree(const elk_backend_shader *s) :
    num_parents(s->cfg->num_blocks),
-   parents(new bblock_t *[num_parents]())
+   parents(new elk_bblock_t *[num_parents]())
 {
    bool changed;
 
@@ -673,8 +673,8 @@ idom_tree::idom_tree(const backend_shader *s) :
          if (block->num == 0)
             continue;
 
-         bblock_t *new_idom = NULL;
-         foreach_list_typed(bblock_link, parent_link, link, &block->parents) {
+         elk_bblock_t *new_idom = NULL;
+         foreach_list_typed(elk_bblock_link, parent_link, link, &block->parents) {
             if (parent(parent_link->block)) {
                new_idom = (new_idom ? intersect(new_idom, parent_link->block) :
                            parent_link->block);
@@ -694,8 +694,8 @@ idom_tree::~idom_tree()
    delete[] parents;
 }
 
-bblock_t *
-idom_tree::intersect(bblock_t *b1, bblock_t *b2) const
+elk_bblock_t *
+idom_tree::intersect(elk_bblock_t *b1, elk_bblock_t *b2) const
 {
    /* Note, the comparisons here are the opposite of what the paper says
     * because we index blocks from beginning -> end (i.e. reverse post-order)
@@ -721,13 +721,13 @@ idom_tree::dump() const
 }
 
 void
-cfg_t::dump_cfg()
+elk_cfg_t::dump_cfg()
 {
    printf("digraph CFG {\n");
    for (int b = 0; b < num_blocks; b++) {
-      bblock_t *block = this->blocks[b];
+      elk_bblock_t *block = this->blocks[b];
 
-      foreach_list_typed_safe (bblock_link, child, link, &block->children) {
+      foreach_list_typed_safe (elk_bblock_link, child, link, &block->children) {
          printf("\t%d -> %d\n", b, child->block->num);
       }
    }
@@ -745,17 +745,17 @@ cfg_t::dump_cfg()
 
 #ifndef NDEBUG
 void
-cfg_t::validate(const char *stage_abbrev)
+elk_cfg_t::validate(const char *stage_abbrev)
 {
    foreach_block(block, this) {
-      foreach_list_typed(bblock_link, successor, link, &block->children) {
+      foreach_list_typed(elk_bblock_link, successor, link, &block->children) {
          /* Each successor of a block must have one predecessor link back to
           * the block.
           */
          bool successor_links_back_to_predecessor = false;
-         bblock_t *succ_block = successor->block;
+         elk_bblock_t *succ_block = successor->block;
 
-         foreach_list_typed(bblock_link, predecessor, link, &succ_block->parents) {
+         foreach_list_typed(elk_bblock_link, predecessor, link, &succ_block->parents) {
             if (predecessor->block == block) {
                cfgv_assert(!successor_links_back_to_predecessor);
                cfgv_assert(successor->kind == predecessor->kind);
@@ -768,20 +768,20 @@ cfg_t::validate(const char *stage_abbrev)
          /* Each successor block must appear only once in the list of
           * successors.
           */
-         foreach_list_typed_from(bblock_link, later_successor, link,
+         foreach_list_typed_from(elk_bblock_link, later_successor, link,
                                  &block->children, successor->link.next) {
             cfgv_assert(successor->block != later_successor->block);
          }
       }
 
-      foreach_list_typed(bblock_link, predecessor, link, &block->parents) {
+      foreach_list_typed(elk_bblock_link, predecessor, link, &block->parents) {
          /* Each predecessor of a block must have one successor link back to
           * the block.
           */
          bool predecessor_links_back_to_successor = false;
-         bblock_t *pred_block = predecessor->block;
+         elk_bblock_t *pred_block = predecessor->block;
 
-         foreach_list_typed(bblock_link, successor, link, &pred_block->children) {
+         foreach_list_typed(elk_bblock_link, successor, link, &pred_block->children) {
             if (successor->block == block) {
                cfgv_assert(!predecessor_links_back_to_successor);
                cfgv_assert(successor->kind == predecessor->kind);
@@ -794,14 +794,14 @@ cfg_t::validate(const char *stage_abbrev)
          /* Each precessor block must appear only once in the list of
           * precessors.
           */
-         foreach_list_typed_from(bblock_link, later_precessor, link,
+         foreach_list_typed_from(elk_bblock_link, later_precessor, link,
                                  &block->parents, predecessor->link.next) {
             cfgv_assert(predecessor->block != later_precessor->block);
          }
       }
 
-      backend_instruction *first_inst = block->start();
-      if (first_inst->opcode == BRW_OPCODE_DO) {
+      elk_backend_instruction *first_inst = block->start();
+      if (first_inst->opcode == ELK_OPCODE_DO) {
          /* DO instructions both begin and end a block, so the DO instruction
           * must be the only instruction in the block.
           */
@@ -812,10 +812,10 @@ cfg_t::validate(const char *stage_abbrev)
           * instruction. The other is a logical link to the block starting the
           * body of the loop.
           */
-         bblock_t *physical_block = nullptr;
-         bblock_t *logical_block = nullptr;
+         elk_bblock_t *physical_block = nullptr;
+         elk_bblock_t *logical_block = nullptr;
 
-         foreach_list_typed(bblock_link, child, link, &block->children) {
+         foreach_list_typed(elk_bblock_link, child, link, &block->children) {
             if (child->kind == bblock_link_physical) {
                cfgv_assert(physical_block == nullptr);
                physical_block = child->block;

@@ -31,88 +31,88 @@
 #include "util/macros.h"
 #include "util/u_debug.h"
 
-enum brw_reg_type
-brw_type_for_base_type(const struct glsl_type *type)
+enum elk_reg_type
+elk_type_for_base_type(const struct glsl_type *type)
 {
    switch (type->base_type) {
    case GLSL_TYPE_FLOAT16:
-      return BRW_REGISTER_TYPE_HF;
+      return ELK_REGISTER_TYPE_HF;
    case GLSL_TYPE_FLOAT:
-      return BRW_REGISTER_TYPE_F;
+      return ELK_REGISTER_TYPE_F;
    case GLSL_TYPE_INT:
    case GLSL_TYPE_BOOL:
    case GLSL_TYPE_SUBROUTINE:
-      return BRW_REGISTER_TYPE_D;
+      return ELK_REGISTER_TYPE_D;
    case GLSL_TYPE_INT16:
-      return BRW_REGISTER_TYPE_W;
+      return ELK_REGISTER_TYPE_W;
    case GLSL_TYPE_INT8:
-      return BRW_REGISTER_TYPE_B;
+      return ELK_REGISTER_TYPE_B;
    case GLSL_TYPE_UINT:
-      return BRW_REGISTER_TYPE_UD;
+      return ELK_REGISTER_TYPE_UD;
    case GLSL_TYPE_UINT16:
-      return BRW_REGISTER_TYPE_UW;
+      return ELK_REGISTER_TYPE_UW;
    case GLSL_TYPE_UINT8:
-      return BRW_REGISTER_TYPE_UB;
+      return ELK_REGISTER_TYPE_UB;
    case GLSL_TYPE_ARRAY:
-      return brw_type_for_base_type(type->fields.array);
+      return elk_type_for_base_type(type->fields.array);
    case GLSL_TYPE_STRUCT:
    case GLSL_TYPE_INTERFACE:
    case GLSL_TYPE_SAMPLER:
    case GLSL_TYPE_TEXTURE:
    case GLSL_TYPE_ATOMIC_UINT:
       /* These should be overridden with the type of the member when
-       * dereferenced into.  BRW_REGISTER_TYPE_UD seems like a likely
+       * dereferenced into.  ELK_REGISTER_TYPE_UD seems like a likely
        * way to trip up if we don't.
        */
-      return BRW_REGISTER_TYPE_UD;
+      return ELK_REGISTER_TYPE_UD;
    case GLSL_TYPE_IMAGE:
-      return BRW_REGISTER_TYPE_UD;
+      return ELK_REGISTER_TYPE_UD;
    case GLSL_TYPE_DOUBLE:
-      return BRW_REGISTER_TYPE_DF;
+      return ELK_REGISTER_TYPE_DF;
    case GLSL_TYPE_UINT64:
-      return BRW_REGISTER_TYPE_UQ;
+      return ELK_REGISTER_TYPE_UQ;
    case GLSL_TYPE_INT64:
-      return BRW_REGISTER_TYPE_Q;
+      return ELK_REGISTER_TYPE_Q;
    case GLSL_TYPE_VOID:
    case GLSL_TYPE_ERROR:
    case GLSL_TYPE_COOPERATIVE_MATRIX:
       unreachable("not reached");
    }
 
-   return BRW_REGISTER_TYPE_F;
+   return ELK_REGISTER_TYPE_F;
 }
 
 uint32_t
-brw_math_function(enum opcode op)
+elk_math_function(enum elk_opcode op)
 {
    switch (op) {
-   case SHADER_OPCODE_RCP:
-      return BRW_MATH_FUNCTION_INV;
-   case SHADER_OPCODE_RSQ:
-      return BRW_MATH_FUNCTION_RSQ;
-   case SHADER_OPCODE_SQRT:
-      return BRW_MATH_FUNCTION_SQRT;
-   case SHADER_OPCODE_EXP2:
-      return BRW_MATH_FUNCTION_EXP;
-   case SHADER_OPCODE_LOG2:
-      return BRW_MATH_FUNCTION_LOG;
-   case SHADER_OPCODE_POW:
-      return BRW_MATH_FUNCTION_POW;
-   case SHADER_OPCODE_SIN:
-      return BRW_MATH_FUNCTION_SIN;
-   case SHADER_OPCODE_COS:
-      return BRW_MATH_FUNCTION_COS;
-   case SHADER_OPCODE_INT_QUOTIENT:
-      return BRW_MATH_FUNCTION_INT_DIV_QUOTIENT;
-   case SHADER_OPCODE_INT_REMAINDER:
-      return BRW_MATH_FUNCTION_INT_DIV_REMAINDER;
+   case ELK_SHADER_OPCODE_RCP:
+      return ELK_MATH_FUNCTION_INV;
+   case ELK_SHADER_OPCODE_RSQ:
+      return ELK_MATH_FUNCTION_RSQ;
+   case ELK_SHADER_OPCODE_SQRT:
+      return ELK_MATH_FUNCTION_SQRT;
+   case ELK_SHADER_OPCODE_EXP2:
+      return ELK_MATH_FUNCTION_EXP;
+   case ELK_SHADER_OPCODE_LOG2:
+      return ELK_MATH_FUNCTION_LOG;
+   case ELK_SHADER_OPCODE_POW:
+      return ELK_MATH_FUNCTION_POW;
+   case ELK_SHADER_OPCODE_SIN:
+      return ELK_MATH_FUNCTION_SIN;
+   case ELK_SHADER_OPCODE_COS:
+      return ELK_MATH_FUNCTION_COS;
+   case ELK_SHADER_OPCODE_INT_QUOTIENT:
+      return ELK_MATH_FUNCTION_INT_DIV_QUOTIENT;
+   case ELK_SHADER_OPCODE_INT_REMAINDER:
+      return ELK_MATH_FUNCTION_INT_DIV_REMAINDER;
    default:
       unreachable("not reached: unknown math function");
    }
 }
 
 bool
-brw_texture_offset(const nir_tex_instr *tex, unsigned src,
+elk_texture_offset(const nir_tex_instr *tex, unsigned src,
                    uint32_t *offset_bits_out)
 {
    if (!nir_src_is_const(tex->src[src].src))
@@ -144,394 +144,394 @@ brw_texture_offset(const nir_tex_instr *tex, unsigned src,
 }
 
 const char *
-brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
+elk_instruction_name(const struct elk_isa_info *isa, enum elk_opcode op)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
    switch (op) {
-   case 0 ... NUM_BRW_OPCODES - 1:
+   case 0 ... NUM_ELK_OPCODES - 1:
       /* The DO instruction doesn't exist on Gfx6+, but we use it to mark the
        * start of a loop in the IR.
        */
-      if (devinfo->ver >= 6 && op == BRW_OPCODE_DO)
+      if (devinfo->ver >= 6 && op == ELK_OPCODE_DO)
          return "do";
 
       /* The following conversion opcodes doesn't exist on Gfx8+, but we use
        * then to mark that we want to do the conversion.
        */
-      if (devinfo->ver > 7 && op == BRW_OPCODE_F32TO16)
+      if (devinfo->ver > 7 && op == ELK_OPCODE_F32TO16)
          return "f32to16";
 
-      if (devinfo->ver > 7 && op == BRW_OPCODE_F16TO32)
+      if (devinfo->ver > 7 && op == ELK_OPCODE_F16TO32)
          return "f16to32";
 
       /* DPAS instructions may transiently exist on platforms that do not
        * support DPAS. They will eventually be lowered, but in the meantime it
        * must be possible to query the instruction name.
        */
-      if (devinfo->verx10 < 125 && op == BRW_OPCODE_DPAS)
+      if (devinfo->verx10 < 125 && op == ELK_OPCODE_DPAS)
          return "dpas";
 
-      assert(brw_opcode_desc(isa, op)->name);
-      return brw_opcode_desc(isa, op)->name;
-   case FS_OPCODE_FB_WRITE:
+      assert(elk_opcode_desc(isa, op)->name);
+      return elk_opcode_desc(isa, op)->name;
+   case ELK_FS_OPCODE_FB_WRITE:
       return "fb_write";
-   case FS_OPCODE_FB_WRITE_LOGICAL:
+   case ELK_FS_OPCODE_FB_WRITE_LOGICAL:
       return "fb_write_logical";
-   case FS_OPCODE_REP_FB_WRITE:
+   case ELK_FS_OPCODE_REP_FB_WRITE:
       return "rep_fb_write";
-   case FS_OPCODE_FB_READ:
+   case ELK_FS_OPCODE_FB_READ:
       return "fb_read";
-   case FS_OPCODE_FB_READ_LOGICAL:
+   case ELK_FS_OPCODE_FB_READ_LOGICAL:
       return "fb_read_logical";
 
-   case SHADER_OPCODE_RCP:
+   case ELK_SHADER_OPCODE_RCP:
       return "rcp";
-   case SHADER_OPCODE_RSQ:
+   case ELK_SHADER_OPCODE_RSQ:
       return "rsq";
-   case SHADER_OPCODE_SQRT:
+   case ELK_SHADER_OPCODE_SQRT:
       return "sqrt";
-   case SHADER_OPCODE_EXP2:
+   case ELK_SHADER_OPCODE_EXP2:
       return "exp2";
-   case SHADER_OPCODE_LOG2:
+   case ELK_SHADER_OPCODE_LOG2:
       return "log2";
-   case SHADER_OPCODE_POW:
+   case ELK_SHADER_OPCODE_POW:
       return "pow";
-   case SHADER_OPCODE_INT_QUOTIENT:
+   case ELK_SHADER_OPCODE_INT_QUOTIENT:
       return "int_quot";
-   case SHADER_OPCODE_INT_REMAINDER:
+   case ELK_SHADER_OPCODE_INT_REMAINDER:
       return "int_rem";
-   case SHADER_OPCODE_SIN:
+   case ELK_SHADER_OPCODE_SIN:
       return "sin";
-   case SHADER_OPCODE_COS:
+   case ELK_SHADER_OPCODE_COS:
       return "cos";
 
-   case SHADER_OPCODE_SEND:
+   case ELK_SHADER_OPCODE_SEND:
       return "send";
 
-   case SHADER_OPCODE_UNDEF:
+   case ELK_SHADER_OPCODE_UNDEF:
       return "undef";
 
-   case SHADER_OPCODE_TEX:
+   case ELK_SHADER_OPCODE_TEX:
       return "tex";
-   case SHADER_OPCODE_TEX_LOGICAL:
+   case ELK_SHADER_OPCODE_TEX_LOGICAL:
       return "tex_logical";
-   case SHADER_OPCODE_TXD:
+   case ELK_SHADER_OPCODE_TXD:
       return "txd";
-   case SHADER_OPCODE_TXD_LOGICAL:
+   case ELK_SHADER_OPCODE_TXD_LOGICAL:
       return "txd_logical";
-   case SHADER_OPCODE_TXF:
+   case ELK_SHADER_OPCODE_TXF:
       return "txf";
-   case SHADER_OPCODE_TXF_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_LOGICAL:
       return "txf_logical";
-   case SHADER_OPCODE_TXF_LZ:
+   case ELK_SHADER_OPCODE_TXF_LZ:
       return "txf_lz";
-   case SHADER_OPCODE_TXL:
+   case ELK_SHADER_OPCODE_TXL:
       return "txl";
-   case SHADER_OPCODE_TXL_LOGICAL:
+   case ELK_SHADER_OPCODE_TXL_LOGICAL:
       return "txl_logical";
-   case SHADER_OPCODE_TXL_LZ:
+   case ELK_SHADER_OPCODE_TXL_LZ:
       return "txl_lz";
-   case SHADER_OPCODE_TXS:
+   case ELK_SHADER_OPCODE_TXS:
       return "txs";
-   case SHADER_OPCODE_TXS_LOGICAL:
+   case ELK_SHADER_OPCODE_TXS_LOGICAL:
       return "txs_logical";
-   case FS_OPCODE_TXB:
+   case ELK_FS_OPCODE_TXB:
       return "txb";
-   case FS_OPCODE_TXB_LOGICAL:
+   case ELK_FS_OPCODE_TXB_LOGICAL:
       return "txb_logical";
-   case SHADER_OPCODE_TXF_CMS:
+   case ELK_SHADER_OPCODE_TXF_CMS:
       return "txf_cms";
-   case SHADER_OPCODE_TXF_CMS_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_CMS_LOGICAL:
       return "txf_cms_logical";
-   case SHADER_OPCODE_TXF_CMS_W:
+   case ELK_SHADER_OPCODE_TXF_CMS_W:
       return "txf_cms_w";
-   case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_CMS_W_LOGICAL:
       return "txf_cms_w_logical";
-   case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
       return "txf_cms_w_gfx12_logical";
-   case SHADER_OPCODE_TXF_UMS:
+   case ELK_SHADER_OPCODE_TXF_UMS:
       return "txf_ums";
-   case SHADER_OPCODE_TXF_UMS_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_UMS_LOGICAL:
       return "txf_ums_logical";
-   case SHADER_OPCODE_TXF_MCS:
+   case ELK_SHADER_OPCODE_TXF_MCS:
       return "txf_mcs";
-   case SHADER_OPCODE_TXF_MCS_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_MCS_LOGICAL:
       return "txf_mcs_logical";
-   case SHADER_OPCODE_LOD:
+   case ELK_SHADER_OPCODE_LOD:
       return "lod";
-   case SHADER_OPCODE_LOD_LOGICAL:
+   case ELK_SHADER_OPCODE_LOD_LOGICAL:
       return "lod_logical";
-   case SHADER_OPCODE_TG4:
+   case ELK_SHADER_OPCODE_TG4:
       return "tg4";
-   case SHADER_OPCODE_TG4_LOGICAL:
+   case ELK_SHADER_OPCODE_TG4_LOGICAL:
       return "tg4_logical";
-   case SHADER_OPCODE_TG4_OFFSET:
+   case ELK_SHADER_OPCODE_TG4_OFFSET:
       return "tg4_offset";
-   case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
+   case ELK_SHADER_OPCODE_TG4_OFFSET_LOGICAL:
       return "tg4_offset_logical";
-   case SHADER_OPCODE_SAMPLEINFO:
+   case ELK_SHADER_OPCODE_SAMPLEINFO:
       return "sampleinfo";
-   case SHADER_OPCODE_SAMPLEINFO_LOGICAL:
+   case ELK_SHADER_OPCODE_SAMPLEINFO_LOGICAL:
       return "sampleinfo_logical";
 
-   case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
+   case ELK_SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
       return "image_size_logical";
 
-   case VEC4_OPCODE_UNTYPED_ATOMIC:
+   case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
       return "untyped_atomic";
-   case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
       return "untyped_atomic_logical";
-   case VEC4_OPCODE_UNTYPED_SURFACE_READ:
+   case ELK_VEC4_OPCODE_UNTYPED_SURFACE_READ:
       return "untyped_surface_read";
-   case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
       return "untyped_surface_read_logical";
-   case VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
+   case ELK_VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
       return "untyped_surface_write";
-   case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
       return "untyped_surface_write_logical";
-   case SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
       return "unaligned_oword_block_read_logical";
-   case SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL:
       return "oword_block_write_logical";
-   case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
       return "a64_untyped_read_logical";
-   case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
       return "a64_oword_block_read_logical";
-   case SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
       return "a64_unaligned_oword_block_read_logical";
-   case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
       return "a64_oword_block_write_logical";
-   case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
       return "a64_untyped_write_logical";
-   case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
       return "a64_byte_scattered_read_logical";
-   case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
       return "a64_byte_scattered_write_logical";
-   case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
       return "a64_untyped_atomic_logical";
-   case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
       return "typed_atomic_logical";
-   case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
       return "typed_surface_read_logical";
-   case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
       return "typed_surface_write_logical";
-   case SHADER_OPCODE_MEMORY_FENCE:
+   case ELK_SHADER_OPCODE_MEMORY_FENCE:
       return "memory_fence";
-   case FS_OPCODE_SCHEDULING_FENCE:
+   case ELK_FS_OPCODE_SCHEDULING_FENCE:
       return "scheduling_fence";
-   case SHADER_OPCODE_INTERLOCK:
+   case ELK_SHADER_OPCODE_INTERLOCK:
       /* For an interlock we actually issue a memory fence via sendc. */
       return "interlock";
 
-   case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
       return "byte_scattered_read_logical";
-   case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
       return "byte_scattered_write_logical";
-   case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
       return "dword_scattered_read_logical";
-   case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
       return "dword_scattered_write_logical";
 
-   case SHADER_OPCODE_LOAD_PAYLOAD:
+   case ELK_SHADER_OPCODE_LOAD_PAYLOAD:
       return "load_payload";
-   case FS_OPCODE_PACK:
+   case ELK_FS_OPCODE_PACK:
       return "pack";
 
-   case SHADER_OPCODE_GFX4_SCRATCH_READ:
+   case ELK_SHADER_OPCODE_GFX4_SCRATCH_READ:
       return "gfx4_scratch_read";
-   case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
+   case ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE:
       return "gfx4_scratch_write";
-   case SHADER_OPCODE_GFX7_SCRATCH_READ:
+   case ELK_SHADER_OPCODE_GFX7_SCRATCH_READ:
       return "gfx7_scratch_read";
-   case SHADER_OPCODE_SCRATCH_HEADER:
+   case ELK_SHADER_OPCODE_SCRATCH_HEADER:
       return "scratch_header";
 
-   case SHADER_OPCODE_URB_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_URB_WRITE_LOGICAL:
       return "urb_write_logical";
-   case SHADER_OPCODE_URB_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_URB_READ_LOGICAL:
       return "urb_read_logical";
 
-   case SHADER_OPCODE_FIND_LIVE_CHANNEL:
+   case ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL:
       return "find_live_channel";
-   case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
+   case ELK_SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
       return "find_last_live_channel";
-   case FS_OPCODE_LOAD_LIVE_CHANNELS:
+   case ELK_FS_OPCODE_LOAD_LIVE_CHANNELS:
       return "load_live_channels";
 
-   case SHADER_OPCODE_BROADCAST:
+   case ELK_SHADER_OPCODE_BROADCAST:
       return "broadcast";
-   case SHADER_OPCODE_SHUFFLE:
+   case ELK_SHADER_OPCODE_SHUFFLE:
       return "shuffle";
-   case SHADER_OPCODE_SEL_EXEC:
+   case ELK_SHADER_OPCODE_SEL_EXEC:
       return "sel_exec";
-   case SHADER_OPCODE_QUAD_SWIZZLE:
+   case ELK_SHADER_OPCODE_QUAD_SWIZZLE:
       return "quad_swizzle";
-   case SHADER_OPCODE_CLUSTER_BROADCAST:
+   case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
       return "cluster_broadcast";
 
-   case SHADER_OPCODE_GET_BUFFER_SIZE:
+   case ELK_SHADER_OPCODE_GET_BUFFER_SIZE:
       return "get_buffer_size";
 
-   case VEC4_OPCODE_MOV_BYTES:
+   case ELK_VEC4_OPCODE_MOV_BYTES:
       return "mov_bytes";
-   case VEC4_OPCODE_PACK_BYTES:
+   case ELK_VEC4_OPCODE_PACK_BYTES:
       return "pack_bytes";
-   case VEC4_OPCODE_UNPACK_UNIFORM:
+   case ELK_VEC4_OPCODE_UNPACK_UNIFORM:
       return "unpack_uniform";
-   case VEC4_OPCODE_DOUBLE_TO_F32:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_F32:
       return "double_to_f32";
-   case VEC4_OPCODE_DOUBLE_TO_D32:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_D32:
       return "double_to_d32";
-   case VEC4_OPCODE_DOUBLE_TO_U32:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_U32:
       return "double_to_u32";
-   case VEC4_OPCODE_TO_DOUBLE:
+   case ELK_VEC4_OPCODE_TO_DOUBLE:
       return "single_to_double";
-   case VEC4_OPCODE_PICK_LOW_32BIT:
+   case ELK_VEC4_OPCODE_PICK_LOW_32BIT:
       return "pick_low_32bit";
-   case VEC4_OPCODE_PICK_HIGH_32BIT:
+   case ELK_VEC4_OPCODE_PICK_HIGH_32BIT:
       return "pick_high_32bit";
-   case VEC4_OPCODE_SET_LOW_32BIT:
+   case ELK_VEC4_OPCODE_SET_LOW_32BIT:
       return "set_low_32bit";
-   case VEC4_OPCODE_SET_HIGH_32BIT:
+   case ELK_VEC4_OPCODE_SET_HIGH_32BIT:
       return "set_high_32bit";
-   case VEC4_OPCODE_MOV_FOR_SCRATCH:
+   case ELK_VEC4_OPCODE_MOV_FOR_SCRATCH:
       return "mov_for_scratch";
-   case VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
+   case ELK_VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
       return "zero_oob_push_regs";
 
-   case FS_OPCODE_DDX_COARSE:
+   case ELK_FS_OPCODE_DDX_COARSE:
       return "ddx_coarse";
-   case FS_OPCODE_DDX_FINE:
+   case ELK_FS_OPCODE_DDX_FINE:
       return "ddx_fine";
-   case FS_OPCODE_DDY_COARSE:
+   case ELK_FS_OPCODE_DDY_COARSE:
       return "ddy_coarse";
-   case FS_OPCODE_DDY_FINE:
+   case ELK_FS_OPCODE_DDY_FINE:
       return "ddy_fine";
 
-   case FS_OPCODE_LINTERP:
+   case ELK_FS_OPCODE_LINTERP:
       return "linterp";
 
-   case FS_OPCODE_PIXEL_X:
+   case ELK_FS_OPCODE_PIXEL_X:
       return "pixel_x";
-   case FS_OPCODE_PIXEL_Y:
+   case ELK_FS_OPCODE_PIXEL_Y:
       return "pixel_y";
 
-   case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
+   case ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
       return "uniform_pull_const";
-   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4:
+   case ELK_FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4:
       return "varying_pull_const_gfx4";
-   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
+   case ELK_FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
       return "varying_pull_const_logical";
 
-   case FS_OPCODE_SET_SAMPLE_ID:
+   case ELK_FS_OPCODE_SET_SAMPLE_ID:
       return "set_sample_id";
 
-   case FS_OPCODE_PACK_HALF_2x16_SPLIT:
+   case ELK_FS_OPCODE_PACK_HALF_2x16_SPLIT:
       return "pack_half_2x16_split";
 
-   case SHADER_OPCODE_HALT_TARGET:
+   case ELK_SHADER_OPCODE_HALT_TARGET:
       return "halt_target";
 
-   case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
+   case ELK_FS_OPCODE_INTERPOLATE_AT_SAMPLE:
       return "interp_sample";
-   case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
+   case ELK_FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
       return "interp_shared_offset";
-   case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
+   case ELK_FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
       return "interp_per_slot_offset";
 
-   case VEC4_VS_OPCODE_URB_WRITE:
+   case ELK_VEC4_VS_OPCODE_URB_WRITE:
       return "vs_urb_write";
-   case VS_OPCODE_PULL_CONSTANT_LOAD:
+   case ELK_VS_OPCODE_PULL_CONSTANT_LOAD:
       return "pull_constant_load";
-   case VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
+   case ELK_VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
       return "pull_constant_load_gfx7";
 
-   case VS_OPCODE_UNPACK_FLAGS_SIMD4X2:
+   case ELK_VS_OPCODE_UNPACK_FLAGS_SIMD4X2:
       return "unpack_flags_simd4x2";
 
-   case VEC4_GS_OPCODE_URB_WRITE:
+   case ELK_VEC4_GS_OPCODE_URB_WRITE:
       return "gs_urb_write";
-   case VEC4_GS_OPCODE_URB_WRITE_ALLOCATE:
+   case ELK_VEC4_GS_OPCODE_URB_WRITE_ALLOCATE:
       return "gs_urb_write_allocate";
-   case GS_OPCODE_THREAD_END:
+   case ELK_GS_OPCODE_THREAD_END:
       return "gs_thread_end";
-   case GS_OPCODE_SET_WRITE_OFFSET:
+   case ELK_GS_OPCODE_SET_WRITE_OFFSET:
       return "set_write_offset";
-   case GS_OPCODE_SET_VERTEX_COUNT:
+   case ELK_GS_OPCODE_SET_VERTEX_COUNT:
       return "set_vertex_count";
-   case GS_OPCODE_SET_DWORD_2:
+   case ELK_GS_OPCODE_SET_DWORD_2:
       return "set_dword_2";
-   case GS_OPCODE_PREPARE_CHANNEL_MASKS:
+   case ELK_GS_OPCODE_PREPARE_CHANNEL_MASKS:
       return "prepare_channel_masks";
-   case GS_OPCODE_SET_CHANNEL_MASKS:
+   case ELK_GS_OPCODE_SET_CHANNEL_MASKS:
       return "set_channel_masks";
-   case GS_OPCODE_GET_INSTANCE_ID:
+   case ELK_GS_OPCODE_GET_INSTANCE_ID:
       return "get_instance_id";
-   case GS_OPCODE_FF_SYNC:
+   case ELK_GS_OPCODE_FF_SYNC:
       return "ff_sync";
-   case GS_OPCODE_SET_PRIMITIVE_ID:
+   case ELK_GS_OPCODE_SET_PRIMITIVE_ID:
       return "set_primitive_id";
-   case GS_OPCODE_SVB_WRITE:
+   case ELK_GS_OPCODE_SVB_WRITE:
       return "gs_svb_write";
-   case GS_OPCODE_SVB_SET_DST_INDEX:
+   case ELK_GS_OPCODE_SVB_SET_DST_INDEX:
       return "gs_svb_set_dst_index";
-   case GS_OPCODE_FF_SYNC_SET_PRIMITIVES:
+   case ELK_GS_OPCODE_FF_SYNC_SET_PRIMITIVES:
       return "gs_ff_sync_set_primitives";
-   case CS_OPCODE_CS_TERMINATE:
+   case ELK_CS_OPCODE_CS_TERMINATE:
       return "cs_terminate";
-   case SHADER_OPCODE_BARRIER:
+   case ELK_SHADER_OPCODE_BARRIER:
       return "barrier";
-   case SHADER_OPCODE_MULH:
+   case ELK_SHADER_OPCODE_MULH:
       return "mulh";
-   case SHADER_OPCODE_ISUB_SAT:
+   case ELK_SHADER_OPCODE_ISUB_SAT:
       return "isub_sat";
-   case SHADER_OPCODE_USUB_SAT:
+   case ELK_SHADER_OPCODE_USUB_SAT:
       return "usub_sat";
-   case SHADER_OPCODE_MOV_INDIRECT:
+   case ELK_SHADER_OPCODE_MOV_INDIRECT:
       return "mov_indirect";
-   case SHADER_OPCODE_MOV_RELOC_IMM:
+   case ELK_SHADER_OPCODE_MOV_RELOC_IMM:
       return "mov_reloc_imm";
 
-   case VEC4_OPCODE_URB_READ:
+   case ELK_VEC4_OPCODE_URB_READ:
       return "urb_read";
-   case TCS_OPCODE_GET_INSTANCE_ID:
+   case ELK_TCS_OPCODE_GET_INSTANCE_ID:
       return "tcs_get_instance_id";
-   case VEC4_TCS_OPCODE_URB_WRITE:
+   case ELK_VEC4_TCS_OPCODE_URB_WRITE:
       return "tcs_urb_write";
-   case VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
+   case ELK_VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
       return "tcs_set_input_urb_offsets";
-   case VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
+   case ELK_VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
       return "tcs_set_output_urb_offsets";
-   case TCS_OPCODE_GET_PRIMITIVE_ID:
+   case ELK_TCS_OPCODE_GET_PRIMITIVE_ID:
       return "tcs_get_primitive_id";
-   case TCS_OPCODE_CREATE_BARRIER_HEADER:
+   case ELK_TCS_OPCODE_CREATE_BARRIER_HEADER:
       return "tcs_create_barrier_header";
-   case TCS_OPCODE_SRC0_010_IS_ZERO:
+   case ELK_TCS_OPCODE_SRC0_010_IS_ZERO:
       return "tcs_src0<0,1,0>_is_zero";
-   case TCS_OPCODE_RELEASE_INPUT:
+   case ELK_TCS_OPCODE_RELEASE_INPUT:
       return "tcs_release_input";
-   case TCS_OPCODE_THREAD_END:
+   case ELK_TCS_OPCODE_THREAD_END:
       return "tcs_thread_end";
-   case TES_OPCODE_CREATE_INPUT_READ_HEADER:
+   case ELK_TES_OPCODE_CREATE_INPUT_READ_HEADER:
       return "tes_create_input_read_header";
-   case TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
+   case ELK_TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
       return "tes_add_indirect_urb_offset";
-   case TES_OPCODE_GET_PRIMITIVE_ID:
+   case ELK_TES_OPCODE_GET_PRIMITIVE_ID:
       return "tes_get_primitive_id";
 
-   case RT_OPCODE_TRACE_RAY_LOGICAL:
+   case ELK_RT_OPCODE_TRACE_RAY_LOGICAL:
       return "rt_trace_ray_logical";
 
-   case SHADER_OPCODE_RND_MODE:
+   case ELK_SHADER_OPCODE_RND_MODE:
       return "rnd_mode";
-   case SHADER_OPCODE_FLOAT_CONTROL_MODE:
+   case ELK_SHADER_OPCODE_FLOAT_CONTROL_MODE:
       return "float_control_mode";
-   case SHADER_OPCODE_BTD_SPAWN_LOGICAL:
+   case ELK_SHADER_OPCODE_BTD_SPAWN_LOGICAL:
       return "btd_spawn_logical";
-   case SHADER_OPCODE_BTD_RETIRE_LOGICAL:
+   case ELK_SHADER_OPCODE_BTD_RETIRE_LOGICAL:
       return "btd_retire_logical";
-   case SHADER_OPCODE_READ_SR_REG:
+   case ELK_SHADER_OPCODE_READ_SR_REG:
       return "read_sr_reg";
    }
 
@@ -539,7 +539,7 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
 }
 
 bool
-brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg)
+elk_saturate_immediate(enum elk_reg_type type, struct elk_reg *reg)
 {
    union {
       unsigned ud;
@@ -560,30 +560,30 @@ brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg)
       imm.df = reg->df;
 
    switch (type) {
-   case BRW_REGISTER_TYPE_UD:
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
+   case ELK_REGISTER_TYPE_UD:
+   case ELK_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_UW:
+   case ELK_REGISTER_TYPE_W:
+   case ELK_REGISTER_TYPE_UQ:
+   case ELK_REGISTER_TYPE_Q:
       /* Nothing to do. */
       return false;
-   case BRW_REGISTER_TYPE_F:
+   case ELK_REGISTER_TYPE_F:
       sat_imm.f = SATURATE(imm.f);
       break;
-   case BRW_REGISTER_TYPE_DF:
+   case ELK_REGISTER_TYPE_DF:
       sat_imm.df = SATURATE(imm.df);
       break;
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
+   case ELK_REGISTER_TYPE_UB:
+   case ELK_REGISTER_TYPE_B:
       unreachable("no UB/B immediates");
-   case BRW_REGISTER_TYPE_V:
-   case BRW_REGISTER_TYPE_UV:
-   case BRW_REGISTER_TYPE_VF:
+   case ELK_REGISTER_TYPE_V:
+   case ELK_REGISTER_TYPE_UV:
+   case ELK_REGISTER_TYPE_VF:
       unreachable("unimplemented: saturate vector immediate");
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_HF:
       unreachable("unimplemented: saturate HF immediate");
-   case BRW_REGISTER_TYPE_NF:
+   case ELK_REGISTER_TYPE_NF:
       unreachable("no NF immediates");
    }
 
@@ -602,42 +602,42 @@ brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg)
 }
 
 bool
-brw_negate_immediate(enum brw_reg_type type, struct brw_reg *reg)
+elk_negate_immediate(enum elk_reg_type type, struct elk_reg *reg)
 {
    switch (type) {
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UD:
+   case ELK_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_UD:
       reg->d = -reg->d;
       return true;
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UW: {
+   case ELK_REGISTER_TYPE_W:
+   case ELK_REGISTER_TYPE_UW: {
       uint16_t value = -(int16_t)reg->ud;
       reg->ud = value | (uint32_t)value << 16;
       return true;
    }
-   case BRW_REGISTER_TYPE_F:
+   case ELK_REGISTER_TYPE_F:
       reg->f = -reg->f;
       return true;
-   case BRW_REGISTER_TYPE_VF:
+   case ELK_REGISTER_TYPE_VF:
       reg->ud ^= 0x80808080;
       return true;
-   case BRW_REGISTER_TYPE_DF:
+   case ELK_REGISTER_TYPE_DF:
       reg->df = -reg->df;
       return true;
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
+   case ELK_REGISTER_TYPE_UQ:
+   case ELK_REGISTER_TYPE_Q:
       reg->d64 = -reg->d64;
       return true;
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
+   case ELK_REGISTER_TYPE_UB:
+   case ELK_REGISTER_TYPE_B:
       unreachable("no UB/B immediates");
-   case BRW_REGISTER_TYPE_UV:
-   case BRW_REGISTER_TYPE_V:
+   case ELK_REGISTER_TYPE_UV:
+   case ELK_REGISTER_TYPE_V:
       assert(!"unimplemented: negate UV/V immediate");
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_HF:
       reg->ud ^= 0x80008000;
       return true;
-   case BRW_REGISTER_TYPE_NF:
+   case ELK_REGISTER_TYPE_NF:
       unreachable("no NF immediates");
    }
 
@@ -645,56 +645,56 @@ brw_negate_immediate(enum brw_reg_type type, struct brw_reg *reg)
 }
 
 bool
-brw_abs_immediate(enum brw_reg_type type, struct brw_reg *reg)
+elk_abs_immediate(enum elk_reg_type type, struct elk_reg *reg)
 {
    switch (type) {
-   case BRW_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_D:
       reg->d = abs(reg->d);
       return true;
-   case BRW_REGISTER_TYPE_W: {
+   case ELK_REGISTER_TYPE_W: {
       uint16_t value = abs((int16_t)reg->ud);
       reg->ud = value | (uint32_t)value << 16;
       return true;
    }
-   case BRW_REGISTER_TYPE_F:
+   case ELK_REGISTER_TYPE_F:
       reg->f = fabsf(reg->f);
       return true;
-   case BRW_REGISTER_TYPE_DF:
+   case ELK_REGISTER_TYPE_DF:
       reg->df = fabs(reg->df);
       return true;
-   case BRW_REGISTER_TYPE_VF:
+   case ELK_REGISTER_TYPE_VF:
       reg->ud &= ~0x80808080;
       return true;
-   case BRW_REGISTER_TYPE_Q:
+   case ELK_REGISTER_TYPE_Q:
       reg->d64 = imaxabs(reg->d64);
       return true;
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
+   case ELK_REGISTER_TYPE_UB:
+   case ELK_REGISTER_TYPE_B:
       unreachable("no UB/B immediates");
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_UD:
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_UV:
+   case ELK_REGISTER_TYPE_UQ:
+   case ELK_REGISTER_TYPE_UD:
+   case ELK_REGISTER_TYPE_UW:
+   case ELK_REGISTER_TYPE_UV:
       /* Presumably the absolute value modifier on an unsigned source is a
        * nop, but it would be nice to confirm.
        */
       assert(!"unimplemented: abs unsigned immediate");
-   case BRW_REGISTER_TYPE_V:
+   case ELK_REGISTER_TYPE_V:
       assert(!"unimplemented: abs V immediate");
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_HF:
       reg->ud &= ~0x80008000;
       return true;
-   case BRW_REGISTER_TYPE_NF:
+   case ELK_REGISTER_TYPE_NF:
       unreachable("no NF immediates");
    }
 
    return false;
 }
 
-backend_shader::backend_shader(const struct brw_compiler *compiler,
-                               const struct brw_compile_params *params,
+elk_backend_shader::elk_backend_shader(const struct elk_compiler *compiler,
+                               const struct elk_compile_params *params,
                                const nir_shader *shader,
-                               struct brw_stage_prog_data *stage_prog_data,
+                               struct elk_stage_prog_data *stage_prog_data,
                                bool debug_enabled)
    : compiler(compiler),
      log_data(params->log_data),
@@ -708,24 +708,24 @@ backend_shader::backend_shader(const struct brw_compiler *compiler,
 {
 }
 
-backend_shader::~backend_shader()
+elk_backend_shader::~elk_backend_shader()
 {
 }
 
 bool
-backend_reg::equals(const backend_reg &r) const
+elk_backend_reg::equals(const elk_backend_reg &r) const
 {
-   return brw_regs_equal(this, &r) && offset == r.offset;
+   return elk_regs_equal(this, &r) && offset == r.offset;
 }
 
 bool
-backend_reg::negative_equals(const backend_reg &r) const
+elk_backend_reg::negative_equals(const elk_backend_reg &r) const
 {
-   return brw_regs_negative_equal(this, &r) && offset == r.offset;
+   return elk_regs_negative_equal(this, &r) && offset == r.offset;
 }
 
 bool
-backend_reg::is_zero() const
+elk_backend_reg::is_zero() const
 {
    if (file != IMM)
       return false;
@@ -733,22 +733,22 @@ backend_reg::is_zero() const
    assert(type_sz(type) > 1);
 
    switch (type) {
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_HF:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0 || (d & 0xffff) == 0x8000;
-   case BRW_REGISTER_TYPE_F:
+   case ELK_REGISTER_TYPE_F:
       return f == 0;
-   case BRW_REGISTER_TYPE_DF:
+   case ELK_REGISTER_TYPE_DF:
       return df == 0;
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UW:
+   case ELK_REGISTER_TYPE_W:
+   case ELK_REGISTER_TYPE_UW:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0;
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UD:
+   case ELK_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_UD:
       return d == 0;
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
+   case ELK_REGISTER_TYPE_UQ:
+   case ELK_REGISTER_TYPE_Q:
       return u64 == 0;
    default:
       return false;
@@ -756,7 +756,7 @@ backend_reg::is_zero() const
 }
 
 bool
-backend_reg::is_one() const
+elk_backend_reg::is_one() const
 {
    if (file != IMM)
       return false;
@@ -764,22 +764,22 @@ backend_reg::is_one() const
    assert(type_sz(type) > 1);
 
    switch (type) {
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_HF:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0x3c00;
-   case BRW_REGISTER_TYPE_F:
+   case ELK_REGISTER_TYPE_F:
       return f == 1.0f;
-   case BRW_REGISTER_TYPE_DF:
+   case ELK_REGISTER_TYPE_DF:
       return df == 1.0;
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UW:
+   case ELK_REGISTER_TYPE_W:
+   case ELK_REGISTER_TYPE_UW:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 1;
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UD:
+   case ELK_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_UD:
       return d == 1;
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
+   case ELK_REGISTER_TYPE_UQ:
+   case ELK_REGISTER_TYPE_Q:
       return u64 == 1;
    default:
       return false;
@@ -787,7 +787,7 @@ backend_reg::is_one() const
 }
 
 bool
-backend_reg::is_negative_one() const
+elk_backend_reg::is_negative_one() const
 {
    if (file != IMM)
       return false;
@@ -795,19 +795,19 @@ backend_reg::is_negative_one() const
    assert(type_sz(type) > 1);
 
    switch (type) {
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_HF:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0xbc00;
-   case BRW_REGISTER_TYPE_F:
+   case ELK_REGISTER_TYPE_F:
       return f == -1.0;
-   case BRW_REGISTER_TYPE_DF:
+   case ELK_REGISTER_TYPE_DF:
       return df == -1.0;
-   case BRW_REGISTER_TYPE_W:
+   case ELK_REGISTER_TYPE_W:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0xffff;
-   case BRW_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_D:
       return d == -1;
-   case BRW_REGISTER_TYPE_Q:
+   case ELK_REGISTER_TYPE_Q:
       return d64 == -1;
    default:
       return false;
@@ -815,34 +815,34 @@ backend_reg::is_negative_one() const
 }
 
 bool
-backend_reg::is_null() const
+elk_backend_reg::is_null() const
 {
-   return file == ARF && nr == BRW_ARF_NULL;
+   return file == ARF && nr == ELK_ARF_NULL;
 }
 
 
 bool
-backend_reg::is_accumulator() const
+elk_backend_reg::is_accumulator() const
 {
-   return file == ARF && nr == BRW_ARF_ACCUMULATOR;
+   return file == ARF && nr == ELK_ARF_ACCUMULATOR;
 }
 
 bool
-backend_instruction::is_commutative() const
+elk_backend_instruction::is_commutative() const
 {
    switch (opcode) {
-   case BRW_OPCODE_AND:
-   case BRW_OPCODE_OR:
-   case BRW_OPCODE_XOR:
-   case BRW_OPCODE_ADD:
-   case BRW_OPCODE_ADD3:
-   case BRW_OPCODE_MUL:
-   case SHADER_OPCODE_MULH:
+   case ELK_OPCODE_AND:
+   case ELK_OPCODE_OR:
+   case ELK_OPCODE_XOR:
+   case ELK_OPCODE_ADD:
+   case ELK_OPCODE_ADD3:
+   case ELK_OPCODE_MUL:
+   case ELK_SHADER_OPCODE_MULH:
       return true;
-   case BRW_OPCODE_SEL:
+   case ELK_OPCODE_SEL:
       /* MIN and MAX are commutative. */
-      if (conditional_mod == BRW_CONDITIONAL_GE ||
-          conditional_mod == BRW_CONDITIONAL_L) {
+      if (conditional_mod == ELK_CONDITIONAL_GE ||
+          conditional_mod == ELK_CONDITIONAL_L) {
          return true;
       }
       FALLTHROUGH;
@@ -852,33 +852,33 @@ backend_instruction::is_commutative() const
 }
 
 bool
-backend_instruction::is_3src(const struct brw_compiler *compiler) const
+elk_backend_instruction::elk_is_3src(const struct elk_compiler *compiler) const
 {
-   return ::is_3src(&compiler->isa, opcode);
+   return ::elk_is_3src(&compiler->isa, opcode);
 }
 
 bool
-backend_instruction::is_math() const
+elk_backend_instruction::is_math() const
 {
-   return (opcode == SHADER_OPCODE_RCP ||
-           opcode == SHADER_OPCODE_RSQ ||
-           opcode == SHADER_OPCODE_SQRT ||
-           opcode == SHADER_OPCODE_EXP2 ||
-           opcode == SHADER_OPCODE_LOG2 ||
-           opcode == SHADER_OPCODE_SIN ||
-           opcode == SHADER_OPCODE_COS ||
-           opcode == SHADER_OPCODE_INT_QUOTIENT ||
-           opcode == SHADER_OPCODE_INT_REMAINDER ||
-           opcode == SHADER_OPCODE_POW);
+   return (opcode == ELK_SHADER_OPCODE_RCP ||
+           opcode == ELK_SHADER_OPCODE_RSQ ||
+           opcode == ELK_SHADER_OPCODE_SQRT ||
+           opcode == ELK_SHADER_OPCODE_EXP2 ||
+           opcode == ELK_SHADER_OPCODE_LOG2 ||
+           opcode == ELK_SHADER_OPCODE_SIN ||
+           opcode == ELK_SHADER_OPCODE_COS ||
+           opcode == ELK_SHADER_OPCODE_INT_QUOTIENT ||
+           opcode == ELK_SHADER_OPCODE_INT_REMAINDER ||
+           opcode == ELK_SHADER_OPCODE_POW);
 }
 
 bool
-backend_instruction::is_control_flow_begin() const
+elk_backend_instruction::is_control_flow_begin() const
 {
    switch (opcode) {
-   case BRW_OPCODE_DO:
-   case BRW_OPCODE_IF:
-   case BRW_OPCODE_ELSE:
+   case ELK_OPCODE_DO:
+   case ELK_OPCODE_IF:
+   case ELK_OPCODE_ELSE:
       return true;
    default:
       return false;
@@ -886,12 +886,12 @@ backend_instruction::is_control_flow_begin() const
 }
 
 bool
-backend_instruction::is_control_flow_end() const
+elk_backend_instruction::is_control_flow_end() const
 {
    switch (opcode) {
-   case BRW_OPCODE_ELSE:
-   case BRW_OPCODE_WHILE:
-   case BRW_OPCODE_ENDIF:
+   case ELK_OPCODE_ELSE:
+   case ELK_OPCODE_WHILE:
+   case ELK_OPCODE_ENDIF:
       return true;
    default:
       return false;
@@ -899,16 +899,16 @@ backend_instruction::is_control_flow_end() const
 }
 
 bool
-backend_instruction::is_control_flow() const
+elk_backend_instruction::is_control_flow() const
 {
    switch (opcode) {
-   case BRW_OPCODE_DO:
-   case BRW_OPCODE_WHILE:
-   case BRW_OPCODE_IF:
-   case BRW_OPCODE_ELSE:
-   case BRW_OPCODE_ENDIF:
-   case BRW_OPCODE_BREAK:
-   case BRW_OPCODE_CONTINUE:
+   case ELK_OPCODE_DO:
+   case ELK_OPCODE_WHILE:
+   case ELK_OPCODE_IF:
+   case ELK_OPCODE_ELSE:
+   case ELK_OPCODE_ENDIF:
+   case ELK_OPCODE_BREAK:
+   case ELK_OPCODE_CONTINUE:
       return true;
    default:
       return false;
@@ -916,12 +916,12 @@ backend_instruction::is_control_flow() const
 }
 
 bool
-backend_instruction::uses_indirect_addressing() const
+elk_backend_instruction::uses_indirect_addressing() const
 {
    switch (opcode) {
-   case SHADER_OPCODE_BROADCAST:
-   case SHADER_OPCODE_CLUSTER_BROADCAST:
-   case SHADER_OPCODE_MOV_INDIRECT:
+   case ELK_SHADER_OPCODE_BROADCAST:
+   case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
+   case ELK_SHADER_OPCODE_MOV_INDIRECT:
       return true;
    default:
       return false;
@@ -929,28 +929,28 @@ backend_instruction::uses_indirect_addressing() const
 }
 
 bool
-backend_instruction::can_do_source_mods() const
+elk_backend_instruction::can_do_source_mods() const
 {
    switch (opcode) {
-   case BRW_OPCODE_ADDC:
-   case BRW_OPCODE_BFE:
-   case BRW_OPCODE_BFI1:
-   case BRW_OPCODE_BFI2:
-   case BRW_OPCODE_BFREV:
-   case BRW_OPCODE_CBIT:
-   case BRW_OPCODE_FBH:
-   case BRW_OPCODE_FBL:
-   case BRW_OPCODE_ROL:
-   case BRW_OPCODE_ROR:
-   case BRW_OPCODE_SUBB:
-   case BRW_OPCODE_DP4A:
-   case BRW_OPCODE_DPAS:
-   case SHADER_OPCODE_BROADCAST:
-   case SHADER_OPCODE_CLUSTER_BROADCAST:
-   case SHADER_OPCODE_MOV_INDIRECT:
-   case SHADER_OPCODE_SHUFFLE:
-   case SHADER_OPCODE_INT_QUOTIENT:
-   case SHADER_OPCODE_INT_REMAINDER:
+   case ELK_OPCODE_ADDC:
+   case ELK_OPCODE_BFE:
+   case ELK_OPCODE_BFI1:
+   case ELK_OPCODE_BFI2:
+   case ELK_OPCODE_BFREV:
+   case ELK_OPCODE_CBIT:
+   case ELK_OPCODE_FBH:
+   case ELK_OPCODE_FBL:
+   case ELK_OPCODE_ROL:
+   case ELK_OPCODE_ROR:
+   case ELK_OPCODE_SUBB:
+   case ELK_OPCODE_DP4A:
+   case ELK_OPCODE_DPAS:
+   case ELK_SHADER_OPCODE_BROADCAST:
+   case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
+   case ELK_SHADER_OPCODE_MOV_INDIRECT:
+   case ELK_SHADER_OPCODE_SHUFFLE:
+   case ELK_SHADER_OPCODE_INT_QUOTIENT:
+   case ELK_SHADER_OPCODE_INT_REMAINDER:
       return false;
    default:
       return true;
@@ -958,46 +958,46 @@ backend_instruction::can_do_source_mods() const
 }
 
 bool
-backend_instruction::can_do_saturate() const
+elk_backend_instruction::can_do_saturate() const
 {
    switch (opcode) {
-   case BRW_OPCODE_ADD:
-   case BRW_OPCODE_ADD3:
-   case BRW_OPCODE_ASR:
-   case BRW_OPCODE_AVG:
-   case BRW_OPCODE_CSEL:
-   case BRW_OPCODE_DP2:
-   case BRW_OPCODE_DP3:
-   case BRW_OPCODE_DP4:
-   case BRW_OPCODE_DPH:
-   case BRW_OPCODE_DP4A:
-   case BRW_OPCODE_F16TO32:
-   case BRW_OPCODE_F32TO16:
-   case BRW_OPCODE_LINE:
-   case BRW_OPCODE_LRP:
-   case BRW_OPCODE_MAC:
-   case BRW_OPCODE_MAD:
-   case BRW_OPCODE_MATH:
-   case BRW_OPCODE_MOV:
-   case BRW_OPCODE_MUL:
-   case SHADER_OPCODE_MULH:
-   case BRW_OPCODE_PLN:
-   case BRW_OPCODE_RNDD:
-   case BRW_OPCODE_RNDE:
-   case BRW_OPCODE_RNDU:
-   case BRW_OPCODE_RNDZ:
-   case BRW_OPCODE_SEL:
-   case BRW_OPCODE_SHL:
-   case BRW_OPCODE_SHR:
-   case FS_OPCODE_LINTERP:
-   case SHADER_OPCODE_COS:
-   case SHADER_OPCODE_EXP2:
-   case SHADER_OPCODE_LOG2:
-   case SHADER_OPCODE_POW:
-   case SHADER_OPCODE_RCP:
-   case SHADER_OPCODE_RSQ:
-   case SHADER_OPCODE_SIN:
-   case SHADER_OPCODE_SQRT:
+   case ELK_OPCODE_ADD:
+   case ELK_OPCODE_ADD3:
+   case ELK_OPCODE_ASR:
+   case ELK_OPCODE_AVG:
+   case ELK_OPCODE_CSEL:
+   case ELK_OPCODE_DP2:
+   case ELK_OPCODE_DP3:
+   case ELK_OPCODE_DP4:
+   case ELK_OPCODE_DPH:
+   case ELK_OPCODE_DP4A:
+   case ELK_OPCODE_F16TO32:
+   case ELK_OPCODE_F32TO16:
+   case ELK_OPCODE_LINE:
+   case ELK_OPCODE_LRP:
+   case ELK_OPCODE_MAC:
+   case ELK_OPCODE_MAD:
+   case ELK_OPCODE_MATH:
+   case ELK_OPCODE_MOV:
+   case ELK_OPCODE_MUL:
+   case ELK_SHADER_OPCODE_MULH:
+   case ELK_OPCODE_PLN:
+   case ELK_OPCODE_RNDD:
+   case ELK_OPCODE_RNDE:
+   case ELK_OPCODE_RNDU:
+   case ELK_OPCODE_RNDZ:
+   case ELK_OPCODE_SEL:
+   case ELK_OPCODE_SHL:
+   case ELK_OPCODE_SHR:
+   case ELK_FS_OPCODE_LINTERP:
+   case ELK_SHADER_OPCODE_COS:
+   case ELK_SHADER_OPCODE_EXP2:
+   case ELK_SHADER_OPCODE_LOG2:
+   case ELK_SHADER_OPCODE_POW:
+   case ELK_SHADER_OPCODE_RCP:
+   case ELK_SHADER_OPCODE_RSQ:
+   case ELK_SHADER_OPCODE_SIN:
+   case ELK_SHADER_OPCODE_SQRT:
       return true;
    default:
       return false;
@@ -1005,46 +1005,46 @@ backend_instruction::can_do_saturate() const
 }
 
 bool
-backend_instruction::can_do_cmod() const
+elk_backend_instruction::can_do_cmod() const
 {
    switch (opcode) {
-   case BRW_OPCODE_ADD:
-   case BRW_OPCODE_ADD3:
-   case BRW_OPCODE_ADDC:
-   case BRW_OPCODE_AND:
-   case BRW_OPCODE_ASR:
-   case BRW_OPCODE_AVG:
-   case BRW_OPCODE_CMP:
-   case BRW_OPCODE_CMPN:
-   case BRW_OPCODE_DP2:
-   case BRW_OPCODE_DP3:
-   case BRW_OPCODE_DP4:
-   case BRW_OPCODE_DPH:
-   case BRW_OPCODE_F16TO32:
-   case BRW_OPCODE_F32TO16:
-   case BRW_OPCODE_FRC:
-   case BRW_OPCODE_LINE:
-   case BRW_OPCODE_LRP:
-   case BRW_OPCODE_LZD:
-   case BRW_OPCODE_MAC:
-   case BRW_OPCODE_MACH:
-   case BRW_OPCODE_MAD:
-   case BRW_OPCODE_MOV:
-   case BRW_OPCODE_MUL:
-   case BRW_OPCODE_NOT:
-   case BRW_OPCODE_OR:
-   case BRW_OPCODE_PLN:
-   case BRW_OPCODE_RNDD:
-   case BRW_OPCODE_RNDE:
-   case BRW_OPCODE_RNDU:
-   case BRW_OPCODE_RNDZ:
-   case BRW_OPCODE_SAD2:
-   case BRW_OPCODE_SADA2:
-   case BRW_OPCODE_SHL:
-   case BRW_OPCODE_SHR:
-   case BRW_OPCODE_SUBB:
-   case BRW_OPCODE_XOR:
-   case FS_OPCODE_LINTERP:
+   case ELK_OPCODE_ADD:
+   case ELK_OPCODE_ADD3:
+   case ELK_OPCODE_ADDC:
+   case ELK_OPCODE_AND:
+   case ELK_OPCODE_ASR:
+   case ELK_OPCODE_AVG:
+   case ELK_OPCODE_CMP:
+   case ELK_OPCODE_CMPN:
+   case ELK_OPCODE_DP2:
+   case ELK_OPCODE_DP3:
+   case ELK_OPCODE_DP4:
+   case ELK_OPCODE_DPH:
+   case ELK_OPCODE_F16TO32:
+   case ELK_OPCODE_F32TO16:
+   case ELK_OPCODE_FRC:
+   case ELK_OPCODE_LINE:
+   case ELK_OPCODE_LRP:
+   case ELK_OPCODE_LZD:
+   case ELK_OPCODE_MAC:
+   case ELK_OPCODE_MACH:
+   case ELK_OPCODE_MAD:
+   case ELK_OPCODE_MOV:
+   case ELK_OPCODE_MUL:
+   case ELK_OPCODE_NOT:
+   case ELK_OPCODE_OR:
+   case ELK_OPCODE_PLN:
+   case ELK_OPCODE_RNDD:
+   case ELK_OPCODE_RNDE:
+   case ELK_OPCODE_RNDU:
+   case ELK_OPCODE_RNDZ:
+   case ELK_OPCODE_SAD2:
+   case ELK_OPCODE_SADA2:
+   case ELK_OPCODE_SHL:
+   case ELK_OPCODE_SHR:
+   case ELK_OPCODE_SUBB:
+   case ELK_OPCODE_XOR:
+   case ELK_FS_OPCODE_LINTERP:
       return true;
    default:
       return false;
@@ -1052,12 +1052,12 @@ backend_instruction::can_do_cmod() const
 }
 
 bool
-backend_instruction::reads_accumulator_implicitly() const
+elk_backend_instruction::reads_accumulator_implicitly() const
 {
    switch (opcode) {
-   case BRW_OPCODE_MAC:
-   case BRW_OPCODE_MACH:
-   case BRW_OPCODE_SADA2:
+   case ELK_OPCODE_MAC:
+   case ELK_OPCODE_MACH:
+   case ELK_OPCODE_SADA2:
       return true;
    default:
       return false;
@@ -1065,55 +1065,55 @@ backend_instruction::reads_accumulator_implicitly() const
 }
 
 bool
-backend_instruction::writes_accumulator_implicitly(const struct intel_device_info *devinfo) const
+elk_backend_instruction::writes_accumulator_implicitly(const struct intel_device_info *devinfo) const
 {
    return writes_accumulator ||
           (devinfo->ver < 6 &&
-           ((opcode >= BRW_OPCODE_ADD && opcode < BRW_OPCODE_NOP) ||
-            (opcode >= FS_OPCODE_DDX_COARSE && opcode <= FS_OPCODE_LINTERP))) ||
-          (opcode == FS_OPCODE_LINTERP &&
+           ((opcode >= ELK_OPCODE_ADD && opcode < ELK_OPCODE_NOP) ||
+            (opcode >= ELK_FS_OPCODE_DDX_COARSE && opcode <= ELK_FS_OPCODE_LINTERP))) ||
+          (opcode == ELK_FS_OPCODE_LINTERP &&
            (!devinfo->has_pln || devinfo->ver <= 6)) ||
           (eot && intel_needs_workaround(devinfo, 14010017096));
 }
 
 bool
-backend_instruction::has_side_effects() const
+elk_backend_instruction::has_side_effects() const
 {
    switch (opcode) {
-   case SHADER_OPCODE_SEND:
+   case ELK_SHADER_OPCODE_SEND:
       return send_has_side_effects;
 
-   case BRW_OPCODE_SYNC:
-   case VEC4_OPCODE_UNTYPED_ATOMIC:
-   case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
-   case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
-   case VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
-   case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
-   case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
-   case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
-   case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
-   case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
-   case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
-   case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
-   case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
-   case SHADER_OPCODE_MEMORY_FENCE:
-   case SHADER_OPCODE_INTERLOCK:
-   case SHADER_OPCODE_URB_WRITE_LOGICAL:
-   case FS_OPCODE_FB_WRITE:
-   case FS_OPCODE_FB_WRITE_LOGICAL:
-   case FS_OPCODE_REP_FB_WRITE:
-   case SHADER_OPCODE_BARRIER:
-   case VEC4_TCS_OPCODE_URB_WRITE:
-   case TCS_OPCODE_RELEASE_INPUT:
-   case SHADER_OPCODE_RND_MODE:
-   case SHADER_OPCODE_FLOAT_CONTROL_MODE:
-   case FS_OPCODE_SCHEDULING_FENCE:
-   case SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL:
-   case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
-   case SHADER_OPCODE_BTD_SPAWN_LOGICAL:
-   case SHADER_OPCODE_BTD_RETIRE_LOGICAL:
-   case RT_OPCODE_TRACE_RAY_LOGICAL:
-   case VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
+   case ELK_OPCODE_SYNC:
+   case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
+   case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE:
+   case ELK_VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_MEMORY_FENCE:
+   case ELK_SHADER_OPCODE_INTERLOCK:
+   case ELK_SHADER_OPCODE_URB_WRITE_LOGICAL:
+   case ELK_FS_OPCODE_FB_WRITE:
+   case ELK_FS_OPCODE_FB_WRITE_LOGICAL:
+   case ELK_FS_OPCODE_REP_FB_WRITE:
+   case ELK_SHADER_OPCODE_BARRIER:
+   case ELK_VEC4_TCS_OPCODE_URB_WRITE:
+   case ELK_TCS_OPCODE_RELEASE_INPUT:
+   case ELK_SHADER_OPCODE_RND_MODE:
+   case ELK_SHADER_OPCODE_FLOAT_CONTROL_MODE:
+   case ELK_FS_OPCODE_SCHEDULING_FENCE:
+   case ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_BTD_SPAWN_LOGICAL:
+   case ELK_SHADER_OPCODE_BTD_RETIRE_LOGICAL:
+   case ELK_RT_OPCODE_TRACE_RAY_LOGICAL:
+   case ELK_VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
       return true;
    default:
       return eot;
@@ -1121,20 +1121,20 @@ backend_instruction::has_side_effects() const
 }
 
 bool
-backend_instruction::is_volatile() const
+elk_backend_instruction::is_volatile() const
 {
    switch (opcode) {
-   case SHADER_OPCODE_SEND:
+   case ELK_SHADER_OPCODE_SEND:
       return send_is_volatile;
 
-   case VEC4_OPCODE_UNTYPED_SURFACE_READ:
-   case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
-   case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
-   case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
-   case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
-   case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
-   case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
-   case VEC4_OPCODE_URB_READ:
+   case ELK_VEC4_OPCODE_UNTYPED_SURFACE_READ:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
+   case ELK_VEC4_OPCODE_URB_READ:
       return true;
    default:
       return false;
@@ -1143,12 +1143,12 @@ backend_instruction::is_volatile() const
 
 #ifndef NDEBUG
 static bool
-inst_is_in_block(const bblock_t *block, const backend_instruction *inst)
+inst_is_in_block(const elk_bblock_t *block, const elk_backend_instruction *inst)
 {
    const exec_node *n = inst;
 
    /* Find the tail sentinel. If the tail sentinel is the sentinel from the
-    * list header in the bblock_t, then this instruction is in that basic
+    * list header in the elk_bblock_t, then this instruction is in that basic
     * block.
     */
    while (!n->is_tail_sentinel())
@@ -1159,9 +1159,9 @@ inst_is_in_block(const bblock_t *block, const backend_instruction *inst)
 #endif
 
 static void
-adjust_later_block_ips(bblock_t *start_block, int ip_adjustment)
+adjust_later_block_ips(elk_bblock_t *start_block, int ip_adjustment)
 {
-   for (bblock_t *block_iter = start_block->next();
+   for (elk_bblock_t *block_iter = start_block->next();
         block_iter;
         block_iter = block_iter->next()) {
       block_iter->start_ip += ip_adjustment;
@@ -1170,7 +1170,7 @@ adjust_later_block_ips(bblock_t *start_block, int ip_adjustment)
 }
 
 void
-backend_instruction::insert_after(bblock_t *block, backend_instruction *inst)
+elk_backend_instruction::insert_after(elk_bblock_t *block, elk_backend_instruction *inst)
 {
    assert(this != inst);
    assert(block->end_ip_delta == 0);
@@ -1186,7 +1186,7 @@ backend_instruction::insert_after(bblock_t *block, backend_instruction *inst)
 }
 
 void
-backend_instruction::insert_before(bblock_t *block, backend_instruction *inst)
+elk_backend_instruction::insert_before(elk_bblock_t *block, elk_backend_instruction *inst)
 {
    assert(this != inst);
    assert(block->end_ip_delta == 0);
@@ -1202,7 +1202,7 @@ backend_instruction::insert_before(bblock_t *block, backend_instruction *inst)
 }
 
 void
-backend_instruction::remove(bblock_t *block, bool defer_later_block_ip_updates)
+elk_backend_instruction::remove(elk_bblock_t *block, bool defer_later_block_ip_updates)
 {
    assert(inst_is_in_block(block, this) || !"Instruction not in block");
 
@@ -1228,7 +1228,7 @@ backend_instruction::remove(bblock_t *block, bool defer_later_block_ip_updates)
 }
 
 void
-backend_shader::dump_instructions(const char *name) const
+elk_backend_shader::dump_instructions(const char *name) const
 {
    FILE *file = stderr;
    if (name && __normal_user()) {
@@ -1245,18 +1245,18 @@ backend_shader::dump_instructions(const char *name) const
 }
 
 void
-backend_shader::dump_instructions_to_file(FILE *file) const
+elk_backend_shader::dump_instructions_to_file(FILE *file) const
 {
    if (cfg) {
       int ip = 0;
-      foreach_block_and_inst(block, backend_instruction, inst, cfg) {
+      foreach_block_and_inst(block, elk_backend_instruction, inst, cfg) {
          if (!INTEL_DEBUG(DEBUG_OPTIMIZER))
             fprintf(file, "%4d: ", ip++);
          dump_instruction(inst, file);
       }
    } else {
       int ip = 0;
-      foreach_in_list(backend_instruction, inst, &instructions) {
+      foreach_in_list(elk_backend_instruction, inst, &instructions) {
          if (!INTEL_DEBUG(DEBUG_OPTIMIZER))
             fprintf(file, "%4d: ", ip++);
          dump_instruction(inst, file);
@@ -1265,31 +1265,31 @@ backend_shader::dump_instructions_to_file(FILE *file) const
 }
 
 void
-backend_shader::calculate_cfg()
+elk_backend_shader::calculate_cfg()
 {
    if (this->cfg)
       return;
-   cfg = new(mem_ctx) cfg_t(this, &this->instructions);
+   cfg = new(mem_ctx) elk_cfg_t(this, &this->instructions);
 }
 
 void
-backend_shader::invalidate_analysis(elk::analysis_dependency_class c)
+elk_backend_shader::invalidate_analysis(elk::analysis_dependency_class c)
 {
    idom_analysis.invalidate(c);
 }
 
 extern "C" const unsigned *
-brw_compile_tes(const struct brw_compiler *compiler,
-                brw_compile_tes_params *params)
+elk_compile_tes(const struct elk_compiler *compiler,
+                elk_compile_tes_params *params)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
    nir_shader *nir = params->base.nir;
-   const struct brw_tes_prog_key *key = params->key;
+   const struct elk_tes_prog_key *key = params->key;
    const struct intel_vue_map *input_vue_map = params->input_vue_map;
-   struct brw_tes_prog_data *prog_data = params->prog_data;
+   struct elk_tes_prog_data *prog_data = params->prog_data;
 
    const bool is_scalar = compiler->scalar_stage[MESA_SHADER_TESS_EVAL];
-   const bool debug_enabled = brw_should_print_shader(nir, DEBUG_TES);
+   const bool debug_enabled = elk_should_print_shader(nir, DEBUG_TES);
    const unsigned *assembly;
 
    prog_data->base.base.stage = MESA_SHADER_TESS_EVAL;
@@ -1298,13 +1298,13 @@ brw_compile_tes(const struct brw_compiler *compiler,
    nir->info.inputs_read = key->inputs_read;
    nir->info.patch_inputs_read = key->patch_inputs_read;
 
-   brw_nir_apply_key(nir, compiler, &key->base, 8);
-   brw_nir_lower_tes_inputs(nir, input_vue_map);
-   brw_nir_lower_vue_outputs(nir);
-   brw_postprocess_nir(nir, compiler, debug_enabled,
+   elk_nir_apply_key(nir, compiler, &key->base, 8);
+   elk_nir_lower_tes_inputs(nir, input_vue_map);
+   elk_nir_lower_vue_outputs(nir);
+   elk_postprocess_nir(nir, compiler, debug_enabled,
                        key->base.robust_flags);
 
-   brw_compute_vue_map(devinfo, &prog_data->base.vue_map,
+   elk_compute_vue_map(devinfo, &prog_data->base.vue_map,
                        nir->info.outputs_written,
                        nir->info.separate_shader, 1);
 
@@ -1367,15 +1367,15 @@ brw_compile_tes(const struct brw_compiler *compiler,
 
    if (unlikely(debug_enabled)) {
       fprintf(stderr, "TES Input ");
-      brw_print_vue_map(stderr, input_vue_map, MESA_SHADER_TESS_EVAL);
+      elk_print_vue_map(stderr, input_vue_map, MESA_SHADER_TESS_EVAL);
       fprintf(stderr, "TES Output ");
-      brw_print_vue_map(stderr, &prog_data->base.vue_map,
+      elk_print_vue_map(stderr, &prog_data->base.vue_map,
                         MESA_SHADER_TESS_EVAL);
    }
 
    if (is_scalar) {
       const unsigned dispatch_width = devinfo->ver >= 20 ? 16 : 8;
-      fs_visitor v(compiler, &params->base, &key->base,
+      elk_fs_visitor v(compiler, &params->base, &key->base,
                    &prog_data->base.base, nir, dispatch_width,
                    params->base.stats != NULL, debug_enabled);
       if (!v.run_tes()) {
@@ -1389,7 +1389,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
 
       prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
-      fs_generator g(compiler, &params->base,
+      elk_fs_generator g(compiler, &params->base,
                      &prog_data->base.base, false, MESA_SHADER_TESS_EVAL);
       if (unlikely(debug_enabled)) {
          g.enable_debug(ralloc_asprintf(params->base.mem_ctx,
@@ -1417,7 +1417,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
       if (unlikely(debug_enabled))
 	 v.dump_instructions();
 
-      assembly = brw_vec4_generate_assembly(compiler, &params->base, nir,
+      assembly = elk_vec4_generate_assembly(compiler, &params->base, nir,
                                             &prog_data->base, v.cfg,
                                             v.performance_analysis.require(),
                                             debug_enabled);

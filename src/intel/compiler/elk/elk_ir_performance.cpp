@@ -120,17 +120,17 @@ namespace {
     * instructions.
     */
    struct instruction_info {
-      instruction_info(const struct brw_isa_info *isa, const fs_inst *inst) :
+      instruction_info(const struct elk_isa_info *isa, const elk_fs_inst *inst) :
          isa(isa), devinfo(isa->devinfo), op(inst->opcode),
          td(inst->dst.type), sd(DIV_ROUND_UP(inst->size_written, REG_SIZE)),
          tx(get_exec_type(inst)), sx(0), ss(0),
-         sc(has_bank_conflict(isa, inst) ? sd : 0),
+         sc(elk_has_bank_conflict(isa, inst) ? sd : 0),
          desc(inst->desc), sfid(inst->sfid)
       {
          /* We typically want the maximum source size, except for split send
           * messages which require the total size.
           */
-         if (inst->opcode == SHADER_OPCODE_SEND) {
+         if (inst->opcode == ELK_SHADER_OPCODE_SEND) {
             ss = DIV_ROUND_UP(inst->size_read(2), REG_SIZE) +
                  DIV_ROUND_UP(inst->size_read(3), REG_SIZE);
          } else {
@@ -144,15 +144,15 @@ namespace {
          /* 32x32 integer multiplication has half the usual ALU throughput.
           * Treat it as double-precision.
           */
-         if ((inst->opcode == BRW_OPCODE_MUL || inst->opcode == BRW_OPCODE_MAD) &&
-             !brw_reg_type_is_floating_point(tx) && type_sz(tx) == 4 &&
+         if ((inst->opcode == ELK_OPCODE_MUL || inst->opcode == ELK_OPCODE_MAD) &&
+             !elk_reg_type_is_floating_point(tx) && type_sz(tx) == 4 &&
              type_sz(inst->src[0].type) == type_sz(inst->src[1].type))
-            tx = brw_int_type(8, tx == BRW_REGISTER_TYPE_D);
+            tx = elk_int_type(8, tx == ELK_REGISTER_TYPE_D);
 
-         rcount = inst->opcode == BRW_OPCODE_DPAS ? inst->rcount : 0;
+         rcount = inst->opcode == ELK_OPCODE_DPAS ? inst->rcount : 0;
       }
 
-      instruction_info(const struct brw_isa_info *isa,
+      instruction_info(const struct elk_isa_info *isa,
                        const vec4_instruction *inst) :
          isa(isa), devinfo(isa->devinfo), op(inst->opcode),
          td(inst->dst.type), sd(DIV_ROUND_UP(inst->size_written, REG_SIZE)),
@@ -169,24 +169,24 @@ namespace {
          /* 32x32 integer multiplication has half the usual ALU throughput.
           * Treat it as double-precision.
           */
-         if ((inst->opcode == BRW_OPCODE_MUL || inst->opcode == BRW_OPCODE_MAD) &&
-             !brw_reg_type_is_floating_point(tx) && type_sz(tx) == 4 &&
+         if ((inst->opcode == ELK_OPCODE_MUL || inst->opcode == ELK_OPCODE_MAD) &&
+             !elk_reg_type_is_floating_point(tx) && type_sz(tx) == 4 &&
              type_sz(inst->src[0].type) == type_sz(inst->src[1].type))
-            tx = brw_int_type(8, tx == BRW_REGISTER_TYPE_D);
+            tx = elk_int_type(8, tx == ELK_REGISTER_TYPE_D);
       }
 
       /** ISA encoding information */
-      const struct brw_isa_info *isa;
+      const struct elk_isa_info *isa;
       /** Device information. */
       const struct intel_device_info *devinfo;
       /** Instruction opcode. */
-      opcode op;
+      elk_opcode op;
       /** Destination type. */
-      brw_reg_type td;
+      elk_reg_type td;
       /** Destination size in GRF units. */
       unsigned sd;
       /** Execution type. */
-      brw_reg_type tx;
+      elk_reg_type tx;
       /** Execution size in GRF units. */
       unsigned sx;
       /** Source size. */
@@ -299,71 +299,71 @@ namespace {
       const struct intel_device_info *devinfo = info.devinfo;
 
       switch (info.op) {
-      case BRW_OPCODE_SYNC:
-      case BRW_OPCODE_SEL:
-      case BRW_OPCODE_NOT:
-      case BRW_OPCODE_AND:
-      case BRW_OPCODE_OR:
-      case BRW_OPCODE_XOR:
-      case BRW_OPCODE_SHR:
-      case BRW_OPCODE_SHL:
-      case BRW_OPCODE_DIM:
-      case BRW_OPCODE_ASR:
-      case BRW_OPCODE_CMPN:
-      case BRW_OPCODE_F16TO32:
-      case BRW_OPCODE_BFREV:
-      case BRW_OPCODE_BFI1:
-      case BRW_OPCODE_AVG:
-      case BRW_OPCODE_FRC:
-      case BRW_OPCODE_RNDU:
-      case BRW_OPCODE_RNDD:
-      case BRW_OPCODE_RNDE:
-      case BRW_OPCODE_RNDZ:
-      case BRW_OPCODE_MAC:
-      case BRW_OPCODE_MACH:
-      case BRW_OPCODE_LZD:
-      case BRW_OPCODE_FBH:
-      case BRW_OPCODE_FBL:
-      case BRW_OPCODE_CBIT:
-      case BRW_OPCODE_ADDC:
-      case BRW_OPCODE_ROR:
-      case BRW_OPCODE_ROL:
-      case BRW_OPCODE_SUBB:
-      case BRW_OPCODE_SAD2:
-      case BRW_OPCODE_SADA2:
-      case BRW_OPCODE_LINE:
-      case BRW_OPCODE_NOP:
-      case SHADER_OPCODE_CLUSTER_BROADCAST:
-      case SHADER_OPCODE_SCRATCH_HEADER:
-      case FS_OPCODE_DDX_COARSE:
-      case FS_OPCODE_DDX_FINE:
-      case FS_OPCODE_DDY_COARSE:
-      case FS_OPCODE_PIXEL_X:
-      case FS_OPCODE_PIXEL_Y:
-      case FS_OPCODE_SET_SAMPLE_ID:
-      case VEC4_OPCODE_MOV_BYTES:
-      case VEC4_OPCODE_UNPACK_UNIFORM:
-      case VEC4_OPCODE_DOUBLE_TO_F32:
-      case VEC4_OPCODE_DOUBLE_TO_D32:
-      case VEC4_OPCODE_DOUBLE_TO_U32:
-      case VEC4_OPCODE_TO_DOUBLE:
-      case VEC4_OPCODE_PICK_LOW_32BIT:
-      case VEC4_OPCODE_PICK_HIGH_32BIT:
-      case VEC4_OPCODE_SET_LOW_32BIT:
-      case VEC4_OPCODE_SET_HIGH_32BIT:
-      case VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
-      case GS_OPCODE_SET_DWORD_2:
-      case GS_OPCODE_SET_WRITE_OFFSET:
-      case GS_OPCODE_SET_VERTEX_COUNT:
-      case GS_OPCODE_PREPARE_CHANNEL_MASKS:
-      case GS_OPCODE_SET_CHANNEL_MASKS:
-      case GS_OPCODE_GET_INSTANCE_ID:
-      case GS_OPCODE_SET_PRIMITIVE_ID:
-      case GS_OPCODE_SVB_SET_DST_INDEX:
-      case TCS_OPCODE_SRC0_010_IS_ZERO:
-      case TCS_OPCODE_GET_PRIMITIVE_ID:
-      case TES_OPCODE_GET_PRIMITIVE_ID:
-      case SHADER_OPCODE_READ_SR_REG:
+      case ELK_OPCODE_SYNC:
+      case ELK_OPCODE_SEL:
+      case ELK_OPCODE_NOT:
+      case ELK_OPCODE_AND:
+      case ELK_OPCODE_OR:
+      case ELK_OPCODE_XOR:
+      case ELK_OPCODE_SHR:
+      case ELK_OPCODE_SHL:
+      case ELK_OPCODE_DIM:
+      case ELK_OPCODE_ASR:
+      case ELK_OPCODE_CMPN:
+      case ELK_OPCODE_F16TO32:
+      case ELK_OPCODE_BFREV:
+      case ELK_OPCODE_BFI1:
+      case ELK_OPCODE_AVG:
+      case ELK_OPCODE_FRC:
+      case ELK_OPCODE_RNDU:
+      case ELK_OPCODE_RNDD:
+      case ELK_OPCODE_RNDE:
+      case ELK_OPCODE_RNDZ:
+      case ELK_OPCODE_MAC:
+      case ELK_OPCODE_MACH:
+      case ELK_OPCODE_LZD:
+      case ELK_OPCODE_FBH:
+      case ELK_OPCODE_FBL:
+      case ELK_OPCODE_CBIT:
+      case ELK_OPCODE_ADDC:
+      case ELK_OPCODE_ROR:
+      case ELK_OPCODE_ROL:
+      case ELK_OPCODE_SUBB:
+      case ELK_OPCODE_SAD2:
+      case ELK_OPCODE_SADA2:
+      case ELK_OPCODE_LINE:
+      case ELK_OPCODE_NOP:
+      case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
+      case ELK_SHADER_OPCODE_SCRATCH_HEADER:
+      case ELK_FS_OPCODE_DDX_COARSE:
+      case ELK_FS_OPCODE_DDX_FINE:
+      case ELK_FS_OPCODE_DDY_COARSE:
+      case ELK_FS_OPCODE_PIXEL_X:
+      case ELK_FS_OPCODE_PIXEL_Y:
+      case ELK_FS_OPCODE_SET_SAMPLE_ID:
+      case ELK_VEC4_OPCODE_MOV_BYTES:
+      case ELK_VEC4_OPCODE_UNPACK_UNIFORM:
+      case ELK_VEC4_OPCODE_DOUBLE_TO_F32:
+      case ELK_VEC4_OPCODE_DOUBLE_TO_D32:
+      case ELK_VEC4_OPCODE_DOUBLE_TO_U32:
+      case ELK_VEC4_OPCODE_TO_DOUBLE:
+      case ELK_VEC4_OPCODE_PICK_LOW_32BIT:
+      case ELK_VEC4_OPCODE_PICK_HIGH_32BIT:
+      case ELK_VEC4_OPCODE_SET_LOW_32BIT:
+      case ELK_VEC4_OPCODE_SET_HIGH_32BIT:
+      case ELK_VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
+      case ELK_GS_OPCODE_SET_DWORD_2:
+      case ELK_GS_OPCODE_SET_WRITE_OFFSET:
+      case ELK_GS_OPCODE_SET_VERTEX_COUNT:
+      case ELK_GS_OPCODE_PREPARE_CHANNEL_MASKS:
+      case ELK_GS_OPCODE_SET_CHANNEL_MASKS:
+      case ELK_GS_OPCODE_GET_INSTANCE_ID:
+      case ELK_GS_OPCODE_SET_PRIMITIVE_ID:
+      case ELK_GS_OPCODE_SVB_SET_DST_INDEX:
+      case ELK_TCS_OPCODE_SRC0_010_IS_ZERO:
+      case ELK_TCS_OPCODE_GET_PRIMITIVE_ID:
+      case ELK_TES_OPCODE_GET_PRIMITIVE_ID:
+      case ELK_SHADER_OPCODE_READ_SR_REG:
          if (devinfo->ver >= 11) {
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 10, 6 /* XXX */, 14, 0, 0);
@@ -382,13 +382,13 @@ namespace {
                                   0, 12, 8 /* XXX */, 18, 0, 0);
          }
 
-      case BRW_OPCODE_MOV:
-      case BRW_OPCODE_CMP:
-      case BRW_OPCODE_ADD:
-      case BRW_OPCODE_ADD3:
-      case BRW_OPCODE_MUL:
-      case SHADER_OPCODE_MOV_RELOC_IMM:
-      case VEC4_OPCODE_MOV_FOR_SCRATCH:
+      case ELK_OPCODE_MOV:
+      case ELK_OPCODE_CMP:
+      case ELK_OPCODE_ADD:
+      case ELK_OPCODE_ADD3:
+      case ELK_OPCODE_MUL:
+      case ELK_SHADER_OPCODE_MOV_RELOC_IMM:
+      case ELK_VEC4_OPCODE_MOV_FOR_SCRATCH:
          if (devinfo->ver >= 11) {
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 10, 6, 14, 0, 0);
@@ -400,14 +400,14 @@ namespace {
                return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                      0, 8, 4, 12, 0, 0);
          } else if (devinfo->verx10 >= 75) {
-            if (info.tx == BRW_REGISTER_TYPE_F)
+            if (info.tx == ELK_REGISTER_TYPE_F)
                return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                      0, 12, 8 /* XXX */, 18, 0, 0);
             else
                return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                      0, 10, 6 /* XXX */, 16, 0, 0);
          } else if (devinfo->ver >= 7) {
-            if (info.tx == BRW_REGISTER_TYPE_F)
+            if (info.tx == ELK_REGISTER_TYPE_F)
                return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                      0, 14, 10 /* XXX */, 20, 0, 0);
             else
@@ -420,9 +420,9 @@ namespace {
                                   0, 0);
          }
 
-      case BRW_OPCODE_BFE:
-      case BRW_OPCODE_BFI2:
-      case BRW_OPCODE_CSEL:
+      case ELK_OPCODE_BFE:
+      case ELK_OPCODE_BFI2:
+      case ELK_OPCODE_CSEL:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
                                   0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
@@ -438,7 +438,7 @@ namespace {
          else
             abort();
 
-      case BRW_OPCODE_MAD:
+      case ELK_OPCODE_MAD:
          if (devinfo->ver >= 11) {
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
                                   0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
@@ -450,14 +450,14 @@ namespace {
                return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
                                      0, 8, 4 /* XXX */, 12 /* XXX */, 0, 0);
          } else if (devinfo->verx10 >= 75) {
-            if (info.tx == BRW_REGISTER_TYPE_F)
+            if (info.tx == ELK_REGISTER_TYPE_F)
                return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
                                      0, 12, 8 /* XXX */, 18, 0, 0);
             else
                return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
                                      0, 10, 6 /* XXX */, 16, 0, 0);
          } else if (devinfo->ver >= 7) {
-            if (info.tx == BRW_REGISTER_TYPE_F)
+            if (info.tx == ELK_REGISTER_TYPE_F)
                return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
                                      0, 14, 10 /* XXX */, 20, 0, 0);
             else
@@ -472,7 +472,7 @@ namespace {
             abort();
          }
 
-      case BRW_OPCODE_F32TO16:
+      case ELK_OPCODE_F32TO16:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 0, 4, 0, 0, 4,
                                   0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
@@ -488,10 +488,10 @@ namespace {
          else
             abort();
 
-      case BRW_OPCODE_DP4:
-      case BRW_OPCODE_DPH:
-      case BRW_OPCODE_DP3:
-      case BRW_OPCODE_DP2:
+      case ELK_OPCODE_DP4:
+      case ELK_OPCODE_DPH:
+      case ELK_OPCODE_DP3:
+      case ELK_OPCODE_DP2:
          if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 12, 8 /* XXX */, 16 /* XXX */, 0, 0);
@@ -502,14 +502,14 @@ namespace {
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 12, 8 /* XXX */, 18 /* XXX */, 0, 0);
 
-      case BRW_OPCODE_DP4A:
+      case ELK_OPCODE_DP4A:
          if (devinfo->ver >= 12)
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
                                   0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
          else
             abort();
 
-      case BRW_OPCODE_DPAS: {
+      case ELK_OPCODE_DPAS: {
          unsigned ld;
 
          switch (info.rcount) {
@@ -535,25 +535,25 @@ namespace {
             abort();
       }
 
-      case SHADER_OPCODE_RCP:
-      case SHADER_OPCODE_RSQ:
-      case SHADER_OPCODE_SQRT:
-      case SHADER_OPCODE_EXP2:
-      case SHADER_OPCODE_LOG2:
-      case SHADER_OPCODE_SIN:
-      case SHADER_OPCODE_COS:
-      case SHADER_OPCODE_POW:
-      case SHADER_OPCODE_INT_QUOTIENT:
-      case SHADER_OPCODE_INT_REMAINDER:
+      case ELK_SHADER_OPCODE_RCP:
+      case ELK_SHADER_OPCODE_RSQ:
+      case ELK_SHADER_OPCODE_SQRT:
+      case ELK_SHADER_OPCODE_EXP2:
+      case ELK_SHADER_OPCODE_LOG2:
+      case ELK_SHADER_OPCODE_SIN:
+      case ELK_SHADER_OPCODE_COS:
+      case ELK_SHADER_OPCODE_POW:
+      case ELK_SHADER_OPCODE_INT_QUOTIENT:
+      case ELK_SHADER_OPCODE_INT_REMAINDER:
          if (devinfo->ver >= 6) {
             switch (info.op) {
-            case SHADER_OPCODE_RCP:
-            case SHADER_OPCODE_RSQ:
-            case SHADER_OPCODE_SQRT:
-            case SHADER_OPCODE_EXP2:
-            case SHADER_OPCODE_LOG2:
-            case SHADER_OPCODE_SIN:
-            case SHADER_OPCODE_COS:
+            case ELK_SHADER_OPCODE_RCP:
+            case ELK_SHADER_OPCODE_RSQ:
+            case ELK_SHADER_OPCODE_SQRT:
+            case ELK_SHADER_OPCODE_EXP2:
+            case ELK_SHADER_OPCODE_LOG2:
+            case ELK_SHADER_OPCODE_SIN:
+            case ELK_SHADER_OPCODE_COS:
                if (devinfo->ver >= 8)
                   return calculate_desc(info, EU_UNIT_EM, -2, 4, 0, 0, 4,
                                         0, 16, 0, 0, 0, 0);
@@ -564,7 +564,7 @@ namespace {
                   return calculate_desc(info, EU_UNIT_EM, 0, 2, 0, 0, 2,
                                         0, 14, 0, 0, 0, 0);
 
-            case SHADER_OPCODE_POW:
+            case ELK_SHADER_OPCODE_POW:
                if (devinfo->ver >= 8)
                   return calculate_desc(info, EU_UNIT_EM, -2, 4, 0, 0, 8,
                                         0, 24, 0, 0, 0, 0);
@@ -575,8 +575,8 @@ namespace {
                   return calculate_desc(info, EU_UNIT_EM, 0, 2, 0, 0, 4,
                                         0, 22, 0, 0, 0, 0);
 
-            case SHADER_OPCODE_INT_QUOTIENT:
-            case SHADER_OPCODE_INT_REMAINDER:
+            case ELK_SHADER_OPCODE_INT_QUOTIENT:
+            case ELK_SHADER_OPCODE_INT_REMAINDER:
                return calculate_desc(info, EU_UNIT_EM, 2, 0, 0, 26, 0,
                                      0, 28 /* XXX */, 0, 0, 0, 0);
 
@@ -585,31 +585,31 @@ namespace {
             }
          } else {
             switch (info.op) {
-            case SHADER_OPCODE_RCP:
+            case ELK_SHADER_OPCODE_RCP:
                return calculate_desc(info, EU_UNIT_EM, 2, 0, 0, 0, 8,
                                      0, 22, 0, 0, 0, 8);
 
-            case SHADER_OPCODE_RSQ:
+            case ELK_SHADER_OPCODE_RSQ:
                return calculate_desc(info, EU_UNIT_EM, 2, 0, 0, 0, 16,
                                      0, 44, 0, 0, 0, 8);
 
-            case SHADER_OPCODE_INT_QUOTIENT:
-            case SHADER_OPCODE_SQRT:
-            case SHADER_OPCODE_LOG2:
+            case ELK_SHADER_OPCODE_INT_QUOTIENT:
+            case ELK_SHADER_OPCODE_SQRT:
+            case ELK_SHADER_OPCODE_LOG2:
                return calculate_desc(info, EU_UNIT_EM, 2, 0, 0, 0, 24,
                                      0, 66, 0, 0, 0, 8);
 
-            case SHADER_OPCODE_INT_REMAINDER:
-            case SHADER_OPCODE_EXP2:
+            case ELK_SHADER_OPCODE_INT_REMAINDER:
+            case ELK_SHADER_OPCODE_EXP2:
                return calculate_desc(info, EU_UNIT_EM, 2, 0, 0, 0, 32,
                                      0, 88, 0, 0, 0, 8);
 
-            case SHADER_OPCODE_SIN:
-            case SHADER_OPCODE_COS:
+            case ELK_SHADER_OPCODE_SIN:
+            case ELK_SHADER_OPCODE_COS:
                return calculate_desc(info, EU_UNIT_EM, 2, 0, 0, 0, 48,
                                      0, 132, 0, 0, 0, 8);
 
-            case SHADER_OPCODE_POW:
+            case ELK_SHADER_OPCODE_POW:
                return calculate_desc(info, EU_UNIT_EM, 2, 0, 0, 0, 64,
                                      0, 176, 0, 0, 0, 8);
 
@@ -618,7 +618,7 @@ namespace {
             }
          }
 
-      case BRW_OPCODE_DO:
+      case ELK_OPCODE_DO:
          if (devinfo->ver >= 6)
             return calculate_desc(info, EU_UNIT_NULL, 0, 0, 0, 0, 0,
                                   0, 0, 0, 0, 0, 0);
@@ -626,13 +626,13 @@ namespace {
             return calculate_desc(info, EU_UNIT_NULL, 2 /* XXX */, 0, 0, 0, 0,
                                   0, 0, 0, 0, 0, 0);
 
-      case BRW_OPCODE_IF:
-      case BRW_OPCODE_ELSE:
-      case BRW_OPCODE_ENDIF:
-      case BRW_OPCODE_WHILE:
-      case BRW_OPCODE_BREAK:
-      case BRW_OPCODE_CONTINUE:
-      case BRW_OPCODE_HALT:
+      case ELK_OPCODE_IF:
+      case ELK_OPCODE_ELSE:
+      case ELK_OPCODE_ENDIF:
+      case ELK_OPCODE_WHILE:
+      case ELK_OPCODE_BREAK:
+      case ELK_OPCODE_CONTINUE:
+      case ELK_OPCODE_HALT:
          if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_NULL, 8, 0, 0, 0, 0,
                                   0, 0, 0, 0, 0, 0);
@@ -643,7 +643,7 @@ namespace {
             return calculate_desc(info, EU_UNIT_NULL, 2, 0, 0, 0, 0,
                                   0, 0, 0, 0, 0, 0);
 
-      case FS_OPCODE_LINTERP:
+      case ELK_FS_OPCODE_LINTERP:
          if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 0, 4, 0, 0, 4,
                                   0, 12, 8 /* XXX */, 16 /* XXX */, 0, 0);
@@ -654,7 +654,7 @@ namespace {
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 12, 8 /* XXX */, 18 /* XXX */, 0, 0);
 
-      case BRW_OPCODE_LRP:
+      case ELK_OPCODE_LRP:
          if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 0, 4, 1, 0, 4,
                                   0, 12, 8 /* XXX */, 16 /* XXX */, 0, 0);
@@ -667,7 +667,7 @@ namespace {
          else
             abort();
 
-      case FS_OPCODE_PACK_HALF_2x16_SPLIT:
+      case ELK_FS_OPCODE_PACK_HALF_2x16_SPLIT:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 20, 6, 0, 0, 6,
                                   0, 10 /* XXX */, 6 /* XXX */,
@@ -687,7 +687,7 @@ namespace {
          else
             abort();
 
-      case SHADER_OPCODE_MOV_INDIRECT:
+      case ELK_SHADER_OPCODE_MOV_INDIRECT:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 34, 0, 0, 34, 0,
                                   0, 10 /* XXX */, 6 /* XXX */,
@@ -705,7 +705,7 @@ namespace {
                                   0, 12 /* XXX */, 8 /* XXX */,
                                   18 /* XXX */, 0, 0);
 
-      case SHADER_OPCODE_BROADCAST:
+      case ELK_SHADER_OPCODE_BROADCAST:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 20 /* XXX */, 0, 0, 4, 0,
                                   0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
@@ -721,8 +721,8 @@ namespace {
          else
             abort();
 
-      case SHADER_OPCODE_FIND_LIVE_CHANNEL:
-      case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
+      case ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL:
+      case ELK_SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 2, 0, 0, 2, 0,
                                   0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
@@ -738,8 +738,8 @@ namespace {
          else
             abort();
 
-      case SHADER_OPCODE_RND_MODE:
-      case SHADER_OPCODE_FLOAT_CONTROL_MODE:
+      case ELK_SHADER_OPCODE_RND_MODE:
+      case ELK_SHADER_OPCODE_FLOAT_CONTROL_MODE:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 24 /* XXX */, 0, 0,
                                   4 /* XXX */, 0,
@@ -759,7 +759,7 @@ namespace {
          else
             abort();
 
-      case SHADER_OPCODE_SHUFFLE:
+      case ELK_SHADER_OPCODE_SHUFFLE:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 44 /* XXX */, 0, 0,
                                   44 /* XXX */, 0,
@@ -783,7 +783,7 @@ namespace {
          else
             abort();
 
-      case SHADER_OPCODE_SEL_EXEC:
+      case ELK_SHADER_OPCODE_SEL_EXEC:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 10 /* XXX */, 4 /* XXX */, 0,
                                   0, 4 /* XXX */,
@@ -805,7 +805,7 @@ namespace {
                                   0, 12 /* XXX */, 8 /* XXX */,
                                   18 /* XXX */, 0, 0);
 
-      case SHADER_OPCODE_QUAD_SWIZZLE:
+      case ELK_SHADER_OPCODE_QUAD_SWIZZLE:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 0 /* XXX */, 8 /* XXX */, 0,
                                   0, 8 /* XXX */,
@@ -827,7 +827,7 @@ namespace {
                                   0, 12 /* XXX */, 8 /* XXX */,
                                   18 /* XXX */, 0, 0);
 
-      case FS_OPCODE_DDY_FINE:
+      case ELK_FS_OPCODE_DDY_FINE:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 0, 14, 0, 0, 4,
                                   0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
@@ -841,7 +841,7 @@ namespace {
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 14, 10 /* XXX */, 20 /* XXX */, 0, 0);
 
-      case FS_OPCODE_LOAD_LIVE_CHANNELS:
+      case ELK_FS_OPCODE_LOAD_LIVE_CHANNELS:
          if (devinfo->ver >= 11)
             return calculate_desc(info, EU_UNIT_FPU, 2 /* XXX */, 0, 0,
                                   2 /* XXX */, 0,
@@ -853,7 +853,7 @@ namespace {
          else
             abort();
 
-      case VEC4_OPCODE_PACK_BYTES:
+      case ELK_VEC4_OPCODE_PACK_BYTES:
          if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 4 /* XXX */, 0, 0,
                                   4 /* XXX */, 0,
@@ -870,11 +870,11 @@ namespace {
                                   0, 12 /* XXX */, 8 /* XXX */, 18 /* XXX */,
                                   0, 0);
 
-      case VS_OPCODE_UNPACK_FLAGS_SIMD4X2:
-      case TCS_OPCODE_GET_INSTANCE_ID:
-      case VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
-      case VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
-      case TES_OPCODE_CREATE_INPUT_READ_HEADER:
+      case ELK_VS_OPCODE_UNPACK_FLAGS_SIMD4X2:
+      case ELK_TCS_OPCODE_GET_INSTANCE_ID:
+      case ELK_VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
+      case ELK_VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
+      case ELK_TES_OPCODE_CREATE_INPUT_READ_HEADER:
          if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 22 /* XXX */, 0, 0,
                                   6 /* XXX */, 0,
@@ -891,8 +891,8 @@ namespace {
                                   0, 12 /* XXX */, 8 /* XXX */, 18 /* XXX */,
                                   0, 0);
 
-      case GS_OPCODE_FF_SYNC_SET_PRIMITIVES:
-      case TCS_OPCODE_CREATE_BARRIER_HEADER:
+      case ELK_GS_OPCODE_FF_SYNC_SET_PRIMITIVES:
+      case ELK_TCS_OPCODE_CREATE_BARRIER_HEADER:
          if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 32 /* XXX */, 0, 0,
                                   8 /* XXX */, 0,
@@ -911,7 +911,7 @@ namespace {
          else
             abort();
 
-      case TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
+      case ELK_TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
          if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 12 /* XXX */, 0, 0,
                                   4 /* XXX */, 0,
@@ -930,42 +930,42 @@ namespace {
          else
             abort();
 
-      case SHADER_OPCODE_TEX:
-      case FS_OPCODE_TXB:
-      case SHADER_OPCODE_TXD:
-      case SHADER_OPCODE_TXF:
-      case SHADER_OPCODE_TXF_LZ:
-      case SHADER_OPCODE_TXL:
-      case SHADER_OPCODE_TXL_LZ:
-      case SHADER_OPCODE_TXF_CMS:
-      case SHADER_OPCODE_TXF_CMS_W:
-      case SHADER_OPCODE_TXF_UMS:
-      case SHADER_OPCODE_TXF_MCS:
-      case SHADER_OPCODE_TXS:
-      case SHADER_OPCODE_LOD:
-      case SHADER_OPCODE_GET_BUFFER_SIZE:
-      case SHADER_OPCODE_TG4:
-      case SHADER_OPCODE_TG4_OFFSET:
-      case SHADER_OPCODE_SAMPLEINFO:
-      case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4:
+      case ELK_SHADER_OPCODE_TEX:
+      case ELK_FS_OPCODE_TXB:
+      case ELK_SHADER_OPCODE_TXD:
+      case ELK_SHADER_OPCODE_TXF:
+      case ELK_SHADER_OPCODE_TXF_LZ:
+      case ELK_SHADER_OPCODE_TXL:
+      case ELK_SHADER_OPCODE_TXL_LZ:
+      case ELK_SHADER_OPCODE_TXF_CMS:
+      case ELK_SHADER_OPCODE_TXF_CMS_W:
+      case ELK_SHADER_OPCODE_TXF_UMS:
+      case ELK_SHADER_OPCODE_TXF_MCS:
+      case ELK_SHADER_OPCODE_TXS:
+      case ELK_SHADER_OPCODE_LOD:
+      case ELK_SHADER_OPCODE_GET_BUFFER_SIZE:
+      case ELK_SHADER_OPCODE_TG4:
+      case ELK_SHADER_OPCODE_TG4_OFFSET:
+      case ELK_SHADER_OPCODE_SAMPLEINFO:
+      case ELK_FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4:
          return calculate_desc(info, EU_UNIT_SAMPLER, 2, 0, 0, 0, 16 /* XXX */,
                                8 /* XXX */, 750 /* XXX */, 0, 0,
                                2 /* XXX */, 0);
 
-      case VEC4_OPCODE_URB_READ:
-      case VEC4_VS_OPCODE_URB_WRITE:
-      case VEC4_GS_OPCODE_URB_WRITE:
-      case VEC4_GS_OPCODE_URB_WRITE_ALLOCATE:
-      case GS_OPCODE_THREAD_END:
-      case GS_OPCODE_FF_SYNC:
-      case VEC4_TCS_OPCODE_URB_WRITE:
-      case TCS_OPCODE_RELEASE_INPUT:
-      case TCS_OPCODE_THREAD_END:
+      case ELK_VEC4_OPCODE_URB_READ:
+      case ELK_VEC4_VS_OPCODE_URB_WRITE:
+      case ELK_VEC4_GS_OPCODE_URB_WRITE:
+      case ELK_VEC4_GS_OPCODE_URB_WRITE_ALLOCATE:
+      case ELK_GS_OPCODE_THREAD_END:
+      case ELK_GS_OPCODE_FF_SYNC:
+      case ELK_VEC4_TCS_OPCODE_URB_WRITE:
+      case ELK_TCS_OPCODE_RELEASE_INPUT:
+      case ELK_TCS_OPCODE_THREAD_END:
          return calculate_desc(info, EU_UNIT_URB, 2, 0, 0, 0, 6 /* XXX */,
                                32 /* XXX */, 200 /* XXX */, 0, 0, 0, 0);
 
-      case SHADER_OPCODE_MEMORY_FENCE:
-      case SHADER_OPCODE_INTERLOCK:
+      case ELK_SHADER_OPCODE_MEMORY_FENCE:
+      case ELK_SHADER_OPCODE_INTERLOCK:
          switch (info.sfid) {
          case GFX6_SFID_DATAPORT_RENDER_CACHE:
             if (devinfo->ver >= 7)
@@ -974,7 +974,7 @@ namespace {
             else
                abort();
 
-         case BRW_SFID_URB:
+         case ELK_SFID_URB:
          case GFX7_SFID_DATAPORT_DATA_CACHE:
          case GFX12_SFID_SLM:
          case GFX12_SFID_TGM:
@@ -990,13 +990,13 @@ namespace {
             abort();
          }
 
-      case SHADER_OPCODE_GFX4_SCRATCH_READ:
-      case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
-      case SHADER_OPCODE_GFX7_SCRATCH_READ:
+      case ELK_SHADER_OPCODE_GFX4_SCRATCH_READ:
+      case ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE:
+      case ELK_SHADER_OPCODE_GFX7_SCRATCH_READ:
          return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0, 0, 8 /* XXX */,
                                10 /* XXX */, 100 /* XXX */, 0, 0, 0, 0);
 
-      case VEC4_OPCODE_UNTYPED_ATOMIC:
+      case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
          if (devinfo->ver >= 7)
             return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0,
                                   30 /* XXX */, 400 /* XXX */,
@@ -1005,8 +1005,8 @@ namespace {
          else
             abort();
 
-      case VEC4_OPCODE_UNTYPED_SURFACE_READ:
-      case VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
+      case ELK_VEC4_OPCODE_UNTYPED_SURFACE_READ:
+      case ELK_VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
          if (devinfo->ver >= 7)
             return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0,
                                   0, 20 /* XXX */,
@@ -1015,13 +1015,13 @@ namespace {
          else
             abort();
 
-      case FS_OPCODE_FB_WRITE:
-      case FS_OPCODE_FB_READ:
-      case FS_OPCODE_REP_FB_WRITE:
+      case ELK_FS_OPCODE_FB_WRITE:
+      case ELK_FS_OPCODE_FB_READ:
+      case ELK_FS_OPCODE_REP_FB_WRITE:
          return calculate_desc(info, EU_UNIT_DP_RC, 2, 0, 0, 0, 450 /* XXX */,
                                10 /* XXX */, 300 /* XXX */, 0, 0, 0, 0);
 
-      case GS_OPCODE_SVB_WRITE:
+      case ELK_GS_OPCODE_SVB_WRITE:
          if (devinfo->ver >= 6)
             return calculate_desc(info, EU_UNIT_DP_RC, 2 /* XXX */, 0, 0,
                                   0, 450 /* XXX */,
@@ -1030,25 +1030,25 @@ namespace {
          else
             abort();
 
-      case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
+      case ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
          return calculate_desc(info, EU_UNIT_DP_CC, 2, 0, 0, 0, 16 /* XXX */,
                                10 /* XXX */, 100 /* XXX */, 0, 0, 0, 0);
 
-      case VS_OPCODE_PULL_CONSTANT_LOAD:
-      case VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
+      case ELK_VS_OPCODE_PULL_CONSTANT_LOAD:
+      case ELK_VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
          return calculate_desc(info, EU_UNIT_SAMPLER, 2, 0, 0, 0, 16,
                                8, 750, 0, 0, 2, 0);
 
-      case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
-      case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
-      case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
+      case ELK_FS_OPCODE_INTERPOLATE_AT_SAMPLE:
+      case ELK_FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
+      case ELK_FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
          if (devinfo->ver >= 7)
             return calculate_desc(info, EU_UNIT_PI, 2, 0, 0, 14 /* XXX */, 0,
                                   0, 90 /* XXX */, 0, 0, 0, 0);
          else
             abort();
 
-      case SHADER_OPCODE_BARRIER:
+      case ELK_SHADER_OPCODE_BARRIER:
          if (devinfo->ver >= 7)
             return calculate_desc(info, EU_UNIT_GATEWAY, 90 /* XXX */, 0, 0,
                                   0 /* XXX */, 0,
@@ -1056,18 +1056,18 @@ namespace {
          else
             abort();
 
-      case CS_OPCODE_CS_TERMINATE:
+      case ELK_CS_OPCODE_CS_TERMINATE:
          if (devinfo->ver >= 7)
             return calculate_desc(info, EU_UNIT_SPAWNER, 2, 0, 0, 0 /* XXX */, 0,
                                   10 /* XXX */, 0, 0, 0, 0, 0);
          else
             abort();
 
-      case SHADER_OPCODE_SEND:
+      case ELK_SHADER_OPCODE_SEND:
          switch (info.sfid) {
          case GFX6_SFID_DATAPORT_CONSTANT_CACHE:
             if (devinfo->ver >= 7) {
-               /* See FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD */
+               /* See ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD */
                return calculate_desc(info, EU_UNIT_DP_CC, 2, 0, 0, 0, 16 /* XXX */,
                                      10 /* XXX */, 100 /* XXX */, 0, 0, 0, 0);
             } else {
@@ -1075,7 +1075,7 @@ namespace {
             }
          case GFX6_SFID_DATAPORT_RENDER_CACHE:
             if (devinfo->ver >= 7) {
-               switch (brw_dp_desc_msg_type(devinfo, info.desc)) {
+               switch (elk_dp_desc_msg_type(devinfo, info.desc)) {
                case GFX7_DATAPORT_RC_TYPED_ATOMIC_OP:
                   return calculate_desc(info, EU_UNIT_DP_RC, 2, 0, 0,
                                         30 /* XXX */, 450 /* XXX */,
@@ -1094,7 +1094,7 @@ namespace {
             } else {
                abort();
             }
-         case BRW_SFID_SAMPLER: {
+         case ELK_SFID_SAMPLER: {
             if (devinfo->ver >= 6)
                return calculate_desc(info, EU_UNIT_SAMPLER, 2, 0, 0, 0, 16,
                                      8, 750, 0, 0, 2, 0);
@@ -1104,7 +1104,7 @@ namespace {
          case GFX7_SFID_DATAPORT_DATA_CACHE:
          case HSW_SFID_DATAPORT_DATA_CACHE_1:
             if (devinfo->verx10 >= 75) {
-               switch (brw_dp_desc_msg_type(devinfo, info.desc)) {
+               switch (elk_dp_desc_msg_type(devinfo, info.desc)) {
                case HSW_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_OP:
                case HSW_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_OP_SIMD4X2:
                case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP_SIMD4X2:
@@ -1121,7 +1121,7 @@ namespace {
                                         0, 0);
                }
             } else if (devinfo->ver >= 7) {
-               switch (brw_dp_desc_msg_type(devinfo, info.desc)) {
+               switch (elk_dp_desc_msg_type(devinfo, info.desc)) {
                case GFX7_DATAPORT_DC_UNTYPED_ATOMIC_OP:
                   return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0,
                                         30 /* XXX */, 400 /* XXX */,
@@ -1185,7 +1185,7 @@ namespace {
                abort();
             }
 
-         case BRW_SFID_URB:
+         case ELK_SFID_URB:
             return calculate_desc(info, EU_UNIT_URB, 2, 0, 0, 0, 6 /* XXX */,
                                   32 /* XXX */, 200 /* XXX */, 0, 0, 0, 0);
 
@@ -1193,9 +1193,9 @@ namespace {
             abort();
          }
 
-      case SHADER_OPCODE_UNDEF:
-      case SHADER_OPCODE_HALT_TARGET:
-      case FS_OPCODE_SCHEDULING_FENCE:
+      case ELK_SHADER_OPCODE_UNDEF:
+      case ELK_SHADER_OPCODE_HALT_TARGET:
+      case ELK_FS_OPCODE_SCHEDULING_FENCE:
          return calculate_desc(info, EU_UNIT_NULL, 0, 0, 0, 0, 0,
                                0, 0, 0, 0, 0, 0);
 
@@ -1271,10 +1271,10 @@ namespace {
    }
 
    /**
-    * Return the dependency ID of a backend_reg, offset by \p delta GRFs.
+    * Return the dependency ID of a elk_backend_reg, offset by \p delta GRFs.
     */
    enum intel_eu_dependency_id
-   reg_dependency_id(const intel_device_info *devinfo, const backend_reg &r,
+   reg_dependency_id(const intel_device_info *devinfo, const elk_backend_reg &r,
                      const int delta)
    {
       if (r.file == VGRF) {
@@ -1294,19 +1294,19 @@ namespace {
          return intel_eu_dependency_id(EU_DEPENDENCY_ID_GRF0 + i);
 
       } else if (r.file == MRF && devinfo->ver < 7) {
-         const unsigned i = (r.nr & ~BRW_MRF_COMPR4) +
+         const unsigned i = (r.nr & ~ELK_MRF_COMPR4) +
                             r.offset / REG_SIZE + delta;
          assert(i < EU_DEPENDENCY_ID_ADDR0 - EU_DEPENDENCY_ID_MRF0);
          return intel_eu_dependency_id(EU_DEPENDENCY_ID_MRF0 + i);
 
-      } else if (r.file == ARF && r.nr >= BRW_ARF_ADDRESS &&
-                 r.nr < BRW_ARF_ACCUMULATOR) {
+      } else if (r.file == ARF && r.nr >= ELK_ARF_ADDRESS &&
+                 r.nr < ELK_ARF_ACCUMULATOR) {
          assert(delta == 0);
          return EU_DEPENDENCY_ID_ADDR0;
 
-      } else if (r.file == ARF && r.nr >= BRW_ARF_ACCUMULATOR &&
-                 r.nr < BRW_ARF_FLAG) {
-         const unsigned i = r.nr - BRW_ARF_ACCUMULATOR + delta;
+      } else if (r.file == ARF && r.nr >= ELK_ARF_ACCUMULATOR &&
+                 r.nr < ELK_ARF_FLAG) {
+         const unsigned i = r.nr - ELK_ARF_ACCUMULATOR + delta;
          assert(i < EU_DEPENDENCY_ID_FLAG0 - EU_DEPENDENCY_ID_ACCUM0);
          return intel_eu_dependency_id(EU_DEPENDENCY_ID_ACCUM0 + i);
 
@@ -1363,13 +1363,13 @@ namespace {
     */
    unsigned
    accum_reg_of_channel(const intel_device_info *devinfo,
-                        const backend_instruction *inst,
-                        brw_reg_type tx, unsigned i)
+                        const elk_backend_instruction *inst,
+                        elk_reg_type tx, unsigned i)
    {
       assert(inst->reads_accumulator_implicitly() ||
              inst->writes_accumulator_implicitly(devinfo));
       const unsigned offset = (inst->group + i) * type_sz(tx) *
-         (devinfo->ver < 7 || brw_reg_type_is_floating_point(tx) ? 1 : 2);
+         (devinfo->ver < 7 || elk_reg_type_is_floating_point(tx) ? 1 : 2);
       return offset / (reg_unit(devinfo) * REG_SIZE) % 2;
    }
 
@@ -1377,11 +1377,11 @@ namespace {
     * Model the performance behavior of an FS back-end instruction.
     */
    void
-   issue_fs_inst(state &st, const struct brw_isa_info *isa,
-                 const backend_instruction *be_inst)
+   issue_fs_inst(state &st, const struct elk_isa_info *isa,
+                 const elk_backend_instruction *be_inst)
    {
       const struct intel_device_info *devinfo = isa->devinfo;
-      const fs_inst *inst = static_cast<const fs_inst *>(be_inst);
+      const elk_fs_inst *inst = static_cast<const elk_fs_inst *>(be_inst);
       const instruction_info info(isa, inst);
       const perf_desc perf = instruction_desc(info);
 
@@ -1397,14 +1397,14 @@ namespace {
               j <= accum_reg_of_channel(devinfo, inst, info.tx,
                                         inst->exec_size - 1); j++)
             stall_on_dependency(
-               st, reg_dependency_id(devinfo, brw_acc_reg(8), j));
+               st, reg_dependency_id(devinfo, elk_acc_reg(8), j));
       }
 
       if (is_send(inst) && inst->base_mrf != -1) {
          for (unsigned j = 0; j < inst->mlen; j++)
             stall_on_dependency(
                st, reg_dependency_id(
-                  devinfo, brw_uvec_mrf(8, inst->base_mrf, 0), j));
+                  devinfo, elk_uvec_mrf(8, inst->base_mrf, 0), j));
       }
 
       if (const unsigned mask = inst->flags_read(devinfo)) {
@@ -1427,7 +1427,7 @@ namespace {
                  j <= accum_reg_of_channel(devinfo, inst, info.tx,
                                            inst->exec_size - 1); j++)
                stall_on_dependency(
-                  st, reg_dependency_id(devinfo, brw_acc_reg(8), j));
+                  st, reg_dependency_id(devinfo, elk_acc_reg(8), j));
          }
 
          if (const unsigned mask = inst->flags_written(devinfo)) {
@@ -1461,7 +1461,7 @@ namespace {
       if (is_send(inst) && inst->base_mrf != -1) {
          for (unsigned j = 0; j < inst->mlen; j++)
             mark_read_dependency(st, perf,
-               reg_dependency_id(devinfo, brw_uvec_mrf(8, inst->base_mrf, 0), j));
+               reg_dependency_id(devinfo, elk_uvec_mrf(8, inst->base_mrf, 0), j));
       }
 
       /* Mark any destination dependencies. */
@@ -1477,7 +1477,7 @@ namespace {
               j <= accum_reg_of_channel(devinfo, inst, info.tx,
                                         inst->exec_size - 1); j++)
             mark_write_dependency(st, perf,
-                                  reg_dependency_id(devinfo, brw_acc_reg(8), j));
+                                  reg_dependency_id(devinfo, elk_acc_reg(8), j));
       }
 
       if (const unsigned mask = inst->flags_written(devinfo)) {
@@ -1498,8 +1498,8 @@ namespace {
     * Model the performance behavior of a VEC4 back-end instruction.
     */
    void
-   issue_vec4_instruction(state &st, const struct brw_isa_info *isa,
-                          const backend_instruction *be_inst)
+   issue_vec4_instruction(state &st, const struct elk_isa_info *isa,
+                          const elk_backend_instruction *be_inst)
    {
       const struct intel_device_info *devinfo = isa->devinfo;
       const vec4_instruction *inst =
@@ -1519,14 +1519,14 @@ namespace {
               j <= accum_reg_of_channel(devinfo, inst, info.tx,
                                         inst->exec_size - 1); j++)
             stall_on_dependency(
-               st, reg_dependency_id(devinfo, brw_acc_reg(8), j));
+               st, reg_dependency_id(devinfo, elk_acc_reg(8), j));
       }
 
       if (inst->base_mrf != -1) {
          for (unsigned j = 0; j < inst->mlen; j++)
             stall_on_dependency(
                st, reg_dependency_id(
-                  devinfo, brw_uvec_mrf(8, inst->base_mrf, 0), j));
+                  devinfo, elk_uvec_mrf(8, inst->base_mrf, 0), j));
       }
 
       if (inst->reads_flag())
@@ -1545,7 +1545,7 @@ namespace {
                  j <= accum_reg_of_channel(devinfo, inst, info.tx,
                                            inst->exec_size - 1); j++)
                stall_on_dependency(
-                  st, reg_dependency_id(devinfo, brw_acc_reg(8), j));
+                  st, reg_dependency_id(devinfo, elk_acc_reg(8), j));
          }
 
          if (inst->writes_flag(devinfo))
@@ -1567,7 +1567,7 @@ namespace {
       if (inst->base_mrf != -1) {
          for (unsigned j = 0; j < inst->mlen; j++)
             mark_read_dependency(st, perf,
-               reg_dependency_id(devinfo, brw_uvec_mrf(8, inst->base_mrf, 0), j));
+               reg_dependency_id(devinfo, elk_uvec_mrf(8, inst->base_mrf, 0), j));
       }
 
       /* Mark any destination dependencies. */
@@ -1583,7 +1583,7 @@ namespace {
               j <= accum_reg_of_channel(devinfo, inst, info.tx,
                                         inst->exec_size - 1); j++)
             mark_write_dependency(st, perf,
-                                  reg_dependency_id(devinfo, brw_acc_reg(8), j));
+                                  reg_dependency_id(devinfo, elk_acc_reg(8), j));
       }
 
       if (inst->writes_flag(devinfo))
@@ -1608,10 +1608,10 @@ namespace {
     * Estimate the performance of the specified shader.
     */
    void
-   calculate_performance(performance &p, const backend_shader *s,
+   calculate_performance(performance &p, const elk_backend_shader *s,
                          void (*issue_instruction)(
-                            state &, const struct brw_isa_info *,
-                            const backend_instruction *),
+                            state &, const struct elk_isa_info *,
+                            const elk_backend_instruction *),
                          unsigned dispatch_width)
    {
       /* XXX - Note that the previous version of this code used worst-case
@@ -1649,21 +1649,21 @@ namespace {
       foreach_block(block, s->cfg) {
          const unsigned elapsed0 = elapsed;
 
-         foreach_inst_in_block(backend_instruction, inst, block) {
+         foreach_inst_in_block(elk_backend_instruction, inst, block) {
             const unsigned clock0 = st.unit_ready[EU_UNIT_FE];
 
             issue_instruction(st, &s->compiler->isa, inst);
 
-            if (inst->opcode == SHADER_OPCODE_HALT_TARGET && halt_count)
+            if (inst->opcode == ELK_SHADER_OPCODE_HALT_TARGET && halt_count)
                st.weight /= discard_weight;
 
             elapsed += (st.unit_ready[EU_UNIT_FE] - clock0) * st.weight;
 
-            if (inst->opcode == BRW_OPCODE_DO)
+            if (inst->opcode == ELK_OPCODE_DO)
                st.weight *= loop_weight;
-            else if (inst->opcode == BRW_OPCODE_WHILE)
+            else if (inst->opcode == ELK_OPCODE_WHILE)
                st.weight /= loop_weight;
-            else if (inst->opcode == BRW_OPCODE_HALT && !halt_count++)
+            else if (inst->opcode == ELK_OPCODE_HALT && !halt_count++)
                st.weight *= discard_weight;
          }
 
@@ -1675,7 +1675,7 @@ namespace {
    }
 }
 
-elk::performance::performance(const fs_visitor *v) :
+elk::performance::performance(const elk_fs_visitor *v) :
    block_latency(new unsigned[v->cfg->num_blocks])
 {
    calculate_performance(*this, v, issue_fs_inst, v->dispatch_width);

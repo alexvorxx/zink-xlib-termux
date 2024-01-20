@@ -30,22 +30,22 @@
 extern "C" {
 #endif
 
-struct opcode_desc;
+struct elk_opcode_desc;
 
-struct brw_isa_info {
+struct elk_isa_info {
    const struct intel_device_info *devinfo;
 
-   /* A mapping from enum opcode to the corresponding opcode_desc */
-   const struct opcode_desc *ir_to_descs[NUM_BRW_OPCODES];
+   /* A mapping from enum elk_opcode to the corresponding opcode_desc */
+   const struct elk_opcode_desc *ir_to_descs[NUM_ELK_OPCODES];
 
    /** A mapping from a HW opcode encoding to the corresponding opcode_desc */
-   const struct opcode_desc *hw_to_descs[128];
+   const struct elk_opcode_desc *hw_to_descs[128];
 };
 
-void brw_init_isa_info(struct brw_isa_info *isa,
+void elk_init_isa_info(struct elk_isa_info *isa,
                        const struct intel_device_info *devinfo);
 
-struct opcode_desc {
+struct elk_opcode_desc {
    unsigned ir;
    unsigned hw;
    const char *name;
@@ -54,29 +54,29 @@ struct opcode_desc {
    int gfx_vers;
 };
 
-const struct opcode_desc *
-brw_opcode_desc(const struct brw_isa_info *isa, enum opcode opcode);
+const struct elk_opcode_desc *
+elk_opcode_desc(const struct elk_isa_info *isa, enum elk_opcode opcode);
 
-const struct opcode_desc *
-brw_opcode_desc_from_hw(const struct brw_isa_info *isa, unsigned hw);
+const struct elk_opcode_desc *
+elk_opcode_desc_from_hw(const struct elk_isa_info *isa, unsigned hw);
 
 static inline unsigned
-brw_opcode_encode(const struct brw_isa_info *isa, enum opcode opcode)
+elk_opcode_encode(const struct elk_isa_info *isa, enum elk_opcode opcode)
 {
-   return brw_opcode_desc(isa, opcode)->hw;
+   return elk_opcode_desc(isa, opcode)->hw;
 }
 
-static inline enum opcode
-brw_opcode_decode(const struct brw_isa_info *isa, unsigned hw)
+static inline enum elk_opcode
+elk_opcode_decode(const struct elk_isa_info *isa, unsigned hw)
 {
-   const struct opcode_desc *desc = brw_opcode_desc_from_hw(isa, hw);
-   return desc ? (enum opcode)desc->ir : BRW_OPCODE_ILLEGAL;
+   const struct elk_opcode_desc *desc = elk_opcode_desc_from_hw(isa, hw);
+   return desc ? (enum elk_opcode)desc->ir : ELK_OPCODE_ILLEGAL;
 }
 
 static inline bool
-is_3src(const struct brw_isa_info *isa, enum opcode opcode)
+elk_is_3src(const struct elk_isa_info *isa, enum elk_opcode opcode)
 {
-   const struct opcode_desc *desc = brw_opcode_desc(isa, opcode);
+   const struct elk_opcode_desc *desc = elk_opcode_desc(isa, opcode);
    return desc && desc->nsrc == 3;
 }
 

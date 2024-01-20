@@ -45,15 +45,15 @@ using namespace elk;
  */
 
 static bool
-opt_saturate_propagation_local(const fs_live_variables &live, bblock_t *block)
+opt_saturate_propagation_local(const fs_live_variables &live, elk_bblock_t *block)
 {
    bool progress = false;
    int ip = block->end_ip + 1;
 
-   foreach_inst_in_block_reverse(fs_inst, inst, block) {
+   foreach_inst_in_block_reverse(elk_fs_inst, inst, block) {
       ip--;
 
-      if (inst->opcode != BRW_OPCODE_MOV ||
+      if (inst->opcode != ELK_OPCODE_MOV ||
           !inst->saturate ||
           inst->dst.file != VGRF ||
           inst->dst.type != inst->src[0].type ||
@@ -65,7 +65,7 @@ opt_saturate_propagation_local(const fs_live_variables &live, bblock_t *block)
       int src_end_ip = live.end[src_var];
 
       bool interfered = false;
-      foreach_inst_in_block_reverse_starting_from(fs_inst, scan_inst, inst) {
+      foreach_inst_in_block_reverse_starting_from(elk_fs_inst, scan_inst, inst) {
          if (scan_inst->exec_size == inst->exec_size &&
              regions_overlap(scan_inst->dst, scan_inst->size_written,
                              inst->src[0], inst->size_read(0))) {
@@ -87,23 +87,23 @@ opt_saturate_propagation_local(const fs_live_variables &live, bblock_t *block)
                   }
 
                   if (inst->src[0].negate) {
-                     if (scan_inst->opcode == BRW_OPCODE_MUL) {
+                     if (scan_inst->opcode == ELK_OPCODE_MUL) {
                         scan_inst->src[0].negate = !scan_inst->src[0].negate;
                         inst->src[0].negate = false;
-                     } else if (scan_inst->opcode == BRW_OPCODE_MAD) {
+                     } else if (scan_inst->opcode == ELK_OPCODE_MAD) {
                         for (int i = 0; i < 2; i++) {
                            if (scan_inst->src[i].file == IMM) {
-                              brw_negate_immediate(scan_inst->src[i].type,
-                                                   &scan_inst->src[i].as_brw_reg());
+                              elk_negate_immediate(scan_inst->src[i].type,
+                                                   &scan_inst->src[i].as_elk_reg());
                            } else {
                               scan_inst->src[i].negate = !scan_inst->src[i].negate;
                            }
                         }
                         inst->src[0].negate = false;
-                     } else if (scan_inst->opcode == BRW_OPCODE_ADD) {
+                     } else if (scan_inst->opcode == ELK_OPCODE_ADD) {
                         if (scan_inst->src[1].file == IMM) {
-                           if (!brw_negate_immediate(scan_inst->src[1].type,
-                                                     &scan_inst->src[1].as_brw_reg())) {
+                           if (!elk_negate_immediate(scan_inst->src[1].type,
+                                                     &scan_inst->src[1].as_elk_reg())) {
                               break;
                            }
                         } else {
@@ -129,7 +129,7 @@ opt_saturate_propagation_local(const fs_live_variables &live, bblock_t *block)
                 regions_overlap(
                   scan_inst->src[i], scan_inst->size_read(i),
                   inst->src[0], inst->size_read(0))) {
-               if (scan_inst->opcode != BRW_OPCODE_MOV ||
+               if (scan_inst->opcode != ELK_OPCODE_MOV ||
                    !scan_inst->saturate ||
                    scan_inst->src[0].abs ||
                    scan_inst->src[0].negate ||
@@ -150,7 +150,7 @@ opt_saturate_propagation_local(const fs_live_variables &live, bblock_t *block)
 }
 
 bool
-fs_visitor::opt_saturate_propagation()
+elk_fs_visitor::opt_saturate_propagation()
 {
    const fs_live_variables &live = live_analysis.require();
    bool progress = false;

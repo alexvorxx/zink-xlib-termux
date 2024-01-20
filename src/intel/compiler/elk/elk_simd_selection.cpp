@@ -28,7 +28,7 @@
 #include "util/ralloc.h"
 
 unsigned
-brw_required_dispatch_width(const struct shader_info *info)
+elk_required_dispatch_width(const struct shader_info *info)
 {
    if ((int)info->subgroup_size >= (int)SUBGROUP_SIZE_REQUIRE_8) {
       assert(gl_shader_stage_uses_workgroup(info->stage));
@@ -48,20 +48,20 @@ test_bit(unsigned mask, unsigned bit) {
 
 namespace {
 
-struct brw_cs_prog_data *
-get_cs_prog_data(brw_simd_selection_state &state)
+struct elk_cs_prog_data *
+get_cs_prog_data(elk_simd_selection_state &state)
 {
-   if (std::holds_alternative<struct brw_cs_prog_data *>(state.prog_data))
-      return std::get<struct brw_cs_prog_data *>(state.prog_data);
+   if (std::holds_alternative<struct elk_cs_prog_data *>(state.prog_data))
+      return std::get<struct elk_cs_prog_data *>(state.prog_data);
    else
       return nullptr;
 }
 
-struct brw_stage_prog_data *
-get_prog_data(brw_simd_selection_state &state)
+struct elk_stage_prog_data *
+get_prog_data(elk_simd_selection_state &state)
 {
-   if (std::holds_alternative<struct brw_cs_prog_data *>(state.prog_data))
-      return &std::get<struct brw_cs_prog_data *>(state.prog_data)->base;
+   if (std::holds_alternative<struct elk_cs_prog_data *>(state.prog_data))
+      return &std::get<struct elk_cs_prog_data *>(state.prog_data)->base;
    else
       return nullptr;
 }
@@ -69,7 +69,7 @@ get_prog_data(brw_simd_selection_state &state)
 }
 
 bool
-brw_simd_should_compile(brw_simd_selection_state &state, unsigned simd)
+elk_simd_should_compile(elk_simd_selection_state &state, unsigned simd)
 {
    assert(simd < SIMD_COUNT);
    assert(!state.compiled[simd]);
@@ -148,7 +148,7 @@ brw_simd_should_compile(brw_simd_selection_state &state, unsigned simd)
       start = DEBUG_CS_SIMD8;
       break;
    default:
-      unreachable("unknown shader stage in brw_simd_should_compile");
+      unreachable("unknown shader stage in elk_simd_should_compile");
    }
 
    const bool env_skip[] = {
@@ -168,7 +168,7 @@ brw_simd_should_compile(brw_simd_selection_state &state, unsigned simd)
 }
 
 void
-brw_simd_mark_compiled(brw_simd_selection_state &state, unsigned simd, bool spilled)
+elk_simd_mark_compiled(elk_simd_selection_state &state, unsigned simd, bool spilled)
 {
    assert(simd < SIMD_COUNT);
    assert(!state.compiled[simd]);
@@ -190,7 +190,7 @@ brw_simd_mark_compiled(brw_simd_selection_state &state, unsigned simd, bool spil
 }
 
 int
-brw_simd_select(const struct brw_simd_selection_state &state)
+elk_simd_select(const struct elk_simd_selection_state &state)
 {
    for (int i = SIMD_COUNT - 1; i >= 0; i--) {
       if (state.compiled[i] && !state.spilled[i])
@@ -204,15 +204,15 @@ brw_simd_select(const struct brw_simd_selection_state &state)
 }
 
 int
-brw_simd_select_for_workgroup_size(const struct intel_device_info *devinfo,
-                                   const struct brw_cs_prog_data *prog_data,
+elk_simd_select_for_workgroup_size(const struct intel_device_info *devinfo,
+                                   const struct elk_cs_prog_data *prog_data,
                                    const unsigned *sizes)
 {
    if (!sizes || (prog_data->local_size[0] == sizes[0] &&
                   prog_data->local_size[1] == sizes[1] &&
                   prog_data->local_size[2] == sizes[2])) {
-      brw_simd_selection_state simd_state{
-         .prog_data = const_cast<struct brw_cs_prog_data *>(prog_data),
+      elk_simd_selection_state simd_state{
+         .prog_data = const_cast<struct elk_cs_prog_data *>(prog_data),
       };
 
       /* Propagate the prog_data information back to the simd_state,
@@ -223,17 +223,17 @@ brw_simd_select_for_workgroup_size(const struct intel_device_info *devinfo,
          simd_state.spilled[i] = test_bit(prog_data->prog_spilled, i);
       }
 
-      return brw_simd_select(simd_state);
+      return elk_simd_select(simd_state);
    }
 
-   struct brw_cs_prog_data cloned = *prog_data;
+   struct elk_cs_prog_data cloned = *prog_data;
    for (unsigned i = 0; i < 3; i++)
       cloned.local_size[i] = sizes[i];
 
    cloned.prog_mask = 0;
    cloned.prog_spilled = 0;
 
-   brw_simd_selection_state simd_state{
+   elk_simd_selection_state simd_state{
       .devinfo = devinfo,
       .prog_data = &cloned,
    };
@@ -242,11 +242,11 @@ brw_simd_select_for_workgroup_size(const struct intel_device_info *devinfo,
       /* We are not recompiling, so use original results of prog_mask and
        * prog_spilled as they will already contain all possible compilations.
        */
-      if (brw_simd_should_compile(simd_state, simd) &&
+      if (elk_simd_should_compile(simd_state, simd) &&
           test_bit(prog_data->prog_mask, simd)) {
-         brw_simd_mark_compiled(simd_state, simd, test_bit(prog_data->prog_spilled, simd));
+         elk_simd_mark_compiled(simd_state, simd, test_bit(prog_data->prog_spilled, simd));
       }
    }
 
-   return brw_simd_select(simd_state);
+   return elk_simd_select(simd_state);
 }

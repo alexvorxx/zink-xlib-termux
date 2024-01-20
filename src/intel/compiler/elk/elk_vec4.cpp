@@ -44,21 +44,21 @@ src_reg::init()
 {
    memset((void*)this, 0, sizeof(*this));
    this->file = BAD_FILE;
-   this->type = BRW_REGISTER_TYPE_UD;
+   this->type = ELK_REGISTER_TYPE_UD;
 }
 
-src_reg::src_reg(enum brw_reg_file file, int nr, const glsl_type *type)
+src_reg::src_reg(enum elk_reg_file file, int nr, const glsl_type *type)
 {
    init();
 
    this->file = file;
    this->nr = nr;
    if (type && (glsl_type_is_scalar(type) || glsl_type_is_vector(type) || glsl_type_is_matrix(type)))
-      this->swizzle = brw_swizzle_for_size(type->vector_elements);
+      this->swizzle = elk_swizzle_for_size(type->vector_elements);
    else
-      this->swizzle = BRW_SWIZZLE_XYZW;
+      this->swizzle = ELK_SWIZZLE_XYZW;
    if (type)
-      this->type = brw_type_for_base_type(type);
+      this->type = elk_type_for_base_type(type);
 }
 
 /** Generic unset register constructor. */
@@ -67,18 +67,18 @@ src_reg::src_reg()
    init();
 }
 
-src_reg::src_reg(struct ::brw_reg reg) :
-   backend_reg(reg)
+src_reg::src_reg(struct ::elk_reg reg) :
+   elk_backend_reg(reg)
 {
    this->offset = 0;
    this->reladdr = NULL;
 }
 
 src_reg::src_reg(const dst_reg &reg) :
-   backend_reg(reg)
+   elk_backend_reg(reg)
 {
    this->reladdr = reg.reladdr;
-   this->swizzle = brw_swizzle_for_mask(reg.writemask);
+   this->swizzle = elk_swizzle_for_mask(reg.writemask);
 }
 
 void
@@ -86,7 +86,7 @@ dst_reg::init()
 {
    memset((void*)this, 0, sizeof(*this));
    this->file = BAD_FILE;
-   this->type = BRW_REGISTER_TYPE_UD;
+   this->type = ELK_REGISTER_TYPE_UD;
    this->writemask = WRITEMASK_XYZW;
 }
 
@@ -95,7 +95,7 @@ dst_reg::dst_reg()
    init();
 }
 
-dst_reg::dst_reg(enum brw_reg_file file, int nr)
+dst_reg::dst_reg(enum elk_reg_file file, int nr)
 {
    init();
 
@@ -103,18 +103,18 @@ dst_reg::dst_reg(enum brw_reg_file file, int nr)
    this->nr = nr;
 }
 
-dst_reg::dst_reg(enum brw_reg_file file, int nr, const glsl_type *type,
+dst_reg::dst_reg(enum elk_reg_file file, int nr, const glsl_type *type,
                  unsigned writemask)
 {
    init();
 
    this->file = file;
    this->nr = nr;
-   this->type = brw_type_for_base_type(type);
+   this->type = elk_type_for_base_type(type);
    this->writemask = writemask;
 }
 
-dst_reg::dst_reg(enum brw_reg_file file, int nr, brw_reg_type type,
+dst_reg::dst_reg(enum elk_reg_file file, int nr, elk_reg_type type,
                  unsigned writemask)
 {
    init();
@@ -125,24 +125,24 @@ dst_reg::dst_reg(enum brw_reg_file file, int nr, brw_reg_type type,
    this->writemask = writemask;
 }
 
-dst_reg::dst_reg(struct ::brw_reg reg) :
-   backend_reg(reg)
+dst_reg::dst_reg(struct ::elk_reg reg) :
+   elk_backend_reg(reg)
 {
    this->offset = 0;
    this->reladdr = NULL;
 }
 
 dst_reg::dst_reg(const src_reg &reg) :
-   backend_reg(reg)
+   elk_backend_reg(reg)
 {
-   this->writemask = brw_mask_for_swizzle(reg.swizzle);
+   this->writemask = elk_mask_for_swizzle(reg.swizzle);
    this->reladdr = reg.reladdr;
 }
 
 bool
 dst_reg::equals(const dst_reg &r) const
 {
-   return (this->backend_reg::equals(r) &&
+   return (this->elk_backend_reg::equals(r) &&
            (reladdr == r.reladdr ||
             (reladdr && r.reladdr && reladdr->equals(*r.reladdr))));
 }
@@ -151,14 +151,14 @@ bool
 vec4_instruction::is_send_from_grf() const
 {
    switch (opcode) {
-   case VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
-   case VEC4_OPCODE_UNTYPED_ATOMIC:
-   case VEC4_OPCODE_UNTYPED_SURFACE_READ:
-   case VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
-   case VEC4_OPCODE_URB_READ:
-   case VEC4_TCS_OPCODE_URB_WRITE:
-   case TCS_OPCODE_RELEASE_INPUT:
-   case SHADER_OPCODE_BARRIER:
+   case ELK_VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
+   case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
+   case ELK_VEC4_OPCODE_UNTYPED_SURFACE_READ:
+   case ELK_VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
+   case ELK_VEC4_OPCODE_URB_READ:
+   case ELK_VEC4_TCS_OPCODE_URB_WRITE:
+   case ELK_TCS_OPCODE_RELEASE_INPUT:
+   case ELK_SHADER_OPCODE_BARRIER:
       return true;
    default:
       return false;
@@ -188,9 +188,9 @@ bool
 vec4_instruction::has_source_and_destination_hazard() const
 {
    switch (opcode) {
-   case VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
-   case VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
-   case TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
+   case ELK_VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
+   case ELK_VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
+   case ELK_TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
       return true;
    default:
       /* 8-wide compressed DF operations are executed as two 4-wide operations,
@@ -207,14 +207,14 @@ unsigned
 vec4_instruction::size_read(unsigned arg) const
 {
    switch (opcode) {
-   case VEC4_OPCODE_UNTYPED_ATOMIC:
-   case VEC4_OPCODE_UNTYPED_SURFACE_READ:
-   case VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
-   case VEC4_TCS_OPCODE_URB_WRITE:
+   case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
+   case ELK_VEC4_OPCODE_UNTYPED_SURFACE_READ:
+   case ELK_VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
+   case ELK_VEC4_TCS_OPCODE_URB_WRITE:
       if (arg == 0)
          return mlen * REG_SIZE;
       break;
-   case VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
+   case ELK_VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
       if (arg == 1)
          return mlen * REG_SIZE;
       break;
@@ -243,7 +243,7 @@ vec4_instruction::can_do_source_mods(const struct intel_device_info *devinfo)
    if (is_send_from_grf())
       return false;
 
-   if (!backend_instruction::can_do_source_mods())
+   if (!elk_backend_instruction::can_do_source_mods())
       return false;
 
    return true;
@@ -252,7 +252,7 @@ vec4_instruction::can_do_source_mods(const struct intel_device_info *devinfo)
 bool
 vec4_instruction::can_do_cmod()
 {
-   if (!backend_instruction::can_do_cmod())
+   if (!elk_backend_instruction::can_do_cmod())
       return false;
 
    /* The accumulator result appears to get used for the conditional modifier
@@ -262,7 +262,7 @@ vec4_instruction::can_do_cmod()
     */
    for (unsigned i = 0; i < 3; i++) {
       if (src[i].file != BAD_FILE &&
-          brw_reg_type_is_unsigned_integer(src[i].type) && src[i].negate)
+          elk_reg_type_is_unsigned_integer(src[i].type) && src[i].negate)
          return false;
    }
 
@@ -273,39 +273,39 @@ bool
 vec4_instruction::can_do_writemask(const struct intel_device_info *devinfo)
 {
    switch (opcode) {
-   case SHADER_OPCODE_GFX4_SCRATCH_READ:
-   case VEC4_OPCODE_DOUBLE_TO_F32:
-   case VEC4_OPCODE_DOUBLE_TO_D32:
-   case VEC4_OPCODE_DOUBLE_TO_U32:
-   case VEC4_OPCODE_TO_DOUBLE:
-   case VEC4_OPCODE_PICK_LOW_32BIT:
-   case VEC4_OPCODE_PICK_HIGH_32BIT:
-   case VEC4_OPCODE_SET_LOW_32BIT:
-   case VEC4_OPCODE_SET_HIGH_32BIT:
-   case VS_OPCODE_PULL_CONSTANT_LOAD:
-   case VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
-   case VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
-   case VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
-   case TES_OPCODE_CREATE_INPUT_READ_HEADER:
-   case TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
-   case VEC4_OPCODE_URB_READ:
-   case SHADER_OPCODE_MOV_INDIRECT:
-   case SHADER_OPCODE_TEX:
-   case FS_OPCODE_TXB:
-   case SHADER_OPCODE_TXD:
-   case SHADER_OPCODE_TXF:
-   case SHADER_OPCODE_TXF_LZ:
-   case SHADER_OPCODE_TXF_CMS:
-   case SHADER_OPCODE_TXF_CMS_W:
-   case SHADER_OPCODE_TXF_UMS:
-   case SHADER_OPCODE_TXF_MCS:
-   case SHADER_OPCODE_TXL:
-   case SHADER_OPCODE_TXL_LZ:
-   case SHADER_OPCODE_TXS:
-   case SHADER_OPCODE_LOD:
-   case SHADER_OPCODE_TG4:
-   case SHADER_OPCODE_TG4_OFFSET:
-   case SHADER_OPCODE_SAMPLEINFO:
+   case ELK_SHADER_OPCODE_GFX4_SCRATCH_READ:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_F32:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_D32:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_U32:
+   case ELK_VEC4_OPCODE_TO_DOUBLE:
+   case ELK_VEC4_OPCODE_PICK_LOW_32BIT:
+   case ELK_VEC4_OPCODE_PICK_HIGH_32BIT:
+   case ELK_VEC4_OPCODE_SET_LOW_32BIT:
+   case ELK_VEC4_OPCODE_SET_HIGH_32BIT:
+   case ELK_VS_OPCODE_PULL_CONSTANT_LOAD:
+   case ELK_VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
+   case ELK_VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
+   case ELK_VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
+   case ELK_TES_OPCODE_CREATE_INPUT_READ_HEADER:
+   case ELK_TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
+   case ELK_VEC4_OPCODE_URB_READ:
+   case ELK_SHADER_OPCODE_MOV_INDIRECT:
+   case ELK_SHADER_OPCODE_TEX:
+   case ELK_FS_OPCODE_TXB:
+   case ELK_SHADER_OPCODE_TXD:
+   case ELK_SHADER_OPCODE_TXF:
+   case ELK_SHADER_OPCODE_TXF_LZ:
+   case ELK_SHADER_OPCODE_TXF_CMS:
+   case ELK_SHADER_OPCODE_TXF_CMS_W:
+   case ELK_SHADER_OPCODE_TXF_UMS:
+   case ELK_SHADER_OPCODE_TXF_MCS:
+   case ELK_SHADER_OPCODE_TXL:
+   case ELK_SHADER_OPCODE_TXL_LZ:
+   case ELK_SHADER_OPCODE_TXS:
+   case ELK_SHADER_OPCODE_LOD:
+   case ELK_SHADER_OPCODE_TG4:
+   case ELK_SHADER_OPCODE_TG4_OFFSET:
+   case ELK_SHADER_OPCODE_SAMPLEINFO:
       return false;
    default:
       /* The MATH instruction on Gfx6 only executes in align1 mode, which does
@@ -323,10 +323,10 @@ vec4_instruction::can_change_types() const
 {
    return dst.type == src[0].type &&
           !src[0].abs && !src[0].negate && !saturate &&
-          (opcode == BRW_OPCODE_MOV ||
-           (opcode == BRW_OPCODE_SEL &&
+          (opcode == ELK_OPCODE_MOV ||
+           (opcode == ELK_OPCODE_SEL &&
             dst.type == src[1].type &&
-            predicate != BRW_PREDICATE_NONE &&
+            predicate != ELK_PREDICATE_NONE &&
             !src[1].abs && !src[1].negate));
 }
 
@@ -344,47 +344,47 @@ vec4_instruction::implied_mrf_writes() const
       return 0;
 
    switch (opcode) {
-   case SHADER_OPCODE_RCP:
-   case SHADER_OPCODE_RSQ:
-   case SHADER_OPCODE_SQRT:
-   case SHADER_OPCODE_EXP2:
-   case SHADER_OPCODE_LOG2:
-   case SHADER_OPCODE_SIN:
-   case SHADER_OPCODE_COS:
+   case ELK_SHADER_OPCODE_RCP:
+   case ELK_SHADER_OPCODE_RSQ:
+   case ELK_SHADER_OPCODE_SQRT:
+   case ELK_SHADER_OPCODE_EXP2:
+   case ELK_SHADER_OPCODE_LOG2:
+   case ELK_SHADER_OPCODE_SIN:
+   case ELK_SHADER_OPCODE_COS:
       return 1;
-   case SHADER_OPCODE_INT_QUOTIENT:
-   case SHADER_OPCODE_INT_REMAINDER:
-   case SHADER_OPCODE_POW:
-   case TCS_OPCODE_THREAD_END:
+   case ELK_SHADER_OPCODE_INT_QUOTIENT:
+   case ELK_SHADER_OPCODE_INT_REMAINDER:
+   case ELK_SHADER_OPCODE_POW:
+   case ELK_TCS_OPCODE_THREAD_END:
       return 2;
-   case VEC4_VS_OPCODE_URB_WRITE:
+   case ELK_VEC4_VS_OPCODE_URB_WRITE:
       return 1;
-   case VS_OPCODE_PULL_CONSTANT_LOAD:
+   case ELK_VS_OPCODE_PULL_CONSTANT_LOAD:
       return 2;
-   case SHADER_OPCODE_GFX4_SCRATCH_READ:
+   case ELK_SHADER_OPCODE_GFX4_SCRATCH_READ:
       return 2;
-   case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
+   case ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE:
       return 3;
-   case VEC4_GS_OPCODE_URB_WRITE:
-   case VEC4_GS_OPCODE_URB_WRITE_ALLOCATE:
-   case GS_OPCODE_THREAD_END:
+   case ELK_VEC4_GS_OPCODE_URB_WRITE:
+   case ELK_VEC4_GS_OPCODE_URB_WRITE_ALLOCATE:
+   case ELK_GS_OPCODE_THREAD_END:
       return 0;
-   case GS_OPCODE_FF_SYNC:
+   case ELK_GS_OPCODE_FF_SYNC:
       return 1;
-   case VEC4_TCS_OPCODE_URB_WRITE:
+   case ELK_VEC4_TCS_OPCODE_URB_WRITE:
       return 0;
-   case SHADER_OPCODE_TEX:
-   case SHADER_OPCODE_TXL:
-   case SHADER_OPCODE_TXD:
-   case SHADER_OPCODE_TXF:
-   case SHADER_OPCODE_TXF_CMS:
-   case SHADER_OPCODE_TXF_CMS_W:
-   case SHADER_OPCODE_TXF_MCS:
-   case SHADER_OPCODE_TXS:
-   case SHADER_OPCODE_TG4:
-   case SHADER_OPCODE_TG4_OFFSET:
-   case SHADER_OPCODE_SAMPLEINFO:
-   case SHADER_OPCODE_GET_BUFFER_SIZE:
+   case ELK_SHADER_OPCODE_TEX:
+   case ELK_SHADER_OPCODE_TXL:
+   case ELK_SHADER_OPCODE_TXD:
+   case ELK_SHADER_OPCODE_TXF:
+   case ELK_SHADER_OPCODE_TXF_CMS:
+   case ELK_SHADER_OPCODE_TXF_CMS_W:
+   case ELK_SHADER_OPCODE_TXF_MCS:
+   case ELK_SHADER_OPCODE_TXS:
+   case ELK_SHADER_OPCODE_TG4:
+   case ELK_SHADER_OPCODE_TG4_OFFSET:
+   case ELK_SHADER_OPCODE_SAMPLEINFO:
+   case ELK_SHADER_OPCODE_GET_BUFFER_SIZE:
       return header_size;
    default:
       unreachable("not reached");
@@ -394,14 +394,14 @@ vec4_instruction::implied_mrf_writes() const
 bool
 src_reg::equals(const src_reg &r) const
 {
-   return (this->backend_reg::equals(r) &&
+   return (this->elk_backend_reg::equals(r) &&
 	   !reladdr && !r.reladdr);
 }
 
 bool
 src_reg::negative_equals(const src_reg &r) const
 {
-   return this->backend_reg::negative_equals(r) &&
+   return this->elk_backend_reg::negative_equals(r) &&
           !reladdr && !r.reladdr;
 }
 
@@ -412,36 +412,36 @@ vec4_visitor::opt_vector_float()
 
    foreach_block(block, cfg) {
       unsigned last_reg = ~0u, last_offset = ~0u;
-      enum brw_reg_file last_reg_file = BAD_FILE;
+      enum elk_reg_file last_reg_file = BAD_FILE;
 
       uint8_t imm[4] = { 0 };
       int inst_count = 0;
       vec4_instruction *imm_inst[4];
       unsigned writemask = 0;
-      enum brw_reg_type dest_type = BRW_REGISTER_TYPE_F;
+      enum elk_reg_type dest_type = ELK_REGISTER_TYPE_F;
 
       foreach_inst_in_block_safe(vec4_instruction, inst, block) {
          int vf = -1;
-         enum brw_reg_type need_type = BRW_REGISTER_TYPE_LAST;
+         enum elk_reg_type need_type = ELK_REGISTER_TYPE_LAST;
 
          /* Look for unconditional MOVs from an immediate with a partial
           * writemask.  Skip type-conversion MOVs other than integer 0,
           * where the type doesn't matter.  See if the immediate can be
           * represented as a VF.
           */
-         if (inst->opcode == BRW_OPCODE_MOV &&
+         if (inst->opcode == ELK_OPCODE_MOV &&
              inst->src[0].file == IMM &&
-             inst->predicate == BRW_PREDICATE_NONE &&
+             inst->predicate == ELK_PREDICATE_NONE &&
              inst->dst.writemask != WRITEMASK_XYZW &&
              type_sz(inst->src[0].type) < 8 &&
              (inst->src[0].type == inst->dst.type || inst->src[0].d == 0)) {
 
-            vf = brw_float_to_vf(inst->src[0].d);
-            need_type = BRW_REGISTER_TYPE_D;
+            vf = elk_float_to_vf(inst->src[0].d);
+            need_type = ELK_REGISTER_TYPE_D;
 
             if (vf == -1) {
-               vf = brw_float_to_vf(inst->src[0].f);
-               need_type = BRW_REGISTER_TYPE_F;
+               vf = elk_float_to_vf(inst->src[0].f);
+               need_type = ELK_REGISTER_TYPE_F;
             }
          } else {
             last_reg = ~0u;
@@ -459,7 +459,7 @@ vec4_visitor::opt_vector_float()
             if (inst_count > 1) {
                unsigned vf;
                memcpy(&vf, imm, sizeof(vf));
-               vec4_instruction *mov = MOV(imm_inst[0]->dst, brw_imm_vf(vf));
+               vec4_instruction *mov = MOV(imm_inst[0]->dst, elk_imm_vf(vf));
                mov->dst.type = dest_type;
                mov->dst.writemask = writemask;
                inst->insert_before(block, mov);
@@ -474,7 +474,7 @@ vec4_visitor::opt_vector_float()
             inst_count = 0;
             last_reg = ~0u;;
             writemask = 0;
-            dest_type = BRW_REGISTER_TYPE_F;
+            dest_type = ELK_REGISTER_TYPE_F;
 
             for (int i = 0; i < 4; i++) {
                imm[i] = 0;
@@ -539,33 +539,33 @@ vec4_visitor::opt_reduce_swizzle()
 
       /* Determine which channels of the sources are read. */
       switch (inst->opcode) {
-      case VEC4_OPCODE_PACK_BYTES:
-      case BRW_OPCODE_DP4:
-      case BRW_OPCODE_DPH: /* FINISHME: DPH reads only three channels of src0,
+      case ELK_VEC4_OPCODE_PACK_BYTES:
+      case ELK_OPCODE_DP4:
+      case ELK_OPCODE_DPH: /* FINISHME: DPH reads only three channels of src0,
                             *           but all four of src1.
                             */
-         swizzle = brw_swizzle_for_size(4);
+         swizzle = elk_swizzle_for_size(4);
          break;
-      case BRW_OPCODE_DP3:
-         swizzle = brw_swizzle_for_size(3);
+      case ELK_OPCODE_DP3:
+         swizzle = elk_swizzle_for_size(3);
          break;
-      case BRW_OPCODE_DP2:
-         swizzle = brw_swizzle_for_size(2);
+      case ELK_OPCODE_DP2:
+         swizzle = elk_swizzle_for_size(2);
          break;
 
-      case VEC4_OPCODE_TO_DOUBLE:
-      case VEC4_OPCODE_DOUBLE_TO_F32:
-      case VEC4_OPCODE_DOUBLE_TO_D32:
-      case VEC4_OPCODE_DOUBLE_TO_U32:
-      case VEC4_OPCODE_PICK_LOW_32BIT:
-      case VEC4_OPCODE_PICK_HIGH_32BIT:
-      case VEC4_OPCODE_SET_LOW_32BIT:
-      case VEC4_OPCODE_SET_HIGH_32BIT:
-         swizzle = brw_swizzle_for_size(4);
+      case ELK_VEC4_OPCODE_TO_DOUBLE:
+      case ELK_VEC4_OPCODE_DOUBLE_TO_F32:
+      case ELK_VEC4_OPCODE_DOUBLE_TO_D32:
+      case ELK_VEC4_OPCODE_DOUBLE_TO_U32:
+      case ELK_VEC4_OPCODE_PICK_LOW_32BIT:
+      case ELK_VEC4_OPCODE_PICK_HIGH_32BIT:
+      case ELK_VEC4_OPCODE_SET_LOW_32BIT:
+      case ELK_VEC4_OPCODE_SET_HIGH_32BIT:
+         swizzle = elk_swizzle_for_size(4);
          break;
 
       default:
-         swizzle = brw_swizzle_for_mask(inst->dst.writemask);
+         swizzle = elk_swizzle_for_mask(inst->dst.writemask);
          break;
       }
 
@@ -577,7 +577,7 @@ vec4_visitor::opt_reduce_swizzle()
             continue;
 
          const unsigned new_swizzle =
-            brw_compose_swizzle(swizzle, inst->src[i].swizzle);
+            elk_compose_swizzle(swizzle, inst->src[i].swizzle);
          if (inst->src[i].swizzle != new_swizzle) {
             inst->src[i].swizzle = new_swizzle;
             progress = true;
@@ -633,7 +633,7 @@ vec4_visitor::opt_algebraic()
 
    foreach_block_and_inst(block, vec4_instruction, inst, cfg) {
       switch (inst->opcode) {
-      case BRW_OPCODE_MOV:
+      case ELK_OPCODE_MOV:
          if (inst->src[0].file != IMM)
             break;
 
@@ -646,59 +646,59 @@ vec4_visitor::opt_algebraic()
              * Other mixed-size-but-same-base-type cases may also be possible.
              */
             if (inst->dst.type != inst->src[0].type &&
-                inst->dst.type != BRW_REGISTER_TYPE_DF &&
-                inst->src[0].type != BRW_REGISTER_TYPE_F)
+                inst->dst.type != ELK_REGISTER_TYPE_DF &&
+                inst->src[0].type != ELK_REGISTER_TYPE_F)
                assert(!"unimplemented: saturate mixed types");
 
-            if (brw_saturate_immediate(inst->src[0].type,
-                                       &inst->src[0].as_brw_reg())) {
+            if (elk_saturate_immediate(inst->src[0].type,
+                                       &inst->src[0].as_elk_reg())) {
                inst->saturate = false;
                progress = true;
             }
          }
          break;
 
-      case BRW_OPCODE_OR:
+      case ELK_OPCODE_OR:
          if (inst->src[1].is_zero()) {
-            inst->opcode = BRW_OPCODE_MOV;
+            inst->opcode = ELK_OPCODE_MOV;
             inst->src[1] = src_reg();
             progress = true;
          }
          break;
 
-      case VEC4_OPCODE_UNPACK_UNIFORM:
+      case ELK_VEC4_OPCODE_UNPACK_UNIFORM:
          if (inst->src[0].file != UNIFORM) {
-            inst->opcode = BRW_OPCODE_MOV;
+            inst->opcode = ELK_OPCODE_MOV;
             progress = true;
          }
          break;
 
-      case BRW_OPCODE_ADD:
+      case ELK_OPCODE_ADD:
 	 if (inst->src[1].is_zero()) {
-	    inst->opcode = BRW_OPCODE_MOV;
+	    inst->opcode = ELK_OPCODE_MOV;
 	    inst->src[1] = src_reg();
 	    progress = true;
 	 }
 	 break;
 
-      case BRW_OPCODE_MUL:
+      case ELK_OPCODE_MUL:
 	 if (inst->src[1].file != IMM)
 	    continue;
 
-	 if (brw_reg_type_is_floating_point(inst->src[1].type))
+	 if (elk_reg_type_is_floating_point(inst->src[1].type))
 	    break;
 
 	 if (inst->src[1].is_zero()) {
-	    inst->opcode = BRW_OPCODE_MOV;
+	    inst->opcode = ELK_OPCODE_MOV;
 	    switch (inst->src[0].type) {
-	    case BRW_REGISTER_TYPE_F:
-	       inst->src[0] = brw_imm_f(0.0f);
+	    case ELK_REGISTER_TYPE_F:
+	       inst->src[0] = elk_imm_f(0.0f);
 	       break;
-	    case BRW_REGISTER_TYPE_D:
-	       inst->src[0] = brw_imm_d(0);
+	    case ELK_REGISTER_TYPE_D:
+	       inst->src[0] = elk_imm_d(0);
 	       break;
-	    case BRW_REGISTER_TYPE_UD:
-	       inst->src[0] = brw_imm_ud(0u);
+	    case ELK_REGISTER_TYPE_UD:
+	       inst->src[0] = elk_imm_ud(0u);
 	       break;
 	    default:
 	       unreachable("not reached");
@@ -706,20 +706,20 @@ vec4_visitor::opt_algebraic()
 	    inst->src[1] = src_reg();
 	    progress = true;
 	 } else if (inst->src[1].is_one()) {
-	    inst->opcode = BRW_OPCODE_MOV;
+	    inst->opcode = ELK_OPCODE_MOV;
 	    inst->src[1] = src_reg();
 	    progress = true;
          } else if (inst->src[1].is_negative_one()) {
-            inst->opcode = BRW_OPCODE_MOV;
+            inst->opcode = ELK_OPCODE_MOV;
             inst->src[0].negate = !inst->src[0].negate;
             inst->src[1] = src_reg();
             progress = true;
 	 }
 	 break;
-      case SHADER_OPCODE_BROADCAST:
+      case ELK_SHADER_OPCODE_BROADCAST:
          if (is_uniform(inst->src[0]) ||
              inst->src[1].is_zero()) {
-            inst->opcode = BRW_OPCODE_MOV;
+            inst->opcode = ELK_OPCODE_MOV;
             inst->src[1] = src_reg();
             inst->force_writemask_all = true;
             progress = true;
@@ -743,8 +743,8 @@ bool
 vec4_visitor::is_dep_ctrl_unsafe(const vec4_instruction *inst)
 {
 #define IS_DWORD(reg) \
-   (reg.type == BRW_REGISTER_TYPE_UD || \
-    reg.type == BRW_REGISTER_TYPE_D)
+   (reg.type == ELK_REGISTER_TYPE_UD || \
+    reg.type == ELK_REGISTER_TYPE_D)
 
 #define IS_64BIT(reg) (reg.file != BAD_FILE && type_sz(reg.type) == 8)
 
@@ -797,10 +797,10 @@ vec4_visitor::is_dep_ctrl_unsafe(const vec4_instruction *inst)
 void
 vec4_visitor::opt_set_dependency_control()
 {
-   vec4_instruction *last_grf_write[BRW_MAX_GRF];
-   uint8_t grf_channels_written[BRW_MAX_GRF];
-   vec4_instruction *last_mrf_write[BRW_MAX_GRF];
-   uint8_t mrf_channels_written[BRW_MAX_GRF];
+   vec4_instruction *last_grf_write[ELK_MAX_GRF];
+   uint8_t grf_channels_written[ELK_MAX_GRF];
+   vec4_instruction *last_mrf_write[ELK_MAX_GRF];
+   uint8_t mrf_channels_written[ELK_MAX_GRF];
 
    assert(prog_data->total_grf ||
           !"Must be called after register allocation");
@@ -872,7 +872,7 @@ vec4_instruction::can_reswizzle(const struct intel_device_info *devinfo,
    /* Gfx6 MATH instructions can not execute in align16 mode, so swizzles
     * are not allowed.
     */
-   if (devinfo->ver == 6 && is_math() && swizzle != BRW_SWIZZLE_XYZW)
+   if (devinfo->ver == 6 && is_math() && swizzle != ELK_SWIZZLE_XYZW)
       return false;
 
    /* If we write to the flag register changing the swizzle would change
@@ -921,19 +921,19 @@ vec4_instruction::reswizzle(int dst_writemask, int swizzle)
    /* Destination write mask doesn't correspond to source swizzle for the dot
     * product and pack_bytes instructions.
     */
-   if (opcode != BRW_OPCODE_DP4 && opcode != BRW_OPCODE_DPH &&
-       opcode != BRW_OPCODE_DP3 && opcode != BRW_OPCODE_DP2 &&
-       opcode != VEC4_OPCODE_PACK_BYTES) {
+   if (opcode != ELK_OPCODE_DP4 && opcode != ELK_OPCODE_DPH &&
+       opcode != ELK_OPCODE_DP3 && opcode != ELK_OPCODE_DP2 &&
+       opcode != ELK_VEC4_OPCODE_PACK_BYTES) {
       for (int i = 0; i < 3; i++) {
          if (src[i].file == BAD_FILE)
             continue;
 
          if (src[i].file == IMM) {
-            assert(src[i].type != BRW_REGISTER_TYPE_V &&
-                   src[i].type != BRW_REGISTER_TYPE_UV);
+            assert(src[i].type != ELK_REGISTER_TYPE_V &&
+                   src[i].type != ELK_REGISTER_TYPE_UV);
 
             /* Vector immediate types need to be reswizzled. */
-            if (src[i].type == BRW_REGISTER_TYPE_VF) {
+            if (src[i].type == ELK_REGISTER_TYPE_VF) {
                const unsigned imm[] = {
                   (src[i].ud >>  0) & 0x0ff,
                   (src[i].ud >>  8) & 0x0ff,
@@ -941,16 +941,16 @@ vec4_instruction::reswizzle(int dst_writemask, int swizzle)
                   (src[i].ud >> 24) & 0x0ff,
                };
 
-               src[i] = brw_imm_vf4(imm[BRW_GET_SWZ(swizzle, 0)],
-                                    imm[BRW_GET_SWZ(swizzle, 1)],
-                                    imm[BRW_GET_SWZ(swizzle, 2)],
-                                    imm[BRW_GET_SWZ(swizzle, 3)]);
+               src[i] = elk_imm_vf4(imm[ELK_GET_SWZ(swizzle, 0)],
+                                    imm[ELK_GET_SWZ(swizzle, 1)],
+                                    imm[ELK_GET_SWZ(swizzle, 2)],
+                                    imm[ELK_GET_SWZ(swizzle, 3)]);
             }
 
             continue;
          }
 
-         src[i].swizzle = brw_compose_swizzle(swizzle, src[i].swizzle);
+         src[i].swizzle = elk_compose_swizzle(swizzle, src[i].swizzle);
       }
    }
 
@@ -958,7 +958,7 @@ vec4_instruction::reswizzle(int dst_writemask, int swizzle)
     * written components.
     */
    dst.writemask = dst_writemask &
-                   brw_apply_swizzle_to_mask(swizzle, dst.writemask);
+                   elk_apply_swizzle_to_mask(swizzle, dst.writemask);
 }
 
 /*
@@ -977,7 +977,7 @@ vec4_visitor::opt_register_coalesce()
       int ip = next_ip;
       next_ip++;
 
-      if (inst->opcode != BRW_OPCODE_MOV ||
+      if (inst->opcode != ELK_OPCODE_MOV ||
           (inst->dst.file != VGRF && inst->dst.file != MRF) ||
 	  inst->predicate ||
 	  inst->src[0].file != VGRF ||
@@ -995,7 +995,7 @@ vec4_visitor::opt_register_coalesce()
             if ((inst->dst.writemask & (1 << c)) == 0)
                continue;
 
-            if (BRW_GET_SWZ(inst->src[0].swizzle, c) != c) {
+            if (ELK_GET_SWZ(inst->src[0].swizzle, c) != c) {
                is_nop_mov = false;
                break;
             }
@@ -1022,7 +1022,7 @@ vec4_visitor::opt_register_coalesce()
        * channels we've seen initialized.
        */
       const unsigned chans_needed =
-         brw_apply_inv_swizzle_to_mask(inst->src[0].swizzle,
+         elk_apply_inv_swizzle_to_mask(inst->src[0].swizzle,
                                        inst->dst.writemask);
       unsigned chans_remaining = chans_needed;
 
@@ -1053,13 +1053,13 @@ vec4_visitor::opt_register_coalesce()
                }
             }
 
-            /* VS_OPCODE_UNPACK_FLAGS_SIMD4X2 generates a bunch of mov(1)
+            /* ELK_VS_OPCODE_UNPACK_FLAGS_SIMD4X2 generates a bunch of mov(1)
              * instructions, and this optimization pass is not capable of
              * handling that.  Bail on these instructions and hope that some
              * later optimization pass can do the right thing after they are
              * expanded.
              */
-            if (scan_inst->opcode == VS_OPCODE_UNPACK_FLAGS_SIMD4X2)
+            if (scan_inst->opcode == ELK_VS_OPCODE_UNPACK_FLAGS_SIMD4X2)
                break;
 
             /* This doesn't handle saturation on the instruction we
@@ -1069,7 +1069,7 @@ vec4_visitor::opt_register_coalesce()
              */
             if (inst->saturate &&
                 inst->dst.type != scan_inst->dst.type &&
-                !(scan_inst->opcode == BRW_OPCODE_MOV &&
+                !(scan_inst->opcode == ELK_OPCODE_MOV &&
                   scan_inst->dst.type == scan_inst->src[0].type))
                break;
 
@@ -1208,7 +1208,7 @@ vec4_visitor::eliminate_find_live_channel()
    bool progress = false;
    unsigned depth = 0;
 
-   if (!brw_stage_has_packed_dispatch(devinfo, stage, 0, stage_prog_data)) {
+   if (!elk_stage_has_packed_dispatch(devinfo, stage, 0, stage_prog_data)) {
       /* The optimization below assumes that channel zero is live on thread
        * dispatch, which may not be the case if the fixed function dispatches
        * threads sparsely.
@@ -1218,20 +1218,20 @@ vec4_visitor::eliminate_find_live_channel()
 
    foreach_block_and_inst_safe(block, vec4_instruction, inst, cfg) {
       switch (inst->opcode) {
-      case BRW_OPCODE_IF:
-      case BRW_OPCODE_DO:
+      case ELK_OPCODE_IF:
+      case ELK_OPCODE_DO:
          depth++;
          break;
 
-      case BRW_OPCODE_ENDIF:
-      case BRW_OPCODE_WHILE:
+      case ELK_OPCODE_ENDIF:
+      case ELK_OPCODE_WHILE:
          depth--;
          break;
 
-      case SHADER_OPCODE_FIND_LIVE_CHANNEL:
+      case ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL:
          if (depth == 0) {
-            inst->opcode = BRW_OPCODE_MOV;
-            inst->src[0] = brw_imm_d(0);
+            inst->opcode = ELK_OPCODE_MOV;
+            inst->src[0] = elk_imm_d(0);
             inst->force_writemask_all = true;
             progress = true;
          }
@@ -1323,7 +1323,7 @@ vec4_visitor::split_virtual_grfs()
 }
 
 void
-vec4_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE *file) const
+vec4_visitor::dump_instruction_to_file(const elk_backend_instruction *be_inst, FILE *file) const
 {
    const vec4_instruction *inst = (const vec4_instruction *)be_inst;
 
@@ -1332,20 +1332,20 @@ vec4_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE 
               inst->predicate_inverse ? '-' : '+',
               inst->flag_subreg / 2,
               inst->flag_subreg % 2,
-              pred_ctrl_align16[inst->predicate]);
+              elk_pred_ctrl_align16[inst->predicate]);
    }
 
-   fprintf(file, "%s(%d)", brw_instruction_name(&compiler->isa, inst->opcode),
+   fprintf(file, "%s(%d)", elk_instruction_name(&compiler->isa, inst->opcode),
            inst->exec_size);
    if (inst->saturate)
       fprintf(file, ".sat");
    if (inst->conditional_mod) {
-      fprintf(file, "%s", conditional_modifier[inst->conditional_mod]);
+      fprintf(file, "%s", elk_conditional_modifier[inst->conditional_mod]);
       if (!inst->predicate &&
-          (devinfo->ver < 5 || (inst->opcode != BRW_OPCODE_SEL &&
-                                inst->opcode != BRW_OPCODE_CSEL &&
-                                inst->opcode != BRW_OPCODE_IF &&
-                                inst->opcode != BRW_OPCODE_WHILE))) {
+          (devinfo->ver < 5 || (inst->opcode != ELK_OPCODE_SEL &&
+                                inst->opcode != ELK_OPCODE_CSEL &&
+                                inst->opcode != ELK_OPCODE_IF &&
+                                inst->opcode != ELK_OPCODE_WHILE))) {
          fprintf(file, ".f%d.%d", inst->flag_subreg / 2, inst->flag_subreg % 2);
       }
    }
@@ -1363,16 +1363,16 @@ vec4_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE 
       break;
    case ARF:
       switch (inst->dst.nr) {
-      case BRW_ARF_NULL:
+      case ELK_ARF_NULL:
          fprintf(file, "null");
          break;
-      case BRW_ARF_ADDRESS:
+      case ELK_ARF_ADDRESS:
          fprintf(file, "a0.%d", inst->dst.subnr);
          break;
-      case BRW_ARF_ACCUMULATOR:
+      case ELK_ARF_ACCUMULATOR:
          fprintf(file, "acc%d", inst->dst.subnr);
          break;
-      case BRW_ARF_FLAG:
+      case ELK_ARF_FLAG:
          fprintf(file, "f%d.%d", inst->dst.nr & 0xf, inst->dst.subnr);
          break;
       default:
@@ -1406,7 +1406,7 @@ vec4_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE 
       if (inst->dst.writemask & 8)
          fprintf(file, "w");
    }
-   fprintf(file, ":%s", brw_reg_type_to_letters(inst->dst.type));
+   fprintf(file, ":%s", elk_reg_type_to_letters(inst->dst.type));
 
    if (inst->src[0].file != BAD_FILE)
       fprintf(file, ", ");
@@ -1431,24 +1431,24 @@ vec4_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE 
          break;
       case IMM:
          switch (inst->src[i].type) {
-         case BRW_REGISTER_TYPE_F:
+         case ELK_REGISTER_TYPE_F:
             fprintf(file, "%fF", inst->src[i].f);
             break;
-         case BRW_REGISTER_TYPE_DF:
+         case ELK_REGISTER_TYPE_DF:
             fprintf(file, "%fDF", inst->src[i].df);
             break;
-         case BRW_REGISTER_TYPE_D:
+         case ELK_REGISTER_TYPE_D:
             fprintf(file, "%dD", inst->src[i].d);
             break;
-         case BRW_REGISTER_TYPE_UD:
+         case ELK_REGISTER_TYPE_UD:
             fprintf(file, "%uU", inst->src[i].ud);
             break;
-         case BRW_REGISTER_TYPE_VF:
+         case ELK_REGISTER_TYPE_VF:
             fprintf(file, "[%-gF, %-gF, %-gF, %-gF]",
-                    brw_vf_to_float((inst->src[i].ud >>  0) & 0xff),
-                    brw_vf_to_float((inst->src[i].ud >>  8) & 0xff),
-                    brw_vf_to_float((inst->src[i].ud >> 16) & 0xff),
-                    brw_vf_to_float((inst->src[i].ud >> 24) & 0xff));
+                    elk_vf_to_float((inst->src[i].ud >>  0) & 0xff),
+                    elk_vf_to_float((inst->src[i].ud >>  8) & 0xff),
+                    elk_vf_to_float((inst->src[i].ud >> 16) & 0xff),
+                    elk_vf_to_float((inst->src[i].ud >> 24) & 0xff));
             break;
          default:
             fprintf(file, "???");
@@ -1457,16 +1457,16 @@ vec4_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE 
          break;
       case ARF:
          switch (inst->src[i].nr) {
-         case BRW_ARF_NULL:
+         case ELK_ARF_NULL:
             fprintf(file, "null");
             break;
-         case BRW_ARF_ADDRESS:
+         case ELK_ARF_ADDRESS:
             fprintf(file, "a0.%d", inst->src[i].subnr);
             break;
-         case BRW_ARF_ACCUMULATOR:
+         case ELK_ARF_ACCUMULATOR:
             fprintf(file, "acc%d", inst->src[i].subnr);
             break;
-         case BRW_ARF_FLAG:
+         case ELK_ARF_FLAG:
             fprintf(file, "f%d.%d", inst->src[i].nr & 0xf, inst->src[i].subnr);
             break;
          default:
@@ -1493,7 +1493,7 @@ vec4_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE 
          static const char *chans[4] = {"x", "y", "z", "w"};
          fprintf(file, ".");
          for (int c = 0; c < 4; c++) {
-            fprintf(file, "%s", chans[BRW_GET_SWZ(inst->src[i].swizzle, c)]);
+            fprintf(file, "%s", chans[ELK_GET_SWZ(inst->src[i].swizzle, c)]);
          }
       }
 
@@ -1501,7 +1501,7 @@ vec4_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE 
          fprintf(file, "|");
 
       if (inst->src[i].file != IMM) {
-         fprintf(file, ":%s", brw_reg_type_to_letters(inst->src[i].type));
+         fprintf(file, ":%s", elk_reg_type_to_letters(inst->src[i].type));
       }
 
       if (i < 2 && inst->src[i + 1].file != BAD_FILE)
@@ -1528,7 +1528,7 @@ vec4_vs_visitor::setup_attributes(int payload_reg)
             int grf = payload_reg + inst->src[i].nr +
                       inst->src[i].offset / REG_SIZE;
 
-            struct brw_reg reg = brw_vec8_grf(grf, 0);
+            struct elk_reg reg = elk_vec8_grf(grf, 0);
             reg.swizzle = inst->src[i].swizzle;
             reg.type = inst->src[i].type;
             reg.abs = inst->src[i].abs;
@@ -1548,7 +1548,7 @@ vec4_visitor::setup_push_ranges()
     * which is the limit on gfx6.
     *
     * If changing this value, note the limitation about total_regs in
-    * brw_curbe.c.
+    * elk_curbe.c.
     */
    const unsigned max_push_length = 32;
 
@@ -1557,7 +1557,7 @@ vec4_visitor::setup_push_ranges()
 
    /* Shrink UBO push ranges so it all fits in max_push_length */
    for (unsigned i = 0; i < 4; i++) {
-      struct brw_ubo_range *range = &prog_data->base.ubo_ranges[i];
+      struct elk_ubo_range *range = &prog_data->base.ubo_ranges[i];
 
       if (push_length + range->length > max_push_length)
          range->length = max_push_length - push_length;
@@ -1585,10 +1585,10 @@ vec4_visitor::setup_uniforms(int reg)
     * matter what, or the GPU would hang.
     */
    if (devinfo->ver < 6 && push_length == 0) {
-      brw_stage_prog_data_add_params(stage_prog_data, 4);
+      elk_stage_prog_data_add_params(stage_prog_data, 4);
       for (unsigned int i = 0; i < 4; i++) {
 	 unsigned int slot = this->uniforms * 4 + i;
-	 stage_prog_data->param[slot] = BRW_PARAM_BUILTIN_ZERO;
+	 stage_prog_data->param[slot] = ELK_PARAM_BUILTIN_ZERO;
       }
       push_length = 1;
    }
@@ -1627,14 +1627,14 @@ vec4_visitor::lower_minmax()
    foreach_block_and_inst_safe(block, vec4_instruction, inst, cfg) {
       const vec4_builder ibld(this, block, inst);
 
-      if (inst->opcode == BRW_OPCODE_SEL &&
-          inst->predicate == BRW_PREDICATE_NONE) {
+      if (inst->opcode == ELK_OPCODE_SEL &&
+          inst->predicate == ELK_PREDICATE_NONE) {
          /* If src1 is an immediate value that is not NaN, then it can't be
           * NaN.  In that case, emit CMP because it is much better for cmod
           * propagation.  Likewise if src1 is not float.  Gfx4 and Gfx5 don't
           * support HF or DF, so it is not necessary to check for those.
           */
-         if (inst->src[1].type != BRW_REGISTER_TYPE_F ||
+         if (inst->src[1].type != ELK_REGISTER_TYPE_F ||
              (inst->src[1].file == IMM && !isnan(inst->src[1].f))) {
             ibld.CMP(ibld.null_reg_d(), inst->src[0], inst->src[1],
                      inst->conditional_mod);
@@ -1642,8 +1642,8 @@ vec4_visitor::lower_minmax()
             ibld.CMPN(ibld.null_reg_d(), inst->src[0], inst->src[1],
                       inst->conditional_mod);
          }
-         inst->predicate = BRW_PREDICATE_NORMAL;
-         inst->conditional_mod = BRW_CONDITIONAL_NONE;
+         inst->predicate = ELK_PREDICATE_NORMAL;
+         inst->conditional_mod = ELK_CONDITIONAL_NONE;
 
          progress = true;
       }
@@ -1660,16 +1660,16 @@ vec4_visitor::get_timestamp()
 {
    assert(devinfo->ver == 7);
 
-   src_reg ts = src_reg(brw_reg(BRW_ARCHITECTURE_REGISTER_FILE,
-                                BRW_ARF_TIMESTAMP,
+   src_reg ts = src_reg(elk_reg(ELK_ARCHITECTURE_REGISTER_FILE,
+                                ELK_ARF_TIMESTAMP,
                                 0,
                                 0,
                                 0,
-                                BRW_REGISTER_TYPE_UD,
-                                BRW_VERTICAL_STRIDE_0,
-                                BRW_WIDTH_4,
-                                BRW_HORIZONTAL_STRIDE_4,
-                                BRW_SWIZZLE_XYZW,
+                                ELK_REGISTER_TYPE_UD,
+                                ELK_VERTICAL_STRIDE_0,
+                                ELK_WIDTH_4,
+                                ELK_HORIZONTAL_STRIDE_4,
+                                ELK_SWIZZLE_XYZW,
                                 WRITEMASK_XYZW));
 
    dst_reg dst = dst_reg(this, glsl_uvec4_type());
@@ -1687,14 +1687,14 @@ static bool
 is_align1_df(vec4_instruction *inst)
 {
    switch (inst->opcode) {
-   case VEC4_OPCODE_DOUBLE_TO_F32:
-   case VEC4_OPCODE_DOUBLE_TO_D32:
-   case VEC4_OPCODE_DOUBLE_TO_U32:
-   case VEC4_OPCODE_TO_DOUBLE:
-   case VEC4_OPCODE_PICK_LOW_32BIT:
-   case VEC4_OPCODE_PICK_HIGH_32BIT:
-   case VEC4_OPCODE_SET_LOW_32BIT:
-   case VEC4_OPCODE_SET_HIGH_32BIT:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_F32:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_D32:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_U32:
+   case ELK_VEC4_OPCODE_TO_DOUBLE:
+   case ELK_VEC4_OPCODE_PICK_LOW_32BIT:
+   case ELK_VEC4_OPCODE_PICK_HIGH_32BIT:
+   case ELK_VEC4_OPCODE_SET_LOW_32BIT:
+   case ELK_VEC4_OPCODE_SET_HIGH_32BIT:
       return true;
    default:
       return false;
@@ -1711,7 +1711,7 @@ vec4_visitor::fixup_3src_null_dest()
    bool progress = false;
 
    foreach_block_and_inst_safe (block, vec4_instruction, inst, cfg) {
-      if (inst->is_3src(compiler) && inst->dst.is_null()) {
+      if (inst->elk_is_3src(compiler) && inst->dst.is_null()) {
          const unsigned size_written = type_sz(inst->dst.type);
          const unsigned num_regs = DIV_ROUND_UP(size_written, REG_SIZE);
 
@@ -1732,10 +1732,10 @@ vec4_visitor::convert_to_hw_regs()
    foreach_block_and_inst(block, vec4_instruction, inst, cfg) {
       for (int i = 0; i < 3; i++) {
          class src_reg &src = inst->src[i];
-         struct brw_reg reg;
+         struct elk_reg reg;
          switch (src.file) {
          case VGRF: {
-            reg = byte_offset(brw_vecn_grf(4, src.nr, 0), src.offset);
+            reg = byte_offset(elk_vecn_grf(4, src.nr, 0), src.offset);
             reg.type = src.type;
             reg.abs = src.abs;
             reg.negate = src.negate;
@@ -1744,13 +1744,13 @@ vec4_visitor::convert_to_hw_regs()
 
          case UNIFORM: {
             if (src.nr >= UBO_START) {
-               reg = byte_offset(brw_vec4_grf(
+               reg = byte_offset(elk_vec4_grf(
                                     prog_data->base.dispatch_grf_start_reg +
                                     ubo_push_start[src.nr - UBO_START] +
                                     src.offset / 32, 0),
                                  src.offset % 32);
             } else {
-               reg = byte_offset(brw_vec4_grf(
+               reg = byte_offset(elk_vec4_grf(
                                     prog_data->base.dispatch_grf_start_reg +
                                     src.nr / 2, src.nr % 2 * 4),
                                  src.offset);
@@ -1767,7 +1767,7 @@ vec4_visitor::convert_to_hw_regs()
 
          case FIXED_GRF:
             if (type_sz(src.type) == 8) {
-               reg = src.as_brw_reg();
+               reg = src.as_elk_reg();
                break;
             }
             FALLTHROUGH;
@@ -1777,7 +1777,7 @@ vec4_visitor::convert_to_hw_regs()
 
          case BAD_FILE:
             /* Probably unused. */
-            reg = brw_null_reg();
+            reg = elk_null_reg();
             reg = retype(reg, src.type);
             break;
 
@@ -1804,45 +1804,45 @@ vec4_visitor::convert_to_hw_regs()
             src.vstride = src.width + src.hstride;
       }
 
-      if (inst->is_3src(compiler)) {
+      if (inst->elk_is_3src(compiler)) {
          /* 3-src instructions with scalar sources support arbitrary subnr,
           * but don't actually use swizzles.  Convert swizzle into subnr.
           * Skip this for double-precision instructions: RepCtrl=1 is not
           * allowed for them and needs special handling.
           */
          for (int i = 0; i < 3; i++) {
-            if (inst->src[i].vstride == BRW_VERTICAL_STRIDE_0 &&
+            if (inst->src[i].vstride == ELK_VERTICAL_STRIDE_0 &&
                 type_sz(inst->src[i].type) < 8) {
-               assert(brw_is_single_value_swizzle(inst->src[i].swizzle));
-               inst->src[i].subnr += 4 * BRW_GET_SWZ(inst->src[i].swizzle, 0);
+               assert(elk_is_single_value_swizzle(inst->src[i].swizzle));
+               inst->src[i].subnr += 4 * ELK_GET_SWZ(inst->src[i].swizzle, 0);
             }
          }
       }
 
       dst_reg &dst = inst->dst;
-      struct brw_reg reg;
+      struct elk_reg reg;
 
       switch (inst->dst.file) {
       case VGRF:
-         reg = byte_offset(brw_vec8_grf(dst.nr, 0), dst.offset);
+         reg = byte_offset(elk_vec8_grf(dst.nr, 0), dst.offset);
          reg.type = dst.type;
          reg.writemask = dst.writemask;
          break;
 
       case MRF:
-         reg = byte_offset(brw_message_reg(dst.nr), dst.offset);
-         assert((reg.nr & ~BRW_MRF_COMPR4) < BRW_MAX_MRF(devinfo->ver));
+         reg = byte_offset(elk_message_reg(dst.nr), dst.offset);
+         assert((reg.nr & ~ELK_MRF_COMPR4) < ELK_MAX_MRF(devinfo->ver));
          reg.type = dst.type;
          reg.writemask = dst.writemask;
          break;
 
       case ARF:
       case FIXED_GRF:
-         reg = dst.as_brw_reg();
+         reg = dst.as_elk_reg();
          break;
 
       case BAD_FILE:
-         reg = brw_null_reg();
+         reg = elk_null_reg();
          reg = retype(reg, dst.type);
          break;
 
@@ -1883,8 +1883,8 @@ get_lowered_simd_width(const struct intel_device_info *devinfo,
 {
    /* Do not split some instructions that require special handling */
    switch (inst->opcode) {
-   case SHADER_OPCODE_GFX4_SCRATCH_READ:
-   case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
+   case ELK_SHADER_OPCODE_GFX4_SCRATCH_READ:
+   case ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE:
       return inst->exec_size;
    default:
       break;
@@ -1900,7 +1900,7 @@ get_lowered_simd_width(const struct intel_device_info *devinfo,
       /* Align16 8-wide double-precision SEL does not work well. Verified
        * empirically.
        */
-      if (inst->opcode == BRW_OPCODE_SEL && type_sz(inst->dst.type) == 8)
+      if (inst->opcode == ELK_OPCODE_SEL && type_sz(inst->dst.type) == 8)
          lowered_width = MIN2(lowered_width, 4);
 
       /* HSW PRM, 3D Media GPGPU Engine, Region Alignment Rules for Direct
@@ -2064,21 +2064,21 @@ vec4_visitor::lower_simd_width()
    return progress;
 }
 
-static brw_predicate
-scalarize_predicate(brw_predicate predicate, unsigned writemask)
+static elk_predicate
+scalarize_predicate(elk_predicate predicate, unsigned writemask)
 {
-   if (predicate != BRW_PREDICATE_NORMAL)
+   if (predicate != ELK_PREDICATE_NORMAL)
       return predicate;
 
    switch (writemask) {
    case WRITEMASK_X:
-      return BRW_PREDICATE_ALIGN16_REPLICATE_X;
+      return ELK_PREDICATE_ALIGN16_REPLICATE_X;
    case WRITEMASK_Y:
-      return BRW_PREDICATE_ALIGN16_REPLICATE_Y;
+      return ELK_PREDICATE_ALIGN16_REPLICATE_Y;
    case WRITEMASK_Z:
-      return BRW_PREDICATE_ALIGN16_REPLICATE_Z;
+      return ELK_PREDICATE_ALIGN16_REPLICATE_Z;
    case WRITEMASK_W:
-      return BRW_PREDICATE_ALIGN16_REPLICATE_W;
+      return ELK_PREDICATE_ALIGN16_REPLICATE_W;
    default:
       unreachable("invalid writemask");
    }
@@ -2091,14 +2091,14 @@ static bool
 is_gfx7_supported_64bit_swizzle(vec4_instruction *inst, unsigned arg)
 {
    switch (inst->src[arg].swizzle) {
-   case BRW_SWIZZLE_XXXX:
-   case BRW_SWIZZLE_YYYY:
-   case BRW_SWIZZLE_ZZZZ:
-   case BRW_SWIZZLE_WWWW:
-   case BRW_SWIZZLE_XYXY:
-   case BRW_SWIZZLE_YXYX:
-   case BRW_SWIZZLE_ZWZW:
-   case BRW_SWIZZLE_WZWZ:
+   case ELK_SWIZZLE_XXXX:
+   case ELK_SWIZZLE_YYYY:
+   case ELK_SWIZZLE_ZZZZ:
+   case ELK_SWIZZLE_WWWW:
+   case ELK_SWIZZLE_XYXY:
+   case ELK_SWIZZLE_YXYX:
+   case ELK_SWIZZLE_ZWZW:
+   case ELK_SWIZZLE_WZWZ:
       return true;
    default:
       return false;
@@ -2132,14 +2132,14 @@ vec4_visitor::is_supported_64bit_region(vec4_instruction *inst, unsigned arg)
    if ((is_uniform(src) ||
         (stage_uses_interleaved_attributes(stage, prog_data->dispatch_mode) &&
          src.file == ATTR)) &&
-       (brw_mask_for_swizzle(src.swizzle) & 12))
+       (elk_mask_for_swizzle(src.swizzle) & 12))
       return false;
 
    switch (src.swizzle) {
-   case BRW_SWIZZLE_XYZW:
-   case BRW_SWIZZLE_XXZZ:
-   case BRW_SWIZZLE_YYWW:
-   case BRW_SWIZZLE_YXWZ:
+   case ELK_SWIZZLE_XYZW:
+   case ELK_SWIZZLE_XXZZ:
+   case ELK_SWIZZLE_YYWW:
+   case ELK_SWIZZLE_YXWZ:
       return true;
    default:
       return devinfo->ver == 7 && is_gfx7_supported_64bit_swizzle(inst, arg);
@@ -2197,13 +2197,13 @@ vec4_visitor::scalarize_df()
          vec4_instruction *scalar_inst = new(mem_ctx) vec4_instruction(*inst);
 
          for (unsigned i = 0; i < 3; i++) {
-            unsigned swz = BRW_GET_SWZ(inst->src[i].swizzle, chan);
-            scalar_inst->src[i].swizzle = BRW_SWIZZLE4(swz, swz, swz, swz);
+            unsigned swz = ELK_GET_SWZ(inst->src[i].swizzle, chan);
+            scalar_inst->src[i].swizzle = ELK_SWIZZLE4(swz, swz, swz, swz);
          }
 
          scalar_inst->dst.writemask = chan_mask;
 
-         if (inst->predicate != BRW_PREDICATE_NONE) {
+         if (inst->predicate != ELK_PREDICATE_NONE) {
             scalar_inst->predicate =
                scalarize_predicate(inst->predicate, chan_mask);
          }
@@ -2227,7 +2227,7 @@ vec4_visitor::lower_64bit_mad_to_mul_add()
    bool progress = false;
 
    foreach_block_and_inst_safe(block, vec4_instruction, inst, cfg) {
-      if (inst->opcode != BRW_OPCODE_MAD)
+      if (inst->opcode != ELK_OPCODE_MAD)
          continue;
 
       if (type_sz(inst->dst.type) != 8)
@@ -2239,14 +2239,14 @@ vec4_visitor::lower_64bit_mad_to_mul_add()
        * from the original mad into the add and mul instructions
        */
       vec4_instruction *mul = new(mem_ctx) vec4_instruction(*inst);
-      mul->opcode = BRW_OPCODE_MUL;
+      mul->opcode = ELK_OPCODE_MUL;
       mul->dst = mul_dst;
       mul->src[0] = inst->src[1];
       mul->src[1] = inst->src[2];
       mul->src[2].file = BAD_FILE;
 
       vec4_instruction *add = new(mem_ctx) vec4_instruction(*inst);
-      add->opcode = BRW_OPCODE_ADD;
+      add->opcode = ELK_OPCODE_ADD;
       add->src[0] = src_reg(mul_dst);
       add->src[1] = inst->src[0];
       add->src[2].file = BAD_FILE;
@@ -2277,12 +2277,12 @@ vec4_visitor::lower_64bit_mad_to_mul_add()
  * given Vec4 IR source.
  */
 void
-vec4_visitor::apply_logical_swizzle(struct brw_reg *hw_reg,
+vec4_visitor::apply_logical_swizzle(struct elk_reg *hw_reg,
                                     vec4_instruction *inst, int arg)
 {
    src_reg reg = inst->src[arg];
 
-   if (reg.file == BAD_FILE || reg.file == BRW_IMMEDIATE_VALUE)
+   if (reg.file == BAD_FILE || reg.file == ELK_IMMEDIATE_VALUE)
       return;
 
    /* If this is not a 64-bit operand or this is a scalar instruction we don't
@@ -2294,13 +2294,13 @@ vec4_visitor::apply_logical_swizzle(struct brw_reg *hw_reg,
    }
 
    /* Take the 64-bit logical swizzle channel and translate it to 32-bit */
-   assert(brw_is_single_value_swizzle(reg.swizzle) ||
+   assert(elk_is_single_value_swizzle(reg.swizzle) ||
           is_supported_64bit_region(inst, arg));
 
    /* Apply the region <2, 2, 1> for GRF or <0, 2, 1> for uniforms, as align16
     * HW can only do 32-bit swizzle channels.
     */
-   hw_reg->width = BRW_WIDTH_2;
+   hw_reg->width = ELK_WIDTH_2;
 
    if (is_supported_64bit_region(inst, arg) &&
        !is_gfx7_supported_64bit_swizzle(inst, arg)) {
@@ -2308,9 +2308,9 @@ vec4_visitor::apply_logical_swizzle(struct brw_reg *hw_reg,
        * components, when expanded to 32-bit swizzles, match the semantics
        * of the original 64-bit swizzle with 2-wide row regioning.
        */
-      unsigned swizzle0 = BRW_GET_SWZ(reg.swizzle, 0);
-      unsigned swizzle1 = BRW_GET_SWZ(reg.swizzle, 1);
-      hw_reg->swizzle = BRW_SWIZZLE4(swizzle0 * 2, swizzle0 * 2 + 1,
+      unsigned swizzle0 = ELK_GET_SWZ(reg.swizzle, 0);
+      unsigned swizzle1 = ELK_GET_SWZ(reg.swizzle, 1);
+      hw_reg->swizzle = ELK_SWIZZLE4(swizzle0 * 2, swizzle0 * 2 + 1,
                                      swizzle1 * 2, swizzle1 * 2 + 1);
    } else {
       /* If we got here then we have one of the following:
@@ -2322,8 +2322,8 @@ vec4_visitor::apply_logical_swizzle(struct brw_reg *hw_reg,
        *    swizzles. If the latter, they are never cross-dvec2 channels. For
        *    these we always need to activate the gfx7 vstride=0 exploit.
        */
-      unsigned swizzle0 = BRW_GET_SWZ(reg.swizzle, 0);
-      unsigned swizzle1 = BRW_GET_SWZ(reg.swizzle, 1);
+      unsigned swizzle0 = ELK_GET_SWZ(reg.swizzle, 0);
+      unsigned swizzle1 = ELK_GET_SWZ(reg.swizzle, 1);
       assert((swizzle0 < 2) == (swizzle1 < 2));
 
       /* To gain access to Z/W components we need to select the second half
@@ -2337,7 +2337,7 @@ vec4_visitor::apply_logical_swizzle(struct brw_reg *hw_reg,
 
       /* All gfx7-specific supported swizzles require the vstride=0 exploit */
       if (devinfo->ver == 7 && is_gfx7_supported_64bit_swizzle(inst, arg))
-         hw_reg->vstride = BRW_VERTICAL_STRIDE_0;
+         hw_reg->vstride = ELK_VERTICAL_STRIDE_0;
 
       /* Any 64-bit source with an offset at 16B is intended to address the
        * second half of a register and needs a vertical stride of 0 so we:
@@ -2348,10 +2348,10 @@ vec4_visitor::apply_logical_swizzle(struct brw_reg *hw_reg,
        */
       if (hw_reg->subnr % REG_SIZE == 16) {
          assert(devinfo->ver == 7);
-         hw_reg->vstride = BRW_VERTICAL_STRIDE_0;
+         hw_reg->vstride = ELK_VERTICAL_STRIDE_0;
       }
 
-      hw_reg->swizzle = BRW_SWIZZLE4(swizzle0 * 2, swizzle0 * 2 + 1,
+      hw_reg->swizzle = ELK_SWIZZLE4(swizzle0 * 2, swizzle0 * 2 + 1,
                                      swizzle1 * 2, swizzle1 * 2 + 1);
    }
 }
@@ -2359,7 +2359,7 @@ vec4_visitor::apply_logical_swizzle(struct brw_reg *hw_reg,
 void
 vec4_visitor::invalidate_analysis(elk::analysis_dependency_class c)
 {
-   backend_shader::invalidate_analysis(c);
+   elk_backend_shader::invalidate_analysis(c);
    live_analysis.invalidate(c);
 }
 
@@ -2373,12 +2373,12 @@ vec4_visitor::run()
       const unsigned mask_param = stage_prog_data->push_reg_mask_param;
       src_reg mask = src_reg(dst_reg(UNIFORM, mask_param / 4));
       assert(mask_param % 2 == 0); /* Should be 64-bit-aligned */
-      mask.swizzle = BRW_SWIZZLE4((mask_param + 0) % 4,
+      mask.swizzle = ELK_SWIZZLE4((mask_param + 0) % 4,
                                   (mask_param + 1) % 4,
                                   (mask_param + 0) % 4,
                                   (mask_param + 1) % 4);
 
-      emit(VEC4_OPCODE_ZERO_OOB_PUSH_REGS,
+      emit(ELK_VEC4_OPCODE_ZERO_OOB_PUSH_REGS,
            dst_reg(VGRF, alloc.allocate(3)), mask);
    }
 
@@ -2415,7 +2415,7 @@ vec4_visitor::run()
                   _mesa_shader_stage_to_abbrev(stage),                 \
                   nir->info.name, iteration, pass_num);                \
                                                                        \
-         backend_shader::dump_instructions(filename);                  \
+         elk_backend_shader::dump_instructions(filename);                  \
       }                                                                \
                                                                        \
       cfg->validate(_mesa_shader_stage_to_abbrev(stage));              \
@@ -2429,7 +2429,7 @@ vec4_visitor::run()
       snprintf(filename, 64, "%s-%s-00-00-start",
                _mesa_shader_stage_to_abbrev(stage), nir->info.name);
 
-      backend_shader::dump_instructions(filename);
+      elk_backend_shader::dump_instructions(filename);
    }
 
    bool progress;
@@ -2440,10 +2440,10 @@ vec4_visitor::run()
       pass_num = 0;
       iteration++;
 
-      OPT(opt_predicated_break, this);
+      OPT(elk_opt_predicated_break, this);
       OPT(opt_reduce_swizzle);
       OPT(dead_code_eliminate);
-      OPT(dead_control_flow_eliminate, this);
+      OPT(elk_dead_control_flow_eliminate, this);
       OPT(opt_copy_propagation);
       OPT(opt_cmod_propagation);
       OPT(opt_cse);
@@ -2511,7 +2511,7 @@ vec4_visitor::run()
    bool allocated_without_spills = reg_allocate();
 
    if (!allocated_without_spills) {
-      brw_shader_perf_log(compiler, log_data,
+      elk_shader_perf_log(compiler, log_data,
                           "%s shader triggered register spilling.  "
                           "Try reducing the number of live vec4 values "
                           "to improve performance.\n",
@@ -2537,7 +2537,7 @@ vec4_visitor::run()
 
    if (last_scratch > 0) {
       prog_data->base.total_scratch =
-         brw_get_scratch_size(last_scratch * REG_SIZE);
+         elk_get_scratch_size(last_scratch * REG_SIZE);
    }
 
    return !failed;
@@ -2548,14 +2548,14 @@ vec4_visitor::run()
 extern "C" {
 
 const unsigned *
-brw_compile_vs(const struct brw_compiler *compiler,
-               struct brw_compile_vs_params *params)
+elk_compile_vs(const struct elk_compiler *compiler,
+               struct elk_compile_vs_params *params)
 {
    struct nir_shader *nir = params->base.nir;
-   const struct brw_vs_prog_key *key = params->key;
-   struct brw_vs_prog_data *prog_data = params->prog_data;
+   const struct elk_vs_prog_key *key = params->key;
+   struct elk_vs_prog_data *prog_data = params->prog_data;
    const bool debug_enabled =
-      brw_should_print_shader(nir, params->base.debug_flag ?
+      elk_should_print_shader(nir, params->base.debug_flag ?
                                    params->base.debug_flag : DEBUG_VS);
 
    prog_data->base.base.stage = MESA_SHADER_VERTEX;
@@ -2563,16 +2563,16 @@ brw_compile_vs(const struct brw_compiler *compiler,
    prog_data->base.base.total_scratch = 0;
 
    const bool is_scalar = compiler->scalar_stage[MESA_SHADER_VERTEX];
-   brw_nir_apply_key(nir, compiler, &key->base, 8);
+   elk_nir_apply_key(nir, compiler, &key->base, 8);
 
    const unsigned *assembly = NULL;
 
    prog_data->inputs_read = nir->info.inputs_read;
    prog_data->double_inputs_read = nir->info.vs.double_inputs;
 
-   brw_nir_lower_vs_inputs(nir, params->edgeflag_is_last, key->gl_attrib_wa_flags);
-   brw_nir_lower_vue_outputs(nir);
-   brw_postprocess_nir(nir, compiler, debug_enabled,
+   elk_nir_lower_vs_inputs(nir, params->edgeflag_is_last, key->gl_attrib_wa_flags);
+   elk_nir_lower_vue_outputs(nir);
+   elk_postprocess_nir(nir, compiler, debug_enabled,
                        key->base.robust_flags);
 
    prog_data->base.clip_distance_mask =
@@ -2645,14 +2645,14 @@ brw_compile_vs(const struct brw_compiler *compiler,
 
    if (unlikely(debug_enabled)) {
       fprintf(stderr, "VS Output ");
-      brw_print_vue_map(stderr, &prog_data->base.vue_map, MESA_SHADER_VERTEX);
+      elk_print_vue_map(stderr, &prog_data->base.vue_map, MESA_SHADER_VERTEX);
    }
 
    if (is_scalar) {
       const unsigned dispatch_width = compiler->devinfo->ver >= 20 ? 16 : 8;
       prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
-      fs_visitor v(compiler, &params->base, &key->base,
+      elk_fs_visitor v(compiler, &params->base, &key->base,
                    &prog_data->base.base, nir, dispatch_width,
                    params->base.stats != NULL, debug_enabled);
       if (!v.run_vs()) {
@@ -2665,7 +2665,7 @@ brw_compile_vs(const struct brw_compiler *compiler,
       prog_data->base.base.dispatch_grf_start_reg =
          v.payload().num_regs / reg_unit(compiler->devinfo);
 
-      fs_generator g(compiler, &params->base,
+      elk_fs_generator g(compiler, &params->base,
                      &prog_data->base.base, v.runtime_check_aads_emit,
                      MESA_SHADER_VERTEX);
       if (unlikely(debug_enabled)) {
@@ -2694,7 +2694,7 @@ brw_compile_vs(const struct brw_compiler *compiler,
          return NULL;
       }
 
-      assembly = brw_vec4_generate_assembly(compiler, &params->base,
+      assembly = elk_vec4_generate_assembly(compiler, &params->base,
                                             nir, &prog_data->base,
                                             v.cfg,
                                             v.performance_analysis.require(),

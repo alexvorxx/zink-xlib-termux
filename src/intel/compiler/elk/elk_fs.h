@@ -34,12 +34,12 @@
 #include "elk_ir_performance.h"
 #include "compiler/nir/nir.h"
 
-struct bblock_t;
+struct elk_bblock_t;
 namespace {
    struct acp_entry;
 }
 
-class fs_visitor;
+class elk_fs_visitor;
 
 namespace elk {
    /**
@@ -47,7 +47,7 @@ namespace elk {
     * are live at any point of the program in GRF units.
     */
    struct register_pressure {
-      register_pressure(const fs_visitor *v);
+      register_pressure(const elk_fs_visitor *v);
       ~register_pressure();
 
       analysis_dependency_class
@@ -59,7 +59,7 @@ namespace elk {
       }
 
       bool
-      validate(const fs_visitor *) const
+      validate(const elk_fs_visitor *) const
       {
          /* FINISHME */
          return true;
@@ -69,7 +69,7 @@ namespace elk {
    };
 }
 
-struct brw_gs_compile;
+struct elk_gs_compile;
 
 namespace elk {
 class fs_builder;
@@ -84,50 +84,50 @@ struct shader_stats {
 };
 
 /** Register numbers for thread payload fields. */
-struct thread_payload {
+struct elk_elk_thread_payload {
    /** The number of thread payload registers the hardware will supply. */
    uint8_t num_regs;
 
-   virtual ~thread_payload() = default;
+   virtual ~elk_elk_thread_payload() = default;
 
 protected:
-   thread_payload() : num_regs() {}
+   elk_elk_thread_payload() : num_regs() {}
 };
 
-struct vs_thread_payload : public thread_payload {
-   vs_thread_payload(const fs_visitor &v);
+struct elk_vs_thread_payload : public elk_elk_thread_payload {
+   elk_vs_thread_payload(const elk_fs_visitor &v);
 
-   fs_reg urb_handles;
+   elk_fs_reg urb_handles;
 };
 
-struct tcs_thread_payload : public thread_payload {
-   tcs_thread_payload(const fs_visitor &v);
+struct elk_tcs_thread_payload : public elk_elk_thread_payload {
+   elk_tcs_thread_payload(const elk_fs_visitor &v);
 
-   fs_reg patch_urb_output;
-   fs_reg primitive_id;
-   fs_reg icp_handle_start;
+   elk_fs_reg patch_urb_output;
+   elk_fs_reg primitive_id;
+   elk_fs_reg icp_handle_start;
 };
 
-struct tes_thread_payload : public thread_payload {
-   tes_thread_payload(const fs_visitor &v);
+struct elk_tes_thread_payload : public elk_elk_thread_payload {
+   elk_tes_thread_payload(const elk_fs_visitor &v);
 
-   fs_reg patch_urb_input;
-   fs_reg primitive_id;
-   fs_reg coords[3];
-   fs_reg urb_output;
+   elk_fs_reg patch_urb_input;
+   elk_fs_reg primitive_id;
+   elk_fs_reg coords[3];
+   elk_fs_reg urb_output;
 };
 
-struct gs_thread_payload : public thread_payload {
-   gs_thread_payload(fs_visitor &v);
+struct elk_gs_thread_payload : public elk_elk_thread_payload {
+   elk_gs_thread_payload(elk_fs_visitor &v);
 
-   fs_reg urb_handles;
-   fs_reg primitive_id;
-   fs_reg instance_id;
-   fs_reg icp_handle_start;
+   elk_fs_reg urb_handles;
+   elk_fs_reg primitive_id;
+   elk_fs_reg instance_id;
+   elk_fs_reg icp_handle_start;
 };
 
-struct fs_thread_payload : public thread_payload {
-   fs_thread_payload(const fs_visitor &v,
+struct elk_fs_thread_payload : public elk_elk_thread_payload {
+   elk_fs_thread_payload(const elk_fs_visitor &v,
                      bool &source_depth_to_render_target,
                      bool &runtime_check_aads_emit);
 
@@ -139,65 +139,65 @@ struct fs_thread_payload : public thread_payload {
    uint8_t sample_pos_reg[2];
    uint8_t sample_mask_in_reg[2];
    uint8_t depth_w_coef_reg;
-   uint8_t barycentric_coord_reg[BRW_BARYCENTRIC_MODE_COUNT][2];
+   uint8_t barycentric_coord_reg[ELK_BARYCENTRIC_MODE_COUNT][2];
 };
 
-struct cs_thread_payload : public thread_payload {
-   cs_thread_payload(const fs_visitor &v);
+struct elk_cs_thread_payload : public elk_elk_thread_payload {
+   elk_cs_thread_payload(const elk_fs_visitor &v);
 
-   void load_subgroup_id(const elk::fs_builder &bld, fs_reg &dest) const;
+   void load_subgroup_id(const elk::fs_builder &bld, elk_fs_reg &dest) const;
 
-   fs_reg local_invocation_id[3];
+   elk_fs_reg local_invocation_id[3];
 
 protected:
-   fs_reg subgroup_id_;
+   elk_fs_reg subgroup_id_;
 };
 
-class fs_instruction_scheduler;
+class elk_fs_instruction_scheduler;
 
 /**
  * The fragment shader front-end.
  *
  * Translates either GLSL IR or Mesa IR (for ARB_fragment_program) into FS IR.
  */
-class fs_visitor : public backend_shader
+class elk_fs_visitor : public elk_backend_shader
 {
 public:
-   fs_visitor(const struct brw_compiler *compiler,
-              const struct brw_compile_params *params,
-              const brw_base_prog_key *key,
-              struct brw_stage_prog_data *prog_data,
+   elk_fs_visitor(const struct elk_compiler *compiler,
+              const struct elk_compile_params *params,
+              const elk_base_prog_key *key,
+              struct elk_stage_prog_data *prog_data,
               const nir_shader *shader,
               unsigned dispatch_width,
               bool needs_register_pressure,
               bool debug_enabled);
-   fs_visitor(const struct brw_compiler *compiler,
-              const struct brw_compile_params *params,
-              const brw_wm_prog_key *key,
-              struct brw_wm_prog_data *prog_data,
+   elk_fs_visitor(const struct elk_compiler *compiler,
+              const struct elk_compile_params *params,
+              const elk_wm_prog_key *key,
+              struct elk_wm_prog_data *prog_data,
               const nir_shader *shader,
               unsigned dispatch_width,
               unsigned num_polygons,
               bool needs_register_pressure,
               bool debug_enabled);
-   fs_visitor(const struct brw_compiler *compiler,
-              const struct brw_compile_params *params,
-              struct brw_gs_compile *gs_compile,
-              struct brw_gs_prog_data *prog_data,
+   elk_fs_visitor(const struct elk_compiler *compiler,
+              const struct elk_compile_params *params,
+              struct elk_gs_compile *gs_compile,
+              struct elk_gs_prog_data *prog_data,
               const nir_shader *shader,
               bool needs_register_pressure,
               bool debug_enabled);
    void init();
-   ~fs_visitor();
+   ~elk_fs_visitor();
 
-   fs_reg vgrf(const glsl_type *const type);
-   void import_uniforms(fs_visitor *v);
+   elk_fs_reg vgrf(const glsl_type *const type);
+   void import_uniforms(elk_fs_visitor *v);
 
    void VARYING_PULL_CONSTANT_LOAD(const elk::fs_builder &bld,
-                                   const fs_reg &dst,
-                                   const fs_reg &surface,
-                                   const fs_reg &surface_handle,
-                                   const fs_reg &varying_offset,
+                                   const elk_fs_reg &dst,
+                                   const elk_fs_reg &surface,
+                                   const elk_fs_reg &surface_handle,
+                                   const elk_fs_reg &varying_offset,
                                    uint32_t const_offset,
                                    uint8_t alignment,
                                    unsigned components);
@@ -219,7 +219,7 @@ public:
    bool fixup_nomask_control_flow();
    void assign_curb_setup();
    void assign_urb_setup();
-   void convert_attr_sources_to_hw_regs(fs_inst *inst);
+   void convert_attr_sources_to_hw_regs(elk_fs_inst *inst);
    void assign_vs_urb_setup();
    void assign_tcs_urb_setup();
    void assign_tes_urb_setup();
@@ -231,7 +231,7 @@ public:
    bool split_virtual_grfs();
    bool compact_virtual_grfs();
    void assign_constant_locations();
-   bool get_pull_locs(const fs_reg &src, unsigned *out_surf_index,
+   bool get_pull_locs(const elk_fs_reg &src, unsigned *out_surf_index,
                       unsigned *out_pull_index);
    bool lower_constant_loads();
    virtual void invalidate_analysis(elk::analysis_dependency_class c);
@@ -245,7 +245,7 @@ public:
    bool opt_algebraic();
    bool opt_redundant_halt();
    bool opt_cse();
-   bool opt_cse_local(const elk::fs_live_variables &live, bblock_t *block, int &ip);
+   bool opt_cse_local(const elk::fs_live_variables &live, elk_bblock_t *block, int &ip);
 
    bool opt_copy_propagation();
    bool opt_bank_conflicts();
@@ -257,16 +257,16 @@ public:
    bool remove_duplicate_mrf_writes();
    bool remove_extra_rounding_modes();
 
-   fs_instruction_scheduler *prepare_scheduler(void *mem_ctx);
-   void schedule_instructions_pre_ra(fs_instruction_scheduler *sched,
+   elk_fs_instruction_scheduler *prepare_scheduler(void *mem_ctx);
+   void schedule_instructions_pre_ra(elk_fs_instruction_scheduler *sched,
                                      instruction_scheduler_mode mode);
    void schedule_instructions_post_ra();
 
    void insert_gfx4_send_dependency_workarounds();
-   void insert_gfx4_pre_send_dependency_workarounds(bblock_t *block,
-                                                    fs_inst *inst);
-   void insert_gfx4_post_send_dependency_workarounds(bblock_t *block,
-                                                     fs_inst *inst);
+   void insert_gfx4_pre_send_dependency_workarounds(elk_bblock_t *block,
+                                                    elk_fs_inst *inst);
+   void insert_gfx4_post_send_dependency_workarounds(elk_bblock_t *block,
+                                                     elk_fs_inst *inst);
    void vfail(const char *msg, va_list args);
    void fail(const char *msg, ...);
    void limit_dispatch_width(unsigned n, const char *msg);
@@ -296,37 +296,37 @@ public:
    void set_tcs_invocation_id();
 
    void emit_alpha_test();
-   fs_inst *emit_single_fb_write(const elk::fs_builder &bld,
-                                 fs_reg color1, fs_reg color2,
-                                 fs_reg src0_alpha, unsigned components);
+   elk_fs_inst *emit_single_fb_write(const elk::fs_builder &bld,
+                                 elk_fs_reg color1, elk_fs_reg color2,
+                                 elk_fs_reg src0_alpha, unsigned components);
    void do_emit_fb_writes(int nr_color_regions, bool replicate_alpha);
    void emit_fb_writes();
-   void emit_urb_writes(const fs_reg &gs_vertex_count = fs_reg());
-   void emit_gs_control_data_bits(const fs_reg &vertex_count);
+   void emit_urb_writes(const elk_fs_reg &gs_vertex_count = elk_fs_reg());
+   void emit_gs_control_data_bits(const elk_fs_reg &vertex_count);
    void emit_gs_thread_end();
    bool mark_last_urb_write_with_eot();
    void emit_tcs_thread_end();
    void emit_urb_fence();
    void emit_cs_terminate();
 
-   fs_reg interp_reg(const elk::fs_builder &bld, unsigned location,
+   elk_fs_reg interp_reg(const elk::fs_builder &bld, unsigned location,
                      unsigned channel, unsigned comp);
-   fs_reg per_primitive_reg(const elk::fs_builder &bld,
+   elk_fs_reg per_primitive_reg(const elk::fs_builder &bld,
                             int location, unsigned comp);
 
-   virtual void dump_instruction_to_file(const backend_instruction *inst, FILE *file) const;
+   virtual void dump_instruction_to_file(const elk_backend_instruction *inst, FILE *file) const;
    virtual void dump_instructions_to_file(FILE *file) const;
 
-   const brw_base_prog_key *const key;
-   const struct brw_sampler_prog_key_data *key_tex;
+   const elk_base_prog_key *const key;
+   const struct elk_sampler_prog_key_data *key_tex;
 
-   struct brw_gs_compile *gs_compile;
+   struct elk_gs_compile *gs_compile;
 
-   struct brw_stage_prog_data *prog_data;
+   struct elk_stage_prog_data *prog_data;
 
-   brw_analysis<elk::fs_live_variables, backend_shader> live_analysis;
-   brw_analysis<elk::register_pressure, fs_visitor> regpressure_analysis;
-   brw_analysis<elk::performance, fs_visitor> performance_analysis;
+   elk_analysis<elk::fs_live_variables, elk_backend_shader> live_analysis;
+   elk_analysis<elk::register_pressure, elk_fs_visitor> regpressure_analysis;
+   elk_analysis<elk::performance, elk_fs_visitor> performance_analysis;
 
    /** Number of uniform variable components visited. */
    unsigned uniforms;
@@ -340,66 +340,66 @@ public:
     */
    int *push_constant_loc;
 
-   fs_reg frag_depth;
-   fs_reg frag_stencil;
-   fs_reg sample_mask;
-   fs_reg outputs[VARYING_SLOT_MAX];
-   fs_reg dual_src_output;
+   elk_fs_reg frag_depth;
+   elk_fs_reg frag_stencil;
+   elk_fs_reg sample_mask;
+   elk_fs_reg outputs[VARYING_SLOT_MAX];
+   elk_fs_reg dual_src_output;
    int first_non_payload_grf;
-   /** Either BRW_MAX_GRF or GFX7_MRF_HACK_START */
+   /** Either ELK_MAX_GRF or GFX7_MRF_HACK_START */
    unsigned max_grf;
 
    bool failed;
    char *fail_msg;
 
-   thread_payload *payload_;
+   elk_elk_thread_payload *payload_;
 
-   thread_payload &payload() {
+   elk_elk_thread_payload &payload() {
       return *this->payload_;
    }
 
-   vs_thread_payload &vs_payload() {
+   elk_vs_thread_payload &vs_payload() {
       assert(stage == MESA_SHADER_VERTEX);
-      return *static_cast<vs_thread_payload *>(this->payload_);
+      return *static_cast<elk_vs_thread_payload *>(this->payload_);
    }
 
-   tcs_thread_payload &tcs_payload() {
+   elk_tcs_thread_payload &tcs_payload() {
       assert(stage == MESA_SHADER_TESS_CTRL);
-      return *static_cast<tcs_thread_payload *>(this->payload_);
+      return *static_cast<elk_tcs_thread_payload *>(this->payload_);
    }
 
-   tes_thread_payload &tes_payload() {
+   elk_tes_thread_payload &tes_payload() {
       assert(stage == MESA_SHADER_TESS_EVAL);
-      return *static_cast<tes_thread_payload *>(this->payload_);
+      return *static_cast<elk_tes_thread_payload *>(this->payload_);
    }
 
-   gs_thread_payload &gs_payload() {
+   elk_gs_thread_payload &gs_payload() {
       assert(stage == MESA_SHADER_GEOMETRY);
-      return *static_cast<gs_thread_payload *>(this->payload_);
+      return *static_cast<elk_gs_thread_payload *>(this->payload_);
    }
 
-   fs_thread_payload &fs_payload() {
+   elk_fs_thread_payload &fs_payload() {
       assert(stage == MESA_SHADER_FRAGMENT);
-      return *static_cast<fs_thread_payload *>(this->payload_);
+      return *static_cast<elk_fs_thread_payload *>(this->payload_);
    };
 
-   cs_thread_payload &cs_payload() {
+   elk_cs_thread_payload &cs_payload() {
       assert(gl_shader_stage_uses_workgroup(stage));
-      return *static_cast<cs_thread_payload *>(this->payload_);
+      return *static_cast<elk_cs_thread_payload *>(this->payload_);
    }
 
    bool source_depth_to_render_target;
    bool runtime_check_aads_emit;
 
-   fs_reg pixel_x;
-   fs_reg pixel_y;
-   fs_reg pixel_z;
-   fs_reg wpos_w;
-   fs_reg pixel_w;
-   fs_reg delta_xy[BRW_BARYCENTRIC_MODE_COUNT];
-   fs_reg final_gs_vertex_count;
-   fs_reg control_data_bits;
-   fs_reg invocation_id;
+   elk_fs_reg pixel_x;
+   elk_fs_reg pixel_y;
+   elk_fs_reg pixel_z;
+   elk_fs_reg wpos_w;
+   elk_fs_reg pixel_w;
+   elk_fs_reg delta_xy[ELK_BARYCENTRIC_MODE_COUNT];
+   elk_fs_reg final_gs_vertex_count;
+   elk_fs_reg control_data_bits;
+   elk_fs_reg invocation_id;
 
    unsigned grf_used;
    bool spilled_any_registers;
@@ -414,9 +414,9 @@ public:
 
    struct shader_stats shader_stats;
 
-   void lower_mul_dword_inst(fs_inst *inst, bblock_t *block);
-   void lower_mul_qword_inst(fs_inst *inst, bblock_t *block);
-   void lower_mulh_inst(fs_inst *inst, bblock_t *block);
+   void lower_mul_dword_inst(elk_fs_inst *inst, elk_bblock_t *block);
+   void lower_mul_qword_inst(elk_fs_inst *inst, elk_bblock_t *block);
+   void lower_mulh_inst(elk_fs_inst *inst, elk_bblock_t *block);
 
    unsigned workgroup_size() const;
 
@@ -432,7 +432,7 @@ public:
  * limits the dispatch width to SIMD16 for fragment shaders that use discard.
  */
 static inline unsigned
-sample_mask_flag_subreg(const fs_visitor &s)
+sample_mask_flag_subreg(const elk_fs_visitor &s)
 {
    assert(s.stage == MESA_SHADER_FRAGMENT);
    return s.devinfo->ver >= 7 ? 2 : 1;
@@ -443,91 +443,91 @@ sample_mask_flag_subreg(const fs_visitor &s)
  *
  * Translates FS IR to actual i965 assembly code.
  */
-class fs_generator
+class elk_fs_generator
 {
 public:
-   fs_generator(const struct brw_compiler *compiler,
-                const struct brw_compile_params *params,
-                struct brw_stage_prog_data *prog_data,
+   elk_fs_generator(const struct elk_compiler *compiler,
+                const struct elk_compile_params *params,
+                struct elk_stage_prog_data *prog_data,
                 bool runtime_check_aads_emit,
                 gl_shader_stage stage);
-   ~fs_generator();
+   ~elk_fs_generator();
 
    void enable_debug(const char *shader_name);
-   int generate_code(const cfg_t *cfg, int dispatch_width,
+   int generate_code(const elk_cfg_t *cfg, int dispatch_width,
                      struct shader_stats shader_stats,
                      const elk::performance &perf,
-                     struct brw_compile_stats *stats,
+                     struct elk_compile_stats *stats,
                      unsigned max_polygons = 0);
    void add_const_data(void *data, unsigned size);
    const unsigned *get_assembly();
 
 private:
-   void fire_fb_write(fs_inst *inst,
-                      struct brw_reg payload,
-                      struct brw_reg implied_header,
+   void fire_fb_write(elk_fs_inst *inst,
+                      struct elk_reg payload,
+                      struct elk_reg implied_header,
                       GLuint nr);
-   void generate_send(fs_inst *inst,
-                      struct brw_reg dst,
-                      struct brw_reg desc,
-                      struct brw_reg ex_desc,
-                      struct brw_reg payload,
-                      struct brw_reg payload2);
-   void generate_fb_write(fs_inst *inst, struct brw_reg payload);
-   void generate_fb_read(fs_inst *inst, struct brw_reg dst,
-                         struct brw_reg payload);
-   void generate_cs_terminate(fs_inst *inst, struct brw_reg payload);
-   void generate_barrier(fs_inst *inst, struct brw_reg src);
-   bool generate_linterp(fs_inst *inst, struct brw_reg dst,
-			 struct brw_reg *src);
-   void generate_tex(fs_inst *inst, struct brw_reg dst,
-                     struct brw_reg surface_index,
-                     struct brw_reg sampler_index);
-   void generate_ddx(const fs_inst *inst,
-                     struct brw_reg dst, struct brw_reg src);
-   void generate_ddy(const fs_inst *inst,
-                     struct brw_reg dst, struct brw_reg src);
-   void generate_scratch_write(fs_inst *inst, struct brw_reg src);
-   void generate_scratch_read(fs_inst *inst, struct brw_reg dst);
-   void generate_scratch_read_gfx7(fs_inst *inst, struct brw_reg dst);
-   void generate_scratch_header(fs_inst *inst, struct brw_reg dst);
-   void generate_uniform_pull_constant_load(fs_inst *inst, struct brw_reg dst,
-                                            struct brw_reg index,
-                                            struct brw_reg offset);
-   void generate_varying_pull_constant_load_gfx4(fs_inst *inst,
-                                                 struct brw_reg dst,
-                                                 struct brw_reg index);
+   void generate_send(elk_fs_inst *inst,
+                      struct elk_reg dst,
+                      struct elk_reg desc,
+                      struct elk_reg ex_desc,
+                      struct elk_reg payload,
+                      struct elk_reg payload2);
+   void generate_fb_write(elk_fs_inst *inst, struct elk_reg payload);
+   void generate_fb_read(elk_fs_inst *inst, struct elk_reg dst,
+                         struct elk_reg payload);
+   void generate_cs_terminate(elk_fs_inst *inst, struct elk_reg payload);
+   void generate_barrier(elk_fs_inst *inst, struct elk_reg src);
+   bool generate_linterp(elk_fs_inst *inst, struct elk_reg dst,
+			 struct elk_reg *src);
+   void generate_tex(elk_fs_inst *inst, struct elk_reg dst,
+                     struct elk_reg surface_index,
+                     struct elk_reg sampler_index);
+   void generate_ddx(const elk_fs_inst *inst,
+                     struct elk_reg dst, struct elk_reg src);
+   void generate_ddy(const elk_fs_inst *inst,
+                     struct elk_reg dst, struct elk_reg src);
+   void generate_scratch_write(elk_fs_inst *inst, struct elk_reg src);
+   void generate_scratch_read(elk_fs_inst *inst, struct elk_reg dst);
+   void generate_scratch_read_gfx7(elk_fs_inst *inst, struct elk_reg dst);
+   void generate_scratch_header(elk_fs_inst *inst, struct elk_reg dst);
+   void generate_uniform_pull_constant_load(elk_fs_inst *inst, struct elk_reg dst,
+                                            struct elk_reg index,
+                                            struct elk_reg offset);
+   void generate_varying_pull_constant_load_gfx4(elk_fs_inst *inst,
+                                                 struct elk_reg dst,
+                                                 struct elk_reg index);
 
-   void generate_set_sample_id(fs_inst *inst,
-                               struct brw_reg dst,
-                               struct brw_reg src0,
-                               struct brw_reg src1);
+   void generate_set_sample_id(elk_fs_inst *inst,
+                               struct elk_reg dst,
+                               struct elk_reg src0,
+                               struct elk_reg src1);
 
-   void generate_halt(fs_inst *inst);
+   void generate_halt(elk_fs_inst *inst);
 
-   void generate_mov_indirect(fs_inst *inst,
-                              struct brw_reg dst,
-                              struct brw_reg reg,
-                              struct brw_reg indirect_byte_offset);
+   void generate_mov_indirect(elk_fs_inst *inst,
+                              struct elk_reg dst,
+                              struct elk_reg reg,
+                              struct elk_reg indirect_byte_offset);
 
-   void generate_shuffle(fs_inst *inst,
-                         struct brw_reg dst,
-                         struct brw_reg src,
-                         struct brw_reg idx);
+   void generate_shuffle(elk_fs_inst *inst,
+                         struct elk_reg dst,
+                         struct elk_reg src,
+                         struct elk_reg idx);
 
-   void generate_quad_swizzle(const fs_inst *inst,
-                              struct brw_reg dst, struct brw_reg src,
+   void generate_quad_swizzle(const elk_fs_inst *inst,
+                              struct elk_reg dst, struct elk_reg src,
                               unsigned swiz);
 
    bool patch_halt_jumps();
 
-   const struct brw_compiler *compiler;
-   const struct brw_compile_params *params;
+   const struct elk_compiler *compiler;
+   const struct elk_compile_params *params;
 
    const struct intel_device_info *devinfo;
 
-   struct brw_codegen *p;
-   struct brw_stage_prog_data * const prog_data;
+   struct elk_codegen *p;
+   struct elk_stage_prog_data * const prog_data;
 
    unsigned dispatch_width; /**< 8, 16 or 32 */
 
@@ -540,62 +540,62 @@ private:
 };
 
 namespace elk {
-   fs_reg
+   elk_fs_reg
    fetch_payload_reg(const elk::fs_builder &bld, uint8_t regs[2],
-                     brw_reg_type type = BRW_REGISTER_TYPE_F,
+                     elk_reg_type type = ELK_REGISTER_TYPE_F,
                      unsigned n = 1);
 
-   fs_reg
+   elk_fs_reg
    fetch_barycentric_reg(const elk::fs_builder &bld, uint8_t regs[2]);
 
-   inline fs_reg
-   dynamic_msaa_flags(const struct brw_wm_prog_data *wm_prog_data)
+   inline elk_fs_reg
+   dynamic_msaa_flags(const struct elk_wm_prog_data *wm_prog_data)
    {
-      return fs_reg(UNIFORM, wm_prog_data->msaa_flags_param,
-                    BRW_REGISTER_TYPE_UD);
+      return elk_fs_reg(UNIFORM, wm_prog_data->msaa_flags_param,
+                    ELK_REGISTER_TYPE_UD);
    }
 
    void
    check_dynamic_msaa_flag(const fs_builder &bld,
-                           const struct brw_wm_prog_data *wm_prog_data,
+                           const struct elk_wm_prog_data *wm_prog_data,
                            enum intel_msaa_flags flag);
 
    bool
-   lower_src_modifiers(fs_visitor *v, bblock_t *block, fs_inst *inst, unsigned i);
+   lower_src_modifiers(elk_fs_visitor *v, elk_bblock_t *block, elk_fs_inst *inst, unsigned i);
 }
 
-void shuffle_from_32bit_read(const elk::fs_builder &bld,
-                             const fs_reg &dst,
-                             const fs_reg &src,
+void elk_shuffle_from_32bit_read(const elk::fs_builder &bld,
+                             const elk_fs_reg &dst,
+                             const elk_fs_reg &src,
                              uint32_t first_component,
                              uint32_t components);
 
-fs_reg setup_imm_df(const elk::fs_builder &bld,
+elk_fs_reg elk_setup_imm_df(const elk::fs_builder &bld,
                     double v);
 
-fs_reg setup_imm_b(const elk::fs_builder &bld,
+elk_fs_reg elk_setup_imm_b(const elk::fs_builder &bld,
                    int8_t v);
 
-fs_reg setup_imm_ub(const elk::fs_builder &bld,
+elk_fs_reg elk_setup_imm_ub(const elk::fs_builder &bld,
                    uint8_t v);
 
-enum brw_barycentric_mode brw_barycentric_mode(nir_intrinsic_instr *intr);
+enum elk_barycentric_mode elk_barycentric_mode(nir_intrinsic_instr *intr);
 
-uint32_t brw_fb_write_msg_control(const fs_inst *inst,
-                                  const struct brw_wm_prog_data *prog_data);
+uint32_t elk_fb_write_msg_control(const elk_fs_inst *inst,
+                                  const struct elk_wm_prog_data *prog_data);
 
-void brw_compute_urb_setup_index(struct brw_wm_prog_data *wm_prog_data);
+void elk_compute_urb_setup_index(struct elk_wm_prog_data *wm_prog_data);
 
-bool brw_nir_lower_simd(nir_shader *nir, unsigned dispatch_width);
+bool elk_nir_lower_simd(nir_shader *nir, unsigned dispatch_width);
 
-fs_reg brw_sample_mask_reg(const elk::fs_builder &bld);
-void brw_emit_predicate_on_sample_mask(const elk::fs_builder &bld, fs_inst *inst);
+elk_fs_reg elk_sample_mask_reg(const elk::fs_builder &bld);
+void elk_emit_predicate_on_sample_mask(const elk::fs_builder &bld, elk_fs_inst *inst);
 
-int brw_get_subgroup_id_param_index(const intel_device_info *devinfo,
-                                    const brw_stage_prog_data *prog_data);
+int elk_get_subgroup_id_param_index(const intel_device_info *devinfo,
+                                    const elk_stage_prog_data *prog_data);
 
-bool brw_lower_dpas(fs_visitor &v);
+bool elk_lower_dpas(elk_fs_visitor &v);
 
-void nir_to_brw(fs_visitor *s);
+void nir_to_elk(elk_fs_visitor *s);
 
 #endif /* ELK_FS_H */

@@ -29,15 +29,15 @@
 
 #include <variant>
 
-unsigned brw_required_dispatch_width(const struct shader_info *info);
+unsigned elk_required_dispatch_width(const struct shader_info *info);
 
 static constexpr int SIMD_COUNT = 3;
 
-struct brw_simd_selection_state {
+struct elk_simd_selection_state {
    const struct intel_device_info *devinfo;
 
-   std::variant<struct brw_cs_prog_data *,
-                struct brw_bs_prog_data *> prog_data;
+   std::variant<struct elk_cs_prog_data *,
+                struct elk_bs_prog_data *> prog_data;
 
    unsigned required_width;
 
@@ -47,7 +47,7 @@ struct brw_simd_selection_state {
    bool spilled[SIMD_COUNT];
 };
 
-inline int brw_simd_first_compiled(const brw_simd_selection_state &state)
+inline int elk_simd_first_compiled(const elk_simd_selection_state &state)
 {
    for (int i = 0; i < SIMD_COUNT; i++) {
       if (state.compiled[i])
@@ -56,21 +56,21 @@ inline int brw_simd_first_compiled(const brw_simd_selection_state &state)
    return -1;
 }
 
-inline bool brw_simd_any_compiled(const brw_simd_selection_state &state)
+inline bool elk_simd_any_compiled(const elk_simd_selection_state &state)
 {
-   return brw_simd_first_compiled(state) >= 0;
+   return elk_simd_first_compiled(state) >= 0;
 }
 
-bool brw_simd_should_compile(brw_simd_selection_state &state, unsigned simd);
+bool elk_simd_should_compile(elk_simd_selection_state &state, unsigned simd);
 
-void brw_simd_mark_compiled(brw_simd_selection_state &state, unsigned simd, bool spilled);
+void elk_simd_mark_compiled(elk_simd_selection_state &state, unsigned simd, bool spilled);
 
-int brw_simd_select(const brw_simd_selection_state &state);
+int elk_simd_select(const elk_simd_selection_state &state);
 
-int brw_simd_select_for_workgroup_size(const struct intel_device_info *devinfo,
-                                       const struct brw_cs_prog_data *prog_data,
+int elk_simd_select_for_workgroup_size(const struct intel_device_info *devinfo,
+                                       const struct elk_cs_prog_data *prog_data,
                                        const unsigned *sizes);
 
-bool brw_should_print_shader(const nir_shader *shader, uint64_t debug_flag);
+bool elk_should_print_shader(const nir_shader *shader, uint64_t debug_flag);
 
 #endif // ELK_PRIVATE_H

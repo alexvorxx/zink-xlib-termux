@@ -57,9 +57,9 @@ def run():
     import nir_algebraic  # pylint: disable=import-error
 
     print('#include "elk_nir.h"')
-    print(nir_algebraic.AlgebraicPass("brw_nir_apply_trig_workarounds",
+    print(nir_algebraic.AlgebraicPass("elk_nir_apply_trig_workarounds",
                                       TRIG_WORKAROUNDS).render())
-    print(nir_algebraic.AlgebraicPass("brw_nir_limit_trig_input_range_workaround",
+    print(nir_algebraic.AlgebraicPass("elk_nir_limit_trig_input_range_workaround",
                                       LIMIT_TRIG_INPUT_RANGE_WORKAROUND).render())
 
 

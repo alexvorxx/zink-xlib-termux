@@ -26,7 +26,7 @@
 
 using namespace elk;
 
-vs_thread_payload::vs_thread_payload(const fs_visitor &v)
+elk_vs_thread_payload::elk_vs_thread_payload(const elk_fs_visitor &v)
 {
    unsigned r = 0;
 
@@ -34,94 +34,94 @@ vs_thread_payload::vs_thread_payload(const fs_visitor &v)
    r += reg_unit(v.devinfo);
 
    /* R1: URB handles. */
-   urb_handles = brw_ud8_grf(r, 0);
+   urb_handles = elk_ud8_grf(r, 0);
    r += reg_unit(v.devinfo);
 
    num_regs = r;
 }
 
-tcs_thread_payload::tcs_thread_payload(const fs_visitor &v)
+elk_tcs_thread_payload::elk_tcs_thread_payload(const elk_fs_visitor &v)
 {
-   struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(v.prog_data);
-   struct brw_tcs_prog_data *tcs_prog_data = brw_tcs_prog_data(v.prog_data);
-   struct brw_tcs_prog_key *tcs_key = (struct brw_tcs_prog_key *) v.key;
+   struct elk_vue_prog_data *vue_prog_data = elk_vue_prog_data(v.prog_data);
+   struct elk_tcs_prog_data *tcs_prog_data = elk_tcs_prog_data(v.prog_data);
+   struct elk_tcs_prog_key *tcs_key = (struct elk_tcs_prog_key *) v.key;
 
    if (vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH) {
-      patch_urb_output = brw_ud1_grf(0, 0);
-      primitive_id = brw_vec1_grf(0, 1);
+      patch_urb_output = elk_ud1_grf(0, 0);
+      primitive_id = elk_vec1_grf(0, 1);
 
       /* r1-r4 contain the ICP handles. */
-      icp_handle_start = brw_ud8_grf(1, 0);
+      icp_handle_start = elk_ud8_grf(1, 0);
 
       num_regs = 5;
    } else {
       assert(vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH);
-      assert(tcs_key->input_vertices <= BRW_MAX_TCS_INPUT_VERTICES);
+      assert(tcs_key->input_vertices <= ELK_MAX_TCS_INPUT_VERTICES);
 
       unsigned r = 0;
 
       r += reg_unit(v.devinfo);
 
-      patch_urb_output = brw_ud8_grf(r, 0);
+      patch_urb_output = elk_ud8_grf(r, 0);
       r += reg_unit(v.devinfo);
 
       if (tcs_prog_data->include_primitive_id) {
-         primitive_id = brw_vec8_grf(r, 0);
+         primitive_id = elk_vec8_grf(r, 0);
          r += reg_unit(v.devinfo);
       }
 
       /* ICP handles occupy the next 1-32 registers. */
-      icp_handle_start = brw_ud8_grf(r, 0);
-      r += brw_tcs_prog_key_input_vertices(tcs_key) * reg_unit(v.devinfo);
+      icp_handle_start = elk_ud8_grf(r, 0);
+      r += elk_tcs_prog_key_input_vertices(tcs_key) * reg_unit(v.devinfo);
 
       num_regs = r;
    }
 }
 
-tes_thread_payload::tes_thread_payload(const fs_visitor &v)
+elk_tes_thread_payload::elk_tes_thread_payload(const elk_fs_visitor &v)
 {
    unsigned r = 0;
 
    /* R0: Thread Header. */
-   patch_urb_input = retype(brw_vec1_grf(0, 0), BRW_REGISTER_TYPE_UD);
-   primitive_id = brw_vec1_grf(0, 1);
+   patch_urb_input = retype(elk_vec1_grf(0, 0), ELK_REGISTER_TYPE_UD);
+   primitive_id = elk_vec1_grf(0, 1);
    r += reg_unit(v.devinfo);
 
    /* R1-3: gl_TessCoord.xyz. */
    for (unsigned i = 0; i < 3; i++) {
-      coords[i] = brw_vec8_grf(r, 0);
+      coords[i] = elk_vec8_grf(r, 0);
       r += reg_unit(v.devinfo);
    }
 
    /* R4: URB output handles. */
-   urb_output = brw_ud8_grf(r, 0);
+   urb_output = elk_ud8_grf(r, 0);
    r += reg_unit(v.devinfo);
 
    num_regs = r;
 }
 
-gs_thread_payload::gs_thread_payload(fs_visitor &v)
+elk_gs_thread_payload::elk_gs_thread_payload(elk_fs_visitor &v)
 {
-   struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(v.prog_data);
-   struct brw_gs_prog_data *gs_prog_data = brw_gs_prog_data(v.prog_data);
+   struct elk_vue_prog_data *vue_prog_data = elk_vue_prog_data(v.prog_data);
+   struct elk_gs_prog_data *gs_prog_data = elk_gs_prog_data(v.prog_data);
    const fs_builder bld = fs_builder(&v).at_end();
 
    /* R0: thread header. */
    unsigned r = reg_unit(v.devinfo);
 
    /* R1: output URB handles. */
-   urb_handles = bld.vgrf(BRW_REGISTER_TYPE_UD);
-   bld.AND(urb_handles, brw_ud8_grf(r, 0),
-         v.devinfo->ver >= 20 ? brw_imm_ud(0xFFFFFF) : brw_imm_ud(0xFFFF));
+   urb_handles = bld.vgrf(ELK_REGISTER_TYPE_UD);
+   bld.AND(urb_handles, elk_ud8_grf(r, 0),
+         v.devinfo->ver >= 20 ? elk_imm_ud(0xFFFFFF) : elk_imm_ud(0xFFFF));
 
    /* R1: Instance ID stored in bits 31:27 */
-   instance_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
-   bld.SHR(instance_id, brw_ud8_grf(r, 0), brw_imm_ud(27u));
+   instance_id = bld.vgrf(ELK_REGISTER_TYPE_UD);
+   bld.SHR(instance_id, elk_ud8_grf(r, 0), elk_imm_ud(27u));
 
    r += reg_unit(v.devinfo);
 
    if (gs_prog_data->include_primitive_id) {
-      primitive_id = brw_ud8_grf(r, 0);
+      primitive_id = elk_ud8_grf(r, 0);
       r += reg_unit(v.devinfo);
    }
 
@@ -134,7 +134,7 @@ gs_thread_payload::gs_thread_payload(fs_visitor &v)
    gs_prog_data->base.include_vue_handles = true;
 
    /* R3..RN: ICP Handles for each incoming vertex (when using pull model) */
-   icp_handle_start = brw_ud8_grf(r, 0);
+   icp_handle_start = elk_ud8_grf(r, 0);
    r += v.nir->info.gs.vertices_in * reg_unit(v.devinfo);
 
    num_regs = r;
@@ -156,11 +156,11 @@ gs_thread_payload::gs_thread_payload(fs_visitor &v)
 }
 
 static inline void
-setup_fs_payload_gfx20(fs_thread_payload &payload,
-                       const fs_visitor &v,
+setup_fs_payload_gfx20(elk_fs_thread_payload &payload,
+                       const elk_fs_visitor &v,
                        bool &source_depth_to_render_target)
 {
-   struct brw_wm_prog_data *prog_data = brw_wm_prog_data(v.prog_data);
+   struct elk_wm_prog_data *prog_data = elk_wm_prog_data(v.prog_data);
    const unsigned payload_width = 16;
    assert(v.dispatch_width % payload_width == 0);
    assert(v.devinfo->ver >= 20);
@@ -173,12 +173,12 @@ setup_fs_payload_gfx20(fs_thread_payload &payload,
 
    for (unsigned j = 0; j < v.dispatch_width / payload_width; j++) {
       /* R2-13: Barycentric interpolation coordinates.  These appear
-       * in the same order that they appear in the brw_barycentric_mode
+       * in the same order that they appear in the elk_barycentric_mode
        * enum.  Each set of coordinates occupies 2 64B registers per
        * SIMD16 half.  Coordinates only appear if they were enabled
        * using the "Barycentric Interpolation Mode" bits in WM_STATE.
        */
-      for (int i = 0; i < BRW_BARYCENTRIC_MODE_COUNT; ++i) {
+      for (int i = 0; i < ELK_BARYCENTRIC_MODE_COUNT; ++i) {
          if (prog_data->barycentric_interp_modes & (1 << i)) {
             payload.barycentric_coord_reg[i][j] = payload.num_regs;
             payload.num_regs += payload_width / 4;
@@ -230,11 +230,11 @@ setup_fs_payload_gfx20(fs_thread_payload &payload,
 }
 
 static inline void
-setup_fs_payload_gfx6(fs_thread_payload &payload,
-                      const fs_visitor &v,
+setup_fs_payload_gfx6(elk_fs_thread_payload &payload,
+                      const elk_fs_visitor &v,
                       bool &source_depth_to_render_target)
 {
-   struct brw_wm_prog_data *prog_data = brw_wm_prog_data(v.prog_data);
+   struct elk_wm_prog_data *prog_data = elk_wm_prog_data(v.prog_data);
 
    const unsigned payload_width = MIN2(16, v.dispatch_width);
    assert(v.dispatch_width % payload_width == 0);
@@ -252,13 +252,13 @@ setup_fs_payload_gfx6(fs_thread_payload &payload,
 
    for (unsigned j = 0; j < v.dispatch_width / payload_width; j++) {
       /* R3-26: barycentric interpolation coordinates.  These appear in the
-       * same order that they appear in the brw_barycentric_mode enum.  Each
+       * same order that they appear in the elk_barycentric_mode enum.  Each
        * set of coordinates occupies 2 registers if dispatch width == 8 and 4
        * registers if dispatch width == 16.  Coordinates only appear if they
        * were enabled using the "Barycentric Interpolation Mode" bits in
        * WM_STATE.
        */
-      for (int i = 0; i < BRW_BARYCENTRIC_MODE_COUNT; ++i) {
+      for (int i = 0; i < ELK_BARYCENTRIC_MODE_COUNT; ++i) {
          if (prog_data->barycentric_interp_modes & (1 << i)) {
             payload.barycentric_coord_reg[i][j] = payload.num_regs;
             payload.num_regs += payload_width / 4;
@@ -317,7 +317,7 @@ static const struct {
    GLuint sd_to_rt:1;
    GLuint dd_present:1;
    GLuint ds_present:1;
-} wm_iz_table[BRW_WM_IZ_BIT_MAX] =
+} wm_iz_table[ELK_WM_IZ_BIT_MAX] =
 {
  { P, 0, 0, 0, 0 },
  { P, 0, 0, 0, 0 },
@@ -386,25 +386,25 @@ static const struct {
 };
 
 /**
- * \param line_aa  BRW_NEVER, BRW_ALWAYS or BRW_SOMETIMES
- * \param lookup  bitmask of BRW_WM_IZ_* flags
+ * \param line_aa  ELK_NEVER, ELK_ALWAYS or ELK_SOMETIMES
+ * \param lookup  bitmask of ELK_WM_IZ_* flags
  */
 static inline void
-setup_fs_payload_gfx4(fs_thread_payload &payload,
-                      const fs_visitor &v,
+setup_fs_payload_gfx4(elk_fs_thread_payload &payload,
+                      const elk_fs_visitor &v,
                       bool &source_depth_to_render_target,
                       bool &runtime_check_aads_emit)
 {
    assert(v.dispatch_width <= 16);
 
-   struct brw_wm_prog_data *prog_data = brw_wm_prog_data(v.prog_data);
-   brw_wm_prog_key *key = (brw_wm_prog_key *) v.key;
+   struct elk_wm_prog_data *prog_data = elk_wm_prog_data(v.prog_data);
+   elk_wm_prog_key *key = (elk_wm_prog_key *) v.key;
 
    GLuint reg = 1;
    bool kill_stats_promoted_workaround = false;
    int lookup = key->iz_lookup;
 
-   assert(lookup < BRW_WM_IZ_BIT_MAX);
+   assert(lookup < ELK_WM_IZ_BIT_MAX);
 
    /* Crazy workaround in the windowizer, which we need to track in
     * our register allocation and render target writes.  See the "If
@@ -412,7 +412,7 @@ setup_fs_payload_gfx4(fs_thread_payload &payload,
     * Test Cases [Pre-DevGT] of the 3D Pipeline - Windower B-Spec.
     */
    if (key->stats_wm &&
-       (lookup & BRW_WM_IZ_PS_KILL_ALPHATEST_BIT) &&
+       (lookup & ELK_WM_IZ_PS_KILL_ALPHATEST_BIT) &&
        wm_iz_table[lookup].mode == P) {
       kill_stats_promoted_workaround = true;
    }
@@ -428,10 +428,10 @@ setup_fs_payload_gfx4(fs_thread_payload &payload,
    if (wm_iz_table[lookup].sd_to_rt || kill_stats_promoted_workaround)
       source_depth_to_render_target = true;
 
-   if (wm_iz_table[lookup].ds_present || key->line_aa != BRW_NEVER) {
+   if (wm_iz_table[lookup].ds_present || key->line_aa != ELK_NEVER) {
       payload.aa_dest_stencil_reg[0] = reg;
       runtime_check_aads_emit =
-         !wm_iz_table[lookup].ds_present && key->line_aa == BRW_SOMETIMES;
+         !wm_iz_table[lookup].ds_present && key->line_aa == ELK_SOMETIMES;
       reg++;
    }
 
@@ -447,7 +447,7 @@ setup_fs_payload_gfx4(fs_thread_payload &payload,
 #undef C                        /* computed */
 #undef N                        /* non-promoted? */
 
-fs_thread_payload::fs_thread_payload(const fs_visitor &v,
+elk_fs_thread_payload::elk_fs_thread_payload(const elk_fs_visitor &v,
                                      bool &source_depth_to_render_target,
                                      bool &runtime_check_aads_emit)
   : subspan_coord_reg(),
@@ -469,24 +469,24 @@ fs_thread_payload::fs_thread_payload(const fs_visitor &v,
                             runtime_check_aads_emit);
 }
 
-cs_thread_payload::cs_thread_payload(const fs_visitor &v)
+elk_cs_thread_payload::elk_cs_thread_payload(const elk_fs_visitor &v)
 {
-   struct brw_cs_prog_data *prog_data = brw_cs_prog_data(v.prog_data);
+   struct elk_cs_prog_data *prog_data = elk_cs_prog_data(v.prog_data);
 
    unsigned r = reg_unit(v.devinfo);
 
    /* See nir_setup_uniforms for subgroup_id in earlier versions. */
    if (v.devinfo->verx10 >= 125) {
-      subgroup_id_ = brw_ud1_grf(0, 2);
+      subgroup_id_ = elk_ud1_grf(0, 2);
 
       for (int i = 0; i < 3; i++) {
          if (prog_data->generate_local_id & (1 << i)) {
-            local_invocation_id[i] = brw_uw8_grf(r, 0);
+            local_invocation_id[i] = elk_uw8_grf(r, 0);
             r += reg_unit(v.devinfo);
             if (v.devinfo->ver < 20 && v.dispatch_width == 32)
                r += reg_unit(v.devinfo);
          } else {
-            local_invocation_id[i] = brw_imm_uw(0);
+            local_invocation_id[i] = elk_imm_uw(0);
          }
       }
 
@@ -499,21 +499,21 @@ cs_thread_payload::cs_thread_payload(const fs_visitor &v)
 }
 
 void
-cs_thread_payload::load_subgroup_id(const fs_builder &bld,
-                                    fs_reg &dest) const
+elk_cs_thread_payload::load_subgroup_id(const fs_builder &bld,
+                                    elk_fs_reg &dest) const
 {
    auto devinfo = bld.shader->devinfo;
-   dest = retype(dest, BRW_REGISTER_TYPE_UD);
+   dest = retype(dest, ELK_REGISTER_TYPE_UD);
 
    if (subgroup_id_.file != BAD_FILE) {
       assert(devinfo->verx10 >= 125);
-      bld.AND(dest, subgroup_id_, brw_imm_ud(INTEL_MASK(7, 0)));
+      bld.AND(dest, subgroup_id_, elk_imm_ud(INTEL_MASK(7, 0)));
    } else {
       assert(devinfo->verx10 < 125);
       assert(gl_shader_stage_is_compute(bld.shader->stage));
-      int index = brw_get_subgroup_id_param_index(devinfo,
+      int index = elk_get_subgroup_id_param_index(devinfo,
                                                   bld.shader->stage_prog_data);
-      bld.MOV(dest, fs_reg(UNIFORM, index, BRW_REGISTER_TYPE_UD));
+      bld.MOV(dest, elk_fs_reg(UNIFORM, index, ELK_REGISTER_TYPE_UD));
    }
 }
 

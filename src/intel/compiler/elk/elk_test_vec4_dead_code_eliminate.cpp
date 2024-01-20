@@ -31,22 +31,22 @@ class dead_code_eliminate_vec4_test : public ::testing::Test {
    virtual void TearDown();
 
 public:
-   struct brw_compiler *compiler;
-   struct brw_compile_params params;
+   struct elk_compiler *compiler;
+   struct elk_compile_params params;
    struct intel_device_info *devinfo;
    void *ctx;
    struct gl_shader_program *shader_prog;
-   struct brw_vue_prog_data *prog_data;
+   struct elk_vue_prog_data *prog_data;
    vec4_visitor *v;
 };
 
 class dead_code_eliminate_vec4_visitor : public vec4_visitor
 {
 public:
-   dead_code_eliminate_vec4_visitor(struct brw_compiler *compiler,
-                                    struct brw_compile_params *params,
+   dead_code_eliminate_vec4_visitor(struct elk_compiler *compiler,
+                                    struct elk_compile_params *params,
                                  nir_shader *shader,
-                                 struct brw_vue_prog_data *prog_data)
+                                 struct elk_vue_prog_data *prog_data)
       : vec4_visitor(compiler, params, NULL, prog_data, shader,
                      false /* no_spills */, false)
    {
@@ -89,14 +89,14 @@ protected:
 void dead_code_eliminate_vec4_test::SetUp()
 {
    ctx = ralloc_context(NULL);
-   compiler = rzalloc(ctx, struct brw_compiler);
+   compiler = rzalloc(ctx, struct elk_compiler);
    devinfo = rzalloc(ctx, struct intel_device_info);
    compiler->devinfo = devinfo;
 
    params = {};
    params.mem_ctx = ctx;
 
-   prog_data = ralloc(ctx, struct brw_vue_prog_data);
+   prog_data = ralloc(ctx, struct elk_vue_prog_data);
    nir_shader *shader =
       nir_shader_create(ctx, MESA_SHADER_VERTEX, NULL, NULL);
 
@@ -151,21 +151,21 @@ TEST_F(dead_code_eliminate_vec4_test, some_dead_channels_all_flags_used)
     *     (+f0.x) sel(8)  g6<1>UD        g3<4>UD        g6<4>UD
     */
    vec4_instruction *test_cmp =
-      bld.CMP(dst_reg(r4), r2, r1, BRW_CONDITIONAL_L);
+      bld.CMP(dst_reg(r4), r2, r1, ELK_CONDITIONAL_L);
 
-   test_cmp->src[0].swizzle = BRW_SWIZZLE_WWWW;
-   test_cmp->src[1].swizzle = BRW_SWIZZLE_XXXX;
+   test_cmp->src[0].swizzle = ELK_SWIZZLE_WWWW;
+   test_cmp->src[1].swizzle = ELK_SWIZZLE_XXXX;
 
    vec4_instruction *test_mov =
       bld.MOV(dst_reg(r5), r4);
 
    test_mov->dst.writemask = WRITEMASK_X;
-   test_mov->src[0].swizzle = BRW_SWIZZLE_XXXX;
+   test_mov->src[0].swizzle = ELK_SWIZZLE_XXXX;
 
    vec4_instruction *test_sel =
       bld.SEL(dst_reg(r6), r3, r6);
 
-   set_predicate(BRW_PREDICATE_NORMAL, test_sel);
+   set_predicate(ELK_PREDICATE_NORMAL, test_sel);
 
    /* The scratch write is here just to make r5 and r6 be live so that the
     * whole program doesn't get eliminated by DCE.

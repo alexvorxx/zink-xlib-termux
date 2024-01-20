@@ -32,7 +32,7 @@
 using namespace elk;
 
 static void
-lower_urb_read_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_urb_read_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
    const bool per_slot_present =
@@ -41,21 +41,21 @@ lower_urb_read_logical_send(const fs_builder &bld, fs_inst *inst)
    assert(inst->size_written % REG_SIZE == 0);
    assert(inst->header_size == 0);
 
-   fs_reg payload_sources[2];
+   elk_fs_reg payload_sources[2];
    unsigned header_size = 0;
    payload_sources[header_size++] = inst->src[URB_LOGICAL_SRC_HANDLE];
    if (per_slot_present)
       payload_sources[header_size++] = inst->src[URB_LOGICAL_SRC_PER_SLOT_OFFSETS];
 
-   fs_reg payload = fs_reg(VGRF, bld.shader->alloc.allocate(header_size),
-                           BRW_REGISTER_TYPE_F);
+   elk_fs_reg payload = elk_fs_reg(VGRF, bld.shader->alloc.allocate(header_size),
+                           ELK_REGISTER_TYPE_F);
    bld.LOAD_PAYLOAD(payload, payload_sources, header_size, header_size);
 
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->header_size = header_size;
 
-   inst->sfid = BRW_SFID_URB;
-   inst->desc = brw_urb_desc(devinfo,
+   inst->sfid = ELK_SFID_URB;
+   inst->desc = elk_urb_desc(devinfo,
                              GFX8_URB_OPCODE_SIMD8_READ,
                              per_slot_present,
                              false,
@@ -68,14 +68,14 @@ lower_urb_read_logical_send(const fs_builder &bld, fs_inst *inst)
 
    inst->resize_sources(4);
 
-   inst->src[0] = brw_imm_ud(0); /* desc */
-   inst->src[1] = brw_imm_ud(0); /* ex_desc */
+   inst->src[0] = elk_imm_ud(0); /* desc */
+   inst->src[1] = elk_imm_ud(0); /* ex_desc */
    inst->src[2] = payload;
-   inst->src[3] = brw_null_reg();
+   inst->src[3] = elk_null_reg();
 }
 
 static void
-lower_urb_read_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
+lower_urb_read_logical_send_xe2(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
    assert(devinfo->has_lsc);
@@ -84,12 +84,12 @@ lower_urb_read_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
    assert(inst->header_size == 0);
 
    /* Get the logical send arguments. */
-   const fs_reg handle = inst->src[URB_LOGICAL_SRC_HANDLE];
+   const elk_fs_reg handle = inst->src[URB_LOGICAL_SRC_HANDLE];
 
    /* Calculate the total number of components of the payload. */
    const unsigned dst_comps = inst->size_written / (REG_SIZE * reg_unit(devinfo));
 
-   fs_reg payload = bld.vgrf(BRW_REGISTER_TYPE_UD);
+   elk_fs_reg payload = bld.vgrf(ELK_REGISTER_TYPE_UD);
 
    bld.MOV(payload, handle);
 
@@ -97,18 +97,18 @@ lower_urb_read_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
     * Add the (OWord) offset of the write to this value.
     */
    if (inst->offset) {
-      bld.ADD(payload, payload, brw_imm_ud(inst->offset * 16));
+      bld.ADD(payload, payload, elk_imm_ud(inst->offset * 16));
       inst->offset = 0;
    }
 
-   fs_reg offsets = inst->src[URB_LOGICAL_SRC_PER_SLOT_OFFSETS];
+   elk_fs_reg offsets = inst->src[URB_LOGICAL_SRC_PER_SLOT_OFFSETS];
    if (offsets.file != BAD_FILE) {
-      fs_reg offsets_B = bld.vgrf(BRW_REGISTER_TYPE_UD);
-      bld.SHL(offsets_B, offsets, brw_imm_ud(4)); /* OWords -> Bytes */
+      elk_fs_reg offsets_B = bld.vgrf(ELK_REGISTER_TYPE_UD);
+      bld.SHL(offsets_B, offsets, elk_imm_ud(4)); /* OWords -> Bytes */
       bld.ADD(payload, payload, offsets_B);
    }
 
-   inst->sfid = BRW_SFID_URB;
+   inst->sfid = ELK_SFID_URB;
 
    assert((dst_comps >= 1 && dst_comps <= 4) || dst_comps == 8);
 
@@ -122,7 +122,7 @@ lower_urb_read_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
 
 
    /* Update the original instruction. */
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
    inst->ex_mlen = 0;
    inst->header_size = 0;
@@ -131,15 +131,15 @@ lower_urb_read_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
 
    inst->resize_sources(4);
 
-   inst->src[0] = brw_imm_ud(0);
-   inst->src[1] = brw_imm_ud(0);
+   inst->src[0] = elk_imm_ud(0);
+   inst->src[1] = elk_imm_ud(0);
 
    inst->src[2] = payload;
-   inst->src[3] = brw_null_reg();
+   inst->src[3] = elk_null_reg();
 }
 
 static void
-lower_urb_write_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_urb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
    const bool per_slot_present =
@@ -152,9 +152,9 @@ lower_urb_write_logical_send(const fs_builder &bld, fs_inst *inst)
    const unsigned length = 1 + per_slot_present + channel_mask_present +
                            inst->components_read(URB_LOGICAL_SRC_DATA);
 
-   fs_reg *payload_sources = new fs_reg[length];
-   fs_reg payload = fs_reg(VGRF, bld.shader->alloc.allocate(length),
-                           BRW_REGISTER_TYPE_F);
+   elk_fs_reg *payload_sources = new elk_fs_reg[length];
+   elk_fs_reg payload = elk_fs_reg(VGRF, bld.shader->alloc.allocate(length),
+                           ELK_REGISTER_TYPE_F);
 
    unsigned header_size = 0;
    payload_sources[header_size++] = inst->src[URB_LOGICAL_SRC_HANDLE];
@@ -171,12 +171,12 @@ lower_urb_write_logical_send(const fs_builder &bld, fs_inst *inst)
 
    delete [] payload_sources;
 
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->header_size = header_size;
-   inst->dst = brw_null_reg();
+   inst->dst = elk_null_reg();
 
-   inst->sfid = BRW_SFID_URB;
-   inst->desc = brw_urb_desc(devinfo,
+   inst->sfid = ELK_SFID_URB;
+   inst->desc = elk_urb_desc(devinfo,
                              GFX8_URB_OPCODE_SIMD8_WRITE,
                              per_slot_present,
                              channel_mask_present,
@@ -189,29 +189,29 @@ lower_urb_write_logical_send(const fs_builder &bld, fs_inst *inst)
 
    inst->resize_sources(4);
 
-   inst->src[0] = brw_imm_ud(0); /* desc */
-   inst->src[1] = brw_imm_ud(0); /* ex_desc */
+   inst->src[0] = elk_imm_ud(0); /* desc */
+   inst->src[1] = elk_imm_ud(0); /* ex_desc */
    inst->src[2] = payload;
-   inst->src[3] = brw_null_reg();
+   inst->src[3] = elk_null_reg();
 }
 
 static void
-lower_urb_write_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
+lower_urb_write_logical_send_xe2(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
    assert(devinfo->has_lsc);
 
    /* Get the logical send arguments. */
-   const fs_reg handle = inst->src[URB_LOGICAL_SRC_HANDLE];
-   const fs_reg src = inst->components_read(URB_LOGICAL_SRC_DATA) ?
-      inst->src[URB_LOGICAL_SRC_DATA] : fs_reg(brw_imm_ud(0));
+   const elk_fs_reg handle = inst->src[URB_LOGICAL_SRC_HANDLE];
+   const elk_fs_reg src = inst->components_read(URB_LOGICAL_SRC_DATA) ?
+      inst->src[URB_LOGICAL_SRC_DATA] : elk_fs_reg(elk_imm_ud(0));
    assert(type_sz(src.type) == 4);
 
    /* Calculate the total number of components of the payload. */
    const unsigned src_comps = MAX2(1, inst->components_read(URB_LOGICAL_SRC_DATA));
    const unsigned src_sz = type_sz(src.type);
 
-   fs_reg payload = bld.vgrf(BRW_REGISTER_TYPE_UD);
+   elk_fs_reg payload = bld.vgrf(ELK_REGISTER_TYPE_UD);
 
    bld.MOV(payload, handle);
 
@@ -219,32 +219,32 @@ lower_urb_write_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
     * Add the (OWord) offset of the write to this value.
     */
    if (inst->offset) {
-      bld.ADD(payload, payload, brw_imm_ud(inst->offset * 16));
+      bld.ADD(payload, payload, elk_imm_ud(inst->offset * 16));
       inst->offset = 0;
    }
 
-   fs_reg offsets = inst->src[URB_LOGICAL_SRC_PER_SLOT_OFFSETS];
+   elk_fs_reg offsets = inst->src[URB_LOGICAL_SRC_PER_SLOT_OFFSETS];
    if (offsets.file != BAD_FILE) {
-      fs_reg offsets_B = bld.vgrf(BRW_REGISTER_TYPE_UD);
-      bld.SHL(offsets_B, offsets, brw_imm_ud(4)); /* OWords -> Bytes */
+      elk_fs_reg offsets_B = bld.vgrf(ELK_REGISTER_TYPE_UD);
+      bld.SHL(offsets_B, offsets, elk_imm_ud(4)); /* OWords -> Bytes */
       bld.ADD(payload, payload, offsets_B);
    }
 
-   const fs_reg cmask = inst->src[URB_LOGICAL_SRC_CHANNEL_MASK];
+   const elk_fs_reg cmask = inst->src[URB_LOGICAL_SRC_CHANNEL_MASK];
    unsigned mask = 0;
 
    if (cmask.file != BAD_FILE) {
       assert(cmask.file == IMM);
-      assert(cmask.type == BRW_REGISTER_TYPE_UD);
+      assert(cmask.type == ELK_REGISTER_TYPE_UD);
       mask = cmask.ud >> 16;
    }
 
-   fs_reg payload2 = bld.move_to_vgrf(src, src_comps);
+   elk_fs_reg payload2 = bld.move_to_vgrf(src, src_comps);
    const unsigned ex_mlen = (src_comps * src_sz * inst->exec_size) / REG_SIZE;
 
-   inst->sfid = BRW_SFID_URB;
+   inst->sfid = ELK_SFID_URB;
 
-   enum lsc_opcode op = mask ? LSC_OP_STORE_CMASK : LSC_OP_STORE;
+   enum elk_lsc_opcode op = mask ? LSC_OP_STORE_CMASK : LSC_OP_STORE;
    inst->desc = lsc_msg_desc_wcmask(devinfo, op, inst->exec_size,
                              LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A32,
                              1 /* num_coordinates */,
@@ -255,7 +255,7 @@ lower_urb_write_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
 
 
    /* Update the original instruction. */
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
    inst->ex_mlen = ex_mlen;
    inst->header_size = 0;
@@ -264,20 +264,20 @@ lower_urb_write_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
 
    inst->resize_sources(4);
 
-   inst->src[0] = brw_imm_ud(0);
-   inst->src[1] = brw_imm_ud(0);
+   inst->src[0] = elk_imm_ud(0);
+   inst->src[1] = elk_imm_ud(0);
 
    inst->src[2] = payload;
    inst->src[3] = payload2;
 }
 
 static void
-setup_color_payload(const fs_builder &bld, const brw_wm_prog_key *key,
-                    fs_reg *dst, fs_reg color, unsigned components)
+setup_color_payload(const fs_builder &bld, const elk_wm_prog_key *key,
+                    elk_fs_reg *dst, elk_fs_reg color, unsigned components)
 {
    if (key->clamp_fragment_color) {
-      fs_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_F, 4);
-      assert(color.type == BRW_REGISTER_TYPE_F);
+      elk_fs_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_F, 4);
+      assert(color.type == ELK_REGISTER_TYPE_F);
 
       for (unsigned i = 0; i < components; i++)
          set_saturate(true,
@@ -291,20 +291,20 @@ setup_color_payload(const fs_builder &bld, const brw_wm_prog_key *key,
 }
 
 static void
-lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
-                            const struct brw_wm_prog_data *prog_data,
-                            const brw_wm_prog_key *key,
-                            const fs_thread_payload &payload)
+lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
+                            const struct elk_wm_prog_data *prog_data,
+                            const elk_wm_prog_key *key,
+                            const elk_fs_thread_payload &payload)
 {
    assert(inst->src[FB_WRITE_LOGICAL_SRC_COMPONENTS].file == IMM);
    const intel_device_info *devinfo = bld.shader->devinfo;
-   const fs_reg color0 = inst->src[FB_WRITE_LOGICAL_SRC_COLOR0];
-   const fs_reg color1 = inst->src[FB_WRITE_LOGICAL_SRC_COLOR1];
-   const fs_reg src0_alpha = inst->src[FB_WRITE_LOGICAL_SRC_SRC0_ALPHA];
-   const fs_reg src_depth = inst->src[FB_WRITE_LOGICAL_SRC_SRC_DEPTH];
-   const fs_reg dst_depth = inst->src[FB_WRITE_LOGICAL_SRC_DST_DEPTH];
-   const fs_reg src_stencil = inst->src[FB_WRITE_LOGICAL_SRC_SRC_STENCIL];
-   fs_reg sample_mask = inst->src[FB_WRITE_LOGICAL_SRC_OMASK];
+   const elk_fs_reg color0 = inst->src[FB_WRITE_LOGICAL_SRC_COLOR0];
+   const elk_fs_reg color1 = inst->src[FB_WRITE_LOGICAL_SRC_COLOR1];
+   const elk_fs_reg src0_alpha = inst->src[FB_WRITE_LOGICAL_SRC_SRC0_ALPHA];
+   const elk_fs_reg src_depth = inst->src[FB_WRITE_LOGICAL_SRC_SRC_DEPTH];
+   const elk_fs_reg dst_depth = inst->src[FB_WRITE_LOGICAL_SRC_DST_DEPTH];
+   const elk_fs_reg src_stencil = inst->src[FB_WRITE_LOGICAL_SRC_SRC_STENCIL];
+   elk_fs_reg sample_mask = inst->src[FB_WRITE_LOGICAL_SRC_OMASK];
    const unsigned components =
       inst->src[FB_WRITE_LOGICAL_SRC_COMPONENTS].ud;
 
@@ -313,7 +313,7 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
    /* We can potentially have a message length of up to 15, so we have to set
     * base_mrf to either 0 or 1 in order to fit in m0..m15.
     */
-   fs_reg sources[15];
+   elk_fs_reg sources[15];
    int header_size = 2, payload_header_size;
    unsigned length = 0;
 
@@ -335,8 +335,8 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
        */
       if (prog_data->uses_kill) {
          bld.exec_all().group(1, 0)
-            .MOV(retype(brw_vec1_grf(0, 0), BRW_REGISTER_TYPE_UW),
-                 brw_sample_mask_reg(bld));
+            .MOV(retype(elk_vec1_grf(0, 0), ELK_REGISTER_TYPE_UW),
+                 elk_sample_mask_reg(bld));
       }
 
       assert(length == 0);
@@ -356,17 +356,17 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
        */
       const fs_builder ubld = bld.exec_all().group(8, 0);
 
-      fs_reg header = ubld.vgrf(BRW_REGISTER_TYPE_UD, 2);
+      elk_fs_reg header = ubld.vgrf(ELK_REGISTER_TYPE_UD, 2);
       if (bld.group() < 16) {
          /* The header starts off as g0 and g1 for the first half */
-         ubld.group(16, 0).MOV(header, retype(brw_vec8_grf(0, 0),
-                                              BRW_REGISTER_TYPE_UD));
+         ubld.group(16, 0).MOV(header, retype(elk_vec8_grf(0, 0),
+                                              ELK_REGISTER_TYPE_UD));
       } else {
          /* The header starts off as g0 and g2 for the second half */
          assert(bld.group() < 32);
-         const fs_reg header_sources[2] = {
-            retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD),
-            retype(brw_vec8_grf(2, 0), BRW_REGISTER_TYPE_UD),
+         const elk_fs_reg header_sources[2] = {
+            retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD),
+            retype(elk_vec8_grf(2, 0), ELK_REGISTER_TYPE_UD),
          };
          ubld.LOAD_PAYLOAD(header, header_sources, 2, 0);
 
@@ -389,20 +389,20 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
       if (g00_bits) {
          /* OR extra bits into g0.0 */
          ubld.group(1, 0).OR(component(header, 0),
-                             retype(brw_vec1_grf(0, 0),
-                                    BRW_REGISTER_TYPE_UD),
-                             brw_imm_ud(g00_bits));
+                             retype(elk_vec1_grf(0, 0),
+                                    ELK_REGISTER_TYPE_UD),
+                             elk_imm_ud(g00_bits));
       }
 
       /* Set the render target index for choosing BLEND_STATE. */
       if (inst->target > 0) {
-         ubld.group(1, 0).MOV(component(header, 2), brw_imm_ud(inst->target));
+         ubld.group(1, 0).MOV(component(header, 2), elk_imm_ud(inst->target));
       }
 
       if (prog_data->uses_kill) {
          ubld.group(1, 0).MOV(retype(component(header, 15),
-                                     BRW_REGISTER_TYPE_UW),
-                              brw_sample_mask_reg(bld));
+                                     ELK_REGISTER_TYPE_UW),
+                              elk_sample_mask_reg(bld));
       }
 
       assert(length == 0);
@@ -415,10 +415,10 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
 
    if (payload.aa_dest_stencil_reg[0]) {
       assert(inst->group < 16);
-      sources[length] = fs_reg(VGRF, bld.shader->alloc.allocate(1));
+      sources[length] = elk_fs_reg(VGRF, bld.shader->alloc.allocate(1));
       bld.group(8, 0).exec_all().annotate("FB write stencil/AA alpha")
          .MOV(sources[length],
-              fs_reg(brw_vec8_grf(payload.aa_dest_stencil_reg[0], 0)));
+              elk_fs_reg(elk_vec8_grf(payload.aa_dest_stencil_reg[0], 0)));
       length++;
    }
 
@@ -426,7 +426,7 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
       for (unsigned i = 0; i < bld.dispatch_width() / 8; i++) {
          const fs_builder &ubld = bld.exec_all().group(8, i)
                                     .annotate("FB write src0 alpha");
-         const fs_reg tmp = ubld.vgrf(BRW_REGISTER_TYPE_F);
+         const elk_fs_reg tmp = ubld.vgrf(ELK_REGISTER_TYPE_F);
          ubld.MOV(tmp, horiz_offset(src0_alpha, i * 8));
          setup_color_payload(ubld, key, &sources[length], tmp, 1);
          length++;
@@ -434,8 +434,8 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
    }
 
    if (sample_mask.file != BAD_FILE) {
-      const fs_reg tmp(VGRF, bld.shader->alloc.allocate(reg_unit(devinfo)),
-                       BRW_REGISTER_TYPE_UD);
+      const elk_fs_reg tmp(VGRF, bld.shader->alloc.allocate(reg_unit(devinfo)),
+                       ELK_REGISTER_TYPE_UD);
 
       /* Hand over gl_SampleMask.  Only the lower 16 bits of each channel are
        * relevant.  Since it's unsigned single words one vgrf is always
@@ -444,11 +444,11 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
        * selected the subspans for the first or second half respectively.
        */
       assert(sample_mask.file != BAD_FILE && type_sz(sample_mask.type) == 4);
-      sample_mask.type = BRW_REGISTER_TYPE_UW;
+      sample_mask.type = ELK_REGISTER_TYPE_UW;
       sample_mask.stride *= 2;
 
       bld.exec_all().annotate("FB write oMask")
-         .MOV(horiz_offset(retype(tmp, BRW_REGISTER_TYPE_UW),
+         .MOV(horiz_offset(retype(tmp, ELK_REGISTER_TYPE_UW),
                            inst->group % (16 * reg_unit(devinfo))),
               sample_mask);
 
@@ -486,37 +486,37 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
        */
       assert(length < 15 * reg_unit(devinfo));
 
-      sources[length] = bld.vgrf(BRW_REGISTER_TYPE_UD);
+      sources[length] = bld.vgrf(ELK_REGISTER_TYPE_UD);
       bld.exec_all().annotate("FB write OS")
-         .MOV(retype(sources[length], BRW_REGISTER_TYPE_UB),
-              subscript(src_stencil, BRW_REGISTER_TYPE_UB, 0));
+         .MOV(retype(sources[length], ELK_REGISTER_TYPE_UB),
+              subscript(src_stencil, ELK_REGISTER_TYPE_UB, 0));
       length++;
    }
 
-   fs_inst *load;
+   elk_fs_inst *load;
    if (devinfo->ver >= 7) {
       /* Send from the GRF */
-      fs_reg payload = fs_reg(VGRF, -1, BRW_REGISTER_TYPE_F);
+      elk_fs_reg payload = elk_fs_reg(VGRF, -1, ELK_REGISTER_TYPE_F);
       load = bld.LOAD_PAYLOAD(payload, sources, length, payload_header_size);
       payload.nr = bld.shader->alloc.allocate(regs_written(load));
       load->dst = payload;
 
-      uint32_t msg_ctl = brw_fb_write_msg_control(inst, prog_data);
+      uint32_t msg_ctl = elk_fb_write_msg_control(inst, prog_data);
 
       inst->desc =
          (inst->group / 16) << 11 | /* rt slot group */
-         brw_fb_write_desc(devinfo, inst->target, msg_ctl, inst->last_rt,
+         elk_fb_write_desc(devinfo, inst->target, msg_ctl, inst->last_rt,
                            0 /* coarse_rt_write */);
 
-      fs_reg desc = brw_imm_ud(0);
-      if (prog_data->coarse_pixel_dispatch == BRW_ALWAYS) {
+      elk_fs_reg desc = elk_imm_ud(0);
+      if (prog_data->coarse_pixel_dispatch == ELK_ALWAYS) {
          inst->desc |= (1 << 18);
-      } else if (prog_data->coarse_pixel_dispatch == BRW_SOMETIMES) {
+      } else if (prog_data->coarse_pixel_dispatch == ELK_SOMETIMES) {
          STATIC_ASSERT(INTEL_MSAA_FLAG_COARSE_RT_WRITES == (1 << 18));
          const fs_builder &ubld = bld.exec_all().group(8, 0);
-         desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+         desc = ubld.vgrf(ELK_REGISTER_TYPE_UD);
          ubld.AND(desc, dynamic_msaa_flags(prog_data),
-                  brw_imm_ud(INTEL_MSAA_FLAG_COARSE_RT_WRITES));
+                  elk_imm_ud(INTEL_MSAA_FLAG_COARSE_RT_WRITES));
          desc = component(desc, 0);
       }
 
@@ -532,11 +532,11 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
       }
       inst->ex_desc = ex_desc;
 
-      inst->opcode = SHADER_OPCODE_SEND;
+      inst->opcode = ELK_SHADER_OPCODE_SEND;
       inst->resize_sources(3);
       inst->sfid = GFX6_SFID_DATAPORT_RENDER_CACHE;
       inst->src[0] = desc;
-      inst->src[1] = brw_imm_ud(0);
+      inst->src[1] = elk_imm_ud(0);
       inst->src[2] = payload;
       inst->mlen = regs_written(load);
       inst->ex_mlen = 0;
@@ -545,45 +545,45 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
       inst->send_has_side_effects = true;
    } else {
       /* Send from the MRF */
-      load = bld.LOAD_PAYLOAD(fs_reg(MRF, 1, BRW_REGISTER_TYPE_F),
+      load = bld.LOAD_PAYLOAD(elk_fs_reg(MRF, 1, ELK_REGISTER_TYPE_F),
                               sources, length, payload_header_size);
 
       /* On pre-SNB, we have to interlace the color values.  LOAD_PAYLOAD
        * will do this for us if we just give it a COMPR4 destination.
        */
       if (devinfo->ver < 6 && bld.dispatch_width() == 16)
-         load->dst.nr |= BRW_MRF_COMPR4;
+         load->dst.nr |= ELK_MRF_COMPR4;
 
       if (devinfo->ver < 6) {
          /* Set up src[0] for the implied MOV from grf0-1 */
          inst->resize_sources(1);
-         inst->src[0] = brw_vec8_grf(0, 0);
+         inst->src[0] = elk_vec8_grf(0, 0);
       } else {
          inst->resize_sources(0);
       }
       inst->base_mrf = 1;
-      inst->opcode = FS_OPCODE_FB_WRITE;
+      inst->opcode = ELK_FS_OPCODE_FB_WRITE;
       inst->mlen = regs_written(load);
       inst->header_size = header_size;
    }
 }
 
 static void
-lower_fb_read_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_fb_read_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
    const fs_builder &ubld = bld.exec_all().group(8, 0);
    const unsigned length = 2;
-   const fs_reg header = ubld.vgrf(BRW_REGISTER_TYPE_UD, length);
+   const elk_fs_reg header = ubld.vgrf(ELK_REGISTER_TYPE_UD, length);
 
    if (bld.group() < 16) {
-      ubld.group(16, 0).MOV(header, retype(brw_vec8_grf(0, 0),
-                                           BRW_REGISTER_TYPE_UD));
+      ubld.group(16, 0).MOV(header, retype(elk_vec8_grf(0, 0),
+                                           ELK_REGISTER_TYPE_UD));
    } else {
       assert(bld.group() < 32);
-      const fs_reg header_sources[] = {
-         retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD),
-         retype(brw_vec8_grf(2, 0), BRW_REGISTER_TYPE_UD)
+      const elk_fs_reg header_sources[] = {
+         retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD),
+         retype(elk_vec8_grf(2, 0), ELK_REGISTER_TYPE_UD)
       };
       ubld.LOAD_PAYLOAD(header, header_sources, ARRAY_SIZE(header_sources), 0);
 
@@ -597,7 +597,7 @@ lower_fb_read_logical_send(const fs_builder &bld, fs_inst *inst)
           * r1.1 in order to fix things up.
           */
          ubld.group(1, 0).MOV(component(header, 9),
-                              retype(brw_vec1_grf(1, 1), BRW_REGISTER_TYPE_UD));
+                              retype(elk_vec1_grf(1, 1), ELK_REGISTER_TYPE_UD));
       }
    }
 
@@ -613,29 +613,29 @@ lower_fb_read_logical_send(const fs_builder &bld, fs_inst *inst)
     */
    ubld.group(1, 0).AND(component(header, 0),
                         component(header, 0),
-                        brw_imm_ud(~INTEL_MASK(14, 11)));
+                        elk_imm_ud(~INTEL_MASK(14, 11)));
 
    inst->resize_sources(1);
    inst->src[0] = header;
-   inst->opcode = FS_OPCODE_FB_READ;
+   inst->opcode = ELK_FS_OPCODE_FB_READ;
    inst->mlen = length;
    inst->header_size = length;
 }
 
 static void
-lower_sampler_logical_send_gfx4(const fs_builder &bld, fs_inst *inst, opcode op,
-                                const fs_reg &coordinate,
-                                const fs_reg &shadow_c,
-                                const fs_reg &lod, const fs_reg &lod2,
-                                const fs_reg &surface,
-                                const fs_reg &sampler,
+lower_sampler_logical_send_gfx4(const fs_builder &bld, elk_fs_inst *inst, elk_opcode op,
+                                const elk_fs_reg &coordinate,
+                                const elk_fs_reg &shadow_c,
+                                const elk_fs_reg &lod, const elk_fs_reg &lod2,
+                                const elk_fs_reg &surface,
+                                const elk_fs_reg &sampler,
                                 unsigned coord_components,
                                 unsigned grad_components)
 {
-   const bool has_lod = (op == SHADER_OPCODE_TXL || op == FS_OPCODE_TXB ||
-                         op == SHADER_OPCODE_TXF || op == SHADER_OPCODE_TXS);
-   fs_reg msg_begin(MRF, 1, BRW_REGISTER_TYPE_F);
-   fs_reg msg_end = msg_begin;
+   const bool has_lod = (op == ELK_SHADER_OPCODE_TXL || op == ELK_FS_OPCODE_TXB ||
+                         op == ELK_SHADER_OPCODE_TXF || op == ELK_SHADER_OPCODE_TXS);
+   elk_fs_reg msg_begin(MRF, 1, ELK_REGISTER_TYPE_F);
+   elk_fs_reg msg_end = msg_begin;
 
    /* g0 header. */
    msg_end = offset(msg_end, bld.group(8, 0), 1);
@@ -651,15 +651,15 @@ lower_sampler_logical_send_gfx4(const fs_builder &bld, fs_inst *inst, opcode op,
     */
    if (coord_components > 0 &&
        (has_lod || shadow_c.file != BAD_FILE ||
-        (op == SHADER_OPCODE_TEX && bld.dispatch_width() == 8))) {
+        (op == ELK_SHADER_OPCODE_TEX && bld.dispatch_width() == 8))) {
       assert(coord_components <= 3);
       for (unsigned i = 0; i < 3 - coord_components; i++)
-         bld.MOV(offset(msg_end, bld, i), brw_imm_f(0.0f));
+         bld.MOV(offset(msg_end, bld, i), elk_imm_f(0.0f));
 
       msg_end = offset(msg_end, bld, 3 - coord_components);
    }
 
-   if (op == SHADER_OPCODE_TXD) {
+   if (op == ELK_SHADER_OPCODE_TXD) {
       /* TXD unsupported in SIMD16 mode. */
       assert(bld.dispatch_width() == 8);
 
@@ -699,19 +699,19 @@ lower_sampler_logical_send_gfx4(const fs_builder &bld, fs_inst *inst, opcode op,
       assert(shadow_c.file != BAD_FILE ? bld.dispatch_width() == 8 :
              bld.dispatch_width() == 16);
 
-      const brw_reg_type type =
-         (op == SHADER_OPCODE_TXF || op == SHADER_OPCODE_TXS ?
-          BRW_REGISTER_TYPE_UD : BRW_REGISTER_TYPE_F);
+      const elk_reg_type type =
+         (op == ELK_SHADER_OPCODE_TXF || op == ELK_SHADER_OPCODE_TXS ?
+          ELK_REGISTER_TYPE_UD : ELK_REGISTER_TYPE_F);
       bld.MOV(retype(msg_end, type), lod);
       msg_end = offset(msg_end, bld, 1);
    }
 
    if (shadow_c.file != BAD_FILE) {
-      if (op == SHADER_OPCODE_TEX && bld.dispatch_width() == 8) {
+      if (op == ELK_SHADER_OPCODE_TEX && bld.dispatch_width() == 8) {
          /* There's no plain shadow compare message, so we use shadow
           * compare with a bias of 0.0.
           */
-         bld.MOV(msg_end, brw_imm_f(0.0f));
+         bld.MOV(msg_end, elk_imm_f(0.0f));
          msg_end = offset(msg_end, bld, 1);
       }
 
@@ -730,18 +730,18 @@ lower_sampler_logical_send_gfx4(const fs_builder &bld, fs_inst *inst, opcode op,
 }
 
 static void
-lower_sampler_logical_send_gfx5(const fs_builder &bld, fs_inst *inst, opcode op,
-                                const fs_reg &coordinate,
-                                const fs_reg &shadow_c,
-                                const fs_reg &lod, const fs_reg &lod2,
-                                const fs_reg &sample_index,
-                                const fs_reg &surface,
-                                const fs_reg &sampler,
+lower_sampler_logical_send_gfx5(const fs_builder &bld, elk_fs_inst *inst, elk_opcode op,
+                                const elk_fs_reg &coordinate,
+                                const elk_fs_reg &shadow_c,
+                                const elk_fs_reg &lod, const elk_fs_reg &lod2,
+                                const elk_fs_reg &sample_index,
+                                const elk_fs_reg &surface,
+                                const elk_fs_reg &sampler,
                                 unsigned coord_components,
                                 unsigned grad_components)
 {
-   fs_reg message(MRF, 2, BRW_REGISTER_TYPE_F);
-   fs_reg msg_coords = message;
+   elk_fs_reg message(MRF, 2, ELK_REGISTER_TYPE_F);
+   elk_fs_reg msg_coords = message;
    unsigned header_size = 0;
 
    if (inst->offset != 0) {
@@ -756,23 +756,23 @@ lower_sampler_logical_send_gfx5(const fs_builder &bld, fs_inst *inst, opcode op,
       bld.MOV(retype(offset(msg_coords, bld, i), coordinate.type),
               offset(coordinate, bld, i));
 
-   fs_reg msg_end = offset(msg_coords, bld, coord_components);
-   fs_reg msg_lod = offset(msg_coords, bld, 4);
+   elk_fs_reg msg_end = offset(msg_coords, bld, coord_components);
+   elk_fs_reg msg_lod = offset(msg_coords, bld, 4);
 
    if (shadow_c.file != BAD_FILE) {
-      fs_reg msg_shadow = msg_lod;
+      elk_fs_reg msg_shadow = msg_lod;
       bld.MOV(msg_shadow, shadow_c);
       msg_lod = offset(msg_shadow, bld, 1);
       msg_end = msg_lod;
    }
 
    switch (op) {
-   case SHADER_OPCODE_TXL:
-   case FS_OPCODE_TXB:
+   case ELK_SHADER_OPCODE_TXL:
+   case ELK_FS_OPCODE_TXB:
       bld.MOV(msg_lod, lod);
       msg_end = offset(msg_lod, bld, 1);
       break;
-   case SHADER_OPCODE_TXD:
+   case ELK_SHADER_OPCODE_TXD:
       /**
        *  P   =  u,    v,    r
        * dPdx = dudx, dvdx, drdx
@@ -791,22 +791,22 @@ lower_sampler_logical_send_gfx5(const fs_builder &bld, fs_inst *inst, opcode op,
          msg_end = offset(msg_end, bld, 1);
       }
       break;
-   case SHADER_OPCODE_TXS:
-      msg_lod = retype(msg_end, BRW_REGISTER_TYPE_UD);
+   case ELK_SHADER_OPCODE_TXS:
+      msg_lod = retype(msg_end, ELK_REGISTER_TYPE_UD);
       bld.MOV(msg_lod, lod);
       msg_end = offset(msg_lod, bld, 1);
       break;
-   case SHADER_OPCODE_TXF:
+   case ELK_SHADER_OPCODE_TXF:
       msg_lod = offset(msg_coords, bld, 3);
-      bld.MOV(retype(msg_lod, BRW_REGISTER_TYPE_UD), lod);
+      bld.MOV(retype(msg_lod, ELK_REGISTER_TYPE_UD), lod);
       msg_end = offset(msg_lod, bld, 1);
       break;
-   case SHADER_OPCODE_TXF_CMS:
+   case ELK_SHADER_OPCODE_TXF_CMS:
       msg_lod = offset(msg_coords, bld, 3);
       /* lod */
-      bld.MOV(retype(msg_lod, BRW_REGISTER_TYPE_UD), brw_imm_ud(0u));
+      bld.MOV(retype(msg_lod, ELK_REGISTER_TYPE_UD), elk_imm_ud(0u));
       /* sample index */
-      bld.MOV(retype(offset(msg_lod, bld, 1), BRW_REGISTER_TYPE_UD), sample_index);
+      bld.MOV(retype(offset(msg_lod, bld, 1), ELK_REGISTER_TYPE_UD), sample_index);
       msg_end = offset(msg_lod, bld, 2);
       break;
    default:
@@ -827,7 +827,7 @@ lower_sampler_logical_send_gfx5(const fs_builder &bld, fs_inst *inst, opcode op,
 }
 
 static bool
-is_high_sampler(const struct intel_device_info *devinfo, const fs_reg &sampler)
+is_high_sampler(const struct intel_device_info *devinfo, const elk_fs_reg &sampler)
 {
    if (devinfo->verx10 <= 70)
       return false;
@@ -837,11 +837,11 @@ is_high_sampler(const struct intel_device_info *devinfo, const fs_reg &sampler)
 
 static unsigned
 sampler_msg_type(const intel_device_info *devinfo,
-                 opcode opcode, bool shadow_compare, bool has_min_lod)
+                 elk_opcode opcode, bool shadow_compare, bool has_min_lod)
 {
    assert(devinfo->ver >= 5);
    switch (opcode) {
-   case SHADER_OPCODE_TEX:
+   case ELK_SHADER_OPCODE_TEX:
       if (devinfo->ver >= 20 && has_min_lod) {
          return shadow_compare ? XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD :
                                  XE2_SAMPLER_MESSAGE_SAMPLE_MLOD;
@@ -849,63 +849,63 @@ sampler_msg_type(const intel_device_info *devinfo,
          return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_COMPARE :
                                  GFX5_SAMPLER_MESSAGE_SAMPLE;
       }
-   case FS_OPCODE_TXB:
+   case ELK_FS_OPCODE_TXB:
       return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS_COMPARE :
                               GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS;
-   case SHADER_OPCODE_TXL:
+   case ELK_SHADER_OPCODE_TXL:
       assert(!has_min_lod);
       return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_LOD_COMPARE :
                               GFX5_SAMPLER_MESSAGE_SAMPLE_LOD;
-   case SHADER_OPCODE_TXL_LZ:
+   case ELK_SHADER_OPCODE_TXL_LZ:
       assert(!has_min_lod);
       return shadow_compare ? GFX9_SAMPLER_MESSAGE_SAMPLE_C_LZ :
                               GFX9_SAMPLER_MESSAGE_SAMPLE_LZ;
-   case SHADER_OPCODE_TXS:
-   case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
+   case ELK_SHADER_OPCODE_TXS:
+   case ELK_SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
       assert(!has_min_lod);
       return GFX5_SAMPLER_MESSAGE_SAMPLE_RESINFO;
-   case SHADER_OPCODE_TXD:
+   case ELK_SHADER_OPCODE_TXD:
       assert(!shadow_compare || devinfo->verx10 >= 75);
       return shadow_compare ? HSW_SAMPLER_MESSAGE_SAMPLE_DERIV_COMPARE :
                               GFX5_SAMPLER_MESSAGE_SAMPLE_DERIVS;
-   case SHADER_OPCODE_TXF:
+   case ELK_SHADER_OPCODE_TXF:
       assert(!has_min_lod);
       return GFX5_SAMPLER_MESSAGE_SAMPLE_LD;
-   case SHADER_OPCODE_TXF_LZ:
+   case ELK_SHADER_OPCODE_TXF_LZ:
       assert(!has_min_lod);
       assert(devinfo->ver >= 9);
       return GFX9_SAMPLER_MESSAGE_SAMPLE_LD_LZ;
-   case SHADER_OPCODE_TXF_CMS_W:
+   case ELK_SHADER_OPCODE_TXF_CMS_W:
       assert(!has_min_lod);
       assert(devinfo->ver >= 9);
       return GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W;
-   case SHADER_OPCODE_TXF_CMS:
+   case ELK_SHADER_OPCODE_TXF_CMS:
       assert(!has_min_lod);
       return devinfo->ver >= 7 ? GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DMS :
                                  GFX5_SAMPLER_MESSAGE_SAMPLE_LD;
-   case SHADER_OPCODE_TXF_UMS:
+   case ELK_SHADER_OPCODE_TXF_UMS:
       assert(!has_min_lod);
       assert(devinfo->ver >= 7);
       return GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS;
-   case SHADER_OPCODE_TXF_MCS:
+   case ELK_SHADER_OPCODE_TXF_MCS:
       assert(!has_min_lod);
       assert(devinfo->ver >= 7);
       return GFX7_SAMPLER_MESSAGE_SAMPLE_LD_MCS;
-   case SHADER_OPCODE_LOD:
+   case ELK_SHADER_OPCODE_LOD:
       assert(!has_min_lod);
       return GFX5_SAMPLER_MESSAGE_LOD;
-   case SHADER_OPCODE_TG4:
+   case ELK_SHADER_OPCODE_TG4:
       assert(!has_min_lod);
       assert(devinfo->ver >= 7);
       return shadow_compare ? GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_C :
                               GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4;
       break;
-   case SHADER_OPCODE_TG4_OFFSET:
+   case ELK_SHADER_OPCODE_TG4_OFFSET:
       assert(!has_min_lod);
       assert(devinfo->ver >= 7);
       return shadow_compare ? GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO_C :
                               GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO;
-   case SHADER_OPCODE_SAMPLEINFO:
+   case ELK_SHADER_OPCODE_SAMPLEINFO:
       assert(!has_min_lod);
       return GFX6_SAMPLER_MESSAGE_SAMPLE_SAMPLEINFO;
    default:
@@ -917,16 +917,16 @@ sampler_msg_type(const intel_device_info *devinfo,
  * Emit a LOAD_PAYLOAD instruction while ensuring the sources are aligned to
  * the given requested_alignment_sz.
  */
-static fs_inst *
-emit_load_payload_with_padding(const fs_builder &bld, const fs_reg &dst,
-                               const fs_reg *src, unsigned sources,
+static elk_fs_inst *
+emit_load_payload_with_padding(const fs_builder &bld, const elk_fs_reg &dst,
+                               const elk_fs_reg *src, unsigned sources,
                                unsigned header_size,
                                unsigned requested_alignment_sz)
 {
    unsigned length = 0;
    unsigned num_srcs =
       sources * DIV_ROUND_UP(requested_alignment_sz, bld.dispatch_width());
-   fs_reg *src_comps = new fs_reg[num_srcs];
+   elk_fs_reg *src_comps = new elk_fs_reg[num_srcs];
 
    for (unsigned i = 0; i < header_size; i++)
       src_comps[length++] = src[i];
@@ -934,9 +934,9 @@ emit_load_payload_with_padding(const fs_builder &bld, const fs_reg &dst,
    for (unsigned i = header_size; i < sources; i++) {
       unsigned src_sz =
          retype(dst, src[i].type).component_size(bld.dispatch_width());
-      const enum brw_reg_type padding_payload_type =
-         brw_reg_type_from_bit_size(type_sz(src[i].type) * 8,
-                                    BRW_REGISTER_TYPE_UD);
+      const enum elk_reg_type padding_payload_type =
+         elk_reg_type_from_bit_size(type_sz(src[i].type) * 8,
+                                    ELK_REGISTER_TYPE_UD);
 
       src_comps[length++] = src[i];
 
@@ -945,46 +945,46 @@ emit_load_payload_with_padding(const fs_builder &bld, const fs_reg &dst,
        */
       if (src_sz < requested_alignment_sz) {
          for (unsigned j = 0; j < (requested_alignment_sz / src_sz) - 1; j++) {
-            src_comps[length++] = retype(fs_reg(), padding_payload_type);
+            src_comps[length++] = retype(elk_fs_reg(), padding_payload_type);
          }
       }
    }
 
-   fs_inst *inst = bld.LOAD_PAYLOAD(dst, src_comps, length, header_size);
+   elk_fs_inst *inst = bld.LOAD_PAYLOAD(dst, src_comps, length, header_size);
    delete[] src_comps;
 
    return inst;
 }
 
 static void
-lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
-                                const fs_reg &coordinate,
-                                const fs_reg &shadow_c,
-                                fs_reg lod, const fs_reg &lod2,
-                                const fs_reg &min_lod,
-                                const fs_reg &sample_index,
-                                const fs_reg &mcs,
-                                const fs_reg &surface,
-                                const fs_reg &sampler,
-                                const fs_reg &surface_handle,
-                                const fs_reg &sampler_handle,
-                                const fs_reg &tg4_offset,
+lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_opcode op,
+                                const elk_fs_reg &coordinate,
+                                const elk_fs_reg &shadow_c,
+                                elk_fs_reg lod, const elk_fs_reg &lod2,
+                                const elk_fs_reg &min_lod,
+                                const elk_fs_reg &sample_index,
+                                const elk_fs_reg &mcs,
+                                const elk_fs_reg &surface,
+                                const elk_fs_reg &sampler,
+                                const elk_fs_reg &surface_handle,
+                                const elk_fs_reg &sampler_handle,
+                                const elk_fs_reg &tg4_offset,
                                 unsigned payload_type_bit_size,
                                 unsigned coord_components,
                                 unsigned grad_components,
                                 bool residency)
 {
-   const brw_compiler *compiler = bld.shader->compiler;
+   const elk_compiler *compiler = bld.shader->compiler;
    const intel_device_info *devinfo = bld.shader->devinfo;
-   const enum brw_reg_type payload_type =
-      brw_reg_type_from_bit_size(payload_type_bit_size, BRW_REGISTER_TYPE_F);
-   const enum brw_reg_type payload_unsigned_type =
-      brw_reg_type_from_bit_size(payload_type_bit_size, BRW_REGISTER_TYPE_UD);
-   const enum brw_reg_type payload_signed_type =
-      brw_reg_type_from_bit_size(payload_type_bit_size, BRW_REGISTER_TYPE_D);
+   const enum elk_reg_type payload_type =
+      elk_reg_type_from_bit_size(payload_type_bit_size, ELK_REGISTER_TYPE_F);
+   const enum elk_reg_type payload_unsigned_type =
+      elk_reg_type_from_bit_size(payload_type_bit_size, ELK_REGISTER_TYPE_UD);
+   const enum elk_reg_type payload_signed_type =
+      elk_reg_type_from_bit_size(payload_type_bit_size, ELK_REGISTER_TYPE_D);
    unsigned reg_width = bld.dispatch_width() / 8;
    unsigned header_size = 0, length = 0;
-   fs_reg sources[1 + MAX_SAMPLER_MESSAGE_SIZE];
+   elk_fs_reg sources[1 + MAX_SAMPLER_MESSAGE_SIZE];
    for (unsigned i = 0; i < ARRAY_SIZE(sources); i++)
       sources[i] = bld.vgrf(payload_type);
 
@@ -992,9 +992,9 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
    assert((surface.file == BAD_FILE) != (surface_handle.file == BAD_FILE));
    assert((sampler.file == BAD_FILE) != (sampler_handle.file == BAD_FILE));
 
-   if (op == SHADER_OPCODE_TG4 || op == SHADER_OPCODE_TG4_OFFSET ||
+   if (op == ELK_SHADER_OPCODE_TG4 || op == ELK_SHADER_OPCODE_TG4_OFFSET ||
        inst->offset != 0 || inst->eot ||
-       op == SHADER_OPCODE_SAMPLEINFO ||
+       op == ELK_SHADER_OPCODE_SAMPLEINFO ||
        sampler_handle.file != BAD_FILE ||
        is_high_sampler(devinfo, sampler) ||
        residency) {
@@ -1006,7 +1006,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
        * larger sampler numbers we need to offset the Sampler State Pointer in
        * the header.
        */
-      fs_reg header = retype(sources[0], BRW_REGISTER_TYPE_UD);
+      elk_fs_reg header = retype(sources[0], ELK_REGISTER_TYPE_UD);
       for (header_size = 0; header_size < reg_unit(devinfo); header_size++)
          sources[length++] = byte_offset(header, REG_SIZE * header_size);
 
@@ -1027,9 +1027,9 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
       /* Build the actual header */
       const fs_builder ubld = bld.exec_all().group(8 * reg_unit(devinfo), 0);
       const fs_builder ubld1 = ubld.group(1, 0);
-      ubld.MOV(header, retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD));
+      ubld.MOV(header, retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD));
       if (inst->offset) {
-         ubld1.MOV(component(header, 2), brw_imm_ud(inst->offset));
+         ubld1.MOV(component(header, 2), elk_imm_ud(inst->offset));
       } else if (bld.shader->stage != MESA_SHADER_VERTEX &&
                  bld.shader->stage != MESA_SHADER_FRAGMENT) {
          /* The vertex and fragment stages have g0.2 set to 0, so
@@ -1037,7 +1037,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
           * must set it to 0 to avoid setting undesirable bits in the
           * message.
           */
-         ubld1.MOV(component(header, 2), brw_imm_ud(0));
+         ubld1.MOV(component(header, 2), elk_imm_ud(0));
       }
 
       if (sampler_handle.file != BAD_FILE) {
@@ -1055,34 +1055,34 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
           */
          if (compiler->use_bindless_sampler_offset) {
             assert(devinfo->ver >= 11);
-            ubld1.OR(component(header, 3), sampler_handle, brw_imm_ud(1));
+            ubld1.OR(component(header, 3), sampler_handle, elk_imm_ud(1));
          } else {
             ubld1.MOV(component(header, 3), sampler_handle);
          }
       } else if (is_high_sampler(devinfo, sampler)) {
-         fs_reg sampler_state_ptr =
-            retype(brw_vec1_grf(0, 3), BRW_REGISTER_TYPE_UD);
+         elk_fs_reg sampler_state_ptr =
+            retype(elk_vec1_grf(0, 3), ELK_REGISTER_TYPE_UD);
 
          /* Gfx11+ sampler message headers include bits in 4:0 which conflict
           * with the ones included in g0.3 bits 4:0.  Mask them out.
           */
          if (devinfo->ver >= 11) {
-            sampler_state_ptr = ubld1.vgrf(BRW_REGISTER_TYPE_UD);
+            sampler_state_ptr = ubld1.vgrf(ELK_REGISTER_TYPE_UD);
             ubld1.AND(sampler_state_ptr,
-                      retype(brw_vec1_grf(0, 3), BRW_REGISTER_TYPE_UD),
-                      brw_imm_ud(INTEL_MASK(31, 5)));
+                      retype(elk_vec1_grf(0, 3), ELK_REGISTER_TYPE_UD),
+                      elk_imm_ud(INTEL_MASK(31, 5)));
          }
 
-         if (sampler.file == BRW_IMMEDIATE_VALUE) {
+         if (sampler.file == ELK_IMMEDIATE_VALUE) {
             assert(sampler.ud >= 16);
             const int sampler_state_size = 16; /* 16 bytes */
 
             ubld1.ADD(component(header, 3), sampler_state_ptr,
-                      brw_imm_ud(16 * (sampler.ud / 16) * sampler_state_size));
+                      elk_imm_ud(16 * (sampler.ud / 16) * sampler_state_size));
          } else {
-            fs_reg tmp = ubld1.vgrf(BRW_REGISTER_TYPE_UD);
-            ubld1.AND(tmp, sampler, brw_imm_ud(0x0f0));
-            ubld1.SHL(tmp, tmp, brw_imm_ud(4));
+            elk_fs_reg tmp = ubld1.vgrf(ELK_REGISTER_TYPE_UD);
+            ubld1.AND(tmp, sampler, elk_imm_ud(0x0f0));
+            ubld1.SHL(tmp, tmp, elk_imm_ud(4));
             ubld1.ADD(component(header, 3), sampler_state_ptr, tmp);
          }
       } else if (devinfo->ver >= 11) {
@@ -1090,8 +1090,8 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
           * with the ones included in g0.3 bits 4:0.  Mask them out.
           */
          ubld1.AND(component(header, 3),
-                   retype(brw_vec1_grf(0, 3), BRW_REGISTER_TYPE_UD),
-                   brw_imm_ud(INTEL_MASK(31, 5)));
+                   retype(elk_vec1_grf(0, 3), ELK_REGISTER_TYPE_UD),
+                   elk_imm_ud(INTEL_MASK(31, 5)));
       }
    }
 
@@ -1099,10 +1099,10 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
     * switch-statement that emits sources based on the opcode.
     */
    if (devinfo->ver >= 9 && lod.is_zero()) {
-      if (op == SHADER_OPCODE_TXL)
-         op = SHADER_OPCODE_TXL_LZ;
-      else if (op == SHADER_OPCODE_TXF)
-         op = SHADER_OPCODE_TXF_LZ;
+      if (op == ELK_SHADER_OPCODE_TXL)
+         op = ELK_SHADER_OPCODE_TXL_LZ;
+      else if (op == ELK_SHADER_OPCODE_TXF)
+         op = ELK_SHADER_OPCODE_TXF_LZ;
    }
 
    /* On Xe2 and newer platforms, min_lod is the first parameter specifically
@@ -1131,12 +1131,12 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
 
    /* Set up the LOD info */
    switch (op) {
-   case FS_OPCODE_TXB:
-   case SHADER_OPCODE_TXL:
+   case ELK_FS_OPCODE_TXB:
+   case ELK_SHADER_OPCODE_TXL:
       bld.MOV(sources[length], lod);
       length++;
       break;
-   case SHADER_OPCODE_TXD:
+   case ELK_SHADER_OPCODE_TXD:
       /* TXD should have been lowered in SIMD16 mode (in SIMD32 mode in
        * Xe2+).
        */
@@ -1159,17 +1159,17 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
 
       coordinate_done = true;
       break;
-   case SHADER_OPCODE_TXS:
+   case ELK_SHADER_OPCODE_TXS:
       bld.MOV(retype(sources[length], payload_unsigned_type), lod);
       length++;
       break;
-   case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
+   case ELK_SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
       /* We need an LOD; just use 0 */
-      bld.MOV(retype(sources[length], payload_unsigned_type), brw_imm_ud(0));
+      bld.MOV(retype(sources[length], payload_unsigned_type), elk_imm_ud(0));
       length++;
       break;
-   case SHADER_OPCODE_TXF:
-   case SHADER_OPCODE_TXF_LZ:
+   case ELK_SHADER_OPCODE_TXF:
+   case ELK_SHADER_OPCODE_TXF_LZ:
       /* Unfortunately, the parameters for LD are intermixed: u, lod, v, r.
        * On Gfx9 they are u, v, lod, r
        */
@@ -1180,12 +1180,12 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
             bld.MOV(retype(sources[length], payload_signed_type),
                     offset(coordinate, bld, 1));
          } else {
-            sources[length] = brw_imm_d(0);
+            sources[length] = elk_imm_d(0);
          }
          length++;
       }
 
-      if (op != SHADER_OPCODE_TXF_LZ) {
+      if (op != ELK_SHADER_OPCODE_TXF_LZ) {
          bld.MOV(retype(sources[length], payload_signed_type), lod);
          length++;
       }
@@ -1197,18 +1197,18 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
       coordinate_done = true;
       break;
 
-   case SHADER_OPCODE_TXF_CMS:
-   case SHADER_OPCODE_TXF_CMS_W:
-   case SHADER_OPCODE_TXF_UMS:
-   case SHADER_OPCODE_TXF_MCS:
-      if (op == SHADER_OPCODE_TXF_UMS ||
-          op == SHADER_OPCODE_TXF_CMS ||
-          op == SHADER_OPCODE_TXF_CMS_W) {
+   case ELK_SHADER_OPCODE_TXF_CMS:
+   case ELK_SHADER_OPCODE_TXF_CMS_W:
+   case ELK_SHADER_OPCODE_TXF_UMS:
+   case ELK_SHADER_OPCODE_TXF_MCS:
+      if (op == ELK_SHADER_OPCODE_TXF_UMS ||
+          op == ELK_SHADER_OPCODE_TXF_CMS ||
+          op == ELK_SHADER_OPCODE_TXF_CMS_W) {
          bld.MOV(retype(sources[length++], payload_unsigned_type), sample_index);
       }
 
       /* Data from the multisample control surface. */
-      if (op == SHADER_OPCODE_TXF_CMS || op == SHADER_OPCODE_TXF_CMS_W) {
+      if (op == ELK_SHADER_OPCODE_TXF_CMS || op == ELK_SHADER_OPCODE_TXF_CMS_W) {
          unsigned num_mcs_components = 1;
 
          /* From the Gfx12HP BSpec: Render Engine - 3D and GPGPU Programs -
@@ -1216,7 +1216,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
           *
           *    ld2dms_w   si  mcs0 mcs1 mcs2  mcs3  u  v  r
           */
-         if (op == SHADER_OPCODE_TXF_CMS_W)
+         if (op == ELK_SHADER_OPCODE_TXF_CMS_W)
             num_mcs_components = 2;
 
          for (unsigned i = 0; i < num_mcs_components; ++i) {
@@ -1230,8 +1230,8 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
              *
              *    ld2dms_w   si  mcs0 mcs1 mcs2  mcs3  u  v  r
              */
-            if (devinfo->verx10 >= 125 && op == SHADER_OPCODE_TXF_CMS_W) {
-               fs_reg tmp = offset(mcs, bld, i);
+            if (devinfo->verx10 >= 125 && op == ELK_SHADER_OPCODE_TXF_CMS_W) {
+               elk_fs_reg tmp = offset(mcs, bld, i);
                bld.MOV(retype(sources[length++], payload_unsigned_type),
                        mcs.file == IMM ? mcs :
                        subscript(tmp, payload_unsigned_type, 0));
@@ -1254,7 +1254,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
 
       coordinate_done = true;
       break;
-   case SHADER_OPCODE_TG4_OFFSET:
+   case ELK_SHADER_OPCODE_TG4_OFFSET:
       /* More crazy intermixing */
       for (unsigned i = 0; i < 2; i++) /* u, v */
          bld.MOV(sources[length++], offset(coordinate, bld, i));
@@ -1281,7 +1281,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
 
    if (min_lod.file != BAD_FILE && !min_lod_is_first) {
       /* Account for all of the missing coordinate sources */
-      if (op == SHADER_OPCODE_TXD && devinfo->verx10 >= 125) {
+      if (op == ELK_SHADER_OPCODE_TXD && devinfo->verx10 >= 125) {
          /* On DG2 and newer platforms, sample_d can only be used with 1D and
           * 2D surfaces, so the maximum number of gradient components is 2.
           * In spite of this limitation, the Bspec lists a mysterious R
@@ -1294,27 +1294,27 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
          length += (2 - grad_components) * 2;
       } else {
          length += 4 - coord_components;
-         if (op == SHADER_OPCODE_TXD)
+         if (op == ELK_SHADER_OPCODE_TXD)
             length += (3 - grad_components) * 2;
       }
 
       bld.MOV(sources[length++], min_lod);
 
       /* Wa_14014595444: Populate MLOD as parameter 5 (twice). */
-       if (devinfo->verx10 == 125 && op == FS_OPCODE_TXB &&
+       if (devinfo->verx10 == 125 && op == ELK_FS_OPCODE_TXB &&
           !inst->shadow_compare)
          bld.MOV(sources[length++], min_lod);
    }
 
-   const fs_reg src_payload =
-      fs_reg(VGRF, bld.shader->alloc.allocate(length * reg_width),
-                                              BRW_REGISTER_TYPE_F);
+   const elk_fs_reg src_payload =
+      elk_fs_reg(VGRF, bld.shader->alloc.allocate(length * reg_width),
+                                              ELK_REGISTER_TYPE_F);
    /* In case of 16-bit payload each component takes one full register in
     * both SIMD8H and SIMD16H modes. In both cases one reg can hold 16
     * elements. In SIMD8H case hardware simply expects the components to be
     * padded (i.e., aligned on reg boundary).
     */
-   fs_inst *load_payload_inst =
+   elk_fs_inst *load_payload_inst =
       emit_load_payload_with_padding(bld, src_payload, sources, length,
                                      header_size, REG_SIZE * reg_unit(devinfo));
    unsigned mlen = load_payload_inst->size_written / REG_SIZE;
@@ -1325,8 +1325,8 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
          simd_mode = inst->exec_size <= 8 ? GFX10_SAMPLER_SIMD_MODE_SIMD8H :
             GFX10_SAMPLER_SIMD_MODE_SIMD16H;
       } else {
-         simd_mode = inst->exec_size <= 8 ? BRW_SAMPLER_SIMD_MODE_SIMD8 :
-            BRW_SAMPLER_SIMD_MODE_SIMD16;
+         simd_mode = inst->exec_size <= 8 ? ELK_SAMPLER_SIMD_MODE_SIMD8 :
+            ELK_SAMPLER_SIMD_MODE_SIMD16;
       }
    } else {
       if (payload_type_bit_size == 16) {
@@ -1339,27 +1339,27 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
    }
 
    /* Generate the SEND. */
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = mlen;
    inst->header_size = header_size;
 
    assert(msg_type == sampler_msg_type(devinfo, op, inst->shadow_compare,
                                        min_lod.file != BAD_FILE));
 
-   inst->sfid = BRW_SFID_SAMPLER;
+   inst->sfid = ELK_SFID_SAMPLER;
    if (surface.file == IMM &&
        (sampler.file == IMM || sampler_handle.file != BAD_FILE)) {
-      inst->desc = brw_sampler_desc(devinfo, surface.ud,
+      inst->desc = elk_sampler_desc(devinfo, surface.ud,
                                     sampler.file == IMM ? sampler.ud % 16 : 0,
                                     msg_type,
                                     simd_mode,
                                     0 /* return_format unused on gfx7+ */);
-      inst->src[0] = brw_imm_ud(0);
-      inst->src[1] = brw_imm_ud(0);
+      inst->src[0] = elk_imm_ud(0);
+      inst->src[1] = elk_imm_ud(0);
    } else if (surface_handle.file != BAD_FILE) {
       /* Bindless surface */
       assert(devinfo->ver >= 9);
-      inst->desc = brw_sampler_desc(devinfo,
+      inst->desc = elk_sampler_desc(devinfo,
                                     GFX9_BTI_BINDLESS,
                                     sampler.file == IMM ? sampler.ud % 16 : 0,
                                     msg_type,
@@ -1370,46 +1370,46 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
        * header so we can leave the portion in the message descriptor 0.
        */
       if (sampler_handle.file != BAD_FILE || sampler.file == IMM) {
-         inst->src[0] = brw_imm_ud(0);
+         inst->src[0] = elk_imm_ud(0);
       } else {
          const fs_builder ubld = bld.group(1, 0).exec_all();
-         fs_reg desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
-         ubld.SHL(desc, sampler, brw_imm_ud(8));
+         elk_fs_reg desc = ubld.vgrf(ELK_REGISTER_TYPE_UD);
+         ubld.SHL(desc, sampler, elk_imm_ud(8));
          inst->src[0] = component(desc, 0);
       }
 
       /* We assume that the driver provided the handle in the top 20 bits so
        * we can use the surface handle directly as the extended descriptor.
        */
-      inst->src[1] = retype(surface_handle, BRW_REGISTER_TYPE_UD);
+      inst->src[1] = retype(surface_handle, ELK_REGISTER_TYPE_UD);
       inst->send_ex_bso = compiler->extended_bindless_surface_offset;
    } else {
       /* Immediate portion of the descriptor */
-      inst->desc = brw_sampler_desc(devinfo,
+      inst->desc = elk_sampler_desc(devinfo,
                                     0, /* surface */
                                     0, /* sampler */
                                     msg_type,
                                     simd_mode,
                                     0 /* return_format unused on gfx7+ */);
       const fs_builder ubld = bld.group(1, 0).exec_all();
-      fs_reg desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+      elk_fs_reg desc = ubld.vgrf(ELK_REGISTER_TYPE_UD);
       if (surface.equals(sampler)) {
          /* This case is common in GL */
-         ubld.MUL(desc, surface, brw_imm_ud(0x101));
+         ubld.MUL(desc, surface, elk_imm_ud(0x101));
       } else {
          if (sampler_handle.file != BAD_FILE) {
             ubld.MOV(desc, surface);
          } else if (sampler.file == IMM) {
-            ubld.OR(desc, surface, brw_imm_ud(sampler.ud << 8));
+            ubld.OR(desc, surface, elk_imm_ud(sampler.ud << 8));
          } else {
-            ubld.SHL(desc, sampler, brw_imm_ud(8));
+            ubld.SHL(desc, sampler, elk_imm_ud(8));
             ubld.OR(desc, desc, surface);
          }
       }
-      ubld.AND(desc, desc, brw_imm_ud(0xfff));
+      ubld.AND(desc, desc, elk_imm_ud(0xfff));
 
       inst->src[0] = component(desc, 0);
-      inst->src[1] = brw_imm_ud(0); /* ex_desc */
+      inst->src[1] = elk_imm_ud(0); /* ex_desc */
    }
 
    inst->ex_desc = 0;
@@ -1433,7 +1433,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
 
 static unsigned
 get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
-                                      opcode op, const fs_reg *src)
+                                      elk_opcode op, const elk_fs_reg *src)
 {
    unsigned src_type_size = 0;
 
@@ -1442,7 +1442,7 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
     */
    for (unsigned i = 0; i < TEX_LOGICAL_NUM_SRCS; i++) {
       if (src[i].file != BAD_FILE) {
-         src_type_size = brw_reg_type_to_size(src[i].type);
+         src_type_size = elk_reg_type_to_size(src[i].type);
          break;
       }
    }
@@ -1456,11 +1456,11 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
     * conversion.
     */
    if (devinfo->verx10 < 125 ||
-       (op != SHADER_OPCODE_TXF_CMS_W &&
-        op != SHADER_OPCODE_TXF_CMS)) {
+       (op != ELK_SHADER_OPCODE_TXF_CMS_W &&
+        op != ELK_SHADER_OPCODE_TXF_CMS)) {
       for (unsigned i = 0; i < TEX_LOGICAL_NUM_SRCS; i++) {
          assert(src[i].file == BAD_FILE ||
-                brw_reg_type_to_size(src[i].type) == src_type_size);
+                elk_reg_type_to_size(src[i].type) == src_type_size);
       }
    }
 #endif
@@ -1477,31 +1477,31 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
     *  ld2dms         REMOVEDBY(GEN:HAS:1406788836)
     */
 
-   if (op == SHADER_OPCODE_TXF_CMS_W ||
-       op == SHADER_OPCODE_TXF_CMS ||
-       op == SHADER_OPCODE_TXF_UMS ||
-       op == SHADER_OPCODE_TXF_MCS)
+   if (op == ELK_SHADER_OPCODE_TXF_CMS_W ||
+       op == ELK_SHADER_OPCODE_TXF_CMS ||
+       op == ELK_SHADER_OPCODE_TXF_UMS ||
+       op == ELK_SHADER_OPCODE_TXF_MCS)
       src_type_size = 2;
 
    return src_type_size * 8;
 }
 
 static void
-lower_sampler_logical_send(const fs_builder &bld, fs_inst *inst, opcode op)
+lower_sampler_logical_send(const fs_builder &bld, elk_fs_inst *inst, elk_opcode op)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
-   const fs_reg coordinate = inst->src[TEX_LOGICAL_SRC_COORDINATE];
-   const fs_reg shadow_c = inst->src[TEX_LOGICAL_SRC_SHADOW_C];
-   const fs_reg lod = inst->src[TEX_LOGICAL_SRC_LOD];
-   const fs_reg lod2 = inst->src[TEX_LOGICAL_SRC_LOD2];
-   const fs_reg min_lod = inst->src[TEX_LOGICAL_SRC_MIN_LOD];
-   const fs_reg sample_index = inst->src[TEX_LOGICAL_SRC_SAMPLE_INDEX];
-   const fs_reg mcs = inst->src[TEX_LOGICAL_SRC_MCS];
-   const fs_reg surface = inst->src[TEX_LOGICAL_SRC_SURFACE];
-   const fs_reg sampler = inst->src[TEX_LOGICAL_SRC_SAMPLER];
-   const fs_reg surface_handle = inst->src[TEX_LOGICAL_SRC_SURFACE_HANDLE];
-   const fs_reg sampler_handle = inst->src[TEX_LOGICAL_SRC_SAMPLER_HANDLE];
-   const fs_reg tg4_offset = inst->src[TEX_LOGICAL_SRC_TG4_OFFSET];
+   const elk_fs_reg coordinate = inst->src[TEX_LOGICAL_SRC_COORDINATE];
+   const elk_fs_reg shadow_c = inst->src[TEX_LOGICAL_SRC_SHADOW_C];
+   const elk_fs_reg lod = inst->src[TEX_LOGICAL_SRC_LOD];
+   const elk_fs_reg lod2 = inst->src[TEX_LOGICAL_SRC_LOD2];
+   const elk_fs_reg min_lod = inst->src[TEX_LOGICAL_SRC_MIN_LOD];
+   const elk_fs_reg sample_index = inst->src[TEX_LOGICAL_SRC_SAMPLE_INDEX];
+   const elk_fs_reg mcs = inst->src[TEX_LOGICAL_SRC_MCS];
+   const elk_fs_reg surface = inst->src[TEX_LOGICAL_SRC_SURFACE];
+   const elk_fs_reg sampler = inst->src[TEX_LOGICAL_SRC_SAMPLER];
+   const elk_fs_reg surface_handle = inst->src[TEX_LOGICAL_SRC_SURFACE_HANDLE];
+   const elk_fs_reg sampler_handle = inst->src[TEX_LOGICAL_SRC_SAMPLER_HANDLE];
+   const elk_fs_reg tg4_offset = inst->src[TEX_LOGICAL_SRC_TG4_OFFSET];
    assert(inst->src[TEX_LOGICAL_SRC_COORD_COMPONENTS].file == IMM);
    const unsigned coord_components = inst->src[TEX_LOGICAL_SRC_COORD_COMPONENTS].ud;
    assert(inst->src[TEX_LOGICAL_SRC_GRAD_COMPONENTS].file == IMM);
@@ -1544,7 +1544,7 @@ lower_sampler_logical_send(const fs_builder &bld, fs_inst *inst, opcode op)
  * Predicate the specified instruction on the vector mask.
  */
 static void
-emit_predicate_on_vector_mask(const fs_builder &bld, fs_inst *inst)
+emit_predicate_on_vector_mask(const fs_builder &bld, elk_fs_inst *inst)
 {
    assert(bld.shader->stage == MESA_SHADER_FRAGMENT &&
           bld.group() == inst->group &&
@@ -1552,73 +1552,73 @@ emit_predicate_on_vector_mask(const fs_builder &bld, fs_inst *inst)
 
    const fs_builder ubld = bld.exec_all().group(1, 0);
 
-   const fs_visitor &s = *bld.shader;
-   const fs_reg vector_mask = ubld.vgrf(BRW_REGISTER_TYPE_UW);
+   const elk_fs_visitor &s = *bld.shader;
+   const elk_fs_reg vector_mask = ubld.vgrf(ELK_REGISTER_TYPE_UW);
    ubld.UNDEF(vector_mask);
-   ubld.emit(SHADER_OPCODE_READ_SR_REG, vector_mask, brw_imm_ud(3));
+   ubld.emit(ELK_SHADER_OPCODE_READ_SR_REG, vector_mask, elk_imm_ud(3));
    const unsigned subreg = sample_mask_flag_subreg(s);
 
-   ubld.MOV(brw_flag_subreg(subreg + inst->group / 16), vector_mask);
+   ubld.MOV(elk_flag_subreg(subreg + inst->group / 16), vector_mask);
 
    if (inst->predicate) {
-      assert(inst->predicate == BRW_PREDICATE_NORMAL);
+      assert(inst->predicate == ELK_PREDICATE_NORMAL);
       assert(!inst->predicate_inverse);
       assert(inst->flag_subreg == 0);
       assert(s.devinfo->ver < 20);
       /* Combine the vector mask with the existing predicate by using a
        * vertical predication mode.
        */
-      inst->predicate = BRW_PREDICATE_ALIGN1_ALLV;
+      inst->predicate = ELK_PREDICATE_ALIGN1_ALLV;
    } else {
       inst->flag_subreg = subreg;
-      inst->predicate = BRW_PREDICATE_NORMAL;
+      inst->predicate = ELK_PREDICATE_NORMAL;
       inst->predicate_inverse = false;
    }
 }
 
 static void
-setup_surface_descriptors(const fs_builder &bld, fs_inst *inst, uint32_t desc,
-                          const fs_reg &surface, const fs_reg &surface_handle)
+setup_surface_descriptors(const fs_builder &bld, elk_fs_inst *inst, uint32_t desc,
+                          const elk_fs_reg &surface, const elk_fs_reg &surface_handle)
 {
    const ASSERTED intel_device_info *devinfo = bld.shader->devinfo;
-   const brw_compiler *compiler = bld.shader->compiler;
+   const elk_compiler *compiler = bld.shader->compiler;
 
    /* We must have exactly one of surface and surface_handle */
    assert((surface.file == BAD_FILE) != (surface_handle.file == BAD_FILE));
 
    if (surface.file == IMM) {
       inst->desc = desc | (surface.ud & 0xff);
-      inst->src[0] = brw_imm_ud(0);
-      inst->src[1] = brw_imm_ud(0); /* ex_desc */
+      inst->src[0] = elk_imm_ud(0);
+      inst->src[1] = elk_imm_ud(0); /* ex_desc */
    } else if (surface_handle.file != BAD_FILE) {
       /* Bindless surface */
       assert(devinfo->ver >= 9);
       inst->desc = desc | GFX9_BTI_BINDLESS;
-      inst->src[0] = brw_imm_ud(0);
+      inst->src[0] = elk_imm_ud(0);
 
       /* We assume that the driver provided the handle in the top 20 bits so
        * we can use the surface handle directly as the extended descriptor.
        */
-      inst->src[1] = retype(surface_handle, BRW_REGISTER_TYPE_UD);
+      inst->src[1] = retype(surface_handle, ELK_REGISTER_TYPE_UD);
       inst->send_ex_bso = compiler->extended_bindless_surface_offset;
    } else {
       inst->desc = desc;
       const fs_builder ubld = bld.exec_all().group(1, 0);
-      fs_reg tmp = ubld.vgrf(BRW_REGISTER_TYPE_UD);
-      ubld.AND(tmp, surface, brw_imm_ud(0xff));
+      elk_fs_reg tmp = ubld.vgrf(ELK_REGISTER_TYPE_UD);
+      ubld.AND(tmp, surface, elk_imm_ud(0xff));
       inst->src[0] = component(tmp, 0);
-      inst->src[1] = brw_imm_ud(0); /* ex_desc */
+      inst->src[1] = elk_imm_ud(0); /* ex_desc */
    }
 }
 
 static void
-setup_lsc_surface_descriptors(const fs_builder &bld, fs_inst *inst,
-                              uint32_t desc, const fs_reg &surface)
+setup_lsc_surface_descriptors(const fs_builder &bld, elk_fs_inst *inst,
+                              uint32_t desc, const elk_fs_reg &surface)
 {
    const ASSERTED intel_device_info *devinfo = bld.shader->devinfo;
-   const brw_compiler *compiler = bld.shader->compiler;
+   const elk_compiler *compiler = bld.shader->compiler;
 
-   inst->src[0] = brw_imm_ud(0); /* desc */
+   inst->src[0] = elk_imm_ud(0); /* desc */
 
    enum lsc_addr_surface_type surf_type = lsc_msg_desc_addr_type(devinfo, desc);
    switch (surf_type) {
@@ -1630,23 +1630,23 @@ setup_lsc_surface_descriptors(const fs_builder &bld, fs_inst *inst,
       /* We assume that the driver provided the handle in the top 20 bits so
        * we can use the surface handle directly as the extended descriptor.
        */
-      inst->src[1] = retype(surface, BRW_REGISTER_TYPE_UD);
+      inst->src[1] = retype(surface, ELK_REGISTER_TYPE_UD);
       break;
 
    case LSC_ADDR_SURFTYPE_BTI:
       assert(surface.file != BAD_FILE);
       if (surface.file == IMM) {
-         inst->src[1] = brw_imm_ud(lsc_bti_ex_desc(devinfo, surface.ud));
+         inst->src[1] = elk_imm_ud(lsc_bti_ex_desc(devinfo, surface.ud));
       } else {
          const fs_builder ubld = bld.exec_all().group(1, 0);
-         fs_reg tmp = ubld.vgrf(BRW_REGISTER_TYPE_UD);
-         ubld.SHL(tmp, surface, brw_imm_ud(24));
+         elk_fs_reg tmp = ubld.vgrf(ELK_REGISTER_TYPE_UD);
+         ubld.SHL(tmp, surface, elk_imm_ud(24));
          inst->src[1] = component(tmp, 0);
       }
       break;
 
    case LSC_ADDR_SURFTYPE_FLAT:
-      inst->src[1] = brw_imm_ud(0);
+      inst->src[1] = elk_imm_ud(0);
       break;
 
    default:
@@ -1655,19 +1655,19 @@ setup_lsc_surface_descriptors(const fs_builder &bld, fs_inst *inst,
 }
 
 static void
-lower_surface_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
-   const brw_compiler *compiler = bld.shader->compiler;
+   const elk_compiler *compiler = bld.shader->compiler;
    const intel_device_info *devinfo = bld.shader->devinfo;
 
    /* Get the logical send arguments. */
-   const fs_reg addr = inst->src[SURFACE_LOGICAL_SRC_ADDRESS];
-   const fs_reg src = inst->src[SURFACE_LOGICAL_SRC_DATA];
-   const fs_reg surface = inst->src[SURFACE_LOGICAL_SRC_SURFACE];
-   const fs_reg surface_handle = inst->src[SURFACE_LOGICAL_SRC_SURFACE_HANDLE];
-   const UNUSED fs_reg dims = inst->src[SURFACE_LOGICAL_SRC_IMM_DIMS];
-   const fs_reg arg = inst->src[SURFACE_LOGICAL_SRC_IMM_ARG];
-   const fs_reg allow_sample_mask =
+   const elk_fs_reg addr = inst->src[SURFACE_LOGICAL_SRC_ADDRESS];
+   const elk_fs_reg src = inst->src[SURFACE_LOGICAL_SRC_DATA];
+   const elk_fs_reg surface = inst->src[SURFACE_LOGICAL_SRC_SURFACE];
+   const elk_fs_reg surface_handle = inst->src[SURFACE_LOGICAL_SRC_SURFACE_HANDLE];
+   const UNUSED elk_fs_reg dims = inst->src[SURFACE_LOGICAL_SRC_IMM_DIMS];
+   const elk_fs_reg arg = inst->src[SURFACE_LOGICAL_SRC_IMM_ARG];
+   const elk_fs_reg allow_sample_mask =
       inst->src[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK];
    assert(arg.file == IMM);
    assert(allow_sample_mask.file == IMM);
@@ -1677,23 +1677,23 @@ lower_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    const unsigned src_sz = inst->components_read(SURFACE_LOGICAL_SRC_DATA);
 
    const bool is_typed_access =
-      inst->opcode == SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL ||
-      inst->opcode == SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL ||
-      inst->opcode == SHADER_OPCODE_TYPED_ATOMIC_LOGICAL;
+      inst->opcode == ELK_SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL ||
+      inst->opcode == ELK_SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL ||
+      inst->opcode == ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL;
 
    const bool is_surface_access = is_typed_access ||
-      inst->opcode == SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL ||
-      inst->opcode == SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL ||
-      inst->opcode == SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL;
+      inst->opcode == ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL ||
+      inst->opcode == ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL ||
+      inst->opcode == ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL;
 
    const bool is_stateless =
-      surface.file == IMM && (surface.ud == BRW_BTI_STATELESS ||
+      surface.file == IMM && (surface.ud == ELK_BTI_STATELESS ||
                               surface.ud == GFX8_BTI_STATELESS_NON_COHERENT);
 
    const bool has_side_effects = inst->has_side_effects();
 
-   fs_reg sample_mask = allow_sample_mask.ud ? brw_sample_mask_reg(bld) :
-                                               fs_reg(brw_imm_ud(0xffffffff));
+   elk_fs_reg sample_mask = allow_sample_mask.ud ? elk_sample_mask_reg(bld) :
+                                               elk_fs_reg(elk_imm_ud(0xffffffff));
 
    /* From the BDW PRM Volume 7, page 147:
     *
@@ -1707,22 +1707,22 @@ lower_surface_logical_send(const fs_builder &bld, fs_inst *inst)
     *
     * For all stateless A32 messages, we also need a header
     */
-   fs_reg header;
+   elk_fs_reg header;
    if ((devinfo->ver < 9 && is_typed_access) || is_stateless) {
       fs_builder ubld = bld.exec_all().group(8, 0);
-      header = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+      header = ubld.vgrf(ELK_REGISTER_TYPE_UD);
       if (is_stateless) {
          assert(!is_surface_access);
-         ubld.emit(SHADER_OPCODE_SCRATCH_HEADER, header);
+         ubld.emit(ELK_SHADER_OPCODE_SCRATCH_HEADER, header);
       } else {
-         ubld.MOV(header, brw_imm_d(0));
+         ubld.MOV(header, elk_imm_d(0));
          if (is_surface_access)
             ubld.group(1, 0).MOV(component(header, 7), sample_mask);
       }
    }
    const unsigned header_sz = header.file != BAD_FILE ? 1 : 0;
 
-   fs_reg payload, payload2;
+   elk_fs_reg payload, payload2;
    unsigned mlen, ex_mlen = 0;
    if (devinfo->ver >= 9 &&
        (src.file == BAD_FILE || header.file == BAD_FILE)) {
@@ -1742,8 +1742,8 @@ lower_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    } else {
       /* Allocate space for the payload. */
       const unsigned sz = header_sz + addr_sz + src_sz;
-      payload = bld.vgrf(BRW_REGISTER_TYPE_UD, sz);
-      fs_reg *const components = new fs_reg[sz];
+      payload = bld.vgrf(ELK_REGISTER_TYPE_UD, sz);
+      elk_fs_reg *const components = new elk_fs_reg[sz];
       unsigned n = 0;
 
       /* Construct the payload. */
@@ -1767,26 +1767,26 @@ lower_surface_logical_send(const fs_builder &bld, fs_inst *inst)
     */
    if ((header.file == BAD_FILE || !is_surface_access) &&
        sample_mask.file != BAD_FILE && sample_mask.file != IMM)
-      brw_emit_predicate_on_sample_mask(bld, inst);
+      elk_emit_predicate_on_sample_mask(bld, inst);
 
    uint32_t sfid;
    switch (inst->opcode) {
-   case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
-   case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
       /* Byte scattered opcodes go through the normal data cache */
       sfid = GFX7_SFID_DATAPORT_DATA_CACHE;
       break;
 
-   case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
-   case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
       sfid =  devinfo->ver >= 7 ? GFX7_SFID_DATAPORT_DATA_CACHE :
               devinfo->ver >= 6 ? GFX6_SFID_DATAPORT_RENDER_CACHE :
-                                  BRW_DATAPORT_READ_TARGET_RENDER_CACHE;
+                                  ELK_DATAPORT_READ_TARGET_RENDER_CACHE;
       break;
 
-   case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
-   case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
-   case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
       /* Untyped Surface messages go through the data cache but the SFID value
        * changed on Haswell.
        */
@@ -1795,9 +1795,9 @@ lower_surface_logical_send(const fs_builder &bld, fs_inst *inst)
               GFX7_SFID_DATAPORT_DATA_CACHE);
       break;
 
-   case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
-   case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
-   case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
       /* Typed surface messages go through the render cache on IVB and the
        * data cache on HSW+.
        */
@@ -1812,68 +1812,68 @@ lower_surface_logical_send(const fs_builder &bld, fs_inst *inst)
 
    uint32_t desc;
    switch (inst->opcode) {
-   case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
-      desc = brw_dp_untyped_surface_rw_desc(devinfo, inst->exec_size,
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
+      desc = elk_dp_untyped_surface_rw_desc(devinfo, inst->exec_size,
                                             arg.ud, /* num_channels */
                                             false   /* write */);
       break;
 
-   case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
-      desc = brw_dp_untyped_surface_rw_desc(devinfo, inst->exec_size,
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
+      desc = elk_dp_untyped_surface_rw_desc(devinfo, inst->exec_size,
                                             arg.ud, /* num_channels */
                                             true    /* write */);
       break;
 
-   case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
-      desc = brw_dp_byte_scattered_rw_desc(devinfo, inst->exec_size,
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
+      desc = elk_dp_byte_scattered_rw_desc(devinfo, inst->exec_size,
                                            arg.ud, /* bit_size */
                                            false   /* write */);
       break;
 
-   case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
-      desc = brw_dp_byte_scattered_rw_desc(devinfo, inst->exec_size,
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
+      desc = elk_dp_byte_scattered_rw_desc(devinfo, inst->exec_size,
                                            arg.ud, /* bit_size */
                                            true    /* write */);
       break;
 
-   case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
       assert(arg.ud == 32); /* bit_size */
-      desc = brw_dp_dword_scattered_rw_desc(devinfo, inst->exec_size,
+      desc = elk_dp_dword_scattered_rw_desc(devinfo, inst->exec_size,
                                             false  /* write */);
       break;
 
-   case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
       assert(arg.ud == 32); /* bit_size */
-      desc = brw_dp_dword_scattered_rw_desc(devinfo, inst->exec_size,
+      desc = elk_dp_dword_scattered_rw_desc(devinfo, inst->exec_size,
                                             true   /* write */);
       break;
 
-   case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
-      if (lsc_opcode_is_atomic_float((enum lsc_opcode) arg.ud)) {
-         desc = brw_dp_untyped_atomic_float_desc(devinfo, inst->exec_size,
+   case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
+      if (elk_lsc_opcode_is_atomic_float((enum elk_lsc_opcode) arg.ud)) {
+         desc = elk_dp_untyped_atomic_float_desc(devinfo, inst->exec_size,
                                                  lsc_op_to_legacy_atomic(arg.ud),
                                                  !inst->dst.is_null());
       } else {
-         desc = brw_dp_untyped_atomic_desc(devinfo, inst->exec_size,
+         desc = elk_dp_untyped_atomic_desc(devinfo, inst->exec_size,
                                            lsc_op_to_legacy_atomic(arg.ud),
                                            !inst->dst.is_null());
       }
       break;
 
-   case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
-      desc = brw_dp_typed_surface_rw_desc(devinfo, inst->exec_size, inst->group,
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
+      desc = elk_dp_typed_surface_rw_desc(devinfo, inst->exec_size, inst->group,
                                           arg.ud, /* num_channels */
                                           false   /* write */);
       break;
 
-   case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
-      desc = brw_dp_typed_surface_rw_desc(devinfo, inst->exec_size, inst->group,
+   case ELK_SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
+      desc = elk_dp_typed_surface_rw_desc(devinfo, inst->exec_size, inst->group,
                                           arg.ud, /* num_channels */
                                           true    /* write */);
       break;
 
-   case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
-      desc = brw_dp_typed_atomic_desc(devinfo, inst->exec_size, inst->group,
+   case ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
+      desc = elk_dp_typed_atomic_desc(devinfo, inst->exec_size, inst->group,
                                       lsc_op_to_legacy_atomic(arg.ud),
                                       !inst->dst.is_null());
       break;
@@ -1883,7 +1883,7 @@ lower_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    }
 
    /* Update the original instruction. */
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = mlen;
    inst->ex_mlen = ex_mlen;
    inst->header_size = header_sz;
@@ -1917,20 +1917,20 @@ lsc_bits_to_data_size(unsigned bit_size)
 }
 
 static void
-lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_lsc_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
-   const brw_compiler *compiler = bld.shader->compiler;
+   const elk_compiler *compiler = bld.shader->compiler;
    const intel_device_info *devinfo = bld.shader->devinfo;
    assert(devinfo->has_lsc);
 
    /* Get the logical send arguments. */
-   const fs_reg addr = inst->src[SURFACE_LOGICAL_SRC_ADDRESS];
-   const fs_reg src = inst->src[SURFACE_LOGICAL_SRC_DATA];
-   const fs_reg surface = inst->src[SURFACE_LOGICAL_SRC_SURFACE];
-   const fs_reg surface_handle = inst->src[SURFACE_LOGICAL_SRC_SURFACE_HANDLE];
-   const UNUSED fs_reg dims = inst->src[SURFACE_LOGICAL_SRC_IMM_DIMS];
-   const fs_reg arg = inst->src[SURFACE_LOGICAL_SRC_IMM_ARG];
-   const fs_reg allow_sample_mask =
+   const elk_fs_reg addr = inst->src[SURFACE_LOGICAL_SRC_ADDRESS];
+   const elk_fs_reg src = inst->src[SURFACE_LOGICAL_SRC_DATA];
+   const elk_fs_reg surface = inst->src[SURFACE_LOGICAL_SRC_SURFACE];
+   const elk_fs_reg surface_handle = inst->src[SURFACE_LOGICAL_SRC_SURFACE_HANDLE];
+   const UNUSED elk_fs_reg dims = inst->src[SURFACE_LOGICAL_SRC_IMM_DIMS];
+   const elk_fs_reg arg = inst->src[SURFACE_LOGICAL_SRC_IMM_ARG];
+   const elk_fs_reg allow_sample_mask =
       inst->src[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK];
    assert(arg.file == IMM);
    assert(allow_sample_mask.file == IMM);
@@ -1944,7 +1944,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    const bool has_side_effects = inst->has_side_effects();
 
    unsigned ex_mlen = 0;
-   fs_reg payload, payload2;
+   elk_fs_reg payload, payload2;
    payload = bld.move_to_vgrf(addr, addr_sz);
    if (src.file != BAD_FILE) {
       payload2 = bld.move_to_vgrf(src, src_comps);
@@ -1952,10 +1952,10 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    }
 
    /* Predicate the instruction on the sample mask if needed */
-   fs_reg sample_mask = allow_sample_mask.ud ? brw_sample_mask_reg(bld) :
-                                               fs_reg(brw_imm_ud(0xffffffff));
+   elk_fs_reg sample_mask = allow_sample_mask.ud ? elk_sample_mask_reg(bld) :
+                                               elk_fs_reg(elk_imm_ud(0xffffffff));
    if (sample_mask.file != BAD_FILE && sample_mask.file != IMM)
-      brw_emit_predicate_on_sample_mask(bld, inst);
+      elk_emit_predicate_on_sample_mask(bld, inst);
 
    if (surface.file == IMM && surface.ud == GFX7_BTI_SLM)
       inst->sfid = GFX12_SFID_SLM;
@@ -1963,7 +1963,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
       inst->sfid = GFX12_SFID_UGM;
 
    /* We should have exactly one of surface and surface_handle. For scratch
-    * messages generated by brw_fs_nir.cpp we also allow a special value to
+    * messages generated by elk_fs_nir.cpp we also allow a special value to
     * know what heap base we should use in STATE_BASE_ADDRESS (SS = Surface
     * State Offset, or BSS = Bindless Surface State Offset).
     */
@@ -1987,7 +1987,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
       surf_type = LSC_ADDR_SURFTYPE_BTI;
 
    switch (inst->opcode) {
-   case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK, inst->exec_size,
                                 surf_type, LSC_ADDR_SIZE_A32,
                                 1 /* num_coordinates */,
@@ -1996,7 +1996,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
                                 LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
                                 true /* has_dest */);
       break;
-   case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE_CMASK, inst->exec_size,
                                 surf_type, LSC_ADDR_SIZE_A32,
                                 1 /* num_coordinates */,
@@ -2005,13 +2005,13 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
                                 LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS),
                                 false /* has_dest */);
       break;
-   case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL: {
+   case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL: {
       /* Bspec: Atomic instruction -> Cache section:
        *
        *    Atomic messages are always forced to "un-cacheable" in the L1
        *    cache.
        */
-      enum lsc_opcode opcode = (enum lsc_opcode) arg.ud;
+      enum elk_lsc_opcode opcode = (enum elk_lsc_opcode) arg.ud;
 
       inst->desc = lsc_msg_desc(devinfo, opcode, inst->exec_size,
                                 surf_type, LSC_ADDR_SIZE_A32,
@@ -2023,7 +2023,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
                                 !inst->dst.is_null());
       break;
    }
-   case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD, inst->exec_size,
                                 surf_type, LSC_ADDR_SIZE_A32,
                                 1 /* num_coordinates */,
@@ -2033,7 +2033,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
                                 LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
                                 true /* has_dest */);
       break;
-   case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE, inst->exec_size,
                                 surf_type, LSC_ADDR_SIZE_A32,
                                 1 /* num_coordinates */,
@@ -2048,7 +2048,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    }
 
    /* Update the original instruction. */
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
    inst->ex_mlen = ex_mlen;
    inst->header_size = 0;
@@ -2060,7 +2060,7 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    inst->resize_sources(4);
 
    if (non_bindless) {
-      inst->src[0] = brw_imm_ud(0);     /* desc */
+      inst->src[0] = elk_imm_ud(0);     /* desc */
       inst->src[1] = surface_handle;    /* ex_desc */
    } else {
       setup_lsc_surface_descriptors(bld, inst, inst->desc,
@@ -2074,46 +2074,46 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
 }
 
 static void
-lower_lsc_block_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_lsc_block_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
-   const brw_compiler *compiler = bld.shader->compiler;
+   const elk_compiler *compiler = bld.shader->compiler;
    const intel_device_info *devinfo = bld.shader->devinfo;
    assert(devinfo->has_lsc);
 
    /* Get the logical send arguments. */
-   const fs_reg addr = inst->src[SURFACE_LOGICAL_SRC_ADDRESS];
-   const fs_reg src = inst->src[SURFACE_LOGICAL_SRC_DATA];
-   const fs_reg surface = inst->src[SURFACE_LOGICAL_SRC_SURFACE];
-   const fs_reg surface_handle = inst->src[SURFACE_LOGICAL_SRC_SURFACE_HANDLE];
-   const fs_reg arg = inst->src[SURFACE_LOGICAL_SRC_IMM_ARG];
+   const elk_fs_reg addr = inst->src[SURFACE_LOGICAL_SRC_ADDRESS];
+   const elk_fs_reg src = inst->src[SURFACE_LOGICAL_SRC_DATA];
+   const elk_fs_reg surface = inst->src[SURFACE_LOGICAL_SRC_SURFACE];
+   const elk_fs_reg surface_handle = inst->src[SURFACE_LOGICAL_SRC_SURFACE_HANDLE];
+   const elk_fs_reg arg = inst->src[SURFACE_LOGICAL_SRC_IMM_ARG];
    assert(arg.file == IMM);
    assert(inst->src[SURFACE_LOGICAL_SRC_IMM_DIMS].file == BAD_FILE);
    assert(inst->src[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK].file == BAD_FILE);
 
    const bool is_stateless =
-      surface.file == IMM && (surface.ud == BRW_BTI_STATELESS ||
+      surface.file == IMM && (surface.ud == ELK_BTI_STATELESS ||
                               surface.ud == GFX8_BTI_STATELESS_NON_COHERENT);
 
    const bool has_side_effects = inst->has_side_effects();
 
-   const bool write = inst->opcode == SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL;
+   const bool write = inst->opcode == ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL;
 
    fs_builder ubld = bld.exec_all().group(1, 0);
-   fs_reg stateless_ex_desc;
+   elk_fs_reg stateless_ex_desc;
    if (is_stateless) {
-      stateless_ex_desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+      stateless_ex_desc = ubld.vgrf(ELK_REGISTER_TYPE_UD);
       ubld.AND(stateless_ex_desc,
-               retype(brw_vec1_grf(0, 5), BRW_REGISTER_TYPE_UD),
-               brw_imm_ud(INTEL_MASK(31, 10)));
+               retype(elk_vec1_grf(0, 5), ELK_REGISTER_TYPE_UD),
+               elk_imm_ud(INTEL_MASK(31, 10)));
    }
 
-   fs_reg data;
+   elk_fs_reg data;
    if (write) {
       const unsigned src_sz = inst->components_read(SURFACE_LOGICAL_SRC_DATA);
-      data = retype(bld.move_to_vgrf(src, src_sz), BRW_REGISTER_TYPE_UD);
+      data = retype(bld.move_to_vgrf(src, src_sz), ELK_REGISTER_TYPE_UD);
    }
 
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    if (surface.file == IMM && surface.ud == GFX7_BTI_SLM)
       inst->sfid = GFX12_SFID_SLM;
    else
@@ -2148,7 +2148,7 @@ lower_lsc_block_logical_send(const fs_builder &bld, fs_inst *inst)
    inst->resize_sources(4);
 
    if (stateless_ex_desc.file != BAD_FILE) {
-      inst->src[0] = brw_imm_ud(0);     /* desc */
+      inst->src[0] = elk_imm_ud(0);     /* desc */
       inst->src[1] = stateless_ex_desc; /* ex_desc */
    } else {
       setup_lsc_surface_descriptors(bld, inst, inst->desc,
@@ -2160,56 +2160,56 @@ lower_lsc_block_logical_send(const fs_builder &bld, fs_inst *inst)
 }
 
 static void
-lower_surface_block_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_surface_block_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
    assert(devinfo->ver >= 9);
 
    /* Get the logical send arguments. */
-   const fs_reg addr = inst->src[SURFACE_LOGICAL_SRC_ADDRESS];
-   const fs_reg src = inst->src[SURFACE_LOGICAL_SRC_DATA];
-   const fs_reg surface = inst->src[SURFACE_LOGICAL_SRC_SURFACE];
-   const fs_reg surface_handle = inst->src[SURFACE_LOGICAL_SRC_SURFACE_HANDLE];
-   const fs_reg arg = inst->src[SURFACE_LOGICAL_SRC_IMM_ARG];
+   const elk_fs_reg addr = inst->src[SURFACE_LOGICAL_SRC_ADDRESS];
+   const elk_fs_reg src = inst->src[SURFACE_LOGICAL_SRC_DATA];
+   const elk_fs_reg surface = inst->src[SURFACE_LOGICAL_SRC_SURFACE];
+   const elk_fs_reg surface_handle = inst->src[SURFACE_LOGICAL_SRC_SURFACE_HANDLE];
+   const elk_fs_reg arg = inst->src[SURFACE_LOGICAL_SRC_IMM_ARG];
    assert(arg.file == IMM);
    assert(inst->src[SURFACE_LOGICAL_SRC_IMM_DIMS].file == BAD_FILE);
    assert(inst->src[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK].file == BAD_FILE);
 
    const bool is_stateless =
-      surface.file == IMM && (surface.ud == BRW_BTI_STATELESS ||
+      surface.file == IMM && (surface.ud == ELK_BTI_STATELESS ||
                               surface.ud == GFX8_BTI_STATELESS_NON_COHERENT);
 
    const bool has_side_effects = inst->has_side_effects();
 
    const bool align_16B =
-      inst->opcode != SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL;
+      inst->opcode != ELK_SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL;
 
-   const bool write = inst->opcode == SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL;
+   const bool write = inst->opcode == ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL;
 
    /* The address is stored in the header.  See MH_A32_GO and MH_BTS_GO. */
    fs_builder ubld = bld.exec_all().group(8, 0);
-   fs_reg header = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+   elk_fs_reg header = ubld.vgrf(ELK_REGISTER_TYPE_UD);
 
    if (is_stateless)
-      ubld.emit(SHADER_OPCODE_SCRATCH_HEADER, header);
+      ubld.emit(ELK_SHADER_OPCODE_SCRATCH_HEADER, header);
    else
-      ubld.MOV(header, brw_imm_d(0));
+      ubld.MOV(header, elk_imm_d(0));
 
    /* Address in OWord units when aligned to OWords. */
    if (align_16B)
-      ubld.group(1, 0).SHR(component(header, 2), addr, brw_imm_ud(4));
+      ubld.group(1, 0).SHR(component(header, 2), addr, elk_imm_ud(4));
    else
       ubld.group(1, 0).MOV(component(header, 2), addr);
 
-   fs_reg data;
+   elk_fs_reg data;
    unsigned ex_mlen = 0;
    if (write) {
       const unsigned src_sz = inst->components_read(SURFACE_LOGICAL_SRC_DATA);
-      data = retype(bld.move_to_vgrf(src, src_sz), BRW_REGISTER_TYPE_UD);
+      data = retype(bld.move_to_vgrf(src, src_sz), ELK_REGISTER_TYPE_UD);
       ex_mlen = src_sz * type_sz(src.type) * inst->exec_size / REG_SIZE;
    }
 
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = 1;
    inst->ex_mlen = ex_mlen;
    inst->header_size = 1;
@@ -2218,7 +2218,7 @@ lower_surface_block_logical_send(const fs_builder &bld, fs_inst *inst)
 
    inst->sfid = GFX7_SFID_DATAPORT_DATA_CACHE;
 
-   const uint32_t desc = brw_dp_oword_block_rw_desc(devinfo, align_16B,
+   const uint32_t desc = elk_dp_oword_block_rw_desc(devinfo, align_16B,
                                                     arg.ud, write);
    setup_surface_descriptors(bld, inst, desc, surface, surface_handle);
 
@@ -2228,27 +2228,27 @@ lower_surface_block_logical_send(const fs_builder &bld, fs_inst *inst)
    inst->src[3] = data;
 }
 
-static fs_reg
-emit_a64_oword_block_header(const fs_builder &bld, const fs_reg &addr)
+static elk_fs_reg
+emit_a64_oword_block_header(const fs_builder &bld, const elk_fs_reg &addr)
 {
    const fs_builder ubld = bld.exec_all().group(8, 0);
 
    assert(type_sz(addr.type) == 8 && addr.stride == 0);
 
-   fs_reg expanded_addr = addr;
+   elk_fs_reg expanded_addr = addr;
    if (addr.file == UNIFORM) {
       /* We can't do stride 1 with the UNIFORM file, it requires stride 0 */
-      expanded_addr = ubld.vgrf(BRW_REGISTER_TYPE_UQ);
+      expanded_addr = ubld.vgrf(ELK_REGISTER_TYPE_UQ);
       expanded_addr.stride = 0;
-      ubld.MOV(expanded_addr, retype(addr, BRW_REGISTER_TYPE_UQ));
+      ubld.MOV(expanded_addr, retype(addr, ELK_REGISTER_TYPE_UQ));
    }
 
-   fs_reg header = ubld.vgrf(BRW_REGISTER_TYPE_UD);
-   ubld.MOV(header, brw_imm_ud(0));
+   elk_fs_reg header = ubld.vgrf(ELK_REGISTER_TYPE_UD);
+   ubld.MOV(header, elk_imm_ud(0));
 
    /* Use a 2-wide MOV to fill out the address */
-   fs_reg addr_vec2 = expanded_addr;
-   addr_vec2.type = BRW_REGISTER_TYPE_UD;
+   elk_fs_reg addr_vec2 = expanded_addr;
+   addr_vec2.type = ELK_REGISTER_TYPE_UD;
    addr_vec2.stride = 1;
    ubld.group(2, 0).MOV(header, addr_vec2);
 
@@ -2256,7 +2256,7 @@ emit_a64_oword_block_header(const fs_builder &bld, const fs_reg &addr)
 }
 
 static void
-emit_fragment_mask(const fs_builder &bld, fs_inst *inst)
+emit_fragment_mask(const fs_builder &bld, elk_fs_inst *inst)
 {
    assert(inst->src[A64_LOGICAL_ENABLE_HELPERS].file == IMM);
    const bool enable_helpers = inst->src[A64_LOGICAL_ENABLE_HELPERS].ud;
@@ -2272,17 +2272,17 @@ emit_fragment_mask(const fs_builder &bld, fs_inst *inst)
    if (enable_helpers)
       emit_predicate_on_vector_mask(bld, inst);
    else if (inst->has_side_effects())
-      brw_emit_predicate_on_sample_mask(bld, inst);
+      elk_emit_predicate_on_sample_mask(bld, inst);
 }
 
 static void
-lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_lsc_a64_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
 
    /* Get the logical send arguments. */
-   const fs_reg addr = inst->src[A64_LOGICAL_ADDRESS];
-   const fs_reg src = inst->src[A64_LOGICAL_SRC];
+   const elk_fs_reg addr = inst->src[A64_LOGICAL_ADDRESS];
+   const elk_fs_reg src = inst->src[A64_LOGICAL_SRC];
    const unsigned src_sz = type_sz(src.type);
    const unsigned dst_sz = type_sz(inst->dst.type);
 
@@ -2291,13 +2291,13 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    const unsigned arg = inst->src[A64_LOGICAL_ARG].ud;
    const bool has_side_effects = inst->has_side_effects();
 
-   fs_reg payload = retype(bld.move_to_vgrf(addr, 1), BRW_REGISTER_TYPE_UD);
-   fs_reg payload2 = retype(bld.move_to_vgrf(src, src_comps),
-                            BRW_REGISTER_TYPE_UD);
+   elk_fs_reg payload = retype(bld.move_to_vgrf(addr, 1), ELK_REGISTER_TYPE_UD);
+   elk_fs_reg payload2 = retype(bld.move_to_vgrf(src, src_comps),
+                            ELK_REGISTER_TYPE_UD);
    unsigned ex_mlen = src_comps * src_sz * inst->exec_size / REG_SIZE;
 
    switch (inst->opcode) {
-   case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD_CMASK, inst->exec_size,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 1 /* num_coordinates */,
@@ -2306,7 +2306,7 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
                                 LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
                                 true /* has_dest */);
       break;
-   case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE_CMASK, inst->exec_size,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 1 /* num_coordinates */,
@@ -2315,7 +2315,7 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
                                 LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS),
                                 false /* has_dest */);
       break;
-   case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD, inst->exec_size,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 1 /* num_coordinates */,
@@ -2325,7 +2325,7 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
                                 LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
                                 true /* has_dest */);
       break;
-   case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
       inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE, inst->exec_size,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 1 /* num_coordinates */,
@@ -2335,13 +2335,13 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
                                 LSC_CACHE(devinfo, STORE, L1STATE_L3MOCS),
                                 false /* has_dest */);
       break;
-   case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL: {
+   case ELK_SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL: {
       /* Bspec: Atomic instruction -> Cache section:
        *
        *    Atomic messages are always forced to "un-cacheable" in the L1
        *    cache.
        */
-      enum lsc_opcode opcode = (enum lsc_opcode) arg;
+      enum elk_lsc_opcode opcode = (enum elk_lsc_opcode) arg;
       inst->desc = lsc_msg_desc(devinfo, opcode, inst->exec_size,
                                 LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A64,
                                 1 /* num_coordinates */,
@@ -2352,8 +2352,8 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
                                 !inst->dst.is_null());
       break;
    }
-   case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
-   case SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
       inst->exec_size = 1;
       inst->desc = lsc_msg_desc(devinfo,
                                 LSC_OP_LOAD,
@@ -2367,7 +2367,7 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
                                 LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
                                 true /* has_dest */);
       break;
-   case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
       inst->exec_size = 1;
       inst->desc = lsc_msg_desc(devinfo,
                                 LSC_OP_STORE,
@@ -2390,7 +2390,7 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       emit_fragment_mask(bld, inst);
 
    /* Update the original instruction. */
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
    inst->ex_mlen = ex_mlen;
    inst->header_size = 0;
@@ -2400,29 +2400,29 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    /* Set up SFID and descriptors */
    inst->sfid = GFX12_SFID_UGM;
    inst->resize_sources(4);
-   inst->src[0] = brw_imm_ud(0); /* desc */
-   inst->src[1] = brw_imm_ud(0); /* ex_desc */
+   inst->src[0] = elk_imm_ud(0); /* desc */
+   inst->src[1] = elk_imm_ud(0); /* ex_desc */
    inst->src[2] = payload;
    inst->src[3] = payload2;
 }
 
 static void
-lower_a64_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_a64_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
 
-   const fs_reg addr = inst->src[A64_LOGICAL_ADDRESS];
-   const fs_reg src = inst->src[A64_LOGICAL_SRC];
+   const elk_fs_reg addr = inst->src[A64_LOGICAL_ADDRESS];
+   const elk_fs_reg src = inst->src[A64_LOGICAL_SRC];
    const unsigned src_comps = inst->components_read(1);
    assert(inst->src[A64_LOGICAL_ARG].file == IMM);
    const unsigned arg = inst->src[A64_LOGICAL_ARG].ud;
    const bool has_side_effects = inst->has_side_effects();
 
-   fs_reg payload, payload2;
+   elk_fs_reg payload, payload2;
    unsigned mlen, ex_mlen = 0, header_size = 0;
-   if (inst->opcode == SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL ||
-       inst->opcode == SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL ||
-       inst->opcode == SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL) {
+   if (inst->opcode == ELK_SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL ||
+       inst->opcode == ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL ||
+       inst->opcode == ELK_SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL) {
       assert(devinfo->ver >= 9);
 
       /* OWORD messages only take a scalar address in a header */
@@ -2430,90 +2430,90 @@ lower_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       header_size = 1;
       payload = emit_a64_oword_block_header(bld, addr);
 
-      if (inst->opcode == SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL) {
+      if (inst->opcode == ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL) {
          ex_mlen = src_comps * type_sz(src.type) * inst->exec_size / REG_SIZE;
          payload2 = retype(bld.move_to_vgrf(src, src_comps),
-                           BRW_REGISTER_TYPE_UD);
+                           ELK_REGISTER_TYPE_UD);
       }
    } else if (devinfo->ver >= 9) {
       /* On Skylake and above, we have SENDS */
       mlen = 2 * (inst->exec_size / 8);
       ex_mlen = src_comps * type_sz(src.type) * inst->exec_size / REG_SIZE;
-      payload = retype(bld.move_to_vgrf(addr, 1), BRW_REGISTER_TYPE_UD);
+      payload = retype(bld.move_to_vgrf(addr, 1), ELK_REGISTER_TYPE_UD);
       payload2 = retype(bld.move_to_vgrf(src, src_comps),
-                        BRW_REGISTER_TYPE_UD);
+                        ELK_REGISTER_TYPE_UD);
    } else {
       /* Add two because the address is 64-bit */
       const unsigned dwords = 2 + src_comps;
       mlen = dwords * (inst->exec_size / 8);
 
-      fs_reg sources[5];
+      elk_fs_reg sources[5];
 
       sources[0] = addr;
 
       for (unsigned i = 0; i < src_comps; i++)
          sources[1 + i] = offset(src, bld, i);
 
-      payload = bld.vgrf(BRW_REGISTER_TYPE_UD, dwords);
+      payload = bld.vgrf(ELK_REGISTER_TYPE_UD, dwords);
       bld.LOAD_PAYLOAD(payload, sources, 1 + src_comps, 0);
    }
 
    uint32_t desc;
    switch (inst->opcode) {
-   case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
-      desc = brw_dp_a64_untyped_surface_rw_desc(devinfo, inst->exec_size,
+   case ELK_SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
+      desc = elk_dp_a64_untyped_surface_rw_desc(devinfo, inst->exec_size,
                                                 arg,   /* num_channels */
                                                 false  /* write */);
       break;
 
-   case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
-      desc = brw_dp_a64_untyped_surface_rw_desc(devinfo, inst->exec_size,
+   case ELK_SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
+      desc = elk_dp_a64_untyped_surface_rw_desc(devinfo, inst->exec_size,
                                                 arg,   /* num_channels */
                                                 true   /* write */);
       break;
 
-   case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
-      desc = brw_dp_a64_oword_block_rw_desc(devinfo,
+   case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
+      desc = elk_dp_a64_oword_block_rw_desc(devinfo,
                                             true,    /* align_16B */
                                             arg,     /* num_dwords */
                                             false    /* write */);
       break;
 
-   case SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
-      desc = brw_dp_a64_oword_block_rw_desc(devinfo,
+   case ELK_SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
+      desc = elk_dp_a64_oword_block_rw_desc(devinfo,
                                             false,   /* align_16B */
                                             arg,     /* num_dwords */
                                             false    /* write */);
       break;
 
-   case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
-      desc = brw_dp_a64_oword_block_rw_desc(devinfo,
+   case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
+      desc = elk_dp_a64_oword_block_rw_desc(devinfo,
                                             true,    /* align_16B */
                                             arg,     /* num_dwords */
                                             true     /* write */);
       break;
 
-   case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
-      desc = brw_dp_a64_byte_scattered_rw_desc(devinfo, inst->exec_size,
+   case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
+      desc = elk_dp_a64_byte_scattered_rw_desc(devinfo, inst->exec_size,
                                                arg,   /* bit_size */
                                                false  /* write */);
       break;
 
-   case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
-      desc = brw_dp_a64_byte_scattered_rw_desc(devinfo, inst->exec_size,
+   case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
+      desc = elk_dp_a64_byte_scattered_rw_desc(devinfo, inst->exec_size,
                                                arg,   /* bit_size */
                                                true   /* write */);
       break;
 
-   case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
-      if (lsc_opcode_is_atomic_float((enum lsc_opcode) arg)) {
+   case ELK_SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
+      if (elk_lsc_opcode_is_atomic_float((enum elk_lsc_opcode) arg)) {
          desc =
-            brw_dp_a64_untyped_atomic_float_desc(devinfo, inst->exec_size,
+            elk_dp_a64_untyped_atomic_float_desc(devinfo, inst->exec_size,
                                                  type_sz(inst->dst.type) * 8,
                                                  lsc_op_to_legacy_atomic(arg),
                                                  !inst->dst.is_null());
       } else {
-         desc = brw_dp_a64_untyped_atomic_desc(devinfo, inst->exec_size,
+         desc = elk_dp_a64_untyped_atomic_desc(devinfo, inst->exec_size,
                                                type_sz(inst->dst.type) * 8,
                                                lsc_op_to_legacy_atomic(arg),
                                                !inst->dst.is_null());
@@ -2528,7 +2528,7 @@ lower_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       emit_fragment_mask(bld, inst);
 
    /* Update the original instruction. */
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = mlen;
    inst->ex_mlen = ex_mlen;
    inst->header_size = header_size;
@@ -2539,38 +2539,38 @@ lower_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    inst->sfid = HSW_SFID_DATAPORT_DATA_CACHE_1;
    inst->desc = desc;
    inst->resize_sources(4);
-   inst->src[0] = brw_imm_ud(0); /* desc */
-   inst->src[1] = brw_imm_ud(0); /* ex_desc */
+   inst->src[0] = elk_imm_ud(0); /* desc */
+   inst->src[1] = elk_imm_ud(0); /* ex_desc */
    inst->src[2] = payload;
    inst->src[3] = payload2;
 }
 
 static void
 lower_lsc_varying_pull_constant_logical_send(const fs_builder &bld,
-                                             fs_inst *inst)
+                                             elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
-   ASSERTED const brw_compiler *compiler = bld.shader->compiler;
+   ASSERTED const elk_compiler *compiler = bld.shader->compiler;
 
-   fs_reg surface        = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE];
-   fs_reg surface_handle = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE_HANDLE];
-   fs_reg offset_B       = inst->src[PULL_VARYING_CONSTANT_SRC_OFFSET];
-   fs_reg alignment_B    = inst->src[PULL_VARYING_CONSTANT_SRC_ALIGNMENT];
+   elk_fs_reg surface        = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE];
+   elk_fs_reg surface_handle = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE_HANDLE];
+   elk_fs_reg offset_B       = inst->src[PULL_VARYING_CONSTANT_SRC_OFFSET];
+   elk_fs_reg alignment_B    = inst->src[PULL_VARYING_CONSTANT_SRC_ALIGNMENT];
 
    /* We are switching the instruction from an ALU-like instruction to a
     * send-from-grf instruction.  Since sends can't handle strides or
     * source modifiers, we have to make a copy of the offset source.
     */
-   fs_reg ubo_offset = bld.move_to_vgrf(offset_B, 1);
+   elk_fs_reg ubo_offset = bld.move_to_vgrf(offset_B, 1);
 
    enum lsc_addr_surface_type surf_type =
       surface_handle.file == BAD_FILE ?
       LSC_ADDR_SURFTYPE_BTI : LSC_ADDR_SURFTYPE_BSS;
 
-   assert(alignment_B.file == BRW_IMMEDIATE_VALUE);
+   assert(alignment_B.file == ELK_IMMEDIATE_VALUE);
    unsigned alignment = alignment_B.ud;
 
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->sfid = GFX12_SFID_UGM;
    inst->resize_sources(3);
    inst->send_ex_bso = surf_type == LSC_ADDR_SURFTYPE_BSS &&
@@ -2578,7 +2578,7 @@ lower_lsc_varying_pull_constant_logical_send(const fs_builder &bld,
 
    assert(!compiler->indirect_ubos_use_sampler);
 
-   inst->src[0] = brw_imm_ud(0);
+   inst->src[0] = elk_imm_ud(0);
    inst->src[2] = ubo_offset; /* payload */
 
    if (alignment >= 4) {
@@ -2627,8 +2627,8 @@ lower_lsc_varying_pull_constant_logical_send(const fs_builder &bld,
          bld.emit(*inst);
 
          /* Offset the source */
-         inst->src[2] = bld.vgrf(BRW_REGISTER_TYPE_UD);
-         bld.ADD(inst->src[2], ubo_offset, brw_imm_ud(c * 4));
+         inst->src[2] = bld.vgrf(ELK_REGISTER_TYPE_UD);
+         bld.ADD(inst->src[2], ubo_offset, elk_imm_ud(c * 4));
 
          /* Offset the destination */
          inst->dst = offset(inst->dst, bld, 1);
@@ -2637,27 +2637,27 @@ lower_lsc_varying_pull_constant_logical_send(const fs_builder &bld,
 }
 
 static void
-lower_varying_pull_constant_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_varying_pull_constant_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
-   const brw_compiler *compiler = bld.shader->compiler;
+   const elk_compiler *compiler = bld.shader->compiler;
 
    if (devinfo->ver >= 7) {
-      fs_reg surface = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE];
-      fs_reg surface_handle = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE_HANDLE];
-      fs_reg offset_B = inst->src[PULL_VARYING_CONSTANT_SRC_OFFSET];
+      elk_fs_reg surface = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE];
+      elk_fs_reg surface_handle = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE_HANDLE];
+      elk_fs_reg offset_B = inst->src[PULL_VARYING_CONSTANT_SRC_OFFSET];
 
       /* We are switching the instruction from an ALU-like instruction to a
        * send-from-grf instruction.  Since sends can't handle strides or
        * source modifiers, we have to make a copy of the offset source.
        */
-      fs_reg ubo_offset = bld.vgrf(BRW_REGISTER_TYPE_UD);
+      elk_fs_reg ubo_offset = bld.vgrf(ELK_REGISTER_TYPE_UD);
       bld.MOV(ubo_offset, offset_B);
 
-      assert(inst->src[PULL_VARYING_CONSTANT_SRC_ALIGNMENT].file == BRW_IMMEDIATE_VALUE);
+      assert(inst->src[PULL_VARYING_CONSTANT_SRC_ALIGNMENT].file == ELK_IMMEDIATE_VALUE);
       unsigned alignment = inst->src[PULL_VARYING_CONSTANT_SRC_ALIGNMENT].ud;
 
-      inst->opcode = SHADER_OPCODE_SEND;
+      inst->opcode = ELK_SHADER_OPCODE_SEND;
       inst->mlen = inst->exec_size / 8;
       inst->resize_sources(3);
 
@@ -2666,17 +2666,17 @@ lower_varying_pull_constant_logical_send(const fs_builder &bld, fs_inst *inst)
 
       if (compiler->indirect_ubos_use_sampler) {
          const unsigned simd_mode =
-            inst->exec_size <= 8 ? BRW_SAMPLER_SIMD_MODE_SIMD8 :
-                                   BRW_SAMPLER_SIMD_MODE_SIMD16;
-         const uint32_t desc = brw_sampler_desc(devinfo, 0, 0,
+            inst->exec_size <= 8 ? ELK_SAMPLER_SIMD_MODE_SIMD8 :
+                                   ELK_SAMPLER_SIMD_MODE_SIMD16;
+         const uint32_t desc = elk_sampler_desc(devinfo, 0, 0,
                                                 GFX5_SAMPLER_MESSAGE_SAMPLE_LD,
                                                 simd_mode, 0);
 
-         inst->sfid = BRW_SFID_SAMPLER;
+         inst->sfid = ELK_SFID_SAMPLER;
          setup_surface_descriptors(bld, inst, desc, surface, surface_handle);
       } else if (alignment >= 4) {
          const uint32_t desc =
-            brw_dp_untyped_surface_rw_desc(devinfo, inst->exec_size,
+            elk_dp_untyped_surface_rw_desc(devinfo, inst->exec_size,
                                            4, /* num_channels */
                                            false   /* write */);
 
@@ -2686,7 +2686,7 @@ lower_varying_pull_constant_logical_send(const fs_builder &bld, fs_inst *inst)
          setup_surface_descriptors(bld, inst, desc, surface, surface_handle);
       } else {
          const uint32_t desc =
-            brw_dp_byte_scattered_rw_desc(devinfo, inst->exec_size,
+            elk_dp_byte_scattered_rw_desc(devinfo, inst->exec_size,
                                           32,     /* bit_size */
                                           false   /* write */);
 
@@ -2708,24 +2708,24 @@ lower_varying_pull_constant_logical_send(const fs_builder &bld, fs_inst *inst)
             bld.emit(*inst);
 
             /* Offset the source */
-            inst->src[2] = bld.vgrf(BRW_REGISTER_TYPE_UD);
-            bld.ADD(inst->src[2], ubo_offset, brw_imm_ud(c * 4));
+            inst->src[2] = bld.vgrf(ELK_REGISTER_TYPE_UD);
+            bld.ADD(inst->src[2], ubo_offset, elk_imm_ud(c * 4));
 
             /* Offset the destination */
             inst->dst = offset(inst->dst, bld, 1);
          }
       }
    } else {
-      fs_reg surface = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE];
-      fs_reg offset = inst->src[PULL_VARYING_CONSTANT_SRC_OFFSET];
+      elk_fs_reg surface = inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE];
+      elk_fs_reg offset = inst->src[PULL_VARYING_CONSTANT_SRC_OFFSET];
       assert(inst->src[PULL_VARYING_CONSTANT_SRC_SURFACE_HANDLE].file == BAD_FILE);
 
-      const fs_reg payload(MRF, FIRST_PULL_LOAD_MRF(devinfo->ver),
-                           BRW_REGISTER_TYPE_UD);
+      const elk_fs_reg payload(MRF, FIRST_PULL_LOAD_MRF(devinfo->ver),
+                           ELK_REGISTER_TYPE_UD);
 
       bld.MOV(byte_offset(payload, REG_SIZE), offset);
 
-      inst->opcode = FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4;
+      inst->opcode = ELK_FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4;
       inst->base_mrf = payload.nr;
       inst->header_size = 1;
       inst->mlen = 1 + inst->exec_size / 8;
@@ -2736,7 +2736,7 @@ lower_varying_pull_constant_logical_send(const fs_builder &bld, fs_inst *inst)
 }
 
 static void
-lower_math_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_math_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
    assert(bld.shader->devinfo->ver < 6);
 
@@ -2753,42 +2753,42 @@ lower_math_logical_send(const fs_builder &bld, fs_inst *inst)
        * "Operand1[7].  For the INT DIV functions, this operand is the
        *  numerator."
        */
-      const bool is_int_div = inst->opcode != SHADER_OPCODE_POW;
-      const fs_reg src0 = is_int_div ? inst->src[1] : inst->src[0];
-      const fs_reg src1 = is_int_div ? inst->src[0] : inst->src[1];
+      const bool is_int_div = inst->opcode != ELK_SHADER_OPCODE_POW;
+      const elk_fs_reg src0 = is_int_div ? inst->src[1] : inst->src[0];
+      const elk_fs_reg src1 = is_int_div ? inst->src[0] : inst->src[1];
 
       inst->resize_sources(1);
       inst->src[0] = src0;
 
       assert(inst->exec_size == 8);
-      bld.MOV(fs_reg(MRF, inst->base_mrf + 1, src1.type), src1);
+      bld.MOV(elk_fs_reg(MRF, inst->base_mrf + 1, src1.type), src1);
    }
 }
 
 static void
-lower_interpolator_logical_send(const fs_builder &bld, fs_inst *inst,
-                                const struct brw_wm_prog_key *wm_prog_key,
-                                const struct brw_wm_prog_data *wm_prog_data)
+lower_interpolator_logical_send(const fs_builder &bld, elk_fs_inst *inst,
+                                const struct elk_wm_prog_key *wm_prog_key,
+                                const struct elk_wm_prog_data *wm_prog_data)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
 
    /* We have to send something */
-   fs_reg payload = brw_vec8_grf(0, 0);
+   elk_fs_reg payload = elk_vec8_grf(0, 0);
    unsigned mlen = 1;
 
    unsigned mode;
    switch (inst->opcode) {
-   case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
+   case ELK_FS_OPCODE_INTERPOLATE_AT_SAMPLE:
       assert(inst->src[INTERP_SRC_OFFSET].file == BAD_FILE);
       mode = GFX7_PIXEL_INTERPOLATOR_LOC_SAMPLE;
       break;
 
-   case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
+   case ELK_FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
       assert(inst->src[INTERP_SRC_OFFSET].file == BAD_FILE);
       mode = GFX7_PIXEL_INTERPOLATOR_LOC_SHARED_OFFSET;
       break;
 
-   case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
+   case ELK_FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
       payload = inst->src[INTERP_SRC_OFFSET];
       mlen = 2 * inst->exec_size / 8;
       mode = GFX7_PIXEL_INTERPOLATOR_LOC_PER_SLOT_OFFSET;
@@ -2801,9 +2801,9 @@ lower_interpolator_logical_send(const fs_builder &bld, fs_inst *inst,
    const bool dynamic_mode =
       inst->src[INTERP_SRC_DYNAMIC_MODE].file != BAD_FILE;
 
-   fs_reg desc = inst->src[INTERP_SRC_MSG_DESC];
+   elk_fs_reg desc = inst->src[INTERP_SRC_MSG_DESC];
    uint32_t desc_imm =
-      brw_pixel_interp_desc(devinfo,
+      elk_pixel_interp_desc(devinfo,
                             /* Leave the mode at 0 if persample_dispatch is
                              * dynamic, it will be ORed in below.
                              */
@@ -2812,15 +2812,15 @@ lower_interpolator_logical_send(const fs_builder &bld, fs_inst *inst,
                             false /* coarse_pixel_rate */,
                             inst->exec_size, inst->group);
 
-   if (wm_prog_data->coarse_pixel_dispatch == BRW_ALWAYS) {
+   if (wm_prog_data->coarse_pixel_dispatch == ELK_ALWAYS) {
       desc_imm |= (1 << 15);
-   } else if (wm_prog_data->coarse_pixel_dispatch == BRW_SOMETIMES) {
+   } else if (wm_prog_data->coarse_pixel_dispatch == ELK_SOMETIMES) {
       STATIC_ASSERT(INTEL_MSAA_FLAG_COARSE_PI_MSG == (1 << 15));
-      fs_reg orig_desc = desc;
+      elk_fs_reg orig_desc = desc;
       const fs_builder &ubld = bld.exec_all().group(8, 0);
-      desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+      desc = ubld.vgrf(ELK_REGISTER_TYPE_UD);
       ubld.AND(desc, dynamic_msaa_flags(wm_prog_data),
-               brw_imm_ud(INTEL_MSAA_FLAG_COARSE_PI_MSG));
+               elk_imm_ud(INTEL_MSAA_FLAG_COARSE_PI_MSG));
 
       /* And, if it's AT_OFFSET, we might have a non-trivial descriptor */
       if (orig_desc.file == IMM) {
@@ -2832,7 +2832,7 @@ lower_interpolator_logical_send(const fs_builder &bld, fs_inst *inst,
 
    /* If persample_dispatch is dynamic, select the interpolation mode
     * dynamically and OR into the descriptor to complete the static part
-    * generated by brw_pixel_interp_desc().
+    * generated by elk_pixel_interp_desc().
     *
     * Why does this work? If you look at the SKL PRMs, Volume 7:
     * 3D-Media-GPGPU, Shared Functions Pixel Interpolater, you'll see that
@@ -2846,11 +2846,11 @@ lower_interpolator_logical_send(const fs_builder &bld, fs_inst *inst,
     * components of "Per Message Offset”, which will give us the pixel offset 0x0.
     */
    if (dynamic_mode) {
-      fs_reg orig_desc = desc;
+      elk_fs_reg orig_desc = desc;
       const fs_builder &ubld = bld.exec_all().group(8, 0);
-      desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+      desc = ubld.vgrf(ELK_REGISTER_TYPE_UD);
 
-      /* The predicate should have been built in brw_fs_nir.cpp when emitting
+      /* The predicate should have been built in elk_fs_nir.cpp when emitting
        * NIR code. This guarantees that we do not have incorrect interactions
        * with the flag register holding the predication result.
        */
@@ -2858,24 +2858,24 @@ lower_interpolator_logical_send(const fs_builder &bld, fs_inst *inst,
          /* Not using SEL here because we would generate an instruction with 2
           * immediate sources which is not supported by HW.
           */
-         set_predicate_inv(BRW_PREDICATE_NORMAL, false,
-                           ubld.MOV(desc, brw_imm_ud(orig_desc.ud |
+         set_predicate_inv(ELK_PREDICATE_NORMAL, false,
+                           ubld.MOV(desc, elk_imm_ud(orig_desc.ud |
                                                      GFX7_PIXEL_INTERPOLATOR_LOC_SAMPLE << 12)));
-         set_predicate_inv(BRW_PREDICATE_NORMAL, true,
-                           ubld.MOV(desc, brw_imm_ud(orig_desc.ud |
+         set_predicate_inv(ELK_PREDICATE_NORMAL, true,
+                           ubld.MOV(desc, elk_imm_ud(orig_desc.ud |
                                                      GFX7_PIXEL_INTERPOLATOR_LOC_SHARED_OFFSET << 12)));
       } else {
-         set_predicate_inv(BRW_PREDICATE_NORMAL, false,
+         set_predicate_inv(ELK_PREDICATE_NORMAL, false,
                            ubld.OR(desc, orig_desc,
-                                   brw_imm_ud(GFX7_PIXEL_INTERPOLATOR_LOC_SAMPLE << 12)));
-         set_predicate_inv(BRW_PREDICATE_NORMAL, true,
+                                   elk_imm_ud(GFX7_PIXEL_INTERPOLATOR_LOC_SAMPLE << 12)));
+         set_predicate_inv(ELK_PREDICATE_NORMAL, true,
                            ubld.OR(desc, orig_desc,
-                                   brw_imm_ud(GFX7_PIXEL_INTERPOLATOR_LOC_SHARED_OFFSET << 12)));
+                                   elk_imm_ud(GFX7_PIXEL_INTERPOLATOR_LOC_SHARED_OFFSET << 12)));
       }
    }
 
    assert(bld.shader->devinfo->ver >= 7);
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->sfid = GFX7_SFID_PIXEL_INTERPOLATOR;
    inst->desc = desc_imm;
    inst->ex_desc = 0;
@@ -2886,25 +2886,25 @@ lower_interpolator_logical_send(const fs_builder &bld, fs_inst *inst,
 
    inst->resize_sources(3);
    inst->src[0] = component(desc, 0);
-   inst->src[1] = brw_imm_ud(0); /* ex_desc */
+   inst->src[1] = elk_imm_ud(0); /* ex_desc */
    inst->src[2] = payload;
 }
 
 static void
-lower_get_buffer_size(const fs_builder &bld, fs_inst *inst)
+lower_get_buffer_size(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
    assert(devinfo->ver >= 7);
    /* Since we can only execute this instruction on uniform bti/surface
-    * handles, brw_fs_nir.cpp should already have limited this to SIMD8.
+    * handles, elk_fs_nir.cpp should already have limited this to SIMD8.
     */
    assert(inst->exec_size == (devinfo->ver < 20 ? 8 : 16));
 
-   fs_reg surface = inst->src[GET_BUFFER_SIZE_SRC_SURFACE];
-   fs_reg surface_handle = inst->src[GET_BUFFER_SIZE_SRC_SURFACE_HANDLE];
-   fs_reg lod = inst->src[GET_BUFFER_SIZE_SRC_LOD];
+   elk_fs_reg surface = inst->src[GET_BUFFER_SIZE_SRC_SURFACE];
+   elk_fs_reg surface_handle = inst->src[GET_BUFFER_SIZE_SRC_SURFACE_HANDLE];
+   elk_fs_reg lod = inst->src[GET_BUFFER_SIZE_SRC_LOD];
 
-   inst->opcode = SHADER_OPCODE_SEND;
+   inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = inst->exec_size / 8;
    inst->resize_sources(3);
    inst->ex_mlen = 0;
@@ -2914,124 +2914,124 @@ lower_get_buffer_size(const fs_builder &bld, fs_inst *inst)
    inst->src[2] = lod;
 
    const uint32_t return_format = devinfo->ver >= 8 ?
-      GFX8_SAMPLER_RETURN_FORMAT_32BITS : BRW_SAMPLER_RETURN_FORMAT_SINT32;
+      GFX8_SAMPLER_RETURN_FORMAT_32BITS : ELK_SAMPLER_RETURN_FORMAT_SINT32;
 
-   const uint32_t desc = brw_sampler_desc(devinfo, 0, 0,
+   const uint32_t desc = elk_sampler_desc(devinfo, 0, 0,
                                           GFX5_SAMPLER_MESSAGE_SAMPLE_RESINFO,
-                                          BRW_SAMPLER_SIMD_MODE_SIMD8,
+                                          ELK_SAMPLER_SIMD_MODE_SIMD8,
                                           return_format);
 
-   inst->dst = retype(inst->dst, BRW_REGISTER_TYPE_UW);
-   inst->sfid = BRW_SFID_SAMPLER;
+   inst->dst = retype(inst->dst, ELK_REGISTER_TYPE_UW);
+   inst->sfid = ELK_SFID_SAMPLER;
    setup_surface_descriptors(bld, inst, desc, surface, surface_handle);
 }
 
 bool
-fs_visitor::lower_logical_sends()
+elk_fs_visitor::lower_logical_sends()
 {
    bool progress = false;
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe(block, elk_fs_inst, inst, cfg) {
       const fs_builder ibld(this, block, inst);
 
       switch (inst->opcode) {
-      case FS_OPCODE_FB_WRITE_LOGICAL:
+      case ELK_FS_OPCODE_FB_WRITE_LOGICAL:
          assert(stage == MESA_SHADER_FRAGMENT);
          lower_fb_write_logical_send(ibld, inst,
-                                     brw_wm_prog_data(prog_data),
-                                     (const brw_wm_prog_key *)key,
+                                     elk_wm_prog_data(prog_data),
+                                     (const elk_wm_prog_key *)key,
                                      fs_payload());
          break;
 
-      case FS_OPCODE_FB_READ_LOGICAL:
+      case ELK_FS_OPCODE_FB_READ_LOGICAL:
          lower_fb_read_logical_send(ibld, inst);
          break;
 
-      case SHADER_OPCODE_TEX_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TEX);
+      case ELK_SHADER_OPCODE_TEX_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TEX);
          break;
 
-      case SHADER_OPCODE_TXD_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXD);
+      case ELK_SHADER_OPCODE_TXD_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TXD);
          break;
 
-      case SHADER_OPCODE_TXF_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXF);
+      case ELK_SHADER_OPCODE_TXF_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TXF);
          break;
 
-      case SHADER_OPCODE_TXL_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXL);
+      case ELK_SHADER_OPCODE_TXL_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TXL);
          break;
 
-      case SHADER_OPCODE_TXS_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXS);
+      case ELK_SHADER_OPCODE_TXS_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TXS);
          break;
 
-      case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
+      case ELK_SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
          lower_sampler_logical_send(ibld, inst,
-                                    SHADER_OPCODE_IMAGE_SIZE_LOGICAL);
+                                    ELK_SHADER_OPCODE_IMAGE_SIZE_LOGICAL);
          break;
 
-      case FS_OPCODE_TXB_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, FS_OPCODE_TXB);
+      case ELK_FS_OPCODE_TXB_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_FS_OPCODE_TXB);
          break;
 
-      case SHADER_OPCODE_TXF_CMS_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXF_CMS);
+      case ELK_SHADER_OPCODE_TXF_CMS_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TXF_CMS);
          break;
 
-      case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
-      case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXF_CMS_W);
+      case ELK_SHADER_OPCODE_TXF_CMS_W_LOGICAL:
+      case ELK_SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TXF_CMS_W);
          break;
 
-      case SHADER_OPCODE_TXF_UMS_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXF_UMS);
+      case ELK_SHADER_OPCODE_TXF_UMS_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TXF_UMS);
          break;
 
-      case SHADER_OPCODE_TXF_MCS_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXF_MCS);
+      case ELK_SHADER_OPCODE_TXF_MCS_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TXF_MCS);
          break;
 
-      case SHADER_OPCODE_LOD_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_LOD);
+      case ELK_SHADER_OPCODE_LOD_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_LOD);
          break;
 
-      case SHADER_OPCODE_TG4_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TG4);
+      case ELK_SHADER_OPCODE_TG4_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TG4);
          break;
 
-      case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TG4_OFFSET);
+      case ELK_SHADER_OPCODE_TG4_OFFSET_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_TG4_OFFSET);
          break;
 
-      case SHADER_OPCODE_SAMPLEINFO_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_SAMPLEINFO);
+      case ELK_SHADER_OPCODE_SAMPLEINFO_LOGICAL:
+         lower_sampler_logical_send(ibld, inst, ELK_SHADER_OPCODE_SAMPLEINFO);
          break;
 
-      case SHADER_OPCODE_GET_BUFFER_SIZE:
+      case ELK_SHADER_OPCODE_GET_BUFFER_SIZE:
          lower_get_buffer_size(ibld, inst);
          break;
 
-      case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
-      case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
-      case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
-      case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
-      case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
+      case ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
+      case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
+      case ELK_SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
          if (devinfo->has_lsc) {
             lower_lsc_surface_logical_send(ibld, inst);
             break;
          }
-      case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
-      case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
-      case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
-      case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
-      case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
+      case ELK_SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
+      case ELK_SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
+      case ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
          lower_surface_logical_send(ibld, inst);
          break;
 
-      case SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
-      case SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL:
+      case ELK_SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL:
          if (devinfo->has_lsc) {
             lower_lsc_block_logical_send(ibld, inst);
             break;
@@ -3039,14 +3039,14 @@ fs_visitor::lower_logical_sends()
          lower_surface_block_logical_send(ibld, inst);
          break;
 
-      case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
-      case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
-      case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
-      case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
-      case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
-      case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
-      case SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
-      case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
+      case ELK_SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
+      case ELK_SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
+      case ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
+      case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
          if (devinfo->has_lsc) {
             lower_lsc_a64_logical_send(ibld, inst);
             break;
@@ -3054,23 +3054,23 @@ fs_visitor::lower_logical_sends()
          lower_a64_logical_send(ibld, inst);
          break;
 
-      case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
+      case ELK_FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
          if (devinfo->has_lsc && !compiler->indirect_ubos_use_sampler)
             lower_lsc_varying_pull_constant_logical_send(ibld, inst);
          else
             lower_varying_pull_constant_logical_send(ibld, inst);
          break;
 
-      case SHADER_OPCODE_RCP:
-      case SHADER_OPCODE_RSQ:
-      case SHADER_OPCODE_SQRT:
-      case SHADER_OPCODE_EXP2:
-      case SHADER_OPCODE_LOG2:
-      case SHADER_OPCODE_SIN:
-      case SHADER_OPCODE_COS:
-      case SHADER_OPCODE_POW:
-      case SHADER_OPCODE_INT_QUOTIENT:
-      case SHADER_OPCODE_INT_REMAINDER:
+      case ELK_SHADER_OPCODE_RCP:
+      case ELK_SHADER_OPCODE_RSQ:
+      case ELK_SHADER_OPCODE_SQRT:
+      case ELK_SHADER_OPCODE_EXP2:
+      case ELK_SHADER_OPCODE_LOG2:
+      case ELK_SHADER_OPCODE_SIN:
+      case ELK_SHADER_OPCODE_COS:
+      case ELK_SHADER_OPCODE_POW:
+      case ELK_SHADER_OPCODE_INT_QUOTIENT:
+      case ELK_SHADER_OPCODE_INT_REMAINDER:
          /* The math opcodes are overloaded for the send-like and
           * expression-like instructions which seems kind of icky.  Gfx6+ has
           * a native (but rather quirky) MATH instruction so we don't need to
@@ -3086,22 +3086,22 @@ fs_visitor::lower_logical_sends()
             continue;
          }
 
-      case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
-      case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
-      case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
+      case ELK_FS_OPCODE_INTERPOLATE_AT_SAMPLE:
+      case ELK_FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
+      case ELK_FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
          lower_interpolator_logical_send(ibld, inst,
-                                         (const brw_wm_prog_key *)key,
-                                         brw_wm_prog_data(prog_data));
+                                         (const elk_wm_prog_key *)key,
+                                         elk_wm_prog_data(prog_data));
          break;
 
-      case SHADER_OPCODE_URB_READ_LOGICAL:
+      case ELK_SHADER_OPCODE_URB_READ_LOGICAL:
          if (devinfo->ver < 20)
             lower_urb_read_logical_send(ibld, inst);
          else
             lower_urb_read_logical_send_xe2(ibld, inst);
          break;
 
-      case SHADER_OPCODE_URB_WRITE_LOGICAL:
+      case ELK_SHADER_OPCODE_URB_WRITE_LOGICAL:
          if (devinfo->ver < 20)
             lower_urb_write_logical_send(ibld, inst);
          else
@@ -3139,18 +3139,18 @@ fs_visitor::lower_logical_sends()
  * source operand for all 8 or 16 of its channels.
  */
 bool
-fs_visitor::lower_uniform_pull_constant_loads()
+elk_fs_visitor::lower_uniform_pull_constant_loads()
 {
    bool progress = false;
 
-   foreach_block_and_inst (block, fs_inst, inst, cfg) {
-      if (inst->opcode != FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD)
+   foreach_block_and_inst (block, elk_fs_inst, inst, cfg) {
+      if (inst->opcode != ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD)
          continue;
 
-      const fs_reg surface = inst->src[PULL_UNIFORM_CONSTANT_SRC_SURFACE];
-      const fs_reg surface_handle = inst->src[PULL_UNIFORM_CONSTANT_SRC_SURFACE_HANDLE];
-      const fs_reg offset_B = inst->src[PULL_UNIFORM_CONSTANT_SRC_OFFSET];
-      const fs_reg size_B = inst->src[PULL_UNIFORM_CONSTANT_SRC_SIZE];
+      const elk_fs_reg surface = inst->src[PULL_UNIFORM_CONSTANT_SRC_SURFACE];
+      const elk_fs_reg surface_handle = inst->src[PULL_UNIFORM_CONSTANT_SRC_SURFACE_HANDLE];
+      const elk_fs_reg offset_B = inst->src[PULL_UNIFORM_CONSTANT_SRC_OFFSET];
+      const elk_fs_reg size_B = inst->src[PULL_UNIFORM_CONSTANT_SRC_SIZE];
       assert(surface.file == BAD_FILE || surface_handle.file == BAD_FILE);
       assert(offset_B.file == IMM);
       assert(size_B.file == IMM);
@@ -3159,7 +3159,7 @@ fs_visitor::lower_uniform_pull_constant_loads()
          const fs_builder ubld =
             fs_builder(this, block, inst).group(8, 0).exec_all();
 
-         const fs_reg payload = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+         const elk_fs_reg payload = ubld.vgrf(ELK_REGISTER_TYPE_UD);
          ubld.MOV(payload, offset_B);
 
          inst->sfid = GFX12_SFID_UGM;
@@ -3177,7 +3177,7 @@ fs_visitor::lower_uniform_pull_constant_loads()
                                    true /* has_dest */);
 
          /* Update the original instruction. */
-         inst->opcode = SHADER_OPCODE_SEND;
+         inst->opcode = ELK_SHADER_OPCODE_SEND;
          inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
          inst->send_ex_bso = surface_handle.file != BAD_FILE &&
                              compiler->extended_bindless_surface_offset;
@@ -3198,20 +3198,20 @@ fs_visitor::lower_uniform_pull_constant_loads()
          invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
       } else if (devinfo->ver >= 7) {
          const fs_builder ubld = fs_builder(this, block, inst).exec_all();
-         fs_reg header = fs_builder(this, 8).exec_all().vgrf(BRW_REGISTER_TYPE_UD);
+         elk_fs_reg header = fs_builder(this, 8).exec_all().vgrf(ELK_REGISTER_TYPE_UD);
 
          ubld.group(8, 0).MOV(header,
-                              retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD));
+                              retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD));
          ubld.group(1, 0).MOV(component(header, 2),
-                              brw_imm_ud(offset_B.ud / 16));
+                              elk_imm_ud(offset_B.ud / 16));
 
          inst->sfid = GFX6_SFID_DATAPORT_CONSTANT_CACHE;
-         inst->opcode = SHADER_OPCODE_SEND;
+         inst->opcode = ELK_SHADER_OPCODE_SEND;
          inst->header_size = 1;
          inst->mlen = 1;
 
          uint32_t desc =
-            brw_dp_oword_block_rw_desc(devinfo, true /* align_16B */,
+            elk_dp_oword_block_rw_desc(devinfo, true /* align_16B */,
                                        size_B.ud / 4, false /* write */);
 
          inst->resize_sources(4);
@@ -3219,7 +3219,7 @@ fs_visitor::lower_uniform_pull_constant_loads()
          setup_surface_descriptors(ubld, inst, desc, surface, surface_handle);
 
          inst->src[2] = header;
-         inst->src[3] = fs_reg(); /* unused for reads */
+         inst->src[3] = elk_fs_reg(); /* unused for reads */
 
          invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
       } else {

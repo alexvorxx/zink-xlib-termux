@@ -32,8 +32,8 @@
 #include "elk_ir_fs.h"
 #include "util/bitset.h"
 
-struct cfg_t;
-struct backend_shader;
+struct elk_cfg_t;
+struct elk_backend_shader;
 
 namespace elk {
 
@@ -77,10 +77,10 @@ public:
       BITSET_WORD flag_liveout[1];
    };
 
-   fs_live_variables(const backend_shader *s);
+   fs_live_variables(const elk_backend_shader *s);
    ~fs_live_variables();
 
-   bool validate(const backend_shader *s) const;
+   bool validate(const elk_backend_shader *s) const;
 
    analysis_dependency_class
    dependency_class() const
@@ -92,7 +92,7 @@ public:
 
    bool vars_interfere(int a, int b) const;
    bool vgrfs_interfere(int a, int b) const;
-   int var_from_reg(const fs_reg &reg) const
+   int var_from_reg(const elk_fs_reg &reg) const
    {
       return var_from_vgrf[reg.nr] + reg.offset / REG_SIZE;
    }
@@ -132,14 +132,14 @@ public:
 
 protected:
    void setup_def_use();
-   void setup_one_read(struct block_data *bd, int ip, const fs_reg &reg);
-   void setup_one_write(struct block_data *bd, fs_inst *inst, int ip,
-                        const fs_reg &reg);
+   void setup_one_read(struct block_data *bd, int ip, const elk_fs_reg &reg);
+   void setup_one_write(struct block_data *bd, elk_fs_inst *inst, int ip,
+                        const elk_fs_reg &reg);
    void compute_live_variables();
    void compute_start_end();
 
    const struct intel_device_info *devinfo;
-   const cfg_t *cfg;
+   const elk_cfg_t *cfg;
    void *mem_ctx;
 };
 

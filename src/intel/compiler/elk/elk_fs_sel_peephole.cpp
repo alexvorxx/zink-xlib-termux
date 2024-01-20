@@ -44,7 +44,7 @@ using namespace elk;
  * Scans forwards from an IF counting consecutive MOV instructions in the
  * "then" and "else" blocks of the if statement.
  *
- * A pointer to the bblock_t following the IF is passed as the <then_block>
+ * A pointer to the elk_bblock_t following the IF is passed as the <then_block>
  * argument. The function stores pointers to the MOV instructions in the
  * <then_mov> and <else_mov> arrays.
  *
@@ -65,12 +65,12 @@ using namespace elk;
  */
 static int
 count_movs_from_if(const intel_device_info *devinfo,
-                   fs_inst *then_mov[MAX_MOVS], fs_inst *else_mov[MAX_MOVS],
-                   bblock_t *then_block, bblock_t *else_block)
+                   elk_fs_inst *then_mov[MAX_MOVS], elk_fs_inst *else_mov[MAX_MOVS],
+                   elk_bblock_t *then_block, elk_bblock_t *else_block)
 {
    int then_movs = 0;
-   foreach_inst_in_block(fs_inst, inst, then_block) {
-      if (then_movs == MAX_MOVS || inst->opcode != BRW_OPCODE_MOV ||
+   foreach_inst_in_block(elk_fs_inst, inst, then_block) {
+      if (then_movs == MAX_MOVS || inst->opcode != ELK_OPCODE_MOV ||
           inst->flags_written(devinfo))
          break;
 
@@ -79,8 +79,8 @@ count_movs_from_if(const intel_device_info *devinfo,
    }
 
    int else_movs = 0;
-   foreach_inst_in_block(fs_inst, inst, else_block) {
-      if (else_movs == MAX_MOVS || inst->opcode != BRW_OPCODE_MOV ||
+   foreach_inst_in_block(elk_fs_inst, inst, else_block) {
+      if (else_movs == MAX_MOVS || inst->opcode != ELK_OPCODE_MOV ||
           inst->flags_written(devinfo))
          break;
 
@@ -126,7 +126,7 @@ count_movs_from_if(const intel_device_info *devinfo,
  * If src0 is an immediate value, we promote it to a temporary GRF.
  */
 bool
-fs_visitor::opt_peephole_sel()
+elk_fs_visitor::opt_peephole_sel()
 {
    bool progress = false;
 
@@ -134,18 +134,18 @@ fs_visitor::opt_peephole_sel()
       /* IF instructions, by definition, can only be found at the ends of
        * basic blocks.
        */
-      fs_inst *if_inst = (fs_inst *)block->end();
-      if (if_inst->opcode != BRW_OPCODE_IF)
+      elk_fs_inst *if_inst = (elk_fs_inst *)block->end();
+      if (if_inst->opcode != ELK_OPCODE_IF)
          continue;
 
-      fs_inst *else_mov[MAX_MOVS] = { NULL };
-      fs_inst *then_mov[MAX_MOVS] = { NULL };
+      elk_fs_inst *else_mov[MAX_MOVS] = { NULL };
+      elk_fs_inst *then_mov[MAX_MOVS] = { NULL };
 
-      bblock_t *then_block = block->next();
-      bblock_t *else_block = NULL;
-      foreach_list_typed(bblock_link, child, link, &block->children) {
+      elk_bblock_t *then_block = block->next();
+      elk_bblock_t *else_block = NULL;
+      foreach_list_typed(elk_bblock_link, child, link, &block->children) {
          if (child->block != then_block) {
-            if (child->block->prev()->end()->opcode == BRW_OPCODE_ELSE) {
+            if (child->block->prev()->end()->opcode == ELK_OPCODE_ELSE) {
                else_block = child->block;
             }
             break;
@@ -171,8 +171,8 @@ fs_visitor::opt_peephole_sel()
              then_mov[i]->force_writemask_all != else_mov[i]->force_writemask_all ||
              then_mov[i]->is_partial_write() ||
              else_mov[i]->is_partial_write() ||
-             then_mov[i]->conditional_mod != BRW_CONDITIONAL_NONE ||
-             else_mov[i]->conditional_mod != BRW_CONDITIONAL_NONE) {
+             then_mov[i]->conditional_mod != ELK_CONDITIONAL_NONE ||
+             else_mov[i]->conditional_mod != ELK_CONDITIONAL_NONE) {
             movs = i;
             break;
          }
@@ -198,14 +198,14 @@ fs_visitor::opt_peephole_sel()
              * in the "then" clause uses a constant, we need to put it in a
              * temporary.
              */
-            fs_reg src0(then_mov[i]->src[0]);
+            elk_fs_reg src0(then_mov[i]->src[0]);
             if (src0.file == IMM) {
                src0 = ibld.vgrf(then_mov[i]->src[0].type);
                ibld.MOV(src0, then_mov[i]->src[0]);
             }
 
             /* 64-bit immediates can't be placed in src1. */
-            fs_reg src1(else_mov[i]->src[0]);
+            elk_fs_reg src1(else_mov[i]->src[0]);
             if (src1.file == IMM && type_sz(src1.type) == 8) {
                src1 = ibld.vgrf(else_mov[i]->src[0].type);
                ibld.MOV(src1, else_mov[i]->src[0]);

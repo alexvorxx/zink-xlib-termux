@@ -42,19 +42,19 @@ namespace elk {
    class fs_builder {
    public:
       /** Type used in this IR to represent a source of an instruction. */
-      typedef fs_reg src_reg;
+      typedef elk_fs_reg src_reg;
 
       /** Type used in this IR to represent the destination of an instruction. */
-      typedef fs_reg dst_reg;
+      typedef elk_fs_reg dst_reg;
 
       /** Type used in this IR to represent an instruction. */
-      typedef fs_inst instruction;
+      typedef elk_fs_inst instruction;
 
       /**
        * Construct an fs_builder that inserts instructions into \p shader.
        * \p dispatch_width gives the native execution width of the program.
        */
-      fs_builder(fs_visitor *shader,
+      fs_builder(elk_fs_visitor *shader,
                  unsigned dispatch_width) :
          shader(shader), block(NULL), cursor(NULL),
          _dispatch_width(dispatch_width),
@@ -64,7 +64,7 @@ namespace elk {
       {
       }
 
-      explicit fs_builder(fs_visitor *s) : fs_builder(s, s->dispatch_width) {}
+      explicit fs_builder(elk_fs_visitor *s) : fs_builder(s, s->dispatch_width) {}
 
       /**
        * Construct an fs_builder that inserts instructions into \p shader
@@ -72,7 +72,7 @@ namespace elk {
        * execution controls and debug annotation are initialized from the
        * instruction passed as argument.
        */
-      fs_builder(fs_visitor *shader, bblock_t *block, fs_inst *inst) :
+      fs_builder(elk_fs_visitor *shader, elk_bblock_t *block, elk_fs_inst *inst) :
          shader(shader), block(block), cursor(inst),
          _dispatch_width(inst->exec_size),
          _group(inst->group),
@@ -88,7 +88,7 @@ namespace elk {
        * from this.
        */
       fs_builder
-      at(bblock_t *block, exec_node *cursor) const
+      at(elk_bblock_t *block, exec_node *cursor) const
       {
          fs_builder bld = *this;
          bld.block = block;
@@ -200,7 +200,7 @@ namespace elk {
        * component in this IR).
        */
       dst_reg
-      vgrf(enum brw_reg_type type, unsigned n = 1) const
+      vgrf(enum elk_reg_type type, unsigned n = 1) const
       {
          const unsigned unit = reg_unit(shader->devinfo);
          assert(dispatch_width() <= 32);
@@ -220,13 +220,13 @@ namespace elk {
       dst_reg
       null_reg_f() const
       {
-         return dst_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_F));
+         return dst_reg(retype(elk_null_reg(), ELK_REGISTER_TYPE_F));
       }
 
       dst_reg
       null_reg_df() const
       {
-         return dst_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_DF));
+         return dst_reg(retype(elk_null_reg(), ELK_REGISTER_TYPE_DF));
       }
 
       /**
@@ -235,7 +235,7 @@ namespace elk {
       dst_reg
       null_reg_d() const
       {
-         return dst_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_D));
+         return dst_reg(retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
       }
 
       /**
@@ -244,7 +244,7 @@ namespace elk {
       dst_reg
       null_reg_ud() const
       {
-         return dst_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_UD));
+         return dst_reg(retype(elk_null_reg(), ELK_REGISTER_TYPE_UD));
       }
 
       /**
@@ -260,7 +260,7 @@ namespace elk {
        * Create and insert a nullary control instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode) const
+      emit(enum elk_opcode opcode) const
       {
          return emit(instruction(opcode, dispatch_width()));
       }
@@ -269,7 +269,7 @@ namespace elk {
        * Create and insert a nullary instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode, const dst_reg &dst) const
+      emit(enum elk_opcode opcode, const dst_reg &dst) const
       {
          return emit(instruction(opcode, dispatch_width(), dst));
       }
@@ -278,16 +278,16 @@ namespace elk {
        * Create and insert a unary instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0) const
+      emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0) const
       {
          switch (opcode) {
-         case SHADER_OPCODE_RCP:
-         case SHADER_OPCODE_RSQ:
-         case SHADER_OPCODE_SQRT:
-         case SHADER_OPCODE_EXP2:
-         case SHADER_OPCODE_LOG2:
-         case SHADER_OPCODE_SIN:
-         case SHADER_OPCODE_COS:
+         case ELK_SHADER_OPCODE_RCP:
+         case ELK_SHADER_OPCODE_RSQ:
+         case ELK_SHADER_OPCODE_SQRT:
+         case ELK_SHADER_OPCODE_EXP2:
+         case ELK_SHADER_OPCODE_LOG2:
+         case ELK_SHADER_OPCODE_SIN:
+         case ELK_SHADER_OPCODE_COS:
             return emit(instruction(opcode, dispatch_width(), dst,
                                     fix_math_operand(src0)));
 
@@ -300,13 +300,13 @@ namespace elk {
        * Create and insert a binary instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0,
+      emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0,
            const src_reg &src1) const
       {
          switch (opcode) {
-         case SHADER_OPCODE_POW:
-         case SHADER_OPCODE_INT_QUOTIENT:
-         case SHADER_OPCODE_INT_REMAINDER:
+         case ELK_SHADER_OPCODE_POW:
+         case ELK_SHADER_OPCODE_INT_QUOTIENT:
+         case ELK_SHADER_OPCODE_INT_REMAINDER:
             return emit(instruction(opcode, dispatch_width(), dst,
                                     fix_math_operand(src0),
                                     fix_math_operand(src1)));
@@ -322,14 +322,14 @@ namespace elk {
        * Create and insert a ternary instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0,
+      emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0,
            const src_reg &src1, const src_reg &src2) const
       {
          switch (opcode) {
-         case BRW_OPCODE_BFE:
-         case BRW_OPCODE_BFI2:
-         case BRW_OPCODE_MAD:
-         case BRW_OPCODE_LRP:
+         case ELK_OPCODE_BFE:
+         case ELK_OPCODE_BFI2:
+         case ELK_OPCODE_MAD:
+         case ELK_OPCODE_LRP:
             return emit(instruction(opcode, dispatch_width(), dst,
                                     fix_3src_operand(src0),
                                     fix_3src_operand(src1),
@@ -346,7 +346,7 @@ namespace elk {
        * into the program.
        */
       instruction *
-      emit(enum opcode opcode, const dst_reg &dst, const src_reg srcs[],
+      emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg srcs[],
            unsigned n) const
       {
          /* Use the emit() methods for specific operand counts to ensure that
@@ -392,9 +392,9 @@ namespace elk {
        */
       instruction *
       emit_minmax(const dst_reg &dst, const src_reg &src0,
-                  const src_reg &src1, brw_conditional_mod mod) const
+                  const src_reg &src1, elk_conditional_mod mod) const
       {
-         assert(mod == BRW_CONDITIONAL_GE || mod == BRW_CONDITIONAL_L);
+         assert(mod == ELK_CONDITIONAL_GE || mod == ELK_CONDITIONAL_L);
 
          /* In some cases we can't have bytes as operand for src1, so use the
           * same type for both operand.
@@ -417,11 +417,11 @@ namespace elk {
           * should go back to scalar destinations here.
           */
          const fs_builder ubld = exec_all();
-         const dst_reg chan_index = vgrf(BRW_REGISTER_TYPE_UD);
+         const dst_reg chan_index = vgrf(ELK_REGISTER_TYPE_UD);
          const dst_reg dst = vgrf(src.type);
 
-         ubld.emit(SHADER_OPCODE_FIND_LIVE_CHANNEL, chan_index);
-         ubld.emit(SHADER_OPCODE_BROADCAST, dst, src, component(chan_index, 0));
+         ubld.emit(ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL, chan_index);
+         ubld.emit(ELK_SHADER_OPCODE_BROADCAST, dst, src, component(chan_index, 0));
 
          return src_reg(component(dst, 0));
       }
@@ -442,7 +442,7 @@ namespace elk {
       }
 
       void
-      emit_scan_step(enum opcode opcode, brw_conditional_mod mod,
+      emit_scan_step(enum elk_opcode opcode, elk_conditional_mod mod,
                      const dst_reg &tmp,
                      unsigned left_offset, unsigned left_stride,
                      unsigned right_offset, unsigned right_stride) const
@@ -450,31 +450,31 @@ namespace elk {
          dst_reg left, right;
          left = horiz_stride(horiz_offset(tmp, left_offset), left_stride);
          right = horiz_stride(horiz_offset(tmp, right_offset), right_stride);
-         if ((tmp.type == BRW_REGISTER_TYPE_Q ||
-              tmp.type == BRW_REGISTER_TYPE_UQ) &&
+         if ((tmp.type == ELK_REGISTER_TYPE_Q ||
+              tmp.type == ELK_REGISTER_TYPE_UQ) &&
              !shader->devinfo->has_64bit_int) {
             switch (opcode) {
-            case BRW_OPCODE_MUL:
+            case ELK_OPCODE_MUL:
                /* This will get lowered by integer MUL lowering */
                set_condmod(mod, emit(opcode, right, left, right));
                break;
 
-            case BRW_OPCODE_SEL: {
+            case ELK_OPCODE_SEL: {
                /* In order for the comparisons to work out right, we need our
                 * comparisons to be strict.
                 */
-               assert(mod == BRW_CONDITIONAL_L || mod == BRW_CONDITIONAL_GE);
-               if (mod == BRW_CONDITIONAL_GE)
-                  mod = BRW_CONDITIONAL_G;
+               assert(mod == ELK_CONDITIONAL_L || mod == ELK_CONDITIONAL_GE);
+               if (mod == ELK_CONDITIONAL_GE)
+                  mod = ELK_CONDITIONAL_G;
 
                /* We treat the bottom 32 bits as unsigned regardless of
                 * whether or not the integer as a whole is signed.
                 */
-               dst_reg right_low = subscript(right, BRW_REGISTER_TYPE_UD, 0);
-               dst_reg left_low = subscript(left, BRW_REGISTER_TYPE_UD, 0);
+               dst_reg right_low = subscript(right, ELK_REGISTER_TYPE_UD, 0);
+               dst_reg left_low = subscript(left, ELK_REGISTER_TYPE_UD, 0);
 
                /* The upper bits get the same sign as the 64-bit type */
-               brw_reg_type type32 = brw_reg_type_from_bit_size(32, tmp.type);
+               elk_reg_type type32 = elk_reg_type_from_bit_size(32, tmp.type);
                dst_reg right_high = subscript(right, type32, 1);
                dst_reg left_high = subscript(left, type32, 1);
 
@@ -482,20 +482,20 @@ namespace elk {
                 *
                 *   l_hi < r_hi || (l_hi == r_hi && l_low < r_low)
                 */
-               CMP(null_reg_ud(), retype(left_low, BRW_REGISTER_TYPE_UD),
-                                  retype(right_low, BRW_REGISTER_TYPE_UD), mod);
-               set_predicate(BRW_PREDICATE_NORMAL,
+               CMP(null_reg_ud(), retype(left_low, ELK_REGISTER_TYPE_UD),
+                                  retype(right_low, ELK_REGISTER_TYPE_UD), mod);
+               set_predicate(ELK_PREDICATE_NORMAL,
                              CMP(null_reg_ud(), left_high, right_high,
-                                 BRW_CONDITIONAL_EQ));
-               set_predicate_inv(BRW_PREDICATE_NORMAL, true,
+                                 ELK_CONDITIONAL_EQ));
+               set_predicate_inv(ELK_PREDICATE_NORMAL, true,
                                  CMP(null_reg_ud(), left_high, right_high, mod));
 
                /* We could use selects here or we could use predicated MOVs
                 * because the destination and second source (if it were a SEL)
                 * are the same.
                 */
-               set_predicate(BRW_PREDICATE_NORMAL, MOV(right_low, left_low));
-               set_predicate(BRW_PREDICATE_NORMAL, MOV(right_high, left_high));
+               set_predicate(ELK_PREDICATE_NORMAL, MOV(right_low, left_low));
+               set_predicate(ELK_PREDICATE_NORMAL, MOV(right_high, left_high));
                break;
             }
 
@@ -508,8 +508,8 @@ namespace elk {
       }
 
       void
-      emit_scan(enum opcode opcode, const dst_reg &tmp,
-                unsigned cluster_size, brw_conditional_mod mod) const
+      emit_scan(enum elk_opcode opcode, const dst_reg &tmp,
+                unsigned cluster_size, elk_conditional_mod mod) const
       {
          assert(dispatch_width() >= 8);
 
@@ -574,8 +574,8 @@ namespace elk {
       emit_undef_for_dst(const instruction *old_inst) const
       {
          assert(old_inst->dst.file == VGRF);
-         instruction *inst = emit(SHADER_OPCODE_UNDEF,
-                                  retype(old_inst->dst, BRW_REGISTER_TYPE_UD));
+         instruction *inst = emit(ELK_SHADER_OPCODE_UNDEF,
+                                  retype(old_inst->dst, ELK_REGISTER_TYPE_UD));
          inst->size_written = old_inst->size_written;
 
          return inst;
@@ -589,21 +589,21 @@ namespace elk {
       instruction *                                     \
       op(const dst_reg &dst, const src_reg &src0) const \
       {                                                 \
-         return emit(BRW_OPCODE_##op, dst, src0);       \
+         return emit(ELK_OPCODE_##op, dst, src0);       \
       }
 
 #define ALU2(op)                                                        \
       instruction *                                                     \
       op(const dst_reg &dst, const src_reg &src0, const src_reg &src1) const \
       {                                                                 \
-         return emit(BRW_OPCODE_##op, dst, src0, src1);                 \
+         return emit(ELK_OPCODE_##op, dst, src0, src1);                 \
       }
 
 #define ALU2_ACC(op)                                                    \
       instruction *                                                     \
       op(const dst_reg &dst, const src_reg &src0, const src_reg &src1) const \
       {                                                                 \
-         instruction *inst = emit(BRW_OPCODE_##op, dst, src0, src1);    \
+         instruction *inst = emit(ELK_OPCODE_##op, dst, src0, src1);    \
          inst->writes_accumulator = true;                               \
          return inst;                                                   \
       }
@@ -613,7 +613,7 @@ namespace elk {
       op(const dst_reg &dst, const src_reg &src0, const src_reg &src1,  \
          const src_reg &src2) const                                     \
       {                                                                 \
-         return emit(BRW_OPCODE_##op, dst, src0, src1, src2);           \
+         return emit(ELK_OPCODE_##op, dst, src0, src1, src2);           \
       }
 
       ALU2(ADD)
@@ -668,30 +668,30 @@ namespace elk {
       instruction *
       F32TO16(const dst_reg &dst, const src_reg &src) const
       {
-         assert(dst.type == BRW_REGISTER_TYPE_HF);
-         assert(src.type == BRW_REGISTER_TYPE_F);
+         assert(dst.type == ELK_REGISTER_TYPE_HF);
+         assert(src.type == ELK_REGISTER_TYPE_F);
 
          if (shader->devinfo->ver >= 8) {
             return MOV(dst, src);
          } else {
             assert(shader->devinfo->ver == 7);
-            return emit(BRW_OPCODE_F32TO16,
-                        retype(dst, BRW_REGISTER_TYPE_W), src);
+            return emit(ELK_OPCODE_F32TO16,
+                        retype(dst, ELK_REGISTER_TYPE_W), src);
          }
       }
 
       instruction *
       F16TO32(const dst_reg &dst, const src_reg &src) const
       {
-         assert(dst.type == BRW_REGISTER_TYPE_F);
-         assert(src.type == BRW_REGISTER_TYPE_HF);
+         assert(dst.type == ELK_REGISTER_TYPE_F);
+         assert(src.type == ELK_REGISTER_TYPE_HF);
 
          if (shader->devinfo->ver >= 8) {
             return MOV(dst, src);
          } else {
             assert(shader->devinfo->ver == 7);
-            return emit(BRW_OPCODE_F16TO32,
-                        dst, retype(src, BRW_REGISTER_TYPE_W));
+            return emit(ELK_OPCODE_F16TO32,
+                        dst, retype(src, ELK_REGISTER_TYPE_W));
          }
       }
       /** @} */
@@ -703,7 +703,7 @@ namespace elk {
        */
       instruction *
       CMP(const dst_reg &dst, const src_reg &src0, const src_reg &src1,
-          brw_conditional_mod condition) const
+          elk_conditional_mod condition) const
       {
          /* Take the instruction:
           *
@@ -718,7 +718,7 @@ namespace elk {
           * instruction.
           */
          return set_condmod(condition,
-                            emit(BRW_OPCODE_CMP, retype(dst, src0.type),
+                            emit(ELK_OPCODE_CMP, retype(dst, src0.type),
                                  fix_unsigned_negate(src0),
                                  fix_unsigned_negate(src1)));
       }
@@ -728,7 +728,7 @@ namespace elk {
        */
       instruction *
       CMPN(const dst_reg &dst, const src_reg &src0, const src_reg &src1,
-           brw_conditional_mod condition) const
+           elk_conditional_mod condition) const
       {
          /* Take the instruction:
           *
@@ -743,7 +743,7 @@ namespace elk {
           * instruction.
           */
          return set_condmod(condition,
-                            emit(BRW_OPCODE_CMPN, retype(dst, src0.type),
+                            emit(ELK_OPCODE_CMPN, retype(dst, src0.type),
                                  fix_unsigned_negate(src0),
                                  fix_unsigned_negate(src1)));
       }
@@ -752,9 +752,9 @@ namespace elk {
        * Gfx4 predicated IF.
        */
       instruction *
-      IF(brw_predicate predicate) const
+      IF(elk_predicate predicate) const
       {
-         return set_predicate(predicate, emit(BRW_OPCODE_IF));
+         return set_predicate(predicate, emit(ELK_OPCODE_IF));
       }
 
       /**
@@ -762,19 +762,19 @@ namespace elk {
        */
       instruction *
       CSEL(const dst_reg &dst, const src_reg &src0, const src_reg &src1,
-           const src_reg &src2, brw_conditional_mod condition) const
+           const src_reg &src2, elk_conditional_mod condition) const
       {
          /* CSEL only operates on floats, so we can't do integer </<=/>=/>
           * comparisons.  Zero/non-zero (== and !=) comparisons almost work.
           * 0x80000000 fails because it is -0.0, and -0.0 == 0.0.
           */
-         assert(src2.type == BRW_REGISTER_TYPE_F);
+         assert(src2.type == ELK_REGISTER_TYPE_F);
 
          return set_condmod(condition,
-                            emit(BRW_OPCODE_CSEL,
-                                 retype(dst, BRW_REGISTER_TYPE_F),
-                                 retype(src0, BRW_REGISTER_TYPE_F),
-                                 retype(src1, BRW_REGISTER_TYPE_F),
+                            emit(ELK_OPCODE_CSEL,
+                                 retype(dst, ELK_REGISTER_TYPE_F),
+                                 retype(src0, ELK_REGISTER_TYPE_F),
+                                 retype(src1, ELK_REGISTER_TYPE_F),
                                  src2));
       }
 
@@ -789,7 +789,7 @@ namespace elk {
             /* The LRP instruction actually does op1 * op0 + op2 * (1 - op0), so
              * we need to reorder the operands.
              */
-            return emit(BRW_OPCODE_LRP, dst, a, y, x);
+            return emit(ELK_OPCODE_LRP, dst, a, y, x);
 
          } else {
             /* We can't use the LRP instruction.  Emit x*(1-a) + y*a. */
@@ -798,7 +798,7 @@ namespace elk {
             const dst_reg x_times_one_minus_a = vgrf(dst.type);
 
             MUL(y_times_a, y, a);
-            ADD(one_minus_a, negate(a), brw_imm_f(1.0f));
+            ADD(one_minus_a, negate(a), elk_imm_f(1.0f));
             MUL(x_times_one_minus_a, x, src_reg(one_minus_a));
             return ADD(dst, src_reg(x_times_one_minus_a), src_reg(y_times_a));
          }
@@ -811,7 +811,7 @@ namespace elk {
       LOAD_PAYLOAD(const dst_reg &dst, const src_reg *src,
                    unsigned sources, unsigned header_size) const
       {
-         instruction *inst = emit(SHADER_OPCODE_LOAD_PAYLOAD, dst, src, sources);
+         instruction *inst = emit(ELK_SHADER_OPCODE_LOAD_PAYLOAD, dst, src, sources);
          inst->header_size = header_size;
          inst->size_written = header_size * REG_SIZE;
          for (unsigned i = header_size; i < sources; i++) {
@@ -827,8 +827,8 @@ namespace elk {
       {
          assert(dst.file == VGRF);
          assert(dst.offset % REG_SIZE == 0);
-         instruction *inst = emit(SHADER_OPCODE_UNDEF,
-                                  retype(dst, BRW_REGISTER_TYPE_UD));
+         instruction *inst = emit(ELK_SHADER_OPCODE_UNDEF,
+                                  retype(dst, ELK_REGISTER_TYPE_UD));
          inst->size_written = shader->alloc.sizes[dst.nr] * REG_SIZE - dst.offset;
 
          return inst;
@@ -842,11 +842,11 @@ namespace elk {
          assert(sdepth == 8);
          assert(rcount == 1 || rcount == 2 || rcount == 4 || rcount == 8);
 
-         instruction *inst = emit(BRW_OPCODE_DPAS, dst, src0, src1, src2);
+         instruction *inst = emit(ELK_OPCODE_DPAS, dst, src0, src1, src2);
          inst->sdepth = sdepth;
          inst->rcount = rcount;
 
-         if (dst.type == BRW_REGISTER_TYPE_HF) {
+         if (dst.type == ELK_REGISTER_TYPE_HF) {
             inst->size_written = rcount * REG_SIZE / 2;
          } else {
             inst->size_written = rcount * REG_SIZE;
@@ -855,26 +855,26 @@ namespace elk {
          return inst;
       }
 
-      fs_visitor *shader;
+      elk_fs_visitor *shader;
 
-      fs_inst *BREAK()    { return emit(BRW_OPCODE_BREAK); }
-      fs_inst *DO()       { return emit(BRW_OPCODE_DO); }
-      fs_inst *ENDIF()    { return emit(BRW_OPCODE_ENDIF); }
-      fs_inst *NOP()      { return emit(BRW_OPCODE_NOP); }
-      fs_inst *WHILE()    { return emit(BRW_OPCODE_WHILE); }
-      fs_inst *CONTINUE() { return emit(BRW_OPCODE_CONTINUE); }
+      elk_fs_inst *BREAK()    { return emit(ELK_OPCODE_BREAK); }
+      elk_fs_inst *DO()       { return emit(ELK_OPCODE_DO); }
+      elk_fs_inst *ENDIF()    { return emit(ELK_OPCODE_ENDIF); }
+      elk_fs_inst *NOP()      { return emit(ELK_OPCODE_NOP); }
+      elk_fs_inst *WHILE()    { return emit(ELK_OPCODE_WHILE); }
+      elk_fs_inst *CONTINUE() { return emit(ELK_OPCODE_CONTINUE); }
 
    private:
       /**
        * Workaround for negation of UD registers.  See comment in
-       * fs_generator::generate_code() for more details.
+       * elk_fs_generator::generate_code() for more details.
        */
       src_reg
       fix_unsigned_negate(const src_reg &src) const
       {
-         if (src.type == BRW_REGISTER_TYPE_UD &&
+         if (src.type == ELK_REGISTER_TYPE_UD &&
              src.negate) {
-            dst_reg temp = vgrf(BRW_REGISTER_TYPE_UD);
+            dst_reg temp = vgrf(ELK_REGISTER_TYPE_UD);
             MOV(temp, src);
             return src_reg(temp);
          } else {
@@ -892,9 +892,9 @@ namespace elk {
          switch (src.file) {
          case FIXED_GRF:
             /* FINISHME: Could handle scalar region, other stride=1 regions */
-            if (src.vstride != BRW_VERTICAL_STRIDE_8 ||
-                src.width != BRW_WIDTH_8 ||
-                src.hstride != BRW_HORIZONTAL_STRIDE_1)
+            if (src.vstride != ELK_VERTICAL_STRIDE_8 ||
+                src.width != ELK_WIDTH_8 ||
+                src.hstride != ELK_HORIZONTAL_STRIDE_1)
                break;
             FALLTHROUGH;
          case ATTR:
@@ -941,7 +941,7 @@ namespace elk {
          }
       }
 
-      bblock_t *block;
+      elk_bblock_t *block;
       exec_node *cursor;
 
       unsigned _dispatch_width;
@@ -956,8 +956,8 @@ namespace elk {
    };
 }
 
-static inline fs_reg
-offset(const fs_reg &reg, const elk::fs_builder &bld, unsigned delta)
+static inline elk_fs_reg
+offset(const elk_fs_reg &reg, const elk::fs_builder &bld, unsigned delta)
 {
    return offset(reg, bld.dispatch_width(), delta);
 }

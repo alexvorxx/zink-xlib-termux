@@ -36,10 +36,10 @@ namespace {
     *  using raw move."
     */
    bool
-   is_byte_raw_mov(const fs_inst *inst)
+   is_byte_raw_mov(const elk_fs_inst *inst)
    {
       return type_sz(inst->dst.type) == 1 &&
-             inst->opcode == BRW_OPCODE_MOV &&
+             inst->opcode == ELK_OPCODE_MOV &&
              inst->src[0].type == inst->dst.type &&
              !inst->saturate &&
              !inst->src[0].negate &&
@@ -51,7 +51,7 @@ namespace {
     * that requires it to have some particular alignment.
     */
    unsigned
-   required_dst_byte_stride(const fs_inst *inst)
+   required_dst_byte_stride(const elk_fs_inst *inst)
    {
       if (inst->dst.is_accumulator()) {
          /* If the destination is an accumulator, insist that we leave the
@@ -107,7 +107,7 @@ namespace {
     * the sources.
     */
    unsigned
-   required_dst_byte_offset(const intel_device_info *devinfo, const fs_inst *inst)
+   required_dst_byte_offset(const intel_device_info *devinfo, const elk_fs_inst *inst)
    {
       for (unsigned i = 0; i < inst->sources; i++) {
          if (!is_uniform(inst->src[i]) && !inst->is_control_source(i))
@@ -123,15 +123,15 @@ namespace {
     * Return the closest legal execution type for an instruction on
     * the specified platform.
     */
-   brw_reg_type
-   required_exec_type(const intel_device_info *devinfo, const fs_inst *inst)
+   elk_reg_type
+   required_exec_type(const intel_device_info *devinfo, const elk_fs_inst *inst)
    {
-      const brw_reg_type t = get_exec_type(inst);
-      const bool has_64bit = brw_reg_type_is_floating_point(t) ?
+      const elk_reg_type t = get_exec_type(inst);
+      const bool has_64bit = elk_reg_type_is_floating_point(t) ?
          devinfo->has_64bit_float : devinfo->has_64bit_int;
 
       switch (inst->opcode) {
-      case SHADER_OPCODE_SHUFFLE:
+      case ELK_SHADER_OPCODE_SHUFFLE:
          /* IVB has an issue (which we found empirically) where it reads
           * two address register components per channel for indirectly
           * addressed 64-bit sources.
@@ -148,26 +148,26 @@ namespace {
          if ((!devinfo->has_64bit_int ||
               devinfo->platform == INTEL_PLATFORM_CHV ||
               intel_device_info_is_9lp(devinfo)) && type_sz(t) > 4)
-            return BRW_REGISTER_TYPE_UD;
+            return ELK_REGISTER_TYPE_UD;
          else if (has_dst_aligned_region_restriction(devinfo, inst))
-            return brw_int_type(type_sz(t), false);
+            return elk_int_type(type_sz(t), false);
          else
             return t;
 
-      case SHADER_OPCODE_SEL_EXEC:
+      case ELK_SHADER_OPCODE_SEL_EXEC:
          if ((!has_64bit || devinfo->has_64bit_float_via_math_pipe) &&
              type_sz(t) > 4)
-            return BRW_REGISTER_TYPE_UD;
+            return ELK_REGISTER_TYPE_UD;
          else
             return t;
 
-      case SHADER_OPCODE_QUAD_SWIZZLE:
+      case ELK_SHADER_OPCODE_QUAD_SWIZZLE:
          if (has_dst_aligned_region_restriction(devinfo, inst))
-            return brw_int_type(type_sz(t), false);
+            return elk_int_type(type_sz(t), false);
          else
             return t;
 
-      case SHADER_OPCODE_CLUSTER_BROADCAST:
+      case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
          /* From the Cherryview PRM Vol 7. "Register Region Restrictions":
           *
           *    "When source or destination datatype is 64b or operation is
@@ -186,19 +186,19 @@ namespace {
          if ((!has_64bit || devinfo->verx10 >= 125 ||
               devinfo->platform == INTEL_PLATFORM_CHV ||
               intel_device_info_is_9lp(devinfo)) && type_sz(t) > 4)
-            return BRW_REGISTER_TYPE_UD;
+            return ELK_REGISTER_TYPE_UD;
          else
-            return brw_int_type(type_sz(t), false);
+            return elk_int_type(type_sz(t), false);
 
-      case SHADER_OPCODE_BROADCAST:
-      case SHADER_OPCODE_MOV_INDIRECT:
+      case ELK_SHADER_OPCODE_BROADCAST:
+      case ELK_SHADER_OPCODE_MOV_INDIRECT:
          if (((devinfo->verx10 == 70 ||
                devinfo->platform == INTEL_PLATFORM_CHV ||
                intel_device_info_is_9lp(devinfo) ||
                devinfo->verx10 >= 125) && type_sz(inst->src[0].type) > 4) ||
              (devinfo->verx10 >= 125 &&
-              brw_reg_type_is_floating_point(inst->src[0].type)))
-            return brw_int_type(type_sz(t), false);
+              elk_reg_type_is_floating_point(inst->src[0].type)))
+            return elk_int_type(type_sz(t), false);
          else
             return t;
 
@@ -213,7 +213,7 @@ namespace {
     * single one-dimensional stride.
     */
    unsigned
-   byte_stride(const fs_reg &reg)
+   byte_stride(const elk_fs_reg &reg)
    {
       switch (reg.file) {
       case BAD_FILE:
@@ -250,11 +250,11 @@ namespace {
     * specified for the i-th source region.
     */
    bool
-   has_invalid_src_region(const intel_device_info *devinfo, const fs_inst *inst,
+   has_invalid_src_region(const intel_device_info *devinfo, const elk_fs_inst *inst,
                           unsigned i)
    {
       if (is_send(inst) || inst->is_math() || inst->is_control_source(i) ||
-          inst->opcode == BRW_OPCODE_DPAS) {
+          inst->opcode == ELK_OPCODE_DPAS) {
          return false;
       }
 
@@ -269,8 +269,8 @@ namespace {
        * register. The problem doesn't occur if the stride of the source is 0.
        */
       if (devinfo->ver == 8 &&
-          inst->opcode == BRW_OPCODE_MAD &&
-          inst->src[i].type == BRW_REGISTER_TYPE_HF &&
+          inst->opcode == ELK_OPCODE_MAD &&
+          inst->src[i].type == ELK_REGISTER_TYPE_HF &&
           reg_offset(inst->src[i]) % REG_SIZE > 0 &&
           inst->src[i].stride != 0) {
          return true;
@@ -291,12 +291,12 @@ namespace {
     */
    bool
    has_invalid_dst_region(const intel_device_info *devinfo,
-                          const fs_inst *inst)
+                          const elk_fs_inst *inst)
    {
       if (is_send(inst) || inst->is_math()) {
          return false;
       } else {
-         const brw_reg_type exec_type = get_exec_type(inst);
+         const elk_reg_type exec_type = get_exec_type(inst);
          const unsigned dst_byte_offset = reg_offset(inst->dst) % (reg_unit(devinfo) * REG_SIZE);
          const bool is_narrowing_conversion = !is_byte_raw_mov(inst) &&
             type_sz(inst->dst.type) < type_sz(exec_type);
@@ -316,18 +316,18 @@ namespace {
     * source or destination modifiers into separate MOV instructions.
     */
    unsigned
-   has_invalid_exec_type(const intel_device_info *devinfo, const fs_inst *inst)
+   has_invalid_exec_type(const intel_device_info *devinfo, const elk_fs_inst *inst)
    {
       if (required_exec_type(devinfo, inst) != get_exec_type(inst)) {
          switch (inst->opcode) {
-         case SHADER_OPCODE_SHUFFLE:
-         case SHADER_OPCODE_QUAD_SWIZZLE:
-         case SHADER_OPCODE_CLUSTER_BROADCAST:
-         case SHADER_OPCODE_BROADCAST:
-         case SHADER_OPCODE_MOV_INDIRECT:
+         case ELK_SHADER_OPCODE_SHUFFLE:
+         case ELK_SHADER_OPCODE_QUAD_SWIZZLE:
+         case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
+         case ELK_SHADER_OPCODE_BROADCAST:
+         case ELK_SHADER_OPCODE_MOV_INDIRECT:
             return 0x1;
 
-         case SHADER_OPCODE_SEL_EXEC:
+         case ELK_SHADER_OPCODE_SEL_EXEC:
             return 0x3;
 
          default:
@@ -344,7 +344,7 @@ namespace {
     */
    bool
    has_invalid_src_modifiers(const intel_device_info *devinfo,
-                             const fs_inst *inst, unsigned i)
+                             const elk_fs_inst *inst, unsigned i)
    {
       return (!inst->can_do_source_mods(devinfo) &&
               (inst->src[i].negate || inst->src[i].abs)) ||
@@ -358,12 +358,12 @@ namespace {
     * specified for the destination.
     */
    bool
-   has_invalid_conversion(const intel_device_info *devinfo, const fs_inst *inst)
+   has_invalid_conversion(const intel_device_info *devinfo, const elk_fs_inst *inst)
    {
       switch (inst->opcode) {
-      case BRW_OPCODE_MOV:
+      case ELK_OPCODE_MOV:
          return false;
-      case BRW_OPCODE_SEL:
+      case ELK_OPCODE_SEL:
          return inst->dst.type != get_exec_type(inst);
       default:
          /* FIXME: We assume the opcodes not explicitly mentioned before just
@@ -379,7 +379,7 @@ namespace {
     * Return whether the instruction has unsupported destination modifiers.
     */
    bool
-   has_invalid_dst_modifiers(const intel_device_info *devinfo, const fs_inst *inst)
+   has_invalid_dst_modifiers(const intel_device_info *devinfo, const elk_fs_inst *inst)
    {
       return (has_invalid_exec_type(devinfo, inst) &&
               (inst->saturate || inst->conditional_mod)) ||
@@ -392,16 +392,16 @@ namespace {
     * the comparison result.
     */
    bool
-   has_inconsistent_cmod(const fs_inst *inst)
+   has_inconsistent_cmod(const elk_fs_inst *inst)
    {
-      return inst->opcode == BRW_OPCODE_SEL ||
-             inst->opcode == BRW_OPCODE_CSEL ||
-             inst->opcode == BRW_OPCODE_IF ||
-             inst->opcode == BRW_OPCODE_WHILE;
+      return inst->opcode == ELK_OPCODE_SEL ||
+             inst->opcode == ELK_OPCODE_CSEL ||
+             inst->opcode == ELK_OPCODE_IF ||
+             inst->opcode == ELK_OPCODE_WHILE;
    }
 
    bool
-   lower_instruction(fs_visitor *v, bblock_t *block, fs_inst *inst);
+   lower_instruction(elk_fs_visitor *v, elk_bblock_t *block, elk_fs_inst *inst);
 }
 
 namespace elk {
@@ -412,17 +412,17 @@ namespace elk {
     * MOV instruction prior to the original instruction.
     */
    bool
-   lower_src_modifiers(fs_visitor *v, bblock_t *block, fs_inst *inst, unsigned i)
+   lower_src_modifiers(elk_fs_visitor *v, elk_bblock_t *block, elk_fs_inst *inst, unsigned i)
    {
       assert(inst->components_read(i) == 1);
       assert(v->devinfo->has_integer_dword_mul ||
-             inst->opcode != BRW_OPCODE_MUL ||
-             brw_reg_type_is_floating_point(get_exec_type(inst)) ||
+             inst->opcode != ELK_OPCODE_MUL ||
+             elk_reg_type_is_floating_point(get_exec_type(inst)) ||
              MIN2(type_sz(inst->src[0].type), type_sz(inst->src[1].type)) >= 4 ||
              type_sz(inst->src[i].type) == get_exec_type_size(inst));
 
       const fs_builder ibld(v, block, inst);
-      const fs_reg tmp = ibld.vgrf(get_exec_type(inst));
+      const elk_fs_reg tmp = ibld.vgrf(get_exec_type(inst));
 
       lower_instruction(v, block, ibld.MOV(tmp, inst->src[i]));
       inst->src[i] = tmp;
@@ -440,10 +440,10 @@ namespace {
     * instruction.
     */
    bool
-   lower_dst_modifiers(fs_visitor *v, bblock_t *block, fs_inst *inst)
+   lower_dst_modifiers(elk_fs_visitor *v, elk_bblock_t *block, elk_fs_inst *inst)
    {
       const fs_builder ibld(v, block, inst);
-      const brw_reg_type type = get_exec_type(inst);
+      const elk_reg_type type = get_exec_type(inst);
       /* Not strictly necessary, but if possible use a temporary with the same
        * channel alignment as the current destination in order to avoid
        * violating the restrictions enforced later on by lower_src_region()
@@ -453,16 +453,16 @@ namespace {
       const unsigned stride =
          type_sz(inst->dst.type) * inst->dst.stride <= type_sz(type) ? 1 :
          type_sz(inst->dst.type) * inst->dst.stride / type_sz(type);
-      fs_reg tmp = ibld.vgrf(type, stride);
+      elk_fs_reg tmp = ibld.vgrf(type, stride);
       ibld.UNDEF(tmp);
       tmp = horiz_stride(tmp, stride);
 
       /* Emit a MOV taking care of all the destination modifiers. */
-      fs_inst *mov = ibld.at(block, inst->next).MOV(inst->dst, tmp);
+      elk_fs_inst *mov = ibld.at(block, inst->next).MOV(inst->dst, tmp);
       mov->saturate = inst->saturate;
       if (!has_inconsistent_cmod(inst))
          mov->conditional_mod = inst->conditional_mod;
-      if (inst->opcode != BRW_OPCODE_SEL) {
+      if (inst->opcode != ELK_OPCODE_SEL) {
          mov->predicate = inst->predicate;
          mov->predicate_inverse = inst->predicate_inverse;
       }
@@ -477,7 +477,7 @@ namespace {
       inst->size_written = inst->dst.component_size(inst->exec_size);
       inst->saturate = false;
       if (!has_inconsistent_cmod(inst))
-         inst->conditional_mod = BRW_CONDITIONAL_NONE;
+         inst->conditional_mod = ELK_CONDITIONAL_NONE;
 
       assert(!inst->flags_written(v->devinfo) || !mov->predicate);
       return true;
@@ -489,24 +489,24 @@ namespace {
     * copies into a temporary with the same channel layout as the destination.
     */
    bool
-   lower_src_region(fs_visitor *v, bblock_t *block, fs_inst *inst, unsigned i)
+   lower_src_region(elk_fs_visitor *v, elk_bblock_t *block, elk_fs_inst *inst, unsigned i)
    {
       assert(inst->components_read(i) == 1);
       const fs_builder ibld(v, block, inst);
       const unsigned stride = type_sz(inst->dst.type) * inst->dst.stride /
                               type_sz(inst->src[i].type);
       assert(stride > 0);
-      fs_reg tmp = ibld.vgrf(inst->src[i].type, stride);
+      elk_fs_reg tmp = ibld.vgrf(inst->src[i].type, stride);
       ibld.UNDEF(tmp);
       tmp = horiz_stride(tmp, stride);
 
       /* Emit a series of 32-bit integer copies with any source modifiers
        * cleaned up (because their semantics are dependent on the type).
        */
-      const brw_reg_type raw_type = brw_int_type(MIN2(type_sz(tmp.type), 4),
+      const elk_reg_type raw_type = elk_int_type(MIN2(type_sz(tmp.type), 4),
                                                  false);
       const unsigned n = type_sz(tmp.type) / type_sz(raw_type);
-      fs_reg raw_src = inst->src[i];
+      elk_fs_reg raw_src = inst->src[i];
       raw_src.negate = false;
       raw_src.abs = false;
 
@@ -516,7 +516,7 @@ namespace {
       /* Point the original instruction at the temporary, making sure to keep
        * any source modifiers in the instruction.
        */
-      fs_reg lower_src = tmp;
+      elk_fs_reg lower_src = tmp;
       lower_src.negate = inst->src[i].negate;
       lower_src.abs = inst->src[i].abs;
       inst->src[i] = lower_src;
@@ -531,32 +531,32 @@ namespace {
     * sources.
     */
    bool
-   lower_dst_region(fs_visitor *v, bblock_t *block, fs_inst *inst)
+   lower_dst_region(elk_fs_visitor *v, elk_bblock_t *block, elk_fs_inst *inst)
    {
       /* We cannot replace the result of an integer multiply which writes the
        * accumulator because MUL+MACH pairs act on the accumulator as a 66-bit
        * value whereas the MOV will act on only 32 or 33 bits of the
        * accumulator.
        */
-      assert(inst->opcode != BRW_OPCODE_MUL || !inst->dst.is_accumulator() ||
-             brw_reg_type_is_floating_point(inst->dst.type));
+      assert(inst->opcode != ELK_OPCODE_MUL || !inst->dst.is_accumulator() ||
+             elk_reg_type_is_floating_point(inst->dst.type));
 
       const fs_builder ibld(v, block, inst);
       const unsigned stride = required_dst_byte_stride(inst) /
                               type_sz(inst->dst.type);
       assert(stride > 0);
-      fs_reg tmp = ibld.vgrf(inst->dst.type, stride);
+      elk_fs_reg tmp = ibld.vgrf(inst->dst.type, stride);
       ibld.UNDEF(tmp);
       tmp = horiz_stride(tmp, stride);
 
       /* Emit a series of 32-bit integer copies from the temporary into the
        * original destination.
        */
-      const brw_reg_type raw_type = brw_int_type(MIN2(type_sz(tmp.type), 4),
+      const elk_reg_type raw_type = elk_int_type(MIN2(type_sz(tmp.type), 4),
                                                  false);
       const unsigned n = type_sz(tmp.type) / type_sz(raw_type);
 
-      if (inst->predicate && inst->opcode != BRW_OPCODE_SEL) {
+      if (inst->predicate && inst->opcode != ELK_OPCODE_SEL) {
          /* Note that in general we cannot simply predicate the copies on the
           * same flag register as the original instruction, since it may have
           * been overwritten by the instruction itself.  Instead initialize
@@ -589,20 +589,20 @@ namespace {
     * where the execution type of an instruction is unsupported.
     */
    bool
-   lower_exec_type(fs_visitor *v, bblock_t *block, fs_inst *inst)
+   lower_exec_type(elk_fs_visitor *v, elk_bblock_t *block, elk_fs_inst *inst)
    {
       assert(inst->dst.type == get_exec_type(inst));
       const unsigned mask = has_invalid_exec_type(v->devinfo, inst);
-      const brw_reg_type raw_type = required_exec_type(v->devinfo, inst);
+      const elk_reg_type raw_type = required_exec_type(v->devinfo, inst);
       const unsigned n = get_exec_type_size(inst) / type_sz(raw_type);
       const fs_builder ibld(v, block, inst);
 
-      fs_reg tmp = ibld.vgrf(inst->dst.type, inst->dst.stride);
+      elk_fs_reg tmp = ibld.vgrf(inst->dst.type, inst->dst.stride);
       ibld.UNDEF(tmp);
       tmp = horiz_stride(tmp, inst->dst.stride);
 
       for (unsigned j = 0; j < n; j++) {
-         fs_inst sub_inst = *inst;
+         elk_fs_inst sub_inst = *inst;
 
          for (unsigned i = 0; i < inst->sources; i++) {
             if (mask & (1u << i)) {
@@ -617,9 +617,9 @@ namespace {
          assert(!sub_inst.flags_written(v->devinfo) && !sub_inst.saturate);
          ibld.emit(sub_inst);
 
-         fs_inst *mov = ibld.MOV(subscript(inst->dst, raw_type, j),
+         elk_fs_inst *mov = ibld.MOV(subscript(inst->dst, raw_type, j),
                                  subscript(tmp, raw_type, j));
-         if (inst->opcode != BRW_OPCODE_SEL) {
+         if (inst->opcode != ELK_OPCODE_SEL) {
             mov->predicate = inst->predicate;
             mov->predicate_inverse = inst->predicate_inverse;
          }
@@ -636,7 +636,7 @@ namespace {
     * instruction.
     */
    bool
-   lower_instruction(fs_visitor *v, bblock_t *block, fs_inst *inst)
+   lower_instruction(elk_fs_visitor *v, elk_bblock_t *block, elk_fs_inst *inst)
    {
       const intel_device_info *devinfo = v->devinfo;
       bool progress = false;
@@ -663,11 +663,11 @@ namespace {
 }
 
 bool
-fs_visitor::lower_regioning()
+elk_fs_visitor::lower_regioning()
 {
    bool progress = false;
 
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg)
+   foreach_block_and_inst_safe(block, elk_fs_inst, inst, cfg)
       progress |= lower_instruction(this, block, inst);
 
    if (progress)

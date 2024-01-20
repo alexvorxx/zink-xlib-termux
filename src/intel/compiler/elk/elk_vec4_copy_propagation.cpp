@@ -43,24 +43,24 @@ struct copy_entry {
 static bool
 is_direct_copy(vec4_instruction *inst)
 {
-   return (inst->opcode == BRW_OPCODE_MOV &&
+   return (inst->opcode == ELK_OPCODE_MOV &&
 	   !inst->predicate &&
 	   inst->dst.file == VGRF &&
 	   inst->dst.offset % REG_SIZE == 0 &&
 	   !inst->dst.reladdr &&
 	   !inst->src[0].reladdr &&
 	   (inst->dst.type == inst->src[0].type ||
-            (inst->dst.type == BRW_REGISTER_TYPE_F &&
-             inst->src[0].type == BRW_REGISTER_TYPE_VF)));
+            (inst->dst.type == ELK_REGISTER_TYPE_F &&
+             inst->src[0].type == ELK_REGISTER_TYPE_VF)));
 }
 
 static bool
 is_dominated_by_previous_instruction(vec4_instruction *inst)
 {
-   return (inst->opcode != BRW_OPCODE_DO &&
-	   inst->opcode != BRW_OPCODE_WHILE &&
-	   inst->opcode != BRW_OPCODE_ELSE &&
-	   inst->opcode != BRW_OPCODE_ENDIF);
+   return (inst->opcode != ELK_OPCODE_DO &&
+	   inst->opcode != ELK_OPCODE_WHILE &&
+	   inst->opcode != ELK_OPCODE_ELSE &&
+	   inst->opcode != ELK_OPCODE_ENDIF);
 }
 
 static bool
@@ -75,7 +75,7 @@ is_channel_updated(vec4_instruction *inst, src_reg *values[4], int ch)
 
    return regions_overlap(*src, REG_SIZE, inst->dst, inst->size_written) &&
           (inst->dst.offset != src->offset ||
-           inst->dst.writemask & (1 << BRW_GET_SWZ(src->swizzle, ch)));
+           inst->dst.writemask & (1 << ELK_GET_SWZ(src->swizzle, ch)));
 }
 
 /**
@@ -97,12 +97,12 @@ get_copy_value(const copy_entry &entry, unsigned readmask)
             if (src.file == IMM) {
                swz[i] = i;
             } else {
-               swz[i] = BRW_GET_SWZ(src.swizzle, i);
+               swz[i] = ELK_GET_SWZ(src.swizzle, i);
                /* Overwrite the original swizzle so the src_reg::equals call
                 * below doesn't care about it, the correct swizzle will be
                 * calculated once the swizzles of all components are known.
                 */
-               src.swizzle = BRW_SWIZZLE_XYZW;
+               src.swizzle = ELK_SWIZZLE_XYZW;
             }
 
             if (value.file == BAD_FILE) {
@@ -117,8 +117,8 @@ get_copy_value(const copy_entry &entry, unsigned readmask)
    }
 
    return swizzle(value,
-                  brw_compose_swizzle(brw_swizzle_for_mask(readmask),
-                                      BRW_SWIZZLE4(swz[0], swz[1],
+                  elk_compose_swizzle(elk_swizzle_for_mask(readmask),
+                                      ELK_SWIZZLE4(swz[0], swz[1],
                                                    swz[2], swz[3])));
 }
 
@@ -135,7 +135,7 @@ try_constant_propagate(vec4_instruction *inst,
     */
    src_reg value =
       get_copy_value(*entry,
-                     brw_apply_inv_swizzle_to_mask(inst->src[arg].swizzle,
+                     elk_apply_inv_swizzle_to_mask(inst->src[arg].swizzle,
                                                    WRITEMASK_XYZW));
 
    if (value.file != IMM)
@@ -148,68 +148,68 @@ try_constant_propagate(vec4_instruction *inst,
    if (type_sz(value.type) == 8 || type_sz(inst->src[arg].type) == 8)
       return false;
 
-   if (value.type == BRW_REGISTER_TYPE_VF) {
+   if (value.type == ELK_REGISTER_TYPE_VF) {
       /* The result of bit-casting the component values of a vector float
        * cannot in general be represented as an immediate.
        */
-      if (inst->src[arg].type != BRW_REGISTER_TYPE_F)
+      if (inst->src[arg].type != ELK_REGISTER_TYPE_F)
          return false;
    } else {
       value.type = inst->src[arg].type;
    }
 
    if (inst->src[arg].abs) {
-      if (!brw_abs_immediate(value.type, &value.as_brw_reg()))
+      if (!elk_abs_immediate(value.type, &value.as_elk_reg()))
          return false;
    }
 
    if (inst->src[arg].negate) {
-      if (!brw_negate_immediate(value.type, &value.as_brw_reg()))
+      if (!elk_negate_immediate(value.type, &value.as_elk_reg()))
          return false;
    }
 
    value = swizzle(value, inst->src[arg].swizzle);
 
    switch (inst->opcode) {
-   case BRW_OPCODE_MOV:
-   case SHADER_OPCODE_BROADCAST:
+   case ELK_OPCODE_MOV:
+   case ELK_SHADER_OPCODE_BROADCAST:
       inst->src[arg] = value;
       return true;
 
-   case VEC4_OPCODE_UNTYPED_ATOMIC:
+   case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
       if (arg == 1) {
          inst->src[arg] = value;
          return true;
       }
       break;
 
-   case SHADER_OPCODE_POW:
-   case SHADER_OPCODE_INT_QUOTIENT:
-   case SHADER_OPCODE_INT_REMAINDER:
+   case ELK_SHADER_OPCODE_POW:
+   case ELK_SHADER_OPCODE_INT_QUOTIENT:
+   case ELK_SHADER_OPCODE_INT_REMAINDER:
          break;
-   case BRW_OPCODE_DP2:
-   case BRW_OPCODE_DP3:
-   case BRW_OPCODE_DP4:
-   case BRW_OPCODE_DPH:
-   case BRW_OPCODE_BFI1:
-   case BRW_OPCODE_ASR:
-   case BRW_OPCODE_SHL:
-   case BRW_OPCODE_SHR:
-   case BRW_OPCODE_SUBB:
+   case ELK_OPCODE_DP2:
+   case ELK_OPCODE_DP3:
+   case ELK_OPCODE_DP4:
+   case ELK_OPCODE_DPH:
+   case ELK_OPCODE_BFI1:
+   case ELK_OPCODE_ASR:
+   case ELK_OPCODE_SHL:
+   case ELK_OPCODE_SHR:
+   case ELK_OPCODE_SUBB:
       if (arg == 1) {
          inst->src[arg] = value;
          return true;
       }
       break;
 
-   case BRW_OPCODE_MACH:
-   case BRW_OPCODE_MUL:
-   case SHADER_OPCODE_MULH:
-   case BRW_OPCODE_ADD:
-   case BRW_OPCODE_OR:
-   case BRW_OPCODE_AND:
-   case BRW_OPCODE_XOR:
-   case BRW_OPCODE_ADDC:
+   case ELK_OPCODE_MACH:
+   case ELK_OPCODE_MUL:
+   case ELK_SHADER_OPCODE_MULH:
+   case ELK_OPCODE_ADD:
+   case ELK_OPCODE_OR:
+   case ELK_OPCODE_AND:
+   case ELK_OPCODE_XOR:
+   case ELK_OPCODE_ADDC:
       if (arg == 1) {
 	 inst->src[arg] = value;
 	 return true;
@@ -217,17 +217,17 @@ try_constant_propagate(vec4_instruction *inst,
 	 /* Fit this constant in by commuting the operands.  Exception: we
 	  * can't do this for 32-bit integer MUL/MACH because it's asymmetric.
 	  */
-	 if ((inst->opcode == BRW_OPCODE_MUL ||
-              inst->opcode == BRW_OPCODE_MACH) &&
-	     (inst->src[1].type == BRW_REGISTER_TYPE_D ||
-	      inst->src[1].type == BRW_REGISTER_TYPE_UD))
+	 if ((inst->opcode == ELK_OPCODE_MUL ||
+              inst->opcode == ELK_OPCODE_MACH) &&
+	     (inst->src[1].type == ELK_REGISTER_TYPE_D ||
+	      inst->src[1].type == ELK_REGISTER_TYPE_UD))
 	    break;
 	 inst->src[0] = inst->src[1];
 	 inst->src[1] = value;
 	 return true;
       }
       break;
-   case GS_OPCODE_SET_WRITE_OFFSET:
+   case ELK_GS_OPCODE_SET_WRITE_OFFSET:
       /* This is just a multiply by a constant with special strides.
        * The generator will handle immediates in both arguments (generating
        * a single MOV of the product).  So feel free to propagate in src0.
@@ -235,15 +235,15 @@ try_constant_propagate(vec4_instruction *inst,
       inst->src[arg] = value;
       return true;
 
-   case BRW_OPCODE_CMP:
+   case ELK_OPCODE_CMP:
       if (arg == 1) {
 	 inst->src[arg] = value;
 	 return true;
       } else if (arg == 0 && inst->src[1].file != IMM) {
-	 enum brw_conditional_mod new_cmod;
+	 enum elk_conditional_mod new_cmod;
 
-	 new_cmod = brw_swap_cmod(inst->conditional_mod);
-	 if (new_cmod != BRW_CONDITIONAL_NONE) {
+	 new_cmod = elk_swap_cmod(inst->conditional_mod);
+	 if (new_cmod != ELK_CONDITIONAL_NONE) {
 	    /* Fit this constant in by swapping the operands and
 	     * flipping the test.
 	     */
@@ -255,7 +255,7 @@ try_constant_propagate(vec4_instruction *inst,
       }
       break;
 
-   case BRW_OPCODE_SEL:
+   case ELK_OPCODE_SEL:
       if (arg == 1) {
 	 inst->src[arg] = value;
 	 return true;
@@ -266,7 +266,7 @@ try_constant_propagate(vec4_instruction *inst,
 	 /* If this was predicated, flipping operands means
 	  * we also need to flip the predicate.
 	  */
-	 if (inst->conditional_mod == BRW_CONDITIONAL_NONE) {
+	 if (inst->conditional_mod == ELK_CONDITIONAL_NONE) {
 	    inst->predicate_inverse = !inst->predicate_inverse;
 	 }
 	 return true;
@@ -284,14 +284,14 @@ static bool
 is_align1_opcode(unsigned opcode)
 {
    switch (opcode) {
-   case VEC4_OPCODE_DOUBLE_TO_F32:
-   case VEC4_OPCODE_DOUBLE_TO_D32:
-   case VEC4_OPCODE_DOUBLE_TO_U32:
-   case VEC4_OPCODE_TO_DOUBLE:
-   case VEC4_OPCODE_PICK_LOW_32BIT:
-   case VEC4_OPCODE_PICK_HIGH_32BIT:
-   case VEC4_OPCODE_SET_LOW_32BIT:
-   case VEC4_OPCODE_SET_HIGH_32BIT:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_F32:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_D32:
+   case ELK_VEC4_OPCODE_DOUBLE_TO_U32:
+   case ELK_VEC4_OPCODE_TO_DOUBLE:
+   case ELK_VEC4_OPCODE_PICK_LOW_32BIT:
+   case ELK_VEC4_OPCODE_PICK_HIGH_32BIT:
+   case ELK_VEC4_OPCODE_SET_LOW_32BIT:
+   case ELK_VEC4_OPCODE_SET_HIGH_32BIT:
       return true;
    default:
       return false;
@@ -299,7 +299,7 @@ is_align1_opcode(unsigned opcode)
 }
 
 static bool
-try_copy_propagate(const struct brw_compiler *compiler,
+try_copy_propagate(const struct elk_compiler *compiler,
                    vec4_instruction *inst, int arg,
                    const copy_entry *entry, int attributes_per_reg)
 {
@@ -310,7 +310,7 @@ try_copy_propagate(const struct brw_compiler *compiler,
     */
    src_reg value =
       get_copy_value(*entry,
-                     brw_apply_inv_swizzle_to_mask(inst->src[arg].swizzle,
+                     elk_apply_inv_swizzle_to_mask(inst->src[arg].swizzle,
                                                    WRITEMASK_XYZW));
 
    /* Check that we can propagate that value */
@@ -355,7 +355,7 @@ try_copy_propagate(const struct brw_compiler *compiler,
       return false;
 
    /* Reject cases that would violate register regioning restrictions. */
-   if ((value.file == UNIFORM || value.swizzle != BRW_SWIZZLE_XYZW) &&
+   if ((value.file == UNIFORM || value.swizzle != ELK_SWIZZLE_XYZW) &&
        ((devinfo->ver == 6 && inst->is_math()) ||
         inst->is_send_from_grf() ||
         inst->uses_indirect_addressing())) {
@@ -368,24 +368,24 @@ try_copy_propagate(const struct brw_compiler *compiler,
       return false;
 
    if (has_source_modifiers &&
-       (inst->opcode == SHADER_OPCODE_GFX4_SCRATCH_WRITE ||
-        inst->opcode == VEC4_OPCODE_PICK_HIGH_32BIT))
+       (inst->opcode == ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE ||
+        inst->opcode == ELK_VEC4_OPCODE_PICK_HIGH_32BIT))
       return false;
 
-   unsigned composed_swizzle = brw_compose_swizzle(inst->src[arg].swizzle,
+   unsigned composed_swizzle = elk_compose_swizzle(inst->src[arg].swizzle,
                                                    value.swizzle);
 
    /* Instructions that operate on vectors in ALIGN1 mode will ignore swizzles
     * so copy-propagation won't be safe if the composed swizzle is anything
     * other than the identity.
     */
-   if (is_align1_opcode(inst->opcode) && composed_swizzle != BRW_SWIZZLE_XYZW)
+   if (is_align1_opcode(inst->opcode) && composed_swizzle != ELK_SWIZZLE_XYZW)
       return false;
 
-   if (inst->is_3src(compiler) &&
+   if (inst->elk_is_3src(compiler) &&
        (value.file == UNIFORM ||
         (value.file == ATTR && attributes_per_reg != 1)) &&
-       !brw_is_single_value_swizzle(composed_swizzle))
+       !elk_is_single_value_swizzle(composed_swizzle))
       return false;
 
    if (inst->is_send_from_grf())
@@ -396,7 +396,7 @@ try_copy_propagate(const struct brw_compiler *compiler,
     * instead. See also resolve_ud_negate().
     */
    if (value.negate &&
-       value.type == BRW_REGISTER_TYPE_UD)
+       value.type == ELK_REGISTER_TYPE_UD)
       return false;
 
    /* Don't report progress if this is a noop. */
@@ -404,7 +404,7 @@ try_copy_propagate(const struct brw_compiler *compiler,
       return false;
 
    const unsigned dst_saturate_mask = inst->dst.writemask &
-      brw_apply_swizzle_to_mask(inst->src[arg].swizzle, entry->saturatemask);
+      elk_apply_swizzle_to_mask(inst->src[arg].swizzle, entry->saturatemask);
 
    if (dst_saturate_mask) {
       /* We either saturate all or nothing. */
@@ -415,11 +415,11 @@ try_copy_propagate(const struct brw_compiler *compiler,
        * and 1.0, otherwise skip copy propagate altogether.
        */
       switch(inst->opcode) {
-      case BRW_OPCODE_SEL:
+      case ELK_OPCODE_SEL:
          if (arg != 0 ||
-             inst->src[0].type != BRW_REGISTER_TYPE_F ||
+             inst->src[0].type != ELK_REGISTER_TYPE_F ||
              inst->src[1].file != IMM ||
-             inst->src[1].type != BRW_REGISTER_TYPE_F ||
+             inst->src[1].type != ELK_REGISTER_TYPE_F ||
              inst->src[1].f < 0.0 ||
              inst->src[1].f > 1.0) {
             return false;

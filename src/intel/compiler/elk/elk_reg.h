@@ -31,12 +31,12 @@
 
 /** @file elk_reg.h
  *
- * This file defines struct brw_reg, which is our representation for EU
+ * This file defines struct elk_reg, which is our representation for EU
  * registers.  They're not a hardware specific format, just an abstraction
  * that intends to capture the full flexibility of the hardware registers.
  *
- * The brw_eu_emit.c layer's brw_set_dest/brw_set_src[01] functions encode
- * the abstract brw_reg type into the actual hardware instruction encoding.
+ * The elk_eu_emit.c layer's elk_set_dest/elk_set_src[01] functions encode
+ * the abstract elk_reg type into the actual hardware instruction encoding.
  */
 
 #ifndef ELK_REG_H
@@ -58,7 +58,7 @@ extern "C" {
 struct intel_device_info;
 
 /** Size of general purpose register space in REG_SIZE units */
-#define BRW_MAX_GRF 128
+#define ELK_MAX_GRF 128
 #define XE2_MAX_GRF 256
 
 /**
@@ -66,7 +66,7 @@ struct intel_device_info;
  *
  * On gfx7, MRFs are no longer used, and contiguous GRFs are used instead.  We
  * haven't converted our compiler to be aware of this, so it asks for MRFs and
- * brw_eu_emit.c quietly converts them to be accesses of the top GRFs.  The
+ * elk_eu_emit.c quietly converts them to be accesses of the top GRFs.  The
  * register allocators have to be careful of this to avoid corrupting the "MRF"s
  * with actual GRF allocations.
  */
@@ -76,46 +76,46 @@ struct intel_device_info;
  * BRW hardware swizzles.
  * Only defines XYZW to ensure it can be contained in 2 bits
  */
-#define BRW_SWIZZLE_X 0
-#define BRW_SWIZZLE_Y 1
-#define BRW_SWIZZLE_Z 2
-#define BRW_SWIZZLE_W 3
+#define ELK_SWIZZLE_X 0
+#define ELK_SWIZZLE_Y 1
+#define ELK_SWIZZLE_Z 2
+#define ELK_SWIZZLE_W 3
 
 /** Number of message register file registers */
-#define BRW_MAX_MRF(gen) (gen == 6 ? 24 : 16)
+#define ELK_MAX_MRF(gen) (gen == 6 ? 24 : 16)
 
-#define BRW_SWIZZLE4(a,b,c,d) (((a)<<0) | ((b)<<2) | ((c)<<4) | ((d)<<6))
-#define BRW_GET_SWZ(swz, idx) (((swz) >> ((idx)*2)) & 0x3)
+#define ELK_SWIZZLE4(a,b,c,d) (((a)<<0) | ((b)<<2) | ((c)<<4) | ((d)<<6))
+#define ELK_GET_SWZ(swz, idx) (((swz) >> ((idx)*2)) & 0x3)
 
-#define BRW_SWIZZLE_NOOP      BRW_SWIZZLE4(0,1,2,3)
-#define BRW_SWIZZLE_XYZW      BRW_SWIZZLE4(0,1,2,3)
-#define BRW_SWIZZLE_XXXX      BRW_SWIZZLE4(0,0,0,0)
-#define BRW_SWIZZLE_YYYY      BRW_SWIZZLE4(1,1,1,1)
-#define BRW_SWIZZLE_ZZZZ      BRW_SWIZZLE4(2,2,2,2)
-#define BRW_SWIZZLE_WWWW      BRW_SWIZZLE4(3,3,3,3)
-#define BRW_SWIZZLE_XYXY      BRW_SWIZZLE4(0,1,0,1)
-#define BRW_SWIZZLE_YXYX      BRW_SWIZZLE4(1,0,1,0)
-#define BRW_SWIZZLE_XZXZ      BRW_SWIZZLE4(0,2,0,2)
-#define BRW_SWIZZLE_YZXW      BRW_SWIZZLE4(1,2,0,3)
-#define BRW_SWIZZLE_YWYW      BRW_SWIZZLE4(1,3,1,3)
-#define BRW_SWIZZLE_ZXYW      BRW_SWIZZLE4(2,0,1,3)
-#define BRW_SWIZZLE_ZWZW      BRW_SWIZZLE4(2,3,2,3)
-#define BRW_SWIZZLE_WZWZ      BRW_SWIZZLE4(3,2,3,2)
-#define BRW_SWIZZLE_WZYX      BRW_SWIZZLE4(3,2,1,0)
-#define BRW_SWIZZLE_XXZZ      BRW_SWIZZLE4(0,0,2,2)
-#define BRW_SWIZZLE_YYWW      BRW_SWIZZLE4(1,1,3,3)
-#define BRW_SWIZZLE_YXWZ      BRW_SWIZZLE4(1,0,3,2)
+#define ELK_SWIZZLE_NOOP      ELK_SWIZZLE4(0,1,2,3)
+#define ELK_SWIZZLE_XYZW      ELK_SWIZZLE4(0,1,2,3)
+#define ELK_SWIZZLE_XXXX      ELK_SWIZZLE4(0,0,0,0)
+#define ELK_SWIZZLE_YYYY      ELK_SWIZZLE4(1,1,1,1)
+#define ELK_SWIZZLE_ZZZZ      ELK_SWIZZLE4(2,2,2,2)
+#define ELK_SWIZZLE_WWWW      ELK_SWIZZLE4(3,3,3,3)
+#define ELK_SWIZZLE_XYXY      ELK_SWIZZLE4(0,1,0,1)
+#define ELK_SWIZZLE_YXYX      ELK_SWIZZLE4(1,0,1,0)
+#define ELK_SWIZZLE_XZXZ      ELK_SWIZZLE4(0,2,0,2)
+#define ELK_SWIZZLE_YZXW      ELK_SWIZZLE4(1,2,0,3)
+#define ELK_SWIZZLE_YWYW      ELK_SWIZZLE4(1,3,1,3)
+#define ELK_SWIZZLE_ZXYW      ELK_SWIZZLE4(2,0,1,3)
+#define ELK_SWIZZLE_ZWZW      ELK_SWIZZLE4(2,3,2,3)
+#define ELK_SWIZZLE_WZWZ      ELK_SWIZZLE4(3,2,3,2)
+#define ELK_SWIZZLE_WZYX      ELK_SWIZZLE4(3,2,1,0)
+#define ELK_SWIZZLE_XXZZ      ELK_SWIZZLE4(0,0,2,2)
+#define ELK_SWIZZLE_YYWW      ELK_SWIZZLE4(1,1,3,3)
+#define ELK_SWIZZLE_YXWZ      ELK_SWIZZLE4(1,0,3,2)
 
-#define BRW_SWZ_COMP_INPUT(comp) (BRW_SWIZZLE_XYZW >> ((comp)*2))
-#define BRW_SWZ_COMP_OUTPUT(comp) (BRW_SWIZZLE_XYZW << ((comp)*2))
+#define ELK_SWZ_COMP_INPUT(comp) (ELK_SWIZZLE_XYZW >> ((comp)*2))
+#define ELK_SWZ_COMP_OUTPUT(comp) (ELK_SWIZZLE_XYZW << ((comp)*2))
 
 static inline bool
-brw_is_single_value_swizzle(unsigned swiz)
+elk_is_single_value_swizzle(unsigned swiz)
 {
-   return (swiz == BRW_SWIZZLE_XXXX ||
-           swiz == BRW_SWIZZLE_YYYY ||
-           swiz == BRW_SWIZZLE_ZZZZ ||
-           swiz == BRW_SWIZZLE_WWWW);
+   return (swiz == ELK_SWIZZLE_XXXX ||
+           swiz == ELK_SWIZZLE_YYYY ||
+           swiz == ELK_SWIZZLE_ZZZZ ||
+           swiz == ELK_SWIZZLE_WWWW);
 }
 
 /**
@@ -124,13 +124,13 @@ brw_is_single_value_swizzle(unsigned swiz)
  * composition.
  */
 static inline unsigned
-brw_compose_swizzle(unsigned swz0, unsigned swz1)
+elk_compose_swizzle(unsigned swz0, unsigned swz1)
 {
-   return BRW_SWIZZLE4(
-      BRW_GET_SWZ(swz1, BRW_GET_SWZ(swz0, 0)),
-      BRW_GET_SWZ(swz1, BRW_GET_SWZ(swz0, 1)),
-      BRW_GET_SWZ(swz1, BRW_GET_SWZ(swz0, 2)),
-      BRW_GET_SWZ(swz1, BRW_GET_SWZ(swz0, 3)));
+   return ELK_SWIZZLE4(
+      ELK_GET_SWZ(swz1, ELK_GET_SWZ(swz0, 0)),
+      ELK_GET_SWZ(swz1, ELK_GET_SWZ(swz0, 1)),
+      ELK_GET_SWZ(swz1, ELK_GET_SWZ(swz0, 2)),
+      ELK_GET_SWZ(swz1, ELK_GET_SWZ(swz0, 3)));
 }
 
 /**
@@ -138,12 +138,12 @@ brw_compose_swizzle(unsigned swz0, unsigned swz1)
  * (AKA image).
  */
 static inline unsigned
-brw_apply_swizzle_to_mask(unsigned swz, unsigned mask)
+elk_apply_swizzle_to_mask(unsigned swz, unsigned mask)
 {
    unsigned result = 0;
 
    for (unsigned i = 0; i < 4; i++) {
-      if (mask & (1 << BRW_GET_SWZ(swz, i)))
+      if (mask & (1 << ELK_GET_SWZ(swz, i)))
          result |= 1 << i;
    }
 
@@ -156,13 +156,13 @@ brw_apply_swizzle_to_mask(unsigned swz, unsigned mask)
  * read from a swizzled source given the instruction writemask.
  */
 static inline unsigned
-brw_apply_inv_swizzle_to_mask(unsigned swz, unsigned mask)
+elk_apply_inv_swizzle_to_mask(unsigned swz, unsigned mask)
 {
    unsigned result = 0;
 
    for (unsigned i = 0; i < 4; i++) {
       if (mask & (1 << i))
-         result |= 1 << BRW_GET_SWZ(swz, i);
+         result |= 1 << ELK_GET_SWZ(swz, i);
    }
 
    return result;
@@ -174,15 +174,15 @@ brw_apply_inv_swizzle_to_mask(unsigned swz, unsigned mask)
  * mask, assuming that \p mask is non-zero.  The constructed swizzle will
  * satisfy the property that for any instruction OP and any mask:
  *
- *    brw_OP(p, brw_writemask(dst, mask),
- *           brw_swizzle(src, brw_swizzle_for_mask(mask)));
+ *    elk_OP(p, elk_writemask(dst, mask),
+ *           elk_swizzle(src, elk_swizzle_for_mask(mask)));
  *
  * will be equivalent to the same instruction without swizzle:
  *
- *    brw_OP(p, brw_writemask(dst, mask), src);
+ *    elk_OP(p, elk_writemask(dst, mask), src);
  */
 static inline unsigned
-brw_swizzle_for_mask(unsigned mask)
+elk_swizzle_for_mask(unsigned mask)
 {
    unsigned last = (mask ? ffs(mask) - 1 : 0);
    unsigned swz[4];
@@ -190,7 +190,7 @@ brw_swizzle_for_mask(unsigned mask)
    for (unsigned i = 0; i < 4; i++)
       last = swz[i] = (mask & (1 << i) ? i : last);
 
-   return BRW_SWIZZLE4(swz[0], swz[1], swz[2], swz[3]);
+   return ELK_SWIZZLE4(swz[0], swz[1], swz[2], swz[3]);
 }
 
 /**
@@ -200,22 +200,22 @@ brw_swizzle_for_mask(unsigned mask)
  * those other channels are used.
  */
 static inline unsigned
-brw_swizzle_for_size(unsigned n)
+elk_swizzle_for_size(unsigned n)
 {
-   return brw_swizzle_for_mask((1 << n) - 1);
+   return elk_swizzle_for_mask((1 << n) - 1);
 }
 
 /**
- * Converse of brw_swizzle_for_mask().  Returns the mask of components
+ * Converse of elk_swizzle_for_mask().  Returns the mask of components
  * accessed by the specified swizzle \p swz.
  */
 static inline unsigned
-brw_mask_for_swizzle(unsigned swz)
+elk_mask_for_swizzle(unsigned swz)
 {
-   return brw_apply_inv_swizzle_to_mask(swz, ~0);
+   return elk_apply_inv_swizzle_to_mask(swz, ~0);
 }
 
-uint32_t brw_swizzle_immediate(enum brw_reg_type type, uint32_t x, unsigned swz);
+uint32_t elk_swizzle_immediate(enum elk_reg_type type, uint32_t x, unsigned swz);
 
 #define REG_SIZE (8*4)
 
@@ -225,11 +225,11 @@ uint32_t brw_swizzle_immediate(enum brw_reg_type type, uint32_t x, unsigned swz)
  * WM programs to implement shaders decomposed into "channel serial"
  * or "structure of array" form:
  */
-struct brw_reg {
+struct elk_reg {
    union {
       struct {
-         enum brw_reg_type type:4;
-         enum brw_reg_file file:3;      /* :2 hardware format */
+         enum elk_reg_type type:4;
+         enum elk_reg_file file:3;      /* :2 hardware format */
          unsigned negate:1;             /* source only */
          unsigned abs:1;                /* source only */
          unsigned address_mode:1;       /* relative addressing, hopefully! */
@@ -261,15 +261,15 @@ struct brw_reg {
 };
 
 static inline unsigned
-phys_nr(const struct intel_device_info *devinfo, const struct brw_reg reg)
+phys_nr(const struct intel_device_info *devinfo, const struct elk_reg reg)
 {
    if (devinfo->ver >= 20) {
-      if (reg.file == BRW_GENERAL_REGISTER_FILE)
+      if (reg.file == ELK_GENERAL_REGISTER_FILE)
          return reg.nr / 2;
-      else if (reg.file == BRW_ARCHITECTURE_REGISTER_FILE &&
-               reg.nr >= BRW_ARF_ACCUMULATOR &&
-               reg.nr < BRW_ARF_FLAG)
-         return BRW_ARF_ACCUMULATOR + (reg.nr - BRW_ARF_ACCUMULATOR) / 2;
+      else if (reg.file == ELK_ARCHITECTURE_REGISTER_FILE &&
+               reg.nr >= ELK_ARF_ACCUMULATOR &&
+               reg.nr < ELK_ARF_FLAG)
+         return ELK_ARF_ACCUMULATOR + (reg.nr - ELK_ARF_ACCUMULATOR) / 2;
       else
          return reg.nr;
    } else {
@@ -278,13 +278,13 @@ phys_nr(const struct intel_device_info *devinfo, const struct brw_reg reg)
 }
 
 static inline unsigned
-phys_subnr(const struct intel_device_info *devinfo, const struct brw_reg reg)
+phys_subnr(const struct intel_device_info *devinfo, const struct elk_reg reg)
 {
    if (devinfo->ver >= 20) {
-      if (reg.file == BRW_GENERAL_REGISTER_FILE ||
-          (reg.file == BRW_ARCHITECTURE_REGISTER_FILE &&
-           reg.nr >= BRW_ARF_ACCUMULATOR &&
-           reg.nr < BRW_ARF_FLAG))
+      if (reg.file == ELK_GENERAL_REGISTER_FILE ||
+          (reg.file == ELK_ARCHITECTURE_REGISTER_FILE &&
+           reg.nr >= ELK_ARF_ACCUMULATOR &&
+           reg.nr < ELK_ARF_FLAG))
          return (reg.nr & 1) * REG_SIZE + reg.subnr;
       else
          return reg.subnr;
@@ -294,62 +294,62 @@ phys_subnr(const struct intel_device_info *devinfo, const struct brw_reg reg)
 }
 
 static inline bool
-brw_regs_equal(const struct brw_reg *a, const struct brw_reg *b)
+elk_regs_equal(const struct elk_reg *a, const struct elk_reg *b)
 {
    return a->bits == b->bits && a->u64 == b->u64;
 }
 
 static inline bool
-brw_regs_negative_equal(const struct brw_reg *a, const struct brw_reg *b)
+elk_regs_negative_equal(const struct elk_reg *a, const struct elk_reg *b)
 {
    if (a->file == IMM) {
       if (a->bits != b->bits)
          return false;
 
-      switch ((enum brw_reg_type) a->type) {
-      case BRW_REGISTER_TYPE_UQ:
-      case BRW_REGISTER_TYPE_Q:
+      switch ((enum elk_reg_type) a->type) {
+      case ELK_REGISTER_TYPE_UQ:
+      case ELK_REGISTER_TYPE_Q:
          return a->d64 == -b->d64;
-      case BRW_REGISTER_TYPE_DF:
+      case ELK_REGISTER_TYPE_DF:
          return a->df == -b->df;
-      case BRW_REGISTER_TYPE_UD:
-      case BRW_REGISTER_TYPE_D:
+      case ELK_REGISTER_TYPE_UD:
+      case ELK_REGISTER_TYPE_D:
          return a->d == -b->d;
-      case BRW_REGISTER_TYPE_F:
+      case ELK_REGISTER_TYPE_F:
          return a->f == -b->f;
-      case BRW_REGISTER_TYPE_VF:
+      case ELK_REGISTER_TYPE_VF:
          /* It is tempting to treat 0 as a negation of 0 (and -0 as a negation
           * of -0).  There are occasions where 0 or -0 is used and the exact
           * bit pattern is desired.  At the very least, changing this to allow
           * 0 as a negation of 0 causes some fp64 tests to fail on IVB.
           */
          return a->ud == (b->ud ^ 0x80808080);
-      case BRW_REGISTER_TYPE_UW:
-      case BRW_REGISTER_TYPE_W:
-      case BRW_REGISTER_TYPE_UV:
-      case BRW_REGISTER_TYPE_V:
-      case BRW_REGISTER_TYPE_HF:
+      case ELK_REGISTER_TYPE_UW:
+      case ELK_REGISTER_TYPE_W:
+      case ELK_REGISTER_TYPE_UV:
+      case ELK_REGISTER_TYPE_V:
+      case ELK_REGISTER_TYPE_HF:
          /* FINISHME: Implement support for these types once there is
           * something in the compiler that can generate them.  Until then,
           * they cannot be tested.
           */
          return false;
-      case BRW_REGISTER_TYPE_UB:
-      case BRW_REGISTER_TYPE_B:
-      case BRW_REGISTER_TYPE_NF:
+      case ELK_REGISTER_TYPE_UB:
+      case ELK_REGISTER_TYPE_B:
+      case ELK_REGISTER_TYPE_NF:
       default:
          unreachable("not reached");
       }
    } else {
-      struct brw_reg tmp = *a;
+      struct elk_reg tmp = *a;
 
       tmp.negate = !tmp.negate;
 
-      return brw_regs_equal(&tmp, b);
+      return elk_regs_equal(&tmp, b);
    }
 }
 
-struct brw_indirect {
+struct elk_indirect {
    unsigned addr_subnr:4;
    int addr_offset:10;
    unsigned pad:18;
@@ -360,43 +360,43 @@ static inline unsigned
 type_sz(unsigned type)
 {
    switch(type) {
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
-   case BRW_REGISTER_TYPE_DF:
-   case BRW_REGISTER_TYPE_NF:
+   case ELK_REGISTER_TYPE_UQ:
+   case ELK_REGISTER_TYPE_Q:
+   case ELK_REGISTER_TYPE_DF:
+   case ELK_REGISTER_TYPE_NF:
       return 8;
-   case BRW_REGISTER_TYPE_UD:
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_F:
-   case BRW_REGISTER_TYPE_VF:
+   case ELK_REGISTER_TYPE_UD:
+   case ELK_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_F:
+   case ELK_REGISTER_TYPE_VF:
       return 4;
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_UW:
+   case ELK_REGISTER_TYPE_W:
+   case ELK_REGISTER_TYPE_HF:
    /* [U]V components are 4-bit, but HW unpacks them to 16-bit (2 bytes) */
-   case BRW_REGISTER_TYPE_UV:
-   case BRW_REGISTER_TYPE_V:
+   case ELK_REGISTER_TYPE_UV:
+   case ELK_REGISTER_TYPE_V:
       return 2;
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
+   case ELK_REGISTER_TYPE_UB:
+   case ELK_REGISTER_TYPE_B:
       return 1;
    default:
       unreachable("not reached");
    }
 }
 
-static inline enum brw_reg_type
-get_exec_type(const enum brw_reg_type type)
+static inline enum elk_reg_type
+get_exec_type(const enum elk_reg_type type)
 {
    switch (type) {
-   case BRW_REGISTER_TYPE_B:
-   case BRW_REGISTER_TYPE_V:
-      return BRW_REGISTER_TYPE_W;
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_UV:
-      return BRW_REGISTER_TYPE_UW;
-   case BRW_REGISTER_TYPE_VF:
-      return BRW_REGISTER_TYPE_F;
+   case ELK_REGISTER_TYPE_B:
+   case ELK_REGISTER_TYPE_V:
+      return ELK_REGISTER_TYPE_W;
+   case ELK_REGISTER_TYPE_UB:
+   case ELK_REGISTER_TYPE_UV:
+      return ELK_REGISTER_TYPE_UW;
+   case ELK_REGISTER_TYPE_VF:
+      return ELK_REGISTER_TYPE_F;
    default:
       return type;
    }
@@ -405,65 +405,65 @@ get_exec_type(const enum brw_reg_type type)
 /**
  * Return an integer type of the requested size and signedness.
  */
-static inline enum brw_reg_type
-brw_int_type(unsigned sz, bool is_signed)
+static inline enum elk_reg_type
+elk_int_type(unsigned sz, bool is_signed)
 {
    switch (sz) {
    case 1:
-      return (is_signed ? BRW_REGISTER_TYPE_B : BRW_REGISTER_TYPE_UB);
+      return (is_signed ? ELK_REGISTER_TYPE_B : ELK_REGISTER_TYPE_UB);
    case 2:
-      return (is_signed ? BRW_REGISTER_TYPE_W : BRW_REGISTER_TYPE_UW);
+      return (is_signed ? ELK_REGISTER_TYPE_W : ELK_REGISTER_TYPE_UW);
    case 4:
-      return (is_signed ? BRW_REGISTER_TYPE_D : BRW_REGISTER_TYPE_UD);
+      return (is_signed ? ELK_REGISTER_TYPE_D : ELK_REGISTER_TYPE_UD);
    case 8:
-      return (is_signed ? BRW_REGISTER_TYPE_Q : BRW_REGISTER_TYPE_UQ);
+      return (is_signed ? ELK_REGISTER_TYPE_Q : ELK_REGISTER_TYPE_UQ);
    default:
       unreachable("Not reached.");
    }
 }
 
 /**
- * Construct a brw_reg.
- * \param file      one of the BRW_x_REGISTER_FILE values
+ * Construct a elk_reg.
+ * \param file      one of the ELK_x_REGISTER_FILE values
  * \param nr        register number/index
  * \param subnr     register sub number
  * \param negate    register negate modifier
  * \param abs       register abs modifier
- * \param type      one of BRW_REGISTER_TYPE_x
- * \param vstride   one of BRW_VERTICAL_STRIDE_x
- * \param width     one of BRW_WIDTH_x
- * \param hstride   one of BRW_HORIZONTAL_STRIDE_x
- * \param swizzle   one of BRW_SWIZZLE_x
+ * \param type      one of ELK_REGISTER_TYPE_x
+ * \param vstride   one of ELK_VERTICAL_STRIDE_x
+ * \param width     one of ELK_WIDTH_x
+ * \param hstride   one of ELK_HORIZONTAL_STRIDE_x
+ * \param swizzle   one of ELK_SWIZZLE_x
  * \param writemask WRITEMASK_X/Y/Z/W bitfield
  */
-static inline struct brw_reg
-brw_reg(enum brw_reg_file file,
+static inline struct elk_reg
+elk_reg(enum elk_reg_file file,
         unsigned nr,
         unsigned subnr,
         unsigned negate,
         unsigned abs,
-        enum brw_reg_type type,
+        enum elk_reg_type type,
         unsigned vstride,
         unsigned width,
         unsigned hstride,
         unsigned swizzle,
         unsigned writemask)
 {
-   struct brw_reg reg;
-   if (file == BRW_GENERAL_REGISTER_FILE)
+   struct elk_reg reg;
+   if (file == ELK_GENERAL_REGISTER_FILE)
       assert(nr < XE2_MAX_GRF);
-   else if (file == BRW_ARCHITECTURE_REGISTER_FILE)
-      assert(nr <= BRW_ARF_TIMESTAMP);
+   else if (file == ELK_ARCHITECTURE_REGISTER_FILE)
+      assert(nr <= ELK_ARF_TIMESTAMP);
    /* Asserting on the MRF register number requires to know the hardware gen
     * (gfx6 has 24 MRF registers), which we don't know here, so we assert
-    * for that in the generators and in brw_eu_emit.c
+    * for that in the generators and in elk_eu_emit.c
     */
 
    reg.type = type;
    reg.file = file;
    reg.negate = negate;
    reg.abs = abs;
-   reg.address_mode = BRW_ADDRESS_DIRECT;
+   reg.address_mode = ELK_ADDRESS_DIRECT;
    reg.pad0 = 0;
    reg.subnr = subnr * type_sz(type);
    reg.nr = nr;
@@ -485,141 +485,141 @@ brw_reg(enum brw_reg_file file,
 }
 
 /** Construct float[16] register */
-static inline struct brw_reg
-brw_vec16_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec16_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return elk_reg(file,
                   nr,
                   subnr,
                   0,
                   0,
-                  BRW_REGISTER_TYPE_F,
-                  BRW_VERTICAL_STRIDE_16,
-                  BRW_WIDTH_16,
-                  BRW_HORIZONTAL_STRIDE_1,
-                  BRW_SWIZZLE_XYZW,
+                  ELK_REGISTER_TYPE_F,
+                  ELK_VERTICAL_STRIDE_16,
+                  ELK_WIDTH_16,
+                  ELK_HORIZONTAL_STRIDE_1,
+                  ELK_SWIZZLE_XYZW,
                   WRITEMASK_XYZW);
 }
 
 /** Construct float[8] register */
-static inline struct brw_reg
-brw_vec8_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec8_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return elk_reg(file,
                   nr,
                   subnr,
                   0,
                   0,
-                  BRW_REGISTER_TYPE_F,
-                  BRW_VERTICAL_STRIDE_8,
-                  BRW_WIDTH_8,
-                  BRW_HORIZONTAL_STRIDE_1,
-                  BRW_SWIZZLE_XYZW,
+                  ELK_REGISTER_TYPE_F,
+                  ELK_VERTICAL_STRIDE_8,
+                  ELK_WIDTH_8,
+                  ELK_HORIZONTAL_STRIDE_1,
+                  ELK_SWIZZLE_XYZW,
                   WRITEMASK_XYZW);
 }
 
 /** Construct float[4] register */
-static inline struct brw_reg
-brw_vec4_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec4_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return elk_reg(file,
                   nr,
                   subnr,
                   0,
                   0,
-                  BRW_REGISTER_TYPE_F,
-                  BRW_VERTICAL_STRIDE_4,
-                  BRW_WIDTH_4,
-                  BRW_HORIZONTAL_STRIDE_1,
-                  BRW_SWIZZLE_XYZW,
+                  ELK_REGISTER_TYPE_F,
+                  ELK_VERTICAL_STRIDE_4,
+                  ELK_WIDTH_4,
+                  ELK_HORIZONTAL_STRIDE_1,
+                  ELK_SWIZZLE_XYZW,
                   WRITEMASK_XYZW);
 }
 
 /** Construct float[2] register */
-static inline struct brw_reg
-brw_vec2_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec2_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return elk_reg(file,
                   nr,
                   subnr,
                   0,
                   0,
-                  BRW_REGISTER_TYPE_F,
-                  BRW_VERTICAL_STRIDE_2,
-                  BRW_WIDTH_2,
-                  BRW_HORIZONTAL_STRIDE_1,
-                  BRW_SWIZZLE_XYXY,
+                  ELK_REGISTER_TYPE_F,
+                  ELK_VERTICAL_STRIDE_2,
+                  ELK_WIDTH_2,
+                  ELK_HORIZONTAL_STRIDE_1,
+                  ELK_SWIZZLE_XYXY,
                   WRITEMASK_XY);
 }
 
 /** Construct float[1] register */
-static inline struct brw_reg
-brw_vec1_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec1_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return elk_reg(file,
                   nr,
                   subnr,
                   0,
                   0,
-                  BRW_REGISTER_TYPE_F,
-                  BRW_VERTICAL_STRIDE_0,
-                  BRW_WIDTH_1,
-                  BRW_HORIZONTAL_STRIDE_0,
-                  BRW_SWIZZLE_XXXX,
+                  ELK_REGISTER_TYPE_F,
+                  ELK_VERTICAL_STRIDE_0,
+                  ELK_WIDTH_1,
+                  ELK_HORIZONTAL_STRIDE_0,
+                  ELK_SWIZZLE_XXXX,
                   WRITEMASK_X);
 }
 
-static inline struct brw_reg
-brw_vecn_reg(unsigned width, enum brw_reg_file file,
+static inline struct elk_reg
+elk_vecn_reg(unsigned width, enum elk_reg_file file,
              unsigned nr, unsigned subnr)
 {
    switch (width) {
    case 1:
-      return brw_vec1_reg(file, nr, subnr);
+      return elk_vec1_reg(file, nr, subnr);
    case 2:
-      return brw_vec2_reg(file, nr, subnr);
+      return elk_vec2_reg(file, nr, subnr);
    case 4:
-      return brw_vec4_reg(file, nr, subnr);
+      return elk_vec4_reg(file, nr, subnr);
    case 8:
-      return brw_vec8_reg(file, nr, subnr);
+      return elk_vec8_reg(file, nr, subnr);
    case 16:
-      return brw_vec16_reg(file, nr, subnr);
+      return elk_vec16_reg(file, nr, subnr);
    default:
       unreachable("Invalid register width");
    }
 }
 
-static inline struct brw_reg
-retype(struct brw_reg reg, enum brw_reg_type type)
+static inline struct elk_reg
+retype(struct elk_reg reg, enum elk_reg_type type)
 {
    reg.type = type;
    return reg;
 }
 
-static inline struct brw_reg
-firsthalf(struct brw_reg reg)
+static inline struct elk_reg
+firsthalf(struct elk_reg reg)
 {
    return reg;
 }
 
-static inline struct brw_reg
-sechalf(struct brw_reg reg)
+static inline struct elk_reg
+sechalf(struct elk_reg reg)
 {
    if (reg.vstride)
       reg.nr++;
    return reg;
 }
 
-static inline struct brw_reg
-offset(struct brw_reg reg, unsigned delta)
+static inline struct elk_reg
+offset(struct elk_reg reg, unsigned delta)
 {
    reg.nr += delta;
    return reg;
 }
 
 
-static inline struct brw_reg
-byte_offset(struct brw_reg reg, unsigned bytes)
+static inline struct elk_reg
+byte_offset(struct elk_reg reg, unsigned bytes)
 {
    unsigned newoffset = reg.nr * REG_SIZE + reg.subnr + bytes;
    reg.nr = newoffset / REG_SIZE;
@@ -627,389 +627,389 @@ byte_offset(struct brw_reg reg, unsigned bytes)
    return reg;
 }
 
-static inline struct brw_reg
-suboffset(struct brw_reg reg, unsigned delta)
+static inline struct elk_reg
+suboffset(struct elk_reg reg, unsigned delta)
 {
    return byte_offset(reg, delta * type_sz(reg.type));
 }
 
 /** Construct unsigned word[16] register */
-static inline struct brw_reg
-brw_uw16_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_uw16_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return suboffset(retype(brw_vec16_reg(file, nr, 0), BRW_REGISTER_TYPE_UW), subnr);
+   return suboffset(retype(elk_vec16_reg(file, nr, 0), ELK_REGISTER_TYPE_UW), subnr);
 }
 
 /** Construct unsigned word[8] register */
-static inline struct brw_reg
-brw_uw8_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_uw8_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return suboffset(retype(brw_vec8_reg(file, nr, 0), BRW_REGISTER_TYPE_UW), subnr);
+   return suboffset(retype(elk_vec8_reg(file, nr, 0), ELK_REGISTER_TYPE_UW), subnr);
 }
 
 /** Construct unsigned word[1] register */
-static inline struct brw_reg
-brw_uw1_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_uw1_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return suboffset(retype(brw_vec1_reg(file, nr, 0), BRW_REGISTER_TYPE_UW), subnr);
+   return suboffset(retype(elk_vec1_reg(file, nr, 0), ELK_REGISTER_TYPE_UW), subnr);
 }
 
-static inline struct brw_reg
-brw_ud8_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_ud8_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return retype(brw_vec8_reg(file, nr, subnr), BRW_REGISTER_TYPE_UD);
+   return retype(elk_vec8_reg(file, nr, subnr), ELK_REGISTER_TYPE_UD);
 }
 
-static inline struct brw_reg
-brw_ud1_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_ud1_reg(enum elk_reg_file file, unsigned nr, unsigned subnr)
 {
-   return retype(brw_vec1_reg(file, nr, subnr), BRW_REGISTER_TYPE_UD);
+   return retype(elk_vec1_reg(file, nr, subnr), ELK_REGISTER_TYPE_UD);
 }
 
-static inline struct brw_reg
-brw_imm_reg(enum brw_reg_type type)
+static inline struct elk_reg
+elk_imm_reg(enum elk_reg_type type)
 {
-   return brw_reg(BRW_IMMEDIATE_VALUE,
+   return elk_reg(ELK_IMMEDIATE_VALUE,
                   0,
                   0,
                   0,
                   0,
                   type,
-                  BRW_VERTICAL_STRIDE_0,
-                  BRW_WIDTH_1,
-                  BRW_HORIZONTAL_STRIDE_0,
+                  ELK_VERTICAL_STRIDE_0,
+                  ELK_WIDTH_1,
+                  ELK_HORIZONTAL_STRIDE_0,
                   0,
                   0);
 }
 
 /** Construct float immediate register */
-static inline struct brw_reg
-brw_imm_df(double df)
+static inline struct elk_reg
+elk_imm_df(double df)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_DF);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_DF);
    imm.df = df;
    return imm;
 }
 
-static inline struct brw_reg
-brw_imm_u64(uint64_t u64)
+static inline struct elk_reg
+elk_imm_u64(uint64_t u64)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_UQ);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_UQ);
    imm.u64 = u64;
    return imm;
 }
 
-static inline struct brw_reg
-brw_imm_f(float f)
+static inline struct elk_reg
+elk_imm_f(float f)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_F);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_F);
    imm.f = f;
    return imm;
 }
 
 /** Construct int64_t immediate register */
-static inline struct brw_reg
-brw_imm_q(int64_t q)
+static inline struct elk_reg
+elk_imm_q(int64_t q)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_Q);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_Q);
    imm.d64 = q;
    return imm;
 }
 
 /** Construct int64_t immediate register */
-static inline struct brw_reg
-brw_imm_uq(uint64_t uq)
+static inline struct elk_reg
+elk_imm_uq(uint64_t uq)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_UQ);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_UQ);
    imm.u64 = uq;
    return imm;
 }
 
 /** Construct integer immediate register */
-static inline struct brw_reg
-brw_imm_d(int d)
+static inline struct elk_reg
+elk_imm_d(int d)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_D);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_D);
    imm.d = d;
    return imm;
 }
 
 /** Construct uint immediate register */
-static inline struct brw_reg
-brw_imm_ud(unsigned ud)
+static inline struct elk_reg
+elk_imm_ud(unsigned ud)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_UD);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_UD);
    imm.ud = ud;
    return imm;
 }
 
 /** Construct ushort immediate register */
-static inline struct brw_reg
-brw_imm_uw(uint16_t uw)
+static inline struct elk_reg
+elk_imm_uw(uint16_t uw)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_UW);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_UW);
    imm.ud = uw | (uw << 16);
    return imm;
 }
 
 /** Construct short immediate register */
-static inline struct brw_reg
-brw_imm_w(int16_t w)
+static inline struct elk_reg
+elk_imm_w(int16_t w)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_W);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_W);
    imm.ud = (uint16_t)w | (uint32_t)(uint16_t)w << 16;
    return imm;
 }
 
-/* brw_imm_b and brw_imm_ub aren't supported by hardware - the type
+/* elk_imm_b and elk_imm_ub aren't supported by hardware - the type
  * numbers alias with _V and _VF below:
  */
 
 /** Construct vector of eight signed half-byte values */
-static inline struct brw_reg
-brw_imm_v(unsigned v)
+static inline struct elk_reg
+elk_imm_v(unsigned v)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_V);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_V);
    imm.ud = v;
    return imm;
 }
 
 /** Construct vector of eight unsigned half-byte values */
-static inline struct brw_reg
-brw_imm_uv(unsigned uv)
+static inline struct elk_reg
+elk_imm_uv(unsigned uv)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_UV);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_UV);
    imm.ud = uv;
    return imm;
 }
 
 /** Construct vector of four 8-bit float values */
-static inline struct brw_reg
-brw_imm_vf(unsigned v)
+static inline struct elk_reg
+elk_imm_vf(unsigned v)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_VF);
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_VF);
    imm.ud = v;
    return imm;
 }
 
-static inline struct brw_reg
-brw_imm_vf4(unsigned v0, unsigned v1, unsigned v2, unsigned v3)
+static inline struct elk_reg
+elk_imm_vf4(unsigned v0, unsigned v1, unsigned v2, unsigned v3)
 {
-   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_VF);
-   imm.vstride = BRW_VERTICAL_STRIDE_0;
-   imm.width = BRW_WIDTH_4;
-   imm.hstride = BRW_HORIZONTAL_STRIDE_1;
+   struct elk_reg imm = elk_imm_reg(ELK_REGISTER_TYPE_VF);
+   imm.vstride = ELK_VERTICAL_STRIDE_0;
+   imm.width = ELK_WIDTH_4;
+   imm.hstride = ELK_HORIZONTAL_STRIDE_1;
    imm.ud = ((v0 << 0) | (v1 << 8) | (v2 << 16) | (v3 << 24));
    return imm;
 }
 
 
-static inline struct brw_reg
-brw_address(struct brw_reg reg)
+static inline struct elk_reg
+elk_address(struct elk_reg reg)
 {
-   return brw_imm_uw(reg.nr * REG_SIZE + reg.subnr);
+   return elk_imm_uw(reg.nr * REG_SIZE + reg.subnr);
 }
 
 /** Construct float[1] general-purpose register */
-static inline struct brw_reg
-brw_vec1_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec1_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec1_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_vec1_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
+static inline struct elk_reg
 xe2_vec1_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec1_reg(BRW_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
+   return elk_vec1_reg(ELK_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
 }
 
 /** Construct float[2] general-purpose register */
-static inline struct brw_reg
-brw_vec2_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec2_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec2_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_vec2_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
+static inline struct elk_reg
 xe2_vec2_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec2_reg(BRW_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
+   return elk_vec2_reg(ELK_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
 }
 
 /** Construct float[4] general-purpose register */
-static inline struct brw_reg
-brw_vec4_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec4_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec4_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_vec4_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
+static inline struct elk_reg
 xe2_vec4_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec4_reg(BRW_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
+   return elk_vec4_reg(ELK_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
 }
 
 /** Construct float[8] general-purpose register */
-static inline struct brw_reg
-brw_vec8_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec8_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec8_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_vec8_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
+static inline struct elk_reg
 xe2_vec8_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec8_reg(BRW_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
+   return elk_vec8_reg(ELK_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
 }
 
 /** Construct float[16] general-purpose register */
-static inline struct brw_reg
-brw_vec16_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vec16_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec16_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_vec16_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
+static inline struct elk_reg
 xe2_vec16_grf(unsigned nr, unsigned subnr)
 {
-   return brw_vec16_reg(BRW_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
+   return elk_vec16_reg(ELK_GENERAL_REGISTER_FILE, 2 * nr + subnr / 8, subnr % 8);
 }
 
-static inline struct brw_reg
-brw_vecn_grf(unsigned width, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_vecn_grf(unsigned width, unsigned nr, unsigned subnr)
 {
-   return brw_vecn_reg(width, BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_vecn_reg(width, ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
+static inline struct elk_reg
 xe2_vecn_grf(unsigned width, unsigned nr, unsigned subnr)
 {
-   return brw_vecn_reg(width, BRW_GENERAL_REGISTER_FILE, nr + subnr / 8, subnr % 8);
+   return elk_vecn_reg(width, ELK_GENERAL_REGISTER_FILE, nr + subnr / 8, subnr % 8);
 }
 
-static inline struct brw_reg
-brw_uw1_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_uw1_grf(unsigned nr, unsigned subnr)
 {
-   return brw_uw1_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_uw1_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
-brw_uw8_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_uw8_grf(unsigned nr, unsigned subnr)
 {
-   return brw_uw8_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_uw8_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
-brw_uw16_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_uw16_grf(unsigned nr, unsigned subnr)
 {
-   return brw_uw16_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_uw16_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
-brw_ud8_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_ud8_grf(unsigned nr, unsigned subnr)
 {
-   return brw_ud8_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_ud8_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
-static inline struct brw_reg
-brw_ud1_grf(unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_ud1_grf(unsigned nr, unsigned subnr)
 {
-   return brw_ud1_reg(BRW_GENERAL_REGISTER_FILE, nr, subnr);
+   return elk_ud1_reg(ELK_GENERAL_REGISTER_FILE, nr, subnr);
 }
 
 
 /** Construct null register (usually used for setting condition codes) */
-static inline struct brw_reg
-brw_null_reg(void)
+static inline struct elk_reg
+elk_null_reg(void)
 {
-   return brw_vec8_reg(BRW_ARCHITECTURE_REGISTER_FILE, BRW_ARF_NULL, 0);
+   return elk_vec8_reg(ELK_ARCHITECTURE_REGISTER_FILE, ELK_ARF_NULL, 0);
 }
 
-static inline struct brw_reg
-brw_null_vec(unsigned width)
+static inline struct elk_reg
+elk_null_vec(unsigned width)
 {
-   return brw_vecn_reg(width, BRW_ARCHITECTURE_REGISTER_FILE, BRW_ARF_NULL, 0);
+   return elk_vecn_reg(width, ELK_ARCHITECTURE_REGISTER_FILE, ELK_ARF_NULL, 0);
 }
 
-static inline struct brw_reg
-brw_address_reg(unsigned subnr)
+static inline struct elk_reg
+elk_address_reg(unsigned subnr)
 {
-   return brw_uw1_reg(BRW_ARCHITECTURE_REGISTER_FILE, BRW_ARF_ADDRESS, subnr);
+   return elk_uw1_reg(ELK_ARCHITECTURE_REGISTER_FILE, ELK_ARF_ADDRESS, subnr);
 }
 
-static inline struct brw_reg
-brw_tdr_reg(void)
+static inline struct elk_reg
+elk_tdr_reg(void)
 {
-   return brw_uw1_reg(BRW_ARCHITECTURE_REGISTER_FILE, BRW_ARF_TDR, 0);
+   return elk_uw1_reg(ELK_ARCHITECTURE_REGISTER_FILE, ELK_ARF_TDR, 0);
 }
 
 /* If/else instructions break in align16 mode if writemask & swizzle
  * aren't xyzw.  This goes against the convention for other scalar
  * regs:
  */
-static inline struct brw_reg
-brw_ip_reg(void)
+static inline struct elk_reg
+elk_ip_reg(void)
 {
-   return brw_reg(BRW_ARCHITECTURE_REGISTER_FILE,
-                  BRW_ARF_IP,
+   return elk_reg(ELK_ARCHITECTURE_REGISTER_FILE,
+                  ELK_ARF_IP,
                   0,
                   0,
                   0,
-                  BRW_REGISTER_TYPE_UD,
-                  BRW_VERTICAL_STRIDE_4, /* ? */
-                  BRW_WIDTH_1,
-                  BRW_HORIZONTAL_STRIDE_0,
-                  BRW_SWIZZLE_XYZW, /* NOTE! */
+                  ELK_REGISTER_TYPE_UD,
+                  ELK_VERTICAL_STRIDE_4, /* ? */
+                  ELK_WIDTH_1,
+                  ELK_HORIZONTAL_STRIDE_0,
+                  ELK_SWIZZLE_XYZW, /* NOTE! */
                   WRITEMASK_XYZW); /* NOTE! */
 }
 
-static inline struct brw_reg
-brw_notification_reg(void)
+static inline struct elk_reg
+elk_notification_reg(void)
 {
-   return brw_reg(BRW_ARCHITECTURE_REGISTER_FILE,
-                  BRW_ARF_NOTIFICATION_COUNT,
+   return elk_reg(ELK_ARCHITECTURE_REGISTER_FILE,
+                  ELK_ARF_NOTIFICATION_COUNT,
                   0,
                   0,
                   0,
-                  BRW_REGISTER_TYPE_UD,
-                  BRW_VERTICAL_STRIDE_0,
-                  BRW_WIDTH_1,
-                  BRW_HORIZONTAL_STRIDE_0,
-                  BRW_SWIZZLE_XXXX,
+                  ELK_REGISTER_TYPE_UD,
+                  ELK_VERTICAL_STRIDE_0,
+                  ELK_WIDTH_1,
+                  ELK_HORIZONTAL_STRIDE_0,
+                  ELK_SWIZZLE_XXXX,
                   WRITEMASK_X);
 }
 
-static inline struct brw_reg
-brw_cr0_reg(unsigned subnr)
+static inline struct elk_reg
+elk_cr0_reg(unsigned subnr)
 {
-   return brw_ud1_reg(BRW_ARCHITECTURE_REGISTER_FILE, BRW_ARF_CONTROL, subnr);
+   return elk_ud1_reg(ELK_ARCHITECTURE_REGISTER_FILE, ELK_ARF_CONTROL, subnr);
 }
 
-static inline struct brw_reg
-brw_sr0_reg(unsigned subnr)
+static inline struct elk_reg
+elk_sr0_reg(unsigned subnr)
 {
-   return brw_ud1_reg(BRW_ARCHITECTURE_REGISTER_FILE, BRW_ARF_STATE, subnr);
+   return elk_ud1_reg(ELK_ARCHITECTURE_REGISTER_FILE, ELK_ARF_STATE, subnr);
 }
 
-static inline struct brw_reg
-brw_acc_reg(unsigned width)
+static inline struct elk_reg
+elk_acc_reg(unsigned width)
 {
-   return brw_vecn_reg(width, BRW_ARCHITECTURE_REGISTER_FILE,
-                       BRW_ARF_ACCUMULATOR, 0);
+   return elk_vecn_reg(width, ELK_ARCHITECTURE_REGISTER_FILE,
+                       ELK_ARF_ACCUMULATOR, 0);
 }
 
-static inline struct brw_reg
-brw_flag_reg(int reg, int subreg)
+static inline struct elk_reg
+elk_flag_reg(int reg, int subreg)
 {
-   return brw_uw1_reg(BRW_ARCHITECTURE_REGISTER_FILE,
-                      BRW_ARF_FLAG + reg, subreg);
+   return elk_uw1_reg(ELK_ARCHITECTURE_REGISTER_FILE,
+                      ELK_ARF_FLAG + reg, subreg);
 }
 
-static inline struct brw_reg
-brw_flag_subreg(unsigned subreg)
+static inline struct elk_reg
+elk_flag_subreg(unsigned subreg)
 {
-   return brw_uw1_reg(BRW_ARCHITECTURE_REGISTER_FILE,
-                      BRW_ARF_FLAG + subreg / 2, subreg % 2);
+   return elk_uw1_reg(ELK_ARCHITECTURE_REGISTER_FILE,
+                      ELK_ARF_FLAG + subreg / 2, subreg % 2);
 }
 
 /**
@@ -1017,50 +1017,50 @@ brw_flag_subreg(unsigned subreg)
  * in Gfx7.5 and later hardware referred to as "channel enable" register in
  * the documentation.
  */
-static inline struct brw_reg
-brw_mask_reg(unsigned subnr)
+static inline struct elk_reg
+elk_mask_reg(unsigned subnr)
 {
-   return brw_uw1_reg(BRW_ARCHITECTURE_REGISTER_FILE, BRW_ARF_MASK, subnr);
+   return elk_uw1_reg(ELK_ARCHITECTURE_REGISTER_FILE, ELK_ARF_MASK, subnr);
 }
 
-static inline struct brw_reg
-brw_vmask_reg()
+static inline struct elk_reg
+elk_vmask_reg()
 {
-   return brw_sr0_reg(3);
+   return elk_sr0_reg(3);
 }
 
-static inline struct brw_reg
-brw_dmask_reg()
+static inline struct elk_reg
+elk_dmask_reg()
 {
-   return brw_sr0_reg(2);
+   return elk_sr0_reg(2);
 }
 
-static inline struct brw_reg
-brw_mask_stack_reg(unsigned subnr)
+static inline struct elk_reg
+elk_mask_stack_reg(unsigned subnr)
 {
-   return suboffset(retype(brw_vec16_reg(BRW_ARCHITECTURE_REGISTER_FILE,
-                                         BRW_ARF_MASK_STACK, 0),
-                           BRW_REGISTER_TYPE_UB), subnr);
+   return suboffset(retype(elk_vec16_reg(ELK_ARCHITECTURE_REGISTER_FILE,
+                                         ELK_ARF_MASK_STACK, 0),
+                           ELK_REGISTER_TYPE_UB), subnr);
 }
 
-static inline struct brw_reg
-brw_mask_stack_depth_reg(unsigned subnr)
+static inline struct elk_reg
+elk_mask_stack_depth_reg(unsigned subnr)
 {
-   return brw_uw1_reg(BRW_ARCHITECTURE_REGISTER_FILE,
-                      BRW_ARF_MASK_STACK_DEPTH, subnr);
+   return elk_uw1_reg(ELK_ARCHITECTURE_REGISTER_FILE,
+                      ELK_ARF_MASK_STACK_DEPTH, subnr);
 }
 
-static inline struct brw_reg
-brw_message_reg(unsigned nr)
+static inline struct elk_reg
+elk_message_reg(unsigned nr)
 {
-   return brw_vec8_reg(BRW_MESSAGE_REGISTER_FILE, nr, 0);
+   return elk_vec8_reg(ELK_MESSAGE_REGISTER_FILE, nr, 0);
 }
 
-static inline struct brw_reg
-brw_uvec_mrf(unsigned width, unsigned nr, unsigned subnr)
+static inline struct elk_reg
+elk_uvec_mrf(unsigned width, unsigned nr, unsigned subnr)
 {
-   return retype(brw_vecn_reg(width, BRW_MESSAGE_REGISTER_FILE, nr, subnr),
-                 BRW_REGISTER_TYPE_UD);
+   return retype(elk_vecn_reg(width, ELK_MESSAGE_REGISTER_FILE, nr, subnr),
+                 ELK_REGISTER_TYPE_UD);
 }
 
 /* This is almost always called with a numeric constant argument, so
@@ -1080,8 +1080,8 @@ static inline unsigned cvt(unsigned val)
    return 0;
 }
 
-static inline struct brw_reg
-stride(struct brw_reg reg, unsigned vstride, unsigned width, unsigned hstride)
+static inline struct elk_reg
+stride(struct elk_reg reg, unsigned vstride, unsigned width, unsigned hstride)
 {
    reg.vstride = cvt(vstride);
    reg.width = cvt(width) - 1;
@@ -1093,8 +1093,8 @@ stride(struct brw_reg reg, unsigned vstride, unsigned width, unsigned hstride)
  * Multiply the vertical and horizontal stride of a register by the given
  * factor \a s.
  */
-static inline struct brw_reg
-spread(struct brw_reg reg, unsigned s)
+static inline struct elk_reg
+spread(struct elk_reg reg, unsigned s)
 {
    if (s) {
       assert(util_is_power_of_two_nonzero(s));
@@ -1115,8 +1115,8 @@ spread(struct brw_reg reg, unsigned s)
  * Reinterpret each channel of register \p reg as a vector of values of the
  * given smaller type and take the i-th subcomponent from each.
  */
-static inline struct brw_reg
-subscript(struct brw_reg reg, enum brw_reg_type type, unsigned i)
+static inline struct elk_reg
+subscript(struct elk_reg reg, enum elk_reg_type type, unsigned i)
 {
    unsigned scale = type_sz(reg.type) / type_sz(type);
    assert(scale >= 1 && i < scale);
@@ -1133,104 +1133,104 @@ subscript(struct brw_reg reg, enum brw_reg_type type, unsigned i)
    return suboffset(retype(spread(reg, scale), type), i);
 }
 
-static inline struct brw_reg
-vec16(struct brw_reg reg)
+static inline struct elk_reg
+vec16(struct elk_reg reg)
 {
    return stride(reg, 16,16,1);
 }
 
-static inline struct brw_reg
-vec8(struct brw_reg reg)
+static inline struct elk_reg
+vec8(struct elk_reg reg)
 {
    return stride(reg, 8,8,1);
 }
 
-static inline struct brw_reg
-vec4(struct brw_reg reg)
+static inline struct elk_reg
+vec4(struct elk_reg reg)
 {
    return stride(reg, 4,4,1);
 }
 
-static inline struct brw_reg
-vec2(struct brw_reg reg)
+static inline struct elk_reg
+vec2(struct elk_reg reg)
 {
    return stride(reg, 2,2,1);
 }
 
-static inline struct brw_reg
-vec1(struct brw_reg reg)
+static inline struct elk_reg
+vec1(struct elk_reg reg)
 {
    return stride(reg, 0,1,0);
 }
 
 
-static inline struct brw_reg
-get_element(struct brw_reg reg, unsigned elt)
+static inline struct elk_reg
+get_element(struct elk_reg reg, unsigned elt)
 {
    return vec1(suboffset(reg, elt));
 }
 
-static inline struct brw_reg
-get_element_ud(struct brw_reg reg, unsigned elt)
+static inline struct elk_reg
+get_element_ud(struct elk_reg reg, unsigned elt)
 {
-   return vec1(suboffset(retype(reg, BRW_REGISTER_TYPE_UD), elt));
+   return vec1(suboffset(retype(reg, ELK_REGISTER_TYPE_UD), elt));
 }
 
-static inline struct brw_reg
-get_element_d(struct brw_reg reg, unsigned elt)
+static inline struct elk_reg
+get_element_d(struct elk_reg reg, unsigned elt)
 {
-   return vec1(suboffset(retype(reg, BRW_REGISTER_TYPE_D), elt));
+   return vec1(suboffset(retype(reg, ELK_REGISTER_TYPE_D), elt));
 }
 
-static inline struct brw_reg
-brw_swizzle(struct brw_reg reg, unsigned swz)
+static inline struct elk_reg
+elk_swizzle(struct elk_reg reg, unsigned swz)
 {
-   if (reg.file == BRW_IMMEDIATE_VALUE)
-      reg.ud = brw_swizzle_immediate(reg.type, reg.ud, swz);
+   if (reg.file == ELK_IMMEDIATE_VALUE)
+      reg.ud = elk_swizzle_immediate(reg.type, reg.ud, swz);
    else
-      reg.swizzle = brw_compose_swizzle(swz, reg.swizzle);
+      reg.swizzle = elk_compose_swizzle(swz, reg.swizzle);
 
    return reg;
 }
 
-static inline struct brw_reg
-brw_writemask(struct brw_reg reg, unsigned mask)
+static inline struct elk_reg
+elk_writemask(struct elk_reg reg, unsigned mask)
 {
-   assert(reg.file != BRW_IMMEDIATE_VALUE);
+   assert(reg.file != ELK_IMMEDIATE_VALUE);
    reg.writemask &= mask;
    return reg;
 }
 
-static inline struct brw_reg
-brw_set_writemask(struct brw_reg reg, unsigned mask)
+static inline struct elk_reg
+elk_set_writemask(struct elk_reg reg, unsigned mask)
 {
-   assert(reg.file != BRW_IMMEDIATE_VALUE);
+   assert(reg.file != ELK_IMMEDIATE_VALUE);
    reg.writemask = mask;
    return reg;
 }
 
 static inline unsigned
-brw_writemask_for_size(unsigned n)
+elk_writemask_for_size(unsigned n)
 {
    return (1 << n) - 1;
 }
 
 static inline unsigned
-brw_writemask_for_component_packing(unsigned n, unsigned first_component)
+elk_writemask_for_component_packing(unsigned n, unsigned first_component)
 {
    assert(first_component + n <= 4);
    return (((1 << n) - 1) << first_component);
 }
 
-static inline struct brw_reg
-negate(struct brw_reg reg)
+static inline struct elk_reg
+negate(struct elk_reg reg)
 {
    reg.negate ^= 1;
    return reg;
 }
 
-static inline struct brw_reg
-brw_abs(struct brw_reg reg)
+static inline struct elk_reg
+elk_abs(struct elk_reg reg)
 {
    reg.abs = 1;
    reg.negate = 0;
@@ -1239,90 +1239,90 @@ brw_abs(struct brw_reg reg)
 
 /************************************************************************/
 
-static inline struct brw_reg
-brw_vec4_indirect(unsigned subnr, int offset)
+static inline struct elk_reg
+elk_vec4_indirect(unsigned subnr, int offset)
 {
-   struct brw_reg reg =  brw_vec4_grf(0, 0);
+   struct elk_reg reg =  elk_vec4_grf(0, 0);
    reg.subnr = subnr;
-   reg.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
+   reg.address_mode = ELK_ADDRESS_REGISTER_INDIRECT_REGISTER;
    reg.indirect_offset = offset;
    return reg;
 }
 
-static inline struct brw_reg
-brw_vec1_indirect(unsigned subnr, int offset)
+static inline struct elk_reg
+elk_vec1_indirect(unsigned subnr, int offset)
 {
-   struct brw_reg reg =  brw_vec1_grf(0, 0);
+   struct elk_reg reg =  elk_vec1_grf(0, 0);
    reg.subnr = subnr;
-   reg.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
+   reg.address_mode = ELK_ADDRESS_REGISTER_INDIRECT_REGISTER;
    reg.indirect_offset = offset;
    return reg;
 }
 
-static inline struct brw_reg
-brw_VxH_indirect(unsigned subnr, int offset)
+static inline struct elk_reg
+elk_VxH_indirect(unsigned subnr, int offset)
 {
-   struct brw_reg reg = brw_vec1_grf(0, 0);
-   reg.vstride = BRW_VERTICAL_STRIDE_ONE_DIMENSIONAL;
+   struct elk_reg reg = elk_vec1_grf(0, 0);
+   reg.vstride = ELK_VERTICAL_STRIDE_ONE_DIMENSIONAL;
    reg.subnr = subnr;
-   reg.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
+   reg.address_mode = ELK_ADDRESS_REGISTER_INDIRECT_REGISTER;
    reg.indirect_offset = offset;
    return reg;
 }
 
-static inline struct brw_reg
-deref_4f(struct brw_indirect ptr, int offset)
+static inline struct elk_reg
+deref_4f(struct elk_indirect ptr, int offset)
 {
-   return brw_vec4_indirect(ptr.addr_subnr, ptr.addr_offset + offset);
+   return elk_vec4_indirect(ptr.addr_subnr, ptr.addr_offset + offset);
 }
 
-static inline struct brw_reg
-deref_1f(struct brw_indirect ptr, int offset)
+static inline struct elk_reg
+deref_1f(struct elk_indirect ptr, int offset)
 {
-   return brw_vec1_indirect(ptr.addr_subnr, ptr.addr_offset + offset);
+   return elk_vec1_indirect(ptr.addr_subnr, ptr.addr_offset + offset);
 }
 
-static inline struct brw_reg
-deref_4b(struct brw_indirect ptr, int offset)
+static inline struct elk_reg
+deref_4b(struct elk_indirect ptr, int offset)
 {
-   return retype(deref_4f(ptr, offset), BRW_REGISTER_TYPE_B);
+   return retype(deref_4f(ptr, offset), ELK_REGISTER_TYPE_B);
 }
 
-static inline struct brw_reg
-deref_1uw(struct brw_indirect ptr, int offset)
+static inline struct elk_reg
+deref_1uw(struct elk_indirect ptr, int offset)
 {
-   return retype(deref_1f(ptr, offset), BRW_REGISTER_TYPE_UW);
+   return retype(deref_1f(ptr, offset), ELK_REGISTER_TYPE_UW);
 }
 
-static inline struct brw_reg
-deref_1d(struct brw_indirect ptr, int offset)
+static inline struct elk_reg
+deref_1d(struct elk_indirect ptr, int offset)
 {
-   return retype(deref_1f(ptr, offset), BRW_REGISTER_TYPE_D);
+   return retype(deref_1f(ptr, offset), ELK_REGISTER_TYPE_D);
 }
 
-static inline struct brw_reg
-deref_1ud(struct brw_indirect ptr, int offset)
+static inline struct elk_reg
+deref_1ud(struct elk_indirect ptr, int offset)
 {
-   return retype(deref_1f(ptr, offset), BRW_REGISTER_TYPE_UD);
+   return retype(deref_1f(ptr, offset), ELK_REGISTER_TYPE_UD);
 }
 
-static inline struct brw_reg
-get_addr_reg(struct brw_indirect ptr)
+static inline struct elk_reg
+get_addr_reg(struct elk_indirect ptr)
 {
-   return brw_address_reg(ptr.addr_subnr);
+   return elk_address_reg(ptr.addr_subnr);
 }
 
-static inline struct brw_indirect
-brw_indirect_offset(struct brw_indirect ptr, int offset)
+static inline struct elk_indirect
+elk_indirect_offset(struct elk_indirect ptr, int offset)
 {
    ptr.addr_offset += offset;
    return ptr;
 }
 
-static inline struct brw_indirect
-brw_indirect(unsigned addr_subnr, int offset)
+static inline struct elk_indirect
+elk_indirect(unsigned addr_subnr, int offset)
 {
-   struct brw_indirect ptr;
+   struct elk_indirect ptr;
    ptr.addr_subnr = addr_subnr;
    ptr.addr_offset = offset;
    ptr.pad = 0;
@@ -1330,8 +1330,8 @@ brw_indirect(unsigned addr_subnr, int offset)
 }
 
 static inline bool
-region_matches(struct brw_reg reg, enum brw_vertical_stride v,
-               enum brw_width w, enum brw_horizontal_stride h)
+region_matches(struct elk_reg reg, enum elk_vertical_stride v,
+               enum elk_width w, enum elk_horizontal_stride h)
 {
    return reg.vstride == v &&
           reg.width == w &&
@@ -1339,34 +1339,34 @@ region_matches(struct brw_reg reg, enum brw_vertical_stride v,
 }
 
 #define has_scalar_region(reg) \
-   region_matches(reg, BRW_VERTICAL_STRIDE_0, BRW_WIDTH_1, \
-                  BRW_HORIZONTAL_STRIDE_0)
+   region_matches(reg, ELK_VERTICAL_STRIDE_0, ELK_WIDTH_1, \
+                  ELK_HORIZONTAL_STRIDE_0)
 
 /**
  * Return the size in bytes per data element of register \p reg on the
  * corresponding register file.
  */
 static inline unsigned
-element_sz(struct brw_reg reg)
+element_sz(struct elk_reg reg)
 {
-   if (reg.file == BRW_IMMEDIATE_VALUE || has_scalar_region(reg)) {
+   if (reg.file == ELK_IMMEDIATE_VALUE || has_scalar_region(reg)) {
       return type_sz(reg.type);
 
-   } else if (reg.width == BRW_WIDTH_1 &&
-              reg.hstride == BRW_HORIZONTAL_STRIDE_0) {
-      assert(reg.vstride != BRW_VERTICAL_STRIDE_0);
+   } else if (reg.width == ELK_WIDTH_1 &&
+              reg.hstride == ELK_HORIZONTAL_STRIDE_0) {
+      assert(reg.vstride != ELK_VERTICAL_STRIDE_0);
       return type_sz(reg.type) << (reg.vstride - 1);
 
    } else {
-      assert(reg.hstride != BRW_HORIZONTAL_STRIDE_0);
+      assert(reg.hstride != ELK_HORIZONTAL_STRIDE_0);
       assert(reg.vstride == reg.hstride + reg.width);
       return type_sz(reg.type) << (reg.hstride - 1);
    }
 }
 
-/* brw_packed_float.c */
-int brw_float_to_vf(float f);
-float brw_vf_to_float(unsigned char vf);
+/* elk_packed_float.c */
+int elk_float_to_vf(float f);
+float elk_vf_to_float(unsigned char vf);
 
 #ifdef __cplusplus
 }

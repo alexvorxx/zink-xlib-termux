@@ -35,10 +35,10 @@ namespace elk {
 class gfx6_gs_visitor : public vec4_gs_visitor
 {
 public:
-   gfx6_gs_visitor(const struct brw_compiler *comp,
-                   const struct brw_compile_params *params,
-                   struct brw_gs_compile *c,
-                   struct brw_gs_prog_data *prog_data,
+   gfx6_gs_visitor(const struct elk_compiler *comp,
+                   const struct elk_compile_params *params,
+                   struct elk_gs_compile *c,
+                   struct elk_gs_prog_data *prog_data,
                    const nir_shader *shader,
                    bool no_spills,
                    bool debug_enabled) :

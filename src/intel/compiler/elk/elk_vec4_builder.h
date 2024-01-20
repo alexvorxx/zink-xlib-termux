@@ -51,7 +51,7 @@ namespace elk {
       /**
        * Construct a vec4_builder that inserts instructions into \p shader.
        */
-      vec4_builder(backend_shader *shader, unsigned dispatch_width = 8) :
+      vec4_builder(elk_backend_shader *shader, unsigned dispatch_width = 8) :
          shader(shader), block(NULL), cursor(NULL),
          _dispatch_width(dispatch_width), _group(0),
          force_writemask_all(false),
@@ -65,7 +65,7 @@ namespace elk {
        * execution controls and debug annotation are initialized from the
        * instruction passed as argument.
        */
-      vec4_builder(backend_shader *shader, bblock_t *block, instruction *inst) :
+      vec4_builder(elk_backend_shader *shader, elk_bblock_t *block, instruction *inst) :
          shader(shader), block(block), cursor(inst),
          _dispatch_width(inst->exec_size), _group(inst->group),
          force_writemask_all(inst->force_writemask_all)
@@ -80,7 +80,7 @@ namespace elk {
        * from this.
        */
       vec4_builder
-      at(bblock_t *block, exec_node *cursor) const
+      at(elk_bblock_t *block, exec_node *cursor) const
       {
          vec4_builder bld = *this;
          bld.block = block;
@@ -169,7 +169,7 @@ namespace elk {
        * components in this IR).
        */
       dst_reg
-      vgrf(enum brw_reg_type type, unsigned n = 1) const
+      vgrf(enum elk_reg_type type, unsigned n = 1) const
       {
          assert(dispatch_width() <= 32);
 
@@ -187,8 +187,8 @@ namespace elk {
       dst_reg
       null_reg_f() const
       {
-         return dst_reg(retype(brw_null_vec(dispatch_width()),
-                               BRW_REGISTER_TYPE_F));
+         return dst_reg(retype(elk_null_vec(dispatch_width()),
+                               ELK_REGISTER_TYPE_F));
       }
 
       /**
@@ -197,8 +197,8 @@ namespace elk {
       dst_reg
       null_reg_d() const
       {
-         return dst_reg(retype(brw_null_vec(dispatch_width()),
-                               BRW_REGISTER_TYPE_D));
+         return dst_reg(retype(elk_null_vec(dispatch_width()),
+                               ELK_REGISTER_TYPE_D));
       }
 
       /**
@@ -207,8 +207,8 @@ namespace elk {
       dst_reg
       null_reg_ud() const
       {
-         return dst_reg(retype(brw_null_vec(dispatch_width()),
-                               BRW_REGISTER_TYPE_UD));
+         return dst_reg(retype(elk_null_vec(dispatch_width()),
+                               ELK_REGISTER_TYPE_UD));
       }
 
       /**
@@ -224,7 +224,7 @@ namespace elk {
        * Create and insert a nullary control instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode) const
+      emit(enum elk_opcode opcode) const
       {
          return emit(instruction(opcode));
       }
@@ -233,7 +233,7 @@ namespace elk {
        * Create and insert a nullary instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode, const dst_reg &dst) const
+      emit(enum elk_opcode opcode, const dst_reg &dst) const
       {
          return emit(instruction(opcode, dst));
       }
@@ -242,16 +242,16 @@ namespace elk {
        * Create and insert a unary instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0) const
+      emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0) const
       {
          switch (opcode) {
-         case SHADER_OPCODE_RCP:
-         case SHADER_OPCODE_RSQ:
-         case SHADER_OPCODE_SQRT:
-         case SHADER_OPCODE_EXP2:
-         case SHADER_OPCODE_LOG2:
-         case SHADER_OPCODE_SIN:
-         case SHADER_OPCODE_COS:
+         case ELK_SHADER_OPCODE_RCP:
+         case ELK_SHADER_OPCODE_RSQ:
+         case ELK_SHADER_OPCODE_SQRT:
+         case ELK_SHADER_OPCODE_EXP2:
+         case ELK_SHADER_OPCODE_LOG2:
+         case ELK_SHADER_OPCODE_SIN:
+         case ELK_SHADER_OPCODE_COS:
             return fix_math_instruction(
                emit(instruction(opcode, dst,
                                 fix_math_operand(src0))));
@@ -265,13 +265,13 @@ namespace elk {
        * Create and insert a binary instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0,
+      emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0,
            const src_reg &src1) const
       {
          switch (opcode) {
-         case SHADER_OPCODE_POW:
-         case SHADER_OPCODE_INT_QUOTIENT:
-         case SHADER_OPCODE_INT_REMAINDER:
+         case ELK_SHADER_OPCODE_POW:
+         case ELK_SHADER_OPCODE_INT_QUOTIENT:
+         case ELK_SHADER_OPCODE_INT_REMAINDER:
             return fix_math_instruction(
                emit(instruction(opcode, dst,
                                 fix_math_operand(src0),
@@ -286,14 +286,14 @@ namespace elk {
        * Create and insert a ternary instruction into the program.
        */
       instruction *
-      emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0,
+      emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0,
            const src_reg &src1, const src_reg &src2) const
       {
          switch (opcode) {
-         case BRW_OPCODE_BFE:
-         case BRW_OPCODE_BFI2:
-         case BRW_OPCODE_MAD:
-         case BRW_OPCODE_LRP:
+         case ELK_OPCODE_BFE:
+         case ELK_OPCODE_BFI2:
+         case ELK_OPCODE_MAD:
+         case ELK_OPCODE_LRP:
             return emit(instruction(opcode, dst,
                                     fix_3src_operand(src0),
                                     fix_3src_operand(src1),
@@ -333,9 +333,9 @@ namespace elk {
        */
       instruction *
       emit_minmax(const dst_reg &dst, const src_reg &src0,
-                  const src_reg &src1, brw_conditional_mod mod) const
+                  const src_reg &src1, elk_conditional_mod mod) const
       {
-         assert(mod == BRW_CONDITIONAL_GE || mod == BRW_CONDITIONAL_L);
+         assert(mod == ELK_CONDITIONAL_GE || mod == ELK_CONDITIONAL_L);
 
          return set_condmod(mod, SEL(dst, fix_unsigned_negate(src0),
                                      fix_unsigned_negate(src1)));
@@ -349,11 +349,11 @@ namespace elk {
       {
          const vec4_builder ubld = exec_all();
          const dst_reg chan_index =
-            writemask(vgrf(BRW_REGISTER_TYPE_UD), WRITEMASK_X);
+            writemask(vgrf(ELK_REGISTER_TYPE_UD), WRITEMASK_X);
          const dst_reg dst = vgrf(src.type);
 
-         ubld.emit(SHADER_OPCODE_FIND_LIVE_CHANNEL, chan_index);
-         ubld.emit(SHADER_OPCODE_BROADCAST, dst, src, src_reg(chan_index));
+         ubld.emit(ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL, chan_index);
+         ubld.emit(ELK_SHADER_OPCODE_BROADCAST, dst, src, src_reg(chan_index));
 
          return src_reg(dst);
       }
@@ -366,21 +366,21 @@ namespace elk {
       instruction *                                     \
       op(const dst_reg &dst, const src_reg &src0) const \
       {                                                 \
-         return emit(BRW_OPCODE_##op, dst, src0);       \
+         return emit(ELK_OPCODE_##op, dst, src0);       \
       }
 
 #define ALU2(op)                                                        \
       instruction *                                                     \
       op(const dst_reg &dst, const src_reg &src0, const src_reg &src1) const \
       {                                                                 \
-         return emit(BRW_OPCODE_##op, dst, src0, src1);                 \
+         return emit(ELK_OPCODE_##op, dst, src0, src1);                 \
       }
 
 #define ALU2_ACC(op)                                                    \
       instruction *                                                     \
       op(const dst_reg &dst, const src_reg &src0, const src_reg &src1) const \
       {                                                                 \
-         instruction *inst = emit(BRW_OPCODE_##op, dst, src0, src1);    \
+         instruction *inst = emit(ELK_OPCODE_##op, dst, src0, src1);    \
          inst->writes_accumulator = true;                               \
          return inst;                                                   \
       }
@@ -390,7 +390,7 @@ namespace elk {
       op(const dst_reg &dst, const src_reg &src0, const src_reg &src1,  \
          const src_reg &src2) const                                     \
       {                                                                 \
-         return emit(BRW_OPCODE_##op, dst, src0, src1, src2);           \
+         return emit(ELK_OPCODE_##op, dst, src0, src1, src2);           \
       }
 
       ALU2(ADD)
@@ -449,7 +449,7 @@ namespace elk {
        */
       instruction *
       CMP(const dst_reg &dst, const src_reg &src0, const src_reg &src1,
-          brw_conditional_mod condition) const
+          elk_conditional_mod condition) const
       {
          /* Take the instruction:
           *
@@ -464,7 +464,7 @@ namespace elk {
           * instruction.
           */
          return set_condmod(condition,
-                            emit(BRW_OPCODE_CMP, retype(dst, src0.type),
+                            emit(ELK_OPCODE_CMP, retype(dst, src0.type),
                                  fix_unsigned_negate(src0),
                                  fix_unsigned_negate(src1)));
       }
@@ -474,7 +474,7 @@ namespace elk {
        */
       instruction *
       CMPN(const dst_reg &dst, const src_reg &src0, const src_reg &src1,
-          brw_conditional_mod condition) const
+          elk_conditional_mod condition) const
       {
          /* Take the instruction:
           *
@@ -489,7 +489,7 @@ namespace elk {
           * instruction.
           */
          return set_condmod(condition,
-                            emit(BRW_OPCODE_CMPN, retype(dst, src0.type),
+                            emit(ELK_OPCODE_CMPN, retype(dst, src0.type),
                                  fix_unsigned_negate(src0),
                                  fix_unsigned_negate(src1)));
       }
@@ -498,9 +498,9 @@ namespace elk {
        * Gfx4 predicated IF.
        */
       instruction *
-      IF(brw_predicate predicate) const
+      IF(elk_predicate predicate) const
       {
-         return set_predicate(predicate, emit(BRW_OPCODE_IF));
+         return set_predicate(predicate, emit(ELK_OPCODE_IF));
       }
 
       /**
@@ -508,11 +508,11 @@ namespace elk {
        */
       instruction *
       IF(const src_reg &src0, const src_reg &src1,
-         brw_conditional_mod condition) const
+         elk_conditional_mod condition) const
       {
          assert(shader->devinfo->ver == 6);
          return set_condmod(condition,
-                            emit(BRW_OPCODE_IF,
+                            emit(ELK_OPCODE_IF,
                                  null_reg_d(),
                                  fix_unsigned_negate(src0),
                                  fix_unsigned_negate(src1)));
@@ -529,21 +529,21 @@ namespace elk {
           * we need to reorder the operands.
           */
          assert(shader->devinfo->ver >= 6 && shader->devinfo->ver <= 9);
-         return emit(BRW_OPCODE_LRP, dst, a, y, x);
+         return emit(ELK_OPCODE_LRP, dst, a, y, x);
       }
 
-      backend_shader *shader;
+      elk_backend_shader *shader;
 
    protected:
       /**
        * Workaround for negation of UD registers.  See comment in
-       * fs_generator::generate_code() for the details.
+       * elk_fs_generator::generate_code() for the details.
        */
       src_reg
       fix_unsigned_negate(const src_reg &src) const
       {
-         if (src.type == BRW_REGISTER_TYPE_UD && src.negate) {
-            dst_reg temp = vgrf(BRW_REGISTER_TYPE_UD);
+         if (src.type == ELK_REGISTER_TYPE_UD && src.negate) {
+            dst_reg temp = vgrf(ELK_REGISTER_TYPE_UD);
             MOV(temp, src);
             return src_reg(temp);
          } else {
@@ -572,11 +572,11 @@ namespace elk {
          if (src.file != UNIFORM && src.file != IMM)
             return src;
 
-         if (src.file == UNIFORM && brw_is_single_value_swizzle(src.swizzle))
+         if (src.file == UNIFORM && elk_is_single_value_swizzle(src.swizzle))
             return src;
 
          const dst_reg expanded = vgrf(src.type);
-         emit(VEC4_OPCODE_UNPACK_UNIFORM, expanded, src);
+         emit(ELK_VEC4_OPCODE_UNPACK_UNIFORM, expanded, src);
          return src_reg(expanded);
       }
 
@@ -628,7 +628,7 @@ namespace elk {
          return inst;
       }
 
-      bblock_t *block;
+      elk_bblock_t *block;
       exec_node *cursor;
 
       unsigned _dispatch_width;

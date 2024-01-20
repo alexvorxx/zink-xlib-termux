@@ -47,7 +47,7 @@ struct shader_info;
 struct nir_shader_compiler_options;
 typedef struct nir_shader nir_shader;
 
-struct brw_compiler {
+struct elk_compiler {
    const struct intel_device_info *devinfo;
 
    /* This lock must be taken if the compiler is to be modified in any way,
@@ -55,7 +55,7 @@ struct brw_compiler {
     */
    mtx_t mutex;
 
-   struct brw_isa_info isa;
+   struct elk_isa_info isa;
 
    struct {
       struct ra_regs *regs;
@@ -151,12 +151,12 @@ struct brw_compiler {
    struct nir_shader *clc_shader;
 };
 
-#define brw_shader_debug_log(compiler, data, fmt, ... ) do {    \
+#define elk_shader_debug_log(compiler, data, fmt, ... ) do {    \
    static unsigned id = 0;                                      \
    compiler->shader_debug_log(data, &id, fmt, ##__VA_ARGS__);   \
 } while (0)
 
-#define brw_shader_perf_log(compiler, data, fmt, ... ) do {     \
+#define elk_shader_perf_log(compiler, data, fmt, ... ) do {     \
    static unsigned id = 0;                                      \
    compiler->shader_perf_log(data, &id, fmt, ##__VA_ARGS__);    \
 } while (0)
@@ -168,7 +168,7 @@ struct brw_compiler {
  * subgroup size of 32 but will act as if 16 or 24 of those channels are
  * disabled.
  */
-#define BRW_SUBGROUP_SIZE 32
+#define ELK_SUBGROUP_SIZE 32
 
 /**
  * Program key structures.
@@ -190,13 +190,13 @@ struct brw_compiler {
  *  @{
  */
 
-enum PACKED gfx6_gather_sampler_wa {
-   WA_SIGN = 1,      /* whether we need to sign extend */
-   WA_8BIT = 2,      /* if we have an 8bit format needing wa */
-   WA_16BIT = 4,     /* if we have a 16bit format needing wa */
+enum PACKED elk_gfx6_gather_sampler_wa {
+   ELK_WA_SIGN = 1,      /* whether we need to sign extend */
+   ELK_WA_8BIT = 2,      /* if we have an 8bit format needing wa */
+   ELK_WA_16BIT = 4,     /* if we have a 16bit format needing wa */
 };
 
-#define BRW_MAX_SAMPLERS 32
+#define ELK_MAX_SAMPLERS 32
 
 /* Provide explicit padding for each member, to ensure that the compiler
  * initializes every bit in the shader cache keys.  The keys will be compared
@@ -208,14 +208,14 @@ PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 /**
  * Sampler information needed by VS, WM, and GS program cache keys.
  */
-struct brw_sampler_prog_key_data {
+struct elk_sampler_prog_key_data {
    /**
     * EXT_texture_swizzle and DEPTH_TEXTURE_MODE swizzles.
     *
     * This field is not consumed by the back-end compiler and is only relevant
     * for the crocus OpenGL driver for Broadwell and earlier hardware.
     */
-   uint16_t swizzles[BRW_MAX_SAMPLERS];
+   uint16_t swizzles[ELK_MAX_SAMPLERS];
 
    uint32_t gl_clamp_mask[3];
 
@@ -227,18 +227,18 @@ struct brw_sampler_prog_key_data {
    /**
     * For Sandybridge, which shader w/a we need for gather quirks.
     */
-   enum gfx6_gather_sampler_wa gfx6_gather_wa[BRW_MAX_SAMPLERS];
+   enum elk_gfx6_gather_sampler_wa gfx6_gather_wa[ELK_MAX_SAMPLERS];
 };
 
-enum brw_robustness_flags {
-   BRW_ROBUSTNESS_UBO  = BITFIELD_BIT(0),
-   BRW_ROBUSTNESS_SSBO = BITFIELD_BIT(1),
+enum elk_robustness_flags {
+   ELK_ROBUSTNESS_UBO  = BITFIELD_BIT(0),
+   ELK_ROBUSTNESS_SSBO = BITFIELD_BIT(1),
 };
 
-struct brw_base_prog_key {
+struct elk_base_prog_key {
    unsigned program_string_id;
 
-   enum brw_robustness_flags robust_flags:2;
+   enum elk_robustness_flags robust_flags:2;
 
    unsigned padding:22;
 
@@ -249,7 +249,7 @@ struct brw_base_prog_key {
     */
    bool limit_trig_input_range;
 
-   struct brw_sampler_prog_key_data tex;
+   struct elk_sampler_prog_key_data tex;
 };
 
 /**
@@ -257,11 +257,11 @@ struct brw_base_prog_key {
  * or most 10_10_10_2 types.  These flags enable various VS workarounds to
  * "fix" attributes at the beginning of shaders.
  */
-#define BRW_ATTRIB_WA_COMPONENT_MASK    7  /* mask for GL_FIXED scale channel count */
-#define BRW_ATTRIB_WA_NORMALIZE     8   /* normalize in shader */
-#define BRW_ATTRIB_WA_BGRA          16  /* swap r/b channels in shader */
-#define BRW_ATTRIB_WA_SIGN          32  /* interpret as signed in shader */
-#define BRW_ATTRIB_WA_SCALE         64  /* interpret as scaled in shader */
+#define ELK_ATTRIB_WA_COMPONENT_MASK    7  /* mask for GL_FIXED scale channel count */
+#define ELK_ATTRIB_WA_NORMALIZE     8   /* normalize in shader */
+#define ELK_ATTRIB_WA_BGRA          16  /* swap r/b channels in shader */
+#define ELK_ATTRIB_WA_SIGN          32  /* interpret as signed in shader */
+#define ELK_ATTRIB_WA_SCALE         64  /* interpret as scaled in shader */
 
 /**
  * OpenGL attribute slots fall in [0, VERT_ATTRIB_MAX - 1] with the range
@@ -295,16 +295,16 @@ struct brw_base_prog_key {
  * allocate the number of binding table entries we will need once the bug is
  * fixed.
  */
-#define BRW_MAX_SOL_BINDINGS 64
+#define ELK_MAX_SOL_BINDINGS 64
 
 /** The program key for Vertex Shaders. */
-struct brw_vs_prog_key {
-   struct brw_base_prog_key base;
+struct elk_vs_prog_key {
+   struct elk_base_prog_key base;
 
    /**
     * Per-attribute workaround flags
     *
-    * For each attribute, a combination of BRW_ATTRIB_WA_*.
+    * For each attribute, a combination of ELK_ATTRIB_WA_*.
     *
     * For OpenGL, where we expose a maximum of 16 user input attributes
     * we only need up to VERT_ATTRIB_MAX slots, however, in Vulkan
@@ -343,9 +343,9 @@ struct brw_vs_prog_key {
 };
 
 /** The program key for Tessellation Control Shaders. */
-struct brw_tcs_prog_key
+struct elk_tcs_prog_key
 {
-   struct brw_base_prog_key base;
+   struct elk_base_prog_key base;
 
    /** A bitfield of per-vertex outputs written. */
    uint64_t outputs_written;
@@ -362,19 +362,19 @@ struct brw_tcs_prog_key
    uint32_t padding:24;
 };
 
-#define BRW_MAX_TCS_INPUT_VERTICES (32)
+#define ELK_MAX_TCS_INPUT_VERTICES (32)
 
 static inline uint32_t
-brw_tcs_prog_key_input_vertices(const struct brw_tcs_prog_key *key)
+elk_tcs_prog_key_input_vertices(const struct elk_tcs_prog_key *key)
 {
    return key->input_vertices != 0 ?
-          key->input_vertices : BRW_MAX_TCS_INPUT_VERTICES;
+          key->input_vertices : ELK_MAX_TCS_INPUT_VERTICES;
 }
 
 /** The program key for Tessellation Evaluation Shaders. */
-struct brw_tes_prog_key
+struct elk_tes_prog_key
 {
-   struct brw_base_prog_key base;
+   struct elk_base_prog_key base;
 
    /** A bitfield of per-vertex inputs read. */
    uint64_t inputs_read;
@@ -395,9 +395,9 @@ struct brw_tes_prog_key
 };
 
 /** The program key for Geometry Shaders. */
-struct brw_gs_prog_key
+struct elk_gs_prog_key
 {
-   struct brw_base_prog_key base;
+   struct elk_base_prog_key base;
 
    /**
     * How many user clipping planes are being uploaded to the geometry shader
@@ -411,19 +411,19 @@ struct brw_gs_prog_key
    unsigned padding:27;
 };
 
-enum brw_sf_primitive {
-   BRW_SF_PRIM_POINTS = 0,
-   BRW_SF_PRIM_LINES = 1,
-   BRW_SF_PRIM_TRIANGLES = 2,
-   BRW_SF_PRIM_UNFILLED_TRIS = 3,
+enum elk_sf_primitive {
+   ELK_SF_PRIM_POINTS = 0,
+   ELK_SF_PRIM_LINES = 1,
+   ELK_SF_PRIM_TRIANGLES = 2,
+   ELK_SF_PRIM_UNFILLED_TRIS = 3,
 };
 
-struct brw_sf_prog_key {
+struct elk_sf_prog_key {
    uint64_t attrs;
    bool contains_flat_varying;
-   unsigned char interp_mode[65]; /* BRW_VARYING_SLOT_COUNT */
+   unsigned char interp_mode[65]; /* ELK_VARYING_SLOT_COUNT */
    uint8_t point_sprite_coord_replace;
-   enum brw_sf_primitive primitive:2;
+   enum elk_sf_primitive primitive:2;
    bool do_twoside_color:1;
    bool frontface_ccw:1;
    bool do_point_sprite:1;
@@ -433,44 +433,44 @@ struct brw_sf_prog_key {
    unsigned padding: 32;
 };
 
-enum brw_clip_mode {
-   BRW_CLIP_MODE_NORMAL             = 0,
-   BRW_CLIP_MODE_CLIP_ALL           = 1,
-   BRW_CLIP_MODE_CLIP_NON_REJECTED  = 2,
-   BRW_CLIP_MODE_REJECT_ALL         = 3,
-   BRW_CLIP_MODE_ACCEPT_ALL         = 4,
-   BRW_CLIP_MODE_KERNEL_CLIP        = 5,
+enum elk_clip_mode {
+   ELK_CLIP_MODE_NORMAL             = 0,
+   ELK_CLIP_MODE_CLIP_ALL           = 1,
+   ELK_CLIP_MODE_CLIP_NON_REJECTED  = 2,
+   ELK_CLIP_MODE_REJECT_ALL         = 3,
+   ELK_CLIP_MODE_ACCEPT_ALL         = 4,
+   ELK_CLIP_MODE_KERNEL_CLIP        = 5,
 };
 
-enum brw_clip_fill_mode {
-   BRW_CLIP_FILL_MODE_LINE = 0,
-   BRW_CLIP_FILL_MODE_POINT = 1,
-   BRW_CLIP_FILL_MODE_FILL = 2,
-   BRW_CLIP_FILL_MODE_CULL = 3,
+enum elk_clip_fill_mode {
+   ELK_CLIP_FILL_MODE_LINE = 0,
+   ELK_CLIP_FILL_MODE_POINT = 1,
+   ELK_CLIP_FILL_MODE_FILL = 2,
+   ELK_CLIP_FILL_MODE_CULL = 3,
 };
 
 /* Note that if unfilled primitives are being emitted, we have to fix
  * up polygon offset and flatshading at this point:
  */
-struct brw_clip_prog_key {
+struct elk_clip_prog_key {
    uint64_t attrs;
    float offset_factor;
    float offset_units;
    float offset_clamp;
    bool contains_flat_varying;
    bool contains_noperspective_varying;
-   unsigned char interp_mode[65]; /* BRW_VARYING_SLOT_COUNT */
+   unsigned char interp_mode[65]; /* ELK_VARYING_SLOT_COUNT */
    unsigned primitive:4;
    unsigned nr_userclip:4;
    bool pv_first:1;
    bool do_unfilled:1;
-   enum brw_clip_fill_mode fill_cw:2;  /* includes cull information */
-   enum brw_clip_fill_mode fill_ccw:2; /* includes cull information */
+   enum elk_clip_fill_mode fill_cw:2;  /* includes cull information */
+   enum elk_clip_fill_mode fill_ccw:2; /* includes cull information */
    bool offset_cw:1;
    bool offset_ccw:1;
    bool copy_bfc_cw:1;
    bool copy_bfc_ccw:1;
-   enum brw_clip_mode clip_mode:3;
+   enum elk_clip_mode clip_mode:3;
    uint64_t padding:51;
 };
 
@@ -479,37 +479,37 @@ struct brw_clip_prog_key {
  * program execution.  These mainly relate to depth and stencil
  * processing and the early-depth-test optimization.
  */
-enum brw_wm_iz_bits {
-   BRW_WM_IZ_PS_KILL_ALPHATEST_BIT     = 0x1,
-   BRW_WM_IZ_PS_COMPUTES_DEPTH_BIT     = 0x2,
-   BRW_WM_IZ_DEPTH_WRITE_ENABLE_BIT    = 0x4,
-   BRW_WM_IZ_DEPTH_TEST_ENABLE_BIT     = 0x8,
-   BRW_WM_IZ_STENCIL_WRITE_ENABLE_BIT  = 0x10,
-   BRW_WM_IZ_STENCIL_TEST_ENABLE_BIT   = 0x20,
-   BRW_WM_IZ_BIT_MAX                   = 0x40
+enum elk_wm_iz_bits {
+   ELK_WM_IZ_PS_KILL_ALPHATEST_BIT     = 0x1,
+   ELK_WM_IZ_PS_COMPUTES_DEPTH_BIT     = 0x2,
+   ELK_WM_IZ_DEPTH_WRITE_ENABLE_BIT    = 0x4,
+   ELK_WM_IZ_DEPTH_TEST_ENABLE_BIT     = 0x8,
+   ELK_WM_IZ_STENCIL_WRITE_ENABLE_BIT  = 0x10,
+   ELK_WM_IZ_STENCIL_TEST_ENABLE_BIT   = 0x20,
+   ELK_WM_IZ_BIT_MAX                   = 0x40
 };
 
-enum brw_sometimes {
-   BRW_NEVER = 0,
-   BRW_SOMETIMES,
-   BRW_ALWAYS
+enum elk_sometimes {
+   ELK_NEVER = 0,
+   ELK_SOMETIMES,
+   ELK_ALWAYS
 };
 
-static inline enum brw_sometimes
-brw_sometimes_invert(enum brw_sometimes x)
+static inline enum elk_sometimes
+elk_sometimes_invert(enum elk_sometimes x)
 {
-   return (enum brw_sometimes)((int)BRW_ALWAYS - (int)x);
+   return (enum elk_sometimes)((int)ELK_ALWAYS - (int)x);
 }
 
 /** The program key for Fragment/Pixel Shaders. */
-struct brw_wm_prog_key {
-   struct brw_base_prog_key base;
+struct elk_wm_prog_key {
+   struct elk_base_prog_key base;
 
    uint64_t input_slots_valid;
    float alpha_test_ref;
    uint8_t color_outputs_valid;
 
-   /* Some collection of BRW_WM_IZ_* */
+   /* Some collection of ELK_WM_IZ_* */
    uint8_t iz_lookup;
    bool stats_wm:1;
    bool flat_shade:1;
@@ -517,7 +517,7 @@ struct brw_wm_prog_key {
    bool emit_alpha_test:1;
    enum compare_func alpha_test_func:3; /* < For Gfx4/5 MRT alpha test */
    bool alpha_test_replicate_alpha:1;
-   enum brw_sometimes alpha_to_coverage:2;
+   enum elk_sometimes alpha_to_coverage:2;
    bool clamp_fragment_color:1;
 
    bool force_dual_color_blend:1;
@@ -530,12 +530,12 @@ struct brw_wm_prog_key {
     * us to run per-sample.  Even when running per-sample due to gl_SampleID,
     * we may still interpolate unqualified inputs at the pixel center.
     */
-   enum brw_sometimes persample_interp:2;
+   enum elk_sometimes persample_interp:2;
 
    /* Whether or not we are running on a multisampled framebuffer */
-   enum brw_sometimes multisample_fbo:2;
+   enum elk_sometimes multisample_fbo:2;
 
-   enum brw_sometimes line_aa:2;
+   enum elk_sometimes line_aa:2;
 
    bool coherent_fb_fetch:1;
    bool ignore_sample_mask_out:1;
@@ -544,11 +544,11 @@ struct brw_wm_prog_key {
    uint64_t padding:55;
 };
 
-struct brw_cs_prog_key {
-   struct brw_base_prog_key base;
+struct elk_cs_prog_key {
+   struct elk_base_prog_key base;
 };
 
-struct brw_ff_gs_prog_key {
+struct elk_ff_gs_prog_key {
    uint64_t attrs;
 
    /**
@@ -556,14 +556,14 @@ struct brw_ff_gs_prog_key {
     * gl_varying_slot that should be streamed out through that binding table
     * entry.
     */
-   unsigned char transform_feedback_bindings[BRW_MAX_SOL_BINDINGS];
+   unsigned char transform_feedback_bindings[ELK_MAX_SOL_BINDINGS];
 
    /**
     * Map from the index of a transform feedback binding table entry to the
     * swizzles that should be used when streaming out data through that
     * binding table entry.
     */
-   unsigned char transform_feedback_swizzles[BRW_MAX_SOL_BINDINGS];
+   unsigned char transform_feedback_swizzles[ELK_MAX_SOL_BINDINGS];
 
    /**
     * Hardware primitive type being drawn, e.g. _3DPRIM_TRILIST.
@@ -576,32 +576,32 @@ struct brw_ff_gs_prog_key {
    /**
     * Number of varyings that are output to transform feedback.
     */
-   unsigned num_transform_feedback_bindings:7; /* 0-BRW_MAX_SOL_BINDINGS */
+   unsigned num_transform_feedback_bindings:7; /* 0-ELK_MAX_SOL_BINDINGS */
    uint64_t padding:47;
 };
 
-/* brw_any_prog_key is any of the keys that map to an API stage */
-union brw_any_prog_key {
-   struct brw_base_prog_key base;
-   struct brw_vs_prog_key vs;
-   struct brw_tcs_prog_key tcs;
-   struct brw_tes_prog_key tes;
-   struct brw_gs_prog_key gs;
-   struct brw_wm_prog_key wm;
-   struct brw_cs_prog_key cs;
+/* elk_any_prog_key is any of the keys that map to an API stage */
+union elk_any_prog_key {
+   struct elk_base_prog_key base;
+   struct elk_vs_prog_key vs;
+   struct elk_tcs_prog_key tcs;
+   struct elk_tes_prog_key tes;
+   struct elk_gs_prog_key gs;
+   struct elk_wm_prog_key wm;
+   struct elk_cs_prog_key cs;
 };
 
 PRAGMA_DIAGNOSTIC_POP
 
 /** Max number of render targets in a shader */
-#define BRW_MAX_DRAW_BUFFERS 8
+#define ELK_MAX_DRAW_BUFFERS 8
 
 /**
  * Binding table index for the first gfx6 SOL binding.
  */
-#define BRW_GFX6_SOL_BINDING_START 0
+#define ELK_GFX6_SOL_BINDING_START 0
 
-struct brw_ubo_range
+struct elk_ubo_range
 {
    uint16_t block;
 
@@ -611,88 +611,88 @@ struct brw_ubo_range
 };
 
 /* We reserve the first 2^16 values for builtins */
-#define BRW_PARAM_IS_BUILTIN(param) (((param) & 0xffff0000) == 0)
+#define ELK_PARAM_IS_BUILTIN(param) (((param) & 0xffff0000) == 0)
 
-enum brw_param_builtin {
-   BRW_PARAM_BUILTIN_ZERO,
+enum elk_param_builtin {
+   ELK_PARAM_BUILTIN_ZERO,
 
-   BRW_PARAM_BUILTIN_CLIP_PLANE_0_X,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_0_Y,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_0_Z,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_0_W,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_1_X,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_1_Y,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_1_Z,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_1_W,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_2_X,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_2_Y,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_2_Z,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_2_W,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_3_X,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_3_Y,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_3_Z,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_3_W,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_4_X,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_4_Y,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_4_Z,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_4_W,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_5_X,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_5_Y,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_5_Z,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_5_W,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_6_X,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_6_Y,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_6_Z,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_6_W,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_7_X,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_7_Y,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_7_Z,
-   BRW_PARAM_BUILTIN_CLIP_PLANE_7_W,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_0_X,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_0_Y,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_0_Z,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_0_W,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_1_X,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_1_Y,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_1_Z,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_1_W,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_2_X,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_2_Y,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_2_Z,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_2_W,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_3_X,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_3_Y,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_3_Z,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_3_W,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_4_X,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_4_Y,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_4_Z,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_4_W,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_5_X,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_5_Y,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_5_Z,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_5_W,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_6_X,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_6_Y,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_6_Z,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_6_W,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_7_X,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_7_Y,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_7_Z,
+   ELK_PARAM_BUILTIN_CLIP_PLANE_7_W,
 
-   BRW_PARAM_BUILTIN_TESS_LEVEL_OUTER_X,
-   BRW_PARAM_BUILTIN_TESS_LEVEL_OUTER_Y,
-   BRW_PARAM_BUILTIN_TESS_LEVEL_OUTER_Z,
-   BRW_PARAM_BUILTIN_TESS_LEVEL_OUTER_W,
-   BRW_PARAM_BUILTIN_TESS_LEVEL_INNER_X,
-   BRW_PARAM_BUILTIN_TESS_LEVEL_INNER_Y,
+   ELK_PARAM_BUILTIN_TESS_LEVEL_OUTER_X,
+   ELK_PARAM_BUILTIN_TESS_LEVEL_OUTER_Y,
+   ELK_PARAM_BUILTIN_TESS_LEVEL_OUTER_Z,
+   ELK_PARAM_BUILTIN_TESS_LEVEL_OUTER_W,
+   ELK_PARAM_BUILTIN_TESS_LEVEL_INNER_X,
+   ELK_PARAM_BUILTIN_TESS_LEVEL_INNER_Y,
 
-   BRW_PARAM_BUILTIN_PATCH_VERTICES_IN,
+   ELK_PARAM_BUILTIN_PATCH_VERTICES_IN,
 
-   BRW_PARAM_BUILTIN_BASE_WORK_GROUP_ID_X,
-   BRW_PARAM_BUILTIN_BASE_WORK_GROUP_ID_Y,
-   BRW_PARAM_BUILTIN_BASE_WORK_GROUP_ID_Z,
-   BRW_PARAM_BUILTIN_SUBGROUP_ID,
-   BRW_PARAM_BUILTIN_WORK_GROUP_SIZE_X,
-   BRW_PARAM_BUILTIN_WORK_GROUP_SIZE_Y,
-   BRW_PARAM_BUILTIN_WORK_GROUP_SIZE_Z,
-   BRW_PARAM_BUILTIN_WORK_DIM,
+   ELK_PARAM_BUILTIN_BASE_WORK_GROUP_ID_X,
+   ELK_PARAM_BUILTIN_BASE_WORK_GROUP_ID_Y,
+   ELK_PARAM_BUILTIN_BASE_WORK_GROUP_ID_Z,
+   ELK_PARAM_BUILTIN_SUBGROUP_ID,
+   ELK_PARAM_BUILTIN_WORK_GROUP_SIZE_X,
+   ELK_PARAM_BUILTIN_WORK_GROUP_SIZE_Y,
+   ELK_PARAM_BUILTIN_WORK_GROUP_SIZE_Z,
+   ELK_PARAM_BUILTIN_WORK_DIM,
 };
 
-#define BRW_PARAM_BUILTIN_CLIP_PLANE(idx, comp) \
-   (BRW_PARAM_BUILTIN_CLIP_PLANE_0_X + ((idx) << 2) + (comp))
+#define ELK_PARAM_BUILTIN_CLIP_PLANE(idx, comp) \
+   (ELK_PARAM_BUILTIN_CLIP_PLANE_0_X + ((idx) << 2) + (comp))
 
-#define BRW_PARAM_BUILTIN_IS_CLIP_PLANE(param)  \
-   ((param) >= BRW_PARAM_BUILTIN_CLIP_PLANE_0_X && \
-    (param) <= BRW_PARAM_BUILTIN_CLIP_PLANE_7_W)
+#define ELK_PARAM_BUILTIN_IS_CLIP_PLANE(param)  \
+   ((param) >= ELK_PARAM_BUILTIN_CLIP_PLANE_0_X && \
+    (param) <= ELK_PARAM_BUILTIN_CLIP_PLANE_7_W)
 
-#define BRW_PARAM_BUILTIN_CLIP_PLANE_IDX(param) \
-   (((param) - BRW_PARAM_BUILTIN_CLIP_PLANE_0_X) >> 2)
+#define ELK_PARAM_BUILTIN_CLIP_PLANE_IDX(param) \
+   (((param) - ELK_PARAM_BUILTIN_CLIP_PLANE_0_X) >> 2)
 
-#define BRW_PARAM_BUILTIN_CLIP_PLANE_COMP(param) \
-   (((param) - BRW_PARAM_BUILTIN_CLIP_PLANE_0_X) & 0x3)
+#define ELK_PARAM_BUILTIN_CLIP_PLANE_COMP(param) \
+   (((param) - ELK_PARAM_BUILTIN_CLIP_PLANE_0_X) & 0x3)
 
-enum brw_shader_reloc_id {
-   BRW_SHADER_RELOC_CONST_DATA_ADDR_LOW,
-   BRW_SHADER_RELOC_CONST_DATA_ADDR_HIGH,
-   BRW_SHADER_RELOC_SHADER_START_OFFSET,
-   BRW_SHADER_RELOC_DESCRIPTORS_ADDR_HIGH,
+enum elk_shader_reloc_id {
+   ELK_SHADER_RELOC_CONST_DATA_ADDR_LOW,
+   ELK_SHADER_RELOC_CONST_DATA_ADDR_HIGH,
+   ELK_SHADER_RELOC_SHADER_START_OFFSET,
+   ELK_SHADER_RELOC_DESCRIPTORS_ADDR_HIGH,
 };
 
-enum brw_shader_reloc_type {
+enum elk_shader_reloc_type {
    /** An arbitrary 32-bit value */
-   BRW_SHADER_RELOC_TYPE_U32,
+   ELK_SHADER_RELOC_TYPE_U32,
    /** A MOV instruction with an immediate source */
-   BRW_SHADER_RELOC_TYPE_MOV_IMM,
+   ELK_SHADER_RELOC_TYPE_MOV_IMM,
 };
 
 /** Represents a code relocation
@@ -700,12 +700,12 @@ enum brw_shader_reloc_type {
  * Relocatable constants are immediates in the code which we want to be able
  * to replace post-compile with the actual value.
  */
-struct brw_shader_reloc {
+struct elk_shader_reloc {
    /** The 32-bit ID of the relocatable constant */
    uint32_t id;
 
    /** Type of this relocation */
-   enum brw_shader_reloc_type type;
+   enum elk_shader_reloc_type type;
 
    /** The offset in the shader to the relocated value
     *
@@ -719,7 +719,7 @@ struct brw_shader_reloc {
 };
 
 /** A value to write to a relocation */
-struct brw_shader_reloc_value {
+struct elk_shader_reloc_value {
    /** The 32-bit ID of the relocatable constant */
    uint32_t id;
 
@@ -727,8 +727,8 @@ struct brw_shader_reloc_value {
    uint32_t value;
 };
 
-struct brw_stage_prog_data {
-   struct brw_ubo_range ubo_ranges[4];
+struct elk_stage_prog_data {
+   struct elk_ubo_range ubo_ranges[4];
 
    unsigned nr_params;       /**< number of float params/constants */
 
@@ -742,7 +742,7 @@ struct brw_stage_prog_data {
     *
     *    reg_used & zero_push_reg & ~*push_reg_mask_param & (1ull << i)
     *
-    * If this field is set, brw_compiler::compact_params must be false.
+    * If this field is set, elk_compiler::compact_params must be false.
     */
    uint64_t zero_push_reg;
    unsigned push_reg_mask_param;
@@ -757,7 +757,7 @@ struct brw_stage_prog_data {
    unsigned const_data_offset;
 
    unsigned num_relocs;
-   const struct brw_shader_reloc *relocs;
+   const struct elk_shader_reloc *relocs;
 
    /** Does this program pull from any UBO or other constant buffers? */
    bool has_ubo_pull;
@@ -776,7 +776,7 @@ struct brw_stage_prog_data {
    /* 32-bit identifiers for all push/pull parameters.  These can be anything
     * the driver wishes them to be; the core of the back-end compiler simply
     * re-arranges them.  The one restriction is that the bottom 2^16 values
-    * are reserved for builtins defined in the brw_param_builtin enum defined
+    * are reserved for builtins defined in the elk_param_builtin enum defined
     * above.
     */
    uint32_t *param;
@@ -786,7 +786,7 @@ struct brw_stage_prog_data {
 };
 
 static inline uint32_t *
-brw_stage_prog_data_add_params(struct brw_stage_prog_data *prog_data,
+elk_stage_prog_data_add_params(struct elk_stage_prog_data *prog_data,
                                unsigned nr_new_params)
 {
    unsigned old_nr_params = prog_data->nr_params;
@@ -797,38 +797,38 @@ brw_stage_prog_data_add_params(struct brw_stage_prog_data *prog_data,
    return prog_data->param + old_nr_params;
 }
 
-enum brw_barycentric_mode {
-   BRW_BARYCENTRIC_PERSPECTIVE_PIXEL       = 0,
-   BRW_BARYCENTRIC_PERSPECTIVE_CENTROID    = 1,
-   BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE      = 2,
-   BRW_BARYCENTRIC_NONPERSPECTIVE_PIXEL    = 3,
-   BRW_BARYCENTRIC_NONPERSPECTIVE_CENTROID = 4,
-   BRW_BARYCENTRIC_NONPERSPECTIVE_SAMPLE   = 5,
-   BRW_BARYCENTRIC_MODE_COUNT              = 6
+enum elk_barycentric_mode {
+   ELK_BARYCENTRIC_PERSPECTIVE_PIXEL       = 0,
+   ELK_BARYCENTRIC_PERSPECTIVE_CENTROID    = 1,
+   ELK_BARYCENTRIC_PERSPECTIVE_SAMPLE      = 2,
+   ELK_BARYCENTRIC_NONPERSPECTIVE_PIXEL    = 3,
+   ELK_BARYCENTRIC_NONPERSPECTIVE_CENTROID = 4,
+   ELK_BARYCENTRIC_NONPERSPECTIVE_SAMPLE   = 5,
+   ELK_BARYCENTRIC_MODE_COUNT              = 6
 };
-#define BRW_BARYCENTRIC_PERSPECTIVE_BITS \
-   ((1 << BRW_BARYCENTRIC_PERSPECTIVE_PIXEL) | \
-    (1 << BRW_BARYCENTRIC_PERSPECTIVE_CENTROID) | \
-    (1 << BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE))
-#define BRW_BARYCENTRIC_NONPERSPECTIVE_BITS \
-   ((1 << BRW_BARYCENTRIC_NONPERSPECTIVE_PIXEL) | \
-    (1 << BRW_BARYCENTRIC_NONPERSPECTIVE_CENTROID) | \
-    (1 << BRW_BARYCENTRIC_NONPERSPECTIVE_SAMPLE))
+#define ELK_BARYCENTRIC_PERSPECTIVE_BITS \
+   ((1 << ELK_BARYCENTRIC_PERSPECTIVE_PIXEL) | \
+    (1 << ELK_BARYCENTRIC_PERSPECTIVE_CENTROID) | \
+    (1 << ELK_BARYCENTRIC_PERSPECTIVE_SAMPLE))
+#define ELK_BARYCENTRIC_NONPERSPECTIVE_BITS \
+   ((1 << ELK_BARYCENTRIC_NONPERSPECTIVE_PIXEL) | \
+    (1 << ELK_BARYCENTRIC_NONPERSPECTIVE_CENTROID) | \
+    (1 << ELK_BARYCENTRIC_NONPERSPECTIVE_SAMPLE))
 
-enum brw_pixel_shader_computed_depth_mode {
-   BRW_PSCDEPTH_OFF   = 0, /* PS does not compute depth */
-   BRW_PSCDEPTH_ON    = 1, /* PS computes depth; no guarantee about value */
-   BRW_PSCDEPTH_ON_GE = 2, /* PS guarantees output depth >= source depth */
-   BRW_PSCDEPTH_ON_LE = 3, /* PS guarantees output depth <= source depth */
+enum elk_pixel_shader_computed_depth_mode {
+   ELK_PSCDEPTH_OFF   = 0, /* PS does not compute depth */
+   ELK_PSCDEPTH_ON    = 1, /* PS computes depth; no guarantee about value */
+   ELK_PSCDEPTH_ON_GE = 2, /* PS guarantees output depth >= source depth */
+   ELK_PSCDEPTH_ON_LE = 3, /* PS guarantees output depth <= source depth */
 };
 
 /* Data about a particular attempt to compile a program.  Note that
  * there can be many of these, each in a different GL state
- * corresponding to a different brw_wm_prog_key struct, with different
+ * corresponding to a different elk_wm_prog_key struct, with different
  * compiled programs.
  */
-struct brw_wm_prog_data {
-   struct brw_stage_prog_data base;
+struct elk_wm_prog_data {
+   struct elk_stage_prog_data base;
 
    unsigned num_per_primitive_inputs;
    unsigned num_varying_inputs;
@@ -897,18 +897,18 @@ struct brw_wm_prog_data {
    bool sample_shading;
 
    /** Should this shader be dispatched per-sample */
-   enum brw_sometimes persample_dispatch;
+   enum elk_sometimes persample_dispatch;
 
    /**
     * Shader is ran at the coarse pixel shading dispatch rate (3DSTATE_CPS).
     */
-   enum brw_sometimes coarse_pixel_dispatch;
+   enum elk_sometimes coarse_pixel_dispatch;
 
    /**
     * Shader writes the SampleMask and this is AND-ed with the API's
     * SampleMask to generate a new coverage mask.
     */
-   enum brw_sometimes alpha_to_coverage;
+   enum elk_sometimes alpha_to_coverage;
 
    unsigned msaa_flags_param;
 
@@ -939,7 +939,7 @@ struct brw_wm_prog_data {
    /* Mapping of VUE slots to interpolation modes.
     * Used by the Gfx4-5 clip/sf/wm stages.
     */
-   unsigned char interp_mode[65]; /* BRW_VARYING_SLOT_COUNT */
+   unsigned char interp_mode[65]; /* ELK_VARYING_SLOT_COUNT */
 
    /**
     * Map from gl_varying_slot to the position within the FS setup data
@@ -972,11 +972,11 @@ struct brw_wm_prog_data {
  * If the given KSP is enabled, a SIMD width of 8, 16, or 32 is
  * returned.  Note that for a multipolygon dispatch kernel 8 is always
  * returned, since multipolygon kernels use the "_8" fields from
- * brw_wm_prog_data regardless of their SIMD width.  If the KSP is
+ * elk_wm_prog_data regardless of their SIMD width.  If the KSP is
  * invalid, 0 is returned.
  */
 static inline unsigned
-brw_fs_simd_width_for_ksp(unsigned ksp_idx, bool enabled, unsigned width_sel)
+elk_fs_simd_width_for_ksp(unsigned ksp_idx, bool enabled, unsigned width_sel)
 {
    assert(ksp_idx < 2);
    return !enabled ? 0 :
@@ -984,11 +984,11 @@ brw_fs_simd_width_for_ksp(unsigned ksp_idx, bool enabled, unsigned width_sel)
           16;
 }
 
-#define brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx)              \
+#define elk_wm_state_simd_width_for_ksp(wm_state, ksp_idx)              \
         (ksp_idx == 0 && (wm_state).Kernel0MaximumPolysperThread ? 8 :  \
-         ksp_idx == 0 ? brw_fs_simd_width_for_ksp(ksp_idx, (wm_state).Kernel0Enable, \
+         ksp_idx == 0 ? elk_fs_simd_width_for_ksp(ksp_idx, (wm_state).Kernel0Enable, \
                                                   (wm_state).Kernel0SIMDWidth): \
-         brw_fs_simd_width_for_ksp(ksp_idx, (wm_state).Kernel1Enable,   \
+         elk_fs_simd_width_for_ksp(ksp_idx, (wm_state).Kernel1Enable,   \
                                    (wm_state).Kernel1SIMDWidth))
 
 #else
@@ -1004,7 +1004,7 @@ brw_fs_simd_width_for_ksp(unsigned ksp_idx, bool enabled, unsigned width_sel)
  * width of 8, 16, or 32 is returned.  If the KSP is invalid, 0 is returned.
  */
 static inline unsigned
-brw_fs_simd_width_for_ksp(unsigned ksp_idx, bool simd8_enabled,
+elk_fs_simd_width_for_ksp(unsigned ksp_idx, bool simd8_enabled,
                           bool simd16_enabled, bool simd32_enabled)
 {
    /* This function strictly ignores contiguous dispatch */
@@ -1022,8 +1022,8 @@ brw_fs_simd_width_for_ksp(unsigned ksp_idx, bool simd8_enabled,
    }
 }
 
-#define brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx)              \
-   brw_fs_simd_width_for_ksp((ksp_idx), (wm_state)._8PixelDispatchEnable, \
+#define elk_wm_state_simd_width_for_ksp(wm_state, ksp_idx)              \
+   elk_fs_simd_width_for_ksp((ksp_idx), (wm_state)._8PixelDispatchEnable, \
                              (wm_state)._16PixelDispatchEnable, \
                              (wm_state)._32PixelDispatchEnable)
 
@@ -1031,11 +1031,11 @@ brw_fs_simd_width_for_ksp(unsigned ksp_idx, bool simd8_enabled,
 
 #endif
 
-#define brw_wm_state_has_ksp(wm_state, ksp_idx) \
-   (brw_wm_state_simd_width_for_ksp((wm_state), (ksp_idx)) != 0)
+#define elk_wm_state_has_ksp(wm_state, ksp_idx) \
+   (elk_wm_state_simd_width_for_ksp((wm_state), (ksp_idx)) != 0)
 
 static inline uint32_t
-_brw_wm_prog_data_prog_offset(const struct brw_wm_prog_data *prog_data,
+_elk_wm_prog_data_prog_offset(const struct elk_wm_prog_data *prog_data,
                               unsigned simd_width)
 {
    switch (simd_width) {
@@ -1046,12 +1046,12 @@ _brw_wm_prog_data_prog_offset(const struct brw_wm_prog_data *prog_data,
    }
 }
 
-#define brw_wm_prog_data_prog_offset(prog_data, wm_state, ksp_idx) \
-   _brw_wm_prog_data_prog_offset(prog_data, \
-      brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
+#define elk_wm_prog_data_prog_offset(prog_data, wm_state, ksp_idx) \
+   _elk_wm_prog_data_prog_offset(prog_data, \
+      elk_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
 
 static inline uint8_t
-_brw_wm_prog_data_dispatch_grf_start_reg(const struct brw_wm_prog_data *prog_data,
+_elk_wm_prog_data_dispatch_grf_start_reg(const struct elk_wm_prog_data *prog_data,
                                          unsigned simd_width)
 {
    switch (simd_width) {
@@ -1062,12 +1062,12 @@ _brw_wm_prog_data_dispatch_grf_start_reg(const struct brw_wm_prog_data *prog_dat
    }
 }
 
-#define brw_wm_prog_data_dispatch_grf_start_reg(prog_data, wm_state, ksp_idx) \
-   _brw_wm_prog_data_dispatch_grf_start_reg(prog_data, \
-      brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
+#define elk_wm_prog_data_dispatch_grf_start_reg(prog_data, wm_state, ksp_idx) \
+   _elk_wm_prog_data_dispatch_grf_start_reg(prog_data, \
+      elk_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
 
 static inline uint8_t
-_brw_wm_prog_data_reg_blocks(const struct brw_wm_prog_data *prog_data,
+_elk_wm_prog_data_reg_blocks(const struct elk_wm_prog_data *prog_data,
                              unsigned simd_width)
 {
    switch (simd_width) {
@@ -1078,12 +1078,12 @@ _brw_wm_prog_data_reg_blocks(const struct brw_wm_prog_data *prog_data,
    }
 }
 
-#define brw_wm_prog_data_reg_blocks(prog_data, wm_state, ksp_idx) \
-   _brw_wm_prog_data_reg_blocks(prog_data, \
-      brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
+#define elk_wm_prog_data_reg_blocks(prog_data, wm_state, ksp_idx) \
+   _elk_wm_prog_data_reg_blocks(prog_data, \
+      elk_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
 
 static inline bool
-brw_wm_prog_data_is_persample(const struct brw_wm_prog_data *prog_data,
+elk_wm_prog_data_is_persample(const struct elk_wm_prog_data *prog_data,
                               enum intel_msaa_flags pushed_msaa_flags)
 {
    if (pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) {
@@ -1094,21 +1094,21 @@ brw_wm_prog_data_is_persample(const struct brw_wm_prog_data *prog_data,
          assert(pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH);
 
       if (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH)
-         assert(prog_data->persample_dispatch != BRW_NEVER);
+         assert(prog_data->persample_dispatch != ELK_NEVER);
       else
-         assert(prog_data->persample_dispatch != BRW_ALWAYS);
+         assert(prog_data->persample_dispatch != ELK_ALWAYS);
 
       return (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH) != 0;
    }
 
-   assert(prog_data->persample_dispatch == BRW_ALWAYS ||
-          prog_data->persample_dispatch == BRW_NEVER);
+   assert(prog_data->persample_dispatch == ELK_ALWAYS ||
+          prog_data->persample_dispatch == ELK_NEVER);
 
    return prog_data->persample_dispatch;
 }
 
 static inline uint32_t
-wm_prog_data_barycentric_modes(const struct brw_wm_prog_data *prog_data,
+elk_wm_prog_data_barycentric_modes(const struct elk_wm_prog_data *prog_data,
                                enum intel_msaa_flags pushed_msaa_flags)
 {
    uint32_t modes = prog_data->barycentric_interp_modes;
@@ -1120,7 +1120,7 @@ wm_prog_data_barycentric_modes(const struct brw_wm_prog_data *prog_data,
       return modes;
 
    if (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_INTERP) {
-      assert(prog_data->persample_dispatch == BRW_ALWAYS ||
+      assert(prog_data->persample_dispatch == ELK_ALWAYS ||
              (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH));
 
       /* Making dynamic per-sample interpolation work is a bit tricky.  The
@@ -1137,24 +1137,24 @@ wm_prog_data_barycentric_modes(const struct brw_wm_prog_data *prog_data,
        * which one we replace.  The important thing is that we keep the number
        * of barycentrics in each [non]perspective grouping the same.
        */
-      if ((modes & BRW_BARYCENTRIC_PERSPECTIVE_BITS) &&
-          !(modes & BITFIELD_BIT(BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE))) {
+      if ((modes & ELK_BARYCENTRIC_PERSPECTIVE_BITS) &&
+          !(modes & BITFIELD_BIT(ELK_BARYCENTRIC_PERSPECTIVE_SAMPLE))) {
          int sample_mode =
-            util_last_bit(modes & BRW_BARYCENTRIC_PERSPECTIVE_BITS) - 1;
+            util_last_bit(modes & ELK_BARYCENTRIC_PERSPECTIVE_BITS) - 1;
          assert(modes & BITFIELD_BIT(sample_mode));
 
          modes &= ~BITFIELD_BIT(sample_mode);
-         modes |= BITFIELD_BIT(BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE);
+         modes |= BITFIELD_BIT(ELK_BARYCENTRIC_PERSPECTIVE_SAMPLE);
       }
 
-      if ((modes & BRW_BARYCENTRIC_NONPERSPECTIVE_BITS) &&
-          !(modes & BITFIELD_BIT(BRW_BARYCENTRIC_NONPERSPECTIVE_SAMPLE))) {
+      if ((modes & ELK_BARYCENTRIC_NONPERSPECTIVE_BITS) &&
+          !(modes & BITFIELD_BIT(ELK_BARYCENTRIC_NONPERSPECTIVE_SAMPLE))) {
          int sample_mode =
-            util_last_bit(modes & BRW_BARYCENTRIC_NONPERSPECTIVE_BITS) - 1;
+            util_last_bit(modes & ELK_BARYCENTRIC_NONPERSPECTIVE_BITS) - 1;
          assert(modes & BITFIELD_BIT(sample_mode));
 
          modes &= ~BITFIELD_BIT(sample_mode);
-         modes |= BITFIELD_BIT(BRW_BARYCENTRIC_NONPERSPECTIVE_SAMPLE);
+         modes |= BITFIELD_BIT(ELK_BARYCENTRIC_NONPERSPECTIVE_SAMPLE);
       }
    } else {
       /* If we're not using per-sample interpolation, we need to disable the
@@ -1166,40 +1166,40 @@ wm_prog_data_barycentric_modes(const struct brw_wm_prog_data *prog_data,
        *    "MSDISPMODE_PERSAMPLE is required in order to select Perspective
        *     Sample or Non-perspective Sample barycentric coordinates."
        */
-      modes &= ~(BITFIELD_BIT(BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE) |
-                 BITFIELD_BIT(BRW_BARYCENTRIC_NONPERSPECTIVE_SAMPLE));
+      modes &= ~(BITFIELD_BIT(ELK_BARYCENTRIC_PERSPECTIVE_SAMPLE) |
+                 BITFIELD_BIT(ELK_BARYCENTRIC_NONPERSPECTIVE_SAMPLE));
    }
 
    return modes;
 }
 
 static inline bool
-brw_wm_prog_data_is_coarse(const struct brw_wm_prog_data *prog_data,
+elk_wm_prog_data_is_coarse(const struct elk_wm_prog_data *prog_data,
                            enum intel_msaa_flags pushed_msaa_flags)
 {
    if (pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) {
       if (pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES)
-         assert(prog_data->coarse_pixel_dispatch != BRW_NEVER);
+         assert(prog_data->coarse_pixel_dispatch != ELK_NEVER);
       else
-         assert(prog_data->coarse_pixel_dispatch != BRW_ALWAYS);
+         assert(prog_data->coarse_pixel_dispatch != ELK_ALWAYS);
 
       return pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES;
    }
 
-   assert(prog_data->coarse_pixel_dispatch == BRW_ALWAYS ||
-          prog_data->coarse_pixel_dispatch == BRW_NEVER);
+   assert(prog_data->coarse_pixel_dispatch == ELK_ALWAYS ||
+          prog_data->coarse_pixel_dispatch == ELK_NEVER);
 
    return prog_data->coarse_pixel_dispatch;
 }
 
-struct brw_push_const_block {
+struct elk_push_const_block {
    unsigned dwords;     /* Dword count, not reg aligned */
    unsigned regs;
    unsigned size;       /* Bytes, register aligned */
 };
 
-struct brw_cs_prog_data {
-   struct brw_stage_prog_data base;
+struct elk_cs_prog_data {
+   struct elk_stage_prog_data base;
 
    unsigned local_size[3];
 
@@ -1224,8 +1224,8 @@ struct brw_cs_prog_data {
    enum intel_compute_walk_order walk_order;
 
    struct {
-      struct brw_push_const_block cross_thread;
-      struct brw_push_const_block per_thread;
+      struct elk_push_const_block cross_thread;
+      struct elk_push_const_block per_thread;
    } push;
 
    struct {
@@ -1238,7 +1238,7 @@ struct brw_cs_prog_data {
 };
 
 static inline uint32_t
-brw_cs_prog_data_prog_offset(const struct brw_cs_prog_data *prog_data,
+elk_cs_prog_data_prog_offset(const struct elk_cs_prog_data *prog_data,
                              unsigned dispatch_width)
 {
    assert(dispatch_width == 8 ||
@@ -1249,7 +1249,7 @@ brw_cs_prog_data_prog_offset(const struct brw_cs_prog_data *prog_data,
    return prog_data->prog_offset[index];
 }
 
-struct brw_ff_gs_prog_data {
+struct elk_ff_gs_prog_data {
    unsigned urb_read_length;
    unsigned total_grf;
 
@@ -1267,72 +1267,72 @@ struct brw_ff_gs_prog_data {
  */
 typedef enum
 {
-   BRW_VARYING_SLOT_NDC = VARYING_SLOT_MAX,
-   BRW_VARYING_SLOT_PAD,
+   ELK_VARYING_SLOT_NDC = VARYING_SLOT_MAX,
+   ELK_VARYING_SLOT_PAD,
    /**
     * Technically this is not a varying but just a placeholder that
     * compile_sf_prog() inserts into its VUE map to cause the gl_PointCoord
     * builtin variable to be compiled correctly. see compile_sf_prog() for
     * more info.
     */
-   BRW_VARYING_SLOT_PNTC,
-   BRW_VARYING_SLOT_COUNT
-} brw_varying_slot;
+   ELK_VARYING_SLOT_PNTC,
+   ELK_VARYING_SLOT_COUNT
+} elk_varying_slot;
 
 /**
  * We always program SF to start reading at an offset of 1 (2 varying slots)
  * from the start of the vertex URB entry.  This causes it to skip:
- * - VARYING_SLOT_PSIZ and BRW_VARYING_SLOT_NDC on gfx4-5
+ * - VARYING_SLOT_PSIZ and ELK_VARYING_SLOT_NDC on gfx4-5
  * - VARYING_SLOT_PSIZ and VARYING_SLOT_POS on gfx6+
  */
-#define BRW_SF_URB_ENTRY_READ_OFFSET 1
+#define ELK_SF_URB_ENTRY_READ_OFFSET 1
 
 /**
  * Bitmask indicating which fragment shader inputs represent varyings (and
  * hence have to be delivered to the fragment shader by the SF/SBE stage).
  */
-#define BRW_FS_VARYING_INPUT_MASK \
+#define ELK_FS_VARYING_INPUT_MASK \
    (BITFIELD64_RANGE(0, VARYING_SLOT_MAX) & \
     ~VARYING_BIT_POS & ~VARYING_BIT_FACE)
 
-void brw_print_vue_map(FILE *fp, const struct intel_vue_map *vue_map,
+void elk_print_vue_map(FILE *fp, const struct intel_vue_map *vue_map,
                        gl_shader_stage stage);
 
 /**
  * Convert a VUE slot number into a byte offset within the VUE.
  */
-static inline unsigned brw_vue_slot_to_offset(unsigned slot)
+static inline unsigned elk_vue_slot_to_offset(unsigned slot)
 {
    return 16*slot;
 }
 
 /**
- * Convert a vertex output (brw_varying_slot) into a byte offset within the
+ * Convert a vertex output (elk_varying_slot) into a byte offset within the
  * VUE.
  */
 static inline unsigned
-brw_varying_to_offset(const struct intel_vue_map *vue_map, unsigned varying)
+elk_varying_to_offset(const struct intel_vue_map *vue_map, unsigned varying)
 {
-   return brw_vue_slot_to_offset(vue_map->varying_to_slot[varying]);
+   return elk_vue_slot_to_offset(vue_map->varying_to_slot[varying]);
 }
 
-void brw_compute_vue_map(const struct intel_device_info *devinfo,
+void elk_compute_vue_map(const struct intel_device_info *devinfo,
                          struct intel_vue_map *vue_map,
                          uint64_t slots_valid,
                          bool separate_shader,
                          uint32_t pos_slots);
 
-void brw_compute_tess_vue_map(struct intel_vue_map *const vue_map,
+void elk_compute_tess_vue_map(struct intel_vue_map *const vue_map,
                               uint64_t slots_valid,
                               uint32_t is_patch);
 
-/* brw_interpolation_map.c */
-void brw_setup_vue_interpolation(const struct intel_vue_map *vue_map,
+/* elk_interpolation_map.c */
+void elk_setup_vue_interpolation(const struct intel_vue_map *vue_map,
                                  struct nir_shader *nir,
-                                 struct brw_wm_prog_data *prog_data);
+                                 struct elk_wm_prog_data *prog_data);
 
-struct brw_vue_prog_data {
-   struct brw_stage_prog_data base;
+struct elk_vue_prog_data {
+   struct elk_stage_prog_data base;
    struct intel_vue_map vue_map;
 
    /** Should the hardware deliver input VUE handles for URB pull loads? */
@@ -1353,8 +1353,8 @@ struct brw_vue_prog_data {
    enum intel_shader_dispatch_mode dispatch_mode;
 };
 
-struct brw_vs_prog_data {
-   struct brw_vue_prog_data base;
+struct elk_vs_prog_data {
+   struct elk_vue_prog_data base;
 
    uint64_t inputs_read;
    uint64_t double_inputs_read;
@@ -1369,9 +1369,9 @@ struct brw_vs_prog_data {
    bool uses_drawid;
 };
 
-struct brw_tcs_prog_data
+struct elk_tcs_prog_data
 {
-   struct brw_vue_prog_data base;
+   struct elk_vue_prog_data base;
 
    /** Should the non-SINGLE_PATCH payload provide primitive ID? */
    bool include_primitive_id;
@@ -1384,9 +1384,9 @@ struct brw_tcs_prog_data
 };
 
 
-struct brw_tes_prog_data
+struct elk_tes_prog_data
 {
-   struct brw_vue_prog_data base;
+   struct elk_vue_prog_data base;
 
    enum intel_tess_partitioning partitioning;
    enum intel_tess_output_topology output_topology;
@@ -1394,9 +1394,9 @@ struct brw_tes_prog_data
    bool include_primitive_id;
 };
 
-struct brw_gs_prog_data
+struct elk_gs_prog_data
 {
-   struct brw_vue_prog_data base;
+   struct elk_vue_prog_data base;
 
    unsigned vertices_in;
 
@@ -1439,24 +1439,24 @@ struct brw_gs_prog_data
    /**
     * Gfx6: Number of varyings that are output to transform feedback.
     */
-   unsigned num_transform_feedback_bindings:7; /* 0-BRW_MAX_SOL_BINDINGS */
+   unsigned num_transform_feedback_bindings:7; /* 0-ELK_MAX_SOL_BINDINGS */
 
    /**
     * Gfx6: Map from the index of a transform feedback binding table entry to the
     * gl_varying_slot that should be streamed out through that binding table
     * entry.
     */
-   unsigned char transform_feedback_bindings[64 /* BRW_MAX_SOL_BINDINGS */];
+   unsigned char transform_feedback_bindings[64 /* ELK_MAX_SOL_BINDINGS */];
 
    /**
     * Gfx6: Map from the index of a transform feedback binding table entry to the
     * swizzles that should be used when streaming out data through that
     * binding table entry.
     */
-   unsigned char transform_feedback_swizzles[64 /* BRW_MAX_SOL_BINDINGS */];
+   unsigned char transform_feedback_swizzles[64 /* ELK_MAX_SOL_BINDINGS */];
 };
 
-struct brw_sf_prog_data {
+struct elk_sf_prog_data {
    uint32_t urb_read_length;
    uint32_t total_grf;
 
@@ -1469,39 +1469,39 @@ struct brw_sf_prog_data {
    unsigned urb_entry_size;
 };
 
-struct brw_clip_prog_data {
+struct elk_clip_prog_data {
    uint32_t curb_read_length;	/* user planes? */
    uint32_t clip_mode;
    uint32_t urb_read_length;
    uint32_t total_grf;
 };
 
-/* brw_any_prog_data is prog_data for any stage that maps to an API stage */
-union brw_any_prog_data {
-   struct brw_stage_prog_data base;
-   struct brw_vue_prog_data vue;
-   struct brw_vs_prog_data vs;
-   struct brw_tcs_prog_data tcs;
-   struct brw_tes_prog_data tes;
-   struct brw_gs_prog_data gs;
-   struct brw_wm_prog_data wm;
-   struct brw_cs_prog_data cs;
+/* elk_any_prog_data is prog_data for any stage that maps to an API stage */
+union elk_any_prog_data {
+   struct elk_stage_prog_data base;
+   struct elk_vue_prog_data vue;
+   struct elk_vs_prog_data vs;
+   struct elk_tcs_prog_data tcs;
+   struct elk_tes_prog_data tes;
+   struct elk_gs_prog_data gs;
+   struct elk_wm_prog_data wm;
+   struct elk_cs_prog_data cs;
 };
 
 #define DEFINE_PROG_DATA_DOWNCAST(STAGE, CHECK)                            \
-static inline struct brw_##STAGE##_prog_data *                             \
-brw_##STAGE##_prog_data(struct brw_stage_prog_data *prog_data)             \
+static inline struct elk_##STAGE##_prog_data *                             \
+elk_##STAGE##_prog_data(struct elk_stage_prog_data *prog_data)             \
 {                                                                          \
    if (prog_data)                                                          \
       assert(CHECK);                                                       \
-   return (struct brw_##STAGE##_prog_data *) prog_data;                    \
+   return (struct elk_##STAGE##_prog_data *) prog_data;                    \
 }                                                                          \
-static inline const struct brw_##STAGE##_prog_data *                       \
-brw_##STAGE##_prog_data_const(const struct brw_stage_prog_data *prog_data) \
+static inline const struct elk_##STAGE##_prog_data *                       \
+elk_##STAGE##_prog_data_const(const struct elk_stage_prog_data *prog_data) \
 {                                                                          \
    if (prog_data)                                                          \
       assert(CHECK);                                                       \
-   return (const struct brw_##STAGE##_prog_data *) prog_data;              \
+   return (const struct elk_##STAGE##_prog_data *) prog_data;              \
 }
 
 DEFINE_PROG_DATA_DOWNCAST(vs,  prog_data->stage == MESA_SHADER_VERTEX)
@@ -1516,13 +1516,13 @@ DEFINE_PROG_DATA_DOWNCAST(vue, prog_data->stage == MESA_SHADER_VERTEX ||
                                prog_data->stage == MESA_SHADER_TESS_EVAL ||
                                prog_data->stage == MESA_SHADER_GEOMETRY)
 
-/* These are not really brw_stage_prog_data. */
+/* These are not really elk_stage_prog_data. */
 DEFINE_PROG_DATA_DOWNCAST(ff_gs, true)
 DEFINE_PROG_DATA_DOWNCAST(clip,  true)
 DEFINE_PROG_DATA_DOWNCAST(sf,    true)
 #undef DEFINE_PROG_DATA_DOWNCAST
 
-struct brw_compile_stats {
+struct elk_compile_stats {
    uint32_t dispatch_width; /**< 0 for vec4 */
    uint32_t max_polygons;
    uint32_t max_dispatch_width;
@@ -1537,8 +1537,8 @@ struct brw_compile_stats {
 
 /** @} */
 
-struct brw_compiler *
-brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo);
+struct elk_compiler *
+elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo);
 
 /**
  * Returns a compiler configuration for use with disk shader cache
@@ -1550,20 +1550,20 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo);
  * but it does need to be different if INTEL_DEBUG=nocompact is or isn't used.
  */
 uint64_t
-brw_get_compiler_config_value(const struct brw_compiler *compiler);
+elk_get_compiler_config_value(const struct elk_compiler *compiler);
 
 unsigned
-brw_prog_data_size(gl_shader_stage stage);
+elk_prog_data_size(gl_shader_stage stage);
 
 unsigned
-brw_prog_key_size(gl_shader_stage stage);
+elk_prog_key_size(gl_shader_stage stage);
 
-struct brw_compile_params {
+struct elk_compile_params {
    void *mem_ctx;
 
    nir_shader *nir;
 
-   struct brw_compile_stats *stats;
+   struct elk_compile_stats *stats;
 
    void *log_data;
 
@@ -1579,11 +1579,11 @@ struct brw_compile_params {
  *
  * Some of these will be modified during the shader compilation.
  */
-struct brw_compile_vs_params {
-   struct brw_compile_params base;
+struct elk_compile_vs_params {
+   struct elk_compile_params base;
 
-   const struct brw_vs_prog_key *key;
-   struct brw_vs_prog_data *prog_data;
+   const struct elk_vs_prog_key *key;
+   struct elk_vs_prog_data *prog_data;
 
    bool edgeflag_is_last; /* true for gallium */
 };
@@ -1594,19 +1594,19 @@ struct brw_compile_vs_params {
  * Returns the final assembly and updates the parameters structure.
  */
 const unsigned *
-brw_compile_vs(const struct brw_compiler *compiler,
-               struct brw_compile_vs_params *params);
+elk_compile_vs(const struct elk_compiler *compiler,
+               struct elk_compile_vs_params *params);
 
 /**
  * Parameters for compiling a tessellation control shader.
  *
  * Some of these will be modified during the shader compilation.
  */
-struct brw_compile_tcs_params {
-   struct brw_compile_params base;
+struct elk_compile_tcs_params {
+   struct elk_compile_params base;
 
-   const struct brw_tcs_prog_key *key;
-   struct brw_tcs_prog_data *prog_data;
+   const struct elk_tcs_prog_key *key;
+   struct elk_tcs_prog_data *prog_data;
 };
 
 /**
@@ -1615,19 +1615,19 @@ struct brw_compile_tcs_params {
  * Returns the final assembly and updates the parameters structure.
  */
 const unsigned *
-brw_compile_tcs(const struct brw_compiler *compiler,
-                struct brw_compile_tcs_params *params);
+elk_compile_tcs(const struct elk_compiler *compiler,
+                struct elk_compile_tcs_params *params);
 
 /**
  * Parameters for compiling a tessellation evaluation shader.
  *
  * Some of these will be modified during the shader compilation.
  */
-struct brw_compile_tes_params {
-   struct brw_compile_params base;
+struct elk_compile_tes_params {
+   struct elk_compile_params base;
 
-   const struct brw_tes_prog_key *key;
-   struct brw_tes_prog_data *prog_data;
+   const struct elk_tes_prog_key *key;
+   struct elk_tes_prog_data *prog_data;
    const struct intel_vue_map *input_vue_map;
 };
 
@@ -1637,19 +1637,19 @@ struct brw_compile_tes_params {
  * Returns the final assembly and updates the parameters structure.
  */
 const unsigned *
-brw_compile_tes(const struct brw_compiler *compiler,
-                struct brw_compile_tes_params *params);
+elk_compile_tes(const struct elk_compiler *compiler,
+                struct elk_compile_tes_params *params);
 
 /**
  * Parameters for compiling a geometry shader.
  *
  * Some of these will be modified during the shader compilation.
  */
-struct brw_compile_gs_params {
-   struct brw_compile_params base;
+struct elk_compile_gs_params {
+   struct elk_compile_params base;
 
-   const struct brw_gs_prog_key *key;
-   struct brw_gs_prog_data *prog_data;
+   const struct elk_gs_prog_key *key;
+   struct elk_gs_prog_data *prog_data;
 };
 
 /**
@@ -1658,8 +1658,8 @@ struct brw_compile_gs_params {
  * Returns the final assembly and updates the parameters structure.
  */
 const unsigned *
-brw_compile_gs(const struct brw_compiler *compiler,
-               struct brw_compile_gs_params *params);
+elk_compile_gs(const struct elk_compiler *compiler,
+               struct elk_compile_gs_params *params);
 
 /**
  * Compile a strips and fans shader.
@@ -1670,10 +1670,10 @@ brw_compile_gs(const struct brw_compiler *compiler,
  * Returns the final assembly and the program's size.
  */
 const unsigned *
-brw_compile_sf(const struct brw_compiler *compiler,
+elk_compile_sf(const struct elk_compiler *compiler,
                void *mem_ctx,
-               const struct brw_sf_prog_key *key,
-               struct brw_sf_prog_data *prog_data,
+               const struct elk_sf_prog_key *key,
+               struct elk_sf_prog_data *prog_data,
                struct intel_vue_map *vue_map,
                unsigned *final_assembly_size);
 
@@ -1686,10 +1686,10 @@ brw_compile_sf(const struct brw_compiler *compiler,
  * Returns the final assembly and the program's size.
  */
 const unsigned *
-brw_compile_clip(const struct brw_compiler *compiler,
+elk_compile_clip(const struct elk_compiler *compiler,
                  void *mem_ctx,
-                 const struct brw_clip_prog_key *key,
-                 struct brw_clip_prog_data *prog_data,
+                 const struct elk_clip_prog_key *key,
+                 struct elk_clip_prog_data *prog_data,
                  struct intel_vue_map *vue_map,
                  unsigned *final_assembly_size);
 
@@ -1698,14 +1698,14 @@ brw_compile_clip(const struct brw_compiler *compiler,
  *
  * Some of these will be modified during the shader compilation.
  */
-struct brw_compile_fs_params {
-   struct brw_compile_params base;
+struct elk_compile_fs_params {
+   struct elk_compile_params base;
 
-   const struct brw_wm_prog_key *key;
-   struct brw_wm_prog_data *prog_data;
+   const struct elk_wm_prog_key *key;
+   struct elk_wm_prog_data *prog_data;
 
    const struct intel_vue_map *vue_map;
-   const struct brw_mue_map *mue_map;
+   const struct elk_mue_map *mue_map;
 
    bool allow_spilling;
    bool use_rep_send;
@@ -1718,19 +1718,19 @@ struct brw_compile_fs_params {
  * Returns the final assembly and updates the parameters structure.
  */
 const unsigned *
-brw_compile_fs(const struct brw_compiler *compiler,
-               struct brw_compile_fs_params *params);
+elk_compile_fs(const struct elk_compiler *compiler,
+               struct elk_compile_fs_params *params);
 
 /**
  * Parameters for compiling a compute shader.
  *
  * Some of these will be modified during the shader compilation.
  */
-struct brw_compile_cs_params {
-   struct brw_compile_params base;
+struct elk_compile_cs_params {
+   struct elk_compile_params base;
 
-   const struct brw_cs_prog_key *key;
-   struct brw_cs_prog_data *prog_data;
+   const struct elk_cs_prog_key *key;
+   struct elk_cs_prog_data *prog_data;
 };
 
 /**
@@ -1739,8 +1739,8 @@ struct brw_compile_cs_params {
  * Returns the final assembly and updates the parameters structure.
  */
 const unsigned *
-brw_compile_cs(const struct brw_compiler *compiler,
-               struct brw_compile_cs_params *params);
+elk_compile_cs(const struct elk_compiler *compiler,
+               struct elk_compile_cs_params *params);
 
 /**
  * Compile a fixed function geometry shader.
@@ -1748,23 +1748,23 @@ brw_compile_cs(const struct brw_compiler *compiler,
  * Returns the final assembly and the program's size.
  */
 const unsigned *
-brw_compile_ff_gs_prog(struct brw_compiler *compiler,
+elk_compile_ff_gs_prog(struct elk_compiler *compiler,
 		       void *mem_ctx,
-		       const struct brw_ff_gs_prog_key *key,
-		       struct brw_ff_gs_prog_data *prog_data,
+		       const struct elk_ff_gs_prog_key *key,
+		       struct elk_ff_gs_prog_data *prog_data,
 		       struct intel_vue_map *vue_map,
 		       unsigned *final_assembly_size);
 
-void brw_debug_key_recompile(const struct brw_compiler *c, void *log,
+void elk_debug_key_recompile(const struct elk_compiler *c, void *log,
                              gl_shader_stage stage,
-                             const struct brw_base_prog_key *old_key,
-                             const struct brw_base_prog_key *key);
+                             const struct elk_base_prog_key *old_key,
+                             const struct elk_base_prog_key *key);
 
 /* Shared Local Memory Size is specified as powers of two,
  * and also have a Gen-dependent minimum value if not zero.
  */
 static inline uint32_t
-intel_calculate_slm_size(unsigned gen, uint32_t bytes)
+elk_calculate_slm_size(unsigned gen, uint32_t bytes)
 {
    assert(bytes <= 64 * 1024);
    if (bytes > 0)
@@ -1774,7 +1774,7 @@ intel_calculate_slm_size(unsigned gen, uint32_t bytes)
 }
 
 static inline uint32_t
-encode_slm_size(unsigned gen, uint32_t bytes)
+elk_encode_slm_size(unsigned gen, uint32_t bytes)
 {
    uint32_t slm_size = 0;
 
@@ -1789,7 +1789,7 @@ encode_slm_size(unsigned gen, uint32_t bytes)
     */
 
    if (bytes > 0) {
-      slm_size = intel_calculate_slm_size(gen, bytes);
+      slm_size = elk_calculate_slm_size(gen, bytes);
       assert(util_is_power_of_two_nonzero(slm_size));
 
       if (gen >= 9) {
@@ -1807,14 +1807,14 @@ encode_slm_size(unsigned gen, uint32_t bytes)
 }
 
 unsigned
-brw_cs_push_const_total_size(const struct brw_cs_prog_data *cs_prog_data,
+elk_cs_push_const_total_size(const struct elk_cs_prog_data *cs_prog_data,
                              unsigned threads);
 
 void
-brw_write_shader_relocs(const struct brw_isa_info *isa,
+elk_write_shader_relocs(const struct elk_isa_info *isa,
                         void *program,
-                        const struct brw_stage_prog_data *prog_data,
-                        struct brw_shader_reloc_value *values,
+                        const struct elk_stage_prog_data *prog_data,
+                        struct elk_shader_reloc_value *values,
                         unsigned num_values);
 
 /**
@@ -1827,8 +1827,8 @@ brw_write_shader_relocs(const struct brw_isa_info *isa,
  * time (so prog_data is outdated).
  */
 struct intel_cs_dispatch_info
-brw_cs_get_dispatch_info(const struct intel_device_info *devinfo,
-                         const struct brw_cs_prog_data *prog_data,
+elk_cs_get_dispatch_info(const struct intel_device_info *devinfo,
+                         const struct elk_cs_prog_data *prog_data,
                          const unsigned *override_local_size);
 
 /**
@@ -1838,13 +1838,13 @@ brw_cs_get_dispatch_info(const struct intel_device_info *devinfo,
  * '2^n - 1' for some n.
  */
 static inline bool
-brw_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
+elk_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
                               gl_shader_stage stage, unsigned max_polygons,
-                              const struct brw_stage_prog_data *prog_data)
+                              const struct elk_stage_prog_data *prog_data)
 {
    /* The code below makes assumptions about the hardware's thread dispatch
     * behavior that could be proven wrong in future generations -- Make sure
-    * to do a full test run with brw_fs_test_dispatch_packing() hooked up to
+    * to do a full test run with elk_fs_test_dispatch_packing() hooked up to
     * the NIR front-end before changing this assertion.
     */
    assert(devinfo->ver <= 12);
@@ -1859,8 +1859,8 @@ brw_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
        * the SIMD thread, so dispatch of unlit samples cannot be avoided in
        * general and we should return false.
        */
-      const struct brw_wm_prog_data *wm_prog_data =
-         (const struct brw_wm_prog_data *)prog_data;
+      const struct elk_wm_prog_data *wm_prog_data =
+         (const struct elk_wm_prog_data *)prog_data;
       return devinfo->verx10 < 125 &&
              !wm_prog_data->persample_dispatch &&
              wm_prog_data->uses_vmask &&
@@ -1898,7 +1898,7 @@ brw_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
  *   part of the vue header, so if these are read we can't skip anything.
  */
 static inline int
-brw_compute_first_urb_slot_required(uint64_t inputs_read,
+elk_compute_first_urb_slot_required(uint64_t inputs_read,
                                     const struct intel_vue_map *prev_stage_vue_map)
 {
    if ((inputs_read & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT | VARYING_BIT_PRIMITIVE_SHADING_RATE)) == 0) {
@@ -1917,17 +1917,17 @@ brw_compute_first_urb_slot_required(uint64_t inputs_read,
  * intrinsic. This is used to return different values based on some aspect of
  * the topology of the device.
  */
-enum brw_topology_id
+enum elk_topology_id
 {
    /* A value based of the DSS identifier the shader is currently running on.
     * Be mindful that the DSS ID can be higher than the total number of DSS on
     * the device. This is because of the fusing that can occur on different
     * parts.
     */
-   BRW_TOPOLOGY_ID_DSS,
+   ELK_TOPOLOGY_ID_DSS,
 
    /* A value composed of EU ID, thread ID & SIMD lane ID. */
-   BRW_TOPOLOGY_ID_EU_THREAD_SIMD,
+   ELK_TOPOLOGY_ID_EU_THREAD_SIMD,
 };
 
 #ifdef __cplusplus

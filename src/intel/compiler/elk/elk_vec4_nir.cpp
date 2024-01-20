@@ -91,33 +91,33 @@ void
 vec4_visitor::nir_emit_if(nir_if *if_stmt)
 {
    /* First, put the condition in f0 */
-   src_reg condition = get_nir_src(if_stmt->condition, BRW_REGISTER_TYPE_D, 1);
+   src_reg condition = get_nir_src(if_stmt->condition, ELK_REGISTER_TYPE_D, 1);
    vec4_instruction *inst = emit(MOV(dst_null_d(), condition));
-   inst->conditional_mod = BRW_CONDITIONAL_NZ;
+   inst->conditional_mod = ELK_CONDITIONAL_NZ;
 
    /* We can just predicate based on the X channel, as the condition only
     * goes on its own line */
-   emit(IF(BRW_PREDICATE_ALIGN16_REPLICATE_X));
+   emit(IF(ELK_PREDICATE_ALIGN16_REPLICATE_X));
 
    nir_emit_cf_list(&if_stmt->then_list);
 
    if (!nir_cf_list_is_empty_block(&if_stmt->else_list)) {
-      emit(BRW_OPCODE_ELSE);
+      emit(ELK_OPCODE_ELSE);
       nir_emit_cf_list(&if_stmt->else_list);
    }
 
-   emit(BRW_OPCODE_ENDIF);
+   emit(ELK_OPCODE_ENDIF);
 }
 
 void
 vec4_visitor::nir_emit_loop(nir_loop *loop)
 {
    assert(!nir_loop_has_continue_construct(loop));
-   emit(BRW_OPCODE_DO);
+   emit(ELK_OPCODE_DO);
 
    nir_emit_cf_list(&loop->body);
 
-   emit(BRW_OPCODE_WHILE);
+   emit(ELK_OPCODE_WHILE);
 }
 
 void
@@ -170,13 +170,13 @@ dst_reg_for_nir_reg(vec4_visitor *v, nir_def *handle,
    nir_intrinsic_instr *decl = nir_reg_get_decl(handle);
    dst_reg reg = v->nir_ssa_values[handle->index];
    if (nir_intrinsic_bit_size(decl) == 64)
-      reg.type = BRW_REGISTER_TYPE_DF;
+      reg.type = ELK_REGISTER_TYPE_DF;
 
    reg = offset(reg, 8, base_offset);
    if (indirect) {
       reg.reladdr =
          new(v->mem_ctx) src_reg(v->get_nir_src(*indirect,
-                                                BRW_REGISTER_TYPE_D,
+                                                ELK_REGISTER_TYPE_D,
                                                 1));
    }
    return reg;
@@ -190,7 +190,7 @@ vec4_visitor::get_nir_def(const nir_def &def)
       dst_reg dst =
          dst_reg(VGRF, alloc.allocate(DIV_ROUND_UP(def.bit_size, 32)));
       if (def.bit_size == 64)
-         dst.type = BRW_REGISTER_TYPE_DF;
+         dst.type = ELK_REGISTER_TYPE_DF;
       nir_ssa_values[def.index] = dst;
       return dst;
    } else {
@@ -207,7 +207,7 @@ vec4_visitor::get_nir_def(const nir_def &def)
 }
 
 dst_reg
-vec4_visitor::get_nir_def(const nir_def &def, enum brw_reg_type type)
+vec4_visitor::get_nir_def(const nir_def &def, enum elk_reg_type type)
 {
    return retype(get_nir_def(def), type);
 }
@@ -215,11 +215,11 @@ vec4_visitor::get_nir_def(const nir_def &def, enum brw_reg_type type)
 dst_reg
 vec4_visitor::get_nir_def(const nir_def &def, nir_alu_type type)
 {
-   return get_nir_def(def, brw_type_for_nir_type(devinfo, type));
+   return get_nir_def(def, elk_type_for_nir_type(devinfo, type));
 }
 
 src_reg
-vec4_visitor::get_nir_src(const nir_src &src, enum brw_reg_type type,
+vec4_visitor::get_nir_src(const nir_src &src, enum elk_reg_type type,
                           unsigned num_components)
 {
    nir_intrinsic_instr *load_reg = nir_load_reg_for_def(src.ssa);
@@ -240,7 +240,7 @@ vec4_visitor::get_nir_src(const nir_src &src, enum brw_reg_type type,
    reg = retype(reg, type);
 
    src_reg reg_as_src = src_reg(reg);
-   reg_as_src.swizzle = brw_swizzle_for_size(num_components);
+   reg_as_src.swizzle = elk_swizzle_for_size(num_components);
    return reg_as_src;
 }
 
@@ -248,7 +248,7 @@ src_reg
 vec4_visitor::get_nir_src(const nir_src &src, nir_alu_type type,
                           unsigned num_components)
 {
-   return get_nir_src(src, brw_type_for_nir_type(devinfo, type),
+   return get_nir_src(src, elk_type_for_nir_type(devinfo, type),
                       num_components);
 }
 
@@ -264,7 +264,7 @@ vec4_visitor::get_nir_src_imm(const nir_src &src)
 {
    assert(nir_src_num_components(src) == 1);
    assert(nir_src_bit_size(src) == 32);
-   return nir_src_is_const(src) ? src_reg(brw_imm_d(nir_src_as_int(src))) :
+   return nir_src_is_const(src) ? src_reg(elk_imm_d(nir_src_as_int(src))) :
                                   get_nir_src(src, 1);
 }
 
@@ -274,7 +274,7 @@ vec4_visitor::get_indirect_offset(nir_intrinsic_instr *instr)
    nir_src *offset_src = nir_get_io_offset_src(instr);
 
    if (nir_src_is_const(*offset_src)) {
-      /* The only constant offset we should find is 0.  brw_nir.c's
+      /* The only constant offset we should find is 0.  elk_nir.c's
        * add_const_offset_to_base() will fold other constant offsets
        * into the base index.
        */
@@ -282,11 +282,11 @@ vec4_visitor::get_indirect_offset(nir_intrinsic_instr *instr)
       return src_reg();
    }
 
-   return get_nir_src(*offset_src, BRW_REGISTER_TYPE_UD, 1);
+   return get_nir_src(*offset_src, ELK_REGISTER_TYPE_UD, 1);
 }
 
 static src_reg
-setup_imm_df(const vec4_builder &bld, double v)
+elk_setup_imm_df(const vec4_builder &bld, double v)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
    assert(devinfo->ver == 7);
@@ -296,9 +296,9 @@ setup_imm_df(const vec4_builder &bld, double v)
     */
    if (devinfo->verx10 == 75) {
       const vec4_builder ubld = bld.exec_all();
-      const dst_reg dst = bld.vgrf(BRW_REGISTER_TYPE_DF);
-      ubld.DIM(dst, brw_imm_df(v));
-      return swizzle(src_reg(dst), BRW_SWIZZLE_XXXX);
+      const dst_reg dst = bld.vgrf(ELK_REGISTER_TYPE_DF);
+      ubld.DIM(dst, elk_imm_df(v));
+      return swizzle(src_reg(dst), ELK_SWIZZLE_XXXX);
    }
 
    /* gfx7 does not support DF immediates */
@@ -319,14 +319,14 @@ setup_imm_df(const vec4_builder &bld, double v)
     * XXXX so any access to the VGRF only reads the constant data in these
     * channels.
     */
-   const dst_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD, 2);
+   const dst_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_UD, 2);
    for (unsigned n = 0; n < 2; n++) {
       const vec4_builder ubld = bld.exec_all().group(4, n);
-      ubld.MOV(writemask(offset(tmp, 8, n), WRITEMASK_X), brw_imm_ud(di.i1));
-      ubld.MOV(writemask(offset(tmp, 8, n), WRITEMASK_Y), brw_imm_ud(di.i2));
+      ubld.MOV(writemask(offset(tmp, 8, n), WRITEMASK_X), elk_imm_ud(di.i1));
+      ubld.MOV(writemask(offset(tmp, 8, n), WRITEMASK_Y), elk_imm_ud(di.i2));
    }
 
-   return swizzle(src_reg(retype(tmp, BRW_REGISTER_TYPE_DF)), BRW_SWIZZLE_XXXX);
+   return swizzle(src_reg(retype(tmp, ELK_REGISTER_TYPE_DF)), ELK_SWIZZLE_XXXX);
 }
 
 void
@@ -336,14 +336,14 @@ vec4_visitor::nir_emit_load_const(nir_load_const_instr *instr)
 
    if (instr->def.bit_size == 64) {
       reg = dst_reg(VGRF, alloc.allocate(2));
-      reg.type = BRW_REGISTER_TYPE_DF;
+      reg.type = ELK_REGISTER_TYPE_DF;
    } else {
       reg = dst_reg(VGRF, alloc.allocate(1));
-      reg.type = BRW_REGISTER_TYPE_D;
+      reg.type = ELK_REGISTER_TYPE_D;
    }
 
    const vec4_builder ibld = vec4_builder(this).at_end();
-   unsigned remaining = brw_writemask_for_size(instr->def.num_components);
+   unsigned remaining = elk_writemask_for_size(instr->def.num_components);
 
    /* @FIXME: consider emitting vector operations to save some MOVs in
     * cases where the components are representable in 8 bits.
@@ -366,16 +366,16 @@ vec4_visitor::nir_emit_load_const(nir_load_const_instr *instr)
 
       reg.writemask = writemask;
       if (instr->def.bit_size == 64) {
-         emit(MOV(reg, setup_imm_df(ibld, instr->value[i].f64)));
+         emit(MOV(reg, elk_setup_imm_df(ibld, instr->value[i].f64)));
       } else {
-         emit(MOV(reg, brw_imm_d(instr->value[i].i32)));
+         emit(MOV(reg, elk_imm_d(instr->value[i].i32)));
       }
 
       remaining &= ~writemask;
    }
 
    /* Set final writemask */
-   reg.writemask = brw_writemask_for_size(instr->def.num_components);
+   reg.writemask = elk_writemask_for_size(instr->def.num_components);
 
    nir_ssa_values[instr->def.index] = reg;
 }
@@ -387,7 +387,7 @@ vec4_visitor::get_nir_ssbo_intrinsic_index(nir_intrinsic_instr *instr)
    const unsigned src = instr->intrinsic == nir_intrinsic_store_ssbo ? 1 : 0;
 
    if (nir_src_is_const(instr->src[src])) {
-      return brw_imm_ud(nir_src_as_uint(instr->src[src]));
+      return elk_imm_ud(nir_src_as_uint(instr->src[src]));
    } else {
       return emit_uniformize(get_nir_src(instr->src[src]));
    }
@@ -409,7 +409,7 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
       const unsigned num_regs = array_elems * DIV_ROUND_UP(bit_size, 32);
       dst_reg reg(VGRF, alloc.allocate(num_regs));
       if (bit_size == 64)
-         reg.type = BRW_REGISTER_TYPE_DF;
+         reg.type = ELK_REGISTER_TYPE_DF;
 
       nir_ssa_values[instr->def.index] = reg;
       break;
@@ -434,7 +434,7 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
       src = retype(src, dest.type);
 
       /* Swizzle source based on component layout qualifier */
-      src.swizzle = BRW_SWZ_COMP_INPUT(nir_intrinsic_component(instr));
+      src.swizzle = ELK_SWZ_COMP_INPUT(nir_intrinsic_component(instr));
       emit(MOV(dest, src));
       break;
    }
@@ -443,7 +443,7 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
       assert(nir_src_bit_size(instr->src[0]) == 32);
       unsigned store_offset = nir_src_as_uint(instr->src[1]);
       int varying = nir_intrinsic_base(instr) + store_offset;
-      src = get_nir_src(instr->src[0], BRW_REGISTER_TYPE_F,
+      src = get_nir_src(instr->src[0], ELK_REGISTER_TYPE_F,
                         instr->num_components);
 
       unsigned c = nir_intrinsic_component(instr);
@@ -459,14 +459,14 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
 
       dst_reg result_dst = get_nir_def(instr->def);
       vec4_instruction *inst = new(mem_ctx)
-         vec4_instruction(SHADER_OPCODE_GET_BUFFER_SIZE, result_dst);
+         vec4_instruction(ELK_SHADER_OPCODE_GET_BUFFER_SIZE, result_dst);
 
       inst->base_mrf = 2;
       inst->mlen = 1; /* always at least one */
-      inst->src[1] = brw_imm_ud(ssbo_index);
+      inst->src[1] = elk_imm_ud(ssbo_index);
 
       /* MRF for the first parameter */
-      src_reg lod = brw_imm_d(0);
+      src_reg lod = elk_imm_d(0);
       int param_base = inst->base_mrf;
       int writemask = WRITEMASK_X;
       emit(MOV(dst_reg(MRF, param_base, glsl_int_type(), writemask), lod));
@@ -478,17 +478,17 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
    case nir_intrinsic_store_ssbo: {
       assert(devinfo->ver == 7);
 
-      /* brw_nir_lower_mem_access_bit_sizes takes care of this */
+      /* elk_nir_lower_mem_access_bit_sizes takes care of this */
       assert(nir_src_bit_size(instr->src[0]) == 32);
       assert(nir_intrinsic_write_mask(instr) ==
              (1u << instr->num_components) - 1);
 
       src_reg surf_index = get_nir_ssbo_intrinsic_index(instr);
       src_reg offset_reg = retype(get_nir_src_imm(instr->src[2]),
-                                  BRW_REGISTER_TYPE_UD);
+                                  ELK_REGISTER_TYPE_UD);
 
       /* Value */
-      src_reg val_reg = get_nir_src(instr->src[0], BRW_REGISTER_TYPE_F, 4);
+      src_reg val_reg = get_nir_src(instr->src[0], ELK_REGISTER_TYPE_F, 4);
 
       /* IvyBridge does not have a native SIMD4x2 untyped write message so untyped
        * writes will use SIMD8 mode. In order to hide this and keep symmetry across
@@ -533,19 +533,19 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
 
       emit_untyped_write(bld, surf_index, offset_reg, val_reg,
                          1 /* dims */, instr->num_components /* size */,
-                         BRW_PREDICATE_NONE);
+                         ELK_PREDICATE_NONE);
       break;
    }
 
    case nir_intrinsic_load_ssbo: {
       assert(devinfo->ver == 7);
 
-      /* brw_nir_lower_mem_access_bit_sizes takes care of this */
+      /* elk_nir_lower_mem_access_bit_sizes takes care of this */
       assert(instr->def.bit_size == 32);
 
       src_reg surf_index = get_nir_ssbo_intrinsic_index(instr);
       src_reg offset_reg = retype(get_nir_src_imm(instr->src[1]),
-                                  BRW_REGISTER_TYPE_UD);
+                                  ELK_REGISTER_TYPE_UD);
 
       /* Read the vector */
       const vec4_builder bld = vec4_builder(this).at_end()
@@ -553,17 +553,17 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
 
       src_reg read_result = emit_untyped_read(bld, surf_index, offset_reg,
                                               1 /* dims */, 4 /* size*/,
-                                              BRW_PREDICATE_NONE);
+                                              ELK_PREDICATE_NONE);
       dst_reg dest = get_nir_def(instr->def);
       read_result.type = dest.type;
-      read_result.swizzle = brw_swizzle_for_size(instr->num_components);
+      read_result.swizzle = elk_swizzle_for_size(instr->num_components);
       emit(MOV(dest, read_result));
       break;
    }
 
    case nir_intrinsic_ssbo_atomic:
    case nir_intrinsic_ssbo_atomic_swap:
-      nir_emit_ssbo_atomic(lsc_op_to_legacy_atomic(lsc_aop_for_nir_intrinsic(instr)), instr);
+      nir_emit_ssbo_atomic(lsc_op_to_legacy_atomic(elk_lsc_aop_for_nir_intrinsic(instr)), instr);
       break;
 
    case nir_intrinsic_load_vertex_id:
@@ -575,7 +575,7 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
    case nir_intrinsic_load_base_instance:
    case nir_intrinsic_load_draw_id:
    case nir_intrinsic_load_invocation_id:
-      unreachable("should be lowered by brw_nir_lower_vs_inputs()");
+      unreachable("should be lowered by elk_nir_lower_vs_inputs()");
 
    case nir_intrinsic_load_uniform: {
       /* Offsets are in bytes but they should always be multiples of 4 */
@@ -603,13 +603,13 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
          /* Offsets are in bytes but they should always be multiples of 4 */
          assert(load_offset % 4 == 0);
 
-         src.swizzle = brw_swizzle_for_size(instr->num_components);
-         dest.writemask = brw_writemask_for_size(instr->num_components);
+         src.swizzle = elk_swizzle_for_size(instr->num_components);
+         dest.writemask = elk_writemask_for_size(instr->num_components);
          unsigned offset = load_offset + shift * type_size;
          src.offset = ROUND_DOWN_TO(offset, 16);
          shift = (offset % 16) / type_size;
          assert(shift + instr->num_components <= 4);
-         src.swizzle += BRW_SWIZZLE4(shift, shift, shift, shift);
+         src.swizzle += ELK_SWIZZLE4(shift, shift, shift, shift);
 
          emit(MOV(dest, src));
       } else {
@@ -618,13 +618,13 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
           */
          assert(shift == 0);
 
-         src_reg indirect = get_nir_src(instr->src[0], BRW_REGISTER_TYPE_UD, 1);
+         src_reg indirect = get_nir_src(instr->src[0], ELK_REGISTER_TYPE_UD, 1);
 
          /* MOV_INDIRECT is going to stomp the whole thing anyway */
          dest.writemask = WRITEMASK_XYZW;
 
-         emit(SHADER_OPCODE_MOV_INDIRECT, dest, src,
-              indirect, brw_imm_ud(nir_intrinsic_range(instr)));
+         emit(ELK_SHADER_OPCODE_MOV_INDIRECT, dest, src,
+              indirect, elk_imm_ud(nir_intrinsic_range(instr)));
       }
       break;
    }
@@ -639,7 +639,7 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
           * as an immediate.
           */
          const unsigned index = nir_src_as_uint(instr->src[0]);
-         surf_index = brw_imm_ud(index);
+         surf_index = elk_imm_ud(index);
       } else {
          /* The block index is not a constant. Evaluate the index expression
           * per-channel and add the base UBO index; we have to select a value
@@ -656,7 +656,7 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
       if (nir_src_is_const(instr->src[1])) {
          unsigned load_offset = nir_src_as_uint(instr->src[1]);
          unsigned aligned_offset = load_offset & ~15;
-         offset_reg = brw_imm_ud(aligned_offset);
+         offset_reg = elk_imm_ud(aligned_offset);
 
          /* See if we've selected this as a push constant candidate */
          if (nir_src_is_const(instr->src[0])) {
@@ -664,7 +664,7 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
             const unsigned offset_256b = aligned_offset / 32;
 
             for (int i = 0; i < 4; i++) {
-               const struct brw_ubo_range *range = &prog_data->base.ubo_ranges[i];
+               const struct elk_ubo_range *range = &prog_data->base.ubo_ranges[i];
                if (range->block == ubo_block &&
                    offset_256b >= range->start &&
                    offset_256b < range->start + range->length) {
@@ -694,14 +694,14 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
          prog_data->base.has_ubo_pull = true;
       } else {
          src_reg temp = src_reg(this, glsl_dvec4_type());
-         src_reg temp_float = retype(temp, BRW_REGISTER_TYPE_F);
+         src_reg temp_float = retype(temp, ELK_REGISTER_TYPE_F);
 
          emit_pull_constant_load_reg(dst_reg(temp_float),
                                      surf_index, offset_reg, NULL, NULL);
          if (offset_reg.file == IMM)
             offset_reg.ud += 16;
          else
-            emit(ADD(dst_reg(offset_reg), offset_reg, brw_imm_ud(16u)));
+            emit(ADD(dst_reg(offset_reg), offset_reg, elk_imm_ud(16u)));
          emit_pull_constant_load_reg(dst_reg(byte_offset(temp_float, REG_SIZE)),
                                      surf_index, offset_reg, NULL, NULL);
          prog_data->base.has_ubo_pull = true;
@@ -710,12 +710,12 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
          shuffle_64bit_data(dst_reg(packed_consts), temp, false);
       }
 
-      packed_consts.swizzle = brw_swizzle_for_size(instr->num_components);
+      packed_consts.swizzle = elk_swizzle_for_size(instr->num_components);
       if (nir_src_is_const(instr->src[1])) {
          unsigned load_offset = nir_src_as_uint(instr->src[1]);
          unsigned type_size = type_sz(dest.type);
          packed_consts.swizzle +=
-            BRW_SWIZZLE4(load_offset % 16 / type_size,
+            ELK_SWIZZLE4(load_offset % 16 / type_size,
                          load_offset % 16 / type_size,
                          load_offset % 16 / type_size,
                          load_offset % 16 / type_size);
@@ -731,9 +731,9 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
          break;
       const vec4_builder bld =
          vec4_builder(this).at_end().annotate(current_annotation, base_ir);
-      const dst_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
+      const dst_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_UD);
       vec4_instruction *fence =
-         bld.emit(SHADER_OPCODE_MEMORY_FENCE, tmp, brw_vec8_grf(0, 0));
+         bld.emit(ELK_SHADER_OPCODE_MEMORY_FENCE, tmp, elk_vec8_grf(0, 0));
       fence->sfid = GFX7_SFID_DATAPORT_DATA_CACHE;
       break;
    }
@@ -741,7 +741,7 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
    case nir_intrinsic_shader_clock: {
       /* We cannot do anything if there is an event, so ignore it for now */
       const src_reg shader_clock = get_timestamp();
-      const enum brw_reg_type type = brw_type_for_base_type(glsl_uvec2_type());
+      const enum elk_reg_type type = elk_type_for_base_type(glsl_uvec2_type());
 
       dest = get_nir_def(instr->def, type);
       emit(MOV(dest, shader_clock));
@@ -763,10 +763,10 @@ vec4_visitor::nir_emit_ssbo_atomic(int op, nir_intrinsic_instr *instr)
    src_reg surface = get_nir_ssbo_intrinsic_index(instr);
    src_reg offset = get_nir_src(instr->src[1], 1);
    src_reg data1;
-   if (op != BRW_AOP_INC && op != BRW_AOP_DEC && op != BRW_AOP_PREDEC)
+   if (op != ELK_AOP_INC && op != ELK_AOP_DEC && op != ELK_AOP_PREDEC)
       data1 = get_nir_src(instr->src[2], 1);
    src_reg data2;
-   if (op == BRW_AOP_CMPWR)
+   if (op == ELK_AOP_CMPWR)
       data2 = get_nir_src(instr->src[3], 1);
 
    /* Emit the actual atomic operation operation */
@@ -777,20 +777,20 @@ vec4_visitor::nir_emit_ssbo_atomic(int op, nir_intrinsic_instr *instr)
                                                data1, data2,
                                                1 /* dims */, 1 /* rsize */,
                                                op,
-                                               BRW_PREDICATE_NONE);
+                                               ELK_PREDICATE_NONE);
    dest.type = atomic_result.type;
    bld.MOV(dest, atomic_result);
 }
 
 static unsigned
-brw_swizzle_for_nir_swizzle(uint8_t swizzle[4])
+elk_swizzle_for_nir_swizzle(uint8_t swizzle[4])
 {
-   return BRW_SWIZZLE4(swizzle[0], swizzle[1], swizzle[2], swizzle[3]);
+   return ELK_SWIZZLE4(swizzle[0], swizzle[1], swizzle[2], swizzle[3]);
 }
 
 bool
 vec4_visitor::optimize_predicate(nir_alu_instr *instr,
-                                 enum brw_predicate *predicate)
+                                 enum elk_predicate *predicate)
 {
    if (instr->src[0].src.ssa->parent_instr->type != nir_instr_type_alu)
       return false;
@@ -805,7 +805,7 @@ vec4_visitor::optimize_predicate(nir_alu_instr *instr,
    case nir_op_b32any_inequal3:
    case nir_op_b32any_fnequal4:
    case nir_op_b32any_inequal4:
-      *predicate = BRW_PREDICATE_ALIGN16_ANY4H;
+      *predicate = ELK_PREDICATE_ALIGN16_ANY4H;
       break;
    case nir_op_b32all_fequal2:
    case nir_op_b32all_iequal2:
@@ -813,14 +813,14 @@ vec4_visitor::optimize_predicate(nir_alu_instr *instr,
    case nir_op_b32all_iequal3:
    case nir_op_b32all_fequal4:
    case nir_op_b32all_iequal4:
-      *predicate = BRW_PREDICATE_ALIGN16_ALL4H;
+      *predicate = ELK_PREDICATE_ALIGN16_ALL4H;
       break;
    default:
       return false;
    }
 
    unsigned size_swizzle =
-      brw_swizzle_for_size(nir_op_infos[cmp_instr->op].input_sizes[0]);
+      elk_swizzle_for_size(nir_op_infos[cmp_instr->op].input_sizes[0]);
 
    src_reg op[2];
    assert(nir_op_infos[cmp_instr->op].num_inputs == 2);
@@ -830,12 +830,12 @@ vec4_visitor::optimize_predicate(nir_alu_instr *instr,
       type = (nir_alu_type) (((unsigned) type) | bit_size);
       op[i] = get_nir_src(cmp_instr->src[i].src, type, 4);
       unsigned base_swizzle =
-         brw_swizzle_for_nir_swizzle(cmp_instr->src[i].swizzle);
-      op[i].swizzle = brw_compose_swizzle(size_swizzle, base_swizzle);
+         elk_swizzle_for_nir_swizzle(cmp_instr->src[i].swizzle);
+      op[i].swizzle = elk_compose_swizzle(size_swizzle, base_swizzle);
    }
 
    emit(CMP(dst_null_d(), op[0], op[1],
-            brw_cmod_for_nir_comparison(cmp_instr->op)));
+            elk_cmod_for_nir_comparison(cmp_instr->op)));
 
    return true;
 }
@@ -843,16 +843,16 @@ vec4_visitor::optimize_predicate(nir_alu_instr *instr,
 void
 vec4_visitor::emit_conversion_from_double(dst_reg dst, src_reg src)
 {
-   enum opcode op;
+   enum elk_opcode op;
    switch (dst.type) {
-   case BRW_REGISTER_TYPE_D:
-      op = VEC4_OPCODE_DOUBLE_TO_D32;
+   case ELK_REGISTER_TYPE_D:
+      op = ELK_VEC4_OPCODE_DOUBLE_TO_D32;
       break;
-   case BRW_REGISTER_TYPE_UD:
-      op = VEC4_OPCODE_DOUBLE_TO_U32;
+   case ELK_REGISTER_TYPE_UD:
+      op = ELK_VEC4_OPCODE_DOUBLE_TO_U32;
       break;
-   case BRW_REGISTER_TYPE_F:
-      op = VEC4_OPCODE_DOUBLE_TO_F32;
+   case ELK_REGISTER_TYPE_F:
+      op = ELK_VEC4_OPCODE_DOUBLE_TO_F32;
       break;
    default:
       unreachable("Unknown conversion");
@@ -863,7 +863,7 @@ vec4_visitor::emit_conversion_from_double(dst_reg dst, src_reg src)
    dst_reg temp2 = dst_reg(this, glsl_dvec4_type());
    emit(op, temp2, src_reg(temp));
 
-   emit(VEC4_OPCODE_PICK_LOW_32BIT, retype(temp2, dst.type), src_reg(temp2));
+   emit(ELK_VEC4_OPCODE_PICK_LOW_32BIT, retype(temp2, dst.type), src_reg(temp2));
    emit(MOV(dst, src_reg(retype(temp2, dst.type))));
 }
 
@@ -873,7 +873,7 @@ vec4_visitor::emit_conversion_to_double(dst_reg dst, src_reg src)
    dst_reg tmp_dst = dst_reg(src_reg(this, glsl_dvec4_type()));
    src_reg tmp_src = retype(src_reg(this, glsl_vec4_type()), src.type);
    emit(MOV(dst_reg(tmp_src), src));
-   emit(VEC4_OPCODE_TO_DOUBLE, tmp_dst, tmp_src);
+   emit(ELK_VEC4_OPCODE_TO_DOUBLE, tmp_dst, tmp_src);
    emit(MOV(dst, src_reg(tmp_dst)));
 }
 
@@ -921,11 +921,11 @@ try_immediate_source(const nir_alu_instr *instr, src_reg *op,
       return -1;
    }
 
-   const enum brw_reg_type old_type = op[idx].type;
+   const enum elk_reg_type old_type = op[idx].type;
 
    switch (old_type) {
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UD: {
+   case ELK_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_UD: {
       int first_comp = -1;
       int d = 0;
 
@@ -950,11 +950,11 @@ try_immediate_source(const nir_alu_instr *instr, src_reg *op,
       if (op[idx].negate)
          d = -d;
 
-      op[idx] = retype(src_reg(brw_imm_d(d)), old_type);
+      op[idx] = retype(src_reg(elk_imm_d(d)), old_type);
       break;
    }
 
-   case BRW_REGISTER_TYPE_F: {
+   case ELK_REGISTER_TYPE_F: {
       int first_comp = -1;
       float f[NIR_MAX_VEC_COMPONENTS] = { 0.0f };
       bool is_scalar = true;
@@ -978,7 +978,7 @@ try_immediate_source(const nir_alu_instr *instr, src_reg *op,
          if (op[idx].negate)
             f[first_comp] = -f[first_comp];
 
-         op[idx] = src_reg(brw_imm_f(f[first_comp]));
+         op[idx] = src_reg(elk_imm_f(f[first_comp]));
          assert(op[idx].type == old_type);
       } else {
          uint8_t vf_values[4] = { 0, 0, 0, 0 };
@@ -991,14 +991,14 @@ try_immediate_source(const nir_alu_instr *instr, src_reg *op,
             if (op[idx].negate)
                f[i] = -f[i];
 
-            const int vf = brw_float_to_vf(f[i]);
+            const int vf = elk_float_to_vf(f[i]);
             if (vf == -1)
                return -1;
 
             vf_values[i] = vf;
          }
 
-         op[idx] = src_reg(brw_imm_vf4(vf_values[0], vf_values[1],
+         op[idx] = src_reg(elk_imm_vf4(vf_values[0], vf_values[1],
                                        vf_values[2], vf_values[3]));
       }
       break;
@@ -1065,10 +1065,10 @@ vec4_visitor::fix_float_operands(src_reg op[3], nir_alu_instr *instr)
 }
 
 static bool
-const_src_fits_in_16_bits(const nir_src &src, brw_reg_type type)
+const_src_fits_in_16_bits(const nir_src &src, elk_reg_type type)
 {
    assert(nir_src_is_const(src));
-   if (brw_reg_type_is_unsigned_integer(type)) {
+   if (elk_reg_type_is_unsigned_integer(type)) {
       return nir_src_comp_as_uint(src, 0) <= UINT16_MAX;
    } else {
       const int64_t c = nir_src_comp_as_int(src, 0);
@@ -1092,7 +1092,7 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
          (nir_op_infos[instr->op].input_types[i] |
           nir_src_bit_size(instr->src[i].src));
       op[i] = get_nir_src(instr->src[i].src, src_type, 4);
-      op[i].swizzle = brw_swizzle_for_nir_swizzle(instr->src[i].swizzle);
+      op[i].swizzle = elk_swizzle_for_nir_swizzle(instr->src[i].swizzle);
    }
 
 #ifndef NDEBUG
@@ -1195,7 +1195,7 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
          else
             emit(MUL(dst, op[0], op[1]));
       } else {
-         struct brw_reg acc = retype(brw_acc_reg(8), dst.type);
+         struct elk_reg acc = retype(elk_acc_reg(8), dst.type);
 
          emit(MUL(acc, op[0], op[1]));
          emit(MACH(dst_null_d(), op[0], op[1]));
@@ -1207,7 +1207,7 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    case nir_op_imul_high:
    case nir_op_umul_high: {
       assert(instr->def.bit_size < 64);
-      struct brw_reg acc = retype(brw_acc_reg(8), dst.type);
+      struct elk_reg acc = retype(elk_acc_reg(8), dst.type);
 
       emit(MUL(acc, op[0], op[1]));
       emit(MACH(dst, op[0], op[1]));
@@ -1215,29 +1215,29 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    }
 
    case nir_op_frcp:
-      inst = emit_math(SHADER_OPCODE_RCP, dst, op[0]);
+      inst = emit_math(ELK_SHADER_OPCODE_RCP, dst, op[0]);
       break;
 
    case nir_op_fexp2:
-      inst = emit_math(SHADER_OPCODE_EXP2, dst, op[0]);
+      inst = emit_math(ELK_SHADER_OPCODE_EXP2, dst, op[0]);
       break;
 
    case nir_op_flog2:
-      inst = emit_math(SHADER_OPCODE_LOG2, dst, op[0]);
+      inst = emit_math(ELK_SHADER_OPCODE_LOG2, dst, op[0]);
       break;
 
    case nir_op_fsin:
-      inst = emit_math(SHADER_OPCODE_SIN, dst, op[0]);
+      inst = emit_math(ELK_SHADER_OPCODE_SIN, dst, op[0]);
       break;
 
    case nir_op_fcos:
-      inst = emit_math(SHADER_OPCODE_COS, dst, op[0]);
+      inst = emit_math(ELK_SHADER_OPCODE_COS, dst, op[0]);
       break;
 
    case nir_op_idiv:
    case nir_op_udiv:
       assert(instr->def.bit_size < 64);
-      emit_math(SHADER_OPCODE_INT_QUOTIENT, dst, op[0], op[1]);
+      emit_math(ELK_SHADER_OPCODE_INT_QUOTIENT, dst, op[0], op[1]);
       break;
 
    case nir_op_umod:
@@ -1247,16 +1247,16 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
        * remainder.
        */
       assert(instr->def.bit_size < 64);
-      emit_math(SHADER_OPCODE_INT_REMAINDER, dst, op[0], op[1]);
+      emit_math(ELK_SHADER_OPCODE_INT_REMAINDER, dst, op[0], op[1]);
       break;
 
    case nir_op_imod: {
       /* Get a regular C-style remainder.  If a % b == 0, set the predicate. */
-      inst = emit_math(SHADER_OPCODE_INT_REMAINDER, dst, op[0], op[1]);
+      inst = emit_math(ELK_SHADER_OPCODE_INT_REMAINDER, dst, op[0], op[1]);
 
       /* Math instructions don't support conditional mod */
       inst = emit(MOV(dst_null_d(), src_reg(dst)));
-      inst->conditional_mod = BRW_CONDITIONAL_NZ;
+      inst->conditional_mod = ELK_CONDITIONAL_NZ;
 
       /* Now, we need to determine if signs of the sources are different.
        * When we XOR the sources, the top bit is 0 if they are the same and 1
@@ -1269,15 +1269,15 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
        */
       src_reg tmp = src_reg(this, glsl_ivec4_type());
       inst = emit(XOR(dst_reg(tmp), op[0], op[1]));
-      inst->predicate = BRW_PREDICATE_NORMAL;
-      inst->conditional_mod = BRW_CONDITIONAL_L;
+      inst->predicate = ELK_PREDICATE_NORMAL;
+      inst->conditional_mod = ELK_CONDITIONAL_L;
 
       /* If the result of the initial remainder operation is non-zero and the
        * two sources have different signs, add in a copy of op[1] to get the
        * final integer modulus value.
        */
       inst = emit(ADD(dst, src_reg(dst), op[1]));
-      inst->predicate = BRW_PREDICATE_NORMAL;
+      inst->predicate = ELK_PREDICATE_NORMAL;
       break;
    }
 
@@ -1285,20 +1285,20 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
       unreachable("not reached: should be handled by ldexp_to_arith()");
 
    case nir_op_fsqrt:
-      inst = emit_math(SHADER_OPCODE_SQRT, dst, op[0]);
+      inst = emit_math(ELK_SHADER_OPCODE_SQRT, dst, op[0]);
       break;
 
    case nir_op_frsq:
-      inst = emit_math(SHADER_OPCODE_RSQ, dst, op[0]);
+      inst = emit_math(ELK_SHADER_OPCODE_RSQ, dst, op[0]);
       break;
 
    case nir_op_fpow:
-      inst = emit_math(SHADER_OPCODE_POW, dst, op[0], op[1]);
+      inst = emit_math(ELK_SHADER_OPCODE_POW, dst, op[0], op[1]);
       break;
 
    case nir_op_uadd_carry: {
       assert(instr->def.bit_size < 64);
-      struct brw_reg acc = retype(brw_acc_reg(8), BRW_REGISTER_TYPE_UD);
+      struct elk_reg acc = retype(elk_acc_reg(8), ELK_REGISTER_TYPE_UD);
 
       emit(ADDC(dst_null_ud(), op[0], op[1]));
       emit(MOV(dst, src_reg(acc)));
@@ -1307,7 +1307,7 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
 
    case nir_op_usub_borrow: {
       assert(instr->def.bit_size < 64);
-      struct brw_reg acc = retype(brw_acc_reg(8), BRW_REGISTER_TYPE_UD);
+      struct elk_reg acc = retype(elk_acc_reg(8), ELK_REGISTER_TYPE_UD);
 
       emit(SUBB(dst_null_ud(), op[0], op[1]));
       emit(MOV(dst, src_reg(acc)));
@@ -1317,16 +1317,16 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    case nir_op_ftrunc:
       inst = emit(RNDZ(dst, op[0]));
       if (devinfo->ver < 6) {
-         inst->conditional_mod = BRW_CONDITIONAL_R;
-         inst = emit(ADD(dst, src_reg(dst), brw_imm_f(1.0f)));
-         inst->predicate = BRW_PREDICATE_NORMAL;
+         inst->conditional_mod = ELK_CONDITIONAL_R;
+         inst = emit(ADD(dst, src_reg(dst), elk_imm_f(1.0f)));
+         inst->predicate = ELK_PREDICATE_NORMAL;
          inst = emit(MOV(dst, src_reg(dst))); /* for potential saturation */
       }
       break;
 
    case nir_op_fceil: {
       src_reg tmp = src_reg(this, glsl_float_type());
-      tmp.swizzle = brw_swizzle_for_size(nir_src_num_components(instr->src[0].src));
+      tmp.swizzle = elk_swizzle_for_size(nir_src_num_components(instr->src[0].src));
 
       op[0].negate = !op[0].negate;
       emit(RNDD(dst_reg(tmp), op[0]));
@@ -1346,9 +1346,9 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    case nir_op_fround_even:
       inst = emit(RNDE(dst, op[0]));
       if (devinfo->ver < 6) {
-         inst->conditional_mod = BRW_CONDITIONAL_R;
-         inst = emit(ADD(dst, src_reg(dst), brw_imm_f(1.0f)));
-         inst->predicate = BRW_PREDICATE_NORMAL;
+         inst->conditional_mod = ELK_CONDITIONAL_R;
+         inst = emit(ADD(dst, src_reg(dst), elk_imm_f(1.0f)));
+         inst->predicate = ELK_PREDICATE_NORMAL;
          inst = emit(MOV(dst, src_reg(dst))); /* for potential saturation */
       }
       break;
@@ -1362,18 +1362,18 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
       /* Check for denormal */
       src_reg abs_src0 = op[0];
       abs_src0.abs = true;
-      emit(CMP(dst_null_f(), abs_src0, brw_imm_f(ldexpf(1.0, -14)),
-               BRW_CONDITIONAL_L));
+      emit(CMP(dst_null_f(), abs_src0, elk_imm_f(ldexpf(1.0, -14)),
+               ELK_CONDITIONAL_L));
       /* Get the appropriately signed zero */
-      emit(AND(retype(dst_reg(zero), BRW_REGISTER_TYPE_UD),
-               retype(op[0], BRW_REGISTER_TYPE_UD),
-               brw_imm_ud(0x80000000)));
+      emit(AND(retype(dst_reg(zero), ELK_REGISTER_TYPE_UD),
+               retype(op[0], ELK_REGISTER_TYPE_UD),
+               elk_imm_ud(0x80000000)));
       /* Do the actual F32 -> F16 -> F32 conversion */
       emit(F32TO16(dst_reg(tmp16), op[0]));
       emit(F16TO32(dst_reg(tmp32), tmp16));
       /* Select that or zero based on normal status */
-      inst = emit(BRW_OPCODE_SEL, dst, zero, tmp32);
-      inst->predicate = BRW_PREDICATE_NORMAL;
+      inst = emit(ELK_OPCODE_SEL, dst, zero, tmp32);
+      inst->predicate = ELK_PREDICATE_NORMAL;
       break;
    }
 
@@ -1383,7 +1383,7 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
       FALLTHROUGH;
    case nir_op_fmin:
       try_immediate_source(instr, op, true);
-      inst = emit_minmax(BRW_CONDITIONAL_L, dst, op[0], op[1]);
+      inst = emit_minmax(ELK_CONDITIONAL_L, dst, op[0], op[1]);
       break;
 
    case nir_op_imax:
@@ -1392,7 +1392,7 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
       FALLTHROUGH;
    case nir_op_fmax:
       try_immediate_source(instr, op, true);
-      inst = emit_minmax(BRW_CONDITIONAL_GE, dst, op[0], op[1]);
+      inst = emit_minmax(ELK_CONDITIONAL_GE, dst, op[0], op[1]);
       break;
 
    case nir_op_fddx:
@@ -1415,15 +1415,15 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    case nir_op_fge32:
    case nir_op_feq32:
    case nir_op_fneu32: {
-      enum brw_conditional_mod conditional_mod =
-         brw_cmod_for_nir_comparison(instr->op);
+      enum elk_conditional_mod conditional_mod =
+         elk_cmod_for_nir_comparison(instr->op);
 
       if (nir_src_bit_size(instr->src[0].src) < 64) {
          /* If the order of the sources is changed due to an immediate value,
           * then the condition must also be changed.
           */
          if (try_immediate_source(instr, op, true) == 0)
-            conditional_mod = brw_swap_cmod(conditional_mod);
+            conditional_mod = elk_swap_cmod(conditional_mod);
 
          emit(CMP(dst, op[0], op[1], conditional_mod));
       } else {
@@ -1435,7 +1435,7 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
          dst_reg temp = dst_reg(this, glsl_dvec4_type());
          emit(CMP(temp, op[0], op[1], conditional_mod));
          dst_reg result = dst_reg(this, glsl_bvec4_type());
-         emit(VEC4_OPCODE_PICK_LOW_32BIT, result, src_reg(temp));
+         emit(ELK_VEC4_OPCODE_PICK_LOW_32BIT, result, src_reg(temp));
          emit(MOV(dst, src_reg(result)));
       }
       break;
@@ -1450,13 +1450,13 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    case nir_op_b32all_fequal3:
    case nir_op_b32all_fequal4: {
       unsigned swiz =
-         brw_swizzle_for_size(nir_op_infos[instr->op].input_sizes[0]);
+         elk_swizzle_for_size(nir_op_infos[instr->op].input_sizes[0]);
 
       emit(CMP(dst_null_d(), swizzle(op[0], swiz), swizzle(op[1], swiz),
-               brw_cmod_for_nir_comparison(instr->op)));
-      emit(MOV(dst, brw_imm_d(0)));
-      inst = emit(MOV(dst, brw_imm_d(~0)));
-      inst->predicate = BRW_PREDICATE_ALIGN16_ALL4H;
+               elk_cmod_for_nir_comparison(instr->op)));
+      emit(MOV(dst, elk_imm_d(0)));
+      inst = emit(MOV(dst, elk_imm_d(~0)));
+      inst->predicate = ELK_PREDICATE_ALIGN16_ALL4H;
       break;
    }
 
@@ -1469,14 +1469,14 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    case nir_op_b32any_fnequal3:
    case nir_op_b32any_fnequal4: {
       unsigned swiz =
-         brw_swizzle_for_size(nir_op_infos[instr->op].input_sizes[0]);
+         elk_swizzle_for_size(nir_op_infos[instr->op].input_sizes[0]);
 
       emit(CMP(dst_null_d(), swizzle(op[0], swiz), swizzle(op[1], swiz),
-               brw_cmod_for_nir_comparison(instr->op)));
+               elk_cmod_for_nir_comparison(instr->op)));
 
-      emit(MOV(dst, brw_imm_d(0)));
-      inst = emit(MOV(dst, brw_imm_d(~0)));
-      inst->predicate = BRW_PREDICATE_ALIGN16_ANY4H;
+      emit(MOV(dst, elk_imm_d(0)));
+      inst = emit(MOV(dst, elk_imm_d(~0)));
+      inst->predicate = ELK_PREDICATE_ALIGN16_ANY4H;
       break;
    }
 
@@ -1507,7 +1507,7 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    case nir_op_b2f32:
    case nir_op_b2f64:
       if (instr->def.bit_size > 32) {
-         assert(dst.type == BRW_REGISTER_TYPE_DF);
+         assert(dst.type == ELK_REGISTER_TYPE_DF);
          emit_conversion_to_double(dst, negate(op[0]));
       } else {
          emit(MOV(dst, negate(op[0])));
@@ -1531,13 +1531,13 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    case nir_op_pack_uvec2_to_uint: {
       dst_reg tmp1 = dst_reg(this, glsl_uint_type());
       tmp1.writemask = WRITEMASK_X;
-      op[0].swizzle = BRW_SWIZZLE_YYYY;
-      emit(SHL(tmp1, op[0], src_reg(brw_imm_ud(16u))));
+      op[0].swizzle = ELK_SWIZZLE_YYYY;
+      emit(SHL(tmp1, op[0], src_reg(elk_imm_ud(16u))));
 
       dst_reg tmp2 = dst_reg(this, glsl_uint_type());
       tmp2.writemask = WRITEMASK_X;
-      op[0].swizzle = BRW_SWIZZLE_XXXX;
-      emit(AND(tmp2, op[0], src_reg(brw_imm_ud(0xffffu))));
+      op[0].swizzle = ELK_SWIZZLE_XXXX;
+      emit(AND(tmp2, op[0], src_reg(elk_imm_ud(0xffffu))));
 
       emit(OR(dst, src_reg(tmp1), src_reg(tmp2)));
       break;
@@ -1546,18 +1546,18 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
    case nir_op_pack_64_2x32_split: {
       dst_reg result = dst_reg(this, glsl_dvec4_type());
       dst_reg tmp = dst_reg(this, glsl_uvec4_type());
-      emit(MOV(tmp, retype(op[0], BRW_REGISTER_TYPE_UD)));
-      emit(VEC4_OPCODE_SET_LOW_32BIT, result, src_reg(tmp));
-      emit(MOV(tmp, retype(op[1], BRW_REGISTER_TYPE_UD)));
-      emit(VEC4_OPCODE_SET_HIGH_32BIT, result, src_reg(tmp));
+      emit(MOV(tmp, retype(op[0], ELK_REGISTER_TYPE_UD)));
+      emit(ELK_VEC4_OPCODE_SET_LOW_32BIT, result, src_reg(tmp));
+      emit(MOV(tmp, retype(op[1], ELK_REGISTER_TYPE_UD)));
+      emit(ELK_VEC4_OPCODE_SET_HIGH_32BIT, result, src_reg(tmp));
       emit(MOV(dst, src_reg(result)));
       break;
    }
 
    case nir_op_unpack_64_2x32_split_x:
    case nir_op_unpack_64_2x32_split_y: {
-      enum opcode oper = (instr->op == nir_op_unpack_64_2x32_split_x) ?
-         VEC4_OPCODE_PICK_LOW_32BIT : VEC4_OPCODE_PICK_HIGH_32BIT;
+      enum elk_opcode oper = (instr->op == nir_op_unpack_64_2x32_split_x) ?
+         ELK_VEC4_OPCODE_PICK_LOW_32BIT : ELK_VEC4_OPCODE_PICK_HIGH_32BIT;
       dst_reg tmp = dst_reg(this, glsl_dvec4_type());
       emit(MOV(tmp, op[0]));
       dst_reg tmp2 = dst_reg(this, glsl_uvec4_type());
@@ -1575,7 +1575,7 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
        * rest of components to avoid regressions. In the vec4_visitor IR code path
        * this is not needed because the operand has already the correct swizzle.
        */
-      op[0].swizzle = brw_compose_swizzle(BRW_SWIZZLE_XXXX, op[0].swizzle);
+      op[0].swizzle = elk_compose_swizzle(ELK_SWIZZLE_XXXX, op[0].swizzle);
       emit_unpack_half_2x16(dst, op[0]);
       break;
 
@@ -1623,17 +1623,17 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
       vec4_builder bld = vec4_builder(this).at_end();
       src_reg src(dst);
 
-      emit(FBH(retype(dst, BRW_REGISTER_TYPE_UD), op[0]));
+      emit(FBH(retype(dst, ELK_REGISTER_TYPE_UD), op[0]));
 
       /* FBH counts from the MSB side, while GLSL's findMSB() wants the count
        * from the LSB side. If FBH didn't return an error (0xFFFFFFFF), then
        * subtract the result from 31 to convert the MSB count into an LSB
        * count.
        */
-      bld.CMP(dst_null_d(), src, brw_imm_d(-1), BRW_CONDITIONAL_NZ);
+      bld.CMP(dst_null_d(), src, elk_imm_d(-1), ELK_CONDITIONAL_NZ);
 
-      inst = bld.ADD(dst, src, brw_imm_d(31));
-      inst->predicate = BRW_PREDICATE_NORMAL;
+      inst = bld.ADD(dst, src, elk_imm_d(31));
+      inst->predicate = ELK_PREDICATE_NORMAL;
       inst->src[0].negate = true;
       break;
    }
@@ -1688,15 +1688,15 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
           * Predicated OR ORs 1.0 (0x3f800000) with the sign bit if val is not
           * zero.
           */
-         emit(CMP(dst_null_f(), op[0], brw_imm_f(0.0f), BRW_CONDITIONAL_NZ));
+         emit(CMP(dst_null_f(), op[0], elk_imm_f(0.0f), ELK_CONDITIONAL_NZ));
 
-         op[0].type = BRW_REGISTER_TYPE_UD;
-         dst.type = BRW_REGISTER_TYPE_UD;
-         emit(AND(dst, op[0], brw_imm_ud(0x80000000u)));
+         op[0].type = ELK_REGISTER_TYPE_UD;
+         dst.type = ELK_REGISTER_TYPE_UD;
+         emit(AND(dst, op[0], elk_imm_ud(0x80000000u)));
 
-         inst = emit(OR(dst, src_reg(dst), brw_imm_ud(0x3f800000u)));
-         inst->predicate = BRW_PREDICATE_NORMAL;
-         dst.type = BRW_REGISTER_TYPE_F;
+         inst = emit(OR(dst, src_reg(dst), elk_imm_ud(0x3f800000u)));
+         inst->predicate = ELK_PREDICATE_NORMAL;
+         dst.type = ELK_REGISTER_TYPE_F;
       } else {
          /* For doubles we do the same but we need to consider:
           *
@@ -1713,22 +1713,22 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
          src_reg value = op[0];
          value.abs = true;
          inst = emit(MOV(dst_null_df(), value));
-         inst->conditional_mod = BRW_CONDITIONAL_NZ;
+         inst->conditional_mod = ELK_CONDITIONAL_NZ;
 
          /* AND each high 32-bit channel with 0x80000000u */
          dst_reg tmp = dst_reg(this, glsl_uvec4_type());
-         emit(VEC4_OPCODE_PICK_HIGH_32BIT, tmp, op[0]);
-         emit(AND(tmp, src_reg(tmp), brw_imm_ud(0x80000000u)));
+         emit(ELK_VEC4_OPCODE_PICK_HIGH_32BIT, tmp, op[0]);
+         emit(AND(tmp, src_reg(tmp), elk_imm_ud(0x80000000u)));
 
          /* Add 1.0 to each channel, predicated to skip the cases where the
           * channel's value was 0
           */
-         inst = emit(OR(tmp, src_reg(tmp), brw_imm_ud(0x3f800000u)));
-         inst->predicate = BRW_PREDICATE_NORMAL;
+         inst = emit(OR(tmp, src_reg(tmp), elk_imm_ud(0x3f800000u)));
+         inst->predicate = ELK_PREDICATE_NORMAL;
 
          /* Now convert the result from float to double */
          emit_conversion_to_double(dst, retype(src_reg(tmp),
-                                               BRW_REGISTER_TYPE_F));
+                                               ELK_REGISTER_TYPE_F));
       }
       break;
 
@@ -1767,49 +1767,49 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
       break;
 
    case nir_op_b32csel:
-      enum brw_predicate predicate;
+      enum elk_predicate predicate;
       if (!optimize_predicate(instr, &predicate)) {
-         emit(CMP(dst_null_d(), op[0], brw_imm_d(0), BRW_CONDITIONAL_NZ));
+         emit(CMP(dst_null_d(), op[0], elk_imm_d(0), ELK_CONDITIONAL_NZ));
          switch (dst.writemask) {
          case WRITEMASK_X:
-            predicate = BRW_PREDICATE_ALIGN16_REPLICATE_X;
+            predicate = ELK_PREDICATE_ALIGN16_REPLICATE_X;
             break;
          case WRITEMASK_Y:
-            predicate = BRW_PREDICATE_ALIGN16_REPLICATE_Y;
+            predicate = ELK_PREDICATE_ALIGN16_REPLICATE_Y;
             break;
          case WRITEMASK_Z:
-            predicate = BRW_PREDICATE_ALIGN16_REPLICATE_Z;
+            predicate = ELK_PREDICATE_ALIGN16_REPLICATE_Z;
             break;
          case WRITEMASK_W:
-            predicate = BRW_PREDICATE_ALIGN16_REPLICATE_W;
+            predicate = ELK_PREDICATE_ALIGN16_REPLICATE_W;
             break;
          default:
-            predicate = BRW_PREDICATE_NORMAL;
+            predicate = ELK_PREDICATE_NORMAL;
             break;
          }
       }
-      inst = emit(BRW_OPCODE_SEL, dst, op[1], op[2]);
+      inst = emit(ELK_OPCODE_SEL, dst, op[1], op[2]);
       inst->predicate = predicate;
       break;
 
    case nir_op_fdot2_replicated:
       try_immediate_source(instr, op, true);
-      inst = emit(BRW_OPCODE_DP2, dst, op[0], op[1]);
+      inst = emit(ELK_OPCODE_DP2, dst, op[0], op[1]);
       break;
 
    case nir_op_fdot3_replicated:
       try_immediate_source(instr, op, true);
-      inst = emit(BRW_OPCODE_DP3, dst, op[0], op[1]);
+      inst = emit(ELK_OPCODE_DP3, dst, op[0], op[1]);
       break;
 
    case nir_op_fdot4_replicated:
       try_immediate_source(instr, op, true);
-      inst = emit(BRW_OPCODE_DP4, dst, op[0], op[1]);
+      inst = emit(ELK_OPCODE_DP4, dst, op[0], op[1]);
       break;
 
    case nir_op_fdph_replicated:
       try_immediate_source(instr, op, false);
-      inst = emit(BRW_OPCODE_DPH, dst, op[0], op[1]);
+      inst = emit(ELK_OPCODE_DPH, dst, op[0], op[1]);
       break;
 
    case nir_op_fdiv:
@@ -1830,14 +1830,14 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
     * to sign extend the low bit to 0/~0
     */
    if (devinfo->ver <= 5 &&
-       (instr->instr.pass_flags & BRW_NIR_BOOLEAN_MASK) ==
-       BRW_NIR_BOOLEAN_NEEDS_RESOLVE) {
+       (instr->instr.pass_flags & ELK_NIR_BOOLEAN_MASK) ==
+       ELK_NIR_BOOLEAN_NEEDS_RESOLVE) {
       dst_reg masked = dst_reg(this, glsl_int_type());
       masked.writemask = dst.writemask;
-      emit(AND(masked, src_reg(dst), brw_imm_d(1)));
+      emit(AND(masked, src_reg(dst), elk_imm_d(1)));
       src_reg masked_neg = src_reg(masked);
       masked_neg.negate = true;
-      emit(MOV(retype(dst, BRW_REGISTER_TYPE_D), masked_neg));
+      emit(MOV(retype(dst, ELK_REGISTER_TYPE_D), masked_neg));
    }
 }
 
@@ -1846,11 +1846,11 @@ vec4_visitor::nir_emit_jump(nir_jump_instr *instr)
 {
    switch (instr->type) {
    case nir_jump_break:
-      emit(BRW_OPCODE_BREAK);
+      emit(ELK_OPCODE_BREAK);
       break;
 
    case nir_jump_continue:
-      emit(BRW_OPCODE_CONTINUE);
+      emit(ELK_OPCODE_CONTINUE);
       break;
 
    case nir_jump_return:
@@ -1874,8 +1874,8 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
 {
    unsigned texture = instr->texture_index;
    unsigned sampler = instr->sampler_index;
-   src_reg texture_reg = brw_imm_ud(texture);
-   src_reg sampler_reg = brw_imm_ud(sampler);
+   src_reg texture_reg = elk_imm_ud(texture);
+   src_reg sampler_reg = elk_imm_ud(sampler);
    src_reg coordinate;
    const glsl_type *coord_type = NULL;
    src_reg shadow_comparator;
@@ -1888,7 +1888,7 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
 
    /* The hardware requires a LOD for buffer textures */
    if (instr->sampler_dim == GLSL_SAMPLER_DIM_BUF)
-      lod = brw_imm_d(0);
+      lod = elk_imm_d(0);
 
    /* Load the texture operation sources */
    uint32_t constant_offset = 0;
@@ -1896,7 +1896,7 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
       switch (instr->src[i].src_type) {
       case nir_tex_src_comparator:
          shadow_comparator = get_nir_src(instr->src[i].src,
-                                         BRW_REGISTER_TYPE_F, 1);
+                                         ELK_REGISTER_TYPE_F, 1);
          break;
 
       case nir_tex_src_coord: {
@@ -1906,13 +1906,13 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
          case nir_texop_txf:
          case nir_texop_txf_ms:
          case nir_texop_samples_identical:
-            coordinate = get_nir_src(instr->src[i].src, BRW_REGISTER_TYPE_D,
+            coordinate = get_nir_src(instr->src[i].src, ELK_REGISTER_TYPE_D,
                                      src_size);
             coord_type = glsl_ivec_type(src_size);
             break;
 
          default:
-            coordinate = get_nir_src(instr->src[i].src, BRW_REGISTER_TYPE_F,
+            coordinate = get_nir_src(instr->src[i].src, ELK_REGISTER_TYPE_F,
                                      src_size);
             coord_type = glsl_vec_type(src_size);
             break;
@@ -1921,12 +1921,12 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
       }
 
       case nir_tex_src_ddx:
-         lod = get_nir_src(instr->src[i].src, BRW_REGISTER_TYPE_F,
+         lod = get_nir_src(instr->src[i].src, ELK_REGISTER_TYPE_F,
                            nir_tex_instr_src_size(instr, i));
          break;
 
       case nir_tex_src_ddy:
-         lod2 = get_nir_src(instr->src[i].src, BRW_REGISTER_TYPE_F,
+         lod2 = get_nir_src(instr->src[i].src, ELK_REGISTER_TYPE_F,
                            nir_tex_instr_src_size(instr, i));
          break;
 
@@ -1934,38 +1934,38 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
          switch (instr->op) {
          case nir_texop_txs:
          case nir_texop_txf:
-            lod = get_nir_src(instr->src[i].src, BRW_REGISTER_TYPE_D, 1);
+            lod = get_nir_src(instr->src[i].src, ELK_REGISTER_TYPE_D, 1);
             break;
 
          default:
-            lod = get_nir_src(instr->src[i].src, BRW_REGISTER_TYPE_F, 1);
+            lod = get_nir_src(instr->src[i].src, ELK_REGISTER_TYPE_F, 1);
             break;
          }
          break;
 
       case nir_tex_src_ms_index: {
-         sample_index = get_nir_src(instr->src[i].src, BRW_REGISTER_TYPE_D, 1);
+         sample_index = get_nir_src(instr->src[i].src, ELK_REGISTER_TYPE_D, 1);
          break;
       }
 
       case nir_tex_src_offset:
-         if (!brw_texture_offset(instr, i, &constant_offset)) {
+         if (!elk_texture_offset(instr, i, &constant_offset)) {
             offset_value =
-               get_nir_src(instr->src[i].src, BRW_REGISTER_TYPE_D, 2);
+               get_nir_src(instr->src[i].src, ELK_REGISTER_TYPE_D, 2);
          }
          break;
 
       case nir_tex_src_texture_offset: {
          assert(texture_reg.is_zero());
          texture_reg = emit_uniformize(get_nir_src(instr->src[i].src,
-                                                   BRW_REGISTER_TYPE_UD, 1));
+                                                   ELK_REGISTER_TYPE_UD, 1));
          break;
       }
 
       case nir_tex_src_sampler_offset: {
          assert(sampler_reg.is_zero());
          sampler_reg = emit_uniformize(get_nir_src(instr->src[i].src,
-                                                   BRW_REGISTER_TYPE_UD, 1));
+                                                   ELK_REGISTER_TYPE_UD, 1));
          break;
       }
 
@@ -1986,7 +1986,7 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
       if (devinfo->ver >= 7) {
          mcs = emit_mcs_fetch(coord_type, coordinate, texture_reg);
       } else {
-         mcs = brw_imm_ud(0u);
+         mcs = elk_imm_ud(0u);
       }
    }
 
@@ -2003,25 +2003,25 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
       }
    }
 
-   enum opcode opcode;
+   enum elk_opcode opcode;
    switch (instr->op) {
-   case nir_texop_tex:             opcode = SHADER_OPCODE_TXL;        break;
-   case nir_texop_txl:             opcode = SHADER_OPCODE_TXL;        break;
-   case nir_texop_txd:             opcode = SHADER_OPCODE_TXD;        break;
-   case nir_texop_txf:             opcode = SHADER_OPCODE_TXF;        break;
-   case nir_texop_txf_ms:          opcode = SHADER_OPCODE_TXF_CMS;    break;
-   case nir_texop_txs:             opcode = SHADER_OPCODE_TXS;        break;
-   case nir_texop_query_levels:    opcode = SHADER_OPCODE_TXS;        break;
-   case nir_texop_texture_samples: opcode = SHADER_OPCODE_SAMPLEINFO; break;
+   case nir_texop_tex:             opcode = ELK_SHADER_OPCODE_TXL;        break;
+   case nir_texop_txl:             opcode = ELK_SHADER_OPCODE_TXL;        break;
+   case nir_texop_txd:             opcode = ELK_SHADER_OPCODE_TXD;        break;
+   case nir_texop_txf:             opcode = ELK_SHADER_OPCODE_TXF;        break;
+   case nir_texop_txf_ms:          opcode = ELK_SHADER_OPCODE_TXF_CMS;    break;
+   case nir_texop_txs:             opcode = ELK_SHADER_OPCODE_TXS;        break;
+   case nir_texop_query_levels:    opcode = ELK_SHADER_OPCODE_TXS;        break;
+   case nir_texop_texture_samples: opcode = ELK_SHADER_OPCODE_SAMPLEINFO; break;
    case nir_texop_tg4:
-      opcode = offset_value.file != BAD_FILE ? SHADER_OPCODE_TG4_OFFSET
-                                             : SHADER_OPCODE_TG4;
+      opcode = offset_value.file != BAD_FILE ? ELK_SHADER_OPCODE_TG4_OFFSET
+                                             : ELK_SHADER_OPCODE_TG4;
       break;
    case nir_texop_samples_identical: {
       /* There are some challenges implementing this for vec4, and it seems
        * unlikely to be used anyway.  For now, just return false ways.
        */
-      emit(MOV(dest, brw_imm_ud(0u)));
+      emit(MOV(dest, elk_imm_ud(0u)));
       return;
    }
    case nir_texop_txb:
@@ -2045,9 +2045,9 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
    inst->header_size =
       (devinfo->ver < 5 ||
        inst->offset != 0 ||
-       opcode == SHADER_OPCODE_TG4 ||
-       opcode == SHADER_OPCODE_TG4_OFFSET ||
-       opcode == SHADER_OPCODE_SAMPLEINFO ||
+       opcode == ELK_SHADER_OPCODE_TG4 ||
+       opcode == ELK_SHADER_OPCODE_TG4_OFFSET ||
+       opcode == ELK_SHADER_OPCODE_SAMPLEINFO ||
        is_high_sampler(devinfo, sampler_reg)) ? 1 : 0;
    inst->base_mrf = 2;
    inst->mlen = inst->header_size;
@@ -2060,11 +2060,11 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
    /* MRF for the first parameter */
    int param_base = inst->base_mrf + inst->header_size;
 
-   if (opcode == SHADER_OPCODE_TXS) {
+   if (opcode == ELK_SHADER_OPCODE_TXS) {
       int writemask = devinfo->ver == 4 ? WRITEMASK_W : WRITEMASK_X;
       emit(MOV(dst_reg(MRF, param_base, lod.type, writemask), lod));
       inst->mlen++;
-   } else if (opcode == SHADER_OPCODE_SAMPLEINFO) {
+   } else if (opcode == ELK_SHADER_OPCODE_SAMPLEINFO) {
       inst->dst.writemask = WRITEMASK_X;
    } else {
       /* Load the coordinate */
@@ -2078,12 +2078,12 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
 
       if (zero_mask != 0) {
          emit(MOV(dst_reg(MRF, param_base, coordinate.type, zero_mask),
-                  brw_imm_d(0)));
+                  elk_imm_d(0)));
       }
       /* Load the shadow comparator */
       if (shadow_comparator.file != BAD_FILE &&
-          opcode != SHADER_OPCODE_TXD &&
-          opcode != SHADER_OPCODE_TG4_OFFSET) {
+          opcode != ELK_SHADER_OPCODE_TXD &&
+          opcode != ELK_SHADER_OPCODE_TG4_OFFSET) {
 	 emit(MOV(dst_reg(MRF, param_base + 1, shadow_comparator.type,
 			  WRITEMASK_X),
 		  shadow_comparator));
@@ -2092,7 +2092,7 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
 
       /* Load the LOD info */
       switch (opcode) {
-      case SHADER_OPCODE_TXL: {
+      case ELK_SHADER_OPCODE_TXL: {
 	 int mrf, writemask;
 	 if (devinfo->ver >= 5) {
 	    mrf = param_base + 1;
@@ -2111,11 +2111,11 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
          break;
       }
 
-      case SHADER_OPCODE_TXF:
+      case ELK_SHADER_OPCODE_TXF:
          emit(MOV(dst_reg(MRF, param_base, lod.type, WRITEMASK_W), lod));
          break;
 
-      case SHADER_OPCODE_TXF_CMS:
+      case ELK_SHADER_OPCODE_TXF_CMS:
          emit(MOV(dst_reg(MRF, param_base + 1, sample_index.type, WRITEMASK_X),
                   sample_index));
          if (devinfo->ver >= 7) {
@@ -2123,27 +2123,27 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
              * the .y channel of the second vec4 of params, so replicate .x across
              * the whole vec4 and then mask off everything except .y
              */
-            mcs.swizzle = BRW_SWIZZLE_XXXX;
+            mcs.swizzle = ELK_SWIZZLE_XXXX;
             emit(MOV(dst_reg(MRF, param_base + 1, glsl_uint_type(), WRITEMASK_Y),
                      mcs));
          }
          inst->mlen++;
          break;
 
-      case SHADER_OPCODE_TXD: {
-         const brw_reg_type type = lod.type;
+      case ELK_SHADER_OPCODE_TXD: {
+         const elk_reg_type type = lod.type;
 
 	 if (devinfo->ver >= 5) {
-	    lod.swizzle = BRW_SWIZZLE4(BRW_SWIZZLE_X,BRW_SWIZZLE_X,BRW_SWIZZLE_Y,BRW_SWIZZLE_Y);
-	    lod2.swizzle = BRW_SWIZZLE4(BRW_SWIZZLE_X,BRW_SWIZZLE_X,BRW_SWIZZLE_Y,BRW_SWIZZLE_Y);
+	    lod.swizzle = ELK_SWIZZLE4(ELK_SWIZZLE_X,ELK_SWIZZLE_X,ELK_SWIZZLE_Y,ELK_SWIZZLE_Y);
+	    lod2.swizzle = ELK_SWIZZLE4(ELK_SWIZZLE_X,ELK_SWIZZLE_X,ELK_SWIZZLE_Y,ELK_SWIZZLE_Y);
 	    emit(MOV(dst_reg(MRF, param_base + 1, type, WRITEMASK_XZ), lod));
 	    emit(MOV(dst_reg(MRF, param_base + 1, type, WRITEMASK_YW), lod2));
 	    inst->mlen++;
 
 	    if (nir_tex_instr_dest_size(instr) == 3 ||
                 shadow_comparator.file != BAD_FILE) {
-	       lod.swizzle = BRW_SWIZZLE_ZZZZ;
-	       lod2.swizzle = BRW_SWIZZLE_ZZZZ;
+	       lod.swizzle = ELK_SWIZZLE_ZZZZ;
+	       lod2.swizzle = ELK_SWIZZLE_ZZZZ;
 	       emit(MOV(dst_reg(MRF, param_base + 2, type, WRITEMASK_X), lod));
 	       emit(MOV(dst_reg(MRF, param_base + 2, type, WRITEMASK_Y), lod2));
 	       inst->mlen++;
@@ -2162,7 +2162,7 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
          break;
       }
 
-      case SHADER_OPCODE_TG4_OFFSET:
+      case ELK_SHADER_OPCODE_TG4_OFFSET:
          if (shadow_comparator.file != BAD_FILE) {
             emit(MOV(dst_reg(MRF, param_base, shadow_comparator.type, WRITEMASK_W),
                      shadow_comparator));
@@ -2185,15 +2185,15 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
     */
    if (instr->op == nir_texop_txs && devinfo->ver < 7) {
       /* Gfx4-6 return 0 instead of 1 for single layer surfaces. */
-      emit_minmax(BRW_CONDITIONAL_GE, writemask(inst->dst, WRITEMASK_Z),
-                  src_reg(inst->dst), brw_imm_d(1));
+      emit_minmax(ELK_CONDITIONAL_GE, writemask(inst->dst, WRITEMASK_Z),
+                  src_reg(inst->dst), elk_imm_d(1));
    }
 
    if (instr->op == nir_texop_query_levels) {
       /* # levels is in .w */
       src_reg swizzled(dest);
-      swizzled.swizzle = BRW_SWIZZLE4(BRW_SWIZZLE_W, BRW_SWIZZLE_W,
-                                      BRW_SWIZZLE_W, BRW_SWIZZLE_W);
+      swizzled.swizzle = ELK_SWIZZLE4(ELK_SWIZZLE_W, ELK_SWIZZLE_W,
+                                      ELK_SWIZZLE_W, ELK_SWIZZLE_W);
       emit(MOV(dest, swizzled));
    }
 }
@@ -2203,11 +2203,11 @@ vec4_visitor::emit_mcs_fetch(const glsl_type *coordinate_type,
                              src_reg coordinate, src_reg surface)
 {
    vec4_instruction *inst =
-      new(mem_ctx) vec4_instruction(SHADER_OPCODE_TXF_MCS,
+      new(mem_ctx) vec4_instruction(ELK_SHADER_OPCODE_TXF_MCS,
                                     dst_reg(this, glsl_uvec4_type()));
    inst->base_mrf = 2;
    inst->src[1] = surface;
-   inst->src[2] = brw_imm_ud(0); /* sampler */
+   inst->src[2] = elk_imm_ud(0); /* sampler */
    inst->mlen = 1;
 
    const int param_base = inst->base_mrf;
@@ -2220,7 +2220,7 @@ vec4_visitor::emit_mcs_fetch(const glsl_type *coordinate_type,
             coordinate));
 
    emit(MOV(dst_reg(MRF, param_base, coordinate_type, zero_mask),
-            brw_imm_d(0)));
+            elk_imm_d(0)));
 
    emit(inst);
    return src_reg(inst->dst);
@@ -2266,20 +2266,20 @@ vec4_visitor::nir_emit_undef(nir_undef_instr *instr)
 vec4_instruction *
 vec4_visitor::shuffle_64bit_data(dst_reg dst, src_reg src, bool for_write,
                                  bool for_scratch,
-                                 bblock_t *block, vec4_instruction *ref)
+                                 elk_bblock_t *block, vec4_instruction *ref)
 {
    assert(type_sz(src.type) == 8);
    assert(type_sz(dst.type) == 8);
    assert(!regions_overlap(dst, 2 * REG_SIZE, src, 2 * REG_SIZE));
    assert(!ref == !block);
 
-   opcode mov_op = for_scratch ? VEC4_OPCODE_MOV_FOR_SCRATCH : BRW_OPCODE_MOV;
+   elk_opcode mov_op = for_scratch ? ELK_VEC4_OPCODE_MOV_FOR_SCRATCH : ELK_OPCODE_MOV;
 
    const vec4_builder bld = !ref ? vec4_builder(this).at_end() :
                                    vec4_builder(this).at(block, ref->next);
 
    /* Resolve swizzle in src */
-   if (src.swizzle != BRW_SWIZZLE_XYZW) {
+   if (src.swizzle != ELK_SWIZZLE_XYZW) {
       dst_reg data = dst_reg(this, glsl_dvec4_type());
       bld.emit(mov_op, data, src);
       src = src_reg(data);
@@ -2291,12 +2291,12 @@ vec4_visitor::shuffle_64bit_data(dst_reg dst, src_reg src, bool for_write,
    /* dst+0.ZW = src+1.XY */
    bld.group(4, for_write ? 1 : 0)
             .emit(mov_op, writemask(dst, WRITEMASK_ZW),
-                  swizzle(byte_offset(src, REG_SIZE), BRW_SWIZZLE_XYXY));
+                  swizzle(byte_offset(src, REG_SIZE), ELK_SWIZZLE_XYXY));
 
    /* dst+1.XY = src+0.ZW */
    bld.group(4, for_write ? 0 : 1)
             .emit(mov_op, writemask(byte_offset(dst, REG_SIZE), WRITEMASK_XY),
-                  swizzle(src, BRW_SWIZZLE_ZWZW));
+                  swizzle(src, ELK_SWIZZLE_ZWZW));
 
    /* dst+1.ZW = src+1.ZW */
    return bld.group(4, 1)

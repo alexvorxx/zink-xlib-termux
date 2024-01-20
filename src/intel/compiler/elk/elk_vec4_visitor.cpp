@@ -28,7 +28,7 @@
 
 namespace elk {
 
-vec4_instruction::vec4_instruction(enum opcode opcode, const dst_reg &dst,
+vec4_instruction::vec4_instruction(enum elk_opcode opcode, const dst_reg &dst,
                                    const src_reg &src0, const src_reg &src1,
                                    const src_reg &src2)
 {
@@ -42,14 +42,14 @@ vec4_instruction::vec4_instruction(enum opcode opcode, const dst_reg &dst,
    this->no_dd_clear = false;
    this->no_dd_check = false;
    this->writes_accumulator = false;
-   this->conditional_mod = BRW_CONDITIONAL_NONE;
-   this->predicate = BRW_PREDICATE_NONE;
+   this->conditional_mod = ELK_CONDITIONAL_NONE;
+   this->predicate = ELK_PREDICATE_NONE;
    this->predicate_inverse = false;
    this->target = 0;
    this->shadow_compare = false;
    this->eot = false;
    this->ir = NULL;
-   this->urb_write_flags = BRW_URB_WRITE_NO_FLAGS;
+   this->urb_write_flags = ELK_URB_WRITE_NO_FLAGS;
    this->header_size = 0;
    this->flag_subreg = 0;
    this->mlen = 0;
@@ -74,7 +74,7 @@ vec4_visitor::emit(vec4_instruction *inst)
 }
 
 vec4_instruction *
-vec4_visitor::emit_before(bblock_t *block, vec4_instruction *inst,
+vec4_visitor::emit_before(elk_bblock_t *block, vec4_instruction *inst,
                           vec4_instruction *new_inst)
 {
    new_inst->ir = inst->ir;
@@ -86,7 +86,7 @@ vec4_visitor::emit_before(bblock_t *block, vec4_instruction *inst,
 }
 
 vec4_instruction *
-vec4_visitor::emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0,
+vec4_visitor::emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0,
                    const src_reg &src1, const src_reg &src2)
 {
    return emit(new(mem_ctx) vec4_instruction(opcode, dst, src0, src1, src2));
@@ -94,26 +94,26 @@ vec4_visitor::emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0,
 
 
 vec4_instruction *
-vec4_visitor::emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0,
+vec4_visitor::emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0,
                    const src_reg &src1)
 {
    return emit(new(mem_ctx) vec4_instruction(opcode, dst, src0, src1));
 }
 
 vec4_instruction *
-vec4_visitor::emit(enum opcode opcode, const dst_reg &dst, const src_reg &src0)
+vec4_visitor::emit(enum elk_opcode opcode, const dst_reg &dst, const src_reg &src0)
 {
    return emit(new(mem_ctx) vec4_instruction(opcode, dst, src0));
 }
 
 vec4_instruction *
-vec4_visitor::emit(enum opcode opcode, const dst_reg &dst)
+vec4_visitor::emit(enum elk_opcode opcode, const dst_reg &dst)
 {
    return emit(new(mem_ctx) vec4_instruction(opcode, dst));
 }
 
 vec4_instruction *
-vec4_visitor::emit(enum opcode opcode)
+vec4_visitor::emit(enum elk_opcode opcode)
 {
    return emit(new(mem_ctx) vec4_instruction(opcode, dst_reg()));
 }
@@ -122,7 +122,7 @@ vec4_visitor::emit(enum opcode opcode)
    vec4_instruction *							\
    vec4_visitor::op(const dst_reg &dst, const src_reg &src0)		\
    {									\
-      return new(mem_ctx) vec4_instruction(BRW_OPCODE_##op, dst, src0); \
+      return new(mem_ctx) vec4_instruction(ELK_OPCODE_##op, dst, src0); \
    }
 
 #define ALU2(op)							\
@@ -130,7 +130,7 @@ vec4_visitor::emit(enum opcode opcode)
    vec4_visitor::op(const dst_reg &dst, const src_reg &src0,		\
                     const src_reg &src1)				\
    {									\
-      return new(mem_ctx) vec4_instruction(BRW_OPCODE_##op, dst,        \
+      return new(mem_ctx) vec4_instruction(ELK_OPCODE_##op, dst,        \
                                            src0, src1);                 \
    }
 
@@ -140,7 +140,7 @@ vec4_visitor::emit(enum opcode opcode)
                     const src_reg &src1)				\
    {									\
       vec4_instruction *inst = new(mem_ctx) vec4_instruction(           \
-                       BRW_OPCODE_##op, dst, src0, src1);		\
+                       ELK_OPCODE_##op, dst, src0, src1);		\
       inst->writes_accumulator = true;                                  \
       return inst;                                                      \
    }
@@ -151,7 +151,7 @@ vec4_visitor::emit(enum opcode opcode)
                     const src_reg &src1, const src_reg &src2)		\
    {									\
       assert(devinfo->ver >= 6);						\
-      return new(mem_ctx) vec4_instruction(BRW_OPCODE_##op, dst,	\
+      return new(mem_ctx) vec4_instruction(ELK_OPCODE_##op, dst,	\
 					   src0, src1, src2);		\
    }
 
@@ -192,11 +192,11 @@ ALU1(DIM)
 
 /** Gfx4 predicated IF. */
 vec4_instruction *
-vec4_visitor::IF(enum brw_predicate predicate)
+vec4_visitor::IF(enum elk_predicate predicate)
 {
    vec4_instruction *inst;
 
-   inst = new(mem_ctx) vec4_instruction(BRW_OPCODE_IF);
+   inst = new(mem_ctx) vec4_instruction(ELK_OPCODE_IF);
    inst->predicate = predicate;
 
    return inst;
@@ -205,7 +205,7 @@ vec4_visitor::IF(enum brw_predicate predicate)
 /** Gfx6 IF with embedded comparison. */
 vec4_instruction *
 vec4_visitor::IF(src_reg src0, src_reg src1,
-                 enum brw_conditional_mod condition)
+                 enum elk_conditional_mod condition)
 {
    assert(devinfo->ver == 6);
 
@@ -214,7 +214,7 @@ vec4_visitor::IF(src_reg src0, src_reg src1,
    resolve_ud_negate(&src0);
    resolve_ud_negate(&src1);
 
-   inst = new(mem_ctx) vec4_instruction(BRW_OPCODE_IF, dst_null_d(),
+   inst = new(mem_ctx) vec4_instruction(ELK_OPCODE_IF, dst_null_d(),
 					src0, src1);
    inst->conditional_mod = condition;
 
@@ -228,7 +228,7 @@ vec4_visitor::IF(src_reg src0, src_reg src1,
  */
 vec4_instruction *
 vec4_visitor::CMP(dst_reg dst, src_reg src0, src_reg src1,
-                  enum brw_conditional_mod condition)
+                  enum elk_conditional_mod condition)
 {
    vec4_instruction *inst;
 
@@ -247,7 +247,7 @@ vec4_visitor::CMP(dst_reg dst, src_reg src0, src_reg src1,
    resolve_ud_negate(&src0);
    resolve_ud_negate(&src1);
 
-   inst = new(mem_ctx) vec4_instruction(BRW_OPCODE_CMP, dst, src0, src1);
+   inst = new(mem_ctx) vec4_instruction(ELK_OPCODE_CMP, dst, src0, src1);
    inst->conditional_mod = condition;
 
    return inst;
@@ -258,7 +258,7 @@ vec4_visitor::SCRATCH_READ(const dst_reg &dst, const src_reg &index)
 {
    vec4_instruction *inst;
 
-   inst = new(mem_ctx) vec4_instruction(SHADER_OPCODE_GFX4_SCRATCH_READ,
+   inst = new(mem_ctx) vec4_instruction(ELK_SHADER_OPCODE_GFX4_SCRATCH_READ,
 					dst, index);
    inst->base_mrf = FIRST_SPILL_MRF(devinfo->ver) + 1;
    inst->mlen = 2;
@@ -272,7 +272,7 @@ vec4_visitor::SCRATCH_WRITE(const dst_reg &dst, const src_reg &src,
 {
    vec4_instruction *inst;
 
-   inst = new(mem_ctx) vec4_instruction(SHADER_OPCODE_GFX4_SCRATCH_WRITE,
+   inst = new(mem_ctx) vec4_instruction(ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE,
 					dst, src, index);
    inst->base_mrf = FIRST_SPILL_MRF(devinfo->ver);
    inst->mlen = 3;
@@ -297,12 +297,12 @@ vec4_visitor::fix_3src_operand(const src_reg &src)
    if (src.file != UNIFORM && src.file != IMM)
       return src;
 
-   if (src.file == UNIFORM && brw_is_single_value_swizzle(src.swizzle))
+   if (src.file == UNIFORM && elk_is_single_value_swizzle(src.swizzle))
       return src;
 
    dst_reg expanded = dst_reg(this, glsl_vec4_type());
    expanded.type = src.type;
-   emit(VEC4_OPCODE_UNPACK_UNIFORM, expanded, src);
+   emit(ELK_VEC4_OPCODE_UNPACK_UNIFORM, expanded, src);
    return src_reg(expanded);
 }
 
@@ -333,7 +333,7 @@ vec4_visitor::fix_math_operand(const src_reg &src)
 }
 
 vec4_instruction *
-vec4_visitor::emit_math(enum opcode opcode,
+vec4_visitor::emit_math(enum elk_opcode opcode,
                         const dst_reg &dst,
                         const src_reg &src0, const src_reg &src1)
 {
@@ -360,8 +360,8 @@ vec4_visitor::emit_pack_half_2x16(dst_reg dst, src_reg src0)
       unreachable("ir_unop_pack_half_2x16 should be lowered");
    }
 
-   assert(dst.type == BRW_REGISTER_TYPE_UD);
-   assert(src0.type == BRW_REGISTER_TYPE_F);
+   assert(dst.type == ELK_REGISTER_TYPE_UD);
+   assert(src0.type == ELK_REGISTER_TYPE_F);
 
    /* From the Ivybridge PRM, Vol4, Part3, Section 6.27 f32to16:
     *
@@ -401,7 +401,7 @@ vec4_visitor::emit_pack_half_2x16(dst_reg dst, src_reg src0)
     * You should inspect the disasm output in order to verify that the MOV is
     * not optimized away.
     */
-   emit(MOV(tmp_dst, brw_imm_ud(0x12345678u)));
+   emit(MOV(tmp_dst, elk_imm_ud(0x12345678u)));
 #endif
 
    /* Give tmp the form below, where "." means untouched.
@@ -419,14 +419,14 @@ vec4_visitor::emit_pack_half_2x16(dst_reg dst, src_reg src0)
    /* Give the write-channels of dst the form:
     *   0xhhhh0000
     */
-   tmp_src.swizzle = BRW_SWIZZLE_YYYY;
-   emit(SHL(dst, tmp_src, brw_imm_ud(16u)));
+   tmp_src.swizzle = ELK_SWIZZLE_YYYY;
+   emit(SHL(dst, tmp_src, elk_imm_ud(16u)));
 
    /* Finally, give the write-channels of dst the form of packHalf2x16's
     * output:
     *   0xhhhhllll
     */
-   tmp_src.swizzle = BRW_SWIZZLE_XXXX;
+   tmp_src.swizzle = ELK_SWIZZLE_XXXX;
    emit(OR(dst, src_reg(dst), tmp_src));
 }
 
@@ -437,8 +437,8 @@ vec4_visitor::emit_unpack_half_2x16(dst_reg dst, src_reg src0)
       unreachable("ir_unop_unpack_half_2x16 should be lowered");
    }
 
-   assert(dst.type == BRW_REGISTER_TYPE_F);
-   assert(src0.type == BRW_REGISTER_TYPE_UD);
+   assert(dst.type == ELK_REGISTER_TYPE_F);
+   assert(src0.type == ELK_REGISTER_TYPE_UD);
 
    /* From the Ivybridge PRM, Vol4, Part3, Section 6.26 f16to32:
     *
@@ -459,10 +459,10 @@ vec4_visitor::emit_unpack_half_2x16(dst_reg dst, src_reg src0)
    src_reg tmp_src(tmp_dst);
 
    tmp_dst.writemask = WRITEMASK_X;
-   emit(AND(tmp_dst, src0, brw_imm_ud(0xffffu)));
+   emit(AND(tmp_dst, src0, elk_imm_ud(0xffffu)));
 
    tmp_dst.writemask = WRITEMASK_Y;
-   emit(SHR(tmp_dst, src0, brw_imm_ud(16u)));
+   emit(SHR(tmp_dst, src0, elk_imm_ud(16u)));
 
    dst.writemask = WRITEMASK_XY;
    emit(F16TO32(dst, tmp_src));
@@ -477,17 +477,17 @@ vec4_visitor::emit_unpack_unorm_4x8(const dst_reg &dst, src_reg src0)
     * vector float and a type-converting MOV.
     */
    dst_reg shift(this, glsl_uvec4_type());
-   emit(MOV(shift, brw_imm_vf4(0x00, 0x60, 0x70, 0x78)));
+   emit(MOV(shift, elk_imm_vf4(0x00, 0x60, 0x70, 0x78)));
 
    dst_reg shifted(this, glsl_uvec4_type());
-   src0.swizzle = BRW_SWIZZLE_XXXX;
+   src0.swizzle = ELK_SWIZZLE_XXXX;
    emit(SHR(shifted, src0, src_reg(shift)));
 
-   shifted.type = BRW_REGISTER_TYPE_UB;
+   shifted.type = ELK_REGISTER_TYPE_UB;
    dst_reg f(this, glsl_vec4_type());
-   emit(VEC4_OPCODE_MOV_BYTES, f, src_reg(shifted));
+   emit(ELK_VEC4_OPCODE_MOV_BYTES, f, src_reg(shifted));
 
-   emit(MUL(dst, src_reg(f), brw_imm_f(1.0f / 255.0f)));
+   emit(MUL(dst, src_reg(f), elk_imm_f(1.0f / 255.0f)));
 }
 
 void
@@ -499,22 +499,22 @@ vec4_visitor::emit_unpack_snorm_4x8(const dst_reg &dst, src_reg src0)
     * vector float and a type-converting MOV.
     */
    dst_reg shift(this, glsl_uvec4_type());
-   emit(MOV(shift, brw_imm_vf4(0x00, 0x60, 0x70, 0x78)));
+   emit(MOV(shift, elk_imm_vf4(0x00, 0x60, 0x70, 0x78)));
 
    dst_reg shifted(this, glsl_uvec4_type());
-   src0.swizzle = BRW_SWIZZLE_XXXX;
+   src0.swizzle = ELK_SWIZZLE_XXXX;
    emit(SHR(shifted, src0, src_reg(shift)));
 
-   shifted.type = BRW_REGISTER_TYPE_B;
+   shifted.type = ELK_REGISTER_TYPE_B;
    dst_reg f(this, glsl_vec4_type());
-   emit(VEC4_OPCODE_MOV_BYTES, f, src_reg(shifted));
+   emit(ELK_VEC4_OPCODE_MOV_BYTES, f, src_reg(shifted));
 
    dst_reg scaled(this, glsl_vec4_type());
-   emit(MUL(scaled, src_reg(f), brw_imm_f(1.0f / 127.0f)));
+   emit(MUL(scaled, src_reg(f), elk_imm_f(1.0f / 127.0f)));
 
    dst_reg max(this, glsl_vec4_type());
-   emit_minmax(BRW_CONDITIONAL_GE, max, src_reg(scaled), brw_imm_f(-1.0f));
-   emit_minmax(BRW_CONDITIONAL_L, dst, src_reg(max), brw_imm_f(1.0f));
+   emit_minmax(ELK_CONDITIONAL_GE, max, src_reg(scaled), elk_imm_f(-1.0f));
+   emit_minmax(ELK_CONDITIONAL_L, dst, src_reg(max), elk_imm_f(1.0f));
 }
 
 void
@@ -525,7 +525,7 @@ vec4_visitor::emit_pack_unorm_4x8(const dst_reg &dst, const src_reg &src0)
    inst->saturate = true;
 
    dst_reg scaled(this, glsl_vec4_type());
-   emit(MUL(scaled, src_reg(saturated), brw_imm_f(255.0f)));
+   emit(MUL(scaled, src_reg(saturated), elk_imm_f(255.0f)));
 
    dst_reg rounded(this, glsl_vec4_type());
    emit(RNDE(rounded, src_reg(scaled)));
@@ -534,20 +534,20 @@ vec4_visitor::emit_pack_unorm_4x8(const dst_reg &dst, const src_reg &src0)
    emit(MOV(u, src_reg(rounded)));
 
    src_reg bytes(u);
-   emit(VEC4_OPCODE_PACK_BYTES, dst, bytes);
+   emit(ELK_VEC4_OPCODE_PACK_BYTES, dst, bytes);
 }
 
 void
 vec4_visitor::emit_pack_snorm_4x8(const dst_reg &dst, const src_reg &src0)
 {
    dst_reg max(this, glsl_vec4_type());
-   emit_minmax(BRW_CONDITIONAL_GE, max, src0, brw_imm_f(-1.0f));
+   emit_minmax(ELK_CONDITIONAL_GE, max, src0, elk_imm_f(-1.0f));
 
    dst_reg min(this, glsl_vec4_type());
-   emit_minmax(BRW_CONDITIONAL_L, min, src_reg(max), brw_imm_f(1.0f));
+   emit_minmax(ELK_CONDITIONAL_L, min, src_reg(max), elk_imm_f(1.0f));
 
    dst_reg scaled(this, glsl_vec4_type());
-   emit(MUL(scaled, src_reg(min), brw_imm_f(127.0f)));
+   emit(MUL(scaled, src_reg(min), elk_imm_f(127.0f)));
 
    dst_reg rounded(this, glsl_vec4_type());
    emit(RNDE(rounded, src_reg(scaled)));
@@ -556,7 +556,7 @@ vec4_visitor::emit_pack_snorm_4x8(const dst_reg &dst, const src_reg &src0)
    emit(MOV(i, src_reg(rounded)));
 
    src_reg bytes(i);
-   emit(VEC4_OPCODE_PACK_BYTES, dst, bytes);
+   emit(ELK_VEC4_OPCODE_PACK_BYTES, dst, bytes);
 }
 
 /*
@@ -564,7 +564,7 @@ vec4_visitor::emit_pack_snorm_4x8(const dst_reg &dst, const src_reg &src0)
  * false) elements needed to pack a type.
  */
 static int
-type_size_xvec4(const struct glsl_type *type, bool as_vec4, bool bindless)
+elk_type_size_xvec4(const struct glsl_type *type, bool as_vec4, bool bindless)
 {
    unsigned int i;
    int size;
@@ -597,13 +597,13 @@ type_size_xvec4(const struct glsl_type *type, bool as_vec4, bool bindless)
       }
    case GLSL_TYPE_ARRAY:
       assert(type->length > 0);
-      return type_size_xvec4(type->fields.array, as_vec4, bindless) *
+      return elk_type_size_xvec4(type->fields.array, as_vec4, bindless) *
              type->length;
    case GLSL_TYPE_STRUCT:
    case GLSL_TYPE_INTERFACE:
       size = 0;
       for (i = 0; i < type->length; i++) {
-	 size += type_size_xvec4(type->fields.structure[i].type, as_vec4,
+	 size += elk_type_size_xvec4(type->fields.structure[i].type, as_vec4,
                                  bindless);
       }
       return size;
@@ -640,9 +640,9 @@ type_size_xvec4(const struct glsl_type *type, bool as_vec4, bool bindless)
  * store a particular type.
  */
 extern "C" int
-type_size_vec4(const struct glsl_type *type, bool bindless)
+elk_type_size_vec4(const struct glsl_type *type, bool bindless)
 {
-   return type_size_xvec4(type, true, bindless);
+   return elk_type_size_xvec4(type, true, bindless);
 }
 
 /**
@@ -665,9 +665,9 @@ type_size_vec4(const struct glsl_type *type, bool bindless)
  * type fits in one or two vec4 slots.
  */
 extern "C" int
-type_size_dvec4(const struct glsl_type *type, bool bindless)
+elk_type_size_dvec4(const struct glsl_type *type, bool bindless)
 {
-   return type_size_xvec4(type, false, bindless);
+   return elk_type_size_xvec4(type, false, bindless);
 }
 
 src_reg::src_reg(class vec4_visitor *v, const struct glsl_type *type)
@@ -675,15 +675,15 @@ src_reg::src_reg(class vec4_visitor *v, const struct glsl_type *type)
    init();
 
    this->file = VGRF;
-   this->nr = v->alloc.allocate(type_size_vec4(type, false));
+   this->nr = v->alloc.allocate(elk_type_size_vec4(type, false));
 
    if (glsl_type_is_array(type) || glsl_type_is_struct(type)) {
-      this->swizzle = BRW_SWIZZLE_NOOP;
+      this->swizzle = ELK_SWIZZLE_NOOP;
    } else {
-      this->swizzle = brw_swizzle_for_size(type->vector_elements);
+      this->swizzle = elk_swizzle_for_size(type->vector_elements);
    }
 
-   this->type = brw_type_for_base_type(type);
+   this->type = elk_type_for_base_type(type);
 }
 
 src_reg::src_reg(class vec4_visitor *v, const struct glsl_type *type, int size)
@@ -693,11 +693,11 @@ src_reg::src_reg(class vec4_visitor *v, const struct glsl_type *type, int size)
    init();
 
    this->file = VGRF;
-   this->nr = v->alloc.allocate(type_size_vec4(type, false) * size);
+   this->nr = v->alloc.allocate(elk_type_size_vec4(type, false) * size);
 
-   this->swizzle = BRW_SWIZZLE_NOOP;
+   this->swizzle = ELK_SWIZZLE_NOOP;
 
-   this->type = brw_type_for_base_type(type);
+   this->type = elk_type_for_base_type(type);
 }
 
 dst_reg::dst_reg(class vec4_visitor *v, const struct glsl_type *type)
@@ -705,7 +705,7 @@ dst_reg::dst_reg(class vec4_visitor *v, const struct glsl_type *type)
    init();
 
    this->file = VGRF;
-   this->nr = v->alloc.allocate(type_size_vec4(type, false));
+   this->nr = v->alloc.allocate(elk_type_size_vec4(type, false));
 
    if (glsl_type_is_array(type) || glsl_type_is_struct(type)) {
       this->writemask = WRITEMASK_XYZW;
@@ -713,14 +713,14 @@ dst_reg::dst_reg(class vec4_visitor *v, const struct glsl_type *type)
       this->writemask = (1 << type->vector_elements) - 1;
    }
 
-   this->type = brw_type_for_base_type(type);
+   this->type = elk_type_for_base_type(type);
 }
 
 vec4_instruction *
-vec4_visitor::emit_minmax(enum brw_conditional_mod conditionalmod, dst_reg dst,
+vec4_visitor::emit_minmax(enum elk_conditional_mod conditionalmod, dst_reg dst,
                           src_reg src0, src_reg src1)
 {
-   vec4_instruction *inst = emit(BRW_OPCODE_SEL, dst, src0, src1);
+   vec4_instruction *inst = emit(ELK_OPCODE_SEL, dst, src0, src1);
    inst->conditional_mod = conditionalmod;
    return inst;
 }
@@ -734,7 +734,7 @@ void
 vec4_visitor::emit_pull_constant_load_reg(dst_reg dst,
                                           src_reg surf_index,
                                           src_reg offset_reg,
-                                          bblock_t *before_block,
+                                          elk_bblock_t *before_block,
                                           vec4_instruction *before_inst)
 {
    assert((before_inst == NULL && before_block == NULL) ||
@@ -754,13 +754,13 @@ vec4_visitor::emit_pull_constant_load_reg(dst_reg dst,
       else
          emit(pull);
 
-      pull = new(mem_ctx) vec4_instruction(VS_OPCODE_PULL_CONSTANT_LOAD_GFX7,
+      pull = new(mem_ctx) vec4_instruction(ELK_VS_OPCODE_PULL_CONSTANT_LOAD_GFX7,
                                            dst,
                                            surf_index,
                                            src_reg(grf_offset));
       pull->mlen = 1;
    } else {
-      pull = new(mem_ctx) vec4_instruction(VS_OPCODE_PULL_CONSTANT_LOAD,
+      pull = new(mem_ctx) vec4_instruction(ELK_VS_OPCODE_PULL_CONSTANT_LOAD,
                                            dst,
                                            surf_index,
                                            offset_reg);
@@ -781,9 +781,9 @@ vec4_visitor::emit_uniformize(const src_reg &src)
    const dst_reg dst = retype(dst_reg(this, glsl_uint_type()),
                               src.type);
 
-   emit(SHADER_OPCODE_FIND_LIVE_CHANNEL, dst_reg(chan_index))
+   emit(ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL, dst_reg(chan_index))
       ->force_writemask_all = true;
-   emit(SHADER_OPCODE_BROADCAST, dst, src, chan_index)
+   emit(ELK_SHADER_OPCODE_BROADCAST, dst, src, chan_index)
       ->force_writemask_all = true;
 
    return src_reg(dst);
@@ -812,15 +812,15 @@ vec4_visitor::emit_ndc_computation()
 
    /* Build ndc coords, which are (x/w, y/w, z/w, 1/w) */
    dst_reg ndc = dst_reg(this, glsl_vec4_type());
-   output_reg[BRW_VARYING_SLOT_NDC][0] = ndc;
-   output_num_components[BRW_VARYING_SLOT_NDC][0] = 4;
+   output_reg[ELK_VARYING_SLOT_NDC][0] = ndc;
+   output_num_components[ELK_VARYING_SLOT_NDC][0] = 4;
 
    current_annotation = "NDC";
    dst_reg ndc_w = ndc;
    ndc_w.writemask = WRITEMASK_W;
    src_reg pos_w = pos;
-   pos_w.swizzle = BRW_SWIZZLE4(BRW_SWIZZLE_W, BRW_SWIZZLE_W, BRW_SWIZZLE_W, BRW_SWIZZLE_W);
-   emit_math(SHADER_OPCODE_RCP, ndc_w, pos_w);
+   pos_w.swizzle = ELK_SWIZZLE4(ELK_SWIZZLE_W, ELK_SWIZZLE_W, ELK_SWIZZLE_W, ELK_SWIZZLE_W);
+   emit_math(ELK_SHADER_OPCODE_RCP, ndc_w, pos_w);
 
    dst_reg ndc_xyz = ndc;
    ndc_xyz.writemask = WRITEMASK_XYZ;
@@ -839,30 +839,30 @@ vec4_visitor::emit_psiz_and_flags(dst_reg reg)
       dst_reg header1_w = header1;
       header1_w.writemask = WRITEMASK_W;
 
-      emit(MOV(header1, brw_imm_ud(0u)));
+      emit(MOV(header1, elk_imm_ud(0u)));
 
       if (prog_data->vue_map.slots_valid & VARYING_BIT_PSIZ) {
 	 src_reg psiz = src_reg(output_reg[VARYING_SLOT_PSIZ][0]);
 
 	 current_annotation = "Point size";
-	 emit(MUL(header1_w, psiz, brw_imm_f((float)(1 << 11))));
-	 emit(AND(header1_w, src_reg(header1_w), brw_imm_d(0x7ff << 8)));
+	 emit(MUL(header1_w, psiz, elk_imm_f((float)(1 << 11))));
+	 emit(AND(header1_w, src_reg(header1_w), elk_imm_d(0x7ff << 8)));
       }
 
       if (output_reg[VARYING_SLOT_CLIP_DIST0][0].file != BAD_FILE) {
          current_annotation = "Clipping flags";
          dst_reg flags0 = dst_reg(this, glsl_uint_type());
 
-         emit(CMP(dst_null_f(), src_reg(output_reg[VARYING_SLOT_CLIP_DIST0][0]), brw_imm_f(0.0f), BRW_CONDITIONAL_L));
-         emit(VS_OPCODE_UNPACK_FLAGS_SIMD4X2, flags0, brw_imm_d(0));
+         emit(CMP(dst_null_f(), src_reg(output_reg[VARYING_SLOT_CLIP_DIST0][0]), elk_imm_f(0.0f), ELK_CONDITIONAL_L));
+         emit(ELK_VS_OPCODE_UNPACK_FLAGS_SIMD4X2, flags0, elk_imm_d(0));
          emit(OR(header1_w, src_reg(header1_w), src_reg(flags0)));
       }
 
       if (output_reg[VARYING_SLOT_CLIP_DIST1][0].file != BAD_FILE) {
          dst_reg flags1 = dst_reg(this, glsl_uint_type());
-         emit(CMP(dst_null_f(), src_reg(output_reg[VARYING_SLOT_CLIP_DIST1][0]), brw_imm_f(0.0f), BRW_CONDITIONAL_L));
-         emit(VS_OPCODE_UNPACK_FLAGS_SIMD4X2, flags1, brw_imm_d(0));
-         emit(SHL(flags1, src_reg(flags1), brw_imm_d(4)));
+         emit(CMP(dst_null_f(), src_reg(output_reg[VARYING_SLOT_CLIP_DIST1][0]), elk_imm_f(0.0f), ELK_CONDITIONAL_L));
+         emit(ELK_VS_OPCODE_UNPACK_FLAGS_SIMD4X2, flags1, elk_imm_d(0));
+         emit(SHL(flags1, src_reg(flags1), elk_imm_d(4)));
          emit(OR(header1_w, src_reg(header1_w), src_reg(flags1)));
       }
 
@@ -876,42 +876,42 @@ vec4_visitor::emit_psiz_and_flags(dst_reg reg)
        * clipped against all fixed planes.
        */
       if (devinfo->has_negative_rhw_bug &&
-          output_reg[BRW_VARYING_SLOT_NDC][0].file != BAD_FILE) {
-         src_reg ndc_w = src_reg(output_reg[BRW_VARYING_SLOT_NDC][0]);
-         ndc_w.swizzle = BRW_SWIZZLE_WWWW;
-         emit(CMP(dst_null_f(), ndc_w, brw_imm_f(0.0f), BRW_CONDITIONAL_L));
+          output_reg[ELK_VARYING_SLOT_NDC][0].file != BAD_FILE) {
+         src_reg ndc_w = src_reg(output_reg[ELK_VARYING_SLOT_NDC][0]);
+         ndc_w.swizzle = ELK_SWIZZLE_WWWW;
+         emit(CMP(dst_null_f(), ndc_w, elk_imm_f(0.0f), ELK_CONDITIONAL_L));
          vec4_instruction *inst;
-         inst = emit(OR(header1_w, src_reg(header1_w), brw_imm_ud(1u << 6)));
-         inst->predicate = BRW_PREDICATE_NORMAL;
-         output_reg[BRW_VARYING_SLOT_NDC][0].type = BRW_REGISTER_TYPE_F;
-         inst = emit(MOV(output_reg[BRW_VARYING_SLOT_NDC][0], brw_imm_f(0.0f)));
-         inst->predicate = BRW_PREDICATE_NORMAL;
+         inst = emit(OR(header1_w, src_reg(header1_w), elk_imm_ud(1u << 6)));
+         inst->predicate = ELK_PREDICATE_NORMAL;
+         output_reg[ELK_VARYING_SLOT_NDC][0].type = ELK_REGISTER_TYPE_F;
+         inst = emit(MOV(output_reg[ELK_VARYING_SLOT_NDC][0], elk_imm_f(0.0f)));
+         inst->predicate = ELK_PREDICATE_NORMAL;
       }
 
-      emit(MOV(retype(reg, BRW_REGISTER_TYPE_UD), src_reg(header1)));
+      emit(MOV(retype(reg, ELK_REGISTER_TYPE_UD), src_reg(header1)));
    } else if (devinfo->ver < 6) {
-      emit(MOV(retype(reg, BRW_REGISTER_TYPE_UD), brw_imm_ud(0u)));
+      emit(MOV(retype(reg, ELK_REGISTER_TYPE_UD), elk_imm_ud(0u)));
    } else {
-      emit(MOV(retype(reg, BRW_REGISTER_TYPE_D), brw_imm_d(0)));
+      emit(MOV(retype(reg, ELK_REGISTER_TYPE_D), elk_imm_d(0)));
       if (output_reg[VARYING_SLOT_PSIZ][0].file != BAD_FILE) {
          dst_reg reg_w = reg;
          reg_w.writemask = WRITEMASK_W;
          src_reg reg_as_src = src_reg(output_reg[VARYING_SLOT_PSIZ][0]);
          reg_as_src.type = reg_w.type;
-         reg_as_src.swizzle = brw_swizzle_for_size(1);
+         reg_as_src.swizzle = elk_swizzle_for_size(1);
          emit(MOV(reg_w, reg_as_src));
       }
       if (output_reg[VARYING_SLOT_LAYER][0].file != BAD_FILE) {
          dst_reg reg_y = reg;
          reg_y.writemask = WRITEMASK_Y;
-         reg_y.type = BRW_REGISTER_TYPE_D;
+         reg_y.type = ELK_REGISTER_TYPE_D;
          output_reg[VARYING_SLOT_LAYER][0].type = reg_y.type;
          emit(MOV(reg_y, src_reg(output_reg[VARYING_SLOT_LAYER][0])));
       }
       if (output_reg[VARYING_SLOT_VIEWPORT][0].file != BAD_FILE) {
          dst_reg reg_z = reg;
          reg_z.writemask = WRITEMASK_Z;
-         reg_z.type = BRW_REGISTER_TYPE_D;
+         reg_z.type = ELK_REGISTER_TYPE_D;
          output_reg[VARYING_SLOT_VIEWPORT][0].type = reg_z.type;
          emit(MOV(reg_z, src_reg(output_reg[VARYING_SLOT_VIEWPORT][0])));
       }
@@ -931,9 +931,9 @@ vec4_visitor::emit_generic_urb_slot(dst_reg reg, int varying, int component)
    current_annotation = output_reg_annotation[varying];
    if (output_reg[varying][component].file != BAD_FILE) {
       src_reg src = src_reg(output_reg[varying][component]);
-      src.swizzle = BRW_SWZ_COMP_OUTPUT(component);
+      src.swizzle = ELK_SWZ_COMP_OUTPUT(component);
       reg.writemask =
-         brw_writemask_for_component_packing(num_comps, component);
+         elk_writemask_for_component_packing(num_comps, component);
       return emit(MOV(reg, src));
    }
    return NULL;
@@ -942,7 +942,7 @@ vec4_visitor::emit_generic_urb_slot(dst_reg reg, int varying, int component)
 void
 vec4_visitor::emit_urb_slot(dst_reg reg, int varying)
 {
-   reg.type = BRW_REGISTER_TYPE_F;
+   reg.type = ELK_REGISTER_TYPE_F;
    output_reg[varying][0].type = reg.type;
 
    switch (varying) {
@@ -953,17 +953,17 @@ vec4_visitor::emit_urb_slot(dst_reg reg, int varying)
       emit_psiz_and_flags(reg);
       break;
    }
-   case BRW_VARYING_SLOT_NDC:
+   case ELK_VARYING_SLOT_NDC:
       current_annotation = "NDC";
-      if (output_reg[BRW_VARYING_SLOT_NDC][0].file != BAD_FILE)
-         emit(MOV(reg, src_reg(output_reg[BRW_VARYING_SLOT_NDC][0])));
+      if (output_reg[ELK_VARYING_SLOT_NDC][0].file != BAD_FILE)
+         emit(MOV(reg, src_reg(output_reg[ELK_VARYING_SLOT_NDC][0])));
       break;
    case VARYING_SLOT_POS:
       current_annotation = "gl_Position";
       if (output_reg[VARYING_SLOT_POS][0].file != BAD_FILE)
          emit(MOV(reg, src_reg(output_reg[VARYING_SLOT_POS][0])));
       break;
-   case BRW_VARYING_SLOT_PAD:
+   case ELK_VARYING_SLOT_PAD:
       /* No need to write to this slot */
       break;
    default:
@@ -1050,7 +1050,7 @@ vec4_visitor::emit_vertex()
           * URB WRITE. Same thing if we reached the maximum length available.
           */
          if (mrf > max_usable_mrf ||
-             align_interleaved_urb_mlen(devinfo, mrf - base_mrf + 1) > BRW_MAX_MSG_LENGTH) {
+             align_interleaved_urb_mlen(devinfo, mrf - base_mrf + 1) > ELK_MAX_MSG_LENGTH) {
             slot++;
             break;
          }
@@ -1067,7 +1067,7 @@ vec4_visitor::emit_vertex()
 
 
 src_reg
-vec4_visitor::get_scratch_offset(bblock_t *block, vec4_instruction *inst,
+vec4_visitor::get_scratch_offset(elk_bblock_t *block, vec4_instruction *inst,
 				 src_reg *reladdr, int reg_offset)
 {
    /* Because we store the values to scratch interleaved like our
@@ -1090,18 +1090,18 @@ vec4_visitor::get_scratch_offset(bblock_t *block, vec4_instruction *inst,
       src_reg index = src_reg(this, glsl_int_type());
       if (type_sz(inst->dst.type) < 8) {
          emit_before(block, inst, ADD(dst_reg(index), *reladdr,
-                                      brw_imm_d(reg_offset)));
+                                      elk_imm_d(reg_offset)));
          emit_before(block, inst, MUL(dst_reg(index), index,
-                                      brw_imm_d(message_header_scale)));
+                                      elk_imm_d(message_header_scale)));
       } else {
          emit_before(block, inst, MUL(dst_reg(index), *reladdr,
-                                      brw_imm_d(message_header_scale * 2)));
+                                      elk_imm_d(message_header_scale * 2)));
          emit_before(block, inst, ADD(dst_reg(index), index,
-                                      brw_imm_d(reg_offset * message_header_scale)));
+                                      elk_imm_d(reg_offset * message_header_scale)));
       }
       return index;
    } else {
-      return brw_imm_d(reg_offset * message_header_scale);
+      return elk_imm_d(reg_offset * message_header_scale);
    }
 }
 
@@ -1112,7 +1112,7 @@ vec4_visitor::get_scratch_offset(bblock_t *block, vec4_instruction *inst,
  * @base_offset is measured in 32-byte units (the size of a register).
  */
 void
-vec4_visitor::emit_scratch_read(bblock_t *block, vec4_instruction *inst,
+vec4_visitor::emit_scratch_read(elk_bblock_t *block, vec4_instruction *inst,
 				dst_reg temp, src_reg orig_src,
 				int base_offset)
 {
@@ -1125,7 +1125,7 @@ vec4_visitor::emit_scratch_read(bblock_t *block, vec4_instruction *inst,
       emit_before(block, inst, SCRATCH_READ(temp, index));
    } else {
       dst_reg shuffled = dst_reg(this, glsl_dvec4_type());
-      dst_reg shuffled_float = retype(shuffled, BRW_REGISTER_TYPE_F);
+      dst_reg shuffled_float = retype(shuffled, ELK_REGISTER_TYPE_F);
       emit_before(block, inst, SCRATCH_READ(shuffled_float, index));
       index = get_scratch_offset(block, inst, orig_src.reladdr, reg_offset + 1);
       vec4_instruction *last_read =
@@ -1142,7 +1142,7 @@ vec4_visitor::emit_scratch_read(bblock_t *block, vec4_instruction *inst,
  * @base_offset is measured in 32-byte units (the size of a register).
  */
 void
-vec4_visitor::emit_scratch_write(bblock_t *block, vec4_instruction *inst,
+vec4_visitor::emit_scratch_write(elk_bblock_t *block, vec4_instruction *inst,
                                  int base_offset)
 {
    assert(inst->dst.offset % REG_SIZE == 0);
@@ -1162,13 +1162,13 @@ vec4_visitor::emit_scratch_write(bblock_t *block, vec4_instruction *inst,
       is_64bit ? glsl_dvec4_type() : glsl_vec4_type();
    const src_reg temp = swizzle(retype(src_reg(this, alloc_type),
                                        inst->dst.type),
-                                brw_swizzle_for_mask(inst->dst.writemask));
+                                elk_swizzle_for_mask(inst->dst.writemask));
 
    if (!is_64bit) {
-      dst_reg dst = dst_reg(brw_writemask(brw_vec8_grf(0, 0),
+      dst_reg dst = dst_reg(elk_writemask(elk_vec8_grf(0, 0),
 				          inst->dst.writemask));
       vec4_instruction *write = SCRATCH_WRITE(dst, temp, index);
-      if (inst->opcode != BRW_OPCODE_SEL)
+      if (inst->opcode != ELK_OPCODE_SEL)
          write->predicate = inst->predicate;
       write->ir = inst->ir;
       write->annotation = inst->annotation;
@@ -1177,7 +1177,7 @@ vec4_visitor::emit_scratch_write(bblock_t *block, vec4_instruction *inst,
       dst_reg shuffled = dst_reg(this, alloc_type);
       vec4_instruction *last =
          shuffle_64bit_data(shuffled, temp, true, true, block, inst);
-      src_reg shuffled_float = src_reg(retype(shuffled, BRW_REGISTER_TYPE_F));
+      src_reg shuffled_float = src_reg(retype(shuffled, ELK_REGISTER_TYPE_F));
 
       uint8_t mask = 0;
       if (inst->dst.writemask & WRITEMASK_X)
@@ -1185,10 +1185,10 @@ vec4_visitor::emit_scratch_write(bblock_t *block, vec4_instruction *inst,
       if (inst->dst.writemask & WRITEMASK_Y)
          mask |= WRITEMASK_ZW;
       if (mask) {
-         dst_reg dst = dst_reg(brw_writemask(brw_vec8_grf(0, 0), mask));
+         dst_reg dst = dst_reg(elk_writemask(elk_vec8_grf(0, 0), mask));
 
          vec4_instruction *write = SCRATCH_WRITE(dst, shuffled_float, index);
-         if (inst->opcode != BRW_OPCODE_SEL)
+         if (inst->opcode != ELK_OPCODE_SEL)
             write->predicate = inst->predicate;
          write->ir = inst->ir;
          write->annotation = inst->annotation;
@@ -1201,13 +1201,13 @@ vec4_visitor::emit_scratch_write(bblock_t *block, vec4_instruction *inst,
       if (inst->dst.writemask & WRITEMASK_W)
          mask |= WRITEMASK_ZW;
       if (mask) {
-         dst_reg dst = dst_reg(brw_writemask(brw_vec8_grf(0, 0), mask));
+         dst_reg dst = dst_reg(elk_writemask(elk_vec8_grf(0, 0), mask));
 
          src_reg index = get_scratch_offset(block, inst, inst->dst.reladdr,
                                             reg_offset + 1);
          vec4_instruction *write =
             SCRATCH_WRITE(dst, byte_offset(shuffled_float, REG_SIZE), index);
-         if (inst->opcode != BRW_OPCODE_SEL)
+         if (inst->opcode != ELK_OPCODE_SEL)
             write->predicate = inst->predicate;
          write->ir = inst->ir;
          write->annotation = inst->annotation;
@@ -1232,7 +1232,7 @@ vec4_visitor::emit_scratch_write(bblock_t *block, vec4_instruction *inst,
  * use to rewrite src.
  */
 src_reg
-vec4_visitor::emit_resolve_reladdr(int scratch_loc[], bblock_t *block,
+vec4_visitor::emit_resolve_reladdr(int scratch_loc[], elk_bblock_t *block,
                                    vec4_instruction *inst, src_reg src)
 {
    /* Resolve recursive reladdr scratch access by calling ourselves
@@ -1338,23 +1338,23 @@ vec4_visitor::move_grf_array_access_to_scratch()
 void
 vec4_visitor::resolve_ud_negate(src_reg *reg)
 {
-   if (reg->type != BRW_REGISTER_TYPE_UD ||
+   if (reg->type != ELK_REGISTER_TYPE_UD ||
        !reg->negate)
       return;
 
    src_reg temp = src_reg(this, glsl_uvec4_type());
-   emit(BRW_OPCODE_MOV, dst_reg(temp), *reg);
+   emit(ELK_OPCODE_MOV, dst_reg(temp), *reg);
    *reg = temp;
 }
 
-static brw_rnd_mode
-brw_rnd_mode_from_execution_mode(unsigned execution_mode)
+static elk_rnd_mode
+elk_rnd_mode_from_execution_mode(unsigned execution_mode)
 {
    if (nir_has_any_rounding_mode_rtne(execution_mode))
-      return BRW_RND_MODE_RTNE;
+      return ELK_RND_MODE_RTNE;
    if (nir_has_any_rounding_mode_rtz(execution_mode))
-      return BRW_RND_MODE_RTZ;
-   return BRW_RND_MODE_UNSPECIFIED;
+      return ELK_RND_MODE_RTZ;
+   return ELK_RND_MODE_UNSPECIFIED;
 }
 
 void
@@ -1362,20 +1362,20 @@ vec4_visitor::emit_shader_float_controls_execution_mode()
 {
    unsigned execution_mode = this->nir->info.float_controls_execution_mode;
    if (nir_has_any_rounding_mode_enabled(execution_mode)) {
-      brw_rnd_mode rnd = brw_rnd_mode_from_execution_mode(execution_mode);
+      elk_rnd_mode rnd = elk_rnd_mode_from_execution_mode(execution_mode);
       const vec4_builder bld = vec4_builder(this).at_end();
-      bld.exec_all().emit(SHADER_OPCODE_RND_MODE, dst_null_ud(), brw_imm_d(rnd));
+      bld.exec_all().emit(ELK_SHADER_OPCODE_RND_MODE, dst_null_ud(), elk_imm_d(rnd));
    }
 }
 
-vec4_visitor::vec4_visitor(const struct brw_compiler *compiler,
-                           const struct brw_compile_params *params,
-                           const struct brw_sampler_prog_key_data *key_tex,
-                           struct brw_vue_prog_data *prog_data,
+vec4_visitor::vec4_visitor(const struct elk_compiler *compiler,
+                           const struct elk_compile_params *params,
+                           const struct elk_sampler_prog_key_data *key_tex,
+                           struct elk_vue_prog_data *prog_data,
                            const nir_shader *shader,
                            bool no_spills,
                            bool debug_enabled)
-   : backend_shader(compiler, params, shader, &prog_data->base, debug_enabled),
+   : elk_backend_shader(compiler, params, shader, &prog_data->base, debug_enabled),
      key_tex(key_tex),
      prog_data(prog_data),
      fail_msg(NULL),
@@ -1394,7 +1394,7 @@ vec4_visitor::vec4_visitor(const struct brw_compiler *compiler,
 
    memset(this->output_num_components, 0, sizeof(this->output_num_components));
 
-   this->max_grf = devinfo->ver >= 7 ? GFX7_MRF_HACK_START : BRW_MAX_GRF;
+   this->max_grf = devinfo->ver >= 7 ? GFX7_MRF_HACK_START : ELK_MAX_GRF;
 
    this->uniforms = 0;
 

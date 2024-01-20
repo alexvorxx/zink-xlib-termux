@@ -47,10 +47,10 @@
 using namespace elk;
 
 static bool
-is_nop_mov(const fs_inst *inst)
+is_nop_mov(const elk_fs_inst *inst)
 {
-   if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
-      fs_reg dst = inst->dst;
+   if (inst->opcode == ELK_SHADER_OPCODE_LOAD_PAYLOAD) {
+      elk_fs_reg dst = inst->dst;
       for (int i = 0; i < inst->sources; i++) {
          if (!dst.equals(inst->src[i])) {
             return false;
@@ -60,7 +60,7 @@ is_nop_mov(const fs_inst *inst)
                         type_sz(inst->src[i].type));
       }
       return true;
-   } else if (inst->opcode == BRW_OPCODE_MOV) {
+   } else if (inst->opcode == ELK_OPCODE_MOV) {
       return inst->dst.equals(inst->src[0]);
    }
 
@@ -68,10 +68,10 @@ is_nop_mov(const fs_inst *inst)
 }
 
 static bool
-is_coalesce_candidate(const fs_visitor *v, const fs_inst *inst)
+is_coalesce_candidate(const elk_fs_visitor *v, const elk_fs_inst *inst)
 {
-   if ((inst->opcode != BRW_OPCODE_MOV &&
-        inst->opcode != SHADER_OPCODE_LOAD_PAYLOAD) ||
+   if ((inst->opcode != ELK_OPCODE_MOV &&
+        inst->opcode != ELK_SHADER_OPCODE_LOAD_PAYLOAD) ||
        inst->is_partial_write() ||
        inst->saturate ||
        inst->src[0].file != VGRF ||
@@ -87,7 +87,7 @@ is_coalesce_candidate(const fs_visitor *v, const fs_inst *inst)
        v->alloc.sizes[inst->dst.nr])
       return false;
 
-   if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
+   if (inst->opcode == ELK_SHADER_OPCODE_LOAD_PAYLOAD) {
       if (!is_coalescing_payload(v->alloc, inst)) {
          return false;
       }
@@ -97,8 +97,8 @@ is_coalesce_candidate(const fs_visitor *v, const fs_inst *inst)
 }
 
 static bool
-can_coalesce_vars(const fs_live_variables &live, const cfg_t *cfg,
-                  const bblock_t *block, const fs_inst *inst,
+can_coalesce_vars(const fs_live_variables &live, const elk_cfg_t *cfg,
+                  const elk_bblock_t *block, const elk_fs_inst *inst,
                   int dst_var, int src_var)
 {
    if (!live.vars_interfere(src_var, dst_var))
@@ -128,7 +128,7 @@ can_coalesce_vars(const fs_live_variables &live, const cfg_t *cfg,
 
       bool seen_src_write = false;
       bool seen_copy = false;
-      foreach_inst_in_block(fs_inst, scan_inst, scan_block) {
+      foreach_inst_in_block(elk_fs_inst, scan_inst, scan_block) {
          scan_ip++;
 
          /* Ignore anything before the intersection of the live ranges */
@@ -189,7 +189,7 @@ can_coalesce_vars(const fs_live_variables &live, const cfg_t *cfg,
 }
 
 bool
-fs_visitor::register_coalesce()
+elk_fs_visitor::register_coalesce()
 {
    bool progress = false;
    fs_live_variables &live = live_analysis.require();
@@ -197,16 +197,16 @@ fs_visitor::register_coalesce()
    int channels_remaining = 0;
    unsigned src_reg = ~0u, dst_reg = ~0u;
    int *dst_reg_offset = new int[MAX_VGRF_SIZE(devinfo)];
-   fs_inst **mov = new fs_inst *[MAX_VGRF_SIZE(devinfo)];
+   elk_fs_inst **mov = new elk_fs_inst *[MAX_VGRF_SIZE(devinfo)];
    int *dst_var = new int[MAX_VGRF_SIZE(devinfo)];
    int *src_var = new int[MAX_VGRF_SIZE(devinfo)];
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, elk_fs_inst, inst, cfg) {
       if (!is_coalesce_candidate(this, inst))
          continue;
 
       if (is_nop_mov(inst)) {
-         inst->opcode = BRW_OPCODE_NOP;
+         inst->opcode = ELK_OPCODE_NOP;
          progress = true;
          continue;
       }
@@ -226,7 +226,7 @@ fs_visitor::register_coalesce()
       if (dst_reg != inst->dst.nr)
          continue;
 
-      if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
+      if (inst->opcode == ELK_SHADER_OPCODE_LOAD_PAYLOAD) {
          for (int i = 0; i < src_size; i++) {
             dst_reg_offset[i] = i;
          }
@@ -281,8 +281,8 @@ fs_visitor::register_coalesce()
          if (!mov[i])
             continue;
 
-         if (mov[i]->conditional_mod == BRW_CONDITIONAL_NONE) {
-            mov[i]->opcode = BRW_OPCODE_NOP;
+         if (mov[i]->conditional_mod == ELK_CONDITIONAL_NONE) {
+            mov[i]->opcode = ELK_OPCODE_NOP;
             mov[i]->dst = reg_undef;
             for (int j = 0; j < mov[i]->sources; j++) {
                mov[i]->src[j] = reg_undef;
@@ -294,14 +294,14 @@ fs_visitor::register_coalesce()
              * that writes the register.  If not, this keeps things correct
              * while still letting us coalesce.
              */
-            assert(mov[i]->opcode == BRW_OPCODE_MOV);
+            assert(mov[i]->opcode == ELK_OPCODE_MOV);
             assert(mov[i]->sources == 1);
             mov[i]->src[0] = mov[i]->dst;
-            mov[i]->dst = retype(brw_null_reg(), mov[i]->dst.type);
+            mov[i]->dst = retype(elk_null_reg(), mov[i]->dst.type);
          }
       }
 
-      foreach_block_and_inst(block, fs_inst, scan_inst, cfg) {
+      foreach_block_and_inst(block, elk_fs_inst, scan_inst, cfg) {
          if (scan_inst->dst.file == VGRF &&
              scan_inst->dst.nr == src_reg) {
             scan_inst->dst.nr = dst_reg;
@@ -329,8 +329,8 @@ fs_visitor::register_coalesce()
    }
 
    if (progress) {
-      foreach_block_and_inst_safe (block, backend_instruction, inst, cfg) {
-         if (inst->opcode == BRW_OPCODE_NOP) {
+      foreach_block_and_inst_safe (block, elk_backend_instruction, inst, cfg) {
+         if (inst->opcode == ELK_OPCODE_NOP) {
             inst->remove(block, true);
          }
       }

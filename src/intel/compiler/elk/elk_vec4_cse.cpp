@@ -49,45 +49,45 @@ static bool
 is_expression(const vec4_instruction *const inst)
 {
    switch (inst->opcode) {
-   case BRW_OPCODE_MOV:
-   case BRW_OPCODE_SEL:
-   case BRW_OPCODE_NOT:
-   case BRW_OPCODE_AND:
-   case BRW_OPCODE_OR:
-   case BRW_OPCODE_XOR:
-   case BRW_OPCODE_SHR:
-   case BRW_OPCODE_SHL:
-   case BRW_OPCODE_ASR:
-   case BRW_OPCODE_CMP:
-   case BRW_OPCODE_CMPN:
-   case BRW_OPCODE_ADD:
-   case BRW_OPCODE_MUL:
-   case SHADER_OPCODE_MULH:
-   case BRW_OPCODE_FRC:
-   case BRW_OPCODE_RNDU:
-   case BRW_OPCODE_RNDD:
-   case BRW_OPCODE_RNDE:
-   case BRW_OPCODE_RNDZ:
-   case BRW_OPCODE_LINE:
-   case BRW_OPCODE_PLN:
-   case BRW_OPCODE_MAD:
-   case BRW_OPCODE_LRP:
-   case VEC4_OPCODE_UNPACK_UNIFORM:
-   case SHADER_OPCODE_FIND_LIVE_CHANNEL:
-   case SHADER_OPCODE_BROADCAST:
-   case VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
-   case VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
+   case ELK_OPCODE_MOV:
+   case ELK_OPCODE_SEL:
+   case ELK_OPCODE_NOT:
+   case ELK_OPCODE_AND:
+   case ELK_OPCODE_OR:
+   case ELK_OPCODE_XOR:
+   case ELK_OPCODE_SHR:
+   case ELK_OPCODE_SHL:
+   case ELK_OPCODE_ASR:
+   case ELK_OPCODE_CMP:
+   case ELK_OPCODE_CMPN:
+   case ELK_OPCODE_ADD:
+   case ELK_OPCODE_MUL:
+   case ELK_SHADER_OPCODE_MULH:
+   case ELK_OPCODE_FRC:
+   case ELK_OPCODE_RNDU:
+   case ELK_OPCODE_RNDD:
+   case ELK_OPCODE_RNDE:
+   case ELK_OPCODE_RNDZ:
+   case ELK_OPCODE_LINE:
+   case ELK_OPCODE_PLN:
+   case ELK_OPCODE_MAD:
+   case ELK_OPCODE_LRP:
+   case ELK_VEC4_OPCODE_UNPACK_UNIFORM:
+   case ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL:
+   case ELK_SHADER_OPCODE_BROADCAST:
+   case ELK_VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
+   case ELK_VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
       return true;
-   case SHADER_OPCODE_RCP:
-   case SHADER_OPCODE_RSQ:
-   case SHADER_OPCODE_SQRT:
-   case SHADER_OPCODE_EXP2:
-   case SHADER_OPCODE_LOG2:
-   case SHADER_OPCODE_POW:
-   case SHADER_OPCODE_INT_QUOTIENT:
-   case SHADER_OPCODE_INT_REMAINDER:
-   case SHADER_OPCODE_SIN:
-   case SHADER_OPCODE_COS:
+   case ELK_SHADER_OPCODE_RCP:
+   case ELK_SHADER_OPCODE_RSQ:
+   case ELK_SHADER_OPCODE_SQRT:
+   case ELK_SHADER_OPCODE_EXP2:
+   case ELK_SHADER_OPCODE_LOG2:
+   case ELK_SHADER_OPCODE_POW:
+   case ELK_SHADER_OPCODE_INT_QUOTIENT:
+   case ELK_SHADER_OPCODE_INT_REMAINDER:
+   case ELK_SHADER_OPCODE_SIN:
+   case ELK_SHADER_OPCODE_COS:
       return inst->mlen == 0;
    default:
       return false;
@@ -100,13 +100,13 @@ operands_match(const vec4_instruction *a, const vec4_instruction *b)
    const src_reg *xs = a->src;
    const src_reg *ys = b->src;
 
-   if (a->opcode == BRW_OPCODE_MAD) {
+   if (a->opcode == ELK_OPCODE_MAD) {
       return xs[0].equals(ys[0]) &&
              ((xs[1].equals(ys[1]) && xs[2].equals(ys[2])) ||
               (xs[2].equals(ys[1]) && xs[1].equals(ys[2])));
-   } else if (a->opcode == BRW_OPCODE_MOV &&
+   } else if (a->opcode == ELK_OPCODE_MOV &&
               xs[0].file == IMM &&
-              xs[0].type == BRW_REGISTER_TYPE_VF) {
+              xs[0].type == ELK_REGISTER_TYPE_VF) {
       src_reg tmp_x = xs[0];
       src_reg tmp_y = ys[0];
 
@@ -163,7 +163,7 @@ instructions_match(vec4_instruction *a, vec4_instruction *b)
 }
 
 bool
-vec4_visitor::opt_cse_local(bblock_t *block, const vec4_live_variables &live)
+vec4_visitor::opt_cse_local(elk_bblock_t *block, const vec4_live_variables &live)
 {
    bool progress = false;
    exec_list aeb;
@@ -190,10 +190,10 @@ vec4_visitor::opt_cse_local(bblock_t *block, const vec4_live_variables &live)
          }
 
          if (!found) {
-            if (inst->opcode != BRW_OPCODE_MOV ||
-                (inst->opcode == BRW_OPCODE_MOV &&
+            if (inst->opcode != ELK_OPCODE_MOV ||
+                (inst->opcode == ELK_OPCODE_MOV &&
                  inst->src[0].file == IMM &&
-                 inst->src[0].type == BRW_REGISTER_TYPE_VF)) {
+                 inst->src[0].type == ELK_REGISTER_TYPE_VF)) {
                /* Our first sighting of this expression.  Create an entry. */
                aeb_entry *entry = ralloc(cse_ctx, aeb_entry);
                entry->tmp = src_reg(); /* file will be BAD_FILE */

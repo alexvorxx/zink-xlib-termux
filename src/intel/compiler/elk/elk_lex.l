@@ -51,122 +51,122 @@ extern char *input_filename;
 null 		{ BEGIN(REG); return NULL_TOKEN; }
 
  /* Opcodes */
-add		{ yylval.integer = BRW_OPCODE_ADD; return ADD; }
-add3		{ yylval.integer = BRW_OPCODE_ADD3; return ADD3; }
-addc		{ yylval.integer = BRW_OPCODE_ADDC; return ADDC; }
-and		{ yylval.integer = BRW_OPCODE_AND; return AND; }
-asr		{ yylval.integer = BRW_OPCODE_ASR; return ASR; }
-avg		{ yylval.integer = BRW_OPCODE_AVG; return AVG; }
-bfe 		{ yylval.integer = BRW_OPCODE_BFE; return BFE; }
-bfi1 		{ yylval.integer = BRW_OPCODE_BFI1; return BFI1; }
-bfi2 		{ yylval.integer = BRW_OPCODE_BFI2; return BFI2; }
-bfrev 		{ yylval.integer = BRW_OPCODE_BFREV; return BFREV; }
-brc 		{ yylval.integer = BRW_OPCODE_BRC; return BRC; }
-brd 		{ yylval.integer = BRW_OPCODE_BRD; return BRD; }
-break 		{ yylval.integer = BRW_OPCODE_BREAK; return BREAK; }
-call 		{ yylval.integer = BRW_OPCODE_CALL; return CALL; }
-calla 		{ yylval.integer = BRW_OPCODE_CALLA; return CALLA; }
-case 		{ yylval.integer = BRW_OPCODE_CASE; return CASE; }
-cbit 		{ yylval.integer = BRW_OPCODE_CBIT; return CBIT; }
-cmp 		{ yylval.integer = BRW_OPCODE_CMP; return CMP; }
-cmpn 		{ yylval.integer = BRW_OPCODE_CMPN; return CMPN; }
-cont 		{ yylval.integer = BRW_OPCODE_CONTINUE; return CONT; }
-csel 		{ yylval.integer = BRW_OPCODE_CSEL; return CSEL; }
-dim 		{ yylval.integer = BRW_OPCODE_DIM; return DIM; }
-do 		{ yylval.integer = BRW_OPCODE_DO; return DO; }
-dp2 		{ yylval.integer = BRW_OPCODE_DP2; return DP2; }
-dp3 		{ yylval.integer = BRW_OPCODE_DP3; return DP3; }
-dp4 		{ yylval.integer = BRW_OPCODE_DP4; return DP4; }
-dp4a		{ yylval.integer = BRW_OPCODE_DP4A; return DP4A; }
-dph 		{ yylval.integer = BRW_OPCODE_DPH; return DPH; }
-else 		{ yylval.integer = BRW_OPCODE_ELSE; return ELSE; }
-endif 		{ yylval.integer = BRW_OPCODE_ENDIF; return ENDIF; }
-f16to32 	{ yylval.integer = BRW_OPCODE_F16TO32; return F16TO32; }
-f32to16 	{ yylval.integer = BRW_OPCODE_F32TO16; return F32TO16; }
-fbh 		{ yylval.integer = BRW_OPCODE_FBH; return FBH; }
-fbl 		{ yylval.integer = BRW_OPCODE_FBL; return FBL; }
-fork 		{ yylval.integer = BRW_OPCODE_FORK; return FORK; }
-frc 		{ yylval.integer = BRW_OPCODE_FRC; return FRC; }
-goto 		{ yylval.integer = BRW_OPCODE_GOTO; return GOTO; }
-halt 		{ yylval.integer = BRW_OPCODE_HALT; return HALT; }
-if 		{ yylval.integer = BRW_OPCODE_IF; return IF; }
-iff 		{ yylval.integer = BRW_OPCODE_IFF; return IFF; }
-illegal 	{ yylval.integer = BRW_OPCODE_ILLEGAL; return ILLEGAL; }
-jmpi 		{ yylval.integer = BRW_OPCODE_JMPI; return JMPI; }
-line 		{ yylval.integer = BRW_OPCODE_LINE; return LINE; }
-lrp 		{ yylval.integer = BRW_OPCODE_LRP; return LRP; }
-lzd 		{ yylval.integer = BRW_OPCODE_LZD; return LZD; }
-mac 		{ yylval.integer = BRW_OPCODE_MAC; return MAC; }
-mach 		{ yylval.integer = BRW_OPCODE_MACH; return MACH; }
-mad 		{ yylval.integer = BRW_OPCODE_MAD; return MAD; }
-madm 		{ yylval.integer = BRW_OPCODE_MADM; return MADM; }
-mov 		{ yylval.integer = BRW_OPCODE_MOV; return MOV; }
-movi 		{ yylval.integer = BRW_OPCODE_MOVI; return MOVI; }
-mul 		{ yylval.integer = BRW_OPCODE_MUL; return MUL; }
-mrest 		{ yylval.integer = BRW_OPCODE_MREST; return MREST; }
-msave 		{ yylval.integer = BRW_OPCODE_MSAVE; return MSAVE; }
-nenop 		{ yylval.integer = BRW_OPCODE_NENOP; return NENOP; }
-nop 		{ yylval.integer = BRW_OPCODE_NOP; return NOP; }
-not 		{ yylval.integer = BRW_OPCODE_NOT; return NOT; }
-or 		{ yylval.integer = BRW_OPCODE_OR; return OR; }
-pln 		{ yylval.integer = BRW_OPCODE_PLN; return PLN; }
-pop 		{ yylval.integer = BRW_OPCODE_POP; return POP; }
-push 		{ yylval.integer = BRW_OPCODE_PUSH; return PUSH; }
-ret 		{ yylval.integer = BRW_OPCODE_RET; return RET; }
-rndd 		{ yylval.integer = BRW_OPCODE_RNDD; return RNDD; }
-rnde 		{ yylval.integer = BRW_OPCODE_RNDE; return RNDE; }
-rndu 		{ yylval.integer = BRW_OPCODE_RNDU; return RNDU; }
-rndz 		{ yylval.integer = BRW_OPCODE_RNDZ; return RNDZ; }
-rol 		{ yylval.integer = BRW_OPCODE_ROL; return ROL; }
-ror 		{ yylval.integer = BRW_OPCODE_ROR; return ROR; }
-sad2 		{ yylval.integer = BRW_OPCODE_SAD2; return SAD2; }
-sada2 		{ yylval.integer = BRW_OPCODE_SADA2; return SADA2; }
-sel 		{ yylval.integer = BRW_OPCODE_SEL; return SEL; }
+add		{ yylval.integer = ELK_OPCODE_ADD; return ADD; }
+add3		{ yylval.integer = ELK_OPCODE_ADD3; return ADD3; }
+addc		{ yylval.integer = ELK_OPCODE_ADDC; return ADDC; }
+and		{ yylval.integer = ELK_OPCODE_AND; return AND; }
+asr		{ yylval.integer = ELK_OPCODE_ASR; return ASR; }
+avg		{ yylval.integer = ELK_OPCODE_AVG; return AVG; }
+bfe 		{ yylval.integer = ELK_OPCODE_BFE; return BFE; }
+bfi1 		{ yylval.integer = ELK_OPCODE_BFI1; return BFI1; }
+bfi2 		{ yylval.integer = ELK_OPCODE_BFI2; return BFI2; }
+bfrev 		{ yylval.integer = ELK_OPCODE_BFREV; return BFREV; }
+brc 		{ yylval.integer = ELK_OPCODE_BRC; return BRC; }
+brd 		{ yylval.integer = ELK_OPCODE_BRD; return BRD; }
+break 		{ yylval.integer = ELK_OPCODE_BREAK; return BREAK; }
+call 		{ yylval.integer = ELK_OPCODE_CALL; return CALL; }
+calla 		{ yylval.integer = ELK_OPCODE_CALLA; return CALLA; }
+case 		{ yylval.integer = ELK_OPCODE_CASE; return CASE; }
+cbit 		{ yylval.integer = ELK_OPCODE_CBIT; return CBIT; }
+cmp 		{ yylval.integer = ELK_OPCODE_CMP; return CMP; }
+cmpn 		{ yylval.integer = ELK_OPCODE_CMPN; return CMPN; }
+cont 		{ yylval.integer = ELK_OPCODE_CONTINUE; return CONT; }
+csel 		{ yylval.integer = ELK_OPCODE_CSEL; return CSEL; }
+dim 		{ yylval.integer = ELK_OPCODE_DIM; return DIM; }
+do 		{ yylval.integer = ELK_OPCODE_DO; return DO; }
+dp2 		{ yylval.integer = ELK_OPCODE_DP2; return DP2; }
+dp3 		{ yylval.integer = ELK_OPCODE_DP3; return DP3; }
+dp4 		{ yylval.integer = ELK_OPCODE_DP4; return DP4; }
+dp4a		{ yylval.integer = ELK_OPCODE_DP4A; return DP4A; }
+dph 		{ yylval.integer = ELK_OPCODE_DPH; return DPH; }
+else 		{ yylval.integer = ELK_OPCODE_ELSE; return ELSE; }
+endif 		{ yylval.integer = ELK_OPCODE_ENDIF; return ENDIF; }
+f16to32 	{ yylval.integer = ELK_OPCODE_F16TO32; return F16TO32; }
+f32to16 	{ yylval.integer = ELK_OPCODE_F32TO16; return F32TO16; }
+fbh 		{ yylval.integer = ELK_OPCODE_FBH; return FBH; }
+fbl 		{ yylval.integer = ELK_OPCODE_FBL; return FBL; }
+fork 		{ yylval.integer = ELK_OPCODE_FORK; return FORK; }
+frc 		{ yylval.integer = ELK_OPCODE_FRC; return FRC; }
+goto 		{ yylval.integer = ELK_OPCODE_GOTO; return GOTO; }
+halt 		{ yylval.integer = ELK_OPCODE_HALT; return HALT; }
+if 		{ yylval.integer = ELK_OPCODE_IF; return IF; }
+iff 		{ yylval.integer = ELK_OPCODE_IFF; return IFF; }
+illegal 	{ yylval.integer = ELK_OPCODE_ILLEGAL; return ILLEGAL; }
+jmpi 		{ yylval.integer = ELK_OPCODE_JMPI; return JMPI; }
+line 		{ yylval.integer = ELK_OPCODE_LINE; return LINE; }
+lrp 		{ yylval.integer = ELK_OPCODE_LRP; return LRP; }
+lzd 		{ yylval.integer = ELK_OPCODE_LZD; return LZD; }
+mac 		{ yylval.integer = ELK_OPCODE_MAC; return MAC; }
+mach 		{ yylval.integer = ELK_OPCODE_MACH; return MACH; }
+mad 		{ yylval.integer = ELK_OPCODE_MAD; return MAD; }
+madm 		{ yylval.integer = ELK_OPCODE_MADM; return MADM; }
+mov 		{ yylval.integer = ELK_OPCODE_MOV; return MOV; }
+movi 		{ yylval.integer = ELK_OPCODE_MOVI; return MOVI; }
+mul 		{ yylval.integer = ELK_OPCODE_MUL; return MUL; }
+mrest 		{ yylval.integer = ELK_OPCODE_MREST; return MREST; }
+msave 		{ yylval.integer = ELK_OPCODE_MSAVE; return MSAVE; }
+nenop 		{ yylval.integer = ELK_OPCODE_NENOP; return NENOP; }
+nop 		{ yylval.integer = ELK_OPCODE_NOP; return NOP; }
+not 		{ yylval.integer = ELK_OPCODE_NOT; return NOT; }
+or 		{ yylval.integer = ELK_OPCODE_OR; return OR; }
+pln 		{ yylval.integer = ELK_OPCODE_PLN; return PLN; }
+pop 		{ yylval.integer = ELK_OPCODE_POP; return POP; }
+push 		{ yylval.integer = ELK_OPCODE_PUSH; return PUSH; }
+ret 		{ yylval.integer = ELK_OPCODE_RET; return RET; }
+rndd 		{ yylval.integer = ELK_OPCODE_RNDD; return RNDD; }
+rnde 		{ yylval.integer = ELK_OPCODE_RNDE; return RNDE; }
+rndu 		{ yylval.integer = ELK_OPCODE_RNDU; return RNDU; }
+rndz 		{ yylval.integer = ELK_OPCODE_RNDZ; return RNDZ; }
+rol 		{ yylval.integer = ELK_OPCODE_ROL; return ROL; }
+ror 		{ yylval.integer = ELK_OPCODE_ROR; return ROR; }
+sad2 		{ yylval.integer = ELK_OPCODE_SAD2; return SAD2; }
+sada2 		{ yylval.integer = ELK_OPCODE_SADA2; return SADA2; }
+sel 		{ yylval.integer = ELK_OPCODE_SEL; return SEL; }
 send 		{
-			yylval.integer = BRW_OPCODE_SEND;
+			yylval.integer = ELK_OPCODE_SEND;
 			return p->devinfo->ver < 12 ? SEND_GFX4 : SEND_GFX12;
 		}
 sendc 		{
-			yylval.integer = BRW_OPCODE_SENDC;
+			yylval.integer = ELK_OPCODE_SENDC;
 			return  p->devinfo->ver < 12 ? SENDC_GFX4 : SENDC_GFX12;
 		}
-sends 	        { yylval.integer = BRW_OPCODE_SENDS; return SENDS; }
-sendsc        	{ yylval.integer = BRW_OPCODE_SENDSC; return SENDSC; }
-shl 		{ yylval.integer = BRW_OPCODE_SHL; return SHL; }
-shr 		{ yylval.integer = BRW_OPCODE_SHR; return SHR; }
-smov 		{ yylval.integer = BRW_OPCODE_SMOV; return SMOV; }
-subb 		{ yylval.integer = BRW_OPCODE_SUBB; return SUBB; }
-wait 		{ yylval.integer = BRW_OPCODE_WAIT; return WAIT; }
-while 		{ yylval.integer = BRW_OPCODE_WHILE; return WHILE; }
-xor 		{ yylval.integer = BRW_OPCODE_XOR; return XOR; }
-sync		{ yylval.integer = BRW_OPCODE_SYNC; return SYNC; }
+sends 	        { yylval.integer = ELK_OPCODE_SENDS; return SENDS; }
+sendsc        	{ yylval.integer = ELK_OPCODE_SENDSC; return SENDSC; }
+shl 		{ yylval.integer = ELK_OPCODE_SHL; return SHL; }
+shr 		{ yylval.integer = ELK_OPCODE_SHR; return SHR; }
+smov 		{ yylval.integer = ELK_OPCODE_SMOV; return SMOV; }
+subb 		{ yylval.integer = ELK_OPCODE_SUBB; return SUBB; }
+wait 		{ yylval.integer = ELK_OPCODE_WAIT; return WAIT; }
+while 		{ yylval.integer = ELK_OPCODE_WHILE; return WHILE; }
+xor 		{ yylval.integer = ELK_OPCODE_XOR; return XOR; }
+sync		{ yylval.integer = ELK_OPCODE_SYNC; return SYNC; }
 
  /* extended math functions */
-cos 		{ yylval.integer = BRW_MATH_FUNCTION_COS; return COS; }
-exp 		{ yylval.integer = BRW_MATH_FUNCTION_EXP; return EXP; }
-fdiv 		{ yylval.integer = BRW_MATH_FUNCTION_FDIV; return FDIV; }
-inv 		{ yylval.integer = BRW_MATH_FUNCTION_INV; return INV; }
+cos 		{ yylval.integer = ELK_MATH_FUNCTION_COS; return COS; }
+exp 		{ yylval.integer = ELK_MATH_FUNCTION_EXP; return EXP; }
+fdiv 		{ yylval.integer = ELK_MATH_FUNCTION_FDIV; return FDIV; }
+inv 		{ yylval.integer = ELK_MATH_FUNCTION_INV; return INV; }
 invm 		{ yylval.integer = GFX8_MATH_FUNCTION_INVM; return INVM; }
 intdiv        	{
-		   yylval.integer = BRW_MATH_FUNCTION_INT_DIV_QUOTIENT;
+		   yylval.integer = ELK_MATH_FUNCTION_INT_DIV_QUOTIENT;
 		   return INTDIV;
 		}
 intdivmod    	{
 		   yylval.integer =
-		      BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER;
+		      ELK_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER;
 		   return INTDIVMOD;
 		}
 intmod      	{
-		   yylval.integer = BRW_MATH_FUNCTION_INT_DIV_REMAINDER;
+		   yylval.integer = ELK_MATH_FUNCTION_INT_DIV_REMAINDER;
 		   return INTMOD;
 		}
-log 		{ yylval.integer = BRW_MATH_FUNCTION_LOG; return LOG; }
-pow 		{ yylval.integer = BRW_MATH_FUNCTION_POW; return POW; }
-rsq 		{ yylval.integer = BRW_MATH_FUNCTION_RSQ; return RSQ; }
+log 		{ yylval.integer = ELK_MATH_FUNCTION_LOG; return LOG; }
+pow 		{ yylval.integer = ELK_MATH_FUNCTION_POW; return POW; }
+rsq 		{ yylval.integer = ELK_MATH_FUNCTION_RSQ; return RSQ; }
 rsqrtm       	{ yylval.integer = GFX8_MATH_FUNCTION_RSQRTM; return RSQRTM; }
-sin 		{ yylval.integer = BRW_MATH_FUNCTION_SIN; return SIN; }
-sqrt 		{ yylval.integer = BRW_MATH_FUNCTION_SQRT; return SQRT; }
-sincos       	{ yylval.integer = BRW_MATH_FUNCTION_SINCOS; return SINCOS; }
+sin 		{ yylval.integer = ELK_MATH_FUNCTION_SIN; return SIN; }
+sqrt 		{ yylval.integer = ELK_MATH_FUNCTION_SQRT; return SQRT; }
+sincos       	{ yylval.integer = ELK_MATH_FUNCTION_SINCOS; return SINCOS; }
 
  /* sync instruction */
 allrd		{ yylval.integer = TGL_SYNC_ALLRD; return ALLRD; }
@@ -225,10 +225,10 @@ ugm			{ return UGM; }
 <REG>"."		{ BEGIN(DOTSEL); return DOT; }
 <REG>";"		{ return SEMICOLON; }
 
-<DOTSEL>"x"	        { yylval.integer = BRW_CHANNEL_X; return X; }
-<DOTSEL>"y" 	        { yylval.integer = BRW_CHANNEL_Y; return Y; }
-<DOTSEL>"z" 	        { yylval.integer = BRW_CHANNEL_Z; return Z; }
-<DOTSEL>"w" 	        { yylval.integer = BRW_CHANNEL_W; return W; }
+<DOTSEL>"x"	        { yylval.integer = ELK_CHANNEL_X; return X; }
+<DOTSEL>"y" 	        { yylval.integer = ELK_CHANNEL_Y; return Y; }
+<DOTSEL>"z" 	        { yylval.integer = ELK_CHANNEL_Z; return Z; }
+<DOTSEL>"w" 	        { yylval.integer = ELK_CHANNEL_W; return W; }
 <DOTSEL>[0-9][0-9]* 	{
 			   yylval.integer = strtoul(yytext, NULL, 10);
 			   BEGIN(REG);
@@ -264,10 +264,10 @@ EOT 		{ return EOT; }
 nomask      	{ return MASK_DISABLE; }
 
  /* Channel */
-<CHANNEL>"x" 		{ yylval.integer = BRW_CHANNEL_X; return X; }
-<CHANNEL>"y" 		{ yylval.integer = BRW_CHANNEL_Y; return Y; }
-<CHANNEL>"z" 		{ yylval.integer = BRW_CHANNEL_Z; return Z; }
-<CHANNEL>"w" 		{ yylval.integer = BRW_CHANNEL_W; return W; }
+<CHANNEL>"x" 		{ yylval.integer = ELK_CHANNEL_X; return X; }
+<CHANNEL>"y" 		{ yylval.integer = ELK_CHANNEL_Y; return Y; }
+<CHANNEL>"z" 		{ yylval.integer = ELK_CHANNEL_Z; return Z; }
+<CHANNEL>"w" 		{ yylval.integer = ELK_CHANNEL_W; return W; }
 <CHANNEL>[0-9][0-9]* 	{
 			   yylval.integer = strtoul(yytext, NULL, 10);
 			   return INTEGER;
@@ -277,18 +277,18 @@ nomask      	{ return MASK_DISABLE; }
 
 
  /* Predicate Control */
-<CHANNEL>".anyv"	{ yylval.integer = BRW_PREDICATE_ALIGN1_ANYV; return ANYV; }
-<CHANNEL>".allv"      	{ yylval.integer = BRW_PREDICATE_ALIGN1_ALLV; return ALLV; }
-<CHANNEL>".any2h"	{ yylval.integer = BRW_PREDICATE_ALIGN1_ANY2H; return ANY2H; }
-<CHANNEL>".all2h"	{ yylval.integer = BRW_PREDICATE_ALIGN1_ALL2H; return ALL2H; }
-<CHANNEL>".any4h"	{ yylval.integer = BRW_PREDICATE_ALIGN16_ANY4H; return ANY4H; }
-<CHANNEL>".all4h"	{ yylval.integer = BRW_PREDICATE_ALIGN16_ALL4H; return ALL4H; }
-<CHANNEL>".any8h"	{ yylval.integer = BRW_PREDICATE_ALIGN1_ANY8H; return ANY8H; }
-<CHANNEL>".all8h"	{ yylval.integer = BRW_PREDICATE_ALIGN1_ALL8H; return ALL8H; }
-<CHANNEL>".any16h"	{ yylval.integer = BRW_PREDICATE_ALIGN1_ANY16H; return ANY16H; }
-<CHANNEL>".all16h"	{ yylval.integer = BRW_PREDICATE_ALIGN1_ALL16H; return ALL16H; }
-<CHANNEL>".any32h"	{ yylval.integer = BRW_PREDICATE_ALIGN1_ANY32H; return ANY32H; }
-<CHANNEL>".all32h"	{ yylval.integer = BRW_PREDICATE_ALIGN1_ALL32H; return ALL32H; }
+<CHANNEL>".anyv"	{ yylval.integer = ELK_PREDICATE_ALIGN1_ANYV; return ANYV; }
+<CHANNEL>".allv"      	{ yylval.integer = ELK_PREDICATE_ALIGN1_ALLV; return ALLV; }
+<CHANNEL>".any2h"	{ yylval.integer = ELK_PREDICATE_ALIGN1_ANY2H; return ANY2H; }
+<CHANNEL>".all2h"	{ yylval.integer = ELK_PREDICATE_ALIGN1_ALL2H; return ALL2H; }
+<CHANNEL>".any4h"	{ yylval.integer = ELK_PREDICATE_ALIGN16_ANY4H; return ANY4H; }
+<CHANNEL>".all4h"	{ yylval.integer = ELK_PREDICATE_ALIGN16_ALL4H; return ALL4H; }
+<CHANNEL>".any8h"	{ yylval.integer = ELK_PREDICATE_ALIGN1_ANY8H; return ANY8H; }
+<CHANNEL>".all8h"	{ yylval.integer = ELK_PREDICATE_ALIGN1_ALL8H; return ALL8H; }
+<CHANNEL>".any16h"	{ yylval.integer = ELK_PREDICATE_ALIGN1_ANY16H; return ANY16H; }
+<CHANNEL>".all16h"	{ yylval.integer = ELK_PREDICATE_ALIGN1_ALL16H; return ALL16H; }
+<CHANNEL>".any32h"	{ yylval.integer = ELK_PREDICATE_ALIGN1_ANY32H; return ANY32H; }
+<CHANNEL>".all32h"	{ yylval.integer = ELK_PREDICATE_ALIGN1_ALL32H; return ALL32H; }
 
  /* Saturation */
 ".sat"		{ return SATURATE; }
@@ -375,17 +375,17 @@ sr[0-9]+ 	{ yylval.integer = atoi(yytext + 2); return STATEREG; }
 "mask"[0-9]+ 	{ yylval.integer = atoi(yytext + 4); return MASKREG; }
 
  /* Conditional modifiers */
-".e" 	{ yylval.integer = BRW_CONDITIONAL_Z; return EQUAL; }
-".g" 	{ yylval.integer = BRW_CONDITIONAL_G; return GREATER; }
-".ge"	{ yylval.integer = BRW_CONDITIONAL_GE; return GREATER_EQUAL; }
-".l"	{ yylval.integer = BRW_CONDITIONAL_L; return LESS; }
-".le"	{ yylval.integer = BRW_CONDITIONAL_LE; return LESS_EQUAL; }
-".ne"	{ yylval.integer = BRW_CONDITIONAL_NZ; return NOT_EQUAL; }
-".nz"	{ yylval.integer = BRW_CONDITIONAL_NZ; return NOT_ZERO; }
-".o"	{ yylval.integer = BRW_CONDITIONAL_O; return OVERFLOW; }
-".r"	{ yylval.integer = BRW_CONDITIONAL_R; return ROUND_INCREMENT; }
-".u"	{ yylval.integer = BRW_CONDITIONAL_U; return UNORDERED; }
-".z"	{ yylval.integer = BRW_CONDITIONAL_Z; return ZERO; }
+".e" 	{ yylval.integer = ELK_CONDITIONAL_Z; return EQUAL; }
+".g" 	{ yylval.integer = ELK_CONDITIONAL_G; return GREATER; }
+".ge"	{ yylval.integer = ELK_CONDITIONAL_GE; return GREATER_EQUAL; }
+".l"	{ yylval.integer = ELK_CONDITIONAL_L; return LESS; }
+".le"	{ yylval.integer = ELK_CONDITIONAL_LE; return LESS_EQUAL; }
+".ne"	{ yylval.integer = ELK_CONDITIONAL_NZ; return NOT_EQUAL; }
+".nz"	{ yylval.integer = ELK_CONDITIONAL_NZ; return NOT_ZERO; }
+".o"	{ yylval.integer = ELK_CONDITIONAL_O; return OVERFLOW; }
+".r"	{ yylval.integer = ELK_CONDITIONAL_R; return ROUND_INCREMENT; }
+".u"	{ yylval.integer = ELK_CONDITIONAL_U; return UNORDERED; }
+".z"	{ yylval.integer = ELK_CONDITIONAL_Z; return ZERO; }
 
  /* Eat up JIP and UIP token, their values will be parsed
   * in numeric section

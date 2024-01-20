@@ -91,13 +91,13 @@ contains(const struct string haystack, const struct string needle)
 #define WIDTH(width)   (1 << (width))
 
 static bool
-inst_is_send(const struct brw_isa_info *isa, const brw_inst *inst)
+inst_is_send(const struct elk_isa_info *isa, const elk_inst *inst)
 {
-   switch (brw_inst_opcode(isa, inst)) {
-   case BRW_OPCODE_SEND:
-   case BRW_OPCODE_SENDC:
-   case BRW_OPCODE_SENDS:
-   case BRW_OPCODE_SENDSC:
+   switch (elk_inst_opcode(isa, inst)) {
+   case ELK_OPCODE_SEND:
+   case ELK_OPCODE_SENDC:
+   case ELK_OPCODE_SENDS:
+   case ELK_OPCODE_SENDSC:
       return true;
    default:
       return false;
@@ -105,16 +105,16 @@ inst_is_send(const struct brw_isa_info *isa, const brw_inst *inst)
 }
 
 static bool
-inst_is_split_send(const struct brw_isa_info *isa, const brw_inst *inst)
+inst_is_split_send(const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
    if (devinfo->ver >= 12) {
       return inst_is_send(isa, inst);
    } else {
-      switch (brw_inst_opcode(isa, inst)) {
-      case BRW_OPCODE_SENDS:
-      case BRW_OPCODE_SENDSC:
+      switch (elk_inst_opcode(isa, inst)) {
+      case ELK_OPCODE_SENDS:
+      case ELK_OPCODE_SENDSC:
          return true;
       default:
          return false;
@@ -126,117 +126,117 @@ static unsigned
 signed_type(unsigned type)
 {
    switch (type) {
-   case BRW_REGISTER_TYPE_UD: return BRW_REGISTER_TYPE_D;
-   case BRW_REGISTER_TYPE_UW: return BRW_REGISTER_TYPE_W;
-   case BRW_REGISTER_TYPE_UB: return BRW_REGISTER_TYPE_B;
-   case BRW_REGISTER_TYPE_UQ: return BRW_REGISTER_TYPE_Q;
+   case ELK_REGISTER_TYPE_UD: return ELK_REGISTER_TYPE_D;
+   case ELK_REGISTER_TYPE_UW: return ELK_REGISTER_TYPE_W;
+   case ELK_REGISTER_TYPE_UB: return ELK_REGISTER_TYPE_B;
+   case ELK_REGISTER_TYPE_UQ: return ELK_REGISTER_TYPE_Q;
    default:                   return type;
    }
 }
 
-static enum brw_reg_type
-inst_dst_type(const struct brw_isa_info *isa, const brw_inst *inst)
+static enum elk_reg_type
+inst_dst_type(const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
    return (devinfo->ver < 12 || !inst_is_send(isa, inst)) ?
-      brw_inst_dst_type(devinfo, inst) : BRW_REGISTER_TYPE_D;
+      elk_inst_dst_type(devinfo, inst) : ELK_REGISTER_TYPE_D;
 }
 
 static bool
-inst_is_raw_move(const struct brw_isa_info *isa, const brw_inst *inst)
+inst_is_raw_move(const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
    unsigned dst_type = signed_type(inst_dst_type(isa, inst));
-   unsigned src_type = signed_type(brw_inst_src0_type(devinfo, inst));
+   unsigned src_type = signed_type(elk_inst_src0_type(devinfo, inst));
 
-   if (brw_inst_src0_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE) {
+   if (elk_inst_src0_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
       /* FIXME: not strictly true */
-      if (brw_inst_src0_type(devinfo, inst) == BRW_REGISTER_TYPE_VF ||
-          brw_inst_src0_type(devinfo, inst) == BRW_REGISTER_TYPE_UV ||
-          brw_inst_src0_type(devinfo, inst) == BRW_REGISTER_TYPE_V) {
+      if (elk_inst_src0_type(devinfo, inst) == ELK_REGISTER_TYPE_VF ||
+          elk_inst_src0_type(devinfo, inst) == ELK_REGISTER_TYPE_UV ||
+          elk_inst_src0_type(devinfo, inst) == ELK_REGISTER_TYPE_V) {
          return false;
       }
-   } else if (brw_inst_src0_negate(devinfo, inst) ||
-              brw_inst_src0_abs(devinfo, inst)) {
+   } else if (elk_inst_src0_negate(devinfo, inst) ||
+              elk_inst_src0_abs(devinfo, inst)) {
       return false;
    }
 
-   return brw_inst_opcode(isa, inst) == BRW_OPCODE_MOV &&
-          brw_inst_saturate(devinfo, inst) == 0 &&
+   return elk_inst_opcode(isa, inst) == ELK_OPCODE_MOV &&
+          elk_inst_saturate(devinfo, inst) == 0 &&
           dst_type == src_type;
 }
 
 static bool
-dst_is_null(const struct intel_device_info *devinfo, const brw_inst *inst)
+dst_is_null(const struct intel_device_info *devinfo, const elk_inst *inst)
 {
-   return brw_inst_dst_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
-          brw_inst_dst_da_reg_nr(devinfo, inst) == BRW_ARF_NULL;
+   return elk_inst_dst_reg_file(devinfo, inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
+          elk_inst_dst_da_reg_nr(devinfo, inst) == ELK_ARF_NULL;
 }
 
 static bool
-src0_is_null(const struct intel_device_info *devinfo, const brw_inst *inst)
+src0_is_null(const struct intel_device_info *devinfo, const elk_inst *inst)
 {
-   return brw_inst_src0_address_mode(devinfo, inst) == BRW_ADDRESS_DIRECT &&
-          brw_inst_src0_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
-          brw_inst_src0_da_reg_nr(devinfo, inst) == BRW_ARF_NULL;
+   return elk_inst_src0_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT &&
+          elk_inst_src0_reg_file(devinfo, inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
+          elk_inst_src0_da_reg_nr(devinfo, inst) == ELK_ARF_NULL;
 }
 
 static bool
-src1_is_null(const struct intel_device_info *devinfo, const brw_inst *inst)
+src1_is_null(const struct intel_device_info *devinfo, const elk_inst *inst)
 {
-   return brw_inst_src1_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
-          brw_inst_src1_da_reg_nr(devinfo, inst) == BRW_ARF_NULL;
+   return elk_inst_src1_reg_file(devinfo, inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
+          elk_inst_src1_da_reg_nr(devinfo, inst) == ELK_ARF_NULL;
 }
 
 static bool
-src0_is_acc(const struct intel_device_info *devinfo, const brw_inst *inst)
+src0_is_acc(const struct intel_device_info *devinfo, const elk_inst *inst)
 {
-   return brw_inst_src0_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
-          (brw_inst_src0_da_reg_nr(devinfo, inst) & 0xF0) == BRW_ARF_ACCUMULATOR;
+   return elk_inst_src0_reg_file(devinfo, inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
+          (elk_inst_src0_da_reg_nr(devinfo, inst) & 0xF0) == ELK_ARF_ACCUMULATOR;
 }
 
 static bool
-src1_is_acc(const struct intel_device_info *devinfo, const brw_inst *inst)
+src1_is_acc(const struct intel_device_info *devinfo, const elk_inst *inst)
 {
-   return brw_inst_src1_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
-          (brw_inst_src1_da_reg_nr(devinfo, inst) & 0xF0) == BRW_ARF_ACCUMULATOR;
+   return elk_inst_src1_reg_file(devinfo, inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
+          (elk_inst_src1_da_reg_nr(devinfo, inst) & 0xF0) == ELK_ARF_ACCUMULATOR;
 }
 
 static bool
 src0_has_scalar_region(const struct intel_device_info *devinfo,
-                       const brw_inst *inst)
+                       const elk_inst *inst)
 {
-   return brw_inst_src0_vstride(devinfo, inst) == BRW_VERTICAL_STRIDE_0 &&
-          brw_inst_src0_width(devinfo, inst) == BRW_WIDTH_1 &&
-          brw_inst_src0_hstride(devinfo, inst) == BRW_HORIZONTAL_STRIDE_0;
+   return elk_inst_src0_vstride(devinfo, inst) == ELK_VERTICAL_STRIDE_0 &&
+          elk_inst_src0_width(devinfo, inst) == ELK_WIDTH_1 &&
+          elk_inst_src0_hstride(devinfo, inst) == ELK_HORIZONTAL_STRIDE_0;
 }
 
 static bool
 src1_has_scalar_region(const struct intel_device_info *devinfo,
-                       const brw_inst *inst)
+                       const elk_inst *inst)
 {
-   return brw_inst_src1_vstride(devinfo, inst) == BRW_VERTICAL_STRIDE_0 &&
-          brw_inst_src1_width(devinfo, inst) == BRW_WIDTH_1 &&
-          brw_inst_src1_hstride(devinfo, inst) == BRW_HORIZONTAL_STRIDE_0;
+   return elk_inst_src1_vstride(devinfo, inst) == ELK_VERTICAL_STRIDE_0 &&
+          elk_inst_src1_width(devinfo, inst) == ELK_WIDTH_1 &&
+          elk_inst_src1_hstride(devinfo, inst) == ELK_HORIZONTAL_STRIDE_0;
 }
 
 static struct string
-invalid_values(const struct brw_isa_info *isa, const brw_inst *inst)
+invalid_values(const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   switch ((enum brw_execution_size) brw_inst_exec_size(devinfo, inst)) {
-   case BRW_EXECUTE_1:
-   case BRW_EXECUTE_2:
-   case BRW_EXECUTE_4:
-   case BRW_EXECUTE_8:
-   case BRW_EXECUTE_16:
-   case BRW_EXECUTE_32:
+   switch ((enum elk_execution_size) elk_inst_exec_size(devinfo, inst)) {
+   case ELK_EXECUTE_1:
+   case ELK_EXECUTE_2:
+   case ELK_EXECUTE_4:
+   case ELK_EXECUTE_8:
+   case ELK_EXECUTE_16:
+   case ELK_EXECUTE_32:
       break;
    default:
       ERROR("invalid execution size");
@@ -247,9 +247,9 @@ invalid_values(const struct brw_isa_info *isa, const brw_inst *inst)
       return error_msg;
 
    if (devinfo->ver >= 12) {
-      unsigned group_size = 1 << brw_inst_exec_size(devinfo, inst);
-      unsigned qtr_ctrl = brw_inst_qtr_control(devinfo, inst);
-      unsigned nib_ctrl = brw_inst_nib_control(devinfo, inst);
+      unsigned group_size = 1 << elk_inst_exec_size(devinfo, inst);
+      unsigned qtr_ctrl = elk_inst_qtr_control(devinfo, inst);
+      unsigned nib_ctrl = elk_inst_nib_control(devinfo, inst);
 
       unsigned chan_off = (qtr_ctrl * 2 + nib_ctrl) << 2;
       ERROR_IF(chan_off % group_size != 0,
@@ -267,11 +267,11 @@ invalid_values(const struct brw_isa_info *isa, const brw_inst *inst)
        */
    } else {
       if (devinfo->ver > 6) {
-         ERROR_IF(brw_inst_dst_reg_file(devinfo, inst) == MRF ||
+         ERROR_IF(elk_inst_dst_reg_file(devinfo, inst) == MRF ||
                   (num_sources > 0 &&
-                   brw_inst_src0_reg_file(devinfo, inst) == MRF) ||
+                   elk_inst_src0_reg_file(devinfo, inst) == MRF) ||
                   (num_sources > 1 &&
-                   brw_inst_src1_reg_file(devinfo, inst) == MRF),
+                   elk_inst_src1_reg_file(devinfo, inst) == MRF),
                   "invalid register file encoding");
       }
    }
@@ -280,27 +280,27 @@ invalid_values(const struct brw_isa_info *isa, const brw_inst *inst)
       return error_msg;
 
    if (num_sources == 3) {
-      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
          if (devinfo->ver >= 10) {
-            ERROR_IF(brw_inst_3src_a1_dst_type (devinfo, inst) == INVALID_REG_TYPE ||
-                     brw_inst_3src_a1_src0_type(devinfo, inst) == INVALID_REG_TYPE ||
-                     brw_inst_3src_a1_src1_type(devinfo, inst) == INVALID_REG_TYPE ||
-                     brw_inst_3src_a1_src2_type(devinfo, inst) == INVALID_REG_TYPE,
+            ERROR_IF(elk_inst_3src_a1_dst_type (devinfo, inst) == INVALID_REG_TYPE ||
+                     elk_inst_3src_a1_src0_type(devinfo, inst) == INVALID_REG_TYPE ||
+                     elk_inst_3src_a1_src1_type(devinfo, inst) == INVALID_REG_TYPE ||
+                     elk_inst_3src_a1_src2_type(devinfo, inst) == INVALID_REG_TYPE,
                      "invalid register type encoding");
          } else {
             ERROR("Align1 mode not allowed on Gen < 10");
          }
       } else {
-         ERROR_IF(brw_inst_3src_a16_dst_type(devinfo, inst) == INVALID_REG_TYPE ||
-                  brw_inst_3src_a16_src_type(devinfo, inst) == INVALID_REG_TYPE,
+         ERROR_IF(elk_inst_3src_a16_dst_type(devinfo, inst) == INVALID_REG_TYPE ||
+                  elk_inst_3src_a16_src_type(devinfo, inst) == INVALID_REG_TYPE,
                   "invalid register type encoding");
       }
    } else {
-      ERROR_IF(brw_inst_dst_type (devinfo, inst) == INVALID_REG_TYPE ||
+      ERROR_IF(elk_inst_dst_type (devinfo, inst) == INVALID_REG_TYPE ||
                (num_sources > 0 &&
-                brw_inst_src0_type(devinfo, inst) == INVALID_REG_TYPE) ||
+                elk_inst_src0_type(devinfo, inst) == INVALID_REG_TYPE) ||
                (num_sources > 1 &&
-                brw_inst_src1_type(devinfo, inst) == INVALID_REG_TYPE),
+                elk_inst_src1_type(devinfo, inst) == INVALID_REG_TYPE),
                "invalid register type encoding");
    }
 
@@ -308,11 +308,11 @@ invalid_values(const struct brw_isa_info *isa, const brw_inst *inst)
 }
 
 static struct string
-sources_not_null(const struct brw_isa_info *isa,
-                 const brw_inst *inst)
+sources_not_null(const struct elk_isa_info *isa,
+                 const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
    /* Nothing to test. 3-src instructions can only have GRF sources, and
@@ -327,7 +327,7 @@ sources_not_null(const struct brw_isa_info *isa,
    if (inst_is_split_send(isa, inst))
       return (struct string){};
 
-   if (num_sources >= 1 && brw_inst_opcode(isa, inst) != BRW_OPCODE_SYNC)
+   if (num_sources >= 1 && elk_inst_opcode(isa, inst) != ELK_OPCODE_SYNC)
       ERROR_IF(src0_is_null(devinfo, inst), "src0 is null");
 
    if (num_sources == 2)
@@ -337,79 +337,79 @@ sources_not_null(const struct brw_isa_info *isa,
 }
 
 static struct string
-alignment_supported(const struct brw_isa_info *isa,
-                    const brw_inst *inst)
+alignment_supported(const struct elk_isa_info *isa,
+                    const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   ERROR_IF(devinfo->ver >= 11 && brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16,
+   ERROR_IF(devinfo->ver >= 11 && elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_16,
             "Align16 not supported");
 
    return error_msg;
 }
 
 static bool
-inst_uses_src_acc(const struct brw_isa_info *isa,
-                  const brw_inst *inst)
+inst_uses_src_acc(const struct elk_isa_info *isa,
+                  const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
    /* Check instructions that use implicit accumulator sources */
-   switch (brw_inst_opcode(isa, inst)) {
-   case BRW_OPCODE_MAC:
-   case BRW_OPCODE_MACH:
-   case BRW_OPCODE_SADA2:
+   switch (elk_inst_opcode(isa, inst)) {
+   case ELK_OPCODE_MAC:
+   case ELK_OPCODE_MACH:
+   case ELK_OPCODE_SADA2:
       return true;
    default:
       break;
    }
 
    /* FIXME: support 3-src instructions */
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
    assert(num_sources < 3);
 
    return src0_is_acc(devinfo, inst) || (num_sources > 1 && src1_is_acc(devinfo, inst));
 }
 
 static struct string
-send_restrictions(const struct brw_isa_info *isa,
-                  const brw_inst *inst)
+send_restrictions(const struct elk_isa_info *isa,
+                  const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (inst_is_split_send(isa, inst)) {
-      ERROR_IF(brw_inst_send_src1_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
-               brw_inst_send_src1_reg_nr(devinfo, inst) != BRW_ARF_NULL,
+      ERROR_IF(elk_inst_send_src1_reg_file(devinfo, inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
+               elk_inst_send_src1_reg_nr(devinfo, inst) != ELK_ARF_NULL,
                "src1 of split send must be a GRF or NULL");
 
-      ERROR_IF(brw_inst_eot(devinfo, inst) &&
-               brw_inst_src0_da_reg_nr(devinfo, inst) < 112,
+      ERROR_IF(elk_inst_eot(devinfo, inst) &&
+               elk_inst_src0_da_reg_nr(devinfo, inst) < 112,
                "send with EOT must use g112-g127");
-      ERROR_IF(brw_inst_eot(devinfo, inst) &&
-               brw_inst_send_src1_reg_file(devinfo, inst) == BRW_GENERAL_REGISTER_FILE &&
-               brw_inst_send_src1_reg_nr(devinfo, inst) < 112,
+      ERROR_IF(elk_inst_eot(devinfo, inst) &&
+               elk_inst_send_src1_reg_file(devinfo, inst) == ELK_GENERAL_REGISTER_FILE &&
+               elk_inst_send_src1_reg_nr(devinfo, inst) < 112,
                "send with EOT must use g112-g127");
 
-      if (brw_inst_send_src0_reg_file(devinfo, inst) == BRW_GENERAL_REGISTER_FILE &&
-          brw_inst_send_src1_reg_file(devinfo, inst) == BRW_GENERAL_REGISTER_FILE) {
+      if (elk_inst_send_src0_reg_file(devinfo, inst) == ELK_GENERAL_REGISTER_FILE &&
+          elk_inst_send_src1_reg_file(devinfo, inst) == ELK_GENERAL_REGISTER_FILE) {
          /* Assume minimums if we don't know */
          unsigned mlen = 1;
-         if (!brw_inst_send_sel_reg32_desc(devinfo, inst)) {
-            const uint32_t desc = brw_inst_send_desc(devinfo, inst);
-            mlen = brw_message_desc_mlen(devinfo, desc) / reg_unit(devinfo);
+         if (!elk_inst_send_sel_reg32_desc(devinfo, inst)) {
+            const uint32_t desc = elk_inst_send_desc(devinfo, inst);
+            mlen = elk_message_desc_mlen(devinfo, desc) / reg_unit(devinfo);
          }
 
          unsigned ex_mlen = 1;
-         if (!brw_inst_send_sel_reg32_ex_desc(devinfo, inst)) {
-            const uint32_t ex_desc = brw_inst_sends_ex_desc(devinfo, inst);
-            ex_mlen = brw_message_ex_desc_ex_mlen(devinfo, ex_desc) /
+         if (!elk_inst_send_sel_reg32_ex_desc(devinfo, inst)) {
+            const uint32_t ex_desc = elk_inst_sends_ex_desc(devinfo, inst);
+            ex_mlen = elk_message_ex_desc_ex_mlen(devinfo, ex_desc) /
                       reg_unit(devinfo);
          }
-         const unsigned src0_reg_nr = brw_inst_src0_da_reg_nr(devinfo, inst);
-         const unsigned src1_reg_nr = brw_inst_send_src1_reg_nr(devinfo, inst);
+         const unsigned src0_reg_nr = elk_inst_src0_da_reg_nr(devinfo, inst);
+         const unsigned src1_reg_nr = elk_inst_send_src1_reg_nr(devinfo, inst);
          ERROR_IF((src0_reg_nr <= src1_reg_nr &&
                    src1_reg_nr < src0_reg_nr + mlen) ||
                   (src1_reg_nr <= src0_reg_nr &&
@@ -417,24 +417,24 @@ send_restrictions(const struct brw_isa_info *isa,
                    "split send payloads must not overlap");
       }
    } else if (inst_is_send(isa, inst)) {
-      ERROR_IF(brw_inst_src0_address_mode(devinfo, inst) != BRW_ADDRESS_DIRECT,
+      ERROR_IF(elk_inst_src0_address_mode(devinfo, inst) != ELK_ADDRESS_DIRECT,
                "send must use direct addressing");
 
       if (devinfo->ver >= 7) {
-         ERROR_IF(brw_inst_send_src0_reg_file(devinfo, inst) != BRW_GENERAL_REGISTER_FILE,
+         ERROR_IF(elk_inst_send_src0_reg_file(devinfo, inst) != ELK_GENERAL_REGISTER_FILE,
                   "send from non-GRF");
-         ERROR_IF(brw_inst_eot(devinfo, inst) &&
-                  brw_inst_src0_da_reg_nr(devinfo, inst) < 112,
+         ERROR_IF(elk_inst_eot(devinfo, inst) &&
+                  elk_inst_src0_da_reg_nr(devinfo, inst) < 112,
                   "send with EOT must use g112-g127");
       }
 
       if (devinfo->ver >= 8) {
          ERROR_IF(!dst_is_null(devinfo, inst) &&
-                  (brw_inst_dst_da_reg_nr(devinfo, inst) +
-                   brw_inst_rlen(devinfo, inst) > 127) &&
-                  (brw_inst_src0_da_reg_nr(devinfo, inst) +
-                   brw_inst_mlen(devinfo, inst) >
-                   brw_inst_dst_da_reg_nr(devinfo, inst)),
+                  (elk_inst_dst_da_reg_nr(devinfo, inst) +
+                   elk_inst_rlen(devinfo, inst) > 127) &&
+                  (elk_inst_src0_da_reg_nr(devinfo, inst) +
+                   elk_inst_mlen(devinfo, inst) >
+                   elk_inst_dst_da_reg_nr(devinfo, inst)),
                   "r127 must not be used for return address when there is "
                   "a src and dest overlap");
       }
@@ -444,10 +444,10 @@ send_restrictions(const struct brw_isa_info *isa,
 }
 
 static bool
-is_unsupported_inst(const struct brw_isa_info *isa,
-                    const brw_inst *inst)
+is_unsupported_inst(const struct elk_isa_info *isa,
+                    const elk_inst *inst)
 {
-   return brw_inst_opcode(isa, inst) == BRW_OPCODE_ILLEGAL;
+   return elk_inst_opcode(isa, inst) == ELK_OPCODE_ILLEGAL;
 }
 
 /**
@@ -455,40 +455,40 @@ is_unsupported_inst(const struct brw_isa_info *isa,
  * operation mode
  */
 static inline bool
-types_are_mixed_float(enum brw_reg_type t0, enum brw_reg_type t1)
+types_are_mixed_float(enum elk_reg_type t0, enum elk_reg_type t1)
 {
-   return (t0 == BRW_REGISTER_TYPE_F && t1 == BRW_REGISTER_TYPE_HF) ||
-          (t1 == BRW_REGISTER_TYPE_F && t0 == BRW_REGISTER_TYPE_HF);
+   return (t0 == ELK_REGISTER_TYPE_F && t1 == ELK_REGISTER_TYPE_HF) ||
+          (t1 == ELK_REGISTER_TYPE_F && t0 == ELK_REGISTER_TYPE_HF);
 }
 
-static enum brw_reg_type
-execution_type_for_type(enum brw_reg_type type)
+static enum elk_reg_type
+execution_type_for_type(enum elk_reg_type type)
 {
    switch (type) {
-   case BRW_REGISTER_TYPE_NF:
-   case BRW_REGISTER_TYPE_DF:
-   case BRW_REGISTER_TYPE_F:
-   case BRW_REGISTER_TYPE_HF:
+   case ELK_REGISTER_TYPE_NF:
+   case ELK_REGISTER_TYPE_DF:
+   case ELK_REGISTER_TYPE_F:
+   case ELK_REGISTER_TYPE_HF:
       return type;
 
-   case BRW_REGISTER_TYPE_VF:
-      return BRW_REGISTER_TYPE_F;
+   case ELK_REGISTER_TYPE_VF:
+      return ELK_REGISTER_TYPE_F;
 
-   case BRW_REGISTER_TYPE_Q:
-   case BRW_REGISTER_TYPE_UQ:
-      return BRW_REGISTER_TYPE_Q;
+   case ELK_REGISTER_TYPE_Q:
+   case ELK_REGISTER_TYPE_UQ:
+      return ELK_REGISTER_TYPE_Q;
 
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UD:
-      return BRW_REGISTER_TYPE_D;
+   case ELK_REGISTER_TYPE_D:
+   case ELK_REGISTER_TYPE_UD:
+      return ELK_REGISTER_TYPE_D;
 
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_B:
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_V:
-   case BRW_REGISTER_TYPE_UV:
-      return BRW_REGISTER_TYPE_W;
+   case ELK_REGISTER_TYPE_W:
+   case ELK_REGISTER_TYPE_UW:
+   case ELK_REGISTER_TYPE_B:
+   case ELK_REGISTER_TYPE_UB:
+   case ELK_REGISTER_TYPE_V:
+   case ELK_REGISTER_TYPE_UV:
+      return ELK_REGISTER_TYPE_W;
    }
    unreachable("not reached");
 }
@@ -496,63 +496,63 @@ execution_type_for_type(enum brw_reg_type type)
 /**
  * Returns the execution type of an instruction \p inst
  */
-static enum brw_reg_type
-execution_type(const struct brw_isa_info *isa, const brw_inst *inst)
+static enum elk_reg_type
+execution_type(const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
-   enum brw_reg_type src0_exec_type, src1_exec_type;
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
+   enum elk_reg_type src0_exec_type, src1_exec_type;
 
    /* Execution data type is independent of destination data type, except in
     * mixed F/HF instructions.
     */
-   enum brw_reg_type dst_exec_type = inst_dst_type(isa, inst);
+   enum elk_reg_type dst_exec_type = inst_dst_type(isa, inst);
 
-   src0_exec_type = execution_type_for_type(brw_inst_src0_type(devinfo, inst));
+   src0_exec_type = execution_type_for_type(elk_inst_src0_type(devinfo, inst));
    if (num_sources == 1) {
-      if (src0_exec_type == BRW_REGISTER_TYPE_HF)
+      if (src0_exec_type == ELK_REGISTER_TYPE_HF)
          return dst_exec_type;
       return src0_exec_type;
    }
 
-   src1_exec_type = execution_type_for_type(brw_inst_src1_type(devinfo, inst));
+   src1_exec_type = execution_type_for_type(elk_inst_src1_type(devinfo, inst));
    if (types_are_mixed_float(src0_exec_type, src1_exec_type) ||
        types_are_mixed_float(src0_exec_type, dst_exec_type) ||
        types_are_mixed_float(src1_exec_type, dst_exec_type)) {
-      return BRW_REGISTER_TYPE_F;
+      return ELK_REGISTER_TYPE_F;
    }
 
    if (src0_exec_type == src1_exec_type)
       return src0_exec_type;
 
-   if (src0_exec_type == BRW_REGISTER_TYPE_NF ||
-       src1_exec_type == BRW_REGISTER_TYPE_NF)
-      return BRW_REGISTER_TYPE_NF;
+   if (src0_exec_type == ELK_REGISTER_TYPE_NF ||
+       src1_exec_type == ELK_REGISTER_TYPE_NF)
+      return ELK_REGISTER_TYPE_NF;
 
    /* Mixed operand types where one is float is float on Gen < 6
     * (and not allowed on later platforms)
     */
    if (devinfo->ver < 6 &&
-       (src0_exec_type == BRW_REGISTER_TYPE_F ||
-        src1_exec_type == BRW_REGISTER_TYPE_F))
-      return BRW_REGISTER_TYPE_F;
+       (src0_exec_type == ELK_REGISTER_TYPE_F ||
+        src1_exec_type == ELK_REGISTER_TYPE_F))
+      return ELK_REGISTER_TYPE_F;
 
-   if (src0_exec_type == BRW_REGISTER_TYPE_Q ||
-       src1_exec_type == BRW_REGISTER_TYPE_Q)
-      return BRW_REGISTER_TYPE_Q;
+   if (src0_exec_type == ELK_REGISTER_TYPE_Q ||
+       src1_exec_type == ELK_REGISTER_TYPE_Q)
+      return ELK_REGISTER_TYPE_Q;
 
-   if (src0_exec_type == BRW_REGISTER_TYPE_D ||
-       src1_exec_type == BRW_REGISTER_TYPE_D)
-      return BRW_REGISTER_TYPE_D;
+   if (src0_exec_type == ELK_REGISTER_TYPE_D ||
+       src1_exec_type == ELK_REGISTER_TYPE_D)
+      return ELK_REGISTER_TYPE_D;
 
-   if (src0_exec_type == BRW_REGISTER_TYPE_W ||
-       src1_exec_type == BRW_REGISTER_TYPE_W)
-      return BRW_REGISTER_TYPE_W;
+   if (src0_exec_type == ELK_REGISTER_TYPE_W ||
+       src1_exec_type == ELK_REGISTER_TYPE_W)
+      return ELK_REGISTER_TYPE_W;
 
-   if (src0_exec_type == BRW_REGISTER_TYPE_DF ||
-       src1_exec_type == BRW_REGISTER_TYPE_DF)
-      return BRW_REGISTER_TYPE_DF;
+   if (src0_exec_type == ELK_REGISTER_TYPE_DF ||
+       src1_exec_type == ELK_REGISTER_TYPE_DF)
+      return ELK_REGISTER_TYPE_DF;
 
    unreachable("not reached");
 }
@@ -595,24 +595,24 @@ is_linear(unsigned vstride, unsigned width, unsigned hstride)
  * to/from half-float.
  */
 static bool
-is_half_float_conversion(const struct brw_isa_info *isa,
-                         const brw_inst *inst)
+is_half_float_conversion(const struct elk_isa_info *isa,
+                         const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   enum brw_reg_type dst_type = brw_inst_dst_type(devinfo, inst);
+   enum elk_reg_type dst_type = elk_inst_dst_type(devinfo, inst);
 
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
-   enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
+   enum elk_reg_type src0_type = elk_inst_src0_type(devinfo, inst);
 
    if (dst_type != src0_type &&
-       (dst_type == BRW_REGISTER_TYPE_HF || src0_type == BRW_REGISTER_TYPE_HF)) {
+       (dst_type == ELK_REGISTER_TYPE_HF || src0_type == ELK_REGISTER_TYPE_HF)) {
       return true;
    } else if (num_sources > 1) {
-      enum brw_reg_type src1_type = brw_inst_src1_type(devinfo, inst);
+      enum elk_reg_type src1_type = elk_inst_src1_type(devinfo, inst);
       return dst_type != src1_type &&
-            (dst_type == BRW_REGISTER_TYPE_HF ||
-             src1_type == BRW_REGISTER_TYPE_HF);
+            (dst_type == ELK_REGISTER_TYPE_HF ||
+             src1_type == ELK_REGISTER_TYPE_HF);
    }
 
    return false;
@@ -622,7 +622,7 @@ is_half_float_conversion(const struct brw_isa_info *isa,
  * Returns whether an instruction is using mixed float operation mode
  */
 static bool
-is_mixed_float(const struct brw_isa_info *isa, const brw_inst *inst)
+is_mixed_float(const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
@@ -632,22 +632,22 @@ is_mixed_float(const struct brw_isa_info *isa, const brw_inst *inst)
    if (inst_is_send(isa, inst))
       return false;
 
-   unsigned opcode = brw_inst_opcode(isa, inst);
-   const struct opcode_desc *desc = brw_opcode_desc(isa, opcode);
+   unsigned opcode = elk_inst_opcode(isa, inst);
+   const struct elk_opcode_desc *desc = elk_opcode_desc(isa, opcode);
    if (desc->ndst == 0)
       return false;
 
    /* FIXME: support 3-src instructions */
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
    assert(num_sources < 3);
 
-   enum brw_reg_type dst_type = brw_inst_dst_type(devinfo, inst);
-   enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
+   enum elk_reg_type dst_type = elk_inst_dst_type(devinfo, inst);
+   enum elk_reg_type src0_type = elk_inst_src0_type(devinfo, inst);
 
    if (num_sources == 1)
       return types_are_mixed_float(src0_type, dst_type);
 
-   enum brw_reg_type src1_type = brw_inst_src1_type(devinfo, inst);
+   enum elk_reg_type src1_type = elk_inst_src1_type(devinfo, inst);
 
    return types_are_mixed_float(src0_type, src1_type) ||
           types_are_mixed_float(src0_type, dst_type) ||
@@ -659,21 +659,21 @@ is_mixed_float(const struct brw_isa_info *isa, const brw_inst *inst)
  * to/from byte.
  */
 static bool
-is_byte_conversion(const struct brw_isa_info *isa,
-                   const brw_inst *inst)
+is_byte_conversion(const struct elk_isa_info *isa,
+                   const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   enum brw_reg_type dst_type = brw_inst_dst_type(devinfo, inst);
+   enum elk_reg_type dst_type = elk_inst_dst_type(devinfo, inst);
 
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
-   enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
+   enum elk_reg_type src0_type = elk_inst_src0_type(devinfo, inst);
 
    if (dst_type != src0_type &&
        (type_sz(dst_type) == 1 || type_sz(src0_type) == 1)) {
       return true;
    } else if (num_sources > 1) {
-      enum brw_reg_type src1_type = brw_inst_src1_type(devinfo, inst);
+      enum elk_reg_type src1_type = elk_inst_src1_type(devinfo, inst);
       return dst_type != src1_type &&
             (type_sz(dst_type) == 1 || type_sz(src1_type) == 1);
    }
@@ -686,15 +686,15 @@ is_byte_conversion(const struct brw_isa_info *isa,
  * in the "Register Region Restrictions" section.
  */
 static struct string
-general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
-                                            const brw_inst *inst)
+general_restrictions_based_on_operand_types(const struct elk_isa_info *isa,
+                                            const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   const struct opcode_desc *desc =
-      brw_opcode_desc(isa, brw_inst_opcode(isa, inst));
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
-   unsigned exec_size = 1 << brw_inst_exec_size(devinfo, inst);
+   const struct elk_opcode_desc *desc =
+      elk_opcode_desc(isa, elk_inst_opcode(isa, inst));
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
+   unsigned exec_size = 1 << elk_inst_exec_size(devinfo, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (inst_is_send(isa, inst))
@@ -704,66 +704,66 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
       /* A register type of B or UB for DPAS actually means 4 bytes packed into
        * a D or UD, so it is allowed.
        */
-      if (num_sources == 3 && brw_inst_opcode(isa, inst) != BRW_OPCODE_DPAS) {
-         ERROR_IF(brw_reg_type_to_size(brw_inst_3src_a1_src1_type(devinfo, inst)) == 1 ||
-                  brw_reg_type_to_size(brw_inst_3src_a1_src2_type(devinfo, inst)) == 1,
+      if (num_sources == 3 && elk_inst_opcode(isa, inst) != ELK_OPCODE_DPAS) {
+         ERROR_IF(elk_reg_type_to_size(elk_inst_3src_a1_src1_type(devinfo, inst)) == 1 ||
+                  elk_reg_type_to_size(elk_inst_3src_a1_src2_type(devinfo, inst)) == 1,
                   "Byte data type is not supported for src1/2 register regioning. This includes "
                   "byte broadcast as well.");
       }
       if (num_sources == 2) {
-         ERROR_IF(brw_reg_type_to_size(brw_inst_src1_type(devinfo, inst)) == 1,
+         ERROR_IF(elk_reg_type_to_size(elk_inst_src1_type(devinfo, inst)) == 1,
                   "Byte data type is not supported for src1 register regioning. This includes "
                   "byte broadcast as well.");
       }
    }
 
-   enum brw_reg_type dst_type;
+   enum elk_reg_type dst_type;
 
    if (num_sources == 3) {
-      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1)
-         dst_type = brw_inst_3src_a1_dst_type(devinfo, inst);
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1)
+         dst_type = elk_inst_3src_a1_dst_type(devinfo, inst);
       else
-         dst_type = brw_inst_3src_a16_dst_type(devinfo, inst);
+         dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
    } else {
       dst_type = inst_dst_type(isa, inst);
    }
 
-   ERROR_IF(dst_type == BRW_REGISTER_TYPE_DF &&
+   ERROR_IF(dst_type == ELK_REGISTER_TYPE_DF &&
             !devinfo->has_64bit_float,
             "64-bit float destination, but platform does not support it");
 
-   ERROR_IF((dst_type == BRW_REGISTER_TYPE_Q ||
-             dst_type == BRW_REGISTER_TYPE_UQ) &&
+   ERROR_IF((dst_type == ELK_REGISTER_TYPE_Q ||
+             dst_type == ELK_REGISTER_TYPE_UQ) &&
             !devinfo->has_64bit_int,
             "64-bit int destination, but platform does not support it");
 
    for (unsigned s = 0; s < num_sources; s++) {
-      enum brw_reg_type src_type;
+      enum elk_reg_type src_type;
       if (num_sources == 3) {
-         if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
+         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
             switch (s) {
-            case 0: src_type = brw_inst_3src_a1_src0_type(devinfo, inst); break;
-            case 1: src_type = brw_inst_3src_a1_src1_type(devinfo, inst); break;
-            case 2: src_type = brw_inst_3src_a1_src2_type(devinfo, inst); break;
+            case 0: src_type = elk_inst_3src_a1_src0_type(devinfo, inst); break;
+            case 1: src_type = elk_inst_3src_a1_src1_type(devinfo, inst); break;
+            case 2: src_type = elk_inst_3src_a1_src2_type(devinfo, inst); break;
             default: unreachable("invalid src");
             }
          } else {
-            src_type = brw_inst_3src_a16_src_type(devinfo, inst);
+            src_type = elk_inst_3src_a16_src_type(devinfo, inst);
          }
       } else {
          switch (s) {
-         case 0: src_type = brw_inst_src0_type(devinfo, inst); break;
-         case 1: src_type = brw_inst_src1_type(devinfo, inst); break;
+         case 0: src_type = elk_inst_src0_type(devinfo, inst); break;
+         case 1: src_type = elk_inst_src1_type(devinfo, inst); break;
          default: unreachable("invalid src");
          }
       }
 
-      ERROR_IF(src_type == BRW_REGISTER_TYPE_DF &&
+      ERROR_IF(src_type == ELK_REGISTER_TYPE_DF &&
                !devinfo->has_64bit_float,
                "64-bit float source, but platform does not support it");
 
-      ERROR_IF((src_type == BRW_REGISTER_TYPE_Q ||
-                src_type == BRW_REGISTER_TYPE_UQ) &&
+      ERROR_IF((src_type == ELK_REGISTER_TYPE_Q ||
+                src_type == ELK_REGISTER_TYPE_UQ) &&
                !devinfo->has_64bit_int,
                "64-bit int source, but platform does not support it");
    }
@@ -792,10 +792,10 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
     * In fact, checking it would weaken testing of the other rules.
     */
 
-   unsigned dst_stride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
+   unsigned dst_stride = STRIDE(elk_inst_dst_hstride(devinfo, inst));
    bool dst_type_is_byte =
-      inst_dst_type(isa, inst) == BRW_REGISTER_TYPE_B ||
-      inst_dst_type(isa, inst) == BRW_REGISTER_TYPE_UB;
+      inst_dst_type(isa, inst) == ELK_REGISTER_TYPE_B ||
+      inst_dst_type(isa, inst) == ELK_REGISTER_TYPE_UB;
 
    if (dst_type_is_byte) {
       if (is_packed(exec_size * dst_stride, exec_size, dst_stride)) {
@@ -806,8 +806,8 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
    }
 
    unsigned exec_type = execution_type(isa, inst);
-   unsigned exec_type_size = brw_reg_type_to_size(exec_type);
-   unsigned dst_type_size = brw_reg_type_to_size(dst_type);
+   unsigned exec_type_size = elk_reg_type_to_size(exec_type);
+   unsigned dst_type_size = elk_reg_type_to_size(dst_type);
 
    /* On IVB/BYT, region parameters and execution size for DF are in terms of
     * 32-bit elements, so they are doubled. For evaluating the validity of an
@@ -827,9 +827,9 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
        * validate this more generally, since there is the possibility
        * of implicit conversions from other instructions.
        */
-      enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
-      enum brw_reg_type src1_type = num_sources > 1 ?
-                                    brw_inst_src1_type(devinfo, inst) : 0;
+      enum elk_reg_type src0_type = elk_inst_src0_type(devinfo, inst);
+      enum elk_reg_type src1_type = num_sources > 1 ?
+                                    elk_inst_src1_type(devinfo, inst) : 0;
 
       ERROR_IF(type_sz(dst_type) == 1 &&
                (type_sz(src0_type) == 8 ||
@@ -855,17 +855,17 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
        * of implicit conversions from other instructions, such us implicit
        * conversion from integer to HF with the ADD instruction in SKL+.
        */
-      enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
-      enum brw_reg_type src1_type = num_sources > 1 ?
-                                    brw_inst_src1_type(devinfo, inst) : 0;
-      ERROR_IF(dst_type == BRW_REGISTER_TYPE_HF &&
+      enum elk_reg_type src0_type = elk_inst_src0_type(devinfo, inst);
+      enum elk_reg_type src1_type = num_sources > 1 ?
+                                    elk_inst_src1_type(devinfo, inst) : 0;
+      ERROR_IF(dst_type == ELK_REGISTER_TYPE_HF &&
                (type_sz(src0_type) == 8 ||
                 (num_sources > 1 && type_sz(src1_type) == 8)),
                "There are no direct conversions between 64-bit types and HF");
 
       ERROR_IF(type_sz(dst_type) == 8 &&
-               (src0_type == BRW_REGISTER_TYPE_HF ||
-                (num_sources > 1 && src1_type == BRW_REGISTER_TYPE_HF)),
+               (src0_type == ELK_REGISTER_TYPE_HF ||
+                (num_sources > 1 && src1_type == ELK_REGISTER_TYPE_HF)),
                "There are no direct conversions between 64-bit types and HF");
 
       /* From the BDW+ PRM:
@@ -898,25 +898,25 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
        * requires packed destinations, so these restrictions can't possibly
        * apply to Align16 mode.
        */
-      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
-         if ((dst_type == BRW_REGISTER_TYPE_HF &&
-              (brw_reg_type_is_integer(src0_type) ||
-               (num_sources > 1 && brw_reg_type_is_integer(src1_type)))) ||
-             (brw_reg_type_is_integer(dst_type) &&
-              (src0_type == BRW_REGISTER_TYPE_HF ||
-               (num_sources > 1 && src1_type == BRW_REGISTER_TYPE_HF)))) {
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+         if ((dst_type == ELK_REGISTER_TYPE_HF &&
+              (elk_reg_type_is_integer(src0_type) ||
+               (num_sources > 1 && elk_reg_type_is_integer(src1_type)))) ||
+             (elk_reg_type_is_integer(dst_type) &&
+              (src0_type == ELK_REGISTER_TYPE_HF ||
+               (num_sources > 1 && src1_type == ELK_REGISTER_TYPE_HF)))) {
             ERROR_IF(dst_stride * dst_type_size != 4,
                      "Conversions between integer and half-float must be "
                      "strided by a DWord on the destination");
 
-            unsigned subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
+            unsigned subreg = elk_inst_dst_da1_subreg_nr(devinfo, inst);
             ERROR_IF(subreg % 4 != 0,
                      "Conversions between integer and half-float must be "
                      "aligned to a DWord on the destination");
          } else if ((devinfo->platform == INTEL_PLATFORM_CHV ||
                      devinfo->ver >= 9) &&
-                    dst_type == BRW_REGISTER_TYPE_HF) {
-            unsigned subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
+                    dst_type == ELK_REGISTER_TYPE_HF) {
+            unsigned subreg = elk_inst_dst_da1_subreg_nr(devinfo, inst);
             ERROR_IF(dst_stride != 2 &&
                      !(is_mixed_float(isa, inst) &&
                        dst_stride == 1 && subreg % 16 == 0),
@@ -943,10 +943,10 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
                   "of the execution data type to the destination type");
       }
 
-      unsigned subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
+      unsigned subreg = elk_inst_dst_da1_subreg_nr(devinfo, inst);
 
-      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1 &&
-          brw_inst_dst_address_mode(devinfo, inst) == BRW_ADDRESS_DIRECT) {
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1 &&
+          elk_inst_dst_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
          /* The i965 PRM says:
           *
           *    Implementation Restriction: The relaxed alignment rule for byte
@@ -974,15 +974,15 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
  * in the "Register Region Restrictions" section.
  */
 static struct string
-general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
-                                          const brw_inst *inst)
+general_restrictions_on_region_parameters(const struct elk_isa_info *isa,
+                                          const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   const struct opcode_desc *desc =
-      brw_opcode_desc(isa, brw_inst_opcode(isa, inst));
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
-   unsigned exec_size = 1 << brw_inst_exec_size(devinfo, inst);
+   const struct elk_opcode_desc *desc =
+      elk_opcode_desc(isa, elk_inst_opcode(isa, inst));
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
+   unsigned exec_size = 1 << elk_inst_exec_size(devinfo, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (num_sources == 3)
@@ -994,37 +994,37 @@ general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
    if (inst_is_split_send(isa, inst))
       return (struct string){};
 
-   if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16) {
+   if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_16) {
       if (desc->ndst != 0 && !dst_is_null(devinfo, inst))
-         ERROR_IF(brw_inst_dst_hstride(devinfo, inst) != BRW_HORIZONTAL_STRIDE_1,
+         ERROR_IF(elk_inst_dst_hstride(devinfo, inst) != ELK_HORIZONTAL_STRIDE_1,
                   "Destination Horizontal Stride must be 1");
 
       if (num_sources >= 1) {
          if (devinfo->verx10 >= 75) {
-            ERROR_IF(brw_inst_src0_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_2 &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
+            ERROR_IF(elk_inst_src0_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE &&
+                     elk_inst_src0_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_0 &&
+                     elk_inst_src0_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_2 &&
+                     elk_inst_src0_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_4,
                      "In Align16 mode, only VertStride of 0, 2, or 4 is allowed");
          } else {
-            ERROR_IF(brw_inst_src0_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
+            ERROR_IF(elk_inst_src0_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE &&
+                     elk_inst_src0_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_0 &&
+                     elk_inst_src0_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_4,
                      "In Align16 mode, only VertStride of 0 or 4 is allowed");
          }
       }
 
       if (num_sources == 2) {
          if (devinfo->verx10 >= 75) {
-            ERROR_IF(brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_2 &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
+            ERROR_IF(elk_inst_src1_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE &&
+                     elk_inst_src1_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_0 &&
+                     elk_inst_src1_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_2 &&
+                     elk_inst_src1_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_4,
                      "In Align16 mode, only VertStride of 0, 2, or 4 is allowed");
          } else {
-            ERROR_IF(brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
+            ERROR_IF(elk_inst_src1_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE &&
+                     elk_inst_src1_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_0 &&
+                     elk_inst_src1_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_4,
                      "In Align16 mode, only VertStride of 0 or 4 is allowed");
          }
       }
@@ -1034,19 +1034,19 @@ general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
 
    for (unsigned i = 0; i < num_sources; i++) {
       unsigned vstride, width, hstride, element_size, subreg;
-      enum brw_reg_type type;
+      enum elk_reg_type type;
 
 #define DO_SRC(n)                                                              \
-      if (brw_inst_src ## n ## _reg_file(devinfo, inst) ==                     \
-          BRW_IMMEDIATE_VALUE)                                                 \
+      if (elk_inst_src ## n ## _reg_file(devinfo, inst) ==                     \
+          ELK_IMMEDIATE_VALUE)                                                 \
          continue;                                                             \
                                                                                \
-      vstride = STRIDE(brw_inst_src ## n ## _vstride(devinfo, inst));          \
-      width = WIDTH(brw_inst_src ## n ## _width(devinfo, inst));               \
-      hstride = STRIDE(brw_inst_src ## n ## _hstride(devinfo, inst));          \
-      type = brw_inst_src ## n ## _type(devinfo, inst);                        \
-      element_size = brw_reg_type_to_size(type);                               \
-      subreg = brw_inst_src ## n ## _da1_subreg_nr(devinfo, inst)
+      vstride = STRIDE(elk_inst_src ## n ## _vstride(devinfo, inst));          \
+      width = WIDTH(elk_inst_src ## n ## _width(devinfo, inst));               \
+      hstride = STRIDE(elk_inst_src ## n ## _hstride(devinfo, inst));          \
+      type = elk_inst_src ## n ## _type(devinfo, inst);                        \
+      element_size = elk_reg_type_to_size(type);                               \
+      subreg = elk_inst_src ## n ## _da1_subreg_nr(devinfo, inst)
 
       if (i == 0) {
          DO_SRC(0);
@@ -1127,7 +1127,7 @@ general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
 
    /* Dst.HorzStride must not be 0. */
    if (desc->ndst != 0 && !dst_is_null(devinfo, inst)) {
-      ERROR_IF(brw_inst_dst_hstride(devinfo, inst) == BRW_HORIZONTAL_STRIDE_0,
+      ERROR_IF(elk_inst_dst_hstride(devinfo, inst) == ELK_HORIZONTAL_STRIDE_0,
                "Destination Horizontal Stride must not be 0");
    }
 
@@ -1135,30 +1135,30 @@ general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
 }
 
 static struct string
-special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
-                                          const brw_inst *inst)
+special_restrictions_for_mixed_float_mode(const struct elk_isa_info *isa,
+                                          const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   const unsigned opcode = brw_inst_opcode(isa, inst);
-   const unsigned num_sources = brw_num_sources_from_inst(isa, inst);
+   const unsigned opcode = elk_inst_opcode(isa, inst);
+   const unsigned num_sources = elk_num_sources_from_inst(isa, inst);
    if (num_sources >= 3)
       return error_msg;
 
    if (!is_mixed_float(isa, inst))
       return error_msg;
 
-   unsigned exec_size = 1 << brw_inst_exec_size(devinfo, inst);
-   bool is_align16 = brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16;
+   unsigned exec_size = 1 << elk_inst_exec_size(devinfo, inst);
+   bool is_align16 = elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_16;
 
-   enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
-   enum brw_reg_type src1_type = num_sources > 1 ?
-                                 brw_inst_src1_type(devinfo, inst) : 0;
-   enum brw_reg_type dst_type = brw_inst_dst_type(devinfo, inst);
+   enum elk_reg_type src0_type = elk_inst_src0_type(devinfo, inst);
+   enum elk_reg_type src1_type = num_sources > 1 ?
+                                 elk_inst_src1_type(devinfo, inst) : 0;
+   enum elk_reg_type dst_type = elk_inst_dst_type(devinfo, inst);
 
-   unsigned dst_stride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
+   unsigned dst_stride = STRIDE(elk_inst_dst_hstride(devinfo, inst));
    bool dst_is_packed = is_packed(exec_size * dst_stride, exec_size, dst_stride);
 
    /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
@@ -1167,9 +1167,9 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
     *    "Indirect addressing on source is not supported when source and
     *     destination data types are mixed float."
     */
-   ERROR_IF(brw_inst_src0_address_mode(devinfo, inst) != BRW_ADDRESS_DIRECT ||
+   ERROR_IF(elk_inst_src0_address_mode(devinfo, inst) != ELK_ADDRESS_DIRECT ||
             (num_sources > 1 &&
-             brw_inst_src1_address_mode(devinfo, inst) != BRW_ADDRESS_DIRECT),
+             elk_inst_src1_address_mode(devinfo, inst) != ELK_ADDRESS_DIRECT),
             "Indirect addressing on source is not supported when source and "
             "destination data types are mixed float");
 
@@ -1179,7 +1179,7 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
     *    "No SIMD16 in mixed mode when destination is f32. Instruction
     *     execution size must be no more than 8."
     */
-   ERROR_IF(exec_size > 8 && dst_type == BRW_REGISTER_TYPE_F,
+   ERROR_IF(exec_size > 8 && dst_type == ELK_REGISTER_TYPE_F,
             "Mixed float mode with 32-bit float destination is limited "
             "to SIMD8");
 
@@ -1195,11 +1195,11 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
        * it means that vertical stride must always be 4, since 0 and 2 would
        * lead to replicated data, and any other value is disallowed in Align16.
        */
-      ERROR_IF(brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
+      ERROR_IF(elk_inst_src0_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_4,
                "Align16 mixed float mode assumes packed data (vstride must be 4");
 
       ERROR_IF(num_sources >= 2 &&
-               brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
+               elk_inst_src1_vstride(devinfo, inst) != ELK_VERTICAL_STRIDE_4,
                "Align16 mixed float mode assumes packed data (vstride must be 4");
 
       /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
@@ -1254,7 +1254,7 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
        *     Align1 and Align16."
        */
       ERROR_IF(exec_size > 8 && dst_is_packed &&
-               dst_type == BRW_REGISTER_TYPE_HF,
+               dst_type == ELK_REGISTER_TYPE_HF,
                "Align1 mixed float mode is limited to SIMD8 when destination "
                "is packed half-float");
 
@@ -1264,19 +1264,19 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
        *    "Math operations for mixed mode:
        *     - In Align1, f16 inputs need to be strided"
        */
-      if (opcode == BRW_OPCODE_MATH) {
-         if (src0_type == BRW_REGISTER_TYPE_HF) {
-            ERROR_IF(STRIDE(brw_inst_src0_hstride(devinfo, inst)) <= 1,
+      if (opcode == ELK_OPCODE_MATH) {
+         if (src0_type == ELK_REGISTER_TYPE_HF) {
+            ERROR_IF(STRIDE(elk_inst_src0_hstride(devinfo, inst)) <= 1,
                      "Align1 mixed mode math needs strided half-float inputs");
          }
 
-         if (num_sources >= 2 && src1_type == BRW_REGISTER_TYPE_HF) {
-            ERROR_IF(STRIDE(brw_inst_src1_hstride(devinfo, inst)) <= 1,
+         if (num_sources >= 2 && src1_type == ELK_REGISTER_TYPE_HF) {
+            ERROR_IF(STRIDE(elk_inst_src1_hstride(devinfo, inst)) <= 1,
                      "Align1 mixed mode math needs strided half-float inputs");
          }
       }
 
-      if (dst_type == BRW_REGISTER_TYPE_HF && dst_stride == 1) {
+      if (dst_type == ELK_REGISTER_TYPE_HF && dst_stride == 1) {
          /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
           * Float Operations:
           *
@@ -1289,10 +1289,10 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
           * aligned data means that execution size is limited to 8.
           */
          unsigned subreg;
-         if (brw_inst_dst_address_mode(devinfo, inst) == BRW_ADDRESS_DIRECT)
-            subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
+         if (elk_inst_dst_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT)
+            subreg = elk_inst_dst_da1_subreg_nr(devinfo, inst);
          else
-            subreg = brw_inst_dst_ia_subreg_nr(devinfo, inst);
+            subreg = elk_inst_dst_ia_subreg_nr(devinfo, inst);
          ERROR_IF(subreg % 16 != 0,
                   "Align1 mixed mode packed half-float output must be "
                   "oword aligned");
@@ -1311,9 +1311,9 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
           * so we only need to check this for Align1.
           */
          if (src0_is_acc(devinfo, inst) &&
-             (src0_type == BRW_REGISTER_TYPE_F ||
-              src0_type == BRW_REGISTER_TYPE_HF)) {
-            ERROR_IF(brw_inst_src0_da1_subreg_nr(devinfo, inst) != 0,
+             (src0_type == ELK_REGISTER_TYPE_F ||
+              src0_type == ELK_REGISTER_TYPE_HF)) {
+            ERROR_IF(elk_inst_src0_da1_subreg_nr(devinfo, inst) != 0,
                      "Mixed float mode requires register-aligned accumulator "
                      "source reads when destination is packed half-float");
 
@@ -1321,9 +1321,9 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
 
          if (num_sources > 1 &&
              src1_is_acc(devinfo, inst) &&
-             (src1_type == BRW_REGISTER_TYPE_F ||
-              src1_type == BRW_REGISTER_TYPE_HF)) {
-            ERROR_IF(brw_inst_src1_da1_subreg_nr(devinfo, inst) != 0,
+             (src1_type == ELK_REGISTER_TYPE_F ||
+              src1_type == ELK_REGISTER_TYPE_HF)) {
+            ERROR_IF(elk_inst_src1_da1_subreg_nr(devinfo, inst) != 0,
                      "Mixed float mode requires register-aligned accumulator "
                      "source reads when destination is packed half-float");
          }
@@ -1341,7 +1341,7 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
        *        or its link to the implication described after it, so we only
        *        validate the explicit implication, which is clearly described.
        */
-      if (dst_type == BRW_REGISTER_TYPE_HF &&
+      if (dst_type == ELK_REGISTER_TYPE_HF &&
           inst_uses_src_acc(isa, inst)) {
          ERROR_IF(dst_stride != 2,
                   "Mixed float mode with implicit/explicit accumulator "
@@ -1418,21 +1418,21 @@ registers_read(const uint64_t access_mask[static 32])
  * Region Restrictions" section.
  */
 static struct string
-region_alignment_rules(const struct brw_isa_info *isa,
-                       const brw_inst *inst)
+region_alignment_rules(const struct elk_isa_info *isa,
+                       const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
-   const struct opcode_desc *desc =
-      brw_opcode_desc(isa, brw_inst_opcode(isa, inst));
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
-   unsigned exec_size = 1 << brw_inst_exec_size(devinfo, inst);
+   const struct elk_opcode_desc *desc =
+      elk_opcode_desc(isa, elk_inst_opcode(isa, inst));
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
+   unsigned exec_size = 1 << elk_inst_exec_size(devinfo, inst);
    uint64_t dst_access_mask[32], src0_access_mask[32], src1_access_mask[32];
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (num_sources == 3)
       return (struct string){};
 
-   if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16)
+   if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_16)
       return (struct string){};
 
    if (inst_is_send(isa, inst))
@@ -1444,27 +1444,27 @@ region_alignment_rules(const struct brw_isa_info *isa,
 
    for (unsigned i = 0; i < num_sources; i++) {
       unsigned vstride, width, hstride, element_size, subreg;
-      enum brw_reg_type type;
+      enum elk_reg_type type;
 
       /* In Direct Addressing mode, a source cannot span more than 2 adjacent
        * GRF registers.
        */
 
 #define DO_SRC(n)                                                              \
-      if (brw_inst_src ## n ## _address_mode(devinfo, inst) !=                 \
-          BRW_ADDRESS_DIRECT)                                                  \
+      if (elk_inst_src ## n ## _address_mode(devinfo, inst) !=                 \
+          ELK_ADDRESS_DIRECT)                                                  \
          continue;                                                             \
                                                                                \
-      if (brw_inst_src ## n ## _reg_file(devinfo, inst) ==                     \
-          BRW_IMMEDIATE_VALUE)                                                 \
+      if (elk_inst_src ## n ## _reg_file(devinfo, inst) ==                     \
+          ELK_IMMEDIATE_VALUE)                                                 \
          continue;                                                             \
                                                                                \
-      vstride = STRIDE(brw_inst_src ## n ## _vstride(devinfo, inst));          \
-      width = WIDTH(brw_inst_src ## n ## _width(devinfo, inst));               \
-      hstride = STRIDE(brw_inst_src ## n ## _hstride(devinfo, inst));          \
-      type = brw_inst_src ## n ## _type(devinfo, inst);                        \
-      element_size = brw_reg_type_to_size(type);                               \
-      subreg = brw_inst_src ## n ## _da1_subreg_nr(devinfo, inst);             \
+      vstride = STRIDE(elk_inst_src ## n ## _vstride(devinfo, inst));          \
+      width = WIDTH(elk_inst_src ## n ## _width(devinfo, inst));               \
+      hstride = STRIDE(elk_inst_src ## n ## _hstride(devinfo, inst));          \
+      type = elk_inst_src ## n ## _type(devinfo, inst);                        \
+      element_size = elk_reg_type_to_size(type);                               \
+      subreg = elk_inst_src ## n ## _da1_subreg_nr(devinfo, inst);             \
       align1_access_mask(src ## n ## _access_mask,                             \
                          exec_size, element_size, subreg,                      \
                          vstride, width, hstride)
@@ -1489,10 +1489,10 @@ region_alignment_rules(const struct brw_isa_info *isa,
    if (desc->ndst == 0 || dst_is_null(devinfo, inst))
       return error_msg;
 
-   unsigned stride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
-   enum brw_reg_type dst_type = inst_dst_type(isa, inst);
-   unsigned element_size = brw_reg_type_to_size(dst_type);
-   unsigned subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
+   unsigned stride = STRIDE(elk_inst_dst_hstride(devinfo, inst));
+   enum elk_reg_type dst_type = inst_dst_type(isa, inst);
+   unsigned element_size = elk_reg_type_to_size(dst_type);
+   unsigned subreg = elk_inst_dst_da1_subreg_nr(devinfo, inst);
    unsigned offset = ((exec_size - 1) * stride * element_size) + subreg;
    ERROR_IF(offset >= 64 * reg_unit(devinfo),
             "A destination cannot span more than 2 adjacent GRF registers");
@@ -1576,7 +1576,7 @@ region_alignment_rules(const struct brw_isa_info *isa,
     * SKL.
     */
    if (devinfo->ver <= 8 ||
-       brw_inst_opcode(isa, inst) == BRW_OPCODE_MATH) {
+       elk_inst_opcode(isa, inst) == ELK_OPCODE_MATH) {
 
       /* Nothing explicitly states that on Gen < 8 elements must be evenly
        * split between two destination registers in the two exceptional
@@ -1647,7 +1647,7 @@ region_alignment_rules(const struct brw_isa_info *isa,
          }                                                                    \
                                                                               \
          unsigned offset_0 =                                                  \
-            brw_inst_src ## n ## _da1_subreg_nr(devinfo, inst);               \
+            elk_inst_src ## n ## _da1_subreg_nr(devinfo, inst);               \
          unsigned offset_1 = offset_0;                                        \
                                                                               \
          for (unsigned i = 0; i < exec_size; i++) {                           \
@@ -1688,8 +1688,8 @@ region_alignment_rules(const struct brw_isa_info *isa,
     * destination must be an integer DWord, the hardware allows at least a
     * float destination type as well. We emit such instructions from
     *
-    *    fs_visitor::emit_interpolation_setup_gfx6
-    *    fs_visitor::emit_fragcoord_interpolation
+    *    elk_fs_visitor::emit_interpolation_setup_gfx6
+    *    elk_fs_visitor::emit_fragcoord_interpolation
     *
     * and have for years with no ill effects.
     *
@@ -1707,21 +1707,21 @@ region_alignment_rules(const struct brw_isa_info *isa,
     * for src1.
     */
    if (devinfo->ver <= 7 && dst_regs == 2) {
-      enum brw_reg_type dst_type = inst_dst_type(isa, inst);
+      enum elk_reg_type dst_type = inst_dst_type(isa, inst);
       bool dst_is_packed_dword =
          is_packed(exec_size * stride, exec_size, stride) &&
-         brw_reg_type_to_size(dst_type) == 4;
+         elk_reg_type_to_size(dst_type) == 4;
 
       for (unsigned i = 0; i < num_sources; i++) {
 #define DO_SRC(n)                                                                  \
          unsigned vstride, width, hstride;                                         \
-         vstride = STRIDE(brw_inst_src ## n ## _vstride(devinfo, inst));           \
-         width = WIDTH(brw_inst_src ## n ## _width(devinfo, inst));                \
-         hstride = STRIDE(brw_inst_src ## n ## _hstride(devinfo, inst));           \
+         vstride = STRIDE(elk_inst_src ## n ## _vstride(devinfo, inst));           \
+         width = WIDTH(elk_inst_src ## n ## _width(devinfo, inst));                \
+         hstride = STRIDE(elk_inst_src ## n ## _hstride(devinfo, inst));           \
          bool src ## n ## _is_packed_word =                                        \
             n != 1 && is_packed(vstride, width, hstride) &&                        \
-            (brw_inst_src ## n ## _type(devinfo, inst) == BRW_REGISTER_TYPE_W ||   \
-             brw_inst_src ## n ## _type(devinfo, inst) == BRW_REGISTER_TYPE_UW);   \
+            (elk_inst_src ## n ## _type(devinfo, inst) == ELK_REGISTER_TYPE_W ||   \
+             elk_inst_src ## n ## _type(devinfo, inst) == ELK_REGISTER_TYPE_UW);   \
                                                                                    \
          ERROR_IF(src ## n ## _regs == 1 &&                                        \
                   !src ## n ## _has_scalar_region(devinfo, inst) &&                \
@@ -1743,12 +1743,12 @@ region_alignment_rules(const struct brw_isa_info *isa,
 }
 
 static struct string
-vector_immediate_restrictions(const struct brw_isa_info *isa,
-                              const brw_inst *inst)
+vector_immediate_restrictions(const struct elk_isa_info *isa,
+                              const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (num_sources == 3 || num_sources == 0 ||
@@ -1756,19 +1756,19 @@ vector_immediate_restrictions(const struct brw_isa_info *isa,
       return (struct string){};
 
    unsigned file = num_sources == 1 ?
-                   brw_inst_src0_reg_file(devinfo, inst) :
-                   brw_inst_src1_reg_file(devinfo, inst);
-   if (file != BRW_IMMEDIATE_VALUE)
+                   elk_inst_src0_reg_file(devinfo, inst) :
+                   elk_inst_src1_reg_file(devinfo, inst);
+   if (file != ELK_IMMEDIATE_VALUE)
       return (struct string){};
 
-   enum brw_reg_type dst_type = inst_dst_type(isa, inst);
-   unsigned dst_type_size = brw_reg_type_to_size(dst_type);
-   unsigned dst_subreg = brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1 ?
-                         brw_inst_dst_da1_subreg_nr(devinfo, inst) : 0;
-   unsigned dst_stride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
-   enum brw_reg_type type = num_sources == 1 ?
-                            brw_inst_src0_type(devinfo, inst) :
-                            brw_inst_src1_type(devinfo, inst);
+   enum elk_reg_type dst_type = inst_dst_type(isa, inst);
+   unsigned dst_type_size = elk_reg_type_to_size(dst_type);
+   unsigned dst_subreg = elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1 ?
+                         elk_inst_dst_da1_subreg_nr(devinfo, inst) : 0;
+   unsigned dst_stride = STRIDE(elk_inst_dst_hstride(devinfo, inst));
+   enum elk_reg_type type = num_sources == 1 ?
+                            elk_inst_src0_type(devinfo, inst) :
+                            elk_inst_src1_type(devinfo, inst);
 
    /* The PRMs say:
     *
@@ -1782,14 +1782,14 @@ vector_immediate_restrictions(const struct brw_isa_info *isa,
     * applies.
     */
    switch (type) {
-   case BRW_REGISTER_TYPE_V:
-   case BRW_REGISTER_TYPE_UV:
-   case BRW_REGISTER_TYPE_VF:
+   case ELK_REGISTER_TYPE_V:
+   case ELK_REGISTER_TYPE_UV:
+   case ELK_REGISTER_TYPE_VF:
       ERROR_IF(dst_subreg % (128 / 8) != 0,
                "Destination must be 128-bit aligned in order to use immediate "
                "vector types");
 
-      if (type == BRW_REGISTER_TYPE_VF) {
+      if (type == ELK_REGISTER_TYPE_VF) {
          ERROR_IF(dst_type_size * dst_stride != 4,
                   "Destination must have stride equivalent to dword in order "
                   "to use the VF type");
@@ -1808,12 +1808,12 @@ vector_immediate_restrictions(const struct brw_isa_info *isa,
 
 static struct string
 special_requirements_for_handling_double_precision_data_types(
-                                       const struct brw_isa_info *isa,
-                                       const brw_inst *inst)
+                                       const struct elk_isa_info *isa,
+                                       const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
+   unsigned num_sources = elk_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (num_sources == 3 || num_sources == 0)
@@ -1823,24 +1823,24 @@ special_requirements_for_handling_double_precision_data_types(
    if (inst_is_split_send(isa, inst))
       return (struct string){};
 
-   enum brw_reg_type exec_type = execution_type(isa, inst);
-   unsigned exec_type_size = brw_reg_type_to_size(exec_type);
+   enum elk_reg_type exec_type = execution_type(isa, inst);
+   unsigned exec_type_size = elk_reg_type_to_size(exec_type);
 
-   enum brw_reg_file dst_file = brw_inst_dst_reg_file(devinfo, inst);
-   enum brw_reg_type dst_type = inst_dst_type(isa, inst);
-   unsigned dst_type_size = brw_reg_type_to_size(dst_type);
-   unsigned dst_hstride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
-   unsigned dst_reg = brw_inst_dst_da_reg_nr(devinfo, inst);
-   unsigned dst_subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
-   unsigned dst_address_mode = brw_inst_dst_address_mode(devinfo, inst);
+   enum elk_reg_file dst_file = elk_inst_dst_reg_file(devinfo, inst);
+   enum elk_reg_type dst_type = inst_dst_type(isa, inst);
+   unsigned dst_type_size = elk_reg_type_to_size(dst_type);
+   unsigned dst_hstride = STRIDE(elk_inst_dst_hstride(devinfo, inst));
+   unsigned dst_reg = elk_inst_dst_da_reg_nr(devinfo, inst);
+   unsigned dst_subreg = elk_inst_dst_da1_subreg_nr(devinfo, inst);
+   unsigned dst_address_mode = elk_inst_dst_address_mode(devinfo, inst);
 
    bool is_integer_dword_multiply =
       devinfo->ver >= 8 &&
-      brw_inst_opcode(isa, inst) == BRW_OPCODE_MUL &&
-      (brw_inst_src0_type(devinfo, inst) == BRW_REGISTER_TYPE_D ||
-       brw_inst_src0_type(devinfo, inst) == BRW_REGISTER_TYPE_UD) &&
-      (brw_inst_src1_type(devinfo, inst) == BRW_REGISTER_TYPE_D ||
-       brw_inst_src1_type(devinfo, inst) == BRW_REGISTER_TYPE_UD);
+      elk_inst_opcode(isa, inst) == ELK_OPCODE_MUL &&
+      (elk_inst_src0_type(devinfo, inst) == ELK_REGISTER_TYPE_D ||
+       elk_inst_src0_type(devinfo, inst) == ELK_REGISTER_TYPE_UD) &&
+      (elk_inst_src1_type(devinfo, inst) == ELK_REGISTER_TYPE_D ||
+       elk_inst_src1_type(devinfo, inst) == ELK_REGISTER_TYPE_UD);
 
    const bool is_double_precision =
       dst_type_size == 8 || exec_type_size == 8 || is_integer_dword_multiply;
@@ -1848,24 +1848,24 @@ special_requirements_for_handling_double_precision_data_types(
    for (unsigned i = 0; i < num_sources; i++) {
       unsigned vstride, width, hstride, type_size, reg, subreg, address_mode;
       bool is_scalar_region;
-      enum brw_reg_file file;
-      enum brw_reg_type type;
+      enum elk_reg_file file;
+      enum elk_reg_type type;
 
 #define DO_SRC(n)                                                              \
-      if (brw_inst_src ## n ## _reg_file(devinfo, inst) ==                     \
-          BRW_IMMEDIATE_VALUE)                                                 \
+      if (elk_inst_src ## n ## _reg_file(devinfo, inst) ==                     \
+          ELK_IMMEDIATE_VALUE)                                                 \
          continue;                                                             \
                                                                                \
       is_scalar_region = src ## n ## _has_scalar_region(devinfo, inst);        \
-      vstride = STRIDE(brw_inst_src ## n ## _vstride(devinfo, inst));          \
-      width = WIDTH(brw_inst_src ## n ## _width(devinfo, inst));               \
-      hstride = STRIDE(brw_inst_src ## n ## _hstride(devinfo, inst));          \
-      file = brw_inst_src ## n ## _reg_file(devinfo, inst);                    \
-      type = brw_inst_src ## n ## _type(devinfo, inst);                        \
-      type_size = brw_reg_type_to_size(type);                                  \
-      reg = brw_inst_src ## n ## _da_reg_nr(devinfo, inst);                    \
-      subreg = brw_inst_src ## n ## _da1_subreg_nr(devinfo, inst);             \
-      address_mode = brw_inst_src ## n ## _address_mode(devinfo, inst)
+      vstride = STRIDE(elk_inst_src ## n ## _vstride(devinfo, inst));          \
+      width = WIDTH(elk_inst_src ## n ## _width(devinfo, inst));               \
+      hstride = STRIDE(elk_inst_src ## n ## _hstride(devinfo, inst));          \
+      file = elk_inst_src ## n ## _reg_file(devinfo, inst);                    \
+      type = elk_inst_src ## n ## _type(devinfo, inst);                        \
+      type_size = elk_reg_type_to_size(type);                                  \
+      reg = elk_inst_src ## n ## _da_reg_nr(devinfo, inst);                    \
+      subreg = elk_inst_src ## n ## _da1_subreg_nr(devinfo, inst);             \
+      address_mode = elk_inst_src ## n ## _address_mode(devinfo, inst)
 
       if (i == 0) {
          DO_SRC(0);
@@ -1891,7 +1891,7 @@ special_requirements_for_handling_double_precision_data_types(
        * We assume that the restriction applies to GLK as well.
        */
       if (is_double_precision &&
-          brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1 &&
+          elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1 &&
           (devinfo->platform == INTEL_PLATFORM_CHV || intel_device_info_is_9lp(devinfo))) {
          ERROR_IF(!is_scalar_region &&
                   (src_stride % 8 != 0 ||
@@ -1918,8 +1918,8 @@ special_requirements_for_handling_double_precision_data_types(
        */
       if (is_double_precision &&
           (devinfo->platform == INTEL_PLATFORM_CHV || intel_device_info_is_9lp(devinfo))) {
-         ERROR_IF(BRW_ADDRESS_REGISTER_INDIRECT_REGISTER == address_mode ||
-                  BRW_ADDRESS_REGISTER_INDIRECT_REGISTER == dst_address_mode,
+         ERROR_IF(ELK_ADDRESS_REGISTER_INDIRECT_REGISTER == address_mode ||
+                  ELK_ADDRESS_REGISTER_INDIRECT_REGISTER == dst_address_mode,
                   "Indirect addressing is not allowed when the execution type "
                   "is 64-bit");
       }
@@ -1936,12 +1936,12 @@ special_requirements_for_handling_double_precision_data_types(
       if (is_double_precision &&
           (devinfo->platform == INTEL_PLATFORM_CHV ||
            intel_device_info_is_9lp(devinfo))) {
-         ERROR_IF(brw_inst_opcode(isa, inst) == BRW_OPCODE_MAC ||
-                  brw_inst_acc_wr_control(devinfo, inst) ||
-                  (BRW_ARCHITECTURE_REGISTER_FILE == file &&
-                   reg != BRW_ARF_NULL) ||
-                  (BRW_ARCHITECTURE_REGISTER_FILE == dst_file &&
-                   dst_reg != BRW_ARF_NULL),
+         ERROR_IF(elk_inst_opcode(isa, inst) == ELK_OPCODE_MAC ||
+                  elk_inst_acc_wr_control(devinfo, inst) ||
+                  (ELK_ARCHITECTURE_REGISTER_FILE == file &&
+                   reg != ELK_ARF_NULL) ||
+                  (ELK_ARCHITECTURE_REGISTER_FILE == dst_file &&
+                   dst_reg != ELK_ARF_NULL),
                   "Architecture registers cannot be used when the execution "
                   "type is 64-bit");
       }
@@ -1966,10 +1966,10 @@ special_requirements_for_handling_double_precision_data_types(
        *      used."
        */
       if (devinfo->verx10 >= 125 &&
-          (brw_reg_type_is_floating_point(dst_type) ||
+          (elk_reg_type_is_floating_point(dst_type) ||
            is_double_precision)) {
          ERROR_IF(!is_scalar_region &&
-                  BRW_ADDRESS_REGISTER_INDIRECT_REGISTER != address_mode &&
+                  ELK_ADDRESS_REGISTER_INDIRECT_REGISTER != address_mode &&
                   (!is_linear(vstride, width, hstride) ||
                    src_stride != dst_stride ||
                    subreg != dst_subreg),
@@ -1978,10 +1978,10 @@ special_requirements_for_handling_double_precision_data_types(
                   "source and destination are not supported except for "
                   "broadcast of a scalar.");
 
-         ERROR_IF((address_mode == BRW_ADDRESS_DIRECT && file == BRW_ARCHITECTURE_REGISTER_FILE &&
-                   reg != BRW_ARF_NULL && !(reg >= BRW_ARF_ACCUMULATOR && reg < BRW_ARF_FLAG)) ||
-                  (dst_file == BRW_ARCHITECTURE_REGISTER_FILE &&
-                   dst_reg != BRW_ARF_NULL && dst_reg != BRW_ARF_ACCUMULATOR),
+         ERROR_IF((address_mode == ELK_ADDRESS_DIRECT && file == ELK_ARCHITECTURE_REGISTER_FILE &&
+                   reg != ELK_ARF_NULL && !(reg >= ELK_ARF_ACCUMULATOR && reg < ELK_ARF_FLAG)) ||
+                  (dst_file == ELK_ARCHITECTURE_REGISTER_FILE &&
+                   dst_reg != ELK_ARF_NULL && dst_reg != ELK_ARF_ACCUMULATOR),
                   "Explicit ARF registers except null and accumulator must not "
                   "be used.");
       }
@@ -1992,9 +1992,9 @@ special_requirements_for_handling_double_precision_data_types(
        *  Quad-Word data must not be used."
        */
       if (devinfo->verx10 >= 125 &&
-          (brw_reg_type_is_floating_point(type) || type_sz(type) == 8)) {
-         ERROR_IF(address_mode == BRW_ADDRESS_REGISTER_INDIRECT_REGISTER &&
-                  vstride == BRW_VERTICAL_STRIDE_ONE_DIMENSIONAL,
+          (elk_reg_type_is_floating_point(type) || type_sz(type) == 8)) {
+         ERROR_IF(address_mode == ELK_ADDRESS_REGISTER_INDIRECT_REGISTER &&
+                  vstride == ELK_VERTICAL_STRIDE_ONE_DIMENSIONAL,
                   "Vx1 and VxH indirect addressing for Float, Half-Float, "
                   "Double-Float and Quad-Word data must not be used");
       }
@@ -2008,16 +2008,16 @@ special_requirements_for_handling_double_precision_data_types(
     * We assume that the restriction applies to all Gfx8+ parts.
     */
    if (is_double_precision && devinfo->ver >= 8) {
-      enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
-      enum brw_reg_type src1_type =
-         num_sources > 1 ? brw_inst_src1_type(devinfo, inst) : src0_type;
-      unsigned src0_type_size = brw_reg_type_to_size(src0_type);
-      unsigned src1_type_size = brw_reg_type_to_size(src1_type);
+      enum elk_reg_type src0_type = elk_inst_src0_type(devinfo, inst);
+      enum elk_reg_type src1_type =
+         num_sources > 1 ? elk_inst_src1_type(devinfo, inst) : src0_type;
+      unsigned src0_type_size = elk_reg_type_to_size(src0_type);
+      unsigned src1_type_size = elk_reg_type_to_size(src1_type);
 
-      ERROR_IF(brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16 &&
+      ERROR_IF(elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_16 &&
                dst_type_size == 8 &&
                (src0_type_size != 8 || src1_type_size != 8) &&
-               brw_inst_exec_size(devinfo, inst) > BRW_EXECUTE_2,
+               elk_inst_exec_size(devinfo, inst) > ELK_EXECUTE_2,
                "In Align16 exec size cannot exceed 2 with a QWord destination "
                "and a non-QWord source");
    }
@@ -2031,8 +2031,8 @@ special_requirements_for_handling_double_precision_data_types(
     */
    if (is_double_precision &&
        (devinfo->platform == INTEL_PLATFORM_CHV || intel_device_info_is_9lp(devinfo))) {
-      ERROR_IF(brw_inst_no_dd_check(devinfo, inst) ||
-               brw_inst_no_dd_clear(devinfo, inst),
+      ERROR_IF(elk_inst_no_dd_check(devinfo, inst) ||
+               elk_inst_no_dd_clear(devinfo, inst),
                "DepCtrl is not allowed when the execution type is 64-bit");
    }
 
@@ -2040,8 +2040,8 @@ special_requirements_for_handling_double_precision_data_types(
 }
 
 static struct string
-instruction_restrictions(const struct brw_isa_info *isa,
-                         const brw_inst *inst)
+instruction_restrictions(const struct elk_isa_info *isa,
+                         const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
    struct string error_msg = { .str = NULL, .len = 0 };
@@ -2052,25 +2052,25 @@ instruction_restrictions(const struct brw_isa_info *isa,
     *  is not supported."
     */
    if (devinfo->ver >= 12 &&
-       brw_inst_opcode(isa, inst) == BRW_OPCODE_MUL) {
-      enum brw_reg_type exec_type = execution_type(isa, inst);
-      const bool src0_valid = type_sz(brw_inst_src0_type(devinfo, inst)) == 4 ||
-         brw_inst_src0_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE ||
-         !(brw_inst_src0_negate(devinfo, inst) ||
-           brw_inst_src0_abs(devinfo, inst));
-      const bool src1_valid = type_sz(brw_inst_src1_type(devinfo, inst)) == 4 ||
-         brw_inst_src1_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE ||
-         !(brw_inst_src1_negate(devinfo, inst) ||
-           brw_inst_src1_abs(devinfo, inst));
+       elk_inst_opcode(isa, inst) == ELK_OPCODE_MUL) {
+      enum elk_reg_type exec_type = execution_type(isa, inst);
+      const bool src0_valid = type_sz(elk_inst_src0_type(devinfo, inst)) == 4 ||
+         elk_inst_src0_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE ||
+         !(elk_inst_src0_negate(devinfo, inst) ||
+           elk_inst_src0_abs(devinfo, inst));
+      const bool src1_valid = type_sz(elk_inst_src1_type(devinfo, inst)) == 4 ||
+         elk_inst_src1_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE ||
+         !(elk_inst_src1_negate(devinfo, inst) ||
+           elk_inst_src1_abs(devinfo, inst));
 
-      ERROR_IF(!brw_reg_type_is_floating_point(exec_type) &&
+      ERROR_IF(!elk_reg_type_is_floating_point(exec_type) &&
                type_sz(exec_type) == 4 && !(src0_valid && src1_valid),
                "When multiplying a DW and any lower precision integer, source "
                "modifier is not supported.");
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_CMP ||
-       brw_inst_opcode(isa, inst) == BRW_OPCODE_CMPN) {
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_CMP ||
+       elk_inst_opcode(isa, inst) == ELK_OPCODE_CMPN) {
       if (devinfo->ver <= 7) {
          /* Page 166 of the Ivy Bridge PRM Volume 4 part 3 (Execution Unit
           * ISA) says:
@@ -2086,8 +2086,8 @@ instruction_restrictions(const struct brw_isa_info *isa,
           *    For the cmp and cmpn instructions, remove the accumulator
           *    restrictions.
           */
-         ERROR_IF(brw_inst_dst_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
-                  brw_inst_dst_da_reg_nr(devinfo, inst) != BRW_ARF_NULL,
+         ERROR_IF(elk_inst_dst_reg_file(devinfo, inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
+                  elk_inst_dst_da_reg_nr(devinfo, inst) != ELK_ARF_NULL,
                   "Accumulator cannot be destination, implicit or explicit.");
       }
 
@@ -2101,32 +2101,32 @@ instruction_restrictions(const struct brw_isa_info *isa,
        */
       if (devinfo->ver == 7) {
          ERROR_IF(dst_is_null(devinfo, inst) &&
-                  brw_inst_thread_control(devinfo, inst) != BRW_THREAD_SWITCH,
+                  elk_inst_thread_control(devinfo, inst) != ELK_THREAD_SWITCH,
                   "If the destination is the null register, the {Switch} "
                   "instruction option must be used.");
       }
 
-      ERROR_IF(brw_inst_cond_modifier(devinfo, inst) == BRW_CONDITIONAL_NONE,
+      ERROR_IF(elk_inst_cond_modifier(devinfo, inst) == ELK_CONDITIONAL_NONE,
                "CMP (or CMPN) must have a condition.");
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_SEL) {
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_SEL) {
       if (devinfo->ver < 6) {
-         ERROR_IF(brw_inst_cond_modifier(devinfo, inst) != BRW_CONDITIONAL_NONE,
+         ERROR_IF(elk_inst_cond_modifier(devinfo, inst) != ELK_CONDITIONAL_NONE,
                   "SEL must not have a condition modifier");
-         ERROR_IF(brw_inst_pred_control(devinfo, inst) == BRW_PREDICATE_NONE,
+         ERROR_IF(elk_inst_pred_control(devinfo, inst) == ELK_PREDICATE_NONE,
                   "SEL must be predicated");
       } else {
-         ERROR_IF((brw_inst_cond_modifier(devinfo, inst) != BRW_CONDITIONAL_NONE) ==
-                  (brw_inst_pred_control(devinfo, inst) != BRW_PREDICATE_NONE),
+         ERROR_IF((elk_inst_cond_modifier(devinfo, inst) != ELK_CONDITIONAL_NONE) ==
+                  (elk_inst_pred_control(devinfo, inst) != ELK_PREDICATE_NONE),
                   "SEL must either be predicated or have a condition modifiers");
       }
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_MUL) {
-      const enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
-      const enum brw_reg_type src1_type = brw_inst_src1_type(devinfo, inst);
-      const enum brw_reg_type dst_type = inst_dst_type(isa, inst);
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_MUL) {
+      const enum elk_reg_type src0_type = elk_inst_src0_type(devinfo, inst);
+      const enum elk_reg_type src1_type = elk_inst_src1_type(devinfo, inst);
+      const enum elk_reg_type dst_type = inst_dst_type(isa, inst);
 
       if (devinfo->ver == 6) {
          /* Page 223 of the Sandybridge PRM volume 4 part 2 says:
@@ -2136,7 +2136,7 @@ instruction_restrictions(const struct brw_isa_info *isa,
           *
           * This text appears only in the Sandybridge PRMw.
           */
-         ERROR_IF(brw_reg_type_is_integer(src0_type) &&
+         ERROR_IF(elk_reg_type_is_integer(src0_type) &&
                   type_sz(src0_type) == 4 && type_sz(src1_type) < 4,
                   "When multiplying a DW and any lower precision integer, the "
                   "DW operand must be src1.");
@@ -2149,7 +2149,7 @@ instruction_restrictions(const struct brw_isa_info *isa,
           * Ivy Bridge, Haswell, Skylake, and Ice Lake PRMs contain the same
           * text.
           */
-         ERROR_IF(brw_reg_type_is_integer(src1_type) &&
+         ERROR_IF(elk_reg_type_is_integer(src1_type) &&
                   type_sz(src0_type) < 4 && type_sz(src1_type) == 4,
                   "When multiplying a DW and any lower precision integer, the "
                   "DW operand must be src0.");
@@ -2176,9 +2176,9 @@ instruction_restrictions(const struct brw_isa_info *isa,
           * The Skylake and Ice Lake PRMs contain the same text.
           */
          ERROR_IF((src0_is_acc(devinfo, inst) &&
-                   brw_reg_type_is_integer(src0_type)) ||
+                   elk_reg_type_is_integer(src0_type)) ||
                   (src1_is_acc(devinfo, inst) &&
-                   brw_reg_type_is_integer(src1_type)),
+                   elk_reg_type_is_integer(src1_type)),
                   "Integer source operands cannot be accumulators.");
       }
 
@@ -2194,11 +2194,11 @@ instruction_restrictions(const struct brw_isa_info *isa,
           * allow mixed source types at all, but that restriction should be
           * handled elsewhere.
           */
-         ERROR_IF(execution_type(isa, inst) == BRW_REGISTER_TYPE_F &&
-                  (src0_type == BRW_REGISTER_TYPE_UD ||
-                   src0_type == BRW_REGISTER_TYPE_D ||
-                   src1_type == BRW_REGISTER_TYPE_UD ||
-                   src1_type == BRW_REGISTER_TYPE_D),
+         ERROR_IF(execution_type(isa, inst) == ELK_REGISTER_TYPE_F &&
+                  (src0_type == ELK_REGISTER_TYPE_UD ||
+                   src0_type == ELK_REGISTER_TYPE_D ||
+                   src1_type == ELK_REGISTER_TYPE_UD ||
+                   src1_type == ELK_REGISTER_TYPE_D),
                   "Dword integer source is not allowed for this instruction in"
                   "float execution mode.");
       }
@@ -2215,11 +2215,11 @@ instruction_restrictions(const struct brw_isa_info *isa,
           * Later GPUs do not allow mixed source and destination types at all,
           * but that restriction should be handled elsewhere.
           */
-         ERROR_IF(dst_type == BRW_REGISTER_TYPE_F &&
-                  (src0_type == BRW_REGISTER_TYPE_UD ||
-                   src0_type == BRW_REGISTER_TYPE_D ||
-                   src1_type == BRW_REGISTER_TYPE_UD ||
-                   src1_type == BRW_REGISTER_TYPE_D),
+         ERROR_IF(dst_type == ELK_REGISTER_TYPE_F &&
+                  (src0_type == ELK_REGISTER_TYPE_UD ||
+                   src0_type == ELK_REGISTER_TYPE_D ||
+                   src1_type == ELK_REGISTER_TYPE_UD ||
+                   src1_type == ELK_REGISTER_TYPE_D),
                   "Float destination type not allowed with DWord source type.");
       }
 
@@ -2232,12 +2232,12 @@ instruction_restrictions(const struct brw_isa_info *isa,
           * This text also appears in the Cherry Trail / Braswell PRM, but it
           * does not appear in any other PRM.
           */
-         ERROR_IF((src0_type == BRW_REGISTER_TYPE_UD ||
-                   src0_type == BRW_REGISTER_TYPE_D) &&
-                  (src1_type == BRW_REGISTER_TYPE_UD ||
-                   src1_type == BRW_REGISTER_TYPE_D) &&
-                  brw_inst_dst_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
-                  brw_inst_dst_da_reg_nr(devinfo, inst) != BRW_ARF_NULL,
+         ERROR_IF((src0_type == ELK_REGISTER_TYPE_UD ||
+                   src0_type == ELK_REGISTER_TYPE_D) &&
+                  (src1_type == ELK_REGISTER_TYPE_UD ||
+                   src1_type == ELK_REGISTER_TYPE_D) &&
+                  elk_inst_dst_reg_file(devinfo, inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
+                  elk_inst_dst_da_reg_nr(devinfo, inst) != ELK_ARF_NULL,
                   "When multiplying DW x DW, the dst cannot be accumulator.");
       }
 
@@ -2259,34 +2259,34 @@ instruction_restrictions(const struct brw_isa_info *isa,
        * be used."  I have interpreted it as the latter primarily because that
        * is the more restrictive interpretation.
        */
-      ERROR_IF((src0_type == BRW_REGISTER_TYPE_UD ||
-                src0_type == BRW_REGISTER_TYPE_D ||
-                src1_type == BRW_REGISTER_TYPE_UD ||
-                src1_type == BRW_REGISTER_TYPE_D) &&
-               (dst_type == BRW_REGISTER_TYPE_UD ||
-                dst_type == BRW_REGISTER_TYPE_D ||
-                dst_type == BRW_REGISTER_TYPE_UW ||
-                dst_type == BRW_REGISTER_TYPE_W) &&
-               (brw_inst_saturate(devinfo, inst) != 0 ||
-                brw_inst_cond_modifier(devinfo, inst) != BRW_CONDITIONAL_NONE),
+      ERROR_IF((src0_type == ELK_REGISTER_TYPE_UD ||
+                src0_type == ELK_REGISTER_TYPE_D ||
+                src1_type == ELK_REGISTER_TYPE_UD ||
+                src1_type == ELK_REGISTER_TYPE_D) &&
+               (dst_type == ELK_REGISTER_TYPE_UD ||
+                dst_type == ELK_REGISTER_TYPE_D ||
+                dst_type == ELK_REGISTER_TYPE_UW ||
+                dst_type == ELK_REGISTER_TYPE_W) &&
+               (elk_inst_saturate(devinfo, inst) != 0 ||
+                elk_inst_cond_modifier(devinfo, inst) != ELK_CONDITIONAL_NONE),
                "Neither Saturate nor conditional modifier allowed with DW "
                "integer multiply.");
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_MATH) {
-      unsigned math_function = brw_inst_math_function(devinfo, inst);
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_MATH) {
+      unsigned math_function = elk_inst_math_function(devinfo, inst);
       switch (math_function) {
-      case BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER:
-      case BRW_MATH_FUNCTION_INT_DIV_QUOTIENT:
-      case BRW_MATH_FUNCTION_INT_DIV_REMAINDER: {
+      case ELK_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER:
+      case ELK_MATH_FUNCTION_INT_DIV_QUOTIENT:
+      case ELK_MATH_FUNCTION_INT_DIV_REMAINDER: {
          /* Page 442 of the Broadwell PRM Volume 2a "Extended Math Function" says:
           *    INT DIV function does not support source modifiers.
           * Bspec 6647 extends it back to Ivy Bridge.
           */
-         bool src0_valid = !brw_inst_src0_negate(devinfo, inst) &&
-                           !brw_inst_src0_abs(devinfo, inst);
-         bool src1_valid = !brw_inst_src1_negate(devinfo, inst) &&
-                           !brw_inst_src1_abs(devinfo, inst);
+         bool src0_valid = !elk_inst_src0_negate(devinfo, inst) &&
+                           !elk_inst_src0_abs(devinfo, inst);
+         bool src1_valid = !elk_inst_src1_negate(devinfo, inst) &&
+                           !elk_inst_src1_abs(devinfo, inst);
          ERROR_IF(!src0_valid || !src1_valid,
                   "INT DIV function does not support source modifiers.");
          break;
@@ -2296,7 +2296,7 @@ instruction_restrictions(const struct brw_isa_info *isa,
       }
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_DP4A) {
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_DP4A) {
       /* Page 396 (page 412 of the PDF) of the DG1 PRM volume 2a says:
        *
        *    Only one of src0 or src1 operand may be an the (sic) accumulator
@@ -2308,61 +2308,61 @@ instruction_restrictions(const struct brw_isa_info *isa,
 
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_ADD3) {
-      const enum brw_reg_type dst_type = inst_dst_type(isa, inst);
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_ADD3) {
+      const enum elk_reg_type dst_type = inst_dst_type(isa, inst);
 
-      ERROR_IF(dst_type != BRW_REGISTER_TYPE_D &&
-               dst_type != BRW_REGISTER_TYPE_UD &&
-               dst_type != BRW_REGISTER_TYPE_W &&
-               dst_type != BRW_REGISTER_TYPE_UW,
+      ERROR_IF(dst_type != ELK_REGISTER_TYPE_D &&
+               dst_type != ELK_REGISTER_TYPE_UD &&
+               dst_type != ELK_REGISTER_TYPE_W &&
+               dst_type != ELK_REGISTER_TYPE_UW,
                "Destination must be integer D, UD, W, or UW type.");
 
       for (unsigned i = 0; i < 3; i++) {
-         enum brw_reg_type src_type;
+         enum elk_reg_type src_type;
 
          switch (i) {
-         case 0: src_type = brw_inst_3src_a1_src0_type(devinfo, inst); break;
-         case 1: src_type = brw_inst_3src_a1_src1_type(devinfo, inst); break;
-         case 2: src_type = brw_inst_3src_a1_src2_type(devinfo, inst); break;
+         case 0: src_type = elk_inst_3src_a1_src0_type(devinfo, inst); break;
+         case 1: src_type = elk_inst_3src_a1_src1_type(devinfo, inst); break;
+         case 2: src_type = elk_inst_3src_a1_src2_type(devinfo, inst); break;
          default: unreachable("invalid src");
          }
 
-         ERROR_IF(src_type != BRW_REGISTER_TYPE_D &&
-                  src_type != BRW_REGISTER_TYPE_UD &&
-                  src_type != BRW_REGISTER_TYPE_W &&
-                  src_type != BRW_REGISTER_TYPE_UW,
+         ERROR_IF(src_type != ELK_REGISTER_TYPE_D &&
+                  src_type != ELK_REGISTER_TYPE_UD &&
+                  src_type != ELK_REGISTER_TYPE_W &&
+                  src_type != ELK_REGISTER_TYPE_UW,
                   "Source must be integer D, UD, W, or UW type.");
 
          if (i == 0) {
-            if (brw_inst_3src_a1_src0_is_imm(devinfo, inst)) {
-               ERROR_IF(src_type != BRW_REGISTER_TYPE_W &&
-                        src_type != BRW_REGISTER_TYPE_UW,
+            if (elk_inst_3src_a1_src0_is_imm(devinfo, inst)) {
+               ERROR_IF(src_type != ELK_REGISTER_TYPE_W &&
+                        src_type != ELK_REGISTER_TYPE_UW,
                         "Immediate source must be integer W or UW type.");
             }
          } else if (i == 2) {
-            if (brw_inst_3src_a1_src2_is_imm(devinfo, inst)) {
-               ERROR_IF(src_type != BRW_REGISTER_TYPE_W &&
-                        src_type != BRW_REGISTER_TYPE_UW,
+            if (elk_inst_3src_a1_src2_is_imm(devinfo, inst)) {
+               ERROR_IF(src_type != ELK_REGISTER_TYPE_W &&
+                        src_type != ELK_REGISTER_TYPE_UW,
                         "Immediate source must be integer W or UW type.");
             }
          }
       }
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_OR ||
-       brw_inst_opcode(isa, inst) == BRW_OPCODE_AND ||
-       brw_inst_opcode(isa, inst) == BRW_OPCODE_XOR ||
-       brw_inst_opcode(isa, inst) == BRW_OPCODE_NOT) {
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_OR ||
+       elk_inst_opcode(isa, inst) == ELK_OPCODE_AND ||
+       elk_inst_opcode(isa, inst) == ELK_OPCODE_XOR ||
+       elk_inst_opcode(isa, inst) == ELK_OPCODE_NOT) {
       if (devinfo->ver >= 8) {
          /* While the behavior of the negate source modifier is defined as
           * logical not, the behavior of abs source modifier is not
           * defined. Disallow it to be safe.
           */
-         ERROR_IF(brw_inst_src0_abs(devinfo, inst),
+         ERROR_IF(elk_inst_src0_abs(devinfo, inst),
                   "Behavior of abs source modifier in logic ops is undefined.");
-         ERROR_IF(brw_inst_opcode(isa, inst) != BRW_OPCODE_NOT &&
-                  brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-                  brw_inst_src1_abs(devinfo, inst),
+         ERROR_IF(elk_inst_opcode(isa, inst) != ELK_OPCODE_NOT &&
+                  elk_inst_src1_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE &&
+                  elk_inst_src1_abs(devinfo, inst),
                   "Behavior of abs source modifier in logic ops is undefined.");
 
          /* Page 479 (page 495 of the PDF) of the Broadwell PRM volume 2a says:
@@ -2371,13 +2371,13 @@ instruction_restrictions(const struct brw_isa_info *isa,
           *
           * The same text also appears for OR, NOT, and XOR instructions.
           */
-         ERROR_IF((brw_inst_src0_abs(devinfo, inst) ||
-                   brw_inst_src0_negate(devinfo, inst)) &&
+         ERROR_IF((elk_inst_src0_abs(devinfo, inst) ||
+                   elk_inst_src0_negate(devinfo, inst)) &&
                   src0_is_acc(devinfo, inst),
                   "Source modifier is not allowed if source is an accumulator.");
-         ERROR_IF(brw_num_sources_from_inst(isa, inst) > 1 &&
-                  (brw_inst_src1_abs(devinfo, inst) ||
-                   brw_inst_src1_negate(devinfo, inst)) &&
+         ERROR_IF(elk_num_sources_from_inst(isa, inst) > 1 &&
+                  (elk_inst_src1_abs(devinfo, inst) ||
+                   elk_inst_src1_negate(devinfo, inst)) &&
                   src1_is_acc(devinfo, inst),
                   "Source modifier is not allowed if source is an accumulator.");
       }
@@ -2389,49 +2389,49 @@ instruction_restrictions(const struct brw_isa_info *isa,
        *
        * The same text also appears for OR, NOT, and XOR instructions.
        *
-       * Per the comment around nir_op_imod in brw_fs_nir.cpp, we have
+       * Per the comment around nir_op_imod in elk_fs_nir.cpp, we have
        * determined this to not be true. The only conditions that seem
        * absolutely sketchy are O, R, and U.  Some OpenGL shaders from Doom
        * 2016 have been observed to generate and.g and operate correctly.
        */
-      const enum brw_conditional_mod cmod =
-         brw_inst_cond_modifier(devinfo, inst);
-      ERROR_IF(cmod == BRW_CONDITIONAL_O ||
-               cmod == BRW_CONDITIONAL_R ||
-               cmod == BRW_CONDITIONAL_U,
+      const enum elk_conditional_mod cmod =
+         elk_inst_cond_modifier(devinfo, inst);
+      ERROR_IF(cmod == ELK_CONDITIONAL_O ||
+               cmod == ELK_CONDITIONAL_R ||
+               cmod == ELK_CONDITIONAL_U,
                "O, R, and U conditional modifiers should not be used.");
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_BFI2) {
-      ERROR_IF(brw_inst_cond_modifier(devinfo, inst) != BRW_CONDITIONAL_NONE,
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_BFI2) {
+      ERROR_IF(elk_inst_cond_modifier(devinfo, inst) != ELK_CONDITIONAL_NONE,
                "BFI2 cannot have conditional modifier");
 
-      ERROR_IF(brw_inst_saturate(devinfo, inst),
+      ERROR_IF(elk_inst_saturate(devinfo, inst),
                "BFI2 cannot have saturate modifier");
 
-      enum brw_reg_type dst_type;
+      enum elk_reg_type dst_type;
 
-      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1)
-         dst_type = brw_inst_3src_a1_dst_type(devinfo, inst);
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1)
+         dst_type = elk_inst_3src_a1_dst_type(devinfo, inst);
       else
-         dst_type = brw_inst_3src_a16_dst_type(devinfo, inst);
+         dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
 
-      ERROR_IF(dst_type != BRW_REGISTER_TYPE_D &&
-               dst_type != BRW_REGISTER_TYPE_UD,
+      ERROR_IF(dst_type != ELK_REGISTER_TYPE_D &&
+               dst_type != ELK_REGISTER_TYPE_UD,
                "BFI2 destination type must be D or UD");
 
       for (unsigned s = 0; s < 3; s++) {
-         enum brw_reg_type src_type;
+         enum elk_reg_type src_type;
 
-         if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
+         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
             switch (s) {
-            case 0: src_type = brw_inst_3src_a1_src0_type(devinfo, inst); break;
-            case 1: src_type = brw_inst_3src_a1_src1_type(devinfo, inst); break;
-            case 2: src_type = brw_inst_3src_a1_src2_type(devinfo, inst); break;
+            case 0: src_type = elk_inst_3src_a1_src0_type(devinfo, inst); break;
+            case 1: src_type = elk_inst_3src_a1_src1_type(devinfo, inst); break;
+            case 2: src_type = elk_inst_3src_a1_src2_type(devinfo, inst); break;
             default: unreachable("invalid src");
             }
          } else {
-            src_type = brw_inst_3src_a16_src_type(devinfo, inst);
+            src_type = elk_inst_3src_a16_src_type(devinfo, inst);
          }
 
          ERROR_IF(src_type != dst_type,
@@ -2439,48 +2439,48 @@ instruction_restrictions(const struct brw_isa_info *isa,
       }
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_CSEL) {
-      ERROR_IF(brw_inst_pred_control(devinfo, inst) != BRW_PREDICATE_NONE,
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_CSEL) {
+      ERROR_IF(elk_inst_pred_control(devinfo, inst) != ELK_PREDICATE_NONE,
                "CSEL cannot be predicated");
 
       /* CSEL is CMP and SEL fused into one. The condition modifier, which
        * does not actually modify the flags, controls the built-in comparison.
        */
-      ERROR_IF(brw_inst_cond_modifier(devinfo, inst) == BRW_CONDITIONAL_NONE,
+      ERROR_IF(elk_inst_cond_modifier(devinfo, inst) == ELK_CONDITIONAL_NONE,
                "CSEL must have a condition.");
 
-      enum brw_reg_type dst_type;
+      enum elk_reg_type dst_type;
 
-      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1)
-         dst_type = brw_inst_3src_a1_dst_type(devinfo, inst);
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1)
+         dst_type = elk_inst_3src_a1_dst_type(devinfo, inst);
       else
-         dst_type = brw_inst_3src_a16_dst_type(devinfo, inst);
+         dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
 
       if (devinfo->ver < 8) {
          ERROR_IF(devinfo->ver < 8, "CSEL not supported before Gfx8");
       } else if (devinfo->ver <= 9) {
-         ERROR_IF(dst_type != BRW_REGISTER_TYPE_F,
+         ERROR_IF(dst_type != ELK_REGISTER_TYPE_F,
                   "CSEL destination type must be F");
       } else {
-         ERROR_IF(dst_type != BRW_REGISTER_TYPE_F &&
-                  dst_type != BRW_REGISTER_TYPE_HF &&
-                  dst_type != BRW_REGISTER_TYPE_D &&
-                  dst_type != BRW_REGISTER_TYPE_W,
+         ERROR_IF(dst_type != ELK_REGISTER_TYPE_F &&
+                  dst_type != ELK_REGISTER_TYPE_HF &&
+                  dst_type != ELK_REGISTER_TYPE_D &&
+                  dst_type != ELK_REGISTER_TYPE_W,
                   "CSEL destination type must be F, HF, D, or W");
       }
 
       for (unsigned s = 0; s < 3; s++) {
-         enum brw_reg_type src_type;
+         enum elk_reg_type src_type;
 
-         if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
+         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
             switch (s) {
-            case 0: src_type = brw_inst_3src_a1_src0_type(devinfo, inst); break;
-            case 1: src_type = brw_inst_3src_a1_src1_type(devinfo, inst); break;
-            case 2: src_type = brw_inst_3src_a1_src2_type(devinfo, inst); break;
+            case 0: src_type = elk_inst_3src_a1_src0_type(devinfo, inst); break;
+            case 1: src_type = elk_inst_3src_a1_src1_type(devinfo, inst); break;
+            case 2: src_type = elk_inst_3src_a1_src2_type(devinfo, inst); break;
             default: unreachable("invalid src");
             }
          } else {
-            src_type = brw_inst_3src_a16_src_type(devinfo, inst);
+            src_type = elk_inst_3src_a16_src_type(devinfo, inst);
          }
 
          ERROR_IF(src_type != dst_type,
@@ -2488,68 +2488,68 @@ instruction_restrictions(const struct brw_isa_info *isa,
       }
    }
 
-   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_DPAS) {
-      ERROR_IF(brw_inst_dpas_3src_sdepth(devinfo, inst) != BRW_SYSTOLIC_DEPTH_8,
+   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_DPAS) {
+      ERROR_IF(elk_inst_dpas_3src_sdepth(devinfo, inst) != ELK_SYSTOLIC_DEPTH_8,
                "Systolic depth must be 8.");
 
       const unsigned sdepth = 8;
 
-      const enum brw_reg_type dst_type =
-         brw_inst_dpas_3src_dst_type(devinfo, inst);
-      const enum brw_reg_type src0_type =
-         brw_inst_dpas_3src_src0_type(devinfo, inst);
-      const enum brw_reg_type src1_type =
-         brw_inst_dpas_3src_src1_type(devinfo, inst);
-      const enum brw_reg_type src2_type =
-         brw_inst_dpas_3src_src2_type(devinfo, inst);
+      const enum elk_reg_type dst_type =
+         elk_inst_dpas_3src_dst_type(devinfo, inst);
+      const enum elk_reg_type src0_type =
+         elk_inst_dpas_3src_src0_type(devinfo, inst);
+      const enum elk_reg_type src1_type =
+         elk_inst_dpas_3src_src1_type(devinfo, inst);
+      const enum elk_reg_type src2_type =
+         elk_inst_dpas_3src_src2_type(devinfo, inst);
 
       const enum gfx12_sub_byte_precision src1_sub_byte =
-         brw_inst_dpas_3src_src1_subbyte(devinfo, inst);
+         elk_inst_dpas_3src_src1_subbyte(devinfo, inst);
 
-      if (src1_type != BRW_REGISTER_TYPE_B && src1_type != BRW_REGISTER_TYPE_UB) {
-         ERROR_IF(src1_sub_byte != BRW_SUB_BYTE_PRECISION_NONE,
+      if (src1_type != ELK_REGISTER_TYPE_B && src1_type != ELK_REGISTER_TYPE_UB) {
+         ERROR_IF(src1_sub_byte != ELK_SUB_BYTE_PRECISION_NONE,
                   "Sub-byte precision must be None for source type larger than Byte.");
       } else {
-         ERROR_IF(src1_sub_byte != BRW_SUB_BYTE_PRECISION_NONE &&
-                  src1_sub_byte != BRW_SUB_BYTE_PRECISION_4BIT &&
-                  src1_sub_byte != BRW_SUB_BYTE_PRECISION_2BIT,
+         ERROR_IF(src1_sub_byte != ELK_SUB_BYTE_PRECISION_NONE &&
+                  src1_sub_byte != ELK_SUB_BYTE_PRECISION_4BIT &&
+                  src1_sub_byte != ELK_SUB_BYTE_PRECISION_2BIT,
                   "Invalid sub-byte precision.");
       }
 
       const enum gfx12_sub_byte_precision src2_sub_byte =
-         brw_inst_dpas_3src_src2_subbyte(devinfo, inst);
+         elk_inst_dpas_3src_src2_subbyte(devinfo, inst);
 
-      if (src2_type != BRW_REGISTER_TYPE_B && src2_type != BRW_REGISTER_TYPE_UB) {
-         ERROR_IF(src2_sub_byte != BRW_SUB_BYTE_PRECISION_NONE,
+      if (src2_type != ELK_REGISTER_TYPE_B && src2_type != ELK_REGISTER_TYPE_UB) {
+         ERROR_IF(src2_sub_byte != ELK_SUB_BYTE_PRECISION_NONE,
                   "Sub-byte precision must be None.");
       } else {
-         ERROR_IF(src2_sub_byte != BRW_SUB_BYTE_PRECISION_NONE &&
-                  src2_sub_byte != BRW_SUB_BYTE_PRECISION_4BIT &&
-                  src2_sub_byte != BRW_SUB_BYTE_PRECISION_2BIT,
+         ERROR_IF(src2_sub_byte != ELK_SUB_BYTE_PRECISION_NONE &&
+                  src2_sub_byte != ELK_SUB_BYTE_PRECISION_4BIT &&
+                  src2_sub_byte != ELK_SUB_BYTE_PRECISION_2BIT,
                   "Invalid sub-byte precision.");
       }
 
       const unsigned src1_bits_per_element =
-         (8 * brw_reg_type_to_size(src1_type)) >>
-         brw_inst_dpas_3src_src1_subbyte(devinfo, inst);
+         (8 * elk_reg_type_to_size(src1_type)) >>
+         elk_inst_dpas_3src_src1_subbyte(devinfo, inst);
 
       const unsigned src2_bits_per_element =
-         (8 * brw_reg_type_to_size(src2_type)) >>
-         brw_inst_dpas_3src_src2_subbyte(devinfo, inst);
+         (8 * elk_reg_type_to_size(src2_type)) >>
+         elk_inst_dpas_3src_src2_subbyte(devinfo, inst);
 
       /* The MAX2(1, ...) is just to prevent possible division by 0 later. */
       const unsigned ops_per_chan =
          MAX2(1, 32 / MAX2(src1_bits_per_element, src2_bits_per_element));
 
-      ERROR_IF(brw_inst_exec_size(devinfo, inst) != BRW_EXECUTE_8,
+      ERROR_IF(elk_inst_exec_size(devinfo, inst) != ELK_EXECUTE_8,
                "DPAS execution size must be 8.");
 
       const unsigned exec_size = 8;
 
-      const unsigned dst_subnr  = brw_inst_dpas_3src_dst_subreg_nr(devinfo, inst);
-      const unsigned src0_subnr = brw_inst_dpas_3src_src0_subreg_nr(devinfo, inst);
-      const unsigned src1_subnr = brw_inst_dpas_3src_src1_subreg_nr(devinfo, inst);
-      const unsigned src2_subnr = brw_inst_dpas_3src_src2_subreg_nr(devinfo, inst);
+      const unsigned dst_subnr  = elk_inst_dpas_3src_dst_subreg_nr(devinfo, inst);
+      const unsigned src0_subnr = elk_inst_dpas_3src_src0_subreg_nr(devinfo, inst);
+      const unsigned src1_subnr = elk_inst_dpas_3src_src1_subreg_nr(devinfo, inst);
+      const unsigned src2_subnr = elk_inst_dpas_3src_src2_subreg_nr(devinfo, inst);
 
       /* Until HF is supported as dst type, this is effectively subnr == 0. */
       ERROR_IF(dst_subnr % exec_size != 0,
@@ -2582,7 +2582,7 @@ instruction_restrictions(const struct brw_isa_info *isa,
       ERROR_IF((src2_subnr * type_sz(src2_type) * src2_bits_per_element) / 8 >= REG_SIZE,
                "Src2 subregister specifies next register.");
 
-      if (brw_inst_3src_atomic_control(devinfo, inst)) {
+      if (elk_inst_3src_atomic_control(devinfo, inst)) {
          /* FINISHME: When we start emitting DPAS with Atomic set, figure out
           * a way to validate it. Also add a test in test_eu_validate.cpp.
           */
@@ -2591,34 +2591,34 @@ instruction_restrictions(const struct brw_isa_info *isa,
                   "DPAS instruction.");
       }
 
-      if (brw_inst_dpas_3src_exec_type(devinfo, inst) ==
-          BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT) {
-         ERROR_IF(dst_type != BRW_REGISTER_TYPE_F,
+      if (elk_inst_dpas_3src_exec_type(devinfo, inst) ==
+          ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT) {
+         ERROR_IF(dst_type != ELK_REGISTER_TYPE_F,
                   "DPAS destination type must be F.");
-         ERROR_IF(src0_type != BRW_REGISTER_TYPE_F,
+         ERROR_IF(src0_type != ELK_REGISTER_TYPE_F,
                   "DPAS src0 type must be F.");
-         ERROR_IF(src1_type != BRW_REGISTER_TYPE_HF,
+         ERROR_IF(src1_type != ELK_REGISTER_TYPE_HF,
                   "DPAS src1 type must be HF.");
-         ERROR_IF(src2_type != BRW_REGISTER_TYPE_HF,
+         ERROR_IF(src2_type != ELK_REGISTER_TYPE_HF,
                   "DPAS src2 type must be HF.");
       } else {
-         ERROR_IF(dst_type != BRW_REGISTER_TYPE_D &&
-                  dst_type != BRW_REGISTER_TYPE_UD,
+         ERROR_IF(dst_type != ELK_REGISTER_TYPE_D &&
+                  dst_type != ELK_REGISTER_TYPE_UD,
                   "DPAS destination type must be D or UD.");
-         ERROR_IF(src0_type != BRW_REGISTER_TYPE_D &&
-                  src0_type != BRW_REGISTER_TYPE_UD,
+         ERROR_IF(src0_type != ELK_REGISTER_TYPE_D &&
+                  src0_type != ELK_REGISTER_TYPE_UD,
                   "DPAS src0 type must be D or UD.");
-         ERROR_IF(src1_type != BRW_REGISTER_TYPE_B &&
-                  src1_type != BRW_REGISTER_TYPE_UB,
+         ERROR_IF(src1_type != ELK_REGISTER_TYPE_B &&
+                  src1_type != ELK_REGISTER_TYPE_UB,
                   "DPAS src1 base type must be B or UB.");
-         ERROR_IF(src2_type != BRW_REGISTER_TYPE_B &&
-                  src2_type != BRW_REGISTER_TYPE_UB,
+         ERROR_IF(src2_type != ELK_REGISTER_TYPE_B &&
+                  src2_type != ELK_REGISTER_TYPE_UB,
                   "DPAS src2 base type must be B or UB.");
 
-         if (brw_reg_type_is_unsigned_integer(dst_type)) {
-            ERROR_IF(!brw_reg_type_is_unsigned_integer(src0_type) ||
-                     !brw_reg_type_is_unsigned_integer(src1_type) ||
-                     !brw_reg_type_is_unsigned_integer(src2_type),
+         if (elk_reg_type_is_unsigned_integer(dst_type)) {
+            ERROR_IF(!elk_reg_type_is_unsigned_integer(src0_type) ||
+                     !elk_reg_type_is_unsigned_integer(src1_type) ||
+                     !elk_reg_type_is_unsigned_integer(src2_type),
                      "If any source datatype is signed, destination datatype "
                      "must be signed.");
          }
@@ -2628,7 +2628,7 @@ instruction_restrictions(const struct brw_isa_info *isa,
        * yet enforced here:
        *
        *    - General Accumulator registers access is not supported. This is
-       *      currently enforced in brw_dpas_three_src (brw_eu_emit.c).
+       *      currently enforced in elk_dpas_three_src (elk_eu_emit.c).
        *
        *    - Given any combination of datatypes in the sources of a DPAS
        *      instructions, the boundaries of a register should not be crossed.
@@ -2639,28 +2639,28 @@ instruction_restrictions(const struct brw_isa_info *isa,
 }
 
 static struct string
-send_descriptor_restrictions(const struct brw_isa_info *isa,
-                             const brw_inst *inst)
+send_descriptor_restrictions(const struct elk_isa_info *isa,
+                             const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (inst_is_split_send(isa, inst)) {
       /* We can only validate immediate descriptors */
-      if (brw_inst_send_sel_reg32_desc(devinfo, inst))
+      if (elk_inst_send_sel_reg32_desc(devinfo, inst))
          return error_msg;
    } else if (inst_is_send(isa, inst)) {
       /* We can only validate immediate descriptors */
-      if (brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE)
+      if (elk_inst_src1_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE)
          return error_msg;
    } else {
       return error_msg;
    }
 
-   const uint32_t desc = brw_inst_send_desc(devinfo, inst);
+   const uint32_t desc = elk_inst_send_desc(devinfo, inst);
 
-   switch (brw_inst_sfid(devinfo, inst)) {
-   case BRW_SFID_URB:
+   switch (elk_inst_sfid(devinfo, inst)) {
+   case ELK_SFID_URB:
       if (devinfo->ver < 20)
          break;
       FALLTHROUGH;
@@ -2669,9 +2669,9 @@ send_descriptor_restrictions(const struct brw_isa_info *isa,
    case GFX12_SFID_UGM:
       ERROR_IF(!devinfo->has_lsc, "Platform does not support LSC");
 
-      ERROR_IF(lsc_opcode_has_transpose(lsc_msg_desc_opcode(devinfo, desc)) &&
+      ERROR_IF(elk_lsc_opcode_has_transpose(lsc_msg_desc_opcode(devinfo, desc)) &&
                lsc_msg_desc_transpose(devinfo, desc) &&
-               brw_inst_exec_size(devinfo, inst) != BRW_EXECUTE_1,
+               elk_inst_exec_size(devinfo, inst) != ELK_EXECUTE_1,
                "Transposed vectors are restricted to Exec_Mask = 1.");
       break;
 
@@ -2679,28 +2679,28 @@ send_descriptor_restrictions(const struct brw_isa_info *isa,
       break;
    }
 
-   if (brw_inst_sfid(devinfo, inst) == BRW_SFID_URB && devinfo->ver < 20) {
+   if (elk_inst_sfid(devinfo, inst) == ELK_SFID_URB && devinfo->ver < 20) {
       /* Gfx4 doesn't have a "header present" bit in the SEND message. */
-      ERROR_IF(devinfo->ver > 4 && !brw_inst_header_present(devinfo, inst),
+      ERROR_IF(devinfo->ver > 4 && !elk_inst_header_present(devinfo, inst),
                "Header must be present for all URB messages.");
 
-      switch (brw_inst_urb_opcode(devinfo, inst)) {
-      case BRW_URB_OPCODE_WRITE_HWORD:
+      switch (elk_inst_urb_opcode(devinfo, inst)) {
+      case ELK_URB_OPCODE_WRITE_HWORD:
          break;
 
       /* case FF_SYNC: */
-      case BRW_URB_OPCODE_WRITE_OWORD:
+      case ELK_URB_OPCODE_WRITE_OWORD:
          /* Gfx5 / Gfx6 FF_SYNC message and Gfx7+ URB_WRITE_OWORD have the
           * same opcode value.
           */
          if (devinfo->ver == 5 || devinfo->ver == 6) {
-            ERROR_IF(brw_inst_urb_global_offset(devinfo, inst) != 0,
+            ERROR_IF(elk_inst_urb_global_offset(devinfo, inst) != 0,
                      "FF_SYNC global offset must be zero.");
-            ERROR_IF(brw_inst_urb_swizzle_control(devinfo, inst) != 0,
+            ERROR_IF(elk_inst_urb_swizzle_control(devinfo, inst) != 0,
                      "FF_SYNC swizzle control must be zero.");
-            ERROR_IF(brw_inst_urb_used(devinfo, inst) != 0,
+            ERROR_IF(elk_inst_urb_used(devinfo, inst) != 0,
                      "FF_SYNC used must be zero.");
-            ERROR_IF(brw_inst_urb_complete(devinfo, inst) != 0,
+            ERROR_IF(elk_inst_urb_complete(devinfo, inst) != 0,
                      "FF_SYNC complete must be zero.");
 
             /* Volume 4 part 2 of the Sandybridge PRM (page 28) says:
@@ -2709,7 +2709,7 @@ send_descriptor_restrictions(const struct brw_isa_info *isa,
              *    indicated on the ‘send’ instruction if the thread requires
              *    response data and/or synchronization.
              */
-            ERROR_IF((unsigned)brw_inst_rlen(devinfo, inst) > 1,
+            ERROR_IF((unsigned)elk_inst_rlen(devinfo, inst) > 1,
                      "FF_SYNC read length must be 0 or 1.");
          } else {
             ERROR_IF(devinfo->ver < 7,
@@ -2717,8 +2717,8 @@ send_descriptor_restrictions(const struct brw_isa_info *isa,
          }
          break;
 
-      case BRW_URB_OPCODE_READ_HWORD:
-      case BRW_URB_OPCODE_READ_OWORD:
+      case ELK_URB_OPCODE_READ_HWORD:
+      case ELK_URB_OPCODE_READ_OWORD:
          ERROR_IF(devinfo->ver < 7,
                   "URB read messages only valid on gfx >= 7");
          break;
@@ -2736,7 +2736,7 @@ send_descriptor_restrictions(const struct brw_isa_info *isa,
          break;
 
       case GFX8_URB_OPCODE_SIMD8_READ:
-         ERROR_IF(brw_inst_rlen(devinfo, inst) == 0,
+         ERROR_IF(elk_inst_rlen(devinfo, inst) == 0,
                   "URB SIMD8 read message must read some data.");
          FALLTHROUGH;
 
@@ -2760,10 +2760,10 @@ send_descriptor_restrictions(const struct brw_isa_info *isa,
 }
 
 bool
-brw_validate_instruction(const struct brw_isa_info *isa,
-                         const brw_inst *inst, int offset,
+elk_validate_instruction(const struct elk_isa_info *isa,
+                         const elk_inst *inst, int offset,
                          unsigned inst_size,
-                         struct disasm_info *disasm)
+                         struct elk_disasm_info *disasm)
 {
    struct string error_msg = { .str = NULL, .len = 0 };
 
@@ -2788,7 +2788,7 @@ brw_validate_instruction(const struct brw_isa_info *isa,
    }
 
    if (error_msg.str && disasm) {
-      disasm_insert_error(disasm, offset, inst_size, error_msg.str);
+      elk_disasm_insert_error(disasm, offset, inst_size, error_msg.str);
    }
    free(error_msg.str);
 
@@ -2796,27 +2796,27 @@ brw_validate_instruction(const struct brw_isa_info *isa,
 }
 
 bool
-brw_validate_instructions(const struct brw_isa_info *isa,
+elk_validate_instructions(const struct elk_isa_info *isa,
                           const void *assembly, int start_offset, int end_offset,
-                          struct disasm_info *disasm)
+                          struct elk_disasm_info *disasm)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
    bool valid = true;
 
    for (int src_offset = start_offset; src_offset < end_offset;) {
-      const brw_inst *inst = assembly + src_offset;
-      bool is_compact = brw_inst_cmpt_control(devinfo, inst);
-      unsigned inst_size = is_compact ? sizeof(brw_compact_inst)
-                                      : sizeof(brw_inst);
-      brw_inst uncompacted;
+      const elk_inst *inst = assembly + src_offset;
+      bool is_compact = elk_inst_cmpt_control(devinfo, inst);
+      unsigned inst_size = is_compact ? sizeof(elk_compact_inst)
+                                      : sizeof(elk_inst);
+      elk_inst uncompacted;
 
       if (is_compact) {
-         brw_compact_inst *compacted = (void *)inst;
-         brw_uncompact_instruction(isa, &uncompacted, compacted);
+         elk_compact_inst *compacted = (void *)inst;
+         elk_uncompact_instruction(isa, &uncompacted, compacted);
          inst = &uncompacted;
       }
 
-      bool v = brw_validate_instruction(isa, inst, src_offset,
+      bool v = elk_validate_instruction(isa, inst, src_offset,
                                         inst_size, disasm);
       valid = valid && v;
 

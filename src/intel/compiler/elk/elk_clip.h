@@ -43,37 +43,37 @@
 
 #define PRIM_MASK  (0x1f)
 
-struct brw_clip_compile {
-   struct brw_codegen func;
-   struct brw_clip_prog_key key;
-   struct brw_clip_prog_data prog_data;
+struct elk_clip_compile {
+   struct elk_codegen func;
+   struct elk_clip_prog_key key;
+   struct elk_clip_prog_data prog_data;
 
    struct {
-      struct brw_reg R0;
-      struct brw_reg vertex[MAX_VERTS];
+      struct elk_reg R0;
+      struct elk_reg vertex[MAX_VERTS];
 
-      struct brw_reg t;
-      struct brw_reg t0, t1;
-      struct brw_reg dp0, dp1;
+      struct elk_reg t;
+      struct elk_reg t0, t1;
+      struct elk_reg dp0, dp1;
 
-      struct brw_reg dpPrev;
-      struct brw_reg dp;
-      struct brw_reg loopcount;
-      struct brw_reg nr_verts;
-      struct brw_reg planemask;
+      struct elk_reg dpPrev;
+      struct elk_reg dp;
+      struct elk_reg loopcount;
+      struct elk_reg nr_verts;
+      struct elk_reg planemask;
 
-      struct brw_reg inlist;
-      struct brw_reg outlist;
-      struct brw_reg freelist;
+      struct elk_reg inlist;
+      struct elk_reg outlist;
+      struct elk_reg freelist;
 
-      struct brw_reg dir;
-      struct brw_reg tmp0, tmp1;
-      struct brw_reg offset;
+      struct elk_reg dir;
+      struct elk_reg tmp0, tmp1;
+      struct elk_reg offset;
 
-      struct brw_reg fixed_planes;
-      struct brw_reg plane_equation;
+      struct elk_reg fixed_planes;
+      struct elk_reg plane_equation;
 
-      struct brw_reg ff_sync;
+      struct elk_reg ff_sync;
 
       /* Bitmask indicating which coordinate attribute should be used for
        * comparison to each clipping plane. A 0 indicates that VARYING_SLOT_POS
@@ -82,10 +82,10 @@ struct brw_clip_compile {
        * VARYING_SLOT_CLIP_VERTEX should be used (if available) since it's a user-
        * defined clipping plane.
        */
-      struct brw_reg vertex_src_mask;
+      struct elk_reg vertex_src_mask;
 
       /* Offset into the vertex of the current plane's clipdistance value */
-      struct brw_reg clipdistance_offset;
+      struct elk_reg clipdistance_offset;
    } reg;
 
    /* Number of registers storing VUE data */
@@ -102,7 +102,7 @@ struct brw_clip_compile {
 /**
  * True if the given varying is one of the outputs of the vertex shader.
  */
-static inline bool brw_clip_have_varying(struct brw_clip_compile *c,
+static inline bool elk_clip_have_varying(struct elk_clip_compile *c,
                                          GLuint varying)
 {
    return (c->key.attrs & BITFIELD64_BIT(varying)) ? 1 : 0;
@@ -111,53 +111,53 @@ static inline bool brw_clip_have_varying(struct brw_clip_compile *c,
 /* Points are only culled, so no need for a clip routine, however it
  * works out easier to have a dummy one.
  */
-void brw_emit_unfilled_clip( struct brw_clip_compile *c );
-void brw_emit_tri_clip( struct brw_clip_compile *c );
-void brw_emit_line_clip( struct brw_clip_compile *c );
-void brw_emit_point_clip( struct brw_clip_compile *c );
+void elk_emit_unfilled_clip( struct elk_clip_compile *c );
+void elk_emit_tri_clip( struct elk_clip_compile *c );
+void elk_emit_line_clip( struct elk_clip_compile *c );
+void elk_emit_point_clip( struct elk_clip_compile *c );
 
-/* brw_clip_tri.c, for use by the unfilled clip routine:
+/* elk_clip_tri.c, for use by the unfilled clip routine:
  */
-void brw_clip_tri_init_vertices( struct brw_clip_compile *c );
-void brw_clip_tri_flat_shade( struct brw_clip_compile *c );
-void brw_clip_tri( struct brw_clip_compile *c );
-void brw_clip_tri_emit_polygon( struct brw_clip_compile *c );
-void brw_clip_tri_alloc_regs( struct brw_clip_compile *c,
+void elk_clip_tri_init_vertices( struct elk_clip_compile *c );
+void elk_clip_tri_flat_shade( struct elk_clip_compile *c );
+void elk_clip_tri( struct elk_clip_compile *c );
+void elk_clip_tri_emit_polygon( struct elk_clip_compile *c );
+void elk_clip_tri_alloc_regs( struct elk_clip_compile *c,
 			      GLuint nr_verts );
 
 
 /* Utils:
  */
 
-void brw_clip_interp_vertex( struct brw_clip_compile *c,
-			     struct brw_indirect dest_ptr,
-			     struct brw_indirect v0_ptr, /* from */
-			     struct brw_indirect v1_ptr, /* to */
-			     struct brw_reg t0,
+void elk_clip_interp_vertex( struct elk_clip_compile *c,
+			     struct elk_indirect dest_ptr,
+			     struct elk_indirect v0_ptr, /* from */
+			     struct elk_indirect v1_ptr, /* to */
+			     struct elk_reg t0,
 			     bool force_edgeflag );
 
-void brw_clip_init_planes( struct brw_clip_compile *c );
+void elk_clip_init_planes( struct elk_clip_compile *c );
 
-void brw_clip_emit_vue(struct brw_clip_compile *c,
-		       struct brw_indirect vert,
-                       enum brw_urb_write_flags flags,
+void elk_clip_emit_vue(struct elk_clip_compile *c,
+		       struct elk_indirect vert,
+                       enum elk_urb_write_flags flags,
 		       GLuint header);
 
-void brw_clip_kill_thread(struct brw_clip_compile *c);
+void elk_clip_kill_thread(struct elk_clip_compile *c);
 
-struct brw_reg brw_clip_plane_stride( struct brw_clip_compile *c );
-struct brw_reg brw_clip_plane0_address( struct brw_clip_compile *c );
+struct elk_reg elk_clip_plane_stride( struct elk_clip_compile *c );
+struct elk_reg elk_clip_plane0_address( struct elk_clip_compile *c );
 
-void brw_clip_copy_flatshaded_attributes( struct brw_clip_compile *c,
+void elk_clip_copy_flatshaded_attributes( struct elk_clip_compile *c,
                                           GLuint to, GLuint from );
 
-void brw_clip_init_clipmask( struct brw_clip_compile *c );
+void elk_clip_init_clipmask( struct elk_clip_compile *c );
 
-struct brw_reg get_tmp( struct brw_clip_compile *c );
+struct elk_reg get_tmp( struct elk_clip_compile *c );
 
-void brw_clip_project_position(struct brw_clip_compile *c,
-             struct brw_reg pos );
-void brw_clip_ff_sync(struct brw_clip_compile *c);
-void brw_clip_init_ff_sync(struct brw_clip_compile *c);
+void elk_clip_project_position(struct elk_clip_compile *c,
+             struct elk_reg pos );
+void elk_clip_ff_sync(struct elk_clip_compile *c);
+void elk_clip_init_ff_sync(struct elk_clip_compile *c);
 
 #endif

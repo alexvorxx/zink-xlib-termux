@@ -31,16 +31,16 @@ namespace elk {
 
 class dst_reg;
 
-class src_reg : public backend_reg
+class src_reg : public elk_backend_reg
 {
 public:
    DECLARE_RALLOC_CXX_OPERATORS(src_reg)
 
    void init();
 
-   src_reg(enum brw_reg_file file, int nr, const glsl_type *type);
+   src_reg(enum elk_reg_file file, int nr, const glsl_type *type);
    src_reg();
-   src_reg(struct ::brw_reg reg);
+   src_reg(struct ::elk_reg reg);
 
    bool equals(const src_reg &r) const;
    bool negative_equals(const src_reg &r) const;
@@ -54,7 +54,7 @@ public:
 };
 
 static inline src_reg
-retype(src_reg reg, enum brw_reg_type type)
+retype(src_reg reg, enum elk_reg_type type)
 {
    reg.type = type;
    return reg;
@@ -63,7 +63,7 @@ retype(src_reg reg, enum brw_reg_type type)
 namespace detail {
 
 static inline void
-add_byte_offset(backend_reg *reg, unsigned bytes)
+add_byte_offset(elk_backend_reg *reg, unsigned bytes)
 {
    switch (reg->file) {
       case BAD_FILE:
@@ -119,15 +119,15 @@ horiz_offset(src_reg reg, unsigned delta)
 
 /**
  * Reswizzle a given source register.
- * \sa brw_swizzle().
+ * \sa elk_swizzle().
  */
 static inline src_reg
 swizzle(src_reg reg, unsigned swizzle)
 {
    if (reg.file == IMM)
-      reg.ud = brw_swizzle_immediate(reg.type, reg.ud, swizzle);
+      reg.ud = elk_swizzle_immediate(reg.type, reg.ud, swizzle);
    else
-      reg.swizzle = brw_compose_swizzle(swizzle, reg.swizzle);
+      reg.swizzle = elk_compose_swizzle(swizzle, reg.swizzle);
 
    return reg;
 }
@@ -147,7 +147,7 @@ is_uniform(const src_reg &reg)
           (!reg.reladdr || is_uniform(*reg.reladdr));
 }
 
-class dst_reg : public backend_reg
+class dst_reg : public elk_backend_reg
 {
 public:
    DECLARE_RALLOC_CXX_OPERATORS(dst_reg)
@@ -155,12 +155,12 @@ public:
    void init();
 
    dst_reg();
-   dst_reg(enum brw_reg_file file, int nr);
-   dst_reg(enum brw_reg_file file, int nr, const glsl_type *type,
+   dst_reg(enum elk_reg_file file, int nr);
+   dst_reg(enum elk_reg_file file, int nr, const glsl_type *type,
            unsigned writemask);
-   dst_reg(enum brw_reg_file file, int nr, brw_reg_type type,
+   dst_reg(enum elk_reg_file file, int nr, elk_reg_type type,
            unsigned writemask);
-   dst_reg(struct ::brw_reg reg);
+   dst_reg(struct ::elk_reg reg);
    dst_reg(class vec4_visitor *v, const struct glsl_type *type);
 
    explicit dst_reg(const src_reg &reg);
@@ -171,7 +171,7 @@ public:
 };
 
 static inline dst_reg
-retype(dst_reg reg, enum brw_reg_type type)
+retype(dst_reg reg, enum elk_reg_type type)
 {
    reg.type = type;
    return reg;
@@ -219,7 +219,7 @@ writemask(dst_reg reg, unsigned mask)
  * spaces, one for each VGRF allocation.
  */
 static inline uint32_t
-reg_space(const backend_reg &r)
+reg_space(const elk_backend_reg &r)
 {
    return r.file << 16 | (r.file == VGRF ? r.nr : 0);
 }
@@ -229,7 +229,7 @@ reg_space(const backend_reg &r)
  * reg_space().
  */
 static inline unsigned
-reg_offset(const backend_reg &r)
+reg_offset(const elk_backend_reg &r)
 {
    return (r.file == VGRF || r.file == IMM ? 0 : r.nr) *
           (r.file == UNIFORM ? 16 : REG_SIZE) + r.offset +
@@ -242,21 +242,21 @@ reg_offset(const backend_reg &r)
  * spanning \p ds bytes.
  */
 static inline bool
-regions_overlap(const backend_reg &r, unsigned dr,
-                const backend_reg &s, unsigned ds)
+regions_overlap(const elk_backend_reg &r, unsigned dr,
+                const elk_backend_reg &s, unsigned ds)
 {
-   if (r.file == MRF && (r.nr & BRW_MRF_COMPR4)) {
+   if (r.file == MRF && (r.nr & ELK_MRF_COMPR4)) {
       /* COMPR4 regions are translated by the hardware during decompression
        * into two separate half-regions 4 MRFs apart from each other.
        */
-      backend_reg t0 = r;
-      t0.nr &= ~BRW_MRF_COMPR4;
-      backend_reg t1 = t0;
+      elk_backend_reg t0 = r;
+      t0.nr &= ~ELK_MRF_COMPR4;
+      elk_backend_reg t1 = t0;
       t1.offset += 4 * REG_SIZE;
       return regions_overlap(t0, dr / 2, s, ds) ||
              regions_overlap(t1, dr / 2, s, ds);
 
-   } else if (s.file == MRF && (s.nr & BRW_MRF_COMPR4)) {
+   } else if (s.file == MRF && (s.nr & ELK_MRF_COMPR4)) {
       return regions_overlap(s, ds, r, dr);
 
    } else {
@@ -266,11 +266,11 @@ regions_overlap(const backend_reg &r, unsigned dr,
    }
 }
 
-class vec4_instruction : public backend_instruction {
+class vec4_instruction : public elk_backend_instruction {
 public:
    DECLARE_RALLOC_CXX_OPERATORS(vec4_instruction)
 
-   vec4_instruction(enum opcode opcode,
+   vec4_instruction(enum elk_opcode opcode,
                     const dst_reg &dst = dst_reg(),
                     const src_reg &src0 = src_reg(),
                     const src_reg &src1 = src_reg(),
@@ -279,7 +279,7 @@ public:
    dst_reg dst;
    src_reg src[3];
 
-   enum brw_urb_write_flags urb_write_flags;
+   enum elk_urb_write_flags urb_write_flags;
 
    unsigned sol_binding; /**< gfx6: SOL binding table index */
    bool sol_final_write; /**< gfx6: send commit message */
@@ -300,30 +300,30 @@ public:
 
    bool is_align1_partial_write()
    {
-      return opcode == VEC4_OPCODE_SET_LOW_32BIT ||
-             opcode == VEC4_OPCODE_SET_HIGH_32BIT;
+      return opcode == ELK_VEC4_OPCODE_SET_LOW_32BIT ||
+             opcode == ELK_VEC4_OPCODE_SET_HIGH_32BIT;
    }
 
    bool reads_flag() const
    {
-      return predicate || opcode == VS_OPCODE_UNPACK_FLAGS_SIMD4X2;
+      return predicate || opcode == ELK_VS_OPCODE_UNPACK_FLAGS_SIMD4X2;
    }
 
    bool reads_flag(unsigned c)
    {
-      if (opcode == VS_OPCODE_UNPACK_FLAGS_SIMD4X2)
+      if (opcode == ELK_VS_OPCODE_UNPACK_FLAGS_SIMD4X2)
          return true;
 
       switch (predicate) {
-      case BRW_PREDICATE_NONE:
+      case ELK_PREDICATE_NONE:
          return false;
-      case BRW_PREDICATE_ALIGN16_REPLICATE_X:
+      case ELK_PREDICATE_ALIGN16_REPLICATE_X:
          return c == 0;
-      case BRW_PREDICATE_ALIGN16_REPLICATE_Y:
+      case ELK_PREDICATE_ALIGN16_REPLICATE_Y:
          return c == 1;
-      case BRW_PREDICATE_ALIGN16_REPLICATE_Z:
+      case ELK_PREDICATE_ALIGN16_REPLICATE_Z:
          return c == 2;
-      case BRW_PREDICATE_ALIGN16_REPLICATE_W:
+      case ELK_PREDICATE_ALIGN16_REPLICATE_W:
          return c == 3;
       default:
          return true;
@@ -332,31 +332,31 @@ public:
 
    bool writes_flag(const intel_device_info *devinfo) const
    {
-      return (conditional_mod && ((opcode != BRW_OPCODE_SEL || devinfo->ver <= 5) &&
-                                  opcode != BRW_OPCODE_CSEL &&
-                                  opcode != BRW_OPCODE_IF &&
-                                  opcode != BRW_OPCODE_WHILE));
+      return (conditional_mod && ((opcode != ELK_OPCODE_SEL || devinfo->ver <= 5) &&
+                                  opcode != ELK_OPCODE_CSEL &&
+                                  opcode != ELK_OPCODE_IF &&
+                                  opcode != ELK_OPCODE_WHILE));
    }
 
    bool reads_g0_implicitly() const
    {
       switch (opcode) {
-      case SHADER_OPCODE_TEX:
-      case SHADER_OPCODE_TXL:
-      case SHADER_OPCODE_TXD:
-      case SHADER_OPCODE_TXF:
-      case SHADER_OPCODE_TXF_CMS_W:
-      case SHADER_OPCODE_TXF_CMS:
-      case SHADER_OPCODE_TXF_MCS:
-      case SHADER_OPCODE_TXS:
-      case SHADER_OPCODE_TG4:
-      case SHADER_OPCODE_TG4_OFFSET:
-      case SHADER_OPCODE_SAMPLEINFO:
-      case VS_OPCODE_PULL_CONSTANT_LOAD:
-      case GS_OPCODE_SET_PRIMITIVE_ID:
-      case GS_OPCODE_GET_INSTANCE_ID:
-      case SHADER_OPCODE_GFX4_SCRATCH_READ:
-      case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
+      case ELK_SHADER_OPCODE_TEX:
+      case ELK_SHADER_OPCODE_TXL:
+      case ELK_SHADER_OPCODE_TXD:
+      case ELK_SHADER_OPCODE_TXF:
+      case ELK_SHADER_OPCODE_TXF_CMS_W:
+      case ELK_SHADER_OPCODE_TXF_CMS:
+      case ELK_SHADER_OPCODE_TXF_MCS:
+      case ELK_SHADER_OPCODE_TXS:
+      case ELK_SHADER_OPCODE_TG4:
+      case ELK_SHADER_OPCODE_TG4_OFFSET:
+      case ELK_SHADER_OPCODE_SAMPLEINFO:
+      case ELK_VS_OPCODE_PULL_CONSTANT_LOAD:
+      case ELK_GS_OPCODE_SET_PRIMITIVE_ID:
+      case ELK_GS_OPCODE_GET_INSTANCE_ID:
+      case ELK_SHADER_OPCODE_GFX4_SCRATCH_READ:
+      case ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE:
          return true;
       default:
          return false;
@@ -369,7 +369,7 @@ public:
  * inverted predicate.
  */
 inline vec4_instruction *
-set_predicate_inv(enum brw_predicate pred, bool inverse,
+set_predicate_inv(enum elk_predicate pred, bool inverse,
                   vec4_instruction *inst)
 {
    inst->predicate = pred;
@@ -381,7 +381,7 @@ set_predicate_inv(enum brw_predicate pred, bool inverse,
  * Make the execution of \p inst dependent on the evaluation of a predicate.
  */
 inline vec4_instruction *
-set_predicate(enum brw_predicate pred, vec4_instruction *inst)
+set_predicate(enum elk_predicate pred, vec4_instruction *inst)
 {
    return set_predicate_inv(pred, false, inst);
 }
@@ -391,7 +391,7 @@ set_predicate(enum brw_predicate pred, vec4_instruction *inst)
  * register.
  */
 inline vec4_instruction *
-set_condmod(enum brw_conditional_mod mod, vec4_instruction *inst)
+set_condmod(enum elk_conditional_mod mod, vec4_instruction *inst)
 {
    inst->conditional_mod = mod;
    return inst;
@@ -437,29 +437,29 @@ regs_read(const vec4_instruction *inst, unsigned i)
                        reg_size);
 }
 
-static inline enum brw_reg_type
+static inline enum elk_reg_type
 get_exec_type(const vec4_instruction *inst)
 {
-   enum brw_reg_type exec_type = BRW_REGISTER_TYPE_B;
+   enum elk_reg_type exec_type = ELK_REGISTER_TYPE_B;
 
    for (int i = 0; i < 3; i++) {
       if (inst->src[i].file != BAD_FILE) {
-         const brw_reg_type t = get_exec_type(brw_reg_type(inst->src[i].type));
+         const elk_reg_type t = get_exec_type(elk_reg_type(inst->src[i].type));
          if (type_sz(t) > type_sz(exec_type))
             exec_type = t;
          else if (type_sz(t) == type_sz(exec_type) &&
-                  brw_reg_type_is_floating_point(t))
+                  elk_reg_type_is_floating_point(t))
             exec_type = t;
       }
    }
 
-   if (exec_type == BRW_REGISTER_TYPE_B)
+   if (exec_type == ELK_REGISTER_TYPE_B)
       exec_type = inst->dst.type;
 
    /* TODO: We need to handle half-float conversions. */
-   assert(exec_type != BRW_REGISTER_TYPE_HF ||
-          inst->dst.type == BRW_REGISTER_TYPE_HF);
-   assert(exec_type != BRW_REGISTER_TYPE_B);
+   assert(exec_type != ELK_REGISTER_TYPE_HF ||
+          inst->dst.type == ELK_REGISTER_TYPE_HF);
+   assert(exec_type != ELK_REGISTER_TYPE_B);
 
    return exec_type;
 }

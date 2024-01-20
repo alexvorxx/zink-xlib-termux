@@ -40,7 +40,7 @@ using namespace elk;
  * Is it safe to eliminate the instruction?
  */
 static bool
-can_eliminate(const intel_device_info *devinfo, const fs_inst *inst,
+can_eliminate(const intel_device_info *devinfo, const elk_fs_inst *inst,
               BITSET_WORD *flag_live)
 {
     return !inst->is_control_flow() &&
@@ -53,12 +53,12 @@ can_eliminate(const intel_device_info *devinfo, const fs_inst *inst,
  * Is it safe to omit the write, making the destination ARF null?
  */
 static bool
-can_omit_write(const fs_inst *inst)
+can_omit_write(const elk_fs_inst *inst)
 {
    switch (inst->opcode) {
-   case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
-   case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
-   case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
+   case ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
       return true;
    default:
       /* We can eliminate the destination write for ordinary instructions,
@@ -73,7 +73,7 @@ can_omit_write(const fs_inst *inst)
 }
 
 bool
-fs_visitor::dead_code_eliminate()
+elk_fs_visitor::dead_code_eliminate()
 {
    bool progress = false;
 
@@ -88,7 +88,7 @@ fs_visitor::dead_code_eliminate()
       memcpy(flag_live, live_vars.block_data[block->num].flag_liveout,
              sizeof(BITSET_WORD));
 
-      foreach_inst_in_block_reverse_safe(fs_inst, inst, block) {
+      foreach_inst_in_block_reverse_safe(elk_fs_inst, inst, block) {
          if (inst->dst.file == VGRF) {
             const unsigned var = live_vars.var_from_reg(inst->dst);
             bool result_live = false;
@@ -98,14 +98,14 @@ fs_visitor::dead_code_eliminate()
 
             if (!result_live &&
                 (can_omit_write(inst) || can_eliminate(devinfo, inst, flag_live))) {
-               inst->dst = fs_reg(spread(retype(brw_null_reg(), inst->dst.type),
+               inst->dst = elk_fs_reg(spread(retype(elk_null_reg(), inst->dst.type),
                                          inst->dst.stride));
                progress = true;
             }
          }
 
          if (inst->dst.is_null() && can_eliminate(devinfo, inst, flag_live)) {
-            inst->opcode = BRW_OPCODE_NOP;
+            inst->opcode = ELK_OPCODE_NOP;
             progress = true;
          }
 
@@ -121,7 +121,7 @@ fs_visitor::dead_code_eliminate()
          if (!inst->predicate && inst->exec_size >= 8)
             flag_live[0] &= ~inst->flags_written(devinfo);
 
-         if (inst->opcode == BRW_OPCODE_NOP) {
+         if (inst->opcode == ELK_OPCODE_NOP) {
             inst->remove(block, true);
             continue;
          }

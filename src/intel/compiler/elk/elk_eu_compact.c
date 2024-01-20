@@ -1299,7 +1299,7 @@ static const uint32_t xe2_3src_subreg_table[32] = {
 };
 
 struct compaction_state {
-   const struct brw_isa_info *isa;
+   const struct elk_isa_info *isa;
    const uint32_t *control_index_table;
    const uint32_t *datatype_table;
    const uint16_t *subreg_table;
@@ -1308,56 +1308,56 @@ struct compaction_state {
 };
 
 static void compaction_state_init(struct compaction_state *c,
-                                  const struct brw_isa_info *isa);
+                                  const struct elk_isa_info *isa);
 
 static bool
 set_control_index(const struct compaction_state *c,
-                  brw_compact_inst *dst, const brw_inst *src)
+                  elk_compact_inst *dst, const elk_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    uint32_t uncompacted; /* 17b/G45; 19b/IVB+; 21b/TGL+ */
 
    if (devinfo->ver >= 20) {
-      uncompacted = (brw_inst_bits(src, 95, 92) << 14) | /*  4b */
-                    (brw_inst_bits(src, 34, 34) << 13) | /*  1b */
-                    (brw_inst_bits(src, 32, 32) << 12) | /*  1b */
-                    (brw_inst_bits(src, 31, 31) << 11) | /*  1b */
-                    (brw_inst_bits(src, 28, 28) << 10) | /*  1b */
-                    (brw_inst_bits(src, 27, 26) <<  8) | /*  2b */
-                    (brw_inst_bits(src, 25, 24) <<  6) | /*  2b */
-                    (brw_inst_bits(src, 23, 21) <<  3) | /*  3b */
-                    (brw_inst_bits(src, 20, 18));        /*  3b */
+      uncompacted = (elk_inst_bits(src, 95, 92) << 14) | /*  4b */
+                    (elk_inst_bits(src, 34, 34) << 13) | /*  1b */
+                    (elk_inst_bits(src, 32, 32) << 12) | /*  1b */
+                    (elk_inst_bits(src, 31, 31) << 11) | /*  1b */
+                    (elk_inst_bits(src, 28, 28) << 10) | /*  1b */
+                    (elk_inst_bits(src, 27, 26) <<  8) | /*  2b */
+                    (elk_inst_bits(src, 25, 24) <<  6) | /*  2b */
+                    (elk_inst_bits(src, 23, 21) <<  3) | /*  3b */
+                    (elk_inst_bits(src, 20, 18));        /*  3b */
    } else if (devinfo->ver >= 12) {
-      uncompacted = (brw_inst_bits(src, 95, 92) << 17) | /*  4b */
-                    (brw_inst_bits(src, 34, 34) << 16) | /*  1b */
-                    (brw_inst_bits(src, 33, 33) << 15) | /*  1b */
-                    (brw_inst_bits(src, 32, 32) << 14) | /*  1b */
-                    (brw_inst_bits(src, 31, 31) << 13) | /*  1b */
-                    (brw_inst_bits(src, 28, 28) << 12) | /*  1b */
-                    (brw_inst_bits(src, 27, 24) <<  8) | /*  4b */
-                    (brw_inst_bits(src, 23, 22) <<  6) | /*  2b */
-                    (brw_inst_bits(src, 21, 19) <<  3) | /*  3b */
-                    (brw_inst_bits(src, 18, 16));        /*  3b */
+      uncompacted = (elk_inst_bits(src, 95, 92) << 17) | /*  4b */
+                    (elk_inst_bits(src, 34, 34) << 16) | /*  1b */
+                    (elk_inst_bits(src, 33, 33) << 15) | /*  1b */
+                    (elk_inst_bits(src, 32, 32) << 14) | /*  1b */
+                    (elk_inst_bits(src, 31, 31) << 13) | /*  1b */
+                    (elk_inst_bits(src, 28, 28) << 12) | /*  1b */
+                    (elk_inst_bits(src, 27, 24) <<  8) | /*  4b */
+                    (elk_inst_bits(src, 23, 22) <<  6) | /*  2b */
+                    (elk_inst_bits(src, 21, 19) <<  3) | /*  3b */
+                    (elk_inst_bits(src, 18, 16));        /*  3b */
    } else if (devinfo->ver >= 8) {
-      uncompacted = (brw_inst_bits(src, 33, 31) << 16) | /*  3b */
-                    (brw_inst_bits(src, 23, 12) <<  4) | /* 12b */
-                    (brw_inst_bits(src, 10,  9) <<  2) | /*  2b */
-                    (brw_inst_bits(src, 34, 34) <<  1) | /*  1b */
-                    (brw_inst_bits(src,  8,  8));        /*  1b */
+      uncompacted = (elk_inst_bits(src, 33, 31) << 16) | /*  3b */
+                    (elk_inst_bits(src, 23, 12) <<  4) | /* 12b */
+                    (elk_inst_bits(src, 10,  9) <<  2) | /*  2b */
+                    (elk_inst_bits(src, 34, 34) <<  1) | /*  1b */
+                    (elk_inst_bits(src,  8,  8));        /*  1b */
    } else {
-      uncompacted = (brw_inst_bits(src, 31, 31) << 16) | /*  1b */
-                    (brw_inst_bits(src, 23,  8));        /* 16b */
+      uncompacted = (elk_inst_bits(src, 31, 31) << 16) | /*  1b */
+                    (elk_inst_bits(src, 23,  8));        /* 16b */
 
       /* On gfx7, the flag register and subregister numbers are integrated into
        * the control index.
        */
       if (devinfo->ver == 7)
-         uncompacted |= brw_inst_bits(src, 90, 89) << 17; /* 2b */
+         uncompacted |= elk_inst_bits(src, 90, 89) << 17; /* 2b */
    }
 
    for (int i = 0; i < 32; i++) {
       if (c->control_index_table[i] == uncompacted) {
-         brw_compact_inst_set_control_index(devinfo, dst, i);
+         elk_compact_inst_set_control_index(devinfo, dst, i);
 	 return true;
       }
    }
@@ -1366,41 +1366,41 @@ set_control_index(const struct compaction_state *c,
 }
 
 static bool
-set_datatype_index(const struct compaction_state *c, brw_compact_inst *dst,
-                   const brw_inst *src, bool is_immediate)
+set_datatype_index(const struct compaction_state *c, elk_compact_inst *dst,
+                   const elk_inst *src, bool is_immediate)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    uint32_t uncompacted; /* 18b/G45+; 21b/BDW+; 20b/TGL+ */
 
    if (devinfo->ver >= 12) {
-      uncompacted = (brw_inst_bits(src, 91, 88) << 15) | /*  4b */
-                    (brw_inst_bits(src, 66, 66) << 14) | /*  1b */
-                    (brw_inst_bits(src, 50, 50) << 13) | /*  1b */
-                    (brw_inst_bits(src, 49, 48) << 11) | /*  2b */
-                    (brw_inst_bits(src, 47, 47) << 10) | /*  1b */
-                    (brw_inst_bits(src, 46, 46) <<  9) | /*  1b */
-                    (brw_inst_bits(src, 43, 40) <<  5) | /*  4b */
-                    (brw_inst_bits(src, 39, 36) <<  1) | /*  4b */
-                    (brw_inst_bits(src, 35, 35));        /*  1b */
+      uncompacted = (elk_inst_bits(src, 91, 88) << 15) | /*  4b */
+                    (elk_inst_bits(src, 66, 66) << 14) | /*  1b */
+                    (elk_inst_bits(src, 50, 50) << 13) | /*  1b */
+                    (elk_inst_bits(src, 49, 48) << 11) | /*  2b */
+                    (elk_inst_bits(src, 47, 47) << 10) | /*  1b */
+                    (elk_inst_bits(src, 46, 46) <<  9) | /*  1b */
+                    (elk_inst_bits(src, 43, 40) <<  5) | /*  4b */
+                    (elk_inst_bits(src, 39, 36) <<  1) | /*  4b */
+                    (elk_inst_bits(src, 35, 35));        /*  1b */
 
       /* Src1.RegFile overlaps with the immediate, so ignore it if an immediate
        * is present
        */
       if (!is_immediate) {
-         uncompacted |= brw_inst_bits(src, 98, 98) << 19; /* 1b */
+         uncompacted |= elk_inst_bits(src, 98, 98) << 19; /* 1b */
       }
    } else if (devinfo->ver >= 8) {
-      uncompacted = (brw_inst_bits(src, 63, 61) << 18) | /*  3b */
-                    (brw_inst_bits(src, 94, 89) << 12) | /*  6b */
-                    (brw_inst_bits(src, 46, 35));        /* 12b */
+      uncompacted = (elk_inst_bits(src, 63, 61) << 18) | /*  3b */
+                    (elk_inst_bits(src, 94, 89) << 12) | /*  6b */
+                    (elk_inst_bits(src, 46, 35));        /* 12b */
    } else {
-      uncompacted = (brw_inst_bits(src, 63, 61) << 15) | /*  3b */
-                    (brw_inst_bits(src, 46, 32));        /* 15b */
+      uncompacted = (elk_inst_bits(src, 63, 61) << 15) | /*  3b */
+                    (elk_inst_bits(src, 46, 32));        /* 15b */
    }
 
    for (int i = 0; i < 32; i++) {
       if (c->datatype_table[i] == uncompacted) {
-         brw_compact_inst_set_datatype_index(devinfo, dst, i);
+         elk_compact_inst_set_datatype_index(devinfo, dst, i);
 	 return true;
       }
    }
@@ -1409,8 +1409,8 @@ set_datatype_index(const struct compaction_state *c, brw_compact_inst *dst,
 }
 
 static bool
-set_subreg_index(const struct compaction_state *c, brw_compact_inst *dst,
-                 const brw_inst *src, bool is_immediate)
+set_subreg_index(const struct compaction_state *c, elk_compact_inst *dst,
+                 const elk_inst *src, bool is_immediate)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    const unsigned table_len = devinfo->ver >= 20 ?
@@ -1418,27 +1418,27 @@ set_subreg_index(const struct compaction_state *c, brw_compact_inst *dst,
    uint16_t uncompacted; /* 15b/G45+; 12b/Xe2+ */
 
    if (devinfo->ver >= 20) {
-      uncompacted = (brw_inst_bits(src, 33, 33) << 0) |    /* 1b */
-                    (brw_inst_bits(src, 55, 51) << 1) |    /* 5b */
-                    (brw_inst_bits(src, 71, 67) << 6) |    /* 5b */
-                    (brw_inst_bits(src, 87, 87) << 11);    /* 1b */
+      uncompacted = (elk_inst_bits(src, 33, 33) << 0) |    /* 1b */
+                    (elk_inst_bits(src, 55, 51) << 1) |    /* 5b */
+                    (elk_inst_bits(src, 71, 67) << 6) |    /* 5b */
+                    (elk_inst_bits(src, 87, 87) << 11);    /* 1b */
    } else if (devinfo->ver >= 12) {
-      uncompacted = (brw_inst_bits(src, 55, 51) << 0) |    /* 5b */
-                    (brw_inst_bits(src, 71, 67) << 5);     /* 5b */
+      uncompacted = (elk_inst_bits(src, 55, 51) << 0) |    /* 5b */
+                    (elk_inst_bits(src, 71, 67) << 5);     /* 5b */
 
       if (!is_immediate)
-         uncompacted |= brw_inst_bits(src, 103, 99) << 10; /* 5b */
+         uncompacted |= elk_inst_bits(src, 103, 99) << 10; /* 5b */
    } else {
-      uncompacted = (brw_inst_bits(src, 52, 48) << 0) |    /* 5b */
-                    (brw_inst_bits(src, 68, 64) << 5);     /* 5b */
+      uncompacted = (elk_inst_bits(src, 52, 48) << 0) |    /* 5b */
+                    (elk_inst_bits(src, 68, 64) << 5);     /* 5b */
 
       if (!is_immediate)
-         uncompacted |= brw_inst_bits(src, 100, 96) << 10; /* 5b */
+         uncompacted |= elk_inst_bits(src, 100, 96) << 10; /* 5b */
    }
 
    for (int i = 0; i < table_len; i++) {
       if (c->subreg_table[i] == uncompacted) {
-         brw_compact_inst_set_subreg_index(devinfo, dst, i);
+         elk_compact_inst_set_subreg_index(devinfo, dst, i);
 	 return true;
       }
    }
@@ -1447,8 +1447,8 @@ set_subreg_index(const struct compaction_state *c, brw_compact_inst *dst,
 }
 
 static bool
-set_src0_index(const struct compaction_state *c, brw_compact_inst *dst,
-               const brw_inst *src)
+set_src0_index(const struct compaction_state *c, elk_compact_inst *dst,
+               const elk_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    uint16_t uncompacted; /* 12b/G45+; 11b/Xe2+ */
@@ -1458,20 +1458,20 @@ set_src0_index(const struct compaction_state *c, brw_compact_inst *dst,
       table_len = (devinfo->ver >= 20 ? ARRAY_SIZE(xe2_src0_index_table) :
                    ARRAY_SIZE(gfx12_src0_index_table));
       uncompacted = (devinfo->ver >= 20 ? 0 :
-                     brw_inst_bits(src, 87, 87) << 11) | /*  1b */
-                    (brw_inst_bits(src, 86, 84) << 8) | /*  3b */
-                    (brw_inst_bits(src, 83, 81) << 5) | /*  3b */
-                    (brw_inst_bits(src, 80, 80) << 4) | /*  1b */
-                    (brw_inst_bits(src, 65, 64) << 2) | /*  2b */
-                    (brw_inst_bits(src, 45, 44));       /*  2b */
+                     elk_inst_bits(src, 87, 87) << 11) | /*  1b */
+                    (elk_inst_bits(src, 86, 84) << 8) | /*  3b */
+                    (elk_inst_bits(src, 83, 81) << 5) | /*  3b */
+                    (elk_inst_bits(src, 80, 80) << 4) | /*  1b */
+                    (elk_inst_bits(src, 65, 64) << 2) | /*  2b */
+                    (elk_inst_bits(src, 45, 44));       /*  2b */
    } else {
       table_len = ARRAY_SIZE(gfx8_src_index_table);
-      uncompacted = brw_inst_bits(src, 88, 77);         /* 12b */
+      uncompacted = elk_inst_bits(src, 88, 77);         /* 12b */
    }
 
    for (int i = 0; i < table_len; i++) {
       if (c->src0_index_table[i] == uncompacted) {
-         brw_compact_inst_set_src0_index(devinfo, dst, i);
+         elk_compact_inst_set_src0_index(devinfo, dst, i);
 	 return true;
       }
    }
@@ -1480,17 +1480,17 @@ set_src0_index(const struct compaction_state *c, brw_compact_inst *dst,
 }
 
 static bool
-set_src1_index(const struct compaction_state *c, brw_compact_inst *dst,
-               const brw_inst *src, bool is_immediate, unsigned imm)
+set_src1_index(const struct compaction_state *c, elk_compact_inst *dst,
+               const elk_inst *src, bool is_immediate, unsigned imm)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    if (is_immediate) {
       if (devinfo->ver >= 12) {
          /* src1 index takes the low 4 bits of the 12-bit compacted value */
-         brw_compact_inst_set_src1_index(devinfo, dst, imm & 0xf);
+         elk_compact_inst_set_src1_index(devinfo, dst, imm & 0xf);
       } else {
          /* src1 index takes the high 5 bits of the 13-bit compacted value */
-         brw_compact_inst_set_src1_index(devinfo, dst, imm >> 8);
+         elk_compact_inst_set_src1_index(devinfo, dst, imm >> 8);
       }
       return true;
    } else {
@@ -1499,27 +1499,27 @@ set_src1_index(const struct compaction_state *c, brw_compact_inst *dst,
 
       if (devinfo->ver >= 20) {
          table_len = ARRAY_SIZE(xe2_src1_index_table);
-         uncompacted = (brw_inst_bits(src, 121, 120) << 14) | /*  2b */
-                       (brw_inst_bits(src, 118, 116) << 11) | /*  3b */
-                       (brw_inst_bits(src, 115, 113) <<  8) | /*  3b */
-                       (brw_inst_bits(src, 112, 112) <<  7) | /*  1b */
-                       (brw_inst_bits(src, 103,  99) <<  2) | /*  5b */
-                       (brw_inst_bits(src,  97,  96));        /*  2b */
+         uncompacted = (elk_inst_bits(src, 121, 120) << 14) | /*  2b */
+                       (elk_inst_bits(src, 118, 116) << 11) | /*  3b */
+                       (elk_inst_bits(src, 115, 113) <<  8) | /*  3b */
+                       (elk_inst_bits(src, 112, 112) <<  7) | /*  1b */
+                       (elk_inst_bits(src, 103,  99) <<  2) | /*  5b */
+                       (elk_inst_bits(src,  97,  96));        /*  2b */
       } else if (devinfo->ver >= 12) {
          table_len = ARRAY_SIZE(gfx12_src0_index_table);
-         uncompacted = (brw_inst_bits(src, 121, 120) << 10) | /*  2b */
-                       (brw_inst_bits(src, 119, 116) <<  6) | /*  4b */
-                       (brw_inst_bits(src, 115, 113) <<  3) | /*  3b */
-                       (brw_inst_bits(src, 112, 112) <<  2) | /*  1b */
-                       (brw_inst_bits(src,  97,  96));        /*  2b */
+         uncompacted = (elk_inst_bits(src, 121, 120) << 10) | /*  2b */
+                       (elk_inst_bits(src, 119, 116) <<  6) | /*  4b */
+                       (elk_inst_bits(src, 115, 113) <<  3) | /*  3b */
+                       (elk_inst_bits(src, 112, 112) <<  2) | /*  1b */
+                       (elk_inst_bits(src,  97,  96));        /*  2b */
       } else {
          table_len = ARRAY_SIZE(gfx8_src_index_table);
-         uncompacted = brw_inst_bits(src, 120, 109);          /* 12b */
+         uncompacted = elk_inst_bits(src, 120, 109);          /* 12b */
       }
 
       for (int i = 0; i < table_len; i++) {
          if (c->src1_index_table[i] == uncompacted) {
-            brw_compact_inst_set_src1_index(devinfo, dst, i);
+            elk_compact_inst_set_src1_index(devinfo, dst, i);
             return true;
          }
       }
@@ -1530,31 +1530,31 @@ set_src1_index(const struct compaction_state *c, brw_compact_inst *dst,
 
 static bool
 set_3src_control_index(const struct intel_device_info *devinfo,
-                       brw_compact_inst *dst, const brw_inst *src,
+                       elk_compact_inst *dst, const elk_inst *src,
                        bool is_dpas)
 {
    assert(devinfo->ver >= 8);
 
    if (devinfo->ver >= 20) {
-      assert(is_dpas || !brw_inst_bits(src, 49, 49));
+      assert(is_dpas || !elk_inst_bits(src, 49, 49));
 
       const uint64_t uncompacted =        /* 34b/Xe2+ */
-         (brw_inst_bits(src, 95, 92) << 30) | /*  4b */
-         (brw_inst_bits(src, 90, 88) << 27) | /*  3b */
-         (brw_inst_bits(src, 82, 80) << 24) | /*  3b */
-         (brw_inst_bits(src, 50, 50) << 23) | /*  1b */
-         (brw_inst_bits(src, 49, 48) << 21) | /*  2b */
-         (brw_inst_bits(src, 42, 40) << 18) | /*  3b */
-         (brw_inst_bits(src, 39, 39) << 17) | /*  1b */
-         (brw_inst_bits(src, 38, 36) << 14) | /*  3b */
-         (brw_inst_bits(src, 34, 34) << 13) | /*  1b */
-         (brw_inst_bits(src, 32, 32) << 12) | /*  1b */
-         (brw_inst_bits(src, 31, 31) << 11) | /*  1b */
-         (brw_inst_bits(src, 28, 28) << 10) | /*  1b */
-         (brw_inst_bits(src, 27, 26) <<  8) | /*  2b */
-         (brw_inst_bits(src, 25, 24) <<  6) | /*  2b */
-         (brw_inst_bits(src, 23, 21) <<  3) | /*  3b */
-         (brw_inst_bits(src, 20, 18));        /*  3b */
+         (elk_inst_bits(src, 95, 92) << 30) | /*  4b */
+         (elk_inst_bits(src, 90, 88) << 27) | /*  3b */
+         (elk_inst_bits(src, 82, 80) << 24) | /*  3b */
+         (elk_inst_bits(src, 50, 50) << 23) | /*  1b */
+         (elk_inst_bits(src, 49, 48) << 21) | /*  2b */
+         (elk_inst_bits(src, 42, 40) << 18) | /*  3b */
+         (elk_inst_bits(src, 39, 39) << 17) | /*  1b */
+         (elk_inst_bits(src, 38, 36) << 14) | /*  3b */
+         (elk_inst_bits(src, 34, 34) << 13) | /*  1b */
+         (elk_inst_bits(src, 32, 32) << 12) | /*  1b */
+         (elk_inst_bits(src, 31, 31) << 11) | /*  1b */
+         (elk_inst_bits(src, 28, 28) << 10) | /*  1b */
+         (elk_inst_bits(src, 27, 26) <<  8) | /*  2b */
+         (elk_inst_bits(src, 25, 24) <<  6) | /*  2b */
+         (elk_inst_bits(src, 23, 21) <<  3) | /*  3b */
+         (elk_inst_bits(src, 20, 18));        /*  3b */
 
       /* The bits used to index the tables for 3src and 3src-dpas
        * are the same, so just need to pick the right one.
@@ -1565,77 +1565,77 @@ set_3src_control_index(const struct intel_device_info *devinfo,
                                       ARRAY_SIZE(xe2_3src_control_index_table);
       for (unsigned i = 0; i < size; i++) {
          if (table[i] == uncompacted) {
-            brw_compact_inst_set_3src_control_index(devinfo, dst, i);
+            elk_compact_inst_set_3src_control_index(devinfo, dst, i);
             return true;
          }
       }
    } else if (devinfo->verx10 >= 125) {
       uint64_t uncompacted =             /* 37b/XeHP+ */
-         (brw_inst_bits(src, 95, 92) << 33) | /*  4b */
-         (brw_inst_bits(src, 90, 88) << 30) | /*  3b */
-         (brw_inst_bits(src, 82, 80) << 27) | /*  3b */
-         (brw_inst_bits(src, 50, 50) << 26) | /*  1b */
-         (brw_inst_bits(src, 49, 48) << 24) | /*  2b */
-         (brw_inst_bits(src, 42, 40) << 21) | /*  3b */
-         (brw_inst_bits(src, 39, 39) << 20) | /*  1b */
-         (brw_inst_bits(src, 38, 36) << 17) | /*  3b */
-         (brw_inst_bits(src, 34, 34) << 16) | /*  1b */
-         (brw_inst_bits(src, 33, 33) << 15) | /*  1b */
-         (brw_inst_bits(src, 32, 32) << 14) | /*  1b */
-         (brw_inst_bits(src, 31, 31) << 13) | /*  1b */
-         (brw_inst_bits(src, 28, 28) << 12) | /*  1b */
-         (brw_inst_bits(src, 27, 24) <<  8) | /*  4b */
-         (brw_inst_bits(src, 23, 23) <<  7) | /*  1b */
-         (brw_inst_bits(src, 22, 22) <<  6) | /*  1b */
-         (brw_inst_bits(src, 21, 19) <<  3) | /*  3b */
-         (brw_inst_bits(src, 18, 16));        /*  3b */
+         (elk_inst_bits(src, 95, 92) << 33) | /*  4b */
+         (elk_inst_bits(src, 90, 88) << 30) | /*  3b */
+         (elk_inst_bits(src, 82, 80) << 27) | /*  3b */
+         (elk_inst_bits(src, 50, 50) << 26) | /*  1b */
+         (elk_inst_bits(src, 49, 48) << 24) | /*  2b */
+         (elk_inst_bits(src, 42, 40) << 21) | /*  3b */
+         (elk_inst_bits(src, 39, 39) << 20) | /*  1b */
+         (elk_inst_bits(src, 38, 36) << 17) | /*  3b */
+         (elk_inst_bits(src, 34, 34) << 16) | /*  1b */
+         (elk_inst_bits(src, 33, 33) << 15) | /*  1b */
+         (elk_inst_bits(src, 32, 32) << 14) | /*  1b */
+         (elk_inst_bits(src, 31, 31) << 13) | /*  1b */
+         (elk_inst_bits(src, 28, 28) << 12) | /*  1b */
+         (elk_inst_bits(src, 27, 24) <<  8) | /*  4b */
+         (elk_inst_bits(src, 23, 23) <<  7) | /*  1b */
+         (elk_inst_bits(src, 22, 22) <<  6) | /*  1b */
+         (elk_inst_bits(src, 21, 19) <<  3) | /*  3b */
+         (elk_inst_bits(src, 18, 16));        /*  3b */
 
       for (unsigned i = 0; i < ARRAY_SIZE(xehp_3src_control_index_table); i++) {
          if (xehp_3src_control_index_table[i] == uncompacted) {
-            brw_compact_inst_set_3src_control_index(devinfo, dst, i);
+            elk_compact_inst_set_3src_control_index(devinfo, dst, i);
             return true;
          }
       }
    } else if (devinfo->ver >= 12) {
       uint64_t uncompacted =             /* 36b/TGL+ */
-         (brw_inst_bits(src, 95, 92) << 32) | /*  4b */
-         (brw_inst_bits(src, 90, 88) << 29) | /*  3b */
-         (brw_inst_bits(src, 82, 80) << 26) | /*  3b */
-         (brw_inst_bits(src, 50, 50) << 25) | /*  1b */
-         (brw_inst_bits(src, 48, 48) << 24) | /*  1b */
-         (brw_inst_bits(src, 42, 40) << 21) | /*  3b */
-         (brw_inst_bits(src, 39, 39) << 20) | /*  1b */
-         (brw_inst_bits(src, 38, 36) << 17) | /*  3b */
-         (brw_inst_bits(src, 34, 34) << 16) | /*  1b */
-         (brw_inst_bits(src, 33, 33) << 15) | /*  1b */
-         (brw_inst_bits(src, 32, 32) << 14) | /*  1b */
-         (brw_inst_bits(src, 31, 31) << 13) | /*  1b */
-         (brw_inst_bits(src, 28, 28) << 12) | /*  1b */
-         (brw_inst_bits(src, 27, 24) <<  8) | /*  4b */
-         (brw_inst_bits(src, 23, 23) <<  7) | /*  1b */
-         (brw_inst_bits(src, 22, 22) <<  6) | /*  1b */
-         (brw_inst_bits(src, 21, 19) <<  3) | /*  3b */
-         (brw_inst_bits(src, 18, 16));        /*  3b */
+         (elk_inst_bits(src, 95, 92) << 32) | /*  4b */
+         (elk_inst_bits(src, 90, 88) << 29) | /*  3b */
+         (elk_inst_bits(src, 82, 80) << 26) | /*  3b */
+         (elk_inst_bits(src, 50, 50) << 25) | /*  1b */
+         (elk_inst_bits(src, 48, 48) << 24) | /*  1b */
+         (elk_inst_bits(src, 42, 40) << 21) | /*  3b */
+         (elk_inst_bits(src, 39, 39) << 20) | /*  1b */
+         (elk_inst_bits(src, 38, 36) << 17) | /*  3b */
+         (elk_inst_bits(src, 34, 34) << 16) | /*  1b */
+         (elk_inst_bits(src, 33, 33) << 15) | /*  1b */
+         (elk_inst_bits(src, 32, 32) << 14) | /*  1b */
+         (elk_inst_bits(src, 31, 31) << 13) | /*  1b */
+         (elk_inst_bits(src, 28, 28) << 12) | /*  1b */
+         (elk_inst_bits(src, 27, 24) <<  8) | /*  4b */
+         (elk_inst_bits(src, 23, 23) <<  7) | /*  1b */
+         (elk_inst_bits(src, 22, 22) <<  6) | /*  1b */
+         (elk_inst_bits(src, 21, 19) <<  3) | /*  3b */
+         (elk_inst_bits(src, 18, 16));        /*  3b */
 
       for (unsigned i = 0; i < ARRAY_SIZE(gfx12_3src_control_index_table); i++) {
          if (gfx12_3src_control_index_table[i] == uncompacted) {
-            brw_compact_inst_set_3src_control_index(devinfo, dst, i);
+            elk_compact_inst_set_3src_control_index(devinfo, dst, i);
             return true;
          }
       }
    } else {
       uint32_t uncompacted = /* 24b/BDW; 26b/CHV/SKL+ */
-         (brw_inst_bits(src, 34, 32) << 21) |  /*  3b */
-         (brw_inst_bits(src, 28,  8));         /* 21b */
+         (elk_inst_bits(src, 34, 32) << 21) |  /*  3b */
+         (elk_inst_bits(src, 28,  8));         /* 21b */
 
       if (devinfo->ver >= 9 || devinfo->platform == INTEL_PLATFORM_CHV) {
          uncompacted |=
-            brw_inst_bits(src, 36, 35) << 24;  /*  2b */
+            elk_inst_bits(src, 36, 35) << 24;  /*  2b */
       }
 
       for (unsigned i = 0; i < ARRAY_SIZE(gfx8_3src_control_index_table); i++) {
          if (gfx8_3src_control_index_table[i] == uncompacted) {
-            brw_compact_inst_set_3src_control_index(devinfo, dst, i);
+            elk_compact_inst_set_3src_control_index(devinfo, dst, i);
             return true;
          }
       }
@@ -1646,28 +1646,28 @@ set_3src_control_index(const struct intel_device_info *devinfo,
 
 static bool
 set_3src_source_index(const struct intel_device_info *devinfo,
-                      brw_compact_inst *dst, const brw_inst *src,
+                      elk_compact_inst *dst, const elk_inst *src,
                       bool is_dpas)
 {
    assert(devinfo->ver >= 8);
 
    if (devinfo->ver >= 12) {
       uint32_t uncompacted =               /* 21b/TGL+ */
-         (brw_inst_bits(src, 114, 114) << 20) | /*  1b */
-         (brw_inst_bits(src, 113, 112) << 18) | /*  2b */
-         (brw_inst_bits(src,  98,  98) << 17) | /*  1b */
-         (brw_inst_bits(src,  97,  96) << 15) | /*  2b */
-         (brw_inst_bits(src,  91,  91) << 14) | /*  1b */
-         (brw_inst_bits(src,  87,  86) << 12) | /*  2b */
-         (brw_inst_bits(src,  85,  84) << 10) | /*  2b */
-         (brw_inst_bits(src,  83,  83) <<  9) | /*  1b */
-         (brw_inst_bits(src,  66,  66) <<  8) | /*  1b */
-         (brw_inst_bits(src,  65,  64) <<  6) | /*  2b */
-         (brw_inst_bits(src,  47,  47) <<  5) | /*  1b */
-         (brw_inst_bits(src,  46,  46) <<  4) | /*  1b */
-         (brw_inst_bits(src,  45,  44) <<  2) | /*  2b */
-         (brw_inst_bits(src,  43,  43) <<  1) | /*  1b */
-         (brw_inst_bits(src,  35,  35));        /*  1b */
+         (elk_inst_bits(src, 114, 114) << 20) | /*  1b */
+         (elk_inst_bits(src, 113, 112) << 18) | /*  2b */
+         (elk_inst_bits(src,  98,  98) << 17) | /*  1b */
+         (elk_inst_bits(src,  97,  96) << 15) | /*  2b */
+         (elk_inst_bits(src,  91,  91) << 14) | /*  1b */
+         (elk_inst_bits(src,  87,  86) << 12) | /*  2b */
+         (elk_inst_bits(src,  85,  84) << 10) | /*  2b */
+         (elk_inst_bits(src,  83,  83) <<  9) | /*  1b */
+         (elk_inst_bits(src,  66,  66) <<  8) | /*  1b */
+         (elk_inst_bits(src,  65,  64) <<  6) | /*  2b */
+         (elk_inst_bits(src,  47,  47) <<  5) | /*  1b */
+         (elk_inst_bits(src,  46,  46) <<  4) | /*  1b */
+         (elk_inst_bits(src,  45,  44) <<  2) | /*  2b */
+         (elk_inst_bits(src,  43,  43) <<  1) | /*  1b */
+         (elk_inst_bits(src,  35,  35));        /*  1b */
 
       /* In Xe2, the bits used to index the tables for 3src and 3src-dpas
        * are the same, so just need to pick the right one.
@@ -1685,32 +1685,32 @@ set_3src_source_index(const struct intel_device_info *devinfo,
 
       for (unsigned i = 0; i < three_src_source_index_table_len; i++) {
          if (three_src_source_index_table[i] == uncompacted) {
-            brw_compact_inst_set_3src_source_index(devinfo, dst, i);
+            elk_compact_inst_set_3src_source_index(devinfo, dst, i);
             return true;
          }
       }
    } else {
       uint64_t uncompacted =    /* 46b/BDW; 49b/CHV/SKL+ */
-         (brw_inst_bits(src,  83,  83) << 43) |   /*  1b */
-         (brw_inst_bits(src, 114, 107) << 35) |   /*  8b */
-         (brw_inst_bits(src,  93,  86) << 27) |   /*  8b */
-         (brw_inst_bits(src,  72,  65) << 19) |   /*  8b */
-         (brw_inst_bits(src,  55,  37));          /* 19b */
+         (elk_inst_bits(src,  83,  83) << 43) |   /*  1b */
+         (elk_inst_bits(src, 114, 107) << 35) |   /*  8b */
+         (elk_inst_bits(src,  93,  86) << 27) |   /*  8b */
+         (elk_inst_bits(src,  72,  65) << 19) |   /*  8b */
+         (elk_inst_bits(src,  55,  37));          /* 19b */
 
       if (devinfo->ver >= 9 || devinfo->platform == INTEL_PLATFORM_CHV) {
          uncompacted |=
-            (brw_inst_bits(src, 126, 125) << 47) | /* 2b */
-            (brw_inst_bits(src, 105, 104) << 45) | /* 2b */
-            (brw_inst_bits(src,  84,  84) << 44);  /* 1b */
+            (elk_inst_bits(src, 126, 125) << 47) | /* 2b */
+            (elk_inst_bits(src, 105, 104) << 45) | /* 2b */
+            (elk_inst_bits(src,  84,  84) << 44);  /* 1b */
       } else {
          uncompacted |=
-            (brw_inst_bits(src, 125, 125) << 45) | /* 1b */
-            (brw_inst_bits(src, 104, 104) << 44);  /* 1b */
+            (elk_inst_bits(src, 125, 125) << 45) | /* 1b */
+            (elk_inst_bits(src, 104, 104) << 44);  /* 1b */
       }
 
       for (unsigned i = 0; i < ARRAY_SIZE(gfx8_3src_source_index_table); i++) {
          if (gfx8_3src_source_index_table[i] == uncompacted) {
-            brw_compact_inst_set_3src_source_index(devinfo, dst, i);
+            elk_compact_inst_set_3src_source_index(devinfo, dst, i);
             return true;
          }
       }
@@ -1721,15 +1721,15 @@ set_3src_source_index(const struct intel_device_info *devinfo,
 
 static bool
 set_3src_subreg_index(const struct intel_device_info *devinfo,
-                      brw_compact_inst *dst, const brw_inst *src)
+                      elk_compact_inst *dst, const elk_inst *src)
 {
    assert(devinfo->ver >= 12);
 
    uint32_t uncompacted =               /* 20b/TGL+ */
-      (brw_inst_bits(src, 119, 115) << 15) | /*  5b */
-      (brw_inst_bits(src, 103,  99) << 10) | /*  5b */
-      (brw_inst_bits(src,  71,  67) <<  5) | /*  5b */
-      (brw_inst_bits(src,  55,  51));        /*  5b */
+      (elk_inst_bits(src, 119, 115) << 15) | /*  5b */
+      (elk_inst_bits(src, 103,  99) << 10) | /*  5b */
+      (elk_inst_bits(src,  71,  67) <<  5) | /*  5b */
+      (elk_inst_bits(src,  55,  51));        /*  5b */
 
    const uint32_t *table = devinfo->ver >= 20 ? xe2_3src_subreg_table :
                            gfx12_3src_subreg_table;
@@ -1739,7 +1739,7 @@ set_3src_subreg_index(const struct intel_device_info *devinfo,
 
    for (unsigned i = 0; i < len; i++) {
       if (table[i] == uncompacted) {
-         brw_compact_inst_set_3src_subreg_index(devinfo, dst, i);
+         elk_compact_inst_set_3src_subreg_index(devinfo, dst, i);
 	 return true;
       }
    }
@@ -1748,14 +1748,14 @@ set_3src_subreg_index(const struct intel_device_info *devinfo,
 }
 
 static bool
-has_unmapped_bits(const struct brw_isa_info *isa, const brw_inst *src)
+has_unmapped_bits(const struct elk_isa_info *isa, const elk_inst *src)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
    /* EOT can only be mapped on a send if the src1 is an immediate */
-   if ((brw_inst_opcode(isa, src) == BRW_OPCODE_SENDC ||
-        brw_inst_opcode(isa, src) == BRW_OPCODE_SEND) &&
-       brw_inst_eot(devinfo, src))
+   if ((elk_inst_opcode(isa, src) == ELK_OPCODE_SENDC ||
+        elk_inst_opcode(isa, src) == ELK_OPCODE_SEND) &&
+       elk_inst_eot(devinfo, src))
       return true;
 
    /* Check for instruction bits that don't map to any of the fields of the
@@ -1768,48 +1768,48 @@ has_unmapped_bits(const struct brw_isa_info *isa, const brw_inst *src)
     *  - UIP[31] (bit 95 on Gfx8)
     */
    if (devinfo->ver >= 12) {
-      assert(!brw_inst_bits(src, 7,  7));
+      assert(!elk_inst_bits(src, 7,  7));
       return false;
    } else if (devinfo->ver >= 8) {
-      assert(!brw_inst_bits(src, 7,  7));
-      return brw_inst_bits(src, 95, 95) ||
-             brw_inst_bits(src, 47, 47) ||
-             brw_inst_bits(src, 11, 11);
+      assert(!elk_inst_bits(src, 7,  7));
+      return elk_inst_bits(src, 95, 95) ||
+             elk_inst_bits(src, 47, 47) ||
+             elk_inst_bits(src, 11, 11);
    } else {
-      assert(!brw_inst_bits(src, 7,  7) &&
-             !(devinfo->ver < 7 && brw_inst_bits(src, 90, 90)));
-      return brw_inst_bits(src, 95, 91) ||
-             brw_inst_bits(src, 47, 47);
+      assert(!elk_inst_bits(src, 7,  7) &&
+             !(devinfo->ver < 7 && elk_inst_bits(src, 90, 90)));
+      return elk_inst_bits(src, 95, 91) ||
+             elk_inst_bits(src, 47, 47);
    }
 }
 
 static bool
 has_3src_unmapped_bits(const struct intel_device_info *devinfo,
-                       const brw_inst *src, bool is_dpas)
+                       const elk_inst *src, bool is_dpas)
 {
    /* Check for three-source instruction bits that don't map to any of the
     * fields of the compacted instruction.  All of them seem to be reserved
     * bits currently.
     */
    if (devinfo->ver >= 20) {
-      assert(is_dpas || !brw_inst_bits(src, 49, 49));
-      assert(!brw_inst_bits(src, 33, 33));
-      assert(!brw_inst_bits(src, 7, 7));
+      assert(is_dpas || !elk_inst_bits(src, 49, 49));
+      assert(!elk_inst_bits(src, 33, 33));
+      assert(!elk_inst_bits(src, 7, 7));
    } else if (devinfo->ver >= 12) {
-      assert(is_dpas || !brw_inst_bits(src, 49, 49));
-      assert(!brw_inst_bits(src, 7, 7));
+      assert(is_dpas || !elk_inst_bits(src, 49, 49));
+      assert(!elk_inst_bits(src, 7, 7));
    } else if (devinfo->ver >= 9 || devinfo->platform == INTEL_PLATFORM_CHV) {
-      assert(!brw_inst_bits(src, 127, 127) &&
-             !brw_inst_bits(src, 7,  7));
+      assert(!elk_inst_bits(src, 127, 127) &&
+             !elk_inst_bits(src, 7,  7));
    } else {
       assert(devinfo->ver >= 8);
-      assert(!brw_inst_bits(src, 127, 126) &&
-             !brw_inst_bits(src, 105, 105) &&
-             !brw_inst_bits(src, 84, 84) &&
-             !brw_inst_bits(src, 7,  7));
+      assert(!elk_inst_bits(src, 127, 126) &&
+             !elk_inst_bits(src, 105, 105) &&
+             !elk_inst_bits(src, 84, 84) &&
+             !elk_inst_bits(src, 7,  7));
 
       /* Src1Type and Src2Type, used for mixed-precision floating point */
-      if (brw_inst_bits(src, 36, 35))
+      if (elk_inst_bits(src, 36, 35))
          return true;
    }
 
@@ -1817,20 +1817,20 @@ has_3src_unmapped_bits(const struct intel_device_info *devinfo,
 }
 
 static bool
-brw_try_compact_3src_instruction(const struct brw_isa_info *isa,
-                                 brw_compact_inst *dst, const brw_inst *src)
+elk_try_compact_3src_instruction(const struct elk_isa_info *isa,
+                                 elk_compact_inst *dst, const elk_inst *src)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
    assert(devinfo->ver >= 8);
 
-   bool is_dpas = brw_inst_opcode(isa, src) == BRW_OPCODE_DPAS;
+   bool is_dpas = elk_inst_opcode(isa, src) == ELK_OPCODE_DPAS;
    if (has_3src_unmapped_bits(devinfo, src, is_dpas))
       return false;
 
 #define compact(field) \
-   brw_compact_inst_set_3src_##field(devinfo, dst, brw_inst_3src_##field(devinfo, src))
+   elk_compact_inst_set_3src_##field(devinfo, dst, elk_inst_3src_##field(devinfo, src))
 #define compact_a16(field) \
-   brw_compact_inst_set_3src_##field(devinfo, dst, brw_inst_3src_a16_##field(devinfo, src))
+   elk_compact_inst_set_3src_##field(devinfo, dst, elk_inst_3src_a16_##field(devinfo, src))
 
    compact(hw_opcode);
 
@@ -1864,7 +1864,7 @@ brw_try_compact_3src_instruction(const struct brw_isa_info *isa,
       compact_a16(src1_subreg_nr);
       compact_a16(src2_subreg_nr);
    }
-   brw_compact_inst_set_3src_cmpt_control(devinfo, dst, true);
+   elk_compact_inst_set_3src_cmpt_control(devinfo, dst, true);
 
 #undef compact
 #undef compact_a16
@@ -1886,16 +1886,16 @@ brw_try_compact_3src_instruction(const struct brw_isa_info *isa,
  */
 static int
 compact_immediate(const struct intel_device_info *devinfo,
-                  enum brw_reg_type type, unsigned imm)
+                  enum elk_reg_type type, unsigned imm)
 {
    if (devinfo->ver >= 12) {
       /* 16-bit immediates need to be replicated through the 32-bit immediate
        * field
        */
       switch (type) {
-      case BRW_REGISTER_TYPE_W:
-      case BRW_REGISTER_TYPE_UW:
-      case BRW_REGISTER_TYPE_HF:
+      case ELK_REGISTER_TYPE_W:
+      case ELK_REGISTER_TYPE_UW:
+      case ELK_REGISTER_TYPE_HF:
          if ((imm >> 16) != (imm & 0xffff))
             return -1;
          break;
@@ -1904,45 +1904,45 @@ compact_immediate(const struct intel_device_info *devinfo,
       }
 
       switch (type) {
-      case BRW_REGISTER_TYPE_F:
+      case ELK_REGISTER_TYPE_F:
          /* We get the high 12-bits as-is; rest must be zero */
          if ((imm & 0xfffff) == 0)
             return (imm >> 20) & 0xfff;
          break;
-      case BRW_REGISTER_TYPE_HF:
+      case ELK_REGISTER_TYPE_HF:
          /* We get the high 12-bits as-is; rest must be zero */
          if ((imm & 0xf) == 0)
             return (imm >> 4) & 0xfff;
          break;
-      case BRW_REGISTER_TYPE_UD:
-      case BRW_REGISTER_TYPE_VF:
-      case BRW_REGISTER_TYPE_UV:
-      case BRW_REGISTER_TYPE_V:
+      case ELK_REGISTER_TYPE_UD:
+      case ELK_REGISTER_TYPE_VF:
+      case ELK_REGISTER_TYPE_UV:
+      case ELK_REGISTER_TYPE_V:
          /* We get the low 12-bits as-is; rest must be zero */
          if ((imm & 0xfffff000) == 0)
             return imm & 0xfff;
          break;
-      case BRW_REGISTER_TYPE_UW:
+      case ELK_REGISTER_TYPE_UW:
          /* We get the low 12-bits as-is; rest must be zero */
          if ((imm & 0xf000) == 0)
             return imm & 0xfff;
          break;
-      case BRW_REGISTER_TYPE_D:
+      case ELK_REGISTER_TYPE_D:
          /* We get the low 11-bits as-is; 12th is replicated */
          if (((int)imm >> 11) == 0 || ((int)imm >> 11) == -1)
             return imm & 0xfff;
          break;
-      case BRW_REGISTER_TYPE_W:
+      case ELK_REGISTER_TYPE_W:
          /* We get the low 11-bits as-is; 12th is replicated */
          if (((short)imm >> 11) == 0 || ((short)imm >> 11) == -1)
             return imm & 0xfff;
          break;
-      case BRW_REGISTER_TYPE_NF:
-      case BRW_REGISTER_TYPE_DF:
-      case BRW_REGISTER_TYPE_Q:
-      case BRW_REGISTER_TYPE_UQ:
-      case BRW_REGISTER_TYPE_B:
-      case BRW_REGISTER_TYPE_UB:
+      case ELK_REGISTER_TYPE_NF:
+      case ELK_REGISTER_TYPE_DF:
+      case ELK_REGISTER_TYPE_Q:
+      case ELK_REGISTER_TYPE_UQ:
+      case ELK_REGISTER_TYPE_B:
+      case ELK_REGISTER_TYPE_UB:
          return -1;
       }
    } else {
@@ -1957,35 +1957,35 @@ compact_immediate(const struct intel_device_info *devinfo,
 
 static int
 uncompact_immediate(const struct intel_device_info *devinfo,
-                    enum brw_reg_type type, unsigned compact_imm)
+                    enum elk_reg_type type, unsigned compact_imm)
 {
    if (devinfo->ver >= 12) {
       switch (type) {
-      case BRW_REGISTER_TYPE_F:
+      case ELK_REGISTER_TYPE_F:
          return compact_imm << 20;
-      case BRW_REGISTER_TYPE_HF:
+      case ELK_REGISTER_TYPE_HF:
          return (compact_imm << 20) | (compact_imm << 4);
-      case BRW_REGISTER_TYPE_UD:
-      case BRW_REGISTER_TYPE_VF:
-      case BRW_REGISTER_TYPE_UV:
-      case BRW_REGISTER_TYPE_V:
+      case ELK_REGISTER_TYPE_UD:
+      case ELK_REGISTER_TYPE_VF:
+      case ELK_REGISTER_TYPE_UV:
+      case ELK_REGISTER_TYPE_V:
          return compact_imm;
-      case BRW_REGISTER_TYPE_UW:
+      case ELK_REGISTER_TYPE_UW:
          /* Replicate */
          return compact_imm << 16 | compact_imm;
-      case BRW_REGISTER_TYPE_D:
+      case ELK_REGISTER_TYPE_D:
          /* Extend the 12th bit into the high 20 bits */
          return (int)(compact_imm << 20) >> 20;
-      case BRW_REGISTER_TYPE_W:
+      case ELK_REGISTER_TYPE_W:
          /* Extend the 12th bit into the high 4 bits and replicate */
          return ((int)(compact_imm << 20) >> 4) |
                 ((unsigned short)((short)(compact_imm << 4) >> 4));
-      case BRW_REGISTER_TYPE_NF:
-      case BRW_REGISTER_TYPE_DF:
-      case BRW_REGISTER_TYPE_Q:
-      case BRW_REGISTER_TYPE_UQ:
-      case BRW_REGISTER_TYPE_B:
-      case BRW_REGISTER_TYPE_UB:
+      case ELK_REGISTER_TYPE_NF:
+      case ELK_REGISTER_TYPE_DF:
+      case ELK_REGISTER_TYPE_Q:
+      case ELK_REGISTER_TYPE_UQ:
+      case ELK_REGISTER_TYPE_B:
+      case ELK_REGISTER_TYPE_UB:
          unreachable("not reached");
       }
    } else {
@@ -1997,14 +1997,14 @@ uncompact_immediate(const struct intel_device_info *devinfo,
 }
 
 static bool
-has_immediate(const struct intel_device_info *devinfo, const brw_inst *inst,
-              enum brw_reg_type *type)
+has_immediate(const struct intel_device_info *devinfo, const elk_inst *inst,
+              enum elk_reg_type *type)
 {
-   if (brw_inst_src0_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE) {
-      *type = brw_inst_src0_type(devinfo, inst);
+   if (elk_inst_src0_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
+      *type = elk_inst_src0_type(devinfo, inst);
       return *type != INVALID_REG_TYPE;
-   } else if (brw_inst_src1_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE) {
-      *type = brw_inst_src1_type(devinfo, inst);
+   } else if (elk_inst_src1_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
+      *type = elk_inst_src1_type(devinfo, inst);
       return *type != INVALID_REG_TYPE;
    }
 
@@ -2015,8 +2015,8 @@ has_immediate(const struct intel_device_info *devinfo, const brw_inst *inst,
  * Applies some small changes to instruction types to increase chances of
  * compaction.
  */
-static brw_inst
-precompact(const struct brw_isa_info *isa, brw_inst inst)
+static elk_inst
+precompact(const struct elk_isa_info *isa, elk_inst inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
@@ -2025,26 +2025,26 @@ precompact(const struct brw_isa_info *isa, brw_inst inst)
     * sequential elements, so convert to those before compacting.
     */
    if (devinfo->verx10 >= 125) {
-      if (brw_inst_src0_reg_file(devinfo, &inst) == BRW_GENERAL_REGISTER_FILE &&
-          brw_inst_src0_vstride(devinfo, &inst) > BRW_VERTICAL_STRIDE_1 &&
-          brw_inst_src0_vstride(devinfo, &inst) == (brw_inst_src0_width(devinfo, &inst) + 1) &&
-          brw_inst_src0_hstride(devinfo, &inst) == BRW_HORIZONTAL_STRIDE_1) {
-         brw_inst_set_src0_vstride(devinfo, &inst, BRW_VERTICAL_STRIDE_1);
-         brw_inst_set_src0_width(devinfo, &inst, BRW_WIDTH_1);
-         brw_inst_set_src0_hstride(devinfo, &inst, BRW_HORIZONTAL_STRIDE_0);
+      if (elk_inst_src0_reg_file(devinfo, &inst) == ELK_GENERAL_REGISTER_FILE &&
+          elk_inst_src0_vstride(devinfo, &inst) > ELK_VERTICAL_STRIDE_1 &&
+          elk_inst_src0_vstride(devinfo, &inst) == (elk_inst_src0_width(devinfo, &inst) + 1) &&
+          elk_inst_src0_hstride(devinfo, &inst) == ELK_HORIZONTAL_STRIDE_1) {
+         elk_inst_set_src0_vstride(devinfo, &inst, ELK_VERTICAL_STRIDE_1);
+         elk_inst_set_src0_width(devinfo, &inst, ELK_WIDTH_1);
+         elk_inst_set_src0_hstride(devinfo, &inst, ELK_HORIZONTAL_STRIDE_0);
       }
 
-      if (brw_inst_src1_reg_file(devinfo, &inst) == BRW_GENERAL_REGISTER_FILE &&
-          brw_inst_src1_vstride(devinfo, &inst) > BRW_VERTICAL_STRIDE_1 &&
-          brw_inst_src1_vstride(devinfo, &inst) == (brw_inst_src1_width(devinfo, &inst) + 1) &&
-          brw_inst_src1_hstride(devinfo, &inst) == BRW_HORIZONTAL_STRIDE_1) {
-         brw_inst_set_src1_vstride(devinfo, &inst, BRW_VERTICAL_STRIDE_1);
-         brw_inst_set_src1_width(devinfo, &inst, BRW_WIDTH_1);
-         brw_inst_set_src1_hstride(devinfo, &inst, BRW_HORIZONTAL_STRIDE_0);
+      if (elk_inst_src1_reg_file(devinfo, &inst) == ELK_GENERAL_REGISTER_FILE &&
+          elk_inst_src1_vstride(devinfo, &inst) > ELK_VERTICAL_STRIDE_1 &&
+          elk_inst_src1_vstride(devinfo, &inst) == (elk_inst_src1_width(devinfo, &inst) + 1) &&
+          elk_inst_src1_hstride(devinfo, &inst) == ELK_HORIZONTAL_STRIDE_1) {
+         elk_inst_set_src1_vstride(devinfo, &inst, ELK_VERTICAL_STRIDE_1);
+         elk_inst_set_src1_width(devinfo, &inst, ELK_WIDTH_1);
+         elk_inst_set_src1_hstride(devinfo, &inst, ELK_HORIZONTAL_STRIDE_0);
       }
    }
 
-   if (brw_inst_src0_reg_file(devinfo, &inst) != BRW_IMMEDIATE_VALUE)
+   if (elk_inst_src0_reg_file(devinfo, &inst) != ELK_IMMEDIATE_VALUE)
       return inst;
 
    /* The Bspec's section titled "Non-present Operands" claims that if src0
@@ -2075,12 +2075,12 @@ precompact(const struct brw_isa_info *isa, brw_inst inst)
     */
    if (devinfo->ver >= 6 &&
        !(devinfo->platform == INTEL_PLATFORM_HSW &&
-         brw_inst_opcode(isa, &inst) == BRW_OPCODE_DIM) &&
+         elk_inst_opcode(isa, &inst) == ELK_OPCODE_DIM) &&
        !(devinfo->ver >= 8 &&
-         (brw_inst_src0_type(devinfo, &inst) == BRW_REGISTER_TYPE_DF ||
-          brw_inst_src0_type(devinfo, &inst) == BRW_REGISTER_TYPE_UQ ||
-          brw_inst_src0_type(devinfo, &inst) == BRW_REGISTER_TYPE_Q))) {
-      brw_inst_set_src1_reg_hw_type(devinfo, &inst, 0);
+         (elk_inst_src0_type(devinfo, &inst) == ELK_REGISTER_TYPE_DF ||
+          elk_inst_src0_type(devinfo, &inst) == ELK_REGISTER_TYPE_UQ ||
+          elk_inst_src0_type(devinfo, &inst) == ELK_REGISTER_TYPE_Q))) {
+      elk_inst_set_src1_reg_hw_type(devinfo, &inst, 0);
    }
 
    /* Compacted instructions only have 12-bits (plus 1 for the other 20)
@@ -2098,12 +2098,12 @@ precompact(const struct brw_isa_info *isa, brw_inst inst)
     * removing the need for this.
     */
    if (devinfo->ver < 12 &&
-       brw_inst_imm_ud(devinfo, &inst) == 0x0 &&
-       brw_inst_src0_type(devinfo, &inst) == BRW_REGISTER_TYPE_F &&
-       brw_inst_dst_type(devinfo, &inst) == BRW_REGISTER_TYPE_F &&
-       brw_inst_dst_hstride(devinfo, &inst) == BRW_HORIZONTAL_STRIDE_1) {
-      enum brw_reg_file file = brw_inst_src0_reg_file(devinfo, &inst);
-      brw_inst_set_src0_file_type(devinfo, &inst, file, BRW_REGISTER_TYPE_VF);
+       elk_inst_imm_ud(devinfo, &inst) == 0x0 &&
+       elk_inst_src0_type(devinfo, &inst) == ELK_REGISTER_TYPE_F &&
+       elk_inst_dst_type(devinfo, &inst) == ELK_REGISTER_TYPE_F &&
+       elk_inst_dst_hstride(devinfo, &inst) == ELK_HORIZONTAL_STRIDE_1) {
+      enum elk_reg_file file = elk_inst_src0_reg_file(devinfo, &inst);
+      elk_inst_set_src0_file_type(devinfo, &inst, file, ELK_REGISTER_TYPE_VF);
    }
 
    /* There are no mappings for dst:d | i:d, so if the immediate is suitable
@@ -2112,16 +2112,16 @@ precompact(const struct brw_isa_info *isa, brw_inst inst)
     * FINISHME: Use dst:f | imm:f on Gfx12
     */
    if (devinfo->ver < 12 &&
-       compact_immediate(devinfo, BRW_REGISTER_TYPE_D,
-                         brw_inst_imm_ud(devinfo, &inst)) != -1 &&
-       brw_inst_cond_modifier(devinfo, &inst) == BRW_CONDITIONAL_NONE &&
-       brw_inst_src0_type(devinfo, &inst) == BRW_REGISTER_TYPE_D &&
-       brw_inst_dst_type(devinfo, &inst) == BRW_REGISTER_TYPE_D) {
-      enum brw_reg_file src_file = brw_inst_src0_reg_file(devinfo, &inst);
-      enum brw_reg_file dst_file = brw_inst_dst_reg_file(devinfo, &inst);
+       compact_immediate(devinfo, ELK_REGISTER_TYPE_D,
+                         elk_inst_imm_ud(devinfo, &inst)) != -1 &&
+       elk_inst_cond_modifier(devinfo, &inst) == ELK_CONDITIONAL_NONE &&
+       elk_inst_src0_type(devinfo, &inst) == ELK_REGISTER_TYPE_D &&
+       elk_inst_dst_type(devinfo, &inst) == ELK_REGISTER_TYPE_D) {
+      enum elk_reg_file src_file = elk_inst_src0_reg_file(devinfo, &inst);
+      enum elk_reg_file dst_file = elk_inst_dst_reg_file(devinfo, &inst);
 
-      brw_inst_set_src0_file_type(devinfo, &inst, src_file, BRW_REGISTER_TYPE_UD);
-      brw_inst_set_dst_file_type(devinfo, &inst, dst_file, BRW_REGISTER_TYPE_UD);
+      elk_inst_set_src0_file_type(devinfo, &inst, src_file, ELK_REGISTER_TYPE_UD);
+      elk_inst_set_dst_file_type(devinfo, &inst, dst_file, ELK_REGISTER_TYPE_UD);
    }
 
    return inst;
@@ -2131,21 +2131,21 @@ precompact(const struct brw_isa_info *isa, brw_inst inst)
  * Tries to compact instruction src into dst.
  *
  * It doesn't modify dst unless src is compactable, which is relied on by
- * brw_compact_instructions().
+ * elk_compact_instructions().
  */
 static bool
 try_compact_instruction(const struct compaction_state *c,
-                        brw_compact_inst *dst, const brw_inst *src)
+                        elk_compact_inst *dst, const elk_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
-   brw_compact_inst temp;
+   elk_compact_inst temp;
 
-   assert(brw_inst_cmpt_control(devinfo, src) == 0);
+   assert(elk_inst_cmpt_control(devinfo, src) == 0);
 
-   if (is_3src(c->isa, brw_inst_opcode(c->isa, src))) {
+   if (elk_is_3src(c->isa, elk_inst_opcode(c->isa, src))) {
       if (devinfo->ver >= 8) {
          memset(&temp, 0, sizeof(temp));
-         if (brw_try_compact_3src_instruction(c->isa, &temp, src)) {
+         if (elk_try_compact_3src_instruction(c->isa, &temp, src)) {
             *dst = temp;
             return true;
          } else {
@@ -2156,7 +2156,7 @@ try_compact_instruction(const struct compaction_state *c,
       }
    }
 
-   enum brw_reg_type type;
+   enum elk_reg_type type;
    bool is_immediate = has_immediate(devinfo, src, &type);
 
    unsigned compacted_imm = 0;
@@ -2167,7 +2167,7 @@ try_compact_instruction(const struct compaction_state *c,
          return false;
 
       compacted_imm = compact_immediate(devinfo, type,
-                                        brw_inst_imm_ud(devinfo, src));
+                                        elk_inst_imm_ud(devinfo, src));
       if (compacted_imm == -1)
          return false;
    }
@@ -2178,10 +2178,10 @@ try_compact_instruction(const struct compaction_state *c,
    memset(&temp, 0, sizeof(temp));
 
 #define compact(field) \
-   brw_compact_inst_set_##field(devinfo, &temp, brw_inst_##field(devinfo, src))
+   elk_compact_inst_set_##field(devinfo, &temp, elk_inst_##field(devinfo, src))
 #define compact_reg(field) \
-   brw_compact_inst_set_##field##_reg_nr(devinfo, &temp, \
-                                       brw_inst_##field##_da_reg_nr(devinfo, src))
+   elk_compact_inst_set_##field##_reg_nr(devinfo, &temp, \
+                                       elk_inst_##field##_da_reg_nr(devinfo, src))
 
    compact(hw_opcode);
    compact(debug_control);
@@ -2204,7 +2204,7 @@ try_compact_instruction(const struct compaction_state *c,
 
       if (is_immediate) {
          /* src1 reg takes the high 8 bits (of the 12-bit compacted value) */
-         brw_compact_inst_set_src1_reg_nr(devinfo, &temp, compacted_imm >> 4);
+         elk_compact_inst_set_src1_reg_nr(devinfo, &temp, compacted_imm >> 4);
       } else {
          compact_reg(src1);
       }
@@ -2225,12 +2225,12 @@ try_compact_instruction(const struct compaction_state *c,
 
       if (is_immediate) {
          /* src1 reg takes the low 8 bits (of the 13-bit compacted value) */
-         brw_compact_inst_set_src1_reg_nr(devinfo, &temp, compacted_imm & 0xff);
+         elk_compact_inst_set_src1_reg_nr(devinfo, &temp, compacted_imm & 0xff);
       } else {
          compact_reg(src1);
       }
    }
-   brw_compact_inst_set_cmpt_control(devinfo, &temp, true);
+   elk_compact_inst_set_cmpt_control(devinfo, &temp, true);
 
 #undef compact
 #undef compact_reg
@@ -2241,8 +2241,8 @@ try_compact_instruction(const struct compaction_state *c,
 }
 
 bool
-brw_try_compact_instruction(const struct brw_isa_info *isa,
-                            brw_compact_inst *dst, const brw_inst *src)
+elk_try_compact_instruction(const struct elk_isa_info *isa,
+                            elk_compact_inst *dst, const elk_inst *src)
 {
    struct compaction_state c;
    compaction_state_init(&c, isa);
@@ -2250,244 +2250,244 @@ brw_try_compact_instruction(const struct brw_isa_info *isa,
 }
 
 static void
-set_uncompacted_control(const struct compaction_state *c, brw_inst *dst,
-                        brw_compact_inst *src)
+set_uncompacted_control(const struct compaction_state *c, elk_inst *dst,
+                        elk_compact_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    uint32_t uncompacted =
-      c->control_index_table[brw_compact_inst_control_index(devinfo, src)];
+      c->control_index_table[elk_compact_inst_control_index(devinfo, src)];
 
    if (devinfo->ver >= 20) {
-      brw_inst_set_bits(dst, 95, 92, (uncompacted >> 14) & 0xf);
-      brw_inst_set_bits(dst, 34, 34, (uncompacted >> 13) & 0x1);
-      brw_inst_set_bits(dst, 32, 32, (uncompacted >> 12) & 0x1);
-      brw_inst_set_bits(dst, 31, 31, (uncompacted >> 11) & 0x1);
-      brw_inst_set_bits(dst, 28, 28, (uncompacted >> 10) & 0x1);
-      brw_inst_set_bits(dst, 27, 26, (uncompacted >>  8) & 0x3);
-      brw_inst_set_bits(dst, 25, 24, (uncompacted >>  6) & 0x3);
-      brw_inst_set_bits(dst, 23, 21, (uncompacted >>  3) & 0x7);
-      brw_inst_set_bits(dst, 20, 18, (uncompacted >>  0) & 0x7);
+      elk_inst_set_bits(dst, 95, 92, (uncompacted >> 14) & 0xf);
+      elk_inst_set_bits(dst, 34, 34, (uncompacted >> 13) & 0x1);
+      elk_inst_set_bits(dst, 32, 32, (uncompacted >> 12) & 0x1);
+      elk_inst_set_bits(dst, 31, 31, (uncompacted >> 11) & 0x1);
+      elk_inst_set_bits(dst, 28, 28, (uncompacted >> 10) & 0x1);
+      elk_inst_set_bits(dst, 27, 26, (uncompacted >>  8) & 0x3);
+      elk_inst_set_bits(dst, 25, 24, (uncompacted >>  6) & 0x3);
+      elk_inst_set_bits(dst, 23, 21, (uncompacted >>  3) & 0x7);
+      elk_inst_set_bits(dst, 20, 18, (uncompacted >>  0) & 0x7);
    } else if (devinfo->ver >= 12) {
-      brw_inst_set_bits(dst, 95, 92, (uncompacted >> 17));
-      brw_inst_set_bits(dst, 34, 34, (uncompacted >> 16) & 0x1);
-      brw_inst_set_bits(dst, 33, 33, (uncompacted >> 15) & 0x1);
-      brw_inst_set_bits(dst, 32, 32, (uncompacted >> 14) & 0x1);
-      brw_inst_set_bits(dst, 31, 31, (uncompacted >> 13) & 0x1);
-      brw_inst_set_bits(dst, 28, 28, (uncompacted >> 12) & 0x1);
-      brw_inst_set_bits(dst, 27, 24, (uncompacted >>  8) & 0xf);
-      brw_inst_set_bits(dst, 23, 22, (uncompacted >>  6) & 0x3);
-      brw_inst_set_bits(dst, 21, 19, (uncompacted >>  3) & 0x7);
-      brw_inst_set_bits(dst, 18, 16, (uncompacted >>  0) & 0x7);
+      elk_inst_set_bits(dst, 95, 92, (uncompacted >> 17));
+      elk_inst_set_bits(dst, 34, 34, (uncompacted >> 16) & 0x1);
+      elk_inst_set_bits(dst, 33, 33, (uncompacted >> 15) & 0x1);
+      elk_inst_set_bits(dst, 32, 32, (uncompacted >> 14) & 0x1);
+      elk_inst_set_bits(dst, 31, 31, (uncompacted >> 13) & 0x1);
+      elk_inst_set_bits(dst, 28, 28, (uncompacted >> 12) & 0x1);
+      elk_inst_set_bits(dst, 27, 24, (uncompacted >>  8) & 0xf);
+      elk_inst_set_bits(dst, 23, 22, (uncompacted >>  6) & 0x3);
+      elk_inst_set_bits(dst, 21, 19, (uncompacted >>  3) & 0x7);
+      elk_inst_set_bits(dst, 18, 16, (uncompacted >>  0) & 0x7);
    } else if (devinfo->ver >= 8) {
-      brw_inst_set_bits(dst, 33, 31, (uncompacted >> 16));
-      brw_inst_set_bits(dst, 23, 12, (uncompacted >>  4) & 0xfff);
-      brw_inst_set_bits(dst, 10,  9, (uncompacted >>  2) & 0x3);
-      brw_inst_set_bits(dst, 34, 34, (uncompacted >>  1) & 0x1);
-      brw_inst_set_bits(dst,  8,  8, (uncompacted >>  0) & 0x1);
+      elk_inst_set_bits(dst, 33, 31, (uncompacted >> 16));
+      elk_inst_set_bits(dst, 23, 12, (uncompacted >>  4) & 0xfff);
+      elk_inst_set_bits(dst, 10,  9, (uncompacted >>  2) & 0x3);
+      elk_inst_set_bits(dst, 34, 34, (uncompacted >>  1) & 0x1);
+      elk_inst_set_bits(dst,  8,  8, (uncompacted >>  0) & 0x1);
    } else {
-      brw_inst_set_bits(dst, 31, 31, (uncompacted >> 16) & 0x1);
-      brw_inst_set_bits(dst, 23,  8, (uncompacted & 0xffff));
+      elk_inst_set_bits(dst, 31, 31, (uncompacted >> 16) & 0x1);
+      elk_inst_set_bits(dst, 23,  8, (uncompacted & 0xffff));
 
       if (devinfo->ver == 7)
-         brw_inst_set_bits(dst, 90, 89, uncompacted >> 17);
+         elk_inst_set_bits(dst, 90, 89, uncompacted >> 17);
    }
 }
 
 static void
-set_uncompacted_datatype(const struct compaction_state *c, brw_inst *dst,
-                         brw_compact_inst *src)
+set_uncompacted_datatype(const struct compaction_state *c, elk_inst *dst,
+                         elk_compact_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    uint32_t uncompacted =
-      c->datatype_table[brw_compact_inst_datatype_index(devinfo, src)];
+      c->datatype_table[elk_compact_inst_datatype_index(devinfo, src)];
 
    if (devinfo->ver >= 12) {
-      brw_inst_set_bits(dst, 98, 98, (uncompacted >> 19));
-      brw_inst_set_bits(dst, 91, 88, (uncompacted >> 15) & 0xf);
-      brw_inst_set_bits(dst, 66, 66, (uncompacted >> 14) & 0x1);
-      brw_inst_set_bits(dst, 50, 50, (uncompacted >> 13) & 0x1);
-      brw_inst_set_bits(dst, 49, 48, (uncompacted >> 11) & 0x3);
-      brw_inst_set_bits(dst, 47, 47, (uncompacted >> 10) & 0x1);
-      brw_inst_set_bits(dst, 46, 46, (uncompacted >>  9) & 0x1);
-      brw_inst_set_bits(dst, 43, 40, (uncompacted >>  5) & 0xf);
-      brw_inst_set_bits(dst, 39, 36, (uncompacted >>  1) & 0xf);
-      brw_inst_set_bits(dst, 35, 35, (uncompacted >>  0) & 0x1);
+      elk_inst_set_bits(dst, 98, 98, (uncompacted >> 19));
+      elk_inst_set_bits(dst, 91, 88, (uncompacted >> 15) & 0xf);
+      elk_inst_set_bits(dst, 66, 66, (uncompacted >> 14) & 0x1);
+      elk_inst_set_bits(dst, 50, 50, (uncompacted >> 13) & 0x1);
+      elk_inst_set_bits(dst, 49, 48, (uncompacted >> 11) & 0x3);
+      elk_inst_set_bits(dst, 47, 47, (uncompacted >> 10) & 0x1);
+      elk_inst_set_bits(dst, 46, 46, (uncompacted >>  9) & 0x1);
+      elk_inst_set_bits(dst, 43, 40, (uncompacted >>  5) & 0xf);
+      elk_inst_set_bits(dst, 39, 36, (uncompacted >>  1) & 0xf);
+      elk_inst_set_bits(dst, 35, 35, (uncompacted >>  0) & 0x1);
    } else if (devinfo->ver >= 8) {
-      brw_inst_set_bits(dst, 63, 61, (uncompacted >> 18));
-      brw_inst_set_bits(dst, 94, 89, (uncompacted >> 12) & 0x3f);
-      brw_inst_set_bits(dst, 46, 35, (uncompacted >>  0) & 0xfff);
+      elk_inst_set_bits(dst, 63, 61, (uncompacted >> 18));
+      elk_inst_set_bits(dst, 94, 89, (uncompacted >> 12) & 0x3f);
+      elk_inst_set_bits(dst, 46, 35, (uncompacted >>  0) & 0xfff);
    } else {
-      brw_inst_set_bits(dst, 63, 61, (uncompacted >> 15));
-      brw_inst_set_bits(dst, 46, 32, (uncompacted & 0x7fff));
+      elk_inst_set_bits(dst, 63, 61, (uncompacted >> 15));
+      elk_inst_set_bits(dst, 46, 32, (uncompacted & 0x7fff));
    }
 }
 
 static void
-set_uncompacted_subreg(const struct compaction_state *c, brw_inst *dst,
-                       brw_compact_inst *src)
+set_uncompacted_subreg(const struct compaction_state *c, elk_inst *dst,
+                       elk_compact_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    uint16_t uncompacted =
-      c->subreg_table[brw_compact_inst_subreg_index(devinfo, src)];
+      c->subreg_table[elk_compact_inst_subreg_index(devinfo, src)];
 
    if (devinfo->ver >= 20) {
-      brw_inst_set_bits(dst, 33, 33, (uncompacted >> 0) & 0x1);
-      brw_inst_set_bits(dst, 55, 51, (uncompacted >> 1) & 0x1f);
-      brw_inst_set_bits(dst, 71, 67, (uncompacted >> 6) & 0x1f);
-      brw_inst_set_bits(dst, 87, 87, (uncompacted >> 11) & 0x1);
+      elk_inst_set_bits(dst, 33, 33, (uncompacted >> 0) & 0x1);
+      elk_inst_set_bits(dst, 55, 51, (uncompacted >> 1) & 0x1f);
+      elk_inst_set_bits(dst, 71, 67, (uncompacted >> 6) & 0x1f);
+      elk_inst_set_bits(dst, 87, 87, (uncompacted >> 11) & 0x1);
    } else if (devinfo->ver >= 12) {
-      brw_inst_set_bits(dst, 103, 99, (uncompacted >> 10));
-      brw_inst_set_bits(dst,  71, 67, (uncompacted >>  5) & 0x1f);
-      brw_inst_set_bits(dst,  55, 51, (uncompacted >>  0) & 0x1f);
+      elk_inst_set_bits(dst, 103, 99, (uncompacted >> 10));
+      elk_inst_set_bits(dst,  71, 67, (uncompacted >>  5) & 0x1f);
+      elk_inst_set_bits(dst,  55, 51, (uncompacted >>  0) & 0x1f);
    } else {
-      brw_inst_set_bits(dst, 100, 96, (uncompacted >> 10));
-      brw_inst_set_bits(dst,  68, 64, (uncompacted >>  5) & 0x1f);
-      brw_inst_set_bits(dst,  52, 48, (uncompacted >>  0) & 0x1f);
+      elk_inst_set_bits(dst, 100, 96, (uncompacted >> 10));
+      elk_inst_set_bits(dst,  68, 64, (uncompacted >>  5) & 0x1f);
+      elk_inst_set_bits(dst,  52, 48, (uncompacted >>  0) & 0x1f);
    }
 }
 
 static void
-set_uncompacted_src0(const struct compaction_state *c, brw_inst *dst,
-                     brw_compact_inst *src)
+set_uncompacted_src0(const struct compaction_state *c, elk_inst *dst,
+                     elk_compact_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
-   uint32_t compacted = brw_compact_inst_src0_index(devinfo, src);
+   uint32_t compacted = elk_compact_inst_src0_index(devinfo, src);
    uint16_t uncompacted = c->src0_index_table[compacted];
 
    if (devinfo->ver >= 12) {
       if (devinfo->ver < 20)
-         brw_inst_set_bits(dst, 87, 87, (uncompacted >> 11) & 0x1);
-      brw_inst_set_bits(dst, 86, 84, (uncompacted >> 8) & 0x7);
-      brw_inst_set_bits(dst, 83, 81, (uncompacted >> 5) & 0x7);
-      brw_inst_set_bits(dst, 80, 80, (uncompacted >> 4) & 0x1);
-      brw_inst_set_bits(dst, 65, 64, (uncompacted >> 2) & 0x3);
-      brw_inst_set_bits(dst, 45, 44, (uncompacted >> 0) & 0x3);
+         elk_inst_set_bits(dst, 87, 87, (uncompacted >> 11) & 0x1);
+      elk_inst_set_bits(dst, 86, 84, (uncompacted >> 8) & 0x7);
+      elk_inst_set_bits(dst, 83, 81, (uncompacted >> 5) & 0x7);
+      elk_inst_set_bits(dst, 80, 80, (uncompacted >> 4) & 0x1);
+      elk_inst_set_bits(dst, 65, 64, (uncompacted >> 2) & 0x3);
+      elk_inst_set_bits(dst, 45, 44, (uncompacted >> 0) & 0x3);
    } else {
-      brw_inst_set_bits(dst, 88, 77, uncompacted);
+      elk_inst_set_bits(dst, 88, 77, uncompacted);
    }
 }
 
 static void
-set_uncompacted_src1(const struct compaction_state *c, brw_inst *dst,
-                     brw_compact_inst *src)
+set_uncompacted_src1(const struct compaction_state *c, elk_inst *dst,
+                     elk_compact_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    uint16_t uncompacted =
-      c->src1_index_table[brw_compact_inst_src1_index(devinfo, src)];
+      c->src1_index_table[elk_compact_inst_src1_index(devinfo, src)];
 
    if (devinfo->ver >= 20) {
-      brw_inst_set_bits(dst, 121, 120, (uncompacted >> 14) & 0x3);
-      brw_inst_set_bits(dst, 118, 116, (uncompacted >> 11) & 0x7);
-      brw_inst_set_bits(dst, 115, 113, (uncompacted >>  8) & 0x7);
-      brw_inst_set_bits(dst, 112, 112, (uncompacted >>  7) & 0x1);
-      brw_inst_set_bits(dst, 103,  99, (uncompacted >>  2) & 0x1f);
-      brw_inst_set_bits(dst,  97,  96, (uncompacted >>  0) & 0x3);
+      elk_inst_set_bits(dst, 121, 120, (uncompacted >> 14) & 0x3);
+      elk_inst_set_bits(dst, 118, 116, (uncompacted >> 11) & 0x7);
+      elk_inst_set_bits(dst, 115, 113, (uncompacted >>  8) & 0x7);
+      elk_inst_set_bits(dst, 112, 112, (uncompacted >>  7) & 0x1);
+      elk_inst_set_bits(dst, 103,  99, (uncompacted >>  2) & 0x1f);
+      elk_inst_set_bits(dst,  97,  96, (uncompacted >>  0) & 0x3);
    } else if (devinfo->ver >= 12) {
-      brw_inst_set_bits(dst, 121, 120, (uncompacted >> 10));
-      brw_inst_set_bits(dst, 119, 116, (uncompacted >>  6) & 0xf);
-      brw_inst_set_bits(dst, 115, 113, (uncompacted >>  3) & 0x7);
-      brw_inst_set_bits(dst, 112, 112, (uncompacted >>  2) & 0x1);
-      brw_inst_set_bits(dst,  97,  96, (uncompacted >>  0) & 0x3);
+      elk_inst_set_bits(dst, 121, 120, (uncompacted >> 10));
+      elk_inst_set_bits(dst, 119, 116, (uncompacted >>  6) & 0xf);
+      elk_inst_set_bits(dst, 115, 113, (uncompacted >>  3) & 0x7);
+      elk_inst_set_bits(dst, 112, 112, (uncompacted >>  2) & 0x1);
+      elk_inst_set_bits(dst,  97,  96, (uncompacted >>  0) & 0x3);
    } else {
-      brw_inst_set_bits(dst, 120, 109, uncompacted);
+      elk_inst_set_bits(dst, 120, 109, uncompacted);
    }
 }
 
 static void
 set_uncompacted_3src_control_index(const struct compaction_state *c,
-                                   brw_inst *dst, brw_compact_inst *src,
+                                   elk_inst *dst, elk_compact_inst *src,
                                    bool is_dpas)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    assert(devinfo->ver >= 8);
 
    if (devinfo->ver >= 20) {
-      uint64_t compacted = brw_compact_inst_3src_control_index(devinfo, src);
+      uint64_t compacted = elk_compact_inst_3src_control_index(devinfo, src);
       uint64_t uncompacted = is_dpas ? xe2_3src_dpas_control_index_table[compacted] :
                                        xe2_3src_control_index_table[compacted];
 
-      brw_inst_set_bits(dst, 95, 92, (uncompacted >> 30) & 0xf);
-      brw_inst_set_bits(dst, 90, 88, (uncompacted >> 27) & 0x7);
-      brw_inst_set_bits(dst, 82, 80, (uncompacted >> 24) & 0x7);
-      brw_inst_set_bits(dst, 50, 50, (uncompacted >> 23) & 0x1);
-      brw_inst_set_bits(dst, 49, 48, (uncompacted >> 21) & 0x3);
-      brw_inst_set_bits(dst, 42, 40, (uncompacted >> 18) & 0x7);
-      brw_inst_set_bits(dst, 39, 39, (uncompacted >> 17) & 0x1);
-      brw_inst_set_bits(dst, 38, 36, (uncompacted >> 14) & 0x7);
-      brw_inst_set_bits(dst, 34, 34, (uncompacted >> 13) & 0x1);
-      brw_inst_set_bits(dst, 32, 32, (uncompacted >> 12) & 0x1);
-      brw_inst_set_bits(dst, 31, 31, (uncompacted >> 11) & 0x1);
-      brw_inst_set_bits(dst, 28, 28, (uncompacted >> 10) & 0x1);
-      brw_inst_set_bits(dst, 27, 26, (uncompacted >>  8) & 0x3);
-      brw_inst_set_bits(dst, 25, 24, (uncompacted >>  6) & 0x3);
-      brw_inst_set_bits(dst, 23, 21, (uncompacted >>  3) & 0x7);
-      brw_inst_set_bits(dst, 20, 18, (uncompacted >>  0) & 0x7);
+      elk_inst_set_bits(dst, 95, 92, (uncompacted >> 30) & 0xf);
+      elk_inst_set_bits(dst, 90, 88, (uncompacted >> 27) & 0x7);
+      elk_inst_set_bits(dst, 82, 80, (uncompacted >> 24) & 0x7);
+      elk_inst_set_bits(dst, 50, 50, (uncompacted >> 23) & 0x1);
+      elk_inst_set_bits(dst, 49, 48, (uncompacted >> 21) & 0x3);
+      elk_inst_set_bits(dst, 42, 40, (uncompacted >> 18) & 0x7);
+      elk_inst_set_bits(dst, 39, 39, (uncompacted >> 17) & 0x1);
+      elk_inst_set_bits(dst, 38, 36, (uncompacted >> 14) & 0x7);
+      elk_inst_set_bits(dst, 34, 34, (uncompacted >> 13) & 0x1);
+      elk_inst_set_bits(dst, 32, 32, (uncompacted >> 12) & 0x1);
+      elk_inst_set_bits(dst, 31, 31, (uncompacted >> 11) & 0x1);
+      elk_inst_set_bits(dst, 28, 28, (uncompacted >> 10) & 0x1);
+      elk_inst_set_bits(dst, 27, 26, (uncompacted >>  8) & 0x3);
+      elk_inst_set_bits(dst, 25, 24, (uncompacted >>  6) & 0x3);
+      elk_inst_set_bits(dst, 23, 21, (uncompacted >>  3) & 0x7);
+      elk_inst_set_bits(dst, 20, 18, (uncompacted >>  0) & 0x7);
 
    } else if (devinfo->verx10 >= 125) {
-      uint64_t compacted = brw_compact_inst_3src_control_index(devinfo, src);
+      uint64_t compacted = elk_compact_inst_3src_control_index(devinfo, src);
       uint64_t uncompacted = xehp_3src_control_index_table[compacted];
 
-      brw_inst_set_bits(dst, 95, 92, (uncompacted >> 33));
-      brw_inst_set_bits(dst, 90, 88, (uncompacted >> 30) & 0x7);
-      brw_inst_set_bits(dst, 82, 80, (uncompacted >> 27) & 0x7);
-      brw_inst_set_bits(dst, 50, 50, (uncompacted >> 26) & 0x1);
-      brw_inst_set_bits(dst, 49, 48, (uncompacted >> 24) & 0x3);
-      brw_inst_set_bits(dst, 42, 40, (uncompacted >> 21) & 0x7);
-      brw_inst_set_bits(dst, 39, 39, (uncompacted >> 20) & 0x1);
-      brw_inst_set_bits(dst, 38, 36, (uncompacted >> 17) & 0x7);
-      brw_inst_set_bits(dst, 34, 34, (uncompacted >> 16) & 0x1);
-      brw_inst_set_bits(dst, 33, 33, (uncompacted >> 15) & 0x1);
-      brw_inst_set_bits(dst, 32, 32, (uncompacted >> 14) & 0x1);
-      brw_inst_set_bits(dst, 31, 31, (uncompacted >> 13) & 0x1);
-      brw_inst_set_bits(dst, 28, 28, (uncompacted >> 12) & 0x1);
-      brw_inst_set_bits(dst, 27, 24, (uncompacted >>  8) & 0xf);
-      brw_inst_set_bits(dst, 23, 23, (uncompacted >>  7) & 0x1);
-      brw_inst_set_bits(dst, 22, 22, (uncompacted >>  6) & 0x1);
-      brw_inst_set_bits(dst, 21, 19, (uncompacted >>  3) & 0x7);
-      brw_inst_set_bits(dst, 18, 16, (uncompacted >>  0) & 0x7);
+      elk_inst_set_bits(dst, 95, 92, (uncompacted >> 33));
+      elk_inst_set_bits(dst, 90, 88, (uncompacted >> 30) & 0x7);
+      elk_inst_set_bits(dst, 82, 80, (uncompacted >> 27) & 0x7);
+      elk_inst_set_bits(dst, 50, 50, (uncompacted >> 26) & 0x1);
+      elk_inst_set_bits(dst, 49, 48, (uncompacted >> 24) & 0x3);
+      elk_inst_set_bits(dst, 42, 40, (uncompacted >> 21) & 0x7);
+      elk_inst_set_bits(dst, 39, 39, (uncompacted >> 20) & 0x1);
+      elk_inst_set_bits(dst, 38, 36, (uncompacted >> 17) & 0x7);
+      elk_inst_set_bits(dst, 34, 34, (uncompacted >> 16) & 0x1);
+      elk_inst_set_bits(dst, 33, 33, (uncompacted >> 15) & 0x1);
+      elk_inst_set_bits(dst, 32, 32, (uncompacted >> 14) & 0x1);
+      elk_inst_set_bits(dst, 31, 31, (uncompacted >> 13) & 0x1);
+      elk_inst_set_bits(dst, 28, 28, (uncompacted >> 12) & 0x1);
+      elk_inst_set_bits(dst, 27, 24, (uncompacted >>  8) & 0xf);
+      elk_inst_set_bits(dst, 23, 23, (uncompacted >>  7) & 0x1);
+      elk_inst_set_bits(dst, 22, 22, (uncompacted >>  6) & 0x1);
+      elk_inst_set_bits(dst, 21, 19, (uncompacted >>  3) & 0x7);
+      elk_inst_set_bits(dst, 18, 16, (uncompacted >>  0) & 0x7);
 
    } else if (devinfo->ver >= 12) {
-      uint64_t compacted = brw_compact_inst_3src_control_index(devinfo, src);
+      uint64_t compacted = elk_compact_inst_3src_control_index(devinfo, src);
       uint64_t uncompacted = gfx12_3src_control_index_table[compacted];
 
-      brw_inst_set_bits(dst, 95, 92, (uncompacted >> 32));
-      brw_inst_set_bits(dst, 90, 88, (uncompacted >> 29) & 0x7);
-      brw_inst_set_bits(dst, 82, 80, (uncompacted >> 26) & 0x7);
-      brw_inst_set_bits(dst, 50, 50, (uncompacted >> 25) & 0x1);
-      brw_inst_set_bits(dst, 48, 48, (uncompacted >> 24) & 0x1);
-      brw_inst_set_bits(dst, 42, 40, (uncompacted >> 21) & 0x7);
-      brw_inst_set_bits(dst, 39, 39, (uncompacted >> 20) & 0x1);
-      brw_inst_set_bits(dst, 38, 36, (uncompacted >> 17) & 0x7);
-      brw_inst_set_bits(dst, 34, 34, (uncompacted >> 16) & 0x1);
-      brw_inst_set_bits(dst, 33, 33, (uncompacted >> 15) & 0x1);
-      brw_inst_set_bits(dst, 32, 32, (uncompacted >> 14) & 0x1);
-      brw_inst_set_bits(dst, 31, 31, (uncompacted >> 13) & 0x1);
-      brw_inst_set_bits(dst, 28, 28, (uncompacted >> 12) & 0x1);
-      brw_inst_set_bits(dst, 27, 24, (uncompacted >>  8) & 0xf);
-      brw_inst_set_bits(dst, 23, 23, (uncompacted >>  7) & 0x1);
-      brw_inst_set_bits(dst, 22, 22, (uncompacted >>  6) & 0x1);
-      brw_inst_set_bits(dst, 21, 19, (uncompacted >>  3) & 0x7);
-      brw_inst_set_bits(dst, 18, 16, (uncompacted >>  0) & 0x7);
+      elk_inst_set_bits(dst, 95, 92, (uncompacted >> 32));
+      elk_inst_set_bits(dst, 90, 88, (uncompacted >> 29) & 0x7);
+      elk_inst_set_bits(dst, 82, 80, (uncompacted >> 26) & 0x7);
+      elk_inst_set_bits(dst, 50, 50, (uncompacted >> 25) & 0x1);
+      elk_inst_set_bits(dst, 48, 48, (uncompacted >> 24) & 0x1);
+      elk_inst_set_bits(dst, 42, 40, (uncompacted >> 21) & 0x7);
+      elk_inst_set_bits(dst, 39, 39, (uncompacted >> 20) & 0x1);
+      elk_inst_set_bits(dst, 38, 36, (uncompacted >> 17) & 0x7);
+      elk_inst_set_bits(dst, 34, 34, (uncompacted >> 16) & 0x1);
+      elk_inst_set_bits(dst, 33, 33, (uncompacted >> 15) & 0x1);
+      elk_inst_set_bits(dst, 32, 32, (uncompacted >> 14) & 0x1);
+      elk_inst_set_bits(dst, 31, 31, (uncompacted >> 13) & 0x1);
+      elk_inst_set_bits(dst, 28, 28, (uncompacted >> 12) & 0x1);
+      elk_inst_set_bits(dst, 27, 24, (uncompacted >>  8) & 0xf);
+      elk_inst_set_bits(dst, 23, 23, (uncompacted >>  7) & 0x1);
+      elk_inst_set_bits(dst, 22, 22, (uncompacted >>  6) & 0x1);
+      elk_inst_set_bits(dst, 21, 19, (uncompacted >>  3) & 0x7);
+      elk_inst_set_bits(dst, 18, 16, (uncompacted >>  0) & 0x7);
    } else {
-      uint32_t compacted = brw_compact_inst_3src_control_index(devinfo, src);
+      uint32_t compacted = elk_compact_inst_3src_control_index(devinfo, src);
       uint32_t uncompacted = gfx8_3src_control_index_table[compacted];
 
-      brw_inst_set_bits(dst, 34, 32, (uncompacted >> 21) & 0x7);
-      brw_inst_set_bits(dst, 28,  8, (uncompacted >>  0) & 0x1fffff);
+      elk_inst_set_bits(dst, 34, 32, (uncompacted >> 21) & 0x7);
+      elk_inst_set_bits(dst, 28,  8, (uncompacted >>  0) & 0x1fffff);
 
       if (devinfo->ver >= 9 || devinfo->platform == INTEL_PLATFORM_CHV)
-         brw_inst_set_bits(dst, 36, 35, (uncompacted >> 24) & 0x3);
+         elk_inst_set_bits(dst, 36, 35, (uncompacted >> 24) & 0x3);
    }
 }
 
 static void
 set_uncompacted_3src_source_index(const struct intel_device_info *devinfo,
-                                  brw_inst *dst, brw_compact_inst *src,
+                                  elk_inst *dst, elk_compact_inst *src,
                                   bool is_dpas)
 {
    assert(devinfo->ver >= 8);
 
-   uint32_t compacted = brw_compact_inst_3src_source_index(devinfo, src);
+   uint32_t compacted = elk_compact_inst_3src_source_index(devinfo, src);
 
    if (devinfo->ver >= 12) {
       const uint32_t *three_src_source_index_table =
@@ -2497,68 +2497,68 @@ set_uncompacted_3src_source_index(const struct intel_device_info *devinfo,
                                   gfx12_3src_source_index_table;
       uint32_t uncompacted = three_src_source_index_table[compacted];
 
-      brw_inst_set_bits(dst, 114, 114, (uncompacted >> 20));
-      brw_inst_set_bits(dst, 113, 112, (uncompacted >> 18) & 0x3);
-      brw_inst_set_bits(dst,  98,  98, (uncompacted >> 17) & 0x1);
-      brw_inst_set_bits(dst,  97,  96, (uncompacted >> 15) & 0x3);
-      brw_inst_set_bits(dst,  91,  91, (uncompacted >> 14) & 0x1);
-      brw_inst_set_bits(dst,  87,  86, (uncompacted >> 12) & 0x3);
-      brw_inst_set_bits(dst,  85,  84, (uncompacted >> 10) & 0x3);
-      brw_inst_set_bits(dst,  83,  83, (uncompacted >>  9) & 0x1);
-      brw_inst_set_bits(dst,  66,  66, (uncompacted >>  8) & 0x1);
-      brw_inst_set_bits(dst,  65,  64, (uncompacted >>  6) & 0x3);
-      brw_inst_set_bits(dst,  47,  47, (uncompacted >>  5) & 0x1);
-      brw_inst_set_bits(dst,  46,  46, (uncompacted >>  4) & 0x1);
-      brw_inst_set_bits(dst,  45,  44, (uncompacted >>  2) & 0x3);
-      brw_inst_set_bits(dst,  43,  43, (uncompacted >>  1) & 0x1);
-      brw_inst_set_bits(dst,  35,  35, (uncompacted >>  0) & 0x1);
+      elk_inst_set_bits(dst, 114, 114, (uncompacted >> 20));
+      elk_inst_set_bits(dst, 113, 112, (uncompacted >> 18) & 0x3);
+      elk_inst_set_bits(dst,  98,  98, (uncompacted >> 17) & 0x1);
+      elk_inst_set_bits(dst,  97,  96, (uncompacted >> 15) & 0x3);
+      elk_inst_set_bits(dst,  91,  91, (uncompacted >> 14) & 0x1);
+      elk_inst_set_bits(dst,  87,  86, (uncompacted >> 12) & 0x3);
+      elk_inst_set_bits(dst,  85,  84, (uncompacted >> 10) & 0x3);
+      elk_inst_set_bits(dst,  83,  83, (uncompacted >>  9) & 0x1);
+      elk_inst_set_bits(dst,  66,  66, (uncompacted >>  8) & 0x1);
+      elk_inst_set_bits(dst,  65,  64, (uncompacted >>  6) & 0x3);
+      elk_inst_set_bits(dst,  47,  47, (uncompacted >>  5) & 0x1);
+      elk_inst_set_bits(dst,  46,  46, (uncompacted >>  4) & 0x1);
+      elk_inst_set_bits(dst,  45,  44, (uncompacted >>  2) & 0x3);
+      elk_inst_set_bits(dst,  43,  43, (uncompacted >>  1) & 0x1);
+      elk_inst_set_bits(dst,  35,  35, (uncompacted >>  0) & 0x1);
    } else {
       uint64_t uncompacted = gfx8_3src_source_index_table[compacted];
 
-      brw_inst_set_bits(dst,  83,  83, (uncompacted >> 43) & 0x1);
-      brw_inst_set_bits(dst, 114, 107, (uncompacted >> 35) & 0xff);
-      brw_inst_set_bits(dst,  93,  86, (uncompacted >> 27) & 0xff);
-      brw_inst_set_bits(dst,  72,  65, (uncompacted >> 19) & 0xff);
-      brw_inst_set_bits(dst,  55,  37, (uncompacted >>  0) & 0x7ffff);
+      elk_inst_set_bits(dst,  83,  83, (uncompacted >> 43) & 0x1);
+      elk_inst_set_bits(dst, 114, 107, (uncompacted >> 35) & 0xff);
+      elk_inst_set_bits(dst,  93,  86, (uncompacted >> 27) & 0xff);
+      elk_inst_set_bits(dst,  72,  65, (uncompacted >> 19) & 0xff);
+      elk_inst_set_bits(dst,  55,  37, (uncompacted >>  0) & 0x7ffff);
 
       if (devinfo->ver >= 9 || devinfo->platform == INTEL_PLATFORM_CHV) {
-         brw_inst_set_bits(dst, 126, 125, (uncompacted >> 47) & 0x3);
-         brw_inst_set_bits(dst, 105, 104, (uncompacted >> 45) & 0x3);
-         brw_inst_set_bits(dst,  84,  84, (uncompacted >> 44) & 0x1);
+         elk_inst_set_bits(dst, 126, 125, (uncompacted >> 47) & 0x3);
+         elk_inst_set_bits(dst, 105, 104, (uncompacted >> 45) & 0x3);
+         elk_inst_set_bits(dst,  84,  84, (uncompacted >> 44) & 0x1);
       } else {
-         brw_inst_set_bits(dst, 125, 125, (uncompacted >> 45) & 0x1);
-         brw_inst_set_bits(dst, 104, 104, (uncompacted >> 44) & 0x1);
+         elk_inst_set_bits(dst, 125, 125, (uncompacted >> 45) & 0x1);
+         elk_inst_set_bits(dst, 104, 104, (uncompacted >> 44) & 0x1);
       }
    }
 }
 
 static void
 set_uncompacted_3src_subreg_index(const struct intel_device_info *devinfo,
-                                  brw_inst *dst, brw_compact_inst *src)
+                                  elk_inst *dst, elk_compact_inst *src)
 {
    assert(devinfo->ver >= 12);
 
-   uint32_t compacted = brw_compact_inst_3src_subreg_index(devinfo, src);
+   uint32_t compacted = elk_compact_inst_3src_subreg_index(devinfo, src);
    uint32_t uncompacted = (devinfo->ver >= 20 ? xe2_3src_subreg_table[compacted]:
                            gfx12_3src_subreg_table[compacted]);
 
-   brw_inst_set_bits(dst, 119, 115, (uncompacted >> 15));
-   brw_inst_set_bits(dst, 103,  99, (uncompacted >> 10) & 0x1f);
-   brw_inst_set_bits(dst,  71,  67, (uncompacted >>  5) & 0x1f);
-   brw_inst_set_bits(dst,  55,  51, (uncompacted >>  0) & 0x1f);
+   elk_inst_set_bits(dst, 119, 115, (uncompacted >> 15));
+   elk_inst_set_bits(dst, 103,  99, (uncompacted >> 10) & 0x1f);
+   elk_inst_set_bits(dst,  71,  67, (uncompacted >>  5) & 0x1f);
+   elk_inst_set_bits(dst,  55,  51, (uncompacted >>  0) & 0x1f);
 }
 
 static void
-brw_uncompact_3src_instruction(const struct compaction_state *c,
-                               brw_inst *dst, brw_compact_inst *src, bool is_dpas)
+elk_uncompact_3src_instruction(const struct compaction_state *c,
+                               elk_inst *dst, elk_compact_inst *src, bool is_dpas)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    assert(devinfo->ver >= 8);
 
 #define uncompact(field) \
-   brw_inst_set_3src_##field(devinfo, dst, brw_compact_inst_3src_##field(devinfo, src))
+   elk_inst_set_3src_##field(devinfo, dst, elk_compact_inst_3src_##field(devinfo, src))
 #define uncompact_a16(field) \
-   brw_inst_set_3src_a16_##field(devinfo, dst, brw_compact_inst_3src_##field(devinfo, src))
+   elk_inst_set_3src_a16_##field(devinfo, dst, elk_compact_inst_3src_##field(devinfo, src))
 
    uncompact(hw_opcode);
 
@@ -2590,34 +2590,34 @@ brw_uncompact_3src_instruction(const struct compaction_state *c,
       uncompact_a16(src1_subreg_nr);
       uncompact_a16(src2_subreg_nr);
    }
-   brw_inst_set_3src_cmpt_control(devinfo, dst, false);
+   elk_inst_set_3src_cmpt_control(devinfo, dst, false);
 
 #undef uncompact
 #undef uncompact_a16
 }
 
 static void
-uncompact_instruction(const struct compaction_state *c, brw_inst *dst,
-                      brw_compact_inst *src)
+uncompact_instruction(const struct compaction_state *c, elk_inst *dst,
+                      elk_compact_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    memset(dst, 0, sizeof(*dst));
 
    if (devinfo->ver >= 8) {
-      const enum opcode opcode =
-         brw_opcode_decode(c->isa, brw_compact_inst_3src_hw_opcode(devinfo, src));
-      if (is_3src(c->isa, opcode)) {
-         const bool is_dpas = opcode == BRW_OPCODE_DPAS;
-         brw_uncompact_3src_instruction(c, dst, src, is_dpas);
+      const enum elk_opcode opcode =
+         elk_opcode_decode(c->isa, elk_compact_inst_3src_hw_opcode(devinfo, src));
+      if (elk_is_3src(c->isa, opcode)) {
+         const bool is_dpas = opcode == ELK_OPCODE_DPAS;
+         elk_uncompact_3src_instruction(c, dst, src, is_dpas);
          return;
       }
    }
 
 #define uncompact(field) \
-   brw_inst_set_##field(devinfo, dst, brw_compact_inst_##field(devinfo, src))
+   elk_inst_set_##field(devinfo, dst, elk_compact_inst_##field(devinfo, src))
 #define uncompact_reg(field) \
-   brw_inst_set_##field##_da_reg_nr(devinfo, dst, \
-                                    brw_compact_inst_##field##_reg_nr(devinfo, src))
+   elk_inst_set_##field##_da_reg_nr(devinfo, dst, \
+                                    elk_compact_inst_##field##_reg_nr(devinfo, src))
 
    uncompact(hw_opcode);
    uncompact(debug_control);
@@ -2627,11 +2627,11 @@ uncompact_instruction(const struct compaction_state *c, brw_inst *dst,
    set_uncompacted_subreg(c, dst, src);
    set_uncompacted_src0(c, dst, src);
 
-   enum brw_reg_type type;
+   enum elk_reg_type type;
    if (has_immediate(devinfo, dst, &type)) {
       unsigned imm = uncompact_immediate(devinfo, type,
-                                         brw_compact_inst_imm(devinfo, src));
-      brw_inst_set_imm_ud(devinfo, dst, imm);
+                                         elk_compact_inst_imm(devinfo, src));
+      elk_inst_set_imm_ud(devinfo, dst, imm);
    } else {
       set_uncompacted_src1(c, dst, src);
       uncompact_reg(src1);
@@ -2656,15 +2656,15 @@ uncompact_instruction(const struct compaction_state *c, brw_inst *dst,
       uncompact_reg(dst);
       uncompact_reg(src0);
    }
-   brw_inst_set_cmpt_control(devinfo, dst, false);
+   elk_inst_set_cmpt_control(devinfo, dst, false);
 
 #undef uncompact
 #undef uncompact_reg
 }
 
 void
-brw_uncompact_instruction(const struct brw_isa_info *isa,
-                          brw_inst *dst, brw_compact_inst *src)
+elk_uncompact_instruction(const struct elk_isa_info *isa,
+                          elk_inst *dst, elk_compact_inst *src)
 {
    struct compaction_state c;
    compaction_state_init(&c, isa);
@@ -2672,18 +2672,18 @@ brw_uncompact_instruction(const struct brw_isa_info *isa,
 }
 
 void
-brw_debug_compact_uncompact(const struct brw_isa_info *isa,
-                            brw_inst *orig,
-                            brw_inst *uncompacted)
+elk_debug_compact_uncompact(const struct elk_isa_info *isa,
+                            elk_inst *orig,
+                            elk_inst *uncompacted)
 {
    fprintf(stderr, "Instruction compact/uncompact changed (gen%d):\n",
            isa->devinfo->ver);
 
    fprintf(stderr, "  before: ");
-   brw_disassemble_inst(stderr, isa, orig, true, 0, NULL);
+   elk_disassemble_inst(stderr, isa, orig, true, 0, NULL);
 
    fprintf(stderr, "  after:  ");
-   brw_disassemble_inst(stderr, isa, uncompacted, false, 0, NULL);
+   elk_disassemble_inst(stderr, isa, uncompacted, false, 0, NULL);
 
    uint32_t *before_bits = (uint32_t *)orig;
    uint32_t *after_bits = (uint32_t *)uncompacted;
@@ -2709,7 +2709,7 @@ compacted_between(int old_ip, int old_target_ip, int *compacted_counts)
 }
 
 static void
-update_uip_jip(const struct brw_isa_info *isa, brw_inst *insn,
+update_uip_jip(const struct elk_isa_info *isa, elk_inst *insn,
                int this_old_ip, int *compacted_counts)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
@@ -2720,26 +2720,26 @@ update_uip_jip(const struct brw_isa_info *isa, brw_inst *insn,
     */
    int shift = devinfo->ver >= 8 ? 3 : 0;
 
-   int32_t jip_compacted = brw_inst_jip(devinfo, insn) >> shift;
+   int32_t jip_compacted = elk_inst_jip(devinfo, insn) >> shift;
    jip_compacted -= compacted_between(this_old_ip,
                                       this_old_ip + (jip_compacted / 2),
                                       compacted_counts);
-   brw_inst_set_jip(devinfo, insn, jip_compacted << shift);
+   elk_inst_set_jip(devinfo, insn, jip_compacted << shift);
 
-   if (brw_inst_opcode(isa, insn) == BRW_OPCODE_ENDIF ||
-       brw_inst_opcode(isa, insn) == BRW_OPCODE_WHILE ||
-       (brw_inst_opcode(isa, insn) == BRW_OPCODE_ELSE && devinfo->ver <= 7))
+   if (elk_inst_opcode(isa, insn) == ELK_OPCODE_ENDIF ||
+       elk_inst_opcode(isa, insn) == ELK_OPCODE_WHILE ||
+       (elk_inst_opcode(isa, insn) == ELK_OPCODE_ELSE && devinfo->ver <= 7))
       return;
 
-   int32_t uip_compacted = brw_inst_uip(devinfo, insn) >> shift;
+   int32_t uip_compacted = elk_inst_uip(devinfo, insn) >> shift;
    uip_compacted -= compacted_between(this_old_ip,
                                       this_old_ip + (uip_compacted / 2),
                                       compacted_counts);
-   brw_inst_set_uip(devinfo, insn, uip_compacted << shift);
+   elk_inst_set_uip(devinfo, insn, uip_compacted << shift);
 }
 
 static void
-update_gfx4_jump_count(const struct intel_device_info *devinfo, brw_inst *insn,
+update_gfx4_jump_count(const struct intel_device_info *devinfo, elk_inst *insn,
                        int this_old_ip, int *compacted_counts)
 {
    assert(devinfo->ver == 5 || devinfo->platform == INTEL_PLATFORM_G4X);
@@ -2750,7 +2750,7 @@ update_gfx4_jump_count(const struct intel_device_info *devinfo, brw_inst *insn,
     */
    int shift = devinfo->platform == INTEL_PLATFORM_G4X ? 1 : 0;
 
-   int jump_count_compacted = brw_inst_gfx4_jump_count(devinfo, insn) << shift;
+   int jump_count_compacted = elk_inst_gfx4_jump_count(devinfo, insn) << shift;
 
    int target_old_ip = this_old_ip + (jump_count_compacted / 2);
 
@@ -2758,12 +2758,12 @@ update_gfx4_jump_count(const struct intel_device_info *devinfo, brw_inst *insn,
    int target_compacted_count = compacted_counts[target_old_ip];
 
    jump_count_compacted -= (target_compacted_count - this_compacted_count);
-   brw_inst_set_gfx4_jump_count(devinfo, insn, jump_count_compacted >> shift);
+   elk_inst_set_gfx4_jump_count(devinfo, insn, jump_count_compacted >> shift);
 }
 
 static void
 compaction_state_init(struct compaction_state *c,
-                      const struct brw_isa_info *isa)
+                      const struct elk_isa_info *isa)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
@@ -2861,8 +2861,8 @@ compaction_state_init(struct compaction_state *c,
 }
 
 void
-brw_compact_instructions(struct brw_codegen *p, int start_offset,
-                         struct disasm_info *disasm)
+elk_compact_instructions(struct elk_codegen *p, int start_offset,
+                         struct elk_disasm_info *disasm)
 {
    if (INTEL_DEBUG(DEBUG_NO_COMPACTION))
       return;
@@ -2877,7 +2877,7 @@ brw_compact_instructions(struct brw_codegen *p, int start_offset,
     * that preceded it.
     */
    unsigned num_compacted_counts =
-      (p->next_insn_offset - start_offset) / sizeof(brw_inst);
+      (p->next_insn_offset - start_offset) / sizeof(elk_inst);
    int *compacted_counts =
       calloc(1, sizeof(*compacted_counts) * num_compacted_counts);
 
@@ -2885,7 +2885,7 @@ brw_compact_instructions(struct brw_codegen *p, int start_offset,
     * (in 16-byte units) before compaction.
     */
    unsigned num_old_ip =
-      (p->next_insn_offset - start_offset) / sizeof(brw_compact_inst) + 1;
+      (p->next_insn_offset - start_offset) / sizeof(elk_compact_inst) + 1;
    int *old_ip = calloc(1, sizeof(*old_ip) * num_old_ip);
 
    struct compaction_state c;
@@ -2894,42 +2894,42 @@ brw_compact_instructions(struct brw_codegen *p, int start_offset,
    int offset = 0;
    int compacted_count = 0;
    for (int src_offset = 0; src_offset < p->next_insn_offset - start_offset;
-        src_offset += sizeof(brw_inst)) {
-      brw_inst *src = store + src_offset;
+        src_offset += sizeof(elk_inst)) {
+      elk_inst *src = store + src_offset;
       void *dst = store + offset;
 
-      old_ip[offset / sizeof(brw_compact_inst)] = src_offset / sizeof(brw_inst);
-      compacted_counts[src_offset / sizeof(brw_inst)] = compacted_count;
+      old_ip[offset / sizeof(elk_compact_inst)] = src_offset / sizeof(elk_inst);
+      compacted_counts[src_offset / sizeof(elk_inst)] = compacted_count;
 
-      brw_inst inst = precompact(p->isa, *src);
-      brw_inst saved = inst;
+      elk_inst inst = precompact(p->isa, *src);
+      elk_inst saved = inst;
 
       if (try_compact_instruction(&c, dst, &inst)) {
          compacted_count++;
 
          if (INTEL_DEBUG(DEBUG_VS | DEBUG_GS | DEBUG_TCS |
                          DEBUG_WM | DEBUG_CS | DEBUG_TES)) {
-            brw_inst uncompacted;
+            elk_inst uncompacted;
             uncompact_instruction(&c, &uncompacted, dst);
             if (memcmp(&saved, &uncompacted, sizeof(uncompacted))) {
-               brw_debug_compact_uncompact(p->isa, &saved, &uncompacted);
+               elk_debug_compact_uncompact(p->isa, &saved, &uncompacted);
             }
          }
 
-         offset += sizeof(brw_compact_inst);
+         offset += sizeof(elk_compact_inst);
       } else {
          /* All uncompacted instructions need to be aligned on G45. */
-         if ((offset & sizeof(brw_compact_inst)) != 0 &&
+         if ((offset & sizeof(elk_compact_inst)) != 0 &&
              devinfo->platform == INTEL_PLATFORM_G4X) {
-            brw_compact_inst *align = store + offset;
+            elk_compact_inst *align = store + offset;
             memset(align, 0, sizeof(*align));
-            brw_compact_inst_set_hw_opcode(
-               devinfo, align, brw_opcode_encode(p->isa, BRW_OPCODE_NENOP));
-            brw_compact_inst_set_cmpt_control(devinfo, align, true);
-            offset += sizeof(brw_compact_inst);
+            elk_compact_inst_set_hw_opcode(
+               devinfo, align, elk_opcode_encode(p->isa, ELK_OPCODE_NENOP));
+            elk_compact_inst_set_cmpt_control(devinfo, align, true);
+            offset += sizeof(elk_compact_inst);
             compacted_count--;
-            compacted_counts[src_offset / sizeof(brw_inst)] = compacted_count;
-            old_ip[offset / sizeof(brw_compact_inst)] = src_offset / sizeof(brw_inst);
+            compacted_counts[src_offset / sizeof(elk_inst)] = compacted_count;
+            old_ip[offset / sizeof(elk_compact_inst)] = src_offset / sizeof(elk_inst);
 
             dst = store + offset;
          }
@@ -2938,30 +2938,30 @@ brw_compact_instructions(struct brw_codegen *p, int start_offset,
           * place.
           */
          if (offset != src_offset) {
-            memmove(dst, src, sizeof(brw_inst));
+            memmove(dst, src, sizeof(elk_inst));
          }
-         offset += sizeof(brw_inst);
+         offset += sizeof(elk_inst);
       }
    }
 
    /* Add an entry for the ending offset of the program. This greatly
     * simplifies the linked list walk at the end of the function.
     */
-   old_ip[offset / sizeof(brw_compact_inst)] =
-      (p->next_insn_offset - start_offset) / sizeof(brw_inst);
+   old_ip[offset / sizeof(elk_compact_inst)] =
+      (p->next_insn_offset - start_offset) / sizeof(elk_inst);
 
    /* Fix up control flow offsets. */
    p->next_insn_offset = start_offset + offset;
    for (offset = 0; offset < p->next_insn_offset - start_offset;
         offset = next_offset(devinfo, store, offset)) {
-      brw_inst *insn = store + offset;
-      int this_old_ip = old_ip[offset / sizeof(brw_compact_inst)];
+      elk_inst *insn = store + offset;
+      int this_old_ip = old_ip[offset / sizeof(elk_compact_inst)];
       int this_compacted_count = compacted_counts[this_old_ip];
 
-      switch (brw_inst_opcode(p->isa, insn)) {
-      case BRW_OPCODE_BREAK:
-      case BRW_OPCODE_CONTINUE:
-      case BRW_OPCODE_HALT:
+      switch (elk_inst_opcode(p->isa, insn)) {
+      case ELK_OPCODE_BREAK:
+      case ELK_OPCODE_CONTINUE:
+      case ELK_OPCODE_HALT:
          if (devinfo->ver >= 6) {
             update_uip_jip(p->isa, insn, this_old_ip, compacted_counts);
          } else {
@@ -2970,61 +2970,61 @@ brw_compact_instructions(struct brw_codegen *p, int start_offset,
          }
          break;
 
-      case BRW_OPCODE_IF:
-      case BRW_OPCODE_IFF:
-      case BRW_OPCODE_ELSE:
-      case BRW_OPCODE_ENDIF:
-      case BRW_OPCODE_WHILE:
+      case ELK_OPCODE_IF:
+      case ELK_OPCODE_IFF:
+      case ELK_OPCODE_ELSE:
+      case ELK_OPCODE_ENDIF:
+      case ELK_OPCODE_WHILE:
          if (devinfo->ver >= 7) {
-            if (brw_inst_cmpt_control(devinfo, insn)) {
-               brw_inst uncompacted;
+            if (elk_inst_cmpt_control(devinfo, insn)) {
+               elk_inst uncompacted;
                uncompact_instruction(&c, &uncompacted,
-                                     (brw_compact_inst *)insn);
+                                     (elk_compact_inst *)insn);
 
                update_uip_jip(p->isa, &uncompacted, this_old_ip,
                               compacted_counts);
 
-               bool ret = try_compact_instruction(&c, (brw_compact_inst *)insn,
+               bool ret = try_compact_instruction(&c, (elk_compact_inst *)insn,
                                                   &uncompacted);
                assert(ret); (void)ret;
             } else {
                update_uip_jip(p->isa, insn, this_old_ip, compacted_counts);
             }
          } else if (devinfo->ver == 6) {
-            assert(!brw_inst_cmpt_control(devinfo, insn));
+            assert(!elk_inst_cmpt_control(devinfo, insn));
 
             /* Jump Count is in units of compacted instructions on Gfx6. */
-            int jump_count_compacted = brw_inst_gfx6_jump_count(devinfo, insn);
+            int jump_count_compacted = elk_inst_gfx6_jump_count(devinfo, insn);
 
             int target_old_ip = this_old_ip + (jump_count_compacted / 2);
             int target_compacted_count = compacted_counts[target_old_ip];
             jump_count_compacted -= (target_compacted_count - this_compacted_count);
-            brw_inst_set_gfx6_jump_count(devinfo, insn, jump_count_compacted);
+            elk_inst_set_gfx6_jump_count(devinfo, insn, jump_count_compacted);
          } else {
             update_gfx4_jump_count(devinfo, insn, this_old_ip,
                                    compacted_counts);
          }
          break;
 
-      case BRW_OPCODE_ADD:
+      case ELK_OPCODE_ADD:
          /* Add instructions modifying the IP register use an immediate src1,
           * and Gens that use this cannot compact instructions with immediate
           * operands.
           */
-         if (brw_inst_cmpt_control(devinfo, insn))
+         if (elk_inst_cmpt_control(devinfo, insn))
             break;
 
-         if (brw_inst_dst_reg_file(devinfo, insn) == BRW_ARCHITECTURE_REGISTER_FILE &&
-             brw_inst_dst_da_reg_nr(devinfo, insn) == BRW_ARF_IP) {
-            assert(brw_inst_src1_reg_file(devinfo, insn) == BRW_IMMEDIATE_VALUE);
+         if (elk_inst_dst_reg_file(devinfo, insn) == ELK_ARCHITECTURE_REGISTER_FILE &&
+             elk_inst_dst_da_reg_nr(devinfo, insn) == ELK_ARF_IP) {
+            assert(elk_inst_src1_reg_file(devinfo, insn) == ELK_IMMEDIATE_VALUE);
 
             int shift = 3;
-            int jump_compacted = brw_inst_imm_d(devinfo, insn) >> shift;
+            int jump_compacted = elk_inst_imm_d(devinfo, insn) >> shift;
 
             int target_old_ip = this_old_ip + (jump_compacted / 2);
             int target_compacted_count = compacted_counts[target_old_ip];
             jump_compacted -= (target_compacted_count - this_compacted_count);
-            brw_inst_set_imm_ud(devinfo, insn, jump_compacted << shift);
+            elk_inst_set_imm_ud(devinfo, insn, jump_compacted << shift);
          }
          break;
 
@@ -3038,15 +3038,15 @@ brw_compact_instructions(struct brw_codegen *p, int start_offset,
     * alignment padding, so that the next compression pass (for the FS 8/16
     * compile passes) parses correctly.
     */
-   if (p->next_insn_offset & sizeof(brw_compact_inst)) {
-      brw_compact_inst *align = store + offset;
+   if (p->next_insn_offset & sizeof(elk_compact_inst)) {
+      elk_compact_inst *align = store + offset;
       memset(align, 0, sizeof(*align));
-      brw_compact_inst_set_hw_opcode(
-         devinfo, align, brw_opcode_encode(p->isa, BRW_OPCODE_NOP));
-      brw_compact_inst_set_cmpt_control(devinfo, align, true);
-      p->next_insn_offset += sizeof(brw_compact_inst);
+      elk_compact_inst_set_hw_opcode(
+         devinfo, align, elk_opcode_encode(p->isa, ELK_OPCODE_NOP));
+      elk_compact_inst_set_cmpt_control(devinfo, align, true);
+      p->next_insn_offset += sizeof(elk_compact_inst);
    }
-   p->nr_insn = p->next_insn_offset / sizeof(brw_inst);
+   p->nr_insn = p->next_insn_offset / sizeof(elk_inst);
 
    for (int i = 0; i < p->num_relocs; i++) {
       if (p->relocs[i].offset < (uint32_t)start_offset)
@@ -3062,10 +3062,10 @@ brw_compact_instructions(struct brw_codegen *p, int start_offset,
       int offset = 0;
 
       foreach_list_typed(struct inst_group, group, link, &disasm->group_list) {
-         while (start_offset + old_ip[offset / sizeof(brw_compact_inst)] *
-                sizeof(brw_inst) != group->offset) {
-            assert(start_offset + old_ip[offset / sizeof(brw_compact_inst)] *
-                   sizeof(brw_inst) < group->offset);
+         while (start_offset + old_ip[offset / sizeof(elk_compact_inst)] *
+                sizeof(elk_inst) != group->offset) {
+            assert(start_offset + old_ip[offset / sizeof(elk_compact_inst)] *
+                   sizeof(elk_inst) < group->offset);
             offset = next_offset(devinfo, store, offset);
          }
 

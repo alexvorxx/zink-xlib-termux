@@ -32,7 +32,7 @@ using namespace elk;
 namespace elk {
 
 static void
-assign(unsigned int *reg_hw_locations, backend_reg *reg)
+assign(unsigned int *reg_hw_locations, elk_backend_reg *reg)
 {
    if (reg->file == VGRF) {
       reg->nr = reg_hw_locations[reg->nr] + reg->offset / REG_SIZE;
@@ -91,10 +91,10 @@ vec4_visitor::reg_allocate_trivial()
 }
 
 extern "C" void
-brw_vec4_alloc_reg_set(struct brw_compiler *compiler)
+elk_vec4_alloc_reg_set(struct elk_compiler *compiler)
 {
    int base_reg_count =
-      compiler->devinfo->ver >= 7 ? GFX7_MRF_HACK_START : BRW_MAX_GRF;
+      compiler->devinfo->ver >= 7 ? GFX7_MRF_HACK_START : ELK_MAX_GRF;
 
    assert(compiler->devinfo->ver < 8);
 
@@ -287,8 +287,8 @@ can_use_scratch_for_source(const vec4_instruction *inst, unsigned i,
        * compatible with our read mask
        */
       if (prev_inst->dst.file == VGRF && prev_inst->dst.nr == scratch_reg) {
-         return (!prev_inst->predicate || prev_inst->opcode == BRW_OPCODE_SEL) &&
-                (brw_mask_for_swizzle(inst->src[i].swizzle) &
+         return (!prev_inst->predicate || prev_inst->opcode == ELK_OPCODE_SEL) &&
+                (elk_mask_for_swizzle(inst->src[i].swizzle) &
                  ~prev_inst->dst.writemask) == 0;
       }
 
@@ -296,8 +296,8 @@ can_use_scratch_for_source(const vec4_instruction *inst, unsigned i,
        * other registers (that won't read/write scratch_reg) do not stop us from
        * reusing scratch_reg for this instruction.
        */
-      if (prev_inst->opcode == SHADER_OPCODE_GFX4_SCRATCH_WRITE ||
-          prev_inst->opcode == SHADER_OPCODE_GFX4_SCRATCH_READ)
+      if (prev_inst->opcode == ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE ||
+          prev_inst->opcode == ELK_SHADER_OPCODE_GFX4_SCRATCH_READ)
          continue;
 
       /* If the previous instruction does not write to scratch_reg, then check
@@ -335,7 +335,7 @@ can_use_scratch_for_source(const vec4_instruction *inst, unsigned i,
 }
 
 static inline float
-spill_cost_for_type(enum brw_reg_type type)
+spill_cost_for_type(enum elk_reg_type type)
 {
    /* Spilling of a 64-bit register involves emitting 2 32-bit scratch
     * messages plus the 64b/32b shuffling code.
@@ -424,17 +424,17 @@ vec4_visitor::evaluate_spill_costs(float *spill_costs, bool *no_spill)
 
       switch (inst->opcode) {
 
-      case BRW_OPCODE_DO:
+      case ELK_OPCODE_DO:
          loop_scale *= 10;
          break;
 
-      case BRW_OPCODE_WHILE:
+      case ELK_OPCODE_WHILE:
          loop_scale /= 10;
          break;
 
-      case SHADER_OPCODE_GFX4_SCRATCH_READ:
-      case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
-      case VEC4_OPCODE_MOV_FOR_SCRATCH:
+      case ELK_SHADER_OPCODE_GFX4_SCRATCH_READ:
+      case ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE:
+      case ELK_VEC4_OPCODE_MOV_FOR_SCRATCH:
          for (int i = 0; i < 3; i++) {
             if (inst->src[i].file == VGRF)
                no_spill[inst->src[i].nr] = true;
@@ -490,7 +490,7 @@ vec4_visitor::spill_reg(unsigned spill_reg_nr)
                src_reg temp = inst->src[i];
                temp.nr = scratch_reg;
                temp.offset = 0;
-               temp.swizzle = BRW_SWIZZLE_XYZW;
+               temp.swizzle = ELK_SWIZZLE_XYZW;
                emit_scratch_read(block, inst,
                                  dst_reg(temp), inst->src[i], spill_offset);
                temp.offset = inst->src[i].offset;

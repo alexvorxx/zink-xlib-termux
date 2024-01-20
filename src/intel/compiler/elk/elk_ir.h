@@ -38,27 +38,27 @@
 #define MAX_VGRF_SIZE(devinfo) ((devinfo)->ver >= 20 ? 40 : 20)
 
 #ifdef __cplusplus
-struct backend_reg : private brw_reg
+struct elk_backend_reg : private elk_reg
 {
-   backend_reg() {}
-   backend_reg(const struct brw_reg &reg) : brw_reg(reg), offset(0) {}
+   elk_backend_reg() {}
+   elk_backend_reg(const struct elk_reg &reg) : elk_reg(reg), offset(0) {}
 
-   const brw_reg &as_brw_reg() const
+   const elk_reg &as_elk_reg() const
    {
       assert(file == ARF || file == FIXED_GRF || file == MRF || file == IMM);
       assert(offset == 0);
-      return static_cast<const brw_reg &>(*this);
+      return static_cast<const elk_reg &>(*this);
    }
 
-   brw_reg &as_brw_reg()
+   elk_reg &as_elk_reg()
    {
       assert(file == ARF || file == FIXED_GRF || file == MRF || file == IMM);
       assert(offset == 0);
-      return static_cast<brw_reg &>(*this);
+      return static_cast<elk_reg &>(*this);
    }
 
-   bool equals(const backend_reg &r) const;
-   bool negative_equals(const backend_reg &r) const;
+   bool equals(const elk_backend_reg &r) const;
+   bool negative_equals(const elk_backend_reg &r) const;
 
    bool is_zero() const;
    bool is_one() const;
@@ -69,33 +69,33 @@ struct backend_reg : private brw_reg
    /** Offset from the start of the (virtual) register in bytes. */
    uint16_t offset;
 
-   using brw_reg::type;
-   using brw_reg::file;
-   using brw_reg::negate;
-   using brw_reg::abs;
-   using brw_reg::address_mode;
-   using brw_reg::subnr;
-   using brw_reg::nr;
+   using elk_reg::type;
+   using elk_reg::file;
+   using elk_reg::negate;
+   using elk_reg::abs;
+   using elk_reg::address_mode;
+   using elk_reg::subnr;
+   using elk_reg::nr;
 
-   using brw_reg::swizzle;
-   using brw_reg::writemask;
-   using brw_reg::indirect_offset;
-   using brw_reg::vstride;
-   using brw_reg::width;
-   using brw_reg::hstride;
+   using elk_reg::swizzle;
+   using elk_reg::writemask;
+   using elk_reg::indirect_offset;
+   using elk_reg::vstride;
+   using elk_reg::width;
+   using elk_reg::hstride;
 
-   using brw_reg::df;
-   using brw_reg::f;
-   using brw_reg::d;
-   using brw_reg::ud;
-   using brw_reg::d64;
-   using brw_reg::u64;
+   using elk_reg::df;
+   using elk_reg::f;
+   using elk_reg::d;
+   using elk_reg::ud;
+   using elk_reg::d64;
+   using elk_reg::u64;
 };
 
-struct bblock_t;
+struct elk_bblock_t;
 
-struct backend_instruction : public exec_node {
-   bool is_3src(const struct brw_compiler *compiler) const;
+struct elk_backend_instruction : public exec_node {
+   bool elk_is_3src(const struct elk_compiler *compiler) const;
    bool is_math() const;
    bool is_control_flow_begin() const;
    bool is_control_flow_end() const;
@@ -113,9 +113,9 @@ struct backend_instruction : public exec_node {
     */
    bool uses_indirect_addressing() const;
 
-   void remove(bblock_t *block, bool defer_later_block_ip_updates = false);
-   void insert_after(bblock_t *block, backend_instruction *inst);
-   void insert_before(bblock_t *block, backend_instruction *inst);
+   void remove(elk_bblock_t *block, bool defer_later_block_ip_updates = false);
+   void insert_after(elk_bblock_t *block, elk_backend_instruction *inst);
+   void insert_before(elk_bblock_t *block, elk_backend_instruction *inst);
 
    /**
     * True if the instruction has side effects other than writing to
@@ -130,7 +130,7 @@ struct backend_instruction : public exec_node {
     */
    bool is_volatile() const;
 #else
-struct backend_instruction {
+struct elk_backend_instruction {
    struct exec_node link;
 #endif
    /** @{
@@ -166,9 +166,9 @@ struct backend_instruction {
    uint32_t ex_desc; /**< SEND[S] extended message descriptor immediate */
    unsigned size_written; /**< Data written to the destination register in bytes. */
 
-   enum opcode opcode; /* BRW_OPCODE_* or FS_OPCODE_* */
-   enum brw_conditional_mod conditional_mod; /**< BRW_CONDITIONAL_* */
-   enum brw_predicate predicate;
+   enum elk_opcode opcode; /* ELK_OPCODE_* or ELK_FS_OPCODE_* */
+   enum elk_conditional_mod conditional_mod; /**< ELK_CONDITIONAL_* */
+   enum elk_predicate predicate;
    bool predicate_inverse:1;
    bool writes_accumulator:1; /**< instruction implicitly writes accumulator */
    bool force_writemask_all:1;
@@ -177,13 +177,13 @@ struct backend_instruction {
    bool saturate:1;
    bool shadow_compare:1;
    bool check_tdr:1; /**< Only valid for SEND; turns it into a SENDC */
-   bool send_has_side_effects:1; /**< Only valid for SHADER_OPCODE_SEND */
-   bool send_is_volatile:1; /**< Only valid for SHADER_OPCODE_SEND */
-   bool send_ex_desc_scratch:1; /**< Only valid for SHADER_OPCODE_SEND, use
+   bool send_has_side_effects:1; /**< Only valid for ELK_SHADER_OPCODE_SEND */
+   bool send_is_volatile:1; /**< Only valid for ELK_SHADER_OPCODE_SEND */
+   bool send_ex_desc_scratch:1; /**< Only valid for ELK_SHADER_OPCODE_SEND, use
                                  *   the scratch surface offset to build
                                  *   extended descriptor
                                  */
-   bool send_ex_bso:1; /**< Only for SHADER_OPCODE_SEND, use extended bindless
+   bool send_ex_bso:1; /**< Only for ELK_SHADER_OPCODE_SEND, use extended bindless
                         *   surface offset (26bits instead of 20bits)
                         */
    bool predicate_trivial:1; /**< The predication mask applied to this

@@ -57,7 +57,7 @@ assign_vue_slot(struct intel_vue_map *vue_map, int varying, int slot)
  * Compute the VUE map for a shader stage.
  */
 void
-brw_compute_vue_map(const struct intel_device_info *devinfo,
+elk_compute_vue_map(const struct intel_device_info *devinfo,
                     struct intel_vue_map *vue_map,
                     uint64_t slots_valid,
                     bool separate,
@@ -95,14 +95,14 @@ brw_compute_vue_map(const struct intel_device_info *devinfo,
    /* Make sure that the values we store in vue_map->varying_to_slot and
     * vue_map->slot_to_varying won't overflow the signed chars that are used
     * to store them.  Note that since vue_map->slot_to_varying sometimes holds
-    * values equal to BRW_VARYING_SLOT_COUNT, we need to ensure that
-    * BRW_VARYING_SLOT_COUNT is <= 127, not 128.
+    * values equal to ELK_VARYING_SLOT_COUNT, we need to ensure that
+    * ELK_VARYING_SLOT_COUNT is <= 127, not 128.
     */
-   STATIC_ASSERT(BRW_VARYING_SLOT_COUNT <= 127);
+   STATIC_ASSERT(ELK_VARYING_SLOT_COUNT <= 127);
 
-   for (int i = 0; i < BRW_VARYING_SLOT_COUNT; ++i) {
+   for (int i = 0; i < ELK_VARYING_SLOT_COUNT; ++i) {
       vue_map->varying_to_slot[i] = -1;
-      vue_map->slot_to_varying[i] = BRW_VARYING_SLOT_PAD;
+      vue_map->slot_to_varying[i] = ELK_VARYING_SLOT_PAD;
    }
 
    int slot = 0;
@@ -123,7 +123,7 @@ brw_compute_vue_map(const struct intel_device_info *devinfo,
        * will accept the same header layout as Gfx4 [and should be a bit faster]
        */
       assign_vue_slot(vue_map, VARYING_SLOT_PSIZ, slot++);
-      assign_vue_slot(vue_map, BRW_VARYING_SLOT_NDC, slot++);
+      assign_vue_slot(vue_map, ELK_VARYING_SLOT_NDC, slot++);
       assign_vue_slot(vue_map, VARYING_SLOT_POS, slot++);
    } else {
       /* There are 8 or 16 DWs (D0-D15) in VUE header on Sandybridge:
@@ -216,7 +216,7 @@ brw_compute_vue_map(const struct intel_device_info *devinfo,
  * tessellation evaluation shader inputs.
  */
 void
-brw_compute_tess_vue_map(struct intel_vue_map *vue_map,
+elk_compute_tess_vue_map(struct intel_vue_map *vue_map,
                          uint64_t vertex_slots,
                          uint32_t patch_slots)
 {
@@ -239,7 +239,7 @@ brw_compute_tess_vue_map(struct intel_vue_map *vue_map,
 
    for (int i = 0; i < VARYING_SLOT_TESS_MAX ; ++i) {
       vue_map->varying_to_slot[i] = -1;
-      vue_map->slot_to_varying[i] = BRW_VARYING_SLOT_PAD;
+      vue_map->slot_to_varying[i] = ELK_VARYING_SLOT_PAD;
    }
 
    int slot = 0;
@@ -281,24 +281,24 @@ brw_compute_tess_vue_map(struct intel_vue_map *vue_map,
 }
 
 static const char *
-varying_name(brw_varying_slot slot, gl_shader_stage stage)
+varying_name(elk_varying_slot slot, gl_shader_stage stage)
 {
-   assume(slot < BRW_VARYING_SLOT_COUNT);
+   assume(slot < ELK_VARYING_SLOT_COUNT);
 
    if (slot < VARYING_SLOT_MAX)
       return gl_varying_slot_name_for_stage((gl_varying_slot)slot, stage);
 
-   static const char *brw_names[] = {
-      [BRW_VARYING_SLOT_NDC - VARYING_SLOT_MAX] = "BRW_VARYING_SLOT_NDC",
-      [BRW_VARYING_SLOT_PAD - VARYING_SLOT_MAX] = "BRW_VARYING_SLOT_PAD",
-      [BRW_VARYING_SLOT_PNTC - VARYING_SLOT_MAX] = "BRW_VARYING_SLOT_PNTC",
+   static const char *elk_names[] = {
+      [ELK_VARYING_SLOT_NDC - VARYING_SLOT_MAX] = "ELK_VARYING_SLOT_NDC",
+      [ELK_VARYING_SLOT_PAD - VARYING_SLOT_MAX] = "ELK_VARYING_SLOT_PAD",
+      [ELK_VARYING_SLOT_PNTC - VARYING_SLOT_MAX] = "ELK_VARYING_SLOT_PNTC",
    };
 
-   return brw_names[slot - VARYING_SLOT_MAX];
+   return elk_names[slot - VARYING_SLOT_MAX];
 }
 
 void
-brw_print_vue_map(FILE *fp, const struct intel_vue_map *vue_map,
+elk_print_vue_map(FILE *fp, const struct intel_vue_map *vue_map,
                   gl_shader_stage stage)
 {
    if (vue_map->num_per_vertex_slots > 0 || vue_map->num_per_patch_slots > 0) {

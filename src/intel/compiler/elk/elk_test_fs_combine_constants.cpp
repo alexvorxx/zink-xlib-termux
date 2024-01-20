@@ -20,7 +20,7 @@ struct FSCombineConstantsTest : public ::testing::Test {
 
       compiler = {};
       compiler.devinfo = &devinfo;
-      brw_init_isa_info(&compiler.isa, &devinfo);
+      elk_init_isa_info(&compiler.isa, &devinfo);
 
       params = {};
       params.mem_ctx = mem_ctx;
@@ -29,7 +29,7 @@ struct FSCombineConstantsTest : public ::testing::Test {
       nir_shader *nir =
          nir_shader_create(mem_ctx, MESA_SHADER_COMPUTE, NULL, NULL);
 
-      shader = new fs_visitor(&compiler, &params, NULL,
+      shader = new elk_fs_visitor(&compiler, &params, NULL,
                               &prog_data.base, nir, 8, false, false);
    }
 
@@ -40,15 +40,15 @@ struct FSCombineConstantsTest : public ::testing::Test {
    }
 
    void *mem_ctx;
-   brw_compiler compiler;
-   brw_compile_params params;
+   elk_compiler compiler;
+   elk_compile_params params;
    intel_device_info devinfo;
-   struct brw_wm_prog_data prog_data;
+   struct elk_wm_prog_data prog_data;
    struct gl_shader_program *shader_prog;
 
-   fs_visitor *shader;
+   elk_fs_visitor *shader;
 
-   bool opt_combine_constants(fs_visitor *s) {
+   bool opt_combine_constants(elk_fs_visitor *s) {
       const bool print = getenv("TEST_DEBUG");
 
       if (print) {
@@ -68,7 +68,7 @@ struct FSCombineConstantsTest : public ::testing::Test {
 };
 
 static fs_builder
-make_builder(fs_visitor *s)
+make_builder(elk_fs_visitor *s)
 {
    return fs_builder(s, s->dispatch_width).at_end();
 }
@@ -77,9 +77,9 @@ TEST_F(FSCombineConstantsTest, Simple)
 {
    fs_builder bld = make_builder(shader);
 
-   fs_reg r = brw_vec8_grf(1, 0);
-   fs_reg imm_a = brw_imm_ud(1);
-   fs_reg imm_b = brw_imm_ud(2);
+   elk_fs_reg r = elk_vec8_grf(1, 0);
+   elk_fs_reg imm_a = elk_imm_ud(1);
+   elk_fs_reg imm_b = elk_imm_ud(2);
 
    bld.SEL(r, imm_a, imm_b);
    shader->calculate_cfg();
@@ -88,24 +88,24 @@ TEST_F(FSCombineConstantsTest, Simple)
    ASSERT_TRUE(progress);
 
    ASSERT_EQ(shader->cfg->num_blocks, 1);
-   bblock_t *block = cfg_first_block(shader->cfg);
+   elk_bblock_t *block = cfg_first_block(shader->cfg);
    ASSERT_NE(block, nullptr);
 
    /* We can do better but for now sanity check that
     * there's a MOV and a SEL.
     */
-   ASSERT_EQ(bblock_start(block)->opcode, BRW_OPCODE_MOV);
-   ASSERT_EQ(bblock_end(block)->opcode, BRW_OPCODE_SEL);
+   ASSERT_EQ(bblock_start(block)->opcode, ELK_OPCODE_MOV);
+   ASSERT_EQ(bblock_end(block)->opcode, ELK_OPCODE_SEL);
 }
 
 TEST_F(FSCombineConstantsTest, DoContainingDo)
 {
    fs_builder bld = make_builder(shader);
 
-   fs_reg r1 = brw_vec8_grf(1, 0);
-   fs_reg r2 = brw_vec8_grf(2, 0);
-   fs_reg imm_a = brw_imm_ud(1);
-   fs_reg imm_b = brw_imm_ud(2);
+   elk_fs_reg r1 = elk_vec8_grf(1, 0);
+   elk_fs_reg r2 = elk_vec8_grf(2, 0);
+   elk_fs_reg imm_a = elk_imm_ud(1);
+   elk_fs_reg imm_b = elk_imm_ud(2);
 
    bld.DO();
    bld.DO();

@@ -43,37 +43,37 @@
 extern "C" {
 #endif
 
-/* brw_context.h has a forward declaration of brw_inst, so name the struct. */
-typedef struct brw_inst {
+/* elk_context.h has a forward declaration of elk_inst, so name the struct. */
+typedef struct elk_inst {
    uint64_t data[2];
-} brw_inst;
+} elk_inst;
 
-static inline uint64_t brw_inst_bits(const brw_inst *inst,
+static inline uint64_t elk_inst_bits(const elk_inst *inst,
                                      unsigned high, unsigned low);
-static inline void brw_inst_set_bits(brw_inst *inst,
+static inline void elk_inst_set_bits(elk_inst *inst,
                                      unsigned high, unsigned low,
                                      uint64_t value);
 
 #define FC(name, hi4, lo4, hi12, lo12, assertions)            \
 static inline void                                            \
-brw_inst_set_##name(const struct intel_device_info *devinfo,  \
-                    brw_inst *inst, uint64_t v)               \
+elk_inst_set_##name(const struct intel_device_info *devinfo,  \
+                    elk_inst *inst, uint64_t v)               \
 {                                                             \
    assert(assertions);                                        \
    if (devinfo->ver >= 12)                                    \
-      brw_inst_set_bits(inst, hi12, lo12, v);                 \
+      elk_inst_set_bits(inst, hi12, lo12, v);                 \
    else                                                       \
-      brw_inst_set_bits(inst, hi4, lo4, v);                   \
+      elk_inst_set_bits(inst, hi4, lo4, v);                   \
 }                                                             \
 static inline uint64_t                                        \
-brw_inst_##name(const struct intel_device_info *devinfo,      \
-                const brw_inst *inst)                         \
+elk_inst_##name(const struct intel_device_info *devinfo,      \
+                const elk_inst *inst)                         \
 {                                                             \
    assert(assertions);                                        \
    if (devinfo->ver >= 12)                                    \
-      return brw_inst_bits(inst, hi12, lo12);                 \
+      return elk_inst_bits(inst, hi12, lo12);                 \
    else                                                       \
-      return brw_inst_bits(inst, hi4, lo4);                   \
+      return elk_inst_bits(inst, hi4, lo4);                   \
 }
 
 /* A simple macro for fields which stay in the same place on all generations,
@@ -86,81 +86,81 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
  */
 #define F20(name, hi4, lo4, hi12, lo12, hi20, lo20)                \
    static inline void                                              \
-   brw_inst_set_##name(const struct intel_device_info *devinfo,    \
-                       brw_inst *inst, uint64_t v)                 \
+   elk_inst_set_##name(const struct intel_device_info *devinfo,    \
+                       elk_inst *inst, uint64_t v)                 \
    {                                                               \
       if (devinfo->ver >= 20)                                      \
-         brw_inst_set_bits(inst, hi20, lo20, v);                   \
+         elk_inst_set_bits(inst, hi20, lo20, v);                   \
       else if (devinfo->ver >= 12)                                 \
-         brw_inst_set_bits(inst, hi12, lo12, v);                   \
+         elk_inst_set_bits(inst, hi12, lo12, v);                   \
       else                                                         \
-         brw_inst_set_bits(inst, hi4, lo4, v);                     \
+         elk_inst_set_bits(inst, hi4, lo4, v);                     \
    }                                                               \
    static inline uint64_t                                          \
-   brw_inst_##name(const struct intel_device_info *devinfo,        \
-                   const brw_inst *inst)                           \
+   elk_inst_##name(const struct intel_device_info *devinfo,        \
+                   const elk_inst *inst)                           \
    {                                                               \
       if (devinfo->ver >= 20)                                      \
-         return brw_inst_bits(inst, hi20, lo20);                   \
+         return elk_inst_bits(inst, hi20, lo20);                   \
       else if (devinfo->ver >= 12)                                 \
-         return brw_inst_bits(inst, hi12, lo12);                   \
+         return elk_inst_bits(inst, hi12, lo12);                   \
       else                                                         \
-         return brw_inst_bits(inst, hi4, lo4);                     \
+         return elk_inst_bits(inst, hi4, lo4);                     \
    }
 
 #define FV20(name, hi4, lo4, hi12, lo12, hi20, lo20)               \
    static inline void                                              \
-   brw_inst_set_##name(const struct intel_device_info *devinfo,    \
-                       brw_inst *inst, uint64_t v)                 \
+   elk_inst_set_##name(const struct intel_device_info *devinfo,    \
+                       elk_inst *inst, uint64_t v)                 \
    {                                                               \
       if (devinfo->ver >= 20)                                      \
-         brw_inst_set_bits(inst, hi20, lo20, v & 0x7);             \
+         elk_inst_set_bits(inst, hi20, lo20, v & 0x7);             \
       else if (devinfo->ver >= 12)                                 \
-         brw_inst_set_bits(inst, hi12, lo12, v);                   \
+         elk_inst_set_bits(inst, hi12, lo12, v);                   \
       else                                                         \
-         brw_inst_set_bits(inst, hi4, lo4, v);                     \
+         elk_inst_set_bits(inst, hi4, lo4, v);                     \
    }                                                               \
    static inline uint64_t                                          \
-   brw_inst_##name(const struct intel_device_info *devinfo,        \
-                   const brw_inst *inst)                           \
+   elk_inst_##name(const struct intel_device_info *devinfo,        \
+                   const elk_inst *inst)                           \
    {                                                               \
       if (devinfo->ver >= 20)                                      \
-         return brw_inst_bits(inst, hi20, lo20) == 0x7 ? 0xF :     \
-                brw_inst_bits(inst, hi20, lo20);                   \
+         return elk_inst_bits(inst, hi20, lo20) == 0x7 ? 0xF :     \
+                elk_inst_bits(inst, hi20, lo20);                   \
       else if (devinfo->ver >= 12)                                 \
-         return brw_inst_bits(inst, hi12, lo12);                   \
+         return elk_inst_bits(inst, hi12, lo12);                   \
       else                                                         \
-         return brw_inst_bits(inst, hi4, lo4);                     \
+         return elk_inst_bits(inst, hi4, lo4);                     \
    }
 
 #define FD20(name, hi4, lo4, hi12, lo12, hi20, lo20, zero20)       \
    static inline void                                              \
-   brw_inst_set_##name(const struct intel_device_info *devinfo,    \
-                       brw_inst *inst, uint64_t v)                 \
+   elk_inst_set_##name(const struct intel_device_info *devinfo,    \
+                       elk_inst *inst, uint64_t v)                 \
    {                                                               \
       if (devinfo->ver >= 20) {                                    \
-         brw_inst_set_bits(inst, hi20, lo20, v >> 1);              \
+         elk_inst_set_bits(inst, hi20, lo20, v >> 1);              \
          if (zero20 == -1)                                         \
             assert((v & 1) == 0);                                  \
          else                                                      \
-            brw_inst_set_bits(inst, zero20, zero20, v & 1);        \
+            elk_inst_set_bits(inst, zero20, zero20, v & 1);        \
       } else if (devinfo->ver >= 12)                               \
-         brw_inst_set_bits(inst, hi12, lo12, v);                   \
+         elk_inst_set_bits(inst, hi12, lo12, v);                   \
       else                                                         \
-         brw_inst_set_bits(inst, hi4, lo4, v);                     \
+         elk_inst_set_bits(inst, hi4, lo4, v);                     \
    }                                                               \
    static inline uint64_t                                          \
-   brw_inst_##name(const struct intel_device_info *devinfo,        \
-                   const brw_inst *inst)                           \
+   elk_inst_##name(const struct intel_device_info *devinfo,        \
+                   const elk_inst *inst)                           \
    {                                                               \
       if (devinfo->ver >= 20)                                      \
-         return (brw_inst_bits(inst, hi20, lo20) << 1) |           \
+         return (elk_inst_bits(inst, hi20, lo20) << 1) |           \
                 (zero20 == -1 ? 0 :                                \
-                 brw_inst_bits(inst, zero20, zero20));             \
+                 elk_inst_bits(inst, zero20, zero20));             \
       else if (devinfo->ver >= 12)                                 \
-         return brw_inst_bits(inst, hi12, lo12);                   \
+         return elk_inst_bits(inst, hi12, lo12);                   \
       else                                                         \
-         return brw_inst_bits(inst, hi4, lo4);                     \
+         return elk_inst_bits(inst, hi4, lo4);                     \
    }
 
 #define BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                     \
@@ -192,19 +192,19 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
 #define FF(name, hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                    \
            hi7, lo7, hi8, lo8, hi12, lo12, hi20, lo20)                        \
 static inline void                                                            \
-brw_inst_set_##name(const struct intel_device_info *devinfo,                  \
-                    brw_inst *inst, uint64_t value)                           \
+elk_inst_set_##name(const struct intel_device_info *devinfo,                  \
+                    elk_inst *inst, uint64_t value)                           \
 {                                                                             \
    BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                           \
           hi7, lo7, hi8, lo8, hi12, lo12, hi20, lo20)                         \
-   brw_inst_set_bits(inst, high, low, value);                                 \
+   elk_inst_set_bits(inst, high, low, value);                                 \
 }                                                                             \
 static inline uint64_t                                                        \
-brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
+elk_inst_##name(const struct intel_device_info *devinfo, const elk_inst *inst)\
 {                                                                             \
    BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                           \
           hi7, lo7, hi8, lo8, hi12, lo12, hi20, lo20)                         \
-   return brw_inst_bits(inst, high, low);                                     \
+   return elk_inst_bits(inst, high, low);                                     \
 }
 
 /* A macro for fields which moved as of Gfx8+. */
@@ -226,34 +226,34 @@ FF(name,                                                   \
 #define FFDC(name, hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                  \
              hi7, lo7, hi8, lo8, hi12ex, lo12ex, hi12, lo12, assertions)      \
 static inline void                                                            \
-brw_inst_set_##name(const struct intel_device_info *devinfo,                  \
-                    brw_inst *inst, uint64_t value)                           \
+elk_inst_set_##name(const struct intel_device_info *devinfo,                  \
+                    elk_inst *inst, uint64_t value)                           \
 {                                                                             \
    assert(assertions);                                                        \
    if (devinfo->ver >= 12) {                                                  \
       const unsigned k = hi12 - lo12 + 1;                                     \
       if (hi12ex != -1 && lo12ex != -1)                                       \
-         brw_inst_set_bits(inst, hi12ex, lo12ex, value >> k);                 \
-      brw_inst_set_bits(inst, hi12, lo12, value & ((1ull << k) - 1));         \
+         elk_inst_set_bits(inst, hi12ex, lo12ex, value >> k);                 \
+      elk_inst_set_bits(inst, hi12, lo12, value & ((1ull << k) - 1));         \
    } else {                                                                   \
       BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                        \
              hi7, lo7, hi8, lo8, -1, -1, -1, -1);                             \
-      brw_inst_set_bits(inst, high, low, value);                              \
+      elk_inst_set_bits(inst, high, low, value);                              \
    }                                                                          \
 }                                                                             \
 static inline uint64_t                                                        \
-brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
+elk_inst_##name(const struct intel_device_info *devinfo, const elk_inst *inst)\
 {                                                                             \
    assert(assertions);                                                        \
    if (devinfo->ver >= 12) {                                                  \
       const unsigned k = hi12 - lo12 + 1;                                     \
       return (hi12ex == -1 || lo12ex == -1 ? 0 :                              \
-              brw_inst_bits(inst, hi12ex, lo12ex) << k) |                     \
-             brw_inst_bits(inst, hi12, lo12);                                 \
+              elk_inst_bits(inst, hi12ex, lo12ex) << k) |                     \
+             elk_inst_bits(inst, hi12, lo12);                                 \
    } else {                                                                   \
       BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                        \
              hi7, lo7, hi8, lo8, -1, -1, -1, -1);                             \
-      return brw_inst_bits(inst, high, low);                                  \
+      return elk_inst_bits(inst, high, low);                                  \
    }                                                                          \
 }
 
@@ -276,30 +276,30 @@ brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
  */
 #define FI(name, hi4, lo4, hi8, lo8, hi12, lo12)                              \
 static inline void                                                            \
-brw_inst_set_##name(const struct intel_device_info *devinfo,                  \
-                    brw_inst *inst, uint64_t value)                           \
+elk_inst_set_##name(const struct intel_device_info *devinfo,                  \
+                    elk_inst *inst, uint64_t value)                           \
 {                                                                             \
    if (devinfo->ver >= 12) {                                                  \
-      brw_inst_set_bits(inst, hi12, hi12, value >> 1);                        \
+      elk_inst_set_bits(inst, hi12, hi12, value >> 1);                        \
       if ((value >> 1) == 0)                                                  \
-         brw_inst_set_bits(inst, lo12, lo12, value & 1);                      \
+         elk_inst_set_bits(inst, lo12, lo12, value & 1);                      \
    } else {                                                                   \
       BOUNDS(hi4, lo4, hi4, lo4, hi4, lo4, hi4, lo4,                          \
              hi4, lo4, hi8, lo8, -1, -1, -1, -1);                             \
-      brw_inst_set_bits(inst, high, low, value);                              \
+      elk_inst_set_bits(inst, high, low, value);                              \
    }                                                                          \
 }                                                                             \
 static inline uint64_t                                                        \
-brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
+elk_inst_##name(const struct intel_device_info *devinfo, const elk_inst *inst)\
 {                                                                             \
    if (devinfo->ver >= 12) {                                                  \
-      return (brw_inst_bits(inst, hi12, hi12) << 1) |                         \
-             (brw_inst_bits(inst, hi12, hi12) == 0 ?                          \
-              brw_inst_bits(inst, lo12, lo12) : 1);                           \
+      return (elk_inst_bits(inst, hi12, hi12) << 1) |                         \
+             (elk_inst_bits(inst, hi12, hi12) == 0 ?                          \
+              elk_inst_bits(inst, lo12, lo12) : 1);                           \
    } else {                                                                   \
       BOUNDS(hi4, lo4, hi4, lo4, hi4, lo4, hi4, lo4,                          \
              hi4, lo4, hi8, lo8, -1, -1, -1, -1);                             \
-      return brw_inst_bits(inst, high, low);                                  \
+      return elk_inst_bits(inst, high, low);                                  \
    }                                                                          \
 }
 
@@ -308,22 +308,22 @@ brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
  */
 #define FK(name, hi4, lo4, const12)                           \
 static inline void                                            \
-brw_inst_set_##name(const struct intel_device_info *devinfo,  \
-                    brw_inst *inst, uint64_t v)               \
+elk_inst_set_##name(const struct intel_device_info *devinfo,  \
+                    elk_inst *inst, uint64_t v)               \
 {                                                             \
    if (devinfo->ver >= 12)                                    \
       assert(v == (const12));                                 \
    else                                                       \
-      brw_inst_set_bits(inst, hi4, lo4, v);                   \
+      elk_inst_set_bits(inst, hi4, lo4, v);                   \
 }                                                             \
 static inline uint64_t                                        \
-brw_inst_##name(const struct intel_device_info *devinfo,      \
-                const brw_inst *inst)                         \
+elk_inst_##name(const struct intel_device_info *devinfo,      \
+                const elk_inst *inst)                         \
 {                                                             \
    if (devinfo->ver >= 12)                                    \
       return (const12);                                       \
    else                                                       \
-      return brw_inst_bits(inst, hi4, lo4);                   \
+      return elk_inst_bits(inst, hi4, lo4);                   \
 }
 
 FV20(src1_vstride,     /* 4+ */ 120, 117, /* 12+ */ 119, 116, /* 20+ */ 118, 116)
@@ -409,7 +409,7 @@ FF(nib_control,
 F8(no_dd_check,        /* 4+ */  11, 11,  /* 8+ */  10,  10, /* 12+ */ -1, -1)
 F8(no_dd_clear,        /* 4+ */  10, 10,  /* 8+ */   9,   9, /* 12+ */ -1, -1)
 F20(swsb,              /* 4+ */  -1, -1,  /* 12+ */ 15,   8, /* 20+ */ 17, 8)
-FK(access_mode,        /* 4+ */   8,  8,  /* 12+ */ BRW_ALIGN_1)
+FK(access_mode,        /* 4+ */   8,  8,  /* 12+ */ ELK_ALIGN_1)
 /* Bit 7 is Reserved (for future Opcode expansion) */
 F(hw_opcode,           /* 4+ */   6,  0,  /* 12+ */ 6,  0)
 
@@ -465,7 +465,7 @@ F20(3src_qtr_control,       /* 4+ */ 13, 12,   /* 12+ */ 21, 20, /* 20+ */ 25, 2
 F8(3src_no_dd_check,        /* 4+ */ 11, 11,   /* 8+ */  10, 10, /* 12+ */ -1, -1)
 F8(3src_no_dd_clear,        /* 4+ */ 10, 10,   /* 8+ */   9,  9, /* 12+ */ -1, -1)
 F8(3src_mask_control,       /* 4+ */ 9,  9,    /* 8+ */  34, 34, /* 12+ */ 31, 31)
-FK(3src_access_mode,        /* 4+ */ 8,  8,    /* 12+ */ BRW_ALIGN_1)
+FK(3src_access_mode,        /* 4+ */ 8,  8,    /* 12+ */ ELK_ALIGN_1)
 F(3src_swsb,                /* 4+ */ -1, -1,   /* 12+ */ 15,  8)
 /* Bit 7 is Reserved (for future Opcode expansion) */
 F(3src_hw_opcode,           /* 4+ */ 6,  0,    /* 12+ */ 6, 0)
@@ -473,19 +473,19 @@ F(3src_hw_opcode,           /* 4+ */ 6,  0,    /* 12+ */ 6, 0)
 
 #define REG_TYPE(reg)                                                         \
 static inline void                                                            \
-brw_inst_set_3src_a16_##reg##_type(const struct intel_device_info *devinfo,   \
-                                   brw_inst *inst, enum brw_reg_type type)    \
+elk_inst_set_3src_a16_##reg##_type(const struct intel_device_info *devinfo,   \
+                                   elk_inst *inst, enum elk_reg_type type)    \
 {                                                                             \
-   unsigned hw_type = brw_reg_type_to_a16_hw_3src_type(devinfo, type);        \
-   brw_inst_set_3src_a16_##reg##_hw_type(devinfo, inst, hw_type);             \
+   unsigned hw_type = elk_reg_type_to_a16_hw_3src_type(devinfo, type);        \
+   elk_inst_set_3src_a16_##reg##_hw_type(devinfo, inst, hw_type);             \
 }                                                                             \
                                                                               \
-static inline enum brw_reg_type                                               \
-brw_inst_3src_a16_##reg##_type(const struct intel_device_info *devinfo,       \
-                               const brw_inst *inst)                          \
+static inline enum elk_reg_type                                               \
+elk_inst_3src_a16_##reg##_type(const struct intel_device_info *devinfo,       \
+                               const elk_inst *inst)                          \
 {                                                                             \
-   unsigned hw_type = brw_inst_3src_a16_##reg##_hw_type(devinfo, inst);       \
-   return brw_a16_hw_3src_type_to_reg_type(devinfo, hw_type);                 \
+   unsigned hw_type = elk_inst_3src_a16_##reg##_hw_type(devinfo, inst);       \
+   return elk_a16_hw_3src_type_to_reg_type(devinfo, hw_type);                 \
 }
 
 REG_TYPE(dst)
@@ -535,30 +535,30 @@ FC(3src_a1_exec_type,       /* 4+ */    35,  35, /* 12+ */ 39, 39, devinfo->ver 
 
 #define REG_TYPE(reg)                                                         \
 static inline void                                                            \
-brw_inst_set_3src_a1_##reg##_type(const struct intel_device_info *devinfo,    \
-                                  brw_inst *inst, enum brw_reg_type type)     \
+elk_inst_set_3src_a1_##reg##_type(const struct intel_device_info *devinfo,    \
+                                  elk_inst *inst, enum elk_reg_type type)     \
 {                                                                             \
    UNUSED enum gfx10_align1_3src_exec_type exec_type =                        \
-      (enum gfx10_align1_3src_exec_type) brw_inst_3src_a1_exec_type(devinfo,  \
+      (enum gfx10_align1_3src_exec_type) elk_inst_3src_a1_exec_type(devinfo,  \
                                                                     inst);    \
-   if (brw_reg_type_is_floating_point(type)) {                                \
-      assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT);                   \
+   if (elk_reg_type_is_floating_point(type)) {                                \
+      assert(exec_type == ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT);                   \
    } else {                                                                   \
-      assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_INT);                     \
+      assert(exec_type == ELK_ALIGN1_3SRC_EXEC_TYPE_INT);                     \
    }                                                                          \
-   unsigned hw_type = brw_reg_type_to_a1_hw_3src_type(devinfo, type);         \
-   brw_inst_set_3src_a1_##reg##_hw_type(devinfo, inst, hw_type);              \
+   unsigned hw_type = elk_reg_type_to_a1_hw_3src_type(devinfo, type);         \
+   elk_inst_set_3src_a1_##reg##_hw_type(devinfo, inst, hw_type);              \
 }                                                                             \
                                                                               \
-static inline enum brw_reg_type                                               \
-brw_inst_3src_a1_##reg##_type(const struct intel_device_info *devinfo,        \
-                              const brw_inst *inst)                           \
+static inline enum elk_reg_type                                               \
+elk_inst_3src_a1_##reg##_type(const struct intel_device_info *devinfo,        \
+                              const elk_inst *inst)                           \
 {                                                                             \
    enum gfx10_align1_3src_exec_type exec_type =                               \
-      (enum gfx10_align1_3src_exec_type) brw_inst_3src_a1_exec_type(devinfo,  \
+      (enum gfx10_align1_3src_exec_type) elk_inst_3src_a1_exec_type(devinfo,  \
                                                                     inst);    \
-   unsigned hw_type = brw_inst_3src_a1_##reg##_hw_type(devinfo, inst);        \
-   return brw_a1_hw_3src_type_to_reg_type(devinfo, hw_type, exec_type);       \
+   unsigned hw_type = elk_inst_3src_a1_##reg##_hw_type(devinfo, inst);        \
+   return elk_a1_hw_3src_type_to_reg_type(devinfo, hw_type, exec_type);       \
 }
 
 REG_TYPE(dst)
@@ -572,47 +572,47 @@ REG_TYPE(src2)
  *  @{
  */
 static inline uint16_t
-brw_inst_3src_a1_src0_imm(ASSERTED const struct intel_device_info *devinfo,
-                          const brw_inst *insn)
+elk_inst_3src_a1_src0_imm(ASSERTED const struct intel_device_info *devinfo,
+                          const elk_inst *insn)
 {
    assert(devinfo->ver >= 10);
    if (devinfo->ver >= 12)
-      return brw_inst_bits(insn, 79, 64);
+      return elk_inst_bits(insn, 79, 64);
    else
-      return brw_inst_bits(insn, 82, 67);
+      return elk_inst_bits(insn, 82, 67);
 }
 
 static inline uint16_t
-brw_inst_3src_a1_src2_imm(ASSERTED const struct intel_device_info *devinfo,
-                          const brw_inst *insn)
+elk_inst_3src_a1_src2_imm(ASSERTED const struct intel_device_info *devinfo,
+                          const elk_inst *insn)
 {
    assert(devinfo->ver >= 10);
    if (devinfo->ver >= 12)
-      return brw_inst_bits(insn, 127, 112);
+      return elk_inst_bits(insn, 127, 112);
    else
-      return brw_inst_bits(insn, 124, 109);
+      return elk_inst_bits(insn, 124, 109);
 }
 
 static inline void
-brw_inst_set_3src_a1_src0_imm(ASSERTED const struct intel_device_info *devinfo,
-                              brw_inst *insn, uint16_t value)
+elk_inst_set_3src_a1_src0_imm(ASSERTED const struct intel_device_info *devinfo,
+                              elk_inst *insn, uint16_t value)
 {
    assert(devinfo->ver >= 10);
    if (devinfo->ver >= 12)
-      brw_inst_set_bits(insn, 79, 64, value);
+      elk_inst_set_bits(insn, 79, 64, value);
    else
-      brw_inst_set_bits(insn, 82, 67, value);
+      elk_inst_set_bits(insn, 82, 67, value);
 }
 
 static inline void
-brw_inst_set_3src_a1_src2_imm(ASSERTED const struct intel_device_info *devinfo,
-                              brw_inst *insn, uint16_t value)
+elk_inst_set_3src_a1_src2_imm(ASSERTED const struct intel_device_info *devinfo,
+                              elk_inst *insn, uint16_t value)
 {
    assert(devinfo->ver >= 10);
    if (devinfo->ver >= 12)
-      brw_inst_set_bits(insn, 127, 112, value);
+      elk_inst_set_bits(insn, 127, 112, value);
    else
-      brw_inst_set_bits(insn, 124, 109, value);
+      elk_inst_set_bits(insn, 124, 109, value);
 }
 /** @} */
 
@@ -645,30 +645,30 @@ F(dpas_3src_dst_hw_type,    /* 4+ */ -1, -1,   /* 12+ */ 38,  36)
 
 #define REG_TYPE(reg)                                                         \
 static inline void                                                            \
-brw_inst_set_dpas_3src_##reg##_type(const struct intel_device_info *devinfo,  \
-                                    brw_inst *inst, enum brw_reg_type type)   \
+elk_inst_set_dpas_3src_##reg##_type(const struct intel_device_info *devinfo,  \
+                                    elk_inst *inst, enum elk_reg_type type)   \
 {                                                                             \
    UNUSED enum gfx10_align1_3src_exec_type exec_type =                        \
-      (enum gfx10_align1_3src_exec_type) brw_inst_dpas_3src_exec_type(devinfo,\
+      (enum gfx10_align1_3src_exec_type) elk_inst_dpas_3src_exec_type(devinfo,\
                                                                       inst);  \
-   if (brw_reg_type_is_floating_point(type)) {                                \
-      assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT);                   \
+   if (elk_reg_type_is_floating_point(type)) {                                \
+      assert(exec_type == ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT);                   \
    } else {                                                                   \
-      assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_INT);                     \
+      assert(exec_type == ELK_ALIGN1_3SRC_EXEC_TYPE_INT);                     \
    }                                                                          \
-   unsigned hw_type = brw_reg_type_to_a1_hw_3src_type(devinfo, type);         \
-   brw_inst_set_dpas_3src_##reg##_hw_type(devinfo, inst, hw_type);            \
+   unsigned hw_type = elk_reg_type_to_a1_hw_3src_type(devinfo, type);         \
+   elk_inst_set_dpas_3src_##reg##_hw_type(devinfo, inst, hw_type);            \
 }                                                                             \
                                                                               \
-static inline enum brw_reg_type                                               \
-brw_inst_dpas_3src_##reg##_type(const struct intel_device_info *devinfo,      \
-                              const brw_inst *inst)                           \
+static inline enum elk_reg_type                                               \
+elk_inst_dpas_3src_##reg##_type(const struct intel_device_info *devinfo,      \
+                              const elk_inst *inst)                           \
 {                                                                             \
    enum gfx10_align1_3src_exec_type exec_type =                               \
-      (enum gfx10_align1_3src_exec_type) brw_inst_dpas_3src_exec_type(devinfo,\
+      (enum gfx10_align1_3src_exec_type) elk_inst_dpas_3src_exec_type(devinfo,\
                                                                       inst);  \
-   unsigned hw_type = brw_inst_dpas_3src_##reg##_hw_type(devinfo, inst);      \
-   return brw_a1_hw_3src_type_to_reg_type(devinfo, hw_type, exec_type);       \
+   unsigned hw_type = elk_inst_dpas_3src_##reg##_hw_type(devinfo, inst);      \
+   return elk_a1_hw_3src_type_to_reg_type(devinfo, hw_type, exec_type);       \
 }
 
 REG_TYPE(dst)
@@ -682,80 +682,80 @@ REG_TYPE(src2)
  *  @{
  */
 static inline void
-brw_inst_set_uip(const struct intel_device_info *devinfo,
-                 brw_inst *inst, int32_t value)
+elk_inst_set_uip(const struct intel_device_info *devinfo,
+                 elk_inst *inst, int32_t value)
 {
    assert(devinfo->ver >= 6);
 
    if (devinfo->ver >= 12)
-      brw_inst_set_src1_is_imm(devinfo, inst, 1);
+      elk_inst_set_src1_is_imm(devinfo, inst, 1);
 
    if (devinfo->ver >= 8) {
-      brw_inst_set_bits(inst, 95, 64, (uint32_t)value);
+      elk_inst_set_bits(inst, 95, 64, (uint32_t)value);
    } else {
       assert(value <= (1 << 16) - 1);
       assert(value > -(1 << 16));
-      brw_inst_set_bits(inst, 127, 112, (uint16_t)value);
+      elk_inst_set_bits(inst, 127, 112, (uint16_t)value);
    }
 }
 
 static inline int32_t
-brw_inst_uip(const struct intel_device_info *devinfo, const brw_inst *inst)
+elk_inst_uip(const struct intel_device_info *devinfo, const elk_inst *inst)
 {
    assert(devinfo->ver >= 6);
 
    if (devinfo->ver >= 8) {
-      return brw_inst_bits(inst, 95, 64);
+      return elk_inst_bits(inst, 95, 64);
    } else {
-      return (int16_t)brw_inst_bits(inst, 127, 112);
+      return (int16_t)elk_inst_bits(inst, 127, 112);
    }
 }
 
 static inline void
-brw_inst_set_jip(const struct intel_device_info *devinfo,
-                 brw_inst *inst, int32_t value)
+elk_inst_set_jip(const struct intel_device_info *devinfo,
+                 elk_inst *inst, int32_t value)
 {
    assert(devinfo->ver >= 6);
 
    if (devinfo->ver >= 12)
-      brw_inst_set_src0_is_imm(devinfo, inst, 1);
+      elk_inst_set_src0_is_imm(devinfo, inst, 1);
 
    if (devinfo->ver >= 8) {
-      brw_inst_set_bits(inst, 127, 96, (uint32_t)value);
+      elk_inst_set_bits(inst, 127, 96, (uint32_t)value);
    } else {
       assert(value <= (1 << 15) - 1);
       assert(value >= -(1 << 15));
-      brw_inst_set_bits(inst, 111, 96, (uint16_t)value);
+      elk_inst_set_bits(inst, 111, 96, (uint16_t)value);
    }
 }
 
 static inline int32_t
-brw_inst_jip(const struct intel_device_info *devinfo, const brw_inst *inst)
+elk_inst_jip(const struct intel_device_info *devinfo, const elk_inst *inst)
 {
    assert(devinfo->ver >= 6);
 
    if (devinfo->ver >= 8) {
-      return brw_inst_bits(inst, 127, 96);
+      return elk_inst_bits(inst, 127, 96);
    } else {
-      return (int16_t)brw_inst_bits(inst, 111, 96);
+      return (int16_t)elk_inst_bits(inst, 111, 96);
    }
 }
 
 /** Like FC, but using int16_t to handle negative jump targets. */
 #define FJ(name, high, low, assertions)                                       \
 static inline void                                                            \
-brw_inst_set_##name(const struct intel_device_info *devinfo, brw_inst *inst, int16_t v) \
+elk_inst_set_##name(const struct intel_device_info *devinfo, elk_inst *inst, int16_t v) \
 {                                                                             \
    assert(assertions);                                                        \
    (void) devinfo;                                                            \
-   brw_inst_set_bits(inst, high, low, (uint16_t) v);                          \
+   elk_inst_set_bits(inst, high, low, (uint16_t) v);                          \
 }                                                                             \
 static inline int16_t                                                         \
-brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
+elk_inst_##name(const struct intel_device_info *devinfo, const elk_inst *inst)\
 {                                                                             \
    assert(assertions);                                                        \
    (void) devinfo;                                                            \
-   return brw_inst_bits(inst, high, low);                                     \
+   return elk_inst_bits(inst, high, low);                                     \
 }
 
 FJ(gfx6_jump_count,  63,  48, devinfo->ver == 6)
@@ -797,23 +797,23 @@ FC(send_ex_bso,               /* 4+ */ -1, -1, /* 12+ */  39,  39, devinfo->verx
  * separately.
  */
 static inline void
-brw_inst_set_send_desc(const struct intel_device_info *devinfo,
-                       brw_inst *inst, uint32_t value)
+elk_inst_set_send_desc(const struct intel_device_info *devinfo,
+                       elk_inst *inst, uint32_t value)
 {
    if (devinfo->ver >= 12) {
-      brw_inst_set_bits(inst, 123, 122, GET_BITS(value, 31, 30));
-      brw_inst_set_bits(inst, 71, 67, GET_BITS(value, 29, 25));
-      brw_inst_set_bits(inst, 55, 51, GET_BITS(value, 24, 20));
-      brw_inst_set_bits(inst, 121, 113, GET_BITS(value, 19, 11));
-      brw_inst_set_bits(inst, 91, 81, GET_BITS(value, 10, 0));
+      elk_inst_set_bits(inst, 123, 122, GET_BITS(value, 31, 30));
+      elk_inst_set_bits(inst, 71, 67, GET_BITS(value, 29, 25));
+      elk_inst_set_bits(inst, 55, 51, GET_BITS(value, 24, 20));
+      elk_inst_set_bits(inst, 121, 113, GET_BITS(value, 19, 11));
+      elk_inst_set_bits(inst, 91, 81, GET_BITS(value, 10, 0));
    } else if (devinfo->ver >= 9) {
-      brw_inst_set_bits(inst, 126, 96, value);
+      elk_inst_set_bits(inst, 126, 96, value);
       assert(value >> 31 == 0);
    } else if (devinfo->ver >= 5) {
-      brw_inst_set_bits(inst, 124, 96, value);
+      elk_inst_set_bits(inst, 124, 96, value);
       assert(value >> 29 == 0);
    } else {
-      brw_inst_set_bits(inst, 119, 96, value);
+      elk_inst_set_bits(inst, 119, 96, value);
       assert(value >> 24 == 0);
    }
 }
@@ -821,24 +821,24 @@ brw_inst_set_send_desc(const struct intel_device_info *devinfo,
 /**
  * Get the SEND(C) message descriptor immediate.
  *
- * \sa brw_inst_set_send_desc().
+ * \sa elk_inst_set_send_desc().
  */
 static inline uint32_t
-brw_inst_send_desc(const struct intel_device_info *devinfo,
-                   const brw_inst *inst)
+elk_inst_send_desc(const struct intel_device_info *devinfo,
+                   const elk_inst *inst)
 {
    if (devinfo->ver >= 12) {
-      return (brw_inst_bits(inst, 123, 122) << 30 |
-              brw_inst_bits(inst, 71, 67) << 25 |
-              brw_inst_bits(inst, 55, 51) << 20 |
-              brw_inst_bits(inst, 121, 113) << 11 |
-              brw_inst_bits(inst, 91, 81));
+      return (elk_inst_bits(inst, 123, 122) << 30 |
+              elk_inst_bits(inst, 71, 67) << 25 |
+              elk_inst_bits(inst, 55, 51) << 20 |
+              elk_inst_bits(inst, 121, 113) << 11 |
+              elk_inst_bits(inst, 91, 81));
    } else if (devinfo->ver >= 9) {
-      return brw_inst_bits(inst, 126, 96);
+      return elk_inst_bits(inst, 126, 96);
    } else if (devinfo->ver >= 5) {
-      return brw_inst_bits(inst, 124, 96);
+      return elk_inst_bits(inst, 124, 96);
    } else {
-      return brw_inst_bits(inst, 119, 96);
+      return elk_inst_bits(inst, 119, 96);
    }
 }
 
@@ -852,22 +852,22 @@ brw_inst_send_desc(const struct intel_device_info *devinfo,
  * separately.
  */
 static inline void
-brw_inst_set_send_ex_desc(const struct intel_device_info *devinfo,
-                          brw_inst *inst, uint32_t value)
+elk_inst_set_send_ex_desc(const struct intel_device_info *devinfo,
+                          elk_inst *inst, uint32_t value)
 {
    if (devinfo->ver >= 12) {
-      brw_inst_set_bits(inst, 127, 124, GET_BITS(value, 31, 28));
-      brw_inst_set_bits(inst, 97, 96, GET_BITS(value, 27, 26));
-      brw_inst_set_bits(inst, 65, 64, GET_BITS(value, 25, 24));
-      brw_inst_set_bits(inst, 47, 35, GET_BITS(value, 23, 11));
-      brw_inst_set_bits(inst, 103, 99, GET_BITS(value, 10, 6));
+      elk_inst_set_bits(inst, 127, 124, GET_BITS(value, 31, 28));
+      elk_inst_set_bits(inst, 97, 96, GET_BITS(value, 27, 26));
+      elk_inst_set_bits(inst, 65, 64, GET_BITS(value, 25, 24));
+      elk_inst_set_bits(inst, 47, 35, GET_BITS(value, 23, 11));
+      elk_inst_set_bits(inst, 103, 99, GET_BITS(value, 10, 6));
       assert(GET_BITS(value, 5, 0) == 0);
    } else {
       assert(devinfo->ver >= 9);
-      brw_inst_set_bits(inst, 94, 91, GET_BITS(value, 31, 28));
-      brw_inst_set_bits(inst, 88, 85, GET_BITS(value, 27, 24));
-      brw_inst_set_bits(inst, 83, 80, GET_BITS(value, 23, 20));
-      brw_inst_set_bits(inst, 67, 64, GET_BITS(value, 19, 16));
+      elk_inst_set_bits(inst, 94, 91, GET_BITS(value, 31, 28));
+      elk_inst_set_bits(inst, 88, 85, GET_BITS(value, 27, 24));
+      elk_inst_set_bits(inst, 83, 80, GET_BITS(value, 23, 20));
+      elk_inst_set_bits(inst, 67, 64, GET_BITS(value, 19, 16));
       assert(GET_BITS(value, 15, 0) == 0);
    }
 }
@@ -882,15 +882,15 @@ brw_inst_set_send_ex_desc(const struct intel_device_info *devinfo,
  * separately.
  */
 static inline void
-brw_inst_set_sends_ex_desc(const struct intel_device_info *devinfo,
-                           brw_inst *inst, uint32_t value)
+elk_inst_set_sends_ex_desc(const struct intel_device_info *devinfo,
+                           elk_inst *inst, uint32_t value)
 {
    if (devinfo->ver >= 12) {
-      brw_inst_set_send_ex_desc(devinfo, inst, value);
+      elk_inst_set_send_ex_desc(devinfo, inst, value);
    } else {
-      brw_inst_set_bits(inst, 95, 80, GET_BITS(value, 31, 16));
+      elk_inst_set_bits(inst, 95, 80, GET_BITS(value, 31, 16));
       assert(GET_BITS(value, 15, 10) == 0);
-      brw_inst_set_bits(inst, 67, 64, GET_BITS(value, 9, 6));
+      elk_inst_set_bits(inst, 67, 64, GET_BITS(value, 9, 6));
       assert(GET_BITS(value, 5, 0) == 0);
    }
 }
@@ -898,41 +898,41 @@ brw_inst_set_sends_ex_desc(const struct intel_device_info *devinfo,
 /**
  * Get the SEND(C) message extended descriptor immediate.
  *
- * \sa brw_inst_set_send_ex_desc().
+ * \sa elk_inst_set_send_ex_desc().
  */
 static inline uint32_t
-brw_inst_send_ex_desc(const struct intel_device_info *devinfo,
-                      const brw_inst *inst)
+elk_inst_send_ex_desc(const struct intel_device_info *devinfo,
+                      const elk_inst *inst)
 {
    if (devinfo->ver >= 12) {
-      return (brw_inst_bits(inst, 127, 124) << 28 |
-              brw_inst_bits(inst, 97, 96) << 26 |
-              brw_inst_bits(inst, 65, 64) << 24 |
-              brw_inst_bits(inst, 47, 35) << 11 |
-              brw_inst_bits(inst, 103, 99) << 6);
+      return (elk_inst_bits(inst, 127, 124) << 28 |
+              elk_inst_bits(inst, 97, 96) << 26 |
+              elk_inst_bits(inst, 65, 64) << 24 |
+              elk_inst_bits(inst, 47, 35) << 11 |
+              elk_inst_bits(inst, 103, 99) << 6);
    } else {
       assert(devinfo->ver >= 9);
-      return (brw_inst_bits(inst, 94, 91) << 28 |
-              brw_inst_bits(inst, 88, 85) << 24 |
-              brw_inst_bits(inst, 83, 80) << 20 |
-              brw_inst_bits(inst, 67, 64) << 16);
+      return (elk_inst_bits(inst, 94, 91) << 28 |
+              elk_inst_bits(inst, 88, 85) << 24 |
+              elk_inst_bits(inst, 83, 80) << 20 |
+              elk_inst_bits(inst, 67, 64) << 16);
    }
 }
 
 /**
  * Get the SENDS(C) message extended descriptor immediate.
  *
- * \sa brw_inst_set_send_ex_desc().
+ * \sa elk_inst_set_send_ex_desc().
  */
 static inline uint32_t
-brw_inst_sends_ex_desc(const struct intel_device_info *devinfo,
-                       const brw_inst *inst)
+elk_inst_sends_ex_desc(const struct intel_device_info *devinfo,
+                       const elk_inst *inst)
 {
    if (devinfo->ver >= 12) {
-      return brw_inst_send_ex_desc(devinfo, inst);
+      return elk_inst_send_ex_desc(devinfo, inst);
    } else {
-      return (brw_inst_bits(inst, 95, 80) << 16 |
-              brw_inst_bits(inst, 67, 64) << 6);
+      return (elk_inst_bits(inst, 95, 80) << 16 |
+              elk_inst_bits(inst, 67, 64) << 6);
    }
 }
 
@@ -1227,74 +1227,74 @@ F(pi_message_data,     /* 4+ */ MD(7),   MD(0),  /* 12+ */  MD12(7), MD12(0))
  *  @{
  */
 static inline int
-brw_inst_imm_d(const struct intel_device_info *devinfo, const brw_inst *insn)
+elk_inst_imm_d(const struct intel_device_info *devinfo, const elk_inst *insn)
 {
    (void) devinfo;
-   return brw_inst_bits(insn, 127, 96);
+   return elk_inst_bits(insn, 127, 96);
 }
 
 static inline unsigned
-brw_inst_imm_ud(const struct intel_device_info *devinfo, const brw_inst *insn)
+elk_inst_imm_ud(const struct intel_device_info *devinfo, const elk_inst *insn)
 {
    (void) devinfo;
-   return brw_inst_bits(insn, 127, 96);
+   return elk_inst_bits(insn, 127, 96);
 }
 
 static inline uint64_t
-brw_inst_imm_uq(const struct intel_device_info *devinfo,
-                const brw_inst *insn)
+elk_inst_imm_uq(const struct intel_device_info *devinfo,
+                const elk_inst *insn)
 {
    if (devinfo->ver >= 12) {
-      return brw_inst_bits(insn, 95, 64) << 32 |
-             brw_inst_bits(insn, 127, 96);
+      return elk_inst_bits(insn, 95, 64) << 32 |
+             elk_inst_bits(insn, 127, 96);
    } else {
       assert(devinfo->ver >= 8);
-      return brw_inst_bits(insn, 127, 64);
+      return elk_inst_bits(insn, 127, 64);
    }
 }
 
 static inline float
-brw_inst_imm_f(const struct intel_device_info *devinfo, const brw_inst *insn)
+elk_inst_imm_f(const struct intel_device_info *devinfo, const elk_inst *insn)
 {
    union {
       float f;
       uint32_t u;
    } ft;
    (void) devinfo;
-   ft.u = brw_inst_bits(insn, 127, 96);
+   ft.u = elk_inst_bits(insn, 127, 96);
    return ft.f;
 }
 
 static inline double
-brw_inst_imm_df(const struct intel_device_info *devinfo, const brw_inst *insn)
+elk_inst_imm_df(const struct intel_device_info *devinfo, const elk_inst *insn)
 {
    union {
       double d;
       uint64_t u;
    } dt;
-   dt.u = brw_inst_imm_uq(devinfo, insn);
+   dt.u = elk_inst_imm_uq(devinfo, insn);
    return dt.d;
 }
 
 static inline void
-brw_inst_set_imm_d(const struct intel_device_info *devinfo,
-                   brw_inst *insn, int value)
+elk_inst_set_imm_d(const struct intel_device_info *devinfo,
+                   elk_inst *insn, int value)
 {
    (void) devinfo;
-   return brw_inst_set_bits(insn, 127, 96, value);
+   return elk_inst_set_bits(insn, 127, 96, value);
 }
 
 static inline void
-brw_inst_set_imm_ud(const struct intel_device_info *devinfo,
-                    brw_inst *insn, unsigned value)
+elk_inst_set_imm_ud(const struct intel_device_info *devinfo,
+                    elk_inst *insn, unsigned value)
 {
    (void) devinfo;
-   return brw_inst_set_bits(insn, 127, 96, value);
+   return elk_inst_set_bits(insn, 127, 96, value);
 }
 
 static inline void
-brw_inst_set_imm_f(const struct intel_device_info *devinfo,
-                   brw_inst *insn, float value)
+elk_inst_set_imm_f(const struct intel_device_info *devinfo,
+                   elk_inst *insn, float value)
 {
    union {
       float f;
@@ -1302,12 +1302,12 @@ brw_inst_set_imm_f(const struct intel_device_info *devinfo,
    } ft;
    (void) devinfo;
    ft.f = value;
-   brw_inst_set_bits(insn, 127, 96, ft.u);
+   elk_inst_set_bits(insn, 127, 96, ft.u);
 }
 
 static inline void
-brw_inst_set_imm_df(const struct intel_device_info *devinfo,
-                    brw_inst *insn, double value)
+elk_inst_set_imm_df(const struct intel_device_info *devinfo,
+                    elk_inst *insn, double value)
 {
    union {
       double d;
@@ -1317,23 +1317,23 @@ brw_inst_set_imm_df(const struct intel_device_info *devinfo,
    dt.d = value;
 
    if (devinfo->ver >= 12) {
-      brw_inst_set_bits(insn, 95, 64, dt.u >> 32);
-      brw_inst_set_bits(insn, 127, 96, dt.u & 0xFFFFFFFF);
+      elk_inst_set_bits(insn, 95, 64, dt.u >> 32);
+      elk_inst_set_bits(insn, 127, 96, dt.u & 0xFFFFFFFF);
    } else {
-      brw_inst_set_bits(insn, 127, 64, dt.u);
+      elk_inst_set_bits(insn, 127, 64, dt.u);
    }
 }
 
 static inline void
-brw_inst_set_imm_uq(const struct intel_device_info *devinfo,
-                    brw_inst *insn, uint64_t value)
+elk_inst_set_imm_uq(const struct intel_device_info *devinfo,
+                    elk_inst *insn, uint64_t value)
 {
    (void) devinfo;
    if (devinfo->ver >= 12) {
-      brw_inst_set_bits(insn, 95, 64, value >> 32);
-      brw_inst_set_bits(insn, 127, 96, value & 0xFFFFFFFF);
+      elk_inst_set_bits(insn, 95, 64, value >> 32);
+      elk_inst_set_bits(insn, 127, 96, value & 0xFFFFFFFF);
    } else {
-      brw_inst_set_bits(insn, 127, 64, value);
+      elk_inst_set_bits(insn, 127, 64, value);
    }
 }
 
@@ -1341,25 +1341,25 @@ brw_inst_set_imm_uq(const struct intel_device_info *devinfo,
 
 #define REG_TYPE(reg)                                                         \
 static inline void                                                            \
-brw_inst_set_##reg##_file_type(const struct intel_device_info *devinfo,       \
-                               brw_inst *inst, enum brw_reg_file file,        \
-                               enum brw_reg_type type)                        \
+elk_inst_set_##reg##_file_type(const struct intel_device_info *devinfo,       \
+                               elk_inst *inst, enum elk_reg_file file,        \
+                               enum elk_reg_type type)                        \
 {                                                                             \
-   assert(file <= BRW_IMMEDIATE_VALUE);                                       \
-   unsigned hw_type = brw_reg_type_to_hw_type(devinfo, file, type);           \
-   brw_inst_set_##reg##_reg_file(devinfo, inst, file);                        \
-   brw_inst_set_##reg##_reg_hw_type(devinfo, inst, hw_type);                  \
+   assert(file <= ELK_IMMEDIATE_VALUE);                                       \
+   unsigned hw_type = elk_reg_type_to_hw_type(devinfo, file, type);           \
+   elk_inst_set_##reg##_reg_file(devinfo, inst, file);                        \
+   elk_inst_set_##reg##_reg_hw_type(devinfo, inst, hw_type);                  \
 }                                                                             \
                                                                               \
-static inline enum brw_reg_type                                               \
-brw_inst_##reg##_type(const struct intel_device_info *devinfo,                \
-                      const brw_inst *inst)                                   \
+static inline enum elk_reg_type                                               \
+elk_inst_##reg##_type(const struct intel_device_info *devinfo,                \
+                      const elk_inst *inst)                                   \
 {                                                                             \
    unsigned file = __builtin_strcmp("dst", #reg) == 0 ?                       \
-                   (unsigned) BRW_GENERAL_REGISTER_FILE :                     \
-                   brw_inst_##reg##_reg_file(devinfo, inst);                  \
-   unsigned hw_type = brw_inst_##reg##_reg_hw_type(devinfo, inst);            \
-   return brw_hw_type_to_reg_type(devinfo, (enum brw_reg_file)file, hw_type); \
+                   (unsigned) ELK_GENERAL_REGISTER_FILE :                     \
+                   elk_inst_##reg##_reg_file(devinfo, inst);                  \
+   unsigned hw_type = elk_inst_##reg##_reg_hw_type(devinfo, inst);            \
+   return elk_hw_type_to_reg_type(devinfo, (enum elk_reg_file)file, hw_type); \
 }
 
 REG_TYPE(dst)
@@ -1369,83 +1369,83 @@ REG_TYPE(src1)
 
 
 /* The AddrImm fields are split into two discontiguous sections on Gfx8+ */
-#define BRW_IA1_ADDR_IMM(reg, g4_high, g4_low, g8_nine, g8_high, g8_low, \
+#define ELK_IA1_ADDR_IMM(reg, g4_high, g4_low, g8_nine, g8_high, g8_low, \
                          g12_high, g12_low, g20_high, g20_low, g20_zero) \
 static inline void                                                       \
-brw_inst_set_##reg##_ia1_addr_imm(const struct                           \
+elk_inst_set_##reg##_ia1_addr_imm(const struct                           \
                                   intel_device_info *devinfo,            \
-                                  brw_inst *inst,                        \
+                                  elk_inst *inst,                        \
                                   unsigned value)                        \
 {                                                                        \
    if (devinfo->ver >= 20) {                                             \
       assert((value & ~0x7ff) == 0);                                     \
-      brw_inst_set_bits(inst, g20_high, g20_low, value >> 1);            \
+      elk_inst_set_bits(inst, g20_high, g20_low, value >> 1);            \
       if (g20_zero == -1)                                                \
          assert((value & 1) == 0);                                       \
       else                                                               \
-         brw_inst_set_bits(inst, g20_zero, g20_zero, value & 1);         \
+         elk_inst_set_bits(inst, g20_zero, g20_zero, value & 1);         \
    } else if (devinfo->ver >= 12) {                                      \
       assert((value & ~0x3ff) == 0);                                     \
-      brw_inst_set_bits(inst, g12_high, g12_low, value);                 \
+      elk_inst_set_bits(inst, g12_high, g12_low, value);                 \
    } else if (devinfo->ver >= 8) {                                       \
       assert((value & ~0x3ff) == 0);                                     \
-      brw_inst_set_bits(inst, g8_high, g8_low, value & 0x1ff);           \
-      brw_inst_set_bits(inst, g8_nine, g8_nine, value >> 9);             \
+      elk_inst_set_bits(inst, g8_high, g8_low, value & 0x1ff);           \
+      elk_inst_set_bits(inst, g8_nine, g8_nine, value >> 9);             \
    } else {                                                              \
       assert((value & ~0x3ff) == 0);                                     \
-      brw_inst_set_bits(inst, g4_high, g4_low, value);                   \
+      elk_inst_set_bits(inst, g4_high, g4_low, value);                   \
    }                                                                     \
 }                                                                        \
 static inline unsigned                                                   \
-brw_inst_##reg##_ia1_addr_imm(const struct intel_device_info *devinfo,   \
-                              const brw_inst *inst)                      \
+elk_inst_##reg##_ia1_addr_imm(const struct intel_device_info *devinfo,   \
+                              const elk_inst *inst)                      \
 {                                                                        \
    if (devinfo->ver >= 20) {                                             \
-      return brw_inst_bits(inst, g20_high, g20_low) << 1 |               \
+      return elk_inst_bits(inst, g20_high, g20_low) << 1 |               \
              (g20_zero == -1 ? 0 :                                       \
-              brw_inst_bits(inst, g20_zero, g20_zero));                  \
+              elk_inst_bits(inst, g20_zero, g20_zero));                  \
    } else if (devinfo->ver >= 12) {                                      \
-      return brw_inst_bits(inst, g12_high, g12_low);                     \
+      return elk_inst_bits(inst, g12_high, g12_low);                     \
    } else if (devinfo->ver >= 8) {                                       \
-      return brw_inst_bits(inst, g8_high, g8_low) |                      \
-             (brw_inst_bits(inst, g8_nine, g8_nine) << 9);               \
+      return elk_inst_bits(inst, g8_high, g8_low) |                      \
+             (elk_inst_bits(inst, g8_nine, g8_nine) << 9);               \
    } else {                                                              \
-      return brw_inst_bits(inst, g4_high, g4_low);                       \
+      return elk_inst_bits(inst, g4_high, g4_low);                       \
    }                                                                     \
 }
 
 /* AddrImm for Align1 Indirect Addressing                          */
 /*                     -Gen 4-  ----Gfx8----  -Gfx12-  ---Gfx20--- */
-BRW_IA1_ADDR_IMM(src1, 105, 96, 121, 104, 96, 107, 98, 107, 98, -1)
-BRW_IA1_ADDR_IMM(src0,  73, 64,  95,  72, 64,  75, 66,  75, 66, 87)
-BRW_IA1_ADDR_IMM(dst,   57, 48,  47,  56, 48,  59, 50,  59, 50, 33)
+ELK_IA1_ADDR_IMM(src1, 105, 96, 121, 104, 96, 107, 98, 107, 98, -1)
+ELK_IA1_ADDR_IMM(src0,  73, 64,  95,  72, 64,  75, 66,  75, 66, 87)
+ELK_IA1_ADDR_IMM(dst,   57, 48,  47,  56, 48,  59, 50,  59, 50, 33)
 
-#define BRW_IA16_ADDR_IMM(reg, g4_high, g4_low, g8_nine, g8_high, g8_low) \
+#define ELK_IA16_ADDR_IMM(reg, g4_high, g4_low, g8_nine, g8_high, g8_low) \
 static inline void                                                        \
-brw_inst_set_##reg##_ia16_addr_imm(const struct                           \
+elk_inst_set_##reg##_ia16_addr_imm(const struct                           \
                                    intel_device_info *devinfo,            \
-                                   brw_inst *inst, unsigned value)        \
+                                   elk_inst *inst, unsigned value)        \
 {                                                                         \
    assert(devinfo->ver < 12);                                             \
    assert((value & ~0x3ff) == 0);                                         \
    if (devinfo->ver >= 8) {                                               \
       assert(GET_BITS(value, 3, 0) == 0);                                 \
-      brw_inst_set_bits(inst, g8_high, g8_low, GET_BITS(value, 8, 4));    \
-      brw_inst_set_bits(inst, g8_nine, g8_nine, GET_BITS(value, 9, 9));   \
+      elk_inst_set_bits(inst, g8_high, g8_low, GET_BITS(value, 8, 4));    \
+      elk_inst_set_bits(inst, g8_nine, g8_nine, GET_BITS(value, 9, 9));   \
    } else {                                                               \
-      brw_inst_set_bits(inst, g4_high, g4_low, value);                    \
+      elk_inst_set_bits(inst, g4_high, g4_low, value);                    \
    }                                                                      \
 }                                                                         \
 static inline unsigned                                                    \
-brw_inst_##reg##_ia16_addr_imm(const struct intel_device_info *devinfo,   \
-                               const brw_inst *inst)                      \
+elk_inst_##reg##_ia16_addr_imm(const struct intel_device_info *devinfo,   \
+                               const elk_inst *inst)                      \
 {                                                                         \
    assert(devinfo->ver < 12);                                             \
    if (devinfo->ver >= 8) {                                               \
-      return (brw_inst_bits(inst, g8_high, g8_low) << 4) |                \
-             (brw_inst_bits(inst, g8_nine, g8_nine) << 9);                \
+      return (elk_inst_bits(inst, g8_high, g8_low) << 4) |                \
+             (elk_inst_bits(inst, g8_nine, g8_nine) << 9);                \
    } else {                                                               \
-      return brw_inst_bits(inst, g4_high, g4_low);                        \
+      return elk_inst_bits(inst, g4_high, g4_low);                        \
    }                                                                      \
 }
 
@@ -1453,11 +1453,11 @@ brw_inst_##reg##_ia16_addr_imm(const struct intel_device_info *devinfo,   \
  * Compared to Align1, these are missing the low 4 bits.
  *                     -Gen 4-  ----Gfx8----
  */
-BRW_IA16_ADDR_IMM(src1,       105, 96, 121, 104, 100)
-BRW_IA16_ADDR_IMM(src0,        73, 64,  95,  72,  68)
-BRW_IA16_ADDR_IMM(dst,         57, 52,  47,  56,  52)
-BRW_IA16_ADDR_IMM(send_src0,   -1, -1,  78,  72,  68)
-BRW_IA16_ADDR_IMM(send_dst,    -1, -1,  62,  56,  52)
+ELK_IA16_ADDR_IMM(src1,       105, 96, 121, 104, 100)
+ELK_IA16_ADDR_IMM(src0,        73, 64,  95,  72,  68)
+ELK_IA16_ADDR_IMM(dst,         57, 52,  47,  56,  52)
+ELK_IA16_ADDR_IMM(send_src0,   -1, -1,  78,  72,  68)
+ELK_IA16_ADDR_IMM(send_dst,    -1, -1,  62,  56,  52)
 
 /**
  * Fetch a set of contiguous bits from the instruction.
@@ -1465,7 +1465,7 @@ BRW_IA16_ADDR_IMM(send_dst,    -1, -1,  62,  56,  52)
  * Bits indices range from 0..127; fields may not cross 64-bit boundaries.
  */
 static inline uint64_t
-brw_inst_bits(const brw_inst *inst, unsigned high, unsigned low)
+elk_inst_bits(const elk_inst *inst, unsigned high, unsigned low)
 {
    assume(high < 128);
    assume(high >= low);
@@ -1487,7 +1487,7 @@ brw_inst_bits(const brw_inst *inst, unsigned high, unsigned low)
  * Bits indices range from 0..127; fields may not cross 64-bit boundaries.
  */
 static inline void
-brw_inst_set_bits(brw_inst *inst, unsigned high, unsigned low, uint64_t value)
+elk_inst_set_bits(elk_inst *inst, unsigned high, unsigned low, uint64_t value)
 {
    assume(high < 128);
    assume(high >= low);
@@ -1505,8 +1505,8 @@ brw_inst_set_bits(brw_inst *inst, unsigned high, unsigned low, uint64_t value)
    inst->data[word] = (inst->data[word] & ~mask) | (value << low);
 }
 
-#undef BRW_IA16_ADDR_IMM
-#undef BRW_IA1_ADDR_IMM
+#undef ELK_IA16_ADDR_IMM
+#undef ELK_IA1_ADDR_IMM
 #undef MD
 #undef F8
 #undef FF
@@ -1518,7 +1518,7 @@ brw_inst_set_bits(brw_inst *inst, unsigned high, unsigned low, uint64_t value)
 
 typedef struct {
    uint64_t data;
-} brw_compact_inst;
+} elk_compact_inst;
 
 /**
  * Fetch a set of contiguous bits from the compacted instruction.
@@ -1526,7 +1526,7 @@ typedef struct {
  * Bits indices range from 0..63.
  */
 static inline unsigned
-brw_compact_inst_bits(const brw_compact_inst *inst, unsigned high, unsigned low)
+elk_compact_inst_bits(const elk_compact_inst *inst, unsigned high, unsigned low)
 {
    assume(high < 64);
    assume(high >= low);
@@ -1541,7 +1541,7 @@ brw_compact_inst_bits(const brw_compact_inst *inst, unsigned high, unsigned low)
  * Bits indices range from 0..63.
  */
 static inline void
-brw_compact_inst_set_bits(brw_compact_inst *inst, unsigned high, unsigned low,
+elk_compact_inst_set_bits(elk_compact_inst *inst, unsigned high, unsigned low,
                           uint64_t value)
 {
    assume(high < 64);
@@ -1556,25 +1556,25 @@ brw_compact_inst_set_bits(brw_compact_inst *inst, unsigned high, unsigned low,
 
 #define FC(name, high, low, gfx12_high, gfx12_low, assertions)     \
 static inline void                                                 \
-brw_compact_inst_set_##name(const struct                           \
+elk_compact_inst_set_##name(const struct                           \
                             intel_device_info *devinfo,            \
-                            brw_compact_inst *inst, unsigned v)    \
+                            elk_compact_inst *inst, unsigned v)    \
 {                                                                  \
    assert(assertions);                                             \
    if (devinfo->ver >= 12)                                         \
-      brw_compact_inst_set_bits(inst, gfx12_high, gfx12_low, v);   \
+      elk_compact_inst_set_bits(inst, gfx12_high, gfx12_low, v);   \
    else                                                            \
-      brw_compact_inst_set_bits(inst, high, low, v);               \
+      elk_compact_inst_set_bits(inst, high, low, v);               \
 }                                                                  \
 static inline unsigned                                             \
-brw_compact_inst_##name(const struct intel_device_info *devinfo,   \
-                        const brw_compact_inst *inst)              \
+elk_compact_inst_##name(const struct intel_device_info *devinfo,   \
+                        const elk_compact_inst *inst)              \
 {                                                                  \
    assert(assertions);                                             \
    if (devinfo->ver >= 12)                                         \
-      return brw_compact_inst_bits(inst, gfx12_high, gfx12_low);   \
+      return elk_compact_inst_bits(inst, gfx12_high, gfx12_low);   \
    else                                                            \
-      return brw_compact_inst_bits(inst, high, low);               \
+      return elk_compact_inst_bits(inst, high, low);               \
 }
 
 /* A simple macro for fields which stay in the same place on all generations
@@ -1588,31 +1588,31 @@ brw_compact_inst_##name(const struct intel_device_info *devinfo,   \
  */
 #define F20(name, high, low, hi8, lo8, hi12, lo12, hi20, lo20)     \
 static inline void                                                 \
-brw_compact_inst_set_##name(const struct                           \
+elk_compact_inst_set_##name(const struct                           \
                             intel_device_info *devinfo,            \
-                            brw_compact_inst *inst, unsigned v)    \
+                            elk_compact_inst *inst, unsigned v)    \
 {                                                                  \
    if (devinfo->ver >= 20)                                         \
-      brw_compact_inst_set_bits(inst, hi20, lo20, v);              \
+      elk_compact_inst_set_bits(inst, hi20, lo20, v);              \
    else if (devinfo->ver >= 12)                                    \
-      brw_compact_inst_set_bits(inst, hi12, lo12, v);              \
+      elk_compact_inst_set_bits(inst, hi12, lo12, v);              \
    else if (devinfo->ver >= 8)                                     \
-      brw_compact_inst_set_bits(inst, hi8, lo8, v);                \
+      elk_compact_inst_set_bits(inst, hi8, lo8, v);                \
    else                                                            \
-      brw_compact_inst_set_bits(inst, high, low, v);               \
+      elk_compact_inst_set_bits(inst, high, low, v);               \
 }                                                                  \
 static inline unsigned                                             \
-brw_compact_inst_##name(const struct intel_device_info *devinfo,   \
-                        const brw_compact_inst *inst)              \
+elk_compact_inst_##name(const struct intel_device_info *devinfo,   \
+                        const elk_compact_inst *inst)              \
 {                                                                  \
    if (devinfo->ver >= 20)                                         \
-      return brw_compact_inst_bits(inst, hi20, lo20);              \
+      return elk_compact_inst_bits(inst, hi20, lo20);              \
    else if (devinfo->ver >= 12)                                    \
-      return brw_compact_inst_bits(inst, hi12, lo12);              \
+      return elk_compact_inst_bits(inst, hi12, lo12);              \
    else if (devinfo->ver >= 8)                                     \
-      return brw_compact_inst_bits(inst, hi8, lo8);                \
+      return elk_compact_inst_bits(inst, hi8, lo8);                \
    else                                                            \
-      return brw_compact_inst_bits(inst, high, low);               \
+      return elk_compact_inst_bits(inst, high, low);               \
 }
 
 /* A macro for fields which gained extra discontiguous bits in Gfx20
@@ -1621,36 +1621,36 @@ brw_compact_inst_##name(const struct intel_device_info *devinfo,   \
 #define FD20(name, high, low, hi8, lo8, hi12, lo12,                     \
              hi20, lo20, hi20ex, lo20ex)                                \
    static inline void                                                   \
-brw_compact_inst_set_##name(const struct                                \
+elk_compact_inst_set_##name(const struct                                \
                             intel_device_info *devinfo,                 \
-                            brw_compact_inst *inst, unsigned v)         \
+                            elk_compact_inst *inst, unsigned v)         \
 {                                                                       \
    if (devinfo->ver >= 20) {                                            \
       const unsigned k = hi20 - lo20 + 1;                               \
-      brw_compact_inst_set_bits(inst, hi20ex, lo20ex, v >> k);          \
-      brw_compact_inst_set_bits(inst, hi20, lo20, v & ((1u << k) - 1)); \
+      elk_compact_inst_set_bits(inst, hi20ex, lo20ex, v >> k);          \
+      elk_compact_inst_set_bits(inst, hi20, lo20, v & ((1u << k) - 1)); \
    } else if (devinfo->ver >= 12) {                                     \
-      brw_compact_inst_set_bits(inst, hi12, lo12, v);                   \
+      elk_compact_inst_set_bits(inst, hi12, lo12, v);                   \
    } else if (devinfo->ver >= 8) {                                      \
-      brw_compact_inst_set_bits(inst, hi8, lo8, v);                     \
+      elk_compact_inst_set_bits(inst, hi8, lo8, v);                     \
    } else {                                                             \
-      brw_compact_inst_set_bits(inst, high, low, v);                    \
+      elk_compact_inst_set_bits(inst, high, low, v);                    \
    }                                                                    \
 }                                                                       \
 static inline unsigned                                                  \
-brw_compact_inst_##name(const struct intel_device_info *devinfo,        \
-                        const brw_compact_inst *inst)                   \
+elk_compact_inst_##name(const struct intel_device_info *devinfo,        \
+                        const elk_compact_inst *inst)                   \
 {                                                                       \
    if (devinfo->ver >= 20) {                                            \
       const unsigned k = hi20 - lo20 + 1;                               \
-      return (brw_compact_inst_bits(inst, hi20ex, lo20ex) << k |        \
-              brw_compact_inst_bits(inst, hi20, lo20));                 \
+      return (elk_compact_inst_bits(inst, hi20ex, lo20ex) << k |        \
+              elk_compact_inst_bits(inst, hi20, lo20));                 \
    } else if (devinfo->ver >= 12) {                                     \
-      return brw_compact_inst_bits(inst, hi12, lo12);                   \
+      return elk_compact_inst_bits(inst, hi12, lo12);                   \
    } else if (devinfo->ver >= 8) {                                      \
-      return brw_compact_inst_bits(inst, hi8, lo8);                     \
+      return elk_compact_inst_bits(inst, hi8, lo8);                     \
    } else {                                                             \
-      return brw_compact_inst_bits(inst, high, low);                    \
+      return elk_compact_inst_bits(inst, high, low);                    \
    }                                                                    \
 }
 
@@ -1659,9 +1659,9 @@ F(src0_reg_nr,       /* 4+ */ 55, 48, /* 12+ */ 47, 40)
 F20(dst_reg_nr,      /* 4+ */ 47, 40, /*  8+ */ 47, 40, /* 12+ */ 23, 16, /* 20+ */ 39, 32)
 F(src1_index,        /* 4+ */ 39, 35, /* 12+ */ 55, 52)
 F20(src0_index,      /* 4+ */ 34, 30, /*  8+ */ 34, 30, /* 12+ */ 51, 48, /* 20+ */ 25, 23)
-F(cmpt_control,      /* 4+ */ 29, 29, /* 12+ */ 29, 29) /* Same location as brw_inst */
+F(cmpt_control,      /* 4+ */ 29, 29, /* 12+ */ 29, 29) /* Same location as elk_inst */
 FC(flag_subreg_nr,   /* 4+ */ 28, 28, /* 12+ */ -1, -1, devinfo->ver <= 6)
-F(cond_modifier,     /* 4+ */ 27, 24, /* 12+ */ -1, -1) /* Same location as brw_inst */
+F(cond_modifier,     /* 4+ */ 27, 24, /* 12+ */ -1, -1) /* Same location as elk_inst */
 FC(acc_wr_control,   /* 4+ */ 23, 23, /* 12+ */ -1, -1, devinfo->ver >= 6)
 FC(mask_control_ex,  /* 4+ */ 23, 23, /* 12+ */ -1, -1, devinfo->verx10 == 45 || devinfo->ver == 5)
 F20(subreg_index,    /* 4+ */ 22, 18, /*  8+ */ 22, 18, /* 12+ */ 39, 35, /* 20+ */ 51, 48)
@@ -1669,17 +1669,17 @@ FD20(datatype_index, /* 4+ */ 17, 13, /*  8+ */ 17, 13, /* 12+ */ 34, 30, /* 20+
 F20(control_index,   /* 4+ */ 12,  8, /*  8+ */ 12,  8, /* 12+ */ 28, 24, /* 20+ */ 22, 18)
 F20(swsb,            /* 4+ */ -1, -1, /*  8+ */ -1, -1, /* 12+ */ 15,  8, /* 20+ */ 17,  8)
 F(debug_control,     /* 4+ */  7,  7, /* 12+ */  7,  7)
-F(hw_opcode,         /* 4+ */  6,  0, /* 12+ */  6,  0) /* Same location as brw_inst */
+F(hw_opcode,         /* 4+ */  6,  0, /* 12+ */  6,  0) /* Same location as elk_inst */
 
 static inline unsigned
-brw_compact_inst_imm(const struct intel_device_info *devinfo,
-                     const brw_compact_inst *inst)
+elk_compact_inst_imm(const struct intel_device_info *devinfo,
+                     const elk_compact_inst *inst)
 {
    if (devinfo->ver >= 12) {
-      return brw_compact_inst_bits(inst, 63, 52);
+      return elk_compact_inst_bits(inst, 63, 52);
    } else {
-      return (brw_compact_inst_bits(inst, 39, 35) << 8) |
-             (brw_compact_inst_bits(inst, 63, 56));
+      return (elk_compact_inst_bits(inst, 39, 35) << 8) |
+             (elk_compact_inst_bits(inst, 63, 56));
    }
 }
 
@@ -1712,17 +1712,17 @@ FC(3src_hw_opcode,      /* 4+ */  6,  0, /* 12+ */  6,  0, devinfo->ver >= 8)
 #undef F
 
 static inline void
-brw_inst_set_opcode(const struct brw_isa_info *isa,
-                    struct brw_inst *inst, enum opcode opcode)
+elk_inst_set_opcode(const struct elk_isa_info *isa,
+                    struct elk_inst *inst, enum elk_opcode opcode)
 {
-   brw_inst_set_hw_opcode(isa->devinfo, inst, brw_opcode_encode(isa, opcode));
+   elk_inst_set_hw_opcode(isa->devinfo, inst, elk_opcode_encode(isa, opcode));
 }
 
-static inline enum opcode
-brw_inst_opcode(const struct brw_isa_info *isa,
-                const struct brw_inst *inst)
+static inline enum elk_opcode
+elk_inst_opcode(const struct elk_isa_info *isa,
+                const struct elk_inst *inst)
 {
-   return brw_opcode_decode(isa, brw_inst_hw_opcode(isa->devinfo, inst));
+   return elk_opcode_decode(isa, elk_inst_hw_opcode(isa->devinfo, inst));
 }
 
 #ifdef __cplusplus

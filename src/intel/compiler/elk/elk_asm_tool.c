@@ -34,7 +34,7 @@ enum opt_output_type {
 };
 
 extern FILE *yyin;
-struct brw_codegen *p;
+struct elk_codegen *p;
 static enum opt_output_type output_type = OPT_OUTPUT_BIN;
 char *input_filename = NULL;
 int errors;
@@ -61,7 +61,7 @@ print_help(const char *progname, FILE *file)
 }
 
 static uint32_t
-get_dword(const brw_inst *inst, int idx)
+get_dword(const elk_inst *inst, int idx)
 {
    uint32_t dword;
    memcpy(&dword, (char *)inst + 4 * idx, sizeof(dword));
@@ -69,7 +69,7 @@ get_dword(const brw_inst *inst, int idx)
 }
 
 static void
-print_instruction(FILE *output, bool compact, const brw_inst *instruction)
+print_instruction(FILE *output, bool compact, const elk_inst *instruction)
 {
    int byte_limit;
 
@@ -133,34 +133,34 @@ i965_postprocess_labels()
    struct target_label *tlabel;
    struct instr_label *ilabel, *s;
 
-   const unsigned to_bytes_scale = brw_jump_scale(p->devinfo);
+   const unsigned to_bytes_scale = elk_jump_scale(p->devinfo);
 
    LIST_FOR_EACH_ENTRY(tlabel, &target_labels, link) {
       LIST_FOR_EACH_ENTRY_SAFE(ilabel, s, &instr_labels, link) {
          if (!strcmp(tlabel->name, ilabel->name)) {
-            brw_inst *inst = store + ilabel->offset;
+            elk_inst *inst = store + ilabel->offset;
 
-            int relative_offset = (tlabel->offset - ilabel->offset) / sizeof(brw_inst);
+            int relative_offset = (tlabel->offset - ilabel->offset) / sizeof(elk_inst);
             relative_offset *= to_bytes_scale;
 
-            unsigned opcode = brw_inst_opcode(p->isa, inst);
+            unsigned opcode = elk_inst_opcode(p->isa, inst);
 
             if (ilabel->type == INSTR_LABEL_JIP) {
                switch (opcode) {
-               case BRW_OPCODE_IF:
-               case BRW_OPCODE_ELSE:
-               case BRW_OPCODE_ENDIF:
-               case BRW_OPCODE_WHILE:
+               case ELK_OPCODE_IF:
+               case ELK_OPCODE_ELSE:
+               case ELK_OPCODE_ENDIF:
+               case ELK_OPCODE_WHILE:
                   if (p->devinfo->ver >= 7) {
-                     brw_inst_set_jip(p->devinfo, inst, relative_offset);
+                     elk_inst_set_jip(p->devinfo, inst, relative_offset);
                   } else if (p->devinfo->ver == 6) {
-                     brw_inst_set_gfx6_jump_count(p->devinfo, inst, relative_offset);
+                     elk_inst_set_gfx6_jump_count(p->devinfo, inst, relative_offset);
                   }
                   break;
-               case BRW_OPCODE_BREAK:
-               case BRW_OPCODE_HALT:
-               case BRW_OPCODE_CONTINUE:
-                  brw_inst_set_jip(p->devinfo, inst, relative_offset);
+               case ELK_OPCODE_BREAK:
+               case ELK_OPCODE_HALT:
+               case ELK_OPCODE_CONTINUE:
+                  elk_inst_set_jip(p->devinfo, inst, relative_offset);
                   break;
                default:
                   fprintf(stderr, "Unknown opcode %d with JIP label\n", opcode);
@@ -168,24 +168,24 @@ i965_postprocess_labels()
                }
             } else {
                switch (opcode) {
-               case BRW_OPCODE_IF:
-               case BRW_OPCODE_ELSE:
+               case ELK_OPCODE_IF:
+               case ELK_OPCODE_ELSE:
                   if (p->devinfo->ver > 7) {
-                     brw_inst_set_uip(p->devinfo, inst, relative_offset);
+                     elk_inst_set_uip(p->devinfo, inst, relative_offset);
                   } else if (p->devinfo->ver == 7) {
-                     brw_inst_set_uip(p->devinfo, inst, relative_offset);
+                     elk_inst_set_uip(p->devinfo, inst, relative_offset);
                   } else if (p->devinfo->ver == 6) {
                      // Nothing
                   }
                   break;
-               case BRW_OPCODE_WHILE:
-               case BRW_OPCODE_ENDIF:
+               case ELK_OPCODE_WHILE:
+               case ELK_OPCODE_ENDIF:
                   fprintf(stderr, "WHILE/ENDIF cannot have UIP offset\n");
                   return false;
-               case BRW_OPCODE_BREAK:
-               case BRW_OPCODE_CONTINUE:
-               case BRW_OPCODE_HALT:
-                  brw_inst_set_uip(p->devinfo, inst, relative_offset);
+               case ELK_OPCODE_BREAK:
+               case ELK_OPCODE_CONTINUE:
+               case ELK_OPCODE_HALT:
+                  elk_inst_set_uip(p->devinfo, inst, relative_offset);
                   break;
                default:
                   fprintf(stderr, "Unknown opcode %d with UIP label\n", opcode);
@@ -215,7 +215,7 @@ int main(int argc, char **argv)
    uint64_t pci_id = 0;
    int offset = 0, err;
    int start_offset = 0;
-   struct disasm_info *disasm_info;
+   struct elk_disasm_info *elk_disasm_info;
    struct intel_device_info *devinfo = NULL;
    int result = EXIT_FAILURE;
    list_inithead(&instr_labels);
@@ -310,11 +310,11 @@ int main(int argc, char **argv)
       goto end;
    }
 
-   struct brw_isa_info isa;
-   brw_init_isa_info(&isa, devinfo);
+   struct elk_isa_info isa;
+   elk_init_isa_info(&isa, devinfo);
 
-   p = rzalloc(NULL, struct brw_codegen);
-   brw_init_codegen(&isa, p, p);
+   p = rzalloc(NULL, struct elk_codegen);
+   elk_init_codegen(&isa, p, p);
    p->automatic_exec_sizes = false;
 
    err = yyparse();
@@ -326,28 +326,28 @@ int main(int argc, char **argv)
 
    store = p->store;
 
-   disasm_info = disasm_initialize(p->isa, NULL);
-   if (!disasm_info) {
-      fprintf(stderr, "Unable to initialize disasm_info struct instance\n");
+   elk_disasm_info = elk_disasm_initialize(p->isa, NULL);
+   if (!elk_disasm_info) {
+      fprintf(stderr, "Unable to initialize elk_disasm_info struct instance\n");
       goto end;
    }
 
    if (output_type == OPT_OUTPUT_C_LITERAL)
       fprintf(output, "{\n");
 
-   brw_validate_instructions(p->isa, p->store, 0,
-                             p->next_insn_offset, disasm_info);
+   elk_validate_instructions(p->isa, p->store, 0,
+                             p->next_insn_offset, elk_disasm_info);
 
    const int nr_insn = (p->next_insn_offset - start_offset) / 16;
 
    if (compact)
-      brw_compact_instructions(p, start_offset, disasm_info);
+      elk_compact_instructions(p, start_offset, elk_disasm_info);
 
    for (int i = 0; i < nr_insn; i++) {
-      const brw_inst *insn = store + offset;
+      const elk_inst *insn = store + offset;
       bool compacted = false;
 
-      if (compact && brw_inst_cmpt_control(p->devinfo, insn)) {
+      if (compact && elk_inst_cmpt_control(p->devinfo, insn)) {
             offset += 8;
             compacted = true;
       } else {
@@ -357,7 +357,7 @@ int main(int argc, char **argv)
       print_instruction(output, compacted, insn);
    }
 
-   ralloc_free(disasm_info);
+   ralloc_free(elk_disasm_info);
 
    if (output_type == OPT_OUTPUT_C_LITERAL)
       fprintf(output, "}");

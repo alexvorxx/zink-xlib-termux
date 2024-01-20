@@ -64,7 +64,7 @@
 #define URB_WRITE_PRIM_START		0x2
 #define URB_WRITE_PRIM_TYPE_SHIFT	2
 
-#define BRW_SPRITE_POINT_ENABLE  16
+#define ELK_SPRITE_POINT_ENABLE  16
 
 # define GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_CUT		0
 # define GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_SID		1
@@ -72,21 +72,21 @@
 /* Execution Unit (EU) defines
  */
 
-#define BRW_ALIGN_1   0
-#define BRW_ALIGN_16  1
+#define ELK_ALIGN_1   0
+#define ELK_ALIGN_16  1
 
-#define BRW_ADDRESS_DIRECT                        0
-#define BRW_ADDRESS_REGISTER_INDIRECT_REGISTER    1
+#define ELK_ADDRESS_DIRECT                        0
+#define ELK_ADDRESS_REGISTER_INDIRECT_REGISTER    1
 
-#define BRW_CHANNEL_X     0
-#define BRW_CHANNEL_Y     1
-#define BRW_CHANNEL_Z     2
-#define BRW_CHANNEL_W     3
+#define ELK_CHANNEL_X     0
+#define ELK_CHANNEL_Y     1
+#define ELK_CHANNEL_Z     2
+#define ELK_CHANNEL_W     3
 
-enum brw_compression {
-   BRW_COMPRESSION_NONE       = 0,
-   BRW_COMPRESSION_2NDHALF    = 1,
-   BRW_COMPRESSION_COMPRESSED = 2,
+enum elk_compression {
+   ELK_COMPRESSION_NONE       = 0,
+   ELK_COMPRESSION_2NDHALF    = 1,
+   ELK_COMPRESSION_COMPRESSED = 2,
 };
 
 #define GFX6_COMPRESSION_1Q		0
@@ -96,62 +96,62 @@ enum brw_compression {
 #define GFX6_COMPRESSION_1H		0
 #define GFX6_COMPRESSION_2H		2
 
-enum ENUM_PACKED brw_conditional_mod {
-   BRW_CONDITIONAL_NONE = 0,
-   BRW_CONDITIONAL_Z    = 1,
-   BRW_CONDITIONAL_NZ   = 2,
-   BRW_CONDITIONAL_EQ   = 1,	/* Z */
-   BRW_CONDITIONAL_NEQ  = 2,	/* NZ */
-   BRW_CONDITIONAL_G    = 3,
-   BRW_CONDITIONAL_GE   = 4,
-   BRW_CONDITIONAL_L    = 5,
-   BRW_CONDITIONAL_LE   = 6,
-   BRW_CONDITIONAL_R    = 7,    /* Gen <= 5 */
-   BRW_CONDITIONAL_O    = 8,
-   BRW_CONDITIONAL_U    = 9,
+enum ENUM_PACKED elk_conditional_mod {
+   ELK_CONDITIONAL_NONE = 0,
+   ELK_CONDITIONAL_Z    = 1,
+   ELK_CONDITIONAL_NZ   = 2,
+   ELK_CONDITIONAL_EQ   = 1,	/* Z */
+   ELK_CONDITIONAL_NEQ  = 2,	/* NZ */
+   ELK_CONDITIONAL_G    = 3,
+   ELK_CONDITIONAL_GE   = 4,
+   ELK_CONDITIONAL_L    = 5,
+   ELK_CONDITIONAL_LE   = 6,
+   ELK_CONDITIONAL_R    = 7,    /* Gen <= 5 */
+   ELK_CONDITIONAL_O    = 8,
+   ELK_CONDITIONAL_U    = 9,
 };
 
-#define BRW_DEBUG_NONE        0
-#define BRW_DEBUG_BREAKPOINT  1
+#define ELK_DEBUG_NONE        0
+#define ELK_DEBUG_BREAKPOINT  1
 
-#define BRW_DEPENDENCY_NORMAL         0
-#define BRW_DEPENDENCY_NOTCLEARED     1
-#define BRW_DEPENDENCY_NOTCHECKED     2
-#define BRW_DEPENDENCY_DISABLE        3
+#define ELK_DEPENDENCY_NORMAL         0
+#define ELK_DEPENDENCY_NOTCLEARED     1
+#define ELK_DEPENDENCY_NOTCHECKED     2
+#define ELK_DEPENDENCY_DISABLE        3
 
-enum ENUM_PACKED brw_execution_size {
-   BRW_EXECUTE_1  = 0,
-   BRW_EXECUTE_2  = 1,
-   BRW_EXECUTE_4  = 2,
-   BRW_EXECUTE_8  = 3,
-   BRW_EXECUTE_16 = 4,
-   BRW_EXECUTE_32 = 5,
+enum ENUM_PACKED elk_execution_size {
+   ELK_EXECUTE_1  = 0,
+   ELK_EXECUTE_2  = 1,
+   ELK_EXECUTE_4  = 2,
+   ELK_EXECUTE_8  = 3,
+   ELK_EXECUTE_16 = 4,
+   ELK_EXECUTE_32 = 5,
 };
 
-enum ENUM_PACKED brw_horizontal_stride {
-   BRW_HORIZONTAL_STRIDE_0 = 0,
-   BRW_HORIZONTAL_STRIDE_1 = 1,
-   BRW_HORIZONTAL_STRIDE_2 = 2,
-   BRW_HORIZONTAL_STRIDE_4 = 3,
+enum ENUM_PACKED elk_horizontal_stride {
+   ELK_HORIZONTAL_STRIDE_0 = 0,
+   ELK_HORIZONTAL_STRIDE_1 = 1,
+   ELK_HORIZONTAL_STRIDE_2 = 2,
+   ELK_HORIZONTAL_STRIDE_4 = 3,
 };
 
 enum ENUM_PACKED gfx10_align1_3src_src_horizontal_stride {
-   BRW_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_0 = 0,
-   BRW_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_1 = 1,
-   BRW_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_2 = 2,
-   BRW_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_4 = 3,
+   ELK_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_0 = 0,
+   ELK_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_1 = 1,
+   ELK_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_2 = 2,
+   ELK_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_4 = 3,
 };
 
 enum ENUM_PACKED gfx10_align1_3src_dst_horizontal_stride {
-   BRW_ALIGN1_3SRC_DST_HORIZONTAL_STRIDE_1 = 0,
-   BRW_ALIGN1_3SRC_DST_HORIZONTAL_STRIDE_2 = 1,
+   ELK_ALIGN1_3SRC_DST_HORIZONTAL_STRIDE_1 = 0,
+   ELK_ALIGN1_3SRC_DST_HORIZONTAL_STRIDE_2 = 1,
 };
 
-#define BRW_INSTRUCTION_NORMAL    0
-#define BRW_INSTRUCTION_SATURATE  1
+#define ELK_INSTRUCTION_NORMAL    0
+#define ELK_INSTRUCTION_SATURATE  1
 
-#define BRW_MASK_ENABLE   0
-#define BRW_MASK_DISABLE  1
+#define ELK_MASK_ENABLE   0
+#define ELK_MASK_DISABLE  1
 
 /** @{
  *
@@ -165,140 +165,140 @@ enum ENUM_PACKED gfx10_align1_3src_dst_horizontal_stride {
  * This is the default value.  It means that a channel's write enable is set
  * if the per-channel IP is pointing at this instruction.
  */
-#define BRW_WE_NORMAL		0
+#define ELK_WE_NORMAL		0
 /**
- * This is used like BRW_MASK_DISABLE, and causes all channels to have
+ * This is used like ELK_MASK_DISABLE, and causes all channels to have
  * their write enable set.  Note that predication still contributes to
  * whether the channel actually gets written.
  */
-#define BRW_WE_ALL		1
+#define ELK_WE_ALL		1
 /** @} */
 
-enum opcode {
+enum elk_opcode {
    /* These are the actual hardware instructions. */
-   BRW_OPCODE_ILLEGAL,
-   BRW_OPCODE_SYNC,
-   BRW_OPCODE_MOV,
-   BRW_OPCODE_SEL,
-   BRW_OPCODE_MOVI, /**< G45+ */
-   BRW_OPCODE_NOT,
-   BRW_OPCODE_AND,
-   BRW_OPCODE_OR,
-   BRW_OPCODE_XOR,
-   BRW_OPCODE_SHR,
-   BRW_OPCODE_SHL,
-   BRW_OPCODE_DIM, /**< Gfx7.5 only */
-   BRW_OPCODE_SMOV, /**< Gfx8+ */
-   BRW_OPCODE_ASR,
-   BRW_OPCODE_ROR,  /**< Gfx11+ */
-   BRW_OPCODE_ROL,  /**< Gfx11+ */
-   BRW_OPCODE_CMP,
-   BRW_OPCODE_CMPN,
-   BRW_OPCODE_CSEL, /**< Gfx8+ */
-   BRW_OPCODE_F32TO16, /**< Gfx7 only */
-   BRW_OPCODE_F16TO32, /**< Gfx7 only */
-   BRW_OPCODE_BFREV, /**< Gfx7+ */
-   BRW_OPCODE_BFE, /**< Gfx7+ */
-   BRW_OPCODE_BFI1, /**< Gfx7+ */
-   BRW_OPCODE_BFI2, /**< Gfx7+ */
-   BRW_OPCODE_JMPI,
-   BRW_OPCODE_BRD, /**< Gfx7+ */
-   BRW_OPCODE_IF,
-   BRW_OPCODE_IFF, /**< Pre-Gfx6 */
-   BRW_OPCODE_BRC, /**< Gfx7+ */
-   BRW_OPCODE_ELSE,
-   BRW_OPCODE_ENDIF,
-   BRW_OPCODE_DO, /**< Pre-Gfx6 */
-   BRW_OPCODE_CASE, /**< Gfx6 only */
-   BRW_OPCODE_WHILE,
-   BRW_OPCODE_BREAK,
-   BRW_OPCODE_CONTINUE,
-   BRW_OPCODE_HALT,
-   BRW_OPCODE_CALLA, /**< Gfx7.5+ */
-   BRW_OPCODE_MSAVE, /**< Pre-Gfx6 */
-   BRW_OPCODE_CALL, /**< Gfx6+ */
-   BRW_OPCODE_MREST, /**< Pre-Gfx6 */
-   BRW_OPCODE_RET, /**< Gfx6+ */
-   BRW_OPCODE_PUSH, /**< Pre-Gfx6 */
-   BRW_OPCODE_FORK, /**< Gfx6 only */
-   BRW_OPCODE_GOTO, /**< Gfx8+ */
-   BRW_OPCODE_POP, /**< Pre-Gfx6 */
-   BRW_OPCODE_WAIT,
-   BRW_OPCODE_SEND,
-   BRW_OPCODE_SENDC,
-   BRW_OPCODE_SENDS, /**< Gfx9+ */
-   BRW_OPCODE_SENDSC, /**< Gfx9+ */
-   BRW_OPCODE_MATH, /**< Gfx6+ */
-   BRW_OPCODE_ADD,
-   BRW_OPCODE_MUL,
-   BRW_OPCODE_AVG,
-   BRW_OPCODE_FRC,
-   BRW_OPCODE_RNDU,
-   BRW_OPCODE_RNDD,
-   BRW_OPCODE_RNDE,
-   BRW_OPCODE_RNDZ,
-   BRW_OPCODE_MAC,
-   BRW_OPCODE_MACH,
-   BRW_OPCODE_LZD,
-   BRW_OPCODE_FBH, /**< Gfx7+ */
-   BRW_OPCODE_FBL, /**< Gfx7+ */
-   BRW_OPCODE_CBIT, /**< Gfx7+ */
-   BRW_OPCODE_ADDC, /**< Gfx7+ */
-   BRW_OPCODE_SUBB, /**< Gfx7+ */
-   BRW_OPCODE_SAD2,
-   BRW_OPCODE_SADA2,
-   BRW_OPCODE_ADD3, /* Gen12+ only */
-   BRW_OPCODE_DP4,
-   BRW_OPCODE_DPH,
-   BRW_OPCODE_DP3,
-   BRW_OPCODE_DP2,
-   BRW_OPCODE_DP4A, /**< Gfx12+ */
-   BRW_OPCODE_LINE,
-   BRW_OPCODE_DPAS,  /**< Gfx12.5+ */
-   BRW_OPCODE_PLN, /**< G45+ */
-   BRW_OPCODE_MAD, /**< Gfx6+ */
-   BRW_OPCODE_LRP, /**< Gfx6+ */
-   BRW_OPCODE_MADM, /**< Gfx8+ */
-   BRW_OPCODE_NENOP, /**< G45 only */
-   BRW_OPCODE_NOP,
+   ELK_OPCODE_ILLEGAL,
+   ELK_OPCODE_SYNC,
+   ELK_OPCODE_MOV,
+   ELK_OPCODE_SEL,
+   ELK_OPCODE_MOVI, /**< G45+ */
+   ELK_OPCODE_NOT,
+   ELK_OPCODE_AND,
+   ELK_OPCODE_OR,
+   ELK_OPCODE_XOR,
+   ELK_OPCODE_SHR,
+   ELK_OPCODE_SHL,
+   ELK_OPCODE_DIM, /**< Gfx7.5 only */
+   ELK_OPCODE_SMOV, /**< Gfx8+ */
+   ELK_OPCODE_ASR,
+   ELK_OPCODE_ROR,  /**< Gfx11+ */
+   ELK_OPCODE_ROL,  /**< Gfx11+ */
+   ELK_OPCODE_CMP,
+   ELK_OPCODE_CMPN,
+   ELK_OPCODE_CSEL, /**< Gfx8+ */
+   ELK_OPCODE_F32TO16, /**< Gfx7 only */
+   ELK_OPCODE_F16TO32, /**< Gfx7 only */
+   ELK_OPCODE_BFREV, /**< Gfx7+ */
+   ELK_OPCODE_BFE, /**< Gfx7+ */
+   ELK_OPCODE_BFI1, /**< Gfx7+ */
+   ELK_OPCODE_BFI2, /**< Gfx7+ */
+   ELK_OPCODE_JMPI,
+   ELK_OPCODE_BRD, /**< Gfx7+ */
+   ELK_OPCODE_IF,
+   ELK_OPCODE_IFF, /**< Pre-Gfx6 */
+   ELK_OPCODE_BRC, /**< Gfx7+ */
+   ELK_OPCODE_ELSE,
+   ELK_OPCODE_ENDIF,
+   ELK_OPCODE_DO, /**< Pre-Gfx6 */
+   ELK_OPCODE_CASE, /**< Gfx6 only */
+   ELK_OPCODE_WHILE,
+   ELK_OPCODE_BREAK,
+   ELK_OPCODE_CONTINUE,
+   ELK_OPCODE_HALT,
+   ELK_OPCODE_CALLA, /**< Gfx7.5+ */
+   ELK_OPCODE_MSAVE, /**< Pre-Gfx6 */
+   ELK_OPCODE_CALL, /**< Gfx6+ */
+   ELK_OPCODE_MREST, /**< Pre-Gfx6 */
+   ELK_OPCODE_RET, /**< Gfx6+ */
+   ELK_OPCODE_PUSH, /**< Pre-Gfx6 */
+   ELK_OPCODE_FORK, /**< Gfx6 only */
+   ELK_OPCODE_GOTO, /**< Gfx8+ */
+   ELK_OPCODE_POP, /**< Pre-Gfx6 */
+   ELK_OPCODE_WAIT,
+   ELK_OPCODE_SEND,
+   ELK_OPCODE_SENDC,
+   ELK_OPCODE_SENDS, /**< Gfx9+ */
+   ELK_OPCODE_SENDSC, /**< Gfx9+ */
+   ELK_OPCODE_MATH, /**< Gfx6+ */
+   ELK_OPCODE_ADD,
+   ELK_OPCODE_MUL,
+   ELK_OPCODE_AVG,
+   ELK_OPCODE_FRC,
+   ELK_OPCODE_RNDU,
+   ELK_OPCODE_RNDD,
+   ELK_OPCODE_RNDE,
+   ELK_OPCODE_RNDZ,
+   ELK_OPCODE_MAC,
+   ELK_OPCODE_MACH,
+   ELK_OPCODE_LZD,
+   ELK_OPCODE_FBH, /**< Gfx7+ */
+   ELK_OPCODE_FBL, /**< Gfx7+ */
+   ELK_OPCODE_CBIT, /**< Gfx7+ */
+   ELK_OPCODE_ADDC, /**< Gfx7+ */
+   ELK_OPCODE_SUBB, /**< Gfx7+ */
+   ELK_OPCODE_SAD2,
+   ELK_OPCODE_SADA2,
+   ELK_OPCODE_ADD3, /* Gen12+ only */
+   ELK_OPCODE_DP4,
+   ELK_OPCODE_DPH,
+   ELK_OPCODE_DP3,
+   ELK_OPCODE_DP2,
+   ELK_OPCODE_DP4A, /**< Gfx12+ */
+   ELK_OPCODE_LINE,
+   ELK_OPCODE_DPAS,  /**< Gfx12.5+ */
+   ELK_OPCODE_PLN, /**< G45+ */
+   ELK_OPCODE_MAD, /**< Gfx6+ */
+   ELK_OPCODE_LRP, /**< Gfx6+ */
+   ELK_OPCODE_MADM, /**< Gfx8+ */
+   ELK_OPCODE_NENOP, /**< G45 only */
+   ELK_OPCODE_NOP,
 
-   NUM_BRW_OPCODES,
+   NUM_ELK_OPCODES,
 
    /* These are compiler backend opcodes that get translated into other
     * instructions.
     */
-   FS_OPCODE_FB_WRITE = NUM_BRW_OPCODES,
+   ELK_FS_OPCODE_FB_WRITE = NUM_ELK_OPCODES,
 
    /**
-    * Same as FS_OPCODE_FB_WRITE but expects its arguments separately as
+    * Same as ELK_FS_OPCODE_FB_WRITE but expects its arguments separately as
     * individual sources instead of as a single payload blob. The
     * position/ordering of the arguments are defined by the enum
     * fb_write_logical_srcs.
     */
-   FS_OPCODE_FB_WRITE_LOGICAL,
+   ELK_FS_OPCODE_FB_WRITE_LOGICAL,
 
-   FS_OPCODE_REP_FB_WRITE,
+   ELK_FS_OPCODE_REP_FB_WRITE,
 
-   FS_OPCODE_FB_READ,
-   FS_OPCODE_FB_READ_LOGICAL,
+   ELK_FS_OPCODE_FB_READ,
+   ELK_FS_OPCODE_FB_READ_LOGICAL,
 
-   SHADER_OPCODE_RCP,
-   SHADER_OPCODE_RSQ,
-   SHADER_OPCODE_SQRT,
-   SHADER_OPCODE_EXP2,
-   SHADER_OPCODE_LOG2,
-   SHADER_OPCODE_POW,
-   SHADER_OPCODE_INT_QUOTIENT,
-   SHADER_OPCODE_INT_REMAINDER,
-   SHADER_OPCODE_SIN,
-   SHADER_OPCODE_COS,
+   ELK_SHADER_OPCODE_RCP,
+   ELK_SHADER_OPCODE_RSQ,
+   ELK_SHADER_OPCODE_SQRT,
+   ELK_SHADER_OPCODE_EXP2,
+   ELK_SHADER_OPCODE_LOG2,
+   ELK_SHADER_OPCODE_POW,
+   ELK_SHADER_OPCODE_INT_QUOTIENT,
+   ELK_SHADER_OPCODE_INT_REMAINDER,
+   ELK_SHADER_OPCODE_SIN,
+   ELK_SHADER_OPCODE_COS,
 
    /**
     * A generic "send" opcode.  The first two sources are the message
     * descriptor and extended message descriptor respectively.  The third
     * and optional fourth sources are the message payload
     */
-   SHADER_OPCODE_SEND,
+   ELK_SHADER_OPCODE_SEND,
 
    /**
     * An "undefined" write which does nothing but indicates to liveness that
@@ -306,7 +306,7 @@ enum opcode {
     * instruction.  Used to prevent partial writes from causing issues with
     * live ranges.
     */
-   SHADER_OPCODE_UNDEF,
+   ELK_SHADER_OPCODE_UNDEF,
 
    /**
     * Texture sampling opcodes.
@@ -316,39 +316,39 @@ enum opcode {
     * arguments separately as individual sources. The position/ordering of the
     * arguments are defined by the enum tex_logical_srcs.
     */
-   SHADER_OPCODE_TEX,
-   SHADER_OPCODE_TEX_LOGICAL,
-   SHADER_OPCODE_TXD,
-   SHADER_OPCODE_TXD_LOGICAL,
-   SHADER_OPCODE_TXF,
-   SHADER_OPCODE_TXF_LOGICAL,
-   SHADER_OPCODE_TXF_LZ,
-   SHADER_OPCODE_TXL,
-   SHADER_OPCODE_TXL_LOGICAL,
-   SHADER_OPCODE_TXL_LZ,
-   SHADER_OPCODE_TXS,
-   SHADER_OPCODE_TXS_LOGICAL,
-   FS_OPCODE_TXB,
-   FS_OPCODE_TXB_LOGICAL,
-   SHADER_OPCODE_TXF_CMS,
-   SHADER_OPCODE_TXF_CMS_LOGICAL,
-   SHADER_OPCODE_TXF_CMS_W,
-   SHADER_OPCODE_TXF_CMS_W_LOGICAL,
-   SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL,
-   SHADER_OPCODE_TXF_UMS,
-   SHADER_OPCODE_TXF_UMS_LOGICAL,
-   SHADER_OPCODE_TXF_MCS,
-   SHADER_OPCODE_TXF_MCS_LOGICAL,
-   SHADER_OPCODE_LOD,
-   SHADER_OPCODE_LOD_LOGICAL,
-   SHADER_OPCODE_TG4,
-   SHADER_OPCODE_TG4_LOGICAL,
-   SHADER_OPCODE_TG4_OFFSET,
-   SHADER_OPCODE_TG4_OFFSET_LOGICAL,
-   SHADER_OPCODE_SAMPLEINFO,
-   SHADER_OPCODE_SAMPLEINFO_LOGICAL,
+   ELK_SHADER_OPCODE_TEX,
+   ELK_SHADER_OPCODE_TEX_LOGICAL,
+   ELK_SHADER_OPCODE_TXD,
+   ELK_SHADER_OPCODE_TXD_LOGICAL,
+   ELK_SHADER_OPCODE_TXF,
+   ELK_SHADER_OPCODE_TXF_LOGICAL,
+   ELK_SHADER_OPCODE_TXF_LZ,
+   ELK_SHADER_OPCODE_TXL,
+   ELK_SHADER_OPCODE_TXL_LOGICAL,
+   ELK_SHADER_OPCODE_TXL_LZ,
+   ELK_SHADER_OPCODE_TXS,
+   ELK_SHADER_OPCODE_TXS_LOGICAL,
+   ELK_FS_OPCODE_TXB,
+   ELK_FS_OPCODE_TXB_LOGICAL,
+   ELK_SHADER_OPCODE_TXF_CMS,
+   ELK_SHADER_OPCODE_TXF_CMS_LOGICAL,
+   ELK_SHADER_OPCODE_TXF_CMS_W,
+   ELK_SHADER_OPCODE_TXF_CMS_W_LOGICAL,
+   ELK_SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL,
+   ELK_SHADER_OPCODE_TXF_UMS,
+   ELK_SHADER_OPCODE_TXF_UMS_LOGICAL,
+   ELK_SHADER_OPCODE_TXF_MCS,
+   ELK_SHADER_OPCODE_TXF_MCS_LOGICAL,
+   ELK_SHADER_OPCODE_LOD,
+   ELK_SHADER_OPCODE_LOD_LOGICAL,
+   ELK_SHADER_OPCODE_TG4,
+   ELK_SHADER_OPCODE_TG4_LOGICAL,
+   ELK_SHADER_OPCODE_TG4_OFFSET,
+   ELK_SHADER_OPCODE_TG4_OFFSET_LOGICAL,
+   ELK_SHADER_OPCODE_SAMPLEINFO,
+   ELK_SHADER_OPCODE_SAMPLEINFO_LOGICAL,
 
-   SHADER_OPCODE_IMAGE_SIZE_LOGICAL,
+   ELK_SHADER_OPCODE_IMAGE_SIZE_LOGICAL,
 
    /**
     * Combines multiple sources of size 1 into a larger virtual GRF.
@@ -362,7 +362,7 @@ enum opcode {
     * but still reserves the first channel of the destination VGRF.  This can be
     * used to reserve space for, say, a message header set up by the generators.
     */
-   SHADER_OPCODE_LOAD_PAYLOAD,
+   ELK_SHADER_OPCODE_LOAD_PAYLOAD,
 
    /**
     * Packs a number of sources into a single value. Unlike LOAD_PAYLOAD, this
@@ -371,7 +371,7 @@ enum opcode {
     * occupying the lowest bits and the last source occupying the highest
     * bits.
     */
-   FS_OPCODE_PACK,
+   ELK_FS_OPCODE_PACK,
 
    /**
     * Typed and untyped surface access opcodes.
@@ -387,15 +387,15 @@ enum opcode {
     * Source 4: [required] Opcode-specific control immediate, same as source 2
     *                      of the matching non-LOGICAL opcode.
     */
-   VEC4_OPCODE_UNTYPED_ATOMIC,
-   SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL,
-   VEC4_OPCODE_UNTYPED_SURFACE_READ,
-   SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL,
-   VEC4_OPCODE_UNTYPED_SURFACE_WRITE,
-   SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL,
+   ELK_VEC4_OPCODE_UNTYPED_ATOMIC,
+   ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL,
+   ELK_VEC4_OPCODE_UNTYPED_SURFACE_READ,
+   ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL,
+   ELK_VEC4_OPCODE_UNTYPED_SURFACE_WRITE,
+   ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL,
 
-   SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
-   SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL,
+   ELK_SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
+   ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL,
 
    /**
     * Untyped A64 surface access opcodes.
@@ -405,21 +405,21 @@ enum opcode {
     * Source 2: [required] Opcode-specific control immediate, same as source 2
     *                      of the matching non-LOGICAL opcode.
     */
-   SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL,
-   SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL,
-   SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL,
-   SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL,
-   SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL,
-   SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
-   SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL,
-   SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL,
+   ELK_SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL,
+   ELK_SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL,
+   ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL,
+   ELK_SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL,
+   ELK_SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL,
+   ELK_SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
+   ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL,
+   ELK_SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL,
 
-   SHADER_OPCODE_TYPED_ATOMIC_LOGICAL,
-   SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL,
-   SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL,
+   ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL,
+   ELK_SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL,
+   ELK_SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL,
 
-   SHADER_OPCODE_RND_MODE,
-   SHADER_OPCODE_FLOAT_CONTROL_MODE,
+   ELK_SHADER_OPCODE_RND_MODE,
+   ELK_SHADER_OPCODE_FLOAT_CONTROL_MODE,
 
    /**
     * Byte scattered write/read opcodes.
@@ -428,10 +428,10 @@ enum opcode {
     * opcode, but instead of taking a single payload blog they expect their
     * arguments separately as individual sources, like untyped write/read.
     */
-   SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL,
-   SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL,
-   SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL,
-   SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL,
+   ELK_SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL,
+   ELK_SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL,
+   ELK_SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL,
+   ELK_SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL,
 
    /**
     * Memory fence messages.
@@ -444,7 +444,7 @@ enum opcode {
     *
     * Vec4 backend only uses Source 0.
     */
-   SHADER_OPCODE_MEMORY_FENCE,
+   ELK_SHADER_OPCODE_MEMORY_FENCE,
 
    /**
     * Scheduling-only fence.
@@ -452,38 +452,38 @@ enum opcode {
     * Sources can be used to force a stall until the registers in those are
     * available.  This might generate MOVs or SYNC_NOPs (Gfx12+).
     */
-   FS_OPCODE_SCHEDULING_FENCE,
+   ELK_FS_OPCODE_SCHEDULING_FENCE,
 
-   SHADER_OPCODE_GFX4_SCRATCH_READ,
-   SHADER_OPCODE_GFX4_SCRATCH_WRITE,
-   SHADER_OPCODE_GFX7_SCRATCH_READ,
+   ELK_SHADER_OPCODE_GFX4_SCRATCH_READ,
+   ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE,
+   ELK_SHADER_OPCODE_GFX7_SCRATCH_READ,
 
-   SHADER_OPCODE_SCRATCH_HEADER,
+   ELK_SHADER_OPCODE_SCRATCH_HEADER,
 
    /**
     * Gfx8+ SIMD8 URB messages.
     */
-   SHADER_OPCODE_URB_READ_LOGICAL,
-   SHADER_OPCODE_URB_WRITE_LOGICAL,
+   ELK_SHADER_OPCODE_URB_READ_LOGICAL,
+   ELK_SHADER_OPCODE_URB_WRITE_LOGICAL,
 
    /**
     * Return the index of the first enabled live channel and assign it to
     * to the first component of the destination.  Frequently used as input
     * for the BROADCAST pseudo-opcode.
     */
-   SHADER_OPCODE_FIND_LIVE_CHANNEL,
+   ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL,
 
    /**
     * Return the index of the last enabled live channel and assign it to
     * the first component of the destination.
     */
-   SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL,
+   ELK_SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL,
 
    /**
     * Return the current execution mask in the specified flag subregister.
     * Can be CSE'ed more easily than a plain MOV from the ce0 ARF register.
     */
-   FS_OPCODE_LOAD_LIVE_CHANNELS,
+   ELK_FS_OPCODE_LOAD_LIVE_CHANNELS,
 
    /**
     * Pick the channel from its first source register given by the index
@@ -495,7 +495,7 @@ enum opcode {
     * is guaranteed to be updated, which implies that BROADCAST instructions
     * should usually be marked force_writemask_all.
     */
-   SHADER_OPCODE_BROADCAST,
+   ELK_SHADER_OPCODE_BROADCAST,
 
    /* Pick the channel from its first source register given by the index
     * specified as second source.
@@ -504,84 +504,84 @@ enum opcode {
     * dynamic index and potentially puts a different value in each output
     * channel.
     */
-   SHADER_OPCODE_SHUFFLE,
+   ELK_SHADER_OPCODE_SHUFFLE,
 
    /* Select between src0 and src1 based on channel enables.
     *
     * This instruction copies src0 into the enabled channels of the
     * destination and copies src1 into the disabled channels.
     */
-   SHADER_OPCODE_SEL_EXEC,
+   ELK_SHADER_OPCODE_SEL_EXEC,
 
    /* This turns into an align16 mov from src0 to dst with a swizzle
     * provided as an immediate in src1.
     */
-   SHADER_OPCODE_QUAD_SWIZZLE,
+   ELK_SHADER_OPCODE_QUAD_SWIZZLE,
 
    /* Take every Nth element in src0 and broadcast it to the group of N
     * channels in which it lives in the destination.  The offset within the
     * cluster is given by src1 and the cluster size is given by src2.
     */
-   SHADER_OPCODE_CLUSTER_BROADCAST,
+   ELK_SHADER_OPCODE_CLUSTER_BROADCAST,
 
-   SHADER_OPCODE_GET_BUFFER_SIZE,
+   ELK_SHADER_OPCODE_GET_BUFFER_SIZE,
 
-   SHADER_OPCODE_INTERLOCK,
+   ELK_SHADER_OPCODE_INTERLOCK,
 
    /** Target for a HALT
     *
     * All HALT instructions in a shader must target the same jump point and
     * that point is denoted by a HALT_TARGET instruction.
     */
-   SHADER_OPCODE_HALT_TARGET,
+   ELK_SHADER_OPCODE_HALT_TARGET,
 
-   VEC4_OPCODE_MOV_BYTES,
-   VEC4_OPCODE_PACK_BYTES,
-   VEC4_OPCODE_UNPACK_UNIFORM,
-   VEC4_OPCODE_DOUBLE_TO_F32,
-   VEC4_OPCODE_DOUBLE_TO_D32,
-   VEC4_OPCODE_DOUBLE_TO_U32,
-   VEC4_OPCODE_TO_DOUBLE,
-   VEC4_OPCODE_PICK_LOW_32BIT,
-   VEC4_OPCODE_PICK_HIGH_32BIT,
-   VEC4_OPCODE_SET_LOW_32BIT,
-   VEC4_OPCODE_SET_HIGH_32BIT,
-   VEC4_OPCODE_MOV_FOR_SCRATCH,
-   VEC4_OPCODE_ZERO_OOB_PUSH_REGS,
+   ELK_VEC4_OPCODE_MOV_BYTES,
+   ELK_VEC4_OPCODE_PACK_BYTES,
+   ELK_VEC4_OPCODE_UNPACK_UNIFORM,
+   ELK_VEC4_OPCODE_DOUBLE_TO_F32,
+   ELK_VEC4_OPCODE_DOUBLE_TO_D32,
+   ELK_VEC4_OPCODE_DOUBLE_TO_U32,
+   ELK_VEC4_OPCODE_TO_DOUBLE,
+   ELK_VEC4_OPCODE_PICK_LOW_32BIT,
+   ELK_VEC4_OPCODE_PICK_HIGH_32BIT,
+   ELK_VEC4_OPCODE_SET_LOW_32BIT,
+   ELK_VEC4_OPCODE_SET_HIGH_32BIT,
+   ELK_VEC4_OPCODE_MOV_FOR_SCRATCH,
+   ELK_VEC4_OPCODE_ZERO_OOB_PUSH_REGS,
 
-   FS_OPCODE_DDX_COARSE,
-   FS_OPCODE_DDX_FINE,
+   ELK_FS_OPCODE_DDX_COARSE,
+   ELK_FS_OPCODE_DDX_FINE,
    /**
     * Compute dFdy(), dFdyCoarse(), or dFdyFine().
     */
-   FS_OPCODE_DDY_COARSE,
-   FS_OPCODE_DDY_FINE,
-   FS_OPCODE_LINTERP,
-   FS_OPCODE_PIXEL_X,
-   FS_OPCODE_PIXEL_Y,
-   FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD,
-   FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4,
-   FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL,
-   FS_OPCODE_SET_SAMPLE_ID,
-   FS_OPCODE_PACK_HALF_2x16_SPLIT,
-   FS_OPCODE_INTERPOLATE_AT_SAMPLE,
-   FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET,
-   FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET,
+   ELK_FS_OPCODE_DDY_COARSE,
+   ELK_FS_OPCODE_DDY_FINE,
+   ELK_FS_OPCODE_LINTERP,
+   ELK_FS_OPCODE_PIXEL_X,
+   ELK_FS_OPCODE_PIXEL_Y,
+   ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD,
+   ELK_FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4,
+   ELK_FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL,
+   ELK_FS_OPCODE_SET_SAMPLE_ID,
+   ELK_FS_OPCODE_PACK_HALF_2x16_SPLIT,
+   ELK_FS_OPCODE_INTERPOLATE_AT_SAMPLE,
+   ELK_FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET,
+   ELK_FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET,
 
-   VEC4_VS_OPCODE_URB_WRITE,
-   VS_OPCODE_PULL_CONSTANT_LOAD,
-   VS_OPCODE_PULL_CONSTANT_LOAD_GFX7,
+   ELK_VEC4_VS_OPCODE_URB_WRITE,
+   ELK_VS_OPCODE_PULL_CONSTANT_LOAD,
+   ELK_VS_OPCODE_PULL_CONSTANT_LOAD_GFX7,
 
-   VS_OPCODE_UNPACK_FLAGS_SIMD4X2,
+   ELK_VS_OPCODE_UNPACK_FLAGS_SIMD4X2,
 
    /**
     * Write geometry shader output data to the URB.
     *
-    * Unlike VEC4_VS_OPCODE_URB_WRITE, this opcode doesn't do an implied move from
+    * Unlike ELK_VEC4_VS_OPCODE_URB_WRITE, this opcode doesn't do an implied move from
     * R0 to the first MRF.  This allows the geometry shader to override the
     * "Slot {0,1} Offset" fields in the message header.
     */
-   VEC4_GS_OPCODE_URB_WRITE,
+   ELK_VEC4_GS_OPCODE_URB_WRITE,
 
    /**
     * Write geometry shader output data to the URB and request a new URB
@@ -589,7 +589,7 @@ enum opcode {
     *
     * This opcode doesn't do an implied move from R0 to the first MRF.
     */
-   VEC4_GS_OPCODE_URB_WRITE_ALLOCATE,
+   ELK_VEC4_GS_OPCODE_URB_WRITE_ALLOCATE,
 
    /**
     * Terminate the geometry shader thread by doing an empty URB write.
@@ -598,7 +598,7 @@ enum opcode {
     * allows the geometry shader to override the "GS Number of Output Vertices
     * for Slot {0,1}" fields in the message header.
     */
-   GS_OPCODE_THREAD_END,
+   ELK_GS_OPCODE_THREAD_END,
 
    /**
     * Set the "Slot {0,1} Offset" fields of a URB_WRITE message header.
@@ -614,7 +614,7 @@ enum opcode {
     * Note: the hardware will apply this offset *in addition to* the offset in
     * vec4_instruction::offset.
     */
-   GS_OPCODE_SET_WRITE_OFFSET,
+   ELK_GS_OPCODE_SET_WRITE_OFFSET,
 
    /**
     * Set the "GS Number of Output Vertices for Slot {0,1}" fields of a
@@ -624,27 +624,27 @@ enum opcode {
     *
     * - src0.x is the vertex count.  The upper 16 bits will be ignored.
     */
-   GS_OPCODE_SET_VERTEX_COUNT,
+   ELK_GS_OPCODE_SET_VERTEX_COUNT,
 
    /**
     * Set DWORD 2 of dst to the value in src.
     */
-   GS_OPCODE_SET_DWORD_2,
+   ELK_GS_OPCODE_SET_DWORD_2,
 
    /**
     * Prepare the dst register for storage in the "Channel Mask" fields of a
     * URB_WRITE message header.
     *
     * DWORD 4 of dst is shifted left by 4 bits, so that later,
-    * GS_OPCODE_SET_CHANNEL_MASKS can OR DWORDs 0 and 4 together to form the
+    * ELK_GS_OPCODE_SET_CHANNEL_MASKS can OR DWORDs 0 and 4 together to form the
     * final channel mask.
     *
-    * Note: since GS_OPCODE_SET_CHANNEL_MASKS ORs DWORDs 0 and 4 together to
+    * Note: since ELK_GS_OPCODE_SET_CHANNEL_MASKS ORs DWORDs 0 and 4 together to
     * form the final channel mask, DWORDs 0 and 4 of the dst register must not
     * have any extraneous bits set prior to execution of this opcode (that is,
     * they should be in the range 0x0 to 0xf).
     */
-   GS_OPCODE_PREPARE_CHANNEL_MASKS,
+   ELK_GS_OPCODE_PREPARE_CHANNEL_MASKS,
 
    /**
     * Set the "Channel Mask" fields of a URB_WRITE message header.
@@ -652,17 +652,17 @@ enum opcode {
     * - dst is the MRF containing the message header.
     *
     * - src.x is the channel mask, as prepared by
-    *   GS_OPCODE_PREPARE_CHANNEL_MASKS.  DWORDs 0 and 4 are OR'ed together to
+    *   ELK_GS_OPCODE_PREPARE_CHANNEL_MASKS.  DWORDs 0 and 4 are OR'ed together to
     *   form the final channel mask.
     */
-   GS_OPCODE_SET_CHANNEL_MASKS,
+   ELK_GS_OPCODE_SET_CHANNEL_MASKS,
 
    /**
     * Get the "Instance ID" fields from the payload.
     *
     * - dst is the GRF for gl_InvocationID.
     */
-   GS_OPCODE_GET_INSTANCE_ID,
+   ELK_GS_OPCODE_GET_INSTANCE_ID,
 
    /**
     * Send a FF_SYNC message to allocate initial URB handles (gfx6).
@@ -681,7 +681,7 @@ enum opcode {
     * to include the allocated URB handle so it can then be reused directly as
     * the header in the URB write operation we are allocating the handle for.
     */
-   GS_OPCODE_FF_SYNC,
+   ELK_GS_OPCODE_FF_SYNC,
 
    /**
     * Move r0.1 (which holds PrimitiveID information in gfx6) to a separate
@@ -689,7 +689,7 @@ enum opcode {
     *
     * - dst is the GRF where PrimitiveID information will be moved.
     */
-   GS_OPCODE_SET_PRIMITIVE_ID,
+   ELK_GS_OPCODE_SET_PRIMITIVE_ID,
 
    /**
     * Write transform feedback data to the SVB by sending a SVB WRITE message.
@@ -701,7 +701,7 @@ enum opcode {
     *
     * - src1 is the destination register when write commit occurs.
     */
-   GS_OPCODE_SVB_WRITE,
+   ELK_GS_OPCODE_SVB_WRITE,
 
    /**
     * Set destination index in the SVB write message payload (M0.5). Used
@@ -710,7 +710,7 @@ enum opcode {
     * - dst is the header to save the destination indices for SVB WRITE.
     * - src is the register that holds the destination indices value.
     */
-   GS_OPCODE_SVB_SET_DST_INDEX,
+   ELK_GS_OPCODE_SVB_SET_DST_INDEX,
 
    /**
     * Prepare Mx.0 subregister for being used in the FF_SYNC message header.
@@ -725,28 +725,28 @@ enum opcode {
     * - src2 is the value to hold in M0: number of SO vertices to write
     *   and number of SO primitives needed.
     */
-   GS_OPCODE_FF_SYNC_SET_PRIMITIVES,
+   ELK_GS_OPCODE_FF_SYNC_SET_PRIMITIVES,
 
    /**
     * Terminate the compute shader.
     */
-   CS_OPCODE_CS_TERMINATE,
+   ELK_CS_OPCODE_CS_TERMINATE,
 
    /**
     * GLSL barrier()
     */
-   SHADER_OPCODE_BARRIER,
+   ELK_SHADER_OPCODE_BARRIER,
 
    /**
     * Calculate the high 32-bits of a 32x32 multiply.
     */
-   SHADER_OPCODE_MULH,
+   ELK_SHADER_OPCODE_MULH,
 
    /** Signed subtraction with saturation. */
-   SHADER_OPCODE_ISUB_SAT,
+   ELK_SHADER_OPCODE_ISUB_SAT,
 
    /** Unsigned subtraction with saturation. */
-   SHADER_OPCODE_USUB_SAT,
+   ELK_SHADER_OPCODE_USUB_SAT,
 
    /**
     * A MOV that uses VxH indirect addressing.
@@ -756,70 +756,70 @@ enum opcode {
     * Source 2: The length of the region that could be accessed (in bytes,
     *           UD immediate).
     */
-   SHADER_OPCODE_MOV_INDIRECT,
+   ELK_SHADER_OPCODE_MOV_INDIRECT,
 
    /** Fills out a relocatable immediate */
-   SHADER_OPCODE_MOV_RELOC_IMM,
+   ELK_SHADER_OPCODE_MOV_RELOC_IMM,
 
-   VEC4_OPCODE_URB_READ,
-   TCS_OPCODE_GET_INSTANCE_ID,
-   VEC4_TCS_OPCODE_URB_WRITE,
-   VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS,
-   VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS,
-   TCS_OPCODE_GET_PRIMITIVE_ID,
-   TCS_OPCODE_CREATE_BARRIER_HEADER,
-   TCS_OPCODE_SRC0_010_IS_ZERO,
-   TCS_OPCODE_RELEASE_INPUT,
-   TCS_OPCODE_THREAD_END,
+   ELK_VEC4_OPCODE_URB_READ,
+   ELK_TCS_OPCODE_GET_INSTANCE_ID,
+   ELK_VEC4_TCS_OPCODE_URB_WRITE,
+   ELK_VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS,
+   ELK_VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS,
+   ELK_TCS_OPCODE_GET_PRIMITIVE_ID,
+   ELK_TCS_OPCODE_CREATE_BARRIER_HEADER,
+   ELK_TCS_OPCODE_SRC0_010_IS_ZERO,
+   ELK_TCS_OPCODE_RELEASE_INPUT,
+   ELK_TCS_OPCODE_THREAD_END,
 
-   TES_OPCODE_GET_PRIMITIVE_ID,
-   TES_OPCODE_CREATE_INPUT_READ_HEADER,
-   TES_OPCODE_ADD_INDIRECT_URB_OFFSET,
+   ELK_TES_OPCODE_GET_PRIMITIVE_ID,
+   ELK_TES_OPCODE_CREATE_INPUT_READ_HEADER,
+   ELK_TES_OPCODE_ADD_INDIRECT_URB_OFFSET,
 
-   SHADER_OPCODE_BTD_SPAWN_LOGICAL,
-   SHADER_OPCODE_BTD_RETIRE_LOGICAL,
+   ELK_SHADER_OPCODE_BTD_SPAWN_LOGICAL,
+   ELK_SHADER_OPCODE_BTD_RETIRE_LOGICAL,
 
-   SHADER_OPCODE_READ_SR_REG,
+   ELK_SHADER_OPCODE_READ_SR_REG,
 
-   RT_OPCODE_TRACE_RAY_LOGICAL,
+   ELK_RT_OPCODE_TRACE_RAY_LOGICAL,
 };
 
-enum brw_urb_write_flags {
-   BRW_URB_WRITE_NO_FLAGS = 0,
+enum elk_urb_write_flags {
+   ELK_URB_WRITE_NO_FLAGS = 0,
 
    /**
     * Causes a new URB entry to be allocated, and its address stored in the
     * destination register (gen < 7).
     */
-   BRW_URB_WRITE_ALLOCATE = 0x1,
+   ELK_URB_WRITE_ALLOCATE = 0x1,
 
    /**
     * Causes the current URB entry to be deallocated (gen < 7).
     */
-   BRW_URB_WRITE_UNUSED = 0x2,
+   ELK_URB_WRITE_UNUSED = 0x2,
 
    /**
     * Causes the thread to terminate.
     */
-   BRW_URB_WRITE_EOT = 0x4,
+   ELK_URB_WRITE_EOT = 0x4,
 
    /**
     * Indicates that the given URB entry is complete, and may be sent further
     * down the 3D pipeline (gen < 7).
     */
-   BRW_URB_WRITE_COMPLETE = 0x8,
+   ELK_URB_WRITE_COMPLETE = 0x8,
 
    /**
     * Indicates that an additional offset (which may be different for the two
     * vec4 slots) is stored in the message header (gen == 7).
     */
-   BRW_URB_WRITE_PER_SLOT_OFFSET = 0x10,
+   ELK_URB_WRITE_PER_SLOT_OFFSET = 0x10,
 
    /**
     * Indicates that the channel masks in the URB_WRITE message header should
     * not be overridden to 0xff (gen == 7).
     */
-   BRW_URB_WRITE_USE_CHANNEL_MASKS = 0x20,
+   ELK_URB_WRITE_USE_CHANNEL_MASKS = 0x20,
 
    /**
     * Indicates that the data should be sent to the URB using the
@@ -827,20 +827,20 @@ enum brw_urb_write_flags {
     * causes offsets to be interpreted as multiples of an OWORD instead of an
     * HWORD, and only allows one OWORD to be written.
     */
-   BRW_URB_WRITE_OWORD = 0x40,
+   ELK_URB_WRITE_OWORD = 0x40,
 
    /**
     * Convenient combination of flags: end the thread while simultaneously
     * marking the given URB entry as complete.
     */
-   BRW_URB_WRITE_EOT_COMPLETE = BRW_URB_WRITE_EOT | BRW_URB_WRITE_COMPLETE,
+   ELK_URB_WRITE_EOT_COMPLETE = ELK_URB_WRITE_EOT | ELK_URB_WRITE_COMPLETE,
 
    /**
     * Convenient combination of flags: mark the given URB entry as complete
     * and simultaneously allocate a new one.
     */
-   BRW_URB_WRITE_ALLOCATE_COMPLETE =
-      BRW_URB_WRITE_ALLOCATE | BRW_URB_WRITE_COMPLETE,
+   ELK_URB_WRITE_ALLOCATE_COMPLETE =
+      ELK_URB_WRITE_ALLOCATE | ELK_URB_WRITE_COMPLETE,
 };
 
 enum fb_write_logical_srcs {
@@ -1001,51 +1001,51 @@ enum interpolator_logical_srcs {
 
 #ifdef __cplusplus
 /**
- * Allow brw_urb_write_flags enums to be ORed together.
+ * Allow elk_urb_write_flags enums to be ORed together.
  */
-inline brw_urb_write_flags
-operator|(brw_urb_write_flags x, brw_urb_write_flags y)
+inline elk_urb_write_flags
+operator|(elk_urb_write_flags x, elk_urb_write_flags y)
 {
-   return static_cast<brw_urb_write_flags>(static_cast<int>(x) |
+   return static_cast<elk_urb_write_flags>(static_cast<int>(x) |
                                            static_cast<int>(y));
 }
 #endif
 
-enum ENUM_PACKED brw_predicate {
-   BRW_PREDICATE_NONE                =  0,
-   BRW_PREDICATE_NORMAL              =  1,
-   BRW_PREDICATE_ALIGN1_ANYV         =  2,
-   BRW_PREDICATE_ALIGN1_ALLV         =  3,
-   BRW_PREDICATE_ALIGN1_ANY2H        =  4,
-   BRW_PREDICATE_ALIGN1_ALL2H        =  5,
-   BRW_PREDICATE_ALIGN1_ANY4H        =  6,
-   BRW_PREDICATE_ALIGN1_ALL4H        =  7,
-   BRW_PREDICATE_ALIGN1_ANY8H        =  8,
-   BRW_PREDICATE_ALIGN1_ALL8H        =  9,
-   BRW_PREDICATE_ALIGN1_ANY16H       = 10,
-   BRW_PREDICATE_ALIGN1_ALL16H       = 11,
-   BRW_PREDICATE_ALIGN1_ANY32H       = 12,
-   BRW_PREDICATE_ALIGN1_ALL32H       = 13,
-   BRW_PREDICATE_ALIGN16_REPLICATE_X =  2,
-   BRW_PREDICATE_ALIGN16_REPLICATE_Y =  3,
-   BRW_PREDICATE_ALIGN16_REPLICATE_Z =  4,
-   BRW_PREDICATE_ALIGN16_REPLICATE_W =  5,
-   BRW_PREDICATE_ALIGN16_ANY4H       =  6,
-   BRW_PREDICATE_ALIGN16_ALL4H       =  7,
+enum ENUM_PACKED elk_predicate {
+   ELK_PREDICATE_NONE                =  0,
+   ELK_PREDICATE_NORMAL              =  1,
+   ELK_PREDICATE_ALIGN1_ANYV         =  2,
+   ELK_PREDICATE_ALIGN1_ALLV         =  3,
+   ELK_PREDICATE_ALIGN1_ANY2H        =  4,
+   ELK_PREDICATE_ALIGN1_ALL2H        =  5,
+   ELK_PREDICATE_ALIGN1_ANY4H        =  6,
+   ELK_PREDICATE_ALIGN1_ALL4H        =  7,
+   ELK_PREDICATE_ALIGN1_ANY8H        =  8,
+   ELK_PREDICATE_ALIGN1_ALL8H        =  9,
+   ELK_PREDICATE_ALIGN1_ANY16H       = 10,
+   ELK_PREDICATE_ALIGN1_ALL16H       = 11,
+   ELK_PREDICATE_ALIGN1_ANY32H       = 12,
+   ELK_PREDICATE_ALIGN1_ALL32H       = 13,
+   ELK_PREDICATE_ALIGN16_REPLICATE_X =  2,
+   ELK_PREDICATE_ALIGN16_REPLICATE_Y =  3,
+   ELK_PREDICATE_ALIGN16_REPLICATE_Z =  4,
+   ELK_PREDICATE_ALIGN16_REPLICATE_W =  5,
+   ELK_PREDICATE_ALIGN16_ANY4H       =  6,
+   ELK_PREDICATE_ALIGN16_ALL4H       =  7,
    XE2_PREDICATE_ANY = 2,
    XE2_PREDICATE_ALL = 3
 };
 
-enum ENUM_PACKED brw_reg_file {
-   BRW_ARCHITECTURE_REGISTER_FILE = 0,
-   BRW_GENERAL_REGISTER_FILE      = 1,
-   BRW_MESSAGE_REGISTER_FILE      = 2,
-   BRW_IMMEDIATE_VALUE            = 3,
+enum ENUM_PACKED elk_reg_file {
+   ELK_ARCHITECTURE_REGISTER_FILE = 0,
+   ELK_GENERAL_REGISTER_FILE      = 1,
+   ELK_MESSAGE_REGISTER_FILE      = 2,
+   ELK_IMMEDIATE_VALUE            = 3,
 
-   ARF = BRW_ARCHITECTURE_REGISTER_FILE,
-   FIXED_GRF = BRW_GENERAL_REGISTER_FILE,
-   MRF = BRW_MESSAGE_REGISTER_FILE,
-   IMM = BRW_IMMEDIATE_VALUE,
+   ARF = ELK_ARCHITECTURE_REGISTER_FILE,
+   FIXED_GRF = ELK_GENERAL_REGISTER_FILE,
+   MRF = ELK_MESSAGE_REGISTER_FILE,
+   IMM = ELK_IMMEDIATE_VALUE,
 
    /* These are not hardware values */
    VGRF,
@@ -1055,9 +1055,9 @@ enum ENUM_PACKED brw_reg_file {
 };
 
 enum ENUM_PACKED gfx10_align1_3src_reg_file {
-   BRW_ALIGN1_3SRC_GENERAL_REGISTER_FILE = 0,
-   BRW_ALIGN1_3SRC_IMMEDIATE_VALUE       = 1, /* src0, src2 */
-   BRW_ALIGN1_3SRC_ACCUMULATOR           = 1, /* dest, src1 */
+   ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE = 0,
+   ELK_ALIGN1_3SRC_IMMEDIATE_VALUE       = 1, /* src0, src2 */
+   ELK_ALIGN1_3SRC_ACCUMULATOR           = 1, /* dest, src1 */
 };
 
 /* CNL adds Align1 support for 3-src instructions. Bit 35 of the instruction
@@ -1066,62 +1066,62 @@ enum ENUM_PACKED gfx10_align1_3src_reg_file {
  * more fine control their respective types.
  */
 enum ENUM_PACKED gfx10_align1_3src_exec_type {
-   BRW_ALIGN1_3SRC_EXEC_TYPE_INT   = 0,
-   BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT = 1,
+   ELK_ALIGN1_3SRC_EXEC_TYPE_INT   = 0,
+   ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT = 1,
 };
 
-#define BRW_ARF_NULL                  0x00
-#define BRW_ARF_ADDRESS               0x10
-#define BRW_ARF_ACCUMULATOR           0x20
-#define BRW_ARF_FLAG                  0x30
-#define BRW_ARF_MASK                  0x40
-#define BRW_ARF_MASK_STACK            0x50
-#define BRW_ARF_MASK_STACK_DEPTH      0x60
-#define BRW_ARF_STATE                 0x70
-#define BRW_ARF_CONTROL               0x80
-#define BRW_ARF_NOTIFICATION_COUNT    0x90
-#define BRW_ARF_IP                    0xA0
-#define BRW_ARF_TDR                   0xB0
-#define BRW_ARF_TIMESTAMP             0xC0
+#define ELK_ARF_NULL                  0x00
+#define ELK_ARF_ADDRESS               0x10
+#define ELK_ARF_ACCUMULATOR           0x20
+#define ELK_ARF_FLAG                  0x30
+#define ELK_ARF_MASK                  0x40
+#define ELK_ARF_MASK_STACK            0x50
+#define ELK_ARF_MASK_STACK_DEPTH      0x60
+#define ELK_ARF_STATE                 0x70
+#define ELK_ARF_CONTROL               0x80
+#define ELK_ARF_NOTIFICATION_COUNT    0x90
+#define ELK_ARF_IP                    0xA0
+#define ELK_ARF_TDR                   0xB0
+#define ELK_ARF_TIMESTAMP             0xC0
 
-#define BRW_MRF_COMPR4			(1 << 7)
+#define ELK_MRF_COMPR4			(1 << 7)
 
-#define BRW_AMASK   0
-#define BRW_IMASK   1
-#define BRW_LMASK   2
-#define BRW_CMASK   3
+#define ELK_AMASK   0
+#define ELK_IMASK   1
+#define ELK_LMASK   2
+#define ELK_CMASK   3
 
 
 
-#define BRW_THREAD_NORMAL     0
-#define BRW_THREAD_ATOMIC     1
-#define BRW_THREAD_SWITCH     2
+#define ELK_THREAD_NORMAL     0
+#define ELK_THREAD_ATOMIC     1
+#define ELK_THREAD_SWITCH     2
 
-enum ENUM_PACKED brw_vertical_stride {
-   BRW_VERTICAL_STRIDE_0               = 0,
-   BRW_VERTICAL_STRIDE_1               = 1,
-   BRW_VERTICAL_STRIDE_2               = 2,
-   BRW_VERTICAL_STRIDE_4               = 3,
-   BRW_VERTICAL_STRIDE_8               = 4,
-   BRW_VERTICAL_STRIDE_16              = 5,
-   BRW_VERTICAL_STRIDE_32              = 6,
-   BRW_VERTICAL_STRIDE_ONE_DIMENSIONAL = 0xF,
+enum ENUM_PACKED elk_vertical_stride {
+   ELK_VERTICAL_STRIDE_0               = 0,
+   ELK_VERTICAL_STRIDE_1               = 1,
+   ELK_VERTICAL_STRIDE_2               = 2,
+   ELK_VERTICAL_STRIDE_4               = 3,
+   ELK_VERTICAL_STRIDE_8               = 4,
+   ELK_VERTICAL_STRIDE_16              = 5,
+   ELK_VERTICAL_STRIDE_32              = 6,
+   ELK_VERTICAL_STRIDE_ONE_DIMENSIONAL = 0xF,
 };
 
 enum ENUM_PACKED gfx10_align1_3src_vertical_stride {
-   BRW_ALIGN1_3SRC_VERTICAL_STRIDE_0 = 0,
-   BRW_ALIGN1_3SRC_VERTICAL_STRIDE_1 = 1,
-   BRW_ALIGN1_3SRC_VERTICAL_STRIDE_2 = 1,
-   BRW_ALIGN1_3SRC_VERTICAL_STRIDE_4 = 2,
-   BRW_ALIGN1_3SRC_VERTICAL_STRIDE_8 = 3,
+   ELK_ALIGN1_3SRC_VERTICAL_STRIDE_0 = 0,
+   ELK_ALIGN1_3SRC_VERTICAL_STRIDE_1 = 1,
+   ELK_ALIGN1_3SRC_VERTICAL_STRIDE_2 = 1,
+   ELK_ALIGN1_3SRC_VERTICAL_STRIDE_4 = 2,
+   ELK_ALIGN1_3SRC_VERTICAL_STRIDE_8 = 3,
 };
 
-enum ENUM_PACKED brw_width {
-   BRW_WIDTH_1  = 0,
-   BRW_WIDTH_2  = 1,
-   BRW_WIDTH_4  = 2,
-   BRW_WIDTH_8  = 3,
-   BRW_WIDTH_16 = 4,
+enum ENUM_PACKED elk_width {
+   ELK_WIDTH_1  = 0,
+   ELK_WIDTH_2  = 1,
+   ELK_WIDTH_4  = 2,
+   ELK_WIDTH_8  = 3,
+   ELK_WIDTH_16 = 4,
 };
 
 /**
@@ -1142,20 +1142,20 @@ enum tgl_sbid_mode {
 
 
 enum gfx12_sub_byte_precision {
-   BRW_SUB_BYTE_PRECISION_NONE = 0,
+   ELK_SUB_BYTE_PRECISION_NONE = 0,
 
    /** 4 bits. Signedness determined by base type */
-   BRW_SUB_BYTE_PRECISION_4BIT = 1,
+   ELK_SUB_BYTE_PRECISION_4BIT = 1,
 
    /** 2 bits. Signedness determined by base type */
-   BRW_SUB_BYTE_PRECISION_2BIT = 2,
+   ELK_SUB_BYTE_PRECISION_2BIT = 2,
 };
 
-enum gfx12_systolic_depth {
-   BRW_SYSTOLIC_DEPTH_16 = 0,
-   BRW_SYSTOLIC_DEPTH_2 = 1,
-   BRW_SYSTOLIC_DEPTH_4 = 2,
-   BRW_SYSTOLIC_DEPTH_8 = 3,
+enum elk_gfx12_systolic_depth {
+   ELK_SYSTOLIC_DEPTH_16 = 0,
+   ELK_SYSTOLIC_DEPTH_2 = 1,
+   ELK_SYSTOLIC_DEPTH_4 = 2,
+   ELK_SYSTOLIC_DEPTH_8 = 3,
 };
 
 #ifdef __cplusplus
@@ -1412,16 +1412,16 @@ enum tgl_sync_function {
  * - Sandybridge PRM, Volume 4 Part 2, Table 8-16 "Extended Message Descriptor"
  * - Ivybridge PRM, Volume 1 Part 1, section 3.2.7 "GPE Function IDs"
  */
-enum brw_message_target {
-   BRW_SFID_NULL                     = 0,
-   BRW_SFID_MATH                     = 1, /* Only valid on Gfx4-5 */
-   BRW_SFID_SAMPLER                  = 2,
-   BRW_SFID_MESSAGE_GATEWAY          = 3,
-   BRW_SFID_DATAPORT_READ            = 4,
-   BRW_SFID_DATAPORT_WRITE           = 5,
-   BRW_SFID_URB                      = 6,
-   BRW_SFID_THREAD_SPAWNER           = 7,
-   BRW_SFID_VME                      = 8,
+enum elk_message_target {
+   ELK_SFID_NULL                     = 0,
+   ELK_SFID_MATH                     = 1, /* Only valid on Gfx4-5 */
+   ELK_SFID_SAMPLER                  = 2,
+   ELK_SFID_MESSAGE_GATEWAY          = 3,
+   ELK_SFID_DATAPORT_READ            = 4,
+   ELK_SFID_DATAPORT_WRITE           = 5,
+   ELK_SFID_URB                      = 6,
+   ELK_SFID_THREAD_SPAWNER           = 7,
+   ELK_SFID_VME                      = 8,
 
    GFX6_SFID_DATAPORT_SAMPLER_CACHE  = 4,
    GFX6_SFID_DATAPORT_RENDER_CACHE   = 5,
@@ -1439,31 +1439,31 @@ enum brw_message_target {
 
 #define GFX7_MESSAGE_TARGET_DP_DATA_CACHE     10
 
-#define BRW_SAMPLER_RETURN_FORMAT_FLOAT32     0
-#define BRW_SAMPLER_RETURN_FORMAT_UINT32      2
-#define BRW_SAMPLER_RETURN_FORMAT_SINT32      3
+#define ELK_SAMPLER_RETURN_FORMAT_FLOAT32     0
+#define ELK_SAMPLER_RETURN_FORMAT_UINT32      2
+#define ELK_SAMPLER_RETURN_FORMAT_SINT32      3
 
 #define GFX8_SAMPLER_RETURN_FORMAT_32BITS    0
 #define GFX8_SAMPLER_RETURN_FORMAT_16BITS    1
 
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE              0
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE             0
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE_BIAS        0
-#define BRW_SAMPLER_MESSAGE_SIMD8_KILLPIX             1
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_LOD        1
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE_LOD         1
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_GRADIENTS  2
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE_GRADIENTS    2
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_COMPARE    0
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE_COMPARE     2
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE_BIAS_COMPARE 0
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_LOD_COMPARE 1
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE_LOD_COMPARE  1
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_RESINFO           2
-#define BRW_SAMPLER_MESSAGE_SIMD16_RESINFO            2
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_LD                3
-#define BRW_SAMPLER_MESSAGE_SIMD8_LD                  3
-#define BRW_SAMPLER_MESSAGE_SIMD16_LD                 3
+#define ELK_SAMPLER_MESSAGE_SIMD8_SAMPLE              0
+#define ELK_SAMPLER_MESSAGE_SIMD16_SAMPLE             0
+#define ELK_SAMPLER_MESSAGE_SIMD16_SAMPLE_BIAS        0
+#define ELK_SAMPLER_MESSAGE_SIMD8_KILLPIX             1
+#define ELK_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_LOD        1
+#define ELK_SAMPLER_MESSAGE_SIMD16_SAMPLE_LOD         1
+#define ELK_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_GRADIENTS  2
+#define ELK_SAMPLER_MESSAGE_SIMD8_SAMPLE_GRADIENTS    2
+#define ELK_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_COMPARE    0
+#define ELK_SAMPLER_MESSAGE_SIMD16_SAMPLE_COMPARE     2
+#define ELK_SAMPLER_MESSAGE_SIMD8_SAMPLE_BIAS_COMPARE 0
+#define ELK_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_LOD_COMPARE 1
+#define ELK_SAMPLER_MESSAGE_SIMD8_SAMPLE_LOD_COMPARE  1
+#define ELK_SAMPLER_MESSAGE_SIMD4X2_RESINFO           2
+#define ELK_SAMPLER_MESSAGE_SIMD16_RESINFO            2
+#define ELK_SAMPLER_MESSAGE_SIMD4X2_LD                3
+#define ELK_SAMPLER_MESSAGE_SIMD8_LD                  3
+#define ELK_SAMPLER_MESSAGE_SIMD16_LD                 3
 
 #define GFX5_SAMPLER_MESSAGE_SAMPLE              0
 #define GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS         1
@@ -1492,10 +1492,10 @@ enum brw_message_target {
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS       31
 
 /* for GFX5 only */
-#define BRW_SAMPLER_SIMD_MODE_SIMD4X2                   0
-#define BRW_SAMPLER_SIMD_MODE_SIMD8                     1
-#define BRW_SAMPLER_SIMD_MODE_SIMD16                    2
-#define BRW_SAMPLER_SIMD_MODE_SIMD32_64                 3
+#define ELK_SAMPLER_SIMD_MODE_SIMD4X2                   0
+#define ELK_SAMPLER_SIMD_MODE_SIMD8                     1
+#define ELK_SAMPLER_SIMD_MODE_SIMD16                    2
+#define ELK_SAMPLER_SIMD_MODE_SIMD32_64                 3
 
 #define GFX10_SAMPLER_SIMD_MODE_SIMD8H                  5
 #define GFX10_SAMPLER_SIMD_MODE_SIMD16H                 6
@@ -1510,38 +1510,38 @@ enum brw_message_target {
 #define GFX9_SAMPLER_SIMD_MODE_SIMD8D                   0
 #define GFX9_SAMPLER_SIMD_MODE_EXTENSION_SIMD4X2        (1 << 22)
 
-#define BRW_DATAPORT_OWORD_BLOCK_1_OWORDLOW   0
-#define BRW_DATAPORT_OWORD_BLOCK_1_OWORDHIGH  1
-#define BRW_DATAPORT_OWORD_BLOCK_2_OWORDS     2
-#define BRW_DATAPORT_OWORD_BLOCK_4_OWORDS     3
-#define BRW_DATAPORT_OWORD_BLOCK_8_OWORDS     4
+#define ELK_DATAPORT_OWORD_BLOCK_1_OWORDLOW   0
+#define ELK_DATAPORT_OWORD_BLOCK_1_OWORDHIGH  1
+#define ELK_DATAPORT_OWORD_BLOCK_2_OWORDS     2
+#define ELK_DATAPORT_OWORD_BLOCK_4_OWORDS     3
+#define ELK_DATAPORT_OWORD_BLOCK_8_OWORDS     4
 #define GFX12_DATAPORT_OWORD_BLOCK_16_OWORDS  5
-#define BRW_DATAPORT_OWORD_BLOCK_OWORDS(n)              \
-   ((n) == 1 ? BRW_DATAPORT_OWORD_BLOCK_1_OWORDLOW :    \
-    (n) == 2 ? BRW_DATAPORT_OWORD_BLOCK_2_OWORDS :      \
-    (n) == 4 ? BRW_DATAPORT_OWORD_BLOCK_4_OWORDS :      \
-    (n) == 8 ? BRW_DATAPORT_OWORD_BLOCK_8_OWORDS :      \
+#define ELK_DATAPORT_OWORD_BLOCK_OWORDS(n)              \
+   ((n) == 1 ? ELK_DATAPORT_OWORD_BLOCK_1_OWORDLOW :    \
+    (n) == 2 ? ELK_DATAPORT_OWORD_BLOCK_2_OWORDS :      \
+    (n) == 4 ? ELK_DATAPORT_OWORD_BLOCK_4_OWORDS :      \
+    (n) == 8 ? ELK_DATAPORT_OWORD_BLOCK_8_OWORDS :      \
     (n) == 16 ? GFX12_DATAPORT_OWORD_BLOCK_16_OWORDS :  \
     (abort(), ~0))
-#define BRW_DATAPORT_OWORD_BLOCK_DWORDS(n)              \
-   ((n) == 4 ? BRW_DATAPORT_OWORD_BLOCK_1_OWORDLOW :    \
-    (n) == 8 ? BRW_DATAPORT_OWORD_BLOCK_2_OWORDS :      \
-    (n) == 16 ? BRW_DATAPORT_OWORD_BLOCK_4_OWORDS :     \
-    (n) == 32 ? BRW_DATAPORT_OWORD_BLOCK_8_OWORDS :     \
+#define ELK_DATAPORT_OWORD_BLOCK_DWORDS(n)              \
+   ((n) == 4 ? ELK_DATAPORT_OWORD_BLOCK_1_OWORDLOW :    \
+    (n) == 8 ? ELK_DATAPORT_OWORD_BLOCK_2_OWORDS :      \
+    (n) == 16 ? ELK_DATAPORT_OWORD_BLOCK_4_OWORDS :     \
+    (n) == 32 ? ELK_DATAPORT_OWORD_BLOCK_8_OWORDS :     \
     (abort(), ~0))
 
-#define BRW_DATAPORT_OWORD_DUAL_BLOCK_1OWORD     0
-#define BRW_DATAPORT_OWORD_DUAL_BLOCK_4OWORDS    2
+#define ELK_DATAPORT_OWORD_DUAL_BLOCK_1OWORD     0
+#define ELK_DATAPORT_OWORD_DUAL_BLOCK_4OWORDS    2
 
-#define BRW_DATAPORT_DWORD_SCATTERED_BLOCK_8DWORDS   2
-#define BRW_DATAPORT_DWORD_SCATTERED_BLOCK_16DWORDS  3
+#define ELK_DATAPORT_DWORD_SCATTERED_BLOCK_8DWORDS   2
+#define ELK_DATAPORT_DWORD_SCATTERED_BLOCK_16DWORDS  3
 
 /* This one stays the same across generations. */
-#define BRW_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ          0
+#define ELK_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ          0
 /* GFX4 */
-#define BRW_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ     1
-#define BRW_DATAPORT_READ_MESSAGE_MEDIA_BLOCK_READ          2
-#define BRW_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ      3
+#define ELK_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ     1
+#define ELK_DATAPORT_READ_MESSAGE_MEDIA_BLOCK_READ          2
+#define ELK_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ      3
 /* G45, GFX5 */
 #define G45_DATAPORT_READ_MESSAGE_RENDER_UNORM_READ	    1
 #define G45_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ     2
@@ -1555,23 +1555,23 @@ enum brw_message_target {
 #define GFX6_DATAPORT_READ_MESSAGE_OWORD_UNALIGN_BLOCK_READ  5
 #define GFX6_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ      6
 
-#define BRW_DATAPORT_READ_TARGET_DATA_CACHE      0
-#define BRW_DATAPORT_READ_TARGET_RENDER_CACHE    1
-#define BRW_DATAPORT_READ_TARGET_SAMPLER_CACHE   2
+#define ELK_DATAPORT_READ_TARGET_DATA_CACHE      0
+#define ELK_DATAPORT_READ_TARGET_RENDER_CACHE    1
+#define ELK_DATAPORT_READ_TARGET_SAMPLER_CACHE   2
 
-#define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE                0
-#define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE_REPLICATED     1
-#define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN01         2
-#define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN23         3
-#define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_SINGLE_SOURCE_SUBSPAN01       4
+#define ELK_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE                0
+#define ELK_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE_REPLICATED     1
+#define ELK_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN01         2
+#define ELK_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN23         3
+#define ELK_DATAPORT_RENDER_TARGET_WRITE_SIMD8_SINGLE_SOURCE_SUBSPAN01       4
 
-#define BRW_DATAPORT_WRITE_MESSAGE_OWORD_BLOCK_WRITE                0
-#define BRW_DATAPORT_WRITE_MESSAGE_OWORD_DUAL_BLOCK_WRITE           1
-#define BRW_DATAPORT_WRITE_MESSAGE_MEDIA_BLOCK_WRITE                2
-#define BRW_DATAPORT_WRITE_MESSAGE_DWORD_SCATTERED_WRITE            3
-#define BRW_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE              4
-#define BRW_DATAPORT_WRITE_MESSAGE_STREAMED_VERTEX_BUFFER_WRITE     5
-#define BRW_DATAPORT_WRITE_MESSAGE_FLUSH_RENDER_CACHE               7
+#define ELK_DATAPORT_WRITE_MESSAGE_OWORD_BLOCK_WRITE                0
+#define ELK_DATAPORT_WRITE_MESSAGE_OWORD_DUAL_BLOCK_WRITE           1
+#define ELK_DATAPORT_WRITE_MESSAGE_MEDIA_BLOCK_WRITE                2
+#define ELK_DATAPORT_WRITE_MESSAGE_DWORD_SCATTERED_WRITE            3
+#define ELK_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE              4
+#define ELK_DATAPORT_WRITE_MESSAGE_STREAMED_VERTEX_BUFFER_WRITE     5
+#define ELK_DATAPORT_WRITE_MESSAGE_FLUSH_RENDER_CACHE               7
 
 /* GFX6 */
 #define GFX6_DATAPORT_WRITE_MESSAGE_DWORD_ATOMIC_WRITE              7
@@ -1663,7 +1663,7 @@ enum brw_message_target {
 #define GFX8_A64_SCATTERED_SUBTYPE_HWORD                            3
 
 /* Dataport special binding table indices: */
-#define BRW_BTI_STATELESS                255
+#define ELK_BTI_STATELESS                255
 #define GFX7_BTI_SLM                     254
 
 #define HSW_BTI_STATELESS_LOCALLY_COHERENT 255
@@ -1709,60 +1709,60 @@ enum brw_message_target {
 /* Dataport atomic operations for Untyped Atomic Integer Operation message
  * (and others).
  */
-#define BRW_AOP_AND                   1
-#define BRW_AOP_OR                    2
-#define BRW_AOP_XOR                   3
-#define BRW_AOP_MOV                   4
-#define BRW_AOP_INC                   5
-#define BRW_AOP_DEC                   6
-#define BRW_AOP_ADD                   7
-#define BRW_AOP_SUB                   8
-#define BRW_AOP_REVSUB                9
-#define BRW_AOP_IMAX                  10
-#define BRW_AOP_IMIN                  11
-#define BRW_AOP_UMAX                  12
-#define BRW_AOP_UMIN                  13
-#define BRW_AOP_CMPWR                 14
-#define BRW_AOP_PREDEC                15
+#define ELK_AOP_AND                   1
+#define ELK_AOP_OR                    2
+#define ELK_AOP_XOR                   3
+#define ELK_AOP_MOV                   4
+#define ELK_AOP_INC                   5
+#define ELK_AOP_DEC                   6
+#define ELK_AOP_ADD                   7
+#define ELK_AOP_SUB                   8
+#define ELK_AOP_REVSUB                9
+#define ELK_AOP_IMAX                  10
+#define ELK_AOP_IMIN                  11
+#define ELK_AOP_UMAX                  12
+#define ELK_AOP_UMIN                  13
+#define ELK_AOP_CMPWR                 14
+#define ELK_AOP_PREDEC                15
 
 /* Dataport atomic operations for Untyped Atomic Float Operation message. */
-#define BRW_AOP_FMAX                  1
-#define BRW_AOP_FMIN                  2
-#define BRW_AOP_FCMPWR                3
-#define BRW_AOP_FADD                  4
+#define ELK_AOP_FMAX                  1
+#define ELK_AOP_FMIN                  2
+#define ELK_AOP_FCMPWR                3
+#define ELK_AOP_FADD                  4
 
-#define BRW_MATH_FUNCTION_INV                              1
-#define BRW_MATH_FUNCTION_LOG                              2
-#define BRW_MATH_FUNCTION_EXP                              3
-#define BRW_MATH_FUNCTION_SQRT                             4
-#define BRW_MATH_FUNCTION_RSQ                              5
-#define BRW_MATH_FUNCTION_SIN                              6
-#define BRW_MATH_FUNCTION_COS                              7
-#define BRW_MATH_FUNCTION_SINCOS                           8 /* gfx4, gfx5 */
-#define BRW_MATH_FUNCTION_FDIV                             9 /* gfx6+ */
-#define BRW_MATH_FUNCTION_POW                              10
-#define BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER   11
-#define BRW_MATH_FUNCTION_INT_DIV_QUOTIENT                 12
-#define BRW_MATH_FUNCTION_INT_DIV_REMAINDER                13
+#define ELK_MATH_FUNCTION_INV                              1
+#define ELK_MATH_FUNCTION_LOG                              2
+#define ELK_MATH_FUNCTION_EXP                              3
+#define ELK_MATH_FUNCTION_SQRT                             4
+#define ELK_MATH_FUNCTION_RSQ                              5
+#define ELK_MATH_FUNCTION_SIN                              6
+#define ELK_MATH_FUNCTION_COS                              7
+#define ELK_MATH_FUNCTION_SINCOS                           8 /* gfx4, gfx5 */
+#define ELK_MATH_FUNCTION_FDIV                             9 /* gfx6+ */
+#define ELK_MATH_FUNCTION_POW                              10
+#define ELK_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER   11
+#define ELK_MATH_FUNCTION_INT_DIV_QUOTIENT                 12
+#define ELK_MATH_FUNCTION_INT_DIV_REMAINDER                13
 #define GFX8_MATH_FUNCTION_INVM                            14
 #define GFX8_MATH_FUNCTION_RSQRTM                          15
 
-#define BRW_MATH_INTEGER_UNSIGNED     0
-#define BRW_MATH_INTEGER_SIGNED       1
+#define ELK_MATH_INTEGER_UNSIGNED     0
+#define ELK_MATH_INTEGER_SIGNED       1
 
-#define BRW_MATH_PRECISION_FULL        0
-#define BRW_MATH_PRECISION_PARTIAL     1
+#define ELK_MATH_PRECISION_FULL        0
+#define ELK_MATH_PRECISION_PARTIAL     1
 
-#define BRW_MATH_SATURATE_NONE         0
-#define BRW_MATH_SATURATE_SATURATE     1
+#define ELK_MATH_SATURATE_NONE         0
+#define ELK_MATH_SATURATE_SATURATE     1
 
-#define BRW_MATH_DATA_VECTOR  0
-#define BRW_MATH_DATA_SCALAR  1
+#define ELK_MATH_DATA_VECTOR  0
+#define ELK_MATH_DATA_SCALAR  1
 
-#define BRW_URB_OPCODE_WRITE_HWORD  0
-#define BRW_URB_OPCODE_WRITE_OWORD  1
-#define BRW_URB_OPCODE_READ_HWORD   2
-#define BRW_URB_OPCODE_READ_OWORD   3
+#define ELK_URB_OPCODE_WRITE_HWORD  0
+#define ELK_URB_OPCODE_WRITE_OWORD  1
+#define ELK_URB_OPCODE_READ_HWORD   2
+#define ELK_URB_OPCODE_READ_OWORD   3
 #define GFX7_URB_OPCODE_ATOMIC_MOV  4
 #define GFX7_URB_OPCODE_ATOMIC_INC  5
 #define GFX8_URB_OPCODE_ATOMIC_ADD  6
@@ -1770,30 +1770,30 @@ enum brw_message_target {
 #define GFX8_URB_OPCODE_SIMD8_READ  8
 #define GFX125_URB_OPCODE_FENCE     9
 
-#define BRW_URB_SWIZZLE_NONE          0
-#define BRW_URB_SWIZZLE_INTERLEAVE    1
-#define BRW_URB_SWIZZLE_TRANSPOSE     2
+#define ELK_URB_SWIZZLE_NONE          0
+#define ELK_URB_SWIZZLE_INTERLEAVE    1
+#define ELK_URB_SWIZZLE_TRANSPOSE     2
 
-#define BRW_SCRATCH_SPACE_SIZE_1K     0
-#define BRW_SCRATCH_SPACE_SIZE_2K     1
-#define BRW_SCRATCH_SPACE_SIZE_4K     2
-#define BRW_SCRATCH_SPACE_SIZE_8K     3
-#define BRW_SCRATCH_SPACE_SIZE_16K    4
-#define BRW_SCRATCH_SPACE_SIZE_32K    5
-#define BRW_SCRATCH_SPACE_SIZE_64K    6
-#define BRW_SCRATCH_SPACE_SIZE_128K   7
-#define BRW_SCRATCH_SPACE_SIZE_256K   8
-#define BRW_SCRATCH_SPACE_SIZE_512K   9
-#define BRW_SCRATCH_SPACE_SIZE_1M     10
-#define BRW_SCRATCH_SPACE_SIZE_2M     11
+#define ELK_SCRATCH_SPACE_SIZE_1K     0
+#define ELK_SCRATCH_SPACE_SIZE_2K     1
+#define ELK_SCRATCH_SPACE_SIZE_4K     2
+#define ELK_SCRATCH_SPACE_SIZE_8K     3
+#define ELK_SCRATCH_SPACE_SIZE_16K    4
+#define ELK_SCRATCH_SPACE_SIZE_32K    5
+#define ELK_SCRATCH_SPACE_SIZE_64K    6
+#define ELK_SCRATCH_SPACE_SIZE_128K   7
+#define ELK_SCRATCH_SPACE_SIZE_256K   8
+#define ELK_SCRATCH_SPACE_SIZE_512K   9
+#define ELK_SCRATCH_SPACE_SIZE_1M     10
+#define ELK_SCRATCH_SPACE_SIZE_2M     11
 
-#define BRW_MESSAGE_GATEWAY_SFID_OPEN_GATEWAY         0
-#define BRW_MESSAGE_GATEWAY_SFID_CLOSE_GATEWAY        1
-#define BRW_MESSAGE_GATEWAY_SFID_FORWARD_MSG          2
-#define BRW_MESSAGE_GATEWAY_SFID_GET_TIMESTAMP        3
-#define BRW_MESSAGE_GATEWAY_SFID_BARRIER_MSG          4
-#define BRW_MESSAGE_GATEWAY_SFID_UPDATE_GATEWAY_STATE 5
-#define BRW_MESSAGE_GATEWAY_SFID_MMIO_READ_WRITE      6
+#define ELK_MESSAGE_GATEWAY_SFID_OPEN_GATEWAY         0
+#define ELK_MESSAGE_GATEWAY_SFID_CLOSE_GATEWAY        1
+#define ELK_MESSAGE_GATEWAY_SFID_FORWARD_MSG          2
+#define ELK_MESSAGE_GATEWAY_SFID_GET_TIMESTAMP        3
+#define ELK_MESSAGE_GATEWAY_SFID_BARRIER_MSG          4
+#define ELK_MESSAGE_GATEWAY_SFID_UPDATE_GATEWAY_STATE 5
+#define ELK_MESSAGE_GATEWAY_SFID_MMIO_READ_WRITE      6
 
 
 /* Gfx7 "GS URB Entry Allocation Size" is a U9-1 field, so the maximum gs_size
@@ -1806,8 +1806,8 @@ enum brw_message_target {
 #define GFX7_MAX_HS_URB_ENTRY_SIZE_BYTES                (512*64)
 #define GFX7_MAX_VS_URB_ENTRY_SIZE_BYTES                (512*64)
 
-#define BRW_GS_EDGE_INDICATOR_0			(1 << 8)
-#define BRW_GS_EDGE_INDICATOR_1			(1 << 9)
+#define ELK_GS_EDGE_INDICATOR_0			(1 << 8)
+#define ELK_GS_EDGE_INDICATOR_1			(1 << 9)
 
 /* Gfx6 "GS URB Entry Allocation Size" is defined as a number of 1024-bit
  * (128 bytes) URB rows and the maximum allowed value is 5 rows.
@@ -1830,25 +1830,25 @@ enum brw_message_target {
  *  Skylake PRM, Volume 7 Part 1, "Control Register", page 756
  */
 
-#define BRW_CR0_RND_MODE_MASK     0x30
-#define BRW_CR0_RND_MODE_SHIFT    4
+#define ELK_CR0_RND_MODE_MASK     0x30
+#define ELK_CR0_RND_MODE_SHIFT    4
 
-enum ENUM_PACKED brw_rnd_mode {
-   BRW_RND_MODE_RTNE = 0,  /* Round to Nearest or Even */
-   BRW_RND_MODE_RU = 1,    /* Round Up, toward +inf */
-   BRW_RND_MODE_RD = 2,    /* Round Down, toward -inf */
-   BRW_RND_MODE_RTZ = 3,   /* Round Toward Zero */
-   BRW_RND_MODE_UNSPECIFIED,  /* Unspecified rounding mode */
+enum ENUM_PACKED elk_rnd_mode {
+   ELK_RND_MODE_RTNE = 0,  /* Round to Nearest or Even */
+   ELK_RND_MODE_RU = 1,    /* Round Up, toward +inf */
+   ELK_RND_MODE_RD = 2,    /* Round Down, toward -inf */
+   ELK_RND_MODE_RTZ = 3,   /* Round Toward Zero */
+   ELK_RND_MODE_UNSPECIFIED,  /* Unspecified rounding mode */
 };
 
-#define BRW_CR0_FP64_DENORM_PRESERVE (1 << 6)
-#define BRW_CR0_FP32_DENORM_PRESERVE (1 << 7)
-#define BRW_CR0_FP16_DENORM_PRESERVE (1 << 10)
+#define ELK_CR0_FP64_DENORM_PRESERVE (1 << 6)
+#define ELK_CR0_FP32_DENORM_PRESERVE (1 << 7)
+#define ELK_CR0_FP16_DENORM_PRESERVE (1 << 10)
 
-#define BRW_CR0_FP_MODE_MASK (BRW_CR0_FP64_DENORM_PRESERVE | \
-                              BRW_CR0_FP32_DENORM_PRESERVE | \
-                              BRW_CR0_FP16_DENORM_PRESERVE | \
-                              BRW_CR0_RND_MODE_MASK)
+#define ELK_CR0_FP_MODE_MASK (ELK_CR0_FP64_DENORM_PRESERVE | \
+                              ELK_CR0_FP32_DENORM_PRESERVE | \
+                              ELK_CR0_FP16_DENORM_PRESERVE | \
+                              ELK_CR0_RND_MODE_MASK)
 
 /* MDC_DS - Data Size Message Descriptor Control Field
  * Skylake PRM, Volume 2d, page 129
@@ -1868,7 +1868,7 @@ enum ENUM_PACKED brw_rnd_mode {
  * get to rewrite all our dataport encoding/decoding code.  This patch kicks
  * off the party with all of the new enums.
  */
-enum lsc_opcode {
+enum elk_lsc_opcode {
    LSC_OP_LOAD            = 0,
    LSC_OP_LOAD_CMASK      = 2,
    LSC_OP_STORE           = 4,

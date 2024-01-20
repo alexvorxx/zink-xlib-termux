@@ -31,10 +31,10 @@ namespace elk {
 class vec4_vs_visitor : public vec4_visitor
 {
 public:
-   vec4_vs_visitor(const struct brw_compiler *compiler,
-                   const struct brw_compile_params *params,
-                   const struct brw_vs_prog_key *key,
-                   struct brw_vs_prog_data *vs_prog_data,
+   vec4_vs_visitor(const struct elk_compiler *compiler,
+                   const struct elk_compile_params *params,
+                   const struct elk_vs_prog_key *key,
+                   struct elk_vs_prog_data *vs_prog_data,
                    const nir_shader *shader,
                    bool debug_enabled);
 
@@ -49,8 +49,8 @@ protected:
 private:
    int setup_attributes(int payload_reg);
 
-   const struct brw_vs_prog_key *const key;
-   struct brw_vs_prog_data * const vs_prog_data;
+   const struct elk_vs_prog_key *const key;
+   struct elk_vs_prog_data * const vs_prog_data;
 };
 
 } /* namespace elk */

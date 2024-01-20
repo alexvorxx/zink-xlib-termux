@@ -112,7 +112,7 @@ vec4_live_variables::setup_def_use()
                       * things that screen off preceding definitions of a
                       * variable, and thus qualify for being in def[].
                       */
-                     if ((!inst->predicate || inst->opcode == BRW_OPCODE_SEL) &&
+                     if ((!inst->predicate || inst->opcode == ELK_OPCODE_SEL) &&
                          !BITSET_TEST(bd->use, v))
                         BITSET_SET(bd->def, v);
                   }
@@ -151,7 +151,7 @@ vec4_live_variables::compute_live_variables()
          struct block_data *bd = &block_data[block->num];
 
 	 /* Update liveout */
-	 foreach_list_typed(bblock_link, child_link, link, &block->children) {
+	 foreach_list_typed(elk_bblock_link, child_link, link, &block->children) {
        struct block_data *child_bd = &block_data[child_link->block->num];
 
 	    for (int i = 0; i < bitset_words; i++) {
@@ -215,7 +215,7 @@ vec4_live_variables::compute_start_end()
    }
 }
 
-vec4_live_variables::vec4_live_variables(const backend_shader *s)
+vec4_live_variables::vec4_live_variables(const elk_backend_shader *s)
    : alloc(s->alloc), cfg(s->cfg)
 {
    mem_ctx = ralloc_context(NULL);
@@ -270,7 +270,7 @@ check_register_live_range(const vec4_live_variables *live, int ip,
 }
 
 bool
-vec4_live_variables::validate(const backend_shader *s) const
+vec4_live_variables::validate(const elk_backend_shader *s) const
 {
    unsigned ip = 0;
 

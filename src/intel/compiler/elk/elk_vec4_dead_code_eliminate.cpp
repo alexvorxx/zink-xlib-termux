@@ -105,7 +105,7 @@ vec4_visitor::dead_code_eliminate()
                 */
                if (dest_mask == 0) {
                   progress = true;
-                  inst->dst = dst_reg(retype(brw_null_reg(), inst->dst.type));
+                  inst->dst = dst_reg(retype(elk_null_reg(), inst->dst.type));
                }
             } else {
                for (int c = 0; c < 4; c++) {
@@ -115,9 +115,9 @@ vec4_visitor::dead_code_eliminate()
 
                      if (inst->dst.writemask == 0) {
                         if (inst->writes_accumulator) {
-                           inst->dst = dst_reg(retype(brw_null_reg(), inst->dst.type));
+                           inst->dst = dst_reg(retype(elk_null_reg(), inst->dst.type));
                         } else {
-                           inst->opcode = BRW_OPCODE_NOP;
+                           inst->opcode = ELK_OPCODE_NOP;
                            break;
                         }
                      }
@@ -132,7 +132,7 @@ vec4_visitor::dead_code_eliminate()
                combined_live |= BITSET_TEST(flag_live, c);
 
             if (!combined_live) {
-               inst->opcode = BRW_OPCODE_NOP;
+               inst->opcode = ELK_OPCODE_NOP;
                progress = true;
             }
          }
@@ -154,7 +154,7 @@ vec4_visitor::dead_code_eliminate()
                BITSET_CLEAR(flag_live, c);
          }
 
-         if (inst->opcode == BRW_OPCODE_NOP) {
+         if (inst->opcode == ELK_OPCODE_NOP) {
             inst->remove(block);
             continue;
          }

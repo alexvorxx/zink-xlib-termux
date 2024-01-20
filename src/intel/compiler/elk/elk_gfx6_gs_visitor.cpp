@@ -67,14 +67,14 @@ gfx6_gs_visitor::emit_prolog()
                                  (prog_data->vue_map.num_slots + 1) *
                                  nir->info.gs.vertices_out);
    this->vertex_output_offset = src_reg(this, glsl_uint_type());
-   emit(MOV(dst_reg(this->vertex_output_offset), brw_imm_ud(0u)));
+   emit(MOV(dst_reg(this->vertex_output_offset), elk_imm_ud(0u)));
 
    /* MRF 1 will be the header for all messages (FF_SYNC and URB_WRITES),
     * so initialize it once to R0.
     */
    vec4_instruction *inst = emit(MOV(dst_reg(MRF, 1),
-                                     retype(brw_vec8_grf(0, 0),
-                                            BRW_REGISTER_TYPE_UD)));
+                                     retype(elk_vec8_grf(0, 0),
+                                            ELK_REGISTER_TYPE_UD)));
    inst->force_writemask_all = true;
 
    /* This will be used as a temporary to store writeback data of FF_SYNC
@@ -89,13 +89,13 @@ gfx6_gs_visitor::emit_prolog()
     * headers.
     */
    this->first_vertex = src_reg(this, glsl_uint_type());
-   emit(MOV(dst_reg(this->first_vertex), brw_imm_ud(URB_WRITE_PRIM_START)));
+   emit(MOV(dst_reg(this->first_vertex), elk_imm_ud(URB_WRITE_PRIM_START)));
 
    /* The FF_SYNC message requires to know the number of primitives generated,
     * so keep a counter for this.
     */
    this->prim_count = src_reg(this, glsl_uint_type());
-   emit(MOV(dst_reg(this->prim_count), brw_imm_ud(0u)));
+   emit(MOV(dst_reg(this->prim_count), elk_imm_ud(0u)));
 
    if (gs_prog_data->num_transform_feedback_bindings) {
       /* Create a virtual register to hold destination indices in SOL */
@@ -107,7 +107,7 @@ gfx6_gs_visitor::emit_prolog()
       /* Create a virtual register to hold max values of SVBI */
       this->max_svbi = src_reg(this, glsl_uvec4_type());
       emit(MOV(dst_reg(this->max_svbi),
-               src_reg(retype(brw_vec1_grf(1, 4), BRW_REGISTER_TYPE_UD))));
+               src_reg(retype(elk_vec1_grf(1, 4), ELK_REGISTER_TYPE_UD))));
    }
 
    /* PrimitveID is delivered in r0.1 of the thread payload. If the program
@@ -130,8 +130,8 @@ gfx6_gs_visitor::emit_prolog()
     */
    if (gs_prog_data->include_primitive_id) {
       this->primitive_id =
-         src_reg(retype(brw_vec8_grf(1, 0), BRW_REGISTER_TYPE_UD));
-      emit(GS_OPCODE_SET_PRIMITIVE_ID, dst_reg(this->primitive_id));
+         src_reg(retype(elk_vec8_grf(1, 0), ELK_REGISTER_TYPE_UD));
+      emit(ELK_GS_OPCODE_SET_PRIMITIVE_ID, dst_reg(this->primitive_id));
    }
 }
 
@@ -170,7 +170,7 @@ gfx6_gs_visitor::gs_emit_vertex(int stream_id)
       }
 
       emit(ADD(dst_reg(this->vertex_output_offset),
-               this->vertex_output_offset, brw_imm_ud(1u)));
+               this->vertex_output_offset, elk_imm_ud(1u)));
    }
 
    /* Now buffer flags for this vertex */
@@ -181,9 +181,9 @@ gfx6_gs_visitor::gs_emit_vertex(int stream_id)
       /* If we are outputting points, then every vertex has PrimStart and
        * PrimEnd set.
        */
-      emit(MOV(dst, brw_imm_d((_3DPRIM_POINTLIST << URB_WRITE_PRIM_TYPE_SHIFT) |
+      emit(MOV(dst, elk_imm_d((_3DPRIM_POINTLIST << URB_WRITE_PRIM_TYPE_SHIFT) |
                               URB_WRITE_PRIM_START | URB_WRITE_PRIM_END)));
-      emit(ADD(dst_reg(this->prim_count), this->prim_count, brw_imm_ud(1u)));
+      emit(ADD(dst_reg(this->prim_count), this->prim_count, elk_imm_ud(1u)));
    } else {
       /* Otherwise, we can only set the PrimStart flag, which we have stored
        * in the first_vertex register. We will have to wait until we execute
@@ -191,12 +191,12 @@ gfx6_gs_visitor::gs_emit_vertex(int stream_id)
        * vertex.
        */
       emit(OR(dst, this->first_vertex,
-              brw_imm_ud(gs_prog_data->output_topology <<
+              elk_imm_ud(gs_prog_data->output_topology <<
                          URB_WRITE_PRIM_TYPE_SHIFT)));
-      emit(MOV(dst_reg(this->first_vertex), brw_imm_ud(0u)));
+      emit(MOV(dst_reg(this->first_vertex), elk_imm_ud(0u)));
    }
    emit(ADD(dst_reg(this->vertex_output_offset),
-            this->vertex_output_offset, brw_imm_ud(1u)));
+            this->vertex_output_offset, elk_imm_ud(1u)));
 }
 
 void
@@ -220,33 +220,33 @@ gfx6_gs_visitor::gs_end_primitive()
     */
    unsigned num_output_vertices = nir->info.gs.vertices_out;
    emit(CMP(dst_null_ud(), this->vertex_count,
-            brw_imm_ud(num_output_vertices + 1), BRW_CONDITIONAL_L));
+            elk_imm_ud(num_output_vertices + 1), ELK_CONDITIONAL_L));
    vec4_instruction *inst = emit(CMP(dst_null_ud(),
-                                     this->vertex_count, brw_imm_ud(0u),
-                                     BRW_CONDITIONAL_NEQ));
-   inst->predicate = BRW_PREDICATE_NORMAL;
-   emit(IF(BRW_PREDICATE_NORMAL));
+                                     this->vertex_count, elk_imm_ud(0u),
+                                     ELK_CONDITIONAL_NEQ));
+   inst->predicate = ELK_PREDICATE_NORMAL;
+   emit(IF(ELK_PREDICATE_NORMAL));
    {
       /* vertex_output_offset is already pointing at the first entry of the
        * next vertex. So subtract 1 to modify the flags for the previous
        * vertex.
        */
       src_reg offset(this, glsl_uint_type());
-      emit(ADD(dst_reg(offset), this->vertex_output_offset, brw_imm_d(-1)));
+      emit(ADD(dst_reg(offset), this->vertex_output_offset, elk_imm_d(-1)));
 
       src_reg dst(this->vertex_output);
       dst.reladdr = ralloc(mem_ctx, src_reg);
       memcpy(dst.reladdr, &offset, sizeof(src_reg));
 
-      emit(OR(dst_reg(dst), dst, brw_imm_d(URB_WRITE_PRIM_END)));
-      emit(ADD(dst_reg(this->prim_count), this->prim_count, brw_imm_ud(1u)));
+      emit(OR(dst_reg(dst), dst, elk_imm_d(URB_WRITE_PRIM_END)));
+      emit(ADD(dst_reg(this->prim_count), this->prim_count, elk_imm_ud(1u)));
 
       /* Set the first vertex flag to indicate that the next vertex will start
        * a primitive.
        */
-      emit(MOV(dst_reg(this->first_vertex), brw_imm_d(URB_WRITE_PRIM_START)));
+      emit(MOV(dst_reg(this->first_vertex), elk_imm_d(URB_WRITE_PRIM_START)));
    }
-   emit(BRW_OPCODE_ENDIF);
+   emit(ELK_OPCODE_ENDIF);
 }
 
 void
@@ -264,13 +264,13 @@ gfx6_gs_visitor::emit_urb_write_header(int mrf)
    src_reg flags_offset(this, glsl_uint_type());
    emit(ADD(dst_reg(flags_offset),
             this->vertex_output_offset,
-            brw_imm_d(prog_data->vue_map.num_slots)));
+            elk_imm_d(prog_data->vue_map.num_slots)));
 
    src_reg flags_data(this->vertex_output);
    flags_data.reladdr = ralloc(mem_ctx, src_reg);
    memcpy(flags_data.reladdr, &flags_offset, sizeof(src_reg));
 
-   emit(GS_OPCODE_SET_DWORD_2, dst_reg(MRF, mrf), flags_data);
+   emit(ELK_GS_OPCODE_SET_DWORD_2, dst_reg(MRF, mrf), flags_data);
 }
 
 static unsigned
@@ -293,8 +293,8 @@ gfx6_gs_visitor::emit_snb_gs_urb_write_opcode(bool complete, int base_mrf,
 
    if (!complete) {
       /* If the vertex is not complete we don't have to do anything special */
-      inst = emit(VEC4_GS_OPCODE_URB_WRITE);
-      inst->urb_write_flags = BRW_URB_WRITE_NO_FLAGS;
+      inst = emit(ELK_VEC4_GS_OPCODE_URB_WRITE);
+      inst->urb_write_flags = ELK_URB_WRITE_NO_FLAGS;
    } else {
       /* Otherwise we always request to allocate a new VUE handle. If this is
        * the last write before the EOT message and the new handle never gets
@@ -304,8 +304,8 @@ gfx6_gs_visitor::emit_snb_gs_urb_write_opcode(bool complete, int base_mrf,
        * which would require to end the program with an IF/ELSE/ENDIF block,
        * something we do not want.
        */
-      inst = emit(VEC4_GS_OPCODE_URB_WRITE_ALLOCATE);
-      inst->urb_write_flags = BRW_URB_WRITE_COMPLETE;
+      inst = emit(ELK_VEC4_GS_OPCODE_URB_WRITE_ALLOCATE);
+      inst->urb_write_flags = ELK_URB_WRITE_COMPLETE;
       inst->dst = dst_reg(MRF, base_mrf);
       inst->src[0] = this->temp;
    }
@@ -323,10 +323,10 @@ gfx6_gs_visitor::emit_thread_end()
     * points because in the point case we set PrimEnd on all vertices.
     */
    if (nir->info.gs.output_primitive != MESA_PRIM_POINTS) {
-      emit(CMP(dst_null_ud(), this->first_vertex, brw_imm_ud(0u), BRW_CONDITIONAL_Z));
-      emit(IF(BRW_PREDICATE_NORMAL));
+      emit(CMP(dst_null_ud(), this->first_vertex, elk_imm_ud(0u), ELK_CONDITIONAL_Z));
+      emit(IF(ELK_PREDICATE_NORMAL));
       gs_end_primitive();
-      emit(BRW_OPCODE_ENDIF);
+      emit(ELK_OPCODE_ENDIF);
    }
 
    /* Here we have to:
@@ -354,34 +354,34 @@ gfx6_gs_visitor::emit_thread_end()
    vec4_instruction *inst = NULL;
    if (gs_prog_data->num_transform_feedback_bindings) {
       src_reg sol_temp(this, glsl_uvec4_type());
-      emit(GS_OPCODE_FF_SYNC_SET_PRIMITIVES,
+      emit(ELK_GS_OPCODE_FF_SYNC_SET_PRIMITIVES,
            dst_reg(this->svbi),
            this->vertex_count,
            this->prim_count,
            sol_temp);
-      inst = emit(GS_OPCODE_FF_SYNC,
+      inst = emit(ELK_GS_OPCODE_FF_SYNC,
                   dst_reg(this->temp), this->prim_count, this->svbi);
    } else {
-      inst = emit(GS_OPCODE_FF_SYNC,
-                  dst_reg(this->temp), this->prim_count, brw_imm_ud(0u));
+      inst = emit(ELK_GS_OPCODE_FF_SYNC,
+                  dst_reg(this->temp), this->prim_count, elk_imm_ud(0u));
    }
    inst->base_mrf = base_mrf;
 
-   emit(CMP(dst_null_ud(), this->vertex_count, brw_imm_ud(0u), BRW_CONDITIONAL_G));
-   emit(IF(BRW_PREDICATE_NORMAL));
+   emit(CMP(dst_null_ud(), this->vertex_count, elk_imm_ud(0u), ELK_CONDITIONAL_G));
+   emit(IF(ELK_PREDICATE_NORMAL));
    {
       /* Loop over all buffered vertices and emit URB write messages */
       this->current_annotation = "gfx6 thread end: urb writes init";
       src_reg vertex(this, glsl_uint_type());
-      emit(MOV(dst_reg(vertex), brw_imm_ud(0u)));
-      emit(MOV(dst_reg(this->vertex_output_offset), brw_imm_ud(0u)));
+      emit(MOV(dst_reg(vertex), elk_imm_ud(0u)));
+      emit(MOV(dst_reg(this->vertex_output_offset), elk_imm_ud(0u)));
 
       this->current_annotation = "gfx6 thread end: urb writes";
-      emit(BRW_OPCODE_DO);
+      emit(ELK_OPCODE_DO);
       {
-         emit(CMP(dst_null_d(), vertex, this->vertex_count, BRW_CONDITIONAL_GE));
-         inst = emit(BRW_OPCODE_BREAK);
-         inst->predicate = BRW_PREDICATE_NORMAL;
+         emit(CMP(dst_null_d(), vertex, this->vertex_count, ELK_CONDITIONAL_GE));
+         inst = emit(ELK_OPCODE_BREAK);
+         inst->predicate = ELK_PREDICATE_NORMAL;
 
          /* First we prepare the message header */
          emit_urb_write_header(base_mrf);
@@ -418,13 +418,13 @@ gfx6_gs_visitor::emit_thread_end()
 
                mrf++;
                emit(ADD(dst_reg(this->vertex_output_offset),
-                        this->vertex_output_offset, brw_imm_ud(1u)));
+                        this->vertex_output_offset, elk_imm_ud(1u)));
 
                /* If this was max_usable_mrf, we can't fit anything more into
                 * this URB WRITE. Same if we reached the max. message length.
                 */
                if (mrf > max_usable_mrf ||
-                   align_interleaved_urb_mlen(mrf - base_mrf + 1) > BRW_MAX_MSG_LENGTH) {
+                   align_interleaved_urb_mlen(mrf - base_mrf + 1) > ELK_MAX_MSG_LENGTH) {
                   slot++;
                   break;
                }
@@ -439,16 +439,16 @@ gfx6_gs_visitor::emit_thread_end()
           * writing the next vertex.
           */
          emit(ADD(dst_reg(this->vertex_output_offset),
-                  this->vertex_output_offset, brw_imm_ud(1u)));
+                  this->vertex_output_offset, elk_imm_ud(1u)));
 
-         emit(ADD(dst_reg(vertex), vertex, brw_imm_ud(1u)));
+         emit(ADD(dst_reg(vertex), vertex, elk_imm_ud(1u)));
       }
-      emit(BRW_OPCODE_WHILE);
+      emit(ELK_OPCODE_WHILE);
 
       if (gs_prog_data->num_transform_feedback_bindings)
          xfb_write();
    }
-   emit(BRW_OPCODE_ENDIF);
+   emit(ELK_OPCODE_ENDIF);
 
    /* Finally, emit EOT message.
     *
@@ -470,13 +470,13 @@ gfx6_gs_visitor::emit_thread_end()
    if (gs_prog_data->num_transform_feedback_bindings) {
       /* When emitting EOT, set SONumPrimsWritten Increment Value. */
       src_reg data(this, glsl_uint_type());
-      emit(AND(dst_reg(data), this->sol_prim_written, brw_imm_ud(0xffffu)));
-      emit(SHL(dst_reg(data), data, brw_imm_ud(16u)));
-      emit(GS_OPCODE_SET_DWORD_2, dst_reg(MRF, base_mrf), data);
+      emit(AND(dst_reg(data), this->sol_prim_written, elk_imm_ud(0xffffu)));
+      emit(SHL(dst_reg(data), data, elk_imm_ud(16u)));
+      emit(ELK_GS_OPCODE_SET_DWORD_2, dst_reg(MRF, base_mrf), data);
    }
 
-   inst = emit(GS_OPCODE_THREAD_END);
-   inst->urb_write_flags = BRW_URB_WRITE_COMPLETE | BRW_URB_WRITE_UNUSED;
+   inst = emit(ELK_GS_OPCODE_THREAD_END);
+   inst->urb_write_flags = ELK_URB_WRITE_COMPLETE | ELK_URB_WRITE_UNUSED;
    inst->base_mrf = base_mrf;
    inst->mlen = 1;
 }
@@ -484,7 +484,7 @@ gfx6_gs_visitor::emit_thread_end()
 void
 gfx6_gs_visitor::setup_payload()
 {
-   int attribute_map[BRW_VARYING_SLOT_COUNT * MAX_GS_INPUT_VERTICES];
+   int attribute_map[ELK_VARYING_SLOT_COUNT * MAX_GS_INPUT_VERTICES];
 
    /* Attributes are going to be interleaved, so one register contains two
     * attribute slots.
@@ -551,8 +551,8 @@ gfx6_gs_visitor::xfb_write()
 
    this->current_annotation = "gfx6 thread end: svb writes init";
 
-   emit(MOV(dst_reg(this->vertex_output_offset), brw_imm_ud(0u)));
-   emit(MOV(dst_reg(this->sol_prim_written), brw_imm_ud(0u)));
+   emit(MOV(dst_reg(this->vertex_output_offset), elk_imm_ud(0u)));
+   emit(MOV(dst_reg(this->sol_prim_written), elk_imm_ud(0u)));
 
    /* Check that at least one primitive can be written
     *
@@ -563,37 +563,37 @@ gfx6_gs_visitor::xfb_write()
     * transform feedback is in interleaved or separate attribs mode.
     */
    src_reg sol_temp(this, glsl_uvec4_type());
-   emit(ADD(dst_reg(sol_temp), this->svbi, brw_imm_ud(num_verts)));
+   emit(ADD(dst_reg(sol_temp), this->svbi, elk_imm_ud(num_verts)));
 
    /* Compare SVBI calculated number with the maximum value, which is
     * in R1.4 (previously saved in this->max_svbi) for gfx6.
     */
-   emit(CMP(dst_null_d(), sol_temp, this->max_svbi, BRW_CONDITIONAL_LE));
-   emit(IF(BRW_PREDICATE_NORMAL));
+   emit(CMP(dst_null_d(), sol_temp, this->max_svbi, ELK_CONDITIONAL_LE));
+   emit(IF(ELK_PREDICATE_NORMAL));
    {
       vec4_instruction *inst = emit(MOV(dst_reg(destination_indices),
-                                        brw_imm_vf4(brw_float_to_vf(0.0),
-                                                    brw_float_to_vf(1.0),
-                                                    brw_float_to_vf(2.0),
-                                                    brw_float_to_vf(0.0))));
+                                        elk_imm_vf4(elk_float_to_vf(0.0),
+                                                    elk_float_to_vf(1.0),
+                                                    elk_float_to_vf(2.0),
+                                                    elk_float_to_vf(0.0))));
       inst->force_writemask_all = true;
 
       emit(ADD(dst_reg(this->destination_indices),
                this->destination_indices,
                this->svbi));
    }
-   emit(BRW_OPCODE_ENDIF);
+   emit(ELK_OPCODE_ENDIF);
 
    /* Write transform feedback data for all processed vertices. */
    for (int i = 0; i < (int)nir->info.gs.vertices_out; i++) {
-      emit(MOV(dst_reg(sol_temp), brw_imm_d(i)));
+      emit(MOV(dst_reg(sol_temp), elk_imm_d(i)));
       emit(CMP(dst_null_d(), sol_temp, this->vertex_count,
-               BRW_CONDITIONAL_L));
-      emit(IF(BRW_PREDICATE_NORMAL));
+               ELK_CONDITIONAL_L));
+      emit(IF(ELK_PREDICATE_NORMAL));
       {
          xfb_program(i, num_verts);
       }
-      emit(BRW_OPCODE_ENDIF);
+      emit(ELK_OPCODE_ENDIF);
    }
 }
 
@@ -607,11 +607,11 @@ gfx6_gs_visitor::xfb_program(unsigned vertex, unsigned num_verts)
    /* Check for buffer overflow: we need room to write the complete primitive
     * (all vertices). Otherwise, avoid writing any vertices for it
     */
-   emit(ADD(dst_reg(sol_temp), this->sol_prim_written, brw_imm_ud(1u)));
-   emit(MUL(dst_reg(sol_temp), sol_temp, brw_imm_ud(num_verts)));
+   emit(ADD(dst_reg(sol_temp), this->sol_prim_written, elk_imm_ud(1u)));
+   emit(MUL(dst_reg(sol_temp), sol_temp, elk_imm_ud(num_verts)));
    emit(ADD(dst_reg(sol_temp), sol_temp, this->svbi));
-   emit(CMP(dst_null_d(), sol_temp, this->max_svbi, BRW_CONDITIONAL_LE));
-   emit(IF(BRW_PREDICATE_NORMAL));
+   emit(CMP(dst_null_d(), sol_temp, this->max_svbi, ELK_CONDITIONAL_LE));
+   emit(IF(ELK_PREDICATE_NORMAL));
    {
       /* Avoid overwriting MRF 1 as it is used as URB write message header */
       dst_reg mrf_reg(MRF, 2);
@@ -625,7 +625,7 @@ gfx6_gs_visitor::xfb_program(unsigned vertex, unsigned num_verts)
             gs_prog_data->transform_feedback_bindings[binding];
 
          /* Set up the correct destination index for this vertex */
-         vec4_instruction *inst = emit(GS_OPCODE_SVB_SET_DST_INDEX,
+         vec4_instruction *inst = emit(ELK_GS_OPCODE_SVB_SET_DST_INDEX,
                                        mrf_reg,
                                        this->destination_indices);
          inst->sol_vertex = vertex % num_verts;
@@ -646,13 +646,13 @@ gfx6_gs_visitor::xfb_program(unsigned vertex, unsigned num_verts)
          src_reg data(this->vertex_output);
          data.reladdr = ralloc(mem_ctx, src_reg);
          int offset = get_vertex_output_offset_for_varying(vertex, varying);
-         emit(MOV(dst_reg(this->vertex_output_offset), brw_imm_d(offset)));
+         emit(MOV(dst_reg(this->vertex_output_offset), elk_imm_d(offset)));
          memcpy(data.reladdr, &this->vertex_output_offset, sizeof(src_reg));
          data.type = output_reg[varying][0].type;
          data.swizzle = gs_prog_data->transform_feedback_swizzles[binding];
 
          /* Write data */
-         inst = emit(GS_OPCODE_SVB_WRITE, mrf_reg, data, sol_temp);
+         inst = emit(ELK_GS_OPCODE_SVB_WRITE, mrf_reg, data, sol_temp);
          inst->sol_binding = binding;
          inst->sol_final_write = final_write;
 
@@ -662,15 +662,15 @@ gfx6_gs_visitor::xfb_program(unsigned vertex, unsigned num_verts)
              */
             emit(ADD(dst_reg(this->destination_indices),
                      this->destination_indices,
-                     brw_imm_ud(num_verts)));
+                     elk_imm_ud(num_verts)));
             emit(ADD(dst_reg(this->sol_prim_written),
-                     this->sol_prim_written, brw_imm_ud(1u)));
+                     this->sol_prim_written, elk_imm_ud(1u)));
          }
 
       }
       this->current_annotation = NULL;
    }
-   emit(BRW_OPCODE_ENDIF);
+   emit(ELK_OPCODE_ENDIF);
 }
 
 int

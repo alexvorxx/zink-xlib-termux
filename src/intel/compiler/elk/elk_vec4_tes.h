@@ -38,10 +38,10 @@ namespace elk {
 class vec4_tes_visitor : public vec4_visitor
 {
 public:
-   vec4_tes_visitor(const struct brw_compiler *compiler,
-                    const struct brw_compile_params *params,
-                   const struct brw_tes_prog_key *key,
-                   struct brw_tes_prog_data *prog_data,
+   vec4_tes_visitor(const struct elk_compiler *compiler,
+                    const struct elk_compile_params *params,
+                   const struct elk_tes_prog_key *key,
+                   struct elk_tes_prog_data *prog_data,
                    const nir_shader *nir,
                    bool debug_enabled);
 

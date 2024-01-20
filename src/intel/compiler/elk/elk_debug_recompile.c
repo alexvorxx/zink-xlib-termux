@@ -29,22 +29,22 @@
 #include "elk_compiler.h"
 
 static bool
-key_debug(const struct brw_compiler *c, void *log,
+key_debug(const struct elk_compiler *c, void *log,
           const char *name, int a, int b)
 {
    if (a != b) {
-      brw_shader_perf_log(c, log, "  %s %d->%d\n", name, a, b);
+      elk_shader_perf_log(c, log, "  %s %d->%d\n", name, a, b);
       return true;
    }
    return false;
 }
 
 static bool
-key_debug_float(const struct brw_compiler *c, void *log,
+key_debug_float(const struct elk_compiler *c, void *log,
                 const char *name, float a, float b)
 {
    if (a != b) {
-      brw_shader_perf_log(c, log, "  %s %f->%f\n", name, a, b);
+      elk_shader_perf_log(c, log, "  %s %f->%f\n", name, a, b);
       return true;
    }
    return false;
@@ -56,15 +56,15 @@ key_debug_float(const struct brw_compiler *c, void *log,
    key_debug_float(c, log, name, old_key->field, key->field)
 
 static bool
-debug_sampler_recompile(const struct brw_compiler *c, void *log,
-                        const struct brw_sampler_prog_key_data *old_key,
-                        const struct brw_sampler_prog_key_data *key)
+debug_sampler_recompile(const struct elk_compiler *c, void *log,
+                        const struct elk_sampler_prog_key_data *old_key,
+                        const struct elk_sampler_prog_key_data *key)
 {
    bool found = false;
 
    found |= check("gather channel quirk", gather_channel_quirk_mask);
 
-   for (unsigned i = 0; i < BRW_MAX_SAMPLERS; i++) {
+   for (unsigned i = 0; i < ELK_MAX_SAMPLERS; i++) {
       found |= check("EXT_texture_swizzle or DEPTH_TEXTURE_MODE", swizzles[i]);
       found |= check("textureGather workarounds", gfx6_gather_wa[i]);
    }
@@ -77,17 +77,17 @@ debug_sampler_recompile(const struct brw_compiler *c, void *log,
 }
 
 static bool
-debug_base_recompile(const struct brw_compiler *c, void *log,
-                     const struct brw_base_prog_key *old_key,
-                     const struct brw_base_prog_key *key)
+debug_base_recompile(const struct elk_compiler *c, void *log,
+                     const struct elk_base_prog_key *old_key,
+                     const struct elk_base_prog_key *key)
 {
    return debug_sampler_recompile(c, log, &old_key->tex, &key->tex);
 }
 
 static void
-debug_vs_recompile(const struct brw_compiler *c, void *log,
-                   const struct brw_vs_prog_key *old_key,
-                   const struct brw_vs_prog_key *key)
+debug_vs_recompile(const struct elk_compiler *c, void *log,
+                   const struct elk_vs_prog_key *old_key,
+                   const struct elk_vs_prog_key *key)
 {
    bool found = debug_base_recompile(c, log, &old_key->base, &key->base);
 
@@ -101,14 +101,14 @@ debug_vs_recompile(const struct brw_compiler *c, void *log,
    found |= check("vertex color clamping", clamp_vertex_color);
 
    if (!found) {
-      brw_shader_perf_log(c, log, "  something else\n");
+      elk_shader_perf_log(c, log, "  something else\n");
    }
 }
 
 static void
-debug_tcs_recompile(const struct brw_compiler *c, void *log,
-                    const struct brw_tcs_prog_key *old_key,
-                    const struct brw_tcs_prog_key *key)
+debug_tcs_recompile(const struct elk_compiler *c, void *log,
+                    const struct elk_tcs_prog_key *old_key,
+                    const struct elk_tcs_prog_key *key)
 {
    bool found = debug_base_recompile(c, log, &old_key->base, &key->base);
 
@@ -119,14 +119,14 @@ debug_tcs_recompile(const struct brw_compiler *c, void *log,
    found |= check("quads and equal_spacing workaround", quads_workaround);
 
    if (!found) {
-      brw_shader_perf_log(c, log, "  something else\n");
+      elk_shader_perf_log(c, log, "  something else\n");
    }
 }
 
 static void
-debug_tes_recompile(const struct brw_compiler *c, void *log,
-                    const struct brw_tes_prog_key *old_key,
-                    const struct brw_tes_prog_key *key)
+debug_tes_recompile(const struct elk_compiler *c, void *log,
+                    const struct elk_tes_prog_key *old_key,
+                    const struct elk_tes_prog_key *key)
 {
    bool found = debug_base_recompile(c, log, &old_key->base, &key->base);
 
@@ -134,26 +134,26 @@ debug_tes_recompile(const struct brw_compiler *c, void *log,
    found |= check("patch inputs read", patch_inputs_read);
 
    if (!found) {
-      brw_shader_perf_log(c, log, "  something else\n");
+      elk_shader_perf_log(c, log, "  something else\n");
    }
 }
 
 static void
-debug_gs_recompile(const struct brw_compiler *c, void *log,
-                   const struct brw_gs_prog_key *old_key,
-                   const struct brw_gs_prog_key *key)
+debug_gs_recompile(const struct elk_compiler *c, void *log,
+                   const struct elk_gs_prog_key *old_key,
+                   const struct elk_gs_prog_key *key)
 {
    bool found = debug_base_recompile(c, log, &old_key->base, &key->base);
 
    if (!found) {
-      brw_shader_perf_log(c, log, "  something else\n");
+      elk_shader_perf_log(c, log, "  something else\n");
    }
 }
 
 static void
-debug_fs_recompile(const struct brw_compiler *c, void *log,
-                   const struct brw_wm_prog_key *old_key,
-                   const struct brw_wm_prog_key *key)
+debug_fs_recompile(const struct elk_compiler *c, void *log,
+                   const struct elk_wm_prog_key *old_key,
+                   const struct elk_wm_prog_key *key)
 {
    bool found = false;
 
@@ -180,57 +180,57 @@ debug_fs_recompile(const struct brw_compiler *c, void *log,
    found |= debug_base_recompile(c, log, &old_key->base, &key->base);
 
    if (!found) {
-      brw_shader_perf_log(c, log, "  something else\n");
+      elk_shader_perf_log(c, log, "  something else\n");
    }
 }
 
 static void
-debug_cs_recompile(const struct brw_compiler *c, void *log,
-                   const struct brw_cs_prog_key *old_key,
-                   const struct brw_cs_prog_key *key)
+debug_cs_recompile(const struct elk_compiler *c, void *log,
+                   const struct elk_cs_prog_key *old_key,
+                   const struct elk_cs_prog_key *key)
 {
    bool found = debug_base_recompile(c, log, &old_key->base, &key->base);
 
    if (!found) {
-      brw_shader_perf_log(c, log, "  something else\n");
+      elk_shader_perf_log(c, log, "  something else\n");
    }
 }
 
 void
-brw_debug_key_recompile(const struct brw_compiler *c, void *log,
+elk_debug_key_recompile(const struct elk_compiler *c, void *log,
                         gl_shader_stage stage,
-                        const struct brw_base_prog_key *old_key,
-                        const struct brw_base_prog_key *key)
+                        const struct elk_base_prog_key *old_key,
+                        const struct elk_base_prog_key *key)
 {
    if (!old_key) {
-      brw_shader_perf_log(c, log, "  No previous compile found...\n");
+      elk_shader_perf_log(c, log, "  No previous compile found...\n");
       return;
    }
 
    switch (stage) {
    case MESA_SHADER_VERTEX:
-      debug_vs_recompile(c, log, (const struct brw_vs_prog_key *)old_key,
-                                 (const struct brw_vs_prog_key *)key);
+      debug_vs_recompile(c, log, (const struct elk_vs_prog_key *)old_key,
+                                 (const struct elk_vs_prog_key *)key);
       break;
    case MESA_SHADER_TESS_CTRL:
-      debug_tcs_recompile(c, log, (const struct brw_tcs_prog_key *)old_key,
-                                  (const struct brw_tcs_prog_key *)key);
+      debug_tcs_recompile(c, log, (const struct elk_tcs_prog_key *)old_key,
+                                  (const struct elk_tcs_prog_key *)key);
       break;
    case MESA_SHADER_TESS_EVAL:
-      debug_tes_recompile(c, log, (const struct brw_tes_prog_key *)old_key,
-                                  (const struct brw_tes_prog_key *)key);
+      debug_tes_recompile(c, log, (const struct elk_tes_prog_key *)old_key,
+                                  (const struct elk_tes_prog_key *)key);
       break;
    case MESA_SHADER_GEOMETRY:
-      debug_gs_recompile(c, log, (const struct brw_gs_prog_key *)old_key,
-                                 (const struct brw_gs_prog_key *)key);
+      debug_gs_recompile(c, log, (const struct elk_gs_prog_key *)old_key,
+                                 (const struct elk_gs_prog_key *)key);
       break;
    case MESA_SHADER_FRAGMENT:
-      debug_fs_recompile(c, log, (const struct brw_wm_prog_key *)old_key,
-                                 (const struct brw_wm_prog_key *)key);
+      debug_fs_recompile(c, log, (const struct elk_wm_prog_key *)old_key,
+                                 (const struct elk_wm_prog_key *)key);
       break;
    case MESA_SHADER_COMPUTE:
-      debug_cs_recompile(c, log, (const struct brw_cs_prog_key *)old_key,
-                                 (const struct brw_cs_prog_key *)key);
+      debug_cs_recompile(c, log, (const struct elk_cs_prog_key *)old_key,
+                                 (const struct elk_cs_prog_key *)key);
       break;
    default:
       break;

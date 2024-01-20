@@ -33,12 +33,12 @@ class register_coalesce_vec4_test : public ::testing::Test {
    virtual void TearDown();
 
 public:
-   struct brw_compiler *compiler;
-   struct brw_compile_params params;
+   struct elk_compiler *compiler;
+   struct elk_compile_params params;
    struct intel_device_info *devinfo;
    void *ctx;
    struct gl_shader_program *shader_prog;
-   struct brw_vue_prog_data *prog_data;
+   struct elk_vue_prog_data *prog_data;
    vec4_visitor *v;
 };
 
@@ -46,10 +46,10 @@ public:
 class register_coalesce_vec4_visitor : public vec4_visitor
 {
 public:
-   register_coalesce_vec4_visitor(struct brw_compiler *compiler,
-                                  struct brw_compile_params *params,
+   register_coalesce_vec4_visitor(struct elk_compiler *compiler,
+                                  struct elk_compile_params *params,
                                   nir_shader *shader,
-                                  struct brw_vue_prog_data *prog_data)
+                                  struct elk_vue_prog_data *prog_data)
       : vec4_visitor(compiler, params, NULL, prog_data, shader,
                      false /* no_spills */, false)
    {
@@ -92,11 +92,11 @@ protected:
 void register_coalesce_vec4_test::SetUp()
 {
    ctx = ralloc_context(NULL);
-   compiler = rzalloc(ctx, struct brw_compiler);
+   compiler = rzalloc(ctx, struct elk_compiler);
    devinfo = rzalloc(ctx, struct intel_device_info);
    compiler->devinfo = devinfo;
 
-   prog_data = ralloc(ctx, struct brw_vue_prog_data);
+   prog_data = ralloc(ctx, struct elk_vue_prog_data);
 
    params = {};
    params.mem_ctx = ctx;
@@ -146,9 +146,9 @@ TEST_F(register_coalesce_vec4_test, test_compute_to_mrf)
 
    dst_reg m0 = dst_reg(MRF, 0);
    m0.writemask = WRITEMASK_X;
-   m0.type = BRW_REGISTER_TYPE_F;
+   m0.type = ELK_REGISTER_TYPE_F;
 
-   vec4_instruction *mul = v->emit(v->MUL(temp, something, brw_imm_f(1.0f)));
+   vec4_instruction *mul = v->emit(v->MUL(temp, something, elk_imm_f(1.0f)));
    v->emit(v->MOV(m0, src_reg(temp)));
 
    register_coalesce(v);
@@ -165,17 +165,17 @@ TEST_F(register_coalesce_vec4_test, test_multiple_use)
 
    dst_reg m0 = dst_reg(MRF, 0);
    m0.writemask = WRITEMASK_X;
-   m0.type = BRW_REGISTER_TYPE_F;
+   m0.type = ELK_REGISTER_TYPE_F;
 
    dst_reg m1 = dst_reg(MRF, 1);
    m1.writemask = WRITEMASK_XYZW;
-   m1.type = BRW_REGISTER_TYPE_F;
+   m1.type = ELK_REGISTER_TYPE_F;
 
    src_reg src = src_reg(temp);
-   vec4_instruction *mul = v->emit(v->MUL(temp, something, brw_imm_f(1.0f)));
-   src.swizzle = BRW_SWIZZLE_XXXX;
+   vec4_instruction *mul = v->emit(v->MUL(temp, something, elk_imm_f(1.0f)));
+   src.swizzle = ELK_SWIZZLE_XXXX;
    v->emit(v->MOV(m0, src));
-   src.swizzle = BRW_SWIZZLE_XYZW;
+   src.swizzle = ELK_SWIZZLE_XYZW;
    v->emit(v->MOV(m1, src));
 
    register_coalesce(v);
@@ -191,7 +191,7 @@ TEST_F(register_coalesce_vec4_test, test_dp4_mrf)
 
    dst_reg m0 = dst_reg(MRF, 0);
    m0.writemask = WRITEMASK_Y;
-   m0.type = BRW_REGISTER_TYPE_F;
+   m0.type = ELK_REGISTER_TYPE_F;
 
    dst_reg temp = dst_reg(v, glsl_float_type());
 

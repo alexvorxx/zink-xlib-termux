@@ -45,7 +45,7 @@ namespace {
                bld.MOV(writemask(offset(dst, 8, i * dst_stride / 4),
                                  1 << (i * dst_stride % 4)),
                        swizzle(offset(src, 8, i * src_stride / 4),
-                               brw_swizzle_for_mask(1 << (i * src_stride % 4))));
+                               elk_swizzle_for_mask(1 << (i * src_stride % 4))));
 
             return src_reg(dst);
          }
@@ -71,7 +71,7 @@ namespace {
 
             bld.MOV(writemask(tmp, mask), src);
             if (n < 4)
-               bld.MOV(writemask(tmp, ~mask), brw_imm_d(0));
+               bld.MOV(writemask(tmp, ~mask), elk_imm_d(0));
 
             return emit_stride(bld, src_reg(tmp), n, has_simd4x2 ? 1 : 4, 1);
          }
@@ -89,33 +89,33 @@ namespace elk {
           * result.
           */
          src_reg
-         emit_send(const vec4_builder &bld, enum opcode op,
+         emit_send(const vec4_builder &bld, enum elk_opcode op,
                    const src_reg &header,
                    const src_reg &addr, unsigned addr_sz,
                    const src_reg &src, unsigned src_sz,
                    const src_reg &surface,
                    unsigned arg, unsigned ret_sz,
-                   brw_predicate pred = BRW_PREDICATE_NONE)
+                   elk_predicate pred = ELK_PREDICATE_NONE)
          {
             /* Calculate the total number of components of the payload. */
             const unsigned header_sz = (header.file == BAD_FILE ? 0 : 1);
             const unsigned sz = header_sz + addr_sz + src_sz;
 
             /* Construct the payload. */
-            const dst_reg payload = bld.vgrf(BRW_REGISTER_TYPE_UD, sz);
+            const dst_reg payload = bld.vgrf(ELK_REGISTER_TYPE_UD, sz);
             unsigned n = 0;
 
             if (header_sz)
                bld.exec_all().MOV(offset(payload, 8, n++),
-                                  retype(header, BRW_REGISTER_TYPE_UD));
+                                  retype(header, ELK_REGISTER_TYPE_UD));
 
             for (unsigned i = 0; i < addr_sz; i++)
                bld.MOV(offset(payload, 8, n++),
-                       offset(retype(addr, BRW_REGISTER_TYPE_UD), 8, i));
+                       offset(retype(addr, ELK_REGISTER_TYPE_UD), 8, i));
 
             for (unsigned i = 0; i < src_sz; i++)
                bld.MOV(offset(payload, 8, n++),
-                       offset(retype(src, BRW_REGISTER_TYPE_UD), 8, i));
+                       offset(retype(src, ELK_REGISTER_TYPE_UD), 8, i));
 
             /* Reduce the dynamically uniform surface index to a single
              * scalar.
@@ -123,9 +123,9 @@ namespace elk {
             const src_reg usurface = bld.emit_uniformize(surface);
 
             /* Emit the message send instruction. */
-            const dst_reg dst = bld.vgrf(BRW_REGISTER_TYPE_UD, ret_sz);
+            const dst_reg dst = bld.vgrf(ELK_REGISTER_TYPE_UD, ret_sz);
             vec4_instruction *inst =
-               bld.emit(op, dst, src_reg(payload), usurface, brw_imm_ud(arg));
+               bld.emit(op, dst, src_reg(payload), usurface, elk_imm_ud(arg));
             inst->mlen = sz;
             inst->size_written = ret_sz * REG_SIZE;
             inst->header_size = header_sz;
@@ -144,9 +144,9 @@ namespace elk {
       emit_untyped_read(const vec4_builder &bld,
                         const src_reg &surface, const src_reg &addr,
                         unsigned dims, unsigned size,
-                        brw_predicate pred)
+                        elk_predicate pred)
       {
-         return emit_send(bld, VEC4_OPCODE_UNTYPED_SURFACE_READ, src_reg(),
+         return emit_send(bld, ELK_VEC4_OPCODE_UNTYPED_SURFACE_READ, src_reg(),
                           emit_insert(bld, addr, dims, true), 1,
                           src_reg(), 0,
                           surface, size, 1, pred);
@@ -161,10 +161,10 @@ namespace elk {
       emit_untyped_write(const vec4_builder &bld, const src_reg &surface,
                          const src_reg &addr, const src_reg &src,
                          unsigned dims, unsigned size,
-                         brw_predicate pred)
+                         elk_predicate pred)
       {
          const bool has_simd4x2 = bld.shader->devinfo->verx10 == 75;
-         emit_send(bld, VEC4_OPCODE_UNTYPED_SURFACE_WRITE, src_reg(),
+         emit_send(bld, ELK_VEC4_OPCODE_UNTYPED_SURFACE_WRITE, src_reg(),
                    emit_insert(bld, addr, dims, has_simd4x2),
                    has_simd4x2 ? 1 : dims,
                    emit_insert(bld, src, size, has_simd4x2),
@@ -182,7 +182,7 @@ namespace elk {
                           const src_reg &surface, const src_reg &addr,
                           const src_reg &src0, const src_reg &src1,
                           unsigned dims, unsigned rsize, unsigned op,
-                          brw_predicate pred)
+                          elk_predicate pred)
       {
          const bool has_simd4x2 = bld.shader->devinfo->verx10 == 75;
 
@@ -190,19 +190,19 @@ namespace elk {
           * and Y components of the same vector.
           */
          const unsigned size = (src0.file != BAD_FILE) + (src1.file != BAD_FILE);
-         const dst_reg srcs = bld.vgrf(BRW_REGISTER_TYPE_UD);
+         const dst_reg srcs = bld.vgrf(ELK_REGISTER_TYPE_UD);
 
          if (size >= 1) {
             bld.MOV(writemask(srcs, WRITEMASK_X),
-                    swizzle(src0, BRW_SWIZZLE_XXXX));
+                    swizzle(src0, ELK_SWIZZLE_XXXX));
          }
 
          if (size >= 2) {
             bld.MOV(writemask(srcs, WRITEMASK_Y),
-                    swizzle(src1, BRW_SWIZZLE_XXXX));
+                    swizzle(src1, ELK_SWIZZLE_XXXX));
          }
 
-         return emit_send(bld, VEC4_OPCODE_UNTYPED_ATOMIC, src_reg(),
+         return emit_send(bld, ELK_VEC4_OPCODE_UNTYPED_ATOMIC, src_reg(),
                           emit_insert(bld, addr, dims, has_simd4x2),
                           has_simd4x2 ? 1 : dims,
                           emit_insert(bld, src_reg(srcs), size, has_simd4x2),

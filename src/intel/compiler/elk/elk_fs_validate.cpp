@@ -88,17 +88,17 @@
 
 #ifndef NDEBUG
 void
-fs_visitor::validate()
+elk_fs_visitor::validate()
 {
    cfg->validate(_mesa_shader_stage_to_abbrev(stage));
 
-   foreach_block_and_inst (block, fs_inst, inst, cfg) {
+   foreach_block_and_inst (block, elk_fs_inst, inst, cfg) {
       switch (inst->opcode) {
-      case SHADER_OPCODE_SEND:
+      case ELK_SHADER_OPCODE_SEND:
          fsv_assert(is_uniform(inst->src[0]) && is_uniform(inst->src[1]));
          break;
 
-      case BRW_OPCODE_MOV:
+      case ELK_OPCODE_MOV:
          fsv_assert(inst->sources == 1);
          break;
 
@@ -106,36 +106,36 @@ fs_visitor::validate()
          break;
       }
 
-      if (inst->is_3src(compiler)) {
+      if (inst->elk_is_3src(compiler)) {
          const unsigned integer_sources =
-            brw_reg_type_is_integer(inst->src[0].type) +
-            brw_reg_type_is_integer(inst->src[1].type) +
-            brw_reg_type_is_integer(inst->src[2].type);
+            elk_reg_type_is_integer(inst->src[0].type) +
+            elk_reg_type_is_integer(inst->src[1].type) +
+            elk_reg_type_is_integer(inst->src[2].type);
          const unsigned float_sources =
-            brw_reg_type_is_floating_point(inst->src[0].type) +
-            brw_reg_type_is_floating_point(inst->src[1].type) +
-            brw_reg_type_is_floating_point(inst->src[2].type);
+            elk_reg_type_is_floating_point(inst->src[0].type) +
+            elk_reg_type_is_floating_point(inst->src[1].type) +
+            elk_reg_type_is_floating_point(inst->src[2].type);
 
          fsv_assert((integer_sources == 3 && float_sources == 0) ||
                     (integer_sources == 0 && float_sources == 3));
 
          if (devinfo->ver >= 10) {
             for (unsigned i = 0; i < 3; i++) {
-               if (inst->src[i].file == BRW_IMMEDIATE_VALUE)
+               if (inst->src[i].file == ELK_IMMEDIATE_VALUE)
                   continue;
 
                switch (inst->src[i].vstride) {
-               case BRW_VERTICAL_STRIDE_0:
-               case BRW_VERTICAL_STRIDE_4:
-               case BRW_VERTICAL_STRIDE_8:
-               case BRW_VERTICAL_STRIDE_16:
+               case ELK_VERTICAL_STRIDE_0:
+               case ELK_VERTICAL_STRIDE_4:
+               case ELK_VERTICAL_STRIDE_8:
+               case ELK_VERTICAL_STRIDE_16:
                   break;
 
-               case BRW_VERTICAL_STRIDE_1:
+               case ELK_VERTICAL_STRIDE_1:
                   fsv_assert_lte(12, devinfo->ver);
                   break;
 
-               case BRW_VERTICAL_STRIDE_2:
+               case ELK_VERTICAL_STRIDE_2:
                   fsv_assert_lte(devinfo->ver, 11);
                   break;
 
@@ -153,7 +153,7 @@ fs_visitor::validate()
              * passes (e.g., combine constants) will fix them.
              */
             for (unsigned i = 0; i < 3; i++) {
-               fsv_assert_ne(inst->src[i].file, BRW_IMMEDIATE_VALUE);
+               fsv_assert_ne(inst->src[i].file, ELK_IMMEDIATE_VALUE);
 
                /* A stride of 1 (the usual case) or 0, with a special
                 * "repctrl" bit, is allowed. The repctrl bit doesn't work for

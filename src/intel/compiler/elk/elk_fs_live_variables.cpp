@@ -54,7 +54,7 @@ using namespace elk;
 
 void
 fs_live_variables::setup_one_read(struct block_data *bd,
-                                  int ip, const fs_reg &reg)
+                                  int ip, const elk_fs_reg &reg)
 {
    int var = var_from_reg(reg);
    assert(var < num_vars);
@@ -71,8 +71,8 @@ fs_live_variables::setup_one_read(struct block_data *bd,
 }
 
 void
-fs_live_variables::setup_one_write(struct block_data *bd, fs_inst *inst,
-                                   int ip, const fs_reg &reg)
+fs_live_variables::setup_one_write(struct block_data *bd, elk_fs_inst *inst,
+                                   int ip, const elk_fs_reg &reg)
 {
    int var = var_from_reg(reg);
    assert(var < num_vars);
@@ -112,10 +112,10 @@ fs_live_variables::setup_def_use()
 
       struct block_data *bd = &block_data[block->num];
 
-      foreach_inst_in_block(fs_inst, inst, block) {
+      foreach_inst_in_block(elk_fs_inst, inst, block) {
          /* Set use[] for this instruction */
          for (unsigned int i = 0; i < inst->sources; i++) {
-            fs_reg reg = inst->src[i];
+            elk_fs_reg reg = inst->src[i];
 
             if (reg.file != VGRF)
                continue;
@@ -130,7 +130,7 @@ fs_live_variables::setup_def_use()
 
          /* Set def[] for this instruction */
          if (inst->dst.file == VGRF) {
-            fs_reg reg = inst->dst;
+            elk_fs_reg reg = inst->dst;
             for (unsigned j = 0; j < regs_written(inst); j++) {
                setup_one_write(bd, inst, ip, reg);
                reg.offset += REG_SIZE;
@@ -165,7 +165,7 @@ fs_live_variables::compute_live_variables()
       foreach_block (block, cfg) {
          const struct block_data *bd = &block_data[block->num];
 
-         foreach_list_typed(bblock_link, child_link, link, &block->children) {
+         foreach_list_typed(elk_bblock_link, child_link, link, &block->children) {
             struct block_data *child_bd = &block_data[child_link->block->num];
 
             for (int i = 0; i < bitset_words; i++) {
@@ -185,7 +185,7 @@ fs_live_variables::compute_live_variables()
          struct block_data *bd = &block_data[block->num];
 
          /* Update liveout */
-         foreach_list_typed(bblock_link, child_link, link, &block->children) {
+         foreach_list_typed(elk_bblock_link, child_link, link, &block->children) {
             struct block_data *child_bd = &block_data[child_link->block->num];
 
             for (int i = 0; i < bitset_words; i++) {
@@ -246,7 +246,7 @@ fs_live_variables::compute_start_end()
    }
 }
 
-fs_live_variables::fs_live_variables(const backend_shader *s)
+fs_live_variables::fs_live_variables(const elk_backend_shader *s)
    : devinfo(s->devinfo), cfg(s->cfg)
 {
    mem_ctx = ralloc_context(NULL);
@@ -317,7 +317,7 @@ fs_live_variables::~fs_live_variables()
 
 static bool
 check_register_live_range(const fs_live_variables *live, int ip,
-                          const fs_reg &reg, unsigned n)
+                          const elk_fs_reg &reg, unsigned n)
 {
    const unsigned var = live->var_from_reg(reg);
 
@@ -334,11 +334,11 @@ check_register_live_range(const fs_live_variables *live, int ip,
 }
 
 bool
-fs_live_variables::validate(const backend_shader *s) const
+fs_live_variables::validate(const elk_backend_shader *s) const
 {
    int ip = 0;
 
-   foreach_block_and_inst(block, fs_inst, inst, s->cfg) {
+   foreach_block_and_inst(block, elk_fs_inst, inst, s->cfg) {
       for (unsigned i = 0; i < inst->sources; i++) {
          if (inst->src[i].file == VGRF &&
              !check_register_live_range(this, ip,

@@ -209,8 +209,8 @@ int main(int argc, char *argv[])
       exit(EXIT_FAILURE);
    }
 
-   struct brw_isa_info isa;
-   brw_init_isa_info(&isa, &devinfo);
+   struct elk_isa_info isa;
+   elk_init_isa_info(&isa, &devinfo);
 
    if (input_type == OPT_INPUT_BINARY)
       assembly = i965_disasm_read_binary(fp, &end);
@@ -227,7 +227,7 @@ int main(int argc, char *argv[])
    }
 
    /* Disassemble i965 instructions from buffer assembly */
-   brw_disassemble_with_labels(&isa, assembly, start, end, stdout);
+   elk_disassemble_with_labels(&isa, assembly, start, end, stdout);
 
    result = EXIT_SUCCESS;
 

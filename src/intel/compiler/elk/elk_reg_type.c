@@ -28,16 +28,16 @@
 #define INVALID (-1)
 
 enum hw_reg_type {
-   BRW_HW_REG_TYPE_UD  = 0,
-   BRW_HW_REG_TYPE_D   = 1,
-   BRW_HW_REG_TYPE_UW  = 2,
-   BRW_HW_REG_TYPE_W   = 3,
-   BRW_HW_REG_TYPE_F   = 7,
+   ELK_HW_REG_TYPE_UD  = 0,
+   ELK_HW_REG_TYPE_D   = 1,
+   ELK_HW_REG_TYPE_UW  = 2,
+   ELK_HW_REG_TYPE_W   = 3,
+   ELK_HW_REG_TYPE_F   = 7,
    GFX8_HW_REG_TYPE_UQ = 8,
    GFX8_HW_REG_TYPE_Q  = 9,
 
-   BRW_HW_REG_TYPE_UB  = 4,
-   BRW_HW_REG_TYPE_B   = 5,
+   ELK_HW_REG_TYPE_UB  = 4,
+   ELK_HW_REG_TYPE_B   = 5,
    GFX7_HW_REG_TYPE_DF = 6,
    GFX8_HW_REG_TYPE_HF = 10,
 
@@ -56,17 +56,17 @@ enum hw_reg_type {
 };
 
 enum hw_imm_type {
-   BRW_HW_IMM_TYPE_UD  = 0,
-   BRW_HW_IMM_TYPE_D   = 1,
-   BRW_HW_IMM_TYPE_UW  = 2,
-   BRW_HW_IMM_TYPE_W   = 3,
-   BRW_HW_IMM_TYPE_F   = 7,
+   ELK_HW_IMM_TYPE_UD  = 0,
+   ELK_HW_IMM_TYPE_D   = 1,
+   ELK_HW_IMM_TYPE_UW  = 2,
+   ELK_HW_IMM_TYPE_W   = 3,
+   ELK_HW_IMM_TYPE_F   = 7,
    GFX8_HW_IMM_TYPE_UQ = 8,
    GFX8_HW_IMM_TYPE_Q  = 9,
 
-   BRW_HW_IMM_TYPE_UV  = 4,
-   BRW_HW_IMM_TYPE_VF  = 5,
-   BRW_HW_IMM_TYPE_V   = 6,
+   ELK_HW_IMM_TYPE_UV  = 4,
+   ELK_HW_IMM_TYPE_VF  = 5,
+   ELK_HW_IMM_TYPE_V   = 6,
    GFX8_HW_IMM_TYPE_DF = 10,
    GFX8_HW_IMM_TYPE_HF = 11,
 
@@ -92,120 +92,120 @@ static const struct hw_type {
    enum hw_reg_type reg_type;
    enum hw_imm_type imm_type;
 } gfx4_hw_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = {     INVALID, INVALID             },
+   [0 ... ELK_REGISTER_TYPE_LAST] = {     INVALID, INVALID             },
 
-   [BRW_REGISTER_TYPE_F]  = { BRW_HW_REG_TYPE_F,   BRW_HW_IMM_TYPE_F   },
-   [BRW_REGISTER_TYPE_VF] = { INVALID,             BRW_HW_IMM_TYPE_VF  },
+   [ELK_REGISTER_TYPE_F]  = { ELK_HW_REG_TYPE_F,   ELK_HW_IMM_TYPE_F   },
+   [ELK_REGISTER_TYPE_VF] = { INVALID,             ELK_HW_IMM_TYPE_VF  },
 
-   [BRW_REGISTER_TYPE_D]  = { BRW_HW_REG_TYPE_D,   BRW_HW_IMM_TYPE_D   },
-   [BRW_REGISTER_TYPE_UD] = { BRW_HW_REG_TYPE_UD,  BRW_HW_IMM_TYPE_UD  },
-   [BRW_REGISTER_TYPE_W]  = { BRW_HW_REG_TYPE_W,   BRW_HW_IMM_TYPE_W   },
-   [BRW_REGISTER_TYPE_UW] = { BRW_HW_REG_TYPE_UW,  BRW_HW_IMM_TYPE_UW  },
-   [BRW_REGISTER_TYPE_B]  = { BRW_HW_REG_TYPE_B,   INVALID             },
-   [BRW_REGISTER_TYPE_UB] = { BRW_HW_REG_TYPE_UB,  INVALID             },
-   [BRW_REGISTER_TYPE_V]  = { INVALID,             BRW_HW_IMM_TYPE_V   },
+   [ELK_REGISTER_TYPE_D]  = { ELK_HW_REG_TYPE_D,   ELK_HW_IMM_TYPE_D   },
+   [ELK_REGISTER_TYPE_UD] = { ELK_HW_REG_TYPE_UD,  ELK_HW_IMM_TYPE_UD  },
+   [ELK_REGISTER_TYPE_W]  = { ELK_HW_REG_TYPE_W,   ELK_HW_IMM_TYPE_W   },
+   [ELK_REGISTER_TYPE_UW] = { ELK_HW_REG_TYPE_UW,  ELK_HW_IMM_TYPE_UW  },
+   [ELK_REGISTER_TYPE_B]  = { ELK_HW_REG_TYPE_B,   INVALID             },
+   [ELK_REGISTER_TYPE_UB] = { ELK_HW_REG_TYPE_UB,  INVALID             },
+   [ELK_REGISTER_TYPE_V]  = { INVALID,             ELK_HW_IMM_TYPE_V   },
 }, gfx6_hw_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = {     INVALID, INVALID             },
+   [0 ... ELK_REGISTER_TYPE_LAST] = {     INVALID, INVALID             },
 
-   [BRW_REGISTER_TYPE_F]  = { BRW_HW_REG_TYPE_F,   BRW_HW_IMM_TYPE_F   },
-   [BRW_REGISTER_TYPE_VF] = { INVALID,             BRW_HW_IMM_TYPE_VF  },
+   [ELK_REGISTER_TYPE_F]  = { ELK_HW_REG_TYPE_F,   ELK_HW_IMM_TYPE_F   },
+   [ELK_REGISTER_TYPE_VF] = { INVALID,             ELK_HW_IMM_TYPE_VF  },
 
-   [BRW_REGISTER_TYPE_D]  = { BRW_HW_REG_TYPE_D,   BRW_HW_IMM_TYPE_D   },
-   [BRW_REGISTER_TYPE_UD] = { BRW_HW_REG_TYPE_UD,  BRW_HW_IMM_TYPE_UD  },
-   [BRW_REGISTER_TYPE_W]  = { BRW_HW_REG_TYPE_W,   BRW_HW_IMM_TYPE_W   },
-   [BRW_REGISTER_TYPE_UW] = { BRW_HW_REG_TYPE_UW,  BRW_HW_IMM_TYPE_UW  },
-   [BRW_REGISTER_TYPE_B]  = { BRW_HW_REG_TYPE_B,   INVALID             },
-   [BRW_REGISTER_TYPE_UB] = { BRW_HW_REG_TYPE_UB,  INVALID             },
-   [BRW_REGISTER_TYPE_V]  = { INVALID,             BRW_HW_IMM_TYPE_V   },
-   [BRW_REGISTER_TYPE_UV] = { INVALID,             BRW_HW_IMM_TYPE_UV  },
+   [ELK_REGISTER_TYPE_D]  = { ELK_HW_REG_TYPE_D,   ELK_HW_IMM_TYPE_D   },
+   [ELK_REGISTER_TYPE_UD] = { ELK_HW_REG_TYPE_UD,  ELK_HW_IMM_TYPE_UD  },
+   [ELK_REGISTER_TYPE_W]  = { ELK_HW_REG_TYPE_W,   ELK_HW_IMM_TYPE_W   },
+   [ELK_REGISTER_TYPE_UW] = { ELK_HW_REG_TYPE_UW,  ELK_HW_IMM_TYPE_UW  },
+   [ELK_REGISTER_TYPE_B]  = { ELK_HW_REG_TYPE_B,   INVALID             },
+   [ELK_REGISTER_TYPE_UB] = { ELK_HW_REG_TYPE_UB,  INVALID             },
+   [ELK_REGISTER_TYPE_V]  = { INVALID,             ELK_HW_IMM_TYPE_V   },
+   [ELK_REGISTER_TYPE_UV] = { INVALID,             ELK_HW_IMM_TYPE_UV  },
 }, gfx7_hw_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = {     INVALID, INVALID             },
+   [0 ... ELK_REGISTER_TYPE_LAST] = {     INVALID, INVALID             },
 
-   [BRW_REGISTER_TYPE_DF] = { GFX7_HW_REG_TYPE_DF, INVALID             },
-   [BRW_REGISTER_TYPE_F]  = { BRW_HW_REG_TYPE_F,   BRW_HW_IMM_TYPE_F   },
-   [BRW_REGISTER_TYPE_VF] = { INVALID,             BRW_HW_IMM_TYPE_VF  },
+   [ELK_REGISTER_TYPE_DF] = { GFX7_HW_REG_TYPE_DF, INVALID             },
+   [ELK_REGISTER_TYPE_F]  = { ELK_HW_REG_TYPE_F,   ELK_HW_IMM_TYPE_F   },
+   [ELK_REGISTER_TYPE_VF] = { INVALID,             ELK_HW_IMM_TYPE_VF  },
 
-   [BRW_REGISTER_TYPE_D]  = { BRW_HW_REG_TYPE_D,   BRW_HW_IMM_TYPE_D   },
-   [BRW_REGISTER_TYPE_UD] = { BRW_HW_REG_TYPE_UD,  BRW_HW_IMM_TYPE_UD  },
-   [BRW_REGISTER_TYPE_W]  = { BRW_HW_REG_TYPE_W,   BRW_HW_IMM_TYPE_W   },
-   [BRW_REGISTER_TYPE_UW] = { BRW_HW_REG_TYPE_UW,  BRW_HW_IMM_TYPE_UW  },
-   [BRW_REGISTER_TYPE_B]  = { BRW_HW_REG_TYPE_B,   INVALID             },
-   [BRW_REGISTER_TYPE_UB] = { BRW_HW_REG_TYPE_UB,  INVALID             },
-   [BRW_REGISTER_TYPE_V]  = { INVALID,             BRW_HW_IMM_TYPE_V   },
-   [BRW_REGISTER_TYPE_UV] = { INVALID,             BRW_HW_IMM_TYPE_UV  },
+   [ELK_REGISTER_TYPE_D]  = { ELK_HW_REG_TYPE_D,   ELK_HW_IMM_TYPE_D   },
+   [ELK_REGISTER_TYPE_UD] = { ELK_HW_REG_TYPE_UD,  ELK_HW_IMM_TYPE_UD  },
+   [ELK_REGISTER_TYPE_W]  = { ELK_HW_REG_TYPE_W,   ELK_HW_IMM_TYPE_W   },
+   [ELK_REGISTER_TYPE_UW] = { ELK_HW_REG_TYPE_UW,  ELK_HW_IMM_TYPE_UW  },
+   [ELK_REGISTER_TYPE_B]  = { ELK_HW_REG_TYPE_B,   INVALID             },
+   [ELK_REGISTER_TYPE_UB] = { ELK_HW_REG_TYPE_UB,  INVALID             },
+   [ELK_REGISTER_TYPE_V]  = { INVALID,             ELK_HW_IMM_TYPE_V   },
+   [ELK_REGISTER_TYPE_UV] = { INVALID,             ELK_HW_IMM_TYPE_UV  },
 }, gfx8_hw_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = {     INVALID, INVALID             },
+   [0 ... ELK_REGISTER_TYPE_LAST] = {     INVALID, INVALID             },
 
-   [BRW_REGISTER_TYPE_DF] = { GFX7_HW_REG_TYPE_DF, GFX8_HW_IMM_TYPE_DF },
-   [BRW_REGISTER_TYPE_F]  = { BRW_HW_REG_TYPE_F,   BRW_HW_IMM_TYPE_F   },
-   [BRW_REGISTER_TYPE_HF] = { GFX8_HW_REG_TYPE_HF, GFX8_HW_IMM_TYPE_HF },
-   [BRW_REGISTER_TYPE_VF] = { INVALID,             BRW_HW_IMM_TYPE_VF  },
+   [ELK_REGISTER_TYPE_DF] = { GFX7_HW_REG_TYPE_DF, GFX8_HW_IMM_TYPE_DF },
+   [ELK_REGISTER_TYPE_F]  = { ELK_HW_REG_TYPE_F,   ELK_HW_IMM_TYPE_F   },
+   [ELK_REGISTER_TYPE_HF] = { GFX8_HW_REG_TYPE_HF, GFX8_HW_IMM_TYPE_HF },
+   [ELK_REGISTER_TYPE_VF] = { INVALID,             ELK_HW_IMM_TYPE_VF  },
 
-   [BRW_REGISTER_TYPE_Q]  = { GFX8_HW_REG_TYPE_Q,  GFX8_HW_IMM_TYPE_Q  },
-   [BRW_REGISTER_TYPE_UQ] = { GFX8_HW_REG_TYPE_UQ, GFX8_HW_IMM_TYPE_UQ },
-   [BRW_REGISTER_TYPE_D]  = { BRW_HW_REG_TYPE_D,   BRW_HW_IMM_TYPE_D   },
-   [BRW_REGISTER_TYPE_UD] = { BRW_HW_REG_TYPE_UD,  BRW_HW_IMM_TYPE_UD  },
-   [BRW_REGISTER_TYPE_W]  = { BRW_HW_REG_TYPE_W,   BRW_HW_IMM_TYPE_W   },
-   [BRW_REGISTER_TYPE_UW] = { BRW_HW_REG_TYPE_UW,  BRW_HW_IMM_TYPE_UW  },
-   [BRW_REGISTER_TYPE_B]  = { BRW_HW_REG_TYPE_B,   INVALID             },
-   [BRW_REGISTER_TYPE_UB] = { BRW_HW_REG_TYPE_UB,  INVALID             },
-   [BRW_REGISTER_TYPE_V]  = { INVALID,             BRW_HW_IMM_TYPE_V   },
-   [BRW_REGISTER_TYPE_UV] = { INVALID,             BRW_HW_IMM_TYPE_UV  },
+   [ELK_REGISTER_TYPE_Q]  = { GFX8_HW_REG_TYPE_Q,  GFX8_HW_IMM_TYPE_Q  },
+   [ELK_REGISTER_TYPE_UQ] = { GFX8_HW_REG_TYPE_UQ, GFX8_HW_IMM_TYPE_UQ },
+   [ELK_REGISTER_TYPE_D]  = { ELK_HW_REG_TYPE_D,   ELK_HW_IMM_TYPE_D   },
+   [ELK_REGISTER_TYPE_UD] = { ELK_HW_REG_TYPE_UD,  ELK_HW_IMM_TYPE_UD  },
+   [ELK_REGISTER_TYPE_W]  = { ELK_HW_REG_TYPE_W,   ELK_HW_IMM_TYPE_W   },
+   [ELK_REGISTER_TYPE_UW] = { ELK_HW_REG_TYPE_UW,  ELK_HW_IMM_TYPE_UW  },
+   [ELK_REGISTER_TYPE_B]  = { ELK_HW_REG_TYPE_B,   INVALID             },
+   [ELK_REGISTER_TYPE_UB] = { ELK_HW_REG_TYPE_UB,  INVALID             },
+   [ELK_REGISTER_TYPE_V]  = { INVALID,             ELK_HW_IMM_TYPE_V   },
+   [ELK_REGISTER_TYPE_UV] = { INVALID,             ELK_HW_IMM_TYPE_UV  },
 }, gfx11_hw_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = {      INVALID, INVALID              },
+   [0 ... ELK_REGISTER_TYPE_LAST] = {      INVALID, INVALID              },
 
-   [BRW_REGISTER_TYPE_NF] = { GFX11_HW_REG_TYPE_NF, INVALID              },
-   [BRW_REGISTER_TYPE_F]  = { GFX11_HW_REG_TYPE_F,  GFX11_HW_IMM_TYPE_F  },
-   [BRW_REGISTER_TYPE_HF] = { GFX11_HW_REG_TYPE_HF, GFX11_HW_IMM_TYPE_HF },
-   [BRW_REGISTER_TYPE_VF] = { INVALID,              GFX11_HW_IMM_TYPE_VF },
+   [ELK_REGISTER_TYPE_NF] = { GFX11_HW_REG_TYPE_NF, INVALID              },
+   [ELK_REGISTER_TYPE_F]  = { GFX11_HW_REG_TYPE_F,  GFX11_HW_IMM_TYPE_F  },
+   [ELK_REGISTER_TYPE_HF] = { GFX11_HW_REG_TYPE_HF, GFX11_HW_IMM_TYPE_HF },
+   [ELK_REGISTER_TYPE_VF] = { INVALID,              GFX11_HW_IMM_TYPE_VF },
 
-   [BRW_REGISTER_TYPE_D]  = { GFX11_HW_REG_TYPE_D,  GFX11_HW_IMM_TYPE_D  },
-   [BRW_REGISTER_TYPE_UD] = { GFX11_HW_REG_TYPE_UD, GFX11_HW_IMM_TYPE_UD },
-   [BRW_REGISTER_TYPE_W]  = { GFX11_HW_REG_TYPE_W,  GFX11_HW_IMM_TYPE_W  },
-   [BRW_REGISTER_TYPE_UW] = { GFX11_HW_REG_TYPE_UW, GFX11_HW_IMM_TYPE_UW },
-   [BRW_REGISTER_TYPE_B]  = { GFX11_HW_REG_TYPE_B,  INVALID              },
-   [BRW_REGISTER_TYPE_UB] = { GFX11_HW_REG_TYPE_UB, INVALID              },
-   [BRW_REGISTER_TYPE_V]  = { INVALID,              GFX11_HW_IMM_TYPE_V  },
-   [BRW_REGISTER_TYPE_UV] = { INVALID,              GFX11_HW_IMM_TYPE_UV },
+   [ELK_REGISTER_TYPE_D]  = { GFX11_HW_REG_TYPE_D,  GFX11_HW_IMM_TYPE_D  },
+   [ELK_REGISTER_TYPE_UD] = { GFX11_HW_REG_TYPE_UD, GFX11_HW_IMM_TYPE_UD },
+   [ELK_REGISTER_TYPE_W]  = { GFX11_HW_REG_TYPE_W,  GFX11_HW_IMM_TYPE_W  },
+   [ELK_REGISTER_TYPE_UW] = { GFX11_HW_REG_TYPE_UW, GFX11_HW_IMM_TYPE_UW },
+   [ELK_REGISTER_TYPE_B]  = { GFX11_HW_REG_TYPE_B,  INVALID              },
+   [ELK_REGISTER_TYPE_UB] = { GFX11_HW_REG_TYPE_UB, INVALID              },
+   [ELK_REGISTER_TYPE_V]  = { INVALID,              GFX11_HW_IMM_TYPE_V  },
+   [ELK_REGISTER_TYPE_UV] = { INVALID,              GFX11_HW_IMM_TYPE_UV },
 }, gfx12_hw_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = {            INVALID, INVALID                    },
+   [0 ... ELK_REGISTER_TYPE_LAST] = {            INVALID, INVALID                    },
 
-   [BRW_REGISTER_TYPE_F]  = { GFX12_HW_REG_TYPE_FLOAT(2), GFX12_HW_REG_TYPE_FLOAT(2) },
-   [BRW_REGISTER_TYPE_HF] = { GFX12_HW_REG_TYPE_FLOAT(1), GFX12_HW_REG_TYPE_FLOAT(1) },
-   [BRW_REGISTER_TYPE_VF] = { INVALID,                    GFX12_HW_REG_TYPE_FLOAT(0) },
+   [ELK_REGISTER_TYPE_F]  = { GFX12_HW_REG_TYPE_FLOAT(2), GFX12_HW_REG_TYPE_FLOAT(2) },
+   [ELK_REGISTER_TYPE_HF] = { GFX12_HW_REG_TYPE_FLOAT(1), GFX12_HW_REG_TYPE_FLOAT(1) },
+   [ELK_REGISTER_TYPE_VF] = { INVALID,                    GFX12_HW_REG_TYPE_FLOAT(0) },
 
-   [BRW_REGISTER_TYPE_D]  = { GFX12_HW_REG_TYPE_SINT(2),  GFX12_HW_REG_TYPE_SINT(2)  },
-   [BRW_REGISTER_TYPE_UD] = { GFX12_HW_REG_TYPE_UINT(2),  GFX12_HW_REG_TYPE_UINT(2)  },
-   [BRW_REGISTER_TYPE_W]  = { GFX12_HW_REG_TYPE_SINT(1),  GFX12_HW_REG_TYPE_SINT(1)  },
-   [BRW_REGISTER_TYPE_UW] = { GFX12_HW_REG_TYPE_UINT(1),  GFX12_HW_REG_TYPE_UINT(1)  },
-   [BRW_REGISTER_TYPE_B]  = { GFX12_HW_REG_TYPE_SINT(0),  INVALID                    },
-   [BRW_REGISTER_TYPE_UB] = { GFX12_HW_REG_TYPE_UINT(0),  INVALID                    },
-   [BRW_REGISTER_TYPE_V]  = { INVALID,                    GFX12_HW_REG_TYPE_SINT(0)  },
-   [BRW_REGISTER_TYPE_UV] = { INVALID,                    GFX12_HW_REG_TYPE_UINT(0)  },
+   [ELK_REGISTER_TYPE_D]  = { GFX12_HW_REG_TYPE_SINT(2),  GFX12_HW_REG_TYPE_SINT(2)  },
+   [ELK_REGISTER_TYPE_UD] = { GFX12_HW_REG_TYPE_UINT(2),  GFX12_HW_REG_TYPE_UINT(2)  },
+   [ELK_REGISTER_TYPE_W]  = { GFX12_HW_REG_TYPE_SINT(1),  GFX12_HW_REG_TYPE_SINT(1)  },
+   [ELK_REGISTER_TYPE_UW] = { GFX12_HW_REG_TYPE_UINT(1),  GFX12_HW_REG_TYPE_UINT(1)  },
+   [ELK_REGISTER_TYPE_B]  = { GFX12_HW_REG_TYPE_SINT(0),  INVALID                    },
+   [ELK_REGISTER_TYPE_UB] = { GFX12_HW_REG_TYPE_UINT(0),  INVALID                    },
+   [ELK_REGISTER_TYPE_V]  = { INVALID,                    GFX12_HW_REG_TYPE_SINT(0)  },
+   [ELK_REGISTER_TYPE_UV] = { INVALID,                    GFX12_HW_REG_TYPE_UINT(0)  },
 }, gfx125_hw_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = {            INVALID, INVALID                    },
+   [0 ... ELK_REGISTER_TYPE_LAST] = {            INVALID, INVALID                    },
 
-   [BRW_REGISTER_TYPE_DF] = { GFX12_HW_REG_TYPE_FLOAT(3), GFX12_HW_REG_TYPE_FLOAT(3) },
-   [BRW_REGISTER_TYPE_F]  = { GFX12_HW_REG_TYPE_FLOAT(2), GFX12_HW_REG_TYPE_FLOAT(2) },
-   [BRW_REGISTER_TYPE_HF] = { GFX12_HW_REG_TYPE_FLOAT(1), GFX12_HW_REG_TYPE_FLOAT(1) },
-   [BRW_REGISTER_TYPE_VF] = { INVALID,                    GFX12_HW_REG_TYPE_FLOAT(0) },
+   [ELK_REGISTER_TYPE_DF] = { GFX12_HW_REG_TYPE_FLOAT(3), GFX12_HW_REG_TYPE_FLOAT(3) },
+   [ELK_REGISTER_TYPE_F]  = { GFX12_HW_REG_TYPE_FLOAT(2), GFX12_HW_REG_TYPE_FLOAT(2) },
+   [ELK_REGISTER_TYPE_HF] = { GFX12_HW_REG_TYPE_FLOAT(1), GFX12_HW_REG_TYPE_FLOAT(1) },
+   [ELK_REGISTER_TYPE_VF] = { INVALID,                    GFX12_HW_REG_TYPE_FLOAT(0) },
 
-   [BRW_REGISTER_TYPE_Q]  = { GFX12_HW_REG_TYPE_SINT(3),  GFX12_HW_REG_TYPE_SINT(3)  },
-   [BRW_REGISTER_TYPE_UQ] = { GFX12_HW_REG_TYPE_UINT(3),  GFX12_HW_REG_TYPE_UINT(3)  },
-   [BRW_REGISTER_TYPE_D]  = { GFX12_HW_REG_TYPE_SINT(2),  GFX12_HW_REG_TYPE_SINT(2)  },
-   [BRW_REGISTER_TYPE_UD] = { GFX12_HW_REG_TYPE_UINT(2),  GFX12_HW_REG_TYPE_UINT(2)  },
-   [BRW_REGISTER_TYPE_W]  = { GFX12_HW_REG_TYPE_SINT(1),  GFX12_HW_REG_TYPE_SINT(1)  },
-   [BRW_REGISTER_TYPE_UW] = { GFX12_HW_REG_TYPE_UINT(1),  GFX12_HW_REG_TYPE_UINT(1)  },
-   [BRW_REGISTER_TYPE_B]  = { GFX12_HW_REG_TYPE_SINT(0),  INVALID                    },
-   [BRW_REGISTER_TYPE_UB] = { GFX12_HW_REG_TYPE_UINT(0),  INVALID                    },
-   [BRW_REGISTER_TYPE_V]  = { INVALID,                    GFX12_HW_REG_TYPE_SINT(0)  },
-   [BRW_REGISTER_TYPE_UV] = { INVALID,                    GFX12_HW_REG_TYPE_UINT(0)  },
+   [ELK_REGISTER_TYPE_Q]  = { GFX12_HW_REG_TYPE_SINT(3),  GFX12_HW_REG_TYPE_SINT(3)  },
+   [ELK_REGISTER_TYPE_UQ] = { GFX12_HW_REG_TYPE_UINT(3),  GFX12_HW_REG_TYPE_UINT(3)  },
+   [ELK_REGISTER_TYPE_D]  = { GFX12_HW_REG_TYPE_SINT(2),  GFX12_HW_REG_TYPE_SINT(2)  },
+   [ELK_REGISTER_TYPE_UD] = { GFX12_HW_REG_TYPE_UINT(2),  GFX12_HW_REG_TYPE_UINT(2)  },
+   [ELK_REGISTER_TYPE_W]  = { GFX12_HW_REG_TYPE_SINT(1),  GFX12_HW_REG_TYPE_SINT(1)  },
+   [ELK_REGISTER_TYPE_UW] = { GFX12_HW_REG_TYPE_UINT(1),  GFX12_HW_REG_TYPE_UINT(1)  },
+   [ELK_REGISTER_TYPE_B]  = { GFX12_HW_REG_TYPE_SINT(0),  INVALID                    },
+   [ELK_REGISTER_TYPE_UB] = { GFX12_HW_REG_TYPE_UINT(0),  INVALID                    },
+   [ELK_REGISTER_TYPE_V]  = { INVALID,                    GFX12_HW_REG_TYPE_SINT(0)  },
+   [ELK_REGISTER_TYPE_UV] = { INVALID,                    GFX12_HW_REG_TYPE_UINT(0)  },
 };
 
 /* SNB adds 3-src instructions (MAD and LRP) that only operate on floats, so
  * the types were implied. IVB adds BFE and BFI2 that operate on doublewords
  * and unsigned doublewords, so a new field is also available in the da3src
- * struct (part of struct brw_instruction.bits1 in brw_structs.h) to select
+ * struct (part of struct elk_instruction.bits1 in elk_structs.h) to select
  * dst and shared-src types.
  *
  * CNL adds support for 3-src instructions in align1 mode, and with it support
@@ -239,90 +239,90 @@ static const struct hw_3src_type {
    enum hw_3src_reg_type reg_type;
    enum gfx10_align1_3src_exec_type exec_type;
 } gfx6_hw_3src_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = { INVALID },
+   [0 ... ELK_REGISTER_TYPE_LAST] = { INVALID },
 
-   [BRW_REGISTER_TYPE_F]  = { GFX7_3SRC_TYPE_F  },
+   [ELK_REGISTER_TYPE_F]  = { GFX7_3SRC_TYPE_F  },
 }, gfx7_hw_3src_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = { INVALID },
+   [0 ... ELK_REGISTER_TYPE_LAST] = { INVALID },
 
-   [BRW_REGISTER_TYPE_F]  = { GFX7_3SRC_TYPE_F  },
-   [BRW_REGISTER_TYPE_D]  = { GFX7_3SRC_TYPE_D  },
-   [BRW_REGISTER_TYPE_UD] = { GFX7_3SRC_TYPE_UD },
-   [BRW_REGISTER_TYPE_DF] = { GFX7_3SRC_TYPE_DF },
+   [ELK_REGISTER_TYPE_F]  = { GFX7_3SRC_TYPE_F  },
+   [ELK_REGISTER_TYPE_D]  = { GFX7_3SRC_TYPE_D  },
+   [ELK_REGISTER_TYPE_UD] = { GFX7_3SRC_TYPE_UD },
+   [ELK_REGISTER_TYPE_DF] = { GFX7_3SRC_TYPE_DF },
 }, gfx8_hw_3src_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = { INVALID },
+   [0 ... ELK_REGISTER_TYPE_LAST] = { INVALID },
 
-   [BRW_REGISTER_TYPE_F]  = { GFX7_3SRC_TYPE_F  },
-   [BRW_REGISTER_TYPE_D]  = { GFX7_3SRC_TYPE_D  },
-   [BRW_REGISTER_TYPE_UD] = { GFX7_3SRC_TYPE_UD },
-   [BRW_REGISTER_TYPE_DF] = { GFX7_3SRC_TYPE_DF },
-   [BRW_REGISTER_TYPE_HF] = { GFX8_3SRC_TYPE_HF },
+   [ELK_REGISTER_TYPE_F]  = { GFX7_3SRC_TYPE_F  },
+   [ELK_REGISTER_TYPE_D]  = { GFX7_3SRC_TYPE_D  },
+   [ELK_REGISTER_TYPE_UD] = { GFX7_3SRC_TYPE_UD },
+   [ELK_REGISTER_TYPE_DF] = { GFX7_3SRC_TYPE_DF },
+   [ELK_REGISTER_TYPE_HF] = { GFX8_3SRC_TYPE_HF },
 }, gfx10_hw_3src_align1_type[] = {
-#define E(x) BRW_ALIGN1_3SRC_EXEC_TYPE_##x
-   [0 ... BRW_REGISTER_TYPE_LAST] = { INVALID },
+#define E(x) ELK_ALIGN1_3SRC_EXEC_TYPE_##x
+   [0 ... ELK_REGISTER_TYPE_LAST] = { INVALID },
 
-   [BRW_REGISTER_TYPE_DF] = { GFX10_ALIGN1_3SRC_REG_TYPE_DF, E(FLOAT) },
-   [BRW_REGISTER_TYPE_F]  = { GFX10_ALIGN1_3SRC_REG_TYPE_F,  E(FLOAT) },
-   [BRW_REGISTER_TYPE_HF] = { GFX10_ALIGN1_3SRC_REG_TYPE_HF, E(FLOAT) },
+   [ELK_REGISTER_TYPE_DF] = { GFX10_ALIGN1_3SRC_REG_TYPE_DF, E(FLOAT) },
+   [ELK_REGISTER_TYPE_F]  = { GFX10_ALIGN1_3SRC_REG_TYPE_F,  E(FLOAT) },
+   [ELK_REGISTER_TYPE_HF] = { GFX10_ALIGN1_3SRC_REG_TYPE_HF, E(FLOAT) },
 
-   [BRW_REGISTER_TYPE_D]  = { GFX10_ALIGN1_3SRC_REG_TYPE_D,  E(INT)   },
-   [BRW_REGISTER_TYPE_UD] = { GFX10_ALIGN1_3SRC_REG_TYPE_UD, E(INT)   },
-   [BRW_REGISTER_TYPE_W]  = { GFX10_ALIGN1_3SRC_REG_TYPE_W,  E(INT)   },
-   [BRW_REGISTER_TYPE_UW] = { GFX10_ALIGN1_3SRC_REG_TYPE_UW, E(INT)   },
-   [BRW_REGISTER_TYPE_B]  = { GFX10_ALIGN1_3SRC_REG_TYPE_B,  E(INT)   },
-   [BRW_REGISTER_TYPE_UB] = { GFX10_ALIGN1_3SRC_REG_TYPE_UB, E(INT)   },
+   [ELK_REGISTER_TYPE_D]  = { GFX10_ALIGN1_3SRC_REG_TYPE_D,  E(INT)   },
+   [ELK_REGISTER_TYPE_UD] = { GFX10_ALIGN1_3SRC_REG_TYPE_UD, E(INT)   },
+   [ELK_REGISTER_TYPE_W]  = { GFX10_ALIGN1_3SRC_REG_TYPE_W,  E(INT)   },
+   [ELK_REGISTER_TYPE_UW] = { GFX10_ALIGN1_3SRC_REG_TYPE_UW, E(INT)   },
+   [ELK_REGISTER_TYPE_B]  = { GFX10_ALIGN1_3SRC_REG_TYPE_B,  E(INT)   },
+   [ELK_REGISTER_TYPE_UB] = { GFX10_ALIGN1_3SRC_REG_TYPE_UB, E(INT)   },
 }, gfx11_hw_3src_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = { INVALID },
+   [0 ... ELK_REGISTER_TYPE_LAST] = { INVALID },
 
-   [BRW_REGISTER_TYPE_NF] = { GFX11_ALIGN1_3SRC_REG_TYPE_NF, E(FLOAT) },
-   [BRW_REGISTER_TYPE_F]  = { GFX10_ALIGN1_3SRC_REG_TYPE_F,  E(FLOAT) },
-   [BRW_REGISTER_TYPE_HF] = { GFX10_ALIGN1_3SRC_REG_TYPE_HF, E(FLOAT) },
+   [ELK_REGISTER_TYPE_NF] = { GFX11_ALIGN1_3SRC_REG_TYPE_NF, E(FLOAT) },
+   [ELK_REGISTER_TYPE_F]  = { GFX10_ALIGN1_3SRC_REG_TYPE_F,  E(FLOAT) },
+   [ELK_REGISTER_TYPE_HF] = { GFX10_ALIGN1_3SRC_REG_TYPE_HF, E(FLOAT) },
 
-   [BRW_REGISTER_TYPE_D]  = { GFX10_ALIGN1_3SRC_REG_TYPE_D,  E(INT)   },
-   [BRW_REGISTER_TYPE_UD] = { GFX10_ALIGN1_3SRC_REG_TYPE_UD, E(INT)   },
-   [BRW_REGISTER_TYPE_W]  = { GFX10_ALIGN1_3SRC_REG_TYPE_W,  E(INT)   },
-   [BRW_REGISTER_TYPE_UW] = { GFX10_ALIGN1_3SRC_REG_TYPE_UW, E(INT)   },
-   [BRW_REGISTER_TYPE_B]  = { GFX10_ALIGN1_3SRC_REG_TYPE_B,  E(INT)   },
-   [BRW_REGISTER_TYPE_UB] = { GFX10_ALIGN1_3SRC_REG_TYPE_UB, E(INT)   },
+   [ELK_REGISTER_TYPE_D]  = { GFX10_ALIGN1_3SRC_REG_TYPE_D,  E(INT)   },
+   [ELK_REGISTER_TYPE_UD] = { GFX10_ALIGN1_3SRC_REG_TYPE_UD, E(INT)   },
+   [ELK_REGISTER_TYPE_W]  = { GFX10_ALIGN1_3SRC_REG_TYPE_W,  E(INT)   },
+   [ELK_REGISTER_TYPE_UW] = { GFX10_ALIGN1_3SRC_REG_TYPE_UW, E(INT)   },
+   [ELK_REGISTER_TYPE_B]  = { GFX10_ALIGN1_3SRC_REG_TYPE_B,  E(INT)   },
+   [ELK_REGISTER_TYPE_UB] = { GFX10_ALIGN1_3SRC_REG_TYPE_UB, E(INT)   },
 }, gfx12_hw_3src_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = { INVALID },
+   [0 ... ELK_REGISTER_TYPE_LAST] = { INVALID },
 
-   [BRW_REGISTER_TYPE_F]  = { GFX12_HW_REG_TYPE_UINT(2),     E(FLOAT), },
-   [BRW_REGISTER_TYPE_HF] = { GFX12_HW_REG_TYPE_UINT(1),     E(FLOAT), },
+   [ELK_REGISTER_TYPE_F]  = { GFX12_HW_REG_TYPE_UINT(2),     E(FLOAT), },
+   [ELK_REGISTER_TYPE_HF] = { GFX12_HW_REG_TYPE_UINT(1),     E(FLOAT), },
 
-   [BRW_REGISTER_TYPE_D]  = { GFX12_HW_REG_TYPE_SINT(2),     E(INT),  },
-   [BRW_REGISTER_TYPE_UD] = { GFX12_HW_REG_TYPE_UINT(2),     E(INT),  },
-   [BRW_REGISTER_TYPE_W]  = { GFX12_HW_REG_TYPE_SINT(1),     E(INT),  },
-   [BRW_REGISTER_TYPE_UW] = { GFX12_HW_REG_TYPE_UINT(1),     E(INT),  },
-   [BRW_REGISTER_TYPE_B]  = { GFX12_HW_REG_TYPE_SINT(0),     E(INT),  },
-   [BRW_REGISTER_TYPE_UB] = { GFX12_HW_REG_TYPE_UINT(0),     E(INT),  },
+   [ELK_REGISTER_TYPE_D]  = { GFX12_HW_REG_TYPE_SINT(2),     E(INT),  },
+   [ELK_REGISTER_TYPE_UD] = { GFX12_HW_REG_TYPE_UINT(2),     E(INT),  },
+   [ELK_REGISTER_TYPE_W]  = { GFX12_HW_REG_TYPE_SINT(1),     E(INT),  },
+   [ELK_REGISTER_TYPE_UW] = { GFX12_HW_REG_TYPE_UINT(1),     E(INT),  },
+   [ELK_REGISTER_TYPE_B]  = { GFX12_HW_REG_TYPE_SINT(0),     E(INT),  },
+   [ELK_REGISTER_TYPE_UB] = { GFX12_HW_REG_TYPE_UINT(0),     E(INT),  },
 }, gfx125_hw_3src_type[] = {
-   [0 ... BRW_REGISTER_TYPE_LAST] = { INVALID },
+   [0 ... ELK_REGISTER_TYPE_LAST] = { INVALID },
 
-   [BRW_REGISTER_TYPE_DF] = { GFX12_HW_REG_TYPE_UINT(3),     E(FLOAT), },
-   [BRW_REGISTER_TYPE_F]  = { GFX12_HW_REG_TYPE_UINT(2),     E(FLOAT), },
-   [BRW_REGISTER_TYPE_HF] = { GFX12_HW_REG_TYPE_UINT(1),     E(FLOAT), },
+   [ELK_REGISTER_TYPE_DF] = { GFX12_HW_REG_TYPE_UINT(3),     E(FLOAT), },
+   [ELK_REGISTER_TYPE_F]  = { GFX12_HW_REG_TYPE_UINT(2),     E(FLOAT), },
+   [ELK_REGISTER_TYPE_HF] = { GFX12_HW_REG_TYPE_UINT(1),     E(FLOAT), },
 
-   [BRW_REGISTER_TYPE_Q]  = { GFX12_HW_REG_TYPE_SINT(3),     E(INT),  },
-   [BRW_REGISTER_TYPE_UQ] = { GFX12_HW_REG_TYPE_UINT(3),     E(INT),  },
-   [BRW_REGISTER_TYPE_D]  = { GFX12_HW_REG_TYPE_SINT(2),     E(INT),  },
-   [BRW_REGISTER_TYPE_UD] = { GFX12_HW_REG_TYPE_UINT(2),     E(INT),  },
-   [BRW_REGISTER_TYPE_W]  = { GFX12_HW_REG_TYPE_SINT(1),     E(INT),  },
-   [BRW_REGISTER_TYPE_UW] = { GFX12_HW_REG_TYPE_UINT(1),     E(INT),  },
-   [BRW_REGISTER_TYPE_B]  = { GFX12_HW_REG_TYPE_SINT(0),     E(INT),  },
-   [BRW_REGISTER_TYPE_UB] = { GFX12_HW_REG_TYPE_UINT(0),     E(INT),  },
+   [ELK_REGISTER_TYPE_Q]  = { GFX12_HW_REG_TYPE_SINT(3),     E(INT),  },
+   [ELK_REGISTER_TYPE_UQ] = { GFX12_HW_REG_TYPE_UINT(3),     E(INT),  },
+   [ELK_REGISTER_TYPE_D]  = { GFX12_HW_REG_TYPE_SINT(2),     E(INT),  },
+   [ELK_REGISTER_TYPE_UD] = { GFX12_HW_REG_TYPE_UINT(2),     E(INT),  },
+   [ELK_REGISTER_TYPE_W]  = { GFX12_HW_REG_TYPE_SINT(1),     E(INT),  },
+   [ELK_REGISTER_TYPE_UW] = { GFX12_HW_REG_TYPE_UINT(1),     E(INT),  },
+   [ELK_REGISTER_TYPE_B]  = { GFX12_HW_REG_TYPE_SINT(0),     E(INT),  },
+   [ELK_REGISTER_TYPE_UB] = { GFX12_HW_REG_TYPE_UINT(0),     E(INT),  },
 #undef E
 };
 
 /**
- * Convert a brw_reg_type enumeration value into the hardware representation.
+ * Convert a elk_reg_type enumeration value into the hardware representation.
  *
  * The hardware encoding may depend on whether the value is an immediate.
  */
 unsigned
-brw_reg_type_to_hw_type(const struct intel_device_info *devinfo,
-                        enum brw_reg_file file,
-                        enum brw_reg_type type)
+elk_reg_type_to_hw_type(const struct intel_device_info *devinfo,
+                        enum elk_reg_file file,
+                        enum elk_reg_type type)
 {
    const struct hw_type *table;
 
@@ -349,7 +349,7 @@ brw_reg_type_to_hw_type(const struct intel_device_info *devinfo,
       table = gfx4_hw_type;
    }
 
-   if (file == BRW_IMMEDIATE_VALUE) {
+   if (file == ELK_IMMEDIATE_VALUE) {
       assert(table[type].imm_type != (enum hw_imm_type)INVALID);
       return table[type].imm_type;
    } else {
@@ -359,13 +359,13 @@ brw_reg_type_to_hw_type(const struct intel_device_info *devinfo,
 }
 
 /**
- * Convert the hardware representation into a brw_reg_type enumeration value.
+ * Convert the hardware representation into a elk_reg_type enumeration value.
  *
  * The hardware encoding may depend on whether the value is an immediate.
  */
-enum brw_reg_type
-brw_hw_type_to_reg_type(const struct intel_device_info *devinfo,
-                        enum brw_reg_file file, unsigned hw_type)
+enum elk_reg_type
+elk_hw_type_to_reg_type(const struct intel_device_info *devinfo,
+                        enum elk_reg_file file, unsigned hw_type)
 {
    const struct hw_type *table;
 
@@ -385,14 +385,14 @@ brw_hw_type_to_reg_type(const struct intel_device_info *devinfo,
       table = gfx4_hw_type;
    }
 
-   if (file == BRW_IMMEDIATE_VALUE) {
-      for (enum brw_reg_type i = 0; i <= BRW_REGISTER_TYPE_LAST; i++) {
+   if (file == ELK_IMMEDIATE_VALUE) {
+      for (enum elk_reg_type i = 0; i <= ELK_REGISTER_TYPE_LAST; i++) {
          if (table[i].imm_type == (enum hw_imm_type)hw_type) {
             return i;
          }
       }
    } else {
-      for (enum brw_reg_type i = 0; i <= BRW_REGISTER_TYPE_LAST; i++) {
+      for (enum elk_reg_type i = 0; i <= ELK_REGISTER_TYPE_LAST; i++) {
          if (table[i].reg_type == (enum hw_reg_type)hw_type) {
             return i;
          }
@@ -402,12 +402,12 @@ brw_hw_type_to_reg_type(const struct intel_device_info *devinfo,
 }
 
 /**
- * Convert a brw_reg_type enumeration value into the hardware representation
+ * Convert a elk_reg_type enumeration value into the hardware representation
  * for a 3-src align16 instruction
  */
 unsigned
-brw_reg_type_to_a16_hw_3src_type(const struct intel_device_info *devinfo,
-                                 enum brw_reg_type type)
+elk_reg_type_to_a16_hw_3src_type(const struct intel_device_info *devinfo,
+                                 enum elk_reg_type type)
 {
    const struct hw_3src_type *table;
 
@@ -427,12 +427,12 @@ brw_reg_type_to_a16_hw_3src_type(const struct intel_device_info *devinfo,
 }
 
 /**
- * Convert a brw_reg_type enumeration value into the hardware representation
+ * Convert a elk_reg_type enumeration value into the hardware representation
  * for a 3-src align1 instruction
  */
 unsigned
-brw_reg_type_to_a1_hw_3src_type(const struct intel_device_info *devinfo,
-                                enum brw_reg_type type)
+elk_reg_type_to_a1_hw_3src_type(const struct intel_device_info *devinfo,
+                                enum elk_reg_type type)
 {
    if (devinfo->verx10 >= 125) {
       assert(type < ARRAY_SIZE(gfx125_hw_3src_type));
@@ -451,10 +451,10 @@ brw_reg_type_to_a1_hw_3src_type(const struct intel_device_info *devinfo,
 
 /**
  * Convert the hardware representation for a 3-src align16 instruction into a
- * brw_reg_type enumeration value.
+ * elk_reg_type enumeration value.
  */
-enum brw_reg_type
-brw_a16_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
+enum elk_reg_type
+elk_a16_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
                                  unsigned hw_type)
 {
    const struct hw_3src_type *table = NULL;
@@ -467,7 +467,7 @@ brw_a16_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
       table = gfx6_hw_3src_type;
    }
 
-   for (enum brw_reg_type i = 0; i <= BRW_REGISTER_TYPE_LAST; i++) {
+   for (enum elk_reg_type i = 0; i <= ELK_REGISTER_TYPE_LAST; i++) {
       if (table[i].reg_type == hw_type) {
          return i;
       }
@@ -477,10 +477,10 @@ brw_a16_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
 
 /**
  * Convert the hardware representation for a 3-src align1 instruction into a
- * brw_reg_type enumeration value.
+ * elk_reg_type enumeration value.
  */
-enum brw_reg_type
-brw_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
+enum elk_reg_type
+elk_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
                                 unsigned hw_type, unsigned exec_type)
 {
    const struct hw_3src_type *table =
@@ -489,7 +489,7 @@ brw_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
        devinfo->ver >= 11 ? gfx11_hw_3src_type :
        gfx10_hw_3src_align1_type);
 
-   for (enum brw_reg_type i = 0; i <= BRW_REGISTER_TYPE_LAST; i++) {
+   for (enum elk_reg_type i = 0; i <= ELK_REGISTER_TYPE_LAST; i++) {
       if (table[i].reg_type == hw_type &&
           table[i].exec_type == exec_type) {
          return i;
@@ -502,25 +502,25 @@ brw_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
  * Return the element size given a register type.
  */
 unsigned
-brw_reg_type_to_size(enum brw_reg_type type)
+elk_reg_type_to_size(enum elk_reg_type type)
 {
    static const unsigned type_size[] = {
-      [BRW_REGISTER_TYPE_NF] = 8,
-      [BRW_REGISTER_TYPE_DF] = 8,
-      [BRW_REGISTER_TYPE_F]  = 4,
-      [BRW_REGISTER_TYPE_HF] = 2,
-      [BRW_REGISTER_TYPE_VF] = 4,
+      [ELK_REGISTER_TYPE_NF] = 8,
+      [ELK_REGISTER_TYPE_DF] = 8,
+      [ELK_REGISTER_TYPE_F]  = 4,
+      [ELK_REGISTER_TYPE_HF] = 2,
+      [ELK_REGISTER_TYPE_VF] = 4,
 
-      [BRW_REGISTER_TYPE_Q]  = 8,
-      [BRW_REGISTER_TYPE_UQ] = 8,
-      [BRW_REGISTER_TYPE_D]  = 4,
-      [BRW_REGISTER_TYPE_UD] = 4,
-      [BRW_REGISTER_TYPE_W]  = 2,
-      [BRW_REGISTER_TYPE_UW] = 2,
-      [BRW_REGISTER_TYPE_B]  = 1,
-      [BRW_REGISTER_TYPE_UB] = 1,
-      [BRW_REGISTER_TYPE_V]  = 2,
-      [BRW_REGISTER_TYPE_UV] = 2,
+      [ELK_REGISTER_TYPE_Q]  = 8,
+      [ELK_REGISTER_TYPE_UQ] = 8,
+      [ELK_REGISTER_TYPE_D]  = 4,
+      [ELK_REGISTER_TYPE_UD] = 4,
+      [ELK_REGISTER_TYPE_W]  = 2,
+      [ELK_REGISTER_TYPE_UW] = 2,
+      [ELK_REGISTER_TYPE_B]  = 1,
+      [ELK_REGISTER_TYPE_UB] = 1,
+      [ELK_REGISTER_TYPE_V]  = 2,
+      [ELK_REGISTER_TYPE_UV] = 2,
    };
    if (type >= ARRAY_SIZE(type_size))
       return -1;
@@ -529,31 +529,31 @@ brw_reg_type_to_size(enum brw_reg_type type)
 }
 
 /**
- * Converts a BRW_REGISTER_TYPE_* enum to a short string (F, UD, and so on).
+ * Converts a ELK_REGISTER_TYPE_* enum to a short string (F, UD, and so on).
  *
- * This is different than reg_encoding from brw_disasm.c in that it operates
+ * This is different than reg_encoding from elk_disasm.c in that it operates
  * on the abstract enum values, rather than the generation-specific encoding.
  */
 const char *
-brw_reg_type_to_letters(enum brw_reg_type type)
+elk_reg_type_to_letters(enum elk_reg_type type)
 {
    static const char letters[][3] = {
-      [BRW_REGISTER_TYPE_NF] = "NF",
-      [BRW_REGISTER_TYPE_DF] = "DF",
-      [BRW_REGISTER_TYPE_F]  = "F",
-      [BRW_REGISTER_TYPE_HF] = "HF",
-      [BRW_REGISTER_TYPE_VF] = "VF",
+      [ELK_REGISTER_TYPE_NF] = "NF",
+      [ELK_REGISTER_TYPE_DF] = "DF",
+      [ELK_REGISTER_TYPE_F]  = "F",
+      [ELK_REGISTER_TYPE_HF] = "HF",
+      [ELK_REGISTER_TYPE_VF] = "VF",
 
-      [BRW_REGISTER_TYPE_Q]  = "Q",
-      [BRW_REGISTER_TYPE_UQ] = "UQ",
-      [BRW_REGISTER_TYPE_D]  = "D",
-      [BRW_REGISTER_TYPE_UD] = "UD",
-      [BRW_REGISTER_TYPE_W]  = "W",
-      [BRW_REGISTER_TYPE_UW] = "UW",
-      [BRW_REGISTER_TYPE_B]  = "B",
-      [BRW_REGISTER_TYPE_UB] = "UB",
-      [BRW_REGISTER_TYPE_V]  = "V",
-      [BRW_REGISTER_TYPE_UV] = "UV",
+      [ELK_REGISTER_TYPE_Q]  = "Q",
+      [ELK_REGISTER_TYPE_UQ] = "UQ",
+      [ELK_REGISTER_TYPE_D]  = "D",
+      [ELK_REGISTER_TYPE_UD] = "UD",
+      [ELK_REGISTER_TYPE_W]  = "W",
+      [ELK_REGISTER_TYPE_UW] = "UW",
+      [ELK_REGISTER_TYPE_B]  = "B",
+      [ELK_REGISTER_TYPE_UB] = "UB",
+      [ELK_REGISTER_TYPE_V]  = "V",
+      [ELK_REGISTER_TYPE_UV] = "UV",
    };
    if (type >= ARRAY_SIZE(letters))
       return "INVALID";

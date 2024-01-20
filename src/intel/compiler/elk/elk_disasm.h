@@ -13,26 +13,26 @@
 extern "C" {
 #endif
 
-struct brw_isa_info;
-struct brw_inst;
+struct elk_isa_info;
+struct elk_inst;
 
-const struct brw_label *brw_find_label(const struct brw_label *root, int offset);
-void brw_create_label(struct brw_label **labels, int offset, void *mem_ctx);
-int brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
-                         const struct brw_inst *inst, bool is_compacted,
-                         int offset, const struct brw_label *root_label);
+const struct elk_label *elk_find_label(const struct elk_label *root, int offset);
+void elk_create_label(struct elk_label **labels, int offset, void *mem_ctx);
+int elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
+                         const struct elk_inst *inst, bool is_compacted,
+                         int offset, const struct elk_label *root_label);
 const struct
-brw_label *brw_label_assembly(const struct brw_isa_info *isa,
+elk_label *elk_label_assembly(const struct elk_isa_info *isa,
                               const void *assembly, int start, int end,
                               void *mem_ctx);
-void brw_disassemble_with_labels(const struct brw_isa_info *isa,
+void elk_disassemble_with_labels(const struct elk_isa_info *isa,
                                  const void *assembly, int start, int end, FILE *out);
-void brw_disassemble(const struct brw_isa_info *isa,
+void elk_disassemble(const struct elk_isa_info *isa,
                      const void *assembly, int start, int end,
-                     const struct brw_label *root_label, FILE *out);
-int brw_disassemble_find_end(const struct brw_isa_info *isa,
+                     const struct elk_label *root_label, FILE *out);
+int elk_disassemble_find_end(const struct elk_isa_info *isa,
                              const void *assembly, int start);
-void brw_disassemble_with_errors(const struct brw_isa_info *isa,
+void elk_disassemble_with_errors(const struct elk_isa_info *isa,
                                  const void *assembly, int start, FILE *out);
 
 #ifdef __cplusplus

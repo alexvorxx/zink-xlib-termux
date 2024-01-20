@@ -25,7 +25,7 @@
 #ifndef ELK_IR_PERFORMANCE_H
 #define ELK_IR_PERFORMANCE_H
 
-class fs_visitor;
+class elk_fs_visitor;
 
 namespace elk {
    class vec4_visitor;
@@ -35,7 +35,7 @@ namespace elk {
     * analysis.
     */
    struct performance {
-      performance(const fs_visitor *v);
+      performance(const elk_fs_visitor *v);
       performance(const vec4_visitor *v);
       ~performance();
 
@@ -47,7 +47,7 @@ namespace elk {
       }
 
       bool
-      validate(const backend_shader *) const
+      validate(const elk_backend_shader *) const
       {
          return true;
       }

@@ -38,30 +38,30 @@
 
 #define MAX_GS_VERTS (4)
 
-struct brw_ff_gs_compile {
-   struct brw_codegen func;
-   struct brw_ff_gs_prog_key key;
-   struct brw_ff_gs_prog_data *prog_data;
+struct elk_ff_gs_compile {
+   struct elk_codegen func;
+   struct elk_ff_gs_prog_key key;
+   struct elk_ff_gs_prog_data *prog_data;
 
    struct {
-      struct brw_reg R0;
+      struct elk_reg R0;
 
       /**
        * Register holding streamed vertex buffer pointers -- see the Sandy
        * Bridge PRM, volume 2 part 1, section 4.4.2 (GS Thread Payload
        * [DevSNB]).  These pointers are delivered in GRF 1.
        */
-      struct brw_reg SVBI;
+      struct elk_reg SVBI;
 
-      struct brw_reg vertex[MAX_GS_VERTS];
-      struct brw_reg header;
-      struct brw_reg temp;
+      struct elk_reg vertex[MAX_GS_VERTS];
+      struct elk_reg header;
+      struct elk_reg temp;
 
       /**
        * Register holding destination indices for streamed buffer writes.
        * Only used for SOL programs.
        */
-      struct brw_reg destination_indices;
+      struct elk_reg destination_indices;
    } reg;
 
    /* Number of registers used to store vertex data */
@@ -80,7 +80,7 @@ struct brw_ff_gs_compile {
  *
  * - The thread will need to use the destination_indices register.
  */
-static void brw_ff_gs_alloc_regs(struct brw_ff_gs_compile *c,
+static void elk_ff_gs_alloc_regs(struct elk_ff_gs_compile *c,
                                  GLuint nr_verts,
                                  bool sol_program)
 {
@@ -88,25 +88,25 @@ static void brw_ff_gs_alloc_regs(struct brw_ff_gs_compile *c,
 
    /* Register usage is static, precompute here:
     */
-   c->reg.R0 = retype(brw_vec8_grf(i, 0), BRW_REGISTER_TYPE_UD); i++;
+   c->reg.R0 = retype(elk_vec8_grf(i, 0), ELK_REGISTER_TYPE_UD); i++;
 
    /* Streamed vertex buffer indices */
    if (sol_program)
-      c->reg.SVBI = retype(brw_vec8_grf(i++, 0), BRW_REGISTER_TYPE_UD);
+      c->reg.SVBI = retype(elk_vec8_grf(i++, 0), ELK_REGISTER_TYPE_UD);
 
    /* Payload vertices plus space for more generated vertices:
     */
    for (j = 0; j < nr_verts; j++) {
-      c->reg.vertex[j] = brw_vec4_grf(i, 0);
+      c->reg.vertex[j] = elk_vec4_grf(i, 0);
       i += c->nr_regs;
    }
 
-   c->reg.header = retype(brw_vec8_grf(i++, 0), BRW_REGISTER_TYPE_UD);
-   c->reg.temp = retype(brw_vec8_grf(i++, 0), BRW_REGISTER_TYPE_UD);
+   c->reg.header = retype(elk_vec8_grf(i++, 0), ELK_REGISTER_TYPE_UD);
+   c->reg.temp = retype(elk_vec8_grf(i++, 0), ELK_REGISTER_TYPE_UD);
 
    if (sol_program) {
       c->reg.destination_indices =
-         retype(brw_vec4_grf(i++, 0), BRW_REGISTER_TYPE_UD);
+         retype(elk_vec4_grf(i++, 0), ELK_REGISTER_TYPE_UD);
    }
 
    c->prog_data->urb_read_length = c->nr_regs;
@@ -128,10 +128,10 @@ static void brw_ff_gs_alloc_regs(struct brw_ff_gs_compile *c,
  * This function sets up the above data by copying by copying the contents of
  * R0 to the header register.
  */
-static void brw_ff_gs_initialize_header(struct brw_ff_gs_compile *c)
+static void elk_ff_gs_initialize_header(struct elk_ff_gs_compile *c)
 {
-   struct brw_codegen *p = &c->func;
-   brw_MOV(p, c->reg.header, c->reg.R0);
+   struct elk_codegen *p = &c->func;
+   elk_MOV(p, c->reg.header, c->reg.R0);
 }
 
 /**
@@ -141,11 +141,11 @@ static void brw_ff_gs_initialize_header(struct brw_ff_gs_compile *c)
  * PrimEnd, Increment CL_INVOCATIONS, and SONumPrimsWritten, many of which we
  * need to be able to update on a per-vertex basis.
  */
-static void brw_ff_gs_overwrite_header_dw2(struct brw_ff_gs_compile *c,
+static void elk_ff_gs_overwrite_header_dw2(struct elk_ff_gs_compile *c,
                                            unsigned dw2)
 {
-   struct brw_codegen *p = &c->func;
-   brw_MOV(p, get_element_ud(c->reg.header, 2), brw_imm_ud(dw2));
+   struct elk_codegen *p = &c->func;
+   elk_MOV(p, get_element_ud(c->reg.header, 2), elk_imm_ud(dw2));
 }
 
 /**
@@ -156,13 +156,13 @@ static void brw_ff_gs_overwrite_header_dw2(struct brw_ff_gs_compile *c,
  * DWORD 2.  So this function extracts the primitive type field, bitshifts it
  * appropriately, and stores it in c->reg.header.
  */
-static void brw_ff_gs_overwrite_header_dw2_from_r0(struct brw_ff_gs_compile *c)
+static void elk_ff_gs_overwrite_header_dw2_from_r0(struct elk_ff_gs_compile *c)
 {
-   struct brw_codegen *p = &c->func;
-   brw_AND(p, get_element_ud(c->reg.header, 2), get_element_ud(c->reg.R0, 2),
-           brw_imm_ud(0x1f));
-   brw_SHL(p, get_element_ud(c->reg.header, 2),
-           get_element_ud(c->reg.header, 2), brw_imm_ud(2));
+   struct elk_codegen *p = &c->func;
+   elk_AND(p, get_element_ud(c->reg.header, 2), get_element_ud(c->reg.R0, 2),
+           elk_imm_ud(0x1f));
+   elk_SHL(p, get_element_ud(c->reg.header, 2),
+           get_element_ud(c->reg.header, 2), elk_imm_ud(2));
 }
 
 /**
@@ -171,12 +171,12 @@ static void brw_ff_gs_overwrite_header_dw2_from_r0(struct brw_ff_gs_compile *c)
  * This is used to set/unset the "PrimStart" and "PrimEnd" flags appropriately
  * for each vertex.
  */
-static void brw_ff_gs_offset_header_dw2(struct brw_ff_gs_compile *c,
+static void elk_ff_gs_offset_header_dw2(struct elk_ff_gs_compile *c,
                                         int offset)
 {
-   struct brw_codegen *p = &c->func;
-   brw_ADD(p, get_element_d(c->reg.header, 2), get_element_d(c->reg.header, 2),
-           brw_imm_d(offset));
+   struct elk_codegen *p = &c->func;
+   elk_ADD(p, get_element_d(c->reg.header, 2), get_element_d(c->reg.header, 2),
+           elk_imm_d(offset));
 }
 
 
@@ -192,11 +192,11 @@ static void brw_ff_gs_offset_header_dw2(struct brw_ff_gs_compile *c,
  * will be stored in DWORD 0 of c->reg.header for use in the next URB_WRITE
  * message.
  */
-static void brw_ff_gs_emit_vue(struct brw_ff_gs_compile *c,
-                               struct brw_reg vert,
+static void elk_ff_gs_emit_vue(struct elk_ff_gs_compile *c,
+                               struct elk_reg vert,
                                bool last)
 {
-   struct brw_codegen *p = &c->func;
+   struct elk_codegen *p = &c->func;
    int write_offset = 0;
    bool complete = false;
 
@@ -208,36 +208,36 @@ static void brw_ff_gs_emit_vue(struct brw_ff_gs_compile *c,
 
       /* Copy the vertex from vertn into m1..mN+1:
        */
-      brw_copy8(p, brw_message_reg(1), offset(vert, write_offset), write_len);
+      elk_copy8(p, elk_message_reg(1), offset(vert, write_offset), write_len);
 
       /* Send the vertex data to the URB.  If this is the last write for this
        * vertex, then we mark it as complete, and either end the thread or
        * allocate another vertex URB entry (depending whether this is the last
        * vertex).
        */
-      enum brw_urb_write_flags flags;
+      enum elk_urb_write_flags flags;
       if (!complete)
-         flags = BRW_URB_WRITE_NO_FLAGS;
+         flags = ELK_URB_WRITE_NO_FLAGS;
       else if (last)
-         flags = BRW_URB_WRITE_EOT_COMPLETE;
+         flags = ELK_URB_WRITE_EOT_COMPLETE;
       else
-         flags = BRW_URB_WRITE_ALLOCATE_COMPLETE;
-      brw_urb_WRITE(p,
-                    (flags & BRW_URB_WRITE_ALLOCATE) ? c->reg.temp
-                    : retype(brw_null_reg(), BRW_REGISTER_TYPE_UD),
+         flags = ELK_URB_WRITE_ALLOCATE_COMPLETE;
+      elk_urb_WRITE(p,
+                    (flags & ELK_URB_WRITE_ALLOCATE) ? c->reg.temp
+                    : retype(elk_null_reg(), ELK_REGISTER_TYPE_UD),
                     0,
                     c->reg.header,
                     flags,
                     write_len + 1, /* msg length */
-                    (flags & BRW_URB_WRITE_ALLOCATE) ? 1
+                    (flags & ELK_URB_WRITE_ALLOCATE) ? 1
                     : 0, /* response length */
                     write_offset,  /* urb offset */
-                    BRW_URB_SWIZZLE_NONE);
+                    ELK_URB_SWIZZLE_NONE);
       write_offset += write_len;
    } while (!complete);
 
    if (!last) {
-      brw_MOV(p, get_element_ud(c->reg.header, 0),
+      elk_MOV(p, get_element_ud(c->reg.header, 0),
               get_element_ud(c->reg.temp, 0));
    }
 }
@@ -252,112 +252,112 @@ static void brw_ff_gs_emit_vue(struct brw_ff_gs_compile *c,
  * the allocated URB entry (which will be needed by the URB_WRITE meesage that
  * follows).
  */
-static void brw_ff_gs_ff_sync(struct brw_ff_gs_compile *c, int num_prim)
+static void elk_ff_gs_ff_sync(struct elk_ff_gs_compile *c, int num_prim)
 {
-   struct brw_codegen *p = &c->func;
+   struct elk_codegen *p = &c->func;
 
-   brw_MOV(p, get_element_ud(c->reg.header, 1), brw_imm_ud(num_prim));
-   brw_ff_sync(p,
+   elk_MOV(p, get_element_ud(c->reg.header, 1), elk_imm_ud(num_prim));
+   elk_ff_sync(p,
                c->reg.temp,
                0,
                c->reg.header,
                1, /* allocate */
                1, /* response length */
                0 /* eot */);
-   brw_MOV(p, get_element_ud(c->reg.header, 0),
+   elk_MOV(p, get_element_ud(c->reg.header, 0),
            get_element_ud(c->reg.temp, 0));
 }
 
 
 static void
-brw_ff_gs_quads(struct brw_ff_gs_compile *c,
-		const struct brw_ff_gs_prog_key *key)
+elk_ff_gs_quads(struct elk_ff_gs_compile *c,
+		const struct elk_ff_gs_prog_key *key)
 {
-   brw_ff_gs_alloc_regs(c, 4, false);
-   brw_ff_gs_initialize_header(c);
+   elk_ff_gs_alloc_regs(c, 4, false);
+   elk_ff_gs_initialize_header(c);
    /* Use polygons for correct edgeflag behaviour. Note that vertex 3
     * is the PV for quads, but vertex 0 for polygons:
     */
    if (c->func.devinfo->ver == 5)
-      brw_ff_gs_ff_sync(c, 1);
-   brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_ff_sync(c, 1);
+   elk_ff_gs_overwrite_header_dw2(
       c, ((_3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT)
           | URB_WRITE_PRIM_START));
    if (key->pv_first) {
-      brw_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
-      brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
+      elk_ff_gs_overwrite_header_dw2(
          c, _3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[1], 0);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[2], 0);
-      brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_emit_vue(c, c->reg.vertex[1], 0);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[2], 0);
+      elk_ff_gs_overwrite_header_dw2(
          c, ((_3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT)
              | URB_WRITE_PRIM_END));
-      brw_ff_gs_emit_vue(c, c->reg.vertex[3], 1);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[3], 1);
    }
    else {
-      brw_ff_gs_emit_vue(c, c->reg.vertex[3], 0);
-      brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_emit_vue(c, c->reg.vertex[3], 0);
+      elk_ff_gs_overwrite_header_dw2(
          c, _3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[1], 0);
-      brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[1], 0);
+      elk_ff_gs_overwrite_header_dw2(
          c, ((_3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT)
              | URB_WRITE_PRIM_END));
-      brw_ff_gs_emit_vue(c, c->reg.vertex[2], 1);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[2], 1);
    }
 }
 
 static void
-brw_ff_gs_quad_strip(struct brw_ff_gs_compile *c,
-                     const struct brw_ff_gs_prog_key *key)
+elk_ff_gs_quad_strip(struct elk_ff_gs_compile *c,
+                     const struct elk_ff_gs_prog_key *key)
 {
-   brw_ff_gs_alloc_regs(c, 4, false);
-   brw_ff_gs_initialize_header(c);
+   elk_ff_gs_alloc_regs(c, 4, false);
+   elk_ff_gs_initialize_header(c);
 
    if (c->func.devinfo->ver == 5)
-      brw_ff_gs_ff_sync(c, 1);
-   brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_ff_sync(c, 1);
+   elk_ff_gs_overwrite_header_dw2(
       c, ((_3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT)
           | URB_WRITE_PRIM_START));
    if (key->pv_first) {
-      brw_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
-      brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
+      elk_ff_gs_overwrite_header_dw2(
          c, _3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[1], 0);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[2], 0);
-      brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_emit_vue(c, c->reg.vertex[1], 0);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[2], 0);
+      elk_ff_gs_overwrite_header_dw2(
          c, ((_3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT)
              | URB_WRITE_PRIM_END));
-      brw_ff_gs_emit_vue(c, c->reg.vertex[3], 1);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[3], 1);
    }
    else {
-      brw_ff_gs_emit_vue(c, c->reg.vertex[2], 0);
-      brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_emit_vue(c, c->reg.vertex[2], 0);
+      elk_ff_gs_overwrite_header_dw2(
          c, _3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[3], 0);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
-      brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_emit_vue(c, c->reg.vertex[3], 0);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
+      elk_ff_gs_overwrite_header_dw2(
          c, ((_3DPRIM_POLYGON << URB_WRITE_PRIM_TYPE_SHIFT)
              | URB_WRITE_PRIM_END));
-      brw_ff_gs_emit_vue(c, c->reg.vertex[1], 1);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[1], 1);
    }
 }
 
-static void brw_ff_gs_lines(struct brw_ff_gs_compile *c)
+static void elk_ff_gs_lines(struct elk_ff_gs_compile *c)
 {
-   brw_ff_gs_alloc_regs(c, 2, false);
-   brw_ff_gs_initialize_header(c);
+   elk_ff_gs_alloc_regs(c, 2, false);
+   elk_ff_gs_initialize_header(c);
 
    if (c->func.devinfo->ver == 5)
-      brw_ff_gs_ff_sync(c, 1);
-   brw_ff_gs_overwrite_header_dw2(
+      elk_ff_gs_ff_sync(c, 1);
+   elk_ff_gs_overwrite_header_dw2(
       c, ((_3DPRIM_LINESTRIP << URB_WRITE_PRIM_TYPE_SHIFT)
           | URB_WRITE_PRIM_START));
-   brw_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
-   brw_ff_gs_overwrite_header_dw2(
+   elk_ff_gs_emit_vue(c, c->reg.vertex[0], 0);
+   elk_ff_gs_overwrite_header_dw2(
       c, ((_3DPRIM_LINESTRIP << URB_WRITE_PRIM_TYPE_SHIFT)
           | URB_WRITE_PRIM_END));
-   brw_ff_gs_emit_vue(c, c->reg.vertex[1], 1);
+   elk_ff_gs_emit_vue(c, c->reg.vertex[1], 1);
 }
 
 /**
@@ -365,20 +365,20 @@ static void brw_ff_gs_lines(struct brw_ff_gs_compile *c)
  * (transform feedback).
  */
 static void
-gfx6_sol_program(struct brw_ff_gs_compile *c, const struct brw_ff_gs_prog_key *key,
+gfx6_sol_program(struct elk_ff_gs_compile *c, const struct elk_ff_gs_prog_key *key,
                  unsigned num_verts, bool check_edge_flags)
 {
-   struct brw_codegen *p = &c->func;
-   brw_inst *inst;
+   struct elk_codegen *p = &c->func;
+   elk_inst *inst;
    c->prog_data->svbi_postincrement_value = num_verts;
 
-   brw_ff_gs_alloc_regs(c, num_verts, true);
-   brw_ff_gs_initialize_header(c);
+   elk_ff_gs_alloc_regs(c, num_verts, true);
+   elk_ff_gs_initialize_header(c);
 
    if (key->num_transform_feedback_bindings > 0) {
       unsigned vertex, binding;
-      struct brw_reg destination_indices_uw =
-         vec8(retype(c->reg.destination_indices, BRW_REGISTER_TYPE_UW));
+      struct elk_reg destination_indices_uw =
+         vec8(retype(c->reg.destination_indices, ELK_REGISTER_TYPE_UW));
 
       /* Note: since we use the binding table to keep track of buffer offsets
        * and stride, the GS doesn't need to keep track of a separate pointer
@@ -388,12 +388,12 @@ gfx6_sol_program(struct brw_ff_gs_compile *c, const struct brw_ff_gs_prog_key *k
        *
        * Make sure that the buffers have enough room for all the vertices.
        */
-      brw_ADD(p, get_element_ud(c->reg.temp, 0),
-                 get_element_ud(c->reg.SVBI, 0), brw_imm_ud(num_verts));
-      brw_CMP(p, vec1(brw_null_reg()), BRW_CONDITIONAL_LE,
+      elk_ADD(p, get_element_ud(c->reg.temp, 0),
+                 get_element_ud(c->reg.SVBI, 0), elk_imm_ud(num_verts));
+      elk_CMP(p, vec1(elk_null_reg()), ELK_CONDITIONAL_LE,
                  get_element_ud(c->reg.temp, 0),
                  get_element_ud(c->reg.SVBI, 4));
-      brw_IF(p, BRW_EXECUTE_1);
+      elk_IF(p, ELK_EXECUTE_1);
 
       /* Compute the destination indices to write to.  Usually we use SVBI[0]
        * + (0, 1, 2).  However, for odd-numbered triangles in tristrips, the
@@ -404,7 +404,7 @@ gfx6_sol_program(struct brw_ff_gs_compile *c, const struct brw_ff_gs_prog_key *k
        * vertex convention, and in order SVBI[0] + (1, 0, 2) if we're using
        * the last provoking vertex convention.
        *
-       * Note: since brw_imm_v can only be used in instructions in
+       * Note: since elk_imm_v can only be used in instructions in
        * packed-word execution mode, and SVBI is a double-word, we need to
        * first move the appropriate immediate constant ((0, 1, 2), (0, 2, 1),
        * or (1, 0, 2)) to the destination_indices register, and then add SVBI
@@ -413,42 +413,42 @@ gfx6_sol_program(struct brw_ff_gs_compile *c, const struct brw_ff_gs_prog_key *k
        * destination_indices, we need to intersperse zeros to fill the upper
        * halves of each double-word.
        */
-      brw_MOV(p, destination_indices_uw,
-              brw_imm_v(0x00020100)); /* (0, 1, 2) */
+      elk_MOV(p, destination_indices_uw,
+              elk_imm_v(0x00020100)); /* (0, 1, 2) */
       if (num_verts == 3) {
          /* Get primitive type into temp register. */
-         brw_AND(p, get_element_ud(c->reg.temp, 0),
-                 get_element_ud(c->reg.R0, 2), brw_imm_ud(0x1f));
+         elk_AND(p, get_element_ud(c->reg.temp, 0),
+                 get_element_ud(c->reg.R0, 2), elk_imm_ud(0x1f));
 
          /* Test if primitive type is TRISTRIP_REVERSE.  We need to do this as
           * an 8-wide comparison so that the conditional MOV that follows
           * moves all 8 words correctly.
           */
-         brw_CMP(p, vec8(brw_null_reg()), BRW_CONDITIONAL_EQ,
+         elk_CMP(p, vec8(elk_null_reg()), ELK_CONDITIONAL_EQ,
                  get_element_ud(c->reg.temp, 0),
-                 brw_imm_ud(_3DPRIM_TRISTRIP_REVERSE));
+                 elk_imm_ud(_3DPRIM_TRISTRIP_REVERSE));
 
          /* If so, then overwrite destination_indices_uw with the appropriate
           * reordering.
           */
-         inst = brw_MOV(p, destination_indices_uw,
-                        brw_imm_v(key->pv_first ? 0x00010200    /* (0, 2, 1) */
+         inst = elk_MOV(p, destination_indices_uw,
+                        elk_imm_v(key->pv_first ? 0x00010200    /* (0, 2, 1) */
                                                 : 0x00020001)); /* (1, 0, 2) */
-         brw_inst_set_pred_control(p->devinfo, inst, BRW_PREDICATE_NORMAL);
+         elk_inst_set_pred_control(p->devinfo, inst, ELK_PREDICATE_NORMAL);
       }
 
-      assert(c->reg.destination_indices.width == BRW_EXECUTE_4);
-      brw_push_insn_state(p);
-      brw_set_default_exec_size(p, BRW_EXECUTE_4);
-      brw_ADD(p, c->reg.destination_indices,
+      assert(c->reg.destination_indices.width == ELK_EXECUTE_4);
+      elk_push_insn_state(p);
+      elk_set_default_exec_size(p, ELK_EXECUTE_4);
+      elk_ADD(p, c->reg.destination_indices,
               c->reg.destination_indices, get_element_ud(c->reg.SVBI, 0));
-      brw_pop_insn_state(p);
+      elk_pop_insn_state(p);
       /* For each vertex, generate code to output each varying using the
        * appropriate binding table entry.
        */
       for (vertex = 0; vertex < num_verts; ++vertex) {
          /* Set up the correct destination index for this vertex */
-         brw_MOV(p, get_element_ud(c->reg.header, 5),
+         elk_MOV(p, get_element_ud(c->reg.header, 5),
                  get_element_ud(c->reg.destination_indices, vertex));
 
          for (binding = 0; binding < key->num_transform_feedback_bindings;
@@ -465,36 +465,36 @@ gfx6_sol_program(struct brw_ff_gs_compile *c, const struct brw_ff_gs_prog_key *k
             bool final_write =
                binding == key->num_transform_feedback_bindings - 1 &&
                vertex == num_verts - 1;
-            struct brw_reg vertex_slot = c->reg.vertex[vertex];
+            struct elk_reg vertex_slot = c->reg.vertex[vertex];
             vertex_slot.nr += slot / 2;
             vertex_slot.subnr = (slot % 2) * 16;
             /* gl_PointSize is stored in VARYING_SLOT_PSIZ.w. */
             vertex_slot.swizzle = varying == VARYING_SLOT_PSIZ
-               ? BRW_SWIZZLE_WWWW : key->transform_feedback_swizzles[binding];
-            brw_set_default_access_mode(p, BRW_ALIGN_16);
-            brw_push_insn_state(p);
-            brw_set_default_exec_size(p, BRW_EXECUTE_4);
+               ? ELK_SWIZZLE_WWWW : key->transform_feedback_swizzles[binding];
+            elk_set_default_access_mode(p, ELK_ALIGN_16);
+            elk_push_insn_state(p);
+            elk_set_default_exec_size(p, ELK_EXECUTE_4);
 
-            brw_MOV(p, stride(c->reg.header, 4, 4, 1),
-                    retype(vertex_slot, BRW_REGISTER_TYPE_UD));
-            brw_pop_insn_state(p);
+            elk_MOV(p, stride(c->reg.header, 4, 4, 1),
+                    retype(vertex_slot, ELK_REGISTER_TYPE_UD));
+            elk_pop_insn_state(p);
 
-            brw_set_default_access_mode(p, BRW_ALIGN_1);
-            brw_svb_write(p,
-                          final_write ? c->reg.temp : brw_null_reg(), /* dest */
+            elk_set_default_access_mode(p, ELK_ALIGN_1);
+            elk_svb_write(p,
+                          final_write ? c->reg.temp : elk_null_reg(), /* dest */
                           1, /* msg_reg_nr */
                           c->reg.header, /* src0 */
-                          BRW_GFX6_SOL_BINDING_START + binding, /* binding_table_index */
+                          ELK_GFX6_SOL_BINDING_START + binding, /* binding_table_index */
                           final_write); /* send_commit_msg */
          }
       }
-      brw_ENDIF(p);
+      elk_ENDIF(p);
 
       /* Now, reinitialize the header register from R0 to restore the parts of
        * the register that we overwrote while streaming out transform feedback
        * data.
        */
-      brw_ff_gs_initialize_header(c);
+      elk_ff_gs_initialize_header(c);
 
       /* Finally, wait for the write commit to occur so that we can proceed to
        * other things safely.
@@ -506,68 +506,68 @@ gfx6_sol_program(struct brw_ff_gs_compile *c, const struct brw_ff_gs_prog_key *k
        *   register. Thus, a simple “mov” instruction using the register as a
        *   source is sufficient to wait for the write commit to occur.
        */
-      brw_MOV(p, c->reg.temp, c->reg.temp);
+      elk_MOV(p, c->reg.temp, c->reg.temp);
    }
 
-   brw_ff_gs_ff_sync(c, 1);
+   elk_ff_gs_ff_sync(c, 1);
 
-   brw_ff_gs_overwrite_header_dw2_from_r0(c);
+   elk_ff_gs_overwrite_header_dw2_from_r0(c);
    switch (num_verts) {
    case 1:
-      brw_ff_gs_offset_header_dw2(c,
+      elk_ff_gs_offset_header_dw2(c,
                                   URB_WRITE_PRIM_START | URB_WRITE_PRIM_END);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[0], true);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[0], true);
       break;
    case 2:
-      brw_ff_gs_offset_header_dw2(c, URB_WRITE_PRIM_START);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[0], false);
-      brw_ff_gs_offset_header_dw2(c,
+      elk_ff_gs_offset_header_dw2(c, URB_WRITE_PRIM_START);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[0], false);
+      elk_ff_gs_offset_header_dw2(c,
                                   URB_WRITE_PRIM_END - URB_WRITE_PRIM_START);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[1], true);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[1], true);
       break;
    case 3:
       if (check_edge_flags) {
          /* Only emit vertices 0 and 1 if this is the first triangle of the
           * polygon.  Otherwise they are redundant.
           */
-         brw_AND(p, retype(brw_null_reg(), BRW_REGISTER_TYPE_UD),
+         elk_AND(p, retype(elk_null_reg(), ELK_REGISTER_TYPE_UD),
                  get_element_ud(c->reg.R0, 2),
-                 brw_imm_ud(BRW_GS_EDGE_INDICATOR_0));
-         brw_inst_set_cond_modifier(p->devinfo, brw_last_inst, BRW_CONDITIONAL_NZ);
-         brw_IF(p, BRW_EXECUTE_1);
+                 elk_imm_ud(ELK_GS_EDGE_INDICATOR_0));
+         elk_inst_set_cond_modifier(p->devinfo, elk_last_inst, ELK_CONDITIONAL_NZ);
+         elk_IF(p, ELK_EXECUTE_1);
       }
-      brw_ff_gs_offset_header_dw2(c, URB_WRITE_PRIM_START);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[0], false);
-      brw_ff_gs_offset_header_dw2(c, -URB_WRITE_PRIM_START);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[1], false);
+      elk_ff_gs_offset_header_dw2(c, URB_WRITE_PRIM_START);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[0], false);
+      elk_ff_gs_offset_header_dw2(c, -URB_WRITE_PRIM_START);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[1], false);
       if (check_edge_flags) {
-         brw_ENDIF(p);
+         elk_ENDIF(p);
          /* Only emit vertex 2 in PRIM_END mode if this is the last triangle
           * of the polygon.  Otherwise leave the primitive incomplete because
           * there are more polygon vertices coming.
           */
-         brw_AND(p, retype(brw_null_reg(), BRW_REGISTER_TYPE_UD),
+         elk_AND(p, retype(elk_null_reg(), ELK_REGISTER_TYPE_UD),
                  get_element_ud(c->reg.R0, 2),
-                 brw_imm_ud(BRW_GS_EDGE_INDICATOR_1));
-         brw_inst_set_cond_modifier(p->devinfo, brw_last_inst, BRW_CONDITIONAL_NZ);
-         brw_set_default_predicate_control(p, BRW_PREDICATE_NORMAL);
+                 elk_imm_ud(ELK_GS_EDGE_INDICATOR_1));
+         elk_inst_set_cond_modifier(p->devinfo, elk_last_inst, ELK_CONDITIONAL_NZ);
+         elk_set_default_predicate_control(p, ELK_PREDICATE_NORMAL);
       }
-      brw_ff_gs_offset_header_dw2(c, URB_WRITE_PRIM_END);
-      brw_set_default_predicate_control(p, BRW_PREDICATE_NONE);
-      brw_ff_gs_emit_vue(c, c->reg.vertex[2], true);
+      elk_ff_gs_offset_header_dw2(c, URB_WRITE_PRIM_END);
+      elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
+      elk_ff_gs_emit_vue(c, c->reg.vertex[2], true);
       break;
    }
 }
 
 const unsigned *
-brw_compile_ff_gs_prog(struct brw_compiler *compiler,
+elk_compile_ff_gs_prog(struct elk_compiler *compiler,
 		       void *mem_ctx,
-		       const struct brw_ff_gs_prog_key *key,
-		       struct brw_ff_gs_prog_data *prog_data,
+		       const struct elk_ff_gs_prog_key *key,
+		       struct elk_ff_gs_prog_data *prog_data,
 		       struct intel_vue_map *vue_map,
 		       unsigned *final_assembly_size)
 {
-   struct brw_ff_gs_compile c;
+   struct elk_ff_gs_compile c;
    const GLuint *program;
 
    memset(&c, 0, sizeof(c));
@@ -581,14 +581,14 @@ brw_compile_ff_gs_prog(struct brw_compiler *compiler,
 
    /* Begin the compilation:
     */
-   brw_init_codegen(&compiler->isa, &c.func, mem_ctx);
+   elk_init_codegen(&compiler->isa, &c.func, mem_ctx);
 
    c.func.single_program_flow = 1;
 
    /* For some reason the thread is spawned with only 4 channels
     * unmasked.
     */
-   brw_set_default_mask_control(&c.func, BRW_MASK_DISABLE);
+   elk_set_default_mask_control(&c.func, ELK_MASK_DISABLE);
 
    if (compiler->devinfo->ver >= 6) {
       unsigned num_verts;
@@ -631,28 +631,28 @@ brw_compile_ff_gs_prog(struct brw_compiler *compiler,
        */
       switch (key->primitive) {
       case _3DPRIM_QUADLIST:
-         brw_ff_gs_quads( &c, key );
+         elk_ff_gs_quads( &c, key );
          break;
       case _3DPRIM_QUADSTRIP:
-         brw_ff_gs_quad_strip( &c, key );
+         elk_ff_gs_quad_strip( &c, key );
          break;
       case _3DPRIM_LINELOOP:
-         brw_ff_gs_lines( &c );
+         elk_ff_gs_lines( &c );
          break;
       default:
          return NULL;
       }
    }
 
-   brw_compact_instructions(&c.func, 0, NULL);
+   elk_compact_instructions(&c.func, 0, NULL);
 
    /* get the program
     */
-   program = brw_get_program(&c.func, final_assembly_size);
+   program = elk_get_program(&c.func, final_assembly_size);
 
    if (INTEL_DEBUG(DEBUG_GS)) {
       fprintf(stderr, "gs:\n");
-      brw_disassemble_with_labels(&compiler->isa, c.func.store,
+      elk_disassemble_with_labels(&compiler->isa, c.func.store,
                                   0, *final_assembly_size, stderr);
       fprintf(stderr, "\n");
     }

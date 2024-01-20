@@ -77,12 +77,12 @@
        nir_divergence_single_patch_per_tes_subgroup |                         \
        nir_divergence_shader_record_ptr_uniform)
 
-const struct nir_shader_compiler_options brw_scalar_nir_options = {
+const struct nir_shader_compiler_options elk_scalar_nir_options = {
    COMMON_OPTIONS,
    COMMON_SCALAR_OPTIONS,
 };
 
-const struct nir_shader_compiler_options brw_vector_nir_options = {
+const struct nir_shader_compiler_options elk_vector_nir_options = {
    COMMON_OPTIONS,
 
    /* In the vec4 backend, our dpN instruction replicates its result to all the
@@ -102,20 +102,20 @@ const struct nir_shader_compiler_options brw_vector_nir_options = {
    .max_unroll_iterations = 32,
 };
 
-struct brw_compiler *
-brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
+struct elk_compiler *
+elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
 {
    assert(devinfo->ver <= 8);
 
-   struct brw_compiler *compiler = rzalloc(mem_ctx, struct brw_compiler);
+   struct elk_compiler *compiler = rzalloc(mem_ctx, struct elk_compiler);
 
    compiler->devinfo = devinfo;
 
-   brw_init_isa_info(&compiler->isa, devinfo);
+   elk_init_isa_info(&compiler->isa, devinfo);
 
-   brw_fs_alloc_reg_sets(compiler);
+   elk_fs_alloc_reg_sets(compiler);
    if (devinfo->ver < 8)
-      brw_vec4_alloc_reg_set(compiler);
+      elk_vec4_alloc_reg_set(compiler);
 
    compiler->precise_trig = debug_get_bool_option("INTEL_PRECISE_TRIG", false);
 
@@ -175,10 +175,10 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
          rzalloc(compiler, struct nir_shader_compiler_options);
       bool is_scalar = compiler->scalar_stage[i];
       if (is_scalar) {
-         *nir_options = brw_scalar_nir_options;
+         *nir_options = elk_scalar_nir_options;
          int64_options |= nir_lower_usub_sat64;
       } else {
-         *nir_options = brw_vector_nir_options;
+         *nir_options = elk_vector_nir_options;
       }
 
       /* Prior to Gfx6, there are no three source operations, and Gfx11 loses
@@ -214,7 +214,7 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       nir_options->unify_interfaces = i < MESA_SHADER_FRAGMENT;
 
       nir_options->force_indirect_unrolling |=
-         brw_nir_no_indirect_mask(compiler, i);
+         elk_nir_no_indirect_mask(compiler, i);
       nir_options->force_indirect_unrolling_sampler = devinfo->ver < 7;
 
       if (compiler->use_tcs_multi_patch) {
@@ -240,7 +240,7 @@ insert_u64_bit(uint64_t *val, bool add)
 }
 
 uint64_t
-brw_get_compiler_config_value(const struct brw_compiler *compiler)
+elk_get_compiler_config_value(const struct elk_compiler *compiler)
 {
    uint64_t config = 0;
    unsigned bits = 0;
@@ -271,40 +271,40 @@ brw_get_compiler_config_value(const struct brw_compiler *compiler)
 }
 
 unsigned
-brw_prog_data_size(gl_shader_stage stage)
+elk_prog_data_size(gl_shader_stage stage)
 {
    static const size_t stage_sizes[] = {
-      [MESA_SHADER_VERTEX]       = sizeof(struct brw_vs_prog_data),
-      [MESA_SHADER_TESS_CTRL]    = sizeof(struct brw_tcs_prog_data),
-      [MESA_SHADER_TESS_EVAL]    = sizeof(struct brw_tes_prog_data),
-      [MESA_SHADER_GEOMETRY]     = sizeof(struct brw_gs_prog_data),
-      [MESA_SHADER_FRAGMENT]     = sizeof(struct brw_wm_prog_data),
-      [MESA_SHADER_COMPUTE]      = sizeof(struct brw_cs_prog_data),
+      [MESA_SHADER_VERTEX]       = sizeof(struct elk_vs_prog_data),
+      [MESA_SHADER_TESS_CTRL]    = sizeof(struct elk_tcs_prog_data),
+      [MESA_SHADER_TESS_EVAL]    = sizeof(struct elk_tes_prog_data),
+      [MESA_SHADER_GEOMETRY]     = sizeof(struct elk_gs_prog_data),
+      [MESA_SHADER_FRAGMENT]     = sizeof(struct elk_wm_prog_data),
+      [MESA_SHADER_COMPUTE]      = sizeof(struct elk_cs_prog_data),
    };
    assert((int)stage >= 0 && stage < ARRAY_SIZE(stage_sizes));
    return stage_sizes[stage];
 }
 
 unsigned
-brw_prog_key_size(gl_shader_stage stage)
+elk_prog_key_size(gl_shader_stage stage)
 {
    static const size_t stage_sizes[] = {
-      [MESA_SHADER_VERTEX]       = sizeof(struct brw_vs_prog_key),
-      [MESA_SHADER_TESS_CTRL]    = sizeof(struct brw_tcs_prog_key),
-      [MESA_SHADER_TESS_EVAL]    = sizeof(struct brw_tes_prog_key),
-      [MESA_SHADER_GEOMETRY]     = sizeof(struct brw_gs_prog_key),
-      [MESA_SHADER_FRAGMENT]     = sizeof(struct brw_wm_prog_key),
-      [MESA_SHADER_COMPUTE]      = sizeof(struct brw_cs_prog_key),
+      [MESA_SHADER_VERTEX]       = sizeof(struct elk_vs_prog_key),
+      [MESA_SHADER_TESS_CTRL]    = sizeof(struct elk_tcs_prog_key),
+      [MESA_SHADER_TESS_EVAL]    = sizeof(struct elk_tes_prog_key),
+      [MESA_SHADER_GEOMETRY]     = sizeof(struct elk_gs_prog_key),
+      [MESA_SHADER_FRAGMENT]     = sizeof(struct elk_wm_prog_key),
+      [MESA_SHADER_COMPUTE]      = sizeof(struct elk_cs_prog_key),
    };
    assert((int)stage >= 0 && stage < ARRAY_SIZE(stage_sizes));
    return stage_sizes[stage];
 }
 
 void
-brw_write_shader_relocs(const struct brw_isa_info *isa,
+elk_write_shader_relocs(const struct elk_isa_info *isa,
                         void *program,
-                        const struct brw_stage_prog_data *prog_data,
-                        struct brw_shader_reloc_value *values,
+                        const struct elk_stage_prog_data *prog_data,
+                        struct elk_shader_reloc_value *values,
                         unsigned num_values)
 {
    for (unsigned i = 0; i < prog_data->num_relocs; i++) {
@@ -314,11 +314,11 @@ brw_write_shader_relocs(const struct brw_isa_info *isa,
          if (prog_data->relocs[i].id == values[j].id) {
             uint32_t value = values[j].value + prog_data->relocs[i].delta;
             switch (prog_data->relocs[i].type) {
-            case BRW_SHADER_RELOC_TYPE_U32:
+            case ELK_SHADER_RELOC_TYPE_U32:
                *(uint32_t *)dst = value;
                break;
-            case BRW_SHADER_RELOC_TYPE_MOV_IMM:
-               brw_update_reloc_imm(isa, dst, value);
+            case ELK_SHADER_RELOC_TYPE_MOV_IMM:
+               elk_update_reloc_imm(isa, dst, value);
                break;
             default:
                unreachable("Invalid relocation type");

@@ -44,7 +44,7 @@ int yyparse(void);
 int yylex(void);
 char *lex_text(void);
 
-extern struct brw_codegen *p;
+extern struct elk_codegen *p;
 extern int errors;
 extern char *input_filename;
 

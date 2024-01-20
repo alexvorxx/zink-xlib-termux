@@ -90,10 +90,10 @@ isPowerofTwo(unsigned int x)
 	return x && (!(x & (x - 1)));
 }
 
-static struct brw_reg
-set_direct_src_operand(struct brw_reg *reg, int type)
+static struct elk_reg
+set_direct_src_operand(struct elk_reg *reg, int type)
 {
-	return brw_reg(reg->file,
+	return elk_reg(reg->file,
 		       reg->nr,
 		       reg->subnr,
 		       0,		// negate
@@ -102,59 +102,59 @@ set_direct_src_operand(struct brw_reg *reg, int type)
 		       0,		// vstride
 		       0,		// width
 		       0,		// hstride
-		       BRW_SWIZZLE_NOOP,
+		       ELK_SWIZZLE_NOOP,
 		       WRITEMASK_XYZW);
 }
 
 static void
-i965_asm_unary_instruction(int opcode, struct brw_codegen *p,
-		           struct brw_reg dest, struct brw_reg src0)
+i965_asm_unary_instruction(int opcode, struct elk_codegen *p,
+		           struct elk_reg dest, struct elk_reg src0)
 {
 	switch (opcode) {
-	case BRW_OPCODE_BFREV:
-		brw_BFREV(p, dest, src0);
+	case ELK_OPCODE_BFREV:
+		elk_BFREV(p, dest, src0);
 		break;
-	case BRW_OPCODE_CBIT:
-		brw_CBIT(p, dest, src0);
+	case ELK_OPCODE_CBIT:
+		elk_CBIT(p, dest, src0);
 		break;
-	case BRW_OPCODE_F32TO16:
-		brw_F32TO16(p, dest, src0);
+	case ELK_OPCODE_F32TO16:
+		elk_F32TO16(p, dest, src0);
 		break;
-	case BRW_OPCODE_F16TO32:
-		brw_F16TO32(p, dest, src0);
+	case ELK_OPCODE_F16TO32:
+		elk_F16TO32(p, dest, src0);
 		break;
-	case BRW_OPCODE_MOV:
-		brw_MOV(p, dest, src0);
+	case ELK_OPCODE_MOV:
+		elk_MOV(p, dest, src0);
 		break;
-	case BRW_OPCODE_FBL:
-		brw_FBL(p, dest, src0);
+	case ELK_OPCODE_FBL:
+		elk_FBL(p, dest, src0);
 		break;
-	case BRW_OPCODE_FRC:
-		brw_FRC(p, dest, src0);
+	case ELK_OPCODE_FRC:
+		elk_FRC(p, dest, src0);
 		break;
-	case BRW_OPCODE_FBH:
-		brw_FBH(p, dest, src0);
+	case ELK_OPCODE_FBH:
+		elk_FBH(p, dest, src0);
 		break;
-	case BRW_OPCODE_NOT:
-		brw_NOT(p, dest, src0);
+	case ELK_OPCODE_NOT:
+		elk_NOT(p, dest, src0);
 		break;
-	case BRW_OPCODE_RNDE:
-		brw_RNDE(p, dest, src0);
+	case ELK_OPCODE_RNDE:
+		elk_RNDE(p, dest, src0);
 		break;
-	case BRW_OPCODE_RNDZ:
-		brw_RNDZ(p, dest, src0);
+	case ELK_OPCODE_RNDZ:
+		elk_RNDZ(p, dest, src0);
 		break;
-	case BRW_OPCODE_RNDD:
-		brw_RNDD(p, dest, src0);
+	case ELK_OPCODE_RNDD:
+		elk_RNDD(p, dest, src0);
 		break;
-	case BRW_OPCODE_LZD:
-		brw_LZD(p, dest, src0);
+	case ELK_OPCODE_LZD:
+		elk_LZD(p, dest, src0);
 		break;
-	case BRW_OPCODE_DIM:
-		brw_DIM(p, dest, src0);
+	case ELK_OPCODE_DIM:
+		elk_DIM(p, dest, src0);
 		break;
-	case BRW_OPCODE_RNDU:
-		fprintf(stderr, "Opcode BRW_OPCODE_RNDU unhandled\n");
+	case ELK_OPCODE_RNDU:
+		fprintf(stderr, "Opcode ELK_OPCODE_RNDU unhandled\n");
 		break;
 	default:
 		fprintf(stderr, "Unsupported unary opcode\n");
@@ -163,92 +163,92 @@ i965_asm_unary_instruction(int opcode, struct brw_codegen *p,
 
 static void
 i965_asm_binary_instruction(int opcode,
-			    struct brw_codegen *p,
-			    struct brw_reg dest,
-			    struct brw_reg src0,
-			    struct brw_reg src1)
+			    struct elk_codegen *p,
+			    struct elk_reg dest,
+			    struct elk_reg src0,
+			    struct elk_reg src1)
 {
 	switch (opcode) {
-	case BRW_OPCODE_ADDC:
-		brw_ADDC(p, dest, src0, src1);
+	case ELK_OPCODE_ADDC:
+		elk_ADDC(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_BFI1:
-		brw_BFI1(p, dest, src0, src1);
+	case ELK_OPCODE_BFI1:
+		elk_BFI1(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_DP2:
-		brw_DP2(p, dest, src0, src1);
+	case ELK_OPCODE_DP2:
+		elk_DP2(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_DP3:
-		brw_DP3(p, dest, src0, src1);
+	case ELK_OPCODE_DP3:
+		elk_DP3(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_DP4:
-		brw_DP4(p, dest, src0, src1);
+	case ELK_OPCODE_DP4:
+		elk_DP4(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_DPH:
-		brw_DPH(p, dest, src0, src1);
+	case ELK_OPCODE_DPH:
+		elk_DPH(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_LINE:
-		brw_LINE(p, dest, src0, src1);
+	case ELK_OPCODE_LINE:
+		elk_LINE(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_MAC:
-		brw_MAC(p, dest, src0, src1);
+	case ELK_OPCODE_MAC:
+		elk_MAC(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_MACH:
-		brw_MACH(p, dest, src0, src1);
+	case ELK_OPCODE_MACH:
+		elk_MACH(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_PLN:
-		brw_PLN(p, dest, src0, src1);
+	case ELK_OPCODE_PLN:
+		elk_PLN(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_ROL:
-		brw_ROL(p, dest, src0, src1);
+	case ELK_OPCODE_ROL:
+		elk_ROL(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_ROR:
-		brw_ROR(p, dest, src0, src1);
+	case ELK_OPCODE_ROR:
+		elk_ROR(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_SAD2:
-		fprintf(stderr, "Opcode BRW_OPCODE_SAD2 unhandled\n");
+	case ELK_OPCODE_SAD2:
+		fprintf(stderr, "Opcode ELK_OPCODE_SAD2 unhandled\n");
 		break;
-	case BRW_OPCODE_SADA2:
-		fprintf(stderr, "Opcode BRW_OPCODE_SADA2 unhandled\n");
+	case ELK_OPCODE_SADA2:
+		fprintf(stderr, "Opcode ELK_OPCODE_SADA2 unhandled\n");
 		break;
-	case BRW_OPCODE_SUBB:
-		brw_SUBB(p, dest, src0, src1);
+	case ELK_OPCODE_SUBB:
+		elk_SUBB(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_ADD:
-		brw_ADD(p, dest, src0, src1);
+	case ELK_OPCODE_ADD:
+		elk_ADD(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_CMP:
+	case ELK_OPCODE_CMP:
 		/* Third parameter is conditional modifier
 		 * which gets updated later
 		 */
-		brw_CMP(p, dest, 0, src0, src1);
+		elk_CMP(p, dest, 0, src0, src1);
 		break;
-	case BRW_OPCODE_AND:
-		brw_AND(p, dest, src0, src1);
+	case ELK_OPCODE_AND:
+		elk_AND(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_ASR:
-		brw_ASR(p, dest, src0, src1);
+	case ELK_OPCODE_ASR:
+		elk_ASR(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_AVG:
-		brw_AVG(p, dest, src0, src1);
+	case ELK_OPCODE_AVG:
+		elk_AVG(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_OR:
-		brw_OR(p, dest, src0, src1);
+	case ELK_OPCODE_OR:
+		elk_OR(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_SEL:
-		brw_SEL(p, dest, src0, src1);
+	case ELK_OPCODE_SEL:
+		elk_SEL(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_SHL:
-		brw_SHL(p, dest, src0, src1);
+	case ELK_OPCODE_SHL:
+		elk_SHL(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_SHR:
-		brw_SHR(p, dest, src0, src1);
+	case ELK_OPCODE_SHR:
+		elk_SHR(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_XOR:
-		brw_XOR(p, dest, src0, src1);
+	case ELK_OPCODE_XOR:
+		elk_XOR(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_MUL:
-		brw_MUL(p, dest, src0, src1);
+	case ELK_OPCODE_MUL:
+		elk_MUL(p, dest, src0, src1);
 		break;
 	default:
 		fprintf(stderr, "Unsupported binary opcode\n");
@@ -257,33 +257,33 @@ i965_asm_binary_instruction(int opcode,
 
 static void
 i965_asm_ternary_instruction(int opcode,
-			     struct brw_codegen *p,
-			     struct brw_reg dest,
-			     struct brw_reg src0,
-			     struct brw_reg src1,
-			     struct brw_reg src2)
+			     struct elk_codegen *p,
+			     struct elk_reg dest,
+			     struct elk_reg src0,
+			     struct elk_reg src1,
+			     struct elk_reg src2)
 {
 	switch (opcode) {
-	case BRW_OPCODE_MAD:
-		brw_MAD(p, dest, src0, src1, src2);
+	case ELK_OPCODE_MAD:
+		elk_MAD(p, dest, src0, src1, src2);
 		break;
-	case BRW_OPCODE_CSEL:
-		brw_CSEL(p, dest, src0, src1, src2);
+	case ELK_OPCODE_CSEL:
+		elk_CSEL(p, dest, src0, src1, src2);
 		break;
-	case BRW_OPCODE_LRP:
-		brw_LRP(p, dest, src0, src1, src2);
+	case ELK_OPCODE_LRP:
+		elk_LRP(p, dest, src0, src1, src2);
 		break;
-	case BRW_OPCODE_BFE:
-		brw_BFE(p, dest, src0, src1, src2);
+	case ELK_OPCODE_BFE:
+		elk_BFE(p, dest, src0, src1, src2);
 		break;
-	case BRW_OPCODE_BFI2:
-		brw_BFI2(p, dest, src0, src1, src2);
+	case ELK_OPCODE_BFI2:
+		elk_BFI2(p, dest, src0, src1, src2);
 		break;
-	case BRW_OPCODE_DP4A:
-		brw_DP4A(p, dest, src0, src1, src2);
+	case ELK_OPCODE_DP4A:
+		elk_DP4A(p, dest, src0, src1, src2);
 		break;
-	case BRW_OPCODE_ADD3:
-		brw_ADD3(p, dest, src0, src1, src2);
+	case ELK_OPCODE_ADD3:
+		elk_ADD3(p, dest, src0, src1, src2);
 		break;
 	default:
 		fprintf(stderr, "Unsupported ternary opcode\n");
@@ -291,48 +291,48 @@ i965_asm_ternary_instruction(int opcode,
 }
 
 static void
-i965_asm_set_instruction_options(struct brw_codegen *p,
+i965_asm_set_instruction_options(struct elk_codegen *p,
 				 struct options options)
 {
-	brw_inst_set_access_mode(p->devinfo, brw_last_inst,
+	elk_inst_set_access_mode(p->devinfo, elk_last_inst,
 			         options.access_mode);
-	brw_inst_set_mask_control(p->devinfo, brw_last_inst,
+	elk_inst_set_mask_control(p->devinfo, elk_last_inst,
 				  options.mask_control);
 	if (p->devinfo->ver < 12) {
-		brw_inst_set_thread_control(p->devinfo, brw_last_inst,
+		elk_inst_set_thread_control(p->devinfo, elk_last_inst,
 					    options.thread_control);
-		brw_inst_set_no_dd_check(p->devinfo, brw_last_inst,
+		elk_inst_set_no_dd_check(p->devinfo, elk_last_inst,
 					 options.no_dd_check);
-		brw_inst_set_no_dd_clear(p->devinfo, brw_last_inst,
+		elk_inst_set_no_dd_clear(p->devinfo, elk_last_inst,
 					 options.no_dd_clear);
 	} else {
-		brw_inst_set_swsb(p->devinfo, brw_last_inst,
+		elk_inst_set_swsb(p->devinfo, elk_last_inst,
 		                  tgl_swsb_encode(p->devinfo, options.depinfo));
 	}
-	brw_inst_set_debug_control(p->devinfo, brw_last_inst,
+	elk_inst_set_debug_control(p->devinfo, elk_last_inst,
 			           options.debug_control);
 	if (p->devinfo->ver >= 6)
-		brw_inst_set_acc_wr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_acc_wr_control(p->devinfo, elk_last_inst,
 					    options.acc_wr_control);
-	brw_inst_set_cmpt_control(p->devinfo, brw_last_inst,
+	elk_inst_set_cmpt_control(p->devinfo, elk_last_inst,
 				  options.compaction);
 }
 
 static void
-i965_asm_set_dst_nr(struct brw_codegen *p,
-	            struct brw_reg *reg,
+i965_asm_set_dst_nr(struct elk_codegen *p,
+	            struct elk_reg *reg,
 	            struct options options)
 {
 	if (p->devinfo->ver <= 6) {
-		if (reg->file == BRW_MESSAGE_REGISTER_FILE &&
-		    options.qtr_ctrl == BRW_COMPRESSION_COMPRESSED &&
+		if (reg->file == ELK_MESSAGE_REGISTER_FILE &&
+		    options.qtr_ctrl == ELK_COMPRESSION_COMPRESSED &&
 		    !options.is_compr)
-			reg->nr |= BRW_MRF_COMPR4;
+			reg->nr |= ELK_MRF_COMPR4;
 	}
 }
 
 static void
-add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type type)
+add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type type)
 {
 	if (!label_name) {
 		return;
@@ -358,16 +358,16 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 	double number;
 	int integer;
 	unsigned long long int llint;
-	struct brw_reg reg;
-	enum brw_reg_type reg_type;
-	struct brw_codegen *program;
+	struct elk_reg reg;
+	enum elk_reg_type reg_type;
+	struct elk_codegen *program;
 	struct predicate predicate;
 	struct condition condition;
 	struct options options;
 	struct instoption instoption;
 	struct msgdesc msgdesc;
 	struct tgl_swsb depinfo;
-	brw_inst *instruction;
+	elk_inst *instruction;
 }
 
 %token ABS
@@ -591,41 +591,41 @@ add_instruction_option(struct options *options, struct instoption opt)
 	}
 	switch (opt.uint_value) {
 	case ALIGN1:
-		options->access_mode = BRW_ALIGN_1;
+		options->access_mode = ELK_ALIGN_1;
 		break;
 	case ALIGN16:
-		options->access_mode = BRW_ALIGN_16;
+		options->access_mode = ELK_ALIGN_16;
 		break;
 	case SECHALF:
-		options->qtr_ctrl |= BRW_COMPRESSION_2NDHALF;
+		options->qtr_ctrl |= ELK_COMPRESSION_2NDHALF;
 		break;
 	case COMPR:
-		options->qtr_ctrl |= BRW_COMPRESSION_COMPRESSED;
+		options->qtr_ctrl |= ELK_COMPRESSION_COMPRESSED;
 		options->is_compr = true;
 		break;
 	case COMPR4:
-		options->qtr_ctrl |= BRW_COMPRESSION_COMPRESSED;
+		options->qtr_ctrl |= ELK_COMPRESSION_COMPRESSED;
 		break;
 	case SWITCH:
-		options->thread_control |= BRW_THREAD_SWITCH;
+		options->thread_control |= ELK_THREAD_SWITCH;
 		break;
 	case ATOMIC:
-		options->thread_control |= BRW_THREAD_ATOMIC;
+		options->thread_control |= ELK_THREAD_ATOMIC;
 		break;
 	case NODDCHK:
 		options->no_dd_check = true;
 		break;
 	case NODDCLR:
-		options->no_dd_clear = BRW_DEPENDENCY_NOTCLEARED;
+		options->no_dd_clear = ELK_DEPENDENCY_NOTCLEARED;
 		break;
 	case MASK_DISABLE:
-		options->mask_control |= BRW_MASK_DISABLE;
+		options->mask_control |= ELK_MASK_DISABLE;
 		break;
 	case BREAKPOINT:
-		options->debug_control = BRW_DEBUG_BREAKPOINT;
+		options->debug_control = ELK_DEBUG_BREAKPOINT;
 		break;
 	case WECTRL:
-		options->mask_control |= BRW_WE_ALL;
+		options->mask_control |= ELK_WE_ALL;
 		break;
 	case CMPTCTRL:
 		options->compaction = true;
@@ -640,33 +640,33 @@ add_instruction_option(struct options *options, struct instoption opt)
 	 * code below
 	 */
 	case QTR_2Q:
-		options->qtr_ctrl = BRW_COMPRESSION_2NDHALF;
+		options->qtr_ctrl = ELK_COMPRESSION_2NDHALF;
 		break;
 	case QTR_3Q:
-		options->qtr_ctrl = BRW_COMPRESSION_COMPRESSED;
+		options->qtr_ctrl = ELK_COMPRESSION_COMPRESSED;
 		break;
 	case QTR_4Q:
 		options->qtr_ctrl = 3;
 		break;
 	case QTR_2H:
-		options->qtr_ctrl = BRW_COMPRESSION_COMPRESSED;
+		options->qtr_ctrl = ELK_COMPRESSION_COMPRESSED;
 		break;
 	case QTR_2N:
-		options->qtr_ctrl = BRW_COMPRESSION_NONE;
+		options->qtr_ctrl = ELK_COMPRESSION_NONE;
 		options->nib_ctrl = true;
 		break;
 	case QTR_3N:
-		options->qtr_ctrl = BRW_COMPRESSION_2NDHALF;
+		options->qtr_ctrl = ELK_COMPRESSION_2NDHALF;
 		break;
 	case QTR_4N:
-		options->qtr_ctrl = BRW_COMPRESSION_2NDHALF;
+		options->qtr_ctrl = ELK_COMPRESSION_2NDHALF;
 		options->nib_ctrl = true;
 		break;
 	case QTR_5N:
-		options->qtr_ctrl = BRW_COMPRESSION_COMPRESSED;
+		options->qtr_ctrl = ELK_COMPRESSION_COMPRESSED;
 		break;
 	case QTR_6N:
-		options->qtr_ctrl = BRW_COMPRESSION_COMPRESSED;
+		options->qtr_ctrl = ELK_COMPRESSION_COMPRESSED;
 		options->nib_ctrl = true;
 		break;
 	case QTR_7N:
@@ -718,8 +718,8 @@ relocatableinstruction:
 illegalinstruction:
 	ILLEGAL execsize instoptions
 	{
-		brw_next_insn(p, $1);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $2);
+		elk_next_insn(p, $1);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $2);
 		i965_asm_set_instruction_options(p, $3);
 	}
 	;
@@ -729,35 +729,35 @@ unaryinstruction:
 	predicate unaryopcodes saturate cond_mod execsize dst srcaccimm	instoptions
 	{
 		i965_asm_set_dst_nr(p, &$6, $8);
-		brw_set_default_access_mode(p, $8.access_mode);
+		elk_set_default_access_mode(p, $8.access_mode);
 		i965_asm_unary_instruction($2, p, $6, $7);
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 		i965_asm_set_instruction_options(p, $8);
-		brw_inst_set_cond_modifier(p->devinfo, brw_last_inst,
+		elk_inst_set_cond_modifier(p->devinfo, elk_last_inst,
 					   $4.cond_modifier);
 
-		if (p->devinfo->ver >= 7 && $2 != BRW_OPCODE_DIM &&
-		    !brw_inst_flag_reg_nr(p->devinfo, brw_last_inst)) {
-			brw_inst_set_flag_reg_nr(p->devinfo,
-						 brw_last_inst,
+		if (p->devinfo->ver >= 7 && $2 != ELK_OPCODE_DIM &&
+		    !elk_inst_flag_reg_nr(p->devinfo, elk_last_inst)) {
+			elk_inst_set_flag_reg_nr(p->devinfo,
+						 elk_last_inst,
 						 $4.flag_reg_nr);
-			brw_inst_set_flag_subreg_nr(p->devinfo,
-						    brw_last_inst,
+			elk_inst_set_flag_subreg_nr(p->devinfo,
+						    elk_last_inst,
 						    $4.flag_subreg_nr);
 		}
 
-		if ($7.file != BRW_IMMEDIATE_VALUE) {
-			brw_inst_set_src0_vstride(p->devinfo, brw_last_inst,
+		if ($7.file != ELK_IMMEDIATE_VALUE) {
+			elk_inst_set_src0_vstride(p->devinfo, elk_last_inst,
 						  $7.vstride);
 		}
-		brw_inst_set_saturate(p->devinfo, brw_last_inst, $3);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $5);
+		elk_inst_set_saturate(p->devinfo, elk_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $5);
 		// TODO: set instruction group instead of qtr and nib ctrl
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
 				         $8.qtr_ctrl);
 
 		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+			elk_inst_set_nib_control(p->devinfo, elk_last_inst,
 					         $8.nib_ctrl);
 	}
 	;
@@ -785,31 +785,31 @@ binaryinstruction:
 	predicate binaryopcodes saturate cond_mod execsize dst srcimm srcimm instoptions
 	{
 		i965_asm_set_dst_nr(p, &$6, $9);
-		brw_set_default_access_mode(p, $9.access_mode);
+		elk_set_default_access_mode(p, $9.access_mode);
 		i965_asm_binary_instruction($2, p, $6, $7, $8);
 		i965_asm_set_instruction_options(p, $9);
-		brw_inst_set_cond_modifier(p->devinfo, brw_last_inst,
+		elk_inst_set_cond_modifier(p->devinfo, elk_last_inst,
 					   $4.cond_modifier);
 
 		if (p->devinfo->ver >= 7 &&
-		    !brw_inst_flag_reg_nr(p->devinfo, brw_last_inst)) {
-			brw_inst_set_flag_reg_nr(p->devinfo, brw_last_inst,
+		    !elk_inst_flag_reg_nr(p->devinfo, elk_last_inst)) {
+			elk_inst_set_flag_reg_nr(p->devinfo, elk_last_inst,
 					         $4.flag_reg_nr);
-			brw_inst_set_flag_subreg_nr(p->devinfo, brw_last_inst,
+			elk_inst_set_flag_subreg_nr(p->devinfo, elk_last_inst,
 						    $4.flag_subreg_nr);
 		}
 
-		brw_inst_set_saturate(p->devinfo, brw_last_inst, $3);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $5);
+		elk_inst_set_saturate(p->devinfo, elk_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $5);
 		// TODO: set instruction group instead of qtr and nib ctrl
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
 				         $9.qtr_ctrl);
 
 		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+			elk_inst_set_nib_control(p->devinfo, elk_last_inst,
 					         $9.nib_ctrl);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	;
 
@@ -837,31 +837,31 @@ binaryaccinstruction:
 	predicate binaryaccopcodes saturate cond_mod execsize dst srcacc srcimm instoptions
 	{
 		i965_asm_set_dst_nr(p, &$6, $9);
-		brw_set_default_access_mode(p, $9.access_mode);
+		elk_set_default_access_mode(p, $9.access_mode);
 		i965_asm_binary_instruction($2, p, $6, $7, $8);
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 		i965_asm_set_instruction_options(p, $9);
-		brw_inst_set_cond_modifier(p->devinfo, brw_last_inst,
+		elk_inst_set_cond_modifier(p->devinfo, elk_last_inst,
 					   $4.cond_modifier);
 
 		if (p->devinfo->ver >= 7 &&
-		    !brw_inst_flag_reg_nr(p->devinfo, brw_last_inst)) {
-			brw_inst_set_flag_reg_nr(p->devinfo,
-						 brw_last_inst,
+		    !elk_inst_flag_reg_nr(p->devinfo, elk_last_inst)) {
+			elk_inst_set_flag_reg_nr(p->devinfo,
+						 elk_last_inst,
 						 $4.flag_reg_nr);
-			brw_inst_set_flag_subreg_nr(p->devinfo,
-						    brw_last_inst,
+			elk_inst_set_flag_subreg_nr(p->devinfo,
+						    elk_last_inst,
 						    $4.flag_subreg_nr);
 		}
 
-		brw_inst_set_saturate(p->devinfo, brw_last_inst, $3);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $5);
+		elk_inst_set_saturate(p->devinfo, elk_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $5);
 		// TODO: set instruction group instead of qtr and nib ctrl
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
 				         $9.qtr_ctrl);
 
 		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+			elk_inst_set_nib_control(p->devinfo, elk_last_inst,
 					         $9.nib_ctrl);
 	}
 	;
@@ -884,20 +884,20 @@ binaryaccopcodes:
 mathinstruction:
 	predicate MATH saturate math_function execsize dst src srcimm instoptions
 	{
-		brw_set_default_access_mode(p, $9.access_mode);
-		gfx6_math(p, $6, $4, $7, $8);
+		elk_set_default_access_mode(p, $9.access_mode);
+		elk_gfx6_math(p, $6, $4, $7, $8);
 		i965_asm_set_instruction_options(p, $9);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $5);
-		brw_inst_set_saturate(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $5);
+		elk_inst_set_saturate(p->devinfo, elk_last_inst, $3);
 		// TODO: set instruction group instead
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
 				         $9.qtr_ctrl);
 
 		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+			elk_inst_set_nib_control(p->devinfo, elk_last_inst,
 					         $9.nib_ctrl);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	;
 
@@ -923,7 +923,7 @@ math_function:
 nopinstruction:
 	NOP
 	{
-		brw_NOP(p);
+		elk_NOP(p);
 	}
 	;
 
@@ -931,28 +931,28 @@ nopinstruction:
 ternaryinstruction:
 	predicate ternaryopcodes saturate cond_mod execsize dst srcimm src srcimm instoptions
 	{
-		brw_set_default_access_mode(p, $10.access_mode);
+		elk_set_default_access_mode(p, $10.access_mode);
 		i965_asm_ternary_instruction($2, p, $6, $7, $8, $9);
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 		i965_asm_set_instruction_options(p, $10);
-		brw_inst_set_cond_modifier(p->devinfo, brw_last_inst,
+		elk_inst_set_cond_modifier(p->devinfo, elk_last_inst,
 					   $4.cond_modifier);
 
 		if (p->devinfo->ver >= 7 && p->devinfo->ver < 12) {
-			brw_inst_set_3src_a16_flag_reg_nr(p->devinfo, brw_last_inst,
+			elk_inst_set_3src_a16_flag_reg_nr(p->devinfo, elk_last_inst,
 					         $4.flag_reg_nr);
-			brw_inst_set_3src_a16_flag_subreg_nr(p->devinfo, brw_last_inst,
+			elk_inst_set_3src_a16_flag_subreg_nr(p->devinfo, elk_last_inst,
 						    $4.flag_subreg_nr);
 		}
 
-		brw_inst_set_saturate(p->devinfo, brw_last_inst, $3);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $5);
+		elk_inst_set_saturate(p->devinfo, elk_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $5);
 		// TODO: set instruction group instead of qtr and nib ctrl
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
 				         $10.qtr_ctrl);
 
 		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+			elk_inst_set_nib_control(p->devinfo, elk_last_inst,
 					         $10.nib_ctrl);
 	}
 	;
@@ -971,18 +971,18 @@ ternaryopcodes:
 waitinstruction:
 	WAIT execsize dst instoptions
 	{
-		brw_next_insn(p, $1);
+		elk_next_insn(p, $1);
 		i965_asm_set_instruction_options(p, $4);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $2);
-		brw_set_default_access_mode(p, $4.access_mode);
-		struct brw_reg dest = $3;
-		dest.swizzle = brw_swizzle_for_mask(dest.writemask);
-		if (dest.file != ARF || dest.nr != BRW_ARF_NOTIFICATION_COUNT)
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $2);
+		elk_set_default_access_mode(p, $4.access_mode);
+		struct elk_reg dest = $3;
+		dest.swizzle = elk_swizzle_for_mask(dest.writemask);
+		if (dest.file != ARF || dest.nr != ELK_ARF_NOTIFICATION_COUNT)
 			error(&@1, "WAIT must use the notification register\n");
-		brw_set_dest(p, brw_last_inst, dest);
-		brw_set_src0(p, brw_last_inst, dest);
-		brw_set_src1(p, brw_last_inst, brw_null_reg());
-		brw_inst_set_mask_control(p->devinfo, brw_last_inst, BRW_MASK_DISABLE);
+		elk_set_dest(p, elk_last_inst, dest);
+		elk_set_src0(p, elk_last_inst, dest);
+		elk_set_src1(p, elk_last_inst, elk_null_reg());
+		elk_inst_set_mask_control(p->devinfo, elk_last_inst, ELK_MASK_DISABLE);
 	}
 	;
 
@@ -991,108 +991,108 @@ sendinstruction:
 	predicate sendopcode execsize dst payload exp2 sharedfunction msgdesc instoptions
 	{
 		i965_asm_set_instruction_options(p, $9);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-		brw_set_dest(p, brw_last_inst, $4);
-		brw_set_src0(p, brw_last_inst, $5);
-		brw_inst_set_bits(brw_last_inst, 127, 96, $6);
-		brw_inst_set_src1_file_type(p->devinfo, brw_last_inst,
-				            BRW_IMMEDIATE_VALUE,
-					    BRW_REGISTER_TYPE_UD);
-		brw_inst_set_sfid(p->devinfo, brw_last_inst, $7);
-		brw_inst_set_eot(p->devinfo, brw_last_inst, $9.end_of_thread);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
+		elk_set_dest(p, elk_last_inst, $4);
+		elk_set_src0(p, elk_last_inst, $5);
+		elk_inst_set_bits(elk_last_inst, 127, 96, $6);
+		elk_inst_set_src1_file_type(p->devinfo, elk_last_inst,
+				            ELK_IMMEDIATE_VALUE,
+					    ELK_REGISTER_TYPE_UD);
+		elk_inst_set_sfid(p->devinfo, elk_last_inst, $7);
+		elk_inst_set_eot(p->devinfo, elk_last_inst, $9.end_of_thread);
 		// TODO: set instruction group instead of qtr and nib ctrl
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
 				         $9.qtr_ctrl);
 
 		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+			elk_inst_set_nib_control(p->devinfo, elk_last_inst,
 					         $9.nib_ctrl);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate sendopcode execsize exp dst payload exp2 sharedfunction msgdesc instoptions
 	{
 		assert(p->devinfo->ver < 6);
 
 		i965_asm_set_instruction_options(p, $10);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-		brw_inst_set_base_mrf(p->devinfo, brw_last_inst, $4);
-		brw_set_dest(p, brw_last_inst, $5);
-		brw_set_src0(p, brw_last_inst, $6);
-		brw_inst_set_bits(brw_last_inst, 127, 96, $7);
-		brw_inst_set_src1_file_type(p->devinfo, brw_last_inst,
-				            BRW_IMMEDIATE_VALUE,
-					    BRW_REGISTER_TYPE_UD);
-		brw_inst_set_sfid(p->devinfo, brw_last_inst, $8);
-		brw_inst_set_eot(p->devinfo, brw_last_inst, $10.end_of_thread);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
+		elk_inst_set_base_mrf(p->devinfo, elk_last_inst, $4);
+		elk_set_dest(p, elk_last_inst, $5);
+		elk_set_src0(p, elk_last_inst, $6);
+		elk_inst_set_bits(elk_last_inst, 127, 96, $7);
+		elk_inst_set_src1_file_type(p->devinfo, elk_last_inst,
+				            ELK_IMMEDIATE_VALUE,
+					    ELK_REGISTER_TYPE_UD);
+		elk_inst_set_sfid(p->devinfo, elk_last_inst, $8);
+		elk_inst_set_eot(p->devinfo, elk_last_inst, $10.end_of_thread);
 		// TODO: set instruction group instead of qtr and nib ctrl
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
 				         $10.qtr_ctrl);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate sendopcode execsize dst payload payload exp2 sharedfunction msgdesc instoptions
 	{
 		assert(p->devinfo->ver >= 6 && p->devinfo->ver < 12);
 
 		i965_asm_set_instruction_options(p, $10);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-		brw_set_dest(p, brw_last_inst, $4);
-		brw_set_src0(p, brw_last_inst, $5);
-		brw_inst_set_bits(brw_last_inst, 127, 96, $7);
-		brw_inst_set_sfid(p->devinfo, brw_last_inst, $8);
-		brw_inst_set_eot(p->devinfo, brw_last_inst, $10.end_of_thread);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
+		elk_set_dest(p, elk_last_inst, $4);
+		elk_set_src0(p, elk_last_inst, $5);
+		elk_inst_set_bits(elk_last_inst, 127, 96, $7);
+		elk_inst_set_sfid(p->devinfo, elk_last_inst, $8);
+		elk_inst_set_eot(p->devinfo, elk_last_inst, $10.end_of_thread);
 		// TODO: set instruction group instead of qtr and nib ctrl
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
 				         $10.qtr_ctrl);
 
 		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+			elk_inst_set_nib_control(p->devinfo, elk_last_inst,
 					         $10.nib_ctrl);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate sendsopcode execsize dst payload payload desc ex_desc sharedfunction msgdesc instoptions
 	{
 		assert(p->devinfo->ver >= 9);
 
 		i965_asm_set_instruction_options(p, $11);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-		brw_set_dest(p, brw_last_inst, $4);
-		brw_set_src0(p, brw_last_inst, $5);
-		brw_set_src1(p, brw_last_inst, $6);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
+		elk_set_dest(p, elk_last_inst, $4);
+		elk_set_src0(p, elk_last_inst, $5);
+		elk_set_src1(p, elk_last_inst, $6);
 
-		if ($7.file == BRW_IMMEDIATE_VALUE) {
-			brw_inst_set_send_sel_reg32_desc(p->devinfo, brw_last_inst, 0);
-			brw_inst_set_send_desc(p->devinfo, brw_last_inst, $7.ud);
+		if ($7.file == ELK_IMMEDIATE_VALUE) {
+			elk_inst_set_send_sel_reg32_desc(p->devinfo, elk_last_inst, 0);
+			elk_inst_set_send_desc(p->devinfo, elk_last_inst, $7.ud);
 		} else {
-			brw_inst_set_send_sel_reg32_desc(p->devinfo, brw_last_inst, 1);
+			elk_inst_set_send_sel_reg32_desc(p->devinfo, elk_last_inst, 1);
 		}
 
-		if ($8.file == BRW_IMMEDIATE_VALUE) {
-			brw_inst_set_send_sel_reg32_ex_desc(p->devinfo, brw_last_inst, 0);
-			brw_inst_set_sends_ex_desc(p->devinfo, brw_last_inst, $8.ud);
+		if ($8.file == ELK_IMMEDIATE_VALUE) {
+			elk_inst_set_send_sel_reg32_ex_desc(p->devinfo, elk_last_inst, 0);
+			elk_inst_set_sends_ex_desc(p->devinfo, elk_last_inst, $8.ud);
 		} else {
-			brw_inst_set_send_sel_reg32_ex_desc(p->devinfo, brw_last_inst, 1);
-			brw_inst_set_send_ex_desc_ia_subreg_nr(p->devinfo, brw_last_inst, $8.subnr >> 2);
+			elk_inst_set_send_sel_reg32_ex_desc(p->devinfo, elk_last_inst, 1);
+			elk_inst_set_send_ex_desc_ia_subreg_nr(p->devinfo, elk_last_inst, $8.subnr >> 2);
 		}
 
-		brw_inst_set_sfid(p->devinfo, brw_last_inst, $9);
-		brw_inst_set_eot(p->devinfo, brw_last_inst, $11.end_of_thread);
+		elk_inst_set_sfid(p->devinfo, elk_last_inst, $9);
+		elk_inst_set_eot(p->devinfo, elk_last_inst, $11.end_of_thread);
 		// TODO: set instruction group instead of qtr and nib ctrl
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
 				         $11.qtr_ctrl);
 
-		brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+		elk_inst_set_nib_control(p->devinfo, elk_last_inst,
 					 $11.nib_ctrl);
 
 		if (p->devinfo->verx10 >= 125 && $10.ex_bso) {
-			brw_inst_set_send_ex_bso(p->devinfo, brw_last_inst, 1);
-			brw_inst_set_send_src1_len(p->devinfo, brw_last_inst,
+			elk_inst_set_send_ex_bso(p->devinfo, elk_last_inst, 1);
+			elk_inst_set_send_src1_len(p->devinfo, elk_last_inst,
 						   $10.src1_len);
 		}
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	;
 
@@ -1109,29 +1109,29 @@ sendsop:
 	;
 
 sendopcode:
-	sendop   { $$ = brw_next_insn(p, $1); }
+	sendop   { $$ = elk_next_insn(p, $1); }
 	;
 
 sendsopcode:
-	sendsop  { $$ = brw_next_insn(p, $1); }
+	sendsop  { $$ = elk_next_insn(p, $1); }
 	;
 
 sharedfunction:
-	NULL_TOKEN 	        { $$ = BRW_SFID_NULL; }
-	| MATH 		        { $$ = BRW_SFID_MATH; }
-	| GATEWAY 	        { $$ = BRW_SFID_MESSAGE_GATEWAY; }
-	| READ 		        { $$ = BRW_SFID_DATAPORT_READ; }
-	| WRITE 	        { $$ = BRW_SFID_DATAPORT_WRITE; }
-	| URB 		        { $$ = BRW_SFID_URB; }
-	| THREAD_SPAWNER 	{ $$ = BRW_SFID_THREAD_SPAWNER; }
-	| VME 		        { $$ = BRW_SFID_VME; }
+	NULL_TOKEN 	        { $$ = ELK_SFID_NULL; }
+	| MATH 		        { $$ = ELK_SFID_MATH; }
+	| GATEWAY 	        { $$ = ELK_SFID_MESSAGE_GATEWAY; }
+	| READ 		        { $$ = ELK_SFID_DATAPORT_READ; }
+	| WRITE 	        { $$ = ELK_SFID_DATAPORT_WRITE; }
+	| URB 		        { $$ = ELK_SFID_URB; }
+	| THREAD_SPAWNER 	{ $$ = ELK_SFID_THREAD_SPAWNER; }
+	| VME 		        { $$ = ELK_SFID_VME; }
 	| RENDER 	        { $$ = GFX6_SFID_DATAPORT_RENDER_CACHE; }
 	| CONST 	        { $$ = GFX6_SFID_DATAPORT_CONSTANT_CACHE; }
 	| DATA 		        { $$ = GFX7_SFID_DATAPORT_DATA_CACHE; }
 	| PIXEL_INTERP 	        { $$ = GFX7_SFID_PIXEL_INTERPOLATOR; }
 	| DP_DATA_1 	        { $$ = HSW_SFID_DATAPORT_DATA_CACHE_1; }
 	| CRE 		        { $$ = HSW_SFID_CRE; }
-	| SAMPLER	        { $$ = BRW_SFID_SAMPLER; }
+	| SAMPLER	        { $$ = ELK_SFID_SAMPLER; }
 	| DP_SAMPLER	        { $$ = GFX6_SFID_DATAPORT_SAMPLER_CACHE; }
 	| SLM			{ $$ = GFX12_SFID_SLM; }
 	| TGM			{ $$ = GFX12_SFID_TGM; }
@@ -1147,7 +1147,7 @@ desc:
 	reg32a
 	| exp2
 	{
-		$$ = brw_imm_ud($1);
+		$$ = elk_imm_ud($1);
 	}
 	;
 
@@ -1155,7 +1155,7 @@ ex_desc:
 	reg32a
 	| exp2
 	{
-		$$ = brw_imm_ud($1);
+		$$ = elk_imm_ud($1);
 	}
 	;
 
@@ -1172,16 +1172,16 @@ reg32a:
 jumpinstruction:
 	predicate JMPI execsize relativelocation2 instoptions
 	{
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, $4);
-		brw_inst_set_pred_control(p->devinfo, brw_last_inst,
-					  brw_inst_pred_control(p->devinfo,
-								brw_last_inst));
-		brw_pop_insn_state(p);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
+		elk_set_dest(p, elk_last_inst, elk_ip_reg());
+		elk_set_src0(p, elk_last_inst, elk_ip_reg());
+		elk_set_src1(p, elk_last_inst, $4);
+		elk_inst_set_pred_control(p->devinfo, elk_last_inst,
+					  elk_inst_pred_control(p->devinfo,
+								elk_last_inst));
+		elk_pop_insn_state(p);
 	}
 	;
 
@@ -1191,192 +1191,192 @@ branchinstruction:
 	{
 		add_label(p, $4, INSTR_LABEL_JIP);
 
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
 		if (p->devinfo->ver == 6) {
-			brw_set_dest(p, brw_last_inst, brw_imm_w(0x0));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
+			elk_set_dest(p, elk_last_inst, elk_imm_w(0x0));
+			elk_set_src0(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src1(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
 		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, brw_imm_w(0x0));
+			elk_set_dest(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src0(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src1(p, elk_last_inst, elk_imm_w(0x0));
 		} else {
-			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate ENDIF execsize relativelocation instoptions
 	{
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
-		brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-					BRW_REGISTER_TYPE_D));
-		brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-					BRW_REGISTER_TYPE_D));
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $4);
+		elk_set_dest(p, elk_last_inst, retype(elk_null_reg(),
+					ELK_REGISTER_TYPE_D));
+		elk_set_src0(p, elk_last_inst, retype(elk_null_reg(),
+					ELK_REGISTER_TYPE_D));
+		elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
+		elk_inst_set_gfx4_pop_count(p->devinfo, elk_last_inst, $4);
 
-		brw_inst_set_thread_control(p->devinfo, brw_last_inst,
-						BRW_THREAD_SWITCH);
+		elk_inst_set_thread_control(p->devinfo, elk_last_inst,
+						ELK_THREAD_SWITCH);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| ELSE execsize JUMP_LABEL jumplabel instoptions
 	{
 		add_label(p, $3, INSTR_LABEL_JIP);
 		add_label(p, $4, INSTR_LABEL_UIP);
 
-		brw_next_insn(p, $1);
+		elk_next_insn(p, $1);
 		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $2);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $2);
 
 		if (p->devinfo->ver == 6) {
-			brw_set_dest(p, brw_last_inst, brw_imm_w(0x0));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
+			elk_set_dest(p, elk_last_inst, elk_imm_w(0x0));
+			elk_set_src0(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src1(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
 		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, brw_imm_w(0));
+			elk_set_dest(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src0(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src1(p, elk_last_inst, elk_imm_w(0));
 		} else {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
+			elk_set_dest(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
 			if (p->devinfo->ver < 12)
-				brw_set_src0(p, brw_last_inst, brw_imm_d(0));
+				elk_set_src0(p, elk_last_inst, elk_imm_d(0));
 		}
 	}
 	| ELSE execsize relativelocation rellocation instoptions
 	{
-		brw_next_insn(p, $1);
+		elk_next_insn(p, $1);
 		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $2);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $2);
 
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $3);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $4);
+		elk_set_dest(p, elk_last_inst, elk_ip_reg());
+		elk_set_src0(p, elk_last_inst, elk_ip_reg());
+		elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
+		elk_inst_set_gfx4_jump_count(p->devinfo, elk_last_inst, $3);
+		elk_inst_set_gfx4_pop_count(p->devinfo, elk_last_inst, $4);
 
 		if (!p->single_program_flow)
-			brw_inst_set_thread_control(p->devinfo, brw_last_inst,
-						    BRW_THREAD_SWITCH);
+			elk_inst_set_thread_control(p->devinfo, elk_last_inst,
+						    ELK_THREAD_SWITCH);
 	}
 	| predicate IF execsize JUMP_LABEL jumplabel instoptions
 	{
 		add_label(p, $4, INSTR_LABEL_JIP);
 		add_label(p, $5, INSTR_LABEL_UIP);
 
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
 		if (p->devinfo->ver == 6) {
-			brw_set_dest(p, brw_last_inst, brw_imm_w(0x0));
-			brw_set_src0(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src1(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
+			elk_set_dest(p, elk_last_inst, elk_imm_w(0x0));
+			elk_set_src0(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
+			elk_set_src1(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
 		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src0(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src1(p, brw_last_inst, brw_imm_w(0x0));
+			elk_set_dest(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
+			elk_set_src0(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
+			elk_set_src1(p, elk_last_inst, elk_imm_w(0x0));
 		} else {
-			brw_set_dest(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
+			elk_set_dest(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
 			if (p->devinfo->ver < 12)
-				brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
+				elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate IF execsize relativelocation rellocation instoptions
 	{
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $5);
+		elk_set_dest(p, elk_last_inst, elk_ip_reg());
+		elk_set_src0(p, elk_last_inst, elk_ip_reg());
+		elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
+		elk_inst_set_gfx4_jump_count(p->devinfo, elk_last_inst, $4);
+		elk_inst_set_gfx4_pop_count(p->devinfo, elk_last_inst, $5);
 
 		if (!p->single_program_flow)
-			brw_inst_set_thread_control(p->devinfo, brw_last_inst,
-						    BRW_THREAD_SWITCH);
+			elk_inst_set_thread_control(p->devinfo, elk_last_inst,
+						    ELK_THREAD_SWITCH);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate IFF execsize JUMP_LABEL instoptions
 	{
 		add_label(p, $4, INSTR_LABEL_JIP);
 
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
 		if (p->devinfo->ver == 6) {
-			brw_set_src0(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src1(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
+			elk_set_src0(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
+			elk_set_src1(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
 		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src0(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src1(p, brw_last_inst, brw_imm_w(0x0));
+			elk_set_dest(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
+			elk_set_src0(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
+			elk_set_src1(p, elk_last_inst, elk_imm_w(0x0));
 		} else {
-			brw_set_dest(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
+			elk_set_dest(p, elk_last_inst,
+				     vec1(retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D)));
 			if (p->devinfo->ver < 12)
-				brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
+				elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate IFF execsize relativelocation instoptions
 	{
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_set_src1(p, brw_last_inst, brw_imm_d($4));
+		elk_set_dest(p, elk_last_inst, elk_ip_reg());
+		elk_set_src0(p, elk_last_inst, elk_ip_reg());
+		elk_inst_set_gfx4_jump_count(p->devinfo, elk_last_inst, $4);
+		elk_set_src1(p, elk_last_inst, elk_imm_d($4));
 
 		if (!p->single_program_flow)
-			brw_inst_set_thread_control(p->devinfo, brw_last_inst,
-						    BRW_THREAD_SWITCH);
+			elk_inst_set_thread_control(p->devinfo, elk_last_inst,
+						    ELK_THREAD_SWITCH);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	;
 
@@ -1387,93 +1387,93 @@ breakinstruction:
 		add_label(p, $4, INSTR_LABEL_JIP);
 		add_label(p, $5, INSTR_LABEL_UIP);
 
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
 		if (p->devinfo->ver >= 8) {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
+			elk_set_dest(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		} else {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
+			elk_set_dest(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src0(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate BREAK execsize relativelocation relativelocation instoptions
 	{
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $5);
+		elk_set_dest(p, elk_last_inst, elk_ip_reg());
+		elk_set_src0(p, elk_last_inst, elk_ip_reg());
+		elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
+		elk_inst_set_gfx4_jump_count(p->devinfo, elk_last_inst, $4);
+		elk_inst_set_gfx4_pop_count(p->devinfo, elk_last_inst, $5);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate HALT execsize JUMP_LABEL JUMP_LABEL instoptions
 	{
 		add_label(p, $4, INSTR_LABEL_JIP);
 		add_label(p, $5, INSTR_LABEL_UIP);
 
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
-		brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-			     BRW_REGISTER_TYPE_D));
+		elk_set_dest(p, elk_last_inst, retype(elk_null_reg(),
+			     ELK_REGISTER_TYPE_D));
 
 		if (p->devinfo->ver < 8) {
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, retype(elk_null_reg(),
+				     ELK_REGISTER_TYPE_D));
+			elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
 		} else if (p->devinfo->ver < 12) {
-			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate CONT execsize JUMP_LABEL JUMP_LABEL instoptions
 	{
 		add_label(p, $4, INSTR_LABEL_JIP);
 		add_label(p, $5, INSTR_LABEL_UIP);
 
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
+		elk_set_dest(p, elk_last_inst, elk_ip_reg());
 
 		if (p->devinfo->ver >= 8) {
-			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		} else {
-			brw_set_src0(p, brw_last_inst, brw_ip_reg());
-			brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_ip_reg());
+			elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate CONT execsize relativelocation relativelocation instoptions
 	{
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
+		elk_set_dest(p, elk_last_inst, elk_ip_reg());
 
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
+		elk_set_src0(p, elk_last_inst, elk_ip_reg());
+		elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
 
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $5);
+		elk_inst_set_gfx4_jump_count(p->devinfo, elk_last_inst, $4);
+		elk_inst_set_gfx4_pop_count(p->devinfo, elk_last_inst, $5);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	;
 
@@ -1483,62 +1483,62 @@ loopinstruction:
 	{
 		add_label(p, $4, INSTR_LABEL_JIP);
 
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
 		if (p->devinfo->ver >= 8) {
-			brw_set_dest(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
+			elk_set_dest(p, elk_last_inst,
+						retype(elk_null_reg(),
+						ELK_REGISTER_TYPE_D));
 			if (p->devinfo->ver < 12)
-				brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
+				elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst,
-						brw_imm_w(0x0));
+			elk_set_dest(p, elk_last_inst,
+						retype(elk_null_reg(),
+						ELK_REGISTER_TYPE_D));
+			elk_set_src0(p, elk_last_inst,
+						retype(elk_null_reg(),
+						ELK_REGISTER_TYPE_D));
+			elk_set_src1(p, elk_last_inst,
+						elk_imm_w(0x0));
 		} else {
-			brw_set_dest(p, brw_last_inst, brw_imm_w(0x0));
-			brw_set_src0(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
+			elk_set_dest(p, elk_last_inst, elk_imm_w(0x0));
+			elk_set_src0(p, elk_last_inst,
+						retype(elk_null_reg(),
+						ELK_REGISTER_TYPE_D));
+			elk_set_src1(p, elk_last_inst,
+						retype(elk_null_reg(),
+						ELK_REGISTER_TYPE_D));
 		}
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| predicate WHILE execsize relativelocation instoptions
 	{
-		brw_next_insn(p, $2);
+		elk_next_insn(p, $2);
 		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
 
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, 0);
+		elk_set_dest(p, elk_last_inst, elk_ip_reg());
+		elk_set_src0(p, elk_last_inst, elk_ip_reg());
+		elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
+		elk_inst_set_gfx4_jump_count(p->devinfo, elk_last_inst, $4);
+		elk_inst_set_gfx4_pop_count(p->devinfo, elk_last_inst, 0);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	| DO execsize instoptions
 	{
-		brw_next_insn(p, $1);
+		elk_next_insn(p, $1);
 		if (p->devinfo->ver < 6) {
-			brw_inst_set_exec_size(p->devinfo, brw_last_inst, $2);
+			elk_inst_set_exec_size(p->devinfo, elk_last_inst, $2);
 			i965_asm_set_instruction_options(p, $3);
-			brw_set_dest(p, brw_last_inst, brw_null_reg());
-			brw_set_src0(p, brw_last_inst, brw_null_reg());
-			brw_set_src1(p, brw_last_inst, brw_null_reg());
+			elk_set_dest(p, elk_last_inst, elk_null_reg());
+			elk_set_src0(p, elk_last_inst, elk_null_reg());
+			elk_set_src1(p, elk_last_inst, elk_null_reg());
 
-			brw_inst_set_qtr_control(p->devinfo, brw_last_inst, BRW_COMPRESSION_NONE);
+			elk_inst_set_qtr_control(p->devinfo, elk_last_inst, ELK_COMPRESSION_NONE);
 		}
 	}
 	;
@@ -1551,22 +1551,22 @@ syncinstruction:
 			error(&@2, "sync instruction is supported only on gfx12+\n");
 		}
 
-		if ($5.file == BRW_IMMEDIATE_VALUE &&
+		if ($5.file == ELK_IMMEDIATE_VALUE &&
 		    $3 != TGL_SYNC_ALLRD &&
 		    $3 != TGL_SYNC_ALLWR) {
 			error(&@2, "Only allrd and allwr support immediate argument\n");
 		}
 
-		brw_set_default_access_mode(p, $6.access_mode);
-		brw_SYNC(p, $3);
+		elk_set_default_access_mode(p, $6.access_mode);
+		elk_SYNC(p, $3);
 		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $4);
-		brw_set_src0(p, brw_last_inst, $5);
-		brw_inst_set_eot(p->devinfo, brw_last_inst, $6.end_of_thread);
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst, $6.qtr_ctrl);
-		brw_inst_set_nib_control(p->devinfo, brw_last_inst, $6.nib_ctrl);
+		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $4);
+		elk_set_src0(p, elk_last_inst, $5);
+		elk_inst_set_eot(p->devinfo, elk_last_inst, $6.end_of_thread);
+		elk_inst_set_qtr_control(p->devinfo, elk_last_inst, $6.qtr_ctrl);
+		elk_inst_set_nib_control(p->devinfo, elk_last_inst, $6.nib_ctrl);
 
-		brw_pop_insn_state(p);
+		elk_pop_insn_state(p);
 	}
 	;
 
@@ -1643,13 +1643,13 @@ dstoperand:
 	dstreg dstregion writemask reg_type
 	{
 		$$ = $1;
-		$$.vstride = BRW_VERTICAL_STRIDE_1;
-		$$.width = BRW_WIDTH_1;
+		$$.vstride = ELK_VERTICAL_STRIDE_1;
+		$$.width = ELK_WIDTH_1;
 		$$.hstride = $2;
 		$$.type = $4;
 		$$.writemask = $3;
-		$$.swizzle = BRW_SWIZZLE_NOOP;
-		$$.subnr = $$.subnr * brw_reg_type_to_size($4);
+		$$.swizzle = ELK_SWIZZLE_NOOP;
+		$$.subnr = $$.subnr * elk_reg_type_to_size($4);
 	}
 	;
 
@@ -1660,7 +1660,7 @@ dstoperandex:
 		$$.hstride = $2;
 		$$.type = $4;
 		$$.writemask = $3;
-		$$.subnr = $$.subnr * brw_reg_type_to_size($4);
+		$$.subnr = $$.subnr * elk_reg_type_to_size($4);
 	}
 	/* BSpec says "When the conditional modifier is present, updates
 	 * to the selected flag register also occur. In this case, the
@@ -1669,8 +1669,8 @@ dstoperandex:
 	| nullreg dstregion writemask reg_type
 	{
 		$$ = $1;
-		$$.vstride = BRW_VERTICAL_STRIDE_1;
-		$$.width = BRW_WIDTH_1;
+		$$.vstride = ELK_VERTICAL_STRIDE_1;
+		$$.width = ELK_WIDTH_1;
 		$$.hstride = $2;
 		$$.writemask = $3;
 		$$.type = $4;
@@ -1679,7 +1679,7 @@ dstoperandex:
 	{
 		$$ = $1;
 		$$.hstride = 1;
-		$$.type = BRW_REGISTER_TYPE_UW;
+		$$.type = ELK_REGISTER_TYPE_UW;
 	}
 	;
 
@@ -1700,22 +1700,22 @@ dstreg:
 	directgenreg
 	{
 		$$ = $1;
-		$$.address_mode = BRW_ADDRESS_DIRECT;
+		$$.address_mode = ELK_ADDRESS_DIRECT;
 	}
 	| indirectgenreg
 	{
 		$$ = $1;
-		$$.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
+		$$.address_mode = ELK_ADDRESS_REGISTER_INDIRECT_REGISTER;
 	}
 	| directmsgreg
 	{
 		$$ = $1;
-		$$.address_mode = BRW_ADDRESS_DIRECT;
+		$$.address_mode = ELK_ADDRESS_DIRECT;
 	}
 	| indirectmsgreg
 	{
 		$$ = $1;
-		$$.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
+		$$.address_mode = ELK_ADDRESS_REGISTER_INDIRECT_REGISTER;
 	}
 	;
 
@@ -1729,49 +1729,49 @@ immreg:
 	immval imm_type
 	{
 		switch ($2) {
-		case BRW_REGISTER_TYPE_UD:
-			$$ = brw_imm_ud($1);
+		case ELK_REGISTER_TYPE_UD:
+			$$ = elk_imm_ud($1);
 			break;
-		case BRW_REGISTER_TYPE_D:
-			$$ = brw_imm_d($1);
+		case ELK_REGISTER_TYPE_D:
+			$$ = elk_imm_d($1);
 			break;
-		case BRW_REGISTER_TYPE_UW:
-			$$ = brw_imm_uw($1 | ($1 << 16));
+		case ELK_REGISTER_TYPE_UW:
+			$$ = elk_imm_uw($1 | ($1 << 16));
 			break;
-		case BRW_REGISTER_TYPE_W:
-			$$ = brw_imm_w($1);
+		case ELK_REGISTER_TYPE_W:
+			$$ = elk_imm_w($1);
 			break;
-		case BRW_REGISTER_TYPE_F:
-			$$ = brw_imm_reg(BRW_REGISTER_TYPE_F);
+		case ELK_REGISTER_TYPE_F:
+			$$ = elk_imm_reg(ELK_REGISTER_TYPE_F);
 			/* Set u64 instead of ud since DIM uses a 64-bit F-typed imm */
 			$$.u64 = $1;
 			break;
-		case BRW_REGISTER_TYPE_V:
-			$$ = brw_imm_v($1);
+		case ELK_REGISTER_TYPE_V:
+			$$ = elk_imm_v($1);
 			break;
-		case BRW_REGISTER_TYPE_UV:
-			$$ = brw_imm_uv($1);
+		case ELK_REGISTER_TYPE_UV:
+			$$ = elk_imm_uv($1);
 			break;
-		case BRW_REGISTER_TYPE_VF:
-			$$ = brw_imm_vf($1);
+		case ELK_REGISTER_TYPE_VF:
+			$$ = elk_imm_vf($1);
 			break;
-		case BRW_REGISTER_TYPE_Q:
-			$$ = brw_imm_q($1);
+		case ELK_REGISTER_TYPE_Q:
+			$$ = elk_imm_q($1);
 			break;
-		case BRW_REGISTER_TYPE_UQ:
-			$$ = brw_imm_uq($1);
+		case ELK_REGISTER_TYPE_UQ:
+			$$ = elk_imm_uq($1);
 			break;
-		case BRW_REGISTER_TYPE_DF:
-			$$ = brw_imm_reg(BRW_REGISTER_TYPE_DF);
+		case ELK_REGISTER_TYPE_DF:
+			$$ = elk_imm_reg(ELK_REGISTER_TYPE_DF);
 			$$.d64 = $1;
 			break;
-		case BRW_REGISTER_TYPE_HF:
-			$$ = brw_imm_reg(BRW_REGISTER_TYPE_HF);
+		case ELK_REGISTER_TYPE_HF:
+			$$ = elk_imm_reg(ELK_REGISTER_TYPE_HF);
 			$$.ud = $1 | ($1 << 16);
 			break;
 		default:
 			error(&@2, "Unknown immediate type %s\n",
-			      brw_reg_type_to_letters($2));
+			      elk_reg_type_to_letters($2));
 		}
 	}
 	;
@@ -1820,7 +1820,7 @@ directsrcaccoperand:
 srcarcoperandex:
 	srcarcoperandex_typed region reg_type
 	{
-		$$ = brw_reg($1.file,
+		$$ = elk_reg($1.file,
 			     $1.nr,
 			     $1.subnr,
 			     0,
@@ -1829,7 +1829,7 @@ srcarcoperandex:
 			     $2.vstride,
 			     $2.width,
 			     $2.hstride,
-			     BRW_SWIZZLE_NOOP,
+			     ELK_SWIZZLE_NOOP,
 			     WRITEMASK_XYZW);
 	}
 	| nullreg region reg_type
@@ -1841,7 +1841,7 @@ srcarcoperandex:
 	}
 	| threadcontrolreg
 	{
-		$$ = set_direct_src_operand(&$1, BRW_REGISTER_TYPE_UW);
+		$$ = set_direct_src_operand(&$1, ELK_REGISTER_TYPE_UW);
 	}
 	;
 
@@ -1857,7 +1857,7 @@ srcarcoperandex_typed:
 indirectsrcoperand:
 	negate abs indirectgenreg indirectregion swizzle reg_type
 	{
-		$$ = brw_reg($3.file,
+		$$ = elk_reg($3.file,
 			     0,
 			     $3.subnr,
 			     $1,  // negate
@@ -1869,8 +1869,8 @@ indirectsrcoperand:
 			     $5,
 			     WRITEMASK_X);
 
-		$$.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
-		// brw_reg set indirect_offset to 0 so set it to valid value
+		$$.address_mode = ELK_ADDRESS_REGISTER_INDIRECT_REGISTER;
+		// elk_reg set indirect_offset to 0 so set it to valid value
 		$$.indirect_offset = $3.indirect_offset;
 	}
 	;
@@ -1886,7 +1886,7 @@ directgenreg_list:
 directsrcoperand:
 	negate abs directgenreg_list region swizzle reg_type
 	{
-		$$ = brw_reg($3.file,
+		$$ = elk_reg($3.file,
 			     $3.nr,
 			     $3.subnr,
 			     $1,
@@ -1927,7 +1927,7 @@ directgenreg:
 	GENREG subregnum
 	{
 		memset(&$$, '\0', sizeof($$));
-		$$.file = BRW_GENERAL_REGISTER_FILE;
+		$$.file = ELK_GENERAL_REGISTER_FILE;
 		$$.nr = $1;
 		$$.subnr = $2;
 	}
@@ -1937,7 +1937,7 @@ indirectgenreg:
 	GENREGFILE LSQUARE addrparam RSQUARE
 	{
 		memset(&$$, '\0', sizeof($$));
-		$$.file = BRW_GENERAL_REGISTER_FILE;
+		$$.file = ELK_GENERAL_REGISTER_FILE;
 		$$.subnr = $3.subnr;
 		$$.indirect_offset = $3.indirect_offset;
 	}
@@ -1946,7 +1946,7 @@ indirectgenreg:
 directmsgreg:
 	MSGREG subregnum
 	{
-		$$.file = BRW_MESSAGE_REGISTER_FILE;
+		$$.file = ELK_MESSAGE_REGISTER_FILE;
 		$$.nr = $1;
 		$$.subnr = $2;
 	}
@@ -1956,7 +1956,7 @@ indirectmsgreg:
 	MSGREGFILE LSQUARE addrparam RSQUARE
 	{
 		memset(&$$, '\0', sizeof($$));
-		$$.file = BRW_MESSAGE_REGISTER_FILE;
+		$$.file = ELK_MESSAGE_REGISTER_FILE;
 		$$.subnr = $3.subnr;
 		$$.indirect_offset = $3.indirect_offset;
 	}
@@ -1971,8 +1971,8 @@ addrreg:
 			error(&@2, "Address sub register number %d"
 				   "out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_ADDRESS;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_ADDRESS;
 		$$.subnr = $2;
 	}
 	;
@@ -1991,8 +1991,8 @@ accreg:
 				   " out of range\n", $1);
 
 		memset(&$$, '\0', sizeof($$));
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_ACCUMULATOR;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_ACCUMULATOR;
 		$$.subnr = $2;
 	}
 	;
@@ -2011,8 +2011,8 @@ flagreg:
 			error(&@2, "Flag subregister number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_FLAG | $1;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_FLAG | $1;
 		$$.subnr = $2;
 	}
 	;
@@ -2024,8 +2024,8 @@ maskreg:
 			error(&@1, "Mask register number %d"
 				   " out of range\n", $1);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_MASK;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_MASK;
 		$$.subnr = $2;
 	}
 	;
@@ -2038,8 +2038,8 @@ notifyreg:
 			error(&@2, "Notification sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_NOTIFICATION_COUNT;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_NOTIFICATION_COUNT;
 		$$.subnr = $2;
 	}
 	;
@@ -2055,8 +2055,8 @@ statereg:
 			error(&@2, "State sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_STATE;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_STATE;
 		$$.subnr = $2;
 	}
 	;
@@ -2068,18 +2068,18 @@ controlreg:
 			error(&@2, "control sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_CONTROL;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_CONTROL;
 		$$.subnr = $2;
 	}
 	;
 
 ipreg:
-	IPREG		{ $$ = brw_ip_reg(); }
+	IPREG		{ $$ = elk_ip_reg(); }
 	;
 
 nullreg:
-	NULL_TOKEN 	{ $$ = brw_null_reg(); }
+	NULL_TOKEN 	{ $$ = elk_null_reg(); }
 	;
 
 threadcontrolreg:
@@ -2089,8 +2089,8 @@ threadcontrolreg:
 			error(&@2, "Thread control sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_TDR;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_TDR;
 		$$.subnr = $2;
 	}
 	;
@@ -2110,8 +2110,8 @@ performancereg:
 			error(&@2, "Performance sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_TIMESTAMP;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_TIMESTAMP;
 		$$.subnr = $2;
 	}
 	;
@@ -2123,8 +2123,8 @@ channelenablereg:
 			error(&@1, "Channel enable register number %d"
 				   " out of range\n", $1);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
-		$$.nr = BRW_ARF_MASK;
+		$$.file = ELK_ARCHITECTURE_REGISTER_FILE;
+		$$.nr = ELK_ARF_MASK;
 		$$.subnr = $2;
 	}
 	;
@@ -2145,7 +2145,7 @@ immval:
 dstregion:
 	/* empty */
 	{
-		$$ = BRW_HORIZONTAL_STRIDE_1;
+		$$ = ELK_HORIZONTAL_STRIDE_1;
 	}
 	| LANGLE exp RANGLE
 	{
@@ -2211,7 +2211,7 @@ region:
 			error(&@6, "Invalid Horizontal stride in"
 				   " region_wh %d\n", $6);
 
-		$$ = brw_VxH_indirect(0, 0);
+		$$ = elk_VxH_indirect(0, 0);
 	}
 	;
 
@@ -2226,30 +2226,30 @@ region_wh:
 				   " region_wh %d\n", $4);
 
 		$$ = stride($$, 0, $2, $4);
-		$$.vstride = BRW_VERTICAL_STRIDE_ONE_DIMENSIONAL;
+		$$.vstride = ELK_VERTICAL_STRIDE_ONE_DIMENSIONAL;
 	}
 	;
 
 reg_type:
-	  TYPE_F 	{ $$ = BRW_REGISTER_TYPE_F;  }
-	| TYPE_UD 	{ $$ = BRW_REGISTER_TYPE_UD; }
-	| TYPE_D 	{ $$ = BRW_REGISTER_TYPE_D;  }
-	| TYPE_UW 	{ $$ = BRW_REGISTER_TYPE_UW; }
-	| TYPE_W 	{ $$ = BRW_REGISTER_TYPE_W;  }
-	| TYPE_UB 	{ $$ = BRW_REGISTER_TYPE_UB; }
-	| TYPE_B 	{ $$ = BRW_REGISTER_TYPE_B;  }
-	| TYPE_DF 	{ $$ = BRW_REGISTER_TYPE_DF; }
-	| TYPE_UQ 	{ $$ = BRW_REGISTER_TYPE_UQ; }
-	| TYPE_Q 	{ $$ = BRW_REGISTER_TYPE_Q;  }
-	| TYPE_HF 	{ $$ = BRW_REGISTER_TYPE_HF; }
-	| TYPE_NF 	{ $$ = BRW_REGISTER_TYPE_NF; }
+	  TYPE_F 	{ $$ = ELK_REGISTER_TYPE_F;  }
+	| TYPE_UD 	{ $$ = ELK_REGISTER_TYPE_UD; }
+	| TYPE_D 	{ $$ = ELK_REGISTER_TYPE_D;  }
+	| TYPE_UW 	{ $$ = ELK_REGISTER_TYPE_UW; }
+	| TYPE_W 	{ $$ = ELK_REGISTER_TYPE_W;  }
+	| TYPE_UB 	{ $$ = ELK_REGISTER_TYPE_UB; }
+	| TYPE_B 	{ $$ = ELK_REGISTER_TYPE_B;  }
+	| TYPE_DF 	{ $$ = ELK_REGISTER_TYPE_DF; }
+	| TYPE_UQ 	{ $$ = ELK_REGISTER_TYPE_UQ; }
+	| TYPE_Q 	{ $$ = ELK_REGISTER_TYPE_Q;  }
+	| TYPE_HF 	{ $$ = ELK_REGISTER_TYPE_HF; }
+	| TYPE_NF 	{ $$ = ELK_REGISTER_TYPE_NF; }
 	;
 
 imm_type:
 	reg_type 	{ $$ = $1; }
-	| TYPE_V 	{ $$ = BRW_REGISTER_TYPE_V;  }
-	| TYPE_VF 	{ $$ = BRW_REGISTER_TYPE_VF; }
-	| TYPE_UV 	{ $$ = BRW_REGISTER_TYPE_UV; }
+	| TYPE_V 	{ $$ = ELK_REGISTER_TYPE_V;  }
+	| TYPE_VF 	{ $$ = ELK_REGISTER_TYPE_VF; }
+	| TYPE_UV 	{ $$ = ELK_REGISTER_TYPE_UV; }
 	;
 
 writemask:
@@ -2265,36 +2265,36 @@ writemask:
 
 writemask_x:
 	/* empty */ 	{ $$ = 0; }
-	| X 	{ $$ = 1 << BRW_CHANNEL_X; }
+	| X 	{ $$ = 1 << ELK_CHANNEL_X; }
 	;
 
 writemask_y:
 	/* empty */ 	{ $$ = 0; }
-	| Y 	{ $$ = 1 << BRW_CHANNEL_Y; }
+	| Y 	{ $$ = 1 << ELK_CHANNEL_Y; }
 	;
 
 writemask_z:
 	/* empty */ 	{ $$ = 0; }
-	| Z 	{ $$ = 1 << BRW_CHANNEL_Z; }
+	| Z 	{ $$ = 1 << ELK_CHANNEL_Z; }
 	;
 
 writemask_w:
 	/* empty */ 	{ $$ = 0; }
-	| W 	{ $$ = 1 << BRW_CHANNEL_W; }
+	| W 	{ $$ = 1 << ELK_CHANNEL_W; }
 	;
 
 swizzle:
 	/* empty */
 	{
-		$$ = BRW_SWIZZLE_NOOP;
+		$$ = ELK_SWIZZLE_NOOP;
 	}
 	| DOT chansel
 	{
-		$$ = BRW_SWIZZLE4($2, $2, $2, $2);
+		$$ = ELK_SWIZZLE4($2, $2, $2, $2);
 	}
 	| DOT chansel chansel chansel chansel
 	{
-		$$ = BRW_SWIZZLE4($2, $3, $4, $5);
+		$$ = ELK_SWIZZLE4($2, $3, $4, $5);
 	}
 	;
 
@@ -2309,17 +2309,17 @@ chansel:
 predicate:
 	/* empty */
 	{
-		brw_push_insn_state(p);
-		brw_set_default_predicate_control(p, BRW_PREDICATE_NONE);
-		brw_set_default_flag_reg(p, 0, 0);
-		brw_set_default_predicate_inverse(p, false);
+		elk_push_insn_state(p);
+		elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
+		elk_set_default_flag_reg(p, 0, 0);
+		elk_set_default_predicate_inverse(p, false);
 	}
 	| LPAREN predstate flagreg predctrl RPAREN
 	{
-		brw_push_insn_state(p);
-		brw_set_default_predicate_inverse(p, $2);
-		brw_set_default_flag_reg(p, $3.nr, $3.subnr);
-		brw_set_default_predicate_control(p, $4);
+		elk_push_insn_state(p);
+		elk_set_default_predicate_inverse(p, $2);
+		elk_set_default_flag_reg(p, $3.nr, $3.subnr);
+		elk_set_default_predicate_control(p, $4);
 	}
 	;
 
@@ -2330,11 +2330,11 @@ predstate:
 	;
 
 predctrl:
-	/* empty */ 	{ $$ = BRW_PREDICATE_NORMAL; }
-	| DOT X 	{ $$ = BRW_PREDICATE_ALIGN16_REPLICATE_X; }
-	| DOT Y 	{ $$ = BRW_PREDICATE_ALIGN16_REPLICATE_Y; }
-	| DOT Z 	{ $$ = BRW_PREDICATE_ALIGN16_REPLICATE_Z; }
-	| DOT W 	{ $$ = BRW_PREDICATE_ALIGN16_REPLICATE_W; }
+	/* empty */ 	{ $$ = ELK_PREDICATE_NORMAL; }
+	| DOT X 	{ $$ = ELK_PREDICATE_ALIGN16_REPLICATE_X; }
+	| DOT Y 	{ $$ = ELK_PREDICATE_ALIGN16_REPLICATE_Y; }
+	| DOT Z 	{ $$ = ELK_PREDICATE_ALIGN16_REPLICATE_Z; }
+	| DOT W 	{ $$ = ELK_PREDICATE_ALIGN16_REPLICATE_W; }
 	| ANYV
 	| ALLV
 	| ANY2H
@@ -2377,7 +2377,7 @@ cond_mod:
 	;
 
 condModifiers:
-	/* empty */ 	{ $$ = BRW_CONDITIONAL_NONE; }
+	/* empty */ 	{ $$ = ELK_CONDITIONAL_NONE; }
 	| ZERO
 	| EQUAL
 	| NOT_ZERO
@@ -2416,8 +2416,8 @@ msgdesc_parts:
 	;
 
 saturate:
-	/* empty */ 	{ $$ = BRW_INSTRUCTION_NORMAL; }
-	| SATURATE 	{ $$ = BRW_INSTRUCTION_SATURATE; }
+	/* empty */ 	{ $$ = ELK_INSTRUCTION_NORMAL; }
+	| SATURATE 	{ $$ = ELK_INSTRUCTION_SATURATE; }
 	;
 
 /* Execution size */

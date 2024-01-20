@@ -32,16 +32,16 @@ __attribute__((weak)) void nir_print_instr(UNUSED const nir_instr *instr,
                                            UNUSED FILE *fp) {}
 
 void
-dump_assembly(void *assembly, int start_offset, int end_offset,
-              struct disasm_info *disasm, const unsigned *block_latency)
+elk_dump_assembly(void *assembly, int start_offset, int end_offset,
+              struct elk_disasm_info *disasm, const unsigned *block_latency)
 {
-   const struct brw_isa_info *isa = disasm->isa;
+   const struct elk_isa_info *isa = disasm->isa;
    const char *last_annotation_string = NULL;
    const void *last_annotation_ir = NULL;
 
    void *mem_ctx = ralloc_context(NULL);
-   const struct brw_label *root_label =
-      brw_label_assembly(isa, assembly, start_offset, end_offset, mem_ctx);
+   const struct elk_label *root_label =
+      elk_label_assembly(isa, assembly, start_offset, end_offset, mem_ctx);
 
    foreach_list_typed(struct inst_group, group, link, &disasm->group_list) {
       struct exec_node *next_node = exec_node_get_next(&group->link);
@@ -56,9 +56,9 @@ dump_assembly(void *assembly, int start_offset, int end_offset,
 
       if (group->block_start) {
          fprintf(stderr, "   START B%d", group->block_start->num);
-         foreach_list_typed(struct bblock_link, predecessor_link, link,
+         foreach_list_typed(struct elk_bblock_link, predecessor_link, link,
                             &group->block_start->parents) {
-            struct bblock_t *predecessor_block = predecessor_link->block;
+            struct elk_bblock_t *predecessor_block = predecessor_link->block;
             fprintf(stderr, " <-B%d", predecessor_block->num);
          }
          if (block_latency)
@@ -82,7 +82,7 @@ dump_assembly(void *assembly, int start_offset, int end_offset,
             fprintf(stderr, "   %s\n", last_annotation_string);
       }
 
-      brw_disassemble(isa, assembly, start_offset, end_offset,
+      elk_disassemble(isa, assembly, start_offset, end_offset,
                       root_label, stderr);
 
       if (group->error) {
@@ -91,9 +91,9 @@ dump_assembly(void *assembly, int start_offset, int end_offset,
 
       if (group->block_end) {
          fprintf(stderr, "   END B%d", group->block_end->num);
-         foreach_list_typed(struct bblock_link, successor_link, link,
+         foreach_list_typed(struct elk_bblock_link, successor_link, link,
                             &group->block_end->children) {
-            struct bblock_t *successor_block = successor_link->block;
+            struct elk_bblock_t *successor_block = successor_link->block;
             fprintf(stderr, " ->B%d", successor_block->num);
          }
          fprintf(stderr, "\n");
@@ -104,11 +104,11 @@ dump_assembly(void *assembly, int start_offset, int end_offset,
    ralloc_free(mem_ctx);
 }
 
-struct disasm_info *
-disasm_initialize(const struct brw_isa_info *isa,
-                  const struct cfg_t *cfg)
+struct elk_disasm_info *
+elk_disasm_initialize(const struct elk_isa_info *isa,
+                  const struct elk_cfg_t *cfg)
 {
-   struct disasm_info *disasm = ralloc(NULL, struct disasm_info);
+   struct elk_disasm_info *disasm = ralloc(NULL, struct elk_disasm_info);
    exec_list_make_empty(&disasm->group_list);
    disasm->isa = isa;
    disasm->cfg = cfg;
@@ -118,7 +118,7 @@ disasm_initialize(const struct brw_isa_info *isa,
 }
 
 struct inst_group *
-disasm_new_inst_group(struct disasm_info *disasm, unsigned next_inst_offset)
+elk_disasm_new_inst_group(struct elk_disasm_info *disasm, unsigned next_inst_offset)
 {
    struct inst_group *tail = rzalloc(disasm, struct inst_group);
    tail->offset = next_inst_offset;
@@ -127,15 +127,15 @@ disasm_new_inst_group(struct disasm_info *disasm, unsigned next_inst_offset)
 }
 
 void
-disasm_annotate(struct disasm_info *disasm,
-                struct backend_instruction *inst, unsigned offset)
+elk_disasm_annotate(struct elk_disasm_info *disasm,
+                struct elk_backend_instruction *inst, unsigned offset)
 {
    const struct intel_device_info *devinfo = disasm->isa->devinfo;
-   const struct cfg_t *cfg = disasm->cfg;
+   const struct elk_cfg_t *cfg = disasm->cfg;
 
    struct inst_group *group;
    if (!disasm->use_tail) {
-      group = disasm_new_inst_group(disasm, offset);
+      group = elk_disasm_new_inst_group(disasm, offset);
    } else {
       disasm->use_tail = false;
       group = exec_node_data(struct inst_group,
@@ -159,7 +159,7 @@ disasm_annotate(struct disasm_info *disasm,
     * There's also only complication from emitting an annotation without
     * a corresponding hardware instruction to disassemble.
     */
-   if (devinfo->ver >= 6 && inst->opcode == BRW_OPCODE_DO) {
+   if (devinfo->ver >= 6 && inst->opcode == ELK_OPCODE_DO) {
       disasm->use_tail = true;
    }
 
@@ -170,7 +170,7 @@ disasm_annotate(struct disasm_info *disasm,
 }
 
 void
-disasm_insert_error(struct disasm_info *disasm, unsigned offset,
+elk_disasm_insert_error(struct elk_disasm_info *disasm, unsigned offset,
                     unsigned inst_size, const char *error)
 {
    foreach_list_typed(struct inst_group, cur, link, &disasm->group_list) {

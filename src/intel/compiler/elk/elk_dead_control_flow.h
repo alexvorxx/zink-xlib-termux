@@ -26,6 +26,6 @@
 
 #include "elk_shader.h"
 
-bool dead_control_flow_eliminate(backend_shader *s);
+bool elk_dead_control_flow_eliminate(elk_backend_shader *s);
 
 #endif /* ELK_DEAD_CONTROL_FLOW_H */

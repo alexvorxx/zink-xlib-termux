@@ -46,7 +46,7 @@
 
 struct ubo_range_entry
 {
-   struct brw_ubo_range range;
+   struct elk_ubo_range range;
    int benefit;
 };
 
@@ -141,9 +141,9 @@ analyze_ubos_block(struct ubo_analysis_state *state, nir_block *block)
          continue; /* Not a uniform or UBO intrinsic */
       }
 
-      if (brw_nir_ubo_surface_index_is_pushable(intrin->src[0]) &&
+      if (elk_nir_ubo_surface_index_is_pushable(intrin->src[0]) &&
           nir_src_is_const(intrin->src[1])) {
-         const int block = brw_nir_ubo_surface_index_get_push_block(intrin->src[0]);
+         const int block = elk_nir_ubo_surface_index_get_push_block(intrin->src[0]);
          const unsigned byte_offset = nir_src_as_uint(intrin->src[1]);
          const int offset = byte_offset / 32;
 
@@ -187,9 +187,9 @@ print_ubo_entry(FILE *file,
 }
 
 void
-brw_nir_analyze_ubo_ranges(const struct brw_compiler *compiler,
+elk_nir_analyze_ubo_ranges(const struct elk_compiler *compiler,
                            nir_shader *nir,
-                           struct brw_ubo_range out_ranges[4])
+                           struct elk_ubo_range out_ranges[4])
 {
    void *mem_ctx = ralloc_context(NULL);
 

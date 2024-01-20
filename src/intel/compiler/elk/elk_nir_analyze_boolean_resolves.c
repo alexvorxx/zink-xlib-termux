@@ -27,7 +27,7 @@
  * This file implements an analysis pass that determines when we have to do
  * a boolean resolve on Gen <= 5.  Instructions that need a boolean resolve
  * will have the booleans portion of the instr->pass_flags field set to
- * BRW_NIR_BOOLEAN_NEEDS_RESOLVE.
+ * ELK_NIR_BOOLEAN_NEEDS_RESOLVE.
  */
 
 
@@ -41,13 +41,13 @@ static uint8_t
 get_resolve_status_for_src(nir_src *src)
 {
    nir_instr *src_instr = src->ssa->parent_instr;
-   uint8_t resolve_status = src_instr->pass_flags & BRW_NIR_BOOLEAN_MASK;
+   uint8_t resolve_status = src_instr->pass_flags & ELK_NIR_BOOLEAN_MASK;
 
    /* If the source instruction needs resolve, then from the perspective
     * of the user, it's a true boolean.
     */
-   if (resolve_status == BRW_NIR_BOOLEAN_NEEDS_RESOLVE)
-      resolve_status = BRW_NIR_BOOLEAN_NO_RESOLVE;
+   if (resolve_status == ELK_NIR_BOOLEAN_NEEDS_RESOLVE)
+      resolve_status = ELK_NIR_BOOLEAN_NO_RESOLVE;
    return resolve_status;
 }
 
@@ -60,14 +60,14 @@ static bool
 src_mark_needs_resolve(nir_src *src, void *void_state)
 {
    nir_instr *src_instr = src->ssa->parent_instr;
-   uint8_t resolve_status = src_instr->pass_flags & BRW_NIR_BOOLEAN_MASK;
+   uint8_t resolve_status = src_instr->pass_flags & ELK_NIR_BOOLEAN_MASK;
 
    /* If the source instruction is unresolved, then mark it as needing
     * to be resolved.
     */
-   if (resolve_status == BRW_NIR_BOOLEAN_UNRESOLVED) {
-      src_instr->pass_flags &= ~BRW_NIR_BOOLEAN_MASK;
-      src_instr->pass_flags |= BRW_NIR_BOOLEAN_NEEDS_RESOLVE;
+   if (resolve_status == ELK_NIR_BOOLEAN_UNRESOLVED) {
+      src_instr->pass_flags &= ~ELK_NIR_BOOLEAN_MASK;
+      src_instr->pass_flags |= ELK_NIR_BOOLEAN_NEEDS_RESOLVE;
    }
 
    return true;
@@ -116,7 +116,7 @@ analyze_boolean_resolves_block(nir_block *block)
              * future, this may change and we'll have to remove some of the
              * above cases.
              */
-            resolve_status = BRW_NIR_BOOLEAN_NO_RESOLVE;
+            resolve_status = ELK_NIR_BOOLEAN_NO_RESOLVE;
             break;
 
          case nir_op_mov:
@@ -143,12 +143,12 @@ analyze_boolean_resolves_block(nir_block *block)
 
             if (src0_status == src1_status) {
                resolve_status = src0_status;
-            } else if (src0_status == BRW_NIR_NON_BOOLEAN ||
-                       src1_status == BRW_NIR_NON_BOOLEAN) {
+            } else if (src0_status == ELK_NIR_NON_BOOLEAN ||
+                       src1_status == ELK_NIR_NON_BOOLEAN) {
                /* If one of the sources is a non-boolean then the whole
                 * thing is a non-boolean.
                 */
-               resolve_status = BRW_NIR_NON_BOOLEAN;
+               resolve_status = ELK_NIR_NON_BOOLEAN;
             } else {
                /* At this point one of them is a true boolean and one is a
                 * boolean that needs a resolve.  We could either resolve the
@@ -157,7 +157,7 @@ analyze_boolean_resolves_block(nir_block *block)
                 * of one.  Just set this one to BOOLEAN_NO_RESOLVE and we'll
                 * let the code below force a resolve on the unresolved source.
                 */
-               resolve_status = BRW_NIR_BOOLEAN_NO_RESOLVE;
+               resolve_status = ELK_NIR_BOOLEAN_NO_RESOLVE;
             }
             break;
          }
@@ -168,7 +168,7 @@ analyze_boolean_resolves_block(nir_block *block)
                 * them so the result will have to be resolved before it can be
                 * used.
                 */
-               resolve_status = BRW_NIR_BOOLEAN_UNRESOLVED;
+               resolve_status = ELK_NIR_BOOLEAN_UNRESOLVED;
 
                /* Even though the destination is allowed to be left
                 * unresolved, the sources are treated as regular integers or
@@ -176,25 +176,25 @@ analyze_boolean_resolves_block(nir_block *block)
                 */
                nir_foreach_src(instr, src_mark_needs_resolve, NULL);
             } else {
-               resolve_status = BRW_NIR_NON_BOOLEAN;
+               resolve_status = ELK_NIR_NON_BOOLEAN;
             }
          }
 
          /* Go ahead allow unresolved booleans. */
-         instr->pass_flags = (instr->pass_flags & ~BRW_NIR_BOOLEAN_MASK) |
+         instr->pass_flags = (instr->pass_flags & ~ELK_NIR_BOOLEAN_MASK) |
                              resolve_status;
 
          /* Finally, resolve sources if it's needed */
          switch (resolve_status) {
-         case BRW_NIR_BOOLEAN_NEEDS_RESOLVE:
-         case BRW_NIR_BOOLEAN_UNRESOLVED:
+         case ELK_NIR_BOOLEAN_NEEDS_RESOLVE:
+         case ELK_NIR_BOOLEAN_UNRESOLVED:
             /* This instruction is either unresolved or we're doing the
              * resolve here; leave the sources alone.
              */
             break;
 
-         case BRW_NIR_BOOLEAN_NO_RESOLVE:
-         case BRW_NIR_NON_BOOLEAN:
+         case ELK_NIR_BOOLEAN_NO_RESOLVE:
+         case ELK_NIR_NON_BOOLEAN:
             nir_foreach_src(instr, src_mark_needs_resolve, NULL);
             break;
 
@@ -214,11 +214,11 @@ analyze_boolean_resolves_block(nir_block *block)
           * Since load_const instructions don't have any sources, we don't
           * have to worry about resolving them.
           */
-         instr->pass_flags &= ~BRW_NIR_BOOLEAN_MASK;
+         instr->pass_flags &= ~ELK_NIR_BOOLEAN_MASK;
          if (load->value[0].u32 == NIR_TRUE || load->value[0].u32 == NIR_FALSE) {
-            instr->pass_flags |= BRW_NIR_BOOLEAN_NO_RESOLVE;
+            instr->pass_flags |= ELK_NIR_BOOLEAN_NO_RESOLVE;
          } else {
-            instr->pass_flags |= BRW_NIR_NON_BOOLEAN;
+            instr->pass_flags |= ELK_NIR_NON_BOOLEAN;
          }
          continue;
       }
@@ -227,8 +227,8 @@ analyze_boolean_resolves_block(nir_block *block)
          /* Everything else is an unknown non-boolean value and needs to
           * have all sources resolved.
           */
-         instr->pass_flags = (instr->pass_flags & ~BRW_NIR_BOOLEAN_MASK) |
-                             BRW_NIR_NON_BOOLEAN;
+         instr->pass_flags = (instr->pass_flags & ~ELK_NIR_BOOLEAN_MASK) |
+                             ELK_NIR_NON_BOOLEAN;
          nir_foreach_src(instr, src_mark_needs_resolve, NULL);
          continue;
       }
@@ -250,7 +250,7 @@ analyze_boolean_resolves_impl(nir_function_impl *impl)
 }
 
 void
-brw_nir_analyze_boolean_resolves(nir_shader *shader)
+elk_nir_analyze_boolean_resolves(nir_shader *shader)
 {
    nir_foreach_function_impl(impl, shader) {
       analyze_boolean_resolves_impl(impl);

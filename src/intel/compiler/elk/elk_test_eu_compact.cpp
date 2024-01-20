@@ -42,10 +42,10 @@ get_compact_params_name(const testing::TestParamInfo<CompactParams> p)
    std::stringstream ss;
    ss << params.verx10 << "_";
    switch (params.align) {
-   case BRW_ALIGN_1:
+   case ELK_ALIGN_1:
       ss << "Align_1";
       break;
-   case BRW_ALIGN_16:
+   case ELK_ALIGN_16:
       ss << "Align_16";
       break;
    default:
@@ -55,27 +55,27 @@ get_compact_params_name(const testing::TestParamInfo<CompactParams> p)
 }
 
 static bool
-test_compact_instruction(struct brw_codegen *p, brw_inst src)
+test_compact_instruction(struct elk_codegen *p, elk_inst src)
 {
-   brw_compact_inst dst;
+   elk_compact_inst dst;
    memset(&dst, 0xd0, sizeof(dst));
 
-   if (brw_try_compact_instruction(p->isa, &dst, &src)) {
-      brw_inst uncompacted;
+   if (elk_try_compact_instruction(p->isa, &dst, &src)) {
+      elk_inst uncompacted;
 
-      brw_uncompact_instruction(p->isa, &uncompacted, &dst);
+      elk_uncompact_instruction(p->isa, &uncompacted, &dst);
       if (memcmp(&uncompacted, &src, sizeof(src))) {
-	 brw_debug_compact_uncompact(p->isa, &src, &uncompacted);
+	 elk_debug_compact_uncompact(p->isa, &src, &uncompacted);
 	 return false;
       }
    } else {
-      brw_compact_inst unchanged;
+      elk_compact_inst unchanged;
       memset(&unchanged, 0xd0, sizeof(unchanged));
       /* It's not supposed to change dst unless it compacted. */
       if (memcmp(&unchanged, &dst, sizeof(dst))) {
 	 fprintf(stderr, "Failed to compact, but dst changed\n");
 	 fprintf(stderr, "  Instruction: ");
-	 brw_disassemble_inst(stderr, p->isa, &src, false, 0, NULL);
+	 elk_disassemble_inst(stderr, p->isa, &src, false, 0, NULL);
 	 return false;
       }
    }
@@ -91,27 +91,27 @@ test_compact_instruction(struct brw_codegen *p, brw_inst src)
  * become meaningless once fuzzing twiddles a related bit.
  */
 static void
-clear_pad_bits(const struct brw_isa_info *isa, brw_inst *inst)
+clear_pad_bits(const struct elk_isa_info *isa, elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   if (brw_inst_opcode(isa, inst) != BRW_OPCODE_SEND &&
-       brw_inst_opcode(isa, inst) != BRW_OPCODE_SENDC &&
-       brw_inst_src0_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-       brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE) {
-      brw_inst_set_bits(inst, 127, 111, 0);
+   if (elk_inst_opcode(isa, inst) != ELK_OPCODE_SEND &&
+       elk_inst_opcode(isa, inst) != ELK_OPCODE_SENDC &&
+       elk_inst_src0_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE &&
+       elk_inst_src1_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE) {
+      elk_inst_set_bits(inst, 127, 111, 0);
    }
 
    if (devinfo->ver == 8 && devinfo->platform != INTEL_PLATFORM_CHV &&
-       is_3src(isa, brw_inst_opcode(isa, inst))) {
-      brw_inst_set_bits(inst, 105, 105, 0);
-      brw_inst_set_bits(inst, 84, 84, 0);
-      brw_inst_set_bits(inst, 36, 35, 0);
+       elk_is_3src(isa, elk_inst_opcode(isa, inst))) {
+      elk_inst_set_bits(inst, 105, 105, 0);
+      elk_inst_set_bits(inst, 84, 84, 0);
+      elk_inst_set_bits(inst, 36, 35, 0);
    }
 }
 
 static bool
-skip_bit(const struct brw_isa_info *isa, brw_inst *src, int bit)
+skip_bit(const struct elk_isa_info *isa, elk_inst *src, int bit)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
@@ -123,7 +123,7 @@ skip_bit(const struct brw_isa_info *isa, brw_inst *src, int bit)
    if (bit == 29)
       return true;
 
-   if (is_3src(isa, brw_inst_opcode(isa, src))) {
+   if (elk_is_3src(isa, elk_inst_opcode(isa, src))) {
       if (devinfo->ver >= 9 || devinfo->platform == INTEL_PLATFORM_CHV) {
          if (bit == 127)
             return true;
@@ -160,10 +160,10 @@ skip_bit(const struct brw_isa_info *isa, brw_inst *src, int bit)
    }
 
    /* sometimes these are pad bits. */
-   if (brw_inst_opcode(isa, src) != BRW_OPCODE_SEND &&
-       brw_inst_opcode(isa, src) != BRW_OPCODE_SENDC &&
-       brw_inst_src0_reg_file(devinfo, src) != BRW_IMMEDIATE_VALUE &&
-       brw_inst_src1_reg_file(devinfo, src) != BRW_IMMEDIATE_VALUE &&
+   if (elk_inst_opcode(isa, src) != ELK_OPCODE_SEND &&
+       elk_inst_opcode(isa, src) != ELK_OPCODE_SENDC &&
+       elk_inst_src0_reg_file(devinfo, src) != ELK_IMMEDIATE_VALUE &&
+       elk_inst_src1_reg_file(devinfo, src) != ELK_IMMEDIATE_VALUE &&
        bit >= 121) {
       return true;
    }
@@ -172,14 +172,14 @@ skip_bit(const struct brw_isa_info *isa, brw_inst *src, int bit)
 }
 
 static bool
-test_fuzz_compact_instruction(struct brw_codegen *p, brw_inst src)
+test_fuzz_compact_instruction(struct elk_codegen *p, elk_inst src)
 {
    for (int bit0 = 0; bit0 < 128; bit0++) {
       if (skip_bit(p->isa, &src, bit0))
 	 continue;
 
       for (int bit1 = 0; bit1 < 128; bit1++) {
-         brw_inst instr = src;
+         elk_inst instr = src;
 	 uint64_t *bits = instr.data;
 
          if (skip_bit(p->isa, &src, bit1))
@@ -190,7 +190,7 @@ test_fuzz_compact_instruction(struct brw_codegen *p, brw_inst src)
 
          clear_pad_bits(p->isa, &instr);
 
-         if (!brw_validate_instruction(p->isa, &instr, 0, sizeof(brw_inst), NULL))
+         if (!elk_validate_instruction(p->isa, &instr, 0, sizeof(elk_inst), NULL))
             continue;
 
 	 if (!test_compact_instruction(p, instr)) {
@@ -209,15 +209,15 @@ protected:
       CompactParams params = GetParam();
       mem_ctx = ralloc_context(NULL);
       devinfo = rzalloc(mem_ctx, intel_device_info);
-      p = rzalloc(mem_ctx, brw_codegen);
+      p = rzalloc(mem_ctx, elk_codegen);
 
       devinfo->verx10 = params.verx10;
       devinfo->ver = devinfo->verx10 / 10;
 
-      brw_init_isa_info(&isa, devinfo);
-      brw_init_codegen(&isa, p, p);
-      brw_set_default_predicate_control(p, BRW_PREDICATE_NONE);
-      brw_set_default_access_mode(p, params.align);
+      elk_init_isa_info(&isa, devinfo);
+      elk_init_codegen(&isa, p, p);
+      elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
+      elk_set_default_access_mode(p, params.align);
    };
 
    virtual void TearDown() {
@@ -229,9 +229,9 @@ protected:
    };
 
    void *mem_ctx;
-   struct brw_isa_info isa;
+   struct elk_isa_info isa;
    intel_device_info *devinfo;
-   brw_codegen *p;
+   elk_codegen *p;
 };
 
 class Instructions : public CompactTestFixture {};
@@ -240,15 +240,15 @@ INSTANTIATE_TEST_SUITE_P(
    CompactTest,
    Instructions,
    testing::Values(
-      CompactParams{ 50,  BRW_ALIGN_1 }, CompactParams{ 50, BRW_ALIGN_16 },
-      CompactParams{ 60,  BRW_ALIGN_1 }, CompactParams{ 60, BRW_ALIGN_16 },
-      CompactParams{ 70,  BRW_ALIGN_1 }, CompactParams{ 70, BRW_ALIGN_16 },
-      CompactParams{ 75,  BRW_ALIGN_1 }, CompactParams{ 75, BRW_ALIGN_16 },
-      CompactParams{ 80,  BRW_ALIGN_1 }, CompactParams{ 80, BRW_ALIGN_16 },
-      CompactParams{ 90,  BRW_ALIGN_1 }, CompactParams{ 90, BRW_ALIGN_16 },
-      CompactParams{ 110, BRW_ALIGN_1 },
-      CompactParams{ 120, BRW_ALIGN_1 },
-      CompactParams{ 125, BRW_ALIGN_1 }
+      CompactParams{ 50,  ELK_ALIGN_1 }, CompactParams{ 50, ELK_ALIGN_16 },
+      CompactParams{ 60,  ELK_ALIGN_1 }, CompactParams{ 60, ELK_ALIGN_16 },
+      CompactParams{ 70,  ELK_ALIGN_1 }, CompactParams{ 70, ELK_ALIGN_16 },
+      CompactParams{ 75,  ELK_ALIGN_1 }, CompactParams{ 75, ELK_ALIGN_16 },
+      CompactParams{ 80,  ELK_ALIGN_1 }, CompactParams{ 80, ELK_ALIGN_16 },
+      CompactParams{ 90,  ELK_ALIGN_1 }, CompactParams{ 90, ELK_ALIGN_16 },
+      CompactParams{ 110, ELK_ALIGN_1 },
+      CompactParams{ 120, ELK_ALIGN_1 },
+      CompactParams{ 125, ELK_ALIGN_1 }
    ),
    get_compact_params_name);
 
@@ -258,81 +258,81 @@ INSTANTIATE_TEST_SUITE_P(
    CompactTest,
    InstructionsBeforeIvyBridge,
    testing::Values(
-      CompactParams{ 50,  BRW_ALIGN_1 }, CompactParams{ 50, BRW_ALIGN_16 },
-      CompactParams{ 60,  BRW_ALIGN_1 }, CompactParams{ 60, BRW_ALIGN_16 }
+      CompactParams{ 50,  ELK_ALIGN_1 }, CompactParams{ 50, ELK_ALIGN_16 },
+      CompactParams{ 60,  ELK_ALIGN_1 }, CompactParams{ 60, ELK_ALIGN_16 }
    ),
    get_compact_params_name);
 
 
 TEST_P(Instructions, ADD_GRF_GRF_GRF)
 {
-   struct brw_reg g0 = brw_vec8_grf(0, 0);
-   struct brw_reg g2 = brw_vec8_grf(2, 0);
-   struct brw_reg g4 = brw_vec8_grf(4, 0);
+   struct elk_reg g0 = elk_vec8_grf(0, 0);
+   struct elk_reg g2 = elk_vec8_grf(2, 0);
+   struct elk_reg g4 = elk_vec8_grf(4, 0);
 
-   brw_ADD(p, g0, g2, g4);
+   elk_ADD(p, g0, g2, g4);
 }
 
 TEST_P(Instructions, ADD_GRF_GRF_IMM)
 {
-   struct brw_reg g0 = brw_vec8_grf(0, 0);
-   struct brw_reg g2 = brw_vec8_grf(2, 0);
+   struct elk_reg g0 = elk_vec8_grf(0, 0);
+   struct elk_reg g2 = elk_vec8_grf(2, 0);
 
-   brw_ADD(p, g0, g2, brw_imm_f(1.0));
+   elk_ADD(p, g0, g2, elk_imm_f(1.0));
 }
 
 TEST_P(Instructions, ADD_GRF_GRF_IMM_d)
 {
-   struct brw_reg g0 = retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_D);
-   struct brw_reg g2 = retype(brw_vec8_grf(2, 0), BRW_REGISTER_TYPE_D);
+   struct elk_reg g0 = retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_D);
+   struct elk_reg g2 = retype(elk_vec8_grf(2, 0), ELK_REGISTER_TYPE_D);
 
-   brw_ADD(p, g0, g2, brw_imm_d(1));
+   elk_ADD(p, g0, g2, elk_imm_d(1));
 }
 
 TEST_P(Instructions, MOV_GRF_GRF)
 {
-   struct brw_reg g0 = brw_vec8_grf(0, 0);
-   struct brw_reg g2 = brw_vec8_grf(2, 0);
+   struct elk_reg g0 = elk_vec8_grf(0, 0);
+   struct elk_reg g2 = elk_vec8_grf(2, 0);
 
-   brw_MOV(p, g0, g2);
+   elk_MOV(p, g0, g2);
 }
 
 TEST_P(InstructionsBeforeIvyBridge, ADD_MRF_GRF_GRF)
 {
-   struct brw_reg m6 = brw_vec8_reg(BRW_MESSAGE_REGISTER_FILE, 6, 0);
-   struct brw_reg g2 = brw_vec8_grf(2, 0);
-   struct brw_reg g4 = brw_vec8_grf(4, 0);
+   struct elk_reg m6 = elk_vec8_reg(ELK_MESSAGE_REGISTER_FILE, 6, 0);
+   struct elk_reg g2 = elk_vec8_grf(2, 0);
+   struct elk_reg g4 = elk_vec8_grf(4, 0);
 
-   brw_ADD(p, m6, g2, g4);
+   elk_ADD(p, m6, g2, g4);
 }
 
 TEST_P(Instructions, ADD_vec1_GRF_GRF_GRF)
 {
-   struct brw_reg g0 = brw_vec1_grf(0, 0);
-   struct brw_reg g2 = brw_vec1_grf(2, 0);
-   struct brw_reg g4 = brw_vec1_grf(4, 0);
+   struct elk_reg g0 = elk_vec1_grf(0, 0);
+   struct elk_reg g2 = elk_vec1_grf(2, 0);
+   struct elk_reg g4 = elk_vec1_grf(4, 0);
 
-   brw_ADD(p, g0, g2, g4);
+   elk_ADD(p, g0, g2, g4);
 }
 
 TEST_P(InstructionsBeforeIvyBridge, PLN_MRF_GRF_GRF)
 {
-   struct brw_reg m6 = brw_vec8_reg(BRW_MESSAGE_REGISTER_FILE, 6, 0);
-   struct brw_reg interp = brw_vec1_grf(2, 0);
-   struct brw_reg g4 = brw_vec8_grf(4, 0);
+   struct elk_reg m6 = elk_vec8_reg(ELK_MESSAGE_REGISTER_FILE, 6, 0);
+   struct elk_reg interp = elk_vec1_grf(2, 0);
+   struct elk_reg g4 = elk_vec8_grf(4, 0);
 
-   brw_PLN(p, m6, interp, g4);
+   elk_PLN(p, m6, interp, g4);
 }
 
 TEST_P(Instructions, f0_0_MOV_GRF_GRF)
 {
-   struct brw_reg g0 = brw_vec8_grf(0, 0);
-   struct brw_reg g2 = brw_vec8_grf(2, 0);
+   struct elk_reg g0 = elk_vec8_grf(0, 0);
+   struct elk_reg g2 = elk_vec8_grf(2, 0);
 
-   brw_push_insn_state(p);
-   brw_set_default_predicate_control(p, BRW_PREDICATE_NORMAL);
-   brw_MOV(p, g0, g2);
-   brw_pop_insn_state(p);
+   elk_push_insn_state(p);
+   elk_set_default_predicate_control(p, ELK_PREDICATE_NORMAL);
+   elk_MOV(p, g0, g2);
+   elk_pop_insn_state(p);
 }
 
 /* The handling of f0.1 vs f0.0 changes between gfx6 and gfx7.  Explicitly test
@@ -341,12 +341,12 @@ TEST_P(Instructions, f0_0_MOV_GRF_GRF)
  */
 TEST_P(Instructions, f0_1_MOV_GRF_GRF)
 {
-   struct brw_reg g0 = brw_vec8_grf(0, 0);
-   struct brw_reg g2 = brw_vec8_grf(2, 0);
+   struct elk_reg g0 = elk_vec8_grf(0, 0);
+   struct elk_reg g2 = elk_vec8_grf(2, 0);
 
-   brw_push_insn_state(p);
-   brw_set_default_predicate_control(p, BRW_PREDICATE_NORMAL);
-   brw_inst *mov = brw_MOV(p, g0, g2);
-   brw_inst_set_flag_subreg_nr(p->devinfo, mov, 1);
-   brw_pop_insn_state(p);
+   elk_push_insn_state(p);
+   elk_set_default_predicate_control(p, ELK_PREDICATE_NORMAL);
+   elk_inst *mov = elk_MOV(p, g0, g2);
+   elk_inst_set_flag_subreg_nr(p->devinfo, mov, 1);
+   elk_pop_insn_state(p);
 }

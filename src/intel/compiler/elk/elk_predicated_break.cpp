@@ -99,7 +99,7 @@ has_continue(const struct loop_continue_tracking *s)
 }
 
 bool
-opt_predicated_break(backend_shader *s)
+elk_opt_predicated_break(elk_backend_shader *s)
 {
    bool progress = false;
    struct loop_continue_tracking state = { {0, }, 0 };
@@ -108,51 +108,51 @@ opt_predicated_break(backend_shader *s)
       /* DO instructions, by definition, can only be found at the beginning of
        * basic blocks.
        */
-      backend_instruction *const do_inst = block->start();
+      elk_backend_instruction *const do_inst = block->start();
 
       /* BREAK, CONTINUE, and WHILE instructions, by definition, can only be
        * found at the ends of basic blocks.
        */
-      backend_instruction *jump_inst = block->end();
+      elk_backend_instruction *jump_inst = block->end();
 
-      if (do_inst->opcode == BRW_OPCODE_DO)
+      if (do_inst->opcode == ELK_OPCODE_DO)
          enter_loop(&state);
 
-      if (jump_inst->opcode == BRW_OPCODE_CONTINUE)
+      if (jump_inst->opcode == ELK_OPCODE_CONTINUE)
          set_continue(&state);
-      else if (jump_inst->opcode == BRW_OPCODE_WHILE)
+      else if (jump_inst->opcode == ELK_OPCODE_WHILE)
          exit_loop(&state);
 
       if (block->start_ip != block->end_ip)
          continue;
 
-      if (jump_inst->opcode != BRW_OPCODE_BREAK &&
-          jump_inst->opcode != BRW_OPCODE_CONTINUE)
+      if (jump_inst->opcode != ELK_OPCODE_BREAK &&
+          jump_inst->opcode != ELK_OPCODE_CONTINUE)
          continue;
 
-      backend_instruction *if_inst = block->prev()->end();
-      if (if_inst->opcode != BRW_OPCODE_IF)
+      elk_backend_instruction *if_inst = block->prev()->end();
+      if (if_inst->opcode != ELK_OPCODE_IF)
          continue;
 
-      backend_instruction *endif_inst = block->next()->start();
-      if (endif_inst->opcode != BRW_OPCODE_ENDIF)
+      elk_backend_instruction *endif_inst = block->next()->start();
+      if (endif_inst->opcode != ELK_OPCODE_ENDIF)
          continue;
 
-      bblock_t *jump_block = block;
-      bblock_t *if_block = jump_block->prev();
-      bblock_t *endif_block = jump_block->next();
+      elk_bblock_t *jump_block = block;
+      elk_bblock_t *if_block = jump_block->prev();
+      elk_bblock_t *endif_block = jump_block->next();
 
       jump_inst->predicate = if_inst->predicate;
       jump_inst->predicate_inverse = if_inst->predicate_inverse;
 
-      bblock_t *earlier_block = if_block;
+      elk_bblock_t *earlier_block = if_block;
       if (if_block->start_ip == if_block->end_ip) {
          earlier_block = if_block->prev();
       }
 
       if_inst->remove(if_block);
 
-      bblock_t *later_block = endif_block;
+      elk_bblock_t *later_block = endif_block;
       if (endif_block->start_ip == endif_block->end_ip) {
          later_block = endif_block->next();
       }
@@ -165,7 +165,7 @@ opt_predicated_break(backend_shader *s)
           * problem.
           */
          assert(earlier_block->start() == NULL ||
-                earlier_block->start()->opcode != BRW_OPCODE_DO);
+                earlier_block->start()->opcode != ELK_OPCODE_DO);
 
          earlier_block->unlink_children();
          earlier_block->add_successor(s->cfg->mem_ctx, jump_block,
@@ -180,12 +180,12 @@ opt_predicated_break(backend_shader *s)
        * one. Instead, promote the link to logical.
        */
       bool need_to_link = true;
-      foreach_list_typed(bblock_link, link, link, &jump_block->children) {
+      foreach_list_typed(elk_bblock_link, link, link, &jump_block->children) {
          if (link->block == later_block) {
             assert(later_block->starts_with_control_flow());
 
             /* Update the link from later_block back to jump_block. */
-            foreach_list_typed(bblock_link, parent_link, link, &later_block->parents) {
+            foreach_list_typed(elk_bblock_link, parent_link, link, &later_block->parents) {
                if (parent_link->block == jump_block) {
                   parent_link->kind = bblock_link_logical;
                }
@@ -218,12 +218,12 @@ opt_predicated_break(backend_shader *s)
        * could terminate prematurely.  This can occur if the loop contains a
        * CONT instruction.
        */
-      bblock_t *while_block = earlier_block->next();
-      backend_instruction *while_inst = while_block->start();
+      elk_bblock_t *while_block = earlier_block->next();
+      elk_backend_instruction *while_inst = while_block->start();
 
-      if (jump_inst->opcode == BRW_OPCODE_BREAK &&
-          while_inst->opcode == BRW_OPCODE_WHILE &&
-          while_inst->predicate == BRW_PREDICATE_NONE &&
+      if (jump_inst->opcode == ELK_OPCODE_BREAK &&
+          while_inst->opcode == ELK_OPCODE_WHILE &&
+          while_inst->predicate == ELK_PREDICATE_NONE &&
           !has_continue(&state)) {
          jump_inst->remove(earlier_block);
          while_inst->predicate = jump_inst->predicate;

@@ -17,16 +17,16 @@ class PredicatedBreakTest : public ::testing::Test {
 public:
    bool debug;
    void *mem_ctx;
-   brw_compiler compiler;
-   brw_compile_params params;
+   elk_compiler compiler;
+   elk_compile_params params;
    intel_device_info devinfo;
-   struct brw_wm_prog_data prog_data;
+   struct elk_wm_prog_data prog_data;
    struct gl_shader_program *shader_prog;
 
-   fs_visitor *shader_a;
-   fs_visitor *shader_b;
+   elk_fs_visitor *shader_a;
+   elk_fs_visitor *shader_b;
 
-   bool opt_predicated_break(fs_visitor *s);
+   bool elk_opt_predicated_break(elk_fs_visitor *s);
 };
 
 void
@@ -42,7 +42,7 @@ PredicatedBreakTest::SetUp()
 
    compiler = {};
    compiler.devinfo = &devinfo;
-   brw_init_isa_info(&compiler.isa, &devinfo);
+   elk_init_isa_info(&compiler.isa, &devinfo);
 
    params = {};
    params.mem_ctx = mem_ctx;
@@ -51,10 +51,10 @@ PredicatedBreakTest::SetUp()
    nir_shader *nir =
       nir_shader_create(mem_ctx, MESA_SHADER_FRAGMENT, NULL, NULL);
 
-   shader_a = new fs_visitor(&compiler, &params, NULL,
+   shader_a = new elk_fs_visitor(&compiler, &params, NULL,
                              &prog_data.base, nir, 8, false, false);
 
-   shader_b = new fs_visitor(&compiler, &params, NULL,
+   shader_b = new elk_fs_visitor(&compiler, &params, NULL,
                              &prog_data.base, nir, 8, false, false);
 }
 
@@ -68,7 +68,7 @@ PredicatedBreakTest::TearDown()
 }
 
 bool
-PredicatedBreakTest::opt_predicated_break(fs_visitor *s)
+PredicatedBreakTest::elk_opt_predicated_break(elk_fs_visitor *s)
 {
    const bool print = getenv("TEST_DEBUG");
 
@@ -77,7 +77,7 @@ PredicatedBreakTest::opt_predicated_break(fs_visitor *s)
       s->cfg->dump();
    }
 
-   bool ret = ::opt_predicated_break(s);
+   bool ret = ::elk_opt_predicated_break(s);
 
    if (print) {
       fprintf(stderr, "\n= After =\n");
@@ -88,14 +88,14 @@ PredicatedBreakTest::opt_predicated_break(fs_visitor *s)
 }
 
 static fs_builder
-make_builder(fs_visitor *s)
+make_builder(elk_fs_visitor *s)
 {
    return fs_builder(s, s->dispatch_width).at_end();
 }
 
 static testing::AssertionResult
 shaders_match(const char *a_expr, const char *b_expr,
-              fs_visitor *a, fs_visitor *b)
+              elk_fs_visitor *a, elk_fs_visitor *b)
 {
    /* Using the CFG string dump for this.  Not ideal but it is
     * convenient that covers some CFG information, helping to
@@ -140,13 +140,13 @@ TEST_F(PredicatedBreakTest, TopBreakWithoutContinue)
    fs_builder a = make_builder(shader_a);
    fs_builder b = make_builder(shader_b);
 
-   fs_reg r1 = brw_vec8_grf(1, 0);
-   fs_reg r2 = brw_vec8_grf(2, 0);
-   fs_reg r3 = brw_vec8_grf(3, 0);
+   elk_fs_reg r1 = elk_vec8_grf(1, 0);
+   elk_fs_reg r2 = elk_vec8_grf(2, 0);
+   elk_fs_reg r3 = elk_vec8_grf(3, 0);
 
    a.DO();
-   a.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
-   a.IF(BRW_PREDICATE_NORMAL);
+   a.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
+   a.IF(ELK_PREDICATE_NORMAL);
    a.BREAK();
    a.ENDIF();
    a.ADD(r1, r2, r3);
@@ -155,12 +155,12 @@ TEST_F(PredicatedBreakTest, TopBreakWithoutContinue)
    shader_a->calculate_cfg();
 
    /* The IF/ENDIF around the BREAK is expected to be removed. */
-   bool progress = opt_predicated_break(shader_a);
+   bool progress = elk_opt_predicated_break(shader_a);
    EXPECT_TRUE(progress);
 
    b.DO();
-   b.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
-   b.BREAK()->predicate = BRW_PREDICATE_NORMAL;
+   b.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
+   b.BREAK()->predicate = ELK_PREDICATE_NORMAL;
    b.ADD(r1, r2, r3);
    b.WHILE();
    b.NOP();
@@ -174,18 +174,18 @@ TEST_F(PredicatedBreakTest, TopBreakWithContinue)
    fs_builder a = make_builder(shader_a);
    fs_builder b = make_builder(shader_b);
 
-   fs_reg r1 = brw_vec8_grf(1, 0);
-   fs_reg r2 = brw_vec8_grf(2, 0);
-   fs_reg r3 = brw_vec8_grf(3, 0);
+   elk_fs_reg r1 = elk_vec8_grf(1, 0);
+   elk_fs_reg r2 = elk_vec8_grf(2, 0);
+   elk_fs_reg r3 = elk_vec8_grf(3, 0);
 
    a.DO();
-   a.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
-   a.IF(BRW_PREDICATE_NORMAL);
+   a.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
+   a.IF(ELK_PREDICATE_NORMAL);
    a.BREAK();
    a.ENDIF();
    a.ADD(r1, r2, r3);
-   a.CMP(r1, r2, r3, BRW_CONDITIONAL_GE);
-   a.IF(BRW_PREDICATE_NORMAL);
+   a.CMP(r1, r2, r3, ELK_CONDITIONAL_GE);
+   a.IF(ELK_PREDICATE_NORMAL);
    a.CONTINUE();
    a.ENDIF();
    a.MUL(r1, r2, r3);
@@ -196,15 +196,15 @@ TEST_F(PredicatedBreakTest, TopBreakWithContinue)
    /* The IF/ENDIF around the BREAK and the CONTINUE are expected to be
     * removed.
     */
-   bool progress = opt_predicated_break(shader_a);
+   bool progress = elk_opt_predicated_break(shader_a);
    EXPECT_TRUE(progress);
 
    b.DO();
-   b.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
-   b.BREAK()->predicate = BRW_PREDICATE_NORMAL;
+   b.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
+   b.BREAK()->predicate = ELK_PREDICATE_NORMAL;
    b.ADD(r1, r2, r3);
-   b.CMP(r1, r2, r3, BRW_CONDITIONAL_GE);
-   b.CONTINUE()->predicate = BRW_PREDICATE_NORMAL;
+   b.CMP(r1, r2, r3, ELK_CONDITIONAL_GE);
+   b.CONTINUE()->predicate = ELK_PREDICATE_NORMAL;
    b.MUL(r1, r2, r3);
    b.WHILE();
    b.NOP();
@@ -218,14 +218,14 @@ TEST_F(PredicatedBreakTest, DISABLED_BottomBreakWithoutContinue)
    fs_builder a = make_builder(shader_a);
    fs_builder b = make_builder(shader_b);
 
-   fs_reg r1 = brw_vec8_grf(1, 0);
-   fs_reg r2 = brw_vec8_grf(2, 0);
-   fs_reg r3 = brw_vec8_grf(3, 0);
+   elk_fs_reg r1 = elk_vec8_grf(1, 0);
+   elk_fs_reg r2 = elk_vec8_grf(2, 0);
+   elk_fs_reg r3 = elk_vec8_grf(3, 0);
 
    a.DO();
    a.ADD(r1, r2, r3);
-   a.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
-   a.IF(BRW_PREDICATE_NORMAL);
+   a.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
+   a.IF(ELK_PREDICATE_NORMAL);
    a.BREAK();
    a.ENDIF();
    a.WHILE();
@@ -235,14 +235,14 @@ TEST_F(PredicatedBreakTest, DISABLED_BottomBreakWithoutContinue)
    /* BREAK is the only way to exit the loop, so expect to remove the
     * IF/BREAK/ENDIF and add a predicate to WHILE.
     */
-   bool progress = opt_predicated_break(shader_a);
+   bool progress = elk_opt_predicated_break(shader_a);
    EXPECT_TRUE(progress);
 
    b.DO();
    b.ADD(r1, r2, r3);
-   b.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
+   b.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
    auto w = b.WHILE();
-   w->predicate = BRW_PREDICATE_NORMAL;
+   w->predicate = ELK_PREDICATE_NORMAL;
    w->predicate_inverse = true;
    b.NOP();
    shader_b->calculate_cfg();
@@ -256,19 +256,19 @@ TEST_F(PredicatedBreakTest, BottomBreakWithContinue)
    fs_builder a = make_builder(shader_a);
    fs_builder b = make_builder(shader_b);
 
-   fs_reg r1 = brw_vec8_grf(1, 0);
-   fs_reg r2 = brw_vec8_grf(2, 0);
-   fs_reg r3 = brw_vec8_grf(3, 0);
+   elk_fs_reg r1 = elk_vec8_grf(1, 0);
+   elk_fs_reg r2 = elk_vec8_grf(2, 0);
+   elk_fs_reg r3 = elk_vec8_grf(3, 0);
 
    a.DO();
    a.ADD(r1, r2, r3);
-   a.CMP(r1, r2, r3, BRW_CONDITIONAL_GE);
-   a.IF(BRW_PREDICATE_NORMAL);
+   a.CMP(r1, r2, r3, ELK_CONDITIONAL_GE);
+   a.IF(ELK_PREDICATE_NORMAL);
    a.CONTINUE();
    a.ENDIF();
    a.MUL(r1, r2, r3);
-   a.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
-   a.IF(BRW_PREDICATE_NORMAL);
+   a.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
+   a.IF(ELK_PREDICATE_NORMAL);
    a.BREAK();
    a.ENDIF();
    a.WHILE();
@@ -278,16 +278,16 @@ TEST_F(PredicatedBreakTest, BottomBreakWithContinue)
    /* With a CONTINUE, the BREAK can't be removed, but still remove the
     * IF/ENDIF around both of them.
     */
-   bool progress = opt_predicated_break(shader_a);
+   bool progress = elk_opt_predicated_break(shader_a);
    EXPECT_TRUE(progress);
 
    b.DO();
    b.ADD(r1, r2, r3);
-   b.CMP(r1, r2, r3, BRW_CONDITIONAL_GE);
-   b.CONTINUE()->predicate = BRW_PREDICATE_NORMAL;
+   b.CMP(r1, r2, r3, ELK_CONDITIONAL_GE);
+   b.CONTINUE()->predicate = ELK_PREDICATE_NORMAL;
    b.MUL(r1, r2, r3);
-   b.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
-   b.BREAK()->predicate = BRW_PREDICATE_NORMAL;
+   b.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
+   b.BREAK()->predicate = ELK_PREDICATE_NORMAL;
    b.WHILE();
    b.NOP();
    shader_b->calculate_cfg();
@@ -300,19 +300,19 @@ TEST_F(PredicatedBreakTest, TwoBreaks)
    fs_builder a = make_builder(shader_a);
    fs_builder b = make_builder(shader_b);
 
-   fs_reg r1 = brw_vec8_grf(1, 0);
-   fs_reg r2 = brw_vec8_grf(2, 0);
-   fs_reg r3 = brw_vec8_grf(3, 0);
+   elk_fs_reg r1 = elk_vec8_grf(1, 0);
+   elk_fs_reg r2 = elk_vec8_grf(2, 0);
+   elk_fs_reg r3 = elk_vec8_grf(3, 0);
 
    a.DO();
    a.ADD(r1, r2, r3);
-   a.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
-   a.IF(BRW_PREDICATE_NORMAL);
+   a.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
+   a.IF(ELK_PREDICATE_NORMAL);
    a.BREAK();
    a.ENDIF();
    a.MUL(r1, r2, r3);
-   a.CMP(r1, r2, r3, BRW_CONDITIONAL_GE);
-   a.IF(BRW_PREDICATE_NORMAL);
+   a.CMP(r1, r2, r3, ELK_CONDITIONAL_GE);
+   a.IF(ELK_PREDICATE_NORMAL);
    a.BREAK();
    a.ENDIF();
    a.AND(r1, r2, r3);
@@ -321,16 +321,16 @@ TEST_F(PredicatedBreakTest, TwoBreaks)
    shader_a->calculate_cfg();
 
    /* The IF/ENDIF around the breaks are expected to be removed. */
-   bool progress = opt_predicated_break(shader_a);
+   bool progress = elk_opt_predicated_break(shader_a);
    EXPECT_TRUE(progress);
 
    b.DO();
    b.ADD(r1, r2, r3);
-   b.CMP(r1, r2, r3, BRW_CONDITIONAL_NZ);
-   b.BREAK()->predicate = BRW_PREDICATE_NORMAL;
+   b.CMP(r1, r2, r3, ELK_CONDITIONAL_NZ);
+   b.BREAK()->predicate = ELK_PREDICATE_NORMAL;
    b.MUL(r1, r2, r3);
-   b.CMP(r1, r2, r3, BRW_CONDITIONAL_GE);
-   b.BREAK()->predicate = BRW_PREDICATE_NORMAL;
+   b.CMP(r1, r2, r3, ELK_CONDITIONAL_GE);
+   b.BREAK()->predicate = ELK_PREDICATE_NORMAL;
    b.AND(r1, r2, r3);
    b.WHILE();
    b.NOP();  /* There's always going to be something after a WHILE. */

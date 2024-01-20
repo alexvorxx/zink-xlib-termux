@@ -37,7 +37,7 @@ void
 vec4_vs_visitor::emit_urb_write_header(int mrf)
 {
    /* No need to do anything for VS; an implied write to this MRF will be
-    * performed by VEC4_VS_OPCODE_URB_WRITE.
+    * performed by ELK_VEC4_VS_OPCODE_URB_WRITE.
     */
    (void) mrf;
 }
@@ -46,9 +46,9 @@ vec4_vs_visitor::emit_urb_write_header(int mrf)
 vec4_instruction *
 vec4_vs_visitor::emit_urb_write_opcode(bool complete)
 {
-   vec4_instruction *inst = emit(VEC4_VS_OPCODE_URB_WRITE);
+   vec4_instruction *inst = emit(ELK_VEC4_VS_OPCODE_URB_WRITE);
    inst->urb_write_flags = complete ?
-      BRW_URB_WRITE_EOT_COMPLETE : BRW_URB_WRITE_NO_FLAGS;
+      ELK_URB_WRITE_EOT_COMPLETE : ELK_URB_WRITE_NO_FLAGS;
 
    return inst;
 }
@@ -57,7 +57,7 @@ vec4_vs_visitor::emit_urb_write_opcode(bool complete)
 void
 vec4_vs_visitor::emit_urb_slot(dst_reg reg, int varying)
 {
-   reg.type = BRW_REGISTER_TYPE_F;
+   reg.type = ELK_REGISTER_TYPE_F;
    output_reg[varying][0].type = reg.type;
 
    switch (varying) {
@@ -91,10 +91,10 @@ vec4_vs_visitor::emit_thread_end()
 }
 
 
-vec4_vs_visitor::vec4_vs_visitor(const struct brw_compiler *compiler,
-                                 const struct brw_compile_params *params,
-                                 const struct brw_vs_prog_key *key,
-                                 struct brw_vs_prog_data *vs_prog_data,
+vec4_vs_visitor::vec4_vs_visitor(const struct elk_compiler *compiler,
+                                 const struct elk_compile_params *params,
+                                 const struct elk_vs_prog_key *key,
+                                 struct elk_vs_prog_data *vs_prog_data,
                                  const nir_shader *shader,
                                  bool debug_enabled)
    : vec4_visitor(compiler, params, &key->base.tex, &vs_prog_data->base,

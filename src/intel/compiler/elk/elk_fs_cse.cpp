@@ -38,76 +38,76 @@ using namespace elk;
 namespace {
 struct aeb_entry : public exec_node {
    /** The instruction that generates the expression value. */
-   fs_inst *generator;
+   elk_fs_inst *generator;
 
    /** The temporary where the value is stored. */
-   fs_reg tmp;
+   elk_fs_reg tmp;
 };
 }
 
 static bool
-is_expression(const fs_visitor *v, const fs_inst *const inst)
+is_expression(const elk_fs_visitor *v, const elk_fs_inst *const inst)
 {
    switch (inst->opcode) {
-   case BRW_OPCODE_MOV:
-   case BRW_OPCODE_SEL:
-   case BRW_OPCODE_NOT:
-   case BRW_OPCODE_AND:
-   case BRW_OPCODE_OR:
-   case BRW_OPCODE_XOR:
-   case BRW_OPCODE_SHR:
-   case BRW_OPCODE_SHL:
-   case BRW_OPCODE_ASR:
-   case BRW_OPCODE_CMP:
-   case BRW_OPCODE_CMPN:
-   case BRW_OPCODE_ADD:
-   case BRW_OPCODE_MUL:
-   case SHADER_OPCODE_MULH:
-   case BRW_OPCODE_FRC:
-   case BRW_OPCODE_RNDU:
-   case BRW_OPCODE_RNDD:
-   case BRW_OPCODE_RNDE:
-   case BRW_OPCODE_RNDZ:
-   case BRW_OPCODE_LINE:
-   case BRW_OPCODE_PLN:
-   case BRW_OPCODE_MAD:
-   case BRW_OPCODE_LRP:
-   case FS_OPCODE_FB_READ_LOGICAL:
-   case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
-   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
-   case FS_OPCODE_LINTERP:
-   case SHADER_OPCODE_FIND_LIVE_CHANNEL:
-   case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
-   case FS_OPCODE_LOAD_LIVE_CHANNELS:
-   case SHADER_OPCODE_BROADCAST:
-   case SHADER_OPCODE_MOV_INDIRECT:
-   case SHADER_OPCODE_TEX_LOGICAL:
-   case SHADER_OPCODE_TXD_LOGICAL:
-   case SHADER_OPCODE_TXF_LOGICAL:
-   case SHADER_OPCODE_TXL_LOGICAL:
-   case SHADER_OPCODE_TXS_LOGICAL:
-   case FS_OPCODE_TXB_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
-   case SHADER_OPCODE_TXF_UMS_LOGICAL:
-   case SHADER_OPCODE_TXF_MCS_LOGICAL:
-   case SHADER_OPCODE_LOD_LOGICAL:
-   case SHADER_OPCODE_TG4_LOGICAL:
-   case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
-   case FS_OPCODE_PACK:
+   case ELK_OPCODE_MOV:
+   case ELK_OPCODE_SEL:
+   case ELK_OPCODE_NOT:
+   case ELK_OPCODE_AND:
+   case ELK_OPCODE_OR:
+   case ELK_OPCODE_XOR:
+   case ELK_OPCODE_SHR:
+   case ELK_OPCODE_SHL:
+   case ELK_OPCODE_ASR:
+   case ELK_OPCODE_CMP:
+   case ELK_OPCODE_CMPN:
+   case ELK_OPCODE_ADD:
+   case ELK_OPCODE_MUL:
+   case ELK_SHADER_OPCODE_MULH:
+   case ELK_OPCODE_FRC:
+   case ELK_OPCODE_RNDU:
+   case ELK_OPCODE_RNDD:
+   case ELK_OPCODE_RNDE:
+   case ELK_OPCODE_RNDZ:
+   case ELK_OPCODE_LINE:
+   case ELK_OPCODE_PLN:
+   case ELK_OPCODE_MAD:
+   case ELK_OPCODE_LRP:
+   case ELK_FS_OPCODE_FB_READ_LOGICAL:
+   case ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
+   case ELK_FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
+   case ELK_FS_OPCODE_LINTERP:
+   case ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL:
+   case ELK_SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
+   case ELK_FS_OPCODE_LOAD_LIVE_CHANNELS:
+   case ELK_SHADER_OPCODE_BROADCAST:
+   case ELK_SHADER_OPCODE_MOV_INDIRECT:
+   case ELK_SHADER_OPCODE_TEX_LOGICAL:
+   case ELK_SHADER_OPCODE_TXD_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_LOGICAL:
+   case ELK_SHADER_OPCODE_TXL_LOGICAL:
+   case ELK_SHADER_OPCODE_TXS_LOGICAL:
+   case ELK_FS_OPCODE_TXB_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_CMS_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_CMS_W_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_UMS_LOGICAL:
+   case ELK_SHADER_OPCODE_TXF_MCS_LOGICAL:
+   case ELK_SHADER_OPCODE_LOD_LOGICAL:
+   case ELK_SHADER_OPCODE_TG4_LOGICAL:
+   case ELK_SHADER_OPCODE_TG4_OFFSET_LOGICAL:
+   case ELK_FS_OPCODE_PACK:
       return true;
-   case SHADER_OPCODE_RCP:
-   case SHADER_OPCODE_RSQ:
-   case SHADER_OPCODE_SQRT:
-   case SHADER_OPCODE_EXP2:
-   case SHADER_OPCODE_LOG2:
-   case SHADER_OPCODE_POW:
-   case SHADER_OPCODE_INT_QUOTIENT:
-   case SHADER_OPCODE_INT_REMAINDER:
-   case SHADER_OPCODE_SIN:
-   case SHADER_OPCODE_COS:
+   case ELK_SHADER_OPCODE_RCP:
+   case ELK_SHADER_OPCODE_RSQ:
+   case ELK_SHADER_OPCODE_SQRT:
+   case ELK_SHADER_OPCODE_EXP2:
+   case ELK_SHADER_OPCODE_LOG2:
+   case ELK_SHADER_OPCODE_POW:
+   case ELK_SHADER_OPCODE_INT_QUOTIENT:
+   case ELK_SHADER_OPCODE_INT_REMAINDER:
+   case ELK_SHADER_OPCODE_SIN:
+   case ELK_SHADER_OPCODE_COS:
       return inst->mlen < 2;
-   case SHADER_OPCODE_LOAD_PAYLOAD:
+   case ELK_SHADER_OPCODE_LOAD_PAYLOAD:
       return !is_coalescing_payload(v->alloc, inst);
    default:
       return inst->is_send_from_grf() && !inst->has_side_effects() &&
@@ -116,16 +116,16 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
 }
 
 static bool
-operands_match(const fs_inst *a, const fs_inst *b, bool *negate)
+operands_match(const elk_fs_inst *a, const elk_fs_inst *b, bool *negate)
 {
-   fs_reg *xs = a->src;
-   fs_reg *ys = b->src;
+   elk_fs_reg *xs = a->src;
+   elk_fs_reg *ys = b->src;
 
-   if (a->opcode == BRW_OPCODE_MAD) {
+   if (a->opcode == ELK_OPCODE_MAD) {
       return xs[0].equals(ys[0]) &&
              ((xs[1].equals(ys[1]) && xs[2].equals(ys[2])) ||
               (xs[2].equals(ys[1]) && xs[1].equals(ys[2])));
-   } else if (a->opcode == BRW_OPCODE_MUL && a->dst.type == BRW_REGISTER_TYPE_F) {
+   } else if (a->opcode == ELK_OPCODE_MUL && a->dst.type == ELK_REGISTER_TYPE_F) {
       bool xs0_negate = xs[0].negate;
       bool xs1_negate = xs[1].file == IMM ? xs[1].f < 0.0f
                                           : xs[1].negate;
@@ -172,7 +172,7 @@ operands_match(const fs_inst *a, const fs_inst *b, bool *negate)
 }
 
 static bool
-instructions_match(fs_inst *a, fs_inst *b, bool *negate)
+instructions_match(elk_fs_inst *a, elk_fs_inst *b, bool *negate)
 {
    return a->opcode == b->opcode &&
           a->force_writemask_all == b->force_writemask_all &&
@@ -203,16 +203,16 @@ instructions_match(fs_inst *a, fs_inst *b, bool *negate)
 }
 
 static void
-create_copy_instr(const fs_builder &bld, fs_inst *inst, fs_reg src, bool negate)
+create_copy_instr(const fs_builder &bld, elk_fs_inst *inst, elk_fs_reg src, bool negate)
 {
    unsigned written = regs_written(inst);
    unsigned dst_width =
       DIV_ROUND_UP(inst->dst.component_size(inst->exec_size), REG_SIZE);
-   fs_inst *copy;
+   elk_fs_inst *copy;
 
-   if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
+   if (inst->opcode == ELK_SHADER_OPCODE_LOAD_PAYLOAD) {
       assert(src.file == VGRF);
-      fs_reg *payload = ralloc_array(bld.shader->mem_ctx, fs_reg,
+      elk_fs_reg *payload = ralloc_array(bld.shader->mem_ctx, elk_fs_reg,
                                      inst->sources);
       for (int i = 0; i < inst->header_size; i++) {
          payload[i] = src;
@@ -229,7 +229,7 @@ create_copy_instr(const fs_builder &bld, fs_inst *inst, fs_reg src, bool negate)
       assert(src.file == VGRF);
       assert(written % dst_width == 0);
       const int sources = written / dst_width;
-      fs_reg *payload = ralloc_array(bld.shader->mem_ctx, fs_reg, sources);
+      elk_fs_reg *payload = ralloc_array(bld.shader->mem_ctx, elk_fs_reg, sources);
       for (int i = 0; i < sources; i++) {
          payload[i] = src;
          src = offset(src, bld, 1);
@@ -245,14 +245,14 @@ create_copy_instr(const fs_builder &bld, fs_inst *inst, fs_reg src, bool negate)
 }
 
 bool
-fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &ip)
+elk_fs_visitor::opt_cse_local(const fs_live_variables &live, elk_bblock_t *block, int &ip)
 {
    bool progress = false;
    exec_list aeb;
 
    void *cse_ctx = ralloc_context(NULL);
 
-   foreach_inst_in_block(fs_inst, inst, block) {
+   foreach_inst_in_block(elk_fs_inst, inst, block) {
       /* Skip some cases. */
       if (is_expression(this, inst) && !inst->is_partial_write() &&
           ((inst->dst.file != ARF && inst->dst.file != FIXED_GRF) ||
@@ -272,10 +272,10 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
          }
 
          if (!found) {
-            if (inst->opcode != BRW_OPCODE_MOV ||
-                (inst->opcode == BRW_OPCODE_MOV &&
+            if (inst->opcode != ELK_OPCODE_MOV ||
+                (inst->opcode == ELK_OPCODE_MOV &&
                  inst->src[0].file == IMM &&
-                 inst->src[0].type == BRW_REGISTER_TYPE_VF)) {
+                 inst->src[0].type == ELK_REGISTER_TYPE_VF)) {
                /* Our first sighting of this expression.  Create an entry. */
                aeb_entry *entry = ralloc(cse_ctx, aeb_entry);
                entry->tmp = reg_undef;
@@ -292,7 +292,7 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
                                        .at(block, entry->generator->next);
                int written = regs_written(entry->generator);
 
-               entry->tmp = fs_reg(VGRF, alloc.allocate(written),
+               entry->tmp = elk_fs_reg(VGRF, alloc.allocate(written),
                                    entry->generator->dst.type);
 
                create_copy_instr(ibld, entry->generator, entry->tmp, false);
@@ -313,7 +313,7 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
              * will get the instruction in the basic block after the one we've
              * removed.
              */
-            fs_inst *prev = (fs_inst *)inst->prev;
+            elk_fs_inst *prev = (elk_fs_inst *)inst->prev;
 
             inst->remove(block);
             inst = prev;
@@ -324,10 +324,10 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
        * to make sure that they behave as a CSE barrier, since we lack global
        * dataflow information.  This is particularly likely to cause problems
        * with instructions dependent on the current execution mask like
-       * SHADER_OPCODE_FIND_LIVE_CHANNEL.
+       * ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL.
        */
-      if (inst->opcode == BRW_OPCODE_HALT ||
-          inst->opcode == SHADER_OPCODE_HALT_TARGET)
+      if (inst->opcode == ELK_OPCODE_HALT ||
+          inst->opcode == ELK_SHADER_OPCODE_HALT_TARGET)
          aeb.make_empty();
 
       foreach_in_list_safe(aeb_entry, entry, &aeb) {
@@ -346,7 +346,7 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
          }
 
          for (int i = 0; i < entry->generator->sources; i++) {
-            fs_reg *src_reg = &entry->generator->src[i];
+            elk_fs_reg *src_reg = &entry->generator->src[i];
 
             /* Kill all AEB entries that use the destination we just
              * overwrote.
@@ -379,7 +379,7 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
 }
 
 bool
-fs_visitor::opt_cse()
+elk_fs_visitor::opt_cse()
 {
    const fs_live_variables &live = live_analysis.require();
    bool progress = false;

@@ -218,6 +218,8 @@ struct lp_texture_functions {
 
    bool sampled;
    bool storage;
+
+   void *matrix;
 };
 
 struct lp_texture_handle {

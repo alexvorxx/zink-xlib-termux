@@ -5,7 +5,6 @@ dEQP-GLES2.functional.clipping.point.wide_point_clip_viewport_center,Fail
 dEQP-GLES2.functional.clipping.point.wide_point_clip_viewport_corner,Fail
 dEQP-GLES2.functional.draw.draw_elements.indices.user_ptr.index_byte,Fail
 dEQP-GLES2.functional.fbo.completeness.renderable.texture.color0.rgb_half_float_oes,Fail
-dEQP-GLES2.functional.fbo.completeness.renderable.texture.color0.rgba_half_float_oes,Fail
 dEQP-GLES2.functional.fbo.render.repeated_clear.tex2d_rgb,Fail
 dEQP-GLES2.functional.fbo.render.repeated_clear.tex2d_rgba,Fail
 dEQP-GLES2.functional.polygon_offset.fixed16_displacement_with_units,Fail
@@ -32,9 +31,6 @@ dEQP-GLES2.functional.shaders.functions.control_flow.return_after_continue_fragm
 dEQP-GLES2.functional.shaders.functions.control_flow.return_after_continue_vertex,Fail
 dEQP-GLES2.functional.shaders.indexing.tmp_array.float_const_write_dynamic_read_fragment,Fail
 dEQP-GLES2.functional.shaders.indexing.tmp_array.float_const_write_dynamic_read_vertex,Fail
-dEQP-GLES2.functional.shaders.indexing.tmp_array.vec2_const_write_dynamic_loop_read_fragment,Fail
-dEQP-GLES2.functional.shaders.indexing.tmp_array.vec3_const_write_dynamic_loop_read_fragment,Fail
-dEQP-GLES2.functional.shaders.indexing.tmp_array.vec4_const_write_dynamic_loop_read_fragment,Fail
 dEQP-GLES2.functional.shaders.indexing.tmp_array.vec2_const_write_dynamic_read_fragment,Fail
 dEQP-GLES2.functional.shaders.indexing.tmp_array.vec2_const_write_dynamic_read_vertex,Fail
 dEQP-GLES2.functional.shaders.indexing.tmp_array.vec3_const_write_dynamic_read_fragment,Fail
@@ -110,6 +106,34 @@ dEQP-GLES2.functional.uniform_api.value.assigned.by_pointer.render.struct_in_arr
 dEQP-GLES2.functional.uniform_api.value.assigned.by_value.render.multiple_nested_structs_arrays.both,Fail
 dEQP-GLES2.functional.uniform_api.value.assigned.by_value.render.multiple_nested_structs_arrays.fragment,Fail
 
+# This bunch is not reproducible outside of CI
+KHR-GLES2.shaders.aggressive_optimizations.sin_vec3_frag,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.20,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.32,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.35,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.43,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.45,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.46,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.62,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.63,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.64,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.74,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.77,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.8,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.86,Fail
+dEQP-GLES2.functional.fragment_ops.interaction.basic_shader.88,Fail
+dEQP-GLES2.functional.fragment_ops.random.19,Fail
+dEQP-GLES2.functional.fragment_ops.random.31,Fail
+dEQP-GLES2.functional.fragment_ops.random.34,Fail
+dEQP-GLES2.functional.fragment_ops.random.41,Fail
+dEQP-GLES2.functional.fragment_ops.random.6,Fail
+dEQP-GLES2.functional.fragment_ops.random.61,Fail
+dEQP-GLES2.functional.fragment_ops.random.63,Fail
+dEQP-GLES2.functional.fragment_ops.random.64,Fail
+dEQP-GLES2.functional.fragment_ops.random.66,Fail
+dEQP-GLES2.functional.fragment_ops.random.77,Fail
+dEQP-GLES2.functional.fragment_ops.random.81,Fail
+dEQP-GLES2.functional.fragment_ops.random.9,Fail
 
 # depth texture is sampling as as white instead of red.
 KHR-GLES2.core.internalformat.texture2d.depth_component_unsigned_int_depth_component16,Fail

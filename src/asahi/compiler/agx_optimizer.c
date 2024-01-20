@@ -159,7 +159,8 @@ agx_optimizer_inline_imm(agx_instr **defs, agx_instr *I, bool is_float)
            I->op == AGX_OPCODE_LOCAL_ATOMIC) &&
           s != 2)
          continue;
-      if ((I->op == AGX_OPCODE_LOCAL_LOAD || I->op == AGX_OPCODE_DEVICE_LOAD) &&
+      if ((I->op == AGX_OPCODE_LOCAL_LOAD || I->op == AGX_OPCODE_DEVICE_LOAD ||
+           I->op == AGX_OPCODE_STACK_STORE) &&
           s != 1)
          continue;
       if (I->op == AGX_OPCODE_SPLIT)

@@ -983,7 +983,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    int fd;
    int master_fd = -1;
 
-   brw_process_intel_debug_variable();
+   process_intel_debug_variable();
 
    fd = open(path, O_RDWR | O_CLOEXEC);
    if (fd < 0) {

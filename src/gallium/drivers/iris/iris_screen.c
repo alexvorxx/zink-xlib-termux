@@ -832,7 +832,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
       break;
    }
 
-   brw_process_intel_debug_variable();
+   process_intel_debug_variable();
 
    screen->bufmgr = iris_bufmgr_get_for_fd(fd, bo_reuse);
    if (!screen->bufmgr)

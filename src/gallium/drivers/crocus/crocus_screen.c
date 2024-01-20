@@ -762,7 +762,7 @@ crocus_screen_create(int fd, const struct pipe_screen_config *config)
    screen->fd = crocus_bufmgr_get_fd(screen->bufmgr);
    screen->winsys_fd = fd;
 
-   brw_process_intel_debug_variable();
+   process_intel_debug_variable();
 
    screen->driconf.dual_color_blend_by_location =
       driQueryOptionb(config->options, "dual_color_blend_by_location");

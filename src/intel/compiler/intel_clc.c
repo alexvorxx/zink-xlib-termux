@@ -439,7 +439,7 @@ int main(int argc, char **argv)
 {
    int exit_code = 0;
 
-   brw_process_intel_debug_variable();
+   process_intel_debug_variable();
 
    static struct option long_options[] ={
       {"help",       no_argument,         0, 'h'},

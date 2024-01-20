@@ -22,7 +22,7 @@
  */
 
 /**
- * @file brw_lower_logical_sends.cpp
+ * @file elk_lower_logical_sends.cpp
  */
 
 #include "elk_eu.h"

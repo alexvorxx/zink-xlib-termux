@@ -22,7 +22,7 @@
  */
 
 /**
- * \file brw_vec4_tcs.cpp
+ * \file elk_vec4_tcs.cpp
  *
  * Tessellaton control shader specific code derived from the vec4_visitor class.
  */

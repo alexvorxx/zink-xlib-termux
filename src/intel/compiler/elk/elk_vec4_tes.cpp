@@ -22,7 +22,7 @@
  */
 
 /**
- * \file brw_vec4_tes.cpp
+ * \file elk_vec4_tes.cpp
  *
  * Tessellaton evaluation shader specific code derived from the vec4_visitor class.
  */

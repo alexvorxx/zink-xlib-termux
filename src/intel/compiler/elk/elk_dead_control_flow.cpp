@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_dead_control_flow.cpp
+/** @file elk_dead_control_flow.cpp
  *
  * This file implements the dead control flow elimination optimization pass.
  */

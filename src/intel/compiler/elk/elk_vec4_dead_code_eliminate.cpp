@@ -25,7 +25,7 @@
 #include "elk_vec4_live_variables.h"
 #include "elk_cfg.h"
 
-/** @file brw_vec4_dead_code_eliminate.cpp
+/** @file elk_vec4_dead_code_eliminate.cpp
  *
  * Dataflow-aware dead code elimination.
  *

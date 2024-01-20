@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_fs_validate.cpp
+/** @file elk_fs_validate.cpp
  *
  * Implements a pass that validates various invariants of the IR.  The current
  * pass only validates that GRF's uses are sane.  More can be added later.

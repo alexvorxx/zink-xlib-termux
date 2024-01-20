@@ -22,7 +22,7 @@
  */
 
 /**
- * @file brw_vec4_copy_propagation.cpp
+ * @file elk_vec4_copy_propagation.cpp
  *
  * Implements tracking of values copied between registers, and
  * optimizations based on that: copy propagation and constant

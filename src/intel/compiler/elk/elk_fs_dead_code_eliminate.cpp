@@ -25,7 +25,7 @@
 #include "elk_fs_live_variables.h"
 #include "elk_cfg.h"
 
-/** @file brw_fs_dead_code_eliminate.cpp
+/** @file elk_fs_dead_code_eliminate.cpp
  *
  * Dataflow-aware dead code elimination.
  *

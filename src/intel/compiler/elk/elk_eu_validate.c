@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_eu_validate.c
+/** @file elk_eu_validate.c
  *
  * This file implements a pass that validates shader assembly.
  *

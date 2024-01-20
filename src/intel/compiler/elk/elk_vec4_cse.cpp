@@ -27,7 +27,7 @@
 
 using namespace brw;
 
-/** @file brw_vec4_cse.cpp
+/** @file elk_vec4_cse.cpp
  *
  * Support for local common subexpression elimination.
  *

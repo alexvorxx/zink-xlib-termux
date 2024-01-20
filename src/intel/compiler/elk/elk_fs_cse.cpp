@@ -25,7 +25,7 @@
 #include "elk_fs_builder.h"
 #include "elk_cfg.h"
 
-/** @file brw_fs_cse.cpp
+/** @file elk_fs_cse.cpp
  *
  * Support for local common subexpression elimination.
  *

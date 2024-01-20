@@ -26,7 +26,7 @@
 #include "util/u_dynarray.h"
 
 /**
- * \file brw_nir_analyze_ubo_ranges.c
+ * \file elk_nir_analyze_ubo_ranges.c
  *
  * This pass decides which portions of UBOs to upload as push constants,
  * so shaders can access them as part of the thread payload, rather than

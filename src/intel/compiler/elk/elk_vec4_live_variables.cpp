@@ -32,7 +32,7 @@ using namespace brw;
 
 #define MAX_INSTRUCTION (1 << 30)
 
-/** @file brw_vec4_live_variables.cpp
+/** @file elk_vec4_live_variables.cpp
  *
  * Support for computing at the basic block level which variables
  * (virtual GRFs in our case) are live at entry and exit.

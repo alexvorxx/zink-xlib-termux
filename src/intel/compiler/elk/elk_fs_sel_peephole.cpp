@@ -25,7 +25,7 @@
 #include "elk_fs_builder.h"
 #include "elk_cfg.h"
 
-/** @file brw_fs_sel_peephole.cpp
+/** @file elk_fs_sel_peephole.cpp
  *
  * This file contains the opt_peephole_sel() optimization pass that replaces
  * MOV instructions to the same destination in the "then" and "else" bodies of

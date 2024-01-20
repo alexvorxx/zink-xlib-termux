@@ -22,7 +22,7 @@
  */
 
 /**
- * \file brw_vec4_tes.h
+ * \file elk_vec4_tes.h
  *
  * The vec4 mode tessellation evaluation shader compiler backend.
  */

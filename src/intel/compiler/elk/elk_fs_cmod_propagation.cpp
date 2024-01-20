@@ -25,7 +25,7 @@
 #include "elk_cfg.h"
 #include "elk_eu.h"
 
-/** @file brw_fs_cmod_propagation.cpp
+/** @file elk_fs_cmod_propagation.cpp
  *
  * Implements a pass that propagates the conditional modifier from a CMP x 0.0
  * instruction into the instruction that generated x. For instance, in this

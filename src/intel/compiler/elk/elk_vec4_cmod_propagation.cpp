@@ -22,7 +22,7 @@
  *
  */
 
-/** @file brw_vec4_cmod_propagation.cpp
+/** @file elk_vec4_cmod_propagation.cpp
  *
  * Really similar to brw_fs_cmod_propagation but adapted to vec4 needs. Check
  * brw_fs_cmod_propagation for further details on the rationale behind this

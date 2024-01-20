@@ -22,7 +22,7 @@
  */
 
 /**
- * \file brw_vec4_gs_visitor.h
+ * \file elk_vec4_gs_visitor.h
  *
  * Geometry-shader-specific code derived from the vec4_visitor class.
  */

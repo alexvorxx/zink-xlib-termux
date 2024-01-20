@@ -24,7 +24,7 @@
  */
 
 /**
- * \file gfx6_gs_visitor.cpp
+ * \file elk_gfx6_gs_visitor.cpp
  *
  * Gfx6 geometry shader implementation
  */

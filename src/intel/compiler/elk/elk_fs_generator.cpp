@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_fs_generator.cpp
+/** @file elk_fs_generator.cpp
  *
  * This file supports generating code from the FS LIR to the actual
  * native instructions.

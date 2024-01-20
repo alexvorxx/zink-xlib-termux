@@ -29,7 +29,7 @@
 #include "util/u_dynarray.h"
 #include "elk_shader.h"
 
-/** @file brw_cfg.cpp
+/** @file elk_cfg.cpp
  *
  * Walks the shader instructions generated and creates a set of basic
  * blocks with successor/predecessor edges connecting them.

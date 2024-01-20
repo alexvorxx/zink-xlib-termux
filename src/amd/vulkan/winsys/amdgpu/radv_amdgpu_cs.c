@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include "drm-uapi/amdgpu_drm.h"
 
+#include "util/detect_os.h"
 #include "util/os_time.h"
 #include "util/u_memory.h"
 #include "ac_debug.h"
@@ -42,6 +43,15 @@
 #include "vk_drm_syncobj.h"
 #include "vk_sync.h"
 #include "vk_sync_dummy.h"
+
+/* Some BSDs don't define ENODATA (and ENODATA is replaced with different error
+ * codes in the kernel).
+ */
+#if DETECT_OS_OPENBSD
+#define ENODATA ENOTSUP
+#elif DETECT_OS_FREEBSD || DETECT_OS_DRAGONFLY
+#define ENODATA ECONNREFUSED
+#endif
 
 /* Maximum allowed total number of submitted IBs. */
 #define RADV_MAX_IBS_PER_SUBMIT 192

@@ -1915,6 +1915,9 @@ system_value("geometry_param_buffer_agx", 1, bit_sizes=[64])
 # Address of the parameter buffer for AGX tessellation shaders
 system_value("tess_param_buffer_agx", 1, bit_sizes=[64])
 
+# Address of the pipeline statistic query result indexed by BASE
+system_value("stat_query_address_agx", 1, bit_sizes=[64], indices=[BASE])
+
 # Loads the vertex index within the current decomposed primitive. For a
 # triangle, this will be in [0, 2], where 2 is the last vertex. This is defined
 # only when the vertex shader is reinvoked for the same vertex in each

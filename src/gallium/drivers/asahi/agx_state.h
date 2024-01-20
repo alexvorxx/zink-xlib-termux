@@ -23,6 +23,7 @@
 #include "gallium/include/pipe/p_context.h"
 #include "gallium/include/pipe/p_screen.h"
 #include "gallium/include/pipe/p_state.h"
+#include "pipe/p_defines.h"
 #include "util/bitset.h"
 #include "util/disk_cache.h"
 #include "util/hash_table.h"
@@ -108,6 +109,9 @@ struct PACKED agx_draw_uniforms {
     */
    uint64_t attrib_base[PIPE_MAX_ATTRIBS];
    uint32_t attrib_clamp[PIPE_MAX_ATTRIBS];
+
+   /* Addresses for the results of pipeline statistics queries */
+   uint64_t pipeline_statistics[PIPE_STAT_QUERY_MS_INVOCATIONS];
 
    /* Address of input assembly buffer if geom/tess is used, else 0 */
    uint64_t input_assembly;
@@ -440,6 +444,9 @@ struct agx_vertex_elements {
 struct asahi_fs_shader_key {
    struct agx_blend_key blend;
 
+   /* Need to count FRAGMENT_SHADER_INVOCATIONS */
+   bool statistics;
+
    /* Set if glSampleMask() is used with a mask other than all-1s. If not, we
     * don't want to emit lowering code for it, since it would disable early-Z.
     */
@@ -614,8 +621,10 @@ struct agx_context {
    struct agx_query *tf_prims_generated[4];
    struct agx_query *tf_overflow[4];
    struct agx_query *tf_any_overflow;
+   struct agx_query *pipeline_statistics[PIPE_STAT_QUERY_TS_INVOCATIONS];
    struct agx_query *time_elapsed;
    bool active_queries;
+   bool active_draw_without_restart;
 
    struct util_debug_callback debug;
    bool is_noop;

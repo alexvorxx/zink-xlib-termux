@@ -126,6 +126,11 @@ agx_begin_query(struct pipe_context *pctx, struct pipe_query *pquery)
       /* No-op */
       break;
 
+   case PIPE_QUERY_PIPELINE_STATISTICS_SINGLE:
+      assert(query->index < ARRAY_SIZE(ctx->pipeline_statistics));
+      ctx->pipeline_statistics[query->index] = query;
+      break;
+
    default:
       return false;
    }
@@ -173,6 +178,10 @@ agx_end_query(struct pipe_context *pctx, struct pipe_query *pquery)
       return true;
    case PIPE_QUERY_TIME_ELAPSED:
       ctx->time_elapsed = NULL;
+      return true;
+   case PIPE_QUERY_PIPELINE_STATISTICS_SINGLE:
+      assert(query->index < ARRAY_SIZE(ctx->pipeline_statistics));
+      ctx->pipeline_statistics[query->index] = NULL;
       return true;
    case PIPE_QUERY_TIMESTAMP:
       /* Timestamp logically written now, set up batches to MAX their finish
@@ -235,6 +244,7 @@ agx_get_query_result(struct pipe_context *pctx, struct pipe_query *pquery,
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_PRIMITIVES_GENERATED:
    case PIPE_QUERY_PRIMITIVES_EMITTED:
+   case PIPE_QUERY_PIPELINE_STATISTICS_SINGLE:
       vresult->u64 = query->value;
       return true;
 

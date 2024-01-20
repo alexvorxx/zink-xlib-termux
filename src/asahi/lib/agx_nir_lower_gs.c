@@ -7,6 +7,7 @@
 #include "agx_nir_lower_gs.h"
 #include "asahi/compiler/agx_compile.h"
 #include "compiler/nir/nir_builder.h"
+#include "gallium/include/pipe/p_defines.h"
 #include "shaders/geometry.h"
 #include "util/bitscan.h"
 #include "util/macros.h"
@@ -838,7 +839,8 @@ collect_components(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 static nir_shader *
 agx_nir_create_pre_gs(struct lower_gs_state *state, const nir_shader *libagx,
                       bool indexed, struct nir_xfb_info *xfb,
-                      unsigned vertices_per_prim, uint8_t streams)
+                      unsigned vertices_per_prim, uint8_t streams,
+                      unsigned invocations)
 {
    nir_builder b_ = nir_builder_init_simple_shader(
       MESA_SHADER_COMPUTE, &agx_nir_options, "Pre-GS patch up");
@@ -934,6 +936,62 @@ agx_nir_create_pre_gs(struct lower_gs_state *state, const nir_shader *libagx,
          add_counter(b, off_ptr, size);
       }
    }
+
+   /* The geometry shader receives a number of input primitives. The driver
+    * should disable this counter when tessellation is active TODO and count
+    * patches separately.
+    */
+   add_counter(
+      b,
+      nir_load_stat_query_address_agx(b, .base = PIPE_STAT_QUERY_IA_PRIMITIVES),
+      unrolled_in_prims);
+
+   /* The geometry shader is invoked once per primitive (after unrolling
+    * primitive restart). From the spec:
+    *
+    *    In case of instanced geometry shaders (see section 11.3.4.2) the
+    *    geometry shader invocations count is incremented for each separate
+    *    instanced invocation.
+    */
+   add_counter(b,
+               nir_load_stat_query_address_agx(
+                  b, .base = PIPE_STAT_QUERY_GS_INVOCATIONS),
+               nir_imul_imm(b, unrolled_in_prims, invocations));
+
+   nir_def *emitted_prims = nir_imm_int(b, 0);
+   u_foreach_bit(i, streams) {
+      emitted_prims =
+         nir_iadd(b, emitted_prims,
+                  previous_xfb_primitives(b, state, i, unrolled_in_prims));
+   }
+
+   add_counter(
+      b,
+      nir_load_stat_query_address_agx(b, .base = PIPE_STAT_QUERY_GS_PRIMITIVES),
+      emitted_prims);
+
+   /* Clipper queries are not well-defined, so we can emulate them in lots of
+    * silly ways. We need the hardware counters to implement them properly. For
+    * now, just consider all primitives emitted as passing through the clipper.
+    * This satisfies spec text:
+    *
+    *    The number of primitives that reach the primitive clipping stage.
+    *
+    * and
+    *
+    *    If at least one vertex of the primitive lies inside the clipping
+    *    volume, the counter is incremented by one or more. Otherwise, the
+    *    counter is incremented by zero or more.
+    */
+   add_counter(
+      b,
+      nir_load_stat_query_address_agx(b, .base = PIPE_STAT_QUERY_C_PRIMITIVES),
+      emitted_prims);
+
+   add_counter(
+      b,
+      nir_load_stat_query_address_agx(b, .base = PIPE_STAT_QUERY_C_INVOCATIONS),
+      emitted_prims);
 
    /* Preprocess it */
    UNUSED struct agx_uncompiled_shader_info info;
@@ -1213,7 +1271,8 @@ agx_nir_lower_gs(nir_shader *gs, nir_shader *vs, const nir_shader *libagx,
 
    *pre_gs = agx_nir_create_pre_gs(
       &gs_state, libagx, gs->info.gs.output_primitive != MESA_PRIM_POINTS,
-      gs->xfb_info, verts_in_output_prim(gs), gs->info.gs.active_stream_mask);
+      gs->xfb_info, verts_in_output_prim(gs), gs->info.gs.active_stream_mask,
+      gs->info.gs.invocations);
 
    /* Signal what primitive we want to draw the GS Copy VS with */
    *out_mode = gs->info.gs.output_primitive;

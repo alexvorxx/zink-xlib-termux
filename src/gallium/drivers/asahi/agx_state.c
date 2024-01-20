@@ -1766,6 +1766,25 @@ agx_nir_lower_point_sprite_zw(nir_builder *b, nir_intrinsic_instr *intr,
    return true;
 }
 
+static bool
+agx_nir_lower_stats_fs(nir_shader *s)
+{
+   assert(s->info.stage == MESA_SHADER_FRAGMENT);
+   nir_builder b_ =
+      nir_builder_at(nir_before_impl(nir_shader_get_entrypoint(s)));
+   nir_builder *b = &b_;
+
+   nir_def *samples = nir_bit_count(b, nir_load_sample_mask_in(b));
+   unsigned query = PIPE_STAT_QUERY_PS_INVOCATIONS;
+
+   nir_def *addr = nir_load_stat_query_address_agx(b, .base = query);
+   nir_global_atomic(b, 32, addr, samples, .atomic_op = nir_atomic_op_iadd);
+
+   nir_metadata_preserve(b->impl,
+                         nir_metadata_block_index | nir_metadata_dominance);
+   return true;
+}
+
 /*
  * Compile a NIR shader. The only lowering left at this point is sysvals. The
  * shader key should have already been applied. agx_compile_variant may call
@@ -1990,6 +2009,10 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
          if ((opts.rt[i].colormask & BITFIELD_MASK(comps)) !=
              BITFIELD_MASK(comps))
             force_translucent = true;
+      }
+
+      if (key->statistics) {
+         NIR_PASS(_, nir, agx_nir_lower_stats_fs);
       }
 
       /* Clip plane lowering creates discard instructions, so run that before
@@ -2542,15 +2565,17 @@ agx_update_fs(struct agx_batch *batch)
     * sample_mask: SAMPLE_MASK
     * reduced_prim: PRIM
     */
-   if (!(ctx->dirty &
-         (AGX_DIRTY_VS_PROG | AGX_DIRTY_FS_PROG | AGX_DIRTY_RS |
-          AGX_DIRTY_BLEND | AGX_DIRTY_SAMPLE_MASK | AGX_DIRTY_PRIM)))
+   if (!(ctx->dirty & (AGX_DIRTY_VS_PROG | AGX_DIRTY_FS_PROG | AGX_DIRTY_RS |
+                       AGX_DIRTY_BLEND | AGX_DIRTY_SAMPLE_MASK |
+                       AGX_DIRTY_PRIM | AGX_DIRTY_QUERY)))
       return false;
 
    unsigned nr_samples = util_framebuffer_get_num_samples(&batch->key);
    bool msaa = ctx->rast->base.multisample;
 
    struct asahi_fs_shader_key key = {
+      .statistics = ctx->pipeline_statistics[PIPE_STAT_QUERY_PS_INVOCATIONS],
+
       .cull_distance_size =
          ctx->stage[MESA_SHADER_VERTEX].shader->info.cull_distance_size,
       .clip_plane_enable = ctx->rast->base.clip_plane_enable,
@@ -3898,6 +3923,68 @@ agx_ensure_vdm_cmdbuf_has_space(struct agx_batch *batch, size_t space)
    batch->vdm.end = batch->vdm.current + size;
 }
 
+#define COUNT_NONRESTART(T)                                                    \
+   static unsigned count_nonrestart_##T(const T *indices, T restart,           \
+                                        unsigned n)                            \
+   {                                                                           \
+      unsigned out = 0;                                                        \
+      for (int i = 0; i < n; ++i) {                                            \
+         if (indices[i] != restart)                                            \
+            out++;                                                             \
+      }                                                                        \
+      return out;                                                              \
+   }
+
+COUNT_NONRESTART(uint8_t)
+COUNT_NONRESTART(uint16_t)
+COUNT_NONRESTART(uint32_t)
+
+#undef COUNT_NONRESTART
+
+static void
+agx_ia_update_direct(struct agx_context *ctx, const struct pipe_draw_info *info,
+                     const struct pipe_draw_start_count_bias *draws)
+{
+   unsigned count = draws->count;
+
+   if (info->primitive_restart && info->index_size) {
+      struct pipe_transfer *transfer = NULL;
+      unsigned offset = draws->start * info->index_size;
+
+      const void *indices;
+      if (info->has_user_indices) {
+         indices = (uint8_t *)info->index.user + offset;
+      } else {
+         struct pipe_resource *rsrc = info->index.resource;
+
+         indices =
+            pipe_buffer_map_range(&ctx->base, rsrc, offset,
+                                  agx_resource(rsrc)->layout.size_B - offset,
+                                  PIPE_MAP_READ, &transfer);
+      }
+
+      if (info->index_size == 1)
+         count = count_nonrestart_uint8_t(indices, info->restart_index, count);
+      else if (info->index_size == 2)
+         count = count_nonrestart_uint16_t(indices, info->restart_index, count);
+      else
+         count = count_nonrestart_uint32_t(indices, info->restart_index, count);
+
+      if (transfer)
+         pipe_buffer_unmap(&ctx->base, transfer);
+   }
+
+   count *= info->instance_count;
+
+   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES]) {
+      ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES]->value += count;
+   }
+
+   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS]) {
+      ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS]->value += count;
+   }
+}
+
 static uint64_t
 agx_allocate_geometry_count_buffer(
    struct agx_batch *batch, const struct pipe_draw_info *info,
@@ -4160,11 +4247,23 @@ agx_launch_gs(struct agx_batch *batch, const struct pipe_draw_info *info,
    void *vs_cso = ctx->stage[PIPE_SHADER_VERTEX].shader;
    void *gs_cso = ctx->stage[PIPE_SHADER_GEOMETRY].shader;
    struct agx_query *prim_queries[ARRAY_SIZE(ctx->prims_generated)];
+   struct agx_query *pipeline_stats[ARRAY_SIZE(ctx->pipeline_statistics)];
    memcpy(prim_queries, ctx->prims_generated, sizeof(prim_queries));
+   memcpy(pipeline_stats, ctx->pipeline_statistics, sizeof(pipeline_stats));
 
    ctx->base.bind_vs_state(&ctx->base, gs->gs_copy);
    ctx->base.bind_gs_state(&ctx->base, NULL);
    memset(ctx->prims_generated, 0, sizeof(ctx->prims_generated));
+
+   /* The fragment invocation counter applies after the vertex pipeline counters
+    * so should remain active, but the other counters have already been handled
+    * so should be skipped.
+    */
+   for (unsigned i = 0; i < ARRAY_SIZE(pipeline_stats); ++i) {
+      if (i != PIPE_STAT_QUERY_PS_INVOCATIONS) {
+         ctx->pipeline_statistics[i] = NULL;
+      }
+   }
 
    bool indexed = gs->gs_output_mode != MESA_PRIM_POINTS;
 
@@ -4192,6 +4291,7 @@ agx_launch_gs(struct agx_batch *batch, const struct pipe_draw_info *info,
    ctx->base.bind_vs_state(&ctx->base, vs_cso);
    ctx->base.bind_gs_state(&ctx->base, gs_cso);
    memcpy(ctx->prims_generated, prim_queries, sizeof(prim_queries));
+   memcpy(ctx->pipeline_statistics, pipeline_stats, sizeof(pipeline_stats));
 }
 
 static void
@@ -4268,8 +4368,10 @@ agx_draw_without_restart(struct agx_batch *batch,
    new_indirect.offset = out_draws.gpu - out_draws_rsrc.bo->ptr.gpu;
    new_indirect.stride = 5 * sizeof(uint32_t);
 
+   ctx->active_draw_without_restart = true;
    ctx->base.draw_vbo(&ctx->base, &new_info, drawid_offset, &new_indirect, draw,
                       1);
+   ctx->active_draw_without_restart = false;
 }
 
 static bool
@@ -4334,6 +4436,14 @@ agx_needs_passthrough_gs(struct agx_context *ctx,
    /* Edge flags are emulated with a geometry shader */
    if (has_edgeflags(ctx, info->mode))
       return true;
+
+   /* Various pipeline statistics are implemented in the pre-GS shader. */
+   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_PRIMITIVES] ||
+       ctx->pipeline_statistics[PIPE_STAT_QUERY_C_PRIMITIVES] ||
+       ctx->pipeline_statistics[PIPE_STAT_QUERY_C_INVOCATIONS]) {
+      perf_debug_ctx(ctx, "Using passthrough GS due to pipeline statistics");
+      return true;
+   }
 
    /* Otherwise, we don't need one */
    return false;
@@ -4557,6 +4667,12 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
    if (in_patches == 0)
       return;
 
+   /* TCS invocation counter increments once per-patch */
+   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_HS_INVOCATIONS]) {
+      ctx->pipeline_statistics[PIPE_STAT_QUERY_HS_INVOCATIONS]->value +=
+         in_patches;
+   }
+
    struct agx_batch *batch = agx_get_compute_batch(ctx);
    agx_batch_init_state(batch);
 
@@ -4704,6 +4820,12 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
       desc[2] = index_off / sizeof(*indices);       /* start */
       desc[3] = patch * LIBAGX_TES_PATCH_ID_STRIDE; /* index_bias */
       desc[4] = 0;                                  /* start_instance */
+
+      /* TES invocation counter increments once per tessellated vertex */
+      if (ctx->pipeline_statistics[PIPE_STAT_QUERY_DS_INVOCATIONS]) {
+         ctx->pipeline_statistics[PIPE_STAT_QUERY_DS_INVOCATIONS]->value +=
+            data.num_domain_points;
+      }
    }
    p_tess_destroy(tess);
 
@@ -4779,6 +4901,18 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    if (info->mode == MESA_PRIM_PATCHES && indirect) {
       perf_debug_ctx(ctx, "indirect tessellation");
       util_draw_indirect(pctx, info, indirect);
+      return;
+   }
+
+   /* TODO: stop cheating */
+   if (ctx->active_queries && !ctx->active_draw_without_restart &&
+       (ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES] ||
+        ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS]) &&
+       indirect) {
+
+      perf_debug_ctx(ctx, "indirect IA queries");
+      util_draw_indirect(pctx, info, indirect);
+      return;
    }
 
    if (info->mode == MESA_PRIM_PATCHES) {
@@ -4798,6 +4932,13 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
       assert(!indirect && "we force a passthrough GS for this");
       agx_primitives_update_direct(ctx, info, draws);
+   }
+
+   if (ctx->active_queries && !ctx->active_draw_without_restart &&
+       (ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES] ||
+        ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS])) {
+      assert(!indirect && "lowered");
+      agx_ia_update_direct(ctx, info, draws);
    }
 
    struct agx_batch *batch = agx_get_batch(ctx);
@@ -4923,6 +5064,14 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
    if (IS_DIRTY(RS)) {
       batch->uniforms.fixed_point_size = ctx->rast->base.point_size;
+   }
+
+   if (IS_DIRTY(QUERY)) {
+      for (unsigned i = 0; i < ARRAY_SIZE(ctx->pipeline_statistics); ++i) {
+         struct agx_query *query = ctx->pipeline_statistics[i];
+         batch->uniforms.pipeline_statistics[i] =
+            query ? agx_get_query_address(batch, query) : 0;
+      }
    }
 
    if (IS_DIRTY(POLY_STIPPLE)) {
@@ -5240,6 +5389,29 @@ agx_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    if (unlikely(!ctx->compute_blitter.active &&
                 !agx_render_condition_check(ctx)))
       return;
+
+   /* Increment the pipeline stats query.
+    *
+    * TODO: Use the hardware counter for this, or at least an auxiliary compute
+    * job so it doesn't stall.
+    *
+    * This has to happen before getting the batch, because it will invalidate
+    * the batch due to the stall.
+    */
+   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_CS_INVOCATIONS]) {
+      uint32_t grid[3] = {info->grid[0], info->grid[1], info->grid[2]};
+      if (info->indirect) {
+         perf_debug_ctx(ctx, "Emulated indirect compute invocation query");
+         pipe_buffer_read(pipe, info->indirect, info->indirect_offset,
+                          sizeof(grid), grid);
+      }
+
+      unsigned workgroups = grid[0] * grid[1] * grid[2];
+      unsigned blocksize = info->block[0] * info->block[1] * info->block[2];
+      unsigned count = workgroups * blocksize;
+
+      ctx->pipeline_statistics[PIPE_STAT_QUERY_CS_INVOCATIONS]->value += count;
+   }
 
    struct agx_batch *batch = agx_get_compute_batch(ctx);
    agx_batch_add_timestamp_query(batch, ctx->time_elapsed);

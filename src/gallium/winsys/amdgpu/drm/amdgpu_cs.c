@@ -7,11 +7,21 @@
  */
 
 #include "amdgpu_cs.h"
+#include "util/detect_os.h"
 #include "util/os_time.h"
 #include <inttypes.h>
 #include <stdio.h>
 
 #include "amd/common/sid.h"
+
+/* Some BSDs don't define ENODATA (and ENODATA is replaced with different error
+ * codes in the kernel).
+ */
+#if DETECT_OS_OPENBSD
+#define ENODATA ENOTSUP
+#elif DETECT_OS_FREEBSD || DETECT_OS_DRAGONFLY
+#define ENODATA ECONNREFUSED
+#endif
 
 /* FENCES */
 

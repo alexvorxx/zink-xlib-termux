@@ -26,7 +26,7 @@
 #include "elk_vec4.h"
 #include "elk_cfg.h"
 
-using namespace brw;
+using namespace elk;
 
 namespace {
    /**
@@ -1675,19 +1675,19 @@ namespace {
    }
 }
 
-brw::performance::performance(const fs_visitor *v) :
+elk::performance::performance(const fs_visitor *v) :
    block_latency(new unsigned[v->cfg->num_blocks])
 {
    calculate_performance(*this, v, issue_fs_inst, v->dispatch_width);
 }
 
-brw::performance::performance(const vec4_visitor *v) :
+elk::performance::performance(const vec4_visitor *v) :
    block_latency(new unsigned[v->cfg->num_blocks])
 {
    calculate_performance(*this, v, issue_vec4_instruction, 8);
 }
 
-brw::performance::~performance()
+elk::performance::~performance()
 {
    delete[] block_latency;
 }

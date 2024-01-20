@@ -44,7 +44,7 @@
 #include "elk_cfg.h"
 #include "elk_fs_live_variables.h"
 
-using namespace brw;
+using namespace elk;
 
 static bool
 is_nop_mov(const fs_inst *inst)

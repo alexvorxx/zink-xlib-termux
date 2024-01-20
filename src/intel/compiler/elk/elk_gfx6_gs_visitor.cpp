@@ -33,7 +33,7 @@
 #include "elk_eu.h"
 #include "elk_prim.h"
 
-namespace brw {
+namespace elk {
 
 void
 gfx6_gs_visitor::emit_prolog()
@@ -699,4 +699,4 @@ gfx6_gs_visitor::get_vertex_output_offset_for_varying(int vertex, int varying)
    return vertex * (prog_data->vue_map.num_slots + 1) + slot;
 }
 
-} /* namespace brw */
+} /* namespace elk */

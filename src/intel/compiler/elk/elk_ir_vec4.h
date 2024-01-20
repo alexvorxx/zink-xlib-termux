@@ -27,7 +27,7 @@
 
 #include "elk_shader.h"
 
-namespace brw {
+namespace elk {
 
 class dst_reg;
 
@@ -470,6 +470,6 @@ get_exec_type_size(const vec4_instruction *inst)
    return type_sz(get_exec_type(inst));
 }
 
-} /* namespace brw */
+} /* namespace elk */
 
 #endif

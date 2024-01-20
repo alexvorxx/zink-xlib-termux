@@ -37,7 +37,7 @@
 #include "elk_private.h"
 #include "dev/intel_debug.h"
 
-namespace brw {
+namespace elk {
 
 vec4_gs_visitor::vec4_gs_visitor(const struct brw_compiler *compiler,
                                  const struct brw_compile_params *params,
@@ -579,7 +579,7 @@ static const GLuint gl_prim_to_hw_prim[MESA_PRIM_TRIANGLE_STRIP_ADJACENCY+1] = {
    [MESA_PRIM_TRIANGLE_STRIP_ADJACENCY] = _3DPRIM_TRISTRIP_ADJ,
 };
 
-} /* namespace brw */
+} /* namespace elk */
 
 extern "C" const unsigned *
 brw_compile_gs(const struct brw_compiler *compiler,
@@ -797,9 +797,9 @@ brw_compile_gs(const struct brw_compiler *compiler,
       prog_data->base.urb_entry_size = ALIGN(output_size_bytes, 128) / 128;
    }
 
-   assert(nir->info.gs.output_primitive < ARRAY_SIZE(brw::gl_prim_to_hw_prim));
+   assert(nir->info.gs.output_primitive < ARRAY_SIZE(elk::gl_prim_to_hw_prim));
    prog_data->output_topology =
-      brw::gl_prim_to_hw_prim[nir->info.gs.output_primitive];
+      elk::gl_prim_to_hw_prim[nir->info.gs.output_primitive];
 
    prog_data->vertices_in = nir->info.gs.vertices_in;
 
@@ -858,7 +858,7 @@ brw_compile_gs(const struct brw_compiler *compiler,
           !INTEL_DEBUG(DEBUG_NO_DUAL_OBJECT_GS)) {
          prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT;
 
-         brw::vec4_gs_visitor v(compiler, &params->base, &c, prog_data, nir,
+         elk::vec4_gs_visitor v(compiler, &params->base, &c, prog_data, nir,
                                 true /* no_spills */,
                                 debug_enabled);
 
@@ -924,15 +924,15 @@ brw_compile_gs(const struct brw_compiler *compiler,
    else
       prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_INSTANCE;
 
-   brw::vec4_gs_visitor *gs = NULL;
+   elk::vec4_gs_visitor *gs = NULL;
    const unsigned *ret = NULL;
 
    if (compiler->devinfo->ver >= 7)
-      gs = new brw::vec4_gs_visitor(compiler, &params->base, &c, prog_data,
+      gs = new elk::vec4_gs_visitor(compiler, &params->base, &c, prog_data,
                                     nir, false /* no_spills */,
                                     debug_enabled);
    else
-      gs = new brw::gfx6_gs_visitor(compiler, &params->base, &c, prog_data,
+      gs = new elk::gfx6_gs_visitor(compiler, &params->base, &c, prog_data,
                                     nir, false /* no_spills */,
                                     debug_enabled);
 

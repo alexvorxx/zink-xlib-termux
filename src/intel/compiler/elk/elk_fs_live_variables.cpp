@@ -28,7 +28,7 @@
 #include "elk_fs.h"
 #include "elk_fs_live_variables.h"
 
-using namespace brw;
+using namespace elk;
 
 #define MAX_INSTRUCTION (1 << 30)
 

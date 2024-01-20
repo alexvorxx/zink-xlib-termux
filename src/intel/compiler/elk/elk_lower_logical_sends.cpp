@@ -29,7 +29,7 @@
 #include "elk_fs.h"
 #include "elk_fs_builder.h"
 
-using namespace brw;
+using namespace elk;
 
 static void
 lower_urb_read_logical_send(const fs_builder &bld, fs_inst *inst)

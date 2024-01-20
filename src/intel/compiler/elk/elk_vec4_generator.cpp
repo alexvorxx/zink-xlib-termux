@@ -27,7 +27,7 @@
 #include "dev/intel_debug.h"
 #include "util/mesa-sha1.h"
 
-using namespace brw;
+using namespace elk;
 
 static void
 generate_math1_gfx4(struct brw_codegen *p,

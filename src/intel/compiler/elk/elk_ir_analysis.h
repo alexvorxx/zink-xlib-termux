@@ -25,7 +25,7 @@
 #ifndef ELK_IR_ANALYSIS_H
 #define ELK_IR_ANALYSIS_H
 
-namespace brw {
+namespace elk {
    /**
     * Bitset of state categories that can influence the result of IR analysis
     * passes.
@@ -122,7 +122,7 @@ namespace brw {
  *    \p C.
  *
  *  - 'x.dependency_class()' on const \p x returns a bitset of
- *    brw::analysis_dependency_class specifying the set of IR objects that are
+ *    elk::analysis_dependency_class specifying the set of IR objects that are
  *    required to remain invariant for the cached analysis result to be
  *    considered valid.
  *
@@ -176,7 +176,7 @@ public:
     * have to be discarded.
     */
    void
-   invalidate(brw::analysis_dependency_class c)
+   invalidate(elk::analysis_dependency_class c)
    {
       if (p && (c & p->dependency_class())) {
          delete p;

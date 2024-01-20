@@ -23,7 +23,7 @@
 
 #include "elk_shader.h"
 
-using namespace brw;
+using namespace elk;
 
 /** @file elk_predicated_break.cpp
  *

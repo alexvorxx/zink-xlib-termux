@@ -35,7 +35,7 @@
 struct cfg_t;
 struct backend_shader;
 
-namespace brw {
+namespace elk {
 
 class fs_live_variables {
 public:
@@ -143,6 +143,6 @@ protected:
    void *mem_ctx;
 };
 
-} /* namespace brw */
+} /* namespace elk */
 
 #endif /* ELK_FS_LIVE_VARIABLES_H */

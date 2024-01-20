@@ -31,7 +31,7 @@
 #include "util/rounding.h"
 #include "util/u_math.h"
 
-namespace brw {
+namespace elk {
    /**
     * Simple allocator used to keep track of virtual GRFs.
     */

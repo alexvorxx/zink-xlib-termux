@@ -28,7 +28,7 @@
 #include "elk_vec4.h"
 #include "elk_vec4_live_variables.h"
 
-using namespace brw;
+using namespace elk;
 
 #define MAX_INSTRUCTION (1 << 30)
 

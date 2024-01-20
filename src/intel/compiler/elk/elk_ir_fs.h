@@ -724,7 +724,7 @@ is_multi_copy_payload(const fs_inst *inst) {
  * instruction.
  */
 inline bool
-is_coalescing_payload(const brw::simple_allocator &alloc, const fs_inst *inst)
+is_coalescing_payload(const elk::simple_allocator &alloc, const fs_inst *inst)
 {
    return is_identity_payload(VGRF, inst) &&
           inst->src[0].offset == 0 &&

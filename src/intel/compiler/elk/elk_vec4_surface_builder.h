@@ -27,7 +27,7 @@
 
 #include "elk_vec4_builder.h"
 
-namespace brw {
+namespace elk {
    namespace surface_access {
       src_reg
       emit_untyped_read(const vec4_builder &bld,

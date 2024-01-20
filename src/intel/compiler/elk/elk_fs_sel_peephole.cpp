@@ -38,7 +38,7 @@
  */
 #define MAX_MOVS 8 /**< The maximum number of MOVs to attempt to match. */
 
-using namespace brw;
+using namespace elk;
 
 /**
  * Scans forwards from an IF counting consecutive MOV instructions in the

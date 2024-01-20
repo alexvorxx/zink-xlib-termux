@@ -25,7 +25,7 @@
 #include "elk_fs_live_variables.h"
 #include "elk_cfg.h"
 
-using namespace brw;
+using namespace elk;
 
 /** @file elk_fs_saturate_propagation.cpp
  *

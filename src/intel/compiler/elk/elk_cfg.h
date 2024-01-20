@@ -481,7 +481,7 @@ cfg_t::adjust_block_ips()
    }
 }
 
-namespace brw {
+namespace elk {
    /**
     * Immediate dominator tree analysis of a shader.
     */

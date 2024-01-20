@@ -33,7 +33,7 @@
 #include "elk_vec4.h"
 
 #ifdef __cplusplus
-namespace brw {
+namespace elk {
 
 class vec4_tes_visitor : public vec4_visitor
 {
@@ -59,7 +59,7 @@ private:
    src_reg input_read_header;
 };
 
-} /* namespace brw */
+} /* namespace elk */
 #endif /* __cplusplus */
 
 #endif /* ELK_VEC4_TES_H */

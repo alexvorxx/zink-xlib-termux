@@ -28,7 +28,7 @@
 #include "elk_vec4_builder.h"
 #include "elk_cfg.h"
 
-using namespace brw;
+using namespace elk;
 
 class cmod_propagation_vec4_test : public ::testing::Test {
    virtual void SetUp();

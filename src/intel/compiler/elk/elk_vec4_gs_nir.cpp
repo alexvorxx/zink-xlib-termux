@@ -23,7 +23,7 @@
 
 #include "elk_vec4_gs_visitor.h"
 
-namespace brw {
+namespace elk {
 
 void
 vec4_gs_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)

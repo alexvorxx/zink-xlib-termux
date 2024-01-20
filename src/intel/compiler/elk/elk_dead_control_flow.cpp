@@ -29,7 +29,7 @@
 #include "elk_shader.h"
 #include "elk_cfg.h"
 
-using namespace brw;
+using namespace elk;
 
 /* Look for and eliminate dead control flow:
  *

@@ -40,7 +40,7 @@
 #include "elk_cfg.h"
 #include "elk_eu.h"
 
-using namespace brw;
+using namespace elk;
 
 namespace { /* avoid conflict with opt_copy_propagation_elements */
 struct acp_entry {
@@ -660,7 +660,7 @@ instruction_requires_packed_data(fs_inst *inst)
 static bool
 try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
                    acp_entry *entry, int arg,
-                   const brw::simple_allocator &alloc,
+                   const elk::simple_allocator &alloc,
                    uint8_t max_polygons)
 {
    if (inst->src[arg].file != VGRF)
@@ -1276,7 +1276,7 @@ can_propagate_from(fs_inst *inst)
 static bool
 opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
                            bblock_t *block, struct acp &acp,
-                           const brw::simple_allocator &alloc,
+                           const elk::simple_allocator &alloc,
                            uint8_t max_polygons)
 {
    bool progress = false;

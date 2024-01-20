@@ -32,7 +32,7 @@
 #include "util/set.h"
 #include "util/register_allocate.h"
 
-using namespace brw;
+using namespace elk;
 
 #define REG_CLASS_COUNT 20
 

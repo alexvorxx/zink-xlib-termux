@@ -26,7 +26,7 @@
 
 #include "elk_vec4.h"
 
-namespace brw {
+namespace elk {
 
 class vec4_vs_visitor : public vec4_visitor
 {
@@ -53,6 +53,6 @@ private:
    struct brw_vs_prog_data * const vs_prog_data;
 };
 
-} /* namespace brw */
+} /* namespace elk */
 
 #endif /* ELK_VEC4_VS_VISITOR_H */

@@ -33,7 +33,7 @@
 #include "elk_cfg.h"
 #include "elk_eu.h"
 
-namespace brw {
+namespace elk {
 
 static bool
 writemasks_incompatible(const vec4_instruction *earlier,
@@ -362,4 +362,4 @@ vec4_visitor::opt_cmod_propagation()
    return progress;
 }
 
-} /* namespace brw */
+} /* namespace elk */

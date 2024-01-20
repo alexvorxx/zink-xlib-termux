@@ -8,7 +8,7 @@
 #include "elk_fs_builder.h"
 #include "elk_cfg.h"
 
-using namespace brw;
+using namespace elk;
 
 class PredicatedBreakTest : public ::testing::Test {
    virtual void SetUp();

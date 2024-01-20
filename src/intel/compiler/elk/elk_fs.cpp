@@ -47,7 +47,7 @@
 
 #include <memory>
 
-using namespace brw;
+using namespace elk;
 
 static unsigned get_lowered_simd_width(const fs_visitor *shader,
                                        const fs_inst *inst);
@@ -2397,7 +2397,7 @@ fs_visitor::opt_algebraic()
             assert(!inst->saturate);
             assert(!inst->src[0].abs);
             assert(!inst->src[0].negate);
-            const brw::fs_builder ibld(this, block, inst);
+            const elk::fs_builder ibld(this, block, inst);
 
             if (!inst->is_partial_write())
                ibld.emit_undef_for_dst(inst);
@@ -2418,7 +2418,7 @@ fs_visitor::opt_algebraic()
             assert(!inst->saturate);
             assert(!inst->src[0].abs);
             assert(!inst->src[0].negate);
-            const brw::fs_builder ibld(this, block, inst);
+            const elk::fs_builder ibld(this, block, inst);
 
             if (!inst->is_partial_write())
                ibld.emit_undef_for_dst(inst);
@@ -2608,7 +2608,7 @@ fs_visitor::opt_algebraic()
             assert(!inst->saturate);
             assert(!inst->src[0].abs && !inst->src[0].negate);
             assert(!inst->src[1].abs && !inst->src[1].negate);
-            const brw::fs_builder ibld(this, block, inst);
+            const elk::fs_builder ibld(this, block, inst);
 
             if (!inst->is_partial_write())
                ibld.emit_undef_for_dst(inst);
@@ -5902,7 +5902,7 @@ fs_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE *f
    fprintf(file, "\n");
 }
 
-brw::register_pressure::register_pressure(const fs_visitor *v)
+elk::register_pressure::register_pressure(const fs_visitor *v)
 {
    const fs_live_variables &live = v->live_analysis.require();
    const unsigned num_instructions = v->cfg->num_blocks ?
@@ -5928,13 +5928,13 @@ brw::register_pressure::register_pressure(const fs_visitor *v)
    delete[] payload_last_use_ip;
 }
 
-brw::register_pressure::~register_pressure()
+elk::register_pressure::~register_pressure()
 {
    delete[] regs_live_at_ip;
 }
 
 void
-fs_visitor::invalidate_analysis(brw::analysis_dependency_class c)
+fs_visitor::invalidate_analysis(elk::analysis_dependency_class c)
 {
    backend_shader::invalidate_analysis(c);
    live_analysis.invalidate(c);
@@ -8069,9 +8069,9 @@ bool brw_should_print_shader(const nir_shader *shader, uint64_t debug_flag)
    return INTEL_DEBUG(debug_flag) && (!shader->info.internal || NIR_DEBUG(PRINT_INTERNAL));
 }
 
-namespace brw {
+namespace elk {
    fs_reg
-   fetch_payload_reg(const brw::fs_builder &bld, uint8_t regs[2],
+   fetch_payload_reg(const elk::fs_builder &bld, uint8_t regs[2],
                      brw_reg_type type, unsigned n)
    {
       if (!regs[0])
@@ -8079,7 +8079,7 @@ namespace brw {
 
       if (bld.dispatch_width() > 16) {
          const fs_reg tmp = bld.vgrf(type, n);
-         const brw::fs_builder hbld = bld.exec_all().group(16, 0);
+         const elk::fs_builder hbld = bld.exec_all().group(16, 0);
          const unsigned m = bld.dispatch_width() / hbld.dispatch_width();
          fs_reg *const components = new fs_reg[m * n];
 
@@ -8100,7 +8100,7 @@ namespace brw {
    }
 
    fs_reg
-   fetch_barycentric_reg(const brw::fs_builder &bld, uint8_t regs[2])
+   fetch_barycentric_reg(const elk::fs_builder &bld, uint8_t regs[2])
    {
       if (!regs[0])
          return fs_reg();
@@ -8108,7 +8108,7 @@ namespace brw {
          return fetch_payload_reg(bld, regs, BRW_REGISTER_TYPE_F, 2);
 
       const fs_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_F, 2);
-      const brw::fs_builder hbld = bld.exec_all().group(8, 0);
+      const elk::fs_builder hbld = bld.exec_all().group(8, 0);
       const unsigned m = bld.dispatch_width() / hbld.dispatch_width();
       fs_reg *const components = new fs_reg[2 * m];
 

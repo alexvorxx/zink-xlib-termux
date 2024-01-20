@@ -48,7 +48,7 @@
  * exists and therefore remove the instruction.
  */
 
-using namespace brw;
+using namespace elk;
 
 static bool
 cmod_propagate_cmp_to_add(const intel_device_info *devinfo, bblock_t *block,

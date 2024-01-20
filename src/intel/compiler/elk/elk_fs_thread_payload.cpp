@@ -24,7 +24,7 @@
 #include "elk_fs.h"
 #include "elk_fs_builder.h"
 
-using namespace brw;
+using namespace elk;
 
 vs_thread_payload::vs_thread_payload(const fs_visitor &v)
 {

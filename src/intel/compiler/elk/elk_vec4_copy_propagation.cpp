@@ -33,7 +33,7 @@
 #include "elk_cfg.h"
 #include "elk_eu.h"
 
-namespace brw {
+namespace elk {
 
 struct copy_entry {
    src_reg *value[4];
@@ -553,4 +553,4 @@ vec4_visitor::opt_copy_propagation(bool do_constant_prop)
    return progress;
 }
 
-} /* namespace brw */
+} /* namespace elk */

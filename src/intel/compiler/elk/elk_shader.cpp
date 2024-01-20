@@ -1273,7 +1273,7 @@ backend_shader::calculate_cfg()
 }
 
 void
-backend_shader::invalidate_analysis(brw::analysis_dependency_class c)
+backend_shader::invalidate_analysis(elk::analysis_dependency_class c)
 {
    idom_analysis.invalidate(c);
 }
@@ -1406,7 +1406,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
 
       assembly = g.get_assembly();
    } else {
-      brw::vec4_tes_visitor v(compiler, &params->base, key, prog_data,
+      elk::vec4_tes_visitor v(compiler, &params->base, key, prog_data,
                               nir, debug_enabled);
       if (!v.run()) {
          params->base.error_str =

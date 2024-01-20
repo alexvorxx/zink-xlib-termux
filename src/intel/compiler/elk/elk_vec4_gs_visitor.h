@@ -35,7 +35,7 @@
 #define MAX_GS_INPUT_VERTICES 6
 
 #ifdef __cplusplus
-namespace brw {
+namespace elk {
 
 class vec4_gs_visitor : public vec4_visitor
 {
@@ -69,7 +69,7 @@ protected:
    struct brw_gs_prog_data * const gs_prog_data;
 };
 
-} /* namespace brw */
+} /* namespace elk */
 #endif /* __cplusplus */
 
 #endif /* ELK_VEC4_GS_VISITOR_H */

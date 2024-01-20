@@ -25,7 +25,7 @@
 #include "elk_cfg.h"
 #include "elk_fs_builder.h"
 
-using namespace brw;
+using namespace elk;
 
 namespace {
    /* From the SKL PRM Vol 2a, "Move":
@@ -404,7 +404,7 @@ namespace {
    lower_instruction(fs_visitor *v, bblock_t *block, fs_inst *inst);
 }
 
-namespace brw {
+namespace elk {
    /**
     * Remove any modifiers from the \p i-th source region of the instruction,
     * including negate, abs and any implicit type conversion to the execution

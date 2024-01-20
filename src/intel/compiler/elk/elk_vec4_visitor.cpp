@@ -26,7 +26,7 @@
 #include "elk_eu.h"
 #include "util/u_math.h"
 
-namespace brw {
+namespace elk {
 
 vec4_instruction::vec4_instruction(enum opcode opcode, const dst_reg &dst,
                                    const src_reg &src0, const src_reg &src1,
@@ -1426,4 +1426,4 @@ vec4_visitor::fail(const char *format, ...)
    }
 }
 
-} /* namespace brw */
+} /* namespace elk */

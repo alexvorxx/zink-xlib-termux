@@ -41,7 +41,7 @@ namespace {
 
 class fs_visitor;
 
-namespace brw {
+namespace elk {
    /**
     * Register pressure analysis of a shader.  Estimates how many registers
     * are live at any point of the program in GRF units.
@@ -71,7 +71,7 @@ namespace brw {
 
 struct brw_gs_compile;
 
-namespace brw {
+namespace elk {
 class fs_builder;
 }
 
@@ -145,7 +145,7 @@ struct fs_thread_payload : public thread_payload {
 struct cs_thread_payload : public thread_payload {
    cs_thread_payload(const fs_visitor &v);
 
-   void load_subgroup_id(const brw::fs_builder &bld, fs_reg &dest) const;
+   void load_subgroup_id(const elk::fs_builder &bld, fs_reg &dest) const;
 
    fs_reg local_invocation_id[3];
 
@@ -193,7 +193,7 @@ public:
    fs_reg vgrf(const glsl_type *const type);
    void import_uniforms(fs_visitor *v);
 
-   void VARYING_PULL_CONSTANT_LOAD(const brw::fs_builder &bld,
+   void VARYING_PULL_CONSTANT_LOAD(const elk::fs_builder &bld,
                                    const fs_reg &dst,
                                    const fs_reg &surface,
                                    const fs_reg &surface_handle,
@@ -201,7 +201,7 @@ public:
                                    uint32_t const_offset,
                                    uint8_t alignment,
                                    unsigned components);
-   void DEP_RESOLVE_MOV(const brw::fs_builder &bld, int grf);
+   void DEP_RESOLVE_MOV(const elk::fs_builder &bld, int grf);
 
    bool run_fs(bool allow_spilling, bool do_rep_send);
    bool run_vs();
@@ -234,7 +234,7 @@ public:
    bool get_pull_locs(const fs_reg &src, unsigned *out_surf_index,
                       unsigned *out_pull_index);
    bool lower_constant_loads();
-   virtual void invalidate_analysis(brw::analysis_dependency_class c);
+   virtual void invalidate_analysis(elk::analysis_dependency_class c);
 
 #ifndef NDEBUG
    void validate();
@@ -245,7 +245,7 @@ public:
    bool opt_algebraic();
    bool opt_redundant_halt();
    bool opt_cse();
-   bool opt_cse_local(const brw::fs_live_variables &live, bblock_t *block, int &ip);
+   bool opt_cse_local(const elk::fs_live_variables &live, bblock_t *block, int &ip);
 
    bool opt_copy_propagation();
    bool opt_bank_conflicts();
@@ -296,7 +296,7 @@ public:
    void set_tcs_invocation_id();
 
    void emit_alpha_test();
-   fs_inst *emit_single_fb_write(const brw::fs_builder &bld,
+   fs_inst *emit_single_fb_write(const elk::fs_builder &bld,
                                  fs_reg color1, fs_reg color2,
                                  fs_reg src0_alpha, unsigned components);
    void do_emit_fb_writes(int nr_color_regions, bool replicate_alpha);
@@ -309,9 +309,9 @@ public:
    void emit_urb_fence();
    void emit_cs_terminate();
 
-   fs_reg interp_reg(const brw::fs_builder &bld, unsigned location,
+   fs_reg interp_reg(const elk::fs_builder &bld, unsigned location,
                      unsigned channel, unsigned comp);
-   fs_reg per_primitive_reg(const brw::fs_builder &bld,
+   fs_reg per_primitive_reg(const elk::fs_builder &bld,
                             int location, unsigned comp);
 
    virtual void dump_instruction_to_file(const backend_instruction *inst, FILE *file) const;
@@ -324,9 +324,9 @@ public:
 
    struct brw_stage_prog_data *prog_data;
 
-   brw_analysis<brw::fs_live_variables, backend_shader> live_analysis;
-   brw_analysis<brw::register_pressure, fs_visitor> regpressure_analysis;
-   brw_analysis<brw::performance, fs_visitor> performance_analysis;
+   brw_analysis<elk::fs_live_variables, backend_shader> live_analysis;
+   brw_analysis<elk::register_pressure, fs_visitor> regpressure_analysis;
+   brw_analysis<elk::performance, fs_visitor> performance_analysis;
 
    /** Number of uniform variable components visited. */
    unsigned uniforms;
@@ -456,7 +456,7 @@ public:
    void enable_debug(const char *shader_name);
    int generate_code(const cfg_t *cfg, int dispatch_width,
                      struct shader_stats shader_stats,
-                     const brw::performance &perf,
+                     const elk::performance &perf,
                      struct brw_compile_stats *stats,
                      unsigned max_polygons = 0);
    void add_const_data(void *data, unsigned size);
@@ -539,14 +539,14 @@ private:
    void *mem_ctx;
 };
 
-namespace brw {
+namespace elk {
    fs_reg
-   fetch_payload_reg(const brw::fs_builder &bld, uint8_t regs[2],
+   fetch_payload_reg(const elk::fs_builder &bld, uint8_t regs[2],
                      brw_reg_type type = BRW_REGISTER_TYPE_F,
                      unsigned n = 1);
 
    fs_reg
-   fetch_barycentric_reg(const brw::fs_builder &bld, uint8_t regs[2]);
+   fetch_barycentric_reg(const elk::fs_builder &bld, uint8_t regs[2]);
 
    inline fs_reg
    dynamic_msaa_flags(const struct brw_wm_prog_data *wm_prog_data)
@@ -564,19 +564,19 @@ namespace brw {
    lower_src_modifiers(fs_visitor *v, bblock_t *block, fs_inst *inst, unsigned i);
 }
 
-void shuffle_from_32bit_read(const brw::fs_builder &bld,
+void shuffle_from_32bit_read(const elk::fs_builder &bld,
                              const fs_reg &dst,
                              const fs_reg &src,
                              uint32_t first_component,
                              uint32_t components);
 
-fs_reg setup_imm_df(const brw::fs_builder &bld,
+fs_reg setup_imm_df(const elk::fs_builder &bld,
                     double v);
 
-fs_reg setup_imm_b(const brw::fs_builder &bld,
+fs_reg setup_imm_b(const elk::fs_builder &bld,
                    int8_t v);
 
-fs_reg setup_imm_ub(const brw::fs_builder &bld,
+fs_reg setup_imm_ub(const elk::fs_builder &bld,
                    uint8_t v);
 
 enum brw_barycentric_mode brw_barycentric_mode(nir_intrinsic_instr *intr);
@@ -588,8 +588,8 @@ void brw_compute_urb_setup_index(struct brw_wm_prog_data *wm_prog_data);
 
 bool brw_nir_lower_simd(nir_shader *nir, unsigned dispatch_width);
 
-fs_reg brw_sample_mask_reg(const brw::fs_builder &bld);
-void brw_emit_predicate_on_sample_mask(const brw::fs_builder &bld, fs_inst *inst);
+fs_reg brw_sample_mask_reg(const elk::fs_builder &bld);
+void brw_emit_predicate_on_sample_mask(const elk::fs_builder &bld, fs_inst *inst);
 
 int brw_get_subgroup_id_param_index(const intel_device_info *devinfo,
                                     const brw_stage_prog_data *prog_data);

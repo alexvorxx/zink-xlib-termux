@@ -25,11 +25,11 @@
 #include "elk_vec4.h"
 #include "elk_cfg.h"
 
-using namespace brw;
+using namespace elk;
 
 #define REG_CLASS_COUNT 20
 
-namespace brw {
+namespace elk {
 
 static void
 assign(unsigned int *reg_hw_locations, backend_reg *reg)
@@ -509,4 +509,4 @@ vec4_visitor::spill_reg(unsigned spill_reg_nr)
    invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 }
 
-} /* namespace brw */
+} /* namespace elk */

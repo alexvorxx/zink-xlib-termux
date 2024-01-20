@@ -26,7 +26,7 @@
 #include "elk_fs_builder.h"
 #include "elk_cfg.h"
 
-using namespace brw;
+using namespace elk;
 
 class cmod_propagation_test : public ::testing::Test {
 protected:

@@ -31,7 +31,7 @@
 #include "elk_cfg.h"
 #include "dev/intel_debug.h"
 
-namespace brw {
+namespace elk {
 
 vec4_tes_visitor::vec4_tes_visitor(const struct brw_compiler *compiler,
                                    const struct brw_compile_params *params,
@@ -220,4 +220,4 @@ vec4_tes_visitor::emit_thread_end()
    emit_vertex();
 }
 
-} /* namespace brw */
+} /* namespace elk */

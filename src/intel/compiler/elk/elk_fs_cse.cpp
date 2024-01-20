@@ -33,7 +33,7 @@
  * 13.1 (p378).
  */
 
-using namespace brw;
+using namespace elk;
 
 namespace {
 struct aeb_entry : public exec_node {

@@ -72,12 +72,12 @@ public:
    exec_list instructions;
 
    cfg_t *cfg;
-   brw_analysis<brw::idom_tree, backend_shader> idom_analysis;
+   brw_analysis<elk::idom_tree, backend_shader> idom_analysis;
 
    gl_shader_stage stage;
    bool debug_enabled;
 
-   brw::simple_allocator alloc;
+   elk::simple_allocator alloc;
 
    virtual void dump_instruction_to_file(const backend_instruction *inst, FILE *file) const = 0;
    virtual void dump_instructions_to_file(FILE *file) const;
@@ -90,7 +90,7 @@ public:
 
    void calculate_cfg();
 
-   virtual void invalidate_analysis(brw::analysis_dependency_class c);
+   virtual void invalidate_analysis(elk::analysis_dependency_class c);
 };
 
 #else

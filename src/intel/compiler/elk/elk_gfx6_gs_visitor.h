@@ -30,7 +30,7 @@
 
 #ifdef __cplusplus
 
-namespace brw {
+namespace elk {
 
 class gfx6_gs_visitor : public vec4_gs_visitor
 {
@@ -77,7 +77,7 @@ private:
    src_reg destination_indices;
 };
 
-} /* namespace brw */
+} /* namespace elk */
 
 #endif /* __cplusplus */
 

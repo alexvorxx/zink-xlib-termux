@@ -35,9 +35,9 @@
 
 #define MAX_INSTRUCTION (1 << 30)
 
-using namespace brw;
+using namespace elk;
 
-namespace brw {
+namespace elk {
 
 void
 src_reg::init()
@@ -2357,7 +2357,7 @@ vec4_visitor::apply_logical_swizzle(struct brw_reg *hw_reg,
 }
 
 void
-vec4_visitor::invalidate_analysis(brw::analysis_dependency_class c)
+vec4_visitor::invalidate_analysis(elk::analysis_dependency_class c)
 {
    backend_shader::invalidate_analysis(c);
    live_analysis.invalidate(c);
@@ -2543,7 +2543,7 @@ vec4_visitor::run()
    return !failed;
 }
 
-} /* namespace brw */
+} /* namespace elk */
 
 extern "C" {
 

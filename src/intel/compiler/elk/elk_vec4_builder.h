@@ -28,22 +28,22 @@
 #include "elk_ir_vec4.h"
 #include "elk_ir_allocator.h"
 
-namespace brw {
+namespace elk {
    /**
     * Toolbox to assemble a VEC4 IR program out of individual instructions.
     *
     * This object is meant to have an interface consistent with
-    * brw::fs_builder.  They cannot be fully interchangeable because
-    * brw::fs_builder generates scalar code while brw::vec4_builder generates
+    * elk::fs_builder.  They cannot be fully interchangeable because
+    * elk::fs_builder generates scalar code while elk::vec4_builder generates
     * vector code.
     */
    class vec4_builder {
    public:
       /** Type used in this IR to represent a source of an instruction. */
-      typedef brw::src_reg src_reg;
+      typedef elk::src_reg src_reg;
 
       /** Type used in this IR to represent the destination of an instruction. */
-      typedef brw::dst_reg dst_reg;
+      typedef elk::dst_reg dst_reg;
 
       /** Type used in this IR to represent an instruction. */
       typedef vec4_instruction instruction;

@@ -30,10 +30,10 @@
 #include "nir_intrinsics.h"
 #include "nir_intrinsics_indices.h"
 
-using namespace brw;
-using namespace brw::surface_access;
+using namespace elk;
+using namespace elk::surface_access;
 
-namespace brw {
+namespace elk {
 
 void
 vec4_visitor::emit_nir_code()

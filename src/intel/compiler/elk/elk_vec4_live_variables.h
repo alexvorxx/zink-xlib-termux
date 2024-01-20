@@ -34,7 +34,7 @@
 
 struct backend_shader;
 
-namespace brw {
+namespace elk {
 
 class vec4_live_variables {
 public:
@@ -138,6 +138,6 @@ var_from_reg(const simple_allocator &alloc, const dst_reg &reg,
    return result;
 }
 
-} /* namespace brw */
+} /* namespace elk */
 
 #endif /* ELK_VEC4_LIVE_VARIABLES_H */

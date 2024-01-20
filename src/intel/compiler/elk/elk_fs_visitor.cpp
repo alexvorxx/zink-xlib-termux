@@ -33,7 +33,7 @@
 #include "elk_nir.h"
 #include "compiler/glsl_types.h"
 
-using namespace brw;
+using namespace elk;
 
 /* Input data is organized with first the per-primitive values, followed
  * by per-vertex values.  The per-vertex will have interpolation information

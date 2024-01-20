@@ -35,7 +35,7 @@
 #include "elk_vec4.h"
 
 #ifdef __cplusplus
-namespace brw {
+namespace elk {
 
 class vec4_tcs_visitor : public vec4_visitor
 {
@@ -77,7 +77,7 @@ protected:
    src_reg invocation_id;
 };
 
-} /* namespace brw */
+} /* namespace elk */
 #endif /* __cplusplus */
 
 #endif /* ELK_VEC4_TCS_H */

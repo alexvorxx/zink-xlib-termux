@@ -24,7 +24,7 @@
 #include <gtest/gtest.h>
 #include "elk_vec4.h"
 
-using namespace brw;
+using namespace elk;
 
 class dead_code_eliminate_vec4_test : public ::testing::Test {
    virtual void SetUp();

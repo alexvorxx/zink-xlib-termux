@@ -26,7 +26,7 @@
 #include "elk_cfg.h"
 #include "elk_fs_builder.h"
 
-using namespace brw;
+using namespace elk;
 
 bool
 fs_visitor::lower_pack()

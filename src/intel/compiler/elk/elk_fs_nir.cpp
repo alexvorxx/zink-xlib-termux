@@ -33,7 +33,7 @@
 
 #include <vector>
 
-using namespace brw;
+using namespace elk;
 
 struct brw_fs_bind_info {
    bool valid;
@@ -4704,7 +4704,7 @@ add_rebuild_src(nir_src *src, void *state)
 }
 
 static fs_reg
-try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def *resource_def)
+try_rebuild_resource(nir_to_brw_state &ntb, const elk::fs_builder &bld, nir_def *resource_def)
 {
    /* Create a build at the location of the resource_intel intrinsic */
    fs_builder ubld8 = bld.exec_all().group(8, 0);
@@ -4862,7 +4862,7 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
 }
 
 static fs_reg
-get_nir_image_intrinsic_image(nir_to_brw_state &ntb, const brw::fs_builder &bld,
+get_nir_image_intrinsic_image(nir_to_brw_state &ntb, const elk::fs_builder &bld,
                               nir_intrinsic_instr *instr)
 {
    if (is_resource_src(instr->src[0])) {
@@ -4878,7 +4878,7 @@ get_nir_image_intrinsic_image(nir_to_brw_state &ntb, const brw::fs_builder &bld,
 }
 
 static fs_reg
-get_nir_buffer_intrinsic_index(nir_to_brw_state &ntb, const brw::fs_builder &bld,
+get_nir_buffer_intrinsic_index(nir_to_brw_state &ntb, const elk::fs_builder &bld,
                                nir_intrinsic_instr *instr)
 {
    /* SSBO stores are weird in that their index is in src[1] */
@@ -4922,7 +4922,7 @@ get_nir_buffer_intrinsic_index(nir_to_brw_state &ntb, const brw::fs_builder &bld
  */
 static fs_reg
 swizzle_nir_scratch_addr(nir_to_brw_state &ntb,
-                         const brw::fs_builder &bld,
+                         const elk::fs_builder &bld,
                          const fs_reg &nir_addr,
                          bool in_dwords)
 {

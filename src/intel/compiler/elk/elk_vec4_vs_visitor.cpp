@@ -25,7 +25,7 @@
 #include "elk_vec4_vs.h"
 #include "dev/intel_debug.h"
 
-namespace brw {
+namespace elk {
 
 void
 vec4_vs_visitor::emit_prolog()
@@ -105,4 +105,4 @@ vec4_vs_visitor::vec4_vs_visitor(const struct brw_compiler *compiler,
 }
 
 
-} /* namespace brw */
+} /* namespace elk */

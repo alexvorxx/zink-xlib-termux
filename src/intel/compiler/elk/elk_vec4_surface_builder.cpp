@@ -23,7 +23,7 @@
 
 #include "elk_vec4_surface_builder.h"
 
-using namespace brw;
+using namespace elk;
 
 namespace {
    namespace array_utils {
@@ -79,7 +79,7 @@ namespace {
    }
 }
 
-namespace brw {
+namespace elk {
    namespace surface_access {
       namespace {
          using namespace array_utils;

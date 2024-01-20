@@ -33,7 +33,7 @@
 #include "elk_shader.h"
 #include <new>
 
-using namespace brw;
+using namespace elk;
 
 /** @file elk_fs_schedule_instructions.cpp
  *

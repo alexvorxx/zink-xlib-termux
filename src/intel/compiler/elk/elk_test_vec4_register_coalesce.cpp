@@ -24,7 +24,7 @@
 #include <gtest/gtest.h>
 #include "elk_vec4.h"
 
-using namespace brw;
+using namespace elk;
 
 #define register_coalesce(v) _register_coalesce(v, __func__)
 

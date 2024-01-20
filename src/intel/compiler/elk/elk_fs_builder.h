@@ -30,13 +30,13 @@
 #include "elk_eu.h"
 #include "elk_fs.h"
 
-namespace brw {
+namespace elk {
    /**
     * Toolbox to assemble an FS IR program out of individual instructions.
     *
     * This object is meant to have an interface consistent with
-    * brw::vec4_builder.  They cannot be fully interchangeable because
-    * brw::fs_builder generates scalar code while brw::vec4_builder generates
+    * elk::vec4_builder.  They cannot be fully interchangeable because
+    * elk::fs_builder generates scalar code while elk::vec4_builder generates
     * vector code.
     */
    class fs_builder {
@@ -957,7 +957,7 @@ namespace brw {
 }
 
 static inline fs_reg
-offset(const fs_reg &reg, const brw::fs_builder &bld, unsigned delta)
+offset(const fs_reg &reg, const elk::fs_builder &bld, unsigned delta)
 {
    return offset(reg, bld.dispatch_width(), delta);
 }

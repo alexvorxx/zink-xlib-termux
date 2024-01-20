@@ -39,7 +39,7 @@
 #include "elk_cfg.h"
 #include "util/half_float.h"
 
-using namespace brw;
+using namespace elk;
 
 static const bool debug = false;
 
@@ -1193,7 +1193,7 @@ struct register_allocation {
 static fs_reg
 allocate_slots(struct register_allocation *regs, unsigned num_regs,
                unsigned bytes, unsigned align_bytes,
-               brw::simple_allocator &alloc)
+               elk::simple_allocator &alloc)
 {
    assert(bytes == 2 || bytes == 4 || bytes == 8);
    assert(align_bytes == 2 || align_bytes == 4 || align_bytes == 8);
@@ -1248,7 +1248,7 @@ deallocate_slots(struct register_allocation *regs, unsigned num_regs,
 static void
 parcel_out_registers(struct imm *imm, unsigned len, const bblock_t *cur_block,
                      struct register_allocation *regs, unsigned num_regs,
-                     brw::simple_allocator &alloc, unsigned ver)
+                     elk::simple_allocator &alloc, unsigned ver)
 {
    /* Each basic block has two distinct set of constants.  There is the set of
     * constants that only have uses in that block, and there is the set of
@@ -1325,7 +1325,7 @@ fs_visitor::opt_combine_constants()
    table.num_boxes = 0;
    table.boxes = ralloc_array(const_ctx, fs_inst_box, table.size_boxes);
 
-   const brw::idom_tree &idom = idom_analysis.require();
+   const elk::idom_tree &idom = idom_analysis.require();
    unsigned ip = -1;
 
    /* Make a pass through all instructions and count the number of times each

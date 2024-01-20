@@ -47,13 +47,13 @@ brw_vec4_generate_assembly(const struct brw_compiler *compiler,
                            const nir_shader *nir,
                            struct brw_vue_prog_data *prog_data,
                            const struct cfg_t *cfg,
-                           const brw::performance &perf,
+                           const elk::performance &perf,
                            bool debug_enabled);
 
 #ifdef __cplusplus
 } /* extern "C" */
 
-namespace brw {
+namespace elk {
 /**
  * The vertex shader front-end.
  *
@@ -107,8 +107,8 @@ public:
    unsigned ubo_push_start[4];
    unsigned push_length;
    unsigned int max_grf;
-   brw_analysis<brw::vec4_live_variables, backend_shader> live_analysis;
-   brw_analysis<brw::performance, vec4_visitor> performance_analysis;
+   brw_analysis<elk::vec4_live_variables, backend_shader> live_analysis;
+   brw_analysis<elk::performance, vec4_visitor> performance_analysis;
 
    /* Regs for vertex results.  Generated at ir_variable visiting time
     * for the ir->location's used.
@@ -131,7 +131,7 @@ public:
    void move_grf_array_access_to_scratch();
    void split_uniform_registers();
    void setup_push_ranges();
-   virtual void invalidate_analysis(brw::analysis_dependency_class c);
+   virtual void invalidate_analysis(elk::analysis_dependency_class c);
    void split_virtual_grfs();
    bool opt_vector_float();
    bool opt_reduce_swizzle();
@@ -344,7 +344,7 @@ private:
    unsigned last_scratch; /**< measured in 32-byte (register size) units */
 };
 
-} /* namespace brw */
+} /* namespace elk */
 #endif /* __cplusplus */
 
 #endif /* ELK_VEC4_H */

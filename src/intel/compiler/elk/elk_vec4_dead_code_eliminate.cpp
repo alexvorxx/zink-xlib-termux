@@ -34,7 +34,7 @@
  * yet in the tail end of this block.
  */
 
-using namespace brw;
+using namespace elk;
 
 bool
 vec4_visitor::dead_code_eliminate()

@@ -25,7 +25,7 @@
 #include "elk_vec4_live_variables.h"
 #include "elk_cfg.h"
 
-using namespace brw;
+using namespace elk;
 
 /** @file elk_vec4_cse.cpp
  *

@@ -34,7 +34,7 @@
 #include "elk_private.h"
 #include "dev/intel_debug.h"
 
-namespace brw {
+namespace elk {
 
 vec4_tcs_visitor::vec4_tcs_visitor(const struct brw_compiler *compiler,
                                    const struct brw_compile_params *params,
@@ -349,7 +349,7 @@ get_patch_count_threshold(int input_control_points)
    return 1;
 }
 
-} /* namespace brw */
+} /* namespace elk */
 
 extern "C" const unsigned *
 brw_compile_tcs(const struct brw_compiler *compiler,
@@ -394,7 +394,7 @@ brw_compile_tcs(const struct brw_compiler *compiler,
    bool has_primitive_id =
       BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID);
 
-   prog_data->patch_count_threshold = brw::get_patch_count_threshold(key->input_vertices);
+   prog_data->patch_count_threshold = elk::get_patch_count_threshold(key->input_vertices);
 
    if (compiler->use_tcs_multi_patch) {
       vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_MULTI_PATCH;
@@ -478,7 +478,7 @@ brw_compile_tcs(const struct brw_compiler *compiler,
 
       assembly = g.get_assembly();
    } else {
-      brw::vec4_tcs_visitor v(compiler, &params->base, key, prog_data,
+      elk::vec4_tcs_visitor v(compiler, &params->base, key, prog_data,
                               nir, debug_enabled);
       if (!v.run()) {
          params->base.error_str =

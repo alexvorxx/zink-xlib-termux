@@ -27,7 +27,7 @@
 
 class fs_visitor;
 
-namespace brw {
+namespace elk {
    class vec4_visitor;
 
    /**

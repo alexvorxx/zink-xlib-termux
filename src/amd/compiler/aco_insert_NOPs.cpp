@@ -1397,7 +1397,8 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
    if (instr->isVOPC() && instr->definitions[0].physReg() == exec) {
       ctx.has_Vcmpx = true;
    } else if (ctx.has_Vcmpx && (instr->opcode == aco_opcode::v_permlane16_b32 ||
-                                instr->opcode == aco_opcode::v_permlanex16_b32)) {
+                                instr->opcode == aco_opcode::v_permlanex16_b32 ||
+                                instr->opcode == aco_opcode::v_permlane64_b32)) {
       ctx.has_Vcmpx = false;
 
       /* Unlike on GFX10, v_nop should resolve the hazard on GFX11. */

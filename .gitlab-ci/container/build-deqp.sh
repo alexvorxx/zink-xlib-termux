@@ -107,7 +107,7 @@ cmake -S /VK-GL-CTS -B . -G Ninja \
       $EXTRA_CMAKE_ARGS
 
 # Make sure `default` doesn't silently stop detecting one of the platforms we care about
-if [ "${DEQP_TARGET}" = 'default' ]; then
+if [ "${DEQP_TARGET:-default}" = 'default' ]; then
   grep -q DEQP_SUPPORT_WAYLAND=1 build.ninja
   grep -q DEQP_SUPPORT_X11=1 build.ninja
   grep -q DEQP_SUPPORT_XCB=1 build.ninja

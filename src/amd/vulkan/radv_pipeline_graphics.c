@@ -2468,7 +2468,12 @@ radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cac
 
       /* NIR might already have been imported from a library. */
       if (!stages[s].nir) {
-         stages[s].nir = radv_shader_spirv_to_nir(device, &stages[s], gfx_state, is_internal);
+         struct radv_spirv_to_nir_options options = {
+            .lower_view_index_to_zero = !gfx_state->has_multiview_view_index,
+            .fix_dual_src_mrt1_export =
+               gfx_state->ps.epilog.mrt0_is_dual_src && device->instance->drirc.dual_color_blend_by_location,
+         };
+         stages[s].nir = radv_shader_spirv_to_nir(device, &stages[s], &options, is_internal);
       }
 
       stages[s].feedback.duration += os_time_get_nano() - stage_start;

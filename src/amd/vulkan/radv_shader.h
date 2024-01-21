@@ -120,6 +120,11 @@ struct radv_ps_epilog_key {
    bool alpha_to_coverage_via_mrtz;
 };
 
+struct radv_spirv_to_nir_options {
+   uint32_t lower_view_index_to_zero : 1;
+   uint32_t fix_dual_src_mrt1_export : 1;
+};
+
 struct radv_graphics_state_key {
    uint32_t lib_flags : 4; /* VkGraphicsPipelineLibraryFlagBitsEXT */
 
@@ -780,7 +785,7 @@ void radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateI
 struct radv_shader_stage;
 
 nir_shader *radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_stage *stage,
-                                     const struct radv_graphics_state_key *gfx_state, bool is_internal);
+                                     const struct radv_spirv_to_nir_options *options, bool is_internal);
 
 void radv_init_shader_arenas(struct radv_device *device);
 void radv_destroy_shader_arenas(struct radv_device *device);

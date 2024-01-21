@@ -301,7 +301,7 @@ fix_dual_src_mrt1_export(nir_shader *nir)
 
 nir_shader *
 radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_stage *stage,
-                         const struct radv_graphics_state_key *gfx_state, bool is_internal)
+                         const struct radv_spirv_to_nir_options *options, bool is_internal)
 {
    unsigned subgroup_size = 64, ballot_bit_size = 64;
    const unsigned required_subgroup_size = stage->key.subgroup_required_size * 32;
@@ -495,8 +495,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
       NIR_PASS(_, nir, nir_remove_dead_variables,
                nir_var_shader_in | nir_var_shader_out | nir_var_system_value | nir_var_mem_shared, &dead_vars_opts);
 
-      if (nir->info.stage == MESA_SHADER_FRAGMENT && gfx_state->ps.epilog.mrt0_is_dual_src &&
-          device->instance->drirc.dual_color_blend_by_location)
+      if (nir->info.stage == MESA_SHADER_FRAGMENT && options->fix_dual_src_mrt1_export)
          fix_dual_src_mrt1_export(nir);
 
       /* Variables can make nir_propagate_invariant more conservative
@@ -653,7 +652,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ubo | nir_var_mem_ssbo,
             nir_address_format_vec2_index_32bit_offset);
 
-   NIR_PASS(_, nir, radv_nir_lower_intrinsics_early, gfx_state);
+   NIR_PASS(_, nir, radv_nir_lower_intrinsics_early, options && options->lower_view_index_to_zero);
 
    /* Lower deref operations for compute shared memory. */
    if (nir->info.stage == MESA_SHADER_COMPUTE || nir->info.stage == MESA_SHADER_TASK ||

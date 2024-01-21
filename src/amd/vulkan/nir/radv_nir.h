@@ -64,7 +64,7 @@ bool radv_nir_lower_fs_intrinsics(nir_shader *nir, const struct radv_shader_stag
 bool radv_nir_lower_fs_barycentric(nir_shader *shader, const struct radv_graphics_state_key *gfx_state,
                                    unsigned rast_prim);
 
-bool radv_nir_lower_intrinsics_early(nir_shader *nir, const struct radv_graphics_state_key *gfx_state);
+bool radv_nir_lower_intrinsics_early(nir_shader *nir, bool lower_view_index_to_zero);
 
 bool radv_nir_lower_view_index(nir_shader *nir, bool per_primitive);
 

@@ -11,7 +11,11 @@
 set -ex -o pipefail
 
 
-DEQP_VERSION=vulkan-cts-1.3.7.0
+DEQP_VK_VERSION=1.3.7.0
+
+# FIXME: this should be a GL release instead
+#DEQP_GL_VERSION=4.6.3.3
+DEQP_GL_VERSION=1.3.7.0
 
 # Patches to VulkanCTS may come from commits in their repo (listed in
 # cts_commits_to_backport) or patch files stored in our repo (in the patch
@@ -77,6 +81,15 @@ fi
 
 git config --global user.email "mesa@example.com"
 git config --global user.name "Mesa CI"
+
+# shellcheck disable=SC2153
+case "${DEQP_API}" in
+  VK) DEQP_VERSION="vulkan-cts-$DEQP_VK_VERSION";;
+  # FIXME: this should be a GL release instead
+  #GL) DEQP_VERSION="opengl-cts-$DEQP_GL_VERSION";;
+  GL) DEQP_VERSION="vulkan-cts-$DEQP_GL_VERSION";;
+esac
+
 git clone \
     https://github.com/KhronosGroup/VK-GL-CTS.git \
     -b $DEQP_VERSION \

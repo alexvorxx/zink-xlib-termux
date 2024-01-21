@@ -19,7 +19,7 @@ struct agx_ppp_update {
 #endif
 };
 
-static size_t
+ALWAYS_INLINE static size_t
 agx_ppp_update_size(struct AGX_PPP_HEADER *present)
 {
    size_t size = AGX_PPP_HEADER_LENGTH;
@@ -88,7 +88,7 @@ agx_ppp_validate(struct agx_ppp_update *ppp, size_t size)
       (ppp)->head += AGX_##T##_LENGTH;                                         \
    } while (0)
 
-static inline struct agx_ppp_update
+ALWAYS_INLINE static struct agx_ppp_update
 agx_new_ppp_update(struct agx_pool *pool, struct AGX_PPP_HEADER present)
 {
    size_t size = agx_ppp_update_size(&present);

@@ -120,14 +120,14 @@ if [ "${DEQP_TARGET}" = 'android' ]; then
     mv /deqp/modules/egl/deqp-egl /deqp/modules/egl/deqp-egl-android
 fi
 
-# Copy out the mustpass lists we want.
-mkdir /deqp/mustpass
-for mustpass in $(< /VK-GL-CTS/external/vulkancts/mustpass/main/vk-default.txt) ; do
-    cat /VK-GL-CTS/external/vulkancts/mustpass/main/$mustpass \
-        >> /deqp/mustpass/vk-master.txt
-done
-
 if [ "${DEQP_TARGET}" != 'android' ]; then
+    # Copy out the mustpass lists we want.
+    mkdir /deqp/mustpass
+    for mustpass in $(< /VK-GL-CTS/external/vulkancts/mustpass/main/vk-default.txt) ; do
+        cat /VK-GL-CTS/external/vulkancts/mustpass/main/$mustpass \
+            >> /deqp/mustpass/vk-master.txt
+    done
+
     cp \
         /deqp/external/openglcts/modules/gl_cts/data/mustpass/gles/aosp_mustpass/3.2.6.x/*.txt \
         /deqp/mustpass/.

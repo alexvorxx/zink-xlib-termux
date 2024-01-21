@@ -5064,7 +5064,7 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    agx_update_descriptors(batch, ctx->gs, PIPE_SHADER_GEOMETRY);
    agx_update_descriptors(batch, ctx->fs, PIPE_SHADER_FRAGMENT);
 
-   if (IS_DIRTY(VERTEX) || true) {
+   if (IS_DIRTY(VERTEX)) {
       agx_upload_vbos(batch);
    }
 

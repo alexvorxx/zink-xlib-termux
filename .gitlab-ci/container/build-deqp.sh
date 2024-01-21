@@ -13,9 +13,11 @@ set -ex -o pipefail
 
 DEQP_VK_VERSION=1.3.7.0
 
-# FIXME: this should be a GL release instead
+# FIXME: these should be GL & GLES releases instead
 #DEQP_GL_VERSION=4.6.3.3
 DEQP_GL_VERSION=1.3.7.0
+#DEQP_GLES_VERSION=3.2.9.3
+DEQP_GLES_VERSION=1.3.7.0
 
 # Patches to VulkanCTS may come from commits in their repo (listed in
 # cts_commits_to_backport) or patch files stored in our repo (in the patch
@@ -75,6 +77,21 @@ if [ "${DEQP_TARGET}" = 'android' ]; then
   )
 fi
 
+# shellcheck disable=SC2034
+gles_cts_commits_to_backport=(
+)
+
+# shellcheck disable=SC2034
+gles_cts_patch_files=(
+)
+
+if [ "${DEQP_TARGET}" = 'android' ]; then
+  gles_cts_patch_files+=(
+    build-deqp_Allow-running-on-Android-from-the-command-line.patch
+    build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
+  )
+fi
+
 
 ### Careful editing anything below this line
 
@@ -85,9 +102,11 @@ git config --global user.name "Mesa CI"
 # shellcheck disable=SC2153
 case "${DEQP_API}" in
   VK) DEQP_VERSION="vulkan-cts-$DEQP_VK_VERSION";;
-  # FIXME: this should be a GL release instead
+  # FIXME: these should be GL & GLES releases instead
   #GL) DEQP_VERSION="opengl-cts-$DEQP_GL_VERSION";;
   GL) DEQP_VERSION="vulkan-cts-$DEQP_GL_VERSION";;
+  #GLES) DEQP_VERSION="opengl-es-cts-$DEQP_GLES_VERSION";;
+  GLES) DEQP_VERSION="vulkan-cts-$DEQP_GLES_VERSION";;
 esac
 
 git clone \
@@ -135,7 +154,7 @@ popd
 
 pushd /deqp
 
-if [ "${DEQP_API}" = 'GL' ]; then
+if [ "${DEQP_API}" = 'GLES' ]; then
   if [ "${DEQP_TARGET}" = 'android' ]; then
     cmake -S /VK-GL-CTS -B . -G Ninja \
         -DDEQP_TARGET=android \
@@ -181,6 +200,8 @@ case "${DEQP_API}" in
     ;;
   GL)
     deqp_build_targets+=(glcts)
+    ;;
+  GLES)
     deqp_build_targets+=(deqp-gles{2,3,31})
     ;;
 esac
@@ -244,6 +265,8 @@ if [ "${DEQP_API}" = 'VK' ]; then
 fi
 if [ "${DEQP_API}" = 'GL' ]; then
   ${STRIP_CMD:-strip} external/openglcts/modules/glcts
+fi
+if [ "${DEQP_API}" = 'GLES' ]; then
   ${STRIP_CMD:-strip} modules/*/deqp-*
 fi
 du -sh ./*

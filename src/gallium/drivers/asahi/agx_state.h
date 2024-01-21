@@ -991,12 +991,6 @@ agx_batch_add_bo(struct agx_batch *batch, struct agx_bo *bo)
    BITSET_SET(batch->bo_list.set, bo->handle);
 }
 
-static unsigned
-agx_batch_num_bo(struct agx_batch *batch)
-{
-   return __bitset_count(batch->bo_list.set, batch->bo_list.word_count);
-}
-
 #define AGX_BATCH_FOREACH_BO_HANDLE(batch, handle)                             \
    BITSET_FOREACH_SET(handle, (batch)->bo_list.set,                            \
                       agx_batch_bo_list_bits(batch))

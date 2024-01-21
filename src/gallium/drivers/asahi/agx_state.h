@@ -358,7 +358,7 @@ struct agx_batch {
     */
    struct {
       BITSET_WORD *set;
-      unsigned word_count;
+      unsigned bit_count;
    } bo_list;
 
    struct agx_pool pool, pipeline_pool;
@@ -951,16 +951,10 @@ bool agx_batch_is_submitted(struct agx_batch *batch);
 /* Add a BO to a batch. This needs to be amortized O(1) since it's called in
  * hot paths. To achieve this we model BO lists by bit sets */
 
-static unsigned
-agx_batch_bo_list_bits(struct agx_batch *batch)
-{
-   return batch->bo_list.word_count * sizeof(BITSET_WORD) * 8;
-}
-
 static bool
 agx_batch_uses_bo(struct agx_batch *batch, struct agx_bo *bo)
 {
-   if (bo->handle < agx_batch_bo_list_bits(batch))
+   if (bo->handle < batch->bo_list.bit_count)
       return BITSET_TEST(batch->bo_list.set, bo->handle);
    else
       return false;
@@ -970,15 +964,17 @@ static inline void
 agx_batch_add_bo(struct agx_batch *batch, struct agx_bo *bo)
 {
    /* Double the size of the BO list if we run out, this is amortized O(1) */
-   if (unlikely(bo->handle > agx_batch_bo_list_bits(batch))) {
-      unsigned word_count =
-         MAX2(batch->bo_list.word_count * 2,
-              util_next_power_of_two(BITSET_WORDS(bo->handle + 1)));
+   if (unlikely(bo->handle > batch->bo_list.bit_count)) {
+      const unsigned bits_per_word = sizeof(BITSET_WORD) * 8;
 
-      batch->bo_list.set =
-         rerzalloc(batch->ctx, batch->bo_list.set, BITSET_WORD,
-                   batch->bo_list.word_count, word_count);
-      batch->bo_list.word_count = word_count;
+      unsigned bit_count =
+         MAX2(batch->bo_list.bit_count * 2,
+              util_next_power_of_two(ALIGN_POT(bo->handle + 1, bits_per_word)));
+
+      batch->bo_list.set = rerzalloc(
+         batch->ctx, batch->bo_list.set, BITSET_WORD,
+         batch->bo_list.bit_count / bits_per_word, bit_count / bits_per_word);
+      batch->bo_list.bit_count = bit_count;
    }
 
    if (BITSET_TEST(batch->bo_list.set, bo->handle))
@@ -992,8 +988,7 @@ agx_batch_add_bo(struct agx_batch *batch, struct agx_bo *bo)
 }
 
 #define AGX_BATCH_FOREACH_BO_HANDLE(batch, handle)                             \
-   BITSET_FOREACH_SET(handle, (batch)->bo_list.set,                            \
-                      agx_batch_bo_list_bits(batch))
+   BITSET_FOREACH_SET(handle, (batch)->bo_list.set, batch->bo_list.bit_count)
 
 void agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
                       uint32_t barriers, enum drm_asahi_cmd_type cmd_type,

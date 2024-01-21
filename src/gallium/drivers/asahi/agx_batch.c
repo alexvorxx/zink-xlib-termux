@@ -110,10 +110,9 @@ agx_batch_init(struct agx_context *ctx,
     */
    if (!batch->bo_list.set) {
       batch->bo_list.set = rzalloc_array(ctx, BITSET_WORD, 128);
-      batch->bo_list.word_count = 128;
+      batch->bo_list.bit_count = 128 * sizeof(BITSET_WORD) * 8;
    } else {
-      memset(batch->bo_list.set, 0,
-             batch->bo_list.word_count * sizeof(BITSET_WORD));
+      memset(batch->bo_list.set, 0, batch->bo_list.bit_count / 8);
    }
 
    if (agx_batch_is_compute(batch)) {
@@ -589,7 +588,7 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
    /* We allocate the worst-case sync array size since this won't be excessive
     * for most workloads
     */
-   unsigned max_syncs = agx_batch_bo_list_bits(batch) + 1;
+   unsigned max_syncs = batch->bo_list.bit_count + 1;
    unsigned in_sync_count = 0;
    unsigned shared_bo_count = 0;
    struct drm_asahi_sync *in_syncs =

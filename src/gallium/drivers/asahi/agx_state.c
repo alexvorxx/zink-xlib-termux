@@ -3851,7 +3851,7 @@ agx_index_buffer_rsrc_ptr(struct agx_batch *batch,
    struct agx_resource *rsrc = agx_resource(info->index.resource);
    agx_batch_reads(batch, rsrc);
 
-   *extent = ALIGN_POT(util_resource_size(&rsrc->base), 4);
+   *extent = ALIGN_POT(rsrc->layout.size_B, 4);
    return rsrc->bo->ptr.gpu;
 }
 

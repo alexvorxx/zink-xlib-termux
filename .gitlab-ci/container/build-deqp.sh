@@ -19,7 +19,8 @@ DEQP_VERSION=vulkan-cts-1.3.7.0
 # Both list variables would have comments explaining the reasons behind the
 # patches.
 
-cts_commits_to_backport=(
+# shellcheck disable=SC2034
+vk_cts_commits_to_backport=(
     # Take multiview into account for task shader inv. stats
     22aa3f4c59f6e1d4daebd5a8c9c05bce6cd3b63b
 
@@ -33,7 +34,23 @@ cts_commits_to_backport=(
     c5453824b498c981c6ba42017d119f5de02a3e34
 )
 
-cts_patch_files=(
+# shellcheck disable=SC2034
+vk_cts_patch_files=(
+  # Android specific patches.
+  build-deqp_Allow-running-on-Android-from-the-command-line.patch
+  build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
+
+  # Change zlib URL because the one from zlib.net requires a human-verification
+  # Forward-port of b61f15f09adb6b7c9eefc7f7c44612c0c390abe5 into modern dEQP codebase
+  build-deqp_Change-zlib-URL-because-the-one-from-zlib.net-requir.patch
+)
+
+# shellcheck disable=SC2034
+gl_cts_commits_to_backport=(
+)
+
+# shellcheck disable=SC2034
+gl_cts_patch_files=(
   # Android specific patches.
   build-deqp_Allow-running-on-Android-from-the-command-line.patch
   build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
@@ -58,17 +75,22 @@ pushd /VK-GL-CTS
 
 mkdir -p /deqp
 
-for commit in "${cts_commits_to_backport[@]}"
+# shellcheck disable=SC2153
+deqp_api=${DEQP_API,,}
+
+cts_commits_to_backport="${deqp_api}_cts_commits_to_backport[@]"
+for commit in "${!cts_commits_to_backport}"
 do
   PATCH_URL="https://github.com/KhronosGroup/VK-GL-CTS/commit/$commit.patch"
-  echo "Apply patch to VK-GL-CTS from $PATCH_URL"
+  echo "Apply patch to ${DEQP_API} CTS from $PATCH_URL"
   curl -L --retry 4 -f --retry-all-errors --retry-delay 60 $PATCH_URL | \
     git am -
 done
 
-for patch in "${cts_patch_files[@]}"
+cts_patch_files="${deqp_api}_cts_patch_files[@]"
+for patch in "${!cts_patch_files}"
 do
-  echo "Apply patch to VK-GL-CTS from $patch"
+  echo "Apply patch to ${DEQP_API} CTS from $patch"
   git am < $OLDPWD/.gitlab-ci/container/patches/$patch
 done
 
@@ -76,7 +98,7 @@ done
   echo "dEQP base version $DEQP_VERSION"
   echo "The following local patches are applied on top:"
   git log --reverse --oneline $DEQP_VERSION.. --format=%s | sed 's/^/- /'
-} > /deqp/version-log
+} > /deqp/version-$deqp_api
 
 # --insecure is due to SSL cert failures hitting sourceforge for zlib and
 # libpng (sigh).  The archives get their checksums checked anyway, and git
@@ -127,7 +149,7 @@ fi
 
 if [ "${DEQP_TARGET}" != 'android' ]; then
     # Copy out the mustpass lists we want.
-    mkdir /deqp/mustpass
+    mkdir -p /deqp/mustpass
     for mustpass in $(< /VK-GL-CTS/external/vulkancts/mustpass/main/vk-default.txt) ; do
         cat /VK-GL-CTS/external/vulkancts/mustpass/main/$mustpass \
             >> /deqp/mustpass/vk-master.txt

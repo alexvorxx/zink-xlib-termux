@@ -77,7 +77,9 @@ PIGLIT_OPTS="-DPIGLIT_BUILD_GLX_TESTS=ON -DPIGLIT_BUILD_CL_TESTS=ON -DPIGLIT_BUI
 
 ############### Build dEQP GL
 
-DEQP_TARGET=surfaceless . .gitlab-ci/container/build-deqp.sh
+DEQP_API=GL \
+DEQP_TARGET=surfaceless \
+. .gitlab-ci/container/build-deqp.sh
 
 ############### Build apitrace
 

@@ -3974,13 +3974,11 @@ agx_ia_update_direct(struct agx_context *ctx, const struct pipe_draw_info *info,
 
    count *= info->instance_count;
 
-   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES]) {
-      ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES]->value += count;
-   }
+   agx_query_increment_cpu(
+      ctx, ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES], count);
 
-   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS]) {
-      ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS]->value += count;
-   }
+   agx_query_increment_cpu(
+      ctx, ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS], count);
 }
 
 static uint64_t
@@ -4676,10 +4674,9 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
       return;
 
    /* TCS invocation counter increments once per-patch */
-   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_HS_INVOCATIONS]) {
-      ctx->pipeline_statistics[PIPE_STAT_QUERY_HS_INVOCATIONS]->value +=
-         in_patches;
-   }
+   agx_query_increment_cpu(
+      ctx, ctx->pipeline_statistics[PIPE_STAT_QUERY_HS_INVOCATIONS],
+      in_patches);
 
    struct agx_batch *batch = agx_get_compute_batch(ctx);
    agx_batch_init_state(batch);
@@ -4830,10 +4827,9 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
       desc[4] = 0;                                  /* start_instance */
 
       /* TES invocation counter increments once per tessellated vertex */
-      if (ctx->pipeline_statistics[PIPE_STAT_QUERY_DS_INVOCATIONS]) {
-         ctx->pipeline_statistics[PIPE_STAT_QUERY_DS_INVOCATIONS]->value +=
-            data.num_domain_points;
-      }
+      agx_query_increment_cpu(
+         ctx, ctx->pipeline_statistics[PIPE_STAT_QUERY_DS_INVOCATIONS],
+         data.num_domain_points);
    }
    p_tess_destroy(tess);
 
@@ -5419,7 +5415,8 @@ agx_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
       unsigned blocksize = info->block[0] * info->block[1] * info->block[2];
       unsigned count = workgroups * blocksize;
 
-      ctx->pipeline_statistics[PIPE_STAT_QUERY_CS_INVOCATIONS]->value += count;
+      agx_query_increment_cpu(
+         ctx, ctx->pipeline_statistics[PIPE_STAT_QUERY_CS_INVOCATIONS], count);
    }
 
    struct agx_batch *batch = agx_get_compute_batch(ctx);

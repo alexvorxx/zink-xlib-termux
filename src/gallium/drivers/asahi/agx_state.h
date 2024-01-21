@@ -372,15 +372,8 @@ struct agx_batch {
    /* Scissor and depth-bias descriptors, uploaded at GPU time */
    struct util_dynarray scissor, depth_bias;
 
-   /* Indexed occlusion queries within the occlusion buffer, and the occlusion
-    * buffer itself which is allocated at submit time.
-    */
-   struct util_dynarray occlusion_queries;
-   struct agx_ptr occlusion_buffer;
-
-   /* Non-occlusion queries */
-   struct util_dynarray nonocclusion_queries;
-   struct util_dynarray timestamp_queries;
+   /* Arrays of GPU pointers that should be written with the batch timestamps */
+   struct util_dynarray timestamps;
 
    /* Result buffer where the kernel places command execution information */
    union agx_batch_result *result;
@@ -562,6 +555,8 @@ struct asahi_blitter {
    void *saved_cs;
 };
 
+struct agx_oq_heap;
+
 struct agx_context {
    struct pipe_context base;
    struct agx_compiled_shader *vs, *fs, *gs, *tcs, *tes;
@@ -569,6 +564,9 @@ struct agx_context {
 
    /* Heap for dynamic memory allocation for geometry/tessellation shaders */
    struct pipe_resource *heap;
+
+   /* Occlusion query heap */
+   struct agx_oq_heap *oq;
 
    /* Acts as a context-level shader key */
    bool support_lod_bias;
@@ -586,6 +584,12 @@ struct agx_context {
 
       /** Set of submitted batches for faster traversal */
       BITSET_DECLARE(submitted, AGX_MAX_BATCHES);
+
+      /* Monotonic counter for each batch incremented when resetting a batch to
+       * invalidate all associated queries. Compared to
+       * agx_query::writer_generation.
+       */
+      uint64_t generation[AGX_MAX_BATCHES];
    } batches;
 
    struct agx_batch *batch;
@@ -655,6 +659,12 @@ struct agx_context {
    struct agx_scratch scratch_fs;
    struct agx_scratch scratch_cs;
 };
+
+static inline unsigned
+agx_batch_idx(struct agx_batch *batch)
+{
+   return batch - batch->ctx->batches.slots;
+}
 
 static void
 agx_writer_add(struct agx_context *ctx, uint8_t batch_index, unsigned handle)
@@ -759,30 +769,9 @@ struct agx_query {
    unsigned type;
    unsigned index;
 
-   /* Invariant for occlusion queries:
-    *
-    *    writer != NULL => writer->occlusion_queries[writer_index] == this, and
-    *    writer == NULL => no batch such that this in batch->occlusion_queries
-    */
-   struct agx_batch *writer;
-   unsigned writer_index;
-
-   /* For GPU queries other than occlusion queries, the value of the query as
-    * written by the `writer` if a writer is non-NULL, and irrelevant otherwise.
-    * When flushing the query, this value is read and added to agx_query::value.
-    */
+   uint64_t writer_generation[AGX_MAX_BATCHES];
+   struct agx_bo *bo;
    struct agx_ptr ptr;
-
-   /* Accumulator flushed to the CPU */
-   union {
-      uint64_t value;
-      uint64_t timestamp_end;
-   };
-
-   /* For time elapsed queries, end is in the above union for consistent
-    * handling witn timestamp queries.
-    */
-   uint64_t timestamp_begin;
 };
 
 struct agx_sampler_state {
@@ -1046,6 +1035,9 @@ void agx_batch_add_timestamp_query(struct agx_batch *batch,
                                    struct agx_query *q);
 void agx_add_timestamp_end_query(struct agx_context *ctx, struct agx_query *q);
 
+void agx_query_increment_cpu(struct agx_context *ctx, struct agx_query *query,
+                             uint64_t increment);
+
 /* Blit shaders */
 void agx_blitter_save(struct agx_context *ctx, struct blitter_context *blitter,
                       bool render_cond);
@@ -1072,6 +1064,7 @@ uint64_t agx_build_meta(struct agx_batch *batch, bool store,
 uint16_t agx_get_oq_index(struct agx_batch *batch, struct agx_query *query);
 uint64_t agx_get_query_address(struct agx_batch *batch,
                                struct agx_query *query);
+uint64_t agx_get_occlusion_heap(struct agx_batch *batch);
 
 void agx_finish_batch_queries(struct agx_batch *batch, uint64_t begin_ts,
                               uint64_t end_ts);

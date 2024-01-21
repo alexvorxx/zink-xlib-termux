@@ -171,8 +171,8 @@ agx_primitives_update_direct(struct agx_context *ctx,
    assert(!ctx->stage[PIPE_SHADER_GEOMETRY].shader &&
           "Geometry shaders use their own counting");
 
-   ctx->prims_generated[0]->value +=
-      xfb_prims_for_vertices(info->mode, draw->count);
+   agx_query_increment_cpu(ctx, ctx->prims_generated[0],
+                           xfb_prims_for_vertices(info->mode, draw->count));
 }
 
 void

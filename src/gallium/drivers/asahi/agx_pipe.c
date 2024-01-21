@@ -1333,19 +1333,6 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
     */
    agx_batch_add_bo(batch, batch->vdm.bo);
 
-   /* Occlusion queries are allocated as a contiguous pool */
-   unsigned oq_count =
-      util_dynarray_num_elements(&batch->occlusion_queries, struct agx_query *);
-   size_t oq_size = oq_count * sizeof(uint64_t);
-
-   if (oq_size) {
-      batch->occlusion_buffer =
-         agx_pool_alloc_aligned(&batch->pool, oq_size, 64);
-      memset(batch->occlusion_buffer.cpu, 0, oq_size);
-   } else {
-      batch->occlusion_buffer.gpu = 0;
-   }
-
    if (batch->vs_scratch)
       agx_batch_add_bo(batch, ctx->scratch_vs.buf);
    if (batch->fs_scratch)

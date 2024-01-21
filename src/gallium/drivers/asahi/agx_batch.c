@@ -24,12 +24,6 @@
          agx_msg("[Batch %u] " fmt "\n", agx_batch_idx(batch), ##__VA_ARGS__); \
    } while (0)
 
-static unsigned
-agx_batch_idx(struct agx_batch *batch)
-{
-   return batch - batch->ctx->batches.slots;
-}
-
 bool
 agx_batch_is_active(struct agx_batch *batch)
 {
@@ -125,9 +119,7 @@ agx_batch_init(struct agx_context *ctx,
 
    util_dynarray_init(&batch->scissor, ctx);
    util_dynarray_init(&batch->depth_bias, ctx);
-   util_dynarray_init(&batch->occlusion_queries, ctx);
-   util_dynarray_init(&batch->nonocclusion_queries, ctx);
-   util_dynarray_init(&batch->timestamp_queries, ctx);
+   util_dynarray_init(&batch->timestamps, ctx);
 
    batch->clear = 0;
    batch->draw = 0;
@@ -177,8 +169,6 @@ agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch, bool reset)
    uint64_t begin_ts = ~0, end_ts = 0;
    /* TODO: UAPI pending */
    agx_finish_batch_queries(batch, begin_ts, end_ts);
-   batch->occlusion_buffer.cpu = NULL;
-   batch->occlusion_buffer.gpu = 0;
 
    if (reset) {
       int handle;
@@ -212,9 +202,7 @@ agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch, bool reset)
 
    util_dynarray_fini(&batch->scissor);
    util_dynarray_fini(&batch->depth_bias);
-   util_dynarray_fini(&batch->occlusion_queries);
-   util_dynarray_fini(&batch->nonocclusion_queries);
-   util_dynarray_fini(&batch->timestamp_queries);
+   util_dynarray_fini(&batch->timestamps);
 
    if (!(dev->debug & (AGX_DBG_TRACE | AGX_DBG_SYNC))) {
       agx_batch_print_stats(dev, batch);
@@ -772,13 +760,6 @@ agx_batch_reset(struct agx_context *ctx, struct agx_batch *batch)
       ctx->batch = NULL;
 
    agx_batch_cleanup(ctx, batch, true);
-}
-
-void
-agx_batch_add_timestamp_query(struct agx_batch *batch, struct agx_query *q)
-{
-   if (q)
-      util_dynarray_append(&batch->timestamp_queries, struct agx_query *, q);
 }
 
 /*

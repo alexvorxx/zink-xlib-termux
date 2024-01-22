@@ -346,7 +346,6 @@ struct agx_batch {
    uint64_t geometry_state;
 
    /* Uploaded descriptors */
-   uint64_t textures[PIPE_SHADER_TYPES];
    uint32_t texture_count[PIPE_SHADER_TYPES];
 
    uint64_t samplers[PIPE_SHADER_TYPES];
@@ -930,9 +929,6 @@ void agx_set_cbuf_uniforms(struct agx_batch *batch,
 
 void agx_set_ssbo_uniforms(struct agx_batch *batch,
                            enum pipe_shader_type stage);
-
-uint64_t agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
-                                   enum pipe_shader_type stage);
 
 bool agx_nir_lower_point_size(nir_shader *nir, bool fixed_point_size);
 

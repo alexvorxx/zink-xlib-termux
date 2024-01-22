@@ -2924,7 +2924,7 @@ agx_upload_textures(struct agx_batch *batch, struct agx_compiled_shader *cs,
 
    if (!ctx->stage[stage].shader) {
       batch->texture_count[stage] = 0;
-      batch->textures[stage] = 0;
+      batch->stage_uniforms[stage].texture_base = 0;
       return;
    }
 
@@ -3001,7 +3001,7 @@ agx_upload_textures(struct agx_batch *batch, struct agx_compiled_shader *cs,
    }
 
    batch->texture_count[stage] = nr_tex_descriptors;
-   batch->textures[stage] = T_tex.gpu;
+   batch->stage_uniforms[stage].texture_base = T_tex.gpu;
 }
 
 uint16_t
@@ -3108,8 +3108,10 @@ agx_update_descriptors(struct agx_batch *batch, struct agx_compiled_shader *cs,
       agx_upload_samplers(batch, cs, stage);
 
    if (ctx->stage[stage].dirty) {
+      struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
+
       batch->uniforms.tables[AGX_SYSVAL_STAGE(stage)] =
-         agx_upload_stage_uniforms(batch, batch->textures[stage], stage);
+         agx_pool_upload_aligned(&batch->pool, unif, sizeof(*unif), 16);
    }
 }
 
@@ -3129,7 +3131,7 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
          cfg.start = 0;
          cfg.count =
             MIN2(batch->texture_count[merged], AGX_NUM_TEXTURE_STATE_REGS);
-         cfg.buffer = batch->textures[merged];
+         cfg.buffer = batch->stage_uniforms[merged].texture_base;
       }
    }
 

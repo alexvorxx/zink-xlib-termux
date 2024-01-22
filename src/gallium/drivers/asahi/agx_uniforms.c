@@ -179,15 +179,3 @@ agx_set_ssbo_uniforms(struct agx_batch *batch, enum pipe_shader_type stage)
       }
    }
 }
-
-uint64_t
-agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
-                          enum pipe_shader_type stage)
-{
-   struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
-
-   unif->texture_base = textures;
-
-   return agx_pool_upload_aligned(&batch->pool, unif,
-                                  sizeof(struct agx_stage_uniforms), 16);
-}

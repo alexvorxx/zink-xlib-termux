@@ -5183,14 +5183,6 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       }
    }
 
-   if (!indirect) {
-      agx_push(out, INDEX_LIST_COUNT, cfg)
-         cfg.count = draws->count;
-
-      agx_push(out, INDEX_LIST_INSTANCES, cfg)
-         cfg.count = info->instance_count;
-   }
-
    if (indirect) {
       struct agx_resource *indirect_rsrc = agx_resource(indirect->buffer);
       uint64_t address = indirect_rsrc->bo->ptr.gpu + indirect->offset;
@@ -5200,6 +5192,12 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
          cfg.address_lo = address & BITFIELD_MASK(32);
       }
    } else {
+      agx_push(out, INDEX_LIST_COUNT, cfg)
+         cfg.count = draws->count;
+
+      agx_push(out, INDEX_LIST_INSTANCES, cfg)
+         cfg.count = info->instance_count;
+
       agx_push(out, INDEX_LIST_START, cfg) {
          cfg.start = idx_size ? draws->index_bias : draws->start;
       }

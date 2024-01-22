@@ -367,6 +367,15 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
 
    P_IMMD(p, NV9097, SET_CT_MRT_ENABLE, V_TRUE);
 
+   if (pdev->info.cls_eng3d < VOLTA_A) {
+      uint64_t shader_base_addr =
+         nvk_heap_contiguous_base_address(&dev->shader_heap);
+
+      P_MTHD(p, NV9097, SET_PROGRAM_REGION_A);
+      P_NV9097_SET_PROGRAM_REGION_A(p, shader_base_addr >> 32);
+      P_NV9097_SET_PROGRAM_REGION_B(p, shader_base_addr);
+   }
+
    for (uint32_t i = 0; i < 6; i++) {
       P_IMMD(p, NV9097, SET_PIPELINE_SHADER(i), {
          .enable  = ENABLE_FALSE,

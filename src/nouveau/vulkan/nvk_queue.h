@@ -28,10 +28,6 @@ struct nvk_queue_state {
 
    struct {
       struct nouveau_ws_bo *bo;
-   } shaders;
-
-   struct {
-      struct nouveau_ws_bo *bo;
       uint32_t bytes_per_warp;
       uint32_t bytes_per_tpc;
    } slm;

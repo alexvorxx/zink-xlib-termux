@@ -55,6 +55,15 @@ nvk_push_dispatch_state_init(struct nvk_device *dev, struct nv_push *p)
    if (pdev->info.cls_compute == MAXWELL_COMPUTE_A)
       P_IMMD(p, NVB0C0, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
 
+   if (pdev->info.cls_eng3d < VOLTA_COMPUTE_A) {
+      uint64_t shader_base_addr =
+         nvk_heap_contiguous_base_address(&dev->shader_heap);
+
+      P_MTHD(p, NVA0C0, SET_PROGRAM_REGION_A);
+      P_NVA0C0_SET_PROGRAM_REGION_A(p, shader_base_addr >> 32);
+      P_NVA0C0_SET_PROGRAM_REGION_B(p, shader_base_addr);
+   }
+
    return VK_SUCCESS;
 }
 

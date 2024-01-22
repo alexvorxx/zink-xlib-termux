@@ -5006,6 +5006,8 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    if (agx_update_vs(ctx)) {
       ctx->dirty |= AGX_DIRTY_VS | AGX_DIRTY_VS_PROG;
       ctx->stage[PIPE_SHADER_VERTEX].dirty = ~0;
+
+      agx_batch_add_bo(batch, ctx->vs->bo);
    } else if (ctx->stage[PIPE_SHADER_VERTEX].dirty ||
               (ctx->dirty & AGX_DIRTY_VERTEX))
       ctx->dirty |= AGX_DIRTY_VS;
@@ -5050,13 +5052,13 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    if (agx_update_fs(batch)) {
       ctx->dirty |= AGX_DIRTY_FS | AGX_DIRTY_FS_PROG;
       ctx->stage[PIPE_SHADER_FRAGMENT].dirty = ~0;
+
+      agx_batch_add_bo(batch, ctx->fs->bo);
    } else if ((ctx->stage[PIPE_SHADER_FRAGMENT].dirty) ||
               (ctx->dirty & (AGX_DIRTY_BLEND_COLOR | AGX_DIRTY_SAMPLE_MASK))) {
       ctx->dirty |= AGX_DIRTY_FS;
    }
 
-   agx_batch_add_bo(batch, ctx->vs->bo);
-   agx_batch_add_bo(batch, ctx->fs->bo);
 
    /* If a GS is active, the mode and index buffer come from the GS output */
    enum mesa_prim mode = info->mode;
@@ -5072,36 +5074,36 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    agx_update_descriptors(batch, ctx->gs, PIPE_SHADER_GEOMETRY);
    agx_update_descriptors(batch, ctx->fs, PIPE_SHADER_FRAGMENT);
 
-   if (IS_DIRTY(VERTEX)) {
-      agx_upload_vbos(batch);
-   }
-
-   if (IS_DIRTY(BLEND_COLOR)) {
-      memcpy(batch->uniforms.blend_constant, &ctx->blend_color,
-             sizeof(ctx->blend_color));
-   }
-
-   if (IS_DIRTY(RS)) {
-      batch->uniforms.fixed_point_size = ctx->rast->base.point_size;
-   }
-
-   if (IS_DIRTY(QUERY)) {
-      for (unsigned i = 0; i < ARRAY_SIZE(ctx->pipeline_statistics); ++i) {
-         struct agx_query *query = ctx->pipeline_statistics[i];
-         batch->uniforms.pipeline_statistics[i] =
-            query ? agx_get_query_address(batch, query) : 0;
-      }
-   }
-
-   if (IS_DIRTY(POLY_STIPPLE)) {
-      STATIC_ASSERT(sizeof(ctx->poly_stipple) == 32 * 4);
-
-      batch->uniforms.polygon_stipple = agx_pool_upload_aligned(
-         &batch->pool, ctx->poly_stipple, sizeof(ctx->poly_stipple), 4);
-   }
-
    if (IS_DIRTY(VS) || IS_DIRTY(FS) || ctx->gs || IS_DIRTY(VERTEX) ||
        IS_DIRTY(BLEND_COLOR) || IS_DIRTY(RS) || IS_DIRTY(PRIM)) {
+
+      if (IS_DIRTY(VERTEX)) {
+         agx_upload_vbos(batch);
+      }
+
+      if (IS_DIRTY(BLEND_COLOR)) {
+         memcpy(batch->uniforms.blend_constant, &ctx->blend_color,
+                sizeof(ctx->blend_color));
+      }
+
+      if (IS_DIRTY(RS)) {
+         batch->uniforms.fixed_point_size = ctx->rast->base.point_size;
+      }
+
+      if (IS_DIRTY(QUERY)) {
+         for (unsigned i = 0; i < ARRAY_SIZE(ctx->pipeline_statistics); ++i) {
+            struct agx_query *query = ctx->pipeline_statistics[i];
+            batch->uniforms.pipeline_statistics[i] =
+               query ? agx_get_query_address(batch, query) : 0;
+         }
+      }
+
+      if (IS_DIRTY(POLY_STIPPLE)) {
+         STATIC_ASSERT(sizeof(ctx->poly_stipple) == 32 * 4);
+
+         batch->uniforms.polygon_stipple = agx_pool_upload_aligned(
+            &batch->pool, ctx->poly_stipple, sizeof(ctx->poly_stipple), 4);
+      }
 
       agx_upload_uniforms(batch);
    }

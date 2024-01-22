@@ -59,6 +59,13 @@ fn get_disk_cache() -> &'static Option<DiskCache> {
     }
 }
 
+fn clc_validator_options(dev: &Device) -> clc_validator_options {
+    clc_validator_options {
+        // has to match CL_DEVICE_MAX_PARAMETER_SIZE
+        limit_max_function_arg: dev.param_max_size() as u32,
+    }
+}
+
 pub enum ProgramSourceType {
     Binary,
     Linked,
@@ -603,10 +610,7 @@ impl Program {
 
         let (spirv, log) = match &self.src {
             ProgramSourceType::Il(spirv) => {
-                let options = clc_validator_options {
-                    // has to match CL_DEVICE_MAX_PARAMETER_SIZE
-                    limit_max_function_arg: dev.param_max_size() as u32,
-                };
+                let options = clc_validator_options(dev);
                 if Platform::dbg().allow_invalid_spirv {
                     (Some(spirv.clone()), String::new())
                 } else {

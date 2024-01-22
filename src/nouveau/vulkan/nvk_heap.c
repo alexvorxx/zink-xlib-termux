@@ -102,30 +102,40 @@ nvk_heap_grow_locked(struct nvk_device *dev, struct nvk_heap *heap)
    const uint64_t new_bo_size =
       NVK_HEAP_MIN_SIZE << (MAX2(heap->bo_count, 1) - 1);
 
-   heap->bos[heap->bo_count].bo =
-      nouveau_ws_bo_new_mapped(dev->ws_dev,
-                               new_bo_size + heap->overalloc, 0,
-                               heap->bo_flags, heap->map_flags,
-                               &heap->bos[heap->bo_count].map);
-   if (heap->bos[heap->bo_count].bo == NULL) {
+   struct nouveau_ws_bo *bo =
+      nouveau_ws_bo_new(dev->ws_dev,
+                        new_bo_size + heap->overalloc, 0,
+                        heap->bo_flags);
+   if (bo == NULL) {
       return vk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
                        "Failed to allocate a heap BO: %m");
    }
 
+   void *map = NULL;
+   if (heap->map_flags) {
+      map = nouveau_ws_bo_map(bo, heap->map_flags);
+      if (map == NULL) {
+         nouveau_ws_bo_destroy(bo);
+         return vk_errorf(dev, VK_ERROR_OUT_OF_HOST_MEMORY,
+                          "Failed to map a heap BO: %m");
+      }
+   }
+
+   uint64_t addr = bo->offset;
    if (heap->base_addr != 0) {
-      heap->bos[heap->bo_count].addr = heap->base_addr + heap->total_size;
-      nouveau_ws_bo_bind_vma(dev->ws_dev, heap->bos[heap->bo_count].bo,
-                             heap->bos[heap->bo_count].addr,
-                             new_bo_size, 0, 0);
-   } else {
-      heap->bos[heap->bo_count].addr = heap->bos[heap->bo_count].bo->offset;
+      addr = heap->base_addr + heap->total_size;
+      nouveau_ws_bo_bind_vma(dev->ws_dev, bo, addr, new_bo_size, 0, 0);
    }
 
    uint64_t vma = encode_vma(heap->bo_count, 0);
    util_vma_heap_free(&heap->heap, vma, new_bo_size);
 
+   heap->bos[heap->bo_count++] = (struct nvk_heap_bo) {
+      .bo = bo,
+      .map = map,
+      .addr = addr,
+   };
    heap->total_size += new_bo_size;
-   heap->bo_count++;
 
    return VK_SUCCESS;
 }

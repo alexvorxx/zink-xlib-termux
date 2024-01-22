@@ -336,6 +336,7 @@ struct agx_batch {
    uint32_t varyings;
 
    struct agx_draw_uniforms uniforms;
+   struct agx_stage_uniforms stage_uniforms[PIPE_SHADER_TYPES];
 
    /* Indirect buffer allocated for geometry shader */
    uint64_t geom_indirect;
@@ -920,6 +921,15 @@ agx_transfer(struct pipe_transfer *p)
 
 void agx_upload_vbos(struct agx_batch *batch);
 void agx_upload_uniforms(struct agx_batch *batch);
+
+void agx_set_sampler_uniforms(struct agx_batch *batch,
+                              enum pipe_shader_type stage);
+
+void agx_set_cbuf_uniforms(struct agx_batch *batch,
+                           enum pipe_shader_type stage);
+
+void agx_set_ssbo_uniforms(struct agx_batch *batch,
+                           enum pipe_shader_type stage);
 
 uint64_t agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
                                    enum pipe_shader_type stage);

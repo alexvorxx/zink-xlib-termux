@@ -109,39 +109,46 @@ agx_upload_uniforms(struct agx_batch *batch)
    memcpy(root_ptr.cpu, &batch->uniforms, sizeof(batch->uniforms));
 }
 
-uint64_t
-agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
-                          enum pipe_shader_type stage)
+void
+agx_set_sampler_uniforms(struct agx_batch *batch, enum pipe_shader_type stage)
 {
    struct agx_context *ctx = batch->ctx;
    struct agx_stage *st = &ctx->stage[stage];
+   struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
    struct agx_device *dev = agx_device(ctx->base.screen);
 
-   struct agx_ptr root_ptr = agx_pool_alloc_aligned(
-      &batch->pool, sizeof(struct agx_stage_uniforms), 16);
-
-   struct agx_stage_uniforms uniforms = {
-      .texture_base = textures,
-   };
-
    u_foreach_bit(s, st->valid_samplers) {
-      uniforms.lod_bias[s] = st->samplers[s]->lod_bias_as_fp16;
+      unif->lod_bias[s] = st->samplers[s]->lod_bias_as_fp16;
    }
 
    /* If we use bindless samplers, insert sampler into the heap */
    if (st->shader && st->shader->uses_bindless_samplers) {
       u_foreach_bit(s, st->valid_samplers) {
-         uniforms.sampler_handle[s] =
+         unif->sampler_handle[s] =
             28 +
             agx_sampler_heap_add(dev, &batch->sampler_heap,
                                  &st->samplers[s]->desc_without_custom_border);
       }
    }
+}
+
+void
+agx_set_cbuf_uniforms(struct agx_batch *batch, enum pipe_shader_type stage)
+{
+   struct agx_stage *st = &batch->ctx->stage[stage];
+   struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
 
    u_foreach_bit(cb, st->cb_mask) {
-      uniforms.ubo_base[cb] = agx_const_buffer_ptr(batch, &st->cb[cb]);
-      uniforms.ubo_size[cb] = st->cb[cb].buffer_size;
+      unif->ubo_base[cb] = agx_const_buffer_ptr(batch, &st->cb[cb]);
+      unif->ubo_size[cb] = st->cb[cb].buffer_size;
    }
+}
+
+void
+agx_set_ssbo_uniforms(struct agx_batch *batch, enum pipe_shader_type stage)
+{
+   struct agx_stage *st = &batch->ctx->stage[stage];
+   struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
 
    /* Single element sink. TODO: Optimize with soft fault. */
    uint32_t zeroes[4] = {0};
@@ -163,15 +170,27 @@ agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
             agx_batch_reads(batch, rsrc);
          }
 
-         uniforms.ssbo_base[cb] = rsrc->bo->ptr.gpu + sb->buffer_offset;
-         uniforms.ssbo_size[cb] = st->ssbo[cb].buffer_size;
+         unif->ssbo_base[cb] = rsrc->bo->ptr.gpu + sb->buffer_offset;
+         unif->ssbo_size[cb] = st->ssbo[cb].buffer_size;
       } else {
          /* Invalid, so use the sink */
-         uniforms.ssbo_base[cb] = sink;
-         uniforms.ssbo_size[cb] = 0;
+         unif->ssbo_base[cb] = sink;
+         unif->ssbo_size[cb] = 0;
       }
    }
+}
 
-   memcpy(root_ptr.cpu, &uniforms, sizeof(uniforms));
-   return root_ptr.gpu;
+uint64_t
+agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
+                          enum pipe_shader_type stage)
+{
+   struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
+
+   unif->texture_base = textures;
+   agx_set_sampler_uniforms(batch, stage);
+   agx_set_cbuf_uniforms(batch, stage);
+   agx_set_ssbo_uniforms(batch, stage);
+
+   return agx_pool_upload_aligned(&batch->pool, unif,
+                                  sizeof(struct agx_stage_uniforms), 16);
 }

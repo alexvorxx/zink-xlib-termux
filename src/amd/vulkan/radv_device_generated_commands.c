@@ -1468,7 +1468,7 @@ radv_CreateIndirectCommandsLayoutNV(VkDevice _device, const VkIndirectCommandsLa
    typed_memcpy(layout->tokens, pCreateInfo->pTokens, pCreateInfo->tokenCount);
 
    layout->ibo_type_32 = VK_INDEX_TYPE_UINT32;
-   layout->ibo_type_8 = VK_INDEX_TYPE_UINT8_EXT;
+   layout->ibo_type_8 = VK_INDEX_TYPE_UINT8_KHR;
 
    for (unsigned i = 0; i < pCreateInfo->tokenCount; ++i) {
       switch (pCreateInfo->pTokens[i].tokenType) {
@@ -1489,7 +1489,7 @@ radv_CreateIndirectCommandsLayoutNV(VkDevice _device, const VkIndirectCommandsLa
          for (unsigned j = 0; j < pCreateInfo->pTokens[i].indexTypeCount; j++) {
             if (pCreateInfo->pTokens[i].pIndexTypes[j] == VK_INDEX_TYPE_UINT32)
                layout->ibo_type_32 = pCreateInfo->pTokens[i].pIndexTypeValues[j];
-            else if (pCreateInfo->pTokens[i].pIndexTypes[j] == VK_INDEX_TYPE_UINT8_EXT)
+            else if (pCreateInfo->pTokens[i].pIndexTypes[j] == VK_INDEX_TYPE_UINT8_KHR)
                layout->ibo_type_8 = pCreateInfo->pTokens[i].pIndexTypeValues[j];
          }
          break;

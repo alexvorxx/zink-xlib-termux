@@ -769,62 +769,6 @@ init_ici(struct zink_screen *screen, VkImageCreateInfo *ici, const struct pipe_r
 }
 
 static inline bool
-create_buffer(struct zink_screen *screen, struct zink_resource_object *obj, const struct pipe_resource *templ,
-              uint64_t *modifiers, int modifiers_count,
-              const void *user_mem,VkMemoryPropertyFlags *flags, VkMemoryRequirements *reqs)
-{
-   VkBufferCreateInfo bci = create_bci(screen, templ, templ->bind);
-   VkExternalMemoryBufferCreateInfo embci;
-
-   if (user_mem) {
-      embci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
-      embci.pNext = bci.pNext;
-      embci.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
-      bci.pNext = &embci;
-   }
-
-   if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->buffer) != VK_SUCCESS) {
-      mesa_loge("ZINK: vkCreateBuffer failed");
-      return false;
-   }
-
-   if (!(templ->bind & (PIPE_BIND_SHADER_IMAGE | ZINK_BIND_DESCRIPTOR))) {
-       bci.usage |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
-     if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->storage_buffer) != VK_SUCCESS) {
-        mesa_loge("ZINK: vkCreateBuffer failed");
-        VKSCR(DestroyBuffer)(screen->dev, obj->buffer, NULL);
-        return false;
-     }
-   }
-
-   if (modifiers_count) {
-      assert(modifiers_count == 3);
-      /* this is the DGC path because there's no other way to pass mem bits and I don't wanna copy/paste everything around */
-      reqs->size = modifiers[0];
-      reqs->alignment = modifiers[1];
-      reqs->memoryTypeBits = modifiers[2];
-   } else {
-      VKSCR(GetBufferMemoryRequirements)(screen->dev, obj->buffer, reqs);
-   }
-
-   if (templ->usage == PIPE_USAGE_STAGING)
-      *flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-   else if (templ->usage == PIPE_USAGE_STREAM)
-      *flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-   else if (templ->usage == PIPE_USAGE_IMMUTABLE)
-      *flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-   else
-      *flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-
-   obj->is_buffer = true;
-   obj->transfer_dst = true;
-   obj->vkflags = bci.flags;
-   obj->vkusage = bci.usage;
-
-   return true;
-}
-
-static inline bool
 create_sampler_conversion(VkImageCreateInfo ici, struct zink_screen *screen,
                           struct zink_resource_object *obj)
 {
@@ -1122,11 +1066,181 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
    return obj->bo ? 0: -2;
 }
 
+static inline bool
+update_alloc_info_flags(struct zink_screen *screen, const struct pipe_resource *templ,
+                        const void *user_mem, VkMemoryRequirements *reqs,
+                        struct mem_alloc_info *alloc_info)
+{
+   if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
+      alloc_info->flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+   else if (!(alloc_info->flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
+            templ->usage == PIPE_USAGE_STAGING)
+      alloc_info->flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+
+   if (templ->bind & ZINK_BIND_TRANSIENT)
+      alloc_info->flags |= VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+
+   if (user_mem) {
+      VkExternalMemoryHandleTypeFlagBits handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      VkMemoryHostPointerPropertiesEXT memory_host_pointer_properties = {0};
+      memory_host_pointer_properties.sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT;
+      memory_host_pointer_properties.pNext = NULL;
+      VkResult res = VKSCR(GetMemoryHostPointerPropertiesEXT)(screen->dev, handle_type, user_mem, &memory_host_pointer_properties);
+      if (res != VK_SUCCESS) {
+         mesa_loge("ZINK: vkGetMemoryHostPointerPropertiesEXT failed");
+         return false;
+      }
+      reqs->memoryTypeBits &= memory_host_pointer_properties.memoryTypeBits;
+      alloc_info->flags &= ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+   }
+
+   alloc_info->aflags = templ->flags & PIPE_RESOURCE_FLAG_SPARSE ? ZINK_ALLOC_SPARSE : 0;
+   return true;
+}
+
+static inline void
+update_obj_info(struct zink_screen *screen, struct zink_resource_object *obj,
+                const struct pipe_resource *templ, struct mem_alloc_info *alloc_info)
+{
+   if (alloc_info->aflags == ZINK_ALLOC_SPARSE) {
+      obj->size = templ->width0;
+   } else {
+      obj->offset = zink_bo_get_offset(obj->bo);
+      obj->size = zink_bo_get_size(obj->bo);
+   }
+
+   obj->coherent = screen->info.mem_props.memoryTypes[obj->bo->base.base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+   if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {
+      obj->host_visible = screen->info.mem_props.memoryTypes[obj->bo->base.base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+   }
+}
+
+static inline void
+debug_resource_mem(struct zink_resource_object *obj, const struct pipe_resource *templ, struct zink_screen *screen)
+{
+      char buf[4096];
+      unsigned idx = 0;
+      if (obj->is_buffer) {
+         size_t size = (size_t)DIV_ROUND_UP(obj->size, 1024);
+         if (templ->bind == PIPE_BIND_QUERY_BUFFER && templ->usage == PIPE_USAGE_STAGING) //internal qbo
+            idx += snprintf(buf, sizeof(buf), "QBO(%zu)", size);
+         else
+            idx += snprintf(buf, sizeof(buf), "BUF(%zu)", size);
+      } else {
+         idx += snprintf(buf, sizeof(buf), "IMG(%s:%ux%ux%u)", util_format_short_name(templ->format), templ->width0, templ->height0, templ->depth0);
+      }
+      /*
+      zink_vkflags_func flag_func = obj->is_buffer ? (zink_vkflags_func)vk_BufferCreateFlagBits_to_str : (zink_vkflags_func)vk_ImageCreateFlagBits_to_str;
+      zink_vkflags_func usage_func = obj->is_buffer ? (zink_vkflags_func)vk_BufferUsageFlagBits_to_str : (zink_vkflags_func)vk_ImageUsageFlagBits_to_str;
+      if (obj->vkflags) {
+         buf[idx++] = '[';
+         idx += zink_string_vkflags_unroll(&buf[idx], sizeof(buf) - idx, obj->vkflags, flag_func);
+         buf[idx++] = ']';
+      }
+      if (obj->vkusage) {
+         buf[idx++] = '[';
+         idx += zink_string_vkflags_unroll(&buf[idx], sizeof(buf) - idx, obj->vkusage, usage_func);
+         buf[idx++] = ']';
+      }
+      */
+      buf[idx] = 0;
+      obj->bo->name = zink_debug_mem_add(screen, obj->size, buf);
+}
+
+static inline int
+allocate_bo_and_update_obj(struct zink_screen *screen, const struct pipe_resource *templ,
+                           VkMemoryRequirements *reqs, struct zink_resource_object *obj,
+                           struct mem_alloc_info *alloc_info, const void *user_mem)
+{
+   if (!update_alloc_info_flags(screen, templ, user_mem, reqs, alloc_info))
+      return -1;
+
+   int retval = allocate_bo(screen, templ, reqs, obj, alloc_info);
+   if (retval)
+      return retval;
+
+   update_obj_info(screen, obj, templ, alloc_info);
+
+   if (zink_debug & ZINK_DEBUG_MEM)
+      debug_resource_mem(obj, templ, screen);
+   return 0;
+}
+
+static inline int
+create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
+              const struct pipe_resource *templ, uint64_t *modifiers,
+              int modifiers_count, const void *user_mem, struct mem_alloc_info *alloc_info,
+              VkMemoryRequirements *reqs)
+{
+   VkBufferCreateInfo bci = create_bci(screen, templ, templ->bind);
+   VkExternalMemoryBufferCreateInfo embci;
+
+   if (user_mem) {
+      embci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+      embci.pNext = bci.pNext;
+      embci.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      bci.pNext = &embci;
+   }
+
+   if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->buffer) != VK_SUCCESS) {
+      mesa_loge("ZINK: vkCreateBuffer failed");
+      return false;
+   }
+
+   if (!(templ->bind & (PIPE_BIND_SHADER_IMAGE | ZINK_BIND_DESCRIPTOR))) {
+       bci.usage |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+     if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->storage_buffer) != VK_SUCCESS) {
+        mesa_loge("ZINK: vkCreateBuffer failed");
+        VKSCR(DestroyBuffer)(screen->dev, obj->buffer, NULL);
+        return false;
+     }
+   }
+
+   if (modifiers_count) {
+      assert(modifiers_count == 3);
+      /* this is the DGC path because there's no other way to pass mem bits and I don't wanna copy/paste everything around */
+      reqs->size = modifiers[0];
+      reqs->alignment = modifiers[1];
+      reqs->memoryTypeBits = modifiers[2];
+   } else {
+      VKSCR(GetBufferMemoryRequirements)(screen->dev, obj->buffer, reqs);
+   }
+
+   if (templ->usage == PIPE_USAGE_STAGING)
+      alloc_info->flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+   else if (templ->usage == PIPE_USAGE_STREAM)
+      alloc_info->flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+   else if (templ->usage == PIPE_USAGE_IMMUTABLE)
+      alloc_info->flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+   else
+      alloc_info->flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+   obj->is_buffer = true;
+   obj->transfer_dst = true;
+   obj->vkflags = bci.flags;
+   obj->vkusage = bci.usage;
+
+   int retval = allocate_bo_and_update_obj(screen, templ, reqs, obj,  alloc_info, user_mem);
+   if (retval)
+      return retval;
+
+   if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {
+      if (VKSCR(BindBufferMemory)(screen->dev, obj->buffer, zink_bo_get_mem(obj->bo), obj->offset) != VK_SUCCESS) {
+         mesa_loge("ZINK: vkBindBufferMemory failed");
+         return -3;
+      }
+      if (obj->storage_buffer && VKSCR(BindBufferMemory)(screen->dev, obj->storage_buffer, zink_bo_get_mem(obj->bo), obj->offset) != VK_SUCCESS) {
+         mesa_loge("ZINK: vkBindBufferMemory failed");
+         return -3;
+      }
+   }
+   return 0;
+}
+
 static inline int
 create_image(struct zink_screen *screen, struct zink_resource_object *obj,
              const struct pipe_resource *templ, bool *linear,
              uint64_t *modifiers, int modifiers_count,
-             unsigned num_planes,
              const void *user_mem, struct mem_alloc_info *alloc_info,
              VkMemoryRequirements *reqs)
 {
@@ -1293,6 +1407,7 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
       assert(num_dmabuf_planes <= 4);
    }
 
+   unsigned num_planes = util_format_get_num_planes(templ->format);
    alloc_info->need_dedicated = get_image_memory_requirement(screen, obj, num_planes, reqs);
    if (templ->usage == PIPE_USAGE_STAGING && ici.tiling == VK_IMAGE_TILING_LINEAR)
       alloc_info->flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
@@ -1301,106 +1416,38 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
 
    obj->vkflags = ici.flags;
    obj->vkusage = ici.usage;
-   return 0;
-}
 
-static inline bool
-update_alloc_info_flags(struct zink_screen *screen, const struct pipe_resource *templ,
-                        const void *user_mem, VkMemoryRequirements *reqs,
-                        struct mem_alloc_info *alloc_info)
-{
-   if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
-      alloc_info->flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-   else if (!(alloc_info->flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
-            templ->usage == PIPE_USAGE_STAGING)
-      alloc_info->flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-
-   if (templ->bind & ZINK_BIND_TRANSIENT)
-      alloc_info->flags |= VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
-
-   if (user_mem) {
-      VkExternalMemoryHandleTypeFlagBits handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
-      VkMemoryHostPointerPropertiesEXT memory_host_pointer_properties = {0};
-      memory_host_pointer_properties.sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT;
-      memory_host_pointer_properties.pNext = NULL;
-      VkResult res = VKSCR(GetMemoryHostPointerPropertiesEXT)(screen->dev, handle_type, user_mem, &memory_host_pointer_properties);
-      if (res != VK_SUCCESS) {
-         mesa_loge("ZINK: vkGetMemoryHostPointerPropertiesEXT failed");
-         return false;
-      }
-      reqs->memoryTypeBits &= memory_host_pointer_properties.memoryTypeBits;
-      alloc_info->flags &= ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-   }
-
-   alloc_info->aflags = templ->flags & PIPE_RESOURCE_FLAG_SPARSE ? ZINK_ALLOC_SPARSE : 0;
-   return true;
-}
-
-static inline void
-update_obj_info(struct zink_screen *screen, struct zink_resource_object *obj,
-                const struct pipe_resource *templ, struct mem_alloc_info *alloc_info)
-{
-   if (alloc_info->aflags == ZINK_ALLOC_SPARSE) {
-      obj->size = templ->width0;
-   } else {
-      obj->offset = zink_bo_get_offset(obj->bo);
-      obj->size = zink_bo_get_size(obj->bo);
-   }
-
-   obj->coherent = screen->info.mem_props.memoryTypes[obj->bo->base.base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-   if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {
-      obj->host_visible = screen->info.mem_props.memoryTypes[obj->bo->base.base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-   }
-}
-
-static inline void
-debug_resource_mem(struct zink_resource_object *obj, const struct pipe_resource *templ, struct zink_screen *screen)
-{
-      char buf[4096];
-      unsigned idx = 0;
-      if (obj->is_buffer) {
-         size_t size = (size_t)DIV_ROUND_UP(obj->size, 1024);
-         if (templ->bind == PIPE_BIND_QUERY_BUFFER && templ->usage == PIPE_USAGE_STAGING) //internal qbo
-            idx += snprintf(buf, sizeof(buf), "QBO(%zu)", size);
-         else
-            idx += snprintf(buf, sizeof(buf), "BUF(%zu)", size);
-      } else {
-         idx += snprintf(buf, sizeof(buf), "IMG(%s:%ux%ux%u)", util_format_short_name(templ->format), templ->width0, templ->height0, templ->depth0);
-      }
-      /*
-      zink_vkflags_func flag_func = obj->is_buffer ? (zink_vkflags_func)vk_BufferCreateFlagBits_to_str : (zink_vkflags_func)vk_ImageCreateFlagBits_to_str;
-      zink_vkflags_func usage_func = obj->is_buffer ? (zink_vkflags_func)vk_BufferUsageFlagBits_to_str : (zink_vkflags_func)vk_ImageUsageFlagBits_to_str;
-      if (obj->vkflags) {
-         buf[idx++] = '[';
-         idx += zink_string_vkflags_unroll(&buf[idx], sizeof(buf) - idx, obj->vkflags, flag_func);
-         buf[idx++] = ']';
-      }
-      if (obj->vkusage) {
-         buf[idx++] = '[';
-         idx += zink_string_vkflags_unroll(&buf[idx], sizeof(buf) - idx, obj->vkusage, usage_func);
-         buf[idx++] = ']';
-      }
-      */
-      buf[idx] = 0;
-      obj->bo->name = zink_debug_mem_add(screen, obj->size, buf);
-}
-
-static inline int
-allocate_bo_and_update_obj(struct zink_screen *screen, const struct pipe_resource *templ,
-                           VkMemoryRequirements *reqs, struct zink_resource_object *obj,
-                           struct mem_alloc_info *alloc_info, const void *user_mem)
-{
-   if (!update_alloc_info_flags(screen, templ, user_mem, reqs, alloc_info))
-      return -1;
-
-   int retval = allocate_bo(screen, templ, reqs, obj, alloc_info);
+   int retval = allocate_bo_and_update_obj(screen, templ, reqs, obj,  alloc_info, user_mem);
    if (retval)
       return retval;
 
-   update_obj_info(screen, obj, templ, alloc_info);
+   if (num_planes > 1) {
+      VkBindImageMemoryInfo infos[3];
+      VkBindImagePlaneMemoryInfo planes[3];
+      for (unsigned i = 0; i < num_planes; i++) {
+         infos[i].sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
+         infos[i].image = obj->image;
+         infos[i].memory = zink_bo_get_mem(obj->bo);
+         infos[i].memoryOffset = obj->plane_offsets[i];
+         if (templ->bind & ZINK_BIND_VIDEO) {
+            infos[i].pNext = &planes[i];
+            planes[i].sType = VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO;
+            planes[i].pNext = NULL;
+            planes[i].planeAspect = plane_aspects[i];
+         }
+      }
+      if (VKSCR(BindImageMemory2)(screen->dev, num_planes, infos) != VK_SUCCESS) {
+         mesa_loge("ZINK: vkBindImageMemory2 failed");
+         return -3;
+      }
+   } else {
+      if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE))
+         if (VKSCR(BindImageMemory)(screen->dev, obj->image, zink_bo_get_mem(obj->bo), obj->offset) != VK_SUCCESS) {
+            mesa_loge("ZINK: vkBindImageMemory failed");
+            return -3;
+         }
+   }
 
-   if (zink_debug & ZINK_DEBUG_MEM)
-      debug_resource_mem(obj, templ, screen);
    return 0;
 }
 
@@ -1441,8 +1488,6 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          break;
    }
 
-   unsigned num_planes = util_format_get_num_planes(templ->format);
-
    if (!get_export_flags(screen, templ, whandle, &alloc_info.external, &alloc_info.export_types)) {
       /* can't export anything, fail early */
       return NULL;
@@ -1458,65 +1503,24 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          
       obj->transfer_dst = true;
       return obj;
-   } else if (templ->target == PIPE_BUFFER) {
-      if (!create_buffer(screen, obj, templ, modifiers, modifiers_count, user_mem,
-                         &alloc_info.flags, &reqs))
-         goto fail1;
+   }
+
+   int create_result = 0;
+   if (templ->target == PIPE_BUFFER) {
       max_level = 1;
+      create_result = create_buffer(screen, obj, templ, modifiers, modifiers_count, user_mem,
+                                    &alloc_info, &reqs);
    } else {
       max_level = templ->last_level + 1;
-      switch (create_image(screen, obj, templ, linear, modifiers, modifiers_count,
-                             num_planes, user_mem, &alloc_info, &reqs)) {
-      case -1: goto fail1;
-      case 1: return obj;
-      }
+      create_result = create_image(screen, obj, templ, linear, modifiers, modifiers_count,
+                                   user_mem, &alloc_info, &reqs);
    }
 
-   switch (allocate_bo_and_update_obj(screen, templ, &reqs, obj,  &alloc_info, user_mem)) {
+   switch (create_result) {
    case -1: goto fail1;
    case -2: goto fail2;
-   default:
-      assert(obj->bo);
-   }
-
-   if (templ->target == PIPE_BUFFER) {
-      if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {
-         if (VKSCR(BindBufferMemory)(screen->dev, obj->buffer, zink_bo_get_mem(obj->bo), obj->offset) != VK_SUCCESS) {
-            mesa_loge("ZINK: vkBindBufferMemory failed");
-            goto fail3;
-         }
-         if (obj->storage_buffer && VKSCR(BindBufferMemory)(screen->dev, obj->storage_buffer, zink_bo_get_mem(obj->bo), obj->offset) != VK_SUCCESS) {
-            mesa_loge("ZINK: vkBindBufferMemory failed");
-            goto fail3;
-         }
-      }
-   } else {
-      if (num_planes > 1) {
-         VkBindImageMemoryInfo infos[3];
-         VkBindImagePlaneMemoryInfo planes[3];
-         for (unsigned i = 0; i < num_planes; i++) {
-            infos[i].sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
-            infos[i].image = obj->image;
-            infos[i].memory = zink_bo_get_mem(obj->bo);
-            infos[i].memoryOffset = obj->plane_offsets[i];
-            if (templ->bind & ZINK_BIND_VIDEO) {
-               infos[i].pNext = &planes[i];
-               planes[i].sType = VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO;
-               planes[i].pNext = NULL;
-               planes[i].planeAspect = plane_aspects[i];
-            }
-         }
-         if (VKSCR(BindImageMemory2)(screen->dev, num_planes, infos) != VK_SUCCESS) {
-            mesa_loge("ZINK: vkBindImageMemory2 failed");
-            goto fail3;
-         }
-      } else {
-         if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE))
-            if (VKSCR(BindImageMemory)(screen->dev, obj->image, zink_bo_get_mem(obj->bo), obj->offset) != VK_SUCCESS) {
-               mesa_loge("ZINK: vkBindImageMemory failed");
-               goto fail3;
-            }
-      }
+   case -3: goto fail3;
+   case 1: return obj;
    }
 
    for (unsigned i = 0; i < max_level; i++)

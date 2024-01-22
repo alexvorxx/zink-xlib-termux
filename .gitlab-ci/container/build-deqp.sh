@@ -169,26 +169,31 @@ fi
 if [ "${DEQP_TARGET}" != 'android' ]; then
     # Copy out the mustpass lists we want.
     mkdir -p /deqp/mustpass
-    for mustpass in $(< /VK-GL-CTS/external/vulkancts/mustpass/main/vk-default.txt) ; do
-        cat /VK-GL-CTS/external/vulkancts/mustpass/main/$mustpass \
-            >> /deqp/mustpass/vk-master.txt
-    done
 
-    cp \
-        /deqp/external/openglcts/modules/gl_cts/data/mustpass/gles/aosp_mustpass/3.2.6.x/*.txt \
-        /deqp/mustpass/.
-    cp \
-        /deqp/external/openglcts/modules/gl_cts/data/mustpass/egl/aosp_mustpass/3.2.6.x/egl-master.txt \
-        /deqp/mustpass/.
-    cp \
-        /deqp/external/openglcts/modules/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/*-master.txt \
-        /deqp/mustpass/.
-    cp \
-        /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/*-master.txt \
-        /deqp/mustpass/.
-    cp \
-        /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/*-single.txt \
-        /deqp/mustpass/.
+    if [ "${DEQP_API}" = 'VK' ]; then
+        for mustpass in $(< /VK-GL-CTS/external/vulkancts/mustpass/main/vk-default.txt) ; do
+            cat /VK-GL-CTS/external/vulkancts/mustpass/main/$mustpass \
+                >> /deqp/mustpass/vk-master.txt
+        done
+    fi
+
+    if [ "${DEQP_API}" = 'GL' ]; then
+        cp \
+            /deqp/external/openglcts/modules/gl_cts/data/mustpass/gles/aosp_mustpass/3.2.6.x/*.txt \
+            /deqp/mustpass/.
+        cp \
+            /deqp/external/openglcts/modules/gl_cts/data/mustpass/egl/aosp_mustpass/3.2.6.x/egl-master.txt \
+            /deqp/mustpass/.
+        cp \
+            /deqp/external/openglcts/modules/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/*-master.txt \
+            /deqp/mustpass/.
+        cp \
+            /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/*-master.txt \
+            /deqp/mustpass/.
+        cp \
+            /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/*-single.txt \
+            /deqp/mustpass/.
+    fi
 
     # Save *some* executor utils, but otherwise strip things down
     # to reduct deqp build size:

@@ -829,8 +829,8 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
             ps_epilogs = true;
          break;
       }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT: {
-         const VkPhysicalDeviceLineRasterizationFeaturesEXT *features = (const void *)ext;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_KHR: {
+         const VkPhysicalDeviceLineRasterizationFeaturesKHR *features = (const void *)ext;
          if (features->smoothLines)
             smooth_lines = true;
          break;

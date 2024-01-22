@@ -403,7 +403,7 @@ radv_dynamic_state_mask(VkDynamicState state)
       return RADV_DYNAMIC_DISCARD_RECTANGLE;
    case VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT:
       return RADV_DYNAMIC_SAMPLE_LOCATIONS;
-   case VK_DYNAMIC_STATE_LINE_STIPPLE_EXT:
+   case VK_DYNAMIC_STATE_LINE_STIPPLE_KHR:
       return RADV_DYNAMIC_LINE_STIPPLE;
    case VK_DYNAMIC_STATE_CULL_MODE:
       return RADV_DYNAMIC_CULL_MODE;
@@ -1955,7 +1955,7 @@ radv_generate_graphics_state_key(const struct radv_device *device, const struct 
          key.dynamic_line_rast_mode = true;
       } else {
          key.rs.line_smooth_enabled =
-            state->rs && state->rs->line.mode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT;
+            state->rs && state->rs->line.mode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR;
       }
    }
 

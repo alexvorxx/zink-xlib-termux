@@ -1883,6 +1883,11 @@ get_module_flags(struct ntd_context *ctx)
       flags |= (1ull << 34);
    if (ctx->mod.feats.writable_msaa)
       flags |= (1ull << 35);
+   // Bit 36 is wave MMA
+   if (ctx->mod.feats.sample_cmp_bias_gradient)
+      flags |= (1ull << 37);
+   if (ctx->mod.feats.extended_command_info)
+      flags |= (1ull << 38);
 
    if (ctx->opts->disable_math_refactoring)
       flags |= (1 << 1);
@@ -5295,6 +5300,7 @@ emit_sample_cmp_bias(struct ntd_context *ctx, struct texop_parameters *params)
       return NULL;
 
    assert(params->bias != NULL);
+   ctx->mod.feats.sample_cmp_bias_gradient = 1;
 
    const struct dxil_value *args[13] = {
       dxil_module_get_int32_const(&ctx->mod, DXIL_INTR_SAMPLE_CMP_BIAS),
@@ -5333,6 +5339,8 @@ emit_sample_cmp_grad(struct ntd_context *ctx, struct texop_parameters *params)
    const struct dxil_func *func = dxil_get_function(&ctx->mod, "dx.op.sampleCmpGrad", params->overload);
    if (!func)
       return false;
+   
+   ctx->mod.feats.sample_cmp_bias_gradient = 1;
 
    const struct dxil_value *args[18] = {
       dxil_module_get_int32_const(&ctx->mod, DXIL_INTR_SAMPLE_CMP_GRAD),

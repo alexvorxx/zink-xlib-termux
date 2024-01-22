@@ -48,7 +48,7 @@ struct vn_queue_submission {
    const struct vn_device_memory *wsi_mem;
    uint32_t feedback_cmd_buffer_count;
    struct vn_sync_payload_external external_payload;
-   struct vn_command_buffer *recycle_query_feedback_cmd;
+   struct vn_query_feedback_cmd *recycle_query_feedback_cmd;
 
    /* Temporary storage allocation for submission
     * A single alloc for storage is performed and the offsets inside
@@ -519,7 +519,7 @@ vn_combine_query_feedback_batches_and_record(
    uint32_t cmd_count,
    uint32_t stride,
    struct vn_feedback_cmd_pool *feedback_cmd_pool,
-   VkCommandBuffer *out_feedback_cmd_handle)
+   struct vn_query_feedback_cmd **out_feedback_cmd)
 {
    struct vn_command_pool *cmd_pool =
       vn_command_pool_from_handle(feedback_cmd_pool->pool);
@@ -573,9 +573,15 @@ vn_combine_query_feedback_batches_and_record(
       cmd_handle_ptr += stride;
    }
 
-   result = vn_feedback_query_batch_record(dev_handle, feedback_cmd_pool,
-                                           &combined_batches,
-                                           out_feedback_cmd_handle);
+   struct vn_query_feedback_cmd *feedback_cmd;
+   result = vn_feedback_query_cmd_alloc(dev_handle, feedback_cmd_pool,
+                                        &feedback_cmd);
+   if (result == VK_SUCCESS) {
+      result = vn_feedback_query_batch_record(dev_handle, feedback_cmd,
+                                              &combined_batches);
+      if (result != VK_SUCCESS)
+         vk_free(&cmd_pool->allocator, feedback_cmd);
+   }
 
 recycle_combined_batches:
    simple_mtx_lock(&feedback_cmd_pool->mutex);
@@ -583,6 +589,8 @@ recycle_combined_batches:
                             &combined_batches, head)
       list_move_to(&batch_clone->head, &cmd_pool->free_query_batches);
    simple_mtx_unlock(&feedback_cmd_pool->mutex);
+
+   *out_feedback_cmd = feedback_cmd;
 
    return result;
 }
@@ -611,11 +619,14 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
       }
    }
 
+   struct vn_query_feedback_cmd *feedback_cmd;
    VkResult result = vn_combine_query_feedback_batches_and_record(
       dev_handle, src_cmd_handles, cmd_count, stride, feedback_cmd_pool,
-      feedback_cmd_handle);
+      &feedback_cmd);
    if (result != VK_SUCCESS)
       return result;
+
+   *feedback_cmd_handle = vn_command_buffer_to_handle(feedback_cmd->cmd);
 
    /* link query feedback cmd lifecycle with a cmd in the original batch so
     * that the feedback cmd can be reset and recycled when that cmd gets
@@ -654,8 +665,7 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
       submit->recycle_query_feedback_cmd =
          linked_cmd->linked_query_feedback_cmd;
 
-   linked_cmd->linked_query_feedback_cmd =
-      vn_command_buffer_from_handle(*feedback_cmd_handle);
+   linked_cmd->linked_query_feedback_cmd = feedback_cmd;
 
    return VK_SUCCESS;
 }
@@ -990,9 +1000,10 @@ vn_queue_submission_cleanup(struct vn_queue_submission *submit)
 
    if (submit->recycle_query_feedback_cmd) {
       vn_ResetCommandBuffer(
-         vn_command_buffer_to_handle(submit->recycle_query_feedback_cmd), 0);
+         vn_command_buffer_to_handle(submit->recycle_query_feedback_cmd->cmd),
+         0);
       list_add(
-         &submit->recycle_query_feedback_cmd->feedback_head,
+         &submit->recycle_query_feedback_cmd->head,
          &submit->recycle_query_feedback_cmd->pool->free_query_feedback_cmds);
    }
 

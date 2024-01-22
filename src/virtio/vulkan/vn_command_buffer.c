@@ -681,7 +681,6 @@ vn_CreateCommandPool(VkDevice device,
    pool->queue_family_index = pCreateInfo->queueFamilyIndex;
    list_inithead(&pool->command_buffers);
    list_inithead(&pool->free_query_batches);
-   list_inithead(&pool->free_query_feedback_cmds);
 
    VkCommandPool pool_handle = vn_command_pool_to_handle(pool);
    vn_async_vkCreateCommandPool(dev->primary_ring, device, pCreateInfo, NULL,
@@ -698,8 +697,8 @@ static inline void
 vn_recycle_query_feedback_cmd(struct vn_command_buffer *cmd)
 {
    vn_ResetCommandBuffer(
-      vn_command_buffer_to_handle(cmd->linked_query_feedback_cmd), 0);
-   list_add(&cmd->linked_query_feedback_cmd->feedback_head,
+      vn_command_buffer_to_handle(cmd->linked_query_feedback_cmd->cmd), 0);
+   list_add(&cmd->linked_query_feedback_cmd->head,
             &cmd->linked_query_feedback_cmd->pool->free_query_feedback_cmds);
    cmd->linked_query_feedback_cmd = NULL;
 }

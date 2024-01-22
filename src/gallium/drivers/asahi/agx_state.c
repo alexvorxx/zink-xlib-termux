@@ -5159,11 +5159,11 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
    agx_push(out, INDEX_LIST, cfg) {
       cfg.primitive = prim;
-      cfg.instance_count_present = true;
 
       if (indirect != NULL) {
          cfg.indirect_buffer_present = true;
       } else {
+         cfg.instance_count_present = true;
          cfg.index_count_present = true;
          cfg.start_present = true;
       }
@@ -5186,10 +5186,10 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    if (!indirect) {
       agx_push(out, INDEX_LIST_COUNT, cfg)
          cfg.count = draws->count;
-   }
 
-   agx_push(out, INDEX_LIST_INSTANCES, cfg)
-      cfg.count = info->instance_count;
+      agx_push(out, INDEX_LIST_INSTANCES, cfg)
+         cfg.count = info->instance_count;
+   }
 
    if (indirect) {
       struct agx_resource *indirect_rsrc = agx_resource(indirect->buffer);

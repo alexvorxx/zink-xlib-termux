@@ -23,8 +23,6 @@ pushd /VK-GL-CTS
 
 mkdir -p /deqp
 
-echo "dEQP base version $DEQP_VERSION" > /deqp/version-log
-
 # Patches to VulkanCTS may come from commits in their repo (listed in
 # cts_commits_to_backport) or patch files stored in our repo (in the patch
 # directory `$OLDPWD/.gitlab-ci/container/patches/` listed in cts_patch_files).
@@ -69,8 +67,11 @@ do
   git am < $OLDPWD/.gitlab-ci/container/patches/$patch
 done
 
-echo "The following local patches are applied on top:" >> /deqp/version-log
-git log --reverse --oneline $DEQP_VERSION.. --format=%s | sed 's/^/- /' >> /deqp/version-log
+{
+  echo "dEQP base version $DEQP_VERSION"
+  echo "The following local patches are applied on top:"
+  git log --reverse --oneline $DEQP_VERSION.. --format=%s | sed 's/^/- /'
+} > /deqp/version-log
 
 # --insecure is due to SSL cert failures hitting sourceforge for zlib and
 # libpng (sigh).  The archives get their checksums checked anyway, and git

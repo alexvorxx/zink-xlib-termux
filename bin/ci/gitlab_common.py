@@ -71,15 +71,25 @@ def get_token_from_default_dir() -> str:
         raise ex
 
 
-def read_token(token_arg: Optional[str]) -> str:
-    """pick token from args or file"""
+def read_token(token_arg: str | Path | None) -> str | None:
+    """
+    Reads the token from the given file path or returns the token argument if it is not a file.
+
+    Args:
+        token_arg (str | Path | None): The file path or the token itself.
+
+    Returns:
+        str | None: The token string or None if the token is not provided.
+    """
     if token_arg:
-        return token_arg
-    return (
-        open(os.path.expanduser("~/.config/gitlab-token"), encoding="utf-8")
-        .readline()
-        .rstrip()
-    )
+        token_path = Path(token_arg)
+        if token_path.is_file():
+            # if is a file, read it
+            return token_path.read_text().strip()
+        return str(token_arg)
+
+    # if the token is not provided neither its file, return None
+    return None
 
 
 def wait_for_pipeline(projects, sha: str, timeout=None):

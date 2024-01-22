@@ -26,12 +26,14 @@ from typing import TYPE_CHECKING, Iterable, Literal, Optional
 import gitlab
 from colorama import Fore, Style
 from gitlab_common import (
-    get_gitlab_project,
+    GITLAB_URL,
+    TOKEN_DIR,
     get_gitlab_pipeline_from_url,
+    get_gitlab_project,
+    get_token_from_default_dir,
+    pretty_duration,
     read_token,
     wait_for_pipeline,
-    pretty_duration,
-    GITLAB_URL,
 )
 from gitlab_gql import GitlabGQL, create_job_needs_dag, filter_dag, print_dag
 
@@ -274,7 +276,10 @@ def parse_args() -> None:
     parser.add_argument(
         "--token",
         metavar="token",
-        help="force GitLab token, otherwise it's read from ~/.config/gitlab-token",
+        type=str,
+        default=get_token_from_default_dir(),
+        help="Use the provided GitLab token or token file, "
+             f"otherwise it's read from {TOKEN_DIR / 'gitlab-token'}",
     )
     parser.add_argument(
         "--force-manual", action="store_true", help="Force jobs marked as manual"

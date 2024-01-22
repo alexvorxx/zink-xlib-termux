@@ -9,7 +9,6 @@ from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from itertools import accumulate
-from os import getenv
 from pathlib import Path
 from subprocess import check_output
 from textwrap import dedent
@@ -17,6 +16,7 @@ from typing import Any, Iterable, Optional, Pattern, TypedDict, Union
 
 import yaml
 from filecache import DAY, filecache
+from gitlab_common import get_token_from_default_dir
 from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
 from graphql import DocumentNode
@@ -34,18 +34,6 @@ Dag = dict[str, DagNode]
 
 
 StageSeq = OrderedDict[str, set[str]]
-TOKEN_DIR = Path(getenv("XDG_CONFIG_HOME") or Path.home() / ".config")
-
-
-def get_token_from_default_dir() -> str:
-    token_file = TOKEN_DIR / "gitlab-token"
-    try:
-        return str(token_file.resolve())
-    except FileNotFoundError as ex:
-        print(
-            f"Could not find {token_file}, please provide a token file as an argument"
-        )
-        raise ex
 
 
 def get_project_root_dir():

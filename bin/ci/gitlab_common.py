@@ -3,16 +3,17 @@
 # Authors:
 #   Tomeu Vizoso <tomeu.vizoso@collabora.com>
 #   David Heidelberg <david.heidelberg@collabora.com>
+#   Guilherme Gallo <guilherme.gallo@collabora.com>
 #
 # SPDX-License-Identifier: MIT
 '''Shared functions between the scripts.'''
 
 import os
 import time
-from typing import Optional
-
+from pathlib import Path
 
 GITLAB_URL = "https://gitlab.freedesktop.org"
+TOKEN_DIR = Path(os.getenv("XDG_CONFIG_HOME") or Path.home() / ".config")
 
 
 def pretty_duration(seconds):
@@ -48,6 +49,26 @@ def get_gitlab_project(glab, name: str):
         username = glab.user.username
         project_path = f"{username}/{name}"
     return glab.projects.get(project_path)
+
+
+def get_token_from_default_dir() -> str:
+    """
+    Retrieves the GitLab token from the default directory.
+
+    Returns:
+        str: The path to the GitLab token file.
+
+    Raises:
+        FileNotFoundError: If the token file is not found.
+    """
+    token_file = TOKEN_DIR / "gitlab-token"
+    try:
+        return str(token_file.resolve())
+    except FileNotFoundError as ex:
+        print(
+            f"Could not find {token_file}, please provide a token file as an argument"
+        )
+        raise ex
 
 
 def read_token(token_arg: Optional[str]) -> str:

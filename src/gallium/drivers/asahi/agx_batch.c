@@ -511,6 +511,7 @@ agx_batch_writes_internal(struct agx_batch *batch, struct agx_resource *rsrc,
     */
    agx_writer_remove(ctx, rsrc->bo->handle);
    agx_writer_add(ctx, agx_batch_idx(batch), rsrc->bo->handle);
+   assert(agx_batch_is_active(batch));
 }
 
 void

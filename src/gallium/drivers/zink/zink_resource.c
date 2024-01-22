@@ -1452,7 +1452,6 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       case 1: return obj;
       }
    }
-   obj->alignment = reqs.alignment;
 
    if (!update_alloc_info_flags(screen, templ, user_mem, &reqs, &alloc_info))
       goto fail1;

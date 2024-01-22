@@ -714,11 +714,7 @@ impl<'a> ShaderFromNir<'a> {
                 }
                 dst
             }
-            nir_op_fcos => {
-                let frac_1_2pi = 1.0 / (2.0 * std::f32::consts::PI);
-                let tmp = b.fmul(srcs[0], frac_1_2pi.into());
-                b.mufu(MuFuOp::Cos, tmp.into())
-            }
+            nir_op_fcos => b.fcos(srcs[0]),
             nir_op_feq | nir_op_fge | nir_op_flt | nir_op_fneu => {
                 let src_type =
                     FloatType::from_bits(alu.get_src(0).bit_size().into());
@@ -756,7 +752,7 @@ impl<'a> ShaderFromNir<'a> {
                 }
                 dst
             }
-            nir_op_fexp2 => b.mufu(MuFuOp::Exp2, srcs[0]),
+            nir_op_fexp2 => b.fexp2(srcs[0]),
             nir_op_ffma => {
                 let ftype = FloatType::from_bits(alu.def.bit_size().into());
                 let dst;
@@ -938,11 +934,7 @@ impl<'a> ShaderFromNir<'a> {
                     panic!("Unsupported float type: f{}", alu.def.bit_size());
                 }
             }
-            nir_op_fsin => {
-                let frac_1_2pi = 1.0 / (2.0 * std::f32::consts::PI);
-                let tmp = b.fmul(srcs[0], frac_1_2pi.into());
-                b.mufu(MuFuOp::Sin, tmp.into())
-            }
+            nir_op_fsin => b.fsin(srcs[0]),
             nir_op_fsqrt => b.mufu(MuFuOp::Sqrt, srcs[0]),
             nir_op_i2f16 | nir_op_i2f32 | nir_op_i2f64 => {
                 let src_bits = alu.get_src(0).src.bit_size();

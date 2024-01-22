@@ -456,6 +456,53 @@ pub trait SSABuilder: Builder {
         dst
     }
 
+    fn fsin(&mut self, src: Src) -> SSARef {
+        let tmp = if self.sm() >= 70 {
+            let frac_1_2pi = 1.0 / (2.0 * std::f32::consts::PI);
+            self.fmul(src, frac_1_2pi.into())
+        } else {
+            let tmp = self.alloc_ssa(RegFile::GPR, 1);
+            self.push_op(OpRro {
+                dst: tmp.into(),
+                op: RroOp::SinCos,
+                src,
+            });
+            tmp
+        };
+        self.mufu(MuFuOp::Sin, tmp.into())
+    }
+
+    fn fcos(&mut self, src: Src) -> SSARef {
+        let tmp = if self.sm() >= 70 {
+            let frac_1_2pi = 1.0 / (2.0 * std::f32::consts::PI);
+            self.fmul(src, frac_1_2pi.into())
+        } else {
+            let tmp = self.alloc_ssa(RegFile::GPR, 1);
+            self.push_op(OpRro {
+                dst: tmp.into(),
+                op: RroOp::SinCos,
+                src,
+            });
+            tmp
+        };
+        self.mufu(MuFuOp::Cos, tmp.into())
+    }
+
+    fn fexp2(&mut self, src: Src) -> SSARef {
+        let tmp = if self.sm() >= 70 {
+            src
+        } else {
+            let tmp = self.alloc_ssa(RegFile::GPR, 1);
+            self.push_op(OpRro {
+                dst: tmp.into(),
+                op: RroOp::Exp2,
+                src,
+            });
+            tmp.into()
+        };
+        self.mufu(MuFuOp::Exp2, tmp)
+    }
+
     fn prmt(&mut self, x: Src, y: Src, sel: [u8; 4]) -> SSARef {
         let dst = self.alloc_ssa(RegFile::GPR, 1);
         self.prmt_to(dst.into(), x, y, sel);

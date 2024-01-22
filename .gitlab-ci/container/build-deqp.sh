@@ -111,7 +111,7 @@ popd
 
 pushd /deqp
 
-if [ "${DEQP_TARGET}" != 'android' ]; then
+if [ "${DEQP_API}" = 'GL' ] && [ "${DEQP_TARGET}" != 'android' ]; then
     # When including EGL/X11 testing, do that build first and save off its
     # deqp-egl binary.
     cmake -S /VK-GL-CTS -B . -G Ninja \

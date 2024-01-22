@@ -335,8 +335,31 @@ def print_detected_jobs(
     print_job_set(Fore.BLUE, "target", target_jobs)
 
 
-def find_dependencies(target_jobs_regex: re.Pattern, project_path: str, iid: int) -> set[str]:
-    gql_instance = GitlabGQL()
+def find_dependencies(token: str | None,
+                      target_jobs_regex: re.Pattern,
+                      project_path: str,
+                      iid: int) -> set[str]:
+    """
+    Find the dependencies of the target jobs in a GitLab pipeline.
+
+    This function uses the GitLab GraphQL API to fetch the job dependency graph
+    of a pipeline, filters the graph to only include the target jobs and their
+    dependencies, and returns the names of these jobs.
+
+    Args:
+        token (str | None): The GitLab API token. If None, the API is accessed without
+                            authentication.
+        target_jobs_regex (re.Pattern): A regex pattern to match the names of the target jobs.
+        project_path (str): The path of the GitLab project.
+        iid (int): The internal ID of the pipeline.
+
+    Returns:
+        set[str]: A set of the names of the target jobs and their dependencies.
+
+    Raises:
+        SystemExit: If no target jobs are found in the pipeline.
+    """
+    gql_instance = GitlabGQL(token=token)
     dag = create_job_needs_dag(
         gql_instance, {"projectPath": project_path.path_with_namespace, "iid": iid}
     )
@@ -388,7 +411,10 @@ if __name__ == "__main__":
         deps = set()
         print("🞋 job: " + Fore.BLUE + target + Style.RESET_ALL)
         deps = find_dependencies(
-            target_jobs_regex=target_jobs_regex, iid=pipe.iid, project_path=cur_project
+            token=token,
+            target_jobs_regex=target_jobs_regex,
+            iid=pipe.iid,
+            project_path=cur_project
         )
         target_job_id, ret = monitor_pipeline(
             cur_project, pipe, target_jobs_regex, deps, args.force_manual, args.stress

@@ -3563,6 +3563,11 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out, bool is_lines,
                  bool is_points)
 {
    struct agx_context *ctx = batch->ctx;
+
+   /* If nothing is dirty, encode nothing */
+   if (!ctx->dirty)
+      return out;
+
    struct agx_rasterizer *rast = ctx->rast;
    unsigned ppp_updates = 0;
 

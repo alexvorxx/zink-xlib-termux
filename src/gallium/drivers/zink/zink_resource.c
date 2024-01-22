@@ -1385,6 +1385,25 @@ debug_resource_mem(struct zink_resource_object *obj, const struct pipe_resource 
       obj->bo->name = zink_debug_mem_add(screen, obj->size, buf);
 }
 
+static inline int
+allocate_bo_and_update_obj(struct zink_screen *screen, const struct pipe_resource *templ,
+                           VkMemoryRequirements *reqs, struct zink_resource_object *obj,
+                           struct mem_alloc_info *alloc_info, const void *user_mem)
+{
+   if (!update_alloc_info_flags(screen, templ, user_mem, reqs, alloc_info))
+      return -1;
+
+   int retval = allocate_bo(screen, templ, reqs, obj, alloc_info);
+   if (retval)
+      return retval;
+
+   update_obj_info(screen, obj, templ, alloc_info);
+
+   if (zink_debug & ZINK_DEBUG_MEM)
+      debug_resource_mem(obj, templ, screen);
+   return 0;
+}
+
 static struct zink_resource_object *
 resource_object_create(struct zink_screen *screen, const struct pipe_resource *templ, struct winsys_handle *whandle, bool *linear,
                        uint64_t *modifiers, int modifiers_count, const void *loader_private, const void *user_mem)
@@ -1453,21 +1472,12 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       }
    }
 
-   if (!update_alloc_info_flags(screen, templ, user_mem, &reqs, &alloc_info))
-      goto fail1;
-
-   int retval = allocate_bo(screen, templ, &reqs, obj, &alloc_info);
-   switch (retval) {
+   switch (allocate_bo_and_update_obj(screen, templ, &reqs, obj,  &alloc_info, user_mem)) {
    case -1: goto fail1;
    case -2: goto fail2;
    default:
-     assert(obj->bo);
-   };
-
-   update_obj_info(screen, obj, templ, &alloc_info);
-
-   if (zink_debug & ZINK_DEBUG_MEM)
-      debug_resource_mem(obj, templ, screen);
+      assert(obj->bo);
+   }
 
    if (templ->target == PIPE_BUFFER) {
       if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {

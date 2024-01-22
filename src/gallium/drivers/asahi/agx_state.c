@@ -5056,7 +5056,6 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       ctx->dirty |= AGX_DIRTY_FS;
    }
 
-
    /* If a GS is active, the mode and index buffer come from the GS output */
    enum mesa_prim mode = info->mode;
 

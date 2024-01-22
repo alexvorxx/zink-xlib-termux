@@ -187,9 +187,6 @@ agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
    struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
 
    unif->texture_base = textures;
-   agx_set_sampler_uniforms(batch, stage);
-   agx_set_cbuf_uniforms(batch, stage);
-   agx_set_ssbo_uniforms(batch, stage);
 
    return agx_pool_upload_aligned(&batch->pool, unif,
                                   sizeof(struct agx_stage_uniforms), 16);

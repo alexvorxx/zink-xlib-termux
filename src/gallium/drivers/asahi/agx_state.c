@@ -3091,8 +3091,17 @@ agx_update_descriptors(struct agx_batch *batch, struct agx_compiled_shader *cs,
    if (!cs)
       return;
 
+   if (ctx->stage[stage].dirty & AGX_STAGE_DIRTY_CONST)
+      agx_set_cbuf_uniforms(batch, stage);
+
+   if (ctx->stage[stage].dirty & AGX_STAGE_DIRTY_SSBO)
+      agx_set_ssbo_uniforms(batch, stage);
+
    if (ctx->stage[stage].dirty & AGX_STAGE_DIRTY_IMAGE)
       agx_upload_textures(batch, cs, stage);
+
+   if (ctx->stage[stage].dirty & AGX_STAGE_DIRTY_SAMPLER)
+      agx_set_sampler_uniforms(batch, stage);
 
    if ((ctx->stage[stage].dirty & AGX_STAGE_DIRTY_SAMPLER) ||
        (ctx->stage[merged_stage(ctx, stage)].dirty & AGX_STAGE_DIRTY_SAMPLER))

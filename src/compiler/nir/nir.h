@@ -1668,6 +1668,12 @@ typedef struct {
    nir_def def;
 } nir_deref_instr;
 
+/**
+ * Returns true if the cast is trivial, i.e. the source and destination type is
+ * the same.
+ */
+bool nir_deref_cast_is_trivial(nir_deref_instr *cast);
+
 /** Returns true if deref might have one of the given modes
  *
  * For multi-mode derefs, this returns true if any of the possible modes for

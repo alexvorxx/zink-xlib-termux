@@ -1118,7 +1118,7 @@ impl SM50Instr {
         assert!(
             op.lod_mode == TexLodMode::Zero || op.lod_mode == TexLodMode::Lod
         );
-        self.set_bit(55, op.lod_mode == TexLodMode::Zero);
+        self.set_bit(55, op.lod_mode == TexLodMode::Lod);
     }
 
     fn encode_tld4(&mut self, op: &OpTld4) {

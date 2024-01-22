@@ -539,7 +539,7 @@ vk_rasterization_state_init(struct vk_rasterization_state *rs,
       .extra_primitive_overestimation_size = 0.0f,
       .rasterization_order_amd = VK_RASTERIZATION_ORDER_STRICT_AMD,
       .provoking_vertex = VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT,
-      .line.mode = VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT,
+      .line.mode = VK_LINE_RASTERIZATION_MODE_DEFAULT_KHR,
       .depth_clip_enable = IS_DYNAMIC(RS_DEPTH_CLAMP_ENABLE) ? VK_MESA_DEPTH_CLIP_ENABLE_NOT_CLAMP : VK_MESA_DEPTH_CLIP_ENABLE_FALSE,
       .depth_bias.representation = VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT,
       .depth_bias.exact = false,
@@ -601,8 +601,8 @@ vk_rasterization_state_init(struct vk_rasterization_state *rs,
       }
 
       case VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_LINE_STATE_CREATE_INFO_EXT: {
-         const VkPipelineRasterizationLineStateCreateInfoEXT *rl_info =
-            (const VkPipelineRasterizationLineStateCreateInfoEXT *)ext;
+         const VkPipelineRasterizationLineStateCreateInfoKHR *rl_info =
+            (const VkPipelineRasterizationLineStateCreateInfoKHR *)ext;
          rs->line.mode = rl_info->lineRasterizationMode;
          if (!IS_DYNAMIC(RS_LINE_STIPPLE_ENABLE))
             rs->line.stipple.enable = rl_info->stippledLineEnable;
@@ -2472,7 +2472,7 @@ vk_common_CmdSetLineWidth(VkCommandBuffer commandBuffer,
 
 VKAPI_ATTR void VKAPI_CALL
 vk_common_CmdSetLineRasterizationModeEXT(VkCommandBuffer commandBuffer,
-                                         VkLineRasterizationModeEXT lineRasterizationMode)
+                                         VkLineRasterizationModeKHR lineRasterizationMode)
 {
    VK_FROM_HANDLE(vk_command_buffer, cmd, commandBuffer);
    struct vk_dynamic_graphics_state *dyn = &cmd->dynamic_graphics_state;
@@ -2492,7 +2492,7 @@ vk_common_CmdSetLineStippleEnableEXT(VkCommandBuffer commandBuffer,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-vk_common_CmdSetLineStippleEXT(VkCommandBuffer commandBuffer,
+vk_common_CmdSetLineStippleKHR(VkCommandBuffer commandBuffer,
                                uint32_t lineStippleFactor,
                                uint16_t lineStipplePattern)
 {

@@ -351,29 +351,29 @@ struct vk_rasterization_state {
        */
       float width;
 
-      /** VkPipelineRasterizationLineStateCreateInfoEXT::lineRasterizationMode
+      /** VkPipelineRasterizationLineStateCreateInfoKHR::lineRasterizationMode
        *
-       * Will be set to VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT if
-       * VkPipelineRasterizationLineStateCreateInfoEXT is not provided.
+       * Will be set to VK_LINE_RASTERIZATION_MODE_DEFAULT_KHR if
+       * VkPipelineRasterizationLineStateCreateInfoKHR is not provided.
        *
        * MESA_VK_DYNAMIC_RS_LINE_MODE
        */
-      VkLineRasterizationModeEXT mode;
+      VkLineRasterizationModeKHR mode;
 
       struct {
-         /** VkPipelineRasterizationLineStateCreateInfoEXT::stippledLineEnable
+         /** VkPipelineRasterizationLineStateCreateInfoKHR::stippledLineEnable
           *
           * MESA_VK_DYNAMIC_RS_LINE_STIPPLE_ENABLE
           */
          bool enable;
 
-         /** VkPipelineRasterizationLineStateCreateInfoEXT::lineStippleFactor
+         /** VkPipelineRasterizationLineStateCreateInfoKHR::lineStippleFactor
           *
           * MESA_VK_DYNAMIC_RS_LINE_STIPPLE
           */
          uint32_t factor;
 
-         /** VkPipelineRasterizationLineStateCreateInfoEXT::lineStipplePattern
+         /** VkPipelineRasterizationLineStateCreateInfoKHR::lineStipplePattern
           *
           * MESA_VK_DYNAMIC_RS_LINE_STIPPLE
           */

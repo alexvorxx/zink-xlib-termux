@@ -1646,6 +1646,33 @@ impl SM50Instr {
         self.set_bit(47, false); /* dst.CC */
     }
 
+    fn encode_rro(&mut self, op: &OpRro) {
+        match &op.src.src_ref {
+            SrcRef::Imm32(imm32) => {
+                self.set_opcode(0x3890);
+                self.set_src_imm_f20(20..39, 56, *imm32);
+            }
+            SrcRef::Zero | SrcRef::Reg(_) => {
+                self.set_opcode(0x5c90);
+                self.set_reg_fmod_src(20..28, 49, 45, op.src);
+            }
+            SrcRef::CBuf(_) => {
+                self.set_opcode(0x4c90);
+                self.set_cb_fmod_src(20..39, 49, 45, op.src);
+            }
+            src => panic!("Unsupported src type for RRO: {src}"),
+        }
+
+        self.set_dst(op.dst);
+        self.set_field(
+            39..40,
+            match op.op {
+                RroOp::SinCos => 0u8,
+                RroOp::Exp2 => 1u8,
+            },
+        );
+    }
+
     fn encode_mufu(&mut self, op: &OpMuFu) {
         assert!(op.src.is_reg_or_zero());
 
@@ -2014,6 +2041,7 @@ impl SM50Instr {
             Op::FSet(op) => si.encode_fset(&op),
             Op::FSetP(op) => si.encode_fsetp(&op),
             Op::FSwzAdd(op) => si.encode_fswzadd(&op),
+            Op::Rro(op) => si.encode_rro(&op),
             Op::MuFu(op) => si.encode_mufu(&op),
             Op::Flo(op) => si.encode_flo(&op),
             Op::DAdd(op) => si.encode_dadd(&op),

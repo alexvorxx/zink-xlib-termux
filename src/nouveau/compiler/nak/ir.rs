@@ -2414,6 +2414,40 @@ impl DisplayOp for OpFSwzAdd {
 }
 impl_display_for_op!(OpFSwzAdd);
 
+pub enum RroOp {
+    SinCos,
+    Exp2,
+}
+
+impl fmt::Display for RroOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RroOp::SinCos => write!(f, ".sincos"),
+            RroOp::Exp2 => write!(f, ".exp2"),
+        }
+    }
+}
+
+/// MuFu range reduction operator
+///
+/// Not available on SM70+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpRro {
+    pub dst: Dst,
+    pub op: RroOp,
+
+    #[src_type(F32)]
+    pub src: Src,
+}
+
+impl DisplayOp for OpRro {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "rro{} {}", self.op, self.src)
+    }
+}
+impl_display_for_op!(OpRro);
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum MuFuOp {
@@ -4775,6 +4809,7 @@ pub enum Op {
     FFma(OpFFma),
     FMnMx(OpFMnMx),
     FMul(OpFMul),
+    Rro(OpRro),
     MuFu(OpMuFu),
     FSet(OpFSet),
     FSetP(OpFSetP),
@@ -5220,7 +5255,7 @@ impl Instr {
             | Op::FSwzAdd(_) => true,
 
             // Multi-function unit is variable latency
-            Op::MuFu(_) => false,
+            Op::Rro(_) | Op::MuFu(_) => false,
 
             // Double-precision float ALU
             Op::DAdd(_)

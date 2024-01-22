@@ -226,6 +226,9 @@ fn legalize_sm50_instr(
             copy_alu_src_if_not_reg(b, &mut op.srcs[1], SrcType::Pred);
             copy_alu_src_if_not_reg(b, &mut op.srcs[2], SrcType::Pred);
         }
+        Op::Rro(op) => {
+            copy_alu_src_if_f20_overflow(b, &mut op.src, SrcType::F32);
+        }
         Op::MuFu(op) => {
             copy_alu_src_if_not_reg(b, &mut op.src, SrcType::GPR);
         }

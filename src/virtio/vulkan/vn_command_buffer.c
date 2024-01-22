@@ -696,11 +696,13 @@ vn_CreateCommandPool(VkDevice device,
 static inline void
 vn_recycle_query_feedback_cmd(struct vn_command_buffer *cmd)
 {
+   simple_mtx_lock(&cmd->linked_query_feedback_cmd->pool->mutex);
    vn_ResetCommandBuffer(
       vn_command_buffer_to_handle(cmd->linked_query_feedback_cmd->cmd), 0);
    list_add(&cmd->linked_query_feedback_cmd->head,
             &cmd->linked_query_feedback_cmd->pool->free_query_feedback_cmds);
    cmd->linked_query_feedback_cmd = NULL;
+   simple_mtx_unlock(&cmd->linked_query_feedback_cmd->pool->mutex);
 }
 
 void

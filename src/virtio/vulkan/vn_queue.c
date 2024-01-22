@@ -999,12 +999,14 @@ vn_queue_submission_cleanup(struct vn_queue_submission *submit)
    const VkAllocationCallbacks *alloc = &queue->base.base.base.device->alloc;
 
    if (submit->recycle_query_feedback_cmd) {
+      simple_mtx_lock(&submit->recycle_query_feedback_cmd->pool->mutex);
       vn_ResetCommandBuffer(
          vn_command_buffer_to_handle(submit->recycle_query_feedback_cmd->cmd),
          0);
       list_add(
          &submit->recycle_query_feedback_cmd->head,
          &submit->recycle_query_feedback_cmd->pool->free_query_feedback_cmds);
+      simple_mtx_unlock(&submit->recycle_query_feedback_cmd->pool->mutex);
    }
 
    /* TODO clean up pending src feedbacks on failure? */

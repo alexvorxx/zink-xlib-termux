@@ -5021,6 +5021,9 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       ctx->stage[PIPE_SHADER_VERTEX].dirty = ~0;
 
       agx_batch_add_bo(batch, ctx->vs->bo);
+
+      batch->uniforms.layer_id_written =
+         ctx->vs->info.writes_layer_viewport ? ~0 : 0;
    } else if (ctx->stage[PIPE_SHADER_VERTEX].dirty ||
               (ctx->dirty & AGX_DIRTY_VERTEX))
       ctx->dirty |= AGX_DIRTY_VS;
@@ -5035,9 +5038,6 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       batch->uniforms.geometry_params =
          agx_batch_geometry_params(batch, ib, ib_extent, info, draws, indirect);
    }
-
-   struct agx_compiled_shader *vs = ctx->vs;
-   batch->uniforms.layer_id_written = vs->info.writes_layer_viewport ? ~0 : 0;
 
    /* Set draw ID */
    if (ctx->vs->info.uses_draw_id) {

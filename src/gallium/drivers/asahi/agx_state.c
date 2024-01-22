@@ -2527,6 +2527,19 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
       return false;
    }
 
+   /* Transform feedback always happens via the geometry shader, so look there
+    * to get the XFB strides.
+    */
+   struct agx_uncompiled_shader *gs = ctx->stage[PIPE_SHADER_GEOMETRY].shader;
+
+   for (unsigned i = 0; i < ctx->streamout.num_targets; ++i) {
+      struct agx_streamout_target *tgt =
+         agx_so_target(ctx->streamout.targets[i]);
+
+      if (tgt != NULL)
+         tgt->stride = gs->xfb_strides[i];
+   }
+
    /* XXX: Deduplicate this code from regular vertex */
    struct asahi_gs_shader_key key = {
       .ia.index_size = info->index_size,
@@ -5011,22 +5024,6 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    } else if (ctx->stage[PIPE_SHADER_VERTEX].dirty ||
               (ctx->dirty & AGX_DIRTY_VERTEX))
       ctx->dirty |= AGX_DIRTY_VS;
-
-   /* Transform feedback always happens via the geometry shader, so look there
-    * to get the XFB strides.
-    */
-   if (ctx->stage[PIPE_SHADER_GEOMETRY].shader) {
-      struct agx_uncompiled_shader *gs =
-         ctx->stage[PIPE_SHADER_GEOMETRY].shader;
-
-      for (unsigned i = 0; i < ctx->streamout.num_targets; ++i) {
-         struct agx_streamout_target *tgt =
-            agx_so_target(ctx->streamout.targets[i]);
-
-         if (tgt != NULL)
-            tgt->stride = gs->xfb_strides[i];
-      }
-   }
 
    agx_update_gs(ctx, info, indirect);
 

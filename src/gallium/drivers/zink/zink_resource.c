@@ -1336,6 +1336,22 @@ update_alloc_info_flags(struct zink_screen *screen, const struct pipe_resource *
    return true;
 }
 
+static inline void
+update_obj_info(struct zink_screen *screen, struct zink_resource_object *obj,
+                const struct pipe_resource *templ, struct mem_alloc_info *alloc_info)
+{
+   if (alloc_info->aflags == ZINK_ALLOC_SPARSE) {
+      obj->size = templ->width0;
+   } else {
+      obj->offset = zink_bo_get_offset(obj->bo);
+      obj->size = zink_bo_get_size(obj->bo);
+   }
+
+   obj->coherent = screen->info.mem_props.memoryTypes[obj->bo->base.base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+   if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {
+      obj->host_visible = screen->info.mem_props.memoryTypes[obj->bo->base.base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+   }
+}
 static struct zink_resource_object *
 resource_object_create(struct zink_screen *screen, const struct pipe_resource *templ, struct winsys_handle *whandle, bool *linear,
                        uint64_t *modifiers, int modifiers_count, const void *loader_private, const void *user_mem)
@@ -1416,12 +1432,6 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
      assert(obj->bo);
    };
 
-   if (alloc_info.aflags == ZINK_ALLOC_SPARSE) {
-      obj->size = templ->width0;
-   } else {
-      obj->offset = zink_bo_get_offset(obj->bo);
-      obj->size = zink_bo_get_size(obj->bo);
-   }
    if (zink_debug & ZINK_DEBUG_MEM) {
       char buf[4096];
       unsigned idx = 0;
@@ -1452,10 +1462,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       obj->bo->name = zink_debug_mem_add(screen, obj->size, buf);
    }
 
-   obj->coherent = screen->info.mem_props.memoryTypes[obj->bo->base.base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-   if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {
-      obj->host_visible = screen->info.mem_props.memoryTypes[obj->bo->base.base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-   }
+   update_obj_info(screen, obj, templ, &alloc_info);
 
    if (templ->target == PIPE_BUFFER) {
       if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {

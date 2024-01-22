@@ -465,6 +465,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
 #ifdef RADV_USE_WSI_PLATFORM
       .KHR_incremental_present = true,
 #endif
+      .KHR_index_type_uint8 = device->rad_info.gfx_level >= GFX8,
       .KHR_line_rasterization = true,
       .KHR_load_store_op_none = true,
       .KHR_maintenance1 = true,
@@ -823,7 +824,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
       /* VK_EXT_ycbcr_image_arrays */
       .ycbcrImageArrays = true,
 
-      /* VK_EXT_index_type_uint8 */
+      /* VK_KHR_index_type_uint8 */
       .indexTypeUint8 = pdevice->rad_info.gfx_level >= GFX8,
 
       /* VK_KHR_pipeline_executable_properties */

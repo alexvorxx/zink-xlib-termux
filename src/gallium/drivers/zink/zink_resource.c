@@ -1304,6 +1304,38 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
    return 0;
 }
 
+static inline bool
+update_alloc_info_flags(struct zink_screen *screen, const struct pipe_resource *templ,
+                        const void *user_mem, VkMemoryRequirements *reqs,
+                        struct mem_alloc_info *alloc_info)
+{
+   if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
+      alloc_info->flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+   else if (!(alloc_info->flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
+            templ->usage == PIPE_USAGE_STAGING)
+      alloc_info->flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+
+   if (templ->bind & ZINK_BIND_TRANSIENT)
+      alloc_info->flags |= VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+
+   if (user_mem) {
+      VkExternalMemoryHandleTypeFlagBits handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      VkMemoryHostPointerPropertiesEXT memory_host_pointer_properties = {0};
+      memory_host_pointer_properties.sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT;
+      memory_host_pointer_properties.pNext = NULL;
+      VkResult res = VKSCR(GetMemoryHostPointerPropertiesEXT)(screen->dev, handle_type, user_mem, &memory_host_pointer_properties);
+      if (res != VK_SUCCESS) {
+         mesa_loge("ZINK: vkGetMemoryHostPointerPropertiesEXT failed");
+         return false;
+      }
+      reqs->memoryTypeBits &= memory_host_pointer_properties.memoryTypeBits;
+      alloc_info->flags &= ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+   }
+
+   alloc_info->aflags = templ->flags & PIPE_RESOURCE_FLAG_SPARSE ? ZINK_ALLOC_SPARSE : 0;
+   return true;
+}
+
 static struct zink_resource_object *
 resource_object_create(struct zink_screen *screen, const struct pipe_resource *templ, struct winsys_handle *whandle, bool *linear,
                        uint64_t *modifiers, int modifiers_count, const void *loader_private, const void *user_mem)
@@ -1373,30 +1405,8 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    }
    obj->alignment = reqs.alignment;
 
-   if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
-      alloc_info.flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-   else if (!(alloc_info.flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
-            templ->usage == PIPE_USAGE_STAGING)
-      alloc_info.flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-
-   if (templ->bind & ZINK_BIND_TRANSIENT)
-      alloc_info.flags |= VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
-
-   if (user_mem) {
-      VkExternalMemoryHandleTypeFlagBits handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
-      VkMemoryHostPointerPropertiesEXT memory_host_pointer_properties = {0};
-      memory_host_pointer_properties.sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT;
-      memory_host_pointer_properties.pNext = NULL;
-      VkResult res = VKSCR(GetMemoryHostPointerPropertiesEXT)(screen->dev, handle_type, user_mem, &memory_host_pointer_properties);
-      if (res != VK_SUCCESS) {
-         mesa_loge("ZINK: vkGetMemoryHostPointerPropertiesEXT failed");
-         goto fail1;
-      }
-      reqs.memoryTypeBits &= memory_host_pointer_properties.memoryTypeBits;
-      alloc_info.flags &= ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-   }
-
-   alloc_info.aflags = templ->flags & PIPE_RESOURCE_FLAG_SPARSE ? ZINK_ALLOC_SPARSE : 0;
+   if (!update_alloc_info_flags(screen, templ, user_mem, &reqs, &alloc_info))
+      goto fail1;
 
    int retval = allocate_bo(screen, templ, &reqs, obj, &alloc_info);
    switch (retval) {

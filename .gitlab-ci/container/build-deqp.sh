@@ -141,7 +141,26 @@ if [ "${DEQP_TARGET}" = 'default' ]; then
   grep -q DEQP_SUPPORT_XCB=1 build.ninja
 fi
 
-mold --run ninja
+deqp_build_targets=()
+case "${DEQP_API}" in
+  VK)
+    deqp_build_targets+=(deqp-vk)
+    ;;
+  GL)
+    deqp_build_targets+=(glcts)
+    deqp_build_targets+=(deqp-gles{2,3,31})
+    if [ "${DEQP_TARGET}" = 'android' ]; then
+      deqp_build_targets+=(deqp-egl)
+    fi
+    ;;
+esac
+if [ "${DEQP_TARGET}" != 'android' ]; then
+  deqp_build_targets+=(testlog-to-xml)
+  deqp_build_targets+=(testlog-to-csv)
+  deqp_build_targets+=(testlog-to-junit)
+fi
+
+mold --run ninja "${deqp_build_targets[@]}"
 
 if [ "${DEQP_TARGET}" = 'android' ]; then
     mv /deqp/modules/egl/deqp-egl /deqp/modules/egl/deqp-egl-android
@@ -189,9 +208,13 @@ rm -rf /deqp/modules/internal
 rm -rf /deqp/execserver
 rm -rf /deqp/framework
 find . -depth \( -iname '*cmake*' -o -name '*ninja*' -o -name '*.o' -o -name '*.a' \) -exec rm -rf {} \;
-${STRIP_CMD:-strip} external/vulkancts/modules/vulkan/deqp-vk
-${STRIP_CMD:-strip} external/openglcts/modules/glcts
-${STRIP_CMD:-strip} modules/*/deqp-*
+if [ "${DEQP_API}" = 'VK' ]; then
+  ${STRIP_CMD:-strip} external/vulkancts/modules/vulkan/deqp-vk
+fi
+if [ "${DEQP_API}" = 'GL' ]; then
+  ${STRIP_CMD:-strip} external/openglcts/modules/glcts
+  ${STRIP_CMD:-strip} modules/*/deqp-*
+fi
 du -sh ./*
 rm -rf /VK-GL-CTS
 popd

@@ -465,6 +465,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
 #ifdef RADV_USE_WSI_PLATFORM
       .KHR_incremental_present = true,
 #endif
+      .KHR_line_rasterization = true,
       .KHR_load_store_op_none = true,
       .KHR_maintenance1 = true,
       .KHR_maintenance2 = true,
@@ -838,7 +839,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
       /* VK_AMD_device_coherent_memory */
       .deviceCoherentMemory = pdevice->rad_info.has_l2_uncached,
 
-      /* VK_EXT_line_rasterization */
+      /* VK_KHR_line_rasterization */
       .rectangularLines = true,
       .bresenhamLines = true,
       .smoothLines = true,
@@ -1597,7 +1598,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdevice)
    p->sampleLocationSubPixelBits = 4;
    p->variableSampleLocations = false;
 
-   /* VK_EXT_line_rasterization */
+   /* VK_KHR_line_rasterization */
    p->lineSubPixelPrecisionBits = 4;
 
    /* VK_EXT_robustness2 */

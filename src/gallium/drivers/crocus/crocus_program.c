@@ -433,7 +433,7 @@ crocus_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                       unsigned *out_num_cbufs)
 {
    const unsigned CROCUS_MAX_SYSTEM_VALUES =
-      PIPE_MAX_SHADER_IMAGES * BRW_IMAGE_PARAM_SIZE;
+      PIPE_MAX_SHADER_IMAGES * ISL_IMAGE_PARAM_SIZE;
    enum brw_param_builtin *system_values =
       rzalloc_array(mem_ctx, enum brw_param_builtin, CROCUS_MAX_SYSTEM_VALUES);
    unsigned num_system_values = 0;
@@ -572,31 +572,31 @@ crocus_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                   const unsigned img = var->data.binding + i;
 
                   img_idx[img] = num_system_values;
-                  num_system_values += BRW_IMAGE_PARAM_SIZE;
+                  num_system_values += ISL_IMAGE_PARAM_SIZE;
 
                   uint32_t *img_sv = &system_values[img_idx[img]];
 
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_OFFSET_OFFSET, img,
-                     offsetof(struct brw_image_param, offset), 2);
+                     img_sv + ISL_IMAGE_PARAM_OFFSET_OFFSET, img,
+                     offsetof(struct isl_image_param, offset), 2);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_SIZE_OFFSET, img,
-                     offsetof(struct brw_image_param, size), 3);
+                     img_sv + ISL_IMAGE_PARAM_SIZE_OFFSET, img,
+                     offsetof(struct isl_image_param, size), 3);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_STRIDE_OFFSET, img,
-                     offsetof(struct brw_image_param, stride), 4);
+                     img_sv + ISL_IMAGE_PARAM_STRIDE_OFFSET, img,
+                     offsetof(struct isl_image_param, stride), 4);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_TILING_OFFSET, img,
-                     offsetof(struct brw_image_param, tiling), 3);
+                     img_sv + ISL_IMAGE_PARAM_TILING_OFFSET, img,
+                     offsetof(struct isl_image_param, tiling), 3);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_SWIZZLING_OFFSET, img,
-                     offsetof(struct brw_image_param, swizzling), 2);
+                     img_sv + ISL_IMAGE_PARAM_SWIZZLING_OFFSET, img,
+                     offsetof(struct isl_image_param, swizzling), 2);
                }
             }
 
             b.cursor = nir_before_instr(instr);
             offset = nir_iadd_imm(&b,
-                                  get_aoa_deref_offset(&b, deref, BRW_IMAGE_PARAM_SIZE * 4),
+                                  get_aoa_deref_offset(&b, deref, ISL_IMAGE_PARAM_SIZE * 4),
                                   img_idx[var->data.binding] * 4 +
                                   nir_intrinsic_base(intrin) * 16);
             break;

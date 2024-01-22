@@ -37,15 +37,15 @@ _load_image_param(nir_builder *b, nir_deref_instr *deref, unsigned offset)
    nir_intrinsic_set_base(load, offset / 4);
 
    switch (offset) {
-   case BRW_IMAGE_PARAM_OFFSET_OFFSET:
-   case BRW_IMAGE_PARAM_SWIZZLING_OFFSET:
+   case ISL_IMAGE_PARAM_OFFSET_OFFSET:
+   case ISL_IMAGE_PARAM_SWIZZLING_OFFSET:
       load->num_components = 2;
       break;
-   case BRW_IMAGE_PARAM_TILING_OFFSET:
-   case BRW_IMAGE_PARAM_SIZE_OFFSET:
+   case ISL_IMAGE_PARAM_TILING_OFFSET:
+   case ISL_IMAGE_PARAM_SIZE_OFFSET:
       load->num_components = 3;
       break;
-   case BRW_IMAGE_PARAM_STRIDE_OFFSET:
+   case ISL_IMAGE_PARAM_STRIDE_OFFSET:
       load->num_components = 4;
       break;
    default:
@@ -58,7 +58,7 @@ _load_image_param(nir_builder *b, nir_deref_instr *deref, unsigned offset)
 }
 
 #define load_image_param(b, d, o) \
-   _load_image_param(b, d, BRW_IMAGE_PARAM_##o##_OFFSET)
+   _load_image_param(b, d, ISL_IMAGE_PARAM_##o##_OFFSET)
 
 static nir_def *
 image_coord_is_in_bounds(nir_builder *b, nir_deref_instr *deref,

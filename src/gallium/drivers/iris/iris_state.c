@@ -1532,7 +1532,7 @@ struct iris_genx_state {
 
    struct {
 #if GFX_VER == 8
-      struct brw_image_param image_param[PIPE_MAX_SHADER_IMAGES];
+      struct isl_image_param image_param[PIPE_MAX_SHADER_IMAGES];
 #endif
    } shaders[MESA_SHADER_STAGES];
 };
@@ -3193,7 +3193,7 @@ iris_create_surface(struct pipe_context *ctx,
 
 #if GFX_VER < 9
 static void
-fill_default_image_param(struct brw_image_param *param)
+fill_default_image_param(struct isl_image_param *param)
 {
    memset(param, 0, sizeof(*param));
    /* Set the swizzling shifts to all-ones to effectively disable swizzling --
@@ -3205,7 +3205,7 @@ fill_default_image_param(struct brw_image_param *param)
 }
 
 static void
-fill_buffer_image_param(struct brw_image_param *param,
+fill_buffer_image_param(struct isl_image_param *param,
                         enum pipe_format pfmt,
                         unsigned size)
 {
@@ -3237,7 +3237,7 @@ iris_set_shader_images(struct pipe_context *ctx,
    struct iris_shader_state *shs = &ice->state.shaders[stage];
 #if GFX_VER == 8
    struct iris_genx_state *genx = ice->state.genx;
-   struct brw_image_param *image_params = genx->shaders[stage].image_param;
+   struct isl_image_param *image_params = genx->shaders[stage].image_param;
 #endif
 
    shs->bound_image_views &=
@@ -3351,7 +3351,7 @@ iris_set_shader_images(struct pipe_context *ctx,
       stage == MESA_SHADER_COMPUTE ? IRIS_DIRTY_COMPUTE_RESOLVES_AND_FLUSHES
                                    : IRIS_DIRTY_RENDER_RESOLVES_AND_FLUSHES;
 
-   /* Broadwell also needs brw_image_params re-uploaded */
+   /* Broadwell also needs isl_image_params re-uploaded */
    if (GFX_VER < 9) {
       ice->state.stage_dirty |= IRIS_STAGE_DIRTY_CONSTANTS_VS << stage;
       shs->sysvals_need_upload = true;
@@ -3911,10 +3911,10 @@ upload_sysvals(struct iris_context *ice,
 #if GFX_VER == 8
          unsigned img = BRW_PARAM_IMAGE_IDX(sysval);
          unsigned offset = BRW_PARAM_IMAGE_OFFSET(sysval);
-         struct brw_image_param *param =
+         struct isl_image_param *param =
             &genx->shaders[stage].image_param[img];
 
-         assert(offset < sizeof(struct brw_image_param));
+         assert(offset < sizeof(struct isl_image_param));
          value = ((uint32_t *) param)[offset];
 #endif
       } else if (sysval == BRW_PARAM_BUILTIN_ZERO) {

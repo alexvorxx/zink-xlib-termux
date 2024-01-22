@@ -1781,7 +1781,7 @@ struct anv_buffer_view {
    struct anv_state storage_surface_state;
    struct anv_state lowered_storage_surface_state;
 
-   struct brw_image_param lowered_storage_image_param;
+   struct isl_image_param lowered_storage_image_param;
 };
 
 struct anv_push_descriptor_set {
@@ -3588,7 +3588,7 @@ struct anv_image_view {
       struct anv_surface_state storage_surface_state;
       struct anv_surface_state lowered_storage_surface_state;
 
-      struct brw_image_param lowered_storage_image_param;
+      struct isl_image_param lowered_storage_image_param;
    } planes[3];
 };
 
@@ -3606,7 +3606,7 @@ void anv_image_fill_surface_state(struct anv_device *device,
                                   const union isl_color_value *clear_color,
                                   enum anv_image_view_state_flags flags,
                                   struct anv_surface_state *state_inout,
-                                  struct brw_image_param *image_param_out);
+                                  struct isl_image_param *image_param_out);
 
 struct anv_image_create_info {
    const VkImageCreateInfo *vk_info;

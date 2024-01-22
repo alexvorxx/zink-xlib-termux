@@ -3088,7 +3088,7 @@ agx_update_descriptors(struct agx_batch *batch, struct agx_compiled_shader *cs,
 {
    struct agx_context *ctx = batch->ctx;
 
-   if (!cs)
+   if (!cs || !ctx->stage[stage].dirty)
       return;
 
    if (ctx->stage[stage].dirty & AGX_STAGE_DIRTY_CONST)
@@ -3107,12 +3107,10 @@ agx_update_descriptors(struct agx_batch *batch, struct agx_compiled_shader *cs,
        (ctx->stage[merged_stage(ctx, stage)].dirty & AGX_STAGE_DIRTY_SAMPLER))
       agx_upload_samplers(batch, cs, stage);
 
-   if (ctx->stage[stage].dirty) {
-      struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
+   struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
 
-      batch->uniforms.tables[AGX_SYSVAL_STAGE(stage)] =
-         agx_pool_upload_aligned(&batch->pool, unif, sizeof(*unif), 16);
-   }
+   batch->uniforms.tables[AGX_SYSVAL_STAGE(stage)] =
+      agx_pool_upload_aligned(&batch->pool, unif, sizeof(*unif), 16);
 }
 
 static uint32_t

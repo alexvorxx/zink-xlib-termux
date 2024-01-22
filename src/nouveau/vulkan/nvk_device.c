@@ -166,11 +166,15 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    dev->vk.command_buffer_ops = &nvk_cmd_buffer_ops;
    dev->pdev = pdev;
 
+   result = nvk_upload_queue_init(dev, &dev->upload);
+   if (result != VK_SUCCESS)
+      goto fail_ws_dev;
+
    result = nvk_descriptor_table_init(dev, &dev->images,
                                       8 * 4 /* tic entry size */,
                                       1024, 1024 * 1024);
    if (result != VK_SUCCESS)
-      goto fail_ws_dev;
+      goto fail_upload;
 
    /* Reserve the descriptor at offset 0 to be the null descriptor */
    uint32_t null_image[8] = { 0, };
@@ -268,6 +272,8 @@ fail_samplers:
    nvk_descriptor_table_finish(dev, &dev->samplers);
 fail_images:
    nvk_descriptor_table_finish(dev, &dev->images);
+fail_upload:
+   nvk_upload_queue_finish(dev, &dev->upload);
 fail_ws_dev:
    nouveau_ws_device_destroy(dev->ws_dev);
 fail_init:
@@ -293,11 +299,16 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       nouveau_ws_bo_destroy(dev->vab_memory);
    nouveau_ws_bo_destroy(dev->zero_page);
    vk_device_finish(&dev->vk);
+
+   /* Idle the upload queue before we tear down heaps */
+   nvk_upload_queue_sync(dev, &dev->upload);
+
    nvk_slm_area_finish(&dev->slm);
    nvk_heap_finish(dev, &dev->event_heap);
    nvk_heap_finish(dev, &dev->shader_heap);
    nvk_descriptor_table_finish(dev, &dev->samplers);
    nvk_descriptor_table_finish(dev, &dev->images);
+   nvk_upload_queue_finish(dev, &dev->upload);
    nouveau_ws_device_destroy(dev->ws_dev);
    vk_free(&dev->vk.alloc, dev);
 }

@@ -66,18 +66,26 @@ push_builder_init(struct nvk_queue *queue,
 }
 
 static void
+push_add_syncobj_wait(struct push_builder *pb,
+                      uint32_t syncobj,
+                      uint64_t wait_value)
+{
+   assert(pb->req.wait_count < NVK_PUSH_MAX_SYNCS);
+   pb->req_wait[pb->req.wait_count++] = (struct drm_nouveau_sync) {
+      .flags = wait_value ? DRM_NOUVEAU_SYNC_TIMELINE_SYNCOBJ :
+                            DRM_NOUVEAU_SYNC_SYNCOBJ,
+      .handle = syncobj,
+      .timeline_value = wait_value,
+   };
+}
+
+static void
 push_add_sync_wait(struct push_builder *pb,
                    struct vk_sync_wait *wait)
 {
-   struct vk_drm_syncobj *sync  = vk_sync_as_drm_syncobj(wait->sync);
-   assert(sync);
-   assert(pb->req.wait_count < NVK_PUSH_MAX_SYNCS);
-   pb->req_wait[pb->req.wait_count++] = (struct drm_nouveau_sync) {
-      .flags = wait->wait_value ? DRM_NOUVEAU_SYNC_TIMELINE_SYNCOBJ :
-                                  DRM_NOUVEAU_SYNC_SYNCOBJ,
-      .handle = sync->syncobj,
-      .timeline_value = wait->wait_value,
-   };
+   struct vk_drm_syncobj *sync = vk_sync_as_drm_syncobj(wait->sync);
+   assert(sync != NULL);
+   push_add_syncobj_wait(pb, sync->syncobj, wait->wait_value);
 }
 
 static void
@@ -363,11 +371,21 @@ nvk_queue_submit_drm_nouveau(struct nvk_queue *queue,
                              struct vk_queue_submit *submit,
                              bool sync)
 {
+   struct nvk_device *dev = nvk_queue_device(queue);
    struct push_builder pb;
+   VkResult result;
+
+   uint64_t upload_time_point;
+   result = nvk_upload_queue_flush(dev, &dev->upload, &upload_time_point);
+   if (result != VK_SUCCESS)
+      return result;
 
    const bool is_vmbind = submit->buffer_bind_count > 0 ||
                           submit->image_opaque_bind_count > 0;
    push_builder_init(queue, &pb, is_vmbind);
+
+   if (!is_vmbind && upload_time_point > 0)
+      push_add_syncobj_wait(&pb, dev->upload.drm.syncobj, upload_time_point);
 
    for (uint32_t i = 0; i < submit->wait_count; i++)
       push_add_sync_wait(&pb, &submit->waits[i]);
@@ -395,7 +413,7 @@ nvk_queue_submit_drm_nouveau(struct nvk_queue *queue,
                continue;
 
             if (pb.req.push_count >= pb.max_push) {
-               VkResult result = push_submit(queue, &pb, sync);
+               result = push_submit(queue, &pb, sync);
                if (result != VK_SUCCESS)
                   return result;
 

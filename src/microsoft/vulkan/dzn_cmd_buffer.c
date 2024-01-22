@@ -2895,9 +2895,11 @@ dzn_cmd_buffer_blit_issue_barriers(struct dzn_cmd_buffer *cmdbuf,
 
    if (!post) {
       if (cmdbuf->enhanced_barriers) {
+         D3D12_BARRIER_LAYOUT dst_new_layout = (aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) ?
+                                          D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE : D3D12_BARRIER_LAYOUT_RENDER_TARGET;
          *restore_dst_layout = dzn_cmd_buffer_require_layout(cmdbuf, dst,
                                                              dst_layout,
-                                                             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+                                                             dst_new_layout,
                                                              &dst_range);
       } else {
          VkImageLayout dst_new_layout = (aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) ?
@@ -2913,10 +2915,17 @@ dzn_cmd_buffer_blit_issue_barriers(struct dzn_cmd_buffer *cmdbuf,
       }
    } else {
       if (cmdbuf->enhanced_barriers) {
-         dzn_cmd_buffer_restore_layout(cmdbuf, dst,
-                                       D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET,
-                                       D3D12_BARRIER_LAYOUT_RENDER_TARGET, *restore_dst_layout,
-                                       &dst_range);
+         if ((aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))) {
+            dzn_cmd_buffer_restore_layout(cmdbuf, dst,
+                                          D3D12_BARRIER_SYNC_DEPTH_STENCIL, D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE,
+                                          D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, *restore_dst_layout,
+                                          &dst_range);
+         } else {
+            dzn_cmd_buffer_restore_layout(cmdbuf, dst,
+                                          D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET,
+                                          D3D12_BARRIER_LAYOUT_RENDER_TARGET, *restore_dst_layout,
+                                          &dst_range);
+         }
       } else {
          VkImageLayout dst_new_layout = (aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) ?
                                           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;

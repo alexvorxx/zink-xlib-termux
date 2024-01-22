@@ -162,7 +162,10 @@ nvk_heap_alloc_locked(struct nvk_device *dev, struct nvk_heap *heap,
          } else {
             *addr_out = heap->bos[bo_idx].bo->offset + bo_offset;
          }
-         *map_out = (char *)heap->bos[bo_idx].map + bo_offset;
+         if (map_out != NULL) {
+            assert(heap->bos[bo_idx].map != NULL);
+            *map_out = (char *)heap->bos[bo_idx].map + bo_offset;
+         }
 
          return VK_SUCCESS;
       }
@@ -215,15 +218,38 @@ nvk_heap_upload(struct nvk_device *dev, struct nvk_heap *heap,
                 uint64_t *addr_out)
 {
    simple_mtx_lock(&heap->mutex);
-
-   void *map;
    VkResult result = nvk_heap_alloc_locked(dev, heap, size, alignment,
-                                           addr_out, &map);
-   if (result == VK_SUCCESS)
-      memcpy(map, data, size);
+                                           addr_out, NULL /* map */);
    simple_mtx_unlock(&heap->mutex);
 
-   return result;
+   if (result != VK_SUCCESS)
+      return result;
+
+   /* Now, kick off an upload of the shader data.
+    *
+    * This is a queued operation that the driver ensures happens before any
+    * more client work via semaphores.  Because this is asynchronous and heap
+    * allocations are synchronous we have to be a bit careful here.  The heap
+    * only ever tracks the current known CPU state of everything while the
+    * upload queue makes that state valid at some point in the future.
+    *
+    * This can be especially tricky for very fast upload/free cycles such as
+    * if the client compiles a shader, throws it away without using it, and
+    * then compiles another shader that ends up at the same address.  What
+    * makes this all correct is the fact that the everything on the upload
+    * queue happens in a well-defined device-wide order.  In this case the
+    * first shader will get uploaded and then the second will get uploaded
+    * over top of it.  As long as we don't free the memory out from under the
+    * upload queue, everything will end up in the correct state by the time
+    * the client's shaders actually execute.
+    */
+   result = nvk_upload_queue_upload(dev, &dev->upload, *addr_out, data, size);
+   if (result != VK_SUCCESS) {
+      nvk_heap_free(dev, heap, *addr_out, size);
+      return result;
+   }
+
+   return VK_SUCCESS;
 }
 
 void

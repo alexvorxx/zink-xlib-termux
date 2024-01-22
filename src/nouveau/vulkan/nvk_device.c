@@ -196,7 +196,7 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
     */
    result = nvk_heap_init(dev, &dev->shader_heap,
                           NOUVEAU_WS_BO_LOCAL | NOUVEAU_WS_BO_NO_SHARE,
-                          NOUVEAU_WS_BO_WR,
+                          0 /* map_flags */,
                           4096 /* overalloc */,
                           dev->pdev->info.cls_eng3d < VOLTA_A);
    if (result != VK_SUCCESS)

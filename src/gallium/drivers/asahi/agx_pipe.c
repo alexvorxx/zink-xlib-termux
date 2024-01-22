@@ -1288,7 +1288,7 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
    assert(!agx_batch_is_submitted(batch));
 
    /* Make sure there's something to submit. */
-   if (!batch->clear && !batch->any_draws) {
+   if (!batch->clear) {
       agx_batch_reset(ctx, batch);
       return;
    }

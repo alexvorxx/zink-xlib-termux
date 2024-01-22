@@ -5128,8 +5128,6 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       batch->resolve |= ctx->zs->store;
    }
 
-   batch->any_draws = true;
-
    /* When we approach the end of a command buffer, cycle it out for a new one.
     * We only need to do this once per draw as long as we conservatively
     * estimate the maximum bytes of VDM commands that this draw will emit.
@@ -5257,8 +5255,6 @@ agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
 {
    struct agx_context *ctx = batch->ctx;
    struct agx_device *dev = agx_device(ctx->base.screen);
-
-   batch->any_draws = true;
 
    /* To implement load_num_workgroups, the number of workgroups needs to be
     * available in GPU memory. This is either the indirect buffer, or just a

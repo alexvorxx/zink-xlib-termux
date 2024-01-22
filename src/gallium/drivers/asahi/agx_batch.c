@@ -130,7 +130,6 @@ agx_batch_init(struct agx_context *ctx,
    batch->clear_stencil = 0;
    batch->varyings = 0;
    batch->geometry_state = 0;
-   batch->any_draws = false;
    batch->initialized = false;
    batch->draws = 0;
    agx_bo_unreference(batch->sampler_heap.bo);

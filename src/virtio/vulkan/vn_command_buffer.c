@@ -788,6 +788,12 @@ vn_ResetCommandPool(VkDevice device,
                             &pool->command_buffers, head)
       vn_cmd_reset(cmd);
 
+   if (flags & VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT) {
+      list_for_each_entry_safe(struct vn_feedback_query_batch, batch,
+                               &pool->free_query_batches, head)
+         vk_free(&pool->allocator, batch);
+   }
+
    vn_async_vkResetCommandPool(dev->primary_ring, device, commandPool, flags);
 
    return VK_SUCCESS;

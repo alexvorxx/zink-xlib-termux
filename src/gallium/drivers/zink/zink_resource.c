@@ -1067,8 +1067,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
 
 static inline bool
 update_alloc_info_flags(struct zink_screen *screen, const struct pipe_resource *templ,
-                        const void *user_mem, VkMemoryRequirements *reqs,
-                        struct mem_alloc_info *alloc_info)
+                        VkMemoryRequirements *reqs, struct mem_alloc_info *alloc_info)
 {
    if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
       alloc_info->flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -1079,12 +1078,12 @@ update_alloc_info_flags(struct zink_screen *screen, const struct pipe_resource *
    if (templ->bind & ZINK_BIND_TRANSIENT)
       alloc_info->flags |= VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
 
-   if (user_mem) {
+   if (alloc_info->user_mem) {
       VkExternalMemoryHandleTypeFlagBits handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
       VkMemoryHostPointerPropertiesEXT memory_host_pointer_properties = {0};
       memory_host_pointer_properties.sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT;
       memory_host_pointer_properties.pNext = NULL;
-      VkResult res = VKSCR(GetMemoryHostPointerPropertiesEXT)(screen->dev, handle_type, user_mem, &memory_host_pointer_properties);
+      VkResult res = VKSCR(GetMemoryHostPointerPropertiesEXT)(screen->dev, handle_type, alloc_info->user_mem, &memory_host_pointer_properties);
       if (res != VK_SUCCESS) {
          mesa_loge("ZINK: vkGetMemoryHostPointerPropertiesEXT failed");
          return false;
@@ -1149,9 +1148,9 @@ debug_resource_mem(struct zink_resource_object *obj, const struct pipe_resource 
 static inline int
 allocate_bo_and_update_obj(struct zink_screen *screen, const struct pipe_resource *templ,
                            VkMemoryRequirements *reqs, struct zink_resource_object *obj,
-                           struct mem_alloc_info *alloc_info, const void *user_mem)
+                           struct mem_alloc_info *alloc_info)
 {
-   if (!update_alloc_info_flags(screen, templ, user_mem, reqs, alloc_info))
+   if (!update_alloc_info_flags(screen, templ, reqs, alloc_info))
       return -1;
 
    int retval = allocate_bo(screen, templ, reqs, obj, alloc_info);
@@ -1168,13 +1167,13 @@ allocate_bo_and_update_obj(struct zink_screen *screen, const struct pipe_resourc
 static inline int
 create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
               const struct pipe_resource *templ, uint64_t *modifiers,
-              int modifiers_count, const void *user_mem, struct mem_alloc_info *alloc_info,
-              VkMemoryRequirements *reqs)
+              int modifiers_count, struct mem_alloc_info *alloc_info)
 {
    VkBufferCreateInfo bci = create_bci(screen, templ, templ->bind);
    VkExternalMemoryBufferCreateInfo embci;
+   VkMemoryRequirements reqs = {0};
 
-   if (user_mem) {
+   if (alloc_info->user_mem) {
       embci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
       embci.pNext = bci.pNext;
       embci.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
@@ -1198,11 +1197,11 @@ create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
    if (modifiers_count) {
       assert(modifiers_count == 3);
       /* this is the DGC path because there's no other way to pass mem bits and I don't wanna copy/paste everything around */
-      reqs->size = modifiers[0];
-      reqs->alignment = modifiers[1];
-      reqs->memoryTypeBits = modifiers[2];
+      reqs.size = modifiers[0];
+      reqs.alignment = modifiers[1];
+      reqs.memoryTypeBits = modifiers[2];
    } else {
-      VKSCR(GetBufferMemoryRequirements)(screen->dev, obj->buffer, reqs);
+      VKSCR(GetBufferMemoryRequirements)(screen->dev, obj->buffer, &reqs);
    }
 
    if (templ->usage == PIPE_USAGE_STAGING)
@@ -1219,7 +1218,7 @@ create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
    obj->vkflags = bci.flags;
    obj->vkusage = bci.usage;
 
-   int retval = allocate_bo_and_update_obj(screen, templ, reqs, obj,  alloc_info, user_mem);
+   int retval = allocate_bo_and_update_obj(screen, templ, &reqs, obj,  alloc_info);
    if (retval)
       return retval;
 
@@ -1240,9 +1239,9 @@ static inline int
 create_image(struct zink_screen *screen, struct zink_resource_object *obj,
              const struct pipe_resource *templ, bool *linear,
              uint64_t *modifiers, int modifiers_count,
-             const void *user_mem, struct mem_alloc_info *alloc_info,
-             VkMemoryRequirements *reqs)
+             struct mem_alloc_info *alloc_info)
 {
+   VkMemoryRequirements reqs = {0};
    bool winsys_modifier = (alloc_info->export_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT) &&
                           alloc_info->whandle &&
                           alloc_info->whandle->modifier != DRM_FORMAT_MOD_INVALID;
@@ -1344,7 +1343,7 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
       } else if (ici.tiling == VK_IMAGE_TILING_OPTIMAL) {
          alloc_info->shared = false;
       }
-   } else if (user_mem) {
+   } else if (alloc_info->user_mem) {
       emici.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
       emici.pNext = ici.pNext;
       emici.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
@@ -1407,7 +1406,7 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
    }
 
    unsigned num_planes = util_format_get_num_planes(templ->format);
-   alloc_info->need_dedicated = get_image_memory_requirement(screen, obj, num_planes, reqs);
+   alloc_info->need_dedicated = get_image_memory_requirement(screen, obj, num_planes, &reqs);
    if (templ->usage == PIPE_USAGE_STAGING && ici.tiling == VK_IMAGE_TILING_LINEAR)
       alloc_info->flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
    else
@@ -1416,7 +1415,7 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
    obj->vkflags = ici.flags;
    obj->vkusage = ici.usage;
 
-   int retval = allocate_bo_and_update_obj(screen, templ, reqs, obj,  alloc_info, user_mem);
+   int retval = allocate_bo_and_update_obj(screen, templ, &reqs, obj,  alloc_info);
    if (retval)
       return retval;
 
@@ -1466,8 +1465,6 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    obj->unsync_access = true;
    obj->last_dt_idx = obj->dt_idx = UINT32_MAX; //TODO: unionize
 
-   VkMemoryRequirements reqs = {0};
-
    struct mem_alloc_info alloc_info = {
       .whandle = whandle,
       .need_dedicated = false,
@@ -1507,12 +1504,11 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    int create_result = 0;
    if (templ->target == PIPE_BUFFER) {
       max_level = 1;
-      create_result = create_buffer(screen, obj, templ, modifiers, modifiers_count, user_mem,
-                                    &alloc_info, &reqs);
+      create_result = create_buffer(screen, obj, templ, modifiers, modifiers_count, &alloc_info);
    } else {
       max_level = templ->last_level + 1;
       create_result = create_image(screen, obj, templ, linear, modifiers, modifiers_count,
-                                   user_mem, &alloc_info, &reqs);
+                                   &alloc_info);
    }
 
    switch (create_result) {

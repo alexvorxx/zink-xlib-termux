@@ -413,18 +413,41 @@ struct blorp_program {
 };
 
 struct blorp_program
+blorp_compile_fs_brw(struct blorp_context *blorp, void *mem_ctx,
+                     struct nir_shader *nir,
+                     bool multisample_fbo,
+                     bool use_repclear);
+
+static inline struct blorp_program
 blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir,
                  bool multisample_fbo,
-                 bool use_repclear);
+                 bool use_repclear)
+{
+   return blorp_compile_fs_brw(blorp, mem_ctx, nir, multisample_fbo, use_repclear);
+}
 
 struct blorp_program
+blorp_compile_vs_brw(struct blorp_context *blorp, void *mem_ctx,
+                     struct nir_shader *nir);
+
+static inline struct blorp_program
 blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
-                 struct nir_shader *nir);
+                 struct nir_shader *nir)
+{
+   return blorp_compile_vs_brw(blorp, mem_ctx, nir);
+}
 
 bool
+blorp_ensure_sf_program_brw(struct blorp_batch *batch,
+                            struct blorp_params *params);
+
+static inline bool
 blorp_ensure_sf_program(struct blorp_batch *batch,
-                        struct blorp_params *params);
+                        struct blorp_params *params)
+{
+   return blorp_ensure_sf_program_brw(batch, params);
+}
 
 static inline uint8_t
 blorp_get_cs_local_y(struct blorp_params *params)
@@ -450,8 +473,26 @@ blorp_set_cs_dims(struct nir_shader *nir, uint8_t local_y)
 }
 
 struct blorp_program
+blorp_compile_cs_brw(struct blorp_context *blorp, void *mem_ctx,
+                     struct nir_shader *nir);
+
+static inline struct blorp_program
 blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
-                 struct nir_shader *nir);
+                 struct nir_shader *nir)
+{
+   return blorp_compile_cs_brw(blorp, mem_ctx, nir);
+}
+
+bool
+blorp_params_get_layer_offset_vs_brw(struct blorp_batch *batch,
+                                     struct blorp_params *params);
+
+static inline bool
+blorp_params_get_layer_offset_vs(struct blorp_batch *batch,
+                                 struct blorp_params *params)
+{
+   return blorp_params_get_layer_offset_vs_brw(batch, params);
+}
 
 /** \} */
 

@@ -26,9 +26,9 @@
 #include "util/macros.h" /* Needed for MAX3 and MAX2 for format_rgb9e5 */
 #include "util/format_rgb9e5.h"
 #include "util/format_srgb.h"
+#include "util/u_math.h"
 
 #include "blorp_priv.h"
-#include "compiler/brw_compiler.h"
 #include "dev/intel_debug.h"
 #include "dev/intel_device_info.h"
 
@@ -191,98 +191,6 @@ blorp_params_get_clear_kernel(struct blorp_batch *batch,
                                               use_replicated_data,
                                               clear_rgb_as_red);
    }
-}
-
-#pragma pack(push, 1)
-struct layer_offset_vs_key {
-   struct blorp_base_key base;
-   unsigned num_inputs;
-};
-#pragma pack(pop)
-
-/* In the case of doing attachment clears, we are using a surface state that
- * is handed to us so we can't set (and don't even know) the base array layer.
- * In order to do a layered clear in this scenario, we need some way of adding
- * the base array layer to the instance id.  Unfortunately, our hardware has
- * no real concept of "base instance", so we have to do it manually in a
- * vertex shader.
- */
-static bool
-blorp_params_get_layer_offset_vs(struct blorp_batch *batch,
-                                 struct blorp_params *params)
-{
-   struct blorp_context *blorp = batch->blorp;
-   struct layer_offset_vs_key blorp_key = {
-      .base = BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_LAYER_OFFSET_VS),
-   };
-
-   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
-   if (wm_prog_data)
-      blorp_key.num_inputs = wm_prog_data->num_varying_inputs;
-
-   if (blorp->lookup_shader(batch, &blorp_key, sizeof(blorp_key),
-                            &params->vs_prog_kernel, &params->vs_prog_data))
-      return true;
-
-   void *mem_ctx = ralloc_context(NULL);
-
-   nir_builder b;
-   blorp_nir_init_shader(&b, mem_ctx, MESA_SHADER_VERTEX,
-                         blorp_shader_type_to_name(blorp_key.base.shader_type));
-
-   const struct glsl_type *uvec4_type = glsl_vector_type(GLSL_TYPE_UINT, 4);
-
-   /* First we deal with the header which has instance and base instance */
-   nir_variable *a_header = nir_variable_create(b.shader, nir_var_shader_in,
-                                                uvec4_type, "header");
-   a_header->data.location = VERT_ATTRIB_GENERIC0;
-
-   nir_variable *v_layer = nir_variable_create(b.shader, nir_var_shader_out,
-                                               glsl_int_type(), "layer_id");
-   v_layer->data.location = VARYING_SLOT_LAYER;
-
-   /* Compute the layer id */
-   nir_def *header = nir_load_var(&b, a_header);
-   nir_def *base_layer = nir_channel(&b, header, 0);
-   nir_def *instance = nir_channel(&b, header, 1);
-   nir_store_var(&b, v_layer, nir_iadd(&b, instance, base_layer), 0x1);
-
-   /* Then we copy the vertex from the next slot to VARYING_SLOT_POS */
-   nir_variable *a_vertex = nir_variable_create(b.shader, nir_var_shader_in,
-                                                glsl_vec4_type(), "a_vertex");
-   a_vertex->data.location = VERT_ATTRIB_GENERIC1;
-
-   nir_variable *v_pos = nir_variable_create(b.shader, nir_var_shader_out,
-                                             glsl_vec4_type(), "v_pos");
-   v_pos->data.location = VARYING_SLOT_POS;
-
-   nir_copy_var(&b, v_pos, a_vertex);
-
-   /* Then we copy everything else */
-   for (unsigned i = 0; i < blorp_key.num_inputs; i++) {
-      nir_variable *a_in = nir_variable_create(b.shader, nir_var_shader_in,
-                                               uvec4_type, "input");
-      a_in->data.location = VERT_ATTRIB_GENERIC2 + i;
-
-      nir_variable *v_out = nir_variable_create(b.shader, nir_var_shader_out,
-                                                uvec4_type, "output");
-      v_out->data.location = VARYING_SLOT_VAR0 + i;
-
-      nir_copy_var(&b, v_out, a_in);
-   }
-
-   const struct blorp_program p =
-      blorp_compile_vs(blorp, mem_ctx, b.shader);
-
-   bool result =
-      blorp->upload_shader(batch, MESA_SHADER_VERTEX,
-                           &blorp_key, sizeof(blorp_key),
-                           p.kernel, p.kernel_size,
-                           p.prog_data, p.prog_data_size,
-                           &params->vs_prog_kernel, &params->vs_prog_data);
-
-   ralloc_free(mem_ctx);
-   return result;
 }
 
 /* The x0, y0, x1, and y1 parameters must already be populated with the render

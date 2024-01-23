@@ -28,9 +28,13 @@ files_libblorp = files(
   'blorp_priv.h',
 )
 
+files_blorp_brw = files(
+  'blorp_brw.c',
+)
+
 libblorp = static_library(
   'blorp',
-  [files_libblorp],
+  [files_libblorp, files_blorp_brw],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',

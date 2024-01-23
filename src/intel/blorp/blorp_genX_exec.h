@@ -134,6 +134,19 @@ static void
 blorp_emit_post_draw(struct blorp_batch *batch,
                      const struct blorp_params *params);
 
+static inline unsigned
+brw_blorp_get_urb_length(const struct brw_wm_prog_data *prog_data)
+{
+   if (prog_data == NULL)
+      return 1;
+
+   /* From the BSpec: 3D Pipeline - Strips and Fans - 3DSTATE_SBE
+    *
+    * read_length = ceiling((max_source_attr+1)/2)
+    */
+   return MAX2((prog_data->num_varying_inputs + 1) / 2, 1);
+}
+
 /***** BEGIN blorp_exec implementation ******/
 
 static uint64_t

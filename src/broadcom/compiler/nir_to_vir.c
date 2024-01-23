@@ -3734,6 +3734,59 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
                 break;
         }
 
+        case nir_intrinsic_ballot: {
+                assert(c->devinfo->ver >= 71);
+                struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                struct qreg res = vir_get_temp(c);
+                if (vir_in_nonuniform_control_flow(c)) {
+                        /* Ballot uses the MSF mask and the condition mask to
+                         * identify active lanes. Particularly, it uses the
+                         * condition mask to filter out lanes disabled by
+                         * control flow.
+                         */
+                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
+                                   V3D_QPU_PF_PUSHZ);
+                        vir_set_cond(vir_BALLOT_dest(c, res, value),
+                                     V3D_QPU_COND_IFA);
+                } else {
+                        vir_BALLOT_dest(c, res, value);
+                }
+
+                ntq_store_def(c, &instr->def, 0, vir_MOV(c, res));
+                break;
+        }
+
+        case nir_intrinsic_read_invocation: {
+                assert(c->devinfo->ver >= 71);
+                struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                struct qreg index = ntq_get_src(c, instr->src[1], 0);
+                struct qreg res = vir_SHUFFLE(c, value, index);
+                ntq_store_def(c, &instr->def, 0, vir_MOV(c, res));
+                break;
+        }
+
+        case nir_intrinsic_read_first_invocation: {
+                assert(c->devinfo->ver >= 71);
+                struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                struct qreg res = vir_get_temp(c);
+                if (vir_in_nonuniform_control_flow(c)) {
+                        /* Bcastf uses the MSF mask and the condition mask to
+                         * identify active lanes. Particularly, it uses the
+                         * condition mask to filter out lanes disabled by
+                         * control flow.
+                         */
+                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
+                                   V3D_QPU_PF_PUSHZ);
+                        vir_set_cond(vir_BCASTF_dest(c, res, value),
+                                     V3D_QPU_COND_IFA);
+                } else {
+                        vir_BCASTF_dest(c, res, value);
+                }
+
+                ntq_store_def(c, &instr->def, 0, vir_MOV(c, res));
+                break;
+        }
+
         case nir_intrinsic_load_num_subgroups:
                 unreachable("Should have been lowered");
                 break;

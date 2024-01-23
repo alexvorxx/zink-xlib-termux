@@ -889,36 +889,6 @@ get_format_feature_flags(VkImageCreateInfo ici, struct zink_screen *screen, cons
 #endif
 
 
-static inline bool
-get_export_flags(struct zink_screen *screen, const struct pipe_resource *templ,
-                 const struct winsys_handle *whandle,
-                 VkExternalMemoryHandleTypeFlags *external,
-                 VkExternalMemoryHandleTypeFlags *export_types)
-{
-   bool needs_export = (templ->bind & (ZINK_BIND_VIDEO | ZINK_BIND_DMABUF)) != 0;
-   if (whandle) {
-      if (whandle->type == WINSYS_HANDLE_TYPE_FD || whandle->type == ZINK_EXTERNAL_MEMORY_HANDLE)
-         needs_export |= true;
-      else
-         unreachable("unknown handle type");
-   }
-   if (needs_export) {
-      if (whandle && whandle->type == ZINK_EXTERNAL_MEMORY_HANDLE) {
-         *external = ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT;
-      } else if (screen->info.have_EXT_external_memory_dma_buf) {
-         *external = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-         *export_types |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-      } else {
-         return false;
-      }
-   }
-
-   /* we may export WINSYS_HANDLE_TYPE_FD handle which is dma-buf */
-   if (templ->bind & PIPE_BIND_SHARED && screen->info.have_EXT_external_memory_dma_buf)
-      *export_types |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-   return true;
-}
-
 struct mem_alloc_info {
    struct winsys_handle *whandle;
    VkMemoryPropertyFlags flags;
@@ -929,6 +899,35 @@ struct mem_alloc_info {
    VkExternalMemoryHandleTypeFlags external;
    VkExternalMemoryHandleTypeFlags export_types;
 };
+
+static inline bool
+get_export_flags(struct zink_screen *screen, const struct pipe_resource *templ, struct mem_alloc_info *alloc_info)
+{
+   bool needs_export = (templ->bind & (ZINK_BIND_VIDEO | ZINK_BIND_DMABUF)) != 0;
+   if (alloc_info->whandle) {
+      if (alloc_info->whandle->type == WINSYS_HANDLE_TYPE_FD ||
+          alloc_info->whandle->type == ZINK_EXTERNAL_MEMORY_HANDLE)
+         needs_export |= true;
+      else
+         unreachable("unknown handle type");
+   }
+   if (needs_export) {
+      if (alloc_info->whandle && alloc_info->whandle->type == ZINK_EXTERNAL_MEMORY_HANDLE) {
+         alloc_info->external = ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT;
+      } else if (screen->info.have_EXT_external_memory_dma_buf) {
+         alloc_info->external = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+         alloc_info->export_types |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+      } else {
+         return false;
+      }
+   }
+
+   /* we may export WINSYS_HANDLE_TYPE_FD handle which is dma-buf */
+   if (templ->bind & PIPE_BIND_SHARED && screen->info.have_EXT_external_memory_dma_buf)
+      alloc_info->export_types |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+   return true;
+}
+
 
 static inline int
 allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
@@ -1488,7 +1487,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          break;
    }
 
-   if (!get_export_flags(screen, templ, whandle, &alloc_info.external, &alloc_info.export_types)) {
+   if (!get_export_flags(screen, templ, &alloc_info)) {
       /* can't export anything, fail early */
       return NULL;
    }

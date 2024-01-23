@@ -250,18 +250,16 @@ blorp_params_init(struct blorp_params *params)
    params->num_layers = 1;
 }
 
-const unsigned *
+struct blorp_program
 blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir,
                  bool multisample_fbo,
-                 bool use_repclear,
-                 struct brw_wm_prog_data *wm_prog_data)
+                 bool use_repclear)
 {
    const struct brw_compiler *compiler = blorp->compiler;
    nir->options = compiler->nir_options[MESA_SHADER_FRAGMENT];
 
-   memset(wm_prog_data, 0, sizeof(*wm_prog_data));
-
+   struct brw_wm_prog_data *wm_prog_data = rzalloc(mem_ctx, struct brw_wm_prog_data);
    wm_prog_data->base.nr_params = 0;
    wm_prog_data->base.param = NULL;
 
@@ -296,13 +294,18 @@ blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
       .max_polygons = 1,
    };
 
-   return brw_compile_fs(compiler, &params);
+   const unsigned *kernel = brw_compile_fs(compiler, &params);
+   return (struct blorp_program){
+      .kernel         = kernel,
+      .kernel_size    = wm_prog_data->base.program_size,
+      .prog_data      = wm_prog_data,
+      .prog_data_size = sizeof(*wm_prog_data),
+   };
 }
 
-const unsigned *
+struct blorp_program
 blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
-                 struct nir_shader *nir,
-                 struct brw_vs_prog_data *vs_prog_data)
+                 struct nir_shader *nir)
 {
    const struct brw_compiler *compiler = blorp->compiler;
 
@@ -312,6 +315,7 @@ blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
    brw_preprocess_nir(compiler, nir, &opts);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
+   struct brw_vs_prog_data *vs_prog_data = rzalloc(mem_ctx, struct brw_vs_prog_data);
    vs_prog_data->inputs_read = nir->info.inputs_read;
 
    brw_compute_vue_map(compiler->devinfo,
@@ -333,7 +337,13 @@ blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
       .prog_data = vs_prog_data,
    };
 
-   return brw_compile_vs(compiler, &params);
+   const unsigned *kernel = brw_compile_vs(compiler, &params);
+   return (struct blorp_program) {
+      .kernel         = kernel,
+      .kernel_size    = vs_prog_data->base.base.program_size,
+      .prog_data      = vs_prog_data,
+      .prog_data_size = sizeof(*vs_prog_data),
+   };
 }
 
 static bool
@@ -348,16 +358,13 @@ lower_base_workgroup_id(nir_builder *b, nir_intrinsic_instr *intrin,
    return true;
 }
 
-const unsigned *
+struct blorp_program
 blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
-                 struct nir_shader *nir,
-                 struct brw_cs_prog_data *cs_prog_data)
+                 struct nir_shader *nir)
 {
    const struct brw_compiler *compiler = blorp->compiler;
 
    nir->options = compiler->nir_options[MESA_SHADER_COMPUTE];
-
-   memset(cs_prog_data, 0, sizeof(*cs_prog_data));
 
    struct brw_nir_compiler_opts opts = {};
    brw_preprocess_nir(compiler, nir, &opts);
@@ -370,6 +377,8 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
                  sizeof(struct blorp_wm_inputs));
    nir->num_uniforms = offsetof(struct blorp_wm_inputs, subgroup_id);
    unsigned nr_params = nir->num_uniforms / 4;
+
+   struct brw_cs_prog_data *cs_prog_data = rzalloc(mem_ctx, struct brw_cs_prog_data);
    cs_prog_data->base.nr_params = nr_params;
    cs_prog_data->base.param = rzalloc_array(NULL, uint32_t, nr_params);
 
@@ -392,12 +401,17 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
       .prog_data = cs_prog_data,
    };
 
-   const unsigned *program = brw_compile_cs(compiler, &params);
+   const unsigned *kernel = brw_compile_cs(compiler, &params);
 
    ralloc_free(cs_prog_data->base.param);
    cs_prog_data->base.param = NULL;
 
-   return program;
+   return (struct blorp_program) {
+      .kernel         = kernel,
+      .kernel_size    = cs_prog_data->base.program_size,
+      .prog_data      = cs_prog_data,
+      .prog_data_size = sizeof(*cs_prog_data),
+   };
 }
 
 struct blorp_sf_key {

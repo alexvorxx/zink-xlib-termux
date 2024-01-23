@@ -418,17 +418,23 @@ bool blorp_blitter_supports_aux(const struct intel_device_info *devinfo,
 const char *blorp_shader_type_to_name(enum blorp_shader_type type);
 const char *blorp_shader_pipeline_to_name(enum blorp_shader_pipeline pipe);
 
-const unsigned *
+struct blorp_program {
+   const void *kernel;
+   uint32_t    kernel_size;
+
+   const void *prog_data;
+   uint32_t    prog_data_size;
+};
+
+struct blorp_program
 blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir,
                  bool multisample_fbo,
-                 bool use_repclear,
-                 struct brw_wm_prog_data *wm_prog_data);
+                 bool use_repclear);
 
-const unsigned *
+struct blorp_program
 blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
-                 struct nir_shader *nir,
-                 struct brw_vs_prog_data *vs_prog_data);
+                 struct nir_shader *nir);
 
 bool
 blorp_ensure_sf_program(struct blorp_batch *batch,
@@ -457,10 +463,9 @@ blorp_set_cs_dims(struct nir_shader *nir, uint8_t local_y)
    nir->info.workgroup_size[2] = 1;
 }
 
-const unsigned *
+struct blorp_program
 blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
-                 struct nir_shader *nir,
-                 struct brw_cs_prog_data *cs_prog_data);
+                 struct nir_shader *nir);
 
 /** \} */
 

@@ -28,7 +28,6 @@
 #include "util/format_srgb.h"
 
 #include "blorp_priv.h"
-#include "compiler/brw_eu_defines.h"
 #include "dev/intel_debug.h"
 
 #include "blorp_nir_builder.h"
@@ -90,17 +89,15 @@ blorp_params_get_clear_kernel_fs(struct blorp_batch *batch,
    frag_color->data.location = FRAG_RESULT_COLOR;
    nir_store_var(&b, frag_color, color, 0xf);
 
-   struct brw_wm_prog_data prog_data;
    const bool multisample_fbo = false;
-   const unsigned *program =
-      blorp_compile_fs(blorp, mem_ctx, b.shader, multisample_fbo, use_replicated_data,
-                       &prog_data);
+   struct blorp_program p =
+      blorp_compile_fs(blorp, mem_ctx, b.shader, multisample_fbo, use_replicated_data);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_FRAGMENT,
                            &blorp_key, sizeof(blorp_key),
-                           program, prog_data.base.program_size,
-                           &prog_data.base, sizeof(prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->wm_prog_kernel, &params->wm_prog_data);
 
    ralloc_free(mem_ctx);
@@ -164,15 +161,14 @@ blorp_params_get_clear_kernel_cs(struct blorp_batch *batch,
 
    nir_pop_if(&b, NULL);
 
-   struct brw_cs_prog_data prog_data;
-   const unsigned *program =
-      blorp_compile_cs(blorp, mem_ctx, b.shader, &prog_data);
+   const struct blorp_program p =
+      blorp_compile_cs(blorp, mem_ctx, b.shader);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_COMPUTE,
                            &blorp_key, sizeof(blorp_key),
-                           program, prog_data.base.program_size,
-                           &prog_data.base, sizeof(prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->cs_prog_kernel, &params->cs_prog_data);
 
    ralloc_free(mem_ctx);
@@ -272,17 +268,14 @@ blorp_params_get_layer_offset_vs(struct blorp_batch *batch,
       nir_copy_var(&b, v_out, a_in);
    }
 
-   struct brw_vs_prog_data vs_prog_data;
-   memset(&vs_prog_data, 0, sizeof(vs_prog_data));
-
-   const unsigned *program =
-      blorp_compile_vs(blorp, mem_ctx, b.shader, &vs_prog_data);
+   const struct blorp_program p =
+      blorp_compile_vs(blorp, mem_ctx, b.shader);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_VERTEX,
                            &blorp_key, sizeof(blorp_key),
-                           program, vs_prog_data.base.base.program_size,
-                           &vs_prog_data.base.base, sizeof(vs_prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->vs_prog_kernel, &params->vs_prog_data);
 
    ralloc_free(mem_ctx);
@@ -1381,17 +1374,15 @@ blorp_params_get_mcs_partial_resolve_kernel(struct blorp_batch *batch,
    }
    nir_store_var(&b, frag_color, clear_color, 0xf);
 
-   struct brw_wm_prog_data prog_data;
    const bool multisample_fbo = true;
-   const unsigned *program =
-      blorp_compile_fs(blorp, mem_ctx, b.shader, multisample_fbo, false,
-                       &prog_data);
+   const struct blorp_program p =
+      blorp_compile_fs(blorp, mem_ctx, b.shader, multisample_fbo, false);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_FRAGMENT,
                            &blorp_key, sizeof(blorp_key),
-                           program, prog_data.base.program_size,
-                           &prog_data.base, sizeof(prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->wm_prog_kernel, &params->wm_prog_data);
 
    ralloc_free(mem_ctx);

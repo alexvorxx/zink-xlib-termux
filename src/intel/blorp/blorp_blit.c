@@ -1510,23 +1510,20 @@ blorp_get_blit_kernel_fs(struct blorp_batch *batch,
 
    void *mem_ctx = ralloc_context(NULL);
 
-   const unsigned *program;
-   struct brw_wm_prog_data prog_data;
-
    nir_shader *nir = blorp_build_nir_shader(blorp, batch, mem_ctx, key);
    nir->info.name =
       ralloc_strdup(nir, blorp_shader_type_to_name(key->base.shader_type));
 
    const bool multisample_fbo = key->rt_samples > 1;
 
-   program = blorp_compile_fs(blorp, mem_ctx, nir, multisample_fbo, false,
-                              &prog_data);
+   const struct blorp_program p =
+      blorp_compile_fs(blorp, mem_ctx, nir, multisample_fbo, false);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_FRAGMENT,
                            key, sizeof(*key),
-                           program, prog_data.base.program_size,
-                           &prog_data.base, sizeof(prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->wm_prog_kernel, &params->wm_prog_data);
 
    ralloc_free(mem_ctx);
@@ -1546,9 +1543,6 @@ blorp_get_blit_kernel_cs(struct blorp_batch *batch,
 
    void *mem_ctx = ralloc_context(NULL);
 
-   const unsigned *program;
-   struct brw_cs_prog_data prog_data;
-
    nir_shader *nir = blorp_build_nir_shader(blorp, batch, mem_ctx,
                                                 prog_key);
    nir->info.name = ralloc_strdup(nir, "BLORP-gpgpu-blit");
@@ -1556,13 +1550,14 @@ blorp_get_blit_kernel_cs(struct blorp_batch *batch,
 
    assert(prog_key->rt_samples == 1);
 
-   program = blorp_compile_cs(blorp, mem_ctx, nir, &prog_data);
+   const struct blorp_program p =
+      blorp_compile_cs(blorp, mem_ctx, nir);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_COMPUTE,
                            prog_key, sizeof(*prog_key),
-                           program, prog_data.base.program_size,
-                           &prog_data.base, sizeof(prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->cs_prog_kernel, &params->cs_prog_data);
 
    ralloc_free(mem_ctx);

@@ -75,6 +75,13 @@
 
 #define dzn_stub() unreachable("Unsupported feature")
 
+#if defined(VK_USE_PLATFORM_WIN32_KHR) || \
+    defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
+    defined(VK_USE_PLATFORM_XCB_KHR) || \
+    defined(VK_USE_PLATFORM_XLIB_KHR)
+#define DZN_USE_WSI_PLATFORM
+#endif
+
 struct dxil_validator;
 struct util_dl_library;
 

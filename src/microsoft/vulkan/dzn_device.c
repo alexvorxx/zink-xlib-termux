@@ -60,13 +60,6 @@
 
 #include <directx/d3d12sdklayers.h>
 
-#if defined(VK_USE_PLATFORM_WIN32_KHR) || \
-    defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
-    defined(VK_USE_PLATFORM_XCB_KHR) || \
-    defined(VK_USE_PLATFORM_XLIB_KHR)
-#define DZN_USE_WSI_PLATFORM
-#endif
-
 #define DZN_API_VERSION VK_MAKE_VERSION(1, 2, VK_HEADER_VERSION)
 
 #define MAX_TIER2_MEMORY_TYPES 4

@@ -245,7 +245,7 @@ panvk_get_features(const struct panvk_physical_device *device,
       .separateDepthStencilLayouts = false,
       .hostQueryReset = false,
       .timelineSemaphore = false,
-      .bufferDeviceAddress = false,
+      .bufferDeviceAddress = true,
       .bufferDeviceAddressCaptureReplay = false,
       .bufferDeviceAddressMultiDevice = false,
       .vulkanMemoryModel = false,
@@ -1389,7 +1389,7 @@ panvk_InvalidateMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount,
 }
 
 VkDeviceAddress
-panvk_GetBufferDeviceAddress(VkDevice _device, VkBufferDeviceAddressInfo *pInfo)
+panvk_GetBufferDeviceAddress(VkDevice _device, const VkBufferDeviceAddressInfo *pInfo)
 {
    VK_FROM_HANDLE(panvk_buffer, buffer, pInfo->buffer);
 

@@ -347,8 +347,6 @@ blorp_nir_retile_w_to_y(nir_builder *b, nir_def *pos)
  * This code modifies the X and Y coordinates according to the formula:
  *
  *   (X', Y', S') = encode_msaa(num_samples, IMS, X, Y, S)
- *
- * (See brw_blorp_blit_program).
  */
 static inline nir_def *
 blorp_nir_encode_msaa(nir_builder *b, nir_def *pos,
@@ -445,8 +443,6 @@ blorp_nir_encode_msaa(nir_builder *b, nir_def *pos,
  * This code modifies the X and Y coordinates according to the formula:
  *
  *   (X', Y', S) = decode_msaa(num_samples, IMS, X, Y, S)
- *
- * (See brw_blorp_blit_program).
  */
 static inline nir_def *
 blorp_nir_decode_msaa(nir_builder *b, nir_def *pos,

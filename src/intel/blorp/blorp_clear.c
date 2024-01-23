@@ -28,7 +28,9 @@
 #include "util/format_srgb.h"
 
 #include "blorp_priv.h"
+#include "compiler/brw_compiler.h"
 #include "dev/intel_debug.h"
+#include "dev/intel_device_info.h"
 
 #include "blorp_nir_builder.h"
 

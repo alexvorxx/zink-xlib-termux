@@ -28,7 +28,6 @@
 
 #include "common/intel_measure.h"
 #include "compiler/nir/nir.h"
-#include "compiler/brw_compiler.h"
 
 #include "blorp.h"
 

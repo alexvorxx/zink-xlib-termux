@@ -47,7 +47,7 @@ enum {
 
 #define BLORP_SAMPLER_INDEX 0
 
-struct brw_blorp_surface_info
+struct blorp_surface_info
 {
    bool enabled;
 
@@ -70,31 +70,31 @@ struct brw_blorp_surface_info
 };
 
 void
-brw_blorp_surface_info_init(struct blorp_batch *batch,
-                            struct brw_blorp_surface_info *info,
+blorp_surface_info_init(struct blorp_batch *batch,
+                            struct blorp_surface_info *info,
                             const struct blorp_surf *surf,
                             unsigned int level, float layer,
                             enum isl_format format, bool is_dest);
 void
 blorp_surf_convert_to_single_slice(const struct isl_device *isl_dev,
-                                   struct brw_blorp_surface_info *info);
+                                   struct blorp_surface_info *info);
 void
 surf_fake_rgb_with_red(const struct isl_device *isl_dev,
-                       struct brw_blorp_surface_info *info);
+                       struct blorp_surface_info *info);
 void
 blorp_surf_convert_to_uncompressed(const struct isl_device *isl_dev,
-                                   struct brw_blorp_surface_info *info,
+                                   struct blorp_surface_info *info,
                                    uint32_t *x, uint32_t *y,
                                    uint32_t *width, uint32_t *height);
 void
 blorp_surf_fake_interleaved_msaa(const struct isl_device *isl_dev,
-                                 struct brw_blorp_surface_info *info);
+                                 struct blorp_surface_info *info);
 void
 blorp_surf_retile_w_to_y(const struct isl_device *isl_dev,
-                         struct brw_blorp_surface_info *info);
+                         struct blorp_surface_info *info);
 
 
-struct brw_blorp_coord_transform
+struct blorp_coord_transform
 {
    float multiplier;
    float offset;
@@ -110,7 +110,7 @@ struct brw_blorp_coord_transform
  *
  * See blorp_check_in_bounds().
  */
-struct brw_blorp_bounds_rect
+struct blorp_bounds_rect
 {
    uint32_t x0;
    uint32_t x1;
@@ -122,7 +122,7 @@ struct brw_blorp_bounds_rect
  * Grid needed for blended and scaled blits of integer formats, see
  * blorp_nir_manual_blend_bilinear().
  */
-struct brw_blorp_rect_grid
+struct blorp_rect_grid
 {
    float x1;
    float y1;
@@ -134,13 +134,13 @@ struct blorp_surf_offset {
    uint32_t y;
 };
 
-struct brw_blorp_wm_inputs
+struct blorp_wm_inputs
 {
    uint32_t clear_color[4];
 
-   struct brw_blorp_bounds_rect bounds_rect;
-   struct brw_blorp_rect_grid rect_grid;
-   struct brw_blorp_coord_transform coord_transform[2];
+   struct blorp_bounds_rect bounds_rect;
+   struct blorp_rect_grid rect_grid;
+   struct blorp_coord_transform coord_transform[2];
 
    struct blorp_surf_offset src_offset;
    struct blorp_surf_offset dst_offset;
@@ -183,7 +183,7 @@ blorp_create_nir_input(struct nir_shader *nir,
 
 #define BLORP_CREATE_NIR_INPUT(shader, name, type) \
    blorp_create_nir_input((shader), #name, (type), \
-                          offsetof(struct brw_blorp_wm_inputs, name))
+                          offsetof(struct blorp_wm_inputs, name))
 
 struct blorp_vs_inputs {
    uint32_t base_layer;
@@ -228,16 +228,16 @@ struct blorp_params
    float z;
    uint8_t stencil_mask;
    uint8_t stencil_ref;
-   struct brw_blorp_surface_info depth;
-   struct brw_blorp_surface_info stencil;
+   struct blorp_surface_info depth;
+   struct blorp_surface_info stencil;
    uint32_t depth_format;
-   struct brw_blorp_surface_info src;
-   struct brw_blorp_surface_info dst;
+   struct blorp_surface_info src;
+   struct blorp_surface_info dst;
    enum isl_aux_op hiz_op;
    bool full_surface_hiz_op;
    enum isl_aux_op fast_clear_op;
    uint8_t color_write_disable;
-   struct brw_blorp_wm_inputs wm_inputs;
+   struct blorp_wm_inputs wm_inputs;
    struct blorp_vs_inputs vs_inputs;
    bool dst_clear_color_as_input;
    unsigned num_samples;
@@ -265,23 +265,23 @@ const char *blorp_op_to_name(enum blorp_op op);
 
 void blorp_params_init(struct blorp_params *params);
 
-struct brw_blorp_base_key
+struct blorp_base_key
 {
    char name[8];
    enum blorp_shader_type shader_type;
    enum blorp_shader_pipeline shader_pipeline;
 };
 
-#define BRW_BLORP_BASE_KEY_INIT(_type)                  \
-   (struct brw_blorp_base_key) {                        \
+#define BLORP_BASE_KEY_INIT(_type)                      \
+   (struct blorp_base_key) {                            \
       .name = "blorp",                                  \
       .shader_type = _type,                             \
       .shader_pipeline = BLORP_SHADER_PIPELINE_RENDER,  \
    }
 
-struct brw_blorp_blit_prog_key
+struct blorp_blit_prog_key
 {
-   struct brw_blorp_base_key base;
+   struct blorp_base_key base;
 
    /* Number of samples per pixel that have been configured in the surface
     * state for texturing from.

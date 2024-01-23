@@ -1497,7 +1497,7 @@ blorp_emit_memcpy(struct blorp_batch *batch,
 
 static void
 blorp_emit_surface_state(struct blorp_batch *batch,
-                         const struct brw_blorp_surface_info *surface,
+                         const struct blorp_surface_info *surface,
                          UNUSED enum isl_aux_op aux_op,
                          void *state, uint32_t state_offset,
                          uint8_t color_write_disable,
@@ -1596,7 +1596,7 @@ blorp_emit_surface_state(struct blorp_batch *batch,
 
 static void
 blorp_emit_null_surface_state(struct blorp_batch *batch,
-                              const struct brw_blorp_surface_info *surface,
+                              const struct blorp_surface_info *surface,
                               uint32_t *state)
 {
    struct GENX(RENDER_SURFACE_STATE) ss = {
@@ -1656,7 +1656,7 @@ blorp_setup_binding_table(struct blorp_batch *batch,
                                   params->color_write_disable, true);
       } else {
          assert(params->depth.enabled || params->stencil.enabled);
-         const struct brw_blorp_surface_info *surface =
+         const struct blorp_surface_info *surface =
             params->depth.enabled ? &params->depth : &params->stencil;
          blorp_emit_null_surface_state(batch, surface,
                                        surface_maps[BLORP_RENDERBUFFER_BT_INDEX]);
@@ -1921,7 +1921,7 @@ blorp_emit_gfx8_hiz_op(struct blorp_batch *batch,
 
 static void
 blorp_update_clear_color(UNUSED struct blorp_batch *batch,
-                         const struct brw_blorp_surface_info *info)
+                         const struct blorp_surface_info *info)
 {
    assert(info->clear_color_addr.buffer != NULL);
 #if GFX_VER == 11
@@ -2409,7 +2409,7 @@ xy_bcb_surf_depth(const struct isl_surf *surf)
 }
 
 static uint32_t
-xy_aux_mode(const struct brw_blorp_surface_info *info)
+xy_aux_mode(const struct blorp_surface_info *info)
 {
    switch (info->aux_usage) {
    case ISL_AUX_USAGE_CCS_E:

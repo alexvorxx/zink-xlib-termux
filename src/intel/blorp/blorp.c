@@ -142,8 +142,8 @@ blorp_batch_finish(struct blorp_batch *batch)
 }
 
 void
-brw_blorp_surface_info_init(struct blorp_batch *batch,
-                            struct brw_blorp_surface_info *info,
+blorp_surface_info_init(struct blorp_batch *batch,
+                            struct blorp_surface_info *info,
                             const struct blorp_surf *surf,
                             unsigned int level, float layer,
                             enum isl_format format, bool is_dest)
@@ -376,9 +376,9 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
    NIR_PASS_V(nir, nir_lower_io, nir_var_uniform, type_size_scalar_bytes,
               (nir_lower_io_options)0);
 
-   STATIC_ASSERT(offsetof(struct brw_blorp_wm_inputs, subgroup_id) + 4 ==
-                 sizeof(struct brw_blorp_wm_inputs));
-   nir->num_uniforms = offsetof(struct brw_blorp_wm_inputs, subgroup_id);
+   STATIC_ASSERT(offsetof(struct blorp_wm_inputs, subgroup_id) + 4 ==
+                 sizeof(struct blorp_wm_inputs));
+   nir->num_uniforms = offsetof(struct blorp_wm_inputs, subgroup_id);
    unsigned nr_params = nir->num_uniforms / 4;
    cs_prog_data->base.nr_params = nr_params;
    cs_prog_data->base.param = rzalloc_array(NULL, uint32_t, nr_params);
@@ -408,7 +408,7 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
 }
 
 struct blorp_sf_key {
-   struct brw_blorp_base_key base;
+   struct blorp_base_key base;
    struct brw_sf_prog_key key;
 };
 
@@ -425,7 +425,7 @@ blorp_ensure_sf_program(struct blorp_batch *batch,
       return true;
 
    struct blorp_sf_key key = {
-      .base = BRW_BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_GFX4_SF),
+      .base = BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_GFX4_SF),
    };
 
    /* Everything gets compacted in vertex setup, so we just need a
@@ -500,7 +500,7 @@ blorp_hiz_op(struct blorp_batch *batch, struct blorp_surf *surf,
    for (uint32_t a = 0; a < num_layers; a++) {
       const uint32_t layer = start_layer + a;
 
-      brw_blorp_surface_info_init(batch, &params.depth, surf, level,
+      blorp_surface_info_init(batch, &params.depth, surf, level,
                                   layer, surf->surf->format, true);
 
       /* Align the rectangle primitive to 8x4 pixels.

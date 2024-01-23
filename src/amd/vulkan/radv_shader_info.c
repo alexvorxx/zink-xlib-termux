@@ -1739,12 +1739,12 @@ radv_nir_shader_info_link(struct radv_device *device, const struct radv_graphics
 
    if (device->physical_device->rad_info.gfx_level >= GFX9) {
       /* Merge shader info for VS+TCS. */
-      if (stages[MESA_SHADER_TESS_CTRL].nir) {
+      if (stages[MESA_SHADER_VERTEX].nir && stages[MESA_SHADER_TESS_CTRL].nir) {
          radv_nir_shader_info_merge(&stages[MESA_SHADER_VERTEX], &stages[MESA_SHADER_TESS_CTRL]);
       }
 
       /* Merge shader info for VS+GS or TES+GS. */
-      if (stages[MESA_SHADER_GEOMETRY].nir) {
+      if ((stages[MESA_SHADER_VERTEX].nir || stages[MESA_SHADER_TESS_EVAL].nir) && stages[MESA_SHADER_GEOMETRY].nir) {
          gl_shader_stage pre_stage = stages[MESA_SHADER_TESS_EVAL].nir ? MESA_SHADER_TESS_EVAL : MESA_SHADER_VERTEX;
 
          radv_nir_shader_info_merge(&stages[pre_stage], &stages[MESA_SHADER_GEOMETRY]);

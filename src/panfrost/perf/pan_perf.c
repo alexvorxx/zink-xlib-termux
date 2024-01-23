@@ -72,6 +72,13 @@ panfrost_lookup_counters(const char *name)
 void
 panfrost_perf_init(struct panfrost_perf *perf, int fd)
 {
+   ASSERTED drmVersionPtr version = drmGetVersion(fd);
+
+   /* We only support panfrost at the moment. */
+   assert(version && !strcmp(version->name, "panfrost"));
+
+   drmFreeVersion(version);
+
    perf->dev = pan_kmod_dev_create(fd, 0, NULL);
    assert(perf->dev);
 

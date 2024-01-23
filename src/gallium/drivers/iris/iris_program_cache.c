@@ -220,7 +220,7 @@ bool
 iris_blorp_upload_shader(struct blorp_batch *blorp_batch, uint32_t stage,
                          const void *key, uint32_t key_size,
                          const void *kernel, UNUSED uint32_t kernel_size,
-                         const struct brw_stage_prog_data *prog_data_templ,
+                         const void *prog_data_templ,
                          UNUSED uint32_t prog_data_size,
                          uint32_t *kernel_out, void *prog_data_out)
 {

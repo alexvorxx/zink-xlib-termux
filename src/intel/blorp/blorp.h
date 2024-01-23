@@ -29,8 +29,6 @@
 
 #include "isl/isl.h"
 
-struct brw_stage_prog_data;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -76,7 +74,7 @@ struct blorp_context {
                          uint32_t stage,
                          const void *key, uint32_t key_size,
                          const void *kernel, uint32_t kernel_size,
-                         const struct brw_stage_prog_data *prog_data,
+                         const void *prog_data,
                          uint32_t prog_data_size,
                          uint32_t *kernel_out, void *prog_data_out);
    void (*exec)(struct blorp_batch *batch, const struct blorp_params *params);

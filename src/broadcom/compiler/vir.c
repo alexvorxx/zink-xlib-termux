@@ -1594,6 +1594,10 @@ lower_subgroup_intrinsics(struct v3d_compile *c,
                 case nir_intrinsic_vote_any:
                 case nir_intrinsic_vote_feq:
                 case nir_intrinsic_vote_ieq:
+                case nir_intrinsic_quad_broadcast:
+                case nir_intrinsic_quad_swap_horizontal:
+                case nir_intrinsic_quad_swap_vertical:
+                case nir_intrinsic_quad_swap_diagonal:
                         c->has_subgroups = true;
                         break;
                 default:
@@ -1715,6 +1719,7 @@ v3d_attempt_compile(struct v3d_compile *c)
                 .lower_inverse_ballot = true,
                 .lower_subgroup_masks = true,
                 .lower_relative_shuffle = true,
+                .lower_quad = true,
         };
         NIR_PASS(_, c->s, nir_lower_subgroups, &subgroup_opts);
 

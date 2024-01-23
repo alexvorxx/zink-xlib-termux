@@ -149,7 +149,7 @@ llvmpipe_delete_image_handle(struct pipe_context *pctx, uint64_t handle)
    free((void *)(uintptr_t)handle);
 }
 
-static void *
+static uint64_t
 get_sample_function(uint64_t _matrix, uint64_t _texture_functions, uint64_t _sampler_desc, uint32_t sample_key);
 
 void
@@ -489,7 +489,7 @@ compile_sample_function(struct llvmpipe_context *ctx, struct lp_static_texture_s
    return compile_function(ctx, gallivm, function, needs_caching, cache_key);
 }
 
-static void *
+static uint64_t
 get_sample_function(uint64_t _matrix, uint64_t _texture_functions, uint64_t _sampler_desc, uint32_t sample_key)
 {
    struct lp_sampler_matrix *matrix = (void *)(uintptr_t)_matrix;
@@ -512,7 +512,7 @@ get_sample_function(uint64_t _matrix, uint64_t _texture_functions, uint64_t _sam
 
    simple_mtx_unlock(&matrix->lock);
 
-   return result;
+   return (uint64_t)(uintptr_t)result;
 }
 
 static LLVMTypeRef
@@ -524,7 +524,7 @@ lp_build_compile_function_type(struct gallivm_state *gallivm)
       LLVMInt64TypeInContext(gallivm->context),
       LLVMInt32TypeInContext(gallivm->context),
    };
-   LLVMTypeRef ret_type = LLVMPointerTypeInContext(gallivm->context, 0);
+   LLVMTypeRef ret_type = LLVMInt64TypeInContext(gallivm->context);
 
    return LLVMFunctionType(ret_type, param_types, ARRAY_SIZE(param_types), false);
 }
@@ -612,7 +612,7 @@ compile_jit_sample_function(struct llvmpipe_context *ctx, uint32_t sample_key)
       LLVMBuildCall2(builder, compile_function_type, compile_function_ptr,
                      compile_args, ARRAY_SIZE(compile_args), "");
 
-   sample_function = LLVMBuildPointerCast(builder, sample_function, LLVMPointerType(function_type, 0), "");
+   sample_function = LLVMBuildIntToPtr(builder, sample_function, LLVMPointerType(function_type, 0), "");
 
    LLVMValueRef args[LP_MAX_TEX_FUNC_ARGS];
    uint32_t num_args = 0;

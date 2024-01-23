@@ -1417,13 +1417,6 @@ agx_invalidate_resource(struct pipe_context *pctx,
    }
 }
 
-static void
-agx_memory_barrier(struct pipe_context *pctx, unsigned flags)
-{
-   /* Be conservative for now, we can try to optimize this more later */
-   agx_flush_all(agx_context(pctx), "Memory barrier");
-}
-
 static enum pipe_reset_status
 asahi_get_device_reset_status(struct pipe_context *pipe)
 {

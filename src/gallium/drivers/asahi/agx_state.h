@@ -1010,6 +1010,7 @@ void agx_sync_batch(struct agx_context *ctx, struct agx_batch *batch);
 void agx_sync_all(struct agx_context *ctx, const char *reason);
 void agx_sync_batch_for_reason(struct agx_context *ctx, struct agx_batch *batch,
                                const char *reason);
+void agx_memory_barrier(struct pipe_context *pctx, unsigned flags);
 
 /* Use these instead of batch_add_bo for proper resource tracking */
 void agx_batch_reads(struct agx_batch *batch, struct agx_resource *rsrc);

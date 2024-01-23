@@ -776,3 +776,22 @@ agx_add_timestamp_end_query(struct agx_context *ctx, struct agx_query *q)
       agx_batch_add_timestamp_query(&ctx->batches.slots[idx], q);
    }
 }
+
+/*
+ * To implement a memory barrier conservatively, flush any batch that contains
+ * an incoherent memory write (requiring a memory barrier to synchronize). This
+ * could be further optimized.
+ */
+void
+agx_memory_barrier(struct pipe_context *pctx, unsigned flags)
+{
+   struct agx_context *ctx = agx_context(pctx);
+
+   unsigned i;
+   foreach_active(ctx, i) {
+      struct agx_batch *batch = &ctx->batches.slots[i];
+
+      if (batch->incoherent_writes)
+         agx_flush_batch_for_reason(ctx, batch, "Memory barrier");
+   }
+}

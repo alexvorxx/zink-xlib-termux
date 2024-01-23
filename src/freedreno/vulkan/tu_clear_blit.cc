@@ -3747,8 +3747,13 @@ store_cp_blit(struct tu_cmd_buffer *cmd,
 
    /* sync GMEM writes with CACHE. */
    tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
+   if (CHIP >= A7XX)
+      /* On A7XX, we need to wait for any CP_EVENT_WRITE::BLIT operations
+       * arising from GMEM load/clears to land before we can continue.
+       */
+      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_BLIT_CACHE);
 
-   /* Wait for CACHE_INVALIDATE to land */
+   /* Wait for cache event to land */
    tu_cs_emit_wfi(cs);
 
    r2d_run(cmd, cs);

@@ -1352,7 +1352,10 @@ struct si_context {
    struct list_head shader_query_buffers;
    unsigned num_active_shader_queries;
 
-   bool force_cb_shader_coherent;
+   struct {
+      bool with_cb;
+      bool with_db;
+   } force_shader_coherency;
 
    struct si_tracked_regs tracked_regs;
 
@@ -1890,7 +1893,7 @@ static inline void si_make_CB_shader_coherent(struct si_context *sctx, unsigned 
                                               bool shaders_read_metadata, bool dcc_pipe_aligned)
 {
    sctx->flags |= SI_CONTEXT_FLUSH_AND_INV_CB | SI_CONTEXT_INV_VCACHE;
-   sctx->force_cb_shader_coherent = false;
+   sctx->force_shader_coherency.with_cb = false;
 
    if (sctx->gfx_level >= GFX10) {
       if (sctx->screen->info.tcc_rb_non_coherent)
@@ -1918,6 +1921,7 @@ static inline void si_make_DB_shader_coherent(struct si_context *sctx, unsigned 
                                               bool include_stencil, bool shaders_read_metadata)
 {
    sctx->flags |= SI_CONTEXT_FLUSH_AND_INV_DB | SI_CONTEXT_INV_VCACHE;
+   sctx->force_shader_coherency.with_db = false;
 
    if (sctx->gfx_level >= GFX10) {
       if (sctx->screen->info.tcc_rb_non_coherent)

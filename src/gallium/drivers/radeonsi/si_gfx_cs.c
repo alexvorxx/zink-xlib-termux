@@ -581,10 +581,11 @@ void si_begin_new_gfx_cs(struct si_context *ctx, bool first_cs)
 
    /* All buffer references are removed on a flush, so si_check_needs_implicit_sync
     * cannot determine if si_make_CB_shader_coherent() needs to be called.
-    * ctx->force_cb_shader_coherent will be cleared by the first call to
+    * ctx->force_shader_coherency.with_cb will be cleared by the first call to
     * si_make_CB_shader_coherent.
     */
-   ctx->force_cb_shader_coherent = true;
+   ctx->force_shader_coherency.with_cb = true;
+   ctx->force_shader_coherency.with_db = true;
 }
 
 void si_trace_emit(struct si_context *sctx)

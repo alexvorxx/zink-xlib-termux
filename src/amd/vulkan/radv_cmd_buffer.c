@@ -6399,6 +6399,14 @@ radv_bind_pre_rast_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
       cmd_buffer->state.uses_drawid = shader->info.vs.needs_draw_id;
       cmd_buffer->state.uses_baseinstance = shader->info.vs.needs_base_instance;
 
+      if (shader->info.merged_shader_compiled_separately) {
+         /* Merged shaders compiled separately (eg. VS+TCS) always declare these user SGPRS
+          * because the input arguments must match.
+          */
+         cmd_buffer->state.uses_drawid = true;
+         cmd_buffer->state.uses_baseinstance = true;
+      }
+
       /* Re-emit some vertex states because the SGPR idx can be different. */
       cmd_buffer->state.last_first_instance = -1;
       cmd_buffer->state.last_vertex_offset_valid = false;

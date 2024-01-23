@@ -251,13 +251,6 @@ blorp_params_init(struct blorp_params *params)
 }
 
 void
-brw_blorp_init_wm_prog_key(struct brw_wm_prog_key *wm_key)
-{
-   memset(wm_key, 0, sizeof(*wm_key));
-   wm_key->nr_color_regions = 1;
-}
-
-void
 brw_blorp_init_cs_prog_key(struct brw_cs_prog_key *cs_key)
 {
    memset(cs_key, 0, sizeof(*cs_key));
@@ -266,12 +259,11 @@ brw_blorp_init_cs_prog_key(struct brw_cs_prog_key *cs_key)
 const unsigned *
 blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir,
-                 struct brw_wm_prog_key *wm_key,
+                 bool multisample_fbo,
                  bool use_repclear,
                  struct brw_wm_prog_data *wm_prog_data)
 {
    const struct brw_compiler *compiler = blorp->compiler;
-
    nir->options = compiler->nir_options[MESA_SHADER_FRAGMENT];
 
    memset(wm_prog_data, 0, sizeof(*wm_prog_data));
@@ -284,11 +276,16 @@ blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
    nir_remove_dead_variables(nir, nir_var_shader_in, NULL);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
+   struct brw_wm_prog_key wm_key;
+   memset(&wm_key, 0, sizeof(wm_key));
+   wm_key.multisample_fbo = multisample_fbo ? BRW_ALWAYS : BRW_NEVER;
+   wm_key.nr_color_regions = 1;
+
    if (blorp->compiler->devinfo->ver < 6) {
       if (nir->info.fs.uses_discard)
-         wm_key->iz_lookup |= BRW_WM_IZ_PS_KILL_ALPHATEST_BIT;
+         wm_key.iz_lookup |= BRW_WM_IZ_PS_KILL_ALPHATEST_BIT;
 
-      wm_key->input_slots_valid = nir->info.inputs_read | VARYING_BIT_POS;
+      wm_key.input_slots_valid = nir->info.inputs_read | VARYING_BIT_POS;
    }
 
    struct brw_compile_fs_params params = {
@@ -298,7 +295,7 @@ blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
          .log_data = blorp->driver_ctx,
          .debug_flag = DEBUG_BLORP,
       },
-      .key = wm_key,
+      .key = &wm_key,
       .prog_data = wm_prog_data,
 
       .use_rep_send = use_repclear,

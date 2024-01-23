@@ -1517,11 +1517,9 @@ blorp_get_blit_kernel_fs(struct blorp_batch *batch,
    nir->info.name =
       ralloc_strdup(nir, blorp_shader_type_to_name(key->base.shader_type));
 
-   struct brw_wm_prog_key wm_key;
-   brw_blorp_init_wm_prog_key(&wm_key);
-   wm_key.multisample_fbo = key->rt_samples > 1 ? BRW_ALWAYS : BRW_NEVER;
+   const bool multisample_fbo = key->rt_samples > 1;
 
-   program = blorp_compile_fs(blorp, mem_ctx, nir, &wm_key, false,
+   program = blorp_compile_fs(blorp, mem_ctx, nir, multisample_fbo, false,
                               &prog_data);
 
    bool result =

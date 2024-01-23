@@ -90,12 +90,10 @@ blorp_params_get_clear_kernel_fs(struct blorp_batch *batch,
    frag_color->data.location = FRAG_RESULT_COLOR;
    nir_store_var(&b, frag_color, color, 0xf);
 
-   struct brw_wm_prog_key wm_key;
-   brw_blorp_init_wm_prog_key(&wm_key);
-
    struct brw_wm_prog_data prog_data;
+   const bool multisample_fbo = false;
    const unsigned *program =
-      blorp_compile_fs(blorp, mem_ctx, b.shader, &wm_key, use_replicated_data,
+      blorp_compile_fs(blorp, mem_ctx, b.shader, multisample_fbo, use_replicated_data,
                        &prog_data);
 
    bool result =
@@ -1386,13 +1384,10 @@ blorp_params_get_mcs_partial_resolve_kernel(struct blorp_batch *batch,
    }
    nir_store_var(&b, frag_color, clear_color, 0xf);
 
-   struct brw_wm_prog_key wm_key;
-   brw_blorp_init_wm_prog_key(&wm_key);
-   wm_key.multisample_fbo = BRW_ALWAYS;
-
    struct brw_wm_prog_data prog_data;
+   const bool multisample_fbo = true;
    const unsigned *program =
-      blorp_compile_fs(blorp, mem_ctx, b.shader, &wm_key, false,
+      blorp_compile_fs(blorp, mem_ctx, b.shader, multisample_fbo, false,
                        &prog_data);
 
    bool result =

@@ -132,6 +132,7 @@ agx_batch_init(struct agx_context *ctx,
    batch->geometry_state = 0;
    batch->initialized = false;
    batch->draws = 0;
+   batch->incoherent_writes = false;
    agx_bo_unreference(batch->sampler_heap.bo);
    batch->sampler_heap.bo = NULL;
    batch->sampler_heap.count = 0;

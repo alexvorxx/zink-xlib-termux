@@ -166,6 +166,7 @@ agx_set_ssbo_uniforms(struct agx_batch *batch, enum pipe_shader_type stage)
          if (st->ssbo_writable_mask & BITFIELD_BIT(cb)) {
             agx_batch_writes_range(batch, rsrc, sb->buffer_offset,
                                    sb->buffer_size);
+            batch->incoherent_writes = true;
          } else {
             agx_batch_reads(batch, rsrc);
          }

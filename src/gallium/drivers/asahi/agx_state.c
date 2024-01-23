@@ -4122,6 +4122,7 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
       if (rsrc) {
          params.xfb_offs_ptrs[i] = rsrc->bo->ptr.gpu;
          agx_batch_writes(batch, rsrc, 0);
+         batch->incoherent_writes = true;
       } else {
          params.xfb_offs_ptrs[i] = 0;
       }
@@ -4722,6 +4723,7 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
    heap_water += ALIGN(unrolled_patch_count * tcs->tess.output_stride, 4);
 
    agx_batch_writes(batch, agx_resource(heap), 0);
+   batch->incoherent_writes = true;
 
    uint64_t ib = 0;
    size_t ib_extent = 0;
@@ -5274,6 +5276,7 @@ agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
 
       struct agx_resource *buffer = agx_resource(*res);
       agx_batch_writes(batch, buffer, 0);
+      batch->incoherent_writes = true;
    }
 
    agx_batch_add_bo(batch, cs->bo);

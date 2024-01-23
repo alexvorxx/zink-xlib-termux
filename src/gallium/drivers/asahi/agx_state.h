@@ -360,6 +360,11 @@ struct agx_batch {
       unsigned bit_count;
    } bo_list;
 
+   /* If true, this batch contains a shader with a potentially incoherent write
+    * (e.g. image_write), needing a barrier later to access.
+    */
+   bool incoherent_writes;
+
    struct agx_pool pool, pipeline_pool;
 
    /* We may enqueue both CDM and VDM work, possibly to the same batch for

@@ -664,6 +664,8 @@ agx_batch_track_image(struct agx_batch *batch, struct pipe_image_view *image)
    struct agx_resource *rsrc = agx_resource(image->resource);
 
    if (image->shader_access & PIPE_IMAGE_ACCESS_WRITE) {
+      batch->incoherent_writes = true;
+
       if (rsrc->base.target == PIPE_BUFFER) {
          agx_batch_writes_range(batch, rsrc, image->u.buf.offset,
                                 image->u.buf.size);

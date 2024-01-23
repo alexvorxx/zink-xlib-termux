@@ -264,6 +264,13 @@ blorp_get_l3_config(struct blorp_batch *blorp_batch)
 #endif
 
 static void
+blorp_pre_emit_urb_config(struct blorp_batch *blorp_batch,
+                          struct intel_urb_config *urb_cfg)
+{
+   /* Dummy. */
+}
+
+static void
 blorp_emit_urb_config(struct blorp_batch *blorp_batch,
                       struct intel_urb_config *urb_cfg)
 {

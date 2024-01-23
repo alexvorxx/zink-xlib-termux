@@ -274,6 +274,13 @@ blorp_flush_range(UNUSED struct blorp_batch *blorp_batch,
     */
 }
 
+static void
+blorp_pre_emit_urb_config(struct blorp_batch *blorp_batch,
+                          struct intel_urb_config *urb_cfg)
+{
+   genX(urb_workaround)(blorp_batch->driver_batch, urb_cfg);
+}
+
 static const struct intel_l3_config *
 blorp_get_l3_config(struct blorp_batch *blorp_batch)
 {

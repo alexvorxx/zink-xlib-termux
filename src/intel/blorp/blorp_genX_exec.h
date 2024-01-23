@@ -116,6 +116,10 @@ blorp_get_l3_config(struct blorp_batch *batch);
 #endif
 
 static void
+blorp_pre_emit_urb_config(struct blorp_batch *batch,
+                          struct intel_urb_config *urb_config);
+
+static void
 blorp_emit_urb_config(struct blorp_batch *batch,
                       struct intel_urb_config *urb_config);
 
@@ -251,6 +255,9 @@ emit_urb_config(struct blorp_batch *batch,
                         blorp_get_l3_config(batch),
                         false, false, &urb_cfg,
                         deref_block_size, &constrained);
+
+   /* Tell drivers about the config. */
+   blorp_pre_emit_urb_config(batch, &urb_cfg);
 
 #if GFX_VERx10 == 70
    /* From the IVB PRM Vol. 2, Part 1, Section 3.2.1:

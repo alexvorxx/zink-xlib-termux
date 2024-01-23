@@ -386,7 +386,6 @@ def test_full_yaml_log(mock_proxy, frozen_time, lava_job_submitter):
     proxy.scheduler.jobs.submit = reset_logs
     with pytest.raises(MesaCIRetryError):
         time_travel_to_test_time()
-        lava_job_submitter.submit()
         retriable_follow_job(proxy, "")
         print(lava_job_submitter.structured_log_file.read_text())
 

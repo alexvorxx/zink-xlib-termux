@@ -400,7 +400,7 @@ GL_EXT_direct_state_access additions from other extensions (complete list):
   GL_EXT_external_buffer                                n/a
   GL_EXT_separate_shader_objects                        n/a
   GL_EXT_sparse_texture                                 n/a
-  GL_EXT_texture_storage                                n/a
+  GL_EXT_texture_storage                                DONE
   GL_EXT_vertex_attrib_64bit                            DONE
   GL_EXT_EGL_image_storage                              n/a
   GL_NV_bindless_texture                                n/a

@@ -753,6 +753,7 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .maxPerStageDescriptorUpdateAfterBindInlineUniformBlocks = 32,
       .maxDescriptorSetInlineUniformBlocks = 6 * 32,
       .maxDescriptorSetUpdateAfterBindInlineUniformBlocks = 6 * 32,
+      .maxInlineUniformTotalSize = 1 << 16,
       .integerDotProduct4x8BitPackedUnsignedAccelerated
          = info->cls_eng3d >= VOLTA_A,
       .integerDotProduct4x8BitPackedSignedAccelerated

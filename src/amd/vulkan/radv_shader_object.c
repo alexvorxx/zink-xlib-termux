@@ -301,8 +301,9 @@ radv_shader_object_init(struct radv_shader_object *shader_obj, struct radv_devic
    shader_obj->dynamic_offset_count = layout.dynamic_offset_count;
 
    if (pCreateInfo->codeType == VK_SHADER_CODE_TYPE_BINARY_EXT) {
-      if (pCreateInfo->codeSize < SHA1_DIGEST_LENGTH + VK_UUID_SIZE + 1)
+      if (pCreateInfo->codeSize < VK_UUID_SIZE + sizeof(uint32_t)) {
          return VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT;
+      }
 
       struct blob_reader blob;
       blob_reader_init(&blob, pCreateInfo->pCode, pCreateInfo->codeSize);

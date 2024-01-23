@@ -34,14 +34,6 @@ _libbitview_rs = static_library(
   gnu_symbol_visibility : 'hidden',
   rust_abi : 'rust',
   rust_args : [
-    # we error on all clippy warnings unless they are disabled
-    '-Dclippy::all',
-    # we want to add asserts in control flow
-    '-Aclippy::assertions_on_constants',
-    # dunno, kind of looks nicier being explicit
-    '-Aclippy::redundant_field_names',
-    '-Aclippy::too_many_arguments',
-    '-Aclippy::type_complexity',
     '-Anon_snake_case',
   ],
 )
@@ -107,14 +99,6 @@ _libnak_rs = static_library(
   gnu_symbol_visibility : 'hidden',
   rust_abi : 'c',
   rust_args : [
-    # we error on all clippy warnings unless they are disabled
-    '-Dclippy::all',
-    # we want to add asserts in control flow
-    '-Aclippy::assertions_on_constants',
-    # dunno, kind of looks nicier being explicit
-    '-Aclippy::redundant_field_names',
-    '-Aclippy::too_many_arguments',
-    '-Aclippy::type_complexity',
     '-Anon_snake_case',
   ],
   link_with: [_libbitview_rs, libnak_bindings_gen, _libnak_ir_proc_rs],

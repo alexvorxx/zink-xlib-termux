@@ -409,8 +409,6 @@ impl<'a> PinnedRegAllocator<'a> {
         align: u32,
         comps: u8,
     ) -> Option<u32> {
-        let align = align;
-
         let mut next_reg = start_reg;
         loop {
             let reg: u32 = self

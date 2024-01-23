@@ -3787,6 +3787,15 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
                 break;
         }
 
+        case nir_intrinsic_shuffle: {
+                assert(c->devinfo->ver >= 71);
+                struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                struct qreg indices = ntq_get_src(c, instr->src[1], 0);
+                struct qreg res = vir_SHUFFLE(c, value, indices);
+                ntq_store_def(c, &instr->def, 0, vir_MOV(c, res));
+                break;
+        }
+
         case nir_intrinsic_load_num_subgroups:
                 unreachable("Should have been lowered");
                 break;

@@ -3796,6 +3796,110 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
                 break;
         }
 
+        case nir_intrinsic_vote_feq:
+        case nir_intrinsic_vote_ieq: {
+                assert(c->devinfo->ver >= 71);
+                struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                struct qreg res = vir_get_temp(c);
+                if (vir_in_nonuniform_control_flow(c)) {
+                        /* Alleq uses the MSF mask and the condition mask to
+                         * identify active lanes. Particularly, it uses the
+                         * condition mask to filter out lanes disabled by
+                         * control flow.
+                         */
+                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
+                                   V3D_QPU_PF_PUSHZ);
+                        vir_set_cond(instr->intrinsic == nir_intrinsic_vote_ieq ?
+                                     vir_ALLEQ_dest(c, res, value) :
+                                     vir_ALLFEQ_dest(c, res, value),
+                                     V3D_QPU_COND_IFA);
+                } else {
+                        if (instr->intrinsic == nir_intrinsic_vote_ieq)
+                                vir_ALLEQ_dest(c, res, value);
+                        else
+                                vir_ALLFEQ_dest(c, res, value);
+                }
+
+                /* Produce boolean result */
+                vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), res),
+                           V3D_QPU_PF_PUSHZ);
+                struct qreg result = ntq_emit_cond_to_bool(c, V3D_QPU_COND_IFNA);
+                ntq_store_def(c, &instr->def, 0, result);
+                break;
+        }
+
+        case nir_intrinsic_vote_all: {
+                assert(c->devinfo->ver >= 71);
+                struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                struct qreg res = vir_get_temp(c);
+                if (vir_in_nonuniform_control_flow(c)) {
+                        /* Alleq uses the MSF mask and the condition mask to
+                         * identify active lanes. Particularly, it uses the
+                         * condition mask to filter out lanes disabled by
+                         * control flow.
+                         */
+                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
+                                   V3D_QPU_PF_PUSHZ);
+                        vir_set_cond(vir_ALLEQ_dest(c, res, value),
+                                     V3D_QPU_COND_IFA);
+                } else {
+                        vir_ALLEQ_dest(c, res, value);
+                }
+
+                /* We want to check if 'all lanes are equal (alleq != 0) and
+                 * their value is True (value != 0)'.
+                 *
+                 * The first MOV.pushz generates predicate for 'alleq == 0'.
+                 * The second MOV.NORZ generates predicate for:
+                 * '!(alleq == 0) & !(value == 0).
+                 */
+                vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), res),
+                           V3D_QPU_PF_PUSHZ);
+                vir_set_uf(c, vir_MOV_dest(c, vir_nop_reg(), value),
+                           V3D_QPU_UF_NORZ);
+                struct qreg result =
+                        ntq_emit_cond_to_bool(c, V3D_QPU_COND_IFA);
+                ntq_store_def(c, &instr->def, 0, result);
+                break;
+        }
+
+        case nir_intrinsic_vote_any: {
+                assert(c->devinfo->ver >= 71);
+                struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                struct qreg res = vir_get_temp(c);
+                if (vir_in_nonuniform_control_flow(c)) {
+                        /* Alleq uses the MSF mask and the condition mask to
+                         * identify active lanes. Particularly, it uses the
+                         * condition mask to filter out lanes disabled by
+                         * control flow.
+                         */
+                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
+                                   V3D_QPU_PF_PUSHZ);
+                        vir_set_cond(vir_ALLEQ_dest(c, res, value),
+                                     V3D_QPU_COND_IFA);
+                } else {
+                        vir_ALLEQ_dest(c, res, value);
+                }
+
+                /* We want to check 'not (all lanes are equal (alleq != 0)'
+                 * and their value is False (value == 0))'.
+                 *
+                 * The first MOV.pushz generates predicate for 'alleq == 0'.
+                 * The second MOV.NORNZ generates predicate for:
+                 * '!(alleq == 0) & (value == 0).
+                 * The IFNA condition negates the predicate when evaluated:
+                 * '!(!alleq == 0) & (value == 0))
+                 */
+                vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), res),
+                           V3D_QPU_PF_PUSHZ);
+                vir_set_uf(c, vir_MOV_dest(c, vir_nop_reg(), value),
+                           V3D_QPU_UF_NORNZ);
+                struct qreg result =
+                        ntq_emit_cond_to_bool(c, V3D_QPU_COND_IFNA);
+                ntq_store_def(c, &instr->def, 0, result);
+                break;
+        }
+
         case nir_intrinsic_load_num_subgroups:
                 unreachable("Should have been lowered");
                 break;

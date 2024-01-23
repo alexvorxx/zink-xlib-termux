@@ -1590,6 +1590,10 @@ lower_subgroup_intrinsics(struct v3d_compile *c,
                 case nir_intrinsic_shuffle_xor:
                 case nir_intrinsic_shuffle_up:
                 case nir_intrinsic_shuffle_down:
+                case nir_intrinsic_vote_all:
+                case nir_intrinsic_vote_any:
+                case nir_intrinsic_vote_feq:
+                case nir_intrinsic_vote_ieq:
                         c->has_subgroups = true;
                         break;
                 default:

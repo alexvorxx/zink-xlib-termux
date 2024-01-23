@@ -5488,22 +5488,16 @@ impl BasicBlock {
     }
 
     pub fn phi_dsts(&self) -> Option<&OpPhiDsts> {
-        for instr in self.instrs.iter() {
-            match &instr.op {
-                Op::PhiDsts(phi) => return Some(phi),
-                _ => break,
-            }
+        if let Op::PhiDsts(phi) = &self.instrs.first()?.op {
+            return Some(phi);
         }
         None
     }
 
     #[allow(dead_code)]
     pub fn phi_dsts_mut(&mut self) -> Option<&mut OpPhiDsts> {
-        for instr in self.instrs.iter_mut() {
-            match &mut instr.op {
-                Op::PhiDsts(phi) => return Some(phi),
-                _ => break,
-            }
+        if let Op::PhiDsts(phi) = &mut self.instrs.first_mut()?.op {
+            return Some(phi);
         }
         None
     }

@@ -415,8 +415,6 @@ struct blorp_blit_prog_key
 bool blorp_blitter_supports_aux(const struct intel_device_info *devinfo,
                                 enum isl_aux_usage aux_usage);
 
-void brw_blorp_init_cs_prog_key(struct brw_cs_prog_key *cs_key);
-
 const char *blorp_shader_type_to_name(enum blorp_shader_type type);
 const char *blorp_shader_pipeline_to_name(enum blorp_shader_pipeline pipe);
 
@@ -462,7 +460,6 @@ blorp_set_cs_dims(struct nir_shader *nir, uint8_t local_y)
 const unsigned *
 blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir,
-                 struct brw_cs_prog_key *cs_key,
                  struct brw_cs_prog_data *cs_prog_data);
 
 /** \} */

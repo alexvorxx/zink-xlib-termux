@@ -164,12 +164,9 @@ blorp_params_get_clear_kernel_cs(struct blorp_batch *batch,
 
    nir_pop_if(&b, NULL);
 
-   struct brw_cs_prog_key cs_key;
-   brw_blorp_init_cs_prog_key(&cs_key);
-
    struct brw_cs_prog_data prog_data;
    const unsigned *program =
-      blorp_compile_cs(blorp, mem_ctx, b.shader, &cs_key, &prog_data);
+      blorp_compile_cs(blorp, mem_ctx, b.shader, &prog_data);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_COMPUTE,

@@ -250,12 +250,6 @@ blorp_params_init(struct blorp_params *params)
    params->num_layers = 1;
 }
 
-void
-brw_blorp_init_cs_prog_key(struct brw_cs_prog_key *cs_key)
-{
-   memset(cs_key, 0, sizeof(*cs_key));
-}
-
 const unsigned *
 blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir,
@@ -357,7 +351,6 @@ lower_base_workgroup_id(nir_builder *b, nir_intrinsic_instr *intrin,
 const unsigned *
 blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir,
-                 struct brw_cs_prog_key *cs_key,
                  struct brw_cs_prog_data *cs_prog_data)
 {
    const struct brw_compiler *compiler = blorp->compiler;
@@ -385,6 +378,9 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
    NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_base_workgroup_id,
               nir_metadata_block_index | nir_metadata_dominance, NULL);
 
+   struct brw_cs_prog_key cs_key;
+   memset(&cs_key, 0, sizeof(cs_key));
+
    struct brw_compile_cs_params params = {
       .base = {
          .mem_ctx = mem_ctx,
@@ -392,7 +388,7 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
          .log_data = blorp->driver_ctx,
          .debug_flag = DEBUG_BLORP,
       },
-      .key = cs_key,
+      .key = &cs_key,
       .prog_data = cs_prog_data,
    };
 

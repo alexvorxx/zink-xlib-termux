@@ -1554,11 +1554,9 @@ blorp_get_blit_kernel_cs(struct blorp_batch *batch,
    nir->info.name = ralloc_strdup(nir, "BLORP-gpgpu-blit");
    blorp_set_cs_dims(nir, prog_key->local_y);
 
-   struct brw_cs_prog_key cs_key;
-   brw_blorp_init_cs_prog_key(&cs_key);
    assert(prog_key->rt_samples == 1);
 
-   program = blorp_compile_cs(blorp, mem_ctx, nir, &cs_key, &prog_data);
+   program = blorp_compile_cs(blorp, mem_ctx, nir, &prog_data);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_COMPUTE,

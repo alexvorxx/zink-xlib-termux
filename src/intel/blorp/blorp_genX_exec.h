@@ -113,11 +113,11 @@ blorp_get_surface_base_address(struct blorp_batch *batch);
 #if GFX_VER >= 7
 static const struct intel_l3_config *
 blorp_get_l3_config(struct blorp_batch *batch);
-# else
+#endif
+
 static void
 blorp_emit_urb_config(struct blorp_batch *batch,
-                      unsigned vs_entry_size, unsigned sf_entry_size);
-#endif
+                      struct intel_urb_config *urb_config);
 
 static void
 blorp_emit_pipeline(struct blorp_batch *batch,
@@ -285,7 +285,10 @@ emit_urb_config(struct blorp_batch *batch,
    }
 
 #else /* GFX_VER < 7 */
-   blorp_emit_urb_config(batch, vs_entry_size, sf_entry_size);
+   struct intel_urb_config urb_cfg = {
+      .size = { vs_entry_size, 0, 0, 0, sf_entry_size, },
+   };
+   blorp_emit_urb_config(batch, &urb_cfg);
 #endif
 }
 

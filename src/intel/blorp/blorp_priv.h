@@ -231,13 +231,13 @@ struct blorp_params
    unsigned num_draw_buffers;
    unsigned num_layers;
    uint32_t vs_prog_kernel;
-   struct brw_vs_prog_data *vs_prog_data;
+   void *vs_prog_data;
    uint32_t sf_prog_kernel;
-   struct brw_sf_prog_data *sf_prog_data;
+   void *sf_prog_data;
    uint32_t wm_prog_kernel;
-   struct brw_wm_prog_data *wm_prog_data;
+   void *wm_prog_data;
    uint32_t cs_prog_kernel;
-   struct brw_cs_prog_data *cs_prog_data;
+   void *cs_prog_data;
 
    bool use_pre_baked_binding_table;
    uint32_t pre_baked_binding_table_offset;

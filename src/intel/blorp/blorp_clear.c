@@ -214,8 +214,9 @@ blorp_params_get_layer_offset_vs(struct blorp_batch *batch,
       .base = BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_LAYER_OFFSET_VS),
    };
 
-   if (params->wm_prog_data)
-      blorp_key.num_inputs = params->wm_prog_data->num_varying_inputs;
+   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
+   if (wm_prog_data)
+      blorp_key.num_inputs = wm_prog_data->num_varying_inputs;
 
    if (blorp->lookup_shader(batch, &blorp_key, sizeof(blorp_key),
                             &params->vs_prog_kernel, &params->vs_prog_data))

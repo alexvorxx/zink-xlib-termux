@@ -246,15 +246,17 @@ emit_urb_config(struct blorp_batch *batch,
     *
     * where 'n' stands for number of varying inputs expressed as vec4s.
     */
-    const unsigned num_varyings =
-       params->wm_prog_data ? params->wm_prog_data->num_varying_inputs : 0;
-    const unsigned total_needed = 16 + 16 + num_varyings * 16;
+   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
+   const unsigned num_varyings =
+      wm_prog_data ? wm_prog_data->num_varying_inputs : 0;
+   const unsigned total_needed = 16 + 16 + num_varyings * 16;
 
    /* The URB size is expressed in units of 64 bytes (512 bits) */
    const unsigned vs_entry_size = DIV_ROUND_UP(total_needed, 64);
 
+   ASSERTED struct brw_sf_prog_data *sf_prog_data = params->sf_prog_data;
    ASSERTED const unsigned sf_entry_size =
-      params->sf_prog_data ? params->sf_prog_data->urb_entry_size : 0;
+      sf_prog_data ? sf_prog_data->urb_entry_size : 0;
 
 #if GFX_VER >= 7
    assert(sf_entry_size == 0);
@@ -347,8 +349,9 @@ blorp_emit_input_varying_data(struct blorp_batch *batch,
    const unsigned vec4_size_in_bytes = 4 * sizeof(float);
    const unsigned max_num_varyings =
       DIV_ROUND_UP(sizeof(params->wm_inputs), vec4_size_in_bytes);
+   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
    const unsigned num_varyings =
-      params->wm_prog_data ? params->wm_prog_data->num_varying_inputs : 0;
+      wm_prog_data ? wm_prog_data->num_varying_inputs : 0;
 
    *size = 16 + num_varyings * vec4_size_in_bytes;
 
@@ -369,7 +372,7 @@ blorp_emit_input_varying_data(struct blorp_batch *batch,
       for (unsigned i = 0; i < max_num_varyings; i++) {
          const gl_varying_slot attr = VARYING_SLOT_VAR0 + i;
 
-         const int input_index = params->wm_prog_data->urb_setup[attr];
+         const int input_index = wm_prog_data->urb_setup[attr];
          if (input_index < 0)
             continue;
 
@@ -474,8 +477,9 @@ static void
 blorp_emit_vertex_elements(struct blorp_batch *batch,
                            const struct blorp_params *params)
 {
+   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
    const unsigned num_varyings =
-      params->wm_prog_data ? params->wm_prog_data->num_varying_inputs : 0;
+      wm_prog_data ? wm_prog_data->num_varying_inputs : 0;
    bool need_ndc = batch->blorp->compiler->devinfo->ver <= 5;
    const unsigned num_elements = 2 + need_ndc + num_varyings;
 

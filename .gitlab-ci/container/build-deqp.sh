@@ -130,12 +130,12 @@ if [ "${DEQP_TARGET}" != 'android' ]; then
 fi
 
 cmake -S /VK-GL-CTS -B . -G Ninja \
-      -DDEQP_TARGET=${DEQP_TARGET:-default} \
+      -DDEQP_TARGET=${DEQP_TARGET} \
       -DCMAKE_BUILD_TYPE=Release \
       $EXTRA_CMAKE_ARGS
 
 # Make sure `default` doesn't silently stop detecting one of the platforms we care about
-if [ "${DEQP_TARGET:-default}" = 'default' ]; then
+if [ "${DEQP_TARGET}" = 'default' ]; then
   grep -q DEQP_SUPPORT_WAYLAND=1 build.ninja
   grep -q DEQP_SUPPORT_X11=1 build.ninja
   grep -q DEQP_SUPPORT_XCB=1 build.ninja

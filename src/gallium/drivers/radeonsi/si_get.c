@@ -19,7 +19,8 @@
 
 /* The capabilities reported by the kernel has priority
    over the existing logic in si_get_video_param */
-#define QUERYABLE_KERNEL   (!!(sscreen->info.drm_minor >= 41))
+#define QUERYABLE_KERNEL   (sscreen->info.is_amdgpu && \
+   !!(sscreen->info.drm_minor >= 41))
 #define KERNEL_DEC_CAP(codec, attrib)    \
    (codec > PIPE_VIDEO_FORMAT_UNKNOWN && codec <= PIPE_VIDEO_FORMAT_AV1) ? \
    (sscreen->info.dec_caps.codec_info[codec - 1].valid ? \

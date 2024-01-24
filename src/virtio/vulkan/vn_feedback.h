@@ -159,6 +159,9 @@ vn_feedback_query_cmd_alloc(VkDevice dev_handle,
                             struct vn_feedback_cmd_pool *feedback_pool,
                             struct vn_query_feedback_cmd **out_feedback_cmd);
 
+void
+vn_feedback_query_cmd_free(struct vn_query_feedback_cmd *feedback_cmd);
+
 VkResult
 vn_feedback_query_batch_record(VkDevice dev_handle,
                                struct vn_query_feedback_cmd *feedback_cmd,

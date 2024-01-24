@@ -693,18 +693,6 @@ vn_CreateCommandPool(VkDevice device,
    return VK_SUCCESS;
 }
 
-static inline void
-vn_recycle_query_feedback_cmd(struct vn_command_buffer *cmd)
-{
-   simple_mtx_lock(&cmd->linked_query_feedback_cmd->pool->mutex);
-   vn_ResetCommandBuffer(
-      vn_command_buffer_to_handle(cmd->linked_query_feedback_cmd->cmd), 0);
-   list_add(&cmd->linked_query_feedback_cmd->head,
-            &cmd->linked_query_feedback_cmd->pool->free_query_feedback_cmds);
-   cmd->linked_query_feedback_cmd = NULL;
-   simple_mtx_unlock(&cmd->linked_query_feedback_cmd->pool->mutex);
-}
-
 void
 vn_DestroyCommandPool(VkDevice device,
                       VkCommandPool commandPool,
@@ -735,8 +723,10 @@ vn_DestroyCommandPool(VkDevice device,
                                &cmd->builder.query_batches, head)
          vk_free(alloc, batch);
 
-      if (cmd->linked_query_feedback_cmd)
-         vn_recycle_query_feedback_cmd(cmd);
+      if (cmd->linked_query_feedback_cmd) {
+         vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
+         cmd->linked_query_feedback_cmd = NULL;
+      }
 
       vk_free(alloc, cmd);
    }
@@ -767,8 +757,10 @@ vn_cmd_reset(struct vn_command_buffer *cmd)
                             &cmd->builder.query_batches, head)
       list_move_to(&batch->head, &cmd->pool->free_query_batches);
 
-   if (cmd->linked_query_feedback_cmd)
-      vn_recycle_query_feedback_cmd(cmd);
+   if (cmd->linked_query_feedback_cmd) {
+      vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
+      cmd->linked_query_feedback_cmd = NULL;
+   }
 
    memset(&cmd->builder, 0, sizeof(cmd->builder));
 
@@ -893,8 +885,10 @@ vn_FreeCommandBuffers(VkDevice device,
                                &cmd->builder.query_batches, head)
          list_move_to(&batch->head, &cmd->pool->free_query_batches);
 
-      if (cmd->linked_query_feedback_cmd)
-         vn_recycle_query_feedback_cmd(cmd);
+      if (cmd->linked_query_feedback_cmd) {
+         vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
+         cmd->linked_query_feedback_cmd = NULL;
+      }
 
       vn_object_base_fini(&cmd->base);
       vk_free(alloc, cmd);

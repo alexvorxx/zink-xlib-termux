@@ -48,7 +48,6 @@ struct vn_queue_submission {
    const struct vn_device_memory *wsi_mem;
    uint32_t feedback_cmd_buffer_count;
    struct vn_sync_payload_external external_payload;
-   struct vn_query_feedback_cmd *recycle_query_feedback_cmd;
 
    /* Temporary storage allocation for submission
     * A single alloc for storage is performed and the offsets inside
@@ -278,6 +277,19 @@ vn_queue_submission_count_batch_feedback(struct vn_queue_submission *submit,
             vn_get_cmd_handle(submit, batch_index, i));
          if (!list_is_empty(&cmd->builder.query_batches))
             batch_has_feedback_query = true;
+
+         /* If a cmd that was submitted previously and already has a feedback
+          * cmd linked, as long as
+          * VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT was not set we can
+          * assume it has completed execution and is no longer in the pending
+          * state so its safe to recycle the old feedback command.
+          */
+         if (cmd->linked_query_feedback_cmd) {
+            assert(!cmd->builder.is_simultaneous);
+
+            vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
+            cmd->linked_query_feedback_cmd = NULL;
+         }
       }
    }
 
@@ -580,7 +592,7 @@ vn_combine_query_feedback_batches_and_record(
       result = vn_feedback_query_batch_record(dev_handle, feedback_cmd,
                                               &combined_batches);
       if (result != VK_SUCCESS)
-         vk_free(&cmd_pool->allocator, feedback_cmd);
+         vn_feedback_query_cmd_free(feedback_cmd);
    }
 
 recycle_combined_batches:
@@ -653,17 +665,6 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
              "Could not find non simultaneous cmd to link query feedback\n");
       return VK_SUCCESS;
    }
-
-   /* If a cmd that was submitted previously and already has a feedback cmd
-    * linked, as long as VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is not
-    * set we can assume it has completed execution and is no longer in the
-    * pending state so its safe to recycle the old feedback command before
-    * linking a new one. Defer the actual recycle operation to
-    * vn_queue_submission_cleanup.
-    */
-   if (linked_cmd->linked_query_feedback_cmd)
-      submit->recycle_query_feedback_cmd =
-         linked_cmd->linked_query_feedback_cmd;
 
    linked_cmd->linked_query_feedback_cmd = feedback_cmd;
 
@@ -997,17 +998,6 @@ vn_queue_submission_cleanup(struct vn_queue_submission *submit)
 {
    struct vn_queue *queue = vn_queue_from_handle(submit->queue_handle);
    const VkAllocationCallbacks *alloc = &queue->base.base.base.device->alloc;
-
-   if (submit->recycle_query_feedback_cmd) {
-      simple_mtx_lock(&submit->recycle_query_feedback_cmd->pool->mutex);
-      vn_ResetCommandBuffer(
-         vn_command_buffer_to_handle(submit->recycle_query_feedback_cmd->cmd),
-         0);
-      list_add(
-         &submit->recycle_query_feedback_cmd->head,
-         &submit->recycle_query_feedback_cmd->pool->free_query_feedback_cmds);
-      simple_mtx_unlock(&submit->recycle_query_feedback_cmd->pool->mutex);
-   }
 
    /* TODO clean up pending src feedbacks on failure? */
    if (submit->has_feedback_semaphore)

@@ -649,6 +649,16 @@ vn_feedback_query_cmd_alloc(VkDevice dev_handle,
    return VK_SUCCESS;
 }
 
+void
+vn_feedback_query_cmd_free(struct vn_query_feedback_cmd *feedback_cmd)
+{
+   simple_mtx_lock(&feedback_cmd->pool->mutex);
+   vn_ResetCommandBuffer(vn_command_buffer_to_handle(feedback_cmd->cmd), 0);
+   list_add(&feedback_cmd->head,
+            &feedback_cmd->pool->free_query_feedback_cmds);
+   simple_mtx_unlock(&feedback_cmd->pool->mutex);
+}
+
 VkResult
 vn_feedback_query_batch_record(VkDevice dev_handle,
                                struct vn_query_feedback_cmd *feedback_cmd,

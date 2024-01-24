@@ -1285,6 +1285,7 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_OCCLUSION_QUERY = 1ull << 58,
    RADV_CMD_DIRTY_DB_SHADER_CONTROL = 1ull << 59,
    RADV_CMD_DIRTY_STREAMOUT_ENABLE = 1ull << 60,
+   RADV_CMD_DIRTY_SHADERS = 1ull << 61,
 };
 
 enum radv_cmd_flush_bits {
@@ -1529,6 +1530,8 @@ struct radv_cmd_state {
    struct radv_shader *gs_copy_shader;
    struct radv_shader *last_vgt_shader;
    struct radv_shader *rt_prolog;
+
+   struct radv_shader_object *shader_objs[MESA_VULKAN_SHADER_STAGES];
 
    uint32_t prefetch_L2_mask;
 

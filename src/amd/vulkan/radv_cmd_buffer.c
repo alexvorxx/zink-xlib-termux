@@ -6595,11 +6595,37 @@ radv_bind_shader(struct radv_cmd_buffer *cmd_buffer, struct radv_shader *shader,
    }
 }
 
+static void
+radv_reset_shader_object_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint pipelineBindPoint)
+{
+   switch (pipelineBindPoint) {
+   case VK_PIPELINE_BIND_POINT_COMPUTE:
+      if (cmd_buffer->state.shader_objs[MESA_SHADER_COMPUTE]) {
+         radv_bind_shader(cmd_buffer, NULL, MESA_SHADER_COMPUTE);
+         cmd_buffer->state.shader_objs[MESA_SHADER_COMPUTE] = NULL;
+      }
+      break;
+   case VK_PIPELINE_BIND_POINT_GRAPHICS:
+      radv_foreach_stage(s, RADV_GRAPHICS_STAGE_BITS)
+      {
+         if (cmd_buffer->state.shader_objs[s]) {
+            radv_bind_shader(cmd_buffer, NULL, s);
+            cmd_buffer->state.shader_objs[s] = NULL;
+         }
+      }
+      break;
+   default:
+      break;
+   }
+}
+
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint, VkPipeline _pipeline)
 {
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    RADV_FROM_HANDLE(radv_pipeline, pipeline, _pipeline);
+
+   radv_reset_shader_object_state(cmd_buffer, pipelineBindPoint);
 
    switch (pipelineBindPoint) {
    case VK_PIPELINE_BIND_POINT_COMPUTE: {
@@ -8977,6 +9003,80 @@ radv_emit_streamout_enable_state(struct radv_cmd_buffer *cmd_buffer)
 }
 
 static void
+radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
+{
+   const gl_shader_stage last_vgt_api_stage =
+      util_last_bit(cmd_buffer->state.active_stages & BITFIELD_MASK(MESA_SHADER_FRAGMENT)) - 1;
+   const struct radv_shader *last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
+   const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
+   const struct radv_device *device = cmd_buffer->device;
+   struct radeon_cmdbuf *cs = cmd_buffer->cs;
+
+   if (cmd_buffer->state.graphics_pipeline)
+      return;
+
+   /* Emit graphics shaders. */
+   radv_foreach_stage(s, cmd_buffer->state.active_stages & RADV_GRAPHICS_STAGE_BITS)
+   {
+      struct radv_shader_object *shader_obj = cmd_buffer->state.shader_objs[s];
+
+      switch (s) {
+      case MESA_SHADER_VERTEX:
+         radv_emit_vertex_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_VERTEX]);
+         break;
+      case MESA_SHADER_TESS_CTRL:
+         radv_emit_tess_ctrl_shader(device, cs, cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL]);
+         break;
+      case MESA_SHADER_TESS_EVAL:
+         radv_emit_tess_eval_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL]);
+         break;
+      case MESA_SHADER_GEOMETRY:
+         radv_emit_geometry_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY], NULL,
+                                   shader_obj->gs.copy_shader);
+         break;
+      case MESA_SHADER_FRAGMENT:
+         radv_emit_fragment_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]);
+         radv_emit_ps_inputs(device, cs, last_vgt_shader, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]);
+         break;
+      default:
+         unreachable("invalid bind stage");
+      }
+   }
+
+   /* Emit graphics states related to shaders. */
+   const uint32_t vgt_gs_out = radv_get_vgt_gs_out(cmd_buffer->state.shaders, d->vk.ia.primitive_topology);
+   struct radv_vgt_shader_key vgt_shader_cfg_key = {
+      .tess = !!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL],
+      .gs = !!cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY],
+   };
+
+   radv_emit_vgt_gs_mode(device, cs, last_vgt_shader);
+   radv_emit_vgt_vertex_reuse(device, cs, radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL));
+   radv_emit_vgt_shader_config(device, cs, &vgt_shader_cfg_key);
+   radv_emit_vgt_gs_out(device, cs, vgt_gs_out);
+
+   cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_SHADERS;
+}
+
+static uint64_t
+radv_get_needed_dynamic_states(struct radv_cmd_buffer *cmd_buffer)
+{
+   uint64_t dynamic_states = RADV_DYNAMIC_ALL;
+
+   if (cmd_buffer->state.emitted_graphics_pipeline)
+      return cmd_buffer->state.emitted_graphics_pipeline->needed_dynamic_state;
+
+   /* Clear unnecessary dynamic states for shader objects. */
+   if (!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL])
+      dynamic_states &= ~RADV_DYNAMIC_PATCH_CONTROL_POINTS;
+   if (!cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL])
+      dynamic_states &= ~RADV_DYNAMIC_TESS_DOMAIN_ORIGIN;
+   dynamic_states &= ~RADV_DYNAMIC_FRAGMENT_SHADING_RATE;
+
+   return dynamic_states;
+}
+
+static void
 radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info *info)
 {
    const struct radv_device *device = cmd_buffer->device;
@@ -8987,7 +9087,8 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
       if ((cmd_buffer->state.emitted_graphics_pipeline != cmd_buffer->state.graphics_pipeline ||
            (cmd_buffer->state.dirty &
             (RADV_CMD_DIRTY_DYNAMIC_COLOR_WRITE_MASK | RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_ENABLE |
-             RADV_CMD_DIRTY_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE | RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_EQUATION)))) {
+             RADV_CMD_DIRTY_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE | RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_EQUATION |
+             RADV_CMD_DIRTY_SHADERS)))) {
          ps_epilog = lookup_ps_epilog(cmd_buffer);
          if (!ps_epilog) {
             vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -9045,8 +9146,11 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
         RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES | RADV_CMD_DIRTY_DYNAMIC_LINE_RASTERIZATION_MODE))
       radv_emit_binning_state(cmd_buffer);
 
-   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_PIPELINE)
+   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_PIPELINE) {
       radv_emit_graphics_pipeline(cmd_buffer);
+   } else if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_SHADERS) {
+      radv_emit_shaders(cmd_buffer);
+   }
 
    if (ps_epilog)
       radv_emit_ps_epilog_state(cmd_buffer, ps_epilog);
@@ -9072,8 +9176,8 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
    if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_STREAMOUT_ENABLE)
       radv_emit_streamout_enable_state(cmd_buffer);
 
-   const uint64_t dynamic_states =
-      cmd_buffer->state.dirty & cmd_buffer->state.emitted_graphics_pipeline->needed_dynamic_state;
+   const uint64_t dynamic_states = cmd_buffer->state.dirty & radv_get_needed_dynamic_states(cmd_buffer);
+
    if (dynamic_states) {
       radv_cmd_buffer_flush_dynamic_state(cmd_buffer, dynamic_states);
 
@@ -9088,6 +9192,112 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
       radv_emit_scissor(cmd_buffer);
       cmd_buffer->state.context_roll_without_scissor_emitted = false;
    }
+}
+
+static void
+radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
+{
+   const struct radv_device *device = cmd_buffer->device;
+   uint32_t push_constant_size = 0, dynamic_offset_count = 0;
+   bool need_indirect_descriptor_sets = false;
+
+   if (cmd_buffer->state.graphics_pipeline)
+      return;
+
+   for (unsigned s = 0; s < MESA_SHADER_COMPUTE; s++) {
+      const struct radv_shader_object *shader_obj = cmd_buffer->state.shader_objs[s];
+
+      if (!shader_obj) {
+         radv_bind_shader(cmd_buffer, NULL, s);
+         continue;
+      }
+
+      struct radv_shader *shader = shader_obj->shader ? shader_obj->shader : NULL;
+
+      switch (s) {
+      case MESA_SHADER_VERTEX:
+         if (cmd_buffer->state.shader_objs[MESA_SHADER_TESS_CTRL]) {
+            radv_bind_shader(cmd_buffer, shader_obj->vs.as_ls.shader, s);
+         } else if (cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]) {
+            radv_bind_shader(cmd_buffer, shader_obj->vs.as_es.shader, s);
+         } else {
+            radv_bind_shader(cmd_buffer, shader, s);
+         }
+         break;
+      case MESA_SHADER_TESS_EVAL:
+         if (cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]) {
+            radv_bind_shader(cmd_buffer, shader_obj->tes.as_es.shader, s);
+         } else {
+            radv_bind_shader(cmd_buffer, shader, s);
+         }
+         break;
+      default:
+         radv_bind_shader(cmd_buffer, shader, s);
+         if (s == MESA_SHADER_GEOMETRY)
+            cmd_buffer->state.gs_copy_shader = shader_obj->gs.copy_shader;
+         break;
+      }
+
+      if (!shader)
+         continue;
+
+      radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, shader->bo);
+      if (shader_obj->gs.copy_shader) {
+         radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, shader_obj->gs.copy_shader->bo);
+      }
+
+      /* Compute push constants/indirect descriptors state. */
+      need_indirect_descriptor_sets |= radv_get_user_sgpr(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS)->sgpr_idx != -1;
+      push_constant_size += shader_obj->push_constant_size;
+      dynamic_offset_count += shader_obj->dynamic_offset_count;
+   }
+
+   /* Determine the last VGT shader. */
+   const gl_shader_stage last_vgt_api_stage =
+      util_last_bit(cmd_buffer->state.active_stages & BITFIELD_MASK(MESA_SHADER_FRAGMENT)) - 1;
+
+   cmd_buffer->state.last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
+
+   const struct radv_shader *vs = radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_VERTEX);
+   if (vs) {
+      /* Re-emit the VS prolog when a new vertex shader is bound. */
+      if (vs->info.vs.has_prolog) {
+         cmd_buffer->state.emitted_vs_prolog = NULL;
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_VERTEX_INPUT;
+      }
+
+      /* Re-emit the vertex buffer descriptors because they are really tied to the pipeline. */
+      if (vs->info.vs.vb_desc_usage_mask) {
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_VERTEX_BUFFER;
+      }
+   }
+
+   /* Update push constants/indirect descriptors state. */
+   struct radv_descriptor_state *descriptors_state =
+      radv_get_descriptors_state(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+   struct radv_push_constant_state *pc_state = &cmd_buffer->push_constant_state[VK_PIPELINE_BIND_POINT_GRAPHICS];
+
+   descriptors_state->need_indirect_descriptor_sets = need_indirect_descriptor_sets;
+   pc_state->size = push_constant_size;
+   pc_state->dynamic_offset_count = dynamic_offset_count;
+
+   if (device->physical_device->rad_info.gfx_level <= GFX9) {
+      cmd_buffer->state.ia_multi_vgt_param = radv_compute_ia_multi_vgt_param(device, cmd_buffer->state.shaders);
+   }
+
+   radv_bind_custom_blend_mode(cmd_buffer, 0);
+
+   if (cmd_buffer->state.db_render_control) {
+      cmd_buffer->state.db_render_control = 0;
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_FRAMEBUFFER;
+   }
+
+   if (cmd_buffer->state.active_stages &
+       (VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT)) {
+      cmd_buffer->state.uses_dynamic_patch_control_points = true;
+   }
+
+   cmd_buffer->state.uses_dynamic_vertex_binding_stride = true;
 }
 
 /* MUST inline this function to avoid massive perf loss in drawoverhead */
@@ -9118,6 +9328,10 @@ radv_before_draw(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info
        * draw.
        */
       cmd_buffer->state.last_index_type = -1;
+   }
+
+   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_SHADERS) {
+      radv_bind_graphics_shaders(cmd_buffer);
    }
 
    /* Use optimal packet order based on whether we need to sync the
@@ -11374,6 +11588,121 @@ radv_CmdBindDescriptorBufferEmbeddedSamplers2EXT(
 }
 
 /* VK_EXT_shader_object */
+static void
+radv_reset_pipeline_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint pipelineBindPoint)
+{
+   switch (pipelineBindPoint) {
+   case VK_PIPELINE_BIND_POINT_COMPUTE:
+      if (cmd_buffer->state.compute_pipeline) {
+         radv_bind_shader(cmd_buffer, NULL, MESA_SHADER_COMPUTE);
+         cmd_buffer->state.compute_pipeline = NULL;
+      }
+      if (cmd_buffer->state.emitted_compute_pipeline) {
+         cmd_buffer->state.emitted_compute_pipeline = NULL;
+      }
+      break;
+   case VK_PIPELINE_BIND_POINT_GRAPHICS:
+      if (cmd_buffer->state.graphics_pipeline) {
+         radv_foreach_stage(s, cmd_buffer->state.graphics_pipeline->active_stages)
+         {
+            radv_bind_shader(cmd_buffer, NULL, s);
+         }
+         cmd_buffer->state.graphics_pipeline = NULL;
+
+         cmd_buffer->state.gs_copy_shader = NULL;
+         cmd_buffer->state.last_vgt_shader = NULL;
+         cmd_buffer->state.has_nggc = false;
+         cmd_buffer->state.emitted_vs_prolog = NULL;
+         cmd_buffer->state.col_format_non_compacted = 0;
+         cmd_buffer->state.ms.sample_shading_enable = false;
+         cmd_buffer->state.ms.min_sample_shading = 1.0f;
+         cmd_buffer->state.db_render_control = 0;
+         cmd_buffer->state.rast_prim = 0;
+         cmd_buffer->state.uses_out_of_order_rast = false;
+         cmd_buffer->state.uses_vrs_attachment = false;
+         cmd_buffer->state.uses_dynamic_vertex_binding_stride = false;
+      }
+      if (cmd_buffer->state.emitted_graphics_pipeline) {
+         cmd_buffer->state.emitted_graphics_pipeline = NULL;
+      }
+      break;
+   default:
+      break;
+   }
+
+   cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_PIPELINE;
+}
+
+static void
+radv_bind_compute_shader(struct radv_cmd_buffer *cmd_buffer, struct radv_shader_object *shader_obj)
+{
+   struct radv_shader *shader = shader_obj ? shader_obj->shader : NULL;
+   const struct radv_device *device = cmd_buffer->device;
+   struct radeon_cmdbuf *cs = cmd_buffer->cs;
+
+   radv_bind_shader(cmd_buffer, shader, MESA_SHADER_COMPUTE);
+
+   if (!shader_obj)
+      return;
+
+   ASSERTED const unsigned cdw_max = radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 128);
+
+   radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, shader->bo);
+
+   radv_emit_compute_shader(device->physical_device, cs, shader);
+
+   /* Update push constants/indirect descriptors state. */
+   struct radv_descriptor_state *descriptors_state =
+      radv_get_descriptors_state(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE);
+   struct radv_push_constant_state *pc_state = &cmd_buffer->push_constant_state[VK_PIPELINE_BIND_POINT_COMPUTE];
+
+   descriptors_state->need_indirect_descriptor_sets =
+      radv_get_user_sgpr(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS)->sgpr_idx != -1;
+   pc_state->size = shader_obj->push_constant_size;
+   pc_state->dynamic_offset_count = shader_obj->dynamic_offset_count;
+
+   assert(cmd_buffer->cs->cdw <= cdw_max);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+radv_CmdBindShadersEXT(VkCommandBuffer commandBuffer, uint32_t stageCount, const VkShaderStageFlagBits *pStages,
+                       const VkShaderEXT *pShaders)
+{
+   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VkShaderStageFlagBits bound_stages = 0;
+
+   for (uint32_t i = 0; i < stageCount; i++) {
+      const gl_shader_stage stage = vk_to_mesa_shader_stage(pStages[i]);
+
+      if (!pShaders) {
+         cmd_buffer->state.shader_objs[stage] = NULL;
+         continue;
+      }
+
+      RADV_FROM_HANDLE(radv_shader_object, shader_obj, pShaders[i]);
+
+      cmd_buffer->state.shader_objs[stage] = shader_obj;
+
+      bound_stages |= pStages[i];
+   }
+
+   if (bound_stages & VK_SHADER_STAGE_COMPUTE_BIT) {
+      radv_reset_pipeline_state(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE);
+      radv_mark_descriptor_sets_dirty(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE);
+
+      radv_bind_compute_shader(cmd_buffer, cmd_buffer->state.shader_objs[MESA_SHADER_COMPUTE]);
+   }
+
+   if (bound_stages & RADV_GRAPHICS_STAGE_BITS) {
+      radv_reset_pipeline_state(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+      radv_mark_descriptor_sets_dirty(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+
+      /* Graphics shaders are handled at draw time because of shader variants. */
+   }
+
+   cmd_buffer->state.dirty |= RADV_CMD_DIRTY_SHADERS;
+}
+
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdSetCoverageModulationModeNV(VkCommandBuffer commandBuffer, VkCoverageModulationModeNV coverageModulationMode)
 {

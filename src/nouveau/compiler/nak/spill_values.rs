@@ -156,7 +156,7 @@ impl Spill for SpillBar {
         assert!(dst.file() == RegFile::GPR);
         Instr::new_boxed(OpBMov {
             dst: dst.into(),
-            src: src.into(),
+            src: src,
             clear: false,
         })
     }
@@ -164,7 +164,7 @@ impl Spill for SpillBar {
     fn fill(&self, dst: Dst, src: SSAValue) -> Box<Instr> {
         assert!(src.file() == RegFile::GPR);
         Instr::new_boxed(OpBMov {
-            dst: dst.into(),
+            dst: dst,
             src: src.into(),
             clear: false,
         })
@@ -456,7 +456,7 @@ fn spill_values<S: Spill>(
                     some.push(Reverse(SSANextUse::new(*ssa, next_use)));
                 }
             }
-            while w.count(file) < limit.into() {
+            while w.count(file) < limit {
                 let Some(entry) = some.pop() else {
                     break;
                 };
@@ -465,7 +465,7 @@ fn spill_values<S: Spill>(
 
             // If we still have room, consider values which aren't used
             // inside the loop.
-            if w.count(file) < limit.into() {
+            if w.count(file) < limit {
                 for ssa in i_b.iter() {
                     debug_assert!(ssa.file() == file);
                     if !lu.contains(ssa) {
@@ -474,7 +474,7 @@ fn spill_values<S: Spill>(
                     }
                 }
 
-                while w.count(file) < limit.into() {
+                while w.count(file) < limit {
                     let Some(entry) = some.pop() else {
                         break;
                     };
@@ -522,7 +522,7 @@ fn spill_values<S: Spill>(
                     some.push(Reverse(SSANextUse::new(ssa, info.next_use)));
                 }
             }
-            while w.count(file) < limit.into() {
+            while w.count(file) < limit {
                 let Some(entry) = some.pop() else {
                     break;
                 };
@@ -698,8 +698,8 @@ fn spill_values<S: Spill>(
                     let abs_pressure =
                         b.w.count(file) + u32::from(rel_pressure);
 
-                    if abs_pressure > limit.into() {
-                        let count = abs_pressure - u32::from(limit);
+                    if abs_pressure > limit {
+                        let count = abs_pressure - limit;
                         let count = count.try_into().unwrap();
 
                         let mut spills = SpillChooser::new(bl, ip, count);

@@ -815,8 +815,8 @@ impl SM70Instr {
         self.encode_alu(
             0x00c,
             None,
-            ALUSrc::from_src(&op.srcs[0].into()),
-            ALUSrc::from_src(&op.srcs[1].into()),
+            ALUSrc::from_src(&op.srcs[0]),
+            ALUSrc::from_src(&op.srcs[1]),
             ALUSrc::None,
         );
 
@@ -843,9 +843,9 @@ impl SM70Instr {
         self.encode_alu(
             0x012,
             Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0].into()),
-            ALUSrc::from_src(&op.srcs[1].into()),
-            ALUSrc::from_src(&op.srcs[2].into()),
+            ALUSrc::from_src(&op.srcs[0]),
+            ALUSrc::from_src(&op.srcs[1]),
+            ALUSrc::from_src(&op.srcs[2]),
         );
 
         self.set_field(72..80, op.op.lut);
@@ -898,7 +898,7 @@ impl SM70Instr {
                 0x104,
                 Some(op.dst),
                 ALUSrc::None,
-                ALUSrc::from_src(&op.src.into()),
+                ALUSrc::from_src(&op.src),
                 ALUSrc::None,
             );
         } else {
@@ -906,7 +906,7 @@ impl SM70Instr {
                 0x110,
                 Some(op.dst),
                 ALUSrc::None,
-                ALUSrc::from_src(&op.src.into()),
+                ALUSrc::from_src(&op.src),
                 ALUSrc::None,
             );
         }
@@ -927,7 +927,7 @@ impl SM70Instr {
                 0x105,
                 Some(op.dst),
                 ALUSrc::None,
-                ALUSrc::from_src(&op.src.into()),
+                ALUSrc::from_src(&op.src),
                 ALUSrc::None,
             );
         } else {
@@ -935,7 +935,7 @@ impl SM70Instr {
                 0x111,
                 Some(op.dst),
                 ALUSrc::None,
-                ALUSrc::from_src(&op.src.into()),
+                ALUSrc::from_src(&op.src),
                 ALUSrc::None,
             );
         }
@@ -954,7 +954,7 @@ impl SM70Instr {
                 0x106,
                 Some(op.dst),
                 ALUSrc::None,
-                ALUSrc::from_src(&op.src.into()),
+                ALUSrc::from_src(&op.src),
                 ALUSrc::None,
             );
         } else {
@@ -962,7 +962,7 @@ impl SM70Instr {
                 0x112,
                 Some(op.dst),
                 ALUSrc::None,
-                ALUSrc::from_src(&op.src.into()),
+                ALUSrc::from_src(&op.src),
                 ALUSrc::None,
             );
         }
@@ -980,7 +980,7 @@ impl SM70Instr {
                 0x107,
                 Some(op.dst),
                 ALUSrc::None,
-                ALUSrc::from_src(&op.src.into()),
+                ALUSrc::from_src(&op.src),
                 ALUSrc::None,
             );
         } else {
@@ -988,7 +988,7 @@ impl SM70Instr {
                 0x113,
                 Some(op.dst),
                 ALUSrc::None,
-                ALUSrc::from_src(&op.src.into()),
+                ALUSrc::from_src(&op.src),
                 ALUSrc::None,
             );
         }
@@ -1004,7 +1004,7 @@ impl SM70Instr {
             0x002,
             Some(op.dst),
             ALUSrc::None,
-            ALUSrc::from_src(&op.src.into()),
+            ALUSrc::from_src(&op.src),
             ALUSrc::None,
         );
         self.set_field(72..76, op.quad_lanes);
@@ -1037,8 +1037,8 @@ impl SM70Instr {
         self.encode_alu(
             0x007,
             Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0].into()),
-            ALUSrc::from_src(&op.srcs[1].into()),
+            ALUSrc::from_src(&op.srcs[0]),
+            ALUSrc::from_src(&op.srcs[1]),
             ALUSrc::None,
         );
 

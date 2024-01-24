@@ -28,9 +28,9 @@ fn init_info_from_nir(nir: &nir_shader, sm: u8) -> ShaderInfo {
             MESA_SHADER_COMPUTE => {
                 ShaderStageInfo::Compute(ComputeShaderInfo {
                     local_size: [
-                        nir.info.workgroup_size[0].into(),
-                        nir.info.workgroup_size[1].into(),
-                        nir.info.workgroup_size[2].into(),
+                        nir.info.workgroup_size[0],
+                        nir.info.workgroup_size[1],
+                        nir.info.workgroup_size[2],
                     ],
                     smem_size: nir.info.shared_size.try_into().unwrap(),
                 })
@@ -280,7 +280,7 @@ impl<'a> ShaderFromNir<'a> {
             }
             let bits =
                 usize::from(def.bit_size) * usize::from(def.num_components);
-            assert!(vec.len() == bits.div_ceil(32).into());
+            assert!(vec.len() == bits.div_ceil(32));
         }
         self.ssa_map
             .entry(def.index)
@@ -1632,7 +1632,7 @@ impl<'a> ShaderFromNir<'a> {
             if mask & (1 << i) == 0 {
                 nir_dst.push(b.copy(0.into())[0]);
             } else {
-                nir_dst.push(dst[di].into());
+                nir_dst.push(dst[di]);
                 di += 1;
             }
         }
@@ -1959,7 +1959,7 @@ impl<'a> ShaderFromNir<'a> {
                 let coord = self.get_image_coord(intrin, dim);
                 // let sample = self.get_src(&srcs[2]);
 
-                let comps = u8::try_from(intrin.num_components).unwrap();
+                let comps = intrin.num_components;
                 assert!(intrin.def.bit_size() == 32);
                 assert!(comps == 1 || comps == 2 || comps == 4);
 
@@ -1985,7 +1985,7 @@ impl<'a> ShaderFromNir<'a> {
                 // let sample = self.get_src(&srcs[2]);
                 let data = self.get_src(&srcs[3]);
 
-                let comps = u8::try_from(intrin.num_components).unwrap();
+                let comps = intrin.num_components;
                 assert!(srcs[3].bit_size() == 32);
                 assert!(comps == 1 || comps == 2 || comps == 4);
 
@@ -2555,7 +2555,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(addr % 4 == 0);
 
                 for c in 0..usize::from(intrin.num_components) {
-                    let idx = usize::from(addr / 4) + usize::from(c);
+                    let idx = usize::from(addr / 4) + c;
                     self.fs_out_regs[idx] = data.as_ssa().unwrap()[c];
                 }
             }

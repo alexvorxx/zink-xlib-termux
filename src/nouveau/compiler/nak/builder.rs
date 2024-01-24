@@ -43,13 +43,13 @@ pub trait Builder {
             }
             if is_predicate {
                 self.push_op(OpPLop3 {
-                    dsts: [dst.into(), Dst::None],
+                    dsts: [dst, Dst::None],
                     srcs: [x, y, true.into()],
                     ops: [op, LogicOp3::new_const(false)],
                 });
             } else {
                 self.push_op(OpLop3 {
-                    dst: dst.into(),
+                    dst: dst,
                     srcs: [x, y, 0.into()],
                     op: op,
                 });
@@ -68,13 +68,13 @@ pub trait Builder {
                     }
                 };
                 self.push_op(OpPSetP {
-                    dsts: [dst.into(), Dst::None],
+                    dsts: [dst, Dst::None],
                     ops: [cmp_op, PredSetOp::And],
                     srcs: [x, y, true.into()],
                 });
             } else {
                 self.push_op(OpLop2 {
-                    dst: dst.into(),
+                    dst: dst,
                     srcs: [x, y],
                     op: op,
                 });
@@ -566,12 +566,12 @@ pub trait SSABuilder: Builder {
                 self.push_op(OpPSetP {
                     dsts: [tmp.into(), Dst::None],
                     ops: [PredSetOp::And, PredSetOp::And],
-                    srcs: [cond.into(), x.into(), true.into()],
+                    srcs: [cond, x, true.into()],
                 });
                 self.push_op(OpPSetP {
                     dsts: [dst.into(), Dst::None],
                     ops: [PredSetOp::And, PredSetOp::Or],
-                    srcs: [Src::from(cond).bnot(), y.into(), tmp.into()],
+                    srcs: [cond.bnot(), y, tmp.into()],
                 });
             }
             dst

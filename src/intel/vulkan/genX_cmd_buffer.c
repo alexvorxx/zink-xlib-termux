@@ -2996,7 +2996,7 @@ genX(CmdExecuteCommands)(
 }
 
 static inline enum anv_pipe_bits
-anv_pipe_flush_bits_for_access_flags(struct anv_device *device,
+anv_pipe_flush_bits_for_access_flags(struct anv_cmd_buffer *cmd_buffer,
                                      VkAccessFlags2 flags)
 {
    enum anv_pipe_bits pipe_bits = 0;
@@ -3037,12 +3037,17 @@ anv_pipe_flush_bits_for_access_flags(struct anv_device *device,
           *     - vkCmdCopy*(), vkCmdUpdate*(), vkCmdFill*()
           *
           * Most of these operations are implemented using Blorp which writes
-          * through the render target, so flush that cache to make it visible
-          * to future operations. And for depth related operations we also
-          * need to flush the depth cache.
+          * through the render target cache or the depth cache on the graphics
+          * queue. On the compute queue, the writes are done through the data
+          * port.
           */
-         pipe_bits |= ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT;
-         pipe_bits |= ANV_PIPE_DEPTH_CACHE_FLUSH_BIT;
+         if (anv_cmd_buffer_is_compute_queue(cmd_buffer)) {
+            pipe_bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
+            pipe_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
+         } else {
+            pipe_bits |= ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT;
+            pipe_bits |= ANV_PIPE_DEPTH_CACHE_FLUSH_BIT;
+         }
          break;
       case VK_ACCESS_2_MEMORY_WRITE_BIT:
          /* We're transitioning a buffer for generic write operations. Flush
@@ -3079,9 +3084,10 @@ anv_pipe_flush_bits_for_access_flags(struct anv_device *device,
 }
 
 static inline enum anv_pipe_bits
-anv_pipe_invalidate_bits_for_access_flags(struct anv_device *device,
+anv_pipe_invalidate_bits_for_access_flags(struct anv_cmd_buffer *cmd_buffer,
                                           VkAccessFlags2 flags)
 {
+   struct anv_device *device = cmd_buffer->device;
    enum anv_pipe_bits pipe_bits = 0;
 
    u_foreach_bit64(b, flags) {
@@ -3608,8 +3614,8 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
    }
 
    enum anv_pipe_bits bits =
-      anv_pipe_flush_bits_for_access_flags(device, src_flags) |
-      anv_pipe_invalidate_bits_for_access_flags(device, dst_flags);
+      anv_pipe_flush_bits_for_access_flags(cmd_buffer, src_flags) |
+      anv_pipe_invalidate_bits_for_access_flags(cmd_buffer, dst_flags);
 
    /* Our HW implementation of the sparse feature lives in the GAM unit
     * (interface between all the GPU caches and external memory). As a result

@@ -1202,11 +1202,8 @@ impl Shader {
                 live = SimpleLiveness::for_function(f);
                 max_live = live.calc_max_live(f);
 
-                match file {
-                    RegFile::Bar => {
-                        tmp_gprs = max(tmp_gprs, 2);
-                    }
-                    _ => (),
+                if file == RegFile::Bar {
+                    tmp_gprs = max(tmp_gprs, 2);
                 }
             }
         }

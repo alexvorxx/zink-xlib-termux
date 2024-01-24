@@ -2088,13 +2088,10 @@ impl Shader {
         for b in &func.blocks {
             labels.insert(b.label, ip);
             for instr in &b.instrs {
-                match &instr.op {
-                    Op::Nop(op) => {
-                        if let Some(label) = op.label {
-                            labels.insert(label, ip);
-                        }
+                if let Op::Nop(op) = &instr.op {
+                    if let Some(label) = op.label {
+                        labels.insert(label, ip);
                     }
-                    _ => (),
                 }
                 ip += 4;
             }

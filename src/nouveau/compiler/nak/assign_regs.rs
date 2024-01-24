@@ -52,7 +52,7 @@ struct SSAUseMap {
 
 impl SSAUseMap {
     fn add_fixed_reg_use(&mut self, ip: usize, ssa: SSAValue, reg: u32) {
-        let v = self.ssa_map.entry(ssa).or_insert_with(|| Vec::new());
+        let v = self.ssa_map.entry(ssa).or_default();
         v.push((ip, SSAUse::FixedReg(reg)));
     }
 
@@ -62,7 +62,7 @@ impl SSAUseMap {
         }
 
         for ssa in vec.iter() {
-            let v = self.ssa_map.entry(*ssa).or_insert_with(|| Vec::new());
+            let v = self.ssa_map.entry(*ssa).or_default();
             v.push((ip, SSAUse::Vec(vec)));
         }
     }

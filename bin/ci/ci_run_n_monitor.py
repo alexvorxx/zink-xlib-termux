@@ -384,11 +384,10 @@ if __name__ == "__main__":
         target_jobs_regex = re.compile(args.target.strip())
 
         deps = set()
-        if args.target:
-            print("🞋 job: " + Fore.BLUE + args.target + Style.RESET_ALL)
-            deps = find_dependencies(
-                target_jobs_regex=target_jobs_regex, iid=pipe.iid, project_path=cur_project
-            )
+        print("🞋 job: " + Fore.BLUE + args.target + Style.RESET_ALL)
+        deps = find_dependencies(
+            target_jobs_regex=target_jobs_regex, iid=pipe.iid, project_path=cur_project
+        )
         target_job_id, ret = monitor_pipeline(
             cur_project, pipe, target_jobs_regex, deps, args.force_manual, args.stress
         )

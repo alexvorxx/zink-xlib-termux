@@ -1313,7 +1313,7 @@ impl Index<usize> for SrcTypeList {
     fn index(&self, idx: usize) -> &SrcType {
         match self {
             SrcTypeList::Array(arr) => &arr[idx],
-            SrcTypeList::Uniform(typ) => &typ,
+            SrcTypeList::Uniform(typ) => typ,
         }
     }
 }

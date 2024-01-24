@@ -305,9 +305,7 @@ impl<'a> ShaderFromNir<'a> {
     }
 
     fn get_src(&mut self, src: &nir_src) -> Src {
-        SSARef::try_from(self.get_ssa(&src.as_def()))
-            .unwrap()
-            .into()
+        SSARef::try_from(self.get_ssa(src.as_def())).unwrap().into()
     }
 
     fn get_io_addr_offset(
@@ -453,7 +451,7 @@ impl<'a> ShaderFromNir<'a> {
         for (i, alu_src) in alu.srcs_as_slice().iter().enumerate() {
             let bit_size = alu_src.src.bit_size();
             let comps = alu.src_components(i.try_into().unwrap());
-            let ssa = self.get_ssa(&alu_src.src.as_def());
+            let ssa = self.get_ssa(alu_src.src.as_def());
 
             match bit_size {
                 1 => {
@@ -1636,7 +1634,7 @@ impl<'a> ShaderFromNir<'a> {
                 di += 1;
             }
         }
-        self.set_ssa(&tex.def.as_def(), nir_dst);
+        self.set_ssa(tex.def.as_def(), nir_dst);
     }
 
     fn get_atomic_type(&self, intrin: &nir_intrinsic_instr) -> AtomType {
@@ -2022,7 +2020,7 @@ impl<'a> ShaderFromNir<'a> {
                 } else {
                     panic!("OpKill is only available in fragment shaders");
                 }
-                let cond = self.get_ssa(&srcs[0].as_def())[0];
+                let cond = self.get_ssa(srcs[0].as_def())[0];
                 b.predicate(cond.into()).push_op(OpKill {});
 
                 if intrin.intrinsic == nir_intrinsic_terminate_if {
@@ -2908,7 +2906,7 @@ impl<'a> ShaderFromNir<'a> {
                 target: self.get_block_label(ni.first_else_block()),
             });
 
-            let cond = self.get_ssa(&ni.condition.as_def())[0];
+            let cond = self.get_ssa(ni.condition.as_def())[0];
             bra.pred = cond.into();
             // This is the branch to jump to the else
             bra.pred.pred_inv = true;

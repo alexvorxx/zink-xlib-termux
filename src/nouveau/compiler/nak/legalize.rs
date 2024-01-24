@@ -96,7 +96,7 @@ fn copy_alu_src_if_not_reg(
     src: &mut Src,
     src_type: SrcType,
 ) {
-    if !src_is_reg(&src) {
+    if !src_is_reg(src) {
         copy_alu_src(b, src, src_type);
     }
 }
@@ -107,7 +107,7 @@ fn copy_alu_src_if_both_not_reg(
     src2: &mut Src,
     src_type: SrcType,
 ) {
-    if !src_is_reg(&src1) && !src_is_reg(&src2) {
+    if !src_is_reg(src1) && !src_is_reg(src2) {
         copy_alu_src(b, src2, src_type);
     }
 }
@@ -721,7 +721,7 @@ fn legalize_instr(
             // If the same vector shows up twice in one instruction, that's
             // okay. Just make it look the same as the previous source we
             // fixed up.
-            if let Some(new_vec) = vec_src_map.get(&vec) {
+            if let Some(new_vec) = vec_src_map.get(vec) {
                 src.src_ref = (*new_vec).into();
                 continue;
             }

@@ -1396,6 +1396,25 @@ tu6_init_hw(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
       tu_cs_emit_regs(cs, A7XX_PC_TESS_FACTOR_SIZE(TU_TESS_FACTOR_SIZE));
    }
 
+   /* There is an optimization to skip executing draw states for draws with no
+    * instances. Instead of simply skipping the draw, internally the firmware
+    * sets a bit in PC_DRAW_INITIATOR that seemingly skips the draw. However
+    * there is a hardware bug where this bit does not always cause the FS
+    * early preamble to be skipped. Because the draw states were skipped,
+    * SP_FS_CTRL_REG0, SP_FS_OBJ_START and so on are never updated and a
+    * random FS preamble from the last draw is executed. If the last visible
+    * draw is from the same submit, it shouldn't be a problem because we just
+    * re-execute the same preamble and preambles don't have side effects, but
+    * if it's from another process then we could execute a garbage preamble
+    * leading to hangs and faults. To make sure this doesn't happen, we reset
+    * SP_FS_CTRL_REG0 here, making sure that the EARLYPREAMBLE bit isn't set
+    * so any leftover early preamble doesn't get executed. Other stages don't
+    * seem to be affected.
+    */
+   if (phys_dev->info->a6xx.has_early_preamble) {
+      tu_cs_emit_regs(cs, A6XX_SP_FS_CTRL_REG0());
+   }
+
    tu_cs_sanity_check(cs);
 }
 

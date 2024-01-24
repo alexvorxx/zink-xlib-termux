@@ -35,6 +35,30 @@
 extern "C" {
 #endif
 
+void blorp_init(struct blorp_context *blorp, void *driver_ctx,
+                struct isl_device *isl_dev, const struct blorp_config *config);
+
+struct blorp_compiler {
+   const struct brw_compiler *brw;
+   const struct elk_compiler *elk;
+
+   struct blorp_program (*compile_fs)(struct blorp_context *blorp, void *mem_ctx,
+                                      struct nir_shader *nir,
+                                      bool multisample_fbo,
+                                      bool use_repclear);
+   struct blorp_program (*compile_vs)(struct blorp_context *blorp, void *mem_ctx,
+                                      struct nir_shader *nir);
+
+   struct blorp_program (*compile_cs)(struct blorp_context *blorp, void *mem_ctx,
+                                      struct nir_shader *nir);
+
+   bool (*ensure_sf_program)(struct blorp_batch *batch,
+                             struct blorp_params *params);
+
+   bool (*params_get_layer_offset_vs)(struct blorp_batch *batch,
+                                      struct blorp_params *params);
+};
+
 /**
  * Binding table indices used by BLORP.
  */
@@ -412,41 +436,27 @@ struct blorp_program {
    uint32_t    prog_data_size;
 };
 
-struct blorp_program
-blorp_compile_fs_brw(struct blorp_context *blorp, void *mem_ctx,
-                     struct nir_shader *nir,
-                     bool multisample_fbo,
-                     bool use_repclear);
-
 static inline struct blorp_program
 blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir,
                  bool multisample_fbo,
                  bool use_repclear)
 {
-   return blorp_compile_fs_brw(blorp, mem_ctx, nir, multisample_fbo, use_repclear);
+   return blorp->compiler->compile_fs(blorp, mem_ctx, nir, multisample_fbo, use_repclear);
 }
-
-struct blorp_program
-blorp_compile_vs_brw(struct blorp_context *blorp, void *mem_ctx,
-                     struct nir_shader *nir);
 
 static inline struct blorp_program
 blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir)
 {
-   return blorp_compile_vs_brw(blorp, mem_ctx, nir);
+   return blorp->compiler->compile_vs(blorp, mem_ctx, nir);
 }
-
-bool
-blorp_ensure_sf_program_brw(struct blorp_batch *batch,
-                            struct blorp_params *params);
 
 static inline bool
 blorp_ensure_sf_program(struct blorp_batch *batch,
                         struct blorp_params *params)
 {
-   return blorp_ensure_sf_program_brw(batch, params);
+   return batch->blorp->compiler->ensure_sf_program(batch, params);
 }
 
 static inline uint8_t
@@ -472,26 +482,18 @@ blorp_set_cs_dims(struct nir_shader *nir, uint8_t local_y)
    nir->info.workgroup_size[2] = 1;
 }
 
-struct blorp_program
-blorp_compile_cs_brw(struct blorp_context *blorp, void *mem_ctx,
-                     struct nir_shader *nir);
-
 static inline struct blorp_program
 blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir)
 {
-   return blorp_compile_cs_brw(blorp, mem_ctx, nir);
+   return blorp->compiler->compile_cs(blorp, mem_ctx, nir);
 }
-
-bool
-blorp_params_get_layer_offset_vs_brw(struct blorp_batch *batch,
-                                     struct blorp_params *params);
 
 static inline bool
 blorp_params_get_layer_offset_vs(struct blorp_batch *batch,
                                  struct blorp_params *params)
 {
-   return blorp_params_get_layer_offset_vs_brw(batch, params);
+   return batch->blorp->compiler->params_get_layer_offset_vs(batch, params);
 }
 
 /** \} */

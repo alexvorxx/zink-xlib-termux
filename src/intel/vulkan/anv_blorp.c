@@ -100,8 +100,8 @@ anv_device_init_blorp(struct anv_device *device)
          device->vk.enabled_extensions.EXT_depth_range_unrestricted,
    };
 
-   blorp_init(&device->blorp, device, &device->isl_dev, &config);
-   device->blorp.compiler = device->physical->compiler;
+   blorp_init_brw(&device->blorp, device, &device->isl_dev,
+                  device->physical->compiler, &config);
    device->blorp.lookup_shader = lookup_blorp_shader;
    device->blorp.upload_shader = upload_blorp_shader;
    device->blorp.enable_tbimr = device->physical->instance->enable_tbimr;

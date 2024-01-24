@@ -115,11 +115,14 @@ blorp_init(struct blorp_context *blorp, void *driver_ctx,
    blorp->isl_dev = isl_dev;
    if (config)
       blorp->config = *config;
+
+   blorp->compiler = rzalloc(NULL, struct blorp_compiler);
 }
 
 void
 blorp_finish(struct blorp_context *blorp)
 {
+   ralloc_free(blorp->compiler);
    blorp->driver_ctx = NULL;
 }
 

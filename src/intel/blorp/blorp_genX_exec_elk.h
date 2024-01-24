@@ -21,15 +21,15 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BLORP_GENX_EXEC_H
-#define BLORP_GENX_EXEC_H
+#ifndef BLORP_GENX_EXEC_ELK_H
+#define BLORP_GENX_EXEC_ELK_H
 
 #include "blorp_priv.h"
 #include "dev/intel_device_info.h"
 #include "common/intel_sample_positions.h"
 #include "common/intel_l3_config.h"
 #include "genxml/gen_macros.h"
-#include "intel/compiler/brw_compiler.h"
+#include "intel/compiler/elk/elk_compiler.h"
 
 /**
  * This file provides the blorp pipeline setup and execution functionality.
@@ -136,7 +136,7 @@ blorp_emit_post_draw(struct blorp_batch *batch,
                      const struct blorp_params *params);
 
 static inline unsigned
-brw_blorp_get_urb_length(const struct brw_wm_prog_data *prog_data)
+elk_blorp_get_urb_length(const struct elk_wm_prog_data *prog_data)
 {
    if (prog_data == NULL)
       return 1;
@@ -166,7 +166,7 @@ _blorp_combine_address(struct blorp_batch *batch, void *location,
 #define __gen_combine_address _blorp_combine_address
 
 #include "genxml/genX_pack.h"
-#include "common/intel_genX_state.h"
+#include "common/intel_genX_state_elk.h"
 
 #define _blorp_cmd_length(cmd) cmd ## _length
 #define _blorp_cmd_length_bias(cmd) cmd ## _length_bias
@@ -247,7 +247,7 @@ emit_urb_config(struct blorp_batch *batch,
     *
     * where 'n' stands for number of varying inputs expressed as vec4s.
     */
-   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
+   struct elk_wm_prog_data *wm_prog_data = params->wm_prog_data;
    const unsigned num_varyings =
       wm_prog_data ? wm_prog_data->num_varying_inputs : 0;
    const unsigned total_needed = 16 + 16 + num_varyings * 16;
@@ -255,7 +255,7 @@ emit_urb_config(struct blorp_batch *batch,
    /* The URB size is expressed in units of 64 bytes (512 bits) */
    const unsigned vs_entry_size = DIV_ROUND_UP(total_needed, 64);
 
-   ASSERTED struct brw_sf_prog_data *sf_prog_data = params->sf_prog_data;
+   ASSERTED struct elk_sf_prog_data *sf_prog_data = params->sf_prog_data;
    ASSERTED const unsigned sf_entry_size =
       sf_prog_data ? sf_prog_data->urb_entry_size : 0;
 
@@ -267,7 +267,7 @@ emit_urb_config(struct blorp_batch *batch,
    };
 
    bool constrained;
-   intel_get_urb_config(batch->blorp->compiler->brw->devinfo,
+   intel_get_urb_config(batch->blorp->compiler->elk->devinfo,
                         blorp_get_l3_config(batch),
                         false, false, &urb_cfg,
                         deref_block_size, &constrained);
@@ -350,7 +350,7 @@ blorp_emit_input_varying_data(struct blorp_batch *batch,
    const unsigned vec4_size_in_bytes = 4 * sizeof(float);
    const unsigned max_num_varyings =
       DIV_ROUND_UP(sizeof(params->wm_inputs), vec4_size_in_bytes);
-   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
+   struct elk_wm_prog_data *wm_prog_data = params->wm_prog_data;
    const unsigned num_varyings =
       wm_prog_data ? wm_prog_data->num_varying_inputs : 0;
 
@@ -478,10 +478,10 @@ static void
 blorp_emit_vertex_elements(struct blorp_batch *batch,
                            const struct blorp_params *params)
 {
-   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
+   struct elk_wm_prog_data *wm_prog_data = params->wm_prog_data;
    const unsigned num_varyings =
       wm_prog_data ? wm_prog_data->num_varying_inputs : 0;
-   bool need_ndc = batch->blorp->compiler->brw->devinfo->ver <= 5;
+   bool need_ndc = batch->blorp->compiler->elk->devinfo->ver <= 5;
    const unsigned num_elements = 2 + need_ndc + num_varyings;
 
    struct GENX(VERTEX_ELEMENT_STATE) ve[num_elements];
@@ -740,7 +740,7 @@ static void
 blorp_emit_vs_config(struct blorp_batch *batch,
                      const struct blorp_params *params)
 {
-   struct brw_vs_prog_data *vs_prog_data = params->vs_prog_data;
+   struct elk_vs_prog_data *vs_prog_data = params->vs_prog_data;
    assert(!vs_prog_data || GFX_VER < 11 ||
           vs_prog_data->base.dispatch_mode == INTEL_DISPATCH_MODE_SIMD8);
 
@@ -773,7 +773,7 @@ blorp_emit_sf_config(struct blorp_batch *batch,
                      const struct blorp_params *params,
                      UNUSED enum intel_urb_deref_block_size urb_deref_block_size)
 {
-   const struct brw_wm_prog_data *prog_data = params->wm_prog_data;
+   const struct elk_wm_prog_data *prog_data = params->wm_prog_data;
 
    /* 3DSTATE_SF
     *
@@ -810,7 +810,7 @@ blorp_emit_sf_config(struct blorp_batch *batch,
       sbe.VertexURBEntryReadOffset = 1;
       if (prog_data) {
          sbe.NumberofSFOutputAttributes = prog_data->num_varying_inputs;
-         sbe.VertexURBEntryReadLength = brw_blorp_get_urb_length(prog_data);
+         sbe.VertexURBEntryReadLength = elk_blorp_get_urb_length(prog_data);
          sbe.ConstantInterpolationEnable = prog_data->flat_inputs;
       } else {
          sbe.NumberofSFOutputAttributes = 0;
@@ -843,7 +843,7 @@ blorp_emit_sf_config(struct blorp_batch *batch,
       sbe.VertexURBEntryReadOffset = 1;
       if (prog_data) {
          sbe.NumberofSFOutputAttributes = prog_data->num_varying_inputs;
-         sbe.VertexURBEntryReadLength = brw_blorp_get_urb_length(prog_data);
+         sbe.VertexURBEntryReadLength = elk_blorp_get_urb_length(prog_data);
          sbe.ConstantInterpolationEnable = prog_data->flat_inputs;
       } else {
          sbe.NumberofSFOutputAttributes = 0;
@@ -863,7 +863,7 @@ blorp_emit_sf_config(struct blorp_batch *batch,
       sf.VertexURBEntryReadOffset = 1;
       if (prog_data) {
          sf.NumberofSFOutputAttributes = prog_data->num_varying_inputs;
-         sf.VertexURBEntryReadLength = brw_blorp_get_urb_length(prog_data);
+         sf.VertexURBEntryReadLength = elk_blorp_get_urb_length(prog_data);
          sf.ConstantInterpolationEnable = prog_data->flat_inputs;
       } else {
          sf.NumberofSFOutputAttributes = 0;
@@ -878,7 +878,7 @@ static void
 blorp_emit_ps_config(struct blorp_batch *batch,
                      const struct blorp_params *params)
 {
-   const struct brw_wm_prog_data *prog_data = params->wm_prog_data;
+   const struct elk_wm_prog_data *prog_data = params->wm_prog_data;
 
    /* Even when thread dispatch is disabled, max threads (dw5.25:31) must be
     * nonzero to prevent the GPU from hanging.  While the documentation doesn't
@@ -890,7 +890,7 @@ blorp_emit_ps_config(struct blorp_batch *batch,
     */
 
 #if GFX_VER >= 8
-   const struct intel_device_info *devinfo = batch->blorp->compiler->brw->devinfo;
+   const struct intel_device_info *devinfo = batch->blorp->compiler->elk->devinfo;
 
    blorp_emit(batch, GENX(3DSTATE_WM), wm);
 
@@ -975,21 +975,21 @@ blorp_emit_ps_config(struct blorp_batch *batch,
                                      0 /* msaa_flags */);
 
          ps.DispatchGRFStartRegisterForConstantSetupData0 =
-            brw_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 0);
+            elk_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 0);
          ps.DispatchGRFStartRegisterForConstantSetupData1 =
-            brw_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 1);
+            elk_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 1);
 #if GFX_VER < 20
          ps.DispatchGRFStartRegisterForConstantSetupData2 =
-            brw_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 2);
+            elk_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 2);
 #endif
 
          ps.KernelStartPointer0 = params->wm_prog_kernel +
-                                  brw_wm_prog_data_prog_offset(prog_data, ps, 0);
+                                  elk_wm_prog_data_prog_offset(prog_data, ps, 0);
          ps.KernelStartPointer1 = params->wm_prog_kernel +
-                                  brw_wm_prog_data_prog_offset(prog_data, ps, 1);
+                                  elk_wm_prog_data_prog_offset(prog_data, ps, 1);
 #if GFX_VER < 20
          ps.KernelStartPointer2 = params->wm_prog_kernel +
-                                  brw_wm_prog_data_prog_offset(prog_data, ps, 2);
+                                  elk_wm_prog_data_prog_offset(prog_data, ps, 2);
 #endif
       }
    }
@@ -1012,7 +1012,7 @@ blorp_emit_ps_config(struct blorp_batch *batch,
    }
 
 #elif GFX_VER >= 7
-   const struct intel_device_info *devinfo = batch->blorp->compiler->brw->devinfo;
+   const struct intel_device_info *devinfo = batch->blorp->compiler->elk->devinfo;
 
    blorp_emit(batch, GENX(3DSTATE_WM), wm) {
       switch (params->hiz_op) {
@@ -1064,18 +1064,18 @@ blorp_emit_ps_config(struct blorp_batch *batch,
                                      0 /* msaa_flags */);
 
          ps.DispatchGRFStartRegisterForConstantSetupData0 =
-            brw_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 0);
+            elk_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 0);
          ps.DispatchGRFStartRegisterForConstantSetupData1 =
-            brw_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 1);
+            elk_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 1);
          ps.DispatchGRFStartRegisterForConstantSetupData2 =
-            brw_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 2);
+            elk_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 2);
 
          ps.KernelStartPointer0 = params->wm_prog_kernel +
-                                  brw_wm_prog_data_prog_offset(prog_data, ps, 0);
+                                  elk_wm_prog_data_prog_offset(prog_data, ps, 0);
          ps.KernelStartPointer1 = params->wm_prog_kernel +
-                                  brw_wm_prog_data_prog_offset(prog_data, ps, 1);
+                                  elk_wm_prog_data_prog_offset(prog_data, ps, 1);
          ps.KernelStartPointer2 = params->wm_prog_kernel +
-                                  brw_wm_prog_data_prog_offset(prog_data, ps, 2);
+                                  elk_wm_prog_data_prog_offset(prog_data, ps, 2);
 
          ps.AttributeEnable = prog_data->num_varying_inputs > 0;
       } else {
@@ -1132,18 +1132,18 @@ blorp_emit_ps_config(struct blorp_batch *batch,
          wm._32PixelDispatchEnable = prog_data->dispatch_32;
 
          wm.DispatchGRFStartRegisterForConstantSetupData0 =
-            brw_wm_prog_data_dispatch_grf_start_reg(prog_data, wm, 0);
+            elk_wm_prog_data_dispatch_grf_start_reg(prog_data, wm, 0);
          wm.DispatchGRFStartRegisterForConstantSetupData1 =
-            brw_wm_prog_data_dispatch_grf_start_reg(prog_data, wm, 1);
+            elk_wm_prog_data_dispatch_grf_start_reg(prog_data, wm, 1);
          wm.DispatchGRFStartRegisterForConstantSetupData2 =
-            brw_wm_prog_data_dispatch_grf_start_reg(prog_data, wm, 2);
+            elk_wm_prog_data_dispatch_grf_start_reg(prog_data, wm, 2);
 
          wm.KernelStartPointer0 = params->wm_prog_kernel +
-                                  brw_wm_prog_data_prog_offset(prog_data, wm, 0);
+                                  elk_wm_prog_data_prog_offset(prog_data, wm, 0);
          wm.KernelStartPointer1 = params->wm_prog_kernel +
-                                  brw_wm_prog_data_prog_offset(prog_data, wm, 1);
+                                  elk_wm_prog_data_prog_offset(prog_data, wm, 1);
          wm.KernelStartPointer2 = params->wm_prog_kernel +
-                                  brw_wm_prog_data_prog_offset(prog_data, wm, 2);
+                                  elk_wm_prog_data_prog_offset(prog_data, wm, 2);
 
          wm.NumberofSFOutputAttributes = prog_data->num_varying_inputs;
       }
@@ -2117,9 +2117,9 @@ blorp_get_compute_push_const(struct blorp_batch *batch,
                              uint32_t *state_offset,
                              unsigned *state_size)
 {
-   const struct brw_cs_prog_data *cs_prog_data = params->cs_prog_data;
+   const struct elk_cs_prog_data *cs_prog_data = params->cs_prog_data;
    const unsigned push_const_size =
-      ALIGN(brw_cs_push_const_total_size(cs_prog_data, threads), 64);
+      ALIGN(elk_cs_push_const_total_size(cs_prog_data, threads), 64);
    assert(cs_prog_data->push.cross_thread.size +
           cs_prog_data->push.per_thread.size == sizeof(params->wm_inputs));
 
@@ -2177,11 +2177,11 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
    blorp_measure_start(batch, params);
 
 #if GFX_VER >= 7
-   const struct intel_device_info *devinfo = batch->blorp->compiler->brw->devinfo;
-   const struct brw_cs_prog_data *cs_prog_data = params->cs_prog_data;
-   const struct brw_stage_prog_data *prog_data = &cs_prog_data->base;
+   const struct intel_device_info *devinfo = batch->blorp->compiler->elk->devinfo;
+   const struct elk_cs_prog_data *cs_prog_data = params->cs_prog_data;
+   const struct elk_stage_prog_data *prog_data = &cs_prog_data->base;
    const struct intel_cs_dispatch_info dispatch =
-      brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
+      elk_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
 
    uint32_t group_x0 = params->x0 / cs_prog_data->local_size[0];
    uint32_t group_y0 = params->y0 / cs_prog_data->local_size[1];
@@ -2226,7 +2226,7 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
       cw.GenerateLocalID                = cs_prog_data->generate_local_id != 0;
       cw.EmitLocal                      = cs_prog_data->generate_local_id;
       cw.WalkOrder                      = cs_prog_data->walk_order;
-      cw.TileLayout = cs_prog_data->walk_order == INTEL_WALK_ORDER_YXZ ?
+      cw.TileLayout = cs_prog_data->walk_order == ELK_WALK_ORDER_YXZ ?
                       TileY32bpe : Linear;
 #endif
 
@@ -2706,4 +2706,4 @@ blorp_exec(struct blorp_batch *batch, const struct blorp_params *params)
    }
 }
 
-#endif /* BLORP_GENX_EXEC_H */
+#endif /* BLORP_GENX_EXEC_ELK_H */

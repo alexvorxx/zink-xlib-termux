@@ -147,7 +147,7 @@ blorp_emit_wm_state(struct blorp_batch *blorp_batch,
       }
 
       wm.MaximumNumberofThreads =
-         blorp_batch->blorp->compiler->devinfo->max_wm_threads - 1;
+         blorp_batch->blorp->compiler->brw->devinfo->max_wm_threads - 1;
    }
 
    return dynamic_state_address(blorp_batch, offset);

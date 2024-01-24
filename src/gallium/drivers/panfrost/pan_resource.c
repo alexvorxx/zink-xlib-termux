@@ -1383,7 +1383,7 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
 void
 pan_legalize_afbc_format(struct panfrost_context *ctx,
                          struct panfrost_resource *rsrc,
-                         enum pipe_format format, bool write)
+                         enum pipe_format format, bool write, bool discard)
 {
    struct panfrost_device *dev = pan_device(ctx->base.screen);
 
@@ -1393,7 +1393,7 @@ pan_legalize_afbc_format(struct panfrost_context *ctx,
    if (panfrost_afbc_format(dev->arch, rsrc->base.format) !=
        panfrost_afbc_format(dev->arch, format)) {
       pan_resource_modifier_convert(
-         ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED, true,
+         ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED, !discard,
          "Reinterpreting AFBC surface as incompatible format");
       return;
    }
@@ -1401,7 +1401,7 @@ pan_legalize_afbc_format(struct panfrost_context *ctx,
    if (write && (rsrc->image.layout.modifier & AFBC_FORMAT_MOD_SPARSE) == 0)
       pan_resource_modifier_convert(
          ctx, rsrc, rsrc->image.layout.modifier | AFBC_FORMAT_MOD_SPARSE,
-         true, "Legalizing resource to allow writing");
+         !discard, "Legalizing resource to allow writing");
 }
 
 static bool

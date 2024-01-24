@@ -269,6 +269,7 @@ def parse_args() -> None:
         metavar="target-job",
         help="Target job regex. For multiple targets, separate with pipe | character",
         required=True,
+        nargs=argparse.ONE_OR_MORE,
     )
     parser.add_argument(
         "--token",
@@ -381,10 +382,11 @@ if __name__ == "__main__":
         print(f"Revision: {REV}")
         print(f"Pipeline: {pipe.web_url}")
 
-        target_jobs_regex = re.compile(args.target.strip())
+        target = '|'.join(args.target)
+        target_jobs_regex = re.compile(target.strip())
 
         deps = set()
-        print("🞋 job: " + Fore.BLUE + args.target + Style.RESET_ALL)
+        print("🞋 job: " + Fore.BLUE + target + Style.RESET_ALL)
         deps = find_dependencies(
             target_jobs_regex=target_jobs_regex, iid=pipe.iid, project_path=cur_project
         )

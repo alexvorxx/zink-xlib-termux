@@ -1321,46 +1321,45 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
 void
 pan_resource_modifier_convert(struct panfrost_context *ctx,
                               struct panfrost_resource *rsrc, uint64_t modifier,
-                              const char *reason)
+                              bool copy_resource, const char *reason)
 {
    assert(!rsrc->modifier_constant);
-
-   perf_debug_ctx(ctx, "%s AFBC with a blit. Reason: %s",
-                  drm_is_afbc(modifier) ? "Unpacking" : "Disabling", reason);
 
    struct pipe_resource *tmp_prsrc = panfrost_resource_create_with_modifier(
       ctx->base.screen, &rsrc->base, modifier);
    struct panfrost_resource *tmp_rsrc = pan_resource(tmp_prsrc);
 
-   struct pipe_blit_info blit = {
-      .dst.resource = &tmp_rsrc->base,
-      .dst.format = tmp_rsrc->base.format,
-      .src.resource = &rsrc->base,
-      .src.format = rsrc->base.format,
-      .mask = util_format_get_mask(tmp_rsrc->base.format),
-      .filter = PIPE_TEX_FILTER_NEAREST,
-   };
+   if (copy_resource) {
+      struct pipe_blit_info blit = {
+         .dst.resource = &tmp_rsrc->base,
+         .dst.format = tmp_rsrc->base.format,
+         .src.resource = &rsrc->base,
+         .src.format = rsrc->base.format,
+         .mask = util_format_get_mask(tmp_rsrc->base.format),
+         .filter = PIPE_TEX_FILTER_NEAREST,
+      };
 
-   /* data_valid is not valid until flushed */
-   panfrost_flush_writer(ctx, rsrc, "AFBC decompressing blit");
+      /* data_valid is not valid until flushed */
+      panfrost_flush_writer(ctx, rsrc, "AFBC decompressing blit");
 
-   for (int i = 0; i <= rsrc->base.last_level; i++) {
-      if (BITSET_TEST(rsrc->valid.data, i)) {
-         blit.dst.level = blit.src.level = i;
+      for (int i = 0; i <= rsrc->base.last_level; i++) {
+         if (BITSET_TEST(rsrc->valid.data, i)) {
+            blit.dst.level = blit.src.level = i;
 
-         u_box_3d(0, 0, 0, u_minify(rsrc->base.width0, i),
-                  u_minify(rsrc->base.height0, i),
-                  util_num_layers(&rsrc->base, i), &blit.dst.box);
-         blit.src.box = blit.dst.box;
+            u_box_3d(0, 0, 0, u_minify(rsrc->base.width0, i),
+                     u_minify(rsrc->base.height0, i),
+                     util_num_layers(&rsrc->base, i), &blit.dst.box);
+            blit.src.box = blit.dst.box;
 
-         panfrost_blit_no_afbc_legalization(&ctx->base, &blit);
+            panfrost_blit_no_afbc_legalization(&ctx->base, &blit);
+         }
       }
-   }
 
-   /* we lose track of tmp_rsrc after this point, and the BO migration
-    * (from tmp_rsrc to rsrc) doesn't transfer the last_writer to rsrc
-    */
-   panfrost_flush_writer(ctx, tmp_rsrc, "AFBC decompressing blit");
+      /* we lose track of tmp_rsrc after this point, and the BO migration
+       * (from tmp_rsrc to rsrc) doesn't transfer the last_writer to rsrc
+       */
+      panfrost_flush_writer(ctx, tmp_rsrc, "AFBC decompressing blit");
+   }
 
    panfrost_bo_unreference(rsrc->bo);
 
@@ -1369,7 +1368,7 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
    panfrost_bo_reference(rsrc->bo);
 
    panfrost_resource_setup(pan_device(ctx->base.screen), rsrc, modifier,
-                           blit.dst.format);
+                           tmp_rsrc->base.format);
    /* panfrost_resource_setup will force the modifier to stay constant when
     * called with a specific modifier. We don't want that here, we want to
     * be able to convert back to another modifier if needed */
@@ -1394,7 +1393,7 @@ pan_legalize_afbc_format(struct panfrost_context *ctx,
    if (panfrost_afbc_format(dev->arch, rsrc->base.format) !=
        panfrost_afbc_format(dev->arch, format)) {
       pan_resource_modifier_convert(
-         ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED,
+         ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED, true,
          "Reinterpreting AFBC surface as incompatible format");
       return;
    }
@@ -1402,7 +1401,7 @@ pan_legalize_afbc_format(struct panfrost_context *ctx,
    if (write && (rsrc->image.layout.modifier & AFBC_FORMAT_MOD_SPARSE) == 0)
       pan_resource_modifier_convert(
          ctx, rsrc, rsrc->image.layout.modifier | AFBC_FORMAT_MOD_SPARSE,
-         "Legalizing resource to allow writing");
+         true, "Legalizing resource to allow writing");
 }
 
 static bool

@@ -140,7 +140,7 @@ pub trait BlockLiveness {
         }
 
         // This is the first high point
-        let vec_dst_live = live.clone();
+        let vec_dst_live = live;
 
         // Use a hash set because sources may occur more than once
         let mut killed = HashSet::new();

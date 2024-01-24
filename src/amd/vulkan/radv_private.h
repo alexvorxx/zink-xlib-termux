@@ -1889,6 +1889,9 @@ void radv_cp_dma_wait_for_idle(struct radv_cmd_buffer *cmd_buffer);
 
 uint32_t radv_get_vgt_index_size(uint32_t type);
 
+void radv_emit_vgt_shader_config(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
+                                 const struct radv_vgt_shader_key *key);
+
 unsigned radv_instance_rate_prolog_index(unsigned num_attributes, uint32_t instance_rate_inputs);
 
 struct radv_ps_epilog_state {
@@ -2341,6 +2344,37 @@ void radv_emit_compute_shader(const struct radv_physical_device *pdevice, struct
 
 bool radv_mem_vectorize_callback(unsigned align_mul, unsigned align_offset, unsigned bit_size, unsigned num_components,
                                  nir_intrinsic_instr *low, nir_intrinsic_instr *high, void *data);
+
+void radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
+                             const struct radv_shader *vs);
+
+void radv_emit_tess_ctrl_shader(const struct radv_device *device, struct radeon_cmdbuf *cs,
+                                const struct radv_shader *tcs);
+
+void radv_emit_tess_eval_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
+                                struct radeon_cmdbuf *cs, const struct radv_shader *tes);
+
+void radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
+                               const struct radv_shader *ps);
+
+void radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf *cs,
+                         const struct radv_shader *last_vgt_shader, const struct radv_shader *ps);
+
+struct radv_ia_multi_vgt_param_helpers radv_compute_ia_multi_vgt_param(const struct radv_device *device,
+                                                                       struct radv_shader *const *shaders);
+
+void radv_emit_vgt_vertex_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
+                                const struct radv_shader *tes);
+
+void radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
+                          uint32_t vgt_gs_out_prim_type);
+
+void radv_emit_vgt_gs_mode(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
+                           const struct radv_shader *last_vgt_api_shader);
+
+void radv_emit_geometry_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
+                               const struct radv_shader *gs, const struct radv_shader *es,
+                               const struct radv_shader *gs_copy_shader);
 
 void radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cache *cache,
                                    struct radv_shader_stage *stages, const struct radv_graphics_state_key *gfx_state,

@@ -572,7 +572,7 @@ radv_pipeline_needed_dynamic_state(const struct radv_device *device, const struc
    return states;
 }
 
-static struct radv_ia_multi_vgt_param_helpers
+struct radv_ia_multi_vgt_param_helpers
 radv_compute_ia_multi_vgt_param(const struct radv_device *device, struct radv_shader *const *shaders)
 {
    const struct radv_physical_device *pdevice = device->physical_device;
@@ -2800,7 +2800,7 @@ radv_pipeline_emit_blend_state(struct radeon_cmdbuf *ctx_cs, const struct radv_g
    radeon_set_context_reg(ctx_cs, R_02823C_CB_SHADER_MASK, blend->cb_shader_mask);
 }
 
-static void
+void
 radv_emit_vgt_gs_mode(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                       const struct radv_shader *last_vgt_api_shader)
 {
@@ -3085,7 +3085,7 @@ radv_emit_hw_hs(const struct radv_device *device, struct radeon_cmdbuf *cs, cons
    }
 }
 
-static void
+void
 radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
                         const struct radv_shader *vs)
 {
@@ -3099,13 +3099,13 @@ radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *
       radv_emit_hw_vs(device, ctx_cs, cs, vs);
 }
 
-static void
+void
 radv_emit_tess_ctrl_shader(const struct radv_device *device, struct radeon_cmdbuf *cs, const struct radv_shader *tcs)
 {
    radv_emit_hw_hs(device, cs, tcs);
 }
 
-static void
+void
 radv_emit_tess_eval_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
                            const struct radv_shader *tes)
 {
@@ -3199,7 +3199,7 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
    }
 }
 
-static void
+void
 radv_emit_geometry_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
                           const struct radv_shader *gs, const struct radv_shader *es,
                           const struct radv_shader *gs_copy_shader)
@@ -3304,7 +3304,7 @@ input_mask_to_ps_inputs(const struct radv_vs_output_info *outinfo, const struct 
    }
 }
 
-static void
+void
 radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                     const struct radv_shader *last_vgt_shader, const struct radv_shader *ps)
 {
@@ -3358,7 +3358,7 @@ radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf *ctx_
    }
 }
 
-static void
+void
 radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
                           const struct radv_shader *ps)
 {
@@ -3394,7 +3394,7 @@ radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf
       radeon_set_context_reg(ctx_cs, R_028C40_PA_SC_SHADER_CONTROL, S_028C40_LOAD_COLLISION_WAVEID(ps->info.ps.pops));
 }
 
-static void
+void
 radv_emit_vgt_vertex_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                            const struct radv_shader *tes)
 {
@@ -3456,7 +3456,7 @@ radv_pipeline_generate_vgt_shader_key(const struct radv_device *device, const st
    return key;
 }
 
-static void
+void
 radv_emit_vgt_shader_config(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                             const struct radv_vgt_shader_key *key)
 {
@@ -3504,7 +3504,7 @@ radv_emit_vgt_shader_config(const struct radv_device *device, struct radeon_cmdb
    radeon_set_context_reg(ctx_cs, R_028B54_VGT_SHADER_STAGES_EN, stages);
 }
 
-static void
+void
 radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, uint32_t vgt_gs_out_prim_type)
 {
    const struct radv_physical_device *pdevice = device->physical_device;

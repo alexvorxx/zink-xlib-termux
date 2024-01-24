@@ -1081,6 +1081,19 @@ panfrost_box_covers_resource(const struct pipe_resource *resource,
                                            box->width, box->height, box->depth);
 }
 
+static bool
+panfrost_can_discard(struct pipe_resource *resource, const struct pipe_box *box,
+                     unsigned usage)
+{
+   struct panfrost_resource *rsrc = pan_resource(resource);
+
+   return ((usage & PIPE_MAP_DISCARD_RANGE) &&
+           !(usage & PIPE_MAP_UNSYNCHRONIZED) &&
+           !(resource->flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT) &&
+           panfrost_box_covers_resource(resource, box) &&
+           !(rsrc->bo->flags & PAN_BO_SHARED));
+}
+
 static void *
 panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
                  unsigned level,
@@ -1165,11 +1178,7 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
    /* Upgrade DISCARD_RANGE to WHOLE_RESOURCE if the whole resource is
     * being mapped.
     */
-   if ((usage & PIPE_MAP_DISCARD_RANGE) && !(usage & PIPE_MAP_UNSYNCHRONIZED) &&
-       !(resource->flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT) &&
-       panfrost_box_covers_resource(resource, box) &&
-       !(rsrc->bo->flags & PAN_BO_SHARED)) {
-
+   if (panfrost_can_discard(resource, box, usage)) {
       usage |= PIPE_MAP_DISCARD_WHOLE_RESOURCE;
    }
 

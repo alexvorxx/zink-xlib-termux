@@ -2405,7 +2405,7 @@ zink_create_image_handle(struct pipe_context *pctx, const struct pipe_image_view
       debug_printf("couldn't create storage image!");
       return 0;
    }
-   bd = malloc(sizeof(struct zink_bindless_descriptor));
+   bd = calloc(1, sizeof(struct zink_bindless_descriptor));
    if (!bd)
       return 0;
    bd->sampler = NULL;

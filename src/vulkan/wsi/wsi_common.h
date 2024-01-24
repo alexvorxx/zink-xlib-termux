@@ -356,6 +356,9 @@ wsi_common_vk_instance_supports_present_wait(const struct vk_instance *instance)
 VkImageUsageFlags
 wsi_caps_get_image_usage(void);
 
+bool
+wsi_device_supports_explicit_sync(struct wsi_device *device);
+
 #define wsi_common_vk_warn_once(warning) \
    do { \
       static int warned = false; \

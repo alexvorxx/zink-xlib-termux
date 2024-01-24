@@ -2236,3 +2236,11 @@ wsi_caps_get_image_usage(void)
           VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
           VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
 }
+
+bool
+wsi_device_supports_explicit_sync(struct wsi_device *device)
+{
+   return !device->sw && device->has_timeline_semaphore &&
+      (device->timeline_semaphore_export_handle_types &
+       VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT);
+}

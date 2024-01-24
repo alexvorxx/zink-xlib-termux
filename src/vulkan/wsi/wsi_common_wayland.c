@@ -208,8 +208,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(wsi_wl_swapchain, base.base, VkSwapchainKHR,
 static bool
 wsi_wl_use_explicit_sync(struct wsi_wl_display *display, struct wsi_device *device)
 {
-   return !device->sw && device->has_timeline_semaphore &&
-          (device->timeline_semaphore_export_handle_types & VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT) &&
+   return wsi_device_supports_explicit_sync(device) &&
           display->wl_syncobj != NULL;
 }
 

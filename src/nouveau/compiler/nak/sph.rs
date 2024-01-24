@@ -133,7 +133,7 @@ impl ShaderProgramHeader {
     }
 
     #[inline]
-    fn common_word3<'a>(&mut self) -> SubSPHView<'_> {
+    fn common_word3(&mut self) -> SubSPHView<'_> {
         BitMutView::new_subset(&mut self.data, 96..128)
     }
 

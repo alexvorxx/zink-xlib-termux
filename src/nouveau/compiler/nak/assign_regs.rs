@@ -712,8 +712,7 @@ fn instr_assign_regs_file(
     let mut vec_dsts_map_to_killed_srcs = true;
     let mut could_trivially_allocate = true;
     for vec_dst in vec_dsts.iter_mut().rev() {
-        while !killed_vecs.is_empty() {
-            let src = killed_vecs.pop().unwrap();
+        while let Some(src) = killed_vecs.pop() {
             if src.comps() >= vec_dst.comps {
                 vec_dst.killed = Some(src);
                 break;

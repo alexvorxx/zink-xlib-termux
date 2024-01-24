@@ -143,8 +143,7 @@ fn lower_par_copy(pc: OpParCopy, sm: u8) -> MappedInstrs {
             ready.push(i);
         }
     }
-    while !ready.is_empty() {
-        let dst_idx = ready.pop().unwrap();
+    while let Some(dst_idx) = ready.pop() {
         if let Some(src_idx) = graph.src(dst_idx) {
             let dst = *vals[dst_idx].as_reg().unwrap();
             let src = vals[src_idx];

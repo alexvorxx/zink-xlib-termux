@@ -401,6 +401,8 @@ _mesa_glthread_finish(struct gl_context *ctx)
       synced = true;
    }
 
+   glthread_apply_thread_sched_policy(ctx, false);
+
    if (glthread->used) {
       /* Mark the end of the batch, but don't increment "used". */
       struct marshal_cmd_base *last =

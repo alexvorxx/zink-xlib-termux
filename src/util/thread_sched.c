@@ -6,12 +6,16 @@
 
 #include "thread_sched.h"
 #include "u_cpu_detect.h"
+#include "u_debug.h"
+
+DEBUG_GET_ONCE_BOOL_OPTION(pin_threads, "mesa_pin_threads", false)
 
 bool
 util_thread_scheduler_enabled(void)
 {
 #if DETECT_ARCH_X86 || DETECT_ARCH_X86_64
-   return util_get_cpu_caps()->num_L3_caches > 1;
+   return util_get_cpu_caps()->num_L3_caches > 1 ||
+          debug_get_option_pin_threads();
 #else
    return false;
 #endif
@@ -21,6 +25,9 @@ void
 util_thread_scheduler_init_state(unsigned *state)
 {
    *state = UINT32_MAX;
+
+   util_thread_sched_apply_policy(thrd_current(), UTIL_THREAD_APP_CALLER, 0,
+                                  NULL); /* keep as NULL */
 }
 
 /**
@@ -39,6 +46,24 @@ util_thread_sched_apply_policy(thrd_t thread, enum util_thread_name name,
                                unsigned app_thread_cpu, unsigned *sched_state)
 {
 #if DETECT_ARCH_X86 || DETECT_ARCH_X86_64
+   if (debug_get_option_pin_threads()) {
+      /* Pin threads to a specific CPU. This is done only once. *sched_state
+       * is true if this is the first time we are doing it.
+       */
+      if (sched_state && !*sched_state)
+         return false;
+
+      /* Each thread is assigned to a different CPU. */
+      unsigned mask = BITFIELD_BIT(name);
+      if (sched_state)
+         *sched_state = 0;
+      return util_set_thread_affinity(thread, &mask, NULL, 32);
+   }
+
+   /* Don't do anything for the app thread with the L3 chasing policy. */
+   if (name == UTIL_THREAD_APP_CALLER)
+      return false;
+
    /* Move Mesa threads to the L3 core complex where the app thread
     * resides. We call this "L3 chasing".
     *

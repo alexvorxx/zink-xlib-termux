@@ -80,7 +80,7 @@ fn get_ssa_or_phi(
     }
 }
 
-fn get_or_insert_phi_dsts<'a>(bb: &'a mut BasicBlock) -> &'a mut OpPhiDsts {
+fn get_or_insert_phi_dsts(bb: &mut BasicBlock) -> &mut OpPhiDsts {
     let has_phi = match &bb.instrs[0].op {
         Op::PhiDsts(_) => true,
         _ => false,
@@ -94,7 +94,7 @@ fn get_or_insert_phi_dsts<'a>(bb: &'a mut BasicBlock) -> &'a mut OpPhiDsts {
     }
 }
 
-fn get_or_insert_phi_srcs<'a>(bb: &'a mut BasicBlock) -> &'a mut OpPhiSrcs {
+fn get_or_insert_phi_srcs(bb: &mut BasicBlock) -> &mut OpPhiSrcs {
     let mut has_phi = false;
     let mut ip = bb.instrs.len();
     for (i, instr) in bb.instrs.iter_mut().enumerate().rev() {

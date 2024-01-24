@@ -2787,10 +2787,10 @@ impl<'a> ShaderFromNir<'a> {
         b.push_op(OpFSOut { srcs: srcs });
     }
 
-    fn parse_block<'b>(
+    fn parse_block(
         &mut self,
         ssa_alloc: &mut SSAValueAllocator,
-        phi_map: &mut PhiAllocMap<'b>,
+        phi_map: &mut PhiAllocMap,
         nb: &nir_block,
     ) {
         let mut b = SSAInstrBuilder::new(self.info.sm, ssa_alloc);
@@ -2933,29 +2933,29 @@ impl<'a> ShaderFromNir<'a> {
         self.cfg.add_node(nb.index, bb);
     }
 
-    fn parse_if<'b>(
+    fn parse_if(
         &mut self,
         ssa_alloc: &mut SSAValueAllocator,
-        phi_map: &mut PhiAllocMap<'b>,
+        phi_map: &mut PhiAllocMap,
         ni: &nir_if,
     ) {
         self.parse_cf_list(ssa_alloc, phi_map, ni.iter_then_list());
         self.parse_cf_list(ssa_alloc, phi_map, ni.iter_else_list());
     }
 
-    fn parse_loop<'b>(
+    fn parse_loop(
         &mut self,
         ssa_alloc: &mut SSAValueAllocator,
-        phi_map: &mut PhiAllocMap<'b>,
+        phi_map: &mut PhiAllocMap,
         nl: &nir_loop,
     ) {
         self.parse_cf_list(ssa_alloc, phi_map, nl.iter_body());
     }
 
-    fn parse_cf_list<'b>(
+    fn parse_cf_list(
         &mut self,
         ssa_alloc: &mut SSAValueAllocator,
-        phi_map: &mut PhiAllocMap<'b>,
+        phi_map: &mut PhiAllocMap,
         list: ExecListIter<nir_cf_node>,
     ) {
         for node in list {

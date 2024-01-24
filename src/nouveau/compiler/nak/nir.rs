@@ -151,11 +151,11 @@ impl AsConst for nir_src {
 }
 
 pub trait AsDef {
-    fn as_def<'a>(&'a self) -> &'a nir_def;
+    fn as_def(&self) -> &nir_def;
 }
 
 impl AsDef for nir_def {
-    fn as_def<'a>(&'a self) -> &'a nir_def {
+    fn as_def(&self) -> &nir_def {
         self
     }
 }
@@ -176,7 +176,7 @@ impl<T: AsDef> NirValue for T {
 }
 
 impl AsDef for nir_src {
-    fn as_def<'a>(&'a self) -> &'a nir_def {
+    fn as_def(&self) -> &nir_def {
         unsafe { &*self.ssa }
     }
 }
@@ -220,7 +220,7 @@ impl NirSrcsAsSlice<nir_alu_src> for nir_alu_instr {
 }
 
 impl AsDef for nir_alu_src {
-    fn as_def<'a>(&'a self) -> &'a nir_def {
+    fn as_def(&self) -> &nir_def {
         self.src.as_def()
     }
 }

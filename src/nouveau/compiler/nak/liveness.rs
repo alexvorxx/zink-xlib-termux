@@ -428,7 +428,7 @@ impl NextUseBlockLiveness {
     }
 
     /// Returns an iterator over all the values which are live-in to this block
-    pub fn iter_live_in<'a>(&'a self) -> impl Iterator<Item = &'a SSAValue> {
+    pub fn iter_live_in(&self) -> impl Iterator<Item = &SSAValue> {
         self.ssa_map.iter().filter_map(|(ssa, entry)| {
             if entry.defined || entry.uses.is_empty() {
                 None

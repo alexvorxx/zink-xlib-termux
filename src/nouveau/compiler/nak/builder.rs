@@ -12,7 +12,7 @@ pub trait Builder {
         self.push_instr(Instr::new_boxed(op))
     }
 
-    fn predicate<'a>(&'a mut self, pred: Pred) -> PredicatedBuilder<'a, Self>
+    fn predicate(&mut self, pred: Pred) -> PredicatedBuilder<'_, Self>
     where
         Self: Sized,
     {

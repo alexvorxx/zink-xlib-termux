@@ -35,4 +35,9 @@ libblorp = static_library(
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   dependencies : [idep_nir_headers, idep_genxml, idep_mesautil, idep_intel_dev],
+  build_by_default: false,
+)
+
+idep_intel_blorp = declare_dependency(
+  link_with: libblorp,
 )

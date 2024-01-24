@@ -3957,19 +3957,27 @@ ntq_emit_nonuniform_if(struct v3d_compile *c, nir_if *if_stmt)
                      c->execute,
                      vir_uniform_ui(c, else_block->index));
 
+        /* Set the flags for taking the THEN block */
+        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
+                   V3D_QPU_PF_PUSHZ);
+
         /* Jump to ELSE if nothing is active for THEN (unless THEN block is
          * so small it won't pay off), otherwise fall through.
          */
         bool is_cheap = exec_list_is_singular(&if_stmt->then_list) &&
                         is_cheap_block(nir_if_first_then_block(if_stmt));
         if (!is_cheap) {
-                vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute), V3D_QPU_PF_PUSHZ);
                 vir_BRANCH(c, V3D_QPU_BRANCH_COND_ALLNA);
                 vir_link_blocks(c->cur_block, else_block);
         }
         vir_link_blocks(c->cur_block, then_block);
 
-        /* Process the THEN block. */
+        /* Process the THEN block.
+         *
+         * Notice we don't call ntq_activate_execute_for_block here on purpose:
+         * c->execute is already set up to be 0 for lanes that must take the
+         * THEN block.
+         */
         vir_set_emit_block(c, then_block);
         ntq_emit_cf_list(c, &if_stmt->then_list);
 

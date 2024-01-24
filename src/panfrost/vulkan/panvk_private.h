@@ -788,13 +788,9 @@ struct panvk_cmd_buffer {
    struct panvk_pool tls_pool;
    struct list_head batches;
 
-   VkCommandBufferUsageFlags usage_flags;
-
    struct panvk_cmd_state state;
 
    uint8_t push_constants[MAX_PUSH_CONSTANTS_SIZE];
-   VkShaderStageFlags push_constant_stages;
-   struct panvk_descriptor_set meta_push_descriptors;
 
    struct panvk_cmd_bind_point_state bind_points[MAX_BIND_POINTS];
 };

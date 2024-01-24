@@ -158,6 +158,32 @@ glthread_unmarshal_batch(void *job, void *gdata, int thread_index)
 }
 
 static void
+glthread_apply_thread_sched_policy(struct gl_context *ctx, bool initialization)
+{
+   struct glthread_state *glthread = &ctx->GLThread;
+
+   if (!glthread->thread_sched_enabled)
+      return;
+
+   /* Apply our thread scheduling policy for better multithreading
+    * performance.
+    */
+   if (initialization || ++glthread->pin_thread_counter % 128 == 0) {
+      int cpu = util_get_current_cpu();
+
+      if (cpu >= 0 &&
+          util_thread_sched_apply_policy(glthread->queue.threads[0],
+                                         UTIL_THREAD_GLTHREAD, cpu,
+                                         &glthread->thread_sched_state)) {
+         /* If it's successful, apply the policy to the driver threads too. */
+         ctx->pipe->set_context_param(ctx->pipe,
+                                      PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING,
+                                      cpu);
+      }
+   }
+}
+
+static void
 glthread_thread_initialization(void *job, void *gdata, int thread_index)
 {
    struct gl_context *ctx = (struct gl_context*)job;
@@ -241,6 +267,7 @@ _mesa_glthread_init(struct gl_context *ctx)
    glthread->thread_sched_enabled = ctx->pipe->set_context_param &&
                                     util_thread_scheduler_enabled();
    util_thread_scheduler_init_state(&glthread->thread_sched_state);
+   glthread_apply_thread_sched_policy(ctx, true);
 }
 
 static void
@@ -321,23 +348,7 @@ _mesa_glthread_flush_batch(struct gl_context *ctx)
    if (!glthread->used)
       return; /* the batch is empty */
 
-   /* Apply our thread scheduling policy for better multithreading
-    * performance.
-    */
-   if (glthread->thread_sched_enabled &&
-       ++glthread->pin_thread_counter % 128 == 0) {
-      int cpu = util_get_current_cpu();
-
-      if (cpu >= 0 &&
-          util_thread_sched_apply_policy(glthread->queue.threads[0],
-                                         UTIL_THREAD_GLTHREAD, cpu,
-                                         &glthread->thread_sched_state)) {
-         /* If it's successful, apply the policy to the driver threads too. */
-         ctx->pipe->set_context_param(ctx->pipe,
-                                      PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING,
-                                      cpu);
-      }
-   }
+   glthread_apply_thread_sched_policy(ctx, false);
 
    struct glthread_batch *next = glthread->next_batch;
 

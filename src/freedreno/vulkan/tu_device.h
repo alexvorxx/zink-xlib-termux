@@ -20,6 +20,7 @@
 #include "tu_suballoc.h"
 #include "tu_util.h"
 
+#include "common/freedreno_rd_output.h"
 #include "util/vma.h"
 #include "util/u_vector.h"
 
@@ -123,6 +124,8 @@ struct tu_physical_device
    struct vk_sync_type syncobj_type;
    struct vk_sync_timeline_type timeline_type;
    const struct vk_sync_type *sync_types[3];
+
+   uint32_t device_count;
 };
 VK_DEFINE_HANDLE_CASTS(tu_physical_device, vk.base, VkPhysicalDevice,
                        VK_OBJECT_TYPE_PHYSICAL_DEVICE)
@@ -253,6 +256,7 @@ struct tu_device
    int queue_count[TU_MAX_QUEUE_FAMILIES];
 
    struct tu_physical_device *physical_device;
+   uint32_t device_idx;
    int fd;
 
    struct ir3_compiler *compiler;
@@ -397,6 +401,8 @@ struct tu_device
 
    bool use_z24uint_s8uint;
    bool use_lrz;
+
+   struct fd_rd_output rd_output;
 };
 VK_DEFINE_HANDLE_CASTS(tu_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
 

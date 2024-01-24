@@ -867,7 +867,7 @@ tu_queue_build_msm_gem_submit_cmds(struct tu_queue *queue,
 static VkResult
 tu_queue_submit_locked(struct tu_queue *queue, struct tu_queue_submit *submit)
 {
-   queue->device->submit_count++;
+   uint32_t submit_idx = queue->device->submit_count++;
 
    struct tu_cs *autotune_cs = NULL;
    if (submit->autotune_fence) {
@@ -910,39 +910,43 @@ tu_queue_submit_locked(struct tu_queue *queue, struct tu_queue_submit *submit)
       .syncobj_stride = sizeof(struct drm_msm_gem_submit_syncobj),
    };
 
-   if (TU_DEBUG(RD)) {
+   if (FD_RD_DUMP(ENABLE) && fd_rd_output_begin(&queue->device->rd_output, submit_idx)) {
       struct tu_device *device = queue->device;
-      static uint32_t submit_idx;
-      char path[32];
-      sprintf(path, "%.5d.rd", p_atomic_inc_return(&submit_idx));
-      int rd = open(path, O_CLOEXEC | O_WRONLY | O_CREAT | O_TRUNC, 0777);
-      if (rd >= 0) {
-         rd_write_section(rd, RD_CHIP_ID, &device->physical_device->dev_id.chip_id, 4);
+      struct fd_rd_output *rd_output = &device->rd_output;
 
-         rd_write_section(rd, RD_CMD, "tu-dump", 8);
-
-         for (unsigned i = 0; i < device->bo_count; i++) {
-            struct drm_msm_gem_submit_bo bo = device->bo_list[i];
-            struct tu_bo *tu_bo = tu_device_lookup_bo(device, bo.handle);
-            uint64_t iova = bo.presumed;
-
-            uint32_t buf[3] = { iova, tu_bo->size, iova >> 32 };
-            rd_write_section(rd, RD_GPUADDR, buf, 12);
-            if (bo.flags & MSM_SUBMIT_BO_DUMP) {
-               msm_bo_map(device, tu_bo); /* note: this would need locking to be safe */
-               rd_write_section(rd, RD_BUFFER_CONTENTS, tu_bo->map, tu_bo->size);
-            }
+      if (FD_RD_DUMP(FULL)) {
+         VkResult result = tu_wait_fence(device, queue->msm_queue_id, queue->fence, ~0);
+         if (result != VK_SUCCESS) {
+            mesa_loge("FD_RD_DUMP_FULL: wait on previous submission for device %u and queue %d failed: %u",
+                      device->device_idx, queue->msm_queue_id, 0);
          }
-
-         for (unsigned i = 0; i < req.nr_cmds; i++) {
-            struct drm_msm_gem_submit_cmd *cmd = &submit->cmds[i];
-            uint64_t iova = device->bo_list[cmd->submit_idx].presumed + cmd->submit_offset;
-            uint32_t size = cmd->size >> 2;
-            uint32_t buf[3] = { iova, size, iova >> 32 };
-            rd_write_section(rd, RD_CMDSTREAM_ADDR, buf, 12);
-         }
-         close(rd);
       }
+
+      fd_rd_output_write_section(rd_output, RD_CHIP_ID, &device->physical_device->dev_id.chip_id, 4);
+      fd_rd_output_write_section(rd_output, RD_CMD, "tu-dump", 8);
+
+      for (unsigned i = 0; i < device->bo_count; i++) {
+         struct drm_msm_gem_submit_bo bo = device->bo_list[i];
+         struct tu_bo *tu_bo = tu_device_lookup_bo(device, bo.handle);
+         uint64_t iova = bo.presumed;
+
+         uint32_t buf[3] = { iova, tu_bo->size, iova >> 32 };
+         fd_rd_output_write_section(rd_output, RD_GPUADDR, buf, 12);
+         if (bo.flags & MSM_SUBMIT_BO_DUMP || FD_RD_DUMP(FULL)) {
+            msm_bo_map(device, tu_bo); /* note: this would need locking to be safe */
+            fd_rd_output_write_section(rd_output, RD_BUFFER_CONTENTS, tu_bo->map, tu_bo->size);
+         }
+      }
+
+      for (unsigned i = 0; i < req.nr_cmds; i++) {
+         struct drm_msm_gem_submit_cmd *cmd = &submit->cmds[i];
+         uint64_t iova = device->bo_list[cmd->submit_idx].presumed + cmd->submit_offset;
+         uint32_t size = cmd->size >> 2;
+         uint32_t buf[3] = { iova, size, iova >> 32 };
+         fd_rd_output_write_section(rd_output, RD_CMDSTREAM_ADDR, buf, 12);
+      }
+
+      fd_rd_output_end(rd_output);
    }
 
    int ret = drmCommandWriteRead(queue->device->fd,

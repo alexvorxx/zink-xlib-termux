@@ -1711,7 +1711,7 @@ tu6_sysmem_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
 {
    const struct tu_framebuffer *fb = cmd->state.framebuffer;
 
-   tu_lrz_sysmem_begin(cmd, cs);
+   tu_lrz_sysmem_begin<CHIP>(cmd, cs);
 
    assert(fb->width > 0 && fb->height > 0);
    tu6_emit_window_scissor(cs, 0, 0, fb->width - 1, fb->height - 1);
@@ -1730,9 +1730,7 @@ tu6_sysmem_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
       tu_cs_emit_regs(cs,
          A7XX_RB_UNKNOWN_8E06(cmd->device->physical_device->info->a6xx.magic.RB_UNKNOWN_8E06));
 
-      /* These three have something to do with lrz/depth */
       tu_cs_emit_regs(cs, A7XX_GRAS_UNKNOWN_8007(0x0));
-      tu_cs_emit_regs(cs, A7XX_GRAS_UNKNOWN_8113(0x4));
 
       tu_cs_emit_regs(cs, A6XX_GRAS_UNKNOWN_8110(0x2));
       tu_cs_emit_regs(cs, A7XX_RB_UNKNOWN_8E09(0x4));
@@ -1787,7 +1785,7 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
 {
    struct tu_physical_device *phys_dev = cmd->device->physical_device;
    const struct tu_tiling_config *tiling = cmd->state.tiling;
-   tu_lrz_tiling_begin(cmd, cs);
+   tu_lrz_tiling_begin<CHIP>(cmd, cs);
 
    tu_cs_emit_pkt7(cs, CP_SKIP_IB2_ENABLE_GLOBAL, 1);
    tu_cs_emit(cs, 0x0);
@@ -1799,8 +1797,6 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
                    A7XX_RB_UNKNOWN_8E06(0x0));
 
       tu_cs_emit_regs(cs, A7XX_GRAS_UNKNOWN_8007(0x0));
-      tu_cs_emit_regs(cs, A7XX_GRAS_UNKNOWN_810B(0x0));
-      tu_cs_emit_regs(cs, A7XX_GRAS_UNKNOWN_8113(0x0));
 
       tu_cs_emit_regs(cs, A6XX_GRAS_UNKNOWN_8110(0x2));
       tu_cs_emit_regs(cs, A7XX_RB_UNKNOWN_8E09(0x4));
@@ -1923,7 +1919,7 @@ tu6_tile_render_end(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
 
    tu_cs_emit_call(cs, &cmd->draw_epilogue_cs);
 
-   tu_lrz_tiling_end(cmd, cs);
+   tu_lrz_tiling_end<CHIP>(cmd, cs);
 
    tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_BLIT_CACHE);
 
@@ -4120,7 +4116,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
    if (pass->subpasses[0].feedback_invalidate)
       cmd->state.renderpass_cache.flush_bits |= TU_CMD_FLAG_CACHE_INVALIDATE;
 
-   tu_lrz_begin_renderpass(cmd);
+   tu_lrz_begin_renderpass<CHIP>(cmd);
 
    cmd->trace_renderpass_start = u_trace_end_iterator(&cmd->trace);
 
@@ -4237,7 +4233,7 @@ tu_CmdBeginRendering(VkCommandBuffer commandBuffer,
       if (resuming)
          tu_lrz_begin_resumed_renderpass(cmd);
       else
-         tu_lrz_begin_renderpass(cmd);
+         tu_lrz_begin_renderpass<CHIP>(cmd);
    }
 
 

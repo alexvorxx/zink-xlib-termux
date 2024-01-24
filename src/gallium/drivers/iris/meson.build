@@ -82,7 +82,8 @@ foreach v : ['80', '90', '110', '120', '125', '200']
     ],
     gnu_symbol_visibility : 'hidden',
     dependencies : [dep_libdrm, dep_valgrind, idep_genxml, idep_nir_headers,
-                    idep_intel_driver_ds_headers, idep_intel_shaders, ],
+                    idep_intel_driver_ds_headers, idep_intel_shaders,
+                    idep_intel_blorp],
   )
 endforeach
 

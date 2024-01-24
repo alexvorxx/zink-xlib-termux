@@ -24,6 +24,10 @@
 #ifndef BLORP_GENX_EXEC_ELK_H
 #define BLORP_GENX_EXEC_ELK_H
 
+#if GFX_VER > 8
+#error "ELK doesn't support Gfx > 8."
+#endif
+
 #include "blorp_priv.h"
 #include "dev/intel_device_info.h"
 #include "common/intel_sample_positions.h"
@@ -106,7 +110,7 @@ static uint64_t
 blorp_get_surface_address(struct blorp_batch *batch,
                           struct blorp_address address);
 
-#if GFX_VER >= 7 && GFX_VER < 10
+#if GFX_VER >= 7
 static struct blorp_address
 blorp_get_surface_base_address(struct blorp_batch *batch);
 #endif
@@ -300,13 +304,6 @@ emit_urb_config(struct blorp_batch *batch,
       }
    }
 
-   if (batch->blorp->config.use_mesh_shading) {
-#if GFX_VERx10 >= 125
-      blorp_emit(batch, GENX(3DSTATE_URB_ALLOC_MESH), zero);
-      blorp_emit(batch, GENX(3DSTATE_URB_ALLOC_TASK), zero);
-#endif
-   }
-
 #else /* GFX_VER < 7 */
    struct intel_urb_config urb_cfg = {
       .size = { vs_entry_size, 0, 0, 0, sf_entry_size, },
@@ -400,8 +397,7 @@ blorp_emit_input_varying_data(struct blorp_batch *batch,
       struct blorp_address clear_color_input_addr = *addr;
       clear_color_input_addr.offset += 16;
 
-      const unsigned clear_color_size =
-         GFX_VER < 10 ? batch->blorp->isl_dev->ss.clear_value_size : 4 * 4;
+      const unsigned clear_color_size = batch->blorp->isl_dev->ss.clear_value_size;
       blorp_emit_memcpy(batch, clear_color_input_addr,
                         params->dst.clear_color_addr,
                         clear_color_size);
@@ -438,10 +434,6 @@ blorp_fill_vertex_buffer_state(struct GENX(VERTEX_BUFFER_STATE) *vb,
 #elif GFX_VER == 4
    vb[idx].BufferAccessType = stride > 0 ? VERTEXDATA : INSTANCEDATA;
    vb[idx].MaxIndex = stride > 0 ? size / stride : 0;
-#endif
-
-#if GFX_VER >= 12
-   vb[idx].L3BypassDisable = true;
 #endif
 }
 
@@ -638,10 +630,6 @@ blorp_emit_vertex_elements(struct blorp_batch *batch,
       sgvs.InstanceIDElementOffset = 0;
    }
 
-#if GFX_VER >= 11
-   blorp_emit(batch, GENX(3DSTATE_VF_SGVS_2), sgvs);
-#endif
-
    for (unsigned i = 0; i < num_elements; i++) {
       blorp_emit(batch, GENX(3DSTATE_VF_INSTANCING), vf) {
          vf.VertexElementIndex = i;
@@ -741,8 +729,6 @@ blorp_emit_vs_config(struct blorp_batch *batch,
                      const struct blorp_params *params)
 {
    struct elk_vs_prog_data *vs_prog_data = params->vs_prog_data;
-   assert(!vs_prog_data || GFX_VER < 11 ||
-          vs_prog_data->base.dispatch_mode == INTEL_DISPATCH_MODE_SIMD8);
 
    blorp_emit(batch, GENX(3DSTATE_VS), vs) {
       if (vs_prog_data) {
@@ -797,9 +783,6 @@ blorp_emit_sf_config(struct blorp_batch *batch,
 #if GFX_VER >= 8
 
    blorp_emit(batch, GENX(3DSTATE_SF), sf) {
-#if GFX_VER >= 12
-      sf.DerefBlockSize = urb_deref_block_size;
-#endif
    }
 
    blorp_emit(batch, GENX(3DSTATE_RASTER), raster) {
@@ -818,11 +801,6 @@ blorp_emit_sf_config(struct blorp_batch *batch,
       }
       sbe.ForceVertexURBEntryReadLength = true;
       sbe.ForceVertexURBEntryReadOffset = true;
-
-#if GFX_VER >= 9
-      for (unsigned i = 0; i < 32; i++)
-         sbe.AttributeActiveComponentFormat[i] = ACF_XYZW;
-#endif
    }
 
 #elif GFX_VER >= 7
@@ -919,24 +897,9 @@ blorp_emit_ps_config(struct blorp_batch *batch,
       switch (params->fast_clear_op) {
       case ISL_AUX_OP_NONE:
          break;
-#if GFX_VER >= 10
-      case ISL_AUX_OP_AMBIGUATE:
-         ps.RenderTargetFastClearEnable = true;
-         ps.RenderTargetResolveType = FAST_CLEAR_0;
-         break;
-#endif
-#if GFX_VER >= 9
-      case ISL_AUX_OP_PARTIAL_RESOLVE:
-         ps.RenderTargetResolveType = RESOLVE_PARTIAL;
-         break;
-      case ISL_AUX_OP_FULL_RESOLVE:
-         ps.RenderTargetResolveType = RESOLVE_FULL;
-         break;
-#else
       case ISL_AUX_OP_FULL_RESOLVE:
          ps.RenderTargetResolveEnable = true;
          break;
-#endif
       case ISL_AUX_OP_FAST_CLEAR:
          ps.RenderTargetFastClearEnable = true;
          break;
@@ -978,33 +941,24 @@ blorp_emit_ps_config(struct blorp_batch *batch,
             elk_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 0);
          ps.DispatchGRFStartRegisterForConstantSetupData1 =
             elk_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 1);
-#if GFX_VER < 20
          ps.DispatchGRFStartRegisterForConstantSetupData2 =
             elk_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 2);
-#endif
 
          ps.KernelStartPointer0 = params->wm_prog_kernel +
                                   elk_wm_prog_data_prog_offset(prog_data, ps, 0);
          ps.KernelStartPointer1 = params->wm_prog_kernel +
                                   elk_wm_prog_data_prog_offset(prog_data, ps, 1);
-#if GFX_VER < 20
          ps.KernelStartPointer2 = params->wm_prog_kernel +
                                   elk_wm_prog_data_prog_offset(prog_data, ps, 2);
-#endif
       }
    }
 
    blorp_emit(batch, GENX(3DSTATE_PS_EXTRA), psx) {
       if (prog_data) {
          psx.PixelShaderValid = true;
-#if GFX_VER < 20
          psx.AttributeEnable = prog_data->num_varying_inputs > 0;
-#endif
          psx.PixelShaderIsPerSample = prog_data->persample_dispatch;
          psx.PixelShaderComputedDepthMode = prog_data->computed_depth_mode;
-#if GFX_VER >= 9
-         psx.PixelShaderComputesStencil = prog_data->computed_stencil;
-#endif
       }
 
       if (params->src.enabled)
@@ -1285,9 +1239,6 @@ blorp_emit_depth_stencil_state(struct blorp_batch *batch,
       ds.StencilPassDepthPassOp = STENCILOP_REPLACE;
 
       ds.StencilWriteMask = params->stencil_mask;
-#if GFX_VER >= 9
-      ds.StencilReferenceValue = params->stencil_ref;
-#endif
    }
 
 #if GFX_VER >= 8
@@ -1310,14 +1261,6 @@ blorp_emit_depth_stencil_state(struct blorp_batch *batch,
 #if GFX_VER == 7
    blorp_emit(batch, GENX(3DSTATE_DEPTH_STENCIL_STATE_POINTERS), sp) {
       sp.PointertoDEPTH_STENCIL_STATE = offset;
-   }
-#endif
-
-#if GFX_VER >= 12
-   blorp_emit(batch, GENX(3DSTATE_DEPTH_BOUNDS), db) {
-      db.DepthBoundsTestEnable = false;
-      db.DepthBoundsTestMinValue = 0.0;
-      db.DepthBoundsTestMaxValue = 1.0;
    }
 #endif
 
@@ -1399,16 +1342,7 @@ blorp_emit_pipeline(struct blorp_batch *batch,
 
    UNUSED uint32_t mocs = isl_mocs(batch->blorp->isl_dev, 0, false);
 
-#if GFX_VER >= 12
-   blorp_emit(batch, GENX(3DSTATE_CONSTANT_ALL), pc) {
-      /* Update empty push constants for all stages (bitmask = 11111b) */
-      pc.ShaderUpdateEnable = 0x1f;
-      pc.MOCS = mocs;
-   }
-#else
-#if GFX_VER >= 9
-#define CONSTANT_MOCS xs.MOCS = mocs
-#elif GFX_VER == 7
+#if GFX_VER == 7
 #define CONSTANT_MOCS xs.ConstantBody.MOCS = mocs
 #else
 #define CONSTANT_MOCS
@@ -1420,7 +1354,6 @@ blorp_emit_pipeline(struct blorp_batch *batch,
 #endif
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { CONSTANT_MOCS; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { CONSTANT_MOCS; }
-#endif
 #undef CONSTANT_MOCS
 
    if (params->src.enabled)
@@ -1459,18 +1392,6 @@ blorp_emit_pipeline(struct blorp_batch *batch,
    blorp_emit_ps_config(batch, params);
 
    blorp_emit_cc_viewport(batch);
-
-#if GFX_VER >= 12
-   /* Disable Primitive Replication. */
-   blorp_emit(batch, GENX(3DSTATE_PRIMITIVE_REPLICATION), pr);
-#endif
-
-   if (batch->blorp->config.use_mesh_shading) {
-#if GFX_VERx10 >= 125
-      blorp_emit(batch, GENX(3DSTATE_MESH_CONTROL), zero);
-      blorp_emit(batch, GENX(3DSTATE_TASK_CONTROL), zero);
-#endif
-   }
 }
 
 /******** This is the end of the pipeline setup code ********/
@@ -1555,9 +1476,6 @@ blorp_emit_surface_state(struct blorp_batch *batch,
          write_disable_mask |= ISL_CHANNEL_ALPHA_BIT;
    }
 
-   const bool use_clear_address =
-      GFX_VER >= 10 && (surface->clear_color_addr.buffer != NULL);
-
    isl_surf_fill_state(batch->blorp->isl_dev, state,
                        .surf = &surf, .view = &surface->view,
                        .aux_surf = &surface->aux_surf, .aux_usage = aux_usage,
@@ -1565,12 +1483,8 @@ blorp_emit_surface_state(struct blorp_batch *batch,
                           blorp_get_surface_address(batch, surface->addr),
                        .aux_address = !use_aux_address ? 0 :
                           blorp_get_surface_address(batch, surface->aux_addr),
-                       .clear_address = !use_clear_address ? 0 :
-                          blorp_get_surface_address(batch,
-                                                    surface->clear_color_addr),
                        .mocs = surface->addr.mocs,
                        .clear_color = surface->clear_color,
-                       .use_clear_address = use_clear_address,
                        .write_disables = write_disable_mask);
 
    blorp_surface_reloc(batch, state_offset + isl_dev->ss.addr_offset,
@@ -1588,13 +1502,7 @@ blorp_emit_surface_state(struct blorp_batch *batch,
    }
 
    if (aux_usage != ISL_AUX_USAGE_NONE && surface->clear_color_addr.buffer) {
-#if GFX_VER >= 10
-      assert((surface->clear_color_addr.offset & 0x3f) == 0);
-      uint32_t *clear_addr = state + isl_dev->ss.clear_color_state_offset;
-      blorp_surface_reloc(batch, state_offset +
-                          isl_dev->ss.clear_color_state_offset,
-                          surface->clear_color_addr, *clear_addr);
-#elif GFX_VER >= 7
+#if GFX_VER >= 7
       /* Fast clears just whack the AUX surface and don't actually use the
        * clear color for anything.  We can avoid the MI memcpy on that case.
        */
@@ -1635,9 +1543,7 @@ blorp_emit_null_surface_state(struct blorp_batch *batch,
       .SurfaceArray = surface->surf.dim != ISL_SURF_DIM_3D,
 #endif
 
-#if GFX_VERx10 >= 125
-      .TileMode = TILE4,
-#elif GFX_VER >= 8
+#if GFX_VER >= 8
       .TileMode = YMAJOR,
 #else
       .TiledSurface = true,
@@ -1798,22 +1704,6 @@ blorp_emit_depth_stencil_config(struct blorp_batch *batch,
    }
 
    isl_emit_depth_stencil_hiz_s(isl_dev, dw, &info);
-
-#if GFX_VER >= 11
-   /* Wa_1408224581
-    *
-    * Workaround: Gfx12LP Astep only An additional pipe control with
-    * post-sync = store dword operation would be required.( w/a is to
-    * have an additional pipe control after the stencil state whenever
-    * the surface state bits of this state is changing).
-    *
-    * This also seems sufficient to handle Wa_14014097488.
-    */
-   blorp_emit(batch, GENX(PIPE_CONTROL), pc) {
-      pc.PostSyncOperation = WriteImmediateData;
-      pc.Address = blorp_get_workaround_address(batch);
-   }
-#endif
 }
 
 #if GFX_VER >= 8
@@ -1891,9 +1781,6 @@ blorp_emit_gfx8_hiz_op(struct blorp_batch *batch,
          hzp.DepthBufferClearEnable = params->depth.enabled;
          hzp.StencilClearValue = params->stencil_ref;
          hzp.FullSurfaceDepthandStencilClear = params->full_surface_hiz_op;
-#if GFX_VER >= 20
-         hzp.DepthClearValue = params->depth.clear_color.f32[0];
-#endif
          break;
       case ISL_AUX_OP_FULL_RESOLVE:
          assert(params->full_surface_hiz_op);
@@ -1942,84 +1829,7 @@ blorp_update_clear_color(UNUSED struct blorp_batch *batch,
                          const struct blorp_surface_info *info)
 {
    assert(info->clear_color_addr.buffer != NULL);
-#if GFX_VER == 11
-   /* 2 QWORDS */
-   const unsigned inlinedata_dw = 2 * 2;
-   const unsigned num_dwords = GENX(MI_ATOMIC_length) + inlinedata_dw;
-
-   struct blorp_address clear_addr = info->clear_color_addr;
-   uint32_t *dw = blorp_emitn(batch, GENX(MI_ATOMIC), num_dwords,
-                              .DataSize = MI_ATOMIC_QWORD,
-                              .ATOMICOPCODE = MI_ATOMIC_OP_MOVE8B,
-                              .InlineData = true,
-                              .MemoryAddress = clear_addr);
-   /* dw starts at dword 1, but we need to fill dwords 3 and 5 */
-   dw[2] = info->clear_color.u32[0];
-   dw[3] = 0;
-   dw[4] = info->clear_color.u32[1];
-   dw[5] = 0;
-
-   clear_addr.offset += 8;
-   dw = blorp_emitn(batch, GENX(MI_ATOMIC), num_dwords,
-                    .DataSize = MI_ATOMIC_QWORD,
-                    .ATOMICOPCODE = MI_ATOMIC_OP_MOVE8B,
-                    .CSSTALL = true,
-                    .ReturnDataControl = true,
-                    .InlineData = true,
-                    .MemoryAddress = clear_addr);
-   /* dw starts at dword 1, but we need to fill dwords 3 and 5 */
-   dw[2] = info->clear_color.u32[2];
-   dw[3] = 0;
-   dw[4] = info->clear_color.u32[3];
-   dw[5] = 0;
-
-#elif GFX_VER >= 9
-
-   /* According to Wa_2201730850, in the Clear Color Programming Note under
-    * the Red channel, "Software shall write the converted Depth Clear to this
-    * dword." The only depth formats listed under the red channel are IEEE_FP
-    * and UNORM24_X8. These two requirements are incompatible with the UNORM16
-    * depth format, so just ignore that case and simply perform the conversion
-    * for all depth formats.
-    */
-   union isl_color_value fixed_color = info->clear_color;
-   if (GFX_VER == 12 && isl_surf_usage_is_depth(info->surf.usage)) {
-      isl_color_value_pack(&info->clear_color, info->surf.format,
-                           fixed_color.u32);
-   }
-
-   for (int i = 0; i < 4; i++) {
-      blorp_emit(batch, GENX(MI_STORE_DATA_IMM), sdi) {
-         sdi.Address = info->clear_color_addr;
-         sdi.Address.offset += i * 4;
-         sdi.ImmediateData = fixed_color.u32[i];
-#if GFX_VER >= 12
-         if (i == 3)
-            sdi.ForceWriteCompletionCheck = true;
-#endif
-      }
-   }
-
-   /* The RENDER_SURFACE_STATE::ClearColor field states that software should
-    * write the converted depth value 16B after the clear address:
-    *
-    *    3D Sampler will always fetch clear depth from the location 16-bytes
-    *    above this address, where the clear depth, converted to native
-    *    surface format by software, will be stored.
-    *
-    */
-#if GFX_VER >= 12
-   if (isl_surf_usage_is_depth(info->surf.usage)) {
-      blorp_emit(batch, GENX(MI_STORE_DATA_IMM), sdi) {
-         sdi.Address = info->clear_color_addr;
-         sdi.Address.offset += 4 * 4;
-         sdi.ImmediateData = fixed_color.u32[0];
-         sdi.ForceWriteCompletionCheck = true;
-      }
-   }
-#endif
-
-#elif GFX_VER >= 7
+#if GFX_VER >= 7
    blorp_emit(batch, GENX(MI_STORE_DATA_IMM), sdi) {
       sdi.Address = info->clear_color_addr;
       sdi.ImmediateData = ISL_CHANNEL_SELECT_RED   << 25 |
@@ -2099,9 +1909,6 @@ blorp_exec_3d(struct blorp_batch *batch, const struct blorp_params *params)
 #if GFX_VER >= 7
       prim.PredicateEnable = batch->flags & BLORP_BATCH_PREDICATE_ENABLE;
 #endif
-#if GFX_VERx10 >= 125
-      prim.TBIMREnable = use_tbimr;
-#endif
       prim.VertexCountPerInstance = 3;
       prim.InstanceCount = params->num_layers;
    }
@@ -2131,9 +1938,6 @@ blorp_get_compute_push_const(struct blorp_batch *batch,
 
    uint32_t push_const_offset;
    uint32_t *push_const =
-      GFX_VERx10 >= 125 ?
-      blorp_alloc_general_state(batch, push_const_size, 64,
-                                &push_const_offset) :
       blorp_alloc_dynamic_state(batch, push_const_size, 64,
                                 &push_const_offset);
    memset(push_const, 0x0, push_const_size);
@@ -2147,8 +1951,6 @@ blorp_get_compute_push_const(struct blorp_batch *batch,
       src += cs_prog_data->push.cross_thread.size;
    }
 
-   assert(GFX_VERx10 < 125 || cs_prog_data->push.per_thread.size == 0);
-#if GFX_VERx10 < 125
    if (cs_prog_data->push.per_thread.size > 0) {
       for (unsigned t = 0; t < threads; t++) {
          memcpy(dst, src, (cs_prog_data->push.per_thread.dwords - 1) * 4);
@@ -2159,7 +1961,6 @@ blorp_get_compute_push_const(struct blorp_batch *batch,
          dst += cs_prog_data->push.per_thread.size;
       }
    }
-#endif
 
    *state_offset = push_const_offset;
    *state_size = push_const_size;
@@ -2194,57 +1995,7 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
 
 #endif /* GFX_VER >= 7 */
 
-#if GFX_VERx10 >= 125
-   assert(cs_prog_data->push.per_thread.regs == 0);
-   blorp_emit(batch, GENX(COMPUTE_WALKER), cw) {
-      cw.SIMDSize                       = dispatch.simd_size / 16;
-      cw.LocalXMaximum                  = cs_prog_data->local_size[0] - 1;
-      cw.LocalYMaximum                  = cs_prog_data->local_size[1] - 1;
-      cw.LocalZMaximum                  = cs_prog_data->local_size[2] - 1;
-      cw.ThreadGroupIDStartingX         = group_x0;
-      cw.ThreadGroupIDStartingY         = group_y0;
-      cw.ThreadGroupIDStartingZ         = group_z0;
-      cw.ThreadGroupIDXDimension        = group_x1;
-      cw.ThreadGroupIDYDimension        = group_y1;
-      cw.ThreadGroupIDZDimension        = group_z1;
-      cw.ExecutionMask                  = 0xffffffff;
-      cw.PostSync.MOCS                  = isl_mocs(batch->blorp->isl_dev, 0, false);
-
-      uint32_t surfaces_offset = blorp_setup_binding_table(batch, params);
-
-      uint32_t samplers_offset =
-         params->src.enabled ? blorp_emit_sampler_state(batch) : 0;
-
-      uint32_t push_const_offset;
-      unsigned push_const_size;
-      blorp_get_compute_push_const(batch, params, dispatch.threads,
-                                   &push_const_offset, &push_const_size);
-      cw.IndirectDataStartAddress       = push_const_offset;
-      cw.IndirectDataLength             = push_const_size;
-
-#if GFX_VERx10 >= 125
-      cw.GenerateLocalID                = cs_prog_data->generate_local_id != 0;
-      cw.EmitLocal                      = cs_prog_data->generate_local_id;
-      cw.WalkOrder                      = cs_prog_data->walk_order;
-      cw.TileLayout = cs_prog_data->walk_order == ELK_WALK_ORDER_YXZ ?
-                      TileY32bpe : Linear;
-#endif
-
-      cw.InterfaceDescriptor = (struct GENX(INTERFACE_DESCRIPTOR_DATA)) {
-         .KernelStartPointer = params->cs_prog_kernel,
-         .SamplerStatePointer = samplers_offset,
-         .SamplerCount = params->src.enabled ? 1 : 0,
-         .BindingTableEntryCount = params->src.enabled ? 2 : 1,
-         .BindingTablePointer = surfaces_offset,
-         .NumberofThreadsinGPGPUThreadGroup = dispatch.threads,
-         .SharedLocalMemorySize =
-            encode_slm_size(GFX_VER, prog_data->total_shared),
-         .PreferredSLMAllocationSize = preferred_slm_allocation_size(devinfo),
-         .NumberOfBarriers = cs_prog_data->uses_barrier,
-      };
-   }
-
-#elif GFX_VER >= 7
+#if GFX_VER >= 7
 
    /* The MEDIA_VFE_STATE documentation for Gfx8+ says:
     *
@@ -2266,13 +2017,9 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
       vfe.MaximumNumberofThreads =
          devinfo->max_cs_threads * devinfo->subslice_total - 1;
       vfe.NumberofURBEntries = GFX_VER >= 8 ? 2 : 0;
-#if GFX_VER < 11
       vfe.ResetGatewayTimer =
          Resettingrelativetimerandlatchingtheglobaltimestamp;
-#endif
-#if GFX_VER < 9
       vfe.BypassGatewayControl = BypassingOpenGatewayCloseGatewayprotocol;
-#endif
 #if GFX_VER == 7
       vfe.GPGPUMode = true;
 #endif
@@ -2307,8 +2054,8 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
       .BindingTablePointer = surfaces_offset,
       .ConstantURBEntryReadLength = cs_prog_data->push.per_thread.regs,
       .NumberofThreadsinGPGPUThreadGroup = dispatch.threads,
-      .SharedLocalMemorySize = encode_slm_size(GFX_VER,
-                                               prog_data->total_shared),
+      .SharedLocalMemorySize = elk_encode_slm_size(GFX_VER,
+                                                   prog_data->total_shared),
       .BarrierEnable = cs_prog_data->uses_barrier,
 #if GFX_VER >= 8 || GFX_VERx10 == 75
       .CrossThreadConstantDataReadLength =
@@ -2354,337 +2101,6 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
    blorp_measure_end(batch, params);
 }
 
-/* -----------------------------------------------------------------------
- * -- BLORP on blitter
- * -----------------------------------------------------------------------
- */
-
-#include "isl/isl_genX_helpers.h"
-
-#if GFX_VER >= 12
-static uint32_t
-xy_bcb_tiling(const struct isl_surf *surf)
-{
-   switch (surf->tiling) {
-   case ISL_TILING_LINEAR:
-      return XY_TILE_LINEAR;
-#if GFX_VERx10 >= 125
-   case ISL_TILING_X:
-      return XY_TILE_X;
-   case ISL_TILING_4:
-      return XY_TILE_4;
-   case ISL_TILING_64:
-   case ISL_TILING_64_XE2:
-      return XY_TILE_64;
-#else
-   case ISL_TILING_Y0:
-      return XY_TILE_Y;
-#endif
-   default:
-      unreachable("Invalid tiling for XY_BLOCK_COPY_BLT");
-   }
-}
-
-static uint32_t
-xy_color_depth(const struct isl_format_layout *fmtl)
-{
-   switch (fmtl->bpb) {
-   case 128: return XY_BPP_128_BIT;
-   case  96: return XY_BPP_96_BIT;
-   case  64: return XY_BPP_64_BIT;
-   case  32: return XY_BPP_32_BIT;
-   case  16: return XY_BPP_16_BIT;
-   case   8: return XY_BPP_8_BIT;
-   default:
-      unreachable("Invalid bpp");
-   }
-}
-#endif
-
-#if GFX_VERx10 >= 125
-static uint32_t
-xy_bcb_surf_dim(const struct isl_surf *surf)
-{
-   switch (surf->dim) {
-   case ISL_SURF_DIM_1D:
-      return XY_SURFTYPE_1D;
-   case ISL_SURF_DIM_2D:
-      return XY_SURFTYPE_2D;
-   case ISL_SURF_DIM_3D:
-      return XY_SURFTYPE_3D;
-   default:
-      unreachable("Invalid dimensionality for XY_BLOCK_COPY_BLT");
-   }
-}
-
-static uint32_t
-xy_bcb_surf_depth(const struct isl_surf *surf)
-{
-   return surf->dim == ISL_SURF_DIM_3D ? surf->logical_level0_px.depth
-                                       : surf->logical_level0_px.array_len;
-}
-
-static uint32_t
-xy_aux_mode(const struct blorp_surface_info *info)
-{
-   switch (info->aux_usage) {
-   case ISL_AUX_USAGE_CCS_E:
-   case ISL_AUX_USAGE_FCV_CCS_E:
-   case ISL_AUX_USAGE_STC_CCS:
-      return XY_CCS_E;
-   case ISL_AUX_USAGE_NONE:
-      return XY_NONE;
-   default:
-      unreachable("Unsupported aux mode");
-   }
-}
-#endif
-
-UNUSED static void
-blorp_xy_block_copy_blt(struct blorp_batch *batch,
-                        const struct blorp_params *params)
-{
-#if GFX_VER < 12
-   unreachable("Blitter is only supported on Gfx12+");
-#else
-   UNUSED const struct isl_device *isl_dev = batch->blorp->isl_dev;
-
-   assert(batch->flags & BLORP_BATCH_USE_BLITTER);
-   assert(!(batch->flags & BLORP_BATCH_NO_UPDATE_CLEAR_COLOR));
-   assert(!(batch->flags & BLORP_BATCH_PREDICATE_ENABLE));
-   assert(params->hiz_op == ISL_AUX_OP_NONE);
-
-   assert(params->num_layers == 1);
-   assert(params->dst.view.levels == 1);
-   assert(params->src.view.levels == 1);
-
-#if GFX_VERx10 < 125
-   assert(params->dst.view.base_array_layer == 0);
-   assert(params->dst.z_offset == 0);
-#endif
-
-   unsigned dst_x0 = params->x0;
-   unsigned dst_x1 = params->x1;
-   unsigned src_x0 =
-      dst_x0 - params->wm_inputs.coord_transform[0].offset;
-   ASSERTED unsigned src_x1 =
-      dst_x1 - params->wm_inputs.coord_transform[0].offset;
-   unsigned dst_y0 = params->y0;
-   unsigned dst_y1 = params->y1;
-   unsigned src_y0 =
-      dst_y0 - params->wm_inputs.coord_transform[1].offset;
-   ASSERTED unsigned src_y1 =
-      dst_y1 - params->wm_inputs.coord_transform[1].offset;
-
-   assert(src_x1 - src_x0 == dst_x1 - dst_x0);
-   assert(src_y1 - src_y0 == dst_y1 - dst_y0);
-
-   const struct isl_surf *src_surf = &params->src.surf;
-   const struct isl_surf *dst_surf = &params->dst.surf;
-
-   const struct isl_format_layout *fmtl =
-      isl_format_get_layout(params->dst.view.format);
-
-   if (fmtl->bpb == 96) {
-      assert(src_surf->tiling == ISL_TILING_LINEAR &&
-             dst_surf->tiling == ISL_TILING_LINEAR);
-   }
-
-   assert(src_surf->samples == 1);
-   assert(dst_surf->samples == 1);
-
-   unsigned dst_pitch_unit = dst_surf->tiling == ISL_TILING_LINEAR ? 1 : 4;
-   unsigned src_pitch_unit = src_surf->tiling == ISL_TILING_LINEAR ? 1 : 4;
-
-#if GFX_VERx10 >= 125
-   struct isl_extent3d src_align = isl_get_image_alignment(src_surf);
-   struct isl_extent3d dst_align = isl_get_image_alignment(dst_surf);
-#endif
-
-   blorp_emit(batch, GENX(XY_BLOCK_COPY_BLT), blt) {
-      blt.ColorDepth = xy_color_depth(fmtl);
-
-      blt.DestinationPitch = (dst_surf->row_pitch_B / dst_pitch_unit) - 1;
-      blt.DestinationMOCS = params->dst.addr.mocs;
-      blt.DestinationTiling = xy_bcb_tiling(dst_surf);
-      blt.DestinationX1 = dst_x0;
-      blt.DestinationY1 = dst_y0;
-      blt.DestinationX2 = dst_x1;
-      blt.DestinationY2 = dst_y1;
-      blt.DestinationBaseAddress = params->dst.addr;
-      blt.DestinationXOffset = params->dst.tile_x_sa;
-      blt.DestinationYOffset = params->dst.tile_y_sa;
-
-#if GFX_VERx10 >= 125
-      blt.DestinationSurfaceType = xy_bcb_surf_dim(dst_surf);
-      blt.DestinationSurfaceWidth = dst_surf->logical_level0_px.w - 1;
-      blt.DestinationSurfaceHeight = dst_surf->logical_level0_px.h - 1;
-      blt.DestinationSurfaceDepth = xy_bcb_surf_depth(dst_surf) - 1;
-      blt.DestinationArrayIndex =
-         params->dst.view.base_array_layer + params->dst.z_offset;
-      blt.DestinationSurfaceQPitch = isl_get_qpitch(dst_surf) >> 2;
-      blt.DestinationLOD = params->dst.view.base_level;
-      blt.DestinationMipTailStartLOD = dst_surf->miptail_start_level;
-      blt.DestinationHorizontalAlign = isl_encode_halign(dst_align.width);
-      blt.DestinationVerticalAlign = isl_encode_valign(dst_align.height);
-      /* XY_BLOCK_COPY_BLT only supports AUX_CCS. */
-      blt.DestinationDepthStencilResource =
-         params->dst.aux_usage == ISL_AUX_USAGE_STC_CCS;
-      blt.DestinationTargetMemory =
-         params->dst.addr.local_hint ? XY_MEM_LOCAL : XY_MEM_SYSTEM;
-
-      if (params->dst.aux_usage != ISL_AUX_USAGE_NONE) {
-         blt.DestinationAuxiliarySurfaceMode = xy_aux_mode(&params->dst);
-         blt.DestinationCompressionEnable = true;
-         blt.DestinationCompressionFormat =
-            isl_get_render_compression_format(dst_surf->format);
-         blt.DestinationClearValueEnable = !!params->dst.clear_color_addr.buffer;
-         blt.DestinationClearAddress = params->dst.clear_color_addr;
-      }
-#endif
-
-      blt.SourceX1 = src_x0;
-      blt.SourceY1 = src_y0;
-      blt.SourcePitch = (src_surf->row_pitch_B / src_pitch_unit) - 1;
-      blt.SourceMOCS = params->src.addr.mocs;
-      blt.SourceTiling = xy_bcb_tiling(src_surf);
-      blt.SourceBaseAddress = params->src.addr;
-      blt.SourceXOffset = params->src.tile_x_sa;
-      blt.SourceYOffset = params->src.tile_y_sa;
-
-#if GFX_VERx10 >= 125
-      blt.SourceSurfaceType = xy_bcb_surf_dim(src_surf);
-      blt.SourceSurfaceWidth = src_surf->logical_level0_px.w - 1;
-      blt.SourceSurfaceHeight = src_surf->logical_level0_px.h - 1;
-      blt.SourceSurfaceDepth = xy_bcb_surf_depth(src_surf) - 1;
-      blt.SourceArrayIndex =
-         params->src.view.base_array_layer + params->src.z_offset;
-      blt.SourceSurfaceQPitch = isl_get_qpitch(src_surf) >> 2;
-      blt.SourceLOD = params->src.view.base_level;
-      blt.SourceMipTailStartLOD = src_surf->miptail_start_level;
-      blt.SourceHorizontalAlign = isl_encode_halign(src_align.width);
-      blt.SourceVerticalAlign = isl_encode_valign(src_align.height);
-      /* XY_BLOCK_COPY_BLT only supports AUX_CCS. */
-      blt.SourceDepthStencilResource =
-         params->src.aux_usage == ISL_AUX_USAGE_STC_CCS;
-      blt.SourceTargetMemory =
-         params->src.addr.local_hint ? XY_MEM_LOCAL : XY_MEM_SYSTEM;
-
-      if (params->src.aux_usage != ISL_AUX_USAGE_NONE) {
-         blt.SourceAuxiliarySurfaceMode = xy_aux_mode(&params->src);
-         blt.SourceCompressionEnable = true;
-         blt.SourceCompressionFormat =
-            isl_get_render_compression_format(src_surf->format);
-         blt.SourceClearValueEnable = !!params->src.clear_color_addr.buffer;
-         blt.SourceClearAddress = params->src.clear_color_addr;
-      }
-
-      /* XeHP needs special MOCS values for the blitter */
-      blt.DestinationMOCS = isl_dev->mocs.blitter_dst;
-      blt.SourceMOCS = isl_dev->mocs.blitter_src;
-#endif
-   }
-#endif
-}
-
-UNUSED static void
-blorp_xy_fast_color_blit(struct blorp_batch *batch,
-                         const struct blorp_params *params)
-{
-#if GFX_VER < 12
-   unreachable("Blitter is only supported on Gfx12+");
-#else
-   UNUSED const struct isl_device *isl_dev = batch->blorp->isl_dev;
-   const struct isl_surf *dst_surf = &params->dst.surf;
-   const struct isl_format_layout *fmtl =
-      isl_format_get_layout(params->dst.view.format);
-
-   assert(batch->flags & BLORP_BATCH_USE_BLITTER);
-   assert(!(batch->flags & BLORP_BATCH_NO_UPDATE_CLEAR_COLOR));
-   assert(!(batch->flags & BLORP_BATCH_PREDICATE_ENABLE));
-   assert(params->hiz_op == ISL_AUX_OP_NONE);
-
-   assert(params->num_layers == 1);
-   assert(params->dst.view.levels == 1);
-   assert(dst_surf->samples == 1);
-   assert(fmtl->bpb != 96 || dst_surf->tiling == ISL_TILING_LINEAR);
-
-#if GFX_VERx10 < 125
-   assert(params->dst.view.base_array_layer == 0);
-   assert(params->dst.z_offset == 0);
-#endif
-
-   unsigned dst_pitch_unit = dst_surf->tiling == ISL_TILING_LINEAR ? 1 : 4;
-
-#if GFX_VERx10 >= 125
-   struct isl_extent3d dst_align = isl_get_image_alignment(dst_surf);
-#endif
-
-   blorp_emit(batch, GENX(XY_FAST_COLOR_BLT), blt) {
-      blt.ColorDepth = xy_color_depth(fmtl);
-
-      blt.DestinationPitch = (dst_surf->row_pitch_B / dst_pitch_unit) - 1;
-      blt.DestinationTiling = xy_bcb_tiling(dst_surf);
-      blt.DestinationX1 = params->x0;
-      blt.DestinationY1 = params->y0;
-      blt.DestinationX2 = params->x1;
-      blt.DestinationY2 = params->y1;
-      blt.DestinationBaseAddress = params->dst.addr;
-      blt.DestinationXOffset = params->dst.tile_x_sa;
-      blt.DestinationYOffset = params->dst.tile_y_sa;
-
-      isl_color_value_pack((union isl_color_value *)
-                           params->wm_inputs.clear_color,
-                           params->dst.view.format, blt.FillColor);
-
-#if GFX_VERx10 >= 125
-      blt.DestinationSurfaceType = xy_bcb_surf_dim(dst_surf);
-      blt.DestinationSurfaceWidth = dst_surf->logical_level0_px.w - 1;
-      blt.DestinationSurfaceHeight = dst_surf->logical_level0_px.h - 1;
-      blt.DestinationSurfaceDepth = xy_bcb_surf_depth(dst_surf) - 1;
-      blt.DestinationArrayIndex =
-         params->dst.view.base_array_layer + params->dst.z_offset;
-      blt.DestinationSurfaceQPitch = isl_get_qpitch(dst_surf) >> 2;
-      blt.DestinationLOD = params->dst.view.base_level;
-      blt.DestinationMipTailStartLOD = dst_surf->miptail_start_level;
-      blt.DestinationHorizontalAlign = isl_encode_halign(dst_align.width);
-      blt.DestinationVerticalAlign = isl_encode_valign(dst_align.height);
-      /* XY_FAST_COLOR_BLT only supports AUX_CCS. */
-      blt.DestinationDepthStencilResource =
-         params->dst.aux_usage == ISL_AUX_USAGE_STC_CCS;
-      blt.DestinationTargetMemory =
-         params->dst.addr.local_hint ? XY_MEM_LOCAL : XY_MEM_SYSTEM;
-
-      if (params->dst.aux_usage != ISL_AUX_USAGE_NONE) {
-         blt.DestinationAuxiliarySurfaceMode = xy_aux_mode(&params->dst);
-         blt.DestinationCompressionEnable = true;
-         blt.DestinationCompressionFormat =
-            isl_get_render_compression_format(dst_surf->format);
-         blt.DestinationClearValueEnable = !!params->dst.clear_color_addr.buffer;
-         blt.DestinationClearAddress = params->dst.clear_color_addr;
-      }
-
-      /* XeHP needs special MOCS values for the blitter */
-      blt.DestinationMOCS = isl_dev->mocs.blitter_dst;
-#endif
-   }
-#endif
-}
-
-static void
-blorp_exec_blitter(struct blorp_batch *batch,
-                   const struct blorp_params *params)
-{
-   blorp_measure_start(batch, params);
-
-   if (params->src.enabled)
-      blorp_xy_block_copy_blt(batch, params);
-   else
-      blorp_xy_fast_color_blit(batch, params);
-
-   blorp_measure_end(batch, params);
-}
-
 /**
  * \brief Execute a blit or render pass operation.
  *
@@ -2697,9 +2113,10 @@ blorp_exec_blitter(struct blorp_batch *batch,
 static void
 blorp_exec(struct blorp_batch *batch, const struct blorp_params *params)
 {
-   if (batch->flags & BLORP_BATCH_USE_BLITTER) {
-      blorp_exec_blitter(batch, params);
-   } else if (batch->flags & BLORP_BATCH_USE_COMPUTE) {
+   /* Not supported in Gfx versions that use Elk. */
+   assert((batch->flags & BLORP_BATCH_USE_BLITTER) == 0);
+
+   if (batch->flags & BLORP_BATCH_USE_COMPUTE) {
       blorp_exec_compute(batch, params);
    } else {
       blorp_exec_3d(batch, params);

@@ -155,7 +155,7 @@ pub extern "C" fn nak_compiler_create(
     assert!(!dev.is_null());
     let dev = unsafe { &*dev };
 
-    DEBUG.get_or_init(|| Debug::new());
+    DEBUG.get_or_init(Debug::new);
 
     let nak = Box::new(nak_compiler {
         sm: dev.sm,

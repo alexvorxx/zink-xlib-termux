@@ -9,10 +9,7 @@ use std::ops::Range;
 
 impl Src {
     fn is_reg_or_zero(&self) -> bool {
-        match self.src_ref {
-            SrcRef::Zero | SrcRef::Reg(_) => true,
-            _ => false,
-        }
+        matches!(self.src_ref, SrcRef::Zero | SrcRef::Reg(_))
     }
 }
 

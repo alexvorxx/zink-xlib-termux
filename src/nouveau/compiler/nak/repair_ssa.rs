@@ -81,10 +81,7 @@ fn get_ssa_or_phi(
 }
 
 fn get_or_insert_phi_dsts(bb: &mut BasicBlock) -> &mut OpPhiDsts {
-    let has_phi = match &bb.instrs[0].op {
-        Op::PhiDsts(_) => true,
-        _ => false,
-    };
+    let has_phi = matches!(&bb.instrs[0].op, Op::PhiDsts(_));
     if !has_phi {
         bb.instrs.insert(0, Instr::new_boxed(OpPhiDsts::new()));
     }

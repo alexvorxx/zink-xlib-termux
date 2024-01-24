@@ -85,9 +85,8 @@ fn copy_alu_src_if_cbuf(
     src: &mut Src,
     src_type: SrcType,
 ) {
-    match src.src_ref {
-        SrcRef::CBuf(_) => copy_alu_src(b, src, src_type),
-        _ => (),
+    if matches!(src.src_ref, SrcRef::CBuf(_)) {
+        copy_alu_src(b, src, src_type);
     }
 }
 

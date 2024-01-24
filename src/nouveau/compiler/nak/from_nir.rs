@@ -3010,15 +3010,14 @@ impl<'a> ShaderFromNir<'a> {
 
         // Tessellation evaluation shaders MUST claim to read gl_TessCoord or
         // the hardware will throw an SPH error.
-        match &self.info.stage {
-            ShaderStageInfo::Tessellation => match &mut self.info.io {
+        if matches!(self.info.stage, ShaderStageInfo::Tessellation) {
+            match &mut self.info.io {
                 ShaderIoInfo::Vtg(io) => {
                     let tc = NAK_ATTR_TESS_COORD;
                     io.mark_attrs_written(tc..(tc + 8));
                 }
                 _ => panic!("Tessellation must have ShaderIoInfo::Vtg"),
-            },
-            _ => (),
+            }
         }
 
         Shader {

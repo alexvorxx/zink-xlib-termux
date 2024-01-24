@@ -680,10 +680,7 @@ pub enum Dst {
 
 impl Dst {
     pub fn is_none(&self) -> bool {
-        match self {
-            Dst::None => true,
-            _ => false,
-        }
+        matches!(self, Dst::None)
     }
 
     pub fn as_reg(&self) -> Option<&RegRef> {
@@ -952,10 +949,7 @@ pub enum SrcMod {
 
 impl SrcMod {
     pub fn is_none(&self) -> bool {
-        match self {
-            SrcMod::None => true,
-            _ => false,
-        }
+        matches!(self, SrcMod::None)
     }
 
     pub fn has_fabs(&self) -> bool {
@@ -1201,10 +1195,9 @@ impl Src {
 
     pub fn is_fneg_zero(&self, src_type: SrcType) -> bool {
         match self.src_ref {
-            SrcRef::Zero | SrcRef::Imm32(0) => match self.src_mod {
-                SrcMod::FNeg | SrcMod::FNegAbs => true,
-                _ => false,
-            },
+            SrcRef::Zero | SrcRef::Imm32(0) => {
+                matches!(self.src_mod, SrcMod::FNeg | SrcMod::FNegAbs)
+            }
             SrcRef::Imm32(0x80000000) => {
                 src_type == SrcType::F32 && self.src_mod.is_none()
             }
@@ -1220,20 +1213,17 @@ impl Src {
                     return false;
                 }
 
-                match self.src_ref {
-                    SrcRef::SSA(_) | SrcRef::Reg(_) => true,
-                    _ => false,
-                }
+                matches!(self.src_ref, SrcRef::SSA(_) | SrcRef::Reg(_))
             }
             SrcType::GPR => {
                 if !self.src_mod.is_none() {
                     return false;
                 }
 
-                match self.src_ref {
-                    SrcRef::Zero | SrcRef::SSA(_) | SrcRef::Reg(_) => true,
-                    _ => false,
-                }
+                matches!(
+                    self.src_ref,
+                    SrcRef::Zero | SrcRef::SSA(_) | SrcRef::Reg(_)
+                )
             }
             SrcType::ALU => self.src_mod.is_none() && self.src_ref.is_alu(),
             SrcType::F32 | SrcType::F64 => {
@@ -4923,10 +4913,7 @@ impl PredRef {
     }
 
     pub fn is_none(&self) -> bool {
-        match self {
-            PredRef::None => true,
-            _ => false,
-        }
+        matches!(self, PredRef::None)
     }
 
     pub fn iter_ssa(&self) -> slice::Iter<'_, SSAValue> {
@@ -5187,17 +5174,11 @@ impl Instr {
     }
 
     pub fn is_branch(&self) -> bool {
-        match self.op {
-            Op::Bra(_) | Op::Exit(_) => true,
-            _ => false,
-        }
+        matches!(self.op, Op::Bra(_) | Op::Exit(_))
     }
 
     pub fn is_barrier(&self) -> bool {
-        match self.op {
-            Op::Bar(_) => true,
-            _ => false,
-        }
+        matches!(self.op, Op::Bar(_))
     }
 
     pub fn uses_global_mem(&self) -> bool {
@@ -5392,10 +5373,7 @@ impl Instr {
     }
 
     pub fn needs_yield(&self) -> bool {
-        match &self.op {
-            Op::Bar(_) | Op::BSync(_) => true,
-            _ => false,
-        }
+        matches!(&self.op, Op::Bar(_) | Op::BSync(_))
     }
 
     fn fmt_pred(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

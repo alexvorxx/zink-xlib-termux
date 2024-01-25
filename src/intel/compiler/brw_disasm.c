@@ -24,6 +24,7 @@
 #include <string.h>
 #include <stdarg.h>
 
+#include "brw_disasm.h"
 #include "brw_eu_defines.h"
 #include "brw_inst.h"
 #include "brw_shader.h"

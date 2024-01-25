@@ -39,7 +39,7 @@
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
 #include "intel/compiler/brw_compiler.h"
-#include "intel/compiler/brw_eu.h"
+#include "intel/compiler/brw_disasm.h"
 #include "intel/compiler/brw_nir.h"
 #include "crocus_context.h"
 #include "crocus_resource.h"

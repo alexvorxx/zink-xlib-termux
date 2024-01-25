@@ -179,20 +179,6 @@ void brw_init_codegen(const struct brw_isa_info *isa,
                       struct brw_codegen *p, void *mem_ctx);
 bool brw_has_jip(const struct intel_device_info *devinfo, enum opcode opcode);
 bool brw_has_uip(const struct intel_device_info *devinfo, enum opcode opcode);
-const struct brw_label *brw_find_label(const struct brw_label *root, int offset);
-void brw_create_label(struct brw_label **labels, int offset, void *mem_ctx);
-int brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
-                         const struct brw_inst *inst, bool is_compacted,
-                         int offset, const struct brw_label *root_label);
-const struct
-brw_label *brw_label_assembly(const struct brw_isa_info *isa,
-                              const void *assembly, int start, int end,
-                              void *mem_ctx);
-void brw_disassemble_with_labels(const struct brw_isa_info *isa,
-                                 const void *assembly, int start, int end, FILE *out);
-void brw_disassemble(const struct brw_isa_info *isa,
-                     const void *assembly, int start, int end,
-                     const struct brw_label *root_label, FILE *out);
 const struct brw_shader_reloc *brw_get_shader_relocs(struct brw_codegen *p,
                                                      unsigned *num_relocs);
 const unsigned *brw_get_program( struct brw_codegen *p, unsigned *sz );

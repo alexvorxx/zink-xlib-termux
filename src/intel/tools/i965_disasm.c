@@ -26,7 +26,8 @@
 #include <string.h>
 #include <getopt.h>
 
-#include "compiler/brw_eu.h"
+#include "compiler/brw_disasm.h"
+#include "compiler/brw_isa_info.h"
 #include "dev/intel_device_info.h"
 #include "util/u_dynarray.h"
 

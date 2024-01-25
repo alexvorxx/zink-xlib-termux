@@ -22,6 +22,7 @@
  */
 
 #include "brw_clip.h"
+#include "brw_disasm.h"
 
 #include "dev/intel_debug.h"
 

@@ -495,6 +495,7 @@ fs_inst::can_change_types() const
    return dst.type == src[0].type &&
           !src[0].abs && !src[0].negate && !saturate && src[0].file != ATTR &&
           (opcode == BRW_OPCODE_MOV ||
+           (opcode == SHADER_OPCODE_LOAD_PAYLOAD && sources == 1) ||
            (opcode == BRW_OPCODE_SEL &&
             dst.type == src[1].type &&
             predicate != BRW_PREDICATE_NONE &&

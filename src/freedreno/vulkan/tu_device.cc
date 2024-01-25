@@ -2277,12 +2277,12 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
 
    tu_bo_suballocator_init(
       &device->pipeline_suballoc, device, 128 * 1024,
-      (enum tu_bo_alloc_flags) (TU_BO_ALLOC_GPU_READ_ONLY | TU_BO_ALLOC_ALLOW_DUMP));
+      (enum tu_bo_alloc_flags) (TU_BO_ALLOC_GPU_READ_ONLY | TU_BO_ALLOC_ALLOW_DUMP), "pipeline_suballoc");
    tu_bo_suballocator_init(&device->autotune_suballoc, device,
-                           128 * 1024, TU_BO_ALLOC_NO_FLAGS);
+                           128 * 1024, TU_BO_ALLOC_NO_FLAGS, "autotune_suballoc");
    if (is_kgsl(physical_device->instance)) {
       tu_bo_suballocator_init(&device->kgsl_profiling_suballoc, device,
-                              128 * 1024, TU_BO_ALLOC_NO_FLAGS);
+                              128 * 1024, TU_BO_ALLOC_NO_FLAGS, "kgsl_profiling_suballoc");
    }
 
    result = tu_bo_init_new(device, &device->global_bo, global_size,

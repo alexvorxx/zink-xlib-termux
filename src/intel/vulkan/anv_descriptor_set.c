@@ -2208,10 +2208,7 @@ anv_descriptor_write_surface_state(struct anv_device *device,
    bview->general.state = surface_state;
 
    isl_surf_usage_flags_t usage =
-      (desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
-       desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) ?
-      ISL_SURF_USAGE_CONSTANT_BUFFER_BIT :
-      ISL_SURF_USAGE_STORAGE_BIT;
+      anv_isl_usage_for_descriptor_type(desc->type);
 
    enum isl_format format =
       anv_isl_format_for_descriptor_type(device, desc->type);
@@ -2282,9 +2279,7 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
 
    if (data & ANV_DESCRIPTOR_SURFACE) {
       isl_surf_usage_flags_t usage =
-         desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ?
-         ISL_SURF_USAGE_CONSTANT_BUFFER_BIT :
-         ISL_SURF_USAGE_STORAGE_BIT;
+         anv_isl_usage_for_descriptor_type(desc->type);
 
       enum isl_format format =
          anv_isl_format_for_descriptor_type(device, desc->type);

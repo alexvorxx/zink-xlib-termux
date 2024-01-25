@@ -1849,9 +1849,7 @@ emit_dynamic_buffer_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
                                          desc->type);
 
    isl_surf_usage_flags_t usage =
-      desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ?
-      ISL_SURF_USAGE_CONSTANT_BUFFER_BIT :
-      ISL_SURF_USAGE_STORAGE_BIT;
+      anv_isl_usage_for_descriptor_type(desc->type);
 
    anv_fill_buffer_surface_state(cmd_buffer->device,
                                  surface_state.map,

@@ -5373,6 +5373,18 @@ enum isl_format
 anv_isl_format_for_descriptor_type(const struct anv_device *device,
                                    VkDescriptorType type);
 
+static inline isl_surf_usage_flags_t
+anv_isl_usage_for_descriptor_type(const VkDescriptorType type)
+{
+   switch(type) {
+      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+         return ISL_SURF_USAGE_CONSTANT_BUFFER_BIT;
+      default:
+         return ISL_SURF_USAGE_STORAGE_BIT;
+   }
+}
+
 static inline uint32_t
 anv_rasterization_aa_mode(VkPolygonMode raster_mode,
                           VkLineRasterizationModeEXT line_mode)

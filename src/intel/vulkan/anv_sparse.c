@@ -1079,7 +1079,10 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
     * either 4k or 64k depending on the tiling format. */
    const uint64_t block_size_B = block_shape_el.width * (layout->bpb / 8) *
                                  block_shape_el.height *
-                                 block_shape_el.depth;
+                                 block_shape_el.depth *
+                                 image->vk.samples;
+   assert(block_size_B == (64 * 1024) || block_size_B == 4096);
+
    /* How many blocks are necessary to form a whole line on this image? */
    const uint32_t blocks_per_line = surf->row_pitch_B / (layout->bpb / 8) /
                                     block_shape_el.width;

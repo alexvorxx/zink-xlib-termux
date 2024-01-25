@@ -5193,7 +5193,7 @@ void genX(CmdWaitEvents2)(
 static uint32_t vk_to_intel_index_type(VkIndexType type)
 {
    switch (type) {
-   case VK_INDEX_TYPE_UINT8_EXT:
+   case VK_INDEX_TYPE_UINT8_KHR:
       return INDEX_BYTE;
    case VK_INDEX_TYPE_UINT16:
       return INDEX_WORD;
@@ -5207,7 +5207,7 @@ static uint32_t vk_to_intel_index_type(VkIndexType type)
 static uint32_t restart_index_for_type(VkIndexType type)
 {
    switch (type) {
-   case VK_INDEX_TYPE_UINT8_EXT:
+   case VK_INDEX_TYPE_UINT8_KHR:
       return UINT8_MAX;
    case VK_INDEX_TYPE_UINT16:
       return UINT16_MAX;

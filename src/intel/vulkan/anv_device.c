@@ -253,6 +253,7 @@ get_device_extensions(const struct anv_physical_device *device,
 #ifdef ANV_USE_WSI_PLATFORM
       .KHR_incremental_present               = true,
 #endif
+      .KHR_index_type_uint8                  = true,
       .KHR_maintenance1                      = true,
       .KHR_maintenance2                      = true,
       .KHR_maintenance3                      = true,

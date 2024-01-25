@@ -255,6 +255,7 @@ get_device_extensions(const struct anv_physical_device *device,
 #endif
       .KHR_index_type_uint8                  = true,
       .KHR_line_rasterization                = true,
+      .KHR_load_store_op_none                = true,
       .KHR_maintenance1                      = true,
       .KHR_maintenance2                      = true,
       .KHR_maintenance3                      = true,

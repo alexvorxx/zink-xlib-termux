@@ -539,6 +539,10 @@ zink_resource_image_barrier(struct zink_context *ctx, struct zink_resource *res,
    res->obj->access = flags;
    res->obj->access_stage = pipeline;
    res->layout = new_layout;
+
+   if (new_layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+      zink_resource_copies_reset(res);
+
    if (res->obj->exportable)
       simple_mtx_lock(&ctx->batch.state->exportable_lock);
    if (res->obj->dt) {
@@ -554,8 +558,6 @@ zink_resource_image_barrier(struct zink_context *ctx, struct zink_resource *res,
          pipe_resource_reference(&pres, &res->base.b);
       }
    }
-   if (new_layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-      zink_resource_copies_reset(res);
    if (res->obj->exportable && queue_import) {
       for (struct zink_resource *r = res; r; r = zink_resource(r->base.b.next)) {
          VkSemaphore sem = zink_screen_export_dmabuf_semaphore(zink_screen(ctx->base.screen), r);

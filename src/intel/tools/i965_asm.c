@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <getopt.h>
 #include "i965_asm.h"
+#include "intel/compiler/brw_disasm_info.h"
 
 enum opt_output_type {
    OPT_OUTPUT_HEX,

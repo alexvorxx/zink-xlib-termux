@@ -40,13 +40,14 @@
 #include "brw_eu_defines.h"
 #include "brw_isa_info.h"
 #include "brw_reg.h"
-#include "brw_disasm_info.h"
 
 #include "util/bitset.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct disasm_info;
 
 #define BRW_EU_MAX_INSN_STACK 5
 

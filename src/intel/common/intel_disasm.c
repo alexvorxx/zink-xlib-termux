@@ -25,6 +25,7 @@
 
 #include "compiler/brw_inst.h"
 #include "compiler/brw_disasm.h"
+#include "compiler/brw_disasm_info.h"
 #include "compiler/brw_eu.h"
 #include "compiler/brw_isa_info.h"
 

@@ -3207,6 +3207,24 @@ anv_pipe_invalidate_bits_for_access_flags(struct anv_device *device,
          pipe_bits |= ANV_PIPE_TILE_CACHE_FLUSH_BIT;
          break;
       case VK_ACCESS_2_SHADER_STORAGE_READ_BIT:
+      /* VK_ACCESS_2_SHADER_STORAGE_READ_BIT specifies read access to a
+       * storage buffer, physical storage buffer, storage texel buffer, or
+       * storage image in any shader pipeline stage.
+       *
+       * Any storage buffers or images written to must be invalidated and
+       * flushed before the shader can access them.
+       *
+       * Both HDC & Untyped flushes also do invalidation. This is why we use
+       * this here on Gfx12+.
+       *
+       * Gfx11 and prior don't have HDC. Only Data cache flush is available
+       * and it only operates on the written cache lines.
+       */
+      if (device->info->ver >= 12) {
+         pipe_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
+         pipe_bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
+      }
+      break;
       default:
          break; /* Nothing to do */
       }

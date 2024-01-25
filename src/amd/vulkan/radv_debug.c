@@ -710,6 +710,21 @@ radv_vm_fault_occurred(struct radv_device *device, struct radv_winsys_gpuvm_faul
    return device->ws->query_gpuvm_fault(device->ws, fault_info);
 }
 
+enum radv_device_fault_chunk {
+   RADV_DEVICE_FAULT_CHUNK_TRACE,
+   RADV_DEVICE_FAULT_CHUNK_QUEUE_STATE,
+   RADV_DEVICE_FAULT_CHUNK_UMR_WAVES,
+   RADV_DEVICE_FAULT_CHUNK_UMR_RING,
+   RADV_DEVICE_FAULT_CHUNK_REGISTERS,
+   RADV_DEVICE_FAULT_CHUNK_BO_RANGES,
+   RADV_DEVICE_FAULT_CHUNK_BO_HISTORY,
+   RADV_DEVICE_FAULT_CHUNK_VM_FAULT,
+   RADV_DEVICE_FAULT_CHUNK_APP_INFO,
+   RADV_DEVICE_FAULT_CHUNK_GPU_INFO,
+   RADV_DEVICE_FAULT_CHUNK_DMESG,
+   RADV_DEVICE_FAULT_CHUNK_COUNT,
+};
+
 void
 radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_info *submit_info)
 {
@@ -751,98 +766,66 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
 
    fprintf(stderr, "radv: GPU hang report will be saved to '%s'!\n", dump_dir);
 
-   /* Dump trace file. */
-   snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "trace.log");
-   f = fopen(dump_path, "w+");
-   if (f) {
-      radv_dump_trace(queue->device, submit_info->cs_array[0], f);
-      fclose(f);
-   }
+   struct {
+      const char *name;
+   } chunks[RADV_DEVICE_FAULT_CHUNK_COUNT] = {
+      {"trace"},      {"pipeline"}, {"umr_waves"}, {"umr_ring"}, {"registers"}, {"bo_ranges"},
+      {"bo_history"}, {"vm_fault"}, {"app_info"},  {"gpu_info"}, {"dmesg"},
+   };
 
-   /* Dump pipeline state. */
-   snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "pipeline.log");
-   f = fopen(dump_path, "w+");
-   if (f) {
-      radv_dump_queue_state(queue, dump_dir, f);
-      fclose(f);
-   }
+   for (uint32_t i = 0; i < RADV_DEVICE_FAULT_CHUNK_COUNT; i++) {
 
-   if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
-      /* Dump UMR waves. */
-      snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "umr_waves.log");
+      snprintf(dump_path, sizeof(dump_path), "%s/%s.log", dump_dir, chunks[i].name);
+
       f = fopen(dump_path, "w+");
-      if (f) {
-         radv_dump_umr_waves(queue, f);
-         fclose(f);
+      if (!f)
+         continue;
+
+      switch (i) {
+      case RADV_DEVICE_FAULT_CHUNK_TRACE:
+         radv_dump_trace(queue->device, submit_info->cs_array[0], f);
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_QUEUE_STATE:
+         radv_dump_queue_state(queue, dump_dir, f);
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_UMR_WAVES:
+         if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR))
+            radv_dump_umr_waves(queue, f);
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_UMR_RING:
+         if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR))
+            radv_dump_umr_ring(queue, f);
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_REGISTERS:
+         radv_dump_debug_registers(device, f);
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_BO_RANGES:
+         device->ws->dump_bo_ranges(device->ws, f);
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_BO_HISTORY:
+         device->ws->dump_bo_log(device->ws, f);
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_VM_FAULT:
+         if (vm_fault_occurred) {
+            fprintf(f, "VM fault report.\n\n");
+            fprintf(f, "Failing VM page: 0x%08" PRIx64 "\n", fault_info.addr);
+            ac_print_gpuvm_fault_status(f, device->physical_device->rad_info.gfx_level, fault_info.status);
+         }
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_APP_INFO:
+         radv_dump_app_info(device, f);
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_GPU_INFO:
+         radv_dump_device_name(device, f);
+         ac_print_gpu_info(&device->physical_device->rad_info, f);
+         break;
+      case RADV_DEVICE_FAULT_CHUNK_DMESG:
+         radv_dump_dmesg(f);
+         break;
+      default:
+         break;
       }
 
-      /* Dump UMR ring. */
-      snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "umr_ring.log");
-      f = fopen(dump_path, "w+");
-      if (f) {
-         radv_dump_umr_ring(queue, f);
-         fclose(f);
-      }
-   }
-
-   /* Dump debug registers. */
-   snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "registers.log");
-   f = fopen(dump_path, "w+");
-   if (f) {
-      radv_dump_debug_registers(device, f);
-      fclose(f);
-   }
-
-   /* Dump BO ranges. */
-   snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "bo_ranges.log");
-   f = fopen(dump_path, "w+");
-   if (f) {
-      device->ws->dump_bo_ranges(device->ws, f);
-      fclose(f);
-   }
-
-   /* Dump BO log. */
-   snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "bo_history.log");
-   f = fopen(dump_path, "w+");
-   if (f) {
-      device->ws->dump_bo_log(device->ws, f);
-      fclose(f);
-   }
-
-   /* Dump VM fault info. */
-   if (vm_fault_occurred) {
-      snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "vm_fault.log");
-      f = fopen(dump_path, "w+");
-      if (f) {
-         fprintf(f, "VM fault report.\n\n");
-         fprintf(f, "Failing VM page: 0x%08" PRIx64 "\n", fault_info.addr);
-         ac_print_gpuvm_fault_status(f, device->physical_device->rad_info.gfx_level, fault_info.status);
-         fclose(f);
-      }
-   }
-
-   /* Dump app info. */
-   snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "app_info.log");
-   f = fopen(dump_path, "w+");
-   if (f) {
-      radv_dump_app_info(device, f);
-      fclose(f);
-   }
-
-   /* Dump GPU info. */
-   snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "gpu_info.log");
-   f = fopen(dump_path, "w+");
-   if (f) {
-      radv_dump_device_name(device, f);
-      ac_print_gpu_info(&device->physical_device->rad_info, f);
-      fclose(f);
-   }
-
-   /* Dump dmesg. */
-   snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "dmesg.log");
-   f = fopen(dump_path, "w+");
-   if (f) {
-      radv_dump_dmesg(f);
       fclose(f);
    }
 #endif

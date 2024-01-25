@@ -2487,10 +2487,6 @@ do_common_optimization(exec_list *ir, bool linked,
       }                                                                 \
    } while (false)
 
-   if (linked) {
-      OPT(do_function_inlining, ir);
-      OPT(do_dead_functions, ir);
-   }
    OPT(propagate_invariance, ir);
    OPT(do_if_simplification, ir);
    OPT(opt_flatten_nested_if_blocks, ir);

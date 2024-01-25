@@ -108,6 +108,8 @@ struct rendering_state {
 
    struct pipe_grid_info dispatch_info;
    struct pipe_framebuffer_state framebuffer;
+   int fb_map[PIPE_MAX_COLOR_BUFS];
+   bool fb_remapped;
 
    struct pipe_blend_state blend_state;
    struct {
@@ -391,6 +393,22 @@ static void emit_compute_state(struct rendering_state *state)
 }
 
 static void
+emit_fb_state(struct rendering_state *state)
+{
+   if (state->fb_remapped) {
+      struct pipe_framebuffer_state fb = state->framebuffer;
+      memset(fb.cbufs, 0, sizeof(fb.cbufs));
+      for (unsigned i = 0; i < fb.nr_cbufs; i++) {
+         if (state->fb_map[i] < PIPE_MAX_COLOR_BUFS)
+            fb.cbufs[state->fb_map[i]] = state->framebuffer.cbufs[i];
+      }
+      state->pctx->set_framebuffer_state(state->pctx, &fb);
+   } else {
+      state->pctx->set_framebuffer_state(state->pctx, &state->framebuffer);
+   }
+}
+
+static void
 update_min_samples(struct rendering_state *state)
 {
    state->min_samples = 1;
@@ -405,7 +423,7 @@ update_min_samples(struct rendering_state *state)
       state->min_samples = state->rast_samples;
    if (state->rast_samples != state->framebuffer.samples) {
       state->framebuffer.samples = state->rast_samples;
-      state->pctx->set_framebuffer_state(state->pctx, &state->framebuffer);
+      emit_fb_state(state);
    }
 }
 
@@ -430,7 +448,17 @@ static void emit_state(struct rendering_state *state)
             state->blend_state.rt[att].colormask = 0;
          }
       }
-      cso_set_blend(state->cso, &state->blend_state);
+      if (state->fb_remapped) {
+         struct pipe_blend_state blend = state->blend_state;
+         for (unsigned i = 0; i < state->framebuffer.nr_cbufs; i++) {
+            if (state->fb_map[i] < PIPE_MAX_COLOR_BUFS) {
+               blend.rt[state->fb_map[i]] = state->blend_state.rt[i];
+            }
+         }
+         cso_set_blend(state->cso, &blend);
+      } else {
+         cso_set_blend(state->cso, &state->blend_state);
+      }
       /* reset colormasks using saved bitmask */
       if (state->color_write_disables) {
          const uint32_t att_mask = BITFIELD_MASK(4);
@@ -1739,6 +1767,10 @@ handle_begin_rendering(struct vk_cmd_queue_entry *cmd,
    bool resuming = (info->flags & VK_RENDERING_RESUMING_BIT) == VK_RENDERING_RESUMING_BIT;
    bool suspending = (info->flags & VK_RENDERING_SUSPENDING_BIT) == VK_RENDERING_SUSPENDING_BIT;
 
+   state->fb_remapped = false;
+   for (unsigned i = 0; i < PIPE_MAX_COLOR_BUFS; i++)
+      state->fb_map[i] = i;
+
    const VkMultisampledRenderToSingleSampledInfoEXT *ssi =
          vk_find_struct_const(info->pNext, MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_INFO_EXT);
    if (ssi && ssi->multisampledRenderToSingleSampledEnable) {
@@ -1759,6 +1791,7 @@ handle_begin_rendering(struct vk_cmd_queue_entry *cmd,
    state->framebuffer.height = info->renderArea.offset.y +
                                info->renderArea.extent.height;
    state->framebuffer.layers = info->viewMask ? util_last_bit(info->viewMask) : info->layerCount;
+   assert(info->colorAttachmentCount <= PIPE_MAX_COLOR_BUFS);
    state->framebuffer.nr_cbufs = info->colorAttachmentCount;
 
    state->color_att_count = info->colorAttachmentCount;
@@ -1875,6 +1908,27 @@ static void handle_end_rendering(struct vk_cmd_queue_entry *cmd,
                                           false);
       }
    }
+}
+
+static void
+handle_rendering_attachment_locations(struct vk_cmd_queue_entry *cmd, struct rendering_state *state)
+{
+   VkRenderingAttachmentLocationInfoKHR *set = cmd->u.set_rendering_attachment_locations_khr.location_info;
+   state->fb_remapped = true;
+   memset(state->fb_map, PIPE_MAX_COLOR_BUFS, sizeof(state->fb_map));
+   assert(state->color_att_count == set->colorAttachmentCount);
+   for (unsigned i = 0; i < state->color_att_count; i++) {
+      if (set->pColorAttachmentLocations[i] == VK_ATTACHMENT_UNUSED)
+         continue;
+      state->fb_map[i] = set->pColorAttachmentLocations[i];
+   }
+   emit_fb_state(state);
+}
+
+static void
+handle_rendering_input_attachment_indices(struct vk_cmd_queue_entry *cmd, struct rendering_state *state)
+{
+   /* do nothing */
 }
 
 static void handle_draw(struct vk_cmd_queue_entry *cmd,
@@ -4392,6 +4446,9 @@ void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
    ENQUEUE_CMD(CmdDispatchGraphAMDX)
 #endif
 
+   ENQUEUE_CMD(CmdSetRenderingAttachmentLocationsKHR)
+   ENQUEUE_CMD(CmdSetRenderingInputAttachmentIndicesKHR)
+
 #undef ENQUEUE_CMD
 }
 
@@ -4752,6 +4809,12 @@ static void lvp_execute_cmd_buffer(struct list_head *cmds,
          handle_dispatch_graph(cmd, state);
          break;
 #endif
+      case VK_CMD_SET_RENDERING_ATTACHMENT_LOCATIONS_KHR:
+         handle_rendering_attachment_locations(cmd, state);
+         break;
+      case VK_CMD_SET_RENDERING_INPUT_ATTACHMENT_INDICES_KHR:
+         handle_rendering_input_attachment_indices(cmd, state);
+         break;
       default:
          fprintf(stderr, "Unsupported command %s\n", vk_cmd_queue_type_names[cmd->type]);
          unreachable("Unsupported command");

@@ -104,6 +104,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_draw_indirect_count               = true,
    .KHR_driver_properties                 = true,
    .KHR_dynamic_rendering                 = true,
+   .KHR_dynamic_rendering_local_read      = true,
    .KHR_format_feature_flags2             = true,
    .KHR_external_fence                    = true,
    .KHR_external_memory                   = true,
@@ -584,6 +585,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       .nestedCommandBuffer = true,
       .nestedCommandBufferRendering = true,
       .nestedCommandBufferSimultaneousUse = true,
+
+      /* VK_KHR_dynamic_rendering_local_read */
+      .dynamicRenderingLocalRead = true,
 
       /* VK_EXT_mesh_shader */
       .taskShader = true,

@@ -5353,14 +5353,18 @@ void genX(CmdEndRendering)(
       is_multiview ? util_last_bit(gfx->view_mask) : gfx->layer_count;
 
    bool has_color_resolve = false;
+   bool has_sparse_color_resolve = false;
    for (uint32_t i = 0; i < gfx->color_att_count; i++) {
       cmd_buffer_mark_attachment_written(cmd_buffer, &gfx->color_att[i],
                                          VK_IMAGE_ASPECT_COLOR_BIT);
 
       /* Stash this off for later */
       if (gfx->color_att[i].resolve_mode != VK_RESOLVE_MODE_NONE &&
-          !(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT))
+          !(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT)) {
          has_color_resolve = true;
+         if (anv_image_is_sparse(gfx->color_att[i].iview->image))
+               has_sparse_color_resolve = true;
+      }
    }
 
    cmd_buffer_mark_attachment_written(cmd_buffer, &gfx->depth_att,
@@ -5380,9 +5384,19 @@ void genX(CmdEndRendering)(
                                 "MSAA resolve");
    }
 
-   if (!(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT) &&
-       (gfx->depth_att.resolve_mode != VK_RESOLVE_MODE_NONE ||
-        gfx->stencil_att.resolve_mode != VK_RESOLVE_MODE_NONE)) {
+   const bool has_depth_resolve =
+      gfx->depth_att.resolve_mode != VK_RESOLVE_MODE_NONE &&
+      !(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT);
+   const bool has_stencil_resolve =
+      gfx->stencil_att.resolve_mode != VK_RESOLVE_MODE_NONE &&
+      !(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT);
+   const bool has_sparse_depth_resolve =
+      has_depth_resolve && anv_image_is_sparse(gfx->depth_att.iview->image);
+   const bool has_sparse_stencil_resolve =
+      has_stencil_resolve &&
+      anv_image_is_sparse(gfx->stencil_att.iview->image);
+
+   if (has_depth_resolve || has_stencil_resolve) {
       /* We are about to do some MSAA resolves.  We need to flush so that the
        * result of writes to the MSAA depth attachments show up in the sampler
        * when we blit to the single-sampled resolve target.
@@ -5391,6 +5405,15 @@ void genX(CmdEndRendering)(
                               ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
                               ANV_PIPE_DEPTH_CACHE_FLUSH_BIT,
                               "MSAA resolve");
+   }
+
+   if (has_sparse_color_resolve || has_sparse_depth_resolve ||
+       has_sparse_stencil_resolve) {
+      /* If the resolve image is sparse we need some extra bits to make sure
+       * unbound regions read 0, as residencyNonResidentStrict mandates.
+       */
+      anv_add_pending_pipe_bits(cmd_buffer, ANV_PIPE_TILE_CACHE_FLUSH_BIT,
+                                "sparse MSAA resolve");
    }
 
    for (uint32_t i = 0; i < gfx->color_att_count; i++) {
@@ -5403,8 +5426,7 @@ void genX(CmdEndRendering)(
                                   VK_IMAGE_ASPECT_COLOR_BIT);
    }
 
-   if (gfx->depth_att.resolve_mode != VK_RESOLVE_MODE_NONE &&
-       !(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT)) {
+   if (has_depth_resolve) {
       const struct anv_image_view *src_iview = gfx->depth_att.iview;
 
       /* MSAA resolves sample from the source attachment.  Transition the
@@ -5434,8 +5456,7 @@ void genX(CmdEndRendering)(
                               false /* will_full_fast_clear */);
    }
 
-   if (gfx->stencil_att.resolve_mode != VK_RESOLVE_MODE_NONE &&
-       !(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT)) {
+   if (has_stencil_resolve) {
       anv_attachment_msaa_resolve(cmd_buffer, &gfx->stencil_att,
                                   gfx->stencil_att.layout,
                                   VK_IMAGE_ASPECT_STENCIL_BIT);

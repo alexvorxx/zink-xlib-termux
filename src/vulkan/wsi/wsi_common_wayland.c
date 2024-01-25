@@ -1921,6 +1921,17 @@ presentation_handle_sync_output(void *data,
 }
 
 static void
+wsi_wl_presentation_update_present_id(struct wsi_wl_present_id *id)
+{
+   /* present_ids.lock already held around dispatch */
+   if (id->present_id > id->chain->present_ids.max_completed)
+      id->chain->present_ids.max_completed = id->present_id;
+
+   wl_list_remove(&id->link);
+   vk_free(id->alloc, id);
+}
+
+static void
 presentation_handle_presented(void *data,
                               struct wp_presentation_feedback *feedback,
                               uint32_t tv_sec_hi, uint32_t tv_sec_lo,
@@ -1929,14 +1940,8 @@ presentation_handle_presented(void *data,
                               uint32_t flags)
 {
    struct wsi_wl_present_id *id = data;
-
-   /* present_ids.lock already held around dispatch */
-   if (id->present_id > id->chain->present_ids.max_completed)
-      id->chain->present_ids.max_completed = id->present_id;
-
+   wsi_wl_presentation_update_present_id(id);
    wp_presentation_feedback_destroy(feedback);
-   wl_list_remove(&id->link);
-   vk_free(id->alloc, id);
 }
 
 static void
@@ -1944,14 +1949,8 @@ presentation_handle_discarded(void *data,
                               struct wp_presentation_feedback *feedback)
 {
    struct wsi_wl_present_id *id = data;
-
-   /* present_ids.lock already held around dispatch */
-   if (id->present_id > id->chain->present_ids.max_completed)
-      id->chain->present_ids.max_completed = id->present_id;
-
+   wsi_wl_presentation_update_present_id(id);
    wp_presentation_feedback_destroy(feedback);
-   wl_list_remove(&id->link);
-   vk_free(id->alloc, id);
 }
 
 static const struct wp_presentation_feedback_listener

@@ -2907,6 +2907,13 @@ radv_emit_hw_vs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
    if (pdevice->rad_info.gfx_level >= GFX10) {
       uint32_t oversub_pc_lines = late_alloc_wave64 ? pdevice->rad_info.pc_lines / 4 : 0;
       gfx10_emit_ge_pc_alloc(cs, pdevice->rad_info.gfx_level, oversub_pc_lines);
+
+      /* Required programming for tessellation (legacy pipeline only). */
+      if (shader->info.stage == MESA_SHADER_TESS_EVAL) {
+         radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL,
+                                S_028A44_ES_VERTS_PER_SUBGRP(250) | S_028A44_GS_PRIMS_PER_SUBGRP(126) |
+                                   S_028A44_GS_INST_PRIMS_IN_SUBGRP(126));
+      }
    }
 }
 
@@ -3639,13 +3646,6 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
 
       if (radv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_EVAL)) {
          radv_emit_tess_eval_shader(device, ctx_cs, cs, pipeline->base.shaders[MESA_SHADER_TESS_EVAL]);
-      }
-
-      if (pdevice->rad_info.gfx_level >= GFX10 && !radv_pipeline_has_stage(pipeline, MESA_SHADER_GEOMETRY) &&
-          !radv_pipeline_has_ngg(pipeline)) {
-         radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL,
-                                S_028A44_ES_VERTS_PER_SUBGRP(250) | S_028A44_GS_PRIMS_PER_SUBGRP(126) |
-                                   S_028A44_GS_INST_PRIMS_IN_SUBGRP(126));
       }
    }
 

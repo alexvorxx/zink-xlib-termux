@@ -3451,8 +3451,8 @@ static void handle_set_stencil_op(struct vk_cmd_queue_entry *cmd,
 static void handle_set_line_stipple(struct vk_cmd_queue_entry *cmd,
                                     struct rendering_state *state)
 {
-   state->rs_state.line_stipple_factor = cmd->u.set_line_stipple_ext.line_stipple_factor - 1;
-   state->rs_state.line_stipple_pattern = cmd->u.set_line_stipple_ext.line_stipple_pattern;
+   state->rs_state.line_stipple_factor = cmd->u.set_line_stipple_khr.line_stipple_factor - 1;
+   state->rs_state.line_stipple_pattern = cmd->u.set_line_stipple_khr.line_stipple_pattern;
    state->rs_dirty = true;
 }
 
@@ -4616,7 +4616,7 @@ static void lvp_execute_cmd_buffer(struct list_head *cmds,
       case VK_CMD_SET_STENCIL_OP:
          handle_set_stencil_op(cmd, state);
          break;
-      case VK_CMD_SET_LINE_STIPPLE_EXT:
+      case VK_CMD_SET_LINE_STIPPLE_KHR:
          handle_set_line_stipple(cmd, state);
          break;
       case VK_CMD_SET_DEPTH_BIAS_ENABLE:

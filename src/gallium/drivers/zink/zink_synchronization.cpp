@@ -262,29 +262,36 @@ unordered_res_exec(const struct zink_context *ctx, const struct zink_resource *r
    return res->obj->unordered_write || !zink_batch_usage_matches(res->obj->bo->writes.u, ctx->batch.state);
 }
 
+static ALWAYS_INLINE bool
+check_unordered_exec(struct zink_context *ctx, struct zink_resource *res, bool is_write)
+{
+   if (res) {
+      if (!res->obj->is_buffer) {
+         /* TODO: figure out how to link up unordered layout -> ordered layout and delete this conditionals */
+         if (zink_resource_usage_is_unflushed(res) && !res->obj->unordered_read && !res->obj->unordered_write)
+            return false;
+      }
+      return unordered_res_exec(ctx, res, is_write);
+   }
+   return true;
+}
+
 VkCommandBuffer
 zink_get_cmdbuf(struct zink_context *ctx, struct zink_resource *src, struct zink_resource *dst)
 {
    bool unordered_exec = (zink_debug & ZINK_DEBUG_NOREORDER) == 0;
-   /* TODO: figure out how to link up unordered layout -> ordered layout and delete these two conditionals */
-   if (src && !src->obj->is_buffer) {
-      if (zink_resource_usage_is_unflushed(src) && !src->obj->unordered_read && !src->obj->unordered_write)
-         unordered_exec = false;
-   }
-   if (dst && !dst->obj->is_buffer) {
-      if (zink_resource_usage_is_unflushed(dst) && !dst->obj->unordered_read && !dst->obj->unordered_write)
-         unordered_exec = false;
-   }
-   if (src && unordered_exec)
-      unordered_exec &= unordered_res_exec(ctx, src, false);
-   if (dst && unordered_exec)
-      unordered_exec &= unordered_res_exec(ctx, dst, true);
+
+   unordered_exec &= check_unordered_exec(ctx, src, false) &&
+                     check_unordered_exec(ctx, dst, true);
+
    if (src)
       src->obj->unordered_read = unordered_exec;
    if (dst)
       dst->obj->unordered_write = unordered_exec;
+
    if (!unordered_exec || ctx->unordered_blitting)
       zink_batch_no_rp(ctx);
+
    if (unordered_exec) {
       ctx->batch.state->has_barriers = true;
       ctx->batch.has_work = true;

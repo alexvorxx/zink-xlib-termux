@@ -6129,15 +6129,15 @@ to upconvert to 32b float internally?
 		<bitfield name="UNK6" pos="6" type="boolean"/>
 	</reg32>
 
-	<reg32 offset="0xbb00" name="HLSQ_DRAW_CMD">
+	<reg32 offset="0xbb00" name="HLSQ_DRAW_CMD" variants="A6XX">
 		<bitfield name="STATE_ID" low="0" high="7"/>
 	</reg32>
 
-	<reg32 offset="0xbb01" name="HLSQ_DISPATCH_CMD">
+	<reg32 offset="0xbb01" name="HLSQ_DISPATCH_CMD" variants="A6XX">
 		<bitfield name="STATE_ID" low="0" high="7"/>
 	</reg32>
 
-	<reg32 offset="0xbb02" name="HLSQ_EVENT_CMD">
+	<reg32 offset="0xbb02" name="HLSQ_EVENT_CMD" variants="A6XX">
 		<!-- I think only the low bit is actually used? -->
 		<bitfield name="STATE_ID" low="16" high="23"/>
 		<bitfield name="EVENT" low="0" high="6" type="vgt_event_type"/>
@@ -6168,6 +6168,19 @@ to upconvert to 32b float internally?
 		<!-- SS6_BINDLESS: one bit per bindless base -->
 		<bitfield name="CS_BINDLESS" low="9" high="13" type="hex"/>
 		<bitfield name="GFX_BINDLESS" low="14" high="18" type="hex"/>
+	</reg32>
+
+	<reg32 offset="0xab1c" name="HLSQ_DRAW_CMD" variants="A7XX-">
+		<bitfield name="STATE_ID" low="0" high="7"/>
+	</reg32>
+
+	<reg32 offset="0xab1d" name="HLSQ_DISPATCH_CMD" variants="A7XX-">
+		<bitfield name="STATE_ID" low="0" high="7"/>
+	</reg32>
+
+	<reg32 offset="0xab1e" name="HLSQ_EVENT_CMD" variants="A7XX-">
+		<bitfield name="STATE_ID" low="16" high="23"/>
+		<bitfield name="EVENT" low="0" high="6" type="vgt_event_type"/>
 	</reg32>
 
 	<reg32 offset="0xab1f" name="HLSQ_INVALIDATE_CMD" variants="A7XX-" usage="cmd">

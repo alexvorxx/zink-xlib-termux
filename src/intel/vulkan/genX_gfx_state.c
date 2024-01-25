@@ -245,7 +245,7 @@ want_stencil_pma_fix(struct anv_cmd_buffer *cmd_buffer,
 
 static void
 genX(rasterization_mode)(VkPolygonMode raster_mode,
-                         VkLineRasterizationModeEXT line_mode,
+                         VkLineRasterizationModeKHR line_mode,
                          float line_width,
                          uint32_t *api_mode,
                          bool *msaa_rasterization_enable)
@@ -664,7 +664,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       uint32_t api_mode = 0;
       bool msaa_raster_enable = false;
 
-      const VkLineRasterizationModeEXT line_mode =
+      const VkLineRasterizationModeKHR line_mode =
          anv_line_rasterization_mode(dyn->rs.line.mode,
                                      pipeline->rasterization_samples);
 

@@ -830,7 +830,7 @@ anv_physical_device_init_disk_cache(struct anv_physical_device *device)
    _mesa_sha1_format(timestamp, device->driver_build_sha1);
 
    const uint64_t driver_flags =
-      brw_get_compiler_config_value(device->compiler);
+      elk_get_compiler_config_value(device->compiler);
    device->vk.disk_cache = disk_cache_create(renderer, timestamp, driver_flags);
 #endif
 }
@@ -1187,7 +1187,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
       driQueryOptionb(&instance->dri_options, "always_flush_cache");
 
-   device->compiler = brw_compiler_create(NULL, &device->info);
+   device->compiler = elk_compiler_create(NULL, &device->info);
    if (device->compiler == NULL) {
       result = vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
       goto fail_base;
@@ -1602,7 +1602,7 @@ anv_get_physical_device_properties_1_1(struct anv_physical_device *pdevice,
    p->deviceNodeMask = 0;
    p->deviceLUIDValid = false;
 
-   p->subgroupSize = BRW_SUBGROUP_SIZE;
+   p->subgroupSize = ELK_SUBGROUP_SIZE;
    VkShaderStageFlags scalar_stages = 0;
    for (unsigned stage = 0; stage < MESA_SHADER_STAGES; stage++) {
       if (pdevice->compiler->scalar_stage[stage])
@@ -2514,7 +2514,7 @@ VkResult anv_CreateDevice(
    if (INTEL_DEBUG(DEBUG_BATCH)) {
       const unsigned decode_flags = INTEL_BATCH_DECODE_DEFAULT_FLAGS;
 
-      intel_batch_decode_ctx_init_brw(&device->decoder_ctx,
+      intel_batch_decode_ctx_init_elk(&device->decoder_ctx,
                                       &physical_device->compiler->isa,
                                       &physical_device->info,
                                       stderr, decode_flags, NULL,

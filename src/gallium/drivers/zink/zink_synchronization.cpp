@@ -455,6 +455,60 @@ struct emit_memory_barrier<barrier_KHR_synchronzation2> {
    }
 };
 
+template <bool UNSYNCHRONIZED>
+struct update_unordered_access_and_get_cmdbuf {
+   /* use base template to make the cases for true and false more explicite below */
+};
+
+template <>
+struct update_unordered_access_and_get_cmdbuf<true> {
+   static VkCommandBuffer apply(struct zink_context *ctx, struct zink_resource *res, bool usage_matches, bool is_write)
+   {
+      assert(!usage_matches);
+      res->obj->unordered_write = true;
+      if (is_write || zink_resource_usage_check_completion_fast(zink_screen(ctx->base.screen), res, ZINK_RESOURCE_ACCESS_RW))
+         res->obj->unordered_read = true;
+      res->obj->unordered_write = true;
+      res->obj->unordered_read = true;
+      ctx->batch.state->has_unsync = true;
+      return ctx->batch.state->unsynchronized_cmdbuf;
+   }
+};
+
+template <>
+struct update_unordered_access_and_get_cmdbuf<false> {
+   static VkCommandBuffer apply(struct zink_context *ctx, struct zink_resource *res, bool usage_matches, bool is_write)
+   {
+      VkCommandBuffer cmdbuf;
+      if (!usage_matches) {
+         res->obj->unordered_write = true;
+         if (is_write || zink_resource_usage_check_completion_fast(zink_screen(ctx->base.screen), res, ZINK_RESOURCE_ACCESS_RW))
+            res->obj->unordered_read = true;
+      }
+      if (zink_resource_usage_matches(res, ctx->batch.state) && !ctx->unordered_blitting &&
+          /* if current batch usage exists with ordered non-transfer access, never promote
+           * this avoids layout dsync
+           */
+          (!res->obj->unordered_read || !res->obj->unordered_write)) {
+         cmdbuf = ctx->batch.state->cmdbuf;
+         res->obj->unordered_write = false;
+         res->obj->unordered_read = false;
+         /* it's impossible to detect this from the caller
+       * there should be no valid case where this barrier can occur inside a renderpass
+       */
+         zink_batch_no_rp(ctx);
+      } else {
+         cmdbuf = is_write ? zink_get_cmdbuf(ctx, NULL, res) : zink_get_cmdbuf(ctx, res, NULL);
+         /* force subsequent barriers to be ordered to avoid layout desync */
+         if (cmdbuf != ctx->batch.state->reordered_cmdbuf) {
+            res->obj->unordered_write = false;
+            res->obj->unordered_read = false;
+         }
+      }
+      return cmdbuf;
+   }
+};
+
 template <barrier_type BARRIER_API, bool UNSYNCHRONIZED>
 void
 zink_resource_image_barrier(struct zink_context *ctx, struct zink_resource *res, VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline)
@@ -471,39 +525,8 @@ zink_resource_image_barrier(struct zink_context *ctx, struct zink_resource *res,
    enum zink_resource_access rw = is_write ? ZINK_RESOURCE_ACCESS_RW : ZINK_RESOURCE_ACCESS_WRITE;
    bool completed = zink_resource_usage_check_completion_fast(zink_screen(ctx->base.screen), res, rw);
    bool usage_matches = !completed && zink_resource_usage_matches(res, ctx->batch.state);
-   VkCommandBuffer cmdbuf;
-   if (!usage_matches) {
-      res->obj->unordered_write = true;
-      if (is_write || zink_resource_usage_check_completion_fast(zink_screen(ctx->base.screen), res, ZINK_RESOURCE_ACCESS_RW))
-         res->obj->unordered_read = true;
-   } else {
-      assert(!UNSYNCHRONIZED);
-   }
-   if (UNSYNCHRONIZED) {
-      cmdbuf = ctx->batch.state->unsynchronized_cmdbuf;
-      res->obj->unordered_write = true;
-      res->obj->unordered_read = true;
-      ctx->batch.state->has_unsync = true;
-   } else if (zink_resource_usage_matches(res, ctx->batch.state) && !ctx->unordered_blitting &&
-      /* if current batch usage exists with ordered non-transfer access, never promote
-      * this avoids layout dsync
-      */
-       (!res->obj->unordered_read || !res->obj->unordered_write)) {
-      cmdbuf = ctx->batch.state->cmdbuf;
-      res->obj->unordered_write = false;
-      res->obj->unordered_read = false;
-      /* it's impossible to detect this from the caller
-       * there should be no valid case where this barrier can occur inside a renderpass
-       */
-      zink_batch_no_rp(ctx);
-   } else {
-      cmdbuf = is_write ? zink_get_cmdbuf(ctx, NULL, res) : zink_get_cmdbuf(ctx, res, NULL);
-      /* force subsequent barriers to be ordered to avoid layout desync */
-      if (cmdbuf != ctx->batch.state->reordered_cmdbuf) {
-         res->obj->unordered_write = false;
-         res->obj->unordered_read = false;
-      }
-   }
+   VkCommandBuffer cmdbuf = update_unordered_access_and_get_cmdbuf<UNSYNCHRONIZED>::apply(ctx, res, usage_matches, is_write);
+
    assert(new_layout);
    bool marker = zink_cmd_debug_marker_begin(ctx, cmdbuf, "image_barrier(%s->%s)", vk_ImageLayout_to_str(res->layout), vk_ImageLayout_to_str(new_layout));
    bool queue_import = false;

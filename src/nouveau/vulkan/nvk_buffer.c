@@ -241,21 +241,14 @@ nvk_BindBufferMemory2(VkDevice device,
       buffer->is_local = !(mem->bo->flags & NOUVEAU_WS_BO_GART);
       if (buffer->vma_size_B) {
          VK_FROM_HANDLE(nvk_device, dev, device);
-         if (mem != NULL) {
-            nouveau_ws_bo_bind_vma(dev->ws_dev,
-                                   mem->bo,
-                                   buffer->addr,
-                                   buffer->vma_size_B,
-                                   pBindInfos[i].memoryOffset,
-                                   0 /* pte_kind */);
-         } else {
-            nouveau_ws_bo_unbind_vma(dev->ws_dev,
-                                     buffer->addr,
-                                     buffer->vma_size_B);
-         }
+         nouveau_ws_bo_bind_vma(dev->ws_dev,
+                                mem->bo,
+                                buffer->addr,
+                                buffer->vma_size_B,
+                                pBindInfos[i].memoryOffset,
+                                0 /* pte_kind */);
       } else {
-         buffer->addr =
-            mem != NULL ? mem->bo->offset + pBindInfos[i].memoryOffset : 0;
+         buffer->addr = mem->bo->offset + pBindInfos[i].memoryOffset;
       }
    }
    return VK_SUCCESS;

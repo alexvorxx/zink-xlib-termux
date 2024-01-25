@@ -2347,8 +2347,8 @@ zink_screen_import_dmabuf_semaphore(struct zink_screen *screen, struct zink_reso
          .flags = DMA_BUF_SYNC_RW,
          .fd = sync_file_fd,
       };
-      int ret = drmIoctl(fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &import);
-      if (ret) {
+      int ioctl_ret = drmIoctl(fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &import);
+      if (ioctl_ret) {
          if (errno == ENOTTY || errno == EBADF || errno == ENOSYS) {
             assert(!"how did this fail?");
          } else {

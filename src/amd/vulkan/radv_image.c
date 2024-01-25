@@ -207,7 +207,7 @@ radv_are_formats_dcc_compatible(const struct radv_physical_device *pdev, const v
 static bool
 radv_format_is_atomic_allowed(struct radv_device *device, VkFormat format)
 {
-   if (format == VK_FORMAT_R32_SFLOAT && !device->image_float32_atomics)
+   if (format == VK_FORMAT_R32_SFLOAT && !radv_uses_image_float32_atomics(device))
       return false;
 
    return radv_is_atomic_format_supported(format);
@@ -388,7 +388,7 @@ radv_use_htile_for_image(const struct radv_device *device, const struct radv_ima
     */
    if (image->vk.extent.width * image->vk.extent.height < 8 * 8 &&
        !(device->instance->debug_flags & RADV_DEBUG_FORCE_COMPRESS) &&
-       !(gfx_level == GFX10_3 && device->attachment_vrs_enabled))
+       !(gfx_level == GFX10_3 && device->vk.enabled_features.attachmentFragmentShadingRate))
       return false;
 
    return (image->vk.mip_levels == 1 || use_htile_for_mips) && !image->shareable;

@@ -190,7 +190,7 @@ radv_get_buffer_memory_requirements(struct radv_device *device, VkDeviceSize siz
     * vkGetGeneratedCommandsMemoryRequirementsNV. (we have to make sure their
     * intersection is non-zero at least)
     */
-   if ((usage & VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR) && device->uses_device_generated_commands)
+   if ((usage & VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR) && radv_uses_device_generated_commands(device))
       pMemoryRequirements->memoryRequirements.memoryTypeBits |= device->physical_device->memory_types_32bit;
 
    /* Force 32-bit address-space for descriptor buffers usage because they are passed to shaders

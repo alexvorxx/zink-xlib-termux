@@ -1024,18 +1024,6 @@ struct radv_device {
    /* Whether the driver uses a global BO list. */
    bool use_global_bo_list;
 
-   /* Whether attachment VRS is enabled. */
-   bool attachment_vrs_enabled;
-
-   /* Whether shader image 32-bit float atomics are enabled. */
-   bool image_float32_atomics;
-
-   /* Whether 2D views of 3D image is enabled. */
-   bool image_2d_view_of_3d;
-
-   /* Whether primitives generated query features are enabled. */
-   bool primitives_generated_query;
-
    /* Whether to use GS_FAST_LAUNCH(2) for mesh shaders. */
    bool mesh_fast_launch_2;
 
@@ -1118,14 +1106,6 @@ struct radv_device {
 
    /* Interleaved lock/unlock commandbuffers for perfcounter passes. */
    struct radeon_cmdbuf **perf_counter_lock_cs;
-
-   bool uses_device_generated_commands;
-
-   /* Whether smooth lines is enabled. */
-   bool smooth_lines;
-
-   /* Whether mesh shader queries are enabled. */
-   bool mesh_shader_queries;
 
    bool uses_shadow_regs;
 
@@ -2610,8 +2590,8 @@ radv_image_has_vrs_htile(const struct radv_device *device, const struct radv_ima
    const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
 
    /* Any depth buffer can potentially use VRS on GFX10.3. */
-   return gfx_level == GFX10_3 && device->attachment_vrs_enabled && radv_image_has_htile(image) &&
-          (image->vk.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+   return gfx_level == GFX10_3 && device->vk.enabled_features.attachmentFragmentShadingRate &&
+          radv_image_has_htile(image) && (image->vk.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }
 
 /**
@@ -3596,6 +3576,29 @@ void radv_end_conditional_rendering(struct radv_cmd_buffer *cmd_buffer);
 
 bool radv_gang_init(struct radv_cmd_buffer *cmd_buffer);
 void radv_gang_cache_flush(struct radv_cmd_buffer *cmd_buffer);
+
+static inline bool
+radv_uses_device_generated_commands(const struct radv_device *device)
+{
+   return device->vk.enabled_features.deviceGeneratedCommands || device->vk.enabled_features.deviceGeneratedCompute;
+}
+
+static inline bool
+radv_uses_primitives_generated_query(const struct radv_device *device)
+{
+   return device->vk.enabled_features.primitivesGeneratedQuery ||
+          device->vk.enabled_features.primitivesGeneratedQueryWithRasterizerDiscard ||
+          device->vk.enabled_features.primitivesGeneratedQueryWithNonZeroStreams;
+}
+
+static inline bool
+radv_uses_image_float32_atomics(const struct radv_device *device)
+{
+   return device->vk.enabled_features.shaderImageFloat32Atomics ||
+          device->vk.enabled_features.sparseImageFloat32Atomics ||
+          device->vk.enabled_features.shaderImageFloat32AtomicMinMax ||
+          device->vk.enabled_features.sparseImageFloat32AtomicMinMax;
+}
 
 #define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
 

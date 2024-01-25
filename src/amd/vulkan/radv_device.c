@@ -675,14 +675,15 @@ radv_device_init_cache_key(struct radv_device *device)
    key->dual_color_blend_by_location = device->instance->drirc.dual_color_blend_by_location;
    key->emulate_rt = !!(device->instance->perftest_flags & RADV_PERFTEST_EMULATE_RT);
    key->ge_wave32 = device->physical_device->ge_wave_size == 32;
-   key->image_2d_view_of_3d = device->image_2d_view_of_3d && device->physical_device->rad_info.gfx_level == GFX9;
+   key->image_2d_view_of_3d =
+      device->vk.enabled_features.image2DViewOf3D && device->physical_device->rad_info.gfx_level == GFX9;
    key->invariant_geom = !!(device->instance->debug_flags & RADV_DEBUG_INVARIANT_GEOM);
    key->lower_discard_to_demote = !!(device->instance->debug_flags & RADV_DEBUG_DISCARD_TO_DEMOTE);
    key->mesh_fast_launch_2 = device->mesh_fast_launch_2;
-   key->mesh_shader_queries = device->mesh_shader_queries;
+   key->mesh_shader_queries = device->vk.enabled_features.meshShaderQueries;
    key->no_fmask = !!(device->instance->debug_flags & RADV_DEBUG_NO_FMASK);
    key->no_rt = !!(device->instance->debug_flags & RADV_DEBUG_NO_RT);
-   key->primitives_generated_query = device->primitives_generated_query;
+   key->primitives_generated_query = radv_uses_primitives_generated_query(device);
    key->ps_wave32 = device->physical_device->ps_wave_size == 32;
    key->rt_wave64 = device->physical_device->rt_wave_size == 64;
    key->split_fma = !!(device->instance->debug_flags & RADV_DEBUG_SPLIT_FMA);
@@ -703,151 +704,15 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    VkResult result;
    struct radv_device *device;
 
-   enum radv_buffer_robustness buffer_robustness = RADV_BUFFER_ROBUSTNESS_DISABLED;
    bool keep_shader_info = false;
    bool overallocation_disallowed = false;
-   bool custom_border_colors = false;
-   bool attachment_vrs_enabled = false;
-   bool image_float32_atomics = false;
-   bool vs_prologs = false;
-   bool tcs_epilogs = false;
-   bool ps_epilogs = false;
-   bool global_bo_list = false;
-   bool image_2d_view_of_3d = false;
-   bool primitives_generated_query = false;
-   bool use_perf_counters = false;
-   bool use_dgc = false;
-   bool smooth_lines = false;
-   bool mesh_shader_queries = false;
-   bool dual_src_blend = false;
-
-   /* Check enabled features */
-   if (pCreateInfo->pEnabledFeatures) {
-      if (pCreateInfo->pEnabledFeatures->robustBufferAccess)
-         buffer_robustness = MAX2(buffer_robustness, RADV_BUFFER_ROBUSTNESS_1);
-      dual_src_blend = pCreateInfo->pEnabledFeatures->dualSrcBlend;
-   }
 
    vk_foreach_struct_const (ext, pCreateInfo->pNext) {
       switch (ext->sType) {
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: {
-         const VkPhysicalDeviceFeatures2 *features = (const void *)ext;
-         if (features->features.robustBufferAccess)
-            buffer_robustness = MAX2(buffer_robustness, RADV_BUFFER_ROBUSTNESS_1);
-         dual_src_blend |= features->features.dualSrcBlend;
-         break;
-      }
       case VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD: {
          const VkDeviceMemoryOverallocationCreateInfoAMD *overallocation = (const void *)ext;
          if (overallocation->overallocationBehavior == VK_MEMORY_OVERALLOCATION_BEHAVIOR_DISALLOWED_AMD)
             overallocation_disallowed = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT: {
-         const VkPhysicalDeviceCustomBorderColorFeaturesEXT *border_color_features = (const void *)ext;
-         custom_border_colors = border_color_features->customBorderColors;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR: {
-         const VkPhysicalDeviceFragmentShadingRateFeaturesKHR *vrs = (const void *)ext;
-         attachment_vrs_enabled = vrs->attachmentFragmentShadingRate;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT: {
-         const VkPhysicalDeviceRobustness2FeaturesEXT *features = (const void *)ext;
-         if (features->robustBufferAccess2)
-            buffer_robustness = MAX2(buffer_robustness, RADV_BUFFER_ROBUSTNESS_2);
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT: {
-         const VkPhysicalDeviceShaderAtomicFloatFeaturesEXT *features = (const void *)ext;
-         if (features->shaderImageFloat32Atomics || features->sparseImageFloat32Atomics)
-            image_float32_atomics = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_2_FEATURES_EXT: {
-         const VkPhysicalDeviceShaderAtomicFloat2FeaturesEXT *features = (const void *)ext;
-         if (features->shaderImageFloat32AtomicMinMax || features->sparseImageFloat32AtomicMinMax)
-            image_float32_atomics = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_INPUT_DYNAMIC_STATE_FEATURES_EXT: {
-         const VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT *features = (const void *)ext;
-         if (features->vertexInputDynamicState)
-            vs_prologs = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: {
-         const VkPhysicalDeviceVulkan12Features *features = (const void *)ext;
-         if (features->bufferDeviceAddress || features->descriptorIndexing)
-            global_bo_list = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_2D_VIEW_OF_3D_FEATURES_EXT: {
-         const VkPhysicalDeviceImage2DViewOf3DFeaturesEXT *features = (const void *)ext;
-         if (features->image2DViewOf3D)
-            image_2d_view_of_3d = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVES_GENERATED_QUERY_FEATURES_EXT: {
-         const VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT *features = (const void *)ext;
-         if (features->primitivesGeneratedQuery || features->primitivesGeneratedQueryWithRasterizerDiscard ||
-             features->primitivesGeneratedQueryWithNonZeroStreams)
-            primitives_generated_query = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR: {
-         const VkPhysicalDevicePerformanceQueryFeaturesKHR *features = (const void *)ext;
-         if (features->performanceCounterQueryPools)
-            use_perf_counters = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_FEATURES_NV: {
-         const VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV *features = (const void *)ext;
-         if (features->deviceGeneratedCommands)
-            use_dgc = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_COMPUTE_FEATURES_NV: {
-         const VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV *features = (const void *)ext;
-         if (features->deviceGeneratedCompute)
-            use_dgc = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_FEATURES_EXT: {
-         const VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT *features = (const void *)ext;
-         if (features->graphicsPipelineLibrary) {
-            vs_prologs = true;
-            ps_epilogs = true;
-         }
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT: {
-         const VkPhysicalDeviceExtendedDynamicState3FeaturesEXT *features = (const void *)ext;
-         if (features->extendedDynamicState3ColorBlendEnable || features->extendedDynamicState3ColorWriteMask ||
-             features->extendedDynamicState3AlphaToCoverageEnable || features->extendedDynamicState3ColorBlendEquation)
-            ps_epilogs = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_KHR: {
-         const VkPhysicalDeviceLineRasterizationFeaturesKHR *features = (const void *)ext;
-         if (features->smoothLines)
-            smooth_lines = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT: {
-         const VkPhysicalDeviceMeshShaderFeaturesEXT *features = (const void *)ext;
-         if (features->meshShaderQueries)
-            mesh_shader_queries = true;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT: {
-         const VkPhysicalDeviceShaderObjectFeaturesEXT *features = (const void *)ext;
-         if (features->shaderObject) {
-            vs_prologs = true;
-            tcs_epilogs = true;
-            ps_epilogs = true;
-         }
          break;
       }
       default:
@@ -886,26 +751,18 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    /* With update after bind we can't attach bo's to the command buffer
     * from the descriptor set anymore, so we have to use a global BO list.
     */
-   device->use_global_bo_list = global_bo_list || (device->instance->perftest_flags & RADV_PERFTEST_BO_LIST) ||
-                                device->vk.enabled_extensions.EXT_descriptor_indexing ||
-                                device->vk.enabled_extensions.EXT_buffer_device_address ||
-                                device->vk.enabled_extensions.KHR_buffer_device_address ||
-                                device->vk.enabled_extensions.KHR_ray_tracing_pipeline ||
-                                device->vk.enabled_extensions.KHR_acceleration_structure ||
-                                device->vk.enabled_extensions.VALVE_descriptor_set_host_mapping;
+   device->use_global_bo_list =
+      (device->instance->perftest_flags & RADV_PERFTEST_BO_LIST) || device->vk.enabled_features.bufferDeviceAddress ||
+      device->vk.enabled_features.descriptorIndexing || device->vk.enabled_extensions.EXT_descriptor_indexing ||
+      device->vk.enabled_extensions.EXT_buffer_device_address ||
+      device->vk.enabled_extensions.KHR_buffer_device_address ||
+      device->vk.enabled_extensions.KHR_ray_tracing_pipeline ||
+      device->vk.enabled_extensions.KHR_acceleration_structure ||
+      device->vk.enabled_extensions.VALVE_descriptor_set_host_mapping;
 
-   device->buffer_robustness = buffer_robustness;
-
-   device->attachment_vrs_enabled = attachment_vrs_enabled;
-
-   device->image_float32_atomics = image_float32_atomics;
-
-   device->image_2d_view_of_3d = image_2d_view_of_3d;
-
-   device->primitives_generated_query = primitives_generated_query;
-   device->uses_device_generated_commands = use_dgc;
-   device->smooth_lines = smooth_lines;
-   device->mesh_shader_queries = mesh_shader_queries;
+   device->buffer_robustness = device->vk.enabled_features.robustBufferAccess2  ? RADV_BUFFER_ROBUSTNESS_2
+                               : device->vk.enabled_features.robustBufferAccess ? RADV_BUFFER_ROBUSTNESS_1
+                                                                                : RADV_BUFFER_ROBUSTNESS_DISABLED;
 
    radv_init_shader_arenas(device);
 
@@ -972,7 +829,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
 
    if (device->instance->vk.app_info.engine_name && !strcmp(device->instance->vk.app_info.engine_name, "DXVK")) {
       /* For DXVK 2.3.0 and older, use dualSrcBlend to determine if this is D3D9. */
-      bool is_d3d9 = !dual_src_blend;
+      bool is_d3d9 = !device->vk.enabled_features.dualSrcBlend;
       if (device->instance->vk.app_info.engine_version > VK_MAKE_VERSION(2, 3, 0))
          is_d3d9 = device->instance->vk.app_info.app_version & 0x1;
 
@@ -1134,26 +991,31 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    radv_device_init_msaa(device);
 
    /* If the border color extension is enabled, let's create the buffer we need. */
-   if (custom_border_colors) {
+   if (device->vk.enabled_features.customBorderColors) {
       result = radv_device_init_border_color(device);
       if (result != VK_SUCCESS)
          goto fail;
    }
 
-   if (vs_prologs) {
+   if (device->vk.enabled_features.vertexInputDynamicState || device->vk.enabled_features.graphicsPipelineLibrary ||
+       device->vk.enabled_features.shaderObject) {
       result = radv_device_init_vs_prologs(device);
       if (result != VK_SUCCESS)
          goto fail;
    }
 
-   if (tcs_epilogs) {
+   if (device->vk.enabled_features.shaderObject) {
       if (!radv_shader_part_cache_init(&device->tcs_epilogs, &tcs_epilog_ops)) {
          result = VK_ERROR_OUT_OF_HOST_MEMORY;
          goto fail;
       }
    }
 
-   if (ps_epilogs) {
+   if (device->vk.enabled_features.graphicsPipelineLibrary || device->vk.enabled_features.shaderObject ||
+       device->vk.enabled_features.extendedDynamicState3ColorBlendEnable ||
+       device->vk.enabled_features.extendedDynamicState3ColorWriteMask ||
+       device->vk.enabled_features.extendedDynamicState3AlphaToCoverageEnable ||
+       device->vk.enabled_features.extendedDynamicState3ColorBlendEquation) {
       if (!radv_shader_part_cache_init(&device->ps_epilogs, &ps_epilog_ops)) {
          result = VK_ERROR_OUT_OF_HOST_MEMORY;
          goto fail;
@@ -1175,7 +1037,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       fprintf(stderr, "radv: Forcing anisotropy filter to %ix\n", 1 << util_logbase2(device->force_aniso));
    }
 
-   if (use_perf_counters) {
+   if (device->vk.enabled_features.performanceCounterQueryPools) {
       size_t bo_size = PERF_CTR_BO_PASS_OFFSET + sizeof(uint64_t) * PERF_CTR_MAX_PASSES;
       result = device->ws->buffer_create(device->ws, bo_size, 4096, RADEON_DOMAIN_GTT,
                                          RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING,

@@ -1188,8 +1188,16 @@ anv_sparse_image_check_support(struct anv_physical_device *pdevice,
    if (tiling == VK_IMAGE_TILING_LINEAR)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
-   /* TODO: not supported yet. */
-   if (samples != VK_SAMPLE_COUNT_1_BIT)
+   if ((samples & VK_SAMPLE_COUNT_2_BIT &&
+        !pdevice->vk.supported_features.sparseResidency2Samples) ||
+       (samples & VK_SAMPLE_COUNT_4_BIT &&
+        !pdevice->vk.supported_features.sparseResidency4Samples) ||
+       (samples & VK_SAMPLE_COUNT_8_BIT &&
+        !pdevice->vk.supported_features.sparseResidency8Samples) ||
+       (samples & VK_SAMPLE_COUNT_16_BIT &&
+        !pdevice->vk.supported_features.sparseResidency16Samples) ||
+       samples & VK_SAMPLE_COUNT_32_BIT ||
+       samples & VK_SAMPLE_COUNT_64_BIT)
       return VK_ERROR_FEATURE_NOT_PRESENT;
 
    /* While the Vulkan spec allows us to support depth/stencil sparse images

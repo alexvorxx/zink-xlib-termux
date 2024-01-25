@@ -544,7 +544,7 @@ vn_device_memory_emit_report(struct vn_device *dev,
                                       .memoryTypes[mem_vk->memory_type_index];
    vn_device_emit_device_memory_report(dev, type, mem_obj_id, mem_vk->size,
                                        VK_OBJECT_TYPE_DEVICE_MEMORY,
-                                       mem->base.id, mem_type->heapIndex);
+                                       (uintptr_t)mem, mem_type->heapIndex);
 }
 
 VkResult

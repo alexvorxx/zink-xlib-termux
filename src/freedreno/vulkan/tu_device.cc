@@ -191,6 +191,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_sampler_ycbcr_conversion = true,
       .KHR_separate_depth_stencil_layouts = true,
       .KHR_shader_draw_parameters = true,
+      .KHR_shader_expect_assume = true,
       .KHR_shader_float16_int8 = true,
       .KHR_shader_float_controls = true,
       .KHR_shader_integer_dot_product = true,
@@ -582,6 +583,9 @@ tu_get_features(struct tu_physical_device *pdevice,
 
    /* VK_KHR_maintenance5 */
    features->maintenance5 = true;
+
+   /* VK_KHR_shader_expect_assume */
+   features->shaderExpectAssume = true;
 }
 
 static const struct vk_pipeline_cache_object_ops *const cache_import_ops[] = {

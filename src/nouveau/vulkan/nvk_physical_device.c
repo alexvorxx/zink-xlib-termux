@@ -130,6 +130,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
                                  nvk_use_nak(info),
       .KHR_shader_clock = true,
       .KHR_shader_draw_parameters = true,
+      .KHR_shader_expect_assume = true,
       .KHR_shader_float_controls = true,
       .KHR_shader_float16_int8 = true,
       .KHR_shader_integer_dot_product = true,
@@ -527,6 +528,9 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_VALVE_mutable_descriptor_type */
       .mutableDescriptorType = true,
+
+      /* VK_KHR_shader_expect_assume */
+      .shaderExpectAssume = true,
    };
 }
 

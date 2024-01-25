@@ -136,6 +136,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_shader_atomic_int64               = true,
    .KHR_shader_clock                      = true,
    .KHR_shader_draw_parameters            = true,
+   .KHR_shader_expect_assume              = true,
    .KHR_shader_float16_int8               = true,
    .KHR_shader_integer_dot_product        = true,
    .KHR_shader_non_semantic_info          = true,
@@ -610,6 +611,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* maintenance6 */
       .maintenance6 = true,
+
+      /* VK_KHR_shader_expect_assume */
+      .shaderExpectAssume = true,
 
       /* VK_AMDX_shader_enqueue */
 #ifdef VK_ENABLE_BETA_EXTENSIONS

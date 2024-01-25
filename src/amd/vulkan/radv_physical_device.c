@@ -500,6 +500,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_shader_atomic_int64 = true,
       .KHR_shader_clock = true,
       .KHR_shader_draw_parameters = true,
+      .KHR_shader_expect_assume = true,
       .KHR_shader_float16_int8 = true,
       .KHR_shader_float_controls = true,
       .KHR_shader_integer_dot_product = true,
@@ -1129,6 +1130,9 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
 
       /* VK_EXT_shader_object */
       .shaderObject = true,
+
+      /* VK_KHR_shader_expect_assume */
+      .shaderExpectAssume = true,
    };
 }
 

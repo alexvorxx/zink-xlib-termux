@@ -323,7 +323,78 @@ resource_check_defer_image_barrier(struct zink_context *ctx, struct zink_resourc
       _mesa_set_add(ctx->need_barriers[is_compute], res);
 }
 
-template <bool HAS_SYNC2, bool UNSYNCHRONIZED>
+enum barrier_type {
+   barrier_default,
+   barrier_KHR_synchronzation2
+};
+
+template <barrier_type BARRIER_API>
+struct emit_memory_barrier {
+   static void for_image(struct zink_context *ctx, struct zink_resource *res, VkImageLayout new_layout,
+                         VkAccessFlags flags, VkPipelineStageFlags pipeline, bool completed, VkCommandBuffer cmdbuf,
+                         bool *queue_import)
+   {
+      VkImageMemoryBarrier imb;
+      zink_resource_image_barrier_init(&imb, res, new_layout, flags, pipeline);
+      if (!res->obj->access_stage || completed)
+         imb.srcAccessMask = 0;
+      if (res->obj->needs_zs_evaluate)
+         imb.pNext = &res->obj->zs_evaluate;
+      res->obj->needs_zs_evaluate = false;
+      if (res->queue != zink_screen(ctx->base.screen)->gfx_queue && res->queue != VK_QUEUE_FAMILY_IGNORED) {
+         imb.srcQueueFamilyIndex = res->queue;
+         imb.dstQueueFamilyIndex = zink_screen(ctx->base.screen)->gfx_queue;
+         res->queue = VK_QUEUE_FAMILY_IGNORED;
+         *queue_import = true;
+      }
+      VKCTX(CmdPipelineBarrier)(
+          cmdbuf,
+          res->obj->access_stage ? res->obj->access_stage : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+          pipeline,
+          0,
+          0, NULL,
+          0, NULL,
+          1, &imb
+          );
+   }
+};
+
+
+template <>
+struct emit_memory_barrier<barrier_KHR_synchronzation2> {
+   static void for_image(struct zink_context *ctx, struct zink_resource *res, VkImageLayout new_layout,
+                     VkAccessFlags flags, VkPipelineStageFlags pipeline, bool completed, VkCommandBuffer cmdbuf,
+                     bool *queue_import)
+   {
+      VkImageMemoryBarrier2 imb;
+      zink_resource_image_barrier2_init(&imb, res, new_layout, flags, pipeline);
+      if (!res->obj->access_stage || completed)
+         imb.srcAccessMask = 0;
+      if (res->obj->needs_zs_evaluate)
+         imb.pNext = &res->obj->zs_evaluate;
+      res->obj->needs_zs_evaluate = false;
+      if (res->queue != zink_screen(ctx->base.screen)->gfx_queue && res->queue != VK_QUEUE_FAMILY_IGNORED) {
+         imb.srcQueueFamilyIndex = res->queue;
+         imb.dstQueueFamilyIndex = zink_screen(ctx->base.screen)->gfx_queue;
+         res->queue = VK_QUEUE_FAMILY_IGNORED;
+         *queue_import = true;
+      }
+      VkDependencyInfo dep = {
+         VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+         NULL,
+         0,
+         0,
+         NULL,
+         0,
+         NULL,
+         1,
+         &imb
+         };
+      VKCTX(CmdPipelineBarrier2)(cmdbuf, &dep);
+   }
+};
+
+template <barrier_type BARRIER_API, bool UNSYNCHRONIZED>
 void
 zink_resource_image_barrier(struct zink_context *ctx, struct zink_resource *res, VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline)
 {
@@ -375,56 +446,7 @@ zink_resource_image_barrier(struct zink_context *ctx, struct zink_resource *res,
    assert(new_layout);
    bool marker = zink_cmd_debug_marker_begin(ctx, cmdbuf, "image_barrier(%s->%s)", vk_ImageLayout_to_str(res->layout), vk_ImageLayout_to_str(new_layout));
    bool queue_import = false;
-   if (HAS_SYNC2) {
-      VkImageMemoryBarrier2 imb;
-      zink_resource_image_barrier2_init(&imb, res, new_layout, flags, pipeline);
-      if (!res->obj->access_stage || completed)
-         imb.srcAccessMask = 0;
-      if (res->obj->needs_zs_evaluate)
-         imb.pNext = &res->obj->zs_evaluate;
-      res->obj->needs_zs_evaluate = false;
-      if (res->queue != zink_screen(ctx->base.screen)->gfx_queue && res->queue != VK_QUEUE_FAMILY_IGNORED) {
-         imb.srcQueueFamilyIndex = res->queue;
-         imb.dstQueueFamilyIndex = zink_screen(ctx->base.screen)->gfx_queue;
-         res->queue = VK_QUEUE_FAMILY_IGNORED;
-         queue_import = true;
-      }
-      VkDependencyInfo dep = {
-         VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-         NULL,
-         0,
-         0,
-         NULL,
-         0,
-         NULL,
-         1,
-         &imb
-      };
-      VKCTX(CmdPipelineBarrier2)(cmdbuf, &dep);
-   } else {
-      VkImageMemoryBarrier imb;
-      zink_resource_image_barrier_init(&imb, res, new_layout, flags, pipeline);
-      if (!res->obj->access_stage || completed)
-         imb.srcAccessMask = 0;
-      if (res->obj->needs_zs_evaluate)
-         imb.pNext = &res->obj->zs_evaluate;
-      res->obj->needs_zs_evaluate = false;
-      if (res->queue != zink_screen(ctx->base.screen)->gfx_queue && res->queue != VK_QUEUE_FAMILY_IGNORED) {
-         imb.srcQueueFamilyIndex = res->queue;
-         imb.dstQueueFamilyIndex = zink_screen(ctx->base.screen)->gfx_queue;
-         res->queue = VK_QUEUE_FAMILY_IGNORED;
-         queue_import = true;
-      }
-      VKCTX(CmdPipelineBarrier)(
-         cmdbuf,
-         res->obj->access_stage ? res->obj->access_stage : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-         pipeline,
-         0,
-         0, NULL,
-         0, NULL,
-         1, &imb
-      );
-   }
+   emit_memory_barrier<BARRIER_API>::for_image(ctx, res, new_layout, flags, pipeline, completed, cmdbuf, &queue_import);
    zink_cmd_debug_marker_end(ctx, cmdbuf, marker);
 
    if (!UNSYNCHRONIZED)
@@ -717,11 +739,11 @@ zink_synchronization_init(struct zink_screen *screen)
 {
    if (screen->info.have_vulkan13 || screen->info.have_KHR_synchronization2) {
       screen->buffer_barrier = zink_resource_buffer_barrier<true>;
-      screen->image_barrier = zink_resource_image_barrier<true, false>;
-      screen->image_barrier_unsync = zink_resource_image_barrier<true, true>;
+      screen->image_barrier = zink_resource_image_barrier<barrier_KHR_synchronzation2, false>;
+      screen->image_barrier_unsync = zink_resource_image_barrier<barrier_KHR_synchronzation2, true>;
    } else {
       screen->buffer_barrier = zink_resource_buffer_barrier<false>;
-      screen->image_barrier = zink_resource_image_barrier<false, false>;
-      screen->image_barrier_unsync = zink_resource_image_barrier<false, true>;
+      screen->image_barrier = zink_resource_image_barrier<barrier_default, false>;
+      screen->image_barrier_unsync = zink_resource_image_barrier<barrier_default, true>;
    }
 }

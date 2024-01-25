@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "common/intel_decoder.h"
+#include "intel_decoder.h"
 #include "util/log.h"
 
 void

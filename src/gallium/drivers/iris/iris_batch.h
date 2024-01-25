@@ -31,7 +31,7 @@
 #include "util/u_dynarray.h"
 #include "util/perf/u_trace.h"
 
-#include "common/intel_decoder.h"
+#include "decoder/intel_decoder.h"
 #include "ds/intel_driver_ds.h"
 #include "ds/intel_tracepoints.h"
 

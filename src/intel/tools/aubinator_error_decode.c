@@ -38,8 +38,8 @@
 #include <getopt.h>
 #include <zlib.h>
 
-#include "common/intel_decoder.h"
 #include "compiler/brw_compiler.h"
+#include "decoder/intel_decoder.h"
 #include "dev/intel_debug.h"
 #include "util/macros.h"
 

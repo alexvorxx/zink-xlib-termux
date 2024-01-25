@@ -80,7 +80,11 @@ libcrocus = static_library(
   c_args : [sse2_args],
   cpp_args : [sse2_args],
   gnu_symbol_visibility : 'hidden',
-  dependencies : [dep_libdrm, dep_valgrind, idep_genxml, idep_libintel_common, idep_nir_headers, idep_intel_dev, idep_intel_blorp],
+  dependencies : [
+    dep_libdrm, dep_valgrind, idep_genxml,
+    idep_libintel_common, idep_nir_headers,
+    idep_intel_dev, idep_intel_blorp, idep_intel_decoder,
+  ],
   link_with : [
     crocus_per_hw_ver_libs, libintel_compiler, libisl,
     libintel_perf

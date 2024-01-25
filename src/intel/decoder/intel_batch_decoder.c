@@ -21,7 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#include "common/intel_decoder.h"
+#include "intel_decoder.h"
+
 #include "compiler/brw_disasm.h"
 #include "util/macros.h"
 #include "util/u_debug.h"

@@ -2563,7 +2563,7 @@ radv_create_rt_prolog(struct radv_device *device)
    struct radv_nir_compiler_options options = {0};
    radv_fill_nir_compiler_options(&options, device, NULL, false,
                                   device->instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS, false,
-                                  device->instance->debug_flags & RADV_DEBUG_HANG, false);
+                                  radv_device_fault_detection_enabled(device), false);
    struct radv_shader_info info = {0};
    info.stage = MESA_SHADER_COMPUTE;
    info.loads_push_constants = true;
@@ -2628,7 +2628,7 @@ radv_create_vs_prolog(struct radv_device *device, const struct radv_vs_prolog_ke
    struct radv_nir_compiler_options options = {0};
    radv_fill_nir_compiler_options(&options, device, NULL, false,
                                   device->instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS, false,
-                                  device->instance->debug_flags & RADV_DEBUG_HANG, false);
+                                  radv_device_fault_detection_enabled(device), false);
 
    struct radv_shader_info info = {0};
    info.stage = MESA_SHADER_VERTEX;
@@ -2695,7 +2695,7 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
    struct radv_nir_compiler_options options = {0};
    radv_fill_nir_compiler_options(&options, device, NULL, false,
                                   device->instance->debug_flags & RADV_DEBUG_DUMP_EPILOGS, false,
-                                  device->instance->debug_flags & RADV_DEBUG_HANG, false);
+                                  radv_device_fault_detection_enabled(device), false);
 
    struct radv_shader_info info = {0};
    info.stage = MESA_SHADER_FRAGMENT;
@@ -2754,7 +2754,7 @@ radv_create_tcs_epilog(struct radv_device *device, const struct radv_tcs_epilog_
    struct radv_nir_compiler_options options = {0};
    radv_fill_nir_compiler_options(&options, device, NULL, false,
                                   device->instance->debug_flags & RADV_DEBUG_DUMP_EPILOGS, false,
-                                  device->instance->debug_flags & RADV_DEBUG_HANG, false);
+                                  radv_device_fault_detection_enabled(device), false);
 
    struct radv_shader_info info = {0};
    info.stage = MESA_SHADER_TESS_CTRL;

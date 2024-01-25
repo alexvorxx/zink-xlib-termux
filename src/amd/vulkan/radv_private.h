@@ -3609,6 +3609,8 @@ radv_uses_image_float32_atomics(const struct radv_device *device)
           device->vk.enabled_features.sparseImageFloat32AtomicMinMax;
 }
 
+bool radv_device_fault_detection_enabled(const struct radv_device *device);
+
 #define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
 
 VK_DEFINE_HANDLE_CASTS(radv_cmd_buffer, vk.base, VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER)

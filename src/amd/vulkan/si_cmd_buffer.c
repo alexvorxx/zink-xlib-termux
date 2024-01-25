@@ -1507,7 +1507,7 @@ radv_emit_cache_flush(struct radv_cmd_buffer *cmd_buffer)
       &cmd_buffer->gfx9_fence_idx, cmd_buffer->gfx9_fence_va, radv_cmd_buffer_uses_mec(cmd_buffer),
       cmd_buffer->state.flush_bits, &cmd_buffer->state.sqtt_flush_bits, cmd_buffer->gfx9_eop_bug_va);
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 
    if (cmd_buffer->state.flush_bits & RADV_CMD_FLAG_INV_L2)
@@ -1665,7 +1665,7 @@ radv_emit_cp_dma(struct radv_cmd_buffer *cmd_buffer, uint64_t dst_va, uint64_t s
       cmd_buffer->state.dma_is_busy = false;
    }
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 }
 
@@ -1711,7 +1711,7 @@ radv_cp_dma_prefetch(struct radv_cmd_buffer *cmd_buffer, uint64_t va, unsigned s
 {
    radv_cs_cp_dma_prefetch(cmd_buffer->device, cmd_buffer->cs, va, size, cmd_buffer->state.predicating);
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 }
 

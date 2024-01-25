@@ -1510,14 +1510,14 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
    }
 
    const unsigned cmd_buffer_count = submission->command_buffer_count;
-   const unsigned max_cs_submission = queue->device->trace_bo ? 1 : cmd_buffer_count;
+   const unsigned max_cs_submission = radv_device_fault_detection_enabled(queue->device) ? 1 : cmd_buffer_count;
    const unsigned cs_array_size = (use_ace ? 2 : 1) * MIN2(max_cs_submission, cmd_buffer_count);
 
    struct radeon_cmdbuf **cs_array = malloc(sizeof(struct radeon_cmdbuf *) * cs_array_size);
    if (!cs_array)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   if (queue->device->trace_bo)
+   if (radv_device_fault_detection_enabled(queue->device))
       simple_mtx_lock(&queue->device->trace_mtx);
 
    for (uint32_t j = 0; j < submission->command_buffer_count; j++) {
@@ -1616,7 +1616,7 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
       bool submit_ace = false;
       unsigned num_submitted_cs = 0;
 
-      if (queue->device->trace_bo)
+      if (radv_device_fault_detection_enabled(queue->device))
          *queue->device->trace_id_ptr = 0;
 
       struct radeon_cmdbuf *chainable = NULL;
@@ -1665,7 +1665,7 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
       if (result != VK_SUCCESS)
          goto fail;
 
-      if (queue->device->trace_bo) {
+      if (radv_device_fault_detection_enabled(queue->device)) {
          radv_check_gpu_hangs(queue, &submit);
       }
 
@@ -1685,7 +1685,7 @@ fail:
    free(cs_array);
    if (waits != submission->waits)
       free(waits);
-   if (queue->device->trace_bo)
+   if (radv_device_fault_detection_enabled(queue->device))
       simple_mtx_unlock(&queue->device->trace_mtx);
 
    return result;

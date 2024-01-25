@@ -807,7 +807,7 @@ radv_cmd_buffer_after_draw(struct radv_cmd_buffer *cmd_buffer, enum radv_cmd_flu
       }
    }
 
-   if (unlikely(device->trace_bo))
+   if (radv_device_fault_detection_enabled(device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 }
 
@@ -2004,7 +2004,7 @@ radv_emit_graphics_pipeline(struct radv_cmd_buffer *cmd_buffer)
       }
    }
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_save_pipeline(cmd_buffer, &pipeline->base);
 
    cmd_buffer->state.emitted_graphics_pipeline = pipeline;
@@ -4014,7 +4014,7 @@ radv_emit_vertex_input(struct radv_cmd_buffer *cmd_buffer)
 
    cmd_buffer->state.emitted_vs_prolog = prolog;
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_save_vs_prolog(cmd_buffer, prolog);
 }
 
@@ -4623,7 +4623,7 @@ radv_flush_descriptors(struct radv_cmd_buffer *cmd_buffer, VkShaderStageFlags st
 
    assert(cmd_buffer->cs->cdw <= cdw_max);
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_save_descriptors(cmd_buffer, bind_point);
 }
 
@@ -4965,7 +4965,7 @@ radv_flush_vertex_descriptors(struct radv_cmd_buffer *cmd_buffer)
    cmd_buffer->state.vb_size = vb_desc_alloc_size;
    cmd_buffer->state.prefetch_L2_mask |= RADV_PREFETCH_VBO_DESCRIPTORS;
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_save_vertex_descriptors(cmd_buffer, (uintptr_t)vb_ptr);
 
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_VERTEX_BUFFER;
@@ -5843,7 +5843,7 @@ radv_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBegi
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_OCCLUSION_QUERY;
    }
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 
    radv_describe_begin_cmd_buffer(cmd_buffer);
@@ -6299,7 +6299,7 @@ radv_emit_compute_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_compu
       }
    }
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_save_pipeline(cmd_buffer, &pipeline->base);
 }
 

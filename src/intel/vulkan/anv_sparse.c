@@ -1205,6 +1205,13 @@ anv_sparse_image_check_support(struct anv_physical_device *pdevice,
     */
    VkImageAspectFlags aspects = vk_format_aspects(vk_format);
    if (aspects & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) {
+      /* For multi-sampled images, the image layouts for color and
+       * depth/stencil are different, and only the color layout is compatible
+       * with the standard block shapes.
+       */
+      if (samples != VK_SAMPLE_COUNT_1_BIT)
+         return VK_ERROR_FORMAT_NOT_SUPPORTED;
+
       /* For 125+, isl_gfx125_filter_tiling() claims 3D is not supported.
        * For the previous platforms, isl_gfx6_filter_tiling() says only 2D is
        * supported.

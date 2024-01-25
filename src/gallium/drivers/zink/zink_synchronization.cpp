@@ -159,13 +159,9 @@ zink_resource_access_is_write(VkAccessFlags flags)
    return (flags & ~ALL_READ_ACCESS_FLAGS) > 0;
 }
 
-bool
+static bool
 zink_resource_image_needs_barrier(struct zink_resource *res, VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline)
 {
-   if (!pipeline)
-      pipeline = pipeline_dst_stage(new_layout);
-   if (!flags)
-      flags = access_dst_flags(new_layout);
    return res->layout != new_layout || (res->obj->access_stage & pipeline) != pipeline ||
           (res->obj->access & flags) != flags ||
           zink_resource_access_is_write(res->obj->access) ||

@@ -3183,11 +3183,11 @@ VkResult anv_CreateDevice(
 
          const unsigned decode_flags = INTEL_BATCH_DECODE_DEFAULT_FLAGS;
 
-         intel_batch_decode_ctx_init(decoder,
-                                     &physical_device->compiler->isa,
-                                     &physical_device->info,
-                                     stderr, decode_flags, NULL,
-                                     decode_get_bo, NULL, device);
+         intel_batch_decode_ctx_init_brw(decoder,
+                                         &physical_device->compiler->isa,
+                                         &physical_device->info,
+                                         stderr, decode_flags, NULL,
+                                         decode_get_bo, NULL, device);
          intel_batch_stats_reset(decoder);
 
          decoder->engine = physical_device->queue.families[i].engine_class;

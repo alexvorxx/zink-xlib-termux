@@ -737,9 +737,9 @@ read_i915_data_file(FILE *file)
    batch_flags |= INTEL_BATCH_DECODE_FLOATS;
 
    struct intel_batch_decode_ctx batch_ctx;
-   intel_batch_decode_ctx_init(&batch_ctx, &isa, &devinfo, stdout,
-                               batch_flags, xml_path, get_intel_batch_bo,
-                               NULL, NULL);
+   intel_batch_decode_ctx_init_brw(&batch_ctx, &isa, &devinfo, stdout,
+                                   batch_flags, xml_path, get_intel_batch_bo,
+                                   NULL, NULL);
    batch_ctx.acthd = acthd;
 
    if (option_dump_kernels)

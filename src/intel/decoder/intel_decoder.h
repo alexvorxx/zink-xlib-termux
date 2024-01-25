@@ -270,7 +270,8 @@ struct intel_batch_decode_ctx {
    void *user_data;
 
    FILE *fp;
-   const struct brw_isa_info *isa;
+   const struct brw_isa_info *brw;
+   const struct elk_isa_info *elk;
    struct intel_device_info devinfo;
    struct intel_spec *spec;
    enum intel_batch_decode_flags flags;
@@ -290,19 +291,35 @@ struct intel_batch_decode_ctx {
 
    struct hash_table *commands;
    struct hash_table *stats;
+
+   void (*disassemble_program)(struct intel_batch_decode_ctx *ctx,
+                               uint32_t ksp,
+                               const char *short_name,
+                               const char *name);
 };
 
-void intel_batch_decode_ctx_init(struct intel_batch_decode_ctx *ctx,
-                                 const struct brw_isa_info *isa,
-                                 const struct intel_device_info *devinfo,
-                                 FILE *fp, enum intel_batch_decode_flags flags,
-                                 const char *xml_path,
-                                 struct intel_batch_decode_bo (*get_bo)(void *,
-                                                                        bool,
-                                                                        uint64_t),
-                                 unsigned (*get_state_size)(void *, uint64_t,
-                                                            uint64_t),
-                                 void *user_data);
+void intel_batch_decode_ctx_init_brw(struct intel_batch_decode_ctx *ctx,
+                                     const struct brw_isa_info *isa,
+                                     const struct intel_device_info *devinfo,
+                                     FILE *fp, enum intel_batch_decode_flags flags,
+                                     const char *xml_path,
+                                     struct intel_batch_decode_bo (*get_bo)(void *,
+                                                                            bool,
+                                                                            uint64_t),
+                                     unsigned (*get_state_size)(void *, uint64_t,
+                                                                uint64_t),
+                                     void *user_data);
+void intel_batch_decode_ctx_init_elk(struct intel_batch_decode_ctx *ctx,
+                                     const struct elk_isa_info *isa,
+                                     const struct intel_device_info *devinfo,
+                                     FILE *fp, enum intel_batch_decode_flags flags,
+                                     const char *xml_path,
+                                     struct intel_batch_decode_bo (*get_bo)(void *,
+                                                                            bool,
+                                                                            uint64_t),
+                                     unsigned (*get_state_size)(void *, uint64_t,
+                                                                uint64_t),
+                                     void *user_data);
 void intel_batch_decode_ctx_finish(struct intel_batch_decode_ctx *ctx);
 
 

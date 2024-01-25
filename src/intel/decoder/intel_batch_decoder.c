@@ -22,8 +22,8 @@
  */
 
 #include "intel_decoder.h"
+#include "intel_decoder_private.h"
 
-#include "compiler/brw_disasm.h"
 #include "util/macros.h"
 #include "util/u_debug.h"
 #include "util/u_dynarray.h"
@@ -44,7 +44,6 @@ static const struct debug_control debug_control[] = {
 
 void
 intel_batch_decode_ctx_init(struct intel_batch_decode_ctx *ctx,
-                            const struct brw_isa_info *isa,
                             const struct intel_device_info *devinfo,
                             FILE *fp, enum intel_batch_decode_flags flags,
                             const char *xml_path,
@@ -57,7 +56,6 @@ intel_batch_decode_ctx_init(struct intel_batch_decode_ctx *ctx,
 {
    memset(ctx, 0, sizeof(*ctx));
 
-   ctx->isa = isa;
    ctx->devinfo = *devinfo;
    ctx->get_bo = get_bo;
    ctx->get_state_size = get_state_size;
@@ -101,7 +99,7 @@ ctx_print_group(struct intel_batch_decode_ctx *ctx,
                    (ctx->flags & INTEL_BATCH_DECODE_IN_COLOR) != 0);
 }
 
-static struct intel_batch_decode_bo
+struct intel_batch_decode_bo
 ctx_get_bo(struct intel_batch_decode_ctx *ctx, bool ppgtt, uint64_t addr)
 {
    if (intel_spec_get_gen(ctx->spec) >= intel_make_gen(8,0)) {
@@ -150,26 +148,13 @@ update_count(struct intel_batch_decode_ctx *ctx,
    return guess;
 }
 
-static void
+static inline void
 ctx_disassemble_program(struct intel_batch_decode_ctx *ctx,
                         uint32_t ksp,
                         const char *short_name,
                         const char *name)
 {
-   uint64_t addr = ctx->instruction_base + ksp;
-   struct intel_batch_decode_bo bo = ctx_get_bo(ctx, true, addr);
-   if (!bo.map)
-      return;
-
-   fprintf(ctx->fp, "\nReferenced %s:\n", name);
-   brw_disassemble_with_errors(ctx->isa, bo.map, 0, ctx->fp);
-
-   if (ctx->shader_binary) {
-      int size = brw_disassemble_find_end(ctx->isa, bo.map, 0);
-
-      ctx->shader_binary(ctx->user_data, short_name, addr,
-                         bo.map, size);
-   }
+   ctx->disassemble_program(ctx, ksp, short_name, name);
 }
 
 /* Heuristic to determine whether a uint32_t is probably actually a float

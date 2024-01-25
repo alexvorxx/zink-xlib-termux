@@ -2514,11 +2514,11 @@ VkResult anv_CreateDevice(
    if (INTEL_DEBUG(DEBUG_BATCH)) {
       const unsigned decode_flags = INTEL_BATCH_DECODE_DEFAULT_FLAGS;
 
-      intel_batch_decode_ctx_init(&device->decoder_ctx,
-                                  &physical_device->compiler->isa,
-                                  &physical_device->info,
-                                  stderr, decode_flags, NULL,
-                                  decode_get_bo, NULL, device);
+      intel_batch_decode_ctx_init_brw(&device->decoder_ctx,
+                                      &physical_device->compiler->isa,
+                                      &physical_device->info,
+                                      stderr, decode_flags, NULL,
+                                      decode_get_bo, NULL, device);
 
       device->decoder_ctx.dynamic_base = DYNAMIC_STATE_POOL_MIN_ADDRESS;
       device->decoder_ctx.surface_base = SURFACE_STATE_POOL_MIN_ADDRESS;

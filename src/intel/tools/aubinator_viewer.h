@@ -4,7 +4,7 @@
 #include "imgui/imgui.h"
 
 #include "common/intel_decoder.h"
-#include "common/intel_disasm.h"
+#include "compiler/brw_disasm.h"
 
 struct aub_viewer_cfg {
    ImColor clear_color;

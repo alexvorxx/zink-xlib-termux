@@ -1,5 +1,6 @@
 /*
  * Copyright © 2008 Keith Packard
+ * Copyright © 2014 Intel Corporation
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -20,17 +21,19 @@
  * OF THIS SOFTWARE.
  */
 
-#include <stdio.h>
-#include <string.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "brw_disasm.h"
+#include "brw_disasm_info.h"
 #include "brw_eu_defines.h"
-#include "brw_inst.h"
-#include "brw_shader.h"
-#include "brw_reg.h"
-#include "brw_inst.h"
 #include "brw_eu.h"
+#include "brw_inst.h"
+#include "brw_isa_info.h"
+#include "brw_reg.h"
+#include "brw_shader.h"
 #include "util/half_float.h"
 
 bool
@@ -2810,4 +2813,74 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
    string(file, ";");
    newline(file);
    return err;
+}
+
+int
+brw_disassemble_find_end(const struct brw_isa_info *isa,
+                         const void *assembly, int start)
+{
+   const struct intel_device_info *devinfo = isa->devinfo;
+   int offset = start;
+
+   /* This loop exits when send-with-EOT or when opcode is 0 */
+   while (true) {
+      const brw_inst *insn = assembly + offset;
+
+      if (brw_inst_cmpt_control(devinfo, insn)) {
+         offset += 8;
+      } else {
+         offset += 16;
+      }
+
+      /* Simplistic, but efficient way to terminate disasm */
+      uint32_t opcode = brw_inst_opcode(isa, insn);
+      if (opcode == 0 || (is_send(opcode) && brw_inst_eot(devinfo, insn))) {
+         break;
+      }
+   }
+
+   return offset;
+}
+
+void
+brw_disassemble_with_errors(const struct brw_isa_info *isa,
+                            const void *assembly, int start, FILE *out)
+{
+   int end = brw_disassemble_find_end(isa, assembly, start);
+
+   /* Make a dummy disasm structure that brw_validate_instructions
+    * can work from.
+    */
+   struct disasm_info *disasm_info = disasm_initialize(isa, NULL);
+   disasm_new_inst_group(disasm_info, start);
+   disasm_new_inst_group(disasm_info, end);
+
+   brw_validate_instructions(isa, assembly, start, end, disasm_info);
+
+   void *mem_ctx = ralloc_context(NULL);
+   const struct brw_label *root_label =
+      brw_label_assembly(isa, assembly, start, end, mem_ctx);
+
+   foreach_list_typed(struct inst_group, group, link,
+                      &disasm_info->group_list) {
+      struct exec_node *next_node = exec_node_get_next(&group->link);
+      if (exec_node_is_tail_sentinel(next_node))
+         break;
+
+      struct inst_group *next =
+         exec_node_data(struct inst_group, next_node, link);
+
+      int start_offset = group->offset;
+      int end_offset = next->offset;
+
+      brw_disassemble(isa, assembly, start_offset, end_offset,
+                      root_label, out);
+
+      if (group->error) {
+         fputs(group->error, out);
+      }
+   }
+
+   ralloc_free(mem_ctx);
+   ralloc_free(disasm_info);
 }

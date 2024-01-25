@@ -37,8 +37,6 @@ files_libintel_common = files(
   'intel_bind_timeline.h',
   'intel_buffer_alloc.h',
   'intel_decoder.h',
-  'intel_disasm.c',
-  'intel_disasm.h',
   'intel_engine.c',
   'intel_engine.h',
   'intel_gem.c',

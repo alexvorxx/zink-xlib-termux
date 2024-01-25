@@ -30,6 +30,10 @@ void brw_disassemble_with_labels(const struct brw_isa_info *isa,
 void brw_disassemble(const struct brw_isa_info *isa,
                      const void *assembly, int start, int end,
                      const struct brw_label *root_label, FILE *out);
+int brw_disassemble_find_end(const struct brw_isa_info *isa,
+                             const void *assembly, int start);
+void brw_disassemble_with_errors(const struct brw_isa_info *isa,
+                                 const void *assembly, int start, FILE *out);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -41,8 +41,9 @@
 #include "util/list.h"
 #include "util/macros.h"
 
-#include "common/intel_disasm.h"
 #include "common/intel_hang_dump.h"
+#include "compiler/brw_disasm.h"
+#include "compiler/brw_isa_info.h"
 
 /* Data */
 
@@ -222,9 +223,9 @@ public:
          size_t shader_txt_size = 0;
          FILE *f = open_memstream(&shader_txt, &shader_txt_size);
          if (f) {
-            intel_disassemble(&context.isa,
-                              (const uint8_t *) bo->map +
-                              (address - bo->offset), 0, f);
+            brw_disassemble_with_errors(&context.isa,
+                                        (const uint8_t *) bo->map +
+                                        (address - bo->offset), 0, f);
             fclose(f);
          }
 

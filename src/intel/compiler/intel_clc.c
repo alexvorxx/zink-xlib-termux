@@ -23,7 +23,7 @@
 
 #include "brw_compiler.h"
 #include "brw_kernel.h"
-#include "common/intel_disasm.h"
+#include "compiler/brw_disasm.h"
 #include "compiler/clc/clc.h"
 #include "compiler/glsl_types.h"
 #include "compiler/nir/nir_serialize.h"
@@ -247,7 +247,7 @@ print_kernel(FILE *fp, const char *prefix,
 
    fprintf(fp, "#if 0  /* BEGIN KERNEL ASSEMBLY */\n");
    fprintf(fp, "\n");
-   intel_disassemble(isa, kernel->code, 0, fp);
+   brw_disassemble_with_errors(isa, kernel->code, 0, fp);
    fprintf(fp, "\n");
    fprintf(fp, "#endif /* END KERNEL ASSEMBLY */\n");
    print_u32_data(fp, prefix, "code", kernel->code,

@@ -267,14 +267,8 @@ emit_rb_ccu_cntl(struct tu_cs *cs, struct tu_device *dev, bool gmem)
 
    enum a6xx_ccu_cache_size color_cache_size = !gmem ? CCU_CACHE_SIZE_FULL : !gmem ? CCU_CACHE_SIZE_FULL :
       (a6xx_ccu_cache_size)(dev->physical_device->info->a6xx.gmem_ccu_color_cache_fraction);
-   bool concurrent_resolve = dev->physical_device->info->a6xx.concurrent_resolve;
 
    if (CHIP == A7XX) {
-      tu_cs_emit_regs(cs, A7XX_RB_CCU_CNTL(
-         .gmem_fast_clear_disable =
-            !dev->physical_device->info->a6xx.has_gmem_fast_clear,
-         .concurrent_resolve = concurrent_resolve,
-      ));
       tu_cs_emit_regs(cs, A7XX_RB_CCU_CNTL2(
          .depth_offset_hi = depth_offset_hi,
          .color_offset_hi = color_offset_hi,
@@ -304,7 +298,8 @@ emit_rb_ccu_cntl(struct tu_cs *cs, struct tu_device *dev, bool gmem)
       tu_cs_emit_regs(cs, A6XX_RB_CCU_CNTL(
          .gmem_fast_clear_disable =
             !dev->physical_device->info->a6xx.has_gmem_fast_clear,
-         .concurrent_resolve = concurrent_resolve,
+         .concurrent_resolve =
+            dev->physical_device->info->a6xx.concurrent_resolve,
          .depth_offset_hi = 0,
          .color_offset_hi = color_offset_hi,
          .depth_cache_size = CCU_CACHE_SIZE_FULL,
@@ -333,6 +328,9 @@ tu_emit_cache_flush_ccu(struct tu_cmd_buffer *cmd_buffer,
     * the CCU may also contain data that we haven't flushed out yet, so we
     * also need to flush. Also, in order to program RB_CCU_CNTL, we need to
     * emit a WFI as it isn't pipelined.
+    *
+    * Note: On A7XX, with the introduction of RB_CCU_CNTL2, we no longer need
+    * to emit a WFI when changing a subset of CCU state.
     */
    if (ccu_state != cmd_buffer->state.ccu_state) {
       if (cmd_buffer->state.ccu_state != TU_CMD_CCU_GMEM) {
@@ -346,11 +344,11 @@ tu_emit_cache_flush_ccu(struct tu_cmd_buffer *cmd_buffer,
       cmd_buffer->state.cache.flush_bits |=
          TU_CMD_FLAG_CCU_INVALIDATE_COLOR |
          TU_CMD_FLAG_CCU_INVALIDATE_DEPTH |
-         TU_CMD_FLAG_WAIT_FOR_IDLE;
+         (CHIP == A6XX ? TU_CMD_FLAG_WAIT_FOR_IDLE : 0);
       cmd_buffer->state.cache.pending_flush_bits &= ~(
          TU_CMD_FLAG_CCU_INVALIDATE_COLOR |
          TU_CMD_FLAG_CCU_INVALIDATE_DEPTH |
-         TU_CMD_FLAG_WAIT_FOR_IDLE);
+         (CHIP == A6XX ? TU_CMD_FLAG_WAIT_FOR_IDLE : 0));
    }
 
    tu6_emit_flushes<CHIP>(cmd_buffer, cs, &cmd_buffer->state.cache);
@@ -1233,6 +1231,21 @@ tu6_init_hw(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 
    cmd->state.cache.pending_flush_bits &=
       ~(TU_CMD_FLAG_WAIT_FOR_IDLE | TU_CMD_FLAG_CACHE_INVALIDATE);
+
+   if (CHIP >= A7XX) {
+      /* On A7XX, RB_CCU_CNTL was broken into two registers, RB_CCU_CNTL which has
+       * static properties that can be set once, this requires a WFI to take effect.
+       * While the newly introduced register RB_CCU_CNTL2 has properties that may
+       * change per-RP and don't require a WFI to take effect, only CCU inval/flush
+       * events are required.
+       */
+      tu_cs_emit_regs(cs, A7XX_RB_CCU_CNTL(
+         .gmem_fast_clear_disable =
+            !dev->physical_device->info->a6xx.has_gmem_fast_clear,
+         .concurrent_resolve = dev->physical_device->info->a6xx.concurrent_resolve,
+      ));
+      tu_cs_emit_wfi(cs);
+   }
 
    emit_rb_ccu_cntl<CHIP>(cs, cmd->device, false);
    cmd->state.ccu_state = TU_CMD_CCU_SYSMEM;

@@ -99,8 +99,8 @@ vlVaDestroySurfaces(VADriverContextP ctx, VASurfaceID *surface_list, int num_sur
    return VA_STATUS_SUCCESS;
 }
 
-VAStatus
-vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
+static VAStatus
+_vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target, uint64_t timeout_ns)
 {
    vlVaDriver *drv;
    vlVaContext *context;
@@ -152,8 +152,7 @@ vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
 
       if (context->decoder->get_processor_fence)
          ret = context->decoder->get_processor_fence(context->decoder,
-                                                     surf->fence,
-                                                     PIPE_DEFAULT_DECODER_FEEDBACK_TIMEOUT_NS);
+                                                     surf->fence, timeout_ns);
 
       mtx_unlock(&drv->mutex);
       // Assume that the GPU has hung otherwise.
@@ -163,8 +162,7 @@ vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
 
       if (context->decoder->get_decoder_fence)
          ret = context->decoder->get_decoder_fence(context->decoder,
-                                                   surf->fence,
-                                                   PIPE_DEFAULT_DECODER_FEEDBACK_TIMEOUT_NS);
+                                                   surf->fence, timeout_ns);
 
       mtx_unlock(&drv->mutex);
       // Assume that the GPU has hung otherwise.
@@ -196,6 +194,20 @@ vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
    mtx_unlock(&drv->mutex);
    return VA_STATUS_SUCCESS;
 }
+
+VAStatus
+vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
+{
+   return _vlVaSyncSurface(ctx, render_target, VA_TIMEOUT_INFINITE);
+}
+
+#if VA_CHECK_VERSION(1, 15, 0)
+VAStatus
+vlVaSyncSurface2(VADriverContextP ctx, VASurfaceID surface, uint64_t timeout_ns)
+{
+   return _vlVaSyncSurface(ctx, surface, timeout_ns);
+}
+#endif
 
 VAStatus
 vlVaQuerySurfaceStatus(VADriverContextP ctx, VASurfaceID render_target, VASurfaceStatus *status)

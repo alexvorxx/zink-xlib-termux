@@ -4835,6 +4835,12 @@ struct anv_image {
       struct {
          /** Whether the image has CCS data mapped through AUX-TT. */
          bool mapped;
+
+         /** Main address of the mapping. */
+         uint64_t addr;
+
+         /** Size of the mapping. */
+         uint64_t size;
       } aux_tt;
    } planes[3];
 

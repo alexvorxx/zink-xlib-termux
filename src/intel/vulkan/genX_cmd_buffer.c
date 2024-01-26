@@ -3541,6 +3541,8 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
        */
       if (!cmd_buffer->vk.runtime_rp_barrier &&
           cmd_buffer->vk.render_pass != NULL) {
+         assert(anv_cmd_graphics_state_has_image_as_attachment(&cmd_buffer->state.gfx,
+                                                               image));
          VkImageLayout subpass_att_layout, subpass_stencil_att_layout;
 
          vk_command_buffer_get_attachment_layout(

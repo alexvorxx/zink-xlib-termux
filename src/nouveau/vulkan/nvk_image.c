@@ -687,11 +687,6 @@ nvk_get_image_memory_requirements(struct nvk_device *dev,
          nvk_image_plane_add_req(&image->planes[plane], &size_B, &align_B);
    }
 
-   assert(image->vk.external_handle_types == 0 || image->plane_count == 1);
-   bool needs_dedicated =
-      image->vk.external_handle_types != 0 &&
-      image->planes[0].nil.pte_kind != 0;
-
    if (image->stencil_copy_temp.nil.size_B > 0)
       nvk_image_plane_add_req(&image->stencil_copy_temp, &size_B, &align_B);
 
@@ -703,8 +698,8 @@ nvk_get_image_memory_requirements(struct nvk_device *dev,
       switch (ext->sType) {
       case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS: {
          VkMemoryDedicatedRequirements *dedicated = (void *)ext;
-         dedicated->prefersDedicatedAllocation = needs_dedicated;
-         dedicated->requiresDedicatedAllocation = needs_dedicated;
+         dedicated->prefersDedicatedAllocation = false;
+         dedicated->requiresDedicatedAllocation = false;
          break;
       }
       default:

@@ -1537,7 +1537,7 @@ else
   dep_clock = cc.find_library('rt')
 endif
 
-dep_zlib = dependency('zlib', version : '>= 1.2.3',
+dep_zlib = dependency('zlib', version : '>= 1.2.9',
                       allow_fallback: true,
                       required : get_option('zlib'))
 if dep_zlib.found()

@@ -3657,13 +3657,13 @@ static void handle_set_halfz(struct vk_cmd_queue_entry *cmd,
 static void handle_set_line_rasterization_mode(struct vk_cmd_queue_entry *cmd,
                                                struct rendering_state *state)
 {
-   VkLineRasterizationModeEXT lineRasterizationMode = cmd->u.set_line_rasterization_mode_ext.line_rasterization_mode;
+   VkLineRasterizationModeKHR lineRasterizationMode = cmd->u.set_line_rasterization_mode_ext.line_rasterization_mode;
    /* not even going to bother trying dirty tracking on this */
    state->rs_dirty = true;
-   state->rs_state.line_smooth = lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT;
-   state->rs_state.line_rectangular = lineRasterizationMode != VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;;
-   state->disable_multisample = lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT ||
-                                lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT;
+   state->rs_state.line_smooth = lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR;
+   state->rs_state.line_rectangular = lineRasterizationMode != VK_LINE_RASTERIZATION_MODE_BRESENHAM_KHR;;
+   state->disable_multisample = lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_KHR ||
+                                lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR;
 }
 
 static void handle_set_line_stipple_enable(struct vk_cmd_queue_entry *cmd,
@@ -4383,6 +4383,7 @@ void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
    ENQUEUE_CMD(CmdSetStencilTestEnable)
    ENQUEUE_CMD(CmdSetStencilOp)
    ENQUEUE_CMD(CmdSetLineStippleEXT)
+   ENQUEUE_CMD(CmdSetLineStippleKHR)
    ENQUEUE_CMD(CmdSetDepthBiasEnable)
    ENQUEUE_CMD(CmdSetLogicOpEXT)
    ENQUEUE_CMD(CmdSetPatchControlPointsEXT)

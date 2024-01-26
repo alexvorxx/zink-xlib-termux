@@ -119,6 +119,9 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
 #endif
    .KHR_image_format_list                 = true,
    .KHR_imageless_framebuffer             = true,
+   .KHR_index_type_uint8                  = true,
+   .KHR_line_rasterization                = true,
+   .KHR_load_store_op_none                = true,
    .KHR_maintenance1                      = true,
    .KHR_maintenance2                      = true,
    .KHR_maintenance3                      = true,
@@ -152,6 +155,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_timeline_semaphore                = true,
    .KHR_uniform_buffer_standard_layout    = true,
    .KHR_variable_pointers                 = true,
+   .KHR_vertex_attribute_divisor          = true,
    .KHR_vulkan_memory_model               = true,
    .KHR_zero_initialize_workgroup_memory  = true,
    .ARM_rasterization_order_attachment_access = true,

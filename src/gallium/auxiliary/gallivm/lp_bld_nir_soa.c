@@ -1432,13 +1432,12 @@ static void emit_load_mem(struct lp_build_nir_context *bld_base,
       result[c] = lp_build_alloca(gallivm, load_bld->vec_type, "");
 
    LLVMValueRef exec_mask = mask_vec(bld_base);
-   LLVMValueRef cond = LLVMBuildICmp(gallivm->builder, LLVMIntNE, exec_mask, uint_bld->zero, "");
+
+   /* mask the offset to prevent invalid reads */
+   offset = LLVMBuildAnd(gallivm->builder, offset, exec_mask, "");
+
    for (unsigned i = 0; i < uint_bld->type.length; i++) {
       LLVMValueRef counter = lp_build_const_int32(gallivm, i);
-      LLVMValueRef loop_cond = LLVMBuildExtractElement(gallivm->builder, cond, counter, "");
-
-      struct lp_build_if_state exec_ifthen;
-      lp_build_if(&exec_ifthen, gallivm, loop_cond);
 
       LLVMValueRef ssbo_limit;
       LLVMValueRef mem_ptr = mem_access_base_pointer(bld_base, load_bld, bit_size, payload, index,
@@ -1472,8 +1471,6 @@ static void emit_load_mem(struct lp_build_nir_context *bld_base,
          LLVMBuildStore(builder, temp_res, result[c]);
          lp_build_endif(&ifthen);
       }
-
-      lp_build_endif(&exec_ifthen);
    }
    for (unsigned c = 0; c < nc; c++)
       outval[c] = LLVMBuildLoad2(gallivm->builder, load_bld->vec_type, result[c], "");

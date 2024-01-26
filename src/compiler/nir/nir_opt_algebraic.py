@@ -1811,6 +1811,19 @@ for op in ('extract_u8', 'extract_i8'):
    optimizations.extend([((op, ('ishl', 'a@32', 24 - 8 * i), 3), (op, a, i)) for i in range(2, -1, -1)])
    optimizations.extend([((op, ('ishl', 'a@64', 56 - 8 * i), 7), (op, a, i)) for i in range(6, -1, -1)])
 
+for op, repl in [('ieq', 'ieq'), ('ine', 'ine'),
+                 ('ult', 'ult'), ('ilt', 'ult'),
+                 ('uge', 'uge'), ('ige', 'uge')]:
+   optimizations.extend([
+      ((op, ('pack_64_2x32_split', a, 0), ('pack_64_2x32_split', b, 0)), (repl, a, b)),
+      ((op, ('pack_64_2x32_split', a, 0), '#b(is_upper_half_zero)'), (repl, a, ('unpack_64_2x32_split_x', b))),
+      ((op, '#a(is_upper_half_zero)', ('pack_64_2x32_split', b, 0)), (repl, ('unpack_64_2x32_split_x', a), b)),
+
+      ((op, ('pack_64_2x32_split', 0, a), ('pack_64_2x32_split', 0, b)), (op, a, b)),
+      ((op, ('pack_64_2x32_split', 0, a), '#b(is_lower_half_zero)'), (op, a, ('unpack_64_2x32_split_y', b))),
+      ((op, '#a(is_lower_half_zero)', ('pack_64_2x32_split', 0, b)), (op, ('unpack_64_2x32_split_y', a), b)),
+   ])
+
 optimizations.extend([
    # Subtracts
    (('ussub_4x8_vc4', a, 0), a),

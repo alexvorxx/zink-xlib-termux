@@ -3183,26 +3183,30 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
       cfg.unk_2 = (stage == PIPE_SHADER_FRAGMENT) ? 2 : 3;
    }
 
-   uint32_t spill_bucket = 0;
+   uint32_t max_scratch_size =
+      MAX2(cs->info.scratch_size, cs->info.preamble_scratch_size);
 
-   if (cs->info.scratch_size > 0) {
-      spill_bucket = agx_scratch_get_bucket(cs->info.scratch_size);
+   if (max_scratch_size > 0) {
+      unsigned preamble_size = (cs->info.preamble_scratch_size > 0) ? 1 : 0;
 
       switch (stage) {
       case PIPE_SHADER_FRAGMENT:
-         agx_scratch_alloc(&ctx->scratch_fs, cs->info.scratch_size,
-                           max_subgroups);
+         agx_scratch_alloc(&ctx->scratch_fs, max_scratch_size, max_subgroups);
          batch->fs_scratch = true;
+         batch->fs_preamble_scratch =
+            MAX2(batch->fs_preamble_scratch, preamble_size);
          break;
       case PIPE_SHADER_VERTEX:
-         agx_scratch_alloc(&ctx->scratch_vs, cs->info.scratch_size,
-                           max_subgroups);
+         agx_scratch_alloc(&ctx->scratch_vs, max_scratch_size, max_subgroups);
          batch->vs_scratch = true;
+         batch->vs_preamble_scratch =
+            MAX2(batch->vs_preamble_scratch, preamble_size);
          break;
       default:
-         agx_scratch_alloc(&ctx->scratch_cs, cs->info.scratch_size,
-                           max_subgroups);
+         agx_scratch_alloc(&ctx->scratch_cs, max_scratch_size, max_subgroups);
          batch->cs_scratch = true;
+         batch->cs_preamble_scratch =
+            MAX2(batch->cs_preamble_scratch, preamble_size);
          break;
       }
    }
@@ -3210,7 +3214,9 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
    agx_usc_pack(&b, REGISTERS, cfg) {
       cfg.register_count = cs->info.nr_gprs;
       cfg.unk_1 = (stage == PIPE_SHADER_FRAGMENT);
-      cfg.spill_size = spill_bucket;
+      cfg.spill_size = cs->info.scratch_size
+                          ? agx_scratch_get_bucket(cs->info.scratch_size)
+                          : 0;
    }
 
    if (stage == PIPE_SHADER_FRAGMENT) {

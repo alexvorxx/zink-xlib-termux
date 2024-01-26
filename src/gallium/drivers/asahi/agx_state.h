@@ -390,6 +390,14 @@ struct agx_batch {
    bool vs_scratch;
    bool fs_scratch;
    bool cs_scratch;
+
+   /* Whether each stage has preambles using scratch, and if so which bucket.
+    * This just needs to be zero/nonzero for correctness, the magnitude in
+    * buckets is for statistics.
+    */
+   unsigned vs_preamble_scratch;
+   unsigned fs_preamble_scratch;
+   unsigned cs_preamble_scratch;
 };
 
 struct agx_zsa {

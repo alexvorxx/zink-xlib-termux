@@ -862,4 +862,7 @@
     <field name="Address" start="66" end="111" type="address" />
     <field name="Immediate Data" start="128" end="191" type="uint" />
   </instruction>
+  <register name="GFX_TRTT_VA_RANGE" length="1" num="0x4404">
+    <field name="TR-VA Base" start="0" end="12" type="uint" />
+  </register>
 </genxml>

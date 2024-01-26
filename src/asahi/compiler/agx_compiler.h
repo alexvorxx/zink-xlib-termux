@@ -874,6 +874,7 @@ agx_builder_insert(agx_cursor *cursor, agx_instr *I)
 
 /* Routines defined for AIR */
 
+void agx_print_index(agx_index index, bool is_float, FILE *fp);
 void agx_print_instr(const agx_instr *I, FILE *fp);
 void agx_print_block(const agx_block *block, FILE *fp);
 void agx_print_shader(const agx_context *ctx, FILE *fp);

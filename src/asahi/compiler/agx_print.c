@@ -27,7 +27,7 @@ agx_print_sized(char prefix, unsigned value, enum agx_size size, FILE *fp)
    unreachable("Invalid size");
 }
 
-static void
+void
 agx_print_index(agx_index index, bool is_float, FILE *fp)
 {
    if (index.memory)

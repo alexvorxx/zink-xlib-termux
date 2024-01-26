@@ -7,6 +7,27 @@
 #include "agx_builder.h"
 #include "agx_compiler.h"
 
+UNUSED static void
+print_copy(const struct agx_copy *cp)
+{
+   printf("%sr%u = ", cp->dest_mem ? "m" : "", cp->dest);
+   agx_print_index(cp->src, false, stdout);
+   printf("\n");
+}
+
+UNUSED static void
+print_copies(const struct agx_copy *copies, unsigned nr)
+{
+   printf("[\n");
+
+   for (unsigned i = 0; i < nr; ++i) {
+      printf("  ");
+      print_copy(&copies[i]);
+   }
+
+   printf("]\n");
+}
+
 /*
  * Emits code for
  *

@@ -2074,6 +2074,9 @@ intrinsic("bar_break_nv", dest_comp=1, bit_sizes=[32], src_comp=[1])
 # src[] = { bar, bar_set }
 intrinsic("bar_sync_nv", src_comp=[1, 1])
 
+# Stall until the given SSA value is available
+intrinsic("ssa_bar_nv", src_comp=[1])
+
 # NVIDIA-specific system values
 system_value("warps_per_sm_nv", 1, bit_sizes=[32])
 system_value("sm_count_nv", 1, bit_sizes=[32])

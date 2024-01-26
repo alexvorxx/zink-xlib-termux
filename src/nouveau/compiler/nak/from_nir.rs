@@ -2524,6 +2524,10 @@ impl<'a> ShaderFromNir<'a> {
                 });
                 self.set_dst(&intrin.def, dst);
             }
+            nir_intrinsic_ssa_bar_nv => {
+                let src = self.get_src(&srcs[0]);
+                b.push_op(OpSrcBar { src });
+            }
             nir_intrinsic_store_global => {
                 let data = self.get_src(&srcs[0]);
                 let size_B =

@@ -4427,6 +4427,19 @@ impl DisplayOp for OpUndef {
 }
 impl_display_for_op!(OpUndef);
 
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpSrcBar {
+    pub src: Src,
+}
+
+impl DisplayOp for OpSrcBar {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "src_bar {}", self.src)
+    }
+}
+impl_display_for_op!(OpSrcBar);
+
 pub struct VecPair<A, B> {
     a: Vec<A>,
     b: Vec<B>,
@@ -4877,6 +4890,7 @@ pub enum Op {
     S2R(OpS2R),
     Vote(OpVote),
     Undef(OpUndef),
+    SrcBar(OpSrcBar),
     PhiSrcs(OpPhiSrcs),
     PhiDsts(OpPhiDsts),
     Copy(OpCopy),
@@ -5328,6 +5342,7 @@ impl Instr {
 
             // Virtual ops
             Op::Undef(_)
+            | Op::SrcBar(_)
             | Op::PhiSrcs(_)
             | Op::PhiDsts(_)
             | Op::Copy(_)

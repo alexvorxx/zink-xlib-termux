@@ -84,6 +84,7 @@ public:
 
 private:
    void add_instr(nir_instr *instr, unsigned num_components, unsigned bit_size);
+   void truncate_after_instruction(exec_node *ir);
    nir_def *evaluate_rvalue(ir_rvalue *ir);
 
    nir_alu_instr *emit(nir_op op, unsigned dest_size, nir_def **srcs);
@@ -218,6 +219,17 @@ nir_visitor::evaluate_deref(ir_instruction *ir)
 {
    ir->accept(this);
    return this->deref;
+}
+
+void
+nir_visitor::truncate_after_instruction(exec_node *ir)
+{
+   if (!ir)
+      return;
+
+   while (!ir->get_next()->is_tail_sentinel()) {
+      ((ir_instruction *)ir->get_next())->remove();
+   }
 }
 
 nir_constant *
@@ -766,6 +778,11 @@ nir_visitor::visit(ir_loop_jump *ir)
 
    nir_jump_instr *instr = nir_jump_instr_create(this->shader, type);
    nir_builder_instr_insert(&b, &instr->instr);
+
+   /* Eliminate all instructions after the jump, since they are unreachable
+    * and NIR considers adding these instructions illegal.
+    */
+   truncate_after_instruction(ir);
 }
 
 void
@@ -785,6 +802,11 @@ nir_visitor::visit(ir_return *ir)
 
    nir_jump_instr *instr = nir_jump_instr_create(this->shader, nir_jump_return);
    nir_builder_instr_insert(&b, &instr->instr);
+
+   /* Eliminate all instructions after the jump, since they are unreachable
+    * and NIR considers adding these instructions illegal.
+    */
+   truncate_after_instruction(ir);
 }
 
 static void

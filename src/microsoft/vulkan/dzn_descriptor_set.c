@@ -1708,7 +1708,7 @@ dzn_descriptor_set_init(struct dzn_descriptor_set *set,
          const struct dzn_sampler **sampler =
             &layout->immutable_samplers[layout->bindings[b].immutable_sampler_idx];
          for (dzn_descriptor_set_ptr_init(set->layout, &ptr, b, 0);
-              dzn_descriptor_set_ptr_is_valid(&ptr);
+              dzn_descriptor_set_ptr_is_valid(&ptr) && ptr.binding == b;
               dzn_descriptor_set_ptr_move(set->layout, &ptr, 1)) {
             dzn_descriptor_set_ptr_write_sampler_desc(device, set, &ptr, *sampler);
             sampler++;

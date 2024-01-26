@@ -104,17 +104,13 @@ apply_swizzle_channel(nir_builder *b, nir_def *vec, unsigned swizzle,
 }
 
 static bool
-pass(struct nir_builder *b, nir_instr *instr, void *data)
+pass(struct nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
-   if (instr->type != nir_instr_type_intrinsic)
-      return false;
-
-   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
    if (intr->intrinsic != nir_intrinsic_load_input)
       return false;
 
    struct agx_attribute *attribs = data;
-   b->cursor = nir_before_instr(instr);
+   b->cursor = nir_before_instr(&intr->instr);
 
    nir_src *offset_src = nir_get_io_offset_src(intr);
    assert(nir_src_is_const(*offset_src) && "no attribute indirects");
@@ -293,6 +289,6 @@ bool
 agx_nir_lower_vbo(nir_shader *shader, struct agx_attribute *attribs)
 {
    assert(shader->info.stage == MESA_SHADER_VERTEX);
-   return nir_shader_instructions_pass(
+   return nir_shader_intrinsics_pass(
       shader, pass, nir_metadata_block_index | nir_metadata_dominance, attribs);
 }

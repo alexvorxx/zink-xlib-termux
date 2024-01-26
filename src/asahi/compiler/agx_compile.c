@@ -2634,13 +2634,9 @@ struct interp_masks {
 };
 
 static bool
-agx_gather_interp(nir_builder *b, nir_instr *instr, void *data)
+agx_gather_interp(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
    struct interp_masks *masks = data;
-   if (instr->type != nir_instr_type_intrinsic)
-      return false;
-
-   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
 
    if (intr->intrinsic == nir_intrinsic_load_input) {
       nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
@@ -2666,9 +2662,7 @@ agx_interp_masks(nir_shader *nir)
    assert(nir->info.stage == MESA_SHADER_FRAGMENT);
 
    struct interp_masks masks = {0};
-   nir_shader_instructions_pass(nir, agx_gather_interp, nir_metadata_all,
-                                &masks);
-
+   nir_shader_intrinsics_pass(nir, agx_gather_interp, nir_metadata_all, &masks);
    return masks;
 }
 

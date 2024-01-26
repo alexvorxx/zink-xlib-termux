@@ -2878,8 +2878,11 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
 
    unsigned nr_gprs = ctx->max_reg + 1;
 
+   /* If the preamble uses scratch (due to spilling), we need to set maximal
+    * GPRs. Do it here so the driver doesn't have to worry about it.
+    */
    if (impl->function->is_preamble)
-      out->nr_preamble_gprs = nr_gprs;
+      out->nr_preamble_gprs = ctx->scratch_size ? 256 : nr_gprs;
    else
       out->nr_gprs = nr_gprs;
 

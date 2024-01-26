@@ -416,6 +416,7 @@ typedef struct {
    nir_shader *nir;
    gl_shader_stage stage;
    bool is_preamble;
+   unsigned scratch_size;
 
    struct list_head blocks; /* list of agx_block */
    struct agx_shader_info *out;
@@ -426,6 +427,9 @@ typedef struct {
 
    /* For creating temporaries */
    unsigned alloc;
+
+   /* Does the shader statically use scratch memory? */
+   bool any_scratch;
 
    /* I don't really understand how writeout ops work yet */
    bool did_writeout;

@@ -818,6 +818,7 @@ agx_emit_load_scratch(agx_builder *b, agx_index dst, nir_intrinsic_instr *instr)
 
    agx_stack_load_to(b, dst, offset, format, mask);
    agx_emit_cached_split(b, dst, nr);
+   b->shader->any_scratch = true;
 }
 
 static void
@@ -829,6 +830,7 @@ agx_emit_store_scratch(agx_builder *b, nir_intrinsic_instr *instr)
    unsigned mask = BITFIELD_MASK(nir_src_num_components(instr->src[0]));
 
    agx_stack_store(b, value, offset, format, mask);
+   b->shader->any_scratch = true;
 }
 
 /*
@@ -2776,15 +2778,12 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
    emit_cf_list(ctx, &impl->body);
    agx_emit_phis_deferred(ctx);
 
-   if (impl->function->is_entrypoint && nir->scratch_size > 0) {
-      /* Apple always allocate 40 more bytes in the entrypoint and align to 4. */
-      uint64_t stack_size = ALIGN(DIV_ROUND_UP(nir->scratch_size, 4) + 10, 4);
-
-      assert(stack_size < INT16_MAX);
-
-      agx_block *start_block = agx_start_block(ctx);
-      agx_builder _b = agx_init_builder(ctx, agx_before_block(start_block));
-      agx_stack_adjust(&_b, stack_size);
+   /* Only allocate scratch if it's statically used, regardless of if the NIR
+    * info claims otherwise.
+    */
+   if (ctx->any_scratch) {
+      assert(!ctx->is_preamble && "preambles don't use scratch");
+      ctx->scratch_size = ALIGN(nir->scratch_size, 16);
    }
 
    /* Stop the main shader or preamble shader after the exit block. For real
@@ -2837,6 +2836,22 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
    agx_ra(ctx);
    agx_validate(ctx, "RA");
    agx_lower_64bit_postra(ctx);
+
+   if (ctx->scratch_size > 0) {
+      /* Apple always allocate 40 more bytes in the entrypoint and align to 4. */
+      uint64_t stack_size = ALIGN(DIV_ROUND_UP(ctx->scratch_size, 4) + 10, 4);
+
+      assert(stack_size < INT16_MAX);
+
+      agx_block *start_block = agx_start_block(ctx);
+      agx_builder _b = agx_init_builder(ctx, agx_before_block(start_block));
+      agx_stack_adjust(&_b, stack_size);
+
+      if (ctx->is_preamble)
+         out->preamble_scratch_size = stack_size;
+      else
+         out->scratch_size = stack_size;
+   }
 
    if (ctx->stage == MESA_SHADER_VERTEX && !impl->function->is_preamble)
       agx_set_st_vary_final(ctx);
@@ -3145,8 +3160,6 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
       nir_print_shader(nir, stdout);
 
    out->local_size = nir->info.shared_size;
-   if (nir->scratch_size > 0)
-      out->scratch_size = ALIGN(DIV_ROUND_UP(nir->scratch_size, 4) + 10, 4);
 
    nir_foreach_function_with_impl(func, impl, nir) {
       unsigned offset =

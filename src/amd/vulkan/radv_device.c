@@ -1206,6 +1206,8 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    radv_spm_finish(device);
 
+   ralloc_free(device->gpu_hang_report);
+
    vk_device_finish(&device->vk);
    vk_free(&device->vk.alloc, device);
 }

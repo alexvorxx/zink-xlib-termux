@@ -1116,6 +1116,9 @@ struct radv_device {
 
    struct radv_device_cache_key cache_key;
    blake3_hash cache_hash;
+
+   /* Not NULL if a GPU hang report has been generated for VK_EXT_device_fault. */
+   char *gpu_hang_report;
 };
 
 bool radv_device_set_pstate(struct radv_device *device, bool enable);

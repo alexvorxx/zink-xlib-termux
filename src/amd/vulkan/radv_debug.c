@@ -389,8 +389,12 @@ radv_dump_shader(struct radv_device *device, struct radv_pipeline *pipeline, str
       _mesa_sha1_compute(shader->spirv, shader->spirv_size, sha1);
       _mesa_sha1_format(sha1buf, sha1);
 
-      fprintf(f, "SPIRV (see %s.spv)\n\n", sha1buf);
-      radv_dump_spirv(shader, sha1buf, dump_dir);
+      if (device->vk.enabled_features.deviceFaultVendorBinary) {
+         radv_print_spirv(shader->spirv, shader->spirv_size, f);
+      } else {
+         fprintf(f, "SPIRV (see %s.spv)\n\n", sha1buf);
+         radv_dump_spirv(shader, sha1buf, dump_dir);
+      }
    }
 
    if (shader->nir_string) {
@@ -739,6 +743,7 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
    fprintf(stderr, "radv: GPU hang detected...\n");
 
 #ifndef _WIN32
+   const bool save_hang_report = !queue->device->vk.enabled_features.deviceFaultVendorBinary;
    struct radv_winsys_gpuvm_fault_info fault_info = {0};
    struct radv_device *device = queue->device;
 
@@ -753,21 +758,25 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
    FILE *f;
    char dump_dir[256], dump_path[512], buf_time[128];
 
-   time(&raw_time);
-   timep = os_localtime(&raw_time, &result);
-   strftime(buf_time, sizeof(buf_time), "%Y.%m.%d_%H.%M.%S", timep);
+   if (save_hang_report) {
+      time(&raw_time);
+      timep = os_localtime(&raw_time, &result);
+      strftime(buf_time, sizeof(buf_time), "%Y.%m.%d_%H.%M.%S", timep);
 
-   snprintf(dump_dir, sizeof(dump_dir), "%s/" RADV_DUMP_DIR "_%d_%s", debug_get_option("HOME", "."), getpid(),
-            buf_time);
-   if (mkdir(dump_dir, 0774) && errno != EEXIST) {
-      fprintf(stderr, "radv: can't create directory '%s' (%i).\n", dump_dir, errno);
-      abort();
+      snprintf(dump_dir, sizeof(dump_dir), "%s/" RADV_DUMP_DIR "_%d_%s", debug_get_option("HOME", "."), getpid(),
+               buf_time);
+      if (mkdir(dump_dir, 0774) && errno != EEXIST) {
+         fprintf(stderr, "radv: can't create directory '%s' (%i).\n", dump_dir, errno);
+         abort();
+      }
+
+      fprintf(stderr, "radv: GPU hang report will be saved to '%s'!\n", dump_dir);
    }
-
-   fprintf(stderr, "radv: GPU hang report will be saved to '%s'!\n", dump_dir);
 
    struct {
       const char *name;
+      char *ptr;
+      size_t size;
    } chunks[RADV_DEVICE_FAULT_CHUNK_COUNT] = {
       {"trace"},      {"pipeline"}, {"umr_waves"}, {"umr_ring"}, {"registers"}, {"bo_ranges"},
       {"bo_history"}, {"vm_fault"}, {"app_info"},  {"gpu_info"}, {"dmesg"},
@@ -775,9 +784,14 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
 
    for (uint32_t i = 0; i < RADV_DEVICE_FAULT_CHUNK_COUNT; i++) {
 
-      snprintf(dump_path, sizeof(dump_path), "%s/%s.log", dump_dir, chunks[i].name);
+      if (save_hang_report) {
+         snprintf(dump_path, sizeof(dump_path), "%s/%s.log", dump_dir, chunks[i].name);
 
-      f = fopen(dump_path, "w+");
+         f = fopen(dump_path, "w+");
+      } else {
+         f = open_memstream(&chunks[i].ptr, &chunks[i].size);
+      }
+
       if (!f)
          continue;
 
@@ -828,10 +842,28 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
 
       fclose(f);
    }
-#endif
 
-   fprintf(stderr, "radv: GPU hang report saved successfully!\n");
-   abort();
+   if (save_hang_report) {
+      fprintf(stderr, "radv: GPU hang report saved successfully!\n");
+      abort();
+   } else {
+      char *report;
+
+      report = ralloc_strdup(NULL, "========== RADV GPU hang report ==========\n");
+      for (uint32_t i = 0; i < RADV_DEVICE_FAULT_CHUNK_COUNT; i++) {
+         if (!chunks[i].size)
+            continue;
+
+         ralloc_asprintf_append(&report, "\n========== %s ==========\n", chunks[i].name);
+         ralloc_asprintf_append(&report, "%s", chunks[i].ptr);
+
+         free(chunks[i].ptr);
+      }
+
+      device->gpu_hang_report = report;
+   }
+
+#endif
 }
 
 void

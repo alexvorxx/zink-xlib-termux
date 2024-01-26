@@ -1270,8 +1270,17 @@ fs_visitor::assign_curb_setup()
          assert(num_regs > 0);
          num_regs = 1 << util_logbase2(num_regs);
 
-         fs_reg addr = ubld.vgrf(BRW_REGISTER_TYPE_UD);
-         ubld.ADD(addr, base_addr, brw_imm_ud(i * REG_SIZE));
+         fs_reg addr;
+
+         /* This pass occurs after all of the optimization passes, so don't
+          * emit an 'ADD addr, base_addr, 0' instruction.
+          */
+         if (i != 0) {
+            addr = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+            ubld.ADD(addr, base_addr, brw_imm_ud(i * REG_SIZE));
+         } else {
+            addr = base_addr;
+         }
 
          fs_reg srcs[4] = {
             brw_imm_ud(0), /* desc */

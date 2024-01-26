@@ -1382,6 +1382,7 @@ try_find_d3d12core_next_to_self(char *path, size_t path_arr_size)
       return nullptr;
    }
 
+   *(last_slash + 1) = '\0';
    return path;
 }
 #endif

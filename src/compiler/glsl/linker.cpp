@@ -2820,23 +2820,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
             prog->_LinkedShaders[MESA_SHADER_FRAGMENT]))
          goto done;
 
-   for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
-      if (prog->_LinkedShaders[i] == NULL)
-         continue;
-
-      struct gl_linked_shader *shader = prog->_LinkedShaders[i];
-      exec_list *ir = shader->ir;
-
-      const struct gl_shader_compiler_options *gl_options =
-         &consts->ShaderCompilerOptions[i];
-
-      /* NIR cannot handle instructions after a break so we use the GLSL IR do
-       * lower jumps pass to clean those up for now.
-       */
-      do_lower_jumps(ir, true, true, gl_options->EmitNoMainReturn,
-                     gl_options->EmitNoCont);
-   }
-
 done:
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       free(shader_list[i]);

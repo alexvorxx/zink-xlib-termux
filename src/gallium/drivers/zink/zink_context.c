@@ -2972,7 +2972,8 @@ zink_batch_rp(struct zink_context *ctx)
     * - dynamic rendering doesn't have input attachments
     */
    if (!zink_screen(ctx->base.screen)->info.have_KHR_dynamic_rendering ||
-       (ctx->transient_attachments && !zink_screen(ctx->base.screen)->info.have_EXT_multisampled_render_to_single_sampled) || ctx->fbfetch_outputs)
+       (ctx->transient_attachments && !zink_screen(ctx->base.screen)->info.have_EXT_multisampled_render_to_single_sampled) ||
+       (ctx->fbfetch_outputs && !zink_screen(ctx->base.screen)->info.have_KHR_dynamic_rendering_local_read))
       clear_buffers = zink_begin_render_pass(ctx);
    else
       clear_buffers = begin_rendering(ctx);

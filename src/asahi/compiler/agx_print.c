@@ -68,6 +68,15 @@ agx_print_index(agx_index index, bool is_float, FILE *fp)
 
    case AGX_INDEX_REGISTER:
       agx_print_sized('r', index.value, index.size, fp);
+
+      if (agx_channels(index) > 1) {
+         unsigned last = index.value + agx_size_align_16(index.size) *
+                                          (agx_channels(index) - 1);
+
+         fprintf(fp, "...");
+
+         agx_print_sized('r', last, index.size, fp);
+      }
       break;
 
    default:

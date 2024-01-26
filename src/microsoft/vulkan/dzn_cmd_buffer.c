@@ -2894,6 +2894,7 @@ dzn_cmd_buffer_blit_issue_barriers(struct dzn_cmd_buffer *cmdbuf,
                                    struct dzn_image *dst, VkImageLayout dst_layout,
                                    const VkImageSubresourceLayers *dst_subres,
                                    VkImageAspectFlagBits aspect,
+                                   D3D12_BARRIER_LAYOUT *restore_src_layout,
                                    D3D12_BARRIER_LAYOUT *restore_dst_layout,
                                    bool post)
 {
@@ -2915,7 +2916,10 @@ dzn_cmd_buffer_blit_issue_barriers(struct dzn_cmd_buffer *cmdbuf,
    if (!post) {
       if (cmdbuf->enhanced_barriers) {
          D3D12_BARRIER_LAYOUT dst_new_layout = (aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) ?
-                                          D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE : D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+            D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE : D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+         *restore_src_layout = dzn_cmd_buffer_require_layout(cmdbuf, src, src_layout,
+                                                             D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ,
+                                                             &src_range);
          *restore_dst_layout = dzn_cmd_buffer_require_layout(cmdbuf, dst,
                                                              dst_layout,
                                                              dst_new_layout,
@@ -2934,6 +2938,10 @@ dzn_cmd_buffer_blit_issue_barriers(struct dzn_cmd_buffer *cmdbuf,
       }
    } else {
       if (cmdbuf->enhanced_barriers) {
+         dzn_cmd_buffer_restore_layout(cmdbuf, src,
+                                       D3D12_BARRIER_SYNC_PIXEL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                                       D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ, *restore_src_layout,
+                                       &src_range);
          if ((aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))) {
             dzn_cmd_buffer_restore_layout(cmdbuf, dst,
                                           D3D12_BARRIER_SYNC_DEPTH_STENCIL, D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE,
@@ -2978,12 +2986,13 @@ dzn_cmd_buffer_blit_region(struct dzn_cmd_buffer *cmdbuf,
    uint32_t stencil_bit = support_stencil_blit ? 0xf : 0;
 
    dzn_foreach_aspect(aspect, region->srcSubresource.aspectMask) {
+      D3D12_BARRIER_LAYOUT restore_src_layout = D3D12_BARRIER_LAYOUT_COMMON;
       D3D12_BARRIER_LAYOUT restore_dst_layout = D3D12_BARRIER_LAYOUT_COMMON;
       dzn_cmd_buffer_blit_set_pipeline(cmdbuf, src, dst, aspect, info->filter, dzn_blit_resolve_none, stencil_bit);
       dzn_cmd_buffer_blit_issue_barriers(cmdbuf,
                                          src, info->srcImageLayout, &region->srcSubresource,
                                          dst, info->dstImageLayout, &region->dstSubresource,
-                                         aspect, &restore_dst_layout, false);
+                                         aspect, &restore_src_layout, &restore_dst_layout, false);
       dzn_cmd_buffer_blit_prepare_src_view(cmdbuf, info->srcImage,
                                            aspect, &region->srcSubresource,
                                            heap, (*heap_slot)++);
@@ -3045,7 +3054,7 @@ dzn_cmd_buffer_blit_region(struct dzn_cmd_buffer *cmdbuf,
       dzn_cmd_buffer_blit_issue_barriers(cmdbuf,
                                          src, info->srcImageLayout, &region->srcSubresource,
                                          dst, info->dstImageLayout, &region->dstSubresource,
-                                         aspect, &restore_dst_layout, true);
+                                         aspect, &restore_src_layout, &restore_dst_layout, true);
    }
 }
 
@@ -3080,12 +3089,13 @@ dzn_cmd_buffer_resolve_region(struct dzn_cmd_buffer *cmdbuf,
    enum dzn_blit_resolve_mode resolve_mode = get_blit_resolve_mode(mode);
 
    dzn_foreach_aspect(aspect, region->srcSubresource.aspectMask) {
+      D3D12_BARRIER_LAYOUT restore_src_layout = D3D12_BARRIER_LAYOUT_COMMON;
       D3D12_BARRIER_LAYOUT restore_dst_layout = D3D12_BARRIER_LAYOUT_COMMON;
       dzn_cmd_buffer_blit_set_pipeline(cmdbuf, src, dst, aspect, VK_FILTER_NEAREST, resolve_mode, stencil_bit);
       dzn_cmd_buffer_blit_issue_barriers(cmdbuf,
                                          src, info->srcImageLayout, &region->srcSubresource,
                                          dst, info->dstImageLayout, &region->dstSubresource,
-                                         aspect, &restore_dst_layout, false);
+                                         aspect, &restore_src_layout, &restore_dst_layout, false);
       dzn_cmd_buffer_blit_prepare_src_view(cmdbuf, info->srcImage, aspect,
                                            &region->srcSubresource,
                                            heap, (*heap_slot)++);
@@ -3141,7 +3151,7 @@ dzn_cmd_buffer_resolve_region(struct dzn_cmd_buffer *cmdbuf,
       dzn_cmd_buffer_blit_issue_barriers(cmdbuf,
                                          src, info->srcImageLayout, &region->srcSubresource,
                                          dst, info->dstImageLayout, &region->dstSubresource,
-                                         aspect, &restore_dst_layout, true);
+                                         aspect, &restore_src_layout, &restore_dst_layout, true);
    }
 }
 

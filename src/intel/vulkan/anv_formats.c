@@ -1840,6 +1840,10 @@ void anv_GetPhysicalDeviceSparseImageFormatProperties2(
                                        &img_info, &img_props) != VK_SUCCESS)
       return;
 
+   if ((pFormatInfo->samples &
+        img_props.imageFormatProperties.sampleCounts) == 0)
+      return;
+
    if (anv_sparse_image_check_support(physical_device,
                                       VK_IMAGE_CREATE_SPARSE_BINDING_BIT |
                                       VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT,

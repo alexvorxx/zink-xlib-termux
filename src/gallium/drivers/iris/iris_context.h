@@ -1181,21 +1181,6 @@ iris_execute_indirect_draw_supported(const struct iris_context *ice,
 #ifdef genX
 #  include "iris_genx_protos.h"
 #else
-#  define genX(x) gfx4_##x
-#  include "iris_genx_protos.h"
-#  undef genX
-#  define genX(x) gfx5_##x
-#  include "iris_genx_protos.h"
-#  undef genX
-#  define genX(x) gfx6_##x
-#  include "iris_genx_protos.h"
-#  undef genX
-#  define genX(x) gfx7_##x
-#  include "iris_genx_protos.h"
-#  undef genX
-#  define genX(x) gfx75_##x
-#  include "iris_genx_protos.h"
-#  undef genX
 #  define genX(x) gfx8_##x
 #  include "iris_genx_protos.h"
 #  undef genX

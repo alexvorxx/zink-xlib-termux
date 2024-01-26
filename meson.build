@@ -1884,6 +1884,8 @@ if not with_platform_windows and not dep_elf.found()
 endif
 if dep_elf.found()
   pre_args += '-DUSE_LIBELF'
+elif with_gallium_radeonsi
+  error('Gallium driver radeonsi requires libelf')
 endif
 
 dep_glvnd = null_dep

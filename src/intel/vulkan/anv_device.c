@@ -2149,7 +2149,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    struct intel_device_info devinfo;
    if (!intel_get_device_info_from_fd(fd, &devinfo, 9, -1)) {
-      result = vk_error(instance, VK_ERROR_INCOMPATIBLE_DRIVER);
+      result = VK_ERROR_INCOMPATIBLE_DRIVER;
       goto fail_fd;
    }
 

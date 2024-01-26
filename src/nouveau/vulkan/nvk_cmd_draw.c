@@ -2080,7 +2080,7 @@ vk_to_nv_index_format(VkIndexType type)
       return NVC597_SET_INDEX_BUFFER_E_INDEX_SIZE_TWO_BYTES;
    case VK_INDEX_TYPE_UINT32:
       return NVC597_SET_INDEX_BUFFER_E_INDEX_SIZE_FOUR_BYTES;
-   case VK_INDEX_TYPE_UINT8_EXT:
+   case VK_INDEX_TYPE_UINT8_KHR:
       return NVC597_SET_INDEX_BUFFER_E_INDEX_SIZE_ONE_BYTE;
    default:
       unreachable("Invalid index type");
@@ -2095,7 +2095,7 @@ vk_index_to_restart(VkIndexType index_type)
       return 0xffff;
    case VK_INDEX_TYPE_UINT32:
       return 0xffffffff;
-   case VK_INDEX_TYPE_UINT8_EXT:
+   case VK_INDEX_TYPE_UINT8_KHR:
       return 0xff;
    default:
       unreachable("unexpected index type");

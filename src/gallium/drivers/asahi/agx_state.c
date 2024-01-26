@@ -1804,6 +1804,7 @@ agx_compile_nir(struct agx_device *dev, nir_shader *nir,
                                dev->params.num_clusters_total > 1) ||
                               dev->params.num_dies > 1;
    key.libagx = dev->libagx;
+   key.has_scratch = true;
 
    NIR_PASS(_, nir, agx_nir_lower_sysvals, true);
    NIR_PASS(_, nir, agx_nir_layout_uniforms, compiled, &key.reserved_preamble);

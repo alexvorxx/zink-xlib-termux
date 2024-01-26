@@ -230,6 +230,9 @@ struct agx_shader_key {
    /* Library routines to link against */
    const nir_shader *libagx;
 
+   /* Whether scratch memory is available in the given shader stage */
+   bool has_scratch;
+
    union {
       struct agx_vs_shader_key vs;
       struct agx_fs_shader_key fs;

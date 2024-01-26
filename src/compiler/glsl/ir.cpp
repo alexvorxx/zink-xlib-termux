@@ -2222,6 +2222,14 @@ ir_rvalue::error_value(void *mem_ctx)
 void
 visit_exec_list(exec_list *list, ir_visitor *visitor)
 {
+   foreach_in_list(ir_instruction, node, list) {
+      node->accept(visitor);
+   }
+}
+
+void
+visit_exec_list_safe(exec_list *list, ir_visitor *visitor)
+{
    foreach_in_list_safe(ir_instruction, node, list) {
       node->accept(visitor);
    }

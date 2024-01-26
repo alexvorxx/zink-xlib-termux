@@ -2427,6 +2427,9 @@ public:
 void
 visit_exec_list(exec_list *list, ir_visitor *visitor);
 
+void
+visit_exec_list_safe(exec_list *list, ir_visitor *visitor);
+
 /**
  * Validate invariants on each IR node in a list
  */

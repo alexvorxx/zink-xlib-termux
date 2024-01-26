@@ -108,7 +108,9 @@ enum ENUM_PACKED nak_sv {
    NAK_SV_LANEMASK_LE      = 0x3a,
    NAK_SV_LANEMASK_GT      = 0x3b,
    NAK_SV_LANEMASK_GE      = 0x3c,
-   NAK_SV_CLOCK            = 0x50,
+   NAK_SV_CLOCK_LO         = 0x50,
+   NAK_SV_CLOCK_HI         = 0x51,
+   NAK_SV_CLOCK            = NAK_SV_CLOCK_LO,
 };
 
 bool nak_nir_workgroup_has_one_subgroup(const nir_shader *nir);

@@ -1116,7 +1116,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
 
       /* VK_EXT_device_fault */
       .deviceFault = true,
-      .deviceFaultVendorBinary = false,
+      .deviceFaultVendorBinary = pdevice->instance->debug_flags & RADV_DEBUG_HANG,
 
       /* VK_EXT_depth_clamp_zero_one */
       .depthClampZeroOne = true,

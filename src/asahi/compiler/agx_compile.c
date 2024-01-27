@@ -449,14 +449,18 @@ agx_emit_store_vary(agx_builder *b, nir_intrinsic_instr *instr)
 
    unsigned imm_index = b->shader->out->varyings.vs.slots[sem.location];
 
-   if (sem.location == VARYING_SLOT_LAYER) {
+   if (sem.location == VARYING_SLOT_LAYER ||
+       sem.location == VARYING_SLOT_CLIP_DIST0) {
       /* Separate slots used for the sysval vs the varying. The default slot
        * above is for the varying. Change for the sysval.
        */
       assert(sem.no_sysval_output || sem.no_varying);
 
-      if (sem.no_varying)
-         imm_index = b->shader->out->varyings.vs.layer_viewport_slot;
+      if (sem.no_varying) {
+         imm_index = sem.location == VARYING_SLOT_LAYER
+                        ? b->shader->out->varyings.vs.layer_viewport_slot
+                        : b->shader->out->varyings.vs.clip_dist_slot;
+      }
    }
 
    assert(imm_index < ~0);
@@ -2589,6 +2593,12 @@ agx_remap_varyings_vs(nir_shader *nir, struct agx_varyings_vs *varyings,
       base += 1;
    }
 
+   if (nir->info.outputs_written & VARYING_BIT_CLIP_DIST0) {
+      varyings->clip_dist_slot = base;
+      varyings->nr_clip_dists = nir->info.clip_distance_array_size;
+      base += varyings->nr_clip_dists;
+   }
+
    /* All varyings linked now */
    varyings->nr_index = base;
 }
@@ -3070,6 +3080,10 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    /* If required, tag writes will be enabled by instruction selection */
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
       out->tag_write_disable = !nir->info.writes_memory;
+
+   if (nir->info.stage == MESA_SHADER_VERTEX &&
+       (nir->info.outputs_written & VARYING_BIT_CLIP_DIST0))
+      NIR_PASS(_, nir, agx_nir_lower_clip_distance);
 
    bool needs_libagx = nir->info.stage == MESA_SHADER_GEOMETRY;
 

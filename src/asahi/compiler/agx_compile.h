@@ -46,6 +46,12 @@ struct agx_varyings_vs {
     * is written. What's at slots[VARYING_SLOT_LAYER] is the varying output.
     */
    unsigned layer_viewport_slot;
+
+   /* Base slot for the clip distance sysval outputs, or ~0 if none is written.
+    * What's at slots[VARYING_SLOT_CLIP_DIST0] is the varying output.
+    */
+   unsigned clip_dist_slot;
+   unsigned nr_clip_dists;
 };
 
 /* Conservative bound, * 4 due to offsets (TODO: maybe worth eliminating

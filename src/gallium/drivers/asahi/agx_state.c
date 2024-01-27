@@ -2016,15 +2016,6 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
          NIR_PASS(_, nir, agx_nir_lower_stats_fs);
       }
 
-      /* Clip plane lowering creates discard instructions, so run that before
-       * lowering discards. Note: this introduces extra loads from the clip
-       * plane outputs, but they use smooth interpolation so it does not affect
-       * the flat/linear masks that get propagated back to the VS.
-       */
-      if (key->clip_plane_enable) {
-         NIR_PASS(_, nir, nir_lower_clip_fs, key->clip_plane_enable, false);
-      }
-
       /* Similarly for cull distancing lowering */
       if (key->cull_distance_size) {
          NIR_PASS(_, nir, agx_nir_lower_cull_distance_fs,
@@ -2587,7 +2578,6 @@ agx_update_fs(struct agx_batch *batch)
 
       .cull_distance_size =
          ctx->stage[MESA_SHADER_VERTEX].shader->info.cull_distance_size,
-      .clip_plane_enable = ctx->rast->base.clip_plane_enable,
 
       .polygon_stipple =
          ctx->rast->base.poly_stipple_enable &&
@@ -3772,6 +3762,14 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out, bool is_lines,
          cfg.viewport_target = vs->info.writes_layer_viewport;
          cfg.render_target = vs->info.writes_layer_viewport;
          cfg.frag_coord_z = fs->info.varyings.fs.reads_z;
+         cfg.clip_distance_plane_0 = vs->info.varyings.vs.nr_clip_dists > 0;
+         cfg.clip_distance_plane_1 = vs->info.varyings.vs.nr_clip_dists > 1;
+         cfg.clip_distance_plane_2 = vs->info.varyings.vs.nr_clip_dists > 2;
+         cfg.clip_distance_plane_3 = vs->info.varyings.vs.nr_clip_dists > 3;
+         cfg.clip_distance_plane_4 = vs->info.varyings.vs.nr_clip_dists > 4;
+         cfg.clip_distance_plane_5 = vs->info.varyings.vs.nr_clip_dists > 5;
+         cfg.clip_distance_plane_6 = vs->info.varyings.vs.nr_clip_dists > 6;
+         cfg.clip_distance_plane_7 = vs->info.varyings.vs.nr_clip_dists > 7;
 
          assert(cfg.point_size || !is_points);
       }

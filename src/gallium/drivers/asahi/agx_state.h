@@ -460,7 +460,6 @@ struct asahi_fs_shader_key {
    bool polygon_stipple;
 
    uint8_t cull_distance_size;
-   uint8_t clip_plane_enable;
    uint8_t nr_samples;
    enum pipe_format rt_formats[PIPE_MAX_COLOR_BUFS];
 };

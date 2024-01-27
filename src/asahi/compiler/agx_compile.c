@@ -2543,6 +2543,7 @@ agx_remap_varyings_vs(nir_shader *nir, struct agx_varyings_vs *varyings,
       if (loc == VARYING_SLOT_POS || loc == VARYING_SLOT_PSIZ)
          continue;
 
+      assert(loc < ARRAY_SIZE(varyings->slots));
       varyings->slots[loc] = base;
       base += 4;
       varyings->num_32_smooth += 4;
@@ -2554,6 +2555,7 @@ agx_remap_varyings_vs(nir_shader *nir, struct agx_varyings_vs *varyings,
       if (loc == VARYING_SLOT_POS || loc == VARYING_SLOT_PSIZ)
          continue;
 
+      assert(loc < ARRAY_SIZE(varyings->slots));
       varyings->slots[loc] = base;
       base += 4;
       varyings->num_32_flat += 4;
@@ -2565,6 +2567,7 @@ agx_remap_varyings_vs(nir_shader *nir, struct agx_varyings_vs *varyings,
       if (loc == VARYING_SLOT_POS || loc == VARYING_SLOT_PSIZ)
          continue;
 
+      assert(loc < ARRAY_SIZE(varyings->slots));
       varyings->slots[loc] = base;
       base += 4;
       varyings->num_32_linear += 4;

@@ -8,9 +8,7 @@
 
 #include "compiler/nir/nir.h"
 #include "util/u_dynarray.h"
-
-/* 32 user varyings + some system values */
-#define AGX_MAX_VARYING_SLOTS (48)
+#include "shader_enums.h"
 
 struct agx_varyings_vs {
    /* The number of user varyings of each type. The varyings must be allocated
@@ -42,7 +40,7 @@ struct agx_varyings_vs {
     *
     * If the slot is not written, this must be ~0.
     */
-   unsigned slots[AGX_MAX_VARYING_SLOTS];
+   unsigned slots[VARYING_SLOT_MAX];
 
    /* Slot for the combined layer/viewport 32-bit sysval output, or ~0 if none
     * is written. What's at slots[VARYING_SLOT_LAYER] is the varying output.
@@ -53,7 +51,7 @@ struct agx_varyings_vs {
 /* Conservative bound, * 4 due to offsets (TODO: maybe worth eliminating
  * coefficient register aliasing?)
  */
-#define AGX_MAX_CF_BINDINGS (AGX_MAX_VARYING_SLOTS * 4)
+#define AGX_MAX_CF_BINDINGS (VARYING_SLOT_MAX * 4)
 
 struct agx_varyings_fs {
    /* Number of coefficient registers used */

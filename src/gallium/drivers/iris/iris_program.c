@@ -436,7 +436,6 @@ static void
 iris_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                     void *mem_ctx,
                     nir_shader *nir,
-                    struct brw_stage_prog_data *prog_data,
                     unsigned kernel_input_size,
                     enum brw_param_builtin **out_system_values,
                     unsigned *out_num_system_values,
@@ -1315,7 +1314,7 @@ iris_compile_vs(struct iris_screen *screen,
 
    prog_data->use_alt_mode = nir->info.use_legacy_math_rules;
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;
@@ -1500,7 +1499,7 @@ iris_compile_tcs(struct iris_screen *screen,
       source_hash = *(uint32_t*)nir->info.source_sha1;
    }
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
    iris_setup_binding_table(devinfo, nir, &bt, /* num_render_targets */ 0,
                             num_system_values, num_cbufs);
@@ -1657,7 +1656,7 @@ iris_compile_tes(struct iris_screen *screen,
       nir_shader_gather_info(nir, impl);
    }
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;
@@ -1800,7 +1799,7 @@ iris_compile_gs(struct iris_screen *screen,
       nir_shader_gather_info(nir, impl);
    }
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;
@@ -1930,7 +1929,7 @@ iris_compile_fs(struct iris_screen *screen,
 
    prog_data->use_alt_mode = nir->info.use_legacy_math_rules;
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    /* Lower output variables to load_output intrinsics before setting up
@@ -2226,8 +2225,7 @@ iris_compile_cs(struct iris_screen *screen,
 
    NIR_PASS_V(nir, brw_nir_lower_cs_intrinsics, devinfo, cs_prog_data);
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data,
-                       ish->kernel_input_size,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, ish->kernel_input_size,
                        &system_values, &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;

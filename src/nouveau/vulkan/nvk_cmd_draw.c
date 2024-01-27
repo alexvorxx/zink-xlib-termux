@@ -394,6 +394,20 @@ nvk_queue_init_context_draw_state(struct nvk_queue *queue)
       });
    }
 
+   P_MTHD(p, NV9097, SET_CONSTANT_BUFFER_SELECTOR_A);
+   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_A(p, 0);
+   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_B(p, 0);
+   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_C(p, 0);
+
+   for (uint32_t group = 0; group < 5; group++) {
+      for (uint32_t slot = 0; slot < 16; slot++) {
+         P_IMMD(p, NV9097, BIND_GROUP_CONSTANT_BUFFER(group), {
+            .valid = VALID_FALSE,
+            .shader_slot = slot,
+         });
+      }
+   }
+
 //   P_MTHD(cmd->push, NVC0_3D, MACRO_GP_SELECT);
 //   P_INLINE_DATA(cmd->push, 0x40);
    P_IMMD(p, NV9097, SET_RT_LAYER, {

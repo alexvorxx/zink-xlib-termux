@@ -30,6 +30,9 @@ agx_print_sized(char prefix, unsigned value, enum agx_size size, FILE *fp)
 static void
 agx_print_index(agx_index index, bool is_float, FILE *fp)
 {
+   if (index.memory)
+      fprintf(fp, "m");
+
    switch (index.type) {
    case AGX_INDEX_NULL:
       fprintf(fp, "_");
@@ -75,6 +78,8 @@ agx_print_index(agx_index index, bool is_float, FILE *fp)
 
          fprintf(fp, "...");
 
+         if (index.memory)
+            fprintf(fp, "m");
          agx_print_sized('r', last, index.size, fp);
       }
       break;

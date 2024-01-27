@@ -26,6 +26,9 @@ extern "C" {
 /* u0-u255 inclusive, as pairs of 16-bits */
 #define AGX_NUM_UNIFORMS (512)
 
+/* Semi-arbitrary limit for spill slot allocation */
+#define AGX_NUM_MODELED_REGS (2048)
+
 enum agx_index_type {
    AGX_INDEX_NULL = 0,
    AGX_INDEX_NORMAL = 1,
@@ -70,6 +73,9 @@ typedef struct {
    /* src - float modifiers */
    bool abs : 1;
    bool neg : 1;
+
+   /* Register class */
+   bool memory : 1;
 
    unsigned channels_m1     : 3;
    enum agx_size size       : 2;
@@ -139,12 +145,22 @@ agx_register(uint32_t imm, enum agx_size size)
 }
 
 static inline agx_index
-agx_register_like(uint32_t imm, agx_index like)
+agx_memory_register(uint32_t imm, enum agx_size size)
 {
-   assert(imm < AGX_NUM_REGS);
-
    return (agx_index){
       .value = imm,
+      .memory = true,
+      .size = size,
+      .type = AGX_INDEX_REGISTER,
+   };
+}
+
+static inline agx_index
+agx_register_like(uint32_t imm, agx_index like)
+{
+   return (agx_index){
+      .value = imm,
+      .memory = like.memory,
       .channels_m1 = like.channels_m1,
       .size = like.size,
       .type = AGX_INDEX_REGISTER,
@@ -398,7 +414,7 @@ typedef struct agx_block {
    /* For visited blocks during register assignment and live-out registers, the
     * mapping of SSA names to registers at the end of the block.
     */
-   uint8_t *ssa_to_reg_out;
+   uint16_t *ssa_to_reg_out;
 
    /* Is this block a loop header? If not, all of its predecessors precede it in
     * source order.
@@ -463,6 +479,15 @@ typedef struct {
     * or NULL if it hasn't been preloaded
     */
    agx_index vertex_id, instance_id;
+
+   /* Beginning of our stack allocation used for spilling, below that is
+    * NIR-level scratch.
+    */
+   unsigned spill_base;
+
+   /* Beginning of stack allocation used for parallel copy lowering */
+   bool has_spill_pcopy_reserved;
+   unsigned spill_pcopy_base;
 
    /* Stats for shader-db */
    unsigned loop_count;
@@ -882,6 +907,9 @@ bool agx_allows_16bit_immediate(agx_instr *I);
 struct agx_copy {
    /* Base register destination of the copy */
    unsigned dest;
+
+   /* Destination is memory */
+   bool dest_mem;
 
    /* Source of the copy */
    agx_index src;

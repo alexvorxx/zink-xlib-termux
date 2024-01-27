@@ -36,6 +36,7 @@ static const struct debug_named_value agx_debug_options[] = {
    {"nopreamble",AGX_DBG_NOPREAMBLE,"Do not use shader preambles"},
    {"demand",    AGX_DBG_DEMAND,    "Bound tightly to register demand"},
    {"nosched",   AGX_DBG_NOSCHED,   "Do not schedule the shader"},
+   {"spill",     AGX_DBG_SPILL,     "Spill (almost) everything"},
    DEBUG_NAMED_VALUE_END
 };
 /* clang-format on */

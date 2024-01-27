@@ -1148,6 +1148,7 @@ agx_ra(agx_context *ctx)
    agx_compute_liveness(ctx);
    unsigned effective_demand = agx_calc_register_demand(ctx);
    bool spilling = (effective_demand > max_possible_regs);
+   spilling |= ((agx_compiler_debug & AGX_DBG_SPILL) && ctx->key->has_scratch);
 
    if (spilling) {
       assert(ctx->key->has_scratch && "internal shaders are unspillable");

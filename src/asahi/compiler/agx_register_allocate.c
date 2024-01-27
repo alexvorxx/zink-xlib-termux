@@ -1351,6 +1351,9 @@ agx_ra(agx_context *ctx)
       }
    }
 
+   if (spilling)
+      agx_lower_spill(ctx);
+
    agx_foreach_block(ctx, block) {
       free(block->ssa_to_reg_out);
       block->ssa_to_reg_out = NULL;

@@ -568,6 +568,7 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
    case PKT3_SET_BASE:
       tmp = ac_ib_get(ib);
       print_string_value(f, "BASE_INDEX", tmp == 1 ? "INDIRECT_BASE" : COLOR_RED "UNKNOWN" COLOR_RESET);
+      print_addr(ib, "ADDR", ac_ib_get64(ib));
       break;
    case PKT3_PRIME_UTCL2:
       tmp = ac_ib_get(ib);

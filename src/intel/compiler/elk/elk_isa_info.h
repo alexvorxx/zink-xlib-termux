@@ -24,7 +24,7 @@
 #define ELK_ISA_ENCODING_H
 
 #include "dev/intel_device_info.h"
-#include "elk_eu_defines.h"
+#include "elk_eu_opcodes.h"
 
 #ifdef __cplusplus
 extern "C" {

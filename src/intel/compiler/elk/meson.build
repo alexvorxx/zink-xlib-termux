@@ -43,6 +43,7 @@ libintel_compiler_elk_files = files(
   'elk_eu_compact.c',
   'elk_eu_defines.h',
   'elk_eu_emit.c',
+  'elk_eu_opcodes.h',
   'elk_eu.h',
   'elk_eu_util.c',
   'elk_eu_validate.c',

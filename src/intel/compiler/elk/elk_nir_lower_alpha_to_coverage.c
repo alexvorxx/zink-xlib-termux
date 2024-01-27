@@ -23,6 +23,7 @@
 
 #include "compiler/nir/nir_builder.h"
 #include "elk_nir.h"
+#include "elk_eu_defines.h"
 
 /**
  * We need to compute alpha to coverage dithering manually in shader

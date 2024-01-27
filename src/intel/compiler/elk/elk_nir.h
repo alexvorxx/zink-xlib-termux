@@ -24,7 +24,6 @@
 #ifndef ELK_NIR_H
 #define ELK_NIR_H
 
-#include "elk_reg.h"
 #include "compiler/nir/nir.h"
 #include "elk_compiler.h"
 #include "nir_builder.h"
@@ -251,11 +250,6 @@ void elk_nir_apply_key(nir_shader *nir,
 
 unsigned elk_nir_api_subgroup_size(const nir_shader *nir,
                                    unsigned hw_subgroup_size);
-
-enum elk_conditional_mod elk_cmod_for_nir_comparison(nir_op op);
-enum elk_lsc_opcode elk_lsc_aop_for_nir_intrinsic(const nir_intrinsic_instr *atomic);
-enum elk_reg_type elk_type_for_nir_type(const struct intel_device_info *devinfo,
-                                        nir_alu_type type);
 
 bool elk_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
                                   unsigned bit_size,

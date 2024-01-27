@@ -23,6 +23,7 @@
 
 #include "../intel_nir.h"
 #include "elk_nir.h"
+#include "elk_nir_private.h"
 #include "elk_shader.h"
 #include "dev/intel_debug.h"
 #include "compiler/glsl_types.h"

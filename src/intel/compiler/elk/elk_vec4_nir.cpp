@@ -22,6 +22,7 @@
  */
 
 #include "elk_nir.h"
+#include "elk_nir_private.h"
 #include "elk_vec4.h"
 #include "elk_vec4_builder.h"
 #include "elk_vec4_surface_builder.h"

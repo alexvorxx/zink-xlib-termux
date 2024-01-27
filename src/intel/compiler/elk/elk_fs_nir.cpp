@@ -24,6 +24,7 @@
 #include "elk_fs.h"
 #include "elk_fs_builder.h"
 #include "elk_nir.h"
+#include "elk_nir_private.h"
 #include "elk_eu.h"
 #include "nir.h"
 #include "nir_intrinsics.h"

@@ -659,7 +659,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          P_MTHD(p, NV9097, SET_COLOR_TARGET_A(i));
          P_NV9097_SET_COLOR_TARGET_A(p, i, addr >> 32);
          P_NV9097_SET_COLOR_TARGET_B(p, i, addr);
-         
+
          if (level->tiling.is_tiled) {
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, level_extent_sa.w);
             P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
@@ -677,7 +677,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
                   (image->planes[ip].nil.dim == NIL_IMAGE_DIM_3D) ?
                   THIRD_DIMENSION_CONTROL_THIRD_DIMENSION_DEFINES_DEPTH_SIZE :
                   THIRD_DIMENSION_CONTROL_THIRD_DIMENSION_DEFINES_ARRAY_SIZE,
-         });
+            });
 
             P_NV9097_SET_COLOR_TARGET_THIRD_DIMENSION(p, i,
                iview->vk.base_array_layer + layer_count);
@@ -700,7 +700,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
              */
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, pitch);
             P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
-            
+
             const uint8_t ct_format = nil_format_to_color_target(p_format);
             P_NV9097_SET_COLOR_TARGET_FORMAT(p, i, ct_format);
 

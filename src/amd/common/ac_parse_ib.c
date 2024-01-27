@@ -183,6 +183,21 @@ static uint32_t ac_ib_get(struct ac_ib_parser *ib)
    return v;
 }
 
+static uint64_t ac_ib_get64(struct ac_ib_parser *ib)
+{
+   uint32_t lo = ac_ib_get(ib);
+   uint32_t hi = ac_ib_get(ib);
+   return ((uint64_t)hi << 32) | lo;
+}
+
+static uint64_t ac_sext_addr48(uint64_t addr)
+{
+   if (addr & (1llu << 47))
+      return addr | (0xFFFFllu << 48);
+   else
+      return addr & (~(0xFFFFllu << 48));
+}
+
 static void ac_parse_set_reg_packet(FILE *f, unsigned count, unsigned reg_offset,
                                     struct ac_ib_parser *ib)
 {
@@ -225,6 +240,18 @@ static void ac_parse_set_reg_pairs_packed_packet(FILE *f, unsigned count, unsign
          ac_dump_reg(f, ib->gfx_level, ib->family, reg_offset1, ac_ib_get(ib), ~0);
       }
    }
+}
+
+static void print_addr(struct ac_ib_parser *ib, const char *name, uint64_t addr)
+{
+   FILE *f = ib->f;
+
+   print_spaces(f, INDENT_PKT);
+   fprintf(f, "%s%s%s <- ",
+           O_COLOR_YELLOW, name,
+           O_COLOR_RESET);
+
+   fprintf(f, "0x%llx\n", (unsigned long long)addr);
 }
 
 static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
@@ -346,10 +373,9 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
                   S_028A90_EVENT_TYPE(~0));
       print_named_value(f, "EVENT_INDEX", (event_dw >> 8) & 0xf, 4);
       print_named_value(f, "INV_L2", (event_dw >> 20) & 0x1, 1);
-      if (count > 0) {
-         print_named_value(f, "ADDRESS_LO", ac_ib_get(ib), 32);
-         print_named_value(f, "ADDRESS_HI", ac_ib_get(ib), 16);
-      }
+      if (count > 0)
+         print_addr(ib, "ADDR", ac_ib_get64(ib));
+
       break;
    }
    case PKT3_EVENT_WRITE_EOP: {
@@ -362,12 +388,11 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       print_named_value(f, "TC_WB_ACTION_ENA", (event_dw >> 15) & 0x1, 1);
       print_named_value(f, "TCL1_ACTION_ENA", (event_dw >> 16) & 0x1, 1);
       print_named_value(f, "TC_ACTION_ENA", (event_dw >> 17) & 0x1, 1);
-      print_named_value(f, "ADDRESS_LO", ac_ib_get(ib), 32);
-      uint32_t addr_hi_dw = ac_ib_get(ib);
-      print_named_value(f, "ADDRESS_HI", addr_hi_dw, 16);
-      print_named_value(f, "DST_SEL", (addr_hi_dw >> 16) & 0x3, 2);
-      print_named_value(f, "INT_SEL", (addr_hi_dw >> 24) & 0x7, 3);
-      print_named_value(f, "DATA_SEL", addr_hi_dw >> 29, 3);
+      uint64_t addr = ac_ib_get64(ib);
+      print_addr(ib, "ADDR", ac_sext_addr48(addr));
+      print_named_value(f, "DST_SEL", (addr >> 48) & 0x3, 2);
+      print_named_value(f, "INT_SEL", (addr >> 56) & 0x7, 3);
+      print_named_value(f, "DATA_SEL", addr >> 61, 3);
       print_named_value(f, "DATA_LO", ac_ib_get(ib), 32);
       print_named_value(f, "DATA_HI", ac_ib_get(ib), 32);
       break;
@@ -414,8 +439,7 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       break;
    case PKT3_DRAW_INDEX_2:
       ac_dump_reg(f, ib->gfx_level, ib->family, R_028A78_VGT_DMA_MAX_SIZE, ac_ib_get(ib), ~0);
-      ac_dump_reg(f, ib->gfx_level, ib->family, R_0287E8_VGT_DMA_BASE, ac_ib_get(ib), ~0);
-      ac_dump_reg(f, ib->gfx_level, ib->family, R_0287E4_VGT_DMA_BASE_HI, ac_ib_get(ib), ~0);
+      print_addr(ib, "INDEX_ADDR", ac_ib_get64(ib));
       ac_dump_reg(f, ib->gfx_level, ib->family, R_030930_VGT_NUM_INDICES, ac_ib_get(ib), ~0);
       ac_dump_reg(f, ib->gfx_level, ib->family, R_0287F0_VGT_DRAW_INITIATOR, ac_ib_get(ib), ~0);
       break;
@@ -427,8 +451,7 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       break;
    case PKT3_WRITE_DATA:
       ac_dump_reg(f, ib->gfx_level, ib->family, R_370_CONTROL, ac_ib_get(ib), ~0);
-      ac_dump_reg(f, ib->gfx_level, ib->family, R_371_DST_ADDR_LO, ac_ib_get(ib), ~0);
-      ac_dump_reg(f, ib->gfx_level, ib->family, R_372_DST_ADDR_HI, ac_ib_get(ib), ~0);
+      print_addr(ib, "DST_ADDR", ac_ib_get64(ib));
       while (ib->cur_dw <= first_dw + count)
           print_data_dword(f, ac_ib_get(ib), "data");
       break;
@@ -441,10 +464,8 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       break;
    case PKT3_DMA_DATA:
       ac_dump_reg(f, ib->gfx_level, ib->family, R_501_DMA_DATA_WORD0, ac_ib_get(ib), ~0);
-      ac_dump_reg(f, ib->gfx_level, ib->family, R_502_SRC_ADDR_LO, ac_ib_get(ib), ~0);
-      ac_dump_reg(f, ib->gfx_level, ib->family, R_503_SRC_ADDR_HI, ac_ib_get(ib), ~0);
-      ac_dump_reg(f, ib->gfx_level, ib->family, R_505_DST_ADDR_LO, ac_ib_get(ib), ~0);
-      ac_dump_reg(f, ib->gfx_level, ib->family, R_506_DST_ADDR_HI, ac_ib_get(ib), ~0);
+      print_addr(ib, "SRC_ADDR", ac_ib_get64(ib));
+      print_addr(ib, "DST_ADDR", ac_ib_get64(ib));
       ac_dump_reg(f, ib->gfx_level, ib->family, R_415_COMMAND, ac_ib_get(ib), ~0);
       break;
    case PKT3_INDIRECT_BUFFER_SI:
@@ -553,8 +574,7 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       print_named_value(f, "CACHE_PERM[rwx]", tmp & 0x7, 3);
       print_string_value(f, "PRIME_MODE", tmp & 0x8 ? "WAIT_FOR_XACK" : "DONT_WAIT_FOR_XACK");
       print_named_value(f, "ENGINE_SEL", tmp >> 30, 2);
-      print_named_value(f, "ADDR_LO", ac_ib_get(ib), 32);
-      print_named_value(f, "ADDR_HI", ac_ib_get(ib), 32);
+      print_addr(ib, "ADDR", ac_ib_get64(ib));
       print_named_value(f, "REQUESTED_PAGES", ac_ib_get(ib), 14);
       break;
    case PKT3_ATOMIC_MEM:
@@ -563,8 +583,7 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       print_named_value(f, "COMMAND", (tmp >> 8) & 0xf, 4);
       print_named_value(f, "CACHE_POLICY", (tmp >> 25) & 0x3, 2);
       print_named_value(f, "ENGINE_SEL", tmp >> 30, 2);
-      print_named_value(f, "ADDR_LO", ac_ib_get(ib), 32);
-      print_named_value(f, "ADDR_HI", ac_ib_get(ib), 32);
+      print_addr(ib, "ADDR", ac_ib_get64(ib));
       print_named_value(f, "SRC_DATA_LO", ac_ib_get(ib), 32);
       print_named_value(f, "SRC_DATA_HI", ac_ib_get(ib), 32);
       print_named_value(f, "CMP_DATA_LO", ac_ib_get(ib), 32);

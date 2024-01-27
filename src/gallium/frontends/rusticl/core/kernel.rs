@@ -807,7 +807,7 @@ impl Kernel {
             .collect();
 
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Kernel),
             prog: prog.clone(),
             name: name,
             values: values,
@@ -1274,7 +1274,7 @@ impl Kernel {
 impl Clone for Kernel {
     fn clone(&self) -> Self {
         Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Kernel),
             prog: self.prog.clone(),
             name: self.name.clone(),
             values: self.values.clone(),

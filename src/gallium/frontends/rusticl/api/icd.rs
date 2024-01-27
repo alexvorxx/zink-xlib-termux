@@ -173,27 +173,41 @@ pub static DISPATCH: cl_icd_dispatch = cl_icd_dispatch {
 pub type CLError = cl_int;
 pub type CLResult<T> = Result<T, CLError>;
 
+#[derive(Clone, Copy)]
+#[repr(u32)]
+pub enum RusticlTypes {
+    // random number
+    Context = 0xec4cf9a9,
+    Device,
+    Event,
+    Kernel,
+    Mem,
+    Program,
+    Queue,
+    Sampler,
+}
+
+impl RusticlTypes {
+    pub const fn u32(&self) -> u32 {
+        *self as u32
+    }
+}
+
 #[repr(C)]
 pub struct CLObjectBase<const ERR: i32> {
     dispatch: &'static cl_icd_dispatch,
-    type_err: i32,
-}
-
-impl<const ERR: i32> Default for CLObjectBase<ERR> {
-    fn default() -> Self {
-        Self::new()
-    }
+    rusticl_type: u32,
 }
 
 impl<const ERR: i32> CLObjectBase<ERR> {
-    pub fn new() -> Self {
+    pub fn new(t: RusticlTypes) -> Self {
         Self {
             dispatch: &DISPATCH,
-            type_err: ERR,
+            rusticl_type: t.u32(),
         }
     }
 
-    pub fn check_ptr(ptr: *const Self) -> CLResult<()> {
+    pub fn check_ptr<const RUSTICL_TYPE: u32>(ptr: *const Self) -> CLResult<()> {
         if ptr.is_null() {
             return Err(ERR);
         }
@@ -203,7 +217,7 @@ impl<const ERR: i32> CLObjectBase<ERR> {
                 return Err(ERR);
             }
 
-            if (*ptr).type_err != ERR {
+            if (*ptr).rusticl_type != RUSTICL_TYPE {
                 return Err(ERR);
             }
 
@@ -315,11 +329,11 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
 
 #[macro_export]
 macro_rules! impl_cl_type_trait {
-    ($cl: ident, $t: path, $err: ident) => {
+    ($cl: ident, $t: ident, $err: ident) => {
         impl $crate::api::icd::ReferenceCountedAPIPointer<$t, $err> for $cl {
             fn get_ptr(&self) -> CLResult<*const $t> {
                 type Base = $crate::api::icd::CLObjectBase<$err>;
-                Base::check_ptr(self.cast())?;
+                Base::check_ptr::<{ RusticlTypes::$t.u32() }>(self.cast())?;
 
                 let offset = ::mesa_rust_util::offset_of!($t, base);
                 let mut obj_ptr: *const u8 = self.cast();

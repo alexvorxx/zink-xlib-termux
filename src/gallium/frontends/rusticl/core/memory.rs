@@ -302,7 +302,7 @@ impl Mem {
         };
 
         Ok(Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Mem),
             context: context,
             parent: None,
             mem_type: CL_MEM_OBJECT_BUFFER,
@@ -335,7 +335,7 @@ impl Mem {
         };
 
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Mem),
             context: parent.context.clone(),
             parent: Some(parent),
             mem_type: CL_MEM_OBJECT_BUFFER,
@@ -420,7 +420,7 @@ impl Mem {
 
         let pipe_format = image_format.to_pipe_format().unwrap();
         Ok(Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Mem),
             context: context,
             parent: parent,
             mem_type: mem_type,
@@ -514,7 +514,7 @@ impl Mem {
             assert_eq!(gl_mem_props.offset, 0);
         }
         Ok(Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Mem),
             context: context,
             parent: None,
             mem_type: mem_type,
@@ -1394,7 +1394,7 @@ impl Sampler {
         props: Option<Properties<cl_sampler_properties>>,
     ) -> Arc<Sampler> {
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Sampler),
             context: context,
             normalized_coords: normalized_coords,
             addressing_mode: addressing_mode,

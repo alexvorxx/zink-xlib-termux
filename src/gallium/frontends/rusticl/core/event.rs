@@ -67,7 +67,7 @@ impl Event {
         work: EventSig,
     ) -> Arc<Event> {
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Event),
             context: queue.context.clone(),
             queue: Some(queue.clone()),
             cmd_type: cmd_type,
@@ -83,7 +83,7 @@ impl Event {
 
     pub fn new_user(context: Arc<Context>) -> Arc<Event> {
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Event),
             context: context,
             queue: None,
             cmd_type: CL_COMMAND_USER,

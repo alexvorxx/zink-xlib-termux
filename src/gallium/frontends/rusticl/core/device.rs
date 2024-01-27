@@ -230,7 +230,7 @@ impl Device {
         }
 
         let mut d = Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Device),
             helper_ctx: Mutex::new(helper_ctx),
             screen: screen,
             cl_version: CLVersion::Cl3_0,

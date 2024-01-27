@@ -269,6 +269,18 @@ push_submit(struct push_builder *pb, struct nvk_queue *queue, bool sync)
          return vk_errorf(queue, VK_ERROR_UNKNOWN,
                           "DRM_SYNCOBJ_WAIT failed: %m");
       }
+
+      /* Push an empty again, just to check for errors */
+      struct drm_nouveau_exec empty = {
+         .channel = pb->req.channel,
+      };
+      err = drmCommandWriteRead(pb->dev->ws_dev->fd,
+                                DRM_NOUVEAU_EXEC,
+                                &empty, sizeof(empty));
+      if (err) {
+         return vk_errorf(queue, VK_ERROR_DEVICE_LOST,
+                          "DRM_NOUVEAU_EXEC failed: %m");
+      }
    }
    return VK_SUCCESS;
 }

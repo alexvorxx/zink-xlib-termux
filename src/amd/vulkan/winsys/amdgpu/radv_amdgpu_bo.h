@@ -31,6 +31,15 @@
 
 #include "radv_amdgpu_winsys.h"
 
+struct radv_amdgpu_winsys_bo_log {
+   struct list_head list;
+   uint64_t va;
+   uint64_t size;
+   uint64_t timestamp; /* CPU timestamp */
+   uint8_t is_virtual : 1;
+   uint8_t destroyed : 1;
+};
+
 struct radv_amdgpu_map_range {
    uint64_t offset;
    uint64_t size;

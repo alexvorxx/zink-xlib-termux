@@ -254,15 +254,6 @@ radv_amdgpu_winsys_bo_virtual_bind(struct radeon_winsys *_ws, struct radeon_wins
    return VK_SUCCESS;
 }
 
-struct radv_amdgpu_winsys_bo_log {
-   struct list_head list;
-   uint64_t va;
-   uint64_t size;
-   uint64_t timestamp; /* CPU timestamp */
-   uint8_t is_virtual : 1;
-   uint8_t destroyed : 1;
-};
-
 static void
 radv_amdgpu_log_bo(struct radv_amdgpu_winsys *ws, struct radv_amdgpu_winsys_bo *bo, bool destroyed)
 {

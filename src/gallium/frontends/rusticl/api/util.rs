@@ -1,4 +1,4 @@
-use crate::api::icd::{CLObject, CLResult};
+use crate::api::icd::{ArcedCLObject, CLResult};
 use crate::api::types::*;
 use crate::core::event::*;
 use crate::core::queue::*;

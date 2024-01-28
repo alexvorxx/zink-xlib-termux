@@ -7,13 +7,12 @@ use mesa_rust_gen::*;
 use rusticl_opencl_gen::*;
 
 use std::env;
-use std::sync::Arc;
 use std::sync::Once;
 
 #[repr(C)]
 pub struct Platform {
     dispatch: &'static cl_icd_dispatch,
-    pub devs: Vec<Arc<Device>>,
+    pub devs: Vec<Device>,
 }
 
 pub struct PlatformDebug {

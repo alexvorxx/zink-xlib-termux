@@ -30,7 +30,7 @@ impl CLInfo<cl_command_queue_info> for cl_command_queue {
             CL_QUEUE_PROPERTIES_ARRAY => {
                 cl_prop::<&Option<Properties<cl_queue_properties>>>(&queue.props_v2)
             }
-            CL_QUEUE_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_QUEUE_REFERENCE_COUNT => cl_prop::<cl_uint>(Queue::refcnt(*self)?),
             // clGetCommandQueueInfo, passing CL_QUEUE_SIZE Returns CL_INVALID_COMMAND_QUEUE since
             // command_queue cannot be a valid device command-queue.
             CL_QUEUE_SIZE => return Err(CL_INVALID_COMMAND_QUEUE),

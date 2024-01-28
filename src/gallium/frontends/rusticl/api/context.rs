@@ -34,7 +34,7 @@ impl CLInfo<cl_context_info> for cl_context {
             ),
             CL_CONTEXT_NUM_DEVICES => cl_prop::<cl_uint>(ctx.devs.len() as u32),
             CL_CONTEXT_PROPERTIES => cl_prop::<&Properties<cl_context_properties>>(&ctx.properties),
-            CL_CONTEXT_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_CONTEXT_REFERENCE_COUNT => cl_prop::<cl_uint>(Context::refcnt(*self)?),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => return Err(CL_INVALID_VALUE),
         })

@@ -299,15 +299,21 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
             Ok(())
         }
     }
-
-    fn refcnt(&self) -> CLResult<u32> {
-        Ok((Arc::strong_count(&self.get_arc()?) - 1) as u32)
-    }
 }
 
 pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR> + 'a>:
     Sized
 {
+    fn refcnt(ptr: CL) -> CLResult<u32> {
+        let ptr = ptr.get_ptr()?;
+        // SAFETY: `get_ptr` already checks if it's one of our pointers.
+        let arc = unsafe { Arc::from_raw(ptr) };
+        let res = Arc::strong_count(&arc);
+        // leak the arc again, so we don't reduce the refcount by dropping `arc`
+        let _ = Arc::into_raw(arc);
+        Ok(res as u32)
+    }
+
     fn refs_from_arr(objs: *const CL, count: u32) -> CLResult<Vec<&'a Self>> {
         // CL spec requires validation for obj arrays, both values have to make sense
         if objs.is_null() && count > 0 || !objs.is_null() && count == 0 {

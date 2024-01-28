@@ -33,7 +33,7 @@ impl CLInfo<cl_kernel_info> for cl_kernel {
                 let ptr = Arc::as_ptr(&kernel.prog);
                 cl_prop::<cl_program>(cl_program::from_ptr(ptr))
             }
-            CL_KERNEL_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_KERNEL_REFERENCE_COUNT => cl_prop::<cl_uint>(Kernel::refcnt(*self)?),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => return Err(CL_INVALID_VALUE),
         })

@@ -235,7 +235,7 @@ impl CLInfo<cl_mem_info> for cl_mem {
             CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(mem.host_ptr),
             CL_MEM_OFFSET => cl_prop::<usize>(mem.offset),
             CL_MEM_PROPERTIES => cl_prop::<&Vec<cl_mem_properties>>(&mem.props),
-            CL_MEM_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_MEM_REFERENCE_COUNT => cl_prop::<cl_uint>(Mem::refcnt(*self)?),
             CL_MEM_SIZE => cl_prop::<usize>(mem.size),
             CL_MEM_TYPE => cl_prop::<cl_mem_object_type>(mem.mem_type),
             CL_MEM_USES_SVM_POINTER | CL_MEM_USES_SVM_POINTER_ARM => {
@@ -908,7 +908,7 @@ impl CLInfo<cl_sampler_info> for cl_sampler {
             }
             CL_SAMPLER_FILTER_MODE => cl_prop::<cl_filter_mode>(sampler.filter_mode),
             CL_SAMPLER_NORMALIZED_COORDS => cl_prop::<bool>(sampler.normalized_coords),
-            CL_SAMPLER_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_SAMPLER_REFERENCE_COUNT => cl_prop::<cl_uint>(Sampler::refcnt(*self)?),
             CL_SAMPLER_PROPERTIES => {
                 cl_prop::<&Option<Properties<cl_sampler_properties>>>(&sampler.props)
             }

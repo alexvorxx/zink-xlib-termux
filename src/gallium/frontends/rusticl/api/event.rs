@@ -32,7 +32,7 @@ impl CLInfo<cl_event_info> for cl_event {
                 };
                 cl_prop::<cl_command_queue>(cl_command_queue::from_ptr(ptr))
             }
-            CL_EVENT_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_EVENT_REFERENCE_COUNT => cl_prop::<cl_uint>(Event::refcnt(*self)?),
             CL_EVENT_COMMAND_TYPE => cl_prop::<cl_command_type>(event.cmd_type),
             _ => return Err(CL_INVALID_VALUE),
         })

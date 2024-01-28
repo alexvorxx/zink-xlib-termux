@@ -357,6 +357,33 @@ struct emit_memory_barrier {
           1, &imb
           );
    }
+
+   static void for_buffer(struct zink_context *ctx, struct zink_resource *res,
+                          VkPipelineStageFlags pipeline,
+                          VkAccessFlags flags,
+                          bool unordered,
+                          bool usage_matches,
+                          VkPipelineStageFlags stages,
+                          VkCommandBuffer cmdbuf)
+   {
+      VkMemoryBarrier bmb;
+      bmb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+      bmb.pNext = NULL;
+      if (unordered) {
+         stages = usage_matches ? res->obj->unordered_access_stage : stages;
+         bmb.srcAccessMask = usage_matches ? res->obj->unordered_access : res->obj->access;
+      } else {
+         bmb.srcAccessMask = res->obj->access;
+      }
+      VKCTX(CmdPipelineBarrier)(
+          cmdbuf,
+          stages,
+          pipeline,
+          0,
+          1, &bmb,
+          0, NULL,
+          0, NULL);
+   }
 };
 
 
@@ -390,6 +417,40 @@ struct emit_memory_barrier<barrier_KHR_synchronzation2> {
          1,
          &imb
          };
+      VKCTX(CmdPipelineBarrier2)(cmdbuf, &dep);
+   }
+
+   static void for_buffer(struct zink_context *ctx, struct zink_resource *res,
+                          VkPipelineStageFlags pipeline,
+                          VkAccessFlags flags,
+                          bool unordered,
+                          bool usage_matches,
+                          VkPipelineStageFlags stages,
+                          VkCommandBuffer cmdbuf)
+   {
+      VkMemoryBarrier2 bmb;
+      bmb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+      bmb.pNext = NULL;
+      if (unordered) {
+         bmb.srcStageMask = usage_matches ? res->obj->unordered_access_stage : stages;
+         bmb.srcAccessMask = usage_matches ? res->obj->unordered_access : res->obj->access;
+      } else {
+         bmb.srcStageMask = stages;
+         bmb.srcAccessMask = res->obj->access;
+      }
+      bmb.dstStageMask = pipeline;
+      bmb.dstAccessMask = flags;
+      VkDependencyInfo dep = {
+          VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+          NULL,
+          0,
+          1,
+          &bmb,
+          0,
+          NULL,
+          0,
+          NULL
+      };
       VKCTX(CmdPipelineBarrier2)(cmdbuf, &dep);
    }
 };
@@ -600,7 +661,9 @@ buffer_needs_barrier(struct zink_resource *res, VkAccessFlags flags, VkPipelineS
           ((unordered ? res->obj->unordered_access : res->obj->access) & flags) != flags;
 }
 
-template <bool HAS_SYNC2>
+
+
+template <barrier_type BARRIER_API>
 void
 zink_resource_buffer_barrier(struct zink_context *ctx, struct zink_resource *res, VkAccessFlags flags, VkPipelineStageFlags pipeline)
 {
@@ -663,51 +726,7 @@ zink_resource_buffer_barrier(struct zink_context *ctx, struct zink_resource *res
       }
 
       VkPipelineStageFlags stages = res->obj->access_stage ? res->obj->access_stage : pipeline_access_stage(res->obj->access);;
-      if (HAS_SYNC2) {
-         VkMemoryBarrier2 bmb;
-         bmb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-         bmb.pNext = NULL;
-         if (unordered) {
-            bmb.srcStageMask = usage_matches ? res->obj->unordered_access_stage : stages;
-            bmb.srcAccessMask = usage_matches ? res->obj->unordered_access : res->obj->access;
-         } else {
-            bmb.srcStageMask = stages;
-            bmb.srcAccessMask = res->obj->access;
-         }
-         bmb.dstStageMask = pipeline;
-         bmb.dstAccessMask = flags;
-         VkDependencyInfo dep = {
-            VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            NULL,
-            0,
-            1,
-            &bmb,
-            0,
-            NULL,
-            0,
-            NULL
-         };
-         VKCTX(CmdPipelineBarrier2)(cmdbuf, &dep);
-      } else {
-         VkMemoryBarrier bmb;
-         bmb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-         bmb.pNext = NULL;
-         if (unordered) {
-            stages = usage_matches ? res->obj->unordered_access_stage : stages;
-            bmb.srcAccessMask = usage_matches ? res->obj->unordered_access : res->obj->access;
-         } else {
-            bmb.srcAccessMask = res->obj->access;
-         }
-         VKCTX(CmdPipelineBarrier)(
-            cmdbuf,
-            stages,
-            pipeline,
-            0,
-            1, &bmb,
-            0, NULL,
-            0, NULL
-         );
-      }
+      emit_memory_barrier<BARRIER_API>::for_buffer(ctx, res, pipeline, flags, unordered,usage_matches, stages, cmdbuf);
 
       zink_cmd_debug_marker_end(ctx, cmdbuf, marker);
    }
@@ -738,11 +757,11 @@ void
 zink_synchronization_init(struct zink_screen *screen)
 {
    if (screen->info.have_vulkan13 || screen->info.have_KHR_synchronization2) {
-      screen->buffer_barrier = zink_resource_buffer_barrier<true>;
+      screen->buffer_barrier = zink_resource_buffer_barrier<barrier_KHR_synchronzation2>;
       screen->image_barrier = zink_resource_image_barrier<barrier_KHR_synchronzation2, false>;
       screen->image_barrier_unsync = zink_resource_image_barrier<barrier_KHR_synchronzation2, true>;
    } else {
-      screen->buffer_barrier = zink_resource_buffer_barrier<false>;
+      screen->buffer_barrier = zink_resource_buffer_barrier<barrier_default>;
       screen->image_barrier = zink_resource_image_barrier<barrier_default, false>;
       screen->image_barrier_unsync = zink_resource_image_barrier<barrier_default, true>;
    }

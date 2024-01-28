@@ -31,13 +31,6 @@ struct agx_ia_key {
 
    /* Use first vertex as the provoking vertex for flat shading */
    bool flatshade_first;
-
-   /* Whether we are doing input assembly for an indirect multidraw that is
-    * implemented by a single superdraw with a prefix sum of vertex counts per
-    * draw. This requires lowering lots of sysvals to index into the draw
-    * descriptors according to the associated dynamic multidraw state.
-    */
-   bool indirect_multidraw;
 };
 
 /* Packed geometry state buffer */

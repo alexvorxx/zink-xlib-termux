@@ -2533,8 +2533,6 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
       .ia.mode = translate_ia_mode(info->mode),
       .ia.flatshade_first =
          ia_needs_provoking(info->mode) && ctx->rast->base.flatshade_first,
-      .ia.indirect_multidraw =
-         indirect && indirect->indirect_draw_count != NULL,
 
       .rasterizer_discard = ctx->rast->base.rasterizer_discard,
    };
@@ -4073,22 +4071,6 @@ agx_upload_ia_params(struct agx_batch *batch, const struct pipe_draw_info *info,
       ia.draws = rsrc->bo->ptr.gpu + indirect->offset;
    }
 
-   if (indirect && indirect->indirect_draw_count) {
-      struct agx_resource *rsrc = agx_resource(indirect->indirect_draw_count);
-      agx_batch_reads(batch, rsrc);
-
-      ia.count = rsrc->bo->ptr.gpu + indirect->indirect_draw_count_offset;
-      ia.max_draws = indirect->draw_count;
-      ia.draw_stride = indirect->stride;
-
-      /* MDI requires prefix sums, but not for our current unroll path */
-      if (!unroll_output) {
-         size_t max_sum_size = sizeof(uint32_t) * indirect->draw_count;
-         ia.prefix_sums =
-            agx_pool_alloc_aligned(&batch->pool, max_sum_size, 4).gpu;
-      }
-   }
-
    batch->uniforms.input_assembly =
       agx_pool_upload_aligned(&batch->pool, &ia, sizeof(ia), 8);
 }
@@ -4211,11 +4193,10 @@ agx_launch_gs(struct agx_batch *batch, const struct pipe_draw_info *info,
 
       struct agx_gs_setup_indirect_key key = {
          .prim = info->mode,
-         .multidraw = (indirect->indirect_draw_count != NULL),
       };
 
       const struct pipe_grid_info grid_setup = {
-         .block = {key.multidraw ? 32 : 1, 1, 1},
+         .block = {1, 1, 1},
          .grid = {1, 1, 1},
       };
 
@@ -4445,12 +4426,6 @@ agx_needs_passthrough_gs(struct agx_context *ctx,
    /* TODO: this is sloppy, we should add a VDM kernel for this. */
    if (indirect && ctx->active_queries && ctx->prims_generated[0]) {
       perf_debug_ctx(ctx, "Using passthrough GS due to indirect prim query");
-      return true;
-   }
-
-   /* TODO: also sloppy, we should generate VDM commands from a shader */
-   if (indirect && indirect->indirect_draw_count) {
-      perf_debug_ctx(ctx, "Using passthrough GS due to multidraw indirect");
       return true;
    }
 
@@ -4895,6 +4870,13 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
    if (indirect && indirect->count_from_stream_output) {
       agx_draw_vbo_from_xfb(pctx, info, drawid_offset, indirect);
+      return;
+   }
+
+   /* TODO: stop cheating */
+   if (indirect && indirect->indirect_draw_count) {
+      perf_debug_ctx(ctx, "multi-draw indirect");
+      util_draw_indirect(pctx, info, indirect);
       return;
    }
 

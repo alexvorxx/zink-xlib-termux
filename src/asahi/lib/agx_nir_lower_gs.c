@@ -1158,9 +1158,6 @@ agx_nir_lower_gs(nir_shader *gs, nir_shader *vs, const nir_shader *libagx,
       NIR_PASS(progress, gs, nir_opt_loop_unroll);
    } while (progress);
 
-   if (ia->indirect_multidraw)
-      NIR_PASS(_, gs, agx_nir_lower_multidraw, ia);
-
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_id,
             nir_metadata_block_index | nir_metadata_dominance, NULL);
 
@@ -1300,16 +1297,10 @@ agx_nir_gs_setup_indirect(nir_builder *b, const void *data)
 {
    const struct agx_gs_setup_indirect_key *key = data;
 
-   if (key->multidraw) {
-      uint32_t subgroup_size = 32;
-      b->shader->info.workgroup_size[0] = subgroup_size;
-   }
-
    libagx_gs_setup_indirect(b, nir_load_geometry_param_buffer_agx(b),
                             nir_load_input_assembly_buffer_agx(b),
                             nir_imm_int(b, key->prim),
-                            nir_channel(b, nir_load_local_invocation_id(b), 0),
-                            nir_imm_bool(b, key->multidraw));
+                            nir_channel(b, nir_load_local_invocation_id(b), 0));
 }
 
 void

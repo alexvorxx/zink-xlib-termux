@@ -28,8 +28,6 @@ bool agx_lower_output_to_var(struct nir_builder *b, struct nir_instr *instr,
 
 bool agx_nir_lower_ia(struct nir_shader *s, struct agx_ia_key *ia);
 
-bool agx_nir_lower_multidraw(struct nir_shader *s, struct agx_ia_key *key);
-
 bool agx_nir_lower_gs(struct nir_shader *gs, struct nir_shader *vs,
                       const struct nir_shader *libagx, struct agx_ia_key *ia,
                       bool rasterizer_discard, struct nir_shader **gs_count,
@@ -40,7 +38,6 @@ void agx_nir_prefix_sum_gs(struct nir_builder *b, const void *data);
 
 struct agx_gs_setup_indirect_key {
    enum mesa_prim prim;
-   bool multidraw;
 };
 
 void agx_nir_gs_setup_indirect(struct nir_builder *b, const void *key);

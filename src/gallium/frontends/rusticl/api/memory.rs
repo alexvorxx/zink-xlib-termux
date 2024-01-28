@@ -214,7 +214,7 @@ fn validate_matching_buffer_flags(mem: &Mem, flags: cl_mem_flags) -> CLResult<()
 #[cl_info_entrypoint(cl_get_mem_object_info)]
 impl CLInfo<cl_mem_info> for cl_mem {
     fn query(&self, q: cl_mem_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = self.get_ref()?;
+        let mem = Mem::ref_from_raw(*self)?;
         Ok(match *q {
             CL_MEM_ASSOCIATED_MEMOBJECT => {
                 let ptr = match mem.parent.as_ref() {
@@ -355,7 +355,7 @@ fn set_mem_object_destructor_callback(
     pfn_notify: Option<FuncMemCB>,
     user_data: *mut ::std::os::raw::c_void,
 ) -> CLResult<()> {
-    let m = memobj.get_ref()?;
+    let m = Mem::ref_from_raw(memobj)?;
 
     // SAFETY: The requirements on `MemCB::new` match the requirements
     // imposed by the OpenCL specification. It is the caller's duty to uphold them.
@@ -596,7 +596,7 @@ fn validate_buffer(
     // the specified memory objects data store are modified, those changes are reflected in the
     // contents of the image object and vice-versa at corresponding synchronization points.
     if !mem_object.is_null() {
-        let mem = mem_object.get_ref()?;
+        let mem = Mem::ref_from_raw(mem_object)?;
 
         match mem.mem_type {
             CL_MEM_OBJECT_BUFFER => {
@@ -703,7 +703,7 @@ fn validate_buffer(
 #[cl_info_entrypoint(cl_get_image_info)]
 impl CLInfo<cl_image_info> for cl_mem {
     fn query(&self, q: cl_image_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = self.get_ref()?;
+        let mem = Mem::ref_from_raw(*self)?;
         Ok(match *q {
             CL_IMAGE_ARRAY_SIZE => cl_prop::<usize>(mem.image_desc.image_array_size),
             CL_IMAGE_BUFFER => cl_prop::<cl_mem>(unsafe { mem.image_desc.anon_1.buffer }),
@@ -859,7 +859,7 @@ fn get_supported_image_formats(
     image_formats: *mut cl_image_format,
     num_image_formats: *mut cl_uint,
 ) -> CLResult<()> {
-    let c = context.get_ref()?;
+    let c = Context::ref_from_raw(context)?;
 
     // CL_INVALID_VALUE if flags
     validate_mem_flags(flags, true)?;
@@ -898,7 +898,7 @@ fn get_supported_image_formats(
 #[cl_info_entrypoint(cl_get_sampler_info)]
 impl CLInfo<cl_sampler_info> for cl_sampler {
     fn query(&self, q: cl_sampler_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let sampler = self.get_ref()?;
+        let sampler = Sampler::ref_from_raw(*self)?;
         Ok(match q {
             CL_SAMPLER_ADDRESSING_MODE => cl_prop::<cl_addressing_mode>(sampler.addressing_mode),
             CL_SAMPLER_CONTEXT => {
@@ -2276,7 +2276,7 @@ pub fn svm_alloc(
     // clSVMAlloc will fail if
 
     // context is not a valid context
-    let c = context.get_ref()?;
+    let c = Context::ref_from_raw(context)?;
 
     // or no devices in context support SVM.
     if !c.has_svm_devs() {
@@ -2337,7 +2337,7 @@ fn svm_free_impl(c: &Context, svm_pointer: *mut c_void) {
 }
 
 pub fn svm_free(context: cl_context, svm_pointer: *mut c_void) -> CLResult<()> {
-    let c = context.get_ref()?;
+    let c = Context::ref_from_raw(context)?;
     svm_free_impl(c, svm_pointer);
     Ok(())
 }
@@ -2964,7 +2964,7 @@ fn create_pipe(
 #[cl_info_entrypoint(cl_get_gl_texture_info)]
 impl CLInfo<cl_gl_texture_info> for cl_mem {
     fn query(&self, q: cl_gl_texture_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = self.get_ref()?;
+        let mem = Mem::ref_from_raw(*self)?;
         Ok(match *q {
             CL_GL_MIPMAP_LEVEL => cl_prop::<cl_GLint>(0),
             CL_GL_TEXTURE_TARGET => cl_prop::<cl_GLenum>(
@@ -3093,7 +3093,7 @@ fn get_gl_object_info(
     gl_object_type: *mut cl_gl_object_type,
     gl_object_name: *mut cl_GLuint,
 ) -> CLResult<()> {
-    let m = memobj.get_ref()?;
+    let m = Mem::ref_from_raw(memobj)?;
 
     match &m.gl_obj {
         Some(gl_obj) => {

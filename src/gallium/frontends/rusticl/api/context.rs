@@ -24,7 +24,7 @@ use std::slice;
 #[cl_info_entrypoint(cl_get_context_info)]
 impl CLInfo<cl_context_info> for cl_context {
     fn query(&self, q: cl_context_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let ctx = self.get_ref()?;
+        let ctx = Context::ref_from_raw(*self)?;
         Ok(match q {
             CL_CONTEXT_DEVICES => cl_prop::<Vec<cl_device_id>>(
                 ctx.devs
@@ -166,7 +166,7 @@ fn create_context(
     // Duplicate devices specified in devices are ignored.
     let set: HashSet<_> =
         HashSet::from_iter(unsafe { slice::from_raw_parts(devices, num_devices as usize) }.iter());
-    let devs: Result<_, _> = set.into_iter().map(cl_device_id::get_ref).collect();
+    let devs: Result<_, _> = set.into_iter().map(|&d| Device::ref_from_raw(d)).collect();
     let devs: Vec<&Device> = devs?;
 
     let gl_ctx_manager = GLCtxManager::new(gl_context, glx_display, egl_display)?;
@@ -248,7 +248,7 @@ fn set_context_destructor_callback(
     pfn_notify: ::std::option::Option<FuncDeleteContextCB>,
     user_data: *mut ::std::os::raw::c_void,
 ) -> CLResult<()> {
-    let c = context.get_ref()?;
+    let c = Context::ref_from_raw(context)?;
 
     // SAFETY: The requirements on `DeleteContextCB::new` match the requirements
     // imposed by the OpenCL specification. It is the caller's duty to uphold them.

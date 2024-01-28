@@ -24,7 +24,7 @@ use std::sync::Arc;
 #[cl_info_entrypoint(cl_get_program_info)]
 impl CLInfo<cl_program_info> for cl_program {
     fn query(&self, q: cl_program_info, vals: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let prog = self.get_ref()?;
+        let prog = Program::ref_from_raw(*self)?;
         Ok(match q {
             CL_PROGRAM_BINARIES => cl_prop::<Vec<*mut u8>>(prog.binaries(vals)),
             CL_PROGRAM_BINARY_SIZES => cl_prop::<Vec<usize>>(prog.bin_sizes()),
@@ -62,7 +62,7 @@ impl CLInfo<cl_program_info> for cl_program {
 #[cl_info_entrypoint(cl_get_program_build_info)]
 impl CLInfoObj<cl_program_build_info, cl_device_id> for cl_program {
     fn query(&self, d: cl_device_id, q: cl_program_build_info) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let prog = self.get_ref()?;
+        let prog = Program::ref_from_raw(*self)?;
         let dev = d.get_arc()?;
         Ok(match q {
             CL_PROGRAM_BINARY_TYPE => cl_prop::<cl_program_binary_type>(prog.bin_type(&dev)),
@@ -281,7 +281,7 @@ fn build_program(
     user_data: *mut ::std::os::raw::c_void,
 ) -> CLResult<()> {
     let mut res = true;
-    let p = program.get_ref()?;
+    let p = Program::ref_from_raw(program)?;
     let devs = validate_devices(device_list, num_devices, &p.devs)?;
 
     // SAFETY: The requirements on `ProgramCB::try_new` match the requirements
@@ -329,7 +329,7 @@ fn compile_program(
     user_data: *mut ::std::os::raw::c_void,
 ) -> CLResult<()> {
     let mut res = true;
-    let p = program.get_ref()?;
+    let p = Program::ref_from_raw(program)?;
     let devs = validate_devices(device_list, num_devices, &p.devs)?;
 
     // SAFETY: The requirements on `ProgramCB::try_new` match the requirements
@@ -352,7 +352,7 @@ fn compile_program(
     if !p.is_il() {
         for h in 0..num_input_headers as usize {
             // SAFETY: have to trust the application here
-            let header = unsafe { (*input_headers.add(h)).get_ref()? };
+            let header = Program::ref_from_raw(unsafe { *input_headers.add(h) })?;
             match &header.src {
                 ProgramSourceType::Src(src) => headers.push(spirv::CLCHeader {
                     // SAFETY: have to trust the application here
@@ -468,7 +468,7 @@ fn set_program_specialization_constant(
     spec_size: usize,
     spec_value: *const ::std::os::raw::c_void,
 ) -> CLResult<()> {
-    let program = program.get_ref()?;
+    let program = Program::ref_from_raw(program)?;
 
     // CL_INVALID_PROGRAM if program is not a valid program object created from an intermediate
     // language (e.g. SPIR-V)

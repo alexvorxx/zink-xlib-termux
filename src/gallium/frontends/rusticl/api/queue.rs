@@ -17,7 +17,7 @@ use std::sync::Arc;
 #[cl_info_entrypoint(cl_get_command_queue_info)]
 impl CLInfo<cl_command_queue_info> for cl_command_queue {
     fn query(&self, q: cl_command_queue_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let queue = self.get_ref()?;
+        let queue = Queue::ref_from_raw(*self)?;
         Ok(match q {
             CL_QUEUE_CONTEXT => {
                 // Note we use as_ptr here which doesn't increase the reference count.
@@ -74,7 +74,9 @@ pub fn create_command_queue_impl(
     properties_v2: Option<Properties<cl_queue_properties>>,
 ) -> CLResult<cl_command_queue> {
     let c = context.get_arc()?;
-    let d = device.get_ref()?.to_static().ok_or(CL_INVALID_DEVICE)?;
+    let d = Device::ref_from_raw(device)?
+        .to_static()
+        .ok_or(CL_INVALID_DEVICE)?;
 
     // CL_INVALID_DEVICE if device [...] is not associated with context.
     if !c.devs.contains(&d) {
@@ -206,13 +208,13 @@ fn enqueue_barrier_with_wait_list(
 #[cl_entrypoint]
 fn flush(command_queue: cl_command_queue) -> CLResult<()> {
     // CL_INVALID_COMMAND_QUEUE if command_queue is not a valid host command-queue.
-    command_queue.get_ref()?.flush(false)
+    Queue::ref_from_raw(command_queue)?.flush(false)
 }
 
 #[cl_entrypoint]
 fn finish(command_queue: cl_command_queue) -> CLResult<()> {
     // CL_INVALID_COMMAND_QUEUE if command_queue is not a valid host command-queue.
-    command_queue.get_ref()?.flush(true)
+    Queue::ref_from_raw(command_queue)?.flush(true)
 }
 
 #[cl_entrypoint]

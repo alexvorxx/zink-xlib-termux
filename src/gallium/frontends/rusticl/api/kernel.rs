@@ -1,6 +1,7 @@
 use crate::api::event::create_and_queue;
 use crate::api::icd::*;
 use crate::api::util::*;
+use crate::core::device::*;
 use crate::core::event::*;
 use crate::core::kernel::*;
 
@@ -20,7 +21,7 @@ use std::sync::Arc;
 #[cl_info_entrypoint(cl_get_kernel_info)]
 impl CLInfo<cl_kernel_info> for cl_kernel {
     fn query(&self, q: cl_kernel_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let kernel = self.get_ref()?;
+        let kernel = Kernel::ref_from_raw(*self)?;
         Ok(match q {
             CL_KERNEL_ATTRIBUTES => cl_prop::<&str>(&kernel.kernel_info.attributes_string),
             CL_KERNEL_CONTEXT => {
@@ -43,7 +44,7 @@ impl CLInfo<cl_kernel_info> for cl_kernel {
 #[cl_info_entrypoint(cl_get_kernel_arg_info)]
 impl CLInfoObj<cl_kernel_arg_info, cl_uint> for cl_kernel {
     fn query(&self, idx: cl_uint, q: cl_kernel_arg_info) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let kernel = self.get_ref()?;
+        let kernel = Kernel::ref_from_raw(*self)?;
 
         // CL_INVALID_ARG_INDEX if arg_index is not a valid argument index.
         if idx as usize >= kernel.kernel_info.args.len() {
@@ -75,7 +76,7 @@ impl CLInfoObj<cl_kernel_work_group_info, cl_device_id> for cl_kernel {
         dev: cl_device_id,
         q: cl_kernel_work_group_info,
     ) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let kernel = self.get_ref()?;
+        let kernel = Kernel::ref_from_raw(*self)?;
 
         // CL_INVALID_DEVICE [..] if device is NULL but there is more than one device associated with kernel.
         let dev = if dev.is_null() {
@@ -85,7 +86,7 @@ impl CLInfoObj<cl_kernel_work_group_info, cl_device_id> for cl_kernel {
                 kernel.prog.devs[0]
             }
         } else {
-            dev.get_ref()?
+            Device::ref_from_raw(dev)?
         };
 
         // CL_INVALID_DEVICE if device is not in the list of devices associated with kernel
@@ -120,7 +121,7 @@ impl CLInfoObj<cl_kernel_sub_group_info, (cl_device_id, usize, *const c_void, us
         ),
         q: cl_program_build_info,
     ) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let kernel = self.get_ref()?;
+        let kernel = Kernel::ref_from_raw(*self)?;
 
         // CL_INVALID_DEVICE [..] if device is NULL but there is more than one device associated
         // with kernel.
@@ -131,7 +132,7 @@ impl CLInfoObj<cl_kernel_sub_group_info, (cl_device_id, usize, *const c_void, us
                 kernel.prog.devs[0]
             }
         } else {
-            dev.get_ref()?
+            Device::ref_from_raw(dev)?
         };
 
         // CL_INVALID_DEVICE if device is not in the list of devices associated with kernel
@@ -421,7 +422,7 @@ fn set_kernel_arg_svm_pointer(
     arg_index: cl_uint,
     arg_value: *const ::std::os::raw::c_void,
 ) -> CLResult<()> {
-    let kernel = kernel.get_ref()?;
+    let kernel = Kernel::ref_from_raw(kernel)?;
     let arg_index = arg_index as usize;
     let arg_value = arg_value as usize;
 
@@ -454,7 +455,7 @@ fn set_kernel_exec_info(
     param_value_size: usize,
     param_value: *const ::std::os::raw::c_void,
 ) -> CLResult<()> {
-    let k = kernel.get_ref()?;
+    let k = Kernel::ref_from_raw(kernel)?;
 
     // CL_INVALID_OPERATION if no devices in the context associated with kernel support SVM.
     if !k.prog.devs.iter().any(|dev| dev.svm_supported()) {
@@ -643,6 +644,6 @@ fn enqueue_task(
 
 #[cl_entrypoint]
 fn clone_kernel(source_kernel: cl_kernel) -> CLResult<cl_kernel> {
-    let k = source_kernel.get_ref()?;
+    let k = Kernel::ref_from_raw(source_kernel)?;
     Ok(cl_kernel::from_arc(Arc::new(k.clone())))
 }

@@ -234,10 +234,6 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
     // implement that as part of the macro where we know the real type.
     fn from_ptr(ptr: *const T) -> Self;
 
-    fn get_ref(&self) -> CLResult<&T> {
-        unsafe { Ok(self.get_ptr()?.as_ref().unwrap()) }
-    }
-
     fn get_arc(&self) -> CLResult<Arc<T>> {
         unsafe {
             let ptr = self.get_ptr()?;
@@ -286,7 +282,16 @@ pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR>
         Ok(res as u32)
     }
 
-    fn refs_from_arr(objs: *const CL, count: u32) -> CLResult<Vec<&'a Self>> {
+    fn ref_from_raw(obj: CL) -> CLResult<&'a Self> {
+        let obj = obj.get_ptr()?;
+        // SAFETY: `get_ptr` already checks if it's one of our pointers and not null
+        Ok(unsafe { &*obj })
+    }
+
+    fn refs_from_arr(objs: *const CL, count: u32) -> CLResult<Vec<&'a Self>>
+    where
+        CL: Copy,
+    {
         // CL spec requires validation for obj arrays, both values have to make sense
         if objs.is_null() && count > 0 || !objs.is_null() && count == 0 {
             return Err(CL_INVALID_VALUE);
@@ -298,9 +303,7 @@ pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR>
         }
 
         for i in 0..count as usize {
-            unsafe {
-                res.push((*objs.add(i)).get_ref()?);
-            }
+            res.push(Self::ref_from_raw(unsafe { *objs.add(i) })?);
         }
         Ok(res)
     }

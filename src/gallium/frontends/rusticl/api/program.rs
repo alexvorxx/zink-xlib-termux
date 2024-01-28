@@ -81,7 +81,7 @@ fn validate_devices<'a>(
     num_devices: cl_uint,
     default: &[&'a Device],
 ) -> CLResult<Vec<&'a Device>> {
-    let mut devs = cl_device_id::get_ref_vec_from_arr(device_list, num_devices)?;
+    let mut devs = Device::refs_from_arr(device_list, num_devices)?;
 
     // If device_list is a NULL value, the compile is performed for all devices associated with
     // program.
@@ -181,7 +181,7 @@ fn create_program_with_binary(
     binary_status: *mut cl_int,
 ) -> CLResult<cl_program> {
     let c = context.get_arc()?;
-    let devs = cl_device_id::get_ref_vec_from_arr(device_list, num_devices)?;
+    let devs = Device::refs_from_arr(device_list, num_devices)?;
 
     // CL_INVALID_VALUE if device_list is NULL or num_devices is zero.
     if devs.is_empty() {

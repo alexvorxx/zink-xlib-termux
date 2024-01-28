@@ -286,28 +286,6 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
         Ok(res)
     }
 
-    fn get_ref_vec_from_arr<'a>(objs: *const Self, count: u32) -> CLResult<Vec<&'a T>>
-    where
-        Self: Sized + 'a,
-    {
-        // CL spec requires validation for obj arrays, both values have to make sense
-        if objs.is_null() && count > 0 || !objs.is_null() && count == 0 {
-            return Err(CL_INVALID_VALUE);
-        }
-
-        let mut res = Vec::new();
-        if objs.is_null() || count == 0 {
-            return Ok(res);
-        }
-
-        for i in 0..count as usize {
-            unsafe {
-                res.push((*objs.add(i)).get_ref()?);
-            }
-        }
-        Ok(res)
-    }
-
     fn retain(&self) -> CLResult<()> {
         unsafe {
             Arc::increment_strong_count(self.get_ptr()?);
@@ -324,6 +302,29 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
 
     fn refcnt(&self) -> CLResult<u32> {
         Ok((Arc::strong_count(&self.get_arc()?) - 1) as u32)
+    }
+}
+
+pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR> + 'a>:
+    Sized
+{
+    fn refs_from_arr(objs: *const CL, count: u32) -> CLResult<Vec<&'a Self>> {
+        // CL spec requires validation for obj arrays, both values have to make sense
+        if objs.is_null() && count > 0 || !objs.is_null() && count == 0 {
+            return Err(CL_INVALID_VALUE);
+        }
+
+        let mut res = Vec::new();
+        if objs.is_null() || count == 0 {
+            return Ok(res);
+        }
+
+        for i in 0..count as usize {
+            unsafe {
+                res.push((*objs.add(i)).get_ref()?);
+            }
+        }
+        Ok(res)
     }
 }
 
@@ -359,6 +360,8 @@ macro_rules! impl_cl_type_trait {
                 unsafe { (ptr as *const u8).add(offset) as Self }
             }
         }
+
+        impl $crate::api::icd::CLObject<'_, $err, $cl> for $t {}
 
         // there are two reason to implement those traits for all objects
         //   1. it speeds up operations

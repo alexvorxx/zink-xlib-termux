@@ -355,18 +355,18 @@ impl Program {
             .collect()
     }
 
-    pub fn new(context: &Arc<Context>, devs: &[&'static Device], src: CString) -> Arc<Program> {
+    pub fn new(context: Arc<Context>, src: CString) -> Arc<Program> {
         Arc::new(Self {
             base: CLObjectBase::new(RusticlTypes::Program),
-            context: context.clone(),
-            devs: devs.to_vec(),
-            src: ProgramSourceType::Src(src),
             build: Mutex::new(ProgramBuild {
-                builds: Self::create_default_builds(devs),
+                builds: Self::create_default_builds(&context.devs),
                 spec_constants: HashMap::new(),
                 kernels: Vec::new(),
                 kernel_info: HashMap::new(),
             }),
+            devs: context.devs.to_vec(),
+            context: context,
+            src: ProgramSourceType::Src(src),
         })
     }
 

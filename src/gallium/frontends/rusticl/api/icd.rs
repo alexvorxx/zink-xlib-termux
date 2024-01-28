@@ -233,20 +233,26 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
     // I can do the cast in the main trait implementation.  So we need to
     // implement that as part of the macro where we know the real type.
     fn from_ptr(ptr: *const T) -> Self;
-
-    fn get_arc(&self) -> CLResult<Arc<T>> {
-        unsafe {
-            let ptr = self.get_ptr()?;
-            Arc::increment_strong_count(ptr);
-            Ok(Arc::from_raw(ptr))
-        }
-    }
 }
 
 pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR> + 'a>:
     Sized
 {
-    fn arcs_from_arr(objs: *const CL, count: u32) -> CLResult<Vec<Arc<Self>>> {
+    /// Note: this operation increases the internal ref count as `ref_from_raw` is the better option
+    /// when an Arc is not needed.
+    fn arc_from_raw(ptr: CL) -> CLResult<Arc<Self>> {
+        let ptr = ptr.get_ptr()?;
+        // SAFETY: `get_ptr` already checks if it's one of our pointers.
+        Ok(unsafe {
+            Arc::increment_strong_count(ptr);
+            Arc::from_raw(ptr)
+        })
+    }
+
+    fn arcs_from_arr(objs: *const CL, count: u32) -> CLResult<Vec<Arc<Self>>>
+    where
+        CL: Copy,
+    {
         // CL spec requires validation for obj arrays, both values have to make sense
         if objs.is_null() && count > 0 || !objs.is_null() && count == 0 {
             return Err(CL_INVALID_VALUE);
@@ -259,7 +265,7 @@ pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR>
 
         for i in 0..count as usize {
             unsafe {
-                res.push((*objs.add(i)).get_arc()?);
+                res.push(Self::arc_from_raw(*objs.add(i))?);
             }
         }
         Ok(res)

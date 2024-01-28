@@ -1,6 +1,7 @@
 use crate::api::icd::*;
 use crate::api::types::*;
 use crate::api::util::*;
+use crate::core::context::*;
 use crate::core::device::*;
 use crate::core::platform::*;
 use crate::core::program::*;
@@ -63,13 +64,13 @@ impl CLInfo<cl_program_info> for cl_program {
 impl CLInfoObj<cl_program_build_info, cl_device_id> for cl_program {
     fn query(&self, d: cl_device_id, q: cl_program_build_info) -> CLResult<Vec<MaybeUninit<u8>>> {
         let prog = Program::ref_from_raw(*self)?;
-        let dev = d.get_arc()?;
+        let dev = Device::ref_from_raw(d)?;
         Ok(match q {
-            CL_PROGRAM_BINARY_TYPE => cl_prop::<cl_program_binary_type>(prog.bin_type(&dev)),
+            CL_PROGRAM_BINARY_TYPE => cl_prop::<cl_program_binary_type>(prog.bin_type(dev)),
             CL_PROGRAM_BUILD_GLOBAL_VARIABLE_TOTAL_SIZE => cl_prop::<usize>(0),
-            CL_PROGRAM_BUILD_LOG => cl_prop::<&str>(&prog.log(&dev)),
-            CL_PROGRAM_BUILD_OPTIONS => cl_prop::<&str>(&prog.options(&dev)),
-            CL_PROGRAM_BUILD_STATUS => cl_prop::<cl_build_status>(prog.status(&dev)),
+            CL_PROGRAM_BUILD_LOG => cl_prop::<&str>(&prog.log(dev)),
+            CL_PROGRAM_BUILD_OPTIONS => cl_prop::<&str>(&prog.options(dev)),
+            CL_PROGRAM_BUILD_STATUS => cl_prop::<cl_build_status>(prog.status(dev)),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => return Err(CL_INVALID_VALUE),
         })
@@ -99,7 +100,7 @@ fn create_program_with_source(
     strings: *mut *const c_char,
     lengths: *const usize,
 ) -> CLResult<cl_program> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
 
     // CL_INVALID_VALUE if count is zero or if strings ...
     if count == 0 || strings.is_null() {
@@ -164,8 +165,7 @@ fn create_program_with_source(
     }
 
     Ok(Program::new(
-        &c,
-        &c.devs,
+        c,
         // SAFETY: We've constructed `source` such that it contains no nul bytes.
         unsafe { CString::from_vec_unchecked(source) },
     )
@@ -181,7 +181,7 @@ fn create_program_with_binary(
     binaries: *mut *const ::std::os::raw::c_uchar,
     binary_status: *mut cl_int,
 ) -> CLResult<cl_program> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
     let devs = Device::refs_from_arr(device_list, num_devices)?;
 
     // CL_INVALID_VALUE if device_list is NULL or num_devices is zero.
@@ -239,7 +239,7 @@ fn create_program_with_il(
     il: *const ::std::os::raw::c_void,
     length: usize,
 ) -> CLResult<cl_program> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
 
     // CL_INVALID_VALUE if il is NULL or if length is zero.
     if il.is_null() || length == 0 {
@@ -407,7 +407,7 @@ pub fn link_program(
     pfn_notify: Option<FuncProgramCB>,
     user_data: *mut ::std::os::raw::c_void,
 ) -> CLResult<(cl_program, cl_int)> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
     let devs = validate_devices(device_list, num_devices, &c.devs)?;
     let progs = Program::arcs_from_arr(input_programs, num_input_programs)?;
 

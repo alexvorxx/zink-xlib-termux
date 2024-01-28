@@ -1,6 +1,7 @@
 use crate::api::event::create_and_queue;
 use crate::api::icd::*;
 use crate::api::util::*;
+use crate::core::context::*;
 use crate::core::device::*;
 use crate::core::event::*;
 use crate::core::queue::*;
@@ -73,7 +74,7 @@ pub fn create_command_queue_impl(
     properties: cl_command_queue_properties,
     properties_v2: Option<Properties<cl_queue_properties>>,
 ) -> CLResult<cl_command_queue> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
     let d = Device::ref_from_raw(device)?
         .to_static()
         .ok_or(CL_INVALID_DEVICE)?;
@@ -135,7 +136,7 @@ fn create_command_queue_with_properties(
 
 #[cl_entrypoint]
 fn enqueue_marker(command_queue: cl_command_queue, event: *mut cl_event) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
 
     // TODO marker makes sure previous commands did complete
     create_and_queue(
@@ -155,7 +156,7 @@ fn enqueue_marker_with_wait_list(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // TODO marker makes sure previous commands did complete
@@ -171,7 +172,7 @@ fn enqueue_marker_with_wait_list(
 
 #[cl_entrypoint]
 fn enqueue_barrier(command_queue: cl_command_queue) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
 
     // TODO barriers make sure previous commands did complete and other commands didn't start
     let e = Event::new(&q, CL_COMMAND_BARRIER, Vec::new(), Box::new(|_, _| Ok(())));
@@ -186,7 +187,7 @@ fn enqueue_barrier_with_wait_list(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // TODO barriers make sure previous commands did complete and other commands didn't start

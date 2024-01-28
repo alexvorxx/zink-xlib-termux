@@ -4,6 +4,9 @@ use crate::api::util::*;
 use crate::core::device::*;
 use crate::core::event::*;
 use crate::core::kernel::*;
+use crate::core::memory::*;
+use crate::core::program::*;
+use crate::core::queue::*;
 
 use mesa_rust_util::ptr::*;
 use mesa_rust_util::string::*;
@@ -238,7 +241,7 @@ fn create_kernel(
     program: cl_program,
     kernel_name: *const ::std::os::raw::c_char,
 ) -> CLResult<cl_kernel> {
-    let p = program.get_arc()?;
+    let p = Program::arc_from_raw(program)?;
     let name = c_string_to_string(kernel_name);
 
     // CL_INVALID_VALUE if kernel_name is NULL.
@@ -283,7 +286,7 @@ fn create_kernels_in_program(
     kernels: *mut cl_kernel,
     num_kernels_ret: *mut cl_uint,
 ) -> CLResult<()> {
-    let p = program.get_arc()?;
+    let p = Program::arc_from_raw(program)?;
 
     // CL_INVALID_PROGRAM_EXECUTABLE if there is no successfully built executable for any device in
     // program.
@@ -327,7 +330,7 @@ fn set_kernel_arg(
     arg_size: usize,
     arg_value: *const ::std::os::raw::c_void,
 ) -> CLResult<()> {
-    let k = kernel.get_arc()?;
+    let k = Kernel::ref_from_raw(kernel)?;
 
     // CL_INVALID_ARG_INDEX if arg_index is not a valid argument index.
     if let Some(arg) = k.kernel_info.args.get(arg_index as usize) {
@@ -390,17 +393,17 @@ fn set_kernel_arg(
                         if ptr.is_null() || (*ptr).is_null() {
                             KernelArgValue::None
                         } else {
-                            KernelArgValue::MemObject((*ptr).get_arc()?)
+                            KernelArgValue::MemObject(Mem::arc_from_raw(*ptr)?)
                         }
                     }
                     KernelArgType::MemLocal => KernelArgValue::LocalMem(arg_size),
                     KernelArgType::Image | KernelArgType::RWImage | KernelArgType::Texture => {
                         let img: *const cl_mem = arg_value.cast();
-                        KernelArgValue::MemObject((*img).get_arc()?)
+                        KernelArgValue::MemObject(Mem::arc_from_raw(*img)?)
                     }
                     KernelArgType::Sampler => {
                         let ptr: *const cl_sampler = arg_value.cast();
-                        KernelArgValue::Sampler((*ptr).get_arc()?)
+                        KernelArgValue::Sampler(Sampler::arc_from_raw(*ptr)?)
                     }
                 }
             }
@@ -502,8 +505,8 @@ fn enqueue_ndrange_kernel(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let k = kernel.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let k = Kernel::arc_from_raw(kernel)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if context associated with command_queue and kernel are not the same

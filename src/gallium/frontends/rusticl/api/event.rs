@@ -1,6 +1,7 @@
 use crate::api::icd::*;
 use crate::api::types::*;
 use crate::api::util::*;
+use crate::core::context::*;
 use crate::core::event::*;
 use crate::core::queue::*;
 
@@ -62,7 +63,7 @@ impl CLInfo<cl_profiling_info> for cl_event {
 
 #[cl_entrypoint]
 fn create_user_event(context: cl_context) -> CLResult<cl_event> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
     Ok(Event::new_user(c).into_cl())
 }
 

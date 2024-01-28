@@ -10,6 +10,7 @@ use crate::core::event::EventSig;
 use crate::core::format::*;
 use crate::core::gl::*;
 use crate::core::memory::*;
+use crate::core::queue::*;
 
 use mesa_rust_util::properties::Properties;
 use mesa_rust_util::ptr::*;
@@ -254,7 +255,7 @@ fn create_buffer_with_properties(
     size: usize,
     host_ptr: *mut ::std::os::raw::c_void,
 ) -> CLResult<cl_mem> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
 
     // CL_INVALID_VALUE if values specified in flags are not valid as defined in the Memory Flags table.
     validate_mem_flags(flags, false)?;
@@ -300,7 +301,7 @@ fn create_sub_buffer(
     buffer_create_type: cl_buffer_create_type,
     buffer_create_info: *const ::std::os::raw::c_void,
 ) -> CLResult<cl_mem> {
-    let b = buffer.get_arc()?;
+    let b = Mem::arc_from_raw(buffer)?;
 
     // CL_INVALID_MEM_OBJECT if buffer ... is a sub-buffer object.
     if b.parent.is_some() {
@@ -460,7 +461,7 @@ fn validate_image_desc(
     // TODO: cl_khr_image2d_from_buffer is an optional feature
     let p = unsafe { &desc.anon_1.mem_object };
     let parent = if !p.is_null() {
-        let p = p.get_arc()?;
+        let p = Mem::arc_from_raw(*p)?;
         if !match desc.image_type {
             CL_MEM_OBJECT_IMAGE1D_BUFFER => p.is_buffer(),
             CL_MEM_OBJECT_IMAGE2D => {
@@ -726,7 +727,7 @@ fn create_image_with_properties(
     image_desc: *const cl_image_desc,
     host_ptr: *mut ::std::os::raw::c_void,
 ) -> CLResult<cl_mem> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
 
     // CL_INVALID_OPERATION if there are no devices in context that support images (i.e.
     // CL_DEVICE_IMAGE_SUPPORT specified in the Device Queries table is CL_FALSE).
@@ -922,7 +923,7 @@ fn create_sampler_impl(
     filter_mode: cl_filter_mode,
     props: Option<Properties<cl_sampler_properties>>,
 ) -> CLResult<cl_sampler> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
 
     // CL_INVALID_OPERATION if images are not supported by any device associated with context (i.e.
     // CL_DEVICE_IMAGE_SUPPORT specified in the Device Queries table is CL_FALSE).
@@ -1021,8 +1022,8 @@ fn enqueue_read_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let b = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let b = Mem::arc_from_raw(buffer)?;
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -1074,8 +1075,8 @@ fn enqueue_write_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let b = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let b = Mem::arc_from_raw(buffer)?;
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -1127,9 +1128,9 @@ fn enqueue_copy_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src = src_buffer.get_arc()?;
-    let dst = dst_buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src = Mem::arc_from_raw(src_buffer)?;
+    let dst = Mem::arc_from_raw(dst_buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_buffer and dst_buffer
@@ -1201,8 +1202,8 @@ fn enqueue_read_buffer_rect(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
-    let q = command_queue.get_arc()?;
-    let buf = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let buf = Mem::arc_from_raw(buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if clEnqueueReadBufferRect is called on buffer which has been created
@@ -1324,8 +1325,8 @@ fn enqueue_write_buffer_rect(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
-    let q = command_queue.get_arc()?;
-    let buf = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let buf = Mem::arc_from_raw(buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if clEnqueueWriteBufferRect is called on buffer which has been created
@@ -1445,9 +1446,9 @@ fn enqueue_copy_buffer_rect(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src = src_buffer.get_arc()?;
-    let dst = dst_buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src = Mem::arc_from_raw(src_buffer)?;
+    let dst = Mem::arc_from_raw(dst_buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_VALUE if src_origin, dst_origin, or region is NULL.
@@ -1580,8 +1581,8 @@ fn enqueue_fill_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let b = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let b = Mem::arc_from_raw(buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_VALUE if offset or offset + size require accessing elements outside the buffer
@@ -1634,8 +1635,8 @@ fn enqueue_map_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<*mut c_void> {
-    let q = command_queue.get_arc()?;
-    let b = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let b = Mem::arc_from_raw(buffer)?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -1690,8 +1691,8 @@ fn enqueue_read_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let i = image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let i = Mem::arc_from_raw(image)?;
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let pixel_size = i.image_format.pixel_size().unwrap() as usize;
@@ -1781,8 +1782,8 @@ fn enqueue_write_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let i = image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let i = Mem::arc_from_raw(image)?;
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let pixel_size = i.image_format.pixel_size().unwrap() as usize;
@@ -1870,9 +1871,9 @@ fn enqueue_copy_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src_image = src_image.get_arc()?;
-    let dst_image = dst_image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src_image = Mem::arc_from_raw(src_image)?;
+    let dst_image = Mem::arc_from_raw(dst_image)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_image and dst_image are not the same
@@ -1930,8 +1931,8 @@ fn enqueue_fill_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let i = image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let i = Mem::arc_from_raw(image)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue and image are not the same
@@ -1983,9 +1984,9 @@ fn enqueue_copy_buffer_to_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src = src_buffer.get_arc()?;
-    let dst = dst_image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src = Mem::arc_from_raw(src_buffer)?;
+    let dst = Mem::arc_from_raw(dst_image)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_buffer and dst_image
@@ -2039,9 +2040,9 @@ fn enqueue_copy_image_to_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src = src_image.get_arc()?;
-    let dst = dst_buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src = Mem::arc_from_raw(src_image)?;
+    let dst = Mem::arc_from_raw(dst_buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_image and dst_buffer
@@ -2098,8 +2099,8 @@ fn enqueue_map_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<*mut ::std::os::raw::c_void> {
-    let q = command_queue.get_arc()?;
-    let i = image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let i = Mem::arc_from_raw(image)?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -2146,7 +2147,7 @@ fn enqueue_map_image(
     )?;
 
     create_and_queue(
-        q.clone(),
+        q,
         CL_COMMAND_MAP_IMAGE,
         evs,
         event,
@@ -2183,8 +2184,8 @@ fn enqueue_unmap_mem_object(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let m = memobj.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let m = Mem::arc_from_raw(memobj)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if context associated with command_queue and memobj are not the same
@@ -2218,9 +2219,9 @@ fn enqueue_migrate_mem_objects(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let bufs = Mem::arcs_from_arr(mem_objects, num_mem_objects)?;
+    let bufs = Mem::refs_from_arr(mem_objects, num_mem_objects)?;
 
     // CL_INVALID_VALUE if num_mem_objects is zero or if mem_objects is NULL.
     if bufs.is_empty() {
@@ -2350,7 +2351,7 @@ fn enqueue_svm_free_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_VALUE if num_svm_pointers is 0 and svm_pointers is non-NULL, or if svm_pointers is
@@ -2454,7 +2455,7 @@ fn enqueue_svm_memcpy_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let block = check_cl_bool(blocking_copy).ok_or(CL_INVALID_VALUE)?;
 
@@ -2562,7 +2563,7 @@ fn enqueue_svm_mem_fill_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if the device associated with command queue does not support SVM.
@@ -2742,7 +2743,7 @@ fn enqueue_svm_map_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
 
@@ -2823,7 +2824,7 @@ fn enqueue_svm_unmap_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if the device associated with command queue does not support SVM.
@@ -2886,7 +2887,7 @@ fn enqueue_svm_migrate_mem(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if the device associated with command queue does not support SVM.
@@ -2982,7 +2983,7 @@ fn create_from_gl(
     miplevel: cl_GLint,
     texture: cl_GLuint,
 ) -> CLResult<cl_mem> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
     let gl_ctx_manager = &c.gl_ctx_manager;
 
     // CL_INVALID_CONTEXT if context associated with command_queue was not created from an OpenGL context
@@ -3111,7 +3112,7 @@ fn enqueue_acquire_gl_objects(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let objs = Mem::arcs_from_arr(mem_objects, num_objects)?;
     let gl_ctx_manager = &q.context.gl_ctx_manager;
@@ -3145,7 +3146,7 @@ fn enqueue_release_gl_objects(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let objs = Mem::arcs_from_arr(mem_objects, num_objects)?;
     let gl_ctx_manager = &q.context.gl_ctx_manager;

@@ -78,7 +78,7 @@ fn release_event(event: cl_event) -> CLResult<()> {
 
 #[cl_entrypoint]
 fn wait_for_events(num_events: cl_uint, event_list: *const cl_event) -> CLResult<()> {
-    let evs = cl_event::get_arc_vec_from_arr(event_list, num_events)?;
+    let evs = Event::arcs_from_arr(event_list, num_events)?;
 
     // CL_INVALID_VALUE if num_events is zero or event_list is NULL.
     if evs.is_empty() {

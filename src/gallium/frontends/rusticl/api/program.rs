@@ -408,7 +408,7 @@ pub fn link_program(
 ) -> CLResult<(cl_program, cl_int)> {
     let c = context.get_arc()?;
     let devs = validate_devices(device_list, num_devices, &c.devs)?;
-    let progs = cl_program::get_arc_vec_from_arr(input_programs, num_input_programs)?;
+    let progs = Program::arcs_from_arr(input_programs, num_input_programs)?;
 
     // SAFETY: The requirements on `ProgramCB::try_new` match the requirements
     // imposed by the OpenCL specification. It is the caller's duty to uphold them.

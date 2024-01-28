@@ -2223,7 +2223,7 @@ fn enqueue_migrate_mem_objects(
 ) -> CLResult<()> {
     let q = command_queue.get_arc()?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let bufs = cl_mem::get_arc_vec_from_arr(mem_objects, num_mem_objects)?;
+    let bufs = Mem::arcs_from_arr(mem_objects, num_mem_objects)?;
 
     // CL_INVALID_VALUE if num_mem_objects is zero or if mem_objects is NULL.
     if bufs.is_empty() {
@@ -3120,7 +3120,7 @@ fn enqueue_acquire_gl_objects(
 ) -> CLResult<()> {
     let q = command_queue.get_arc()?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let objs = cl_mem::get_arc_vec_from_arr(mem_objects, num_objects)?;
+    let objs = Mem::arcs_from_arr(mem_objects, num_objects)?;
     let gl_ctx_manager = &q.context.gl_ctx_manager;
 
     // CL_INVALID_CONTEXT if context associated with command_queue was not created from an OpenGL context
@@ -3154,7 +3154,7 @@ fn enqueue_release_gl_objects(
 ) -> CLResult<()> {
     let q = command_queue.get_arc()?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let objs = cl_mem::get_arc_vec_from_arr(mem_objects, num_objects)?;
+    let objs = Mem::arcs_from_arr(mem_objects, num_objects)?;
     let gl_ctx_manager = &q.context.gl_ctx_manager;
 
     // CL_INVALID_CONTEXT if context associated with command_queue was not created from an OpenGL context

@@ -263,11 +263,12 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
     {
         Self::from_ptr(Arc::into_raw(arc))
     }
+}
 
-    fn get_arc_vec_from_arr(objs: *const Self, count: u32) -> CLResult<Vec<Arc<T>>>
-    where
-        Self: Sized,
-    {
+pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR> + 'a>:
+    Sized
+{
+    fn arcs_from_arr(objs: *const CL, count: u32) -> CLResult<Vec<Arc<Self>>> {
         // CL spec requires validation for obj arrays, both values have to make sense
         if objs.is_null() && count > 0 || !objs.is_null() && count == 0 {
             return Err(CL_INVALID_VALUE);
@@ -285,11 +286,7 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
         }
         Ok(res)
     }
-}
 
-pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR> + 'a>:
-    Sized
-{
     fn refcnt(ptr: CL) -> CLResult<u32> {
         let ptr = ptr.get_ptr()?;
         // SAFETY: `get_ptr` already checks if it's one of our pointers.

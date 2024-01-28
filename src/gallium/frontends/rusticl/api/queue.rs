@@ -217,7 +217,7 @@ fn finish(command_queue: cl_command_queue) -> CLResult<()> {
 
 #[cl_entrypoint]
 fn retain_command_queue(command_queue: cl_command_queue) -> CLResult<()> {
-    command_queue.retain()
+    Queue::retain(command_queue)
 }
 
 #[cl_entrypoint]
@@ -225,6 +225,5 @@ fn release_command_queue(command_queue: cl_command_queue) -> CLResult<()> {
     // clReleaseCommandQueue performs an implicit flush to issue any previously queued OpenCL
     // commands in command_queue.
     flush(command_queue)?;
-    command_queue.release()?;
-    Ok(())
+    Queue::release(command_queue)
 }

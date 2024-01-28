@@ -68,12 +68,12 @@ fn create_user_event(context: cl_context) -> CLResult<cl_event> {
 
 #[cl_entrypoint]
 fn retain_event(event: cl_event) -> CLResult<()> {
-    event.retain()
+    Event::retain(event)
 }
 
 #[cl_entrypoint]
 fn release_event(event: cl_event) -> CLResult<()> {
-    event.release()
+    Event::release(event)
 }
 
 #[cl_entrypoint]

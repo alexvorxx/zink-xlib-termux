@@ -1004,12 +1004,12 @@ fn create_sampler_with_properties(
 
 #[cl_entrypoint]
 fn retain_sampler(sampler: cl_sampler) -> CLResult<()> {
-    sampler.retain()
+    Sampler::retain(sampler)
 }
 
 #[cl_entrypoint]
 fn release_sampler(sampler: cl_sampler) -> CLResult<()> {
-    sampler.release()
+    Sampler::release(sampler)
 }
 
 #[cl_entrypoint]
@@ -2169,12 +2169,12 @@ fn enqueue_map_image(
 
 #[cl_entrypoint]
 fn retain_mem_object(mem: cl_mem) -> CLResult<()> {
-    mem.retain()
+    Mem::retain(mem)
 }
 
 #[cl_entrypoint]
 fn release_mem_object(mem: cl_mem) -> CLResult<()> {
-    mem.release()
+    Mem::release(mem)
 }
 
 #[cl_entrypoint]

@@ -267,12 +267,12 @@ fn create_kernel(
 
 #[cl_entrypoint]
 fn retain_kernel(kernel: cl_kernel) -> CLResult<()> {
-    kernel.retain()
+    Kernel::retain(kernel)
 }
 
 #[cl_entrypoint]
 fn release_kernel(kernel: cl_kernel) -> CLResult<()> {
-    kernel.release()
+    Kernel::release(kernel)
 }
 
 #[cl_entrypoint]

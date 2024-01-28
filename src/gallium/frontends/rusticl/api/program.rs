@@ -252,12 +252,12 @@ fn create_program_with_il(
 
 #[cl_entrypoint]
 fn retain_program(program: cl_program) -> CLResult<()> {
-    program.retain()
+    Program::retain(program)
 }
 
 #[cl_entrypoint]
 fn release_program(program: cl_program) -> CLResult<()> {
-    program.release()
+    Program::release(program)
 }
 
 fn debug_logging(p: &Program, devs: &[&Device]) {

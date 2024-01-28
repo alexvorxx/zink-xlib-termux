@@ -234,12 +234,12 @@ fn create_context_from_type(
 
 #[cl_entrypoint]
 fn retain_context(context: cl_context) -> CLResult<()> {
-    context.retain()
+    Context::retain(context)
 }
 
 #[cl_entrypoint]
 fn release_context(context: cl_context) -> CLResult<()> {
-    context.release()
+    Context::release(context)
 }
 
 #[cl_entrypoint]

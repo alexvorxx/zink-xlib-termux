@@ -285,20 +285,6 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
         }
         Ok(res)
     }
-
-    fn retain(&self) -> CLResult<()> {
-        unsafe {
-            Arc::increment_strong_count(self.get_ptr()?);
-            Ok(())
-        }
-    }
-
-    fn release(&self) -> CLResult<()> {
-        unsafe {
-            Arc::from_raw(self.get_ptr()?);
-            Ok(())
-        }
-    }
 }
 
 pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR> + 'a>:
@@ -331,6 +317,20 @@ pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR>
             }
         }
         Ok(res)
+    }
+
+    fn release(ptr: CL) -> CLResult<()> {
+        let ptr = ptr.get_ptr()?;
+        // SAFETY: `get_ptr` already checks if it's one of our pointers.
+        unsafe { Arc::decrement_strong_count(ptr) };
+        Ok(())
+    }
+
+    fn retain(ptr: CL) -> CLResult<()> {
+        let ptr = ptr.get_ptr()?;
+        // SAFETY: `get_ptr` already checks if it's one of our pointers.
+        unsafe { Arc::increment_strong_count(ptr) };
+        Ok(())
     }
 }
 

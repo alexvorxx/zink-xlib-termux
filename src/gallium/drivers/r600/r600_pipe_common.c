@@ -1452,7 +1452,8 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 			nir_lower_dceil |
 			nir_lower_dmod |
 			nir_lower_dsub |
-			nir_lower_dtrunc;
+			nir_lower_dtrunc |
+			nir_lower_dround_even;
 	}
 
         rscreen->nir_options_fs = rscreen->nir_options;

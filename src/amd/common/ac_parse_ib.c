@@ -479,6 +479,30 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       ac_dump_reg(f, ib->gfx_level, ib->family, R_030930_VGT_NUM_INDICES, ac_ib_get(ib), ~0);
       ac_dump_reg(f, ib->gfx_level, ib->family, R_0287F0_VGT_DRAW_INITIATOR, ac_ib_get(ib), ~0);
       break;
+   case PKT3_DRAW_INDIRECT:
+   case PKT3_DRAW_INDEX_INDIRECT:
+      print_named_value(f, "OFFSET", ac_ib_get(ib), 32);
+      print_named_value(f, "VERTEX_OFFSET_REG", ac_ib_get(ib), 32);
+      print_named_value(f, "START_INSTANCE_REG", ac_ib_get(ib), 32);
+      ac_dump_reg(f, ib->gfx_level, ib->family, R_0287F0_VGT_DRAW_INITIATOR, ac_ib_get(ib), ~0);
+      break;
+   case PKT3_DRAW_INDIRECT_MULTI:
+   case PKT3_DRAW_INDEX_INDIRECT_MULTI:
+      print_named_value(f, "OFFSET", ac_ib_get(ib), 32);
+      print_named_value(f, "VERTEX_OFFSET_REG", ac_ib_get(ib), 32);
+      print_named_value(f, "START_INSTANCE_REG", ac_ib_get(ib), 32);
+      tmp = ac_ib_get(ib);
+      print_named_value(f, "DRAW_ID_REG", tmp & 0xFFFF, 16);
+      print_named_value(f, "DRAW_ID_ENABLE", tmp >> 31, 1);
+      print_named_value(f, "COUNT_INDIRECT_ENABLE", (tmp >> 30) & 1, 1);
+      print_named_value(f, "DRAW_COUNT", ac_ib_get(ib), 32);
+      print_addr(ib, "COUNT_ADDR", ac_ib_get64(ib), 0);
+      print_named_value(f, "STRIDE", ac_ib_get(ib), 32);
+      ac_dump_reg(f, ib->gfx_level, ib->family, R_0287F0_VGT_DRAW_INITIATOR, ac_ib_get(ib), ~0);
+      break;
+   case PKT3_INDEX_BASE:
+      print_addr(ib, "ADDR", ac_ib_get64(ib), 0);
+      break;
    case PKT3_INDEX_TYPE:
       ac_dump_reg(f, ib->gfx_level, ib->family, R_028A7C_VGT_DMA_INDEX_TYPE, ac_ib_get(ib), ~0);
       break;
@@ -657,6 +681,15 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       print_named_value(f, "CMP_DATA_HI", ac_ib_get(ib), 32);
       print_named_value(f, "LOOP_INTERVAL", ac_ib_get(ib) & 0x1fff, 13);
       break;
+   case PKT3_INDEX_BUFFER_SIZE:
+      print_named_value(f, "COUNT", ac_ib_get(ib), 32);
+      break;
+   case PKT3_COND_EXEC: {
+      uint32_t size = ac_ib_get(ib) * 4;
+      print_addr(ib, "ADDR", ac_ib_get64(ib), size);
+      print_named_value(f, "SIZE", size, 32);
+      break;
+   }
    }
 
    /* print additional dwords */

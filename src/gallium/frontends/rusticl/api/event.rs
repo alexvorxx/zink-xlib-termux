@@ -162,7 +162,12 @@ pub fn create_and_queue(
     work: EventSig,
 ) -> CLResult<()> {
     let e = Event::new(&q, cmd_type, deps, work);
-    cl_event::leak_ref(event, &e);
+    if !event.is_null() {
+        // SAFETY: we check for null and valid API use is to pass in a valid pointer
+        unsafe {
+            event.write(cl_event::from_arc(Arc::clone(&e)));
+        }
+    }
     q.queue(e);
     if block {
         q.flush(true)?;

@@ -28,7 +28,7 @@ variables:
    KERNEL_ROOTFS_TAG: "2024-01-24-split"
    KERNEL_TAG: "v6.6.13-mesa-9916"
    KERNEL_REPO: "gfx-ci/linux"
-   PKG_REPO_REV: "67f2c46b"
+   PKG_REPO_REV: "3cc12a2a"
 
    WINDOWS_X64_MSVC_PATH: "windows/x86_64_msvc"
    WINDOWS_X64_MSVC_TAG: "2023-12-22-msvc"

@@ -352,6 +352,9 @@ enum radv_trace_mode {
 
    /** Radeon Raytracing Analyzer */
    RADV_TRACE_MODE_RRA = 1 << (VK_TRACE_MODE_COUNT + 1),
+
+   /** Gather context rolls of submitted command buffers */
+   RADV_TRACE_MODE_CTX_ROLLS = 1 << (VK_TRACE_MODE_COUNT + 2),
 };
 
 struct radv_instance {
@@ -983,6 +986,7 @@ enum radv_dispatch_table {
    RADV_RGP_DISPATCH_TABLE,
    RADV_RRA_DISPATCH_TABLE,
    RADV_RMV_DISPATCH_TABLE,
+   RADV_CTX_ROLL_DISPATCH_TABLE,
    RADV_DISPATCH_TABLE_COUNT,
 };
 
@@ -991,6 +995,7 @@ struct radv_layer_dispatch_tables {
    struct vk_device_dispatch_table rgp;
    struct vk_device_dispatch_table rra;
    struct vk_device_dispatch_table rmv;
+   struct vk_device_dispatch_table ctx_roll;
 };
 
 enum radv_buffer_robustness {
@@ -1178,6 +1183,9 @@ struct radv_device {
 
    /* Radeon Raytracing Analyzer trace. */
    struct radv_rra_trace_data rra_trace;
+
+   FILE *ctx_roll_file;
+   simple_mtx_t ctx_roll_mtx;
 
    /* Trap handler. */
    struct radv_shader *trap_handler_shader;

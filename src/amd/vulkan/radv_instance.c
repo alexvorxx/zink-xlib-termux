@@ -116,6 +116,7 @@ radv_get_perftest_option_name(int id)
 static const struct debug_control trace_options[] = {
    {"rgp", RADV_TRACE_MODE_RGP},
    {"rra", RADV_TRACE_MODE_RRA},
+   {"ctxroll", RADV_TRACE_MODE_CTX_ROLLS},
    {NULL, 0},
 };
 

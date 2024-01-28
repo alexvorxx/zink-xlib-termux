@@ -32,6 +32,7 @@ radv_entrypoints_gen_command += [
   '--device-prefix', 'sqtt',
   '--device-prefix', 'rra',
   '--device-prefix', 'rmv',
+  '--device-prefix', 'ctx_roll',
 
   # Application layer entrypoints
   '--device-prefix', 'metro_exodus',
@@ -49,6 +50,7 @@ radv_entrypoints = custom_target(
 
 libradv_files = files(
   'bvh/bvh.h',
+  'layers/radv_ctx_roll_layer.c',
   'layers/radv_metro_exodus.c',
   'layers/radv_rage2.c',
   'layers/radv_quantic_dream.c',

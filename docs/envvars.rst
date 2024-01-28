@@ -349,6 +349,9 @@ Core Mesa environment variables
       * - ``rra``
         - Radeon Raytracing Analyzer
         - ``RADV``
+      * - ``ctxroll``
+        - Context rolls
+        - ``RADV``
 
    - Creating RMV captures requires the ``scripts/setup.sh`` script in the
      Radeon Developer Tools folder to be run beforehand

@@ -241,13 +241,6 @@ pub trait ReferenceCountedAPIPointer<T, const ERR: i32> {
             Ok(Arc::from_raw(ptr))
         }
     }
-
-    fn from_arc(arc: Arc<T>) -> Self
-    where
-        Self: Sized,
-    {
-        Self::from_ptr(Arc::into_raw(arc))
-    }
 }
 
 pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR> + 'a>:
@@ -320,6 +313,10 @@ pub trait CLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self, ERR>
         // SAFETY: `get_ptr` already checks if it's one of our pointers.
         unsafe { Arc::increment_strong_count(ptr) };
         Ok(())
+    }
+
+    fn into_cl(self: Arc<Self>) -> CL {
+        CL::from_ptr(Arc::into_raw(self))
     }
 }
 

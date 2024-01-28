@@ -163,12 +163,13 @@ fn create_program_with_source(
         source.extend_from_slice(arr);
     }
 
-    Ok(cl_program::from_arc(Program::new(
+    Ok(Program::new(
         &c,
         &c.devs,
         // SAFETY: We've constructed `source` such that it contains no nul bytes.
         unsafe { CString::from_vec_unchecked(source) },
-    )))
+    )
+    .into_cl())
 }
 
 #[cl_entrypoint]
@@ -228,7 +229,7 @@ fn create_program_with_binary(
 
     let prog = Program::from_bins(c, devs, &bins);
 
-    Ok(cl_program::from_arc(prog))
+    Ok(prog.into_cl())
     //• CL_INVALID_BINARY if an invalid program binary was encountered for any device. binary_status will return specific status for each device.
 }
 
@@ -247,7 +248,7 @@ fn create_program_with_il(
 
     // SAFETY: according to API spec
     let spirv = unsafe { slice::from_raw_parts(il.cast(), length) };
-    Ok(cl_program::from_arc(Program::from_spirv(c, spirv)))
+    Ok(Program::from_spirv(c, spirv).into_cl())
 }
 
 #[cl_entrypoint]
@@ -455,7 +456,7 @@ pub fn link_program(
     }
 
     debug_logging(&res, &devs);
-    Ok((cl_program::from_arc(res), code))
+    Ok((res.into_cl(), code))
 
     //• CL_INVALID_LINKER_OPTIONS if the linker options specified by options are invalid.
     //• CL_INVALID_OPERATION if the rules for devices containing compiled binaries or libraries as described in input_programs argument above are not followed.

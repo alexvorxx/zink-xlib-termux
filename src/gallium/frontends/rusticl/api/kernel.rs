@@ -263,7 +263,7 @@ fn create_kernel(
         return Err(CL_INVALID_KERNEL_DEFINITION);
     }
 
-    Ok(cl_kernel::from_arc(Kernel::new(name, p)))
+    Ok(Kernel::new(name, p).into_cl())
 }
 
 #[cl_entrypoint]
@@ -311,7 +311,7 @@ fn create_kernels_in_program(
             unsafe {
                 kernels
                     .add(num_kernels as usize)
-                    .write(cl_kernel::from_arc(Kernel::new(name, p.clone())));
+                    .write(Kernel::new(name, p.clone()).into_cl());
             }
         }
         num_kernels += 1;
@@ -645,5 +645,5 @@ fn enqueue_task(
 #[cl_entrypoint]
 fn clone_kernel(source_kernel: cl_kernel) -> CLResult<cl_kernel> {
     let k = Kernel::ref_from_raw(source_kernel)?;
-    Ok(cl_kernel::from_arc(Arc::new(k.clone())))
+    Ok(Arc::new(k.clone()).into_cl())
 }

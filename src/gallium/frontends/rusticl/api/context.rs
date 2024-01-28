@@ -193,11 +193,7 @@ fn create_context(
         }
     }
 
-    Ok(cl_context::from_arc(Context::new(
-        devs,
-        props,
-        gl_ctx_manager,
-    )))
+    Ok(Context::new(devs, props, gl_ctx_manager).into_cl())
 }
 
 #[cl_entrypoint]

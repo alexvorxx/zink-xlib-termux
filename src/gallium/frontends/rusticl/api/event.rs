@@ -63,7 +63,7 @@ impl CLInfo<cl_profiling_info> for cl_event {
 #[cl_entrypoint]
 fn create_user_event(context: cl_context) -> CLResult<cl_event> {
     let c = context.get_arc()?;
-    Ok(cl_event::from_arc(Event::new_user(c)))
+    Ok(Event::new_user(c).into_cl())
 }
 
 #[cl_entrypoint]
@@ -165,7 +165,7 @@ pub fn create_and_queue(
     if !event.is_null() {
         // SAFETY: we check for null and valid API use is to pass in a valid pointer
         unsafe {
-            event.write(cl_event::from_arc(Arc::clone(&e)));
+            event.write(Arc::clone(&e).into_cl());
         }
     }
     q.queue(e);

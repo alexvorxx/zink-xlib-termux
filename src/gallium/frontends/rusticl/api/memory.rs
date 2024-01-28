@@ -280,9 +280,7 @@ fn create_buffer_with_properties(
         return Err(CL_INVALID_PROPERTY);
     }
 
-    Ok(cl_mem::from_arc(Mem::new_buffer(
-        c, flags, size, host_ptr, props,
-    )?))
+    Ok(Mem::new_buffer(c, flags, size, host_ptr, props)?.into_cl())
 }
 
 #[cl_entrypoint]
@@ -341,9 +339,7 @@ fn create_sub_buffer(
         _ => return Err(CL_INVALID_VALUE),
     };
 
-    Ok(cl_mem::from_arc(Mem::new_sub_buffer(
-        b, flags, offset, size,
-    )))
+    Ok(Mem::new_sub_buffer(b, flags, offset, size).into_cl())
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if there are no devices in context associated with buffer for which the origin field of the cl_buffer_region structure passed in buffer_create_info is aligned to the CL_DEVICE_MEM_BASE_ADDR_ALIGN value.
@@ -773,7 +769,7 @@ fn create_image_with_properties(
         return Err(CL_INVALID_PROPERTY);
     }
 
-    Ok(cl_mem::from_arc(Mem::new_image(
+    Ok(Mem::new_image(
         c,
         parent,
         desc.image_type,
@@ -783,7 +779,8 @@ fn create_image_with_properties(
         elem_size,
         host_ptr,
         props,
-    )?))
+    )?
+    .into_cl())
 }
 
 #[cl_entrypoint]
@@ -946,7 +943,7 @@ fn create_sampler_impl(
         filter_mode,
         props,
     );
-    Ok(cl_sampler::from_arc(sampler))
+    Ok(sampler.into_cl())
 }
 
 #[cl_entrypoint]
@@ -3008,11 +3005,7 @@ fn create_from_gl(
         let gl_export_manager =
             gl_ctx_manager.export_object(&c, target, flags as u32, miplevel, texture)?;
 
-        Ok(cl_mem::from_arc(Mem::from_gl(
-            c,
-            flags,
-            &gl_export_manager,
-        )?))
+        Ok(Mem::from_gl(c, flags, &gl_export_manager)?.into_cl())
     } else {
         Err(CL_INVALID_CONTEXT)
     }

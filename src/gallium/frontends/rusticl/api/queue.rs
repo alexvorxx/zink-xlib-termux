@@ -93,12 +93,7 @@ pub fn create_command_queue_impl(
         return Err(CL_INVALID_QUEUE_PROPERTIES);
     }
 
-    Ok(cl_command_queue::from_arc(Queue::new(
-        c,
-        d,
-        properties,
-        properties_v2,
-    )?))
+    Ok(Queue::new(c, d, properties, properties_v2)?.into_cl())
 }
 
 #[cl_entrypoint]

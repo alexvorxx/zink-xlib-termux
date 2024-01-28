@@ -623,7 +623,11 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
                   ac_ib_get(ib), ~0);
       break;
    case PKT3_DISPATCH_INDIRECT:
-      print_named_value(f, "DATA_OFFSET", ac_ib_get(ib), 32);
+      if (count > 1)
+         print_addr(ib, "ADDR", ac_ib_get64(ib), 12);
+      else
+         print_named_value(f, "DATA_OFFSET", ac_ib_get(ib), 32);
+
       ac_dump_reg(f, ib->gfx_level, ib->family, R_00B800_COMPUTE_DISPATCH_INITIATOR,
                   ac_ib_get(ib), ~0);
       break;

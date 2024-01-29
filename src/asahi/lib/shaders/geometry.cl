@@ -9,7 +9,7 @@
 static uint
 align(uint x, uint y)
 {
-   return (x + 1) & ~(y - 1);
+   return (x + y - 1) & ~(y - 1);
 }
 
 /* Swap the two non-provoking vertices third vert in odd triangles. This

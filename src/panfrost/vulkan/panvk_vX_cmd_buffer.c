@@ -435,15 +435,6 @@ panvk_cmd_prepare_ubos(struct panvk_cmd_buffer *cmdbuf,
       cfg.entries = DIV_ROUND_UP(sizeof(desc_state->sysvals), 16);
    }
 
-   if (pipeline->layout->push_constants.size) {
-      pan_pack(&ubo_descs[PANVK_PUSH_CONST_UBO_INDEX], UNIFORM_BUFFER, cfg) {
-         cfg.pointer = desc_state->push_constants;
-         cfg.entries = ALIGN_POT(pipeline->layout->push_constants.size, 16);
-      }
-   } else {
-      memset(&ubo_descs[PANVK_PUSH_CONST_UBO_INDEX], 0, sizeof(*ubo_descs));
-   }
-
    for (unsigned s = 0; s < pipeline->layout->vk.set_count; s++) {
       const struct panvk_descriptor_set_layout *set_layout =
          vk_to_panvk_descriptor_set_layout(pipeline->layout->vk.set_layouts[s]);

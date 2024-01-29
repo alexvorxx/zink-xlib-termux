@@ -2343,7 +2343,7 @@ bool radv_mem_vectorize_callback(unsigned align_mul, unsigned align_offset, unsi
                                  nir_intrinsic_instr *low, nir_intrinsic_instr *high, void *data);
 
 void radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                             const struct radv_shader *vs);
+                             const struct radv_shader *vs, const struct radv_shader *next_stage);
 
 void radv_emit_tess_ctrl_shader(const struct radv_device *device, struct radeon_cmdbuf *cs,
                                 const struct radv_shader *tcs);

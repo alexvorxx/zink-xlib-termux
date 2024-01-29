@@ -1891,12 +1891,18 @@ radv_emit_tcs_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shade
 {
    const enum amd_gfx_level gfx_level = cmd_buffer->device->physical_device->rad_info.gfx_level;
    struct radv_shader *tcs = cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL];
+   uint32_t rsrc1;
 
    if (cmd_buffer->state.emitted_tcs_epilog == tcs_epilog)
       return;
 
+   if (tcs->info.merged_shader_compiled_separately) {
+      radv_shader_combine_cfg_vs_tcs(cmd_buffer->state.shaders[MESA_SHADER_VERTEX], tcs, &rsrc1, NULL);
+   } else {
+      rsrc1 = tcs->config.rsrc1;
+   }
+
    assert(tcs->config.num_shared_vgprs == 0);
-   uint32_t rsrc1 = tcs->config.rsrc1;
    if (G_00B848_VGPRS(tcs_epilog->rsrc1) > G_00B848_VGPRS(rsrc1))
       rsrc1 = (rsrc1 & C_00B848_VGPRS) | (tcs_epilog->rsrc1 & ~C_00B848_VGPRS);
    if (gfx_level < GFX10 && G_00B228_SGPRS(tcs_epilog->rsrc1) > G_00B228_SGPRS(rsrc1))
@@ -2628,7 +2634,13 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
    }
 
    if (pdevice->rad_info.gfx_level >= GFX9) {
-      unsigned hs_rsrc2 = tcs->config.rsrc2;
+      unsigned hs_rsrc2;
+
+      if (tcs->info.merged_shader_compiled_separately) {
+         radv_shader_combine_cfg_vs_tcs(cmd_buffer->state.shaders[MESA_SHADER_VERTEX], tcs, NULL, &hs_rsrc2);
+      } else {
+         hs_rsrc2 = tcs->config.rsrc2;
+      }
 
       if (pdevice->rad_info.gfx_level >= GFX10) {
          hs_rsrc2 |= S_00B42C_LDS_SIZE_GFX10(cmd_buffer->state.tess_lds_size);
@@ -3898,6 +3910,8 @@ static void
 emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *vs_shader,
                  const struct radv_shader_part *prolog)
 {
+   uint32_t rsrc1, rsrc2;
+
    /* no need to re-emit anything in this case */
    if (cmd_buffer->state.emitted_vs_prolog == prolog)
       return;
@@ -3906,8 +3920,15 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
 
    assert(cmd_buffer->state.emitted_graphics_pipeline == cmd_buffer->state.graphics_pipeline);
 
-   uint32_t rsrc1 = vs_shader->config.rsrc1;
-   if (chip < GFX10 && G_00B228_SGPRS(prolog->rsrc1) > G_00B228_SGPRS(vs_shader->config.rsrc1))
+   if (vs_shader->info.merged_shader_compiled_separately) {
+      assert(vs_shader->info.next_stage == MESA_SHADER_TESS_CTRL);
+
+      radv_shader_combine_cfg_vs_tcs(vs_shader, cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL], &rsrc1, &rsrc2);
+   } else {
+      rsrc1 = vs_shader->config.rsrc1;
+   }
+
+   if (chip < GFX10 && G_00B228_SGPRS(prolog->rsrc1) > G_00B228_SGPRS(rsrc1))
       rsrc1 = (rsrc1 & C_00B228_SGPRS) | (prolog->rsrc1 & ~C_00B228_SGPRS);
 
    /* The main shader must not use less VGPRs than the prolog, otherwise shared vgprs might not
@@ -3936,10 +3957,15 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
 
    radeon_set_sh_reg(cmd_buffer->cs, pgm_lo_reg, prolog->va >> 8);
 
-   if (chip < GFX10)
+   if (chip < GFX10) {
       radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg, rsrc1);
-   else
+
+      if (vs_shader->info.merged_shader_compiled_separately) {
+         radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2);
+      }
+   } else {
       assert(rsrc1 == vs_shader->config.rsrc1);
+   }
 
    radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, prolog->bo);
 }
@@ -9048,7 +9074,7 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
    const gl_shader_stage last_vgt_api_stage = radv_cmdbuf_get_last_vgt_api_stage(cmd_buffer);
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
-   const struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = cmd_buffer->device;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
 
    if (cmd_buffer->state.graphics_pipeline)
@@ -9060,9 +9086,17 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
       struct radv_shader_object *shader_obj = cmd_buffer->state.shader_objs[s];
 
       switch (s) {
-      case MESA_SHADER_VERTEX:
-         radv_emit_vertex_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_VERTEX]);
+      case MESA_SHADER_VERTEX: {
+         const struct radv_shader *vs = cmd_buffer->state.shaders[MESA_SHADER_VERTEX];
+         struct radv_shader *next_stage = NULL;
+
+         if (vs->info.merged_shader_compiled_separately) {
+            next_stage = cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL];
+         }
+
+         radv_emit_vertex_shader(device, cs, cs, vs, next_stage);
          break;
+      }
       case MESA_SHADER_TESS_CTRL:
          radv_emit_tess_ctrl_shader(device, cs, cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL]);
          break;

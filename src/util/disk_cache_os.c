@@ -34,6 +34,7 @@
 
 #include "util/compress.h"
 #include "util/crc32.h"
+#include "util/u_debug.h"
 #include "util/disk_cache.h"
 #include "util/disk_cache_os.h"
 
@@ -980,7 +981,7 @@ disk_cache_enabled()
       return false;
 
    /* If running as a users other than the real user disable cache */
-   if (geteuid() != getuid())
+   if (!__normal_user())
       return false;
 
    /* At user request, disable shader cache entirely. */

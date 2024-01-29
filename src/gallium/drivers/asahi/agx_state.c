@@ -1908,11 +1908,20 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       struct asahi_vs_shader_key *key = &key_->vs;
 
       NIR_PASS(_, nir, lower_vbo, key->attribs);
-      NIR_PASS(_, nir, agx_nir_lower_point_size, key->fixed_point_size);
 
-      if (should_lower_clip_m1_1(dev, key->clip_halfz)) {
-         NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
-                  nir_metadata_block_index | nir_metadata_dominance, NULL);
+      if (key->next_stage == ASAHI_VS_FS) {
+         NIR_PASS(_, nir, agx_nir_lower_point_size,
+                  key->next.fs.fixed_point_size);
+
+         if (should_lower_clip_m1_1(dev, key->next.fs.clip_halfz)) {
+            NIR_PASS(_, nir, nir_shader_intrinsics_pass,
+                     agx_nir_lower_clip_m1_1,
+                     nir_metadata_block_index | nir_metadata_dominance, NULL);
+         }
+      } else if (key->next_stage == ASAHI_VS_GS) {
+         NIR_PASS(_, nir, agx_nir_lower_sysvals, false);
+         NIR_PASS(_, nir, agx_nir_lower_vs_before_gs, dev->libagx,
+                  key->next.gs.index_size_B, &outputs);
       }
    } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {
       struct asahi_tcs_shader_key *key = &key_->tcs;
@@ -1940,28 +1949,11 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
          NIR_PASS(_, nir, nir_io_add_intrinsic_xfb_info);
       }
 
-      struct blob_reader vs_reader;
-      blob_reader_init(&vs_reader, linked_so->serialized_nir.data,
-                       linked_so->serialized_nir.size);
-      nir_shader *vs = nir_deserialize(NULL, &agx_nir_options, &vs_reader);
-
-      /* Apply the VS key to the VS before linking it in */
-      NIR_PASS(_, vs, lower_vbo, key->attribs);
-      NIR_PASS(_, vs, agx_nir_lower_ia, &key->ia);
-
-      NIR_PASS(_, vs, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
       NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
 
-      /* Lower VS sysvals before it's merged in, so we access the correct shader
-       * stage for UBOs etc. Skip draw parameters, those are lowered later.
-       */
-      NIR_PASS(_, vs, agx_nir_lower_sysvals, false);
-
-      /* Link VS with GS */
-      NIR_PASS(_, nir, agx_nir_lower_gs, vs, dev->libagx, &key->ia,
+      NIR_PASS(_, nir, agx_nir_lower_gs, dev->libagx, &key->ia,
                key->rasterizer_discard, &gs_count, &gs_copy, &pre_gs,
                &gs_out_prim, &gs_out_count_words);
-      ralloc_free(vs);
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       struct asahi_fs_shader_key *key = &key_->fs;
 
@@ -2065,8 +2057,14 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       base_key.fs.nr_samples = key_->fs.nr_samples;
 
    if (nir->info.stage == MESA_SHADER_VERTEX) {
-      base_key.vs.outputs_flat_shaded = key_->vs.outputs_flat_shaded;
-      base_key.vs.outputs_linear_shaded = key_->vs.outputs_linear_shaded;
+      struct asahi_vs_shader_key *key = &key_->vs;
+
+      if (key->next_stage == ASAHI_VS_FS) {
+         base_key.vs.outputs_flat_shaded = key_->vs.next.fs.outputs_flat_shaded;
+
+         base_key.vs.outputs_linear_shaded =
+            key_->vs.next.fs.outputs_linear_shaded;
+      }
    }
 
    struct agx_compiled_shader *compiled =
@@ -2423,7 +2421,7 @@ rast_prim(enum mesa_prim mode, unsigned fill_mode)
 }
 
 static bool
-agx_update_vs(struct agx_context *ctx)
+agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
 {
    /* Only proceed if the shader or anything the key depends on changes
     *
@@ -2431,27 +2429,38 @@ agx_update_vs(struct agx_context *ctx)
     * clip_halfz: RS
     * outputs_{flat,linear}_shaded: FS_PROG
     */
-   if (!(ctx->dirty & (AGX_DIRTY_VS_PROG | AGX_DIRTY_VERTEX | AGX_DIRTY_XFB |
-                       AGX_DIRTY_FS_PROG | AGX_DIRTY_RS | AGX_DIRTY_PRIM)))
+   if (!((ctx->dirty & (AGX_DIRTY_VS_PROG | AGX_DIRTY_VERTEX | AGX_DIRTY_XFB |
+                        AGX_DIRTY_FS_PROG | AGX_DIRTY_RS | AGX_DIRTY_PRIM)) ||
+         ctx->stage[PIPE_SHADER_TESS_EVAL].shader ||
+         ctx->stage[PIPE_SHADER_GEOMETRY].shader || ctx->in_tess))
       return false;
 
    enum mesa_prim rasterized_prim =
       rast_prim(ctx->batch->reduced_prim, ctx->rast->base.fill_front);
 
    struct asahi_vs_shader_key key = {
-      .clip_halfz = ctx->rast->base.clip_halfz,
+      .next_stage = ctx->stage[PIPE_SHADER_TESS_EVAL].shader && !ctx->in_tess
+                       ? ASAHI_VS_TCS
+                    : ctx->stage[PIPE_SHADER_GEOMETRY].shader ? ASAHI_VS_GS
+                                                              : ASAHI_VS_FS,
+   };
+
+   if (key.next_stage == ASAHI_VS_FS) {
+      key.next.fs.clip_halfz = ctx->rast->base.clip_halfz;
 
       /* If we are not rasterizing points, don't set fixed_point_size to
        * eliminate the useless point size write.
        */
-      .fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
-                          rasterized_prim == MESA_PRIM_POINTS,
+      key.next.fs.fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
+                                     rasterized_prim == MESA_PRIM_POINTS;
 
-      .outputs_flat_shaded =
-         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_flat_shaded,
-      .outputs_linear_shaded =
-         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_linear_shaded,
-   };
+      key.next.fs.outputs_flat_shaded =
+         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_flat_shaded;
+      key.next.fs.outputs_linear_shaded =
+         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_linear_shaded;
+   } else if (key.next_stage == ASAHI_VS_GS) {
+      key.next.gs.index_size_B = index_size_B;
+   }
 
    memcpy(key.attribs, &ctx->attributes->key, sizeof(key.attribs));
 
@@ -2519,24 +2528,13 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
          tgt->stride = gs->xfb_strides[i];
    }
 
-   /* XXX: Deduplicate this code from regular vertex */
    struct asahi_gs_shader_key key = {
-      .ia.index_size = info->index_size,
       .ia.mode = info->mode,
       .ia.flatshade_first =
          ia_needs_provoking(info->mode) && ctx->rast->base.flatshade_first,
 
       .rasterizer_discard = ctx->rast->base.rasterizer_discard,
    };
-
-   memcpy(key.attribs, &ctx->attributes->key, sizeof(key.attribs));
-
-   static_assert(sizeof(key.input_nir_sha1) ==
-                    sizeof(ctx->stage[PIPE_SHADER_VERTEX].shader->nir_sha1),
-                 "common size for shader sha-1");
-
-   memcpy(key.input_nir_sha1, ctx->stage[PIPE_SHADER_VERTEX].shader->nir_sha1,
-          sizeof(key.input_nir_sha1));
 
    return agx_update_shader(ctx, &ctx->gs, PIPE_SHADER_GEOMETRY,
                             (union asahi_shader_key *)&key);
@@ -4131,10 +4129,11 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
       }
    }
 
-   /* Calculate input primitive count for direct draws, and allocate the count
-    * buffer. GPU calculates and allocates for indirect draws.
+   /* Calculate input primitive count for direct draws, and allocate the vertex
+    * & count buffers. GPU calculates and allocates for indirect draws.
     */
    unsigned count_buffer_stride = batch->ctx->gs->gs_count_words * 4;
+   params.vs_outputs = batch->ctx->vs->info.outputs;
 
    if (indirect) {
       params.count_buffer_stride = count_buffer_stride;
@@ -4142,12 +4141,20 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
       unsigned prim_per_instance =
          u_decomposed_prims_for_vertices(info->mode, draw->count);
       params.input_primitives = prim_per_instance * info->instance_count;
+      params.input_vertices = draw->count;
 
+      unsigned vb_size = libagx_tcs_in_size(draw->count * info->instance_count,
+                                            params.vs_outputs);
       unsigned size = params.input_primitives * count_buffer_stride;
 
       if (size) {
          params.count_buffer =
             agx_pool_alloc_aligned(&batch->pool, size, 4).gpu;
+      }
+
+      if (vb_size) {
+         params.vertex_buffer =
+            agx_pool_alloc_aligned(&batch->pool, vb_size, 4).gpu;
       }
    }
 
@@ -4178,9 +4185,11 @@ agx_launch_gs(struct agx_batch *batch, const struct pipe_draw_info *info,
 
    assert(!info->primitive_restart && "should have been lowered");
 
-   struct pipe_grid_info grid = {.block = {1, 1, 1}};
+   struct pipe_grid_info grid_vs = {.block = {1, 1, 1}};
+   struct pipe_grid_info grid_gs = {.block = {1, 1, 1}};
    struct agx_resource grid_indirect_rsrc = {.bo = batch->geom_params_bo};
 
+   /* Setup grids */
    if (indirect) {
       assert(indirect->buffer && "drawauto already handled");
 
@@ -4200,23 +4209,35 @@ agx_launch_gs(struct agx_batch *batch, const struct pipe_draw_info *info,
 
       /* Wrap the pool allocation in a fake resource for meta-Gallium use */
       assert(batch->geom_params_bo != NULL);
-      grid.indirect = &grid_indirect_rsrc.base;
-      grid.indirect_offset =
-         (batch->uniforms.geometry_params - grid_indirect_rsrc.bo->ptr.gpu) +
-         offsetof(struct agx_geometry_params, gs_grid);
-   } else {
-      unsigned prim_per_instance =
-         u_decomposed_prims_for_vertices(info->mode, draws->count);
+      grid_vs.indirect = &grid_indirect_rsrc.base;
+      grid_gs.indirect = &grid_indirect_rsrc.base;
 
-      grid.grid[0] = prim_per_instance;
-      grid.grid[1] = info->instance_count;
-      grid.grid[2] = 1;
+      unsigned param_offs =
+         (batch->uniforms.geometry_params - grid_indirect_rsrc.bo->ptr.gpu);
+
+      grid_vs.indirect_offset =
+         param_offs + offsetof(struct agx_geometry_params, vs_grid);
+
+      grid_gs.indirect_offset =
+         param_offs + offsetof(struct agx_geometry_params, gs_grid);
+   } else {
+      grid_vs.grid[0] = draws->count;
+      grid_vs.grid[1] = info->instance_count;
+      grid_vs.grid[2] = 1;
+
+      grid_gs.grid[0] =
+         u_decomposed_prims_for_vertices(info->mode, draws->count);
+      grid_gs.grid[1] = info->instance_count;
+      grid_gs.grid[2] = 1;
    }
+
+   /* Launch the vertex shader first */
+   agx_launch(batch, &grid_vs, ctx->vs, ctx->vs->stage);
 
    /* If there is a count shader, launch it and prefix sum the results. */
    if (gs->gs_count) {
       perf_debug(dev, "Geometry shader count");
-      agx_launch(batch, &grid, gs->gs_count, PIPE_SHADER_GEOMETRY);
+      agx_launch(batch, &grid_gs, gs->gs_count, PIPE_SHADER_GEOMETRY);
 
       unsigned words = gs->gs_count_words;
       agx_launch(batch,
@@ -4238,7 +4259,7 @@ agx_launch_gs(struct agx_batch *batch, const struct pipe_draw_info *info,
               gs->pre_gs, PIPE_SHADER_COMPUTE);
 
    /* Launch the actual geometry shader */
-   agx_launch(batch, &grid, gs, PIPE_SHADER_GEOMETRY);
+   agx_launch(batch, &grid_gs, gs, PIPE_SHADER_GEOMETRY);
 
    /* If we're not rasterizing, the pipeline ends here */
    if (ctx->rast->base.rasterizer_discard)
@@ -4691,7 +4712,7 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
 
    /* Run VS+TCS as compute */
    agx_upload_vbos(batch);
-   agx_update_vs(ctx);
+   agx_update_vs(ctx, info->index_size);
    agx_update_tcs(ctx, info);
    /* XXX */
    ctx->stage[PIPE_SHADER_TESS_CTRL].dirty = ~0;
@@ -4954,7 +4975,7 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    batch->reduced_prim = reduced_prim;
 
    /* Update shaders first so we can use them after */
-   if (agx_update_vs(ctx)) {
+   if (agx_update_vs(ctx, idx_size)) {
       ctx->dirty |= AGX_DIRTY_VS | AGX_DIRTY_VS_PROG;
       ctx->stage[PIPE_SHADER_VERTEX].dirty = ~0;
 

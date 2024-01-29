@@ -32,11 +32,15 @@ struct nir_def *agx_vertex_id_for_topology(struct nir_builder *b,
 
 bool agx_nir_lower_ia(struct nir_shader *s, struct agx_ia_key *ia);
 
-bool agx_nir_lower_gs(struct nir_shader *gs, struct nir_shader *vs,
-                      const struct nir_shader *libagx, struct agx_ia_key *ia,
-                      bool rasterizer_discard, struct nir_shader **gs_count,
-                      struct nir_shader **gs_copy, struct nir_shader **pre_gs,
-                      enum mesa_prim *out_mode, unsigned *out_count_words);
+bool agx_nir_lower_vs_before_gs(struct nir_shader *vs,
+                                const struct nir_shader *libagx,
+                                unsigned index_size_B, uint64_t *outputs);
+
+bool agx_nir_lower_gs(struct nir_shader *gs, const struct nir_shader *libagx,
+                      struct agx_ia_key *ia, bool rasterizer_discard,
+                      struct nir_shader **gs_count, struct nir_shader **gs_copy,
+                      struct nir_shader **pre_gs, enum mesa_prim *out_mode,
+                      unsigned *out_count_words);
 
 void agx_nir_prefix_sum_gs(struct nir_builder *b, const void *data);
 

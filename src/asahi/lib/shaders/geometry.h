@@ -209,7 +209,7 @@ AGX_STATIC_ASSERT(sizeof(struct agx_tess_params) == 22 * 4);
  *
  * TODO: compact.
  */
-static inline ushort
+static inline uint
 libagx_tcs_in_offs(uint vtx, gl_varying_slot location,
                    uint64_t crosslane_vs_out_mask)
 {

@@ -353,15 +353,18 @@ libagx_gs_setup_indirect(global struct agx_geometry_params *p,
    uint vertex_count = in_draw[0];
    uint instance_count = in_draw[1];
 
+   /* Calculate number of primitives input into the GS */
    uint prim_per_instance = u_decomposed_prims_for_vertices(mode, vertex_count);
-   uint2 draw = (uint2)(prim_per_instance, instance_count);
+   p->input_primitives = prim_per_instance * instance_count;
+   p->input_vertices = vertex_count;
 
-   /* There are primitives*instances primitives total */
-   p->input_primitives = draw.x * draw.y;
+   /* Invoke VS as (vertices, instances, 1); GS as (primitives, instances, 1) */
+   p->vs_grid[0] = vertex_count;
+   p->vs_grid[1] = instance_count;
+   p->vs_grid[2] = 1;
 
-   /* Invoke as (primitives, instances, 1) */
-   p->gs_grid[0] = draw.x;
-   p->gs_grid[1] = draw.y;
+   p->gs_grid[0] = prim_per_instance;
+   p->gs_grid[1] = instance_count;
    p->gs_grid[2] = 1;
 
    /* If indexing is enabled, the third word is the offset into the index buffer
@@ -373,10 +376,18 @@ libagx_gs_setup_indirect(global struct agx_geometry_params *p,
       ia->index_buffer += ((constant uint *)ia->draws)[2] * ia->index_size_B;
    }
 
-   /* We may need to allocate a GS count buffer, do so now */
+   /* We may need to allocate VS and GS count buffers, do so now */
    global struct agx_geometry_state *state = p->state;
+
+   uint vertex_buffer_size =
+      libagx_tcs_in_size(vertex_count * instance_count, p->vs_outputs);
+
    p->count_buffer = (global uint *)(state->heap + state->heap_bottom);
-   state->heap_bottom += align(p->input_primitives * p->count_buffer_stride, 4);
+   state->heap_bottom +=
+      align(p->input_primitives * p->count_buffer_stride, 16);
+
+   p->vertex_buffer = (global uint *)(state->heap + state->heap_bottom);
+   state->heap_bottom += align(vertex_buffer_size, 4);
 }
 
 void
@@ -421,4 +432,12 @@ bool
 libagx_is_provoking_last(global struct agx_ia_state *ia)
 {
    return !ia->flatshade_first;
+}
+
+uintptr_t
+libagx_vertex_output_address(constant struct agx_geometry_params *p, uint vtx,
+                             gl_varying_slot location, uint64_t vs_outputs)
+{
+   return (uintptr_t)p->vertex_buffer +
+          libagx_tcs_in_offs(vtx, location, vs_outputs);
 }

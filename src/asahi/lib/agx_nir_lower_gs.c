@@ -16,7 +16,9 @@
 #include "libagx_shaders.h"
 #include "nir.h"
 #include "nir_builder_opcodes.h"
+#include "nir_intrinsics.h"
 #include "nir_xfb_info.h"
+#include "shader_enums.h"
 
 enum gs_counter {
    GS_COUNTER_VERTICES = 0,
@@ -192,123 +194,40 @@ load_instance_id(nir_builder *b)
 }
 
 static bool
-lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *key)
 {
-   struct agx_lower_output_to_var_state *vs_state = data;
    if (intr->intrinsic != nir_intrinsic_load_per_vertex_input)
       return false;
 
-   /* I suppose we could support indirect GS inputs, but it would be more
-    * complicated and probably pointless (versus the lowering the frontend would
-    * otherwise do). GS lowering is hard enough as it is.
-    */
-   assert(nir_src_is_const(intr->src[1]) && "no indirect GS inputs");
-
    b->cursor = nir_instr_remove(&intr->instr);
-   nir_def *vertex = intr->src[0].ssa;
    nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
 
-   nir_variable *var =
-      vs_state->outputs[sem.location + nir_src_as_uint(intr->src[1])];
+   nir_def *location = nir_iadd_imm(b, intr->src[1].ssa, sem.location);
 
-   nir_def *val = nir_load_array_var(b, var, vertex);
+   /* Calculate the vertex ID we're pulling, based on the topology */
+   nir_def *vert_in_prim = intr->src[0].ssa;
+   nir_def *vertex = agx_vertex_id_for_topology(b, vert_in_prim, key);
+
+   /* The unrolled vertex ID uses the input_vertices, which differs from what
+    * our load_num_vertices will return (vertices vs primitives).
+    */
+   nir_def *unrolled = nir_iadd(
+      b,
+      nir_imul(b, load_instance_id(b), load_geometry_param(b, input_vertices)),
+      vertex);
+
+   /* Calculate the address of the input given the unrolled vertex ID */
+   nir_def *addr = libagx_vertex_output_address(
+      b, nir_load_geometry_param_buffer_agx(b), unrolled, location,
+      load_geometry_param(b, vs_outputs));
 
    assert(intr->def.bit_size == 32);
-   unsigned start = nir_intrinsic_component(intr);
-   unsigned count = intr->def.num_components;
-   val = nir_channels(b, val, nir_component_mask(count) << start);
+   addr = nir_iadd_imm(b, addr, nir_intrinsic_component(intr) * 4);
 
+   nir_def *val = nir_load_global_constant(b, addr, 4, intr->def.num_components,
+                                           intr->def.bit_size);
    nir_def_rewrite_uses(&intr->def, val);
    return true;
-}
-
-static bool
-lower_id_in_prim(nir_builder *b, nir_instr *instr, void *data)
-{
-   if (instr->type != nir_instr_type_intrinsic)
-      return false;
-
-   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-   if (intr->intrinsic != nir_intrinsic_load_vertex_id_in_primitive_agx)
-      return false;
-
-   /* The ID in the primitive is passed as a function parameter */
-   b->cursor = nir_instr_remove(instr);
-   nir_def *id = nir_load_param(b, 0);
-   nir_def_rewrite_uses(&intr->def, nir_u2uN(b, id, intr->def.bit_size));
-   return true;
-}
-
-static void
-agx_nir_link_vs_gs(nir_shader *vs, nir_shader *gs)
-{
-   struct agx_lower_output_to_var_state state = {.arrayed = true};
-
-   /* Vertex shader outputs will be placed in arrays. Create those arrays. */
-   u_foreach_bit64(slot, vs->info.outputs_written) {
-      state.outputs[slot] = nir_variable_create(
-         gs, nir_var_shader_temp,
-         glsl_array_type(glsl_uvec4_type(), gs->info.gs.vertices_in, 0),
-         gl_varying_slot_name_for_stage(slot, MESA_SHADER_VERTEX));
-   }
-
-   /* Rewrite geometry shader inputs to read from those arrays */
-   NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_gs_inputs,
-            nir_metadata_block_index | nir_metadata_dominance, &state);
-
-   /* Link the vertex shader with the geometry shader. This assumes that
-    * all functions have been inlined in the vertex shader.
-    */
-   nir_function_impl *vs_entry = nir_shader_get_entrypoint(vs);
-   nir_function *vs_function = nir_function_create(gs, "vertex");
-   vs_function->impl = nir_function_impl_clone(gs, vs_entry);
-   vs_function->impl->function = vs_function;
-
-   /* The vertex shader needs to be passed its index in the input primitive */
-   vs_function->num_params = 1;
-   vs_function->params = rzalloc_array(gs, nir_parameter, 1);
-   vs_function->params[0] = (nir_parameter){1, 16};
-
-   /* The vertex shader needs to be expressed in terms of that index */
-   nir_function_instructions_pass(
-      vs_function->impl, agx_lower_output_to_var,
-      nir_metadata_block_index | nir_metadata_dominance, &state);
-
-   nir_function_instructions_pass(
-      vs_function->impl, lower_id_in_prim,
-      nir_metadata_block_index | nir_metadata_dominance, NULL);
-
-   /* Run the vertex shader for each vertex in the input primitive */
-   nir_function_impl *gs_entry = nir_shader_get_entrypoint(gs);
-   nir_builder b = nir_builder_at(nir_before_impl(gs_entry));
-
-   for (unsigned i = 0; i < gs->info.gs.vertices_in; ++i) {
-      nir_call(&b, vs_function, nir_imm_intN_t(&b, i, 16));
-   }
-
-   /* Copy texture info. We force bindless on GS for now. */
-   gs->info.num_textures = vs->info.num_textures;
-   gs->info.num_images = vs->info.num_images;
-   BITSET_COPY(gs->info.textures_used, vs->info.textures_used);
-   BITSET_COPY(gs->info.textures_used_by_txf, vs->info.textures_used_by_txf);
-   BITSET_COPY(gs->info.images_used, vs->info.images_used);
-
-   /* Inline the VS into the GS */
-   nir_inline_functions(gs);
-   exec_node_remove(&vs_function->node);
-   nir_lower_global_vars_to_local(gs);
-
-   /* Do some optimization to get rid of indirects */
-   bool progress;
-
-   do {
-      progress = false;
-      NIR_PASS(progress, gs, nir_opt_constant_folding);
-      NIR_PASS(progress, gs, nir_opt_dce);
-   } while (progress);
-
-   /* If any indirects hung around, lower them */
-   nir_lower_indirect_derefs(gs, nir_var_function_temp, UINT32_MAX);
 }
 
 /*
@@ -1091,14 +1010,12 @@ link_libagx(nir_shader *nir, const nir_shader *libagx)
 }
 
 bool
-agx_nir_lower_gs(nir_shader *gs, nir_shader *vs, const nir_shader *libagx,
+agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
                  struct agx_ia_key *ia, bool rasterizer_discard,
                  nir_shader **gs_count, nir_shader **gs_copy,
                  nir_shader **pre_gs, enum mesa_prim *out_mode,
                  unsigned *out_count_words)
 {
-   link_libagx(vs, libagx);
-
    /* Collect output component counts so we can size the geometry output buffer
     * appropriately, instead of assuming everything is vec4.
     */
@@ -1120,8 +1037,8 @@ agx_nir_lower_gs(nir_shader *gs, nir_shader *vs, const nir_shader *libagx,
          nir_metadata_block_index | nir_metadata_dominance, nir_imm_int(&b, 0));
    }
 
-   /* Link VS into the GS */
-   agx_nir_link_vs_gs(vs, gs);
+   NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_gs_inputs,
+            nir_metadata_block_index | nir_metadata_dominance, ia);
 
    /* Lower geometry shader writes to contain all of the required counts, so we
     * know where in the various buffers we should write vertices.
@@ -1262,6 +1179,73 @@ agx_nir_lower_gs(nir_shader *gs, nir_shader *vs, const nir_shader *libagx,
    /* Signal what primitive we want to draw the GS Copy VS with */
    *out_mode = gs->info.gs.output_primitive;
    *out_count_words = gs_state.count_stride_el;
+   return true;
+}
+
+/*
+ * Vertex shaders (tessellation evaluation shaders) before a geometry shader run
+ * as a dedicated compute prepass. They are invoked as (count, instances, 1),
+ * equivalent to a geometry shader inputting POINTS, so the vertex output buffer
+ * is indexed according to calc_unrolled_id.
+ *
+ * This function lowers their vertex shader I/O to compute.
+ *
+ * Vertex ID becomes an index buffer pull (without applying the topology). Store
+ * output becomes a store into the global vertex output buffer.
+ */
+static bool
+lower_vs_before_gs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+{
+   if (intr->intrinsic != nir_intrinsic_store_output)
+      return false;
+
+   b->cursor = nir_instr_remove(&intr->instr);
+   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
+   nir_def *location = nir_iadd_imm(b, intr->src[1].ssa, sem.location);
+
+   nir_def *addr = libagx_vertex_output_address(
+      b, nir_load_geometry_param_buffer_agx(b), calc_unrolled_id(b), location,
+      nir_imm_int64(b, b->shader->info.outputs_written));
+
+   assert(nir_src_bit_size(intr->src[0]) == 32);
+   addr = nir_iadd_imm(b, addr, nir_intrinsic_component(intr) * 4);
+
+   nir_store_global(b, addr, 4, intr->src[0].ssa,
+                    nir_intrinsic_write_mask(intr));
+   return true;
+}
+
+bool
+agx_nir_lower_vs_before_gs(struct nir_shader *vs,
+                           const struct nir_shader *libagx,
+                           unsigned index_size_B, uint64_t *outputs)
+{
+   bool progress = false;
+
+   /* Lower vertex ID to an index buffer pull without a topology applied */
+   progress |= agx_nir_lower_ia(vs, &(struct agx_ia_key){
+                                       .index_size = index_size_B,
+                                       .mode = MESA_PRIM_POINTS,
+                                    });
+
+   /* Lower vertex stores to memory stores */
+   progress |= nir_shader_intrinsics_pass(
+      vs, lower_vs_before_gs, nir_metadata_block_index | nir_metadata_dominance,
+      &index_size_B);
+
+   /* Lower instance ID and num vertices */
+   progress |= nir_shader_intrinsics_pass(
+      vs, lower_id, nir_metadata_block_index | nir_metadata_dominance, NULL);
+
+   /* Link libagx, used in lower_vs_before_gs */
+   if (progress)
+      link_libagx(vs, libagx);
+
+   /* Turn into a compute shader now that we're free of vertexisms */
+   vs->info.stage = MESA_SHADER_COMPUTE;
+   memset(&vs->info.cs, 0, sizeof(vs->info.cs));
+   vs->xfb_info = NULL;
+   *outputs = vs->info.outputs_written;
    return true;
 }
 

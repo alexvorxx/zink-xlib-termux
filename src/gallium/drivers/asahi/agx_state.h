@@ -436,12 +436,28 @@ struct agx_velem_key {
    uint8_t pad;
 };
 
+enum asahi_vs_next_stage {
+   ASAHI_VS_FS,
+   ASAHI_VS_GS,
+   ASAHI_VS_TCS,
+};
+
 struct asahi_vs_shader_key {
    struct agx_velem_key attribs[AGX_MAX_VBUFS];
-   bool clip_halfz;
-   bool fixed_point_size;
-   uint64_t outputs_flat_shaded;
-   uint64_t outputs_linear_shaded;
+   enum asahi_vs_next_stage next_stage;
+
+   union {
+      struct {
+         uint8_t index_size_B;
+      } gs;
+
+      struct {
+         bool clip_halfz;
+         bool fixed_point_size;
+         uint64_t outputs_flat_shaded;
+         uint64_t outputs_linear_shaded;
+      } fs;
+   } next;
 };
 
 struct agx_vertex_elements {
@@ -483,20 +499,10 @@ struct asahi_tcs_shader_key {
 };
 
 struct asahi_gs_shader_key {
-   /* Input assembly key */
    struct agx_ia_key ia;
-
-   /* Vertex shader key */
-   struct agx_velem_key attribs[AGX_MAX_VBUFS];
 
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;
-
-   /* Geometry shaders must be linked with a vertex shader. In a monolithic
-    * pipeline, this is the vertex shader (or tessellation evaluation shader).
-    * With separate shaders, this needs to be an internal passthrough program.
-    */
-   uint8_t input_nir_sha1[20];
 };
 
 union asahi_shader_key {

@@ -5790,6 +5790,17 @@ dzn_CmdDispatchIndirect(VkCommandBuffer commandBuffer,
    if (result != VK_SUCCESS)
       return;
 
+   if (cmdbuf->enhanced_barriers) {
+      dzn_cmd_buffer_buffer_barrier(cmdbuf, buf->res,
+                                    D3D12_BARRIER_SYNC_EXECUTE_INDIRECT, D3D12_BARRIER_SYNC_COPY,
+                                    D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT, D3D12_BARRIER_ACCESS_COPY_SOURCE);
+   } else {
+      dzn_cmd_buffer_queue_transition_barriers(cmdbuf, buf->res, 0, 1,
+                                               D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT,
+                                               D3D12_RESOURCE_STATE_COPY_SOURCE,
+                                               DZN_QUEUE_TRANSITION_FLUSH);
+   }
+
    ID3D12GraphicsCommandList1_CopyBufferRegion(cmdbuf->cmdlist, exec_buf, 0,
                                      buf->res,
                                      offset,

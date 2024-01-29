@@ -47,9 +47,6 @@ struct lower_gs_state {
     */
    int count_index[MAX_VERTEX_STREAMS][GS_NUM_COUNTERS];
 
-   /* Provoking vertex mode, required for transform feedback calculations */
-   nir_def *flatshade_first;
-
    bool rasterizer_discard;
 };
 
@@ -662,7 +659,8 @@ write_xfb(nir_builder *b, struct lower_gs_state *state, unsigned stream,
              * because only the parity matters.
              */
             rotated_vert = libagx_map_vertex_in_tri_strip(
-               b, index_in_strip, rotated_vert, state->flatshade_first);
+               b, index_in_strip, rotated_vert,
+               nir_inot(b, nir_i2b(b, nir_load_provoking_last(b))));
          }
 
          nir_def *addr = libagx_xfb_vertex_address(
@@ -1222,16 +1220,6 @@ agx_nir_lower_gs(nir_shader *gs, nir_shader *vs, const nir_shader *libagx,
 
    NIR_PASS(_, gs, nir_shader_instructions_pass, agx_lower_output_to_var,
             nir_metadata_block_index | nir_metadata_dominance, &state);
-
-   /* Set flatshade_first. For now this is always a constant, but in the future
-    * we will want this to be dynamic.
-    */
-   {
-      nir_builder b =
-         nir_builder_at(nir_before_impl(nir_shader_get_entrypoint(gs)));
-
-      gs_state.flatshade_first = nir_imm_bool(&b, ia->flatshade_first);
-   }
 
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_gs_instr,
             nir_metadata_none, &gs_state);

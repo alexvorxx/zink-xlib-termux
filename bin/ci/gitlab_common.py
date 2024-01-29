@@ -8,12 +8,28 @@
 # SPDX-License-Identifier: MIT
 '''Shared functions between the scripts.'''
 
+import logging
 import os
+import re
 import time
 from pathlib import Path
 
 GITLAB_URL = "https://gitlab.freedesktop.org"
 TOKEN_DIR = Path(os.getenv("XDG_CONFIG_HOME") or Path.home() / ".config")
+
+# Known GitLab token prefixes: https://docs.gitlab.com/ee/security/token_overview.html#token-prefixes
+TOKEN_PREFIXES: dict[str, str] = {
+    "Personal access token": "glpat-",
+    "OAuth Application Secret": "gloas-",
+    "Deploy token": "gldt-",
+    "Runner authentication token": "glrt-",
+    "CI/CD Job token": "glcbt-",
+    "Trigger token": "glptt-",
+    "Feed token": "glft-",
+    "Incoming mail token": "glimt-",
+    "GitLab Agent for Kubernetes token": "glagent-",
+    "SCIM Tokens": "glsoat-"
+}
 
 
 def pretty_duration(seconds):
@@ -71,25 +87,61 @@ def get_token_from_default_dir() -> str:
         raise ex
 
 
+def validate_gitlab_token(token: str) -> bool:
+    token_suffix = token.split("-")[-1]
+    # Basic validation of the token suffix based on:
+    # https://gitlab.com/gitlab-org/gitlab/-/blob/master/gems/gitlab-secret_detection/lib/gitleaks.toml
+    if not re.match(r"(\w+-)?[0-9a-zA-Z_\-]{20,64}", token_suffix):
+        return False
+
+    for token_type, token_prefix in TOKEN_PREFIXES.items():
+        if token.startswith(token_prefix):
+            logging.info(f"Found probable token type: {token_type}")
+            return True
+
+    # If the token type is not recognized, return False
+    return False
+
+
+def get_token_from_arg(token_arg: str | Path | None) -> str | None:
+    if not token_arg:
+        logging.info("No token provided.")
+        return None
+
+    token_path = Path(token_arg)
+    if token_path.is_file():
+        return read_token_from_file(token_path)
+
+    return handle_direct_token(token_path, token_arg)
+
+
+def read_token_from_file(token_path: Path) -> str:
+    token = token_path.read_text().strip()
+    logging.info(f"Token read from file: {token_path}")
+    return token
+
+
+def handle_direct_token(token_path: Path, token_arg: str | Path) -> str | None:
+    if token_path == Path(get_token_from_default_dir()):
+        logging.warning(
+            f"The default token file {token_path} was not found. "
+            "Please provide a token file or a token directly via --token arg."
+        )
+        return None
+    logging.info("Token provided directly as an argument.")
+    return str(token_arg)
+
+
 def read_token(token_arg: str | Path | None) -> str | None:
-    """
-    Reads the token from the given file path or returns the token argument if it is not a file.
-
-    Args:
-        token_arg (str | Path | None): The file path or the token itself.
-
-    Returns:
-        str | None: The token string or None if the token is not provided.
-    """
-    if token_arg:
-        token_path = Path(token_arg)
-        if token_path.is_file():
-            # if is a file, read it
-            return token_path.read_text().strip()
-        return str(token_arg)
-
-    # if the token is not provided neither its file, return None
-    return None
+    token = get_token_from_arg(token_arg)
+    if token and not validate_gitlab_token(token):
+        logging.warning("The provided token is either an old token or does not seem to "
+                        "be a valid token.")
+        logging.warning("Newer tokens are the ones created from a Gitlab 14.5+ instance.")
+        logging.warning("See https://about.gitlab.com/releases/2021/11/22/"
+                        "gitlab-14-5-released/"
+                        "#new-gitlab-access-token-prefix-and-detection")
+    return token
 
 
 def wait_for_pipeline(projects, sha: str, timeout=None):

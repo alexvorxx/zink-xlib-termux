@@ -129,6 +129,15 @@ impl Deref for Mem {
     }
 }
 
+impl Mem {
+    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+        match self {
+            Self::Buffer(b) => b.unmap(q, ctx, ptr),
+            Self::Image(i) => i.unmap(q, ctx, ptr),
+        }
+    }
+}
+
 pub struct MemBase {
     pub base: CLObjectBase<CL_INVALID_MEM_OBJECT>,
     pub context: Arc<Context>,
@@ -1172,56 +1181,6 @@ impl MemBase {
         self.maps.lock().unwrap().contains_ptr(ptr)
     }
 
-    // TODO: only sync on unmap when the memory is not mapped for writing
-    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
-        let mut lock = self.maps.lock().unwrap();
-        if !lock.contains_ptr(ptr) {
-            return Ok(());
-        }
-
-        let (needs_sync, shadow) = lock.decrease_ref(ptr, q.device);
-        if needs_sync {
-            if let Some(shadow) = shadow {
-                let mut offset = 0;
-                let b = self.to_parent(&mut offset);
-                let res = b.get_res_of_dev(q.device)?;
-
-                let bx = if b.is_buffer() {
-                    create_pipe_box(
-                        CLVec::default(),
-                        [self.size, 1, 1].into(),
-                        CL_MEM_OBJECT_BUFFER,
-                    )?
-                } else {
-                    self.image_desc.bx()?
-                };
-
-                ctx.resource_copy_region(shadow, res, &[offset as u32, 0, 0], &bx);
-            } else if self.has_user_shadow_buffer(q.device)? {
-                if self.is_buffer() {
-                    self.write_from_user(q, ctx, 0, self.host_ptr, self.size)?;
-                } else {
-                    self.write_from_user_rect(
-                        self.host_ptr,
-                        q,
-                        ctx,
-                        &self.image_desc.size(),
-                        &CLVec::default(),
-                        self.image_desc.image_row_pitch,
-                        self.image_desc.image_slice_pitch,
-                        &CLVec::default(),
-                        self.image_desc.image_row_pitch,
-                        self.image_desc.image_slice_pitch,
-                    )?;
-                }
-            }
-        }
-
-        lock.clean_up_tx(q.device, ctx);
-
-        Ok(())
-    }
-
     pub fn pipe_image_host_access(&self) -> u16 {
         // those flags are all mutually exclusive
         (if bit_check(self.flags, CL_MEM_HOST_READ_ONLY) {
@@ -1307,6 +1266,35 @@ impl Buffer {
             }
             Ok(())
         }
+    }
+
+    // TODO: only sync on unmap when the memory is not mapped for writing
+    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+        let mut lock = self.maps.lock().unwrap();
+        if !lock.contains_ptr(ptr) {
+            return Ok(());
+        }
+
+        let (needs_sync, shadow) = lock.decrease_ref(ptr, q.device);
+        if needs_sync {
+            if let Some(shadow) = shadow {
+                let res = self.get_res_of_dev(q.device)?;
+                let offset = self.offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
+                let bx = create_pipe_box(
+                    CLVec::default(),
+                    [self.size, 1, 1].into(),
+                    CL_MEM_OBJECT_BUFFER,
+                )?;
+
+                ctx.resource_copy_region(shadow, res, &[offset, 0, 0], &bx);
+            } else if self.has_user_shadow_buffer(q.device)? {
+                self.write_from_user(q, ctx, 0, self.host_ptr, self.size)?;
+            }
+        }
+
+        lock.clean_up_tx(q.device, ctx);
+
+        Ok(())
     }
 }
 
@@ -1438,6 +1426,40 @@ impl Image {
             }
             Ok(())
         }
+    }
+
+    // TODO: only sync on unmap when the memory is not mapped for writing
+    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+        let mut lock = self.maps.lock().unwrap();
+        if !lock.contains_ptr(ptr) {
+            return Ok(());
+        }
+
+        let (needs_sync, shadow) = lock.decrease_ref(ptr, q.device);
+        if needs_sync {
+            if let Some(shadow) = shadow {
+                let res = self.get_res_of_dev(q.device)?;
+                let bx = self.image_desc.bx()?;
+                ctx.resource_copy_region(shadow, res, &[0, 0, 0], &bx);
+            } else if self.has_user_shadow_buffer(q.device)? {
+                self.write_from_user_rect(
+                    self.host_ptr,
+                    q,
+                    ctx,
+                    &self.image_desc.size(),
+                    &CLVec::default(),
+                    self.image_desc.image_row_pitch,
+                    self.image_desc.image_slice_pitch,
+                    &CLVec::default(),
+                    self.image_desc.image_row_pitch,
+                    self.image_desc.image_slice_pitch,
+                )?;
+            }
+        }
+
+        lock.clean_up_tx(q.device, ctx);
+
+        Ok(())
     }
 }
 

@@ -399,7 +399,7 @@ __normal_user(void)
 #if defined(_WIN32)
    return true;
 #else
-   return geteuid() == getuid();
+   return geteuid() == getuid() && getegid() == getgid();
 #endif
 }
 

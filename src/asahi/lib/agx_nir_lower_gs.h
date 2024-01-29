@@ -26,6 +26,10 @@ struct agx_lower_output_to_var_state {
 bool agx_lower_output_to_var(struct nir_builder *b, struct nir_instr *instr,
                              void *data);
 
+struct nir_def *agx_vertex_id_for_topology(struct nir_builder *b,
+                                           struct nir_def *vert,
+                                           struct agx_ia_key *key);
+
 bool agx_nir_lower_ia(struct nir_shader *s, struct agx_ia_key *ia);
 
 bool agx_nir_lower_gs(struct nir_shader *gs, struct nir_shader *vs,

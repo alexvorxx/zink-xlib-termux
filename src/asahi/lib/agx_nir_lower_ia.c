@@ -24,11 +24,11 @@
  * Sync with geometry.cl, this is preferred to avoid NIR needing to chew through
  * the massive switch statement (bad for compile time).
  */
-static nir_def *
-vertex_id_for_topology(nir_builder *b, struct agx_ia_key *key)
+nir_def *
+agx_vertex_id_for_topology(nir_builder *b, nir_def *vert,
+                           struct agx_ia_key *key)
 {
    nir_def *prim = nir_load_primitive_id(b);
-   nir_def *vert = nir_load_vertex_id_in_primitive_agx(b);
    nir_def *flatshade_first = nir_imm_bool(b, key->flatshade_first);
 
    switch (key->mode) {
@@ -73,7 +73,8 @@ vertex_id_for_topology(nir_builder *b, struct agx_ia_key *key)
 static nir_def *
 load_vertex_id(nir_builder *b, struct agx_ia_key *key)
 {
-   nir_def *id = vertex_id_for_topology(b, key);
+   nir_def *vert = nir_load_vertex_id_in_primitive_agx(b);
+   nir_def *id = agx_vertex_id_for_topology(b, vert, key);
 
    /* If drawing with an index buffer, pull the vertex ID. Otherwise, the
     * vertex ID is just the index as-is.

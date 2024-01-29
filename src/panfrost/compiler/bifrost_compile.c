@@ -4409,11 +4409,11 @@ bifrost_nir_lower_blend_components(struct nir_builder *b,
 
 static nir_mem_access_size_align
 mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
-                         uint8_t input_bit_size, uint32_t align,
+                         uint8_t input_bit_size, uint32_t align_mul,
                          uint32_t align_offset, bool offset_is_const,
                          const void *cb_data)
 {
-   align = nir_combined_align(align, align_offset);
+   uint32_t align = nir_combined_align(align_mul, align_offset);
    assert(util_is_power_of_two_nonzero(align));
 
    /* If the number of bytes is a multiple of 4, use 32-bit loads. Else if it's
@@ -4430,8 +4430,29 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
    else if (align == 2)
       bit_size = MIN2(bit_size, 16);
 
+   unsigned num_comps = bytes / (bit_size / 8);
+
+   /* Push constants require 32-bit loads. */
+  if (intrin == nir_intrinsic_load_push_constant) {
+      if (align_mul >= 4) {
+         /* If align_mul is bigger than 4 we can use align_offset to find
+          * the exact number of words we need to read.
+          */
+         num_comps = DIV_ROUND_UP((align_offset % 4) + bytes, 4);
+      } else {
+         /* If bytes is aligned on 32-bit, the access might still cross one
+          * word at the beginning, and one word at the end. If bytes is not
+          * aligned on 32-bit, the extra two words should cover for both the
+          * size and offset mis-alignment.
+          */
+         num_comps = (bytes / 4) + 2;
+      }
+
+      bit_size = MIN2(bit_size, 32);
+   }
+
    return (nir_mem_access_size_align){
-      .num_components = MIN2(bytes / (bit_size / 8), 4),
+      .num_components = num_comps,
       .bit_size = bit_size,
       .align = bit_size / 8,
    };
@@ -4800,9 +4821,10 @@ bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
    }
 
    nir_lower_mem_access_bit_sizes_options mem_size_options = {
-      .modes = nir_var_mem_ubo | nir_var_mem_ssbo | nir_var_mem_constant |
-               nir_var_mem_task_payload | nir_var_shader_temp |
-               nir_var_function_temp | nir_var_mem_global | nir_var_mem_shared,
+      .modes = nir_var_mem_ubo | nir_var_mem_push_const | nir_var_mem_ssbo |
+               nir_var_mem_constant | nir_var_mem_task_payload |
+               nir_var_shader_temp | nir_var_function_temp |
+               nir_var_mem_global | nir_var_mem_shared,
       .callback = mem_access_size_align_cb,
    };
    NIR_PASS_V(nir, nir_lower_mem_access_bit_sizes, &mem_size_options);

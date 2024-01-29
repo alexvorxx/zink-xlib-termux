@@ -1942,7 +1942,12 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
       NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
 
-      NIR_PASS(_, nir, agx_nir_lower_gs, dev->libagx, &key->ia,
+      struct agx_ia_key ia = {
+         .flatshade_first = key->flatshade_first,
+         .mode = key->mode,
+      };
+
+      NIR_PASS(_, nir, agx_nir_lower_gs, dev->libagx, &ia,
                key->rasterizer_discard, &gs_count, &gs_copy, &pre_gs,
                &gs_out_prim, &gs_out_count_words);
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
@@ -2520,8 +2525,8 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
    }
 
    struct asahi_gs_shader_key key = {
-      .ia.mode = info->mode,
-      .ia.flatshade_first =
+      .mode = info->mode,
+      .flatshade_first =
          ia_needs_provoking(info->mode) && ctx->rast->base.flatshade_first,
 
       .rasterizer_discard = ctx->rast->base.rasterizer_discard,

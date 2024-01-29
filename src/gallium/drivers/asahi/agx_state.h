@@ -499,7 +499,9 @@ struct asahi_tcs_shader_key {
 };
 
 struct asahi_gs_shader_key {
-   struct agx_ia_key ia;
+   /* Input assembly key */
+   enum mesa_prim mode;
+   bool flatshade_first;
 
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;

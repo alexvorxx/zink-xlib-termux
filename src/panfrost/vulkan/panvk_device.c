@@ -1143,9 +1143,6 @@ panvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    if (!device)
       return;
 
-   if (device->debug.decode_ctx)
-      pandecode_destroy_context(device->debug.decode_ctx);
-
    for (unsigned i = 0; i < PANVK_MAX_QUEUE_FAMILIES; i++) {
       for (unsigned q = 0; q < device->queue_count[i]; q++)
          panvk_queue_finish(&device->queues[i][q]);
@@ -1158,6 +1155,10 @@ panvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    panvk_priv_bo_destroy(device->tiler_heap, &device->vk.alloc);
    panvk_priv_bo_destroy(device->sample_positions, &device->vk.alloc);
    pan_kmod_vm_destroy(device->kmod.vm);
+
+   if (device->debug.decode_ctx)
+      pandecode_destroy_context(device->debug.decode_ctx);
+
    pan_kmod_dev_destroy(device->kmod.dev);
    vk_free(&device->vk.alloc, device);
 }

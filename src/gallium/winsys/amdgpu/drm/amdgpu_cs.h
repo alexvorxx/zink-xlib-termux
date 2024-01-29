@@ -188,6 +188,7 @@ static inline void amdgpu_ctx_reference(struct amdgpu_ctx **dst, struct amdgpu_c
    if (pipe_reference(old_dst ? &old_dst->reference : NULL,
                       src ? &src->reference : NULL)) {
       amdgpu_cs_ctx_free(old_dst->ctx);
+      amdgpu_bo_cpu_unmap(old_dst->user_fence_bo);
       amdgpu_bo_free(old_dst->user_fence_bo);
       FREE(old_dst);
    }

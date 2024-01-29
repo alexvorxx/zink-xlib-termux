@@ -630,7 +630,7 @@ impl MemBase {
 
     fn tx_raw(
         &self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         mut offset: usize,
         size: usize,
@@ -689,7 +689,7 @@ impl MemBase {
 
     fn tx<'a>(
         &self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &'a PipeContext,
         offset: usize,
         size: usize,
@@ -700,7 +700,7 @@ impl MemBase {
 
     fn tx_image_raw(
         &self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         bx: &pipe_box,
         rw: RWFlags,
@@ -754,7 +754,7 @@ impl MemBase {
 
     fn tx_image<'a>(
         &self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &'a PipeContext,
         bx: &pipe_box,
         rw: RWFlags,
@@ -814,7 +814,7 @@ impl MemBase {
 
     pub fn read_to_user(
         &self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         offset: usize,
         ptr: *mut c_void,
@@ -833,7 +833,7 @@ impl MemBase {
 
     pub fn write_from_user(
         &self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         mut offset: usize,
         ptr: *const c_void,
@@ -854,7 +854,7 @@ impl MemBase {
 
     pub fn copy_to(
         &self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         dst: &MemBase,
         mut src_origin: CLVec<usize>,
@@ -965,7 +965,7 @@ impl MemBase {
     pub fn write_from_user_rect(
         &self,
         src: *const c_void,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         region: &CLVec<usize>,
         src_origin: &CLVec<usize>,
@@ -1028,7 +1028,7 @@ impl MemBase {
     pub fn read_to_user_rect(
         &self,
         dst: *mut c_void,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         region: &CLVec<usize>,
         src_origin: &CLVec<usize>,
@@ -1083,7 +1083,7 @@ impl MemBase {
     pub fn copy_to_rect(
         &self,
         dst: &Self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         region: &CLVec<usize>,
         src_origin: &CLVec<usize>,
@@ -1124,7 +1124,7 @@ impl MemBase {
     // TODO: only sync on map when the memory is not mapped with discard
     pub fn sync_shadow_buffer(
         &self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         ptr: *mut c_void,
     ) -> CLResult<()> {
@@ -1154,7 +1154,7 @@ impl MemBase {
     // TODO: only sync on map when the memory is not mapped with discard
     pub fn sync_shadow_image(
         &self,
-        q: &Arc<Queue>,
+        q: &Queue,
         ctx: &PipeContext,
         ptr: *mut c_void,
     ) -> CLResult<()> {
@@ -1308,7 +1308,7 @@ impl MemBase {
     }
 
     // TODO: only sync on unmap when the memory is not mapped for writing
-    pub fn unmap(&self, q: &Arc<Queue>, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
         let mut lock = self.maps.lock().unwrap();
         if !lock.contains_ptr(ptr) {
             return Ok(());

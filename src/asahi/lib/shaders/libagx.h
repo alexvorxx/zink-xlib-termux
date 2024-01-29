@@ -10,7 +10,8 @@
 #ifndef __OPENCL_VERSION__
 #include <stdint.h>
 #include "util/macros.h"
-#define GLOBAL(type_) uint64_t
+#define GLOBAL(type_)            uint64_t
+#define AGX_STATIC_ASSERT(_COND) static_assert(_COND, "OpenCL assertion")
 #else
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 #define PACKED
@@ -37,9 +38,9 @@ uint32_t nir_load_helper_arg_lo_agx(void);
 uint32_t nir_load_helper_arg_hi_agx(void);
 uint32_t nir_fence_helper_exit_agx(void);
 
-#endif
-
 #define AGX_STATIC_ASSERT(_COND)                                               \
    typedef char static_assertion_##__line__[(_COND) ? 1 : -1]
+
+#endif
 
 #endif

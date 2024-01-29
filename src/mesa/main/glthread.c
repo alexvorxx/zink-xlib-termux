@@ -331,6 +331,25 @@ void _mesa_glthread_disable(struct gl_context *ctx)
       _mesa_glthread_unbind_uploaded_vbos(ctx);
 }
 
+static void
+glthread_finalize_batch(struct glthread_state *glthread,
+                        unsigned *num_items_counter)
+{
+   struct glthread_batch *next = glthread->next_batch;
+
+   /* Mark the end of the batch, but don't increment "used". */
+   struct marshal_cmd_base *last =
+      (struct marshal_cmd_base *)&next->buffer[glthread->used];
+   last->cmd_id = NUM_DISPATCH_CMD;
+
+   p_atomic_add(num_items_counter, glthread->used);
+   next->used = glthread->used;
+   glthread->used = 0;
+
+   glthread->LastCallList = NULL;
+   glthread->LastBindBuffer = NULL;
+}
+
 void
 _mesa_glthread_flush_batch(struct gl_context *ctx)
 {
@@ -347,26 +366,15 @@ _mesa_glthread_flush_batch(struct gl_context *ctx)
       return; /* the batch is empty */
 
    glthread_apply_thread_sched_policy(ctx, false);
+   glthread_finalize_batch(glthread, &glthread->stats.num_offloaded_items);
 
    struct glthread_batch *next = glthread->next_batch;
-
-   /* Mark the end of the batch, but don't increment "used". */
-   struct marshal_cmd_base *last =
-      (struct marshal_cmd_base *)&next->buffer[glthread->used];
-   last->cmd_id = NUM_DISPATCH_CMD;
-
-   p_atomic_add(&glthread->stats.num_offloaded_items, glthread->used);
-   next->used = glthread->used;
 
    util_queue_add_job(&glthread->queue, next, &next->fence,
                       glthread_unmarshal_batch, NULL, 0);
    glthread->last = glthread->next;
    glthread->next = (glthread->next + 1) % MARSHAL_MAX_BATCHES;
    glthread->next_batch = &glthread->batches[glthread->next];
-   glthread->used = 0;
-
-   glthread->LastCallList = NULL;
-   glthread->LastBindBuffer = NULL;
 }
 
 /**
@@ -402,17 +410,7 @@ _mesa_glthread_finish(struct gl_context *ctx)
    glthread_apply_thread_sched_policy(ctx, false);
 
    if (glthread->used) {
-      /* Mark the end of the batch, but don't increment "used". */
-      struct marshal_cmd_base *last =
-         (struct marshal_cmd_base *)&next->buffer[glthread->used];
-      last->cmd_id = NUM_DISPATCH_CMD;
-
-      p_atomic_add(&glthread->stats.num_direct_items, glthread->used);
-      next->used = glthread->used;
-      glthread->used = 0;
-
-      glthread->LastCallList = NULL;
-      glthread->LastBindBuffer = NULL;
+      glthread_finalize_batch(glthread, &glthread->stats.num_direct_items);
 
       /* Since glthread_unmarshal_batch changes the dispatch to direct,
        * restore it after it's done.

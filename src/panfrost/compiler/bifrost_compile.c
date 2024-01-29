@@ -4751,6 +4751,93 @@ bifrost_nir_lower_load_output(nir_shader *nir)
       nir_metadata_block_index | nir_metadata_dominance, NULL);
 }
 
+static bool
+bi_lower_load_push_const_with_dyn_offset(nir_builder *b,
+                                         nir_intrinsic_instr *intr,
+                                         UNUSED void *data)
+{
+   if (intr->intrinsic != nir_intrinsic_load_push_constant)
+      return false;
+
+   /* Offset is constant, nothing to do. */
+   if (nir_src_is_const(intr->src[0]))
+      return false;
+
+   /* nir_lower_mem_access_bit_sizes() should have lowered load_push_constant
+    * to 32-bit and a maximum of 4 components.
+    */
+   assert(intr->def.num_components <= 4);
+   assert(intr->def.bit_size == 32);
+
+   uint32_t base = nir_intrinsic_base(intr);
+   uint32_t range = nir_intrinsic_range(intr);
+   uint32_t nwords = intr->def.num_components;
+   uint32_t first_word = base / 4;
+   uint32_t last_word = (base + range) / 4;
+
+   b->cursor = nir_before_instr(&intr->instr);
+
+   /* Dynamic indexing is only allowed for vulkan push constants, which is
+    * currently limited to 256 bytes. That gives us a maximum of 64 32-bit
+    * words to read from.
+    */
+   nir_def *lut[64] = {0};
+
+   assert(last_word <= ARRAY_SIZE(lut));
+
+   /* Load all words in the range. */
+   for (uint32_t w = first_word; w < last_word; w++) {
+      lut[w] = nir_load_push_constant(b, 1, 32, nir_imm_int(b, 0),
+                                      .base = w * 4, .range = 4);
+   }
+
+   nir_def *index = intr->src[0].ssa;
+
+   /* Index is dynamic, we need to do iteratively CSEL the values based on
+    * the index. We start with the highest bit in the index, and for each
+    * iteration we divide the scope by two.
+    */
+   for (uint32_t lut_sz = ARRAY_SIZE(lut); lut_sz > 0; lut_sz /= 2) {
+      uint32_t stride = lut_sz / 2;
+      nir_def *bit_test = NULL;
+
+      /* Stop when the first and last component don't fit in the new LUT
+       * window.
+       */
+      if (((first_word + nwords - 1) & stride) != (first_word & stride))
+         break;
+
+      for (uint32_t i = 0; i < stride; i++) {
+         /* We only need a CSEL if we have two values, otherwise we pick the
+          * non-NULL value.
+          */
+         if (lut[i] && lut[i + stride]) {
+            /* Create the test src on-demand. The stride is in 32-bit words,
+             * multiply by four to convert it into a byte stride we can use
+             * to test if the corresponding bit is set in the index src.
+             */
+            if (!bit_test)
+               bit_test = nir_i2b(b, nir_iand_imm(b, index, stride * 4));
+
+            lut[i] = nir_bcsel(b, bit_test, lut[i + stride], lut[i]);
+         } else if (lut[i + stride]) {
+            lut[i] = lut[i + stride];
+         }
+      }
+
+      /* Adjust first_word so it always points to the bottom half of our LUT,
+       * which contains the result of the CSELs we've just done.
+       */
+      first_word &= stride - 1;
+   }
+
+   nir_def *res = nir_vec(b, &lut[first_word], nwords);
+
+   nir_def_rewrite_uses(&intr->def, res);
+   nir_instr_remove(&intr->instr);
+   return true;
+}
+
 void
 bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
 {
@@ -4828,6 +4915,10 @@ bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
       .callback = mem_access_size_align_cb,
    };
    NIR_PASS_V(nir, nir_lower_mem_access_bit_sizes, &mem_size_options);
+
+   NIR_PASS_V(nir, nir_shader_intrinsics_pass,
+              bi_lower_load_push_const_with_dyn_offset,
+              nir_metadata_block_index | nir_metadata_dominance, NULL);
 
    NIR_PASS_V(nir, nir_lower_ssbo);
    NIR_PASS_V(nir, pan_lower_sample_pos);

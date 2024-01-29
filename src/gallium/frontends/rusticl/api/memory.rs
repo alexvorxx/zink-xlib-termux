@@ -1664,7 +1664,7 @@ fn enqueue_map_buffer(
         return Err(CL_INVALID_CONTEXT);
     }
 
-    let ptr = b.map_buffer(q.device, offset, size)?;
+    let ptr = b.map(q.device, offset)?;
     create_and_queue(
         q,
         CL_COMMAND_MAP_BUFFER,
@@ -2143,10 +2143,9 @@ fn enqueue_map_image(
         unsafe { image_slice_pitch.as_mut().unwrap() }
     };
 
-    let ptr = i.map_image(
+    let ptr = i.map(
         q.device,
         &origin,
-        &region,
         unsafe { image_row_pitch.as_mut().unwrap() },
         image_slice_pitch,
     )?;

@@ -808,7 +808,7 @@ impl MemBase {
     }
 
     fn has_user_shadow_buffer(&self, d: &Device) -> CLResult<bool> {
-        let r = self.get_res()?.get(d).unwrap();
+        let r = self.get_res_of_dev(d)?;
         Ok(!r.is_user && bit_check(self.flags, CL_MEM_USE_HOST_PTR))
     }
 
@@ -1233,76 +1233,6 @@ impl MemBase {
         Ok(&lock.tx.get_mut(dev).unwrap().tx)
     }
 
-    pub fn map_buffer(
-        &self,
-        dev: &'static Device,
-        offset: usize,
-        _size: usize,
-    ) -> CLResult<*mut c_void> {
-        assert!(self.is_buffer());
-
-        let mut lock = self.maps.lock().unwrap();
-        let ptr = if self.has_user_shadow_buffer(dev)? {
-            self.host_ptr
-        } else {
-            let tx = self.map(dev, &mut lock, RWFlags::RW)?;
-            tx.ptr()
-        };
-
-        let ptr = unsafe { ptr.add(offset) };
-        Ok(ptr)
-    }
-
-    pub fn map_image(
-        &self,
-        dev: &'static Device,
-        origin: &CLVec<usize>,
-        _region: &CLVec<usize>,
-        row_pitch: &mut usize,
-        slice_pitch: &mut usize,
-    ) -> CLResult<*mut c_void> {
-        assert!(!self.is_buffer());
-
-        let mut lock = self.maps.lock().unwrap();
-
-        // we might have a host_ptr shadow buffer or image created from buffer
-        let ptr = if self.has_user_shadow_buffer(dev)? || self.is_parent_buffer() {
-            *row_pitch = self.image_desc.image_row_pitch;
-            *slice_pitch = self.image_desc.image_slice_pitch;
-
-            if let Some(src) = &self.parent {
-                let tx = src.map(dev, &mut lock, RWFlags::RW)?;
-                tx.ptr()
-            } else {
-                self.host_ptr
-            }
-        } else {
-            let tx = self.map(dev, &mut lock, RWFlags::RW)?;
-
-            if self.image_desc.dims() > 1 {
-                *row_pitch = tx.row_pitch() as usize;
-            }
-            if self.image_desc.dims() > 2 || self.image_desc.is_array() {
-                *slice_pitch = tx.slice_pitch();
-            }
-
-            tx.ptr()
-        };
-
-        let ptr = unsafe {
-            ptr.add(
-                *origin
-                    * [
-                        self.pixel_size().unwrap() as usize,
-                        *row_pitch,
-                        *slice_pitch,
-                    ],
-            )
-        };
-
-        Ok(ptr)
-    }
-
     pub fn is_mapped_ptr(&self, ptr: *mut c_void) -> bool {
         self.maps.lock().unwrap().contains_ptr(ptr)
     }
@@ -1407,6 +1337,19 @@ impl Buffer {
         );
         Ok(())
     }
+
+    pub fn map(&self, dev: &'static Device, offset: usize) -> CLResult<*mut c_void> {
+        let ptr = if self.has_user_shadow_buffer(dev)? {
+            self.host_ptr
+        } else {
+            let mut lock = self.maps.lock().unwrap();
+            let tx = self.base.map(dev, &mut lock, RWFlags::RW)?;
+            tx.ptr()
+        };
+
+        let ptr = unsafe { ptr.add(offset) };
+        Ok(ptr)
+    }
 }
 
 impl Image {
@@ -1460,6 +1403,53 @@ impl Image {
         }
 
         Ok(())
+    }
+
+    pub fn map(
+        &self,
+        dev: &'static Device,
+        origin: &CLVec<usize>,
+        row_pitch: &mut usize,
+        slice_pitch: &mut usize,
+    ) -> CLResult<*mut c_void> {
+        let mut lock = self.maps.lock().unwrap();
+
+        // we might have a host_ptr shadow buffer or image created from buffer
+        let ptr = if self.has_user_shadow_buffer(dev)? || self.is_parent_buffer() {
+            *row_pitch = self.image_desc.image_row_pitch;
+            *slice_pitch = self.image_desc.image_slice_pitch;
+
+            if let Some(src) = &self.parent {
+                let tx = src.map(dev, &mut lock, RWFlags::RW)?;
+                tx.ptr()
+            } else {
+                self.host_ptr
+            }
+        } else {
+            let tx = self.base.map(dev, &mut lock, RWFlags::RW)?;
+
+            if self.image_desc.dims() > 1 {
+                *row_pitch = tx.row_pitch() as usize;
+            }
+            if self.image_desc.dims() > 2 || self.image_desc.is_array() {
+                *slice_pitch = tx.slice_pitch();
+            }
+
+            tx.ptr()
+        };
+
+        let ptr = unsafe {
+            ptr.add(
+                *origin
+                    * [
+                        self.image_format.pixel_size().unwrap().into(),
+                        *row_pitch,
+                        *slice_pitch,
+                    ],
+            )
+        };
+
+        Ok(ptr)
     }
 }
 

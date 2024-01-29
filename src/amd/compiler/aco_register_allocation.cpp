@@ -2945,9 +2945,7 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
                   if (get_reg_specified(ctx, register_file, rc, instr, reg))
                      definition->setFixed(reg);
                }
-            } else if (instr->opcode == aco_opcode::p_parallelcopy ||
-                       (instr->opcode == aco_opcode::p_start_linear_vgpr &&
-                        !instr->operands.empty())) {
+            } else if (instr->opcode == aco_opcode::p_parallelcopy) {
                PhysReg reg = instr->operands[i].physReg();
                if (instr->operands[i].isTemp() &&
                    instr->operands[i].getTemp().type() == definition->getTemp().type() &&

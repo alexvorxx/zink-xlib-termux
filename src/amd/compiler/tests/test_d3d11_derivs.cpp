@@ -61,9 +61,10 @@ BEGIN_TEST(d3d11_derivs.simple)
    //>> p_end_linear_vgpr (kill)%wqm
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "ACO IR");
 
-   //>> v_interp_p2_f32_e32 v#rx, v#_, attr0.x                                             ; $_
+   //>> v_interp_p2_f32_e32 v#rx_tmp, v#_, attr0.x                                         ; $_
    //>> v_interp_p2_f32_e32 v#ry_tmp, v#_, attr0.y                                         ; $_
-   //>> v_mov_b32_e32 v#ry, v#ry_tmp                                                       ; $_
+   //>> v_mov_b32_e32 v#ry_tmp2, v#ry_tmp                                                  ; $_
+   //>> v_lshrrev_b64 v[#rx:#ry], 0, v[#rx_tmp:#ry_tmp2]                                   ; $_ $_
    //>> image_sample v[#_:#_], v[#rx:#ry], s[#_:#_], s[#_:#_] dmask:0xf dim:SQ_RSRC_IMG_2D ; $_ $_
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "Assembly");
 END_TEST
@@ -444,9 +445,11 @@ BEGIN_TEST(d3d11_derivs.cube)
    //>> p_end_linear_vgpr (kill)%wqm
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "ACO IR");
 
-   //>> v_cubeid_f32 v#rf, v#_, v#_, v#_                                                     ; $_ $_
-   //>> v_fmaak_f32 v#rx, v#_, v#_, 0x3fc00000                                               ; $_ $_
-   //>> v_fmaak_f32 v#ry, v#_, v#_, 0x3fc00000                                               ; $_ $_
+   //>> v_cubeid_f32 v#rf_tmp, v#_, v#_, v#_                                                 ; $_ $_
+   //>> v_fmaak_f32 v#rx_tmp, v#_, v#_, 0x3fc00000                                           ; $_ $_
+   //>> v_fmaak_f32 v#ry_tmp, v#_, v#_, 0x3fc00000                                           ; $_ $_
+   //>> v_mov_b32_e32 v#rf, v#rf_tmp                                                         ; $_
+   //>> v_lshrrev_b64 v[#rx:#ry], 0, v[#rx_tmp:#ry_tmp]                                      ; $_ $_
    //; success = rx+1 == ry and rx+2 == rf
    //>> image_sample v[#_:#_], v[#rx:#rf], s[#_:#_], s[#_:#_] dmask:0xf dim:SQ_RSRC_IMG_CUBE ; $_ $_
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "Assembly");
@@ -492,9 +495,12 @@ BEGIN_TEST(d3d11_derivs.cube_array)
 
    //>> v_rndne_f32_e32 v#rl, v#_                                                             ; $_
    //>> v_cubeid_f32 v#rf, v#_, v#_, v#_                                                      ; $_ $_
-   //>> v_fmaak_f32 v#rx, v#_, v#_, 0x3fc00000                                                ; $_ $_
-   //>> v_fmaak_f32 v#ry, v#_, v#_, 0x3fc00000                                                ; $_ $_
-   //>> v_fmamk_f32 v#rlf, v#rl, 0x41000000, v#rf                                             ; $_ $_
+   //>> v_fmaak_f32 v#rx_tmp, v#_, v#_, 0x3fc00000                                            ; $_ $_
+   //>> v_fmaak_f32 v#ry_tmp, v#_, v#_, 0x3fc00000                                            ; $_ $_
+   //>> v_fmamk_f32 v#rlf_tmp, v#rl, 0x41000000, v#rf                                         ; $_ $_
+   //>> v_mov_b32_e32 v#rx, v#rx_tmp                                                          ; $_
+   //>> v_mov_b32_e32 v#ry, v#ry_tmp                                                          ; $_
+   //>> v_mov_b32_e32 v#rlf, v#rlf_tmp                                                        ; $_
    //>> BB1:
    //; success = rx+1 == ry and rx+2 == rlf
    //>> image_sample v[#_:#_], v[#rx:#rlf], s[#_:#_], s[#_:#_] dmask:0xf dim:SQ_RSRC_IMG_CUBE ; $_ $_

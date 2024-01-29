@@ -490,7 +490,8 @@ static const struct dxil_mdnode *
 emit_uav_metadata(struct dxil_module *m, const struct dxil_type *struct_type,
                   const char *name, const resource_array_layout *layout,
                   enum dxil_component_type comp_type,
-                  enum dxil_resource_kind res_kind)
+                  enum dxil_resource_kind res_kind,
+                  enum gl_access_qualifier access)
 {
    const struct dxil_mdnode *fields[11];
 
@@ -498,7 +499,7 @@ emit_uav_metadata(struct dxil_module *m, const struct dxil_type *struct_type,
 
    fill_resource_metadata(m, fields, struct_type, name, layout);
    fields[6] = dxil_get_metadata_int32(m, res_kind); // resource shape
-   fields[7] = dxil_get_metadata_int1(m, false); // globally-coherent
+   fields[7] = dxil_get_metadata_int1(m, (access & ACCESS_COHERENT) != 0); // globally-coherent
    fields[8] = dxil_get_metadata_int1(m, false); // has counter
    fields[9] = dxil_get_metadata_int1(m, false); // is ROV
    if (res_kind != DXIL_RESOURCE_KIND_RAW_BUFFER &&
@@ -1338,7 +1339,7 @@ emit_globals(struct ntd_context *ctx, unsigned size)
       emit_uav_metadata(&ctx->mod, array_type,
                                    "globals", &layout,
                                    DXIL_COMP_TYPE_INVALID,
-                                   DXIL_RESOURCE_KIND_RAW_BUFFER);
+                                   DXIL_RESOURCE_KIND_RAW_BUFFER, 0);
    if (!uav_meta)
       return false;
 
@@ -1355,7 +1356,7 @@ emit_globals(struct ntd_context *ctx, unsigned size)
 static bool
 emit_uav(struct ntd_context *ctx, unsigned binding, unsigned space, unsigned count,
          enum dxil_component_type comp_type, unsigned num_comps, enum dxil_resource_kind res_kind,
-         const char *name)
+         enum gl_access_qualifier access, const char *name)
 {
    unsigned id = util_dynarray_num_elements(&ctx->uav_metadata_nodes, const struct dxil_mdnode *);
    resource_array_layout layout = { id, binding, count, space };
@@ -1363,7 +1364,7 @@ emit_uav(struct ntd_context *ctx, unsigned binding, unsigned space, unsigned cou
    const struct dxil_type *res_type = dxil_module_get_res_type(&ctx->mod, res_kind, comp_type, num_comps, true /* readwrite */);
    res_type = dxil_module_get_array_type(&ctx->mod, res_type, count);
    const struct dxil_mdnode *uav_meta = emit_uav_metadata(&ctx->mod, res_type, name,
-                                                          &layout, comp_type, res_kind);
+                                                          &layout, comp_type, res_kind, access);
 
    if (!uav_meta)
       return false;
@@ -1405,7 +1406,7 @@ emit_uav_var(struct ntd_context *ctx, nir_variable *var, unsigned count)
 
    return emit_uav(ctx, binding, space, count, comp_type,
                    util_format_get_nr_components(var->data.image.format),
-                   res_kind, name);
+                   res_kind, var->data.access, name);
 }
 
 static const struct dxil_value *
@@ -6046,7 +6047,7 @@ emit_module(struct ntd_context *ctx, const struct nir_to_dxil_options *opts)
                count = glsl_get_length(var->type);
             if (!emit_uav(ctx, var->data.binding, var->data.descriptor_set,
                         count, DXIL_COMP_TYPE_INVALID, 1,
-                        DXIL_RESOURCE_KIND_RAW_BUFFER, var->name))
+                        DXIL_RESOURCE_KIND_RAW_BUFFER, var->data.access, var->name))
                return false;
             
          }
@@ -6056,7 +6057,7 @@ emit_module(struct ntd_context *ctx, const struct nir_to_dxil_options *opts)
          char name[64];
          snprintf(name, sizeof(name), "__ssbo%d", i);
          if (!emit_uav(ctx, i, 0, 1, DXIL_COMP_TYPE_INVALID, 1,
-                       DXIL_RESOURCE_KIND_RAW_BUFFER, name))
+                       DXIL_RESOURCE_KIND_RAW_BUFFER, 0, name))
             return false;
       }
       /* To work around a WARP bug, bind these descriptors a second time in descriptor
@@ -6066,7 +6067,7 @@ emit_module(struct ntd_context *ctx, const struct nir_to_dxil_options *opts)
        */
       if (ctx->shader->info.num_ssbos &&
           !emit_uav(ctx, 0, 2, ctx->shader->info.num_ssbos, DXIL_COMP_TYPE_INVALID, 1,
-                    DXIL_RESOURCE_KIND_RAW_BUFFER, "__ssbo_dynamic"))
+                    DXIL_RESOURCE_KIND_RAW_BUFFER, 0, "__ssbo_dynamic"))
          return false;
    }
 

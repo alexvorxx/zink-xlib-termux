@@ -1897,12 +1897,12 @@ radv_emit_tcs_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shade
 
    assert(tcs->config.num_shared_vgprs == 0);
    uint32_t rsrc1 = tcs->config.rsrc1;
-   if (G_00B848_VGPRS(tcs_epilog->rsrc1) > G_00B848_VGPRS(tcs->config.rsrc1))
+   if (G_00B848_VGPRS(tcs_epilog->rsrc1) > G_00B848_VGPRS(rsrc1))
       rsrc1 = (rsrc1 & C_00B848_VGPRS) | (tcs_epilog->rsrc1 & ~C_00B848_VGPRS);
-   if (gfx_level < GFX10 && G_00B228_SGPRS(tcs_epilog->rsrc1) > G_00B228_SGPRS(tcs->config.rsrc1))
+   if (gfx_level < GFX10 && G_00B228_SGPRS(tcs_epilog->rsrc1) > G_00B228_SGPRS(rsrc1))
       rsrc1 = (rsrc1 & C_00B228_SGPRS) | (tcs_epilog->rsrc1 & ~C_00B228_SGPRS);
-   if (rsrc1 != tcs->config.rsrc1)
-      radeon_set_sh_reg(cmd_buffer->cs, R_00B428_SPI_SHADER_PGM_RSRC1_HS, rsrc1);
+
+   radeon_set_sh_reg(cmd_buffer->cs, R_00B428_SPI_SHADER_PGM_RSRC1_HS, rsrc1);
 
    radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, tcs_epilog->bo);
 

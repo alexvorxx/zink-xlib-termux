@@ -767,7 +767,7 @@ impl MemBase {
     }
 
     pub fn is_parent_buffer(&self) -> bool {
-        self.parent.as_ref().map_or(false, |p| p.is_buffer())
+        matches!(self.parent, Some(Mem::Buffer(_)))
     }
 
     pub fn is_image_from_buffer(&self) -> bool {

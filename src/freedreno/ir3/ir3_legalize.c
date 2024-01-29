@@ -52,6 +52,7 @@ struct ir3_legalize_ctx {
    int max_bary;
    bool early_input_release;
    bool has_inputs;
+   bool has_tex_prefetch;
 };
 
 struct ir3_nop_state {
@@ -318,7 +319,6 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
    struct ir3_legalize_state prev_state = bd->state;
    struct ir3_legalize_state *state = &bd->begin_state;
    bool last_input_needs_ss = false;
-   bool has_tex_prefetch = false;
    bool mergedregs = ctx->so->mergedregs;
 
    /* Our input state is the OR of all predecessor blocks' state.
@@ -590,7 +590,7 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
       if (is_tex_or_prefetch(n)) {
          regmask_set(&state->needs_sy, n->dsts[0]);
          if (n->opc == OPC_META_TEX_PREFETCH)
-            has_tex_prefetch = true;
+            ctx->has_tex_prefetch = true;
       } else if (n->opc == OPC_RESINFO) {
          regmask_set(&state->needs_ss, n->dsts[0]);
          ir3_NOP(block)->flags |= IR3_INSTR_SS;
@@ -686,7 +686,8 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
 
    assert(inputs_remaining == 0 || !ctx->early_input_release);
 
-   if (has_tex_prefetch && !ctx->has_inputs) {
+   if (block == ir3_after_preamble(ctx->so->ir) &&
+       ctx->has_tex_prefetch && !ctx->has_inputs) {
       /* texture prefetch, but *no* inputs.. we need to insert a
        * dummy bary.f at the top of the shader to unblock varying
        * storage:

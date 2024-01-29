@@ -740,6 +740,15 @@ add_aux_surface_if_supported(struct anv_device *device,
    if (anv_image_is_sparse(image))
       return VK_SUCCESS;
 
+   /* If resource created with sharing mode CONCURRENT when multiple queues
+    * are supported, we can't support the compression since we can't do
+    * FULL_RESOLVE/PARTIAL_RESOLVE to construct the main surface data without
+    * barrier.
+    */
+   if (image->vk.sharing_mode == VK_SHARING_MODE_CONCURRENT &&
+       device->queue_count > 1)
+      return VK_SUCCESS;
+
    uint32_t binding;
    if (image->vk.drm_format_mod == DRM_FORMAT_MOD_INVALID ||
        isl_drm_modifier_has_aux(image->vk.drm_format_mod)) {

@@ -2193,6 +2193,7 @@ do_late_parsing_checks(struct _mesa_glsl_parse_state *state)
 
 static void
 opt_shader_and_create_symbol_table(const struct gl_constants *consts,
+                                   const struct gl_extensions *exts,
                                    struct glsl_symbol_table *source_symbols,
                                    struct gl_shader *shader)
 {
@@ -2228,6 +2229,17 @@ opt_shader_and_create_symbol_table(const struct gl_constants *consts,
    }
 
    optimize_dead_builtin_variables(shader->ir, other);
+
+   lower_vector_derefs(shader);
+
+   lower_packing_builtins(shader->ir, exts->ARB_shading_language_packing,
+                          exts->ARB_gpu_shader5,
+                          consts->GLSLHasHalfFloatPacking);
+   do_mat_op_to_vec(shader->ir);
+
+   lower_instructions(shader->ir, exts->ARB_gpu_shader5);
+
+   do_vec_index_to_cond_assign(shader->ir);
 
    validate_ir_tree(shader->ir);
 
@@ -2399,7 +2411,8 @@ _mesa_glsl_compile_shader(struct gl_context *ctx, struct gl_shader *shader,
       lower_builtins(shader->ir);
       assign_subroutine_indexes(state);
       lower_subroutine(shader->ir, state);
-      opt_shader_and_create_symbol_table(&ctx->Const, state->symbols, shader);
+      opt_shader_and_create_symbol_table(&ctx->Const, &ctx->Extensions,
+                                         state->symbols, shader);
    }
 
    if (!force_recompile) {

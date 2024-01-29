@@ -177,11 +177,12 @@ pub type CLResult<T> = Result<T, CLError>;
 #[repr(u32)]
 pub enum RusticlTypes {
     // random number
-    Context = 0xec4cf9a9,
+    Buffer = 0xec4cf9a9,
+    Context,
     Device,
     Event,
+    Image,
     Kernel,
-    Mem,
     Program,
     Queue,
     Sampler,
@@ -194,14 +195,15 @@ impl RusticlTypes {
 
     pub const fn from_u32(val: u32) -> Option<Self> {
         let result = match val {
-            0xec4cf9a9 => Self::Context,
-            0xec4cf9aa => Self::Device,
-            0xec4cf9ab => Self::Event,
-            0xec4cf9ac => Self::Kernel,
-            0xec4cf9ad => Self::Mem,
-            0xec4cf9ae => Self::Program,
-            0xec4cf9af => Self::Queue,
-            0xec4cf9b0 => Self::Sampler,
+            0xec4cf9a9 => Self::Buffer,
+            0xec4cf9aa => Self::Context,
+            0xec4cf9ab => Self::Device,
+            0xec4cf9ac => Self::Event,
+            0xec4cf9ad => Self::Image,
+            0xec4cf9ae => Self::Kernel,
+            0xec4cf9af => Self::Program,
+            0xec4cf9b0 => Self::Queue,
+            0xec4cf9b1 => Self::Sampler,
             _ => return None,
         };
         debug_assert!(result.u32() == val);

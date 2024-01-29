@@ -456,18 +456,17 @@ pub fn create_shadow_slice(
     Ok(slice)
 }
 
-pub fn copy_cube_to_slice(
-    q: &Arc<Queue>,
-    ctx: &PipeContext,
-    mem_objects: &[Arc<Mem>],
-) -> CLResult<()> {
+pub fn copy_cube_to_slice(q: &Arc<Queue>, ctx: &PipeContext, mem_objects: &[Mem]) -> CLResult<()> {
     for mem in mem_objects {
-        let gl_obj = mem.gl_obj.as_ref().unwrap();
+        let Mem::Image(image) = mem else {
+            continue;
+        };
+        let gl_obj = image.gl_obj.as_ref().unwrap();
         if !is_cube_map_face(gl_obj.gl_object_target) {
             continue;
         }
-        let width = mem.image_desc.image_width;
-        let height = mem.image_desc.image_height;
+        let width = image.image_desc.image_width;
+        let height = image.image_desc.image_height;
 
         // Fill in values for doing the copy
         let idx = get_array_slice_idx(gl_obj.gl_object_target);
@@ -476,7 +475,7 @@ pub fn copy_cube_to_slice(
         let region = CLVec::<usize>::new([width, height, 1]);
         let src_bx = create_pipe_box(src_origin, region, CL_MEM_OBJECT_IMAGE2D_ARRAY)?;
 
-        let cl_res = mem.get_res_of_dev(q.device)?;
+        let cl_res = image.get_res_of_dev(q.device)?;
         let gl_res = gl_obj.shadow_map.as_ref().unwrap().get(cl_res).unwrap();
 
         ctx.resource_copy_region(gl_res.as_ref(), cl_res.as_ref(), &dst_offset, &src_bx);
@@ -485,18 +484,17 @@ pub fn copy_cube_to_slice(
     Ok(())
 }
 
-pub fn copy_slice_to_cube(
-    q: &Arc<Queue>,
-    ctx: &PipeContext,
-    mem_objects: &[Arc<Mem>],
-) -> CLResult<()> {
+pub fn copy_slice_to_cube(q: &Arc<Queue>, ctx: &PipeContext, mem_objects: &[Mem]) -> CLResult<()> {
     for mem in mem_objects {
-        let gl_obj = mem.gl_obj.as_ref().unwrap();
+        let Mem::Image(image) = mem else {
+            continue;
+        };
+        let gl_obj = image.gl_obj.as_ref().unwrap();
         if !is_cube_map_face(gl_obj.gl_object_target) {
             continue;
         }
-        let width = mem.image_desc.image_width;
-        let height = mem.image_desc.image_height;
+        let width = image.image_desc.image_width;
+        let height = image.image_desc.image_height;
 
         // Fill in values for doing the copy
         let idx = get_array_slice_idx(gl_obj.gl_object_target) as u32;
@@ -505,7 +503,7 @@ pub fn copy_slice_to_cube(
         let region = CLVec::<usize>::new([width, height, 1]);
         let src_bx = create_pipe_box(src_origin, region, CL_MEM_OBJECT_IMAGE2D_ARRAY)?;
 
-        let cl_res = mem.get_res_of_dev(q.device)?;
+        let cl_res = image.get_res_of_dev(q.device)?;
         let gl_res = gl_obj.shadow_map.as_ref().unwrap().get(cl_res).unwrap();
 
         ctx.resource_copy_region(cl_res.as_ref(), gl_res.as_ref(), &dst_offset, &src_bx);

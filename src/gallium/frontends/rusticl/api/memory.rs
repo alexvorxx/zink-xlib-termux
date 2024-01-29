@@ -81,7 +81,7 @@ fn validate_map_flags_common(map_flags: cl_mem_flags) -> CLResult<()> {
     Ok(())
 }
 
-fn validate_map_flags(m: &Mem, map_flags: cl_mem_flags) -> CLResult<()> {
+fn validate_map_flags(m: &MemBase, map_flags: cl_mem_flags) -> CLResult<()> {
     validate_map_flags_common(map_flags)?;
 
     // CL_INVALID_OPERATION if buffer has been created with CL_MEM_HOST_WRITE_ONLY or
@@ -105,7 +105,7 @@ fn filter_image_access_flags(flags: cl_mem_flags) -> cl_mem_flags {
             as cl_mem_flags
 }
 
-fn inherit_mem_flags(mut flags: cl_mem_flags, mem: &Mem) -> cl_mem_flags {
+fn inherit_mem_flags(mut flags: cl_mem_flags, mem: &MemBase) -> cl_mem_flags {
     let read_write_mask = cl_bitfield::from(
         CL_MEM_READ_WRITE |
       CL_MEM_WRITE_ONLY |
@@ -186,7 +186,7 @@ fn validate_host_ptr(host_ptr: *mut ::std::os::raw::c_void, flags: cl_mem_flags)
     Ok(())
 }
 
-fn validate_matching_buffer_flags(mem: &Mem, flags: cl_mem_flags) -> CLResult<()> {
+fn validate_matching_buffer_flags(mem: &MemBase, flags: cl_mem_flags) -> CLResult<()> {
     // CL_INVALID_VALUE if an image is being created from another memory object (buffer or image)
     // under one of the following circumstances:
     //
@@ -215,15 +215,16 @@ fn validate_matching_buffer_flags(mem: &Mem, flags: cl_mem_flags) -> CLResult<()
 #[cl_info_entrypoint(cl_get_mem_object_info)]
 impl CLInfo<cl_mem_info> for cl_mem {
     fn query(&self, q: cl_mem_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = Mem::ref_from_raw(*self)?;
+        let mem = MemBase::ref_from_raw(*self)?;
         Ok(match *q {
             CL_MEM_ASSOCIATED_MEMOBJECT => {
                 let ptr = match mem.parent.as_ref() {
                     // Note we use as_ptr here which doesn't increase the reference count.
-                    Some(parent) => Arc::as_ptr(parent),
-                    None => ptr::null(),
+                    Some(Mem::Buffer(buffer)) => cl_mem::from_ptr(Arc::as_ptr(buffer)),
+                    Some(Mem::Image(image)) => cl_mem::from_ptr(Arc::as_ptr(image)),
+                    None => ptr::null_mut(),
                 };
-                cl_prop::<cl_mem>(cl_mem::from_ptr(ptr))
+                cl_prop::<cl_mem>(ptr.cast())
             }
             CL_MEM_CONTEXT => {
                 // Note we use as_ptr here which doesn't increase the reference count.
@@ -236,7 +237,11 @@ impl CLInfo<cl_mem_info> for cl_mem {
             CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(mem.host_ptr),
             CL_MEM_OFFSET => cl_prop::<usize>(mem.offset),
             CL_MEM_PROPERTIES => cl_prop::<&Vec<cl_mem_properties>>(&mem.props),
-            CL_MEM_REFERENCE_COUNT => cl_prop::<cl_uint>(Mem::refcnt(*self)?),
+            CL_MEM_REFERENCE_COUNT => cl_prop::<cl_uint>(if mem.is_buffer() {
+                Buffer::refcnt(*self)?
+            } else {
+                Image::refcnt(*self)?
+            }),
             CL_MEM_SIZE => cl_prop::<usize>(mem.size),
             CL_MEM_TYPE => cl_prop::<cl_mem_object_type>(mem.mem_type),
             CL_MEM_USES_SVM_POINTER | CL_MEM_USES_SVM_POINTER_ARM => {
@@ -281,7 +286,7 @@ fn create_buffer_with_properties(
         return Err(CL_INVALID_PROPERTY);
     }
 
-    Ok(Mem::new_buffer(c, flags, size, host_ptr, props)?.into_cl())
+    Ok(MemBase::new_buffer(c, flags, size, host_ptr, props)?.into_cl())
 }
 
 #[cl_entrypoint]
@@ -301,7 +306,7 @@ fn create_sub_buffer(
     buffer_create_type: cl_buffer_create_type,
     buffer_create_info: *const ::std::os::raw::c_void,
 ) -> CLResult<cl_mem> {
-    let b = Mem::arc_from_raw(buffer)?;
+    let b = Buffer::arc_from_raw(buffer)?;
 
     // CL_INVALID_MEM_OBJECT if buffer ... is a sub-buffer object.
     if b.parent.is_some() {
@@ -340,7 +345,7 @@ fn create_sub_buffer(
         _ => return Err(CL_INVALID_VALUE),
     };
 
-    Ok(Mem::new_sub_buffer(b, flags, offset, size).into_cl())
+    Ok(MemBase::new_sub_buffer(b, flags, offset, size).into_cl())
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if there are no devices in context associated with buffer for which the origin field of the cl_buffer_region structure passed in buffer_create_info is aligned to the CL_DEVICE_MEM_BASE_ADDR_ALIGN value.
@@ -352,7 +357,7 @@ fn set_mem_object_destructor_callback(
     pfn_notify: Option<FuncMemCB>,
     user_data: *mut ::std::os::raw::c_void,
 ) -> CLResult<()> {
-    let m = Mem::ref_from_raw(memobj)?;
+    let m = MemBase::ref_from_raw(memobj)?;
 
     // SAFETY: The requirements on `MemCB::new` match the requirements
     // imposed by the OpenCL specification. It is the caller's duty to uphold them.
@@ -391,7 +396,7 @@ fn validate_image_desc(
     host_ptr: *mut ::std::os::raw::c_void,
     elem_size: usize,
     devs: &[&Device],
-) -> CLResult<(cl_image_desc, Option<Arc<Mem>>)> {
+) -> CLResult<(cl_image_desc, Option<Mem>)> {
     // CL_INVALID_IMAGE_DESCRIPTOR if values specified in image_desc are not valid
     const err: cl_int = CL_INVALID_IMAGE_DESCRIPTOR;
 
@@ -461,7 +466,7 @@ fn validate_image_desc(
     // TODO: cl_khr_image2d_from_buffer is an optional feature
     let p = unsafe { &desc.anon_1.mem_object };
     let parent = if !p.is_null() {
-        let p = Mem::arc_from_raw(*p)?;
+        let p = MemBase::arc_from_raw(*p)?;
         if !match desc.image_type {
             CL_MEM_OBJECT_IMAGE1D_BUFFER => p.is_buffer(),
             CL_MEM_OBJECT_IMAGE2D => {
@@ -539,7 +544,7 @@ fn validate_image_desc(
     Ok((desc, parent))
 }
 
-fn validate_image_bounds(i: &Mem, origin: CLVec<usize>, region: CLVec<usize>) -> CLResult<()> {
+fn validate_image_bounds(i: &MemBase, origin: CLVec<usize>, region: CLVec<usize>) -> CLResult<()> {
     let dims = i.image_desc.dims_with_array();
     let bound = region + origin;
     if bound > i.image_desc.size() {
@@ -593,7 +598,7 @@ fn validate_buffer(
     // the specified memory objects data store are modified, those changes are reflected in the
     // contents of the image object and vice-versa at corresponding synchronization points.
     if !mem_object.is_null() {
-        let mem = Mem::ref_from_raw(mem_object)?;
+        let mem = MemBase::ref_from_raw(mem_object)?;
 
         match mem.mem_type {
             CL_MEM_OBJECT_BUFFER => {
@@ -700,7 +705,7 @@ fn validate_buffer(
 #[cl_info_entrypoint(cl_get_image_info)]
 impl CLInfo<cl_image_info> for cl_mem {
     fn query(&self, q: cl_image_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = Mem::ref_from_raw(*self)?;
+        let mem = MemBase::ref_from_raw(*self)?;
         Ok(match *q {
             CL_IMAGE_ARRAY_SIZE => cl_prop::<usize>(mem.image_desc.image_array_size),
             CL_IMAGE_BUFFER => cl_prop::<cl_mem>(unsafe { mem.image_desc.anon_1.buffer }),
@@ -770,7 +775,7 @@ fn create_image_with_properties(
         return Err(CL_INVALID_PROPERTY);
     }
 
-    Ok(Mem::new_image(
+    Ok(MemBase::new_image(
         c,
         parent,
         desc.image_type,
@@ -1023,7 +1028,7 @@ fn enqueue_read_buffer(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let b = Mem::arc_from_raw(buffer)?;
+    let b = Buffer::arc_from_raw(buffer)?;
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -1076,7 +1081,7 @@ fn enqueue_write_buffer(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let b = Mem::arc_from_raw(buffer)?;
+    let b = Buffer::arc_from_raw(buffer)?;
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -1129,8 +1134,8 @@ fn enqueue_copy_buffer(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let src = Mem::arc_from_raw(src_buffer)?;
-    let dst = Mem::arc_from_raw(dst_buffer)?;
+    let src = Buffer::arc_from_raw(src_buffer)?;
+    let dst = Buffer::arc_from_raw(dst_buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_buffer and dst_buffer
@@ -1203,7 +1208,7 @@ fn enqueue_read_buffer_rect(
 ) -> CLResult<()> {
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
     let q = Queue::arc_from_raw(command_queue)?;
-    let buf = Mem::arc_from_raw(buffer)?;
+    let buf = Buffer::arc_from_raw(buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if clEnqueueReadBufferRect is called on buffer which has been created
@@ -1326,7 +1331,7 @@ fn enqueue_write_buffer_rect(
 ) -> CLResult<()> {
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
     let q = Queue::arc_from_raw(command_queue)?;
-    let buf = Mem::arc_from_raw(buffer)?;
+    let buf = Buffer::arc_from_raw(buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if clEnqueueWriteBufferRect is called on buffer which has been created
@@ -1447,8 +1452,8 @@ fn enqueue_copy_buffer_rect(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let src = Mem::arc_from_raw(src_buffer)?;
-    let dst = Mem::arc_from_raw(dst_buffer)?;
+    let src = Buffer::arc_from_raw(src_buffer)?;
+    let dst = Buffer::arc_from_raw(dst_buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_VALUE if src_origin, dst_origin, or region is NULL.
@@ -1582,7 +1587,7 @@ fn enqueue_fill_buffer(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let b = Mem::arc_from_raw(buffer)?;
+    let b = Buffer::arc_from_raw(buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_VALUE if offset or offset + size require accessing elements outside the buffer
@@ -1636,7 +1641,7 @@ fn enqueue_map_buffer(
     event: *mut cl_event,
 ) -> CLResult<*mut c_void> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let b = Mem::arc_from_raw(buffer)?;
+    let b = Buffer::arc_from_raw(buffer)?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -1692,7 +1697,7 @@ fn enqueue_read_image(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let i = Mem::arc_from_raw(image)?;
+    let i = Image::arc_from_raw(image)?;
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let pixel_size = i.image_format.pixel_size().unwrap() as usize;
@@ -1783,7 +1788,7 @@ fn enqueue_write_image(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let i = Mem::arc_from_raw(image)?;
+    let i = Image::arc_from_raw(image)?;
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let pixel_size = i.image_format.pixel_size().unwrap() as usize;
@@ -1872,8 +1877,8 @@ fn enqueue_copy_image(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let src_image = Mem::arc_from_raw(src_image)?;
-    let dst_image = Mem::arc_from_raw(dst_image)?;
+    let src_image = Image::arc_from_raw(src_image)?;
+    let dst_image = Image::arc_from_raw(dst_image)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_image and dst_image are not the same
@@ -1932,7 +1937,7 @@ fn enqueue_fill_image(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let i = Mem::arc_from_raw(image)?;
+    let i = Image::arc_from_raw(image)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue and image are not the same
@@ -1985,8 +1990,8 @@ fn enqueue_copy_buffer_to_image(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let src = Mem::arc_from_raw(src_buffer)?;
-    let dst = Mem::arc_from_raw(dst_image)?;
+    let src = Buffer::arc_from_raw(src_buffer)?;
+    let dst = Image::arc_from_raw(dst_image)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_buffer and dst_image
@@ -2041,8 +2046,8 @@ fn enqueue_copy_image_to_buffer(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let src = Mem::arc_from_raw(src_image)?;
-    let dst = Mem::arc_from_raw(dst_buffer)?;
+    let src = Image::arc_from_raw(src_image)?;
+    let dst = Buffer::arc_from_raw(dst_buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_image and dst_buffer
@@ -2100,7 +2105,7 @@ fn enqueue_map_image(
     event: *mut cl_event,
 ) -> CLResult<*mut ::std::os::raw::c_void> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let i = Mem::arc_from_raw(image)?;
+    let i = Image::arc_from_raw(image)?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -2167,12 +2172,22 @@ fn enqueue_map_image(
 
 #[cl_entrypoint]
 fn retain_mem_object(mem: cl_mem) -> CLResult<()> {
-    Mem::retain(mem)
+    let m = MemBase::ref_from_raw(mem)?;
+    match m.base.get_type()? {
+        RusticlTypes::Buffer => Buffer::retain(mem),
+        RusticlTypes::Image => Image::retain(mem),
+        _ => Err(CL_INVALID_MEM_OBJECT),
+    }
 }
 
 #[cl_entrypoint]
 fn release_mem_object(mem: cl_mem) -> CLResult<()> {
-    Mem::release(mem)
+    let m = MemBase::ref_from_raw(mem)?;
+    match m.base.get_type()? {
+        RusticlTypes::Buffer => Buffer::release(mem),
+        RusticlTypes::Image => Image::release(mem),
+        _ => Err(CL_INVALID_MEM_OBJECT),
+    }
 }
 
 #[cl_entrypoint]
@@ -2185,7 +2200,7 @@ fn enqueue_unmap_mem_object(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
-    let m = Mem::arc_from_raw(memobj)?;
+    let m = MemBase::arc_from_raw(memobj)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if context associated with command_queue and memobj are not the same
@@ -2221,7 +2236,7 @@ fn enqueue_migrate_mem_objects(
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let bufs = Mem::refs_from_arr(mem_objects, num_mem_objects)?;
+    let bufs = MemBase::refs_from_arr(mem_objects, num_mem_objects)?;
 
     // CL_INVALID_VALUE if num_mem_objects is zero or if mem_objects is NULL.
     if bufs.is_empty() {
@@ -2962,7 +2977,7 @@ fn create_pipe(
 #[cl_info_entrypoint(cl_get_gl_texture_info)]
 impl CLInfo<cl_gl_texture_info> for cl_mem {
     fn query(&self, q: cl_gl_texture_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = Mem::ref_from_raw(*self)?;
+        let mem = MemBase::ref_from_raw(*self)?;
         Ok(match *q {
             CL_GL_MIPMAP_LEVEL => cl_prop::<cl_GLint>(0),
             CL_GL_TEXTURE_TARGET => cl_prop::<cl_GLenum>(
@@ -3006,7 +3021,7 @@ fn create_from_gl(
         let gl_export_manager =
             gl_ctx_manager.export_object(&c, target, flags as u32, miplevel, texture)?;
 
-        Ok(Mem::from_gl(c, flags, &gl_export_manager)?.into_cl())
+        Ok(MemBase::from_gl(c, flags, &gl_export_manager)?)
     } else {
         Err(CL_INVALID_CONTEXT)
     }
@@ -3087,7 +3102,7 @@ fn get_gl_object_info(
     gl_object_type: *mut cl_gl_object_type,
     gl_object_name: *mut cl_GLuint,
 ) -> CLResult<()> {
-    let m = Mem::ref_from_raw(memobj)?;
+    let m = MemBase::ref_from_raw(memobj)?;
 
     match &m.gl_obj {
         Some(gl_obj) => {
@@ -3114,7 +3129,7 @@ fn enqueue_acquire_gl_objects(
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let objs = Mem::arcs_from_arr(mem_objects, num_objects)?;
+    let objs = MemBase::arcs_from_arr(mem_objects, num_objects)?;
     let gl_ctx_manager = &q.context.gl_ctx_manager;
 
     // CL_INVALID_CONTEXT if context associated with command_queue was not created from an OpenGL context
@@ -3148,7 +3163,7 @@ fn enqueue_release_gl_objects(
 ) -> CLResult<()> {
     let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let objs = Mem::arcs_from_arr(mem_objects, num_objects)?;
+    let objs = MemBase::arcs_from_arr(mem_objects, num_objects)?;
     let gl_ctx_manager = &q.context.gl_ctx_manager;
 
     // CL_INVALID_CONTEXT if context associated with command_queue was not created from an OpenGL context

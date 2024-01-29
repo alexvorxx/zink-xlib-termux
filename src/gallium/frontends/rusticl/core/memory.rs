@@ -8,6 +8,7 @@ use crate::core::gl::*;
 use crate::core::queue::*;
 use crate::core::util::*;
 use crate::impl_cl_type_trait;
+use crate::impl_cl_type_trait_base;
 
 use mesa_rust::pipe::context::*;
 use mesa_rust::pipe::resource::*;
@@ -25,6 +26,7 @@ use std::convert::TryInto;
 use std::mem;
 use std::mem::size_of;
 use std::ops::AddAssign;
+use std::ops::Deref;
 use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
@@ -111,10 +113,26 @@ impl Mappings {
     }
 }
 
-pub struct Mem {
+pub enum Mem {
+    Buffer(Arc<Buffer>),
+    Image(Arc<Image>),
+}
+
+impl Deref for Mem {
+    type Target = MemBase;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Buffer(b) => &b.base,
+            Self::Image(i) => &i.base,
+        }
+    }
+}
+
+pub struct MemBase {
     pub base: CLObjectBase<CL_INVALID_MEM_OBJECT>,
     pub context: Arc<Context>,
-    pub parent: Option<Arc<Mem>>,
+    pub parent: Option<Mem>,
     pub mem_type: cl_mem_object_type,
     pub flags: cl_mem_flags,
     pub size: usize,
@@ -131,7 +149,33 @@ pub struct Mem {
     maps: Mutex<Mappings>,
 }
 
-impl_cl_type_trait!(cl_mem, Mem, CL_INVALID_MEM_OBJECT);
+pub struct Buffer {
+    base: MemBase,
+}
+
+pub struct Image {
+    base: MemBase,
+}
+
+impl Deref for Buffer {
+    type Target = MemBase;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl Deref for Image {
+    type Target = MemBase;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl_cl_type_trait_base!(cl_mem, MemBase, [Buffer, Image], CL_INVALID_MEM_OBJECT);
+impl_cl_type_trait!(cl_mem, Buffer, CL_INVALID_MEM_OBJECT, base.base);
+impl_cl_type_trait!(cl_mem, Image, CL_INVALID_MEM_OBJECT, base.base);
 
 pub trait CLImageDescInfo {
     fn type_info(&self) -> (u8, bool);
@@ -274,14 +318,14 @@ fn can_map_directly(dev: &Device, res: &PipeResource) -> bool {
         && (res.is_buffer() || res.is_linear())
 }
 
-impl Mem {
+impl MemBase {
     pub fn new_buffer(
         context: Arc<Context>,
         flags: cl_mem_flags,
         size: usize,
         host_ptr: *mut c_void,
         props: Vec<cl_mem_properties>,
-    ) -> CLResult<Arc<Mem>> {
+    ) -> CLResult<Arc<Buffer>> {
         let res_type = if bit_check(flags, CL_MEM_ALLOC_HOST_PTR) {
             ResourceType::Staging
         } else {
@@ -301,63 +345,67 @@ impl Mem {
             ptr::null_mut()
         };
 
-        Ok(Arc::new(Self {
-            base: CLObjectBase::new(RusticlTypes::Mem),
-            context: context,
-            parent: None,
-            mem_type: CL_MEM_OBJECT_BUFFER,
-            flags: flags,
-            size: size,
-            offset: 0,
-            host_ptr: host_ptr,
-            image_format: cl_image_format::default(),
-            pipe_format: pipe_format::PIPE_FORMAT_NONE,
-            image_desc: cl_image_desc::default(),
-            image_elem_size: 0,
-            props: props,
-            gl_obj: None,
-            cbs: Mutex::new(Vec::new()),
-            res: Some(buffer),
-            maps: Mappings::new(),
+        Ok(Arc::new(Buffer {
+            base: Self {
+                base: CLObjectBase::new(RusticlTypes::Buffer),
+                context: context,
+                parent: None,
+                mem_type: CL_MEM_OBJECT_BUFFER,
+                flags: flags,
+                size: size,
+                offset: 0,
+                host_ptr: host_ptr,
+                image_format: cl_image_format::default(),
+                pipe_format: pipe_format::PIPE_FORMAT_NONE,
+                image_desc: cl_image_desc::default(),
+                image_elem_size: 0,
+                props: props,
+                gl_obj: None,
+                cbs: Mutex::new(Vec::new()),
+                res: Some(buffer),
+                maps: Mappings::new(),
+            },
         }))
     }
 
     pub fn new_sub_buffer(
-        parent: Arc<Mem>,
+        parent: Arc<Buffer>,
         flags: cl_mem_flags,
         offset: usize,
         size: usize,
-    ) -> Arc<Mem> {
+    ) -> Arc<Buffer> {
         let host_ptr = if parent.host_ptr.is_null() {
             ptr::null_mut()
         } else {
             unsafe { parent.host_ptr.add(offset) }
         };
 
-        Arc::new(Self {
-            base: CLObjectBase::new(RusticlTypes::Mem),
-            context: parent.context.clone(),
-            parent: Some(parent),
-            mem_type: CL_MEM_OBJECT_BUFFER,
-            flags: flags,
-            size: size,
-            offset: offset,
-            host_ptr: host_ptr,
-            image_format: cl_image_format::default(),
-            pipe_format: pipe_format::PIPE_FORMAT_NONE,
-            image_desc: cl_image_desc::default(),
-            image_elem_size: 0,
-            props: Vec::new(),
-            gl_obj: None,
-            cbs: Mutex::new(Vec::new()),
-            res: None,
-            maps: Mappings::new(),
+        Arc::new(Buffer {
+            base: Self {
+                base: CLObjectBase::new(RusticlTypes::Buffer),
+                context: parent.context.clone(),
+                parent: Some(Mem::Buffer(parent)),
+                mem_type: CL_MEM_OBJECT_BUFFER,
+                flags: flags,
+                size: size,
+                offset: offset,
+                host_ptr: host_ptr,
+                image_format: cl_image_format::default(),
+                pipe_format: pipe_format::PIPE_FORMAT_NONE,
+                image_desc: cl_image_desc::default(),
+                image_elem_size: 0,
+                props: Vec::new(),
+                gl_obj: None,
+                cbs: Mutex::new(Vec::new()),
+                res: None,
+                maps: Mappings::new(),
+            },
         })
     }
 
     pub fn new_image(
         context: Arc<Context>,
-        parent: Option<Arc<Mem>>,
+        parent: Option<Mem>,
         mem_type: cl_mem_object_type,
         flags: cl_mem_flags,
         image_format: &cl_image_format,
@@ -365,7 +413,7 @@ impl Mem {
         image_elem_size: u8,
         host_ptr: *mut c_void,
         props: Vec<cl_mem_properties>,
-    ) -> CLResult<Arc<Mem>> {
+    ) -> CLResult<Arc<Image>> {
         // we have to sanitize the image_desc a little for internal use
         let api_image_desc = image_desc;
         let dims = image_desc.dims();
@@ -419,32 +467,52 @@ impl Mem {
         };
 
         let pipe_format = image_format.to_pipe_format().unwrap();
-        Ok(Arc::new(Self {
-            base: CLObjectBase::new(RusticlTypes::Mem),
-            context: context,
-            parent: parent,
-            mem_type: mem_type,
-            flags: flags,
-            size: image_desc.pixels() * image_format.pixel_size().unwrap() as usize,
-            offset: 0,
-            host_ptr: host_ptr,
-            image_format: *image_format,
-            pipe_format: pipe_format,
-            image_desc: api_image_desc,
-            image_elem_size: image_elem_size,
-            props: props,
-            gl_obj: None,
-            cbs: Mutex::new(Vec::new()),
-            res: texture,
-            maps: Mappings::new(),
+        Ok(Arc::new(Image {
+            base: Self {
+                base: CLObjectBase::new(RusticlTypes::Image),
+                context: context,
+                parent: parent,
+                mem_type: mem_type,
+                flags: flags,
+                size: image_desc.pixels() * image_format.pixel_size().unwrap() as usize,
+                offset: 0,
+                host_ptr: host_ptr,
+                image_format: *image_format,
+                pipe_format: pipe_format,
+                image_desc: api_image_desc,
+                image_elem_size: image_elem_size,
+                props: props,
+                gl_obj: None,
+                cbs: Mutex::new(Vec::new()),
+                res: texture,
+                maps: Mappings::new(),
+            },
         }))
+    }
+
+    pub fn arc_from_raw(ptr: cl_mem) -> CLResult<Mem> {
+        let mem = Self::ref_from_raw(ptr)?;
+        match mem.base.get_type()? {
+            RusticlTypes::Buffer => Ok(Mem::Buffer(Buffer::arc_from_raw(ptr)?)),
+            RusticlTypes::Image => Ok(Mem::Image(Image::arc_from_raw(ptr)?)),
+            _ => Err(CL_INVALID_MEM_OBJECT),
+        }
+    }
+
+    pub fn arcs_from_arr(objs: *const cl_mem, count: u32) -> CLResult<Vec<Mem>> {
+        let count = count as usize;
+        let mut res = Vec::with_capacity(count);
+        for i in 0..count {
+            res.push(Self::arc_from_raw(unsafe { *objs.add(i) })?);
+        }
+        Ok(res)
     }
 
     pub fn from_gl(
         context: Arc<Context>,
         flags: cl_mem_flags,
         gl_export_manager: &GLExportManager,
-    ) -> CLResult<Arc<Mem>> {
+    ) -> CLResult<cl_mem> {
         let export_in = &gl_export_manager.export_in;
         let export_out = &gl_export_manager.export_out;
 
@@ -452,12 +520,20 @@ impl Mem {
         let gl_mem_props = gl_export_manager.get_gl_mem_props()?;
 
         // Handle Buffers
-        let (image_format, pipe_format) = if gl_export_manager.is_gl_buffer() {
-            (cl_image_format::default(), pipe_format::PIPE_FORMAT_NONE)
+        let (image_format, pipe_format, rusticl_type) = if gl_export_manager.is_gl_buffer() {
+            (
+                cl_image_format::default(),
+                pipe_format::PIPE_FORMAT_NONE,
+                RusticlTypes::Buffer,
+            )
         } else {
             let image_format =
                 format_from_gl(export_out.internal_format).ok_or(CL_OUT_OF_HOST_MEMORY)?;
-            (image_format, image_format.to_pipe_format().unwrap())
+            (
+                image_format,
+                image_format.to_pipe_format().unwrap(),
+                RusticlTypes::Image,
+            )
         };
 
         let imported_gl_tex = context.import_gl_buffer(
@@ -513,8 +589,9 @@ impl Mem {
         if mem_type != CL_MEM_OBJECT_BUFFER {
             assert_eq!(gl_mem_props.offset, 0);
         }
-        Ok(Arc::new(Self {
-            base: CLObjectBase::new(RusticlTypes::Mem),
+
+        let base = Self {
+            base: CLObjectBase::new(rusticl_type),
             context: context,
             parent: None,
             mem_type: mem_type,
@@ -531,7 +608,12 @@ impl Mem {
             cbs: Mutex::new(Vec::new()),
             res: Some(texture),
             maps: Mappings::new(),
-        }))
+        };
+        Ok(if rusticl_type == RusticlTypes::Buffer {
+            Arc::new(Buffer { base: base }).into_cl()
+        } else {
+            Arc::new(Image { base: base }).into_cl()
+        })
     }
 
     pub fn pixel_size(&self) -> Option<u8> {
@@ -774,7 +856,7 @@ impl Mem {
         &self,
         q: &Arc<Queue>,
         ctx: &PipeContext,
-        dst: &Arc<Mem>,
+        dst: &MemBase,
         mut src_origin: CLVec<usize>,
         mut dst_origin: CLVec<usize>,
         region: &CLVec<usize>,
@@ -1361,7 +1443,7 @@ impl Mem {
     }
 }
 
-impl Drop for Mem {
+impl Drop for MemBase {
     fn drop(&mut self) {
         let cbs = mem::take(self.cbs.get_mut().unwrap());
         for cb in cbs.into_iter().rev() {

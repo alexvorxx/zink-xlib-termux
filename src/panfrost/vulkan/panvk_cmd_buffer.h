@@ -101,7 +101,7 @@ struct panvk_descriptor_state {
    mali_ptr ubos;
    mali_ptr textures;
    mali_ptr samplers;
-   mali_ptr push_constants;
+   mali_ptr push_uniforms;
    mali_ptr vs_attribs;
    mali_ptr vs_attrib_bufs;
    mali_ptr non_vs_attribs;

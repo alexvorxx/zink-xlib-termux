@@ -174,6 +174,8 @@ struct fd_dev_info {
 
       /* See ir3_compiler::has_scalar_alu. */
       bool has_scalar_alu;
+      /* See ir3_compiler::has_early_preamble. */
+      bool has_early_preamble;
 
       bool has_isam_v;
       bool has_ssbo_imm_offsets;

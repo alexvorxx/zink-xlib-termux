@@ -284,6 +284,13 @@ struct ir3_compiler {
    bool has_scalar_alu;
 
    bool fs_must_have_non_zero_constlen_quirk;
+
+   /* On all generations that support scalar ALU, there is also a copy of the
+    * scalar ALU and some other HW units in HLSQ that can execute preambles
+    * before work is dispatched to the SPs, called "early preamble". We detect
+    * whether the shader can use early preamble in ir3.
+    */
+   bool has_early_preamble;
 };
 
 void ir3_compiler_destroy(struct ir3_compiler *compiler);

@@ -215,6 +215,12 @@ struct agx_compiled_shader {
 
    /* Number of words per primitive in the count buffer */
    unsigned gs_count_words;
+
+   /* Logical shader stage used for descriptor access. This may differ from the
+    * physical shader stage of the compiled shader, for example when executing a
+    * tessellation eval shader as a vertex shader.
+    */
+   enum pipe_shader_type stage;
 };
 
 struct agx_uncompiled_shader {
@@ -644,6 +650,8 @@ struct agx_context {
 
    struct util_debug_callback debug;
    bool is_noop;
+
+   bool in_tess;
 
    struct blitter_context *blitter;
    struct asahi_blitter compute_blitter;

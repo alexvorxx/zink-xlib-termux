@@ -34,7 +34,8 @@ agx_disk_cache_compute_key(struct disk_cache *cache,
    uint8_t data[sizeof(uncompiled->nir_sha1) + sizeof(*shader_key)];
    int hash_size = sizeof(uncompiled->nir_sha1);
    int key_size;
-   if (uncompiled->type == PIPE_SHADER_VERTEX)
+   if (uncompiled->type == PIPE_SHADER_VERTEX ||
+       uncompiled->type == PIPE_SHADER_TESS_EVAL)
       key_size = sizeof(shader_key->vs);
    else if (uncompiled->type == PIPE_SHADER_GEOMETRY)
       key_size = sizeof(shader_key->gs);
@@ -122,6 +123,7 @@ agx_disk_cache_retrieve(struct agx_screen *screen,
       return NULL;
 
    struct agx_compiled_shader *binary = CALLOC_STRUCT(agx_compiled_shader);
+   binary->stage = uncompiled->type;
 
    struct blob_reader blob;
    blob_reader_init(&blob, buffer, size);

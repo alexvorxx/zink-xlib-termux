@@ -611,16 +611,7 @@ agx_bind_sampler_states(struct pipe_context *pctx, enum pipe_shader_type shader,
 static enum pipe_shader_type
 merged_stage(struct agx_context *ctx, enum pipe_shader_type stage)
 {
-   switch (stage) {
-   case MESA_SHADER_VERTEX:
-   case MESA_SHADER_GEOMETRY:
-      return ctx->stage[PIPE_SHADER_TESS_EVAL].shader ? MESA_SHADER_TESS_EVAL
-                                                      : MESA_SHADER_VERTEX;
-   case MESA_SHADER_TESS_CTRL:
-      return MESA_SHADER_VERTEX;
-   default:
-      return stage;
-   }
+   return stage == MESA_SHADER_TESS_CTRL ? MESA_SHADER_VERTEX : stage;
 }
 
 static enum agx_texture_dimension

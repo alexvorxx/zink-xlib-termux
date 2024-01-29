@@ -23,27 +23,15 @@
  */
 
 /*
- * We support the following merged shader stages:
- *
- *    VS/GS
- *    VS/TCS
- *    TES/GS
- *
- * TCS and GS are always merged. So, we lower TCS and GS samplers to bindless
- * and let VS and TES have exclusive binding table access.
+ * We only support VS/TCS merging, so we lower TCS samplers to bindless and let
+ * VS have exclusive binding table access.
  *
  * This could be optimized but it should be good enough for now.
  */
 static bool
 agx_stage_needs_bindless(enum pipe_shader_type stage)
 {
-   switch (stage) {
-   case MESA_SHADER_TESS_CTRL:
-   case MESA_SHADER_GEOMETRY:
-      return true;
-   default:
-      return false;
-   }
+   return stage == MESA_SHADER_TESS_CTRL;
 }
 
 static bool

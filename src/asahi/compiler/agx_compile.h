@@ -168,6 +168,9 @@ struct agx_shader_info {
     * respectively.
     */
    unsigned nr_gprs, nr_preamble_gprs;
+
+   /* Output mask set during driver lowering */
+   uint64_t outputs;
 };
 
 #define AGX_MAX_RTS (8)

@@ -1892,6 +1892,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
    /* Auxiliary programs */
    enum mesa_prim gs_out_prim = MESA_PRIM_MAX;
+   uint64_t outputs = 0;
    unsigned gs_out_count_words = 0;
    nir_shader *gs_count = NULL;
    nir_shader *gs_copy = NULL;
@@ -2093,6 +2094,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
    compiled->gs_output_mode = gs_out_prim;
    compiled->gs_count_words = gs_out_count_words;
+   compiled->info.outputs = outputs;
 
    ralloc_free(nir);
    ralloc_free(pre_gs);

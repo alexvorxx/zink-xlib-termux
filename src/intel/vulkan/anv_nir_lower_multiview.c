@@ -258,10 +258,12 @@ anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask,
                           glsl_int_type(), "layer ID");
    layer_id_out->data.location = VARYING_SLOT_LAYER;
 
-   if (view_index_out)
-      nir_store_var(b, view_index_out, view_index, 0x1);
+   if (shader->info.stage != MESA_SHADER_GEOMETRY) {
+      if (view_index_out)
+         nir_store_var(b, view_index_out, view_index, 0x1);
 
-   nir_store_var(b, layer_id_out, view_index, 0x1);
+      nir_store_var(b, layer_id_out, view_index, 0x1);
+   }
 
    nir_foreach_block(block, entrypoint) {
       nir_foreach_instr_safe(instr, block) {
@@ -270,24 +272,30 @@ anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask,
 
          nir_intrinsic_instr *load = nir_instr_as_intrinsic(instr);
 
-         if (&load->def == state.instance_id_with_views)
-            continue;
+         switch (load->intrinsic) {
+         case nir_intrinsic_load_instance_id:
+            if (&load->def != state.instance_id_with_views) {
+               nir_def_rewrite_uses(&load->def, build_instance_id(&state));
+               nir_instr_remove(&load->instr);
+            }
+            break;
+         case nir_intrinsic_load_view_index:
+            nir_def_rewrite_uses(&load->def, view_index);
+            nir_instr_remove(&load->instr);
+            break;
+         case nir_intrinsic_emit_vertex_with_counter:
+            /* In geometry shaders, outputs become undefined after every
+             * EmitVertex() call.  We need to re-emit them for each vertex.
+             */
+            b->cursor = nir_before_instr(instr);
+            if (view_index_out)
+               nir_store_var(b, view_index_out, view_index, 0x1);
 
-         if (load->intrinsic != nir_intrinsic_load_instance_id &&
-             load->intrinsic != nir_intrinsic_load_view_index)
-            continue;
-
-         nir_def *value;
-         if (load->intrinsic == nir_intrinsic_load_instance_id) {
-            value = build_instance_id(&state);
-         } else {
-            assert(load->intrinsic == nir_intrinsic_load_view_index);
-            value = build_view_index(&state);
+            nir_store_var(b, layer_id_out, view_index, 0x1);
+            break;
+         default:
+            break;
          }
-
-         nir_def_rewrite_uses(&load->def, value);
-
-         nir_instr_remove(&load->instr);
       }
    }
 

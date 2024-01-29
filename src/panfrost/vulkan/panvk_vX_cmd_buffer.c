@@ -71,8 +71,8 @@ struct panvk_draw_info {
       mali_ptr varyings;
       mali_ptr attributes;
       mali_ptr attribute_bufs;
-      mali_ptr push_constants;
    } stages[MESA_SHADER_STAGES];
+   mali_ptr push_uniforms;
    mali_ptr varying_bufs;
    mali_ptr textures;
    mali_ptr samplers;
@@ -1129,7 +1129,7 @@ panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
       cfg.instance_size =
          draw->instance_count > 1 ? draw->padded_vertex_count : 1;
       cfg.uniform_buffers = draw->ubos;
-      cfg.push_uniforms = draw->stages[PIPE_SHADER_VERTEX].push_constants;
+      cfg.push_uniforms = draw->push_uniforms;
       cfg.textures = draw->textures;
       cfg.samplers = draw->samplers;
    }
@@ -1219,7 +1219,7 @@ panvk_emit_tiler_dcd(const struct panvk_pipeline *pipeline,
       cfg.instance_size =
          draw->instance_count > 1 ? draw->padded_vertex_count : 1;
       cfg.uniform_buffers = draw->ubos;
-      cfg.push_uniforms = draw->stages[PIPE_SHADER_FRAGMENT].push_constants;
+      cfg.push_uniforms = draw->push_uniforms;
       cfg.textures = draw->textures;
       cfg.samplers = draw->samplers;
 

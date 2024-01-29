@@ -110,6 +110,45 @@ gem_context_create(int drm_fd)
    return create.ctx_id;
 }
 
+static bool
+gem_context_set_hw_image(int drm_fd, uint32_t ctx_id,
+                         const void *hw_img_data, uint32_t img_size)
+{
+   /* TODO: add additional information in the intel_hang_dump_block_exec &
+    * intel_hang_dump_block_hw_image structures to specify the engine and use
+    * the correct engine here.
+    */
+   struct i915_gem_context_param_context_image img_param = {
+      .engine = {
+         .engine_class = 0,
+         .engine_instance = 0,
+      },
+      .flags = I915_CONTEXT_IMAGE_FLAG_ENGINE_INDEX,
+      .size = img_size,
+      .image = (uint64_t)(uintptr_t)hw_img_data,
+   };
+   struct drm_i915_gem_context_param param = {
+      .ctx_id = ctx_id,
+      .param = I915_CONTEXT_PARAM_CONTEXT_IMAGE,
+   };
+   uint64_t val = 0;
+   int ret;
+
+   param.ctx_id = ctx_id;
+   param.param = I915_CONTEXT_PARAM_RECOVERABLE;
+   param.value = (uint64_t)(uintptr_t)&val;
+
+   ret = intel_ioctl(drm_fd, DRM_IOCTL_I915_GEM_CONTEXT_SETPARAM, &param);
+   if (ret)
+      return false;
+
+   param.param = I915_CONTEXT_PARAM_CONTEXT_IMAGE;
+   param.size = sizeof(img_param);
+   param.value = (uint64_t)(uintptr_t)&img_param;
+
+   return intel_ioctl(drm_fd, DRM_IOCTL_I915_GEM_CONTEXT_SETPARAM, &param) == 0;
+}
+
 static void*
 gem_mmap_offset(int drm_fd,
                 uint32_t gem_handle,
@@ -138,6 +177,20 @@ gem_mmap_offset(int drm_fd,
    void *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
                     drm_fd, gem_mmap.offset);
    return map;
+}
+
+static void
+write_malloc_data(void *out_data,
+                  int file_fd,
+                  size_t size)
+{
+   size_t total_read_len = 0;
+   ssize_t read_len;
+   while (total_read_len < size &&
+          (read_len = read(file_fd, out_data + total_read_len, size - total_read_len)) > 0) {
+      total_read_len += read_len;
+   }
+   assert(total_read_len == size);
 }
 
 static void
@@ -488,12 +541,19 @@ main(int argc, char *argv[])
             sizeof(struct gem_bo),
             compare_bos);
 
+      void *hw_img = NULL;
+      uint32_t hw_img_size = 0;
+
       /* Allocate BOs populate them */
       uint64_t gem_allocated = 0;
       util_dynarray_foreach(&buffers, struct gem_bo, bo) {
-         bo->gem_handle = gem_create(drm_fd, bo->size);
-         if (bo->file_offset != 0) {
-            lseek(file_fd, bo->file_offset, SEEK_SET);
+         lseek(file_fd, bo->file_offset, SEEK_SET);
+         if (bo->hw_img) {
+            hw_img = malloc(bo->size);
+            write_malloc_data(hw_img, file_fd, bo->size);
+            hw_img_size = bo->size;
+         } else {
+            bo->gem_handle = gem_create(drm_fd, bo->size);
             write_gem_bo_data(drm_fd, bo->gem_handle, file_fd, bo->size);
          }
 
@@ -504,6 +564,13 @@ main(int argc, char *argv[])
       if (ctx_id == 0) {
          fprintf(stderr, "fail to create context: %s\n", strerror(errno));
          return EXIT_FAILURE;
+      }
+
+      if (hw_img != NULL) {
+         if (!gem_context_set_hw_image(drm_fd, ctx_id, hw_img, hw_img_size)) {
+            fprintf(stderr, "fail to set context hw img: %s\n", strerror(errno));
+            return EXIT_FAILURE;
+         }
       }
 
       struct util_dynarray execbuffer_bos;
@@ -523,6 +590,9 @@ main(int argc, char *argv[])
                continue;
          }
 
+         if (bo->hw_img)
+            continue;
+
          struct drm_i915_gem_exec_object2 *execbuf_bo =
             util_dynarray_grow(&execbuffer_bos, struct drm_i915_gem_exec_object2, 1);
          *execbuf_bo = (struct drm_i915_gem_exec_object2) {
@@ -533,9 +603,6 @@ main(int argc, char *argv[])
                                 EXEC_OBJECT_PINNED,
             .offset           = bo->offset,
          };
-
-         if (bo->hw_img)
-            execbuf_bo->flags |= EXEC_OBJECT_NEEDS_GTT;
       }
 
       assert(batch_bo != NULL);

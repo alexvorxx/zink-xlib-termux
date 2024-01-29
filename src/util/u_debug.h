@@ -394,13 +394,13 @@ debug_get_option_ ## suffix (void) \
 }
 
 static inline bool
-__check_suid(void)
+__normal_user(void)
 {
 #if !defined(_WIN32)
    if (geteuid() != getuid())
-      return true;
+      return false;
 #endif
-   return false;
+   return true;
 }
 
 #define DEBUG_GET_ONCE_BOOL_OPTION(sufix, name, dfault) \

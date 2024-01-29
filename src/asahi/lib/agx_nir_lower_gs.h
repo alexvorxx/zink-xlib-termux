@@ -20,7 +20,6 @@ struct nir_variable;
 
 struct agx_lower_output_to_var_state {
    struct nir_variable *outputs[NUM_TOTAL_VARYING_SLOTS];
-   bool arrayed;
 };
 
 bool agx_lower_output_to_var(struct nir_builder *b, struct nir_instr *instr,

@@ -166,13 +166,7 @@ agx_lower_output_to_var(nir_builder *b, nir_instr *instr, void *data)
    value = nir_vector_insert_imm(b, nir_undef(b, nr_components, 32), value,
                                  component);
 
-   if (state->arrayed) {
-      nir_def *index = nir_load_vertex_id_in_primitive_agx(b);
-      nir_store_array_var(b, var, index, value, BITFIELD_BIT(component));
-   } else {
-      nir_store_var(b, var, value, BITFIELD_BIT(component));
-   }
-
+   nir_store_var(b, var, value, BITFIELD_BIT(component));
    return true;
 }
 
@@ -1114,7 +1108,7 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
       *gs_count = NULL;
 
    /* Geometry shader outputs are staged to temporaries */
-   struct agx_lower_output_to_var_state state = {.arrayed = false};
+   struct agx_lower_output_to_var_state state = {0};
 
    u_foreach_bit64(slot, gs->info.outputs_written) {
       const char *slot_name =

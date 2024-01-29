@@ -251,7 +251,6 @@ agx_nir_lower_tcs(nir_shader *tcs, const nir_shader *vs,
 
    /* Vertex shader outputs are staged to temporaries */
    struct tcs_state state = {
-      .vs_vars.arrayed = false,
       .vs_outputs_written = vs->info.outputs_written & tcs->info.inputs_read,
    };
 

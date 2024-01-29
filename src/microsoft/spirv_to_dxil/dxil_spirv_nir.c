@@ -1079,6 +1079,9 @@ dxil_spirv_nir_passes(nir_shader *nir,
 
    NIR_PASS_V(nir, nir_opt_deref);
 
+   NIR_PASS_V(nir, nir_lower_memory_model);
+   NIR_PASS_V(nir, dxil_nir_lower_coherent_loads_and_stores);
+
    if (conf->inferred_read_only_images_as_srvs) {
       const nir_opt_access_options opt_access_options = {
          .is_vulkan = true,

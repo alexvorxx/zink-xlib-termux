@@ -43,6 +43,7 @@
 #include <xf86drm.h>
 
 #include "common/intel_gem.h"
+#include "common/i915/intel_gem.h"
 #include "common/intel_hang_dump.h"
 #include "compiler/elk/elk_disasm.h"
 #include "compiler/elk/elk_isa_info.h"
@@ -69,6 +70,44 @@ gem_create(int drm_fd, uint64_t size)
    }
 
    return gem_create.handle;
+}
+
+static uint32_t
+gem_context_create(int drm_fd)
+{
+   /* TODO: add additional information in the intel_hang_dump_block_exec &
+    * intel_hang_dump_block_hw_image structures to specify the engine and use
+    * the correct engine here.
+    */
+   I915_DEFINE_CONTEXT_PARAM_ENGINES(engines_param, 1) = { };
+   struct drm_i915_gem_context_create_ext_setparam set_engines = {
+      .param = {
+         .param = I915_CONTEXT_PARAM_ENGINES,
+         .value = (uintptr_t)&engines_param,
+         .size = sizeof(engines_param),
+      }
+   };
+   struct drm_i915_gem_context_create_ext_setparam recoverable_param = {
+      .param = {
+         .param = I915_CONTEXT_PARAM_RECOVERABLE,
+         .value = 0,
+      },
+   };
+   struct drm_i915_gem_context_create_ext create = {
+      .flags = I915_CONTEXT_CREATE_FLAGS_USE_EXTENSIONS,
+   };
+
+   intel_i915_gem_add_ext(&create.extensions,
+                          I915_CONTEXT_CREATE_EXT_SETPARAM,
+                          &set_engines.base);
+   intel_i915_gem_add_ext(&create.extensions,
+                          I915_CONTEXT_CREATE_EXT_SETPARAM,
+                          &recoverable_param.base);
+
+   if (intel_ioctl(drm_fd, DRM_IOCTL_I915_GEM_CONTEXT_CREATE_EXT, &create) == -1)
+      return false;
+
+   return create.ctx_id;
 }
 
 static void*
@@ -185,7 +224,10 @@ print_help(const char *filename, FILE *f)
 }
 
 static int
-execbuffer(int drm_fd, struct util_dynarray *execbuffer_bos, struct gem_bo *exec_bo, uint64_t exec_offset)
+execbuffer(int drm_fd,
+           uint32_t context_id,
+           struct util_dynarray *execbuffer_bos,
+           struct gem_bo *exec_bo, uint64_t exec_offset)
 {
    struct drm_i915_gem_execbuffer2 execbuf = {
       .buffers_ptr        = (uintptr_t)(void *)util_dynarray_begin(execbuffer_bos),
@@ -193,8 +235,8 @@ execbuffer(int drm_fd, struct util_dynarray *execbuffer_bos, struct gem_bo *exec
                                                        struct drm_i915_gem_exec_object2),
       .batch_start_offset = exec_offset - exec_bo->offset,
       .batch_len          = exec_bo->size,
-      .flags              = I915_EXEC_HANDLE_LUT | I915_EXEC_RENDER,
-      .rsvd1              = 0,
+      .flags              = I915_EXEC_HANDLE_LUT,
+      .rsvd1              = context_id,
    };
 
    int ret = intel_ioctl(drm_fd, DRM_IOCTL_I915_GEM_EXECBUFFER2_WR, &execbuf);
@@ -458,6 +500,12 @@ main(int argc, char *argv[])
          gem_allocated += bo->size;
       }
 
+      uint32_t ctx_id = gem_context_create(drm_fd);
+      if (ctx_id == 0) {
+         fprintf(stderr, "fail to create context: %s\n", strerror(errno));
+         return EXIT_FAILURE;
+      }
+
       struct util_dynarray execbuffer_bos;
       util_dynarray_init(&execbuffer_bos, mem_ctx);
 
@@ -508,7 +556,7 @@ main(int argc, char *argv[])
                                 EXEC_OBJECT_WRITE /* to be able to wait on the BO */,
             .offset           = init_bo->offset,
          };
-         ret = execbuffer(drm_fd, &execbuffer_bos, init_bo, init.offset);
+         ret = execbuffer(drm_fd, ctx_id, &execbuffer_bos, init_bo, init.offset);
          if (ret != 0) {
             fprintf(stderr, "initialization buffer failed to execute errno=%i\n", errno);
             exit(-1);
@@ -529,7 +577,7 @@ main(int argc, char *argv[])
                                 EXEC_OBJECT_WRITE /* to be able to wait on the BO */,
             .offset           = batch_bo->offset,
          };
-         ret = execbuffer(drm_fd, &execbuffer_bos, batch_bo, exec.offset);
+         ret = execbuffer(drm_fd, ctx_id, &execbuffer_bos, batch_bo, exec.offset);
          if (ret != 0) {
             fprintf(stderr, "replayed buffer failed to execute errno=%i\n", errno);
             exit(-1);

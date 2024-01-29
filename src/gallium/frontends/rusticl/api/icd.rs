@@ -173,7 +173,7 @@ pub static DISPATCH: cl_icd_dispatch = cl_icd_dispatch {
 pub type CLError = cl_int;
 pub type CLResult<T> = Result<T, CLError>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 #[repr(u32)]
 pub enum RusticlTypes {
     // random number
@@ -191,6 +191,22 @@ impl RusticlTypes {
     pub const fn u32(&self) -> u32 {
         *self as u32
     }
+
+    pub const fn from_u32(val: u32) -> Option<Self> {
+        let result = match val {
+            0xec4cf9a9 => Self::Context,
+            0xec4cf9aa => Self::Device,
+            0xec4cf9ab => Self::Event,
+            0xec4cf9ac => Self::Kernel,
+            0xec4cf9ad => Self::Mem,
+            0xec4cf9ae => Self::Program,
+            0xec4cf9af => Self::Queue,
+            0xec4cf9b0 => Self::Sampler,
+            _ => return None,
+        };
+        debug_assert!(result.u32() == val);
+        Some(result)
+    }
 }
 
 #[repr(C)]
@@ -207,7 +223,7 @@ impl<const ERR: i32> CLObjectBase<ERR> {
         }
     }
 
-    pub fn check_ptr<const RUSTICL_TYPE: u32>(ptr: *const Self) -> CLResult<()> {
+    pub fn check_ptr(ptr: *const Self) -> CLResult<RusticlTypes> {
         if ptr.is_null() {
             return Err(ERR);
         }
@@ -217,12 +233,16 @@ impl<const ERR: i32> CLObjectBase<ERR> {
                 return Err(ERR);
             }
 
-            if (*ptr).rusticl_type != RUSTICL_TYPE {
+            let Some(ty) = RusticlTypes::from_u32((*ptr).rusticl_type) else {
                 return Err(ERR);
-            }
+            };
 
-            Ok(())
+            Ok(ty)
         }
+    }
+
+    pub fn get_type(&self) -> CLResult<RusticlTypes> {
+        RusticlTypes::from_u32(self.rusticl_type).ok_or(ERR)
     }
 }
 
@@ -340,11 +360,14 @@ pub trait ArcedCLObject<'a, const ERR: i32, CL: ReferenceCountedAPIPointer<Self,
 
 #[macro_export]
 macro_rules! impl_cl_type_trait_base {
-    (@BASE $cl: ident, $t: ident, $err: ident, $($field:ident).+) => {
+    (@BASE $cl: ident, $t: ident, [$($types: ident),+], $err: ident, $($field:ident).+) => {
         impl $crate::api::icd::ReferenceCountedAPIPointer<$t, $err> for $cl {
             fn get_ptr(&self) -> CLResult<*const $t> {
                 type Base = $crate::api::icd::CLObjectBase<$err>;
-                Base::check_ptr::<{ RusticlTypes::$t.u32() }>(self.cast())?;
+                let t = Base::check_ptr(self.cast())?;
+                if ![$($crate::api::icd::RusticlTypes::$types),+].contains(&t) {
+                    return Err($err);
+                }
 
                 let offset = ::mesa_rust_util::offset_of!($t, $($field).+);
                 let mut obj_ptr: *const u8 = self.cast();
@@ -391,20 +414,20 @@ macro_rules! impl_cl_type_trait_base {
         }
     };
 
-    ($cl: ident, $t: ident, $err: ident, $($field:ident).+) => {
-        $crate::impl_cl_type_trait_base!(@BASE $cl, $t, $err, $($field).+);
+    ($cl: ident, $t: ident, [$($types: ident),+], $err: ident, $($field:ident).+) => {
+        $crate::impl_cl_type_trait_base!(@BASE $cl, $t, [$($types),+], $err, $($field).+);
         impl $crate::api::icd::CLObject<'_, $err, $cl> for $t {}
     };
 
-    ($cl: ident, $t: ident, $err: ident) => {
-        $crate::impl_cl_type_trait_base!($cl, $t, $err, base);
+    ($cl: ident, $t: ident, [$($types: ident),+], $err: ident) => {
+        $crate::impl_cl_type_trait_base!($cl, $t, [$($types),+], $err, base);
     };
 }
 
 #[macro_export]
 macro_rules! impl_cl_type_trait {
     ($cl: ident, $t: ident, $err: ident, $($field:ident).+) => {
-        $crate::impl_cl_type_trait_base!(@BASE $cl, $t, $err, $($field).+);
+        $crate::impl_cl_type_trait_base!(@BASE $cl, $t, [$t], $err, $($field).+);
         impl $crate::api::icd::ArcedCLObject<'_, $err, $cl> for $t {}
     };
 

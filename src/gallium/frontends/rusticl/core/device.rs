@@ -212,7 +212,7 @@ impl<'a> HelperContextWrapper for HelperContext<'a> {
     }
 }
 
-impl_cl_type_trait_base!(cl_device_id, Device, CL_INVALID_DEVICE);
+impl_cl_type_trait_base!(cl_device_id, Device, [Device], CL_INVALID_DEVICE);
 
 impl Device {
     fn new(screen: PipeScreen) -> Option<Device> {

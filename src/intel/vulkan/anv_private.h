@@ -1172,6 +1172,7 @@ struct anv_instance {
     uint8_t                                     assume_full_subgroups;
     bool                                        limit_trig_input_range;
     bool                                        sample_mask_out_opengl_behaviour;
+    bool                                        force_filter_addr_rounding;
     bool                                        fp64_workaround_enabled;
     float                                       lower_depth_range_rate;
     unsigned                                    generated_indirect_threshold;

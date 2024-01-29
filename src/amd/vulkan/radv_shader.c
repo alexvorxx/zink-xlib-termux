@@ -1580,6 +1580,13 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
       config->rsrc2 |= S_00B22C_USER_SGPR_MSB_GFX9(args->num_user_sgprs >> 5);
    }
 
+   if (info->merged_shader_compiled_separately) {
+      /* Update the stage for merged shaders compiled separately with ESO on GFX9+. */
+      if (stage == MESA_SHADER_VERTEX && info->vs.as_ls) {
+         stage = MESA_SHADER_TESS_CTRL;
+      }
+   }
+
    bool wgp_mode = radv_should_use_wgp_mode(device, stage, info);
 
    switch (stage) {

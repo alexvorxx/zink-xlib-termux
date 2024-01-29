@@ -456,6 +456,14 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
       stage = MESA_SHADER_GEOMETRY;
    }
 
+   if (info->merged_shader_compiled_separately) {
+      /* Update the stage for merged shaders compiled separately with ESO on GFX9+. */
+      if (stage == MESA_SHADER_VERTEX && info->vs.as_ls) {
+         previous_stage = MESA_SHADER_VERTEX;
+         stage = MESA_SHADER_TESS_CTRL;
+      }
+   }
+
    radv_init_shader_args(device, stage, args);
 
    if (gl_shader_stage_is_rt(stage)) {

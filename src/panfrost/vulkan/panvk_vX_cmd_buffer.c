@@ -1337,6 +1337,7 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    draw->tls = batch->tls.gpu;
    draw->fb = batch->fb.desc.gpu;
    draw->ubos = desc_state->ubos;
+   draw->push_uniforms = desc_state->push_constants;
    draw->textures = desc_state->textures;
    draw->samplers = desc_state->samplers;
 
@@ -1764,6 +1765,8 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
 
    panvk_cmd_prepare_ubos(cmdbuf, bind_point_state);
    dispatch.ubos = desc_state->ubos;
+
+   dispatch.push_uniforms = desc_state->push_constants;
 
    panvk_cmd_prepare_textures(cmdbuf, bind_point_state);
    dispatch.textures = desc_state->textures;

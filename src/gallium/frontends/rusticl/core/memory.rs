@@ -1121,71 +1121,6 @@ impl MemBase {
         Ok(())
     }
 
-    // TODO: only sync on map when the memory is not mapped with discard
-    pub fn sync_shadow_buffer(
-        &self,
-        q: &Queue,
-        ctx: &PipeContext,
-        ptr: *mut c_void,
-    ) -> CLResult<()> {
-        let mut lock = self.maps.lock().unwrap();
-        if !lock.increase_ref(q.device, ptr) {
-            return Ok(());
-        }
-
-        if self.has_user_shadow_buffer(q.device)? {
-            self.read_to_user(q, ctx, 0, self.host_ptr, self.size)
-        } else {
-            if let Some(shadow) = lock.tx.get(&q.device).and_then(|tx| tx.shadow.as_ref()) {
-                let mut offset = 0;
-                let b = self.to_parent(&mut offset);
-                let res = b.get_res_of_dev(q.device)?;
-                let bx = create_pipe_box(
-                    [offset, 0, 0].into(),
-                    [self.size, 1, 1].into(),
-                    CL_MEM_OBJECT_BUFFER,
-                )?;
-                ctx.resource_copy_region(res, shadow, &[0; 3], &bx);
-            }
-            Ok(())
-        }
-    }
-
-    // TODO: only sync on map when the memory is not mapped with discard
-    pub fn sync_shadow_image(
-        &self,
-        q: &Queue,
-        ctx: &PipeContext,
-        ptr: *mut c_void,
-    ) -> CLResult<()> {
-        let mut lock = self.maps.lock().unwrap();
-        if !lock.increase_ref(q.device, ptr) {
-            return Ok(());
-        }
-
-        if self.has_user_shadow_buffer(q.device)? {
-            self.read_to_user_rect(
-                self.host_ptr,
-                q,
-                ctx,
-                &self.image_desc.size(),
-                &CLVec::default(),
-                0,
-                0,
-                &CLVec::default(),
-                self.image_desc.image_row_pitch,
-                self.image_desc.image_slice_pitch,
-            )
-        } else {
-            if let Some(shadow) = lock.tx.get(q.device).and_then(|tx| tx.shadow.as_ref()) {
-                let res = self.get_res_of_dev(q.device)?;
-                let bx = self.image_desc.bx()?;
-                ctx.resource_copy_region(res, shadow, &[0, 0, 0], &bx);
-            }
-            Ok(())
-        }
-    }
-
     /// Maps the queue associated device's resource.
     ///
     /// Mapping resources could have been quite straightforward if OpenCL wouldn't allow for so
@@ -1350,6 +1285,29 @@ impl Buffer {
         let ptr = unsafe { ptr.add(offset) };
         Ok(ptr)
     }
+
+    // TODO: only sync on map when the memory is not mapped with discard
+    pub fn sync_shadow(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+        let mut lock = self.maps.lock().unwrap();
+        if !lock.increase_ref(q.device, ptr) {
+            return Ok(());
+        }
+
+        if self.has_user_shadow_buffer(q.device)? {
+            self.read_to_user(q, ctx, 0, self.host_ptr, self.size)
+        } else {
+            if let Some(shadow) = lock.tx.get(&q.device).and_then(|tx| tx.shadow.as_ref()) {
+                let res = self.get_res_of_dev(q.device)?;
+                let bx = create_pipe_box(
+                    [self.offset, 0, 0].into(),
+                    [self.size, 1, 1].into(),
+                    CL_MEM_OBJECT_BUFFER,
+                )?;
+                ctx.resource_copy_region(res, shadow, &[0; 3], &bx);
+            }
+            Ok(())
+        }
+    }
 }
 
 impl Image {
@@ -1450,6 +1408,36 @@ impl Image {
         };
 
         Ok(ptr)
+    }
+
+    // TODO: only sync on map when the memory is not mapped with discard
+    pub fn sync_shadow(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+        let mut lock = self.maps.lock().unwrap();
+        if !lock.increase_ref(q.device, ptr) {
+            return Ok(());
+        }
+
+        if self.has_user_shadow_buffer(q.device)? {
+            self.read_to_user_rect(
+                self.host_ptr,
+                q,
+                ctx,
+                &self.image_desc.size(),
+                &CLVec::default(),
+                0,
+                0,
+                &CLVec::default(),
+                self.image_desc.image_row_pitch,
+                self.image_desc.image_slice_pitch,
+            )
+        } else {
+            if let Some(shadow) = lock.tx.get(q.device).and_then(|tx| tx.shadow.as_ref()) {
+                let res = self.get_res_of_dev(q.device)?;
+                let bx = self.image_desc.bx()?;
+                ctx.resource_copy_region(res, shadow, &[0, 0, 0], &bx);
+            }
+            Ok(())
+        }
     }
 }
 

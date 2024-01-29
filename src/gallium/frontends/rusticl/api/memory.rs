@@ -1671,7 +1671,7 @@ fn enqueue_map_buffer(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| b.sync_shadow_buffer(q, ctx, ptr)),
+        Box::new(move |q, ctx| b.sync_shadow(q, ctx, ptr)),
     )?;
 
     Ok(ptr)
@@ -2156,7 +2156,7 @@ fn enqueue_map_image(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| i.sync_shadow_image(q, ctx, ptr)),
+        Box::new(move |q, ctx| i.sync_shadow(q, ctx, ptr)),
     )?;
 
     Ok(ptr)

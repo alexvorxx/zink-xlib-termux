@@ -928,8 +928,15 @@ get_export_flags(struct zink_screen *screen, const struct pipe_resource *templ, 
    return true;
 }
 
+enum resource_object_create_result {
+   roc_success,
+   roc_success_early_return,
+   roc_fail_and_free_object,
+   roc_fail_and_cleanup_object,
+   roc_fail_and_cleanup_all
+};
 
-static inline int
+static inline enum resource_object_create_result
 allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
             VkMemoryRequirements *reqs, struct zink_resource_object *obj,
             struct mem_alloc_info *alloc_info)
@@ -976,7 +983,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
       imfi.fd = os_dupfd_cloexec(alloc_info->whandle->handle);
       if (imfi.fd < 0) {
          mesa_loge("ZINK: failed to dup dmabuf fd: %s\n", strerror(errno));
-         return -2;
+         return roc_fail_and_cleanup_object;
       }
 
       imfi.pNext = mai.pNext;
@@ -1062,7 +1069,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
       }
    };
 
-   return obj->bo ? 0: -2;
+   return obj->bo ? roc_success : roc_fail_and_cleanup_object;
 }
 
 static inline bool
@@ -1151,17 +1158,18 @@ allocate_bo_and_update_obj(struct zink_screen *screen, const struct pipe_resourc
                            struct mem_alloc_info *alloc_info)
 {
    if (!update_alloc_info_flags(screen, templ, reqs, alloc_info))
-      return -1;
+      return roc_fail_and_free_object;
 
-   int retval = allocate_bo(screen, templ, reqs, obj, alloc_info);
-   if (retval)
+   enum resource_object_create_result retval = allocate_bo(screen, templ, reqs, obj, alloc_info);
+   assert(retval != roc_success_early_return);
+   if (retval != roc_success)
       return retval;
 
    update_obj_info(screen, obj, templ, alloc_info);
 
    if (zink_debug & ZINK_DEBUG_MEM)
       debug_resource_mem(obj, templ, screen);
-   return 0;
+   return roc_success;
 }
 
 static inline int
@@ -1218,21 +1226,22 @@ create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
    obj->vkflags = bci.flags;
    obj->vkusage = bci.usage;
 
-   int retval = allocate_bo_and_update_obj(screen, templ, &reqs, obj,  alloc_info);
-   if (retval)
+   enum resource_object_create_result retval = allocate_bo_and_update_obj(screen, templ, &reqs, obj,  alloc_info);
+   assert(retval != roc_success_early_return);
+   if (retval != roc_success)
       return retval;
 
    if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {
       if (VKSCR(BindBufferMemory)(screen->dev, obj->buffer, zink_bo_get_mem(obj->bo), obj->offset) != VK_SUCCESS) {
          mesa_loge("ZINK: vkBindBufferMemory failed");
-         return -3;
+         return roc_fail_and_cleanup_all ;
       }
       if (obj->storage_buffer && VKSCR(BindBufferMemory)(screen->dev, obj->storage_buffer, zink_bo_get_mem(obj->bo), obj->offset) != VK_SUCCESS) {
          mesa_loge("ZINK: vkBindBufferMemory failed");
-         return -3;
+         return roc_fail_and_cleanup_all;
       }
    }
-   return 0;
+   return roc_success;
 }
 
 static inline int
@@ -1365,16 +1374,16 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
       obj->handle = os_dupfd_cloexec(alloc_info->whandle->handle);
       if (obj->handle < 0) {
          mesa_loge("ZINK: failed to dup dmabuf fd: %s\n", strerror(errno));
-         return -1;
+         return roc_fail_and_free_object;
       }
-      return 1;
+      return roc_success_early_return;
    }
 #endif
 
    obj->vkfeats = get_format_feature_flags(ici, screen, templ);;
    if (util_format_is_yuv(templ->format)) {
       if (!create_sampler_conversion(ici, screen, obj))
-         return -1;
+         return roc_fail_and_free_object;
    } else if (alloc_info->whandle) {
       obj->plane_strides[alloc_info->whandle->plane] = alloc_info->whandle->stride;
    }
@@ -1382,7 +1391,7 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
    VkResult result = VKSCR(CreateImage)(screen->dev, &ici, NULL, &obj->image);
    if (result != VK_SUCCESS) {
       mesa_loge("ZINK: vkCreateImage failed (%s)", vk_Result_to_str(result));
-      return -1;
+      return roc_fail_and_free_object;
    }
 
    if (ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
@@ -1391,7 +1400,7 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
       result = VKSCR(GetImageDrmFormatModifierPropertiesEXT)(screen->dev, obj->image, &modprops);
       if (result != VK_SUCCESS) {
          mesa_loge("ZINK: vkGetImageDrmFormatModifierPropertiesEXT failed");
-         return -1;
+         return roc_fail_and_free_object;
       }
       obj->modifier = modprops.drmFormatModifier;
       unsigned num_dmabuf_planes = screen->base.get_dmabuf_modifier_planes(&screen->base, obj->modifier, templ->format);
@@ -1415,8 +1424,9 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
    obj->vkflags = ici.flags;
    obj->vkusage = ici.usage;
 
-   int retval = allocate_bo_and_update_obj(screen, templ, &reqs, obj,  alloc_info);
-   if (retval)
+   enum resource_object_create_result retval = allocate_bo_and_update_obj(screen, templ, &reqs, obj,  alloc_info);
+   assert(retval != roc_success_early_return);
+   if (retval != roc_success)
       return retval;
 
    if (num_planes > 1) {
@@ -1436,17 +1446,17 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
       }
       if (VKSCR(BindImageMemory2)(screen->dev, num_planes, infos) != VK_SUCCESS) {
          mesa_loge("ZINK: vkBindImageMemory2 failed");
-         return -3;
+         return roc_fail_and_cleanup_all;
       }
    } else {
       if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE))
          if (VKSCR(BindImageMemory)(screen->dev, obj->image, zink_bo_get_mem(obj->bo), obj->offset) != VK_SUCCESS) {
             mesa_loge("ZINK: vkBindImageMemory failed");
-            return -3;
+            return roc_fail_and_cleanup_all;
          }
    }
 
-   return 0;
+   return roc_success;
 }
 
 static struct zink_resource_object *
@@ -1501,7 +1511,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       return obj;
    }
 
-   int create_result = 0;
+   enum resource_object_create_result create_result;
    if (templ->target == PIPE_BUFFER) {
       max_level = 1;
       create_result = create_buffer(screen, obj, templ, modifiers, modifiers_count, &alloc_info);
@@ -1512,28 +1522,29 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    }
 
    switch (create_result) {
-   case -1: goto fail1;
-   case -2: goto fail2;
-   case -3: goto fail3;
-   case 1: return obj;
+   case roc_success:
+      for (unsigned i = 0; i < max_level; i++)
+         util_dynarray_init(&obj->copies[i], NULL);
+      FALLTHROUGH;
+   case roc_success_early_return:
+      return obj;
+
+   case roc_fail_and_cleanup_all:
+      zink_bo_unref(screen, obj->bo);
+      FALLTHROUGH;
+   case roc_fail_and_cleanup_object:
+      if (templ->target == PIPE_BUFFER) {
+         VKSCR(DestroyBuffer)(screen->dev, obj->buffer, NULL);
+         VKSCR(DestroyBuffer)(screen->dev, obj->storage_buffer, NULL);
+      } else
+         VKSCR(DestroyImage)(screen->dev, obj->image, NULL);
+      FALLTHROUGH;
+   case roc_fail_and_free_object:
+      FREE(obj);
+      return NULL;
+   default:
+      unreachable("Invalid create object result code");
    }
-
-   for (unsigned i = 0; i < max_level; i++)
-      util_dynarray_init(&obj->copies[i], NULL);
-   return obj;
-
-fail3:
-   zink_bo_unref(screen, obj->bo);
-
-fail2:
-   if (templ->target == PIPE_BUFFER) {
-      VKSCR(DestroyBuffer)(screen->dev, obj->buffer, NULL);
-      VKSCR(DestroyBuffer)(screen->dev, obj->storage_buffer, NULL);
-   } else
-      VKSCR(DestroyImage)(screen->dev, obj->image, NULL);
-fail1:
-   FREE(obj);
-   return NULL;
 }
 
 static struct pipe_resource *

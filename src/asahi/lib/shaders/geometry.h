@@ -42,6 +42,7 @@ struct agx_geometry_state {
    GLOBAL(uchar) heap;
    uint32_t heap_bottom, heap_top, heap_size, padding;
 } PACKED;
+AGX_STATIC_ASSERT(sizeof(struct agx_geometry_state) == 6 * 4);
 
 struct agx_ia_state {
    /* Heap to allocate from across draws */
@@ -86,6 +87,7 @@ struct agx_ia_state {
    /* The index size (1, 2, 4) or 0 if drawing without an index buffer. */
    uint32_t index_size_B;
 } PACKED;
+AGX_STATIC_ASSERT(sizeof(struct agx_ia_state) == 18 * 4);
 
 struct agx_geometry_params {
    /* Persistent (cross-draw) geometry state */
@@ -187,6 +189,7 @@ struct agx_tess_params {
    /* Number of input patches per instance of the VS/TCS */
    uint patches_per_instance;
 } PACKED;
+AGX_STATIC_ASSERT(sizeof(struct agx_tess_params) == 22 * 4);
 
 /* TCS shared memory layout:
  *

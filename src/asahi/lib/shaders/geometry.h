@@ -96,6 +96,9 @@ struct agx_geometry_params {
    /* Address of associated indirect draw buffer */
    GLOBAL(uint) indirect_desc;
 
+   /* Address of vertex shader output buffer */
+   GLOBAL(uchar) vertex_buffer;
+
    /* Address of count buffer. For an indirect draw, this will be written by the
     * indirect setup kernel.
     */
@@ -118,25 +121,33 @@ struct agx_geometry_params {
 
    /* Address of transform feedback buffer in general, supplied by the CPU. */
    GLOBAL(uchar) xfb_base_original[MAX_SO_BUFFERS];
-   uint32_t xfb_size[MAX_SO_BUFFERS];
 
    /* Address of transform feedback for the current primitive. Written by pre-GS
     * program.
     */
    GLOBAL(uchar) xfb_base[MAX_SO_BUFFERS];
 
+   /* Bitfield of VS outputs. TODO: Optimize linked shaders. */
+   uint64_t vs_outputs;
+
+   /* Location-indexed mask of flat outputs, used for lowering GL edge flags. */
+   uint64_t flat_outputs;
+
+   uint32_t xfb_size[MAX_SO_BUFFERS];
+
    /* Number of primitives emitted by transform feedback per stream. Written by
     * the pre-GS program.
     */
    uint32_t xfb_prims[MAX_VERTEX_STREAMS];
 
-   /* Location-indexed mask of flat outputs, used for lowering GL edge flags. */
-   uint64_t flat_outputs;
-
-   /* Within an indirect GS draw, the grid used to dispatch the GS written out
-    * by the GS indirect setup kernel. Unused for direct GS draws.
+   /* Within an indirect GS draw, the grids used to dispatch the VS/GS written
+    * out by the GS indirect setup kernel. Unused for direct GS draws.
     */
+   uint32_t vs_grid[3];
    uint32_t gs_grid[3];
+
+   /* Number of input vertices, part of the stride for the vertex buffer */
+   uint32_t input_vertices;
 
    /* Number of input primitives, calculated by the CPU for a direct draw or the
     * GS indirect setup kernel for an indirect draw.
@@ -149,6 +160,7 @@ struct agx_geometry_params {
     */
    uint32_t count_buffer_stride;
 } PACKED;
+AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 83 * 4);
 
 struct agx_tess_params {
    /* Persistent (cross-draw) geometry state */

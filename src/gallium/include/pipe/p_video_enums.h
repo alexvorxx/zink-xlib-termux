@@ -333,7 +333,7 @@ enum pipe_video_slice_mode
    /*
     * Partitions the frame using max slice size per coded slice
    */
-   PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SICE = 1,
+   PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SIZE = 1,
 };
 
 enum pipe_video_entrypoint

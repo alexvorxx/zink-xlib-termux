@@ -491,7 +491,7 @@ d3d12_video_encoder_negotiate_current_hevc_slices_configuration(struct d3d12_vid
                          "have the same number of macroblocks.\n");
          return false;
       }
-   } else if(picture->slice_mode == PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SICE) {
+   } else if(picture->slice_mode == PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SIZE) {
       if ((picture->max_slice_bytes > 0) &&
                  d3d12_video_encoder_check_subregion_mode_support(
                     pD3D12Enc,

@@ -61,12 +61,26 @@ struct gdi_sw_displaytarget
    BITMAPV5HEADER bmi;
 };
 
+struct gdi_sw_winsys {
+   struct sw_winsys base;
+
+   HDC (*acquire_hdc)(void *winsys_drawable_handle);
+   void (*release_hdc)(void *winsys_drawable_handle, HDC hdc);
+};
 
 /** Cast wrapper */
 static inline struct gdi_sw_displaytarget *
 gdi_sw_displaytarget( struct sw_displaytarget *buf )
 {
    return (struct gdi_sw_displaytarget *)buf;
+}
+
+
+/** Cast wrapper */
+static inline struct gdi_sw_winsys *
+gdi_sw_winsys( struct sw_winsys *buf )
+{
+   return (struct gdi_sw_winsys *)buf;
 }
 
 
@@ -235,16 +249,16 @@ gdi_sw_display( struct sw_winsys *winsys,
 }
 
 static void
-gdi_sw_displaytarget_display(struct sw_winsys *winsys, 
+gdi_sw_displaytarget_display(struct sw_winsys *_winsys, 
                              struct sw_displaytarget *dt,
                              void *context_private,
                              struct pipe_box *box)
 {
-    /* nasty:
-     */
-    HDC hDC = (HDC)context_private;
+    struct gdi_sw_winsys *winsys = gdi_sw_winsys(_winsys);
+    HDC hDC = winsys->acquire_hdc(context_private);
 
-    gdi_sw_display(winsys, dt, hDC);
+    gdi_sw_display(_winsys, dt, hDC);
+    winsys->release_hdc(context_private, hDC);
 }
 
 
@@ -255,24 +269,37 @@ gdi_sw_destroy(struct sw_winsys *winsys)
 }
 
 struct sw_winsys *
-gdi_create_sw_winsys(void)
+gdi_create_sw_winsys(
+    HDC (*acquire_hdc)(void *winsys_drawable_handle),
+    void (*release_hdc)(void *winsys_drawable_handle, HDC hdc))
 {
-   static struct sw_winsys *winsys;
+   static struct gdi_sw_winsys *winsys;
 
-   winsys = CALLOC_STRUCT(sw_winsys);
+   winsys = CALLOC_STRUCT(gdi_sw_winsys);
    if(!winsys)
       return NULL;
 
-   winsys->destroy = gdi_sw_destroy;
-   winsys->is_displaytarget_format_supported = gdi_sw_is_displaytarget_format_supported;
-   winsys->displaytarget_create = gdi_sw_displaytarget_create;
-   winsys->displaytarget_from_handle = gdi_sw_displaytarget_from_handle;
-   winsys->displaytarget_get_handle = gdi_sw_displaytarget_get_handle;
-   winsys->displaytarget_map = gdi_sw_displaytarget_map;
-   winsys->displaytarget_unmap = gdi_sw_displaytarget_unmap;
-   winsys->displaytarget_display = gdi_sw_displaytarget_display;
-   winsys->displaytarget_destroy = gdi_sw_displaytarget_destroy;
+   winsys->acquire_hdc = acquire_hdc;
+   winsys->release_hdc = release_hdc;
 
-   return winsys;
+   winsys->base.destroy = gdi_sw_destroy;
+   winsys->base.is_displaytarget_format_supported = gdi_sw_is_displaytarget_format_supported;
+   winsys->base.displaytarget_create = gdi_sw_displaytarget_create;
+   winsys->base.displaytarget_from_handle = gdi_sw_displaytarget_from_handle;
+   winsys->base.displaytarget_get_handle = gdi_sw_displaytarget_get_handle;
+   winsys->base.displaytarget_map = gdi_sw_displaytarget_map;
+   winsys->base.displaytarget_unmap = gdi_sw_displaytarget_unmap;
+   winsys->base.displaytarget_display = gdi_sw_displaytarget_display;
+   winsys->base.displaytarget_destroy = gdi_sw_displaytarget_destroy;
+
+   return &winsys->base;
 }
 
+
+HDC gdi_sw_acquire_hdc_by_value(void *context_private) {
+   return (HDC)context_private;
+};
+
+void gdi_sw_release_hdc_by_value(void *context_private, HDC hdc) {
+   // Nothing to do
+};

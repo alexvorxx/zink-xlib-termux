@@ -58,7 +58,7 @@ vl_win32_screen_create(LUID *adapter)
    if (!vscreen)
       return NULL;
 
-   struct sw_winsys* winsys = gdi_create_sw_winsys();
+   struct sw_winsys* winsys = gdi_create_sw_winsys(gdi_sw_acquire_hdc_by_value, gdi_sw_release_hdc_by_value);
    if (!winsys)
       goto release_pipe;
 
@@ -91,7 +91,7 @@ vl_win32_screen_create_from_d3d12_device(IUnknown* d3d12_device)
    if (!vscreen)
       return NULL;
 
-   struct sw_winsys* winsys = gdi_create_sw_winsys();
+   struct sw_winsys* winsys = gdi_create_sw_winsys(gdi_sw_acquire_hdc_by_value, gdi_sw_release_hdc_by_value);
    if (!winsys)
       goto release_pipe;
 

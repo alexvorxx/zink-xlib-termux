@@ -33,6 +33,8 @@ agx_vertex_id_for_topology(nir_builder *b, nir_def *vert,
 
    switch (key->mode) {
    case MESA_PRIM_POINTS:
+      return prim;
+
    case MESA_PRIM_LINES:
    case MESA_PRIM_TRIANGLES:
    case MESA_PRIM_LINES_ADJACENCY:

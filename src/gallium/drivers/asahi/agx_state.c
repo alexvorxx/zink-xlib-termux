@@ -2452,21 +2452,6 @@ agx_update_vs(struct agx_context *ctx)
                             (union asahi_shader_key *)&key);
 }
 
-static enum mesa_prim
-translate_ia_mode(enum mesa_prim prim)
-{
-   switch (prim) {
-   case MESA_PRIM_POINTS:
-   case MESA_PRIM_LINE_STRIP:
-   case MESA_PRIM_LINE_STRIP_ADJACENCY:
-      /* Every vertex defines a primitive */
-      return MESA_PRIM_POINTS;
-
-   default:
-      return prim;
-   }
-}
-
 static bool
 agx_update_tcs(struct agx_context *ctx, const struct pipe_draw_info *info)
 {
@@ -2530,7 +2515,7 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
    /* XXX: Deduplicate this code from regular vertex */
    struct asahi_gs_shader_key key = {
       .ia.index_size = info->index_size,
-      .ia.mode = translate_ia_mode(info->mode),
+      .ia.mode = info->mode,
       .ia.flatshade_first =
          ia_needs_provoking(info->mode) && ctx->rast->base.flatshade_first,
 

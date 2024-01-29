@@ -181,6 +181,7 @@ static const struct debug_control dzn_debug_options[] = {
    { "bindless", DZN_DEBUG_BINDLESS },
    { "nobindless", DZN_DEBUG_NO_BINDLESS },
    { "experimental", DZN_DEBUG_EXPERIMENTAL },
+   { "multiview", DZN_DEBUG_MULTIVIEW },
    { NULL, 0 }
 };
 
@@ -1133,6 +1134,9 @@ dzn_physical_device_create(struct vk_instance *instance,
    dzn_physical_device_cache_caps(pdev);
    dzn_physical_device_init_memory(pdev);
    dzn_physical_device_init_uuids(pdev);
+
+   if (dzn_instance->debug_flags & DZN_DEBUG_MULTIVIEW)
+      pdev->options3.ViewInstancingTier = D3D12_VIEW_INSTANCING_TIER_NOT_SUPPORTED;
 
    dzn_physical_device_get_extensions(pdev);
    if (driQueryOptionb(&dzn_instance->dri_options, "dzn_enable_8bit_loads_stores") &&

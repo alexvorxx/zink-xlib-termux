@@ -962,78 +962,6 @@ impl MemBase {
         Ok(())
     }
 
-    pub fn fill(
-        &self,
-        q: &Arc<Queue>,
-        ctx: &PipeContext,
-        pattern: &[u8],
-        mut offset: usize,
-        size: usize,
-    ) -> CLResult<()> {
-        assert!(self.is_buffer());
-
-        let b = self.to_parent(&mut offset);
-        let res = b.get_res()?.get(&q.device).unwrap();
-        ctx.clear_buffer(
-            res,
-            pattern,
-            offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-            size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-        );
-        Ok(())
-    }
-
-    pub fn fill_image(
-        &self,
-        q: &Arc<Queue>,
-        ctx: &PipeContext,
-        pattern: &[u32],
-        origin: &CLVec<usize>,
-        region: &CLVec<usize>,
-    ) -> CLResult<()> {
-        assert!(!self.is_buffer());
-
-        let res = self.get_res()?.get(&q.device).unwrap();
-        // make sure we allocate multiples of 4 bytes so drivers don't read out of bounds or
-        // unaligned.
-        // TODO: use div_ceil once it's available
-        let pixel_size = align(self.pixel_size().unwrap() as usize, size_of::<u32>());
-        let mut new_pattern: Vec<u32> = vec![0; pixel_size / size_of::<u32>()];
-
-        // we don't support CL_DEPTH for now
-        assert!(pattern.len() == 4);
-
-        // SAFETY: pointers have to be valid for read/writes of exactly one pixel of their
-        // respective format.
-        // `new_pattern` has the correct size due to the `size` above.
-        // `pattern` is validated through the CL API and allows undefined behavior if not followed
-        // by CL API rules. It's expected to be a 4 component array of 32 bit values, except for
-        // CL_DEPTH where it's just one value.
-        unsafe {
-            util_format_pack_rgba(
-                self.pipe_format,
-                new_pattern.as_mut_ptr().cast(),
-                pattern.as_ptr().cast(),
-                1,
-            );
-        }
-
-        // If image is created from a buffer, use clear_image_buffer instead
-        // for each row
-        if self.is_parent_buffer() {
-            let strides = (
-                self.image_desc.row_pitch()? as usize,
-                self.image_desc.slice_pitch(),
-            );
-            ctx.clear_image_buffer(res, &new_pattern, origin, region, strides, pixel_size);
-        } else {
-            let bx = create_pipe_box(*origin, *region, self.mem_type)?;
-            ctx.clear_texture(res, &new_pattern, &bx);
-        }
-
-        Ok(())
-    }
-
     pub fn write_from_user_rect(
         &self,
         src: *const c_void,
@@ -1453,6 +1381,85 @@ impl Drop for MemBase {
         for (d, tx) in self.maps.get_mut().unwrap().tx.drain() {
             d.helper_ctx().unmap(tx.tx);
         }
+    }
+}
+
+impl Buffer {
+    fn apply_offset(&self, offset: usize) -> CLResult<usize> {
+        self.offset.checked_add(offset).ok_or(CL_OUT_OF_HOST_MEMORY)
+    }
+
+    pub fn fill(
+        &self,
+        q: &Queue,
+        ctx: &PipeContext,
+        pattern: &[u8],
+        offset: usize,
+        size: usize,
+    ) -> CLResult<()> {
+        let offset = self.apply_offset(offset)?;
+        let res = self.get_res_of_dev(q.device)?;
+        ctx.clear_buffer(
+            res,
+            pattern,
+            offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+            size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+        );
+        Ok(())
+    }
+}
+
+impl Image {
+    pub fn fill(
+        &self,
+        q: &Queue,
+        ctx: &PipeContext,
+        pattern: &[u32],
+        origin: &CLVec<usize>,
+        region: &CLVec<usize>,
+    ) -> CLResult<()> {
+        let res = self.get_res_of_dev(q.device)?;
+
+        // make sure we allocate multiples of 4 bytes so drivers don't read out of bounds or
+        // unaligned.
+        // TODO: use div_ceil once it's available
+        let pixel_size = align(
+            self.image_format.pixel_size().unwrap().into(),
+            size_of::<u32>(),
+        );
+        let mut new_pattern: Vec<u32> = vec![0; pixel_size / size_of::<u32>()];
+
+        // we don't support CL_DEPTH for now
+        assert!(pattern.len() == 4);
+
+        // SAFETY: pointers have to be valid for read/writes of exactly one pixel of their
+        // respective format.
+        // `new_pattern` has the correct size due to the `size` above.
+        // `pattern` is validated through the CL API and allows undefined behavior if not followed
+        // by CL API rules. It's expected to be a 4 component array of 32 bit values, except for
+        // CL_DEPTH where it's just one value.
+        unsafe {
+            util_format_pack_rgba(
+                self.pipe_format,
+                new_pattern.as_mut_ptr().cast(),
+                pattern.as_ptr().cast(),
+                1,
+            );
+        }
+
+        // If image is created from a buffer, use clear_image_buffer instead
+        if self.is_parent_buffer() {
+            let strides = (
+                self.image_desc.row_pitch()? as usize,
+                self.image_desc.slice_pitch(),
+            );
+            ctx.clear_image_buffer(res, &new_pattern, origin, region, strides, pixel_size);
+        } else {
+            let bx = create_pipe_box(*origin, *region, self.mem_type)?;
+            ctx.clear_texture(res, &new_pattern, &bx);
+        }
+
+        Ok(())
     }
 }
 

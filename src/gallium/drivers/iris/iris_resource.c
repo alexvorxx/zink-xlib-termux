@@ -34,6 +34,7 @@
 #include "pipe/p_state.h"
 #include "pipe/p_context.h"
 #include "pipe/p_screen.h"
+#include "util/detect_os.h"
 #include "util/os_memory.h"
 #include "util/u_cpu_detect.h"
 #include "util/u_inlines.h"
@@ -2081,7 +2082,7 @@ iris_map_copy_region(struct iris_transfer *map)
 
       unsigned row_pitch_B = 0;
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       /* Staging buffers for stall-avoidance blits don't always have the
        * same restrictions on stride as the original buffer.  For example,
        * the original buffer may be used for scanout, while the staging

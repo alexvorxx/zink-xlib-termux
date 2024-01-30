@@ -1,3 +1,5 @@
+#include "util/detect_os.h"
+
 #include "target-helpers/drm_helper.h"
 #include "target-helpers/sw_helper.h"
 
@@ -137,7 +139,7 @@ DEFINE_LOADER_DRM_ENTRYPOINT(lima)
 #endif
 
 #if defined(GALLIUM_ZINK) && !defined(__APPLE__)
-#if defined(ANDROID)
+#if DETECT_OS_ANDROID
 DEFINE_LOADER_DRM_ENTRYPOINT(zink);
 #else
 const __DRIextension **__driDriverGetExtensions_zink(void);

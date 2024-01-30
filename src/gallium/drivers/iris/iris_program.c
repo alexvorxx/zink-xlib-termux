@@ -275,7 +275,7 @@ iris_apply_brw_prog_data(struct iris_compiled_shader *shader,
 void
 iris_finalize_program(struct iris_compiled_shader *shader,
                       uint32_t *streamout,
-                      enum brw_param_builtin *system_values,
+                      uint32_t *system_values,
                       unsigned num_system_values,
                       unsigned kernel_input_size,
                       unsigned num_cbufs,
@@ -637,7 +637,7 @@ iris_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                     void *mem_ctx,
                     nir_shader *nir,
                     unsigned kernel_input_size,
-                    enum brw_param_builtin **out_system_values,
+                    uint32_t **out_system_values,
                     unsigned *out_num_system_values,
                     unsigned *out_num_cbufs)
 {
@@ -645,8 +645,8 @@ iris_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
 
    const unsigned IRIS_MAX_SYSTEM_VALUES =
       PIPE_MAX_SHADER_IMAGES * ISL_IMAGE_PARAM_SIZE;
-   enum brw_param_builtin *system_values =
-      rzalloc_array(mem_ctx, enum brw_param_builtin, IRIS_MAX_SYSTEM_VALUES);
+   unsigned *system_values =
+      rzalloc_array(mem_ctx, unsigned, IRIS_MAX_SYSTEM_VALUES);
    unsigned num_system_values = 0;
 
    unsigned patch_vert_idx = -1;
@@ -890,7 +890,7 @@ iris_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
       unsigned sysval_cbuf_index = num_cbufs;
       num_cbufs++;
 
-      system_values = reralloc(mem_ctx, system_values, enum brw_param_builtin,
+      system_values = reralloc(mem_ctx, system_values, unsigned,
                                num_system_values);
 
       nir_foreach_block(block, impl) {
@@ -1492,7 +1492,7 @@ iris_compile_vs(struct iris_screen *screen,
    const struct brw_compiler *compiler = screen->compiler;
    const struct intel_device_info *devinfo = screen->devinfo;
    void *mem_ctx = ralloc_context(NULL);
-   enum brw_param_builtin *system_values;
+   uint32_t *system_values;
    unsigned num_system_values;
    unsigned num_cbufs;
 
@@ -1679,7 +1679,7 @@ iris_compile_tcs(struct iris_screen *screen,
    const struct brw_compiler *compiler = screen->compiler;
    void *mem_ctx = ralloc_context(NULL);
    const struct intel_device_info *devinfo = screen->devinfo;
-   enum brw_param_builtin *system_values = NULL;
+   uint32_t *system_values = NULL;
    unsigned num_system_values = 0;
    unsigned num_cbufs = 0;
 
@@ -1840,7 +1840,7 @@ iris_compile_tes(struct iris_screen *screen,
 {
    const struct brw_compiler *compiler = screen->compiler;
    void *mem_ctx = ralloc_context(NULL);
-   enum brw_param_builtin *system_values;
+   uint32_t *system_values;
    const struct intel_device_info *devinfo = screen->devinfo;
    unsigned num_system_values;
    unsigned num_cbufs;
@@ -1985,7 +1985,7 @@ iris_compile_gs(struct iris_screen *screen,
    const struct brw_compiler *compiler = screen->compiler;
    const struct intel_device_info *devinfo = screen->devinfo;
    void *mem_ctx = ralloc_context(NULL);
-   enum brw_param_builtin *system_values;
+   uint32_t *system_values;
    unsigned num_system_values;
    unsigned num_cbufs;
 
@@ -2124,7 +2124,7 @@ iris_compile_fs(struct iris_screen *screen,
 {
    const struct brw_compiler *compiler = screen->compiler;
    void *mem_ctx = ralloc_context(NULL);
-   enum brw_param_builtin *system_values;
+   uint32_t *system_values;
    const struct intel_device_info *devinfo = screen->devinfo;
    unsigned num_system_values;
    unsigned num_cbufs;
@@ -2422,7 +2422,7 @@ iris_compile_cs(struct iris_screen *screen,
 {
    const struct brw_compiler *compiler = screen->compiler;
    void *mem_ctx = ralloc_context(NULL);
-   enum brw_param_builtin *system_values;
+   uint32_t *system_values;
    const struct intel_device_info *devinfo = screen->devinfo;
    unsigned num_system_values;
    unsigned num_cbufs;

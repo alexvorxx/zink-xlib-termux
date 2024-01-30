@@ -124,7 +124,7 @@ iris_disk_cache_store(struct disk_cache *cache,
    blob_write_bytes(&blob, shader->map, shader->program_size);
    blob_write_uint32(&blob, shader->num_system_values);
    blob_write_bytes(&blob, shader->system_values,
-                    shader->num_system_values * sizeof(enum brw_param_builtin));
+                    shader->num_system_values * sizeof(uint32_t));
    blob_write_uint32(&blob, shader->kernel_input_size);
    blob_write_bytes(&blob, prog_data->relocs,
                     prog_data->num_relocs * sizeof(struct brw_shader_reloc));
@@ -199,9 +199,9 @@ iris_disk_cache_retrieve(struct iris_screen *screen,
    num_system_values = blob_read_uint32(&blob);
    if (num_system_values) {
       system_values =
-         ralloc_array(NULL, enum brw_param_builtin, num_system_values);
+         ralloc_array(NULL, uint32_t, num_system_values);
       blob_copy_bytes(&blob, system_values,
-                      num_system_values * sizeof(enum brw_param_builtin));
+                      num_system_values * sizeof(uint32_t));
    }
 
    kernel_input_size = blob_read_uint32(&blob);

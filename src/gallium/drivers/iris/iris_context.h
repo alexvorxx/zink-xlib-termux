@@ -667,7 +667,7 @@ struct iris_compiled_shader {
    struct brw_stage_prog_data *brw_prog_data;
 
    /** A list of system values to be uploaded as uniforms. */
-   enum brw_param_builtin *system_values;
+   uint32_t *system_values;
    unsigned num_system_values;
 
    /** Size (in bytes) of the kernel input data */
@@ -1354,7 +1354,7 @@ struct iris_compiled_shader *iris_create_shader_variant(const struct iris_screen
 
 void iris_finalize_program(struct iris_compiled_shader *shader,
                            uint32_t *streamout,
-                           enum brw_param_builtin *system_values,
+                           uint32_t *system_values,
                            unsigned num_system_values,
                            unsigned kernel_input_size,
                            unsigned num_cbufs,

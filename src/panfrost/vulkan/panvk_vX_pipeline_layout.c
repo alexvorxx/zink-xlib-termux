@@ -112,14 +112,12 @@ unsigned
 panvk_per_arch(pipeline_layout_ubo_start)(
    const struct panvk_pipeline_layout *layout, unsigned set, bool is_dynamic)
 {
-   const struct panvk_descriptor_set_layout *set_layout =
-      vk_to_panvk_descriptor_set_layout(layout->vk.set_layouts[set]);
-
-   unsigned offset = PANVK_NUM_BUILTIN_UBOS + layout->sets[set].ubo_offset +
-                     layout->sets[set].dyn_ubo_offset;
+   unsigned offset = PANVK_NUM_BUILTIN_UBOS;
 
    if (is_dynamic)
-      offset += set_layout->num_ubos;
+      offset += layout->num_ubos + layout->sets[set].dyn_ubo_offset;
+   else
+      offset += layout->sets[set].ubo_offset;
 
    return offset;
 }

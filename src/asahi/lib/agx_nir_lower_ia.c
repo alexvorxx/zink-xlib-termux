@@ -75,8 +75,7 @@ agx_vertex_id_for_topology(nir_builder *b, nir_def *vert,
 static nir_def *
 load_vertex_id(nir_builder *b, struct agx_ia_key *key)
 {
-   nir_def *vert = nir_load_vertex_id_in_primitive_agx(b);
-   nir_def *id = agx_vertex_id_for_topology(b, vert, key);
+   nir_def *id = agx_vertex_id_for_topology(b, NULL, key);
 
    /* If drawing with an index buffer, pull the vertex ID. Otherwise, the
     * vertex ID is just the index as-is.

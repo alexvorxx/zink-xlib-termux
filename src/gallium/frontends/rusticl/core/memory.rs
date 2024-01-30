@@ -944,7 +944,7 @@ impl Buffer {
         // If image is created from a buffer, use image's slice and row pitch instead
         let tx_dst;
         let dst_pitch;
-        if dst.is_parent_buffer() {
+        if let Some(Mem::Buffer(buffer)) = &dst.parent {
             dst_pitch = [
                 bpp,
                 dst.image_desc.row_pitch()? as usize,
@@ -952,7 +952,7 @@ impl Buffer {
             ];
 
             let (offset, size) = CLVec::calc_offset_size(dst_origin, region, dst_pitch);
-            tx_dst = dst.tx(q, ctx, offset, size, RWFlags::WR)?;
+            tx_dst = buffer.tx(q, ctx, offset, size, RWFlags::WR)?;
         } else {
             tx_dst = dst.tx_image(
                 q,
@@ -1185,14 +1185,14 @@ impl Image {
 
         let src_pitch;
         let tx_src;
-        if self.is_parent_buffer() {
+        if let Some(Mem::Buffer(buffer)) = &self.parent {
             src_pitch = [
                 bpp,
                 self.image_desc.row_pitch()? as usize,
                 self.image_desc.slice_pitch(),
             ];
             let (offset, size) = CLVec::calc_offset_size(src_origin, region, src_pitch);
-            tx_src = self.tx(q, ctx, offset, size, RWFlags::RD)?;
+            tx_src = buffer.tx(q, ctx, offset, size, RWFlags::RD)?;
         } else {
             tx_src = self.tx_image(
                 q,
@@ -1252,7 +1252,7 @@ impl Image {
             let tx_dst;
             let dst_pitch;
             let src_pitch;
-            if src_parent.is_buffer() {
+            if let Some(Mem::Buffer(buffer)) = &self.parent {
                 src_pitch = [
                     bpp,
                     self.image_desc.row_pitch()? as usize,
@@ -1260,7 +1260,7 @@ impl Image {
                 ];
 
                 let (offset, size) = CLVec::calc_offset_size(src_origin, region, src_pitch);
-                tx_src = self.tx(q, ctx, offset, size, RWFlags::RD)?;
+                tx_src = buffer.tx(q, ctx, offset, size, RWFlags::RD)?;
             } else {
                 tx_src = self.tx_image(
                     q,
@@ -1272,7 +1272,7 @@ impl Image {
                 src_pitch = [1, tx_src.row_pitch() as usize, tx_src.slice_pitch()];
             }
 
-            if dst_parent.is_buffer() {
+            if let Some(Mem::Buffer(buffer)) = &dst.parent {
                 // If image is created from a buffer, use image's slice and row pitch instead
                 dst_pitch = [
                     bpp,
@@ -1281,7 +1281,7 @@ impl Image {
                 ];
 
                 let (offset, size) = CLVec::calc_offset_size(dst_origin, region, dst_pitch);
-                tx_dst = dst.tx(q, ctx, offset, size, RWFlags::WR)?;
+                tx_dst = buffer.tx(q, ctx, offset, size, RWFlags::WR)?;
             } else {
                 tx_dst = dst.tx_image(
                     q,
@@ -1436,7 +1436,7 @@ impl Image {
         let tx;
         let src_row_pitch;
         let src_slice_pitch;
-        if self.is_parent_buffer() {
+        if let Some(Mem::Buffer(buffer)) = &self.parent {
             src_row_pitch = self.image_desc.image_row_pitch;
             src_slice_pitch = self.image_desc.image_slice_pitch;
 
@@ -1446,7 +1446,7 @@ impl Image {
                 [pixel_size.into(), src_row_pitch, src_slice_pitch],
             );
 
-            tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
+            tx = buffer.tx(q, ctx, offset, size, RWFlags::RD)?;
         } else {
             let bx = create_pipe_box(*src_origin, *region, self.mem_type)?;
             tx = self.tx_image(q, ctx, &bx, RWFlags::RD)?;
@@ -1555,14 +1555,14 @@ impl Image {
         let dst_row_pitch = self.image_desc.image_row_pitch;
         let dst_slice_pitch = self.image_desc.image_slice_pitch;
 
-        if self.is_parent_buffer() {
+        if let Some(Mem::Buffer(buffer)) = &self.parent {
             let pixel_size = self.image_format.pixel_size().unwrap();
             let (offset, size) = CLVec::calc_offset_size(
                 dst_origin,
                 region,
                 [pixel_size.into(), dst_row_pitch, dst_slice_pitch],
             );
-            let tx = self.tx(q, ctx, offset, size, RWFlags::WR)?;
+            let tx = buffer.tx(q, ctx, offset, size, RWFlags::WR)?;
 
             sw_copy(
                 src,

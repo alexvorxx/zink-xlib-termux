@@ -46,7 +46,7 @@
 #include <stdio.h>
 #endif
 
-#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(HAVE_MKOSTEMP) || defined(ANDROID))
+#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(HAVE_MKOSTEMP) || DETECT_OS_ANDROID)
 static int
 set_cloexec_or_close(int fd)
 {
@@ -70,7 +70,7 @@ err:
 }
 #endif
 
-#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(ANDROID))
+#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || DETECT_OS_ANDROID)
 static int
 create_tmpfile_cloexec(char *tmpname)
 {

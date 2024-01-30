@@ -1171,16 +1171,7 @@ fn enqueue_copy_buffer(
         evs,
         event,
         false,
-        Box::new(move |q, ctx| {
-            src.copy_to(
-                q,
-                ctx,
-                &dst,
-                CLVec::new([src_offset, 0, 0]),
-                CLVec::new([dst_offset, 0, 0]),
-                &CLVec::new([size, 1, 1]),
-            )
-        }),
+        Box::new(move |q, ctx| src.copy_to_buffer(q, ctx, &dst, src_offset, dst_offset, size)),
     )
 
     // TODO
@@ -1980,7 +1971,6 @@ fn enqueue_copy_buffer_to_image(
     }
 
     let region = unsafe { CLVec::from_raw(region) };
-    let src_origin = CLVec::new([src_offset, 0, 0]);
     let dst_origin = unsafe { CLVec::from_raw(dst_origin) };
 
     // CL_INVALID_VALUE if values in dst_origin and region do not follow rules described in the
@@ -1995,7 +1985,7 @@ fn enqueue_copy_buffer_to_image(
         evs,
         event,
         false,
-        Box::new(move |q, ctx| src.copy_to(q, ctx, &dst, src_origin, dst_origin, &region)),
+        Box::new(move |q, ctx| src.copy_to_image(q, ctx, &dst, src_offset, dst_origin, &region)),
     )
 
     //• CL_INVALID_MEM_OBJECT if src_buffer is not a valid buffer object or dst_image is not a valid image object or if dst_image is a 1D image buffer object created from src_buffer.

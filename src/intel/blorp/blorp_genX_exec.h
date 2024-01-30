@@ -1851,6 +1851,9 @@ blorp_emit_gfx8_hiz_op(struct blorp_batch *batch,
       blorp_emit_depth_stencil_config(batch, params);
    }
 
+   /* TODO - If we ever start using 3DSTATE_WM_HZ_OP::StencilBufferResolveEnable
+    * we need to implement required steps, flushes documented in Wa_1605967699.
+    */
    blorp_emit(batch, GENX(3DSTATE_WM_HZ_OP), hzp) {
       switch (params->hiz_op) {
       case ISL_AUX_OP_FAST_CLEAR:

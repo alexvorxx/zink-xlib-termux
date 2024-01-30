@@ -931,47 +931,6 @@ impl MemBase {
         Ok(())
     }
 
-    pub fn copy_to_rect(
-        &self,
-        dst: &Self,
-        q: &Queue,
-        ctx: &PipeContext,
-        region: &CLVec<usize>,
-        src_origin: &CLVec<usize>,
-        src_row_pitch: usize,
-        src_slice_pitch: usize,
-        dst_origin: &CLVec<usize>,
-        dst_row_pitch: usize,
-        dst_slice_pitch: usize,
-    ) -> CLResult<()> {
-        assert!(self.is_buffer());
-        assert!(dst.is_buffer());
-
-        let (offset, size) =
-            CLVec::calc_offset_size(src_origin, region, [1, src_row_pitch, src_slice_pitch]);
-        let tx_src = self.tx(q, ctx, offset, size, RWFlags::RD)?;
-
-        let (offset, size) =
-            CLVec::calc_offset_size(dst_origin, region, [1, dst_row_pitch, dst_slice_pitch]);
-        let tx_dst = dst.tx(q, ctx, offset, size, RWFlags::WR)?;
-
-        // TODO check to use hw accelerated paths (e.g. resource_copy_region or blits)
-        sw_copy(
-            tx_src.ptr(),
-            tx_dst.ptr(),
-            region,
-            &CLVec::default(),
-            src_row_pitch,
-            src_slice_pitch,
-            &CLVec::default(),
-            dst_row_pitch,
-            dst_slice_pitch,
-            1,
-        );
-
-        Ok(())
-    }
-
     /// Maps the queue associated device's resource.
     ///
     /// Mapping resources could have been quite straightforward if OpenCL wouldn't allow for so
@@ -1053,6 +1012,44 @@ impl Drop for MemBase {
 impl Buffer {
     fn apply_offset(&self, offset: usize) -> CLResult<usize> {
         self.offset.checked_add(offset).ok_or(CL_OUT_OF_HOST_MEMORY)
+    }
+
+    pub fn copy_rect(
+        &self,
+        dst: &Self,
+        q: &Queue,
+        ctx: &PipeContext,
+        region: &CLVec<usize>,
+        src_origin: &CLVec<usize>,
+        src_row_pitch: usize,
+        src_slice_pitch: usize,
+        dst_origin: &CLVec<usize>,
+        dst_row_pitch: usize,
+        dst_slice_pitch: usize,
+    ) -> CLResult<()> {
+        let (offset, size) =
+            CLVec::calc_offset_size(src_origin, region, [1, src_row_pitch, src_slice_pitch]);
+        let tx_src = self.tx(q, ctx, offset, size, RWFlags::RD)?;
+
+        let (offset, size) =
+            CLVec::calc_offset_size(dst_origin, region, [1, dst_row_pitch, dst_slice_pitch]);
+        let tx_dst = dst.tx(q, ctx, offset, size, RWFlags::WR)?;
+
+        // TODO check to use hw accelerated paths (e.g. resource_copy_region or blits)
+        sw_copy(
+            tx_src.ptr(),
+            tx_dst.ptr(),
+            region,
+            &CLVec::default(),
+            src_row_pitch,
+            src_slice_pitch,
+            &CLVec::default(),
+            dst_row_pitch,
+            dst_slice_pitch,
+            1,
+        );
+
+        Ok(())
     }
 
     pub fn fill(

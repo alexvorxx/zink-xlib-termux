@@ -1555,7 +1555,7 @@ fn enqueue_copy_buffer_rect(
         event,
         false,
         Box::new(move |q, ctx| {
-            src.copy_to_rect(
+            src.copy_rect(
                 &dst,
                 q,
                 ctx,

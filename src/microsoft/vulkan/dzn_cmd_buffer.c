@@ -4726,11 +4726,10 @@ dzn_cmd_buffer_resolve_rendering_attachment(struct dzn_cmd_buffer *cmdbuf,
    }
 
    if (force_blit_resolve ||
-       att->resolve.mode == VK_RESOLVE_MODE_SAMPLE_ZERO_BIT ||
+       /* Resolve modes other than average are poorly tested / buggy */
+       att->resolve.mode != VK_RESOLVE_MODE_AVERAGE_BIT ||
        /* D3D resolve API can't go from (e.g.) D32S8X24 to D32 */
-       src->vk.view_format != dst->vk.view_format ||
-       (att->resolve.mode != VK_RESOLVE_MODE_AVERAGE_BIT &&
-        pdev->options2.ProgrammableSamplePositionsTier == D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER_NOT_SUPPORTED)) {
+       src->vk.view_format != dst->vk.view_format) {
       dzn_cmd_buffer_resolve_rendering_attachment_via_blit(cmdbuf, att, aspect, &src_range, &dst_range);
       return;
    }

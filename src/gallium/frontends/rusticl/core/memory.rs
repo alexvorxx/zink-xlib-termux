@@ -625,14 +625,6 @@ impl MemBase {
         })
     }
 
-    pub fn pixel_size(&self) -> Option<u8> {
-        if self.is_buffer() {
-            Some(1)
-        } else {
-            self.image_format.pixel_size()
-        }
-    }
-
     pub fn is_buffer(&self) -> bool {
         self.mem_type == CL_MEM_OBJECT_BUFFER
     }
@@ -977,7 +969,7 @@ impl Buffer {
         region: &CLVec<usize>,
     ) -> CLResult<()> {
         let src_offset = self.apply_offset(src_offset)?;
-        let bpp = dst.pixel_size().unwrap().into();
+        let bpp = dst.image_format.pixel_size().unwrap().into();
         let src_pitch = [bpp, bpp * region[0], bpp * region[0] * region[1]];
         let size = CLVec::calc_size(region, src_pitch);
         let tx_src = self.tx(q, ctx, src_offset, size, RWFlags::RD)?;
@@ -1222,7 +1214,7 @@ impl Image {
         region: &CLVec<usize>,
     ) -> CLResult<()> {
         let dst_offset = dst.apply_offset(dst_offset)?;
-        let bpp = self.pixel_size().unwrap().into();
+        let bpp = self.image_format.pixel_size().unwrap().into();
 
         let src_pitch;
         let tx_src;
@@ -1287,7 +1279,7 @@ impl Image {
         // We just want to use sw_copy if mem objects have different types or if copy can have
         // custom strides (image2d from buff/images)
         if src_parent.is_buffer() || dst_parent.is_buffer() {
-            let bpp = self.pixel_size().unwrap().into();
+            let bpp = self.image_format.pixel_size().unwrap().into();
 
             let tx_src;
             let tx_dst;

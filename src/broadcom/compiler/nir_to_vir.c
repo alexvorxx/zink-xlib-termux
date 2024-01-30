@@ -3281,6 +3281,59 @@ emit_load_local_invocation_index(struct v3d_compile *c)
 }
 
 static void
+emit_compute_barrier(struct v3d_compile *c)
+{
+        /* Ensure we flag the use of the control barrier. NIR's
+         * gather info pass usually takes care of this, but that
+         * requires that we call that pass after any other pass
+         * may emit a control barrier, so this is safer.
+         */
+        c->s->info.uses_control_barrier = true;
+
+        /* Emit a TSY op to get all invocations in the workgroup
+         * (actually supergroup) to block until the last
+         * invocation reaches the TSY op.
+         */
+        vir_BARRIERID_dest(c, vir_reg(QFILE_MAGIC, V3D_QPU_WADDR_SYNCB));
+}
+
+static void
+emit_barrier(struct v3d_compile *c)
+{
+        struct qreg eidx = vir_EIDX(c);
+
+        /* The config for the TSY op should be setup like this:
+         * - Lane 0: Quorum
+         * - Lane 2: TSO id
+         * - Lane 3: TSY opcode
+         */
+
+        /* Lane 0: we want to synchronize across one subgroup. Here we write to
+         * all lanes unconditionally and will overwrite other lanes below.
+         */
+        struct qreg tsy_conf = vir_uniform_ui(c, 1);
+
+        /* Lane 2: TSO id. We choose a general purpose TSO (id=0..64) using the
+         * curent QPU index and thread index to ensure we get a unique one for
+         * this group of invocations in this core.
+         */
+        struct qreg tso_id =
+                vir_AND(c, vir_TIDX(c), vir_uniform_ui(c, 0x0000003f));
+        vir_set_pf(c, vir_XOR_dest(c, vir_nop_reg(), eidx, vir_uniform_ui(c, 2)),
+                   V3D_QPU_PF_PUSHZ);
+        vir_MOV_cond(c, V3D_QPU_COND_IFA, tsy_conf, tso_id);
+
+        /* Lane 3: TSY opcode (set_quorum_wait_inc_check) */
+        struct qreg tsy_op = vir_uniform_ui(c, 16);
+        vir_set_pf(c, vir_XOR_dest(c, vir_nop_reg(), eidx, vir_uniform_ui(c, 3)),
+                   V3D_QPU_PF_PUSHZ);
+        vir_MOV_cond(c, V3D_QPU_COND_IFA, tsy_conf, tsy_op);
+
+        /* Emit TSY sync */
+        vir_MOV_dest(c, vir_reg(QFILE_MAGIC, V3D_QPU_WADDR_SYNCB), tsy_conf);
+}
+
+static void
 ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
 {
         switch (instr->intrinsic) {
@@ -3519,19 +3572,11 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
                 ntq_flush_tmu(c);
 
                 if (nir_intrinsic_execution_scope(instr) != SCOPE_NONE) {
-                        /* Ensure we flag the use of the control barrier. NIR's
-                         * gather info pass usually takes care of this, but that
-                         * requires that we call that pass after any other pass
-                         * may emit a control barrier, so this is safer.
-                         */
-                        c->s->info.uses_control_barrier = true;
+                        if (c->s->info.stage == MESA_SHADER_COMPUTE)
+                                emit_compute_barrier(c);
+                        else
+                                emit_barrier(c);
 
-                        /* Emit a TSY op to get all invocations in the workgroup
-                         * (actually supergroup) to block until the last
-                         * invocation reaches the TSY op.
-                         */
-                        vir_BARRIERID_dest(c, vir_reg(QFILE_MAGIC,
-                                                      V3D_QPU_WADDR_SYNCB));
                         /* The blocking of a TSY op only happens at the next
                          * thread switch. No texturing may be outstanding at the
                          * time of a TSY blocking operation.

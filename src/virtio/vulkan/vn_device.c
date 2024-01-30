@@ -412,7 +412,7 @@ vn_device_update_shader_cache_id(struct vn_device *dev)
     * The shader cache is destroyed after creating the necessary files
     * and not utilized by venus.
     */
-#if !defined(ANDROID) && defined(ENABLE_SHADER_CACHE)
+#if !DETECT_OS_ANDROID && defined(ENABLE_SHADER_CACHE)
    const VkPhysicalDeviceProperties *vulkan_1_0_props =
       &dev->physical_device->properties.vulkan_1_0;
 

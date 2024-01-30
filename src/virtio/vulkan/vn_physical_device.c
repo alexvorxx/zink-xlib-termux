@@ -835,14 +835,14 @@ vn_physical_device_init_external_memory(
       physical_dev->external_memory.renderer_handle_type =
          VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       physical_dev->external_memory.supported_handle_types |=
          VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
-#else  /* ANDROID */
+#else  /* DETECT_OS_ANDROID */
       physical_dev->external_memory.supported_handle_types =
          VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
          VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-#endif /* ANDROID */
+#endif /* DETECT_OS_ANDROID */
    }
 }
 
@@ -981,7 +981,7 @@ vn_physical_device_get_native_extensions(
    const bool can_external_mem =
       vn_physical_device_get_external_memory_support(physical_dev);
    if (can_external_mem) {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       exts->ANDROID_external_memory_android_hardware_buffer = true;
 
       /* For wsi, we require renderer:
@@ -997,10 +997,10 @@ vn_physical_device_get_native_extensions(
       if (physical_dev->renderer_sync_fd.semaphore_importable &&
           physical_dev->renderer_sync_fd.fence_exportable)
          exts->ANDROID_native_buffer = true;
-#else  /* ANDROID */
+#else  /* DETECT_OS_ANDROID */
       exts->KHR_external_memory_fd = true;
       exts->EXT_external_memory_dma_buf = true;
-#endif /* ANDROID */
+#endif /* DETECT_OS_ANDROID */
    }
 
 #ifdef VN_USE_WSI_PLATFORM

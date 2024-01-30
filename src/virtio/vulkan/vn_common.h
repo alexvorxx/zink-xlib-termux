@@ -28,6 +28,7 @@
 #include "util/bitscan.h"
 #include "util/bitset.h"
 #include "util/compiler.h"
+#include "util/detect_os.h"
 #include "util/libsync.h"
 #include "util/list.h"
 #include "util/macros.h"
@@ -501,7 +502,7 @@ vn_object_get_id(const void *obj, VkObjectType type)
 static inline pid_t
 vn_gettid(void)
 {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    return gettid();
 #else
    return syscall(SYS_gettid);

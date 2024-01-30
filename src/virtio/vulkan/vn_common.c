@@ -97,7 +97,7 @@ vn_env_init(void)
 void
 vn_trace_init(void)
 {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    atrace_init();
 #else
    util_cpu_trace_init();

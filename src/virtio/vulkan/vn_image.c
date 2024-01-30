@@ -771,7 +771,7 @@ vn_BindImageMemory2(VkDevice device,
       }
 
       if (!mem) {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
          /* TODO handle VkNativeBufferANDROID when we bump up
           * VN_ANDROID_NATIVE_BUFFER_SPEC_VERSION
           */

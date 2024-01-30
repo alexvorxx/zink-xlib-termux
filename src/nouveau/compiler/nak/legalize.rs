@@ -48,6 +48,8 @@ fn copy_alu_src(b: &mut impl SSABuilder, src: &mut Src, src_type: SrcType) {
         SrcType::GPR
         | SrcType::ALU
         | SrcType::F32
+        | SrcType::F16
+        | SrcType::F16v2
         | SrcType::I32
         | SrcType::B32 => b.alloc_ssa(RegFile::GPR, 1),
         SrcType::F64 => b.alloc_ssa(RegFile::GPR, 2),
@@ -431,6 +433,8 @@ fn legalize_sm50_instr(
                         assert!(src_is_reg(src));
                     }
                     SrcType::ALU
+                    | SrcType::F16
+                    | SrcType::F16v2
                     | SrcType::F32
                     | SrcType::F64
                     | SrcType::I32
@@ -721,6 +725,8 @@ fn legalize_sm70_instr(
                         assert!(src_is_reg(src));
                     }
                     SrcType::ALU
+                    | SrcType::F16
+                    | SrcType::F16v2
                     | SrcType::F32
                     | SrcType::F64
                     | SrcType::I32

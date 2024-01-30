@@ -11,12 +11,14 @@ struct ALURegRef {
     pub reg: RegRef,
     pub abs: bool,
     pub neg: bool,
+    pub swizzle: SrcSwizzle,
 }
 
 struct ALUCBufRef {
     pub cb: CBufRef,
     pub abs: bool,
     pub neg: bool,
+    pub swizzle: SrcSwizzle,
 }
 
 enum ALUSrc {
@@ -72,6 +74,7 @@ impl ALUSrc {
                     reg: reg,
                     abs: src_mod_has_abs(src.src_mod),
                     neg: src_mod_has_neg(src.src_mod),
+                    swizzle: src.src_swizzle,
                 };
                 match reg.file() {
                     RegFile::GPR => ALUSrc::Reg(alu_ref),
@@ -81,6 +84,7 @@ impl ALUSrc {
             }
             SrcRef::Imm32(i) => {
                 assert!(src.src_mod.is_none());
+                assert!(src.src_swizzle.is_none());
                 ALUSrc::Imm32(i)
             }
             SrcRef::CBuf(cb) => {
@@ -88,6 +92,7 @@ impl ALUSrc {
                     cb: cb,
                     abs: src_mod_has_abs(src.src_mod),
                     neg: src_mod_has_neg(src.src_mod),
+                    swizzle: src.src_swizzle,
                 };
                 ALUSrc::CBuf(alu_ref)
             }
@@ -265,16 +270,43 @@ impl SM70Instr {
         self.set_bar_reg(range, *src.src_ref.as_reg().unwrap());
     }
 
+    fn set_swizzle(&mut self, range: Range<usize>, swizzle: SrcSwizzle) {
+        assert!(range.len() == 2);
+
+        self.set_field(
+            range,
+            match swizzle {
+                SrcSwizzle::None => 0x00_u8,
+                SrcSwizzle::Xx => 0x02_u8,
+                SrcSwizzle::Yy => 0x03_u8,
+            },
+        );
+    }
+
     fn set_alu_reg(
         &mut self,
         range: Range<usize>,
         abs_bit: usize,
         neg_bit: usize,
+        swizzle_range: Range<usize>,
+        is_fp16_alu: bool,
+        has_mod: bool,
         reg: &ALURegRef,
     ) {
         self.set_reg(range, reg.reg);
-        self.set_bit(abs_bit, reg.abs);
-        self.set_bit(neg_bit, reg.neg);
+
+        if has_mod {
+            self.set_bit(abs_bit, reg.abs);
+            self.set_bit(neg_bit, reg.neg);
+        } else {
+            assert!(!reg.abs && !reg.neg);
+        }
+
+        if is_fp16_alu {
+            self.set_swizzle(swizzle_range, reg.swizzle);
+        } else {
+            assert!(reg.swizzle == SrcSwizzle::None);
+        }
     }
 
     fn set_alu_ureg(
@@ -282,11 +314,25 @@ impl SM70Instr {
         range: Range<usize>,
         abs_bit: usize,
         neg_bit: usize,
+        swizzle_range: Range<usize>,
+        is_fp16_alu: bool,
+        has_mod: bool,
         reg: &ALURegRef,
     ) {
         self.set_ureg(range, reg.reg);
-        self.set_bit(abs_bit, reg.abs);
-        self.set_bit(neg_bit, reg.neg);
+
+        if has_mod {
+            self.set_bit(abs_bit, reg.abs);
+            self.set_bit(neg_bit, reg.neg);
+        } else {
+            assert!(!reg.abs && !reg.neg);
+        }
+
+        if is_fp16_alu {
+            self.set_swizzle(swizzle_range, reg.swizzle);
+        } else {
+            assert!(reg.swizzle == SrcSwizzle::None);
+        }
     }
 
     fn set_alu_cb(
@@ -294,11 +340,25 @@ impl SM70Instr {
         range: Range<usize>,
         abs_bit: usize,
         neg_bit: usize,
+        swizzle_range: Range<usize>,
+        is_fp16_alu: bool,
+        has_mod: bool,
         cb: &ALUCBufRef,
     ) {
         self.set_src_cb(range, &cb.cb);
-        self.set_bit(abs_bit, cb.abs);
-        self.set_bit(neg_bit, cb.neg);
+
+        if has_mod {
+            self.set_bit(abs_bit, cb.abs);
+            self.set_bit(neg_bit, cb.neg);
+        } else {
+            assert!(!cb.abs && !cb.neg);
+        }
+
+        if is_fp16_alu {
+            self.set_swizzle(swizzle_range, cb.swizzle);
+        } else {
+            assert!(cb.swizzle == SrcSwizzle::None);
+        }
     }
 
     fn set_alu_reg_src(
@@ -306,13 +366,162 @@ impl SM70Instr {
         range: Range<usize>,
         abs_bit: usize,
         neg_bit: usize,
+        swizzle_range: Range<usize>,
+        is_fp16_alu: bool,
+        has_mod: bool,
         src: &ALUSrc,
     ) {
         match src {
             ALUSrc::None => (),
-            ALUSrc::Reg(reg) => self.set_alu_reg(range, abs_bit, neg_bit, reg),
-            _ => panic!("Invalid ALU src0"),
+            ALUSrc::Reg(reg) => self.set_alu_reg(
+                range,
+                abs_bit,
+                neg_bit,
+                swizzle_range,
+                is_fp16_alu,
+                has_mod,
+                reg,
+            ),
+            _ => panic!("Invalid ALU src"),
         }
+    }
+
+    fn encode_alu_base(
+        &mut self,
+        opcode: u16,
+        dst: Option<Dst>,
+        src0: ALUSrc,
+        src1: ALUSrc,
+        src2: ALUSrc,
+        is_fp16_alu: bool,
+    ) {
+        if let Some(dst) = dst {
+            self.set_dst(dst);
+        }
+
+        // For opcodes like OpHAdd, both sources support full modifiers and swizzle,
+        // even when we use a form where the two sources go in src0 and src2.
+        // For OpHFma, however, which uses both src1 and src2, only src1 supports modifiers.
+        let src2_has_mod = !is_fp16_alu || matches!(src1, ALUSrc::None);
+
+        self.set_alu_reg_src(24..32, 73, 72, 74..76, is_fp16_alu, true, &src0);
+
+        let form = match &src2 {
+            ALUSrc::None | ALUSrc::Reg(_) => {
+                self.set_alu_reg_src(
+                    64..72,
+                    74,
+                    75,
+                    81..83,
+                    is_fp16_alu,
+                    src2_has_mod,
+                    &src2,
+                );
+
+                match &src1 {
+                    ALUSrc::None => 1_u8, // form
+                    ALUSrc::Reg(reg1) => {
+                        self.set_alu_reg(
+                            32..40,
+                            62,
+                            63,
+                            60..62,
+                            is_fp16_alu,
+                            true,
+                            reg1,
+                        );
+                        1_u8 // form
+                    }
+                    ALUSrc::UReg(reg1) => {
+                        self.set_alu_ureg(
+                            32..40,
+                            62,
+                            63,
+                            60..62,
+                            is_fp16_alu,
+                            true,
+                            reg1,
+                        );
+                        6_u8 // form
+                    }
+                    ALUSrc::Imm32(imm) => {
+                        self.set_src_imm(32..64, imm);
+                        4_u8 // form
+                    }
+                    ALUSrc::CBuf(cb) => {
+                        self.set_alu_cb(
+                            38..59,
+                            62,
+                            63,
+                            60..62,
+                            is_fp16_alu,
+                            true,
+                            cb,
+                        );
+                        5_u8 // form
+                    }
+                }
+            }
+            ALUSrc::UReg(reg2) => {
+                self.set_alu_ureg(
+                    32..40,
+                    62,
+                    63,
+                    60..62,
+                    is_fp16_alu,
+                    src2_has_mod,
+                    reg2,
+                );
+                self.set_alu_reg_src(
+                    64..72,
+                    74,
+                    75,
+                    81..83,
+                    is_fp16_alu,
+                    true,
+                    &src1,
+                );
+                7_u8 // form
+            }
+            ALUSrc::Imm32(imm) => {
+                self.set_src_imm(32..64, imm);
+                self.set_alu_reg_src(
+                    64..72,
+                    74,
+                    75,
+                    81..83,
+                    is_fp16_alu,
+                    true,
+                    &src1,
+                );
+                2_u8 // form
+            }
+            ALUSrc::CBuf(cb) => {
+                // TODO set_src_cx
+                self.set_alu_cb(
+                    38..59,
+                    62,
+                    63,
+                    60..62,
+                    is_fp16_alu,
+                    src2_has_mod,
+                    cb,
+                );
+                self.set_alu_reg_src(
+                    64..72,
+                    74,
+                    75,
+                    81..83,
+                    is_fp16_alu,
+                    true,
+                    &src1,
+                );
+                3_u8 // form
+            }
+        };
+
+        self.set_field(0..9, opcode);
+        self.set_field(9..12, form);
     }
 
     fn encode_alu(
@@ -323,55 +532,7 @@ impl SM70Instr {
         src1: ALUSrc,
         src2: ALUSrc,
     ) {
-        if let Some(dst) = dst {
-            self.set_dst(dst);
-        }
-
-        self.set_alu_reg_src(24..32, 73, 72, &src0);
-
-        let form = match &src2 {
-            ALUSrc::None | ALUSrc::Reg(_) => {
-                self.set_alu_reg_src(64..72, 74, 75, &src2);
-                match &src1 {
-                    ALUSrc::None => 1_u8, // form
-                    ALUSrc::Reg(reg1) => {
-                        self.set_alu_reg(32..40, 62, 63, reg1);
-                        1_u8 // form
-                    }
-                    ALUSrc::UReg(reg1) => {
-                        self.set_alu_ureg(32..40, 62, 63, reg1);
-                        6_u8 // form
-                    }
-                    ALUSrc::Imm32(imm) => {
-                        self.set_src_imm(32..64, imm);
-                        4_u8 // form
-                    }
-                    ALUSrc::CBuf(cb) => {
-                        self.set_alu_cb(38..59, 62, 63, cb);
-                        5_u8 // form
-                    }
-                }
-            }
-            ALUSrc::UReg(reg2) => {
-                self.set_alu_ureg(32..40, 62, 63, reg2);
-                self.set_alu_reg_src(64..72, 74, 75, &src1);
-                7_u8 // form
-            }
-            ALUSrc::Imm32(imm) => {
-                self.set_src_imm(32..64, imm);
-                self.set_alu_reg_src(64..72, 74, 75, &src1);
-                2_u8 // form
-            }
-            ALUSrc::CBuf(cb) => {
-                // TODO set_src_cx
-                self.set_alu_cb(38..59, 62, 63, cb);
-                self.set_alu_reg_src(64..72, 74, 75, &src1);
-                3_u8 // form
-            }
-        };
-
-        self.set_field(0..9, opcode);
-        self.set_field(9..12, form);
+        self.encode_alu_base(opcode, dst, src0, src1, src2, false);
     }
 
     fn set_instr_deps(&mut self, deps: &InstrDeps) {

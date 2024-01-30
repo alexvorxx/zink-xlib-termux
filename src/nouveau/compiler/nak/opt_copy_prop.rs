@@ -44,6 +44,7 @@ impl CopyPropPass {
                 let hi32 = Src {
                     src_ref: SrcRef::CBuf(cb.offset(4)),
                     src_mod: src.src_mod,
+                    src_swizzle: src.src_swizzle,
                 };
                 self.add_copy(dst[0], SrcType::ALU, lo32);
                 self.add_copy(dst[1], SrcType::F64, hi32);
@@ -54,6 +55,7 @@ impl CopyPropPass {
                 let hi32 = Src {
                     src_ref: ssa[1].into(),
                     src_mod: src.src_mod,
+                    src_swizzle: src.src_swizzle,
                 };
                 self.add_copy(dst[0], SrcType::ALU, lo32);
                 self.add_copy(dst[1], SrcType::F64, hi32);
@@ -289,6 +291,8 @@ impl CopyPropPass {
                 self.prop_to_gpr_src(src);
             }
             SrcType::ALU
+            | SrcType::F16
+            | SrcType::F16v2
             | SrcType::F32
             | SrcType::I32
             | SrcType::B32

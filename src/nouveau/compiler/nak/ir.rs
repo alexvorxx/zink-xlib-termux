@@ -1036,6 +1036,8 @@ pub enum SrcType {
     SSA,
     GPR,
     ALU,
+    F16,
+    F16v2,
     F32,
     F64,
     I32,
@@ -1045,9 +1047,34 @@ pub enum SrcType {
 }
 
 #[derive(Clone, Copy, PartialEq)]
+#[allow(dead_code)]
+pub enum SrcSwizzle {
+    None,
+    Xx,
+    Yy,
+}
+
+impl SrcSwizzle {
+    pub fn is_none(&self) -> bool {
+        matches!(self, SrcSwizzle::None)
+    }
+}
+
+impl fmt::Display for SrcSwizzle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SrcSwizzle::None => Ok(()),
+            SrcSwizzle::Xx => write!(f, ".xx"),
+            SrcSwizzle::Yy => write!(f, ".yy"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
 pub struct Src {
     pub src_ref: SrcRef,
     pub src_mod: SrcMod,
+    pub src_swizzle: SrcSwizzle,
 }
 
 impl Src {
@@ -1067,6 +1094,7 @@ impl Src {
         Src {
             src_ref: self.src_ref,
             src_mod: self.src_mod.fabs(),
+            src_swizzle: self.src_swizzle,
         }
     }
 
@@ -1074,6 +1102,7 @@ impl Src {
         Src {
             src_ref: self.src_ref,
             src_mod: self.src_mod.fneg(),
+            src_swizzle: self.src_swizzle,
         }
     }
 
@@ -1081,6 +1110,7 @@ impl Src {
         Src {
             src_ref: self.src_ref,
             src_mod: self.src_mod.ineg(),
+            src_swizzle: self.src_swizzle,
         }
     }
 
@@ -1088,6 +1118,7 @@ impl Src {
         Src {
             src_ref: self.src_ref,
             src_mod: self.src_mod.bnot(),
+            src_swizzle: self.src_swizzle,
         }
     }
 
@@ -1096,11 +1127,39 @@ impl Src {
             return *self;
         };
 
-        if self.src_mod.is_none() {
+        if self.src_mod.is_none() && self.src_swizzle.is_none() {
             return *self;
         }
 
+        assert!(src_type == SrcType::F16v2 || self.src_swizzle.is_none());
+
         u = match src_type {
+            SrcType::F16 => {
+                let low = u & 0xFFFF;
+
+                match self.src_mod {
+                    SrcMod::None => low,
+                    SrcMod::FAbs => low & !(1_u32 << 15),
+                    SrcMod::FNeg => low ^ (1_u32 << 15),
+                    SrcMod::FNegAbs => low | (1_u32 << 15),
+                    _ => panic!("Not a float source modifier"),
+                }
+            }
+            SrcType::F16v2 => {
+                let u = match self.src_swizzle {
+                    SrcSwizzle::None => u,
+                    SrcSwizzle::Xx => (u << 16) | (u & 0xffff),
+                    SrcSwizzle::Yy => (u & 0xffff0000) | (u >> 16),
+                };
+
+                match self.src_mod {
+                    SrcMod::None => u,
+                    SrcMod::FAbs => u & 0x7FFF7FFF,
+                    SrcMod::FNeg => u ^ 0x80008000,
+                    SrcMod::FNegAbs => u | 0x80008000,
+                    _ => panic!("Not a float source modifier"),
+                }
+            }
             SrcType::F32 | SrcType::F64 => match self.src_mod {
                 SrcMod::None => u,
                 SrcMod::FAbs => u & !(1_u32 << 31),
@@ -1127,6 +1186,7 @@ impl Src {
         Src {
             src_mod: SrcMod::None,
             src_ref: u.into(),
+            src_swizzle: SrcSwizzle::None,
         }
     }
 
@@ -1233,7 +1293,9 @@ impl Src {
 
     pub fn is_fneg_zero(&self, src_type: SrcType) -> bool {
         match self.fold_imm(src_type).src_ref {
+            SrcRef::Imm32(0x00008000) => src_type == SrcType::F16,
             SrcRef::Imm32(0x80000000) => src_type == SrcType::F32,
+            SrcRef::Imm32(0x80008000) => src_type == SrcType::F16v2,
             _ => false,
         }
     }
@@ -1259,7 +1321,7 @@ impl Src {
                 )
             }
             SrcType::ALU => self.src_mod.is_none() && self.src_ref.is_alu(),
-            SrcType::F32 | SrcType::F64 => {
+            SrcType::F16 | SrcType::F32 | SrcType::F64 | SrcType::F16v2 => {
                 match self.src_mod {
                     SrcMod::None
                     | SrcMod::FAbs
@@ -1304,6 +1366,7 @@ impl<T: Into<SrcRef>> From<T> for Src {
         Src {
             src_ref: value.into(),
             src_mod: SrcMod::None,
+            src_swizzle: SrcSwizzle::None,
         }
     }
 }
@@ -1311,12 +1374,14 @@ impl<T: Into<SrcRef>> From<T> for Src {
 impl fmt::Display for Src {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.src_mod {
-            SrcMod::None => write!(f, "{}", self.src_ref),
-            SrcMod::FAbs => write!(f, "|{}|", self.src_ref),
-            SrcMod::FNeg => write!(f, "-{}", self.src_ref),
-            SrcMod::FNegAbs => write!(f, "-|{}|", self.src_ref),
-            SrcMod::INeg => write!(f, "-{}", self.src_ref),
-            SrcMod::BNot => write!(f, "!{}", self.src_ref),
+            SrcMod::None => write!(f, "{}{}", self.src_ref, self.src_swizzle),
+            SrcMod::FAbs => write!(f, "|{}{}|", self.src_ref, self.src_swizzle),
+            SrcMod::FNeg => write!(f, "-{}{}", self.src_ref, self.src_swizzle),
+            SrcMod::FNegAbs => {
+                write!(f, "-|{}{}|", self.src_ref, self.src_swizzle)
+            }
+            SrcMod::INeg => write!(f, "-{}{}", self.src_ref, self.src_swizzle),
+            SrcMod::BNot => write!(f, "!{}{}", self.src_ref, self.src_swizzle),
         }
     }
 }
@@ -3182,7 +3247,7 @@ impl SrcsAsSlice for OpF2F {
 
     fn src_types(&self) -> SrcTypeList {
         let src_type = match self.src_type {
-            FloatType::F16 => SrcType::ALU,
+            FloatType::F16 => SrcType::F16,
             FloatType::F32 => SrcType::F32,
             FloatType::F64 => SrcType::F64,
         };
@@ -3232,7 +3297,7 @@ impl SrcsAsSlice for OpF2I {
 
     fn src_types(&self) -> SrcTypeList {
         let src_type = match self.src_type {
-            FloatType::F16 => SrcType::ALU,
+            FloatType::F16 => SrcType::F16,
             FloatType::F32 => SrcType::F32,
             FloatType::F64 => SrcType::F64,
         };
@@ -3352,7 +3417,7 @@ impl SrcsAsSlice for OpFRnd {
 
     fn src_types(&self) -> SrcTypeList {
         let src_type = match self.src_type {
-            FloatType::F16 => SrcType::ALU,
+            FloatType::F16 => SrcType::F16,
             FloatType::F32 => SrcType::F32,
             FloatType::F64 => SrcType::F64,
         };

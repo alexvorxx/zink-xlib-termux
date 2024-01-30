@@ -1061,7 +1061,7 @@ fn enqueue_read_buffer(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| b.read_to_user(q, ctx, offset, ptr, cb)),
+        Box::new(move |q, ctx| b.read(q, ctx, offset, ptr, cb)),
     )
 
     // TODO
@@ -1114,7 +1114,7 @@ fn enqueue_write_buffer(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| b.write_from_user(q, ctx, offset, ptr, cb)),
+        Box::new(move |q, ctx| b.write(q, ctx, offset, ptr, cb)),
     )
 
     // TODO

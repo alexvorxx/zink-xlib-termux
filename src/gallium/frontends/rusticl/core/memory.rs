@@ -821,46 +821,6 @@ impl MemBase {
         Ok(!r.is_user && bit_check(self.flags, CL_MEM_USE_HOST_PTR))
     }
 
-    pub fn read_to_user(
-        &self,
-        q: &Queue,
-        ctx: &PipeContext,
-        offset: usize,
-        ptr: *mut c_void,
-        size: usize,
-    ) -> CLResult<()> {
-        assert!(self.is_buffer());
-
-        let tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
-
-        unsafe {
-            ptr::copy_nonoverlapping(tx.ptr(), ptr, size);
-        }
-
-        Ok(())
-    }
-
-    pub fn write_from_user(
-        &self,
-        q: &Queue,
-        ctx: &PipeContext,
-        mut offset: usize,
-        ptr: *const c_void,
-        size: usize,
-    ) -> CLResult<()> {
-        assert!(self.is_buffer());
-
-        let b = self.to_parent(&mut offset);
-        let r = b.get_res()?.get(&q.device).unwrap();
-        ctx.buffer_subdata(
-            r,
-            offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-            ptr,
-            size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-        );
-        Ok(())
-    }
-
     pub fn copy_to(
         &self,
         q: &Queue,
@@ -1245,6 +1205,23 @@ impl Buffer {
         Ok(ptr)
     }
 
+    pub fn read(
+        &self,
+        q: &Queue,
+        ctx: &PipeContext,
+        offset: usize,
+        ptr: *mut c_void,
+        size: usize,
+    ) -> CLResult<()> {
+        let tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
+
+        unsafe {
+            ptr::copy_nonoverlapping(tx.ptr(), ptr, size);
+        }
+
+        Ok(())
+    }
+
     // TODO: only sync on map when the memory is not mapped with discard
     pub fn sync_shadow(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
         let mut lock = self.maps.lock().unwrap();
@@ -1253,7 +1230,7 @@ impl Buffer {
         }
 
         if self.has_user_shadow_buffer(q.device)? {
-            self.read_to_user(q, ctx, 0, self.host_ptr, self.size)
+            self.read(q, ctx, 0, self.host_ptr, self.size)
         } else {
             if let Some(shadow) = lock.tx.get(&q.device).and_then(|tx| tx.shadow.as_ref()) {
                 let res = self.get_res_of_dev(q.device)?;
@@ -1288,12 +1265,31 @@ impl Buffer {
 
                 ctx.resource_copy_region(shadow, res, &[offset, 0, 0], &bx);
             } else if self.has_user_shadow_buffer(q.device)? {
-                self.write_from_user(q, ctx, 0, self.host_ptr, self.size)?;
+                self.write(q, ctx, 0, self.host_ptr, self.size)?;
             }
         }
 
         lock.clean_up_tx(q.device, ctx);
 
+        Ok(())
+    }
+
+    pub fn write(
+        &self,
+        q: &Queue,
+        ctx: &PipeContext,
+        offset: usize,
+        ptr: *const c_void,
+        size: usize,
+    ) -> CLResult<()> {
+        let offset = self.apply_offset(offset)?;
+        let r = self.get_res_of_dev(q.device)?;
+        ctx.buffer_subdata(
+            r,
+            offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+            ptr,
+            size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+        );
         Ok(())
     }
 }

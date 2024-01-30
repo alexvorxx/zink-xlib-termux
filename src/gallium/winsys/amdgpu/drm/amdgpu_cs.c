@@ -1191,6 +1191,13 @@ static void amdgpu_set_bo_seq_no(unsigned queue_index, struct amdgpu_winsys_bo *
    bo->fences.valid_fence_mask |= BITFIELD_BIT(queue_index);
 }
 
+static void amdgpu_add_to_kernel_bo_list(struct drm_amdgpu_bo_list_entry *bo_entry,
+                                         struct amdgpu_winsys_bo *bo, unsigned usage)
+{
+   bo_entry->bo_handle = get_real_bo(bo)->kms_handle;
+   bo_entry->bo_priority = (util_last_bit(usage & RADEON_ALL_PRIORITIES) - 1) / 2;
+}
+
 static void amdgpu_cs_add_syncobj_signal(struct radeon_cmdbuf *rws,
                                          struct pipe_fence_handle *fence)
 {
@@ -1333,14 +1340,26 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
    }
 
    /* Real BOs: Add fence dependencies, update seq_no in BOs except sparse backing BOs. */
+   unsigned num_real_buffers = cs->buffer_lists[AMDGPU_BO_REAL].num_buffers;
    struct amdgpu_cs_buffer *real_buffers = cs->buffer_lists[AMDGPU_BO_REAL].buffers;
+   struct drm_amdgpu_bo_list_entry *bo_list =
+      alloca(num_real_buffers * sizeof(struct drm_amdgpu_bo_list_entry));
+   unsigned i;
 
-   for (unsigned i = 0; i < num_real_buffers_except_sparse; i++) {
+   for (i = 0; i < num_real_buffers_except_sparse; i++) {
       struct amdgpu_cs_buffer *buffer = &real_buffers[i];
       struct amdgpu_winsys_bo *bo = buffer->bo;
 
       amdgpu_add_fences_to_dependencies(ws, queue_index, &seq_no_dependencies, bo, buffer->usage);
       amdgpu_set_bo_seq_no(queue_index, bo, next_seq_no);
+      amdgpu_add_to_kernel_bo_list(&bo_list[i], bo, buffer->usage);
+   }
+
+   /* Sparse backing BOs are last. Don't update their fences because we don't use them. */
+   for (; i < num_real_buffers; ++i) {
+      struct amdgpu_cs_buffer *buffer = &real_buffers[i];
+
+      amdgpu_add_to_kernel_bo_list(&bo_list[i], buffer->bo, buffer->usage);
    }
 
 #if 0 /* Debug code. */
@@ -1394,9 +1413,6 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
    amdgpu_ctx_reference(&queue->last_ctx, acs->ctx);
    simple_mtx_unlock(&ws->bo_fence_lock);
 
-   struct drm_amdgpu_bo_list_entry *bo_list = NULL;
-   unsigned num_bo_handles = 0;
-
 #if DEBUG
    /* Prepare the buffer list. */
    if (ws->debug_all_bos) {
@@ -1407,31 +1423,19 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
       bo_list = alloca(ws->num_buffers * sizeof(struct drm_amdgpu_bo_list_entry));
       struct amdgpu_bo_real *bo;
 
+      num_real_buffers = 0;
+
       LIST_FOR_EACH_ENTRY(bo, &ws->global_bo_list, global_list_item) {
-         bo_list[num_bo_handles].bo_handle = bo->kms_handle;
-         bo_list[num_bo_handles].bo_priority = 0;
-         ++num_bo_handles;
+         bo_list[num_real_buffers].bo_handle = bo->kms_handle;
+         bo_list[num_real_buffers].bo_priority = 0;
+         ++num_real_buffers;
       }
       simple_mtx_unlock(&ws->global_bo_list_lock);
-   } else
-#endif
-   {
-      struct amdgpu_cs_buffer *real_buffers = cs->buffer_lists[AMDGPU_BO_REAL].buffers;
-      unsigned num_real_buffers = cs->buffer_lists[AMDGPU_BO_REAL].num_buffers;
-      bo_list = alloca((num_real_buffers + 2) * sizeof(struct drm_amdgpu_bo_list_entry));
-
-      for (unsigned i = 0; i < num_real_buffers; ++i) {
-         struct amdgpu_cs_buffer *buffer = &real_buffers[i];
-
-         bo_list[num_bo_handles].bo_handle = get_real_bo(buffer->bo)->kms_handle;
-         bo_list[num_bo_handles].bo_priority =
-            (util_last_bit(buffer->usage & RADEON_ALL_PRIORITIES) - 1) / 2;
-         ++num_bo_handles;
-      }
    }
+#endif
 
    if (acs->ip_type == AMD_IP_GFX)
-      ws->gfx_bo_list_counter += cs->buffer_lists[AMDGPU_BO_REAL].num_buffers;
+      ws->gfx_bo_list_counter += num_real_buffers;
 
    struct drm_amdgpu_cs_chunk chunks[8];
    unsigned num_chunks = 0;
@@ -1440,7 +1444,7 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
    struct drm_amdgpu_bo_list_in bo_list_in;
    bo_list_in.operation = ~0;
    bo_list_in.list_handle = ~0;
-   bo_list_in.bo_number = num_bo_handles;
+   bo_list_in.bo_number = num_real_buffers;
    bo_list_in.bo_info_size = sizeof(struct drm_amdgpu_bo_list_entry);
    bo_list_in.bo_info_ptr = (uint64_t)(uintptr_t)bo_list;
 

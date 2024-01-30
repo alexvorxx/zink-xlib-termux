@@ -636,7 +636,7 @@ impl MemBase {
     ) -> CLResult<(PipeTransfer, Option<PipeResource>)> {
         let mut offset = 0;
         let b = self.to_parent(&mut offset);
-        let r = b.get_res()?.get(dev).unwrap();
+        let r = b.get_res_of_dev(dev)?;
         let size = self.size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
         let ctx = dev.helper_ctx();
 
@@ -675,7 +675,7 @@ impl MemBase {
     ) -> CLResult<(PipeTransfer, Option<PipeResource>)> {
         assert!(!self.is_buffer());
 
-        let r = self.get_res()?.get(dev).unwrap();
+        let r = self.get_res_of_dev(dev)?;
         let ctx = dev.helper_ctx();
 
         let tx = if can_map_directly(dev, r) {
@@ -719,12 +719,12 @@ impl MemBase {
             && bit_check(mem.flags, CL_MEM_USE_HOST_PTR)
     }
 
-    fn get_res(&self) -> CLResult<&HashMap<&'static Device, Arc<PipeResource>>> {
-        self.get_parent().res.as_ref().ok_or(CL_OUT_OF_HOST_MEMORY)
-    }
-
     pub fn get_res_of_dev(&self, dev: &Device) -> CLResult<&Arc<PipeResource>> {
-        Ok(self.get_res()?.get(dev).unwrap())
+        self.get_parent()
+            .res
+            .as_ref()
+            .and_then(|resources| resources.get(dev))
+            .ok_or(CL_OUT_OF_HOST_MEMORY)
     }
 
     fn get_parent(&self) -> &Self {

@@ -699,20 +699,6 @@ impl MemBase {
         Ok(self.tx_raw(q, ctx, offset, size, rw)?.with_ctx(ctx))
     }
 
-    fn tx_image_raw(
-        &self,
-        q: &Queue,
-        ctx: &PipeContext,
-        bx: &pipe_box,
-        rw: RWFlags,
-    ) -> CLResult<PipeTransfer> {
-        assert!(!self.is_buffer());
-
-        let r = self.get_res()?.get(&q.device).unwrap();
-        ctx.texture_map(r, bx, rw, ResourceMapType::Normal)
-            .ok_or(CL_OUT_OF_RESOURCES)
-    }
-
     fn tx_image_raw_async(
         &self,
         dev: &Device,
@@ -751,16 +737,6 @@ impl MemBase {
                 .ok_or(CL_OUT_OF_RESOURCES)?;
             Ok((tx, Some(shadow)))
         }
-    }
-
-    fn tx_image<'a>(
-        &self,
-        q: &Queue,
-        ctx: &'a PipeContext,
-        bx: &pipe_box,
-        rw: RWFlags,
-    ) -> CLResult<GuardedPipeTransfer<'a>> {
-        Ok(self.tx_image_raw(q, ctx, bx, rw)?.with_ctx(ctx))
     }
 
     pub fn has_same_parent(&self, other: &Self) -> bool {
@@ -1528,6 +1504,20 @@ impl Image {
             }
             Ok(())
         }
+    }
+
+    fn tx_image<'a>(
+        &self,
+        q: &Queue,
+        ctx: &'a PipeContext,
+        bx: &pipe_box,
+        rw: RWFlags,
+    ) -> CLResult<GuardedPipeTransfer<'a>> {
+        let r = self.get_res_of_dev(q.device)?;
+        Ok(ctx
+            .texture_map(r, bx, rw, ResourceMapType::Normal)
+            .ok_or(CL_OUT_OF_RESOURCES)?
+            .with_ctx(ctx))
     }
 
     // TODO: only sync on unmap when the memory is not mapped for writing

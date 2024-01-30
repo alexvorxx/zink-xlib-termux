@@ -38,7 +38,7 @@
 #include "vk_util.h"
 #include "vulkan/wsi/wsi_common.h"
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
 #include "vk_android.h"
 #include <vulkan/vulkan_android.h>
 #endif
@@ -100,7 +100,7 @@ vk_image_init(struct vk_device *device,
    image->drm_format_mod = ((1ULL << 56) - 1) /* DRM_FORMAT_MOD_INVALID */;
 #endif
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    const VkExternalFormatANDROID *ext_format =
       vk_find_struct_const(pCreateInfo->pNext, EXTERNAL_FORMAT_ANDROID);
    if (ext_format && ext_format->externalFormat != 0) {

@@ -36,6 +36,7 @@
 #include "main/glthread.h"
 #include "main/glthread_marshal.h"
 #include "main/hash.h"
+#include "main/pixelstore.h"
 #include "util/u_atomic.h"
 #include "util/u_thread.h"
 #include "util/u_cpu_detect.h"
@@ -234,6 +235,7 @@ _mesa_glthread_init(struct gl_context *ctx)
    }
 
    _mesa_glthread_init_dispatch(ctx, ctx->MarshalExec);
+   _mesa_init_pixelstore_attrib(ctx, &glthread->Unpack);
 
    for (unsigned i = 0; i < MARSHAL_MAX_BATCHES; i++) {
       glthread->batches[i].ctx = ctx;
@@ -468,4 +470,57 @@ _mesa_glthread_invalidate_zsbuf(struct gl_context *ctx)
       return false;
    _mesa_marshal_InternalInvalidateFramebufferAncillaryMESA();
    return true;
+}
+
+void
+_mesa_glthread_PixelStorei(struct gl_context *ctx, GLenum pname, GLint param)
+{
+   switch (pname) {
+   case GL_UNPACK_SWAP_BYTES:
+      ctx->GLThread.Unpack.SwapBytes = !!param;
+      break;
+   case GL_UNPACK_LSB_FIRST:
+      ctx->GLThread.Unpack.LsbFirst = !!param;
+      break;
+   case GL_UNPACK_ROW_LENGTH:
+      if (param >= 0)
+         ctx->GLThread.Unpack.RowLength = param;
+      break;
+   case GL_UNPACK_IMAGE_HEIGHT:
+      if (param >= 0)
+         ctx->GLThread.Unpack.ImageHeight = param;
+      break;
+   case GL_UNPACK_SKIP_PIXELS:
+      if (param >= 0)
+         ctx->GLThread.Unpack.SkipPixels = param;
+      break;
+   case GL_UNPACK_SKIP_ROWS:
+      if (param >= 0)
+         ctx->GLThread.Unpack.SkipRows = param;
+      break;
+   case GL_UNPACK_SKIP_IMAGES:
+      if (param >= 0)
+         ctx->GLThread.Unpack.SkipImages = param;
+      break;
+   case GL_UNPACK_ALIGNMENT:
+      if (param >= 1 && param <= 8 && util_is_power_of_two_nonzero(param))
+         ctx->GLThread.Unpack.Alignment = param;
+      break;
+   case GL_UNPACK_COMPRESSED_BLOCK_WIDTH:
+      if (param >= 0)
+         ctx->GLThread.Unpack.CompressedBlockWidth = param;
+      break;
+   case GL_UNPACK_COMPRESSED_BLOCK_HEIGHT:
+      if (param >= 0)
+         ctx->GLThread.Unpack.CompressedBlockHeight = param;
+      break;
+   case GL_UNPACK_COMPRESSED_BLOCK_DEPTH:
+      if (param >= 0)
+         ctx->GLThread.Unpack.CompressedBlockDepth = param;
+      break;
+   case GL_UNPACK_COMPRESSED_BLOCK_SIZE:
+      if (param >= 0)
+         ctx->GLThread.Unpack.CompressedBlockSize = param;
+      break;
+   }
 }

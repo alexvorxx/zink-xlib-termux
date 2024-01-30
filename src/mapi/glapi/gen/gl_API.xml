@@ -2619,13 +2619,15 @@
         <glx rop="167"/>
     </function>
 
-    <function name="PixelStoref" no_error="true">
+    <function name="PixelStoref" no_error="true"
+              marshal_call_after="_mesa_glthread_PixelStorei(ctx, pname, lroundf(param));">
         <param name="pname" type="GLenum"/>
         <param name="param" type="GLfloat"/>
         <glx sop="109" handcode="client"/>
     </function>
 
-    <function name="PixelStorei" es1="1.0" es2="2.0" no_error="true">
+    <function name="PixelStorei" es1="1.0" es2="2.0" no_error="true"
+              marshal_call_after="_mesa_glthread_PixelStorei(ctx, pname, param);">
         <param name="pname" type="GLenum"/>
         <param name="param" type="GLint"/>
         <glx sop="110" handcode="client"/>

@@ -301,6 +301,8 @@ struct glthread_state
    /** Global mutex update info. */
    unsigned GlobalLockUpdateBatchCounter;
    bool LockGlobalMutexes;
+
+   struct gl_pixelstore_attrib Unpack;
 };
 
 void _mesa_glthread_init(struct gl_context *ctx);
@@ -400,6 +402,8 @@ void _mesa_glthread_UnrollDrawElements(struct gl_context *ctx,
                                        GLenum mode, GLsizei count, GLenum type,
                                        const GLvoid *indices, GLint basevertex);
 void _mesa_glthread_unbind_uploaded_vbos(struct gl_context *ctx);
+void _mesa_glthread_PixelStorei(struct gl_context *ctx, GLenum pname,
+                                GLint param);
 
 #ifdef __cplusplus
 }

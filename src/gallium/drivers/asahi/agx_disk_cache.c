@@ -124,6 +124,7 @@ agx_disk_cache_retrieve(struct agx_screen *screen,
 
    struct agx_compiled_shader *binary = CALLOC_STRUCT(agx_compiled_shader);
    binary->stage = uncompiled->type;
+   binary->so = uncompiled;
 
    struct blob_reader blob;
    blob_reader_init(&blob, buffer, size);

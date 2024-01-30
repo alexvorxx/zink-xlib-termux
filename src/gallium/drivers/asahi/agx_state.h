@@ -196,6 +196,9 @@ struct agx_push_range {
 };
 
 struct agx_compiled_shader {
+   /* Uncompiled shader that we belong to */
+   const struct agx_uncompiled_shader *so;
+
    /* Mapped executable memory */
    struct agx_bo *bo;
 

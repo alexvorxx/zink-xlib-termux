@@ -219,11 +219,10 @@ nvk_GetPhysicalDeviceImageFormatProperties2(
    }
    if (features == 0)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
-   
-   if (pImageFormatInfo->tiling == VK_IMAGE_TILING_LINEAR && 
+
+   if (pImageFormatInfo->tiling == VK_IMAGE_TILING_LINEAR &&
        pImageFormatInfo->type != VK_IMAGE_TYPE_2D)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
-   
 
    if (vk_format_is_compressed(pImageFormatInfo->format) &&
        pImageFormatInfo->type != VK_IMAGE_TYPE_2D)

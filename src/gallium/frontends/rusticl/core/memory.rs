@@ -994,61 +994,6 @@ impl MemBase {
         Ok(())
     }
 
-    pub fn read_to_user_rect(
-        &self,
-        dst: *mut c_void,
-        q: &Queue,
-        ctx: &PipeContext,
-        region: &CLVec<usize>,
-        src_origin: &CLVec<usize>,
-        mut src_row_pitch: usize,
-        mut src_slice_pitch: usize,
-        dst_origin: &CLVec<usize>,
-        dst_row_pitch: usize,
-        dst_slice_pitch: usize,
-    ) -> CLResult<()> {
-        let tx;
-        let pixel_size;
-
-        if self.is_buffer() || self.is_image_from_buffer() {
-            pixel_size = self.pixel_size().unwrap();
-            let (offset, size) = CLVec::calc_offset_size(
-                src_origin,
-                region,
-                [
-                    pixel_size.try_into().unwrap(),
-                    src_row_pitch,
-                    src_slice_pitch,
-                ],
-            );
-            tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
-        } else {
-            assert!(dst_origin == &CLVec::default());
-
-            let bx = create_pipe_box(*src_origin, *region, self.mem_type)?;
-            tx = self.tx_image(q, ctx, &bx, RWFlags::RD)?;
-            src_row_pitch = tx.row_pitch() as usize;
-            src_slice_pitch = tx.slice_pitch();
-
-            pixel_size = self.pixel_size().unwrap();
-        };
-
-        sw_copy(
-            tx.ptr(),
-            dst,
-            region,
-            &CLVec::default(),
-            src_row_pitch,
-            src_slice_pitch,
-            dst_origin,
-            dst_row_pitch,
-            dst_slice_pitch,
-            pixel_size,
-        );
-
-        Ok(())
-    }
-
     pub fn copy_to_rect(
         &self,
         dst: &Self,
@@ -1218,6 +1163,39 @@ impl Buffer {
         unsafe {
             ptr::copy_nonoverlapping(tx.ptr(), ptr, size);
         }
+
+        Ok(())
+    }
+
+    pub fn read_rect(
+        &self,
+        dst: *mut c_void,
+        q: &Queue,
+        ctx: &PipeContext,
+        region: &CLVec<usize>,
+        src_origin: &CLVec<usize>,
+        src_row_pitch: usize,
+        src_slice_pitch: usize,
+        dst_origin: &CLVec<usize>,
+        dst_row_pitch: usize,
+        dst_slice_pitch: usize,
+    ) -> CLResult<()> {
+        let (offset, size) =
+            CLVec::calc_offset_size(src_origin, region, [1, src_row_pitch, src_slice_pitch]);
+        let tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
+
+        sw_copy(
+            tx.ptr(),
+            dst,
+            region,
+            &CLVec::default(),
+            src_row_pitch,
+            src_slice_pitch,
+            dst_origin,
+            dst_row_pitch,
+            dst_slice_pitch,
+            1,
+        );
 
         Ok(())
     }
@@ -1394,6 +1372,55 @@ impl Image {
         Ok(ptr)
     }
 
+    pub fn read(
+        &self,
+        dst: *mut c_void,
+        q: &Queue,
+        ctx: &PipeContext,
+        region: &CLVec<usize>,
+        src_origin: &CLVec<usize>,
+        dst_row_pitch: usize,
+        dst_slice_pitch: usize,
+    ) -> CLResult<()> {
+        let pixel_size = self.image_format.pixel_size().unwrap();
+
+        let tx;
+        let src_row_pitch;
+        let src_slice_pitch;
+        if self.is_parent_buffer() {
+            src_row_pitch = self.image_desc.image_row_pitch;
+            src_slice_pitch = self.image_desc.image_slice_pitch;
+
+            let (offset, size) = CLVec::calc_offset_size(
+                src_origin,
+                region,
+                [pixel_size.into(), src_row_pitch, src_slice_pitch],
+            );
+
+            tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
+        } else {
+            let bx = create_pipe_box(*src_origin, *region, self.mem_type)?;
+            tx = self.tx_image(q, ctx, &bx, RWFlags::RD)?;
+            src_row_pitch = tx.row_pitch() as usize;
+            src_slice_pitch = tx.slice_pitch();
+        };
+
+        sw_copy(
+            tx.ptr(),
+            dst,
+            region,
+            &CLVec::default(),
+            src_row_pitch,
+            src_slice_pitch,
+            &CLVec::default(),
+            dst_row_pitch,
+            dst_slice_pitch,
+            pixel_size,
+        );
+
+        Ok(())
+    }
+
     // TODO: only sync on map when the memory is not mapped with discard
     pub fn sync_shadow(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
         let mut lock = self.maps.lock().unwrap();
@@ -1402,14 +1429,11 @@ impl Image {
         }
 
         if self.has_user_shadow_buffer(q.device)? {
-            self.read_to_user_rect(
+            self.read(
                 self.host_ptr,
                 q,
                 ctx,
                 &self.image_desc.size(),
-                &CLVec::default(),
-                0,
-                0,
                 &CLVec::default(),
                 self.image_desc.image_row_pitch,
                 self.image_desc.image_slice_pitch,

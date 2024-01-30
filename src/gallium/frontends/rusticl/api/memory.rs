@@ -1293,7 +1293,7 @@ fn enqueue_read_buffer_rect(
         event,
         block,
         Box::new(move |q, ctx| {
-            buf.read_to_user_rect(
+            buf.read_rect(
                 ptr,
                 q,
                 ctx,
@@ -1751,20 +1751,7 @@ fn enqueue_read_image(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| {
-            i.read_to_user_rect(
-                ptr,
-                q,
-                ctx,
-                &r,
-                &o,
-                i.image_desc.image_row_pitch,
-                i.image_desc.image_slice_pitch,
-                &CLVec::default(),
-                row_pitch,
-                slice_pitch,
-            )
-        }),
+        Box::new(move |q, ctx| i.read(ptr, q, ctx, &r, &o, row_pitch, slice_pitch)),
     )
 
     //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for image are not supported by device associated with queue.

@@ -396,11 +396,11 @@ debug_get_option_ ## suffix (void) \
 static inline bool
 __normal_user(void)
 {
-#if !defined(_WIN32)
-   if (geteuid() != getuid())
-      return false;
-#endif
+#if defined(_WIN32)
    return true;
+#else
+   return geteuid() == getuid();
+#endif
 }
 
 #define DEBUG_GET_ONCE_BOOL_OPTION(sufix, name, dfault) \

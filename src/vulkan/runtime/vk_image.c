@@ -72,6 +72,7 @@ vk_image_init(struct vk_device *device,
    image->samples = pCreateInfo->samples;
    image->tiling = pCreateInfo->tiling;
    image->usage = pCreateInfo->usage;
+   image->sharing_mode = pCreateInfo->sharingMode;
 
    if (image->aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
       const VkImageStencilUsageCreateInfo *stencil_usage_info =

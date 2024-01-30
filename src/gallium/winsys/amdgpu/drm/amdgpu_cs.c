@@ -587,7 +587,7 @@ amdgpu_do_add_buffer(struct amdgpu_cs_context *cs, struct amdgpu_winsys_bo *bo,
                      struct amdgpu_buffer_list *list)
 {
    /* New buffer, check if the backing array is large enough. */
-   if (list->num_buffers >= list->max_buffers) {
+   if (unlikely(list->num_buffers >= list->max_buffers)) {
       unsigned new_max =
          MAX2(list->max_buffers + 16, (unsigned)(list->max_buffers * 1.3));
       struct amdgpu_cs_buffer *new_buffers;
@@ -603,12 +603,10 @@ amdgpu_do_add_buffer(struct amdgpu_cs_context *cs, struct amdgpu_winsys_bo *bo,
       list->buffers = new_buffers;
    }
 
-   int idx = list->num_buffers;
+   unsigned idx = list->num_buffers++;
    struct amdgpu_cs_buffer *buffer = &list->buffers[idx];
-
-   memset(buffer, 0, sizeof(*buffer));
    amdgpu_winsys_bo_set_reference(&buffer->bo, bo);
-   list->num_buffers++;
+   buffer->usage = 0;
 
    unsigned hash = bo->unique_id & (BUFFER_HASHLIST_SIZE-1);
    cs->buffer_indices_hashlist[hash] = idx & 0x7fff;

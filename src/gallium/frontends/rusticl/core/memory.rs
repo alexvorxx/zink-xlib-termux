@@ -629,27 +629,6 @@ impl MemBase {
         self.mem_type == CL_MEM_OBJECT_BUFFER
     }
 
-    fn tx_raw(
-        &self,
-        q: &Queue,
-        ctx: &PipeContext,
-        mut offset: usize,
-        size: usize,
-        rw: RWFlags,
-    ) -> CLResult<PipeTransfer> {
-        let b = self.to_parent(&mut offset);
-        let r = b.get_res()?.get(&q.device).unwrap();
-
-        ctx.buffer_map(
-            r,
-            offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-            size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-            rw,
-            ResourceMapType::Normal,
-        )
-        .ok_or(CL_OUT_OF_RESOURCES)
-    }
-
     fn tx_raw_async(
         &self,
         dev: &Device,
@@ -692,11 +671,23 @@ impl MemBase {
         &self,
         q: &Queue,
         ctx: &'a PipeContext,
-        offset: usize,
+        mut offset: usize,
         size: usize,
         rw: RWFlags,
     ) -> CLResult<GuardedPipeTransfer<'a>> {
-        Ok(self.tx_raw(q, ctx, offset, size, rw)?.with_ctx(ctx))
+        let b = self.to_parent(&mut offset);
+        let r = b.get_res_of_dev(q.device)?;
+
+        Ok(ctx
+            .buffer_map(
+                r,
+                offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+                size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+                rw,
+                ResourceMapType::Normal,
+            )
+            .ok_or(CL_OUT_OF_RESOURCES)?
+            .with_ctx(ctx))
     }
 
     fn tx_image_raw_async(

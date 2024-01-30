@@ -86,6 +86,9 @@ struct radv_shader_args {
     */
    struct ac_arg tes_state;
 
+   /* GS */
+   struct ac_arg vgt_esgs_ring_itemsize;
+
    /* NGG VS streamout */
    struct ac_arg num_verts_per_prim;
 

@@ -707,8 +707,10 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
             declare_ngg_sgprs(info, args, has_ngg_provoking_vtx);
          }
 
-         if (info->merged_shader_compiled_separately)
+         if (info->merged_shader_compiled_separately) {
+            add_ud_arg(args, 1, AC_ARG_INT, &args->vgt_esgs_ring_itemsize, AC_UD_VGT_ESGS_RING_ITEMSIZE);
             add_ud_arg(args, 1, AC_ARG_INT, &args->next_stage_pc, AC_UD_NEXT_STAGE_PC);
+         }
 
          if (previous_stage != MESA_SHADER_MESH || !device->mesh_fast_launch_2) {
             ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[0]);
@@ -749,6 +751,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
             ac_add_preserved(&args->ac, &args->shader_query_state);
             if (info->is_ngg)
                ac_add_preserved(&args->ac, &args->ngg_provoking_vtx);
+            ac_add_preserved(&args->ac, &args->vgt_esgs_ring_itemsize);
 
             /* VGPRs */
             ac_add_preserved(&args->ac, &args->ac.gs_vtx_offset[0]);

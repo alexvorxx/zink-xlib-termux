@@ -3280,6 +3280,49 @@ emit_load_local_invocation_index(struct v3d_compile *c)
                        vir_uniform_ui(c, 32 - c->local_invocation_index_bits));
 }
 
+/* For the purposes of reduction operations (ballot, alleq, allfeq, bcastf) in
+ * fragment shaders a lane is considered active if any sample flags are set
+ * for *any* lane in the same quad. This is not what we want. To fix this we
+ * can emit MSF to get the active lanes and produce a condition that we
+ * can then use with these operations to limit execution only to lanes that
+ * are really active in each quad. Further, we also need to disable lanes
+ * that may be disabled because of non-uniform control flow.
+ */
+static enum v3d_qpu_cond
+setup_subgroup_reduction_condition(struct v3d_compile *c)
+{
+        assert(c->s->info.stage == MESA_SHADER_FRAGMENT ||
+               c->s->info.stage == MESA_SHADER_COMPUTE);
+
+        enum v3d_qpu_cond cond = V3D_QPU_COND_NONE;
+
+        /* Produce condition for 'lane is active' from current sample flags.
+         * Only required for fragment shaders.
+         */
+        if (c->s->info.stage == MESA_SHADER_FRAGMENT) {
+                vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), vir_MSF(c)),
+                           V3D_QPU_PF_PUSHZ);
+                cond = V3D_QPU_COND_IFNA;
+        }
+
+        /* If we are in non-uniform control-flow update the condition to
+         * also limit lanes to those in the current execution mask.
+         */
+        if (vir_in_nonuniform_control_flow(c)) {
+                if (cond == V3D_QPU_COND_IFNA) {
+                        vir_set_uf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
+                                   V3D_QPU_UF_NORNZ);
+                } else {
+                        assert(cond == V3D_QPU_COND_NONE);
+                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
+                                   V3D_QPU_PF_PUSHZ);
+                }
+                cond = V3D_QPU_COND_IFA;
+        }
+
+        return cond;
+}
+
 static void
 emit_compute_barrier(struct v3d_compile *c)
 {
@@ -3840,21 +3883,9 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
         case nir_intrinsic_ballot: {
                 assert(c->devinfo->ver >= 71);
                 struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                enum v3d_qpu_cond cond = setup_subgroup_reduction_condition(c);
                 struct qreg res = vir_get_temp(c);
-                if (vir_in_nonuniform_control_flow(c)) {
-                        /* Ballot uses the MSF mask and the condition mask to
-                         * identify active lanes. Particularly, it uses the
-                         * condition mask to filter out lanes disabled by
-                         * control flow.
-                         */
-                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
-                                   V3D_QPU_PF_PUSHZ);
-                        vir_set_cond(vir_BALLOT_dest(c, res, value),
-                                     V3D_QPU_COND_IFA);
-                } else {
-                        vir_BALLOT_dest(c, res, value);
-                }
-
+                vir_set_cond(vir_BALLOT_dest(c, res, value), cond);
                 ntq_store_def(c, &instr->def, 0, vir_MOV(c, res));
                 break;
         }
@@ -3871,21 +3902,9 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
         case nir_intrinsic_read_first_invocation: {
                 assert(c->devinfo->ver >= 71);
                 struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                enum v3d_qpu_cond cond = setup_subgroup_reduction_condition(c);
                 struct qreg res = vir_get_temp(c);
-                if (vir_in_nonuniform_control_flow(c)) {
-                        /* Bcastf uses the MSF mask and the condition mask to
-                         * identify active lanes. Particularly, it uses the
-                         * condition mask to filter out lanes disabled by
-                         * control flow.
-                         */
-                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
-                                   V3D_QPU_PF_PUSHZ);
-                        vir_set_cond(vir_BCASTF_dest(c, res, value),
-                                     V3D_QPU_COND_IFA);
-                } else {
-                        vir_BCASTF_dest(c, res, value);
-                }
-
+                vir_set_cond(vir_BCASTF_dest(c, res, value), cond);
                 ntq_store_def(c, &instr->def, 0, vir_MOV(c, res));
                 break;
         }
@@ -3903,25 +3922,12 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
         case nir_intrinsic_vote_ieq: {
                 assert(c->devinfo->ver >= 71);
                 struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                enum v3d_qpu_cond cond = setup_subgroup_reduction_condition(c);
                 struct qreg res = vir_get_temp(c);
-                if (vir_in_nonuniform_control_flow(c)) {
-                        /* Alleq uses the MSF mask and the condition mask to
-                         * identify active lanes. Particularly, it uses the
-                         * condition mask to filter out lanes disabled by
-                         * control flow.
-                         */
-                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
-                                   V3D_QPU_PF_PUSHZ);
-                        vir_set_cond(instr->intrinsic == nir_intrinsic_vote_ieq ?
-                                     vir_ALLEQ_dest(c, res, value) :
-                                     vir_ALLFEQ_dest(c, res, value),
-                                     V3D_QPU_COND_IFA);
-                } else {
-                        if (instr->intrinsic == nir_intrinsic_vote_ieq)
-                                vir_ALLEQ_dest(c, res, value);
-                        else
-                                vir_ALLFEQ_dest(c, res, value);
-                }
+                vir_set_cond(instr->intrinsic == nir_intrinsic_vote_ieq ?
+                             vir_ALLEQ_dest(c, res, value) :
+                             vir_ALLFEQ_dest(c, res, value),
+                             cond);
 
                 /* Produce boolean result */
                 vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), res),
@@ -3934,20 +3940,9 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
         case nir_intrinsic_vote_all: {
                 assert(c->devinfo->ver >= 71);
                 struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                enum v3d_qpu_cond cond = setup_subgroup_reduction_condition(c);
                 struct qreg res = vir_get_temp(c);
-                if (vir_in_nonuniform_control_flow(c)) {
-                        /* Alleq uses the MSF mask and the condition mask to
-                         * identify active lanes. Particularly, it uses the
-                         * condition mask to filter out lanes disabled by
-                         * control flow.
-                         */
-                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
-                                   V3D_QPU_PF_PUSHZ);
-                        vir_set_cond(vir_ALLEQ_dest(c, res, value),
-                                     V3D_QPU_COND_IFA);
-                } else {
-                        vir_ALLEQ_dest(c, res, value);
-                }
+                vir_set_cond(vir_ALLEQ_dest(c, res, value), cond);
 
                 /* We want to check if 'all lanes are equal (alleq != 0) and
                  * their value is True (value != 0)'.
@@ -3969,20 +3964,9 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
         case nir_intrinsic_vote_any: {
                 assert(c->devinfo->ver >= 71);
                 struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                enum v3d_qpu_cond cond = setup_subgroup_reduction_condition(c);
                 struct qreg res = vir_get_temp(c);
-                if (vir_in_nonuniform_control_flow(c)) {
-                        /* Alleq uses the MSF mask and the condition mask to
-                         * identify active lanes. Particularly, it uses the
-                         * condition mask to filter out lanes disabled by
-                         * control flow.
-                         */
-                        vir_set_pf(c, vir_MOV_dest(c, vir_nop_reg(), c->execute),
-                                   V3D_QPU_PF_PUSHZ);
-                        vir_set_cond(vir_ALLEQ_dest(c, res, value),
-                                     V3D_QPU_COND_IFA);
-                } else {
-                        vir_ALLEQ_dest(c, res, value);
-                }
+                vir_set_cond(vir_ALLEQ_dest(c, res, value), cond);
 
                 /* We want to check 'not (all lanes are equal (alleq != 0)'
                  * and their value is False (value == 0))'.

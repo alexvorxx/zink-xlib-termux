@@ -2297,7 +2297,7 @@ void si_vs_key_update_inputs(struct si_context *sctx)
          unsigned i = u_bit_scan(&mask);
          unsigned log_hw_load_size = 1 + ((elts->hw_load_is_dword >> i) & 1);
          unsigned vbidx = elts->vertex_buffer_index[i];
-         struct pipe_vertex_buffer *vb = &sctx->vertex_buffer[vbidx];
+         const struct pipe_vertex_buffer *vb = &sctx->vertex_buffer[vbidx];
          unsigned align_mask = (1 << log_hw_load_size) - 1;
          if (vb->buffer_offset & align_mask) {
             fix |= 1 << i;

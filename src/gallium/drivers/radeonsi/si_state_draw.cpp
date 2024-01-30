@@ -1696,7 +1696,7 @@ static void si_emit_draw_packets(struct si_context *sctx, const struct pipe_draw
 /* Return false if not bound. */
 template<amd_gfx_level GFX_VERSION>
 static void ALWAYS_INLINE si_set_vb_descriptor(struct si_vertex_elements *velems,
-                                               struct pipe_vertex_buffer *vb,
+                                               const struct pipe_vertex_buffer *vb,
                                                unsigned index, /* vertex element index */
                                                uint32_t *desc) /* where to upload descriptors */
 {
@@ -1727,7 +1727,7 @@ static void ALWAYS_INLINE si_set_vb_descriptor(struct si_vertex_elements *velems
 #if GFX_VER == 6 /* declare this function only once because it supports all chips. */
 
 void si_set_vertex_buffer_descriptor(struct si_screen *sscreen, struct si_vertex_elements *velems,
-                                     struct pipe_vertex_buffer *vb, unsigned element_index,
+                                     const struct pipe_vertex_buffer *vb, unsigned element_index,
                                      uint32_t *out)
 {
    switch (sscreen->info.gfx_level) {
@@ -1891,7 +1891,7 @@ static bool si_upload_and_prefetch_VB_descriptors(struct si_context *sctx,
             /* the first iteration always executes */
             do {
                unsigned vbo_index = velems->vertex_buffer_index[i];
-               struct pipe_vertex_buffer *vb = &sctx->vertex_buffer[vbo_index];
+               const struct pipe_vertex_buffer *vb = &sctx->vertex_buffer[vbo_index];
                uint32_t *desc;
 
                radeon_emit_array_get_ptr(4, &desc);
@@ -1906,7 +1906,7 @@ static bool si_upload_and_prefetch_VB_descriptors(struct si_context *sctx,
             /* the first iteration always executes */
             do {
                unsigned vbo_index = velems->vertex_buffer_index[i];
-               struct pipe_vertex_buffer *vb = &sctx->vertex_buffer[vbo_index];
+               const struct pipe_vertex_buffer *vb = &sctx->vertex_buffer[vbo_index];
                uint32_t *desc = &ptr[(i - num_vbos_in_user_sgprs) * 4];
 
                si_set_vb_descriptor<GFX_VERSION>(velems, vb, i, desc);

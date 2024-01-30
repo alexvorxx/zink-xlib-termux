@@ -53,7 +53,7 @@
 #include "util/u_debug.h"
 #include "util/format/u_format.h"
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
 #include "vk_android.h"
 #endif
 
@@ -213,7 +213,7 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .EXT_texel_buffer_alignment           = true,
       .EXT_tooling_info                     = true,
       .EXT_vertex_attribute_divisor         = true,
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       .ANDROID_external_memory_android_hardware_buffer = true,
       .ANDROID_native_buffer                = true,
       .EXT_queue_family_foreign             = true,
@@ -1443,7 +1443,7 @@ v3dv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          props->allowCommandBufferQueryCopies = true;
          break;
       }
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_ANDROID: {
@@ -1757,7 +1757,7 @@ v3dv_CreateDevice(VkPhysicalDevice physicalDevice,
       return vk_error(NULL, result);
    }
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    device->gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
    assert(device->gralloc);
 #endif
@@ -1828,7 +1828,7 @@ fail:
    v3dv_event_free_resources(device);
    v3dv_query_free_resources(device);
    vk_device_finish(&device->vk);
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    u_gralloc_destroy(&device->gralloc);
 #endif
    vk_free(&device->vk.alloc, device);
@@ -1869,7 +1869,7 @@ v3dv_DestroyDevice(VkDevice _device,
    mtx_destroy(&device->query_mutex);
 
    vk_device_finish(&device->vk);
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    u_gralloc_destroy(&device->gralloc);
 #endif
    vk_free2(&device->vk.alloc, pAllocator, device);
@@ -2175,7 +2175,7 @@ v3dv_AllocateMemory(VkDevice _device,
       if (result == VK_SUCCESS)
          close(fd_info->fd);
    } else if (mem->vk.ahardware_buffer) {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       const native_handle_t *handle = AHardwareBuffer_getNativeHandle(mem->vk.ahardware_buffer);
       assert(handle->numFds > 0);
       size_t size = lseek(handle->data[0], 0, SEEK_END);
@@ -2433,7 +2433,7 @@ v3dv_BindImageMemory2(VkDevice _device,
                       const VkBindImageMemoryInfo *pBindInfos)
 {
    for (uint32_t i = 0; i < bindInfoCount; i++) {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       V3DV_FROM_HANDLE(v3dv_device_memory, mem, pBindInfos[i].memory);
       V3DV_FROM_HANDLE(v3dv_device, device, _device);
       if (mem != NULL && mem->vk.ahardware_buffer) {
@@ -2470,7 +2470,7 @@ v3dv_BindImageMemory2(VkDevice _device,
          vk_find_struct_const(pBindInfos->pNext,
                               BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR);
       if (swapchain_info && swapchain_info->swapchain) {
-#ifndef ANDROID
+#if !DETECT_OS_ANDROID
          struct v3dv_image *swapchain_image =
             v3dv_wsi_get_image_from_swapchain(swapchain_info->swapchain,
                                               swapchain_info->imageIndex);

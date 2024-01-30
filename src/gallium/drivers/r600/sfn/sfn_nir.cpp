@@ -762,6 +762,7 @@ r600_lower_and_optimize_nir(nir_shader *sh,
       ((sh->info.bit_sizes_float | sh->info.bit_sizes_int) & 64);
 
    r600::sort_uniforms(sh);
+   NIR_PASS_V(sh, r600_nir_fix_kcache_indirect_access);
 
    while (optimize_once(sh))
       ;

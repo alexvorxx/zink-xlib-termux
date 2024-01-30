@@ -93,6 +93,7 @@
 #include <string.h>
 #include "c11/threads.h"
 #include "mapi/glapi/glapi.h"
+#include "util/detect_os.h"
 #include "util/macros.h"
 #include "util/perf/cpu_trace.h"
 #include "util/u_debug.h"
@@ -652,7 +653,7 @@ _eglComputeVersion(_EGLDisplay *disp)
       disp->Version = 15;
 
       /* For Android P and below limit the EGL version to 1.4 */
-#if defined(ANDROID) && ANDROID_API_LEVEL <= 28
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL <= 28
    disp->Version = 14;
 #endif
 }

@@ -3066,12 +3066,14 @@ agx_upload_samplers(struct agx_batch *batch, struct agx_compiled_shader *cs,
 }
 
 static void
-agx_update_descriptors(struct agx_batch *batch, struct agx_compiled_shader *cs,
-                       enum pipe_shader_type stage)
+agx_update_descriptors(struct agx_batch *batch, struct agx_compiled_shader *cs)
 {
    struct agx_context *ctx = batch->ctx;
+   if (!cs)
+      return;
 
-   if (!cs || !ctx->stage[stage].dirty)
+   enum pipe_shader_type stage = cs->stage;
+   if (!ctx->stage[stage].dirty)
       return;
 
    if (ctx->stage[stage].dirty & AGX_STAGE_DIRTY_CONST)
@@ -4713,8 +4715,8 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
    /* XXX */
    ctx->stage[PIPE_SHADER_TESS_CTRL].dirty = ~0;
    ctx->stage[PIPE_SHADER_TESS_EVAL].dirty = ~0;
-   agx_update_descriptors(batch, ctx->vs, PIPE_SHADER_VERTEX);
-   agx_update_descriptors(batch, ctx->tcs, PIPE_SHADER_TESS_CTRL);
+   agx_update_descriptors(batch, ctx->vs);
+   agx_update_descriptors(batch, ctx->tcs);
 
    struct pipe_grid_info tcs_grid = {
       .block = {MAX2(patch_vertices, tcs->tess.output_patch_size), 1, 1},
@@ -5021,9 +5023,9 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       ctx->dirty |= AGX_DIRTY_VS;
    }
 
-   agx_update_descriptors(batch, ctx->vs, ctx->vs->stage);
-   agx_update_descriptors(batch, ctx->gs, PIPE_SHADER_GEOMETRY);
-   agx_update_descriptors(batch, ctx->fs, PIPE_SHADER_FRAGMENT);
+   agx_update_descriptors(batch, ctx->vs);
+   agx_update_descriptors(batch, ctx->gs);
+   agx_update_descriptors(batch, ctx->fs);
 
    if (IS_DIRTY(VS) || IS_DIRTY(FS) || ctx->gs || IS_DIRTY(VERTEX) ||
        IS_DIRTY(BLEND_COLOR) || IS_DIRTY(QUERY) || IS_DIRTY(POLY_STIPPLE) ||
@@ -5235,7 +5237,7 @@ agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
 
    agx_batch_add_bo(batch, cs->bo);
 
-   agx_update_descriptors(batch, cs, PIPE_SHADER_COMPUTE);
+   agx_update_descriptors(batch, cs);
    agx_upload_uniforms(batch);
 
    // TODO: This is broken.

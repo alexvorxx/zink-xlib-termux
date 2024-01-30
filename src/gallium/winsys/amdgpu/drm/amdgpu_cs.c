@@ -1171,6 +1171,26 @@ static void amdgpu_cs_add_fence_dependency(struct radeon_cmdbuf *rcs,
       add_fence_to_list(&cs->syncobj_dependencies, fence);
 }
 
+static void amdgpu_add_fences_to_dependencies(struct amdgpu_winsys *ws, unsigned queue_index,
+                                              struct amdgpu_seq_no_fences *dependencies,
+                                              struct amdgpu_winsys_bo *bo, unsigned usage)
+{
+   if (usage & RADEON_USAGE_SYNCHRONIZED) {
+      /* Add BO fences from queues other than 'queue_index' to dependencies. */
+      u_foreach_bit(other_queue_idx, bo->fences.valid_fence_mask & ~BITFIELD_BIT(queue_index)) {
+         add_seq_no_to_list(ws, dependencies, other_queue_idx,
+                            bo->fences.seq_no[other_queue_idx]);
+      }
+   }
+}
+
+static void amdgpu_set_bo_seq_no(unsigned queue_index, struct amdgpu_winsys_bo *bo,
+                                 uint_seq_no new_queue_seq_no)
+{
+   bo->fences.seq_no[queue_index] = new_queue_seq_no;
+   bo->fences.valid_fence_mask |= BITFIELD_BIT(queue_index);
+}
+
 static void amdgpu_add_bo_fences_to_dependencies(struct amdgpu_winsys *ws, unsigned queue_index,
                                                  struct amdgpu_seq_no_fences *dependencies,
                                                  uint_seq_no new_queue_seq_no,
@@ -1183,17 +1203,8 @@ static void amdgpu_add_bo_fences_to_dependencies(struct amdgpu_winsys *ws, unsig
       struct amdgpu_cs_buffer *buffer = &buffers[i];
       struct amdgpu_winsys_bo *bo = buffer->bo;
 
-      /* Add BO fences from queues other than 'queue_index' to dependencies. */
-      if (buffer->usage & RADEON_USAGE_SYNCHRONIZED) {
-         u_foreach_bit(other_queue_idx, bo->fences.valid_fence_mask & ~BITFIELD_BIT(queue_index)) {
-            add_seq_no_to_list(ws, dependencies, other_queue_idx,
-                               bo->fences.seq_no[other_queue_idx]);
-         }
-      }
-
-      /* Also set the fence in the BO. */
-      bo->fences.seq_no[queue_index] = new_queue_seq_no;
-      bo->fences.valid_fence_mask |= BITFIELD_BIT(queue_index);
+      amdgpu_add_fences_to_dependencies(ws, queue_index, dependencies, bo, buffer->usage);
+      amdgpu_set_bo_seq_no(queue_index, bo, new_queue_seq_no);
    }
 }
 

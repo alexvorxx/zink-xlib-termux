@@ -27,7 +27,7 @@ v3d-rpi4-gl:arm64:
     - .igalia-bcm2711-rpi-4:arm64
     - .broadcom-test:arm64
     - .v3d-rules
-  parallel: 10
+  parallel: 8
   variables:
     HWCI_START_WESTON: 1
     DEQP_SUITE: broadcom-rpi4

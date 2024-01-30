@@ -138,6 +138,31 @@ impl Mem {
     }
 }
 
+/// # Mapping memory
+///
+/// Maps the queue associated device's resource.
+///
+/// Mapping resources could have been quite straightforward if OpenCL wouldn't allow for so called
+/// non blocking maps. Non blocking maps shall return a valid pointer to the mapped region
+/// immediately, but should not synchronize data (in case of shadow buffers) until after the map
+/// event is reached in the queue. This makes it not possible to simply use pipe_transfers as those
+/// can't be explicitly synced by the frontend.
+///
+/// In order to have a compliant implementation of the mapping API we have to consider the following
+/// cases:
+///   1. Mapping a cl_mem object with CL_MEM_USE_HOST_PTR: We simply return the host_ptr.
+///      Synchronization of shadowed host ptrs are done in `sync_shadow` on demand.
+///   2. Mapping linear resources on UMA systems: We simply create the pipe_transfer with
+///      `PIPE_MAP_DIRECTLY` and `PIPE_MAP_UNSYNCHRONIZED` and return the attached pointer.
+///   3. On non UMA systems or when 2. fails (e.g. due to the resource being tiled) we
+///      - create a shadow pipe_resource with `PIPE_USAGE_STAGING`,
+///        `PIPE_RESOURCE_FLAG_MAP_PERSISTENT` and `PIPE_RESOURCE_FLAG_MAP_COHERENT`
+///      - create a pipe_transfer with `PIPE_MAP_COHERENT`, `PIPE_MAP_PERSISTENT` and
+///        `PIPE_MAP_UNSYNCHRONIZED`
+///      - sync the shadow buffer like a host_ptr shadow buffer in 1.
+///
+/// Taking this approach we guarentee that we only copy when actually needed while making sure the
+/// content behind the returned pointer is valid until unmapped.
 pub struct MemBase {
     pub base: CLObjectBase<CL_INVALID_MEM_OBJECT>,
     pub context: Arc<Context>,
@@ -749,31 +774,6 @@ impl MemBase {
         Ok(!r.is_user && bit_check(self.flags, CL_MEM_USE_HOST_PTR))
     }
 
-    /// Maps the queue associated device's resource.
-    ///
-    /// Mapping resources could have been quite straightforward if OpenCL wouldn't allow for so
-    /// called non blocking maps. Non blocking maps shall return a valid pointer to the mapped
-    /// region immediately, but should not synchronize data (in case of shadow buffers) until after
-    /// the map event is reached in the queue.
-    /// This makes it not possible to simply use pipe_transfers as those can't be explicitly synced
-    /// by the frontend.
-    ///
-    /// In order to have a compliant implementation of the mapping API we have to consider the
-    /// following cases:
-    ///   1. Mapping a cl_mem object with CL_MEM_USE_HOST_PTR: We simply return the host_ptr.
-    ///      Synchronization of shadowed host ptrs are done in `sync_shadow_buffer` and
-    ///      `sync_shadow_image` on demand.
-    ///   2. Mapping linear resources on UMA systems: We simply create the pipe_transfer with
-    ///      `PIPE_MAP_DIRECTLY` and `PIPE_MAP_UNSYNCHRONIZED` and return the attached pointer.
-    ///   3. On non UMA systems or when 2. fails (e.g. due to the resource being tiled) we
-    ///      - create a shadow pipe_resource with `PIPE_USAGE_STAGING`,
-    ///        `PIPE_RESOURCE_FLAG_MAP_PERSISTENT` and `PIPE_RESOURCE_FLAG_MAP_COHERENT`
-    ///      - create a pipe_transfer with `PIPE_MAP_COHERENT`, `PIPE_MAP_PERSISTENT` and
-    ///        `PIPE_MAP_UNSYNCHRONIZED`
-    ///      - sync the shadow buffer like a host_ptr shadow buffer in 1.
-    ///
-    /// Taking this approach we guarentee that we only copy when actually needed while making sure
-    /// the content behind the returned pointer is valid until unmapped.
     fn map<'a>(
         &self,
         dev: &'static Device,

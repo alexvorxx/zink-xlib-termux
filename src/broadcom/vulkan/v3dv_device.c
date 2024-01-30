@@ -1387,7 +1387,8 @@ v3dv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
    VkPhysicalDeviceVulkan11Properties vk11 = {
       .deviceLUIDValid = false,
       .subgroupSize = V3D_CHANNELS,
-      .subgroupSupportedStages = VK_SHADER_STAGE_COMPUTE_BIT,
+      .subgroupSupportedStages = VK_SHADER_STAGE_COMPUTE_BIT |
+                                 VK_SHADER_STAGE_FRAGMENT_BIT,
       .subgroupSupportedOperations = subgroup_ops,
       .subgroupQuadOperationsInAllStages = false,
       .pointClippingBehavior = VK_POINT_CLIPPING_BEHAVIOR_ALL_CLIP_PLANES,

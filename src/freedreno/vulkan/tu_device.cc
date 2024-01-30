@@ -273,7 +273,7 @@ get_device_extensions(const struct tu_physical_device *device,
 
       /* For Graphics Flight Recorder (GFR) */
       .AMD_buffer_marker = true,
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       .ANDROID_native_buffer = true,
 #endif
       .ARM_rasterization_order_attachment_access = true,

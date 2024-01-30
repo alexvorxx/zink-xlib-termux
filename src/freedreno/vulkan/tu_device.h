@@ -236,7 +236,7 @@ struct tu_pvtmem_bo {
       uint32_t per_fiber_size, per_sp_size;
 };
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
 enum tu_gralloc_type
 {
    TU_GRALLOC_UNKNOWN,
@@ -379,7 +379,7 @@ struct tu_device
    struct tu_cs *dbg_cmdbuf_stomp_cs;
    struct tu_cs *dbg_renderpass_stomp_cs;
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    const void *gralloc;
    enum tu_gralloc_type gralloc_type;
 #endif

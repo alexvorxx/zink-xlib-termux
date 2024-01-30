@@ -734,10 +734,6 @@ impl MemBase {
         ptr::eq(self.get_parent(), other.get_parent())
     }
 
-    pub fn is_parent_buffer(&self) -> bool {
-        matches!(self.parent, Some(Mem::Buffer(_)))
-    }
-
     // this is kinda bogus, because that won't work with system SVM, but the spec wants us to
     // implement this.
     pub fn is_svm(&self) -> bool {
@@ -1372,6 +1368,10 @@ impl Image {
         }
 
         Ok(())
+    }
+
+    pub fn is_parent_buffer(&self) -> bool {
+        matches!(self.parent, Some(Mem::Buffer(_)))
     }
 
     pub fn map(

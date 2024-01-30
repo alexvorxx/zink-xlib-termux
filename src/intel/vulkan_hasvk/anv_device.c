@@ -319,7 +319,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_transform_feedback                = true,
       .EXT_vertex_attribute_divisor          = true,
       .EXT_ycbcr_image_arrays                = true,
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       .ANDROID_external_memory_android_hardware_buffer = true,
       .ANDROID_native_buffer                 = true,
 #endif
@@ -3334,7 +3334,7 @@ void anv_FreeMemory(
 
    anv_device_release_bo(device, mem->bo);
 
-#if defined(ANDROID) && ANDROID_API_LEVEL >= 26
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
    if (mem->ahw)
       AHardwareBuffer_release(mem->ahw);
 #endif

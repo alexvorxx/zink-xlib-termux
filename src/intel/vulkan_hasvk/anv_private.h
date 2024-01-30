@@ -55,6 +55,7 @@
 #include "ds/intel_driver_ds.h"
 #include "util/bitset.h"
 #include "util/bitscan.h"
+#include "util/detect_os.h"
 #include "util/macros.h"
 #include "util/hash_table.h"
 #include "util/list.h"

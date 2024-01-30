@@ -401,6 +401,12 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
       nir->info.shared_size = align(nir->info.shared_size, 16);
       NIR_PASS(_, nir, nir_zero_initialize_shared_memory,
                nir->info.shared_size, 16);
+
+      /* We need to call lower_compute_system_values again because
+       * nir_zero_initialize_shared_memory generates load_invocation_id which
+       * has to be lowered to load_invocation_index.
+       */
+      NIR_PASS(_, nir, nir_lower_compute_system_values, NULL);
    }
 }
 

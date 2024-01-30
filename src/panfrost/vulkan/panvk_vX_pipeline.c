@@ -496,9 +496,6 @@ panvk_pipeline_builder_init_shaders(struct panvk_pipeline_builder *builder,
                                            &pipeline->blend.bd_template[rt]);
       }
    }
-
-   pipeline->num_ubos = PANVK_NUM_BUILTIN_UBOS + builder->layout->num_ubos +
-                        builder->layout->num_dyn_ubos;
 }
 
 static void

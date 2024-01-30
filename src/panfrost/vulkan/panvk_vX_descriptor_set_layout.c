@@ -138,7 +138,7 @@ panvk_per_arch(CreateDescriptorSetLayout)(
 
    unsigned sampler_idx = 0, tex_idx = 0, ubo_idx = 0;
    unsigned dyn_ubo_idx = 0, dyn_ssbo_idx = 0, img_idx = 0;
-   uint32_t desc_ubo_size = 0;
+   uint32_t desc_ubo_size = 0, dyn_desc_ubo_size = 0;
 
    for (unsigned i = 0; i < pCreateInfo->bindingCount; i++) {
       const VkDescriptorSetLayoutBinding *binding = &bindings[i];
@@ -193,6 +193,7 @@ panvk_per_arch(CreateDescriptorSetLayout)(
       case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
          binding_layout->dyn_ssbo_idx = dyn_ssbo_idx;
          dyn_ssbo_idx += binding_layout->array_size;
+         binding_layout->desc_ubo_stride = sizeof(struct panvk_ssbo_addr);
          break;
       case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
          binding_layout->desc_ubo_stride = sizeof(struct panvk_ssbo_addr);
@@ -211,10 +212,17 @@ panvk_per_arch(CreateDescriptorSetLayout)(
          unreachable("Invalid descriptor type");
       }
 
-      desc_ubo_size = ALIGN_POT(desc_ubo_size, PANVK_DESCRIPTOR_ALIGN);
-      binding_layout->desc_ubo_offset = desc_ubo_size;
-      desc_ubo_size +=
-         binding_layout->desc_ubo_stride * binding_layout->array_size;
+
+      if (binding_layout->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+         binding_layout->desc_ubo_offset = dyn_desc_ubo_size;
+         dyn_desc_ubo_size +=
+            binding_layout->desc_ubo_stride * binding_layout->array_size;
+      } else {
+         desc_ubo_size = ALIGN_POT(desc_ubo_size, PANVK_DESCRIPTOR_ALIGN);
+         binding_layout->desc_ubo_offset = desc_ubo_size;
+         desc_ubo_size +=
+            binding_layout->desc_ubo_stride * binding_layout->array_size;
+      }
    }
 
    set_layout->desc_ubo_size = desc_ubo_size;

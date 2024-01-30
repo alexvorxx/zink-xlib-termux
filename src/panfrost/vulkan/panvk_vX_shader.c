@@ -377,7 +377,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
 
    /* Patch the descriptor count */
    shader->info.ubo_count =
-      PANVK_NUM_BUILTIN_UBOS + layout->num_ubos + layout->num_dyn_ubos;
+      panvk_per_arch(pipeline_layout_total_ubo_count)(layout);
    shader->info.sampler_count = layout->num_samplers;
    shader->info.texture_count = layout->num_textures;
    if (shader->has_img_access)

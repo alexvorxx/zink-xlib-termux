@@ -51,10 +51,6 @@ struct panvk_sysvals {
          union panvk_sysval_vec4 local_group_size;
       };
    };
-
-   /* The back-end compiler doesn't know about any sysvals after this point */
-
-   struct panvk_ssbo_addr dyn_ssbos[MAX_DYNAMIC_STORAGE_BUFFERS];
 };
 
 struct panvk_shader {

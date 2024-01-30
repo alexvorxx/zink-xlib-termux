@@ -334,6 +334,11 @@ panvk_desc_ubo_data(struct panvk_descriptor_set *set, uint32_t binding,
    const struct panvk_descriptor_set_binding_layout *binding_layout =
       &set->layout->bindings[binding];
 
+   /* Dynamic SSBO info are stored in a separate UBO allocated from the
+    * cmd_buffer descriptor pool.
+    */
+   assert(binding_layout->type != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC);
+
    return (char *)set->desc_ubo.addr.host + binding_layout->desc_ubo_offset +
           elem * binding_layout->desc_ubo_stride;
 }
@@ -754,8 +759,17 @@ panvk_per_arch(UpdateDescriptorSets)(
 
       assert(dst_binding_layout->type == src_binding_layout->type);
 
-      if (dst_binding_layout->desc_ubo_stride > 0 &&
-          src_binding_layout->desc_ubo_stride > 0) {
+      /* Dynamic SSBO info are stored in a separate UBO allocated from the
+       * cmd_buffer descriptor pool.
+       */
+      bool src_has_data_in_desc_ubo =
+         src_binding_layout->desc_ubo_stride > 0 &&
+         src_binding_layout->type != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+      bool dst_has_data_in_desc_ubo =
+         dst_binding_layout->desc_ubo_stride > 0 &&
+         dst_binding_layout->type != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+
+      if (src_has_data_in_desc_ubo && dst_has_data_in_desc_ubo) {
          for (uint32_t j = 0; j < copy->descriptorCount; j++) {
             memcpy(panvk_desc_ubo_data(dst_set, copy->dstBinding,
                                        copy->dstArrayElement + j),

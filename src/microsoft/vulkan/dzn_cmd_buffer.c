@@ -4769,6 +4769,11 @@ dzn_cmd_buffer_resolve_rendering_attachment(struct dzn_cmd_buffer *cmdbuf,
          uint32_t dst_subres =
             dzn_image_range_get_subresource_index(dst_img, &dst_range, aspect, level, layer);
 
+         DXGI_FORMAT format =
+            dzn_image_get_dxgi_format(pdev, dst->vk.format,
+                                      dst->vk.usage & ~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                                      aspect);
+
          if (cmdbuf->cmdlist8 &&
              pdev->options2.ProgrammableSamplePositionsTier > D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER_NOT_SUPPORTED) {
             ID3D12GraphicsCommandList8_ResolveSubresourceRegion(cmdbuf->cmdlist8,
@@ -4776,13 +4781,13 @@ dzn_cmd_buffer_resolve_rendering_attachment(struct dzn_cmd_buffer *cmdbuf,
                                                                 0, 0,
                                                                 src_img->res, src_subres,
                                                                 NULL,
-                                                                dst->srv_desc.Format,
+                                                                format,
                                                                 dzn_get_resolve_mode(att->resolve.mode));
          } else {
             ID3D12GraphicsCommandList1_ResolveSubresource(cmdbuf->cmdlist,
                                                           dst_img->res, dst_subres,
                                                           src_img->res, src_subres,
-                                                          dst->srv_desc.Format);
+                                                          format);
          }
       }
    }

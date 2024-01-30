@@ -3927,9 +3927,13 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
    assert(cmd_buffer->state.emitted_graphics_pipeline == cmd_buffer->state.graphics_pipeline);
 
    if (vs_shader->info.merged_shader_compiled_separately) {
-      assert(vs_shader->info.next_stage == MESA_SHADER_TESS_CTRL);
+      if (vs_shader->info.next_stage == MESA_SHADER_GEOMETRY) {
+         radv_shader_combine_cfg_vs_gs(vs_shader, cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY], &rsrc1, &rsrc2);
+      } else {
+         assert(vs_shader->info.next_stage == MESA_SHADER_TESS_CTRL);
 
-      radv_shader_combine_cfg_vs_tcs(vs_shader, cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL], &rsrc1, &rsrc2);
+         radv_shader_combine_cfg_vs_tcs(vs_shader, cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL], &rsrc1, &rsrc2);
+      }
    } else {
       rsrc1 = vs_shader->config.rsrc1;
    }
@@ -3967,7 +3971,13 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
       radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg, rsrc1);
 
       if (vs_shader->info.merged_shader_compiled_separately) {
-         radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2);
+         if (vs_shader->info.next_stage == MESA_SHADER_GEOMETRY) {
+            const struct radv_shader *gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
+
+            radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2 | S_00B22C_LDS_SIZE(gs->info.gs_ring_info.lds_size));
+         } else {
+            radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2);
+         }
       }
    } else {
       assert(rsrc1 == vs_shader->config.rsrc1);
@@ -9097,7 +9107,8 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
          struct radv_shader *next_stage = NULL;
 
          if (vs->info.merged_shader_compiled_separately) {
-            next_stage = cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL];
+            assert(vs->info.next_stage == MESA_SHADER_TESS_CTRL || vs->info.next_stage == MESA_SHADER_GEOMETRY);
+            next_stage = cmd_buffer->state.shaders[vs->info.next_stage];
          }
 
          radv_emit_vertex_shader(device, cs, cs, vs, next_stage);
@@ -9126,6 +9137,19 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
          break;
       default:
          unreachable("invalid bind stage");
+      }
+   }
+
+   if (cmd_buffer->state.active_stages & VK_SHADER_STAGE_GEOMETRY_BIT) {
+      const struct radv_shader *gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
+
+      if (gs->info.merged_shader_compiled_separately) {
+         const struct radv_userdata_info *vgt_esgs_ring_itemsize = radv_get_user_sgpr(gs, AC_UD_VGT_ESGS_RING_ITEMSIZE);
+         const struct radv_shader *vs = cmd_buffer->state.shaders[MESA_SHADER_VERTEX];
+
+         assert(vgt_esgs_ring_itemsize->sgpr_idx != -1 && vgt_esgs_ring_itemsize->num_sgprs == 1);
+
+         radeon_set_sh_reg(cs, gs->info.user_data_0 + vgt_esgs_ring_itemsize->sgpr_idx * 4, vs->info.esgs_itemsize / 4);
       }
    }
 

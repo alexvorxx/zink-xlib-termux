@@ -1063,4 +1063,7 @@ void radv_nir_shader_info_link(struct radv_device *device, const struct radv_gra
 void radv_shader_combine_cfg_vs_tcs(const struct radv_shader *vs, const struct radv_shader *tcs, uint32_t *rsrc1_out,
                                     uint32_t *rsrc2_out);
 
+void radv_shader_combine_cfg_vs_gs(const struct radv_shader *vs, const struct radv_shader *gs, uint32_t *rsrc1_out,
+                                   uint32_t *rsrc2_out);
+
 #endif

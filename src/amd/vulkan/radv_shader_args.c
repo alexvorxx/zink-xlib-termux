@@ -527,6 +527,9 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
       if (stage == MESA_SHADER_VERTEX && info->vs.as_ls) {
          previous_stage = MESA_SHADER_VERTEX;
          stage = MESA_SHADER_TESS_CTRL;
+      } else if (stage == MESA_SHADER_VERTEX && info->vs.as_es) {
+         previous_stage = MESA_SHADER_VERTEX;
+         stage = MESA_SHADER_GEOMETRY;
       }
    }
 

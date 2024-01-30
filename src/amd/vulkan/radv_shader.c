@@ -1589,6 +1589,9 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
       /* Update the stage for merged shaders compiled separately with ESO on GFX9+. */
       if (stage == MESA_SHADER_VERTEX && info->vs.as_ls) {
          stage = MESA_SHADER_TESS_CTRL;
+      } else if (stage == MESA_SHADER_VERTEX && info->vs.as_es) {
+         es_stage = MESA_SHADER_VERTEX;
+         stage = MESA_SHADER_GEOMETRY;
       }
    }
 

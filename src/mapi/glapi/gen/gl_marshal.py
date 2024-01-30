@@ -183,10 +183,14 @@ class PrintCode(gl_XML.gl_print_base):
             # which case the command alloc or the memcpy would blow up before we
             # get to the validation in Mesa core.
             list = []
+            assert_size = False
             for p in func.parameters:
                 if p.is_variable_length():
-                    list.append('{0}_size < 0'.format(p.name))
-                    list.append('({0}_size > 0 && !{0})'.format(p.name))
+                    if p.marshal_count:
+                        assert_size = True
+                    else:
+                        list.append('{0}_size < 0'.format(p.name))
+                        list.append('({0}_size > 0 && !{0})'.format(p.name))
 
             if len(list) != 0:
                 list.append('(unsigned)cmd_size > MARSHAL_MAX_CMD_SIZE')
@@ -197,6 +201,8 @@ class PrintCode(gl_XML.gl_print_base):
                     self.print_call(func)
                     out('return;')
                 out('}')
+            elif assert_size:
+                out('assert(cmd_size >= 0 && cmd_size <= MARSHAL_MAX_CMD_SIZE);')
 
         # Add the call into the batch.
         out('{0} *cmd = _mesa_glthread_allocate_command(ctx, '

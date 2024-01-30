@@ -181,9 +181,10 @@ class marshal_function(gl_XML.gl_function):
         for p in self.parameters:
             if p.is_output:
                 return 'sync'
-            if (p.is_pointer() and not (p.count or p.counter or p.marshal_count)):
+            if (p.is_pointer() and not
+                (p.count or p.counter or p.marshal_count or p.marshal_large_count)):
                 return 'sync'
-            if p.count_parameter_list and not p.marshal_count:
+            if p.count_parameter_list and not (p.marshal_count or p.marshal_large_count):
                 # Parameter size is determined by enums; haven't
                 # written logic to handle this yet.  TODO: fix.
                 return 'sync'

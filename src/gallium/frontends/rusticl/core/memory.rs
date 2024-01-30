@@ -667,29 +667,6 @@ impl MemBase {
         }
     }
 
-    fn tx<'a>(
-        &self,
-        q: &Queue,
-        ctx: &'a PipeContext,
-        mut offset: usize,
-        size: usize,
-        rw: RWFlags,
-    ) -> CLResult<GuardedPipeTransfer<'a>> {
-        let b = self.to_parent(&mut offset);
-        let r = b.get_res_of_dev(q.device)?;
-
-        Ok(ctx
-            .buffer_map(
-                r,
-                offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-                size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-                rw,
-                ResourceMapType::Normal,
-            )
-            .ok_or(CL_OUT_OF_RESOURCES)?
-            .with_ctx(ctx))
-    }
-
     fn tx_image_raw_async(
         &self,
         dev: &Device,
@@ -1082,6 +1059,29 @@ impl Buffer {
             }
             Ok(())
         }
+    }
+
+    fn tx<'a>(
+        &self,
+        q: &Queue,
+        ctx: &'a PipeContext,
+        offset: usize,
+        size: usize,
+        rw: RWFlags,
+    ) -> CLResult<GuardedPipeTransfer<'a>> {
+        let offset = self.apply_offset(offset)?;
+        let r = self.get_res_of_dev(q.device)?;
+
+        Ok(ctx
+            .buffer_map(
+                r,
+                offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+                size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+                rw,
+                ResourceMapType::Normal,
+            )
+            .ok_or(CL_OUT_OF_RESOURCES)?
+            .with_ctx(ctx))
     }
 
     // TODO: only sync on unmap when the memory is not mapped for writing

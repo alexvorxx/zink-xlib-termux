@@ -821,116 +821,6 @@ impl MemBase {
         Ok(!r.is_user && bit_check(self.flags, CL_MEM_USE_HOST_PTR))
     }
 
-    pub fn copy_to(
-        &self,
-        q: &Queue,
-        ctx: &PipeContext,
-        dst: &MemBase,
-        mut src_origin: CLVec<usize>,
-        mut dst_origin: CLVec<usize>,
-        region: &CLVec<usize>,
-    ) -> CLResult<()> {
-        let dst_base = dst;
-        let src = self.to_parent(&mut src_origin[0]);
-        let dst = dst.to_parent(&mut dst_origin[0]);
-
-        let src_res = src.get_res()?.get(&q.device).unwrap();
-        let dst_res = dst.get_res()?.get(&q.device).unwrap();
-
-        // We just want to use sw_copy if mem objects have different types
-        // or if copy can have custom strides (image2d from buff/images)
-        if self.is_buffer() != dst_base.is_buffer()
-            || !self.is_buffer() && self.parent.is_some()
-            || !dst_base.is_buffer() && dst_base.parent.is_some()
-        {
-            let tx_src;
-            let tx_dst;
-            let mut src_pitch = [0, 0, 0];
-            let mut dst_pitch = [0, 0, 0];
-
-            let bpp = if !self.is_buffer() {
-                self.pixel_size().unwrap() as usize
-            } else {
-                dst_base.pixel_size().unwrap() as usize
-            };
-
-            if src.is_buffer() {
-                // If image is created from a buffer, use image's slice and row pitch instead
-                src_pitch[0] = bpp;
-                if self.is_image_from_buffer() {
-                    src_pitch[1] = self.image_desc.row_pitch()? as usize;
-                    src_pitch[2] = self.image_desc.slice_pitch();
-                } else {
-                    src_pitch[1] = region[0] * bpp;
-                    src_pitch[2] = region[0] * region[1] * bpp;
-                }
-
-                let (offset, size) = CLVec::calc_offset_size(src_origin, region, src_pitch);
-                tx_src = src.tx(q, ctx, offset, size, RWFlags::RD)?;
-            } else {
-                tx_src = src.tx_image(
-                    q,
-                    ctx,
-                    &create_pipe_box(src_origin, *region, src.mem_type)?,
-                    RWFlags::RD,
-                )?;
-
-                src_pitch = [1, tx_src.row_pitch() as usize, tx_src.slice_pitch()];
-            }
-
-            if dst.is_buffer() {
-                // If image is created from a buffer, use image's slice and row pitch instead
-                dst_pitch[0] = bpp;
-                if dst_base.is_image_from_buffer() {
-                    dst_pitch[1] = dst_base.image_desc.row_pitch()? as usize;
-                    dst_pitch[2] = dst_base.image_desc.slice_pitch();
-                } else {
-                    dst_pitch[1] = region[0] * bpp;
-                    dst_pitch[2] = region[0] * region[1] * bpp;
-                }
-
-                let (offset, size) = CLVec::calc_offset_size(dst_origin, region, dst_pitch);
-                tx_dst = dst.tx(q, ctx, offset, size, RWFlags::WR)?;
-            } else {
-                tx_dst = dst.tx_image(
-                    q,
-                    ctx,
-                    &create_pipe_box(dst_origin, *region, dst.mem_type)?,
-                    RWFlags::WR,
-                )?;
-
-                dst_pitch = [1, tx_dst.row_pitch() as usize, tx_dst.slice_pitch()];
-            }
-
-            // Those pitch values cannot have 0 value in its coordinates
-            assert!(src_pitch[0] != 0 && src_pitch[1] != 0 && src_pitch[2] != 0);
-            assert!(dst_pitch[0] != 0 && dst_pitch[1] != 0 && dst_pitch[2] != 0);
-
-            sw_copy(
-                tx_src.ptr(),
-                tx_dst.ptr(),
-                region,
-                &CLVec::default(),
-                src_pitch[1],
-                src_pitch[2],
-                &CLVec::default(),
-                dst_pitch[1],
-                dst_pitch[2],
-                bpp as u8,
-            )
-        } else {
-            let bx = create_pipe_box(src_origin, *region, src.mem_type)?;
-            let mut dst_origin: [u32; 3] = dst_origin.try_into()?;
-
-            if src.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
-                (dst_origin[1], dst_origin[2]) = (dst_origin[2], dst_origin[1]);
-            }
-
-            ctx.resource_copy_region(src_res, dst_res, &dst_origin, &bx);
-        }
-        Ok(())
-    }
-
     /// Maps the queue associated device's resource.
     ///
     /// Mapping resources could have been quite straightforward if OpenCL wouldn't allow for so
@@ -1049,6 +939,84 @@ impl Buffer {
             1,
         );
 
+        Ok(())
+    }
+
+    pub fn copy_to(
+        &self,
+        q: &Queue,
+        ctx: &PipeContext,
+        dst: &MemBase,
+        mut src_origin: CLVec<usize>,
+        mut dst_origin: CLVec<usize>,
+        region: &CLVec<usize>,
+    ) -> CLResult<()> {
+        let src_parent = self.to_parent(&mut src_origin[0]);
+        let dst_parent = dst.to_parent(&mut dst_origin[0]);
+        let src_res = src_parent.get_res_of_dev(q.device)?;
+        let dst_res = dst_parent.get_res_of_dev(q.device)?;
+
+        // We just want to use sw_copy if mem objects have different types
+        // or if copy can have custom strides (image2d from buff/images)
+        if !dst.is_buffer() {
+            let bpp = dst.pixel_size().unwrap().into();
+            let mut dst_pitch = [0, 0, 0];
+            let src_pitch = [bpp, bpp * region[0], bpp * region[0] * region[1]];
+
+            let (offset, size) = CLVec::calc_offset_size(src_origin, region, src_pitch);
+            let tx_src = src_parent.tx(q, ctx, offset, size, RWFlags::RD)?;
+
+            let tx_dst;
+            if dst_parent.is_buffer() {
+                // If image is created from a buffer, use image's slice and row pitch instead
+                dst_pitch[0] = bpp;
+                if dst.is_image_from_buffer() {
+                    dst_pitch[1] = dst.image_desc.row_pitch()? as usize;
+                    dst_pitch[2] = dst.image_desc.slice_pitch();
+                } else {
+                    dst_pitch[1] = region[0] * bpp;
+                    dst_pitch[2] = region[0] * region[1] * bpp;
+                }
+
+                let (offset, size) = CLVec::calc_offset_size(dst_origin, region, dst_pitch);
+                tx_dst = dst_parent.tx(q, ctx, offset, size, RWFlags::WR)?;
+            } else {
+                tx_dst = dst_parent.tx_image(
+                    q,
+                    ctx,
+                    &create_pipe_box(dst_origin, *region, dst_parent.mem_type)?,
+                    RWFlags::WR,
+                )?;
+
+                dst_pitch = [1, tx_dst.row_pitch() as usize, tx_dst.slice_pitch()];
+            }
+
+            // Those pitch values cannot have 0 value in its coordinates
+            debug_assert!(src_pitch[0] != 0 && src_pitch[1] != 0 && src_pitch[2] != 0);
+            debug_assert!(dst_pitch[0] != 0 && dst_pitch[1] != 0 && dst_pitch[2] != 0);
+
+            sw_copy(
+                tx_src.ptr(),
+                tx_dst.ptr(),
+                region,
+                &CLVec::default(),
+                src_pitch[1],
+                src_pitch[2],
+                &CLVec::default(),
+                dst_pitch[1],
+                dst_pitch[2],
+                bpp as u8,
+            )
+        } else {
+            let bx = create_pipe_box(src_origin, *region, src_parent.mem_type)?;
+            let mut dst_origin: [u32; 3] = dst_origin.try_into()?;
+
+            if src_parent.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
+                (dst_origin[1], dst_origin[2]) = (dst_origin[2], dst_origin[1]);
+            }
+
+            ctx.resource_copy_region(src_res, dst_res, &dst_origin, &bx);
+        }
         Ok(())
     }
 
@@ -1240,6 +1208,106 @@ impl Buffer {
 }
 
 impl Image {
+    pub fn copy_to(
+        &self,
+        q: &Queue,
+        ctx: &PipeContext,
+        dst: &MemBase,
+        mut src_origin: CLVec<usize>,
+        mut dst_origin: CLVec<usize>,
+        region: &CLVec<usize>,
+    ) -> CLResult<()> {
+        let src_parent = self.to_parent(&mut src_origin[0]);
+        let dst_parent = dst.to_parent(&mut dst_origin[0]);
+        let src_res = src_parent.get_res_of_dev(q.device)?;
+        let dst_res = dst_parent.get_res_of_dev(q.device)?;
+
+        // We just want to use sw_copy if mem objects have different types
+        // or if copy can have custom strides (image2d from buff/images)
+        if dst.is_buffer() || self.parent.is_some() || !dst.is_buffer() && dst.parent.is_some() {
+            let tx_src;
+            let tx_dst;
+            let mut src_pitch = [0, 0, 0];
+            let mut dst_pitch = [0, 0, 0];
+
+            let bpp = self.pixel_size().unwrap().into();
+            if src_parent.is_buffer() {
+                // If image is created from a buffer, use image's slice and row pitch instead
+                src_pitch[0] = bpp;
+                if self.is_image_from_buffer() {
+                    src_pitch[1] = self.image_desc.row_pitch()? as usize;
+                    src_pitch[2] = self.image_desc.slice_pitch();
+                } else {
+                    src_pitch[1] = region[0] * bpp;
+                    src_pitch[2] = region[0] * region[1] * bpp;
+                }
+
+                let (offset, size) = CLVec::calc_offset_size(src_origin, region, src_pitch);
+                tx_src = src_parent.tx(q, ctx, offset, size, RWFlags::RD)?;
+            } else {
+                tx_src = src_parent.tx_image(
+                    q,
+                    ctx,
+                    &create_pipe_box(src_origin, *region, src_parent.mem_type)?,
+                    RWFlags::RD,
+                )?;
+
+                src_pitch = [1, tx_src.row_pitch() as usize, tx_src.slice_pitch()];
+            }
+
+            if dst_parent.is_buffer() {
+                // If image is created from a buffer, use image's slice and row pitch instead
+                dst_pitch[0] = bpp;
+                if dst.is_image_from_buffer() {
+                    dst_pitch[1] = dst.image_desc.row_pitch()? as usize;
+                    dst_pitch[2] = dst.image_desc.slice_pitch();
+                } else {
+                    dst_pitch[1] = region[0] * bpp;
+                    dst_pitch[2] = region[0] * region[1] * bpp;
+                }
+
+                let (offset, size) = CLVec::calc_offset_size(dst_origin, region, dst_pitch);
+                tx_dst = dst_parent.tx(q, ctx, offset, size, RWFlags::WR)?;
+            } else {
+                tx_dst = dst_parent.tx_image(
+                    q,
+                    ctx,
+                    &create_pipe_box(dst_origin, *region, dst_parent.mem_type)?,
+                    RWFlags::WR,
+                )?;
+
+                dst_pitch = [1, tx_dst.row_pitch() as usize, tx_dst.slice_pitch()];
+            }
+
+            // Those pitch values cannot have 0 value in its coordinates
+            debug_assert!(src_pitch[0] != 0 && src_pitch[1] != 0 && src_pitch[2] != 0);
+            debug_assert!(dst_pitch[0] != 0 && dst_pitch[1] != 0 && dst_pitch[2] != 0);
+
+            sw_copy(
+                tx_src.ptr(),
+                tx_dst.ptr(),
+                region,
+                &CLVec::default(),
+                src_pitch[1],
+                src_pitch[2],
+                &CLVec::default(),
+                dst_pitch[1],
+                dst_pitch[2],
+                bpp as u8,
+            )
+        } else {
+            let bx = create_pipe_box(src_origin, *region, src_parent.mem_type)?;
+            let mut dst_origin: [u32; 3] = dst_origin.try_into()?;
+
+            if src_parent.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
+                (dst_origin[1], dst_origin[2]) = (dst_origin[2], dst_origin[1]);
+            }
+
+            ctx.resource_copy_region(src_res, dst_res, &dst_origin, &bx);
+        }
+        Ok(())
+    }
+
     pub fn fill(
         &self,
         q: &Queue,

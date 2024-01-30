@@ -307,13 +307,13 @@ panvk_cmd_prepare_draw_sysvals(
       sysvals->first_vertex = draw->offset_start;
       sysvals->base_vertex = base_vertex;
       sysvals->base_instance = draw->first_instance;
-      bind_point_state->desc_state.sysvals_ptr = 0;
+      bind_point_state->desc_state.push_uniforms = 0;
    }
 
    if (cmdbuf->state.dirty & PANVK_DYNAMIC_BLEND_CONSTANTS) {
       memcpy(&sysvals->blend_constants, cmdbuf->state.blend.constants,
              sizeof(cmdbuf->state.blend.constants));
-      bind_point_state->desc_state.sysvals_ptr = 0;
+      bind_point_state->desc_state.push_uniforms = 0;
    }
 
    if (cmdbuf->state.dirty & PANVK_DYNAMIC_VIEWPORT) {
@@ -321,23 +321,8 @@ panvk_cmd_prepare_draw_sysvals(
                                          &sysvals->viewport_scale);
       panvk_sysval_upload_viewport_offset(&cmdbuf->state.viewport,
                                           &sysvals->viewport_offset);
-      bind_point_state->desc_state.sysvals_ptr = 0;
+      bind_point_state->desc_state.push_uniforms = 0;
    }
-}
-
-static void
-panvk_cmd_prepare_sysvals(struct panvk_cmd_buffer *cmdbuf,
-                          struct panvk_cmd_bind_point_state *bind_point_state)
-{
-   struct panvk_descriptor_state *desc_state = &bind_point_state->desc_state;
-
-   if (desc_state->sysvals_ptr)
-      return;
-
-   struct panfrost_ptr sysvals = pan_pool_alloc_aligned(
-      &cmdbuf->desc_pool.base, sizeof(desc_state->sysvals), 16);
-   memcpy(sysvals.cpu, &desc_state->sysvals, sizeof(desc_state->sysvals));
-   desc_state->sysvals_ptr = sysvals.gpu;
 }
 
 static void
@@ -346,17 +331,21 @@ panvk_cmd_prepare_push_uniforms(
    struct panvk_cmd_bind_point_state *bind_point_state)
 {
    struct panvk_descriptor_state *desc_state = &bind_point_state->desc_state;
-   const struct panvk_pipeline *pipeline = bind_point_state->pipeline;
 
-   if (!pipeline->layout->push_constants.size || desc_state->push_uniforms)
+   if (desc_state->push_uniforms)
       return;
 
    struct panfrost_ptr push_uniforms = pan_pool_alloc_aligned(
-      &cmdbuf->desc_pool.base,
-      ALIGN_POT(pipeline->layout->push_constants.size, 16), 16);
+      &cmdbuf->desc_pool.base, 512, 16);
 
+   /* The first half is used for push constants. */
    memcpy(push_uniforms.cpu, cmdbuf->push_constants,
-          pipeline->layout->push_constants.size);
+          sizeof(cmdbuf->push_constants));
+
+   /* The second half is used for sysvals. */
+   memcpy((uint8_t *)push_uniforms.cpu + 256, &desc_state->sysvals,
+          sizeof(desc_state->sysvals));
+
    desc_state->push_uniforms = push_uniforms.gpu;
 }
 
@@ -443,17 +432,11 @@ panvk_cmd_prepare_ubos(struct panvk_cmd_buffer *cmdbuf,
    if (!ubo_count || desc_state->ubos)
       return;
 
-   panvk_cmd_prepare_sysvals(cmdbuf, bind_point_state);
    panvk_cmd_prepare_dyn_ssbos(cmdbuf, bind_point_state);
 
    struct panfrost_ptr ubos = pan_pool_alloc_desc_array(
       &cmdbuf->desc_pool.base, ubo_count, UNIFORM_BUFFER);
    struct mali_uniform_buffer_packed *ubo_descs = ubos.cpu;
-
-   pan_pack(&ubo_descs[PANVK_SYSVAL_UBO_INDEX], UNIFORM_BUFFER, cfg) {
-      cfg.pointer = desc_state->sysvals_ptr;
-      cfg.entries = DIV_ROUND_UP(sizeof(desc_state->sysvals), 16);
-   }
 
    for (unsigned s = 0; s < pipeline->layout->vk.set_count; s++) {
       const struct panvk_descriptor_set_layout *set_layout =
@@ -1759,7 +1742,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    sysvals->local_group_size.u32[0] = pipeline->cs.local_size.x;
    sysvals->local_group_size.u32[1] = pipeline->cs.local_size.y;
    sysvals->local_group_size.u32[2] = pipeline->cs.local_size.z;
-   desc_state->sysvals_ptr = 0;
+   desc_state->push_uniforms = 0;
 
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, false);
    dispatch.tsd = batch->tls.gpu;
@@ -2132,7 +2115,6 @@ panvk_per_arch(CmdBindDescriptorSets)(
     * TODO: we could be smarter by checking which part of the pipeline layout
     * are compatible with the previouly bound descriptor sets.
     */
-   descriptors_state->sysvals_ptr = 0;
    descriptors_state->ubos = 0;
    descriptors_state->textures = 0;
    descriptors_state->samplers = 0;

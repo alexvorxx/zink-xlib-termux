@@ -97,7 +97,6 @@ struct panvk_descriptor_state {
       struct mali_uniform_buffer_packed ubos[MAX_DYNAMIC_UNIFORM_BUFFERS];
       struct panvk_ssbo_addr ssbos[MAX_DYNAMIC_STORAGE_BUFFERS];
    } dyn;
-   mali_ptr sysvals_ptr;
    mali_ptr ubos;
    mali_ptr textures;
    mali_ptr samplers;

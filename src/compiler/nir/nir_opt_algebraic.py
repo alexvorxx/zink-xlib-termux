@@ -3255,17 +3255,6 @@ late_optimizations += [
    (('insert_u16', ('extract_u16', 'a', 0), b), ('insert_u16', a, b)),
 ]
 
-# Integer sizes
-for s in [8, 16, 32, 64]:
-    lower_umin = 'options->lower_umin'
-    if s == 64:
-       lower_umin = '(options->lower_umin || (options->lower_int64_options & nir_lower_minmax64) != 0)'
-
-    late_optimizations.extend([
-         (('iand', ('ine(is_used_once)', 'a@{}'.format(s), 0), ('ine', 'b@{}'.format(s), 0)), ('ine', ('umin', a, b), 0), '!'+lower_umin),
-         (('ior',  ('ieq(is_used_once)', 'a@{}'.format(s), 0), ('ieq', 'b@{}'.format(s), 0)), ('ieq', ('umin', a, b), 0), '!'+lower_umin),
-     ])
-
 # Float sizes
 for s in [16, 32, 64]:
     late_optimizations.extend([

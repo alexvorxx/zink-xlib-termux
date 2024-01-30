@@ -1171,13 +1171,11 @@ static void amdgpu_cs_add_fence_dependency(struct radeon_cmdbuf *rcs,
       add_fence_to_list(&cs->syncobj_dependencies, fence);
 }
 
-static void amdgpu_add_bo_fences_to_dependencies(struct amdgpu_cs *acs,
+static void amdgpu_add_bo_fences_to_dependencies(struct amdgpu_winsys *ws, unsigned queue_index,
                                                  struct amdgpu_seq_no_fences *dependencies,
                                                  uint_seq_no new_queue_seq_no,
                                                  struct amdgpu_buffer_list *list)
 {
-   struct amdgpu_winsys *ws = acs->ws;
-   unsigned queue_index = acs->queue_index;
    struct amdgpu_cs_buffer *buffers = list->buffers;
    unsigned num_buffers = list->num_buffers;
 
@@ -1261,7 +1259,8 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
    amdgpu_add_slab_backing_buffers(cs);
 
    simple_mtx_lock(&ws->bo_fence_lock);
-   struct amdgpu_queue *queue = &ws->queues[acs->queue_index];
+   unsigned queue_index = acs->queue_index;
+   struct amdgpu_queue *queue = &ws->queues[queue_index];
    uint_seq_no prev_seq_no = queue->latest_seq_no;
 
    /* Generate a per queue sequence number. The logic is similar to the kernel side amdgpu seqno,
@@ -1311,14 +1310,14 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
       (struct amdgpu_fence*)queue->fences[prev_seq_no % AMDGPU_FENCE_RING_SIZE];
 
    if (prev_fence && (ws->info.ip[acs->ip_type].num_queues > 1 || queue->last_ctx != acs->ctx))
-      add_seq_no_to_list(ws, &seq_no_dependencies, acs->queue_index, prev_seq_no);
+      add_seq_no_to_list(ws, &seq_no_dependencies, queue_index, prev_seq_no);
 
    /* Since the kernel driver doesn't synchronize execution between different
     * rings automatically, we have to add fence dependencies manually. This gathers sequence
     * numbers from BOs and sets the next sequence number in the BOs.
     */
    for (unsigned i = 0; i < ARRAY_SIZE(cs->buffer_lists); i++) {
-      amdgpu_add_bo_fences_to_dependencies(acs, &seq_no_dependencies, next_seq_no,
+      amdgpu_add_bo_fences_to_dependencies(ws, queue_index, &seq_no_dependencies, next_seq_no,
                                            &cs->buffer_lists[i]);
    }
 

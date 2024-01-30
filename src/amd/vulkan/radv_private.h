@@ -49,6 +49,7 @@
 #endif
 #include "compiler/shader_enums.h"
 #include "util/bitscan.h"
+#include "util/detect_os.h"
 #include "util/list.h"
 #include "util/macros.h"
 #include "util/rwlock.h"
@@ -120,7 +121,7 @@ extern "C" {
  * To actually enable the ext we also need
  * the necessary kernel support.
  */
-#if defined(ANDROID) && ANDROID_API_LEVEL >= 26
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
 #define RADV_SUPPORT_ANDROID_HARDWARE_BUFFER 1
 #include <vndk/hardware_buffer.h>
 #else

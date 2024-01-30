@@ -1292,7 +1292,7 @@ radv_image_create(VkDevice _device, const struct radv_image_create_info *create_
    }
 
    if (image->vk.external_handle_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID) {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       image->vk.ahb_format = radv_ahb_format_for_vk_format(image->vk.format);
 #endif
 
@@ -1560,7 +1560,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateImage(VkDevice _device, const VkImageCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator,
                  VkImage *pImage)
 {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    const VkNativeBufferANDROID *gralloc_info = vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
 
    if (gralloc_info)

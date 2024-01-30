@@ -400,7 +400,6 @@ nak_sysval_sysval_idx(gl_system_value sysval)
    case SYSTEM_VALUE_VERTICES_IN:            return NAK_SV_VERTEX_COUNT;
    case SYSTEM_VALUE_INVOCATION_ID:          return NAK_SV_INVOCATION_ID;
    case SYSTEM_VALUE_HELPER_INVOCATION:      return NAK_SV_THREAD_KILL;
-   case SYSTEM_VALUE_LOCAL_INVOCATION_INDEX: return NAK_SV_COMBINED_TID;
    case SYSTEM_VALUE_LOCAL_INVOCATION_ID:    return NAK_SV_TID;
    case SYSTEM_VALUE_WORKGROUP_ID:           return NAK_SV_CTAID;
    case SYSTEM_VALUE_SUBGROUP_EQ_MASK:       return NAK_SV_LANEMASK_EQ;
@@ -484,7 +483,6 @@ nak_nir_lower_system_value_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
    case nir_intrinsic_load_subgroup_invocation:
    case nir_intrinsic_load_helper_invocation:
    case nir_intrinsic_load_invocation_id:
-   case nir_intrinsic_load_local_invocation_index:
    case nir_intrinsic_load_local_invocation_id:
    case nir_intrinsic_load_workgroup_id:
    case nir_intrinsic_load_workgroup_id_zero_base: {

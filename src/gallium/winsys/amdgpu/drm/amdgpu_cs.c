@@ -1294,11 +1294,8 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
          amdgpu_lookup_or_add_buffer(cs, &get_slab_entry_real_bo(buffer->bo)->b,
                                      &cs->buffer_lists[AMDGPU_BO_REAL]);
 
-      /* We need to set the usage because it determines the BO priority.
-       * Mask out the SYNCHRONIZED flag because the backing buffer of slabs shouldn't add its
-       * BO fences to fence dependencies. Only the slab entries should do that.
-       */
-      real_buffer->usage |= buffer->usage & ~RADEON_USAGE_SYNCHRONIZED;
+      /* We need to set the usage because it determines the BO priority. */
+      real_buffer->usage |= buffer->usage;
    }
 
    /* Sparse BOs: Add fence dependencies, update seq_no in BOs, add real buffers. */
@@ -1346,11 +1343,20 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
       alloca(num_real_buffers * sizeof(struct drm_amdgpu_bo_list_entry));
    unsigned i;
 
-   for (i = 0; i < num_real_buffers_except_sparse; i++) {
+   for (i = 0; i < initial_num_real_buffers; i++) {
       struct amdgpu_cs_buffer *buffer = &real_buffers[i];
       struct amdgpu_winsys_bo *bo = buffer->bo;
 
       amdgpu_add_fences_to_dependencies(ws, queue_index, &seq_no_dependencies, bo, buffer->usage);
+      amdgpu_set_bo_seq_no(queue_index, bo, next_seq_no);
+      amdgpu_add_to_kernel_bo_list(&bo_list[i], bo, buffer->usage);
+   }
+
+   /* These are backing buffers of slab entries. Don't add their fence dependencies. */
+   for (; i < num_real_buffers_except_sparse; i++) {
+      struct amdgpu_cs_buffer *buffer = &real_buffers[i];
+      struct amdgpu_winsys_bo *bo = buffer->bo;
+
       amdgpu_set_bo_seq_no(queue_index, bo, next_seq_no);
       amdgpu_add_to_kernel_bo_list(&bo_list[i], bo, buffer->usage);
    }

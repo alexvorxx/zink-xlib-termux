@@ -931,69 +931,6 @@ impl MemBase {
         Ok(())
     }
 
-    pub fn write_from_user_rect(
-        &self,
-        src: *const c_void,
-        q: &Queue,
-        ctx: &PipeContext,
-        region: &CLVec<usize>,
-        src_origin: &CLVec<usize>,
-        src_row_pitch: usize,
-        mut src_slice_pitch: usize,
-        dst_origin: &CLVec<usize>,
-        dst_row_pitch: usize,
-        dst_slice_pitch: usize,
-    ) -> CLResult<()> {
-        if self.is_buffer() || self.is_image_from_buffer() {
-            let pixel_size = self.pixel_size().unwrap();
-            let (offset, size) = CLVec::calc_offset_size(
-                dst_origin,
-                region,
-                [
-                    pixel_size.try_into().unwrap(),
-                    dst_row_pitch,
-                    dst_slice_pitch,
-                ],
-            );
-            let tx = self.tx(q, ctx, offset, size, RWFlags::WR)?;
-
-            sw_copy(
-                src,
-                tx.ptr(),
-                region,
-                src_origin,
-                src_row_pitch,
-                src_slice_pitch,
-                &CLVec::default(),
-                dst_row_pitch,
-                dst_slice_pitch,
-                pixel_size,
-            );
-        } else {
-            assert!(dst_row_pitch == self.image_desc.image_row_pitch);
-            assert!(dst_slice_pitch == self.image_desc.image_slice_pitch);
-            assert!(src_origin == &CLVec::default());
-
-            let res = self.get_res()?.get(&q.device).unwrap();
-            let bx = create_pipe_box(*dst_origin, *region, self.mem_type)?;
-
-            if self.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
-                src_slice_pitch = src_row_pitch;
-            }
-
-            ctx.texture_subdata(
-                res,
-                &bx,
-                src,
-                src_row_pitch
-                    .try_into()
-                    .map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-                src_slice_pitch,
-            );
-        }
-        Ok(())
-    }
-
     pub fn copy_to_rect(
         &self,
         dst: &Self,
@@ -1270,6 +1207,39 @@ impl Buffer {
         );
         Ok(())
     }
+
+    pub fn write_rect(
+        &self,
+        src: *const c_void,
+        q: &Queue,
+        ctx: &PipeContext,
+        region: &CLVec<usize>,
+        src_origin: &CLVec<usize>,
+        src_row_pitch: usize,
+        src_slice_pitch: usize,
+        dst_origin: &CLVec<usize>,
+        dst_row_pitch: usize,
+        dst_slice_pitch: usize,
+    ) -> CLResult<()> {
+        let (offset, size) =
+            CLVec::calc_offset_size(dst_origin, region, [1, dst_row_pitch, dst_slice_pitch]);
+        let tx = self.tx(q, ctx, offset, size, RWFlags::WR)?;
+
+        sw_copy(
+            src,
+            tx.ptr(),
+            region,
+            src_origin,
+            src_row_pitch,
+            src_slice_pitch,
+            &CLVec::default(),
+            dst_row_pitch,
+            dst_slice_pitch,
+            1,
+        );
+
+        Ok(())
+    }
 }
 
 impl Image {
@@ -1462,23 +1432,75 @@ impl Image {
                 let bx = self.image_desc.bx()?;
                 ctx.resource_copy_region(shadow, res, &[0, 0, 0], &bx);
             } else if self.has_user_shadow_buffer(q.device)? {
-                self.write_from_user_rect(
+                self.write(
                     self.host_ptr,
                     q,
                     ctx,
                     &self.image_desc.size(),
-                    &CLVec::default(),
                     self.image_desc.image_row_pitch,
                     self.image_desc.image_slice_pitch,
                     &CLVec::default(),
-                    self.image_desc.image_row_pitch,
-                    self.image_desc.image_slice_pitch,
                 )?;
             }
         }
 
         lock.clean_up_tx(q.device, ctx);
 
+        Ok(())
+    }
+
+    pub fn write(
+        &self,
+        src: *const c_void,
+        q: &Queue,
+        ctx: &PipeContext,
+        region: &CLVec<usize>,
+        src_row_pitch: usize,
+        mut src_slice_pitch: usize,
+        dst_origin: &CLVec<usize>,
+    ) -> CLResult<()> {
+        let dst_row_pitch = self.image_desc.image_row_pitch;
+        let dst_slice_pitch = self.image_desc.image_slice_pitch;
+
+        if self.is_parent_buffer() {
+            let pixel_size = self.image_format.pixel_size().unwrap();
+            let (offset, size) = CLVec::calc_offset_size(
+                dst_origin,
+                region,
+                [pixel_size.into(), dst_row_pitch, dst_slice_pitch],
+            );
+            let tx = self.tx(q, ctx, offset, size, RWFlags::WR)?;
+
+            sw_copy(
+                src,
+                tx.ptr(),
+                region,
+                &CLVec::default(),
+                src_row_pitch,
+                src_slice_pitch,
+                &CLVec::default(),
+                dst_row_pitch,
+                dst_slice_pitch,
+                pixel_size,
+            );
+        } else {
+            let res = self.get_res_of_dev(q.device)?;
+            let bx = create_pipe_box(*dst_origin, *region, self.mem_type)?;
+
+            if self.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
+                src_slice_pitch = src_row_pitch;
+            }
+
+            ctx.texture_subdata(
+                res,
+                &bx,
+                src,
+                src_row_pitch
+                    .try_into()
+                    .map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+                src_slice_pitch,
+            );
+        }
         Ok(())
     }
 }

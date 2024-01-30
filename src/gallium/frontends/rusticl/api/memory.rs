@@ -1416,7 +1416,7 @@ fn enqueue_write_buffer_rect(
         event,
         block,
         Box::new(move |q, ctx| {
-            buf.write_from_user_rect(
+            buf.write_rect(
                 ptr,
                 q,
                 ctx,
@@ -1829,20 +1829,7 @@ fn enqueue_write_image(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| {
-            i.write_from_user_rect(
-                ptr,
-                q,
-                ctx,
-                &r,
-                &CLVec::default(),
-                row_pitch,
-                slice_pitch,
-                &o,
-                i.image_desc.image_row_pitch,
-                i.image_desc.image_slice_pitch,
-            )
-        }),
+        Box::new(move |q, ctx| i.write(ptr, q, ctx, &r, row_pitch, slice_pitch, &o)),
     )
 
     //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for image are not supported by device associated with queue.

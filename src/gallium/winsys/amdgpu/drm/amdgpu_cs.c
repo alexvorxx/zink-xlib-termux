@@ -1385,10 +1385,10 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
       /* The buffer list contains all buffers. This is a slow path that
        * ensures that no buffer is missing in the BO list.
        */
+      simple_mtx_lock(&ws->global_bo_list_lock);
       bo_list = alloca(ws->num_buffers * sizeof(struct drm_amdgpu_bo_list_entry));
       struct amdgpu_bo_real *bo;
 
-      simple_mtx_lock(&ws->global_bo_list_lock);
       LIST_FOR_EACH_ENTRY(bo, &ws->global_bo_list, global_list_item) {
          bo_list[num_bo_handles].bo_handle = bo->kms_handle;
          bo_list[num_bo_handles].bo_priority = 0;

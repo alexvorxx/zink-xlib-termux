@@ -5321,7 +5321,7 @@
 
     <function name="DrawBuffers" es2="3.0" no_error="true" exec="dlist">
         <param name="n" type="GLsizei" counter="true"/>
-        <param name="bufs" type="const GLenum *" count="n"/>
+        <param name="bufs" type="const GLenum *" count="n" marshal_count="CLAMP(n, 0, MAX_DRAW_BUFFERS)"/>
         <glx rop="233" large="true"/>
     </function>
 

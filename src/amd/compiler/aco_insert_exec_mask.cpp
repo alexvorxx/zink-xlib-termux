@@ -121,10 +121,8 @@ transition_to_WQM(exec_ctx& ctx, Builder bld, unsigned idx)
       return;
    if (ctx.info[idx].exec.back().second & mask_type_global) {
       Operand exec_mask = ctx.info[idx].exec.back().first;
-      if (exec_mask.isUndefined()) {
-         exec_mask = bld.copy(bld.def(bld.lm), Operand(exec, bld.lm));
-         ctx.info[idx].exec.back().first = exec_mask;
-      }
+      if (exec_mask.isUndefined())
+         ctx.info[idx].exec.back().first = bld.copy(bld.def(bld.lm), Operand(exec, bld.lm));
 
       exec_mask = bld.sop1(Builder::s_wqm, Definition(exec, bld.lm), bld.def(s1, scc),
                            get_exec_op(exec_mask));

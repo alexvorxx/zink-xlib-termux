@@ -2682,8 +2682,7 @@
         <glx sop="111"/>
     </function>
 
-    <function name="DrawPixels" deprecated="3.1" exec="dlist"
-              marshal="async" marshal_sync="_mesa_glthread_has_no_unpack_buffer(ctx)">
+    <function name="DrawPixels" deprecated="3.1" exec="dlist" marshal="custom">
         <param name="width" type="GLsizei"/>
         <param name="height" type="GLsizei"/>
         <param name="format" type="GLenum"/>

@@ -1239,6 +1239,16 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
       info->cs.uses_full_subgroups = pipeline_type != RADV_PIPELINE_RAY_TRACING && !nir->info.internal &&
                                      (info->workgroup_size % info->wave_size) == 0;
       break;
+   case MESA_SHADER_TESS_CTRL:
+      if (gfx_state->ts.patch_control_points) {
+         info->workgroup_size = ac_compute_lshs_workgroup_size(
+            device->physical_device->rad_info.gfx_level, MESA_SHADER_TESS_CTRL, info->num_tess_patches,
+            gfx_state->ts.patch_control_points, info->tcs.tcs_vertices_out);
+      } else {
+         /* Set the maximum possible value when the workgroup size can't be determined. */
+         info->workgroup_size = 256;
+      }
+      break;
    case MESA_SHADER_MESH:
       calc_mesh_workgroup_size(device, nir, info);
       break;
@@ -1626,14 +1636,9 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
           * optimize barriers.
           */
          vs_stage->info.workgroup_size = 256;
-         tcs_stage->info.workgroup_size = 256;
       } else {
          vs_stage->info.workgroup_size = ac_compute_lshs_workgroup_size(
             device->physical_device->rad_info.gfx_level, MESA_SHADER_VERTEX, tcs_stage->info.num_tess_patches,
-            gfx_state->ts.patch_control_points, tcs_stage->info.tcs.tcs_vertices_out);
-
-         tcs_stage->info.workgroup_size = ac_compute_lshs_workgroup_size(
-            device->physical_device->rad_info.gfx_level, MESA_SHADER_TESS_CTRL, tcs_stage->info.num_tess_patches,
             gfx_state->ts.patch_control_points, tcs_stage->info.tcs.tcs_vertices_out);
 
          if (!radv_use_llvm_for_stage(device, MESA_SHADER_VERTEX)) {

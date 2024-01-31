@@ -2515,6 +2515,8 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
       break;
    case FIXED_GRF:
       fprintf(file, "g%d", inst->dst.nr);
+      if (inst->dst.subnr != 0)
+         fprintf(file, ".%d", inst->dst.subnr / type_sz(inst->dst.type));
       break;
    case BAD_FILE:
       fprintf(file, "(null)");
@@ -2644,7 +2646,11 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
          break;
       }
 
-      if (inst->src[i].offset ||
+      if (inst->src[i].file == FIXED_GRF && inst->src[i].subnr != 0) {
+         assert(inst->src[i].offset == 0);
+
+         fprintf(file, ".%d", inst->src[i].subnr / type_sz(inst->src[i].type));
+      } else if (inst->src[i].offset ||
           (inst->src[i].file == VGRF &&
            alloc.sizes[inst->src[i].nr] * REG_SIZE != inst->size_read(i))) {
          const unsigned reg_size = (inst->src[i].file == UNIFORM ? 4 : REG_SIZE);

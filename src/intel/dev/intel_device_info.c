@@ -1776,14 +1776,9 @@ intel_device_info_update_after_hwconfig(struct intel_device_info *devinfo)
 enum intel_wa_steppings
 intel_device_info_wa_stepping(struct intel_device_info *devinfo)
 {
-   if (intel_device_info_is_mtl(devinfo)) {
-      if (devinfo->revision < 4)
-         return INTEL_STEPPING_A0;
-      return INTEL_STEPPING_B0;
-   } else if (devinfo->platform == INTEL_PLATFORM_TGL) {
+   if (devinfo->platform == INTEL_PLATFORM_TGL) {
+      /* TGL production steppings: B0 and C0 */
       switch (devinfo->revision) {
-      case 0:
-         return INTEL_STEPPING_A0;
       case 1:
          return INTEL_STEPPING_B0;
       case 3:

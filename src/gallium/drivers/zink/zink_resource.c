@@ -1756,6 +1756,11 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
       box.depth = util_num_layers(&res->base.b, i);
       ctx->base.resource_copy_region(&ctx->base, &res->base.b, i, 0, 0, 0, &staging.base.b, i, &box);
    }
+   if (old_obj->exportable) {
+      simple_mtx_lock(&ctx->batch.state->exportable_lock);
+      _mesa_set_remove_key(&ctx->batch.state->dmabuf_exports, &staging);
+      simple_mtx_unlock(&ctx->batch.state->exportable_lock);
+   }
    zink_resource_object_reference(screen, &old_obj, NULL);
    return true;
 }

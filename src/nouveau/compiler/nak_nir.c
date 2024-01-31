@@ -55,6 +55,39 @@ nak_nir_workgroup_has_one_subgroup(const nir_shader *nir)
    }
 }
 
+static uint8_t
+vectorize_filter_cb(const nir_instr *instr, const void *_data)
+{
+   if (instr->type != nir_instr_type_alu)
+      return 0;
+
+   const nir_alu_instr *alu = nir_instr_as_alu(instr);
+
+   const unsigned bit_size = nir_alu_instr_is_comparison(alu)
+                             ? alu->src[0].src.ssa->bit_size
+                             : alu->def.bit_size;
+
+   switch (alu->op) {
+   case nir_op_fadd:
+   case nir_op_fsub:
+   case nir_op_fabs:
+   case nir_op_fneg:
+   case nir_op_feq:
+   case nir_op_fge:
+   case nir_op_flt:
+   case nir_op_fneu:
+   case nir_op_fmul:
+   case nir_op_ffma:
+   case nir_op_fsign:
+   case nir_op_fsat:
+   case nir_op_fmax:
+   case nir_op_fmin:
+      return bit_size == 16 ? 2 : 1;
+   default:
+      return 1;
+   }
+}
+
 static void
 optimize_nir(nir_shader *nir, const struct nak_compiler *nak, bool allow_copies)
 {
@@ -95,7 +128,8 @@ optimize_nir(nir_shader *nir, const struct nak_compiler *nak, bool allow_copies)
       OPT(nir, nir_opt_dead_write_vars);
       OPT(nir, nir_opt_combine_stores, nir_var_all);
 
-      OPT(nir, nir_lower_alu_to_scalar, NULL, NULL);
+      OPT(nir, nir_lower_alu_width, vectorize_filter_cb, NULL);
+      OPT(nir, nir_opt_vectorize, vectorize_filter_cb, NULL);
       OPT(nir, nir_lower_phis_to_scalar, false);
       OPT(nir, nir_lower_frexp);
       OPT(nir, nir_copy_prop);

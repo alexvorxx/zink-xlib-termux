@@ -25,7 +25,6 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::mem;
 use std::mem::size_of;
-use std::ops::AddAssign;
 use std::ops::Deref;
 use std::os::raw::c_void;
 use std::ptr;
@@ -653,84 +652,6 @@ impl MemBase {
         self.mem_type == CL_MEM_OBJECT_BUFFER
     }
 
-    fn tx_raw_async(
-        &self,
-        dev: &Device,
-        rw: RWFlags,
-    ) -> CLResult<(PipeTransfer, Option<PipeResource>)> {
-        let mut offset = 0;
-        let b = self.to_parent(&mut offset);
-        let r = b.get_res_of_dev(dev)?;
-        let size = self.size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
-        let ctx = dev.helper_ctx();
-
-        assert!(self.is_buffer());
-
-        let tx = if can_map_directly(dev, r) {
-            ctx.buffer_map_directly(
-                r,
-                offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-                size,
-                rw,
-            )
-        } else {
-            None
-        };
-
-        if let Some(tx) = tx {
-            Ok((tx, None))
-        } else {
-            let shadow = dev
-                .screen()
-                .resource_create_buffer(size as u32, ResourceType::Staging, 0)
-                .ok_or(CL_OUT_OF_RESOURCES)?;
-            let tx = ctx
-                .buffer_map_coherent(&shadow, 0, size, rw)
-                .ok_or(CL_OUT_OF_RESOURCES)?;
-            Ok((tx, Some(shadow)))
-        }
-    }
-
-    fn tx_image_raw_async(
-        &self,
-        dev: &Device,
-        bx: &pipe_box,
-        rw: RWFlags,
-    ) -> CLResult<(PipeTransfer, Option<PipeResource>)> {
-        assert!(!self.is_buffer());
-
-        let r = self.get_res_of_dev(dev)?;
-        let ctx = dev.helper_ctx();
-
-        let tx = if can_map_directly(dev, r) {
-            ctx.texture_map_directly(r, bx, rw)
-        } else {
-            None
-        };
-
-        if let Some(tx) = tx {
-            Ok((tx, None))
-        } else {
-            let shadow = dev
-                .screen()
-                .resource_create_texture(
-                    r.width(),
-                    r.height(),
-                    r.depth(),
-                    r.array_size(),
-                    cl_mem_type_to_texture_target(self.image_desc.image_type),
-                    self.pipe_format,
-                    ResourceType::Staging,
-                    false,
-                )
-                .ok_or(CL_OUT_OF_RESOURCES)?;
-            let tx = ctx
-                .texture_map_coherent(&shadow, bx, rw)
-                .ok_or(CL_OUT_OF_RESOURCES)?;
-            Ok((tx, Some(shadow)))
-        }
-    }
-
     pub fn has_same_parent(&self, other: &Self) -> bool {
         ptr::eq(self.get_parent(), other.get_parent())
     }
@@ -753,15 +674,6 @@ impl MemBase {
 
     fn get_parent(&self) -> &Self {
         if let Some(parent) = &self.parent {
-            parent
-        } else {
-            self
-        }
-    }
-
-    fn to_parent<'a>(&'a self, offset: &mut usize) -> &'a Self {
-        if let Some(parent) = &self.parent {
-            offset.add_assign(self.offset);
             parent
         } else {
             self
@@ -1066,6 +978,36 @@ impl Buffer {
             )
             .ok_or(CL_OUT_OF_RESOURCES)?
             .with_ctx(ctx))
+    }
+
+    fn tx_raw_async(
+        &self,
+        dev: &Device,
+        rw: RWFlags,
+    ) -> CLResult<(PipeTransfer, Option<PipeResource>)> {
+        let r = self.get_res_of_dev(dev)?;
+        let offset = self.offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
+        let size = self.size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
+        let ctx = dev.helper_ctx();
+
+        let tx = if can_map_directly(dev, r) {
+            ctx.buffer_map_directly(r, offset, size, rw)
+        } else {
+            None
+        };
+
+        if let Some(tx) = tx {
+            Ok((tx, None))
+        } else {
+            let shadow = dev
+                .screen()
+                .resource_create_buffer(size as u32, ResourceType::Staging, 0)
+                .ok_or(CL_OUT_OF_RESOURCES)?;
+            let tx = ctx
+                .buffer_map_coherent(&shadow, 0, size, rw)
+                .ok_or(CL_OUT_OF_RESOURCES)?;
+            Ok((tx, Some(shadow)))
+        }
     }
 
     // TODO: only sync on unmap when the memory is not mapped for writing
@@ -1379,7 +1321,7 @@ impl Image {
 
             if let Entry::Vacant(e) = lock.tx.entry(dev) {
                 let bx = self.image_desc.bx()?;
-                let (tx, res) = self.tx_image_raw_async(dev, &bx, RWFlags::RW)?;
+                let (tx, res) = self.tx_raw_async(dev, &bx, RWFlags::RW)?;
                 e.insert(MappingTransfer::new(tx, res));
             } else {
                 lock.mark_pending(dev);
@@ -1499,6 +1441,44 @@ impl Image {
             .texture_map(r, bx, rw, ResourceMapType::Normal)
             .ok_or(CL_OUT_OF_RESOURCES)?
             .with_ctx(ctx))
+    }
+
+    fn tx_raw_async(
+        &self,
+        dev: &Device,
+        bx: &pipe_box,
+        rw: RWFlags,
+    ) -> CLResult<(PipeTransfer, Option<PipeResource>)> {
+        let r = self.get_res_of_dev(dev)?;
+        let ctx = dev.helper_ctx();
+
+        let tx = if can_map_directly(dev, r) {
+            ctx.texture_map_directly(r, bx, rw)
+        } else {
+            None
+        };
+
+        if let Some(tx) = tx {
+            Ok((tx, None))
+        } else {
+            let shadow = dev
+                .screen()
+                .resource_create_texture(
+                    r.width(),
+                    r.height(),
+                    r.depth(),
+                    r.array_size(),
+                    cl_mem_type_to_texture_target(self.image_desc.image_type),
+                    self.pipe_format,
+                    ResourceType::Staging,
+                    false,
+                )
+                .ok_or(CL_OUT_OF_RESOURCES)?;
+            let tx = ctx
+                .texture_map_coherent(&shadow, bx, rw)
+                .ok_or(CL_OUT_OF_RESOURCES)?;
+            Ok((tx, Some(shadow)))
+        }
     }
 
     // TODO: only sync on unmap when the memory is not mapped for writing

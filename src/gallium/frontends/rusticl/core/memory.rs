@@ -31,7 +31,6 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::MutexGuard;
 
 struct MappingTransfer {
     tx: PipeTransfer,
@@ -774,28 +773,6 @@ impl MemBase {
         Ok(!r.is_user && bit_check(self.flags, CL_MEM_USE_HOST_PTR))
     }
 
-    fn map<'a>(
-        &self,
-        dev: &'static Device,
-        lock: &'a mut MutexGuard<Mappings>,
-        rw: RWFlags,
-    ) -> CLResult<&'a PipeTransfer> {
-        if let Entry::Vacant(e) = lock.tx.entry(dev) {
-            let (tx, res) = if self.is_buffer() {
-                self.tx_raw_async(dev, rw)?
-            } else {
-                let bx = self.image_desc.bx()?;
-                self.tx_image_raw_async(dev, &bx, rw)?
-            };
-
-            e.insert(MappingTransfer::new(tx, res));
-        } else {
-            lock.mark_pending(dev);
-        }
-
-        Ok(&lock.tx.get_mut(dev).unwrap().tx)
-    }
-
     pub fn is_mapped_ptr(&self, ptr: *mut c_void) -> bool {
         self.maps.lock().unwrap().contains_ptr(ptr)
     }
@@ -980,8 +957,15 @@ impl Buffer {
             self.host_ptr
         } else {
             let mut lock = self.maps.lock().unwrap();
-            let tx = self.base.map(dev, &mut lock, RWFlags::RW)?;
-            tx.ptr()
+
+            if let Entry::Vacant(e) = lock.tx.entry(dev) {
+                let (tx, res) = self.tx_raw_async(dev, RWFlags::RW)?;
+                e.insert(MappingTransfer::new(tx, res));
+            } else {
+                lock.mark_pending(dev);
+            }
+
+            lock.tx.get(dev).unwrap().tx.ptr()
         };
 
         let ptr = unsafe { ptr.add(offset) };
@@ -1392,7 +1376,16 @@ impl Image {
             buffer.map(dev, 0)?
         } else {
             let mut lock = self.maps.lock().unwrap();
-            let tx = self.base.map(dev, &mut lock, RWFlags::RW)?;
+
+            if let Entry::Vacant(e) = lock.tx.entry(dev) {
+                let bx = self.image_desc.bx()?;
+                let (tx, res) = self.tx_image_raw_async(dev, &bx, RWFlags::RW)?;
+                e.insert(MappingTransfer::new(tx, res));
+            } else {
+                lock.mark_pending(dev);
+            }
+
+            let tx = &lock.tx.get(dev).unwrap().tx;
 
             if self.image_desc.dims() > 1 {
                 *row_pitch = tx.row_pitch() as usize;

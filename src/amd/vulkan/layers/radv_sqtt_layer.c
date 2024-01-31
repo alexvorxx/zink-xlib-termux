@@ -1575,10 +1575,12 @@ radv_register_rt_pipeline(struct radv_device *device, struct radv_ray_tracing_pi
    uint32_t idx = pipeline->stage_count;
 
    /* Combined traversal shader */
-   result = radv_register_rt_stage(device, pipeline, idx++, max_any_hit_stack_size + max_intersection_stack_size,
-                                   pipeline->base.base.shaders[MESA_SHADER_INTERSECTION]);
-   if (result != VK_SUCCESS)
-      return result;
+   if (pipeline->base.base.shaders[MESA_SHADER_INTERSECTION]) {
+      result = radv_register_rt_stage(device, pipeline, idx++, max_any_hit_stack_size + max_intersection_stack_size,
+                                      pipeline->base.base.shaders[MESA_SHADER_INTERSECTION]);
+      if (result != VK_SUCCESS)
+         return result;
+   }
 
    /* Prolog */
    result = radv_register_rt_stage(device, pipeline, idx++, 0, pipeline->prolog);

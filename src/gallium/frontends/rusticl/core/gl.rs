@@ -317,7 +317,7 @@ impl GLCtxManager {
 
         // CL_INVALID_GL_OBJECT if bufobj is not a GL buffer object or is a GL buffer
         // object but does not have an existing data store or the size of the buffer is 0.
-        if target == GL_ARRAY_BUFFER && export_out.buf_size == 0 {
+        if [GL_ARRAY_BUFFER, GL_TEXTURE_BUFFER].contains(&target) && export_out.buf_size == 0 {
             return Err(CL_INVALID_GL_OBJECT);
         }
 
@@ -382,7 +382,7 @@ impl GLExportManager {
                 array_size = depth;
                 depth = 1;
             }
-            GL_ARRAY_BUFFER => {
+            GL_ARRAY_BUFFER | GL_TEXTURE_BUFFER => {
                 array_size = 1;
                 width = self.export_out.buf_size as u32;
                 offset = self.export_out.buf_offset as u32;
@@ -542,6 +542,7 @@ pub fn target_from_gl(target: u32) -> CLResult<(u32, u32)> {
     // internal format does not map to a supported OpenCL image format.
     Ok(match target {
         GL_ARRAY_BUFFER => (CL_MEM_OBJECT_BUFFER, CL_GL_OBJECT_BUFFER),
+        GL_TEXTURE_BUFFER => (CL_MEM_OBJECT_IMAGE1D_BUFFER, CL_GL_OBJECT_TEXTURE_BUFFER),
         GL_RENDERBUFFER => (CL_MEM_OBJECT_IMAGE2D, CL_GL_OBJECT_RENDERBUFFER),
         GL_TEXTURE_1D => (CL_MEM_OBJECT_IMAGE1D, CL_GL_OBJECT_TEXTURE1D),
         GL_TEXTURE_1D_ARRAY => (CL_MEM_OBJECT_IMAGE1D_ARRAY, CL_GL_OBJECT_TEXTURE1D_ARRAY),

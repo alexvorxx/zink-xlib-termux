@@ -4106,12 +4106,21 @@ VkResult anv_AllocateMemory(
       /* wsi has its own way of synchronizing with the compositor */
       if (!wsi_info && dedicated_info &&
           dedicated_info->image != VK_NULL_HANDLE) {
+         ANV_FROM_HANDLE(anv_image, image, dedicated_info->image);
+
          /* Apply implicit sync to be compatible with clients relying on
           * implicit fencing. This matches the behavior in iris i915_batch
           * submit. An example client is VA-API (iHD), so only dedicated
           * image scenario has to be covered.
           */
          alloc_flags |= ANV_BO_ALLOC_IMPLICIT_SYNC;
+
+         /* For color attachment, apply IMPLICIT_WRITE so a client on the
+          * consumer side relying on implicit fencing can have a fence to
+          * wait for render complete.
+          */
+         if (image->vk.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+            alloc_flags |= ANV_BO_ALLOC_IMPLICIT_WRITE;
       }
    }
 

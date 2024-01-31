@@ -188,6 +188,7 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .EXT_color_write_enable               = true,
       .EXT_custom_border_color              = true,
       .EXT_depth_clip_control               = true,
+      .EXT_depth_clip_enable                = device->devinfo.ver >= 71,
       .EXT_load_store_op_none               = true,
       .EXT_inline_uniform_block             = true,
       .EXT_external_memory_dma_buf          = true,
@@ -428,6 +429,9 @@ get_features(const struct v3dv_physical_device *physical_device,
 
       /* VK_EXT_depth_clip_control */
       .depthClipControl = true,
+
+      /* VK_EXT_depth_clip_enable */
+      .depthClipEnable = physical_device->devinfo.ver >= 71,
 
       /* VK_EXT_attachment_feedback_loop_layout */
       .attachmentFeedbackLoopLayout = true,

@@ -170,15 +170,10 @@ format_is_float32(VkFormat format)
 }
 
 unsigned
-radv_compact_spi_shader_col_format(const struct radv_shader *ps, uint32_t spi_shader_col_format)
+radv_compact_spi_shader_col_format(uint32_t spi_shader_col_format)
 {
    unsigned value = 0, num_mrts = 0;
    unsigned i, num_targets;
-
-   /* Make sure to clear color attachments without exports because MRT holes are removed during
-    * compilation for optimal performance.
-    */
-   spi_shader_col_format &= ps->info.ps.colors_written;
 
    /* Compute the number of MRTs. */
    num_targets = DIV_ROUND_UP(util_last_bit(spi_shader_col_format), 4);
@@ -4072,7 +4067,11 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
    bool enable_mrt_compaction = ps && !ps->info.has_epilog && !ps->info.ps.mrt0_is_dual_src;
    if (enable_mrt_compaction) {
-      blend.spi_shader_col_format = radv_compact_spi_shader_col_format(ps, blend.spi_shader_col_format);
+      /* Make sure to clear color attachments without exports because MRT holes are removed during
+       * compilation for optimal performance.
+       */
+      blend.spi_shader_col_format =
+         radv_compact_spi_shader_col_format(blend.spi_shader_col_format & ps->info.ps.colors_written);
 
       /* In presence of MRT holes (ie. the FS exports MRT1 but not MRT0), the compiler will remap
        * them, so that only MRT0 is exported and the driver will compact SPI_SHADER_COL_FORMAT to

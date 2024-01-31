@@ -541,7 +541,7 @@ bool radv_pipeline_has_gs_copy_shader(const struct radv_pipeline *pipeline);
 void radv_blend_remove_dst(VkBlendOp *func, VkBlendFactor *src_factor, VkBlendFactor *dst_factor,
                            VkBlendFactor expected_dst, VkBlendFactor replacement_src);
 
-unsigned radv_compact_spi_shader_col_format(const struct radv_shader *ps, uint32_t spi_shader_col_format);
+unsigned radv_compact_spi_shader_col_format(uint32_t spi_shader_col_format);
 
 unsigned radv_format_meta_fs_key(struct radv_device *device, VkFormat format);
 

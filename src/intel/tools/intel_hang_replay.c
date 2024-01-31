@@ -600,8 +600,9 @@ main(int argc, char *argv[])
             .relocation_count = 0,
             .relocs_ptr       = 0,
             .flags            = EXEC_OBJECT_SUPPORTS_48B_ADDRESS |
-                                EXEC_OBJECT_PINNED,
-            .offset           = bo->offset,
+                                EXEC_OBJECT_PINNED |
+                                EXEC_OBJECT_CAPTURE,
+            .offset           = intel_canonical_address(bo->offset),
          };
       }
 
@@ -620,8 +621,9 @@ main(int argc, char *argv[])
             .relocs_ptr       = 0,
             .flags            = EXEC_OBJECT_SUPPORTS_48B_ADDRESS |
                                 EXEC_OBJECT_PINNED |
-                                EXEC_OBJECT_WRITE /* to be able to wait on the BO */,
-            .offset           = init_bo->offset,
+                                EXEC_OBJECT_WRITE /* to be able to wait on the BO */ |
+                                EXEC_OBJECT_CAPTURE,
+            .offset           = intel_canonical_address(init_bo->offset),
          };
          ret = execbuffer(drm_fd, ctx_id, &execbuffer_bos, init_bo, init.offset);
          if (ret != 0) {
@@ -641,8 +643,9 @@ main(int argc, char *argv[])
             .relocs_ptr       = 0,
             .flags            = EXEC_OBJECT_SUPPORTS_48B_ADDRESS |
                                 EXEC_OBJECT_PINNED |
-                                EXEC_OBJECT_WRITE /* to be able to wait on the BO */,
-            .offset           = batch_bo->offset,
+                                EXEC_OBJECT_WRITE /* to be able to wait on the BO */ |
+                                EXEC_OBJECT_CAPTURE,
+            .offset           = intel_canonical_address(batch_bo->offset),
          };
          ret = execbuffer(drm_fd, ctx_id, &execbuffer_bos, batch_bo, exec.offset);
          if (ret != 0) {

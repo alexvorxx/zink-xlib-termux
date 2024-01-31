@@ -1,6 +1,12 @@
 # Keep the tags below under 20 chars each, as they end up combined into
 # docker image tags, and docker has a length limit of 128 chars total in tags.
 #
+# The word after the date doesn't need to be overly descriptive, it exists
+# purely to avoid the risk of two people updating an image tag on the same day
+# while working on different changes, so it doesn't matter whether that word
+# will make sense to someone else. Aim for "nobody else will pick that word
+# for their change".
+#
 # If you update a tag and you get an error like this:
 #     cannot parse input: "$image:$tag": invalid reference format
 # check the length of $tag; if it's > 128 chars you need to shorten your tag.

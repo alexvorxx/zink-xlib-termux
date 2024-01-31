@@ -26,7 +26,6 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "panvk_cs.h"
 #include "panvk_pipeline.h"
 #include "panvk_pipeline_layout.h"
 #include "panvk_private.h"
@@ -46,6 +45,9 @@
 #include "vk_util.h"
 
 #include "panfrost/util/pan_lower_framebuffer.h"
+
+#include "pan_earlyzs.h"
+#include "pan_shader.h"
 
 struct panvk_pipeline_builder {
    struct panvk_device *device;
@@ -228,6 +230,195 @@ panvk_pipeline_builder_init_sysvals(struct panvk_pipeline_builder *builder,
 }
 
 static void
+panvk_pipeline_builder_emit_non_fs_rsd(
+   const struct pan_shader_info *shader_info, mali_ptr shader_ptr, void *rsd)
+{
+   assert(shader_info->stage != MESA_SHADER_FRAGMENT);
+
+   pan_pack(rsd, RENDERER_STATE, cfg) {
+      pan_shader_prepare_rsd(shader_info, shader_ptr, &cfg);
+   }
+}
+
+static void
+panvk_pipeline_builder_emit_base_fs_rsd(const struct panvk_pipeline *pipeline,
+                                        void *rsd)
+{
+   const struct pan_shader_info *info = &pipeline->fs.info;
+
+   pan_pack(rsd, RENDERER_STATE, cfg) {
+      if (pipeline->fs.required) {
+         pan_shader_prepare_rsd(info, pipeline->fs.address, &cfg);
+
+         uint8_t rt_written =
+            pipeline->fs.info.outputs_written >> FRAG_RESULT_DATA0;
+         uint8_t rt_mask = pipeline->fs.rt_mask;
+         cfg.properties.allow_forward_pixel_to_kill =
+            pipeline->fs.info.fs.can_fpk && !(rt_mask & ~rt_written) &&
+            !pipeline->ms.alpha_to_coverage && !pipeline->blend.reads_dest;
+
+         bool writes_zs = pipeline->zs.z_write || pipeline->zs.s_test;
+         bool zs_always_passes = !pipeline->zs.z_test && !pipeline->zs.s_test;
+         bool oq = false; /* TODO: Occlusion queries */
+
+         struct pan_earlyzs_state earlyzs =
+            pan_earlyzs_get(pan_earlyzs_analyze(info), writes_zs || oq,
+                            pipeline->ms.alpha_to_coverage, zs_always_passes);
+
+         cfg.properties.pixel_kill_operation = earlyzs.kill;
+         cfg.properties.zs_update_operation = earlyzs.update;
+      } else {
+         cfg.properties.depth_source = MALI_DEPTH_SOURCE_FIXED_FUNCTION;
+         cfg.properties.allow_forward_pixel_to_kill = true;
+         cfg.properties.allow_forward_pixel_to_be_killed = true;
+         cfg.properties.zs_update_operation = MALI_PIXEL_KILL_STRONG_EARLY;
+      }
+
+      bool msaa = pipeline->ms.rast_samples > 1;
+      cfg.multisample_misc.multisample_enable = msaa;
+      cfg.multisample_misc.sample_mask =
+         msaa ? pipeline->ms.sample_mask : UINT16_MAX;
+
+      cfg.multisample_misc.depth_function =
+         pipeline->zs.z_test ? pipeline->zs.z_compare_func : MALI_FUNC_ALWAYS;
+
+      cfg.multisample_misc.depth_write_mask = pipeline->zs.z_write;
+      cfg.multisample_misc.fixed_function_near_discard =
+         !pipeline->rast.clamp_depth;
+      cfg.multisample_misc.fixed_function_far_discard =
+         !pipeline->rast.clamp_depth;
+      cfg.multisample_misc.shader_depth_range_fixed = true;
+
+      cfg.stencil_mask_misc.stencil_enable = pipeline->zs.s_test;
+      cfg.stencil_mask_misc.alpha_to_coverage = pipeline->ms.alpha_to_coverage;
+      cfg.stencil_mask_misc.alpha_test_compare_function = MALI_FUNC_ALWAYS;
+      cfg.stencil_mask_misc.front_facing_depth_bias =
+         pipeline->rast.depth_bias.enable;
+      cfg.stencil_mask_misc.back_facing_depth_bias =
+         pipeline->rast.depth_bias.enable;
+      cfg.stencil_mask_misc.single_sampled_lines =
+         pipeline->ms.rast_samples <= 1;
+
+      if (!(pipeline->dynamic_state_mask &
+            (1 << VK_DYNAMIC_STATE_DEPTH_BIAS))) {
+         cfg.depth_units = pipeline->rast.depth_bias.constant_factor * 2.0f;
+         cfg.depth_factor = pipeline->rast.depth_bias.slope_factor;
+         cfg.depth_bias_clamp = pipeline->rast.depth_bias.clamp;
+      }
+
+      if (!(pipeline->dynamic_state_mask &
+            (1 << VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK))) {
+         cfg.stencil_front.mask = pipeline->zs.s_front.compare_mask;
+         cfg.stencil_back.mask = pipeline->zs.s_back.compare_mask;
+      }
+
+      if (!(pipeline->dynamic_state_mask &
+            (1 << VK_DYNAMIC_STATE_STENCIL_WRITE_MASK))) {
+         cfg.stencil_mask_misc.stencil_mask_front =
+            pipeline->zs.s_front.write_mask;
+         cfg.stencil_mask_misc.stencil_mask_back =
+            pipeline->zs.s_back.write_mask;
+      }
+
+      if (!(pipeline->dynamic_state_mask &
+            (1 << VK_DYNAMIC_STATE_STENCIL_REFERENCE))) {
+         cfg.stencil_front.reference_value = pipeline->zs.s_front.ref;
+         cfg.stencil_back.reference_value = pipeline->zs.s_back.ref;
+      }
+
+      cfg.stencil_front.compare_function = pipeline->zs.s_front.compare_func;
+      cfg.stencil_front.stencil_fail = pipeline->zs.s_front.fail_op;
+      cfg.stencil_front.depth_fail = pipeline->zs.s_front.z_fail_op;
+      cfg.stencil_front.depth_pass = pipeline->zs.s_front.pass_op;
+      cfg.stencil_back.compare_function = pipeline->zs.s_back.compare_func;
+      cfg.stencil_back.stencil_fail = pipeline->zs.s_back.fail_op;
+      cfg.stencil_back.depth_fail = pipeline->zs.s_back.z_fail_op;
+      cfg.stencil_back.depth_pass = pipeline->zs.s_back.pass_op;
+   }
+}
+
+static enum mali_register_file_format
+blend_type_from_nir(nir_alu_type nir_type)
+{
+   switch (nir_type) {
+   case 0: /* Render target not in use */
+      return 0;
+   case nir_type_float16:
+      return MALI_REGISTER_FILE_FORMAT_F16;
+   case nir_type_float32:
+      return MALI_REGISTER_FILE_FORMAT_F32;
+   case nir_type_int32:
+      return MALI_REGISTER_FILE_FORMAT_I32;
+   case nir_type_uint32:
+      return MALI_REGISTER_FILE_FORMAT_U32;
+   case nir_type_int16:
+      return MALI_REGISTER_FILE_FORMAT_I16;
+   case nir_type_uint16:
+      return MALI_REGISTER_FILE_FORMAT_U16;
+   default:
+      unreachable("Unsupported blend shader type for NIR alu type");
+   }
+}
+
+static void
+panvk_pipeline_builder_emit_blend(const struct panvk_pipeline *pipeline,
+                                  unsigned rt, void *bd)
+{
+   const struct pan_blend_state *blend = &pipeline->blend.state;
+   const struct pan_blend_rt_state *rts = &blend->rts[rt];
+   bool dithered = false;
+
+   pan_pack(bd, BLEND, cfg) {
+      if (!blend->rt_count || !rts->equation.color_mask) {
+         cfg.enable = false;
+         cfg.internal.mode = MALI_BLEND_MODE_OFF;
+         continue;
+      }
+
+      cfg.srgb = util_format_is_srgb(rts->format);
+      cfg.load_destination = pan_blend_reads_dest(blend->rts[rt].equation);
+      cfg.round_to_fb_precision = !dithered;
+
+      const struct util_format_description *format_desc =
+         util_format_description(rts->format);
+      unsigned chan_size = 0;
+      for (unsigned i = 0; i < format_desc->nr_channels; i++)
+         chan_size = MAX2(format_desc->channel[i].size, chan_size);
+
+      pan_blend_to_fixed_function_equation(blend->rts[rt].equation,
+                                           &cfg.equation);
+
+      /* Fixed point constant */
+      float fconst = pan_blend_get_constant(
+         pan_blend_constant_mask(blend->rts[rt].equation), blend->constants);
+      u16 constant = fconst * ((1 << chan_size) - 1);
+      constant <<= 16 - chan_size;
+      cfg.constant = constant;
+
+      if (pan_blend_is_opaque(blend->rts[rt].equation)) {
+         cfg.internal.mode = MALI_BLEND_MODE_OPAQUE;
+      } else {
+         cfg.internal.mode = MALI_BLEND_MODE_FIXED_FUNCTION;
+
+         cfg.internal.fixed_function.alpha_zero_nop =
+            pan_blend_alpha_zero_nop(blend->rts[rt].equation);
+         cfg.internal.fixed_function.alpha_one_store =
+            pan_blend_alpha_one_store(blend->rts[rt].equation);
+      }
+
+      /* If we want the conversion to work properly,
+       * num_comps must be set to 4
+       */
+      cfg.internal.fixed_function.num_comps = 4;
+      cfg.internal.fixed_function.conversion.memory_format =
+         GENX(panfrost_dithered_format_from_pipe_format)(rts->format, dithered);
+      cfg.internal.fixed_function.conversion.register_format =
+         blend_type_from_nir(pipeline->fs.info.bifrost.blend[rt].type);
+      cfg.internal.fixed_function.rt = rt;
+   }
+}
+
+static void
 panvk_pipeline_builder_init_shaders(struct panvk_pipeline_builder *builder,
                                     struct panvk_pipeline *pipeline)
 {
@@ -268,8 +459,7 @@ panvk_pipeline_builder_init_shaders(struct panvk_pipeline_builder *builder,
          mali_ptr gpu_rsd =
             pipeline->state_bo->addr.dev + builder->stages[i].rsd_offset;
 
-         panvk_per_arch(emit_non_fs_rsd)(builder->device, &shader->info,
-                                         shader_ptr, rsd);
+         panvk_pipeline_builder_emit_non_fs_rsd(&shader->info, shader_ptr, rsd);
          pipeline->rsds[i] = gpu_rsd;
       }
 
@@ -286,20 +476,20 @@ panvk_pipeline_builder_init_shaders(struct panvk_pipeline_builder *builder,
                          builder->stages[MESA_SHADER_FRAGMENT].rsd_offset;
       void *bd = rsd + pan_size(RENDERER_STATE);
 
-      panvk_per_arch(emit_base_fs_rsd)(builder->device, pipeline, rsd);
+      panvk_pipeline_builder_emit_base_fs_rsd(pipeline, rsd);
       for (unsigned rt = 0; rt < pipeline->blend.state.rt_count; rt++) {
-         panvk_per_arch(emit_blend)(builder->device, pipeline, rt, bd);
+         panvk_pipeline_builder_emit_blend(pipeline, rt, bd);
          bd += pan_size(BLEND);
       }
 
       pipeline->rsds[MESA_SHADER_FRAGMENT] = gpu_rsd;
    } else if (builder->create_info.gfx) {
-      panvk_per_arch(emit_base_fs_rsd)(builder->device, pipeline,
-                                       &pipeline->fs.rsd_template);
+      panvk_pipeline_builder_emit_base_fs_rsd(pipeline,
+                                              pipeline->fs.rsd_template);
       for (unsigned rt = 0; rt < MAX2(pipeline->blend.state.rt_count, 1);
            rt++) {
-         panvk_per_arch(emit_blend)(builder->device, pipeline, rt,
-                                    &pipeline->blend.bd_template[rt]);
+         panvk_pipeline_builder_emit_blend(pipeline, rt,
+                                           &pipeline->blend.bd_template[rt]);
       }
    }
 
@@ -513,6 +703,22 @@ translate_stencil_op(VkStencilOp in)
    }
 }
 
+static inline enum mali_func
+translate_compare_func(VkCompareOp comp)
+{
+   STATIC_ASSERT(VK_COMPARE_OP_NEVER == (VkCompareOp)MALI_FUNC_NEVER);
+   STATIC_ASSERT(VK_COMPARE_OP_LESS == (VkCompareOp)MALI_FUNC_LESS);
+   STATIC_ASSERT(VK_COMPARE_OP_EQUAL == (VkCompareOp)MALI_FUNC_EQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_LESS_OR_EQUAL == (VkCompareOp)MALI_FUNC_LEQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_GREATER == (VkCompareOp)MALI_FUNC_GREATER);
+   STATIC_ASSERT(VK_COMPARE_OP_NOT_EQUAL == (VkCompareOp)MALI_FUNC_NOT_EQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_GREATER_OR_EQUAL ==
+                 (VkCompareOp)MALI_FUNC_GEQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_ALWAYS == (VkCompareOp)MALI_FUNC_ALWAYS);
+
+   return (enum mali_func)comp;
+}
+
 static void
 panvk_pipeline_builder_parse_zs(struct panvk_pipeline_builder *builder,
                                 struct panvk_pipeline *pipeline)
@@ -536,7 +742,7 @@ panvk_pipeline_builder_parse_zs(struct panvk_pipeline_builder *builder,
       pipeline->zs.z_test &&
       builder->create_info.gfx->pDepthStencilState->depthWriteEnable;
 
-   pipeline->zs.z_compare_func = panvk_per_arch(translate_compare_func)(
+   pipeline->zs.z_compare_func = translate_compare_func(
       builder->create_info.gfx->pDepthStencilState->depthCompareOp);
    pipeline->zs.s_test =
       builder->create_info.gfx->pDepthStencilState->stencilTestEnable;
@@ -546,7 +752,7 @@ panvk_pipeline_builder_parse_zs(struct panvk_pipeline_builder *builder,
       builder->create_info.gfx->pDepthStencilState->front.passOp);
    pipeline->zs.s_front.z_fail_op = translate_stencil_op(
       builder->create_info.gfx->pDepthStencilState->front.depthFailOp);
-   pipeline->zs.s_front.compare_func = panvk_per_arch(translate_compare_func)(
+   pipeline->zs.s_front.compare_func = translate_compare_func(
       builder->create_info.gfx->pDepthStencilState->front.compareOp);
    pipeline->zs.s_front.compare_mask =
       builder->create_info.gfx->pDepthStencilState->front.compareMask;
@@ -560,7 +766,7 @@ panvk_pipeline_builder_parse_zs(struct panvk_pipeline_builder *builder,
       builder->create_info.gfx->pDepthStencilState->back.passOp);
    pipeline->zs.s_back.z_fail_op = translate_stencil_op(
       builder->create_info.gfx->pDepthStencilState->back.depthFailOp);
-   pipeline->zs.s_back.compare_func = panvk_per_arch(translate_compare_func)(
+   pipeline->zs.s_back.compare_func = translate_compare_func(
       builder->create_info.gfx->pDepthStencilState->back.compareOp);
    pipeline->zs.s_back.compare_mask =
       builder->create_info.gfx->pDepthStencilState->back.compareMask;

@@ -45,7 +45,6 @@
 #include "vk_util.h"
 
 #include "panvk_buffer.h"
-#include "panvk_cs.h"
 #include "panvk_descriptor_set.h"
 #include "panvk_descriptor_set_layout.h"
 #include "panvk_sampler.h"
@@ -150,8 +149,10 @@ panvk_per_arch(descriptor_set_create)(
 
       struct mali_uniform_buffer_packed *ubos = set->ubos;
 
-      panvk_per_arch(emit_ubo)(set->desc_bo->addr.dev, layout->desc_ubo_size,
-                               &ubos[layout->desc_ubo_index]);
+      pan_pack(&ubos[layout->desc_ubo_index], UNIFORM_BUFFER, cfg) {
+         cfg.pointer = set->desc_bo->addr.dev;
+         cfg.entries = DIV_ROUND_UP(layout->desc_ubo_size, 16);
+      }
    }
 
    for (unsigned i = 0; i < layout->binding_count; i++) {
@@ -406,7 +407,10 @@ panvk_write_ubo_desc(struct panvk_descriptor_set *set, uint32_t binding,
    size_t size =
       panvk_buffer_range(buffer, pBufferInfo->offset, pBufferInfo->range);
 
-   panvk_per_arch(emit_ubo)(ptr, size, panvk_ubo_desc(set, binding, elem));
+   pan_pack(panvk_ubo_desc(set, binding, elem), UNIFORM_BUFFER, cfg) {
+      cfg.pointer = ptr;
+      cfg.entries = DIV_ROUND_UP(size, 16);
+   }
 }
 
 static void

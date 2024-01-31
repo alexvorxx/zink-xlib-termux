@@ -37,7 +37,6 @@ panvk_entrypoints = custom_target(
 libpanvk_files = files(
   'panvk_buffer.c',
   'panvk_cmd_buffer.c',
-  'panvk_cs.c',
   'panvk_device.c',
   'panvk_device_memory.c',
   'panvk_descriptor_set.c',
@@ -63,7 +62,6 @@ foreach arch : ['6', '7']
       panvk_entrypoints[0],
       'panvk_vX_buffer_view.c',
       'panvk_vX_cmd_buffer.c',
-      'panvk_vX_cs.c',
       'panvk_vX_descriptor_set.c',
       'panvk_vX_descriptor_set_layout.c',
       'panvk_vX_device.c',

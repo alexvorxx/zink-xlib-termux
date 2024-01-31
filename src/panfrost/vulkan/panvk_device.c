@@ -63,8 +63,6 @@
 #include <wayland-client.h>
 #endif
 
-#include "panvk_cs.h"
-
 static int
 panvk_device_get_cache_uuid(uint16_t family, void *uuid)
 {

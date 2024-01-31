@@ -534,14 +534,12 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_cmd_pool, vk.base, VkCommandPool,
 
 #ifdef PAN_ARCH
 #include "panvk_vX_cmd_buffer.h"
-#include "panvk_vX_cs.h"
 #include "panvk_vX_device.h"
 #include "panvk_vX_meta.h"
 #else
 #define PAN_ARCH             6
 #define panvk_per_arch(name) panvk_arch_name(name, v6)
 #include "panvk_vX_cmd_buffer.h"
-#include "panvk_vX_cs.h"
 #include "panvk_vX_device.h"
 #include "panvk_vX_meta.h"
 #undef PAN_ARCH
@@ -549,7 +547,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_cmd_pool, vk.base, VkCommandPool,
 #define PAN_ARCH             7
 #define panvk_per_arch(name) panvk_arch_name(name, v7)
 #include "panvk_vX_cmd_buffer.h"
-#include "panvk_vX_cs.h"
 #include "panvk_vX_device.h"
 #include "panvk_vX_meta.h"
 #undef PAN_ARCH

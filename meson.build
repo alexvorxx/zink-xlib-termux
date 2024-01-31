@@ -902,10 +902,7 @@ if with_platform_android
       dep_android_mapper4 = dependency('android.hardware.graphics.mapper', version : '>= 4.0', required : false)
     endif
   endif
-  pre_args += [
-    '-DANDROID',
-    '-DANDROID_API_LEVEL=' + get_option('platform-sdk-version').to_string()
-  ]
+  pre_args += '-DANDROID_API_LEVEL=' + get_option('platform-sdk-version').to_string()
   if get_option('android-strict')
     pre_args += '-DANDROID_STRICT'
   endif

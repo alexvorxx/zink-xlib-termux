@@ -333,6 +333,7 @@ pub struct GLMemProps {
     pub height: u16,
     pub depth: u16,
     pub width: u32,
+    pub offset: u32,
     pub array_size: u16,
     pub pixel_size: u8,
     pub stride: u32,
@@ -356,7 +357,7 @@ pub struct GLExportManager {
 impl GLExportManager {
     pub fn get_gl_mem_props(&self) -> CLResult<GLMemProps> {
         let pixel_size = if self.is_gl_buffer() {
-            0
+            1
         } else {
             format_from_gl(self.export_out.internal_format)
                 .ok_or(CL_OUT_OF_HOST_MEMORY)?
@@ -368,6 +369,7 @@ impl GLExportManager {
         let mut depth = self.export_out.depth as u16;
         let mut width = self.export_out.width;
         let mut array_size = 1;
+        let mut offset = 0;
 
         // some fixups
         match self.export_in.target {
@@ -383,6 +385,7 @@ impl GLExportManager {
             GL_ARRAY_BUFFER => {
                 array_size = 1;
                 width = self.export_out.buf_size as u32;
+                offset = self.export_out.buf_offset as u32;
                 height = 1;
                 depth = 1;
             }
@@ -396,6 +399,7 @@ impl GLExportManager {
             height: height,
             depth: depth,
             width: width,
+            offset: offset,
             array_size: array_size,
             pixel_size: pixel_size,
             stride: self.export_out.stride,

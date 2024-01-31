@@ -1381,20 +1381,17 @@ impl Image {
         row_pitch: &mut usize,
         slice_pitch: &mut usize,
     ) -> CLResult<*mut c_void> {
-        let mut lock = self.maps.lock().unwrap();
-
         // we might have a host_ptr shadow buffer or image created from buffer
-        let ptr = if self.has_user_shadow_buffer(dev)? || self.is_parent_buffer() {
+        let ptr = if self.has_user_shadow_buffer(dev)? {
             *row_pitch = self.image_desc.image_row_pitch;
             *slice_pitch = self.image_desc.image_slice_pitch;
-
-            if let Some(src) = &self.parent {
-                let tx = src.map(dev, &mut lock, RWFlags::RW)?;
-                tx.ptr()
-            } else {
-                self.host_ptr
-            }
+            self.host_ptr
+        } else if let Some(Mem::Buffer(buffer)) = &self.parent {
+            *row_pitch = self.image_desc.image_row_pitch;
+            *slice_pitch = self.image_desc.image_slice_pitch;
+            buffer.map(dev, 0)?
         } else {
+            let mut lock = self.maps.lock().unwrap();
             let tx = self.base.map(dev, &mut lock, RWFlags::RW)?;
 
             if self.image_desc.dims() > 1 {

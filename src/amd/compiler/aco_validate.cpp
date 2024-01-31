@@ -384,6 +384,16 @@ validate_ir(Program* program)
             }
          }
 
+         /* Check that linear vgprs are late kill: this is to ensure linear VGPR operands and
+          * normal VGPR definitions don't try to use the same register, which is problematic
+          * because of assignment restrictions.
+          */
+         for (Operand& op : instr->operands) {
+            if (!op.isUndefined() && !op.isFixed() && op.hasRegClass() &&
+                op.regClass().is_linear_vgpr())
+               check(op.isLateKill(), "Linear VGPR operands must be late kill", instr.get());
+         }
+
          /* check subdword definitions */
          for (unsigned i = 0; i < instr->definitions.size(); i++) {
             if (instr->definitions[i].regClass().is_subdword())

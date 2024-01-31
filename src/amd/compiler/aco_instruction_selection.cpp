@@ -6095,8 +6095,11 @@ emit_mimg(Builder& bld, aco_opcode op, Temp dst, Temp rsrc, Operand samp, std::v
    mimg->operands[0] = Operand(rsrc);
    mimg->operands[1] = samp;
    mimg->operands[2] = vdata;
-   for (unsigned i = 0; i < coords.size(); i++)
+   for (unsigned i = 0; i < coords.size(); i++) {
       mimg->operands[3 + i] = Operand(coords[i]);
+      if (coords[i].regClass().is_linear_vgpr())
+         mimg->operands[3 + i].setLateKill(true);
+   }
    mimg->strict_wqm = strict_wqm;
 
    MIMG_instruction* res = mimg.get();
@@ -10320,8 +10323,11 @@ visit_block(isel_context* ctx, nir_block* block)
 {
    if (ctx->block->kind & block_kind_top_level) {
       Builder bld(ctx->program, ctx->block);
-      for (Temp tmp : ctx->unended_linear_vgprs)
-         bld.pseudo(aco_opcode::p_end_linear_vgpr, tmp);
+      for (Temp tmp : ctx->unended_linear_vgprs) {
+         Operand op(tmp);
+         op.setLateKill(true);
+         bld.pseudo(aco_opcode::p_end_linear_vgpr, op);
+      }
       ctx->unended_linear_vgprs.clear();
    }
 

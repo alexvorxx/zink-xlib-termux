@@ -122,8 +122,9 @@ lower(nir_builder *b, nir_instr *instr, void *data)
        * The GL spec says out-of-bounds image indexing is undefined, but
        * faulting is not acceptable for robustness.
        */
-      index =
-         nir_umin(b, index, nir_imm_int(b, b->shader->info.num_images - 1));
+      index = nir_umin(
+         b, index,
+         nir_imm_intN_t(b, b->shader->info.num_images - 1, index->bit_size));
 
       index = nir_iadd_imm(b, nir_imul_imm(b, index, 2), offset);
       nir_src_rewrite(&intr->src[0], nir_load_texture_handle_agx(b, index));
@@ -155,8 +156,9 @@ lower(nir_builder *b, nir_instr *instr, void *data)
          index = nir_imm_int(b, tex->texture_index);
 
       /* As above */
-      index =
-         nir_umin(b, index, nir_imm_int(b, b->shader->info.num_textures - 1));
+      index = nir_umin(
+         b, index,
+         nir_imm_intN_t(b, b->shader->info.num_textures - 1, index->bit_size));
 
       nir_tex_instr_add_src(tex, nir_tex_src_texture_handle,
                             nir_load_texture_handle_agx(b, index));

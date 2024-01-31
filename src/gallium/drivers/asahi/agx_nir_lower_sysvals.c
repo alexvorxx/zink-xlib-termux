@@ -117,8 +117,9 @@ load_texture_handle(nir_builder *b, nir_intrinsic_instr *intr, void *base)
       nir_load_sysval_agx(b, 1, 64, .desc_set = stage_table(b),
                           .binding = (uintptr_t)base, .flags = ~0);
 
-   return nir_vec2(b, nir_u2u32(b, uniform),
-                   nir_imul_imm(b, intr->src[0].ssa, AGX_TEXTURE_DESC_STRIDE));
+   return nir_vec2(
+      b, nir_u2u32(b, uniform),
+      nir_imul_imm(b, nir_u2u32(b, intr->src[0].ssa), AGX_TEXTURE_DESC_STRIDE));
 }
 
 static nir_def *

@@ -168,12 +168,7 @@ pub struct MemBase {
     pub mem_type: cl_mem_object_type,
     pub flags: cl_mem_flags,
     pub size: usize,
-    pub offset: usize,
     pub host_ptr: *mut c_void,
-    pub image_format: cl_image_format,
-    pub pipe_format: pipe_format,
-    pub image_desc: cl_image_desc,
-    pub image_elem_size: u8,
     pub props: Vec<cl_mem_properties>,
     pub cbs: Mutex<Vec<MemCB>>,
     pub gl_obj: Option<GLObject>,
@@ -183,10 +178,15 @@ pub struct MemBase {
 
 pub struct Buffer {
     base: MemBase,
+    pub offset: usize,
 }
 
 pub struct Image {
     base: MemBase,
+    pub image_format: cl_image_format,
+    pub pipe_format: pipe_format,
+    pub image_desc: cl_image_desc,
+    pub image_elem_size: u8,
 }
 
 impl Deref for Buffer {
@@ -385,18 +385,14 @@ impl MemBase {
                 mem_type: CL_MEM_OBJECT_BUFFER,
                 flags: flags,
                 size: size,
-                offset: 0,
                 host_ptr: host_ptr,
-                image_format: cl_image_format::default(),
-                pipe_format: pipe_format::PIPE_FORMAT_NONE,
-                image_desc: cl_image_desc::default(),
-                image_elem_size: 0,
                 props: props,
                 gl_obj: None,
                 cbs: Mutex::new(Vec::new()),
                 res: Some(buffer),
                 maps: Mappings::new(),
             },
+            offset: 0,
         }))
     }
 
@@ -420,18 +416,14 @@ impl MemBase {
                 mem_type: CL_MEM_OBJECT_BUFFER,
                 flags: flags,
                 size: size,
-                offset: offset,
                 host_ptr: host_ptr,
-                image_format: cl_image_format::default(),
-                pipe_format: pipe_format::PIPE_FORMAT_NONE,
-                image_desc: cl_image_desc::default(),
-                image_elem_size: 0,
                 props: Vec::new(),
                 gl_obj: None,
                 cbs: Mutex::new(Vec::new()),
                 res: None,
                 maps: Mappings::new(),
             },
+            offset: offset,
         })
     }
 
@@ -507,18 +499,17 @@ impl MemBase {
                 mem_type: mem_type,
                 flags: flags,
                 size: image_desc.pixels() * image_format.pixel_size().unwrap() as usize,
-                offset: 0,
                 host_ptr: host_ptr,
-                image_format: *image_format,
-                pipe_format: pipe_format,
-                image_desc: api_image_desc,
-                image_elem_size: image_elem_size,
                 props: props,
                 gl_obj: None,
                 cbs: Mutex::new(Vec::new()),
                 res: texture,
                 maps: Mappings::new(),
             },
+            image_format: *image_format,
+            pipe_format: pipe_format,
+            image_desc: api_image_desc,
+            image_elem_size: image_elem_size,
         }))
     }
 
@@ -629,12 +620,7 @@ impl MemBase {
             mem_type: mem_type,
             flags: flags,
             size: gl_mem_props.size(),
-            offset: gl_mem_props.offset as usize,
             host_ptr: ptr::null_mut(),
-            image_format: image_format,
-            pipe_format: pipe_format,
-            image_desc: desc,
-            image_elem_size: gl_mem_props.pixel_size,
             props: Vec::new(),
             gl_obj: Some(gl_obj),
             cbs: Mutex::new(Vec::new()),
@@ -642,9 +628,20 @@ impl MemBase {
             maps: Mappings::new(),
         };
         Ok(if rusticl_type == RusticlTypes::Buffer {
-            Arc::new(Buffer { base: base }).into_cl()
+            Arc::new(Buffer {
+                base: base,
+                offset: gl_mem_props.offset as usize,
+            })
+            .into_cl()
         } else {
-            Arc::new(Image { base: base }).into_cl()
+            Arc::new(Image {
+                base: base,
+                image_format: image_format,
+                pipe_format: pipe_format,
+                image_desc: desc,
+                image_elem_size: gl_mem_props.pixel_size,
+            })
+            .into_cl()
         })
     }
 

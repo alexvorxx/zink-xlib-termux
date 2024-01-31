@@ -235,7 +235,11 @@ impl CLInfo<cl_mem_info> for cl_mem {
             // TODO debugging feature
             CL_MEM_MAP_COUNT => cl_prop::<cl_uint>(0),
             CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(mem.host_ptr),
-            CL_MEM_OFFSET => cl_prop::<usize>(mem.offset),
+            CL_MEM_OFFSET => cl_prop::<usize>(if mem.is_buffer() {
+                Buffer::ref_from_raw(*self)?.offset
+            } else {
+                0
+            }),
             CL_MEM_PROPERTIES => cl_prop::<&Vec<cl_mem_properties>>(&mem.props),
             CL_MEM_REFERENCE_COUNT => cl_prop::<cl_uint>(if mem.is_buffer() {
                 Buffer::refcnt(*self)?
@@ -544,7 +548,7 @@ fn validate_image_desc(
     Ok((desc, parent))
 }
 
-fn validate_image_bounds(i: &MemBase, origin: CLVec<usize>, region: CLVec<usize>) -> CLResult<()> {
+fn validate_image_bounds(i: &Image, origin: CLVec<usize>, region: CLVec<usize>) -> CLResult<()> {
     let dims = i.image_desc.dims_with_array();
     let bound = region + origin;
     if bound > i.image_desc.size() {
@@ -626,7 +630,8 @@ fn validate_buffer(
             // image descriptor except for mem_object must match the image descriptor information
             // associated with mem_object.
             CL_MEM_OBJECT_IMAGE2D => {
-                if desc.image_type != mem.mem_type || !desc_eq_no_buffer(desc, &mem.image_desc) {
+                let image = Image::ref_from_raw(mem_object).unwrap();
+                if desc.image_type != mem.mem_type || !desc_eq_no_buffer(desc, &image.image_desc) {
                     return Err(err);
                 }
 
@@ -639,13 +644,13 @@ fn validate_buffer(
                 //
                 // The image channel data type specified in image_format must match the image channel
                 // data type associated with mem_object.
-                if format.image_channel_data_type != mem.image_format.image_channel_data_type {
+                if format.image_channel_data_type != image.image_format.image_channel_data_type {
                     return Err(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR);
                 }
 
                 // The image channel order specified in image_format must be compatible with the image
                 // channel order associated with mem_object. Compatible image channel orders are:
-                if format.image_channel_order != mem.image_format.image_channel_order {
+                if format.image_channel_order != image.image_format.image_channel_order {
                     // in image_format | in  mem_object:
                     // CL_sBGRA | CL_BGRA
                     // CL_BGRA  | CL_sBGRA
@@ -658,7 +663,7 @@ fn validate_buffer(
                     // CL_DEPTH | CL_R
                     match (
                         format.image_channel_order,
-                        mem.image_format.image_channel_order,
+                        image.image_format.image_channel_order,
                     ) {
                         (CL_sBGRA, CL_BGRA)
                         | (CL_BGRA, CL_sBGRA)
@@ -705,7 +710,7 @@ fn validate_buffer(
 #[cl_info_entrypoint(cl_get_image_info)]
 impl CLInfo<cl_image_info> for cl_mem {
     fn query(&self, q: cl_image_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = MemBase::ref_from_raw(*self)?;
+        let mem = Image::ref_from_raw(*self)?;
         Ok(match *q {
             CL_IMAGE_ARRAY_SIZE => cl_prop::<usize>(mem.image_desc.image_array_size),
             CL_IMAGE_BUFFER => cl_prop::<cl_mem>(unsafe { mem.image_desc.anon_1.buffer }),

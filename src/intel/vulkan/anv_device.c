@@ -4017,10 +4017,14 @@ VkResult anv_AllocateMemory(
 
    const VkImportMemoryFdInfoKHR *fd_info = NULL;
    const VkMemoryDedicatedAllocateInfo *dedicated_info = NULL;
+   const struct wsi_memory_allocate_info *wsi_info = NULL;
    uint64_t client_address = 0;
 
    vk_foreach_struct_const(ext, pAllocateInfo->pNext) {
-      switch (ext->sType) {
+      /* VK_STRUCTURE_TYPE_WSI_MEMORY_ALLOCATE_INFO_MESA isn't a real enum
+       * value, so use cast to avoid compiler warn
+       */
+      switch ((uint32_t)ext->sType) {
       case VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO:
       case VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID:
       case VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT:
@@ -4044,21 +4048,12 @@ VkResult anv_AllocateMemory(
          break;
       }
 
+      case VK_STRUCTURE_TYPE_WSI_MEMORY_ALLOCATE_INFO_MESA:
+         wsi_info = (void *)ext;
+         break;
+
       default:
-         /* VK_STRUCTURE_TYPE_WSI_MEMORY_ALLOCATE_INFO_MESA isn't a real
-          * enum value, so use conditional to avoid compiler warn
-          */
-         if (ext->sType == VK_STRUCTURE_TYPE_WSI_MEMORY_ALLOCATE_INFO_MESA) {
-            /* TODO: Android, ChromeOS and other applications may need another
-             * way to allocate buffers that can be scanout to display but it
-             * should pretty easy to catch those as Xe KMD driver will print
-             * warnings in dmesg when scanning buffers allocated without
-             * proper flag set.
-             */
-            alloc_flags |= ANV_BO_ALLOC_SCANOUT;
-         } else {
-            anv_debug_ignored_stype(ext->sType);
-         }
+         anv_debug_ignored_stype(ext->sType);
          break;
       }
    }
@@ -4095,6 +4090,14 @@ VkResult anv_AllocateMemory(
     */
    if (device->info->has_aux_map)
       alloc_flags |= ANV_BO_ALLOC_AUX_TT_ALIGNED;
+
+   /* TODO: Android, ChromeOS and other applications may need another way to
+    * allocate buffers that can be scanout to display but it should pretty
+    * easy to catch those as Xe KMD driver will print warnings in dmesg when
+    * scanning buffers allocated without proper flag set.
+    */
+   if (wsi_info)
+      alloc_flags |= ANV_BO_ALLOC_SCANOUT;
 
    /* Anything imported or exported is EXTERNAL. Apply implicit sync to be
     * compatible with clients relying on implicit fencing. This matches the

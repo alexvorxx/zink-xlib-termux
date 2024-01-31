@@ -1003,7 +1003,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
 
       if (!result || !out_handle) {
          mesa_loge("ZINK: failed to DuplicateHandle with winerr: %08x\n", (int)GetLastError());
-         return -2;
+         return roc_fail_and_cleanup_object;
       }
 
       imfi.pNext = NULL;
@@ -1152,7 +1152,7 @@ debug_resource_mem(struct zink_resource_object *obj, const struct pipe_resource 
       obj->bo->name = zink_debug_mem_add(screen, obj->size, buf);
 }
 
-static inline int
+static inline enum resource_object_create_result
 allocate_bo_and_update_obj(struct zink_screen *screen, const struct pipe_resource *templ,
                            VkMemoryRequirements *reqs, struct zink_resource_object *obj,
                            struct mem_alloc_info *alloc_info)
@@ -1172,7 +1172,7 @@ allocate_bo_and_update_obj(struct zink_screen *screen, const struct pipe_resourc
    return roc_success;
 }
 
-static inline int
+static inline enum resource_object_create_result
 create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
               const struct pipe_resource *templ, uint64_t *modifiers,
               int modifiers_count, struct mem_alloc_info *alloc_info)
@@ -1190,7 +1190,7 @@ create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
 
    if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->buffer) != VK_SUCCESS) {
       mesa_loge("ZINK: vkCreateBuffer failed");
-      return false;
+      return roc_fail_and_free_object;
    }
 
    if (!(templ->bind & (PIPE_BIND_SHADER_IMAGE | ZINK_BIND_DESCRIPTOR))) {
@@ -1198,7 +1198,7 @@ create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
      if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->storage_buffer) != VK_SUCCESS) {
         mesa_loge("ZINK: vkCreateBuffer failed");
         VKSCR(DestroyBuffer)(screen->dev, obj->buffer, NULL);
-        return false;
+        return roc_fail_and_free_object;
      }
    }
 
@@ -1244,7 +1244,7 @@ create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
    return roc_success;
 }
 
-static inline int
+static inline enum resource_object_create_result
 create_image(struct zink_screen *screen, struct zink_resource_object *obj,
              const struct pipe_resource *templ, bool *linear,
              uint64_t *modifiers, int modifiers_count,
@@ -1294,13 +1294,13 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
       mod = eval_ici(screen, &ici, templ, templ->bind, ici_modifier_count, ici_modifiers, &success);
    }
    if (!success)
-      return -1;
+      return roc_fail_and_free_object;
 
    if (ici.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT && srgb &&
       util_format_get_nr_components(srgb) == 4 &&
       !(ici.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
          mesa_loge("zink: refusing to create possibly-srgb dmabuf due to missing driver support: %s not supported!", util_format_name(srgb));
-         return -1;
+         return roc_fail_and_free_object;
    }
    VkExternalMemoryImageCreateInfo emici;
    VkImageDrmFormatModifierExplicitCreateInfoEXT idfmeci;

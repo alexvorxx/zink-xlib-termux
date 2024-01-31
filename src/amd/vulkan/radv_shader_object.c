@@ -129,7 +129,6 @@ radv_shader_object_init_graphics(struct radv_shader_object *shader_obj, struct r
    gfx_state.unknown_rast_prim = true;
    gfx_state.dynamic_provoking_vtx_mode = true;
    gfx_state.dynamic_line_rast_mode = true;
-   gfx_state.dynamic_patch_control_points = true;
 
    if (device->physical_device->rad_info.gfx_level >= GFX11)
       gfx_state.ms.alpha_to_coverage_via_mrtz = true;
@@ -405,7 +404,6 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
    gfx_state.unknown_rast_prim = true;
    gfx_state.dynamic_provoking_vtx_mode = true;
    gfx_state.dynamic_line_rast_mode = true;
-   gfx_state.dynamic_patch_control_points = true;
 
    if (device->physical_device->rad_info.gfx_level >= GFX11)
       gfx_state.ms.alpha_to_coverage_via_mrtz = true;

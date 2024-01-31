@@ -130,7 +130,6 @@ struct radv_graphics_state_key {
 
    uint32_t has_multiview_view_index : 1;
    uint32_t adjust_frag_coord_z : 1;
-   uint32_t dynamic_patch_control_points : 1;
    uint32_t dynamic_rasterization_samples : 1;
    uint32_t dynamic_provoking_vtx_mode : 1;
    uint32_t dynamic_line_rast_mode : 1;

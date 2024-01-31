@@ -473,7 +473,7 @@ gather_shader_info_tcs(struct radv_device *device, const nir_shader *nir,
       info->tcs.num_linked_patch_outputs = util_last_bit64(nir->info.patch_outputs_written);
    }
 
-   if (!(gfx_state->dynamic_patch_control_points)) {
+   if (gfx_state->ts.patch_control_points) {
       /* Number of tessellation patches per workgroup processed by the current pipeline. */
       info->num_tess_patches =
          get_tcs_num_patches(gfx_state->ts.patch_control_points, nir->info.tess.tcs_vertices_out,
@@ -1621,7 +1621,7 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
       struct radv_shader_stage *vs_stage = producer;
       struct radv_shader_stage *tcs_stage = consumer;
 
-      if (gfx_state->dynamic_patch_control_points) {
+      if (gfx_state->ts.patch_control_points == 0) {
          /* Set the workgroup size to the maximum possible value to ensure that compilers don't
           * optimize barriers.
           */
@@ -1670,7 +1670,7 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
       tcs_stage->info.tcs.tes_inputs_read = tes_stage->nir->info.inputs_read;
       tcs_stage->info.tcs.tes_patch_inputs_read = tes_stage->nir->info.patch_inputs_read;
 
-      if (!gfx_state->dynamic_patch_control_points)
+      if (gfx_state->ts.patch_control_points)
          tes_stage->info.num_tess_patches = tcs_stage->info.num_tess_patches;
    }
 }

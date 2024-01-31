@@ -3099,9 +3099,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
       }
    }
 
-   /* Check and validate stream emissions in geometry shaders */
-   validate_geometry_shader_emissions(consts, prog);
-
 done:
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       free(shader_list[i]);

@@ -1439,6 +1439,9 @@ gl_nir_link_glsl(const struct gl_constants *consts,
 
    MESA_TRACE_FUNC();
 
+   /* Check and validate stream emissions in geometry shaders */
+   validate_geometry_shader_emissions(consts, prog);
+
    prog->last_vert_prog = NULL;
    for (int i = MESA_SHADER_GEOMETRY; i >= MESA_SHADER_VERTEX; i--) {
       if (prog->_LinkedShaders[i] == NULL)

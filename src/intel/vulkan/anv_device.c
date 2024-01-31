@@ -4099,12 +4099,21 @@ VkResult anv_AllocateMemory(
    if (wsi_info)
       alloc_flags |= ANV_BO_ALLOC_SCANOUT;
 
-   /* Anything imported or exported is EXTERNAL. Apply implicit sync to be
-    * compatible with clients relying on implicit fencing. This matches the
-    * behavior in iris i915_batch_submit. An example client is VA-API.
-    */
-   if (mem->vk.export_handle_types || mem->vk.import_handle_type)
-      alloc_flags |= (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_IMPLICIT_SYNC);
+   /* Anything imported or exported is EXTERNAL */
+   if (mem->vk.export_handle_types || mem->vk.import_handle_type) {
+      alloc_flags |= ANV_BO_ALLOC_EXTERNAL;
+
+      /* wsi has its own way of synchronizing with the compositor */
+      if (!wsi_info && dedicated_info &&
+          dedicated_info->image != VK_NULL_HANDLE) {
+         /* Apply implicit sync to be compatible with clients relying on
+          * implicit fencing. This matches the behavior in iris i915_batch
+          * submit. An example client is VA-API (iHD), so only dedicated
+          * image scenario has to be covered.
+          */
+         alloc_flags |= ANV_BO_ALLOC_IMPLICIT_SYNC;
+      }
+   }
 
    if (mem->vk.ahardware_buffer) {
       result = anv_import_ahw_memory(_device, mem);

@@ -160,3 +160,10 @@ panvk_per_arch(pipeline_layout_total_ubo_count)(
    return PANVK_NUM_BUILTIN_UBOS + layout->num_ubos + layout->num_dyn_ubos +
           (layout->num_dyn_ssbos ? 1 : 0);
 }
+
+unsigned
+panvk_per_arch(pipeline_layout_dyn_ubos_offset)(
+   const struct panvk_pipeline_layout *layout)
+{
+   return PANVK_NUM_BUILTIN_UBOS + layout->num_ubos;
+}

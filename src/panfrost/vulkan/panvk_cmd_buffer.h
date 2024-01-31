@@ -94,8 +94,8 @@ struct panvk_descriptor_state {
    struct panvk_push_descriptor_set *push_sets[MAX_SETS];
    struct panvk_sysvals sysvals;
    struct {
-      struct panvk_buffer_desc ubos[MAX_DYNAMIC_UNIFORM_BUFFERS];
-      struct panvk_buffer_desc ssbos[MAX_DYNAMIC_STORAGE_BUFFERS];
+      struct mali_uniform_buffer_packed ubos[MAX_DYNAMIC_UNIFORM_BUFFERS];
+      struct panvk_ssbo_addr ssbos[MAX_DYNAMIC_STORAGE_BUFFERS];
    } dyn;
    mali_ptr sysvals_ptr;
    mali_ptr ubos;

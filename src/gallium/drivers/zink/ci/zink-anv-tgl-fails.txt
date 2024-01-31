@@ -690,7 +690,4 @@ KHR-GL46.sparse_texture_tests.SparseTextureCommitment,Crash
 # uprev Piglit in Mesa
 spec@arb_shader_storage_buffer_object@max-ssbo-size@fs,Crash
 spec@arb_shader_storage_buffer_object@max-ssbo-size@vs,Crash
-spec@ext_external_objects@vk-buf-exchange,Crash
-spec@ext_external_objects@vk-image-display-muliple-textures,Crash
-spec@ext_external_objects@vk-vert-buf-update-errors,Crash
 

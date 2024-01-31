@@ -1161,8 +1161,7 @@
         <glx rop="4"/>
     </function>
 
-    <function name="Bitmap" deprecated="3.1" exec="dlist"
-              marshal="async" marshal_sync="_mesa_glthread_has_no_unpack_buffer(ctx)">
+    <function name="Bitmap" deprecated="3.1" exec="dlist" marshal="custom">
         <param name="width" type="GLsizei"/>
         <param name="height" type="GLsizei"/>
         <param name="xorig" type="GLfloat"/>

@@ -1,4 +1,4 @@
-# Keep the tags below under 25-30 chars each, as they end up combined into
+# Keep the tags below under 20 chars each, as they end up combined into
 # docker image tags, and docker has a length limit of 128 chars total in tags.
 #
 # If you update a tag and you get an error like this:
@@ -7,7 +7,7 @@
 
 variables:
    DEBIAN_X86_64_BUILD_BASE_IMAGE: "debian/x86_64_build-base"
-   DEBIAN_BASE_TAG: "20240128-virglrenderer"
+   DEBIAN_BASE_TAG: "20240128-virgl"
 
    DEBIAN_X86_64_BUILD_IMAGE_PATH: "debian/x86_64_build"
    DEBIAN_BUILD_TAG: "20240104-find"
@@ -21,8 +21,8 @@ variables:
    DEBIAN_X86_64_TEST_ANDROID_TAG: "20240124-split"
    DEBIAN_X86_64_TEST_GL_TAG: "20240129-piglit-e931"
    DEBIAN_X86_64_TEST_VK_TAG: "20240129-piglit-e931"
-   ALPINE_X86_64_BUILD_TAG: "20230107-libdrm2_4_119"
-   ALPINE_X86_64_LAVA_SSH_TAG: "20230626-first-version"
+   ALPINE_X86_64_BUILD_TAG: "20230107-libdrm"
+   ALPINE_X86_64_LAVA_SSH_TAG: "20230626-v1"
    FEDORA_X86_64_BUILD_TAG: "20240123-teflon-3"
    KERNEL_ROOTFS_TAG: "20240129-piglit-e931"
    KERNEL_TAG: "v6.6.13-mesa-9916"

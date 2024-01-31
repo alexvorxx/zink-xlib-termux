@@ -314,9 +314,9 @@ sanity:
       )
       for var in "${image_tags[@]}"
       do
-        if [ "$(echo -n "${!var}" | wc -c)" -gt 30 ]
+        if [ "$(echo -n "${!var}" | wc -c)" -gt 20 ]
         then
-          echo "$var is too long; please make sure it is at most 30 chars."
+          echo "$var is too long; please make sure it is at most 20 chars."
           exit 1
         fi
       done

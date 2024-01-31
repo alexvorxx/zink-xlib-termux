@@ -587,26 +587,6 @@ impl MemBase {
             (None, imported_gl_tex)
         };
 
-        let gl_obj = GLObject {
-            gl_object_target: gl_export_manager.export_in.target,
-            gl_object_type: gl_object_type,
-            gl_object_name: export_in.obj,
-            shadow_map: shadow_map,
-        };
-
-        let desc = cl_image_desc {
-            image_type: mem_type,
-            image_width: gl_mem_props.width as usize,
-            image_height: gl_mem_props.height as usize,
-            image_depth: gl_mem_props.depth as usize,
-            image_array_size: gl_mem_props.array_size as usize,
-            image_row_pitch: 0,
-            image_slice_pitch: 0,
-            num_mip_levels: 1,
-            num_samples: 1,
-            ..Default::default()
-        };
-
         // it's kinda not supported, but we want to know if anything actually hits this as it's
         // certainly not tested by the CL CTS.
         if mem_type != CL_MEM_OBJECT_BUFFER {
@@ -622,11 +602,17 @@ impl MemBase {
             size: gl_mem_props.size(),
             host_ptr: ptr::null_mut(),
             props: Vec::new(),
-            gl_obj: Some(gl_obj),
+            gl_obj: Some(GLObject {
+                gl_object_target: gl_export_manager.export_in.target,
+                gl_object_type: gl_object_type,
+                gl_object_name: export_in.obj,
+                shadow_map: shadow_map,
+            }),
             cbs: Mutex::new(Vec::new()),
             res: Some(texture),
             maps: Mappings::new(),
         };
+
         Ok(if rusticl_type == RusticlTypes::Buffer {
             Arc::new(Buffer {
                 base: base,
@@ -638,7 +624,18 @@ impl MemBase {
                 base: base,
                 image_format: image_format,
                 pipe_format: pipe_format,
-                image_desc: desc,
+                image_desc: cl_image_desc {
+                    image_type: mem_type,
+                    image_width: gl_mem_props.width as usize,
+                    image_height: gl_mem_props.height as usize,
+                    image_depth: gl_mem_props.depth as usize,
+                    image_array_size: gl_mem_props.array_size as usize,
+                    image_row_pitch: 0,
+                    image_slice_pitch: 0,
+                    num_mip_levels: 1,
+                    num_samples: 1,
+                    ..Default::default()
+                },
                 image_elem_size: gl_mem_props.pixel_size,
             })
             .into_cl()

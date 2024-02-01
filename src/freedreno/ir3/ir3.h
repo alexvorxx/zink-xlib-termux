@@ -360,7 +360,6 @@ struct ir3_instruction {
    union {
       struct {
          char inv1, inv2;
-         char comp1, comp2;
          int immed;
          struct ir3_block *target;
          const char *target_label;

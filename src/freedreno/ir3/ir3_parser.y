@@ -704,7 +704,7 @@ static void print_token(FILE *file, int type, YYSTYPE value)
 %type <num> integer offset
 %type <num> flut_immed
 %type <flt> float
-%type <reg> src dst const
+%type <reg> src dst const cat0_src1 cat0_src2
 %type <tok> cat1_opc
 %type <tok> cat2_opc_1src cat2_opc_2src_cnd cat2_opc_2src
 %type <tok> cat3_opc
@@ -845,11 +845,11 @@ instr:             iflags cat0_instr
 
 label:             T_IDENTIFIER ':' { new_label($1); }
 
-cat0_src1:         '!' T_P0        { instr->cat0.inv1 = true; instr->cat0.comp1 = $2 >> 1; }
-|                  T_P0            { instr->cat0.comp1 = $1 >> 1; }
+cat0_src1:         '!' T_P0        { instr->cat0.inv1 = true; $$ = new_src((62 << 3) + $2, 0); }
+|                  T_P0            { $$ = new_src((62 << 3) + $1, 0); }
 
-cat0_src2:         '!' T_P0        { instr->cat0.inv2 = true; instr->cat0.comp2 = $2 >> 1; }
-|                  T_P0            { instr->cat0.comp2 = $1 >> 1; }
+cat0_src2:         '!' T_P0        { instr->cat0.inv2 = true; $$ = new_src((62 << 3) + $2, 0); }
+|                  T_P0            { $$ = new_src((62 << 3) + $1, 0); }
 
 cat0_immed:        '#' integer     { instr->cat0.immed = $2; }
 |                  '#' T_IDENTIFIER { ralloc_steal(instr, (void *)$2); instr->cat0.target_label = $2; }

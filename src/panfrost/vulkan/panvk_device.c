@@ -556,137 +556,255 @@ panvk_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
 {
    VK_FROM_HANDLE(panvk_physical_device, pdevice, physicalDevice);
 
+   /* HW supports MSAA 4, 8 and 16, but we limit ourselves to MSAA 4 for now. */
    VkSampleCountFlags sample_counts =
       VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_4_BIT;
 
-   /* make sure that the entire descriptor set is addressable with a signed
-    * 32-bit int. So the sum of all limits scaled by descriptor size has to
-    * be at most 2 GiB. the combined image & samples object count as one of
-    * both. This limit is for the pipeline layout, not for the set layout, but
-    * there is no set limit, so we just set a pipeline limit. I don't think
-    * any app is going to hit this soon. */
-   size_t max_descriptor_set_size =
-      ((1ull << 31) - 16 * MAX_DYNAMIC_BUFFERS) /
-      (32 /* uniform buffer, 32 due to potential space wasted on alignment */ +
-       32 /* storage buffer, 32 due to potential space wasted on alignment */ +
-       32 /* sampler, largest when combined with image */ +
-       64 /* sampled image */ + 64 /* storage image */);
-
    const VkPhysicalDeviceLimits limits = {
-      .maxImageDimension1D = (1 << 14),
-      .maxImageDimension2D = (1 << 14),
-      .maxImageDimension3D = (1 << 11),
-      .maxImageDimensionCube = (1 << 14),
-      .maxImageArrayLayers = (1 << 11),
-      .maxTexelBufferElements = 128 * 1024 * 1024,
-      .maxUniformBufferRange = UINT32_MAX,
+      /* Maximum texture dimension is 2^16. */
+      .maxImageDimension1D = (1 << 16),
+      .maxImageDimension2D = (1 << 16),
+      .maxImageDimension3D = (1 << 16),
+      .maxImageDimensionCube = (1 << 16),
+      .maxImageArrayLayers = (1 << 16),
+
+      /* Currently limited by the 1D texture size, which is 2^16.
+       * TODO: If we expose buffer views as 2D textures, we can increase the
+       * limit.
+       */
+      .maxTexelBufferElements = (1 << 16),
+
+      /* Each uniform entry is 16-byte and the number of entries is encoded in a
+       * 12-bit field, with the minus(1) modifier, which gives 2^20.
+       */
+      .maxUniformBufferRange = 1 << 20,
+
+      /* Storage buffer access is lowered to globals, so there's no limit here,
+       * except for the SW-descriptor we use to encode storage buffer
+       * descriptors, where the size is a 32-bit field.
+       */
       .maxStorageBufferRange = UINT32_MAX,
-      .maxPushConstantsSize = MAX_PUSH_CONSTANTS_SIZE,
+
+      /* 128 bytes of push constants, so we're aligned with the minimum Vulkan
+       * requirements.
+       */
+      .maxPushConstantsSize = 128,
+
+      /* There's no HW limit here. Should we advertize something smaller? */
       .maxMemoryAllocationCount = UINT32_MAX,
+
+      /* Again, no hardware limit, but most drivers seem to advertive 64k. */
       .maxSamplerAllocationCount = 64 * 1024,
-      .bufferImageGranularity = 64,          /* A cache line */
-      .sparseAddressSpaceSize = 0xffffffffu, /* buffer max size */
-      .maxBoundDescriptorSets = MAX_SETS,
-      .maxPerStageDescriptorSamplers = max_descriptor_set_size,
-      .maxPerStageDescriptorUniformBuffers = max_descriptor_set_size,
-      .maxPerStageDescriptorStorageBuffers = max_descriptor_set_size,
-      .maxPerStageDescriptorSampledImages = max_descriptor_set_size,
-      .maxPerStageDescriptorStorageImages = max_descriptor_set_size,
-      .maxPerStageDescriptorInputAttachments = max_descriptor_set_size,
-      .maxPerStageResources = max_descriptor_set_size,
-      .maxDescriptorSetSamplers = max_descriptor_set_size,
-      .maxDescriptorSetUniformBuffers = max_descriptor_set_size,
-      .maxDescriptorSetUniformBuffersDynamic = MAX_DYNAMIC_UNIFORM_BUFFERS,
-      .maxDescriptorSetStorageBuffers = max_descriptor_set_size,
-      .maxDescriptorSetStorageBuffersDynamic = MAX_DYNAMIC_STORAGE_BUFFERS,
-      .maxDescriptorSetSampledImages = max_descriptor_set_size,
-      .maxDescriptorSetStorageImages = max_descriptor_set_size,
-      .maxDescriptorSetInputAttachments = max_descriptor_set_size,
-      .maxVertexInputAttributes = 32,
-      .maxVertexInputBindings = 32,
-      .maxVertexInputAttributeOffset = 2047,
-      .maxVertexInputBindingStride = 2048,
+
+      /* A cache line. */
+      .bufferImageGranularity = 64,
+
+      /* Sparse binding not supported yet. */
+      .sparseAddressSpaceSize = 0,
+
+      /* Software limit. Pick the minimum required by Vulkan, because Bifrost
+       * GPUs don't have unified descriptor tables, which forces us to
+       * agregatte all descriptors from all sets and dispatch them to per-type
+       * descriptor tables emitted at draw/dispatch time.
+       * The more sets we support the more copies we are likely to have to do
+       * at draw time.
+       */
+      .maxBoundDescriptorSets = 4,
+
+      /* MALI_RENDERER_STATE::sampler_count is 16-bit. */
+      .maxPerStageDescriptorSamplers = UINT16_MAX,
+      .maxDescriptorSetSamplers = UINT16_MAX,
+
+      /* MALI_RENDERER_STATE::uniform_buffer_count is 8-bit. We reserve 32 slots
+       * for our internal UBOs.
+       */
+      .maxPerStageDescriptorUniformBuffers = UINT8_MAX - 32,
+      .maxDescriptorSetUniformBuffers = UINT8_MAX - 32,
+
+      /* SSBOs are limited by the size of a uniform buffer which contains our
+       * panvk_ssbo_desc objects.
+       * panvk_ssbo_desc is 16-byte, and each uniform entry in the Mali UBO is
+       * 16-byte too. The number of entries is encoded in a 12-bit field, with
+       * a minus(1) modifier, which gives a maximum of 2^12 SSBO
+       * descriptors.
+       */
+      .maxPerStageDescriptorStorageBuffers = 1 << 12,
+      .maxDescriptorSetStorageBuffers = 1 << 12,
+
+      /* MALI_RENDERER_STATE::sampler_count is 16-bit. */
+      .maxPerStageDescriptorSampledImages = UINT16_MAX,
+      .maxDescriptorSetSampledImages = UINT16_MAX,
+
+      /* MALI_ATTRIBUTE::buffer_index is 9-bit, and each image takes two
+       * MALI_ATTRIBUTE_BUFFER slots, which gives a maximum of (1 << 8) images.
+       */
+      .maxPerStageDescriptorStorageImages = 1 << 8,
+      .maxDescriptorSetStorageImages = 1 << 8,
+
+      /* A maximum of 8 color render targets, and one depth-stencil render
+       * target.
+       */
+      .maxPerStageDescriptorInputAttachments = 9,
+      .maxDescriptorSetInputAttachments = 9,
+
+      /* Could be the sum of all maxPerStageXxx values, but we limit ourselves
+       * to 2^16 to make things simpler.
+       */
+      .maxPerStageResources = 1 << 16,
+
+      /* Software limits to keep VkCommandBuffer tracking sane. */
+      .maxDescriptorSetUniformBuffersDynamic = 16,
+      .maxDescriptorSetStorageBuffersDynamic = 8,
+
+      /* Software limit to keep VkCommandBuffer tracking sane. The HW supports
+       * up to 2^9 vertex attributes.
+       */
+      .maxVertexInputAttributes = 16,
+      .maxVertexInputBindings = 16,
+
+      /* MALI_ATTRIBUTE::offset is 32-bit. */
+      .maxVertexInputAttributeOffset = UINT32_MAX,
+
+      /* MALI_ATTRIBUTE_BUFFER::stride is 32-bit. */
+      .maxVertexInputBindingStride = UINT32_MAX,
+
+      /* 32 vec4 varyings. */
       .maxVertexOutputComponents = 128,
-      .maxTessellationGenerationLevel = 64,
-      .maxTessellationPatchSize = 32,
-      .maxTessellationControlPerVertexInputComponents = 128,
-      .maxTessellationControlPerVertexOutputComponents = 128,
-      .maxTessellationControlPerPatchOutputComponents = 120,
-      .maxTessellationControlTotalOutputComponents = 4096,
-      .maxTessellationEvaluationInputComponents = 128,
-      .maxTessellationEvaluationOutputComponents = 128,
-      .maxGeometryShaderInvocations = 127,
-      .maxGeometryInputComponents = 64,
-      .maxGeometryOutputComponents = 128,
-      .maxGeometryOutputVertices = 256,
-      .maxGeometryTotalOutputComponents = 1024,
+
+      /* Tesselation shaders not supported. */
+      .maxTessellationGenerationLevel = 0,
+      .maxTessellationPatchSize = 0,
+      .maxTessellationControlPerVertexInputComponents = 0,
+      .maxTessellationControlPerVertexOutputComponents = 0,
+      .maxTessellationControlPerPatchOutputComponents = 0,
+      .maxTessellationControlTotalOutputComponents = 0,
+      .maxTessellationEvaluationInputComponents = 0,
+      .maxTessellationEvaluationOutputComponents = 0,
+
+      /* Geometry shaders not supported. */
+      .maxGeometryShaderInvocations = 0,
+      .maxGeometryInputComponents = 0,
+      .maxGeometryOutputComponents = 0,
+      .maxGeometryOutputVertices = 0,
+      .maxGeometryTotalOutputComponents = 0,
+
+      /* 32 vec4 varyings. */
       .maxFragmentInputComponents = 128,
+
+      /* 8 render targets. */
       .maxFragmentOutputAttachments = 8,
-      .maxFragmentDualSrcAttachments = 1,
-      .maxFragmentCombinedOutputResources =
-         MAX_RTS + max_descriptor_set_size * 2,
+
+      /* We don't support dual source blending yet. */
+      .maxFragmentDualSrcAttachments = 0,
+
+      /* 8 render targets, 2^12 storage buffers and 2^8 storage images (see
+       * above).
+       */
+      .maxFragmentCombinedOutputResources = 8 + (1 << 12) + (1 << 8),
+
+      /* MALI_LOCAL_STORAGE::wls_size_{base,scale} allows us to have up to
+       * (7 << 30) bytes of shared memory, but we cap it to 32K as it doesn't
+       * really make sense to expose this amount of memory, especially since
+       * it's backed by global memory anyway.
+       */
       .maxComputeSharedMemorySize = 32768,
+
+      /* Software limit to meet Vulkan 1.0 requirements. We split the
+       * dispatch in several jobs if it's too big.
+       */
       .maxComputeWorkGroupCount = {65535, 65535, 65535},
-      .maxComputeWorkGroupInvocations = 2048,
-      .maxComputeWorkGroupSize = {2048, 2048, 2048},
-      .subPixelPrecisionBits = 4 /* FIXME */,
-      .subTexelPrecisionBits = 4 /* FIXME */,
-      .mipmapPrecisionBits = 4 /* FIXME */,
+
+      /* We have 10 bits to encode the local-size, and there's a minus(1)
+       * modifier, so, a size of 1 takes no bit.
+       */
+      .maxComputeWorkGroupInvocations = 1 << 10,
+      .maxComputeWorkGroupSize = {1 << 10, 1 << 10, 1 << 10},
+
+      /* 8-bit subpixel precision. */
+      .subPixelPrecisionBits = 8,
+      .subTexelPrecisionBits = 8,
+      .mipmapPrecisionBits = 8,
+
+      /* Software limit. */
       .maxDrawIndexedIndexValue = UINT32_MAX,
-      .maxDrawIndirectCount = UINT32_MAX,
-      .maxSamplerLodBias = 16,
+
+      /* Make it one for now. */
+      .maxDrawIndirectCount = 1,
+
+      .maxSamplerLodBias = 255,
       .maxSamplerAnisotropy = 16,
-      .maxViewports = MAX_VIEWPORTS,
+      .maxViewports = 1,
+
+      /* Same as the framebuffer limit. */
       .maxViewportDimensions = {(1 << 14), (1 << 14)},
+
+      /* Encoded in a 16-bit signed integer. */
       .viewportBoundsRange = {INT16_MIN, INT16_MAX},
-      .viewportSubPixelBits = 8,
-      .minMemoryMapAlignment = 4096, /* A page */
+      .viewportSubPixelBits = 0,
+
+      /* Align on a page. */
+      .minMemoryMapAlignment = 4096,
+
+      /* Some compressed texture formats require 128-byte alignment. */
       .minTexelBufferOffsetAlignment = 64,
+
+      /* Always aligned on a uniform slot (vec4). */
       .minUniformBufferOffsetAlignment = 16,
+
+      /* Lowered to global accesses, which happen at the 32-bit granularity. */
       .minStorageBufferOffsetAlignment = 4,
-      .minTexelOffset = -32,
-      .maxTexelOffset = 31,
-      .minTexelGatherOffset = -32,
-      .maxTexelGatherOffset = 31,
-      .minInterpolationOffset = -2,
-      .maxInterpolationOffset = 2,
+
+      /* Signed 4-bit value. */
+      .minTexelOffset = -8,
+      .maxTexelOffset = 7,
+      .minTexelGatherOffset = -8,
+      .maxTexelGatherOffset = 7,
+      .minInterpolationOffset = -0.5,
+      .maxInterpolationOffset = 0.5,
       .subPixelInterpolationOffsetBits = 8,
+
       .maxFramebufferWidth = (1 << 14),
       .maxFramebufferHeight = (1 << 14),
-      .maxFramebufferLayers = (1 << 10),
+      .maxFramebufferLayers = 256,
       .framebufferColorSampleCounts = sample_counts,
       .framebufferDepthSampleCounts = sample_counts,
       .framebufferStencilSampleCounts = sample_counts,
       .framebufferNoAttachmentsSampleCounts = sample_counts,
-      .maxColorAttachments = MAX_RTS,
+      .maxColorAttachments = 8,
       .sampledImageColorSampleCounts = sample_counts,
       .sampledImageIntegerSampleCounts = VK_SAMPLE_COUNT_1_BIT,
       .sampledImageDepthSampleCounts = sample_counts,
       .sampledImageStencilSampleCounts = sample_counts,
       .storageImageSampleCounts = VK_SAMPLE_COUNT_1_BIT,
       .maxSampleMaskWords = 1,
-      .timestampComputeAndGraphics = true,
-      .timestampPeriod = 1,
-      .maxClipDistances = 8,
-      .maxCullDistances = 8,
-      .maxCombinedClipAndCullDistances = 8,
+      .timestampComputeAndGraphics = false,
+      .timestampPeriod = 0,
+      .maxClipDistances = 0,
+      .maxCullDistances = 0,
+      .maxCombinedClipAndCullDistances = 0,
       .discreteQueuePriorities = 1,
       .pointSizeRange = {0.125, 4095.9375},
       .lineWidthRange = {0.0, 7.9921875},
       .pointSizeGranularity = (1.0 / 16.0),
       .lineWidthGranularity = (1.0 / 128.0),
-      .strictLines = false, /* FINISHME */
+      .strictLines = false,
       .standardSampleLocations = true,
-      .optimalBufferCopyOffsetAlignment = 128,
-      .optimalBufferCopyRowPitchAlignment = 128,
+      .optimalBufferCopyOffsetAlignment = 64,
+      .optimalBufferCopyRowPitchAlignment = 64,
       .nonCoherentAtomSize = 64,
    };
 
    pProperties->properties = (VkPhysicalDeviceProperties){
       .apiVersion = PANVK_API_VERSION,
       .driverVersion = vk_get_driver_version(),
-      .vendorID = 0, /* TODO */
-      .deviceID = 0,
+
+      /* Arm vendor ID. */
+      .vendorID = 0x13b5,
+
+      /* Collect arch_major, arch_minor, arch_rev and product_major,
+       * as done by the Arm driver.
+       */
+      .deviceID = pdevice->kmod.props.gpu_prod_id << 16,
       .deviceType = VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU,
       .limits = limits,
       .sparseProperties = {0},
@@ -732,14 +850,14 @@ panvk_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR: {
          VkPhysicalDevicePushDescriptorPropertiesKHR *properties =
             (VkPhysicalDevicePushDescriptorPropertiesKHR *)ext;
-         properties->maxPushDescriptors = MAX_PUSH_DESCRIPTORS;
+         properties->maxPushDescriptors = 0;
          break;
       }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT: {
          VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT *properties =
             (VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT *)ext;
-         /* We have to restrict this a bit for multiview */
-         properties->maxVertexAttribDivisor = UINT32_MAX / (16 * 2048);
+         /* We will have to restrict this a bit for multiview */
+         properties->maxVertexAttribDivisor = UINT32_MAX;
          break;
       }
       default:
@@ -752,7 +870,7 @@ static const VkQueueFamilyProperties panvk_queue_family_properties = {
    .queueFlags =
       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
    .queueCount = 1,
-   .timestampValidBits = 64,
+   .timestampValidBits = 0,
    .minImageTransferGranularity = {1, 1, 1},
 };
 

@@ -476,14 +476,14 @@ genX(raster_polygon_mode)(struct anv_graphics_pipeline *pipeline,
       unreachable("Unsupported GS output topology");
    } else if (anv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_EVAL)) {
       switch (get_tes_prog_data(pipeline)->output_topology) {
-      case BRW_TESS_OUTPUT_TOPOLOGY_POINT:
+      case INTEL_TESS_OUTPUT_TOPOLOGY_POINT:
          return VK_POLYGON_MODE_POINT;
 
-      case BRW_TESS_OUTPUT_TOPOLOGY_LINE:
+      case INTEL_TESS_OUTPUT_TOPOLOGY_LINE:
          return VK_POLYGON_MODE_LINE;
 
-      case BRW_TESS_OUTPUT_TOPOLOGY_TRI_CW:
-      case BRW_TESS_OUTPUT_TOPOLOGY_TRI_CCW:
+      case INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CW:
+      case INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CCW:
          return pipeline->polygon_mode;
       }
       unreachable("Unsupported TCS output topology");
@@ -1437,7 +1437,7 @@ emit_3dstate_hs_te_ds(struct anv_graphics_pipeline *pipeline,
       ds.MaximumNumberofThreads = devinfo->max_tes_threads - 1;
 
       ds.ComputeWCoordinateEnable =
-         tes_prog_data->domain == BRW_TESS_DOMAIN_TRI;
+         tes_prog_data->domain == INTEL_TESS_DOMAIN_TRI;
 
       ds.PatchURBEntryReadLength = tes_prog_data->base.urb_read_length;
       ds.PatchURBEntryReadOffset = 0;

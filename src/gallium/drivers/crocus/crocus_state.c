@@ -4442,7 +4442,7 @@ crocus_is_drawing_points(const struct crocus_context *ice)
    } else if (ice->shaders.prog[MESA_SHADER_TESS_EVAL]) {
       const struct brw_tes_prog_data *tes_data =
          (void *) ice->shaders.prog[MESA_SHADER_TESS_EVAL]->prog_data;
-      return tes_data->output_topology == BRW_TESS_OUTPUT_TOPOLOGY_POINT;
+      return tes_data->output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_POINT;
    } else {
       return ice->state.prim_mode == MESA_PRIM_POINTS;
    }
@@ -7025,7 +7025,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
             ds.MaximumNumberofThreads = batch->screen->devinfo.max_tes_threads - 1;
             ds.ComputeWCoordinateEnable =
-               tes_prog_data->domain == BRW_TESS_DOMAIN_TRI;
+               tes_prog_data->domain == INTEL_TESS_DOMAIN_TRI;
 
 #if GFX_VER >= 8
             if (vue_prog_data->dispatch_mode == DISPATCH_MODE_SIMD8)

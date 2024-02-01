@@ -48,6 +48,34 @@ enum intel_msaa_flags {
 };
 MESA_DEFINE_CPP_ENUM_BITFIELD_OPERATORS(intel_msaa_flags)
 
+/**
+ * @defgroup Tessellator parameter enumerations.
+ *
+ * These correspond to the hardware values in 3DSTATE_TE, and are provided
+ * as part of the tessellation evaluation shader.
+ *
+ * @{
+ */
+enum intel_tess_partitioning {
+   INTEL_TESS_PARTITIONING_INTEGER         = 0,
+   INTEL_TESS_PARTITIONING_ODD_FRACTIONAL  = 1,
+   INTEL_TESS_PARTITIONING_EVEN_FRACTIONAL = 2,
+};
+
+enum intel_tess_output_topology {
+   INTEL_TESS_OUTPUT_TOPOLOGY_POINT   = 0,
+   INTEL_TESS_OUTPUT_TOPOLOGY_LINE    = 1,
+   INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CW  = 2,
+   INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CCW = 3,
+};
+
+enum intel_tess_domain {
+   INTEL_TESS_DOMAIN_QUAD    = 0,
+   INTEL_TESS_DOMAIN_TRI     = 1,
+   INTEL_TESS_DOMAIN_ISOLINE = 2,
+};
+/** @} */
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

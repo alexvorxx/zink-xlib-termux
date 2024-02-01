@@ -4725,7 +4725,7 @@ iris_is_drawing_points(const struct iris_context *ice)
    } else if (ice->shaders.prog[MESA_SHADER_TESS_EVAL]) {
       const struct brw_tes_prog_data *tes_data =
          (void *) ice->shaders.prog[MESA_SHADER_TESS_EVAL]->prog_data;
-      return tes_data->output_topology == BRW_TESS_OUTPUT_TOPOLOGY_POINT;
+      return tes_data->output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_POINT;
    } else {
       return ice->state.prim_mode == MESA_PRIM_POINTS;
    }
@@ -5048,7 +5048,7 @@ iris_store_tes_state(const struct intel_device_info *devinfo,
       ds.DispatchMode = DISPATCH_MODE_SIMD8_SINGLE_PATCH;
       ds.MaximumNumberofThreads = devinfo->max_tes_threads - 1;
       ds.ComputeWCoordinateEnable =
-         tes_prog_data->domain == BRW_TESS_DOMAIN_TRI;
+         tes_prog_data->domain == INTEL_TESS_DOMAIN_TRI;
 
 #if GFX_VER >= 12
       ds.PrimitiveIDNotRequired = !tes_prog_data->include_primitive_id;

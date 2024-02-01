@@ -2428,8 +2428,8 @@ crocus_update_compiled_shaders(struct crocus_context *ice)
       } else if (tes) {
          const struct brw_tes_prog_data *tes_data = (void *) tes->prog_data;
          points_or_lines =
-            tes_data->output_topology == BRW_TESS_OUTPUT_TOPOLOGY_LINE ||
-            tes_data->output_topology == BRW_TESS_OUTPUT_TOPOLOGY_POINT;
+            tes_data->output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_LINE ||
+            tes_data->output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_POINT;
       }
 
       if (ice->shaders.output_topology_is_points_or_lines != points_or_lines) {

@@ -27,7 +27,7 @@ else
     DEQP_RUNNER_CARGO_ARGS="--version ${DEQP_RUNNER_VERSION} ${EXTRA_CARGO_ARGS} -- deqp-runner"
 fi
 
-if [ -z "$ANDROID_NDK_HOME" ]; then
+if [[ "$RUST_TARGET" != *-android ]]; then
     cargo install --locked  \
         -j ${FDO_CI_CONCURRENT:-4} \
         --root /usr/local \
@@ -43,10 +43,10 @@ else
         --root /usr/local --version 2.10.0 \
         cargo-ndk
 
-    rustup target add x86_64-linux-android
-    RUSTFLAGS='-C target-feature=+crt-static' cargo ndk --target x86_64-linux-android build --release
+    rustup target add $RUST_TARGET
+    RUSTFLAGS='-C target-feature=+crt-static' cargo ndk --target $RUST_TARGET build --release
 
-    mv target/x86_64-linux-android/release/deqp-runner /deqp-runner
+    mv target/$RUST_TARGET/release/deqp-runner /deqp-runner
 
     cargo uninstall --locked  \
         --root /usr/local \

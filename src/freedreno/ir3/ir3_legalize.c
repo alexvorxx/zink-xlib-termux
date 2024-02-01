@@ -789,6 +789,8 @@ block_sched(struct ir3 *ir)
 static void
 kill_sched(struct ir3 *ir, struct ir3_shader_variant *so)
 {
+   ir3_count_instructions(ir);
+
    /* True if we know that this block will always eventually lead to the end
     * block:
     */

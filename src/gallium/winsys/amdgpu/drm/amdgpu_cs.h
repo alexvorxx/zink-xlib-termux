@@ -176,11 +176,6 @@ struct amdgpu_fence {
 
 void amdgpu_fence_destroy(struct amdgpu_fence *fence);
 
-static inline bool amdgpu_fence_is_syncobj(struct amdgpu_fence *fence)
-{
-   return fence->ctx == NULL;
-}
-
 static inline void amdgpu_ctx_reference(struct amdgpu_ctx **dst, struct amdgpu_ctx *src)
 {
    struct amdgpu_ctx *old_dst = *dst;

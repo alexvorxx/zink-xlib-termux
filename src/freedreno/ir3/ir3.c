@@ -853,8 +853,7 @@ ir3_lookup_array(struct ir3 *ir, unsigned id)
    return NULL;
 }
 
-void
-ir3_find_ssa_uses(struct ir3 *ir, void *mem_ctx, bool falsedeps)
+void ir3_find_ssa_uses_for(struct ir3 *ir, void *mem_ctx, use_filter_cb filter)
 {
    /* We could do this in a single pass if we can assume instructions
     * are always sorted.  Which currently might not always be true.
@@ -867,7 +866,7 @@ ir3_find_ssa_uses(struct ir3 *ir, void *mem_ctx, bool falsedeps)
    foreach_block (block, &ir->block_list) {
       foreach_instr (instr, &block->instr_list) {
          foreach_ssa_src_n (src, n, instr) {
-            if (__is_false_dep(instr, n) && !falsedeps)
+            if (!filter(instr, n))
                continue;
             if (!src->uses)
                src->uses = _mesa_pointer_set_create(mem_ctx);
@@ -875,6 +874,26 @@ ir3_find_ssa_uses(struct ir3 *ir, void *mem_ctx, bool falsedeps)
          }
       }
    }
+}
+
+static bool
+no_false_deps(struct ir3_instruction *instr, unsigned src_n)
+{
+   return !__is_false_dep(instr, src_n);
+}
+
+static bool
+any_src(struct ir3_instruction *instr, unsigned src_n)
+{
+   return true;
+}
+
+void
+ir3_find_ssa_uses(struct ir3 *ir, void *mem_ctx, bool falsedeps)
+{
+   if (falsedeps)
+      return ir3_find_ssa_uses_for(ir, mem_ctx, any_src);
+   return ir3_find_ssa_uses_for(ir, mem_ctx, no_false_deps);
 }
 
 /**

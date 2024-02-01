@@ -828,7 +828,10 @@ ir3_instr_move_before_block(struct ir3_instruction *instr,
    list_add(&instr->node, &block->instr_list);
 }
 
+typedef bool (*use_filter_cb)(struct ir3_instruction *use, unsigned src_n);
+
 void ir3_find_ssa_uses(struct ir3 *ir, void *mem_ctx, bool falsedeps);
+void ir3_find_ssa_uses_for(struct ir3 *ir, void *mem_ctx, use_filter_cb filter);
 
 void ir3_set_dst_type(struct ir3_instruction *instr, bool half);
 void ir3_fixup_src_type(struct ir3_instruction *instr);

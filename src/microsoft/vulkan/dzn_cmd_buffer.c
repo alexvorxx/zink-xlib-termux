@@ -4691,7 +4691,7 @@ dzn_cmd_buffer_resolve_rendering_attachment(struct dzn_cmd_buffer *cmdbuf,
    struct dzn_image_view *src = att->iview;
    struct dzn_image_view *dst = att->resolve.iview;
 
-   if (!src || !dst)
+   if (!src || !dst || att->resolve.mode == VK_RESOLVE_MODE_NONE)
       return;
 
    struct dzn_device *device = container_of(cmdbuf->vk.base.device, struct dzn_device, vk);

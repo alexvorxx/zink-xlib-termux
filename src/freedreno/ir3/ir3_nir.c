@@ -808,6 +808,13 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
        !(ir3_shader_debug & IR3_DBG_NOPREAMBLE))
       progress |= OPT(s, ir3_nir_opt_preamble, so);
 
+   if (so->compiler->load_shader_consts_via_preamble)
+      progress |= OPT(s, ir3_nir_lower_driver_params_to_ubo, so);
+
+   /* TODO: ldg.k might also work on a6xx */
+   if (so->compiler->gen >= 7)
+      progress |= OPT(s, ir3_nir_lower_const_global_loads, so);
+
    if (!so->binning_pass)
       OPT_V(s, ir3_nir_analyze_ubo_ranges, so);
 
@@ -1053,7 +1060,8 @@ ir3_setup_const_state(nir_shader *nir, struct ir3_shader_variant *v,
    assert((const_state->ubo_state.size % 16) == 0);
    unsigned constoff = v->shader_options.num_reserved_user_consts +
       const_state->ubo_state.size / 16 +
-      const_state->preamble_size;
+      const_state->preamble_size +
+      const_state->global_size;
    unsigned ptrsz = ir3_pointer_size(compiler);
 
    if (const_state->num_ubos > 0 && compiler->gen < 6) {

@@ -123,10 +123,14 @@ enum ir3_wavesize_option {
 /**
  * Description of a lowered UBO.
  */
+struct nir_def;
+
 struct ir3_ubo_info {
+   struct nir_def *global_base; /* For global loads, the base address */
    uint32_t block;         /* Which constant block */
    uint16_t bindless_base; /* For bindless, which base register is used */
    bool bindless;
+   bool global;
 };
 
 /**
@@ -230,6 +234,7 @@ struct ir3_const_state {
    uint32_t *immediates;
 
    unsigned preamble_size;
+   unsigned global_size;
 
    /* State of ubo access lowered to push consts: */
    struct ir3_ubo_analysis_state ubo_state;

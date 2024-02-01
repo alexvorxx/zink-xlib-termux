@@ -259,6 +259,10 @@ reload_into(struct ra_predicates_ctx *ctx, struct block_liveness *live,
    }
 
    reloaded_instr->block = use->block;
+
+   /* Keep track of the original def for validation. */
+   reloaded_instr->data = def;
+
    ir3_instr_move_before(reloaded_instr, use);
    struct ir3_register *reloaded_def = reloaded_instr->dsts[0];
    return assign_reg(ctx, live, def, reloaded_def, comp);
@@ -330,6 +334,12 @@ ra_block(struct ra_predicates_ctx *ctx, struct ir3_block *block)
           * to know when it is legal to move the instruction.
           */
          dst->flags |= IR3_REG_UNUSED;
+
+         /* For validation, we keep track of which def an instruction produces.
+          * Normally, this will be the instruction's dst but in case of
+          * reloading, it will point to the original instruction's dst.
+          */
+         dst->instr->data = dst;
 
          /* If we don't have any free registers, ignore the def for now. If we
           * start spilling right away, we might end-up with a cascade of spills

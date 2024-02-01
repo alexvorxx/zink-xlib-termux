@@ -59,6 +59,8 @@ ra_physreg_to_num(physreg_t physreg, unsigned flags)
       physreg /= 2;
    if (flags & IR3_REG_SHARED)
       physreg += 48 * 4;
+   else if (flags & IR3_REG_PREDICATE)
+      physreg += REG_P0 * 4;
    return physreg;
 }
 
@@ -67,6 +69,8 @@ ra_num_to_physreg(unsigned num, unsigned flags)
 {
    if (flags & IR3_REG_SHARED)
       num -= 48 * 4;
+   else if (flags & IR3_REG_PREDICATE)
+      num -= REG_P0 * 4;
    if (!(flags & IR3_REG_HALF))
       num *= 2;
    return num;

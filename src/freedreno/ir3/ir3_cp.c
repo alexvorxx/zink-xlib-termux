@@ -704,10 +704,9 @@ ir3_cp(struct ir3 *ir, struct ir3_shader_variant *so)
    ir3_clear_mark(ir);
 
    foreach_block (block, &ir->block_list) {
-      if (block->condition) {
-         instr_cp(&ctx, block->condition);
-         block->condition = eliminate_output_mov(&ctx, block->condition);
-      }
+      struct ir3_instruction *terminator = ir3_block_get_terminator(block);
+      if (terminator)
+         instr_cp(&ctx, terminator);
 
       for (unsigned i = 0; i < block->keeps_count; i++) {
          instr_cp(&ctx, block->keeps[i]);

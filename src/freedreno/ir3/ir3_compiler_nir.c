@@ -3802,6 +3802,12 @@ emit_block(struct ir3_context *ctx, nir_block *nblock)
       }
    }
 
+   /* Emit unconditional branch if we only have one successor. Conditional
+    * branches are emitted in emit_if.
+    */
+   if (ctx->block->successors[0] && !ctx->block->successors[1])
+      ir3_JUMP(ctx->block);
+
    _mesa_hash_table_clear(ctx->sel_cond_conversions, NULL);
 }
 
@@ -3813,27 +3819,25 @@ emit_if(struct ir3_context *ctx, nir_if *nif)
    struct ir3_instruction *condition = ir3_get_src(ctx, &nif->condition)[0];
 
    if (condition->opc == OPC_ANY_MACRO && condition->block == ctx->block) {
-      ctx->block->condition = ssa(condition->srcs[0]);
-      ctx->block->brtype = IR3_BRANCH_ANY;
+      struct ir3_instruction *pred = ssa(condition->srcs[0]);
+      ir3_BANY(ctx->block, pred, 0);
    } else if (condition->opc == OPC_ALL_MACRO &&
               condition->block == ctx->block) {
-      ctx->block->condition = ssa(condition->srcs[0]);
-      ctx->block->brtype = IR3_BRANCH_ALL;
+      struct ir3_instruction *pred = ssa(condition->srcs[0]);
+      ir3_BALL(ctx->block, pred, 0);
    } else if (condition->opc == OPC_ELECT_MACRO &&
               condition->block == ctx->block) {
-      ctx->block->condition = NULL;
-      ctx->block->brtype = IR3_BRANCH_GETONE;
+      ir3_GETONE(ctx->block);
    } else if (condition->opc == OPC_SHPS_MACRO &&
               condition->block == ctx->block) {
       /* TODO: technically this only works if the block is the only user of the
        * shps, but we only use it in very constrained scenarios so this should
        * be ok.
        */
-      ctx->block->condition = NULL;
-      ctx->block->brtype = IR3_BRANCH_SHPS;
+      ir3_SHPS(ctx->block);
    } else {
-      ctx->block->condition = ir3_get_predicate(ctx, condition);
-      ctx->block->brtype = IR3_BRANCH_COND;
+      struct ir3_instruction *pred = ir3_get_predicate(ctx, condition);
+      ir3_BR(ctx->block, pred, 0);
    }
 
    emit_cf_list(ctx, &nif->then_list);
@@ -3864,6 +3868,7 @@ emit_loop(struct ir3_context *ctx, nir_loop *nloop)
 
    if (continue_blk) {
       struct ir3_block *start = get_block(ctx, nstart);
+      ir3_JUMP(continue_blk);
       continue_blk->successors[0] = start;
       continue_blk->loop_id = ctx->loop_id;
       continue_blk->loop_depth = ctx->loop_depth;
@@ -3962,7 +3967,7 @@ emit_stream_out(struct ir3_context *ctx)
     * since it is used to pick which of the two successor
     * paths to take:
     */
-   orig_end_block->condition = cond;
+   ir3_BR(orig_end_block, cond, 0);
 
    /* switch to stream_out_block to generate the stream-out
     * instructions:
@@ -4005,6 +4010,8 @@ emit_stream_out(struct ir3_context *ctx)
          array_insert(ctx->block, ctx->block->keeps, stg);
       }
    }
+
+   ir3_JUMP(ctx->block);
 
    /* and finally switch to the new_end_block: */
    ctx->block = new_end_block;

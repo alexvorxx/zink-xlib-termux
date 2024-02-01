@@ -483,13 +483,18 @@ reg_create(struct ir3 *shader, int num, int flags)
 }
 
 static void
-insert_instr(struct ir3_block *block, struct ir3_instruction *instr)
+insert_instr(struct ir3_block *block, struct ir3_instruction *instr,
+             bool at_end)
 {
    struct ir3 *shader = block->shader;
 
    instr->serialno = ++shader->instr_count;
 
+   struct ir3_instruction *terminator = ir3_block_get_terminator(block);
    list_addtail(&instr->node, &block->instr_list);
+
+   if (!at_end && terminator)
+      ir3_instr_move_before(instr, terminator);
 
    if (is_input(instr))
       array_insert(shader, shader->baryfs, instr);
@@ -506,6 +511,53 @@ ir3_block_create(struct ir3 *shader)
    list_inithead(&block->node);
    list_inithead(&block->instr_list);
    return block;
+}
+
+static struct ir3_instruction *
+block_get_last_instruction(struct ir3_block *block)
+{
+   if (list_is_empty(&block->instr_list))
+      return NULL;
+   return list_last_entry(&block->instr_list, struct ir3_instruction, node);
+}
+
+struct ir3_instruction *
+ir3_block_get_terminator(struct ir3_block *block)
+{
+   struct ir3_instruction *last = block_get_last_instruction(block);
+
+   if (last && is_terminator(last))
+      return last;
+
+   return NULL;
+}
+
+struct ir3_instruction *
+ir3_block_take_terminator(struct ir3_block *block)
+{
+   struct ir3_instruction *terminator = ir3_block_get_terminator(block);
+
+   if (terminator)
+      list_delinit(&terminator->node);
+
+   return terminator;
+}
+
+struct ir3_instruction *
+ir3_block_get_last_non_terminator(struct ir3_block *block)
+{
+   struct ir3_instruction *last = block_get_last_instruction(block);
+
+   if (!last)
+      return NULL;
+
+   if (!is_terminator(last))
+      return last;
+
+   if (last->node.prev != &block->instr_list)
+      return list_entry(last->node.prev, struct ir3_instruction, node);
+
+   return NULL;
 }
 
 void
@@ -574,13 +626,14 @@ instr_create(struct ir3_block *block, opc_t opc, int ndst, int nsrc)
    return instr;
 }
 
-struct ir3_instruction *
-ir3_instr_create(struct ir3_block *block, opc_t opc, int ndst, int nsrc)
+static struct ir3_instruction *
+instr_create_impl(struct ir3_block *block, opc_t opc, int ndst, int nsrc,
+                  bool at_end)
 {
    struct ir3_instruction *instr = instr_create(block, opc, ndst, nsrc);
    instr->block = block;
    instr->opc = opc;
-   insert_instr(block, instr);
+   insert_instr(block, instr, at_end);
    return instr;
 }
 
@@ -602,6 +655,18 @@ add_to_address_users(struct ir3_instruction *instr)
 }
 
 struct ir3_instruction *
+ir3_instr_create(struct ir3_block *block, opc_t opc, int ndst, int nsrc)
+{
+   return instr_create_impl(block, opc, ndst, nsrc, false);
+}
+
+struct ir3_instruction *
+ir3_instr_create_at_end(struct ir3_block *block, opc_t opc, int ndst, int nsrc)
+{
+   return instr_create_impl(block, opc, ndst, nsrc, true);
+}
+
+struct ir3_instruction *
 ir3_instr_clone(struct ir3_instruction *instr)
 {
    struct ir3_instruction *new_instr = instr_create(
@@ -614,7 +679,7 @@ ir3_instr_clone(struct ir3_instruction *instr)
    new_instr->dsts = dsts;
    new_instr->srcs = srcs;
 
-   insert_instr(instr->block, new_instr);
+   insert_instr(instr->block, new_instr, false);
 
    /* clone registers: */
    new_instr->dsts_count = 0;
@@ -735,6 +800,21 @@ ir3_count_instructions(struct ir3 *ir)
       block->start_ip = cnt;
       foreach_instr (instr, &block->instr_list) {
          instr->ip = cnt++;
+      }
+      block->end_ip = cnt;
+   }
+   return cnt;
+}
+
+unsigned
+ir3_count_instructions_sched(struct ir3 *ir)
+{
+   unsigned cnt = 1;
+   foreach_block (block, &ir->block_list) {
+      block->start_ip = cnt;
+      foreach_instr (instr, &block->instr_list) {
+         if (!is_terminator(instr))
+            instr->ip = cnt++;
       }
       block->end_ip = cnt;
    }

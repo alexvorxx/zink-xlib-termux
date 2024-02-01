@@ -154,6 +154,11 @@ static const struct opc_info {
    /* category 0: */
    OPC(0, OPC_NOP,          nop),
    OPC(0, OPC_B,            b),
+   OPC(0, OPC_BR,           br),
+   OPC(0, OPC_BRAA,         braa),
+   OPC(0, OPC_BRAO,         brao),
+   OPC(0, OPC_BALL,         ball),
+   OPC(0, OPC_BANY,         bany),
    OPC(0, OPC_JUMP,         jump),
    OPC(0, OPC_CALL,         call),
    OPC(0, OPC_RET,          ret),

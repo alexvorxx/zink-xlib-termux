@@ -618,15 +618,6 @@ struct ir3_array {
 
 struct ir3_array *ir3_lookup_array(struct ir3 *ir, unsigned id);
 
-enum ir3_branch_type {
-   IR3_BRANCH_COND,    /* condition */
-   IR3_BRANCH_ANY,     /* subgroupAny(condition) */
-   IR3_BRANCH_ALL,     /* subgroupAll(condition) */
-   IR3_BRANCH_GETONE,  /* subgroupElect() */
-   IR3_BRANCH_GETLAST, /* getlast.w8 */
-   IR3_BRANCH_SHPS,    /* preamble start */
-};
-
 struct ir3_block {
    struct list_head node;
    struct ir3 *shader;
@@ -634,9 +625,6 @@ struct ir3_block {
    const struct nir_block *nblock;
 
    struct list_head instr_list; /* list of ir3_instruction */
-
-   /* The actual branch condition, if there are two successors */
-   enum ir3_branch_type brtype;
 
    /* each block has either one or two successors.. in case of two
     * successors, 'condition' decides which one to follow.  A block preceding
@@ -652,7 +640,6 @@ struct ir3_block {
     * physical successors which includes the fallthrough edge from the if to
     * the else.
     */
-   struct ir3_instruction *condition;
    struct ir3_block *successors[2];
 
    DECLARE_ARRAY(struct ir3_block *, predecessors);
@@ -711,6 +698,13 @@ ir3_end_block(struct ir3 *ir)
    return list_last_entry(&ir->block_list, struct ir3_block, node);
 }
 
+struct ir3_instruction *ir3_block_get_terminator(struct ir3_block *block);
+
+struct ir3_instruction *ir3_block_take_terminator(struct ir3_block *block);
+
+struct ir3_instruction *
+ir3_block_get_last_non_terminator(struct ir3_block *block);
+
 static inline struct ir3_block *
 ir3_after_preamble(struct ir3 *ir)
 {
@@ -718,7 +712,8 @@ ir3_after_preamble(struct ir3 *ir)
    /* The preamble will have a usually-empty else branch, and we want to skip
     * that to get to the block after the preamble.
     */
-   if (block->brtype == IR3_BRANCH_SHPS)
+   struct ir3_instruction *terminator = ir3_block_get_terminator(block);
+   if (terminator && (terminator->opc == OPC_SHPS))
       return block->successors[1]->successors[0];
    else
       return block;
@@ -757,6 +752,8 @@ struct ir3_block *ir3_block_create(struct ir3 *shader);
 
 struct ir3_instruction *ir3_instr_create(struct ir3_block *block, opc_t opc,
                                          int ndst, int nsrc);
+struct ir3_instruction *ir3_instr_create_at_end(struct ir3_block *block,
+                                                opc_t opc, int ndst, int nsrc);
 struct ir3_instruction *ir3_instr_clone(struct ir3_instruction *instr);
 void ir3_instr_add_dep(struct ir3_instruction *instr,
                        struct ir3_instruction *dep);
@@ -797,6 +794,7 @@ void ir3_block_clear_mark(struct ir3_block *block);
 void ir3_clear_mark(struct ir3 *shader);
 
 unsigned ir3_count_instructions(struct ir3 *ir);
+unsigned ir3_count_instructions_sched(struct ir3 *ir);
 unsigned ir3_count_instructions_ra(struct ir3 *ir);
 
 /**
@@ -866,6 +864,26 @@ static inline bool
 is_flow(struct ir3_instruction *instr)
 {
    return (opc_cat(instr->opc) == 0);
+}
+
+static inline bool
+is_terminator(struct ir3_instruction *instr)
+{
+   switch (instr->opc) {
+   case OPC_B:
+   case OPC_BR:
+   case OPC_JUMP:
+   case OPC_BANY:
+   case OPC_BALL:
+   case OPC_BRAA:
+   case OPC_BRAO:
+   case OPC_SHPS:
+   case OPC_GETONE:
+   case OPC_GETLAST:
+      return true;
+   default:
+      return false;
+   }
 }
 
 static inline bool
@@ -2319,6 +2337,11 @@ static inline struct ir3_instruction *ir3_##name(                              \
 
 /* cat0 instructions: */
 INSTR1NODST(B)
+INSTR1NODST(BR)
+INSTR1NODST(BALL)
+INSTR1NODST(BANY)
+INSTR2NODST(BRAA)
+INSTR2NODST(BRAO)
 INSTR0(JUMP)
 INSTR1NODST(KILL)
 INSTR1NODST(DEMOTE)

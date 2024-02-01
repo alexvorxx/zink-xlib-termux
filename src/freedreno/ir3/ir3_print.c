@@ -533,39 +533,15 @@ print_block(struct ir3_block *block, int lvl)
    tab(stream, lvl + 1);
    mesa_log_stream_printf(stream, " */\n");
 
-   if (block->successors[1]) {
-      /* leading into if/else: */
+   if (block->successors[0]) {
       tab(stream, lvl + 1);
-      mesa_log_stream_printf(stream, "/* succs: if ");
-      switch (block->brtype) {
-      case IR3_BRANCH_COND:
-         break;
-      case IR3_BRANCH_ANY:
-         mesa_log_stream_printf(stream, "any ");
-         break;
-      case IR3_BRANCH_ALL:
-         mesa_log_stream_printf(stream, "all ");
-         break;
-      case IR3_BRANCH_GETONE:
-         mesa_log_stream_printf(stream, "getone ");
-         break;
-      case IR3_BRANCH_GETLAST:
-         mesa_log_stream_printf(stream, "getlast ");
-         break;
-      case IR3_BRANCH_SHPS:
-         mesa_log_stream_printf(stream, "shps ");
-         break;
-      }
-      if (block->condition)
-         mesa_log_stream_printf(stream, SYN_SSA("ssa_%u") " ",
-                                block->condition->serialno);
-      mesa_log_stream_printf(stream, "block%u; else block%u; */\n",
-                             block_id(block->successors[0]),
-                             block_id(block->successors[1]));
-   } else if (block->successors[0]) {
-      tab(stream, lvl + 1);
-      mesa_log_stream_printf(stream, "/* succs: block%u; */\n",
+      mesa_log_stream_printf(stream, "/* succs: block%u",
                              block_id(block->successors[0]));
+      if (block->successors[1]) {
+         mesa_log_stream_printf(stream, ", block%u",
+                                block_id(block->successors[1]));
+      }
+      mesa_log_stream_printf(stream, " */\n");
    }
    if (block->physical_successors_count > 0) {
       tab(stream, lvl + 1);

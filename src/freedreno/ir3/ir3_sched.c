@@ -1001,16 +1001,6 @@ split_pred(struct ir3_sched_ctx *ctx)
       }
    }
 
-   if (ctx->block->condition == ctx->pred) {
-      if (!new_pred) {
-         new_pred = split_instr(ctx, ctx->pred);
-         /* original pred is scheduled, but new one isn't: */
-         new_pred->flags &= ~IR3_INSTR_MARK;
-      }
-      ctx->block->condition = new_pred;
-      d("new branch condition");
-   }
-
    /* all remaining predicated remapped to new pred: */
    ctx->pred = NULL;
 
@@ -1198,6 +1188,12 @@ sched_block(struct ir3_sched_ctx *ctx, struct ir3_block *block)
    ctx->sy_index = ctx->first_outstanding_sy_index = 0;
    ctx->ss_index = ctx->first_outstanding_ss_index = 0;
 
+   /* The terminator has to stay at the end. Instead of trying to set up
+    * dependencies to achieve this, it's easier to just remove it now and add it
+    * back after scheduling.
+    */
+   struct ir3_instruction *terminator = ir3_block_take_terminator(block);
+
    /* move all instructions to the unscheduled list, and
     * empty the block's instruction list (to which we will
     * be inserting).
@@ -1295,6 +1291,9 @@ sched_block(struct ir3_sched_ctx *ctx, struct ir3_block *block)
    }
 
    sched_dag_destroy(ctx);
+
+   if (terminator)
+      list_addtail(&terminator->node, &block->instr_list);
 }
 
 int
@@ -1308,7 +1307,7 @@ ir3_sched(struct ir3 *ir)
       }
    }
 
-   ir3_count_instructions(ir);
+   ir3_count_instructions_sched(ir);
    ir3_clear_mark(ir);
    ir3_find_ssa_uses(ir, ctx, false);
 

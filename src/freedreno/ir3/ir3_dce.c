@@ -130,8 +130,16 @@ find_and_remove_unused(struct ir3 *ir, struct ir3_shader_variant *so)
          instr_dce(block->keeps[i], false);
 
       /* We also need to account for if-condition: */
-      if (block->condition)
-         instr_dce(block->condition, false);
+      struct ir3_instruction *terminator = ir3_block_get_terminator(block);
+      if (terminator) {
+         instr_dce(terminator, false);
+
+         /* Temporary workaround for predicates not being SSA. Won't be
+          * necessary anymore once we have RA for predicates.
+          */
+         foreach_src (src, terminator)
+            instr_dce(src->def->instr, false);
+      }
    }
 
    /* remove un-used instructions: */

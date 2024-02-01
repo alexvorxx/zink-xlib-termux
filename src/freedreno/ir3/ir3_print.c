@@ -374,24 +374,22 @@ print_instr(struct log_stream *stream, struct ir3_instruction *instr, int lvl)
       mesa_log_stream_printf(stream, " ");
    }
 
-   if (!is_flow(instr) || instr->opc == OPC_END || instr->opc == OPC_CHMASK) {
-      bool first = true;
-      foreach_dst (reg, instr) {
-         if (reg->wrmask == 0)
-            continue;
-         if (!first)
-            mesa_log_stream_printf(stream, ", ");
-         print_reg_name(stream, instr, reg, true);
-         first = false;
-      }
-      foreach_src_n (reg, n, instr) {
-         if (!first)
-            mesa_log_stream_printf(stream, ", ");
-         print_reg_name(stream, instr, reg, false);
-         if (instr->opc == OPC_END || instr->opc == OPC_CHMASK)
-            mesa_log_stream_printf(stream, " (%u)", instr->end.outidxs[n]);
-         first = false;
-      }
+   bool first = true;
+   foreach_dst (reg, instr) {
+      if (reg->wrmask == 0)
+         continue;
+      if (!first)
+         mesa_log_stream_printf(stream, ", ");
+      print_reg_name(stream, instr, reg, true);
+      first = false;
+   }
+   foreach_src_n (reg, n, instr) {
+      if (!first)
+         mesa_log_stream_printf(stream, ", ");
+      print_reg_name(stream, instr, reg, false);
+      if (instr->opc == OPC_END || instr->opc == OPC_CHMASK)
+         mesa_log_stream_printf(stream, " (%u)", instr->end.outidxs[n]);
+      first = false;
    }
 
    if (is_tex(instr) && !(instr->flags & IR3_INSTR_S2EN) &&

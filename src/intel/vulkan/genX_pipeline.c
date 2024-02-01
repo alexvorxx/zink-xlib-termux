@@ -1357,7 +1357,7 @@ emit_3dstate_hs_ds(struct anv_graphics_pipeline *pipeline,
          DISPATCH_MODE_SIMD8_SINGLE_PATCH :
          DISPATCH_MODE_SIMD4X2;
 #else
-      assert(tes_prog_data->base.dispatch_mode == DISPATCH_MODE_SIMD8);
+      assert(tes_prog_data->base.dispatch_mode == INTEL_DISPATCH_MODE_SIMD8);
       ds.DispatchMode = DISPATCH_MODE_SIMD8_SINGLE_PATCH;
 #endif
 

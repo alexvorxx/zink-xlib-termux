@@ -724,7 +724,7 @@ blorp_emit_vs_config(struct blorp_batch *batch,
 {
    struct brw_vs_prog_data *vs_prog_data = params->vs_prog_data;
    assert(!vs_prog_data || GFX_VER < 11 ||
-          vs_prog_data->base.dispatch_mode == DISPATCH_MODE_SIMD8);
+          vs_prog_data->base.dispatch_mode == INTEL_DISPATCH_MODE_SIMD8);
 
    blorp_emit(batch, GENX(3DSTATE_VS), vs) {
       if (vs_prog_data) {
@@ -742,7 +742,7 @@ blorp_emit_vs_config(struct blorp_batch *batch,
             batch->blorp->isl_dev->info->max_vs_threads - 1;
 
          assert(GFX_VER < 8 ||
-                vs_prog_data->base.dispatch_mode == DISPATCH_MODE_SIMD8);
+                vs_prog_data->base.dispatch_mode == INTEL_DISPATCH_MODE_SIMD8);
 #if GFX_VER >= 8 && GFX_VER < 20
          vs.SIMD8DispatchEnable = true;
 #endif

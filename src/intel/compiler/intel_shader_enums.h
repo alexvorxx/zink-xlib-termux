@@ -76,6 +76,16 @@ enum intel_tess_domain {
 };
 /** @} */
 
+enum intel_shader_dispatch_mode {
+   INTEL_DISPATCH_MODE_4X1_SINGLE = 0,
+   INTEL_DISPATCH_MODE_4X2_DUAL_INSTANCE = 1,
+   INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT = 2,
+   INTEL_DISPATCH_MODE_SIMD8 = 3,
+
+   INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH = 0,
+   INTEL_DISPATCH_MODE_TCS_MULTI_PATCH = 2,
+};
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

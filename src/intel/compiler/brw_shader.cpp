@@ -1387,7 +1387,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
       assert(v.payload().num_regs % reg_unit(devinfo) == 0);
       prog_data->base.base.dispatch_grf_start_reg = v.payload().num_regs / reg_unit(devinfo);
 
-      prog_data->base.dispatch_mode = DISPATCH_MODE_SIMD8;
+      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
       fs_generator g(compiler, &params->base,
                      &prog_data->base.base, false, MESA_SHADER_TESS_EVAL);

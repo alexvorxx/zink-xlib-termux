@@ -6888,13 +6888,13 @@ fs_visitor::set_tcs_invocation_id()
 
    invocation_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
-   if (vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH) {
+   if (vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH) {
       /* gl_InvocationID is just the thread number */
       bld.SHR(invocation_id, t, brw_imm_ud(instance_id_shift));
       return;
    }
 
-   assert(vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_SINGLE_PATCH);
+   assert(vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH);
 
    fs_reg channels_uw = bld.vgrf(BRW_REGISTER_TYPE_UW);
    fs_reg channels_ud = bld.vgrf(BRW_REGISTER_TYPE_UD);
@@ -6945,8 +6945,8 @@ fs_visitor::run_tcs()
    struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(prog_data);
    const fs_builder bld = fs_builder(this).at_end();
 
-   assert(vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_SINGLE_PATCH ||
-          vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH);
+   assert(vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH ||
+          vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH);
 
    payload_ = new tcs_thread_payload(*this);
 
@@ -6954,7 +6954,7 @@ fs_visitor::run_tcs()
    set_tcs_invocation_id();
 
    const bool fix_dispatch_mask =
-      vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_SINGLE_PATCH &&
+      vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH &&
       (nir->info.tess.tcs_vertices_out % 8) != 0;
 
    /* Fix the disptach mask */

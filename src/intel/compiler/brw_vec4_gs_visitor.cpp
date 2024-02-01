@@ -132,7 +132,7 @@ vec4_gs_visitor::setup_payload()
     * to be interleaved, so one register contains two attribute slots.
     */
    int attributes_per_reg =
-      prog_data->dispatch_mode == DISPATCH_MODE_4X2_DUAL_OBJECT ? 1 : 2;
+      prog_data->dispatch_mode == INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT ? 1 : 2;
 
    int reg = 0;
 
@@ -822,7 +822,7 @@ brw_compile_gs(const struct brw_compiler *compiler,
       fs_visitor v(compiler, &params->base, &c, prog_data, nir,
                    params->base.stats != NULL, debug_enabled);
       if (v.run_gs()) {
-         prog_data->base.dispatch_mode = DISPATCH_MODE_SIMD8;
+         prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
          assert(v.payload().num_regs % reg_unit(compiler->devinfo) == 0);
          prog_data->base.base.dispatch_grf_start_reg =
@@ -856,7 +856,7 @@ brw_compile_gs(const struct brw_compiler *compiler,
        */
       if (prog_data->invocations <= 1 &&
           !INTEL_DEBUG(DEBUG_NO_DUAL_OBJECT_GS)) {
-         prog_data->base.dispatch_mode = DISPATCH_MODE_4X2_DUAL_OBJECT;
+         prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT;
 
          brw::vec4_gs_visitor v(compiler, &params->base, &c, prog_data, nir,
                                 true /* no_spills */,
@@ -920,9 +920,9 @@ brw_compile_gs(const struct brw_compiler *compiler,
     * SINGLE mode.
     */
    if (prog_data->invocations <= 1 || compiler->devinfo->ver < 7)
-      prog_data->base.dispatch_mode = DISPATCH_MODE_4X1_SINGLE;
+      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X1_SINGLE;
    else
-      prog_data->base.dispatch_mode = DISPATCH_MODE_4X2_DUAL_INSTANCE;
+      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_INSTANCE;
 
    brw::vec4_gs_visitor *gs = NULL;
    const unsigned *ret = NULL;

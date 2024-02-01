@@ -2978,7 +2978,7 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
       fs_inst *inst;
 
       const bool multi_patch =
-         vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH;
+         vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH;
 
       fs_reg icp_handle = multi_patch ?
          get_tcs_multi_patch_icp_handle(ntb, bld, instr) :

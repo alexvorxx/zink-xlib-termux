@@ -463,7 +463,7 @@ vec4_visitor::opt_copy_propagation(bool do_constant_prop)
     * to be interleaved, so one register contains two attribute slots.
     */
    const int attributes_per_reg =
-      prog_data->dispatch_mode == DISPATCH_MODE_4X2_DUAL_OBJECT ? 1 : 2;
+      prog_data->dispatch_mode == INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT ? 1 : 2;
    bool progress = false;
    struct copy_entry entries[alloc.total_size];
 

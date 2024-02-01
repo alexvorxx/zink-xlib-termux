@@ -1475,16 +1475,6 @@ void brw_setup_vue_interpolation(const struct brw_vue_map *vue_map,
                                  struct nir_shader *nir,
                                  struct brw_wm_prog_data *prog_data);
 
-enum shader_dispatch_mode {
-   DISPATCH_MODE_4X1_SINGLE = 0,
-   DISPATCH_MODE_4X2_DUAL_INSTANCE = 1,
-   DISPATCH_MODE_4X2_DUAL_OBJECT = 2,
-   DISPATCH_MODE_SIMD8 = 3,
-
-   DISPATCH_MODE_TCS_SINGLE_PATCH = 0,
-   DISPATCH_MODE_TCS_MULTI_PATCH = 2,
-};
-
 struct brw_vue_prog_data {
    struct brw_stage_prog_data base;
    struct brw_vue_map vue_map;
@@ -1504,7 +1494,7 @@ struct brw_vue_prog_data {
     */
    unsigned urb_entry_size;
 
-   enum shader_dispatch_mode dispatch_mode;
+   enum intel_shader_dispatch_mode dispatch_mode;
 };
 
 struct brw_vs_prog_data {

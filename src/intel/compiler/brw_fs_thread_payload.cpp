@@ -46,7 +46,7 @@ tcs_thread_payload::tcs_thread_payload(const fs_visitor &v)
    struct brw_tcs_prog_data *tcs_prog_data = brw_tcs_prog_data(v.prog_data);
    struct brw_tcs_prog_key *tcs_key = (struct brw_tcs_prog_key *) v.key;
 
-   if (vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_SINGLE_PATCH) {
+   if (vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH) {
       patch_urb_output = brw_ud1_grf(0, 0);
       primitive_id = brw_vec1_grf(0, 1);
 
@@ -55,7 +55,7 @@ tcs_thread_payload::tcs_thread_payload(const fs_visitor &v)
 
       num_regs = 5;
    } else {
-      assert(vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH);
+      assert(vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH);
       assert(tcs_key->input_vertices <= BRW_MAX_TCS_INPUT_VERTICES);
 
       unsigned r = 0;

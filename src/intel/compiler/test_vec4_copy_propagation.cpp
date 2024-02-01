@@ -50,7 +50,7 @@ public:
       : vec4_visitor(compiler, params, NULL, prog_data, shader,
                      false /* no_spills */, false)
    {
-      prog_data->dispatch_mode = DISPATCH_MODE_4X2_DUAL_OBJECT;
+      prog_data->dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT;
    }
 
 protected:

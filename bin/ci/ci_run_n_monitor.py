@@ -65,6 +65,9 @@ def print_job_status(job, new_status=False) -> None:
     if job.status == "canceled":
         return
 
+    if new_status and job.status == "created":
+        return
+
     if job.duration:
         duration = job.duration
     elif job.started_at:

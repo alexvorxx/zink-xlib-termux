@@ -727,9 +727,6 @@ invert_branch(struct ir3_instruction *branch)
  * Initially this is done naively, without considering if the successor
  * block immediately follows the current block (ie. so no jump required),
  * but that is cleaned up in opt_jump().
- *
- * TODO what ensures that the last write to p0.x in a block is the
- * branch condition?  Have we been getting lucky all this time?
  */
 static void
 block_sched(struct ir3 *ir)

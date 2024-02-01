@@ -845,11 +845,11 @@ instr:             iflags cat0_instr
 
 label:             T_IDENTIFIER ':' { new_label($1); }
 
-cat0_src1:         '!' T_P0        { instr->cat0.inv1 = true; $$ = new_src((62 << 3) + $2, 0); }
-|                  T_P0            { $$ = new_src((62 << 3) + $1, 0); }
+cat0_src1:         '!' T_P0        { instr->cat0.inv1 = true; $$ = new_src((62 << 3) + $2, IR3_REG_PREDICATE); }
+|                  T_P0            { $$ = new_src((62 << 3) + $1, IR3_REG_PREDICATE); }
 
-cat0_src2:         '!' T_P0        { instr->cat0.inv2 = true; $$ = new_src((62 << 3) + $2, 0); }
-|                  T_P0            { $$ = new_src((62 << 3) + $1, 0); }
+cat0_src2:         '!' T_P0        { instr->cat0.inv2 = true; $$ = new_src((62 << 3) + $2, IR3_REG_PREDICATE); }
+|                  T_P0            { $$ = new_src((62 << 3) + $1, IR3_REG_PREDICATE); }
 
 cat0_immed:        '#' integer     { instr->cat0.immed = $2; }
 |                  '#' T_IDENTIFIER { ralloc_steal(instr, (void *)$2); instr->cat0.target_label = $2; }
@@ -1434,12 +1434,12 @@ meta_print: meta_print_start meta_print_regs {
 src:               T_REGISTER     { $$ = new_src($1, 0); }
 |                  T_A0           { $$ = new_src((61 << 3), IR3_REG_HALF); }
 |                  T_A1           { $$ = new_src((61 << 3) + 1, IR3_REG_HALF); }
-|                  T_P0           { $$ = new_src((62 << 3) + $1, 0); }
+|                  T_P0           { $$ = new_src((62 << 3) + $1, IR3_REG_PREDICATE); }
 
 dst:               T_REGISTER     { $$ = new_dst($1, 0); }
 |                  T_A0           { $$ = new_dst((61 << 3), IR3_REG_HALF); }
 |                  T_A1           { $$ = new_dst((61 << 3) + 1, IR3_REG_HALF); }
-|                  T_P0           { $$ = new_dst((62 << 3) + $1, 0); }
+|                  T_P0           { $$ = new_dst((62 << 3) + $1, IR3_REG_PREDICATE); }
 
 const:             T_CONSTANT     { $$ = new_src($1, IR3_REG_CONST); }
 

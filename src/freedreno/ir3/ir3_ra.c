@@ -2544,6 +2544,9 @@ ir3_ra(struct ir3_shader_variant *v)
 {
    ir3_calc_dominance(v->ir);
 
+   /* Predicate RA needs dominance. */
+   ir3_ra_predicates(v);
+
    ir3_create_parallel_copies(v->ir);
 
    struct ra_ctx *ctx = rzalloc(NULL, struct ra_ctx);

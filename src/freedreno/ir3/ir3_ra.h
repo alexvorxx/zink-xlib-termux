@@ -87,7 +87,7 @@ ra_reg_get_physreg(const struct ir3_register *reg)
 static inline bool
 def_is_gpr(const struct ir3_register *reg)
 {
-   return reg_num(reg) != REG_A0 && reg_num(reg) != REG_P0;
+   return reg_num(reg) != REG_A0 && !(reg->flags & IR3_REG_PREDICATE);
 }
 
 /* Note: don't count undef as a source.
@@ -103,6 +103,12 @@ ra_reg_is_dst(const struct ir3_register *reg)
 {
    return (reg->flags & IR3_REG_SSA) && def_is_gpr(reg) &&
           ((reg->flags & IR3_REG_ARRAY) || reg->wrmask);
+}
+
+static inline bool
+ra_reg_is_predicate(const struct ir3_register *reg)
+{
+   return (reg->flags & IR3_REG_SSA) && (reg->flags & IR3_REG_PREDICATE);
 }
 
 /* Iterators for sources and destinations which:

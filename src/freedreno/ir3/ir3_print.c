@@ -257,9 +257,18 @@ print_ssa_name(struct log_stream *stream, struct ir3_register *reg, bool dst)
       print_ssa_def_name(stream, reg);
    }
 
-   if (reg->num != INVALID_REG && !(reg->flags & IR3_REG_ARRAY))
-      mesa_log_stream_printf(stream, "(" SYN_REG("r%u.%c") ")", reg_num(reg),
+   if (reg->num != INVALID_REG && !(reg->flags & IR3_REG_ARRAY)) {
+      const char *prefix = "r";
+      unsigned num = reg_num(reg);
+
+      if (reg->flags & IR3_REG_PREDICATE) {
+         prefix = "p";
+         num = 0;
+      }
+
+      mesa_log_stream_printf(stream, "(" SYN_REG("%s%u.%c") ")", prefix, num,
                              "xyzw"[reg_comp(reg)]);
+   }
 }
 
 static void
@@ -296,6 +305,8 @@ print_reg_name(struct log_stream *stream, struct ir3_instruction *instr,
       mesa_log_stream_printf(stream, "s");
    if (reg->flags & IR3_REG_HALF)
       mesa_log_stream_printf(stream, "h");
+   if (reg->flags & IR3_REG_PREDICATE)
+      mesa_log_stream_printf(stream, "p");
 
    if (reg->flags & IR3_REG_IMMED) {
       mesa_log_stream_printf(stream, SYN_IMMED("imm[%f,%d,0x%x]"), reg->fim_val,
@@ -324,6 +335,9 @@ print_reg_name(struct log_stream *stream, struct ir3_instruction *instr,
    } else {
       if (reg->flags & IR3_REG_CONST)
          mesa_log_stream_printf(stream, SYN_CONST("c%u.%c"), reg_num(reg),
+                                "xyzw"[reg_comp(reg)]);
+      else if (reg->flags & IR3_REG_PREDICATE)
+         mesa_log_stream_printf(stream, SYN_REG("p0.%c"),
                                 "xyzw"[reg_comp(reg)]);
       else
          mesa_log_stream_printf(stream, SYN_REG("r%u.%c"), reg_num(reg),

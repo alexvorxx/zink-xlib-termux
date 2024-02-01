@@ -214,6 +214,9 @@ struct ir3_compiler {
     */
    bool has_getfiberid;
 
+   /* Number of available predicate registers (p0.c) */
+   uint32_t num_predicates;
+
    /* MAX_COMPUTE_VARIABLE_GROUP_INVOCATIONS_ARB */
    uint32_t max_variable_workgroup_size;
 

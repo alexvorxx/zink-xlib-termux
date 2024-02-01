@@ -100,7 +100,7 @@ static bool
 is_foldable_double_cmp(struct ir3_instruction *cmp)
 {
    struct ir3_instruction *cond = ssa(cmp->srcs[0]);
-   return (cmp->dsts[0]->num == regid(REG_P0, 0)) && cond &&
+   return (cmp->dsts[0]->flags & IR3_REG_PREDICATE) && cond &&
           (cmp->srcs[1]->flags & IR3_REG_IMMED) &&
           (cmp->srcs[1]->iim_val == 0) &&
           (cmp->cat2.condition == IR3_COND_NE) &&

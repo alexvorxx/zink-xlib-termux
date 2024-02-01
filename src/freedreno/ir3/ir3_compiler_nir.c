@@ -2614,8 +2614,7 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       cond->cat2.condition = IR3_COND_NE;
 
       /* condition always goes in predicate register: */
-      cond->dsts[0]->num = regid(REG_P0, 0);
-      cond->dsts[0]->flags &= ~IR3_REG_SSA;
+      cond->dsts[0]->flags |= IR3_REG_PREDICATE;
 
       if (intr->intrinsic == nir_intrinsic_demote ||
           intr->intrinsic == nir_intrinsic_demote_if) {
@@ -2631,8 +2630,7 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
                             IR3_BARRIER_ACTIVE_FIBERS_W;
       kill->barrier_conflict = IR3_BARRIER_IMAGE_W | IR3_BARRIER_BUFFER_W |
                                IR3_BARRIER_ACTIVE_FIBERS_R;
-      kill->srcs[0]->num = regid(REG_P0, 0);
-      array_insert(ctx->ir, ctx->ir->predicates, kill);
+      kill->srcs[0]->flags |= IR3_REG_PREDICATE;
 
       array_insert(b, b->keeps, kill);
       ctx->so->has_kill = true;
@@ -2653,14 +2651,13 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       cond->cat2.condition = IR3_COND_NE;
 
       /* condition always goes in predicate register: */
-      cond->dsts[0]->num = regid(REG_P0, 0);
+      cond->dsts[0]->flags |= IR3_REG_PREDICATE;
 
-      kill = ir3_PREDT(b, cond, 0);
+      kill = ir3_PREDT(b, cond, IR3_REG_PREDICATE);
 
       kill->barrier_class = IR3_BARRIER_EVERYTHING;
       kill->barrier_conflict = IR3_BARRIER_EVERYTHING;
 
-      array_insert(ctx->ir, ctx->ir->predicates, kill);
       array_insert(b, b->keeps, kill);
       break;
    }
@@ -2673,8 +2670,7 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
          dst[0] = ir3_ANY_MACRO(ctx->block, pred, 0);
       else
          dst[0] = ir3_ALL_MACRO(ctx->block, pred, 0);
-      dst[0]->srcs[0]->num = regid(REG_P0, 0);
-      array_insert(ctx->ir, ctx->ir->predicates, dst[0]);
+      dst[0]->srcs[0]->flags |= IR3_REG_PREDICATE;
       break;
    }
    case nir_intrinsic_elect:
@@ -2690,8 +2686,7 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       dst[0] = ir3_READ_COND_MACRO(ctx->block, ir3_get_predicate(ctx, cond), 0,
                                    src, 0);
       dst[0]->dsts[0]->flags |= IR3_REG_SHARED;
-      dst[0]->srcs[0]->num = regid(REG_P0, 0);
-      array_insert(ctx->ir, ctx->ir->predicates, dst[0]);
+      dst[0]->srcs[0]->flags |= IR3_REG_PREDICATE;
       break;
    }
 
@@ -2712,8 +2707,7 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
          struct ir3_instruction *src = ir3_get_src(ctx, &intr->src[0])[0];
          struct ir3_instruction *pred = ir3_get_predicate(ctx, src);
          ballot = ir3_BALLOT_MACRO(ctx->block, pred, components);
-         ballot->srcs[0]->num = regid(REG_P0, 0);
-         array_insert(ctx->ir, ctx->ir->predicates, ballot);
+         ballot->srcs[0]->flags |= IR3_REG_PREDICATE;
       }
 
       ballot->barrier_class = IR3_BARRIER_ACTIVE_FIBERS_R;
@@ -3820,11 +3814,11 @@ emit_if(struct ir3_context *ctx, nir_if *nif)
 
    if (condition->opc == OPC_ANY_MACRO && condition->block == ctx->block) {
       struct ir3_instruction *pred = ssa(condition->srcs[0]);
-      ir3_BANY(ctx->block, pred, 0);
+      ir3_BANY(ctx->block, pred, IR3_REG_PREDICATE);
    } else if (condition->opc == OPC_ALL_MACRO &&
               condition->block == ctx->block) {
       struct ir3_instruction *pred = ssa(condition->srcs[0]);
-      ir3_BALL(ctx->block, pred, 0);
+      ir3_BALL(ctx->block, pred, IR3_REG_PREDICATE);
    } else if (condition->opc == OPC_ELECT_MACRO &&
               condition->block == ctx->block) {
       ir3_GETONE(ctx->block);
@@ -3837,7 +3831,7 @@ emit_if(struct ir3_context *ctx, nir_if *nif)
       ir3_SHPS(ctx->block);
    } else {
       struct ir3_instruction *pred = ir3_get_predicate(ctx, condition);
-      ir3_BR(ctx->block, pred, 0);
+      ir3_BR(ctx->block, pred, IR3_REG_PREDICATE);
    }
 
    emit_cf_list(ctx, &nif->then_list);
@@ -3959,15 +3953,14 @@ emit_stream_out(struct ir3_context *ctx)
 
    /* setup 'if (vtxcnt < maxvtxcnt)' condition: */
    cond = ir3_CMPS_S(ctx->block, vtxcnt, 0, maxvtxcnt, 0);
-   cond->dsts[0]->num = regid(REG_P0, 0);
-   cond->dsts[0]->flags &= ~IR3_REG_SSA;
+   cond->dsts[0]->flags |= IR3_REG_PREDICATE;
    cond->cat2.condition = IR3_COND_LT;
 
    /* condition goes on previous block to the conditional,
     * since it is used to pick which of the two successor
     * paths to take:
     */
-   ir3_BR(orig_end_block, cond, 0);
+   ir3_BR(orig_end_block, cond, IR3_REG_PREDICATE);
 
    /* switch to stream_out_block to generate the stream-out
     * instructions:

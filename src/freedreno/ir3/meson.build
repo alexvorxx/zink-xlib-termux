@@ -108,6 +108,7 @@ libfreedreno_ir3_files = files(
   'ir3_print.c',
   'ir3_ra.c',
   'ir3_ra.h',
+  'ir3_ra_predicates.c',
   'ir3_ra_validate.c',
   'ir3_reconvergence.c',
   'ir3_remove_unreachable.c',

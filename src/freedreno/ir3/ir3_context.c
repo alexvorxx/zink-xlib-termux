@@ -463,15 +463,14 @@ ir3_get_predicate(struct ir3_context *ctx, struct ir3_instruction *src)
    struct ir3_block *b = ctx->block;
    struct ir3_instruction *cond;
 
-   /* NOTE: only cmps.*.* can write p0.x: */
+   /* NOTE: we use cpms.s.ne x, 0 to move x into a predicate register */
    struct ir3_instruction *zero =
          create_immed_typed(b, 0, is_half(src) ? TYPE_U16 : TYPE_U32);
    cond = ir3_CMPS_S(b, src, 0, zero, 0);
    cond->cat2.condition = IR3_COND_NE;
 
    /* condition always goes in predicate register: */
-   cond->dsts[0]->num = regid(REG_P0, 0);
-   cond->dsts[0]->flags &= ~IR3_REG_SSA;
+   cond->dsts[0]->flags |= IR3_REG_PREDICATE;
 
    return cond;
 }

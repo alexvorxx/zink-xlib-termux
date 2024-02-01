@@ -168,6 +168,9 @@ typedef enum ir3_register_flags {
     * Note: This effectively has the same semantics as IR3_REG_KILL.
     */
    IR3_REG_LAST_USE = BIT(18),
+
+   /* Predicate register (p0.c). Cannot be combined with half or shared. */
+   IR3_REG_PREDICATE = BIT(19),
 } ir3_register_flags;
 
 struct ir3_register {
@@ -563,9 +566,6 @@ struct ir3 {
    /* same for a1.x: */
    DECLARE_ARRAY(struct ir3_instruction *, a1_users);
 
-   /* and same for instructions that consume predicate register: */
-   DECLARE_ARRAY(struct ir3_instruction *, predicates);
-
    /* Track texture sample instructions which need texture state
     * patched in (for astc-srgb workaround):
     */
@@ -952,7 +952,7 @@ is_same_type_mov(struct ir3_instruction *instr)
    dst = instr->dsts[0];
 
    /* mov's that write to a0 or p0.x are special: */
-   if (dst->num == regid(REG_P0, 0))
+   if (dst->flags & IR3_REG_PREDICATE)
       return false;
    if (reg_num(dst) == REG_A0)
       return false;
@@ -1295,7 +1295,9 @@ is_dest_gpr(struct ir3_register *dst)
 {
    if (dst->wrmask == 0)
       return false;
-   if ((reg_num(dst) == REG_A0) || (dst->num == regid(REG_P0, 0)))
+   if (reg_num(dst) == REG_A0)
+      return false;
+   if (dst->flags & IR3_REG_PREDICATE)
       return false;
    return true;
 }
@@ -1333,10 +1335,10 @@ writes_addr1(struct ir3_instruction *instr)
 static inline bool
 writes_pred(struct ir3_instruction *instr)
 {
-   /* Note: only the first dest can write to p0.x */
+   /* Note: only the first dest can write to p0 */
    if (instr->dsts_count > 0) {
       struct ir3_register *dst = instr->dsts[0];
-      return reg_num(dst) == REG_P0;
+      return !!(dst->flags & IR3_REG_PREDICATE);
    }
    return false;
 }
@@ -1349,8 +1351,8 @@ writes_pred(struct ir3_instruction *instr)
 static inline bool
 is_reg_special(const struct ir3_register *reg)
 {
-   return (reg->flags & IR3_REG_SHARED) || (reg_num(reg) == REG_A0) ||
-          (reg_num(reg) == REG_P0);
+   return (reg->flags & (IR3_REG_SHARED | IR3_REG_PREDICATE) ||
+           (reg_num(reg) == REG_A0));
 }
 
 /* Same as above but in cases where we don't have a register. r48.x and above
@@ -1381,9 +1383,9 @@ conflicts(struct ir3_register *a, struct ir3_register *b)
 static inline bool
 reg_gpr(struct ir3_register *r)
 {
-   if (r->flags & (IR3_REG_CONST | IR3_REG_IMMED))
+   if (r->flags & (IR3_REG_CONST | IR3_REG_IMMED | IR3_REG_PREDICATE))
       return false;
-   if ((reg_num(r) == REG_A0) || (reg_num(r) == REG_P0))
+   if (reg_num(r) == REG_A0)
       return false;
    return true;
 }
@@ -1999,6 +2001,7 @@ bool ir3_postsched(struct ir3 *ir, struct ir3_shader_variant *v);
 
 /* register assignment: */
 int ir3_ra(struct ir3_shader_variant *v);
+void ir3_ra_predicates(struct ir3_shader_variant *v);
 
 /* lower subgroup ops: */
 bool ir3_lower_subgroups(struct ir3 *ir);

@@ -1297,3 +1297,18 @@ ir3_valid_immediate(struct ir3_instruction *instr, int32_t immed)
    /* Other than cat1 (mov) we can only encode up to 10 bits, sign-extended: */
    return !(immed & ~0x1ff) || !(-immed & ~0x1ff);
 }
+
+struct ir3_instruction *
+ir3_get_cond_for_nonzero_compare(struct ir3_instruction *instr)
+{
+   /* If instr is a negation (likely as a result of an nir_b2n), we can ignore
+    * that and use its source, since the nonzero-ness stays the same.
+    */
+   if (instr->opc == OPC_ABSNEG_S && instr->flags == 0 &&
+       (instr->srcs[0]->flags & (IR3_REG_SNEG | IR3_REG_SABS)) ==
+          IR3_REG_SNEG) {
+      return instr->srcs[0]->def->instr;
+   }
+
+   return instr;
+}

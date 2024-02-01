@@ -461,6 +461,8 @@ ir3_get_addr1(struct ir3_context *ctx, unsigned const_val)
 struct ir3_instruction *
 ir3_get_predicate(struct ir3_context *ctx, struct ir3_instruction *src)
 {
+   src = ir3_get_cond_for_nonzero_compare(src);
+
    struct hash_entry *src_entry =
       _mesa_hash_table_search(ctx->predicate_conversions, src);
    if (src_entry)

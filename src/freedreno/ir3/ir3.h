@@ -844,6 +844,14 @@ bool ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags);
 
 bool ir3_valid_immediate(struct ir3_instruction *instr, int32_t immed);
 
+/**
+ * Given an instruction whose result we want to test for nonzero, return a
+ * potentially different instruction for which the result would be the same.
+ * This might be one of its sources if instr doesn't change the nonzero-ness.
+ */
+struct ir3_instruction *
+ir3_get_cond_for_nonzero_compare(struct ir3_instruction *instr);
+
 #include "util/set.h"
 #define foreach_ssa_use(__use, __instr)                                        \
    for (struct ir3_instruction *__use = (void *)~0; __use && (__instr)->uses;  \

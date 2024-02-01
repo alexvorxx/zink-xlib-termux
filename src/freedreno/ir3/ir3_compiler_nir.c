@@ -712,17 +712,7 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
       break;
 
    case nir_op_bcsel: {
-      struct ir3_instruction *cond = src[0];
-
-      /* If src[0] is a negation (likely as a result of an ir3_b2n(cond)),
-       * we can ignore that and use original cond, since the nonzero-ness of
-       * cond stays the same.
-       */
-      if (cond->opc == OPC_ABSNEG_S && cond->flags == 0 &&
-          (cond->srcs[0]->flags & (IR3_REG_SNEG | IR3_REG_SABS)) ==
-             IR3_REG_SNEG) {
-         cond = cond->srcs[0]->def->instr;
-      }
+      struct ir3_instruction *cond = ir3_get_cond_for_nonzero_compare(src[0]);
 
       compile_assert(ctx, bs[1] == bs[2]);
 

@@ -241,7 +241,7 @@ if with_gallium_st_nine
 endif
 if with_gallium_st_d3d10umd
   subdir('frontends/d3d10umd')
-  subdir('targets/d3d10sw')
+  subdir('targets/d3d10umd')
 endif
 if with_platform_windows
   if with_opengl

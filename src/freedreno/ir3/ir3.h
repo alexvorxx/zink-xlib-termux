@@ -703,6 +703,8 @@ struct ir3_instruction *ir3_block_take_terminator(struct ir3_block *block);
 struct ir3_instruction *
 ir3_block_get_last_non_terminator(struct ir3_block *block);
 
+struct ir3_instruction *ir3_block_get_last_phi(struct ir3_block *block);
+
 static inline struct ir3_block *
 ir3_after_preamble(struct ir3 *ir)
 {

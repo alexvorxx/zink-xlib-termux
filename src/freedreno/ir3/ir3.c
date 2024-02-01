@@ -560,6 +560,21 @@ ir3_block_get_last_non_terminator(struct ir3_block *block)
    return NULL;
 }
 
+struct ir3_instruction *
+ir3_block_get_last_phi(struct ir3_block *block)
+{
+   struct ir3_instruction *last_phi = NULL;
+
+   foreach_instr (instr, &block->instr_list) {
+      if (instr->opc != OPC_META_PHI)
+         break;
+
+      last_phi = instr;
+   }
+
+   return last_phi;
+}
+
 void
 ir3_block_add_predecessor(struct ir3_block *block, struct ir3_block *pred)
 {

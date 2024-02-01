@@ -73,6 +73,7 @@ ir3_context_init(struct ir3_compiler *compiler, struct ir3_shader *shader,
       _mesa_hash_table_create(ctx, _mesa_hash_pointer, _mesa_key_pointer_equal);
    ctx->sel_cond_conversions =
       _mesa_hash_table_create(ctx, _mesa_hash_pointer, _mesa_key_pointer_equal);
+   ctx->predicate_conversions = _mesa_pointer_hash_table_create(ctx);
 
    /* TODO: maybe generate some sort of bitmask of what key
     * lowers vs what shader has (ie. no need to lower
@@ -460,7 +461,12 @@ ir3_get_addr1(struct ir3_context *ctx, unsigned const_val)
 struct ir3_instruction *
 ir3_get_predicate(struct ir3_context *ctx, struct ir3_instruction *src)
 {
-   struct ir3_block *b = ctx->block;
+   struct hash_entry *src_entry =
+      _mesa_hash_table_search(ctx->predicate_conversions, src);
+   if (src_entry)
+      return src_entry->data;
+
+   struct ir3_block *b = src->block;
    struct ir3_instruction *cond;
 
    /* NOTE: we use cpms.s.ne x, 0 to move x into a predicate register */
@@ -472,6 +478,15 @@ ir3_get_predicate(struct ir3_context *ctx, struct ir3_instruction *src)
    /* condition always goes in predicate register: */
    cond->dsts[0]->flags |= IR3_REG_PREDICATE;
 
+   /* phi's should stay first in a block */
+   if (src->opc == OPC_META_PHI)
+      ir3_instr_move_after(zero, ir3_block_get_last_phi(src->block));
+   else
+      ir3_instr_move_after(zero, src);
+
+   ir3_instr_move_after(cond, zero);
+
+   _mesa_hash_table_insert(ctx->predicate_conversions, src, cond);
    return cond;
 }
 

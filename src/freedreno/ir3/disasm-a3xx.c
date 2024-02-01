@@ -244,6 +244,7 @@ static const struct opc_info {
    OPC(2, OPC_CBITS_B,      cbits.b),
    OPC(2, OPC_SHB,          shb),
    OPC(2, OPC_MSAD,         msad),
+   OPC(2, OPC_FLAT_B,       flat.b),
 
    /* category 3: */
    OPC(3, OPC_MAD_U16,      mad.u16),

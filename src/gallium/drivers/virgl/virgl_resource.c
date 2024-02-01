@@ -350,7 +350,7 @@ virgl_staging_map(struct virgl_context *vctx,
    unsigned align_offset;
    unsigned stride;
    uintptr_t layer_stride;
-   void *map_addr;
+   uint8_t *map_addr;
    bool alloc_succeeded;
 
    assert(vctx->supports_staging);
@@ -529,7 +529,7 @@ virgl_resource_transfer_map(struct pipe_context *ctx,
    case VIRGL_TRANSFER_MAP_HW_RES:
       trans->hw_res_map = vws->resource_map(vws, vres->hw_res);
       if (trans->hw_res_map)
-         map_addr = trans->hw_res_map + trans->offset;
+         map_addr = (uint8_t *)trans->hw_res_map + trans->offset;
       else
          map_addr = NULL;
       break;

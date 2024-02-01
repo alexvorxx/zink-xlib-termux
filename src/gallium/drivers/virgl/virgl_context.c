@@ -21,7 +21,11 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <string.h>
+#ifndef _WIN32
 #include <libsync.h>
+#endif
+
 #include "pipe/p_shader_tokens.h"
 
 #include "compiler/nir/nir.h"
@@ -1003,7 +1007,7 @@ static void virgl_draw_vbo(struct pipe_context *ctx,
 
    struct virgl_context *vctx = virgl_context(ctx);
    struct virgl_screen *rs = virgl_screen(ctx->screen);
-   struct virgl_indexbuf ib = {};
+   struct virgl_indexbuf ib = { 0 };
    struct pipe_draw_info info = *dinfo;
 
    if (!indirect &&
@@ -1478,7 +1482,7 @@ static void *virgl_create_compute_state(struct pipe_context *ctx,
    uint32_t handle;
    const struct tgsi_token *ntt_tokens = NULL;
    const struct tgsi_token *tokens;
-   struct pipe_stream_output_info so_info = {};
+   struct pipe_stream_output_info so_info = { 0 };
    int ret;
 
    if (state->ir_type == PIPE_SHADER_IR_NIR) {

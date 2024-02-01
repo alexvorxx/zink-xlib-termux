@@ -167,8 +167,10 @@ else
 endif
 if with_gallium_virgl
   subdir('winsys/virgl/common')
-  subdir('winsys/virgl/drm')
-  subdir('winsys/virgl/vtest')
+  if not with_platform_windows
+    subdir('winsys/virgl/drm')
+    subdir('winsys/virgl/vtest')
+  endif
   subdir('drivers/virgl')
 else
   driver_virgl = declare_dependency()

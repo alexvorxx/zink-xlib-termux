@@ -1033,7 +1033,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
       alignment = MAX2(alignment, screen->info.props.limits.minMemoryMapAlignment);
    obj->alignment = alignment;
 
-   if (zink_mem_type_idx_from_bits(screen, heap, reqs->memoryTypeBits) == UINT32_MAX) {
+   if (zink_mem_type_idx_from_types(screen, heap, reqs->memoryTypeBits) == UINT32_MAX) {
       /* not valid based on reqs; demote to more compatible type */
       switch (heap) {
       case ZINK_HEAP_DEVICE_LOCAL_VISIBLE:
@@ -1045,7 +1045,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
       default:
          break;
       }
-      assert(zink_mem_type_idx_from_bits(screen, heap, reqs->memoryTypeBits) != UINT32_MAX);
+      assert(zink_mem_type_idx_from_types(screen, heap, reqs->memoryTypeBits) != UINT32_MAX);
    }
 
    while (1) {

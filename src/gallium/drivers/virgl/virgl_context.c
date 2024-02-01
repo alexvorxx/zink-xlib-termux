@@ -596,7 +596,7 @@ static void virgl_hw_set_vertex_buffers(struct virgl_context *vctx)
    if (vctx->vertex_array_dirty) {
       const struct virgl_vertex_elements_state *ve = vctx->vertex_elements;
 
-      if (ve->num_bindings) {
+      if (ve && ve->num_bindings) {
          struct pipe_vertex_buffer vertex_buffers[PIPE_MAX_ATTRIBS];
          for (int i = 0; i < ve->num_bindings; ++i)
             vertex_buffers[i] = vctx->vertex_buffer[ve->binding_map[i]];

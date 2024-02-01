@@ -44,9 +44,9 @@ else
         cargo-ndk
 
     rustup target add x86_64-linux-android
-    RUSTFLAGS='-C target-feature=+crt-static' cargo ndk --target x86_64-linux-android build
+    RUSTFLAGS='-C target-feature=+crt-static' cargo ndk --target x86_64-linux-android build --release
 
-    mv target/x86_64-linux-android/debug/deqp-runner /deqp-runner
+    mv target/x86_64-linux-android/release/deqp-runner /deqp-runner
 
     cargo uninstall --locked  \
         --root /usr/local \

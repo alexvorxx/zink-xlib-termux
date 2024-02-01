@@ -1412,7 +1412,7 @@ static void blitter_draw(struct blitter_context_priv *ctx,
    u_upload_unmap(pipe->stream_uploader);
 
    pipe->bind_vertex_elements_state(pipe, vertex_elements_cso);
-   pipe->set_vertex_buffers(pipe, 1, false, &vb);
+   pipe->set_vertex_buffers(pipe, 1, true, &vb);
    pipe->bind_vs_state(pipe, get_vs(&ctx->base));
 
    if (ctx->base.use_index_buffer) {
@@ -1428,7 +1428,6 @@ static void blitter_draw(struct blitter_context_priv *ctx,
       util_draw_arrays_instanced(pipe, MESA_PRIM_TRIANGLE_FAN, 0, 4,
                                  0, num_instances);
    }
-   pipe_resource_reference(&vb.buffer.resource, NULL);
 }
 
 void util_blitter_draw_rectangle(struct blitter_context *blitter,
@@ -2635,7 +2634,7 @@ void util_blitter_clear_buffer(struct blitter_context *blitter,
 
    pipe->bind_vertex_elements_state(pipe,
                                     ctx->velem_state_readbuf[num_channels-1]);
-   pipe->set_vertex_buffers(pipe, 1, false, &vb);
+   pipe->set_vertex_buffers(pipe, 1, true, &vb);
    bind_vs_pos_only(ctx, num_channels);
 
    if (ctx->has_geometry_shader)
@@ -2656,7 +2655,6 @@ out:
    util_blitter_restore_render_cond(blitter);
    util_blitter_unset_running_flag(blitter);
    pipe_so_target_reference(&so_target, NULL);
-   pipe_resource_reference(&vb.buffer.resource, NULL);
 }
 
 /* probably radeon specific */

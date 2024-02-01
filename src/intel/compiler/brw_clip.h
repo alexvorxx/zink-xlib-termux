@@ -96,7 +96,7 @@ struct brw_clip_compile {
 
    bool need_direction;
 
-   struct brw_vue_map vue_map;
+   struct intel_vue_map vue_map;
 };
 
 /**

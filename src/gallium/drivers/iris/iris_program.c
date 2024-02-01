@@ -1665,7 +1665,7 @@ iris_compile_tes(struct iris_screen *screen,
 
    brw_nir_analyze_ubo_ranges(compiler, nir, prog_data->ubo_ranges);
 
-   struct brw_vue_map input_vue_map;
+   struct intel_vue_map input_vue_map;
    brw_compute_tess_vue_map(&input_vue_map, key->inputs_read,
                             key->patch_inputs_read);
 
@@ -1912,7 +1912,7 @@ iris_compile_fs(struct iris_screen *screen,
                 struct util_debug_callback *dbg,
                 struct iris_uncompiled_shader *ish,
                 struct iris_compiled_shader *shader,
-                struct brw_vue_map *vue_map)
+                struct intel_vue_map *vue_map)
 {
    const struct brw_compiler *compiler = screen->compiler;
    void *mem_ctx = ralloc_context(NULL);
@@ -2011,7 +2011,7 @@ iris_update_compiled_fs(struct iris_context *ice)
    struct iris_fs_prog_key key = { KEY_INIT(base) };
    screen->vtbl.populate_fs_key(ice, &ish->nir->info, &key);
 
-   struct brw_vue_map *last_vue_map =
+   struct intel_vue_map *last_vue_map =
       &brw_vue_prog_data(ice->shaders.last_vue_shader->prog_data)->vue_map;
 
    if (ish->nos & (1ull << IRIS_NOS_LAST_VUE_MAP))
@@ -2057,8 +2057,8 @@ update_last_vue_map(struct iris_context *ice,
                     struct iris_compiled_shader *shader)
 {
    struct brw_vue_prog_data *vue_prog_data = (void *) shader->prog_data;
-   struct brw_vue_map *vue_map = &vue_prog_data->vue_map;
-   struct brw_vue_map *old_map = !ice->shaders.last_vue_shader ? NULL :
+   struct intel_vue_map *vue_map = &vue_prog_data->vue_map;
+   struct intel_vue_map *old_map = !ice->shaders.last_vue_shader ? NULL :
       &brw_vue_prog_data(ice->shaders.last_vue_shader->prog_data)->vue_map;
    const uint64_t changed_slots =
       (old_map ? old_map->slots_valid : 0ull) ^ vue_map->slots_valid;

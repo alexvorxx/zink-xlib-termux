@@ -1368,78 +1368,7 @@ typedef enum
    (BITFIELD64_RANGE(0, VARYING_SLOT_MAX) & \
     ~VARYING_BIT_POS & ~VARYING_BIT_FACE)
 
-/**
- * Data structure recording the relationship between the gl_varying_slot enum
- * and "slots" within the vertex URB entry (VUE).  A "slot" is defined as a
- * single octaword within the VUE (128 bits).
- *
- * Note that each BRW register contains 256 bits (2 octawords), so when
- * accessing the VUE in URB_NOSWIZZLE mode, each register corresponds to two
- * consecutive VUE slots.  When accessing the VUE in URB_INTERLEAVED mode (as
- * in a vertex shader), each register corresponds to a single VUE slot, since
- * it contains data for two separate vertices.
- */
-struct brw_vue_map {
-   /**
-    * Bitfield representing all varying slots that are (a) stored in this VUE
-    * map, and (b) actually written by the shader.  Does not include any of
-    * the additional varying slots defined in brw_varying_slot.
-    */
-   uint64_t slots_valid;
-
-   /**
-    * Is this VUE map for a separate shader pipeline?
-    *
-    * Separable programs (GL_ARB_separate_shader_objects) can be mixed and matched
-    * without the linker having a chance to dead code eliminate unused varyings.
-    *
-    * This means that we have to use a fixed slot layout, based on the output's
-    * location field, rather than assigning slots in a compact contiguous block.
-    */
-   bool separate;
-
-   /**
-    * Map from gl_varying_slot value to VUE slot.  For gl_varying_slots that are
-    * not stored in a slot (because they are not written, or because
-    * additional processing is applied before storing them in the VUE), the
-    * value is -1.
-    */
-   signed char varying_to_slot[VARYING_SLOT_TESS_MAX];
-
-   /**
-    * Map from VUE slot to gl_varying_slot value.  For slots that do not
-    * directly correspond to a gl_varying_slot, the value comes from
-    * brw_varying_slot.
-    *
-    * For slots that are not in use, the value is BRW_VARYING_SLOT_PAD.
-    */
-   signed char slot_to_varying[VARYING_SLOT_TESS_MAX];
-
-   /**
-    * Total number of VUE slots in use
-    */
-   int num_slots;
-
-   /**
-    * Number of position VUE slots.  If num_pos_slots > 1, primitive
-    * replication is being used.
-    */
-   int num_pos_slots;
-
-   /**
-    * Number of per-patch VUE slots. Only valid for tessellation control
-    * shader outputs and tessellation evaluation shader inputs.
-    */
-   int num_per_patch_slots;
-
-   /**
-    * Number of per-vertex VUE slots. Only valid for tessellation control
-    * shader outputs and tessellation evaluation shader inputs.
-    */
-   int num_per_vertex_slots;
-};
-
-void brw_print_vue_map(FILE *fp, const struct brw_vue_map *vue_map,
+void brw_print_vue_map(FILE *fp, const struct intel_vue_map *vue_map,
                        gl_shader_stage stage);
 
 /**
@@ -1455,29 +1384,29 @@ static inline unsigned brw_vue_slot_to_offset(unsigned slot)
  * VUE.
  */
 static inline unsigned
-brw_varying_to_offset(const struct brw_vue_map *vue_map, unsigned varying)
+brw_varying_to_offset(const struct intel_vue_map *vue_map, unsigned varying)
 {
    return brw_vue_slot_to_offset(vue_map->varying_to_slot[varying]);
 }
 
 void brw_compute_vue_map(const struct intel_device_info *devinfo,
-                         struct brw_vue_map *vue_map,
+                         struct intel_vue_map *vue_map,
                          uint64_t slots_valid,
                          bool separate_shader,
                          uint32_t pos_slots);
 
-void brw_compute_tess_vue_map(struct brw_vue_map *const vue_map,
+void brw_compute_tess_vue_map(struct intel_vue_map *const vue_map,
                               uint64_t slots_valid,
                               uint32_t is_patch);
 
 /* brw_interpolation_map.c */
-void brw_setup_vue_interpolation(const struct brw_vue_map *vue_map,
+void brw_setup_vue_interpolation(const struct intel_vue_map *vue_map,
                                  struct nir_shader *nir,
                                  struct brw_wm_prog_data *prog_data);
 
 struct brw_vue_prog_data {
    struct brw_stage_prog_data base;
-   struct brw_vue_map vue_map;
+   struct intel_vue_map vue_map;
 
    /** Should the hardware deliver input VUE handles for URB pull loads? */
    bool include_vue_handles;
@@ -1831,7 +1760,7 @@ struct brw_compile_tes_params {
 
    const struct brw_tes_prog_key *key;
    struct brw_tes_prog_data *prog_data;
-   const struct brw_vue_map *input_vue_map;
+   const struct intel_vue_map *input_vue_map;
 };
 
 /**
@@ -1877,7 +1806,7 @@ brw_compile_sf(const struct brw_compiler *compiler,
                void *mem_ctx,
                const struct brw_sf_prog_key *key,
                struct brw_sf_prog_data *prog_data,
-               struct brw_vue_map *vue_map,
+               struct intel_vue_map *vue_map,
                unsigned *final_assembly_size);
 
 /**
@@ -1893,7 +1822,7 @@ brw_compile_clip(const struct brw_compiler *compiler,
                  void *mem_ctx,
                  const struct brw_clip_prog_key *key,
                  struct brw_clip_prog_data *prog_data,
-                 struct brw_vue_map *vue_map,
+                 struct intel_vue_map *vue_map,
                  unsigned *final_assembly_size);
 
 struct brw_compile_task_params {
@@ -1930,7 +1859,7 @@ struct brw_compile_fs_params {
    const struct brw_wm_prog_key *key;
    struct brw_wm_prog_data *prog_data;
 
-   const struct brw_vue_map *vue_map;
+   const struct intel_vue_map *vue_map;
    const struct brw_mue_map *mue_map;
 
    bool allow_spilling;
@@ -2002,7 +1931,7 @@ brw_compile_ff_gs_prog(struct brw_compiler *compiler,
 		       void *mem_ctx,
 		       const struct brw_ff_gs_prog_key *key,
 		       struct brw_ff_gs_prog_data *prog_data,
-		       struct brw_vue_map *vue_map,
+		       struct intel_vue_map *vue_map,
 		       unsigned *final_assembly_size);
 
 void brw_debug_key_recompile(const struct brw_compiler *c, void *log,
@@ -2158,7 +2087,7 @@ brw_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
  */
 static inline int
 brw_compute_first_urb_slot_required(uint64_t inputs_read,
-                                    const struct brw_vue_map *prev_stage_vue_map)
+                                    const struct intel_vue_map *prev_stage_vue_map)
 {
    if ((inputs_read & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT | VARYING_BIT_PRIMITIVE_SHADING_RATE)) == 0) {
       for (int i = 0; i < prev_stage_vue_map->num_slots; i++) {

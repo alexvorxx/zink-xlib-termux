@@ -1285,7 +1285,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
    const struct intel_device_info *devinfo = compiler->devinfo;
    nir_shader *nir = params->base.nir;
    const struct brw_tes_prog_key *key = params->key;
-   const struct brw_vue_map *input_vue_map = params->input_vue_map;
+   const struct intel_vue_map *input_vue_map = params->input_vue_map;
    struct brw_tes_prog_data *prog_data = params->prog_data;
 
    const bool is_scalar = compiler->scalar_stage[MESA_SHADER_TESS_EVAL];

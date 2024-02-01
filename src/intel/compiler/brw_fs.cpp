@@ -1712,7 +1712,7 @@ calculate_urb_setup(const struct intel_device_info *devinfo,
           * geometry has more than one position slot (used for Primitive
           * Replication).
           */
-         struct brw_vue_map prev_stage_vue_map;
+         struct intel_vue_map prev_stage_vue_map;
          brw_compute_vue_map(devinfo, &prev_stage_vue_map,
                              key->input_slots_valid,
                              nir->info.separate_shader, 1);

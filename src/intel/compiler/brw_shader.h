@@ -183,7 +183,7 @@ bool brw_texture_offset(const nir_tex_instr *tex, unsigned src,
 struct brw_gs_compile
 {
    struct brw_gs_prog_key key;
-   struct brw_vue_map input_vue_map;
+   struct intel_vue_map input_vue_map;
 
    unsigned control_data_bits_per_vertex;
    unsigned control_data_header_size_bits;

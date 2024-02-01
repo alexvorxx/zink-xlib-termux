@@ -452,7 +452,7 @@ blorp_ensure_sf_program(struct blorp_batch *batch,
    const unsigned *program;
    unsigned program_size;
 
-   struct brw_vue_map vue_map;
+   struct intel_vue_map vue_map;
    brw_compute_vue_map(blorp->compiler->devinfo, &vue_map, slots_valid, false, 1);
 
    struct brw_sf_prog_data prog_data_tmp;

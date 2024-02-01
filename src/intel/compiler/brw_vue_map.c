@@ -44,7 +44,7 @@
 #include "dev/intel_debug.h"
 
 static inline void
-assign_vue_slot(struct brw_vue_map *vue_map, int varying, int slot)
+assign_vue_slot(struct intel_vue_map *vue_map, int varying, int slot)
 {
    /* Make sure this varying hasn't been assigned a slot already */
    assert (vue_map->varying_to_slot[varying] == -1);
@@ -58,7 +58,7 @@ assign_vue_slot(struct brw_vue_map *vue_map, int varying, int slot)
  */
 void
 brw_compute_vue_map(const struct intel_device_info *devinfo,
-                    struct brw_vue_map *vue_map,
+                    struct intel_vue_map *vue_map,
                     uint64_t slots_valid,
                     bool separate,
                     uint32_t pos_slots)
@@ -216,7 +216,7 @@ brw_compute_vue_map(const struct intel_device_info *devinfo,
  * tessellation evaluation shader inputs.
  */
 void
-brw_compute_tess_vue_map(struct brw_vue_map *vue_map,
+brw_compute_tess_vue_map(struct intel_vue_map *vue_map,
                          uint64_t vertex_slots,
                          uint32_t patch_slots)
 {
@@ -298,7 +298,7 @@ varying_name(brw_varying_slot slot, gl_shader_stage stage)
 }
 
 void
-brw_print_vue_map(FILE *fp, const struct brw_vue_map *vue_map,
+brw_print_vue_map(FILE *fp, const struct intel_vue_map *vue_map,
                   gl_shader_stage stage)
 {
    if (vue_map->num_per_vertex_slots > 0 || vue_map->num_per_patch_slots > 0) {

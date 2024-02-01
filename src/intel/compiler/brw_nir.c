@@ -183,7 +183,7 @@ is_output(nir_intrinsic_instr *intrin)
 
 static bool
 remap_patch_urb_offsets(nir_block *block, nir_builder *b,
-                        const struct brw_vue_map *vue_map,
+                        const struct intel_vue_map *vue_map,
                         enum tess_primitive_mode tes_primitive_mode)
 {
    nir_foreach_instr_safe(instr, block) {
@@ -366,7 +366,7 @@ brw_nir_lower_vs_inputs(nir_shader *nir,
 
 void
 brw_nir_lower_vue_inputs(nir_shader *nir,
-                         const struct brw_vue_map *vue_map)
+                         const struct intel_vue_map *vue_map)
 {
    nir_foreach_shader_in_variable(var, nir)
       var->data.driver_location = var->data.location;
@@ -415,7 +415,7 @@ brw_nir_lower_vue_inputs(nir_shader *nir,
 }
 
 void
-brw_nir_lower_tes_inputs(nir_shader *nir, const struct brw_vue_map *vue_map)
+brw_nir_lower_tes_inputs(nir_shader *nir, const struct intel_vue_map *vue_map)
 {
    nir_foreach_shader_in_variable(var, nir)
       var->data.driver_location = var->data.location;
@@ -558,7 +558,7 @@ brw_nir_lower_vue_outputs(nir_shader *nir)
 }
 
 void
-brw_nir_lower_tcs_outputs(nir_shader *nir, const struct brw_vue_map *vue_map,
+brw_nir_lower_tcs_outputs(nir_shader *nir, const struct intel_vue_map *vue_map,
                           enum tess_primitive_mode tes_primitive_mode)
 {
    nir_foreach_shader_out_variable(var, nir) {

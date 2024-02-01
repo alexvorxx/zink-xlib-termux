@@ -4437,7 +4437,7 @@ iris_set_stream_output_targets(struct pipe_context *ctx,
  */
 static uint32_t *
 iris_create_so_decl_list(const struct pipe_stream_output_info *info,
-                         const struct brw_vue_map *vue_map)
+                         const struct intel_vue_map *vue_map)
 {
    struct GENX(SO_DECL) so_decl[PIPE_MAX_VERTEX_STREAMS][128];
    int buffer_mask[PIPE_MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
@@ -4551,7 +4551,7 @@ iris_create_so_decl_list(const struct pipe_stream_output_info *info,
 
 static void
 iris_compute_sbe_urb_read_interval(uint64_t fs_input_slots,
-                                   const struct brw_vue_map *last_vue_map,
+                                   const struct intel_vue_map *last_vue_map,
                                    bool two_sided_color,
                                    unsigned *out_offset,
                                    unsigned *out_length)
@@ -4621,7 +4621,7 @@ iris_compute_sbe_urb_read_interval(uint64_t fs_input_slots,
 static void
 iris_emit_sbe_swiz(struct iris_batch *batch,
                    const struct iris_context *ice,
-                   const struct brw_vue_map *vue_map,
+                   const struct intel_vue_map *vue_map,
                    unsigned urb_read_offset,
                    unsigned sprite_coord_enables)
 {
@@ -4755,7 +4755,7 @@ iris_emit_sbe(struct iris_batch *batch, const struct iris_context *ice)
    const struct iris_rasterizer_state *cso_rast = ice->state.cso_rast;
    const struct brw_wm_prog_data *wm_prog_data = (void *)
       ice->shaders.prog[MESA_SHADER_FRAGMENT]->prog_data;
-   const struct brw_vue_map *last_vue_map =
+   const struct intel_vue_map *last_vue_map =
       &brw_vue_prog_data(ice->shaders.last_vue_shader->prog_data)->vue_map;
 
    unsigned urb_read_offset, urb_read_length;
@@ -7138,7 +7138,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
 
 #if INTEL_WA_14015055625_GFX_VER
    /* Check if FS stage will use primitive ID overrides for Wa_14015055625. */
-   const struct brw_vue_map *last_vue_map =
+   const struct intel_vue_map *last_vue_map =
       &brw_vue_prog_data(ice->shaders.last_vue_shader->prog_data)->vue_map;
    if ((wm_prog_data->inputs & VARYING_BIT_PRIMITIVE_ID) &&
        last_vue_map->varying_to_slot[VARYING_SLOT_PRIMITIVE_ID] == -1 &&

@@ -36,7 +36,7 @@
 #include "iris_resource.h"
 
 struct intel_l3_config;
-struct brw_vue_map;
+struct intel_vue_map;
 struct iris_vs_prog_key;
 struct iris_tcs_prog_key;
 struct iris_tes_prog_key;
@@ -136,7 +136,7 @@ struct iris_vtable {
                                        enum iris_program_cache_id cache_id,
                                        struct iris_compiled_shader *shader);
    uint32_t *(*create_so_decl_list)(const struct pipe_stream_output_info *sol,
-                                    const struct brw_vue_map *vue_map);
+                                    const struct intel_vue_map *vue_map);
    void (*populate_vs_key)(const struct iris_context *ice,
                            const struct shader_info *info,
                            gl_shader_stage last_stage,

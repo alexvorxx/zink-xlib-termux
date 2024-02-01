@@ -511,7 +511,7 @@ struct crocus_context {
    struct {
       struct crocus_uncompiled_shader *uncompiled[MESA_SHADER_STAGES];
       struct crocus_compiled_shader *prog[MESA_SHADER_STAGES];
-      struct brw_vue_map *last_vue_map;
+      struct intel_vue_map *last_vue_map;
 
       struct crocus_bo *cache_bo;
       uint32_t cache_next_offset;

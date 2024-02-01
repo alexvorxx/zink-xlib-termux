@@ -4267,7 +4267,7 @@ crocus_set_stream_output_targets(struct pipe_context *ctx,
  */
 static uint32_t *
 crocus_create_so_decl_list(const struct pipe_stream_output_info *info,
-                           const struct brw_vue_map *vue_map)
+                           const struct intel_vue_map *vue_map)
 {
    struct GENX(SO_DECL) so_decl[PIPE_MAX_VERTEX_STREAMS][128];
    int buffer_mask[PIPE_MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
@@ -4453,7 +4453,7 @@ crocus_is_drawing_points(const struct crocus_context *ice)
 static void
 get_attr_override(
    struct GENX(SF_OUTPUT_ATTRIBUTE_DETAIL) *attr,
-   const struct brw_vue_map *vue_map,
+   const struct intel_vue_map *vue_map,
    int urb_entry_read_offset, int fs_attr,
    bool two_side_color, uint32_t *max_source_attr)
 {
@@ -4554,7 +4554,7 @@ calculate_attr_overrides(
 {
    const struct brw_wm_prog_data *wm_prog_data = (void *)
       ice->shaders.prog[MESA_SHADER_FRAGMENT]->prog_data;
-   const struct brw_vue_map *vue_map = ice->shaders.last_vue_map;
+   const struct intel_vue_map *vue_map = ice->shaders.last_vue_map;
    const struct crocus_rasterizer_state *cso_rast = ice->state.cso_rast;
    uint32_t max_source_attr = 0;
    const struct shader_info *fs_info =

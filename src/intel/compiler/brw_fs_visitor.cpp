@@ -829,7 +829,7 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
       (const struct brw_vs_prog_key *) this->key;
    const GLbitfield64 psiz_mask =
       VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT | VARYING_BIT_PSIZ | VARYING_BIT_PRIMITIVE_SHADING_RATE;
-   const struct brw_vue_map *vue_map = &vue_prog_data->vue_map;
+   const struct intel_vue_map *vue_map = &vue_prog_data->vue_map;
    bool flush;
    fs_reg sources[8];
    fs_reg urb_handle;

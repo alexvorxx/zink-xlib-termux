@@ -584,6 +584,23 @@ ir3_instr_create(struct ir3_block *block, opc_t opc, int ndst, int nsrc)
    return instr;
 }
 
+static void
+add_to_address_users(struct ir3_instruction *instr)
+{
+   assert(instr->address != NULL);
+
+   struct ir3 *ir = instr->block->shader;
+   struct ir3_register *addr_reg = instr->address->def;
+   assert(reg_num(addr_reg) == REG_A0);
+   unsigned comp = reg_comp(addr_reg);
+   if (comp == 0) {
+      array_insert(ir, ir->a0_users, instr);
+   } else {
+      assert(comp == 1);
+      array_insert(ir, ir->a1_users, instr);
+   }
+}
+
 struct ir3_instruction *
 ir3_instr_clone(struct ir3_instruction *instr)
 {
@@ -618,6 +635,7 @@ ir3_instr_clone(struct ir3_instruction *instr)
    if (instr->address) {
       assert(instr->srcs_count > 0);
       new_instr->address = new_instr->srcs[instr->srcs_count - 1];
+      add_to_address_users(new_instr);
    }
 
    return new_instr;
@@ -683,21 +701,12 @@ ir3_instr_set_address(struct ir3_instruction *instr,
                       struct ir3_instruction *addr)
 {
    if (!instr->address) {
-      struct ir3 *ir = instr->block->shader;
-
       assert(instr->block == addr->block);
 
       instr->address =
          ir3_src_create(instr, addr->dsts[0]->num, addr->dsts[0]->flags);
       instr->address->def = addr->dsts[0];
-      assert(reg_num(addr->dsts[0]) == REG_A0);
-      unsigned comp = reg_comp(addr->dsts[0]);
-      if (comp == 0) {
-         array_insert(ir, ir->a0_users, instr);
-      } else {
-         assert(comp == 1);
-         array_insert(ir, ir->a1_users, instr);
-      }
+      add_to_address_users(instr);
    } else {
       assert(instr->address->def->instr == addr);
    }

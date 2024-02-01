@@ -1109,6 +1109,15 @@ nir_def_used_by_if(const nir_def *def)
    return false;
 }
 
+static inline bool
+nir_def_only_used_by_if(const nir_def *def)
+{
+   nir_foreach_use(_, def)
+      return false;
+
+   return true;
+}
+
 static inline nir_src
 nir_src_for_ssa(nir_def *def)
 {

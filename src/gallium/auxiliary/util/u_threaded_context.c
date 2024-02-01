@@ -2163,11 +2163,6 @@ tc_call_set_vertex_buffers(struct pipe_context *pipe, void *call)
    struct tc_vertex_buffers *p = (struct tc_vertex_buffers *)call;
    unsigned count = p->count;
 
-   if (!count) {
-      pipe->set_vertex_buffers(pipe, 0, false, NULL);
-      return call_size(tc_vertex_buffers);
-   }
-
    for (unsigned i = 0; i < count; i++)
       tc_assert(!p->slot[i].is_user_buffer);
 

@@ -690,7 +690,7 @@ void anv_CmdBindPipeline(
             cmd_buffer->state.push_constants_dirty |= stages;
       }
 
-      if ((new_pipeline->fs_msaa_flags & BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC) &&
+      if ((new_pipeline->fs_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) &&
           push->gfx.fs_msaa_flags != new_pipeline->fs_msaa_flags) {
          push->gfx.fs_msaa_flags = new_pipeline->fs_msaa_flags;
          cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_FRAGMENT_BIT;

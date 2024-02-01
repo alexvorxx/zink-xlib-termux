@@ -4230,7 +4230,7 @@ struct anv_graphics_base_pipeline {
    enum brw_robustness_flags                    robust_flags[ANV_GRAPHICS_SHADER_STAGE_COUNT];
 
    /* True if at the time the fragment shader was compiled, it didn't have all
-    * the information to avoid BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC.
+    * the information to avoid INTEL_MSAA_FLAG_ENABLE_DYNAMIC.
     */
    bool                                         fragment_dynamic;
 };
@@ -4325,7 +4325,7 @@ struct anv_graphics_pipeline {
    uint32_t                                     vertex_input_elems;
    uint32_t                                     vertex_input_data[2 * 31 /* MAX_VES + 2 internal */];
 
-   enum brw_wm_msaa_flags                       fs_msaa_flags;
+   enum intel_msaa_flags                        fs_msaa_flags;
 
    /* Pre computed CS instructions that can directly be copied into
     * anv_cmd_buffer.

@@ -8555,7 +8555,7 @@ namespace brw {
    void
    check_dynamic_msaa_flag(const fs_builder &bld,
                            const struct brw_wm_prog_data *wm_prog_data,
-                           enum brw_wm_msaa_flags flag)
+                           enum intel_msaa_flags flag)
    {
       fs_inst *inst = bld.AND(bld.null_reg_ud(),
                               dynamic_msaa_flags(wm_prog_data),

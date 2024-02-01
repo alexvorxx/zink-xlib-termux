@@ -512,11 +512,11 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
       if (prog_data->coarse_pixel_dispatch == BRW_ALWAYS) {
          inst->desc |= (1 << 18);
       } else if (prog_data->coarse_pixel_dispatch == BRW_SOMETIMES) {
-         STATIC_ASSERT(BRW_WM_MSAA_FLAG_COARSE_RT_WRITES == (1 << 18));
+         STATIC_ASSERT(INTEL_MSAA_FLAG_COARSE_RT_WRITES == (1 << 18));
          const fs_builder &ubld = bld.exec_all().group(8, 0);
          desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
          ubld.AND(desc, dynamic_msaa_flags(prog_data),
-                  brw_imm_ud(BRW_WM_MSAA_FLAG_COARSE_RT_WRITES));
+                  brw_imm_ud(INTEL_MSAA_FLAG_COARSE_RT_WRITES));
          desc = component(desc, 0);
       }
 
@@ -2815,12 +2815,12 @@ lower_interpolator_logical_send(const fs_builder &bld, fs_inst *inst,
    if (wm_prog_data->coarse_pixel_dispatch == BRW_ALWAYS) {
       desc_imm |= (1 << 15);
    } else if (wm_prog_data->coarse_pixel_dispatch == BRW_SOMETIMES) {
-      STATIC_ASSERT(BRW_WM_MSAA_FLAG_COARSE_PI_MSG == (1 << 15));
+      STATIC_ASSERT(INTEL_MSAA_FLAG_COARSE_PI_MSG == (1 << 15));
       fs_reg orig_desc = desc;
       const fs_builder &ubld = bld.exec_all().group(8, 0);
       desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
       ubld.AND(desc, dynamic_msaa_flags(wm_prog_data),
-               brw_imm_ud(BRW_WM_MSAA_FLAG_COARSE_PI_MSG));
+               brw_imm_ud(INTEL_MSAA_FLAG_COARSE_PI_MSG));
 
       /* And, if it's AT_OFFSET, we might have a non-trivial descriptor */
       if (orig_desc.file == IMM) {

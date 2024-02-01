@@ -3770,7 +3770,7 @@ emit_samplepos_setup(nir_to_brw_state &ntb)
 
    if (wm_prog_data->persample_dispatch == BRW_SOMETIMES) {
       check_dynamic_msaa_flag(abld, wm_prog_data,
-                              BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH);
+                              INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH);
       for (unsigned i = 0; i < 2; i++) {
          set_predicate(BRW_PREDICATE_NORMAL,
                        bld.SEL(offset(pos, abld, i), offset(pos, abld, i),
@@ -3893,7 +3893,7 @@ emit_sampleid_setup(nir_to_brw_state &ntb)
 
    if (key->multisample_fbo == BRW_SOMETIMES) {
       check_dynamic_msaa_flag(abld, wm_prog_data,
-                              BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO);
+                              INTEL_MSAA_FLAG_MULTISAMPLE_FBO);
       set_predicate(BRW_PREDICATE_NORMAL,
                     abld.SEL(sample_id, sample_id, brw_imm_ud(0)));
    }
@@ -3947,7 +3947,7 @@ emit_samplemaskin_setup(nir_to_brw_state &ntb)
       return mask;
 
    check_dynamic_msaa_flag(abld, wm_prog_data,
-                           BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH);
+                           INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH);
    set_predicate(BRW_PREDICATE_NORMAL, abld.SEL(mask, mask, coverage_mask));
 
    return mask;
@@ -3997,7 +3997,7 @@ emit_shading_rate_setup(nir_to_brw_state &ntb)
       return rate;
 
    check_dynamic_msaa_flag(abld, wm_prog_data,
-                           BRW_WM_MSAA_FLAG_COARSE_RT_WRITES);
+                           INTEL_MSAA_FLAG_COARSE_RT_WRITES);
    set_predicate(BRW_PREDICATE_NORMAL, abld.SEL(rate, rate, brw_imm_ud(0)));
 
    return rate;
@@ -4314,7 +4314,7 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
 
          check_dynamic_msaa_flag(bld.exec_all().group(8, 0),
                                  wm_prog_data,
-                                 BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO);
+                                 INTEL_MSAA_FLAG_MULTISAMPLE_FBO);
          flag_reg = brw_flag_reg(0, 0);
       }
 

@@ -33,6 +33,7 @@
 #include "util/ralloc.h"
 #include "util/u_math.h"
 #include "brw_isa_info.h"
+#include "intel_shader_enums.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -869,42 +870,6 @@ enum brw_pixel_shader_computed_depth_mode {
    BRW_PSCDEPTH_ON_LE = 3, /* PS guarantees output depth <= source depth */
 };
 
-enum brw_wm_msaa_flags {
-   /** Must be set whenever any dynamic MSAA is used
-    *
-    * This flag mostly exists to let us assert that the driver understands
-    * dynamic MSAA so we don't run into trouble with drivers that don't.
-    */
-   BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC = (1 << 0),
-
-   /** True if the framebuffer is multisampled */
-   BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO = (1 << 1),
-
-   /** True if this shader has been dispatched per-sample */
-   BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH = (1 << 2),
-
-   /** True if inputs should be interpolated per-sample by default */
-   BRW_WM_MSAA_FLAG_PERSAMPLE_INTERP = (1 << 3),
-
-   /** True if this shader has been dispatched with alpha-to-coverage */
-   BRW_WM_MSAA_FLAG_ALPHA_TO_COVERAGE = (1 << 4),
-
-   /** True if this shader has been dispatched coarse
-    *
-    * This is intentionally chose to be bit 15 to correspond to the coarse bit
-    * in the pixel interpolator messages.
-    */
-   BRW_WM_MSAA_FLAG_COARSE_PI_MSG = (1 << 15),
-
-   /** True if this shader has been dispatched coarse
-    *
-    * This is intentionally chose to be bit 18 to correspond to the coarse bit
-    * in the render target messages.
-    */
-   BRW_WM_MSAA_FLAG_COARSE_RT_WRITES = (1 << 18),
-};
-MESA_DEFINE_CPP_ENUM_BITFIELD_OPERATORS(enum brw_wm_msaa_flags)
-
 /* Data about a particular attempt to compile a program.  Note that
  * there can be many of these, each in a different GL state
  * corresponding to a different brw_wm_prog_key struct, with different
@@ -1167,21 +1132,21 @@ _brw_wm_prog_data_reg_blocks(const struct brw_wm_prog_data *prog_data,
 
 static inline bool
 brw_wm_prog_data_is_persample(const struct brw_wm_prog_data *prog_data,
-                              enum brw_wm_msaa_flags pushed_msaa_flags)
+                              enum intel_msaa_flags pushed_msaa_flags)
 {
-   if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC) {
-      if (!(pushed_msaa_flags & BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO))
+   if (pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) {
+      if (!(pushed_msaa_flags & INTEL_MSAA_FLAG_MULTISAMPLE_FBO))
          return false;
 
       if (prog_data->sample_shading)
-         assert(pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH);
+         assert(pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH);
 
-      if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH)
+      if (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH)
          assert(prog_data->persample_dispatch != BRW_NEVER);
       else
          assert(prog_data->persample_dispatch != BRW_ALWAYS);
 
-      return (pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH) != 0;
+      return (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH) != 0;
    }
 
    assert(prog_data->persample_dispatch == BRW_ALWAYS ||
@@ -1192,19 +1157,19 @@ brw_wm_prog_data_is_persample(const struct brw_wm_prog_data *prog_data,
 
 static inline uint32_t
 wm_prog_data_barycentric_modes(const struct brw_wm_prog_data *prog_data,
-                               enum brw_wm_msaa_flags pushed_msaa_flags)
+                               enum intel_msaa_flags pushed_msaa_flags)
 {
    uint32_t modes = prog_data->barycentric_interp_modes;
 
    /* In the non dynamic case, we can just return the computed modes from
     * compilation time.
     */
-   if (!(pushed_msaa_flags & BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC))
+   if (!(pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC))
       return modes;
 
-   if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_INTERP) {
+   if (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_INTERP) {
       assert(prog_data->persample_dispatch == BRW_ALWAYS ||
-             (pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH));
+             (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH));
 
       /* Making dynamic per-sample interpolation work is a bit tricky.  The
        * hardware will hang if SAMPLE is requested but per-sample dispatch is
@@ -1258,15 +1223,15 @@ wm_prog_data_barycentric_modes(const struct brw_wm_prog_data *prog_data,
 
 static inline bool
 brw_wm_prog_data_is_coarse(const struct brw_wm_prog_data *prog_data,
-                           enum brw_wm_msaa_flags pushed_msaa_flags)
+                           enum intel_msaa_flags pushed_msaa_flags)
 {
-   if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC) {
-      if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_COARSE_RT_WRITES)
+   if (pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) {
+      if (pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES)
          assert(prog_data->coarse_pixel_dispatch != BRW_NEVER);
       else
          assert(prog_data->coarse_pixel_dispatch != BRW_ALWAYS);
 
-      return pushed_msaa_flags & BRW_WM_MSAA_FLAG_COARSE_RT_WRITES;
+      return pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES;
    }
 
    assert(prog_data->coarse_pixel_dispatch == BRW_ALWAYS ||

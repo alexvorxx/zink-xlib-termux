@@ -11,20 +11,25 @@ set -ex
 
 DEQP_RUNNER_VERSION=0.18.0
 
+DEQP_RUNNER_GIT_URL="${DEQP_RUNNER_GIT_URL:-https://gitlab.freedesktop.org/anholt/deqp-runner.git}"
+
 if [ -n "${DEQP_RUNNER_GIT_TAG}${DEQP_RUNNER_GIT_REV}" ]; then
     # Build and install from source
-    DEQP_RUNNER_CARGO_ARGS="--git ${DEQP_RUNNER_GIT_URL:-https://gitlab.freedesktop.org/anholt/deqp-runner.git}"
+    DEQP_RUNNER_CARGO_ARGS="--git $DEQP_RUNNER_GIT_URL"
 
     if [ -n "${DEQP_RUNNER_GIT_TAG}" ]; then
         DEQP_RUNNER_CARGO_ARGS="--tag ${DEQP_RUNNER_GIT_TAG} ${DEQP_RUNNER_CARGO_ARGS}"
+        DEQP_RUNNER_GIT_CHECKOUT="$DEQP_RUNNER_GIT_TAG"
     else
         DEQP_RUNNER_CARGO_ARGS="--rev ${DEQP_RUNNER_GIT_REV} ${DEQP_RUNNER_CARGO_ARGS}"
+        DEQP_RUNNER_GIT_CHECKOUT="$DEQP_RUNNER_GIT_REV"
     fi
 
     DEQP_RUNNER_CARGO_ARGS="${DEQP_RUNNER_CARGO_ARGS} ${EXTRA_CARGO_ARGS}"
 else
     # Install from package registry
     DEQP_RUNNER_CARGO_ARGS="--version ${DEQP_RUNNER_VERSION} ${EXTRA_CARGO_ARGS} -- deqp-runner"
+    DEQP_RUNNER_GIT_CHECKOUT="v$DEQP_RUNNER_VERSION"
 fi
 
 if [[ "$RUST_TARGET" != *-android ]]; then
@@ -35,7 +40,7 @@ if [[ "$RUST_TARGET" != *-android ]]; then
 else
     mkdir -p /deqp-runner
     pushd /deqp-runner
-    git clone --branch v${DEQP_RUNNER_VERSION} --depth 1 https://gitlab.freedesktop.org/anholt/deqp-runner.git deqp-runner-git
+    git clone --branch "$DEQP_RUNNER_GIT_CHECKOUT" --depth 1 "$DEQP_RUNNER_GIT_URL" deqp-runner-git
     pushd deqp-runner-git
 
     cargo install --locked  \

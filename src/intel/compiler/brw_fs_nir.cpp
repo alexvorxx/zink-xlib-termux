@@ -1051,16 +1051,21 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       nir_component_mask_t write_mask = get_nir_write_mask(instr->def);
       unsigned last_bit = util_last_bit(write_mask);
 
-      for (unsigned i = 0; i < last_bit; i++) {
-         if (!(write_mask & (1 << i)))
-            continue;
+      fs_reg comps[last_bit];
 
-         if (instr->op == nir_op_mov) {
-            bld.MOV(offset(temp, bld, i),
-                           offset(op[0], bld, instr->src[0].swizzle[i]));
-         } else {
-            bld.MOV(offset(temp, bld, i),
-                           offset(op[i], bld, instr->src[i].swizzle[0]));
+      for (unsigned i = 0; i < last_bit; i++) {
+         if (instr->op == nir_op_mov)
+            comps[i] = offset(op[0], bld, instr->src[0].swizzle[i]);
+         else
+            comps[i] = offset(op[i], bld, instr->src[i].swizzle[0]);
+      }
+
+      if (write_mask == (1u << last_bit) - 1) {
+         bld.VEC(temp, comps, last_bit);
+      } else {
+         for (unsigned i = 0; i < last_bit; i++) {
+            if (write_mask & (1 << i))
+               bld.MOV(offset(temp, bld, i), comps[i]);
          }
       }
 

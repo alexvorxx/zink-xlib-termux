@@ -3659,7 +3659,6 @@ crocus_delete_state(struct pipe_context *ctx, void *state)
 static void
 crocus_set_vertex_buffers(struct pipe_context *ctx,
                           unsigned count,
-                          bool take_ownership,
                           const struct pipe_vertex_buffer *buffers)
 {
    struct crocus_context *ice = (struct crocus_context *) ctx;
@@ -3668,7 +3667,7 @@ crocus_set_vertex_buffers(struct pipe_context *ctx,
       (GFX_VERx10 < 75 && screen->devinfo.platform != INTEL_PLATFORM_BYT) * 2;
 
    util_set_vertex_buffers_mask(ice->state.vertex_buffers, &ice->state.bound_vertex_buffers,
-                                buffers, count, take_ownership);
+                                buffers, count, true);
 
    for (unsigned i = 0; i < count; i++) {
       struct pipe_vertex_buffer *state =

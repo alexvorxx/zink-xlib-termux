@@ -427,7 +427,7 @@ vl_median_filter_render(struct vl_median_filter *filter,
    filter->pipe->set_framebuffer_state(filter->pipe, &fb_state);
    filter->pipe->set_viewport_states(filter->pipe, 0, 1, &viewport);
    filter->pipe->bind_vertex_elements_state(filter->pipe, filter->ves);
-   filter->pipe->set_vertex_buffers(filter->pipe, 1, false, &filter->quad);
+   util_set_vertex_buffers(filter->pipe, 1, false, &filter->quad);
 
    util_draw_arrays(filter->pipe, MESA_PRIM_QUADS, 0, 4);
 }

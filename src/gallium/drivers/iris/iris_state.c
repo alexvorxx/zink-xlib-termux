@@ -4010,7 +4010,6 @@ iris_delete_state(struct pipe_context *ctx, void *state)
 static void
 iris_set_vertex_buffers(struct pipe_context *ctx,
                         unsigned count,
-                        bool take_ownership,
                         const struct pipe_vertex_buffer *buffers)
 {
    struct iris_context *ice = (struct iris_context *) ctx;
@@ -4037,12 +4036,9 @@ iris_set_vertex_buffers(struct pipe_context *ctx,
           state->resource != buffer->buffer.resource)
          ice->state.dirty |= IRIS_DIRTY_VERTEX_BUFFER_FLUSHES;
 
-      if (take_ownership) {
-         pipe_resource_reference(&state->resource, NULL);
-         state->resource = buffer->buffer.resource;
-      } else {
-         pipe_resource_reference(&state->resource, buffer->buffer.resource);
-      }
+      pipe_resource_reference(&state->resource, NULL);
+      state->resource = buffer->buffer.resource;
+
       struct iris_resource *res = (void *) state->resource;
 
       state->offset = (int) buffer->buffer_offset;

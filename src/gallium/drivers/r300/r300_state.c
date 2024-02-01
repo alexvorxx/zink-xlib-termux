@@ -1771,14 +1771,14 @@ static void r300_set_viewport_states(struct pipe_context* pipe,
 }
 
 static void r300_set_vertex_buffers_hwtcl(struct pipe_context* pipe,
-                                    unsigned count, bool take_ownership,
+                                    unsigned count,
                                     const struct pipe_vertex_buffer* buffers)
 {
     struct r300_context* r300 = r300_context(pipe);
 
     util_set_vertex_buffers_count(r300->vertex_buffer,
                                   &r300->nr_vertex_buffers, buffers, count,
-                                  take_ownership);
+                                  true);
 
     /* There must be at least one vertex buffer set, otherwise it locks up. */
     if (!r300->nr_vertex_buffers) {
@@ -1792,7 +1792,6 @@ static void r300_set_vertex_buffers_hwtcl(struct pipe_context* pipe,
 
 static void r300_set_vertex_buffers_swtcl(struct pipe_context* pipe,
                                     unsigned count,
-                                    bool take_ownership,
                                     const struct pipe_vertex_buffer* buffers)
 {
     struct r300_context* r300 = r300_context(pipe);
@@ -1800,7 +1799,7 @@ static void r300_set_vertex_buffers_swtcl(struct pipe_context* pipe,
 
     util_set_vertex_buffers_count(r300->vertex_buffer,
                                   &r300->nr_vertex_buffers, buffers, count,
-                                  take_ownership);
+                                  true);
     draw_set_vertex_buffers(r300->draw, count, buffers);
 
     if (!buffers)

@@ -5544,7 +5544,7 @@ static void si_delete_vertex_element(struct pipe_context *ctx, void *state)
    FREE(state);
 }
 
-static void si_set_vertex_buffers(struct pipe_context *ctx, unsigned count, bool take_ownership,
+static void si_set_vertex_buffers(struct pipe_context *ctx, unsigned count,
                                   const struct pipe_vertex_buffer *buffers)
 {
    struct si_context *sctx = (struct si_context *)ctx;
@@ -5561,13 +5561,9 @@ static void si_set_vertex_buffers(struct pipe_context *ctx, unsigned count, bool
 
       dst->buffer_offset = src->buffer_offset;
 
-      /* Only unreference bound vertex buffers. (take_ownership) */
-      if (take_ownership) {
-         pipe_resource_reference(&dst->buffer.resource, NULL);
-         dst->buffer.resource = src->buffer.resource;
-      } else {
-         pipe_resource_reference(&dst->buffer.resource, src->buffer.resource);
-      }
+      /* Only unreference bound vertex buffers. */
+      pipe_resource_reference(&dst->buffer.resource, NULL);
+      dst->buffer.resource = src->buffer.resource;
 
       if (src->buffer_offset & 3)
          unaligned |= BITFIELD_BIT(i);

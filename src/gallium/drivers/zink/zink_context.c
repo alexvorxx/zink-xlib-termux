@@ -1340,7 +1340,6 @@ update_existing_vbo(struct zink_context *ctx, unsigned slot)
 static void
 zink_set_vertex_buffers(struct pipe_context *pctx,
                         unsigned num_buffers,
-                        bool take_ownership,
                         const struct pipe_vertex_buffer *buffers)
 {
    struct zink_context *ctx = zink_context(pctx);
@@ -1357,12 +1356,9 @@ zink_set_vertex_buffers(struct pipe_context *pctx,
       const struct pipe_vertex_buffer *vb = buffers + i;
       struct pipe_vertex_buffer *ctx_vb = &ctx->vertex_buffers[i];
       update_existing_vbo(ctx, i);
-      if (!take_ownership)
-         pipe_resource_reference(&ctx_vb->buffer.resource, vb->buffer.resource);
-      else {
-         pipe_resource_reference(&ctx_vb->buffer.resource, NULL);
-         ctx_vb->buffer.resource = vb->buffer.resource;
-      }
+      pipe_resource_reference(&ctx_vb->buffer.resource, NULL);
+      ctx_vb->buffer.resource = vb->buffer.resource;
+
       if (vb->buffer.resource) {
          struct zink_resource *res = zink_resource(vb->buffer.resource);
          res->vbo_bind_mask |= BITFIELD_BIT(i);

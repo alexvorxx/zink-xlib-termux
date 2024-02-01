@@ -650,7 +650,7 @@ void util_blitter_restore_vertex_states(struct blitter_context *blitter)
 
    /* Vertex buffer. */
    if (ctx->base.saved_num_vb) {
-      pipe->set_vertex_buffers(pipe, ctx->base.saved_num_vb, true,
+      pipe->set_vertex_buffers(pipe, ctx->base.saved_num_vb,
                                ctx->base.saved_vertex_buffers);
       memset(ctx->base.saved_vertex_buffers, 0,
              sizeof(ctx->base.saved_vertex_buffers[0]) * ctx->base.saved_num_vb);
@@ -1412,7 +1412,7 @@ static void blitter_draw(struct blitter_context_priv *ctx,
    u_upload_unmap(pipe->stream_uploader);
 
    pipe->bind_vertex_elements_state(pipe, vertex_elements_cso);
-   pipe->set_vertex_buffers(pipe, 1, true, &vb);
+   pipe->set_vertex_buffers(pipe, 1, &vb);
    pipe->bind_vs_state(pipe, get_vs(&ctx->base));
 
    if (ctx->base.use_index_buffer) {
@@ -2634,7 +2634,7 @@ void util_blitter_clear_buffer(struct blitter_context *blitter,
 
    pipe->bind_vertex_elements_state(pipe,
                                     ctx->velem_state_readbuf[num_channels-1]);
-   pipe->set_vertex_buffers(pipe, 1, true, &vb);
+   pipe->set_vertex_buffers(pipe, 1, &vb);
    bind_vs_pos_only(ctx, num_channels);
 
    if (ctx->has_geometry_shader)

@@ -340,7 +340,7 @@ st_update_array_templ(struct st_context *st,
       velements.count = vp->num_inputs + vp_variant->key.passthrough_edgeflags;
 
       /* Set vertex buffers and elements. */
-      cso_set_vertex_buffers_and_elements(cso, &velements, num_vbuffers, true,
+      cso_set_vertex_buffers_and_elements(cso, &velements, num_vbuffers,
                                           uses_user_vertex_buffers, vbuffer);
       /* The driver should clear this after it has processed the update. */
       ctx->Array.NewVertexElements = false;

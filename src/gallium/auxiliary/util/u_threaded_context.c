@@ -2151,14 +2151,12 @@ tc_call_set_vertex_buffers(struct pipe_context *pipe, void *call)
    for (unsigned i = 0; i < count; i++)
       tc_assert(!p->slot[i].is_user_buffer);
 
-   pipe->set_vertex_buffers(pipe, count, true, p->slot);
+   pipe->set_vertex_buffers(pipe, count, p->slot);
    return p->base.num_slots;
 }
 
 static void
-tc_set_vertex_buffers(struct pipe_context *_pipe,
-                      unsigned count,
-                      bool take_ownership,
+tc_set_vertex_buffers(struct pipe_context *_pipe, unsigned count,
                       const struct pipe_vertex_buffer *buffers)
 {
    struct threaded_context *tc = threaded_context(_pipe);
@@ -2172,34 +2170,15 @@ tc_set_vertex_buffers(struct pipe_context *_pipe,
 
       struct tc_buffer_list *next = &tc->buffer_lists[tc->next_buf_list];
 
-      if (take_ownership) {
-         memcpy(p->slot, buffers, count * sizeof(struct pipe_vertex_buffer));
+      memcpy(p->slot, buffers, count * sizeof(struct pipe_vertex_buffer));
 
-         for (unsigned i = 0; i < count; i++) {
-            struct pipe_resource *buf = buffers[i].buffer.resource;
+      for (unsigned i = 0; i < count; i++) {
+         struct pipe_resource *buf = buffers[i].buffer.resource;
 
-            if (buf) {
-               tc_bind_buffer(&tc->vertex_buffers[i], next, buf);
-            } else {
-               tc_unbind_buffer(&tc->vertex_buffers[i]);
-            }
-         }
-      } else {
-         for (unsigned i = 0; i < count; i++) {
-            struct pipe_vertex_buffer *dst = &p->slot[i];
-            const struct pipe_vertex_buffer *src = buffers + i;
-            struct pipe_resource *buf = src->buffer.resource;
-
-            tc_assert(!src->is_user_buffer);
-            dst->is_user_buffer = false;
-            tc_set_resource_reference(&dst->buffer.resource, buf);
-            dst->buffer_offset = src->buffer_offset;
-
-            if (buf) {
-               tc_bind_buffer(&tc->vertex_buffers[i], next, buf);
-            } else {
-               tc_unbind_buffer(&tc->vertex_buffers[i]);
-            }
+         if (buf) {
+            tc_bind_buffer(&tc->vertex_buffers[i], next, buf);
+         } else {
+            tc_unbind_buffer(&tc->vertex_buffers[i]);
          }
       }
    } else {

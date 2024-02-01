@@ -1298,8 +1298,7 @@ cso_set_vertex_buffers(struct cso_context *cso,
       return;
    }
 
-   struct pipe_context *pipe = ctx->base.pipe;
-   pipe->set_vertex_buffers(pipe, count, take_ownership, buffers);
+   util_set_vertex_buffers(ctx->base.pipe, count, take_ownership, buffers);
 }
 
 
@@ -1319,7 +1318,6 @@ void
 cso_set_vertex_buffers_and_elements(struct cso_context *cso,
                                     const struct cso_velems_state *velems,
                                     unsigned vb_count,
-                                    bool take_ownership,
                                     bool uses_user_vertex_buffers,
                                     const struct pipe_vertex_buffer *vbuffers)
 {
@@ -1337,7 +1335,7 @@ cso_set_vertex_buffers_and_elements(struct cso_context *cso,
       }
 
       u_vbuf_set_vertex_elements(vbuf, velems);
-      u_vbuf_set_vertex_buffers(vbuf, vb_count, take_ownership, vbuffers);
+      u_vbuf_set_vertex_buffers(vbuf, vb_count, true, vbuffers);
       return;
    }
 
@@ -1350,7 +1348,7 @@ cso_set_vertex_buffers_and_elements(struct cso_context *cso,
    }
 
    cso_set_vertex_elements_direct(ctx, velems);
-   pipe->set_vertex_buffers(pipe, vb_count, take_ownership, vbuffers);
+   pipe->set_vertex_buffers(pipe, vb_count, vbuffers);
 }
 
 

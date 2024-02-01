@@ -6450,11 +6450,17 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
             fs_reg base_offset = retype(get_nir_src(ntb, instr->src[1]),
                                         BRW_REGISTER_TYPE_UD);
 
-            for (int i = 0; i < instr->num_components; i++)
+            const unsigned comps_per_load = type_sz(dest.type) == 8 ? 2 : 4;
+
+            for (int i = 0; i < instr->num_components; i += comps_per_load) {
+               const unsigned remaining = instr->num_components - i;
                s.VARYING_PULL_CONSTANT_LOAD(bld, offset(dest, bld, i),
-                                          surface, surface_handle,
-                                          base_offset, i * type_sz(dest.type),
-                                          instr->def.bit_size / 8);
+                                            surface, surface_handle,
+                                            base_offset,
+                                            i * type_sz(dest.type),
+                                            instr->def.bit_size / 8,
+                                            MIN2(remaining, comps_per_load));
+            }
 
             s.prog_data->has_ubo_pull = true;
          } else {

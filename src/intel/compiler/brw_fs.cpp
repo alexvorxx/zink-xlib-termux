@@ -173,21 +173,17 @@ fs_visitor::VARYING_PULL_CONSTANT_LOAD(const fs_builder &bld,
                                        const fs_reg &surface_handle,
                                        const fs_reg &varying_offset,
                                        uint32_t const_offset,
-                                       uint8_t alignment)
+                                       uint8_t alignment,
+                                       unsigned components)
 {
+   assert(components <= 4);
+
    /* We have our constant surface use a pitch of 4 bytes, so our index can
     * be any component of a vector, and then we load 4 contiguous
-    * components starting from that.
-    *
-    * We break down the const_offset to a portion added to the variable offset
-    * and a portion done using fs_reg::offset, which means that if you have
-    * GLSL using something like "uniform vec4 a[20]; gl_FragColor = a[i]",
-    * we'll temporarily generate 4 vec4 loads from offset i * 4, and CSE can
-    * later notice that those loads are all the same and eliminate the
-    * redundant ones.
+    * components starting from that.  TODO: Support loading fewer than 4.
     */
-   fs_reg vec4_offset = vgrf(glsl_uint_type());
-   bld.ADD(vec4_offset, varying_offset, brw_imm_ud(const_offset & ~0xf));
+   fs_reg total_offset = vgrf(glsl_uint_type());
+   bld.ADD(total_offset, varying_offset, brw_imm_ud(const_offset));
 
    /* The pull load message will load a vec4 (16 bytes). If we are loading
     * a double this means we are only loading 2 elements worth of data.
@@ -200,15 +196,14 @@ fs_visitor::VARYING_PULL_CONSTANT_LOAD(const fs_builder &bld,
    fs_reg srcs[PULL_VARYING_CONSTANT_SRCS];
    srcs[PULL_VARYING_CONSTANT_SRC_SURFACE]        = surface;
    srcs[PULL_VARYING_CONSTANT_SRC_SURFACE_HANDLE] = surface_handle;
-   srcs[PULL_VARYING_CONSTANT_SRC_OFFSET]         = vec4_offset;
+   srcs[PULL_VARYING_CONSTANT_SRC_OFFSET]         = total_offset;
    srcs[PULL_VARYING_CONSTANT_SRC_ALIGNMENT]      = brw_imm_ud(alignment);
 
    fs_inst *inst = bld.emit(FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL,
                             vec4_result, srcs, PULL_VARYING_CONSTANT_SRCS);
    inst->size_written = 4 * vec4_result.component_size(inst->exec_size);
 
-   shuffle_from_32bit_read(bld, dst, vec4_result,
-                           (const_offset & 0xf) / type_sz(dst.type), 1);
+   shuffle_from_32bit_read(bld, dst, vec4_result, 0, components);
 }
 
 /**
@@ -2472,7 +2467,7 @@ fs_visitor::lower_constant_loads()
                                     brw_imm_ud(index),
                                     fs_reg() /* surface_handle */,
                                     inst->src[1],
-                                    pull_index * 4, 4);
+                                    pull_index * 4, 4, 1);
          inst->remove(block);
 
          progress = true;

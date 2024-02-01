@@ -221,7 +221,8 @@ public:
                                    const fs_reg &surface_handle,
                                    const fs_reg &varying_offset,
                                    uint32_t const_offset,
-                                   uint8_t alignment);
+                                   uint8_t alignment,
+                                   unsigned components);
    void DEP_RESOLVE_MOV(const brw::fs_builder &bld, int grf);
 
    bool run_fs(bool allow_spilling, bool do_rep_send);

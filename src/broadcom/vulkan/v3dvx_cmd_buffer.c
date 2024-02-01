@@ -1329,8 +1329,8 @@ v3dX(cmd_buffer_emit_viewport)(struct v3dv_cmd_buffer *cmd_buffer)
    struct v3dv_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
    assert(pipeline);
 
-   /* FIXME: right now we only support one viewport. viewporst[0] would work
-    * now, would need to change if we allow multiple viewports
+   /* FIXME: right now we don't support multiViewport so viewports[0] would
+    * work now, but would need to change if we allow multiple viewports.
     */
    float *vptranslate = dynamic->viewport.translate[0];
    float *vpscale = dynamic->viewport.scale[0];
@@ -1360,7 +1360,7 @@ v3dX(cmd_buffer_emit_viewport)(struct v3dv_cmd_buffer *cmd_buffer)
 #endif
 
    float translate_z, scale_z;
-   v3dv_cmd_buffer_state_get_viewport_z_xform(&cmd_buffer->state, 0,
+   v3dv_cmd_buffer_state_get_viewport_z_xform(cmd_buffer, 0,
                                               &translate_z, &scale_z);
 
 #if V3D_VERSION == 42
@@ -1421,7 +1421,8 @@ v3dX(cmd_buffer_emit_viewport)(struct v3dv_cmd_buffer *cmd_buffer)
       vp.coarse_y = vp_coarse_y;
    }
 
-   cmd_buffer->state.dirty &= ~V3DV_CMD_DIRTY_VIEWPORT;
+   BITSET_CLEAR(cmd_buffer->vk.dynamic_graphics_state.dirty,
+                MESA_VK_DYNAMIC_VP_VIEWPORTS);
 }
 
 void
@@ -1431,52 +1432,50 @@ v3dX(cmd_buffer_emit_stencil)(struct v3dv_cmd_buffer *cmd_buffer)
    assert(job);
 
    struct v3dv_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   struct v3dv_dynamic_state *dynamic_state = &cmd_buffer->state.dynamic;
-
-   const uint32_t dynamic_stencil_states = V3DV_DYNAMIC_STENCIL_COMPARE_MASK |
-      V3DV_DYNAMIC_STENCIL_WRITE_MASK |
-      V3DV_DYNAMIC_STENCIL_REFERENCE;
+   struct vk_dynamic_graphics_state *dyn =
+      &cmd_buffer->vk.dynamic_graphics_state;
 
    v3dv_cl_ensure_space_with_branch(&job->bcl,
                                     2 * cl_packet_length(STENCIL_CFG));
    v3dv_return_if_oom(cmd_buffer, NULL);
 
+   bool any_dynamic_stencil_state =
+      BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK) ||
+      BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK) ||
+      BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE);
+
    bool emitted_stencil = false;
+   const struct vk_stencil_test_face_state *front = &dyn->ds.stencil.front;
+   const struct vk_stencil_test_face_state *back = &dyn->ds.stencil.back;
+
    for (uint32_t i = 0; i < 2; i++) {
       if (pipeline->emit_stencil_cfg[i]) {
-         if (dynamic_state->mask & dynamic_stencil_states) {
+         if (any_dynamic_stencil_state) {
             cl_emit_with_prepacked(&job->bcl, STENCIL_CFG,
                                    pipeline->stencil_cfg[i], config) {
-               if (dynamic_state->mask & V3DV_DYNAMIC_STENCIL_COMPARE_MASK) {
+               if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK)) {
                   config.stencil_test_mask =
-                     i == 0 ? dynamic_state->stencil_compare_mask.front :
-                     dynamic_state->stencil_compare_mask.back;
+                     i == 0 ? front->compare_mask : back->compare_mask;
                }
-               if (dynamic_state->mask & V3DV_DYNAMIC_STENCIL_WRITE_MASK) {
+               if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK)) {
                   config.stencil_write_mask =
-                     i == 0 ? dynamic_state->stencil_write_mask.front :
-                     dynamic_state->stencil_write_mask.back;
+                     i == 0 ? front->write_mask : back->write_mask;
                }
-               if (dynamic_state->mask & V3DV_DYNAMIC_STENCIL_REFERENCE) {
+               if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE)) {
                   config.stencil_ref_value =
-                     i == 0 ? dynamic_state->stencil_reference.front :
-                     dynamic_state->stencil_reference.back;
+                     i == 0 ? front->reference : back->reference;
                }
             }
          } else {
             cl_emit_prepacked(&job->bcl, &pipeline->stencil_cfg[i]);
          }
-
          emitted_stencil = true;
       }
    }
-
    if (emitted_stencil) {
-      const uint32_t dynamic_stencil_dirty_flags =
-         V3DV_CMD_DIRTY_STENCIL_COMPARE_MASK |
-         V3DV_CMD_DIRTY_STENCIL_WRITE_MASK |
-         V3DV_CMD_DIRTY_STENCIL_REFERENCE;
-      cmd_buffer->state.dirty &= ~dynamic_stencil_dirty_flags;
+      BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK);
+      BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE);
+      BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK);
    }
 }
 
@@ -1492,21 +1491,22 @@ v3dX(cmd_buffer_emit_depth_bias)(struct v3dv_cmd_buffer *cmd_buffer)
    struct v3dv_job *job = cmd_buffer->state.job;
    assert(job);
 
+   struct vk_dynamic_graphics_state *dyn = &cmd_buffer->vk.dynamic_graphics_state;
+
    v3dv_cl_ensure_space_with_branch(&job->bcl, cl_packet_length(DEPTH_OFFSET));
    v3dv_return_if_oom(cmd_buffer, NULL);
 
-   struct v3dv_dynamic_state *dynamic = &cmd_buffer->state.dynamic;
    cl_emit(&job->bcl, DEPTH_OFFSET, bias) {
-      bias.depth_offset_factor = dynamic->depth_bias.slope_factor;
-      bias.depth_offset_units = dynamic->depth_bias.constant_factor;
+      bias.depth_offset_factor = dyn->rs.depth_bias.slope;
+      bias.depth_offset_units = dyn->rs.depth_bias.constant;
 #if V3D_VERSION <= 42
       if (pipeline->depth_bias.is_z16)
          bias.depth_offset_units *= 256.0f;
 #endif
-      bias.limit = dynamic->depth_bias.depth_bias_clamp;
+      bias.limit = dyn->rs.depth_bias.clamp;
    }
 
-   cmd_buffer->state.dirty &= ~V3DV_CMD_DIRTY_DEPTH_BIAS;
+   BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_DEPTH_BIAS_FACTORS);
 }
 
 void
@@ -1517,12 +1517,11 @@ v3dX(cmd_buffer_emit_depth_bounds)(struct v3dv_cmd_buffer *cmd_buffer)
     * Note that this method is being called as v3dv_job_init flags all state
     * as dirty. See FIXME note in v3dv_job_init.
     */
-
 #if V3D_VERSION >= 71
-   struct v3dv_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   assert(pipeline);
+   struct vk_dynamic_graphics_state *dyn =
+      &cmd_buffer->vk.dynamic_graphics_state;
 
-   if (!pipeline->depth_bounds_test_enabled)
+   if (!dyn->ds.depth.bounds_test.enable)
       return;
 
    struct v3dv_job *job = cmd_buffer->state.job;
@@ -1531,13 +1530,11 @@ v3dX(cmd_buffer_emit_depth_bounds)(struct v3dv_cmd_buffer *cmd_buffer)
    v3dv_cl_ensure_space_with_branch(&job->bcl, cl_packet_length(DEPTH_BOUNDS_TEST_LIMITS));
    v3dv_return_if_oom(cmd_buffer, NULL);
 
-   struct v3dv_dynamic_state *dynamic = &cmd_buffer->state.dynamic;
    cl_emit(&job->bcl, DEPTH_BOUNDS_TEST_LIMITS, bounds) {
-      bounds.lower_test_limit = dynamic->depth_bounds.min;
-      bounds.upper_test_limit = dynamic->depth_bounds.max;
+      bounds.lower_test_limit = dyn->ds.depth.bounds_test.min;
+      bounds.upper_test_limit = dyn->ds.depth.bounds_test.max;
    }
-
-   cmd_buffer->state.dirty &= ~V3DV_CMD_DIRTY_DEPTH_BOUNDS;
+   BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_BOUNDS);
 #endif
 }
 
@@ -1547,6 +1544,8 @@ v3dX(cmd_buffer_emit_line_width)(struct v3dv_cmd_buffer *cmd_buffer)
    struct v3dv_job *job = cmd_buffer->state.job;
    assert(job);
 
+   struct vk_dynamic_graphics_state *dyn = &cmd_buffer->vk.dynamic_graphics_state;
+
    v3dv_cl_ensure_space_with_branch(&job->bcl, cl_packet_length(LINE_WIDTH));
    v3dv_return_if_oom(cmd_buffer, NULL);
 
@@ -1555,7 +1554,7 @@ v3dX(cmd_buffer_emit_line_width)(struct v3dv_cmd_buffer *cmd_buffer)
                                                cmd_buffer);
    }
 
-   cmd_buffer->state.dirty &= ~V3DV_CMD_DIRTY_LINE_WIDTH;
+   BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_LINE_WIDTH);
 }
 
 void
@@ -1609,17 +1608,20 @@ v3dX(cmd_buffer_emit_blend)(struct v3dv_cmd_buffer *cmd_buffer)
       }
    }
 
-   if (pipeline->blend.needs_color_constants &&
-       cmd_buffer->state.dirty & V3DV_CMD_DIRTY_BLEND_CONSTANTS) {
-      struct v3dv_dynamic_state *dynamic = &cmd_buffer->state.dynamic;
+   if (pipeline->blend.needs_color_constants) {
+      const struct vk_dynamic_graphics_state *dyn =
+         &cmd_buffer->vk.dynamic_graphics_state;
+
       cl_emit(&job->bcl, BLEND_CONSTANT_COLOR, color) {
-         color.red_f16 = _mesa_float_to_half(dynamic->blend_constants[0]);
-         color.green_f16 = _mesa_float_to_half(dynamic->blend_constants[1]);
-         color.blue_f16 = _mesa_float_to_half(dynamic->blend_constants[2]);
-         color.alpha_f16 = _mesa_float_to_half(dynamic->blend_constants[3]);
+         color.red_f16 = _mesa_float_to_half(dyn->cb.blend_constants[0]);
+         color.green_f16 = _mesa_float_to_half(dyn->cb.blend_constants[1]);
+         color.blue_f16 = _mesa_float_to_half(dyn->cb.blend_constants[2]);
+         color.alpha_f16 = _mesa_float_to_half(dyn->cb.blend_constants[3]);
       }
-      cmd_buffer->state.dirty &= ~V3DV_CMD_DIRTY_BLEND_CONSTANTS;
    }
+
+   BITSET_CLEAR(cmd_buffer->vk.dynamic_graphics_state.dirty,
+                MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS);
 }
 
 void
@@ -1629,9 +1631,10 @@ v3dX(cmd_buffer_emit_color_write_mask)(struct v3dv_cmd_buffer *cmd_buffer)
    v3dv_cl_ensure_space_with_branch(&job->bcl, cl_packet_length(COLOR_WRITE_MASKS));
 
    struct v3dv_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   struct v3dv_dynamic_state *dynamic = &cmd_buffer->state.dynamic;
-   uint32_t color_write_mask = ~dynamic->color_write_enable |
+   struct v3dv_dynamic_state *v3dv_dyn = &cmd_buffer->state.dynamic;
+   uint32_t color_write_mask = ~v3dv_dyn->color_write_enable |
                                pipeline->blend.color_write_masks;
+
 #if V3D_VERSION <= 42
    /* Only 4 RTs */
    color_write_mask &= 0xffff;
@@ -1641,7 +1644,8 @@ v3dX(cmd_buffer_emit_color_write_mask)(struct v3dv_cmd_buffer *cmd_buffer)
       mask.mask = color_write_mask;
    }
 
-   cmd_buffer->state.dirty &= ~V3DV_CMD_DIRTY_COLOR_WRITE_ENABLE;
+   BITSET_CLEAR(cmd_buffer->vk.dynamic_graphics_state.dirty,
+                MESA_VK_DYNAMIC_CB_COLOR_WRITE_ENABLES);
 }
 
 static void

@@ -36,7 +36,6 @@ panvk_entrypoints = custom_target(
 
 libpanvk_files = files(
   'panvk_buffer.c',
-  'panvk_cmd_buffer.c',
   'panvk_cmd_pool.c',
   'panvk_device_memory.c',
   'panvk_descriptor_set.c',

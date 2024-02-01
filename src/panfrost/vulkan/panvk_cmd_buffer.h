@@ -6,6 +6,10 @@
 #ifndef PANVK_CMD_BUFFER_H
 #define PANVK_CMD_BUFFER_H
 
+#ifndef PAN_ARCH
+#error "PAN_ARCH must be defined"
+#endif
+
 #include <stdint.h>
 
 #include "vulkan/runtime/vk_command_buffer.h"
@@ -22,11 +26,11 @@
 
 #include "util/list.h"
 
+#include "genxml/gen_macros.h"
+
 #define MAX_BIND_POINTS         2 /* compute + graphics */
 #define MAX_VBS                 16
 #define MAX_PUSH_CONSTANTS_SIZE 128
-
-#define TILER_DESC_WORDS 56
 
 struct panvk_batch {
    struct list_head node;
@@ -47,8 +51,10 @@ struct panvk_batch {
    mali_ptr fragment_job;
    struct {
       struct pan_tiler_context ctx;
-      struct panfrost_ptr descs;
-      uint32_t templ[TILER_DESC_WORDS];
+      struct panfrost_ptr heap_desc;
+      struct panfrost_ptr ctx_desc;
+      struct mali_tiler_heap_packed heap_templ;
+      struct mali_tiler_context_packed ctx_templ;
    } tiler;
    struct pan_tls_info tlsinfo;
    unsigned wls_total_size;
@@ -192,12 +198,10 @@ VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
 #define panvk_cmd_get_desc_state(cmdbuf, bindpoint)                            \
    &(cmdbuf)->bind_points[VK_PIPELINE_BIND_POINT_##bindpoint].desc_state
 
-struct panvk_batch *panvk_cmd_open_batch(struct panvk_cmd_buffer *cmdbuf);
-
-void panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf);
-
-#if PAN_ARCH
 extern const struct vk_command_buffer_ops panvk_per_arch(cmd_buffer_ops);
+
+struct panvk_batch *
+panvk_per_arch(cmd_open_batch)(struct panvk_cmd_buffer *cmdbuf);
 
 void panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf);
 
@@ -213,6 +217,5 @@ void panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf);
 
 void panvk_per_arch(emit_viewport)(const VkViewport *viewport,
                                    const VkRect2D *scissor, void *vpd);
-#endif
 
 #endif

@@ -48,9 +48,11 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
          memset((*job), 0, 4 * 4);
 
       /* Reset the tiler before re-issuing the batch */
-      if (batch->tiler.descs.cpu) {
-         memcpy(batch->tiler.descs.cpu, batch->tiler.templ,
-                pan_size(TILER_CONTEXT) + pan_size(TILER_HEAP));
+      if (batch->tiler.ctx_desc.cpu) {
+         memcpy(batch->tiler.heap_desc.cpu, &batch->tiler.heap_templ,
+                sizeof(batch->tiler.heap_templ));
+         memcpy(batch->tiler.ctx_desc.cpu, &batch->tiler.ctx_templ,
+                sizeof(batch->tiler.ctx_templ));
       }
    }
 

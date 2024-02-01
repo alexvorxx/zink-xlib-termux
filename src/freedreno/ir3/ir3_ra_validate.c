@@ -175,6 +175,7 @@ validate_simple(struct ra_val_ctx *ctx, struct ir3_instruction *instr)
    ra_foreach_dst (dst, instr) {
       if (ctx->shared_ra && !(dst->flags & IR3_REG_SHARED))
          continue;
+      validate_assert(ctx, dst->num != INVALID_REG);
       unsigned dst_max = ra_reg_get_physreg(dst) + reg_size(dst);
       validate_assert(ctx, dst_max <= get_file_size(ctx, dst));
       if (dst->tied)
@@ -184,6 +185,7 @@ validate_simple(struct ra_val_ctx *ctx, struct ir3_instruction *instr)
    ra_foreach_src (src, instr) {
       if (ctx->shared_ra && !(src->flags & IR3_REG_SHARED))
          continue;
+      validate_assert(ctx, src->num != INVALID_REG);
       unsigned src_max = ra_reg_get_physreg(src) + reg_size(src);
       validate_assert(ctx, src_max <= get_file_size(ctx, src));
    }

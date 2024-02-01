@@ -676,12 +676,14 @@ lower_inline_ubo(nir_builder *b, nir_intrinsic_instr *intrin, void *cb_data)
    struct tu_const_state *const_state = &shader->const_state;
 
    unsigned base = UINT_MAX;
+   unsigned range;
    bool use_load = false;
    for (unsigned i = 0; i < const_state->num_inline_ubos; i++) {
       if (const_state->ubos[i].base == binding.desc_set &&
           const_state->ubos[i].offset == binding_layout->offset) {
          base = const_state->ubos[i].const_offset_vec4 * 4;
          use_load = const_state->ubos[i].push_address;
+         range = const_state->ubos[i].size_vec4 * 4;
          break;
       }
    }
@@ -706,7 +708,15 @@ lower_inline_ubo(nir_builder *b, nir_intrinsic_instr *intrin, void *cb_data)
          nir_load_uniform(b, 2, 32, nir_imm_int(b, 0), .base = base);
       val = nir_load_global_ir3(b, intrin->num_components,
                                 intrin->def.bit_size,
-                                base_addr, nir_ishr_imm(b, offset, 2));
+                                base_addr, nir_ishr_imm(b, offset, 2),
+                                .access = 
+                                 (enum gl_access_qualifier)(
+                                    (enum gl_access_qualifier)(ACCESS_NON_WRITEABLE | ACCESS_CAN_REORDER) |
+                                    ACCESS_CAN_SPECULATE),
+                                .align_mul = 16,
+                                .align_offset = 0,
+                                .range_base = 0,
+                                .range = range);
    } else {
       val = nir_load_uniform(b, intrin->num_components,
                              intrin->def.bit_size,

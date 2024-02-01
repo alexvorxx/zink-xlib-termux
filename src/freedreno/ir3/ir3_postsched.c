@@ -669,8 +669,6 @@ sched_block(struct ir3_postsched_ctx *ctx, struct ir3_block *block)
    foreach_instr_safe (instr, &ctx->unscheduled_list) {
       switch (instr->opc) {
       case OPC_NOP:
-      case OPC_B:
-      case OPC_JUMP:
          list_delinit(&instr->node);
          break;
       default:

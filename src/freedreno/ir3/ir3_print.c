@@ -188,19 +188,6 @@ print_instr_name(struct log_stream *stream, struct ir3_instruction *instr,
                                 type_name(instr->cat1.src_type),
                                 type_name(instr->cat1.dst_type));
       }
-   } else if (instr->opc == OPC_B) {
-      const char *name[8] = {
-         /* clang-format off */
-         [BRANCH_PLAIN] = "br",
-         [BRANCH_OR]    = "brao",
-         [BRANCH_AND]   = "braa",
-         [BRANCH_CONST] = "brac",
-         [BRANCH_ANY]   = "bany",
-         [BRANCH_ALL]   = "ball",
-         [BRANCH_X]     = "brax",
-         /* clang-format on */
-      };
-      mesa_log_stream_printf(stream, "%s", name[instr->cat0.brtype]);
    } else {
       mesa_log_stream_printf(stream, "%s", disasm_a3xx_instr_name(instr->opc));
       if (instr->flags & IR3_INSTR_3D)
@@ -240,6 +227,9 @@ print_instr_name(struct log_stream *stream, struct ir3_instruction *instr,
       case OPC_CMPV_S:
          mesa_log_stream_printf(stream, ".%s",
                                 cond[instr->cat2.condition & 0x7]);
+         break;
+      case OPC_BRAC:
+         mesa_log_stream_printf(stream, ".%u", instr->cat0.idx);
          break;
       default:
          break;
@@ -366,8 +356,7 @@ print_instr(struct log_stream *stream, struct ir3_instruction *instr, int lvl)
          if (instr->dsts[0]->wrmask & (1 << i))
             mesa_log_stream_printf(stream, "%c", "xyzw"[i]);
       mesa_log_stream_printf(stream, ")");
-   } else if ((instr->srcs_count > 0 || instr->dsts_count > 0) &&
-              (instr->opc != OPC_B)) {
+   } else if ((instr->srcs_count > 0 || instr->dsts_count > 0)) {
       /* NOTE the b(ranch) instruction has a suffix, which is
        * handled below
        */
@@ -416,41 +405,6 @@ print_instr(struct log_stream *stream, struct ir3_instruction *instr, int lvl)
    }
 
    if (is_flow(instr) && instr->cat0.target) {
-      /* the predicate register src is implied: */
-      if (instr->opc == OPC_B) {
-         static const struct {
-            int nsrc;
-            bool idx;
-         } brinfo[7] = {
-            /* clang-format off */
-            [BRANCH_PLAIN] = {1, false},
-            [BRANCH_OR]    = {2, false},
-            [BRANCH_AND]   = {2, false},
-            [BRANCH_CONST] = {0, true},
-            [BRANCH_ANY]   = {1, false},
-            [BRANCH_ALL]   = {1, false},
-            [BRANCH_X]     = {0, false},
-            /* clang-format on */
-         };
-
-         if (brinfo[instr->cat0.brtype].idx) {
-            mesa_log_stream_printf(stream, ".%u", instr->cat0.idx);
-         }
-         if (brinfo[instr->cat0.brtype].nsrc >= 1) {
-            mesa_log_stream_printf(stream, " %sp0.%c (",
-                                   instr->cat0.inv1 ? "!" : "",
-                                   "xyzw"[instr->cat0.comp1 & 0x3]);
-            print_reg_name(stream, instr, instr->srcs[0], false);
-            mesa_log_stream_printf(stream, "), ");
-         }
-         if (brinfo[instr->cat0.brtype].nsrc >= 2) {
-            mesa_log_stream_printf(stream, " %sp0.%c (",
-                                   instr->cat0.inv2 ? "!" : "",
-                                   "xyzw"[instr->cat0.comp2 & 0x3]);
-            print_reg_name(stream, instr, instr->srcs[1], false);
-            mesa_log_stream_printf(stream, "), ");
-         }
-      }
       mesa_log_stream_printf(stream, " target=block%u",
                              block_id(instr->cat0.target));
    }

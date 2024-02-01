@@ -82,24 +82,7 @@ __instruction_case(struct encode_state *s, struct ir3_instruction *instr)
 	 * decoding and split up things which are logically different
 	 * instructions
 	 */
-	if (instr->opc == OPC_B) {
-		switch (instr->cat0.brtype) {
-		case BRANCH_PLAIN:
-			return OPC_BR;
-		case BRANCH_OR:
-			return OPC_BRAO;
-		case BRANCH_AND:
-			return OPC_BRAA;
-		case BRANCH_CONST:
-			return OPC_BRAC;
-		case BRANCH_ANY:
-			return OPC_BANY;
-		case BRANCH_ALL:
-			return OPC_BALL;
-		case BRANCH_X:
-			return OPC_BRAX;
-		}
-	} else if (instr->opc == OPC_MOV) {
+	if (instr->opc == OPC_MOV) {
 		struct ir3_register *src = instr->srcs[0];
 		if (src->flags & IR3_REG_IMMED) {
 			return OPC_MOV_IMMED;

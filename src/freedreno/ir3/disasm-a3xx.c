@@ -153,8 +153,8 @@ static const struct opc_info {
    /* clang-format off */
    /* category 0: */
    OPC(0, OPC_NOP,          nop),
-   OPC(0, OPC_B,            b),
    OPC(0, OPC_BR,           br),
+   OPC(0, OPC_BRAC,         brac),
    OPC(0, OPC_BRAA,         braa),
    OPC(0, OPC_BRAO,         brao),
    OPC(0, OPC_BALL,         ball),

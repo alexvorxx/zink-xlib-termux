@@ -364,7 +364,6 @@ struct ir3_instruction {
          int immed;
          struct ir3_block *target;
          const char *target_label;
-         brtype_t brtype;
          unsigned idx; /* for brac.N */
       } cat0;
       struct {
@@ -870,7 +869,6 @@ static inline bool
 is_terminator(struct ir3_instruction *instr)
 {
    switch (instr->opc) {
-   case OPC_B:
    case OPC_BR:
    case OPC_JUMP:
    case OPC_BANY:
@@ -2336,7 +2334,6 @@ static inline struct ir3_instruction *ir3_##name(                              \
 #define INSTR6NODST(name) __INSTR6((ir3_instruction_flags)0, 0, name, OPC_##name)
 
 /* cat0 instructions: */
-INSTR1NODST(B)
 INSTR1NODST(BR)
 INSTR1NODST(BALL)
 INSTR1NODST(BANY)

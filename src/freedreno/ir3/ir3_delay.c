@@ -103,7 +103,7 @@ count_instruction(struct ir3_instruction *n)
     * earlier so we don't have this constraint.
     */
    return is_alu(n) ||
-          (is_flow(n) && (n->opc != OPC_JUMP) && (n->opc != OPC_B));
+          (is_flow(n) && (n->opc != OPC_JUMP) && (n->opc != OPC_BR));
 }
 
 /* Post-RA, we don't have arrays any more, so we have to be a bit careful here

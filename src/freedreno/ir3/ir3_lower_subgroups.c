@@ -441,7 +441,7 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
       case OPC_BALLOT_MACRO:
       case OPC_READ_COND_MACRO:
          after_block->reconvergence_point = true;
-         branch_opc = OPC_B;
+         branch_opc = OPC_BR;
          break;
       case OPC_ANY_MACRO:
          branch_opc = OPC_BANY;

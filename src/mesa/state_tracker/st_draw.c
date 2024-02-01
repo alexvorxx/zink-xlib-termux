@@ -421,7 +421,7 @@ st_draw_quad(struct st_context *st,
 
    u_upload_unmap(st->pipe->stream_uploader);
 
-   cso_set_vertex_buffers(st->cso_context, 1, false, &vb);
+   cso_set_vertex_buffers(st->cso_context, 1, true, &vb);
 
    if (num_instances > 1) {
       cso_draw_arrays_instanced(st->cso_context, MESA_PRIM_TRIANGLE_FAN, 0, 4,
@@ -429,8 +429,6 @@ st_draw_quad(struct st_context *st,
    } else {
       cso_draw_arrays(st->cso_context, MESA_PRIM_TRIANGLE_FAN, 0, 4);
    }
-
-   pipe_resource_reference(&vb.buffer.resource, NULL);
 
    return true;
 }

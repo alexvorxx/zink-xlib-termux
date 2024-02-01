@@ -714,6 +714,12 @@ invert_branch(struct ir3_instruction *branch)
    case OPC_BANY:
       branch->opc = OPC_BALL;
       break;
+   case OPC_BRAA:
+      branch->opc = OPC_BRAO;
+      break;
+   case OPC_BRAO:
+      branch->opc = OPC_BRAA;
+      break;
    default:
       unreachable("can't get here");
    }
@@ -753,8 +759,6 @@ block_sched(struct ir3 *ir)
             br2 = ir3_JUMP(block);
             br2->cat0.target = block->successors[0];
          } else {
-            assert(terminator->srcs_count == 1);
-
             /* create "else" branch first (since "then" block should
              * frequently/always end up being a fall-thru):
              */

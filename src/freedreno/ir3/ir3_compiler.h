@@ -220,6 +220,9 @@ struct ir3_compiler {
    /* True if bitops (and.b, or.b, xor.b, not.b) can write to p0.c */
    bool bitops_can_write_predicates;
 
+   /* True if braa/brao are available. */
+   bool has_branch_and_or;
+
    /* MAX_COMPUTE_VARIABLE_GROUP_INVOCATIONS_ARB */
    uint32_t max_variable_workgroup_size;
 

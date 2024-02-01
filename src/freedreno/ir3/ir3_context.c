@@ -110,6 +110,10 @@ ir3_context_init(struct ir3_compiler *compiler, struct ir3_shader *shader,
       NIR_PASS(progress, ctx->s, nir_opt_dce);
    }
 
+   /* This must run after the last nir_opt_algebraic or it gets undone. */
+   if (compiler->has_branch_and_or)
+      NIR_PASS_V(ctx->s, ir3_nir_opt_branch_and_or_not);
+
    /* Enable the texture pre-fetch feature only a4xx onwards.  But
     * only enable it on generations that have been tested:
     */

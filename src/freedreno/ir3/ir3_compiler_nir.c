@@ -3797,6 +3797,91 @@ emit_block(struct ir3_context *ctx, nir_block *nblock)
 
 static void emit_cf_list(struct ir3_context *ctx, struct exec_list *list);
 
+/* Get the ir3 branch condition for a given nir source. This will strip any inot
+ * instructions and set *inv when the condition should be inverted. This
+ * inversion can be directly folded into branches (in the inv1/inv2 fields)
+ * instead of adding an explicit not.b/sub.u instruction.
+ */
+static struct ir3_instruction *
+get_branch_condition(struct ir3_context *ctx, nir_src *src, bool *inv)
+{
+   struct ir3_instruction *condition = ir3_get_src(ctx, src)[0];
+
+   if (src->ssa->parent_instr->type == nir_instr_type_alu) {
+      nir_alu_instr *nir_cond = nir_instr_as_alu(src->ssa->parent_instr);
+
+      if (nir_cond->op == nir_op_inot) {
+         struct ir3_instruction *inv_cond =
+            get_branch_condition(ctx, &nir_cond->src[0].src, inv);
+         *inv = !*inv;
+         return inv_cond;
+      }
+   }
+
+   *inv = false;
+   return ir3_get_predicate(ctx, condition);
+}
+
+/* Try to fold br (and/or cond1, cond2) into braa/brao cond1, cond2.
+ */
+static struct ir3_instruction *
+fold_conditional_branch(struct ir3_context *ctx, struct nir_src *nir_cond)
+{
+   if (!ctx->compiler->has_branch_and_or)
+      return false;
+
+   if (nir_cond->ssa->parent_instr->type != nir_instr_type_alu)
+      return NULL;
+
+   nir_alu_instr *alu_cond = nir_instr_as_alu(nir_cond->ssa->parent_instr);
+
+   if ((alu_cond->op != nir_op_iand) && (alu_cond->op != nir_op_ior))
+      return NULL;
+
+   /* If the result of the and/or is also used for something else than an if
+    * condition, the and/or cannot be removed. In that case, we will end-up with
+    * extra predicate conversions for the conditions without actually removing
+    * any instructions, resulting in an increase of instructions. Let's not fold
+    * the conditions in the branch in that case.
+    */
+   if (!nir_def_only_used_by_if(&alu_cond->def))
+      return NULL;
+
+   bool inv1, inv2;
+   struct ir3_instruction *cond1 =
+      get_branch_condition(ctx, &alu_cond->src[0].src, &inv1);
+   struct ir3_instruction *cond2 =
+      get_branch_condition(ctx, &alu_cond->src[1].src, &inv2);
+
+   struct ir3_instruction *branch;
+   if (alu_cond->op == nir_op_iand) {
+      branch = ir3_BRAA(ctx->block, cond1, IR3_REG_PREDICATE, cond2,
+                        IR3_REG_PREDICATE);
+   } else {
+      branch = ir3_BRAO(ctx->block, cond1, IR3_REG_PREDICATE, cond2,
+                        IR3_REG_PREDICATE);
+   }
+
+   branch->cat0.inv1 = inv1;
+   branch->cat0.inv2 = inv2;
+   return branch;
+}
+
+static struct ir3_instruction *
+emit_conditional_branch(struct ir3_context *ctx, struct nir_src *nir_cond)
+{
+   struct ir3_instruction *folded = fold_conditional_branch(ctx, nir_cond);
+   if (folded)
+      return folded;
+
+   bool inv1;
+   struct ir3_instruction *cond1 = get_branch_condition(ctx, nir_cond, &inv1);
+   struct ir3_instruction *branch =
+      ir3_BR(ctx->block, cond1, IR3_REG_PREDICATE);
+   branch->cat0.inv1 = inv1;
+   return branch;
+}
+
 static void
 emit_if(struct ir3_context *ctx, nir_if *nif)
 {
@@ -3820,8 +3905,7 @@ emit_if(struct ir3_context *ctx, nir_if *nif)
        */
       ir3_SHPS(ctx->block);
    } else {
-      struct ir3_instruction *pred = ir3_get_predicate(ctx, condition);
-      ir3_BR(ctx->block, pred, IR3_REG_PREDICATE);
+      emit_conditional_branch(ctx, &nif->condition);
    }
 
    emit_cf_list(ctx, &nif->then_list);

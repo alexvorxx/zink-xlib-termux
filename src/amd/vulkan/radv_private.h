@@ -1980,7 +1980,7 @@ radv_emit_shader_pointer_head(struct radeon_cmdbuf *cs, unsigned sh_offset, unsi
 }
 
 static inline void
-radv_emit_shader_pointer_body(struct radv_device *device, struct radeon_cmdbuf *cs, uint64_t va,
+radv_emit_shader_pointer_body(const struct radv_device *device, struct radeon_cmdbuf *cs, uint64_t va,
                               bool use_32bit_pointers)
 {
    radeon_emit(cs, va);
@@ -1993,7 +1993,7 @@ radv_emit_shader_pointer_body(struct radv_device *device, struct radeon_cmdbuf *
 }
 
 static inline void
-radv_emit_shader_pointer(struct radv_device *device, struct radeon_cmdbuf *cs, uint32_t sh_offset, uint64_t va,
+radv_emit_shader_pointer(const struct radv_device *device, struct radeon_cmdbuf *cs, uint32_t sh_offset, uint64_t va,
                          bool global)
 {
    bool use_32bit_pointers = !global;

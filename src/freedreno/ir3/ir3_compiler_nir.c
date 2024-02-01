@@ -4986,6 +4986,7 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
       progress |= IR3_PASS(ir, ir3_cp, so);
       progress |= IR3_PASS(ir, ir3_cse);
       progress |= IR3_PASS(ir, ir3_dce, so);
+      progress |= IR3_PASS(ir, ir3_opt_predicates, so);
    } while (progress);
 
    /* at this point, for binning pass, throw away unneeded outputs:

@@ -157,6 +157,7 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
    compiler->local_mem_size = dev_info->cs_shared_mem_size;
 
    compiler->num_predicates = 1;
+   compiler->bitops_can_write_predicates = false;
 
    if (compiler->gen >= 6) {
       compiler->samgq_workaround = true;
@@ -215,6 +216,7 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
       compiler->load_shader_consts_via_preamble = dev_info->a7xx.load_shader_consts_via_preamble;
       compiler->load_inline_uniforms_via_preamble_ldgk = dev_info->a7xx.load_inline_uniforms_via_preamble_ldgk;
       compiler->num_predicates = 4;
+      compiler->bitops_can_write_predicates = true;
    } else {
       compiler->max_const_pipeline = 512;
       compiler->max_const_geom = 512;

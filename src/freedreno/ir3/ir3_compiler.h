@@ -217,6 +217,9 @@ struct ir3_compiler {
    /* Number of available predicate registers (p0.c) */
    uint32_t num_predicates;
 
+   /* True if bitops (and.b, or.b, xor.b, not.b) can write to p0.c */
+   bool bitops_can_write_predicates;
+
    /* MAX_COMPUTE_VARIABLE_GROUP_INVOCATIONS_ARB */
    uint32_t max_variable_workgroup_size;
 

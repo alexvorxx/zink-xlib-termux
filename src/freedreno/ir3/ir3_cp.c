@@ -89,24 +89,6 @@ is_eligible_mov(struct ir3_instruction *instr,
    return false;
 }
 
-/* we can end up with extra cmps.s from frontend, which uses a
- *
- *    cmps.s p0.x, cond, 0
- *
- * as a way to mov into the predicate register.  But frequently 'cond'
- * is itself a cmps.s/cmps.f/cmps.u. So detect this special case.
- */
-static bool
-is_foldable_double_cmp(struct ir3_instruction *cmp)
-{
-   struct ir3_instruction *cond = ssa(cmp->srcs[0]);
-   return (cmp->dsts[0]->flags & IR3_REG_PREDICATE) && cond &&
-          (cmp->srcs[1]->flags & IR3_REG_IMMED) &&
-          (cmp->srcs[1]->iim_val == 0) &&
-          (cmp->cat2.condition == IR3_COND_NE) &&
-          (!cond->address || cond->address->def->instr->block == cmp->block);
-}
-
 /* propagate register flags from src to dst.. negates need special
  * handling to cancel each other out.
  */
@@ -609,32 +591,6 @@ instr_cp(struct ir3_cp_ctx *ctx, struct ir3_instruction *instr)
          instr->srcs[0]->flags &= ~IR3_REG_HALF;
       instr->cat1.src_type = instr->cat1.dst_type;
       ctx->progress = true;
-   }
-
-   /* Re-write the instruction writing predicate register to get rid
-    * of the double cmps.
-    */
-   if ((instr->opc == OPC_CMPS_S) && is_foldable_double_cmp(instr)) {
-      struct ir3_instruction *cond = ssa(instr->srcs[0]);
-      switch (cond->opc) {
-      case OPC_CMPS_S:
-      case OPC_CMPS_F:
-      case OPC_CMPS_U:
-         instr->opc = cond->opc;
-         instr->flags = cond->flags;
-         instr->cat2 = cond->cat2;
-         if (cond->address)
-            ir3_instr_set_address(instr, cond->address->def->instr);
-         instr->srcs[0] = ir3_reg_clone(ctx->shader, cond->srcs[0]);
-         instr->srcs[1] = ir3_reg_clone(ctx->shader, cond->srcs[1]);
-         instr->barrier_class |= cond->barrier_class;
-         instr->barrier_conflict |= cond->barrier_conflict;
-         unuse(cond);
-         ctx->progress = true;
-         break;
-      default:
-         break;
-      }
    }
 
    /* Handle converting a sam.s2en (taking samp/tex idx params via register)

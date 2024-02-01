@@ -104,6 +104,7 @@ libfreedreno_ir3_files = files(
   'ir3_nir_move_varying_inputs.c',
   'ir3_nir_lower_layer_id.c',
   'ir3_nir_opt_preamble.c',
+  'ir3_opt_predicates.c',
   'ir3_postsched.c',
   'ir3_print.c',
   'ir3_ra.c',

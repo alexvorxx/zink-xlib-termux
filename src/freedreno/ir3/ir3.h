@@ -1970,6 +1970,8 @@ soft_sy_delay(struct ir3_instruction *instr, struct ir3 *shader)
    }
 }
 
+bool ir3_opt_predicates(struct ir3 *ir, struct ir3_shader_variant *v);
+
 /* unreachable block elimination: */
 bool ir3_remove_unreachable(struct ir3 *ir);
 

@@ -27,13 +27,8 @@
 #include "pan_shader.h"
 
 static bool
-lower_instr(nir_builder *b, nir_instr *instr, void *data)
+lower_tex(nir_builder *b, nir_tex_instr *tex)
 {
-   if (instr->type != nir_instr_type_tex)
-      return false;
-
-   nir_tex_instr *tex = nir_instr_as_tex(instr);
-
    b->cursor = nir_before_instr(&tex->instr);
 
    nir_def *tex_offset = nir_steal_tex_src(tex, nir_tex_src_texture_offset);
@@ -63,6 +58,45 @@ lower_instr(nir_builder *b, nir_instr *instr, void *data)
    }
 
    return true;
+}
+
+static bool
+lower_image_intrin(nir_builder *b, nir_intrinsic_instr *intrin)
+{
+   b->cursor = nir_before_instr(&intrin->instr);
+
+   nir_src *tex_handle = &intrin->src[0];
+   nir_def *new_handle =
+      nir_ior_imm(b, tex_handle->ssa, pan_res_handle(PAN_TABLE_IMAGE, 0));
+   nir_src_rewrite(tex_handle, new_handle);
+
+   return true;
+}
+
+static bool
+lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin)
+{
+   switch (intrin->intrinsic) {
+   case nir_intrinsic_image_load:
+   case nir_intrinsic_image_store:
+   case nir_intrinsic_image_texel_address:
+      return lower_image_intrin(b, intrin);
+   default:
+      return false;
+   }
+}
+
+static bool
+lower_instr(nir_builder *b, nir_instr *instr, void *data)
+{
+   switch (instr->type) {
+   case nir_instr_type_tex:
+      return lower_tex(b, nir_instr_as_tex(instr));
+   case nir_instr_type_intrinsic:
+      return lower_intrinsic(b, nir_instr_as_intrinsic(instr));
+   default:
+      return false;
+   }
 }
 
 bool

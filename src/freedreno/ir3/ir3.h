@@ -1731,6 +1731,10 @@ ir3_try_swap_signedness(opc_t opc, bool *can_swap)
 /* iterator for an instructions's sources (reg): */
 #define foreach_src(__srcreg, __instr) foreach_src_n (__srcreg, __i, __instr)
 
+#define foreach_src_if(__srcreg, __instr, __filter)                            \
+   foreach_src (__srcreg, __instr)                                             \
+      if (__filter(__srcreg))
+
 /* iterator for an instructions's destinations (reg), also returns dst #: */
 #define foreach_dst_n(__dstreg, __n, __instr)                                  \
    if ((__instr)->dsts_count)                                                  \
@@ -1742,6 +1746,10 @@ ir3_try_swap_signedness(opc_t opc, bool *can_swap)
 
 /* iterator for an instructions's destinations (reg): */
 #define foreach_dst(__dstreg, __instr) foreach_dst_n (__dstreg, __i, __instr)
+
+#define foreach_dst_if(__dstreg, __instr, __filter)                            \
+   foreach_dst (__dstreg, __instr)                                             \
+      if (__filter(__dstreg))
 
 static inline unsigned
 __ssa_src_cnt(struct ir3_instruction *instr)

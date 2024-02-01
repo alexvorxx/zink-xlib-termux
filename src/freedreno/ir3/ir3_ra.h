@@ -143,7 +143,17 @@ struct ir3_liveness {
    DECLARE_ARRAY(BITSET_WORD *, live_in);
 };
 
-struct ir3_liveness *ir3_calc_liveness(void *mem_ctx, struct ir3 *ir);
+typedef bool (*reg_filter_cb)(const struct ir3_register *);
+
+struct ir3_liveness *ir3_calc_liveness_for(void *mem_ctx, struct ir3 *ir,
+                                           reg_filter_cb filter_src,
+                                           reg_filter_cb filter_dst);
+
+static inline struct ir3_liveness *
+ir3_calc_liveness(void *mem_ctx, struct ir3 *ir)
+{
+   return ir3_calc_liveness_for(mem_ctx, ir, ra_reg_is_src, ra_reg_is_dst);
+}
 
 bool ir3_def_live_after(struct ir3_liveness *live, struct ir3_register *def,
                         struct ir3_instruction *instr);

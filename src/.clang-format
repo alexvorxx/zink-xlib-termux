@@ -226,8 +226,10 @@ ForEachMacros:
   - foreach_sched_node
   - foreach_src
   - foreach_src_n
+  - foreach_src_if
   - foreach_dst
   - foreach_dst_n
+  - foreach_dst_if
   - ra_foreach_dst
   - ra_foreach_src
   - ra_foreach_src_rev

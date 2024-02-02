@@ -90,21 +90,6 @@ store_geometry_param_offset(nir_builder *b, nir_def *def, uint32_t offset,
       b, offsetof(struct agx_geometry_params, field),                          \
       sizeof(((struct agx_geometry_params *)0)->field))
 
-static nir_def *
-load_geometry_state_offset(nir_builder *b, uint32_t offset, uint8_t bytes)
-{
-   nir_def *base = load_geometry_param(b, state);
-   nir_def *addr = nir_iadd_imm(b, base, offset);
-
-   assert((offset % bytes) == 0 && "must be naturally aligned");
-
-   return nir_load_global_constant(b, addr, bytes, 1, bytes * 8);
-}
-
-#define load_geometry_state(b, field)                                          \
-   load_geometry_state_offset(b, offsetof(struct agx_geometry_state, field),   \
-                              sizeof(((struct agx_geometry_state *)0)->field))
-
 /* Helper for updating counters */
 static void
 add_counter(nir_builder *b, nir_def *counter, nir_def *increment)

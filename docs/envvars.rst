@@ -1363,7 +1363,8 @@ RADV driver environment variables
    ``sam``
       enable optimizations to move more driver internal objects to VRAM.
    ``shader_object``
-      enable experimental implementation of VK_EXT_shader_object (GFX6-8)
+      enable experimental implementation of VK_EXT_shader_object (GFX6-8 and
+      VEGA10)
    ``transfer_queue``
       enable experimental transfer queue support (GFX9+, not yet spec compliant)
    ``video_decode``

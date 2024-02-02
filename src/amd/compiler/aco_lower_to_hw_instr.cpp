@@ -1343,54 +1343,6 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
 }
 
 void
-copy_linear_vgpr(Builder& bld, Definition def, Operand op, bool preserve_scc, PhysReg scratch_sgpr)
-{
-   if (preserve_scc)
-      bld.sop1(aco_opcode::s_mov_b32, Definition(scratch_sgpr, s1), Operand(scc, s1));
-
-   for (unsigned i = 0; i < 2; i++) {
-      if (def.size() == 2)
-         bld.vop3(aco_opcode::v_lshrrev_b64, def, Operand::zero(), op);
-      else
-         bld.vop1(aco_opcode::v_mov_b32, def, op);
-
-      bld.sop1(Builder::s_not, Definition(exec, bld.lm), Definition(scc, s1),
-               Operand(exec, bld.lm));
-   }
-
-   if (preserve_scc)
-      bld.sopc(aco_opcode::s_cmp_lg_i32, Definition(scc, s1), Operand(scratch_sgpr, s1),
-               Operand::zero());
-}
-
-void
-swap_linear_vgpr(Builder& bld, Definition def, Operand op, bool preserve_scc, PhysReg scratch_sgpr)
-{
-   if (preserve_scc)
-      bld.sop1(aco_opcode::s_mov_b32, Definition(scratch_sgpr, s1), Operand(scc, s1));
-
-   Operand def_as_op = Operand(def.physReg(), def.regClass());
-   Definition op_as_def = Definition(op.physReg(), op.regClass());
-
-   for (unsigned i = 0; i < 2; i++) {
-      if (bld.program->gfx_level >= GFX9) {
-         bld.vop1(aco_opcode::v_swap_b32, def, op_as_def, op, def_as_op);
-      } else {
-         bld.vop2(aco_opcode::v_xor_b32, op_as_def, op, def_as_op);
-         bld.vop2(aco_opcode::v_xor_b32, def, op, def_as_op);
-         bld.vop2(aco_opcode::v_xor_b32, op_as_def, op, def_as_op);
-      }
-
-      bld.sop1(Builder::s_not, Definition(exec, bld.lm), Definition(scc, s1),
-               Operand(exec, bld.lm));
-   }
-
-   if (preserve_scc)
-      bld.sopc(aco_opcode::s_cmp_lg_i32, Definition(scc, s1), Operand(scratch_sgpr, s1),
-               Operand::zero());
-}
-
-void
 addsub_subdword_gfx11(Builder& bld, Definition dst, Operand src0, Operand src1, bool sub)
 {
    Instruction* instr =
@@ -1423,8 +1375,6 @@ do_copy(lower_context* ctx, Builder& bld, const copy_operation& copy, bool* pres
          *preserve_scc = true;
       } else if (op.isConstant()) {
          copy_constant(ctx, bld, def, op);
-      } else if (def.regClass().is_linear_vgpr()) {
-         copy_linear_vgpr(bld, def, op, *preserve_scc, scratch_sgpr);
       } else if (def.regClass() == v1) {
          bld.vop1(aco_opcode::v_mov_b32, def, op);
       } else if (def.regClass() == v2) {
@@ -1564,9 +1514,7 @@ do_swap(lower_context* ctx, Builder& bld, const copy_operation& copy, bool prese
       assert(op.regClass() == def.regClass());
       Operand def_as_op = Operand(def.physReg(), def.regClass());
       Definition op_as_def = Definition(op.physReg(), op.regClass());
-      if (def.regClass().is_linear_vgpr()) {
-         swap_linear_vgpr(bld, def, op, preserve_scc, pi->scratch_sgpr);
-      } else if (ctx->program->gfx_level >= GFX9 && def.regClass() == v1) {
+      if (ctx->program->gfx_level >= GFX9 && def.regClass() == v1) {
          bld.vop1(aco_opcode::v_swap_b32, def, op_as_def, op, def_as_op);
       } else if (def.regClass() == v1) {
          assert(def.physReg().byte() == 0 && op.physReg().byte() == 0);
@@ -1765,9 +1713,6 @@ try_coalesce_copies(lower_context* ctx, std::map<PhysReg, copy_operation>& copy_
    auto other = copy_map.find(copy.def.physReg().advance(copy.bytes));
    if (other == copy_map.end() || copy.bytes + other->second.bytes > 8 ||
        copy.op.isConstant() != other->second.op.isConstant())
-      return;
-
-   if (other->second.def.regClass().is_linear_vgpr() != copy.def.regClass().is_linear_vgpr())
       return;
 
    /* don't create 64-bit copies before GFX10 */
@@ -2170,6 +2115,41 @@ handle_operands(std::map<PhysReg, copy_operation>& copy_map, lower_context* ctx,
 }
 
 void
+handle_operands_linear_vgpr(std::map<PhysReg, copy_operation>& copy_map, lower_context* ctx,
+                            amd_gfx_level gfx_level, Pseudo_instruction* pi)
+{
+   Builder bld(ctx->program, &ctx->instructions);
+
+   for (auto& copy : copy_map) {
+      copy.second.op =
+         Operand(copy.second.op.physReg(), RegClass::get(RegType::vgpr, copy.second.op.bytes()));
+      copy.second.def = Definition(copy.second.def.physReg(),
+                                   RegClass::get(RegType::vgpr, copy.second.def.bytes()));
+   }
+
+   std::map<PhysReg, copy_operation> second_map(copy_map);
+   handle_operands(second_map, ctx, gfx_level, pi);
+
+   bool tmp_in_scc = pi->tmp_in_scc;
+   if (tmp_in_scc) {
+      bld.sop1(aco_opcode::s_mov_b32, Definition(pi->scratch_sgpr, s1), Operand(scc, s1));
+      pi->tmp_in_scc = false;
+   }
+   bld.sop1(Builder::s_not, Definition(exec, bld.lm), Definition(scc, s1), Operand(exec, bld.lm));
+
+   handle_operands(copy_map, ctx, gfx_level, pi);
+
+   bld.sop1(Builder::s_not, Definition(exec, bld.lm), Definition(scc, s1), Operand(exec, bld.lm));
+   if (tmp_in_scc) {
+      bld.sopc(aco_opcode::s_cmp_lg_i32, Definition(scc, s1), Operand(pi->scratch_sgpr, s1),
+               Operand::zero());
+      pi->tmp_in_scc = true;
+   }
+
+   ctx->program->statistics[aco_statistic_copies] += tmp_in_scc ? 4 : 2;
+}
+
+void
 emit_set_mode(Builder& bld, float_mode new_mode, bool set_round, bool set_denorm)
 {
    if (bld.program->gfx_level >= GFX10) {
@@ -2404,12 +2384,20 @@ lower_to_hw_instr(Program* program)
             }
             case aco_opcode::p_parallelcopy: {
                std::map<PhysReg, copy_operation> copy_operations;
+               bool linear_vgpr = false;
+               bool non_linear_vgpr = false;
                for (unsigned j = 0; j < instr->operands.size(); j++) {
                   assert(instr->definitions[j].bytes() == instr->operands[j].bytes());
                   copy_operations[instr->definitions[j].physReg()] = {
                      instr->operands[j], instr->definitions[j], instr->operands[j].bytes()};
+                  linear_vgpr |= instr->definitions[j].regClass().is_linear_vgpr();
+                  non_linear_vgpr |= !instr->definitions[j].regClass().is_linear_vgpr();
                }
-               handle_operands(copy_operations, &ctx, program->gfx_level, pi);
+               assert(!linear_vgpr || !non_linear_vgpr);
+               if (linear_vgpr)
+                  handle_operands_linear_vgpr(copy_operations, &ctx, program->gfx_level, pi);
+               else
+                  handle_operands(copy_operations, &ctx, program->gfx_level, pi);
                break;
             }
             case aco_opcode::p_exit_early_if: {

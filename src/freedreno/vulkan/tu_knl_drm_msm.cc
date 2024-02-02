@@ -922,7 +922,7 @@ tu_queue_submit_locked(struct tu_queue *queue, struct tu_queue_submit *submit)
          }
       }
 
-      fd_rd_output_write_section(rd_output, RD_CHIP_ID, &device->physical_device->dev_id.chip_id, 4);
+      fd_rd_output_write_section(rd_output, RD_CHIP_ID, &device->physical_device->dev_id.chip_id, 8);
       fd_rd_output_write_section(rd_output, RD_CMD, "tu-dump", 8);
 
       for (unsigned i = 0; i < device->bo_count; i++) {

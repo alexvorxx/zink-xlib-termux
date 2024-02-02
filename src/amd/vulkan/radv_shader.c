@@ -1580,6 +1580,11 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
       config->rsrc2 |= S_00B22C_USER_SGPR_MSB_GFX9(args->num_user_sgprs >> 5);
    }
 
+   gl_shader_stage es_stage = MESA_SHADER_NONE;
+   if (pdevice->rad_info.gfx_level >= GFX9) {
+      es_stage = stage == MESA_SHADER_GEOMETRY ? info->gs.es_type : stage;
+   }
+
    if (info->merged_shader_compiled_separately) {
       /* Update the stage for merged shaders compiled separately with ESO on GFX9+. */
       if (stage == MESA_SHADER_VERTEX && info->vs.as_ls) {
@@ -1708,9 +1713,6 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
        (stage == MESA_SHADER_VERTEX || stage == MESA_SHADER_TESS_EVAL || stage == MESA_SHADER_GEOMETRY ||
         stage == MESA_SHADER_MESH)) {
       unsigned gs_vgpr_comp_cnt, es_vgpr_comp_cnt;
-      gl_shader_stage es_stage = stage;
-      if (stage == MESA_SHADER_GEOMETRY)
-         es_stage = info->gs.es_type;
 
       /* VGPR5-8: (VertexID, UserVGPR0, UserVGPR1, UserVGPR2 / InstanceID) */
       if (es_stage == MESA_SHADER_VERTEX) {
@@ -1756,17 +1758,16 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
       config->rsrc2 |= S_00B22C_ES_VGPR_COMP_CNT(es_vgpr_comp_cnt) | S_00B22C_LDS_SIZE(config->lds_size) |
                        S_00B22C_OC_LDS_EN(es_stage == MESA_SHADER_TESS_EVAL);
    } else if (pdevice->rad_info.gfx_level >= GFX9 && stage == MESA_SHADER_GEOMETRY) {
-      unsigned es_type = info->gs.es_type;
       unsigned gs_vgpr_comp_cnt, es_vgpr_comp_cnt;
 
-      if (es_type == MESA_SHADER_VERTEX) {
+      if (es_stage == MESA_SHADER_VERTEX) {
          /* VGPR0-3: (VertexID, InstanceID / StepRate0, ...) */
          if (info->vs.needs_instance_id) {
             es_vgpr_comp_cnt = pdevice->rad_info.gfx_level >= GFX10 ? 3 : 1;
          } else {
             es_vgpr_comp_cnt = 0;
          }
-      } else if (es_type == MESA_SHADER_TESS_EVAL) {
+      } else if (es_stage == MESA_SHADER_TESS_EVAL) {
          es_vgpr_comp_cnt = info->uses_prim_id ? 3 : 2;
       } else {
          unreachable("invalid shader ES type");
@@ -1787,7 +1788,7 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
 
       config->rsrc1 |= S_00B228_GS_VGPR_COMP_CNT(gs_vgpr_comp_cnt) | S_00B228_WGP_MODE(wgp_mode);
       config->rsrc2 |=
-         S_00B22C_ES_VGPR_COMP_CNT(es_vgpr_comp_cnt) | S_00B22C_OC_LDS_EN(es_type == MESA_SHADER_TESS_EVAL);
+         S_00B22C_ES_VGPR_COMP_CNT(es_vgpr_comp_cnt) | S_00B22C_OC_LDS_EN(es_stage == MESA_SHADER_TESS_EVAL);
    } else if (pdevice->rad_info.gfx_level >= GFX9 && stage == MESA_SHADER_TESS_CTRL) {
       config->rsrc1 |= S_00B428_LS_VGPR_COMP_CNT(vgpr_comp_cnt);
    } else {

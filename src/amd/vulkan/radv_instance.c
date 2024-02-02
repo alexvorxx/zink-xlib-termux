@@ -295,6 +295,9 @@ static const struct vk_instance_extension_table radv_instance_extensions_support
    .EXT_display_surface_counter = true,
    .EXT_acquire_drm_display = true,
 #endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+   .EXT_headless_surface = true,
+#endif
 };
 
 static void

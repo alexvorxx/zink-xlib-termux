@@ -3184,8 +3184,27 @@ radv_emit_tess_ctrl_shader(const struct radv_device *device, struct radeon_cmdbu
 
 void
 radv_emit_tess_eval_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                           const struct radv_shader *tes)
+                           const struct radv_shader *tes, const struct radv_shader *gs)
 {
+   if (tes->info.merged_shader_compiled_separately) {
+      const struct radv_userdata_info *loc = &tes->info.user_sgprs_locs.shader_data[AC_UD_NEXT_STAGE_PC];
+      const uint32_t base_reg = tes->info.user_data_0;
+      uint32_t rsrc1, rsrc2;
+
+      assert(loc->sgpr_idx != -1 && loc->num_sgprs == 1);
+
+      radv_shader_combine_cfg_tes_gs(tes, gs, &rsrc1, &rsrc2);
+
+      radeon_set_sh_reg(cs, R_00B210_SPI_SHADER_PGM_LO_ES, tes->va >> 8);
+
+      radeon_set_sh_reg_seq(cs, R_00B228_SPI_SHADER_PGM_RSRC1_GS, 2);
+      radeon_emit(cs, rsrc1);
+      radeon_emit(cs, rsrc2 | S_00B22C_LDS_SIZE(gs->info.gs_ring_info.lds_size));
+
+      radv_emit_shader_pointer(device, cs, base_reg + loc->sgpr_idx * 4, gs->va, false);
+      return;
+   }
+
    if (tes->info.is_ngg) {
       radv_emit_hw_ngg(device, ctx_cs, cs, NULL, tes);
    } else if (tes->info.tes.as_es) {
@@ -3702,7 +3721,7 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
       radv_emit_tess_ctrl_shader(device, cs, pipeline->base.shaders[MESA_SHADER_TESS_CTRL]);
 
       if (radv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_EVAL)) {
-         radv_emit_tess_eval_shader(device, ctx_cs, cs, pipeline->base.shaders[MESA_SHADER_TESS_EVAL]);
+         radv_emit_tess_eval_shader(device, ctx_cs, cs, pipeline->base.shaders[MESA_SHADER_TESS_EVAL], NULL);
       }
    }
 

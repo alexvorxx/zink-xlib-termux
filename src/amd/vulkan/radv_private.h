@@ -2472,7 +2472,7 @@ void radv_emit_tess_ctrl_shader(const struct radv_device *device, struct radeon_
                                 const struct radv_shader *tcs);
 
 void radv_emit_tess_eval_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                                struct radeon_cmdbuf *cs, const struct radv_shader *tes);
+                                struct radeon_cmdbuf *cs, const struct radv_shader *tes, const struct radv_shader *gs);
 
 void radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
                                const struct radv_shader *ps);

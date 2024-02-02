@@ -9122,9 +9122,18 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
       case MESA_SHADER_TESS_CTRL:
          radv_emit_tess_ctrl_shader(device, cs, cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL]);
          break;
-      case MESA_SHADER_TESS_EVAL:
-         radv_emit_tess_eval_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL]);
+      case MESA_SHADER_TESS_EVAL: {
+         const struct radv_shader *tes = cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL];
+         struct radv_shader *gs = NULL;
+
+         if (tes->info.merged_shader_compiled_separately) {
+            assert(tes->info.next_stage == MESA_SHADER_GEOMETRY);
+            gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
+         }
+
+         radv_emit_tess_eval_shader(device, cs, cs, tes, gs);
          break;
+      }
       case MESA_SHADER_GEOMETRY:
          radv_emit_geometry_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY], NULL,
                                    shader_obj->gs.copy_shader);
@@ -9150,11 +9159,17 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
 
       if (gs->info.merged_shader_compiled_separately) {
          const struct radv_userdata_info *vgt_esgs_ring_itemsize = radv_get_user_sgpr(gs, AC_UD_VGT_ESGS_RING_ITEMSIZE);
-         const struct radv_shader *vs = cmd_buffer->state.shaders[MESA_SHADER_VERTEX];
+         uint32_t esgs_itemsize;
+
+         if (cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL]) {
+            esgs_itemsize = cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL]->info.esgs_itemsize;
+         } else {
+            esgs_itemsize = cmd_buffer->state.shaders[MESA_SHADER_VERTEX]->info.esgs_itemsize;
+         }
 
          assert(vgt_esgs_ring_itemsize->sgpr_idx != -1 && vgt_esgs_ring_itemsize->num_sgprs == 1);
 
-         radeon_set_sh_reg(cs, gs->info.user_data_0 + vgt_esgs_ring_itemsize->sgpr_idx * 4, vs->info.esgs_itemsize / 4);
+         radeon_set_sh_reg(cs, gs->info.user_data_0 + vgt_esgs_ring_itemsize->sgpr_idx * 4, esgs_itemsize / 4);
       }
    }
 

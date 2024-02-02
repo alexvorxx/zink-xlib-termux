@@ -1066,4 +1066,7 @@ void radv_shader_combine_cfg_vs_tcs(const struct radv_shader *vs, const struct r
 void radv_shader_combine_cfg_vs_gs(const struct radv_shader *vs, const struct radv_shader *gs, uint32_t *rsrc1_out,
                                    uint32_t *rsrc2_out);
 
+void radv_shader_combine_cfg_tes_gs(const struct radv_shader *tes, const struct radv_shader *gs, uint32_t *rsrc1_out,
+                                    uint32_t *rsrc2_out);
+
 #endif

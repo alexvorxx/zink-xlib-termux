@@ -102,8 +102,9 @@ panvk_pipeline_builder_finish(struct panvk_pipeline_builder *builder)
    for (uint32_t i = 0; i < MESA_SHADER_STAGES; i++) {
       if (!builder->shaders[i])
          continue;
-      panvk_shader_destroy(builder->device, builder->shaders[i],
-                           builder->alloc);
+
+      panvk_per_arch(shader_destroy)(builder->device, builder->shaders[i],
+                                     builder->alloc);
    }
 }
 

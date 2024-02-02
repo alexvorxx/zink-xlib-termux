@@ -6,6 +6,10 @@
 #ifndef PANVK_SHADER_H
 #define PANVK_SHADER_H
 
+#ifndef PAN_ARCH
+#error "PAN_ARCH must be defined"
+#endif
+
 #include "util/u_dynarray.h"
 
 #include "util/pan_ir.h"
@@ -62,18 +66,6 @@ struct panvk_shader {
    bool has_img_access;
 };
 
-struct panvk_shader *
-panvk_shader_create(struct panvk_device *dev, gl_shader_stage stage,
-                    const VkPipelineShaderStageCreateInfo *stage_info,
-                    const struct panvk_pipeline_layout *layout,
-                    unsigned sysval_ubo, struct pan_blend_state *blend_state,
-                    bool static_blend_constants,
-                    const VkAllocationCallbacks *alloc);
-
-void panvk_shader_destroy(struct panvk_device *dev, struct panvk_shader *shader,
-                          const VkAllocationCallbacks *alloc);
-
-#ifdef PAN_ARCH
 bool panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
                                           const struct pan_blend_state *state,
                                           unsigned rt);
@@ -85,9 +77,12 @@ struct panvk_shader *panvk_per_arch(shader_create)(
    struct pan_blend_state *blend_state, bool static_blend_constants,
    const VkAllocationCallbacks *alloc);
 
+void panvk_per_arch(shader_destroy)(struct panvk_device *dev,
+                                    struct panvk_shader *shader,
+                                    const VkAllocationCallbacks *alloc);
+
 bool panvk_per_arch(nir_lower_descriptors)(
    struct nir_shader *nir, struct panvk_device *dev,
    const struct panvk_pipeline_layout *layout, bool *has_img_access_out);
-#endif
 
 #endif

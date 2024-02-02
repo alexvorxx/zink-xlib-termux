@@ -399,6 +399,15 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
    return shader;
 }
 
+void
+panvk_per_arch(shader_destroy)(struct panvk_device *dev,
+                               struct panvk_shader *shader,
+                               const VkAllocationCallbacks *alloc)
+{
+   util_dynarray_fini(&shader->binary);
+   vk_free2(&dev->vk.alloc, alloc, shader);
+}
+
 bool
 panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
                                      const struct pan_blend_state *state,

@@ -6,6 +6,10 @@
 #ifndef PANVK_QUEUE_H
 #define PANVK_QUEUE_H
 
+#ifndef PAN_ARCH
+#error "PAN_ARCH must be defined"
+#endif
+
 #include <stdint.h>
 
 #include "vk_queue.h"
@@ -32,10 +36,8 @@ panvk_queue_finish(struct panvk_queue *queue)
    drmSyncobjDestroy(dev->vk.drm_fd, queue->sync);
 }
 
-#ifdef PAN_ARCH
 VkResult panvk_per_arch(queue_init)(struct panvk_device *device,
                                     struct panvk_queue *queue, int idx,
                                     const VkDeviceQueueCreateInfo *create_info);
-#endif
 
 #endif

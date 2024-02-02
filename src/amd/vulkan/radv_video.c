@@ -53,7 +53,7 @@
 static bool
 radv_enable_tier2(struct radv_physical_device *pdevice)
 {
-   if (pdevice->rad_info.family >= CHIP_NAVI21 && !(pdevice->instance->debug_flags & RADV_DEBUG_VIDEO_ARRAY_PATH))
+   if (pdevice->rad_info.vcn_ip_version >= VCN_3_0_0 && !(pdevice->instance->debug_flags & RADV_DEBUG_VIDEO_ARRAY_PATH))
       return true;
    return false;
 }
@@ -61,7 +61,7 @@ radv_enable_tier2(struct radv_physical_device *pdevice)
 static uint32_t
 radv_video_get_db_alignment(struct radv_physical_device *pdevice, int width, bool is_h265_main_10)
 {
-   if (pdevice->rad_info.family >= CHIP_RENOIR && width > 32 && is_h265_main_10)
+   if (pdevice->rad_info.vcn_ip_version >= VCN_2_0_0 && width > 32 && is_h265_main_10)
       return 64;
    return 32;
 }
@@ -137,10 +137,72 @@ radv_vid_alloc_stream_handle(struct radv_physical_device *pdevice)
    return stream_handle;
 }
 
+static void
+init_uvd_decoder(struct radv_physical_device *pdevice)
+{
+   if (pdevice->rad_info.family >= CHIP_VEGA10) {
+      pdevice->vid_dec_reg.data0 = RUVD_GPCOM_VCPU_DATA0_SOC15;
+      pdevice->vid_dec_reg.data1 = RUVD_GPCOM_VCPU_DATA1_SOC15;
+      pdevice->vid_dec_reg.cmd = RUVD_GPCOM_VCPU_CMD_SOC15;
+      pdevice->vid_dec_reg.cntl = RUVD_ENGINE_CNTL_SOC15;
+   } else {
+      pdevice->vid_dec_reg.data0 = RUVD_GPCOM_VCPU_DATA0;
+      pdevice->vid_dec_reg.data1 = RUVD_GPCOM_VCPU_DATA1;
+      pdevice->vid_dec_reg.cmd = RUVD_GPCOM_VCPU_CMD;
+      pdevice->vid_dec_reg.cntl = RUVD_ENGINE_CNTL;
+   }
+}
+
+static void
+init_vcn_decoder(struct radv_physical_device *pdevice)
+{
+   switch (pdevice->rad_info.vcn_ip_version) {
+   case VCN_1_0_0:
+   case VCN_1_0_1:
+      pdevice->vid_dec_reg.data0 = RDECODE_VCN1_GPCOM_VCPU_DATA0;
+      pdevice->vid_dec_reg.data1 = RDECODE_VCN1_GPCOM_VCPU_DATA1;
+      pdevice->vid_dec_reg.cmd = RDECODE_VCN1_GPCOM_VCPU_CMD;
+      pdevice->vid_dec_reg.cntl = RDECODE_VCN1_ENGINE_CNTL;
+      break;
+   case VCN_2_0_0:
+   case VCN_2_0_2:
+   case VCN_2_0_3:
+   case VCN_2_2_0:
+      pdevice->vid_dec_reg.data0 = RDECODE_VCN2_GPCOM_VCPU_DATA0;
+      pdevice->vid_dec_reg.data1 = RDECODE_VCN2_GPCOM_VCPU_DATA1;
+      pdevice->vid_dec_reg.cmd = RDECODE_VCN2_GPCOM_VCPU_CMD;
+      pdevice->vid_dec_reg.cntl = RDECODE_VCN2_ENGINE_CNTL;
+      break;
+   case VCN_2_5_0:
+   case VCN_2_6_0:
+   case VCN_3_0_0:
+   case VCN_3_0_16:
+   case VCN_3_0_33:
+   case VCN_3_1_1:
+   case VCN_3_1_2:
+      pdevice->vid_dec_reg.data0 = RDECODE_VCN2_5_GPCOM_VCPU_DATA0;
+      pdevice->vid_dec_reg.data1 = RDECODE_VCN2_5_GPCOM_VCPU_DATA1;
+      pdevice->vid_dec_reg.cmd = RDECODE_VCN2_5_GPCOM_VCPU_CMD;
+      pdevice->vid_dec_reg.cntl = RDECODE_VCN2_5_ENGINE_CNTL;
+      break;
+   case VCN_4_0_3:
+      pdevice->vid_addr_gfx_mode = RDECODE_ARRAY_MODE_ADDRLIB_SEL_GFX9;
+      break;
+   case VCN_4_0_0:
+   case VCN_4_0_2:
+   case VCN_4_0_4:
+   case VCN_4_0_5:
+      pdevice->vid_addr_gfx_mode = RDECODE_ARRAY_MODE_ADDRLIB_SEL_GFX11;
+      break;
+   default:
+      break;
+   }
+}
+
 void
 radv_init_physical_device_decoder(struct radv_physical_device *pdevice)
 {
-   if (pdevice->rad_info.family >= CHIP_NAVI31 || pdevice->rad_info.family == CHIP_GFX940)
+   if (pdevice->rad_info.vcn_ip_version >= VCN_4_0_0)
       pdevice->vid_decode_ip = AMD_IP_VCN_UNIFIED;
    else if (radv_has_uvd(pdevice))
       pdevice->vid_decode_ip = AMD_IP_UVD;
@@ -154,65 +216,10 @@ radv_init_physical_device_decoder(struct radv_physical_device *pdevice)
 
    pdevice->vid_addr_gfx_mode = RDECODE_ARRAY_MODE_LINEAR;
 
-   switch (pdevice->rad_info.family) {
-   case CHIP_VEGA10:
-   case CHIP_VEGA12:
-   case CHIP_VEGA20:
-      pdevice->vid_dec_reg.data0 = RUVD_GPCOM_VCPU_DATA0_SOC15;
-      pdevice->vid_dec_reg.data1 = RUVD_GPCOM_VCPU_DATA1_SOC15;
-      pdevice->vid_dec_reg.cmd = RUVD_GPCOM_VCPU_CMD_SOC15;
-      pdevice->vid_dec_reg.cntl = RUVD_ENGINE_CNTL_SOC15;
-      break;
-   case CHIP_RAVEN:
-   case CHIP_RAVEN2:
-      pdevice->vid_dec_reg.data0 = RDECODE_VCN1_GPCOM_VCPU_DATA0;
-      pdevice->vid_dec_reg.data1 = RDECODE_VCN1_GPCOM_VCPU_DATA1;
-      pdevice->vid_dec_reg.cmd = RDECODE_VCN1_GPCOM_VCPU_CMD;
-      pdevice->vid_dec_reg.cntl = RDECODE_VCN1_ENGINE_CNTL;
-      break;
-   case CHIP_NAVI10:
-   case CHIP_NAVI12:
-   case CHIP_NAVI14:
-   case CHIP_RENOIR:
-      pdevice->vid_dec_reg.data0 = RDECODE_VCN2_GPCOM_VCPU_DATA0;
-      pdevice->vid_dec_reg.data1 = RDECODE_VCN2_GPCOM_VCPU_DATA1;
-      pdevice->vid_dec_reg.cmd = RDECODE_VCN2_GPCOM_VCPU_CMD;
-      pdevice->vid_dec_reg.cntl = RDECODE_VCN2_ENGINE_CNTL;
-      break;
-   case CHIP_MI100:
-   case CHIP_MI200:
-   case CHIP_NAVI21:
-   case CHIP_NAVI22:
-   case CHIP_NAVI23:
-   case CHIP_NAVI24:
-   case CHIP_VANGOGH:
-   case CHIP_REMBRANDT:
-   case CHIP_RAPHAEL_MENDOCINO:
-      pdevice->vid_dec_reg.data0 = RDECODE_VCN2_5_GPCOM_VCPU_DATA0;
-      pdevice->vid_dec_reg.data1 = RDECODE_VCN2_5_GPCOM_VCPU_DATA1;
-      pdevice->vid_dec_reg.cmd = RDECODE_VCN2_5_GPCOM_VCPU_CMD;
-      pdevice->vid_dec_reg.cntl = RDECODE_VCN2_5_ENGINE_CNTL;
-      break;
-   case CHIP_GFX940:
-      pdevice->vid_addr_gfx_mode = RDECODE_ARRAY_MODE_ADDRLIB_SEL_GFX9;
-      break;
-   case CHIP_NAVI31:
-   case CHIP_NAVI32:
-   case CHIP_NAVI33:
-   case CHIP_GFX1103_R1:
-   case CHIP_GFX1103_R2:
-   case CHIP_GFX1150:
-      pdevice->vid_addr_gfx_mode = RDECODE_ARRAY_MODE_ADDRLIB_SEL_GFX11;
-      break;
-   default:
-      if (radv_has_uvd(pdevice)) {
-         pdevice->vid_dec_reg.data0 = RUVD_GPCOM_VCPU_DATA0;
-         pdevice->vid_dec_reg.data1 = RUVD_GPCOM_VCPU_DATA1;
-         pdevice->vid_dec_reg.cmd = RUVD_GPCOM_VCPU_CMD;
-         pdevice->vid_dec_reg.cntl = RUVD_ENGINE_CNTL;
-      }
-      break;
-   }
+   if (radv_has_uvd(pdevice))
+      init_uvd_decoder(pdevice);
+   else
+      init_vcn_decoder(pdevice);
 }
 
 static bool

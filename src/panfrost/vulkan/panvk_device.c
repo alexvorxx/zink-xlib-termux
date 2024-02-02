@@ -150,6 +150,9 @@ static const struct vk_instance_extension_table panvk_instance_extensions = {
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
    .KHR_wayland_surface = true,
 #endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+   .EXT_headless_surface = true,
+#endif
 };
 
 static void

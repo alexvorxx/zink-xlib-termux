@@ -40,34 +40,75 @@ panvk_per_arch(CreateBufferView)(VkDevice _device,
    enum pipe_format pfmt = vk_format_to_pipe_format(view->vk.format);
 
    mali_ptr address = panvk_buffer_gpu_ptr(buffer, pCreateInfo->offset);
-   unsigned blksz = vk_format_get_blocksize(pCreateInfo->format);
+   VkBufferUsageFlags tex_usage_mask = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+
+#if PAN_ARCH >= 9
+   /* Valhall passes a texture descriptor to LEA_TEX. */
+   tex_usage_mask |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+#endif
 
    assert(!(address & 63));
 
-   if (buffer->vk.usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) {
-      unsigned bo_size = pan_size(SURFACE_WITH_STRIDE);
+   if (buffer->vk.usage & tex_usage_mask) {
+      struct panvk_physical_device *physical_device =
+         to_panvk_physical_device(device->vk.physical);
+      unsigned arch = pan_arch(physical_device->kmod.props.gpu_prod_id);
+
+      struct pan_image plane = {
+         .data = {
+            .base = address,
+            .offset = 0,
+	 },
+         .layout = {
+            .modifier = DRM_FORMAT_MOD_LINEAR,
+            .format = pfmt,
+            .dim = MALI_TEXTURE_DIMENSION_1D,
+            .width = view->vk.elements,
+            .height = 1,
+            .depth = 1,
+            .array_size = 1,
+            .nr_samples = 1,
+            .nr_slices = 1,
+         },
+      };
+
+      struct pan_image_view pview = {
+         .planes[0] = &plane,
+         .format = pfmt,
+         .dim = MALI_TEXTURE_DIMENSION_1D,
+         .nr_samples = 1,
+         .first_level = 0,
+         .last_level = 0,
+         .first_layer = 0,
+         .last_layer = 0,
+         .swizzle =
+            {
+               PIPE_SWIZZLE_X,
+               PIPE_SWIZZLE_Y,
+               PIPE_SWIZZLE_Z,
+               PIPE_SWIZZLE_W,
+            },
+      };
+
+      pan_image_layout_init(arch, &plane.layout, NULL);
+
+      unsigned bo_size = GENX(panfrost_estimate_texture_payload_size)(&pview);
+
       view->bo = panvk_priv_bo_create(device, bo_size, 0, pAllocator,
                                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
 
-      pan_pack(view->bo->addr.host, SURFACE_WITH_STRIDE, cfg) {
-         cfg.pointer = address;
-      }
+      struct panfrost_ptr ptr = {
+         .gpu = view->bo->addr.dev,
+         .cpu = view->bo->addr.host,
+      };
 
-      pan_pack(view->descs.tex.opaque, TEXTURE, cfg) {
-         cfg.dimension = MALI_TEXTURE_DIMENSION_1D;
-         cfg.format = GENX(panfrost_format_from_pipe_format)(pfmt)->hw;
-         cfg.width = view->vk.elements;
-         cfg.depth = cfg.height = 1;
-         cfg.swizzle = PAN_V6_SWIZZLE(R, G, B, A);
-         cfg.texel_ordering = MALI_TEXTURE_LAYOUT_LINEAR;
-         cfg.levels = 1;
-         cfg.array_size = 1;
-         cfg.surfaces = view->bo->addr.dev;
-         cfg.maximum_lod = cfg.minimum_lod = 0;
-      }
+      GENX(panfrost_new_texture)(&pview, view->descs.tex.opaque, &ptr);
    }
 
+#if PAN_ARCH <= 7
    if (buffer->vk.usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) {
+      unsigned blksz = vk_format_get_blocksize(pCreateInfo->format);
+
       pan_pack(view->descs.img_attrib_buf[0].opaque, ATTRIBUTE_BUFFER, cfg) {
          cfg.type = MALI_ATTRIBUTE_TYPE_3D_LINEAR;
          cfg.pointer = address;
@@ -83,6 +124,7 @@ panvk_per_arch(CreateBufferView)(VkDevice _device,
          cfg.row_stride = view->vk.elements * blksz;
       }
    }
+#endif
 
    *pView = panvk_buffer_view_to_handle(view);
    return VK_SUCCESS;

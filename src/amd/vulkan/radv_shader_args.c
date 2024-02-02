@@ -457,6 +457,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    declare_global_input_sgprs(info, user_sgpr_info, args);
 
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
+   add_ud_arg(args, 1, AC_ARG_INT, &args->tes_state, AC_UD_TES_STATE);
 
    add_ud_arg(args, 1, AC_ARG_INT, &args->shader_query_state, AC_UD_SHADER_QUERY_STATE);
    if (info->is_ngg) {
@@ -491,6 +492,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    ac_add_preserved(&args->ac, &args->descriptor_sets[0]);
    ac_add_preserved(&args->ac, &args->ac.push_constants);
    ac_add_preserved(&args->ac, &args->ac.view_index);
+   ac_add_preserved(&args->ac, &args->tes_state);
    ac_add_preserved(&args->ac, &args->shader_query_state);
    if (info->is_ngg)
       ac_add_preserved(&args->ac, &args->ngg_provoking_vtx);

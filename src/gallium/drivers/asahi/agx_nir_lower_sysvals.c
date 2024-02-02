@@ -392,11 +392,21 @@ lay_out_uniforms(struct agx_compiled_shader *shader, struct state *state)
 }
 
 bool
-agx_nir_lower_sysvals(nir_shader *shader, bool lower_draw_params)
+agx_nir_lower_sysvals(nir_shader *shader, enum pipe_shader_type desc_stage,
+                      bool lower_draw_params)
 {
-   return nir_shader_instructions_pass(
+   /* override stage for the duration on the pass. XXX: should refactor, but
+    * it's annoying!
+    */
+   enum pipe_shader_type phys_stage = shader->info.stage;
+   shader->info.stage = desc_stage;
+
+   bool progress = nir_shader_instructions_pass(
       shader, lower_sysvals, nir_metadata_block_index | nir_metadata_dominance,
       &lower_draw_params);
+
+   shader->info.stage = phys_stage;
+   return progress;
 }
 
 bool

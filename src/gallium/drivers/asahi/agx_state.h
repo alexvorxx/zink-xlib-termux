@@ -968,7 +968,8 @@ void agx_set_ssbo_uniforms(struct agx_batch *batch,
 
 bool agx_nir_lower_point_size(nir_shader *nir, bool fixed_point_size);
 
-bool agx_nir_lower_sysvals(nir_shader *shader, bool lower_draw_params);
+bool agx_nir_lower_sysvals(nir_shader *shader, enum pipe_shader_type desc_stage,
+                           bool lower_draw_params);
 
 bool agx_nir_layout_uniforms(nir_shader *shader,
                              struct agx_compiled_shader *compiled,

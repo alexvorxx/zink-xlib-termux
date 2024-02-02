@@ -489,7 +489,7 @@ panvk_pipeline_builder_init_shaders(struct panvk_pipeline_builder *builder,
       pipeline->rsds[MESA_SHADER_FRAGMENT] = gpu_rsd;
    } else if (builder->create_info.gfx) {
       panvk_pipeline_builder_emit_base_fs_rsd(pipeline,
-                                              pipeline->fs.rsd_template);
+                                              &pipeline->fs.rsd_template);
       for (unsigned rt = 0; rt < MAX2(pipeline->blend.state.rt_count, 1);
            rt++) {
          panvk_pipeline_builder_emit_blend(pipeline, rt,
@@ -1160,4 +1160,16 @@ panvk_per_arch(CreateComputePipelines)(
    }
 
    return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_per_arch(DestroyPipeline)(VkDevice _device, VkPipeline _pipeline,
+                                const VkAllocationCallbacks *pAllocator)
+{
+   VK_FROM_HANDLE(panvk_device, device, _device);
+   VK_FROM_HANDLE(panvk_pipeline, pipeline, _pipeline);
+
+   panvk_priv_bo_destroy(pipeline->binary_bo, NULL);
+   panvk_priv_bo_destroy(pipeline->state_bo, NULL);
+   vk_object_free(&device->vk, pAllocator, pipeline);
 }

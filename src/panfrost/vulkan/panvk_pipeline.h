@@ -6,6 +6,10 @@
 #ifndef PANVK_PIPELINE_H
 #define PANVK_PIPELINE_H
 
+#ifndef PAN_ARCH
+#error "PAN_ARCH must be defined"
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -17,9 +21,6 @@
 #include "pan_desc.h"
 
 #include "panvk_varyings.h"
-
-#define RSD_WORDS        16
-#define BLEND_DESC_WORDS 4
 
 #define MAX_RTS 8
 
@@ -81,7 +82,7 @@ struct panvk_pipeline {
    struct {
       uint64_t address;
       struct pan_shader_info info;
-      uint32_t rsd_template[RSD_WORDS];
+      struct mali_renderer_state_packed rsd_template;
       bool required;
       bool dynamic_rsd;
       uint8_t rt_mask;
@@ -138,7 +139,7 @@ struct panvk_pipeline {
 
    struct {
       struct pan_blend_state state;
-      uint32_t bd_template[8][BLEND_DESC_WORDS];
+      struct mali_blend_packed bd_template[8];
       struct {
          uint8_t index;
          uint16_t bifrost_factor;

@@ -43,7 +43,6 @@ libpanvk_files = files(
   'panvk_instance.c',
   'panvk_mempool.c',
   'panvk_physical_device.c',
-  'panvk_pipeline.c',
   'panvk_priv_bo.c',
   'panvk_query.c',
   'panvk_wsi.c',

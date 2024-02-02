@@ -1240,7 +1240,7 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
                                      (info->workgroup_size % info->wave_size) == 0;
       break;
    case MESA_SHADER_VERTEX:
-      if (info->vs.as_ls) {
+      if (info->vs.as_ls || info->vs.as_es) {
          /* Set the maximum possible value by default, this will be optimized during linking if
           * possible.
           */
@@ -1257,6 +1257,16 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
       } else {
          /* Set the maximum possible value when the workgroup size can't be determined. */
          info->workgroup_size = 256;
+      }
+      break;
+   case MESA_SHADER_TESS_EVAL:
+      if (info->tes.as_es) {
+         /* Set the maximum possible value by default, this will be optimized during linking if
+          * possible.
+          */
+         info->workgroup_size = 256;
+      } else {
+         info->workgroup_size = info->wave_size;
       }
       break;
    case MESA_SHADER_GEOMETRY:

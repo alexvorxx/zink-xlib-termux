@@ -530,6 +530,9 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
       } else if (stage == MESA_SHADER_VERTEX && info->vs.as_es) {
          previous_stage = MESA_SHADER_VERTEX;
          stage = MESA_SHADER_GEOMETRY;
+      } else if (stage == MESA_SHADER_TESS_EVAL && info->tes.as_es) {
+         previous_stage = MESA_SHADER_TESS_EVAL;
+         stage = MESA_SHADER_GEOMETRY;
       }
    }
 

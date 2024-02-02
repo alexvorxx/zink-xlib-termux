@@ -1600,6 +1600,9 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
       } else if (stage == MESA_SHADER_VERTEX && info->vs.as_es) {
          es_stage = MESA_SHADER_VERTEX;
          stage = MESA_SHADER_GEOMETRY;
+      } else if (stage == MESA_SHADER_TESS_EVAL && info->tes.as_es) {
+         es_stage = MESA_SHADER_TESS_EVAL;
+         stage = MESA_SHADER_GEOMETRY;
       }
    }
 

@@ -211,7 +211,7 @@ struct agx_compiled_shader {
 
    /* Auxiliary programs, or NULL if not used */
    struct agx_compiled_shader *gs_count, *pre_gs;
-   struct agx_uncompiled_shader *gs_copy;
+   struct agx_compiled_shader *gs_copy;
 
    /* Output primitive mode for geometry shaders */
    enum mesa_prim gs_output_mode;
@@ -505,6 +505,12 @@ struct asahi_gs_shader_key {
    /* Input assembly key */
    enum mesa_prim mode;
    bool flatshade_first;
+
+   /* Rasterizer shader key */
+   bool clip_halfz;
+   bool fixed_point_size;
+   uint64_t outputs_flat_shaded;
+   uint64_t outputs_linear_shaded;
 
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;

@@ -958,7 +958,9 @@ get_properties_1_1(const struct anv_physical_device *pdevice,
                                     VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT |
                                     VK_SUBGROUP_FEATURE_QUAD_BIT |
                                     VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
-                                    VK_SUBGROUP_FEATURE_CLUSTERED_BIT;
+                                    VK_SUBGROUP_FEATURE_CLUSTERED_BIT |
+                                    VK_SUBGROUP_FEATURE_ROTATE_BIT_KHR |
+                                    VK_SUBGROUP_FEATURE_ROTATE_CLUSTERED_BIT_KHR;
    p->subgroupQuadOperationsInAllStages = true;
 
    p->pointClippingBehavior      = VK_POINT_CLIPPING_BEHAVIOR_USER_CLIP_PLANES_ONLY;

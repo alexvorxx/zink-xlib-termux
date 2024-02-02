@@ -115,8 +115,15 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
        view->vk.view_format == VK_FORMAT_S8_UINT)
       view->pview.format = PIPE_FORMAT_X32_S8X24_UINT;
 
-   if (view->vk.usage &
-       (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) {
+   VkImageUsageFlags tex_usage_mask =
+      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+
+#if PAN_ARCH >= 9
+   /* Valhall passes a texture descriptor to LEA_TEX. */
+   tex_usage_mask |= VK_IMAGE_USAGE_STORAGE_BIT;
+#endif
+
+   if (view->vk.usage & tex_usage_mask) {
       /* Use a temporary pan_image_view so we can tweak it for texture
        * descriptor emission without changing the original definition.
        */
@@ -150,6 +157,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
       GENX(panfrost_new_texture)(&pview, view->descs.tex.opaque, &ptr);
    }
 
+#if PAN_ARCH <= 7
    if (view->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT) {
       bool is_3d = image->pimage.layout.dim == MALI_TEXTURE_DIMENSION_3D;
       unsigned offset = image->pimage.data.offset;
@@ -184,6 +192,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
          }
       }
    }
+#endif
 
    *pView = panvk_image_view_to_handle(view);
    return VK_SUCCESS;

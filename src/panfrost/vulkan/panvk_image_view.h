@@ -29,7 +29,11 @@ struct panvk_image_view {
 
    struct {
       struct mali_texture_packed tex;
+
+#if PAN_ARCH <= 7
+      /* Valhall passes a texture descriptor to the LEA_TEX instruction. */
       struct mali_attribute_buffer_packed img_attrib_buf[2];
+#endif
    } descs;
 };
 

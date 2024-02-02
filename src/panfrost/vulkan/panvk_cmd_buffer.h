@@ -111,7 +111,7 @@ struct panvk_attrib_buf {
 
 struct panvk_cmd_graphics_state {
    struct panvk_descriptor_state desc_state;
-   const struct panvk_pipeline *pipeline;
+   const struct panvk_graphics_pipeline *pipeline;
 
    uint32_t dirty;
 
@@ -168,7 +168,7 @@ struct panvk_cmd_graphics_state {
 
 struct panvk_cmd_compute_state {
    struct panvk_descriptor_state desc_state;
-   const struct panvk_pipeline *pipeline;
+   const struct panvk_compute_pipeline *pipeline;
    struct panvk_compute_sysvals sysvals;
 };
 
@@ -198,10 +198,10 @@ panvk_cmd_get_pipeline(const struct panvk_cmd_buffer *cmdbuf,
 {
    switch (bindpoint) {
    case VK_PIPELINE_BIND_POINT_GRAPHICS:
-      return cmdbuf->state.gfx.pipeline;
+      return &cmdbuf->state.gfx.pipeline->base;
 
    case VK_PIPELINE_BIND_POINT_COMPUTE:
-      return cmdbuf->state.compute.pipeline;
+      return &cmdbuf->state.compute.pipeline->base;
 
    default:
       assert(!"Unsupported bind point");

@@ -46,19 +46,6 @@ vn_image_cache_debug_dump(struct vn_image_reqs_cache *cache)
    vn_log(NULL, "  skip %u\n", cache->debug.cache_skip_count);
 }
 
-static uint32_t
-vn_image_cache_key_hash_function(const void *key)
-{
-   return _mesa_hash_data(key, SHA1_DIGEST_LENGTH);
-}
-
-static bool
-vn_image_cache_key_equal_function(const void *void_a, const void *void_b)
-{
-   const struct vn_image_reqs_cache_entry *a = void_a, *b = void_b;
-   return memcmp(a, b, SHA1_DIGEST_LENGTH) == 0;
-}
-
 static bool
 vn_image_get_image_reqs_key(struct vn_device *dev,
                             const VkImageCreateInfo *create_info,
@@ -160,8 +147,8 @@ vn_image_reqs_cache_init(struct vn_device *dev)
    if (VN_PERF(NO_ASYNC_IMAGE_CREATE))
       return;
 
-   cache->ht = _mesa_hash_table_create(NULL, vn_image_cache_key_hash_function,
-                                       vn_image_cache_key_equal_function);
+   cache->ht = _mesa_hash_table_create(NULL, vn_cache_key_hash_function,
+                                       vn_cache_key_equal_function);
    if (!cache->ht)
       return;
 

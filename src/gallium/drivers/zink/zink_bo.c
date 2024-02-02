@@ -621,6 +621,8 @@ zink_bo_create(struct zink_screen *screen, uint64_t size, unsigned alignment, en
             low_bound *= 2; //nvidia has fat textures or something
          unsigned vk_heap_idx = screen->info.mem_props.memoryTypes[mem_type_idx].heapIndex;
          reclaim_all = screen->info.mem_props.memoryHeaps[vk_heap_idx].size <= low_bound;
+         if (reclaim_all)
+            reclaim_all = clean_up_buffer_managers(screen);
       }
       entry = pb_slab_alloc_reclaimed(slabs, alloc_size, mem_type_idx, reclaim_all);
       if (!entry) {

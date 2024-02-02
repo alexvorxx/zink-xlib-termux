@@ -48,6 +48,9 @@ static const struct vk_instance_extension_table
 #ifdef VK_USE_PLATFORM_XLIB_KHR
       .KHR_xlib_surface = true,
 #endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+      .EXT_headless_surface = true,
+#endif
    };
 
 static const driOptionDescription vn_dri_options[] = {

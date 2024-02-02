@@ -801,6 +801,10 @@ BEGIN_TEST(to_hw_instr.swap_linear_vgpr)
    //>> p_unit_test 0
    bld.pseudo(aco_opcode::p_unit_test, Operand::zero());
 
+   //! lv1: %0:v[0],  lv1: %0:v[1] = v_swap_b32 %0:v[1], %0:v[0]
+   //! s2: %0:exec,  s1: %0:scc = s_not_b64 %0:exec
+   //! lv1: %0:v[0],  lv1: %0:v[1] = v_swap_b32 %0:v[1], %0:v[0]
+   //! s2: %0:exec,  s1: %0:scc = s_not_b64 %0:exec
    Instruction* instr = bld.pseudo(aco_opcode::p_parallelcopy, Definition(reg_v0, v1_linear),
                                    Definition(reg_v1, v1_linear), Operand(reg_v1, v1_linear),
                                    Operand(reg_v0, v1_linear));

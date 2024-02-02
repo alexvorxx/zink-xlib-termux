@@ -1058,7 +1058,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
          obj->bo = zink_bo(zink_bo_create(screen, reqs->size, alignment, heap, mai.pNext ? ZINK_ALLOC_NO_SUBALLOC : 0, mai.memoryTypeIndex, mai.pNext));
       }
 
-      if (obj->bo || heap != ZINK_HEAP_DEVICE_LOCAL_VISIBLE) {
+      if (obj->bo || heap != ZINK_HEAP_DEVICE_LOCAL_VISIBLE)
          break;
 
       /* demote BAR allocations to a different heap on failure to avoid oom */
@@ -1066,7 +1066,6 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
           heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
       else
           heap = ZINK_HEAP_DEVICE_LOCAL;
-      }
    };
 
    return obj->bo ? roc_success : roc_fail_and_cleanup_object;

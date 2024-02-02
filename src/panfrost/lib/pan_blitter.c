@@ -402,6 +402,18 @@ lower_sampler_parameters(nir_builder *b, nir_intrinsic_instr *intr,
    return true;
 }
 
+static uint32_t
+sampler_hw_index(uint32_t index)
+{
+   return PAN_ARCH >= 9 ? pan_res_handle(PAN_TABLE_SAMPLER, index) : index;
+}
+
+static uint32_t
+tex_hw_index(uint32_t index)
+{
+   return PAN_ARCH >= 9 ? pan_res_handle(PAN_TABLE_TEXTURE, index) : index;
+}
+
 static const struct pan_blit_shader_data *
 pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
                             const struct pan_blit_shader_key *key)
@@ -527,7 +539,8 @@ pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
 
             tex->op = nir_texop_txf_ms;
             tex->dest_type = key->surfaces[i].type;
-            tex->texture_index = active_count;
+            tex->texture_index = tex_hw_index(active_count);
+            tex->sampler_index = sampler_hw_index(0);
             tex->is_array = key->surfaces[i].array;
             tex->sampler_dim = sampler_dim;
 
@@ -552,7 +565,8 @@ pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
          nir_tex_instr *tex = nir_tex_instr_create(b.shader, ms ? 3 : 1);
 
          tex->dest_type = key->surfaces[i].type;
-         tex->texture_index = active_count;
+         tex->texture_index = tex_hw_index(active_count);
+         tex->sampler_index = sampler_hw_index(0);
          tex->is_array = key->surfaces[i].array;
          tex->sampler_dim = sampler_dim;
 

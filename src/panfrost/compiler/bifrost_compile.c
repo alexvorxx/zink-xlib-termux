@@ -362,6 +362,18 @@ bi_reg_fmt_for_nir(nir_alu_type T)
    }
 }
 
+static bool
+va_is_valid_const_narrow_index(bi_index idx)
+{
+   if (idx.type != BI_INDEX_CONSTANT)
+      return false;
+
+   unsigned index = pan_res_handle_get_index(idx.value);
+   unsigned table_index = pan_res_handle_get_table(idx.value);
+
+   return index < 1024 && va_is_valid_const_table(table_index);
+}
+
 /* Checks if the _IMM variant of an intrinsic can be used, returning in imm the
  * immediate to be used (which applies even if _IMM can't be used) */
 
@@ -3456,7 +3468,6 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
    bi_index sregs[VALHALL_TEX_SREG_COUNT] = {};
    bi_index sampler = bi_imm_u32(instr->sampler_index);
    bi_index texture = bi_imm_u32(instr->texture_index);
-   uint32_t tables = (PAN_TABLE_SAMPLER << 11) | (PAN_TABLE_TEXTURE << 27);
 
    for (unsigned i = 0; i < instr->num_srcs; ++i) {
       bi_index index = bi_src_index(&instr->src[i].src);
@@ -3560,9 +3571,31 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
    if (sr_count)
       bi_make_vec_to(b, idx, sregs, NULL, sr_count, 32);
 
-   bi_index image_src = bi_imm_u32(tables);
-   image_src = bi_lshift_or_i32(b, sampler, image_src, bi_imm_u8(0));
-   image_src = bi_lshift_or_i32(b, texture, image_src, bi_imm_u8(16));
+   bool narrow_indices = va_is_valid_const_narrow_index(texture) &&
+                         va_is_valid_const_narrow_index(sampler);
+
+   bi_index src0;
+   bi_index src1;
+
+   if (narrow_indices) {
+      unsigned tex_set =
+         va_res_fold_table_idx(pan_res_handle_get_table(texture.value));
+      unsigned sampler_set =
+         va_res_fold_table_idx(pan_res_handle_get_table(sampler.value));
+      unsigned texture_index = pan_res_handle_get_index(texture.value);
+      unsigned sampler_index = pan_res_handle_get_index(sampler.value);
+
+      unsigned packed_handle = (tex_set << 27) | (texture_index << 16) |
+                               (sampler_set << 11) | sampler_index;
+
+      src0 = bi_imm_u32(packed_handle);
+
+      /* TODO: narrow offsetms */
+      src1 = bi_zero();
+   } else {
+      src0 = sampler;
+      src1 = texture;
+   }
 
    /* Only write the components that we actually read */
    unsigned mask = nir_def_components_read(&instr->def);
@@ -3577,19 +3610,19 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
    case nir_texop_tex:
    case nir_texop_txl:
    case nir_texop_txb:
-      bi_tex_single_to(b, dest, idx, image_src, bi_zero(), instr->is_array, dim,
-                       regfmt, instr->is_shadow, explicit_offset, lod_mode,
-                       mask, sr_count);
+      bi_tex_single_to(b, dest, idx, src0, src1, instr->is_array, dim, regfmt,
+                       instr->is_shadow, explicit_offset, lod_mode,
+                       !narrow_indices, mask, sr_count);
       break;
    case nir_texop_txf:
    case nir_texop_txf_ms:
-      bi_tex_fetch_to(b, dest, idx, image_src, bi_zero(), instr->is_array, dim,
-                      regfmt, explicit_offset, mask, sr_count);
+      bi_tex_fetch_to(b, dest, idx, src0, src1, instr->is_array, dim, regfmt,
+                      explicit_offset, !narrow_indices, mask, sr_count);
       break;
    case nir_texop_tg4:
-      bi_tex_gather_to(b, dest, idx, image_src, bi_zero(), instr->is_array, dim,
+      bi_tex_gather_to(b, dest, idx, src0, src1, instr->is_array, dim,
                        instr->component, false, regfmt, instr->is_shadow,
-                       explicit_offset, mask, sr_count);
+                       explicit_offset, !narrow_indices, mask, sr_count);
       break;
    default:
       unreachable("Unhandled Valhall texture op");
@@ -3704,8 +3737,11 @@ bi_emit_tex(bi_builder *b, nir_tex_instr *instr)
     * it for txf operations, since there may be no other valid samplers. This is
     * a workaround: txf does not require a sampler in NIR (so sampler_index is
     * undefined) but we need one in the hardware. This is ABI with the driver.
+    *
+    * On Valhall, as the descriptor table is encoded in the index, this should
+    * be handled by the driver.
     */
-   if (!nir_tex_instr_need_sampler(instr))
+   if (!nir_tex_instr_need_sampler(instr) && b->shader->arch < 9)
       instr->sampler_index = 0;
 
    if (b->shader->arch >= 9)

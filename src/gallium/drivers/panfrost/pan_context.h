@@ -436,6 +436,9 @@ bool panfrost_nir_remove_fragcolor_stores(nir_shader *s, unsigned nr_cbufs);
 bool panfrost_nir_lower_sysvals(nir_shader *s,
                                 struct panfrost_sysvals *sysvals);
 
+bool panfrost_nir_lower_res_indices(nir_shader *shader,
+                                    struct panfrost_compile_inputs *inputs);
+
 /** (Vertex buffer index, divisor) tuple that will become an Attribute Buffer
  * Descriptor at draw-time on Midgard
  */

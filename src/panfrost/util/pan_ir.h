@@ -426,4 +426,37 @@ pan_subgroup_size(unsigned arch)
       return 1;
 }
 
+/*
+ * Helper extracting the table from a given handle of Valhall descriptor model.
+ */
+static inline unsigned
+pan_res_handle_get_table(unsigned handle)
+{
+   unsigned table = handle >> 24;
+
+   assert(table < 64);
+   return table;
+}
+
+/*
+ * Helper returning the index from a given handle of Valhall descriptor model.
+ */
+static inline unsigned
+pan_res_handle_get_index(unsigned handle)
+{
+   return handle & BITFIELD_MASK(24);
+}
+
+/*
+ * Helper creating an handle for Valhall descriptor model.
+ */
+static inline unsigned
+pan_res_handle(unsigned table, unsigned index)
+{
+   assert(table < 64);
+   assert(index < (1u << 24));
+
+   return (table << 24) | index;
+}
+
 #endif

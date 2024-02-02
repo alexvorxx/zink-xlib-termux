@@ -122,11 +122,11 @@ label(const char *str)
 %token <num> T_HEX
 %token <num> T_CONTROL_REG
 %token <num> T_SQE_REG
-%token <str> T_LABEL_DECL
 %token <str> T_LABEL_REF
 %token <num> T_LITERAL
 %token <num> T_BIT
 %token <num> T_REGISTER
+%token <str> T_IDENTIFIER
 
 %token <tok> T_OP_NOP
 %token <tok> T_OP_ADD
@@ -194,7 +194,7 @@ instr_or_label:    instr_r
 |                  T_REP instr_r       { instr->rep = true; }
 |                  branch_instr
 |                  other_instr
-|                  T_LABEL_DECL        { decl_label($1); }
+|                  T_IDENTIFIER ':'    { decl_label($1); }
 |                  T_ALIGN immediate   { align_instr($2); }
 |                  T_JUMPTBL           { decl_jumptbl(); }
 

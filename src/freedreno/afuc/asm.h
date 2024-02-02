@@ -94,15 +94,6 @@ parse_bit(const char *str)
 unsigned parse_control_reg(const char *name);
 unsigned parse_sqe_reg(const char *name);
 
-/* string trailing ':' off label: */
-static inline const char *
-parse_label_decl(const char *str)
-{
-   char *s = strdup(str);
-   s[strlen(s) - 1] = '\0';
-   return s;
-}
-
 void yyset_in(FILE *_in_str);
 
 #endif /* _ASM_H_ */

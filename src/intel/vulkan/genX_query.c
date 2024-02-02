@@ -785,7 +785,7 @@ void genX(CmdResetQueryPool)(
    /* Temporarily disable on MTL until we understand why some tests hang.
     */
    if (queryCount >= pdevice->instance->query_clear_with_blorp_threshold &&
-       !intel_device_info_is_mtl(cmd_buffer->device->info)) {
+       !intel_device_info_is_mtl_or_arl(cmd_buffer->device->info)) {
       trace_intel_begin_query_clear_blorp(&cmd_buffer->trace);
 
       anv_cmd_buffer_fill_area(cmd_buffer,
@@ -1843,7 +1843,7 @@ void genX(CmdCopyQueryPoolResults)(
    struct anv_physical_device *pdevice = device->physical;
 
    if (queryCount > pdevice->instance->query_copy_with_shader_threshold &&
-       !intel_device_info_is_mtl(device->info)) {
+       !intel_device_info_is_mtl_or_arl(device->info)) {
       copy_query_results_with_shader(cmd_buffer, pool,
                                      anv_address_add(buffer->address,
                                                      destOffset),

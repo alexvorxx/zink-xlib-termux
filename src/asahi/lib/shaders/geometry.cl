@@ -12,6 +12,16 @@ align(uint x, uint y)
    return (x + y - 1) & ~(y - 1);
 }
 
+/* Compatible with util/u_math.h */
+static inline uint
+util_logbase2_ceil(uint n)
+{
+   if (n <= 1)
+      return 0;
+   else
+      return 32 - clz(n - 1);
+}
+
 /* Swap the two non-provoking vertices third vert in odd triangles. This
  * generates a vertex ID list with a consistent winding order.
  *
@@ -279,40 +289,45 @@ libagx_setup_xfb_buffer(global struct agx_geometry_params *p, uint i)
  * b + 2, ..., b + n - 1, -1), where b (base) is the first vertex in the prim, n
  * (count) is the number of verts in the prims, and -1 is the prim restart index
  * used to signal the end of the prim.
+ *
+ * For points, we write index buffers without restart, just as a sideband to
+ * pass data into the vertex shader.
  */
 void
 libagx_end_primitive(global int *index_buffer, uint total_verts,
                      uint verts_in_prim, uint total_prims,
-                     uint invocation_vertex_base, uint invocation_prim_base)
+                     uint invocation_vertex_base, uint invocation_prim_base,
+                     uint geometry_base, bool restart)
 {
    /* Previous verts/prims are from previous invocations plus earlier
     * prims in this invocation. For the intra-invocation counts, we
     * subtract the count for this prim from the inclusive sum NIR gives us.
     */
-   uint previous_verts = invocation_vertex_base + (total_verts - verts_in_prim);
-   uint previous_prims = invocation_prim_base + (total_prims - 1);
+   uint previous_verts_in_invoc = (total_verts - verts_in_prim);
+   uint previous_verts = invocation_vertex_base + previous_verts_in_invoc;
+   uint previous_prims = restart ? invocation_prim_base + (total_prims - 1) : 0;
+
+   /* The indices are encoded as: (unrolled ID * output vertices) + vertex. */
+   uint index_base = geometry_base + previous_verts_in_invoc;
 
    /* Index buffer contains 1 index for each vertex and 1 for each prim */
    global int *out = &index_buffer[previous_verts + previous_prims];
 
    /* Write out indices for the strip */
    for (uint i = 0; i < verts_in_prim; ++i) {
-      out[i] = previous_verts + i;
+      out[i] = index_base + i;
    }
 
-   out[verts_in_prim] = -1;
+   if (restart)
+      out[verts_in_prim] = -1;
 }
 
 void
 libagx_build_gs_draw(global struct agx_geometry_params *p, bool indexed,
-                     uint vertices, uint primitives, uint output_stride_B)
+                     uint vertices, uint primitives)
 {
    global uint *descriptor = p->indirect_desc;
    global struct agx_geometry_state *state = p->state;
-
-   /* Allocate the output buffer (per vertex) */
-   p->output_buffer = (global uint *)(state->heap + state->heap_bottom);
-   state->heap_bottom += align(vertices * output_stride_B, 4);
 
    /* Setup the indirect draw descriptor */
    if (indexed) {
@@ -366,6 +381,8 @@ libagx_gs_setup_indirect(global struct agx_geometry_params *p,
    p->gs_grid[0] = prim_per_instance;
    p->gs_grid[1] = instance_count;
    p->gs_grid[2] = 1;
+
+   p->primitives_log2 = util_logbase2_ceil(prim_per_instance);
 
    /* If indexing is enabled, the third word is the offset into the index buffer
     * in elements. Apply that offset now that we have it. For a hardware

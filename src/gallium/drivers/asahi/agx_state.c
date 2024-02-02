@@ -4178,6 +4178,8 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
       params.gs_grid[0] =
          u_decomposed_prims_for_vertices(info->mode, draw->count);
 
+      params.primitives_log2 = util_logbase2_ceil(params.gs_grid[0]);
+
       params.input_primitives = params.gs_grid[0] * info->instance_count;
       params.input_vertices = draw->count;
 
@@ -5066,7 +5068,7 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       /* Setup to rasterize the GS results */
       info_gs = (struct pipe_draw_info){
          .mode = ctx->gs->gs_output_mode,
-         .index_size = ctx->gs->gs_output_mode != MESA_PRIM_POINTS ? 4 : 0,
+         .index_size = 4,
          .primitive_restart = ctx->gs->gs_output_mode != MESA_PRIM_POINTS,
          .restart_index = ~0,
          .index.resource = ctx->heap,

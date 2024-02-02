@@ -113,9 +113,6 @@ struct agx_geometry_params {
    /* Pointers to transform feedback buffer offsets in bytes */
    GLOBAL(uint) xfb_offs_ptrs[MAX_SO_BUFFERS];
 
-   /* Output (vertex) buffer, allocated by pre-GS. */
-   GLOBAL(uint) output_buffer;
-
    /* Output index buffer, allocated by pre-GS. */
    GLOBAL(uint) output_index_buffer;
 
@@ -149,10 +146,16 @@ struct agx_geometry_params {
    /* Number of input vertices, part of the stride for the vertex buffer */
    uint32_t input_vertices;
 
-   /* Number of input primitives, calculated by the CPU for a direct draw or the
-    * GS indirect setup kernel for an indirect draw.
+   /* Number of input primitives across all instances, calculated by the CPU for
+    * a direct draw or the GS indirect setup kernel for an indirect draw.
     */
    uint32_t input_primitives;
+
+   /* Number of input primitives per instance, rounded up to a power-of-two and
+    * with the base-2 log taken. This is used to partition the output vertex IDs
+    * efficiently.
+    */
+   uint32_t primitives_log2;
 
    /* Number of bytes output by the GS count shader per input primitive (may be
     * 0), written by CPU and consumed by indirect draw setup shader for
@@ -160,7 +163,7 @@ struct agx_geometry_params {
     */
    uint32_t count_buffer_stride;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 83 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 82 * 4);
 
 struct agx_tess_params {
    /* Persistent (cross-draw) geometry state */

@@ -561,7 +561,6 @@ vn_CreateImage(VkDevice device,
                const VkAllocationCallbacks *pAllocator,
                VkImage *pImage)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : &dev->base.base.alloc;
@@ -648,7 +647,6 @@ vn_DestroyImage(VkDevice device,
                 VkImage image,
                 const VkAllocationCallbacks *pAllocator)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_image *img = vn_image_from_handle(image);
    const VkAllocationCallbacks *alloc =

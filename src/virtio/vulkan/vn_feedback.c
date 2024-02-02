@@ -198,8 +198,6 @@ vn_feedback_pool_alloc_locked(struct vn_feedback_pool *pool,
                               uint32_t size,
                               uint32_t *out_offset)
 {
-   VN_TRACE_FUNC();
-
    /* Default values of pool->used and pool->alignment are used to trigger the
     * initial pool grow, and will be properly initialized after that.
     */
@@ -222,9 +220,6 @@ struct vn_feedback_slot *
 vn_feedback_pool_alloc(struct vn_feedback_pool *pool,
                        enum vn_feedback_type type)
 {
-   /* TODO Make slot size variable for VkQueryPool feedback. Currently it's
-    * MAX2(sizeof(VkResult), sizeof(uint64_t)).
-    */
    static const uint32_t slot_size = 8;
    struct vn_feedback_buffer *feedback_buf;
    uint32_t offset;

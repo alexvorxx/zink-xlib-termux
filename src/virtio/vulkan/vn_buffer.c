@@ -358,7 +358,6 @@ vn_CreateBuffer(VkDevice device,
                 const VkAllocationCallbacks *pAllocator,
                 VkBuffer *pBuffer)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : &dev->base.base.alloc;
@@ -403,7 +402,6 @@ vn_DestroyBuffer(VkDevice device,
                  VkBuffer buffer,
                  const VkAllocationCallbacks *pAllocator)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_buffer *buf = vn_buffer_from_handle(buffer);
    const VkAllocationCallbacks *alloc =

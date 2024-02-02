@@ -390,7 +390,6 @@ vn_CreatePipelineCache(VkDevice device,
                        const VkAllocationCallbacks *pAllocator,
                        VkPipelineCache *pPipelineCache)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : &dev->base.base.alloc;
@@ -429,7 +428,6 @@ vn_DestroyPipelineCache(VkDevice device,
                         VkPipelineCache pipelineCache,
                         const VkAllocationCallbacks *pAllocator)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_pipeline_cache *cache =
       vn_pipeline_cache_from_handle(pipelineCache);
@@ -477,7 +475,6 @@ vn_GetPipelineCacheData(VkDevice device,
                         size_t *pDataSize,
                         void *pData)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_physical_device *physical_dev = dev->physical_device;
    struct vn_ring *target_ring = vn_get_target_ring(dev);
@@ -525,7 +522,6 @@ vn_MergePipelineCaches(VkDevice device,
                        uint32_t srcCacheCount,
                        const VkPipelineCache *pSrcCaches)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
 
    vn_async_vkMergePipelineCaches(dev->primary_ring, device, dstCache,
@@ -1454,7 +1450,7 @@ vn_fix_graphics_pipeline_create_infos(
    }
 
    /* tell whether fixes are applied in tracing */
-   VN_TRACE_SCOPE("apply_fixes");
+   VN_TRACE_SCOPE("sanitize pipeline");
 
    struct vn_graphics_pipeline_fix_tmp *fix_tmp =
       vn_graphics_pipeline_fix_tmp_alloc(alloc, info_count, pnext_mask);
@@ -1511,7 +1507,6 @@ vn_CreateGraphicsPipelines(VkDevice device,
                            const VkAllocationCallbacks *pAllocator,
                            VkPipeline *pPipelines)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : &dev->base.base.alloc;
@@ -1568,6 +1563,10 @@ vn_CreateGraphicsPipelines(VkDevice device,
    }
 
    if (want_sync || target_ring != dev->primary_ring) {
+      if (target_ring == dev->primary_ring) {
+         VN_TRACE_SCOPE("want sync");
+      }
+
       result = vn_call_vkCreateGraphicsPipelines(
          target_ring, device, pipelineCache, createInfoCount, pCreateInfos,
          NULL, pPipelines);
@@ -1593,7 +1592,6 @@ vn_CreateComputePipelines(VkDevice device,
                           const VkAllocationCallbacks *pAllocator,
                           VkPipeline *pPipelines)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : &dev->base.base.alloc;
@@ -1648,7 +1646,6 @@ vn_DestroyPipeline(VkDevice device,
                    VkPipeline _pipeline,
                    const VkAllocationCallbacks *pAllocator)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_pipeline *pipeline = vn_pipeline_from_handle(_pipeline);
    const VkAllocationCallbacks *alloc =

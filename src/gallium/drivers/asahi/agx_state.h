@@ -502,6 +502,10 @@ struct asahi_tcs_shader_key {
 };
 
 struct asahi_gs_shader_key {
+   /* Rasterizer shader key */
+   uint64_t outputs_flat_shaded;
+   uint64_t outputs_linear_shaded;
+
    /* Input assembly key */
    enum mesa_prim mode;
    bool flatshade_first;
@@ -509,8 +513,6 @@ struct asahi_gs_shader_key {
    /* Rasterizer shader key */
    bool clip_halfz;
    bool fixed_point_size;
-   uint64_t outputs_flat_shaded;
-   uint64_t outputs_linear_shaded;
 
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;

@@ -122,7 +122,7 @@ static void
 panvk_cmd_prepare_fragment_job(struct panvk_cmd_buffer *cmdbuf)
 {
    const struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
    struct panfrost_ptr job_ptr =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, FRAGMENT_JOB);
 
@@ -134,7 +134,7 @@ panvk_cmd_prepare_fragment_job(struct panvk_cmd_buffer *cmdbuf)
 void
 panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
 {
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
 
    if (!batch)
       return;
@@ -163,7 +163,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
                         false, false, 0, 0, &ptr, false);
          list_addtail(&batch->node, &cmdbuf->batches);
       }
-      cmdbuf->state.batch = NULL;
+      cmdbuf->cur_batch = NULL;
       return;
    }
 
@@ -219,13 +219,13 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
       panvk_cmd_prepare_fragment_job(cmdbuf);
    }
 
-   cmdbuf->state.batch = NULL;
+   cmdbuf->cur_batch = NULL;
 }
 
 void
 panvk_per_arch(cmd_alloc_fb_desc)(struct panvk_cmd_buffer *cmdbuf)
 {
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
 
    if (batch->fb.desc.gpu)
       return;
@@ -248,7 +248,7 @@ panvk_per_arch(cmd_alloc_fb_desc)(struct panvk_cmd_buffer *cmdbuf)
 void
 panvk_per_arch(cmd_alloc_tls_desc)(struct panvk_cmd_buffer *cmdbuf, bool gfx)
 {
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
 
    assert(batch);
    if (!batch->tls.gpu) {
@@ -622,7 +622,7 @@ panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
 {
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
 
    if (batch->tiler.ctx_desc.cpu)
       return;
@@ -666,7 +666,7 @@ static void
 panvk_draw_prepare_tiler_context(struct panvk_cmd_buffer *cmdbuf,
                                  struct panvk_draw_info *draw)
 {
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
 
    panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf);
    draw->tiler_ctx = &batch->tiler.ctx;
@@ -1080,7 +1080,7 @@ panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
 {
    const struct panvk_pipeline *pipeline =
       panvk_cmd_get_pipeline(cmdbuf, GRAPHICS);
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
    struct panfrost_ptr ptr =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, COMPUTE_JOB);
 
@@ -1209,7 +1209,7 @@ panvk_draw_prepare_tiler_job(struct panvk_cmd_buffer *cmdbuf,
 {
    const struct panvk_pipeline *pipeline =
       panvk_cmd_get_pipeline(cmdbuf, GRAPHICS);
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
    struct panfrost_ptr ptr =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, TILER_JOB);
 
@@ -1267,20 +1267,20 @@ panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf)
 struct panvk_batch *
 panvk_per_arch(cmd_open_batch)(struct panvk_cmd_buffer *cmdbuf)
 {
-   assert(!cmdbuf->state.batch);
-   cmdbuf->state.batch =
-      vk_zalloc(&cmdbuf->vk.pool->alloc, sizeof(*cmdbuf->state.batch), 8,
+   assert(!cmdbuf->cur_batch);
+   cmdbuf->cur_batch =
+      vk_zalloc(&cmdbuf->vk.pool->alloc, sizeof(*cmdbuf->cur_batch), 8,
                 VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   util_dynarray_init(&cmdbuf->state.batch->jobs, NULL);
-   util_dynarray_init(&cmdbuf->state.batch->event_ops, NULL);
-   assert(cmdbuf->state.batch);
-   return cmdbuf->state.batch;
+   util_dynarray_init(&cmdbuf->cur_batch->jobs, NULL);
+   util_dynarray_init(&cmdbuf->cur_batch->event_ops, NULL);
+   assert(cmdbuf->cur_batch);
+   return cmdbuf->cur_batch;
 }
 
 static void
 panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
 {
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
    struct panvk_cmd_bind_point_state *bind_point_state =
       panvk_cmd_get_bind_point_state(cmdbuf, GRAPHICS);
    const struct panvk_pipeline *pipeline =
@@ -1482,7 +1482,7 @@ panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
     * FIXME: We can probably do better with a CacheFlush job that has the
     * barrier flag set to true.
     */
-   if (cmdbuf->state.batch) {
+   if (cmdbuf->cur_batch) {
       panvk_per_arch(cmd_close_batch)(cmdbuf);
       panvk_cmd_preload_fb_after_batch_split(cmdbuf);
       panvk_per_arch(cmd_open_batch)(cmdbuf);
@@ -1499,19 +1499,19 @@ panvk_add_set_event_operation(struct panvk_cmd_buffer *cmdbuf,
       .event = event,
    };
 
-   if (cmdbuf->state.batch == NULL) {
+   if (cmdbuf->cur_batch == NULL) {
       /* No open batch, let's create a new one so this operation happens in
        * the right order.
        */
       panvk_per_arch(cmd_open_batch)(cmdbuf);
-      util_dynarray_append(&cmdbuf->state.batch->event_ops,
+      util_dynarray_append(&cmdbuf->cur_batch->event_ops,
                            struct panvk_cmd_event_op, op);
       panvk_per_arch(cmd_close_batch)(cmdbuf);
    } else {
       /* Let's close the current batch so the operation executes before any
        * future commands.
        */
-      util_dynarray_append(&cmdbuf->state.batch->event_ops,
+      util_dynarray_append(&cmdbuf->cur_batch->event_ops,
                            struct panvk_cmd_event_op, op);
       panvk_per_arch(cmd_close_batch)(cmdbuf);
       panvk_cmd_preload_fb_after_batch_split(cmdbuf);
@@ -1528,22 +1528,21 @@ panvk_add_wait_event_operation(struct panvk_cmd_buffer *cmdbuf,
       .event = event,
    };
 
-   if (cmdbuf->state.batch == NULL) {
+   if (cmdbuf->cur_batch == NULL) {
       /* No open batch, let's create a new one and have it wait for this event. */
       panvk_per_arch(cmd_open_batch)(cmdbuf);
-      util_dynarray_append(&cmdbuf->state.batch->event_ops,
+      util_dynarray_append(&cmdbuf->cur_batch->event_ops,
                            struct panvk_cmd_event_op, op);
    } else {
       /* Let's close the current batch so any future commands wait on the
        * event signal operation.
        */
-      if (cmdbuf->state.batch->fragment_job ||
-          cmdbuf->state.batch->jc.first_job) {
+      if (cmdbuf->cur_batch->fragment_job || cmdbuf->cur_batch->jc.first_job) {
          panvk_per_arch(cmd_close_batch)(cmdbuf);
          panvk_cmd_preload_fb_after_batch_split(cmdbuf);
          panvk_per_arch(cmd_open_batch)(cmdbuf);
       }
-      util_dynarray_append(&cmdbuf->state.batch->event_ops,
+      util_dynarray_append(&cmdbuf->cur_batch->event_ops,
                            struct panvk_cmd_event_op, op);
    }
 }
@@ -1941,7 +1940,7 @@ panvk_per_arch(CmdEndRendering)(VkCommandBuffer commandBuffer)
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
-   cmdbuf->state.batch = NULL;
+   cmdbuf->cur_batch = NULL;
 }
 
 VKAPI_ATTR void VKAPI_CALL

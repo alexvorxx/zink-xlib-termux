@@ -166,8 +166,6 @@ struct panvk_cmd_state {
    mali_ptr vpd;
    VkViewport viewport;
    VkRect2D scissor;
-
-   struct panvk_batch *batch;
 };
 
 struct panvk_cmd_bind_point_state {
@@ -182,6 +180,7 @@ struct panvk_cmd_buffer {
    struct panvk_pool varying_pool;
    struct panvk_pool tls_pool;
    struct list_head batches;
+   struct panvk_batch *cur_batch;
 
    struct panvk_cmd_state state;
 

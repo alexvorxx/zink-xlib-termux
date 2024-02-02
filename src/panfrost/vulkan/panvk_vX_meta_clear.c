@@ -263,7 +263,7 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf, unsigned rt,
 {
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_meta *meta = &dev->meta;
-   struct panvk_batch *batch = cmdbuf->state.batch;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
    enum pipe_format pfmt = cmdbuf->state.fb.info.rts[rt].view->format;
    unsigned minx = MAX2(clear_rect->rect.offset.x, 0);
    unsigned miny = MAX2(clear_rect->rect.offset.y, 0);

@@ -49,10 +49,13 @@ fd_submit_del(struct fd_submit *submit)
    if (submit->primary)
       fd_ringbuffer_del(submit->primary);
 
-   fd_pipe_del(submit->pipe);
-   fd_device_del(submit->dev);
+   struct fd_pipe *pipe = submit->pipe;
+   struct fd_device *dev = submit->dev;
 
    submit->funcs->destroy(submit);
+
+   fd_pipe_del(pipe);
+   fd_device_del(dev);
 }
 
 struct fd_submit *

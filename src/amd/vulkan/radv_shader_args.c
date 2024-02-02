@@ -126,7 +126,12 @@ declare_global_input_sgprs(const struct radv_shader_info *info, const struct use
       args->ac.inline_push_const_mask = user_sgpr_info->inline_push_constant_mask;
    }
 
-   if (info->so.num_outputs) {
+   const bool needs_streamout_buffers =
+      info->so.num_outputs ||
+      (info->merged_shader_compiled_separately &&
+       ((info->stage == MESA_SHADER_VERTEX && info->vs.as_es) || info->stage == MESA_SHADER_GEOMETRY));
+
+   if (needs_streamout_buffers) {
       add_ud_arg(args, 1, AC_ARG_CONST_DESC_PTR, &args->streamout_buffers, AC_UD_STREAMOUT_BUFFERS);
    }
 }

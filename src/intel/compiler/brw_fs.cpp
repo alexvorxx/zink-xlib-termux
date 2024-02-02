@@ -8244,12 +8244,12 @@ brw_compile_cs(const struct brw_compiler *compiler,
    return g.get_assembly();
 }
 
-struct brw_cs_dispatch_info
+struct intel_cs_dispatch_info
 brw_cs_get_dispatch_info(const struct intel_device_info *devinfo,
                          const struct brw_cs_prog_data *prog_data,
                          const unsigned *override_local_size)
 {
-   struct brw_cs_dispatch_info info = {};
+   struct intel_cs_dispatch_info info = {};
 
    const unsigned *sizes =
       override_local_size ? override_local_size :

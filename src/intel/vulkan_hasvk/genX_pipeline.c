@@ -1882,7 +1882,7 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
 
    anv_pipeline_setup_l3_config(&pipeline->base, cs_prog_data->base.total_shared > 0);
 
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
    const uint32_t vfe_curbe_allocation =
       ALIGN(cs_prog_data->push.per_thread.regs * dispatch.threads +

@@ -1996,15 +1996,6 @@ brw_write_shader_relocs(const struct brw_isa_info *isa,
                         struct brw_shader_reloc_value *values,
                         unsigned num_values);
 
-struct brw_cs_dispatch_info {
-   uint32_t group_size;
-   uint32_t simd_size;
-   uint32_t threads;
-
-   /* RightExecutionMask field used in GPGPU_WALKER. */
-   uint32_t right_mask;
-};
-
 /**
  * Get the dispatch information for a shader to be used with GPGPU_WALKER and
  * similar instructions.
@@ -2014,7 +2005,7 @@ struct brw_cs_dispatch_info {
  * ARB_compute_variable_group_size, where the size is set only at dispatch
  * time (so prog_data is outdated).
  */
-struct brw_cs_dispatch_info
+struct intel_cs_dispatch_info
 brw_cs_get_dispatch_info(const struct intel_device_info *devinfo,
                          const struct brw_cs_prog_data *prog_data,
                          const unsigned *override_local_size);

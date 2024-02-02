@@ -1810,7 +1810,7 @@ emit_task_state(struct anv_graphics_pipeline *pipeline)
 
    const struct intel_device_info *devinfo = pipeline->base.base.device->info;
    const struct brw_task_prog_data *task_prog_data = get_task_prog_data(pipeline);
-   const struct brw_cs_dispatch_info task_dispatch =
+   const struct intel_cs_dispatch_info task_dispatch =
       brw_cs_get_dispatch_info(devinfo, &task_prog_data->base, NULL);
 
    anv_pipeline_emit(pipeline, final.task_shader,
@@ -1867,7 +1867,7 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
 
    const struct intel_device_info *devinfo = pipeline->base.base.device->info;
    const struct brw_mesh_prog_data *mesh_prog_data = get_mesh_prog_data(pipeline);
-   const struct brw_cs_dispatch_info mesh_dispatch =
+   const struct intel_cs_dispatch_info mesh_dispatch =
       brw_cs_get_dispatch_info(devinfo, &mesh_prog_data->base, NULL);
 
    const unsigned output_topology =
@@ -2061,7 +2061,7 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
 
    anv_pipeline_setup_l3_config(&pipeline->base, cs_prog_data->base.total_shared > 0);
 
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
    const uint32_t vfe_curbe_allocation =
       ALIGN(cs_prog_data->push.per_thread.regs * dispatch.threads +

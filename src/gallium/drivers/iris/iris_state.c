@@ -8759,7 +8759,7 @@ static void iris_emit_execute_indirect_dispatch(struct iris_context *ice,
       ice->shaders.prog[MESA_SHADER_COMPUTE];
    struct brw_stage_prog_data *prog_data = shader->prog_data;
    struct brw_cs_prog_data *cs_prog_data = (void *) prog_data;
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, grid->block);
    struct iris_bo *indirect = iris_resource_bo(grid->indirect);
    const int dispatch_size = dispatch.simd_size / 16;
@@ -8800,7 +8800,7 @@ iris_upload_compute_walker(struct iris_context *ice,
       ice->shaders.prog[MESA_SHADER_COMPUTE];
    struct brw_stage_prog_data *prog_data = shader->prog_data;
    struct brw_cs_prog_data *cs_prog_data = (void *) prog_data;
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, grid->block);
 
    trace_intel_begin_compute(&batch->trace);
@@ -8889,7 +8889,7 @@ iris_upload_gpgpu_walker(struct iris_context *ice,
       ice->shaders.prog[MESA_SHADER_COMPUTE];
    struct brw_stage_prog_data *prog_data = shader->prog_data;
    struct brw_cs_prog_data *cs_prog_data = (void *) prog_data;
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, grid->block);
 
    trace_intel_begin_compute(&batch->trace);

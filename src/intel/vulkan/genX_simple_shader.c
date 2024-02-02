@@ -545,7 +545,7 @@ genX(emit_simple_shader_dispatch)(struct anv_simple_shader *state,
       const struct intel_device_info *devinfo = device->info;
       const struct brw_cs_prog_data *prog_data =
          (const struct brw_cs_prog_data *) state->kernel->prog_data;
-      const struct brw_cs_dispatch_info dispatch =
+      const struct intel_cs_dispatch_info dispatch =
          brw_cs_get_dispatch_info(devinfo, prog_data, NULL);
 
 #if GFX_VERx10 >= 125

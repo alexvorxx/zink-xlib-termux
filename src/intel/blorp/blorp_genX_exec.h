@@ -2162,7 +2162,7 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
 
    const struct brw_cs_prog_data *cs_prog_data = params->cs_prog_data;
    const struct brw_stage_prog_data *prog_data = &cs_prog_data->base;
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(batch->blorp->compiler->devinfo, cs_prog_data,
                                NULL);
    const struct intel_device_info *devinfo = batch->blorp->compiler->devinfo;

@@ -160,6 +160,15 @@ struct intel_vue_map {
    int num_per_vertex_slots;
 };
 
+struct intel_cs_dispatch_info {
+   uint32_t group_size;
+   uint32_t simd_size;
+   uint32_t threads;
+
+   /* RightExecutionMask field used in GPGPU_WALKER. */
+   uint32_t right_mask;
+};
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

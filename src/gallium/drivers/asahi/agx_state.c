@@ -4175,9 +4175,10 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
    if (indirect) {
       params.count_buffer_stride = count_buffer_stride;
    } else {
-      unsigned prim_per_instance =
+      params.gs_grid[0] =
          u_decomposed_prims_for_vertices(info->mode, draw->count);
-      params.input_primitives = prim_per_instance * info->instance_count;
+
+      params.input_primitives = params.gs_grid[0] * info->instance_count;
       params.input_vertices = draw->count;
 
       unsigned vb_size = libagx_tcs_in_size(draw->count * info->instance_count,

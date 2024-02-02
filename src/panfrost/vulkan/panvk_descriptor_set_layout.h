@@ -6,6 +6,10 @@
 #ifndef PANVK_DESCRIPTOR_SET_LAYOUT_H
 #define PANVK_DESCRIPTOR_SET_LAYOUT_H
 
+#ifndef PAN_ARCH
+#error "PAN_ARCH must be defined"
+#endif
+
 #include <stdint.h>
 
 #include "vk_descriptor_set_layout.h"

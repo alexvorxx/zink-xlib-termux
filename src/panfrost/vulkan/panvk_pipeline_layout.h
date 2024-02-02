@@ -6,6 +6,10 @@
 #ifndef PANVK_PIPELINE_LAYOUT_H
 #define PANVK_PIPELINE_LAYOUT_H
 
+#ifndef PAN_ARCH
+#error "PAN_ARCH must be defined"
+#endif
+
 #include <stdint.h>
 
 #include "vk_pipeline_layout.h"
@@ -48,13 +52,11 @@ struct panvk_pipeline_layout {
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
                                VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 
-#ifdef PAN_ARCH
 unsigned panvk_per_arch(pipeline_layout_ubo_start)(
    const struct panvk_pipeline_layout *layout, unsigned set, bool is_dynamic);
 
 unsigned panvk_per_arch(pipeline_layout_ubo_index)(
    const struct panvk_pipeline_layout *layout, unsigned set, unsigned binding,
    unsigned array_index);
-#endif
 
 #endif

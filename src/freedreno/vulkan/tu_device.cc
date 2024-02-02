@@ -122,6 +122,9 @@ static const struct vk_instance_extension_table tu_instance_extensions_supported
    .EXT_direct_mode_display             = true,
    .EXT_display_surface_counter         = true,
 #endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+   .EXT_headless_surface                = true,
+#endif
    .EXT_swapchain_colorspace            = TU_HAS_SURFACE,
 } };
 

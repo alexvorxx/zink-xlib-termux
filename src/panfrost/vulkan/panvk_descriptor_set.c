@@ -312,21 +312,3 @@ panvk_FreeDescriptorSets(VkDevice _device, VkDescriptorPool descriptorPool,
    }
    return VK_SUCCESS;
 }
-
-VKAPI_ATTR VkResult VKAPI_CALL
-panvk_CreateSamplerYcbcrConversion(
-   VkDevice device, const VkSamplerYcbcrConversionCreateInfo *pCreateInfo,
-   const VkAllocationCallbacks *pAllocator,
-   VkSamplerYcbcrConversion *pYcbcrConversion)
-{
-   panvk_stub();
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_DestroySamplerYcbcrConversion(VkDevice device,
-                                    VkSamplerYcbcrConversion ycbcrConversion,
-                                    const VkAllocationCallbacks *pAllocator)
-{
-   panvk_stub();
-}

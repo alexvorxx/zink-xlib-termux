@@ -205,10 +205,11 @@ lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *key)
    /* The unrolled vertex ID uses the input_vertices, which differs from what
     * our load_num_vertices will return (vertices vs primitives).
     */
-   nir_def *unrolled = nir_iadd(
-      b,
-      nir_imul(b, load_instance_id(b), load_geometry_param(b, input_vertices)),
-      vertex);
+   nir_def *unrolled =
+      nir_iadd(b,
+               nir_imul(b, nir_load_instance_id(b),
+                        load_geometry_param(b, input_vertices)),
+               vertex);
 
    /* Calculate the address of the input given the unrolled vertex ID */
    nir_def *addr = libagx_vertex_output_address(

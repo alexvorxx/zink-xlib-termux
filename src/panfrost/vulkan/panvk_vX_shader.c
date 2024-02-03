@@ -352,6 +352,10 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
       panvk_lower_blend(dev, nir, &inputs, blend_state);
    }
 
+   if (stage == MESA_SHADER_VERTEX)
+      NIR_PASS_V(nir, pan_lower_image_index,
+                 util_bitcount64(nir->info.inputs_read));
+
    struct sysval_options sysval_options = {
       .static_blend_constants =
          static_blend_constants ? blend_state->constants : NULL,

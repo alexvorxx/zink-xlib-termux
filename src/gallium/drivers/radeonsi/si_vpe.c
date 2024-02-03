@@ -423,13 +423,15 @@ si_vpe_set_plane_info(struct vpe_video_processor *vpeproc,
    si_vpe_set_color_space(process_properties, &surface_info->cs, format, which_surface);
 
    /* Get surface info, such as buffer alignment and offset */
-   if (vpeproc->base.context->screen && vpeproc->base.context->screen->resource_get_info)
+   if (vpeproc->base.context->screen && vpeproc->base.context->screen->resource_get_info) {
       vpeproc->base.context->screen->resource_get_info(vpeproc->base.context->screen,
                                                        surfaces[0]->texture,
                                                        &pitch,
                                                        &offset);
-   else
+   } else {
       SIVPE_ERR("Get plane pitch and offset info failed\n");
+      return VPE_STATUS_ERROR;
+   }
 
    si_res = si_resource(surfaces[0]->texture);
    plane_address->tmz_surface = false;
@@ -450,12 +452,12 @@ si_vpe_set_plane_info(struct vpe_video_processor *vpeproc,
       plane_address->video_progressive.luma_dcc_const_color.quad_part = 0;
       //plane_size->surface_pitch /= 1;   // Byte alignment to Pixel alignment
       /* Get 2nd plane buffer info */
-      if (surfaces[1] && vpeproc->base.context->screen && vpeproc->base.context->screen->resource_get_info)
+      if (surfaces[1] && vpeproc->base.context->screen && vpeproc->base.context->screen->resource_get_info) {
          vpeproc->base.context->screen->resource_get_info(vpeproc->base.context->screen,
                                                           surfaces[1]->texture,
                                                           &pitch,
                                                           &offset);
-      else {
+      } else {
          SIVPE_ERR("Get 2nd plane pitch and offset info failed\n");
          return VPE_STATUS_ERROR;
       }

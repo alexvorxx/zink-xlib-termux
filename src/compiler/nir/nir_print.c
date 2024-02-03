@@ -1751,9 +1751,6 @@ print_tex_instr(nir_tex_instr *instr, print_state *state)
       case nir_tex_src_lod:
          fprintf(fp, "(lod)");
          break;
-      case nir_tex_src_combined_lod_and_array_index_intel:
-         fprintf(fp, "(combined_lod_and_array_index_intel)");
-         break;
       case nir_tex_src_min_lod:
          fprintf(fp, "(min_lod)");
          break;

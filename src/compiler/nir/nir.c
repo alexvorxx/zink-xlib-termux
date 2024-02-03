@@ -3208,7 +3208,6 @@ nir_tex_instr_src_type(const nir_tex_instr *instr, unsigned src)
    case nir_tex_src_sampler_offset:
    case nir_tex_src_texture_handle:
    case nir_tex_src_sampler_handle:
-   case nir_tex_src_combined_lod_and_array_index_intel:
       return nir_type_uint;
 
    case nir_num_tex_src_types:

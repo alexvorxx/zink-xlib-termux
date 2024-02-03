@@ -2269,15 +2269,6 @@ typedef enum nir_tex_src_type {
    /** Second backend-specific vec4 tex src argument, see nir_tex_src_backend1. */
    nir_tex_src_backend2,
 
-   /**
-    * Backend-specific parameter that combines LOD parameter and array index.
-    *
-    * If this parameter is present, then nir_tex_src_lod and nir_tex_src_bias
-    * must not be present.  Also vice versa.  Only valid if nir_tex_instr::op
-    * is nir_texop_txl or nir_texop_txb and nir_tex_instr::is_array is set.
-    */
-   nir_tex_src_combined_lod_and_array_index_intel,
-
    nir_num_tex_src_types
 } nir_tex_src_type;
 
@@ -5937,12 +5928,6 @@ typedef struct nir_lower_tex_options {
     * support indirect indexing of textures (samplers) but not offsetting it.
     */
    bool lower_index_to_offset;
-
-   /**
-    * If true, pack either the explicit LOD or LOD bias and the array index
-    * into a single (32-bit) value when 32-bit texture coordinates are used.
-    */
-   bool pack_lod_and_array_index;
 
    /**
     * Payload data to be sent to callback / filter functions.

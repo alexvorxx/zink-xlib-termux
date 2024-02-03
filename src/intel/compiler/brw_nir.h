@@ -209,6 +209,12 @@ struct brw_nir_lower_storage_image_opts {
 bool brw_nir_lower_storage_image(nir_shader *nir,
                                  const struct brw_nir_lower_storage_image_opts *opts);
 
+struct brw_nir_lower_texture_opts {
+   bool combined_lod_and_array_index;
+};
+bool brw_nir_lower_texture(nir_shader *nir,
+                           const struct brw_nir_lower_texture_opts *opts);
+
 bool brw_nir_lower_mem_access_bit_sizes(nir_shader *shader,
                                         const struct
                                         intel_device_info *devinfo);

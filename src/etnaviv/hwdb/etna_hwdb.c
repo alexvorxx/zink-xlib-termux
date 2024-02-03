@@ -107,6 +107,7 @@ etna_query_feature_db(struct etna_core_info *info)
       info->npu.tp_core_count = db->TPEngine_CoreCount;
       info->npu.on_chip_sram_size = db->VIP_SRAM_SIZE;
       info->npu.axi_sram_size = db->AXI_SRAM_SIZE;
+      info->npu.nn_zrl_bits = db->NN_ZRL_BITS;
    }
 
    return true;

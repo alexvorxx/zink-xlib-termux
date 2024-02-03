@@ -88,6 +88,7 @@ struct etna_core_npu_info {
    unsigned tp_core_count;             /* number of TP cores */
    unsigned on_chip_sram_size;         /* Size of on-chip SRAM */
    unsigned axi_sram_size;             /* Size of SRAM behind AXI */
+   unsigned nn_zrl_bits;               /* Number of bits for zero run-length compression */
 };
 
 struct etna_core_info {

@@ -153,6 +153,8 @@ struct etna_specs {
    unsigned on_chip_sram_size;
    /* Size of SRAM behind AXI */
    unsigned axi_sram_size;
+   /* Number of bits for zero run-length compression */
+   unsigned nn_zrl_bits;
 };
 
 /* Compiled Gallium state. All the different compiled state atoms are woven

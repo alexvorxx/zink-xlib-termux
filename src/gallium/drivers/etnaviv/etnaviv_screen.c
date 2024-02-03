@@ -858,6 +858,7 @@ etna_get_specs(struct etna_screen *screen)
       screen->specs.tp_core_count = info->npu.tp_core_count;
       screen->specs.on_chip_sram_size = info->npu.on_chip_sram_size;
       screen->specs.axi_sram_size = info->npu.axi_sram_size;
+      screen->specs.nn_zrl_bits = info->npu.nn_zrl_bits;
    }
 
    /* Figure out gross GPU architecture. See rnndb/common.xml for a specific

@@ -8150,7 +8150,11 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
          srcs[TEX_LOGICAL_SRC_MCS] = retype(src, BRW_REGISTER_TYPE_D);
          break;
 
-      case nir_tex_src_combined_lod_and_array_index_intel:
+      /* If this parameter is present, we are packing either the explicit LOD
+       * or LOD bias and the array index into a single (32-bit) value when
+       * 32-bit texture coordinates are used.
+       */
+      case nir_tex_src_backend1:
          assert(!got_lod && !got_bias);
          got_lod = true;
 

@@ -945,7 +945,6 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
       .lower_offset_filter =
          devinfo->verx10 >= 125 ? lower_xehp_tg4_offset_filter : NULL,
       .lower_invalid_implicit_lod = true,
-      .pack_lod_and_array_index = devinfo->ver >= 20,
    };
 
    /* In the case where TG4 coords are lowered to offsets and we have a

@@ -5034,7 +5034,8 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    agx_update_descriptors(batch, ctx->fs, PIPE_SHADER_FRAGMENT);
 
    if (IS_DIRTY(VS) || IS_DIRTY(FS) || ctx->gs || IS_DIRTY(VERTEX) ||
-       IS_DIRTY(BLEND_COLOR) || IS_DIRTY(RS) || IS_DIRTY(PRIM)) {
+       IS_DIRTY(BLEND_COLOR) || IS_DIRTY(QUERY) || IS_DIRTY(POLY_STIPPLE) ||
+       IS_DIRTY(RS) || IS_DIRTY(PRIM)) {
 
       if (IS_DIRTY(VERTEX)) {
          agx_upload_vbos(batch);

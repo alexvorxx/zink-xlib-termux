@@ -667,7 +667,13 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          fprintf(output, " opsel_hi");
    }
 
-   if (instr->isDPP16()) {
+   bool bound_ctrl = false, fetch_inactive = false;
+
+   if (instr->opcode == aco_opcode::v_permlane16_b32 ||
+       instr->opcode == aco_opcode::v_permlanex16_b32) {
+      fetch_inactive = instr->valu().opsel[0];
+      bound_ctrl = instr->valu().opsel[1];
+   } else if (instr->isDPP16()) {
       const DPP16_instruction& dpp = instr->dpp16();
       if (dpp.dpp_ctrl <= 0xff) {
          fprintf(output, " quad_perm:[%d,%d,%d,%d]", dpp.dpp_ctrl & 0x3, (dpp.dpp_ctrl >> 2) & 0x3,
@@ -705,18 +711,15 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          fprintf(output, " row_mask:0x%.1x", dpp.row_mask);
       if (dpp.bank_mask != 0xf)
          fprintf(output, " bank_mask:0x%.1x", dpp.bank_mask);
-      if (dpp.bound_ctrl)
-         fprintf(output, " bound_ctrl:1");
-      if (dpp.fetch_inactive)
-         fprintf(output, " fi");
+      bound_ctrl = dpp.bound_ctrl;
+      fetch_inactive = dpp.fetch_inactive;
    } else if (instr->isDPP8()) {
       const DPP8_instruction& dpp = instr->dpp8();
       fprintf(output, " dpp8:[");
       for (unsigned i = 0; i < 8; i++)
          fprintf(output, "%s%u", i ? "," : "", (dpp.lane_sel >> (i * 3)) & 0x7);
       fprintf(output, "]");
-      if (dpp.fetch_inactive)
-         fprintf(output, " fi");
+      fetch_inactive = dpp.fetch_inactive;
    } else if (instr->isSDWA()) {
       const SDWA_instruction& sdwa = instr->sdwa();
       if (!instr->isVOPC()) {
@@ -746,6 +749,11 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          }
       }
    }
+
+   if (bound_ctrl)
+      fprintf(output, " bound_ctrl:1");
+   if (fetch_inactive)
+      fprintf(output, " fi");
 }
 
 void

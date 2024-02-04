@@ -2296,6 +2296,8 @@ agx_create_shader_state(struct pipe_context *pctx,
          util_last_bit(nir->info.patch_outputs_written);
       if (nir->info.stage == MESA_SHADER_TESS_CTRL)
          so->tess.output_stride = agx_tcs_output_stride(nir);
+   } else if (nir->info.stage == MESA_SHADER_GEOMETRY) {
+      so->gs_mode = nir->info.gs.output_primitive;
    }
 
    agx_shader_initialize(dev, so, nir, ctx->support_lod_bias, ctx->robust);
@@ -2550,6 +2552,9 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
          tgt->stride = gs->xfb_strides[i];
    }
 
+   enum mesa_prim rasterized_prim =
+      rast_prim(gs->gs_mode, ctx->rast->base.fill_front);
+
    struct asahi_gs_shader_key key = {
       .mode = info->mode,
       .flatshade_first =
@@ -2559,7 +2564,8 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
 
       /* TODO: Deduplicate */
       .clip_halfz = ctx->rast->base.clip_halfz,
-      .fixed_point_size = !ctx->rast->base.point_size_per_vertex,
+      .fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
+                          rasterized_prim == MESA_PRIM_POINTS,
       .outputs_flat_shaded =
          ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_flat_shaded,
       .outputs_linear_shaded =

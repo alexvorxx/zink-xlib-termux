@@ -241,6 +241,8 @@ struct agx_uncompiled_shader {
    bool has_xfb_info;
    bool is_xfb_passthrough;
 
+   enum mesa_prim gs_mode;
+
    /* Whether the shader accesses indexed samplers via the bindless heap */
    bool uses_bindless_samplers;
 

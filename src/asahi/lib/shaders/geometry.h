@@ -223,8 +223,7 @@ libagx_tcs_in_offs(uint vtx, gl_varying_slot location,
 static inline uint
 libagx_tcs_in_size(uint32_t vertices_in_patch, uint64_t crosslane_vs_out_mask)
 {
-   return libagx_tcs_in_offs(vertices_in_patch - 1, VARYING_SLOT_VAR31,
-                             crosslane_vs_out_mask);
+   return vertices_in_patch * libagx_popcount(crosslane_vs_out_mask) * 16;
 }
 
 /*

@@ -61,6 +61,7 @@ DEPS=(
     spirv-tools
     sysvinit-core
     weston
+    xwayland
 )
 
 apt-get update

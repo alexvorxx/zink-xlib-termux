@@ -816,8 +816,9 @@ aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* ou
          opsel = f2f32 & vop3p.opsel_lo;
       } else if (instr->isVOP3P()) {
          const VALU_instruction& vop3p = instr->valu();
-         neg_lo = vop3p.neg_lo;
-         neg_hi = vop3p.neg_hi;
+         neg = vop3p.neg_lo & vop3p.neg_hi;
+         neg_lo = vop3p.neg_lo & ~neg;
+         neg_hi = vop3p.neg_hi & ~neg;
          opsel_lo = vop3p.opsel_lo;
          opsel_hi = vop3p.opsel_hi;
       } else if (instr->isVALU()) {
@@ -854,11 +855,9 @@ aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* ou
             if (opsel_lo[i] || !opsel_hi[i])
                fprintf(output, ".%c%c", opsel_lo[i] ? 'y' : 'x', opsel_hi[i] ? 'y' : 'x');
 
-            if (neg_lo[i] && neg_hi[i])
-               fprintf(output, "*[-1,-1]");
-            else if (neg_lo[i])
+            if (neg_lo[i])
                fprintf(output, "*[-1,1]");
-            else if (neg_hi[i])
+            if (neg_hi[i])
                fprintf(output, "*[1,-1]");
          }
       }

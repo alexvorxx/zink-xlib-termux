@@ -1341,10 +1341,7 @@ agx_nir_lower_vs_before_gs(struct nir_shader *vs,
    bool progress = false;
 
    /* Lower vertex ID to an index buffer pull without a topology applied */
-   progress |= agx_nir_lower_ia(vs, &(struct agx_ia_key){
-                                       .index_size = index_size_B,
-                                       .mode = MESA_PRIM_POINTS,
-                                    });
+   progress |= agx_nir_lower_index_buffer(vs, index_size_B, false);
 
    /* Lower vertex stores to memory stores */
    progress |= nir_shader_intrinsics_pass(

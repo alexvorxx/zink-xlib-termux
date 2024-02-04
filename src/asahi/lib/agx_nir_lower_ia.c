@@ -52,13 +52,17 @@ agx_vertex_id_for_topology_class(nir_builder *b, nir_def *vert,
    }
 }
 
+struct state {
+   unsigned index_size;
+   bool patches;
+};
+
 static nir_def *
-load_vertex_id(nir_builder *b, struct agx_ia_key *key)
+load_vertex_id(nir_builder *b, struct state *state)
 {
-   assert(key->mode == MESA_PRIM_POINTS || key->mode == MESA_PRIM_PATCHES);
    nir_def *id = nir_load_primitive_id(b);
 
-   if (key->mode == MESA_PRIM_PATCHES) {
+   if (state->patches) {
       id = nir_iadd(b, nir_imul(b, id, nir_load_patch_vertices_in(b)),
                     nir_load_invocation_id(b));
    }
@@ -66,14 +70,14 @@ load_vertex_id(nir_builder *b, struct agx_ia_key *key)
    /* If drawing with an index buffer, pull the vertex ID. Otherwise, the
     * vertex ID is just the index as-is.
     */
-   if (key->index_size) {
+   if (state->index_size) {
       nir_def *ia = nir_load_input_assembly_buffer_agx(b);
 
       nir_def *address =
-         libagx_index_buffer(b, ia, id, nir_imm_int(b, key->index_size));
+         libagx_index_buffer(b, ia, id, nir_imm_int(b, state->index_size));
 
-      nir_def *index = nir_load_global_constant(b, address, key->index_size, 1,
-                                                key->index_size * 8);
+      nir_def *index = nir_load_global_constant(b, address, state->index_size,
+                                                1, state->index_size * 8);
 
       id = nir_u2uN(b, index, id->bit_size);
    }
@@ -97,9 +101,9 @@ lower_vertex_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 }
 
 bool
-agx_nir_lower_ia(nir_shader *s, struct agx_ia_key *key)
+agx_nir_lower_index_buffer(nir_shader *s, unsigned index_size_B, bool patches)
 {
    return nir_shader_intrinsics_pass(
       s, lower_vertex_id, nir_metadata_block_index | nir_metadata_dominance,
-      key);
+      &(struct state){index_size_B, patches});
 }

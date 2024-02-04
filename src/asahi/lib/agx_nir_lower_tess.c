@@ -296,10 +296,7 @@ agx_nir_lower_tcs(nir_shader *tcs, const nir_shader *vs,
    nir_lower_global_vars_to_local(tcs);
 
    /* Lower I/A. TODO: Indirect multidraws */
-   agx_nir_lower_ia(tcs, &(struct agx_ia_key){
-                            .index_size = index_size_B,
-                            .mode = MESA_PRIM_PATCHES,
-                         });
+   agx_nir_lower_index_buffer(tcs, index_size_B, true);
 
    /* Lower TCS outputs */
    nir_shader_intrinsics_pass(tcs, lower_tcs,

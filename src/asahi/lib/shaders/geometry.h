@@ -22,17 +22,6 @@
 #define MAX_SO_BUFFERS     4
 #define MAX_VERTEX_STREAMS 4
 
-struct agx_ia_key {
-   /* The index size (1, 2, 4) or 0 if drawing without an index buffer. */
-   uint8_t index_size;
-
-   /* The primitive mode for unrolling the vertex ID */
-   enum mesa_prim mode;
-
-   /* Use first vertex as the provoking vertex for flat shading */
-   bool flatshade_first;
-};
-
 /* Packed geometry state buffer */
 struct agx_geometry_state {
    /* Heap to allocate from, in either direction. By convention, the top is used

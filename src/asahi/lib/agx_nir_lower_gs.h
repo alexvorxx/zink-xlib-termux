@@ -11,7 +11,6 @@
 #include "shader_enums.h"
 
 struct nir_shader;
-struct agx_ia_key;
 enum mesa_prim;
 
 struct nir_instr;
@@ -29,7 +28,8 @@ struct nir_def *agx_vertex_id_for_topology_class(struct nir_builder *b,
                                                  struct nir_def *vert,
                                                  enum mesa_prim clas);
 
-bool agx_nir_lower_ia(struct nir_shader *s, struct agx_ia_key *ia);
+bool agx_nir_lower_index_buffer(struct nir_shader *s, unsigned index_size_B,
+                                bool patches);
 
 bool agx_nir_lower_vs_before_gs(struct nir_shader *vs,
                                 const struct nir_shader *libagx,

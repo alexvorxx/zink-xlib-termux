@@ -862,3 +862,28 @@ spec@nv_texture_env_combine4@nv_texture_env_combine4-combine,Fail
 
 spec@oes_texture_float@oes_texture_float,Fail
 spec@oes_texture_float@oes_texture_float half,Fail
+
+
+# Xnine tests
+
+Xnine.clip_planes,Fail
+Xnine.depth_clamp,Fail
+Xnine.depthbias,Fail
+Xnine.dsy,Fail
+Xnine.fp_special,Fail
+Xnine.fragment_coords,Fail
+Xnine.mvp_software_vertex_shaders,Fail
+Xnine.negative_fixedfunction_fog,Fail
+Xnine.pixelshader_blending,Fail
+Xnine.pretransformed_varying,Fail
+Xnine.srgbwrite_format,Fail
+Xnine.stream,Fail
+Xnine.texture_transform_flags,Fail
+Xnine.zenable,Fail
+
+# https://gitlab.freedesktop.org/mesa/mesa/-/issues/10557
+Xnine.drawindexedprimitiveup,Crash
+Xnine.fog,Crash
+Xnine.lighting,Crash
+Xnine.specular_lighting,Crash
+Xnine.stencil_cull,Crash

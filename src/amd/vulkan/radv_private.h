@@ -1026,6 +1026,7 @@ struct radv_rra_trace_data {
 
 enum radv_dispatch_table {
    RADV_DEVICE_DISPATCH_TABLE,
+   RADV_ANNOTATE_DISPATCH_TABLE,
    RADV_APP_DISPATCH_TABLE,
    RADV_RGP_DISPATCH_TABLE,
    RADV_RRA_DISPATCH_TABLE,
@@ -1035,6 +1036,7 @@ enum radv_dispatch_table {
 };
 
 struct radv_layer_dispatch_tables {
+   struct vk_device_dispatch_table annotate;
    struct vk_device_dispatch_table app;
    struct vk_device_dispatch_table rgp;
    struct vk_device_dispatch_table rra;

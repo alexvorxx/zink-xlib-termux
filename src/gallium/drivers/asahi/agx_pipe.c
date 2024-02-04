@@ -77,7 +77,6 @@ static const struct debug_named_value agx_debug_options[] = {
    {"smalltile", AGX_DBG_SMALLTILE,"Force 16x16 tiles"},
    {"nomsaa",    AGX_DBG_NOMSAA,   "Force disable MSAA"},
    {"noshadow",  AGX_DBG_NOSHADOW, "Force disable resource shadowing"},
-   {"noclipctrl",AGX_DBG_NOCLIPCTRL,"Disable ARB_clip_control"},
    {"varyings",  AGX_DBG_VARYINGS,  "Validate varying linkage"},
    {"scratch",   AGX_DBG_SCRATCH,  "Debug scratch memory usage"},
    DEBUG_NAMED_VALUE_END
@@ -1538,6 +1537,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    struct agx_device *dev = agx_device(pscreen);
 
    switch (param) {
+   case PIPE_CAP_CLIP_HALFZ:
    case PIPE_CAP_NPOT_TEXTURES:
    case PIPE_CAP_SHADER_STENCIL_EXPORT:
    case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
@@ -1553,9 +1553,6 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_NIR_COMPACT_ARRAYS:
    case PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS:
       return 1;
-
-   case PIPE_CAP_CLIP_HALFZ:
-      return !(agx_device(pscreen)->debug & AGX_DBG_NOCLIPCTRL);
 
    case PIPE_CAP_MAX_RENDER_TARGETS:
    case PIPE_CAP_FBFETCH:

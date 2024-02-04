@@ -1024,16 +1024,6 @@ agx_get_scissor_extents(const struct pipe_viewport_state *vp,
    }
 }
 
-static bool
-should_lower_clip_m1_1(struct agx_device *dev, bool clip_halfz)
-{
-   /* If ARB_clip_control is enabled, we use [0, 1] clipping in the hardware
-    * and lower [-1, 1] clipping in the vertex shader.
-    */
-   bool clip_ctrl = !(dev->debug & AGX_DBG_NOCLIPCTRL);
-   return clip_ctrl && !clip_halfz;
-}
-
 static void
 agx_upload_viewport_scissor(struct agx_pool *pool, struct agx_batch *batch,
                             uint8_t **out, const struct pipe_viewport_state *vp,
@@ -1112,7 +1102,7 @@ agx_upload_viewport_scissor(struct agx_pool *pool, struct agx_batch *batch,
          cfg.scale_y = vp[i].scale[1];
          cfg.scale_z = vp[i].scale[2];
 
-         if (should_lower_clip_m1_1(pool->dev, clip_halfz)) {
+         if (!clip_halfz) {
             cfg.translate_z -= cfg.scale_z;
             cfg.scale_z *= 2;
          }
@@ -1904,7 +1894,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
          NIR_PASS(_, nir, agx_nir_lower_point_size,
                   key->next.fs.fixed_point_size);
 
-         if (should_lower_clip_m1_1(dev, key->next.fs.clip_halfz)) {
+         if (!key->next.fs.clip_halfz) {
             NIR_PASS(_, nir, nir_shader_intrinsics_pass,
                      agx_nir_lower_clip_m1_1,
                      nir_metadata_block_index | nir_metadata_dominance, NULL);
@@ -2091,7 +2081,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       /* TODO: deduplicate */
       NIR_PASS(_, gs_copy, agx_nir_lower_point_size, key->fixed_point_size);
 
-      if (should_lower_clip_m1_1(dev, key->clip_halfz)) {
+      if (!key->clip_halfz) {
          NIR_PASS(_, gs_copy, nir_shader_intrinsics_pass,
                   agx_nir_lower_clip_m1_1,
                   nir_metadata_block_index | nir_metadata_dominance, NULL);

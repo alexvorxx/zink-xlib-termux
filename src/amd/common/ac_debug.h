@@ -81,6 +81,7 @@ struct ac_ib_parser {
    enum amd_ip_type ip_type;
    ac_debug_addr_callback addr_callback;
    void *addr_callback_data;
+   struct hash_table *annotations;
 
    /* Internal */
    unsigned cur_dw;

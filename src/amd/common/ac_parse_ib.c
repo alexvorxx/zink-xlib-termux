@@ -9,6 +9,7 @@
 #include "sid_tables.h"
 
 #include "util/compiler.h"
+#include "util/hash_table.h"
 #include "util/u_debug.h"
 #include "util/u_math.h"
 #include "util/memstream.h"
@@ -695,6 +696,12 @@ static void parse_gfx_compute_ib(FILE *f, struct ac_ib_parser *ib)
    int current_trace_id = -1;
 
    while (ib->cur_dw < ib->num_dw) {
+      if (ib->annotations) {
+         struct hash_entry *marker = _mesa_hash_table_search(ib->annotations, ib->ib + ib->cur_dw);
+         if (marker)
+            fprintf(f, "\n%s:", (char *)marker->data);
+      }
+
       uint32_t header = ac_ib_get(ib);
       unsigned type = PKT_TYPE_G(header);
 

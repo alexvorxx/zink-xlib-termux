@@ -639,11 +639,7 @@ static void
 write_xfb(nir_builder *b, struct lower_gs_state *state, unsigned stream,
           nir_def *index_in_strip, nir_def *prim_id_in_invocation)
 {
-   /* If there is no XFB info, there is no XFB */
    struct nir_xfb_info *xfb = b->shader->xfb_info;
-   if (!xfb)
-      return;
-
    unsigned verts = verts_in_output_prim(b->shader);
 
    /* Get the index of this primitive in the XFB buffer. That is, the base for
@@ -718,13 +714,10 @@ write_xfb(nir_builder *b, struct lower_gs_state *state, unsigned stream,
    nir_pop_if(b, NULL);
 }
 
-/*
- * Lower emit_vertex_with_counter to a copy of vertex outputs to the geometry
- * output buffer and (possibly) transform feedback buffers.
- */
+/* Handle transform feedback for a given emit_vertex_with_counter */
 static void
-lower_emit_vertex(nir_builder *b, nir_intrinsic_instr *intr,
-                  struct lower_gs_state *state)
+lower_emit_vertex_xfb(nir_builder *b, nir_intrinsic_instr *intr,
+                      struct lower_gs_state *state)
 {
    /* Transform feedback is written for each decomposed output primitive. Since
     * we're writing strips, that means we output XFB for each vertex after the
@@ -754,19 +747,16 @@ lower_emit_vertex(nir_builder *b, nir_intrinsic_instr *intr,
     * unlucky, this involves at most 2 copies per component per XFB output per
     * vertex.
     */
-   struct nir_xfb_info *xfb = b->shader->xfb_info;
-   if (xfb) {
-      u_foreach_bit64(slot, b->shader->info.outputs_written) {
-         /* Note: if we're outputting points, verts_in_output_prim will be 1, so
-          * this loop will not execute. This is intended: points are
-          * self-contained primitives and do not need these copies.
-          */
-         for (int v = verts_in_output_prim(b->shader) - 1; v >= 1; --v) {
-            nir_def *value = nir_load_var(b, state->outputs[slot][v - 1]);
+   u_foreach_bit64(slot, b->shader->info.outputs_written) {
+      /* Note: if we're outputting points, verts_in_output_prim will be 1, so
+       * this loop will not execute. This is intended: points are self-contained
+       * primitives and do not need these copies.
+       */
+      for (int v = verts_in_output_prim(b->shader) - 1; v >= 1; --v) {
+         nir_def *value = nir_load_var(b, state->outputs[slot][v - 1]);
 
-            nir_store_var(b, state->outputs[slot][v], value,
-                          nir_component_mask(value->num_components));
-         }
+         nir_store_var(b, state->outputs[slot][v], value,
+                       nir_component_mask(value->num_components));
       }
    }
 }
@@ -800,7 +790,9 @@ lower_gs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *state)
    }
 
    case nir_intrinsic_emit_vertex_with_counter:
-      lower_emit_vertex(b, intr, state);
+      /* emit_vertex triggers transform feedback but is otherwise a no-op. */
+      if (b->shader->xfb_info)
+         lower_emit_vertex_xfb(b, intr, state);
       break;
 
    default:

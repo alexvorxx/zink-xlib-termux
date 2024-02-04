@@ -1407,8 +1407,20 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
       assert(addr_info.cpu_addr);
 
       if (type == RADV_CS_DUMP_TYPE_IBS) {
-         ac_parse_ib(file, addr_info.cpu_addr, cs->ib_buffers[0].cdw, trace_ids, trace_id_count, "main IB",
-                     ws->info.gfx_level, ws->info.family, cs->hw_ip, radv_amdgpu_winsys_get_cpu_addr, cs);
+         struct ac_ib_parser ib_parser = {
+            .f = file,
+            .ib = addr_info.cpu_addr,
+            .num_dw = cs->ib_buffers[0].cdw,
+            .trace_ids = trace_ids,
+            .trace_id_count = trace_id_count,
+            .gfx_level = ws->info.gfx_level,
+            .family = ws->info.family,
+            .ip_type = cs->hw_ip,
+            .addr_callback = radv_amdgpu_winsys_get_cpu_addr,
+            .addr_callback_data = cs,
+         };
+
+         ac_parse_ib(&ib_parser, "main IB");
       } else {
          uint32_t *ib_dw = addr_info.cpu_addr;
          ac_gather_context_rolls(file, &ib_dw, &cs->ib_buffers[0].cdw, 1, NULL, &ws->info);
@@ -1434,8 +1446,20 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
          }
 
          if (type == RADV_CS_DUMP_TYPE_IBS) {
-            ac_parse_ib(file, mapped, ib->cdw, trace_ids, trace_id_count, name, ws->info.gfx_level, ws->info.family,
-                        cs->hw_ip, NULL, NULL);
+            struct ac_ib_parser ib_parser = {
+               .f = file,
+               .ib = mapped,
+               .num_dw = ib->cdw,
+               .trace_ids = trace_ids,
+               .trace_id_count = trace_id_count,
+               .gfx_level = ws->info.gfx_level,
+               .family = ws->info.family,
+               .ip_type = cs->hw_ip,
+               .addr_callback = radv_amdgpu_winsys_get_cpu_addr,
+               .addr_callback_data = cs,
+            };
+
+            ac_parse_ib(&ib_parser, name);
          } else {
             ibs[i] = mapped;
             ib_dw_sizes[i] = ib->cdw;

@@ -68,15 +68,28 @@ void ac_gather_context_rolls(FILE *f, uint32_t **ibs, uint32_t *ib_dw_sizes, uns
                              struct hash_table *annotations, const struct radeon_info *info);
 
 /* ac_parse_ib.c */
+
+struct ac_ib_parser {
+   /* Arguments to ac_parse_ib.* */
+   FILE *f;
+   uint32_t *ib;
+   unsigned num_dw;
+   const int *trace_ids;
+   unsigned trace_id_count;
+   enum amd_gfx_level gfx_level;
+   enum radeon_family family;
+   enum amd_ip_type ip_type;
+   ac_debug_addr_callback addr_callback;
+   void *addr_callback_data;
+
+   /* Internal */
+   unsigned cur_dw;
+};
+
 void ac_dump_reg(FILE *file, enum amd_gfx_level gfx_level, enum radeon_family family,
                  unsigned offset, uint32_t value, uint32_t field_mask);
-void ac_parse_ib_chunk(FILE *f, uint32_t *ib, int num_dw, const int *trace_ids,
-                       unsigned trace_id_count, enum amd_gfx_level gfx_level,
-                       enum radeon_family family, enum amd_ip_type ip_type,
-                       ac_debug_addr_callback addr_callback, void *addr_callback_data);
-void ac_parse_ib(FILE *f, uint32_t *ib, int num_dw, const int *trace_ids, unsigned trace_id_count,
-                 const char *name, enum amd_gfx_level gfx_level, enum radeon_family family,
-                 enum amd_ip_type ip_type, ac_debug_addr_callback addr_callback, void *addr_callback_data);
+void ac_parse_ib_chunk(struct ac_ib_parser *ib);
+void ac_parse_ib(struct ac_ib_parser *ib, const char *name);
 
 #ifdef __cplusplus
 }

@@ -45,31 +45,6 @@ struct u_prim_vertex_count {
 };
 
 /**
- * Decompose a primitive that is a loop, a strip, or a fan.  Return the
- * original primitive if it is already decomposed.
- */
-static inline enum mesa_prim
-u_decomposed_prim(enum mesa_prim prim)
-{
-   switch (prim) {
-   case MESA_PRIM_LINE_LOOP:
-   case MESA_PRIM_LINE_STRIP:
-      return MESA_PRIM_LINES;
-   case MESA_PRIM_TRIANGLE_STRIP:
-   case MESA_PRIM_TRIANGLE_FAN:
-      return MESA_PRIM_TRIANGLES;
-   case MESA_PRIM_QUAD_STRIP:
-      return MESA_PRIM_QUADS;
-   case MESA_PRIM_LINE_STRIP_ADJACENCY:
-      return MESA_PRIM_LINES_ADJACENCY;
-   case MESA_PRIM_TRIANGLE_STRIP_ADJACENCY:
-      return MESA_PRIM_TRIANGLES_ADJACENCY;
-   default:
-      return prim;
-   }
-}
-
-/**
  * Reduce a primitive to one of MESA_PRIM_POINTS, MESA_PRIM_LINES, and
  * MESA_PRIM_TRIANGLES.
  */

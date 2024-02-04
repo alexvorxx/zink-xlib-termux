@@ -34,7 +34,7 @@ gs_in_prim_for_topology(enum mesa_prim prim)
    case MESA_PRIM_QUADS:
       return MESA_PRIM_LINES_ADJACENCY;
    default:
-      return prim;
+      return u_decomposed_prim(prim);
    }
 }
 

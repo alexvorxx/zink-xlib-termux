@@ -607,6 +607,12 @@ radv_cmd_buffer_trace_emit(struct radv_cmd_buffer *cmd_buffer)
    radeon_emit(cs, AC_ENCODE_TRACE_POINT(cmd_buffer->state.trace_id));
 }
 
+void
+radv_cmd_buffer_annotate(struct radv_cmd_buffer *cmd_buffer, const char *annotation)
+{
+   cmd_buffer->device->ws->cs_annotate(cmd_buffer->cs, annotation);
+}
+
 static void
 radv_gang_barrier(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 src_stage_mask,
                   VkPipelineStageFlags2 dst_stage_mask)

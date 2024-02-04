@@ -1675,7 +1675,7 @@ agx_link_varyings_vs_fs(struct agx_pool *pool, struct agx_varyings_vs *vs,
    return ptr.gpu;
 }
 
-/* nir_lower_clip_halfz analogue for lowered I/O */
+/* Dynamic lowered I/O version of nir_lower_clip_halfz */
 static bool
 agx_nir_lower_clip_m1_1(nir_builder *b, nir_intrinsic_instr *intr,
                         UNUSED void *data)
@@ -1691,8 +1691,10 @@ agx_nir_lower_clip_m1_1(nir_builder *b, nir_intrinsic_instr *intr,
    nir_def *pos = intr->src[0].ssa;
    nir_def *z = nir_channel(b, pos, 2);
    nir_def *w = nir_channel(b, pos, 3);
+   nir_def *c = nir_load_clip_z_coeff_agx(b);
 
-   nir_def *new_z = nir_fmul_imm(b, nir_fadd(b, z, w), 0.5f);
+   /* Lerp. If c = 0, reduces to z. If c = 1/2, reduces to (z + w)/2 */
+   nir_def *new_z = nir_ffma(b, nir_fneg(b, z), c, nir_ffma(b, w, c, z));
    nir_src_rewrite(&intr->src[0], nir_vector_insert_imm(b, pos, new_z, 2));
    return true;
 }
@@ -1893,12 +1895,8 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       if (key->next_stage == ASAHI_VS_FS) {
          NIR_PASS(_, nir, agx_nir_lower_point_size,
                   key->next.fs.fixed_point_size);
-
-         if (!key->next.fs.clip_halfz) {
-            NIR_PASS(_, nir, nir_shader_intrinsics_pass,
-                     agx_nir_lower_clip_m1_1,
-                     nir_metadata_block_index | nir_metadata_dominance, NULL);
-         }
+         NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
+                  nir_metadata_block_index | nir_metadata_dominance, NULL);
       } else if (key->next_stage == ASAHI_VS_GS) {
          NIR_PASS(_, nir, agx_nir_lower_sysvals, PIPE_SHADER_VERTEX, false);
          NIR_PASS(_, nir, agx_nir_lower_vs_before_gs, dev->libagx,
@@ -2080,12 +2078,8 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
       /* TODO: deduplicate */
       NIR_PASS(_, gs_copy, agx_nir_lower_point_size, key->fixed_point_size);
-
-      if (!key->clip_halfz) {
-         NIR_PASS(_, gs_copy, nir_shader_intrinsics_pass,
-                  agx_nir_lower_clip_m1_1,
-                  nir_metadata_block_index | nir_metadata_dominance, NULL);
-      }
+      NIR_PASS(_, gs_copy, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
+               nir_metadata_block_index | nir_metadata_dominance, NULL);
 
       base_key.vs.outputs_flat_shaded = key->outputs_flat_shaded;
       base_key.vs.outputs_linear_shaded = key->outputs_linear_shaded;
@@ -2434,7 +2428,7 @@ agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
    /* Only proceed if the shader or anything the key depends on changes
     *
     * vb_mask, attributes, vertex_buffers: VERTEX
-    * clip_halfz: RS
+    * point_size_per_vertex: RS
     * outputs_{flat,linear}_shaded: FS_PROG
     */
    if (!((ctx->dirty & (AGX_DIRTY_VS_PROG | AGX_DIRTY_VERTEX | AGX_DIRTY_XFB |
@@ -2456,8 +2450,6 @@ agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
    };
 
    if (key.next_stage == ASAHI_VS_FS) {
-      key.next.fs.clip_halfz = ctx->rast->base.clip_halfz;
-
       /* If we are not rasterizing points, don't set fixed_point_size to
        * eliminate the useless point size write.
        */
@@ -2533,7 +2525,6 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
       .rasterizer_discard = ctx->rast->base.rasterizer_discard,
 
       /* TODO: Deduplicate */
-      .clip_halfz = ctx->rast->base.clip_halfz,
       .fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
                           rasterized_prim == MESA_PRIM_POINTS,
       .outputs_flat_shaded =

@@ -6,6 +6,7 @@
 #include "asahi/lib/agx_pack.h"
 #include "pipe/p_state.h"
 #include "util/format/u_format.h"
+#include "util/half_float.h"
 #include "util/macros.h"
 #include "agx_state.h"
 #include "pool.h"
@@ -102,9 +103,14 @@ agx_upload_uniforms(struct agx_batch *batch)
    batch->uniforms.tables[AGX_SYSVAL_TABLE_ROOT] = root_ptr.gpu;
    batch->uniforms.sample_mask = ctx->sample_mask;
 
-   batch->uniforms.sprite_mask = (batch->reduced_prim == MESA_PRIM_POINTS)
-                                    ? ctx->rast->base.sprite_coord_enable
-                                    : 0;
+   assert(_mesa_float_to_half(0.5) == 0x3800);
+   batch->uniforms.clip_z_coeff =
+      (ctx->rast && !ctx->rast->base.clip_halfz) ? 0x3800 : 0x0;
+
+   batch->uniforms.sprite_mask =
+      (batch->reduced_prim == MESA_PRIM_POINTS && ctx->rast)
+         ? ctx->rast->base.sprite_coord_enable
+         : 0;
 
    memcpy(root_ptr.cpu, &batch->uniforms, sizeof(batch->uniforms));
 }

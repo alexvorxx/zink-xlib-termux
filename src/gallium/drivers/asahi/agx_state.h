@@ -150,6 +150,9 @@ struct PACKED agx_draw_uniforms {
 
    /* Nonzero for indexed draws, zero otherwise */
    uint16_t is_indexed_draw;
+
+   /* Zero for [0, 1] clipping, 0.5 for [-1, 1] clipping. */
+   uint16_t clip_z_coeff;
 };
 
 struct PACKED agx_stage_uniforms {
@@ -457,7 +460,6 @@ struct asahi_vs_shader_key {
       } gs;
 
       struct {
-         bool clip_halfz;
          bool fixed_point_size;
          uint64_t outputs_flat_shaded;
          uint64_t outputs_linear_shaded;
@@ -507,12 +509,11 @@ struct asahi_gs_shader_key {
    /* Rasterizer shader key */
    uint64_t outputs_flat_shaded;
    uint64_t outputs_linear_shaded;
-   bool clip_halfz;
    bool fixed_point_size;
 
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;
-   bool padding[5];
+   bool padding[6];
 };
 static_assert(sizeof(struct asahi_gs_shader_key) == 24, "no holes");
 

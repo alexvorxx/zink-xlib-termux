@@ -1741,6 +1741,12 @@ intrinsic("load_fb_layers_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 # Equivalent to popcount(ballot(true) & ((1 << subgroup_invocation) - 1))
 system_value("active_subgroup_invocation_agx", 1)
 
+# With [0, 1] clipping, no transform is needed on the output z' = z. But with [-1,
+# 1] clipping, we need to transform z' = (z + w) / 2. We express both cases as a
+# lerp between z and w, where this is the lerp coefficient: 0 for [0, 1] and 0.5
+# for [-1, 1].
+system_value("clip_z_coeff_agx", 1)
+
 # mesa_prim for the input topology (in a geometry shader)
 system_value("input_topology_agx", 1)
 

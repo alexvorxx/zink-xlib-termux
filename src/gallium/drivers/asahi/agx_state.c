@@ -1943,7 +1943,6 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
 
       struct agx_ia_key ia = {
-         .flatshade_first = key->flatshade_first,
          .mode = key->mode,
       };
 
@@ -2515,18 +2514,6 @@ agx_update_tcs(struct agx_context *ctx, const struct pipe_draw_info *info)
                             (union asahi_shader_key *)&key);
 }
 
-/*
- * Triangle strips and fans are rotated based on the provoking vertex, but other
- * primitive types are not and do not need to know the provoking vertex.
- */
-static bool
-ia_needs_provoking(enum mesa_prim prim)
-{
-   return prim == MESA_PRIM_TRIANGLE_STRIP ||
-          prim == MESA_PRIM_TRIANGLE_STRIP_ADJACENCY ||
-          prim == MESA_PRIM_TRIANGLE_FAN;
-}
-
 static bool
 agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
               const struct pipe_draw_indirect_info *indirect)
@@ -2557,9 +2544,6 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
 
    struct asahi_gs_shader_key key = {
       .mode = info->mode,
-      .flatshade_first =
-         ia_needs_provoking(info->mode) && ctx->rast->base.flatshade_first,
-
       .rasterizer_discard = ctx->rast->base.rasterizer_discard,
 
       /* TODO: Deduplicate */

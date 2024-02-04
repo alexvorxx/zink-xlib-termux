@@ -29,7 +29,7 @@ agx_vertex_id_for_topology(nir_builder *b, nir_def *vert,
                            struct agx_ia_key *key)
 {
    nir_def *prim = nir_load_primitive_id(b);
-   nir_def *flatshade_first = nir_imm_bool(b, key->flatshade_first);
+   nir_def *flatshade_first = nir_ieq_imm(b, nir_load_provoking_last(b), 0);
 
    switch (key->mode) {
    case MESA_PRIM_POINTS:

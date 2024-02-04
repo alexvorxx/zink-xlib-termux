@@ -510,7 +510,6 @@ struct asahi_gs_shader_key {
 
    /* Input assembly key */
    enum mesa_prim mode;
-   bool flatshade_first;
 
    /* Rasterizer shader key */
    bool clip_halfz;

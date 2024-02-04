@@ -162,8 +162,13 @@ struct agx_geometry_params {
     * allocating counts.
     */
    uint32_t count_buffer_stride;
+
+   /* Dynamic input topology. Must be compatible with the geometry shader's
+    * layout() declared input class.
+    */
+   uint32_t input_topology;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 82 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 83 * 4);
 
 struct agx_tess_params {
    /* Persistent (cross-draw) geometry state */

@@ -1942,13 +1942,8 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
       NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
 
-      struct agx_ia_key ia = {
-         .mode = key->mode,
-      };
-
-      NIR_PASS(_, nir, agx_nir_lower_gs, dev->libagx, &ia,
-               key->rasterizer_discard, &gs_count, &gs_copy, &pre_gs,
-               &gs_out_prim, &gs_out_count_words);
+      NIR_PASS(_, nir, agx_nir_lower_gs, dev->libagx, key->rasterizer_discard,
+               &gs_count, &gs_copy, &pre_gs, &gs_out_prim, &gs_out_count_words);
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       struct asahi_fs_shader_key *key = &key_->fs;
 
@@ -2543,7 +2538,6 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
       rast_prim(gs->gs_mode, ctx->rast->base.fill_front);
 
    struct asahi_gs_shader_key key = {
-      .mode = info->mode,
       .rasterizer_discard = ctx->rast->base.rasterizer_discard,
 
       /* TODO: Deduplicate */
@@ -4108,6 +4102,7 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
       .indirect_desc = batch->geom_indirect,
       .flat_outputs =
          batch->ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_flat_shaded,
+      .input_topology = info->mode,
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(batch->ctx->streamout.targets); ++i) {

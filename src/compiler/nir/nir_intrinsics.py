@@ -1741,6 +1741,9 @@ intrinsic("load_fb_layers_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 # Equivalent to popcount(ballot(true) & ((1 << subgroup_invocation) - 1))
 system_value("active_subgroup_invocation_agx", 1)
 
+# mesa_prim for the input topology (in a geometry shader)
+system_value("input_topology_agx", 1)
+
 # Load a bindless sampler handle mapping a binding table sampler.
 intrinsic("load_sampler_handle_agx", [1], 1, [],
           flags=[CAN_ELIMINATE, CAN_REORDER],

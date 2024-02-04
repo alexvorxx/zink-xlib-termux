@@ -168,7 +168,7 @@ load_instance_id(nir_builder *b)
 }
 
 static bool
-lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *key)
+lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *_)
 {
    if (intr->intrinsic != nir_intrinsic_load_per_vertex_input)
       return false;
@@ -178,9 +178,10 @@ lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *key)
 
    nir_def *location = nir_iadd_imm(b, intr->src[1].ssa, sem.location);
 
-   /* Calculate the vertex ID we're pulling, based on the topology */
+   /* Calculate the vertex ID we're pulling, based on the topology class */
    nir_def *vert_in_prim = intr->src[0].ssa;
-   nir_def *vertex = agx_vertex_id_for_topology(b, vert_in_prim, key);
+   nir_def *vertex = agx_vertex_id_for_topology_class(
+      b, vert_in_prim, b->shader->info.gs.input_primitive);
 
    /* The unrolled vertex ID uses the input_vertices, which differs from what
     * our load_num_vertices will return (vertices vs primitives).
@@ -318,6 +319,8 @@ lower_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       id = nir_channel(b, nir_load_num_workgroups(b), 0);
    else if (intr->intrinsic == nir_intrinsic_load_flat_mask)
       id = load_geometry_param(b, flat_outputs);
+   else if (intr->intrinsic == nir_intrinsic_load_input_topology_agx)
+      id = load_geometry_param(b, input_topology);
    else if (intr->intrinsic == nir_intrinsic_load_provoking_last) {
       id = nir_b2b32(
          b, libagx_is_provoking_last(b, nir_load_input_assembly_buffer_agx(b)));
@@ -423,6 +426,7 @@ lower_to_gs_rast(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 
    case nir_intrinsic_load_flat_mask:
    case nir_intrinsic_load_provoking_last:
+   case nir_intrinsic_load_input_topology_agx:
       /* Lowering the same in both GS variants */
       return lower_id(b, intr, data);
 
@@ -1118,10 +1122,9 @@ link_libagx(nir_shader *nir, const nir_shader *libagx)
 
 bool
 agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
-                 struct agx_ia_key *ia, bool rasterizer_discard,
-                 nir_shader **gs_count, nir_shader **gs_copy,
-                 nir_shader **pre_gs, enum mesa_prim *out_mode,
-                 unsigned *out_count_words)
+                 bool rasterizer_discard, nir_shader **gs_count,
+                 nir_shader **gs_copy, nir_shader **pre_gs,
+                 enum mesa_prim *out_mode, unsigned *out_count_words)
 {
    /* Collect output component counts so we can size the geometry output buffer
     * appropriately, instead of assuming everything is vec4.
@@ -1145,7 +1148,7 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
    }
 
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_gs_inputs,
-            nir_metadata_block_index | nir_metadata_dominance, ia);
+            nir_metadata_block_index | nir_metadata_dominance, NULL);
 
    /* Lower geometry shader writes to contain all of the required counts, so we
     * know where in the various buffers we should write vertices.

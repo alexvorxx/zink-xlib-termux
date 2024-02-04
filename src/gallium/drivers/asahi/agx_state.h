@@ -507,17 +507,14 @@ struct asahi_gs_shader_key {
    /* Rasterizer shader key */
    uint64_t outputs_flat_shaded;
    uint64_t outputs_linear_shaded;
-
-   /* Input assembly key */
-   enum mesa_prim mode;
-
-   /* Rasterizer shader key */
    bool clip_halfz;
    bool fixed_point_size;
 
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;
+   bool padding[5];
 };
+static_assert(sizeof(struct asahi_gs_shader_key) == 24, "no holes");
 
 union asahi_shader_key {
    struct asahi_vs_shader_key vs;

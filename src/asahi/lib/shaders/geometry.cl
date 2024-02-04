@@ -61,6 +61,20 @@ libagx_vertex_id_for_line_loop(uint prim, uint vert, uint num_prims)
 }
 
 uint
+libagx_vertex_id_for_line_class(enum mesa_prim mode, uint prim, uint vert,
+                                uint num_prims)
+{
+   /* Line list, line strip, or line loop */
+   if (mode == MESA_PRIM_LINE_LOOP && prim == (num_prims - 1) && vert == 1)
+      return 0;
+
+   if (mode == MESA_PRIM_LINES)
+      prim *= 2;
+
+   return prim + vert;
+}
+
+uint
 libagx_vertex_id_for_tri_fan(uint prim, uint vert, bool flatshade_first)
 {
    /* Vulkan spec section 20.1.7 gives (i + 1, i + 2, 0) for a provoking
@@ -77,6 +91,44 @@ libagx_vertex_id_for_tri_fan(uint prim, uint vert, bool flatshade_first)
 
    /* The simpler form assuming last is provoking. */
    return (vert == 0) ? 0 : prim + vert;
+}
+
+uint
+libagx_vertex_id_for_tri_class(enum mesa_prim mode, uint prim, uint vert,
+                               bool flatshade_first)
+{
+   if (flatshade_first && mode == MESA_PRIM_TRIANGLE_FAN) {
+      vert = vert + 1;
+      vert = (vert == 3) ? 0 : vert;
+   }
+
+   if (mode == MESA_PRIM_TRIANGLE_FAN && vert == 0)
+      return 0;
+
+   if (mode == MESA_PRIM_TRIANGLES)
+      prim *= 3;
+
+   /* Triangle list, triangle strip, or triangle fan */
+   if (mode == MESA_PRIM_TRIANGLE_STRIP) {
+      unsigned pv = flatshade_first ? 0 : 2;
+
+      bool even = (prim & 1) == 0;
+      bool provoking = vert == pv;
+
+      vert = ((provoking || even) ? vert : ((3 - pv) - vert));
+   }
+
+   return prim + vert;
+}
+
+uint
+libagx_vertex_id_for_line_adj_class(enum mesa_prim mode, uint prim, uint vert)
+{
+   /* Line list adj or line strip adj */
+   if (mode == MESA_PRIM_LINES_ADJACENCY)
+      prim *= 4;
+
+   return prim + vert;
 }
 
 uint
@@ -125,7 +177,19 @@ libagx_vertex_id_for_tri_strip_adj(uint prim, uint vert, uint num_prims,
    return (prim * 2) + offset;
 }
 
-/* Sync with agx_nir_lower_ia.c, this is for the restart unrolling */
+uint
+libagx_vertex_id_for_tri_adj_class(enum mesa_prim mode, uint prim, uint vert,
+                                   uint nr, bool flatshade_first)
+{
+   /* Tri adj list or tri adj strip */
+   if (mode == MESA_PRIM_TRIANGLE_STRIP_ADJACENCY) {
+      return libagx_vertex_id_for_tri_strip_adj(prim, vert, nr,
+                                                flatshade_first);
+   } else {
+      return (6 * prim) + vert;
+   }
+}
+
 uint
 libagx_vertex_id_for_topology(enum mesa_prim mode, bool flatshade_first,
                               uint prim, uint vert, uint num_prims)

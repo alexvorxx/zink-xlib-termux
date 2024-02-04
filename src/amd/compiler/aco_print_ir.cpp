@@ -103,16 +103,20 @@ print_reg_class(const RegClass rc, FILE* output)
 void
 print_physReg(PhysReg reg, unsigned bytes, FILE* output, unsigned flags)
 {
-   if (reg == 124) {
+   if (reg == 106) {
+      fprintf(output, bytes > 4 ? "vcc" : "vcc_lo");
+   } else if (reg == 107) {
+      fprintf(output, "vcc_hi");
+   } else if (reg == 124) {
       fprintf(output, "m0");
-   } else if (reg == 106) {
-      fprintf(output, "vcc");
-   } else if (reg == 253) {
-      fprintf(output, "scc");
-   } else if (reg == 126) {
-      fprintf(output, "exec");
    } else if (reg == 125) {
       fprintf(output, "null");
+   } else if (reg == 126) {
+      fprintf(output, bytes > 4 ? "exec" : "exec_lo");
+   } else if (reg == 127) {
+      fprintf(output, "exec_hi");
+   } else if (reg == 253) {
+      fprintf(output, "scc");
    } else {
       bool is_vgpr = reg / 256;
       unsigned r = reg % 256;

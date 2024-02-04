@@ -2319,9 +2319,11 @@ agx_create_shader_state(struct pipe_context *pctx,
       }
 
       case PIPE_SHADER_GEOMETRY:
+         break;
+
       case PIPE_SHADER_TESS_CTRL:
       case PIPE_SHADER_TESS_EVAL:
-         /* TODO: Geometry/tessellation shaders with shader-db */
+         /* TODO: Tessellation shaders with shader-db */
          return so;
 
       case PIPE_SHADER_FRAGMENT:

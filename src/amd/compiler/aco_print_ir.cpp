@@ -797,34 +797,34 @@ aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* ou
    fprintf(output, "%s", instr_info.name[(int)instr->opcode]);
    if (instr->operands.size()) {
       const unsigned num_operands = instr->operands.size();
-      bool* const abs = (bool*)alloca(num_operands * sizeof(bool));
-      bool* const neg = (bool*)alloca(num_operands * sizeof(bool));
-      bool* const opsel = (bool*)alloca(num_operands * sizeof(bool));
-      bool* const f2f32 = (bool*)alloca(num_operands * sizeof(bool));
-      for (unsigned i = 0; i < num_operands; ++i) {
-         abs[i] = false;
-         neg[i] = false;
-         opsel[i] = false;
-         f2f32[i] = false;
-      }
-      bool is_mad_mix = instr->opcode == aco_opcode::v_fma_mix_f32 ||
-                        instr->opcode == aco_opcode::v_fma_mixlo_f16 ||
-                        instr->opcode == aco_opcode::v_fma_mixhi_f16;
-      if (instr->isVALU() && !instr->isVOP3P()) {
-         const VALU_instruction& valu = instr->valu();
-         for (unsigned i = 0; i < MIN2(num_operands, 3); ++i) {
-            abs[i] = valu.abs[i];
-            neg[i] = valu.neg[i];
-            opsel[i] = valu.opsel[i];
-         }
-      } else if (instr->isVOP3P() && is_mad_mix) {
+      bitarray8 abs = 0;
+      bitarray8 neg = 0;
+      bitarray8 neg_lo = 0;
+      bitarray8 neg_hi = 0;
+      bitarray8 opsel = 0;
+      bitarray8 f2f32 = 0;
+      bitarray8 opsel_lo = 0;
+      bitarray8 opsel_hi = -1;
+
+      if (instr->opcode == aco_opcode::v_fma_mix_f32 ||
+          instr->opcode == aco_opcode::v_fma_mixlo_f16 ||
+          instr->opcode == aco_opcode::v_fma_mixhi_f16) {
          const VALU_instruction& vop3p = instr->valu();
-         for (unsigned i = 0; i < MIN2(num_operands, 3); ++i) {
-            abs[i] = vop3p.neg_hi[i];
-            neg[i] = vop3p.neg_lo[i];
-            f2f32[i] = vop3p.opsel_hi[i];
-            opsel[i] = f2f32[i] && vop3p.opsel_lo[i];
-         }
+         abs = vop3p.abs;
+         neg = vop3p.neg;
+         f2f32 = vop3p.opsel_hi;
+         opsel = f2f32 & vop3p.opsel_lo;
+      } else if (instr->isVOP3P()) {
+         const VALU_instruction& vop3p = instr->valu();
+         neg_lo = vop3p.neg_lo;
+         neg_hi = vop3p.neg_hi;
+         opsel_lo = vop3p.opsel_lo;
+         opsel_hi = vop3p.opsel_hi;
+      } else if (instr->isVALU()) {
+         const VALU_instruction& valu = instr->valu();
+         abs = valu.abs;
+         neg = valu.neg;
+         opsel = valu.opsel;
       }
       for (unsigned i = 0; i < num_operands; ++i) {
          if (i)
@@ -832,30 +832,33 @@ aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* ou
          else
             fprintf(output, " ");
 
-         if (neg[i])
-            fprintf(output, "-");
-         if (abs[i])
-            fprintf(output, "|");
-         if (opsel[i])
-            fprintf(output, "hi(");
-         else if (f2f32[i])
-            fprintf(output, "lo(");
-         aco_print_operand(&instr->operands[i], output, flags);
-         if (f2f32[i] || opsel[i])
-            fprintf(output, ")");
-         if (abs[i])
-            fprintf(output, "|");
+         if (i < 3) {
+            if (neg[i])
+               fprintf(output, "-");
+            if (abs[i])
+               fprintf(output, "|");
+            if (opsel[i])
+               fprintf(output, "hi(");
+            else if (f2f32[i])
+               fprintf(output, "lo(");
+         }
 
-         if (instr->isVOP3P() && !is_mad_mix) {
-            const VALU_instruction& vop3 = instr->valu();
-            if (vop3.opsel_lo[i] || !vop3.opsel_hi[i]) {
-               fprintf(output, ".%c%c", vop3.opsel_lo[i] ? 'y' : 'x', vop3.opsel_hi[i] ? 'y' : 'x');
-            }
-            if (vop3.neg_lo[i] && vop3.neg_hi[i])
+         aco_print_operand(&instr->operands[i], output, flags);
+
+         if (i < 3) {
+            if (f2f32[i] || opsel[i])
+               fprintf(output, ")");
+            if (abs[i])
+               fprintf(output, "|");
+
+            if (opsel_lo[i] || !opsel_hi[i])
+               fprintf(output, ".%c%c", opsel_lo[i] ? 'y' : 'x', opsel_hi[i] ? 'y' : 'x');
+
+            if (neg_lo[i] && neg_hi[i])
                fprintf(output, "*[-1,-1]");
-            else if (vop3.neg_lo[i])
+            else if (neg_lo[i])
                fprintf(output, "*[-1,1]");
-            else if (vop3.neg_hi[i])
+            else if (neg_hi[i])
                fprintf(output, "*[1,-1]");
          }
       }

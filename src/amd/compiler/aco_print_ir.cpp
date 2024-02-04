@@ -821,7 +821,8 @@ aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* ou
          neg_hi = vop3p.neg_hi & ~neg;
          opsel_lo = vop3p.opsel_lo;
          opsel_hi = vop3p.opsel_hi;
-      } else if (instr->isVALU()) {
+      } else if (instr->isVALU() && instr->opcode != aco_opcode::v_permlane16_b32 &&
+                 instr->opcode != aco_opcode::v_permlanex16_b32) {
          const VALU_instruction& valu = instr->valu();
          abs = valu.abs;
          neg = valu.neg;

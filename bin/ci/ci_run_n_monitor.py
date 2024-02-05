@@ -24,6 +24,7 @@ from subprocess import check_output
 from typing import TYPE_CHECKING, Iterable, Literal, Optional
 
 import gitlab
+import gitlab.v4.objects
 from colorama import Fore, Style
 from gitlab_common import (
     GITLAB_URL,
@@ -191,7 +192,10 @@ def monitor_pipeline(
 
 
 def enable_job(
-    project, job, action_type: Literal["target", "dep", "retry"], force_manual: bool
+    project: gitlab.v4.objects.Project,
+    job: gitlab.v4.objects.ProjectPipelineJob,
+    action_type: Literal["target", "dep", "retry"],
+    force_manual: bool,
 ) -> None:
     """enable job"""
     if (

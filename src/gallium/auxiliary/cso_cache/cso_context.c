@@ -1739,8 +1739,6 @@ cso_restore_state(struct cso_context *ctx, unsigned unbind)
       cso->base.pipe->set_constant_buffer(cso->base.pipe, PIPE_SHADER_FRAGMENT, 0, false, NULL);
    if (state_mask & CSO_BIT_VERTEX_ELEMENTS)
       cso_restore_vertex_elements(cso);
-   if (unbind & CSO_UNBIND_VERTEX_BUFFER0)
-      cso->base.pipe->set_vertex_buffers(cso->base.pipe, 0, false, NULL);
    if (state_mask & CSO_BIT_STREAM_OUTPUTS)
       cso_restore_stream_outputs(cso);
    if (state_mask & CSO_BIT_PAUSE_QUERIES)

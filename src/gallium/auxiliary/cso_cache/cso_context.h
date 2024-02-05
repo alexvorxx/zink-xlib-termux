@@ -110,7 +110,6 @@ enum cso_unbind_flags {
    CSO_UNBIND_FS_IMAGE0 = (1 << 2),
    CSO_UNBIND_VS_CONSTANTS = (1 << 3),
    CSO_UNBIND_FS_CONSTANTS = (1 << 4),
-   CSO_UNBIND_VERTEX_BUFFER0 = (1 << 5),
 };
 
 /*

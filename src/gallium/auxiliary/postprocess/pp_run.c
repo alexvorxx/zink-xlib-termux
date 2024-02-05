@@ -188,8 +188,7 @@ pp_run(struct pp_queue_t *ppq, struct pipe_resource *in,
    cso_restore_state(cso, CSO_UNBIND_FS_SAMPLERVIEWS |
                           CSO_UNBIND_FS_IMAGE0 |
                           CSO_UNBIND_VS_CONSTANTS |
-                          CSO_UNBIND_FS_CONSTANTS |
-                          CSO_UNBIND_VERTEX_BUFFER0);
+                          CSO_UNBIND_FS_CONSTANTS);
 
    /* restore states not restored by cso */
    if (ppq->p->st) {

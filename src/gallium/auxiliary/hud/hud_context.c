@@ -655,7 +655,7 @@ hud_draw_results(struct hud_context *hud, struct pipe_resource *tex)
    }
 
 done:
-   cso_restore_state(cso, CSO_UNBIND_FS_SAMPLERVIEW0 | CSO_UNBIND_VS_CONSTANTS | CSO_UNBIND_VERTEX_BUFFER0);
+   cso_restore_state(cso, CSO_UNBIND_FS_SAMPLERVIEW0 | CSO_UNBIND_VS_CONSTANTS);
 
    /* restore states not restored by cso */
    if (hud->st) {

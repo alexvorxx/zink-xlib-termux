@@ -221,6 +221,7 @@ def enable_job(
         job = get_pipeline_job(pipeline, new_job["id"])
     else:
         pjob.play()
+        job = get_pipeline_job(pipeline, pjob.id)
 
     if action_type == "target":
         jtype = "🞋 "

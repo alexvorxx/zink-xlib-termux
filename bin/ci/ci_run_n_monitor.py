@@ -217,7 +217,8 @@ def enable_job(
     pjob = project.jobs.get(job.id, lazy=True)
 
     if job.status in ["success", "failed", "canceled"]:
-        pjob.retry()
+        new_job = pjob.retry()
+        job = get_pipeline_job(pipeline, new_job["id"])
     else:
         pjob.play()
 

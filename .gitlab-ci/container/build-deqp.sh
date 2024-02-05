@@ -36,10 +36,6 @@ vk_cts_commits_to_backport=(
 
 # shellcheck disable=SC2034
 vk_cts_patch_files=(
-  # Android specific patches.
-  build-deqp_Allow-running-on-Android-from-the-command-line.patch
-  build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
-
   # Change zlib URL because the one from zlib.net requires a human-verification
   # Forward-port of b61f15f09adb6b7c9eefc7f7c44612c0c390abe5 into modern dEQP codebase
   build-deqp_Change-zlib-URL-because-the-one-from-zlib.net-requir.patch
@@ -50,20 +46,30 @@ vk_cts_patch_files=(
   build-deqp_Add-missing-subgroup-support-checks-for-linear-derivate-tests.patch
 )
 
+if [ "${DEQP_TARGET}" = 'android' ]; then
+  vk_cts_patch_files+=(
+    build-deqp_Allow-running-on-Android-from-the-command-line.patch
+    build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
+  )
+fi
+
 # shellcheck disable=SC2034
 gl_cts_commits_to_backport=(
 )
 
 # shellcheck disable=SC2034
 gl_cts_patch_files=(
-  # Android specific patches.
-  build-deqp_Allow-running-on-Android-from-the-command-line.patch
-  build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
-
   # Change zlib URL because the one from zlib.net requires a human-verification
   # Forward-port of b61f15f09adb6b7c9eefc7f7c44612c0c390abe5 into modern dEQP codebase
   build-deqp_Change-zlib-URL-because-the-one-from-zlib.net-requir.patch
 )
+
+if [ "${DEQP_TARGET}" = 'android' ]; then
+  gl_cts_patch_files+=(
+    build-deqp_Allow-running-on-Android-from-the-command-line.patch
+    build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
+  )
+fi
 
 
 ### Careful editing anything below this line

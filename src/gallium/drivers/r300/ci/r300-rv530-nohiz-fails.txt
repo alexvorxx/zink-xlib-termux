@@ -445,8 +445,6 @@ spec@!opengl 2.1@pbo@test_draw_pixels,Fail
 spec@!opengl 2.1@pbo@test_polygon_stip,Fail
 spec@!opengl 2.1@polygon-stipple-fs,Fail
 
-spec@arb_arrays_of_arrays@execution@glsl-arrays-copy-size-mismatch,Fail
-
 spec@arb_clear_texture@arb_clear_texture-depth,Fail
 spec@arb_clear_texture@arb_clear_texture-float,Fail
 spec@arb_clear_texture@arb_clear_texture-supported-formats,Fail
@@ -665,18 +663,6 @@ spec@ext_framebuffer_object@getteximage-formats init-by-clear-and-render,Fail
 spec@ext_framebuffer_object@getteximage-formats init-by-rendering,Fail
 
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-export,Fail
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_nv12,Fail
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_nv21,Fail
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_p010,Crash
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_p012,Crash
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_p016,Crash
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_vyuy,Fail
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_y210,Crash
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_y212,Crash
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_y216,Crash
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yuv420,Fail
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yvu420,Fail
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yvyu,Fail
 
 spec@ext_occlusion_query_boolean@any-samples,Fail
 

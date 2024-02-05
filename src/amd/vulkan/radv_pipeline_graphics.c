@@ -2001,7 +2001,10 @@ radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *
       stages[MESA_SHADER_MESH].info.is_ngg = true;
    }
 
-   if (device->physical_device->rad_info.gfx_level < GFX11) {
+   if (device->physical_device->rad_info.gfx_level >= GFX11) {
+      if (stages[MESA_SHADER_GEOMETRY].nir)
+         stages[MESA_SHADER_GEOMETRY].info.is_ngg = true;
+   } else {
       /* GFX10/GFX10.3 can't always enable NGG due to HW bugs/limitations. */
       if (stages[MESA_SHADER_TESS_CTRL].nir && stages[MESA_SHADER_GEOMETRY].nir &&
           stages[MESA_SHADER_GEOMETRY].nir->info.gs.invocations *
@@ -2030,13 +2033,13 @@ radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *
          else
             stages[MESA_SHADER_VERTEX].info.is_ngg = false;
       }
-   }
 
-   if (stages[MESA_SHADER_GEOMETRY].nir) {
-      if (stages[MESA_SHADER_TESS_CTRL].nir)
-         stages[MESA_SHADER_GEOMETRY].info.is_ngg = stages[MESA_SHADER_TESS_EVAL].info.is_ngg;
-      else
-         stages[MESA_SHADER_GEOMETRY].info.is_ngg = stages[MESA_SHADER_VERTEX].info.is_ngg;
+      if (stages[MESA_SHADER_GEOMETRY].nir) {
+         if (stages[MESA_SHADER_TESS_CTRL].nir)
+            stages[MESA_SHADER_GEOMETRY].info.is_ngg = stages[MESA_SHADER_TESS_EVAL].info.is_ngg;
+         else
+            stages[MESA_SHADER_GEOMETRY].info.is_ngg = stages[MESA_SHADER_VERTEX].info.is_ngg;
+      }
    }
 }
 

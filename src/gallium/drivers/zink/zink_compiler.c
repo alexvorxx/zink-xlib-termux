@@ -4021,7 +4021,10 @@ zink_shader_compile(struct zink_screen *screen, bool can_shobj, struct zink_shad
          zs->can_inline = false;
    } else if (need_optimize)
       optimize_nir(nir, zs, true);
-   NIR_PASS_V(nir, lower_sparse);
+   bool has_sparse = false;
+   NIR_PASS(has_sparse, nir, lower_sparse);
+   if (has_sparse)
+      optimize_nir(nir, zs, false);
    
    struct zink_shader_object obj = compile_module(screen, zs, nir, can_shobj, pg);
    ralloc_free(nir);

@@ -1993,10 +1993,10 @@ radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *
    if (!device->cache_key.use_ngg)
       return;
 
-   if (stages[MESA_SHADER_TESS_CTRL].nir) {
-      stages[MESA_SHADER_TESS_EVAL].info.is_ngg = true;
-   } else if (stages[MESA_SHADER_VERTEX].nir) {
+   if (stages[MESA_SHADER_VERTEX].nir && stages[MESA_SHADER_VERTEX].info.next_stage != MESA_SHADER_TESS_CTRL) {
       stages[MESA_SHADER_VERTEX].info.is_ngg = true;
+   } else if (stages[MESA_SHADER_TESS_EVAL].nir) {
+      stages[MESA_SHADER_TESS_EVAL].info.is_ngg = true;
    } else if (stages[MESA_SHADER_MESH].nir) {
       stages[MESA_SHADER_MESH].info.is_ngg = true;
    }

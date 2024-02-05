@@ -2001,36 +2001,35 @@ radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *
       stages[MESA_SHADER_MESH].info.is_ngg = true;
    }
 
-   if (device->physical_device->rad_info.gfx_level < GFX11 && stages[MESA_SHADER_TESS_CTRL].nir &&
-       stages[MESA_SHADER_GEOMETRY].nir &&
-       stages[MESA_SHADER_GEOMETRY].nir->info.gs.invocations * stages[MESA_SHADER_GEOMETRY].nir->info.gs.vertices_out >
-          256) {
-      /* Fallback to the legacy path if tessellation is
-       * enabled with extreme geometry because
-       * EN_MAX_VERT_OUT_PER_GS_INSTANCE doesn't work and it
-       * might hang.
-       */
-      stages[MESA_SHADER_TESS_EVAL].info.is_ngg = false;
-   }
-
-   struct radv_shader_stage *last_vgt_stage = NULL;
-   radv_foreach_stage(i, active_nir_stages)
-   {
-      if (radv_is_last_vgt_stage(&stages[i])) {
-         last_vgt_stage = &stages[i];
-      }
-   }
-
-   bool uses_xfb = last_vgt_stage && last_vgt_stage->nir->xfb_info;
-
-   if (!device->physical_device->use_ngg_streamout && uses_xfb) {
-      /* GFX11+ requires NGG. */
-      assert(device->physical_device->rad_info.gfx_level < GFX11);
-
-      if (stages[MESA_SHADER_TESS_CTRL].nir)
+   if (device->physical_device->rad_info.gfx_level < GFX11) {
+      /* GFX10/GFX10.3 can't always enable NGG due to HW bugs/limitations. */
+      if (stages[MESA_SHADER_TESS_CTRL].nir && stages[MESA_SHADER_GEOMETRY].nir &&
+          stages[MESA_SHADER_GEOMETRY].nir->info.gs.invocations *
+                stages[MESA_SHADER_GEOMETRY].nir->info.gs.vertices_out >
+             256) {
+         /* Fallback to the legacy path if tessellation is
+          * enabled with extreme geometry because
+          * EN_MAX_VERT_OUT_PER_GS_INSTANCE doesn't work and it
+          * might hang.
+          */
          stages[MESA_SHADER_TESS_EVAL].info.is_ngg = false;
-      else
-         stages[MESA_SHADER_VERTEX].info.is_ngg = false;
+      }
+
+      struct radv_shader_stage *last_vgt_stage = NULL;
+      radv_foreach_stage(i, active_nir_stages)
+      {
+         if (radv_is_last_vgt_stage(&stages[i])) {
+            last_vgt_stage = &stages[i];
+         }
+      }
+
+      if (last_vgt_stage && last_vgt_stage->nir->xfb_info) {
+         /* Disable NGG because GFX10/GFX10.3 don't support NGG streamout. */
+         if (stages[MESA_SHADER_TESS_CTRL].nir)
+            stages[MESA_SHADER_TESS_EVAL].info.is_ngg = false;
+         else
+            stages[MESA_SHADER_VERTEX].info.is_ngg = false;
+      }
    }
 
    if (stages[MESA_SHADER_GEOMETRY].nir) {

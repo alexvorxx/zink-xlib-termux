@@ -2949,10 +2949,14 @@ VkResult anv_init_sparse_bindings(struct anv_device *device,
                                   struct anv_address *out_address);
 VkResult anv_free_sparse_bindings(struct anv_device *device,
                                   struct anv_sparse_binding_data *sparse);
-VkResult anv_sparse_bind_resource_memory(struct anv_device *device,
-                                         struct anv_sparse_binding_data *data,
-                                         const VkSparseMemoryBind *bind_,
-                                         struct anv_sparse_submission *submit);
+VkResult anv_sparse_bind_buffer(struct anv_device *device,
+                                struct anv_buffer *buffer,
+                                const VkSparseMemoryBind *vk_bind,
+                                struct anv_sparse_submission *submit);
+VkResult anv_sparse_bind_image_opaque(struct anv_device *device,
+                                      struct anv_image *image,
+                                      const VkSparseMemoryBind *vk_bind,
+                                      struct anv_sparse_submission *submit);
 VkResult anv_sparse_bind_image_memory(struct anv_queue *queue,
                                       struct anv_image *image,
                                       const VkSparseImageMemoryBind *bind,

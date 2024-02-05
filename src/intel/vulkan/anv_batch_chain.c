@@ -1420,10 +1420,9 @@ anv_queue_submit_sparse_bind_locked(struct anv_queue *queue,
       assert(anv_buffer_is_sparse(buffer));
 
       for (uint32_t j = 0; j < bind_info->bindCount; j++) {
-         result = anv_sparse_bind_resource_memory(device,
-                                                  &buffer->sparse_data,
-                                                  &bind_info->pBinds[j],
-                                                  &sparse_submit);
+         result = anv_sparse_bind_buffer(device, buffer,
+                                         &bind_info->pBinds[j],
+                                         &sparse_submit);
          if (result != VK_SUCCESS)
             goto out_free_submit;
       }
@@ -1451,14 +1450,11 @@ anv_queue_submit_sparse_bind_locked(struct anv_queue *queue,
       ANV_FROM_HANDLE(anv_image, image, bind_info->image);
 
       assert(anv_image_is_sparse(image));
-      assert(!image->disjoint);
-      struct anv_sparse_binding_data *sparse_data =
-         &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN].sparse_data;
 
       for (uint32_t j = 0; j < bind_info->bindCount; j++) {
-         result = anv_sparse_bind_resource_memory(device, sparse_data,
-                                                  &bind_info->pBinds[j],
-                                                  &sparse_submit);
+         result = anv_sparse_bind_image_opaque(device, image,
+                                               &bind_info->pBinds[j],
+                                               &sparse_submit);
          if (result != VK_SUCCESS)
             goto out_free_submit;
       }

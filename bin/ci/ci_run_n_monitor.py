@@ -120,10 +120,10 @@ def monitor_pipeline(
                         stress < 0
                         or sum(stress_status_counter[job.name].values()) < stress
                     ):
-                        enable_job(project, job, "retry", force_manual)
+                        job = enable_job(project, pipeline, job, "retry", force_manual)
                         stress_status_counter[job.name][job.status] += 1
                 else:
-                    enable_job(project, job, "target", force_manual)
+                    job = enable_job(project, pipeline, job, "target", force_manual)
 
                 print_job_status(job, job.status not in target_statuses[job.name])
                 target_statuses[job.name] = job.status
@@ -136,7 +136,7 @@ def monitor_pipeline(
 
             # run dependencies and cancel the rest
             if job.name in dependencies:
-                enable_job(project, job, "dep", True)
+                job = enable_job(project, pipeline, job, "dep", True)
                 if job.status == "failed":
                     deps_failed.append(job.name)
             else:
@@ -193,17 +193,18 @@ def monitor_pipeline(
 
 def enable_job(
     project: gitlab.v4.objects.Project,
+    pipeline: gitlab.v4.objects.ProjectPipeline,
     job: gitlab.v4.objects.ProjectPipelineJob,
     action_type: Literal["target", "dep", "retry"],
     force_manual: bool,
-) -> None:
+) -> gitlab.v4.objects.ProjectPipelineJob:
     """enable job"""
     if (
         (job.status in ["success", "failed"] and action_type != "retry")
         or (job.status == "manual" and not force_manual)
         or job.status in ["skipped", "running", "created", "pending"]
     ):
-        return
+        return job
 
     pjob = project.jobs.get(job.id, lazy=True)
 
@@ -220,6 +221,8 @@ def enable_job(
         jtype = "(dependency)"
 
     print(Fore.MAGENTA + f"{jtype} job {job.name} manually enabled" + Style.RESET_ALL)
+
+    return job
 
 
 def cancel_job(project, job) -> None:

@@ -2215,29 +2215,69 @@ emit_gs_end_primitive(nir_to_brw_state &ntb, const nir_src &vertex_count_nir_src
    abld.OR(s.control_data_bits, s.control_data_bits, mask);
 }
 
-void
-fs_visitor::emit_gs_control_data_bits(const fs_reg &vertex_count)
+fs_reg
+fs_visitor::gs_urb_per_slot_dword_index(const fs_reg &vertex_count)
 {
-   assert(stage == MESA_SHADER_GEOMETRY);
-   assert(gs_compile->control_data_bits_per_vertex != 0);
-
-   struct brw_gs_prog_data *gs_prog_data = brw_gs_prog_data(prog_data);
-
-   const fs_builder bld = fs_builder(this).at_end();
-   const fs_builder abld = bld.annotate("emit control data bits");
-   const fs_builder fwa_bld = bld.exec_all();
-
    /* We use a single UD register to accumulate control data bits (32 bits
     * for each of the SIMD8 channels).  So we need to write a DWord (32 bits)
     * at a time.
     *
-    * Unfortunately, the URB_WRITE_SIMD8 message uses 128-bit (OWord) offsets.
-    * We have select a 128-bit group via the Global and Per-Slot Offsets, then
-    * use the Channel Mask phase to enable/disable which DWord within that
-    * group to write.  (Remember, different SIMD8 channels may have emitted
-    * different numbers of vertices, so we may need per-slot offsets.)
+    * On platforms < Xe2:
+    *    Unfortunately,the URB_WRITE_SIMD8 message uses 128-bit (OWord)
+    *    offsets.  We have select a 128-bit group via the Global and Per-Slot
+    *    Offsets, then use the Channel Mask phase to enable/disable which DWord
+    *    within that group to write.  (Remember, different SIMD8 channels may
+    *    have emitted different numbers of vertices, so we may need per-slot
+    *    offsets.)
     *
-    * Channel masking presents an annoying problem: we may have to replicate
+    *    Channel masking presents an annoying problem: we may have to replicate
+    *    the data up to 4 times:
+    *
+    *    Msg = Handles, Per-Slot Offsets, Channel Masks, Data, Data, Data,
+    *          Data.
+    *
+    *    To avoid penalizing shaders that emit a small number of vertices, we
+    *    can avoid these sometimes: if the size of the control data header is
+    *    <= 128 bits, then there is only 1 OWord.  All SIMD8 channels will land
+    *    land in the same 128-bit group, so we can skip per-slot offsets.
+    *
+    *    Similarly, if the control data header is <= 32 bits, there is only one
+    *    DWord, so we can skip channel masks.
+    */
+   const fs_builder bld = fs_builder(this).at_end();
+   const fs_builder abld = bld.annotate("urb per slot offset");
+
+   /* Figure out which DWord we're trying to write to using the formula:
+    *
+    *    dword_index = (vertex_count - 1) * bits_per_vertex / 32
+    *
+    * Since bits_per_vertex is a power of two, and is known at compile
+    * time, this can be optimized to:
+    *
+    *    dword_index = (vertex_count - 1) >> (6 - log2(bits_per_vertex))
+    */
+   fs_reg dword_index = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg prev_count = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   abld.ADD(prev_count, vertex_count, brw_imm_ud(0xffffffffu));
+   unsigned log2_bits_per_vertex =
+      util_last_bit(gs_compile->control_data_bits_per_vertex);
+   abld.SHR(dword_index, prev_count, brw_imm_ud(6u - log2_bits_per_vertex));
+
+   return dword_index;
+}
+
+fs_reg
+fs_visitor::gs_urb_channel_mask(const fs_reg &dword_index)
+{
+   fs_reg channel_mask;
+
+   /* Xe2+ can do URB loads with a byte offset, so we don't need to
+    * construct a channel mask.
+    */
+   if (devinfo->ver >= 20)
+      return channel_mask;
+
+   /* Channel masking presents an annoying problem: we may have to replicate
     * the data up to 4 times:
     *
     * Msg = Handles, Per-Slot Offsets, Channel Masks, Data, Data, Data, Data.
@@ -2250,51 +2290,62 @@ fs_visitor::emit_gs_control_data_bits(const fs_reg &vertex_count)
     * Similarly, if the control data header is <= 32 bits, there is only one
     * DWord, so we can skip channel masks.
     */
-   fs_reg channel_mask, per_slot_offset;
+   if (gs_compile->control_data_header_size_bits <= 32)
+      return channel_mask;
 
-   if (gs_compile->control_data_header_size_bits > 32)
-      channel_mask = vgrf(glsl_uint_type());
+   const fs_builder bld = fs_builder(this).at_end();
+   const fs_builder fwa_bld = bld.exec_all();
 
-   if (gs_compile->control_data_header_size_bits > 128)
+   channel_mask = vgrf(glsl_uint_type());
+   /* Set the channel masks to 1 << (dword_index % 4), so that we'll
+    * write to the appropriate DWORD within the OWORD.
+    */
+   fs_reg channel = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fwa_bld.AND(channel, dword_index, brw_imm_ud(3u));
+   channel_mask = intexp2(fwa_bld, channel);
+   /* Then the channel masks need to be in bits 23:16. */
+   fwa_bld.SHL(channel_mask, channel_mask, brw_imm_ud(16u));
+
+   return channel_mask;
+}
+
+void
+fs_visitor::emit_gs_control_data_bits(const fs_reg &vertex_count)
+{
+   assert(stage == MESA_SHADER_GEOMETRY);
+   assert(gs_compile->control_data_bits_per_vertex != 0);
+
+   const struct brw_gs_prog_data *gs_prog_data = brw_gs_prog_data(prog_data);
+
+   const fs_builder bld = fs_builder(this).at_end();
+   const fs_builder abld = bld.annotate("emit control data bits");
+
+   fs_reg dword_index = gs_urb_per_slot_dword_index(vertex_count);
+   fs_reg channel_mask = gs_urb_channel_mask(dword_index);
+   fs_reg per_slot_offset;
+
+   const unsigned max_control_data_header_size_bits =
+      devinfo->ver >= 20 ? 32 : 128;
+
+   if (gs_compile->control_data_header_size_bits > max_control_data_header_size_bits) {
       per_slot_offset = vgrf(glsl_uint_type());
 
-   /* Figure out which DWord we're trying to write to using the formula:
-    *
-    *    dword_index = (vertex_count - 1) * bits_per_vertex / 32
-    *
-    * Since bits_per_vertex is a power of two, and is known at compile
-    * time, this can be optimized to:
-    *
-    *    dword_index = (vertex_count - 1) >> (6 - log2(bits_per_vertex))
-    */
-   if (channel_mask.file != BAD_FILE || per_slot_offset.file != BAD_FILE) {
-      fs_reg dword_index = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-      fs_reg prev_count = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-      abld.ADD(prev_count, vertex_count, brw_imm_ud(0xffffffffu));
-      unsigned log2_bits_per_vertex =
-         util_last_bit(gs_compile->control_data_bits_per_vertex);
-      abld.SHR(dword_index, prev_count, brw_imm_ud(6u - log2_bits_per_vertex));
-
-      if (per_slot_offset.file != BAD_FILE) {
+      /* Convert dword_index to bytes on Xe2+ since LSC can do operate on byte
+       * offset granularity.
+       */
+      if (devinfo->ver >= 20) {
+         abld.SHL(per_slot_offset, dword_index, brw_imm_ud(2u));
+      } else {
          /* Set the per-slot offset to dword_index / 4, so that we'll write to
           * the appropriate OWord within the control data header.
           */
          abld.SHR(per_slot_offset, dword_index, brw_imm_ud(2u));
       }
-
-      /* Set the channel masks to 1 << (dword_index % 4), so that we'll
-       * write to the appropriate DWORD within the OWORD.
-       */
-      fs_reg channel = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-      fwa_bld.AND(channel, dword_index, brw_imm_ud(3u));
-      channel_mask = intexp2(fwa_bld, channel);
-      /* Then the channel masks need to be in bits 23:16. */
-      fwa_bld.SHL(channel_mask, channel_mask, brw_imm_ud(16u));
    }
 
    /* If there are channel masks, add 3 extra copies of the data. */
    const unsigned length = 1 + 3 * unsigned(channel_mask.file != BAD_FILE);
-   fs_reg sources[4];
+   fs_reg sources[length];
 
    for (unsigned i = 0; i < ARRAY_SIZE(sources); i++)
       sources[i] = this->control_data_bits;
@@ -2470,6 +2521,8 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
                    unsigned first_component)
 {
    const fs_builder &bld = ntb.bld;
+   const struct intel_device_info *devinfo = ntb.devinfo;
+
    fs_visitor &s = ntb.s;
 
    assert(type_sz(dst.type) == 4);
@@ -2566,6 +2619,10 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
    fs_inst *inst;
    fs_reg indirect_offset = get_nir_src(ntb, offset_src);
 
+   /* Convert oword offset to bytes on Xe2+ */
+   if (devinfo->ver >= 20)
+      bld.SHL(indirect_offset, indirect_offset, brw_imm_ud(4u));
+
    if (nir_src_is_const(offset_src)) {
       fs_reg srcs[URB_LOGICAL_NUM_SRCS];
       srcs[URB_LOGICAL_SRC_HANDLE] = icp_handle;
@@ -2620,6 +2677,7 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
 static fs_reg
 get_indirect_offset(nir_to_brw_state &ntb, nir_intrinsic_instr *instr)
 {
+   const intel_device_info *devinfo = ntb.devinfo;
    nir_src *offset_src = nir_get_io_offset_src(instr);
 
    if (nir_src_is_const(*offset_src)) {
@@ -2631,7 +2689,18 @@ get_indirect_offset(nir_to_brw_state &ntb, nir_intrinsic_instr *instr)
       return fs_reg();
    }
 
-   return get_nir_src(ntb, *offset_src);
+   fs_reg temp_offset = get_nir_src(ntb, *offset_src);
+
+   if (devinfo->ver < 20)
+      return temp_offset;
+
+   const fs_builder &bld = ntb.bld;
+   fs_reg indirect_offset = bld.vgrf(temp_offset.type, 1);
+
+   /* Convert Owords (16-bytes) to bytes */
+   bld.SHL(indirect_offset, temp_offset, brw_imm_ud(4u));
+
+   return indirect_offset;
 }
 
 static void

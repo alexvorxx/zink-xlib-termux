@@ -705,13 +705,21 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
       const int output_vertex_size_owords =
          gs_prog_data->output_vertex_size_hwords * 2;
 
+      /* On Xe2+ platform, LSC can operate on the Dword data element with byte
+       * offset granularity, so convert per slot offset in bytes since it's in
+       * Owords (16-bytes) unit else keep per slot offset in oword unit for
+       * previous platforms.
+       */
+      const int output_vertex_size = devinfo->ver >= 20 ?
+                                     output_vertex_size_owords * 16 :
+                                     output_vertex_size_owords;
       if (gs_vertex_count.file == IMM) {
-         per_slot_offsets = brw_imm_ud(output_vertex_size_owords *
+         per_slot_offsets = brw_imm_ud(output_vertex_size *
                                        gs_vertex_count.ud);
       } else {
          per_slot_offsets = vgrf(glsl_uint_type());
          bld.MUL(per_slot_offsets, gs_vertex_count,
-                 brw_imm_ud(output_vertex_size_owords));
+                 brw_imm_ud(output_vertex_size));
       }
    }
 

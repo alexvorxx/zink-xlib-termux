@@ -299,6 +299,8 @@ public:
    void emit_fb_writes();
    void emit_urb_writes(const fs_reg &gs_vertex_count = fs_reg());
    void emit_gs_control_data_bits(const fs_reg &vertex_count);
+   fs_reg gs_urb_channel_mask(const fs_reg &dword_index);
+   fs_reg gs_urb_per_slot_dword_index(const fs_reg &vertex_count);
    void emit_gs_thread_end();
    bool mark_last_urb_write_with_eot();
    void emit_tcs_thread_end();

@@ -709,6 +709,7 @@ enum rt_logical_srcs {
 
 enum urb_logical_srcs {
    URB_LOGICAL_SRC_HANDLE,
+   /** Offset in bytes on Xe2+ or OWords on older platforms */
    URB_LOGICAL_SRC_PER_SLOT_OFFSETS,
    URB_LOGICAL_SRC_CHANNEL_MASK,
    /** Data to be written.  BAD_FILE for reads. */

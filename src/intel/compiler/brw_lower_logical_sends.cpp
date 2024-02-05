@@ -103,9 +103,7 @@ lower_urb_read_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
 
    fs_reg offsets = inst->src[URB_LOGICAL_SRC_PER_SLOT_OFFSETS];
    if (offsets.file != BAD_FILE) {
-      fs_reg offsets_B = bld.vgrf(BRW_REGISTER_TYPE_UD);
-      bld.SHL(offsets_B, offsets, brw_imm_ud(4)); /* OWords -> Bytes */
-      bld.ADD(payload, payload, offsets_B);
+      bld.ADD(payload, payload, offsets);
    }
 
    inst->sfid = BRW_SFID_URB;
@@ -225,9 +223,7 @@ lower_urb_write_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
 
    fs_reg offsets = inst->src[URB_LOGICAL_SRC_PER_SLOT_OFFSETS];
    if (offsets.file != BAD_FILE) {
-      fs_reg offsets_B = bld.vgrf(BRW_REGISTER_TYPE_UD);
-      bld.SHL(offsets_B, offsets, brw_imm_ud(4)); /* OWords -> Bytes */
-      bld.ADD(payload, payload, offsets_B);
+      bld.ADD(payload, payload, offsets);
    }
 
    const fs_reg cmask = inst->src[URB_LOGICAL_SRC_CHANNEL_MASK];

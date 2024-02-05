@@ -1906,6 +1906,11 @@ anv_push_descriptor_set_init(struct anv_cmd_buffer *cmd_buffer,
          set->desc_sampler_mem);
    }
 
+   if (push_set->set_used_on_gpu) {
+      set->desc_surface_state = ANV_STATE_NULL;
+      push_set->set_used_on_gpu = false;
+   }
+
    return true;
 }
 
@@ -2306,10 +2311,16 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
       bview->vk.range = desc->bind_range;
       bview->address = bind_addr;
 
-      if (set->is_push)
+      if (set->is_push) {
          set->generate_surface_states |= BITFIELD_BIT(descriptor_index);
-      else
+         /* Reset the surface state to make sure
+          * genX(cmd_buffer_emit_push_descriptor_surfaces) generates a new
+          * one.
+          */
+         bview->general.state = ANV_STATE_NULL;
+      } else {
          anv_descriptor_write_surface_state(device, desc, bview->general.state);
+      }
    }
 }
 

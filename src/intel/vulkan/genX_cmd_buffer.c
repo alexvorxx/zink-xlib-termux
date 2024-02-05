@@ -2262,27 +2262,47 @@ genX(cmd_buffer_flush_descriptor_sets)(struct anv_cmd_buffer *cmd_buffer,
    return flushed;
 }
 
+/* This function generates the surface state used to read the content of the
+ * descriptor buffer.
+ */
+void
+genX(cmd_buffer_emit_push_descriptor_buffer_surface)(struct anv_cmd_buffer *cmd_buffer,
+                                                     struct anv_descriptor_set *set)
+{
+   assert(set->desc_surface_state.map == NULL);
+
+   struct anv_descriptor_set_layout *layout = set->layout;
+   enum isl_format format =
+      anv_isl_format_for_descriptor_type(cmd_buffer->device,
+                                         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+
+   set->desc_surface_state =
+      anv_cmd_buffer_alloc_surface_states(cmd_buffer, 1);
+   if (set->desc_surface_state.map == NULL)
+      return;
+   anv_fill_buffer_surface_state(cmd_buffer->device,
+                                 set->desc_surface_state.map,
+                                 format, ISL_SWIZZLE_IDENTITY,
+                                 ISL_SURF_USAGE_CONSTANT_BUFFER_BIT,
+                                 set->desc_surface_addr,
+                                 layout->descriptor_buffer_surface_size, 1);
+}
+
 /* This functions generates surface states used by a pipeline for push
  * descriptors. This is delayed to the draw/dispatch time to avoid allocation
  * and surface state generation when a pipeline is not going to use the
  * binding table to access any push descriptor data.
  */
 void
-genX(cmd_buffer_flush_push_descriptor_set)(struct anv_cmd_buffer *cmd_buffer,
-                                           struct anv_cmd_pipeline_state *state,
-                                           struct anv_pipeline *pipeline)
+genX(cmd_buffer_emit_push_descriptor_surfaces)(struct anv_cmd_buffer *cmd_buffer,
+                                               struct anv_descriptor_set *set)
 {
-   assert(pipeline->use_push_descriptor &&
-          pipeline->layout.push_descriptor_set_index != -1);
-
-   struct anv_descriptor_set *set =
-      state->descriptors[pipeline->layout.push_descriptor_set_index];
    while (set->generate_surface_states) {
       int desc_idx = u_bit_scan(&set->generate_surface_states);
       struct anv_descriptor *desc = &set->descriptors[desc_idx];
       struct anv_buffer_view *bview = desc->set_buffer_view;
 
-      if (bview != NULL) {
+      if (bview != NULL && bview->general.state.map == NULL) {
          bview->general.state =
             anv_cmd_buffer_alloc_surface_states(cmd_buffer, 1);
          if (bview->general.state.map == NULL)
@@ -2291,26 +2311,6 @@ genX(cmd_buffer_flush_push_descriptor_set)(struct anv_cmd_buffer *cmd_buffer,
                                             bview->general.state);
       }
    }
-
-   if (pipeline->use_push_descriptor_buffer) {
-      struct anv_descriptor_set_layout *layout = set->layout;
-      enum isl_format format =
-         anv_isl_format_for_descriptor_type(cmd_buffer->device,
-                                            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-
-      set->desc_surface_state =
-         anv_cmd_buffer_alloc_surface_states(cmd_buffer, 1);
-      if (set->desc_surface_state.map == NULL)
-         return;
-      anv_fill_buffer_surface_state(cmd_buffer->device,
-                                    set->desc_surface_state.map,
-                                    format, ISL_SWIZZLE_IDENTITY,
-                                    ISL_SURF_USAGE_CONSTANT_BUFFER_BIT,
-                                    set->desc_surface_addr,
-                                    layout->descriptor_buffer_surface_size, 1);
-   }
-
-   state->push_descriptor.set_used_on_gpu = true;
 }
 
 ALWAYS_INLINE void

@@ -138,16 +138,10 @@ genX(cmd_buffer_flush_compute_state)(struct anv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_COMPUTE_BIT;
    }
 
-   const uint32_t push_descriptor_dirty =
-      cmd_buffer->state.push_descriptors_dirty &
-      pipeline->base.use_push_descriptor;
-   if (push_descriptor_dirty) {
-      genX(cmd_buffer_flush_push_descriptor_set)(cmd_buffer,
-                                                 &cmd_buffer->state.compute.base,
-                                                 &pipeline->base);
-      cmd_buffer->state.descriptors_dirty |= push_descriptor_dirty;
-      cmd_buffer->state.push_descriptors_dirty &= ~push_descriptor_dirty;
-   }
+   cmd_buffer->state.descriptors_dirty |=
+      genX(cmd_buffer_flush_push_descriptors)(cmd_buffer,
+                                              &cmd_buffer->state.compute.base,
+                                              &pipeline->base);
 
    if ((cmd_buffer->state.descriptors_dirty & VK_SHADER_STAGE_COMPUTE_BIT) ||
        cmd_buffer->state.compute.pipeline_dirty) {
@@ -889,15 +883,9 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
 
    genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
 
-   const VkShaderStageFlags push_descriptor_dirty =
-      cmd_buffer->state.push_descriptors_dirty &
-      pipeline->base.use_push_descriptor;
-   if (push_descriptor_dirty) {
-      genX(cmd_buffer_flush_push_descriptor_set)(cmd_buffer,
-                                                 &cmd_buffer->state.rt.base,
-                                                 &pipeline->base);
-      cmd_buffer->state.push_descriptors_dirty &= ~push_descriptor_dirty;
-   }
+   genX(cmd_buffer_flush_push_descriptors)(cmd_buffer,
+                                           &cmd_buffer->state.rt.base,
+                                           &pipeline->base);
 
    /* Add these to the reloc list as they're internal buffers that don't
     * actually have relocs to pick them up manually.

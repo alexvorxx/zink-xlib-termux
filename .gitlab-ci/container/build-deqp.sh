@@ -122,7 +122,15 @@ popd
 
 pushd /deqp
 
-if [ "${DEQP_API}" = 'GL' ] && [ "${DEQP_TARGET}" != 'android' ]; then
+if [ "${DEQP_API}" = 'GL' ]; then
+  if [ "${DEQP_TARGET}" = 'android' ]; then
+    cmake -S /VK-GL-CTS -B . -G Ninja \
+        -DDEQP_TARGET=android \
+        -DCMAKE_BUILD_TYPE=Release \
+        $EXTRA_CMAKE_ARGS
+    mold --run ninja modules/egl/deqp-egl
+    mv /deqp/modules/egl/deqp-egl /deqp/modules/egl/deqp-egl-android
+  else
     # When including EGL/X11 testing, do that build first and save off its
     # deqp-egl binary.
     cmake -S /VK-GL-CTS -B . -G Ninja \
@@ -138,6 +146,7 @@ if [ "${DEQP_API}" = 'GL' ] && [ "${DEQP_TARGET}" != 'android' ]; then
         $EXTRA_CMAKE_ARGS
     mold --run ninja modules/egl/deqp-egl
     mv /deqp/modules/egl/deqp-egl /deqp/modules/egl/deqp-egl-wayland
+  fi
 fi
 
 cmake -S /VK-GL-CTS -B . -G Ninja \
@@ -160,9 +169,6 @@ case "${DEQP_API}" in
   GL)
     deqp_build_targets+=(glcts)
     deqp_build_targets+=(deqp-gles{2,3,31})
-    if [ "${DEQP_TARGET}" = 'android' ]; then
-      deqp_build_targets+=(deqp-egl)
-    fi
     ;;
 esac
 if [ "${DEQP_TARGET}" != 'android' ]; then
@@ -172,10 +178,6 @@ if [ "${DEQP_TARGET}" != 'android' ]; then
 fi
 
 mold --run ninja "${deqp_build_targets[@]}"
-
-if [ "${DEQP_TARGET}" = 'android' ]; then
-    mv /deqp/modules/egl/deqp-egl /deqp/modules/egl/deqp-egl-android
-fi
 
 if [ "${DEQP_TARGET}" != 'android' ]; then
     # Copy out the mustpass lists we want.

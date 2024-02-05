@@ -273,6 +273,13 @@ struct tc_unflushed_batch_token;
  */
 #define TC_MAX_SUBDATA_BYTES        320
 
+enum tc_call_id {
+#define CALL(name) TC_CALL_##name,
+#include "u_threaded_context_calls.h"
+#undef CALL
+   TC_NUM_CALLS,
+};
+
 enum tc_binding_type {
    TC_BINDING_VERTEX_BUFFER,
    TC_BINDING_STREAMOUT_BUFFER,
@@ -301,6 +308,8 @@ enum tc_binding_type {
    TC_BINDING_IMAGE_TES,
    TC_BINDING_IMAGE_CS,
 };
+
+typedef uint16_t (*tc_execute)(struct pipe_context *pipe, void *call);
 
 typedef void (*tc_replace_buffer_storage_func)(struct pipe_context *ctx,
                                                struct pipe_resource *dst,
@@ -558,6 +567,12 @@ struct threaded_context_options {
    void (*fs_parse)(void *state, struct tc_renderpass_info *info);
 };
 
+struct tc_vertex_buffers {
+   struct tc_call_base base;
+   uint8_t count;
+   struct pipe_vertex_buffer slot[0]; /* more will be allocated if needed */
+};
+
 struct threaded_context {
    struct pipe_context base;
    struct pipe_context *pipe;
@@ -652,6 +667,9 @@ struct threaded_context {
    struct tc_renderpass_info *renderpass_info_recording;
    /* accessed by driver thread */
    struct tc_renderpass_info *renderpass_info;
+
+   /* Callbacks that call pipe_context functions. */
+   tc_execute execute_func[TC_NUM_CALLS];
 };
 
 

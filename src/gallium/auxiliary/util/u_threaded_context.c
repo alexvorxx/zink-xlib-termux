@@ -54,13 +54,6 @@
 
 #define TC_SENTINEL 0x5ca1ab1e
 
-enum tc_call_id {
-#define CALL(name) TC_CALL_##name,
-#include "u_threaded_context_calls.h"
-#undef CALL
-   TC_NUM_CALLS,
-};
-
 #if TC_DEBUG >= 3 || defined(TC_TRACE)
 static const char *tc_call_names[] = {
 #define CALL(name) #name,
@@ -74,10 +67,6 @@ static const char *tc_call_names[] = {
 #else
 #  define TC_TRACE_SCOPE(call_id)
 #endif
-
-typedef uint16_t (*tc_execute)(struct pipe_context *pipe, void *call);
-
-static const tc_execute execute_func[TC_NUM_CALLS];
 
 static void
 tc_buffer_subdata(struct pipe_context *_pipe,
@@ -448,6 +437,8 @@ batch_execute(struct tc_batch *batch, struct pipe_context *pipe, uint64_t *last,
     * begin incrementing renderpass info on the first set_framebuffer_state call
     */
    bool first = !batch->first_set_fb;
+   const tc_execute *execute_func = batch->tc->execute_func;
+
    for (uint64_t *iter = batch->slots; iter != last;) {
       struct tc_call_base *call = (struct tc_call_base *)iter;
 
@@ -2150,12 +2141,6 @@ tc_set_shader_buffers(struct pipe_context *_pipe,
    tc->shader_buffers_writeable_mask[shader] &= ~BITFIELD_RANGE(start, count);
    tc->shader_buffers_writeable_mask[shader] |= writable_bitmask << start;
 }
-
-struct tc_vertex_buffers {
-   struct tc_call_base base;
-   uint8_t count;
-   struct pipe_vertex_buffer slot[0]; /* more will be allocated if needed */
-};
 
 static uint16_t
 tc_call_set_vertex_buffers(struct pipe_context *pipe, void *call)
@@ -5156,12 +5141,6 @@ tc_destroy(struct pipe_context *_pipe)
    FREE(tc);
 }
 
-static const tc_execute execute_func[TC_NUM_CALLS] = {
-#define CALL(name) tc_call_##name,
-#include "u_threaded_context_calls.h"
-#undef CALL
-};
-
 void tc_driver_internal_flush_notify(struct threaded_context *tc)
 {
    /* Allow drivers to call this function even for internal contexts that
@@ -5418,6 +5397,10 @@ threaded_context_create(struct pipe_context *pipe,
    CTX_INIT(is_intel_perf_query_ready);
    CTX_INIT(get_intel_perf_query_data);
 #undef CTX_INIT
+
+#define CALL(name) tc->execute_func[TC_CALL_##name] = tc_call_##name;
+#include "u_threaded_context_calls.h"
+#undef CALL
 
    if (out)
       *out = tc;

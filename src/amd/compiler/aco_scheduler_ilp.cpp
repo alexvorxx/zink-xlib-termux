@@ -593,26 +593,40 @@ select_instruction_vopd(const SchedILPContext& ctx, bool* use_vopd)
    return cur;
 }
 
+void
+get_vopd_opcode_operands(Instruction* instr, const VOPDInfo& info, aco_opcode* op,
+                         unsigned* num_operands, Operand* operands)
+{
+   *op = info.op;
+   *num_operands += instr->operands.size();
+   std::copy(instr->operands.begin(), instr->operands.end(), operands);
+}
+
 Instruction*
 create_vopd_instruction(const SchedILPContext& ctx, unsigned idx)
 {
    Instruction* x = ctx.prev_info.instr;
    Instruction* y = ctx.nodes[idx].instr;
-   aco_opcode opx = ctx.prev_vopd_info.op;
-   aco_opcode opy = ctx.vopd[idx].op;
-   if (ctx.prev_vopd_info.is_opy_only) {
+   VOPDInfo x_info = ctx.prev_vopd_info;
+   VOPDInfo y_info = ctx.vopd[idx];
+
+   if (x_info.is_opy_only) {
       std::swap(x, y);
-      std::swap(opx, opy);
+      std::swap(x_info, y_info);
    }
 
-   VOPD_instruction* instr = create_instruction<VOPD_instruction>(
-      opx, Format::VOPD, x->operands.size() + y->operands.size(), 2);
-   instr->opy = opy;
+   aco_opcode x_op, y_op;
+   unsigned num_operands = 0;
+   Operand operands[6];
+   get_vopd_opcode_operands(x, x_info, &x_op, &num_operands, operands);
+   get_vopd_opcode_operands(y, y_info, &y_op, &num_operands, operands + num_operands);
+
+   VOPD_instruction* instr =
+      create_instruction<VOPD_instruction>(x_op, Format::VOPD, num_operands, 2);
+   instr->opy = y_op;
    instr->definitions[0] = x->definitions[0];
    instr->definitions[1] = y->definitions[0];
-   std::copy(x->operands.begin(), x->operands.end(), instr->operands.begin());
-   std::copy(y->operands.begin(), y->operands.end(),
-             std::next(instr->operands.begin(), x->operands.size()));
+   std::copy(operands, operands + num_operands, instr->operands.begin());
 
    return instr;
 }

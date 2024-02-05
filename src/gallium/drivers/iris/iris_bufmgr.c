@@ -2342,38 +2342,63 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
    /* The STATE_BASE_ADDRESS size field can only hold 1 page shy of 4GB */
    const uint64_t _4GB_minus_1 = _4GB - PAGE_SIZE;
 
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_SHADER],
-                      PAGE_SIZE, _4GB_minus_1 - PAGE_SIZE);
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_BINDER],
-                      IRIS_MEMZONE_BINDER_START + IRIS_SCRATCH_ZONE_SIZE,
-                      IRIS_BINDER_ZONE_SIZE - IRIS_SCRATCH_ZONE_SIZE);
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_SCRATCH],
-                      IRIS_MEMZONE_SCRATCH_START, IRIS_SCRATCH_ZONE_SIZE);
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_SURFACE],
-                      IRIS_MEMZONE_SURFACE_START, _4GB_minus_1 -
-                      IRIS_BINDER_ZONE_SIZE - IRIS_SCRATCH_ZONE_SIZE);
+   const struct {
+      uint64_t start;
+      uint64_t size;
+   } vma[IRIS_MEMZONE_COUNT] = {
+      [IRIS_MEMZONE_SHADER] = {
+         .start = PAGE_SIZE,
+         .size  = _4GB_minus_1 - PAGE_SIZE
+      },
+      [IRIS_MEMZONE_BINDER] = {
+         .start = IRIS_MEMZONE_BINDER_START + IRIS_SCRATCH_ZONE_SIZE,
+         .size  = IRIS_BINDER_ZONE_SIZE - IRIS_SCRATCH_ZONE_SIZE
+      },
+      [IRIS_MEMZONE_SCRATCH] = {
+         .start = IRIS_MEMZONE_SCRATCH_START,
+         .size  = IRIS_SCRATCH_ZONE_SIZE
+      },
+      [IRIS_MEMZONE_SURFACE] = {
+         .start = IRIS_MEMZONE_SURFACE_START,
+         .size = _4GB_minus_1 - IRIS_BINDER_ZONE_SIZE - IRIS_SCRATCH_ZONE_SIZE
+      },
+      [IRIS_MEMZONE_DYNAMIC] = {
+         .start = IRIS_MEMZONE_DYNAMIC_START + IRIS_BORDER_COLOR_POOL_SIZE,
 
-   /* Wa_2209859288: the Tigerlake PRM's workarounds volume says:
-    *
-    *    "PSDunit is dropping MSB of the blend state pointer from SD FIFO"
-    *    "Limit the Blend State Pointer to < 2G"
-    *
-    * We restrict the dynamic state pool to 2GB so that we don't ever get a
-    * BLEND_STATE pointer with the MSB set.  We aren't likely to need the
-    * full 4GB for dynamic state anyway.
-    */
-   const uint64_t dynamic_pool_size =
-      (devinfo->ver >= 12 ? _2GB : _4GB_minus_1) - IRIS_BORDER_COLOR_POOL_SIZE;
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_DYNAMIC],
-                      IRIS_MEMZONE_DYNAMIC_START + IRIS_BORDER_COLOR_POOL_SIZE,
-                      dynamic_pool_size);
+         /* Wa_2209859288: the Tigerlake PRM's workarounds volume says:
+          *
+          *    "PSDunit is dropping MSB of the blend state pointer from SD
+          *     FIFO [...] Limit the Blend State Pointer to < 2G"
+          *
+          * We restrict the dynamic state pool to 2GB so that we don't ever
+          * get a BLEND_STATE pointer with the MSB set.  We aren't likely to
+          * need the full 4GB for dynamic state anyway.
+          */
+         .size  = (devinfo->ver >= 12 ? _2GB : _4GB_minus_1)
+                  - IRIS_BORDER_COLOR_POOL_SIZE
+      },
+      [IRIS_MEMZONE_OTHER] = {
+         .start = IRIS_MEMZONE_OTHER_START,
 
-   /* Leave the last 4GB out of the high vma range, so that no state
-    * base address + size can overflow 48 bits.
-    */
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_OTHER],
-                      IRIS_MEMZONE_OTHER_START,
-                      (devinfo->gtt_size - _4GB) - IRIS_MEMZONE_OTHER_START);
+         /* Leave the last 4GB out of the high vma range, so that no state
+          * base address + size can overflow 48 bits.
+          */
+         .size  = (devinfo->gtt_size - _4GB) - IRIS_MEMZONE_OTHER_START,
+      },
+   };
+
+   for (unsigned i = 0; i < IRIS_MEMZONE_COUNT; i++) {
+      util_vma_heap_init(&bufmgr->vma_allocator[i],
+                         vma[i].start, vma[i].size);
+   }
+
+   if (INTEL_DEBUG(DEBUG_HEAPS)) {
+      for (unsigned i = 0; i < IRIS_MEMZONE_COUNT; i++) {
+         fprintf(stderr, "%-11s | 0x%016" PRIx64 "-0x%016" PRIx64 "\n",
+                 memzone_name(i), vma[i].start,
+                 vma[i].start + vma[i].size - 1);
+      }
+   }
 
    for (int h = 0; h < IRIS_HEAP_MAX; h++)
       init_cache_buckets(bufmgr, h);

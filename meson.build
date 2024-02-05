@@ -256,6 +256,10 @@ with_microsoft_vk = _vulkan_drivers.contains('microsoft-experimental')
 with_nouveau_vk = _vulkan_drivers.contains('nouveau')
 with_any_vk = _vulkan_drivers.length() != 0
 
+if with_any_vk and host_machine.system() == 'windows' and meson.version().version_compare('< 1.3')
+  error('Vulkan drivers on Windows require meson 1.3 or newer')
+endif
+
 with_vk_compiler = [
   with_intel_vk,
   with_intel_hasvk,

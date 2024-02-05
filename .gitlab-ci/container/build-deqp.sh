@@ -129,14 +129,14 @@ if [ "${DEQP_API}" = 'GL' ] && [ "${DEQP_TARGET}" != 'android' ]; then
         -DDEQP_TARGET=x11_egl_glx \
         -DCMAKE_BUILD_TYPE=Release \
         $EXTRA_CMAKE_ARGS
-    ninja modules/egl/deqp-egl
+    mold --run ninja modules/egl/deqp-egl
     mv /deqp/modules/egl/deqp-egl /deqp/modules/egl/deqp-egl-x11
 
     cmake -S /VK-GL-CTS -B . -G Ninja \
         -DDEQP_TARGET=wayland \
         -DCMAKE_BUILD_TYPE=Release \
         $EXTRA_CMAKE_ARGS
-    ninja modules/egl/deqp-egl
+    mold --run ninja modules/egl/deqp-egl
     mv /deqp/modules/egl/deqp-egl /deqp/modules/egl/deqp-egl-wayland
 fi
 

@@ -793,7 +793,7 @@ buffer_bo_commit(struct zink_context *ctx, struct zink_resource *res, uint32_t o
    assert(offset % ZINK_SPARSE_BUFFER_PAGE_SIZE == 0);
    assert(offset <= bo->base.base.size);
    assert(size <= bo->base.base.size - offset);
-   assert(size % ZINK_SPARSE_BUFFER_PAGE_SIZE == 0 || offset + size == bo->base.base.size);
+   assert(size % ZINK_SPARSE_BUFFER_PAGE_SIZE == 0 || offset + size == res->obj->size);
 
    struct zink_sparse_commitment *comm = bo->u.sparse.commitments;
 

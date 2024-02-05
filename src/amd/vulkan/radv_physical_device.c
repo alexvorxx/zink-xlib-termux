@@ -1699,7 +1699,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdevice)
    /* VK_NV_device_generated_commands */
    p->maxIndirectCommandsStreamCount = 1;
    p->maxIndirectCommandsStreamStride = UINT32_MAX;
-   p->maxIndirectCommandsTokenCount = UINT32_MAX;
+   p->maxIndirectCommandsTokenCount = 512;
    p->maxIndirectCommandsTokenOffset = UINT16_MAX;
    p->minIndirectCommandsBufferOffsetAlignment = 4;
    p->minSequencesCountBufferOffsetAlignment = 4;

@@ -9096,7 +9096,6 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
 {
    const gl_shader_stage last_vgt_api_stage = radv_cmdbuf_get_last_vgt_api_stage(cmd_buffer);
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
-   const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    struct radv_device *device = cmd_buffer->device;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
 
@@ -9173,7 +9172,6 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
    }
 
    /* Emit graphics states related to shaders. */
-   const uint32_t vgt_gs_out = radv_get_vgt_gs_out(cmd_buffer->state.shaders, d->vk.ia.primitive_topology);
    struct radv_vgt_shader_key vgt_shader_cfg_key = {
       .tess = !!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL],
       .gs = !!cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY],
@@ -9189,7 +9187,7 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
    radv_emit_vgt_gs_mode(device, cs, last_vgt_shader);
    radv_emit_vgt_vertex_reuse(device, cs, radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL));
    radv_emit_vgt_shader_config(device, cs, &vgt_shader_cfg_key);
-   radv_emit_vgt_gs_out(device, cs, vgt_gs_out);
+   radv_emit_vgt_gs_out(device, cs, radv_get_rasterization_prim(cmd_buffer));
 
    if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX10_3) {
       gfx103_emit_vgt_draw_payload_cntl(cs, cmd_buffer->state.shaders[MESA_SHADER_MESH], false);
@@ -9376,6 +9374,13 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, gs_copy_shader->bo);
    } else {
       cmd_buffer->state.gs_copy_shader = NULL;
+   }
+
+   /* Determine the rasterized primitive. */
+   if (cmd_buffer->state.active_stages &
+       (VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
+        VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_MESH_BIT_EXT)) {
+      cmd_buffer->state.rast_prim = radv_get_vgt_gs_out(cmd_buffer->state.shaders, 0);
    }
 
    const struct radv_shader *vs = radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_VERTEX);

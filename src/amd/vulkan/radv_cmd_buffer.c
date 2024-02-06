@@ -6672,6 +6672,8 @@ radv_reset_shader_object_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBin
    default:
       break;
    }
+
+   cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_SHADERS;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -9098,9 +9100,6 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
    struct radv_device *device = cmd_buffer->device;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
 
-   if (cmd_buffer->state.graphics_pipeline)
-      return;
-
    /* Emit graphics shaders. */
    radv_foreach_stage(s, cmd_buffer->state.active_stages & RADV_GRAPHICS_STAGE_BITS)
    {
@@ -9324,9 +9323,6 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    const struct radv_device *device = cmd_buffer->device;
    uint32_t push_constant_size = 0, dynamic_offset_count = 0;
    bool need_indirect_descriptor_sets = false;
-
-   if (cmd_buffer->state.graphics_pipeline)
-      return;
 
    for (unsigned s = 0; s <= MESA_SHADER_MESH; s++) {
       const struct radv_shader_object *shader_obj = cmd_buffer->state.shader_objs[s];

@@ -13,12 +13,6 @@
 #define __intel_field_functions
 #endif
 
-#ifdef NDEBUG
-#define NDEBUG_UNUSED __attribute__((unused))
-#else
-#define NDEBUG_UNUSED
-#endif
-
 #ifndef __gen_address_type
 #error #define __gen_address_type before including this file
 #endif
@@ -28,7 +22,7 @@
 #endif
 
 static inline __attribute__((always_inline)) uint64_t
-__gen_offset(uint64_t v, NDEBUG_UNUSED uint32_t start, NDEBUG_UNUSED uint32_t end)
+__gen_offset(uint64_t v, ASSERTED uint32_t start, ASSERTED uint32_t end)
 {
    __gen_validate_value(v);
 #ifndef NDEBUG

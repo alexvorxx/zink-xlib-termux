@@ -51,8 +51,6 @@ pack_header = """%(license)s
 #include "genX_cl_helpers.h"
 #endif
 
-#undef NDEBUG_UNUSED
-
 """
 
 def num_from_str(num_str):

@@ -140,6 +140,7 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
 
    vk_device_set_drm_fd(&device->vk, device->kmod.dev->fd);
 
+   panvk_per_arch(blend_shader_cache_init)(device);
    panvk_per_arch(meta_init)(device);
 
    for (unsigned i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
@@ -180,6 +181,7 @@ fail:
    }
 
    panvk_per_arch(meta_cleanup)(device);
+   panvk_per_arch(blend_shader_cache_cleanup)(device);
    panvk_priv_bo_destroy(device->tiler_heap, &device->vk.alloc);
    panvk_priv_bo_destroy(device->sample_positions, &device->vk.alloc);
    pan_kmod_vm_destroy(device->kmod.vm);
@@ -204,6 +206,7 @@ panvk_per_arch(destroy_device)(struct panvk_device *device,
    }
 
    panvk_per_arch(meta_cleanup)(device);
+   panvk_per_arch(blend_shader_cache_cleanup)(device);
    panvk_priv_bo_destroy(device->tiler_heap, &device->vk.alloc);
    panvk_priv_bo_destroy(device->sample_positions, &device->vk.alloc);
    pan_kmod_vm_destroy(device->kmod.vm);

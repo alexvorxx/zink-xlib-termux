@@ -57,6 +57,7 @@ foreach arch : [6, 7]
     'panvk_v@0@'.format(arch),
     [
       panvk_entrypoints[0],
+      'panvk_vX_blend.c',
       'panvk_vX_buffer_view.c',
       'panvk_vX_cmd_buffer.c',
       'panvk_vX_descriptor_set.c',

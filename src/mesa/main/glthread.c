@@ -127,7 +127,7 @@ glthread_unmarshal_batch(void *job, void *gdata, int thread_index)
     */
    bool lock_mutexes = ctx->GLThread.LockGlobalMutexes;
    if (lock_mutexes) {
-      _mesa_HashLockMutex(shared->BufferObjects);
+      _mesa_HashLockMutex(&shared->BufferObjects);
       ctx->BufferObjectsLocked = true;
       simple_mtx_lock(&shared->TexMutex);
       ctx->TexturesLocked = true;
@@ -144,7 +144,7 @@ glthread_unmarshal_batch(void *job, void *gdata, int thread_index)
       ctx->TexturesLocked = false;
       simple_mtx_unlock(&shared->TexMutex);
       ctx->BufferObjectsLocked = false;
-      _mesa_HashUnlockMutex(shared->BufferObjects);
+      _mesa_HashUnlockMutex(&shared->BufferObjects);
    }
 
    assert(pos == used);
@@ -222,18 +222,13 @@ _mesa_glthread_init(struct gl_context *ctx)
       return;
    }
 
-   glthread->VAOs = _mesa_NewHashTable();
-   if (!glthread->VAOs) {
-      util_queue_destroy(&glthread->queue);
-      return;
-   }
-
+   _mesa_InitHashTable(&glthread->VAOs);
    _mesa_glthread_reset_vao(&glthread->DefaultVAO);
    glthread->CurrentVAO = &glthread->DefaultVAO;
 
    ctx->MarshalExec = _mesa_alloc_dispatch_table(true);
    if (!ctx->MarshalExec) {
-      _mesa_DeleteHashTable(glthread->VAOs, NULL, NULL);
+      _mesa_DeinitHashTable(&glthread->VAOs, NULL, NULL);
       util_queue_destroy(&glthread->queue);
       return;
    }
@@ -289,7 +284,7 @@ _mesa_glthread_destroy(struct gl_context *ctx)
       for (unsigned i = 0; i < MARSHAL_MAX_BATCHES; i++)
          util_queue_fence_destroy(&glthread->batches[i].fence);
 
-      _mesa_DeleteHashTable(glthread->VAOs, free_vao, NULL);
+      _mesa_DeinitHashTable(&glthread->VAOs, free_vao, NULL);
       _mesa_glthread_release_upload_buffer(ctx);
    }
 }

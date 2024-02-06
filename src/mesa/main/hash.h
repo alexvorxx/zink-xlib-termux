@@ -52,11 +52,11 @@ struct _mesa_HashTable {
    bool alloc_via_idalloc;
 };
 
-struct _mesa_HashTable *
-_mesa_NewHashTable(void);
+void
+_mesa_InitHashTable(struct _mesa_HashTable *table);
 
 void
-_mesa_DeleteHashTable(struct _mesa_HashTable *table,
+_mesa_DeinitHashTable(struct _mesa_HashTable *table,
                       void (*free_callback)(void *data, void *userData),
                       void *userData);
 
@@ -128,7 +128,7 @@ _mesa_HashUnlockMutex(struct _mesa_HashTable *table)
    simple_mtx_unlock(&table->Mutex);
 }
 
-static inline struct gl_buffer_object *
+static inline void *
 _mesa_HashLookupMaybeLocked(struct _mesa_HashTable *table, GLuint key,
                             bool locked)
 {

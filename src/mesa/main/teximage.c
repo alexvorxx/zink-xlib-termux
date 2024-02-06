@@ -2881,7 +2881,7 @@ _mesa_update_fbo_texture(struct gl_context *ctx,
       info.texObj = texObj;
       info.level = level;
       info.face = face;
-      _mesa_HashWalk(ctx->Shared->FrameBuffers, check_rtt_cb, &info);
+      _mesa_HashWalk(&ctx->Shared->FrameBuffers, check_rtt_cb, &info);
    }
 }
 
@@ -3081,7 +3081,7 @@ lookup_texture_ext_dsa(struct gl_context *ctx, GLenum target, GLuint texture,
          }
 
          /* insert into hash table */
-         _mesa_HashInsert(ctx->Shared->TexObjects, texObj->Name, texObj, isGenName);
+         _mesa_HashInsert(&ctx->Shared->TexObjects, texObj->Name, texObj, isGenName);
       }
 
       if (texObj->Target != boundTarget) {

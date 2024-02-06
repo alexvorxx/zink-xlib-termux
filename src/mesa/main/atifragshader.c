@@ -216,14 +216,14 @@ _mesa_GenFragmentShadersATI(GLuint range)
       return 0;
    }
 
-   _mesa_HashLockMutex(ctx->Shared->ATIShaders);
+   _mesa_HashLockMutex(&ctx->Shared->ATIShaders);
 
-   first = _mesa_HashFindFreeKeyBlock(ctx->Shared->ATIShaders, range);
+   first = _mesa_HashFindFreeKeyBlock(&ctx->Shared->ATIShaders, range);
    for (i = 0; i < range; i++) {
-      _mesa_HashInsertLocked(ctx->Shared->ATIShaders, first + i, &DummyShader, true);
+      _mesa_HashInsertLocked(&ctx->Shared->ATIShaders, first + i, &DummyShader, true);
    }
 
-   _mesa_HashUnlockMutex(ctx->Shared->ATIShaders);
+   _mesa_HashUnlockMutex(&ctx->Shared->ATIShaders);
 
    return first;
 }
@@ -250,7 +250,7 @@ _mesa_BindFragmentShaderATI(GLuint id)
    if (curProg->Id != 0) {
       curProg->RefCount--;
       if (curProg->RefCount <= 0) {
-	 _mesa_HashRemove(ctx->Shared->ATIShaders, id);
+	 _mesa_HashRemove(&ctx->Shared->ATIShaders, id);
       }
    }
 
@@ -261,7 +261,7 @@ _mesa_BindFragmentShaderATI(GLuint id)
    else {
       bool isGenName;
       newProg = (struct ati_fragment_shader *)
-         _mesa_HashLookup(ctx->Shared->ATIShaders, id);
+         _mesa_HashLookup(&ctx->Shared->ATIShaders, id);
       isGenName = newProg != NULL;
       if (!newProg || newProg == &DummyShader) {
 	 /* allocate a new program now */
@@ -270,7 +270,7 @@ _mesa_BindFragmentShaderATI(GLuint id)
 	    _mesa_error(ctx, GL_OUT_OF_MEMORY, "glBindFragmentShaderATI");
 	    return;
 	 }
-	 _mesa_HashInsert(ctx->Shared->ATIShaders, id, newProg, isGenName);
+	 _mesa_HashInsert(&ctx->Shared->ATIShaders, id, newProg, isGenName);
       }
 
    }
@@ -295,9 +295,9 @@ _mesa_DeleteFragmentShaderATI(GLuint id)
 
    if (id != 0) {
       struct ati_fragment_shader *prog = (struct ati_fragment_shader *)
-	 _mesa_HashLookup(ctx->Shared->ATIShaders, id);
+	 _mesa_HashLookup(&ctx->Shared->ATIShaders, id);
       if (prog == &DummyShader) {
-	 _mesa_HashRemove(ctx->Shared->ATIShaders, id);
+	 _mesa_HashRemove(&ctx->Shared->ATIShaders, id);
       }
       else if (prog) {
 	 if (ctx->ATIFragmentShader.Current &&
@@ -308,7 +308,7 @@ _mesa_DeleteFragmentShaderATI(GLuint id)
       }
 
       /* The ID is immediately available for re-use now */
-      _mesa_HashRemove(ctx->Shared->ATIShaders, id);
+      _mesa_HashRemove(&ctx->Shared->ATIShaders, id);
       if (prog) {
 	 prog->RefCount--;
 	 if (prog->RefCount <= 0) {

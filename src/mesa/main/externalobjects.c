@@ -148,20 +148,20 @@ _mesa_DeleteMemoryObjectsEXT(GLsizei n, const GLuint *memoryObjects)
    if (!memoryObjects)
       return;
 
-   _mesa_HashLockMutex(ctx->Shared->MemoryObjects);
+   _mesa_HashLockMutex(&ctx->Shared->MemoryObjects);
    for (GLint i = 0; i < n; i++) {
       if (memoryObjects[i] > 0) {
          struct gl_memory_object *delObj
             = _mesa_lookup_memory_object_locked(ctx, memoryObjects[i]);
 
          if (delObj) {
-            _mesa_HashRemoveLocked(ctx->Shared->MemoryObjects,
+            _mesa_HashRemoveLocked(&ctx->Shared->MemoryObjects,
                                    memoryObjects[i]);
             _mesa_delete_memory_object(ctx, delObj);
          }
       }
    }
-   _mesa_HashUnlockMutex(ctx->Shared->MemoryObjects);
+   _mesa_HashUnlockMutex(&ctx->Shared->MemoryObjects);
 }
 
 GLboolean GLAPIENTRY
@@ -204,8 +204,8 @@ _mesa_CreateMemoryObjectsEXT(GLsizei n, GLuint *memoryObjects)
    if (!memoryObjects)
       return;
 
-   _mesa_HashLockMutex(ctx->Shared->MemoryObjects);
-   if (_mesa_HashFindFreeKeys(ctx->Shared->MemoryObjects, memoryObjects, n)) {
+   _mesa_HashLockMutex(&ctx->Shared->MemoryObjects);
+   if (_mesa_HashFindFreeKeys(&ctx->Shared->MemoryObjects, memoryObjects, n)) {
       for (GLsizei i = 0; i < n; i++) {
          struct gl_memory_object *memObj;
 
@@ -213,18 +213,18 @@ _mesa_CreateMemoryObjectsEXT(GLsizei n, GLuint *memoryObjects)
          memObj = memoryobj_alloc(ctx, memoryObjects[i]);
          if (!memObj) {
             _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s()", func);
-            _mesa_HashUnlockMutex(ctx->Shared->MemoryObjects);
+            _mesa_HashUnlockMutex(&ctx->Shared->MemoryObjects);
             return;
          }
 
          /* insert into hash table */
-         _mesa_HashInsertLocked(ctx->Shared->MemoryObjects,
+         _mesa_HashInsertLocked(&ctx->Shared->MemoryObjects,
                                 memoryObjects[i],
                                 memObj, true);
       }
    }
 
-   _mesa_HashUnlockMutex(ctx->Shared->MemoryObjects);
+   _mesa_HashUnlockMutex(&ctx->Shared->MemoryObjects);
 }
 
 void GLAPIENTRY
@@ -784,15 +784,15 @@ _mesa_GenSemaphoresEXT(GLsizei n, GLuint *semaphores)
    if (!semaphores)
       return;
 
-   _mesa_HashLockMutex(ctx->Shared->SemaphoreObjects);
-   if (_mesa_HashFindFreeKeys(ctx->Shared->SemaphoreObjects, semaphores, n)) {
+   _mesa_HashLockMutex(&ctx->Shared->SemaphoreObjects);
+   if (_mesa_HashFindFreeKeys(&ctx->Shared->SemaphoreObjects, semaphores, n)) {
       for (GLsizei i = 0; i < n; i++) {
-         _mesa_HashInsertLocked(ctx->Shared->SemaphoreObjects,
+         _mesa_HashInsertLocked(&ctx->Shared->SemaphoreObjects,
                                 semaphores[i], &DummySemaphoreObject, true);
       }
    }
 
-   _mesa_HashUnlockMutex(ctx->Shared->SemaphoreObjects);
+   _mesa_HashUnlockMutex(&ctx->Shared->SemaphoreObjects);
 }
 
 void GLAPIENTRY
@@ -819,20 +819,20 @@ _mesa_DeleteSemaphoresEXT(GLsizei n, const GLuint *semaphores)
    if (!semaphores)
       return;
 
-   _mesa_HashLockMutex(ctx->Shared->SemaphoreObjects);
+   _mesa_HashLockMutex(&ctx->Shared->SemaphoreObjects);
    for (GLint i = 0; i < n; i++) {
       if (semaphores[i] > 0) {
          struct gl_semaphore_object *delObj
             = _mesa_lookup_semaphore_object_locked(ctx, semaphores[i]);
 
          if (delObj) {
-            _mesa_HashRemoveLocked(ctx->Shared->SemaphoreObjects,
+            _mesa_HashRemoveLocked(&ctx->Shared->SemaphoreObjects,
                                    semaphores[i]);
             _mesa_delete_semaphore_object(ctx, delObj);
          }
       }
    }
-   _mesa_HashUnlockMutex(ctx->Shared->SemaphoreObjects);
+   _mesa_HashUnlockMutex(&ctx->Shared->SemaphoreObjects);
 }
 
 GLboolean GLAPIENTRY
@@ -1163,7 +1163,7 @@ _mesa_ImportSemaphoreFdEXT(GLuint semaphore,
          _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", func);
          return;
       }
-      _mesa_HashInsert(ctx->Shared->SemaphoreObjects, semaphore, semObj, true);
+      _mesa_HashInsert(&ctx->Shared->SemaphoreObjects, semaphore, semObj, true);
    }
 
    import_semaphoreobj_fd(ctx, semObj, fd);
@@ -1205,7 +1205,7 @@ _mesa_ImportSemaphoreWin32HandleEXT(GLuint semaphore,
          _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", func);
          return;
       }
-      _mesa_HashInsert(ctx->Shared->SemaphoreObjects, semaphore, semObj, true);
+      _mesa_HashInsert(&ctx->Shared->SemaphoreObjects, semaphore, semObj, true);
    }
 
    enum pipe_fd_type type = handleType == GL_HANDLE_TYPE_D3D12_FENCE_EXT ?
@@ -1249,7 +1249,7 @@ _mesa_ImportSemaphoreWin32NameEXT(GLuint semaphore,
          _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", func);
          return;
       }
-      _mesa_HashInsert(ctx->Shared->SemaphoreObjects, semaphore, semObj, true);
+      _mesa_HashInsert(&ctx->Shared->SemaphoreObjects, semaphore, semObj, true);
    }
 
    enum pipe_fd_type type = handleType == GL_HANDLE_TYPE_D3D12_FENCE_EXT ?

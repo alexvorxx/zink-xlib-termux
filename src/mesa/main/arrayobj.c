@@ -218,7 +218,7 @@ _mesa_lookup_vao(struct gl_context *ctx, GLuint id)
          vao = ctx->Array.LastLookedUpVAO;
       } else {
          vao = (struct gl_vertex_array_object *)
-            _mesa_HashLookupLocked(ctx->Array.Objects, id);
+            _mesa_HashLookupLocked(&ctx->Array.Objects, id);
 
          _mesa_reference_vao(ctx, &ctx->Array.LastLookedUpVAO, vao);
       }
@@ -267,7 +267,7 @@ _mesa_lookup_vao_err(struct gl_context *ctx, GLuint id,
          vao = ctx->Array.LastLookedUpVAO;
       } else {
          vao = (struct gl_vertex_array_object *)
-            _mesa_HashLookupLocked(ctx->Array.Objects, id);
+            _mesa_HashLookupLocked(&ctx->Array.Objects, id);
 
          /* The ARB_direct_state_access specification says:
           *
@@ -978,7 +978,7 @@ delete_vertex_arrays(struct gl_context *ctx, GLsizei n, const GLuint *ids)
             _mesa_BindVertexArray_no_error(0);
 
          /* The ID is immediately freed for re-use */
-         _mesa_HashRemoveLocked(ctx->Array.Objects, obj->Name);
+         _mesa_HashRemoveLocked(&ctx->Array.Objects, obj->Name);
 
          if (ctx->Array.LastLookedUpVAO == obj)
             _mesa_reference_vao(ctx, &ctx->Array.LastLookedUpVAO, NULL);
@@ -1033,7 +1033,7 @@ gen_vertex_arrays(struct gl_context *ctx, GLsizei n, GLuint *arrays,
    if (!arrays)
       return;
 
-   _mesa_HashFindFreeKeys(ctx->Array.Objects, arrays, n);
+   _mesa_HashFindFreeKeys(&ctx->Array.Objects, arrays, n);
 
    /* For the sake of simplicity we create the array objects in both
     * the Gen* and Create* cases.  The only difference is the value of
@@ -1048,7 +1048,7 @@ gen_vertex_arrays(struct gl_context *ctx, GLsizei n, GLuint *arrays,
          return;
       }
       obj->EverBound = create;
-      _mesa_HashInsertLocked(ctx->Array.Objects, obj->Name, obj, true);
+      _mesa_HashInsertLocked(&ctx->Array.Objects, obj->Name, obj, true);
    }
 }
 

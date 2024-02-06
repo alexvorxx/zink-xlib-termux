@@ -729,14 +729,14 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    st->bitmap.cache.empty = true;
 
    if (ctx->Const.ForceGLNamesReuse && ctx->Shared->RefCount == 1) {
-      _mesa_HashEnableNameReuse(ctx->Shared->TexObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->ShaderObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->BufferObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->SamplerObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->FrameBuffers);
-      _mesa_HashEnableNameReuse(ctx->Shared->RenderBuffers);
-      _mesa_HashEnableNameReuse(ctx->Shared->MemoryObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->SemaphoreObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->TexObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->ShaderObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->BufferObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->SamplerObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->FrameBuffers);
+      _mesa_HashEnableNameReuse(&ctx->Shared->RenderBuffers);
+      _mesa_HashEnableNameReuse(&ctx->Shared->MemoryObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->SemaphoreObjects);
    }
    /* SPECviewperf13/sw-04 crashes since a56849ddda6 if Mesa is build with
     * -O3 on gcc 7.5, which doesn't happen with ForceGLNamesReuse, which is
@@ -744,7 +744,7 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
     * of closed source drivers.
     */
    if (ctx->Const.ForceGLNamesReuse)
-      _mesa_HashEnableNameReuse(ctx->Query.QueryObjects);
+      _mesa_HashEnableNameReuse(&ctx->Query.QueryObjects);
 
    _mesa_override_extensions(ctx);
    _mesa_compute_version(ctx);
@@ -937,7 +937,7 @@ st_destroy_context(struct st_context *st)
    /* This must be called first so that glthread has a chance to finish */
    _mesa_glthread_destroy(ctx);
 
-   _mesa_HashWalk(ctx->Shared->TexObjects, destroy_tex_sampler_cb, st);
+   _mesa_HashWalk(&ctx->Shared->TexObjects, destroy_tex_sampler_cb, st);
 
    /* For the fallback textures, free any sampler views belonging to this
     * context.
@@ -970,7 +970,7 @@ st_destroy_context(struct st_context *st)
       _mesa_reference_framebuffer(&stfb, NULL);
    }
 
-   _mesa_HashWalk(ctx->Shared->FrameBuffers, destroy_framebuffer_attachment_sampler_cb, st);
+   _mesa_HashWalk(&ctx->Shared->FrameBuffers, destroy_framebuffer_attachment_sampler_cb, st);
 
    pipe_sampler_view_reference(&st->pixel_xfer.pixelmap_sampler_view, NULL);
    pipe_resource_reference(&st->pixel_xfer.pixelmap_texture, NULL);

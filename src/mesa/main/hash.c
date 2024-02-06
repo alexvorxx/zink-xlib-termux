@@ -99,35 +99,18 @@ uint_key(GLuint id)
 /** @} */
 
 /**
- * Create a new hash table.
- * 
- * \return pointer to a new, empty hash table.
+ * Initialize a hash table.
  */
-struct _mesa_HashTable *
-_mesa_NewHashTable(void)
+void
+_mesa_InitHashTable(struct _mesa_HashTable *table)
 {
-   struct _mesa_HashTable *table = CALLOC_STRUCT(_mesa_HashTable);
-
-   if (table) {
-      table->ht = _mesa_hash_table_create(NULL, uint_key_hash,
-                                          uint_key_compare);
-      if (table->ht == NULL) {
-         free(table);
-         _mesa_error_no_memory(__func__);
-         return NULL;
-      }
-
-      _mesa_hash_table_set_deleted_key(table->ht, uint_key(DELETED_KEY_VALUE));
-      util_idalloc_init(&table->id_alloc, 8);
-      /* Mark ID = 0 as used, so that we don't return it. */
-      util_idalloc_reserve(&table->id_alloc, 0);
-      simple_mtx_init(&table->Mutex, mtx_plain);
-   }
-   else {
-      _mesa_error_no_memory(__func__);
-   }
-
-   return table;
+   memset(table, 0, sizeof(*table));
+   table->ht = _mesa_hash_table_create(NULL, uint_key_hash, uint_key_compare);
+   _mesa_hash_table_set_deleted_key(table->ht, uint_key(DELETED_KEY_VALUE));
+   util_idalloc_init(&table->id_alloc, 8);
+   /* Mark ID = 0 as used, so that we don't return it. */
+   util_idalloc_reserve(&table->id_alloc, 0);
+   simple_mtx_init(&table->Mutex, mtx_plain);
 }
 
 /**
@@ -145,7 +128,7 @@ _mesa_NewHashTable(void)
  *                  (this is typically a struct gl_context pointer)
  */
 void
-_mesa_DeleteHashTable(struct _mesa_HashTable *table,
+_mesa_DeinitHashTable(struct _mesa_HashTable *table,
                       void (*free_callback)(void *data, void *userData),
                       void *userData)
 {
@@ -161,7 +144,6 @@ _mesa_DeleteHashTable(struct _mesa_HashTable *table,
    _mesa_hash_table_destroy(table->ht, NULL);
    util_idalloc_fini(&table->id_alloc);
    simple_mtx_destroy(&table->Mutex);
-   FREE(table);
 }
 
 void

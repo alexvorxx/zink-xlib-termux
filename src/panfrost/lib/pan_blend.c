@@ -708,9 +708,6 @@ pan_blend_create_shader(const struct pan_blend_state *state,
    b.shader->info.io_lowered = true;
 
    NIR_PASS_V(b.shader, nir_lower_blend, &options);
-   nir_shader_intrinsics_pass(b.shader, pan_inline_blend_constants,
-                              nir_metadata_block_index | nir_metadata_dominance,
-                              (void *)state->constants);
 
    return b.shader;
 }
@@ -857,6 +854,10 @@ GENX(pan_blend_get_shader_locked)(struct pan_blend_shader_cache *cache,
    memcpy(variant->constants, state->constants, sizeof(variant->constants));
 
    nir_shader *nir = pan_blend_create_shader(state, src0_type, src1_type, rt);
+
+   nir_shader_intrinsics_pass(nir, pan_inline_blend_constants,
+                              nir_metadata_block_index | nir_metadata_dominance,
+                              (void *)state->constants);
 
    /* Compile the NIR shader */
    struct panfrost_compile_inputs inputs = {

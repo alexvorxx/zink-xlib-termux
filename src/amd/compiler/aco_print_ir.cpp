@@ -443,12 +443,6 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
       fprintf(output, " attr%d.%c", vintrp.attribute, "xyzw"[vintrp.component]);
       break;
    }
-   case Format::VOPD: {
-      const VOPD_instruction& vopd = instr->vopd();
-      // TODO: beautify
-      fprintf(output, " %s", instr_info.name[(int)vopd.opy]);
-      break;
-   }
    case Format::DS: {
       const DS_instruction& ds = instr->ds();
       if (ds.offset0)
@@ -755,9 +749,43 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
 }
 
 void
+print_vopd_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* output,
+                 unsigned flags)
+{
+   unsigned opy_start = get_vopd_opy_start(instr);
+
+   if (!instr->definitions.empty()) {
+      print_definition(&instr->definitions[0], output, flags);
+      fprintf(output, " = ");
+   }
+   fprintf(output, "%s", instr_info.name[(int)instr->opcode]);
+   for (unsigned i = 0; i < MIN2(instr->operands.size(), opy_start); ++i) {
+      fprintf(output, i ? ", " : " ");
+      aco_print_operand(&instr->operands[i], output, flags);
+   }
+
+   fprintf(output, " ::");
+
+   if (instr->definitions.size() > 1) {
+      print_definition(&instr->definitions[1], output, flags);
+      fprintf(output, " = ");
+   }
+   fprintf(output, "%s", instr_info.name[(int)instr->vopd().opy]);
+   for (unsigned i = opy_start; i < instr->operands.size(); ++i) {
+      fprintf(output, i > opy_start ? ", " : " ");
+      aco_print_operand(&instr->operands[i], output, flags);
+   }
+}
+
+void
 aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* output,
                 unsigned flags)
 {
+   if (instr->isVOPD()) {
+      print_vopd_instr(gfx_level, instr, output, flags);
+      return;
+   }
+
    if (!instr->definitions.empty()) {
       for (unsigned i = 0; i < instr->definitions.size(); ++i) {
          print_definition(&instr->definitions[i], output, flags);

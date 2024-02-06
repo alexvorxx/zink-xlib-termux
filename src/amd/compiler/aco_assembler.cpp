@@ -80,6 +80,21 @@ get_mimg_nsa_dwords(const Instruction* instr)
    return 0;
 }
 
+unsigned
+get_vopd_opy_start(const Instruction* instr)
+{
+   switch (instr->opcode) {
+   case aco_opcode::v_dual_fmac_f32:
+   case aco_opcode::v_dual_fmaak_f32:
+   case aco_opcode::v_dual_fmamk_f32:
+   case aco_opcode::v_dual_cndmask_b32:
+   case aco_opcode::v_dual_dot2acc_f32_f16:
+   case aco_opcode::v_dual_dot2acc_f32_bf16: return 3;
+   case aco_opcode::v_dual_mov_b32: return 1;
+   default: return 2;
+   }
+}
+
 uint32_t
 reg(asm_context& ctx, PhysReg reg)
 {
@@ -478,16 +493,7 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
       encoding |= opcode << 22;
       out.push_back(encoding);
 
-      unsigned opy_start = instr->opcode == aco_opcode::v_dual_mov_b32 ? 1 : 2;
-      switch (instr->opcode) {
-      case aco_opcode::v_dual_fmac_f32:
-      case aco_opcode::v_dual_fmaak_f32:
-      case aco_opcode::v_dual_fmamk_f32:
-      case aco_opcode::v_dual_cndmask_b32:
-      case aco_opcode::v_dual_dot2acc_f32_f16:
-      case aco_opcode::v_dual_dot2acc_f32_bf16: opy_start = 3; break;
-      default: break;
-      }
+      unsigned opy_start = get_vopd_opy_start(instr);
 
       encoding = reg(ctx, instr->operands[opy_start]);
       if (vopd.opy != aco_opcode::v_dual_mov_b32)

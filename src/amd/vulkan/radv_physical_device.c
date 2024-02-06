@@ -1144,7 +1144,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
 
       /* VK_NV_device_generated_commands_compute */
       .deviceGeneratedCompute = true,
-      .deviceGeneratedComputePipelines = false,
+      .deviceGeneratedComputePipelines = true,
       .deviceGeneratedComputeCaptureReplay = false,
 
       /* VK_KHR_cooperative_matrix */

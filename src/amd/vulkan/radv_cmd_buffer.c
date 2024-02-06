@@ -9407,8 +9407,6 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.ia_multi_vgt_param = radv_compute_ia_multi_vgt_param(device, cmd_buffer->state.shaders);
    }
 
-   radv_bind_custom_blend_mode(cmd_buffer, 0);
-
    if (cmd_buffer->state.db_render_control) {
       cmd_buffer->state.db_render_control = 0;
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_FRAMEBUFFER;
@@ -11824,6 +11822,8 @@ radv_reset_pipeline_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoin
          cmd_buffer->state.uses_dynamic_vertex_binding_stride = false;
       }
       if (cmd_buffer->state.emitted_graphics_pipeline) {
+         radv_bind_custom_blend_mode(cmd_buffer, 0);
+
          cmd_buffer->state.emitted_graphics_pipeline = NULL;
       }
       break;

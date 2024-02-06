@@ -1973,14 +1973,23 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
 
 /* VK_NV_device_generated_commands_compute */
 VKAPI_ATTR void VKAPI_CALL
-radv_GetPipelineIndirectMemoryRequirementsNV(VkDevice device, const VkComputePipelineCreateInfo *pCreateInfo,
+radv_GetPipelineIndirectMemoryRequirementsNV(VkDevice _device, const VkComputePipelineCreateInfo *pCreateInfo,
                                              VkMemoryRequirements2 *pMemoryRequirements)
 {
-   unreachable("radv: unimplemented vkGetPipelineIndirectMemoryRequirementsNV");
+   VkMemoryRequirements *reqs = &pMemoryRequirements->memoryRequirements;
+   const uint32_t size = sizeof(struct radv_compute_pipeline_metadata);
+   RADV_FROM_HANDLE(radv_device, device, _device);
+
+   reqs->memoryTypeBits = ((1u << device->physical_device->memory_properties.memoryTypeCount) - 1u) &
+                          ~device->physical_device->memory_types_32bit;
+   reqs->alignment = 4;
+   reqs->size = align(size, reqs->alignment);
 }
 
 VKAPI_ATTR VkDeviceAddress VKAPI_CALL
 radv_GetPipelineIndirectDeviceAddressNV(VkDevice device, const VkPipelineIndirectDeviceAddressInfoNV *pInfo)
 {
-   unreachable("radv: unimplemented vkGetPipelineIndirectDeviceAddressNV");
+   RADV_FROM_HANDLE(radv_pipeline, pipeline, pInfo->pipeline);
+
+   return radv_pipeline_to_compute(pipeline)->indirect.va;
 }

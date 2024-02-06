@@ -2741,7 +2741,8 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
 
          format(file, " ex_bso");
       }
-      if (brw_sfid_is_lsc(sfid)) {
+      if (brw_sfid_is_lsc(sfid) ||
+          (sfid == BRW_SFID_URB && devinfo->ver >= 20)) {
             lsc_disassemble_ex_desc(devinfo, imm_desc, imm_ex_desc, file);
       } else {
          if (has_imm_desc)

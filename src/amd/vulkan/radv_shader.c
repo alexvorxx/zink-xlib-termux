@@ -447,8 +447,6 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
           nir->info.stage == MESA_SHADER_GEOMETRY)
          NIR_PASS_V(nir, nir_shader_gather_xfb_info);
 
-      NIR_PASS(_, nir, nir_lower_discard_or_demote, pdev->cache_key.lower_discard_to_demote);
-
       nir_lower_doubles_options lower_doubles = nir->options->lower_doubles_options;
 
       if (pdev->info.gfx_level == GFX6) {

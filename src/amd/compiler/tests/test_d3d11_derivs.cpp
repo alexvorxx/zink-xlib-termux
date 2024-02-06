@@ -114,12 +114,10 @@ BEGIN_TEST(d3d11_derivs.discard)
    PipelineBuilder pbld(get_vk_device(GFX10_3));
    pbld.add_vsfs(vs, fs);
 
-   /* The interpolation must be done before the discard_if. */
-   //>> lv2: %wqm = p_start_linear_vgpr (kill)%_, (kill)%_
-   //>> s2: %_:exec, s1: (kill)%_:scc = s_andn2_b64 %_:exec, %_
-   //>> s2: %_, s1: %_:scc = s_andn2_b64 (kill)%_, (kill)%_
-   //>> p_exit_early_if (kill)%_:scc
-   //>> v4: %_ = image_sample (kill)%_, (kill)%_, v1: undef, (latekill)(kill)%wqm 2d
+   /* The discard gets emitted as demote_if. */
+   //>> s2: %_:exec,  s1: %cond:scc = s_wqm_b64 %_
+   //>> p_exit_early_if (kill)%cond:scc
+   //>> v4: %_ = image_sample (kill)%_, (kill)%_, v1: undef, (kill)%_, (kill)%_ 2d
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "ACO IR");
 END_TEST
 

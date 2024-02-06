@@ -637,10 +637,6 @@
    DRI_CONF_OPT_B(radv_zero_vram, def, \
                   "Initialize to zero all VRAM allocations")
 
-#define DRI_CONF_RADV_LOWER_DISCARD_TO_DEMOTE(def) \
-   DRI_CONF_OPT_B(radv_lower_discard_to_demote, def, \
-                  "Lower discard instructions to demote")
-
 #define DRI_CONF_RADV_INVARIANT_GEOM(def) \
    DRI_CONF_OPT_B(radv_invariant_geom, def, \
                   "Mark geometry-affecting outputs as invariant")

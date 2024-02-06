@@ -2487,12 +2487,10 @@ static void emit_discard(struct ac_nir_context *ctx, const nir_intrinsic_instr *
 {
    LLVMValueRef cond;
 
-   if (instr->intrinsic == nir_intrinsic_discard_if ||
-       instr->intrinsic == nir_intrinsic_terminate_if) {
+   if (instr->intrinsic == nir_intrinsic_terminate_if) {
       cond = LLVMBuildNot(ctx->ac.builder, get_src(ctx, instr->src[0]), "");
    } else {
-      assert(instr->intrinsic == nir_intrinsic_discard ||
-             instr->intrinsic == nir_intrinsic_terminate);
+      assert(instr->intrinsic == nir_intrinsic_terminate);
       cond = ctx->ac.i1false;
    }
 
@@ -2503,10 +2501,12 @@ static void emit_demote(struct ac_nir_context *ctx, const nir_intrinsic_instr *i
 {
    LLVMValueRef cond;
 
-   if (instr->intrinsic == nir_intrinsic_demote_if) {
+   if (instr->intrinsic == nir_intrinsic_discard_if ||
+       instr->intrinsic == nir_intrinsic_demote_if) {
       cond = LLVMBuildNot(ctx->ac.builder, get_src(ctx, instr->src[0]), "");
    } else {
-      assert(instr->intrinsic == nir_intrinsic_demote);
+      assert(instr->intrinsic == nir_intrinsic_discard ||
+             instr->intrinsic == nir_intrinsic_demote);
       cond = ctx->ac.i1false;
    }
 
@@ -3140,12 +3140,12 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_shader_clock:
       result = ac_build_shader_clock(&ctx->ac, nir_intrinsic_memory_scope(instr));
       break;
-   case nir_intrinsic_discard:
-   case nir_intrinsic_discard_if:
    case nir_intrinsic_terminate:
    case nir_intrinsic_terminate_if:
       emit_discard(ctx, instr);
       break;
+   case nir_intrinsic_discard:
+   case nir_intrinsic_discard_if:
    case nir_intrinsic_demote:
    case nir_intrinsic_demote_if:
       emit_demote(ctx, instr);

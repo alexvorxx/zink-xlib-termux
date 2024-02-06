@@ -440,12 +440,10 @@ move_coords_from_divergent_cf(struct move_tex_coords_state *state, nir_function_
             } else if (instr->type == nir_instr_type_intrinsic) {
                nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
                switch (intrin->intrinsic) {
-               case nir_intrinsic_discard:
                case nir_intrinsic_terminate:
                   if (divergent_cf)
                      *divergent_discard = true;
                   break;
-               case nir_intrinsic_discard_if:
                case nir_intrinsic_terminate_if:
                   if (divergent_cf || nir_src_is_divergent(intrin->src[0]))
                      *divergent_discard = true;

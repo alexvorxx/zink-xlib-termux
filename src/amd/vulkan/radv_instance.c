@@ -47,7 +47,6 @@ static const struct debug_control radv_debug_options[] = {{"nofastclears", RADV_
                                                           {"nobinning", RADV_DEBUG_NOBINNING},
                                                           {"nongg", RADV_DEBUG_NO_NGG},
                                                           {"metashaders", RADV_DEBUG_DUMP_META_SHADERS},
-                                                          {"discardtodemote", RADV_DEBUG_DISCARD_TO_DEMOTE},
                                                           {"llvm", RADV_DEBUG_LLVM},
                                                           {"forcecompress", RADV_DEBUG_FORCE_COMPRESS},
                                                           {"hang", RADV_DEBUG_HANG},
@@ -142,7 +141,6 @@ static const driOptionDescription radv_dri_options[] = {
       DRI_CONF_VK_REQUIRE_ETC2(false)
       DRI_CONF_VK_REQUIRE_ASTC(false)
       DRI_CONF_RADV_ZERO_VRAM(false)
-      DRI_CONF_RADV_LOWER_DISCARD_TO_DEMOTE(false)
       DRI_CONF_RADV_INVARIANT_GEOM(false)
       DRI_CONF_RADV_SPLIT_FMA(false)
       DRI_CONF_RADV_DISABLE_TC_COMPAT_HTILE_GENERAL(false)
@@ -187,9 +185,6 @@ radv_init_dri_options(struct radv_instance *instance)
 
    if (driQueryOptionb(&instance->drirc.options, "radv_no_dynamic_bounds"))
       instance->debug_flags |= RADV_DEBUG_NO_DYNAMIC_BOUNDS;
-
-   if (driQueryOptionb(&instance->drirc.options, "radv_lower_discard_to_demote"))
-      instance->debug_flags |= RADV_DEBUG_DISCARD_TO_DEMOTE;
 
    if (driQueryOptionb(&instance->drirc.options, "radv_invariant_geom"))
       instance->debug_flags |= RADV_DEBUG_INVARIANT_GEOM;

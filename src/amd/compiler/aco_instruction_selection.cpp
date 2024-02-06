@@ -8850,9 +8850,12 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       break;
    }
    case nir_intrinsic_demote:
-   case nir_intrinsic_demote_if: {
+   case nir_intrinsic_demote_if:
+   case nir_intrinsic_discard:
+   case nir_intrinsic_discard_if: {
       Operand cond = Operand::c32(-1u);
-      if (instr->intrinsic == nir_intrinsic_demote_if) {
+      if (instr->intrinsic == nir_intrinsic_discard_if ||
+          instr->intrinsic == nir_intrinsic_demote_if) {
          Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
          assert(src.regClass() == bld.lm);
          cond =
@@ -8874,12 +8877,9 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       break;
    }
    case nir_intrinsic_terminate:
-   case nir_intrinsic_terminate_if:
-   case nir_intrinsic_discard:
-   case nir_intrinsic_discard_if: {
+   case nir_intrinsic_terminate_if: {
       Operand cond = Operand::c32(-1u);
-      if (instr->intrinsic == nir_intrinsic_discard_if ||
-          instr->intrinsic == nir_intrinsic_terminate_if) {
+      if (instr->intrinsic == nir_intrinsic_terminate_if) {
          Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
          assert(src.regClass() == bld.lm);
          cond =

@@ -24,30 +24,31 @@ struct nir_shader;
 struct pan_blend_state;
 struct panvk_device;
 
-union panvk_sysval_vec4 {
-   float f32[4];
-   uint32_t u32[4];
+struct panvk_graphics_sysvals {
+   struct {
+      struct {
+         float x, y, z;
+      } scale, offset;
+   } viewport;
+
+   struct {
+      float constants[4];
+   } blend;
+
+   struct {
+      uint32_t first_vertex;
+      uint32_t base_vertex;
+      uint32_t base_instance;
+   } vs;
 };
 
-struct panvk_sysvals {
-   union {
-      struct {
-         /* Only for graphics */
-         union panvk_sysval_vec4 viewport_scale;
-         union panvk_sysval_vec4 viewport_offset;
-         union panvk_sysval_vec4 blend_constants;
-
-         uint32_t first_vertex;
-         uint32_t base_vertex;
-         uint32_t base_instance;
-      };
-
-      struct {
-         /* Only for compute */
-         union panvk_sysval_vec4 num_work_groups;
-         union panvk_sysval_vec4 local_group_size;
-      };
-   };
+struct panvk_compute_sysvals {
+   struct {
+      uint32_t x, y, z;
+   } num_work_groups;
+   struct {
+      uint32_t x, y, z;
+   } local_group_size;
 };
 
 struct panvk_shader {

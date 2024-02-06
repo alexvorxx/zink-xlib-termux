@@ -256,71 +256,57 @@ panvk_per_arch(cmd_alloc_tls_desc)(struct panvk_cmd_buffer *cmdbuf, bool gfx)
    }
 }
 
-/*
- * Upload the viewport scale. Defined as (px/2, py/2, pz) at the start of
- * section 24.5 ("Controlling the Viewport") of the Vulkan spec. At the end of
- * the section, the spec defines:
- *
- * px = width
- * py = height
- * pz = maxDepth - minDepth
- */
-static void
-panvk_sysval_upload_viewport_scale(const VkViewport *viewport,
-                                   union panvk_sysval_vec4 *data)
-{
-   data->f32[0] = 0.5f * viewport->width;
-   data->f32[1] = 0.5f * viewport->height;
-   data->f32[2] = (viewport->maxDepth - viewport->minDepth);
-}
-
-/*
- * Upload the viewport offset. Defined as (ox, oy, oz) at the start of section
- * 24.5 ("Controlling the Viewport") of the Vulkan spec. At the end of the
- * section, the spec defines:
- *
- * ox = x + width/2
- * oy = y + height/2
- * oz = minDepth
- */
-static void
-panvk_sysval_upload_viewport_offset(const VkViewport *viewport,
-                                    union panvk_sysval_vec4 *data)
-{
-   data->f32[0] = (0.5f * viewport->width) + viewport->x;
-   data->f32[1] = (0.5f * viewport->height) + viewport->y;
-   data->f32[2] = viewport->minDepth;
-}
-
 static void
 panvk_cmd_prepare_draw_sysvals(
    struct panvk_cmd_buffer *cmdbuf,
    struct panvk_cmd_bind_point_state *bind_point_state,
    struct panvk_draw_info *draw)
 {
-   struct panvk_sysvals *sysvals = &bind_point_state->desc_state.sysvals;
+   struct panvk_graphics_sysvals *sysvals =
+      &bind_point_state->desc_state.sysvals.gfx;
 
    unsigned base_vertex = draw->index_size ? draw->vertex_offset : 0;
-   if (sysvals->first_vertex != draw->offset_start ||
-       sysvals->base_vertex != base_vertex ||
-       sysvals->base_instance != draw->first_instance) {
-      sysvals->first_vertex = draw->offset_start;
-      sysvals->base_vertex = base_vertex;
-      sysvals->base_instance = draw->first_instance;
+   if (sysvals->vs.first_vertex != draw->offset_start ||
+       sysvals->vs.base_vertex != base_vertex ||
+       sysvals->vs.base_instance != draw->first_instance) {
+      sysvals->vs.first_vertex = draw->offset_start;
+      sysvals->vs.base_vertex = base_vertex;
+      sysvals->vs.base_instance = draw->first_instance;
       bind_point_state->desc_state.push_uniforms = 0;
    }
 
    if (cmdbuf->state.dirty & PANVK_DYNAMIC_BLEND_CONSTANTS) {
-      memcpy(&sysvals->blend_constants, cmdbuf->state.blend.constants,
+      memcpy(&sysvals->blend.constants, cmdbuf->state.blend.constants,
              sizeof(cmdbuf->state.blend.constants));
       bind_point_state->desc_state.push_uniforms = 0;
    }
 
    if (cmdbuf->state.dirty & PANVK_DYNAMIC_VIEWPORT) {
-      panvk_sysval_upload_viewport_scale(&cmdbuf->state.viewport,
-                                         &sysvals->viewport_scale);
-      panvk_sysval_upload_viewport_offset(&cmdbuf->state.viewport,
-                                          &sysvals->viewport_offset);
+      VkViewport *viewport = &cmdbuf->state.viewport;
+
+      /* Upload the viewport scale. Defined as (px/2, py/2, pz) at the start of
+       * section 24.5 ("Controlling the Viewport") of the Vulkan spec. At the
+       * end of the section, the spec defines:
+       *
+       * px = width
+       * py = height
+       * pz = maxDepth - minDepth
+       */
+      sysvals->viewport.scale.x = 0.5f * viewport->width;
+      sysvals->viewport.scale.y = 0.5f * viewport->height;
+      sysvals->viewport.scale.z = (viewport->maxDepth - viewport->minDepth);
+
+      /* Upload the viewport offset. Defined as (ox, oy, oz) at the start of
+       * section 24.5 ("Controlling the Viewport") of the Vulkan spec. At the
+       * end of the section, the spec defines:
+       *
+       * ox = x + width/2
+       * oy = y + height/2
+       * oz = minDepth
+       */
+      sysvals->viewport.offset.x = (0.5f * viewport->width) + viewport->x;
+      sysvals->viewport.offset.y = (0.5f * viewport->height) + viewport->y;
+      sysvals->viewport.offset.z = viewport->minDepth;
       bind_point_state->desc_state.push_uniforms = 0;
    }
 }
@@ -1735,13 +1721,13 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    struct panfrost_ptr job =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, COMPUTE_JOB);
 
-   struct panvk_sysvals *sysvals = &desc_state->sysvals;
-   sysvals->num_work_groups.u32[0] = x;
-   sysvals->num_work_groups.u32[1] = y;
-   sysvals->num_work_groups.u32[2] = z;
-   sysvals->local_group_size.u32[0] = pipeline->cs.local_size.x;
-   sysvals->local_group_size.u32[1] = pipeline->cs.local_size.y;
-   sysvals->local_group_size.u32[2] = pipeline->cs.local_size.z;
+   struct panvk_compute_sysvals *sysvals = &desc_state->sysvals.compute;
+   sysvals->num_work_groups.x = x;
+   sysvals->num_work_groups.y = y;
+   sysvals->num_work_groups.z = z;
+   sysvals->local_group_size.x = pipeline->cs.local_size.x;
+   sysvals->local_group_size.y = pipeline->cs.local_size.y;
+   sysvals->local_group_size.z = pipeline->cs.local_size.z;
    desc_state->push_uniforms = 0;
 
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, false);

@@ -11745,9 +11745,18 @@ radv_CmdBindPipelineShaderGroupNV(VkCommandBuffer commandBuffer, VkPipelineBindP
 /* VK_NV_device_generated_commands_compute */
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdUpdatePipelineIndirectBufferNV(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint,
-                                       VkPipeline pipeline)
+                                       VkPipeline _pipeline)
 {
-   unreachable("radv: unimplemented vkCmdUpdatePipelineIndirectBufferNV");
+   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   RADV_FROM_HANDLE(radv_pipeline, pipeline, _pipeline);
+   const struct radv_compute_pipeline *compute_pipeline = radv_pipeline_to_compute(pipeline);
+   const uint64_t va = compute_pipeline->indirect.va;
+   struct radv_compute_pipeline_metadata metadata;
+
+   radv_get_compute_pipeline_metadata(cmd_buffer->device, compute_pipeline, &metadata);
+
+   assert(sizeof(metadata) <= compute_pipeline->indirect.size);
+   radv_write_data(cmd_buffer, V_370_ME, va, sizeof(metadata) / 4, (const uint32_t *)&metadata, false);
 }
 
 /* VK_EXT_descriptor_buffer */

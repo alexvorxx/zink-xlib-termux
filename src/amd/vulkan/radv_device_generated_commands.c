@@ -1168,7 +1168,7 @@ dgc_emit_draw_mesh_tasks(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_
    nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
    nir_def *stream_offset = nir_iadd(b, draw_params_offset, stream_base);
 
-   nir_def *draw_data = nir_load_ssbo(b, 4, 32, stream_buf, stream_offset);
+   nir_def *draw_data = nir_load_ssbo(b, 3, 32, stream_buf, stream_offset);
    nir_def *x = nir_channel(b, draw_data, 0);
    nir_def *y = nir_channel(b, draw_data, 1);
    nir_def *z = nir_channel(b, draw_data, 2);

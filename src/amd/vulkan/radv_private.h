@@ -2341,6 +2341,11 @@ struct radv_graphics_pipeline {
 
 struct radv_compute_pipeline {
    struct radv_pipeline base;
+
+   struct {
+      uint64_t va;
+      uint64_t size;
+   } indirect;
 };
 
 struct radv_ray_tracing_group {

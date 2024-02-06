@@ -317,6 +317,14 @@ radv_compute_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkC
 
    radv_compute_pipeline_init(device, pipeline, pipeline_layout, pipeline->base.shaders[MESA_SHADER_COMPUTE]);
 
+   if (pipeline->base.create_flags & VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV) {
+      const VkComputePipelineIndirectBufferInfoNV *indirect_buffer =
+         vk_find_struct_const(pCreateInfo->pNext, COMPUTE_PIPELINE_INDIRECT_BUFFER_INFO_NV);
+
+      pipeline->indirect.va = indirect_buffer->deviceAddress;
+      pipeline->indirect.size = indirect_buffer->size;
+   }
+
    *pPipeline = radv_pipeline_to_handle(&pipeline->base);
    radv_rmv_log_compute_pipeline_create(device, &pipeline->base, pipeline->base.is_internal);
    return VK_SUCCESS;

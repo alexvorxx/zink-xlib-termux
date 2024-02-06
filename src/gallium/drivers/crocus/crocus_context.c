@@ -188,6 +188,9 @@ crocus_destroy_context(struct pipe_context *ctx)
 {
    struct crocus_context *ice = (struct crocus_context *)ctx;
    struct crocus_screen *screen = (struct crocus_screen *)ctx->screen;
+
+   blorp_finish(&ice->blorp);
+
    if (ctx->stream_uploader)
       u_upload_destroy(ctx->stream_uploader);
 

@@ -373,8 +373,8 @@ GLuint
 _mesa_HashFindFreeKeyBlock(struct _mesa_HashTable *table, GLuint numKeys)
 {
    const GLuint maxKey = ~((GLuint) 0) - 1;
-   if (table->id_alloc && numKeys == 1) {
-      return util_idalloc_alloc(table->id_alloc);
+   if (table->id_alloc) {
+      return util_idalloc_alloc_range(table->id_alloc, numKeys);
    } else if (maxKey - numKeys > table->MaxKey) {
       /* the quick solution */
       return table->MaxKey + 1;

@@ -53,15 +53,30 @@
 #include "sid.h"
 #include "vk_format.h"
 
+static uint32_t
+radv_get_compute_resource_limits(const struct radv_physical_device *pdevice, const struct radv_shader *cs)
+{
+   unsigned threads_per_threadgroup;
+   unsigned threadgroups_per_cu = 1;
+   unsigned waves_per_threadgroup;
+   unsigned max_waves_per_sh = 0;
+
+   /* Calculate best compute resource limits. */
+   threads_per_threadgroup = cs->info.cs.block_size[0] * cs->info.cs.block_size[1] * cs->info.cs.block_size[2];
+   waves_per_threadgroup = DIV_ROUND_UP(threads_per_threadgroup, cs->info.wave_size);
+
+   if (pdevice->rad_info.gfx_level >= GFX10 && waves_per_threadgroup == 1)
+      threadgroups_per_cu = 2;
+
+   return ac_get_compute_resource_limits(&pdevice->rad_info, waves_per_threadgroup, max_waves_per_sh,
+                                         threadgroups_per_cu);
+}
+
 void
 radv_emit_compute_shader(const struct radv_physical_device *pdevice, struct radeon_cmdbuf *cs,
                          const struct radv_shader *shader)
 {
    uint64_t va = radv_shader_get_va(shader);
-   unsigned threads_per_threadgroup;
-   unsigned threadgroups_per_cu = 1;
-   unsigned waves_per_threadgroup;
-   unsigned max_waves_per_sh = 0;
 
    radeon_set_sh_reg(cs, R_00B830_COMPUTE_PGM_LO, va >> 8);
 
@@ -72,17 +87,7 @@ radv_emit_compute_shader(const struct radv_physical_device *pdevice, struct rade
       radeon_set_sh_reg(cs, R_00B8A0_COMPUTE_PGM_RSRC3, shader->config.rsrc3);
    }
 
-   /* Calculate best compute resource limits. */
-   threads_per_threadgroup =
-      shader->info.cs.block_size[0] * shader->info.cs.block_size[1] * shader->info.cs.block_size[2];
-   waves_per_threadgroup = DIV_ROUND_UP(threads_per_threadgroup, shader->info.wave_size);
-
-   if (pdevice->rad_info.gfx_level >= GFX10 && waves_per_threadgroup == 1)
-      threadgroups_per_cu = 2;
-
-   radeon_set_sh_reg(
-      cs, R_00B854_COMPUTE_RESOURCE_LIMITS,
-      ac_get_compute_resource_limits(&pdevice->rad_info, waves_per_threadgroup, max_waves_per_sh, threadgroups_per_cu));
+   radeon_set_sh_reg(cs, R_00B854_COMPUTE_RESOURCE_LIMITS, radv_get_compute_resource_limits(pdevice, shader));
 
    radeon_set_sh_reg_seq(cs, R_00B81C_COMPUTE_NUM_THREAD_X, 3);
    radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[0]));

@@ -496,9 +496,8 @@ free_performance_monitor(void *data, void *user)
 void
 _mesa_free_performance_monitors(struct gl_context *ctx)
 {
-   _mesa_HashDeleteAll(ctx->PerfMonitor.Monitors,
-                       free_performance_monitor, ctx);
-   _mesa_DeleteHashTable(ctx->PerfMonitor.Monitors);
+   _mesa_DeleteHashTable(ctx->PerfMonitor.Monitors, free_performance_monitor,
+                         ctx);
 }
 
 static inline struct gl_perf_monitor_object *

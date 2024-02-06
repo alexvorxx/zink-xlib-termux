@@ -191,7 +191,7 @@ _mesa_init_transform_feedback(struct gl_context *ctx)
 
 
 /**
- * Callback for _mesa_HashDeleteAll().
+ * Callback for _mesa_DeleteHashTable().
  */
 static void
 delete_cb(void *data, void *userData)
@@ -216,8 +216,7 @@ _mesa_free_transform_feedback(struct gl_context *ctx)
                                  NULL);
 
    /* Delete all feedback objects */
-   _mesa_HashDeleteAll(ctx->TransformFeedback.Objects, delete_cb, ctx);
-   _mesa_DeleteHashTable(ctx->TransformFeedback.Objects);
+   _mesa_DeleteHashTable(ctx->TransformFeedback.Objects, delete_cb, ctx);
 
    /* Delete the default feedback object */
    delete_transform_feedback(ctx,

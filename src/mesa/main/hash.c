@@ -134,11 +134,35 @@ _mesa_NewHashTable(void)
  * Note that the caller should have already traversed the table and deleted
  * the objects in the table (i.e. We don't free the entries' data pointer).
  *
+ * Invoke the given callback function for each table entry if not NULL.
+ *
  * \param table the hash table to delete.
+ * \param table  the hash table to delete
+ * \param free_callback  the callback function
+ * \param userData  arbitrary pointer to pass along to the callback
+ *                  (this is typically a struct gl_context pointer)
  */
 void
-_mesa_DeleteHashTable(struct _mesa_HashTable *table)
+_mesa_DeleteHashTable(struct _mesa_HashTable *table,
+                      void (*free_callback)(void *data, void *userData),
+                      void *userData)
 {
+   if (free_callback) {
+#ifndef NDEBUG
+      table->InDeleteAll = GL_TRUE;
+#endif
+      hash_table_foreach(table->ht, entry) {
+         free_callback(entry->data, userData);
+         _mesa_hash_table_remove(table->ht, entry);
+      }
+      if (table->deleted_key_data) {
+         free_callback(table->deleted_key_data, userData);
+      }
+#ifndef NDEBUG
+      table->InDeleteAll = GL_FALSE;
+#endif
+   }
+
    if (_mesa_hash_table_next_entry(table->ht, NULL) != NULL) {
       _mesa_problem(NULL, "In _mesa_DeleteHashTable, found non-freed data");
    }
@@ -292,7 +316,7 @@ _mesa_HashRemoveLocked(struct _mesa_HashTable *table, GLuint key)
    assert(key);
 
    #ifndef NDEBUG
-   /* assert if _mesa_HashRemove illegally called from _mesa_HashDeleteAll
+   /* assert if _mesa_HashRemove illegally called from _mesa_DeleteHashTable
     * callback function. Have to check this outside of mutex lock.
     */
    assert(!table->InDeleteAll);
@@ -316,45 +340,6 @@ _mesa_HashRemove(struct _mesa_HashTable *table, GLuint key)
 {
    _mesa_HashLockMutex(table);
    _mesa_HashRemoveLocked(table, key);
-   _mesa_HashUnlockMutex(table);
-}
-
-/**
- * Delete all entries in a hash table, but don't delete the table itself.
- * Invoke the given callback function for each table entry.
- *
- * \param table  the hash table to delete
- * \param callback  the callback function
- * \param userData  arbitrary pointer to pass along to the callback
- *                  (this is typically a struct gl_context pointer)
- */
-void
-_mesa_HashDeleteAll(struct _mesa_HashTable *table,
-                    void (*callback)(void *data, void *userData),
-                    void *userData)
-{
-   assert(callback);
-   _mesa_HashLockMutex(table);
-   #ifndef NDEBUG
-   table->InDeleteAll = GL_TRUE;
-   #endif
-   hash_table_foreach(table->ht, entry) {
-      callback(entry->data, userData);
-      _mesa_hash_table_remove(table->ht, entry);
-   }
-   if (table->deleted_key_data) {
-      callback(table->deleted_key_data, userData);
-      table->deleted_key_data = NULL;
-   }
-   if (table->id_alloc) {
-      util_idalloc_fini(table->id_alloc);
-      free(table->id_alloc);
-      init_name_reuse(table);
-   }
-   #ifndef NDEBUG
-   table->InDeleteAll = GL_FALSE;
-   #endif
-   table->MaxKey = 0;
    _mesa_HashUnlockMutex(table);
 }
 

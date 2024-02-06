@@ -4172,7 +4172,7 @@ _mesa_init_varray(struct gl_context *ctx)
 
 
 /**
- * Callback for deleting an array object.  Called by _mesa_HashDeleteAll().
+ * Callback for deleting an array object.  Called by _mesa_DeleteHashTable().
  */
 static void
 delete_arrayobj_cb(void *data, void *userData)
@@ -4189,8 +4189,7 @@ delete_arrayobj_cb(void *data, void *userData)
 void
 _mesa_free_varray_data(struct gl_context *ctx)
 {
-   _mesa_HashDeleteAll(ctx->Array.Objects, delete_arrayobj_cb, ctx);
-   _mesa_DeleteHashTable(ctx->Array.Objects);
+   _mesa_DeleteHashTable(ctx->Array.Objects, delete_arrayobj_cb, ctx);
 }
 
 void GLAPIENTRY

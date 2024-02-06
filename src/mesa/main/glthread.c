@@ -233,7 +233,7 @@ _mesa_glthread_init(struct gl_context *ctx)
 
    ctx->MarshalExec = _mesa_alloc_dispatch_table(true);
    if (!ctx->MarshalExec) {
-      _mesa_DeleteHashTable(glthread->VAOs);
+      _mesa_DeleteHashTable(glthread->VAOs, NULL, NULL);
       util_queue_destroy(&glthread->queue);
       return;
    }
@@ -289,8 +289,7 @@ _mesa_glthread_destroy(struct gl_context *ctx)
       for (unsigned i = 0; i < MARSHAL_MAX_BATCHES; i++)
          util_queue_fence_destroy(&glthread->batches[i].fence);
 
-      _mesa_HashDeleteAll(glthread->VAOs, free_vao, NULL);
-      _mesa_DeleteHashTable(glthread->VAOs);
+      _mesa_DeleteHashTable(glthread->VAOs, free_vao, NULL);
       _mesa_glthread_release_upload_buffer(ctx);
    }
 }

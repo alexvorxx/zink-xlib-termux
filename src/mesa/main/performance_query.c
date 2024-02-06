@@ -65,9 +65,7 @@ free_performance_query(void *data, void *user)
 void
 _mesa_free_performance_queries(struct gl_context *ctx)
 {
-   _mesa_HashDeleteAll(ctx->PerfQuery.Objects,
-                       free_performance_query, ctx);
-   _mesa_DeleteHashTable(ctx->PerfQuery.Objects);
+   _mesa_DeleteHashTable(ctx->PerfQuery.Objects, free_performance_query, ctx);
 }
 
 static inline struct gl_perf_query_object *

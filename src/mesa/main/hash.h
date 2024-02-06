@@ -60,7 +60,9 @@ struct _mesa_HashTable *
 _mesa_NewHashTable(void);
 
 void
-_mesa_DeleteHashTable(struct _mesa_HashTable *table);
+_mesa_DeleteHashTable(struct _mesa_HashTable *table,
+                      void (*free_callback)(void *data, void *userData),
+                      void *userData);
 
 void *
 _mesa_HashLookup(struct _mesa_HashTable *table, GLuint key);
@@ -81,11 +83,6 @@ _mesa_HashInsertLocked(struct _mesa_HashTable *table,
 
 void
 _mesa_HashRemoveLocked(struct _mesa_HashTable *table, GLuint key);
-
-void
-_mesa_HashDeleteAll(struct _mesa_HashTable *table,
-                    void (*callback)(void *data, void *userData),
-                    void *userData);
 
 void
 _mesa_HashWalk(struct _mesa_HashTable *table,

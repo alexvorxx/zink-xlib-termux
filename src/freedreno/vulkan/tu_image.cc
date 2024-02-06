@@ -374,17 +374,10 @@ ubwc_possible(struct tu_device *device,
        (stencil_usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)))
       return false;
 
-   /* This meant to disable UBWC for MSAA z24s8, but accidentally disables it
-    * for all MSAA.  https://gitlab.freedesktop.org/mesa/mesa/-/issues/7438
-    */
-   if (!info->a6xx.has_z24uint_s8uint && samples > VK_SAMPLE_COUNT_1_BIT) {
-      if (device) {
-         perf_debug(device,
-                    "Disabling UBWC for %d-sample %s image, but it should be "
-                    "possible to support",
-                    samples,
-                    util_format_name(vk_format_to_pipe_format(format)));
-      }
+   if (!info->a6xx.has_z24uint_s8uint &&
+       (format == VK_FORMAT_D24_UNORM_S8_UINT ||
+        format == VK_FORMAT_X8_D24_UNORM_PACK32) &&
+       samples > VK_SAMPLE_COUNT_1_BIT) {
       return false;
    }
 

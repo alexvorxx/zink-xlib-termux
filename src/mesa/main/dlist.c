@@ -13401,7 +13401,7 @@ _mesa_EndList(void)
    /* Install the new list */
    _mesa_HashInsertLocked(ctx->Shared->DisplayList,
                           ctx->ListState.CurrentList->Name,
-                          ctx->ListState.CurrentList, true);
+                          ctx->ListState.CurrentList, false);
 
    if (MESA_VERBOSE & VERBOSE_DISPLAY_LIST)
       mesa_print_display_list(ctx->ListState.CurrentList->Name);

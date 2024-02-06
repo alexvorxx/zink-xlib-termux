@@ -8166,6 +8166,68 @@ genX(urb_workaround)(struct iris_batch *batch,
 }
 
 static void
+iris_emit_index_buffer(struct iris_context *ice,
+                       struct iris_batch *batch,
+                       const struct pipe_draw_info *draw,
+                       const struct pipe_draw_start_count_bias *sc)
+{
+   unsigned offset;
+
+   if (draw->has_user_indices) {
+      unsigned start_offset = draw->index_size * sc->start;
+
+      u_upload_data(ice->ctx.const_uploader, start_offset,
+                    sc->count * draw->index_size, 4,
+                    (char*)draw->index.user + start_offset,
+                    &offset, &ice->state.last_res.index_buffer);
+      offset -= start_offset;
+   } else {
+      struct iris_resource *res = (void *) draw->index.resource;
+      res->bind_history |= PIPE_BIND_INDEX_BUFFER;
+
+      pipe_resource_reference(&ice->state.last_res.index_buffer,
+                              draw->index.resource);
+      offset = 0;
+
+      iris_emit_buffer_barrier_for(batch, res->bo, IRIS_DOMAIN_VF_READ);
+   }
+
+   struct iris_genx_state *genx = ice->state.genx;
+   struct iris_bo *bo = iris_resource_bo(ice->state.last_res.index_buffer);
+
+   uint32_t ib_packet[GENX(3DSTATE_INDEX_BUFFER_length)];
+   iris_pack_command(GENX(3DSTATE_INDEX_BUFFER), ib_packet, ib) {
+      ib.IndexFormat = draw->index_size >> 1;
+      ib.MOCS = iris_mocs(bo, &batch->screen->isl_dev,
+                          ISL_SURF_USAGE_INDEX_BUFFER_BIT);
+      ib.BufferSize = bo->size - offset;
+      ib.BufferStartingAddress = ro_bo(NULL, bo->address + offset);
+#if GFX_VER >= 12
+      ib.L3BypassDisable       = true;
+#endif
+   }
+
+   if (memcmp(genx->last_index_buffer, ib_packet, sizeof(ib_packet)) != 0) {
+      memcpy(genx->last_index_buffer, ib_packet, sizeof(ib_packet));
+      iris_batch_emit(batch, ib_packet, sizeof(ib_packet));
+      iris_use_pinned_bo(batch, bo, false, IRIS_DOMAIN_VF_READ);
+   }
+
+#if GFX_VER < 11
+   /* The VF cache key only uses 32-bits, see vertex buffer comment above */
+   uint16_t high_bits = bo->address >> 32ull;
+   if (high_bits != ice->state.last_index_bo_high_bits) {
+      iris_emit_pipe_control_flush(batch,
+                                   "workaround: VF cache 32-bit key [IB]",
+                                   PIPE_CONTROL_VF_CACHE_INVALIDATE |
+                                   PIPE_CONTROL_CS_STALL);
+      ice->state.last_index_bo_high_bits = high_bits;
+   }
+#endif
+}
+
+
+static void
 iris_upload_render_state(struct iris_context *ice,
                          struct iris_batch *batch,
                          const struct pipe_draw_info *draw,
@@ -8223,61 +8285,8 @@ iris_upload_render_state(struct iris_context *ice,
 
    iris_upload_dirty_render_state(ice, batch, draw);
 
-   if (draw->index_size > 0) {
-      unsigned offset;
-
-      if (draw->has_user_indices) {
-         unsigned start_offset = draw->index_size * sc->start;
-
-         u_upload_data(ice->ctx.const_uploader, start_offset,
-                       sc->count * draw->index_size, 4,
-                       (char*)draw->index.user + start_offset,
-                       &offset, &ice->state.last_res.index_buffer);
-         offset -= start_offset;
-      } else {
-         struct iris_resource *res = (void *) draw->index.resource;
-         res->bind_history |= PIPE_BIND_INDEX_BUFFER;
-
-         pipe_resource_reference(&ice->state.last_res.index_buffer,
-                                 draw->index.resource);
-         offset = 0;
-
-         iris_emit_buffer_barrier_for(batch, res->bo, IRIS_DOMAIN_VF_READ);
-      }
-
-      struct iris_genx_state *genx = ice->state.genx;
-      struct iris_bo *bo = iris_resource_bo(ice->state.last_res.index_buffer);
-
-      uint32_t ib_packet[GENX(3DSTATE_INDEX_BUFFER_length)];
-      iris_pack_command(GENX(3DSTATE_INDEX_BUFFER), ib_packet, ib) {
-         ib.IndexFormat = draw->index_size >> 1;
-         ib.MOCS = iris_mocs(bo, &batch->screen->isl_dev,
-                             ISL_SURF_USAGE_INDEX_BUFFER_BIT);
-         ib.BufferSize = bo->size - offset;
-         ib.BufferStartingAddress = ro_bo(NULL, bo->address + offset);
-#if GFX_VER >= 12
-         ib.L3BypassDisable       = true;
-#endif
-      }
-
-      if (memcmp(genx->last_index_buffer, ib_packet, sizeof(ib_packet)) != 0) {
-         memcpy(genx->last_index_buffer, ib_packet, sizeof(ib_packet));
-         iris_batch_emit(batch, ib_packet, sizeof(ib_packet));
-         iris_use_pinned_bo(batch, bo, false, IRIS_DOMAIN_VF_READ);
-      }
-
-#if GFX_VER < 11
-      /* The VF cache key only uses 32-bits, see vertex buffer comment above */
-      uint16_t high_bits = bo->address >> 32ull;
-      if (high_bits != ice->state.last_index_bo_high_bits) {
-         iris_emit_pipe_control_flush(batch,
-                                      "workaround: VF cache 32-bit key [IB]",
-                                      PIPE_CONTROL_VF_CACHE_INVALIDATE |
-                                      PIPE_CONTROL_CS_STALL);
-         ice->state.last_index_bo_high_bits = high_bits;
-      }
-#endif
-   }
+   if (draw->index_size > 0)
+      iris_emit_index_buffer(ice, batch, draw, sc);
 
    if (indirect) {
       struct mi_builder b;
@@ -8482,48 +8491,8 @@ iris_upload_indirect_render_state(struct iris_context *ice,
 
    iris_upload_dirty_render_state(ice, batch, draw);
 
-   if (draw->index_size > 0) {
-      unsigned offset;
-
-      if (draw->has_user_indices) {
-         unsigned start_offset = draw->index_size * sc->start;
-
-         u_upload_data(ice->ctx.const_uploader, start_offset,
-                       sc->count * draw->index_size, 4,
-                       (char*)draw->index.user + start_offset,
-                       &offset, &ice->state.last_res.index_buffer);
-         offset -= start_offset;
-      } else {
-         struct iris_resource *res = (void *) draw->index.resource;
-         res->bind_history |= PIPE_BIND_INDEX_BUFFER;
-
-         pipe_resource_reference(&ice->state.last_res.index_buffer,
-                                 draw->index.resource);
-         offset = 0;
-
-         iris_emit_buffer_barrier_for(batch, res->bo, IRIS_DOMAIN_VF_READ);
-      }
-
-      struct iris_genx_state *genx = ice->state.genx;
-      struct iris_bo *bo = iris_resource_bo(ice->state.last_res.index_buffer);
-
-      uint32_t ib_packet[GENX(3DSTATE_INDEX_BUFFER_length)];
-      iris_pack_command(GENX(3DSTATE_INDEX_BUFFER), ib_packet, ib) {
-         ib.IndexFormat = draw->index_size >> 1;
-         ib.MOCS = iris_mocs(bo, &batch->screen->isl_dev,
-                             ISL_SURF_USAGE_INDEX_BUFFER_BIT);
-         ib.BufferSize = bo->size - offset;
-         ib.BufferStartingAddress = ro_bo(NULL, bo->address + offset);
-         ib.L3BypassDisable       = true;
-      }
-
-      if (memcmp(genx->last_index_buffer, ib_packet, sizeof(ib_packet)) != 0) {
-          memcpy(genx->last_index_buffer, ib_packet, sizeof(ib_packet));
-         iris_batch_emit(batch, ib_packet, sizeof(ib_packet));
-         iris_use_pinned_bo(batch, bo, false, IRIS_DOMAIN_VF_READ);
-      }
-
-   }
+   if (draw->index_size > 0)
+      iris_emit_index_buffer(ice, batch, draw, sc);
 
    iris_measure_snapshot(ice, batch, INTEL_SNAPSHOT_DRAW, draw, indirect, sc);
 

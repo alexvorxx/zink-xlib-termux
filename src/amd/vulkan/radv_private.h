@@ -3771,6 +3771,24 @@ radv_uses_image_float32_atomics(const struct radv_device *device)
 
 bool radv_device_fault_detection_enabled(const struct radv_device *device);
 
+struct radv_compute_pipeline_metadata {
+   uint32_t shader_va;
+   uint32_t rsrc1;
+   uint32_t rsrc2;
+   uint32_t rsrc3;
+   uint32_t compute_resource_limits;
+   uint32_t block_size_x;
+   uint32_t block_size_y;
+   uint32_t block_size_z;
+   uint32_t wave32;
+   uint32_t grid_base_sgpr;
+   uint32_t push_const_sgpr;
+   uint64_t inline_push_const_mask;
+};
+
+void radv_get_compute_pipeline_metadata(const struct radv_device *device, const struct radv_compute_pipeline *pipeline,
+                                        struct radv_compute_pipeline_metadata *metadata);
+
 #define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
 
 VK_DEFINE_HANDLE_CASTS(radv_cmd_buffer, vk.base, VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER)

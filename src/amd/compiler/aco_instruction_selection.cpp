@@ -8913,6 +8913,11 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
 
       ctx->block->kind |= block_kind_uses_discard;
       ctx->program->needs_exact = true;
+
+      /* Enable WQM in order to prevent helper lanes from getting terminated. */
+      if (ctx->shader->info.maximally_reconverges)
+         ctx->program->needs_wqm = true;
+
       break;
    }
    case nir_intrinsic_terminate:

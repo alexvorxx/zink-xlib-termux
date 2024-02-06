@@ -213,24 +213,24 @@ BEGIN_TEST(form_hard_clauses.nsa)
 
       //>> p_unit_test 0
       //! s_clause imm:1
-      //; search_re('image_sample .* %0:v\[0\], %0:v\[1\]')
-      //; search_re('image_sample .* %0:v\[0\], %0:v\[1\]')
+      //; search_re(r'image_sample .* %0:v\[0\], %0:v\[1\]')
+      //; search_re(r'image_sample .* %0:v\[0\], %0:v\[1\]')
       bld.pseudo(aco_opcode::p_unit_test, Operand::zero());
       create_mimg(false);
       create_mimg(false);
 
       //>> p_unit_test 1
       //~gfx10_3! s_clause imm:1
-      //; search_re('image_sample .* %0:v\[0\], %0:v\[1\]')
-      //; search_re('image_sample .* %0:v\[0\], %0:v\[2\]')
+      //; search_re(r'image_sample .* %0:v\[0\], %0:v\[1\]')
+      //; search_re(r'image_sample .* %0:v\[0\], %0:v\[2\]')
       bld.pseudo(aco_opcode::p_unit_test, Operand::c32(1u));
       create_mimg(false);
       create_mimg(true);
 
       //>> p_unit_test 2
       //~gfx10_3! s_clause imm:1
-      //; search_re('image_sample .* %0:v\[0\], %0:v\[2\]')
-      //; search_re('image_sample .* %0:v\[0\], %0:v\[2\]')
+      //; search_re(r'image_sample .* %0:v\[0\], %0:v\[2\]')
+      //; search_re(r'image_sample .* %0:v\[0\], %0:v\[2\]')
       bld.pseudo(aco_opcode::p_unit_test, Operand::c32(2u));
       create_mimg(true);
       create_mimg(true);

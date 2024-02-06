@@ -384,24 +384,6 @@ _mesa_HashWalkLocked(const struct _mesa_HashTable *table,
 }
 
 /**
- * Dump contents of hash table for debugging.
- *
- * \param table the hash table.
- */
-void
-_mesa_HashPrint(const struct _mesa_HashTable *table)
-{
-   if (table->deleted_key_data)
-      _mesa_debug(NULL, "%u %p\n", DELETED_KEY_VALUE, table->deleted_key_data);
-
-   hash_table_foreach(table->ht, entry) {
-      _mesa_debug(NULL, "%u %p\n", (unsigned)(uintptr_t) entry->key,
-                  entry->data);
-   }
-}
-
-
-/**
  * Find a block of adjacent unused hash keys.
  * 
  * \param table the hash table.
@@ -465,21 +447,4 @@ _mesa_HashFindFreeKeys(struct _mesa_HashTable *table, GLuint* keys, GLuint numKe
    }
 
    return true;
-}
-
-
-/**
- * Return the number of entries in the hash table.
- */
-GLuint
-_mesa_HashNumEntries(const struct _mesa_HashTable *table)
-{
-   GLuint count = 0;
-
-   if (table->deleted_key_data)
-      count++;
-
-   count += _mesa_hash_table_num_entries(table->ht);
-
-   return count;
 }

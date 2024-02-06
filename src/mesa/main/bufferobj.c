@@ -1084,21 +1084,6 @@ count_buffer_size(void *data, void *userData)
 
 
 /**
- * Compute total size (in bytes) of all buffer objects for the given context.
- * For debugging purposes.
- */
-GLuint
-_mesa_total_buffer_object_memory(struct gl_context *ctx)
-{
-   GLuint total = 0;
-
-   _mesa_HashWalkMaybeLocked(ctx->Shared->BufferObjects, count_buffer_size,
-                             &total, ctx->BufferObjectsLocked);
-
-   return total;
-}
-
-/**
  * Initialize the state associated with buffer objects
  */
 void

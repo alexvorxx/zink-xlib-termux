@@ -235,9 +235,6 @@ _mesa_reference_buffer_object_shared(struct gl_context *ctx,
       _mesa_reference_buffer_object_(ctx, ptr, bufObj, true);
 }
 
-extern GLuint
-_mesa_total_buffer_object_memory(struct gl_context *ctx);
-
 extern void
 _mesa_buffer_data(struct gl_context *ctx, struct gl_buffer_object *bufObj,
                   GLenum target, GLsizeiptr size, const GLvoid *data,

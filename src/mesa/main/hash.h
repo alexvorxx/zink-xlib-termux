@@ -177,30 +177,12 @@ _mesa_HashWalkLocked(const struct _mesa_HashTable *table,
                      void (*callback)(void *data, void *userData),
                      void *userData);
 
-extern void _mesa_HashPrint(const struct _mesa_HashTable *table);
-
 extern GLuint _mesa_HashFindFreeKeyBlock(struct _mesa_HashTable *table, GLuint numKeys);
 
 extern bool
 _mesa_HashFindFreeKeys(struct _mesa_HashTable *table, GLuint* keys, GLuint numKeys);
 
-extern GLuint
-_mesa_HashNumEntries(const struct _mesa_HashTable *table);
-
-extern void _mesa_test_hash_functions(void);
-
 extern void _mesa_HashEnableNameReuse(struct _mesa_HashTable *table);
-
-static inline void
-_mesa_HashWalkMaybeLocked(const struct _mesa_HashTable *table,
-                            void (*callback)(void *data, void *userData),
-                            void *userData, bool locked)
-{
-   if (locked)
-      _mesa_HashWalkLocked(table, callback, userData);
-   else
-      _mesa_HashWalk(table, callback, userData);
-}
 
 static inline struct gl_buffer_object *
 _mesa_HashLookupMaybeLocked(struct _mesa_HashTable *table, GLuint key,
@@ -210,17 +192,6 @@ _mesa_HashLookupMaybeLocked(struct _mesa_HashTable *table, GLuint key,
       return _mesa_HashLookupLocked(table, key);
    else
       return _mesa_HashLookup(table, key);
-}
-
-static inline void
-_mesa_HashInsertMaybeLocked(struct _mesa_HashTable *table,
-                            GLuint key, void *data, GLboolean isGenName,
-                            bool locked)
-{
-   if (locked)
-      _mesa_HashInsertLocked(table, key, data, isGenName);
-   else
-      _mesa_HashInsert(table, key, data, isGenName);
 }
 
 static inline void

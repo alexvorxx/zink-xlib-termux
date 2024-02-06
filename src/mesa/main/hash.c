@@ -1,19 +1,8 @@
-/**
- * \file hash.c
- * Generic hash table. 
- *
- * Used for display lists, texture objects, vertex/fragment programs,
- * buffer objects, etc.  The hash functions are thread-safe.
- * 
- * \note key=0 is illegal.
- *
- * \author Brian Paul
- */
-
 /*
  * Mesa 3-D graphics library
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
+ * Copyright (C) 2024 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -34,6 +23,18 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+/**
+ * \file hash.c
+ * Generic hash table.
+ *
+ * Used for display lists, texture objects, vertex/fragment programs,
+ * buffer objects, etc.  The hash functions are thread-safe.
+ *
+ * \note key=0 is illegal.
+ *
+ * \author Brian Paul
+ */
+
 #include "errors.h"
 #include "util/glheader.h"
 #include "hash.h"
@@ -41,6 +42,62 @@
 #include "util/u_memory.h"
 #include "util/u_idalloc.h"
 
+/**
+ * Magic GLuint object name that gets stored outside of the struct hash_table.
+ *
+ * The hash table needs a particular pointer to be the marker for a key that
+ * was deleted from the table, along with NULL for the "never allocated in the
+ * table" marker.  Legacy GL allows any GLuint to be used as a GL object name,
+ * and we use a 1:1 mapping from GLuints to key pointers, so we need to be
+ * able to track a GLuint that happens to match the deleted key outside of
+ * struct hash_table.  We tell the hash table to use "1" as the deleted key
+ * value, so that we test the deleted-key-in-the-table path as best we can.
+ */
+#define DELETED_KEY_VALUE 1
+
+/** @{
+ * Mapping from our use of GLuint as both the key and the hash value to the
+ * hash_table.h API
+ *
+ * There exist many integer hash functions, designed to avoid collisions when
+ * the integers are spread across key space with some patterns.  In GL, the
+ * pattern (in the case of glGen*()ed object IDs) is that the keys are unique
+ * contiguous integers starting from 1.  Because of that, we just use the key
+ * as the hash value, to minimize the cost of the hash function.  If objects
+ * are never deleted, we will never see a collision in the table, because the
+ * table resizes itself when it approaches full, and thus key % table_size ==
+ * key.
+ *
+ * The case where we could have collisions for genned objects would be
+ * something like: glGenBuffers(&a, 100); glDeleteBuffers(&a + 50, 50);
+ * glGenBuffers(&b, 100), because objects 1-50 and 101-200 are allocated at
+ * the end of that sequence, instead of 1-150.  So far it doesn't appear to be
+ * a problem.
+ */
+static inline bool
+uint_key_compare(const void *a, const void *b)
+{
+   return a == b;
+}
+
+static inline uint32_t
+uint_hash(GLuint id)
+{
+   return id;
+}
+
+static inline uint32_t
+uint_key_hash(const void *key)
+{
+   return uint_hash((uintptr_t)key);
+}
+
+static inline void *
+uint_key(GLuint id)
+{
+   return (void *)(uintptr_t) id;
+}
+/** @} */
 
 /**
  * Create a new hash table.
@@ -71,8 +128,6 @@ _mesa_NewHashTable(void)
    return table;
 }
 
-
-
 /**
  * Delete a hash table.
  * Frees each entry on the hash table and then the hash table structure itself.
@@ -84,8 +139,6 @@ _mesa_NewHashTable(void)
 void
 _mesa_DeleteHashTable(struct _mesa_HashTable *table)
 {
-   assert(table);
-
    if (_mesa_hash_table_next_entry(table->ht, NULL) != NULL) {
       _mesa_problem(NULL, "In _mesa_DeleteHashTable, found non-freed data");
    }
@@ -133,7 +186,6 @@ _mesa_HashLookupLocked(struct _mesa_HashTable *table, GLuint key)
 {
    const struct hash_entry *entry;
 
-   assert(table);
    assert(key);
 
    if (key == DELETED_KEY_VALUE)
@@ -147,7 +199,6 @@ _mesa_HashLookupLocked(struct _mesa_HashTable *table, GLuint key)
 
    return entry->data;
 }
-
 
 /**
  * Lookup an entry in the hash table.
@@ -166,7 +217,6 @@ _mesa_HashLookup(struct _mesa_HashTable *table, GLuint key)
    _mesa_HashUnlockMutex(table);
    return res;
 }
-
 
 /**
  * Insert a key/pointer pair into the hash table without locking the mutex.
@@ -187,7 +237,6 @@ _mesa_HashInsertLocked(struct _mesa_HashTable *table, GLuint key, void *data,
    uint32_t hash = uint_hash(key);
    struct hash_entry *entry;
 
-   assert(table);
    assert(key);
 
    if (key > table->MaxKey)
@@ -208,7 +257,6 @@ _mesa_HashInsertLocked(struct _mesa_HashTable *table, GLuint key, void *data,
       util_idalloc_reserve(table->id_alloc, key);
 }
 
-
 /**
  * Insert a key/pointer pair into the hash table.
  * If an entry with this key already exists we'll replace the existing entry.
@@ -227,7 +275,6 @@ _mesa_HashInsert(struct _mesa_HashTable *table, GLuint key, void *data,
    _mesa_HashUnlockMutex(table);
 }
 
-
 /**
  * Remove an entry from the hash table.
  * 
@@ -242,7 +289,6 @@ _mesa_HashRemoveLocked(struct _mesa_HashTable *table, GLuint key)
 {
    struct hash_entry *entry;
 
-   assert(table);
    assert(key);
 
    #ifndef NDEBUG
@@ -312,7 +358,6 @@ _mesa_HashDeleteAll(struct _mesa_HashTable *table,
    _mesa_HashUnlockMutex(table);
 }
 
-
 /**
  * Walk over all entries in a hash table, calling callback function for each.
  * \param table  the hash table to walk
@@ -325,7 +370,6 @@ _mesa_HashWalkLocked(struct _mesa_HashTable *table,
                      void (*callback)(void *data, void *userData),
                      void *userData)
 {
-   assert(table);
    assert(callback);
 
    hash_table_foreach(table->ht, entry) {
@@ -334,7 +378,6 @@ _mesa_HashWalkLocked(struct _mesa_HashTable *table,
    if (table->deleted_key_data)
       callback(table->deleted_key_data, userData);
 }
-
 
 void
 _mesa_HashWalk(struct _mesa_HashTable *table,
@@ -392,7 +435,6 @@ _mesa_HashFindFreeKeyBlock(struct _mesa_HashTable *table, GLuint numKeys)
       return 0;
    }
 }
-
 
 bool
 _mesa_HashFindFreeKeys(struct _mesa_HashTable *table, GLuint* keys, GLuint numKeys)

@@ -310,9 +310,10 @@ ubwc_possible(struct tu_device *device,
 
    /* In copy_format, we treat snorm as unorm to avoid clamping.  But snorm
     * and unorm are UBWC incompatible for special values such as all 0's or
-    * all 1's.  Disable UBWC for snorm.
+    * all 1's prior to a740.  Disable UBWC for snorm.
     */
-   if (vk_format_is_snorm(format))
+   if (vk_format_is_snorm(format) &&
+       !info->a7xx.ubwc_unorm_snorm_int_compatible)
       return false;
 
    if (!info->a6xx.has_8bpp_ubwc &&
@@ -498,7 +499,8 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
        !vk_format_is_depth_or_stencil(image->vk.format)) {
       const VkImageFormatListCreateInfo *fmt_list =
          vk_find_struct_const(pCreateInfo->pNext, IMAGE_FORMAT_LIST_CREATE_INFO);
-      if (!tu6_mutable_format_list_ubwc_compatible(fmt_list)) {
+      if (!tu6_mutable_format_list_ubwc_compatible(device->physical_device->info,
+                                                   fmt_list)) {
          if (ubwc_enabled) {
             if (fmt_list && fmt_list->viewFormatCount == 2) {
                perf_debug(

@@ -10307,7 +10307,8 @@ radv_dgc_before_dispatch(struct radv_cmd_buffer *cmd_buffer)
    if (compute_shader->info.cs.regalloc_hang_bug)
       cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_CS_PARTIAL_FLUSH;
 
-   radv_emit_compute_pipeline(cmd_buffer, pipeline);
+   if (pipeline)
+      radv_emit_compute_pipeline(cmd_buffer, pipeline);
    radv_emit_cache_flush(cmd_buffer);
 
    radv_upload_compute_shader_descriptors(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE);

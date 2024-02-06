@@ -148,23 +148,12 @@ _mesa_DeleteHashTable(struct _mesa_HashTable *table,
                       void *userData)
 {
    if (free_callback) {
-#ifndef NDEBUG
-      table->InDeleteAll = GL_TRUE;
-#endif
       hash_table_foreach(table->ht, entry) {
          free_callback(entry->data, userData);
-         _mesa_hash_table_remove(table->ht, entry);
       }
       if (table->deleted_key_data) {
          free_callback(table->deleted_key_data, userData);
       }
-#ifndef NDEBUG
-      table->InDeleteAll = GL_FALSE;
-#endif
-   }
-
-   if (_mesa_hash_table_next_entry(table->ht, NULL) != NULL) {
-      _mesa_problem(NULL, "In _mesa_DeleteHashTable, found non-freed data");
    }
 
    _mesa_hash_table_destroy(table->ht, NULL);
@@ -314,13 +303,6 @@ _mesa_HashRemoveLocked(struct _mesa_HashTable *table, GLuint key)
    struct hash_entry *entry;
 
    assert(key);
-
-   #ifndef NDEBUG
-   /* assert if _mesa_HashRemove illegally called from _mesa_DeleteHashTable
-    * callback function. Have to check this outside of mutex lock.
-    */
-   assert(!table->InDeleteAll);
-   #endif
 
    if (key == DELETED_KEY_VALUE) {
       table->deleted_key_data = NULL;

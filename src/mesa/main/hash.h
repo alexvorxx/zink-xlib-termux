@@ -51,9 +51,6 @@ struct _mesa_HashTable {
 
    /** Value that would be in the table for DELETED_KEY_VALUE. */
    void *deleted_key_data;
-   #ifndef NDEBUG
-   GLboolean InDeleteAll;                /**< Debug check */
-   #endif
 };
 
 struct _mesa_HashTable *

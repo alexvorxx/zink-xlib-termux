@@ -9356,8 +9356,6 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
          break;
       default:
          radv_bind_shader(cmd_buffer, shader, s);
-         if (s == MESA_SHADER_GEOMETRY)
-            cmd_buffer->state.gs_copy_shader = shader_obj->gs.copy_shader;
          break;
       }
 
@@ -9365,9 +9363,6 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
          continue;
 
       radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, shader->bo);
-      if (shader_obj->gs.copy_shader) {
-         radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, shader_obj->gs.copy_shader->bo);
-      }
 
       /* Compute push constants/indirect descriptors state. */
       need_indirect_descriptor_sets |= radv_get_user_sgpr(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS)->sgpr_idx != -1;
@@ -9379,6 +9374,17 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    const gl_shader_stage last_vgt_api_stage = radv_cmdbuf_get_last_vgt_api_stage(cmd_buffer);
 
    cmd_buffer->state.last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
+
+   if ((cmd_buffer->state.active_stages & VK_SHADER_STAGE_GEOMETRY_BIT) &&
+       cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]->gs.copy_shader) {
+      struct radv_shader *gs_copy_shader = cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]->gs.copy_shader;
+
+      cmd_buffer->state.gs_copy_shader = gs_copy_shader;
+
+      radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, gs_copy_shader->bo);
+   } else {
+      cmd_buffer->state.gs_copy_shader = NULL;
+   }
 
    const struct radv_shader *vs = radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_VERTEX);
    if (vs) {

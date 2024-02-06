@@ -616,10 +616,10 @@ pan_inline_blend_constants(nir_builder *b, nir_intrinsic_instr *intr,
    return true;
 }
 
-static nir_shader *
-pan_blend_create_shader(const struct pan_blend_state *state,
-                        nir_alu_type src0_type, nir_alu_type src1_type,
-                        unsigned rt)
+nir_shader *
+GENX(pan_blend_create_shader)(const struct pan_blend_state *state,
+                              nir_alu_type src0_type, nir_alu_type src1_type,
+                              unsigned rt)
 {
    const struct pan_blend_rt_state *rt_state = &state->rts[rt];
    char equation_str[128] = {0};
@@ -853,7 +853,8 @@ GENX(pan_blend_get_shader_locked)(struct pan_blend_shader_cache *cache,
 
    memcpy(variant->constants, state->constants, sizeof(variant->constants));
 
-   nir_shader *nir = pan_blend_create_shader(state, src0_type, src1_type, rt);
+   nir_shader *nir =
+      GENX(pan_blend_create_shader)(state, src0_type, src1_type, rt);
 
    nir_shader_intrinsics_pass(nir, pan_inline_blend_constants,
                               nir_metadata_block_index | nir_metadata_dominance,

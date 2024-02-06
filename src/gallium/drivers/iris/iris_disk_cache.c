@@ -86,7 +86,7 @@ iris_disk_cache_store(struct disk_cache *cache,
       return;
 
    gl_shader_stage stage = ish->nir->info.stage;
-   const struct brw_stage_prog_data *prog_data = shader->prog_data;
+   const struct brw_stage_prog_data *prog_data = shader->brw_prog_data;
 
    cache_key cache_key;
    iris_disk_cache_compute_key(cache, ish, prog_key, prog_key_size, cache_key);
@@ -116,12 +116,12 @@ iris_disk_cache_store(struct disk_cache *cache,
    size_t prog_data_s = brw_prog_data_size(stage);
    union brw_any_prog_data serializable;
    assert(prog_data_s <= sizeof(serializable));
-   memcpy(&serializable, shader->prog_data, prog_data_s);
+   memcpy(&serializable, shader->brw_prog_data, prog_data_s);
    serializable.base.param = NULL;
    serializable.base.relocs = NULL;
    blob_write_bytes(&blob, &serializable, prog_data_s);
 
-   blob_write_bytes(&blob, shader->map, shader->prog_data->program_size);
+   blob_write_bytes(&blob, shader->map, shader->program_size);
    blob_write_uint32(&blob, shader->num_system_values);
    blob_write_bytes(&blob, shader->system_values,
                     shader->num_system_values * sizeof(enum brw_param_builtin));
@@ -228,9 +228,9 @@ iris_disk_cache_retrieve(struct iris_screen *screen,
    if (stage == MESA_SHADER_VERTEX ||
        stage == MESA_SHADER_TESS_EVAL ||
        stage == MESA_SHADER_GEOMETRY) {
-      struct brw_vue_prog_data *vue_prog_data = (void *) prog_data;
-      so_decls = screen->vtbl.create_so_decl_list(&ish->stream_output,
-                                               &vue_prog_data->vue_map);
+      struct intel_vue_map *vue_map =
+         &brw_vue_prog_data(prog_data)->vue_map;
+      so_decls = screen->vtbl.create_so_decl_list(&ish->stream_output, vue_map);
    }
 
    /* System values and uniforms are stored in constant buffer 0, the
@@ -244,6 +244,8 @@ iris_disk_cache_retrieve(struct iris_screen *screen,
 
    if (num_system_values || kernel_input_size)
       num_cbufs++;
+
+   iris_apply_brw_prog_data(shader, prog_data);
 
    iris_finalize_program(shader, prog_data, so_decls, system_values,
                          num_system_values, kernel_input_size, num_cbufs,

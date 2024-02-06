@@ -304,6 +304,137 @@ PRAGMA_DIAGNOSTIC_POP
 
 /** @} */
 
+struct iris_ubo_range
+{
+   uint16_t block;
+
+   /* In units of 32-byte registers */
+   uint8_t start;
+   uint8_t length;
+};
+
+struct iris_fs_data {
+   int urb_setup[VARYING_SLOT_MAX];
+   uint8_t urb_setup_attribs[VARYING_SLOT_MAX];
+   uint8_t urb_setup_attribs_count;
+
+   uint64_t inputs;
+   unsigned num_varying_inputs;
+
+   unsigned msaa_flags_param;
+   uint32_t flat_inputs;
+
+   uint8_t computed_depth_mode;
+   uint8_t max_polygons;
+   uint8_t dispatch_multi;
+
+   bool computed_stencil;
+   bool early_fragment_tests;
+   bool post_depth_coverage;
+   bool inner_coverage;
+   bool dispatch_8;
+   bool dispatch_16;
+   bool dispatch_32;
+   bool dual_src_blend;
+   bool uses_pos_offset;
+   bool uses_omask;
+   bool uses_kill;
+   bool uses_src_depth;
+   bool uses_src_w;
+   bool uses_sample_mask;
+   bool uses_vmask;
+   bool has_side_effects;
+   bool pulls_bary;
+
+   bool uses_nonperspective_interp_modes;
+
+   bool is_per_sample;
+};
+
+struct iris_push_const_block {
+   unsigned dwords;     /* Dword count, not reg aligned */
+   unsigned regs;
+   unsigned size;       /* Bytes, register aligned */
+};
+
+struct iris_cs_data {
+   struct {
+      struct iris_push_const_block cross_thread;
+      struct iris_push_const_block per_thread;
+   } push;
+
+   unsigned local_size[3];
+   unsigned prog_offset[3];
+   unsigned prog_mask;
+
+   uint8_t generate_local_id;
+   enum intel_compute_walk_order walk_order;
+
+   bool uses_barrier;
+   bool first_param_is_builtin_subgroup_id;
+};
+
+static inline uint32_t
+iris_cs_data_prog_offset(const struct iris_cs_data *prog_data,
+                         unsigned dispatch_width)
+{
+   assert(dispatch_width == 8 ||
+          dispatch_width == 16 ||
+          dispatch_width == 32);
+   const unsigned index = dispatch_width / 16;
+   assert(prog_data->prog_mask & (1 << index));
+   return prog_data->prog_offset[index];
+}
+
+struct iris_vue_data {
+   struct intel_vue_map            vue_map;
+   unsigned                        urb_read_length;
+   uint32_t                        cull_distance_mask;
+   unsigned                        urb_entry_size;
+   enum intel_shader_dispatch_mode dispatch_mode;
+   bool                            include_vue_handles;
+};
+
+struct iris_vs_data {
+   struct iris_vue_data base;
+
+   bool uses_vertexid;
+   bool uses_instanceid;
+   bool uses_firstvertex;
+   bool uses_baseinstance;
+   bool uses_drawid;
+};
+
+struct iris_tcs_data {
+   struct iris_vue_data base;
+
+   int  instances;
+   int  patch_count_threshold;
+   bool include_primitive_id;
+};
+
+struct iris_tes_data {
+   struct iris_vue_data base;
+
+   enum intel_tess_partitioning    partitioning;
+   enum intel_tess_output_topology output_topology;
+   enum intel_tess_domain          domain;
+   bool                            include_primitive_id;
+};
+
+struct iris_gs_data {
+   struct iris_vue_data base;
+
+   unsigned vertices_in;
+   unsigned output_vertex_size_hwords;
+   unsigned output_topology;
+   unsigned control_data_header_size_hwords;
+   unsigned control_data_format;
+   int      static_vertex_count;
+   int      invocations;
+   bool     include_primitive_id;
+};
+
 struct iris_depth_stencil_alpha_state;
 
 /**
@@ -533,7 +664,7 @@ struct iris_compiled_shader {
    void *map;
 
    /** The program data (owned by the program cache hash table) */
-   struct brw_stage_prog_data *prog_data;
+   struct brw_stage_prog_data *brw_prog_data;
 
    /** A list of system values to be uploaded as uniforms. */
    enum brw_param_builtin *system_values;
@@ -556,6 +687,29 @@ struct iris_compiled_shader {
    gl_shader_stage stage;
 
    /**
+    * Data derived from prog_data.
+    */
+   struct iris_ubo_range ubo_ranges[4];
+
+   unsigned nr_params;
+   unsigned total_scratch;
+   unsigned total_shared;
+   unsigned program_size;
+   unsigned const_data_offset;
+   unsigned dispatch_grf_start_reg;
+   bool     has_ubo_pull;
+   bool     use_alt_mode;
+
+   union {
+      struct iris_fs_data  fs;
+      struct iris_cs_data  cs;
+      struct iris_vs_data  vs;
+      struct iris_tcs_data tcs;
+      struct iris_tes_data tes;
+      struct iris_gs_data  gs;
+   };
+
+   /**
     * Shader packets and other data derived from prog_data.  These must be
     * completely determined from prog_data.
     */
@@ -567,6 +721,43 @@ KSP(const struct iris_compiled_shader *shader)
 {
    struct iris_resource *res = (void *) shader->assembly.res;
    return iris_bo_offset_from_base_address(res->bo) + shader->assembly.offset;
+}
+
+#define DEFINE_IRIS_SHADER_DATA(TYPE, STAGE, FIELD)                      \
+static inline TYPE *                                                     \
+iris_ ## FIELD ## _data(struct iris_compiled_shader *shader)             \
+{                                                                        \
+   assert(shader->stage == STAGE);                                       \
+   return &shader->FIELD;                                                \
+}                                                                        \
+static inline const TYPE *                                               \
+iris_ ## FIELD ## _data_const(const struct iris_compiled_shader *shader) \
+{                                                                        \
+   assert(shader->stage == STAGE);                                       \
+   return &shader->FIELD;                                                \
+}
+
+DEFINE_IRIS_SHADER_DATA(struct iris_fs_data,  MESA_SHADER_FRAGMENT,  fs)
+DEFINE_IRIS_SHADER_DATA(struct iris_cs_data,  MESA_SHADER_COMPUTE,   cs)
+DEFINE_IRIS_SHADER_DATA(struct iris_vs_data,  MESA_SHADER_VERTEX,    vs)
+DEFINE_IRIS_SHADER_DATA(struct iris_tcs_data, MESA_SHADER_TESS_CTRL, tcs)
+DEFINE_IRIS_SHADER_DATA(struct iris_tes_data, MESA_SHADER_TESS_EVAL, tes)
+DEFINE_IRIS_SHADER_DATA(struct iris_gs_data,  MESA_SHADER_GEOMETRY,  gs)
+
+#undef DEFINE_IRIS_SHADER_DATA
+
+static inline struct iris_vue_data *
+iris_vue_data(struct iris_compiled_shader *shader)
+{
+   switch (shader->stage) {
+   case MESA_SHADER_VERTEX:    return &shader->vs.base;
+   case MESA_SHADER_TESS_CTRL: return &shader->tcs.base;
+   case MESA_SHADER_TESS_EVAL: return &shader->tes.base;
+   case MESA_SHADER_GEOMETRY:  return &shader->gs.base;
+   default:
+      unreachable("invalid shader stage for vue prog data");
+      return NULL;
+   }
 }
 
 /**
@@ -1033,7 +1224,8 @@ void iris_init_resource_functions(struct pipe_context *ctx);
 void iris_init_perfquery_functions(struct pipe_context *ctx);
 void iris_update_compiled_shaders(struct iris_context *ice);
 void iris_update_compiled_compute_shader(struct iris_context *ice);
-void iris_fill_cs_push_const_buffer(struct brw_cs_prog_data *cs_prog_data,
+void iris_fill_cs_push_const_buffer(struct iris_screen *screen,
+                                    struct iris_compiled_shader *shader,
                                     unsigned threads,
                                     uint32_t *dst);
 
@@ -1116,6 +1308,18 @@ uint32_t iris_group_index_to_bti(const struct iris_binding_table *bt,
 uint32_t iris_bti_to_group_index(const struct iris_binding_table *bt,
                                  enum iris_surface_group group,
                                  uint32_t bti);
+void iris_apply_brw_prog_data(struct iris_compiled_shader *shader,
+                              const struct brw_stage_prog_data *prog_data);
+struct intel_cs_dispatch_info
+iris_get_cs_dispatch_info(const struct intel_device_info *devinfo,
+                          const struct iris_compiled_shader *shader,
+                          const uint32_t block[3]);
+unsigned
+iris_cs_push_const_total_size(const struct iris_compiled_shader *shader,
+                              unsigned threads);
+uint32_t
+iris_fs_barycentric_modes(const struct iris_compiled_shader *shader,
+                          enum intel_msaa_flags pushed_msaa_flags);
 
 /* iris_disk_cache.c */
 
@@ -1149,7 +1353,7 @@ struct iris_compiled_shader *iris_create_shader_variant(const struct iris_screen
                                                         const void *key);
 
 void iris_finalize_program(struct iris_compiled_shader *shader,
-                           struct brw_stage_prog_data *prog_data,
+                           struct brw_stage_prog_data *brw_prog_data,
                            uint32_t *streamout,
                            enum brw_param_builtin *system_values,
                            unsigned num_system_values,
@@ -1248,8 +1452,8 @@ iris_execute_indirect_draw_supported(const struct iris_context *ice,
                                      const struct pipe_draw_info *draw)
 {
    const struct iris_screen *screen = (struct iris_screen *)ice->ctx.screen;
-   const struct brw_vs_prog_data *vs_prog_data = (void *)
-      ice->shaders.prog[MESA_SHADER_VERTEX]->prog_data;
+   const struct iris_vs_data *vs_data =
+      iris_vs_data(ice->shaders.prog[MESA_SHADER_VERTEX]);
    const bool is_multiview = draw->view_mask != 0;
    const size_t struct_size = draw->index_size ?
       sizeof(uint32_t) * 5 :
@@ -1262,9 +1466,9 @@ iris_execute_indirect_draw_supported(const struct iris_context *ice,
            (indirect &&
            !indirect->count_from_stream_output) &&
            !is_multiview &&
-           !(vs_prog_data->uses_firstvertex ||
-             vs_prog_data->uses_baseinstance ||
-             vs_prog_data->uses_drawid));
+           !(vs_data->uses_firstvertex ||
+             vs_data->uses_baseinstance ||
+             vs_data->uses_drawid));
 }
 
 #ifdef genX

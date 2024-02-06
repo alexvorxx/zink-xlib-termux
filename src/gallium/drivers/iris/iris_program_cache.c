@@ -160,15 +160,15 @@ iris_upload_shader(struct iris_screen *screen,
 {
    const struct intel_device_info *devinfo = screen->devinfo;
 
-   u_upload_alloc(uploader, 0, shader->prog_data->program_size, 64,
+   u_upload_alloc(uploader, 0, shader->program_size, 64,
                   &shader->assembly.offset, &shader->assembly.res,
                   &shader->map);
-   memcpy(shader->map, assembly, shader->prog_data->program_size);
+   memcpy(shader->map, assembly, shader->program_size);
 
    struct iris_resource *res = (void *) shader->assembly.res;
    uint64_t shader_data_addr = res->bo->address +
                                shader->assembly.offset +
-                               shader->prog_data->const_data_offset;
+                               shader->const_data_offset;
 
    struct brw_shader_reloc_value reloc_values[] = {
       {
@@ -181,7 +181,7 @@ iris_upload_shader(struct iris_screen *screen,
       },
    };
    brw_write_shader_relocs(&screen->compiler->isa, shader->map,
-                           shader->prog_data, reloc_values,
+                           shader->brw_prog_data, reloc_values,
                            ARRAY_SIZE(reloc_values));
 
    /* Store the 3DSTATE shader packets and other derived state. */
@@ -212,7 +212,7 @@ iris_blorp_lookup_shader(struct blorp_batch *blorp_batch,
    struct iris_bo *bo = iris_resource_bo(shader->assembly.res);
    *kernel_out =
       iris_bo_offset_from_base_address(bo) + shader->assembly.offset;
-   *((void **) prog_data_out) = shader->prog_data;
+   *((void **) prog_data_out) = shader->brw_prog_data;
 
    iris_use_pinned_bo(batch, bo, false, IRIS_DOMAIN_NONE);
 
@@ -242,6 +242,8 @@ iris_blorp_upload_shader(struct blorp_batch *blorp_batch, uint32_t stage,
       iris_create_shader_variant(screen, ice->shaders.cache, stage,
                                  IRIS_CACHE_BLORP, key_size, key);
 
+   iris_apply_brw_prog_data(shader, prog_data);
+
    iris_finalize_program(shader, prog_data, NULL, NULL, 0, 0, 0, &bt);
 
    iris_upload_shader(screen, NULL, shader, ice->shaders.cache,
@@ -251,7 +253,7 @@ iris_blorp_upload_shader(struct blorp_batch *blorp_batch, uint32_t stage,
    struct iris_bo *bo = iris_resource_bo(shader->assembly.res);
    *kernel_out =
       iris_bo_offset_from_base_address(bo) + shader->assembly.offset;
-   *((void **) prog_data_out) = shader->prog_data;
+   *((void **) prog_data_out) = shader->brw_prog_data;
 
    iris_use_pinned_bo(batch, bo, false, IRIS_DOMAIN_NONE);
 
@@ -419,6 +421,7 @@ iris_ensure_indirect_generation_shader(struct iris_batch *batch)
                                  MESA_SHADER_FRAGMENT,
                                  IRIS_CACHE_BLORP,
                                  sizeof(key), &key);
+   iris_apply_brw_prog_data(shader, &prog_data->base);
    iris_finalize_program(shader, &prog_data->base, NULL, NULL, 0, 0, 0, &bt);
 
    iris_upload_shader(screen, NULL, shader, ice->shaders.cache,

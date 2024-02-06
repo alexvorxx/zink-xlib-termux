@@ -263,14 +263,14 @@ emit_indirect_generate_draw(struct iris_batch *batch,
       raster.CullMode = CULLMODE_NONE;
    }
 
-   const struct brw_wm_prog_data *wm_prog_data = (void *)
-      ice->draw.generation.shader->prog_data;
+   const struct iris_compiled_shader *shader = ice->draw.generation.shader;
+   const struct iris_fs_data *fs_data = iris_fs_data_const(shader);
 
    iris_emit_cmd(batch, GENX(3DSTATE_SBE), sbe) {
       sbe.VertexURBEntryReadOffset = 1;
-      sbe.NumberofSFOutputAttributes = wm_prog_data->num_varying_inputs;
-      sbe.VertexURBEntryReadLength = MAX2((wm_prog_data->num_varying_inputs + 1) / 2, 1);
-      sbe.ConstantInterpolationEnable = wm_prog_data->flat_inputs;
+      sbe.NumberofSFOutputAttributes = fs_data->num_varying_inputs;
+      sbe.VertexURBEntryReadLength = MAX2((fs_data->num_varying_inputs + 1) / 2, 1);
+      sbe.ConstantInterpolationEnable = fs_data->flat_inputs;
       sbe.ForceVertexURBEntryReadLength = true;
       sbe.ForceVertexURBEntryReadOffset = true;
 #if GFX_VER >= 9
@@ -280,21 +280,22 @@ emit_indirect_generate_draw(struct iris_batch *batch,
    }
 
    iris_emit_cmd(batch, GENX(3DSTATE_WM), wm) {
-      if (wm_prog_data->has_side_effects || wm_prog_data->uses_kill)
+      if (fs_data->has_side_effects || fs_data->uses_kill)
          wm.ForceThreadDispatchEnable = ForceON;
    }
 
    iris_emit_cmd(batch, GENX(3DSTATE_PS), ps) {
+      struct brw_wm_prog_data *wm_prog_data = brw_wm_prog_data(shader->brw_prog_data);
       intel_set_ps_dispatch_state(&ps, devinfo, wm_prog_data,
                                   1 /* rasterization_samples */,
                                   0 /* msaa_flags */);
 
-      ps.VectorMaskEnable       = wm_prog_data->uses_vmask;
+      ps.VectorMaskEnable       = fs_data->uses_vmask;
 
       ps.BindingTableEntryCount = GFX_VER == 9 ? 1 : 0;
 #if GFX_VER < 20
-      ps.PushConstantEnable     = wm_prog_data->base.nr_params > 0 ||
-                                  wm_prog_data->base.ubo_ranges[0].length;
+      ps.PushConstantEnable     = shader->nr_params > 0 ||
+                                  shader->ubo_ranges[0].length;
 #endif
 
       ps.DispatchGRFStartRegisterForConstantSetupData0 =
@@ -321,17 +322,17 @@ emit_indirect_generate_draw(struct iris_batch *batch,
    iris_emit_cmd(batch, GENX(3DSTATE_PS_EXTRA), psx) {
       psx.PixelShaderValid = true;
 #if GFX_VER < 20
-      psx.AttributeEnable = wm_prog_data->num_varying_inputs > 0;
+      psx.AttributeEnable = fs_data->num_varying_inputs > 0;
 #endif
-      psx.PixelShaderIsPerSample = wm_prog_data->persample_dispatch;
-      psx.PixelShaderComputedDepthMode = wm_prog_data->computed_depth_mode;
+      psx.PixelShaderIsPerSample = fs_data->is_per_sample;
+      psx.PixelShaderComputedDepthMode = fs_data->computed_depth_mode;
 #if GFX_VER >= 9
 #if GFX_VER >= 20
-      assert(!wm_prog_data->pulls_bary);
+      assert(!fs_data->pulls_bary);
 #else
-      psx.PixelShaderPullsBary = wm_prog_data->pulls_bary;
+      psx.PixelShaderPullsBary = fs_data->pulls_bary;
 #endif
-      psx.PixelShaderComputesStencil = wm_prog_data->computed_stencil;
+      psx.PixelShaderComputesStencil = fs_data->computed_stencil;
 #endif
       psx.PixelShaderHasUAV = GFX_VER == 8;
    }

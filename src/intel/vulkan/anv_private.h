@@ -3961,8 +3961,6 @@ anv_cmd_buffer_alloc_blorp_binding_table(struct anv_cmd_buffer *cmd_buffer,
                                          uint32_t *state_offset,
                                          struct anv_state *bt_state);
 
-void anv_cmd_buffer_dump(struct anv_cmd_buffer *cmd_buffer);
-
 void anv_cmd_emit_conditional_render_predicate(struct anv_cmd_buffer *cmd_buffer);
 
 static inline unsigned

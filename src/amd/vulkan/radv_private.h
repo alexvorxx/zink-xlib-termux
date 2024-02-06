@@ -3249,8 +3249,6 @@ struct radv_indirect_command_layout {
 
    uint16_t dispatch_params_offset;
 
-   uint16_t state_offset;
-
    uint32_t bind_vbo_mask;
    uint32_t vbo_offsets[MAX_VBS];
 

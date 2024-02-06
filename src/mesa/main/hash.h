@@ -168,12 +168,12 @@ _mesa_HashDeleteAll(struct _mesa_HashTable *table,
                     void *userData);
 
 extern void
-_mesa_HashWalk(const struct _mesa_HashTable *table,
+_mesa_HashWalk(struct _mesa_HashTable *table,
                void (*callback)(void *data, void *userData),
                void *userData);
 
 extern void
-_mesa_HashWalkLocked(const struct _mesa_HashTable *table,
+_mesa_HashWalkLocked(struct _mesa_HashTable *table,
                      void (*callback)(void *data, void *userData),
                      void *userData);
 

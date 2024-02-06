@@ -108,6 +108,7 @@ iris_delete_shader_variant(struct iris_compiled_shader *shader)
 struct iris_compiled_shader *
 iris_create_shader_variant(const struct iris_screen *screen,
                            void *mem_ctx,
+                           gl_shader_stage stage,
                            enum iris_program_cache_id cache_id,
                            uint32_t key_size,
                            const void *key)
@@ -140,6 +141,8 @@ iris_create_shader_variant(const struct iris_screen *screen,
       assert(key_size <= sizeof(union iris_any_prog_key));
       memcpy(&shader->key, key, key_size);
    }
+
+   shader->stage = stage;
 
    return shader;
 }
@@ -236,8 +239,8 @@ iris_blorp_upload_shader(struct blorp_batch *blorp_batch, uint32_t stage,
    memset(&bt, 0, sizeof(bt));
 
    struct iris_compiled_shader *shader =
-      iris_create_shader_variant(screen, ice->shaders.cache, IRIS_CACHE_BLORP,
-                                 key_size, key);
+      iris_create_shader_variant(screen, ice->shaders.cache, stage,
+                                 IRIS_CACHE_BLORP, key_size, key);
 
    iris_finalize_program(shader, prog_data, NULL, NULL, 0, 0, 0, &bt);
 
@@ -413,6 +416,7 @@ iris_ensure_indirect_generation_shader(struct iris_batch *batch)
 
    struct iris_compiled_shader *shader =
       iris_create_shader_variant(screen, ice->shaders.cache,
+                                 MESA_SHADER_FRAGMENT,
                                  IRIS_CACHE_BLORP,
                                  sizeof(key), &key);
    iris_finalize_program(shader, &prog_data->base, NULL, NULL, 0, 0, 0, &bt);

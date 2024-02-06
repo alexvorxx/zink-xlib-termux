@@ -1225,8 +1225,10 @@ find_or_add_variant(const struct iris_screen *screen,
       }
    }
 
+   gl_shader_stage stage = ish->nir->info.stage;
+
    if (variant == NULL) {
-      variant = iris_create_shader_variant(screen, NULL, cache_id,
+      variant = iris_create_shader_variant(screen, NULL, stage, cache_id,
                                            key_size, key);
 
       /* Append our new variant to the shader's variant list. */
@@ -1240,6 +1242,7 @@ find_or_add_variant(const struct iris_screen *screen,
       util_queue_fence_wait(&variant->ready);
    }
 
+   assert(stage == variant->stage);
    return variant;
 }
 
@@ -1589,6 +1592,7 @@ iris_update_compiled_tcs(struct iris_context *ice)
 
       if (shader == NULL) {
          shader = iris_create_shader_variant(screen, ice->shaders.cache,
+                                             MESA_SHADER_TESS_CTRL,
                                              IRIS_CACHE_TCS, sizeof(key), &key);
          added = true;
       }
@@ -2502,8 +2506,8 @@ iris_create_compute_state(struct pipe_context *ctx,
       struct iris_cs_prog_key key = { KEY_INIT(base) };
 
       struct iris_compiled_shader *shader =
-         iris_create_shader_variant(screen, NULL, IRIS_CACHE_CS,
-                                    sizeof(key), &key);
+         iris_create_shader_variant(screen, NULL, MESA_SHADER_COMPUTE,
+                                    IRIS_CACHE_CS, sizeof(key), &key);
 
       /* Append our new variant to the shader's variant list. */
       list_addtail(&shader->link, &ish->variants);
@@ -2717,7 +2721,7 @@ iris_create_shader_state(struct pipe_context *ctx,
       struct u_upload_mgr *uploader = ice->shaders.uploader_unsync;
 
       struct iris_compiled_shader *shader =
-         iris_create_shader_variant(screen, NULL,
+         iris_create_shader_variant(screen, NULL, info->stage,
                                     (enum iris_program_cache_id) info->stage,
                                     key_size, &key);
 

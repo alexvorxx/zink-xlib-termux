@@ -9407,11 +9407,6 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.ia_multi_vgt_param = radv_compute_ia_multi_vgt_param(device, cmd_buffer->state.shaders);
    }
 
-   if (cmd_buffer->state.db_render_control) {
-      cmd_buffer->state.db_render_control = 0;
-      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_FRAMEBUFFER;
-   }
-
    if (cmd_buffer->state.active_stages &
        (VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT)) {
       cmd_buffer->state.uses_dynamic_patch_control_points = true;
@@ -11815,7 +11810,6 @@ radv_reset_pipeline_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoin
          cmd_buffer->state.col_format_non_compacted = 0;
          cmd_buffer->state.ms.sample_shading_enable = false;
          cmd_buffer->state.ms.min_sample_shading = 1.0f;
-         cmd_buffer->state.db_render_control = 0;
          cmd_buffer->state.rast_prim = 0;
          cmd_buffer->state.uses_out_of_order_rast = false;
          cmd_buffer->state.uses_vrs_attachment = false;
@@ -11823,6 +11817,11 @@ radv_reset_pipeline_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoin
       }
       if (cmd_buffer->state.emitted_graphics_pipeline) {
          radv_bind_custom_blend_mode(cmd_buffer, 0);
+
+         if (cmd_buffer->state.db_render_control) {
+            cmd_buffer->state.db_render_control = 0;
+            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_FRAMEBUFFER;
+         }
 
          cmd_buffer->state.emitted_graphics_pipeline = NULL;
       }

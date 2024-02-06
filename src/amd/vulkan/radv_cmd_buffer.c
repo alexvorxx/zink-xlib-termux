@@ -9326,6 +9326,7 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
 
    for (unsigned s = 0; s <= MESA_SHADER_MESH; s++) {
       const struct radv_shader_object *shader_obj = cmd_buffer->state.shader_objs[s];
+      struct radv_shader *shader = NULL;
 
       if (s == MESA_SHADER_COMPUTE)
          continue;
@@ -9335,30 +9336,21 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
          continue;
       }
 
-      struct radv_shader *shader = shader_obj->shader ? shader_obj->shader : NULL;
-
-      switch (s) {
-      case MESA_SHADER_VERTEX:
+      /* Select shader variants. */
+      if (s == MESA_SHADER_VERTEX && (cmd_buffer->state.shader_objs[MESA_SHADER_TESS_CTRL] ||
+                                      cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY])) {
          if (cmd_buffer->state.shader_objs[MESA_SHADER_TESS_CTRL]) {
-            radv_bind_shader(cmd_buffer, shader_obj->vs.as_ls.shader, s);
-         } else if (cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]) {
-            radv_bind_shader(cmd_buffer, shader_obj->vs.as_es.shader, s);
+            shader = shader_obj->vs.as_ls.shader;
          } else {
-            radv_bind_shader(cmd_buffer, shader, s);
+            shader = shader_obj->vs.as_es.shader;
          }
-         break;
-      case MESA_SHADER_TESS_EVAL:
-         if (cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]) {
-            radv_bind_shader(cmd_buffer, shader_obj->tes.as_es.shader, s);
-         } else {
-            radv_bind_shader(cmd_buffer, shader, s);
-         }
-         break;
-      default:
-         radv_bind_shader(cmd_buffer, shader, s);
-         break;
+      } else if (s == MESA_SHADER_TESS_EVAL && cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]) {
+         shader = shader_obj->tes.as_es.shader;
+      } else {
+         shader = shader_obj->shader;
       }
 
+      radv_bind_shader(cmd_buffer, shader, s);
       if (!shader)
          continue;
 

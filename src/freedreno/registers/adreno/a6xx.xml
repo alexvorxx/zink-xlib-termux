@@ -1951,6 +1951,8 @@ to upconvert to 32b float internally?
 		<reg32 offset="0x0" name="REG"/>
 	</array>
 
+	<reg32 offset="0x0d08" name="VSC_UNKNOWN_0D08" variants="A7XX-" usage="rp_blit"/>
+
 	<reg32 offset="0x0E10" name="UCHE_UNKNOWN_0E10" variants="A7XX-" usage="cmd"/>
 	<reg32 offset="0x0E11" name="UCHE_UNKNOWN_0E11" variants="A7XX-" usage="cmd"/>
 	<!-- always 0x03200000 ? -->

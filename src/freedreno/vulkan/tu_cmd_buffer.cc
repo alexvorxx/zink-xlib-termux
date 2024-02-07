@@ -1400,6 +1400,8 @@ update_vsc_pipe(struct tu_cmd_buffer *cmd,
    tu_cs_emit_regs(cs,
                    A6XX_VSC_DRAW_STRM_PITCH(cmd->vsc_draw_strm_pitch),
                    A6XX_VSC_DRAW_STRM_LIMIT(cmd->vsc_draw_strm_pitch - VSC_PAD));
+
+   tu_cs_emit_regs(cs, A7XX_VSC_UNKNOWN_0D08(0));
 }
 
 static void

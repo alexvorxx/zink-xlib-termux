@@ -161,7 +161,7 @@ run_tests_at_start(nir_shader *shader)
 }
 
 bool
-agx_nir_lower_sample_mask(nir_shader *shader, unsigned nr_samples)
+agx_nir_lower_sample_mask(nir_shader *shader)
 {
    bool writes_zs =
       shader->info.outputs_written &

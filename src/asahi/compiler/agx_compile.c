@@ -3161,7 +3161,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
     * count is dynamic when the main fragment shader is compiled.
     */
    if (nir->info.stage == MESA_SHADER_FRAGMENT && key->fs.nr_samples) {
-      if (agx_nir_lower_sample_mask(nir, key->fs.nr_samples)) {
+      if (agx_nir_lower_sample_mask(nir)) {
          /* Clean up ixor(bcsel) patterns created from sample mask lowering.
           * Also constant fold to get the benefit. We need to rescalarize after
           * folding constants.

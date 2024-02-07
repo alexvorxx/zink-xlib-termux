@@ -1898,7 +1898,8 @@ genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer)
 
    if (trace_flush) {
       trace_intel_end_stall(&cmd_buffer->trace, bits,
-                            anv_pipe_flush_bit_to_ds_stall_flag, NULL);
+                            anv_pipe_flush_bit_to_ds_stall_flag,
+                            NULL, NULL, NULL, NULL);
    }
 }
 

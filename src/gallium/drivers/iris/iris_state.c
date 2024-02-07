@@ -9982,7 +9982,7 @@ iris_emit_raw_pipe_control(struct iris_batch *batch,
    if (trace_pc) {
       trace_intel_end_stall(&batch->trace, flags,
                             iris_utrace_pipe_flush_bit_to_ds_stall_flag,
-                            reason);
+                            reason,0,0,0);
    }
 
    iris_batch_sync_region_end(batch);

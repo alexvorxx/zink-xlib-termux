@@ -1936,7 +1936,16 @@ genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer)
    if (trace_flush) {
       trace_intel_end_stall(&cmd_buffer->trace,
                             bits & ~cmd_buffer->state.pending_pipe_bits,
-                            anv_pipe_flush_bit_to_ds_stall_flag, NULL);
+                            anv_pipe_flush_bit_to_ds_stall_flag,
+                            cmd_buffer->state.pc_reasons[0],
+                            cmd_buffer->state.pc_reasons[1],
+                            cmd_buffer->state.pc_reasons[2],
+                            cmd_buffer->state.pc_reasons[3]);
+      cmd_buffer->state.pc_reasons[0] = NULL;
+      cmd_buffer->state.pc_reasons[1] = NULL;
+      cmd_buffer->state.pc_reasons[2] = NULL;
+      cmd_buffer->state.pc_reasons[3] = NULL;
+      cmd_buffer->state.pc_reasons_count = 0;
    }
 }
 

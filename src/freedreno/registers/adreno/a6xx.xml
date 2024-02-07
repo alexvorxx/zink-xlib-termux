@@ -3627,6 +3627,7 @@ to upconvert to 32b float internally?
 	<reg32 offset="0xa823" name="SP_VS_CONFIG" type="a6xx_sp_xs_config" usage="rp_blit"/>
 	<reg32 offset="0xa824" name="SP_VS_INSTRLEN" low="0" high="27" type="uint" usage="rp_blit"/>
 	<reg32 offset="0xa825" name="SP_VS_PVT_MEM_HW_STACK_OFFSET" type="a6xx_sp_xs_pvt_mem_hw_stack_offset" usage="rp_blit"/>
+	<reg32 offset="0xa82d" name="SP_VS_VGPR_CONFIG" variants="A7XX-" usage="cmd"/>
 
 	<reg32 offset="0xa830" name="SP_HS_CTRL_REG0" type="a6xx_sp_xs_ctrl_reg0" usage="rp_blit">
 		<!-- There is no mergedregs bit, that comes from the VS. -->
@@ -3651,6 +3652,7 @@ to upconvert to 32b float internally?
 	<reg32 offset="0xa83b" name="SP_HS_CONFIG" type="a6xx_sp_xs_config" usage="rp_blit"/>
 	<reg32 offset="0xa83c" name="SP_HS_INSTRLEN" low="0" high="27" type="uint" usage="rp_blit"/>
 	<reg32 offset="0xa83d" name="SP_HS_PVT_MEM_HW_STACK_OFFSET" type="a6xx_sp_xs_pvt_mem_hw_stack_offset" usage="rp_blit"/>
+	<reg32 offset="0xa82f" name="SP_HS_VGPR_CONFIG" variants="A7XX-" usage="cmd"/>
 
 	<reg32 offset="0xa840" name="SP_DS_CTRL_REG0" type="a6xx_sp_xs_ctrl_reg0" usage="rp_blit">
 		<!-- There is no mergedregs bit, that comes from the VS. -->
@@ -3687,6 +3689,7 @@ to upconvert to 32b float internally?
 	<reg32 offset="0xa863" name="SP_DS_CONFIG" type="a6xx_sp_xs_config" usage="rp_blit"/>
 	<reg32 offset="0xa864" name="SP_DS_INSTRLEN" low="0" high="27" type="uint" usage="rp_blit"/>
 	<reg32 offset="0xa865" name="SP_DS_PVT_MEM_HW_STACK_OFFSET" type="a6xx_sp_xs_pvt_mem_hw_stack_offset" usage="rp_blit"/>
+	<reg32 offset="0xa868" name="SP_DS_VGPR_CONFIG" variants="A7XX-" usage="cmd"/>
 
 	<reg32 offset="0xa870" name="SP_GS_CTRL_REG0" type="a6xx_sp_xs_ctrl_reg0" usage="rp_blit">
 		<!-- There is no mergedregs bit, that comes from the VS. -->
@@ -3738,6 +3741,7 @@ to upconvert to 32b float internally?
 	<reg32 offset="0xa894" name="SP_GS_CONFIG" type="a6xx_sp_xs_config" usage="rp_blit"/>
 	<reg32 offset="0xa895" name="SP_GS_INSTRLEN" low="0" high="27" type="uint" usage="rp_blit"/>
 	<reg32 offset="0xa896" name="SP_GS_PVT_MEM_HW_STACK_OFFSET" type="a6xx_sp_xs_pvt_mem_hw_stack_offset" usage="rp_blit"/>
+	<reg32 offset="0xa899" name="SP_GS_VGPR_CONFIG" variants="A7XX-" usage="cmd"/>
 
 	<reg64 offset="0xa8a0" name="SP_VS_TEX_SAMP" type="address" align="16" usage="cmd"/>
 	<reg64 offset="0xa8a2" name="SP_HS_TEX_SAMP" type="address" align="16" usage="cmd"/>
@@ -3931,6 +3935,7 @@ to upconvert to 32b float internally?
 	<reg32 offset="0xa9bc" name="SP_CS_INSTRLEN" low="0" high="27" type="uint" usage="cmd"/>
 	<reg32 offset="0xa9bd" name="SP_CS_PVT_MEM_HW_STACK_OFFSET" type="a6xx_sp_xs_pvt_mem_hw_stack_offset" usage="cmd"/>
 	<reg32 offset="0xa9be" name="SP_CS_UNKNOWN_A9BE" variants="A7XX-" usage="cmd"/>
+	<reg32 offset="0xa9c5" name="SP_CS_VGPR_CONFIG" variants="A7XX-" usage="cmd"/>
 
 	<!-- new in a6xx gen4, matches HLSQ_CS_CNTL_0 -->
 	<reg32 offset="0xa9c2" name="SP_CS_CNTL_0" usage="cmd">
@@ -4000,6 +4005,9 @@ to upconvert to 32b float internally?
 	 -->
 	<reg64 offset="0xa9f2" name="SP_CS_IBO" type="address" align="16"/>
 	<reg32 offset="0xaa00" name="SP_CS_IBO_COUNT" low="0" high="6" type="uint"/>
+
+	<!-- Correlated with avgs/uvgs usage in FS -->
+	<reg32 offset="0xaa01" name="SP_FS_VGPR_CONFIG" type="uint" variants="A7XX-" usage="cmd"/>
 
 	<reg32 offset="0xaa02" name="SP_PS_ALIASED_COMPONENTS_CONTROL" variants="A7XX-" usage="cmd">
 		<bitfield name="ENABLED" pos="0" type="boolean"/>
@@ -4343,8 +4351,6 @@ to upconvert to 32b float internally?
 	<reg32 offset="0xb985" type="a6xx_hlsq_control_4_reg" name="HLSQ_CONTROL_4_REG" variants="A6XX" usage="rp_blit"/>
 	<reg32 offset="0xb986" type="a6xx_hlsq_control_5_reg" name="HLSQ_CONTROL_5_REG" variants="A6XX" usage="rp_blit"/>
 	<reg32 offset="0xb987" name="HLSQ_CS_CNTL" type="a6xx_hlsq_xs_cntl" variants="A6XX" usage="cmd"/>
-	<!-- Either 0 or 0x401, the non-zero value is only in a few of dEQP-VK.ssbo.phys.layout.3_level_*.*8vec4 -->
-	<reg32 offset="0xa9c5" name="HLSQ_UNKNOWN_A9C5" variants="A7XX-" usage="cmd"/>
 	<reg32 offset="0xa9c6" type="a6xx_hlsq_fs_cntl_0" name="HLSQ_FS_CNTL_0" variants="A7XX-" usage="rp_blit"/>
 	<reg32 offset="0xa9c7" name="HLSQ_CONTROL_1_REG" low="0" high="2" variants="A7XX-" usage="rp_blit">
 			<bitfield name="PRIMALLOCTHRESHOLD" low="0" high="2" type="uint"/>

@@ -1049,42 +1049,49 @@ static const struct xs_config {
    uint16_t reg_sp_xs_instrlen;
    uint16_t reg_sp_xs_first_exec_offset;
    uint16_t reg_sp_xs_pvt_mem_hw_stack_offset;
+   uint16_t reg_sp_xs_vgpr_config;
 } xs_config[] = {
    [MESA_SHADER_VERTEX] = {
       REG_A6XX_SP_VS_CONFIG,
       REG_A6XX_SP_VS_INSTRLEN,
       REG_A6XX_SP_VS_OBJ_FIRST_EXEC_OFFSET,
       REG_A6XX_SP_VS_PVT_MEM_HW_STACK_OFFSET,
+      REG_A7XX_SP_VS_VGPR_CONFIG,
    },
    [MESA_SHADER_TESS_CTRL] = {
       REG_A6XX_SP_HS_CONFIG,
       REG_A6XX_SP_HS_INSTRLEN,
       REG_A6XX_SP_HS_OBJ_FIRST_EXEC_OFFSET,
       REG_A6XX_SP_HS_PVT_MEM_HW_STACK_OFFSET,
+      REG_A7XX_SP_HS_VGPR_CONFIG,
    },
    [MESA_SHADER_TESS_EVAL] = {
       REG_A6XX_SP_DS_CONFIG,
       REG_A6XX_SP_DS_INSTRLEN,
       REG_A6XX_SP_DS_OBJ_FIRST_EXEC_OFFSET,
       REG_A6XX_SP_DS_PVT_MEM_HW_STACK_OFFSET,
+      REG_A7XX_SP_DS_VGPR_CONFIG,
    },
    [MESA_SHADER_GEOMETRY] = {
       REG_A6XX_SP_GS_CONFIG,
       REG_A6XX_SP_GS_INSTRLEN,
       REG_A6XX_SP_GS_OBJ_FIRST_EXEC_OFFSET,
       REG_A6XX_SP_GS_PVT_MEM_HW_STACK_OFFSET,
+      REG_A7XX_SP_GS_VGPR_CONFIG,
    },
    [MESA_SHADER_FRAGMENT] = {
       REG_A6XX_SP_FS_CONFIG,
       REG_A6XX_SP_FS_INSTRLEN,
       REG_A6XX_SP_FS_OBJ_FIRST_EXEC_OFFSET,
       REG_A6XX_SP_FS_PVT_MEM_HW_STACK_OFFSET,
+      REG_A7XX_SP_FS_VGPR_CONFIG,
    },
    [MESA_SHADER_COMPUTE] = {
       REG_A6XX_SP_CS_CONFIG,
       REG_A6XX_SP_CS_INSTRLEN,
       REG_A6XX_SP_CS_OBJ_FIRST_EXEC_OFFSET,
       REG_A6XX_SP_CS_PVT_MEM_HW_STACK_OFFSET,
+      REG_A7XX_SP_CS_VGPR_CONFIG,
    },
 };
 
@@ -1184,6 +1191,11 @@ tu6_emit_xs(struct tu_cs *cs,
 
    tu_cs_emit_pkt4(cs, cfg->reg_sp_xs_pvt_mem_hw_stack_offset, 1);
    tu_cs_emit(cs, A6XX_SP_VS_PVT_MEM_HW_STACK_OFFSET_OFFSET(pvtmem->per_sp_size));
+
+   if (cs->device->physical_device->info->chip >= A7XX) {
+      tu_cs_emit_pkt4(cs, cfg->reg_sp_xs_vgpr_config, 1);
+      tu_cs_emit(cs, 0);
+   }
 
    uint32_t shader_preload_size =
       MIN2(xs->instrlen, cs->device->physical_device->info->a6xx.instr_cache_size);
@@ -1383,7 +1395,6 @@ tu6_emit_cs_config(struct tu_cs *cs,
                                      .localsizez = v->local_size[2] - 1, ));
 
       tu_cs_emit_regs(cs, A7XX_SP_CS_UNKNOWN_A9BE(0)); // Sometimes is 0x08000000
-      tu_cs_emit_regs(cs, A7XX_HLSQ_UNKNOWN_A9C5(0)); // Sometimes is 0x00000401
    }
 }
 

@@ -331,22 +331,15 @@ ubwc_possible(struct tu_device *device,
       return false;
    }
 
-   /* Disable UBWC for storage images.
+   /* Disable UBWC for storage images when not supported.
     *
-    * The closed GL driver skips UBWC for storage images (and additionally
-    * uses linear for writeonly images).  We seem to have image tiling working
-    * in freedreno in general, so turnip matches that.  freedreno also enables
-    * UBWC on images, but it's not really tested due to the lack of
-    * UBWC-enabled mipmaps in freedreno currently.  Just match the closed GL
-    * behavior of no UBWC.
-   */
-   if ((usage | stencil_usage) & VK_IMAGE_USAGE_STORAGE_BIT) {
-      if (device) {
-         perf_debug(device,
-                    "Disabling UBWC for %s storage image, but should be "
-                    "possible to support",
-                    util_format_name(vk_format_to_pipe_format(format)));
-      }
+    * Prior to a7xx, storage images must be readonly or writeonly to use UBWC.
+    * Freedreno can determine when this isn't the case and decompress the
+    * image on-the-fly, but we don't know which image a binding corresponds to
+    * and we can't change the descriptor so we can't do this.
+    */
+   if (((usage | stencil_usage) & VK_IMAGE_USAGE_STORAGE_BIT) &&
+       !info->a6xx.supports_ibo_ubwc) {
       return false;
    }
 

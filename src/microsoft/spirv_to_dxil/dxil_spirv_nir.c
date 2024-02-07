@@ -1173,6 +1173,8 @@ dxil_spirv_nir_passes(nir_shader *nir,
          }
          NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
          NIR_PASS(progress, nir, nir_opt_algebraic);
+         NIR_PASS(progress, nir, nir_opt_dead_cf);
+         NIR_PASS(progress, nir, nir_opt_remove_phis);
       } while (progress);
    }
 

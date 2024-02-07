@@ -756,10 +756,15 @@ pan_blitter_get_rsd(struct pan_blitter_cache *cache,
    rsd = rzalloc(cache->rsds.rsds, struct pan_blit_rsd_data);
    rsd->key = rsd_key;
 
+#if PAN_ARCH == 4
+   struct panfrost_ptr rsd_ptr =
+      pan_pool_alloc_desc(cache->rsds.pool, RENDERER_STATE);
+#else
    unsigned bd_count = PAN_ARCH >= 5 ? MAX2(views->rt_count, 1) : 0;
    struct panfrost_ptr rsd_ptr = pan_pool_alloc_desc_aggregate(
       cache->rsds.pool, PAN_DESC(RENDERER_STATE),
       PAN_DESC_ARRAY(bd_count, BLEND));
+#endif
 
    mali_ptr blend_shaders[8] = {0};
 

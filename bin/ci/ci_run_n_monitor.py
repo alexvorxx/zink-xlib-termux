@@ -191,6 +191,14 @@ def monitor_pipeline(
         pretty_wait(REFRESH_WAIT_JOBS)
 
 
+def get_pipeline_job(
+    pipeline: gitlab.v4.objects.ProjectPipeline,
+    id: int,
+) -> gitlab.v4.objects.ProjectPipelineJob:
+    pipeline_jobs = pipeline.jobs.list(all=True)
+    return [j for j in pipeline_jobs if j.id == id][0]
+
+
 def enable_job(
     project: gitlab.v4.objects.Project,
     pipeline: gitlab.v4.objects.ProjectPipeline,

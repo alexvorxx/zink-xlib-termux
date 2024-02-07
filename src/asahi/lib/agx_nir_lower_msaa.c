@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "agx_compile.h"
 #include "agx_tilebuffer.h"
 #include "nir.h"
 #include "nir_builder.h"
@@ -186,6 +187,8 @@ agx_nir_lower_monolithic_msaa(nir_shader *shader, struct agx_msaa_state *state)
    nir_shader_intrinsics_pass(shader, lower_sample_mask_read,
                               nir_metadata_block_index | nir_metadata_dominance,
                               &state->nr_samples);
+
+   agx_nir_lower_sample_mask(shader);
 
    /* In single sampled programs, interpolateAtSample needs to return the
     * center pixel. TODO: Generalize for dynamic sample count.

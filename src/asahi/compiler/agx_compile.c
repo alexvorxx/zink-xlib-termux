@@ -3154,25 +3154,6 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    out->push_count = key->reserved_preamble;
    agx_optimize_nir(nir, &out->push_count);
 
-   /* Create sample_mask instructions late, since NIR's scheduling is not aware
-    * of the ordering requirements between sample_mask and pixel stores.
-    *
-    * Note: when epilogs are used, special handling is required since the sample
-    * count is dynamic when the main fragment shader is compiled.
-    */
-   if (nir->info.stage == MESA_SHADER_FRAGMENT && key->fs.nr_samples) {
-      if (agx_nir_lower_sample_mask(nir)) {
-         /* Clean up ixor(bcsel) patterns created from sample mask lowering.
-          * Also constant fold to get the benefit. We need to rescalarize after
-          * folding constants.
-          */
-         NIR_PASS(_, nir, agx_nir_opt_ixor_bcsel);
-         NIR_PASS(_, nir, nir_opt_constant_folding);
-         NIR_PASS(_, nir, nir_lower_load_const_to_scalar);
-         NIR_PASS(_, nir, nir_opt_dce);
-      }
-   }
-
    /* Must be last since NIR passes can remap driver_location freely */
    if (nir->info.stage == MESA_SHADER_VERTEX)
       agx_remap_varyings_vs(nir, &out->varyings.vs, key);

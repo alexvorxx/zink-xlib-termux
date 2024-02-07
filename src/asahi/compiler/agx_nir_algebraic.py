@@ -193,7 +193,8 @@ def run():
                                       lower_sm5_shift + lower_pack +
                                       lower_selects).render())
     print(nir_algebraic.AlgebraicPass("agx_nir_fuse_algebraic_late",
-                                      fuse_extr + fuse_ubfe + fuse_imad).render())
+                                      fuse_extr + fuse_ubfe + fuse_imad +
+                                      ixor_bcsel).render())
     print(nir_algebraic.AlgebraicPass("agx_nir_opt_ixor_bcsel",
                                       ixor_bcsel).render())
 

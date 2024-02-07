@@ -100,6 +100,31 @@ i915_engine_get_info(int fd)
 bool
 i915_engines_is_guc_semaphore_functional(int fd, const struct intel_device_info *info)
 {
-   /* TODO */
-   return false;
+   struct drm_i915_query_guc_submission_version *guc_submission_ver =
+      intel_i915_query_alloc(fd, DRM_I915_QUERY_GUC_SUBMISSION_VERSION, NULL);
+   uint32_t read_ver, min_ver;
+
+   if (guc_submission_ver == NULL)
+      return false;
+
+   /* branch == 0 is mainline branch, any other branch value indicates that
+    * other version numbers cannot be used to infer whether features or fixes
+    * are present in the release.
+    *
+    * major, minor and patch are u8 for GuC, uAPI have it as u32 because of HuC.
+    */
+   if (guc_submission_ver->branch == 0) {
+      read_ver = guc_submission_ver->major << 16;
+      read_ver |= guc_submission_ver->minor << 8;
+      read_ver |= guc_submission_ver->patch;
+   } else {
+      read_ver = 0;
+   }
+
+   free(guc_submission_ver);
+
+   /* Requires at least GuC submission version 1.1.3 */
+   min_ver = 1ULL << 16 | 1ULL << 8 | 3;
+
+   return read_ver >= min_ver;
 }

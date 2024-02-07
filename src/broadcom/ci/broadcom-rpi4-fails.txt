@@ -508,9 +508,6 @@ KHR-GL31.texture_size_promotion.functional,Fail
 # uprev Piglit in Mesa
 spec@glsl-1.40@uniform_buffer@two-stages,Fail
 
-# Couldn't reproduce locally
-spec@oes_packed_depth_stencil@depth_stencil texture gles2,Fail
-
 dEQP-VK.wsi.wayland.swapchain.simulate_oom.clipped,Crash
 dEQP-VK.wsi.wayland.swapchain.simulate_oom.composite_alpha,Crash
 dEQP-VK.wsi.wayland.swapchain.simulate_oom.exclusive_nonzero_queues,Crash

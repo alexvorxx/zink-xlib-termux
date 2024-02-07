@@ -2031,9 +2031,6 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
    struct agx_shader_key base_key = {0};
 
-   if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      base_key.fs.nr_samples = key_->fs.nr_samples;
-
    if (nir->info.stage == MESA_SHADER_VERTEX) {
       struct asahi_vs_shader_key *key = &key_->vs;
 

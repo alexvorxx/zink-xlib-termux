@@ -138,10 +138,7 @@ get_vopd_info(const Instruction* instr)
    case aco_opcode::v_sub_f32: info.op = aco_opcode::v_dual_sub_f32; break;
    case aco_opcode::v_subrev_f32: info.op = aco_opcode::v_dual_subrev_f32; break;
    case aco_opcode::v_mul_legacy_f32: info.op = aco_opcode::v_dual_mul_dx9_zero_f32; break;
-   case aco_opcode::v_mov_b32:
-      info.op = aco_opcode::v_dual_mov_b32;
-      info.is_commutative = false;
-      break;
+   case aco_opcode::v_mov_b32: info.op = aco_opcode::v_dual_mov_b32; break;
    case aco_opcode::v_cndmask_b32:
       info.op = aco_opcode::v_dual_cndmask_b32;
       info.is_commutative = false;
@@ -220,6 +217,14 @@ is_vopd_compatible(const VOPDInfo& a, const VOPDInfo& b)
    uint16_t src2 = a.src_banks & 0x300;
    uint16_t a_src_banks = (src0 << 4) | (src1 >> 4) | src2;
    if ((a_src_banks & b.src_banks) != 0)
+      return false;
+
+   /* If we have to turn v_mov_b32 into v_add_u32 but there is already an OPY-only instruction,
+    * we can't do it.
+    */
+   if (a.op == aco_opcode::v_dual_mov_b32 && !b.is_commutative && b.is_opy_only)
+      return false;
+   if (b.op == aco_opcode::v_dual_mov_b32 && !a.is_commutative && a.is_opy_only)
       return false;
 
    return true;
@@ -634,7 +639,12 @@ get_vopd_opcode_operands(Instruction* instr, const VOPDInfo& info, bool swap, ac
    *num_operands += instr->operands.size();
    std::copy(instr->operands.begin(), instr->operands.end(), operands);
 
-   if (swap) {
+   if (swap && info.op == aco_opcode::v_dual_mov_b32) {
+      *op = aco_opcode::v_dual_add_nc_u32;
+      (*num_operands)++;
+      operands[0] = Operand::zero();
+      operands[1] = instr->operands[0];
+   } else if (swap) {
       if (info.op == aco_opcode::v_dual_sub_f32)
          *op = aco_opcode::v_dual_subrev_f32;
       else if (info.op == aco_opcode::v_dual_subrev_f32)
@@ -654,8 +664,14 @@ create_vopd_instruction(const SchedILPContext& ctx, unsigned idx)
    bool swap_x = false, swap_y = false;
    if (x_info.src_banks & y_info.src_banks) {
       assert(x_info.is_commutative || y_info.is_commutative);
-      swap_x = x_info.is_commutative;
-      swap_y = y_info.is_commutative && !swap_x;
+      /* Avoid swapping v_mov_b32 because it will become an OPY-only opcode. */
+      if (x_info.op == aco_opcode::v_dual_mov_b32 && !y_info.is_commutative) {
+         swap_x = true;
+         x_info.is_opy_only = true;
+      } else {
+         swap_x = x_info.is_commutative && x_info.op != aco_opcode::v_dual_mov_b32;
+         swap_y = y_info.is_commutative && !swap_x;
+      }
    }
 
    if (x_info.is_opy_only) {

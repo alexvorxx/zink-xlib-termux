@@ -99,6 +99,7 @@
 #include "intel/common/intel_aux_map.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_sample_positions.h"
+#include "intel/compiler/brw_compiler.h"
 #include "intel/ds/intel_tracepoints.h"
 #include "iris_batch.h"
 #include "iris_context.h"

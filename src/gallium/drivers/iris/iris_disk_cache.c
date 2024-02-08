@@ -36,6 +36,7 @@
 #include "util/build_id.h"
 #include "util/disk_cache.h"
 #include "util/mesa-sha1.h"
+#include "intel/compiler/brw_compiler.h"
 
 #include "iris_context.h"
 

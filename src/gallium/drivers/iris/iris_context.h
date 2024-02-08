@@ -34,7 +34,7 @@
 #include "intel/blorp/blorp.h"
 #include "intel/dev/intel_debug.h"
 #include "intel/common/intel_l3_config.h"
-#include "intel/compiler/brw_compiler.h"
+#include "intel/compiler/intel_shader_enums.h"
 #include "intel/ds/intel_driver_ds.h"
 #include "iris_batch.h"
 #include "iris_binder.h"

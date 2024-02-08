@@ -247,7 +247,7 @@ iris_disk_cache_retrieve(struct iris_screen *screen,
 
    iris_apply_brw_prog_data(shader, prog_data);
 
-   iris_finalize_program(shader, prog_data, so_decls, system_values,
+   iris_finalize_program(shader, so_decls, system_values,
                          num_system_values, kernel_input_size, num_cbufs,
                          &bt);
 

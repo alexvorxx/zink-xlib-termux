@@ -1309,7 +1309,7 @@ uint32_t iris_bti_to_group_index(const struct iris_binding_table *bt,
                                  enum iris_surface_group group,
                                  uint32_t bti);
 void iris_apply_brw_prog_data(struct iris_compiled_shader *shader,
-                              const struct brw_stage_prog_data *prog_data);
+                              struct brw_stage_prog_data *prog_data);
 struct intel_cs_dispatch_info
 iris_get_cs_dispatch_info(const struct intel_device_info *devinfo,
                           const struct iris_compiled_shader *shader,
@@ -1353,7 +1353,6 @@ struct iris_compiled_shader *iris_create_shader_variant(const struct iris_screen
                                                         const void *key);
 
 void iris_finalize_program(struct iris_compiled_shader *shader,
-                           struct brw_stage_prog_data *brw_prog_data,
                            uint32_t *streamout,
                            enum brw_param_builtin *system_values,
                            unsigned num_system_values,

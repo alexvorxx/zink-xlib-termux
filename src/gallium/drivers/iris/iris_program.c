@@ -224,7 +224,7 @@ iris_apply_brw_gs_prog_data(struct iris_compiled_shader *shader,
 
 void
 iris_apply_brw_prog_data(struct iris_compiled_shader *shader,
-                         const struct brw_stage_prog_data *brw)
+                         struct brw_stage_prog_data *brw)
 {
    STATIC_ASSERT(ARRAY_SIZE(brw->ubo_ranges) == ARRAY_SIZE(shader->ubo_ranges));
    for (int i = 0; i < ARRAY_SIZE(shader->ubo_ranges); i++) {
@@ -264,11 +264,16 @@ iris_apply_brw_prog_data(struct iris_compiled_shader *shader,
    default:
       unreachable("invalid shader stage");
    }
+
+   shader->brw_prog_data = brw;
+
+   ralloc_steal(shader, shader->brw_prog_data);
+   ralloc_steal(shader->brw_prog_data, (void *)brw->relocs);
+   ralloc_steal(shader->brw_prog_data, brw->param);
 }
 
 void
 iris_finalize_program(struct iris_compiled_shader *shader,
-                      struct brw_stage_prog_data *brw_prog_data,
                       uint32_t *streamout,
                       enum brw_param_builtin *system_values,
                       unsigned num_system_values,
@@ -276,7 +281,8 @@ iris_finalize_program(struct iris_compiled_shader *shader,
                       unsigned num_cbufs,
                       const struct iris_binding_table *bt)
 {
-   shader->brw_prog_data = brw_prog_data;
+   assert(shader->brw_prog_data);
+
    shader->streamout = streamout;
    shader->system_values = system_values;
    shader->num_system_values = num_system_values;
@@ -284,9 +290,6 @@ iris_finalize_program(struct iris_compiled_shader *shader,
    shader->num_cbufs = num_cbufs;
    shader->bt = *bt;
 
-   ralloc_steal(shader, shader->brw_prog_data);
-   ralloc_steal(shader->brw_prog_data, (void *)brw_prog_data->relocs);
-   ralloc_steal(shader->brw_prog_data, brw_prog_data->param);
    ralloc_steal(shader, shader->streamout);
    ralloc_steal(shader, shader->system_values);
 }
@@ -1560,7 +1563,7 @@ iris_compile_vs(struct iris_screen *screen,
       screen->vtbl.create_so_decl_list(&ish->stream_output,
                                        &iris_vue_data(shader)->vue_map);
 
-   iris_finalize_program(shader, &brw_prog_data->base.base, so_decls,
+   iris_finalize_program(shader, so_decls,
                          system_values, num_system_values, 0, num_cbufs, &bt);
 
    iris_upload_shader(screen, ish, shader, NULL, uploader, IRIS_CACHE_VS,
@@ -1733,7 +1736,7 @@ iris_compile_tcs(struct iris_screen *screen,
 
    iris_apply_brw_prog_data(shader, &brw_prog_data->base.base);
 
-   iris_finalize_program(shader, &brw_prog_data->base.base, NULL, system_values,
+   iris_finalize_program(shader, NULL, system_values,
                          num_system_values, 0, num_cbufs, &bt);
 
    iris_upload_shader(screen, ish, shader, passthrough_ht, uploader,
@@ -1906,7 +1909,7 @@ iris_compile_tes(struct iris_screen *screen,
       screen->vtbl.create_so_decl_list(&ish->stream_output,
                                        &iris_vue_data(shader)->vue_map);
 
-   iris_finalize_program(shader, &brw_prog_data->base.base, so_decls, system_values,
+   iris_finalize_program(shader, so_decls, system_values,
                          num_system_values, 0, num_cbufs, &bt);
 
    iris_upload_shader(screen, ish, shader, NULL, uploader, IRIS_CACHE_TES,
@@ -2049,7 +2052,7 @@ iris_compile_gs(struct iris_screen *screen,
       screen->vtbl.create_so_decl_list(&ish->stream_output,
                                        &iris_vue_data(shader)->vue_map);
 
-   iris_finalize_program(shader, &brw_prog_data->base.base, so_decls, system_values,
+   iris_finalize_program(shader, so_decls, system_values,
                          num_system_values, 0, num_cbufs, &bt);
 
    iris_upload_shader(screen, ish, shader, NULL, uploader, IRIS_CACHE_GS,
@@ -2191,7 +2194,7 @@ iris_compile_fs(struct iris_screen *screen,
 
    iris_apply_brw_prog_data(shader, &brw_prog_data->base);
 
-   iris_finalize_program(shader, &brw_prog_data->base, NULL, system_values,
+   iris_finalize_program(shader, NULL, system_values,
                          num_system_values, 0, num_cbufs, &bt);
 
    iris_upload_shader(screen, ish, shader, NULL, uploader, IRIS_CACHE_FS,
@@ -2469,7 +2472,7 @@ iris_compile_cs(struct iris_screen *screen,
 
    iris_apply_brw_prog_data(shader, &brw_prog_data->base);
 
-   iris_finalize_program(shader, &brw_prog_data->base, NULL, system_values,
+   iris_finalize_program(shader, NULL, system_values,
                          num_system_values, ish->kernel_input_size, num_cbufs,
                          &bt);
 

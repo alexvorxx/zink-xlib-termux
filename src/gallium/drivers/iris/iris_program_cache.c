@@ -244,7 +244,7 @@ iris_blorp_upload_shader(struct blorp_batch *blorp_batch, uint32_t stage,
 
    iris_apply_brw_prog_data(shader, prog_data);
 
-   iris_finalize_program(shader, prog_data, NULL, NULL, 0, 0, 0, &bt);
+   iris_finalize_program(shader, NULL, NULL, 0, 0, 0, &bt);
 
    iris_upload_shader(screen, NULL, shader, ice->shaders.cache,
                       ice->shaders.uploader_driver,
@@ -422,7 +422,7 @@ iris_ensure_indirect_generation_shader(struct iris_batch *batch)
                                  IRIS_CACHE_BLORP,
                                  sizeof(key), &key);
    iris_apply_brw_prog_data(shader, &prog_data->base);
-   iris_finalize_program(shader, &prog_data->base, NULL, NULL, 0, 0, 0, &bt);
+   iris_finalize_program(shader, NULL, NULL, 0, 0, 0, &bt);
 
    iris_upload_shader(screen, NULL, shader, ice->shaders.cache,
                       ice->shaders.uploader_driver,

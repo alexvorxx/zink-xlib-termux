@@ -2238,7 +2238,7 @@ tu_cmd_buffer_begin(struct tu_cmd_buffer *cmd_buffer,
    vk_command_buffer_begin(&cmd_buffer->vk, pBeginInfo);
 
    memset(&cmd_buffer->state, 0, sizeof(cmd_buffer->state));
-   cmd_buffer->vk.dynamic_graphics_state = vk_default_dynamic_graphics_state;
+   vk_dynamic_graphics_state_init(&cmd_buffer->vk.dynamic_graphics_state);
    cmd_buffer->vk.dynamic_graphics_state.vi = &cmd_buffer->state.vi;
    cmd_buffer->vk.dynamic_graphics_state.ms.sample_locations = &cmd_buffer->state.sl;
    cmd_buffer->state.index_size = 0xff; /* dirty restart index */

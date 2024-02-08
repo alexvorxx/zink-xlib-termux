@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef AGX_STATE_H
-#define AGX_STATE_H
+#pragma once
 
 #include "asahi/compiler/agx_compile.h"
 #include "asahi/layout/layout.h"
@@ -1144,5 +1143,3 @@ typedef void (*meta_shader_builder_t)(struct nir_builder *b, const void *key);
 void agx_init_meta_shaders(struct agx_context *ctx);
 
 void agx_destroy_meta_shaders(struct agx_context *ctx);
-
-#endif

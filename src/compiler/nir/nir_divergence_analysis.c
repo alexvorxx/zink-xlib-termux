@@ -252,18 +252,17 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr,
    case nir_intrinsic_load_input:
       is_divergent = instr->src[0].ssa->divergent;
 
-      /* Patch input loads are uniform between vertices of the same
-       * primitive.
-       */
-      if (vertex_divergence && stage == MESA_SHADER_TESS_EVAL)
-         break;
-
-      if (stage == MESA_SHADER_FRAGMENT)
+      if (stage == MESA_SHADER_FRAGMENT) {
          is_divergent |= !(options & nir_divergence_single_prim_per_subgroup);
-      else if (stage == MESA_SHADER_TESS_EVAL)
-         is_divergent |= !(options & nir_divergence_single_patch_per_tes_subgroup);
-      else
+      } else if (stage == MESA_SHADER_TESS_EVAL) {
+         /* Patch input loads are uniform between vertices of the same primitive. */
+         if (vertex_divergence)
+            is_divergent = false;
+         else
+            is_divergent |= !(options & nir_divergence_single_patch_per_tes_subgroup);
+      } else {
          is_divergent = true;
+      }
       break;
    case nir_intrinsic_load_per_vertex_input:
       is_divergent = instr->src[0].ssa->divergent ||

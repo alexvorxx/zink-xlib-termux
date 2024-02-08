@@ -57,6 +57,7 @@ spirv_to_nir_options = {
       .image_write_without_format = true,
       .int64 = true,
       .float64 = true,
+      .tessellation = true,
    },
    .ubo_addr_format = nir_address_format_32bit_index_offset,
    .ssbo_addr_format = nir_address_format_32bit_index_offset,
@@ -662,7 +663,7 @@ dxil_spirv_nir_kill_unused_outputs(nir_shader *shader,
                                     (void *)&kill_var_mask))
       progress = true;
 
-   if (shader->info.stage == MESA_SHADER_TESS_EVAL) {
+   if (shader->info.stage == MESA_SHADER_TESS_CTRL) {
       kill_var_mask =
          (shader->info.patch_outputs_written |
           shader->info.patch_outputs_read) &
@@ -913,6 +914,23 @@ dxil_spirv_nir_link(nir_shader *nir, nir_shader *prev_stage_nir,
       prev_stage_nir->info.outputs_written =
          dxil_reassign_driver_locations(prev_stage_nir, nir_var_shader_out,
                                         nir->info.inputs_read);
+
+      if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
+         assert(prev_stage_nir->info.stage == MESA_SHADER_TESS_CTRL);
+         nir->info.tess.tcs_vertices_out = prev_stage_nir->info.tess.tcs_vertices_out;
+         prev_stage_nir->info.tess = nir->info.tess;
+
+         for (uint32_t i = 0; i < 2; ++i) {
+            unsigned loc = i == 0 ? VARYING_SLOT_TESS_LEVEL_OUTER : VARYING_SLOT_TESS_LEVEL_INNER;
+            nir_variable *var = nir_find_variable_with_location(nir, nir_var_shader_in, loc);
+            if (!var) {
+               var = nir_variable_create(nir, nir_var_shader_in, glsl_array_type(glsl_float_type(), i == 0 ? 4 : 2, 0), i == 0 ? "outer" : "inner");
+               var->data.location = loc;
+               var->data.patch = true;
+               var->data.compact = true;
+            }
+         }
+      }
    }
 
    glsl_type_singleton_decref();
@@ -1132,7 +1150,8 @@ dxil_spirv_nir_passes(nir_shader *nir,
 
    if (conf->yz_flip.mode != DXIL_SPIRV_YZ_FLIP_NONE) {
       assert(nir->info.stage == MESA_SHADER_VERTEX ||
-             nir->info.stage == MESA_SHADER_GEOMETRY);
+             nir->info.stage == MESA_SHADER_GEOMETRY ||
+             nir->info.stage == MESA_SHADER_TESS_EVAL);
       NIR_PASS_V(nir,
                  dxil_spirv_nir_lower_yz_flip,
                  conf, requires_runtime_data);

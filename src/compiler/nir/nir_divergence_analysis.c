@@ -371,14 +371,19 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr,
     * the source is uniform and the operation is invariant
     */
    case nir_intrinsic_reduce:
-      if (vertex_divergence)
-         return true;
-      if (nir_intrinsic_cluster_size(instr) == 0)
-         return false;
+      if (nir_intrinsic_cluster_size(instr) == 0) {
+         /* Cluster size of 0 means the subgroup size.
+          * This is uniform within a subgroup, but divergent between
+          * vertices of the same primitive because they may be in
+          * different subgroups.
+          */
+         is_divergent = vertex_divergence;
+         break;
+      }
       FALLTHROUGH;
    case nir_intrinsic_inclusive_scan: {
       nir_op op = nir_intrinsic_reduction_op(instr);
-      is_divergent = instr->src[0].ssa->divergent;
+      is_divergent = instr->src[0].ssa->divergent || vertex_divergence;
       if (op != nir_op_umin && op != nir_op_imin && op != nir_op_fmin &&
           op != nir_op_umax && op != nir_op_imax && op != nir_op_fmax &&
           op != nir_op_iand && op != nir_op_ior)

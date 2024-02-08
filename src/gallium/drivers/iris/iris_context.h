@@ -47,6 +47,9 @@ struct iris_context;
 struct blorp_batch;
 struct blorp_params;
 
+#define IRIS_MAX_DRAW_BUFFERS 8
+#define IRIS_MAX_SOL_BINDINGS 64
+
 #define IRIS_MAX_TEXTURE_BUFFER_SIZE (1 << 27)
 /* IRIS_MAX_ABOS and IRIS_MAX_SSBOS must be the same. */
 #define IRIS_MAX_ABOS 16
@@ -1032,7 +1035,7 @@ struct iris_context {
        * Array of aux usages for drawing, altered to account for any
        * self-dependencies from resources bound for sampling and rendering.
        */
-      enum isl_aux_usage draw_aux_usage[BRW_MAX_DRAW_BUFFERS];
+      enum isl_aux_usage draw_aux_usage[IRIS_MAX_DRAW_BUFFERS];
 
       /** Aux usage of the fb's depth buffer (which may or may not exist). */
       enum isl_aux_usage hiz_usage;

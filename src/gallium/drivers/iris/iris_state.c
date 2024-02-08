@@ -1561,7 +1561,7 @@ struct iris_blend_state {
 
    /** Partial BLEND_STATE */
    uint32_t blend_state[GENX(BLEND_STATE_length) +
-                        BRW_MAX_DRAW_BUFFERS * GENX(BLEND_STATE_ENTRY_length)];
+                        IRIS_MAX_DRAW_BUFFERS * GENX(BLEND_STATE_ENTRY_length)];
 
    bool alpha_to_coverage; /* for shader key */
 
@@ -1574,8 +1574,8 @@ struct iris_blend_state {
    /** Does RT[0] use dual color blending? */
    bool dual_color_blending;
 
-   int ps_dst_blend_factor[BRW_MAX_DRAW_BUFFERS];
-   int ps_dst_alpha_blend_factor[BRW_MAX_DRAW_BUFFERS];
+   int ps_dst_blend_factor[IRIS_MAX_DRAW_BUFFERS];
+   int ps_dst_alpha_blend_factor[IRIS_MAX_DRAW_BUFFERS];
 };
 
 static enum pipe_blendfactor
@@ -1606,13 +1606,13 @@ iris_create_blend_state(struct pipe_context *ctx,
 
    cso->blend_enables = 0;
    cso->color_write_enables = 0;
-   STATIC_ASSERT(BRW_MAX_DRAW_BUFFERS <= 8);
+   STATIC_ASSERT(IRIS_MAX_DRAW_BUFFERS <= 8);
 
    cso->alpha_to_coverage = state->alpha_to_coverage;
 
    bool indep_alpha_blend = false;
 
-   for (int i = 0; i < BRW_MAX_DRAW_BUFFERS; i++) {
+   for (int i = 0; i < IRIS_MAX_DRAW_BUFFERS; i++) {
       const struct pipe_rt_blend_state *rt =
          &state->rt[state->independent_blend_enable ? i : 0];
 
@@ -1732,7 +1732,7 @@ has_writeable_rt(const struct iris_blend_state *cso_blend,
    unsigned rt_outputs = fs_info->outputs_written >> FRAG_RESULT_DATA0;
 
    if (fs_info->outputs_written & BITFIELD64_BIT(FRAG_RESULT_COLOR))
-      rt_outputs = (1 << BRW_MAX_DRAW_BUFFERS) - 1;
+      rt_outputs = (1 << IRIS_MAX_DRAW_BUFFERS) - 1;
 
    return cso_blend->color_write_enables & rt_outputs;
 }

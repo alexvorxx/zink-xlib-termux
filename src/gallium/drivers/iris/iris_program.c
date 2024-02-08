@@ -3128,7 +3128,7 @@ iris_bind_fs_state(struct pipe_context *ctx, void *state)
 
    const unsigned color_bits =
       BITFIELD64_BIT(FRAG_RESULT_COLOR) |
-      BITFIELD64_RANGE(FRAG_RESULT_DATA0, BRW_MAX_DRAW_BUFFERS);
+      BITFIELD64_RANGE(FRAG_RESULT_DATA0, IRIS_MAX_DRAW_BUFFERS);
 
    /* Fragment shader outputs influence HasWriteableRT */
    if (!old_ish || !new_ish ||
@@ -3314,6 +3314,9 @@ iris_shader_perf_log(void *data, unsigned *id, const char *fmt, ...)
 void
 iris_compiler_init(struct iris_screen *screen)
 {
+   STATIC_ASSERT(IRIS_MAX_DRAW_BUFFERS == BRW_MAX_DRAW_BUFFERS);
+   STATIC_ASSERT(IRIS_MAX_SOL_BINDINGS == BRW_MAX_SOL_BINDINGS);
+
    screen->compiler = brw_compiler_create(screen, screen->devinfo);
    screen->compiler->shader_debug_log = iris_shader_debug_log;
    screen->compiler->shader_perf_log = iris_shader_perf_log;

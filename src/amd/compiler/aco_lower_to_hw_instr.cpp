@@ -2925,6 +2925,11 @@ lower_to_hw_instr(Program* program)
                   } else if (inst->isSALU()) {
                      num_scalar++;
                   } else if (inst->isVALU() || inst->isVINTRP()) {
+                     if (instr->opcode == aco_opcode::v_writelane_b32 ||
+                         instr->opcode == aco_opcode::v_writelane_b32_e64) {
+                        /* writelane ignores exec, writing inactive lanes results in UB. */
+                        can_remove = false;
+                     }
                      num_vector++;
                      /* VALU which writes SGPRs are always executed on GFX10+ */
                      if (ctx.program->gfx_level >= GFX10) {

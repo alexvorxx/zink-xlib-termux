@@ -12,7 +12,6 @@
 #include "agx_compiler.h"
 #include "agx_debug.h"
 #include "agx_opcodes.h"
-#include "agx_pack.h"
 #include "shader_enums.h"
 
 /* SSA-based register allocator */

@@ -128,7 +128,7 @@ agx_draw_vbo_from_xfb(struct pipe_context *pctx,
    struct agx_streamout_target *so =
       agx_so_target(indirect->count_from_stream_output);
 
-   unsigned offset_B;
+   unsigned offset_B = 0;
    pipe_buffer_read(pctx, so->offset, 0, 4, &offset_B);
 
    unsigned count = offset_B / so->stride;

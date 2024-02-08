@@ -29,6 +29,7 @@
 #include "common/intel_sample_positions.h"
 #include "common/intel_l3_config.h"
 #include "genxml/gen_macros.h"
+#include "intel/compiler/brw_compiler.h"
 
 /**
  * This file provides the blorp pipeline setup and execution functionality.

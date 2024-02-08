@@ -764,7 +764,7 @@ static const driOptionDescription tu_dri_options[] = {
       DRI_CONF_VK_KHR_PRESENT_WAIT(false)
       DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(false)
       DRI_CONF_VK_X11_ENSURE_MIN_IMAGE_COUNT(false)
-      DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
+      DRI_CONF_VK_XWAYLAND_WAIT_READY(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG

@@ -4,8 +4,7 @@
  *
  */
 
-#ifndef __AGX_POOL_H__
-#define __AGX_POOL_H__
+#pragma once
 
 #include <stddef.h>
 #include "asahi/lib/agx_pack.h"
@@ -118,5 +117,3 @@ agx_pool_alloc_descs(struct agx_pool *pool,
 
 #define agx_pool_alloc_desc_aggregate(pool, ...)                               \
    agx_pool_alloc_descs(pool, AGX_DESC_AGGREGATE(__VA_ARGS__))
-
-#endif

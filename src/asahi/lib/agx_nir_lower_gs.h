@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef __AGX_NIR_LOWER_GS_H
-#define __AGX_NIR_LOWER_GS_H
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -63,5 +62,3 @@ bool agx_nir_lower_tes(struct nir_shader *tes, const struct nir_shader *libagx);
 uint64_t agx_tcs_per_vertex_outputs(const struct nir_shader *nir);
 
 unsigned agx_tcs_output_stride(const struct nir_shader *nir);
-
-#endif

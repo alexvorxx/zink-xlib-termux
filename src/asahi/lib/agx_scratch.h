@@ -2,8 +2,8 @@
  * Copyright 2023 Asahi Lina
  * SPDX-License-Identifier: MIT
  */
-#ifndef AGX_SCRATCH_H
-#define AGX_SCRATCH_H
+
+#pragma once
 
 #include "agx_device.h"
 #include <agx_pack.h>
@@ -39,5 +39,3 @@ void agx_scratch_debug_post(struct agx_scratch *scratch);
 uint32_t agx_scratch_get_bucket(uint32_t dwords);
 void agx_scratch_alloc(struct agx_scratch *scratch, uint32_t dwords,
                        size_t subgroups);
-
-#endif

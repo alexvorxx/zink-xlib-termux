@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef __AGX_DEVICE_H
-#define __AGX_DEVICE_H
+#pragma once
 
 #include "util/simple_mtx.h"
 #include "util/sparse_array.h"
@@ -152,5 +151,3 @@ agx_gpu_time_to_ns(struct agx_device *dev, uint64_t gpu_time)
 {
    return (gpu_time * NSEC_PER_SEC) / dev->params.timer_frequency_hz;
 }
-
-#endif

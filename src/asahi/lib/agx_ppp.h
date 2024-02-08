@@ -2,8 +2,8 @@
  * Copyright 2022 Alyssa Rosenzweig
  * SPDX-License-Identifier: MIT
  */
-#ifndef AGX_PPP_H
-#define AGX_PPP_H
+
+#pragma once
 
 #include "asahi/lib/agx_pack.h"
 #include "pool.h"
@@ -132,5 +132,3 @@ agx_ppp_fini(uint8_t **out, struct agx_ppp_update *ppp)
 
    *out += AGX_PPP_STATE_LENGTH;
 }
-
-#endif

@@ -4,8 +4,7 @@
  *
  */
 
-#ifndef __AGX_FORMATS_H_
-#define __AGX_FORMATS_H_
+#pragma once
 
 #include "util/format/u_format.h"
 
@@ -29,5 +28,3 @@ struct agx_border_packed;
 
 void agx_pack_border(struct agx_border_packed *out, const uint32_t in[4],
                      enum pipe_format format);
-
-#endif

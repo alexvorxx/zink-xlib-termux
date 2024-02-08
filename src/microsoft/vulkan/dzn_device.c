@@ -1742,6 +1742,7 @@ static const driOptionDescription dzn_dri_options[] = {
    DRI_CONF_SECTION_DEBUG
       DRI_CONF_DZN_CLAIM_WIDE_LINES(false)
       DRI_CONF_DZN_ENABLE_8BIT_LOADS_STORES(false)
+      DRI_CONF_DZN_DISABLE(false)
       DRI_CONF_VK_WSI_FORCE_SWAPCHAIN_TO_CURRENT_EXTENT(false)
    DRI_CONF_SECTION_END
 };
@@ -1842,6 +1843,11 @@ dzn_instance_create(const VkInstanceCreateInfo *pCreateInfo,
 
    instance->sync_binary_type = vk_sync_binary_get_type(&dzn_sync_type);
    dzn_init_dri_config(instance);
+
+   if (driQueryOptionb(&instance->dri_options, "dzn_disable")) {
+      dzn_instance_destroy(instance, pAllocator);
+      return vk_errorf(NULL, VK_ERROR_INITIALIZATION_FAILED, "dzn_disable set, failing instance creation");
+   }
 
    *out = dzn_instance_to_handle(instance);
    return VK_SUCCESS;

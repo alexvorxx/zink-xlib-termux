@@ -724,6 +724,9 @@
    DRI_CONF_OPT_B(radv_force_active_accel_struct_leaves, def, \
                   "Force leaf nodes of acceleration structures to be marked active.")
 
+#define DRI_CONF_RADV_DISABLE_NGG_GS(def) \
+   DRI_CONF_OPT_B(radv_disable_ngg_gs, def, "Disable NGG GS on GFX10/GFX10.3.")
+
 /**
  * \brief ANV specific configuration options
  */

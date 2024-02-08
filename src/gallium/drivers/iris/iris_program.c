@@ -1761,7 +1761,6 @@ iris_update_compiled_tcs(struct iris_context *ice)
       ice->shaders.uncompiled[MESA_SHADER_TESS_CTRL];
    struct iris_screen *screen = (struct iris_screen *)ice->ctx.screen;
    struct u_upload_mgr *uploader = ice->shaders.uploader_driver;
-   const struct brw_compiler *compiler = screen->compiler;
    const struct intel_device_info *devinfo = screen->devinfo;
 
    const struct shader_info *tes_info =
@@ -1770,7 +1769,7 @@ iris_update_compiled_tcs(struct iris_context *ice)
       .vue.base.program_string_id = tcs ? tcs->program_id : 0,
       ._tes_primitive_mode = tes_info->tess._primitive_mode,
       .input_vertices =
-         !tcs || compiler->use_tcs_multi_patch ? ice->state.vertices_per_patch : 0,
+         !tcs || iris_use_tcs_multi_patch(screen) ? ice->state.vertices_per_patch : 0,
       .quads_workaround = devinfo->ver < 9 &&
                           tes_info->tess._primitive_mode == TESS_PRIMITIVE_QUADS &&
                           tes_info->tess.spacing == TESS_SPACING_EQUAL,
@@ -2857,7 +2856,7 @@ iris_create_shader_state(struct pipe_context *ctx,
        * and output patches are the same size.  This is a bad guess, but we
        * can't do much better.
        */
-      if (screen->compiler->use_tcs_multi_patch)
+      if (iris_use_tcs_multi_patch(screen))
          key.tcs.input_vertices = info->tess.tcs_vertices_out;
 
       key_size = sizeof(key.tcs);
@@ -3274,6 +3273,12 @@ iris_fs_barycentric_modes(const struct iris_compiled_shader *shader,
 {
    const struct brw_wm_prog_data *brw = brw_wm_prog_data(shader->brw_prog_data);
    return wm_prog_data_barycentric_modes(brw, pushed_msaa_flags);
+}
+
+bool
+iris_use_tcs_multi_patch(struct iris_screen *screen)
+{
+   return screen->compiler->use_tcs_multi_patch;
 }
 
 static void

@@ -280,7 +280,7 @@ iris_disk_cache_init(struct iris_screen *screen)
    /* array length = strlen("iris_") + sha + nul char */
    char renderer[5 + 40 + 1] = {0};
    char device_info_sha[41];
-   brw_device_sha1(device_info_sha, screen->compiler->devinfo);
+   brw_device_sha1(device_info_sha, screen->brw->devinfo);
    memcpy(renderer, "iris_", 5);
    memcpy(renderer + 5, device_info_sha, 40);
 
@@ -295,7 +295,7 @@ iris_disk_cache_init(struct iris_screen *screen)
    _mesa_sha1_format(timestamp, id_sha1);
 
    const uint64_t driver_flags =
-      brw_get_compiler_config_value(screen->compiler);
+      brw_get_compiler_config_value(screen->brw);
    screen->disk_cache = disk_cache_create(renderer, timestamp, driver_flags);
 #endif
 }

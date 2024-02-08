@@ -180,7 +180,7 @@ iris_upload_shader(struct iris_screen *screen,
          .value = shader_data_addr >> 32,
       },
    };
-   brw_write_shader_relocs(&screen->compiler->isa, shader->map,
+   brw_write_shader_relocs(&screen->brw->isa, shader->map,
                            shader->brw_prog_data, reloc_values,
                            ARRAY_SIZE(reloc_values));
 
@@ -331,7 +331,7 @@ iris_ensure_indirect_generation_shader(struct iris_batch *batch)
    if (ice->draw.generation.shader != NULL)
       return;
 
-   struct brw_compiler *compiler = screen->compiler;
+   struct brw_compiler *compiler = screen->brw;
    const nir_shader_compiler_options *nir_options =
       compiler->nir_options[MESA_SHADER_FRAGMENT];
 

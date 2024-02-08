@@ -1300,7 +1300,7 @@ iris_debug_recompile(struct iris_screen *screen,
             || list_is_singular(&ish->variants))
       return;
 
-   const struct brw_compiler *c = screen->compiler;
+   const struct brw_compiler *c = screen->brw;
    const struct shader_info *info = &ish->nir->info;
 
    brw_shader_perf_log(c, dbg, "Recompiling %s shader for program %s: %s\n",
@@ -1490,7 +1490,7 @@ iris_compile_vs(struct iris_screen *screen,
                 struct iris_uncompiled_shader *ish,
                 struct iris_compiled_shader *shader)
 {
-   const struct brw_compiler *compiler = screen->compiler;
+   const struct brw_compiler *compiler = screen->brw;
    const struct intel_device_info *devinfo = screen->devinfo;
    void *mem_ctx = ralloc_context(NULL);
    uint32_t *system_values;
@@ -1677,7 +1677,7 @@ iris_compile_tcs(struct iris_screen *screen,
                  struct iris_uncompiled_shader *ish,
                  struct iris_compiled_shader *shader)
 {
-   const struct brw_compiler *compiler = screen->compiler;
+   const struct brw_compiler *compiler = screen->brw;
    void *mem_ctx = ralloc_context(NULL);
    const struct intel_device_info *devinfo = screen->devinfo;
    uint32_t *system_values = NULL;
@@ -1838,7 +1838,7 @@ iris_compile_tes(struct iris_screen *screen,
                  struct iris_uncompiled_shader *ish,
                  struct iris_compiled_shader *shader)
 {
-   const struct brw_compiler *compiler = screen->compiler;
+   const struct brw_compiler *compiler = screen->brw;
    void *mem_ctx = ralloc_context(NULL);
    uint32_t *system_values;
    const struct intel_device_info *devinfo = screen->devinfo;
@@ -1982,7 +1982,7 @@ iris_compile_gs(struct iris_screen *screen,
                 struct iris_uncompiled_shader *ish,
                 struct iris_compiled_shader *shader)
 {
-   const struct brw_compiler *compiler = screen->compiler;
+   const struct brw_compiler *compiler = screen->brw;
    const struct intel_device_info *devinfo = screen->devinfo;
    void *mem_ctx = ralloc_context(NULL);
    uint32_t *system_values;
@@ -2122,7 +2122,7 @@ iris_compile_fs(struct iris_screen *screen,
                 struct iris_compiled_shader *shader,
                 struct intel_vue_map *vue_map)
 {
-   const struct brw_compiler *compiler = screen->compiler;
+   const struct brw_compiler *compiler = screen->brw;
    void *mem_ctx = ralloc_context(NULL);
    uint32_t *system_values;
    const struct intel_device_info *devinfo = screen->devinfo;
@@ -2420,7 +2420,7 @@ iris_compile_cs(struct iris_screen *screen,
                 struct iris_uncompiled_shader *ish,
                 struct iris_compiled_shader *shader)
 {
-   const struct brw_compiler *compiler = screen->compiler;
+   const struct brw_compiler *compiler = screen->brw;
    void *mem_ctx = ralloc_context(NULL);
    uint32_t *system_values;
    const struct intel_device_info *devinfo = screen->devinfo;
@@ -2677,7 +2677,7 @@ iris_create_compute_state(struct pipe_context *ctx,
    struct iris_screen *screen = (void *) ctx->screen;
    struct u_upload_mgr *uploader = ice->shaders.uploader_unsync;
    const nir_shader_compiler_options *options =
-      screen->compiler->nir_options[MESA_SHADER_COMPUTE];
+      screen->brw->nir_options[MESA_SHADER_COMPUTE];
 
    nir_shader *nir;
    switch (state->ir_type) {
@@ -3158,7 +3158,7 @@ iris_finalize_nir(struct pipe_screen *_screen, void *nirptr)
    NIR_PASS_V(nir, iris_fix_edge_flags);
 
    struct brw_nir_compiler_opts opts = {};
-   brw_preprocess_nir(screen->compiler, nir, &opts);
+   brw_preprocess_nir(screen->brw, nir, &opts);
 
    NIR_PASS_V(nir, brw_nir_lower_storage_image,
               &(struct brw_nir_lower_storage_image_opts) {
@@ -3279,7 +3279,7 @@ iris_fs_barycentric_modes(const struct iris_compiled_shader *shader,
 bool
 iris_use_tcs_multi_patch(struct iris_screen *screen)
 {
-   return screen->compiler->use_tcs_multi_patch;
+   return screen->brw->use_tcs_multi_patch;
 }
 
 bool
@@ -3332,7 +3332,7 @@ iris_get_compiler_options(struct pipe_screen *pscreen,
    gl_shader_stage stage = stage_from_pipe(pstage);
    assert(ir == PIPE_SHADER_IR_NIR);
 
-   return screen->compiler->nir_options[stage];
+   return screen->brw->nir_options[stage];
 }
 
 void
@@ -3341,9 +3341,9 @@ iris_compiler_init(struct iris_screen *screen)
    STATIC_ASSERT(IRIS_MAX_DRAW_BUFFERS == BRW_MAX_DRAW_BUFFERS);
    STATIC_ASSERT(IRIS_MAX_SOL_BINDINGS == BRW_MAX_SOL_BINDINGS);
 
-   screen->compiler = brw_compiler_create(screen, screen->devinfo);
-   screen->compiler->shader_debug_log = iris_shader_debug_log;
-   screen->compiler->shader_perf_log = iris_shader_perf_log;
-   screen->compiler->supports_shader_constants = true;
-   screen->compiler->indirect_ubos_use_sampler = iris_indirect_ubos_use_sampler(screen);
+   screen->brw = brw_compiler_create(screen, screen->devinfo);
+   screen->brw->shader_debug_log = iris_shader_debug_log;
+   screen->brw->shader_perf_log = iris_shader_perf_log;
+   screen->brw->supports_shader_constants = true;
+   screen->brw->indirect_ubos_use_sampler = iris_indirect_ubos_use_sampler(screen);
 }

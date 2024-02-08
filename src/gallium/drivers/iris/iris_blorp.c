@@ -509,7 +509,7 @@ genX(init_blorp)(struct iris_context *ice)
 {
    struct iris_screen *screen = (struct iris_screen *)ice->ctx.screen;
 
-   blorp_init_brw(&ice->blorp, ice, &screen->isl_dev, screen->compiler, NULL);
+   blorp_init_brw(&ice->blorp, ice, &screen->isl_dev, screen->brw, NULL);
    ice->blorp.lookup_shader = iris_blorp_lookup_shader;
    ice->blorp.upload_shader = iris_blorp_upload_shader;
    ice->blorp.exec = iris_blorp_exec;

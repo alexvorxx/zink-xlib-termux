@@ -73,7 +73,7 @@ static nir_shader *
 load_shader_lib(struct iris_screen *screen, void *mem_ctx)
 {
    const nir_shader_compiler_options *nir_options =
-      screen->compiler->nir_options[MESA_SHADER_KERNEL];
+      screen->brw->nir_options[MESA_SHADER_KERNEL];
 
    struct blob_reader blob;
    blob_reader_init(&blob, (void *)genX(intel_shaders_nir),

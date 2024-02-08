@@ -3777,7 +3777,7 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
          }
          /* filter needed components */
          if (intr->num_components < load->num_components)
-            load = nir_channels(b, load, BITFIELD_MASK(intr->num_components) << c);
+            load = nir_channels(b, load, BITFIELD_MASK(intr->num_components) << (c - var->data.location_frac));
          nir_def_rewrite_uses(&intr->def, load);
       } else {
          nir_def *store = intr->src[0].ssa;

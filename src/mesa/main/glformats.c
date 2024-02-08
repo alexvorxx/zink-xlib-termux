@@ -2270,19 +2270,11 @@ _mesa_base_tex_format(const struct gl_context *ctx, GLint internalFormat)
    case GL_RGBA12:
    case GL_RGBA16:
       return GL_RGBA;
+   case GL_BGRA:
+   case GL_BGRA8_EXT:
+      return GL_RGBA;
    default:
       ; /* fallthrough */
-   }
-
-   /* GL_BGRA can be an internal format *only* in OpenGL ES (1.x or 2.0).
-    */
-   if (_mesa_is_gles(ctx)) {
-      switch (internalFormat) {
-      case GL_BGRA:
-         return GL_RGBA;
-      default:
-         ; /* fallthrough */
-      }
    }
 
    if (_mesa_has_ARB_ES2_compatibility(ctx) ||

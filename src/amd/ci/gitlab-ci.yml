@@ -327,7 +327,6 @@ vkd3d-navi21-valve:
     - .radv-valve-manual-rules
   variables:
     VKD3D_PROTON_RESULTS: radv-navi21-vkd3d
-    VKD3D_CONFIG: dxr11
 
 vkd3d-vangogh-valve:
   extends:
@@ -344,4 +343,3 @@ vkd3d-navi31-valve:
     - .radv-valve-manual-rules
   variables:
     VKD3D_PROTON_RESULTS: radv-navi31-vkd3d
-    VKD3D_CONFIG: dxr11

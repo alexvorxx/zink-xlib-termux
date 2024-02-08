@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef __AGX_COMPILER_H
-#define __AGX_COMPILER_H
+#pragma once
 
 #include "compiler/nir/nir.h"
 #include "util/half_float.h"
@@ -938,6 +937,4 @@ extern int agx_compiler_debug;
 
 #ifdef __cplusplus
 } /* extern C */
-#endif
-
 #endif

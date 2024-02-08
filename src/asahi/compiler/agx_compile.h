@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef __AGX_PUBLIC_H_
-#define __AGX_PUBLIC_H_
+#pragma once
 
 #include "compiler/nir/nir.h"
 #include "util/u_dynarray.h"
@@ -309,5 +308,3 @@ static const nir_shader_compiler_options agx_nir_options = {
    .lower_doubles_options = (nir_lower_doubles_options)(~0),
    .lower_fquantize2f16 = true,
 };
-
-#endif

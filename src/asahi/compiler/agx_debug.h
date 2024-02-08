@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef __AGX_DEBUG_H
-#define __AGX_DEBUG_H
+#pragma once
 
 #include "util/macros.h"
 
@@ -34,6 +33,4 @@ uint64_t agx_get_compiler_debug(void);
 
 #ifdef __cplusplus
 } /* extern C */
-#endif
-
 #endif

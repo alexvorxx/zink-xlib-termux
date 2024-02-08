@@ -2,8 +2,8 @@
  * Copyright 2023 Alyssa Rosenzweig
  * SPDX-License-Identifier: MIT
  */
-#ifndef AGX_NIR_H
-#define AGX_NIR_H
+
+#pragma once
 
 #include <stdbool.h>
 
@@ -18,5 +18,3 @@ bool agx_nir_lower_layer(struct nir_shader *s);
 bool agx_nir_lower_clip_distance(struct nir_shader *s);
 bool agx_nir_lower_cull_distance_vs(struct nir_shader *s);
 bool agx_nir_lower_subgroups(struct nir_shader *s);
-
-#endif

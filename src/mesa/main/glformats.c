@@ -2745,7 +2745,7 @@ gles_effective_internal_format_for_format_and_type(GLenum format,
  * are required for complete checking between format and type.
  */
 static GLenum
-_mesa_gles_check_internalformat(const struct gl_context *ctx,
+_mesa_gles_check_internalformat(struct gl_context *ctx,
                                 GLenum internalFormat)
 {
    switch (internalFormat) {
@@ -2900,6 +2900,22 @@ _mesa_gles_check_internalformat(const struct gl_context *ctx,
       if (!_mesa_is_gles3(ctx))
          return GL_INVALID_VALUE;
       return GL_NO_ERROR;
+
+   case GL_BGRA8_EXT: {
+      /* This is technically speaking out-of-spec. But too many
+       * applications seems to depend on it, so let's allow it
+       * together with a small complaint */
+      static bool warned = false;
+      if (!warned) {
+         _mesa_warning(ctx,
+            "internalformat = GL_BGRA8_EXT invalid by spec, but too many "
+            "applications depend on it to error. Please fix the software "
+            "that causes this problem.");
+         warned = true;
+      }
+      return GL_NO_ERROR;
+      }
+
    default:
       return GL_INVALID_VALUE;
    }
@@ -2911,7 +2927,7 @@ _mesa_gles_check_internalformat(const struct gl_context *ctx,
  * \return error code, or GL_NO_ERROR.
  */
 GLenum
-_mesa_gles_error_check_format_and_type(const struct gl_context *ctx,
+_mesa_gles_error_check_format_and_type(struct gl_context *ctx,
                                        GLenum format, GLenum type,
                                        GLenum internalFormat)
 {
@@ -2980,6 +2996,7 @@ _mesa_gles_error_check_format_and_type(const struct gl_context *ctx,
       if (type != GL_UNSIGNED_BYTE ||
               (internalFormat != GL_BGRA &&
                internalFormat != GL_RGBA8 &&
+               internalFormat != GL_BGRA8_EXT &&
                internalFormat != GL_SRGB8_ALPHA8))
          return GL_INVALID_OPERATION;
       break;

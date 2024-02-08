@@ -3275,3 +3275,48 @@ iris_fs_barycentric_modes(const struct iris_compiled_shader *shader,
    const struct brw_wm_prog_data *brw = brw_wm_prog_data(shader->brw_prog_data);
    return wm_prog_data_barycentric_modes(brw, pushed_msaa_flags);
 }
+
+static void
+iris_shader_debug_log(void *data, unsigned *id, const char *fmt, ...)
+{
+   struct util_debug_callback *dbg = data;
+   va_list args;
+
+   if (!dbg->debug_message)
+      return;
+
+   va_start(args, fmt);
+   dbg->debug_message(dbg->data, id, UTIL_DEBUG_TYPE_SHADER_INFO, fmt, args);
+   va_end(args);
+}
+
+static void
+iris_shader_perf_log(void *data, unsigned *id, const char *fmt, ...)
+{
+   struct util_debug_callback *dbg = data;
+   va_list args;
+   va_start(args, fmt);
+
+   if (INTEL_DEBUG(DEBUG_PERF)) {
+      va_list args_copy;
+      va_copy(args_copy, args);
+      vfprintf(stderr, fmt, args_copy);
+      va_end(args_copy);
+   }
+
+   if (dbg->debug_message) {
+      dbg->debug_message(dbg->data, id, UTIL_DEBUG_TYPE_PERF_INFO, fmt, args);
+   }
+
+   va_end(args);
+}
+
+void
+iris_compiler_init(struct iris_screen *screen)
+{
+   screen->compiler = brw_compiler_create(screen, screen->devinfo);
+   screen->compiler->shader_debug_log = iris_shader_debug_log;
+   screen->compiler->shader_perf_log = iris_shader_perf_log;
+   screen->compiler->supports_shader_constants = true;
+   screen->compiler->indirect_ubos_use_sampler = screen->devinfo->ver < 12;
+}

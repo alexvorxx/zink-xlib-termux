@@ -735,41 +735,6 @@ iris_get_default_l3_config(const struct intel_device_info *devinfo,
 }
 
 static void
-iris_shader_debug_log(void *data, unsigned *id, const char *fmt, ...)
-{
-   struct util_debug_callback *dbg = data;
-   va_list args;
-
-   if (!dbg->debug_message)
-      return;
-
-   va_start(args, fmt);
-   dbg->debug_message(dbg->data, id, UTIL_DEBUG_TYPE_SHADER_INFO, fmt, args);
-   va_end(args);
-}
-
-static void
-iris_shader_perf_log(void *data, unsigned *id, const char *fmt, ...)
-{
-   struct util_debug_callback *dbg = data;
-   va_list args;
-   va_start(args, fmt);
-
-   if (INTEL_DEBUG(DEBUG_PERF)) {
-      va_list args_copy;
-      va_copy(args_copy, args);
-      vfprintf(stderr, fmt, args_copy);
-      va_end(args_copy);
-   }
-
-   if (dbg->debug_message) {
-      dbg->debug_message(dbg->data, id, UTIL_DEBUG_TYPE_PERF_INFO, fmt, args);
-   }
-
-   va_end(args);
-}
-
-static void
 iris_detect_kernel_features(struct iris_screen *screen)
 {
    const struct intel_device_info *devinfo = screen->devinfo;
@@ -898,11 +863,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
 
    isl_device_init(&screen->isl_dev, screen->devinfo);
 
-   screen->compiler = brw_compiler_create(screen, screen->devinfo);
-   screen->compiler->shader_debug_log = iris_shader_debug_log;
-   screen->compiler->shader_perf_log = iris_shader_perf_log;
-   screen->compiler->supports_shader_constants = true;
-   screen->compiler->indirect_ubos_use_sampler = screen->devinfo->ver < 12;
+   iris_compiler_init(screen);
 
    screen->l3_config_3d = iris_get_default_l3_config(screen->devinfo, false);
    screen->l3_config_cs = iris_get_default_l3_config(screen->devinfo, true);

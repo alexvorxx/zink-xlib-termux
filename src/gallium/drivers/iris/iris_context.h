@@ -1291,6 +1291,7 @@ void iris_flush_all_caches(struct iris_batch *batch);
 void iris_init_flush_functions(struct pipe_context *ctx);
 
 /* iris_program.c */
+void iris_compiler_init(struct iris_screen *screen);
 void iris_upload_ubo_ssbo_surf_state(struct iris_context *ice,
                                      struct pipe_shader_buffer *buf,
                                      struct iris_state_ref *surf_state,

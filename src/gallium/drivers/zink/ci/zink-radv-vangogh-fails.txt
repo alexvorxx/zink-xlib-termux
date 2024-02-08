@@ -339,6 +339,3 @@ spec@!opengl 1.0@gl-1.0-polygon-line-aa,Fail
 # Regression noticed in https://gitlab.freedesktop.org/mesa/mesa/-/pipelines/891104
 spec@arb_viewport_array@display-list,Fail
 
-# uprev Piglit in Mesa
-spec@arb_tessellation_shader@execution@tesslevels-indirect,Crash
-

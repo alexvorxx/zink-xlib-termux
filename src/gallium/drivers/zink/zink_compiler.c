@@ -5199,7 +5199,7 @@ rework_io_vars(nir_shader *nir, nir_variable_mode mode)
             }
             /* reset the mode for nir_is_arrayed_io to work */
             bool is_arrayed = io_instr_is_arrayed(intr);
-            if (is_indirect) {
+            if (is_indirect && s.location != VARYING_SLOT_TESS_LEVEL_INNER && s.location != VARYING_SLOT_TESS_LEVEL_OUTER) {
                /* indirect array access requires the full array in a single variable */
                unsigned slot_count = s.num_slots;
                if (bit_size == 64 && slot_count > 1)

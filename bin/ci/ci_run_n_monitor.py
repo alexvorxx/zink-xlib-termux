@@ -453,7 +453,12 @@ if __name__ == "__main__":
         print(f"Pipeline: {pipe.web_url}")
 
         target = '|'.join(args.target)
-        target_jobs_regex = re.compile(target.strip())
+        target = target.strip()
+
+        # Implicitly include `parallel:` jobs
+        target = f'({target})' + r'( \d+/\d+)?'
+
+        target_jobs_regex = re.compile(target)
 
         deps = set()
         print("🞋 job: " + Fore.BLUE + target + Style.RESET_ALL)

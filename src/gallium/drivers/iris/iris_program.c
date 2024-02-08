@@ -411,7 +411,7 @@ iris_upload_ubo_ssbo_surf_state(struct iris_context *ice,
    struct iris_bo *surf_bo = iris_resource_bo(surf_state->res);
    surf_state->offset += iris_bo_offset_from_base_address(surf_bo);
 
-   const bool dataport = ssbo || !screen->compiler->indirect_ubos_use_sampler;
+   const bool dataport = ssbo || !iris_indirect_ubos_use_sampler(screen);
 
    isl_buffer_fill_state(&screen->isl_dev, map,
                          .address = res->bo->address + res->offset +
@@ -3281,6 +3281,12 @@ iris_use_tcs_multi_patch(struct iris_screen *screen)
    return screen->compiler->use_tcs_multi_patch;
 }
 
+bool
+iris_indirect_ubos_use_sampler(struct iris_screen *screen)
+{
+   return screen->devinfo->ver < 12;
+}
+
 static void
 iris_shader_debug_log(void *data, unsigned *id, const char *fmt, ...)
 {
@@ -3326,5 +3332,5 @@ iris_compiler_init(struct iris_screen *screen)
    screen->compiler->shader_debug_log = iris_shader_debug_log;
    screen->compiler->shader_perf_log = iris_shader_perf_log;
    screen->compiler->supports_shader_constants = true;
-   screen->compiler->indirect_ubos_use_sampler = screen->devinfo->ver < 12;
+   screen->compiler->indirect_ubos_use_sampler = iris_indirect_ubos_use_sampler(screen);
 }

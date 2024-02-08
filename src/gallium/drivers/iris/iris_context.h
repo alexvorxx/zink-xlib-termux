@@ -1325,6 +1325,7 @@ uint32_t
 iris_fs_barycentric_modes(const struct iris_compiled_shader *shader,
                           enum intel_msaa_flags pushed_msaa_flags);
 bool iris_use_tcs_multi_patch(struct iris_screen *screen);
+bool iris_indirect_ubos_use_sampler(struct iris_screen *screen);
 
 /* iris_disk_cache.c */
 

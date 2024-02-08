@@ -262,7 +262,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr,
          is_divergent |= !(options & nir_divergence_single_prim_per_subgroup);
       else if (stage == MESA_SHADER_TESS_EVAL)
          is_divergent |= !(options & nir_divergence_single_patch_per_tes_subgroup);
-      else if (stage != MESA_SHADER_MESH)
+      else
          is_divergent = true;
       break;
    case nir_intrinsic_load_per_vertex_input:
@@ -291,13 +291,16 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr,
          break;
       case MESA_SHADER_TASK:
       case MESA_SHADER_MESH:
-         /* Divergent if src[0] is, so nothing else to do. */
+         /* NV_mesh_shader only (EXT_mesh_shader does not allow loading outputs).
+          * Divergent if src[0] is, so nothing else to do.
+          */
          break;
       default:
          unreachable("Invalid stage for load_output");
       }
       break;
    case nir_intrinsic_load_per_vertex_output:
+      /* TCS and NV_mesh_shader only (EXT_mesh_shader does not allow loading outputs). */
       assert(stage == MESA_SHADER_TESS_CTRL || stage == MESA_SHADER_MESH);
       is_divergent = instr->src[0].ssa->divergent ||
                      instr->src[1].ssa->divergent ||
@@ -305,6 +308,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr,
                       !(options & nir_divergence_single_patch_per_tcs_subgroup));
       break;
    case nir_intrinsic_load_per_primitive_output:
+      /* NV_mesh_shader only (EXT_mesh_shader does not allow loading outputs). */
       assert(stage == MESA_SHADER_MESH);
       is_divergent = instr->src[0].ssa->divergent ||
                      instr->src[1].ssa->divergent;

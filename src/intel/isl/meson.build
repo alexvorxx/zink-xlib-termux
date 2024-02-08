@@ -70,7 +70,7 @@ foreach g : [['40', isl_gfx4_files], ['50', []], ['60', isl_gfx6_files],
     'isl_per_hw_ver@0@'.format(_gfx_ver),
     [g[1], isl_per_hw_ver_files, gen_xml_pack],
     include_directories : [inc_include, inc_src, inc_intel],
-    dependencies : [idep_mesautil, idep_intel_dev],
+    dependencies : [idep_mesautil, idep_intel_dev, idep_genxml],
     c_args : [
       no_override_init_args,
       '-DGFX_VERx10=@0@'.format(_gfx_ver)

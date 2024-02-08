@@ -464,33 +464,38 @@ impl<'a> ShaderFromNir<'a> {
                     let s = usize::from(alu_src.swizzle[0]);
                     srcs.push(ssa[s].into());
                 }
-                8 => {
-                    assert!(comps <= 4);
-                    let s = alu_src.swizzle[0];
-                    let dw = ssa[usize::from(s / 4)];
+                8 | 16 => {
+                    let num_bytes = usize::from(comps * (bit_size / 8));
+                    assert!(num_bytes <= 4);
 
-                    let mut prmt = [4_u8; 4];
-                    for c in 0..comps {
-                        let cs = alu_src.swizzle[usize::from(c)];
-                        assert!(s / 4 == cs / 4);
-                        prmt[usize::from(c)] = cs;
+                    let mut bytes = [0_u8; 4];
+                    for c in 0..usize::from(comps) {
+                        let cs = alu_src.swizzle[c];
+                        if bit_size == 8 {
+                            bytes[c] = cs;
+                        } else {
+                            bytes[c * 2 + 0] = cs * 2 + 0;
+                            bytes[c * 2 + 1] = cs * 2 + 1;
+                        }
                     }
-                    srcs.push(b.prmt(dw.into(), 0.into(), prmt).into());
-                }
-                16 => {
-                    assert!(comps <= 2);
-                    let s = alu_src.swizzle[0];
-                    let dw = ssa[usize::from(s / 2)];
 
+                    let mut prmt_srcs = [Src::new_zero(); 4];
                     let mut prmt = [0_u8; 4];
-                    for c in 0..comps {
-                        let cs = alu_src.swizzle[usize::from(c)];
-                        assert!(s / 2 == cs / 2);
-                        prmt[usize::from(c) * 2 + 0] = cs * 2 + 0;
-                        prmt[usize::from(c) * 2 + 1] = cs * 2 + 1;
+                    for b in 0..num_bytes {
+                        for (ds, s) in prmt_srcs.iter_mut().enumerate() {
+                            let dw = ssa[usize::from(bytes[b] / 4)];
+                            if s.is_zero() {
+                                *s = dw.into();
+                            } else if *s != Src::from(dw) {
+                                continue;
+                            }
+                            prmt[usize::from(b)] =
+                                (ds as u8) * 4 + (bytes[b] % 4);
+                            break;
+                        }
                     }
-                    // TODO: Some ops can handle swizzles
-                    srcs.push(b.prmt(dw.into(), 0.into(), prmt).into());
+
+                    srcs.push(b.prmt4(prmt_srcs, prmt).into());
                 }
                 32 => {
                     assert!(comps == 1);

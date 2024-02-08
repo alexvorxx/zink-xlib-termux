@@ -1917,7 +1917,6 @@ emit_frag_end(struct v3d_compile *c)
         if (c->output_position_index == -1 &&
             !(c->s->info.num_images || c->s->info.num_ssbos) &&
             !c->s->info.fs.uses_discard &&
-            !c->s->info.fs.uses_demote &&
             !c->fs_key->sample_alpha_to_coverage &&
             c->output_sample_mask_index == -1 &&
             has_any_tlb_color_write) {

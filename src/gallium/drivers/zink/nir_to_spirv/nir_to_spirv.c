@@ -4421,7 +4421,8 @@ nir_to_spirv(struct nir_shader *s, const struct zink_shader_info *sinfo, const s
    case MESA_SHADER_FRAGMENT:
       if (s->info.fs.uses_sample_shading)
          spirv_builder_emit_cap(&ctx.builder, SpvCapabilitySampleRateShading);
-      if (s->info.fs.uses_demote && spirv_version < SPIRV_VERSION(1, 6))
+      if (s->info.fs.uses_discard && spirv_version < SPIRV_VERSION(1, 6) &&
+          screen->info.have_EXT_shader_demote_to_helper_invocation)
          spirv_builder_emit_extension(&ctx.builder,
                                       "SPV_EXT_demote_to_helper_invocation");
       break;

@@ -2561,7 +2561,6 @@ print_shader_info(const struct shader_info *info, FILE *fp)
 
    case MESA_SHADER_FRAGMENT:
       print_nz_bool(fp, "uses_discard", info->fs.uses_discard);
-      print_nz_bool(fp, "uses_demote", info->fs.uses_demote);
       print_nz_bool(fp, "uses_fbfetch_output", info->fs.uses_fbfetch_output);
       print_nz_bool(fp, "color_is_dual_source", info->fs.color_is_dual_source);
 

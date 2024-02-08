@@ -1322,7 +1322,7 @@ Converter::parseNIR()
       info_out->prop.fp.postDepthCoverage = nir->info.fs.post_depth_coverage;
       info_out->prop.fp.readsSampleLocations =
          BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_SAMPLE_POS);
-      info_out->prop.fp.usesDiscard = nir->info.fs.uses_discard || nir->info.fs.uses_demote;
+      info_out->prop.fp.usesDiscard = nir->info.fs.uses_discard;
       info_out->prop.fp.usesSampleMaskIn =
          BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_SAMPLE_MASK_IN);
       break;

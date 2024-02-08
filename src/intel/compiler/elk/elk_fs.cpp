@@ -6450,7 +6450,6 @@ elk_nir_populate_wm_prog_data(nir_shader *shader,
     * so the shader definitely kills pixels.
     */
    prog_data->uses_kill = shader->info.fs.uses_discard ||
-                          shader->info.fs.uses_demote ||
                           key->emit_alpha_test;
    prog_data->uses_omask = !key->ignore_sample_mask_out &&
       (shader->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK));

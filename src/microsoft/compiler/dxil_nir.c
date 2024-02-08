@@ -1931,7 +1931,8 @@ lower_subgroup_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       return false;
 
    b->cursor = nir_before_impl(b->impl);
-   if (b->shader->info.workgroup_size[1] == 1 &&
+   if (b->shader->info.stage == MESA_SHADER_COMPUTE &&
+       b->shader->info.workgroup_size[1] == 1 &&
        b->shader->info.workgroup_size[2] == 1) {
       /* When using Nx1x1 groups, use a simple stable algorithm
        * which is almost guaranteed to be correct. */

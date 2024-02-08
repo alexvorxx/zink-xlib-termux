@@ -31,7 +31,7 @@ variables:
    ALPINE_X86_64_LAVA_SSH_TAG: "20230626-v1"
    FEDORA_X86_64_BUILD_TAG: "20240123-teflon-3"
    KERNEL_ROOTFS_TAG: "20240129-piglit-e931"
-   KERNEL_TAG: "v6.6.13-mesa-9916"
+   KERNEL_TAG: "v6.6.16-mesa-475e"
    KERNEL_REPO: "gfx-ci/linux"
    PKG_REPO_REV: "3cc12a2a"
 

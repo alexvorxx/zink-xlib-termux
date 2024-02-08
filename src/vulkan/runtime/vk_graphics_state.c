@@ -1851,7 +1851,7 @@ vk_graphics_pipeline_state_copy(const struct vk_device *device,
    return VK_SUCCESS;
 }
 
-const struct vk_dynamic_graphics_state vk_default_dynamic_graphics_state = {
+static const struct vk_dynamic_graphics_state vk_default_dynamic_graphics_state = {
    .rs = {
       .line = {
          .width = 1.0f,

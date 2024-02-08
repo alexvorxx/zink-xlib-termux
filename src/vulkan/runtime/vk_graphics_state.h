@@ -1134,8 +1134,6 @@ void
 vk_graphics_pipeline_get_state(const struct vk_graphics_pipeline_state *state,
                                BITSET_WORD *set_state_out);
 
-extern const struct vk_dynamic_graphics_state vk_default_dynamic_graphics_state;
-
 /** Initialize a vk_dynamic_graphics_state with defaults
  *
  * :param dyn:          |out| Dynamic graphics state to initizlie

@@ -455,13 +455,14 @@ if __name__ == "__main__":
         target = '|'.join(args.target)
         target = target.strip()
 
+        deps = set()
+        print("🞋 job: " + Fore.BLUE + target + Style.RESET_ALL)
+
         # Implicitly include `parallel:` jobs
         target = f'({target})' + r'( \d+/\d+)?'
 
         target_jobs_regex = re.compile(target)
 
-        deps = set()
-        print("🞋 job: " + Fore.BLUE + target + Style.RESET_ALL)
         deps = find_dependencies(
             token=token,
             target_jobs_regex=target_jobs_regex,

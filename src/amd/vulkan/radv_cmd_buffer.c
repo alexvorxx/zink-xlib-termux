@@ -11081,8 +11081,15 @@ VKAPI_ATTR void VKAPI_CALL
 radv_CmdPipelineBarrier2(VkCommandBuffer commandBuffer, const VkDependencyInfo *pDependencyInfo)
 {
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   enum rgp_barrier_reason barrier_reason;
 
-   radv_barrier(cmd_buffer, pDependencyInfo, RGP_BARRIER_EXTERNAL_CMD_PIPELINE_BARRIER);
+   if (cmd_buffer->vk.runtime_rp_barrier) {
+      barrier_reason = RGP_BARRIER_EXTERNAL_RENDER_PASS_SYNC;
+   } else {
+      barrier_reason = RGP_BARRIER_EXTERNAL_CMD_PIPELINE_BARRIER;
+   }
+
+   radv_barrier(cmd_buffer, pDependencyInfo, barrier_reason);
 }
 
 static void

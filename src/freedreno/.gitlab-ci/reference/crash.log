@@ -16,8 +16,8 @@ ringbuffer:
     wptr: 56
     size: 32768
 bos:
-  - iova: 0x0000000100000000
-    size: 4096
+  - iova: 0x0000000100000000-0x0000000100001000
+    size: 4096 (0x1000)
 registers:
 	00800005	RBBM_STATUS: { GPU_BUSY_IGN_AHB | CP_BUSY | CP_AHB_BUSY_CX_MASTER }
 	00000000	RBBM_STATUS1: 0

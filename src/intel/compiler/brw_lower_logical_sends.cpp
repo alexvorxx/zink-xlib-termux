@@ -2773,6 +2773,8 @@ brw_fs_lower_logical_sends(fs_visitor &s)
             lower_lsc_surface_logical_send(ibld, inst);
             break;
          }
+         FALLTHROUGH;
+
       case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
       case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
       case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:

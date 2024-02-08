@@ -359,33 +359,26 @@ enum sbt_entry {
    SBT_ANY_HIT_IDX = offsetof(struct radv_pipeline_group_handle, any_hit_index),
 };
 
-static nir_def *
-get_sbt_ptr(nir_builder *b, nir_def *idx, enum sbt_type binding)
+static void
+load_sbt_entry(nir_builder *b, const struct rt_variables *vars, nir_def *idx, enum sbt_type binding,
+               enum sbt_entry offset)
 {
    nir_def *desc_base_addr = nir_load_sbt_base_amd(b);
 
    nir_def *desc = nir_pack_64_2x32(b, nir_load_smem_amd(b, 2, desc_base_addr, nir_imm_int(b, binding)));
 
    nir_def *stride_offset = nir_imm_int(b, binding + (binding == SBT_RAYGEN ? 8 : 16));
-   nir_def *stride = nir_pack_64_2x32(b, nir_load_smem_amd(b, 2, desc_base_addr, stride_offset));
+   nir_def *stride = nir_load_smem_amd(b, 1, desc_base_addr, stride_offset);
 
-   return nir_iadd(b, desc, nir_imul(b, nir_u2u64(b, idx), stride));
-}
-
-static void
-load_sbt_entry(nir_builder *b, const struct rt_variables *vars, nir_def *idx, enum sbt_type binding,
-               enum sbt_entry offset)
-{
-   nir_def *addr = get_sbt_ptr(b, idx, binding);
-   nir_def *load_addr = nir_iadd_imm(b, addr, offset);
+   nir_def *addr = nir_iadd(b, desc, nir_u2u64(b, nir_iadd_imm(b, nir_imul(b, idx, stride), offset)));
 
    if (offset == SBT_RECURSIVE_PTR) {
-      nir_store_var(b, vars->shader_addr, nir_build_load_global(b, 1, 64, load_addr), 1);
+      nir_store_var(b, vars->shader_addr, nir_build_load_global(b, 1, 64, addr), 1);
    } else {
-      nir_store_var(b, vars->idx, nir_build_load_global(b, 1, 32, load_addr), 1);
+      nir_store_var(b, vars->idx, nir_build_load_global(b, 1, 32, addr), 1);
    }
 
-   nir_def *record_addr = nir_iadd_imm(b, addr, RADV_RT_HANDLE_SIZE);
+   nir_def *record_addr = nir_iadd_imm(b, addr, RADV_RT_HANDLE_SIZE - offset);
    nir_store_var(b, vars->shader_record_ptr, record_addr, 1);
 }
 

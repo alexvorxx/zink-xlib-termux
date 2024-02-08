@@ -7,7 +7,7 @@
 
 #include "nvk_private.h"
 
-#include "vulkan/runtime/vk_instance.h"
+#include "vk_instance.h"
 #include "util/xmlconfig.h"
 
 struct nvk_instance {

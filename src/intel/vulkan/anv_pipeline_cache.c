@@ -29,7 +29,7 @@
 #include "nir/nir_serialize.h"
 #include "anv_private.h"
 #include "nir/nir_xfb_info.h"
-#include "vulkan/util/vk_util.h"
+#include "vk_util.h"
 #include "compiler/spirv/nir_spirv.h"
 #include "shaders/float64_spv.h"
 

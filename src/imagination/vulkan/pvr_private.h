@@ -63,6 +63,7 @@
 #include "vk_buffer.h"
 #include "vk_command_buffer.h"
 #include "vk_device.h"
+#include "vk_enum_to_str.h"
 #include "vk_graphics_state.h"
 #include "vk_image.h"
 #include "vk_instance.h"
@@ -70,7 +71,6 @@
 #include "vk_physical_device.h"
 #include "vk_queue.h"
 #include "vk_sync.h"
-#include "vulkan/util/vk_enum_to_str.h"
 #include "wsi_common.h"
 
 #ifdef HAVE_VALGRIND

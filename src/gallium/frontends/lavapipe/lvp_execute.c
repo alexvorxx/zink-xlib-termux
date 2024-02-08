@@ -44,7 +44,6 @@
 #include "util/format/u_format_zs.h"
 #include "util/ptralloc.h"
 #include "tgsi/tgsi_from_mesa.h"
-#include "vulkan/util/vk_util.h"
 
 #include "vk_blend.h"
 #include "vk_cmd_enqueue_entrypoints.h"

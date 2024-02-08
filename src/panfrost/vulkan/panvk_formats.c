@@ -31,7 +31,6 @@
 #include "util/format_r11g11b10f.h"
 #include "util/format_srgb.h"
 #include "util/half_float.h"
-#include "vulkan/util/vk_format.h"
 #include "vk_format.h"
 #include "vk_util.h"
 

@@ -10,8 +10,8 @@
 #include "nouveau_device.h"
 #include "nv_device_info.h"
 
-#include "vulkan/runtime/vk_physical_device.h"
-#include "vulkan/runtime/vk_sync.h"
+#include "vk_physical_device.h"
+#include "vk_sync.h"
 
 #include "wsi_common.h"
 

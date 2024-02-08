@@ -28,8 +28,8 @@
 #include "broadcom/compiler/v3d_compiler.h"
 
 #include "util/half_float.h"
-#include "vulkan/util/vk_format.h"
 #include "util/u_pack_color.h"
+#include "vk_format.h"
 
 void
 v3dX(job_emit_binning_flush)(struct v3dv_job *job)

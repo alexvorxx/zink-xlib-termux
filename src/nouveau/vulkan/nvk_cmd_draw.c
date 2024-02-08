@@ -15,9 +15,9 @@
 
 #include "nil_format.h"
 #include "util/bitpack_helpers.h"
-#include "vulkan/runtime/vk_render_pass.h"
-#include "vulkan/runtime/vk_standard_sample_locations.h"
-#include "vulkan/util/vk_format.h"
+#include "vk_format.h"
+#include "vk_render_pass.h"
+#include "vk_standard_sample_locations.h"
 
 #include "nouveau_context.h"
 

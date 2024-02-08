@@ -9,8 +9,8 @@
 
 #include "nouveau_bo.h"
 #include "nvk_device.h"
-#include "vulkan/runtime/vk_object.h"
-#include "vulkan/runtime/vk_descriptor_update_template.h"
+#include "vk_object.h"
+#include "vk_descriptor_update_template.h"
 
 struct nvk_descriptor_set_layout;
 

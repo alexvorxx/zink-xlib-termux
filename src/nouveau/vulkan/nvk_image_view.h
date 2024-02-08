@@ -7,7 +7,7 @@
 
 #include "nvk_private.h"
 
-#include "vulkan/runtime/vk_image.h"
+#include "vk_image.h"
 
 struct nvk_device;
 

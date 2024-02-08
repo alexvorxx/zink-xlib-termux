@@ -30,7 +30,7 @@
 
 #include "util/mesa-blake3.h"
 #include "util/u_math.h"
-#include "vulkan/runtime/vk_pipeline_cache.h"
+#include "vk_pipeline_cache.h"
 #include "vulkan/vulkan.h"
 #include "ac_binary.h"
 #include "ac_shader_util.h"

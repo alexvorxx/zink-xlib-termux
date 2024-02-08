@@ -30,7 +30,7 @@
 
 #include "util/format/u_format.h"
 #include "util/u_process.h"
-#include "vulkan/util/vk_format.h"
+#include "vk_format.h"
 
 static int
 vk_rmv_token_compare(const void *first, const void *second)

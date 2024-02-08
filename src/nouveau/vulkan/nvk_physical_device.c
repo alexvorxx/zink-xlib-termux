@@ -16,9 +16,9 @@
 #include "util/disk_cache.h"
 #include "util/mesa-sha1.h"
 
-#include "vulkan/runtime/vk_device.h"
-#include "vulkan/runtime/vk_drm_syncobj.h"
-#include "vulkan/runtime/vk_shader_module.h"
+#include "vk_device.h"
+#include "vk_drm_syncobj.h"
+#include "vk_shader_module.h"
 #include "vulkan/wsi/wsi_common.h"
 
 #include <fcntl.h>

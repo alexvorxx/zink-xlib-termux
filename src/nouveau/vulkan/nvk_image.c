@@ -11,7 +11,7 @@
 #include "nvk_physical_device.h"
 
 #include "nil_format.h"
-#include "vulkan/util/vk_format.h"
+#include "vk_format.h"
 
 #include "clb097.h"
 #include "clb197.h"

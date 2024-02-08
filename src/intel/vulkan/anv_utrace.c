@@ -29,7 +29,7 @@
 #include "perf/intel_perf.h"
 #include "util/perf/cpu_trace.h"
 
-#include "vulkan/runtime/vk_common_entrypoints.h"
+#include "vk_common_entrypoints.h"
 
 /** Timestamp structure format */
 union anv_utrace_timestamp {

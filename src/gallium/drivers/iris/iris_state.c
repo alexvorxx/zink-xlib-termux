@@ -98,7 +98,6 @@
 #include "intel/common/intel_aux_map.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_sample_positions.h"
-#include "intel/compiler/brw_compiler.h"
 #include "intel/ds/intel_tracepoints.h"
 #include "iris_batch.h"
 #include "iris_context.h"
@@ -108,7 +107,15 @@
 #include "iris_utrace.h"
 
 #include "iris_genx_macros.h"
+
+#if GFX_VER >= 9
+#include "intel/compiler/brw_compiler.h"
 #include "intel/common/intel_genX_state.h"
+#else
+#include "intel/compiler/elk/elk_compiler.h"
+#include "intel/common/intel_genX_state_elk.h"
+#endif
+
 #include "intel/common/intel_guardband.h"
 #include "intel/common/intel_pixel_hash.h"
 #include "intel/common/intel_tiled_render.h"
@@ -302,6 +309,17 @@ translate_wrap(unsigned pipe_wrap)
       [PIPE_TEX_WRAP_MIRROR_CLAMP_TO_BORDER] = -1,
    };
    return map[pipe_wrap];
+}
+
+
+static inline uint32_t
+iris_encode_slm_size(unsigned gen, uint32_t bytes)
+{
+#if GFX_VER >= 9
+   return encode_slm_size(gen, bytes);
+#else
+   return elk_encode_slm_size(gen, bytes);
+#endif
 }
 
 /**
@@ -3906,23 +3924,29 @@ upload_sysvals(struct iris_context *ice,
       uint32_t sysval = shader->system_values[i];
       uint32_t value = 0;
 
-      if (BRW_PARAM_DOMAIN(sysval) == BRW_PARAM_DOMAIN_IMAGE) {
+#if GFX_VER >= 9
+      #define COMPILER(x) BRW_##x
+#else
+      #define COMPILER(x) ELK_##x
+#endif
+
+      if (ELK_PARAM_DOMAIN(sysval) == ELK_PARAM_DOMAIN_IMAGE) {
 #if GFX_VER == 8
-         unsigned img = BRW_PARAM_IMAGE_IDX(sysval);
-         unsigned offset = BRW_PARAM_IMAGE_OFFSET(sysval);
+         unsigned img = ELK_PARAM_IMAGE_IDX(sysval);
+         unsigned offset = ELK_PARAM_IMAGE_OFFSET(sysval);
          struct isl_image_param *param =
             &genx->shaders[stage].image_param[img];
 
          assert(offset < sizeof(struct isl_image_param));
          value = ((uint32_t *) param)[offset];
 #endif
-      } else if (sysval == BRW_PARAM_BUILTIN_ZERO) {
+      } else if (sysval == COMPILER(PARAM_BUILTIN_ZERO)) {
          value = 0;
-      } else if (BRW_PARAM_BUILTIN_IS_CLIP_PLANE(sysval)) {
-         int plane = BRW_PARAM_BUILTIN_CLIP_PLANE_IDX(sysval);
-         int comp  = BRW_PARAM_BUILTIN_CLIP_PLANE_COMP(sysval);
+      } else if (COMPILER(PARAM_BUILTIN_IS_CLIP_PLANE(sysval))) {
+         int plane = COMPILER(PARAM_BUILTIN_CLIP_PLANE_IDX(sysval));
+         int comp  = COMPILER(PARAM_BUILTIN_CLIP_PLANE_COMP(sysval));
          value = fui(ice->state.clip_planes.ucp[plane][comp]);
-      } else if (sysval == BRW_PARAM_BUILTIN_PATCH_VERTICES_IN) {
+      } else if (sysval == COMPILER(PARAM_BUILTIN_PATCH_VERTICES_IN)) {
          if (stage == MESA_SHADER_TESS_CTRL) {
             value = ice->state.vertices_per_patch;
          } else {
@@ -3934,19 +3958,19 @@ upload_sysvals(struct iris_context *ice,
             else
                value = ice->state.vertices_per_patch;
          }
-      } else if (sysval >= BRW_PARAM_BUILTIN_TESS_LEVEL_OUTER_X &&
-                 sysval <= BRW_PARAM_BUILTIN_TESS_LEVEL_OUTER_W) {
-         unsigned i = sysval - BRW_PARAM_BUILTIN_TESS_LEVEL_OUTER_X;
+      } else if (sysval >= COMPILER(PARAM_BUILTIN_TESS_LEVEL_OUTER_X) &&
+                 sysval <= COMPILER(PARAM_BUILTIN_TESS_LEVEL_OUTER_W)) {
+         unsigned i = sysval - COMPILER(PARAM_BUILTIN_TESS_LEVEL_OUTER_X);
          value = fui(ice->state.default_outer_level[i]);
-      } else if (sysval == BRW_PARAM_BUILTIN_TESS_LEVEL_INNER_X) {
+      } else if (sysval == COMPILER(PARAM_BUILTIN_TESS_LEVEL_INNER_X)) {
          value = fui(ice->state.default_inner_level[0]);
-      } else if (sysval == BRW_PARAM_BUILTIN_TESS_LEVEL_INNER_Y) {
+      } else if (sysval == COMPILER(PARAM_BUILTIN_TESS_LEVEL_INNER_Y)) {
          value = fui(ice->state.default_inner_level[1]);
-      } else if (sysval >= BRW_PARAM_BUILTIN_WORK_GROUP_SIZE_X &&
-                 sysval <= BRW_PARAM_BUILTIN_WORK_GROUP_SIZE_Z) {
-         unsigned i = sysval - BRW_PARAM_BUILTIN_WORK_GROUP_SIZE_X;
+      } else if (sysval >= COMPILER(PARAM_BUILTIN_WORK_GROUP_SIZE_X) &&
+                 sysval <= COMPILER(PARAM_BUILTIN_WORK_GROUP_SIZE_Z)) {
+         unsigned i = sysval - COMPILER(PARAM_BUILTIN_WORK_GROUP_SIZE_X);
          value = ice->state.last_block[i];
-      } else if (sysval == BRW_PARAM_BUILTIN_WORK_DIM) {
+      } else if (sysval == COMPILER(PARAM_BUILTIN_WORK_DIM)) {
          value = grid->work_dim;
       } else {
          assert(!"unhandled system value");
@@ -4548,6 +4572,17 @@ iris_create_so_decl_list(const struct pipe_stream_output_info *info,
    return map;
 }
 
+static inline int
+iris_compute_first_urb_slot_required(uint64_t inputs_read,
+                                     const struct intel_vue_map *prev_stage_vue_map)
+{
+#if GFX_VER >= 9
+   return brw_compute_first_urb_slot_required(inputs_read, prev_stage_vue_map);
+#else
+   return elk_compute_first_urb_slot_required(inputs_read, prev_stage_vue_map);
+#endif
+}
+
 static void
 iris_compute_sbe_urb_read_interval(uint64_t fs_input_slots,
                                    const struct intel_vue_map *last_vue_map,
@@ -4561,7 +4596,7 @@ iris_compute_sbe_urb_read_interval(uint64_t fs_input_slots,
     * should be safe.
     */
    const unsigned first_slot =
-      brw_compute_first_urb_slot_required(fs_input_slots, last_vue_map);
+      iris_compute_first_urb_slot_required(fs_input_slots, last_vue_map);
 
    /* This becomes the URB read offset (counted in pairs of slots). */
    assert(first_slot % 2 == 0);
@@ -7152,7 +7187,11 @@ iris_upload_dirty_render_state(struct iris_context *ice,
 
             uint32_t ps_state[GENX(3DSTATE_PS_length)] = {0};
             _iris_pack_command(batch, GENX(3DSTATE_PS), ps_state, ps) {
+#if GFX_VER >= 9
                struct brw_wm_prog_data *wm_prog_data = brw_wm_prog_data(shader->brw_prog_data);
+#else
+               struct elk_wm_prog_data *wm_prog_data = elk_wm_prog_data(shader->elk_prog_data);
+#endif
                intel_set_ps_dispatch_state(&ps, batch->screen->devinfo,
                                            wm_prog_data, util_framebuffer_get_num_samples(cso_fb),
                                            0 /* msaa_flags */);
@@ -7169,6 +7208,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
                ps.OverlappingSubspansEnable = false;
 #endif
 
+#if GFX_VER >= 9
                ps.DispatchGRFStartRegisterForConstantSetupData0 =
                   brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
                ps.DispatchGRFStartRegisterForConstantSetupData1 =
@@ -7185,6 +7225,21 @@ iris_upload_dirty_render_state(struct iris_context *ice,
 #if GFX_VER < 20
                ps.KernelStartPointer2 = KSP(shader) +
                   brw_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
+#endif
+#else
+               ps.DispatchGRFStartRegisterForConstantSetupData0 =
+                  elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
+               ps.DispatchGRFStartRegisterForConstantSetupData1 =
+                  elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 1);
+               ps.DispatchGRFStartRegisterForConstantSetupData2 =
+                  elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 2);
+
+               ps.KernelStartPointer0 = KSP(shader) +
+                  elk_wm_prog_data_prog_offset(wm_prog_data, ps, 0);
+               ps.KernelStartPointer1 = KSP(shader) +
+                  elk_wm_prog_data_prog_offset(wm_prog_data, ps, 1);
+               ps.KernelStartPointer2 = KSP(shader) +
+                  elk_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
 #endif
 
 #if GFX_VERx10 >= 125
@@ -8796,7 +8851,7 @@ iris_upload_compute_walker(struct iris_context *ice,
    idd.KernelStartPointer = KSP(shader);
    idd.NumberofThreadsinGPGPUThreadGroup = dispatch.threads;
    idd.SharedLocalMemorySize =
-      encode_slm_size(GFX_VER, shader->total_shared);
+      iris_encode_slm_size(GFX_VER, shader->total_shared);
    idd.SamplerStatePointer = shs->sampler_table.offset;
    idd.SamplerCount = encode_sampler_count(shader),
    idd.BindingTablePointer = binder->bt_offset[MESA_SHADER_COMPUTE];
@@ -8954,7 +9009,7 @@ iris_upload_gpgpu_walker(struct iris_context *ice,
 
       iris_pack_state(GENX(INTERFACE_DESCRIPTOR_DATA), desc, idd) {
          idd.SharedLocalMemorySize =
-            encode_slm_size(GFX_VER, ish->kernel_shared_size + grid->variable_shared_mem);
+            iris_encode_slm_size(GFX_VER, ish->kernel_shared_size + grid->variable_shared_mem);
          idd.KernelStartPointer =
             KSP(shader) + iris_cs_data_prog_offset(cs_data, dispatch.simd_size);
          idd.SamplerStatePointer = shs->sampler_table.offset;

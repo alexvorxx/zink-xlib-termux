@@ -20,7 +20,6 @@
 #include "util/u_upload_mgr.h"
 #include "compiler/nir/nir_builder.h"
 #include "compiler/nir/nir_serialize.h"
-#include "intel/compiler/brw_compiler.h"
 #include "intel/common/intel_aux_map.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_sample_positions.h"
@@ -33,7 +32,14 @@
 #include "iris_utrace.h"
 
 #include "iris_genx_macros.h"
+
+#if GFX_VER >= 9
+#include "intel/compiler/brw_compiler.h"
 #include "intel/common/intel_genX_state.h"
+#else
+#include "intel/compiler/elk/elk_compiler.h"
+#include "intel/common/intel_genX_state_elk.h"
+#endif
 
 #include "drm-uapi/i915_drm.h"
 
@@ -73,7 +79,11 @@ static nir_shader *
 load_shader_lib(struct iris_screen *screen, void *mem_ctx)
 {
    const nir_shader_compiler_options *nir_options =
+#if GFX_VER >= 9
       screen->brw->nir_options[MESA_SHADER_KERNEL];
+#else
+      screen->elk->nir_options[MESA_SHADER_KERNEL];
+#endif
 
    struct blob_reader blob;
    blob_reader_init(&blob, (void *)genX(intel_shaders_nir),
@@ -285,7 +295,11 @@ emit_indirect_generate_draw(struct iris_batch *batch,
    }
 
    iris_emit_cmd(batch, GENX(3DSTATE_PS), ps) {
+#if GFX_VER >= 9
       struct brw_wm_prog_data *wm_prog_data = brw_wm_prog_data(shader->brw_prog_data);
+#else
+      struct elk_wm_prog_data *wm_prog_data = elk_wm_prog_data(shader->elk_prog_data);
+#endif
       intel_set_ps_dispatch_state(&ps, devinfo, wm_prog_data,
                                   1 /* rasterization_samples */,
                                   0 /* msaa_flags */);
@@ -298,6 +312,7 @@ emit_indirect_generate_draw(struct iris_batch *batch,
                                   shader->ubo_ranges[0].length;
 #endif
 
+#if GFX_VER >= 9
       ps.DispatchGRFStartRegisterForConstantSetupData0 =
          brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
       ps.DispatchGRFStartRegisterForConstantSetupData1 =
@@ -314,6 +329,21 @@ emit_indirect_generate_draw(struct iris_batch *batch,
 #if GFX_VER < 20
       ps.KernelStartPointer2 = KSP(ice->draw.generation.shader) +
          brw_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
+#endif
+#else
+      ps.DispatchGRFStartRegisterForConstantSetupData0 =
+         elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
+      ps.DispatchGRFStartRegisterForConstantSetupData1 =
+         elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 1);
+      ps.DispatchGRFStartRegisterForConstantSetupData2 =
+         elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 2);
+
+      ps.KernelStartPointer0 = KSP(ice->draw.generation.shader) +
+         elk_wm_prog_data_prog_offset(wm_prog_data, ps, 0);
+      ps.KernelStartPointer1 = KSP(ice->draw.generation.shader) +
+         elk_wm_prog_data_prog_offset(wm_prog_data, ps, 1);
+      ps.KernelStartPointer2 = KSP(ice->draw.generation.shader) +
+         elk_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
 #endif
 
       ps.MaximumNumberofThreadsPerPSD = devinfo->max_threads_per_psd - 1;

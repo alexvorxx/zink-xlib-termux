@@ -58,22 +58,22 @@ struct blorp_params;
 #define IRIS_MAX_CLIP_PLANES 8
 #define IRIS_MAX_GLOBAL_BINDINGS 128
 
-enum iris_param_domain {
-   BRW_PARAM_DOMAIN_BUILTIN = 0,
-   BRW_PARAM_DOMAIN_IMAGE,
-};
-
 enum {
    DRI_CONF_BO_REUSE_DISABLED,
    DRI_CONF_BO_REUSE_ALL
 };
 
-#define BRW_PARAM(domain, val)   (BRW_PARAM_DOMAIN_##domain << 24 | (val))
-#define BRW_PARAM_DOMAIN(param)  ((uint32_t)(param) >> 24)
-#define BRW_PARAM_VALUE(param)   ((uint32_t)(param) & 0x00ffffff)
-#define BRW_PARAM_IMAGE(idx, offset) BRW_PARAM(IMAGE, ((idx) << 8) | (offset))
-#define BRW_PARAM_IMAGE_IDX(value)   (BRW_PARAM_VALUE(value) >> 8)
-#define BRW_PARAM_IMAGE_OFFSET(value)(BRW_PARAM_VALUE(value) & 0xf)
+enum iris_param_domain {
+   ELK_PARAM_DOMAIN_BUILTIN = 0,
+   ELK_PARAM_DOMAIN_IMAGE,
+};
+
+#define ELK_PARAM(domain, val)   (ELK_PARAM_DOMAIN_##domain << 24 | (val))
+#define ELK_PARAM_DOMAIN(param)  ((uint32_t)(param) >> 24)
+#define ELK_PARAM_VALUE(param)   ((uint32_t)(param) & 0x00ffffff)
+#define ELK_PARAM_IMAGE(idx, offset) ELK_PARAM(IMAGE, ((idx) << 8) | (offset))
+#define ELK_PARAM_IMAGE_IDX(value)   (ELK_PARAM_VALUE(value) >> 8)
+#define ELK_PARAM_IMAGE_OFFSET(value)(ELK_PARAM_VALUE(value) & 0xf)
 
 /**
  * Dirty flags.  When state changes, we flag some combination of these
@@ -668,6 +668,7 @@ struct iris_compiled_shader {
 
    /** The program data (owned by the program cache hash table) */
    struct brw_stage_prog_data *brw_prog_data;
+   struct elk_stage_prog_data *elk_prog_data;
 
    /** A list of system values to be uploaded as uniforms. */
    uint32_t *system_values;
@@ -1314,6 +1315,8 @@ uint32_t iris_bti_to_group_index(const struct iris_binding_table *bt,
                                  uint32_t bti);
 void iris_apply_brw_prog_data(struct iris_compiled_shader *shader,
                               struct brw_stage_prog_data *prog_data);
+void iris_apply_elk_prog_data(struct iris_compiled_shader *shader,
+                              struct elk_stage_prog_data *prog_data);
 struct intel_cs_dispatch_info
 iris_get_cs_dispatch_info(const struct intel_device_info *devinfo,
                           const struct iris_compiled_shader *shader,

@@ -226,6 +226,7 @@ struct iris_screen {
    struct isl_device isl_dev;
    struct iris_bufmgr *bufmgr;
    struct brw_compiler *brw;
+   struct elk_compiler *elk;
    struct intel_perf_config *perf_cfg;
 
    const struct intel_l3_config *l3_config_3d;

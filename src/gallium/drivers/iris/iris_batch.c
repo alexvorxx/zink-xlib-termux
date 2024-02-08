@@ -49,6 +49,7 @@
 #include "common/intel_aux_map.h"
 #include "intel/common/intel_gem.h"
 #include "intel/compiler/brw_compiler.h"
+#include "intel/compiler/elk/elk_compiler.h"
 #include "intel/ds/intel_tracepoints.h"
 #include "util/hash_table.h"
 #include "util/u_debug.h"
@@ -232,10 +233,18 @@ iris_init_batch(struct iris_context *ice,
       const unsigned decode_flags = INTEL_BATCH_DECODE_DEFAULT_FLAGS |
          (INTEL_DEBUG(DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0);
 
-      intel_batch_decode_ctx_init_brw(&batch->decoder, &screen->brw->isa,
-                                      screen->devinfo,
-                                      stderr, decode_flags, NULL,
-                                      decode_get_bo, decode_get_state_size, batch);
+      if (screen->brw) {
+         intel_batch_decode_ctx_init_brw(&batch->decoder, &screen->brw->isa,
+                                         screen->devinfo,
+                                         stderr, decode_flags, NULL,
+                                         decode_get_bo, decode_get_state_size, batch);
+      } else {
+         assert(screen->elk);
+         intel_batch_decode_ctx_init_elk(&batch->decoder, &screen->elk->isa,
+                                         screen->devinfo,
+                                         stderr, decode_flags, NULL,
+                                         decode_get_bo, decode_get_state_size, batch);
+      }
       batch->decoder.dynamic_base = IRIS_MEMZONE_DYNAMIC_START;
       batch->decoder.instruction_base = IRIS_MEMZONE_SHADER_START;
       batch->decoder.surface_base = IRIS_MEMZONE_BINDER_START;

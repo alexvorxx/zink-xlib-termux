@@ -9,3 +9,4 @@ VK_KHR_shader_quad_control on RADV
 OpenGL 4.6 on Asahi
 OpenGL ES 3.2 on Asahi
 Mali G610 and G310 on Panfrost
+Mali T600 on Panfrost

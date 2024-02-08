@@ -11,9 +11,8 @@
 struct agx_pixel_format_entry {
    uint8_t channels;
    uint8_t type;
-   bool renderable : 1;
    bool texturable : 1;
-   enum pipe_format internal;
+   enum pipe_format renderable;
 };
 
 extern const struct agx_pixel_format_entry agx_pixel_format[PIPE_FORMAT_COUNT];

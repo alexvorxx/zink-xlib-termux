@@ -200,8 +200,8 @@ v3d_flush_jobs_writing_resource(struct v3d_context *v3d,
          * are serialized with the previous submitted job.
          */
         if (!is_compute_pipeline && rsc->bo != NULL && rsc->compute_written) {
-           v3d->sync_on_last_compute_job = true;
-           rsc->compute_written = false;
+                v3d->sync_on_last_compute_job = true;
+                rsc->compute_written = false;
         }
 
         if (!entry)

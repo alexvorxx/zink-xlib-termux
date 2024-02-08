@@ -2026,8 +2026,12 @@ radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *
          }
       }
 
-      if (last_vgt_stage && last_vgt_stage->nir->xfb_info) {
-         /* Disable NGG because GFX10/GFX10.3 don't support NGG streamout. */
+      if ((last_vgt_stage && last_vgt_stage->nir->xfb_info) ||
+          ((device->instance->debug_flags & RADV_DEBUG_NO_NGG_GS) && stages[MESA_SHADER_GEOMETRY].nir)) {
+         /* NGG needs to be disabled on GFX10/GFX10.3 when:
+          * - streamout is used because NGG streamout isn't supported
+          * - NGG GS is explictly disabled to workaround performance issues
+          */
          if (stages[MESA_SHADER_TESS_EVAL].nir)
             stages[MESA_SHADER_TESS_EVAL].info.is_ngg = false;
          else

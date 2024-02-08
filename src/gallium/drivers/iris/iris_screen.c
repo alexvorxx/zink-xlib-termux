@@ -703,18 +703,6 @@ iris_query_memory_info(struct pipe_screen *pscreen,
    info->nr_device_memory_evictions = 0;
 }
 
-static const void *
-iris_get_compiler_options(struct pipe_screen *pscreen,
-                          enum pipe_shader_ir ir,
-                          enum pipe_shader_type pstage)
-{
-   struct iris_screen *screen = (struct iris_screen *) pscreen;
-   gl_shader_stage stage = stage_from_pipe(pstage);
-   assert(ir == PIPE_SHADER_IR_NIR);
-
-   return screen->compiler->nir_options[stage];
-}
-
 static struct disk_cache *
 iris_get_disk_shader_cache(struct pipe_screen *pscreen)
 {

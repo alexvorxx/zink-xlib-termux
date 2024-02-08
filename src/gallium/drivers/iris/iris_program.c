@@ -47,6 +47,7 @@
 #include "intel/compiler/intel_nir.h"
 #include "intel/compiler/brw_prim.h"
 #include "iris_context.h"
+#include "iris_pipe.h"
 #include "nir/tgsi_to_nir.h"
 
 #define KEY_INIT(prefix)                                                   \
@@ -3320,6 +3321,18 @@ iris_shader_perf_log(void *data, unsigned *id, const char *fmt, ...)
    }
 
    va_end(args);
+}
+
+const void *
+iris_get_compiler_options(struct pipe_screen *pscreen,
+                          enum pipe_shader_ir ir,
+                          enum pipe_shader_type pstage)
+{
+   struct iris_screen *screen = (struct iris_screen *) pscreen;
+   gl_shader_stage stage = stage_from_pipe(pstage);
+   assert(ir == PIPE_SHADER_IR_NIR);
+
+   return screen->compiler->nir_options[stage];
 }
 
 void

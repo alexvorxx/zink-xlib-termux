@@ -1762,6 +1762,7 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
 
    assert(!chain->present_ids.dispatch_in_progress);
    chain->present_ids.dispatch_in_progress = true;
+   pthread_mutex_unlock(&chain->present_ids.lock);
 
    /* Whether or not we were dispatching the events before, we are now: pull
     * all the new events from our event queue, post them, and wake up everyone
@@ -1777,7 +1778,9 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
       if (ret > 0) {
          /* Completed our own present; stop our own dispatching and let
           * someone else pick it up. */
+         pthread_mutex_lock(&chain->present_ids.lock);
          if (chain->present_ids.max_completed >= present_id) {
+            pthread_mutex_unlock(&chain->present_ids.lock);
             ret = VK_SUCCESS;
             goto relinquish_dispatch;
          }
@@ -1785,6 +1788,7 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
          /* Wake up other waiters who may have been unblocked by the events
           * we just read. */
          pthread_cond_broadcast(&chain->present_ids.list_advanced);
+         pthread_mutex_unlock(&chain->present_ids.lock);
       }
 
       /* Check for timeout, and relinquish the dispatch to another thread
@@ -1810,9 +1814,6 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
          goto relinquish_dispatch;
       }
 
-      /* Drop the lock around poll, so people can wait whilst we sleep. */
-      pthread_mutex_unlock(&chain->present_ids.lock);
-
       struct pollfd pollfd = {
          .fd = wl_fd,
          .events = POLLIN
@@ -1821,11 +1822,6 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
       timespec_from_nsec(&current_time, current_time_nsec);
       timespec_sub(&rel_timeout, &end_time, &current_time);
       ret = ppoll(&pollfd, 1, &rel_timeout, NULL);
-
-      /* Re-lock after poll; either we're dispatching events under the lock or
-       * bouncing out from an error also under the lock. We can't use timedlock
-       * here because we need to acquire to clear dispatch_in_progress. */
-      pthread_mutex_lock(&chain->present_ids.lock);
 
       if (ret <= 0) {
          int lerrno = errno;
@@ -1849,6 +1845,7 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
    }
 
 relinquish_dispatch:
+   pthread_mutex_lock(&chain->present_ids.lock);
    assert(chain->present_ids.dispatch_in_progress);
    chain->present_ids.dispatch_in_progress = false;
    pthread_cond_broadcast(&chain->present_ids.list_advanced);
@@ -1909,12 +1906,13 @@ presentation_handle_sync_output(void *data,
 static void
 wsi_wl_presentation_update_present_id(struct wsi_wl_present_id *id)
 {
-   /* present_ids.lock already held around dispatch */
+   pthread_mutex_lock(&id->chain->present_ids.lock);
    if (id->present_id > id->chain->present_ids.max_completed)
       id->chain->present_ids.max_completed = id->present_id;
 
    wl_list_remove(&id->link);
    vk_free(id->alloc, id);
+   pthread_mutex_unlock(&id->chain->present_ids.lock);
 }
 
 static void

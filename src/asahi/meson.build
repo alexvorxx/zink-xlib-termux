@@ -8,10 +8,10 @@ inc_asahi = include_directories([
 
 if with_gallium_asahi
    subdir('layout')
+   subdir('compiler')
    subdir('clc')
    subdir('genxml')
    subdir('lib')
-   subdir('compiler')
 endif
 
 if with_tools.contains('drm-shim')

@@ -532,10 +532,6 @@ calc_superblocks(struct etna_context *ctx, const struct etna_operation *operatio
    unsigned num_kernels = DIV_ROUND_UP(output_channels, kernels_per_core * nn_core_count);
    unsigned superblocks = DIV_ROUND_UP(DIV_ROUND_UP(output_channels, nn_core_count), num_kernels);
 
-   /* TODO: Remove this once we support superblocks that don't divide output_channels in the compressed buffer */
-   while(output_channels % superblocks)
-      superblocks++;
-
    return superblocks;
 }
 
@@ -984,7 +980,7 @@ write_core_6(struct etna_ml_subgraph *subgraph, uint32_t *map, unsigned core, co
 
       unsigned kernels_in_superblock = DIV_ROUND_UP(kernels_per_core, superblocks);
       if (superblock == superblocks - 1)
-         kernels_in_superblock = DIV_ROUND_UP(kernels_per_core, superblocks) - kernels_per_core % superblocks;
+         kernels_in_superblock = kernels_per_core - kernels_in_superblock * (superblocks - 1);
 
       for (unsigned kernel = 0; kernel < kernels_in_superblock; kernel++) {
          unsigned out_channel = core * kernels_in_superblock + kernel + superblock * DIV_ROUND_UP(kernels_per_core, superblocks) * cores_used;
@@ -1063,7 +1059,7 @@ write_core_interleaved(struct etna_ml_subgraph *subgraph, uint32_t *map, unsigne
 
       unsigned kernels_in_superblock = DIV_ROUND_UP(kernels_per_core, superblocks);
       if (superblock == superblocks - 1)
-         kernels_in_superblock = DIV_ROUND_UP(kernels_per_core, superblocks) - kernels_per_core % superblocks;
+         kernels_in_superblock = kernels_per_core - kernels_in_superblock * (superblocks - 1);
 
       for (unsigned z = 0; z < input_channels; z++) {
          for (unsigned kernel = 0; kernel < kernels_in_superblock; kernel++) {
@@ -1148,7 +1144,7 @@ write_core_sequential(struct etna_ml_subgraph *subgraph, uint32_t *map, unsigned
 
       unsigned kernels_in_superblock = DIV_ROUND_UP(kernels_per_core, superblocks);
       if (superblock == superblocks - 1)
-         kernels_in_superblock = DIV_ROUND_UP(kernels_per_core, superblocks) - kernels_per_core % superblocks;
+         kernels_in_superblock = kernels_per_core - kernels_in_superblock * (superblocks - 1);
 
       for (unsigned kernel = 0; kernel < kernels_in_superblock; kernel++) {
          unsigned out_channel = core * kernels_in_superblock + kernel + superblock * DIV_ROUND_UP(kernels_per_core, superblocks) * cores_used;

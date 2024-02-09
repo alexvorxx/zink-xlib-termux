@@ -2977,7 +2977,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
    NIR_PASS(_, nir, nir_lower_var_copies);
    NIR_PASS(_, nir, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
             glsl_type_size, nir_lower_io_lower_64bit_to_32);
-   NIR_PASS(_, nir, nir_lower_ssbo);
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       struct interp_masks masks = agx_interp_masks(nir);
 

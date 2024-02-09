@@ -46,9 +46,10 @@ aubinator_error_decode = executable(
   files('aubinator_error_decode.c',
         'aubinator_error_decode_xe.c',
         'aubinator_error_decode_xe.h'),
-  dependencies : [idep_mesautil, dep_zlib, dep_thread, idep_intel_dev, idep_intel_decoder_brw],
+  dependencies : [idep_mesautil, dep_zlib, dep_thread, idep_intel_dev,
+                  idep_intel_decoder_brw, idep_intel_decoder_elk],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler],
+  link_with : [libintel_common, libintel_compiler, libintel_compiler_elk],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true

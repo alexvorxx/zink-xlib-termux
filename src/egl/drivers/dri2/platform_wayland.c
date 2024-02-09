@@ -50,6 +50,7 @@
 #include "kopper_interface.h"
 #include "loader.h"
 #include "loader_dri_helper.h"
+#include <loader_wayland_helper.h>
 
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 #include "wayland-drm-client-protocol.h"
@@ -678,7 +679,8 @@ dri2_wl_create_window_surface(_EGLDisplay *disp, _EGLConfig *conf,
       dri2_surf->format = dri2_wl_shm_format_from_visual_idx(visual_idx);
    }
 
-   dri2_surf->wl_queue = wl_display_create_queue(dri2_dpy->wl_dpy);
+   dri2_surf->wl_queue = wl_display_create_queue_with_name(dri2_dpy->wl_dpy,
+                                                           "mesa egl surface queue");
    if (!dri2_surf->wl_queue) {
       _eglError(EGL_BAD_ALLOC, "dri2_create_surface");
       goto cleanup_surf;
@@ -2076,7 +2078,8 @@ dri2_initialize_wayland_drm(_EGLDisplay *disp)
       dri2_dpy->wl_dpy = disp->PlatformDisplay;
    }
 
-   dri2_dpy->wl_queue = wl_display_create_queue(dri2_dpy->wl_dpy);
+   dri2_dpy->wl_queue = wl_display_create_queue_with_name(dri2_dpy->wl_dpy,
+                                                          "mesa egl display queue");
 
    dri2_dpy->wl_dpy_wrapper = wl_proxy_create_wrapper(dri2_dpy->wl_dpy);
    if (dri2_dpy->wl_dpy_wrapper == NULL)
@@ -2642,7 +2645,8 @@ dri2_initialize_wayland_swrast(_EGLDisplay *disp)
       dri2_dpy->wl_dpy = disp->PlatformDisplay;
    }
 
-   dri2_dpy->wl_queue = wl_display_create_queue(dri2_dpy->wl_dpy);
+   dri2_dpy->wl_queue = wl_display_create_queue_with_name(dri2_dpy->wl_dpy,
+                                                          "mesa egl swrast display queue");
 
    dri2_dpy->wl_dpy_wrapper = wl_proxy_create_wrapper(dri2_dpy->wl_dpy);
    if (dri2_dpy->wl_dpy_wrapper == NULL)

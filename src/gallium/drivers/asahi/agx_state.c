@@ -2184,6 +2184,7 @@ agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
       NIR_PASS(_, nir, nir_lower_fragcolor, 8);
    }
 
+   NIR_PASS(_, nir, agx_nir_lower_texture);
    NIR_PASS(_, nir, nir_lower_ssbo);
 
    bool allow_mediump = !(dev->debug & AGX_DBG_NO16);

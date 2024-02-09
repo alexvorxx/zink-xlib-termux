@@ -3010,7 +3010,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
 
    /* Clean up deref gunk after lowering I/O */
    NIR_PASS(_, nir, nir_opt_dce);
-   NIR_PASS(_, nir, agx_nir_lower_texture);
 
    link_libagx(nir, libagx);
 

@@ -537,7 +537,7 @@ lower_images(nir_builder *b, nir_intrinsic_instr *intr, UNUSED void *data)
  * descriptor bindings. That means these passes operate on texture derefs. The
  * purpose is to make descriptor crawls explicit in the NIR, so that the driver
  * can accurately lower descriptors after this pass but before calling
- * agx_preprocess_nir (and hence the full agx_nir_lower_texture).
+ * the full agx_nir_lower_texture.
  */
 bool
 agx_nir_lower_texture_early(nir_shader *s, bool support_lod_bias)

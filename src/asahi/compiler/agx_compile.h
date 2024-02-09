@@ -242,6 +242,7 @@ struct agx_shader_key {
 #define AGX_TEXTURE_FLAG_NO_CLAMP (1 << 0)
 
 bool agx_nir_lower_texture_early(nir_shader *s, bool support_lod_bias);
+bool agx_nir_lower_texture(nir_shader *s);
 
 void agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
                         bool allow_mediump,

@@ -166,12 +166,7 @@ nvk_heap_alloc_locked(struct nvk_device *dev, struct nvk_heap *heap,
          assert(heap->bos[bo_idx].bo != NULL);
          assert(bo_offset + size <= heap->bos[bo_idx].bo->size);
 
-         if (heap->base_addr != 0) {
-            assert(bo_idx == 0);
-            *addr_out = bo_offset;
-         } else {
-            *addr_out = heap->bos[bo_idx].addr + bo_offset;
-         }
+         *addr_out = heap->bos[bo_idx].addr + bo_offset;
          if (map_out != NULL) {
             assert(heap->bos[bo_idx].map != NULL);
             *map_out = (char *)heap->bos[bo_idx].map + bo_offset;

@@ -70,21 +70,18 @@ struct nvk_shader {
 
    uint32_t upload_size;
    uint64_t upload_addr;
-   uint32_t hdr_offset;
-   uint32_t data_offset;
+
+   /* Address of the shader header (or start of the shader code) for compute
+    * shaders.
+    *
+    * Prior to Volta, this is relative to the start of the shader heap. On
+    * Volta and later, it's an absolute address.
+    */
+   uint64_t hdr_addr;
+
+   /* Address of the start of the shader data section */
+   uint64_t data_addr;
 };
-
-static inline uint64_t
-nvk_shader_address(const struct nvk_shader *shader)
-{
-   return shader->upload_addr + shader->hdr_offset;
-}
-
-static inline uint64_t
-nvk_shader_data_address(const struct nvk_shader *shader)
-{
-   return shader->upload_addr + shader->data_offset;
-}
 
 static inline bool
 nvk_shader_is_enabled(const struct nvk_shader *shader)

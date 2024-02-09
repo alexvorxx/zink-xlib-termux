@@ -86,7 +86,7 @@ nva0c0_compute_setup_launch_desc_template(uint32_t *qmd,
    else
       unreachable("Invalid shared memory size");
 
-   uint64_t addr = nvk_shader_address(shader);
+   uint64_t addr = shader->hdr_addr;
    assert(addr < 0xffffffff);
    NVA0C0_QMDV00_06_VAL_SET(qmd, PROGRAM_OFFSET, addr);
    NVA0C0_QMDV00_06_VAL_SET(qmd, REGISTER_COUNT, shader->info.num_gprs);
@@ -99,7 +99,7 @@ nvc0c0_compute_setup_launch_desc_template(uint32_t *qmd,
 {
    base_compute_setup_launch_desc_template(qmd, shader, C0C0, 02, 01);
 
-   uint64_t addr = nvk_shader_address(shader);
+   uint64_t addr = shader->hdr_addr;
    assert(addr < 0xffffffff);
 
    NVC0C0_QMDV02_01_VAL_SET(qmd, SM_GLOBAL_CACHING_ENABLE, 1);
@@ -124,7 +124,7 @@ nvc3c0_compute_setup_launch_desc_template(uint32_t *qmd,
 
    NVC3C0_QMDV02_02_VAL_SET(qmd, REGISTER_COUNT_V, shader->info.num_gprs);
 
-   uint64_t addr = nvk_shader_address(shader);
+   uint64_t addr = shader->hdr_addr;
    NVC3C0_QMDV02_02_VAL_SET(qmd, PROGRAM_ADDRESS_LOWER, addr & 0xffffffff);
    NVC3C0_QMDV02_02_VAL_SET(qmd, PROGRAM_ADDRESS_UPPER, addr >> 32);
 }
@@ -146,7 +146,7 @@ nvc6c0_compute_setup_launch_desc_template(uint32_t *qmd,
 
    NVC6C0_QMDV03_00_VAL_SET(qmd, REGISTER_COUNT_V, shader->info.num_gprs);
 
-   uint64_t addr = nvk_shader_address(shader);
+   uint64_t addr = shader->hdr_addr;
    NVC6C0_QMDV03_00_VAL_SET(qmd, PROGRAM_ADDRESS_LOWER, addr & 0xffffffff);
    NVC6C0_QMDV03_00_VAL_SET(qmd, PROGRAM_ADDRESS_UPPER, addr >> 32);
 }

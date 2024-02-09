@@ -778,7 +778,7 @@ nvk_cmd_buffer_get_cbuf_descriptor(struct nvk_cmd_buffer *cmd,
 
    case NVK_CBUF_TYPE_SHADER_DATA:
       *desc_out = (struct nvk_buffer_address) {
-         .base_addr = nvk_shader_data_address(shader),
+         .base_addr = shader->data_addr,
          .size = shader->data_size,
       };
       return true;

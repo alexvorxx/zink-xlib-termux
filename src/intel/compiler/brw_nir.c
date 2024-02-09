@@ -930,6 +930,11 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
    if (intel_needs_workaround(devinfo, 1806565034) && !opts->robust_image_access)
       OPT(intel_nir_clamp_image_1d_2d_array_sizes);
 
+   const struct intel_nir_lower_texture_opts intel_tex_options = {
+      .combined_lod_or_bias_and_offset = compiler->devinfo->ver >= 20,
+   };
+   OPT(intel_nir_lower_texture, &intel_tex_options);
+
    const nir_lower_tex_options tex_options = {
       .lower_txp = ~0,
       .lower_txf_offset = true,
@@ -953,8 +958,11 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
     * rerun the pass because the instructions inserted by the first lowering
     * are not visible during that first pass.
     */
-   if (OPT(nir_lower_tex, &tex_options))
+   if (OPT(nir_lower_tex, &tex_options)) {
+      OPT(intel_nir_lower_texture, &intel_tex_options);
       OPT(nir_lower_tex, &tex_options);
+   }
+
    OPT(nir_normalize_cubemap_coords);
 
    OPT(nir_lower_global_vars_to_local);

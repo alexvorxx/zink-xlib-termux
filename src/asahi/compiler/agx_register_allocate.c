@@ -1141,6 +1141,11 @@ agx_ra(agx_context *ctx)
          agx_max_registers_for_occupancy(threads_per_workgroup);
    }
 
+   /* The helper program is unspillable and has a limited register file */
+   if (ctx->key->is_helper) {
+      max_possible_regs = 32;
+   }
+
    /* Calculate the demand. We'll use it to determine if we need to spill and to
     * bound register assignment.
     */
@@ -1211,6 +1216,9 @@ agx_ra(agx_context *ctx)
     * affecting occupancy. This reduces live range splitting.
     */
    unsigned max_regs = agx_occupancy_for_register_count(demand).max_registers;
+   if (ctx->key->is_helper)
+      max_regs = 32;
+
    max_regs = ROUND_DOWN_TO(max_regs, reg_file_alignment);
 
    /* Or, we can bound tightly for debugging */

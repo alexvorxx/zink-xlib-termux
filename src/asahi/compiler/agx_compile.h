@@ -232,6 +232,11 @@ struct agx_shader_key {
    /* Whether scratch memory is available in the given shader stage */
    bool has_scratch;
 
+   /* Whether we're compiling the helper program used for scratch allocation.
+    * This has special register allocation requirements.
+    */
+   bool is_helper;
+
    union {
       struct agx_vs_shader_key vs;
       struct agx_fs_shader_key fs;

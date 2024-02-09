@@ -507,7 +507,10 @@ main(int argc, char **argv)
 
       UNUSED struct agx_uncompiled_shader_info info;
       UNUSED struct agx_shader_info compiled_info;
-      struct agx_shader_key key = {.libagx = nir};
+      struct agx_shader_key key = {
+         .libagx = nir,
+         .is_helper = true,
+      };
 
       agx_preprocess_nir(b.shader, nir, false, &info);
       agx_compile_shader_nir(b.shader, &key, NULL, &binary, &compiled_info);

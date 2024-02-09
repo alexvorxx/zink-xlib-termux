@@ -1256,6 +1256,7 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
    }
 
    case nir_intrinsic_fence_helper_exit_agx: {
+      assert(b->shader->key->is_helper);
       agx_memory_barrier(b);
       agx_unknown_barrier_1(b);
       agx_memory_barrier_2(b);
@@ -1329,12 +1330,15 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
       return agx_get_sr_to(b, dst, AGX_SR_CORE_ID);
 
    case nir_intrinsic_load_helper_op_id_agx:
+      assert(b->shader->key->is_helper);
       return agx_get_sr_barrier_to(b, dst, AGX_SR_HELPER_OP);
 
    case nir_intrinsic_load_helper_arg_lo_agx:
+      assert(b->shader->key->is_helper);
       return agx_get_sr_barrier_to(b, dst, AGX_SR_HELPER_ARG_L);
 
    case nir_intrinsic_load_helper_arg_hi_agx:
+      assert(b->shader->key->is_helper);
       return agx_get_sr_barrier_to(b, dst, AGX_SR_HELPER_ARG_H);
 
    case nir_intrinsic_load_barycentric_sample:

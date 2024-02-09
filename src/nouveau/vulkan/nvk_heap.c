@@ -160,7 +160,7 @@ nvk_heap_alloc_locked(struct nvk_device *dev, struct nvk_heap *heap,
             assert(bo_idx == 0);
             *addr_out = bo_offset;
          } else {
-            *addr_out = heap->bos[bo_idx].bo->offset + bo_offset;
+            *addr_out = heap->bos[bo_idx].addr + bo_offset;
          }
          if (map_out != NULL) {
             assert(heap->bos[bo_idx].map != NULL);
@@ -183,10 +183,10 @@ nvk_heap_free_locked(struct nvk_device *dev, struct nvk_heap *heap,
    assert(addr + size > addr);
 
    for (uint32_t bo_idx = 0; bo_idx < heap->bo_count; bo_idx++) {
-      if (addr < heap->bos[bo_idx].bo->offset)
+      if (addr < heap->bos[bo_idx].addr)
          continue;
 
-      uint64_t bo_offset = addr - heap->bos[bo_idx].bo->offset;
+      uint64_t bo_offset = addr - heap->bos[bo_idx].addr;
       if (bo_offset >= heap->bos[bo_idx].bo->size)
          continue;
 

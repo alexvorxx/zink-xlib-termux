@@ -383,11 +383,6 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       });
    }
 
-   P_MTHD(p, NV9097, SET_CONSTANT_BUFFER_SELECTOR_A);
-   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_A(p, 0);
-   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_B(p, 0);
-   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_C(p, 0);
-
    for (uint32_t group = 0; group < 5; group++) {
       for (uint32_t slot = 0; slot < 16; slot++) {
          P_IMMD(p, NV9097, BIND_GROUP_CONSTANT_BUFFER(group), {

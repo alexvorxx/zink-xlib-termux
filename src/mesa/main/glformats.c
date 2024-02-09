@@ -4030,6 +4030,10 @@ _mesa_is_es3_color_renderable(const struct gl_context *ctx,
    case GL_BGRA:
       assert(_mesa_has_EXT_texture_format_BGRA8888(ctx));
       return true;
+   case GL_BGRA8_EXT:
+      assert(_mesa_has_EXT_texture_format_BGRA8888(ctx) &&
+             _mesa_has_EXT_texture_storage(ctx));
+      return true;
    default:
       return false;
    }
@@ -4090,6 +4094,10 @@ _mesa_is_es3_texture_filterable(const struct gl_context *ctx,
       return _mesa_has_OES_texture_float_linear(ctx);
    case GL_BGRA:
       assert(_mesa_has_EXT_texture_format_BGRA8888(ctx));
+      return true;
+   case GL_BGRA8_EXT:
+      assert(_mesa_has_EXT_texture_format_BGRA8888(ctx) &&
+             _mesa_has_EXT_texture_storage(ctx));
       return true;
    default:
       return false;

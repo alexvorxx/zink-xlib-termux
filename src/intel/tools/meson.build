@@ -80,7 +80,7 @@ intel_hang_replay = executable(
   files('intel_hang_replay.c'),
   dependencies : [idep_intel_dev, idep_libintel_common, dep_libdrm, dep_dl, dep_thread, dep_m],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_compiler],
+  link_with : [libintel_compiler, libintel_compiler_elk],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true

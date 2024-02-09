@@ -13,6 +13,7 @@
 #include "asahi/layout/layout.h"
 #include "asahi/lib/agx_formats.h"
 #include "asahi/lib/agx_helpers.h"
+#include "asahi/lib/agx_nir_passes.h"
 #include "asahi/lib/agx_ppp.h"
 #include "asahi/lib/agx_usc.h"
 #include "compiler/nir/nir.h"
@@ -2028,6 +2029,8 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       if (nir->info.inputs_read & VARYING_BIT_LAYER)
          NIR_PASS(_, nir, agx_nir_predicate_layer_id);
    }
+
+   NIR_PASS(_, nir, agx_nir_lower_multisampled_image_store);
 
    struct agx_shader_key base_key = {0};
 

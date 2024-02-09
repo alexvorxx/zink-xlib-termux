@@ -3083,13 +3083,10 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
        (nir->info.outputs_written & VARYING_BIT_CLIP_DIST0))
       NIR_PASS(_, nir, agx_nir_lower_clip_distance);
 
-   bool needs_libagx = nir->info.stage == MESA_SHADER_GEOMETRY;
-
-   /* Late tilebuffer lowering creates multisampled image stores */
-   NIR_PASS(needs_libagx, nir, agx_nir_lower_multisampled_image_store);
+   bool needs_libagx = true /* TODO: Optimize */;
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      NIR_PASS(needs_libagx, nir, agx_nir_lower_interpolation);
+      NIR_PASS(_, nir, agx_nir_lower_interpolation);
 
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
 

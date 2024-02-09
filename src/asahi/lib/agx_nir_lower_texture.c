@@ -1,4 +1,5 @@
 /*
+ * Copyright 2023 Valve Corporation
  * Copyright 2021 Alyssa Rosenzweig
  * Copyright 2020 Collabora Ltd.
  * Copyright 2016 Broadcom
@@ -7,16 +8,39 @@
 
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
-#include "compiler/nir/nir_builtin_builder.h"
-#include "agx_compile.h"
-#include "agx_compiler.h"
 #include "agx_internal_formats.h"
-#include "agx_nir.h"
-#include "glsl_types.h"
+#include "agx_nir_passes.h"
 #include "libagx_shaders.h"
-#include "nir_builder_opcodes.h"
-#include "nir_intrinsics.h"
-#include "nir_intrinsics_indices.h"
+#include "nir_builtin_builder.h"
+
+static bool
+fence_image(struct nir_builder *b, nir_intrinsic_instr *intr, void *data)
+{
+   b->cursor = nir_after_instr(&intr->instr);
+
+   /* If the image is write-only, there is no fencing needed */
+   if (nir_intrinsic_has_access(intr) &&
+       (nir_intrinsic_access(intr) & ACCESS_NON_READABLE)) {
+      return false;
+   }
+
+   switch (intr->intrinsic) {
+   case nir_intrinsic_image_store:
+   case nir_intrinsic_bindless_image_store:
+      nir_fence_pbe_to_tex_agx(b);
+      return true;
+
+   case nir_intrinsic_image_atomic:
+   case nir_intrinsic_bindless_image_atomic:
+   case nir_intrinsic_image_atomic_swap:
+   case nir_intrinsic_bindless_image_atomic_swap:
+      nir_fence_mem_to_tex_agx(b);
+      return true;
+
+   default:
+      return false;
+   }
+}
 
 static nir_def *
 texture_descriptor_ptr(nir_builder *b, nir_tex_instr *tex)
@@ -588,7 +612,8 @@ agx_nir_lower_texture(nir_shader *s)
    /* Insert fences before lowering image atomics, since image atomics need
     * different fencing than other image operations.
     */
-   NIR_PASS(progress, s, agx_nir_fence_images);
+   NIR_PASS(progress, s, nir_shader_intrinsics_pass, fence_image,
+            nir_metadata_block_index | nir_metadata_dominance, NULL);
 
    NIR_PASS(progress, s, nir_lower_image_atomics_to_global);
 

@@ -8,8 +8,8 @@
  */
 
 #include <stdint.h>
-#include "asahi/compiler/agx_compile.h"
 #include "asahi/layout/layout.h"
+#include "asahi/lib/agx_nir_passes.h"
 #include "compiler/nir/nir_builder.h"
 #include "compiler/nir/nir_format_convert.h"
 #include "gallium/auxiliary/util/u_blitter.h"

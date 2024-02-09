@@ -238,12 +238,6 @@ struct agx_shader_key {
    };
 };
 
-/* Texture backend flags */
-#define AGX_TEXTURE_FLAG_NO_CLAMP (1 << 0)
-
-bool agx_nir_lower_texture_early(nir_shader *s, bool support_lod_bias);
-bool agx_nir_lower_texture(nir_shader *s);
-
 void agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
                         bool allow_mediump,
                         struct agx_uncompiled_shader_info *out);
@@ -253,8 +247,6 @@ bool agx_nir_lower_sample_mask(nir_shader *s);
 
 bool agx_nir_lower_cull_distance_fs(struct nir_shader *s,
                                     unsigned nr_distances);
-
-bool agx_nir_needs_texture_crawl(nir_instr *instr);
 
 void agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
                             struct util_debug_callback *debug,

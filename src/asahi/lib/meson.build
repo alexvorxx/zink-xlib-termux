@@ -18,6 +18,7 @@ libasahi_lib_files = files(
   'agx_nir_lower_msaa.c',
   'agx_nir_lower_sample_intrinsics.c',
   'agx_nir_lower_tess.c',
+  'agx_nir_lower_texture.c',
   'agx_nir_lower_tilebuffer.c',
   'agx_nir_lower_vbo.c',
   'agx_nir_predicate_layer_id.c',

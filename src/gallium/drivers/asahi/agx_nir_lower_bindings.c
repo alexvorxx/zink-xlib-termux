@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "asahi/compiler/agx_compile.h"
+#include "asahi/lib/agx_nir_passes.h"
 #include "compiler/glsl_types.h"
 #include "compiler/nir/nir_builder.h"
 #include "agx_state.h"

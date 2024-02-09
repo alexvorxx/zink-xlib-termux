@@ -165,7 +165,7 @@ if with_tools.contains('intel-ui')
     files('aubinator_viewer.cpp', 'aubinator_viewer_decoder.cpp'),
     dependencies : [idep_mesautil, dep_zlib, dep_dl, dep_thread, dep_m, libintel_imgui_gtk_dep, idep_intel_dev],
     include_directories : [inc_include, inc_src, inc_intel],
-    link_with : [libintel_common, libintel_compiler, libaub],
+    link_with : [libintel_common, libintel_compiler, libintel_compiler_elk, libaub],
     c_args : [no_override_init_args],
     gnu_symbol_visibility : 'hidden',
     cpp_args : ['-fpermissive', '-Wno-parentheses'],

@@ -26,7 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include "i965_asm.h"
+#include "brw_asm.h"
 
 #undef yyerror
 #ifdef YYBYACC

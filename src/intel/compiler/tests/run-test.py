@@ -16,10 +16,10 @@ except ImportError:
     from shlex import split as split_args
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--i965_asm',
-                    help='path to i965_asm binary')
+parser.add_argument('--brw_asm',
+                    help='path to brw_asm binary')
 parser.add_argument('--gen_name',
-                    help='name of the hardware generation (as understood by i965_asm)')
+                    help='name of the hardware generation (as understood by brw_asm)')
 parser.add_argument('--gen_folder',
                     type=pathlib.Path,
                     help='name of the folder for the generation')
@@ -27,9 +27,9 @@ args = parser.parse_args()
 
 wrapper = os.environ.get('MESON_EXE_WRAPPER')
 if wrapper is not None:
-    i965_asm = split_args(wrapper) + [args.i965_asm]
+    brw_asm = split_args(wrapper) + [args.brw_asm]
 else:
-    i965_asm = [args.i965_asm]
+    brw_asm = [args.brw_asm]
 
 if not args.gen_folder.is_dir():
     print('Test files path does not exist or is not a directory.',
@@ -43,7 +43,7 @@ for asm_file in args.gen_folder.glob('*.asm'):
     expected_path = args.gen_folder / expected_file
 
     try:
-        command = i965_asm + [
+        command = brw_asm + [
             '--type', 'hex',
             '--gen', args.gen_name,
             asm_file

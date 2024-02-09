@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef __I965_ASM_H__
-#define __I965_ASM_H__
+#ifndef BRW_ASM_H
+#define BRW_ASM_H
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -119,4 +119,4 @@ struct target_label {
    int offset;
 };
 
-#endif /* __I965_ASM_H__ */
+#endif /* BRW_ASM_H */

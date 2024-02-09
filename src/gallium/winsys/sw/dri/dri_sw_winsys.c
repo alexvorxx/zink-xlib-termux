@@ -242,6 +242,7 @@ static void
 dri_sw_displaytarget_display(struct sw_winsys *ws,
                              struct sw_displaytarget *dt,
                              void *context_private,
+                             unsigned nboxes,
                              struct pipe_box *box)
 {
    struct dri_sw_winsys *dri_sw_ws = dri_sw_winsys(ws);
@@ -257,7 +258,7 @@ dri_sw_displaytarget_display(struct sw_winsys *ws,
     *
     * PutImage correctly clips to the width of the dst drawable.
     */
-   if (box) {
+   if (nboxes == 1) {
       offset = dri_sw_dt->stride * box->y;
       offset_x = box->x * blsize;
       data += offset;
@@ -279,7 +280,7 @@ dri_sw_displaytarget_display(struct sw_winsys *ws,
       return;
    }
 
-   if (box)
+   if (nboxes == 1)
       dri_sw_ws->lf->put_image2(dri_drawable, data,
                                 x, y, width, height, dri_sw_dt->stride);
    else

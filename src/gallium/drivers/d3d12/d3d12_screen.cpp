@@ -852,7 +852,7 @@ d3d12_flush_frontbuffer(struct pipe_screen * pscreen,
    }
 #endif
 
-   winsys->displaytarget_display(winsys, res->dt, winsys_drawable_handle, sub_box);
+   winsys->displaytarget_display(winsys, res->dt, winsys_drawable_handle, nboxes, sub_box);
 }
 
 #ifndef _GAMING_XBOX

@@ -297,6 +297,7 @@ xlib_displaytarget_destroy(struct sw_winsys *ws,
 static void
 xlib_sw_display(struct xlib_drawable *xlib_drawable,
                 struct sw_displaytarget *dt,
+                unsigned nboxes,
                 struct pipe_box *box)
 {
    static bool no_swap = false;
@@ -314,7 +315,7 @@ xlib_sw_display(struct xlib_drawable *xlib_drawable,
    if (no_swap)
       return;
 
-   if (!box) {
+   if (nboxes != 1) {
       _box.width = xlib_dt->width;
       _box.height = xlib_dt->height;
       box = &_box;
@@ -390,10 +391,11 @@ static void
 xlib_displaytarget_display(struct sw_winsys *ws,
                            struct sw_displaytarget *dt,
                            void *context_private,
+                           unsigned nboxes,
                            struct pipe_box *box)
 {
    struct xlib_drawable *xlib_drawable = (struct xlib_drawable *)context_private;
-   xlib_sw_display(xlib_drawable, dt, box);
+   xlib_sw_display(xlib_drawable, dt, nboxes, box);
 }
 
 

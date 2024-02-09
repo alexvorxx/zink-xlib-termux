@@ -504,7 +504,7 @@ softpipe_flush_frontbuffer(struct pipe_screen *_screen,
 
    assert(texture->dt);
    if (texture->dt)
-      winsys->displaytarget_display(winsys, texture->dt, context_private, sub_box);
+      winsys->displaytarget_display(winsys, texture->dt, context_private, nboxes, sub_box);
 }
 
 static int

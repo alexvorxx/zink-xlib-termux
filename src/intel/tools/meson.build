@@ -22,7 +22,7 @@ libaub = static_library(
   'aub',
   files('aub_read.c', 'aub_mem.c'),
   include_directories : [inc_include, inc_src, inc_intel],
-  dependencies : [idep_mesautil, idep_intel_dev, idep_intel_decoder_brw],
+  dependencies : [idep_mesautil, idep_intel_dev, idep_intel_decoder_brw, idep_intel_decoder_elk],
   link_with : [libintel_common],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
@@ -32,9 +32,10 @@ libaub = static_library(
 aubinator = executable(
   'aubinator',
   files('aubinator.c'),
-  dependencies : [idep_mesautil, dep_expat, dep_zlib, dep_dl, dep_thread, dep_m, idep_intel_dev, idep_intel_decoder_brw],
+  dependencies : [idep_mesautil, dep_expat, dep_zlib, dep_dl, dep_thread, dep_m, idep_intel_dev,
+                  idep_intel_decoder_brw, idep_intel_decoder_elk],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler, libaub],
+  link_with : [libintel_common, libintel_compiler, libintel_compiler_elk, libaub],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true

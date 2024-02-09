@@ -4027,6 +4027,9 @@ _mesa_is_es3_color_renderable(const struct gl_context *ctx,
    case GL_RGBA16_SNORM:
       return _mesa_has_EXT_texture_norm16(ctx) &&
              _mesa_has_EXT_render_snorm(ctx);
+   case GL_BGRA:
+      assert(_mesa_has_EXT_texture_format_BGRA8888(ctx));
+      return true;
    default:
       return false;
    }
@@ -4085,6 +4088,9 @@ _mesa_is_es3_texture_filterable(const struct gl_context *ctx,
        *     for the R32F, RG32F, RGB32F, and RGBA32F formats."
        */
       return _mesa_has_OES_texture_float_linear(ctx);
+   case GL_BGRA:
+      assert(_mesa_has_EXT_texture_format_BGRA8888(ctx));
+      return true;
    default:
       return false;
    }

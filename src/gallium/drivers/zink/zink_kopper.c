@@ -561,6 +561,8 @@ kopper_acquire(struct zink_screen *screen, struct zink_resource *res, uint64_t t
    if (cdt->swapchain->images[res->obj->dt_idx].readback)
       zink_resource(cdt->swapchain->images[res->obj->dt_idx].readback)->valid = false;
    res->obj->image = cdt->swapchain->images[res->obj->dt_idx].image;
+   if (!cdt->age_locked)
+      zink_kopper_update_last_written(res);
    cdt->swapchain->images[res->obj->dt_idx].acquired = false;
    if (!cdt->swapchain->images[res->obj->dt_idx].init) {
       /* swapchain images are initially in the UNDEFINED layout */
@@ -792,7 +794,7 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res)
    cpi->res = res;
    cpi->swapchain = cdt->swapchain;
    cpi->indefinite_acquire = res->obj->indefinite_acquire;
-   res->obj->last_dt_idx = cpi->image = res->obj->dt_idx;
+   cpi->image = res->obj->dt_idx;
    cpi->info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
    cpi->info.pNext = NULL;
    cpi->info.waitSemaphoreCount = 1;
@@ -832,6 +834,12 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res)
    res->obj->indefinite_acquire = false;
    cdt->swapchain->images[res->obj->dt_idx].acquired = false;
    res->obj->dt_idx = UINT32_MAX;
+}
+
+void
+zink_kopper_update_last_written(struct zink_resource *res)
+{
+   res->obj->last_dt_idx = res->obj->dt_idx;
 }
 
 static void

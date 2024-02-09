@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include <stdio.h>
-#include "asahi/lib/agx_pack.h"
+#include "asahi/genxml/agx_pack.h"
 #include "pipe/p_state.h"
 #include "util/format/u_format.h"
 #include "util/half_float.h"

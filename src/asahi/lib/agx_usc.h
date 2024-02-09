@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "asahi/lib/agx_pack.h"
+#include "asahi/genxml/agx_pack.h"
 #include "asahi/lib/pool.h"
 
 /* Opaque structure representing a USC program being constructed */

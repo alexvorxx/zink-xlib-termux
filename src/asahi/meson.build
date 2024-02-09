@@ -3,12 +3,13 @@
 # SPDX-License-Identifier: MIT
 
 inc_asahi = include_directories([
-   '.', 'layout', 'lib', 'compiler'
+   '.', 'layout', 'lib', 'genxml', 'compiler'
 ])
 
 if with_gallium_asahi
    subdir('layout')
    subdir('clc')
+   subdir('genxml')
    subdir('lib')
    subdir('compiler')
 endif

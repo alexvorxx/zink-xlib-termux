@@ -7,7 +7,7 @@
 #pragma once
 
 #include <stddef.h>
-#include "asahi/lib/agx_pack.h"
+#include "asahi/genxml/agx_pack.h"
 #include "agx_bo.h"
 
 #include "util/u_dynarray.h"

@@ -28,7 +28,7 @@ files_libblorp = files(
 )
 
 files_blorp_brw = files(
-  'blorp_genX_exec.h',
+  'blorp_genX_exec_brw.h',
   'blorp_brw.c',
 )
 

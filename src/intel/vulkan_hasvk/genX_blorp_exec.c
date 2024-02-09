@@ -26,7 +26,7 @@
 #include "anv_private.h"
 #include "anv_measure.h"
 
-/* These are defined in anv_private.h and blorp_genX_exec.h */
+/* These are defined in anv_private.h and blorp_genX_exec_elk.h */
 #undef __gen_address_type
 #undef __gen_user_data
 #undef __gen_combine_address

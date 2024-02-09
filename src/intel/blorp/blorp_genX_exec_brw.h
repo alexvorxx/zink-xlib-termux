@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef BLORP_GENX_EXEC_H
-#define BLORP_GENX_EXEC_H
+#ifndef BLORP_GENX_EXEC_BRW_H
+#define BLORP_GENX_EXEC_BRW_H
 
 #include "blorp_priv.h"
 #include "dev/intel_device_info.h"
@@ -166,7 +166,7 @@ _blorp_combine_address(struct blorp_batch *batch, void *location,
 #define __gen_combine_address _blorp_combine_address
 
 #include "genxml/genX_pack.h"
-#include "common/intel_genX_state.h"
+#include "common/intel_genX_state_brw.h"
 
 #define _blorp_cmd_length(cmd) cmd ## _length
 #define _blorp_cmd_length_bias(cmd) cmd ## _length_bias
@@ -2706,4 +2706,4 @@ blorp_exec(struct blorp_batch *batch, const struct blorp_params *params)
    }
 }
 
-#endif /* BLORP_GENX_EXEC_H */
+#endif /* BLORP_GENX_EXEC_BRW_H */

@@ -30,7 +30,7 @@
 
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
-#include "common/intel_genX_state.h"
+#include "common/intel_genX_state_brw.h"
 
 static void
 genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
@@ -52,7 +52,7 @@ genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
     *
     * Find more about how to set up a 3D pipeline with a fragment shader but
     * without a vertex shader in blorp_emit_vertex_elements() in
-    * blorp_genX_exec.h.
+    * blorp_genX_exec_brw.h.
     */
    GENX(VERTEX_ELEMENT_STATE_pack)(
       batch, dw + 1, &(struct GENX(VERTEX_ELEMENT_STATE)) {

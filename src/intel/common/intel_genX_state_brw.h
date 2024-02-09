@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef INTEL_GENX_STATE_H
-#define INTEL_GENX_STATE_H
+#ifndef INTEL_GENX_STATE_BRW_H
+#define INTEL_GENX_STATE_BRW_H
 
 #ifndef GFX_VERx10
 #error This file should only be included by genX files.
@@ -182,4 +182,4 @@ preferred_slm_allocation_size(const struct intel_device_info *devinfo)
 }
 #endif
 
-#endif /* INTEL_GENX_STATE_H */
+#endif /* INTEL_GENX_STATE_BRW_H */

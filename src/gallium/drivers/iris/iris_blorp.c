@@ -47,7 +47,7 @@
 #include "genxml/gen_macros.h"
 
 #if GFX_VER >= 9
-#include "blorp/blorp_genX_exec.h"
+#include "blorp/blorp_genX_exec_brw.h"
 #else
 #include "blorp/blorp_genX_exec_elk.h"
 #endif

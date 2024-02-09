@@ -104,7 +104,7 @@ libiris = static_library(
                   idep_intel_blorp_elk, idep_intel_decoder_elk,
                   idep_intel_blorp, idep_intel_decoder_brw],
   link_with : [
-    iris_per_hw_ver_libs, libintel_compiler, libintel_compiler_elk, libisl,
+    iris_per_hw_ver_libs, libintel_compiler_brw, libintel_compiler_elk, libisl,
     libintel_perf
   ],
 )

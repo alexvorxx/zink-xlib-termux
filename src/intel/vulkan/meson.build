@@ -255,7 +255,7 @@ libvulkan_intel = shared_library(
   ],
   link_whole : [libanv_common, libanv_per_hw_ver_libs] + optional_libgrl,
   link_with : [
-    libintel_compiler, libisl, libintel_perf,
+    libintel_compiler_brw, libisl, libintel_perf,
   ],
   dependencies : [
     dep_thread, dep_dl, dep_m, anv_deps, idep_libintel_common,
@@ -293,7 +293,7 @@ if with_tests
     ],
     link_whole : libanv_common,
     link_with : [
-      libanv_per_hw_ver_libs, libintel_compiler, libintel_common,
+      libanv_per_hw_ver_libs, libintel_compiler_brw, libintel_common,
       libisl, libintel_perf,
     ] + optional_libgrl,
     dependencies : [

@@ -36,7 +36,7 @@ intel_nir_files = files(
   'intel_nir_tcs_workarounds.c',
 )
 
-libintel_compiler_files = files(
+libintel_compiler_brw_files = files(
   'brw_cfg.cpp',
   'brw_cfg.h',
   'brw_clip.h',
@@ -173,9 +173,9 @@ brw_nir_trig = custom_target(
   capture : true,
 )
 
-libintel_compiler = static_library(
+libintel_compiler_brw = static_library(
   'intel_compiler',
-  [libintel_compiler_files, intel_nir_files, brw_nir_trig, ir_expression_operation_h, [brw_device_sha1_gen_src]],
+  [libintel_compiler_brw_files, intel_nir_files, brw_nir_trig, ir_expression_operation_h, [brw_device_sha1_gen_src]],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
@@ -192,7 +192,7 @@ elif with_intel_clc
     'intel_clc',
     ['intel_clc.c', 'brw_kernel.c'],
     link_with : [
-      libintel_compiler, libintel_common,libisl,
+      libintel_compiler_brw, libintel_common,libisl,
     ],
     include_directories : [inc_include, inc_src, inc_intel],
     c_args : [pre_args, no_override_init_args],
@@ -206,9 +206,9 @@ endif
 
 if with_tests
   test(
-    'intel_compiler_tests',
+    'intel_compiler_brw_tests',
     executable(
-      'intel_compiler_tests',
+      'intel_compiler_brw_tests',
       files(
         'test_predicated_break.cpp',
         'test_eu_compact.cpp',
@@ -228,7 +228,7 @@ if with_tests
       ir_expression_operation_h,
       include_directories : [inc_include, inc_src, inc_intel],
       link_with : [
-        libintel_compiler, libintel_common, libisl
+        libintel_compiler_brw, libintel_common, libisl
       ],
       dependencies : [idep_gtest, idep_nir, idep_mesautil, idep_intel_dev],
     ),
@@ -271,7 +271,7 @@ brw_asm_tool = executable(
   ['brw_asm_tool.c', brw_gram_tab[0], brw_gram_tab[1], brw_lex_yy_c],
   dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler],
+  link_with : [libintel_common, libintel_compiler_brw],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true
@@ -313,7 +313,7 @@ brw_disasm_tool = executable(
   files('brw_disasm_tool.c'),
   dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler],
+  link_with : [libintel_common, libintel_compiler_brw],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true

@@ -23,14 +23,21 @@
 #ifndef LOADER_WAYLAND_HELPER_HEADER_H
 #define LOADER_WAYLAND_HELPER_HEADER_H
 
+#include <wayland-client.h>
+
 #ifndef HAVE_WL_DISPATCH_QUEUE_TIMEOUT
 
-#include <wayland-client.h>
 #include <util/timespec.h>
 int
 wl_display_dispatch_queue_timeout(struct wl_display *display,
                                   struct wl_event_queue *queue,
                                   const struct timespec *deadline);
+#endif
+
+#ifndef HAVE_WL_CREATE_QUEUE_WITH_NAME
+struct wl_event_queue *
+wl_display_create_queue_with_name(struct wl_display *display,
+                                  const char *name);
 #endif
 
 #endif

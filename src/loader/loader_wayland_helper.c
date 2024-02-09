@@ -133,3 +133,11 @@ wl_display_dispatch_queue_timeout(struct wl_display *display,
    return ret;
 }
 #endif
+
+#ifndef HAVE_WL_CREATE_QUEUE_WITH_NAME
+struct wl_event_queue *
+wl_display_create_queue_with_name(struct wl_display *display, const char *name)
+{
+   return wl_display_create_queue(display);
+}
+#endif

@@ -2020,6 +2020,12 @@ if with_platform_wayland
       dependencies: dep_wayland_client)
     pre_args += ['-DHAVE_WL_DISPATCH_QUEUE_TIMEOUT']
   endif
+  if cc.has_function(
+      'wl_display_create_queue_with_name',
+      prefix : '#include <wayland-client.h>',
+      dependencies: dep_wayland_client)
+    pre_args += ['-DHAVE_WL_CREATE_QUEUE_WITH_NAME']
+  endif
 endif
 
 dep_x11 = null_dep

@@ -193,7 +193,7 @@ drisw_present_texture(struct pipe_context *pipe, struct dri_drawable *drawable,
    if (screen->swrast_no_present)
       return;
 
-   screen->base.screen->flush_frontbuffer(screen->base.screen, pipe, ptex, 0, 0, drawable, sub_box);
+   screen->base.screen->flush_frontbuffer(screen->base.screen, pipe, ptex, 0, 0, drawable, !!sub_box, sub_box);
 }
 
 static inline void

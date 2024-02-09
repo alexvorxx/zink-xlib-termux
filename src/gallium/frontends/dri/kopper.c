@@ -603,11 +603,11 @@ kopper_update_drawable_info(struct dri_drawable *drawable)
 
 static inline void
 kopper_present_texture(struct pipe_context *pipe, struct dri_drawable *drawable,
-                      struct pipe_resource *ptex, struct pipe_box *sub_box)
+                      struct pipe_resource *ptex, unsigned nboxes, struct pipe_box *sub_box)
 {
    struct dri_screen *screen = drawable->screen;
 
-   screen->base.screen->flush_frontbuffer(screen->base.screen, pipe, ptex, 0, 0, drawable, sub_box);
+   screen->base.screen->flush_frontbuffer(screen->base.screen, pipe, ptex, 0, 0, drawable, nboxes, sub_box);
 }
 
 static inline void
@@ -615,7 +615,7 @@ kopper_copy_to_front(struct pipe_context *pipe,
                     struct dri_drawable *drawable,
                     struct pipe_resource *ptex)
 {
-   kopper_present_texture(pipe, drawable, ptex, NULL);
+   kopper_present_texture(pipe, drawable, ptex, 0, NULL);
 
    kopper_invalidate_drawable(opaque_dri_drawable(drawable));
 }

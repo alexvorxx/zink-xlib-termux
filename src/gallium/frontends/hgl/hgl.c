@@ -70,7 +70,7 @@ hgl_st_framebuffer_flush_front(struct st_context *st,
 
 	// TODO: pipe_context here??? Might be needed for hw renderers
 	buffer->screen->flush_frontbuffer(buffer->screen, NULL, ptex, 0, 0,
-		buffer->winsysContext, NULL);
+		buffer->winsysContext, 0, NULL);
 
 	return true;
 }

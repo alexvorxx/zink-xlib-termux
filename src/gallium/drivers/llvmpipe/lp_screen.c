@@ -852,6 +852,7 @@ llvmpipe_flush_frontbuffer(struct pipe_screen *_screen,
                            struct pipe_resource *resource,
                            unsigned level, unsigned layer,
                            void *context_private,
+                           unsigned nboxes,
                            struct pipe_box *sub_box)
 {
    struct llvmpipe_screen *screen = llvmpipe_screen(_screen);

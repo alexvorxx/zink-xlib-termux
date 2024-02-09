@@ -625,6 +625,7 @@ calculate_tiling(struct etna_context *ctx, const struct etna_operation *operatio
    if (operation->stride > 1 && tile_height % 2 > 0)
       tile_height -= 1;
 
+   tile_height = MAX2(tile_height, 1);
    superblocks = calc_superblocks(ctx, operation, tile_height, interleave_mode);
 
    if (tile_width_out)

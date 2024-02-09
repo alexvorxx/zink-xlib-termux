@@ -109,6 +109,7 @@ intel_nir_lower_texture_instr(nir_builder *b, nir_instr *instr, void *cb_data)
    switch (tex->op) {
    case nir_texop_txl:
    case nir_texop_txb:
+   case nir_texop_tg4:
       if (tex->is_array &&
           tex->sampler_dim == GLSL_SAMPLER_DIM_CUBE &&
           opts->combined_lod_and_array_index) {

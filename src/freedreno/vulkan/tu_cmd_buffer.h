@@ -132,6 +132,12 @@ enum tu_cmd_access_mask {
     */
    TU_ACCESS_BINDLESS_DESCRIPTOR_READ = 1 << 13,
 
+   /* A write to a GMEM attachment made by CP_EVENT_WRITE::BLIT. */
+   TU_ACCESS_BLIT_WRITE_GMEM = 1 << 14,
+
+   /* Similar to UCHE_READ, but specifically for GMEM attachment reads. */
+   TU_ACCESS_UCHE_READ_GMEM = 1 << 15,
+
    TU_ACCESS_READ =
       TU_ACCESS_UCHE_READ |
       TU_ACCESS_CCU_COLOR_READ |
@@ -190,6 +196,10 @@ enum tu_cmd_flush_bits {
    TU_CMD_FLAG_WAIT_FOR_IDLE = 1 << 7,
    TU_CMD_FLAG_WAIT_FOR_ME = 1 << 8,
    TU_CMD_FLAG_BINDLESS_DESCRIPTOR_INVALIDATE = 1 << 9,
+   /* This is an unusual flush that isn't automatically executed if pending,
+    * as it isn't necessary. Therefore, it's not included in ALL_FLUSH.
+    */
+   TU_CMD_FLAG_BLIT_CACHE_FLUSH = 1 << 10,
 
    TU_CMD_FLAG_ALL_FLUSH =
       TU_CMD_FLAG_CCU_FLUSH_DEPTH |
@@ -649,6 +659,11 @@ void
 tu_emit_event_write(struct tu_cmd_buffer *cmd,
                     struct tu_cs *cs,
                     enum fd_gpu_event event);
+
+void
+tu_flush_for_access(struct tu_cache_state *cache,
+                    enum tu_cmd_access_mask src_mask,
+                    enum tu_cmd_access_mask dst_mask);
 
 static inline struct tu_descriptor_state *
 tu_get_descriptors_state(struct tu_cmd_buffer *cmd_buffer,

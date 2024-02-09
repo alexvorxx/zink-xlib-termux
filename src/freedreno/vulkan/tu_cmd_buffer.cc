@@ -198,6 +198,11 @@ tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
             .gfx_bindless = CHIP == A6XX ? 0x1f : 0xff,
       ));
    }
+   if (CHIP >= A7XX && flushes & TU_CMD_FLAG_BLIT_CACHE_FLUSH)
+      /* On A7XX, blit cache flushes are required to ensure blit writes are visible
+       * via UCHE. This isn't necessary on A6XX, all writes should be visible implictly.
+       */
+      tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_FLUSH_BLIT_CACHE);
    if (flushes & TU_CMD_FLAG_WAIT_MEM_WRITES)
       tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
    if (flushes & TU_CMD_FLAG_WAIT_FOR_IDLE)
@@ -3256,7 +3261,7 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
    }
 }
 
-static void
+void
 tu_flush_for_access(struct tu_cache_state *cache,
                     enum tu_cmd_access_mask src_mask,
                     enum tu_cmd_access_mask dst_mask)
@@ -3333,6 +3338,24 @@ tu_flush_for_access(struct tu_cache_state *cache,
 
    if (dst_mask & TU_ACCESS_BINDLESS_DESCRIPTOR_READ) {
       flush_bits |= TU_CMD_FLAG_BINDLESS_DESCRIPTOR_INVALIDATE;
+   }
+
+   /* The blit cache is a special case dependency between CP_EVENT_WRITE::BLIT
+    * (from GMEM loads/clears) to any GMEM attachment reads done via the UCHE
+    * (Eg: Input attachments/CP_BLIT) which needs an explicit BLIT_CACHE_FLUSH
+    * for the event blit writes to land, it has the following properties:
+    * - Set on reads rather than on writes, like flushes.
+    * - Not executed automatically if pending, like invalidates.
+    * - Pending bits passed through to secondary command buffers, if they're
+    *   continuing the render pass.
+    */
+   if (src_mask & TU_ACCESS_BLIT_WRITE_GMEM) {
+      cache->pending_flush_bits |= TU_CMD_FLAG_BLIT_CACHE_FLUSH;
+   }
+
+   if ((dst_mask & TU_ACCESS_UCHE_READ_GMEM) &&
+       (cache->pending_flush_bits & TU_CMD_FLAG_BLIT_CACHE_FLUSH)) {
+      flush_bits |= TU_CMD_FLAG_BLIT_CACHE_FLUSH;
    }
 
 #undef DST_INCOHERENT_FLUSH
@@ -3437,6 +3460,11 @@ vk2tu_access(VkAccessFlags2 flags, VkPipelineStageFlags2 stages, bool image_only
                        VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
                        SHADER_STAGES))
        mask |= TU_ACCESS_UCHE_READ;
+
+   if (gfx_read_access(flags, stages,
+                       VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT,
+                       SHADER_STAGES))
+       mask |= TU_ACCESS_UCHE_READ_GMEM;
 
    if (gfx_read_access(flags, stages,
                        VK_ACCESS_2_DESCRIPTOR_BUFFER_READ_BIT_EXT,
@@ -3934,7 +3962,11 @@ tu_CmdExecuteCommands(VkCommandBuffer commandBuffer,
     * to re-initialize the cache with all pending invalidate bits set.
     */
    if (cmd->state.pass) {
-      tu_cache_init(&cmd->state.renderpass_cache);
+      struct tu_cache_state *cache = &cmd->state.renderpass_cache;
+      BITMASK_ENUM(tu_cmd_flush_bits) retained_pending_flush_bits =
+         cache->pending_flush_bits & TU_CMD_FLAG_BLIT_CACHE_FLUSH;
+      tu_cache_init(cache);
+      cache->pending_flush_bits |= retained_pending_flush_bits;
    } else {
       tu_cache_init(&cmd->state.cache);
    }

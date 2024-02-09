@@ -150,6 +150,12 @@ libintel_compiler_files = files(
   'gfx6_gs_visitor.h',
 )
 
+brw_device_sha1_gen_src = custom_target('brw_device_sha1_gen.c',
+                                        input : ['brw_device_sha1_gen_c.py', '../dev/intel_device_info.py'],
+                                        output : ['brw_device_sha1_gen.c'],
+                                        command : [prog_python, '@INPUT0@', '--outdir', meson.current_build_dir()])
+
+
 brw_nir_trig = custom_target(
   'brw_nir_trig_workarounds.c',
   input : 'brw_nir_trig_workarounds.py',
@@ -163,7 +169,7 @@ brw_nir_trig = custom_target(
 
 libintel_compiler = static_library(
   'intel_compiler',
-  [libintel_compiler_files, brw_nir_trig, ir_expression_operation_h],
+  [libintel_compiler_files, brw_nir_trig, ir_expression_operation_h, [brw_device_sha1_gen_src]],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',

@@ -855,7 +855,8 @@ wsi_wl_display_init(struct wsi_wayland *wsi_wl,
    display->wl_display = wl_display;
    display->sw = sw;
 
-   display->queue = wl_display_create_queue(wl_display);
+   display->queue = wl_display_create_queue_with_name(wl_display,
+                                                      "mesa vk display queue");
    if (!display->queue) {
       result = VK_ERROR_OUT_OF_HOST_MEMORY;
       goto fail;
@@ -2409,7 +2410,8 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
 
    wl_list_init(&chain->present_ids.outstanding_list);
    chain->present_ids.queue =
-      wl_display_create_queue(chain->wsi_wl_surface->display->wl_display);
+      wl_display_create_queue_with_name(chain->wsi_wl_surface->display->wl_display,
+                                        "mesa vk swapchain queue");
 
    if (chain->wsi_wl_surface->display->wp_presentation_notwrapped) {
       chain->present_ids.wp_presentation =

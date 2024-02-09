@@ -812,11 +812,13 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res)
     *  * Any other color buffers' ages are incremented by 1 if
     *    their age was previously greater than 0.
     */
-   for (int i = 0; i < cdt->swapchain->num_images; i++) {
-       if (i == res->obj->dt_idx)
-           cdt->swapchain->images[i].age = 1;
-       else if (cdt->swapchain->images[i].age > 0)
-           cdt->swapchain->images[i].age += 1;
+   if (!cdt->age_locked) {
+      for (int i = 0; i < cdt->swapchain->num_images; i++) {
+            if (i == res->obj->dt_idx)
+               cdt->swapchain->images[i].age = 1;
+            else if (cdt->swapchain->images[i].age > 0)
+               cdt->swapchain->images[i].age += 1;
+      }
    }
    if (util_queue_is_initialized(&screen->flush_queue)) {
       p_atomic_inc(&cpi->swapchain->async_presents);
@@ -873,14 +875,17 @@ zink_kopper_acquire_readback(struct zink_context *ctx, struct zink_resource *res
    if (++cdt->readback_counter >= ZINK_READBACK_THRESHOLD)
       kopper_ensure_readback(screen, res);
    while (res->obj->dt_idx != last_dt_idx) {
+      cdt->age_locked = true;
       if (res->obj->dt_idx != UINT32_MAX && !zink_kopper_present_readback(ctx, res))
          break;
+      cdt->age_locked = true;
       do {
          ret = kopper_acquire(screen, res, 0);
       } while (!is_swapchain_kill(ret) && (ret == VK_NOT_READY || ret == VK_TIMEOUT));
       if (is_swapchain_kill(ret)) {
          kill_swapchain(ctx, res);
          *readback = NULL;
+         cdt->age_locked = false;
          return false;
       }
    }
@@ -936,6 +941,10 @@ zink_kopper_present_readback(struct zink_context *ctx, struct zink_resource *res
    simple_mtx_lock(&screen->semaphores_lock);
    util_dynarray_append(&screen->semaphores, VkSemaphore, acquire);
    simple_mtx_unlock(&screen->semaphores_lock);
+
+   struct kopper_displaytarget *cdt = res->obj->dt;
+   cdt->age_locked = false;
+
    return zink_screen_handle_vkresult(screen, error);
 }
 

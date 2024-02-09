@@ -95,6 +95,8 @@ struct kopper_displaytarget
    bool is_kill;
    VkPresentModeKHR present_mode;
    unsigned readback_counter;
+
+   bool age_locked; //disables buffer age during readback
 };
 
 struct zink_context;

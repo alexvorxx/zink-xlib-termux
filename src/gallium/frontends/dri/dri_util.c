@@ -751,6 +751,7 @@ driCreateNewDrawable(__DRIscreen *psp,
     struct dri_screen *screen = dri_screen(psp);
     struct dri_drawable *drawable =
        screen->create_drawable(screen, &config->modes, GL_FALSE, data);
+   drawable->buffer_age = 0;
 
     return opaque_dri_drawable(drawable);
 }
@@ -855,6 +856,13 @@ driSwapBuffers(__DRIdrawable *pdp)
    drawable->swap_buffers(drawable);
 }
 
+static int
+driSWRastQueryBufferAge(__DRIdrawable *pdp)
+{
+   struct dri_drawable *drawable = dri_drawable(pdp);
+   return drawable->buffer_age;
+}
+
 /** Core interface */
 const __DRIcoreExtension driCoreExtension = {
     .base = { __DRI_CORE, 2 },
@@ -915,6 +923,7 @@ const __DRIswrastExtension driSWRastExtension = {
     .createNewContextForAPI     = driCreateNewContextForAPI,
     .createContextAttribs       = driCreateContextAttribs,
     .createNewScreen2           = driSWRastCreateNewScreen2,
+    .queryBufferAge             = driSWRastQueryBufferAge,
 };
 
 const __DRI2configQueryExtension dri2ConfigQueryExtension = {

@@ -256,6 +256,7 @@ drisw_swap_buffers(struct dri_drawable *drawable)
                                         fence, OS_TIMEOUT_INFINITE);
       screen->base.screen->fence_reference(screen->base.screen, &fence, NULL);
       drisw_copy_to_front(ctx->st->pipe, drawable, ptex);
+      drawable->buffer_age = 1;
 
       /* TODO: remove this if the framebuffer state doesn't change. */
       st_context_invalidate_state(ctx->st, ST_INVALIDATE_FB_STATE);
@@ -370,6 +371,7 @@ drisw_allocate_textures(struct dri_context *stctx,
          pipe_resource_reference(&drawable->textures[i], NULL);
          pipe_resource_reference(&drawable->msaa_textures[i], NULL);
       }
+      drawable->buffer_age = 0;
    }
 
    memset(&templ, 0, sizeof(templ));

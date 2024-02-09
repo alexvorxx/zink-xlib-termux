@@ -2636,6 +2636,16 @@ dri2_wl_swrast_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
    return EGL_TRUE;
 }
 
+static EGLint
+dri2_wl_swrast_query_buffer_age(_EGLDisplay *disp, _EGLSurface *surface)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surface);
+
+   assert(dri2_dpy->swrast);
+   return dri2_dpy->swrast->queryBufferAge(dri2_surf->dri_drawable);
+}
+
 static void
 shm_handle_format(void *data, struct wl_shm *shm, uint32_t format)
 {
@@ -2692,6 +2702,7 @@ static const struct dri2_egl_display_vtbl dri2_wl_swrast_display_vtbl = {
    .create_image = dri2_create_image_khr,
    .swap_buffers = dri2_wl_swrast_swap_buffers,
    .get_dri_drawable = dri2_surface_get_dri_drawable,
+   .query_buffer_age = dri2_wl_swrast_query_buffer_age,
 };
 
 static const __DRIswrastLoaderExtension swrast_loader_extension = {
@@ -2812,6 +2823,7 @@ dri2_initialize_wayland_swrast(_EGLDisplay *disp)
    if (disp->Options.Zink && dri2_dpy->fd_render_gpu >= 0 &&
        (dri2_dpy->wl_dmabuf || dri2_dpy->wl_drm))
       dri2_set_WL_bind_wayland_display(disp);
+   disp->Extensions.EXT_buffer_age = EGL_TRUE;
    disp->Extensions.EXT_swap_buffers_with_damage = EGL_TRUE;
    disp->Extensions.EXT_present_opaque = EGL_TRUE;
 

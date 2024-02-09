@@ -913,7 +913,7 @@ struct __DRIframebufferRec {
  * extension.  Version 1 is required by the X server, and version 3 is used.
  */
 #define __DRI_SWRAST "DRI_SWRast"
-#define __DRI_SWRAST_VERSION 4
+#define __DRI_SWRAST_VERSION 5
 
 struct __DRIswrastExtensionRec {
     __DRIextension base;
@@ -960,6 +960,10 @@ struct __DRIswrastExtensionRec {
                                     const __DRIextension **driver_extensions,
                                     const __DRIconfig ***driver_configs,
                                     void *loaderPrivate);
+   /**
+    * \since version 5
+   */
+   int (*queryBufferAge)(__DRIdrawable *drawable);
 
 };
 

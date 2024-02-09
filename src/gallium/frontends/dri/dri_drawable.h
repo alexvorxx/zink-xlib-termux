@@ -84,6 +84,9 @@ struct dri_drawable
    unsigned int lastStamp;
    int w, h;
 
+   /* generic for swrast */
+   unsigned buffer_age;
+
    /* kopper */
    struct kopper_loader_info info;
    __DRIimage   *image; //texture_from_pixmap

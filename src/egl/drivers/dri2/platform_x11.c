@@ -1321,6 +1321,16 @@ dri2_kopper_query_buffer_age(_EGLDisplay *disp, _EGLSurface *surf)
    return 0;
 }
 
+static EGLint
+dri2_swrast_query_buffer_age(_EGLDisplay *disp, _EGLSurface *surf)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
+
+   assert(dri2_dpy->swrast);
+   return dri2_dpy->swrast->queryBufferAge(dri2_surf->dri_drawable);
+}
+
 static const struct dri2_egl_display_vtbl dri2_x11_swrast_display_vtbl = {
    .authenticate = NULL,
    .create_window_surface = dri2_x11_create_window_surface,
@@ -1332,6 +1342,7 @@ static const struct dri2_egl_display_vtbl dri2_x11_swrast_display_vtbl = {
    .swap_buffers_region = dri2_x11_swap_buffers_region,
    .post_sub_buffer = dri2_x11_post_sub_buffer,
    .copy_buffers = dri2_x11_copy_buffers,
+   .query_buffer_age = dri2_swrast_query_buffer_age,
    /* XXX: should really implement this since X11 has pixmaps */
    .query_surface = dri2_query_surface,
    .get_msc_rate = dri2_x11_get_msc_rate,
@@ -1549,12 +1560,12 @@ dri2_initialize_x11_swrast(_EGLDisplay *disp)
          disp->Extensions.KHR_image_pixmap = EGL_TRUE;
       disp->Extensions.NOK_texture_from_pixmap = EGL_TRUE;
       disp->Extensions.CHROMIUM_sync_control = EGL_TRUE;
-      disp->Extensions.EXT_buffer_age = EGL_TRUE;
       disp->Extensions.EXT_swap_buffers_with_damage = EGL_TRUE;
 
       if (dri2_dpy->multibuffers_available)
          dri2_set_WL_bind_wayland_display(disp);
    }
+   disp->Extensions.EXT_buffer_age = EGL_TRUE;
    disp->Extensions.ANGLE_sync_control_rate = EGL_TRUE;
 
    if (!dri2_x11_add_configs_for_visuals(dri2_dpy, disp, !disp->Options.Zink))

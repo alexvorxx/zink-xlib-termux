@@ -569,60 +569,6 @@ lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
 }
 
 static void
-lower_fb_read_logical_send(const fs_builder &bld, elk_fs_inst *inst)
-{
-   const intel_device_info *devinfo = bld.shader->devinfo;
-   const fs_builder &ubld = bld.exec_all().group(8, 0);
-   const unsigned length = 2;
-   const elk_fs_reg header = ubld.vgrf(ELK_REGISTER_TYPE_UD, length);
-
-   if (bld.group() < 16) {
-      ubld.group(16, 0).MOV(header, retype(elk_vec8_grf(0, 0),
-                                           ELK_REGISTER_TYPE_UD));
-   } else {
-      assert(bld.group() < 32);
-      const elk_fs_reg header_sources[] = {
-         retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD),
-         retype(elk_vec8_grf(2, 0), ELK_REGISTER_TYPE_UD)
-      };
-      ubld.LOAD_PAYLOAD(header, header_sources, ARRAY_SIZE(header_sources), 0);
-
-      if (devinfo->ver >= 12) {
-         /* On Gfx12 the Viewport and Render Target Array Index fields (AKA
-          * Poly 0 Info) are provided in r1.1 instead of r0.0, and the render
-          * target message header format was updated accordingly -- However
-          * the updated format only works for the lower 16 channels in a
-          * SIMD32 thread, since the higher 16 channels want the subspan data
-          * from r2 instead of r1, so we need to copy over the contents of
-          * r1.1 in order to fix things up.
-          */
-         ubld.group(1, 0).MOV(component(header, 9),
-                              retype(elk_vec1_grf(1, 1), ELK_REGISTER_TYPE_UD));
-      }
-   }
-
-   /* BSpec 12470 (Gfx8-11), BSpec 47842 (Gfx12+) :
-    *
-    *   "Must be zero for Render Target Read message."
-    *
-    * For bits :
-    *   - 14 : Stencil Present to Render Target
-    *   - 13 : Source Depth Present to Render Target
-    *   - 12 : oMask to Render Target
-    *   - 11 : Source0 Alpha Present to Render Target
-    */
-   ubld.group(1, 0).AND(component(header, 0),
-                        component(header, 0),
-                        elk_imm_ud(~INTEL_MASK(14, 11)));
-
-   inst->resize_sources(1);
-   inst->src[0] = header;
-   inst->opcode = ELK_FS_OPCODE_FB_READ;
-   inst->mlen = length;
-   inst->header_size = length;
-}
-
-static void
 lower_sampler_logical_send_gfx4(const fs_builder &bld, elk_fs_inst *inst, elk_opcode op,
                                 const elk_fs_reg &coordinate,
                                 const elk_fs_reg &shadow_c,
@@ -2329,10 +2275,6 @@ elk_fs_visitor::lower_logical_sends()
                                      elk_wm_prog_data(prog_data),
                                      (const elk_wm_prog_key *)key,
                                      fs_payload());
-         break;
-
-      case ELK_FS_OPCODE_FB_READ_LOGICAL:
-         lower_fb_read_logical_send(ibld, inst);
          break;
 
       case ELK_SHADER_OPCODE_TEX_LOGICAL:

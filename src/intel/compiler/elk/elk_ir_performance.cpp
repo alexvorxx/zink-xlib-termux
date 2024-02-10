@@ -972,7 +972,6 @@ namespace {
             abort();
 
       case ELK_FS_OPCODE_FB_WRITE:
-      case ELK_FS_OPCODE_FB_READ:
       case ELK_FS_OPCODE_REP_FB_WRITE:
          return calculate_desc(info, EU_UNIT_DP_RC, 2, 0, 0, 0, 450 /* XXX */,
                                10 /* XXX */, 300 /* XXX */, 0, 0, 0, 0);

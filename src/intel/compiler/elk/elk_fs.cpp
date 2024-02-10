@@ -237,7 +237,6 @@ elk_fs_inst::is_send_from_grf() const
    case ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
       return src[1].file == VGRF;
    case ELK_FS_OPCODE_FB_WRITE:
-   case ELK_FS_OPCODE_FB_READ:
       return src[0].file == VGRF;
    default:
       return false;
@@ -293,7 +292,6 @@ elk_fs_inst::is_payload(unsigned arg) const
 {
    switch (opcode) {
    case ELK_FS_OPCODE_FB_WRITE:
-   case ELK_FS_OPCODE_FB_READ:
    case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
    case ELK_VEC4_OPCODE_UNTYPED_SURFACE_READ:
    case ELK_VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
@@ -867,7 +865,6 @@ elk_fs_inst::size_read(int arg) const
       }
       break;
 
-   case ELK_FS_OPCODE_FB_READ:
    case ELK_FS_OPCODE_INTERPOLATE_AT_SAMPLE:
    case ELK_FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
       if (arg == 0)
@@ -4805,9 +4802,6 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
       /* Dual-source FB writes are unsupported in SIMD16 mode. */
       return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
               8 : MIN2(16, inst->exec_size));
-
-   case ELK_FS_OPCODE_FB_READ_LOGICAL:
-      return MIN2(16, inst->exec_size);
 
    case ELK_SHADER_OPCODE_TEX_LOGICAL:
    case ELK_SHADER_OPCODE_TXF_CMS_LOGICAL:

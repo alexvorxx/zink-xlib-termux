@@ -72,7 +72,6 @@ is_expression(const elk_fs_visitor *v, const elk_fs_inst *const inst)
    case ELK_OPCODE_PLN:
    case ELK_OPCODE_MAD:
    case ELK_OPCODE_LRP:
-   case ELK_FS_OPCODE_FB_READ_LOGICAL:
    case ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
    case ELK_FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
    case ELK_FS_OPCODE_LINTERP:

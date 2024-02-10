@@ -3454,21 +3454,6 @@ emit_non_coherent_fb_read(nir_to_elk_state &ntb, const fs_builder &bld, const el
    return inst;
 }
 
-/**
- * Actual coherent framebuffer read implemented using the native render target
- * read message.  Requires SKL+.
- */
-static elk_fs_inst *
-emit_coherent_fb_read(const fs_builder &bld, const elk_fs_reg &dst, unsigned target)
-{
-   assert(bld.shader->devinfo->ver >= 9);
-   elk_fs_inst *inst = bld.emit(ELK_FS_OPCODE_FB_READ_LOGICAL, dst);
-   inst->target = target;
-   inst->size_written = 4 * inst->dst.component_size(inst->exec_size);
-
-   return inst;
-}
-
 static elk_fs_reg
 alloc_temporary(const fs_builder &bld, unsigned size, elk_fs_reg *regs, unsigned n)
 {
@@ -4026,10 +4011,8 @@ fs_nir_emit_fs_intrinsic(nir_to_elk_state &ntb,
       const unsigned target = l - FRAG_RESULT_DATA0 + load_offset;
       const elk_fs_reg tmp = bld.vgrf(dest.type, 4);
 
-      if (reinterpret_cast<const elk_wm_prog_key *>(s.key)->coherent_fb_fetch)
-         emit_coherent_fb_read(bld, tmp, target);
-      else
-         emit_non_coherent_fb_read(ntb, bld, tmp, target);
+      assert(!reinterpret_cast<const elk_wm_prog_key *>(s.key)->coherent_fb_fetch);
+      emit_non_coherent_fb_read(ntb, bld, tmp, target);
 
       for (unsigned j = 0; j < instr->num_components; j++) {
          bld.MOV(offset(dest, bld, j),

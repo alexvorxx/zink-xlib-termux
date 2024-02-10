@@ -173,10 +173,6 @@ elk_instruction_name(const struct elk_isa_info *isa, enum elk_opcode op)
       return "fb_write_logical";
    case ELK_FS_OPCODE_REP_FB_WRITE:
       return "rep_fb_write";
-   case ELK_FS_OPCODE_FB_READ:
-      return "fb_read";
-   case ELK_FS_OPCODE_FB_READ_LOGICAL:
-      return "fb_read_logical";
 
    case ELK_SHADER_OPCODE_RCP:
       return "rcp";

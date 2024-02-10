@@ -1314,34 +1314,9 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
                                     0 /* return_format unused on gfx7+ */);
       inst->src[0] = elk_imm_ud(0);
       inst->src[1] = elk_imm_ud(0);
-   } else if (surface_handle.file != BAD_FILE) {
-      /* Bindless surface */
-      assert(devinfo->ver >= 9);
-      inst->desc = elk_sampler_desc(devinfo,
-                                    GFX9_BTI_BINDLESS,
-                                    sampler.file == IMM ? sampler.ud % 16 : 0,
-                                    msg_type,
-                                    simd_mode,
-                                    0 /* return_format unused on gfx7+ */);
-
-      /* For bindless samplers, the entire address is included in the message
-       * header so we can leave the portion in the message descriptor 0.
-       */
-      if (sampler_handle.file != BAD_FILE || sampler.file == IMM) {
-         inst->src[0] = elk_imm_ud(0);
-      } else {
-         const fs_builder ubld = bld.group(1, 0).exec_all();
-         elk_fs_reg desc = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-         ubld.SHL(desc, sampler, elk_imm_ud(8));
-         inst->src[0] = component(desc, 0);
-      }
-
-      /* We assume that the driver provided the handle in the top 20 bits so
-       * we can use the surface handle directly as the extended descriptor.
-       */
-      inst->src[1] = retype(surface_handle, ELK_REGISTER_TYPE_UD);
-      inst->send_ex_bso = compiler->extended_bindless_surface_offset;
    } else {
+      assert(surface_handle.file == BAD_FILE);
+
       /* Immediate portion of the descriptor */
       inst->desc = elk_sampler_desc(devinfo,
                                     0, /* surface */
@@ -1538,9 +1513,6 @@ static void
 setup_surface_descriptors(const fs_builder &bld, elk_fs_inst *inst, uint32_t desc,
                           const elk_fs_reg &surface, const elk_fs_reg &surface_handle)
 {
-   const ASSERTED intel_device_info *devinfo = bld.shader->devinfo;
-   const elk_compiler *compiler = bld.shader->compiler;
-
    /* We must have exactly one of surface and surface_handle */
    assert((surface.file == BAD_FILE) != (surface_handle.file == BAD_FILE));
 
@@ -1548,18 +1520,9 @@ setup_surface_descriptors(const fs_builder &bld, elk_fs_inst *inst, uint32_t des
       inst->desc = desc | (surface.ud & 0xff);
       inst->src[0] = elk_imm_ud(0);
       inst->src[1] = elk_imm_ud(0); /* ex_desc */
-   } else if (surface_handle.file != BAD_FILE) {
-      /* Bindless surface */
-      assert(devinfo->ver >= 9);
-      inst->desc = desc | GFX9_BTI_BINDLESS;
-      inst->src[0] = elk_imm_ud(0);
-
-      /* We assume that the driver provided the handle in the top 20 bits so
-       * we can use the surface handle directly as the extended descriptor.
-       */
-      inst->src[1] = retype(surface_handle, ELK_REGISTER_TYPE_UD);
-      inst->send_ex_bso = compiler->extended_bindless_surface_offset;
    } else {
+      assert(surface_handle.file == BAD_FILE);
+
       inst->desc = desc;
       const fs_builder ubld = bld.exec_all().group(1, 0);
       elk_fs_reg tmp = ubld.vgrf(ELK_REGISTER_TYPE_UD);
@@ -1764,15 +1727,10 @@ lower_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
       break;
 
    case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
-      if (elk_lsc_opcode_is_atomic_float((enum elk_lsc_opcode) arg.ud)) {
-         desc = elk_dp_untyped_atomic_float_desc(devinfo, inst->exec_size,
-                                                 lsc_op_to_legacy_atomic(arg.ud),
-                                                 !inst->dst.is_null());
-      } else {
-         desc = elk_dp_untyped_atomic_desc(devinfo, inst->exec_size,
-                                           lsc_op_to_legacy_atomic(arg.ud),
-                                           !inst->dst.is_null());
-      }
+      assert(!elk_lsc_opcode_is_atomic_float((enum elk_lsc_opcode) arg.ud));
+      desc = elk_dp_untyped_atomic_desc(devinfo, inst->exec_size,
+                                        lsc_op_to_legacy_atomic(arg.ud),
+                                        !inst->dst.is_null());
       break;
 
    case ELK_SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
@@ -2034,18 +1992,11 @@ lower_a64_logical_send(const fs_builder &bld, elk_fs_inst *inst)
       break;
 
    case ELK_SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
-      if (elk_lsc_opcode_is_atomic_float((enum elk_lsc_opcode) arg)) {
-         desc =
-            elk_dp_a64_untyped_atomic_float_desc(devinfo, inst->exec_size,
-                                                 type_sz(inst->dst.type) * 8,
-                                                 lsc_op_to_legacy_atomic(arg),
-                                                 !inst->dst.is_null());
-      } else {
-         desc = elk_dp_a64_untyped_atomic_desc(devinfo, inst->exec_size,
-                                               type_sz(inst->dst.type) * 8,
-                                               lsc_op_to_legacy_atomic(arg),
-                                               !inst->dst.is_null());
-      }
+      assert(!elk_lsc_opcode_is_atomic_float((enum elk_lsc_opcode) arg));
+      desc = elk_dp_a64_untyped_atomic_desc(devinfo, inst->exec_size,
+                                            type_sz(inst->dst.type) * 8,
+                                            lsc_op_to_legacy_atomic(arg),
+                                            !inst->dst.is_null());
       break;
 
    default:

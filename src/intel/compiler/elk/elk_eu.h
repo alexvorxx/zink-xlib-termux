@@ -683,26 +683,6 @@ elk_dp_untyped_atomic_desc(const struct intel_device_info *devinfo,
    return elk_dp_surface_desc(devinfo, msg_type, msg_control);
 }
 
-static inline uint32_t
-elk_dp_untyped_atomic_float_desc(const struct intel_device_info *devinfo,
-                                 unsigned exec_size,
-                                 unsigned atomic_op,
-                                 bool response_expected)
-{
-   assert(exec_size <= 8 || exec_size == 16);
-   assert(devinfo->ver >= 9);
-
-   assert(exec_size > 0);
-   const unsigned msg_type = GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP;
-
-   const unsigned msg_control =
-      SET_BITS(atomic_op, 1, 0) |
-      SET_BITS(exec_size <= 8, 4, 4) |
-      SET_BITS(response_expected, 5, 5);
-
-   return elk_dp_surface_desc(devinfo, msg_type, msg_control);
-}
-
 static inline unsigned
 elk_mdc_cmask(unsigned num_channels)
 {
@@ -937,41 +917,13 @@ elk_dp_a64_untyped_atomic_desc(const struct intel_device_info *devinfo,
 {
    assert(exec_size == 8);
    assert(devinfo->ver >= 8);
-   assert(bit_size == 16 || bit_size == 32 || bit_size == 64);
-   assert(devinfo->ver >= 12 || bit_size >= 32);
+   assert(bit_size == 32 || bit_size == 64);
 
-   const unsigned msg_type = bit_size == 16 ?
-      GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP :
-      GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP;
+   const unsigned msg_type = GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP;
 
    const unsigned msg_control =
       SET_BITS(atomic_op, 3, 0) |
       SET_BITS(bit_size == 64, 4, 4) |
-      SET_BITS(response_expected, 5, 5);
-
-   return elk_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
-                      msg_type, msg_control);
-}
-
-static inline uint32_t
-elk_dp_a64_untyped_atomic_float_desc(const struct intel_device_info *devinfo,
-                                     ASSERTED unsigned exec_size,
-                                     unsigned bit_size,
-                                     unsigned atomic_op,
-                                     bool response_expected)
-{
-   assert(exec_size == 8);
-   assert(devinfo->ver >= 9);
-   assert(bit_size == 16 || bit_size == 32);
-   assert(devinfo->ver >= 12 || bit_size == 32);
-
-   assert(exec_size > 0);
-   const unsigned msg_type = bit_size == 32 ?
-      GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP :
-      GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP;
-
-   const unsigned msg_control =
-      SET_BITS(atomic_op, 1, 0) |
       SET_BITS(response_expected, 5, 5);
 
    return elk_dp_desc(devinfo, GFX8_BTI_STATELESS_NON_COHERENT,
@@ -1107,22 +1059,6 @@ elk_fb_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
       return GET_BITS(desc, 17, 14);
    else
       return GET_BITS(desc, 16, 13);
-}
-
-static inline uint32_t
-elk_fb_read_desc(const struct intel_device_info *devinfo,
-                 unsigned binding_table_index,
-                 unsigned msg_control,
-                 unsigned exec_size,
-                 bool per_sample)
-{
-   assert(devinfo->ver >= 9);
-   assert(exec_size == 8 || exec_size == 16);
-
-   return elk_fb_desc(devinfo, binding_table_index,
-                      GFX9_DATAPORT_RC_RENDER_TARGET_READ, msg_control) |
-          SET_BITS(per_sample, 13, 13) |
-          SET_BITS(exec_size == 8, 8, 8) /* Render Target Message Subtype */;
 }
 
 static inline uint32_t
@@ -1754,14 +1690,6 @@ elk_inst *elk_fb_WRITE(struct elk_codegen *p,
                        bool eot,
                        bool last_render_target,
                        bool header_present);
-
-elk_inst *elk_gfx9_fb_READ(struct elk_codegen *p,
-                       struct elk_reg dst,
-                       struct elk_reg payload,
-                       unsigned binding_table_index,
-                       unsigned msg_length,
-                       unsigned response_length,
-                       bool per_sample);
 
 void elk_SAMPLE(struct elk_codegen *p,
 		struct elk_reg dest,

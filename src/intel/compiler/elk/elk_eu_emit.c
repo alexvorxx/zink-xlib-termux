@@ -2306,32 +2306,6 @@ elk_fb_WRITE(struct elk_codegen *p,
    return insn;
 }
 
-elk_inst *
-elk_gfx9_fb_READ(struct elk_codegen *p,
-             struct elk_reg dst,
-             struct elk_reg payload,
-             unsigned binding_table_index,
-             unsigned msg_length,
-             unsigned response_length,
-             bool per_sample)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   assert(devinfo->ver >= 9);
-   elk_inst *insn = next_insn(p, ELK_OPCODE_SENDC);
-
-   elk_inst_set_sfid(devinfo, insn, GFX6_SFID_DATAPORT_RENDER_CACHE);
-   elk_set_dest(p, insn, dst);
-   elk_set_src0(p, insn, payload);
-   elk_set_desc(
-      p, insn,
-      elk_message_desc(devinfo, msg_length, response_length, true) |
-      elk_fb_read_desc(devinfo, binding_table_index, 0 /* msg_control */,
-                       1 << elk_get_default_exec_size(p), per_sample));
-   elk_inst_set_rt_slot_group(devinfo, insn, elk_get_default_group(p) / 16);
-
-   return insn;
-}
-
 /**
  * Texture sample instruction.
  * Note: the msg_type plus msg_length values determine exactly what kind

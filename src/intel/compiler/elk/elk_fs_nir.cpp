@@ -5961,14 +5961,7 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
       const unsigned bit_size = instr->def.bit_size;
       elk_fs_reg srcs[SURFACE_LOGICAL_NUM_SRCS];
 
-      if (devinfo->verx10 >= 125) {
-         const fs_builder ubld = bld.exec_all().group(1, 0);
-         elk_fs_reg handle = component(ubld.vgrf(ELK_REGISTER_TYPE_UD), 0);
-         ubld.AND(handle, retype(elk_vec1_grf(0, 5), ELK_REGISTER_TYPE_UD),
-                          elk_imm_ud(INTEL_MASK(31, 10)));
-         srcs[SURFACE_LOGICAL_SRC_SURFACE] = elk_imm_ud(GFX125_NON_BINDLESS);
-         srcs[SURFACE_LOGICAL_SRC_SURFACE_HANDLE] = handle;
-      } else if (devinfo->ver >= 8) {
+      if (devinfo->ver >= 8) {
          srcs[SURFACE_LOGICAL_SRC_SURFACE] =
             elk_imm_ud(GFX8_BTI_STATELESS_NON_COHERENT);
       } else {
@@ -6028,14 +6021,7 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
       const unsigned bit_size = nir_src_bit_size(instr->src[0]);
       elk_fs_reg srcs[SURFACE_LOGICAL_NUM_SRCS];
 
-      if (devinfo->verx10 >= 125) {
-         const fs_builder ubld = bld.exec_all().group(1, 0);
-         elk_fs_reg handle = component(ubld.vgrf(ELK_REGISTER_TYPE_UD), 0);
-         ubld.AND(handle, retype(elk_vec1_grf(0, 5), ELK_REGISTER_TYPE_UD),
-                          elk_imm_ud(INTEL_MASK(31, 10)));
-         srcs[SURFACE_LOGICAL_SRC_SURFACE] = elk_imm_ud(GFX125_NON_BINDLESS);
-         srcs[SURFACE_LOGICAL_SRC_SURFACE_HANDLE] = handle;
-      } else if (devinfo->ver >= 8) {
+      if (devinfo->ver >= 8) {
          srcs[SURFACE_LOGICAL_SRC_SURFACE] =
             elk_imm_ud(GFX8_BTI_STATELESS_NON_COHERENT);
       } else {

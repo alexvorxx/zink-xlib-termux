@@ -471,8 +471,6 @@ private:
                       struct elk_reg payload,
                       struct elk_reg payload2);
    void generate_fb_write(elk_fs_inst *inst, struct elk_reg payload);
-   void generate_fb_read(elk_fs_inst *inst, struct elk_reg dst,
-                         struct elk_reg payload);
    void generate_cs_terminate(elk_fs_inst *inst, struct elk_reg payload);
    void generate_barrier(elk_fs_inst *inst, struct elk_reg src);
    bool generate_linterp(elk_fs_inst *inst, struct elk_reg dst,

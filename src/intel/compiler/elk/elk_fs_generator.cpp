@@ -435,20 +435,6 @@ elk_fs_generator::generate_fb_write(elk_fs_inst *inst, struct elk_reg payload)
 }
 
 void
-elk_fs_generator::generate_fb_read(elk_fs_inst *inst, struct elk_reg dst,
-                               struct elk_reg payload)
-{
-   assert(inst->size_written % REG_SIZE == 0);
-   struct elk_wm_prog_data *prog_data = elk_wm_prog_data(this->prog_data);
-   /* We assume that render targets start at binding table index 0. */
-   const unsigned surf_index = inst->target;
-
-   elk_gfx9_fb_READ(p, dst, payload, surf_index,
-                inst->header_size, inst->size_written / REG_SIZE,
-                prog_data->persample_dispatch);
-}
-
-void
 elk_fs_generator::generate_mov_indirect(elk_fs_inst *inst,
                                     struct elk_reg dst,
                                     struct elk_reg reg,
@@ -2049,11 +2035,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 	 generate_fb_write(inst, src[0]);
          send_count++;
 	 break;
-
-      case ELK_FS_OPCODE_FB_READ:
-         generate_fb_read(inst, dst, src[0]);
-         send_count++;
-         break;
 
       case ELK_OPCODE_HALT:
          generate_halt(inst);

@@ -591,13 +591,11 @@ enum elk_message_target {
 #define ELK_DATAPORT_OWORD_BLOCK_2_OWORDS     2
 #define ELK_DATAPORT_OWORD_BLOCK_4_OWORDS     3
 #define ELK_DATAPORT_OWORD_BLOCK_8_OWORDS     4
-#define GFX12_DATAPORT_OWORD_BLOCK_16_OWORDS  5
 #define ELK_DATAPORT_OWORD_BLOCK_OWORDS(n)              \
    ((n) == 1 ? ELK_DATAPORT_OWORD_BLOCK_1_OWORDLOW :    \
     (n) == 2 ? ELK_DATAPORT_OWORD_BLOCK_2_OWORDS :      \
     (n) == 4 ? ELK_DATAPORT_OWORD_BLOCK_4_OWORDS :      \
     (n) == 8 ? ELK_DATAPORT_OWORD_BLOCK_8_OWORDS :      \
-    (n) == 16 ? GFX12_DATAPORT_OWORD_BLOCK_16_OWORDS :  \
     (abort(), ~0))
 #define ELK_DATAPORT_OWORD_BLOCK_DWORDS(n)              \
    ((n) == 4 ? ELK_DATAPORT_OWORD_BLOCK_1_OWORDLOW :    \
@@ -719,18 +717,10 @@ enum elk_message_target {
 #define GFX9_DATAPORT_DC_PORT1_A64_SCATTERED_READ                   0x10
 #define GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_READ             0x11
 #define GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP                0x12
-#define GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP      0x13
 #define GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ                 0x14
 #define GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE                0x15
 #define GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_WRITE            0x19
 #define GFX8_DATAPORT_DC_PORT1_A64_SCATTERED_WRITE                  0x1a
-#define GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP              0x1b
-#define GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP          0x1d
-#define GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP    0x1e
-
-/* GFX9 */
-#define GFX9_DATAPORT_RC_RENDER_TARGET_WRITE                        12
-#define GFX9_DATAPORT_RC_RENDER_TARGET_READ                         13
 
 /* A64 scattered message subtype */
 #define GFX8_A64_SCATTERED_SUBTYPE_BYTE                             0
@@ -775,12 +765,6 @@ enum elk_message_target {
  */
 #define GFX8_BTI_STATELESS_IA_COHERENT   255
 #define GFX8_BTI_STATELESS_NON_COHERENT  253
-#define GFX9_BTI_BINDLESS                252
-
-/* This ID doesn't map anything HW related value. It exists to inform the
- * lowering code to not use the bindless heap.
- */
-#define GFX125_NON_BINDLESS              (1u << 16)
 
 /* Dataport atomic operations for Untyped Atomic Integer Operation message
  * (and others).

@@ -382,16 +382,10 @@ static const char *const dp_rc_msg_type_gfx7[16] = {
    [GFX7_DATAPORT_RC_TYPED_SURFACE_WRITE] = "typed surface write"
 };
 
-static const char *const dp_rc_msg_type_gfx9[16] = {
-   [GFX9_DATAPORT_RC_RENDER_TARGET_WRITE] = "RT write",
-   [GFX9_DATAPORT_RC_RENDER_TARGET_READ] = "RT read"
-};
-
 static const char *const *
 dp_rc_msg_type(const struct intel_device_info *devinfo)
 {
-   return (devinfo->ver >= 9 ? dp_rc_msg_type_gfx9 :
-           devinfo->ver >= 7 ? dp_rc_msg_type_gfx7 :
+   return (devinfo->ver >= 7 ? dp_rc_msg_type_gfx7 :
            devinfo->ver >= 6 ? dp_rc_msg_type_gfx6 :
            dp_write_port_msg_type);
 }
@@ -446,21 +440,12 @@ static const char *const dp_dc1_msg_type_hsw[32] = {
    [HSW_DATAPORT_DC_PORT1_ATOMIC_COUNTER_OP_SIMD4X2] =
       "DC 4x2 atomic counter op",
    [HSW_DATAPORT_DC_PORT1_TYPED_SURFACE_WRITE] = "DC typed surface write",
-   [GFX9_DATAPORT_DC_PORT1_A64_SCATTERED_READ] = "DC A64 scattered read",
    [GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_READ] = "DC A64 untyped surface read",
    [GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP] = "DC A64 untyped atomic op",
    [GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ] = "DC A64 oword block read",
    [GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE] = "DC A64 oword block write",
    [GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_WRITE] = "DC A64 untyped surface write",
    [GFX8_DATAPORT_DC_PORT1_A64_SCATTERED_WRITE] = "DC A64 scattered write",
-   [GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP] =
-      "DC untyped atomic float op",
-   [GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP] =
-      "DC A64 untyped atomic float op",
-   [GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP] =
-      "DC A64 untyped atomic half-integer op",
-   [GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP] =
-      "DC A64 untyped atomic half-float op",
 };
 
 static const char *const aop[16] = {
@@ -479,13 +464,6 @@ static const char *const aop[16] = {
    [ELK_AOP_UMIN]   = "umin",
    [ELK_AOP_CMPWR]  = "cmpwr",
    [ELK_AOP_PREDEC] = "predec",
-};
-
-static const char *const aop_float[5] = {
-   [ELK_AOP_FMAX]   = "fmax",
-   [ELK_AOP_FMIN]   = "fmin",
-   [ELK_AOP_FCMPWR] = "fcmpwr",
-   [ELK_AOP_FADD]   = "fadd",
 };
 
 static const char * const pixel_interpolator_msg_types[4] = {
@@ -2084,7 +2062,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP_SIMD4X2:
                case HSW_DATAPORT_DC_PORT1_ATOMIC_COUNTER_OP_SIMD4X2:
                case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP:
-               case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP:
                   control(file, "atomic op", aop, msg_ctrl & 0xf, &space);
                   break;
                case HSW_DATAPORT_DC_PORT1_UNTYPED_SURFACE_READ:
@@ -2098,13 +2075,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                          simd_modes[msg_ctrl >> 4], msg_ctrl & 0xf);
                   break;
                }
-               case GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP:
-               case GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP:
-               case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP:
-                  format(file, "SIMD%d,", (msg_ctrl & (1 << 4)) ? 8 : 16);
-                  control(file, "atomic float op", aop_float, msg_ctrl & 0xf,
-                          &space);
-                  break;
                case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
                case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
                   assert(dp_oword_block_rw[msg_ctrl & 7]);

@@ -349,7 +349,6 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 	struct options options;
 	struct instoption instoption;
 	struct msgdesc msgdesc;
-	struct tgl_swsb depinfo;
 	elk_inst *instruction;
 }
 
@@ -395,7 +394,7 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> OR
 %token <integer> PLN POP PUSH
 %token <integer> RET RNDD RNDE RNDU RNDZ
-%token <integer> SAD2 SADA2 SEL SHL SHR SMOV SUBB SYNC
+%token <integer> SAD2 SADA2 SEL SHL SHR SMOV SUBB
 %token <integer> SEND SENDC
 %token <integer> WAIT WHILE
 %token <integer> XOR
@@ -403,11 +402,6 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 /* extended math functions */
 %token <integer> COS EXP FDIV INV INVM INTDIV INTDIVMOD INTMOD LOG POW RSQ
 %token <integer> RSQRTM SIN SINCOS SQRT
-
-/* sync instruction */
-%token <integer> ALLRD ALLWR FENCE BAR HOST
-%type <integer> sync_function
-%type <reg> sync_arg
 
 /* shared functions for send */
 %token CONST CRE DATA DP_DATA_1 GATEWAY MATH PIXEL_INTERP READ RENDER SAMPLER
@@ -544,33 +538,11 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %type <string> jumplabeltarget
 %type <string> jumplabel
 
-/* SWSB */
-%token <integer> REG_DIST_CURRENT
-%token <integer> REG_DIST_FLOAT
-%token <integer> REG_DIST_INT
-%token <integer> REG_DIST_LONG
-%token <integer> REG_DIST_ALL
-%token <integer> SBID_ALLOC
-%token <integer> SBID_WAIT_SRC
-%token <integer> SBID_WAIT_DST
-
-%type <depinfo> depinfo
-
 %code {
 
 static void
 add_instruction_option(struct options *options, struct instoption opt)
 {
-	if (opt.type == INSTOPTION_DEP_INFO) {
-		if (opt.depinfo_value.regdist) {
-			options->depinfo.regdist = opt.depinfo_value.regdist;
-			options->depinfo.pipe = opt.depinfo_value.pipe;
-		} else {
-			options->depinfo.sbid = opt.depinfo_value.sbid;
-			options->depinfo.mode = opt.depinfo_value.mode;
-		}
-		return;
-	}
 	switch (opt.uint_value) {
 	case ALIGN1:
 		options->access_mode = ELK_ALIGN_1;
@@ -687,7 +659,6 @@ instruction:
 	| ternaryinstruction
 	| sendinstruction
 	| illegalinstruction
-	| syncinstruction
 	;
 
 relocatableinstruction:
@@ -1441,54 +1412,6 @@ loopinstruction:
 			elk_inst_set_qtr_control(p->devinfo, elk_last_inst, ELK_COMPRESSION_NONE);
 		}
 	}
-	;
-
-/* sync instruction */
-syncinstruction:
-	predicate SYNC sync_function execsize sync_arg instoptions
-	{
-		if (p->devinfo->ver < 12) {
-			error(&@2, "sync instruction is supported only on gfx12+\n");
-		}
-
-		if ($5.file == ELK_IMMEDIATE_VALUE &&
-		    $3 != TGL_SYNC_ALLRD &&
-		    $3 != TGL_SYNC_ALLWR) {
-			error(&@2, "Only allrd and allwr support immediate argument\n");
-		}
-
-		elk_set_default_access_mode(p, $6.access_mode);
-		elk_SYNC(p, $3);
-		i965_asm_set_instruction_options(p, $6);
-		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $4);
-		elk_set_src0(p, elk_last_inst, $5);
-		elk_inst_set_eot(p->devinfo, elk_last_inst, $6.end_of_thread);
-		elk_inst_set_qtr_control(p->devinfo, elk_last_inst, $6.qtr_ctrl);
-		elk_inst_set_nib_control(p->devinfo, elk_last_inst, $6.nib_ctrl);
-
-		elk_pop_insn_state(p);
-	}
-	;
-
-sync_function:
-	NOP		{ $$ = TGL_SYNC_NOP; }
-	| ALLRD
-	| ALLWR
-	| FENCE
-	| BAR
-	| HOST
-	;
-
-sync_arg:
-	nullreg region reg_type
-	{
-		$$ = $1;
-		$$.vstride = $2.vstride;
-		$$.width = $2.width;
-		$$.hstride = $2.hstride;
-		$$.type = $3;
-	}
-	| immreg
 	;
 
 /* Relative location */
@@ -2367,84 +2290,33 @@ instoption_list:
 	}
 	;
 
-depinfo:
-	REG_DIST_CURRENT
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_NONE;
-	}
-	| REG_DIST_FLOAT
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_FLOAT;
-	}
-	| REG_DIST_INT
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_INT;
-	}
-	| REG_DIST_LONG
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_LONG;
-	}
-	| REG_DIST_ALL
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_ALL;
-	}
-	| SBID_ALLOC
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.sbid = $1;
-		$$.mode = TGL_SBID_SET;
-	}
-	| SBID_WAIT_SRC
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.sbid = $1;
-		$$.mode = TGL_SBID_SRC;
-	}
-	| SBID_WAIT_DST
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.sbid = $1;
-		$$.mode = TGL_SBID_DST;
-	}
-
 instoption:
-	ALIGN1 	        { $$.type = INSTOPTION_FLAG; $$.uint_value = ALIGN1;}
-	| ALIGN16 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ALIGN16; }
-	| ACCWREN 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ACCWREN; }
-	| SECHALF 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = SECHALF; }
-	| COMPR 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = COMPR; }
-	| COMPR4 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = COMPR4; }
-	| BREAKPOINT 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = BREAKPOINT; }
-	| NODDCLR 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = NODDCLR; }
-	| NODDCHK 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = NODDCHK; }
-	| MASK_DISABLE 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = MASK_DISABLE; }
-	| EOT 	        { $$.type = INSTOPTION_FLAG; $$.uint_value = EOT; }
-	| SWITCH 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = SWITCH; }
-	| ATOMIC 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ATOMIC; }
-	| CMPTCTRL 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = CMPTCTRL; }
-	| WECTRL 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = WECTRL; }
-	| QTR_2Q 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_2Q; }
-	| QTR_3Q 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_3Q; }
-	| QTR_4Q 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_4Q; }
-	| QTR_2H 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_2H; }
-	| QTR_2N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_2N; }
-	| QTR_3N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_3N; }
-	| QTR_4N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_4N; }
-	| QTR_5N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_5N; }
-	| QTR_6N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_6N; }
-	| QTR_7N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_7N; }
-	| QTR_8N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_8N; }
-	| depinfo	{ $$.type = INSTOPTION_DEP_INFO; $$.depinfo_value = $1; }
+	ALIGN1 	        { $$.uint_value = ALIGN1;}
+	| ALIGN16 	{ $$.uint_value = ALIGN16; }
+	| ACCWREN 	{ $$.uint_value = ACCWREN; }
+	| SECHALF 	{ $$.uint_value = SECHALF; }
+	| COMPR 	{ $$.uint_value = COMPR; }
+	| COMPR4 	{ $$.uint_value = COMPR4; }
+	| BREAKPOINT 	{ $$.uint_value = BREAKPOINT; }
+	| NODDCLR 	{ $$.uint_value = NODDCLR; }
+	| NODDCHK 	{ $$.uint_value = NODDCHK; }
+	| MASK_DISABLE 	{ $$.uint_value = MASK_DISABLE; }
+	| EOT 	        { $$.uint_value = EOT; }
+	| SWITCH 	{ $$.uint_value = SWITCH; }
+	| ATOMIC 	{ $$.uint_value = ATOMIC; }
+	| CMPTCTRL 	{ $$.uint_value = CMPTCTRL; }
+	| WECTRL 	{ $$.uint_value = WECTRL; }
+	| QTR_2Q 	{ $$.uint_value = QTR_2Q; }
+	| QTR_3Q 	{ $$.uint_value = QTR_3Q; }
+	| QTR_4Q 	{ $$.uint_value = QTR_4Q; }
+	| QTR_2H 	{ $$.uint_value = QTR_2H; }
+	| QTR_2N 	{ $$.uint_value = QTR_2N; }
+	| QTR_3N 	{ $$.uint_value = QTR_3N; }
+	| QTR_4N 	{ $$.uint_value = QTR_4N; }
+	| QTR_5N 	{ $$.uint_value = QTR_5N; }
+	| QTR_6N 	{ $$.uint_value = QTR_6N; }
+	| QTR_7N 	{ $$.uint_value = QTR_7N; }
+	| QTR_8N 	{ $$.uint_value = QTR_8N; }
 	;
 
 %%

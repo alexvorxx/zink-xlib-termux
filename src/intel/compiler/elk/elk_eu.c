@@ -149,12 +149,6 @@ elk_get_default_access_mode(struct elk_codegen *p)
    return p->current->access_mode;
 }
 
-struct tgl_swsb
-elk_get_default_swsb(struct elk_codegen *p)
-{
-   return p->current->swsb;
-}
-
 void
 elk_set_default_exec_size(struct elk_codegen *p, unsigned value)
 {
@@ -299,11 +293,6 @@ void elk_set_default_saturate( struct elk_codegen *p, bool enable )
 void elk_set_default_acc_write_control(struct elk_codegen *p, unsigned value)
 {
    p->current->acc_wr_control = value;
-}
-
-void elk_set_default_swsb(struct elk_codegen *p, struct tgl_swsb value)
-{
-   p->current->swsb = value;
 }
 
 void elk_push_insn_state( struct elk_codegen *p )
@@ -647,7 +636,6 @@ elk_disassemble(const struct elk_isa_info *isa,
 static const struct elk_opcode_desc opcode_descs[] = {
    /* IR,                 HW,  name,      nsrc, ndst, gfx_vers */
    { ELK_OPCODE_ILLEGAL,  0,   "illegal", 0,    0,    GFX_ALL },
-   { ELK_OPCODE_SYNC,     1,   "sync",    1,    0,    GFX_GE(GFX12) },
    { ELK_OPCODE_MOV,      1,   "mov",     1,    1,    GFX_LT(GFX12) },
    { ELK_OPCODE_MOV,      97,  "mov",     1,    1,    GFX_GE(GFX12) },
    { ELK_OPCODE_SEL,      2,   "sel",     2,    1,    GFX_LT(GFX12) },

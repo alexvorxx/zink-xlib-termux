@@ -64,9 +64,6 @@ struct elk_insn_state {
    /* One of ELK_MASK_* */
    unsigned mask_control:1;
 
-   /* Scheduling info for Gfx12+ */
-   struct tgl_swsb swsb;
-
    bool saturate:1;
 
    /* One of ELK_ALIGN_* */
@@ -158,7 +155,6 @@ void elk_push_insn_state( struct elk_codegen *p );
 unsigned elk_get_default_exec_size(struct elk_codegen *p);
 unsigned elk_get_default_group(struct elk_codegen *p);
 unsigned elk_get_default_access_mode(struct elk_codegen *p);
-struct tgl_swsb elk_get_default_swsb(struct elk_codegen *p);
 void elk_set_default_exec_size(struct elk_codegen *p, unsigned value);
 void elk_set_default_mask_control( struct elk_codegen *p, unsigned value );
 void elk_set_default_saturate( struct elk_codegen *p, bool enable );
@@ -174,7 +170,6 @@ void elk_set_default_predicate_control(struct elk_codegen *p, enum elk_predicate
 void elk_set_default_predicate_inverse(struct elk_codegen *p, bool predicate_inverse);
 void elk_set_default_flag_reg(struct elk_codegen *p, int reg, int subreg);
 void elk_set_default_acc_write_control(struct elk_codegen *p, unsigned value);
-void elk_set_default_swsb(struct elk_codegen *p, struct tgl_swsb value);
 
 void elk_init_codegen(const struct elk_isa_info *isa,
                       struct elk_codegen *p, void *mem_ctx);
@@ -1878,8 +1873,6 @@ elk_inst *elk_JMPI(struct elk_codegen *p, struct elk_reg index,
 void elk_NOP(struct elk_codegen *p);
 
 void elk_WAIT(struct elk_codegen *p);
-
-void elk_SYNC(struct elk_codegen *p, enum tgl_sync_function func);
 
 /* Special case: there is never a destination, execution size will be
  * taken from src0:

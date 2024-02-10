@@ -295,7 +295,6 @@ namespace {
       const struct intel_device_info *devinfo = info.devinfo;
 
       switch (info.op) {
-      case ELK_OPCODE_SYNC:
       case ELK_OPCODE_SEL:
       case ELK_OPCODE_NOT:
       case ELK_OPCODE_AND:
@@ -1286,38 +1285,6 @@ namespace {
    }
 
    /**
-    * Return the dependency ID corresponding to the SBID read completion
-    * condition of a Gfx12+ SWSB.
-    */
-   enum intel_eu_dependency_id
-   tgl_swsb_rd_dependency_id(tgl_swsb swsb)
-   {
-      if (swsb.mode) {
-         assert(swsb.sbid <
-                EU_NUM_DEPENDENCY_IDS - EU_DEPENDENCY_ID_SBID_RD0);
-         return intel_eu_dependency_id(EU_DEPENDENCY_ID_SBID_RD0 + swsb.sbid);
-      } else {
-         return EU_NUM_DEPENDENCY_IDS;
-      }
-   }
-
-   /**
-    * Return the dependency ID corresponding to the SBID write completion
-    * condition of a Gfx12+ SWSB.
-    */
-   enum intel_eu_dependency_id
-   tgl_swsb_wr_dependency_id(tgl_swsb swsb)
-   {
-      if (swsb.mode) {
-         assert(swsb.sbid <
-                EU_DEPENDENCY_ID_SBID_RD0 - EU_DEPENDENCY_ID_SBID_WR0);
-         return intel_eu_dependency_id(EU_DEPENDENCY_ID_SBID_WR0 + swsb.sbid);
-      } else {
-         return EU_NUM_DEPENDENCY_IDS;
-      }
-   }
-
-   /**
     * Return the implicit accumulator register accessed by channel \p i of the
     * instruction.
     */
@@ -1398,12 +1365,6 @@ namespace {
          }
       }
 
-      /* Stall on any SBID dependencies. */
-      if (inst->sched.mode & (TGL_SBID_SET | TGL_SBID_DST))
-         stall_on_dependency(st, tgl_swsb_wr_dependency_id(inst->sched));
-      else if (inst->sched.mode & TGL_SBID_SRC)
-         stall_on_dependency(st, tgl_swsb_rd_dependency_id(inst->sched));
-
       /* Execute the instruction. */
       execute_instruction(st, perf);
 
@@ -1445,12 +1406,6 @@ namespace {
             if (mask & (1 << i))
                mark_write_dependency(st, perf, flag_dependency_id(i));
          }
-      }
-
-      /* Mark any SBID dependencies. */
-      if (inst->sched.mode & TGL_SBID_SET) {
-         mark_read_dependency(st, perf, tgl_swsb_rd_dependency_id(inst->sched));
-         mark_write_dependency(st, perf, tgl_swsb_wr_dependency_id(inst->sched));
       }
    }
 

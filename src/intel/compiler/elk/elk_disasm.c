@@ -516,15 +516,6 @@ static const char *const math_function[16] = {
    [GFX8_MATH_FUNCTION_RSQRTM] = "rsqrtm",
 };
 
-static const char *const sync_function[16] = {
-   [TGL_SYNC_NOP] = "nop",
-   [TGL_SYNC_ALLRD] = "allrd",
-   [TGL_SYNC_ALLWR] = "allwr",
-   [TGL_SYNC_FENCE] = "fence",
-   [TGL_SYNC_BAR] = "bar",
-   [TGL_SYNC_HOST] = "host",
-};
-
 static const char *const math_saturate[2] = {
    [0] = "",
    [1] = "sat"
@@ -1802,11 +1793,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
       string(file, " ");
       err |= control(file, "function", math_function,
                      elk_inst_math_function(devinfo, inst), NULL);
-
-   } else if (opcode == ELK_OPCODE_SYNC) {
-      string(file, " ");
-      err |= control(file, "function", sync_function,
-                     elk_inst_cond_modifier(devinfo, inst), NULL);
 
    } else if (!is_send(opcode) &&
               (devinfo->ver < 12 ||

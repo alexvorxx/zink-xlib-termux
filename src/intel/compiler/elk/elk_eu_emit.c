@@ -1127,12 +1127,6 @@ void elk_NOP(struct elk_codegen *p)
    elk_inst_set_opcode(p->isa, insn, ELK_OPCODE_NOP);
 }
 
-void elk_SYNC(struct elk_codegen *p, enum tgl_sync_function func)
-{
-   elk_inst *insn = next_insn(p, ELK_OPCODE_SYNC);
-   elk_inst_set_cond_modifier(p->devinfo, insn, func);
-}
-
 /***********************************************************************
  * Comparisons, if/else/endif
  */
@@ -1990,7 +1984,6 @@ void elk_oword_block_write_scratch(struct elk_codegen *p,
       (devinfo->ver >= 7 ? GFX7_SFID_DATAPORT_DATA_CACHE :
        devinfo->ver >= 6 ? GFX6_SFID_DATAPORT_RENDER_CACHE :
        ELK_SFID_DATAPORT_WRITE);
-   const struct tgl_swsb swsb = elk_get_default_swsb(p);
    uint32_t msg_type;
 
    if (devinfo->ver >= 6)
@@ -2010,13 +2003,11 @@ void elk_oword_block_write_scratch(struct elk_codegen *p,
       elk_set_default_exec_size(p, ELK_EXECUTE_8);
       elk_set_default_mask_control(p, ELK_MASK_DISABLE);
       elk_set_default_compression_control(p, ELK_COMPRESSION_NONE);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
 
       elk_MOV(p, mrf, retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD));
 
       /* set message header global offset field (reg 0, element 2) */
       elk_set_default_exec_size(p, ELK_EXECUTE_1);
-      elk_set_default_swsb(p, tgl_swsb_null());
       elk_MOV(p,
 	      retype(elk_vec1_reg(ELK_MESSAGE_REGISTER_FILE,
 				  mrf.nr,
@@ -2024,7 +2015,6 @@ void elk_oword_block_write_scratch(struct elk_codegen *p,
 	      elk_imm_ud(offset));
 
       elk_pop_insn_state(p);
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
    }
 
    {
@@ -2098,7 +2088,6 @@ elk_oword_block_read_scratch(struct elk_codegen *p,
 			     unsigned offset)
 {
    const struct intel_device_info *devinfo = p->devinfo;
-   const struct tgl_swsb swsb = elk_get_default_swsb(p);
 
    if (devinfo->ver >= 6)
       offset /= 16;
@@ -2125,7 +2114,6 @@ elk_oword_block_read_scratch(struct elk_codegen *p,
 
    {
       elk_push_insn_state(p);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
       elk_set_default_exec_size(p, ELK_EXECUTE_8);
       elk_set_default_compression_control(p, ELK_COMPRESSION_NONE);
       elk_set_default_mask_control(p, ELK_MASK_DISABLE);
@@ -2134,11 +2122,9 @@ elk_oword_block_read_scratch(struct elk_codegen *p,
 
       /* set message header global offset field (reg 0, element 2) */
       elk_set_default_exec_size(p, ELK_EXECUTE_1);
-      elk_set_default_swsb(p, tgl_swsb_null());
       elk_MOV(p, get_element_ud(mrf, 2), elk_imm_ud(offset));
 
       elk_pop_insn_state(p);
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
    }
 
    {
@@ -2215,7 +2201,6 @@ void elk_oword_block_read(struct elk_codegen *p,
       (devinfo->ver >= 6 ? GFX6_SFID_DATAPORT_CONSTANT_CACHE :
        ELK_SFID_DATAPORT_READ);
    const unsigned exec_size = 1 << elk_get_default_exec_size(p);
-   const struct tgl_swsb swsb = elk_get_default_swsb(p);
 
    /* On newer hardware, offset is in units of owords. */
    if (devinfo->ver >= 6)
@@ -2231,20 +2216,16 @@ void elk_oword_block_read(struct elk_codegen *p,
 
    elk_push_insn_state(p);
    elk_set_default_exec_size(p, ELK_EXECUTE_8);
-   elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
    elk_MOV(p, mrf, retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD));
 
    /* set message header global offset field (reg 0, element 2) */
    elk_set_default_exec_size(p, ELK_EXECUTE_1);
-   elk_set_default_swsb(p, tgl_swsb_null());
    elk_MOV(p,
 	   retype(elk_vec1_reg(ELK_MESSAGE_REGISTER_FILE,
 			       mrf.nr,
 			       2), ELK_REGISTER_TYPE_UD),
 	   elk_imm_ud(offset));
    elk_pop_insn_state(p);
-
-   elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
 
    elk_inst *insn = next_insn(p, ELK_OPCODE_SEND);
 
@@ -2444,7 +2425,6 @@ void elk_adjust_sampler_state_pointer(struct elk_codegen *p,
 
       elk_push_insn_state(p);
       elk_AND(p, temp, get_element_ud(sampler_index, 0), elk_imm_ud(0x0f0));
-      elk_set_default_swsb(p, tgl_swsb_regdist(1));
       elk_SHL(p, temp, temp, elk_imm_ud(4));
       elk_ADD(p,
               get_element_ud(header, 3),
@@ -2527,7 +2507,6 @@ elk_send_indirect_message(struct elk_codegen *p,
       elk_set_src0(p, send, retype(payload, ELK_REGISTER_TYPE_UD));
       elk_set_desc(p, send, desc.ud | desc_imm);
    } else {
-      const struct tgl_swsb swsb = elk_get_default_swsb(p);
       struct elk_reg addr = retype(elk_address_reg(0), ELK_REGISTER_TYPE_UD);
 
       elk_push_insn_state(p);
@@ -2536,7 +2515,6 @@ elk_send_indirect_message(struct elk_codegen *p,
       elk_set_default_exec_size(p, ELK_EXECUTE_1);
       elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
       elk_set_default_flag_reg(p, 0, 0);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
 
       /* Load the indirect descriptor to an address register using OR so the
        * caller can specify additional descriptor bits with the desc_imm
@@ -2546,7 +2524,6 @@ elk_send_indirect_message(struct elk_codegen *p,
 
       elk_pop_insn_state(p);
 
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
       send = next_insn(p, ELK_OPCODE_SEND);
       elk_set_src0(p, send, retype(payload, ELK_REGISTER_TYPE_UD));
       elk_set_src1(p, send, addr);
@@ -2566,7 +2543,6 @@ elk_send_indirect_surface_message(struct elk_codegen *p,
                                   unsigned desc_imm)
 {
    if (surface.file != ELK_IMMEDIATE_VALUE) {
-      const struct tgl_swsb swsb = elk_get_default_swsb(p);
       struct elk_reg addr = retype(elk_address_reg(0), ELK_REGISTER_TYPE_UD);
 
       elk_push_insn_state(p);
@@ -2575,7 +2551,6 @@ elk_send_indirect_surface_message(struct elk_codegen *p,
       elk_set_default_exec_size(p, ELK_EXECUTE_1);
       elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
       elk_set_default_flag_reg(p, 0, 0);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
 
       /* Mask out invalid bits from the surface index to avoid hangs e.g. when
        * some surface array is accessed out of bounds.
@@ -2588,7 +2563,6 @@ elk_send_indirect_surface_message(struct elk_codegen *p,
       elk_pop_insn_state(p);
 
       surface = addr;
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
    }
 
    elk_send_indirect_message(p, sfid, dst, payload, surface, desc_imm, false);
@@ -3161,7 +3135,6 @@ elk_broadcast(struct elk_codegen *p,
       if (type_sz(src.type) > 4 && !devinfo->has_64bit_int) {
          elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 0),
                     subscript(src, ELK_REGISTER_TYPE_D, 0));
-         elk_set_default_swsb(p, tgl_swsb_null());
          elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 1),
                     subscript(src, ELK_REGISTER_TYPE_D, 1));
       } else {
@@ -3205,14 +3178,11 @@ elk_broadcast(struct elk_codegen *p,
           * register is above this limit.
           */
          if (offset >= limit) {
-            elk_set_default_swsb(p, tgl_swsb_regdist(1));
             elk_ADD(p, addr, addr, elk_imm_ud(offset - offset % limit));
             offset = offset % limit;
          }
 
          elk_pop_insn_state(p);
-
-         elk_set_default_swsb(p, tgl_swsb_regdist(1));
 
          /* Use indirect addressing to fetch the specified component. */
          if (type_sz(src.type) > 4 &&
@@ -3233,7 +3203,6 @@ elk_broadcast(struct elk_codegen *p,
             elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 0),
                        retype(elk_vec1_indirect(addr.subnr, offset),
                               ELK_REGISTER_TYPE_D));
-            elk_set_default_swsb(p, tgl_swsb_null());
             elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 1),
                        retype(elk_vec1_indirect(addr.subnr, offset + 4),
                               ELK_REGISTER_TYPE_D));
@@ -3326,27 +3295,18 @@ elk_float_controls_mode(struct elk_codegen *p,
     *   does not ensure execution pipeline coherency. Software must set the
     *   thread control field to ‘switch’ for an instruction that uses
     *   control register as an explicit operand."
-    *
-    * On Gfx12+ this is implemented in terms of SWSB annotations instead.
     */
-   elk_set_default_swsb(p, tgl_swsb_regdist(1));
-
    elk_inst *inst = elk_AND(p, elk_cr0_reg(0), elk_cr0_reg(0),
                             elk_imm_ud(~mask));
    elk_inst_set_exec_size(p->devinfo, inst, ELK_EXECUTE_1);
-   if (p->devinfo->ver < 12)
-      elk_inst_set_thread_control(p->devinfo, inst, ELK_THREAD_SWITCH);
+   elk_inst_set_thread_control(p->devinfo, inst, ELK_THREAD_SWITCH);
 
    if (mode) {
       elk_inst *inst_or = elk_OR(p, elk_cr0_reg(0), elk_cr0_reg(0),
                                  elk_imm_ud(mode));
       elk_inst_set_exec_size(p->devinfo, inst_or, ELK_EXECUTE_1);
-      if (p->devinfo->ver < 12)
-         elk_inst_set_thread_control(p->devinfo, inst_or, ELK_THREAD_SWITCH);
+      elk_inst_set_thread_control(p->devinfo, inst_or, ELK_THREAD_SWITCH);
    }
-
-   if (p->devinfo->ver >= 12)
-      elk_SYNC(p, TGL_SYNC_NOP);
 }
 
 void

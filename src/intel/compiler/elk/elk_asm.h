@@ -64,17 +64,8 @@ struct predicate {
    unsigned flag_subreg_nr:1;
 };
 
-enum instoption_type {
-   INSTOPTION_FLAG,
-   INSTOPTION_DEP_INFO,
-};
-
 struct instoption {
-   enum instoption_type type;
-   union {
-      unsigned uint_value;
-      struct tgl_swsb depinfo_value;
-   };
+   unsigned uint_value;
 };
 
 struct options {
@@ -91,7 +82,6 @@ struct options {
    unsigned qtr_ctrl:2;
    unsigned nib_ctrl:1;
    unsigned is_compr:1;
-   struct tgl_swsb depinfo;
 };
 
 struct msgdesc {

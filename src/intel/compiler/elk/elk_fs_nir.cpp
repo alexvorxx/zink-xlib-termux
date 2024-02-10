@@ -5244,50 +5244,6 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
 
       const fs_builder ubld = bld.group(8, 0);
 
-      /* A memory barrier with acquire semantics requires us to
-       * guarantee that memory operations of the specified storage
-       * class sequenced-after the barrier aren't reordered before the
-       * barrier, nor before any previous atomic operation
-       * sequenced-before the barrier which may be synchronizing this
-       * acquire barrier with a prior release sequence.
-       *
-       * In order to guarantee the latter we must make sure that any
-       * such previous operation has completed execution before
-       * invalidating the relevant caches, since otherwise some cache
-       * could be polluted by a concurrent thread after its
-       * invalidation but before the previous atomic completes, which
-       * could lead to a violation of the expected memory ordering if
-       * a subsequent memory read hits the polluted cacheline, which
-       * would return a stale value read from memory before the
-       * completion of the atomic sequenced-before the barrier.
-       *
-       * This ordering inversion can be avoided trivially if the
-       * operations we need to order are all handled by a single
-       * in-order cache, since the flush implied by the memory fence
-       * occurs after any pending operations have completed, however
-       * that doesn't help us when dealing with multiple caches
-       * processing requests out of order, in which case we need to
-       * explicitly stall the EU until any pending memory operations
-       * have executed.
-       *
-       * Note that that might be somewhat heavy handed in some cases.
-       * In particular when this memory fence was inserted by
-       * spirv_to_nir() lowering an atomic with acquire semantics into
-       * an atomic+barrier sequence we could do a better job by
-       * synchronizing with respect to that one atomic *only*, but
-       * that would require additional information not currently
-       * available to the backend.
-       *
-       * XXX - Use an alternative workaround on IVB and ICL, since
-       *       SYNC.ALLWR is only available on Gfx12+.
-       */
-      if (devinfo->ver >= 12 &&
-          (!nir_intrinsic_has_memory_scope(instr) ||
-           (nir_intrinsic_memory_semantics(instr) & NIR_MEMORY_ACQUIRE))) {
-         ubld.exec_all().group(1, 0).emit(
-            ELK_OPCODE_SYNC, ubld.null_reg_ud(), elk_imm_ud(TGL_SYNC_ALLWR));
-      }
-
       if (devinfo->has_lsc) {
          assert(devinfo->verx10 >= 125);
          uint32_t desc =
@@ -5308,16 +5264,6 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
 
          if (slm_fence) {
             assert(opcode == ELK_SHADER_OPCODE_MEMORY_FENCE);
-            if (intel_needs_workaround(devinfo, 14014063774)) {
-               /* Wa_14014063774
-                *
-                * Before SLM fence compiler needs to insert SYNC.ALLWR in order
-                * to avoid the SLM data race.
-                */
-               ubld.exec_all().group(1, 0).emit(
-                  ELK_OPCODE_SYNC, ubld.null_reg_ud(),
-                  elk_imm_ud(TGL_SYNC_ALLWR));
-            }
             fence_regs[fence_regs_count++] =
                emit_fence(ubld, opcode, GFX12_SFID_SLM, desc,
                           true /* commit_enable */,

@@ -1061,7 +1061,6 @@ elk_backend_instruction::has_side_effects() const
    case ELK_SHADER_OPCODE_SEND:
       return send_has_side_effects;
 
-   case ELK_OPCODE_SYNC:
    case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
    case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
    case ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE:

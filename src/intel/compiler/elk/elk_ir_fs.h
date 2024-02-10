@@ -427,8 +427,6 @@ public:
    bool last_rt:1;
    bool pi_noperspective:1;   /**< Pixel interpolator noperspective flag */
    bool keep_payload_trailing_zeros;
-
-   tgl_swsb sched; /**< Scheduling info. */
 };
 
 /**

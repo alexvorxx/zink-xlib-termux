@@ -293,7 +293,7 @@ sources_not_null(const struct elk_isa_info *isa,
    if (num_sources == 3)
       return (struct string){};
 
-   if (num_sources >= 1 && elk_inst_opcode(isa, inst) != ELK_OPCODE_SYNC)
+   if (num_sources >= 1)
       ERROR_IF(src0_is_null(devinfo, inst), "src0 is null");
 
    if (num_sources == 2)

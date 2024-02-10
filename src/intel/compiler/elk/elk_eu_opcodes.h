@@ -13,7 +13,6 @@ extern "C" {
 enum elk_opcode {
    /* These are the actual hardware instructions. */
    ELK_OPCODE_ILLEGAL,
-   ELK_OPCODE_SYNC,
    ELK_OPCODE_MOV,
    ELK_OPCODE_SEL,
    ELK_OPCODE_MOVI, /**< G45+ */

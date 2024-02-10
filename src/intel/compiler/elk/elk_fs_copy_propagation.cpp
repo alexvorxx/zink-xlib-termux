@@ -1104,30 +1104,6 @@ try_constant_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
       }
       break;
 
-   case ELK_OPCODE_ADD3:
-      /* add3 can have a single imm16 source. Proceed if the source type is
-       * already W or UW or the value can be coerced to one of those types.
-       */
-      if (val.type == ELK_REGISTER_TYPE_W || val.type == ELK_REGISTER_TYPE_UW)
-         ; /* Nothing to do. */
-      else if (val.ud <= 0xffff)
-         val = elk_imm_uw(val.ud);
-      else if (val.d >= -0x8000 && val.d <= 0x7fff)
-         val = elk_imm_w(val.d);
-      else
-         break;
-
-      if (arg == 2) {
-         inst->src[arg] = val;
-         progress = true;
-      } else if (inst->src[2].file != IMM) {
-         inst->src[arg] = inst->src[2];
-         inst->src[2] = val;
-         progress = true;
-      }
-
-      break;
-
    case ELK_OPCODE_CMP:
    case ELK_OPCODE_IF:
       if (arg == 1) {
@@ -1306,15 +1282,6 @@ opt_copy_propagation_local(const elk_compiler *compiler, linear_ctx *lin_ctx,
 
       if (instruction_progress) {
          progress = true;
-
-         /* ADD3 can only have the immediate as src0. */
-         if (inst->opcode == ELK_OPCODE_ADD3) {
-            if (inst->src[2].file == IMM) {
-               const auto src0 = inst->src[0];
-               inst->src[0] = inst->src[2];
-               inst->src[2] = src0;
-            }
-         }
 
          /* If only one of the sources of a 2-source, commutative instruction (e.g.,
           * AND) is immediate, it must be src1. If both are immediate, opt_algebraic

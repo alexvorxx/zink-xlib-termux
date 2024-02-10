@@ -79,7 +79,6 @@ enum elk_opcode {
    ELK_OPCODE_SUBB, /**< Gfx7+ */
    ELK_OPCODE_SAD2,
    ELK_OPCODE_SADA2,
-   ELK_OPCODE_ADD3, /* Gen12+ only */
    ELK_OPCODE_DP4,
    ELK_OPCODE_DPH,
    ELK_OPCODE_DP3,

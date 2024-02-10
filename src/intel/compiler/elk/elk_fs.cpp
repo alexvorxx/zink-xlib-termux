@@ -4723,7 +4723,6 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
    case ELK_OPCODE_SAD2:
    case ELK_OPCODE_MAD:
    case ELK_OPCODE_LRP:
-   case ELK_OPCODE_ADD3:
    case ELK_FS_OPCODE_PACK:
    case ELK_SHADER_OPCODE_SEL_EXEC:
    case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:

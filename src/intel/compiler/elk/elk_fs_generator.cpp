@@ -1816,11 +1816,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          elk_LRP(p, dst, src[0], src[1], src[2]);
 	 break;
 
-      case ELK_OPCODE_ADD3:
-         assert(devinfo->verx10 >= 125);
-         elk_ADD3(p, dst, src[0], src[1], src[2]);
-         break;
-
       case ELK_OPCODE_FRC:
 	 elk_FRC(p, dst, src[0]);
 	 break;

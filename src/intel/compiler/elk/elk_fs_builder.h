@@ -617,7 +617,6 @@ namespace elk {
       }
 
       ALU2(ADD)
-      ALU3(ADD3)
       ALU2_ACC(ADDC)
       ALU2(AND)
       ALU2(ASR)

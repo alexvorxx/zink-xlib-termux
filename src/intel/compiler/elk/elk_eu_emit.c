@@ -1076,7 +1076,6 @@ ALU1(FBL)
 ALU1(CBIT)
 ALU2(ADDC)
 ALU2(SUBB)
-ALU3(ADD3)
 
 elk_inst *
 elk_MOV(struct elk_codegen *p, struct elk_reg dest, struct elk_reg src0)

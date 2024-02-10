@@ -821,7 +821,6 @@ elk_backend_instruction::is_commutative() const
    case ELK_OPCODE_OR:
    case ELK_OPCODE_XOR:
    case ELK_OPCODE_ADD:
-   case ELK_OPCODE_ADD3:
    case ELK_OPCODE_MUL:
    case ELK_SHADER_OPCODE_MULH:
       return true;
@@ -944,7 +943,6 @@ elk_backend_instruction::can_do_saturate() const
 {
    switch (opcode) {
    case ELK_OPCODE_ADD:
-   case ELK_OPCODE_ADD3:
    case ELK_OPCODE_ASR:
    case ELK_OPCODE_AVG:
    case ELK_OPCODE_CSEL:
@@ -990,7 +988,6 @@ elk_backend_instruction::can_do_cmod() const
 {
    switch (opcode) {
    case ELK_OPCODE_ADD:
-   case ELK_OPCODE_ADD3:
    case ELK_OPCODE_ADDC:
    case ELK_OPCODE_AND:
    case ELK_OPCODE_ASR:

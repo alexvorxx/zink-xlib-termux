@@ -379,7 +379,6 @@ namespace {
       case ELK_OPCODE_MOV:
       case ELK_OPCODE_CMP:
       case ELK_OPCODE_ADD:
-      case ELK_OPCODE_ADD3:
       case ELK_OPCODE_MUL:
       case ELK_SHADER_OPCODE_MOV_RELOC_IMM:
       case ELK_VEC4_OPCODE_MOV_FOR_SCRATCH:

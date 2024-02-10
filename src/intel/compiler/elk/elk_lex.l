@@ -52,7 +52,6 @@ null 		{ BEGIN(REG); return NULL_TOKEN; }
 
  /* Opcodes */
 add		{ yylval.integer = ELK_OPCODE_ADD; return ADD; }
-add3		{ yylval.integer = ELK_OPCODE_ADD3; return ADD3; }
 addc		{ yylval.integer = ELK_OPCODE_ADDC; return ADDC; }
 and		{ yylval.integer = ELK_OPCODE_AND; return AND; }
 asr		{ yylval.integer = ELK_OPCODE_ASR; return ASR; }

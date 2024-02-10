@@ -1278,10 +1278,6 @@ fs_nir_emit_alu(nir_to_elk_state &ntb, nir_alu_instr *instr,
       inst = bld.ADD(result, op[0], op[1]);
       break;
 
-   case nir_op_iadd3:
-      inst = bld.ADD3(result, op[0], op[1], op[2]);
-      break;
-
    case nir_op_iadd_sat:
    case nir_op_uadd_sat:
       inst = bld.ADD(result, op[0], op[1]);
@@ -4680,20 +4676,6 @@ try_rebuild_resource(nir_to_elk_state &ntb, const elk::fs_builder &bld, nir_def 
                ubld8.ADD(dst,
                          src0.file != IMM ? src0 : src1,
                          src0.file != IMM ? src1 : src0);
-            break;
-         }
-         case nir_op_iadd3: {
-            elk_fs_reg dst = ubld8.vgrf(ELK_REGISTER_TYPE_UD);
-            elk_fs_reg src0 = ntb.resource_insts[alu->src[0].src.ssa->index]->dst;
-            elk_fs_reg src1 = ntb.resource_insts[alu->src[1].src.ssa->index]->dst;
-            elk_fs_reg src2 = ntb.resource_insts[alu->src[2].src.ssa->index]->dst;
-            assert(src0.file != BAD_FILE && src1.file != BAD_FILE && src2.file != BAD_FILE);
-            assert(src0.type == ELK_REGISTER_TYPE_UD);
-            ntb.resource_insts[def->index] =
-               ubld8.ADD3(dst,
-                          src1.file == IMM ? src1 : src0,
-                          src1.file == IMM ? src0 : src1,
-                          src2);
             break;
          }
          case nir_op_ushr: {

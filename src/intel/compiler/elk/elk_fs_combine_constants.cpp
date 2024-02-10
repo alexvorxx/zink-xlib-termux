@@ -1038,10 +1038,6 @@ supports_src_as_imm(const struct intel_device_info *devinfo, const elk_fs_inst *
       return false;
 
    switch (inst->opcode) {
-   case ELK_OPCODE_ADD3:
-      /* ADD3 only exists on Gfx12.5+. */
-      return true;
-
    case ELK_OPCODE_MAD:
       /* Integer types can always mix sizes. Floating point types can mix
        * sizes on Gfx12. On Gfx12.5, floating point sources must all be HF or
@@ -1357,7 +1353,6 @@ elk_fs_visitor::opt_combine_constants()
 
          break;
 
-      case ELK_OPCODE_ADD3:
       case ELK_OPCODE_MAD: {
          for (int i = 0; i < inst->sources; i++) {
             if (inst->src[i].file != IMM)

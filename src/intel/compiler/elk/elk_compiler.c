@@ -119,7 +119,6 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       nir_options->lower_bitfield_reverse = devinfo->ver < 7;
       nir_options->lower_find_lsb = devinfo->ver < 7;
       nir_options->lower_ifind_msb = devinfo->ver < 7;
-      nir_options->has_iadd3 = devinfo->verx10 >= 125;
 
       nir_options->lower_int64_options = int64_options;
       nir_options->lower_doubles_options = fp64_options;

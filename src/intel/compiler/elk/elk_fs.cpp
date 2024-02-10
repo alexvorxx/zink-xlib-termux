@@ -2873,97 +2873,6 @@ elk_fs_visitor::opt_zero_samples()
 }
 
 /**
- * Opportunistically split SEND message payloads.
- *
- * Gfx9+ supports "split" SEND messages, which take two payloads that are
- * implicitly concatenated.  If we find a SEND message with a single payload,
- * we can split that payload in two.  This results in smaller contiguous
- * register blocks for us to allocate.  But it can help beyond that, too.
- *
- * We try and split a LOAD_PAYLOAD between sources which change registers.
- * For example, a sampler message often contains a x/y/z coordinate that may
- * already be in a contiguous VGRF, combined with an LOD, shadow comparitor,
- * or array index, which comes from elsewhere.  In this case, the first few
- * sources will be different offsets of the same VGRF, then a later source
- * will be a different VGRF.  So we split there, possibly eliminating the
- * payload concatenation altogether.
- */
-bool
-elk_fs_visitor::opt_split_sends()
-{
-   if (devinfo->ver < 9)
-      return false;
-
-   bool progress = false;
-
-   foreach_block_and_inst(block, elk_fs_inst, send, cfg) {
-      if (send->opcode != ELK_SHADER_OPCODE_SEND ||
-          send->mlen <= reg_unit(devinfo) || send->ex_mlen > 0)
-         continue;
-
-      assert(send->src[2].file == VGRF);
-
-      /* Currently don't split sends that reuse a previously used payload. */
-      elk_fs_inst *lp = (elk_fs_inst *) send->prev;
-
-      if (lp->is_head_sentinel() || lp->opcode != ELK_SHADER_OPCODE_LOAD_PAYLOAD)
-         continue;
-
-      if (lp->dst.file != send->src[2].file || lp->dst.nr != send->src[2].nr)
-         continue;
-
-      /* Split either after the header (if present), or when consecutive
-       * sources switch from one VGRF to a different one.
-       */
-      unsigned mid = lp->header_size;
-      if (mid == 0) {
-         for (mid = 1; mid < lp->sources; mid++) {
-            if (lp->src[mid].file == BAD_FILE)
-               continue;
-
-            if (lp->src[0].file != lp->src[mid].file ||
-                lp->src[0].nr != lp->src[mid].nr)
-               break;
-         }
-      }
-
-      /* SEND mlen might be smaller than what LOAD_PAYLOAD provides, so
-       * find out how many sources from the payload does it really need.
-       */
-      const unsigned end =
-         load_payload_sources_read_for_size(lp, send->mlen * REG_SIZE);
-
-      /* Nothing to split. */
-      if (end <= mid)
-         continue;
-
-      const fs_builder ibld(this, block, lp);
-      elk_fs_inst *lp1 = ibld.LOAD_PAYLOAD(lp->dst, &lp->src[0], mid, lp->header_size);
-      elk_fs_inst *lp2 = ibld.LOAD_PAYLOAD(lp->dst, &lp->src[mid], end - mid, 0);
-
-      assert(lp1->size_written % REG_SIZE == 0);
-      assert(lp2->size_written % REG_SIZE == 0);
-      assert((lp1->size_written + lp2->size_written) / REG_SIZE == send->mlen);
-
-      lp1->dst = elk_fs_reg(VGRF, alloc.allocate(lp1->size_written / REG_SIZE), lp1->dst.type);
-      lp2->dst = elk_fs_reg(VGRF, alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
-
-      send->resize_sources(4);
-      send->src[2] = lp1->dst;
-      send->src[3] = lp2->dst;
-      send->ex_mlen = lp2->size_written / REG_SIZE;
-      send->mlen -= send->ex_mlen;
-
-      progress = true;
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
-
-   return progress;
-}
-
-/**
  * Remove redundant or useless halts.
  *
  * For example, we can eliminate halts in the following sequence:
@@ -6051,7 +5960,6 @@ elk_fs_visitor::optimize()
          OPT(opt_algebraic);
    }
 
-   OPT(opt_split_sends);
    OPT(fixup_nomask_control_flow);
 
    if (progress) {
@@ -6114,61 +6022,11 @@ elk_fs_visitor::optimize()
       OPT(lower_simd_width);
    }
 
-   OPT(fixup_sends_duplicate_payload);
-
    OPT(lower_uniform_pull_constant_loads);
 
    OPT(lower_find_live_channel);
 
    validate();
-}
-
-/**
- * From the Skylake PRM Vol. 2a docs for sends:
- *
- *    "It is required that the second block of GRFs does not overlap with the
- *    first block."
- *
- * There are plenty of cases where we may accidentally violate this due to
- * having, for instance, both sources be the constant 0.  This little pass
- * just adds a new vgrf for the second payload and copies it over.
- */
-bool
-elk_fs_visitor::fixup_sends_duplicate_payload()
-{
-   bool progress = false;
-
-   foreach_block_and_inst_safe (block, elk_fs_inst, inst, cfg) {
-      if (inst->opcode == ELK_SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
-          regions_overlap(inst->src[2], inst->mlen * REG_SIZE,
-                          inst->src[3], inst->ex_mlen * REG_SIZE)) {
-         elk_fs_reg tmp = elk_fs_reg(VGRF, alloc.allocate(inst->ex_mlen),
-                             ELK_REGISTER_TYPE_UD);
-         /* Sadly, we've lost all notion of channels and bit sizes at this
-          * point.  Just WE_all it.
-          */
-         const fs_builder ibld = fs_builder(this, block, inst).exec_all().group(16, 0);
-         elk_fs_reg copy_src = retype(inst->src[3], ELK_REGISTER_TYPE_UD);
-         elk_fs_reg copy_dst = tmp;
-         for (unsigned i = 0; i < inst->ex_mlen; i += 2) {
-            if (inst->ex_mlen == i + 1) {
-               /* Only one register left; do SIMD8 */
-               ibld.group(8, 0).MOV(copy_dst, copy_src);
-            } else {
-               ibld.MOV(copy_dst, copy_src);
-            }
-            copy_src = offset(copy_src, ibld, 1);
-            copy_dst = offset(copy_dst, ibld, 1);
-         }
-         inst->src[3] = tmp;
-         progress = true;
-      }
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
-
-   return progress;
 }
 
 /**

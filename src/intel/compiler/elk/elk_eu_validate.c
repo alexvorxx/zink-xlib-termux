@@ -96,29 +96,9 @@ inst_is_send(const struct elk_isa_info *isa, const elk_inst *inst)
    switch (elk_inst_opcode(isa, inst)) {
    case ELK_OPCODE_SEND:
    case ELK_OPCODE_SENDC:
-   case ELK_OPCODE_SENDS:
-   case ELK_OPCODE_SENDSC:
       return true;
    default:
       return false;
-   }
-}
-
-static bool
-inst_is_split_send(const struct elk_isa_info *isa, const elk_inst *inst)
-{
-   const struct intel_device_info *devinfo = isa->devinfo;
-
-   if (devinfo->ver >= 12) {
-      return inst_is_send(isa, inst);
-   } else {
-      switch (elk_inst_opcode(isa, inst)) {
-      case ELK_OPCODE_SENDS:
-      case ELK_OPCODE_SENDSC:
-         return true;
-      default:
-         return false;
-      }
    }
 }
 
@@ -321,12 +301,6 @@ sources_not_null(const struct elk_isa_info *isa,
    if (num_sources == 3)
       return (struct string){};
 
-   /* Nothing to test.  Split sends can only encode a file in sources that are
-    * allowed to be NULL.
-    */
-   if (inst_is_split_send(isa, inst))
-      return (struct string){};
-
    if (num_sources >= 1 && elk_inst_opcode(isa, inst) != ELK_OPCODE_SYNC)
       ERROR_IF(src0_is_null(devinfo, inst), "src0 is null");
 
@@ -380,43 +354,7 @@ send_restrictions(const struct elk_isa_info *isa,
 
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   if (inst_is_split_send(isa, inst)) {
-      ERROR_IF(elk_inst_send_src1_reg_file(devinfo, inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
-               elk_inst_send_src1_reg_nr(devinfo, inst) != ELK_ARF_NULL,
-               "src1 of split send must be a GRF or NULL");
-
-      ERROR_IF(elk_inst_eot(devinfo, inst) &&
-               elk_inst_src0_da_reg_nr(devinfo, inst) < 112,
-               "send with EOT must use g112-g127");
-      ERROR_IF(elk_inst_eot(devinfo, inst) &&
-               elk_inst_send_src1_reg_file(devinfo, inst) == ELK_GENERAL_REGISTER_FILE &&
-               elk_inst_send_src1_reg_nr(devinfo, inst) < 112,
-               "send with EOT must use g112-g127");
-
-      if (elk_inst_send_src0_reg_file(devinfo, inst) == ELK_GENERAL_REGISTER_FILE &&
-          elk_inst_send_src1_reg_file(devinfo, inst) == ELK_GENERAL_REGISTER_FILE) {
-         /* Assume minimums if we don't know */
-         unsigned mlen = 1;
-         if (!elk_inst_send_sel_reg32_desc(devinfo, inst)) {
-            const uint32_t desc = elk_inst_send_desc(devinfo, inst);
-            mlen = elk_message_desc_mlen(devinfo, desc) / reg_unit(devinfo);
-         }
-
-         unsigned ex_mlen = 1;
-         if (!elk_inst_send_sel_reg32_ex_desc(devinfo, inst)) {
-            const uint32_t ex_desc = elk_inst_sends_ex_desc(devinfo, inst);
-            ex_mlen = elk_message_ex_desc_ex_mlen(devinfo, ex_desc) /
-                      reg_unit(devinfo);
-         }
-         const unsigned src0_reg_nr = elk_inst_src0_da_reg_nr(devinfo, inst);
-         const unsigned src1_reg_nr = elk_inst_send_src1_reg_nr(devinfo, inst);
-         ERROR_IF((src0_reg_nr <= src1_reg_nr &&
-                   src1_reg_nr < src0_reg_nr + mlen) ||
-                  (src1_reg_nr <= src0_reg_nr &&
-                   src0_reg_nr < src1_reg_nr + ex_mlen),
-                   "split send payloads must not overlap");
-      }
-   } else if (inst_is_send(isa, inst)) {
+   if (inst_is_send(isa, inst)) {
       ERROR_IF(elk_inst_src0_address_mode(devinfo, inst) != ELK_ADDRESS_DIRECT,
                "send must use direct addressing");
 
@@ -986,12 +924,6 @@ general_restrictions_on_region_parameters(const struct elk_isa_info *isa,
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (num_sources == 3)
-      return (struct string){};
-
-   /* Split sends don't have the bits in the instruction to encode regions so
-    * there's nothing to check.
-    */
-   if (inst_is_split_send(isa, inst))
       return (struct string){};
 
    if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_16) {
@@ -1819,10 +1751,6 @@ special_requirements_for_handling_double_precision_data_types(
    if (num_sources == 3 || num_sources == 0)
       return (struct string){};
 
-   /* Split sends don't have types so there's no doubles there. */
-   if (inst_is_split_send(isa, inst))
-      return (struct string){};
-
    enum elk_reg_type exec_type = execution_type(isa, inst);
    unsigned exec_type_size = elk_reg_type_to_size(exec_type);
 
@@ -2645,11 +2573,7 @@ send_descriptor_restrictions(const struct elk_isa_info *isa,
    const struct intel_device_info *devinfo = isa->devinfo;
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   if (inst_is_split_send(isa, inst)) {
-      /* We can only validate immediate descriptors */
-      if (elk_inst_send_sel_reg32_desc(devinfo, inst))
-         return error_msg;
-   } else if (inst_is_send(isa, inst)) {
+   if (inst_is_send(isa, inst)) {
       /* We can only validate immediate descriptors */
       if (elk_inst_src1_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE)
          return error_msg;

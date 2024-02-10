@@ -718,8 +718,6 @@ static const struct elk_opcode_desc opcode_descs[] = {
    { ELK_OPCODE_SENDC,    50,  "sendc",   1,    1,    GFX_LT(GFX12) },
    { ELK_OPCODE_SEND,     49,  "send",    2,    1,    GFX_GE(GFX12) },
    { ELK_OPCODE_SENDC,    50,  "sendc",   2,    1,    GFX_GE(GFX12) },
-   { ELK_OPCODE_SENDS,    51,  "sends",   2,    1,    GFX_GE(GFX9) & GFX_LT(GFX12) },
-   { ELK_OPCODE_SENDSC,   52,  "sendsc",  2,    1,    GFX_GE(GFX9) & GFX_LT(GFX12) },
    { ELK_OPCODE_MATH,     56,  "math",    2,    1,    GFX_GE(GFX6) },
    { ELK_OPCODE_ADD,      64,  "add",     2,    1,    GFX_ALL },
    { ELK_OPCODE_MUL,      65,  "mul",     2,    1,    GFX_ALL },

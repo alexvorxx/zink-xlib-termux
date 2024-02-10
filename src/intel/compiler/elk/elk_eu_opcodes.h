@@ -62,8 +62,6 @@ enum elk_opcode {
    ELK_OPCODE_WAIT,
    ELK_OPCODE_SEND,
    ELK_OPCODE_SENDC,
-   ELK_OPCODE_SENDS, /**< Gfx9+ */
-   ELK_OPCODE_SENDSC, /**< Gfx9+ */
    ELK_OPCODE_MATH, /**< Gfx6+ */
    ELK_OPCODE_ADD,
    ELK_OPCODE_MUL,

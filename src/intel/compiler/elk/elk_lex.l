@@ -122,16 +122,8 @@ ror 		{ yylval.integer = ELK_OPCODE_ROR; return ROR; }
 sad2 		{ yylval.integer = ELK_OPCODE_SAD2; return SAD2; }
 sada2 		{ yylval.integer = ELK_OPCODE_SADA2; return SADA2; }
 sel 		{ yylval.integer = ELK_OPCODE_SEL; return SEL; }
-send 		{
-			yylval.integer = ELK_OPCODE_SEND;
-			return p->devinfo->ver < 12 ? SEND_GFX4 : SEND_GFX12;
-		}
-sendc 		{
-			yylval.integer = ELK_OPCODE_SENDC;
-			return  p->devinfo->ver < 12 ? SENDC_GFX4 : SENDC_GFX12;
-		}
-sends 	        { yylval.integer = ELK_OPCODE_SENDS; return SENDS; }
-sendsc        	{ yylval.integer = ELK_OPCODE_SENDSC; return SENDSC; }
+send 		{ yylval.integer = ELK_OPCODE_SEND; return SEND; }
+sendc 		{ yylval.integer = ELK_OPCODE_SENDC; return SENDC; }
 shl 		{ yylval.integer = ELK_OPCODE_SHL; return SHL; }
 shr 		{ yylval.integer = ELK_OPCODE_SHR; return SHR; }
 smov 		{ yylval.integer = ELK_OPCODE_SMOV; return SMOV; }

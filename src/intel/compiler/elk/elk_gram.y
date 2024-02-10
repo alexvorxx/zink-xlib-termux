@@ -412,8 +412,8 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> OR
 %token <integer> PLN POP PUSH
 %token <integer> RET RNDD RNDE RNDU RNDZ ROL ROR
-%token <integer> SAD2 SADA2 SEL SENDS SENDSC SHL SHR SMOV SUBB SYNC
-%token <integer> SEND_GFX4 SENDC_GFX4 SEND_GFX12 SENDC_GFX12
+%token <integer> SAD2 SADA2 SEL SHL SHR SMOV SUBB SYNC
+%token <integer> SEND SENDC
 %token <integer> WAIT WHILE
 %token <integer> XOR
 
@@ -538,7 +538,6 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %type <reg> indirectgenreg indirectregion
 %type <reg> immreg src reg32 payload directgenreg_list addrparam region
 %type <reg> region_wh directgenreg directmsgreg indirectmsgreg
-%type <reg> desc ex_desc reg32a
 %type <integer> swizzle
 
 /* registers */
@@ -554,8 +553,8 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 
 /* instruction opcodes */
 %type <integer> unaryopcodes binaryopcodes binaryaccopcodes ternaryopcodes
-%type <integer> sendop sendsop
-%type <instruction> sendopcode sendsopcode
+%type <integer> sendop
+%type <instruction> sendopcode
 
 %type <integer> negate abs chansel math_function sharedfunction
 
@@ -1052,68 +1051,15 @@ sendinstruction:
 
 		elk_pop_insn_state(p);
 	}
-	| predicate sendsopcode execsize dst payload payload desc ex_desc sharedfunction msgdesc instoptions
-	{
-		assert(p->devinfo->ver >= 9);
-
-		i965_asm_set_instruction_options(p, $11);
-		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
-		elk_set_dest(p, elk_last_inst, $4);
-		elk_set_src0(p, elk_last_inst, $5);
-		elk_set_src1(p, elk_last_inst, $6);
-
-		if ($7.file == ELK_IMMEDIATE_VALUE) {
-			elk_inst_set_send_sel_reg32_desc(p->devinfo, elk_last_inst, 0);
-			elk_inst_set_send_desc(p->devinfo, elk_last_inst, $7.ud);
-		} else {
-			elk_inst_set_send_sel_reg32_desc(p->devinfo, elk_last_inst, 1);
-		}
-
-		if ($8.file == ELK_IMMEDIATE_VALUE) {
-			elk_inst_set_send_sel_reg32_ex_desc(p->devinfo, elk_last_inst, 0);
-			elk_inst_set_sends_ex_desc(p->devinfo, elk_last_inst, $8.ud);
-		} else {
-			elk_inst_set_send_sel_reg32_ex_desc(p->devinfo, elk_last_inst, 1);
-			elk_inst_set_send_ex_desc_ia_subreg_nr(p->devinfo, elk_last_inst, $8.subnr >> 2);
-		}
-
-		elk_inst_set_sfid(p->devinfo, elk_last_inst, $9);
-		elk_inst_set_eot(p->devinfo, elk_last_inst, $11.end_of_thread);
-		// TODO: set instruction group instead of qtr and nib ctrl
-		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
-				         $11.qtr_ctrl);
-
-		elk_inst_set_nib_control(p->devinfo, elk_last_inst,
-					 $11.nib_ctrl);
-
-		if (p->devinfo->verx10 >= 125 && $10.ex_bso) {
-			elk_inst_set_send_ex_bso(p->devinfo, elk_last_inst, 1);
-			elk_inst_set_send_src1_len(p->devinfo, elk_last_inst,
-						   $10.src1_len);
-		}
-
-		elk_pop_insn_state(p);
-	}
 	;
 
 sendop:
-	SEND_GFX4
-	| SENDC_GFX4
-	;
-
-sendsop:
-	SEND_GFX12
-	| SENDC_GFX12
-	| SENDS
-	| SENDSC
+	SEND
+	| SENDC
 	;
 
 sendopcode:
 	sendop   { $$ = elk_next_insn(p, $1); }
-	;
-
-sendsopcode:
-	sendsop  { $$ = elk_next_insn(p, $1); }
 	;
 
 sharedfunction:
@@ -1142,31 +1088,6 @@ exp2:
 	LONG 		{ $$ = $1; }
 	| MINUS LONG 	{ $$ = -$2; }
 	;
-
-desc:
-	reg32a
-	| exp2
-	{
-		$$ = elk_imm_ud($1);
-	}
-	;
-
-ex_desc:
-	reg32a
-	| exp2
-	{
-		$$ = elk_imm_ud($1);
-	}
-	;
-
-reg32a:
-	addrreg region reg_type
-	{
-		$$ = set_direct_src_operand(&$1, $3);
-		$$ = stride($$, $2.vstride, $2.width, $2.hstride);
-	}
-	;
-
 
 /* Jump instruction */
 jumpinstruction:

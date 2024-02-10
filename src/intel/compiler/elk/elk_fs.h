@@ -212,7 +212,6 @@ public:
    void optimize();
    void allocate_registers(bool allow_spilling);
    uint32_t compute_max_register_pressure();
-   bool fixup_sends_duplicate_payload();
    void fixup_3src_null_dest();
    void emit_dummy_memory_fence_before_eot();
    void emit_dummy_mov_instruction();
@@ -249,7 +248,6 @@ public:
 
    bool opt_copy_propagation();
    bool opt_bank_conflicts();
-   bool opt_split_sends();
    bool register_coalesce();
    bool compute_to_mrf();
    bool eliminate_find_live_channel();

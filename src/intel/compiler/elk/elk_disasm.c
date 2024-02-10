@@ -88,19 +88,7 @@ static bool
 is_send(unsigned opcode)
 {
    return opcode == ELK_OPCODE_SEND ||
-          opcode == ELK_OPCODE_SENDC ||
-          opcode == ELK_OPCODE_SENDS ||
-          opcode == ELK_OPCODE_SENDSC;
-}
-
-static bool
-is_split_send(UNUSED const struct intel_device_info *devinfo, unsigned opcode)
-{
-   if (devinfo->ver >= 12)
-      return is_send(opcode);
-   else
-      return opcode == ELK_OPCODE_SENDS ||
-             opcode == ELK_OPCODE_SENDSC;
+          opcode == ELK_OPCODE_SENDC;
 }
 
 const char *const elk_conditional_modifier[16] = {
@@ -973,32 +961,7 @@ dest(FILE *file, const struct elk_isa_info *isa, const elk_inst *inst)
    unsigned elem_size = elk_reg_type_to_size(type);
    int err = 0;
 
-   if (is_split_send(devinfo, elk_inst_opcode(isa, inst))) {
-      /* These are fixed for split sends */
-      type = ELK_REGISTER_TYPE_UD;
-      elem_size = 4;
-      if (devinfo->ver >= 12) {
-         err |= reg(file, elk_inst_send_dst_reg_file(devinfo, inst),
-                    elk_inst_dst_da_reg_nr(devinfo, inst));
-         string(file, elk_reg_type_to_letters(type));
-      } else if (elk_inst_dst_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
-         err |= reg(file, elk_inst_send_dst_reg_file(devinfo, inst),
-                    elk_inst_dst_da_reg_nr(devinfo, inst));
-         unsigned subreg_nr = elk_inst_dst_da16_subreg_nr(devinfo, inst);
-         if (subreg_nr)
-            format(file, ".%u", subreg_nr);
-         string(file, elk_reg_type_to_letters(type));
-      } else {
-         string(file, "g[a0");
-         if (elk_inst_dst_ia_subreg_nr(devinfo, inst))
-            format(file, ".%"PRIu64, elk_inst_dst_ia_subreg_nr(devinfo, inst) /
-                   elem_size);
-         if (elk_inst_send_dst_ia16_addr_imm(devinfo, inst))
-            format(file, " %d", elk_inst_send_dst_ia16_addr_imm(devinfo, inst));
-         string(file, "]<");
-         string(file, elk_reg_type_to_letters(type));
-      }
-   } else if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+   if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
       if (elk_inst_dst_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
          err |= reg(file, elk_inst_dst_reg_file(devinfo, inst),
                     elk_inst_dst_da_reg_nr(devinfo, inst));
@@ -1727,44 +1690,6 @@ imm(FILE *file, const struct elk_isa_info *isa, enum elk_reg_type type,
 }
 
 static int
-src_sends_da(FILE *file,
-             const struct intel_device_info *devinfo,
-             enum elk_reg_type type,
-             enum elk_reg_file _reg_file,
-             unsigned _reg_nr,
-             unsigned _reg_subnr)
-{
-   int err = 0;
-
-   err |= reg(file, _reg_file, _reg_nr);
-   if (err == -1)
-      return 0;
-   if (_reg_subnr)
-      format(file, ".1");
-   string(file, elk_reg_type_to_letters(type));
-
-   return err;
-}
-
-static int
-src_sends_ia(FILE *file,
-             const struct intel_device_info *devinfo,
-             enum elk_reg_type type,
-             int _addr_imm,
-             unsigned _addr_subreg_nr)
-{
-   string(file, "g[a0");
-   if (_addr_subreg_nr)
-      format(file, ".1");
-   if (_addr_imm)
-      format(file, " %d", _addr_imm);
-   string(file, "]");
-   string(file, elk_reg_type_to_letters(type));
-
-   return 0;
-}
-
-static int
 src_send_desc_ia(FILE *file,
                  const struct intel_device_info *devinfo,
                  unsigned _addr_subreg_nr)
@@ -1782,29 +1707,7 @@ src0(FILE *file, const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   if (is_split_send(devinfo, elk_inst_opcode(isa, inst))) {
-      if (devinfo->ver >= 12) {
-         return src_sends_da(file,
-                             devinfo,
-                             ELK_REGISTER_TYPE_UD,
-                             elk_inst_send_src0_reg_file(devinfo, inst),
-                             elk_inst_src0_da_reg_nr(devinfo, inst),
-                             0);
-      } else if (elk_inst_send_src0_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
-         return src_sends_da(file,
-                             devinfo,
-                             ELK_REGISTER_TYPE_UD,
-                             ELK_GENERAL_REGISTER_FILE,
-                             elk_inst_src0_da_reg_nr(devinfo, inst),
-                             elk_inst_src0_da16_subreg_nr(devinfo, inst));
-      } else {
-         return src_sends_ia(file,
-                             devinfo,
-                             ELK_REGISTER_TYPE_UD,
-                             elk_inst_send_src0_ia16_addr_imm(devinfo, inst),
-                             elk_inst_src0_ia_subreg_nr(devinfo, inst));
-      }
-   } else if (elk_inst_src0_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
+   if (elk_inst_src0_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
       return imm(file, isa, elk_inst_src0_type(devinfo, inst), inst);
    } else if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
       if (elk_inst_src0_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
@@ -1861,14 +1764,7 @@ src1(FILE *file, const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   if (is_split_send(devinfo, elk_inst_opcode(isa, inst))) {
-      return src_sends_da(file,
-                          devinfo,
-                          ELK_REGISTER_TYPE_UD,
-                          elk_inst_send_src1_reg_file(devinfo, inst),
-                          elk_inst_send_src1_reg_nr(devinfo, inst),
-                          0 /* subreg_nr */);
-   } else if (elk_inst_src1_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
+   if (elk_inst_src1_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
       return imm(file, isa, elk_inst_src1_type(devinfo, inst), inst);
    } else if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
       if (elk_inst_src1_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
@@ -2257,28 +2153,7 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
 
       bool has_imm_desc = false, has_imm_ex_desc = false;
       uint32_t imm_desc = 0, imm_ex_desc = 0;
-      if (is_split_send(devinfo, opcode)) {
-         pad(file, 64);
-         if (elk_inst_send_sel_reg32_desc(devinfo, inst)) {
-            /* show the indirect descriptor source */
-            err |= src_send_desc_ia(file, devinfo, 0);
-         } else {
-            has_imm_desc = true;
-            imm_desc = elk_inst_send_desc(devinfo, inst);
-            fprintf(file, "0x%08"PRIx32, imm_desc);
-         }
-
-         pad(file, 80);
-         if (elk_inst_send_sel_reg32_ex_desc(devinfo, inst)) {
-            /* show the indirect descriptor source */
-            err |= src_send_desc_ia(file, devinfo,
-                                    elk_inst_send_ex_desc_ia_subreg_nr(devinfo, inst));
-         } else {
-            has_imm_ex_desc = true;
-            imm_ex_desc = elk_inst_sends_ex_desc(devinfo, inst);
-            fprintf(file, "0x%08"PRIx32, imm_ex_desc);
-         }
-      } else {
+      {
          if (elk_inst_src1_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE) {
             /* show the indirect descriptor source */
             pad(file, 48);

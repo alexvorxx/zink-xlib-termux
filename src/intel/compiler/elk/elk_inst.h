@@ -873,29 +873,6 @@ elk_inst_set_send_ex_desc(const struct intel_device_info *devinfo,
 }
 
 /**
- * Set the SENDS(C) message extended descriptor immediate.
- *
- * This doesn't include the SFID nor the EOT field that were considered to be
- * part of the extended message descriptor by some versions of the BSpec,
- * because they are present in the instruction even if the extended message
- * descriptor is provided indirectly in a register, so we want to specify them
- * separately.
- */
-static inline void
-elk_inst_set_sends_ex_desc(const struct intel_device_info *devinfo,
-                           elk_inst *inst, uint32_t value)
-{
-   if (devinfo->ver >= 12) {
-      elk_inst_set_send_ex_desc(devinfo, inst, value);
-   } else {
-      elk_inst_set_bits(inst, 95, 80, GET_BITS(value, 31, 16));
-      assert(GET_BITS(value, 15, 10) == 0);
-      elk_inst_set_bits(inst, 67, 64, GET_BITS(value, 9, 6));
-      assert(GET_BITS(value, 5, 0) == 0);
-   }
-}
-
-/**
  * Get the SEND(C) message extended descriptor immediate.
  *
  * \sa elk_inst_set_send_ex_desc().
@@ -916,23 +893,6 @@ elk_inst_send_ex_desc(const struct intel_device_info *devinfo,
               elk_inst_bits(inst, 88, 85) << 24 |
               elk_inst_bits(inst, 83, 80) << 20 |
               elk_inst_bits(inst, 67, 64) << 16);
-   }
-}
-
-/**
- * Get the SENDS(C) message extended descriptor immediate.
- *
- * \sa elk_inst_set_send_ex_desc().
- */
-static inline uint32_t
-elk_inst_sends_ex_desc(const struct intel_device_info *devinfo,
-                       const elk_inst *inst)
-{
-   if (devinfo->ver >= 12) {
-      return elk_inst_send_ex_desc(devinfo, inst);
-   } else {
-      return (elk_inst_bits(inst, 95, 80) << 16 |
-              elk_inst_bits(inst, 67, 64) << 6);
    }
 }
 

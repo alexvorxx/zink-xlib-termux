@@ -339,16 +339,7 @@ elk_fs_generator::generate_send(elk_fs_inst *inst,
 
    if (ex_desc.file != ELK_IMMEDIATE_VALUE || ex_desc.ud || ex_desc_imm ||
        inst->send_ex_desc_scratch) {
-      /* If we have any sort of extended descriptor, then we need SENDS.  This
-       * also covers the dual-payload case because ex_mlen goes in ex_desc.
-       */
-      elk_send_indirect_split_message(p, inst->sfid, dst, payload, payload2,
-                                      desc, desc_imm, ex_desc, ex_desc_imm,
-                                      inst->send_ex_desc_scratch,
-                                      inst->send_ex_bso, inst->eot);
-      if (inst->check_tdr)
-         elk_inst_set_opcode(p->isa, elk_last_inst,
-                             devinfo->ver >= 12 ? ELK_OPCODE_SENDC : ELK_OPCODE_SENDSC);
+      unreachable("no split sends available");
    } else {
       elk_send_indirect_message(p, inst->sfid, dst, payload, desc, desc_imm,
                                    inst->eot);

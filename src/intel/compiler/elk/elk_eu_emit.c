@@ -123,19 +123,6 @@ elk_set_dest(struct elk_codegen *p, elk_inst *inst, struct elk_reg dest)
       elk_inst_set_dst_reg_file(devinfo, inst, dest.file);
       elk_inst_set_dst_da_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
 
-   } else if (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDS ||
-              elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDSC) {
-      assert(devinfo->ver < 12);
-      assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
-             dest.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(dest.address_mode == ELK_ADDRESS_DIRECT);
-      assert(dest.subnr % 16 == 0);
-      assert(dest.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-             dest.vstride == dest.width + 1);
-      assert(!dest.negate && !dest.abs);
-      elk_inst_set_dst_da_reg_nr(devinfo, inst, dest.nr);
-      elk_inst_set_dst_da16_subreg_nr(devinfo, inst, dest.subnr / 16);
-      elk_inst_set_send_dst_reg_file(devinfo, inst, dest.file);
    } else {
       elk_inst_set_dst_file_type(devinfo, inst, dest.file, dest.type);
       elk_inst_set_dst_address_mode(devinfo, inst, dest.address_mode);
@@ -219,9 +206,7 @@ elk_set_src0(struct elk_codegen *p, elk_inst *inst, struct elk_reg reg)
 
    if (devinfo->ver >= 6 &&
        (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDS ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDSC)) {
+        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC)) {
       /* Any source modifiers or regions will be ignored, since this just
        * identifies the MRF/GRF to start reading the message contents from.
        * Check for some likely failures.
@@ -244,17 +229,6 @@ elk_set_src0(struct elk_codegen *p, elk_inst *inst, struct elk_reg reg)
       elk_inst_set_send_src0_reg_file(devinfo, inst, reg.file);
       elk_inst_set_src0_da_reg_nr(devinfo, inst, phys_nr(devinfo, reg));
 
-   } else if (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDS ||
-              elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDSC) {
-      assert(reg.file == ELK_GENERAL_REGISTER_FILE);
-      assert(reg.address_mode == ELK_ADDRESS_DIRECT);
-      assert(reg.subnr % 16 == 0);
-      assert(has_scalar_region(reg) ||
-             (reg.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-              reg.vstride == reg.width + 1));
-      assert(!reg.negate && !reg.abs);
-      elk_inst_set_src0_da_reg_nr(devinfo, inst, reg.nr);
-      elk_inst_set_src0_da16_subreg_nr(devinfo, inst, reg.subnr / 16);
    } else {
       elk_inst_set_src0_file_type(devinfo, inst, reg.file, reg.type);
       elk_inst_set_src0_abs(devinfo, inst, reg.abs);
@@ -349,22 +323,7 @@ elk_set_src1(struct elk_codegen *p, elk_inst *inst, struct elk_reg reg)
    if (reg.file == ELK_GENERAL_REGISTER_FILE)
       assert(reg.nr < XE2_MAX_GRF);
 
-   if (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDS ||
-       elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDSC ||
-       (devinfo->ver >= 12 &&
-        (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
-         elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC))) {
-      assert(reg.file == ELK_GENERAL_REGISTER_FILE ||
-             reg.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(reg.address_mode == ELK_ADDRESS_DIRECT);
-      assert(reg.subnr == 0);
-      assert(has_scalar_region(reg) ||
-             (reg.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-              reg.vstride == reg.width + 1));
-      assert(!reg.negate && !reg.abs);
-      elk_inst_set_send_src1_reg_nr(devinfo, inst, phys_nr(devinfo, reg));
-      elk_inst_set_send_src1_reg_file(devinfo, inst, reg.file);
-   } else {
+   {
       /* From the IVB PRM Vol. 4, Pt. 3, Section 3.3.3.5:
        *
        *    "Accumulator registers may be accessed explicitly as src0
@@ -2789,153 +2748,6 @@ elk_send_indirect_message(struct elk_codegen *p,
    }
 
    elk_set_dest(p, send, dst);
-   elk_inst_set_sfid(devinfo, send, sfid);
-   elk_inst_set_eot(devinfo, send, eot);
-}
-
-void
-elk_send_indirect_split_message(struct elk_codegen *p,
-                                unsigned sfid,
-                                struct elk_reg dst,
-                                struct elk_reg payload0,
-                                struct elk_reg payload1,
-                                struct elk_reg desc,
-                                unsigned desc_imm,
-                                struct elk_reg ex_desc,
-                                unsigned ex_desc_imm,
-                                bool ex_desc_scratch,
-                                bool ex_bso,
-                                bool eot)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   struct elk_inst *send;
-
-   dst = retype(dst, ELK_REGISTER_TYPE_UW);
-
-   assert(desc.type == ELK_REGISTER_TYPE_UD);
-
-   if (desc.file == ELK_IMMEDIATE_VALUE) {
-      desc.ud |= desc_imm;
-   } else {
-      const struct tgl_swsb swsb = elk_get_default_swsb(p);
-      struct elk_reg addr = retype(elk_address_reg(0), ELK_REGISTER_TYPE_UD);
-
-      elk_push_insn_state(p);
-      elk_set_default_access_mode(p, ELK_ALIGN_1);
-      elk_set_default_mask_control(p, ELK_MASK_DISABLE);
-      elk_set_default_exec_size(p, ELK_EXECUTE_1);
-      elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
-      elk_set_default_flag_reg(p, 0, 0);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-
-      /* Load the indirect descriptor to an address register using OR so the
-       * caller can specify additional descriptor bits with the desc_imm
-       * immediate.
-       */
-      elk_OR(p, addr, desc, elk_imm_ud(desc_imm));
-
-      elk_pop_insn_state(p);
-      desc = addr;
-
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
-   }
-
-   if (ex_desc.file == ELK_IMMEDIATE_VALUE &&
-       !ex_desc_scratch &&
-       (devinfo->ver >= 12 ||
-        ((ex_desc.ud | ex_desc_imm) & INTEL_MASK(15, 12)) == 0)) {
-      /* ATS-M PRMs, Volume 2d: Command Reference: Structures,
-       * EU_INSTRUCTION_SEND instruction
-       *
-       *    "ExBSO: Exists If: ([ExDesc.IsReg]==true)"
-       */
-      assert(!ex_bso);
-      ex_desc.ud |= ex_desc_imm;
-   } else {
-      const struct tgl_swsb swsb = elk_get_default_swsb(p);
-      struct elk_reg addr = retype(elk_address_reg(2), ELK_REGISTER_TYPE_UD);
-
-      elk_push_insn_state(p);
-      elk_set_default_access_mode(p, ELK_ALIGN_1);
-      elk_set_default_mask_control(p, ELK_MASK_DISABLE);
-      elk_set_default_exec_size(p, ELK_EXECUTE_1);
-      elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
-      elk_set_default_flag_reg(p, 0, 0);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-
-      /* Load the indirect extended descriptor to an address register using OR
-       * so the caller can specify additional descriptor bits with the
-       * desc_imm immediate.
-       *
-       * Even though the instruction dispatcher always pulls the SFID and EOT
-       * fields from the instruction itself, actual external unit which
-       * processes the message gets the SFID and EOT from the extended
-       * descriptor which comes from the address register.  If we don't OR
-       * those two bits in, the external unit may get confused and hang.
-       */
-      unsigned imm_part = ex_bso ? 0 : (ex_desc_imm | sfid | eot << 5);
-
-      if (ex_desc_scratch) {
-         /* Or the scratch surface offset together with the immediate part of
-          * the extended descriptor.
-          */
-         assert(devinfo->verx10 >= 125);
-         elk_AND(p, addr,
-                 retype(elk_vec1_grf(0, 5), ELK_REGISTER_TYPE_UD),
-                 elk_imm_ud(INTEL_MASK(31, 10)));
-         elk_OR(p, addr, addr, elk_imm_ud(imm_part));
-      } else if (ex_desc.file == ELK_IMMEDIATE_VALUE) {
-         /* ex_desc bits 15:12 don't exist in the instruction encoding prior
-          * to Gfx12, so we may have fallen back to an indirect extended
-          * descriptor.
-          */
-         elk_MOV(p, addr, elk_imm_ud(ex_desc.ud | imm_part));
-      } else {
-         elk_OR(p, addr, ex_desc, elk_imm_ud(imm_part));
-      }
-
-      elk_pop_insn_state(p);
-      ex_desc = addr;
-
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
-   }
-
-   send = next_insn(p, devinfo->ver >= 12 ? ELK_OPCODE_SEND : ELK_OPCODE_SENDS);
-   elk_set_dest(p, send, dst);
-   elk_set_src0(p, send, retype(payload0, ELK_REGISTER_TYPE_UD));
-   elk_set_src1(p, send, retype(payload1, ELK_REGISTER_TYPE_UD));
-
-   if (desc.file == ELK_IMMEDIATE_VALUE) {
-      elk_inst_set_send_sel_reg32_desc(devinfo, send, 0);
-      elk_inst_set_send_desc(devinfo, send, desc.ud);
-   } else {
-      assert(desc.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(desc.nr == ELK_ARF_ADDRESS);
-      assert(desc.subnr == 0);
-      elk_inst_set_send_sel_reg32_desc(devinfo, send, 1);
-   }
-
-   if (ex_desc.file == ELK_IMMEDIATE_VALUE) {
-      elk_inst_set_send_sel_reg32_ex_desc(devinfo, send, 0);
-      elk_inst_set_sends_ex_desc(devinfo, send, ex_desc.ud);
-   } else {
-      assert(ex_desc.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(ex_desc.nr == ELK_ARF_ADDRESS);
-      assert((ex_desc.subnr & 0x3) == 0);
-      elk_inst_set_send_sel_reg32_ex_desc(devinfo, send, 1);
-      elk_inst_set_send_ex_desc_ia_subreg_nr(devinfo, send, phys_subnr(devinfo, ex_desc) >> 2);
-   }
-
-   if (ex_bso) {
-      /* The send instruction ExBSO field does not exist with UGM on Gfx20+,
-       * it is assumed.
-       *
-       * BSpec 56890
-       */
-      if (devinfo->ver < 20 || sfid != GFX12_SFID_UGM)
-         elk_inst_set_send_ex_bso(devinfo, send, true);
-      elk_inst_set_send_src1_len(devinfo, send, GET_BITS(ex_desc_imm, 10, 6));
-   }
    elk_inst_set_sfid(devinfo, send, sfid);
    elk_inst_set_eot(devinfo, send, eot);
 }

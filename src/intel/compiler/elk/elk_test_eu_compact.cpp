@@ -124,7 +124,7 @@ skip_bit(const struct elk_isa_info *isa, elk_inst *src, int bit)
       return true;
 
    if (elk_is_3src(isa, elk_inst_opcode(isa, src))) {
-      if (devinfo->ver >= 9 || devinfo->platform == INTEL_PLATFORM_CHV) {
+      if (devinfo->platform == INTEL_PLATFORM_CHV) {
          if (bit == 127)
             return true;
       } else {
@@ -244,11 +244,7 @@ INSTANTIATE_TEST_SUITE_P(
       CompactParams{ 60,  ELK_ALIGN_1 }, CompactParams{ 60, ELK_ALIGN_16 },
       CompactParams{ 70,  ELK_ALIGN_1 }, CompactParams{ 70, ELK_ALIGN_16 },
       CompactParams{ 75,  ELK_ALIGN_1 }, CompactParams{ 75, ELK_ALIGN_16 },
-      CompactParams{ 80,  ELK_ALIGN_1 }, CompactParams{ 80, ELK_ALIGN_16 },
-      CompactParams{ 90,  ELK_ALIGN_1 }, CompactParams{ 90, ELK_ALIGN_16 },
-      CompactParams{ 110, ELK_ALIGN_1 },
-      CompactParams{ 120, ELK_ALIGN_1 },
-      CompactParams{ 125, ELK_ALIGN_1 }
+      CompactParams{ 80,  ELK_ALIGN_1 }, CompactParams{ 80, ELK_ALIGN_16 }
    ),
    get_compact_params_name);
 

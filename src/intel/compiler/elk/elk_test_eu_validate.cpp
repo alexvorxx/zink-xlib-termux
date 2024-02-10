@@ -40,25 +40,6 @@ static const struct intel_gfx_info {
    { "byt", },
    { "bdw", },
    { "chv", },
-   { "skl", },
-   { "bxt", },
-   { "kbl", },
-   { "aml", },
-   { "glk", },
-   { "cfl", },
-   { "whl", },
-   { "cml", },
-   { "icl", },
-   { "ehl", },
-   { "jsl", },
-   { "tgl", },
-   { "rkl", },
-   { "dg1", },
-   { "adl", },
-   { "sg1", },
-   { "rpl", },
-   { "dg2", },
-   { "mtl", },
 };
 
 class validation_test: public ::testing::TestWithParam<struct intel_gfx_info> {
@@ -247,10 +228,6 @@ TEST_P(validation_test, invalid_exec_size_encoding)
 
 TEST_P(validation_test, invalid_file_encoding)
 {
-   /* Register file on Gfx12 is only one bit */
-   if (devinfo.ver >= 12)
-      return;
-
    elk_MOV(p, g0, g0);
    elk_inst_set_dst_file_type(&devinfo, last_inst, ELK_MESSAGE_REGISTER_FILE, ELK_REGISTER_TYPE_F);
 
@@ -390,7 +367,7 @@ TEST_P(validation_test, invalid_type_encoding)
 TEST_P(validation_test, invalid_type_encoding_3src_a16)
 {
    /* 3-src instructions in align16 mode only supported on Gfx6-10 */
-   if (devinfo.ver < 6 || devinfo.ver > 10)
+   if (devinfo.ver < 6)
       return;
 
    const int num_bits = devinfo.ver >= 8 ? 3 : 2;
@@ -467,125 +444,22 @@ TEST_P(validation_test, invalid_type_encoding_3src_a16)
    }
 }
 
-TEST_P(validation_test, invalid_type_encoding_3src_a1)
-{
-   /* 3-src instructions in align1 mode only supported on Gfx10+ */
-   if (devinfo.ver < 10)
-      return;
-
-   const int num_bits = 3 + 1 /* for exec_type */;
-   const int num_encodings = 1 << num_bits;
-
-   /* The data types are encoded into <num_bits> bits to be used in hardware
-    * instructions, so keep a record in a bitset the invalid patterns so
-    * they can be verified to be invalid when used.
-    */
-   BITSET_DECLARE(invalid_encodings, num_encodings);
-
-   const struct {
-      enum elk_reg_type type;
-      unsigned exec_type;
-      bool expected_result;
-   } test_case[] = {
-#define E(x) ((unsigned)ELK_ALIGN1_3SRC_EXEC_TYPE_##x)
-      { ELK_REGISTER_TYPE_NF, E(FLOAT), devinfo.ver == 11 },
-      { ELK_REGISTER_TYPE_DF, E(FLOAT), devinfo.has_64bit_float },
-      { ELK_REGISTER_TYPE_F,  E(FLOAT), true  },
-      { ELK_REGISTER_TYPE_HF, E(FLOAT), true  },
-      { ELK_REGISTER_TYPE_D,  E(INT),   true  },
-      { ELK_REGISTER_TYPE_UD, E(INT),   true  },
-      { ELK_REGISTER_TYPE_W,  E(INT),   true  },
-      { ELK_REGISTER_TYPE_UW, E(INT),   true  },
-
-      /* There are no ternary instructions that can operate on B-type sources
-       * on Gfx11-12. Src1/Src2 cannot be B-typed either.
-       */
-      { ELK_REGISTER_TYPE_B,  E(INT),   false },
-      { ELK_REGISTER_TYPE_UB, E(INT),   false },
-   };
-
-   /* Initially assume all hardware encodings are invalid */
-   BITSET_ONES(invalid_encodings);
-
-   elk_set_default_access_mode(p, ELK_ALIGN_1);
-   elk_set_default_exec_size(p, ELK_EXECUTE_4);
-
-   for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
-      if (test_case[i].expected_result) {
-         unsigned hw_type = elk_reg_type_to_a1_hw_3src_type(&devinfo, test_case[i].type);
-         unsigned hw_exec_type = hw_type | (test_case[i].exec_type << 3);
-         if (hw_type != INVALID_HW_REG_TYPE) {
-            /* ... and remove valid encodings from the set */
-            assert(BITSET_TEST(invalid_encodings, hw_exec_type));
-            BITSET_CLEAR(invalid_encodings, hw_exec_type);
-         }
-
-         struct elk_reg g = retype(g0, test_case[i].type);
-         if (!elk_reg_type_is_integer(test_case[i].type)) {
-            elk_MAD(p, g, g, g, g);
-         } else {
-            elk_BFE(p, g, g, g, g);
-         }
-
-         EXPECT_TRUE(validate(p));
-
-         clear_instructions(p);
-      }
-   }
-
-   /* The remaining encodings in invalid_encodings do not have a mapping
-    * from ELK_REGISTER_TYPE_* and must be invalid. Verify that invalid
-    * encodings are rejected by the validator.
-    */
-   int e;
-   BITSET_FOREACH_SET(e, invalid_encodings, num_encodings) {
-      const unsigned hw_type = e & 0x7;
-      const unsigned exec_type = e >> 3;
-
-      for (unsigned i = 0; i < 2; i++) {
-         if (i == 0) {
-            elk_MAD(p, g0, g0, g0, g0);
-            elk_inst_set_3src_a1_exec_type(&devinfo, last_inst, ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT);
-         } else {
-            elk_CSEL(p, g0, g0, g0, g0);
-            elk_inst_set_3src_cond_modifier(&devinfo, last_inst, ELK_CONDITIONAL_NZ);
-            elk_inst_set_3src_a1_exec_type(&devinfo, last_inst, ELK_ALIGN1_3SRC_EXEC_TYPE_INT);
-         }
-
-         elk_inst_set_3src_a1_exec_type(&devinfo, last_inst, exec_type);
-         elk_inst_set_3src_a1_dst_hw_type (&devinfo, last_inst, hw_type);
-         elk_inst_set_3src_a1_src0_hw_type(&devinfo, last_inst, hw_type);
-         elk_inst_set_3src_a1_src1_hw_type(&devinfo, last_inst, hw_type);
-         elk_inst_set_3src_a1_src2_hw_type(&devinfo, last_inst, hw_type);
-
-         EXPECT_FALSE(validate(p));
-
-         clear_instructions(p);
-      }
-   }
-}
-
 TEST_P(validation_test, 3src_inst_access_mode)
 {
    /* 3-src instructions only supported on Gfx6+ */
    if (devinfo.ver < 6)
       return;
 
-   /* No access mode bit on Gfx12+ */
-   if (devinfo.ver >= 12)
-      return;
-
    const struct {
       unsigned mode;
       bool expected_result;
    } test_case[] = {
-      { ELK_ALIGN_1,  devinfo.ver >= 10 },
-      { ELK_ALIGN_16, devinfo.ver <= 10 },
+      { ELK_ALIGN_1,  false},
+      { ELK_ALIGN_16, true },
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
-      if (devinfo.ver < 10)
-         elk_set_default_access_mode(p, ELK_ALIGN_16);
+      elk_set_default_access_mode(p, ELK_ALIGN_16);
 
       elk_MAD(p, g0, g0, g0, g0);
       elk_inst_set_access_mode(&devinfo, last_inst, test_case[i].mode);
@@ -766,10 +640,6 @@ TEST_P(validation_test, dst_horizontal_stride_0)
 
    clear_instructions(p);
 
-   /* Align16 does not exist on Gfx11+ */
-   if (devinfo.ver >= 11)
-      return;
-
    elk_set_default_access_mode(p, ELK_ALIGN_16);
 
    elk_ADD(p, g0, g0, g0);
@@ -817,10 +687,6 @@ TEST_P(validation_test, must_not_cross_grf_boundary_in_a_width)
 /* Destination Horizontal must be 1 in Align16 */
 TEST_P(validation_test, dst_hstride_on_align16_must_be_1)
 {
-   /* Align16 does not exist on Gfx11+ */
-   if (devinfo.ver >= 11)
-      return;
-
    elk_set_default_access_mode(p, ELK_ALIGN_16);
 
    elk_ADD(p, g0, g0, g0);
@@ -839,10 +705,6 @@ TEST_P(validation_test, dst_hstride_on_align16_must_be_1)
 /* VertStride must be 0 or 4 in Align16 */
 TEST_P(validation_test, vstride_on_align16_must_be_0_or_4)
 {
-   /* Align16 does not exist on Gfx11+ */
-   if (devinfo.ver >= 11)
-      return;
-
    const struct {
       enum elk_vertical_stride vstride;
       bool expected_result;
@@ -1004,11 +866,7 @@ TEST_P(validation_test, src_region_spans_two_regs_dst_region_spans_one)
    elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_2);
    elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
-   if (devinfo.ver >= 9) {
-      EXPECT_TRUE(validate(p));
-   } else {
-      EXPECT_FALSE(validate(p));
-   }
+   EXPECT_FALSE(validate(p));
 }
 
 TEST_P(validation_test, dst_elements_must_be_evenly_split_between_registers)
@@ -1016,11 +874,7 @@ TEST_P(validation_test, dst_elements_must_be_evenly_split_between_registers)
    elk_ADD(p, g0, g0, g0);
    elk_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 4);
 
-   if (devinfo.ver >= 9 && devinfo.verx10 < 125) {
-      EXPECT_TRUE(validate(p));
-   } else {
-      EXPECT_FALSE(validate(p));
-   }
+   EXPECT_FALSE(validate(p));
 
    clear_instructions(p);
 
@@ -1058,7 +912,7 @@ TEST_P(validation_test, two_src_two_dst_source_offsets_must_be_same)
    elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_4);
    elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
-  if (devinfo.ver <= 7 || devinfo.verx10 >= 125) {
+  if (devinfo.ver <= 7) {
       EXPECT_FALSE(validate(p));
    } else {
       EXPECT_TRUE(validate(p));
@@ -1076,10 +930,7 @@ TEST_P(validation_test, two_src_two_dst_source_offsets_must_be_same)
    elk_inst_set_src1_width(&devinfo, last_inst, ELK_WIDTH_2);
    elk_inst_set_src1_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
-   if (devinfo.verx10 >= 125)
-      EXPECT_FALSE(validate(p));
-   else
-      EXPECT_TRUE(validate(p));
+   EXPECT_TRUE(validate(p));
 }
 
 TEST_P(validation_test, two_src_two_dst_each_dst_must_be_derived_from_one_src)
@@ -1109,7 +960,7 @@ TEST_P(validation_test, two_src_two_dst_each_dst_must_be_derived_from_one_src)
    elk_inst_set_src0_width(&devinfo, last_inst, ELK_WIDTH_2);
    elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
 
-   if (devinfo.ver <= 7 || devinfo.verx10 >= 125) {
+   if (devinfo.ver <= 7) {
       EXPECT_FALSE(validate(p));
    } else {
       EXPECT_TRUE(validate(p));
@@ -1357,68 +1208,65 @@ TEST_P(validation_test, half_float_conversion)
       unsigned dst_stride;
       unsigned dst_subnr;
       bool expected_result_bdw;
-      bool expected_result_chv_gfx9;
-      bool expected_result_gfx125;
+      bool expected_result_chv;
    } inst[] = {
 #define INST(dst_type, src_type, dst_stride, dst_subnr,                     \
-             expected_result_bdw, expected_result_chv_gfx9,                 \
-             expected_result_gfx125)                                        \
+             expected_result_bdw, expected_result_chv)                      \
       {                                                                     \
          ELK_REGISTER_TYPE_##dst_type,                                      \
          ELK_REGISTER_TYPE_##src_type,                                      \
          ELK_HORIZONTAL_STRIDE_##dst_stride,                                \
          dst_subnr,                                                         \
          expected_result_bdw,                                               \
-         expected_result_chv_gfx9,                                          \
-         expected_result_gfx125,                                            \
+         expected_result_chv,                                               \
       }
 
       /* MOV to half-float destination */
-      INST(HF,  B, 1, 0, false, false, false), /* 0 */
-      INST(HF,  W, 1, 0, false, false, false),
-      INST(HF, HF, 1, 0, true,  true,  true),
-      INST(HF, HF, 1, 2, true,  true,  false),
-      INST(HF,  D, 1, 0, false, false, false),
-      INST(HF,  F, 1, 0, false, true,  false),
-      INST(HF,  Q, 1, 0, false, false, false),
-      INST(HF,  B, 2, 0, true,  true,  false),
-      INST(HF,  B, 2, 2, false, false, false),
-      INST(HF,  W, 2, 0, true,  true,  false),
-      INST(HF,  W, 2, 2, false, false, false), /* 10 */
-      INST(HF, HF, 2, 0, true,  true,  false),
-      INST(HF, HF, 2, 2, true,  true,  false),
-      INST(HF,  D, 2, 0, true,  true,  true),
-      INST(HF,  D, 2, 2, false, false, false),
-      INST(HF,  F, 2, 0, true,  true,  true),
-      INST(HF,  F, 2, 2, false, true,  false),
-      INST(HF,  Q, 2, 0, false, false, false),
-      INST(HF, DF, 2, 0, false, false, false),
-      INST(HF,  B, 4, 0, false, false, false),
-      INST(HF,  W, 4, 0, false, false, false), /* 20 */
-      INST(HF, HF, 4, 0, true,  true,  false),
-      INST(HF, HF, 4, 2, true,  true,  false),
-      INST(HF,  D, 4, 0, false, false, false),
-      INST(HF,  F, 4, 0, false, false, false),
-      INST(HF,  Q, 4, 0, false, false, false),
-      INST(HF, DF, 4, 0, false, false, false),
+      INST(HF,  B, 1, 0, false, false), /* 0 */
+      INST(HF,  W, 1, 0, false, false),
+      INST(HF, HF, 1, 0, true,  true),
+      INST(HF, HF, 1, 2, true,  true),
+      INST(HF,  D, 1, 0, false, false),
+      INST(HF,  F, 1, 0, false, true),
+      INST(HF,  Q, 1, 0, false, false),
+      INST(HF,  B, 2, 0, true,  true),
+      INST(HF,  B, 2, 2, false, false),
+      INST(HF,  W, 2, 0, true,  true),
+      INST(HF,  W, 2, 2, false, false), /* 10 */
+      INST(HF, HF, 2, 0, true,  true),
+      INST(HF, HF, 2, 2, true,  true),
+      INST(HF,  D, 2, 0, true,  true),
+      INST(HF,  D, 2, 2, false, false),
+      INST(HF,  F, 2, 0, true,  true),
+      INST(HF,  F, 2, 2, false, true),
+      INST(HF,  Q, 2, 0, false, false),
+      INST(HF, DF, 2, 0, false, false),
+      INST(HF,  B, 4, 0, false, false),
+      INST(HF,  W, 4, 0, false, false), /* 20 */
+      INST(HF, HF, 4, 0, true,  true),
+      INST(HF, HF, 4, 2, true,  true),
+      INST(HF,  D, 4, 0, false, false),
+      INST(HF,  F, 4, 0, false, false),
+      INST(HF,  Q, 4, 0, false, false),
+      INST(HF, DF, 4, 0, false, false),
 
       /* MOV from half-float source */
-      INST( B, HF, 1, 0, false, false, false),
-      INST( W, HF, 1, 0, false, false, false),
-      INST( D, HF, 1, 0, true,  true,  true),
-      INST( D, HF, 1, 4, true,  true,  true),  /* 30 */
-      INST( F, HF, 1, 0, true,  true,  false),
-      INST( F, HF, 1, 4, true,  true,  false),
-      INST( Q, HF, 1, 0, false, false, false),
-      INST(DF, HF, 1, 0, false, false, false),
-      INST( B, HF, 2, 0, false, false, false),
-      INST( W, HF, 2, 0, true,  true,  true),
-      INST( W, HF, 2, 2, false, false, false),
-      INST( D, HF, 2, 0, false, false, false),
-      INST( F, HF, 2, 0, true,  true,  false),
-      INST( B, HF, 4, 0, true,  true,  true),  /* 40 */
-      INST( B, HF, 4, 1, false, false, false),
-      INST( W, HF, 4, 0, false, false, false),
+      INST( B, HF, 1, 0, false, false),
+      INST( W, HF, 1, 0, false, false),
+      INST( D, HF, 1, 0, true,  true),
+      INST( D, HF, 1, 4, true,  true),  /* 30 */
+      INST( F, HF, 1, 0, true,  true),
+      INST( F, HF, 1, 4, true,  true),
+      INST( Q, HF, 1, 0, false, false),
+      INST(DF, HF, 1, 0, false, false),
+      INST( B, HF, 2, 0, false, false),
+      INST( W, HF, 2, 0, true,  true),
+      INST( W, HF, 2, 2, false, false),
+      INST( D, HF, 2, 0, false, false),
+      INST( F, HF, 2, 0, true,  true),
+      INST( B, HF, 4, 0, true,  true),  /* 40 */
+      INST( B, HF, 4, 1, false, false),
+      INST( W, HF, 4, 0, false, false),
 
 #undef INST
    };
@@ -1456,11 +1304,8 @@ TEST_P(validation_test, half_float_conversion)
          elk_inst_set_src0_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
       }
 
-      if (devinfo.verx10 >= 125) {
-         EXPECT_EQ(inst[i].expected_result_gfx125, validate(p)) <<
-            "Failing test is: " << i;
-      } else if (devinfo.platform == INTEL_PLATFORM_CHV || devinfo.ver >= 9) {
-         EXPECT_EQ(inst[i].expected_result_chv_gfx9, validate(p)) <<
+      if (devinfo.platform == INTEL_PLATFORM_CHV) {
+         EXPECT_EQ(inst[i].expected_result_chv, validate(p)) <<
             "Failing test is: " << i;
       } else {
          EXPECT_EQ(inst[i].expected_result_bdw, validate(p)) <<
@@ -1531,11 +1376,7 @@ TEST_P(validation_test, mixed_float_source_indirect_addressing)
       elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
       elk_inst_set_src0_address_mode(&devinfo, last_inst, inst[i].src0_indirect);
 
-      if (devinfo.verx10 >= 125) {
-         EXPECT_EQ(inst[i].gfx125_expected_result, validate(p));
-      } else {
-         EXPECT_EQ(inst[i].expected_result, validate(p));
-      }
+      EXPECT_EQ(inst[i].expected_result, validate(p));
 
       clear_instructions(p);
    }
@@ -1591,11 +1432,7 @@ TEST_P(validation_test, mixed_float_align1_simd16)
 
       elk_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
-      if (devinfo.verx10 >= 125) {
-         EXPECT_EQ(inst[i].gfx125_expected_result, validate(p));
-      } else {
-         EXPECT_EQ(inst[i].expected_result, validate(p));
-      }
+      EXPECT_EQ(inst[i].expected_result, validate(p));
 
       clear_instructions(p);
    }
@@ -2905,627 +2742,6 @@ TEST_P(validation_test, qword_low_power_no_depctrl)
       } else {
          EXPECT_TRUE(validate(p));
       }
-
-      clear_instructions(p);
-   }
-}
-
-TEST_P(validation_test, gfx11_no_byte_src_1_2)
-{
-   static const struct {
-      enum elk_opcode opcode;
-      unsigned access_mode;
-
-      enum elk_reg_type dst_type;
-      struct {
-         enum elk_reg_type type;
-         unsigned vstride;
-         unsigned width;
-         unsigned hstride;
-      } srcs[3];
-
-      int  gfx_ver;
-      bool expected_result;
-   } inst[] = {
-#define INST(opcode, access_mode, dst_type,                             \
-             src0_type, src0_vstride, src0_width, src0_hstride,         \
-             src1_type, src1_vstride, src1_width, src1_hstride,         \
-             src2_type,                                                 \
-             gfx_ver, expected_result)                                  \
-      {                                                                 \
-         ELK_OPCODE_##opcode,                                           \
-         ELK_ALIGN_##access_mode,                                       \
-         ELK_REGISTER_TYPE_##dst_type,                                  \
-         {                                                              \
-            {                                                           \
-               ELK_REGISTER_TYPE_##src0_type,                           \
-               ELK_VERTICAL_STRIDE_##src0_vstride,                      \
-               ELK_WIDTH_##src0_width,                                  \
-               ELK_HORIZONTAL_STRIDE_##src0_hstride,                    \
-            },                                                          \
-            {                                                           \
-               ELK_REGISTER_TYPE_##src1_type,                           \
-               ELK_VERTICAL_STRIDE_##src1_vstride,                      \
-               ELK_WIDTH_##src1_width,                                  \
-               ELK_HORIZONTAL_STRIDE_##src1_hstride,                    \
-            },                                                          \
-            {                                                           \
-               ELK_REGISTER_TYPE_##src2_type,                           \
-            },                                                          \
-         },                                                             \
-         gfx_ver,                                                       \
-         expected_result,                                               \
-      }
-
-      /* Passes on < 11 */
-      INST(MOV, 16,  F, B, 2, 4, 0, UD, 0, 4, 0,  D,  8, true ),
-      INST(ADD, 16, UD, F, 0, 4, 0, UB, 0, 1, 0,  D,  7, true ),
-      INST(MAD, 16,  D, B, 0, 4, 0, UB, 0, 1, 0,  B, 10, true ),
-
-      /* Fails on 11+ */
-      INST(MAD,  1, UB, W, 1, 1, 0,  D, 0, 4, 0,  B, 11, false ),
-      INST(MAD,  1, UB, W, 1, 1, 1, UB, 1, 1, 0,  W, 11, false ),
-      INST(ADD,  1,  W, W, 1, 4, 1,  B, 1, 1, 0,  D, 11, false ),
-
-      /* Passes on 11+ */
-      INST(MOV,  1,  W, B, 8, 8, 1,  D, 8, 8, 1,  D, 11, true ),
-      INST(ADD,  1, UD, B, 8, 8, 1,  W, 8, 8, 1,  D, 11, true ),
-      INST(MAD,  1,  B, B, 0, 1, 0,  D, 0, 4, 0,  W, 11, true ),
-
-#undef INST
-   };
-
-
-   for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      /* Skip instruction not meant for this gfx_ver. */
-      if (devinfo.ver != inst[i].gfx_ver)
-         continue;
-
-      elk_push_insn_state(p);
-
-      elk_set_default_exec_size(p, ELK_EXECUTE_8);
-      elk_set_default_access_mode(p, inst[i].access_mode);
-
-      switch (inst[i].opcode) {
-      case ELK_OPCODE_MOV:
-         elk_MOV(p, retype(g0, inst[i].dst_type),
-                    retype(g0, inst[i].srcs[0].type));
-         elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
-         elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
-         break;
-      case ELK_OPCODE_ADD:
-         elk_ADD(p, retype(g0, inst[i].dst_type),
-                    retype(g0, inst[i].srcs[0].type),
-                    retype(g0, inst[i].srcs[1].type));
-         elk_inst_set_src0_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
-         elk_inst_set_src0_width(&devinfo, last_inst, inst[i].srcs[0].width);
-         elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
-         elk_inst_set_src1_vstride(&devinfo, last_inst, inst[i].srcs[1].vstride);
-         elk_inst_set_src1_width(&devinfo, last_inst, inst[i].srcs[1].width);
-         elk_inst_set_src1_hstride(&devinfo, last_inst, inst[i].srcs[1].hstride);
-         break;
-      case ELK_OPCODE_MAD:
-         elk_MAD(p, retype(g0, inst[i].dst_type),
-                    retype(g0, inst[i].srcs[0].type),
-                    retype(g0, inst[i].srcs[1].type),
-                    retype(g0, inst[i].srcs[2].type));
-         elk_inst_set_3src_a1_src0_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
-         elk_inst_set_3src_a1_src0_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
-         elk_inst_set_3src_a1_src1_vstride(&devinfo, last_inst, inst[i].srcs[0].vstride);
-         elk_inst_set_3src_a1_src1_hstride(&devinfo, last_inst, inst[i].srcs[0].hstride);
-         break;
-      default:
-         unreachable("invalid opcode");
-      }
-
-      elk_inst_set_dst_hstride(&devinfo, last_inst, ELK_HORIZONTAL_STRIDE_1);
-
-      elk_inst_set_src0_width(&devinfo, last_inst, inst[i].srcs[0].width);
-      elk_inst_set_src1_width(&devinfo, last_inst, inst[i].srcs[1].width);
-
-      elk_pop_insn_state(p);
-
-      EXPECT_EQ(inst[i].expected_result, validate(p));
-
-      clear_instructions(p);
-   }
-}
-
-TEST_P(validation_test, add3_source_types)
-{
-   static const struct {
-      enum elk_reg_type dst_type;
-      enum elk_reg_type src0_type;
-      enum elk_reg_type src1_type;
-      enum elk_reg_type src2_type;
-      bool expected_result;
-   } inst[] = {
-#define INST(dst_type, src0_type, src1_type, src2_type, expected_result)  \
-      {                                                                   \
-         ELK_REGISTER_TYPE_##dst_type,                                    \
-         ELK_REGISTER_TYPE_##src0_type,                                   \
-         ELK_REGISTER_TYPE_##src1_type,                                   \
-         ELK_REGISTER_TYPE_##src2_type,                                   \
-         expected_result,                                                 \
-      }
-
-      INST( F,  F,  F,  F, false),
-      INST(HF, HF, HF, HF, false),
-      INST( B,  B,  B,  B, false),
-      INST(UB, UB, UB, UB, false),
-
-      INST( W,  W,  W,  W, true),
-      INST(UW, UW, UW, UW, true),
-      INST( D,  D,  D,  D, true),
-      INST(UD, UD, UD, UD, true),
-
-      INST( W,  D,  W,  W, true),
-      INST(UW, UW, UD, UW, true),
-      INST( D,  D,  W,  D, true),
-      INST(UD, UD, UD, UW, true),
-#undef INST
-   };
-
-
-   if (devinfo.verx10 < 125)
-      return;
-
-   for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      elk_ADD3(p,
-               retype(g0, inst[i].dst_type),
-               retype(g0, inst[i].src0_type),
-               retype(g0, inst[i].src1_type),
-               retype(g0, inst[i].src2_type));
-
-      EXPECT_EQ(inst[i].expected_result, validate(p));
-
-      clear_instructions(p);
-   }
-}
-
-TEST_P(validation_test, add3_immediate_types)
-{
-   static const struct {
-      enum elk_reg_type reg_type;
-      enum elk_reg_type imm_type;
-      unsigned imm_src;
-      bool expected_result;
-   } inst[] = {
-#define INST(reg_type, imm_type, imm_src, expected_result)                \
-      {                                                                   \
-         ELK_REGISTER_TYPE_##reg_type,                                    \
-         ELK_REGISTER_TYPE_##imm_type,                                    \
-         imm_src,                                                         \
-         expected_result,                                                 \
-      }
-
-      INST( W,  W,  0, true),
-      INST( W,  W,  2, true),
-      INST(UW, UW,  0, true),
-      INST(UW, UW,  2, true),
-      INST( D,  W,  0, true),
-      INST(UD,  W,  2, true),
-      INST( D, UW,  0, true),
-      INST(UW, UW,  2, true),
-
-      INST( W,  D,  0, false),
-      INST( W,  D,  2, false),
-      INST(UW, UD,  0, false),
-      INST(UW, UD,  2, false),
-      INST( D,  D,  0, false),
-      INST(UD,  D,  2, false),
-      INST( D, UD,  0, false),
-      INST(UW, UD,  2, false),
-#undef INST
-   };
-
-
-   if (devinfo.verx10 < 125)
-      return;
-
-   for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      elk_ADD3(p,
-               retype(g0, inst[i].reg_type),
-               inst[i].imm_src == 0 ? retype(elk_imm_d(0x1234), inst[i].imm_type)
-                                    : retype(g0, inst[i].reg_type),
-               retype(g0, inst[i].reg_type),
-               inst[i].imm_src == 2 ? retype(elk_imm_d(0x2143), inst[i].imm_type)
-                                    : retype(g0, inst[i].reg_type));
-
-      EXPECT_EQ(inst[i].expected_result, validate(p));
-
-      clear_instructions(p);
-   }
-}
-
-TEST_P(validation_test, dpas_sdepth)
-{
-   if (devinfo.verx10 < 125)
-      return;
-
-   static const enum elk_gfx12_systolic_depth depth[] = {
-      ELK_SYSTOLIC_DEPTH_16,
-      ELK_SYSTOLIC_DEPTH_2,
-      ELK_SYSTOLIC_DEPTH_4,
-      ELK_SYSTOLIC_DEPTH_8,
-   };
-
-   for (unsigned i = 0; i < ARRAY_SIZE(depth); i++) {
-      elk_DPAS(p,
-               depth[i],
-               8,
-               retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_F),
-               null,
-               retype(elk_vec8_grf(16, 0), ELK_REGISTER_TYPE_HF),
-               retype(elk_vec8_grf(32, 0), ELK_REGISTER_TYPE_HF));
-
-      const bool expected_result = depth[i] == ELK_SYSTOLIC_DEPTH_8;
-
-      EXPECT_EQ(expected_result, validate(p)) <<
-         "Encoded systolic depth value is: " << depth[i];
-
-      clear_instructions(p);
-   }
-}
-
-TEST_P(validation_test, dpas_exec_size)
-{
-   if (devinfo.verx10 < 125)
-      return;
-
-   static const enum elk_execution_size test_vectors[] = {
-      ELK_EXECUTE_1,
-      ELK_EXECUTE_2,
-      ELK_EXECUTE_4,
-      ELK_EXECUTE_8,
-      ELK_EXECUTE_16,
-      ELK_EXECUTE_32,
-   };
-
-   for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
-      elk_set_default_exec_size(p, test_vectors[i]);
-
-      elk_DPAS(p,
-               ELK_SYSTOLIC_DEPTH_8,
-               8,
-               retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_F),
-               null,
-               retype(elk_vec8_grf(16, 0), ELK_REGISTER_TYPE_HF),
-               retype(elk_vec8_grf(32, 0), ELK_REGISTER_TYPE_HF));
-
-      const bool expected_result = test_vectors[i] == ELK_EXECUTE_8;
-
-      EXPECT_EQ(expected_result, validate(p)) <<
-         "Exec size = " << (1u << test_vectors[i]);
-
-      clear_instructions(p);
-   }
-
-   elk_set_default_exec_size(p, ELK_EXECUTE_8);
-}
-
-TEST_P(validation_test, dpas_sub_byte_precision)
-{
-   if (devinfo.verx10 < 125)
-      return;
-
-   static const struct {
-      elk_reg_type dst_type;
-      elk_reg_type src0_type;
-      elk_reg_type src1_type;
-      enum gfx12_sub_byte_precision src1_prec;
-      elk_reg_type src2_type;
-      enum gfx12_sub_byte_precision src2_prec;
-      bool expected_result;
-   } test_vectors[] = {
-      {
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
-         true,
-      },
-      {
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_4BIT,
-         false,
-      },
-      {
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_2BIT,
-         false,
-      },
-      {
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_4BIT,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
-         false,
-      },
-      {
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_F,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_2BIT,
-         ELK_REGISTER_TYPE_HF, ELK_SUB_BYTE_PRECISION_NONE,
-         false,
-      },
-
-      {
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
-         true,
-      },
-      {
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_4BIT,
-         true,
-      },
-      {
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_2BIT,
-         true,
-      },
-      {
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
-         ELK_REGISTER_TYPE_UB, (enum gfx12_sub_byte_precision) 3,
-         false,
-      },
-      {
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_4BIT,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
-         true,
-      },
-      {
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_2BIT,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
-         true,
-      },
-      {
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UD,
-         ELK_REGISTER_TYPE_UB, (enum gfx12_sub_byte_precision) 3,
-         ELK_REGISTER_TYPE_UB, ELK_SUB_BYTE_PRECISION_NONE,
-         false,
-      },
-   };
-
-   for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
-      elk_inst *inst =
-         elk_DPAS(p,
-                  ELK_SYSTOLIC_DEPTH_8,
-                  8,
-                  retype(elk_vec8_grf(0, 0), test_vectors[i].dst_type),
-                  retype(elk_vec8_grf(16, 0), test_vectors[i].src0_type),
-                  retype(elk_vec8_grf(32, 0), test_vectors[i].src1_type),
-                  retype(elk_vec8_grf(48, 0), test_vectors[i].src2_type));
-
-      elk_inst_set_dpas_3src_src1_subbyte(&devinfo, inst,
-                                          test_vectors[i].src1_prec);
-      elk_inst_set_dpas_3src_src2_subbyte(&devinfo, inst,
-                                          test_vectors[i].src2_prec);
-
-      EXPECT_EQ(test_vectors[i].expected_result, validate(p)) <<
-         "test vector index = " << i;
-
-      clear_instructions(p);
-   }
-}
-
-TEST_P(validation_test, dpas_types)
-{
-   if (devinfo.verx10 < 125)
-      return;
-
-#define TV(a, b, c, d, r)                              \
-   { ELK_REGISTER_TYPE_ ## a, ELK_REGISTER_TYPE_ ## b, \
-     ELK_REGISTER_TYPE_ ## c, ELK_REGISTER_TYPE_ ## d, \
-     r }
-
-   static const struct {
-      elk_reg_type dst_type;
-      elk_reg_type src0_type;
-      elk_reg_type src1_type;
-      elk_reg_type src2_type;
-      bool expected_result;
-   } test_vectors[] = {
-      TV( F,  F, HF, HF, true),
-      TV( F, HF, HF, HF, false),
-      TV(HF,  F, HF, HF, false),
-      TV( F,  F,  F, HF, false),
-      TV( F,  F, HF,  F, false),
-
-      TV(DF, DF, DF, DF, false),
-      TV(DF, DF, DF,  F, false),
-      TV(DF, DF,  F, DF, false),
-      TV(DF,  F, DF, DF, false),
-      TV(DF, DF, DF, HF, false),
-      TV(DF, DF, HF, DF, false),
-      TV(DF, HF, DF, DF, false),
-
-      TV(UD, UD, UB, UB, true),
-      TV(UD, UD, UB, UD, false),
-      TV(UD, UD, UD, UB, false),
-      TV(UD, UD, UB, UW, false),
-      TV(UD, UD, UW, UB, false),
-
-      TV(UD, UB, UB, UB, false),
-      TV(UD, UW, UB, UB, false),
-
-      TV(UQ, UQ, UB, UB, false),
-      TV(UQ, UQ, UB, UQ, false),
-      TV(UQ, UQ, UQ, UB, false),
-      TV(UQ, UQ, UB, UW, false),
-      TV(UQ, UQ, UW, UB, false),
-
-      TV( D,  D,  B,  B, true),
-      TV( D,  D,  B, UB, true),
-      TV( D,  D, UB,  B, true),
-      TV( D, UD,  B,  B, true),
-
-      TV( D,  D,  B,  D, false),
-      TV( D,  D,  D,  B, false),
-      TV( D,  D,  B,  W, false),
-      TV( D,  D,  W,  B, false),
-
-      TV( D,  B,  B,  B, false),
-      TV( D,  W,  B,  B, false),
-
-      TV( Q,  Q,  B,  B, false),
-      TV( Q,  Q,  B,  Q, false),
-      TV( Q,  Q,  Q,  B, false),
-      TV( Q,  Q,  B,  W, false),
-      TV( Q,  Q,  W,  B, false),
-
-      TV(UD, UD, UB,  B, false),
-      TV(UD, UD,  B, UB, false),
-      TV(UD,  D, UB, UB, false),
-   };
-
-#undef TV
-
-   for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
-      elk_DPAS(p,
-               ELK_SYSTOLIC_DEPTH_8,
-               8,
-               retype(elk_vec8_grf(0, 0), test_vectors[i].dst_type),
-               retype(elk_vec8_grf(16, 0), test_vectors[i].src0_type),
-               retype(elk_vec8_grf(32, 0), test_vectors[i].src1_type),
-               retype(elk_vec8_grf(48, 0), test_vectors[i].src2_type));
-
-      EXPECT_EQ(test_vectors[i].expected_result, validate(p)) <<
-         "test vector index = " << i;
-
-      clear_instructions(p);
-   }
-}
-
-TEST_P(validation_test, dpas_src_subreg_nr)
-{
-   if (devinfo.verx10 < 125)
-      return;
-
-#define TV(dt, od, t0, o0, t1, o1, o2, r) {  \
-      ELK_REGISTER_TYPE_ ## dt, od,          \
-      ELK_REGISTER_TYPE_ ## t0, o0,          \
-      ELK_REGISTER_TYPE_ ## t1, o1, o2,      \
-      r }
-
-   static const struct {
-      elk_reg_type dst_type;
-      unsigned dst_subnr;
-      elk_reg_type src0_type;
-      unsigned src0_subnr;
-      elk_reg_type src1_src2_type;
-      unsigned src1_subnr;
-      unsigned src2_subnr;
-      bool expected_result;
-   } test_vectors[] = {
-      TV( F,  0,  F,  0, HF,  0,  0, true),
-      TV( D,  0,  D,  0,  B,  0,  0, true),
-      TV( D,  0,  D,  0, UB,  0,  0, true),
-      TV( D,  0, UD,  0,  B,  0,  0, true),
-
-      TV( F,  1,  F,  0, HF,  0,  0, false),
-      TV( F,  2,  F,  0, HF,  0,  0, false),
-      TV( F,  3,  F,  0, HF,  0,  0, false),
-      TV( F,  4,  F,  0, HF,  0,  0, false),
-      TV( F,  5,  F,  0, HF,  0,  0, false),
-      TV( F,  6,  F,  0, HF,  0,  0, false),
-      TV( F,  7,  F,  0, HF,  0,  0, false),
-
-      TV( F,  0,  F,  1, HF,  0,  0, false),
-      TV( F,  0,  F,  2, HF,  0,  0, false),
-      TV( F,  0,  F,  3, HF,  0,  0, false),
-      TV( F,  0,  F,  4, HF,  0,  0, false),
-      TV( F,  0,  F,  5, HF,  0,  0, false),
-      TV( F,  0,  F,  6, HF,  0,  0, false),
-      TV( F,  0,  F,  7, HF,  0,  0, false),
-
-      TV( F,  0,  F,  0, HF,  1,  0, false),
-      TV( F,  0,  F,  0, HF,  2,  0, false),
-      TV( F,  0,  F,  0, HF,  3,  0, false),
-      TV( F,  0,  F,  0, HF,  4,  0, false),
-      TV( F,  0,  F,  0, HF,  5,  0, false),
-      TV( F,  0,  F,  0, HF,  6,  0, false),
-      TV( F,  0,  F,  0, HF,  7,  0, false),
-      TV( F,  0,  F,  0, HF,  8,  0, false),
-      TV( F,  0,  F,  0, HF,  9,  0, false),
-      TV( F,  0,  F,  0, HF, 10,  0, false),
-      TV( F,  0,  F,  0, HF, 11,  0, false),
-      TV( F,  0,  F,  0, HF, 12,  0, false),
-      TV( F,  0,  F,  0, HF, 13,  0, false),
-      TV( F,  0,  F,  0, HF, 14,  0, false),
-      TV( F,  0,  F,  0, HF, 15,  0, false),
-
-      TV( F,  0,  F,  0, HF,  0,  1, false),
-      TV( F,  0,  F,  0, HF,  0,  2, false),
-      TV( F,  0,  F,  0, HF,  0,  3, false),
-      TV( F,  0,  F,  0, HF,  0,  4, false),
-      TV( F,  0,  F,  0, HF,  0,  5, false),
-      TV( F,  0,  F,  0, HF,  0,  6, false),
-      TV( F,  0,  F,  0, HF,  0,  7, false),
-      TV( F,  0,  F,  0, HF,  0,  8, false),
-      TV( F,  0,  F,  0, HF,  0,  9, false),
-      TV( F,  0,  F,  0, HF,  0, 10, false),
-      TV( F,  0,  F,  0, HF,  0, 11, false),
-      TV( F,  0,  F,  0, HF,  0, 12, false),
-      TV( F,  0,  F,  0, HF,  0, 13, false),
-      TV( F,  0,  F,  0, HF,  0, 14, false),
-      TV( F,  0,  F,  0, HF,  0, 15, false),
-
-      /* These meet the requirements, but they specify a subnr that is part of
-       * the next register. It is currently not possible to specify a subnr of
-       * 32 for the B and UB values because elk_reg::subnr is only 5 bits.
-       */
-      TV( F, 16,  F,  0, HF,  0,  0, false),
-      TV( F,  0,  F, 16, HF,  0,  0, false),
-      TV( F,  0,  F,  0, HF,  0, 16, false),
-
-      TV( D, 16,  D,  0,  B,  0,  0, false),
-      TV( D,  0,  D, 16,  B,  0,  0, false),
-   };
-
-#undef TV
-
-   for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
-      struct elk_reg dst =
-         retype(elk_vec8_grf( 0, 0), test_vectors[i].dst_type);
-      struct elk_reg src0 =
-         retype(elk_vec8_grf(16, 0), test_vectors[i].src0_type);
-      struct elk_reg src1 =
-         retype(elk_vec8_grf(32, 0), test_vectors[i].src1_src2_type);
-      struct elk_reg src2 =
-         retype(elk_vec8_grf(48, 0), test_vectors[i].src1_src2_type);
-
-      /* subnr for DPAS is in units of datatype precision instead of bytes as
-       * it is for every other instruction. Set the value by hand instead of
-       * using byte_offset() or similar.
-       */
-      dst.subnr = test_vectors[i].dst_subnr;
-      src0.subnr = test_vectors[i].src0_subnr;
-      src1.subnr = test_vectors[i].src1_subnr;
-      src2.subnr = test_vectors[i].src2_subnr;
-
-      elk_DPAS(p, ELK_SYSTOLIC_DEPTH_8, 8, dst, src0, src1, src2);
-
-      EXPECT_EQ(test_vectors[i].expected_result, validate(p)) <<
-         "test vector index = " << i;
 
       clear_instructions(p);
    }

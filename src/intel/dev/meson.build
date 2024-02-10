@@ -117,15 +117,3 @@ if with_tests and with_tools.contains('drm-shim') and with_tools.contains('intel
     endforeach
   endforeach
 endif
-
-if with_intel_tools
-  intel_dev_info = executable(
-    'intel_dev_info',
-    [files('intel_dev_info.c'), [intel_dev_serialize_src]],
-    dependencies : [dep_libdrm, dep_dl, dep_thread, dep_m, idep_intel_dev, idep_parson],
-    include_directories : [inc_include, inc_src, inc_intel],
-    c_args : [no_override_init_args],
-    gnu_symbol_visibility : 'hidden',
-    install : true
-  )
-endif

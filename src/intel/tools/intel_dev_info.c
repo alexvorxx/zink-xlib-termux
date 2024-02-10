@@ -35,9 +35,9 @@
 
 #include "util/libdrm.h"
 
-#include "intel_device_info.h"
-#include "intel_device_info_serialize.h"
-#include "intel_hwconfig.h"
+#include "dev/intel_device_info.h"
+#include "dev/intel_device_info_serialize.h"
+#include "dev/intel_hwconfig.h"
 
 static int
 error(char *fmt, ...)

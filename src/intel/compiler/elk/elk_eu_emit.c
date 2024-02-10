@@ -975,61 +975,6 @@ elk_alu3(struct elk_codegen *p, unsigned opcode, struct elk_reg dest,
    return inst;
 }
 
-static elk_inst *
-elk_dpas_three_src(struct elk_codegen *p, enum elk_gfx12_systolic_depth opcode,
-                   unsigned sdepth, unsigned rcount, struct elk_reg dest,
-                   struct elk_reg src0, struct elk_reg src1, struct elk_reg src2)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   elk_inst *inst = next_insn(p, opcode);
-
-   assert(dest.file == ELK_GENERAL_REGISTER_FILE);
-   elk_inst_set_dpas_3src_dst_reg_file(devinfo, inst,
-                                       ELK_GENERAL_REGISTER_FILE);
-   elk_inst_set_dpas_3src_dst_reg_nr(devinfo, inst, dest.nr);
-   elk_inst_set_dpas_3src_dst_subreg_nr(devinfo, inst, dest.subnr);
-
-   if (elk_reg_type_is_floating_point(dest.type)) {
-      elk_inst_set_dpas_3src_exec_type(devinfo, inst,
-                                       ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT);
-   } else {
-      elk_inst_set_dpas_3src_exec_type(devinfo, inst,
-                                       ELK_ALIGN1_3SRC_EXEC_TYPE_INT);
-   }
-
-   elk_inst_set_dpas_3src_sdepth(devinfo, inst, sdepth);
-   elk_inst_set_dpas_3src_rcount(devinfo, inst, rcount - 1);
-
-   elk_inst_set_dpas_3src_dst_type(devinfo, inst, dest.type);
-   elk_inst_set_dpas_3src_src0_type(devinfo, inst, src0.type);
-   elk_inst_set_dpas_3src_src1_type(devinfo, inst, src1.type);
-   elk_inst_set_dpas_3src_src2_type(devinfo, inst, src2.type);
-
-   assert(src0.file == ELK_GENERAL_REGISTER_FILE ||
-          (src0.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-           src0.nr == ELK_ARF_NULL));
-
-   elk_inst_set_dpas_3src_src0_reg_file(devinfo, inst, src0.file);
-   elk_inst_set_dpas_3src_src0_reg_nr(devinfo, inst, src0.nr);
-   elk_inst_set_dpas_3src_src0_subreg_nr(devinfo, inst, src0.subnr);
-
-   assert(src1.file == ELK_GENERAL_REGISTER_FILE);
-
-   elk_inst_set_dpas_3src_src1_reg_file(devinfo, inst, src1.file);
-   elk_inst_set_dpas_3src_src1_reg_nr(devinfo, inst, src1.nr);
-   elk_inst_set_dpas_3src_src1_subreg_nr(devinfo, inst, src1.subnr);
-   elk_inst_set_dpas_3src_src1_subbyte(devinfo, inst, ELK_SUB_BYTE_PRECISION_NONE);
-
-   assert(src2.file == ELK_GENERAL_REGISTER_FILE);
-
-   elk_inst_set_dpas_3src_src2_reg_file(devinfo, inst, src2.file);
-   elk_inst_set_dpas_3src_src2_reg_nr(devinfo, inst, src2.nr);
-   elk_inst_set_dpas_3src_src2_subreg_nr(devinfo, inst, src2.subnr);
-   elk_inst_set_dpas_3src_src2_subbyte(devinfo, inst, ELK_SUB_BYTE_PRECISION_NONE);
-
-   return inst;
-}
-
 /***********************************************************************
  * Convenience routines.
  */
@@ -1259,15 +1204,6 @@ elk_PLN(struct elk_codegen *p, struct elk_reg dest,
    src1.width = ELK_WIDTH_8;
    src1.hstride = ELK_HORIZONTAL_STRIDE_1;
    return elk_alu2(p, ELK_OPCODE_PLN, dest, src0, src1);
-}
-
-elk_inst *
-elk_DPAS(struct elk_codegen *p, enum elk_gfx12_systolic_depth sdepth,
-         unsigned rcount, struct elk_reg dest, struct elk_reg src0,
-         struct elk_reg src1, struct elk_reg src2)
-{
-   return elk_dpas_three_src(p, ELK_OPCODE_DPAS, sdepth, rcount, dest, src0,
-                             src1, src2);
 }
 
 elk_inst *

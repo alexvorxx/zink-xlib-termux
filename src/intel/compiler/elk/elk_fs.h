@@ -592,8 +592,6 @@ void elk_emit_predicate_on_sample_mask(const elk::fs_builder &bld, elk_fs_inst *
 int elk_get_subgroup_id_param_index(const intel_device_info *devinfo,
                                     const elk_stage_prog_data *prog_data);
 
-bool elk_lower_dpas(elk_fs_visitor &v);
-
 void nir_to_elk(elk_fs_visitor *s);
 
 #endif /* ELK_FS_H */

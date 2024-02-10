@@ -52,12 +52,6 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
    /* Default to the sampler since that's what we've done since forever */
    compiler->indirect_ubos_use_sampler = true;
 
-   compiler->lower_dpas = devinfo->verx10 < 125 ||
-      intel_device_info_is_mtl(devinfo) ||
-      (intel_device_info_is_arl(devinfo) &&
-       devinfo->platform != INTEL_PLATFORM_ARL_H) ||
-      debug_get_bool_option("INTEL_LOWER_DPAS", false);
-
    /* There is no vec4 mode on Gfx10+, and we don't use it at all on Gfx8+. */
    for (int i = MESA_SHADER_VERTEX; i < MESA_ALL_SHADER_STAGES; i++) {
       compiler->scalar_stage[i] = devinfo->ver >= 8 ||
@@ -174,8 +168,6 @@ elk_get_compiler_config_value(const struct elk_compiler *compiler)
    unsigned bits = 0;
 
    insert_u64_bit(&config, compiler->precise_trig);
-   bits++;
-   insert_u64_bit(&config, compiler->lower_dpas);
    bits++;
 
    uint64_t mask = DEBUG_DISK_CACHE_MASK;

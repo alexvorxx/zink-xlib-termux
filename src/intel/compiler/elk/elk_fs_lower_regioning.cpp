@@ -253,8 +253,7 @@ namespace {
    has_invalid_src_region(const intel_device_info *devinfo, const elk_fs_inst *inst,
                           unsigned i)
    {
-      if (is_send(inst) || inst->is_math() || inst->is_control_source(i) ||
-          inst->opcode == ELK_OPCODE_DPAS) {
+      if (is_send(inst) || inst->is_math() || inst->is_control_source(i)) {
          return false;
       }
 

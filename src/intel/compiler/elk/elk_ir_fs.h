@@ -576,7 +576,6 @@ static inline bool
 is_unordered(const intel_device_info *devinfo, const elk_fs_inst *inst)
 {
    return is_send(inst) || (devinfo->ver < 20 && inst->is_math()) ||
-          inst->opcode == ELK_OPCODE_DPAS ||
           (devinfo->has_64bit_float_via_math_pipe &&
            (get_exec_type(inst) == ELK_REGISTER_TYPE_DF ||
             inst->dst.type == ELK_REGISTER_TYPE_DF));

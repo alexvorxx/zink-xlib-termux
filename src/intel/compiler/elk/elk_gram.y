@@ -400,7 +400,7 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> ADD ADD3 ADDC AND ASR AVG
 %token <integer> BFE BFI1 BFI2 BFB BFREV BRC BRD BREAK
 %token <integer> CALL CALLA CASE CBIT CMP CMPN CONT CSEL
-%token <integer> DIM DO DPAS DPASW DP2 DP3 DP4 DP4A DPH
+%token <integer> DIM DO DP2 DP3 DP4 DP4A DPH
 %token <integer> ELSE ENDIF F16TO32 F32TO16 FBH FBL FORK FRC
 %token <integer> GOTO
 %token <integer> HALT

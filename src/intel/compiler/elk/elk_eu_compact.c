@@ -1095,25 +1095,6 @@ static const uint64_t xe2_3src_control_index_table[16] = {
    0b0000011011000011101100000000000011, /* (8|M0) arf<1>:df :df :df :df   */
 };
 
-static const uint64_t xe2_3src_dpas_control_index_table[16] = {
-   0b0000000000111110011001000000000100, /* dpas.8x* (16|M0) grf:d :d :ub :ub Atomic */
-   0b0000000100111110011001000000000100, /* dpas.8x* (16|M0) grf:d :d :ub :b Atomic */
-   0b0000100000111110011001000000000100, /* dpas.8x* (16|M0) grf:d :d :b :ub Atomic */
-   0b0000100100111110011001000000000100, /* dpas.8x* (16|M0) grf:d :d :b :b Atomic */
-   0b0000000000111110011000000000000100, /* dpas.8x* (16|M0) grf:d :d :ub :ub */
-   0b0000100100111110011000000000000100, /* dpas.8x* (16|M0) grf:d :d :b :b */
-   0b0000101101111010101001000000000100, /* dpas.8x* (16|M0) grf:f :f :bf :bf Atomic */
-   0b0000101101111101101001000000000100, /* dpas.8x* (16|M0) grf:f :bf :bf :bf Atomic */
-   0b0000101101111010110101000000000100, /* dpas.8x* (16|M0) grf:bf :f :bf :bf Atomic */
-   0b0000101101111101110101000000000100, /* dpas.8x* (16|M0) grf:bf :bf :bf :bf Atomic */
-   0b0000101101111010101000000000000100, /* dpas.8x* (16|M0) grf:f :f :bf :bf */
-   0b0000001001111010101001000000000100, /* dpas.8x* (16|M0) grf:f :f :hf :hf Atomic */
-   0b0000001001111001101001000000000100, /* dpas.8x* (16|M0) grf:f :hf :hf :hf Atomic */
-   0b0000001001111010100101000000000100, /* dpas.8x* (16|M0) grf:hf :f :hf :hf Atomic */
-   0b0000001001111001100101000000000100, /* dpas.8x* (16|M0) grf:hf :hf :hf :hf Atomic */
-   0b0000001001111010101000000000000100, /* dpas.8x* (16|M0) grf:f :f :hf :hf */
-};
-
 static const uint32_t gfx12_3src_source_index_table[32] = {
    0b100101100001100000000, /*  grf<0;0>   grf<8;1>  grf<0> */
    0b100101100001001000010, /*  arf<4;1>   grf<8;1>  grf<0> */
@@ -1204,28 +1185,6 @@ static const uint32_t xe2_3src_source_index_table[16] = {
    0b101100000101000000001, /* arf<1;0> grf<1;0> -grf<1> */
    0b100100010001100000001, /* grf<1;0> -grf<1;0> grf<0> */
    0b100100010001000000001, /* arf<1;0> -grf<1;0> grf<0> */
-};
-
-static const uint32_t xe2_3src_dpas_source_index_table[16] = {
-   0b100100000000100000000, /* dpas.*x1 grf:d grf:[ub,b] grf:[ub,b]
-                             * dpas.*x1 grf:[f,bf] grf:bf grf:bf
-                             * dpas.*x1 grf:[f,hf] grf:hf grf:hf
-                             */
-   0b100100000010100000000, /* dpas.*x1 grf:d grf:[ub,b] grf:[u4,s4] */
-   0b100100000100100000000, /* dpas.*x1 grf:d grf:[ub,b] grf:[u2,s2] */
-   0b100100001000100000000, /* dpas.*x1 grf:d grf:[u4,s4] grf:[ub,b] */
-   0b100100001010100000000, /* dpas.*x1 grf:d grf:[u4,s4] grf:[u4,s4] */
-   0b100100001100100000000, /* dpas.*x1 grf:d grf:[u4,s4] grf:[u2,s2] */
-   0b100100010000100000000, /* dpas.*x1 grf:d grf:[u2,s2] grf:[ub,b] */
-   0b100100010010100000000, /* dpas.*x1 grf:d grf:[u2,s2] grf:[u4,s4] */
-   0b100100010100100000000, /* dpas.*x1 grf:d grf:[u2,s2] grf:[u2,s2] */
-   0b100100000000100000010, /* dpas.*x2 grf:d grf:[ub,b] grf:[ub,b] */
-   0b100100000010100000010, /* dpas.*x2 grf:d grf:[ub,b] grf:[u4,s4] */
-   0b100100001000100000010, /* dpas.*x2 grf:d grf:[u4,s4] grf:[ub,b] */
-   0b100100001010100000010, /* dpas.*x2 grf:d grf:[u4,s4] grf:[u4,s4] */
-   0b100100010100100000010, /* dpas.*x2 grf:d grf:[u2,s2] grf:[u2,s2] */
-   0b100100000000100001110, /* dpas.*x8 grf:d grf:[ub,b] grf:[ub,b] */
-   0b100100001010100001110, /* dpas.*x8 grf:d grf:[u4,s4] grf:[u4,s4] */
 };
 
 static const uint32_t gfx12_3src_subreg_table[32] = {
@@ -1530,13 +1489,12 @@ set_src1_index(const struct compaction_state *c, elk_compact_inst *dst,
 
 static bool
 set_3src_control_index(const struct intel_device_info *devinfo,
-                       elk_compact_inst *dst, const elk_inst *src,
-                       bool is_dpas)
+                       elk_compact_inst *dst, const elk_inst *src)
 {
    assert(devinfo->ver >= 8);
 
    if (devinfo->ver >= 20) {
-      assert(is_dpas || !elk_inst_bits(src, 49, 49));
+      assert(!elk_inst_bits(src, 49, 49));
 
       const uint64_t uncompacted =        /* 34b/Xe2+ */
          (elk_inst_bits(src, 95, 92) << 30) | /*  4b */
@@ -1556,13 +1514,8 @@ set_3src_control_index(const struct intel_device_info *devinfo,
          (elk_inst_bits(src, 23, 21) <<  3) | /*  3b */
          (elk_inst_bits(src, 20, 18));        /*  3b */
 
-      /* The bits used to index the tables for 3src and 3src-dpas
-       * are the same, so just need to pick the right one.
-       */
-      const uint64_t *table = is_dpas ? xe2_3src_dpas_control_index_table :
-                                        xe2_3src_control_index_table;
-      const unsigned size = is_dpas ? ARRAY_SIZE(xe2_3src_dpas_control_index_table) :
-                                      ARRAY_SIZE(xe2_3src_control_index_table);
+      const uint64_t *table = xe2_3src_control_index_table;
+      const unsigned size = ARRAY_SIZE(xe2_3src_control_index_table);
       for (unsigned i = 0; i < size; i++) {
          if (table[i] == uncompacted) {
             elk_compact_inst_set_3src_control_index(devinfo, dst, i);
@@ -1646,8 +1599,7 @@ set_3src_control_index(const struct intel_device_info *devinfo,
 
 static bool
 set_3src_source_index(const struct intel_device_info *devinfo,
-                      elk_compact_inst *dst, const elk_inst *src,
-                      bool is_dpas)
+                      elk_compact_inst *dst, const elk_inst *src)
 {
    assert(devinfo->ver >= 8);
 
@@ -1669,17 +1621,12 @@ set_3src_source_index(const struct intel_device_info *devinfo,
          (elk_inst_bits(src,  43,  43) <<  1) | /*  1b */
          (elk_inst_bits(src,  35,  35));        /*  1b */
 
-      /* In Xe2, the bits used to index the tables for 3src and 3src-dpas
-       * are the same, so just need to pick the right one.
-       */
       const uint32_t *three_src_source_index_table =
-         devinfo->ver >= 20 ? (is_dpas ? xe2_3src_dpas_source_index_table :
-                                         xe2_3src_source_index_table) :
+         devinfo->ver >= 20 ? xe2_3src_source_index_table :
          devinfo->verx10 >= 125 ? xehp_3src_source_index_table :
          gfx12_3src_source_index_table;
       const uint32_t three_src_source_index_table_len =
-         devinfo->ver >= 20 ? (is_dpas ? ARRAY_SIZE(xe2_3src_dpas_source_index_table) :
-                                         ARRAY_SIZE(xe2_3src_source_index_table)) :
+         devinfo->ver >= 20 ? ARRAY_SIZE(xe2_3src_source_index_table) :
          devinfo->verx10 >= 125 ? ARRAY_SIZE(xehp_3src_source_index_table) :
          ARRAY_SIZE(gfx12_3src_source_index_table);
 
@@ -1785,18 +1732,18 @@ has_unmapped_bits(const struct elk_isa_info *isa, const elk_inst *src)
 
 static bool
 has_3src_unmapped_bits(const struct intel_device_info *devinfo,
-                       const elk_inst *src, bool is_dpas)
+                       const elk_inst *src)
 {
    /* Check for three-source instruction bits that don't map to any of the
     * fields of the compacted instruction.  All of them seem to be reserved
     * bits currently.
     */
    if (devinfo->ver >= 20) {
-      assert(is_dpas || !elk_inst_bits(src, 49, 49));
+      assert(!elk_inst_bits(src, 49, 49));
       assert(!elk_inst_bits(src, 33, 33));
       assert(!elk_inst_bits(src, 7, 7));
    } else if (devinfo->ver >= 12) {
-      assert(is_dpas || !elk_inst_bits(src, 49, 49));
+      assert(!elk_inst_bits(src, 49, 49));
       assert(!elk_inst_bits(src, 7, 7));
    } else if (devinfo->ver >= 9 || devinfo->platform == INTEL_PLATFORM_CHV) {
       assert(!elk_inst_bits(src, 127, 127) &&
@@ -1823,8 +1770,7 @@ elk_try_compact_3src_instruction(const struct elk_isa_info *isa,
    const struct intel_device_info *devinfo = isa->devinfo;
    assert(devinfo->ver >= 8);
 
-   bool is_dpas = elk_inst_opcode(isa, src) == ELK_OPCODE_DPAS;
-   if (has_3src_unmapped_bits(devinfo, src, is_dpas))
+   if (has_3src_unmapped_bits(devinfo, src))
       return false;
 
 #define compact(field) \
@@ -1834,10 +1780,10 @@ elk_try_compact_3src_instruction(const struct elk_isa_info *isa,
 
    compact(hw_opcode);
 
-   if (!set_3src_control_index(devinfo, dst, src, is_dpas))
+   if (!set_3src_control_index(devinfo, dst, src))
       return false;
 
-   if (!set_3src_source_index(devinfo, dst, src, is_dpas))
+   if (!set_3src_source_index(devinfo, dst, src))
       return false;
 
    if (devinfo->ver >= 12) {
@@ -2395,16 +2341,14 @@ set_uncompacted_src1(const struct compaction_state *c, elk_inst *dst,
 
 static void
 set_uncompacted_3src_control_index(const struct compaction_state *c,
-                                   elk_inst *dst, elk_compact_inst *src,
-                                   bool is_dpas)
+                                   elk_inst *dst, elk_compact_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    assert(devinfo->ver >= 8);
 
    if (devinfo->ver >= 20) {
       uint64_t compacted = elk_compact_inst_3src_control_index(devinfo, src);
-      uint64_t uncompacted = is_dpas ? xe2_3src_dpas_control_index_table[compacted] :
-                                       xe2_3src_control_index_table[compacted];
+      uint64_t uncompacted = xe2_3src_control_index_table[compacted];
 
       elk_inst_set_bits(dst, 95, 92, (uncompacted >> 30) & 0xf);
       elk_inst_set_bits(dst, 90, 88, (uncompacted >> 27) & 0x7);
@@ -2482,8 +2426,7 @@ set_uncompacted_3src_control_index(const struct compaction_state *c,
 
 static void
 set_uncompacted_3src_source_index(const struct intel_device_info *devinfo,
-                                  elk_inst *dst, elk_compact_inst *src,
-                                  bool is_dpas)
+                                  elk_inst *dst, elk_compact_inst *src)
 {
    assert(devinfo->ver >= 8);
 
@@ -2491,8 +2434,7 @@ set_uncompacted_3src_source_index(const struct intel_device_info *devinfo,
 
    if (devinfo->ver >= 12) {
       const uint32_t *three_src_source_index_table =
-         devinfo->ver >= 20 ? (is_dpas ? xe2_3src_dpas_source_index_table :
-                                         xe2_3src_source_index_table) :
+         devinfo->ver >= 20 ? xe2_3src_source_index_table :
          devinfo->verx10 >= 125 ? xehp_3src_source_index_table :
                                   gfx12_3src_source_index_table;
       uint32_t uncompacted = three_src_source_index_table[compacted];
@@ -2550,7 +2492,7 @@ set_uncompacted_3src_subreg_index(const struct intel_device_info *devinfo,
 
 static void
 elk_uncompact_3src_instruction(const struct compaction_state *c,
-                               elk_inst *dst, elk_compact_inst *src, bool is_dpas)
+                               elk_inst *dst, elk_compact_inst *src)
 {
    const struct intel_device_info *devinfo = c->isa->devinfo;
    assert(devinfo->ver >= 8);
@@ -2563,8 +2505,8 @@ elk_uncompact_3src_instruction(const struct compaction_state *c,
    uncompact(hw_opcode);
 
    if (devinfo->ver >= 12) {
-      set_uncompacted_3src_control_index(c, dst, src, is_dpas);
-      set_uncompacted_3src_source_index(devinfo, dst, src, is_dpas);
+      set_uncompacted_3src_control_index(c, dst, src);
+      set_uncompacted_3src_source_index(devinfo, dst, src);
       set_uncompacted_3src_subreg_index(devinfo, dst, src);
 
       uncompact(debug_control);
@@ -2574,8 +2516,8 @@ elk_uncompact_3src_instruction(const struct compaction_state *c,
       uncompact(src1_reg_nr);
       uncompact(src2_reg_nr);
    } else {
-      set_uncompacted_3src_control_index(c, dst, src, is_dpas);
-      set_uncompacted_3src_source_index(devinfo, dst, src, is_dpas);
+      set_uncompacted_3src_control_index(c, dst, src);
+      set_uncompacted_3src_source_index(devinfo, dst, src);
 
       uncompact(dst_reg_nr);
       uncompact_a16(src0_rep_ctrl);
@@ -2607,8 +2549,7 @@ uncompact_instruction(const struct compaction_state *c, elk_inst *dst,
       const enum elk_opcode opcode =
          elk_opcode_decode(c->isa, elk_compact_inst_3src_hw_opcode(devinfo, src));
       if (elk_is_3src(c->isa, opcode)) {
-         const bool is_dpas = opcode == ELK_OPCODE_DPAS;
-         elk_uncompact_3src_instruction(c, dst, src, is_dpas);
+         elk_uncompact_3src_instruction(c, dst, src);
          return;
       }
    }

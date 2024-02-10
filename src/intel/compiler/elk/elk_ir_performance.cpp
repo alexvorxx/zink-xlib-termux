@@ -148,8 +148,6 @@ namespace {
              !elk_reg_type_is_floating_point(tx) && type_sz(tx) == 4 &&
              type_sz(inst->src[0].type) == type_sz(inst->src[1].type))
             tx = elk_int_type(8, tx == ELK_REGISTER_TYPE_D);
-
-         rcount = inst->opcode == ELK_OPCODE_DPAS ? inst->rcount : 0;
       }
 
       instruction_info(const struct elk_isa_info *isa,
@@ -157,7 +155,7 @@ namespace {
          isa(isa), devinfo(isa->devinfo), op(inst->opcode),
          td(inst->dst.type), sd(DIV_ROUND_UP(inst->size_written, REG_SIZE)),
          tx(get_exec_type(inst)), sx(0), ss(0), sc(0),
-         desc(inst->desc), sfid(inst->sfid), rcount(0)
+         desc(inst->desc), sfid(inst->sfid)
       {
          /* Compute the maximum source size. */
          for (unsigned i = 0; i < ARRAY_SIZE(inst->src); i++)
@@ -197,8 +195,6 @@ namespace {
       uint32_t desc;
       /** Send message shared function ID. */
       uint8_t sfid;
-      /** Repeat count for DPAS instructions. */
-      uint8_t rcount;
    };
 
    /**
@@ -508,32 +504,6 @@ namespace {
                                   0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
          else
             abort();
-
-      case ELK_OPCODE_DPAS: {
-         unsigned ld;
-
-         switch (info.rcount) {
-         case 1:
-            ld = 21;
-            break;
-         case 2:
-            ld = 22;
-            break;
-         case 8:
-         default:
-            ld = 32;
-            break;
-         }
-
-         /* DPAS cannot write the accumulator or the flags, so pass UINT_MAX
-          * for la and lf.
-          */
-         if (devinfo->verx10 >= 125)
-            return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
-                                  0, ld, UINT_MAX, UINT_MAX, 0, 0);
-         else
-            abort();
-      }
 
       case ELK_SHADER_OPCODE_RCP:
       case ELK_SHADER_OPCODE_RSQ:

@@ -1910,10 +1910,6 @@ void elk_CMPN(struct elk_codegen *p,
               struct elk_reg src0,
               struct elk_reg src1);
 
-elk_inst *elk_DPAS(struct elk_codegen *p, enum elk_gfx12_systolic_depth sdepth,
-                   unsigned rcount, struct elk_reg dest, struct elk_reg src0,
-                   struct elk_reg src1, struct elk_reg src2);
-
 void
 elk_untyped_atomic(struct elk_codegen *p,
                    struct elk_reg dst,

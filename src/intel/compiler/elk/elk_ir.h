@@ -199,16 +199,6 @@ struct elk_backend_instruction {
     */
    unsigned flag_subreg:3;
 
-   /**
-    * Systolic depth used by DPAS instruction.
-    */
-   unsigned sdepth:4;
-
-   /**
-    * Repeat count used by DPAS instruction.
-    */
-   unsigned rcount:4;
-
    /** The number of hardware registers used for a message header. */
    uint8_t header_size;
 };

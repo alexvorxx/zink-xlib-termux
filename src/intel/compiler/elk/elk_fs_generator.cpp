@@ -1599,19 +1599,6 @@ elk_fs_generator::enable_debug(const char *shader_name)
    this->shader_name = shader_name;
 }
 
-static elk_gfx12_systolic_depth
-translate_systolic_depth(unsigned d)
-{
-   /* Could also return (ffs(d) - 1) & 3. */
-   switch (d) {
-   case 2:  return ELK_SYSTOLIC_DEPTH_2;
-   case 4:  return ELK_SYSTOLIC_DEPTH_4;
-   case 8:  return ELK_SYSTOLIC_DEPTH_8;
-   case 16: return ELK_SYSTOLIC_DEPTH_16;
-   default: unreachable("Invalid systolic depth.");
-   }
-}
-
 int
 elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
                             struct shader_stats shader_stats,
@@ -1818,12 +1805,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 
       case ELK_OPCODE_LINE:
          elk_LINE(p, dst, src[0], src[1]);
-         break;
-
-      case ELK_OPCODE_DPAS:
-         assert(devinfo->verx10 >= 125);
-         elk_DPAS(p, translate_systolic_depth(inst->sdepth), inst->rcount,
-                  dst, src[0], src[1], src[2]);
          break;
 
       case ELK_OPCODE_MAD:

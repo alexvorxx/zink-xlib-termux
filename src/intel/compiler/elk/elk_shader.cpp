@@ -165,13 +165,6 @@ elk_instruction_name(const struct elk_isa_info *isa, enum elk_opcode op)
       if (devinfo->ver > 7 && op == ELK_OPCODE_F16TO32)
          return "f16to32";
 
-      /* DPAS instructions may transiently exist on platforms that do not
-       * support DPAS. They will eventually be lowered, but in the meantime it
-       * must be possible to query the instruction name.
-       */
-      if (devinfo->verx10 < 125 && op == ELK_OPCODE_DPAS)
-         return "dpas";
-
       assert(elk_opcode_desc(isa, op)->name);
       return elk_opcode_desc(isa, op)->name;
    case ELK_FS_OPCODE_FB_WRITE:
@@ -944,7 +937,6 @@ elk_backend_instruction::can_do_source_mods() const
    case ELK_OPCODE_ROR:
    case ELK_OPCODE_SUBB:
    case ELK_OPCODE_DP4A:
-   case ELK_OPCODE_DPAS:
    case ELK_SHADER_OPCODE_BROADCAST:
    case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
    case ELK_SHADER_OPCODE_MOV_INDIRECT:

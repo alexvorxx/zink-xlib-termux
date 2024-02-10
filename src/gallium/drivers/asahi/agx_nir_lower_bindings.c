@@ -6,6 +6,7 @@
 #include "asahi/lib/agx_nir_passes.h"
 #include "compiler/glsl_types.h"
 #include "compiler/nir/nir_builder.h"
+#include "util/bitset.h"
 #include "agx_state.h"
 #include "nir.h"
 #include "nir_builder_opcodes.h"
@@ -131,7 +132,8 @@ lower(nir_builder *b, nir_instr *instr, void *data)
    } else if (instr->type == nir_instr_type_tex) {
       nir_tex_instr *tex = nir_instr_as_tex(instr);
 
-      if (agx_stage_needs_bindless(b->shader->info.stage) &&
+      if ((agx_stage_needs_bindless(b->shader->info.stage) ||
+           BITSET_COUNT(b->shader->info.samplers_used) > 16) &&
           lower_sampler(b, tex)) {
 
          progress = true;

@@ -2808,8 +2808,10 @@ translate_sampler_state_count(struct agx_context *ctx,
    /* Get samplers from merged stage but get txf status from cs */
    stage = merged_stage(ctx, stage);
 
-   return agx_translate_sampler_state_count(sampler_count(ctx, cs, stage),
-                                            ctx->stage[stage].custom_borders);
+   /* Clamp to binding table maximum, anything larger will be bindless */
+   return agx_translate_sampler_state_count(
+      MIN2(sampler_count(ctx, cs, stage), 16),
+      ctx->stage[stage].custom_borders);
 }
 
 /*

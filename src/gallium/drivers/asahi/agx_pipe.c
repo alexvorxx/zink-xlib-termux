@@ -34,6 +34,7 @@
 #include "util/u_helpers.h"
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
+#include "util/u_process.h"
 #include "util/u_resource.h"
 #include "util/u_screen.h"
 #include "util/u_upload_mgr.h"
@@ -1901,7 +1902,11 @@ agx_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type shader,
       return 0;
 
    case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS:
-      return 16;
+      /* TODO: Enable when fully baked */
+      if (strcmp(util_get_process_name(), "blender") == 0)
+         return PIPE_MAX_SAMPLERS;
+      else
+         return 16;
 
    case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
       return PIPE_MAX_SHADER_SAMPLER_VIEWS;

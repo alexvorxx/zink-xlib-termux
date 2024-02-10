@@ -7257,7 +7257,6 @@ elk_compile_fs(const struct elk_compiler *compiler,
                                    params->base.debug_flag : DEBUG_WM);
 
    prog_data->base.stage = MESA_SHADER_FRAGMENT;
-   prog_data->base.ray_queries = nir->info.ray_queries;
    prog_data->base.total_scratch = 0;
 
    const struct intel_device_info *devinfo = compiler->devinfo;
@@ -7689,7 +7688,6 @@ elk_compile_cs(const struct elk_compiler *compiler,
 
    prog_data->base.stage = MESA_SHADER_COMPUTE;
    prog_data->base.total_shared = nir->info.shared_size;
-   prog_data->base.ray_queries = nir->info.ray_queries;
    prog_data->base.total_scratch = 0;
 
    if (!nir->info.workgroup_size_variable) {

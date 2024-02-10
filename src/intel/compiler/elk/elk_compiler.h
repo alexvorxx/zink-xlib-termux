@@ -754,9 +754,6 @@ struct elk_stage_prog_data {
    /** Does this program pull from any UBO or other constant buffers? */
    bool has_ubo_pull;
 
-   /** How many ray queries objects in this shader. */
-   unsigned ray_queries;
-
    /**
     * Register where the thread expects to find input data from the URB
     * (typically uniforms, followed by vertex or fragment attributes).
@@ -1209,7 +1206,6 @@ struct elk_cs_prog_data {
    bool uses_barrier;
    bool uses_num_work_groups;
    bool uses_inline_data;
-   bool uses_btd_stack_ids;
    uint8_t generate_local_id;
    enum intel_compute_walk_order walk_order;
 

@@ -1674,18 +1674,6 @@ elk_btd_spawn_exec_size(UNUSED const struct intel_device_info *devinfo,
    return elk_mdc_sm2_exec_size(GET_BITS(desc, 8, 8));
 }
 
-static inline uint32_t
-elk_rt_trace_ray_desc(ASSERTED const struct intel_device_info *devinfo,
-                      unsigned exec_size)
-{
-   assert(devinfo->has_ray_tracing);
-   assert(devinfo->ver < 20 || exec_size == 16);
-
-   return SET_BITS(0, 19, 19) | /* No header */
-          SET_BITS(0, 17, 14) | /* Message type */
-          SET_BITS(elk_mdc_sm2(exec_size), 8, 8);
-}
-
 /**
  * Construct a message descriptor immediate with the specified pixel
  * interpolator function controls.

@@ -630,9 +630,6 @@ elk_nir_optimize(nir_shader *nir, bool is_scalar,
       OPT(nir_opt_dead_write_vars);
       OPT(nir_opt_combine_stores, nir_var_all);
 
-      OPT(nir_opt_ray_queries);
-      OPT(nir_opt_ray_query_ranges);
-
       if (is_scalar) {
          OPT(nir_lower_alu_to_scalar, NULL, NULL);
       } else {

@@ -513,17 +513,10 @@ elk_instruction_name(const struct elk_isa_info *isa, enum elk_opcode op)
    case ELK_TES_OPCODE_GET_PRIMITIVE_ID:
       return "tes_get_primitive_id";
 
-   case ELK_RT_OPCODE_TRACE_RAY_LOGICAL:
-      return "rt_trace_ray_logical";
-
    case ELK_SHADER_OPCODE_RND_MODE:
       return "rnd_mode";
    case ELK_SHADER_OPCODE_FLOAT_CONTROL_MODE:
       return "float_control_mode";
-   case ELK_SHADER_OPCODE_BTD_SPAWN_LOGICAL:
-      return "btd_spawn_logical";
-   case ELK_SHADER_OPCODE_BTD_RETIRE_LOGICAL:
-      return "btd_retire_logical";
    case ELK_SHADER_OPCODE_READ_SR_REG:
       return "read_sr_reg";
    }
@@ -1102,9 +1095,6 @@ elk_backend_instruction::has_side_effects() const
    case ELK_FS_OPCODE_SCHEDULING_FENCE:
    case ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL:
    case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
-   case ELK_SHADER_OPCODE_BTD_SPAWN_LOGICAL:
-   case ELK_SHADER_OPCODE_BTD_RETIRE_LOGICAL:
-   case ELK_RT_OPCODE_TRACE_RAY_LOGICAL:
    case ELK_VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
       return true;
    default:
@@ -1285,7 +1275,6 @@ elk_compile_tes(const struct elk_compiler *compiler,
    const unsigned *assembly;
 
    prog_data->base.base.stage = MESA_SHADER_TESS_EVAL;
-   prog_data->base.base.ray_queries = nir->info.ray_queries;
 
    nir->info.inputs_read = key->inputs_read;
    nir->info.patch_inputs_read = key->patch_inputs_read;

@@ -489,10 +489,6 @@ elk_cs_thread_payload::elk_cs_thread_payload(const elk_fs_visitor &v)
             local_invocation_id[i] = elk_imm_uw(0);
          }
       }
-
-      /* TODO: Fill out uses_btd_stack_ids automatically */
-      if (prog_data->uses_btd_stack_ids)
-         r += reg_unit(v.devinfo);
    }
 
    num_regs = r;

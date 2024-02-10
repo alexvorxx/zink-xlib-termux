@@ -132,16 +132,6 @@ elk_simd_should_compile(elk_simd_selection_state &state, unsigned simd)
       return false;
    }
 
-   if (width == 32 && cs_prog_data && cs_prog_data->base.ray_queries > 0) {
-      state.error[simd] = "Ray queries not supported";
-      return false;
-   }
-
-   if (width == 32 && cs_prog_data && cs_prog_data->uses_btd_stack_ids) {
-      state.error[simd] = "Bindless shader calls not supported";
-      return false;
-   }
-
    uint64_t start;
    switch (prog_data->stage) {
    case MESA_SHADER_COMPUTE:

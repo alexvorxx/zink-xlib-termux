@@ -38,6 +38,7 @@
 #include "dev/intel_device_info.h"
 #include "dev/intel_device_info_serialize.h"
 #include "dev/intel_hwconfig.h"
+#include "compiler/brw_compiler.h"
 
 static int
 error(char *fmt, ...)
@@ -260,6 +261,15 @@ main(int argc, char *argv[])
 
          if (print_json) {
             JSON_Value *json = intel_device_info_dump_json(&devinfo);
+
+            /* add the compiler device sha, to allow deduplication of similar
+             * device info files
+             */
+            JSON_Object *obj = json_object(json);
+            char device_info_sha[41];
+            brw_device_sha1(device_info_sha, &devinfo);
+            json_object_set_string(obj, "shader_cache_sha1", device_info_sha);
+
             char *pretty_string = json_serialize_to_string_pretty(json);
             printf("%s", pretty_string);
             json_free_serialized_string(pretty_string);

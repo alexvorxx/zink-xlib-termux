@@ -1012,15 +1012,11 @@ dest_3src(FILE *file, const struct intel_device_info *devinfo,
    unsigned subreg_nr;
    enum elk_reg_type type;
 
-   if (devinfo->ver < 10 && is_align1)
+   if (is_align1)
       return 0;
 
    if (devinfo->ver == 6 && elk_inst_3src_a16_dst_reg_file(devinfo, inst))
       reg_file = ELK_MESSAGE_REGISTER_FILE;
-   else if (devinfo->ver >= 12)
-      reg_file = elk_inst_3src_a1_dst_reg_file(devinfo, inst);
-   else if (is_align1 && elk_inst_3src_a1_dst_reg_file(devinfo, inst))
-      reg_file = ELK_ARCHITECTURE_REGISTER_FILE;
    else
       reg_file = ELK_GENERAL_REGISTER_FILE;
 
@@ -1028,13 +1024,8 @@ dest_3src(FILE *file, const struct intel_device_info *devinfo,
    if (err == -1)
       return 0;
 
-   if (is_align1) {
-      type = elk_inst_3src_a1_dst_type(devinfo, inst);
-      subreg_nr = elk_inst_3src_a1_dst_subreg_nr(devinfo, inst);
-   } else {
-      type = elk_inst_3src_a16_dst_type(devinfo, inst);
-      subreg_nr = elk_inst_3src_a16_dst_subreg_nr(devinfo, inst) * 4;
-   }
+   type = elk_inst_3src_a16_dst_type(devinfo, inst);
+   subreg_nr = elk_inst_3src_a16_dst_subreg_nr(devinfo, inst) * 4;
    subreg_nr /= elk_reg_type_to_size(type);
 
    if (subreg_nr)
@@ -1289,57 +1280,24 @@ src0_3src(FILE *file, const struct intel_device_info *devinfo,
    bool is_scalar_region;
    bool is_align1 = elk_inst_3src_access_mode(devinfo, inst) == ELK_ALIGN_1;
 
-   if (devinfo->ver < 10 && is_align1)
+   if (is_align1)
       return 0;
 
-   if (is_align1) {
-      if (devinfo->ver >= 12 && !elk_inst_3src_a1_src0_is_imm(devinfo, inst)) {
-         _file = elk_inst_3src_a1_src0_reg_file(devinfo, inst);
-      } else if (elk_inst_3src_a1_src0_reg_file(devinfo, inst) ==
-                 ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE) {
-         _file = ELK_GENERAL_REGISTER_FILE;
-      } else if (elk_inst_3src_a1_src0_type(devinfo, inst) ==
-                 ELK_REGISTER_TYPE_NF) {
-         _file = ELK_ARCHITECTURE_REGISTER_FILE;
-      } else {
-         _file = ELK_IMMEDIATE_VALUE;
-         uint16_t imm_val = elk_inst_3src_a1_src0_imm(devinfo, inst);
-         enum elk_reg_type type = elk_inst_3src_a1_src0_type(devinfo, inst);
+   _file = ELK_GENERAL_REGISTER_FILE;
+   reg_nr = elk_inst_3src_src0_reg_nr(devinfo, inst);
+   subreg_nr = elk_inst_3src_a16_src0_subreg_nr(devinfo, inst) * 4;
+   type = elk_inst_3src_a16_src_type(devinfo, inst);
 
-         if (type == ELK_REGISTER_TYPE_W) {
-            format(file, "%dW", imm_val);
-         } else if (type == ELK_REGISTER_TYPE_UW) {
-            format(file, "0x%04xUW", imm_val);
-         } else if (type == ELK_REGISTER_TYPE_HF) {
-            format(file, "0x%04xHF", imm_val);
-         }
-         return 0;
-      }
-
-      reg_nr = elk_inst_3src_src0_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a1_src0_subreg_nr(devinfo, inst);
-      type = elk_inst_3src_a1_src0_type(devinfo, inst);
-      _vert_stride = vstride_from_align1_3src_vstride(
-         devinfo, elk_inst_3src_a1_src0_vstride(devinfo, inst));
-      _horiz_stride = hstride_from_align1_3src_hstride(
-                         elk_inst_3src_a1_src0_hstride(devinfo, inst));
-      _width = implied_width(_vert_stride, _horiz_stride);
+   if (elk_inst_3src_a16_src0_rep_ctrl(devinfo, inst)) {
+      _vert_stride = ELK_VERTICAL_STRIDE_0;
+      _width = ELK_WIDTH_1;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
    } else {
-      _file = ELK_GENERAL_REGISTER_FILE;
-      reg_nr = elk_inst_3src_src0_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a16_src0_subreg_nr(devinfo, inst) * 4;
-      type = elk_inst_3src_a16_src_type(devinfo, inst);
-
-      if (elk_inst_3src_a16_src0_rep_ctrl(devinfo, inst)) {
-         _vert_stride = ELK_VERTICAL_STRIDE_0;
-         _width = ELK_WIDTH_1;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
-      } else {
-         _vert_stride = ELK_VERTICAL_STRIDE_4;
-         _width = ELK_WIDTH_4;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
-      }
+      _vert_stride = ELK_VERTICAL_STRIDE_4;
+      _width = ELK_WIDTH_4;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
    }
+
    is_scalar_region = _vert_stride == ELK_VERTICAL_STRIDE_0 &&
                       _width == ELK_WIDTH_1 &&
                       _horiz_stride == ELK_HORIZONTAL_STRIDE_0;
@@ -1376,44 +1334,24 @@ src1_3src(FILE *file, const struct intel_device_info *devinfo,
    bool is_scalar_region;
    bool is_align1 = elk_inst_3src_access_mode(devinfo, inst) == ELK_ALIGN_1;
 
-   if (devinfo->ver < 10 && is_align1)
+   if (is_align1)
       return 0;
 
-   if (is_align1) {
-      if (devinfo->ver >= 12) {
-         _file = elk_inst_3src_a1_src1_reg_file(devinfo, inst);
-      } else if (elk_inst_3src_a1_src1_reg_file(devinfo, inst) ==
-                 ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE) {
-         _file = ELK_GENERAL_REGISTER_FILE;
-      } else {
-         _file = ELK_ARCHITECTURE_REGISTER_FILE;
-      }
+   _file = ELK_GENERAL_REGISTER_FILE;
+   reg_nr = elk_inst_3src_src1_reg_nr(devinfo, inst);
+   subreg_nr = elk_inst_3src_a16_src1_subreg_nr(devinfo, inst) * 4;
+   type = elk_inst_3src_a16_src_type(devinfo, inst);
 
-      reg_nr = elk_inst_3src_src1_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a1_src1_subreg_nr(devinfo, inst);
-      type = elk_inst_3src_a1_src1_type(devinfo, inst);
-
-      _vert_stride = vstride_from_align1_3src_vstride(
-         devinfo, elk_inst_3src_a1_src1_vstride(devinfo, inst));
-      _horiz_stride = hstride_from_align1_3src_hstride(
-                         elk_inst_3src_a1_src1_hstride(devinfo, inst));
-      _width = implied_width(_vert_stride, _horiz_stride);
+   if (elk_inst_3src_a16_src1_rep_ctrl(devinfo, inst)) {
+      _vert_stride = ELK_VERTICAL_STRIDE_0;
+      _width = ELK_WIDTH_1;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
    } else {
-      _file = ELK_GENERAL_REGISTER_FILE;
-      reg_nr = elk_inst_3src_src1_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a16_src1_subreg_nr(devinfo, inst) * 4;
-      type = elk_inst_3src_a16_src_type(devinfo, inst);
-
-      if (elk_inst_3src_a16_src1_rep_ctrl(devinfo, inst)) {
-         _vert_stride = ELK_VERTICAL_STRIDE_0;
-         _width = ELK_WIDTH_1;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
-      } else {
-         _vert_stride = ELK_VERTICAL_STRIDE_4;
-         _width = ELK_WIDTH_4;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
-      }
+      _vert_stride = ELK_VERTICAL_STRIDE_4;
+      _width = ELK_WIDTH_4;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
    }
+
    is_scalar_region = _vert_stride == ELK_VERTICAL_STRIDE_0 &&
                       _width == ELK_WIDTH_1 &&
                       _horiz_stride == ELK_HORIZONTAL_STRIDE_0;
@@ -1450,58 +1388,24 @@ src2_3src(FILE *file, const struct intel_device_info *devinfo,
    bool is_scalar_region;
    bool is_align1 = elk_inst_3src_access_mode(devinfo, inst) == ELK_ALIGN_1;
 
-   if (devinfo->ver < 10 && is_align1)
+   if (is_align1)
       return 0;
 
-   if (is_align1) {
-      if (devinfo->ver >= 12 && !elk_inst_3src_a1_src2_is_imm(devinfo, inst)) {
-         _file = elk_inst_3src_a1_src2_reg_file(devinfo, inst);
-      } else if (elk_inst_3src_a1_src2_reg_file(devinfo, inst) ==
-                 ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE) {
-         _file = ELK_GENERAL_REGISTER_FILE;
-      } else {
-         _file = ELK_IMMEDIATE_VALUE;
-         uint16_t imm_val = elk_inst_3src_a1_src2_imm(devinfo, inst);
-         enum elk_reg_type type = elk_inst_3src_a1_src2_type(devinfo, inst);
+   _file = ELK_GENERAL_REGISTER_FILE;
+   reg_nr = elk_inst_3src_src2_reg_nr(devinfo, inst);
+   subreg_nr = elk_inst_3src_a16_src2_subreg_nr(devinfo, inst) * 4;
+   type = elk_inst_3src_a16_src_type(devinfo, inst);
 
-         if (type == ELK_REGISTER_TYPE_W) {
-            format(file, "%dW", imm_val);
-         } else if (type == ELK_REGISTER_TYPE_UW) {
-            format(file, "0x%04xUW", imm_val);
-         } else if (type == ELK_REGISTER_TYPE_HF) {
-            format(file, "0x%04xHF", imm_val);
-         }
-         return 0;
-      }
-
-      reg_nr = elk_inst_3src_src2_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a1_src2_subreg_nr(devinfo, inst);
-      type = elk_inst_3src_a1_src2_type(devinfo, inst);
-      /* FINISHME: No vertical stride on src2. Is using the hstride in place
-       *           correct? Doesn't seem like it, since there's hstride=1 but
-       *           no vstride=1.
-       */
-      _vert_stride = vstride_from_align1_3src_hstride(
-                        elk_inst_3src_a1_src2_hstride(devinfo, inst));
-      _horiz_stride = hstride_from_align1_3src_hstride(
-                         elk_inst_3src_a1_src2_hstride(devinfo, inst));
-      _width = implied_width(_vert_stride, _horiz_stride);
+   if (elk_inst_3src_a16_src2_rep_ctrl(devinfo, inst)) {
+      _vert_stride = ELK_VERTICAL_STRIDE_0;
+      _width = ELK_WIDTH_1;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
    } else {
-      _file = ELK_GENERAL_REGISTER_FILE;
-      reg_nr = elk_inst_3src_src2_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a16_src2_subreg_nr(devinfo, inst) * 4;
-      type = elk_inst_3src_a16_src_type(devinfo, inst);
-
-      if (elk_inst_3src_a16_src2_rep_ctrl(devinfo, inst)) {
-         _vert_stride = ELK_VERTICAL_STRIDE_0;
-         _width = ELK_WIDTH_1;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
-      } else {
-         _vert_stride = ELK_VERTICAL_STRIDE_4;
-         _width = ELK_WIDTH_4;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
-      }
+      _vert_stride = ELK_VERTICAL_STRIDE_4;
+      _width = ELK_WIDTH_4;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
    }
+
    is_scalar_region = _vert_stride == ELK_VERTICAL_STRIDE_0 &&
                       _width == ELK_WIDTH_1 &&
                       _horiz_stride == ELK_HORIZONTAL_STRIDE_0;
@@ -1772,44 +1676,13 @@ inst_has_type(const struct elk_isa_info *isa,
       return true;
 
    if (num_sources >= 3) {
-      if (elk_inst_3src_access_mode(devinfo, inst) == ELK_ALIGN_1)
-         return elk_inst_3src_a1_src0_type(devinfo, inst) == type ||
-                elk_inst_3src_a1_src1_type(devinfo, inst) == type ||
-                elk_inst_3src_a1_src2_type(devinfo, inst) == type;
-      else
-         return elk_inst_3src_a16_src_type(devinfo, inst) == type;
+      return elk_inst_3src_a16_src_type(devinfo, inst) == type;
    } else if (num_sources == 2) {
       return elk_inst_src0_type(devinfo, inst) == type ||
              elk_inst_src1_type(devinfo, inst) == type;
    } else {
       return elk_inst_src0_type(devinfo, inst) == type;
    }
-}
-
-static int
-swsb(FILE *file, const struct elk_isa_info *isa, const elk_inst *inst)
-{
-   const struct intel_device_info *devinfo = isa->devinfo;
-   const enum elk_opcode opcode = elk_inst_opcode(isa, inst);
-   const uint32_t x = elk_inst_swsb(devinfo, inst);
-   const bool is_unordered =
-      opcode == ELK_OPCODE_SEND || opcode == ELK_OPCODE_SENDC ||
-      opcode == ELK_OPCODE_MATH ||
-      (devinfo->has_64bit_float_via_math_pipe &&
-       inst_has_type(isa, inst, ELK_REGISTER_TYPE_DF));
-   const struct tgl_swsb swsb = tgl_swsb_decode(devinfo, is_unordered, x);
-   if (swsb.regdist)
-      format(file, " %s@%d",
-             (swsb.pipe == TGL_PIPE_FLOAT ? "F" :
-              swsb.pipe == TGL_PIPE_INT ? "I" :
-              swsb.pipe == TGL_PIPE_LONG ? "L" :
-              swsb.pipe == TGL_PIPE_ALL ? "A"  : "" ),
-             swsb.regdist);
-   if (swsb.mode)
-      format(file, " $%d%s", swsb.sbid,
-             (swsb.mode & TGL_SBID_SET ? "" :
-              swsb.mode & TGL_SBID_DST ? ".dst" : ".src"));
-   return 0;
 }
 
 #ifdef DEBUG
@@ -2356,10 +2229,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
             format(file, " dst_len = %u,", lsc_msg_desc_dest_len(devinfo, imm_desc));
             format(file, " src0_len = %u,", lsc_msg_desc_src0_len(devinfo, imm_desc));
 
-            if (!elk_inst_send_sel_reg32_ex_desc(devinfo, inst))
-               format(file, " src1_len = %d",
-                      elk_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
-
             err |= control(file, "address_type", lsc_addr_surface_type,
                            lsc_msg_desc_addr_type(devinfo, imm_desc), &space);
             format(file, " )");
@@ -2485,14 +2354,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
          if (space)
             string(file, " ");
       }
-      if (devinfo->verx10 >= 125 &&
-          elk_inst_send_sel_reg32_ex_desc(devinfo, inst) &&
-          elk_inst_send_ex_bso(devinfo, inst)) {
-         format(file, " src1_len = %u",
-                (unsigned) elk_inst_send_src1_len(devinfo, inst));
-
-         format(file, " ex_bso");
-      }
       if (elk_sfid_is_lsc(sfid) ||
           (sfid == ELK_SFID_URB && devinfo->ver >= 20)) {
             lsc_disassemble_ex_desc(devinfo, imm_desc, imm_ex_desc, file);
@@ -2540,9 +2401,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                            elk_inst_qtr_control(devinfo, inst), &space);
          }
       }
-
-      if (devinfo->ver >= 12)
-         err |= swsb(file, isa, inst);
 
       err |= control(file, "compaction", cmpt_ctrl, is_compacted, &space);
       err |= control(file, "thread control", thread_ctrl,

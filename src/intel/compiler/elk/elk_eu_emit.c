@@ -421,8 +421,6 @@ elk_set_desc_ex(struct elk_codegen *p, elk_inst *inst,
       elk_inst_set_src1_file_type(devinfo, inst,
                                   ELK_IMMEDIATE_VALUE, ELK_REGISTER_TYPE_UD);
    elk_inst_set_send_desc(devinfo, inst, desc);
-   if (devinfo->ver >= 9)
-      elk_inst_set_send_ex_desc(devinfo, inst, ex_desc);
 }
 
 static void elk_set_math_message( struct elk_codegen *p,
@@ -580,8 +578,6 @@ elk_inst_set_state(const struct elk_isa_info *isa,
    elk_inst_set_compression(devinfo, insn, state->compressed);
    elk_inst_set_access_mode(devinfo, insn, state->access_mode);
    elk_inst_set_mask_control(devinfo, insn, state->mask_control);
-   if (devinfo->ver >= 12)
-      elk_inst_set_swsb(devinfo, insn, tgl_swsb_encode(devinfo, state->swsb));
    elk_inst_set_saturate(devinfo, insn, state->saturate);
    elk_inst_set_pred_control(devinfo, insn, state->predicate);
    elk_inst_set_pred_inv(devinfo, insn, state->pred_inv);
@@ -784,192 +780,73 @@ elk_alu3(struct elk_codegen *p, unsigned opcode, struct elk_reg dest,
    assert(src1.address_mode == ELK_ADDRESS_DIRECT);
    assert(src2.address_mode == ELK_ADDRESS_DIRECT);
 
-   if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-      assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
-             (dest.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-              dest.nr == ELK_ARF_ACCUMULATOR));
+   assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
+          dest.file == ELK_MESSAGE_REGISTER_FILE);
+   assert(dest.type == ELK_REGISTER_TYPE_F  ||
+          dest.type == ELK_REGISTER_TYPE_DF ||
+          dest.type == ELK_REGISTER_TYPE_D  ||
+          dest.type == ELK_REGISTER_TYPE_UD ||
+          (dest.type == ELK_REGISTER_TYPE_HF && devinfo->ver >= 8));
+   if (devinfo->ver == 6) {
+      elk_inst_set_3src_a16_dst_reg_file(devinfo, inst,
+                                         dest.file == ELK_MESSAGE_REGISTER_FILE);
+   }
+   elk_inst_set_3src_dst_reg_nr(devinfo, inst, dest.nr);
+   elk_inst_set_3src_a16_dst_subreg_nr(devinfo, inst, dest.subnr / 4);
+   elk_inst_set_3src_a16_dst_writemask(devinfo, inst, dest.writemask);
 
-      if (devinfo->ver >= 12) {
-         elk_inst_set_3src_a1_dst_reg_file(devinfo, inst, dest.file);
-         elk_inst_set_3src_dst_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
-      } else {
-         if (dest.file == ELK_ARCHITECTURE_REGISTER_FILE) {
-            elk_inst_set_3src_a1_dst_reg_file(devinfo, inst,
-                                              ELK_ALIGN1_3SRC_ACCUMULATOR);
-            elk_inst_set_3src_dst_reg_nr(devinfo, inst, ELK_ARF_ACCUMULATOR);
-         } else {
-            elk_inst_set_3src_a1_dst_reg_file(devinfo, inst,
-                                              ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE);
-            elk_inst_set_3src_dst_reg_nr(devinfo, inst, dest.nr);
-         }
-      }
-      elk_inst_set_3src_a1_dst_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest) / 8);
+   assert(src0.file == ELK_GENERAL_REGISTER_FILE);
+   elk_inst_set_3src_a16_src0_swizzle(devinfo, inst, src0.swizzle);
+   elk_inst_set_3src_a16_src0_subreg_nr(devinfo, inst, get_3src_subreg_nr(src0));
+   elk_inst_set_3src_src0_reg_nr(devinfo, inst, src0.nr);
+   elk_inst_set_3src_src0_abs(devinfo, inst, src0.abs);
+   elk_inst_set_3src_src0_negate(devinfo, inst, src0.negate);
+   elk_inst_set_3src_a16_src0_rep_ctrl(devinfo, inst,
+                                       src0.vstride == ELK_VERTICAL_STRIDE_0);
 
-      elk_inst_set_3src_a1_dst_hstride(devinfo, inst, ELK_ALIGN1_3SRC_DST_HORIZONTAL_STRIDE_1);
+   assert(src1.file == ELK_GENERAL_REGISTER_FILE);
+   elk_inst_set_3src_a16_src1_swizzle(devinfo, inst, src1.swizzle);
+   elk_inst_set_3src_a16_src1_subreg_nr(devinfo, inst, get_3src_subreg_nr(src1));
+   elk_inst_set_3src_src1_reg_nr(devinfo, inst, src1.nr);
+   elk_inst_set_3src_src1_abs(devinfo, inst, src1.abs);
+   elk_inst_set_3src_src1_negate(devinfo, inst, src1.negate);
+   elk_inst_set_3src_a16_src1_rep_ctrl(devinfo, inst,
+                                       src1.vstride == ELK_VERTICAL_STRIDE_0);
 
-      if (elk_reg_type_is_floating_point(dest.type)) {
-         elk_inst_set_3src_a1_exec_type(devinfo, inst,
-                                        ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT);
-      } else {
-         elk_inst_set_3src_a1_exec_type(devinfo, inst,
-                                        ELK_ALIGN1_3SRC_EXEC_TYPE_INT);
-      }
+   assert(src2.file == ELK_GENERAL_REGISTER_FILE);
+   elk_inst_set_3src_a16_src2_swizzle(devinfo, inst, src2.swizzle);
+   elk_inst_set_3src_a16_src2_subreg_nr(devinfo, inst, get_3src_subreg_nr(src2));
+   elk_inst_set_3src_src2_reg_nr(devinfo, inst, src2.nr);
+   elk_inst_set_3src_src2_abs(devinfo, inst, src2.abs);
+   elk_inst_set_3src_src2_negate(devinfo, inst, src2.negate);
+   elk_inst_set_3src_a16_src2_rep_ctrl(devinfo, inst,
+                                       src2.vstride == ELK_VERTICAL_STRIDE_0);
 
-      elk_inst_set_3src_a1_dst_type(devinfo, inst, dest.type);
-      elk_inst_set_3src_a1_src0_type(devinfo, inst, src0.type);
-      elk_inst_set_3src_a1_src1_type(devinfo, inst, src1.type);
-      elk_inst_set_3src_a1_src2_type(devinfo, inst, src2.type);
+   if (devinfo->ver >= 7) {
+      /* Set both the source and destination types based on dest.type,
+       * ignoring the source register types.  The MAD and LRP emitters ensure
+       * that all four types are float.  The BFE and BFI2 emitters, however,
+       * may send us mixed D and UD types and want us to ignore that and use
+       * the destination type.
+       */
+      elk_inst_set_3src_a16_src_type(devinfo, inst, dest.type);
+      elk_inst_set_3src_a16_dst_type(devinfo, inst, dest.type);
 
-      if (src0.file == ELK_IMMEDIATE_VALUE) {
-         elk_inst_set_3src_a1_src0_imm(devinfo, inst, src0.ud);
-      } else {
-         elk_inst_set_3src_a1_src0_vstride(
-            devinfo, inst, to_3src_align1_vstride(devinfo, src0.vstride));
-         elk_inst_set_3src_a1_src0_hstride(devinfo, inst,
-                                           to_3src_align1_hstride(src0.hstride));
-         elk_inst_set_3src_a1_src0_subreg_nr(devinfo, inst, phys_subnr(devinfo, src0));
-         if (src0.type == ELK_REGISTER_TYPE_NF) {
-            elk_inst_set_3src_src0_reg_nr(devinfo, inst, ELK_ARF_ACCUMULATOR);
-         } else {
-            elk_inst_set_3src_src0_reg_nr(devinfo, inst, phys_nr(devinfo, src0));
-         }
-         elk_inst_set_3src_src0_abs(devinfo, inst, src0.abs);
-         elk_inst_set_3src_src0_negate(devinfo, inst, src0.negate);
-      }
-      elk_inst_set_3src_a1_src1_vstride(
-         devinfo, inst, to_3src_align1_vstride(devinfo, src1.vstride));
-      elk_inst_set_3src_a1_src1_hstride(devinfo, inst,
-                                        to_3src_align1_hstride(src1.hstride));
+      /* From the Bspec, 3D Media GPGPU, Instruction fields, srcType:
+       *
+       *    "Three source instructions can use operands with mixed-mode
+       *     precision. When SrcType field is set to :f or :hf it defines
+       *     precision for source 0 only, and fields Src1Type and Src2Type
+       *     define precision for other source operands:
+       *
+       *     0b = :f. Single precision Float (32-bit).
+       *     1b = :hf. Half precision Float (16-bit)."
+       */
+      if (src1.type == ELK_REGISTER_TYPE_HF)
+         elk_inst_set_3src_a16_src1_type(devinfo, inst, 1);
 
-      elk_inst_set_3src_a1_src1_subreg_nr(devinfo, inst, phys_subnr(devinfo, src1));
-      if (src1.file == ELK_ARCHITECTURE_REGISTER_FILE) {
-         elk_inst_set_3src_src1_reg_nr(devinfo, inst, ELK_ARF_ACCUMULATOR);
-      } else {
-         elk_inst_set_3src_src1_reg_nr(devinfo, inst, phys_nr(devinfo, src1));
-      }
-      elk_inst_set_3src_src1_abs(devinfo, inst, src1.abs);
-      elk_inst_set_3src_src1_negate(devinfo, inst, src1.negate);
-
-      if (src2.file == ELK_IMMEDIATE_VALUE) {
-         elk_inst_set_3src_a1_src2_imm(devinfo, inst, src2.ud);
-      } else {
-         elk_inst_set_3src_a1_src2_hstride(devinfo, inst,
-                                           to_3src_align1_hstride(src2.hstride));
-         /* no vstride on src2 */
-         elk_inst_set_3src_a1_src2_subreg_nr(devinfo, inst, phys_subnr(devinfo, src2));
-         elk_inst_set_3src_src2_reg_nr(devinfo, inst, phys_nr(devinfo, src2));
-         elk_inst_set_3src_src2_abs(devinfo, inst, src2.abs);
-         elk_inst_set_3src_src2_negate(devinfo, inst, src2.negate);
-      }
-
-      assert(src0.file == ELK_GENERAL_REGISTER_FILE ||
-             src0.file == ELK_IMMEDIATE_VALUE ||
-             (src0.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-              src0.type == ELK_REGISTER_TYPE_NF));
-      assert(src1.file == ELK_GENERAL_REGISTER_FILE ||
-             (src1.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-              src1.nr == ELK_ARF_ACCUMULATOR));
-      assert(src2.file == ELK_GENERAL_REGISTER_FILE ||
-             src2.file == ELK_IMMEDIATE_VALUE);
-
-      if (devinfo->ver >= 12) {
-         if (src0.file == ELK_IMMEDIATE_VALUE) {
-            elk_inst_set_3src_a1_src0_is_imm(devinfo, inst, 1);
-         } else {
-            elk_inst_set_3src_a1_src0_reg_file(devinfo, inst, src0.file);
-         }
-
-         elk_inst_set_3src_a1_src1_reg_file(devinfo, inst, src1.file);
-
-         if (src2.file == ELK_IMMEDIATE_VALUE) {
-            elk_inst_set_3src_a1_src2_is_imm(devinfo, inst, 1);
-         } else {
-            elk_inst_set_3src_a1_src2_reg_file(devinfo, inst, src2.file);
-         }
-      } else {
-         elk_inst_set_3src_a1_src0_reg_file(devinfo, inst,
-                                            src0.file == ELK_GENERAL_REGISTER_FILE ?
-                                            ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE :
-                                            ELK_ALIGN1_3SRC_IMMEDIATE_VALUE);
-         elk_inst_set_3src_a1_src1_reg_file(devinfo, inst,
-                                            src1.file == ELK_GENERAL_REGISTER_FILE ?
-                                            ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE :
-                                            ELK_ALIGN1_3SRC_ACCUMULATOR);
-         elk_inst_set_3src_a1_src2_reg_file(devinfo, inst,
-                                            src2.file == ELK_GENERAL_REGISTER_FILE ?
-                                            ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE :
-                                            ELK_ALIGN1_3SRC_IMMEDIATE_VALUE);
-      }
-
-   } else {
-      assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
-             dest.file == ELK_MESSAGE_REGISTER_FILE);
-      assert(dest.type == ELK_REGISTER_TYPE_F  ||
-             dest.type == ELK_REGISTER_TYPE_DF ||
-             dest.type == ELK_REGISTER_TYPE_D  ||
-             dest.type == ELK_REGISTER_TYPE_UD ||
-             (dest.type == ELK_REGISTER_TYPE_HF && devinfo->ver >= 8));
-      if (devinfo->ver == 6) {
-         elk_inst_set_3src_a16_dst_reg_file(devinfo, inst,
-                                            dest.file == ELK_MESSAGE_REGISTER_FILE);
-      }
-      elk_inst_set_3src_dst_reg_nr(devinfo, inst, dest.nr);
-      elk_inst_set_3src_a16_dst_subreg_nr(devinfo, inst, dest.subnr / 4);
-      elk_inst_set_3src_a16_dst_writemask(devinfo, inst, dest.writemask);
-
-      assert(src0.file == ELK_GENERAL_REGISTER_FILE);
-      elk_inst_set_3src_a16_src0_swizzle(devinfo, inst, src0.swizzle);
-      elk_inst_set_3src_a16_src0_subreg_nr(devinfo, inst, get_3src_subreg_nr(src0));
-      elk_inst_set_3src_src0_reg_nr(devinfo, inst, src0.nr);
-      elk_inst_set_3src_src0_abs(devinfo, inst, src0.abs);
-      elk_inst_set_3src_src0_negate(devinfo, inst, src0.negate);
-      elk_inst_set_3src_a16_src0_rep_ctrl(devinfo, inst,
-                                          src0.vstride == ELK_VERTICAL_STRIDE_0);
-
-      assert(src1.file == ELK_GENERAL_REGISTER_FILE);
-      elk_inst_set_3src_a16_src1_swizzle(devinfo, inst, src1.swizzle);
-      elk_inst_set_3src_a16_src1_subreg_nr(devinfo, inst, get_3src_subreg_nr(src1));
-      elk_inst_set_3src_src1_reg_nr(devinfo, inst, src1.nr);
-      elk_inst_set_3src_src1_abs(devinfo, inst, src1.abs);
-      elk_inst_set_3src_src1_negate(devinfo, inst, src1.negate);
-      elk_inst_set_3src_a16_src1_rep_ctrl(devinfo, inst,
-                                          src1.vstride == ELK_VERTICAL_STRIDE_0);
-
-      assert(src2.file == ELK_GENERAL_REGISTER_FILE);
-      elk_inst_set_3src_a16_src2_swizzle(devinfo, inst, src2.swizzle);
-      elk_inst_set_3src_a16_src2_subreg_nr(devinfo, inst, get_3src_subreg_nr(src2));
-      elk_inst_set_3src_src2_reg_nr(devinfo, inst, src2.nr);
-      elk_inst_set_3src_src2_abs(devinfo, inst, src2.abs);
-      elk_inst_set_3src_src2_negate(devinfo, inst, src2.negate);
-      elk_inst_set_3src_a16_src2_rep_ctrl(devinfo, inst,
-                                          src2.vstride == ELK_VERTICAL_STRIDE_0);
-
-      if (devinfo->ver >= 7) {
-         /* Set both the source and destination types based on dest.type,
-          * ignoring the source register types.  The MAD and LRP emitters ensure
-          * that all four types are float.  The BFE and BFI2 emitters, however,
-          * may send us mixed D and UD types and want us to ignore that and use
-          * the destination type.
-          */
-         elk_inst_set_3src_a16_src_type(devinfo, inst, dest.type);
-         elk_inst_set_3src_a16_dst_type(devinfo, inst, dest.type);
-
-         /* From the Bspec, 3D Media GPGPU, Instruction fields, srcType:
-          *
-          *    "Three source instructions can use operands with mixed-mode
-          *     precision. When SrcType field is set to :f or :hf it defines
-          *     precision for source 0 only, and fields Src1Type and Src2Type
-          *     define precision for other source operands:
-          *
-          *     0b = :f. Single precision Float (32-bit).
-          *     1b = :hf. Half precision Float (16-bit)."
-          */
-         if (src1.type == ELK_REGISTER_TYPE_HF)
-            elk_inst_set_3src_a16_src1_type(devinfo, inst, 1);
-
-         if (src2.type == ELK_REGISTER_TYPE_HF)
-            elk_inst_set_3src_a16_src2_type(devinfo, inst, 1);
-      }
+      if (src2.type == ELK_REGISTER_TYPE_HF)
+         elk_inst_set_3src_a16_src2_type(devinfo, inst, 1);
    }
 
    return inst;
@@ -2672,11 +2549,7 @@ elk_send_indirect_message(struct elk_codegen *p,
       elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
       send = next_insn(p, ELK_OPCODE_SEND);
       elk_set_src0(p, send, retype(payload, ELK_REGISTER_TYPE_UD));
-
-      if (devinfo->ver >= 12)
-         elk_inst_set_send_sel_reg32_desc(devinfo, send, true);
-      else
-         elk_set_src1(p, send, addr);
+      elk_set_src1(p, send, addr);
    }
 
    elk_set_dest(p, send, dst);

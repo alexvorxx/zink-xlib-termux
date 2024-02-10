@@ -261,15 +261,7 @@ invalid_values(const struct elk_isa_info *isa, const elk_inst *inst)
 
    if (num_sources == 3) {
       if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-         if (devinfo->ver >= 10) {
-            ERROR_IF(elk_inst_3src_a1_dst_type (devinfo, inst) == INVALID_REG_TYPE ||
-                     elk_inst_3src_a1_src0_type(devinfo, inst) == INVALID_REG_TYPE ||
-                     elk_inst_3src_a1_src1_type(devinfo, inst) == INVALID_REG_TYPE ||
-                     elk_inst_3src_a1_src2_type(devinfo, inst) == INVALID_REG_TYPE,
-                     "invalid register type encoding");
-         } else {
-            ERROR("Align1 mode not allowed on Gen < 10");
-         }
+         ERROR("Align1 mode not allowed on Gen < 10");
       } else {
          ERROR_IF(elk_inst_3src_a16_dst_type(devinfo, inst) == INVALID_REG_TYPE ||
                   elk_inst_3src_a16_src_type(devinfo, inst) == INVALID_REG_TYPE,
@@ -638,27 +630,10 @@ general_restrictions_based_on_operand_types(const struct elk_isa_info *isa,
    if (inst_is_send(isa, inst))
       return error_msg;
 
-   if (devinfo->ver >= 11) {
-      if (num_sources == 3) {
-         ERROR_IF(elk_reg_type_to_size(elk_inst_3src_a1_src1_type(devinfo, inst)) == 1 ||
-                  elk_reg_type_to_size(elk_inst_3src_a1_src2_type(devinfo, inst)) == 1,
-                  "Byte data type is not supported for src1/2 register regioning. This includes "
-                  "byte broadcast as well.");
-      }
-      if (num_sources == 2) {
-         ERROR_IF(elk_reg_type_to_size(elk_inst_src1_type(devinfo, inst)) == 1,
-                  "Byte data type is not supported for src1 register regioning. This includes "
-                  "byte broadcast as well.");
-      }
-   }
-
    enum elk_reg_type dst_type;
 
    if (num_sources == 3) {
-      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1)
-         dst_type = elk_inst_3src_a1_dst_type(devinfo, inst);
-      else
-         dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
+      dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
    } else {
       dst_type = inst_dst_type(isa, inst);
    }
@@ -675,16 +650,7 @@ general_restrictions_based_on_operand_types(const struct elk_isa_info *isa,
    for (unsigned s = 0; s < num_sources; s++) {
       enum elk_reg_type src_type;
       if (num_sources == 3) {
-         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-            switch (s) {
-            case 0: src_type = elk_inst_3src_a1_src0_type(devinfo, inst); break;
-            case 1: src_type = elk_inst_3src_a1_src1_type(devinfo, inst); break;
-            case 2: src_type = elk_inst_3src_a1_src2_type(devinfo, inst); break;
-            default: unreachable("invalid src");
-            }
-         } else {
-            src_type = elk_inst_3src_a16_src_type(devinfo, inst);
-         }
+         src_type = elk_inst_3src_a16_src_type(devinfo, inst);
       } else {
          switch (s) {
          case 0: src_type = elk_inst_src0_type(devinfo, inst); break;
@@ -2281,30 +2247,17 @@ instruction_restrictions(const struct elk_isa_info *isa,
       ERROR_IF(elk_inst_saturate(devinfo, inst),
                "BFI2 cannot have saturate modifier");
 
-      enum elk_reg_type dst_type;
+      ERROR_IF(elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1,
+               "BFI2 cannot have Align1");
 
-      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1)
-         dst_type = elk_inst_3src_a1_dst_type(devinfo, inst);
-      else
-         dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
+      enum elk_reg_type dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
 
       ERROR_IF(dst_type != ELK_REGISTER_TYPE_D &&
                dst_type != ELK_REGISTER_TYPE_UD,
                "BFI2 destination type must be D or UD");
 
       for (unsigned s = 0; s < 3; s++) {
-         enum elk_reg_type src_type;
-
-         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-            switch (s) {
-            case 0: src_type = elk_inst_3src_a1_src0_type(devinfo, inst); break;
-            case 1: src_type = elk_inst_3src_a1_src1_type(devinfo, inst); break;
-            case 2: src_type = elk_inst_3src_a1_src2_type(devinfo, inst); break;
-            default: unreachable("invalid src");
-            }
-         } else {
-            src_type = elk_inst_3src_a16_src_type(devinfo, inst);
-         }
+         enum elk_reg_type src_type = elk_inst_3src_a16_src_type(devinfo, inst);
 
          ERROR_IF(src_type != dst_type,
                   "BFI2 source type must match destination type");
@@ -2321,18 +2274,12 @@ instruction_restrictions(const struct elk_isa_info *isa,
       ERROR_IF(elk_inst_cond_modifier(devinfo, inst) == ELK_CONDITIONAL_NONE,
                "CSEL must have a condition.");
 
-      enum elk_reg_type dst_type;
-
-      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1)
-         dst_type = elk_inst_3src_a1_dst_type(devinfo, inst);
-      else
-         dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
+      ERROR_IF(elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1,
+               "CSEL cannot have Align1.");
+      enum elk_reg_type dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
 
       if (devinfo->ver < 8) {
          ERROR_IF(devinfo->ver < 8, "CSEL not supported before Gfx8");
-      } else if (devinfo->ver <= 9) {
-         ERROR_IF(dst_type != ELK_REGISTER_TYPE_F,
-                  "CSEL destination type must be F");
       } else {
          ERROR_IF(dst_type != ELK_REGISTER_TYPE_F &&
                   dst_type != ELK_REGISTER_TYPE_HF &&
@@ -2342,18 +2289,7 @@ instruction_restrictions(const struct elk_isa_info *isa,
       }
 
       for (unsigned s = 0; s < 3; s++) {
-         enum elk_reg_type src_type;
-
-         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-            switch (s) {
-            case 0: src_type = elk_inst_3src_a1_src0_type(devinfo, inst); break;
-            case 1: src_type = elk_inst_3src_a1_src1_type(devinfo, inst); break;
-            case 2: src_type = elk_inst_3src_a1_src2_type(devinfo, inst); break;
-            default: unreachable("invalid src");
-            }
-         } else {
-            src_type = elk_inst_3src_a16_src_type(devinfo, inst);
-         }
+         enum elk_reg_type src_type = elk_inst_3src_a16_src_type(devinfo, inst);
 
          ERROR_IF(src_type != dst_type,
                   "CSEL source type must match destination type");

@@ -286,17 +286,12 @@ i965_asm_set_instruction_options(struct elk_codegen *p,
 			         options.access_mode);
 	elk_inst_set_mask_control(p->devinfo, elk_last_inst,
 				  options.mask_control);
-	if (p->devinfo->ver < 12) {
-		elk_inst_set_thread_control(p->devinfo, elk_last_inst,
-					    options.thread_control);
-		elk_inst_set_no_dd_check(p->devinfo, elk_last_inst,
-					 options.no_dd_check);
-		elk_inst_set_no_dd_clear(p->devinfo, elk_last_inst,
-					 options.no_dd_clear);
-	} else {
-		elk_inst_set_swsb(p->devinfo, elk_last_inst,
-		                  tgl_swsb_encode(p->devinfo, options.depinfo));
-	}
+        elk_inst_set_thread_control(p->devinfo, elk_last_inst,
+                                    options.thread_control);
+        elk_inst_set_no_dd_check(p->devinfo, elk_last_inst,
+                                 options.no_dd_check);
+        elk_inst_set_no_dd_clear(p->devinfo, elk_last_inst,
+                                 options.no_dd_clear);
 	elk_inst_set_debug_control(p->devinfo, elk_last_inst,
 			           options.debug_control);
 	if (p->devinfo->ver >= 6)

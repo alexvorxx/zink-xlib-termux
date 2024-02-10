@@ -1798,11 +1798,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 	 elk_MACH(p, dst, src[0], src[1]);
 	 break;
 
-      case ELK_OPCODE_DP4A:
-         assert(devinfo->ver >= 12);
-         elk_DP4A(p, dst, src[0], src[1], src[2]);
-         break;
-
       case ELK_OPCODE_LINE:
          elk_LINE(p, dst, src[0], src[1]);
          break;

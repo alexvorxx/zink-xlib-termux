@@ -86,7 +86,6 @@ enum elk_opcode {
    ELK_OPCODE_DPH,
    ELK_OPCODE_DP3,
    ELK_OPCODE_DP2,
-   ELK_OPCODE_DP4A, /**< Gfx12+ */
    ELK_OPCODE_LINE,
    ELK_OPCODE_PLN, /**< G45+ */
    ELK_OPCODE_MAD, /**< Gfx6+ */

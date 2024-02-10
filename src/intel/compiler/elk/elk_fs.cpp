@@ -4693,7 +4693,6 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
    const struct intel_device_info *devinfo = compiler->devinfo;
 
    switch (inst->opcode) {
-   case ELK_OPCODE_DP4A:
    case ELK_OPCODE_MOV:
    case ELK_OPCODE_SEL:
    case ELK_OPCODE_NOT:

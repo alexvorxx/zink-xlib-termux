@@ -77,7 +77,6 @@ do 		{ yylval.integer = ELK_OPCODE_DO; return DO; }
 dp2 		{ yylval.integer = ELK_OPCODE_DP2; return DP2; }
 dp3 		{ yylval.integer = ELK_OPCODE_DP3; return DP3; }
 dp4 		{ yylval.integer = ELK_OPCODE_DP4; return DP4; }
-dp4a		{ yylval.integer = ELK_OPCODE_DP4A; return DP4A; }
 dph 		{ yylval.integer = ELK_OPCODE_DPH; return DPH; }
 else 		{ yylval.integer = ELK_OPCODE_ELSE; return ELSE; }
 endif 		{ yylval.integer = ELK_OPCODE_ENDIF; return ENDIF; }

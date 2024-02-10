@@ -929,7 +929,6 @@ elk_backend_instruction::can_do_source_mods() const
    case ELK_OPCODE_ROL:
    case ELK_OPCODE_ROR:
    case ELK_OPCODE_SUBB:
-   case ELK_OPCODE_DP4A:
    case ELK_SHADER_OPCODE_BROADCAST:
    case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
    case ELK_SHADER_OPCODE_MOV_INDIRECT:
@@ -955,7 +954,6 @@ elk_backend_instruction::can_do_saturate() const
    case ELK_OPCODE_DP3:
    case ELK_OPCODE_DP4:
    case ELK_OPCODE_DPH:
-   case ELK_OPCODE_DP4A:
    case ELK_OPCODE_F16TO32:
    case ELK_OPCODE_F32TO16:
    case ELK_OPCODE_LINE:

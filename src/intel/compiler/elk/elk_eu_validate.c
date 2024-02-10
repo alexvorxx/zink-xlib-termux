@@ -2221,18 +2221,6 @@ instruction_restrictions(const struct elk_isa_info *isa,
       }
    }
 
-   if (elk_inst_opcode(isa, inst) == ELK_OPCODE_DP4A) {
-      /* Page 396 (page 412 of the PDF) of the DG1 PRM volume 2a says:
-       *
-       *    Only one of src0 or src1 operand may be an the (sic) accumulator
-       *    register (acc#).
-       */
-      ERROR_IF(src0_is_acc(devinfo, inst) && src1_is_acc(devinfo, inst),
-               "Only one of src0 or src1 operand may be an accumulator "
-               "register (acc#).");
-
-   }
-
    if (elk_inst_opcode(isa, inst) == ELK_OPCODE_ADD3) {
       const enum elk_reg_type dst_type = inst_dst_type(isa, inst);
 

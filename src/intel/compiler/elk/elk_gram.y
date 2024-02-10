@@ -279,9 +279,6 @@ i965_asm_ternary_instruction(int opcode,
 	case ELK_OPCODE_BFI2:
 		elk_BFI2(p, dest, src0, src1, src2);
 		break;
-	case ELK_OPCODE_DP4A:
-		elk_DP4A(p, dest, src0, src1, src2);
-		break;
 	case ELK_OPCODE_ADD3:
 		elk_ADD3(p, dest, src0, src1, src2);
 		break;
@@ -400,7 +397,7 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> ADD ADD3 ADDC AND ASR AVG
 %token <integer> BFE BFI1 BFI2 BFB BFREV BRC BRD BREAK
 %token <integer> CALL CALLA CASE CBIT CMP CMPN CONT CSEL
-%token <integer> DIM DO DP2 DP3 DP4 DP4A DPH
+%token <integer> DIM DO DP2 DP3 DP4 DPH
 %token <integer> ELSE ENDIF F16TO32 F32TO16 FBH FBL FORK FRC
 %token <integer> GOTO
 %token <integer> HALT
@@ -962,7 +959,6 @@ ternaryopcodes:
 	| BFI2
 	| LRP
 	| MAD
-	| DP4A
 	| ADD3
 	;
 

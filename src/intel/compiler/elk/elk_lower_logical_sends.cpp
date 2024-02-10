@@ -842,13 +842,8 @@ sampler_msg_type(const intel_device_info *devinfo,
    assert(devinfo->ver >= 5);
    switch (opcode) {
    case ELK_SHADER_OPCODE_TEX:
-      if (devinfo->ver >= 20 && has_min_lod) {
-         return shadow_compare ? XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD :
-                                 XE2_SAMPLER_MESSAGE_SAMPLE_MLOD;
-      } else {
-         return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_COMPARE :
-                                 GFX5_SAMPLER_MESSAGE_SAMPLE;
-      }
+      return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_COMPARE :
+                              GFX5_SAMPLER_MESSAGE_SAMPLE;
    case ELK_FS_OPCODE_TXB:
       return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS_COMPARE :
                               GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS;
@@ -856,10 +851,6 @@ sampler_msg_type(const intel_device_info *devinfo,
       assert(!has_min_lod);
       return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_LOD_COMPARE :
                               GFX5_SAMPLER_MESSAGE_SAMPLE_LOD;
-   case ELK_SHADER_OPCODE_TXL_LZ:
-      assert(!has_min_lod);
-      return shadow_compare ? GFX9_SAMPLER_MESSAGE_SAMPLE_C_LZ :
-                              GFX9_SAMPLER_MESSAGE_SAMPLE_LZ;
    case ELK_SHADER_OPCODE_TXS:
    case ELK_SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
       assert(!has_min_lod);
@@ -871,14 +862,6 @@ sampler_msg_type(const intel_device_info *devinfo,
    case ELK_SHADER_OPCODE_TXF:
       assert(!has_min_lod);
       return GFX5_SAMPLER_MESSAGE_SAMPLE_LD;
-   case ELK_SHADER_OPCODE_TXF_LZ:
-      assert(!has_min_lod);
-      assert(devinfo->ver >= 9);
-      return GFX9_SAMPLER_MESSAGE_SAMPLE_LD_LZ;
-   case ELK_SHADER_OPCODE_TXF_CMS_W:
-      assert(!has_min_lod);
-      assert(devinfo->ver >= 9);
-      return GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W;
    case ELK_SHADER_OPCODE_TXF_CMS:
       assert(!has_min_lod);
       return devinfo->ver >= 7 ? GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DMS :
@@ -1113,15 +1096,6 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
       sampler_msg_type(devinfo, op, inst->shadow_compare,
                        min_lod.file != BAD_FILE);
 
-   const bool min_lod_is_first = devinfo->ver >= 20 &&
-      (msg_type == XE2_SAMPLER_MESSAGE_SAMPLE_MLOD ||
-       msg_type == XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD);
-
-   if (min_lod_is_first) {
-      assert(min_lod.file != BAD_FILE);
-      bld.MOV(sources[length++], min_lod);
-   }
-
    if (shadow_c.file != BAD_FILE) {
       bld.MOV(sources[length], shadow_c);
       length++;
@@ -1279,7 +1253,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
                  offset(coordinate, bld, i));
    }
 
-   if (min_lod.file != BAD_FILE && !min_lod_is_first) {
+   if (min_lod.file != BAD_FILE) {
       /* Account for all of the missing coordinate sources */
       if (op == ELK_SHADER_OPCODE_TXD && devinfo->verx10 >= 125) {
          /* On DG2 and newer platforms, sample_d can only be used with 1D and
@@ -1318,25 +1292,9 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
       emit_load_payload_with_padding(bld, src_payload, sources, length,
                                      header_size, REG_SIZE * reg_unit(devinfo));
    unsigned mlen = load_payload_inst->size_written / REG_SIZE;
-   unsigned simd_mode = 0;
-   if (devinfo->ver < 20) {
-      if (payload_type_bit_size == 16) {
-         assert(devinfo->ver >= 11);
-         simd_mode = inst->exec_size <= 8 ? GFX10_SAMPLER_SIMD_MODE_SIMD8H :
-            GFX10_SAMPLER_SIMD_MODE_SIMD16H;
-      } else {
-         simd_mode = inst->exec_size <= 8 ? ELK_SAMPLER_SIMD_MODE_SIMD8 :
-            ELK_SAMPLER_SIMD_MODE_SIMD16;
-      }
-   } else {
-      if (payload_type_bit_size == 16) {
-         simd_mode = inst->exec_size <= 16 ? XE2_SAMPLER_SIMD_MODE_SIMD16H :
-            XE2_SAMPLER_SIMD_MODE_SIMD32H;
-      } else {
-         simd_mode = inst->exec_size <= 16 ? XE2_SAMPLER_SIMD_MODE_SIMD16 :
-            XE2_SAMPLER_SIMD_MODE_SIMD32;
-      }
-   }
+   assert(payload_type_bit_size != 16);
+   unsigned simd_mode = inst->exec_size <= 8 ? ELK_SAMPLER_SIMD_MODE_SIMD8 :
+                                               ELK_SAMPLER_SIMD_MODE_SIMD16;
 
    /* Generate the SEND. */
    inst->opcode = ELK_SHADER_OPCODE_SEND;

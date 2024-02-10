@@ -935,9 +935,6 @@ namespace {
 
          case ELK_SFID_URB:
          case GFX7_SFID_DATAPORT_DATA_CACHE:
-         case GFX12_SFID_SLM:
-         case GFX12_SFID_TGM:
-         case GFX12_SFID_UGM:
          case HSW_SFID_DATAPORT_DATA_CACHE_1:
             if (devinfo->ver >= 7)
                return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0, 30 /* XXX */, 0,
@@ -1102,47 +1099,6 @@ namespace {
                                      0, 90 /* XXX */, 0, 0, 0, 0);
             else
                abort();
-
-         case GFX12_SFID_UGM:
-         case GFX12_SFID_TGM:
-         case GFX12_SFID_SLM:
-            switch (lsc_msg_desc_opcode(devinfo, info.desc)) {
-            case LSC_OP_LOAD:
-            case LSC_OP_STORE:
-            case LSC_OP_LOAD_CMASK:
-            case LSC_OP_STORE_CMASK:
-               return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0,
-                                     0, 20 /* XXX */,
-                                     10 /* XXX */, 100 /* XXX */, 0, 0,
-                                     0, 0);
-
-            case LSC_OP_FENCE:
-            case LSC_OP_ATOMIC_INC:
-            case LSC_OP_ATOMIC_DEC:
-            case LSC_OP_ATOMIC_LOAD:
-            case LSC_OP_ATOMIC_STORE:
-            case LSC_OP_ATOMIC_ADD:
-            case LSC_OP_ATOMIC_SUB:
-            case LSC_OP_ATOMIC_MIN:
-            case LSC_OP_ATOMIC_MAX:
-            case LSC_OP_ATOMIC_UMIN:
-            case LSC_OP_ATOMIC_UMAX:
-            case LSC_OP_ATOMIC_CMPXCHG:
-            case LSC_OP_ATOMIC_FADD:
-            case LSC_OP_ATOMIC_FSUB:
-            case LSC_OP_ATOMIC_FMIN:
-            case LSC_OP_ATOMIC_FMAX:
-            case LSC_OP_ATOMIC_FCMPXCHG:
-            case LSC_OP_ATOMIC_AND:
-            case LSC_OP_ATOMIC_OR:
-            case LSC_OP_ATOMIC_XOR:
-               return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0,
-                                     30 /* XXX */, 400 /* XXX */,
-                                     10 /* XXX */, 100 /* XXX */, 0, 0,
-                                     0, 400 /* XXX */);
-            default:
-               abort();
-            }
 
          case ELK_SFID_URB:
             return calculate_desc(info, EU_UNIT_URB, 2, 0, 0, 0, 6 /* XXX */,

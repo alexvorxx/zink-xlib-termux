@@ -313,9 +313,6 @@ static const char *const gfx6_sfid[16] = {
    [GFX7_SFID_PIXEL_INTERPOLATOR]      = "pixel interp",
    [HSW_SFID_DATAPORT_DATA_CACHE_1]    = "dp data 1",
    [HSW_SFID_CRE]                      = "cre",
-   [GFX12_SFID_SLM]                    = "slm",
-   [GFX12_SFID_TGM]                    = "tgm",
-   [GFX12_SFID_UGM]                    = "ugm",
 };
 
 static const char *const gfx7_gateway_subfuncid[8] = {
@@ -685,35 +682,10 @@ static const char *const lsc_addr_surface_type[] = {
    [LSC_ADDR_SURFTYPE_BTI]  = "bti",
 };
 
-static const char* const lsc_fence_scope[] = {
-   [LSC_FENCE_THREADGROUP]     = "threadgroup",
-   [LSC_FENCE_LOCAL]           = "local",
-   [LSC_FENCE_TILE]            = "tile",
-   [LSC_FENCE_GPU]             = "gpu",
-   [LSC_FENCE_ALL_GPU]         = "all_gpu",
-   [LSC_FENCE_SYSTEM_RELEASE]  = "system_release",
-   [LSC_FENCE_SYSTEM_ACQUIRE]  = "system_acquire",
-};
-
-static const char* const lsc_flush_type[] = {
-   [LSC_FLUSH_TYPE_NONE]       = "none",
-   [LSC_FLUSH_TYPE_EVICT]      = "evict",
-   [LSC_FLUSH_TYPE_INVALIDATE] = "invalidate",
-   [LSC_FLUSH_TYPE_DISCARD]    = "discard",
-   [LSC_FLUSH_TYPE_CLEAN]      = "clean",
-   [LSC_FLUSH_TYPE_L3ONLY]     = "l3only",
-   [LSC_FLUSH_TYPE_NONE_6]     = "none_6",
-};
-
 static const char* const lsc_addr_size[] = {
    [LSC_ADDR_SIZE_A16] = "a16",
    [LSC_ADDR_SIZE_A32] = "a32",
    [LSC_ADDR_SIZE_A64] = "a64",
-};
-
-static const char* const lsc_backup_fence_routing[] = {
-   [LSC_NORMAL_ROUTING]  = "normal_routing",
-   [LSC_ROUTE_TO_LSC]    = "route_to_lsc",
 };
 
 static const char* const lsc_data_size[] = {
@@ -775,30 +747,6 @@ static const char* const lsc_cache_store[] = {
    [LSC_CACHE_STORE_L1S_L3UC]        = "L1S_L3UC",
    [LSC_CACHE_STORE_L1S_L3WB]        = "L1S_L3WB",
    [LSC_CACHE_STORE_L1WB_L3WB]       = "L1WB_L3WB",
-};
-
-static const char* const xe2_lsc_cache_load[] = {
-   [XE2_LSC_CACHE_LOAD_L1STATE_L3MOCS]   = "L1STATE_L3MOCS",
-   [XE2_LSC_CACHE_LOAD_L1UC_L3UC]        = "L1UC_L3UC",
-   [XE2_LSC_CACHE_LOAD_L1UC_L3C]         = "L1UC_L3C",
-   [XE2_LSC_CACHE_LOAD_L1UC_L3CC]        = "L1UC_L3CC",
-   [XE2_LSC_CACHE_LOAD_L1C_L3UC]         = "L1C_L3UC",
-   [XE2_LSC_CACHE_LOAD_L1C_L3C]          = "L1C_L3C",
-   [XE2_LSC_CACHE_LOAD_L1C_L3CC]         = "L1C_L3CC",
-   [XE2_LSC_CACHE_LOAD_L1S_L3UC]         = "L1S_L3UC",
-   [XE2_LSC_CACHE_LOAD_L1S_L3C]          = "L1S_L3C",
-   [XE2_LSC_CACHE_LOAD_L1IAR_L3IAR]      = "L1IAR_L3IAR",
-};
-
-static const char* const xe2_lsc_cache_store[] = {
-   [XE2_LSC_CACHE_STORE_L1STATE_L3MOCS]  = "L1STATE_L3MOCS",
-   [XE2_LSC_CACHE_STORE_L1UC_L3UC]       = "L1UC_L3UC",
-   [XE2_LSC_CACHE_STORE_L1UC_L3WB]       = "L1UC_L3WB",
-   [XE2_LSC_CACHE_STORE_L1WT_L3UC]       = "L1WT_L3UC",
-   [XE2_LSC_CACHE_STORE_L1WT_L3WB]       = "L1WT_L3WB",
-   [XE2_LSC_CACHE_STORE_L1S_L3UC]        = "L1S_L3UC",
-   [XE2_LSC_CACHE_STORE_L1S_L3WB]        = "L1S_L3WB",
-   [XE2_LSC_CACHE_STORE_L1WB_L3WB]       = "L1WB_L3WB",
 };
 
 static int column;
@@ -1732,21 +1680,6 @@ lsc_disassemble_ex_desc(const struct intel_device_info *devinfo,
    }
 }
 
-static inline bool
-elk_sfid_is_lsc(unsigned sfid)
-{
-   switch (sfid) {
-   case GFX12_SFID_UGM:
-   case GFX12_SFID_SLM:
-   case GFX12_SFID_TGM:
-      return true;
-   default:
-      break;
-   }
-
-   return false;
-}
-
 int
 elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                      const elk_inst *inst, bool is_compacted,
@@ -2144,83 +2077,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                    gfx7_gateway_subfuncid[elk_inst_gateway_subfuncid(devinfo, inst)]);
             break;
 
-         case GFX12_SFID_SLM:
-         case GFX12_SFID_TGM:
-         case GFX12_SFID_UGM: {
-            assert(devinfo->has_lsc);
-            format(file, " (");
-            const enum elk_lsc_opcode op = lsc_msg_desc_opcode(devinfo, imm_desc);
-            err |= control(file, "operation", lsc_operation,
-                           op, &space);
-            format(file, ",");
-            err |= control(file, "addr_size", lsc_addr_size,
-                           lsc_msg_desc_addr_size(devinfo, imm_desc),
-                           &space);
-
-            if (op == LSC_OP_FENCE) {
-               format(file, ",");
-               err |= control(file, "scope", lsc_fence_scope,
-                              lsc_fence_msg_desc_scope(devinfo, imm_desc),
-                              &space);
-               format(file, ",");
-               err |= control(file, "flush_type", lsc_flush_type,
-                              lsc_fence_msg_desc_flush_type(devinfo, imm_desc),
-                              &space);
-               format(file, ",");
-               err |= control(file, "backup_mode_fence_routing",
-                              lsc_backup_fence_routing,
-                              lsc_fence_msg_desc_backup_routing(devinfo, imm_desc),
-                              &space);
-            } else {
-               format(file, ",");
-               err |= control(file, "data_size", lsc_data_size,
-                              lsc_msg_desc_data_size(devinfo, imm_desc),
-                              &space);
-               format(file, ",");
-               if (elk_lsc_opcode_has_cmask(op)) {
-                  err |= control(file, "component_mask",
-                                 lsc_cmask_str,
-                                 lsc_msg_desc_cmask(devinfo, imm_desc),
-                                 &space);
-               } else {
-                  err |= control(file, "vector_size",
-                                 lsc_vect_size_str,
-                                 lsc_msg_desc_vect_size(devinfo, imm_desc),
-                                 &space);
-                  if (lsc_msg_desc_transpose(devinfo, imm_desc))
-                     format(file, ", transpose");
-               }
-               switch(op) {
-               case LSC_OP_LOAD_CMASK:
-               case LSC_OP_LOAD:
-                  format(file, ",");
-                  err |= control(file, "cache_load",
-                                 devinfo->ver >= 20 ?
-                                 xe2_lsc_cache_load :
-                                 lsc_cache_load,
-                                 lsc_msg_desc_cache_ctrl(devinfo, imm_desc),
-                                 &space);
-                  break;
-               default:
-                  format(file, ",");
-                  err |= control(file, "cache_store",
-                                 devinfo->ver >= 20 ?
-                                 xe2_lsc_cache_store :
-                                 lsc_cache_store,
-                                 lsc_msg_desc_cache_ctrl(devinfo, imm_desc),
-                                 &space);
-                  break;
-               }
-            }
-            format(file, " dst_len = %u,", lsc_msg_desc_dest_len(devinfo, imm_desc));
-            format(file, " src0_len = %u,", lsc_msg_desc_src0_len(devinfo, imm_desc));
-
-            err |= control(file, "address_type", lsc_addr_surface_type,
-                           lsc_msg_desc_addr_type(devinfo, imm_desc), &space);
-            format(file, " )");
-            break;
-         }
-
          case GFX7_SFID_DATAPORT_DATA_CACHE:
             if (devinfo->ver >= 7) {
                format(file, " (");
@@ -2340,19 +2196,14 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
          if (space)
             string(file, " ");
       }
-      if (elk_sfid_is_lsc(sfid) ||
-          (sfid == ELK_SFID_URB && devinfo->ver >= 20)) {
-            lsc_disassemble_ex_desc(devinfo, imm_desc, imm_ex_desc, file);
-      } else {
-         if (has_imm_desc)
-            format(file, " mlen %u", elk_message_desc_mlen(devinfo, imm_desc));
-         if (has_imm_ex_desc) {
-            format(file, " ex_mlen %u",
-                   elk_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
-         }
-         if (has_imm_desc)
-            format(file, " rlen %u", elk_message_desc_rlen(devinfo, imm_desc));
+      if (has_imm_desc)
+         format(file, " mlen %u", elk_message_desc_mlen(devinfo, imm_desc));
+      if (has_imm_ex_desc) {
+         format(file, " ex_mlen %u",
+                elk_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
       }
+      if (has_imm_desc)
+         format(file, " rlen %u", elk_message_desc_rlen(devinfo, imm_desc));
    }
    pad(file, 64);
    if (opcode != ELK_OPCODE_NOP && opcode != ELK_OPCODE_NENOP) {

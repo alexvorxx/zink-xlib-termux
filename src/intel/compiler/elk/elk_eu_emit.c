@@ -2933,53 +2933,6 @@ elk_set_memory_fence_message(struct elk_codegen *p,
    elk_inst_set_binding_table_index(devinfo, insn, bti);
 }
 
-static void
-gfx12_set_memory_fence_message(struct elk_codegen *p,
-                               struct elk_inst *insn,
-                               enum elk_message_target sfid,
-                               uint32_t desc)
-{
-   const unsigned mlen = 1 * reg_unit(p->devinfo); /* g0 header */
-    /* Completion signaled by write to register. No data returned. */
-   const unsigned rlen = 1 * reg_unit(p->devinfo);
-
-   elk_inst_set_sfid(p->devinfo, insn, sfid);
-
-   if (sfid == ELK_SFID_URB && p->devinfo->ver < 20) {
-      elk_set_desc(p, insn, elk_urb_fence_desc(p->devinfo) |
-                            elk_message_desc(p->devinfo, mlen, rlen, true));
-   } else {
-      enum lsc_fence_scope scope = lsc_fence_msg_desc_scope(p->devinfo, desc);
-      enum lsc_flush_type flush_type = lsc_fence_msg_desc_flush_type(p->devinfo, desc);
-
-      if (sfid == GFX12_SFID_TGM) {
-         scope = LSC_FENCE_TILE;
-         flush_type = LSC_FLUSH_TYPE_EVICT;
-      }
-
-      /* Wa_14012437816:
-       *
-       *   "For any fence greater than local scope, always set flush type to
-       *    at least invalidate so that fence goes on properly."
-       *
-       *   "The bug is if flush_type is 'None', the scope is always downgraded
-       *    to 'local'."
-       *
-       * Here set scope to NONE_6 instead of NONE, which has the same effect
-       * as NONE but avoids the downgrade to scope LOCAL.
-       */
-      if (intel_needs_workaround(p->devinfo, 14012437816) &&
-          scope > LSC_FENCE_LOCAL &&
-          flush_type == LSC_FLUSH_TYPE_NONE) {
-         flush_type = LSC_FLUSH_TYPE_NONE_6;
-      }
-
-      elk_set_desc(p, insn, lsc_fence_msg_desc(p->devinfo, scope,
-                                               flush_type, false) |
-                            elk_message_desc(p->devinfo, mlen, rlen, false));
-   }
-}
-
 void
 elk_memory_fence(struct elk_codegen *p,
                  struct elk_reg dst,
@@ -3004,11 +2957,7 @@ elk_memory_fence(struct elk_codegen *p,
    elk_set_dest(p, insn, dst);
    elk_set_src0(p, insn, src);
 
-   /* All DG2 hardware requires LSC for fence messages, even A-step */
-   if (devinfo->has_lsc)
-      gfx12_set_memory_fence_message(p, insn, sfid, desc);
-   else
-      elk_set_memory_fence_message(p, insn, sfid, commit_enable, bti);
+   elk_set_memory_fence_message(p, insn, sfid, commit_enable, bti);
 }
 
 void

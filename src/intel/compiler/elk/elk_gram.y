@@ -1029,9 +1029,6 @@ sharedfunction:
 	| CRE 		        { $$ = HSW_SFID_CRE; }
 	| SAMPLER	        { $$ = ELK_SFID_SAMPLER; }
 	| DP_SAMPLER	        { $$ = GFX6_SFID_DATAPORT_SAMPLER_CACHE; }
-	| SLM			{ $$ = GFX12_SFID_SLM; }
-	| TGM			{ $$ = GFX12_SFID_TGM; }
-	| UGM			{ $$ = GFX12_SFID_UGM; }
 	;
 
 exp2:

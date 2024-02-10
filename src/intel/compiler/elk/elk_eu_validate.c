@@ -2314,28 +2314,6 @@ send_descriptor_restrictions(const struct elk_isa_info *isa,
       return error_msg;
    }
 
-   const uint32_t desc = elk_inst_send_desc(devinfo, inst);
-
-   switch (elk_inst_sfid(devinfo, inst)) {
-   case ELK_SFID_URB:
-      if (devinfo->ver < 20)
-         break;
-      FALLTHROUGH;
-   case GFX12_SFID_TGM:
-   case GFX12_SFID_SLM:
-   case GFX12_SFID_UGM:
-      ERROR_IF(!devinfo->has_lsc, "Platform does not support LSC");
-
-      ERROR_IF(elk_lsc_opcode_has_transpose(lsc_msg_desc_opcode(devinfo, desc)) &&
-               lsc_msg_desc_transpose(devinfo, desc) &&
-               elk_inst_exec_size(devinfo, inst) != ELK_EXECUTE_1,
-               "Transposed vectors are restricted to Exec_Mask = 1.");
-      break;
-
-   default:
-      break;
-   }
-
    if (elk_inst_sfid(devinfo, inst) == ELK_SFID_URB && devinfo->ver < 20) {
       /* Gfx4 doesn't have a "header present" bit in the SEND message. */
       ERROR_IF(devinfo->ver > 4 && !elk_inst_header_present(devinfo, inst),

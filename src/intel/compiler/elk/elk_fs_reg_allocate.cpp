@@ -827,53 +827,7 @@ elk_fs_reg_alloc::emit_unspill(const fs_builder &bld,
       ++stats->fill_count;
 
       elk_fs_inst *unspill_inst;
-      if (devinfo->verx10 >= 125) {
-         /* LSC is limited to SIMD16 load/store but we can load more using
-          * transpose messages.
-          */
-         const bool use_transpose = bld.dispatch_width() > 16;
-         const fs_builder ubld = use_transpose ? bld.exec_all().group(1, 0) : bld;
-         elk_fs_reg offset;
-         if (use_transpose) {
-            offset = build_single_offset(ubld, spill_offset, ip);
-         } else {
-            offset = build_lane_offsets(ubld, spill_offset, ip);
-         }
-         /* We leave the extended descriptor empty and flag the instruction to
-          * ask the generated to insert the extended descriptor in the address
-          * register. That way we don't need to burn an additional register
-          * for register allocation spill/fill.
-          */
-         elk_fs_reg srcs[] = {
-            elk_imm_ud(0), /* desc */
-            elk_imm_ud(0), /* ex_desc */
-            offset,        /* payload */
-            elk_fs_reg(),      /* payload2 */
-         };
-
-         unspill_inst = ubld.emit(ELK_SHADER_OPCODE_SEND, dst,
-                                  srcs, ARRAY_SIZE(srcs));
-         unspill_inst->sfid = GFX12_SFID_UGM;
-         unspill_inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
-                                           unspill_inst->exec_size,
-                                           LSC_ADDR_SURFTYPE_SS,
-                                           LSC_ADDR_SIZE_A32,
-                                           1 /* num_coordinates */,
-                                           LSC_DATA_SIZE_D32,
-                                           use_transpose ? reg_size * 8 : 1 /* num_channels */,
-                                           use_transpose,
-                                           LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                           true /* has_dest */);
-         unspill_inst->header_size = 0;
-         unspill_inst->mlen =
-            lsc_msg_desc_src0_len(devinfo, unspill_inst->desc);
-         unspill_inst->ex_mlen = 0;
-         unspill_inst->size_written =
-            lsc_msg_desc_dest_len(devinfo, unspill_inst->desc) * REG_SIZE;
-         unspill_inst->send_has_side_effects = false;
-         unspill_inst->send_is_volatile = true;
-         unspill_inst->send_ex_desc_scratch = true;
-      } else if (devinfo->ver >= 9) {
+      if (devinfo->ver >= 9) {
          elk_fs_reg header = this->scratch_header;
          fs_builder ubld = bld.exec_all().group(1, 0);
          assert(spill_offset % 16 == 0);
@@ -935,40 +889,7 @@ elk_fs_reg_alloc::emit_spill(const fs_builder &bld,
       ++stats->spill_count;
 
       elk_fs_inst *spill_inst;
-      if (devinfo->verx10 >= 125) {
-         elk_fs_reg offset = build_lane_offsets(bld, spill_offset, ip);
-         /* We leave the extended descriptor empty and flag the instruction
-          * relocate the extended descriptor. That way the surface offset is
-          * directly put into the instruction and we don't need to use a
-          * register to hold it.
-          */
-         elk_fs_reg srcs[] = {
-            elk_imm_ud(0),        /* desc */
-            elk_imm_ud(0),        /* ex_desc */
-            offset,               /* payload */
-            src,                  /* payload2 */
-         };
-         spill_inst = bld.emit(ELK_SHADER_OPCODE_SEND, bld.null_reg_f(),
-                               srcs, ARRAY_SIZE(srcs));
-         spill_inst->sfid = GFX12_SFID_UGM;
-         spill_inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE,
-                                         bld.dispatch_width(),
-                                         LSC_ADDR_SURFTYPE_SS,
-                                         LSC_ADDR_SIZE_A32,
-                                         1 /* num_coordinates */,
-                                         LSC_DATA_SIZE_D32,
-                                         1 /* num_channels */,
-                                         false /* transpose */,
-                                         LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                         false /* has_dest */);
-         spill_inst->header_size = 0;
-         spill_inst->mlen = lsc_msg_desc_src0_len(devinfo, spill_inst->desc);
-         spill_inst->ex_mlen = reg_size;
-         spill_inst->size_written = 0;
-         spill_inst->send_has_side_effects = true;
-         spill_inst->send_is_volatile = false;
-         spill_inst->send_ex_desc_scratch = true;
-      } else if (devinfo->ver >= 9) {
+      if (devinfo->ver >= 9) {
          elk_fs_reg header = this->scratch_header;
          fs_builder ubld = bld.exec_all().group(1, 0);
          assert(spill_offset % 16 == 0);

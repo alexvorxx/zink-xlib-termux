@@ -530,10 +530,6 @@ enum elk_message_target {
    GFX7_SFID_PIXEL_INTERPOLATOR      = 11,
    HSW_SFID_DATAPORT_DATA_CACHE_1    = 12,
    HSW_SFID_CRE                      = 13,
-
-   GFX12_SFID_TGM                      = 13, /* Typed Global Memory */
-   GFX12_SFID_SLM                      = 14, /* Shared Local Memory */
-   GFX12_SFID_UGM                      = 15, /* Untyped Global Memory */
 };
 
 #define GFX7_MESSAGE_TARGET_DP_DATA_CACHE     10

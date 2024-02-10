@@ -4889,39 +4889,6 @@ emit_fence(const fs_builder &bld, enum elk_opcode opcode,
    return dst;
 }
 
-static uint32_t
-lsc_fence_descriptor_for_intrinsic(const struct intel_device_info *devinfo,
-                                   nir_intrinsic_instr *instr)
-{
-   assert(devinfo->has_lsc);
-
-   enum lsc_fence_scope scope = LSC_FENCE_LOCAL;
-   enum lsc_flush_type flush_type = LSC_FLUSH_TYPE_NONE;
-
-   if (nir_intrinsic_has_memory_scope(instr)) {
-      switch (nir_intrinsic_memory_scope(instr)) {
-      case SCOPE_DEVICE:
-      case SCOPE_QUEUE_FAMILY:
-         scope = LSC_FENCE_TILE;
-         flush_type = LSC_FLUSH_TYPE_EVICT;
-         break;
-      case SCOPE_WORKGROUP:
-         scope = LSC_FENCE_THREADGROUP;
-         break;
-      case SCOPE_SHADER_CALL:
-      case SCOPE_INVOCATION:
-      case SCOPE_SUBGROUP:
-      case SCOPE_NONE:
-         break;
-      }
-   } else {
-      /* No scope defined. */
-      scope = LSC_FENCE_TILE;
-      flush_type = LSC_FLUSH_TYPE_EVICT;
-   }
-   return lsc_fence_msg_desc(devinfo, scope, flush_type, true);
-}
-
 /**
  * Create a MOV to read the timestamp register.
  */
@@ -5244,40 +5211,7 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
 
       const fs_builder ubld = bld.group(8, 0);
 
-      if (devinfo->has_lsc) {
-         assert(devinfo->verx10 >= 125);
-         uint32_t desc =
-            lsc_fence_descriptor_for_intrinsic(devinfo, instr);
-         if (ugm_fence) {
-            fence_regs[fence_regs_count++] =
-               emit_fence(ubld, opcode, GFX12_SFID_UGM, desc,
-                          true /* commit_enable */,
-                          0 /* bti; ignored for LSC */);
-         }
-
-         if (tgm_fence) {
-            fence_regs[fence_regs_count++] =
-               emit_fence(ubld, opcode, GFX12_SFID_TGM, desc,
-                          true /* commit_enable */,
-                          0 /* bti; ignored for LSC */);
-         }
-
-         if (slm_fence) {
-            assert(opcode == ELK_SHADER_OPCODE_MEMORY_FENCE);
-            fence_regs[fence_regs_count++] =
-               emit_fence(ubld, opcode, GFX12_SFID_SLM, desc,
-                          true /* commit_enable */,
-                          0 /* BTI; ignored for LSC */);
-         }
-
-         if (urb_fence) {
-            assert(opcode == ELK_SHADER_OPCODE_MEMORY_FENCE);
-            fence_regs[fence_regs_count++] =
-               emit_fence(ubld, opcode, ELK_SFID_URB, desc,
-                          true /* commit_enable */,
-                          0 /* BTI; ignored for LSC */);
-         }
-      } else if (devinfo->ver >= 11) {
+      if (devinfo->ver >= 11) {
          if (tgm_fence || ugm_fence || urb_fence) {
             fence_regs[fence_regs_count++] =
                emit_fence(ubld, opcode, GFX7_SFID_DATAPORT_DATA_CACHE, 0,

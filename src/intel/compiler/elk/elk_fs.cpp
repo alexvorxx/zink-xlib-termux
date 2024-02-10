@@ -1290,63 +1290,6 @@ elk_fs_visitor::assign_curb_setup()
        */
       assert(devinfo->verx10 >= 125);
       assert(uniform_push_length <= reg_unit(devinfo));
-   } else if (is_compute && devinfo->verx10 >= 125) {
-      assert(devinfo->has_lsc);
-      fs_builder ubld = fs_builder(this, 1).exec_all().at(
-         cfg->first_block(), cfg->first_block()->start());
-
-      /* The base offset for our push data is passed in as R0.0[31:6]. We have
-       * to mask off the bottom 6 bits.
-       */
-      elk_fs_reg base_addr = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-      ubld.AND(base_addr,
-               retype(elk_vec1_grf(0, 0), ELK_REGISTER_TYPE_UD),
-               elk_imm_ud(INTEL_MASK(31, 6)));
-
-      /* On Gfx12-HP we load constants at the start of the program using A32
-       * stateless messages.
-       */
-      for (unsigned i = 0; i < uniform_push_length;) {
-         /* Limit ourselves to LSC HW limit of 8 GRFs (256bytes D32V64). */
-         unsigned num_regs = MIN2(uniform_push_length - i, 8);
-         assert(num_regs > 0);
-         num_regs = 1 << util_logbase2(num_regs);
-
-         elk_fs_reg addr = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-         ubld.ADD(addr, base_addr, elk_imm_ud(i * REG_SIZE));
-
-         elk_fs_reg srcs[4] = {
-            elk_imm_ud(0), /* desc */
-            elk_imm_ud(0), /* ex_desc */
-            addr,          /* payload */
-            elk_fs_reg(),      /* payload2 */
-         };
-
-         elk_fs_reg dest = retype(elk_vec8_grf(payload().num_regs + i, 0),
-                              ELK_REGISTER_TYPE_UD);
-         elk_fs_inst *send = ubld.emit(ELK_SHADER_OPCODE_SEND, dest, srcs, 4);
-
-         send->sfid = GFX12_SFID_UGM;
-         send->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
-                                   1 /* exec_size */,
-                                   LSC_ADDR_SURFTYPE_FLAT,
-                                   LSC_ADDR_SIZE_A32,
-                                   1 /* num_coordinates */,
-                                   LSC_DATA_SIZE_D32,
-                                   num_regs * 8 /* num_channels */,
-                                   true /* transpose */,
-                                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                   true /* has_dest */);
-         send->header_size = 0;
-         send->mlen = lsc_msg_desc_src0_len(devinfo, send->desc);
-         send->size_written =
-            lsc_msg_desc_dest_len(devinfo, send->desc) * REG_SIZE;
-         send->send_is_volatile = true;
-
-         i += num_regs;
-      }
-
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
    }
 
    /* Map the offsets in the UNIFORM file to fixed HW regs. */
@@ -6009,41 +5952,6 @@ elk_fs_visitor::fixup_3src_null_dest()
                           DEPENDENCY_VARIABLES);
 }
 
-static bool
-needs_dummy_fence(const intel_device_info *devinfo, elk_fs_inst *inst)
-{
-   /* This workaround is about making sure that any instruction writing
-    * through UGM has completed before we hit EOT.
-    */
-   if (inst->sfid != GFX12_SFID_UGM)
-      return false;
-
-   /* Any UGM, non-Scratch-surface Stores (not including Atomic) messages,
-    * where the L1-cache override is NOT among {WB, WS, WT}
-    */
-   enum elk_lsc_opcode opcode = lsc_msg_desc_opcode(devinfo, inst->desc);
-   if (elk_lsc_opcode_is_store(opcode)) {
-      switch (lsc_msg_desc_cache_ctrl(devinfo, inst->desc)) {
-      case LSC_CACHE_STORE_L1STATE_L3MOCS:
-      case LSC_CACHE_STORE_L1WB_L3WB:
-      case LSC_CACHE_STORE_L1S_L3UC:
-      case LSC_CACHE_STORE_L1S_L3WB:
-      case LSC_CACHE_STORE_L1WT_L3UC:
-      case LSC_CACHE_STORE_L1WT_L3WB:
-         return false;
-
-      default:
-         return true;
-      }
-   }
-
-   /* Any UGM Atomic message WITHOUT return value */
-   if (elk_lsc_opcode_is_atomic(opcode) && inst->dst.file == BAD_FILE)
-      return true;
-
-   return false;
-}
-
 /* Wa_14015360517
  *
  * The first instruction of any kernel should have non-zero emask.
@@ -6071,56 +5979,6 @@ elk_fs_visitor::emit_dummy_mov_instruction()
    ubld.MOV(ubld.null_reg_ud(), elk_imm_ud(0u));
 
    invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
-}
-
-/* Wa_22013689345
- *
- * We need to emit UGM fence message before EOT, if shader has any UGM write
- * or atomic message.
- *
- * TODO/FINISHME: According to Curro we could avoid the fence in some cases.
- *                We probably need a better criteria in needs_dummy_fence().
- */
-void
-elk_fs_visitor::emit_dummy_memory_fence_before_eot()
-{
-   bool progress = false;
-   bool has_ugm_write_or_atomic = false;
-
-   if (!intel_needs_workaround(devinfo, 22013689345))
-      return;
-
-   foreach_block_and_inst_safe (block, elk_fs_inst, inst, cfg) {
-      if (!inst->eot) {
-         if (needs_dummy_fence(devinfo, inst))
-            has_ugm_write_or_atomic = true;
-         continue;
-      }
-
-      if (!has_ugm_write_or_atomic)
-         break;
-
-      const fs_builder ibld(this, block, inst);
-      const fs_builder ubld = ibld.exec_all().group(1, 0);
-
-      elk_fs_reg dst = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-      elk_fs_inst *dummy_fence = ubld.emit(ELK_SHADER_OPCODE_MEMORY_FENCE,
-                                       dst, elk_vec8_grf(0, 0),
-                                       /* commit enable */ elk_imm_ud(1),
-                                       /* bti */ elk_imm_ud(0));
-      dummy_fence->sfid = GFX12_SFID_UGM;
-      dummy_fence->desc = lsc_fence_msg_desc(devinfo, LSC_FENCE_TILE,
-                                             LSC_FLUSH_TYPE_NONE_6, false);
-      ubld.emit(ELK_FS_OPCODE_SCHEDULING_FENCE, ubld.null_reg_ud(), dst);
-      progress = true;
-      /* TODO: remove this break if we ever have shader with multiple EOT. */
-      break;
-   }
-
-   if (progress) {
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS |
-                          DEPENDENCY_VARIABLES);
-   }
 }
 
 /**
@@ -6508,7 +6366,6 @@ elk_fs_visitor::run_vs()
    assign_vs_urb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6638,7 +6495,6 @@ elk_fs_visitor::run_tcs()
    assign_tcs_urb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6670,7 +6526,6 @@ elk_fs_visitor::run_tes()
    assign_tes_urb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6719,7 +6574,6 @@ elk_fs_visitor::run_gs()
    assign_gs_urb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();
@@ -6827,7 +6681,6 @@ elk_fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
       assign_urb_setup();
 
       fixup_3src_null_dest();
-      emit_dummy_memory_fence_before_eot();
 
       /* Wa_14015360517 */
       emit_dummy_mov_instruction();
@@ -6868,7 +6721,6 @@ elk_fs_visitor::run_cs(bool allow_spilling)
    assign_curb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
 
    /* Wa_14015360517 */
    emit_dummy_mov_instruction();

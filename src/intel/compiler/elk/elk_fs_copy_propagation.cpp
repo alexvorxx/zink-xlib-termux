@@ -1204,8 +1204,6 @@ try_constant_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
    case ELK_OPCODE_BFE:
    case ELK_OPCODE_BFI1:
    case ELK_OPCODE_BFI2:
-   case ELK_OPCODE_ROL:
-   case ELK_OPCODE_ROR:
    case ELK_OPCODE_SHL:
    case ELK_OPCODE_SHR:
    case ELK_OPCODE_OR:

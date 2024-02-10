@@ -1411,8 +1411,6 @@ elk_fs_visitor::opt_combine_constants()
 
       case ELK_OPCODE_ASR:
       case ELK_OPCODE_BFI1:
-      case ELK_OPCODE_ROL:
-      case ELK_OPCODE_ROR:
       case ELK_OPCODE_SHL:
       case ELK_OPCODE_SHR:
          if (inst->src[0].file == IMM) {

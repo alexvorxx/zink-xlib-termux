@@ -4702,8 +4702,6 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
    case ELK_OPCODE_SHR:
    case ELK_OPCODE_SHL:
    case ELK_OPCODE_ASR:
-   case ELK_OPCODE_ROR:
-   case ELK_OPCODE_ROL:
    case ELK_OPCODE_CMPN:
    case ELK_OPCODE_CSEL:
    case ELK_OPCODE_F32TO16:

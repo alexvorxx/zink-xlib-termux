@@ -26,8 +26,6 @@ enum elk_opcode {
    ELK_OPCODE_DIM, /**< Gfx7.5 only */
    ELK_OPCODE_SMOV, /**< Gfx8+ */
    ELK_OPCODE_ASR,
-   ELK_OPCODE_ROR,  /**< Gfx11+ */
-   ELK_OPCODE_ROL,  /**< Gfx11+ */
    ELK_OPCODE_CMP,
    ELK_OPCODE_CMPN,
    ELK_OPCODE_CSEL, /**< Gfx8+ */

@@ -649,8 +649,6 @@ namespace elk {
       ALU1(RNDE)
       ALU1(RNDU)
       ALU1(RNDZ)
-      ALU2(ROL)
-      ALU2(ROR)
       ALU2(SAD2)
       ALU2_ACC(SADA2)
       ALU2(SEL)

@@ -322,8 +322,6 @@ namespace {
       case ELK_OPCODE_FBL:
       case ELK_OPCODE_CBIT:
       case ELK_OPCODE_ADDC:
-      case ELK_OPCODE_ROR:
-      case ELK_OPCODE_ROL:
       case ELK_OPCODE_SUBB:
       case ELK_OPCODE_SAD2:
       case ELK_OPCODE_SADA2:

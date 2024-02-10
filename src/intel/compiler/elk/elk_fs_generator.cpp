@@ -1855,16 +1855,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
       case ELK_OPCODE_SHL:
 	 elk_SHL(p, dst, src[0], src[1]);
 	 break;
-      case ELK_OPCODE_ROL:
-	 assert(devinfo->ver >= 11);
-	 assert(src[0].type == dst.type);
-	 elk_ROL(p, dst, src[0], src[1]);
-	 break;
-      case ELK_OPCODE_ROR:
-	 assert(devinfo->ver >= 11);
-	 assert(src[0].type == dst.type);
-	 elk_ROR(p, dst, src[0], src[1]);
-	 break;
       case ELK_OPCODE_F32TO16:
          elk_F32TO16(p, dst, src[0]);
          break;

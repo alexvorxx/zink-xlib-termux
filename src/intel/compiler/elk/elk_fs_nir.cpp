@@ -1848,13 +1848,6 @@ fs_nir_emit_alu(nir_to_elk_state &ntb, nir_alu_instr *instr,
 
       break;
 
-   case nir_op_urol:
-      bld.ROL(result, op[0], op[1]);
-      break;
-   case nir_op_uror:
-      bld.ROR(result, op[0], op[1]);
-      break;
-
    case nir_op_pack_half_2x16_split:
       bld.emit(ELK_FS_OPCODE_PACK_HALF_2x16_SPLIT, result, op[0], op[1]);
       break;

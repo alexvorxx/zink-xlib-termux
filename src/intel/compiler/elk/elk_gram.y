@@ -199,12 +199,6 @@ i965_asm_binary_instruction(int opcode,
 	case ELK_OPCODE_PLN:
 		elk_PLN(p, dest, src0, src1);
 		break;
-	case ELK_OPCODE_ROL:
-		elk_ROL(p, dest, src0, src1);
-		break;
-	case ELK_OPCODE_ROR:
-		elk_ROR(p, dest, src0, src1);
-		break;
 	case ELK_OPCODE_SAD2:
 		fprintf(stderr, "Opcode ELK_OPCODE_SAD2 unhandled\n");
 		break;
@@ -408,7 +402,7 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> NENOP NOP NOT
 %token <integer> OR
 %token <integer> PLN POP PUSH
-%token <integer> RET RNDD RNDE RNDU RNDZ ROL ROR
+%token <integer> RET RNDD RNDE RNDU RNDZ
 %token <integer> SAD2 SADA2 SEL SHL SHR SMOV SUBB SYNC
 %token <integer> SEND SENDC
 %token <integer> WAIT WHILE
@@ -821,8 +815,6 @@ binaryopcodes:
 	| MACH
 	| MUL
 	| PLN
-	| ROL
-	| ROR
 	| SAD2
 	| SADA2
 	| SUBB

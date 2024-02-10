@@ -116,8 +116,6 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       nir_options->has_bfm = devinfo->ver >= 7;
       nir_options->has_bfi = devinfo->ver >= 7;
 
-      nir_options->has_rotate16 = devinfo->ver >= 11;
-      nir_options->has_rotate32 = devinfo->ver >= 11;
       nir_options->lower_bitfield_reverse = devinfo->ver < 7;
       nir_options->lower_find_lsb = devinfo->ver < 7;
       nir_options->lower_ifind_msb = devinfo->ver < 7;

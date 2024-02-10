@@ -926,8 +926,6 @@ elk_backend_instruction::can_do_source_mods() const
    case ELK_OPCODE_CBIT:
    case ELK_OPCODE_FBH:
    case ELK_OPCODE_FBL:
-   case ELK_OPCODE_ROL:
-   case ELK_OPCODE_ROR:
    case ELK_OPCODE_SUBB:
    case ELK_SHADER_OPCODE_BROADCAST:
    case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:

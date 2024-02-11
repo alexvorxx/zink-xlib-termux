@@ -5935,35 +5935,6 @@ elk_fs_visitor::fixup_3src_null_dest()
                           DEPENDENCY_VARIABLES);
 }
 
-/* Wa_14015360517
- *
- * The first instruction of any kernel should have non-zero emask.
- * Make sure this happens by introducing a dummy mov instruction.
- */
-void
-elk_fs_visitor::emit_dummy_mov_instruction()
-{
-   if (!intel_needs_workaround(devinfo, 14015360517))
-      return;
-
-   struct elk_backend_instruction *first_inst =
-      cfg->first_block()->start();
-
-   /* We can skip the WA if first instruction is marked with
-    * force_writemask_all or exec_size equals dispatch_width.
-    */
-   if (first_inst->force_writemask_all ||
-       first_inst->exec_size == dispatch_width)
-      return;
-
-   /* Insert dummy mov as first instruction. */
-   const fs_builder ubld =
-      fs_builder(this, cfg->first_block(), (elk_fs_inst *)first_inst).exec_all().group(8, 0);
-   ubld.MOV(ubld.null_reg_ud(), elk_imm_ud(0u));
-
-   invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
-}
-
 /**
  * Find the first instruction in the program that might start a region of
  * divergent control flow due to a HALT jump.  There is no
@@ -6350,9 +6321,6 @@ elk_fs_visitor::run_vs()
 
    fixup_3src_null_dest();
 
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
-
    allocate_registers(true /* allow_spilling */);
 
    return !failed;
@@ -6479,9 +6447,6 @@ elk_fs_visitor::run_tcs()
 
    fixup_3src_null_dest();
 
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
-
    allocate_registers(true /* allow_spilling */);
 
    return !failed;
@@ -6509,9 +6474,6 @@ elk_fs_visitor::run_tes()
    assign_tes_urb_setup();
 
    fixup_3src_null_dest();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
 
    allocate_registers(true /* allow_spilling */);
 
@@ -6558,39 +6520,9 @@ elk_fs_visitor::run_gs()
 
    fixup_3src_null_dest();
 
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
-
    allocate_registers(true /* allow_spilling */);
 
    return !failed;
-}
-
-/* From the SKL PRM, Volume 16, Workarounds:
- *
- *   0877  3D   Pixel Shader Hang possible when pixel shader dispatched with
- *              only header phases (R0-R2)
- *
- *   WA: Enable a non-header phase (e.g. push constant) when dispatch would
- *       have been header only.
- *
- * Instead of enabling push constants one can alternatively enable one of the
- * inputs. Here one simply chooses "layer" which shouldn't impose much
- * overhead.
- */
-static void
-gfx9_ps_header_only_workaround(struct elk_wm_prog_data *wm_prog_data)
-{
-   if (wm_prog_data->num_varying_inputs)
-      return;
-
-   if (wm_prog_data->base.curb_read_length)
-      return;
-
-   wm_prog_data->urb_setup[VARYING_SLOT_LAYER] = 0;
-   wm_prog_data->num_varying_inputs = 1;
-
-   elk_compute_urb_setup_index(wm_prog_data);
 }
 
 bool
@@ -6626,11 +6558,9 @@ elk_fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
          for (unsigned i = 0; i < dispatch_width / lower_width; i++) {
             /* According to the "PS Thread Payload for Normal
              * Dispatch" pages on the BSpec, the dispatch mask is
-             * stored in R0.15/R1.15 on gfx20+ and in R1.7/R2.7 on
-             * gfx6+.
+             * stored in R1.7/R2.7 on gfx6+.
              */
             const elk_fs_reg dispatch_mask =
-               devinfo->ver >= 20 ? xe2_vec1_grf(i, 15) :
                devinfo->ver >= 6 ? elk_vec1_grf(i + 1, 7) :
                elk_vec1_grf(0, 0);
             bld.exec_all().group(1, 0)
@@ -6658,15 +6588,9 @@ elk_fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
 
       assign_curb_setup();
 
-      if (devinfo->ver == 9)
-         gfx9_ps_header_only_workaround(wm_prog_data);
-
       assign_urb_setup();
 
       fixup_3src_null_dest();
-
-      /* Wa_14015360517 */
-      emit_dummy_mov_instruction();
 
       allocate_registers(allow_spilling);
    }
@@ -6704,9 +6628,6 @@ elk_fs_visitor::run_cs(bool allow_spilling)
    assign_curb_setup();
 
    fixup_3src_null_dest();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
 
    allocate_registers(allow_spilling);
 
@@ -7120,32 +7041,29 @@ elk_compile_fs(const struct elk_compiler *compiler,
    elk_nir_populate_wm_prog_data(nir, compiler->devinfo, key, prog_data);
 
    std::unique_ptr<elk_fs_visitor> v8, v16, v32, vmulti;
-   elk_cfg_t *simd8_cfg = NULL, *simd16_cfg = NULL, *simd32_cfg = NULL,
-      *multi_cfg = NULL;
+   elk_cfg_t *simd8_cfg = NULL, *simd16_cfg = NULL, *simd32_cfg = NULL;
    float throughput = 0;
    bool has_spilled = false;
 
-   if (devinfo->ver < 20) {
-      v8 = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                        prog_data, nir, 8, 1,
-                                        params->base.stats != NULL,
-                                        debug_enabled);
-      if (!v8->run_fs(allow_spilling, false /* do_rep_send */)) {
-         params->base.error_str = ralloc_strdup(params->base.mem_ctx,
-                                                v8->fail_msg);
-         return NULL;
-      } else if (INTEL_SIMD(FS, 8)) {
-         simd8_cfg = v8->cfg;
+   v8 = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
+                                     prog_data, nir, 8, 1,
+                                     params->base.stats != NULL,
+                                     debug_enabled);
+   if (!v8->run_fs(allow_spilling, false /* do_rep_send */)) {
+      params->base.error_str = ralloc_strdup(params->base.mem_ctx,
+                                             v8->fail_msg);
+      return NULL;
+   } else if (INTEL_SIMD(FS, 8)) {
+      simd8_cfg = v8->cfg;
 
-         assert(v8->payload().num_regs % reg_unit(devinfo) == 0);
-         prog_data->base.dispatch_grf_start_reg = v8->payload().num_regs / reg_unit(devinfo);
+      assert(v8->payload().num_regs % reg_unit(devinfo) == 0);
+      prog_data->base.dispatch_grf_start_reg = v8->payload().num_regs / reg_unit(devinfo);
 
-         prog_data->reg_blocks_8 = elk_register_blocks(v8->grf_used);
-         const performance &perf = v8->performance_analysis.require();
-         throughput = MAX2(throughput, perf.throughput);
-         has_spilled = v8->spilled_any_registers;
-         allow_spilling = false;
-      }
+      prog_data->reg_blocks_8 = elk_register_blocks(v8->grf_used);
+      const performance &perf = v8->performance_analysis.require();
+      throughput = MAX2(throughput, perf.throughput);
+      has_spilled = v8->spilled_any_registers;
+      allow_spilling = false;
    }
 
    /* Limit dispatch width to simd8 with dual source blending on gfx8.
@@ -7157,18 +7075,6 @@ elk_compile_fs(const struct elk_compiler *compiler,
       v8->limit_dispatch_width(8, "gfx8 workaround: "
                                "using SIMD8 when dual src blending.\n");
    }
-
-   if (key->coarse_pixel && devinfo->ver < 20) {
-      if (prog_data->dual_src_blend) {
-         v8->limit_dispatch_width(8, "SIMD16 coarse pixel shading cannot"
-                                  " use SIMD8 messages.\n");
-      }
-      v8->limit_dispatch_width(16, "SIMD32 not supported with coarse"
-                               " pixel shading.\n");
-   }
-
-   if (nir->info.ray_queries > 0 && v8)
-      v8->limit_dispatch_width(16, "SIMD32 with ray queries.\n");
 
    if (!has_spilled &&
        (!v8 || v8->max_dispatch_width >= 16) &&
@@ -7238,78 +7144,6 @@ elk_compile_fs(const struct elk_compiler *compiler,
       }
    }
 
-   if (devinfo->ver >= 12 && !has_spilled &&
-       params->max_polygons >= 2 && !key->coarse_pixel) {
-      elk_fs_visitor *vbase = v8 ? v8.get() : v16 ? v16.get() : v32.get();
-      assert(vbase);
-
-      if (devinfo->ver >= 20 &&
-          params->max_polygons >= 4 &&
-          vbase->max_dispatch_width >= 32 &&
-          4 * prog_data->num_varying_inputs <= MAX_VARYING &&
-          INTEL_SIMD(FS, 4X8)) {
-         /* Try a quad-SIMD8 compile */
-         vmulti = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                               prog_data, nir, 32, 4,
-                                               params->base.stats != NULL,
-                                               debug_enabled);
-         vmulti->import_uniforms(vbase);
-         if (!vmulti->run_fs(false, params->use_rep_send)) {
-            elk_shader_perf_log(compiler, params->base.log_data,
-                                "Quad-SIMD8 shader failed to compile: %s\n",
-                                vmulti->fail_msg);
-         } else {
-            multi_cfg = vmulti->cfg;
-            assert(!vmulti->spilled_any_registers);
-         }
-      }
-
-      if (!multi_cfg && devinfo->ver >= 20 &&
-          vbase->max_dispatch_width >= 32 &&
-          2 * prog_data->num_varying_inputs <= MAX_VARYING &&
-          INTEL_SIMD(FS, 2X16)) {
-         /* Try a dual-SIMD16 compile */
-         vmulti = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                               prog_data, nir, 32, 2,
-                                               params->base.stats != NULL,
-                                               debug_enabled);
-         vmulti->import_uniforms(vbase);
-         if (!vmulti->run_fs(false, params->use_rep_send)) {
-            elk_shader_perf_log(compiler, params->base.log_data,
-                                "Dual-SIMD16 shader failed to compile: %s\n",
-                                vmulti->fail_msg);
-         } else {
-            multi_cfg = vmulti->cfg;
-            assert(!vmulti->spilled_any_registers);
-         }
-      }
-
-      if (!multi_cfg && vbase->max_dispatch_width >= 16 &&
-          2 * prog_data->num_varying_inputs <= MAX_VARYING &&
-          INTEL_SIMD(FS, 2X8)) {
-         /* Try a dual-SIMD8 compile */
-         vmulti = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                               prog_data, nir, 16, 2,
-                                               params->base.stats != NULL,
-                                               debug_enabled);
-         vmulti->import_uniforms(vbase);
-         if (!vmulti->run_fs(allow_spilling, params->use_rep_send)) {
-            elk_shader_perf_log(compiler, params->base.log_data,
-                                "Dual-SIMD8 shader failed to compile: %s\n",
-                                vmulti->fail_msg);
-         } else {
-            multi_cfg = vmulti->cfg;
-         }
-      }
-
-      if (multi_cfg) {
-         assert(vmulti->payload().num_regs % reg_unit(devinfo) == 0);
-         prog_data->base.dispatch_grf_start_reg = vmulti->payload().num_regs / reg_unit(devinfo);
-
-         prog_data->reg_blocks_8 = elk_register_blocks(vmulti->grf_used);
-      }
-   }
-
    /* When the caller requests a repclear shader, they want SIMD16-only */
    if (params->use_rep_send)
       simd8_cfg = NULL;
@@ -7358,16 +7192,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
    struct elk_compile_stats *stats = params->base.stats;
    uint32_t max_dispatch_width = 0;
 
-   if (multi_cfg) {
-      prog_data->dispatch_multi = vmulti->dispatch_width;
-      prog_data->max_polygons = vmulti->max_polygons;
-      g.generate_code(multi_cfg, vmulti->dispatch_width, vmulti->shader_stats,
-                      vmulti->performance_analysis.require(),
-                      stats, vmulti->max_polygons);
-      stats = stats ? stats + 1 : NULL;
-      max_dispatch_width = vmulti->dispatch_width;
-
-   } else if (simd8_cfg) {
+   if (simd8_cfg) {
       prog_data->dispatch_8 = true;
       g.generate_code(simd8_cfg, 8, v8->shader_stats,
                       v8->performance_analysis.require(), stats, 1);

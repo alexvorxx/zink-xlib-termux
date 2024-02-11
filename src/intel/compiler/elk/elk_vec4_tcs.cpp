@@ -447,7 +447,7 @@ elk_compile_tcs(const struct elk_compiler *compiler,
    }
 
    if (is_scalar) {
-      const unsigned dispatch_width = devinfo->ver >= 20 ? 16 : 8;
+      const unsigned dispatch_width = 8;
       elk_fs_visitor v(compiler, &params->base, &key->base,
                    &prog_data->base.base, nir, dispatch_width,
                    params->base.stats != NULL, debug_enabled);

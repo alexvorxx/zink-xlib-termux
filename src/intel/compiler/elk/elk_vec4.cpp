@@ -2648,7 +2648,7 @@ elk_compile_vs(const struct elk_compiler *compiler,
    }
 
    if (is_scalar) {
-      const unsigned dispatch_width = compiler->devinfo->ver >= 20 ? 16 : 8;
+      const unsigned dispatch_width = 8;
       prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
       elk_fs_visitor v(compiler, &params->base, &key->base,

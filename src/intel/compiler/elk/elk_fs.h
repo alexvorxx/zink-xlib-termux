@@ -213,7 +213,6 @@ public:
    void allocate_registers(bool allow_spilling);
    uint32_t compute_max_register_pressure();
    void fixup_3src_null_dest();
-   void emit_dummy_mov_instruction();
    bool fixup_nomask_control_flow();
    void assign_curb_setup();
    void assign_urb_setup();

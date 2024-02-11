@@ -1313,7 +1313,6 @@ setup_surface_descriptors(const fs_builder &bld, elk_fs_inst *inst, uint32_t des
 static void
 lower_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
-   const elk_compiler *compiler = bld.shader->compiler;
    const intel_device_info *devinfo = bld.shader->devinfo;
 
    /* Get the logical send arguments. */
@@ -1523,8 +1522,6 @@ lower_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    inst->header_size = header_sz;
    inst->send_has_side_effects = has_side_effects;
    inst->send_is_volatile = !has_side_effects;
-   inst->send_ex_bso = surface_handle.file != BAD_FILE &&
-                       compiler->extended_bindless_surface_offset;
 
    /* Set up SFID and descriptors */
    inst->sfid = sfid;

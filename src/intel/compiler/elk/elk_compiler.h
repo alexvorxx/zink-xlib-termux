@@ -117,13 +117,6 @@ struct elk_compiler {
    bool indirect_ubos_use_sampler;
 
    /**
-    * Gfx12.5+ has a bit in the SEND instruction extending the bindless
-    * surface offset range from 20 to 26 bits, effectively giving us 4Gb of
-    * bindless surface descriptors instead of 64Mb previously.
-    */
-   bool extended_bindless_surface_offset;
-
-   /**
     * Gfx11+ has a bit in the dword 3 of the sampler message header that
     * indicates whether the sampler handle is relative to the dynamic state
     * base address (0) or the bindless sampler base address (1). The driver

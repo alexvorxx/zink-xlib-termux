@@ -70,7 +70,6 @@ static void fs_nir_emit_intrinsic(nir_to_elk_state &ntb, const fs_builder &bld, 
 static elk_fs_reg emit_samplepos_setup(nir_to_elk_state &ntb);
 static elk_fs_reg emit_sampleid_setup(nir_to_elk_state &ntb);
 static elk_fs_reg emit_samplemaskin_setup(nir_to_elk_state &ntb);
-static elk_fs_reg emit_shading_rate_setup(nir_to_elk_state &ntb);
 
 static void fs_nir_emit_impl(nir_to_elk_state &ntb, nir_function_impl *impl);
 static void fs_nir_emit_cf_list(nir_to_elk_state &ntb, exec_list *list);
@@ -138,15 +137,13 @@ fs_nir_setup_outputs(nir_to_elk_state &ntb)
 static void
 fs_nir_setup_uniforms(elk_fs_visitor &s)
 {
-   const intel_device_info *devinfo = s.devinfo;
-
    /* Only the first compile gets to set up uniforms. */
    if (s.push_constant_loc)
       return;
 
    s.uniforms = s.nir->num_uniforms / 4;
 
-   if (gl_shader_stage_is_compute(s.stage) && devinfo->verx10 < 125) {
+   if (gl_shader_stage_is_compute(s.stage)) {
       /* Add uniforms for builtins after regular NIR uniforms. */
       assert(s.uniforms == s.prog_data->nr_params);
 
@@ -277,8 +274,7 @@ emit_system_values_block(nir_to_elk_state &ntb, nir_block *block)
                 * stored in R0.15/R1.15 on gfx20+ and in R1.7/R2.7 on
                 * gfx6+.
                 */
-               const struct elk_reg reg = s.devinfo->ver >= 20 ?
-                  xe2_vec1_grf(i, 15) : elk_vec1_grf(i + 1, 7);
+               const struct elk_reg reg = elk_vec1_grf(i + 1, 7);
                hbld.SHR(offset(shifted, hbld, i),
                         stride(retype(reg, ELK_REGISTER_TYPE_UB), 1, 8, 0),
                         elk_imm_v(0x76543210));
@@ -308,12 +304,6 @@ emit_system_values_block(nir_to_elk_state &ntb, nir_block *block)
             abld.MOV(dst, negate(retype(anded, ELK_REGISTER_TYPE_D)));
             *reg = dst;
          }
-         break;
-
-      case nir_intrinsic_load_frag_shading_rate:
-         reg = &ntb.system_values[SYSTEM_VALUE_FRAG_SHADING_RATE];
-         if (reg->file == BAD_FILE)
-            *reg = emit_shading_rate_setup(ntb);
          break;
 
       default:
@@ -545,66 +535,7 @@ optimize_frontfacing_ternary(nir_to_elk_state &ntb,
 
    elk_fs_reg tmp = s.vgrf(glsl_int_type());
 
-   if (devinfo->ver >= 20) {
-      /* Gfx20+ has separate back-facing bits for each pair of
-       * subspans in order to support multiple polygons, so we need to
-       * use a <1;8,0> region in order to select the correct word for
-       * each channel.  Unfortunately they're no longer aligned to the
-       * sign bit of a 16-bit word, so a left shift is necessary.
-       */
-      elk_fs_reg ff = ntb.bld.vgrf(ELK_REGISTER_TYPE_UW);
-
-      for (unsigned i = 0; i < DIV_ROUND_UP(s.dispatch_width, 16); i++) {
-         const fs_builder hbld = ntb.bld.group(16, i);
-         const struct elk_reg gi_uw = retype(xe2_vec1_grf(i, 9),
-                                             ELK_REGISTER_TYPE_UW);
-         hbld.SHL(offset(ff, hbld, i), stride(gi_uw, 1, 8, 0), elk_imm_ud(4));
-      }
-
-      if (value1 == -1.0f)
-         ff.negate = true;
-
-      ntb.bld.OR(subscript(tmp, ELK_REGISTER_TYPE_UW, 1), ff,
-                  elk_imm_uw(0x3f80));
-
-   } else if (devinfo->ver >= 12 && s.max_polygons == 2) {
-      /* According to the BSpec "PS Thread Payload for Normal
-       * Dispatch", the front/back facing interpolation bit is stored
-       * as bit 15 of either the R1.1 or R1.6 poly info field, for the
-       * first and second polygons respectively in multipolygon PS
-       * dispatch mode.
-       */
-      assert(s.dispatch_width == 16);
-
-      for (unsigned i = 0; i < s.max_polygons; i++) {
-         const fs_builder hbld = ntb.bld.group(8, i);
-         struct elk_reg g1 = retype(elk_vec1_grf(1, 1 + 5 * i),
-                                    ELK_REGISTER_TYPE_UW);
-
-         if (value1 == -1.0f)
-            g1.negate = true;
-
-         hbld.OR(subscript(offset(tmp, hbld, i), ELK_REGISTER_TYPE_UW, 1),
-                 g1, elk_imm_uw(0x3f80));
-      }
-
-   } else if (devinfo->ver >= 12) {
-      /* Bit 15 of g1.1 is 0 if the polygon is front facing. */
-      elk_fs_reg g1 = elk_fs_reg(retype(elk_vec1_grf(1, 1), ELK_REGISTER_TYPE_W));
-
-      /* For (gl_FrontFacing ? 1.0 : -1.0), emit:
-       *
-       *    or(8)  tmp.1<2>W  g1.1<0,1,0>W  0x00003f80W
-       *    and(8) dst<1>D    tmp<8,8,1>D   0xbf800000D
-       *
-       * and negate g1.1<0,1,0>W for (gl_FrontFacing ? -1.0 : 1.0).
-       */
-      if (value1 == -1.0f)
-         g1.negate = true;
-
-      ntb.bld.OR(subscript(tmp, ELK_REGISTER_TYPE_W, 1),
-                  g1, elk_imm_uw(0x3f80));
-   } else if (devinfo->ver >= 6) {
+   if (devinfo->ver >= 6) {
       /* Bit 15 of g0.0 is 0 if the polygon is front facing. */
       elk_fs_reg g0 = elk_fs_reg(retype(elk_vec1_grf(0, 0), ELK_REGISTER_TYPE_W));
 
@@ -775,7 +706,7 @@ try_emit_b2fi_of_inot(nir_to_elk_state &ntb, const fs_builder &bld,
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
 
-   if (devinfo->ver < 6 || devinfo->verx10 >= 125)
+   if (devinfo->ver < 6)
       return false;
 
    nir_alu_instr *inot_instr = nir_src_as_alu_instr(instr->src[0].src);
@@ -2469,7 +2400,6 @@ emit_gs_input_load(nir_to_elk_state &ntb, const elk_fs_reg &dst,
                    unsigned num_components,
                    unsigned first_component)
 {
-   const intel_device_info *devinfo = ntb.devinfo;
    const fs_builder &bld = ntb.bld;
    elk_fs_visitor &s = ntb.s;
 
@@ -2540,7 +2470,7 @@ emit_gs_input_load(nir_to_elk_state &ntb, const elk_fs_reg &dst,
 
       if (nir_src_is_const(vertex_src)) {
          unsigned vertex = nir_src_as_uint(vertex_src);
-         assert(devinfo->ver >= 9 || vertex <= 5);
+         assert(vertex <= 5);
          bld.MOV(icp_handle, component(start, vertex));
       } else {
          /* The vertex index is non-constant.  We need to use indirect
@@ -2781,20 +2711,6 @@ get_tcs_multi_patch_icp_handle(nir_to_elk_state &ntb, const fs_builder &bld,
 }
 
 static void
-setup_barrier_message_payload_gfx125(const fs_builder &bld,
-                                     const elk_fs_reg &msg_payload)
-{
-   assert(bld.shader->devinfo->verx10 >= 125);
-
-   /* From BSpec: 54006, mov r0.2[31:24] into m0.2[31:24] and m0.2[23:16] */
-   elk_fs_reg m0_10ub = component(retype(msg_payload, ELK_REGISTER_TYPE_UB), 10);
-   elk_fs_reg r0_11ub =
-      stride(suboffset(retype(elk_vec1_grf(0, 0), ELK_REGISTER_TYPE_UB), 11),
-             0, 1, 0);
-   bld.exec_all().group(2, 0).MOV(m0_10ub, r0_11ub);
-}
-
-static void
 emit_barrier(nir_to_elk_state &ntb)
 {
    const intel_device_info *devinfo = ntb.devinfo;
@@ -2809,30 +2725,21 @@ emit_barrier(nir_to_elk_state &ntb)
    /* Clear the message payload */
    bld.exec_all().group(8, 0).MOV(payload, elk_imm_ud(0u));
 
-   if (devinfo->verx10 >= 125) {
-      setup_barrier_message_payload_gfx125(bld, payload);
-   } else {
-      assert(gl_shader_stage_is_compute(s.stage));
+   assert(gl_shader_stage_is_compute(s.stage));
 
-      uint32_t barrier_id_mask;
-      switch (devinfo->ver) {
-      case 7:
-      case 8:
-         barrier_id_mask = 0x0f000000u; break;
-      case 9:
-         barrier_id_mask = 0x8f000000u; break;
-      case 11:
-      case 12:
-         barrier_id_mask = 0x7f000000u; break;
-      default:
-         unreachable("barrier is only available on gen >= 7");
-      }
-
-      /* Copy the barrier id from r0.2 to the message payload reg.2 */
-      elk_fs_reg r0_2 = elk_fs_reg(retype(elk_vec1_grf(0, 2), ELK_REGISTER_TYPE_UD));
-      bld.exec_all().group(1, 0).AND(component(payload, 2), r0_2,
-                                     elk_imm_ud(barrier_id_mask));
+   uint32_t barrier_id_mask;
+   switch (devinfo->ver) {
+   case 7:
+   case 8:
+      barrier_id_mask = 0x0f000000u; break;
+   default:
+      unreachable("barrier is only available on gen >= 7");
    }
+
+   /* Copy the barrier id from r0.2 to the message payload reg.2 */
+   elk_fs_reg r0_2 = elk_fs_reg(retype(elk_vec1_grf(0, 2), ELK_REGISTER_TYPE_UD));
+   bld.exec_all().group(1, 0).AND(component(payload, 2), r0_2,
+                                  elk_imm_ud(barrier_id_mask));
 
    /* Emit a gateway "barrier" message using the payload we set up, followed
     * by a wait instruction.
@@ -2843,7 +2750,6 @@ emit_barrier(nir_to_elk_state &ntb)
 static void
 emit_tcs_barrier(nir_to_elk_state &ntb)
 {
-   const intel_device_info *devinfo = ntb.devinfo;
    const fs_builder &bld = ntb.bld;
    elk_fs_visitor &s = ntb.s;
 
@@ -2858,27 +2764,16 @@ emit_tcs_barrier(nir_to_elk_state &ntb)
    /* Zero the message header */
    bld.exec_all().MOV(m0, elk_imm_ud(0u));
 
-   if (devinfo->verx10 >= 125) {
-      setup_barrier_message_payload_gfx125(bld, m0);
-   } else if (devinfo->ver >= 11) {
-      chanbld.AND(m0_2, retype(elk_vec1_grf(0, 2), ELK_REGISTER_TYPE_UD),
-                  elk_imm_ud(INTEL_MASK(30, 24)));
+   /* Copy "Barrier ID" from r0.2, bits 16:13 */
+   chanbld.AND(m0_2, retype(elk_vec1_grf(0, 2), ELK_REGISTER_TYPE_UD),
+               elk_imm_ud(INTEL_MASK(16, 13)));
 
-      /* Set the Barrier Count and the enable bit */
-      chanbld.OR(m0_2, m0_2,
-                 elk_imm_ud(tcs_prog_data->instances << 8 | (1 << 15)));
-   } else {
-      /* Copy "Barrier ID" from r0.2, bits 16:13 */
-      chanbld.AND(m0_2, retype(elk_vec1_grf(0, 2), ELK_REGISTER_TYPE_UD),
-                  elk_imm_ud(INTEL_MASK(16, 13)));
+   /* Shift it up to bits 27:24. */
+   chanbld.SHL(m0_2, m0_2, elk_imm_ud(11));
 
-      /* Shift it up to bits 27:24. */
-      chanbld.SHL(m0_2, m0_2, elk_imm_ud(11));
-
-      /* Set the Barrier Count and the enable bit */
-      chanbld.OR(m0_2, m0_2,
-                 elk_imm_ud(tcs_prog_data->instances << 9 | (1 << 15)));
-   }
+   /* Set the Barrier Count and the enable bit */
+   chanbld.OR(m0_2, m0_2,
+              elk_imm_ud(tcs_prog_data->instances << 9 | (1 << 15)));
 
    bld.emit(ELK_SHADER_OPCODE_BARRIER, bld.null_reg_ud(), m0);
 }
@@ -3075,25 +2970,23 @@ fs_nir_emit_tcs_intrinsic(nir_to_elk_state &ntb,
 
       mask = mask << first_component;
 
-      const bool has_urb_lsc = devinfo->ver >= 20;
-
       elk_fs_reg mask_reg;
       if (mask != WRITEMASK_XYZW)
          mask_reg = elk_imm_ud(mask << 16);
 
       elk_fs_reg sources[4];
 
-      unsigned m = has_urb_lsc ? 0 : first_component;
+      unsigned m = first_component;
       for (unsigned i = 0; i < num_components; i++) {
          int c = i + first_component;
          if (mask & (1 << c)) {
             sources[m++] = offset(value, bld, i);
-         } else if (devinfo->ver < 20) {
+         } else {
             m++;
          }
       }
 
-      assert(has_urb_lsc || m == (first_component + num_components));
+      assert(m == (first_component + num_components));
 
       elk_fs_reg srcs[URB_LOGICAL_NUM_SRCS];
       srcs[URB_LOGICAL_SRC_HANDLE] = s.tcs_payload().patch_urb_output;
@@ -3286,51 +3179,7 @@ fs_nir_emit_gs_intrinsic(nir_to_elk_state &ntb,
 static elk_fs_reg
 fetch_render_target_array_index(const fs_builder &bld)
 {
-   const elk_fs_visitor *v = static_cast<const elk_fs_visitor *>(bld.shader);
-
-   if (bld.shader->devinfo->ver >= 20) {
-      /* Gfx20+ has separate Render Target Array indices for each pair
-       * of subspans in order to support multiple polygons, so we need
-       * to use a <1;8,0> region in order to select the correct word
-       * for each channel.
-       */
-      const elk_fs_reg idx = bld.vgrf(ELK_REGISTER_TYPE_UD);
-
-      for (unsigned i = 0; i < DIV_ROUND_UP(bld.dispatch_width(), 16); i++) {
-         const fs_builder hbld = bld.group(16, i);
-         const struct elk_reg reg = retype(elk_vec1_grf(2 * i + 1, 1),
-                                           ELK_REGISTER_TYPE_UW);
-         hbld.AND(offset(idx, hbld, i), stride(reg, 1, 8, 0),
-                  elk_imm_uw(0x7ff));
-      }
-
-      return idx;
-   } else if (bld.shader->devinfo->ver >= 12 && v->max_polygons == 2) {
-      /* According to the BSpec "PS Thread Payload for Normal
-       * Dispatch", the render target array index is stored as bits
-       * 26:16 of either the R1.1 or R1.6 poly info dwords, for the
-       * first and second polygons respectively in multipolygon PS
-       * dispatch mode.
-       */
-      assert(bld.dispatch_width() == 16);
-      const elk_fs_reg idx = bld.vgrf(ELK_REGISTER_TYPE_UD);
-
-      for (unsigned i = 0; i < v->max_polygons; i++) {
-         const fs_builder hbld = bld.group(8, i);
-         const struct elk_reg g1 = elk_uw1_reg(ELK_GENERAL_REGISTER_FILE, 1, 3 + 10 * i);
-         hbld.AND(offset(idx, hbld, i), g1, elk_imm_uw(0x7ff));
-      }
-
-      return idx;
-   } else if (bld.shader->devinfo->ver >= 12) {
-      /* The render target array index is provided in the thread payload as
-       * bits 26:16 of r1.1.
-       */
-      const elk_fs_reg idx = bld.vgrf(ELK_REGISTER_TYPE_UD);
-      bld.AND(idx, elk_uw1_reg(ELK_GENERAL_REGISTER_FILE, 1, 3),
-              elk_imm_uw(0x7ff));
-      return idx;
-   } else if (bld.shader->devinfo->ver >= 6) {
+   if (bld.shader->devinfo->ver >= 6) {
       /* The render target array index is provided in the thread payload as
        * bits 26:16 of r0.0.
        */
@@ -3385,7 +3234,6 @@ emit_non_coherent_fb_read(nir_to_elk_state &ntb, const fs_builder &bld, const el
                           unsigned target)
 {
    elk_fs_visitor &s = ntb.s;
-   const struct intel_device_info *devinfo = s.devinfo;
 
    assert(bld.shader->stage == MESA_SHADER_FRAGMENT);
    const elk_wm_prog_key *wm_key =
@@ -3420,18 +3268,7 @@ emit_non_coherent_fb_read(nir_to_elk_state &ntb, const fs_builder &bld, const el
     */
    elk_opcode op;
    if (wm_key->multisample_fbo) {
-      /* On SKL+ use the wide CMS message just in case the framebuffer uses 16x
-       * multisampling, it should be equivalent to the normal CMS fetch for
-       * lower multisampling modes.
-       *
-       * On Gfx12HP, there is only CMS_W variant available.
-       */
-      if (devinfo->verx10 >= 125)
-         op = ELK_SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL;
-      else if (devinfo->ver >= 9)
-         op = ELK_SHADER_OPCODE_TXF_CMS_W_LOGICAL;
-      else
-         op = ELK_SHADER_OPCODE_TXF_CMS_LOGICAL;
+      op = ELK_SHADER_OPCODE_TXF_CMS_LOGICAL;
    } else {
       op = ELK_SHADER_OPCODE_TXF_LOGICAL;
    }
@@ -3571,53 +3408,10 @@ emit_frontfacing_interpolation(nir_to_elk_state &ntb)
 {
    const intel_device_info *devinfo = ntb.devinfo;
    const fs_builder &bld = ntb.bld;
-   elk_fs_visitor &s = ntb.s;
 
    elk_fs_reg ff = bld.vgrf(ELK_REGISTER_TYPE_D);
 
-   if (devinfo->ver >= 20) {
-      /* Gfx20+ has separate back-facing bits for each pair of
-       * subspans in order to support multiple polygons, so we need to
-       * use a <1;8,0> region in order to select the correct word for
-       * each channel.
-       */
-      const elk_fs_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_UW);
-
-      for (unsigned i = 0; i < DIV_ROUND_UP(s.dispatch_width, 16); i++) {
-         const fs_builder hbld = bld.group(16, i);
-         const struct elk_reg gi_uw = retype(xe2_vec1_grf(i, 9),
-                                             ELK_REGISTER_TYPE_UW);
-         hbld.AND(offset(tmp, hbld, i), gi_uw, elk_imm_uw(0x800));
-      }
-
-      bld.CMP(ff, tmp, elk_imm_uw(0), ELK_CONDITIONAL_Z);
-
-   } else if (devinfo->ver >= 12 && s.max_polygons == 2) {
-      /* According to the BSpec "PS Thread Payload for Normal
-       * Dispatch", the front/back facing interpolation bit is stored
-       * as bit 15 of either the R1.1 or R1.6 poly info field, for the
-       * first and second polygons respectively in multipolygon PS
-       * dispatch mode.
-       */
-      assert(s.dispatch_width == 16);
-      elk_fs_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_W);
-
-      for (unsigned i = 0; i < s.max_polygons; i++) {
-         const fs_builder hbld = bld.group(8, i);
-         const struct elk_reg g1 = retype(elk_vec1_grf(1, 1 + 5 * i),
-                                          ELK_REGISTER_TYPE_W);
-         hbld.ASR(offset(tmp, hbld, i), g1, elk_imm_d(15));
-      }
-
-      bld.NOT(ff, tmp);
-
-   } else if (devinfo->ver >= 12) {
-      elk_fs_reg g1 = elk_fs_reg(retype(elk_vec1_grf(1, 1), ELK_REGISTER_TYPE_W));
-
-      elk_fs_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_W);
-      bld.ASR(tmp, g1, elk_imm_d(15));
-      bld.NOT(ff, tmp);
-   } else if (devinfo->ver >= 6) {
+   if (devinfo->ver >= 6) {
       /* Bit 15 of g0.0 is 0 if the polygon is front facing. We want to create
        * a boolean result from this (~0/true or 0/false).
        *
@@ -3766,11 +3560,9 @@ emit_sampleid_setup(nir_to_elk_state &ntb)
       for (unsigned i = 0; i < DIV_ROUND_UP(s.dispatch_width, 16); i++) {
          const fs_builder hbld = abld.group(MIN2(16, s.dispatch_width), i);
          /* According to the "PS Thread Payload for Normal Dispatch"
-          * pages on the BSpec, the sample ids are stored in R0.8/R1.8
-          * on gfx20+ and in R1.0/R2.0 on gfx8+.
+          * pages on the BSpec, the sample ids are stored in R1.0/R2.0 on gfx8+.
           */
-         const struct elk_reg id_reg = devinfo->ver >= 20 ? xe2_vec1_grf(i, 8) :
-                                       elk_vec1_grf(i + 1, 0);
+         const struct elk_reg id_reg = elk_vec1_grf(i + 1, 0);
          hbld.SHR(offset(tmp, hbld, i),
                   stride(retype(id_reg, ELK_REGISTER_TYPE_UB), 1, 8, 0),
                   elk_imm_v(0x44440000));
@@ -3885,56 +3677,6 @@ emit_samplemaskin_setup(nir_to_elk_state &ntb)
    set_predicate(ELK_PREDICATE_NORMAL, abld.SEL(mask, mask, coverage_mask));
 
    return mask;
-}
-
-static elk_fs_reg
-emit_shading_rate_setup(nir_to_elk_state &ntb)
-{
-   const intel_device_info *devinfo = ntb.devinfo;
-   const fs_builder &bld = ntb.bld;
-
-   assert(devinfo->ver >= 11);
-
-   struct elk_wm_prog_data *wm_prog_data =
-      elk_wm_prog_data(bld.shader->stage_prog_data);
-
-   /* Coarse pixel shading size fields overlap with other fields of not in
-    * coarse pixel dispatch mode, so report 0 when that's not the case.
-    */
-   if (wm_prog_data->coarse_pixel_dispatch == ELK_NEVER)
-      return elk_imm_ud(0);
-
-   const fs_builder abld = bld.annotate("compute fragment shading rate");
-
-   /* The shading rates provided in the shader are the actual 2D shading
-    * rate while the SPIR-V built-in is the enum value that has the shading
-    * rate encoded as a bitfield.  Fortunately, the bitfield value is just
-    * the shading rate divided by two and shifted.
-    */
-
-   /* r1.0 - 0:7 ActualCoarsePixelShadingSize.X */
-   elk_fs_reg actual_x = elk_fs_reg(retype(elk_vec1_grf(1, 0), ELK_REGISTER_TYPE_UB));
-   /* r1.0 - 15:8 ActualCoarsePixelShadingSize.Y */
-   elk_fs_reg actual_y = byte_offset(actual_x, 1);
-
-   elk_fs_reg int_rate_x = bld.vgrf(ELK_REGISTER_TYPE_UD);
-   elk_fs_reg int_rate_y = bld.vgrf(ELK_REGISTER_TYPE_UD);
-
-   abld.SHR(int_rate_y, actual_y, elk_imm_ud(1));
-   abld.SHR(int_rate_x, actual_x, elk_imm_ud(1));
-   abld.SHL(int_rate_x, int_rate_x, elk_imm_ud(2));
-
-   elk_fs_reg rate = abld.vgrf(ELK_REGISTER_TYPE_UD);
-   abld.OR(rate, int_rate_x, int_rate_y);
-
-   if (wm_prog_data->coarse_pixel_dispatch == ELK_ALWAYS)
-      return rate;
-
-   check_dynamic_msaa_flag(abld, wm_prog_data,
-                           INTEL_MSAA_FLAG_COARSE_RT_WRITES);
-   set_predicate(ELK_PREDICATE_NORMAL, abld.SEL(rate, rate, elk_imm_ud(0)));
-
-   return rate;
 }
 
 static void
@@ -4103,8 +3845,7 @@ fs_nir_emit_fs_intrinsic(nir_to_elk_state &ntb,
          /* Only jump when the whole quad is demoted.  For historical
           * reasons this is also used for discard.
           */
-         jump->predicate = (devinfo->ver >= 20 ? XE2_PREDICATE_ANY :
-                            ELK_PREDICATE_ALIGN1_ANY4H);
+         jump->predicate = ELK_PREDICATE_ALIGN1_ANY4H;
       }
 
       if (devinfo->ver < 7)
@@ -4135,11 +3876,7 @@ fs_nir_emit_fs_intrinsic(nir_to_elk_state &ntb,
                     retype(s.per_primitive_reg(bld, base, comp + i), dest.type));
          }
       } else {
-         /* Gfx20+ packs the plane parameters of a single logical
-          * input in a vec3 format instead of the previously used vec4
-          * format.
-          */
-         const unsigned k = devinfo->ver >= 20 ? 0 : 3;
+         const unsigned k = 3;
          for (unsigned int i = 0; i < num_components; i++) {
             bld.MOV(offset(dest, bld, i),
                     retype(s.interp_reg(bld, base, comp + i, k), dest.type));
@@ -4155,19 +3892,9 @@ fs_nir_emit_fs_intrinsic(nir_to_elk_state &ntb,
       const unsigned comp = nir_intrinsic_component(instr);
       dest.type = ELK_REGISTER_TYPE_F;
 
-      /* Gfx20+ packs the plane parameters of a single logical
-       * input in a vec3 format instead of the previously used vec4
-       * format.
-       */
-      if (devinfo->ver >= 20) {
-         bld.MOV(offset(dest, bld, 0), s.interp_reg(bld, base, comp, 0));
-         bld.MOV(offset(dest, bld, 1), s.interp_reg(bld, base, comp, 2));
-         bld.MOV(offset(dest, bld, 2), s.interp_reg(bld, base, comp, 1));
-      } else {
-         bld.MOV(offset(dest, bld, 0), s.interp_reg(bld, base, comp, 3));
-         bld.MOV(offset(dest, bld, 1), s.interp_reg(bld, base, comp, 1));
-         bld.MOV(offset(dest, bld, 2), s.interp_reg(bld, base, comp, 0));
-      }
+      bld.MOV(offset(dest, bld, 0), s.interp_reg(bld, base, comp, 3));
+      bld.MOV(offset(dest, bld, 1), s.interp_reg(bld, base, comp, 1));
+      bld.MOV(offset(dest, bld, 2), s.interp_reg(bld, base, comp, 0));
 
       break;
    }
@@ -5194,58 +4921,29 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
 
       const fs_builder ubld = bld.group(8, 0);
 
-      if (devinfo->ver >= 11) {
-         if (tgm_fence || ugm_fence || urb_fence) {
-            fence_regs[fence_regs_count++] =
-               emit_fence(ubld, opcode, GFX7_SFID_DATAPORT_DATA_CACHE, 0,
-                          true /* commit_enable HSD ES # 1404612949 */,
-                          0 /* BTI = 0 means data cache */);
-         }
+      /* Prior to Icelake, they're all lumped into a single cache except on
+       * Ivy Bridge and Bay Trail where typed messages actually go through
+       * the render cache.  There, we need both fences because we may
+       * access storage images as either typed or untyped.
+       */
+      const bool render_fence = tgm_fence && devinfo->verx10 == 70;
 
-         if (slm_fence) {
-            assert(opcode == ELK_SHADER_OPCODE_MEMORY_FENCE);
-            fence_regs[fence_regs_count++] =
-               emit_fence(ubld, opcode, GFX7_SFID_DATAPORT_DATA_CACHE, 0,
-                          true /* commit_enable HSD ES # 1404612949 */,
-                          GFX7_BTI_SLM);
-         }
-      } else {
-         /* Prior to Icelake, they're all lumped into a single cache except on
-          * Ivy Bridge and Bay Trail where typed messages actually go through
-          * the render cache.  There, we need both fences because we may
-          * access storage images as either typed or untyped.
-          */
-         const bool render_fence = tgm_fence && devinfo->verx10 == 70;
+      const bool commit_enable = render_fence ||
+         instr->intrinsic == nir_intrinsic_end_invocation_interlock;
 
-         /* Simulation also complains on Gfx9 if we do not enable commit.
-          */
-         const bool commit_enable = render_fence ||
-            instr->intrinsic == nir_intrinsic_end_invocation_interlock ||
-            devinfo->ver == 9;
+      if (tgm_fence || ugm_fence || slm_fence || urb_fence) {
+         fence_regs[fence_regs_count++] =
+            emit_fence(ubld, opcode, GFX7_SFID_DATAPORT_DATA_CACHE, 0,
+                       commit_enable, 0 /* BTI */);
+      }
 
-         if (tgm_fence || ugm_fence || slm_fence || urb_fence) {
-            fence_regs[fence_regs_count++] =
-               emit_fence(ubld, opcode, GFX7_SFID_DATAPORT_DATA_CACHE, 0,
-                          commit_enable, 0 /* BTI */);
-         }
-
-         if (render_fence) {
-            fence_regs[fence_regs_count++] =
-               emit_fence(ubld, opcode, GFX6_SFID_DATAPORT_RENDER_CACHE, 0,
-                          commit_enable, /* bti */ 0);
-         }
+      if (render_fence) {
+         fence_regs[fence_regs_count++] =
+            emit_fence(ubld, opcode, GFX6_SFID_DATAPORT_RENDER_CACHE, 0,
+                       commit_enable, /* bti */ 0);
       }
 
       assert(fence_regs_count <= ARRAY_SIZE(fence_regs));
-
-      /* Be conservative in Gen11+ and always stall in a fence.  Since
-       * there are two different fences, and shader might want to
-       * synchronize between them.
-       *
-       * TODO: Use scope and visibility information for the barriers from NIR
-       * to make a better decision on whether we need to stall.
-       */
-      bool force_stall = devinfo->ver >= 11;
 
       /* There are four cases where we want to insert a stall:
        *
@@ -5261,13 +4959,9 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
        *  3. If we have no fences.  In this case, we need at least a
        *     scheduling barrier to keep the compiler from moving things
        *     around in an invalid way.
-       *
-       *  4. On Gen11+ and platforms with LSC, we have multiple fence types,
-       *     without further information about the fence, we need to force a
-       *     stall.
        */
       if (instr->intrinsic == nir_intrinsic_end_invocation_interlock ||
-          fence_regs_count != 1 || devinfo->has_lsc || force_stall) {
+          fence_regs_count != 1) {
          ubld.exec_all().group(1, 0).emit(
             ELK_FS_OPCODE_SCHEDULING_FENCE, ubld.null_reg_ud(),
             fence_regs, fence_regs_count);
@@ -5965,24 +5659,12 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
       assert(nir_intrinsic_align(instr) > 0);
       if (bit_size == 32 &&
           nir_intrinsic_align(instr) >= 4) {
-         if (devinfo->verx10 >= 125) {
-            assert(bit_size == 32 &&
-                   nir_intrinsic_align(instr) >= 4);
+         /* The offset for a DWORD scattered message is in dwords. */
+         srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
+            swizzle_nir_scratch_addr(ntb, bld, nir_addr, true);
 
-            srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
-               swizzle_nir_scratch_addr(ntb, bld, nir_addr, false);
-            srcs[SURFACE_LOGICAL_SRC_IMM_ARG] = elk_imm_ud(1);
-
-            bld.emit(ELK_SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL,
-                     dest, srcs, SURFACE_LOGICAL_NUM_SRCS);
-         } else {
-            /* The offset for a DWORD scattered message is in dwords. */
-            srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
-               swizzle_nir_scratch_addr(ntb, bld, nir_addr, true);
-
-            bld.emit(ELK_SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL,
-                     dest, srcs, SURFACE_LOGICAL_NUM_SRCS);
-         }
+         bld.emit(ELK_SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL,
+                  dest, srcs, SURFACE_LOGICAL_NUM_SRCS);
       } else {
          srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
             swizzle_nir_scratch_addr(ntb, bld, nir_addr, false);
@@ -6032,25 +5714,14 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
       assert(nir_intrinsic_align(instr) > 0);
       if (bit_size == 32 &&
           nir_intrinsic_align(instr) >= 4) {
-         if (devinfo->verx10 >= 125) {
-            srcs[SURFACE_LOGICAL_SRC_DATA] = data;
+         srcs[SURFACE_LOGICAL_SRC_DATA] = data;
 
-            srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
-               swizzle_nir_scratch_addr(ntb, bld, nir_addr, false);
-            srcs[SURFACE_LOGICAL_SRC_IMM_ARG] = elk_imm_ud(1);
+         /* The offset for a DWORD scattered message is in dwords. */
+         srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
+            swizzle_nir_scratch_addr(ntb, bld, nir_addr, true);
 
-            bld.emit(ELK_SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL,
-                     dest, srcs, SURFACE_LOGICAL_NUM_SRCS);
-         } else {
-            srcs[SURFACE_LOGICAL_SRC_DATA] = data;
-
-            /* The offset for a DWORD scattered message is in dwords. */
-            srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
-               swizzle_nir_scratch_addr(ntb, bld, nir_addr, true);
-
-            bld.emit(ELK_SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL,
-                     elk_fs_reg(), srcs, SURFACE_LOGICAL_NUM_SRCS);
-         }
+         bld.emit(ELK_SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL,
+                  elk_fs_reg(), srcs, SURFACE_LOGICAL_NUM_SRCS);
       } else {
          srcs[SURFACE_LOGICAL_SRC_DATA] = bld.vgrf(ELK_REGISTER_TYPE_UD);
          bld.MOV(srcs[SURFACE_LOGICAL_SRC_DATA], data);
@@ -6107,11 +5778,10 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
        * getting garbage in the second half.  Work around this by using a pair
        * of 1-wide MOVs and scattering the result.
        */
-      const fs_builder ubld = devinfo->ver >= 20 ? bld.exec_all() : ubld1;
+      const fs_builder ubld = ubld1;
       elk_fs_reg res1 = ubld.vgrf(ELK_REGISTER_TYPE_D);
       ubld.MOV(res1, elk_imm_d(0));
-      set_predicate(devinfo->ver >= 20 ? XE2_PREDICATE_ANY :
-                    s.dispatch_width == 8  ? ELK_PREDICATE_ALIGN1_ANY8H :
+      set_predicate(s.dispatch_width == 8  ? ELK_PREDICATE_ALIGN1_ANY8H :
                     s.dispatch_width == 16 ? ELK_PREDICATE_ALIGN1_ANY16H :
                                              ELK_PREDICATE_ALIGN1_ANY32H,
                     ubld.MOV(res1, elk_imm_d(-1)));
@@ -6141,11 +5811,10 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
        * getting garbage in the second half.  Work around this by using a pair
        * of 1-wide MOVs and scattering the result.
        */
-      const fs_builder ubld = devinfo->ver >= 20 ? bld.exec_all() : ubld1;
+      const fs_builder ubld = ubld1;
       elk_fs_reg res1 = ubld.vgrf(ELK_REGISTER_TYPE_D);
       ubld.MOV(res1, elk_imm_d(0));
-      set_predicate(devinfo->ver >= 20 ? XE2_PREDICATE_ALL :
-                    s.dispatch_width == 8  ? ELK_PREDICATE_ALIGN1_ALL8H :
+      set_predicate(s.dispatch_width == 8  ? ELK_PREDICATE_ALIGN1_ALL8H :
                     s.dispatch_width == 16 ? ELK_PREDICATE_ALIGN1_ALL16H :
                                              ELK_PREDICATE_ALIGN1_ALL32H,
                     ubld.MOV(res1, elk_imm_d(-1)));
@@ -6184,11 +5853,10 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
        * getting garbage in the second half.  Work around this by using a pair
        * of 1-wide MOVs and scattering the result.
        */
-      const fs_builder ubld = devinfo->ver >= 20 ? bld.exec_all() : ubld1;
+      const fs_builder ubld = ubld1;
       elk_fs_reg res1 = ubld.vgrf(ELK_REGISTER_TYPE_D);
       ubld.MOV(res1, elk_imm_d(0));
-      set_predicate(devinfo->ver >= 20 ? XE2_PREDICATE_ALL :
-                    s.dispatch_width == 8  ? ELK_PREDICATE_ALIGN1_ALL8H :
+      set_predicate(s.dispatch_width == 8  ? ELK_PREDICATE_ALIGN1_ALL8H :
                     s.dispatch_width == 16 ? ELK_PREDICATE_ALIGN1_ALL16H :
                                              ELK_PREDICATE_ALIGN1_ALL32H,
                     ubld.MOV(res1, elk_imm_d(-1)));
@@ -6605,136 +6273,6 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
       break;
    }
 
-   case nir_intrinsic_load_topology_id_intel: {
-      /* These move around basically every hardware generation, so don't
-       * do any unbounded checks and fail if the platform hasn't explicitly
-       * been enabled here.
-       */
-      assert(devinfo->ver >= 12 && devinfo->ver <= 20);
-
-      /* Here is what the layout of SR0 looks like on Gfx12
-       * https://gfxspecs.intel.com/Predator/Home/Index/47256
-       *   [13:11] : Slice ID.
-       *   [10:9]  : Dual-SubSlice ID
-       *   [8]     : SubSlice ID
-       *   [7]     : EUID[2] (aka EU Row ID)
-       *   [6]     : Reserved
-       *   [5:4]   : EUID[1:0]
-       *   [2:0]   : Thread ID
-       *
-       * Xe2: Engine 3D and GPGPU Programs, EU Overview, Registers and
-       * Register Regions, ARF Registers, State Register,
-       * https://gfxspecs.intel.com/Predator/Home/Index/56623
-       *   [15:11] : Slice ID.
-       *   [9:8]   : SubSlice ID
-       *   [6:4]   : EUID
-       *   [2:0]   : Thread ID
-       */
-      elk_fs_reg raw_id = bld.vgrf(ELK_REGISTER_TYPE_UD);
-      bld.emit(ELK_SHADER_OPCODE_READ_SR_REG, raw_id, elk_imm_ud(0));
-      switch (nir_intrinsic_base(instr)) {
-      case ELK_TOPOLOGY_ID_DSS:
-         if (devinfo->ver >= 20) {
-            /* Xe2+: 3D and GPGPU Programs, Shared Functions, Ray Tracing:
-             * https://gfxspecs.intel.com/Predator/Home/Index/56936
-             *
-             * Note: DSSID in all formulas below is a logical identifier of an
-             * XeCore (a value that goes from 0 to (number_of_slices *
-             * number_of_XeCores_per_slice -1). SW can get this value from
-             * either:
-             *
-             *  - Message Control Register LogicalSSID field (only in shaders
-             *    eligible for Mid-Thread Preemption).
-             *  - Calculated based of State Register with the following formula:
-             *    DSSID = StateRegister.SliceID * GT_ARCH_SS_PER_SLICE +
-             *    StateRRegister.SubSliceID where GT_SS_PER_SLICE is an
-             *    architectural parameter defined per product SKU.
-             *
-             * We are using the state register to calculate the DSSID.
-             */
-            elk_fs_reg slice_id = bld.vgrf(ELK_REGISTER_TYPE_UD);
-            elk_fs_reg subslice_id = bld.vgrf(ELK_REGISTER_TYPE_UD);
-            bld.AND(slice_id, raw_id, elk_imm_ud(INTEL_MASK(15, 11)));
-            bld.SHR(slice_id, slice_id, elk_imm_ud(11));
-
-            /* Assert that max subslices covers at least 2 bits that we use for
-             * subslices.
-             */
-            assert(devinfo->max_subslices_per_slice >= (1 << 2));
-            bld.MUL(slice_id, slice_id,
-                    elk_imm_ud(devinfo->max_subslices_per_slice));
-            bld.AND(subslice_id, raw_id, elk_imm_ud(INTEL_MASK(9, 8)));
-            bld.SHR(subslice_id, subslice_id, elk_imm_ud(8));
-            bld.ADD(retype(dest, ELK_REGISTER_TYPE_UD), slice_id,
-                    subslice_id);
-         } else {
-            bld.AND(raw_id, raw_id, elk_imm_ud(0x3fff));
-            /* Get rid of anything below dualsubslice */
-            bld.SHR(retype(dest, ELK_REGISTER_TYPE_UD), raw_id, elk_imm_ud(9));
-         }
-         break;
-      case ELK_TOPOLOGY_ID_EU_THREAD_SIMD: {
-         s.limit_dispatch_width(16, "Topology helper for Ray queries, "
-                              "not supported in SIMD32 mode.");
-         elk_fs_reg dst = retype(dest, ELK_REGISTER_TYPE_UD);
-
-         if (devinfo->ver >= 20) {
-            /* Xe2+: Graphics Engine, 3D and GPGPU Programs, Shared Functions
-             * Ray Tracing,
-             * https://gfxspecs.intel.com/Predator/Home/Index/56936
-             *
-             * SyncStackID = (EUID[2:0] <<  8) | (ThreadID[2:0] << 4) |
-             *               SIMDLaneID[3:0];
-             *
-             * This section just deals with the EUID part.
-             *
-             * The 3bit EU[2:0] we need to build for ray query memory addresses
-             * computations is a bit odd :
-             *
-             *   EU[2:0] = raw_id[6:4] (identified as EUID[2:0])
-             */
-            bld.AND(dst, raw_id, elk_imm_ud(INTEL_MASK(6, 4)));
-            bld.SHL(dst, dst, elk_imm_ud(4));
-         } else {
-            /* EU[3:0] << 7
-             *
-             * The 4bit EU[3:0] we need to build for ray query memory addresses
-             * computations is a bit odd :
-             *
-             *   EU[1:0] = raw_id[5:4] (identified as EUID[1:0])
-             *   EU[2]   = raw_id[8]   (identified as SubSlice ID)
-             *   EU[3]   = raw_id[7]   (identified as EUID[2] or Row ID)
-             */
-            elk_fs_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_UD);
-            bld.AND(tmp, raw_id, elk_imm_ud(INTEL_MASK(7, 7)));
-            bld.SHL(dst, tmp, elk_imm_ud(3));
-            bld.AND(tmp, raw_id, elk_imm_ud(INTEL_MASK(8, 8)));
-            bld.SHL(tmp, tmp, elk_imm_ud(1));
-            bld.OR(dst, dst, tmp);
-            bld.AND(tmp, raw_id, elk_imm_ud(INTEL_MASK(5, 4)));
-            bld.SHL(tmp, tmp, elk_imm_ud(3));
-            bld.OR(dst, dst, tmp);
-         }
-
-         /* ThreadID[2:0] << 4 (ThreadID comes from raw_id[2:0]) */
-         {
-            bld.AND(raw_id, raw_id, elk_imm_ud(INTEL_MASK(2, 0)));
-            bld.SHL(raw_id, raw_id, elk_imm_ud(4));
-            bld.OR(dst, dst, raw_id);
-         }
-
-         /* LaneID[0:3] << 0 (Use nir SYSTEM_VALUE_SUBGROUP_INVOCATION) */
-         assert(bld.dispatch_width() <= 16); /* Limit to 4 bits */
-         bld.ADD(dst, dst,
-                 ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION]);
-         break;
-      }
-      default:
-         unreachable("Invalid topology id type");
-      }
-      break;
-   }
-
    default:
 #ifndef NDEBUG
       assert(instr->intrinsic < nir_num_intrinsics);
@@ -6995,11 +6533,6 @@ fs_nir_emit_texture(nir_to_elk_state &ntb,
          if (elk_texture_offset(instr, i, &offset_bits)) {
             header_bits |= offset_bits;
          } else {
-            /* On gfx12.5+, if the offsets are not both constant and in the
-             * {-8,7} range, nir_lower_tex() will have already lowered the
-             * source offset. So we should never reach this point.
-             */
-            assert(devinfo->verx10 < 125);
             srcs[TEX_LOGICAL_SRC_TG4_OFFSET] =
                retype(src, ELK_REGISTER_TYPE_D);
          }
@@ -7121,17 +6654,7 @@ fs_nir_emit_texture(nir_to_elk_state &ntb,
       opcode = ELK_SHADER_OPCODE_TXF_LOGICAL;
       break;
    case nir_texop_txf_ms:
-      /* On Gfx12HP there is only CMS_W available. From the Bspec: Shared
-       * Functions - 3D Sampler - Messages - Message Format:
-       *
-       *   ld2dms REMOVEDBY(GEN:HAS:1406788836)
-       */
-      if (devinfo->verx10 >= 125)
-         opcode = ELK_SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL;
-      else if (devinfo->ver >= 9)
-         opcode = ELK_SHADER_OPCODE_TXF_CMS_W_LOGICAL;
-      else
-         opcode = ELK_SHADER_OPCODE_TXF_CMS_LOGICAL;
+      opcode = ELK_SHADER_OPCODE_TXF_CMS_LOGICAL;
       break;
    case nir_texop_txf_ms_mcs_intel:
       opcode = ELK_SHADER_OPCODE_TXF_MCS_LOGICAL;
@@ -7160,11 +6683,6 @@ fs_nir_emit_texture(nir_to_elk_state &ntb,
        */
       if (srcs[TEX_LOGICAL_SRC_MCS].file == ELK_IMMEDIATE_VALUE) {
          bld.MOV(dst, elk_imm_ud(0u));
-      } else if (devinfo->ver >= 9) {
-         elk_fs_reg tmp = s.vgrf(glsl_uint_type());
-         bld.OR(tmp, srcs[TEX_LOGICAL_SRC_MCS],
-                offset(srcs[TEX_LOGICAL_SRC_MCS], bld, 1));
-         bld.CMP(dst, tmp, elk_imm_ud(0u), ELK_CONDITIONAL_EQ);
       } else {
          bld.CMP(dst, srcs[TEX_LOGICAL_SRC_MCS], elk_imm_ud(0u),
                  ELK_CONDITIONAL_EQ);
@@ -7192,22 +6710,8 @@ fs_nir_emit_texture(nir_to_elk_state &ntb,
    inst->offset = header_bits;
 
    const unsigned dest_size = nir_tex_instr_dest_size(instr);
-   if (devinfo->ver >= 9 &&
-       instr->op != nir_texop_tg4 && instr->op != nir_texop_query_levels) {
-      unsigned write_mask = nir_def_components_read(&instr->def);
-      assert(write_mask != 0); /* dead code should have been eliminated */
-      if (instr->is_sparse) {
-         inst->size_written = (util_last_bit(write_mask) - 1) *
-                              inst->dst.component_size(inst->exec_size) +
-                              (reg_unit(devinfo) * REG_SIZE);
-      } else {
-         inst->size_written = util_last_bit(write_mask) *
-                              inst->dst.component_size(inst->exec_size);
-      }
-   } else {
-      inst->size_written = 4 * inst->dst.component_size(inst->exec_size) +
-                           (instr->is_sparse ? (reg_unit(devinfo) * REG_SIZE) : 0);
-   }
+   inst->size_written = 4 * inst->dst.component_size(inst->exec_size) +
+                        (instr->is_sparse ? (reg_unit(devinfo) * REG_SIZE) : 0);
 
    if (srcs[TEX_LOGICAL_SRC_SHADOW_C].file != BAD_FILE)
       inst->shadow_compare = true;
@@ -7234,21 +6738,17 @@ fs_nir_emit_texture(nir_to_elk_state &ntb,
 
    if (instr->op == nir_texop_query_levels) {
       /* # levels is in .w */
-      if (devinfo->ver <= 9) {
-         /**
-          * Wa_1940217:
-          *
-          * When a surface of type SURFTYPE_NULL is accessed by resinfo, the
-          * MIPCount returned is undefined instead of 0.
-          */
-         elk_fs_inst *mov = bld.MOV(bld.null_reg_d(), dst);
-         mov->conditional_mod = ELK_CONDITIONAL_NZ;
-         nir_dest[0] = bld.vgrf(ELK_REGISTER_TYPE_D);
-         elk_fs_inst *sel = bld.SEL(nir_dest[0], offset(dst, bld, 3), elk_imm_d(0));
-         sel->predicate = ELK_PREDICATE_NORMAL;
-      } else {
-         nir_dest[0] = offset(dst, bld, 3);
-      }
+      /**
+       * Wa_1940217:
+       *
+       * When a surface of type SURFTYPE_NULL is accessed by resinfo, the
+       * MIPCount returned is undefined instead of 0.
+       */
+      elk_fs_inst *mov = bld.MOV(bld.null_reg_d(), dst);
+      mov->conditional_mod = ELK_CONDITIONAL_NZ;
+      nir_dest[0] = bld.vgrf(ELK_REGISTER_TYPE_D);
+      elk_fs_inst *sel = bld.SEL(nir_dest[0], offset(dst, bld, 3), elk_imm_d(0));
+      sel->predicate = ELK_PREDICATE_NORMAL;
    } else if (instr->op == nir_texop_txs &&
               dest_size >= 3 && devinfo->ver < 7) {
       /* Gfx4-6 return 0 instead of 1 for single layer surfaces. */

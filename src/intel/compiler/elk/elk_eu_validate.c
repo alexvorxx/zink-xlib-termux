@@ -114,21 +114,12 @@ signed_type(unsigned type)
    }
 }
 
-static enum elk_reg_type
-inst_dst_type(const struct elk_isa_info *isa, const elk_inst *inst)
-{
-   const struct intel_device_info *devinfo = isa->devinfo;
-
-   return (devinfo->ver < 12 || !inst_is_send(isa, inst)) ?
-      elk_inst_dst_type(devinfo, inst) : ELK_REGISTER_TYPE_D;
-}
-
 static bool
 inst_is_raw_move(const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   unsigned dst_type = signed_type(inst_dst_type(isa, inst));
+   unsigned dst_type = signed_type(elk_inst_dst_type(devinfo, inst));
    unsigned src_type = signed_type(elk_inst_src0_type(devinfo, inst));
 
    if (elk_inst_src0_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
@@ -226,16 +217,6 @@ invalid_values(const struct elk_isa_info *isa, const elk_inst *inst)
    if (error_msg.str)
       return error_msg;
 
-   if (devinfo->ver >= 12) {
-      unsigned group_size = 1 << elk_inst_exec_size(devinfo, inst);
-      unsigned qtr_ctrl = elk_inst_qtr_control(devinfo, inst);
-      unsigned nib_ctrl = elk_inst_nib_control(devinfo, inst);
-
-      unsigned chan_off = (qtr_ctrl * 2 + nib_ctrl) << 2;
-      ERROR_IF(chan_off % group_size != 0,
-               "The execution size must be a factor of the chosen offset");
-   }
-
    if (inst_is_send(isa, inst))
       return error_msg;
 
@@ -298,19 +279,6 @@ sources_not_null(const struct elk_isa_info *isa,
 
    if (num_sources == 2)
       ERROR_IF(src1_is_null(devinfo, inst), "src1 is null");
-
-   return error_msg;
-}
-
-static struct string
-alignment_supported(const struct elk_isa_info *isa,
-                    const elk_inst *inst)
-{
-   const struct intel_device_info *devinfo = isa->devinfo;
-   struct string error_msg = { .str = NULL, .len = 0 };
-
-   ERROR_IF(devinfo->ver >= 11 && elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_16,
-            "Align16 not supported");
 
    return error_msg;
 }
@@ -437,7 +405,7 @@ execution_type(const struct elk_isa_info *isa, const elk_inst *inst)
    /* Execution data type is independent of destination data type, except in
     * mixed F/HF instructions.
     */
-   enum elk_reg_type dst_exec_type = inst_dst_type(isa, inst);
+   enum elk_reg_type dst_exec_type = elk_inst_dst_type(devinfo, inst);
 
    src0_exec_type = execution_type_for_type(elk_inst_src0_type(devinfo, inst));
    if (num_sources == 1) {
@@ -635,7 +603,7 @@ general_restrictions_based_on_operand_types(const struct elk_isa_info *isa,
    if (num_sources == 3) {
       dst_type = elk_inst_3src_a16_dst_type(devinfo, inst);
    } else {
-      dst_type = inst_dst_type(isa, inst);
+      dst_type = elk_inst_dst_type(devinfo, inst);
    }
 
    ERROR_IF(dst_type == ELK_REGISTER_TYPE_DF &&
@@ -695,8 +663,8 @@ general_restrictions_based_on_operand_types(const struct elk_isa_info *isa,
 
    unsigned dst_stride = STRIDE(elk_inst_dst_hstride(devinfo, inst));
    bool dst_type_is_byte =
-      inst_dst_type(isa, inst) == ELK_REGISTER_TYPE_B ||
-      inst_dst_type(isa, inst) == ELK_REGISTER_TYPE_UB;
+      elk_inst_dst_type(devinfo, inst) == ELK_REGISTER_TYPE_B ||
+      elk_inst_dst_type(devinfo, inst) == ELK_REGISTER_TYPE_UB;
 
    if (dst_type_is_byte) {
       if (is_packed(exec_size * dst_stride, exec_size, dst_stride)) {
@@ -814,8 +782,7 @@ general_restrictions_based_on_operand_types(const struct elk_isa_info *isa,
             ERROR_IF(subreg % 4 != 0,
                      "Conversions between integer and half-float must be "
                      "aligned to a DWord on the destination");
-         } else if ((devinfo->platform == INTEL_PLATFORM_CHV ||
-                     devinfo->ver >= 9) &&
+         } else if (devinfo->platform == INTEL_PLATFORM_CHV &&
                     dst_type == ELK_REGISTER_TYPE_HF) {
             unsigned subreg = elk_inst_dst_da1_subreg_nr(devinfo, inst);
             ERROR_IF(dst_stride != 2 &&
@@ -834,7 +801,7 @@ general_restrictions_based_on_operand_types(const struct elk_isa_info *isa,
     */
    bool validate_dst_size_and_exec_size_ratio =
       !is_mixed_float(isa, inst) ||
-      !(devinfo->platform == INTEL_PLATFORM_CHV || devinfo->ver >= 9);
+      !(devinfo->platform == INTEL_PLATFORM_CHV);
 
    if (validate_dst_size_and_exec_size_ratio &&
        exec_type_size > dst_type_size) {
@@ -1385,7 +1352,7 @@ region_alignment_rules(const struct elk_isa_info *isa,
       return error_msg;
 
    unsigned stride = STRIDE(elk_inst_dst_hstride(devinfo, inst));
-   enum elk_reg_type dst_type = inst_dst_type(isa, inst);
+   enum elk_reg_type dst_type = elk_inst_dst_type(devinfo, inst);
    unsigned element_size = elk_reg_type_to_size(dst_type);
    unsigned subreg = elk_inst_dst_da1_subreg_nr(devinfo, inst);
    unsigned offset = ((exec_size - 1) * stride * element_size) + subreg;
@@ -1602,7 +1569,7 @@ region_alignment_rules(const struct elk_isa_info *isa,
     * for src1.
     */
    if (devinfo->ver <= 7 && dst_regs == 2) {
-      enum elk_reg_type dst_type = inst_dst_type(isa, inst);
+      enum elk_reg_type dst_type = elk_inst_dst_type(devinfo, inst);
       bool dst_is_packed_dword =
          is_packed(exec_size * stride, exec_size, stride) &&
          elk_reg_type_to_size(dst_type) == 4;
@@ -1646,8 +1613,7 @@ vector_immediate_restrictions(const struct elk_isa_info *isa,
    unsigned num_sources = elk_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   if (num_sources == 3 || num_sources == 0 ||
-       (devinfo->ver >= 12 && inst_is_send(isa, inst)))
+   if (num_sources == 3 || num_sources == 0)
       return (struct string){};
 
    unsigned file = num_sources == 1 ?
@@ -1656,7 +1622,7 @@ vector_immediate_restrictions(const struct elk_isa_info *isa,
    if (file != ELK_IMMEDIATE_VALUE)
       return (struct string){};
 
-   enum elk_reg_type dst_type = inst_dst_type(isa, inst);
+   enum elk_reg_type dst_type = elk_inst_dst_type(devinfo, inst);
    unsigned dst_type_size = elk_reg_type_to_size(dst_type);
    unsigned dst_subreg = elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1 ?
                          elk_inst_dst_da1_subreg_nr(devinfo, inst) : 0;
@@ -1718,7 +1684,7 @@ special_requirements_for_handling_double_precision_data_types(
    unsigned exec_type_size = elk_reg_type_to_size(exec_type);
 
    enum elk_reg_file dst_file = elk_inst_dst_reg_file(devinfo, inst);
-   enum elk_reg_type dst_type = inst_dst_type(isa, inst);
+   enum elk_reg_type dst_type = elk_inst_dst_type(devinfo, inst);
    unsigned dst_type_size = elk_reg_type_to_size(dst_type);
    unsigned dst_hstride = STRIDE(elk_inst_dst_hstride(devinfo, inst));
    unsigned dst_reg = elk_inst_dst_da_reg_nr(devinfo, inst);
@@ -1836,59 +1802,6 @@ special_requirements_for_handling_double_precision_data_types(
                   "Architecture registers cannot be used when the execution "
                   "type is 64-bit");
       }
-
-      /* From the hardware spec section "Register Region Restrictions":
-       *
-       * There are two rules:
-       *
-       * "In case of all floating point data types used in destination:" and
-       *
-       * "In case where source or destination datatype is 64b or operation is
-       *  integer DWord multiply:"
-       *
-       * both of which list the same restrictions:
-       *
-       *  "1. Register Regioning patterns where register data bit location
-       *      of the LSB of the channels are changed between source and
-       *      destination are not supported on Src0 and Src1 except for
-       *      broadcast of a scalar.
-       *
-       *   2. Explicit ARF registers except null and accumulator must not be
-       *      used."
-       */
-      if (devinfo->verx10 >= 125 &&
-          (elk_reg_type_is_floating_point(dst_type) ||
-           is_double_precision)) {
-         ERROR_IF(!is_scalar_region &&
-                  ELK_ADDRESS_REGISTER_INDIRECT_REGISTER != address_mode &&
-                  (!is_linear(vstride, width, hstride) ||
-                   src_stride != dst_stride ||
-                   subreg != dst_subreg),
-                  "Register Regioning patterns where register data bit "
-                  "location of the LSB of the channels are changed between "
-                  "source and destination are not supported except for "
-                  "broadcast of a scalar.");
-
-         ERROR_IF((address_mode == ELK_ADDRESS_DIRECT && file == ELK_ARCHITECTURE_REGISTER_FILE &&
-                   reg != ELK_ARF_NULL && !(reg >= ELK_ARF_ACCUMULATOR && reg < ELK_ARF_FLAG)) ||
-                  (dst_file == ELK_ARCHITECTURE_REGISTER_FILE &&
-                   dst_reg != ELK_ARF_NULL && dst_reg != ELK_ARF_ACCUMULATOR),
-                  "Explicit ARF registers except null and accumulator must not "
-                  "be used.");
-      }
-
-      /* From the hardware spec section "Register Region Restrictions":
-       *
-       * "Vx1 and VxH indirect addressing for Float, Half-Float, Double-Float and
-       *  Quad-Word data must not be used."
-       */
-      if (devinfo->verx10 >= 125 &&
-          (elk_reg_type_is_floating_point(type) || type_sz(type) == 8)) {
-         ERROR_IF(address_mode == ELK_ADDRESS_REGISTER_INDIRECT_REGISTER &&
-                  vstride == ELK_VERTICAL_STRIDE_ONE_DIMENSIONAL,
-                  "Vx1 and VxH indirect addressing for Float, Half-Float, "
-                  "Double-Float and Quad-Word data must not be used");
-      }
    }
 
    /* The PRMs say that for BDW, SKL:
@@ -1936,29 +1849,6 @@ instruction_restrictions(const struct elk_isa_info *isa,
 {
    const struct intel_device_info *devinfo = isa->devinfo;
    struct string error_msg = { .str = NULL, .len = 0 };
-
-   /* From Wa_1604601757:
-    *
-    * "When multiplying a DW and any lower precision integer, source modifier
-    *  is not supported."
-    */
-   if (devinfo->ver >= 12 &&
-       elk_inst_opcode(isa, inst) == ELK_OPCODE_MUL) {
-      enum elk_reg_type exec_type = execution_type(isa, inst);
-      const bool src0_valid = type_sz(elk_inst_src0_type(devinfo, inst)) == 4 ||
-         elk_inst_src0_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE ||
-         !(elk_inst_src0_negate(devinfo, inst) ||
-           elk_inst_src0_abs(devinfo, inst));
-      const bool src1_valid = type_sz(elk_inst_src1_type(devinfo, inst)) == 4 ||
-         elk_inst_src1_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE ||
-         !(elk_inst_src1_negate(devinfo, inst) ||
-           elk_inst_src1_abs(devinfo, inst));
-
-      ERROR_IF(!elk_reg_type_is_floating_point(exec_type) &&
-               type_sz(exec_type) == 4 && !(src0_valid && src1_valid),
-               "When multiplying a DW and any lower precision integer, source "
-               "modifier is not supported.");
-   }
 
    if (elk_inst_opcode(isa, inst) == ELK_OPCODE_CMP ||
        elk_inst_opcode(isa, inst) == ELK_OPCODE_CMPN) {
@@ -2017,7 +1907,7 @@ instruction_restrictions(const struct elk_isa_info *isa,
    if (elk_inst_opcode(isa, inst) == ELK_OPCODE_MUL) {
       const enum elk_reg_type src0_type = elk_inst_src0_type(devinfo, inst);
       const enum elk_reg_type src1_type = elk_inst_src1_type(devinfo, inst);
-      const enum elk_reg_type dst_type = inst_dst_type(isa, inst);
+      const enum elk_reg_type dst_type = elk_inst_dst_type(devinfo, inst);
 
       if (devinfo->ver == 6) {
          /* Page 223 of the Sandybridge PRM volume 4 part 2 says:
@@ -2314,7 +2204,7 @@ send_descriptor_restrictions(const struct elk_isa_info *isa,
       return error_msg;
    }
 
-   if (elk_inst_sfid(devinfo, inst) == ELK_SFID_URB && devinfo->ver < 20) {
+   if (elk_inst_sfid(devinfo, inst) == ELK_SFID_URB) {
       /* Gfx4 doesn't have a "header present" bit in the SEND message. */
       ERROR_IF(devinfo->ver > 4 && !elk_inst_header_present(devinfo, inst),
                "Header must be present for all URB messages.");
@@ -2405,7 +2295,6 @@ elk_validate_instruction(const struct elk_isa_info *isa,
       if (error_msg.str == NULL) {
          CHECK(sources_not_null);
          CHECK(send_restrictions);
-         CHECK(alignment_supported);
          CHECK(general_restrictions_based_on_operand_types);
          CHECK(general_restrictions_on_region_parameters);
          CHECK(special_restrictions_for_mixed_float_mode);

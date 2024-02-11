@@ -3857,8 +3857,7 @@ zink_flush(struct pipe_context *pctx,
       }
    }
 
-   /* TODO: if swapchains gain timeline semaphore semantics, `flags` can be eliminated and no-op fence can return timeline id */
-   if (!batch->has_work && flags) {
+   if (!batch->has_work) {
        if (pfence) {
           /* reuse last fence */
           fence = ctx->last_fence;

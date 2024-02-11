@@ -127,16 +127,8 @@ namespace {
          sc(elk_has_bank_conflict(isa, inst) ? sd : 0),
          desc(inst->desc), sfid(inst->sfid)
       {
-         /* We typically want the maximum source size, except for split send
-          * messages which require the total size.
-          */
-         if (inst->opcode == ELK_SHADER_OPCODE_SEND) {
-            ss = DIV_ROUND_UP(inst->size_read(2), REG_SIZE) +
-                 DIV_ROUND_UP(inst->size_read(3), REG_SIZE);
-         } else {
-            for (unsigned i = 0; i < inst->sources; i++)
-               ss = MAX2(ss, DIV_ROUND_UP(inst->size_read(i), REG_SIZE));
-         }
+         for (unsigned i = 0; i < inst->sources; i++)
+            ss = MAX2(ss, DIV_ROUND_UP(inst->size_read(i), REG_SIZE));
 
          /* Convert the execution size to GRF units. */
          sx = DIV_ROUND_UP(inst->exec_size * type_sz(tx), REG_SIZE);

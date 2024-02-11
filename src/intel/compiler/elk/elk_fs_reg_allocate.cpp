@@ -615,7 +615,7 @@ elk_fs_reg_alloc::setup_inst_interference(const elk_fs_inst *inst)
     */
    if (inst->eot) {
       const int vgrf = inst->opcode == ELK_SHADER_OPCODE_SEND ?
-                       inst->src[2].nr : inst->src[0].nr;
+                       inst->src[1].nr : inst->src[0].nr;
       const int size = DIV_ROUND_UP(fs->alloc.sizes[vgrf], reg_unit(devinfo));
       int reg = ELK_MAX_GRF - size;
 
@@ -811,9 +811,8 @@ elk_fs_reg_alloc::emit_unspill(const fs_builder &bld,
          _mesa_set_add(spill_insts, unspill_inst);
 
          const unsigned bti = GFX8_BTI_STATELESS_NON_COHERENT;
-         const elk_fs_reg ex_desc = elk_imm_ud(0);
 
-         elk_fs_reg srcs[] = { elk_imm_ud(0), ex_desc, header };
+         elk_fs_reg srcs[] = { elk_imm_ud(0), header };
          unspill_inst = bld.emit(ELK_SHADER_OPCODE_SEND, dst,
                                  srcs, ARRAY_SIZE(srcs));
          unspill_inst->mlen = 1;

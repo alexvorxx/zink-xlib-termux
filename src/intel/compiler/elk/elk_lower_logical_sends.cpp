@@ -64,12 +64,10 @@ lower_urb_read_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    inst->mlen = header_size;
    inst->send_is_volatile = true;
 
-   inst->resize_sources(4);
+   inst->resize_sources(2);
 
    inst->src[0] = elk_imm_ud(0); /* desc */
-   inst->src[1] = elk_imm_ud(0); /* ex_desc */
-   inst->src[2] = payload;
-   inst->src[3] = elk_null_reg();
+   inst->src[1] = payload;
 }
 
 static void
@@ -119,12 +117,10 @@ lower_urb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    inst->mlen = length;
    inst->send_has_side_effects = true;
 
-   inst->resize_sources(4);
+   inst->resize_sources(2);
 
    inst->src[0] = elk_imm_ud(0); /* desc */
-   inst->src[1] = elk_imm_ud(0); /* ex_desc */
-   inst->src[2] = payload;
-   inst->src[3] = elk_null_reg();
+   inst->src[1] = payload;
 }
 
 static void
@@ -377,11 +373,10 @@ lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
       }
 
       inst->opcode = ELK_SHADER_OPCODE_SEND;
-      inst->resize_sources(3);
+      inst->resize_sources(2);
       inst->sfid = GFX6_SFID_DATAPORT_RENDER_CACHE;
       inst->src[0] = desc;
-      inst->src[1] = elk_imm_ud(0);
-      inst->src[2] = payload;
+      inst->src[1] = payload;
       inst->mlen = regs_written(load);
       inst->header_size = header_size;
       inst->check_tdr = true;
@@ -1102,7 +1097,6 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
                                     simd_mode,
                                     0 /* return_format unused on gfx7+ */);
       inst->src[0] = elk_imm_ud(0);
-      inst->src[1] = elk_imm_ud(0);
    } else {
       assert(surface_handle.file == BAD_FILE);
 
@@ -1131,11 +1125,10 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
       ubld.AND(desc, desc, elk_imm_ud(0xfff));
 
       inst->src[0] = component(desc, 0);
-      inst->src[1] = elk_imm_ud(0); /* ex_desc */
    }
 
-   inst->src[2] = src_payload;
-   inst->resize_sources(3);
+   inst->src[1] = src_payload;
+   inst->resize_sources(2);
 
    if (inst->eot) {
       /* EOT sampler messages don't make sense to split because it would
@@ -1306,7 +1299,6 @@ setup_surface_descriptors(const fs_builder &bld, elk_fs_inst *inst, uint32_t des
    if (surface.file == IMM) {
       inst->desc = desc | (surface.ud & 0xff);
       inst->src[0] = elk_imm_ud(0);
-      inst->src[1] = elk_imm_ud(0); /* ex_desc */
    } else {
       assert(surface_handle.file == BAD_FILE);
 
@@ -1315,7 +1307,6 @@ setup_surface_descriptors(const fs_builder &bld, elk_fs_inst *inst, uint32_t des
       elk_fs_reg tmp = ubld.vgrf(ELK_REGISTER_TYPE_UD);
       ubld.AND(tmp, surface, elk_imm_ud(0xff));
       inst->src[0] = component(tmp, 0);
-      inst->src[1] = elk_imm_ud(0); /* ex_desc */
    }
 }
 
@@ -1539,11 +1530,10 @@ lower_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    inst->sfid = sfid;
    setup_surface_descriptors(bld, inst, desc, surface, surface_handle);
 
-   inst->resize_sources(4);
+   inst->resize_sources(2);
 
    /* Finally, the payload */
-   inst->src[2] = payload;
-   inst->src[3] = payload2;
+   inst->src[1] = payload;
 }
 
 static void
@@ -1606,10 +1596,9 @@ lower_surface_block_logical_send(const fs_builder &bld, elk_fs_inst *inst)
                                                     arg.ud, write);
    setup_surface_descriptors(bld, inst, desc, surface, surface_handle);
 
-   inst->resize_sources(4);
+   inst->resize_sources(2);
 
-   inst->src[2] = header;
-   inst->src[3] = data;
+   inst->src[1] = header;
 }
 
 static void
@@ -1733,11 +1722,9 @@ lower_a64_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    /* Set up SFID and descriptors */
    inst->sfid = HSW_SFID_DATAPORT_DATA_CACHE_1;
    inst->desc = desc;
-   inst->resize_sources(4);
+   inst->resize_sources(2);
    inst->src[0] = elk_imm_ud(0); /* desc */
-   inst->src[1] = elk_imm_ud(0); /* ex_desc */
-   inst->src[2] = payload;
-   inst->src[3] = payload2;
+   inst->src[1] = payload;
 }
 
 static void
@@ -1765,8 +1752,8 @@ lower_varying_pull_constant_logical_send(const fs_builder &bld, elk_fs_inst *ins
       inst->mlen = inst->exec_size / 8;
       inst->resize_sources(3);
 
-      /* src[0] & src[1] are filled by setup_surface_descriptors() */
-      inst->src[2] = ubo_offset; /* payload */
+      /* src[0] is filled by setup_surface_descriptors() */
+      inst->src[1] = ubo_offset; /* payload */
 
       if (compiler->indirect_ubos_use_sampler) {
          const unsigned simd_mode =
@@ -1812,8 +1799,8 @@ lower_varying_pull_constant_logical_send(const fs_builder &bld, elk_fs_inst *ins
             bld.emit(*inst);
 
             /* Offset the source */
-            inst->src[2] = bld.vgrf(ELK_REGISTER_TYPE_UD);
-            bld.ADD(inst->src[2], ubo_offset, elk_imm_ud(c * 4));
+            inst->src[1] = bld.vgrf(ELK_REGISTER_TYPE_UD);
+            bld.ADD(inst->src[1], ubo_offset, elk_imm_ud(c * 4));
 
             /* Offset the destination */
             inst->dst = offset(inst->dst, bld, 1);
@@ -1986,10 +1973,9 @@ lower_interpolator_logical_send(const fs_builder &bld, elk_fs_inst *inst,
    inst->send_has_side_effects = false;
    inst->send_is_volatile = false;
 
-   inst->resize_sources(3);
+   inst->resize_sources(2);
    inst->src[0] = component(desc, 0);
-   inst->src[1] = elk_imm_ud(0); /* ex_desc */
-   inst->src[2] = payload;
+   inst->src[1] = payload;
 }
 
 static void
@@ -2008,10 +1994,10 @@ lower_get_buffer_size(const fs_builder &bld, elk_fs_inst *inst)
 
    inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = inst->exec_size / 8;
-   inst->resize_sources(3);
+   inst->resize_sources(2);
 
-   /* src[0] & src[1] are filled by setup_surface_descriptors() */
-   inst->src[2] = lod;
+   /* src[0] is filled by setup_surface_descriptors() */
+   inst->src[1] = lod;
 
    const uint32_t return_format = devinfo->ver >= 8 ?
       GFX8_SAMPLER_RETURN_FORMAT_32BITS : ELK_SAMPLER_RETURN_FORMAT_SINT32;
@@ -2247,12 +2233,11 @@ elk_fs_visitor::lower_uniform_pull_constant_loads()
             elk_dp_oword_block_rw_desc(devinfo, true /* align_16B */,
                                        size_B.ud / 4, false /* write */);
 
-         inst->resize_sources(4);
+         inst->resize_sources(2);
 
          setup_surface_descriptors(ubld, inst, desc, surface, surface_handle);
 
-         inst->src[2] = header;
-         inst->src[3] = elk_fs_reg(); /* unused for reads */
+         inst->src[1] = header;
 
          invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
       } else {

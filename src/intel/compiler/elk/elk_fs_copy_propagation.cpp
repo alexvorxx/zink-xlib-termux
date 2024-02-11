@@ -715,12 +715,8 @@ try_copy_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
        * allow this if the registers aren't too large.
        */
       if (inst->opcode == ELK_SHADER_OPCODE_SEND && entry->src.file == VGRF) {
-         int other_src = arg == 2 ? 3 : 2;
-         unsigned other_size = inst->src[other_src].file == VGRF ?
-                               alloc.sizes[inst->src[other_src].nr] :
-                               inst->size_read(other_src);
          unsigned prop_src_size = alloc.sizes[entry->src.nr];
-         if (other_size + prop_src_size > 15)
+         if (prop_src_size > 15)
             return false;
       }
    }

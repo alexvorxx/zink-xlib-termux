@@ -280,7 +280,7 @@ elk_fs_inst::is_control_source(unsigned arg) const
       return arg == 1 || arg == 2;
 
    case ELK_SHADER_OPCODE_SEND:
-      return arg == 0 || arg == 1;
+      return arg == 0;
 
    default:
       return false;
@@ -320,7 +320,7 @@ elk_fs_inst::is_payload(unsigned arg) const
       return arg == 0;
 
    case ELK_SHADER_OPCODE_SEND:
-      return arg == 2 || arg == 3;
+      return arg == 1;
 
    default:
       return false;
@@ -848,7 +848,7 @@ elk_fs_inst::size_read(int arg) const
 {
    switch (opcode) {
    case ELK_SHADER_OPCODE_SEND:
-      if (arg == 2) {
+      if (arg == 1) {
          return mlen * REG_SIZE;
       }
       break;
@@ -3118,11 +3118,10 @@ elk_fs_visitor::emit_repclear_shader()
 
       if (devinfo->ver >= 7) {
          write = bld.emit(ELK_SHADER_OPCODE_SEND);
-         write->resize_sources(3);
+         write->resize_sources(2);
          write->sfid = GFX6_SFID_DATAPORT_RENDER_CACHE;
          write->src[0] = elk_imm_ud(0);
-         write->src[1] = elk_imm_ud(0);
-         write->src[2] = i == 0 ? color_output : header;
+         write->src[1] = i == 0 ? color_output : header;
          write->check_tdr = true;
          write->send_has_side_effects = true;
          write->desc = elk_fb_write_desc(devinfo, i,

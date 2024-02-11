@@ -95,7 +95,7 @@ elk_fs_visitor::validate()
    foreach_block_and_inst (block, elk_fs_inst, inst, cfg) {
       switch (inst->opcode) {
       case ELK_SHADER_OPCODE_SEND:
-         fsv_assert(is_uniform(inst->src[0]) && is_uniform(inst->src[1]));
+         fsv_assert(is_uniform(inst->src[0]));
          break;
 
       case ELK_OPCODE_MOV:

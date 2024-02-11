@@ -1950,7 +1950,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          break;
 
       case ELK_SHADER_OPCODE_SEND:
-         generate_send(inst, dst, src[0], src[2]);
+         generate_send(inst, dst, src[0], src[1]);
          send_count++;
          break;
 

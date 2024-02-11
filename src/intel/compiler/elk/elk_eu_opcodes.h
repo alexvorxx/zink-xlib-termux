@@ -119,9 +119,8 @@ enum elk_opcode {
    ELK_SHADER_OPCODE_COS,
 
    /**
-    * A generic "send" opcode.  The first two sources are the message
-    * descriptor and extended message descriptor respectively.  The third
-    * and optional fourth sources are the message payload
+    * A generic "send" opcode.  The first source is the descriptor and
+    * the second source is the message payload.
     */
    ELK_SHADER_OPCODE_SEND,
 

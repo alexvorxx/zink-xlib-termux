@@ -185,7 +185,6 @@ instructions_match(elk_fs_inst *a, elk_fs_inst *b, bool *negate)
           a->dst.type == b->dst.type &&
           a->offset == b->offset &&
           a->mlen == b->mlen &&
-          a->ex_mlen == b->ex_mlen &&
           a->sfid == b->sfid &&
           a->desc == b->desc &&
           a->size_written == b->size_written &&

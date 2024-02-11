@@ -158,12 +158,10 @@ struct elk_backend_instruction {
 
    uint32_t offset; /**< spill/unspill offset or texture offset bitfield */
    uint8_t mlen; /**< SEND message length */
-   uint8_t ex_mlen; /**< SENDS extended message length */
    int8_t base_mrf; /**< First MRF in the SEND message, if mlen is nonzero. */
    uint8_t target; /**< MRT target. */
    uint8_t sfid; /**< SFID for SEND instructions */
    uint32_t desc; /**< SEND[S] message descriptor immediate */
-   uint32_t ex_desc; /**< SEND[S] extended message descriptor immediate */
    unsigned size_written; /**< Data written to the destination register in bytes. */
 
    enum elk_opcode opcode; /* ELK_OPCODE_* or ELK_FS_OPCODE_* */

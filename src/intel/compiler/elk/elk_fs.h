@@ -467,9 +467,7 @@ private:
    void generate_send(elk_fs_inst *inst,
                       struct elk_reg dst,
                       struct elk_reg desc,
-                      struct elk_reg ex_desc,
-                      struct elk_reg payload,
-                      struct elk_reg payload2);
+                      struct elk_reg payload);
    void generate_fb_write(elk_fs_inst *inst, struct elk_reg payload);
    void generate_cs_terminate(elk_fs_inst *inst, struct elk_reg payload);
    void generate_barrier(elk_fs_inst *inst, struct elk_reg src);

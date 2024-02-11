@@ -604,25 +604,6 @@ elk_fs_reg_alloc::setup_inst_interference(const elk_fs_inst *inst)
                                      grf127_send_hack_node);
    }
 
-   /* From the Skylake PRM Vol. 2a docs for sends:
-    *
-    *    "It is required that the second block of GRFs does not overlap with
-    *    the first block."
-    *
-    * Normally, this is taken care of by fixup_sends_duplicate_payload() but
-    * in the case where one of the registers is an undefined value, the
-    * register allocator may decide that they don't interfere even though
-    * they're used as sources in the same instruction.  We also need to add
-    * interference here.
-    */
-   if (devinfo->ver >= 9) {
-      if (inst->opcode == ELK_SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
-          inst->src[2].file == VGRF && inst->src[3].file == VGRF &&
-          inst->src[2].nr != inst->src[3].nr)
-         ra_add_node_interference(g, first_vgrf_node + inst->src[2].nr,
-                                     first_vgrf_node + inst->src[3].nr);
-   }
-
    /* When we do send-from-GRF for FB writes, we need to ensure that the last
     * write instruction sends from a high register.  This is because the
     * vertex fetcher wants to start filling the low payload registers while
@@ -652,12 +633,6 @@ elk_fs_reg_alloc::setup_inst_interference(const elk_fs_inst *inst)
       }
 
       ra_set_node_reg(g, first_vgrf_node + vgrf, reg);
-
-      if (inst->ex_mlen > 0) {
-         const int vgrf = inst->src[3].nr;
-         reg -= DIV_ROUND_UP(fs->alloc.sizes[vgrf], reg_unit(devinfo));
-         ra_set_node_reg(g, first_vgrf_node + vgrf, reg);
-      }
    }
 }
 
@@ -880,7 +855,6 @@ elk_fs_reg_alloc::emit_spill(const fs_builder &bld,
                          elk_fs_reg src,
                          uint32_t spill_offset, unsigned count, int ip)
 {
-   const intel_device_info *devinfo = bld.shader->devinfo;
    const unsigned reg_size = src.component_size(bld.dispatch_width()) /
                              REG_SIZE;
    assert(count % reg_size == 0);
@@ -888,39 +862,11 @@ elk_fs_reg_alloc::emit_spill(const fs_builder &bld,
    for (unsigned i = 0; i < count / reg_size; i++) {
       ++stats->spill_count;
 
-      elk_fs_inst *spill_inst;
-      if (devinfo->ver >= 9) {
-         elk_fs_reg header = this->scratch_header;
-         fs_builder ubld = bld.exec_all().group(1, 0);
-         assert(spill_offset % 16 == 0);
-         spill_inst = ubld.MOV(component(header, 2),
-                               elk_imm_ud(spill_offset / 16));
-         _mesa_set_add(spill_insts, spill_inst);
-
-         const unsigned bti = GFX8_BTI_STATELESS_NON_COHERENT;
-         const elk_fs_reg ex_desc = elk_imm_ud(0);
-
-         elk_fs_reg srcs[] = { elk_imm_ud(0), ex_desc, header, src };
-         spill_inst = bld.emit(ELK_SHADER_OPCODE_SEND, bld.null_reg_f(),
-                               srcs, ARRAY_SIZE(srcs));
-         spill_inst->mlen = 1;
-         spill_inst->ex_mlen = reg_size;
-         spill_inst->size_written = 0;
-         spill_inst->header_size = 1;
-         spill_inst->send_has_side_effects = true;
-         spill_inst->send_is_volatile = false;
-         spill_inst->sfid = GFX7_SFID_DATAPORT_DATA_CACHE;
-         spill_inst->desc =
-            elk_dp_desc(devinfo, bti,
-                        GFX6_DATAPORT_WRITE_MESSAGE_OWORD_BLOCK_WRITE,
-                        ELK_DATAPORT_OWORD_BLOCK_DWORDS(reg_size * 8));
-      } else {
-         spill_inst = bld.emit(ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE,
-                               bld.null_reg_f(), src);
-         spill_inst->offset = spill_offset;
-         spill_inst->mlen = 1 + reg_size; /* header, value */
-         spill_inst->base_mrf = spill_base_mrf(bld.shader);
-      }
+      elk_fs_inst *spill_inst = bld.emit(ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE,
+                                         bld.null_reg_f(), src);
+      spill_inst->offset = spill_offset;
+      spill_inst->mlen = 1 + reg_size; /* header, value */
+      spill_inst->base_mrf = spill_base_mrf(bld.shader);
       _mesa_set_add(spill_insts, spill_inst);
 
       src.offset += reg_size * REG_SIZE;

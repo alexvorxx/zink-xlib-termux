@@ -850,8 +850,6 @@ elk_fs_inst::size_read(int arg) const
    case ELK_SHADER_OPCODE_SEND:
       if (arg == 2) {
          return mlen * REG_SIZE;
-      } else if (arg == 3) {
-         return ex_mlen * REG_SIZE;
       }
       break;
 
@@ -2731,10 +2729,6 @@ elk_fs_visitor::opt_zero_samples()
        * in cube and cube arrays.
        */
       if (send->keep_payload_trailing_zeros)
-         continue;
-
-      /* This pass works on SENDs before splitting. */
-      if (send->ex_mlen > 0)
          continue;
 
       elk_fs_inst *lp = (elk_fs_inst *) send->prev;
@@ -5516,10 +5510,6 @@ elk_fs_visitor::dump_instruction_to_file(const elk_backend_instruction *be_inst,
 
    if (inst->mlen) {
       fprintf(file, "(mlen: %d) ", inst->mlen);
-   }
-
-   if (inst->ex_mlen) {
-      fprintf(file, "(ex_mlen: %d) ", inst->ex_mlen);
    }
 
    if (inst->eot) {

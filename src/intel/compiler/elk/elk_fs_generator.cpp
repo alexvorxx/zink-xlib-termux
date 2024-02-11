@@ -321,11 +321,9 @@ elk_fs_generator::patch_halt_jumps()
 
 void
 elk_fs_generator::generate_send(elk_fs_inst *inst,
-                            struct elk_reg dst,
-                            struct elk_reg desc,
-                            struct elk_reg ex_desc,
-                            struct elk_reg payload,
-                            struct elk_reg payload2)
+                                struct elk_reg dst,
+                                struct elk_reg desc,
+                                struct elk_reg payload)
 {
    const bool dst_is_null = dst.file == ELK_ARCHITECTURE_REGISTER_FILE &&
                             dst.nr == ELK_ARF_NULL;
@@ -334,18 +332,10 @@ elk_fs_generator::generate_send(elk_fs_inst *inst,
    uint32_t desc_imm = inst->desc |
       elk_message_desc(devinfo, inst->mlen, rlen, inst->header_size);
 
-   uint32_t ex_desc_imm = inst->ex_desc |
-      elk_message_ex_desc(devinfo, inst->ex_mlen);
-
-   if (ex_desc.file != ELK_IMMEDIATE_VALUE || ex_desc.ud || ex_desc_imm ||
-       inst->send_ex_desc_scratch) {
-      unreachable("no split sends available");
-   } else {
-      elk_send_indirect_message(p, inst->sfid, dst, payload, desc, desc_imm,
-                                   inst->eot);
-      if (inst->check_tdr)
-         elk_inst_set_opcode(p->isa, elk_last_inst, ELK_OPCODE_SENDC);
-   }
+   elk_send_indirect_message(p, inst->sfid, dst, payload, desc, desc_imm,
+                             inst->eot);
+   if (inst->check_tdr)
+      elk_inst_set_opcode(p->isa, elk_last_inst, ELK_OPCODE_SENDC);
 }
 
 void
@@ -1960,8 +1950,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          break;
 
       case ELK_SHADER_OPCODE_SEND:
-         generate_send(inst, dst, src[0], src[1], src[2],
-                       inst->ex_mlen > 0 ? src[3] : elk_null_reg());
+         generate_send(inst, dst, src[0], src[2]);
          send_count++;
          break;
 

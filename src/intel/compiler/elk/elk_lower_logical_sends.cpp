@@ -62,8 +62,6 @@ lower_urb_read_logical_send(const fs_builder &bld, elk_fs_inst *inst)
                              inst->offset);
 
    inst->mlen = header_size;
-   inst->ex_desc = 0;
-   inst->ex_mlen = 0;
    inst->send_is_volatile = true;
 
    inst->resize_sources(4);
@@ -124,7 +122,6 @@ lower_urb_read_logical_send_xe2(const fs_builder &bld, elk_fs_inst *inst)
    /* Update the original instruction. */
    inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
-   inst->ex_mlen = 0;
    inst->header_size = 0;
    inst->send_has_side_effects = true;
    inst->send_is_volatile = false;
@@ -183,8 +180,6 @@ lower_urb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst)
                              inst->offset);
 
    inst->mlen = length;
-   inst->ex_desc = 0;
-   inst->ex_mlen = 0;
    inst->send_has_side_effects = true;
 
    inst->resize_sources(4);
@@ -209,7 +204,6 @@ lower_urb_write_logical_send_xe2(const fs_builder &bld, elk_fs_inst *inst)
 
    /* Calculate the total number of components of the payload. */
    const unsigned src_comps = MAX2(1, inst->components_read(URB_LOGICAL_SRC_DATA));
-   const unsigned src_sz = type_sz(src.type);
 
    elk_fs_reg payload = bld.vgrf(ELK_REGISTER_TYPE_UD);
 
@@ -240,7 +234,6 @@ lower_urb_write_logical_send_xe2(const fs_builder &bld, elk_fs_inst *inst)
    }
 
    elk_fs_reg payload2 = bld.move_to_vgrf(src, src_comps);
-   const unsigned ex_mlen = (src_comps * src_sz * inst->exec_size) / REG_SIZE;
 
    inst->sfid = ELK_SFID_URB;
 
@@ -257,7 +250,6 @@ lower_urb_write_logical_send_xe2(const fs_builder &bld, elk_fs_inst *inst)
    /* Update the original instruction. */
    inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
-   inst->ex_mlen = ex_mlen;
    inst->header_size = 0;
    inst->send_has_side_effects = true;
    inst->send_is_volatile = false;
@@ -520,18 +512,6 @@ lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
          desc = component(desc, 0);
       }
 
-      uint32_t ex_desc = 0;
-      if (devinfo->ver >= 11) {
-         /* Set the "Render Target Index" and "Src0 Alpha Present" fields
-          * in the extended message descriptor, in lieu of using a header.
-          */
-         ex_desc = inst->target << 12 | (src0_alpha.file != BAD_FILE) << 15;
-
-         if (key->nr_color_regions == 0)
-            ex_desc |= 1 << 20; /* Null Render Target */
-      }
-      inst->ex_desc = ex_desc;
-
       inst->opcode = ELK_SHADER_OPCODE_SEND;
       inst->resize_sources(3);
       inst->sfid = GFX6_SFID_DATAPORT_RENDER_CACHE;
@@ -539,7 +519,6 @@ lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
       inst->src[1] = elk_imm_ud(0);
       inst->src[2] = payload;
       inst->mlen = regs_written(load);
-      inst->ex_mlen = 0;
       inst->header_size = header_size;
       inst->check_tdr = true;
       inst->send_has_side_effects = true;
@@ -1291,8 +1270,6 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
       inst->src[1] = elk_imm_ud(0); /* ex_desc */
    }
 
-   inst->ex_desc = 0;
-
    inst->src[2] = src_payload;
    inst->resize_sources(3);
 
@@ -1547,44 +1524,28 @@ lower_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    const unsigned header_sz = header.file != BAD_FILE ? 1 : 0;
 
    elk_fs_reg payload, payload2;
-   unsigned mlen, ex_mlen = 0;
-   if (devinfo->ver >= 9 &&
-       (src.file == BAD_FILE || header.file == BAD_FILE)) {
-      /* We have split sends on gfx9 and above */
-      if (header.file == BAD_FILE) {
-         payload = bld.move_to_vgrf(addr, addr_sz);
-         payload2 = bld.move_to_vgrf(src, src_sz);
-         mlen = addr_sz * (inst->exec_size / 8);
-         ex_mlen = src_sz * (inst->exec_size / 8);
-      } else {
-         assert(src.file == BAD_FILE);
-         payload = header;
-         payload2 = bld.move_to_vgrf(addr, addr_sz);
-         mlen = header_sz;
-         ex_mlen = addr_sz * (inst->exec_size / 8);
-      }
-   } else {
-      /* Allocate space for the payload. */
-      const unsigned sz = header_sz + addr_sz + src_sz;
-      payload = bld.vgrf(ELK_REGISTER_TYPE_UD, sz);
-      elk_fs_reg *const components = new elk_fs_reg[sz];
-      unsigned n = 0;
+   unsigned mlen;
 
-      /* Construct the payload. */
-      if (header.file != BAD_FILE)
-         components[n++] = header;
+   /* Allocate space for the payload. */
+   const unsigned sz = header_sz + addr_sz + src_sz;
+   payload = bld.vgrf(ELK_REGISTER_TYPE_UD, sz);
+   elk_fs_reg *const components = new elk_fs_reg[sz];
+   unsigned n = 0;
 
-      for (unsigned i = 0; i < addr_sz; i++)
-         components[n++] = offset(addr, bld, i);
+   /* Construct the payload. */
+   if (header.file != BAD_FILE)
+      components[n++] = header;
 
-      for (unsigned i = 0; i < src_sz; i++)
-         components[n++] = offset(src, bld, i);
+   for (unsigned i = 0; i < addr_sz; i++)
+      components[n++] = offset(addr, bld, i);
 
-      bld.LOAD_PAYLOAD(payload, components, sz, header_sz);
-      mlen = header_sz + (addr_sz + src_sz) * inst->exec_size / 8;
+   for (unsigned i = 0; i < src_sz; i++)
+      components[n++] = offset(src, bld, i);
 
-      delete[] components;
-   }
+   bld.LOAD_PAYLOAD(payload, components, sz, header_sz);
+   mlen = header_sz + (addr_sz + src_sz) * inst->exec_size / 8;
+
+   delete[] components;
 
    /* Predicate the instruction on the sample mask if no header is
     * provided.
@@ -1704,7 +1665,6 @@ lower_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    /* Update the original instruction. */
    inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = mlen;
-   inst->ex_mlen = ex_mlen;
    inst->header_size = header_sz;
    inst->send_has_side_effects = has_side_effects;
    inst->send_is_volatile = !has_side_effects;
@@ -1765,16 +1725,13 @@ lower_surface_block_logical_send(const fs_builder &bld, elk_fs_inst *inst)
       ubld.group(1, 0).MOV(component(header, 2), addr);
 
    elk_fs_reg data;
-   unsigned ex_mlen = 0;
    if (write) {
       const unsigned src_sz = inst->components_read(SURFACE_LOGICAL_SRC_DATA);
       data = retype(bld.move_to_vgrf(src, src_sz), ELK_REGISTER_TYPE_UD);
-      ex_mlen = src_sz * type_sz(src.type) * inst->exec_size / REG_SIZE;
    }
 
    inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = 1;
-   inst->ex_mlen = ex_mlen;
    inst->header_size = 1;
    inst->send_has_side_effects = has_side_effects;
    inst->send_is_volatile = !has_side_effects;
@@ -1789,33 +1746,6 @@ lower_surface_block_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 
    inst->src[2] = header;
    inst->src[3] = data;
-}
-
-static elk_fs_reg
-emit_a64_oword_block_header(const fs_builder &bld, const elk_fs_reg &addr)
-{
-   const fs_builder ubld = bld.exec_all().group(8, 0);
-
-   assert(type_sz(addr.type) == 8 && addr.stride == 0);
-
-   elk_fs_reg expanded_addr = addr;
-   if (addr.file == UNIFORM) {
-      /* We can't do stride 1 with the UNIFORM file, it requires stride 0 */
-      expanded_addr = ubld.vgrf(ELK_REGISTER_TYPE_UQ);
-      expanded_addr.stride = 0;
-      ubld.MOV(expanded_addr, retype(addr, ELK_REGISTER_TYPE_UQ));
-   }
-
-   elk_fs_reg header = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-   ubld.MOV(header, elk_imm_ud(0));
-
-   /* Use a 2-wide MOV to fill out the address */
-   elk_fs_reg addr_vec2 = expanded_addr;
-   addr_vec2.type = ELK_REGISTER_TYPE_UD;
-   addr_vec2.stride = 1;
-   ubld.group(2, 0).MOV(header, addr_vec2);
-
-   return header;
 }
 
 static void
@@ -1851,44 +1781,21 @@ lower_a64_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    const bool has_side_effects = inst->has_side_effects();
 
    elk_fs_reg payload, payload2;
-   unsigned mlen, ex_mlen = 0, header_size = 0;
-   if (inst->opcode == ELK_SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL ||
-       inst->opcode == ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL ||
-       inst->opcode == ELK_SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL) {
-      assert(devinfo->ver >= 9);
+   unsigned mlen, header_size = 0;
 
-      /* OWORD messages only take a scalar address in a header */
-      mlen = 1;
-      header_size = 1;
-      payload = emit_a64_oword_block_header(bld, addr);
+   /* Add two because the address is 64-bit */
+   const unsigned dwords = 2 + src_comps;
+   mlen = dwords * (inst->exec_size / 8);
 
-      if (inst->opcode == ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL) {
-         ex_mlen = src_comps * type_sz(src.type) * inst->exec_size / REG_SIZE;
-         payload2 = retype(bld.move_to_vgrf(src, src_comps),
-                           ELK_REGISTER_TYPE_UD);
-      }
-   } else if (devinfo->ver >= 9) {
-      /* On Skylake and above, we have SENDS */
-      mlen = 2 * (inst->exec_size / 8);
-      ex_mlen = src_comps * type_sz(src.type) * inst->exec_size / REG_SIZE;
-      payload = retype(bld.move_to_vgrf(addr, 1), ELK_REGISTER_TYPE_UD);
-      payload2 = retype(bld.move_to_vgrf(src, src_comps),
-                        ELK_REGISTER_TYPE_UD);
-   } else {
-      /* Add two because the address is 64-bit */
-      const unsigned dwords = 2 + src_comps;
-      mlen = dwords * (inst->exec_size / 8);
+   elk_fs_reg sources[5];
 
-      elk_fs_reg sources[5];
+   sources[0] = addr;
 
-      sources[0] = addr;
+   for (unsigned i = 0; i < src_comps; i++)
+      sources[1 + i] = offset(src, bld, i);
 
-      for (unsigned i = 0; i < src_comps; i++)
-         sources[1 + i] = offset(src, bld, i);
-
-      payload = bld.vgrf(ELK_REGISTER_TYPE_UD, dwords);
-      bld.LOAD_PAYLOAD(payload, sources, 1 + src_comps, 0);
-   }
+   payload = bld.vgrf(ELK_REGISTER_TYPE_UD, dwords);
+   bld.LOAD_PAYLOAD(payload, sources, 1 + src_comps, 0);
 
    uint32_t desc;
    switch (inst->opcode) {
@@ -1955,7 +1862,6 @@ lower_a64_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    /* Update the original instruction. */
    inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = mlen;
-   inst->ex_mlen = ex_mlen;
    inst->header_size = header_size;
    inst->send_has_side_effects = has_side_effects;
    inst->send_is_volatile = !has_side_effects;
@@ -2212,9 +2118,7 @@ lower_interpolator_logical_send(const fs_builder &bld, elk_fs_inst *inst,
    inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->sfid = GFX7_SFID_PIXEL_INTERPOLATOR;
    inst->desc = desc_imm;
-   inst->ex_desc = 0;
    inst->mlen = mlen;
-   inst->ex_mlen = 0;
    inst->send_has_side_effects = false;
    inst->send_is_volatile = false;
 
@@ -2241,8 +2145,6 @@ lower_get_buffer_size(const fs_builder &bld, elk_fs_inst *inst)
    inst->opcode = ELK_SHADER_OPCODE_SEND;
    inst->mlen = inst->exec_size / 8;
    inst->resize_sources(3);
-   inst->ex_mlen = 0;
-   inst->ex_desc = 0;
 
    /* src[0] & src[1] are filled by setup_surface_descriptors() */
    inst->src[2] = lod;

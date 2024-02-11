@@ -2380,11 +2380,6 @@ send_descriptor_restrictions(const struct elk_isa_info *isa,
                   "URB SIMD8 messages only valid on gfx >= 8");
          break;
 
-      case GFX125_URB_OPCODE_FENCE:
-         ERROR_IF(devinfo->verx10 < 125,
-                  "URB fence message only valid on gfx >= 12.5");
-         break;
-
       default:
          ERROR_IF(true, "Invalid URB message");
          break;

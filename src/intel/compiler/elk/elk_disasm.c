@@ -526,8 +526,7 @@ static const char *const gfx7_urb_opcode[] = {
    [GFX8_URB_OPCODE_ATOMIC_ADD] = "atomic add",  /* Gfx8+ */
    [GFX8_URB_OPCODE_SIMD8_WRITE] = "SIMD8 write", /* Gfx8+ */
    [GFX8_URB_OPCODE_SIMD8_READ] = "SIMD8 read",  /* Gfx8+ */
-   [GFX125_URB_OPCODE_FENCE] = "fence",  /* Gfx12.5+ */
-   /* [10-15] - reserved */
+   /* [9-15] - reserved */
 };
 
 static const char *const urb_swizzle[4] = {
@@ -1975,7 +1974,7 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                    urb_opcode == GFX8_URB_OPCODE_SIMD8_READ) {
                   if (elk_inst_urb_channel_mask_present(devinfo, inst))
                      string(file, " masked");
-               } else if (urb_opcode != GFX125_URB_OPCODE_FENCE) {
+               } else {
                   err |= control(file, "urb swizzle", urb_swizzle,
                                  elk_inst_urb_swizzle_control(devinfo, inst),
                                  &space);

@@ -3797,7 +3797,6 @@ zink_flush(struct pipe_context *pctx,
    struct zink_batch *batch = &ctx->batch;
    struct zink_fence *fence = NULL;
    struct zink_screen *screen = zink_screen(ctx->base.screen);
-   unsigned submit_count = 0;
    VkSemaphore export_sem = VK_NULL_HANDLE;
 
    /* triggering clears will force has_work */
@@ -3876,7 +3875,6 @@ zink_flush(struct pipe_context *pctx,
          tc_driver_internal_flush_notify(ctx->tc);
    } else {
       fence = &batch->state->fence;
-      submit_count = batch->state->usage.submit_count;
       if (deferred && !(flags & PIPE_FLUSH_FENCE_FD) && pfence)
          deferred_fence = true;
       else
@@ -3900,7 +3898,7 @@ zink_flush(struct pipe_context *pctx,
       mfence->fence = fence;
       mfence->sem = export_sem;
       if (fence) {
-         mfence->submit_count = submit_count;
+         mfence->submit_count = zink_batch_state(fence)->usage.submit_count;
          util_dynarray_append(&fence->mfences, struct zink_tc_fence *, mfence);
       }
       if (export_sem) {

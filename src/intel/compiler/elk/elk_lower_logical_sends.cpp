@@ -73,69 +73,6 @@ lower_urb_read_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 }
 
 static void
-lower_urb_read_logical_send_xe2(const fs_builder &bld, elk_fs_inst *inst)
-{
-   const intel_device_info *devinfo = bld.shader->devinfo;
-   assert(devinfo->has_lsc);
-
-   assert(inst->size_written % (REG_SIZE * reg_unit(devinfo)) == 0);
-   assert(inst->header_size == 0);
-
-   /* Get the logical send arguments. */
-   const elk_fs_reg handle = inst->src[URB_LOGICAL_SRC_HANDLE];
-
-   /* Calculate the total number of components of the payload. */
-   const unsigned dst_comps = inst->size_written / (REG_SIZE * reg_unit(devinfo));
-
-   elk_fs_reg payload = bld.vgrf(ELK_REGISTER_TYPE_UD);
-
-   bld.MOV(payload, handle);
-
-   /* The low 24-bits of the URB handle is a byte offset into the URB area.
-    * Add the (OWord) offset of the write to this value.
-    */
-   if (inst->offset) {
-      bld.ADD(payload, payload, elk_imm_ud(inst->offset * 16));
-      inst->offset = 0;
-   }
-
-   elk_fs_reg offsets = inst->src[URB_LOGICAL_SRC_PER_SLOT_OFFSETS];
-   if (offsets.file != BAD_FILE) {
-      elk_fs_reg offsets_B = bld.vgrf(ELK_REGISTER_TYPE_UD);
-      bld.SHL(offsets_B, offsets, elk_imm_ud(4)); /* OWords -> Bytes */
-      bld.ADD(payload, payload, offsets_B);
-   }
-
-   inst->sfid = ELK_SFID_URB;
-
-   assert((dst_comps >= 1 && dst_comps <= 4) || dst_comps == 8);
-
-   inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD, inst->exec_size,
-                             LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A32,
-                             1 /* num_coordinates */,
-                             LSC_DATA_SIZE_D32, dst_comps /* num_channels */,
-                             false /* transpose */,
-                             LSC_CACHE(devinfo, STORE, L1UC_L3UC),
-                             false /* has_dest */);
-
-
-   /* Update the original instruction. */
-   inst->opcode = ELK_SHADER_OPCODE_SEND;
-   inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
-   inst->header_size = 0;
-   inst->send_has_side_effects = true;
-   inst->send_is_volatile = false;
-
-   inst->resize_sources(4);
-
-   inst->src[0] = elk_imm_ud(0);
-   inst->src[1] = elk_imm_ud(0);
-
-   inst->src[2] = payload;
-   inst->src[3] = elk_null_reg();
-}
-
-static void
 lower_urb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
@@ -188,79 +125,6 @@ lower_urb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst)
    inst->src[1] = elk_imm_ud(0); /* ex_desc */
    inst->src[2] = payload;
    inst->src[3] = elk_null_reg();
-}
-
-static void
-lower_urb_write_logical_send_xe2(const fs_builder &bld, elk_fs_inst *inst)
-{
-   const intel_device_info *devinfo = bld.shader->devinfo;
-   assert(devinfo->has_lsc);
-
-   /* Get the logical send arguments. */
-   const elk_fs_reg handle = inst->src[URB_LOGICAL_SRC_HANDLE];
-   const elk_fs_reg src = inst->components_read(URB_LOGICAL_SRC_DATA) ?
-      inst->src[URB_LOGICAL_SRC_DATA] : elk_fs_reg(elk_imm_ud(0));
-   assert(type_sz(src.type) == 4);
-
-   /* Calculate the total number of components of the payload. */
-   const unsigned src_comps = MAX2(1, inst->components_read(URB_LOGICAL_SRC_DATA));
-
-   elk_fs_reg payload = bld.vgrf(ELK_REGISTER_TYPE_UD);
-
-   bld.MOV(payload, handle);
-
-   /* The low 24-bits of the URB handle is a byte offset into the URB area.
-    * Add the (OWord) offset of the write to this value.
-    */
-   if (inst->offset) {
-      bld.ADD(payload, payload, elk_imm_ud(inst->offset * 16));
-      inst->offset = 0;
-   }
-
-   elk_fs_reg offsets = inst->src[URB_LOGICAL_SRC_PER_SLOT_OFFSETS];
-   if (offsets.file != BAD_FILE) {
-      elk_fs_reg offsets_B = bld.vgrf(ELK_REGISTER_TYPE_UD);
-      bld.SHL(offsets_B, offsets, elk_imm_ud(4)); /* OWords -> Bytes */
-      bld.ADD(payload, payload, offsets_B);
-   }
-
-   const elk_fs_reg cmask = inst->src[URB_LOGICAL_SRC_CHANNEL_MASK];
-   unsigned mask = 0;
-
-   if (cmask.file != BAD_FILE) {
-      assert(cmask.file == IMM);
-      assert(cmask.type == ELK_REGISTER_TYPE_UD);
-      mask = cmask.ud >> 16;
-   }
-
-   elk_fs_reg payload2 = bld.move_to_vgrf(src, src_comps);
-
-   inst->sfid = ELK_SFID_URB;
-
-   enum elk_lsc_opcode op = mask ? LSC_OP_STORE_CMASK : LSC_OP_STORE;
-   inst->desc = lsc_msg_desc_wcmask(devinfo, op, inst->exec_size,
-                             LSC_ADDR_SURFTYPE_FLAT, LSC_ADDR_SIZE_A32,
-                             1 /* num_coordinates */,
-                             LSC_DATA_SIZE_D32, src_comps /* num_channels */,
-                             false /* transpose */,
-                             LSC_CACHE(devinfo, STORE, L1UC_L3UC),
-                             false /* has_dest */, mask);
-
-
-   /* Update the original instruction. */
-   inst->opcode = ELK_SHADER_OPCODE_SEND;
-   inst->mlen = lsc_msg_desc_src0_len(devinfo, inst->desc);
-   inst->header_size = 0;
-   inst->send_has_side_effects = true;
-   inst->send_is_volatile = false;
-
-   inst->resize_sources(4);
-
-   inst->src[0] = elk_imm_ud(0);
-   inst->src[1] = elk_imm_ud(0);
-
-   inst->src[2] = payload;
-   inst->src[3] = payload2;
 }
 
 static void
@@ -2312,18 +2176,11 @@ elk_fs_visitor::lower_logical_sends()
          break;
 
       case ELK_SHADER_OPCODE_URB_READ_LOGICAL:
-         if (devinfo->ver < 20)
-            lower_urb_read_logical_send(ibld, inst);
-         else
-            lower_urb_read_logical_send_xe2(ibld, inst);
+         lower_urb_read_logical_send(ibld, inst);
          break;
 
       case ELK_SHADER_OPCODE_URB_WRITE_LOGICAL:
-         if (devinfo->ver < 20)
-            lower_urb_write_logical_send(ibld, inst);
-         else
-            lower_urb_write_logical_send_xe2(ibld, inst);
-
+         lower_urb_write_logical_send(ibld, inst);
          break;
 
       default:

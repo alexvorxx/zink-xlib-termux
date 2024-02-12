@@ -2356,7 +2356,7 @@ dri2_wl_swrast_get_backbuffer_data(struct dri2_egl_surface *dri2_surf)
 }
 
 static void
-dri2_wl_swrast_commit_backbuffer(struct dri2_egl_surface *dri2_surf)
+dri2_wl_swrast_attach_backbuffer(struct dri2_egl_surface *dri2_surf)
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
@@ -2376,7 +2376,15 @@ dri2_wl_swrast_commit_backbuffer(struct dri2_egl_surface *dri2_surf)
    wl_surface_attach(dri2_surf->wl_surface_wrapper,
                      dri2_surf->current->wl_buffer, dri2_surf->dx,
                      dri2_surf->dy);
+}
 
+static void
+dri2_wl_swrast_commit_backbuffer(struct dri2_egl_surface *dri2_surf)
+{
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+
+   dri2_wl_swrast_attach_backbuffer(dri2_surf);
    dri2_surf->wl_win->attached_width = dri2_surf->base.Width;
    dri2_surf->wl_win->attached_height = dri2_surf->base.Height;
    /* reset resize growing parameters */

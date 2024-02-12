@@ -2955,8 +2955,18 @@ radv_emit_hw_ngg(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
 {
    const struct radv_physical_device *pdevice = device->physical_device;
    uint64_t va = radv_shader_get_va(shader);
-   gl_shader_stage es_type = shader->info.stage == MESA_SHADER_GEOMETRY ? shader->info.gs.es_type : shader->info.stage;
+   gl_shader_stage es_type;
    const struct gfx10_ngg_info *ngg_state = &shader->info.ngg_info;
+
+   if (shader->info.stage == MESA_SHADER_GEOMETRY) {
+      if (shader->info.merged_shader_compiled_separately) {
+         es_type = es->info.stage;
+      } else {
+         es_type = shader->info.gs.es_type;
+      }
+   } else {
+      es_type = shader->info.stage;
+   }
 
    radeon_set_sh_reg(cs, R_00B320_SPI_SHADER_PGM_LO_ES, va >> 8);
 

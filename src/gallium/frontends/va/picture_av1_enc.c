@@ -221,17 +221,6 @@ VAStatus vlVaHandleVAEncPictureParameterBufferTypeAV1(vlVaDriver *drv, vlVaConte
                                             PIPE_USAGE_STAGING, coded_buf->size);
    context->coded_buf = coded_buf;
 
-   for (i = 0; i < ARRAY_SIZE(context->desc.av1enc.rc); i++) {
-      context->desc.av1enc.rc[i].qp = av1->base_qindex ? av1->base_qindex : 60;
-      /* Distinguishes from the default params set for these values and app specific params passed down */
-      context->desc.av1enc.rc[i].app_requested_initial_qp = (av1->base_qindex != 0);
-      context->desc.av1enc.rc[i].min_qp = av1->min_base_qindex ? av1->min_base_qindex : 1;
-      context->desc.av1enc.rc[i].max_qp = av1->max_base_qindex ? av1->max_base_qindex : 255;
-      /* Distinguishes from the default params set for these values and app specific params passed down */
-      context->desc.av1enc.rc[i].app_requested_qp_range =
-         ((context->desc.av1enc.rc[i].max_qp != AV1_MAX_QP_DEFAULT) || (context->desc.av1enc.rc[i].min_qp != AV1_MIN_QP_DEFAULT));
-   }
-
    /* these frame types will need to be seen as force type */
    switch(av1->picture_flags.bits.frame_type)
    {
@@ -248,6 +237,22 @@ VAStatus vlVaHandleVAEncPictureParameterBufferTypeAV1(vlVaDriver *drv, vlVaConte
          context->desc.av1enc.frame_type = PIPE_AV1_ENC_FRAME_TYPE_SWITCH;
          break;
    };
+
+   for (i = 0; i < ARRAY_SIZE(context->desc.av1enc.rc); i++) {
+      unsigned qindex = av1->base_qindex ? av1->base_qindex : 60;
+      if (context->desc.av1enc.frame_type == PIPE_AV1_ENC_FRAME_TYPE_KEY ||
+          context->desc.av1enc.frame_type == PIPE_AV1_ENC_FRAME_TYPE_INTRA_ONLY)
+         context->desc.av1enc.rc[i].qp = qindex;
+      else
+         context->desc.av1enc.rc[i].qp_inter = qindex;
+      /* Distinguishes from the default params set for these values and app specific params passed down */
+      context->desc.av1enc.rc[i].app_requested_initial_qp = (av1->base_qindex != 0);
+      context->desc.av1enc.rc[i].min_qp = av1->min_base_qindex ? av1->min_base_qindex : 1;
+      context->desc.av1enc.rc[i].max_qp = av1->max_base_qindex ? av1->max_base_qindex : 255;
+      /* Distinguishes from the default params set for these values and app specific params passed down */
+      context->desc.av1enc.rc[i].app_requested_qp_range =
+         ((context->desc.av1enc.rc[i].max_qp != AV1_MAX_QP_DEFAULT) || (context->desc.av1enc.rc[i].min_qp != AV1_MIN_QP_DEFAULT));
+   }
 
    if (context->desc.av1enc.frame_type == FRAME_TYPE_KEY_FRAME)
       context->desc.av1enc.last_key_frame_num = context->desc.av1enc.frame_num;

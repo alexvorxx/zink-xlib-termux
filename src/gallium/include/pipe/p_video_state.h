@@ -631,6 +631,7 @@ struct pipe_h264_enc_picture_desc
    unsigned intra_idr_period;
    unsigned ip_period;
 
+   unsigned init_qp;
    unsigned quant_i_frames;
    unsigned quant_p_frames;
    unsigned quant_b_frames;
@@ -814,6 +815,7 @@ struct pipe_h265_enc_rate_control
    unsigned peak_bitrate;
    unsigned frame_rate_num;
    unsigned frame_rate_den;
+   unsigned init_qp;
    unsigned quant_i_frames;
    unsigned quant_p_frames;
    unsigned quant_b_frames;
@@ -892,6 +894,7 @@ struct pipe_av1_enc_rate_control
    unsigned enforce_hrd;
    unsigned max_au_size;
    unsigned qp; /* Initial QP */
+   unsigned qp_inter;
    unsigned max_qp;
    unsigned min_qp;
    bool app_requested_qp_range;

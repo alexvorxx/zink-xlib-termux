@@ -1733,6 +1733,15 @@ to upconvert to 32b float internally?
 	<reg32 offset="0x00122" name="RBBM_CGC_P2S_STATUS" variants="A7XX-">
 		<bitfield name="TXDONE" pos="0" type="boolean"/>
 	</reg32>
+	<reg32 offset="0x00123" name="RBBM_CLOCK_CNTL_FCHE"/>
+	<reg32 offset="0x00124" name="RBBM_CLOCK_DELAY_FCHE"/>
+	<reg32 offset="0x00125" name="RBBM_CLOCK_HYST_FCHE"/>
+	<reg32 offset="0x00126" name="RBBM_CLOCK_CNTL_MHUB"/>
+	<reg32 offset="0x00127" name="RBBM_CLOCK_DELAY_MHUB"/>
+	<reg32 offset="0x00128" name="RBBM_CLOCK_HYST_MHUB"/>
+	<reg32 offset="0x00129" name="RBBM_CLOCK_DELAY_GLC"/>
+	<reg32 offset="0x0012a" name="RBBM_CLOCK_HYST_GLC"/>
+	<reg32 offset="0x0012b" name="RBBM_CLOCK_CNTL_GLC"/>
 	<reg32 offset="0x0012f" name="RBBM_CLOCK_HYST2_VFD" variants="A7XX-"/>
 	<reg32 offset="0x005ff" name="RBBM_LPAC_GBIF_CLIENT_QOS_CNTL"/>
 

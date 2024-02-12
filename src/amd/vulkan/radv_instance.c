@@ -104,6 +104,7 @@ static const struct debug_control radv_perftest_options[] = {{"localbos", RADV_P
                                                              {"transfer_queue", RADV_PERFTEST_TRANSFER_QUEUE},
                                                              {"shader_object", RADV_PERFTEST_SHADER_OBJECT},
                                                              {"nircache", RADV_PERFTEST_NIR_CACHE},
+                                                             {"rtwave32", RADV_PERFTEST_RT_WAVE_32},
                                                              {NULL, 0}};
 
 const char *

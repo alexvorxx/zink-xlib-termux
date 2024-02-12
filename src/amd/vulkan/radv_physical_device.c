@@ -2012,13 +2012,15 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
          device->ge_wave_size = 32;
 
       /* Default to 32 on RDNA1-2 as that gives better perf due to less issues with divergence.
-       * However, on GFX11 default to wave64 as ACO does not support VOPD yet, and with the VALU
-       * dependence wave32 would likely be a net-loss (as well as the SALU count becoming more
-       * problematic)
+       * However, on RDNA3+ default to wave64 as implicit dual issuing is likely better than
+       * wave32 VOPD for VALU dependent code.
+       * (as well as the SALU count becoming more problematic with wave32)
        */
-      if (!(device->instance->perftest_flags & RADV_PERFTEST_RT_WAVE_64) &&
-          !(device->instance->drirc.force_rt_wave64) && device->rad_info.gfx_level < GFX11)
+      if (device->instance->perftest_flags & RADV_PERFTEST_RT_WAVE_32 || device->rad_info.gfx_level < GFX11)
          device->rt_wave_size = 32;
+
+      if (device->instance->perftest_flags & RADV_PERFTEST_RT_WAVE_64 || device->instance->drirc.force_rt_wave64)
+         device->rt_wave_size = 64;
    }
 
    device->max_shared_size = device->rad_info.gfx_level >= GFX7 ? 65536 : 32768;

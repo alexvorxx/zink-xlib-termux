@@ -93,6 +93,7 @@ enum {
    RADV_PERFTEST_TRANSFER_QUEUE = 1u << 14,
    RADV_PERFTEST_SHADER_OBJECT = 1u << 15,
    RADV_PERFTEST_NIR_CACHE = 1u << 16,
+   RADV_PERFTEST_RT_WAVE_32 = 1u << 17,
 };
 
 bool radv_init_trace(struct radv_device *device);

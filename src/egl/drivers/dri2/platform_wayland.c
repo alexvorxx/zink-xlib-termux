@@ -2388,18 +2388,6 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
    /* There might be a buffer release already queued that wasn't processed */
    wl_display_dispatch_queue_pending(dri2_dpy->wl_dpy, dri2_surf->wl_queue);
 
-   /* Try to get free buffer already created and with minimum age */
-   for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-      if (dri2_surf->color_buffers[i].locked ||
-          !dri2_surf->color_buffers[i].wl_buffer)
-         continue;
-
-      if (!dri2_surf->back ||
-          (dri2_surf->color_buffers[i].age > 0 &&
-           dri2_surf->color_buffers[i].age < dri2_surf->back->age))
-         dri2_surf->back = &dri2_surf->color_buffers[i];
-   }
-
    /* else choose any another free location */
    while (!dri2_surf->back) {
       for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {

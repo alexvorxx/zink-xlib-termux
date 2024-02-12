@@ -435,6 +435,7 @@ if __name__ == "__main__":
                         branch_name,
                     ]).decode('ascii').strip()
 
+                    # Ignore local branches that do not track any remote
                     if tracked_remote:
                         remote_rev = check_output([
                             'git', 'rev-parse', tracked_remote,

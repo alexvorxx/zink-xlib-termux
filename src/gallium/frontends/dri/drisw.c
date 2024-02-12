@@ -186,14 +186,14 @@ drisw_put_image_shm(struct dri_drawable *drawable,
 
 static inline void
 drisw_present_texture(struct pipe_context *pipe, struct dri_drawable *drawable,
-                      struct pipe_resource *ptex, struct pipe_box *sub_box)
+                      struct pipe_resource *ptex, unsigned nrects, struct pipe_box *sub_box)
 {
    struct dri_screen *screen = drawable->screen;
 
    if (screen->swrast_no_present)
       return;
 
-   screen->base.screen->flush_frontbuffer(screen->base.screen, pipe, ptex, 0, 0, drawable, !!sub_box, sub_box);
+   screen->base.screen->flush_frontbuffer(screen->base.screen, pipe, ptex, 0, 0, drawable, nrects, sub_box);
 }
 
 static inline void
@@ -207,9 +207,10 @@ drisw_invalidate_drawable(struct dri_drawable *drawable)
 static inline void
 drisw_copy_to_front(struct pipe_context *pipe,
                     struct dri_drawable *drawable,
-                    struct pipe_resource *ptex)
+                    struct pipe_resource *ptex,
+                    int nboxes, struct pipe_box *boxes)
 {
-   drisw_present_texture(pipe, drawable, ptex, NULL);
+   drisw_present_texture(pipe, drawable, ptex, nboxes, boxes);
 
    drisw_invalidate_drawable(drawable);
 }
@@ -237,6 +238,18 @@ drisw_swap_buffers_with_damage(struct dri_drawable *drawable, int nrects, const 
 
    if (ptex) {
       struct pipe_fence_handle *fence = NULL;
+
+      struct pipe_box stack_boxes[64];
+      if (nrects > ARRAY_SIZE(stack_boxes))
+         nrects = 0;
+      if (nrects) {
+         for (unsigned int i = 0; i < nrects; i++) {
+            const int *rect = &rects[i * 4];
+
+            u_box_2d(rect[0], rect[1], rect[2], rect[3], &stack_boxes[i]);
+         }
+      }
+
       if (ctx->pp)
          pp_run(ctx->pp, ptex, ptex, drawable->textures[ST_ATTACHMENT_DEPTH_STENCIL]);
 
@@ -255,7 +268,7 @@ drisw_swap_buffers_with_damage(struct dri_drawable *drawable, int nrects, const 
       screen->base.screen->fence_finish(screen->base.screen, ctx->st->pipe,
                                         fence, OS_TIMEOUT_INFINITE);
       screen->base.screen->fence_reference(screen->base.screen, &fence, NULL);
-      drisw_copy_to_front(ctx->st->pipe, drawable, ptex);
+      drisw_copy_to_front(ctx->st->pipe, drawable, ptex, nrects, nrects ? stack_boxes : NULL);
       drawable->buffer_age = 1;
 
       /* TODO: remove this if the framebuffer state doesn't change. */
@@ -306,7 +319,7 @@ drisw_copy_sub_buffer(struct dri_drawable *drawable, int x, int y,
       }
 
       u_box_2d(x, drawable->h - y - h, w, h, &box);
-      drisw_present_texture(ctx->st->pipe, drawable, ptex, &box);
+      drisw_present_texture(ctx->st->pipe, drawable, ptex, 1, &box);
    }
 }
 
@@ -334,7 +347,7 @@ drisw_flush_frontbuffer(struct dri_context *ctx,
    ptex = drawable->textures[statt];
 
    if (ptex) {
-      drisw_copy_to_front(ctx->st->pipe, ctx->draw, ptex);
+      drisw_copy_to_front(ctx->st->pipe, ctx->draw, ptex, 0, NULL);
    }
 
    return true;

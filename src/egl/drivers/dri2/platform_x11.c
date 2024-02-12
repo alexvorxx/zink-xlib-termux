@@ -203,6 +203,13 @@ swrastPutImage(__DRIdrawable *draw, int op, int x, int y, int w, int h,
 }
 
 static void
+swrastPutImage2(__DRIdrawable *draw, int op, int x, int y, int w, int h,
+                int stride, char *data, void *loaderPrivate)
+{
+   swrastPutImage(draw, op, x, y, w, h, data, loaderPrivate);
+}
+
+static void
 swrastGetImage(__DRIdrawable *read, int x, int y, int w, int h, char *data,
                void *loaderPrivate)
 {
@@ -1049,6 +1056,19 @@ dri2_x11_kopper_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
 }
 
 static EGLBoolean
+dri2_x11_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
+                                  const EGLint *rects, EGLint numRects)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(draw);
+   if (numRects)
+      dri2_dpy->core->swapBuffersWithDamage(dri2_surf->dri_drawable, numRects, rects);
+   else
+      dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
+   return EGL_TRUE;
+}
+
+static EGLBoolean
 dri2_x11_swap_interval(_EGLDisplay *disp, _EGLSurface *surf, EGLint interval)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -1384,6 +1404,7 @@ static const struct dri2_egl_display_vtbl dri2_x11_swrast_display_vtbl = {
    .create_image = dri2_create_image_khr,
    .swap_buffers = dri2_x11_swap_buffers,
    .swap_buffers_region = dri2_x11_swap_buffers_region,
+   .swap_buffers_with_damage = dri2_x11_swap_buffers_with_damage,
    .post_sub_buffer = dri2_x11_post_sub_buffer,
    .copy_buffers = dri2_x11_copy_buffers,
    .query_buffer_age = dri2_swrast_query_buffer_age,
@@ -1436,6 +1457,7 @@ static const __DRIswrastLoaderExtension swrast_loader_extension = {
 
    .getDrawableInfo = swrastGetDrawableInfo,
    .putImage = swrastPutImage,
+   .putImage2 = swrastPutImage2,
    .getImage = swrastGetImage,
 };
 

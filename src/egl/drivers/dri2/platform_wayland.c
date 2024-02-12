@@ -2488,7 +2488,6 @@ dri2_wl_swrast_put_image2(__DRIdrawable *draw, int op, int x, int y, int w,
       src += stride;
       dst += dst_stride;
    }
-   dri2_wl_swrast_commit_backbuffer(dri2_surf);
 }
 
 static void
@@ -2522,6 +2521,8 @@ dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
    if (disp->Options.Zink) {
       dri2_surf->current = dri2_surf->back;
       dri2_surf->back = NULL;
+   } else {
+      dri2_wl_swrast_commit_backbuffer(dri2_surf);
    }
    return EGL_TRUE;
 }

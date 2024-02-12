@@ -895,11 +895,27 @@ system_value("layer_id", 1)
 system_value("view_index", 1)
 system_value("subgroup_size", 1)
 system_value("subgroup_invocation", 1)
+
+# These intrinsics provide a bitmask for all invocations, with one bit per
+# invocation starting with the least significant bit, according to the
+# following table,
+#
+#    variable           equation for bit values
+#    ----------------   --------------------------------
+#    subgroup_eq_mask   bit index == subgroup_invocation
+#    subgroup_ge_mask   bit index >= subgroup_invocation
+#    subgroup_gt_mask   bit index >  subgroup_invocation
+#    subgroup_le_mask   bit index <= subgroup_invocation
+#    subgroup_lt_mask   bit index <  subgroup_invocation
+#
+# These correspond to gl_SubGroupEqMaskARB, etc. from GL_ARB_shader_ballot,
+# and the above documentation is "borrowed" from that extension spec.
 system_value("subgroup_eq_mask", 0, bit_sizes=[32, 64])
 system_value("subgroup_ge_mask", 0, bit_sizes=[32, 64])
 system_value("subgroup_gt_mask", 0, bit_sizes=[32, 64])
 system_value("subgroup_le_mask", 0, bit_sizes=[32, 64])
 system_value("subgroup_lt_mask", 0, bit_sizes=[32, 64])
+
 system_value("num_subgroups", 1)
 system_value("subgroup_id", 1)
 system_value("workgroup_size", 3)

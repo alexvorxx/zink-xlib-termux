@@ -3542,6 +3542,9 @@ VkResult anv_CreateDevice(
                           .size = isl_extent3d(1, 1, 1) /* This shouldn't matter */);
    }
 
+   isl_null_fill_state(&device->isl_dev, &device->host_null_surface_state,
+                       .size = isl_extent3d(1, 1, 1) /* This shouldn't matter */);
+
    anv_scratch_pool_init(device, &device->scratch_pool);
 
    /* TODO(RT): Do we want some sort of data structure for this? */

@@ -2088,7 +2088,7 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
                                                                 p, desc->layout),
                    ANV_SURFACE_STATE_SIZE);
          } else {
-            memcpy(plane_map, device->null_surface_state.map, ANV_SURFACE_STATE_SIZE);
+            memcpy(plane_map, &device->host_null_surface_state, ANV_SURFACE_STATE_SIZE);
          }
       }
    }
@@ -2107,7 +2107,7 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
                                                                 p, desc->layout),
                    ANV_SURFACE_STATE_SIZE);
          } else {
-            memcpy(plane_map, device->null_surface_state.map, ANV_SURFACE_STATE_SIZE);
+            memcpy(plane_map, &device->host_null_surface_state, ANV_SURFACE_STATE_SIZE);
          }
 
          if (sampler) {
@@ -2166,7 +2166,7 @@ anv_descriptor_set_write_buffer_view(struct anv_device *device,
 
    if (buffer_view == NULL) {
       if (data & ANV_DESCRIPTOR_SURFACE)
-         memcpy(desc_map, device->null_surface_state.map, ANV_SURFACE_STATE_SIZE);
+         memcpy(desc_map, &device->host_null_surface_state, ANV_SURFACE_STATE_SIZE);
       else
          memset(desc_map, 0, bind_layout->descriptor_surface_stride);
       return;
@@ -2252,7 +2252,7 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
 
    if (buffer == NULL) {
       if (data & ANV_DESCRIPTOR_SURFACE)
-         memcpy(desc_map, device->null_surface_state.map, ANV_SURFACE_STATE_SIZE);
+         memcpy(desc_map, &device->host_null_surface_state, ANV_SURFACE_STATE_SIZE);
       else
          memset(desc_map, 0, bind_layout->descriptor_surface_stride);
       return;

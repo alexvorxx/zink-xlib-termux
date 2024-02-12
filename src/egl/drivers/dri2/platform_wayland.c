@@ -2465,7 +2465,6 @@ dri2_wl_swrast_put_image2(__DRIdrawable *draw, int op, int x, int y, int w,
 
    assert(copy_width <= stride);
 
-   (void)swrast_update_buffers(dri2_surf);
    dst = dri2_wl_swrast_get_backbuffer_data(dri2_surf);
 
    /* partial copy, copy old content */
@@ -2512,6 +2511,9 @@ dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
 
    if (!dri2_surf->wl_win)
       return _eglError(EGL_BAD_NATIVE_WINDOW, "dri2_swap_buffers");
+
+   if (!disp->Options.Zink)
+      (void)swrast_update_buffers(dri2_surf);
 
    if (n_rects)
       dri2_dpy->core->swapBuffersWithDamage(dri2_surf->dri_drawable, n_rects, rects);

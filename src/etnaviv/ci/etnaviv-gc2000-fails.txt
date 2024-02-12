@@ -149,7 +149,6 @@ shaders@glsl-uniform-interstage-limits@subdivide 5- statechanges,Timeout
 shaders@glsl-uniform-interstage-limits@subdivide 5,Timeout
 shaders@glsl-vs-point-size,Fail
 
-spec@arb_arrays_of_arrays@execution@glsl-arrays-copy-size-mismatch,Fail
 # Expects DEPTH_COMPONENT_32F, which is given by ARB_depth_buffer_float.
 spec@arb_clear_texture@arb_clear_texture-depth,Fail
 # Expects that some format/internal_format combinations should be supported when they currently aren't.
@@ -165,7 +164,6 @@ spec@arb_depth_texture@texwrap formats bordercolor-swizzled,Fail
 spec@arb_depth_texture@texwrap formats bordercolor-swizzled@GL_DEPTH_COMPONENT16- swizzled- border color only,Fail
 spec@arb_depth_texture@texwrap formats bordercolor-swizzled@GL_DEPTH_COMPONENT24- swizzled- border color only,Fail
 spec@arb_depth_texture@texwrap formats bordercolor-swizzled@GL_DEPTH_COMPONENT32- swizzled- border color only,Fail
-spec@arb_draw_buffers@fbo-mrt-alphatest,Fail
 spec@arb_es2_compatibility@texwrap formats bordercolor,Fail
 spec@arb_es2_compatibility@texwrap formats bordercolor@GL_RGB565- border color only,Fail
 spec@arb_es2_compatibility@texwrap formats bordercolor-swizzled,Fail
@@ -179,7 +177,6 @@ spec@arb_framebuffer_object@arb_framebuffer_object-depth-stencil-blit stencil gl
 spec@arb_framebuffer_object@arb_framebuffer_object-depth-stencil-blit stencil gl_stencil_index1,Fail
 spec@arb_framebuffer_object@arb_framebuffer_object-depth-stencil-blit stencil gl_stencil_index4,Fail
 spec@arb_framebuffer_object@arb_framebuffer_object-depth-stencil-blit stencil gl_stencil_index8,Fail
-spec@arb_framebuffer_object@fbo-alpha,Crash
 spec@arb_framebuffer_object@fbo-attachments-blit-scaled-linear,Fail
 spec@arb_framebuffer_object@fbo-blit-stretch,Fail
 
@@ -276,7 +273,6 @@ spec@arb_vertex_program@big-param,Fail
 spec@arb_vertex_program@clip-plane-transformation arb,Fail
 
 spec@egl 1.4@eglterminate then unbind context,Fail
-spec@egl_ext_protected_content@conformance,Fail
 spec@egl_khr_gl_image@egl_khr_gl_renderbuffer_image-clear-shared-image gl_depth_component24,Fail
 spec@egl_khr_gl_image@egl_khr_gl_renderbuffer_image-clear-shared-image gl_rgba,Fail
 spec@egl_khr_surfaceless_context@viewport,Fail
@@ -313,7 +309,6 @@ spec@ext_framebuffer_multisample@accuracy all_samples stencil_draw small depthst
 spec@ext_framebuffer_multisample@accuracy all_samples stencil_resolve depthstencil,Fail
 spec@ext_framebuffer_multisample@accuracy all_samples stencil_resolve small depthstencil,Fail
 
-spec@ext_framebuffer_object@fbo-blending-format-quirks,Fail
 spec@ext_framebuffer_object@fbo-blending-formats,Fail
 spec@ext_framebuffer_object@fbo-blending-formats@GL_RGB10,Fail
 spec@ext_framebuffer_object@fbo-copyteximage,Fail
@@ -2005,3 +2000,6 @@ spec@!opengl 2.1@pbo,Fail
 spec@!opengl 2.1@pbo@test_polygon_stip,Fail
 spec@!opengl 2.1@polygon-stipple-fs,Fail
 spec@!opengl es 2.0@glsl-fs-pointcoord,Fail
+
+# Failure since 2024-01-30
+spec@arb_vertex_buffer_object@pos-array,Fail

@@ -3967,7 +3967,7 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
 
    radeon_set_sh_reg(cmd_buffer->cs, pgm_lo_reg, prolog->va >> 8);
 
-   if (chip < GFX10) {
+   if (chip < GFX10 || vs_shader->info.merged_shader_compiled_separately) {
       radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg, rsrc1);
 
       if (vs_shader->info.merged_shader_compiled_separately) {

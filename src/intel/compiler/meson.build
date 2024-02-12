@@ -187,6 +187,7 @@ elif with_intel_clc
     link_args : [ld_args_build_id],
     dependencies : [idep_nir, idep_vtn, idep_mesaclc, idep_mesautil, idep_intel_dev],
     native : true,
+    install : get_option('install-intel-clc'),
   )
   dep_prog_intel_clc = [prog_intel_clc]
 endif

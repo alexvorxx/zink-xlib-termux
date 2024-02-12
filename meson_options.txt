@@ -643,6 +643,13 @@ option(
 )
 
 option(
+  'install-intel-clc',
+  type : 'boolean',
+  value : false,
+  description : 'Install the intel-clc compiler (if needed for cross builds).'
+)
+
+option(
   'intel-rt',
   type : 'combo',
   deprecated: {'true': 'enabled', 'false': 'disabled'},

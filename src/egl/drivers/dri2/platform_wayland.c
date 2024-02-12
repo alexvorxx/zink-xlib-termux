@@ -2374,7 +2374,8 @@ dri2_wl_swrast_attach_backbuffer(struct dri2_egl_surface *dri2_surf)
    }
 
    wl_surface_attach(dri2_surf->wl_surface_wrapper,
-                     dri2_surf->current->wl_buffer, dri2_surf->dx,
+                     /* 'back' here will be promoted to 'current' */
+                     dri2_surf->back->wl_buffer, dri2_surf->dx,
                      dri2_surf->dy);
 }
 
@@ -2384,7 +2385,6 @@ dri2_wl_swrast_commit_backbuffer(struct dri2_egl_surface *dri2_surf)
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
 
-   dri2_wl_swrast_attach_backbuffer(dri2_surf);
    dri2_surf->wl_win->attached_width = dri2_surf->base.Width;
    dri2_surf->wl_win->attached_height = dri2_surf->base.Height;
    /* reset resize growing parameters */
@@ -2518,6 +2518,9 @@ dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
 
    if (!disp->Options.Zink)
       (void)swrast_update_buffers(dri2_surf);
+
+   if (!disp->Options.Zink)
+      dri2_wl_swrast_attach_backbuffer(dri2_surf);
 
    if (n_rects)
       dri2_dpy->core->swapBuffersWithDamage(dri2_surf->dri_drawable, n_rects, rects);

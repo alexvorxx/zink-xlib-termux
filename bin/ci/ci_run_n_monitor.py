@@ -435,16 +435,17 @@ if __name__ == "__main__":
                         branch_name,
                     ]).decode('ascii').strip()
 
-                    remote_rev = check_output([
-                        'git', 'rev-parse', tracked_remote,
-                    ]).decode('ascii').strip()
+                    if tracked_remote:
+                        remote_rev = check_output([
+                            'git', 'rev-parse', tracked_remote,
+                        ]).decode('ascii').strip()
 
-                    if REV != remote_rev:
-                        print(
-                            f"Local HEAD commit {REV[:10]} is different than "
-                            f"tracked remote HEAD commit {remote_rev[:10]}"
-                        )
-                        print("Did you forget to `git push` ?")
+                        if REV != remote_rev:
+                            print(
+                                f"Local HEAD commit {REV[:10]} is different than "
+                                f"tracked remote HEAD commit {remote_rev[:10]}"
+                            )
+                            print("Did you forget to `git push` ?")
 
                 projects.append(get_gitlab_project(gl, args.project))
             (pipe, cur_project) = wait_for_pipeline(projects, REV)

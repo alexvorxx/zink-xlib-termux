@@ -1991,8 +1991,8 @@ struct radv_vgt_shader_key {
    uint8_t mesh_scratch_ring : 1;
    uint8_t mesh : 1;
    uint8_t ngg_passthrough : 1;
-   uint8_t ngg : 1;       /* gfx10+ */
-   uint8_t streamout : 1; /* only used with NGG */
+   uint8_t ngg : 1; /* gfx10+ */
+   uint8_t ngg_streamout : 1;
    uint8_t hs_wave32 : 1;
    uint8_t gs_wave32 : 1;
    uint8_t vs_wave32 : 1;

@@ -3552,8 +3552,8 @@ radv_pipeline_generate_vgt_shader_key(const struct radv_device *device, const st
    if (radv_pipeline_has_ngg(pipeline)) {
       key.ngg = 1;
       key.ngg_passthrough = radv_pipeline_has_ngg_passthrough(pipeline);
+      key.ngg_streamout = !!pipeline->streamout_shader;
    }
-   key.streamout = !!pipeline->streamout_shader;
    if (radv_pipeline_has_stage(pipeline, MESA_SHADER_MESH)) {
       key.mesh = 1;
       key.mesh_scratch_ring = pipeline->base.shaders[MESA_SHADER_MESH]->info.ms.needs_ms_scratch_ring;
@@ -3594,7 +3594,7 @@ radv_emit_vgt_shader_config(const struct radv_device *device, struct radeon_cmdb
    }
 
    if (key->ngg) {
-      stages |= S_028B54_PRIMGEN_EN(1) | S_028B54_NGG_WAVE_ID_EN(key->streamout) |
+      stages |= S_028B54_PRIMGEN_EN(1) | S_028B54_NGG_WAVE_ID_EN(key->ngg_streamout) |
                 S_028B54_PRIMGEN_PASSTHRU_EN(key->ngg_passthrough) |
                 S_028B54_PRIMGEN_PASSTHRU_NO_MSG(key->ngg_passthrough && pdevice->rad_info.family >= CHIP_NAVI23);
    } else if (key->gs) {

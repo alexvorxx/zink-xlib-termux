@@ -55,6 +55,19 @@ struct amdgpu_winsys_bo {
    enum amdgpu_bo_type type:8;
    struct amdgpu_seq_no_fences fences;
 
+   /* Since some IPs like VCN want to have an unlimited number of queues, we can't generate our
+    * own sequence numbers for those queues. Instead, each buffer will have "alt_fence", which
+    * means an alternative fence. This fence is the last use of that buffer on any VCN queue.
+    * If any other queue wants to use that buffer, it has to insert alt_fence as a dependency,
+    * and replace alt_fence with the new submitted fence, so that it's always equal to the last
+    * use.
+    *
+    * Only VCN uses and updates alt_fence when an IB is submitted. Other IPs only use alt_fence
+    * as a fence dependency. alt_fence is NULL when VCN isn't used, so there is no negative
+    * impact on CPU overhead in that case.
+    */
+   struct pipe_fence_handle *alt_fence;
+
    /* This is set when a buffer is returned by buffer_create(), not when the memory is allocated
     * as part of slab BO.
     */
@@ -90,6 +103,9 @@ struct amdgpu_bo_real {
     * it can only transition from false to true. Protected by lock.
     */
    bool is_shared;
+
+   /* Whether this is a slab buffer and alt_fence was set on one of the slab entries. */
+   bool slab_has_busy_alt_fences;
 };
 
 /* Same as amdgpu_bo_real except this BO isn't destroyed when its reference count drops to 0.
@@ -172,6 +188,12 @@ static inline struct amdgpu_bo_real *get_slab_entry_real_bo(struct amdgpu_winsys
 {
    assert(bo->type == AMDGPU_BO_SLAB_ENTRY);
    return &get_bo_from_slab(((struct amdgpu_bo_slab_entry*)bo)->entry.slab)->b.b;
+}
+
+static struct amdgpu_bo_real_reusable_slab *get_real_bo_reusable_slab(struct amdgpu_winsys_bo *bo)
+{
+   assert(bo->type == AMDGPU_BO_REAL_REUSABLE_SLAB);
+   return (struct amdgpu_bo_real_reusable_slab*)bo;
 }
 
 /* Given a sequence number "fences->seq_no[queue_index]", return a pointer to a non-NULL fence

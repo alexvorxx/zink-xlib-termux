@@ -125,6 +125,11 @@ struct amdgpu_cs {
    enum amd_ip_type ip_type;
    unsigned queue_index;
 
+   /* Whether this queue uses amdgpu_winsys_bo::alt_fence instead of generating its own
+    * sequence numbers for synchronization.
+    */
+   bool uses_alt_fence;
+
    /* We flip between these two CS. While one is being consumed
     * by the kernel in another thread, the other one is being filled
     * by the pipe driver. */

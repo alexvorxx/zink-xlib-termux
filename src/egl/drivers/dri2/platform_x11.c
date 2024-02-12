@@ -1580,7 +1580,8 @@ dri2_initialize_x11_swrast(_EGLDisplay *disp)
          disp->Extensions.KHR_image_pixmap = EGL_TRUE;
       disp->Extensions.NOK_texture_from_pixmap = EGL_TRUE;
       disp->Extensions.CHROMIUM_sync_control = EGL_TRUE;
-      disp->Extensions.EXT_swap_buffers_with_damage = EGL_TRUE;
+      /* FIXME: if mesa vk wsi ever checks VkPresentRegionKHR in sw mode */
+      disp->Extensions.EXT_swap_buffers_with_damage = !disp->Options.ForceSoftware;
 
       if (dri2_dpy->multibuffers_available)
          dri2_set_WL_bind_wayland_display(disp);

@@ -25,8 +25,8 @@ COPYRIGHT = """\
  */
 """
 
-import argparse
 import os
+import sys
 from textwrap import indent
 
 from mako.template import Template
@@ -146,21 +146,22 @@ def format_struct_member(m):
 
 def main():
     """print intel_device_info_gen.h at the specified path"""
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--outdir', required=True,
-                        help='Directory to put the generated files in')
-    args = parser.parse_args()
-    path = os.path.join(args.outdir, 'intel_device_info_gen.h')
-    with open(path, 'w', encoding='utf-8') as f:
-        try:
-            f.write(Template(template).render(format_enum_value=format_enum_value,
-                                              format_struct_member=format_struct_member,
-                                              format_define=format_define))
-        except:
-            # provide some debug information to the user
-            print(exceptions.text_error_template().render(format_enum_value=format_enum_value,
-                                                          format_struct_member=format_struct_member,
-                                                          format_define=format_define))
+    if len(sys.argv) > 1:
+        outf = open(sys.argv[1], 'w', encoding='utf-8')
+    else:
+        outf = sys.stdout
+
+    try:
+        outf.write(Template(template).render(format_enum_value=format_enum_value,
+                                             format_struct_member=format_struct_member,
+                                             format_define=format_define))
+    except:
+        # provide some debug information to the user
+        print(exceptions.text_error_template().render(format_enum_value=format_enum_value,
+                                                      format_struct_member=format_struct_member,
+                                                      format_define=format_define))
+        sys.exit(1)
+    outf.close()
 
 if __name__ == "__main__":
     main()

@@ -62,7 +62,7 @@ struct assignment {
    };
    uint32_t affinity = 0;
    assignment() = default;
-   assignment(PhysReg reg_, RegClass rc_) : reg(reg_), rc(rc_), assigned(-1) {}
+   assignment(PhysReg reg_, RegClass rc_) : reg(reg_), rc(rc_) { assigned = true; }
    void set(const Definition& def)
    {
       assigned = true;

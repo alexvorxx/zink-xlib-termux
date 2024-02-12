@@ -1832,8 +1832,7 @@ radv_shader_combine_cfg_vs_tcs(const struct radv_shader *vs, const struct radv_s
    if (rsrc2_out) {
       uint32_t rsrc2 = vs->config.rsrc2;
 
-      if (G_00B12C_SCRATCH_EN(tcs->config.rsrc2) > G_00B12C_SCRATCH_EN(rsrc2))
-         rsrc2 = (rsrc2 & C_00B12C_SCRATCH_EN) | (tcs->config.rsrc2 & ~C_00B12C_SCRATCH_EN);
+      rsrc2 |= tcs->config.rsrc2 & ~C_00B12C_SCRATCH_EN;
 
       *rsrc2_out = rsrc2;
    }

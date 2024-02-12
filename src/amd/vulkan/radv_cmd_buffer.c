@@ -9182,6 +9182,7 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
       .gs = !!cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY],
       .ngg = last_vgt_shader->info.is_ngg,
       .ngg_passthrough = last_vgt_shader->info.is_ngg_passthrough,
+      .ngg_streamout = last_vgt_shader->info.is_ngg && last_vgt_shader->info.so.num_outputs > 0,
    };
 
    if (cmd_buffer->state.shaders[MESA_SHADER_MESH]) {

@@ -1685,7 +1685,6 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
    struct wsi_wl_swapchain *chain = (struct wsi_wl_swapchain *)wsi_chain;
    struct wl_display *wl_display = chain->wsi_wl_surface->display->wl_display;
    struct timespec end_time;
-   int wl_fd = wl_display_get_fd(wl_display);
    VkResult ret;
    int err;
 
@@ -1762,90 +1761,42 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
 
    assert(!chain->present_ids.dispatch_in_progress);
    chain->present_ids.dispatch_in_progress = true;
-   pthread_mutex_unlock(&chain->present_ids.lock);
 
-   /* Whether or not we were dispatching the events before, we are now: pull
-    * all the new events from our event queue, post them, and wake up everyone
-    * else who might be waiting. */
+   /* Whether or not we were dispatching the events before, we are now. */
    while (1) {
-      ret = wl_display_dispatch_queue_pending(wl_display, chain->present_ids.queue);
-      if (ret < 0) {
+      if (chain->present_ids.max_completed >= present_id) {
+         ret = VK_SUCCESS;
+         break;
+      }
+      /* We drop the lock now - we're still protected by dispatch_in_progress,
+       * and holding the lock while dispatch_queue_timeout waits in poll()
+       * might delay other threads unnecessarily.
+       *
+       * We'll pick up the lock again in the dispatched functions.
+       */
+      pthread_mutex_unlock(&chain->present_ids.lock);
+
+      struct timespec current_time, remaining_timeout;
+      clock_gettime(CLOCK_MONOTONIC, &current_time);
+      timespec_sub_saturate(&remaining_timeout, &end_time, &current_time);
+      ret = wl_display_dispatch_queue_timeout(wl_display,
+                                              chain->present_ids.queue,
+                                              &remaining_timeout);
+      pthread_mutex_lock(&chain->present_ids.lock);
+      if (ret == -1) {
          ret = VK_ERROR_OUT_OF_DATE_KHR;
-         goto relinquish_dispatch;
+         break;
       }
-
-      /* Some events dispatched: check the new completions. */
-      if (ret > 0) {
-         /* Completed our own present; stop our own dispatching and let
-          * someone else pick it up. */
-         pthread_mutex_lock(&chain->present_ids.lock);
-         if (chain->present_ids.max_completed >= present_id) {
-            pthread_mutex_unlock(&chain->present_ids.lock);
-            ret = VK_SUCCESS;
-            goto relinquish_dispatch;
-         }
-
-         /* Wake up other waiters who may have been unblocked by the events
-          * we just read. */
-         pthread_cond_broadcast(&chain->present_ids.list_advanced);
-         pthread_mutex_unlock(&chain->present_ids.lock);
-      }
-
-      /* Check for timeout, and relinquish the dispatch to another thread
-       * if we're over our budget. */
-      uint64_t current_time_nsec = os_time_get_nano();
-      if (current_time_nsec > atimeout) {
+      if (ret == 0) {
          ret = timeout_result;
-         goto relinquish_dispatch;
+         break;
       }
 
-      /* To poll and read from WL fd safely, we must be cooperative.
-       * See wl_display_prepare_read_queue in https://wayland.freedesktop.org/docs/html/apb.html */
-
-      /* Try to read events from the server. */
-      ret = wl_display_prepare_read_queue(wl_display, chain->present_ids.queue);
-      if (ret < 0) {
-         /* Another thread might have read events for our queue already. Go
-          * back to dispatch them.
-          */
-         if (errno == EAGAIN)
-            continue;
-         ret = VK_ERROR_OUT_OF_DATE_KHR;
-         goto relinquish_dispatch;
-      }
-
-      struct pollfd pollfd = {
-         .fd = wl_fd,
-         .events = POLLIN
-      };
-      struct timespec current_time, rel_timeout;
-      timespec_from_nsec(&current_time, current_time_nsec);
-      timespec_sub(&rel_timeout, &end_time, &current_time);
-      ret = ppoll(&pollfd, 1, &rel_timeout, NULL);
-
-      if (ret <= 0) {
-         int lerrno = errno;
-         wl_display_cancel_read(wl_display);
-         if (ret < 0) {
-            /* If ppoll() was interrupted, try again. */
-            if (lerrno == EINTR || lerrno == EAGAIN)
-               continue;
-            ret = VK_ERROR_OUT_OF_DATE_KHR;
-            goto relinquish_dispatch;
-         }
-         assert(ret == 0);
-         continue;
-      }
-
-      ret = wl_display_read_events(wl_display);
-      if (ret < 0) {
-         ret = VK_ERROR_OUT_OF_DATE_KHR;
-         goto relinquish_dispatch;
-      }
+      /* Wake up other waiters who may have been unblocked by the events
+       * we just read. */
+      pthread_cond_broadcast(&chain->present_ids.list_advanced);
    }
 
-relinquish_dispatch:
-   pthread_mutex_lock(&chain->present_ids.lock);
    assert(chain->present_ids.dispatch_in_progress);
    chain->present_ids.dispatch_in_progress = false;
    pthread_cond_broadcast(&chain->present_ids.list_advanced);

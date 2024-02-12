@@ -83,6 +83,24 @@ get_signed_inf(nir_builder *b, nir_def *zero)
    return nir_pack_64_2x32_split(b, nir_imm_int(b, 0), inf_hi);
 }
 
+/* Return a correctly signed zero based on src, if we care. */
+static nir_def *
+get_signed_zero(nir_builder *b, nir_def *src)
+{
+   uint32_t exec_mode = b->shader->info.float_controls_execution_mode;
+
+   nir_def *zero;
+   if (nir_is_float_control_signed_zero_preserve(exec_mode, 64)) {
+      nir_def *hi = nir_unpack_64_2x32_split_y(b, src);
+      nir_def *sign = nir_iand_imm(b, hi, 0x80000000);
+      zero = nir_pack_64_2x32_split(b, nir_imm_int(b, 0), sign);
+   } else {
+      zero = nir_imm_double(b, 0.0f);
+   }
+
+   return zero;
+}
+
 /*
  * Generates the correctly-signed infinity if the source was zero, and flushes
  * the result to 0 if the source was infinity or the calculated exponent was
@@ -95,11 +113,10 @@ fix_inv_result(nir_builder *b, nir_def *res, nir_def *src,
 {
    /* If the exponent is too small or the original input was infinity/NaN,
     * force the result to 0 (flush denorms) to avoid the work of handling
-    * denorms properly. Note that this doesn't preserve positive/negative
-    * zeros, but GLSL doesn't require it.
+    * denorms properly.
     */
    res = nir_bcsel(b, nir_ior(b, nir_ile_imm(b, exp, 0), nir_feq_imm(b, nir_fabs(b, src), INFINITY)),
-                   nir_imm_double(b, 0.0f), res);
+                   get_signed_zero(b, src), res);
 
    /* If the original input was 0, generate the correctly-signed infinity */
    res = nir_bcsel(b, nir_fneu_imm(b, src, 0.0f),
@@ -296,7 +313,7 @@ lower_sqrt_rsq(nir_builder *b, nir_def *src, bool sqrt)
       if (!preserve_denorms) {
          src_flushed = nir_bcsel(b,
                                  nir_flt_imm(b, nir_fabs(b, src), DBL_MIN),
-                                 nir_imm_double(b, 0.0),
+                                 get_signed_zero(b, src),
                                  src);
       }
       res = nir_bcsel(b, nir_ior(b, nir_feq_imm(b, src_flushed, 0.0), nir_feq_imm(b, src, INFINITY)),
@@ -351,7 +368,7 @@ lower_trunc(nir_builder *b, nir_def *src)
 
    return nir_bcsel(b,
                     nir_ilt_imm(b, unbiased_exp, 0),
-                    nir_imm_double(b, 0.0),
+                    get_signed_zero(b, src),
                     nir_bcsel(b, nir_ige_imm(b, unbiased_exp, 53),
                               src,
                               nir_pack_64_2x32_split(b,

@@ -2373,9 +2373,6 @@ dri2_wl_swrast_commit_backbuffer(struct dri2_egl_surface *dri2_surf)
                                dri2_surf);
    }
 
-   dri2_surf->current = dri2_surf->back;
-   dri2_surf->back = NULL;
-
    wl_surface_attach(dri2_surf->wl_surface_wrapper,
                      dri2_surf->current->wl_buffer, dri2_surf->dx,
                      dri2_surf->dy);
@@ -2518,10 +2515,11 @@ dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
       dri2_dpy->core->swapBuffersWithDamage(dri2_surf->dri_drawable, n_rects, rects);
    else
       dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
-   if (disp->Options.Zink) {
-      dri2_surf->current = dri2_surf->back;
-      dri2_surf->back = NULL;
-   } else {
+
+   dri2_surf->current = dri2_surf->back;
+   dri2_surf->back = NULL;
+
+   if (!disp->Options.Zink) {
       dri2_wl_swrast_commit_backbuffer(dri2_surf);
    }
    return EGL_TRUE;

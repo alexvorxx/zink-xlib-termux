@@ -2470,7 +2470,12 @@ dri2_wl_swrast_put_image2(__DRIdrawable *draw, int op, int x, int y, int w,
    char *src, *dst;
 
    assert(copy_width <= stride);
-   wl_surface_damage(dri2_surf->wl_surface_wrapper, 0, 0, INT32_MAX, INT32_MAX);
+   if (wl_proxy_get_version((struct wl_proxy *)dri2_surf->wl_surface_wrapper) <
+       WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
+      wl_surface_damage(dri2_surf->wl_surface_wrapper, 0, 0, INT32_MAX, INT32_MAX);
+   else
+      wl_surface_damage_buffer(dri2_surf->wl_surface_wrapper,
+                               x, dri2_surf->base.Height - y - h, w, h);
 
    dst = dri2_wl_swrast_get_backbuffer_data(dri2_surf);
 

@@ -219,7 +219,7 @@ drisw_copy_to_front(struct pipe_context *pipe,
  */
 
 static void
-drisw_swap_buffers(struct dri_drawable *drawable)
+drisw_swap_buffers_with_damage(struct dri_drawable *drawable, int nrects, const int *rects)
 {
    struct dri_context *ctx = dri_get_current();
    struct dri_screen *screen = drawable->screen;
@@ -261,6 +261,12 @@ drisw_swap_buffers(struct dri_drawable *drawable)
       /* TODO: remove this if the framebuffer state doesn't change. */
       st_context_invalidate_state(ctx->st, ST_INVALIDATE_FB_STATE);
    }
+}
+
+static void
+drisw_swap_buffers(struct dri_drawable *drawable)
+{
+   drisw_swap_buffers_with_damage(drawable, 0, NULL);
 }
 
 static void
@@ -536,6 +542,7 @@ drisw_create_drawable(struct dri_screen *screen, const struct gl_config * visual
    drawable->flush_frontbuffer = drisw_flush_frontbuffer;
    drawable->update_tex_buffer = drisw_update_tex_buffer;
    drawable->swap_buffers = drisw_swap_buffers;
+   drawable->swap_buffers_with_damage = drisw_swap_buffers_with_damage;
 
    return drawable;
 }

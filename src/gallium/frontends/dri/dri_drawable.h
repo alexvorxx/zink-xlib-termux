@@ -112,6 +112,7 @@ struct dri_drawable
                              struct dri_drawable *drawable);
 
    void (*swap_buffers)(struct dri_drawable *drawable);
+   void (*swap_buffers_with_damage)(struct dri_drawable *drawable, int nrects, const int *rects);
 };
 
 /* Typecast the opaque pointer to our own type. */

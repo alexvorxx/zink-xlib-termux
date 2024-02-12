@@ -799,7 +799,7 @@ struct __DRIuseInvalidateExtensionRec {
  * returns a reliable value.  The X server requires v1 and uses v2.
  */
 #define __DRI_CORE "DRI_Core"
-#define __DRI_CORE_VERSION 2
+#define __DRI_CORE_VERSION 3
 
 struct __DRIcoreExtensionRec {
     __DRIextension base;
@@ -858,6 +858,8 @@ struct __DRIcoreExtensionRec {
 
     /* Used by the X server. */
     int (*unbindContext)(__DRIcontext *ctx);
+
+    void (*swapBuffersWithDamage)(__DRIdrawable *drawable, int nrects, const int *rects);
 };
 
 /**

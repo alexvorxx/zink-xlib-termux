@@ -2504,7 +2504,8 @@ dri2_wl_swrast_put_image(__DRIdrawable *draw, int op, int x, int y, int w,
 }
 
 static EGLBoolean
-dri2_wl_swrast_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
+dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
+                                        const EGLint *rects, EGLint n_rects)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(draw);
@@ -2512,11 +2513,21 @@ dri2_wl_swrast_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
    if (!dri2_surf->wl_win)
       return _eglError(EGL_BAD_NATIVE_WINDOW, "dri2_swap_buffers");
 
-   dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
+   if (n_rects)
+      dri2_dpy->core->swapBuffersWithDamage(dri2_surf->dri_drawable, n_rects, rects);
+   else
+      dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
    if (disp->Options.Zink) {
       dri2_surf->current = dri2_surf->back;
       dri2_surf->back = NULL;
    }
+   return EGL_TRUE;
+}
+
+static EGLBoolean
+dri2_wl_swrast_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
+{
+   dri2_wl_swrast_swap_buffers_with_damage(disp, draw, NULL, 0);
    return EGL_TRUE;
 }
 
@@ -2585,6 +2596,7 @@ static const struct dri2_egl_display_vtbl dri2_wl_swrast_display_vtbl = {
    .destroy_surface = dri2_wl_destroy_surface,
    .create_image = dri2_create_image_khr,
    .swap_buffers = dri2_wl_swrast_swap_buffers,
+   .swap_buffers_with_damage = dri2_wl_swrast_swap_buffers_with_damage,
    .get_dri_drawable = dri2_surface_get_dri_drawable,
    .query_buffer_age = dri2_wl_swrast_query_buffer_age,
 };

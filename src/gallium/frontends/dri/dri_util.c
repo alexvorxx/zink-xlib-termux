@@ -848,6 +848,16 @@ driGetAPIMask(__DRIscreen *screen)
  * driver.
  */
 static void
+driSwapBuffersWithDamage(__DRIdrawable *pdp, int nrects, const int *rects)
+{
+   struct dri_drawable *drawable = dri_drawable(pdp);
+
+   assert(drawable->screen->swrast_loader);
+
+   drawable->swap_buffers_with_damage(drawable, nrects, rects);
+}
+
+static void
 driSwapBuffers(__DRIdrawable *pdp)
 {
    struct dri_drawable *drawable = dri_drawable(pdp);
@@ -876,6 +886,7 @@ const __DRIcoreExtension driCoreExtension = {
     .createNewDrawable          = NULL,
     .destroyDrawable            = driDestroyDrawable,
     .swapBuffers                = driSwapBuffers, /* swrast */
+    .swapBuffersWithDamage      = driSwapBuffersWithDamage, /* swrast */
     .createNewContext           = driCreateNewContext, /* swrast */
     .copyContext                = driCopyContext,
     .destroyContext             = driDestroyContext,

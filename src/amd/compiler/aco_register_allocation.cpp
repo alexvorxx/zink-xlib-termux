@@ -194,13 +194,19 @@ get_stride(RegClass rc)
 }
 
 PhysRegInterval
-get_reg_bounds(Program* program, RegType type)
+get_reg_bounds(ra_ctx& ctx, RegType type, bool linear_vgpr)
 {
    if (type == RegType::vgpr) {
-      return {PhysReg{256}, (unsigned)program->max_reg_demand.vgpr};
+      return {PhysReg{256}, (unsigned)ctx.program->max_reg_demand.vgpr};
    } else {
-      return {PhysReg{0}, (unsigned)program->max_reg_demand.sgpr};
+      return {PhysReg{0}, (unsigned)ctx.program->max_reg_demand.sgpr};
    }
+}
+
+PhysRegInterval
+get_reg_bounds(ra_ctx& ctx, RegClass rc)
+{
+   return get_reg_bounds(ctx, rc.type(), rc.is_linear_vgpr());
 }
 
 struct DefInfo {
@@ -214,7 +220,7 @@ struct DefInfo {
       size = rc.size();
       stride = get_stride(rc);
 
-      bounds = get_reg_bounds(ctx.program, rc.type());
+      bounds = get_reg_bounds(ctx, rc);
 
       if (rc.is_subdword() && operand >= 0) {
          /* stride in bytes */
@@ -424,10 +430,9 @@ print_reg(const RegisterFile& reg_file, PhysReg reg, bool has_adjacent_variable)
 
 /* helper function for debugging */
 UNUSED void
-print_regs(ra_ctx& ctx, bool vgprs, const RegisterFile& reg_file)
+print_regs(ra_ctx& ctx, PhysRegInterval regs, const RegisterFile& reg_file)
 {
-   PhysRegInterval regs = get_reg_bounds(ctx.program, vgprs ? RegType::vgpr : RegType::sgpr);
-   char reg_char = vgprs ? 'v' : 's';
+   char reg_char = regs.lo().reg() >= 256 ? 'v' : 's';
    const int max_regs_per_line = 64;
 
    /* print markers */
@@ -483,11 +488,11 @@ print_regs(ra_ctx& ctx, bool vgprs, const RegisterFile& reg_file)
           ctx.orig_names[size_id.second].id() != size_id.second) {
          printf("(was %%%d) ", ctx.orig_names[size_id.second].id());
       }
-      printf("= %c[%d", reg_char, first_reg.reg() - regs.lo());
+      printf("= %c[%d", reg_char, first_reg.reg() % 256);
       PhysReg last_reg = first_reg.advance(size_id.first - 1);
       if (first_reg.reg() != last_reg.reg()) {
          assert(first_reg.byte() == 0 && last_reg.byte() == 3);
-         printf("-%d", last_reg.reg() - regs.lo());
+         printf("-%d", last_reg.reg() % 256);
       }
       printf("]");
       if (first_reg.byte() != 0 || last_reg.byte() != 3) {
@@ -1116,7 +1121,7 @@ get_regs_for_copies(ra_ctx& ctx, RegisterFile& reg_file,
    /* Variables are sorted from large to small and with increasing assigned register */
    for (unsigned id : vars) {
       assignment& var = ctx.assignments[id];
-      PhysRegInterval bounds = get_reg_bounds(ctx.program, var.rc.type());
+      PhysRegInterval bounds = get_reg_bounds(ctx, var.rc);
       DefInfo info = DefInfo(ctx, ctx.pseudo_dummy, var.rc, -1);
       uint32_t size = info.size;
 
@@ -1428,7 +1433,7 @@ get_reg_specified(ra_ctx& ctx, const RegisterFile& reg_file, RegClass rc,
       return false;
 
    PhysRegInterval reg_win = {reg, rc.size()};
-   PhysRegInterval bounds = get_reg_bounds(ctx.program, rc.type());
+   PhysRegInterval bounds = get_reg_bounds(ctx, rc);
    PhysRegInterval vcc_win = {vcc, 2};
    /* VCC is outside the bounds */
    bool is_vcc = rc.type() == RegType::sgpr && vcc_win.contains(reg_win) && ctx.program->needs_vcc;
@@ -1451,12 +1456,12 @@ get_reg_specified(ra_ctx& ctx, const RegisterFile& reg_file, RegClass rc,
 }
 
 bool
-increase_register_file(ra_ctx& ctx, RegType type)
+increase_register_file(ra_ctx& ctx, RegClass rc)
 {
-   if (type == RegType::vgpr && ctx.program->max_reg_demand.vgpr < ctx.vgpr_limit) {
+   if (rc.type() == RegType::vgpr && ctx.program->max_reg_demand.vgpr < ctx.vgpr_limit) {
       update_vgpr_sgpr_demand(ctx.program, RegisterDemand(ctx.program->max_reg_demand.vgpr + 1,
                                                           ctx.program->max_reg_demand.sgpr));
-   } else if (type == RegType::sgpr && ctx.program->max_reg_demand.sgpr < ctx.sgpr_limit) {
+   } else if (rc.type() == RegType::sgpr && ctx.program->max_reg_demand.sgpr < ctx.sgpr_limit) {
       update_vgpr_sgpr_demand(ctx.program, RegisterDemand(ctx.program->max_reg_demand.vgpr,
                                                           ctx.program->max_reg_demand.sgpr + 1));
    } else {
@@ -1554,7 +1559,7 @@ is_mimg_vaddr_intact(ra_ctx& ctx, const RegisterFile& reg_file, Instruction* ins
          PhysReg reg = ctx.assignments[op.tempId()].reg;
 
          if (first.reg() == 512) {
-            PhysRegInterval bounds = get_reg_bounds(ctx.program, RegType::vgpr);
+            PhysRegInterval bounds = get_reg_bounds(ctx, RegType::vgpr, false);
             first = reg.advance(i * -4);
             PhysRegInterval vec = PhysRegInterval{first, instr->operands.size() - 3u};
             if (!bounds.contains(vec)) /* not enough space for other operands */
@@ -1695,7 +1700,7 @@ get_reg(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
     * too many moves. */
    assert(reg_file.count_zero(info.bounds) >= info.size);
 
-   if (!increase_register_file(ctx, info.rc.type())) {
+   if (!increase_register_file(ctx, info.rc)) {
       /* fallback algorithm: reallocate all variables at once */
       unsigned def_size = info.rc.size();
       for (Definition def : instr->definitions) {
@@ -1709,7 +1714,7 @@ get_reg(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
             killed_op_size += op.regClass().size();
       }
 
-      const PhysRegInterval regs = get_reg_bounds(ctx.program, info.rc.type());
+      const PhysRegInterval regs = get_reg_bounds(ctx, info.rc);
 
       /* reallocate passthrough variables and non-killed operands */
       std::vector<IDAndRegClass> vars;
@@ -1750,7 +1755,7 @@ get_reg_create_vector(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
    uint32_t size = rc.size();
    uint32_t bytes = rc.bytes();
    uint32_t stride = get_stride(rc);
-   PhysRegInterval bounds = get_reg_bounds(ctx.program, rc.type());
+   PhysRegInterval bounds = get_reg_bounds(ctx, rc);
 
    // TODO: improve p_create_vector for sub-dword vectors
 
@@ -1870,7 +1875,7 @@ get_reg_create_vector(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
    success = get_regs_for_copies(ctx, tmp_file, pc, vars, instr, PhysRegInterval{best_pos, size});
 
    if (!success) {
-      if (!increase_register_file(ctx, temp.type())) {
+      if (!increase_register_file(ctx, temp.regClass())) {
          /* use the fallback algorithm in get_reg() */
          return get_reg(ctx, reg_file, temp, parallelcopies, instr);
       }

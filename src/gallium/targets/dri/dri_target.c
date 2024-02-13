@@ -12,7 +12,7 @@ PUBLIC const __DRIextension **__driDriverGetExtensions_##drivername(void) \
    return galliumdrm_driver_extensions;                                   \
 }
 
-#if defined(GALLIUM_SOFTPIPE)
+#if defined(HAVE_SWRAST)
 
 const __DRIextension **__driDriverGetExtensions_swrast(void);
 

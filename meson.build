@@ -165,12 +165,19 @@ elif gallium_drivers.contains('all')
    ]
 endif
 
+# compatibility for meson configurations asking for 'swrast'
+with_swrast = gallium_drivers.contains('swrast')
+if with_swrast
+  warning('`gallium-drivers=swrast` is a deprecated alias for `gallium-drivers=softpipe,llvmpipe` and will be removed in version 25.0')
+endif
+
 with_gallium_radeonsi = gallium_drivers.contains('radeonsi')
 with_gallium_r300 = gallium_drivers.contains('r300')
 with_gallium_r600 = gallium_drivers.contains('r600')
 with_gallium_nouveau = gallium_drivers.contains('nouveau')
 with_gallium_freedreno = gallium_drivers.contains('freedreno')
-with_gallium_softpipe = gallium_drivers.contains('swrast')
+with_gallium_softpipe = with_swrast or gallium_drivers.contains('softpipe')
+with_gallium_llvmpipe = with_swrast or gallium_drivers.contains('llvmpipe')
 with_gallium_vc4 = gallium_drivers.contains('vc4')
 with_gallium_v3d = gallium_drivers.contains('v3d')
 with_gallium_panfrost = gallium_drivers.contains('panfrost')
@@ -188,6 +195,12 @@ with_gallium_asahi = gallium_drivers.contains('asahi')
 foreach gallium_driver : gallium_drivers
   pre_args += '-DHAVE_@0@'.format(gallium_driver.to_upper())
 endforeach
+
+# compatibility for "swrast" as an internal-ish driver name
+with_gallium_swrast = with_gallium_softpipe or with_gallium_llvmpipe
+if with_gallium_swrast
+  pre_args += '-DHAVE_SWRAST'
+endif
 
 with_gallium = gallium_drivers.length() != 0
 with_gallium_kmsro = system_has_kms_drm and [
@@ -248,6 +261,8 @@ if with_any_vk and host_machine.system() == 'windows' and meson.version().versio
   error('Vulkan drivers on Windows require meson 1.3 or newer')
 endif
 
+with_any_llvmpipe = with_gallium_llvmpipe or with_swrast_vk
+
 freedreno_kmds = get_option('freedreno-kmds')
 if freedreno_kmds.length() != 0 and freedreno_kmds != [ 'msm' ] and with_freedreno_vk
   if freedreno_kmds.contains('msm')
@@ -307,9 +322,6 @@ if with_nouveau_vk
   pre_args += '-DHAVE_NVK'
 endif
 
-if with_swrast_vk and not with_gallium_softpipe
-  error('swrast vulkan requires gallium swrast')
-endif
 if with_gallium_tegra and not with_gallium_nouveau
   error('tegra driver requires nouveau driver')
 endif
@@ -514,7 +526,7 @@ if with_glx != 'disabled'
   elif with_glx == 'xlib'
     if not with_gallium
       error('xlib based GLX requires at least one gallium driver')
-    elif not with_gallium_softpipe
+    elif not with_gallium_swrast
       error('xlib based GLX requires softpipe or llvmpipe.')
     elif with_dri
       error('xlib conflicts with any dri driver')
@@ -748,7 +760,7 @@ endif
 
 with_gallium_st_nine =  get_option('gallium-nine')
 if with_gallium_st_nine
-  if not with_gallium_softpipe
+  if not with_gallium_swrast
     error('The nine state tracker requires gallium softpipe/llvmpipe.')
   elif not [
              with_gallium_crocus,
@@ -771,7 +783,7 @@ if with_gallium_st_nine
 endif
 with_gallium_st_d3d10umd =  get_option('gallium-d3d10umd')
 if with_gallium_st_d3d10umd
-  if not with_gallium_softpipe
+  if not with_gallium_swrast
     error('The d3d10umd state tracker requires gallium softpipe/llvmpipe.')
   endif
 endif
@@ -1818,6 +1830,8 @@ elif with_amd_vk and with_aco_tests
   error('ACO tests require LLVM, but LLVM is disabled.')
 elif with_swrast_vk
   error('The following drivers require LLVM: Lavapipe. One of these is enabled, but LLVM is disabled.')
+elif with_gallium_llvmpipe
+  error('The following drivers require LLVM: llvmpipe. It is enabled, but LLVM is disabled.')
 elif with_gallium_clover
   error('The OpenCL "Clover" state tracker requires LLVM, but LLVM is disabled.')
 elif with_clc
@@ -2006,7 +2020,7 @@ if dep_unwind.found()
 endif
 
 if with_osmesa
-  if not with_gallium_softpipe
+  if not with_gallium_swrast
     error('OSMesa gallium requires gallium softpipe or llvmpipe.')
   endif
   if host_machine.system() == 'windows'

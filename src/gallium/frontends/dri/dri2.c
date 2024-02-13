@@ -2322,7 +2322,7 @@ fail:
 static const __DRIconfig **
 dri_swrast_kms_init_screen(struct dri_screen *screen, bool driver_name_is_inferred)
 {
-#if defined(GALLIUM_SOFTPIPE)
+#if defined(HAVE_SWRAST)
    const __DRIconfig **configs;
    struct pipe_screen *pscreen = NULL;
 
@@ -2352,7 +2352,7 @@ dri_swrast_kms_init_screen(struct dri_screen *screen, bool driver_name_is_inferr
 fail:
    dri_release_screen(screen);
 
-#endif // GALLIUM_SOFTPIPE
+#endif // HAVE_SWRAST
    return NULL;
 }
 

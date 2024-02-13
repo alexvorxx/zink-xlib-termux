@@ -5,6 +5,6 @@ if not with_platform_windows
   # pipe-loader doesn't build on windows.
   subdir('trivial')
 endif
-if with_gallium_softpipe
+if with_gallium_swrast
   subdir('unit')
 endif

@@ -42,10 +42,6 @@ if with_gallium_zink and not with_platform_android
   deps_for_libdri += vulkan_wsi_deps
 endif
 
-if with_gallium_softpipe
-  libdri_c_args += '-DGALLIUM_SOFTPIPE'
-endif
-
 libdri = static_library(
   'dri',
   [ files_libdri, sha1_h ],

@@ -67,7 +67,7 @@ libsoftpipe = static_library(
   dependencies : idep_nir,
 )
 
-driver_swrast = declare_dependency(
+driver_softpipe = declare_dependency(
   compile_args : '-DGALLIUM_SOFTPIPE',
   link_with : libsoftpipe
 )

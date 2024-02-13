@@ -47,8 +47,6 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
 
    compiler->precise_trig = debug_get_bool_option("INTEL_PRECISE_TRIG", false);
 
-   compiler->use_tcs_multi_patch = devinfo->ver >= 12;
-
    /* Default to the sampler since that's what we've done since forever */
    compiler->indirect_ubos_use_sampler = true;
 
@@ -128,12 +126,6 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       nir_options->force_indirect_unrolling |=
          elk_nir_no_indirect_mask(compiler, i);
       nir_options->force_indirect_unrolling_sampler = devinfo->ver < 7;
-
-      if (compiler->use_tcs_multi_patch) {
-         /* TCS MULTI_PATCH mode has multiple patches per subgroup */
-         nir_options->divergence_analysis_options &=
-            ~nir_divergence_single_patch_per_tcs_subgroup;
-      }
 
       if (devinfo->ver < 12)
          nir_options->divergence_analysis_options |=

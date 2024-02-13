@@ -390,21 +390,12 @@ elk_compile_tcs(const struct elk_compiler *compiler,
    elk_postprocess_nir(nir, compiler, debug_enabled,
                        key->base.robust_flags);
 
-   bool has_primitive_id =
-      BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID);
-
    prog_data->patch_count_threshold = elk::get_patch_count_threshold(key->input_vertices);
 
-   if (compiler->use_tcs_multi_patch) {
-      vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_MULTI_PATCH;
-      prog_data->instances = nir->info.tess.tcs_vertices_out;
-      prog_data->include_primitive_id = has_primitive_id;
-   } else {
-      unsigned verts_per_thread = is_scalar ? 8 : 2;
-      vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH;
-      prog_data->instances =
-         DIV_ROUND_UP(nir->info.tess.tcs_vertices_out, verts_per_thread);
-   }
+   unsigned verts_per_thread = is_scalar ? 8 : 2;
+   vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH;
+   prog_data->instances =
+      DIV_ROUND_UP(nir->info.tess.tcs_vertices_out, verts_per_thread);
 
    /* Compute URB entry size.  The maximum allowed URB entry size is 32k.
     * That divides up as follows:

@@ -1009,14 +1009,6 @@ elk_preprocess_nir(const struct elk_compiler *compiler, nir_shader *nir,
        nir_var_mem_ubo | nir_var_mem_ssbo,
        nir_lower_direct_array_deref_of_vec_load);
 
-   /* Clamp load_per_vertex_input of the TCS stage so that we do not generate
-    * loads reading out of bounds. We can do this here because we called
-    * nir_lower_system_values above.
-    */
-   if (nir->info.stage == MESA_SHADER_TESS_CTRL &&
-       compiler->use_tcs_multi_patch)
-      OPT(intel_nir_clamp_per_vertex_loads);
-
    /* Get rid of split copies */
    elk_nir_optimize(nir, is_scalar, devinfo);
 }

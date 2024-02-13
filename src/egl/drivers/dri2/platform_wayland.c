@@ -2562,6 +2562,18 @@ dri2_wl_swrast_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
 }
 
 static EGLint
+dri2_wl_kopper_query_buffer_age(_EGLDisplay *disp, _EGLSurface *surface)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surface);
+
+   /* This can legitimately be null for lavapipe */
+   if (dri2_dpy->kopper)
+      return dri2_dpy->kopper->queryBufferAge(dri2_surf->dri_drawable);
+   return 0;
+}
+
+static EGLint
 dri2_wl_swrast_query_buffer_age(_EGLDisplay *disp, _EGLSurface *surface)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -2640,7 +2652,7 @@ static const struct dri2_egl_display_vtbl dri2_wl_kopper_display_vtbl = {
    .swap_buffers = dri2_wl_swrast_swap_buffers,
    .swap_buffers_with_damage = dri2_wl_swrast_swap_buffers_with_damage,
    .get_dri_drawable = dri2_surface_get_dri_drawable,
-   .query_buffer_age = dri2_wl_swrast_query_buffer_age,
+   .query_buffer_age = dri2_wl_kopper_query_buffer_age,
 };
 
 static const __DRIswrastLoaderExtension swrast_loader_extension = {

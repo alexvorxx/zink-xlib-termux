@@ -670,7 +670,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 
    /* Always emit at least one color attachment, even if it's just a dummy. */
    uint32_t color_att_count = MAX2(1, render->color_att_count);
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, color_att_count * 10 + 27);
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, color_att_count * 12 + 29);
 
    P_IMMD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_VIEW_MASK),
           render->view_mask);
@@ -781,6 +781,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
             P_NV9097_SET_COLOR_TARGET_ARRAY_PITCH(p, i, 0);
             P_NV9097_SET_COLOR_TARGET_LAYER(p, i, 0);
          }
+
+         P_IMMD(p, NV9097, SET_COLOR_COMPRESSION(i), nil_image->compressed);
       } else {
          P_MTHD(p, NV9097, SET_COLOR_TARGET_A(i));
          P_NV9097_SET_COLOR_TARGET_A(p, i, 0);
@@ -794,6 +796,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          P_NV9097_SET_COLOR_TARGET_THIRD_DIMENSION(p, i, layer_count);
          P_NV9097_SET_COLOR_TARGET_ARRAY_PITCH(p, i, 0);
          P_NV9097_SET_COLOR_TARGET_LAYER(p, i, 0);
+
+         P_IMMD(p, NV9097, SET_COLOR_COMPRESSION(i), ENABLE_TRUE);
       }
    }
 
@@ -878,6 +882,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
       });
 
       P_IMMD(p, NV9097, SET_ZT_LAYER, base_array_layer);
+
+      P_IMMD(p, NV9097, SET_Z_COMPRESSION, nil_image.compressed);
 
       if (nvk_cmd_buffer_3d_cls(cmd) >= MAXWELL_B) {
          P_IMMD(p, NVC597, SET_ZT_SPARSE, {

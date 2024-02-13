@@ -10,8 +10,11 @@
 #define AMDGPU_BO_H
 
 #include "amdgpu_winsys.h"
-
 #include "pipebuffer/pb_slab.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct amdgpu_sparse_backing_chunk;
 
@@ -136,25 +139,25 @@ static inline bool is_real_bo(struct amdgpu_winsys_bo *bo)
    return bo->type >= AMDGPU_BO_REAL;
 }
 
-static struct amdgpu_bo_real *get_real_bo(struct amdgpu_winsys_bo *bo)
+static inline struct amdgpu_bo_real *get_real_bo(struct amdgpu_winsys_bo *bo)
 {
    assert(is_real_bo(bo));
    return (struct amdgpu_bo_real*)bo;
 }
 
-static struct amdgpu_bo_real_reusable *get_real_bo_reusable(struct amdgpu_winsys_bo *bo)
+static inline struct amdgpu_bo_real_reusable *get_real_bo_reusable(struct amdgpu_winsys_bo *bo)
 {
    assert(bo->type >= AMDGPU_BO_REAL_REUSABLE);
    return (struct amdgpu_bo_real_reusable*)bo;
 }
 
-static struct amdgpu_bo_sparse *get_sparse_bo(struct amdgpu_winsys_bo *bo)
+static inline struct amdgpu_bo_sparse *get_sparse_bo(struct amdgpu_winsys_bo *bo)
 {
    assert(bo->type == AMDGPU_BO_SPARSE && bo->base.usage & RADEON_FLAG_SPARSE);
    return (struct amdgpu_bo_sparse*)bo;
 }
 
-static struct amdgpu_bo_slab_entry *get_slab_entry_bo(struct amdgpu_winsys_bo *bo)
+static inline struct amdgpu_bo_slab_entry *get_slab_entry_bo(struct amdgpu_winsys_bo *bo)
 {
    assert(bo->type == AMDGPU_BO_SLAB_ENTRY);
    return (struct amdgpu_bo_slab_entry*)bo;
@@ -165,7 +168,7 @@ static inline struct amdgpu_bo_real_reusable_slab *get_bo_from_slab(struct pb_sl
    return container_of(slab, struct amdgpu_bo_real_reusable_slab, slab);
 }
 
-static struct amdgpu_bo_real *get_slab_entry_real_bo(struct amdgpu_winsys_bo *bo)
+static inline struct amdgpu_bo_real *get_slab_entry_real_bo(struct amdgpu_winsys_bo *bo)
 {
    assert(bo->type == AMDGPU_BO_SLAB_ENTRY);
    return &get_bo_from_slab(((struct amdgpu_bo_slab_entry*)bo)->entry.slab)->b.b;
@@ -278,5 +281,9 @@ amdgpu_winsys_bo_drop_reference(struct amdgpu_winsys *ws, struct amdgpu_winsys_b
 {
    radeon_bo_drop_reference(&ws->dummy_ws.base, &dst->base);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

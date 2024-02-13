@@ -12,6 +12,10 @@
 #include "util/u_memory.h"
 #include "drm-uapi/amdgpu_drm.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Smaller submits means the GPU gets busy sooner and there is less
  * waiting for buffers and fences. Proof:
  *   http://www.phoronix.com/scan.php?page=article&item=mesa-111-si&num=1
@@ -261,5 +265,9 @@ bool amdgpu_fence_wait(struct pipe_fence_handle *fence, uint64_t timeout,
                        bool absolute);
 void amdgpu_cs_sync_flush(struct radeon_cmdbuf *rcs);
 void amdgpu_cs_init_functions(struct amdgpu_screen_winsys *ws);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

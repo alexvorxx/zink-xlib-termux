@@ -3092,10 +3092,11 @@ enum anv_query_bits {
  * vkCopyQueryPoolResults().
  */
 #define ANV_QUERY_RENDER_TARGET_WRITES_PENDING_BITS(devinfo) \
-   (((devinfo->verx10 >= 120 && \
-      devinfo->verx10 < 125) ? ANV_QUERY_WRITES_TILE_FLUSH : 0) | \
-   ANV_QUERY_WRITES_RT_FLUSH | \
-   ANV_QUERY_WRITES_CS_STALL)
+   (((!ANV_DEVINFO_HAS_COHERENT_L3_CS(devinfo) && \
+      devinfo->ver >= 12) ? \
+     ANV_QUERY_WRITES_TILE_FLUSH : 0) | \
+    ANV_QUERY_WRITES_RT_FLUSH | \
+    ANV_QUERY_WRITES_CS_STALL)
 #define ANV_QUERY_COMPUTE_WRITES_PENDING_BITS \
    (ANV_QUERY_WRITES_DATA_FLUSH | \
     ANV_QUERY_WRITES_CS_STALL)

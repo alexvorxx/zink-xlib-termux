@@ -155,7 +155,6 @@ lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
    const elk_fs_reg src0_alpha = inst->src[FB_WRITE_LOGICAL_SRC_SRC0_ALPHA];
    const elk_fs_reg src_depth = inst->src[FB_WRITE_LOGICAL_SRC_SRC_DEPTH];
    const elk_fs_reg dst_depth = inst->src[FB_WRITE_LOGICAL_SRC_DST_DEPTH];
-   const elk_fs_reg src_stencil = inst->src[FB_WRITE_LOGICAL_SRC_SRC_STENCIL];
    elk_fs_reg sample_mask = inst->src[FB_WRITE_LOGICAL_SRC_OMASK];
    const unsigned components =
       inst->src[FB_WRITE_LOGICAL_SRC_COMPONENTS].ud;
@@ -325,23 +324,6 @@ lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
 
    if (dst_depth.file != BAD_FILE) {
       sources[length] = dst_depth;
-      length++;
-   }
-
-   if (src_stencil.file != BAD_FILE) {
-      assert(devinfo->ver >= 9);
-      assert(bld.dispatch_width() == 8 * reg_unit(devinfo));
-
-      /* XXX: src_stencil is only available on gfx9+. dst_depth is never
-       * available on gfx9+. As such it's impossible to have both enabled at the
-       * same time and therefore length cannot overrun the array.
-       */
-      assert(length < 15 * reg_unit(devinfo));
-
-      sources[length] = bld.vgrf(ELK_REGISTER_TYPE_UD);
-      bld.exec_all().annotate("FB write OS")
-         .MOV(retype(sources[length], ELK_REGISTER_TYPE_UB),
-              subscript(src_stencil, ELK_REGISTER_TYPE_UB, 0));
       length++;
    }
 

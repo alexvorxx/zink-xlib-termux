@@ -1150,11 +1150,10 @@ try_constant_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
       break;
 
    case ELK_FS_OPCODE_FB_WRITE_LOGICAL:
-      /* The stencil and omask sources of ELK_FS_OPCODE_FB_WRITE_LOGICAL are
+      /* The omask source of ELK_FS_OPCODE_FB_WRITE_LOGICAL is
        * bit-cast using a strided region so they cannot be immediates.
        */
-      if (arg != FB_WRITE_LOGICAL_SRC_SRC_STENCIL &&
-          arg != FB_WRITE_LOGICAL_SRC_OMASK) {
+      if (arg != FB_WRITE_LOGICAL_SRC_OMASK) {
          inst->src[arg] = val;
          progress = true;
       }

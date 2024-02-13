@@ -674,7 +674,7 @@ elk_fs_visitor::emit_single_fb_write(const fs_builder &bld,
 
    /* Hand over gl_FragDepth or the payload depth. */
    const elk_fs_reg dst_depth = fetch_payload_reg(bld, fs_payload().dest_depth_reg);
-   elk_fs_reg src_depth, src_stencil;
+   elk_fs_reg src_depth;
 
    if (nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH)) {
       src_depth = frag_depth;
@@ -690,11 +690,8 @@ elk_fs_visitor::emit_single_fb_write(const fs_builder &bld,
       src_depth = fetch_payload_reg(bld, fs_payload().source_depth_reg);
    }
 
-   if (nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_STENCIL))
-      src_stencil = frag_stencil;
-
    const elk_fs_reg sources[] = {
-      color0, color1, src0_alpha, src_depth, dst_depth, src_stencil,
+      color0, color1, src0_alpha, src_depth, dst_depth,
       (prog_data->uses_omask ? sample_mask : elk_fs_reg()),
       elk_imm_ud(components)
    };
@@ -769,15 +766,6 @@ elk_fs_visitor::emit_fb_writes()
        * for the second and third subspans.
        */
       limit_dispatch_width(8, "Depth writes unsupported in SIMD16+ mode.\n");
-   }
-
-   if (nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_STENCIL)) {
-      /* From the 'Render Target Write message' section of the docs:
-       * "Output Stencil is not supported with SIMD16 Render Target Write
-       * Messages."
-       */
-      limit_dispatch_width(8, "gl_FragStencilRefARB unsupported "
-                           "in SIMD16+ mode.\n");
    }
 
    /* ANV doesn't know about sample mask output during the wm key creation

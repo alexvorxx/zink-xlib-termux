@@ -889,7 +889,7 @@ ternaryinstruction:
 		elk_inst_set_cond_modifier(p->devinfo, elk_last_inst,
 					   $4.cond_modifier);
 
-		if (p->devinfo->ver >= 7 && p->devinfo->ver < 12) {
+		if (p->devinfo->ver >= 7) {
 			elk_inst_set_3src_a16_flag_reg_nr(p->devinfo, elk_last_inst,
 					         $4.flag_reg_nr);
 			elk_inst_set_3src_a16_flag_subreg_nr(p->devinfo, elk_last_inst,
@@ -982,7 +982,7 @@ sendinstruction:
 	}
 	| predicate sendopcode execsize dst payload payload exp2 sharedfunction msgdesc instoptions
 	{
-		assert(p->devinfo->ver >= 6 && p->devinfo->ver < 12);
+		assert(p->devinfo->ver >= 6);
 
 		i965_asm_set_instruction_options(p, $10);
 		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
@@ -1123,8 +1123,7 @@ branchinstruction:
 		} else {
 			elk_set_dest(p, elk_last_inst, retype(elk_null_reg(),
 				     ELK_REGISTER_TYPE_D));
-			if (p->devinfo->ver < 12)
-				elk_set_src0(p, elk_last_inst, elk_imm_d(0));
+                        elk_set_src0(p, elk_last_inst, elk_imm_d(0));
 		}
 	}
 	| ELSE execsize relativelocation rellocation instoptions
@@ -1172,8 +1171,7 @@ branchinstruction:
 			elk_set_dest(p, elk_last_inst,
 				     vec1(retype(elk_null_reg(),
 				     ELK_REGISTER_TYPE_D)));
-			if (p->devinfo->ver < 12)
-				elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
 		elk_pop_insn_state(p);
@@ -1223,8 +1221,7 @@ branchinstruction:
 			elk_set_dest(p, elk_last_inst,
 				     vec1(retype(elk_null_reg(),
 				     ELK_REGISTER_TYPE_D)));
-			if (p->devinfo->ver < 12)
-				elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
 		elk_pop_insn_state(p);
@@ -1303,7 +1300,7 @@ breakinstruction:
 			elk_set_src0(p, elk_last_inst, retype(elk_null_reg(),
 				     ELK_REGISTER_TYPE_D));
 			elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
-		} else if (p->devinfo->ver < 12) {
+		} else {
 			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
@@ -1359,8 +1356,7 @@ loopinstruction:
 			elk_set_dest(p, elk_last_inst,
 						retype(elk_null_reg(),
 						ELK_REGISTER_TYPE_D));
-			if (p->devinfo->ver < 12)
-				elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		} else if (p->devinfo->ver == 7) {
 			elk_set_dest(p, elk_last_inst,
 						retype(elk_null_reg(),
@@ -1853,7 +1849,7 @@ maskreg:
 notifyreg:
 	NOTIFYREG subregnum
 	{
-		int subnr = (p->devinfo->ver >= 11) ? 2 : 3;
+		int subnr = 3;
 		if ($2 > subnr)
 			error(&@2, "Notification sub register number %d"
 				   " out of range\n", $2);
@@ -1919,9 +1915,7 @@ performancereg:
 	PERFORMANCEREG subregnum
 	{
 		int subnr;
-		if (p->devinfo->ver >= 10)
-			subnr = 5;
-		else if (p->devinfo->ver <= 8)
+		if (p->devinfo->ver <= 8)
 			subnr = 3;
 		else
 			subnr = 4;

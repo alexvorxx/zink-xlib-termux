@@ -177,7 +177,6 @@ public:
               struct elk_wm_prog_data *prog_data,
               const nir_shader *shader,
               unsigned dispatch_width,
-              unsigned num_polygons,
               bool needs_register_pressure,
               bool debug_enabled);
    elk_fs_visitor(const struct elk_compiler *compiler,
@@ -400,7 +399,6 @@ public:
    bool needs_register_pressure;
 
    const unsigned dispatch_width; /**< 8, 16 or 32 */
-   const unsigned max_polygons;
    unsigned max_dispatch_width;
 
    /* The API selected subgroup size */
@@ -451,8 +449,7 @@ public:
    int generate_code(const elk_cfg_t *cfg, int dispatch_width,
                      struct shader_stats shader_stats,
                      const elk::performance &perf,
-                     struct elk_compile_stats *stats,
-                     unsigned max_polygons = 0);
+                     struct elk_compile_stats *stats);
    void add_const_data(void *data, unsigned size);
    const unsigned *get_assembly();
 

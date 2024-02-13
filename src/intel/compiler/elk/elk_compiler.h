@@ -833,18 +833,6 @@ struct elk_wm_prog_data {
    uint8_t color_outputs_written;
    uint8_t computed_depth_mode;
 
-   /**
-    * Number of polygons handled in parallel by the multi-polygon PS
-    * kernel.
-    */
-   uint8_t max_polygons;
-
-   /**
-    * Dispatch width of the multi-polygon PS kernel, or 0 if no
-    * multi-polygon kernel was built.
-    */
-   uint8_t dispatch_multi;
-
    bool computed_stencil;
    bool early_fragment_tests;
    bool post_depth_coverage;
@@ -1791,7 +1779,7 @@ elk_cs_get_dispatch_info(const struct intel_device_info *devinfo,
  */
 static inline bool
 elk_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
-                              gl_shader_stage stage, unsigned max_polygons,
+                              gl_shader_stage stage,
                               const struct elk_stage_prog_data *prog_data)
 {
    /* The code below makes assumptions about the hardware's thread dispatch
@@ -1814,8 +1802,7 @@ elk_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
       const struct elk_wm_prog_data *wm_prog_data =
          (const struct elk_wm_prog_data *)prog_data;
       return !wm_prog_data->persample_dispatch &&
-             wm_prog_data->uses_vmask &&
-             max_polygons < 2;
+             wm_prog_data->uses_vmask;
    }
    case MESA_SHADER_COMPUTE:
       /* Compute shaders will be spawned with either a fully enabled dispatch

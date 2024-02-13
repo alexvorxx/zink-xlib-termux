@@ -1505,48 +1505,14 @@ elk_fs_visitor::assign_urb_setup()
              *      3       Attr0.w  a1-a0  a2-a0   N/A    a0
              *      4       Attr1.x  a1-a0  a2-a0   N/A    a0
              *     ...
-             *
-             * In multipolygon mode that no longer works since
-             * different channels may be processing polygons with
-             * different plane parameters, so each parameter above is
-             * represented as a dispatch_width-wide vector:
-             *
-             *  elk_fs_reg::nr     elk_fs_reg::offset    Input      Comp0     ...    CompN
-             *      0                 0          Attr0.x  a1[0]-a0[0] ... a1[N]-a0[N]
-             *      0        4 * dispatch_width  Attr0.x  a2[0]-a0[0] ... a2[N]-a0[N]
-             *      0        8 * dispatch_width  Attr0.x     N/A      ...     N/A
-             *      0       12 * dispatch_width  Attr0.x    a0[0]     ...    a0[N]
-             *      1                 0          Attr0.y  a1[0]-a0[0] ... a1[N]-a0[N]
-             *     ...
-             *
-             * Note that many of the components on a single row above
-             * are likely to be replicated multiple times (if, say, a
-             * single SIMD thread is only processing 2 different
-             * polygons), so plane parameters aren't actually stored
-             * in GRF memory with that layout to avoid wasting space.
-             * Instead we compose ATTR register regions with a 2D
-             * region that walks through the parameters of each
-             * polygon with the correct stride, reading the parameter
-             * corresponding to each channel directly from the PS
-             * thread payload.
-             *
-             * The latter layout corresponds to a param_width equal to
-             * dispatch_width, while the former (scalar parameter)
-             * layout has a param_width of 1.
-             *
-             * Gfx20+ represent plane parameters in a format similar
-             * to the above, except the parameters are packed in 12B
-             * and ordered like "a0, a1-a0, a2-a0" instead of the
-             * above vec4 representation with a missing component.
              */
-            const unsigned param_width = (max_polygons > 1 ? dispatch_width : 1);
+            const unsigned param_width = 1;
 
             /* Size of a single scalar component of a plane parameter
              * in bytes.
              */
             const unsigned chan_sz = 4;
             struct elk_reg reg;
-            assert(max_polygons > 0);
 
             /* Calculate the base register on the thread payload of
              * either the block of vertex setup data or the block of
@@ -1558,7 +1524,7 @@ elk_fs_visitor::assign_urb_setup()
             const unsigned base = urb_start +
                (per_prim ? 0 :
                 ALIGN(prog_data->num_per_primitive_inputs / 2,
-                      reg_unit(devinfo)) * max_polygons);
+                      reg_unit(devinfo)));
             const unsigned idx = per_prim ? inst->src[i].nr :
                inst->src[i].nr - prog_data->num_per_primitive_inputs;
 
@@ -1570,7 +1536,7 @@ elk_fs_visitor::assign_urb_setup()
              * Earlier platforms and per-primitive block pack 2 logical
              * input components per 32B register.
              */
-            const unsigned grf = base + idx / 2 * max_polygons;
+            const unsigned grf = base + idx / 2;
             assert(inst->src[i].offset / param_width < REG_SIZE / 2);
             const unsigned delta = (idx % 2) * (REG_SIZE / 2) +
                inst->src[i].offset / (param_width * chan_sz) * chan_sz +
@@ -1594,13 +1560,13 @@ elk_fs_visitor::assign_urb_setup()
     * but they may be replicated multiple times for multipolygon
     * dispatch.
     */
-   this->first_non_payload_grf += prog_data->num_varying_inputs * 2 * max_polygons;
+   this->first_non_payload_grf += prog_data->num_varying_inputs * 2;
 
    /* Unlike regular attributes, per-primitive attributes have all 4 channels
     * in the same slot, so each GRF can store two slots.
     */
    assert(prog_data->num_per_primitive_inputs % 2 == 0);
-   this->first_non_payload_grf += prog_data->num_per_primitive_inputs / 2 * max_polygons;
+   this->first_non_payload_grf += prog_data->num_per_primitive_inputs / 2;
 }
 
 void
@@ -2931,8 +2897,7 @@ elk_fs_visitor::eliminate_find_live_channel()
    bool progress = false;
    unsigned depth = 0;
 
-   if (!elk_stage_has_packed_dispatch(devinfo, stage, max_polygons,
-                                      stage_prog_data)) {
+   if (!elk_stage_has_packed_dispatch(devinfo, stage, stage_prog_data)) {
       /* The optimization below assumes that channel zero is live on thread
        * dispatch, which may not be the case if the fixed function dispatches
        * threads sparsely.
@@ -4226,19 +4191,6 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
    /* Maximum execution size representable in the instruction controls. */
    unsigned max_width = MIN2(32, inst->exec_size);
 
-   /* Number of channels per polygon handled by a multipolygon PS shader. */
-   const unsigned poly_width = shader->dispatch_width /
-                               MAX2(1, shader->max_polygons);
-
-   /* Number of registers that will be read by an ATTR source if
-    * present for multipolygon PS shaders, since the PS vertex setup
-    * data for each polygon is stored in different contiguous GRFs.
-    */
-   const unsigned attr_reg_count = (shader->stage != MESA_SHADER_FRAGMENT ||
-                                    shader->max_polygons < 2 ? 0 :
-                                    DIV_ROUND_UP(inst->exec_size,
-                                                 poly_width) * reg_unit(devinfo));
-
    /* According to the PRMs:
     *  "A. In Direct Addressing mode, a source cannot span more than 2
     *      adjacent GRF registers.
@@ -4251,8 +4203,7 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
    unsigned reg_count = DIV_ROUND_UP(inst->size_written, REG_SIZE);
 
    for (unsigned i = 0; i < inst->sources; i++)
-      reg_count = MAX3(reg_count, DIV_ROUND_UP(inst->size_read(i), REG_SIZE),
-                       (inst->src[i].file == ATTR ? attr_reg_count : 0));
+      reg_count = MAX2(reg_count, DIV_ROUND_UP(inst->size_read(i), REG_SIZE));
 
    /* Calculate the maximum execution size of the instruction based on the
     * factor by which it goes over the hardware limit of 2 GRFs.
@@ -5200,8 +5151,7 @@ elk_fs_visitor::lower_find_live_channel()
       return false;
 
    bool packed_dispatch =
-      elk_stage_has_packed_dispatch(devinfo, stage, max_polygons,
-                                    stage_prog_data);
+      elk_stage_has_packed_dispatch(devinfo, stage, stage_prog_data);
    bool vmask =
       stage == MESA_SHADER_FRAGMENT &&
       elk_wm_prog_data(stage_prog_data)->uses_vmask;
@@ -6505,7 +6455,6 @@ elk_nir_populate_wm_prog_data(nir_shader *shader,
    prog_data->uses_omask = !key->ignore_sample_mask_out &&
       (shader->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK));
    prog_data->color_outputs_written = key->color_outputs_valid;
-   prog_data->max_polygons = 1;
    prog_data->computed_depth_mode = computed_depth_mode(shader);
    prog_data->computed_stencil =
       shader->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_STENCIL);
@@ -6681,7 +6630,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
    bool has_spilled = false;
 
    v8 = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                     prog_data, nir, 8, 1,
+                                     prog_data, nir, 8,
                                      params->base.stats != NULL,
                                      debug_enabled);
    if (!v8->run_fs(allow_spilling, false /* do_rep_send */)) {
@@ -6716,7 +6665,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
        (INTEL_SIMD(FS, 16) || params->use_rep_send)) {
       /* Try a SIMD16 compile */
       v16 = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                         prog_data, nir, 16, 1,
+                                         prog_data, nir, 16,
                                          params->base.stats != NULL,
                                          debug_enabled);
       if (v8)
@@ -6749,7 +6698,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
        INTEL_SIMD(FS, 32)) {
       /* Try a SIMD32 compile */
       v32 = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                         prog_data, nir, 32, 1,
+                                         prog_data, nir, 32,
                                          params->base.stats != NULL,
                                          debug_enabled);
       if (v8)
@@ -6830,7 +6779,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
    if (simd8_cfg) {
       prog_data->dispatch_8 = true;
       g.generate_code(simd8_cfg, 8, v8->shader_stats,
-                      v8->performance_analysis.require(), stats, 1);
+                      v8->performance_analysis.require(), stats);
       stats = stats ? stats + 1 : NULL;
       max_dispatch_width = 8;
    }
@@ -6839,7 +6788,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
       prog_data->dispatch_16 = true;
       prog_data->prog_offset_16 = g.generate_code(
          simd16_cfg, 16, v16->shader_stats,
-         v16->performance_analysis.require(), stats, 1);
+         v16->performance_analysis.require(), stats);
       stats = stats ? stats + 1 : NULL;
       max_dispatch_width = 16;
    }
@@ -6848,7 +6797,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
       prog_data->dispatch_32 = true;
       prog_data->prog_offset_32 = g.generate_code(
          simd32_cfg, 32, v32->shader_stats,
-         v32->performance_analysis.require(), stats, 1);
+         v32->performance_analysis.require(), stats);
       stats = stats ? stats + 1 : NULL;
       max_dispatch_width = 32;
    }
@@ -7146,7 +7095,6 @@ elk_fs_test_dispatch_packing(const fs_builder &bld)
       elk_wm_prog_data(shader->stage_prog_data)->uses_vmask;
 
    if (elk_stage_has_packed_dispatch(shader->devinfo, stage,
-                                     shader->max_polygons,
                                      shader->stage_prog_data)) {
       const fs_builder ubld = bld.exec_all().group(1, 0);
       const elk_fs_reg tmp = component(bld.vgrf(ELK_REGISTER_TYPE_UD), 0);

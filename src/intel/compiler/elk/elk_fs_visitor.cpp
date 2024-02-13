@@ -64,19 +64,7 @@ elk_fs_visitor::interp_reg(const fs_builder &bld, unsigned location,
    const unsigned per_vertex_start = prog_data->num_per_primitive_inputs;
    const unsigned regnr = per_vertex_start + (nr * 4) + channel;
 
-   if (max_polygons > 1) {
-      /* In multipolygon dispatch each plane parameter is a
-       * dispatch_width-wide SIMD vector (see comment in
-       * assign_urb_setup()), so we need to use offset() instead of
-       * component() to select the specified parameter.
-       */
-      const elk_fs_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_UD);
-      bld.MOV(tmp, offset(elk_fs_reg(ATTR, regnr, ELK_REGISTER_TYPE_UD),
-                          dispatch_width, comp));
-      return retype(tmp, ELK_REGISTER_TYPE_F);
-   } else {
-      return component(elk_fs_reg(ATTR, regnr, ELK_REGISTER_TYPE_F), comp);
-   }
+   return component(elk_fs_reg(ATTR, regnr, ELK_REGISTER_TYPE_F), comp);
 }
 
 /* The register location here is relative to the start of the URB
@@ -99,19 +87,7 @@ elk_fs_visitor::per_primitive_reg(const fs_builder &bld, int location, unsigned 
 
    assert(regnr < prog_data->num_per_primitive_inputs);
 
-   if (max_polygons > 1) {
-      /* In multipolygon dispatch each primitive constant is a
-       * dispatch_width-wide SIMD vector (see comment in
-       * assign_urb_setup()), so we need to use offset() instead of
-       * component() to select the specified parameter.
-       */
-      const elk_fs_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_UD);
-      bld.MOV(tmp, offset(elk_fs_reg(ATTR, regnr, ELK_REGISTER_TYPE_UD),
-                          dispatch_width, comp % 4));
-      return retype(tmp, ELK_REGISTER_TYPE_F);
-   } else {
-      return component(elk_fs_reg(ATTR, regnr, ELK_REGISTER_TYPE_F), comp % 4);
-   }
+   return component(elk_fs_reg(ATTR, regnr, ELK_REGISTER_TYPE_F), comp % 4);
 }
 
 /** Emits the interpolation for the varying inputs. */
@@ -878,7 +854,6 @@ elk_fs_visitor::elk_fs_visitor(const struct elk_compiler *compiler,
      performance_analysis(this),
      needs_register_pressure(needs_register_pressure),
      dispatch_width(dispatch_width),
-     max_polygons(0),
      api_subgroup_size(elk_nir_api_subgroup_size(shader, dispatch_width))
 {
    init();
@@ -889,7 +864,7 @@ elk_fs_visitor::elk_fs_visitor(const struct elk_compiler *compiler,
                        const elk_wm_prog_key *key,
                        struct elk_wm_prog_data *prog_data,
                        const nir_shader *shader,
-                       unsigned dispatch_width, unsigned max_polygons,
+                       unsigned dispatch_width,
                        bool needs_register_pressure,
                        bool debug_enabled)
    : elk_backend_shader(compiler, params, shader, &prog_data->base,
@@ -899,7 +874,6 @@ elk_fs_visitor::elk_fs_visitor(const struct elk_compiler *compiler,
      performance_analysis(this),
      needs_register_pressure(needs_register_pressure),
      dispatch_width(dispatch_width),
-     max_polygons(max_polygons),
      api_subgroup_size(elk_nir_api_subgroup_size(shader, dispatch_width))
 {
    init();
@@ -924,7 +898,6 @@ elk_fs_visitor::elk_fs_visitor(const struct elk_compiler *compiler,
      performance_analysis(this),
      needs_register_pressure(needs_register_pressure),
      dispatch_width(8),
-     max_polygons(0),
      api_subgroup_size(elk_nir_api_subgroup_size(shader, dispatch_width))
 {
    init();

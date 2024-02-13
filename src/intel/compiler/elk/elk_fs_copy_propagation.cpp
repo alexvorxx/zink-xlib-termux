@@ -660,8 +660,7 @@ instruction_requires_packed_data(elk_fs_inst *inst)
 static bool
 try_copy_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
                    acp_entry *entry, int arg,
-                   const elk::simple_allocator &alloc,
-                   uint8_t max_polygons)
+                   const elk::simple_allocator &alloc)
 {
    if (inst->src[arg].file != VGRF)
       return false;
@@ -797,17 +796,6 @@ try_copy_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
    if (has_dst_aligned_region_restriction(devinfo, inst, dst_type) &&
        entry_stride != 0 &&
        (reg_offset(inst->dst) % REG_SIZE) != (reg_offset(entry->src) % REG_SIZE))
-      return false;
-
-   /* The <8;8,0> regions used for FS attributes in multipolygon
-    * dispatch mode could violate regioning restrictions, don't copy
-    * propagate them in such cases.
-    */
-   if (entry->src.file == ATTR && max_polygons > 1 &&
-       (has_dst_aligned_region_restriction(devinfo, inst, dst_type) ||
-	instruction_requires_packed_data(inst) ||
-	(inst->elk_is_3src(compiler) && arg == 2) ||
-	entry->dst.type != inst->src[arg].type))
       return false;
 
    /* Bail if the source FIXED_GRF region of the copy cannot be trivially
@@ -1245,8 +1233,7 @@ can_propagate_from(elk_fs_inst *inst)
 static bool
 opt_copy_propagation_local(const elk_compiler *compiler, linear_ctx *lin_ctx,
                            elk_bblock_t *block, struct acp &acp,
-                           const elk::simple_allocator &alloc,
-                           uint8_t max_polygons)
+                           const elk::simple_allocator &alloc)
 {
    bool progress = false;
 
@@ -1266,8 +1253,7 @@ opt_copy_propagation_local(const elk_compiler *compiler, linear_ctx *lin_ctx,
                   break;
                }
             } else {
-               if (try_copy_propagate(compiler, inst, *iter, i, alloc,
-                                      max_polygons)) {
+               if (try_copy_propagate(compiler, inst, *iter, i, alloc)) {
                   instruction_progress = true;
                   break;
                }
@@ -1373,8 +1359,7 @@ elk_fs_visitor::opt_copy_propagation()
     */
    foreach_block (block, cfg) {
       progress = opt_copy_propagation_local(compiler, lin_ctx, block,
-                                            out_acp[block->num], alloc,
-                                            max_polygons) || progress;
+                                            out_acp[block->num], alloc) || progress;
 
       /* If the destination of an ACP entry exists only within this block,
        * then there's no need to keep it for dataflow analysis.  We can delete
@@ -1414,7 +1399,7 @@ elk_fs_visitor::opt_copy_propagation()
       }
 
       progress = opt_copy_propagation_local(compiler, lin_ctx, block,
-                                            in_acp, alloc, max_polygons) ||
+                                            in_acp, alloc) ||
                  progress;
    }
 

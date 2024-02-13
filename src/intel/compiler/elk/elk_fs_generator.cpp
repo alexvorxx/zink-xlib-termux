@@ -1517,8 +1517,7 @@ int
 elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
                             struct shader_stats shader_stats,
                             const elk::performance &perf,
-                            struct elk_compile_stats *stats,
-                            unsigned max_polygons)
+                            struct elk_compile_stats *stats)
 {
    /* align to 64 byte boundary. */
    elk_realign(p, 64);
@@ -2273,7 +2272,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
                         before_size, after_size);
    if (stats) {
       stats->dispatch_width = dispatch_width;
-      stats->max_polygons = max_polygons;
       stats->max_dispatch_width = dispatch_width;
       stats->instructions = before_size / 16 - nop_count - sync_nop_count;
       stats->sends = send_count;

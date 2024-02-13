@@ -89,10 +89,8 @@ intel_set_ps_dispatch_state(struct GENX(3DSTATE_PS) *ps,
    }
 
    assert(enable_8 || enable_16 || enable_32);
-   assert(!prog_data->dispatch_multi);
 
-   ps->_8PixelDispatchEnable = enable_8 ||
-      (GFX_VER == 12 && prog_data->dispatch_multi);
+   ps->_8PixelDispatchEnable = enable_8;
    ps->_16PixelDispatchEnable = enable_16;
    ps->_32PixelDispatchEnable = enable_32;
 }

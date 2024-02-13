@@ -55,7 +55,6 @@ elk_gfx6_resolve_implied_move(struct elk_codegen *p,
       return;
 
    if (src->file != ELK_ARCHITECTURE_REGISTER_FILE || src->nr != ELK_ARF_NULL) {
-      assert(devinfo->ver < 12);
       elk_push_insn_state(p);
       elk_set_default_exec_size(p, ELK_EXECUTE_8);
       elk_set_default_mask_control(p, ELK_MASK_DISABLE);
@@ -109,62 +108,46 @@ elk_set_dest(struct elk_codegen *p, elk_inst *inst, struct elk_reg dest)
 
    gfx7_convert_mrf_to_grf(p, &dest);
 
-   if (devinfo->ver >= 12 &&
-       (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC)) {
-      assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
-             dest.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(dest.address_mode == ELK_ADDRESS_DIRECT);
-      assert(dest.subnr == 0);
-      assert(elk_inst_exec_size(devinfo, inst) == ELK_EXECUTE_1 ||
-             (dest.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-              dest.vstride == dest.width + 1));
-      assert(!dest.negate && !dest.abs);
-      elk_inst_set_dst_reg_file(devinfo, inst, dest.file);
+   elk_inst_set_dst_file_type(devinfo, inst, dest.file, dest.type);
+   elk_inst_set_dst_address_mode(devinfo, inst, dest.address_mode);
+
+   if (dest.address_mode == ELK_ADDRESS_DIRECT) {
       elk_inst_set_dst_da_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
 
-   } else {
-      elk_inst_set_dst_file_type(devinfo, inst, dest.file, dest.type);
-      elk_inst_set_dst_address_mode(devinfo, inst, dest.address_mode);
-
-      if (dest.address_mode == ELK_ADDRESS_DIRECT) {
-         elk_inst_set_dst_da_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
-
-         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-            elk_inst_set_dst_da1_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
-            if (dest.hstride == ELK_HORIZONTAL_STRIDE_0)
-               dest.hstride = ELK_HORIZONTAL_STRIDE_1;
-            elk_inst_set_dst_hstride(devinfo, inst, dest.hstride);
-         } else {
-            elk_inst_set_dst_da16_subreg_nr(devinfo, inst, dest.subnr / 16);
-            elk_inst_set_da16_writemask(devinfo, inst, dest.writemask);
-            if (dest.file == ELK_GENERAL_REGISTER_FILE ||
-                dest.file == ELK_MESSAGE_REGISTER_FILE) {
-               assert(dest.writemask != 0);
-            }
-            /* From the Ivybridge PRM, Vol 4, Part 3, Section 5.2.4.1:
-             *    Although Dst.HorzStride is a don't care for Align16, HW needs
-             *    this to be programmed as "01".
-             */
-            elk_inst_set_dst_hstride(devinfo, inst, 1);
-         }
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+         elk_inst_set_dst_da1_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
+         if (dest.hstride == ELK_HORIZONTAL_STRIDE_0)
+            dest.hstride = ELK_HORIZONTAL_STRIDE_1;
+         elk_inst_set_dst_hstride(devinfo, inst, dest.hstride);
       } else {
-         elk_inst_set_dst_ia_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
-
-         /* These are different sizes in align1 vs align16:
-          */
-         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-            elk_inst_set_dst_ia1_addr_imm(devinfo, inst,
-                                          dest.indirect_offset);
-            if (dest.hstride == ELK_HORIZONTAL_STRIDE_0)
-               dest.hstride = ELK_HORIZONTAL_STRIDE_1;
-            elk_inst_set_dst_hstride(devinfo, inst, dest.hstride);
-         } else {
-            elk_inst_set_dst_ia16_addr_imm(devinfo, inst,
-                                           dest.indirect_offset);
-            /* even ignored in da16, still need to set as '01' */
-            elk_inst_set_dst_hstride(devinfo, inst, 1);
+         elk_inst_set_dst_da16_subreg_nr(devinfo, inst, dest.subnr / 16);
+         elk_inst_set_da16_writemask(devinfo, inst, dest.writemask);
+         if (dest.file == ELK_GENERAL_REGISTER_FILE ||
+             dest.file == ELK_MESSAGE_REGISTER_FILE) {
+            assert(dest.writemask != 0);
          }
+         /* From the Ivybridge PRM, Vol 4, Part 3, Section 5.2.4.1:
+          *    Although Dst.HorzStride is a don't care for Align16, HW needs
+          *    this to be programmed as "01".
+          */
+         elk_inst_set_dst_hstride(devinfo, inst, 1);
+      }
+   } else {
+      elk_inst_set_dst_ia_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
+
+      /* These are different sizes in align1 vs align16:
+       */
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+         elk_inst_set_dst_ia1_addr_imm(devinfo, inst,
+                                       dest.indirect_offset);
+         if (dest.hstride == ELK_HORIZONTAL_STRIDE_0)
+            dest.hstride = ELK_HORIZONTAL_STRIDE_1;
+         elk_inst_set_dst_hstride(devinfo, inst, dest.hstride);
+      } else {
+         elk_inst_set_dst_ia16_addr_imm(devinfo, inst,
+                                        dest.indirect_offset);
+         /* even ignored in da16, still need to set as '01' */
+         elk_inst_set_dst_hstride(devinfo, inst, 1);
       }
    }
 
@@ -216,99 +199,84 @@ elk_set_src0(struct elk_codegen *p, elk_inst *inst, struct elk_reg reg)
       assert(reg.address_mode == ELK_ADDRESS_DIRECT);
    }
 
-   if (devinfo->ver >= 12 &&
-       (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC)) {
-      assert(reg.file != ELK_IMMEDIATE_VALUE);
-      assert(reg.address_mode == ELK_ADDRESS_DIRECT);
-      assert(reg.subnr == 0);
-      assert(has_scalar_region(reg) ||
-             (reg.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-              reg.vstride == reg.width + 1));
-      assert(!reg.negate && !reg.abs);
-      elk_inst_set_send_src0_reg_file(devinfo, inst, reg.file);
-      elk_inst_set_src0_da_reg_nr(devinfo, inst, phys_nr(devinfo, reg));
+   elk_inst_set_src0_file_type(devinfo, inst, reg.file, reg.type);
+   elk_inst_set_src0_abs(devinfo, inst, reg.abs);
+   elk_inst_set_src0_negate(devinfo, inst, reg.negate);
+   elk_inst_set_src0_address_mode(devinfo, inst, reg.address_mode);
 
+   if (reg.file == ELK_IMMEDIATE_VALUE) {
+      if (reg.type == ELK_REGISTER_TYPE_DF ||
+          elk_inst_opcode(p->isa, inst) == ELK_OPCODE_DIM)
+         elk_inst_set_imm_df(devinfo, inst, reg.df);
+      else if (reg.type == ELK_REGISTER_TYPE_UQ ||
+               reg.type == ELK_REGISTER_TYPE_Q)
+         elk_inst_set_imm_uq(devinfo, inst, reg.u64);
+      else
+         elk_inst_set_imm_ud(devinfo, inst, reg.ud);
+
+      if (type_sz(reg.type) < 8) {
+         elk_inst_set_src1_reg_file(devinfo, inst,
+                                    ELK_ARCHITECTURE_REGISTER_FILE);
+         elk_inst_set_src1_reg_hw_type(devinfo, inst,
+                                       elk_inst_src0_reg_hw_type(devinfo, inst));
+      }
    } else {
-      elk_inst_set_src0_file_type(devinfo, inst, reg.file, reg.type);
-      elk_inst_set_src0_abs(devinfo, inst, reg.abs);
-      elk_inst_set_src0_negate(devinfo, inst, reg.negate);
-      elk_inst_set_src0_address_mode(devinfo, inst, reg.address_mode);
-
-      if (reg.file == ELK_IMMEDIATE_VALUE) {
-         if (reg.type == ELK_REGISTER_TYPE_DF ||
-             elk_inst_opcode(p->isa, inst) == ELK_OPCODE_DIM)
-            elk_inst_set_imm_df(devinfo, inst, reg.df);
-         else if (reg.type == ELK_REGISTER_TYPE_UQ ||
-                  reg.type == ELK_REGISTER_TYPE_Q)
-            elk_inst_set_imm_uq(devinfo, inst, reg.u64);
-         else
-            elk_inst_set_imm_ud(devinfo, inst, reg.ud);
-
-         if (devinfo->ver < 12 && type_sz(reg.type) < 8) {
-            elk_inst_set_src1_reg_file(devinfo, inst,
-                                       ELK_ARCHITECTURE_REGISTER_FILE);
-            elk_inst_set_src1_reg_hw_type(devinfo, inst,
-                                          elk_inst_src0_reg_hw_type(devinfo, inst));
+      if (reg.address_mode == ELK_ADDRESS_DIRECT) {
+         elk_inst_set_src0_da_reg_nr(devinfo, inst, phys_nr(devinfo, reg));
+         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+            elk_inst_set_src0_da1_subreg_nr(devinfo, inst, phys_subnr(devinfo, reg));
+         } else {
+            elk_inst_set_src0_da16_subreg_nr(devinfo, inst, reg.subnr / 16);
          }
       } else {
-         if (reg.address_mode == ELK_ADDRESS_DIRECT) {
-            elk_inst_set_src0_da_reg_nr(devinfo, inst, phys_nr(devinfo, reg));
-            if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-               elk_inst_set_src0_da1_subreg_nr(devinfo, inst, phys_subnr(devinfo, reg));
-            } else {
-               elk_inst_set_src0_da16_subreg_nr(devinfo, inst, reg.subnr / 16);
-            }
-         } else {
-            elk_inst_set_src0_ia_subreg_nr(devinfo, inst, phys_subnr(devinfo, reg));
-
-            if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-               elk_inst_set_src0_ia1_addr_imm(devinfo, inst, reg.indirect_offset);
-            } else {
-               elk_inst_set_src0_ia16_addr_imm(devinfo, inst, reg.indirect_offset);
-            }
-         }
+         elk_inst_set_src0_ia_subreg_nr(devinfo, inst, phys_subnr(devinfo, reg));
 
          if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-            if (reg.width == ELK_WIDTH_1 &&
-                elk_inst_exec_size(devinfo, inst) == ELK_EXECUTE_1) {
-               elk_inst_set_src0_hstride(devinfo, inst, ELK_HORIZONTAL_STRIDE_0);
-               elk_inst_set_src0_width(devinfo, inst, ELK_WIDTH_1);
-               elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_0);
-            } else {
-               elk_inst_set_src0_hstride(devinfo, inst, reg.hstride);
-               elk_inst_set_src0_width(devinfo, inst, reg.width);
-               elk_inst_set_src0_vstride(devinfo, inst, reg.vstride);
-            }
+            elk_inst_set_src0_ia1_addr_imm(devinfo, inst, reg.indirect_offset);
          } else {
-            elk_inst_set_src0_da16_swiz_x(devinfo, inst,
-               ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_X));
-            elk_inst_set_src0_da16_swiz_y(devinfo, inst,
-               ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_Y));
-            elk_inst_set_src0_da16_swiz_z(devinfo, inst,
-               ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_Z));
-            elk_inst_set_src0_da16_swiz_w(devinfo, inst,
-               ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_W));
+            elk_inst_set_src0_ia16_addr_imm(devinfo, inst, reg.indirect_offset);
+         }
+      }
 
-            if (reg.vstride == ELK_VERTICAL_STRIDE_8) {
-               /* This is an oddity of the fact we're using the same
-                * descriptions for registers in align_16 as align_1:
-                */
-               elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_4);
-            } else if (devinfo->verx10 == 70 &&
-                       reg.type == ELK_REGISTER_TYPE_DF &&
-                       reg.vstride == ELK_VERTICAL_STRIDE_2) {
-               /* From SNB PRM:
-                *
-                * "For Align16 access mode, only encodings of 0000 and 0011
-                *  are allowed. Other codes are reserved."
-                *
-                * Presumably the DevSNB behavior applies to IVB as well.
-                */
-               elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_4);
-            } else {
-               elk_inst_set_src0_vstride(devinfo, inst, reg.vstride);
-            }
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+         if (reg.width == ELK_WIDTH_1 &&
+             elk_inst_exec_size(devinfo, inst) == ELK_EXECUTE_1) {
+            elk_inst_set_src0_hstride(devinfo, inst, ELK_HORIZONTAL_STRIDE_0);
+            elk_inst_set_src0_width(devinfo, inst, ELK_WIDTH_1);
+            elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_0);
+         } else {
+            elk_inst_set_src0_hstride(devinfo, inst, reg.hstride);
+            elk_inst_set_src0_width(devinfo, inst, reg.width);
+            elk_inst_set_src0_vstride(devinfo, inst, reg.vstride);
+         }
+      } else {
+         elk_inst_set_src0_da16_swiz_x(devinfo, inst,
+            ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_X));
+         elk_inst_set_src0_da16_swiz_y(devinfo, inst,
+            ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_Y));
+         elk_inst_set_src0_da16_swiz_z(devinfo, inst,
+            ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_Z));
+         elk_inst_set_src0_da16_swiz_w(devinfo, inst,
+            ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_W));
+
+         if (reg.vstride == ELK_VERTICAL_STRIDE_8) {
+            /* This is an oddity of the fact we're using the same
+             * descriptions for registers in align_16 as align_1:
+             */
+            elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_4);
+         } else if (devinfo->verx10 == 70 &&
+                    reg.type == ELK_REGISTER_TYPE_DF &&
+                    reg.vstride == ELK_VERTICAL_STRIDE_2) {
+            /* From SNB PRM:
+             *
+             * "For Align16 access mode, only encodings of 0000 and 0011
+             *  are allowed. Other codes are reserved."
+             *
+             * Presumably the DevSNB behavior applies to IVB as well.
+             */
+            elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_4);
+         } else {
+            elk_inst_set_src0_vstride(devinfo, inst, reg.vstride);
          }
       }
    }
@@ -417,9 +385,8 @@ elk_set_desc_ex(struct elk_codegen *p, elk_inst *inst,
    const struct intel_device_info *devinfo = p->devinfo;
    assert(elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
           elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC);
-   if (devinfo->ver < 12)
-      elk_inst_set_src1_file_type(devinfo, inst,
-                                  ELK_IMMEDIATE_VALUE, ELK_REGISTER_TYPE_UD);
+   elk_inst_set_src1_file_type(devinfo, inst,
+                               ELK_IMMEDIATE_VALUE, ELK_REGISTER_TYPE_UD);
    elk_inst_set_send_desc(devinfo, inst, desc);
 }
 
@@ -593,7 +560,7 @@ elk_inst_set_state(const struct elk_isa_info *isa,
          elk_inst_set_flag_reg_nr(devinfo, insn, state->flag_subreg / 2);
    }
 
-   if (devinfo->ver >= 6 && devinfo->ver < 20)
+   if (devinfo->ver >= 6)
       elk_inst_set_acc_wr_control(devinfo, insn, state->acc_wr_control);
 }
 
@@ -723,11 +690,7 @@ to_3src_align1_vstride(const struct intel_device_info *devinfo,
    switch (vstride) {
    case ELK_VERTICAL_STRIDE_0:
       return ELK_ALIGN1_3SRC_VERTICAL_STRIDE_0;
-   case ELK_VERTICAL_STRIDE_1:
-      assert(devinfo->ver >= 12);
-      return ELK_ALIGN1_3SRC_VERTICAL_STRIDE_1;
    case ELK_VERTICAL_STRIDE_2:
-      assert(devinfo->ver < 12);
       return ELK_ALIGN1_3SRC_VERTICAL_STRIDE_2;
    case ELK_VERTICAL_STRIDE_4:
       return ELK_ALIGN1_3SRC_VERTICAL_STRIDE_4;
@@ -767,10 +730,6 @@ elk_alu3(struct elk_codegen *p, unsigned opcode, struct elk_reg dest,
    gfx7_convert_mrf_to_grf(p, &dest);
 
    assert(dest.nr < XE2_MAX_GRF);
-
-   if (devinfo->ver >= 10)
-      assert(!(src0.file == ELK_IMMEDIATE_VALUE &&
-               src2.file == ELK_IMMEDIATE_VALUE));
 
    assert(src0.file == ELK_IMMEDIATE_VALUE || src0.nr < XE2_MAX_GRF);
    assert(src1.file != ELK_IMMEDIATE_VALUE && src1.nr < XE2_MAX_GRF);
@@ -1229,8 +1188,7 @@ elk_IF(struct elk_codegen *p, unsigned execute_size)
       elk_inst_set_uip(devinfo, insn, 0);
    } else {
       elk_set_dest(p, insn, vec1(retype(elk_null_reg(), ELK_REGISTER_TYPE_D)));
-      if (devinfo->ver < 12)
-         elk_set_src0(p, insn, elk_imm_d(0));
+      elk_set_src0(p, insn, elk_imm_d(0));
       elk_inst_set_jip(devinfo, insn, 0);
       elk_inst_set_uip(devinfo, insn, 0);
    }
@@ -1395,7 +1353,7 @@ patch_IF_ELSE(struct elk_codegen *p,
 	 /* The IF instruction's UIP and ELSE's JIP should point to ENDIF */
          elk_inst_set_uip(devinfo, if_inst, br * (endif_inst - if_inst));
 
-         if (devinfo->ver >= 8 && devinfo->ver < 11) {
+         if (devinfo->ver >= 8) {
             /* Set the ELSE instruction to use branch_ctrl with a join
              * jump target pointing at the NOP inserted right before
              * the ENDIF instruction in order to make sure it is
@@ -1447,8 +1405,7 @@ elk_ELSE(struct elk_codegen *p)
       elk_inst_set_uip(devinfo, insn, 0);
    } else {
       elk_set_dest(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
-      if (devinfo->ver < 12)
-         elk_set_src0(p, insn, elk_imm_d(0));
+      elk_set_src0(p, insn, elk_imm_d(0));
       elk_inst_set_jip(devinfo, insn, 0);
       elk_inst_set_uip(devinfo, insn, 0);
    }
@@ -1473,7 +1430,7 @@ elk_ENDIF(struct elk_codegen *p)
 
    assert(p->if_stack_depth > 0);
 
-   if (devinfo->ver >= 8 && devinfo->ver < 11 &&
+   if (devinfo->ver >= 8 &&
        elk_inst_opcode(p->isa, &p->store[p->if_stack[
                              p->if_stack_depth - 1]]) == ELK_OPCODE_ELSE) {
       /* Insert a NOP to be specified as join instruction within the
@@ -1629,7 +1586,8 @@ elk_HALT(struct elk_codegen *p)
    } else if (devinfo->ver < 8) {
       elk_set_src0(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
       elk_set_src1(p, insn, elk_imm_d(0x0)); /* UIP and JIP, updated later. */
-   } else if (devinfo->ver < 12) {
+   } else {
+      assert(devinfo->ver == 8);
       elk_set_src0(p, insn, elk_imm_d(0x0));
    }
 
@@ -1726,8 +1684,7 @@ elk_WHILE(struct elk_codegen *p)
 
       if (devinfo->ver >= 8) {
          elk_set_dest(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
-         if (devinfo->ver < 12)
-            elk_set_src0(p, insn, elk_imm_d(0));
+         elk_set_src0(p, insn, elk_imm_d(0));
          elk_inst_set_jip(devinfo, insn, br * (do_insn - insn));
       } else if (devinfo->ver == 7) {
          elk_set_dest(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
@@ -1932,10 +1889,8 @@ void elk_gfx6_math(struct elk_codegen *p,
       assert(!src1.negate);
       assert(!src1.abs);
    } else {
-      assert(src0.type == ELK_REGISTER_TYPE_F ||
-             (src0.type == ELK_REGISTER_TYPE_HF && devinfo->ver >= 9));
-      assert(src1.type == ELK_REGISTER_TYPE_F ||
-             (src1.type == ELK_REGISTER_TYPE_HF && devinfo->ver >= 9));
+      assert(src0.type == ELK_REGISTER_TYPE_F);
+      assert(src1.type == ELK_REGISTER_TYPE_F);
    }
 
    /* Source modifiers are ignored for extended math instructions on Gfx6. */
@@ -2903,7 +2858,7 @@ elk_set_memory_fence_message(struct elk_codegen *p,
    if (commit_enable)
       elk_inst_set_dp_msg_control(devinfo, insn, 1 << 5);
 
-   assert(devinfo->ver >= 11 || bti == 0);
+   assert(bti == 0);
    elk_inst_set_binding_table_index(devinfo, insn, bti);
 }
 

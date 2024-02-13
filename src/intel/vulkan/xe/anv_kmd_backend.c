@@ -171,6 +171,13 @@ xe_vm_bind_op(struct anv_device *device,
             xe_bind->op = DRM_XE_VM_BIND_OP_MAP;
             xe_bind->obj = bo->gem_handle;
          }
+      } else if (bind->op == ANV_VM_UNBIND_ALL) {
+         xe_bind->op = DRM_XE_VM_BIND_OP_UNMAP_ALL;
+         xe_bind->obj = bo->gem_handle;
+         assert(bind->address == 0);
+         assert(bind->size == 0);
+      } else {
+         assert(bind->op == ANV_VM_UNBIND);
       }
 
       /* userptr and bo_offset are an union! */
@@ -223,10 +230,10 @@ static int xe_vm_unbind_bo(struct anv_device *device, struct anv_bo *bo)
 {
    struct anv_vm_bind bind = {
       .bo = bo,
-      .address = bo->offset,
+      .address = 0,
       .bo_offset = 0,
-      .size = bo->actual_size,
-      .op = ANV_VM_UNBIND,
+      .size = 0,
+      .op = ANV_VM_UNBIND_ALL,
    };
    struct anv_sparse_submission submit = {
       .queue = NULL,

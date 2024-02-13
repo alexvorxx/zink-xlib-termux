@@ -102,6 +102,9 @@ struct kopper_displaytarget
 
 struct zink_kopper_present_info {
    VkPresentInfoKHR info;
+   VkPresentRegionsKHR rinfo;
+   VkPresentRegionKHR region;
+   VkRectLayerKHR regions[64];
    uint32_t image;
    struct kopper_swapchain *swapchain;
    struct zink_resource *res;
@@ -150,7 +153,7 @@ zink_kopper_acquire_submit(struct zink_screen *screen, struct zink_resource *res
 VkSemaphore
 zink_kopper_present(struct zink_screen *screen, struct zink_resource *res); 
 void
-zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res);
+zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res, unsigned nrects, struct pipe_box *boxes);
 bool
 zink_kopper_acquire_readback(struct zink_context *ctx, struct zink_resource *res, struct zink_resource **readback);
 bool

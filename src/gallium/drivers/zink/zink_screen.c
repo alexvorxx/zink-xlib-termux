@@ -1828,7 +1828,7 @@ zink_flush_frontbuffer(struct pipe_screen *pscreen,
 
    /* always verify that this was acquired */
    assert(zink_kopper_acquired(res->obj->dt, res->obj->dt_idx));
-   zink_kopper_present_queue(screen, res);
+   zink_kopper_present_queue(screen, res, nboxes, sub_box);
 }
 
 bool

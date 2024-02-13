@@ -764,7 +764,7 @@ out:
 }
 
 void
-zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res)
+zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res, unsigned nrects, struct pipe_box *boxes)
 {
    assert(res->obj->dt);
    struct kopper_displaytarget *cdt = res->obj->dt;
@@ -795,6 +795,27 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res)
    cpi->info.pImageIndices = &cpi->image;
    cpi->info.pResults = NULL;
    res->obj->present = VK_NULL_HANDLE;
+   if (nrects) {
+      cpi->rinfo.sType = VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR;
+      cpi->rinfo.pNext = NULL;
+      cpi->rinfo.swapchainCount = 1;
+      cpi->rinfo.pRegions = &cpi->region;
+      cpi->region.rectangleCount = nrects;
+      cpi->region.pRectangles = cpi->regions;
+      for (unsigned i = 0; i < nrects; i++) {
+         cpi->regions[i].offset.x = boxes[i].x;
+         /* 
+            2) Where is the origin of the VkRectLayerKHR?
+
+            RESOLVED: The upper left corner of the presentable image(s) of the swapchain, per the definition of framebuffer coordinates.
+          */
+         cpi->regions[i].offset.y = cdt->swapchain->scci.imageExtent.height - boxes[i].y - boxes[i].height;
+         cpi->regions[i].extent.width = boxes[i].width;
+         cpi->regions[i].extent.height = boxes[i].height;
+         cpi->regions[i].layer = boxes[i].z;
+      }
+      cpi->info.pNext = &cpi->rinfo;
+   }
    /* Ex GLX_EXT_buffer_age:
     *
     *  Buffers' ages are initialized to 0 at buffer creation time.
@@ -943,7 +964,7 @@ zink_kopper_present_readback(struct zink_context *ctx, struct zink_resource *res
    if (!zink_screen_handle_vkresult(screen, error))
       return false;
 
-   zink_kopper_present_queue(screen, res);
+   zink_kopper_present_queue(screen, res, 0, NULL);
    if (util_queue_is_initialized(&screen->flush_queue)) {
       struct kopper_displaytarget *cdt = res->obj->dt;
       util_queue_fence_wait(&cdt->swapchain->present_fence);

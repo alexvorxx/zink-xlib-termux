@@ -1336,6 +1336,8 @@ dri2_kopper_query_buffer_age(_EGLDisplay *disp, _EGLSurface *surf)
    /* This can legitimately be null for lavapipe */
    if (dri2_dpy->kopper)
       return dri2_dpy->kopper->queryBufferAge(dri2_surf->dri_drawable);
+   else
+      return dri2_dpy->swrast->queryBufferAge(dri2_surf->dri_drawable);
 
    return 0;
 }

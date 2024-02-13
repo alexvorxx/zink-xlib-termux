@@ -370,6 +370,15 @@ match_expression(const nir_algebraic_table *table, const nir_search_expression *
    if (expr->cond_index != -1 && !table->expression_cond[expr->cond_index](instr))
       return false;
 
+   if (expr->nsz && nir_is_float_control_signed_zero_preserve(instr->fp_fast_math, instr->def.bit_size))
+      return false;
+
+   if (expr->nnan && nir_is_float_control_nan_preserve(instr->fp_fast_math, instr->def.bit_size))
+      return false;
+
+   if (expr->ninf && nir_is_float_control_inf_preserve(instr->fp_fast_math, instr->def.bit_size))
+      return false;
+
    if (!nir_op_matches_search_op(instr->op, expr->opcode))
       return false;
 

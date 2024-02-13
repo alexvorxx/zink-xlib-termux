@@ -91,6 +91,16 @@ ignore_exact = nir_algebraic.ignore_exact
 # than nir_replace_instr can handle.  If this special condition is needed with
 # another condition, the two can be separated by a comma (e.g.,
 # "(many-comm-expr,is_used_once)").
+#
+# Another set of special "conditions" are
+# "nsz": sign of zero is not preserved
+# "ninf": infinities are not preserved
+# "nnan": nan is not preserved
+# These relate to the float controls/fpfastmath and more descriptions of the
+# expression than conditions. That is, an expression with the "nsz" condition
+# means that the replacement expression won't preserve the sign of zero of the
+# result, and so it will be skipped if the matching instruction has the
+# 'signed_zero_preserve' flag set.
 
 # based on https://web.archive.org/web/20180105155939/http://forum.devmaster.net/t/fast-and-accurate-sine-cosine/9648
 def lowered_sincos(c):

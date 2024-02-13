@@ -613,9 +613,11 @@ kopper_present_texture(struct pipe_context *pipe, struct dri_drawable *drawable,
 static inline void
 kopper_copy_to_front(struct pipe_context *pipe,
                     struct dri_drawable *drawable,
-                    struct pipe_resource *ptex)
+                    struct pipe_resource *ptex,
+                    unsigned nrects,
+                    struct pipe_box *boxes)
 {
-   kopper_present_texture(pipe, drawable, ptex, 0, NULL);
+   kopper_present_texture(pipe, drawable, ptex, nrects, boxes);
 
    kopper_invalidate_drawable(opaque_dri_drawable(drawable));
 }
@@ -669,7 +671,7 @@ kopper_flush_frontbuffer(struct dri_context *ctx,
          screen->fence_reference(screen, &drawable->throttle_fence, NULL);
       }
       drawable->throttle_fence = new_fence;
-      kopper_copy_to_front(st->pipe, ctx->draw, ptex);
+      kopper_copy_to_front(st->pipe, ctx->draw, ptex, 0, NULL);
    }
 
    return true;
@@ -760,6 +762,8 @@ kopper_flush_swapbuffers(struct dri_context *ctx,
 
 static void
 kopper_swap_buffers(struct dri_drawable *drawable);
+static void
+kopper_swap_buffers_with_damage(struct dri_drawable *drawable, int nrects, const int *rects);
 
 static struct dri_drawable *
 kopper_create_drawable(struct dri_screen *screen, const struct gl_config *visual,
@@ -781,6 +785,7 @@ kopper_create_drawable(struct dri_screen *screen, const struct gl_config *visual
    drawable->update_tex_buffer = kopper_update_tex_buffer;
    drawable->flush_swapbuffers = kopper_flush_swapbuffers;
    drawable->swap_buffers = kopper_swap_buffers;
+   drawable->swap_buffers_with_damage = kopper_swap_buffers_with_damage;
 
    drawable->info.has_alpha = visual->alphaBits > 0;
    if (screen->kopper_loader->SetSurfaceCreateInfo)
@@ -792,7 +797,7 @@ kopper_create_drawable(struct dri_screen *screen, const struct gl_config *visual
 }
 
 static int64_t
-kopperSwapBuffers(__DRIdrawable *dPriv, uint32_t flush_flags)
+kopperSwapBuffersWithDamage(__DRIdrawable *dPriv, uint32_t flush_flags, int nrects, const int *rects)
 {
    struct dri_drawable *drawable = dri_drawable(dPriv);
    struct dri_context *ctx = dri_get_current();
@@ -820,7 +825,18 @@ kopperSwapBuffers(__DRIdrawable *dPriv, uint32_t flush_flags)
              __DRI2_FLUSH_DRAWABLE | __DRI2_FLUSH_CONTEXT | flush_flags,
              __DRI2_THROTTLE_SWAPBUFFER);
 
-   kopper_copy_to_front(ctx->st->pipe, drawable, ptex);
+   struct pipe_box stack_boxes[64];
+   if (nrects > ARRAY_SIZE(stack_boxes))
+      nrects = 0;
+   if (nrects) {
+      for (unsigned int i = 0; i < nrects; i++) {
+         const int *rect = &rects[i * 4];
+
+         u_box_2d(rect[0], rect[1], rect[2], rect[3], &stack_boxes[i]);
+      }
+   }
+
+   kopper_copy_to_front(ctx->st->pipe, drawable, ptex, nrects, stack_boxes);
    if (drawable->is_window && !zink_kopper_check(ptex))
       return -1;
    if (!drawable->textures[ST_ATTACHMENT_FRONT_LEFT]) {
@@ -834,10 +850,23 @@ kopperSwapBuffers(__DRIdrawable *dPriv, uint32_t flush_flags)
    return 0;
 }
 
+static int64_t
+kopperSwapBuffers(__DRIdrawable *dPriv, uint32_t flush_flags)
+{
+   return kopperSwapBuffersWithDamage(dPriv, flush_flags, 0, NULL);
+}
+
+static void
+kopper_swap_buffers_with_damage(struct dri_drawable *drawable, int nrects, const int *rects)
+{
+
+   kopperSwapBuffersWithDamage(opaque_dri_drawable(drawable), 0, nrects, rects);
+}
+
 static void
 kopper_swap_buffers(struct dri_drawable *drawable)
 {
-   kopperSwapBuffers(opaque_dri_drawable(drawable), 0);
+   kopper_swap_buffers_with_damage(drawable, 0, NULL);
 }
 
 static __DRIdrawable *
@@ -897,6 +926,7 @@ const __DRIkopperExtension driKopperExtension = {
    .base = { __DRI_KOPPER, 1 },
    .createNewDrawable          = kopperCreateNewDrawable,
    .swapBuffers                = kopperSwapBuffers,
+   .swapBuffersWithDamage      = kopperSwapBuffersWithDamage,
    .setSwapInterval            = kopperSetSwapInterval,
    .queryBufferAge             = kopperQueryBufferAge,
 };

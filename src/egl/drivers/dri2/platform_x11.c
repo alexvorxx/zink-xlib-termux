@@ -1011,6 +1011,28 @@ dri2_x11_post_sub_buffer(_EGLDisplay *disp, _EGLSurface *draw, EGLint x,
 }
 
 static EGLBoolean
+dri2_x11_kopper_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
+                                         const EGLint *rects, EGLint numRects)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(draw);
+   /* swrast path unsupported for now */
+   assert(dri2_dpy->kopper);
+   if (numRects) {
+      if (dri2_dpy->kopper)
+         dri2_dpy->kopper->swapBuffersWithDamage(dri2_surf->dri_drawable, __DRI2_FLUSH_INVALIDATE_ANCILLARY, numRects, rects);
+      else
+         dri2_dpy->core->swapBuffersWithDamage(dri2_surf->dri_drawable, numRects, rects);
+   } else {
+      if (dri2_dpy->kopper)
+         dri2_dpy->kopper->swapBuffers(dri2_surf->dri_drawable, __DRI2_FLUSH_INVALIDATE_ANCILLARY);
+      else
+         dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
+   }
+   return EGL_TRUE;
+}
+
+static EGLBoolean
 dri2_x11_swap_interval(_EGLDisplay *disp, _EGLSurface *surf, EGLint interval)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -1356,6 +1378,7 @@ static const struct dri2_egl_display_vtbl dri2_x11_kopper_display_vtbl = {
    .swap_interval = dri2_kopper_swap_interval,
    .swap_buffers = dri2_x11_swap_buffers,
    .swap_buffers_region = dri2_x11_swap_buffers_region,
+   .swap_buffers_with_damage = dri2_x11_kopper_swap_buffers_with_damage,
    .post_sub_buffer = dri2_x11_post_sub_buffer,
    .copy_buffers = dri2_x11_copy_buffers,
    .query_buffer_age = dri2_kopper_query_buffer_age,

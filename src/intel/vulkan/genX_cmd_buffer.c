@@ -5808,10 +5808,8 @@ genX(CmdWriteBufferMarker2AMD)(VkCommandBuffer commandBuffer,
     * cache flushes.
     */
    enum anv_pipe_bits bits =
-#if GFX_VERx10 < 125
-      ANV_PIPE_DATA_CACHE_FLUSH_BIT |
-      ANV_PIPE_TILE_CACHE_FLUSH_BIT |
-#endif
+      (ANV_DEVINFO_HAS_COHERENT_L3_CS(cmd_buffer->device->info) ? 0 :
+       (ANV_PIPE_DATA_CACHE_FLUSH_BIT | ANV_PIPE_TILE_CACHE_FLUSH_BIT)) |
       ANV_PIPE_END_OF_PIPE_SYNC_BIT;
 
    trace_intel_begin_write_buffer_marker(&cmd_buffer->trace);

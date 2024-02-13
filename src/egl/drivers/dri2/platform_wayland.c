@@ -2512,7 +2512,7 @@ dri2_wl_swrast_put_image(__DRIdrawable *draw, int op, int x, int y, int w,
 }
 
 static EGLBoolean
-dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
+dri2_wl_kopper_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
                                         const EGLint *rects, EGLint n_rects)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -2520,25 +2520,6 @@ dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
 
    if (!dri2_surf->wl_win)
       return _eglError(EGL_BAD_NATIVE_WINDOW, "dri2_swap_buffers");
-
-   if (!disp->Options.Zink)
-      (void)swrast_update_buffers(dri2_surf);
-
-   if (!disp->Options.Zink) {
-      dri2_wl_swrast_attach_backbuffer(dri2_surf);
-
-      /* guarantee full copy for partial update */
-      int w = n_rects == 1 ? (rects[2] - rects[0]) : 0;
-      int copy_width = dri2_wl_swrast_get_stride_for_format(dri2_surf->format, w);
-      int dst_stride = dri2_wl_swrast_get_stride_for_format(dri2_surf->format,
-                                                            dri2_surf->base.Width);
-      char *dst = dri2_wl_swrast_get_backbuffer_data(dri2_surf);
-
-      /* partial copy, copy old content */
-      if (copy_width < dst_stride)
-         dri2_wl_swrast_get_image(NULL, 0, 0, dri2_surf->base.Width,
-                                  dri2_surf->base.Height, dst, dri2_surf);
-   }
 
    if (n_rects)
       dri2_dpy->core->swapBuffersWithDamage(dri2_surf->dri_drawable, n_rects, rects);
@@ -2548,9 +2529,51 @@ dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
    dri2_surf->current = dri2_surf->back;
    dri2_surf->back = NULL;
 
-   if (!disp->Options.Zink) {
-      dri2_wl_swrast_commit_backbuffer(dri2_surf);
-   }
+   return EGL_TRUE;
+}
+
+static EGLBoolean
+dri2_wl_kopper_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
+{
+   dri2_wl_kopper_swap_buffers_with_damage(disp, draw, NULL, 0);
+   return EGL_TRUE;
+}
+
+static EGLBoolean
+dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
+                                        const EGLint *rects, EGLint n_rects)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(draw);
+
+   if (!dri2_surf->wl_win)
+      return _eglError(EGL_BAD_NATIVE_WINDOW, "dri2_swap_buffers");
+
+   (void)swrast_update_buffers(dri2_surf);
+
+   dri2_wl_swrast_attach_backbuffer(dri2_surf);
+
+   /* guarantee full copy for partial update */
+   int w = n_rects == 1 ? (rects[2] - rects[0]) : 0;
+   int copy_width = dri2_wl_swrast_get_stride_for_format(dri2_surf->format, w);
+   int dst_stride = dri2_wl_swrast_get_stride_for_format(dri2_surf->format,
+                                                         dri2_surf->base.Width);
+   char *dst = dri2_wl_swrast_get_backbuffer_data(dri2_surf);
+
+   /* partial copy, copy old content */
+   if (copy_width < dst_stride)
+      dri2_wl_swrast_get_image(NULL, 0, 0, dri2_surf->base.Width,
+                                 dri2_surf->base.Height, dst, dri2_surf);
+
+   if (n_rects)
+      dri2_dpy->core->swapBuffersWithDamage(dri2_surf->dri_drawable, n_rects, rects);
+   else
+      dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
+
+   dri2_surf->current = dri2_surf->back;
+   dri2_surf->back = NULL;
+
+   dri2_wl_swrast_commit_backbuffer(dri2_surf);
    return EGL_TRUE;
 }
 
@@ -2649,8 +2672,8 @@ static const struct dri2_egl_display_vtbl dri2_wl_kopper_display_vtbl = {
    .create_pixmap_surface = dri2_wl_create_pixmap_surface,
    .destroy_surface = dri2_wl_destroy_surface,
    .create_image = dri2_create_image_khr,
-   .swap_buffers = dri2_wl_swrast_swap_buffers,
-   .swap_buffers_with_damage = dri2_wl_swrast_swap_buffers_with_damage,
+   .swap_buffers = dri2_wl_kopper_swap_buffers,
+   .swap_buffers_with_damage = dri2_wl_kopper_swap_buffers_with_damage,
    .get_dri_drawable = dri2_surface_get_dri_drawable,
    .query_buffer_age = dri2_wl_kopper_query_buffer_age,
 };

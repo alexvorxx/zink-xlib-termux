@@ -190,160 +190,54 @@ elk_fs_visitor::emit_interpolation_setup_gfx6()
    elk_fs_reg int_sample_offset_x, int_sample_offset_y; /* Used on Gen12HP+ */
    elk_fs_reg int_sample_offset_xy; /* Used on Gen8+ */
    elk_fs_reg half_int_sample_offset_x, half_int_sample_offset_y;
-   if (wm_prog_data->coarse_pixel_dispatch != ELK_ALWAYS) {
-      /* The thread payload only delivers subspan locations (ss0, ss1,
-       * ss2, ...). Since subspans covers 2x2 pixels blocks, we need to
-       * generate 4 pixel coordinates out of each subspan location. We do this
-       * by replicating a subspan coordinate 4 times and adding an offset of 1
-       * in each direction from the initial top left (tl) location to generate
-       * top right (tr = +1 in x), bottom left (bl = +1 in y) and bottom right
-       * (br = +1 in x, +1 in y).
-       *
-       * The locations we build look like this in SIMD8 :
-       *
-       *    ss0.tl ss0.tr ss0.bl ss0.br ss1.tl ss1.tr ss1.bl ss1.br
-       *
-       * The value 0x11001010 is a vector of 8 half byte vector. It adds
-       * following to generate the 4 pixels coordinates out of the subspan0:
-       *
-       *  0x
-       *    1 : ss0.y + 1 -> ss0.br.y
-       *    1 : ss0.y + 1 -> ss0.bl.y
-       *    0 : ss0.y + 0 -> ss0.tr.y
-       *    0 : ss0.y + 0 -> ss0.tl.y
-       *    1 : ss0.x + 1 -> ss0.br.x
-       *    0 : ss0.x + 0 -> ss0.bl.x
-       *    1 : ss0.x + 1 -> ss0.tr.x
-       *    0 : ss0.x + 0 -> ss0.tl.x
-       *
-       * By doing a SIMD16 add in a SIMD8 shader, we can generate the 8 pixels
-       * coordinates out of 2 subspans coordinates in a single ADD instruction
-       * (twice the operation above).
-       */
-      int_sample_offset_xy = elk_fs_reg(elk_imm_v(0x11001010));
-      half_int_sample_offset_x = elk_fs_reg(elk_imm_uw(0));
-      half_int_sample_offset_y = elk_fs_reg(elk_imm_uw(0));
-      /* On Gfx12.5, because of regioning restrictions, the interpolation code
-       * is slightly different and works off X & Y only inputs. The ordering
-       * of the half bytes here is a bit odd, with each subspan replicated
-       * twice and every other element is discarded :
-       *
-       *             ss0.tl ss0.tl ss0.tr ss0.tr ss0.bl ss0.bl ss0.br ss0.br
-       *  X offset:    0      0      1      0      0      0      1      0
-       *  Y offset:    0      0      0      0      1      0      1      0
-       */
-      int_sample_offset_x = elk_fs_reg(elk_imm_v(0x01000100));
-      int_sample_offset_y = elk_fs_reg(elk_imm_v(0x01010000));
-   }
 
-   elk_fs_reg int_coarse_offset_x, int_coarse_offset_y; /* Used on Gen12HP+ */
-   elk_fs_reg int_coarse_offset_xy; /* Used on Gen8+ */
-   elk_fs_reg half_int_coarse_offset_x, half_int_coarse_offset_y;
-   if (wm_prog_data->coarse_pixel_dispatch != ELK_NEVER) {
-      /* In coarse pixel dispatch we have to do the same ADD instruction that
-       * we do in normal per pixel dispatch, except this time we're not adding
-       * 1 in each direction, but instead the coarse pixel size.
-       *
-       * The coarse pixel size is delivered as 2 u8 in r1.0
-       */
-      struct elk_reg r1_0 = retype(elk_vec1_reg(ELK_GENERAL_REGISTER_FILE, 1, 0), ELK_REGISTER_TYPE_UB);
+   /* The thread payload only delivers subspan locations (ss0, ss1,
+    * ss2, ...). Since subspans covers 2x2 pixels blocks, we need to
+    * generate 4 pixel coordinates out of each subspan location. We do this
+    * by replicating a subspan coordinate 4 times and adding an offset of 1
+    * in each direction from the initial top left (tl) location to generate
+    * top right (tr = +1 in x), bottom left (bl = +1 in y) and bottom right
+    * (br = +1 in x, +1 in y).
+    *
+    * The locations we build look like this in SIMD8 :
+    *
+    *    ss0.tl ss0.tr ss0.bl ss0.br ss1.tl ss1.tr ss1.bl ss1.br
+    *
+    * The value 0x11001010 is a vector of 8 half byte vector. It adds
+    * following to generate the 4 pixels coordinates out of the subspan0:
+    *
+    *  0x
+    *    1 : ss0.y + 1 -> ss0.br.y
+    *    1 : ss0.y + 1 -> ss0.bl.y
+    *    0 : ss0.y + 0 -> ss0.tr.y
+    *    0 : ss0.y + 0 -> ss0.tl.y
+    *    1 : ss0.x + 1 -> ss0.br.x
+    *    0 : ss0.x + 0 -> ss0.bl.x
+    *    1 : ss0.x + 1 -> ss0.tr.x
+    *    0 : ss0.x + 0 -> ss0.tl.x
+    *
+    * By doing a SIMD16 add in a SIMD8 shader, we can generate the 8 pixels
+    * coordinates out of 2 subspans coordinates in a single ADD instruction
+    * (twice the operation above).
+    */
+   int_sample_offset_xy = elk_fs_reg(elk_imm_v(0x11001010));
+   half_int_sample_offset_x = elk_fs_reg(elk_imm_uw(0));
+   half_int_sample_offset_y = elk_fs_reg(elk_imm_uw(0));
+   /* On Gfx12.5, because of regioning restrictions, the interpolation code
+    * is slightly different and works off X & Y only inputs. The ordering
+    * of the half bytes here is a bit odd, with each subspan replicated
+    * twice and every other element is discarded :
+    *
+    *             ss0.tl ss0.tl ss0.tr ss0.tr ss0.bl ss0.bl ss0.br ss0.br
+    *  X offset:    0      0      1      0      0      0      1      0
+    *  Y offset:    0      0      0      0      1      0      1      0
+    */
+   int_sample_offset_x = elk_fs_reg(elk_imm_v(0x01000100));
+   int_sample_offset_y = elk_fs_reg(elk_imm_v(0x01010000));
 
-      const fs_builder dbld =
-         abld.exec_all().group(MIN2(16, dispatch_width) * 2, 0);
-
-      if (devinfo->verx10 >= 125) {
-         /* To build the array of half bytes we do and AND operation with the
-          * right mask in X.
-          */
-         int_coarse_offset_x = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-         dbld.AND(int_coarse_offset_x, byte_offset(r1_0, 0), elk_imm_v(0x0f000f00));
-
-         /* And the right mask in Y. */
-         int_coarse_offset_y = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-         dbld.AND(int_coarse_offset_y, byte_offset(r1_0, 1), elk_imm_v(0x0f0f0000));
-      } else {
-         /* To build the array of half bytes we do and AND operation with the
-          * right mask in X.
-          */
-         int_coarse_offset_x = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-         dbld.AND(int_coarse_offset_x, byte_offset(r1_0, 0), elk_imm_v(0x0000f0f0));
-
-         /* And the right mask in Y. */
-         int_coarse_offset_y = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-         dbld.AND(int_coarse_offset_y, byte_offset(r1_0, 1), elk_imm_v(0xff000000));
-
-         /* Finally OR the 2 registers. */
-         int_coarse_offset_xy = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-         dbld.OR(int_coarse_offset_xy, int_coarse_offset_x, int_coarse_offset_y);
-      }
-
-      /* Also compute the half coarse size used to center coarses. */
-      half_int_coarse_offset_x = bld.vgrf(ELK_REGISTER_TYPE_UW);
-      half_int_coarse_offset_y = bld.vgrf(ELK_REGISTER_TYPE_UW);
-
-      bld.SHR(half_int_coarse_offset_x, suboffset(r1_0, 0), elk_imm_ud(1));
-      bld.SHR(half_int_coarse_offset_y, suboffset(r1_0, 1), elk_imm_ud(1));
-   }
-
-   elk_fs_reg int_pixel_offset_x, int_pixel_offset_y; /* Used on Gen12HP+ */
-   elk_fs_reg int_pixel_offset_xy; /* Used on Gen8+ */
-   elk_fs_reg half_int_pixel_offset_x, half_int_pixel_offset_y;
-   switch (wm_prog_data->coarse_pixel_dispatch) {
-   case ELK_NEVER:
-      int_pixel_offset_x = int_sample_offset_x;
-      int_pixel_offset_y = int_sample_offset_y;
-      int_pixel_offset_xy = int_sample_offset_xy;
-      half_int_pixel_offset_x = half_int_sample_offset_x;
-      half_int_pixel_offset_y = half_int_sample_offset_y;
-      break;
-
-   case ELK_SOMETIMES: {
-      const fs_builder dbld =
-         abld.exec_all().group(MIN2(16, dispatch_width) * 2, 0);
-
-      check_dynamic_msaa_flag(dbld, wm_prog_data,
-                              INTEL_MSAA_FLAG_COARSE_RT_WRITES);
-
-      int_pixel_offset_x = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-      set_predicate(ELK_PREDICATE_NORMAL,
-                    dbld.SEL(int_pixel_offset_x,
-                             int_coarse_offset_x,
-                             int_sample_offset_x));
-
-      int_pixel_offset_y = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-      set_predicate(ELK_PREDICATE_NORMAL,
-                    dbld.SEL(int_pixel_offset_y,
-                             int_coarse_offset_y,
-                             int_sample_offset_y));
-
-      int_pixel_offset_xy = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-      set_predicate(ELK_PREDICATE_NORMAL,
-                    dbld.SEL(int_pixel_offset_xy,
-                             int_coarse_offset_xy,
-                             int_sample_offset_xy));
-
-      half_int_pixel_offset_x = bld.vgrf(ELK_REGISTER_TYPE_UW);
-      set_predicate(ELK_PREDICATE_NORMAL,
-                    bld.SEL(half_int_pixel_offset_x,
-                            half_int_coarse_offset_x,
-                            half_int_sample_offset_x));
-
-      half_int_pixel_offset_y = bld.vgrf(ELK_REGISTER_TYPE_UW);
-      set_predicate(ELK_PREDICATE_NORMAL,
-                    bld.SEL(half_int_pixel_offset_y,
-                            half_int_coarse_offset_y,
-                            half_int_sample_offset_y));
-      break;
-   }
-
-   case ELK_ALWAYS:
-      int_pixel_offset_x = int_coarse_offset_x;
-      int_pixel_offset_y = int_coarse_offset_y;
-      int_pixel_offset_xy = int_coarse_offset_xy;
-      half_int_pixel_offset_x = half_int_coarse_offset_x;
-      half_int_pixel_offset_y = half_int_coarse_offset_y;
-      break;
-   }
+   elk_fs_reg int_pixel_offset_xy = int_sample_offset_xy; /* Used on Gen8+ */
+   elk_fs_reg half_int_pixel_offset_x = half_int_sample_offset_x;
+   elk_fs_reg half_int_pixel_offset_y = half_int_sample_offset_y;
 
    for (unsigned i = 0; i < DIV_ROUND_UP(dispatch_width, 16); i++) {
       const fs_builder hbld = abld.group(MIN2(16, dispatch_width), i);
@@ -357,34 +251,7 @@ elk_fs_visitor::emit_interpolation_setup_gfx6()
                                     elk_vec1_grf(i + 1, 0);
       const struct elk_reg gi_uw = retype(gi_reg, ELK_REGISTER_TYPE_UW);
 
-      if (devinfo->verx10 >= 125) {
-         const fs_builder dbld =
-            abld.exec_all().group(hbld.dispatch_width() * 2, 0);
-         const elk_fs_reg int_pixel_x = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-         const elk_fs_reg int_pixel_y = dbld.vgrf(ELK_REGISTER_TYPE_UW);
-
-         dbld.ADD(int_pixel_x,
-                  elk_fs_reg(stride(suboffset(gi_uw, 4), 2, 8, 0)),
-                  int_pixel_offset_x);
-         dbld.ADD(int_pixel_y,
-                  elk_fs_reg(stride(suboffset(gi_uw, 5), 2, 8, 0)),
-                  int_pixel_offset_y);
-
-         if (wm_prog_data->coarse_pixel_dispatch != ELK_NEVER) {
-            elk_fs_inst *addx = dbld.ADD(int_pixel_x, int_pixel_x,
-                                     horiz_stride(half_int_pixel_offset_x, 0));
-            elk_fs_inst *addy = dbld.ADD(int_pixel_y, int_pixel_y,
-                                     horiz_stride(half_int_pixel_offset_y, 0));
-            if (wm_prog_data->coarse_pixel_dispatch != ELK_ALWAYS) {
-               addx->predicate = ELK_PREDICATE_NORMAL;
-               addy->predicate = ELK_PREDICATE_NORMAL;
-            }
-         }
-
-         hbld.MOV(offset(pixel_x, hbld, i), horiz_stride(int_pixel_x, 2));
-         hbld.MOV(offset(pixel_y, hbld, i), horiz_stride(int_pixel_y, 2));
-
-      } else if (devinfo->ver >= 8 || dispatch_width == 8) {
+      if (devinfo->ver >= 8 || dispatch_width == 8) {
          /* The "Register Region Restrictions" page says for BDW (and newer,
           * presumably):
           *
@@ -436,80 +303,8 @@ elk_fs_visitor::emit_interpolation_setup_gfx6()
    }
 
    abld = bld.annotate("compute pos.z");
-   elk_fs_reg coarse_z;
-   if (wm_prog_data->uses_depth_w_coefficients) {
-      /* In coarse pixel mode, the HW doesn't interpolate Z coordinate
-       * properly. In the same way we have to add the coarse pixel size to
-       * pixels locations, here we recompute the Z value with 2 coefficients
-       * in X & Y axis.
-       */
-      elk_fs_reg coef_payload = elk_vec8_grf(fs_payload().depth_w_coef_reg, 0);
-      const elk_fs_reg x_start = elk_vec1_grf(coef_payload.nr, 2);
-      const elk_fs_reg y_start = elk_vec1_grf(coef_payload.nr, 6);
-      const elk_fs_reg z_cx    = elk_vec1_grf(coef_payload.nr, 1);
-      const elk_fs_reg z_cy    = elk_vec1_grf(coef_payload.nr, 0);
-      const elk_fs_reg z_c0    = elk_vec1_grf(coef_payload.nr, 3);
-
-      const elk_fs_reg float_pixel_x = abld.vgrf(ELK_REGISTER_TYPE_F);
-      const elk_fs_reg float_pixel_y = abld.vgrf(ELK_REGISTER_TYPE_F);
-
-      abld.ADD(float_pixel_x, this->pixel_x, negate(x_start));
-      abld.ADD(float_pixel_y, this->pixel_y, negate(y_start));
-
-      /* r1.0 - 0:7 ActualCoarsePixelShadingSize.X */
-      const elk_fs_reg u8_cps_width = elk_fs_reg(retype(elk_vec1_grf(1, 0), ELK_REGISTER_TYPE_UB));
-      /* r1.0 - 15:8 ActualCoarsePixelShadingSize.Y */
-      const elk_fs_reg u8_cps_height = byte_offset(u8_cps_width, 1);
-      const elk_fs_reg u32_cps_width = abld.vgrf(ELK_REGISTER_TYPE_UD);
-      const elk_fs_reg u32_cps_height = abld.vgrf(ELK_REGISTER_TYPE_UD);
-      abld.MOV(u32_cps_width, u8_cps_width);
-      abld.MOV(u32_cps_height, u8_cps_height);
-
-      const elk_fs_reg f_cps_width = abld.vgrf(ELK_REGISTER_TYPE_F);
-      const elk_fs_reg f_cps_height = abld.vgrf(ELK_REGISTER_TYPE_F);
-      abld.MOV(f_cps_width, u32_cps_width);
-      abld.MOV(f_cps_height, u32_cps_height);
-
-      /* Center in the middle of the coarse pixel. */
-      abld.MAD(float_pixel_x, float_pixel_x, elk_imm_f(0.5f), f_cps_width);
-      abld.MAD(float_pixel_y, float_pixel_y, elk_imm_f(0.5f), f_cps_height);
-
-      coarse_z = abld.vgrf(ELK_REGISTER_TYPE_F);
-      abld.MAD(coarse_z, z_c0, z_cx, float_pixel_x);
-      abld.MAD(coarse_z, coarse_z, z_cy, float_pixel_y);
-   }
-
    if (wm_prog_data->uses_src_depth)
       this->pixel_z = fetch_payload_reg(bld, fs_payload().source_depth_reg);
-
-   if (wm_prog_data->uses_depth_w_coefficients ||
-       wm_prog_data->uses_src_depth) {
-      elk_fs_reg sample_z = this->pixel_z;
-
-      switch (wm_prog_data->coarse_pixel_dispatch) {
-      case ELK_NEVER:
-         assert(wm_prog_data->uses_src_depth);
-         assert(!wm_prog_data->uses_depth_w_coefficients);
-         this->pixel_z = sample_z;
-         break;
-
-      case ELK_SOMETIMES:
-         assert(wm_prog_data->uses_src_depth);
-         assert(wm_prog_data->uses_depth_w_coefficients);
-         this->pixel_z = abld.vgrf(ELK_REGISTER_TYPE_F);
-
-         /* We re-use the check_dynamic_msaa_flag() call from above */
-         set_predicate(ELK_PREDICATE_NORMAL,
-                       abld.SEL(this->pixel_z, coarse_z, sample_z));
-         break;
-
-      case ELK_ALWAYS:
-         assert(!wm_prog_data->uses_src_depth);
-         assert(wm_prog_data->uses_depth_w_coefficients);
-         this->pixel_z = coarse_z;
-         break;
-      }
-   }
 
    if (wm_prog_data->uses_src_w) {
       abld = bld.annotate("compute pos.w");

@@ -524,9 +524,8 @@ struct elk_wm_prog_key {
 
    bool coherent_fb_fetch:1;
    bool ignore_sample_mask_out:1;
-   bool coarse_pixel:1;
 
-   uint64_t padding:55;
+   uint64_t padding:56;
 };
 
 struct elk_cs_prog_key {
@@ -860,7 +859,6 @@ struct elk_wm_prog_data {
    bool uses_kill;
    bool uses_src_depth;
    bool uses_src_w;
-   bool uses_depth_w_coefficients;
    bool uses_sample_mask;
    bool uses_vmask;
    bool has_side_effects;
@@ -879,11 +877,6 @@ struct elk_wm_prog_data {
 
    /** Should this shader be dispatched per-sample */
    enum elk_sometimes persample_dispatch;
-
-   /**
-    * Shader is ran at the coarse pixel shading dispatch rate (3DSTATE_CPS).
-    */
-   enum elk_sometimes coarse_pixel_dispatch;
 
    /**
     * Shader writes the SampleMask and this is AND-ed with the API's
@@ -1152,25 +1145,6 @@ elk_wm_prog_data_barycentric_modes(const struct elk_wm_prog_data *prog_data,
    }
 
    return modes;
-}
-
-static inline bool
-elk_wm_prog_data_is_coarse(const struct elk_wm_prog_data *prog_data,
-                           enum intel_msaa_flags pushed_msaa_flags)
-{
-   if (pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) {
-      if (pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES)
-         assert(prog_data->coarse_pixel_dispatch != ELK_NEVER);
-      else
-         assert(prog_data->coarse_pixel_dispatch != ELK_ALWAYS);
-
-      return pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES;
-   }
-
-   assert(prog_data->coarse_pixel_dispatch == ELK_ALWAYS ||
-          prog_data->coarse_pixel_dispatch == ELK_NEVER);
-
-   return prog_data->coarse_pixel_dispatch;
 }
 
 struct elk_push_const_block {

@@ -6915,26 +6915,6 @@ elk_nir_populate_wm_prog_data(nir_shader *shader,
       (prog_data->barycentric_interp_modes &
       ELK_BARYCENTRIC_NONPERSPECTIVE_BITS) != 0;
 
-   /* The current VK_EXT_graphics_pipeline_library specification requires
-    * coarse to specified at compile time. But per sample interpolation can be
-    * dynamic. So we should never be in a situation where coarse &
-    * persample_interp are both respectively true & ELK_ALWAYS.
-    *
-    * Coarse will dynamically turned off when persample_interp is active.
-    */
-   assert(!key->coarse_pixel || key->persample_interp != ELK_ALWAYS);
-
-   prog_data->coarse_pixel_dispatch =
-      elk_sometimes_invert(prog_data->persample_dispatch);
-   if (!key->coarse_pixel ||
-       prog_data->uses_omask ||
-       prog_data->sample_shading ||
-       prog_data->uses_sample_mask ||
-       (prog_data->computed_depth_mode != ELK_PSCDEPTH_OFF) ||
-       prog_data->computed_stencil) {
-      prog_data->coarse_pixel_dispatch = ELK_NEVER;
-   }
-
    /* ICL PRMs, Volume 9: Render Engine, Shared Functions Pixel Interpolater,
     * Message Descriptor :
     *
@@ -6961,25 +6941,17 @@ elk_nir_populate_wm_prog_data(nir_shader *shader,
     * pixel shading if we have any intrinsic that will result in a pixel
     * interpolater message at sample.
     */
-   if (intel_nir_pulls_at_sample(shader))
-      prog_data->coarse_pixel_dispatch = ELK_NEVER;
+   intel_nir_pulls_at_sample(shader);
 
    /* We choose to always enable VMask prior to XeHP, as it would cause
     * us to lose out on the eliminate_find_live_channel() optimization.
     */
-   prog_data->uses_vmask = devinfo->verx10 < 125 ||
-                           shader->info.fs.needs_quad_helper_invocations ||
-                           shader->info.uses_wide_subgroup_intrinsics ||
-                           prog_data->coarse_pixel_dispatch != ELK_NEVER;
+   prog_data->uses_vmask = true;
 
    prog_data->uses_src_w =
       BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD);
    prog_data->uses_src_depth =
-      BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD) &&
-      prog_data->coarse_pixel_dispatch != ELK_ALWAYS;
-   prog_data->uses_depth_w_coefficients =
-      BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD) &&
-      prog_data->coarse_pixel_dispatch != ELK_NEVER;
+      BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD);
 
    calculate_urb_setup(devinfo, key, prog_data, shader);
    elk_compute_flat_inputs(prog_data, shader);

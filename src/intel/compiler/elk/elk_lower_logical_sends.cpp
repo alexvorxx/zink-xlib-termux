@@ -336,22 +336,10 @@ lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
          elk_fb_write_desc(devinfo, inst->target, msg_ctl, inst->last_rt,
                            0 /* coarse_rt_write */);
 
-      elk_fs_reg desc = elk_imm_ud(0);
-      if (prog_data->coarse_pixel_dispatch == ELK_ALWAYS) {
-         inst->desc |= (1 << 18);
-      } else if (prog_data->coarse_pixel_dispatch == ELK_SOMETIMES) {
-         STATIC_ASSERT(INTEL_MSAA_FLAG_COARSE_RT_WRITES == (1 << 18));
-         const fs_builder &ubld = bld.exec_all().group(8, 0);
-         desc = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-         ubld.AND(desc, dynamic_msaa_flags(prog_data),
-                  elk_imm_ud(INTEL_MSAA_FLAG_COARSE_RT_WRITES));
-         desc = component(desc, 0);
-      }
-
       inst->opcode = ELK_SHADER_OPCODE_SEND;
       inst->resize_sources(2);
       inst->sfid = GFX6_SFID_DATAPORT_RENDER_CACHE;
-      inst->src[0] = desc;
+      inst->src[0] = elk_imm_ud(0);
       inst->src[1] = payload;
       inst->mlen = regs_written(load);
       inst->header_size = header_size;
@@ -1705,24 +1693,6 @@ lower_interpolator_logical_send(const fs_builder &bld, elk_fs_inst *inst,
                             inst->pi_noperspective,
                             false /* coarse_pixel_rate */,
                             inst->exec_size, inst->group);
-
-   if (wm_prog_data->coarse_pixel_dispatch == ELK_ALWAYS) {
-      desc_imm |= (1 << 15);
-   } else if (wm_prog_data->coarse_pixel_dispatch == ELK_SOMETIMES) {
-      STATIC_ASSERT(INTEL_MSAA_FLAG_COARSE_PI_MSG == (1 << 15));
-      elk_fs_reg orig_desc = desc;
-      const fs_builder &ubld = bld.exec_all().group(8, 0);
-      desc = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-      ubld.AND(desc, dynamic_msaa_flags(wm_prog_data),
-               elk_imm_ud(INTEL_MSAA_FLAG_COARSE_PI_MSG));
-
-      /* And, if it's AT_OFFSET, we might have a non-trivial descriptor */
-      if (orig_desc.file == IMM) {
-         desc_imm |= orig_desc.ud;
-      } else {
-         ubld.OR(desc, desc, orig_desc);
-      }
-   }
 
    /* If persample_dispatch is dynamic, select the interpolation mode
     * dynamically and OR into the descriptor to complete the static part

@@ -3638,9 +3638,6 @@ emit_samplemaskin_setup(nir_to_elk_state &ntb)
    struct elk_wm_prog_data *wm_prog_data = elk_wm_prog_data(s.prog_data);
    assert(devinfo->ver >= 6);
 
-   /* The HW doesn't provide us with expected values. */
-   assert(wm_prog_data->coarse_pixel_dispatch != ELK_ALWAYS);
-
    elk_fs_reg coverage_mask =
       fetch_payload_reg(bld, s.fs_payload().sample_mask_in_reg, ELK_REGISTER_TYPE_D);
 

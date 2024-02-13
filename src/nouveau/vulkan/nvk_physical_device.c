@@ -176,6 +176,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_inline_uniform_block = true,
       .EXT_line_rasterization = true,
       .EXT_load_store_op_none = true,
+      .EXT_map_memory_placed = true,
       .EXT_multi_draw = true,
       .EXT_mutable_descriptor_type = true,
       .EXT_non_seamless_cube_map = true,
@@ -470,6 +471,11 @@ nvk_get_device_features(const struct nv_device_info *info,
       .stippledBresenhamLines = true,
       .stippledSmoothLines = true,
 
+      /* VK_EXT_map_memory_placed */
+      .memoryMapPlaced = true,
+      .memoryMapRangePlaced = false,
+      .memoryUnmapReserve = true,
+
       /* VK_EXT_multi_draw */
       .multiDraw = true,
 
@@ -549,6 +555,9 @@ nvk_get_device_properties(const struct nvk_instance *instance,
                                                VK_SAMPLE_COUNT_2_BIT |
                                                VK_SAMPLE_COUNT_4_BIT |
                                                VK_SAMPLE_COUNT_8_BIT;
+
+   uint64_t os_page_size = 4096;
+   os_get_page_size(&os_page_size);
 
    *properties = (struct vk_properties) {
       .apiVersion = nvk_get_vk_version(info),
@@ -784,6 +793,9 @@ nvk_get_device_properties(const struct nvk_instance *instance,
 
       /* VK_KHR_line_rasterization */
       .lineSubPixelPrecisionBits = 8,
+
+      /* VK_EXT_map_memory_placed */
+      .minPlacedMemoryMapAlignment = os_page_size,
 
       /* VK_EXT_multi_draw */
       .maxMultiDrawCount = UINT32_MAX,

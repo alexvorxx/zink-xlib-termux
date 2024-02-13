@@ -89,6 +89,14 @@ nouveau_ws_bo_unmap(struct nouveau_ws_bo *bo, void *ptr)
    munmap(ptr, bo->size);
 }
 
+static inline int
+nouveau_ws_bo_overmap(struct nouveau_ws_bo *bo, void *ptr)
+{
+   void *map = mmap(ptr, bo->size, PROT_NONE,
+                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+   return map == MAP_FAILED ? -1 : 0;
+}
+
 #ifdef __cplusplus
 }
 #endif

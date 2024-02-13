@@ -1635,7 +1635,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 
    int start_offset = p->next_insn_offset;
 
-   int loop_count = 0, send_count = 0, nop_count = 0;
+   int loop_count = 0, send_count = 0, nop_count = 0, sync_nop_count = 0;
    bool is_accum_used = false;
 
    struct disasm_info *disasm_info = disasm_initialize(p->isa, cfg);
@@ -1800,6 +1800,10 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       case BRW_OPCODE_SYNC:
          assert(src[0].file == BRW_IMMEDIATE_VALUE);
          brw_SYNC(p, tgl_sync_function(src[0].ud));
+
+         if (tgl_sync_function(src[0].ud) == TGL_SYNC_NOP)
+            ++sync_nop_count;
+
          break;
       case BRW_OPCODE_MOV:
 	 brw_MOV(p, dst, src[0]);
@@ -2478,7 +2482,8 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
                         "Promoted %u constants, "
                         "compacted %d to %d bytes.\n",
                         _mesa_shader_stage_to_abbrev(stage),
-                        dispatch_width, before_size / 16 - nop_count,
+                        dispatch_width,
+                        before_size / 16 - nop_count - sync_nop_count,
                         loop_count, perf.latency,
                         shader_stats.spill_count,
                         shader_stats.fill_count,
@@ -2490,7 +2495,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       stats->dispatch_width = dispatch_width;
       stats->max_polygons = max_polygons;
       stats->max_dispatch_width = dispatch_width;
-      stats->instructions = before_size / 16 - nop_count;
+      stats->instructions = before_size / 16 - nop_count - sync_nop_count;
       stats->sends = send_count;
       stats->loops = loop_count;
       stats->cycles = perf.latency;

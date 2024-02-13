@@ -111,7 +111,7 @@ nvk_heap_grow_locked(struct nvk_device *dev, struct nvk_heap *heap)
 
    void *map = NULL;
    if (heap->map_flags) {
-      map = nouveau_ws_bo_map(bo, heap->map_flags);
+      map = nouveau_ws_bo_map(bo, heap->map_flags, NULL);
       if (map == NULL) {
          nouveau_ws_bo_destroy(bo);
          return vk_errorf(dev, VK_ERROR_OUT_OF_HOST_MEMORY,

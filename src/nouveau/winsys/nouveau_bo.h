@@ -71,7 +71,9 @@ struct nouveau_ws_bo *nouveau_ws_bo_new_mapped(struct nouveau_ws_device *,
 struct nouveau_ws_bo *nouveau_ws_bo_from_dma_buf(struct nouveau_ws_device *,
                                                  int fd);
 void nouveau_ws_bo_destroy(struct nouveau_ws_bo *);
-void *nouveau_ws_bo_map(struct nouveau_ws_bo *, enum nouveau_ws_bo_map_flags);
+void *nouveau_ws_bo_map(struct nouveau_ws_bo *,
+                        enum nouveau_ws_bo_map_flags,
+                        void *fixed_addr);
 bool nouveau_ws_bo_wait(struct nouveau_ws_bo *, enum nouveau_ws_bo_map_flags flags);
 int nouveau_ws_bo_dma_buf(struct nouveau_ws_bo *, int *fd);
 

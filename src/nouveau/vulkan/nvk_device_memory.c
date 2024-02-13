@@ -206,7 +206,7 @@ nvk_AllocateMemory(VkDevice device,
 
    if (dev->ws_dev->debug_flags & NVK_DEBUG_ZERO_MEMORY) {
       if (type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-         void *map = nouveau_ws_bo_map(mem->bo, NOUVEAU_WS_BO_RDWR);
+         void *map = nouveau_ws_bo_map(mem->bo, NOUVEAU_WS_BO_RDWR, NULL);
          if (map == NULL) {
             result = vk_errorf(dev, VK_ERROR_OUT_OF_HOST_MEMORY,
                                "Memory map failed");
@@ -307,7 +307,7 @@ nvk_MapMemory2KHR(VkDevice device,
                        "Memory object already mapped.");
    }
 
-   mem->map = nouveau_ws_bo_map(mem->bo, NOUVEAU_WS_BO_RDWR);
+   mem->map = nouveau_ws_bo_map(mem->bo, NOUVEAU_WS_BO_RDWR, NULL);
    if (mem->map == NULL) {
       return vk_errorf(dev, VK_ERROR_MEMORY_MAP_FAILED,
                        "Memory object couldn't be mapped.");

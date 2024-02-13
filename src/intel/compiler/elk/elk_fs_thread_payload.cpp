@@ -111,8 +111,7 @@ elk_gs_thread_payload::elk_gs_thread_payload(elk_fs_visitor &v)
 
    /* R1: output URB handles. */
    urb_handles = bld.vgrf(ELK_REGISTER_TYPE_UD);
-   bld.AND(urb_handles, elk_ud8_grf(r, 0),
-         v.devinfo->ver >= 20 ? elk_imm_ud(0xFFFFFF) : elk_imm_ud(0xFFFF));
+   bld.AND(urb_handles, elk_ud8_grf(r, 0), elk_imm_ud(0xFFFF));
 
    /* R1: Instance ID stored in bits 31:27 */
    instance_id = bld.vgrf(ELK_REGISTER_TYPE_UD);
@@ -156,80 +155,6 @@ elk_gs_thread_payload::elk_gs_thread_payload(elk_fs_visitor &v)
 }
 
 static inline void
-setup_fs_payload_gfx20(elk_fs_thread_payload &payload,
-                       const elk_fs_visitor &v,
-                       bool &source_depth_to_render_target)
-{
-   struct elk_wm_prog_data *prog_data = elk_wm_prog_data(v.prog_data);
-   const unsigned payload_width = 16;
-   assert(v.dispatch_width % payload_width == 0);
-   assert(v.devinfo->ver >= 20);
-
-   for (unsigned j = 0; j < v.dispatch_width / payload_width; j++) {
-      /* R0-1: PS thread payload header, masks and pixel X/Y coordinates. */
-      payload.num_regs++;
-      payload.subspan_coord_reg[j] = payload.num_regs++;
-   }
-
-   for (unsigned j = 0; j < v.dispatch_width / payload_width; j++) {
-      /* R2-13: Barycentric interpolation coordinates.  These appear
-       * in the same order that they appear in the elk_barycentric_mode
-       * enum.  Each set of coordinates occupies 2 64B registers per
-       * SIMD16 half.  Coordinates only appear if they were enabled
-       * using the "Barycentric Interpolation Mode" bits in WM_STATE.
-       */
-      for (int i = 0; i < ELK_BARYCENTRIC_MODE_COUNT; ++i) {
-         if (prog_data->barycentric_interp_modes & (1 << i)) {
-            payload.barycentric_coord_reg[i][j] = payload.num_regs;
-            payload.num_regs += payload_width / 4;
-         }
-      }
-
-      /* R14: Interpolated depth if "Pixel Shader Uses Source Depth" is set. */
-      if (prog_data->uses_src_depth) {
-         payload.source_depth_reg[j] = payload.num_regs;
-         payload.num_regs += payload_width / 8;
-      }
-
-      /* R15: Interpolated W if "Pixel Shader Uses Source W" is set. */
-      if (prog_data->uses_src_w) {
-         payload.source_w_reg[j] = payload.num_regs;
-         payload.num_regs += payload_width / 8;
-      }
-
-      /* R16: MSAA input coverage mask if "Pixel Shader Uses Input
-       * Coverage Mask" is set.
-       */
-      if (prog_data->uses_sample_mask) {
-         payload.sample_mask_in_reg[j] = payload.num_regs;
-         payload.num_regs += payload_width / 8;
-      }
-
-      /* R19: MSAA position XY offsets if "Position XY Offset Select"
-       * is either POSOFFSET_CENTROID or POSOFFSET_SAMPLE.  Note that
-       * this is delivered as a single SIMD32 vector, inconsistently
-       * with most other PS payload fields.
-       */
-      if (prog_data->uses_pos_offset && j == 0) {
-         for (unsigned k = 0; k < 2; k++) {
-            payload.sample_pos_reg[k] = payload.num_regs;
-            payload.num_regs++;
-         }
-      }
-   }
-
-   if (prog_data->uses_depth_w_coefficients) {
-      assert(v.max_polygons == 1);
-      payload.depth_w_coef_reg = payload.num_regs;
-      payload.num_regs += 2;
-   }
-
-   if (v.nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH)) {
-      source_depth_to_render_target = true;
-   }
-}
-
-static inline void
 setup_fs_payload_gfx6(elk_fs_thread_payload &payload,
                       const elk_fs_visitor &v,
                       bool &source_depth_to_render_target)
@@ -238,7 +163,7 @@ setup_fs_payload_gfx6(elk_fs_thread_payload &payload,
 
    const unsigned payload_width = MIN2(16, v.dispatch_width);
    assert(v.dispatch_width % payload_width == 0);
-   assert(v.devinfo->ver >= 6 && v.devinfo->ver < 20);
+   assert(v.devinfo->ver >= 6);
 
    payload.num_regs = 0;
 
@@ -460,9 +385,7 @@ elk_fs_thread_payload::elk_fs_thread_payload(const elk_fs_visitor &v,
     depth_w_coef_reg(),
     barycentric_coord_reg()
 {
-   if (v.devinfo->ver >= 20)
-      setup_fs_payload_gfx20(*this, v, source_depth_to_render_target);
-   else if (v.devinfo->ver >= 6)
+   if (v.devinfo->ver >= 6)
       setup_fs_payload_gfx6(*this, v, source_depth_to_render_target);
    else
       setup_fs_payload_gfx4(*this, v, source_depth_to_render_target,
@@ -471,27 +394,7 @@ elk_fs_thread_payload::elk_fs_thread_payload(const elk_fs_visitor &v,
 
 elk_cs_thread_payload::elk_cs_thread_payload(const elk_fs_visitor &v)
 {
-   struct elk_cs_prog_data *prog_data = elk_cs_prog_data(v.prog_data);
-
-   unsigned r = reg_unit(v.devinfo);
-
-   /* See nir_setup_uniforms for subgroup_id in earlier versions. */
-   if (v.devinfo->verx10 >= 125) {
-      subgroup_id_ = elk_ud1_grf(0, 2);
-
-      for (int i = 0; i < 3; i++) {
-         if (prog_data->generate_local_id & (1 << i)) {
-            local_invocation_id[i] = elk_uw8_grf(r, 0);
-            r += reg_unit(v.devinfo);
-            if (v.devinfo->ver < 20 && v.dispatch_width == 32)
-               r += reg_unit(v.devinfo);
-         } else {
-            local_invocation_id[i] = elk_imm_uw(0);
-         }
-      }
-   }
-
-   num_regs = r;
+   num_regs = reg_unit(v.devinfo);
 }
 
 void
@@ -501,15 +404,9 @@ elk_cs_thread_payload::load_subgroup_id(const fs_builder &bld,
    auto devinfo = bld.shader->devinfo;
    dest = retype(dest, ELK_REGISTER_TYPE_UD);
 
-   if (subgroup_id_.file != BAD_FILE) {
-      assert(devinfo->verx10 >= 125);
-      bld.AND(dest, subgroup_id_, elk_imm_ud(INTEL_MASK(7, 0)));
-   } else {
-      assert(devinfo->verx10 < 125);
-      assert(gl_shader_stage_is_compute(bld.shader->stage));
-      int index = elk_get_subgroup_id_param_index(devinfo,
-                                                  bld.shader->stage_prog_data);
-      bld.MOV(dest, elk_fs_reg(UNIFORM, index, ELK_REGISTER_TYPE_UD));
-   }
+   assert(gl_shader_stage_is_compute(bld.shader->stage));
+   int index = elk_get_subgroup_id_param_index(devinfo,
+                                               bld.shader->stage_prog_data);
+   bld.MOV(dest, elk_fs_reg(UNIFORM, index, ELK_REGISTER_TYPE_UD));
 }
 

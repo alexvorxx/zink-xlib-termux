@@ -116,14 +116,6 @@ struct elk_compiler {
    bool indirect_ubos_use_sampler;
 
    /**
-    * Gfx11+ has a bit in the dword 3 of the sampler message header that
-    * indicates whether the sampler handle is relative to the dynamic state
-    * base address (0) or the bindless sampler base address (1). The driver
-    * can select this.
-    */
-   bool use_bindless_sampler_offset;
-
-   /**
     * Calling the ra_allocate function after each register spill can take
     * several minutes. This option speeds up shader compilation by spilling
     * more registers after the ra_allocate failure. Required for
@@ -131,8 +123,6 @@ struct elk_compiler {
     * in case the render thread hasn't responded within 2 minutes.
     */
    int spilling_rate;
-
-   struct nir_shader *clc_shader;
 };
 
 #define elk_shader_debug_log(compiler, data, fmt, ... ) do {    \
@@ -921,39 +911,6 @@ struct elk_wm_prog_data {
 
 #ifdef GFX_VERx10
 
-#if GFX_VERx10 >= 200
-
-/** Returns the SIMD width corresponding to a given KSP index
- *
- * The "Variable Pixel Dispatch" table in the PRM (which can be found, for
- * example in Vol. 7 of the SKL PRM) has a mapping from dispatch widths to
- * kernel start pointer (KSP) indices that is based on what dispatch widths
- * are enabled.  This function provides, effectively, the reverse mapping.
- *
- * If the given KSP is enabled, a SIMD width of 8, 16, or 32 is
- * returned.  Note that for a multipolygon dispatch kernel 8 is always
- * returned, since multipolygon kernels use the "_8" fields from
- * elk_wm_prog_data regardless of their SIMD width.  If the KSP is
- * invalid, 0 is returned.
- */
-static inline unsigned
-elk_fs_simd_width_for_ksp(unsigned ksp_idx, bool enabled, unsigned width_sel)
-{
-   assert(ksp_idx < 2);
-   return !enabled ? 0 :
-          width_sel ? 32 :
-          16;
-}
-
-#define elk_wm_state_simd_width_for_ksp(wm_state, ksp_idx)              \
-        (ksp_idx == 0 && (wm_state).Kernel0MaximumPolysperThread ? 8 :  \
-         ksp_idx == 0 ? elk_fs_simd_width_for_ksp(ksp_idx, (wm_state).Kernel0Enable, \
-                                                  (wm_state).Kernel0SIMDWidth): \
-         elk_fs_simd_width_for_ksp(ksp_idx, (wm_state).Kernel1Enable,   \
-                                   (wm_state).Kernel1SIMDWidth))
-
-#else
-
 /** Returns the SIMD width corresponding to a given KSP index
  *
  * The "Variable Pixel Dispatch" table in the PRM (which can be found, for
@@ -987,8 +944,6 @@ elk_fs_simd_width_for_ksp(unsigned ksp_idx, bool simd8_enabled,
    elk_fs_simd_width_for_ksp((ksp_idx), (wm_state)._8PixelDispatchEnable, \
                              (wm_state)._16PixelDispatchEnable, \
                              (wm_state)._32PixelDispatchEnable)
-
-#endif
 
 #endif
 
@@ -1159,9 +1114,6 @@ struct elk_cs_prog_data {
 
    bool uses_barrier;
    bool uses_num_work_groups;
-   bool uses_inline_data;
-   uint8_t generate_local_id;
-   enum intel_compute_walk_order walk_order;
 
    struct {
       struct elk_push_const_block cross_thread;
@@ -1732,15 +1684,9 @@ elk_encode_slm_size(unsigned gen, uint32_t bytes)
       slm_size = elk_calculate_slm_size(gen, bytes);
       assert(util_is_power_of_two_nonzero(slm_size));
 
-      if (gen >= 9) {
-         /* Turn an exponent of 10 (1024 kB) into 1. */
-         assert(slm_size >= 1024);
-         slm_size = ffs(slm_size) - 10;
-      } else {
-         assert(slm_size >= 4096);
-         /* Convert to the pre-Gfx9 representation. */
-         slm_size = slm_size / 4096;
-      }
+      assert(slm_size >= 4096);
+      /* Convert to the pre-Gfx9 representation. */
+      slm_size = slm_size / 4096;
    }
 
    return slm_size;
@@ -1849,24 +1795,6 @@ elk_compute_first_urb_slot_required(uint64_t inputs_read,
 
    return 0;
 }
-
-/**
- * This enum is used as the base indice of the nir_load_topology_id_intel
- * intrinsic. This is used to return different values based on some aspect of
- * the topology of the device.
- */
-enum elk_topology_id
-{
-   /* A value based of the DSS identifier the shader is currently running on.
-    * Be mindful that the DSS ID can be higher than the total number of DSS on
-    * the device. This is because of the fusing that can occur on different
-    * parts.
-    */
-   ELK_TOPOLOGY_ID_DSS,
-
-   /* A value composed of EU ID, thread ID & SIMD lane ID. */
-   ELK_TOPOLOGY_ID_EU_THREAD_SIMD,
-};
 
 #ifdef __cplusplus
 } /* extern "C" */

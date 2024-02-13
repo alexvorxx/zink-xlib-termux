@@ -4062,16 +4062,6 @@ fs_nir_emit_cs_intrinsic(nir_to_elk_state &ntb,
       s.cs_payload().load_subgroup_id(bld, dest);
       break;
 
-   case nir_intrinsic_load_local_invocation_id:
-      /* This is only used for hardware generated local IDs. */
-      assert(cs_prog_data->generate_local_id);
-
-      dest.type = ELK_REGISTER_TYPE_UD;
-
-      for (unsigned i = 0; i < 3; i++)
-         bld.MOV(offset(dest, bld, i), s.cs_payload().local_invocation_id[i]);
-      break;
-
    case nir_intrinsic_load_workgroup_id:
    case nir_intrinsic_load_workgroup_id_zero_base: {
       elk_fs_reg val = ntb.system_values[SYSTEM_VALUE_WORKGROUP_ID];

@@ -344,8 +344,6 @@ iris_apply_elk_cs_prog_data(struct iris_compiled_shader *shader,
    iris->prog_offset[1] = elk->prog_offset[1];
    iris->prog_offset[2] = elk->prog_offset[2];
 
-   iris->generate_local_id = elk->generate_local_id;
-   iris->walk_order        = elk->walk_order;
    iris->uses_barrier      = elk->uses_barrier;
    iris->prog_mask         = elk->prog_mask;
 

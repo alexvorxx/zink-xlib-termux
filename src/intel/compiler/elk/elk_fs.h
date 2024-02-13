@@ -213,7 +213,6 @@ public:
    void allocate_registers(bool allow_spilling);
    uint32_t compute_max_register_pressure();
    void fixup_3src_null_dest();
-   bool fixup_nomask_control_flow();
    void assign_curb_setup();
    void assign_urb_setup();
    void convert_attr_sources_to_hw_regs(elk_fs_inst *inst);
@@ -275,7 +274,6 @@ public:
    bool lower_minmax();
    bool lower_simd_width();
    bool lower_barycentrics();
-   bool lower_derivatives();
    bool lower_find_live_channel();
    bool lower_scoreboard();
    bool lower_sub_sat();

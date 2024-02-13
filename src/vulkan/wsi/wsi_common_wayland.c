@@ -1738,7 +1738,6 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
    /* Someone else is dispatching events; wait for them to update the chain
     * status and wake us up. */
    while (chain->present_ids.dispatch_in_progress) {
-      /* We only own the lock when the wait succeeds. */
       err = pthread_cond_timedwait(&chain->present_ids.list_advanced,
                                    &chain->present_ids.lock, &end_time);
 

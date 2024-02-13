@@ -774,13 +774,13 @@ static void
 setup_ngg_lds_layout(struct radv_device *device, nir_shader *nir, struct radv_shader_info *info)
 {
    unsigned scratch_lds_base = 0;
-   gl_shader_stage stage = nir->info.stage;
+   gl_shader_stage stage = info->stage;
 
    if (stage == MESA_SHADER_VERTEX || stage == MESA_SHADER_TESS_EVAL) {
       /* Get pervertex LDS usage. */
-      bool uses_instanceid = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_INSTANCE_ID);
-      bool uses_primitive_id = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID);
-      bool streamout_enabled = nir->xfb_info && device->physical_device->use_ngg_streamout;
+      const bool uses_instanceid = info->vs.needs_instance_id;
+      const bool uses_primitive_id = info->uses_prim_id;
+      const bool streamout_enabled = info->so.num_outputs && device->physical_device->use_ngg_streamout;
       const uint32_t num_outputs = stage == MESA_SHADER_VERTEX ? info->vs.num_outputs : info->tes.num_outputs;
       unsigned pervertex_lds_bytes = ac_ngg_nogs_get_pervertex_lds_size(
          stage, num_outputs, streamout_enabled, info->outinfo.export_prim_id, false, /* user edge flag */

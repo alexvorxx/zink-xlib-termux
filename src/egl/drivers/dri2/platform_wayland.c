@@ -2276,7 +2276,6 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
-   bool zink = dri2_surf->base.Resource.Display->Options.Zink;
 
    /* we need to do the following operations only once per frame */
    if (dri2_surf->back)
@@ -2286,8 +2285,7 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
        (dri2_surf->base.Width != dri2_surf->wl_win->width ||
         dri2_surf->base.Height != dri2_surf->wl_win->height)) {
 
-      if (!zink)
-         dri2_wl_release_buffers(dri2_surf);
+      dri2_wl_release_buffers(dri2_surf);
 
       dri2_surf->base.Width = dri2_surf->wl_win->width;
       dri2_surf->base.Height = dri2_surf->wl_win->height;
@@ -2297,9 +2295,6 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
    }
 
    /* find back buffer */
-   if (zink)
-      return 0;
-
    /* There might be a buffer release already queued that wasn't processed */
    wl_display_dispatch_queue_pending(dri2_dpy->wl_dpy, dri2_surf->wl_queue);
 

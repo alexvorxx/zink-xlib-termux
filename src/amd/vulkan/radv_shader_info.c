@@ -456,6 +456,9 @@ gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
       info->vs.as_es = true;
       info->esgs_itemsize = radv_compute_esgs_itemsize(device, info->vs.num_linked_outputs);
    }
+
+   if (info->is_ngg)
+      info->vs.num_outputs = nir->num_outputs;
 }
 
 static void
@@ -512,6 +515,9 @@ gather_shader_info_tes(struct radv_device *device, const nir_shader *nir, struct
       info->tes.as_es = true;
       info->esgs_itemsize = radv_compute_esgs_itemsize(device, info->tes.num_linked_outputs);
    }
+
+   if (info->is_ngg)
+      info->tes.num_outputs = nir->num_outputs;
 }
 
 static void
@@ -1414,7 +1420,9 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *e
           * space for all outputs.
           * TODO: only alloc space for outputs that really need streamout.
           */
-         esvert_lds_size = 4 * es_stage->nir->num_outputs + 1;
+         const uint32_t num_outputs =
+            es_info->stage == MESA_SHADER_VERTEX ? es_info->vs.num_outputs : es_info->tes.num_outputs;
+         esvert_lds_size = 4 * num_outputs + 1;
       }
 
       /* GS stores Primitive IDs (one DWORD) into LDS at the address

@@ -380,6 +380,7 @@ struct radv_shader_info {
       bool has_prolog;
       bool dynamic_inputs;
       bool dynamic_num_verts_per_prim;
+      uint32_t num_outputs; /* For NGG streamout only */
    } vs;
    struct {
       uint8_t output_usage_mask[VARYING_SLOT_VAR31 + 1];
@@ -408,6 +409,7 @@ struct radv_shader_info {
       unsigned tcs_vertices_out;
       uint8_t num_linked_inputs;
       uint8_t num_linked_outputs;
+      uint32_t num_outputs; /* For NGG streamout only */
    } tes;
    struct {
       bool uses_sample_shading;

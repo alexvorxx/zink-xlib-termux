@@ -781,8 +781,9 @@ setup_ngg_lds_layout(struct radv_device *device, nir_shader *nir, struct radv_sh
       bool uses_instanceid = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_INSTANCE_ID);
       bool uses_primitive_id = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID);
       bool streamout_enabled = nir->xfb_info && device->physical_device->use_ngg_streamout;
+      const uint32_t num_outputs = stage == MESA_SHADER_VERTEX ? info->vs.num_outputs : info->tes.num_outputs;
       unsigned pervertex_lds_bytes = ac_ngg_nogs_get_pervertex_lds_size(
-         stage, nir->num_outputs, streamout_enabled, info->outinfo.export_prim_id, false, /* user edge flag */
+         stage, num_outputs, streamout_enabled, info->outinfo.export_prim_id, false, /* user edge flag */
          info->has_ngg_culling, uses_instanceid, uses_primitive_id);
 
       assert(info->ngg_info.hw_max_esverts <= 256);

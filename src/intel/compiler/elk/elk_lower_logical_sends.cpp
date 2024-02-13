@@ -192,12 +192,9 @@ lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
 
       assert(length == 0);
       length = 2;
-   } else if ((devinfo->verx10 <= 70 &&
-               prog_data->uses_kill) ||
-              (devinfo->ver < 11 &&
-               (color1.file != BAD_FILE || key->nr_color_regions > 1))) {
-      assert(devinfo->ver < 20);
-
+   } else if ((devinfo->verx10 <= 70 && prog_data->uses_kill) ||
+              color1.file != BAD_FILE ||
+              key->nr_color_regions > 1) {
       /* From the Sandy Bridge PRM, volume 4, page 198:
        *
        *     "Dispatched Pixel Enables. One bit per pixel indicating
@@ -220,9 +217,6 @@ lower_fb_write_logical_send(const fs_builder &bld, elk_fs_inst *inst,
             retype(elk_vec8_grf(2, 0), ELK_REGISTER_TYPE_UD),
          };
          ubld.LOAD_PAYLOAD(header, header_sources, 2, 0);
-
-         /* Gfx12 will require additional fix-ups if we ever hit this path. */
-         assert(devinfo->ver < 12);
       }
 
       uint32_t g00_bits = 0;
@@ -723,7 +717,6 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
                                 unsigned grad_components,
                                 bool residency)
 {
-   const elk_compiler *compiler = bld.shader->compiler;
    const intel_device_info *devinfo = bld.shader->devinfo;
    const enum elk_reg_type payload_type =
       elk_reg_type_from_bit_size(payload_type_bit_size, ELK_REGISTER_TYPE_F);
@@ -802,25 +795,10 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
           * address space but means we can do something more efficient in the
           * shader.
           */
-         if (compiler->use_bindless_sampler_offset) {
-            assert(devinfo->ver >= 11);
-            ubld1.OR(component(header, 3), sampler_handle, elk_imm_ud(1));
-         } else {
-            ubld1.MOV(component(header, 3), sampler_handle);
-         }
+         ubld1.MOV(component(header, 3), sampler_handle);
       } else if (is_high_sampler(devinfo, sampler)) {
          elk_fs_reg sampler_state_ptr =
             retype(elk_vec1_grf(0, 3), ELK_REGISTER_TYPE_UD);
-
-         /* Gfx11+ sampler message headers include bits in 4:0 which conflict
-          * with the ones included in g0.3 bits 4:0.  Mask them out.
-          */
-         if (devinfo->ver >= 11) {
-            sampler_state_ptr = ubld1.vgrf(ELK_REGISTER_TYPE_UD);
-            ubld1.AND(sampler_state_ptr,
-                      retype(elk_vec1_grf(0, 3), ELK_REGISTER_TYPE_UD),
-                      elk_imm_ud(INTEL_MASK(31, 5)));
-         }
 
          if (sampler.file == ELK_IMMEDIATE_VALUE) {
             assert(sampler.ud >= 16);
@@ -834,24 +812,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
             ubld1.SHL(tmp, tmp, elk_imm_ud(4));
             ubld1.ADD(component(header, 3), sampler_state_ptr, tmp);
          }
-      } else if (devinfo->ver >= 11) {
-         /* Gfx11+ sampler message headers include bits in 4:0 which conflict
-          * with the ones included in g0.3 bits 4:0.  Mask them out.
-          */
-         ubld1.AND(component(header, 3),
-                   retype(elk_vec1_grf(0, 3), ELK_REGISTER_TYPE_UD),
-                   elk_imm_ud(INTEL_MASK(31, 5)));
       }
-   }
-
-   /* Change the opcode to account for LOD being zero before the
-    * switch-statement that emits sources based on the opcode.
-    */
-   if (devinfo->ver >= 9 && lod.is_zero()) {
-      if (op == ELK_SHADER_OPCODE_TXL)
-         op = ELK_SHADER_OPCODE_TXL_LZ;
-      else if (op == ELK_SHADER_OPCODE_TXF)
-         op = ELK_SHADER_OPCODE_TXF_LZ;
    }
 
    /* On Xe2 and newer platforms, min_lod is the first parameter specifically
@@ -910,27 +871,15 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
       break;
    case ELK_SHADER_OPCODE_TXF:
    case ELK_SHADER_OPCODE_TXF_LZ:
-      /* Unfortunately, the parameters for LD are intermixed: u, lod, v, r.
-       * On Gfx9 they are u, v, lod, r
-       */
+      /* Unfortunately, the parameters for LD are intermixed: u, lod, v, r. */
       bld.MOV(retype(sources[length++], payload_signed_type), coordinate);
-
-      if (devinfo->ver >= 9) {
-         if (coord_components >= 2) {
-            bld.MOV(retype(sources[length], payload_signed_type),
-                    offset(coordinate, bld, 1));
-         } else {
-            sources[length] = elk_imm_d(0);
-         }
-         length++;
-      }
 
       if (op != ELK_SHADER_OPCODE_TXF_LZ) {
          bld.MOV(retype(sources[length], payload_signed_type), lod);
          length++;
       }
 
-      for (unsigned i = devinfo->ver >= 9 ? 2 : 1; i < coord_components; i++)
+      for (unsigned i = 1; i < coord_components; i++)
          bld.MOV(retype(sources[length++], payload_signed_type),
                  offset(coordinate, bld, i));
 
@@ -964,24 +913,9 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
              * only valid data is in first two register. So with 16-bit
              * payload, we need to split 2-32bit register into 4-16-bit
              * payload.
-             *
-             * From the Gfx12HP BSpec: Render Engine - 3D and GPGPU Programs -
-             * Shared Functions - 3D Sampler - Messages - Message Format:
-             *
-             *    ld2dms_w   si  mcs0 mcs1 mcs2  mcs3  u  v  r
              */
-            if (devinfo->verx10 >= 125 && op == ELK_SHADER_OPCODE_TXF_CMS_W) {
-               elk_fs_reg tmp = offset(mcs, bld, i);
-               bld.MOV(retype(sources[length++], payload_unsigned_type),
-                       mcs.file == IMM ? mcs :
-                       subscript(tmp, payload_unsigned_type, 0));
-               bld.MOV(retype(sources[length++], payload_unsigned_type),
-                       mcs.file == IMM ? mcs :
-                       subscript(tmp, payload_unsigned_type, 1));
-            } else {
-               bld.MOV(retype(sources[length++], payload_unsigned_type),
-                       mcs.file == IMM ? mcs : offset(mcs, bld, i));
-            }
+            bld.MOV(retype(sources[length++], payload_unsigned_type),
+                    mcs.file == IMM ? mcs : offset(mcs, bld, i));
          }
       }
 
@@ -1021,29 +955,11 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, elk_fs_inst *inst, elk_op
 
    if (min_lod.file != BAD_FILE) {
       /* Account for all of the missing coordinate sources */
-      if (op == ELK_SHADER_OPCODE_TXD && devinfo->verx10 >= 125) {
-         /* On DG2 and newer platforms, sample_d can only be used with 1D and
-          * 2D surfaces, so the maximum number of gradient components is 2.
-          * In spite of this limitation, the Bspec lists a mysterious R
-          * component before the min_lod, so the maximum coordinate components
-          * is 3.
-          *
-          * See bspec 45942, "Enable new message layout for cube array"
-          */
-         length += 3 - coord_components;
-         length += (2 - grad_components) * 2;
-      } else {
-         length += 4 - coord_components;
-         if (op == ELK_SHADER_OPCODE_TXD)
-            length += (3 - grad_components) * 2;
-      }
+      length += 4 - coord_components;
+      if (op == ELK_SHADER_OPCODE_TXD)
+         length += (3 - grad_components) * 2;
 
       bld.MOV(sources[length++], min_lod);
-
-      /* Wa_14014595444: Populate MLOD as parameter 5 (twice). */
-       if (devinfo->verx10 == 125 && op == ELK_FS_OPCODE_TXB &&
-          !inst->shadow_compare)
-         bld.MOV(sources[length++], min_lod);
    }
 
    const elk_fs_reg src_payload =
@@ -1145,38 +1061,12 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
    assert(src_type_size == 2 || src_type_size == 4);
 
 #ifndef NDEBUG
-   /* Make sure all sources agree. On gfx12 this doesn't hold when sampling
-    * compressed multisampled surfaces. There the payload contains MCS data
-    * which is already in 16-bits unlike the other parameters that need forced
-    * conversion.
-    */
-   if (devinfo->verx10 < 125 ||
-       (op != ELK_SHADER_OPCODE_TXF_CMS_W &&
-        op != ELK_SHADER_OPCODE_TXF_CMS)) {
-      for (unsigned i = 0; i < TEX_LOGICAL_NUM_SRCS; i++) {
-         assert(src[i].file == BAD_FILE ||
-                elk_reg_type_to_size(src[i].type) == src_type_size);
-      }
+   /* Make sure all sources agree. */
+   for (unsigned i = 0; i < TEX_LOGICAL_NUM_SRCS; i++) {
+      assert(src[i].file == BAD_FILE ||
+             elk_reg_type_to_size(src[i].type) == src_type_size);
    }
 #endif
-
-   if (devinfo->verx10 < 125)
-      return src_type_size * 8;
-
-   /* Force conversion from 32-bit sources to 16-bit payload. From the XeHP Bspec:
-    * 3D and GPGPU Programs - Shared Functions - 3D Sampler - Messages - Message
-    * Format [GFX12:HAS:1209977870] *
-    *
-    *  ld2dms_w       SIMD8H and SIMD16H Only
-    *  ld_mcs         SIMD8H and SIMD16H Only
-    *  ld2dms         REMOVEDBY(GEN:HAS:1406788836)
-    */
-
-   if (op == ELK_SHADER_OPCODE_TXF_CMS_W ||
-       op == ELK_SHADER_OPCODE_TXF_CMS ||
-       op == ELK_SHADER_OPCODE_TXF_UMS ||
-       op == ELK_SHADER_OPCODE_TXF_MCS)
-      src_type_size = 2;
 
    return src_type_size * 8;
 }
@@ -1211,7 +1101,7 @@ lower_sampler_logical_send(const fs_builder &bld, elk_fs_inst *inst, elk_opcode 
          get_sampler_msg_payload_type_bit_size(devinfo, op, inst->src);
 
       /* 16-bit payloads are available only on gfx11+ */
-      assert(msg_payload_type_bit_size != 16 || devinfo->ver >= 11);
+      assert(msg_payload_type_bit_size != 16);
 
       lower_sampler_logical_send_gfx7(bld, inst, op, coordinate,
                                       shadow_c, lod, lod2, min_lod,
@@ -1259,7 +1149,6 @@ emit_predicate_on_vector_mask(const fs_builder &bld, elk_fs_inst *inst)
       assert(inst->predicate == ELK_PREDICATE_NORMAL);
       assert(!inst->predicate_inverse);
       assert(inst->flag_subreg == 0);
-      assert(s.devinfo->ver < 20);
       /* Combine the vector mask with the existing predicate by using a
        * vertical predication mode.
        */
@@ -1345,7 +1234,7 @@ lower_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
     * For all stateless A32 messages, we also need a header
     */
    elk_fs_reg header;
-   if ((devinfo->ver < 9 && is_typed_access) || is_stateless) {
+   if (is_typed_access || is_stateless) {
       fs_builder ubld = bld.exec_all().group(8, 0);
       header = ubld.vgrf(ELK_REGISTER_TYPE_UD);
       if (is_stateless) {
@@ -1513,71 +1402,6 @@ lower_surface_logical_send(const fs_builder &bld, elk_fs_inst *inst)
 
    /* Finally, the payload */
    inst->src[1] = payload;
-}
-
-static void
-lower_surface_block_logical_send(const fs_builder &bld, elk_fs_inst *inst)
-{
-   const intel_device_info *devinfo = bld.shader->devinfo;
-   assert(devinfo->ver >= 9);
-
-   /* Get the logical send arguments. */
-   const elk_fs_reg addr = inst->src[SURFACE_LOGICAL_SRC_ADDRESS];
-   const elk_fs_reg src = inst->src[SURFACE_LOGICAL_SRC_DATA];
-   const elk_fs_reg surface = inst->src[SURFACE_LOGICAL_SRC_SURFACE];
-   const elk_fs_reg surface_handle = inst->src[SURFACE_LOGICAL_SRC_SURFACE_HANDLE];
-   const elk_fs_reg arg = inst->src[SURFACE_LOGICAL_SRC_IMM_ARG];
-   assert(arg.file == IMM);
-   assert(inst->src[SURFACE_LOGICAL_SRC_IMM_DIMS].file == BAD_FILE);
-   assert(inst->src[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK].file == BAD_FILE);
-
-   const bool is_stateless =
-      surface.file == IMM && (surface.ud == ELK_BTI_STATELESS ||
-                              surface.ud == GFX8_BTI_STATELESS_NON_COHERENT);
-
-   const bool has_side_effects = inst->has_side_effects();
-
-   const bool align_16B =
-      inst->opcode != ELK_SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL;
-
-   const bool write = inst->opcode == ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL;
-
-   /* The address is stored in the header.  See MH_A32_GO and MH_BTS_GO. */
-   fs_builder ubld = bld.exec_all().group(8, 0);
-   elk_fs_reg header = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-
-   if (is_stateless)
-      ubld.emit(ELK_SHADER_OPCODE_SCRATCH_HEADER, header);
-   else
-      ubld.MOV(header, elk_imm_d(0));
-
-   /* Address in OWord units when aligned to OWords. */
-   if (align_16B)
-      ubld.group(1, 0).SHR(component(header, 2), addr, elk_imm_ud(4));
-   else
-      ubld.group(1, 0).MOV(component(header, 2), addr);
-
-   elk_fs_reg data;
-   if (write) {
-      const unsigned src_sz = inst->components_read(SURFACE_LOGICAL_SRC_DATA);
-      data = retype(bld.move_to_vgrf(src, src_sz), ELK_REGISTER_TYPE_UD);
-   }
-
-   inst->opcode = ELK_SHADER_OPCODE_SEND;
-   inst->mlen = 1;
-   inst->header_size = 1;
-   inst->send_has_side_effects = has_side_effects;
-   inst->send_is_volatile = !has_side_effects;
-
-   inst->sfid = GFX7_SFID_DATAPORT_DATA_CACHE;
-
-   const uint32_t desc = elk_dp_oword_block_rw_desc(devinfo, align_16B,
-                                                    arg.ud, write);
-   setup_surface_descriptors(bld, inst, desc, surface, surface_handle);
-
-   inst->resize_sources(2);
-
-   inst->src[1] = header;
 }
 
 static void
@@ -1965,7 +1789,7 @@ lower_get_buffer_size(const fs_builder &bld, elk_fs_inst *inst)
    /* Since we can only execute this instruction on uniform bti/surface
     * handles, elk_fs_nir.cpp should already have limited this to SIMD8.
     */
-   assert(inst->exec_size == (devinfo->ver < 20 ? 8 : 16));
+   assert(inst->exec_size == 8);
 
    elk_fs_reg surface = inst->src[GET_BUFFER_SIZE_SRC_SURFACE];
    elk_fs_reg surface_handle = inst->src[GET_BUFFER_SIZE_SRC_SURFACE_HANDLE];
@@ -2085,11 +1909,6 @@ elk_fs_visitor::lower_logical_sends()
       case ELK_SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
       case ELK_SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
          lower_surface_logical_send(ibld, inst);
-         break;
-
-      case ELK_SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
-      case ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL:
-         lower_surface_block_logical_send(ibld, inst);
          break;
 
       case ELK_SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:

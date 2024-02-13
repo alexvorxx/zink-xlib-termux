@@ -662,19 +662,10 @@ zink_kopper_present(struct zink_screen *screen, struct zink_resource *res)
    return res->obj->present;
 }
 
-struct kopper_present_info {
-   VkPresentInfoKHR info;
-   uint32_t image;
-   struct kopper_swapchain *swapchain;
-   struct zink_resource *res;
-   VkSemaphore sem;
-   bool indefinite_acquire;
-};
-
 static void
 kopper_present(void *data, void *gdata, int thread_idx)
 {
-   struct kopper_present_info *cpi = data;
+   struct zink_kopper_present_info *cpi = data;
    struct kopper_displaytarget *cdt = cpi->res->obj->dt;
    struct kopper_swapchain *swapchain = cpi->swapchain;
    struct zink_screen *screen = gdata;
@@ -784,7 +775,7 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res)
    if (cdt->swapchain->last_present != UINT32_MAX)
       prune_old_swapchains(screen, cdt, false);
 
-   struct kopper_present_info *cpi = malloc(sizeof(struct kopper_present_info));
+   struct zink_kopper_present_info *cpi = malloc(sizeof(struct zink_kopper_present_info));
    if (!cpi) {
       mesa_loge("ZINK: failed to allocate cpi!");
       return;

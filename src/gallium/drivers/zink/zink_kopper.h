@@ -100,6 +100,15 @@ struct kopper_displaytarget
    bool age_locked; //disables buffer age during readback
 };
 
+struct zink_kopper_present_info {
+   VkPresentInfoKHR info;
+   uint32_t image;
+   struct kopper_swapchain *swapchain;
+   struct zink_resource *res;
+   VkSemaphore sem;
+   bool indefinite_acquire;
+};
+
 struct zink_context;
 struct zink_screen;
 struct zink_resource;

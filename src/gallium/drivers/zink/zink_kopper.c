@@ -760,7 +760,7 @@ out:
       struct pipe_resource *pres = &cpi->res->base.b;
       pipe_resource_reference(&pres, NULL);
    }
-   free(cpi);
+   slab_free_st(&screen->present_mempool, cpi);
 }
 
 void
@@ -775,7 +775,7 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res)
    if (cdt->swapchain->last_present != UINT32_MAX)
       prune_old_swapchains(screen, cdt, false);
 
-   struct zink_kopper_present_info *cpi = malloc(sizeof(struct zink_kopper_present_info));
+   struct zink_kopper_present_info *cpi = slab_alloc_st(&screen->present_mempool);
    if (!cpi) {
       mesa_loge("ZINK: failed to allocate cpi!");
       return;

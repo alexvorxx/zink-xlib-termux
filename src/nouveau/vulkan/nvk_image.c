@@ -588,6 +588,30 @@ nvk_image_init(struct nvk_device *dev,
       usage |= NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT;
    }
 
+   if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
+      /* Modifiers are not supported with YCbCr */
+      assert(image->plane_count == 1);
+
+      const struct VkImageDrmFormatModifierExplicitCreateInfoEXT *mod_explicit_info =
+         vk_find_struct_const(pCreateInfo->pNext,
+                              IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
+      if (mod_explicit_info) {
+         image->vk.drm_format_mod = mod_explicit_info->drmFormatModifier;
+      } else {
+         const struct VkImageDrmFormatModifierListCreateInfoEXT *mod_list_info =
+            vk_find_struct_const(pCreateInfo->pNext,
+                                 IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT);
+
+         enum pipe_format p_format =
+            vk_format_to_pipe_format(pCreateInfo->format);
+         image->vk.drm_format_mod =
+            nil_select_best_drm_format_mod(&pdev->info, nil_format(p_format),
+                                           mod_list_info->drmFormatModifierCount,
+                                           mod_list_info->pDrmFormatModifiers);
+         assert(image->vk.drm_format_mod != DRM_FORMAT_MOD_INVALID);
+      }
+   }
+
    const struct vk_format_ycbcr_info *ycbcr_info =
       vk_format_get_ycbcr_info(pCreateInfo->format);
    for (uint8_t plane = 0; plane < image->plane_count; plane++) {
@@ -818,8 +842,10 @@ nvk_get_image_memory_requirements(struct nvk_device *dev,
       switch (ext->sType) {
       case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS: {
          VkMemoryDedicatedRequirements *dedicated = (void *)ext;
-         dedicated->prefersDedicatedAllocation = false;
-         dedicated->requiresDedicatedAllocation = false;
+         dedicated->prefersDedicatedAllocation =
+            image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+         dedicated->requiresDedicatedAllocation =
+            image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
          break;
       }
       default:

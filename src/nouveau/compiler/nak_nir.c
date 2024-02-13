@@ -1043,7 +1043,6 @@ nak_nir_lower_fs_outputs(nir_shader *nir)
 
    nir->num_outputs = 0;
    nir_foreach_shader_out_variable(var, nir) {
-      assert(nir->info.outputs_written & BITFIELD_BIT(var->data.location));
       switch (var->data.location) {
       case FRAG_RESULT_DEPTH:
          assert(var->data.index == 0);

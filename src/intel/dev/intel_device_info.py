@@ -344,7 +344,9 @@ Struct("intel_device_info",
                comment=dedent("""\
                Maximum number of subslices per slice present on this device (can be
                more than the maximum value in the num_subslices[] array if some
-               subslices are fused).""")),
+               subslices are fused).
+
+               This is GT_SS_PER_SLICE in SKU.""")),
 
         Member("unsigned", "ppipe_subslices", array="INTEL_DEVICE_MAX_PIXEL_PIPES",
                comment="Number of subslices on each pixel pipe (ICL)."),

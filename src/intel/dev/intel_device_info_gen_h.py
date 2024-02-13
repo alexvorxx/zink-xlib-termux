@@ -46,7 +46,6 @@ template = COPYRIGHT + """
 
 #include "util/macros.h"
 #include "compiler/shader_enums.h"
-#include "intel/common/intel_engine.h"
 #include "intel/dev/intel_wa.h"
 
 #ifdef __cplusplus

@@ -33,7 +33,6 @@
 #include "compiler/shader_enums.h"
 #include "intel_kmd.h"
 
-#include "intel/common/intel_engine.h"
 #include "intel/dev/intel_wa.h"
 
 #include "intel/dev/intel_device_info_gen.h"

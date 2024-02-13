@@ -166,6 +166,14 @@ Enum("intel_cooperative_matrix_component_type",
       "INTEL_CMAT_UINT32",
       "INTEL_CMAT_UINT8"])
 
+Enum("intel_engine_class",
+     ["INTEL_ENGINE_CLASS_RENDER",
+      "INTEL_ENGINE_CLASS_COPY",
+      "INTEL_ENGINE_CLASS_VIDEO",
+      "INTEL_ENGINE_CLASS_VIDEO_ENHANCE",
+      "INTEL_ENGINE_CLASS_COMPUTE",
+      "INTEL_ENGINE_CLASS_INVALID"])
+
 Struct("intel_cooperative_matrix_configuration",
    [Member("intel_cmat_scope", "scope",
            comment=dedent("""\

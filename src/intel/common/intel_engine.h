@@ -25,16 +25,8 @@
 
 #include <stdint.h>
 
+#include "intel/dev/intel_device_info.h"
 #include "intel/dev/intel_kmd.h"
-
-enum intel_engine_class {
-   INTEL_ENGINE_CLASS_RENDER = 0,
-   INTEL_ENGINE_CLASS_COPY,
-   INTEL_ENGINE_CLASS_VIDEO,
-   INTEL_ENGINE_CLASS_VIDEO_ENHANCE,
-   INTEL_ENGINE_CLASS_COMPUTE,
-   INTEL_ENGINE_CLASS_INVALID
-};
 
 struct intel_engine_class_instance {
    enum intel_engine_class engine_class;

@@ -527,9 +527,8 @@ elk_fs_generator::generate_mov_indirect(elk_fs_inst *inst,
          elk_inst_set_no_dd_check(devinfo, insn, use_dep_ctrl);
 
       if (type_sz(reg.type) > 4 &&
-          ((devinfo->verx10 == 70) ||
-           devinfo->platform == INTEL_PLATFORM_CHV || intel_device_info_is_9lp(devinfo) ||
-           !devinfo->has_64bit_float || devinfo->verx10 >= 125)) {
+          (devinfo->verx10 == 70 || devinfo->platform == INTEL_PLATFORM_CHV ||
+           !devinfo->has_64bit_float)) {
          /* IVB has an issue (which we found empirically) where it reads two
           * address register components per channel for indirectly addressed
           * 64-bit sources.
@@ -707,7 +706,7 @@ elk_fs_generator::generate_quad_swizzle(const elk_fs_inst *inst,
       /* The value is uniform across all channels */
       elk_MOV(p, dst, src);
 
-   } else if (devinfo->ver < 11 && type_sz(src.type) == 4) {
+   } else if (type_sz(src.type) == 4) {
       /* This only works on 8-wide 32-bit values */
       assert(inst->exec_size == 8);
       assert(src.hstride == ELK_HORIZONTAL_STRIDE_1);
@@ -769,17 +768,9 @@ elk_fs_generator::generate_cs_terminate(elk_fs_inst *inst, struct elk_reg payloa
 
    elk_set_dest(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_UW));
    elk_set_src0(p, insn, retype(payload, ELK_REGISTER_TYPE_UW));
-   if (devinfo->ver < 12)
-      elk_set_src1(p, insn, elk_imm_ud(0u));
+   elk_set_src1(p, insn, elk_imm_ud(0u));
 
-   /* For XeHP and newer send a message to the message gateway to terminate a
-    * compute shader. For older devices, a message is sent to the thread
-    * spawner.
-    */
-   if (devinfo->verx10 >= 125)
-      elk_inst_set_sfid(devinfo, insn, ELK_SFID_MESSAGE_GATEWAY);
-   else
-      elk_inst_set_sfid(devinfo, insn, ELK_SFID_THREAD_SPAWNER);
+   elk_inst_set_sfid(devinfo, insn, ELK_SFID_THREAD_SPAWNER);
    elk_inst_set_mlen(devinfo, insn, 1);
    elk_inst_set_rlen(devinfo, insn, 0);
    elk_inst_set_eot(devinfo, insn, inst->eot);
@@ -787,15 +778,13 @@ elk_fs_generator::generate_cs_terminate(elk_fs_inst *inst, struct elk_reg payloa
 
    elk_inst_set_ts_opcode(devinfo, insn, 0); /* Dereference resource */
 
-   if (devinfo->ver < 11) {
-      elk_inst_set_ts_request_type(devinfo, insn, 0); /* Root thread */
+   elk_inst_set_ts_request_type(devinfo, insn, 0); /* Root thread */
 
-      /* Note that even though the thread has a URB resource associated with it,
-       * we set the "do not dereference URB" bit, because the URB resource is
-       * managed by the fixed-function unit, so it will free it automatically.
-       */
-      elk_inst_set_ts_resource_select(devinfo, insn, 1); /* Do not dereference URB */
-   }
+   /* Note that even though the thread has a URB resource associated with it,
+    * we set the "do not dereference URB" bit, because the URB resource is
+    * managed by the fixed-function unit, so it will free it automatically.
+    */
+   elk_inst_set_ts_resource_select(devinfo, insn, 1); /* Do not dereference URB */
 
    elk_inst_set_mask_control(devinfo, insn, ELK_MASK_DISABLE);
 }
@@ -835,11 +824,6 @@ elk_fs_generator::generate_linterp(elk_fs_inst *inst,
    struct elk_reg delta_y = offset(src[0], inst->exec_size / 8);
    struct elk_reg interp = src[1];
    elk_inst *i[2];
-
-   /* nir_lower_interpolation() will do the lowering to MAD instructions for
-    * us on gfx11+
-    */
-   assert(devinfo->ver < 11);
 
    if (devinfo->has_pln) {
       if (devinfo->ver <= 6 && (delta_x.nr & 1) != 0) {
@@ -1239,8 +1223,7 @@ elk_fs_generator::generate_ddy(const elk_fs_inst *inst,
        * So for half-float operations we use the Gfx11+ Align1 path. CHV
        * inherits its FP16 hardware from SKL, so it is not affected.
        */
-      if (devinfo->ver >= 11 ||
-          (devinfo->platform == INTEL_PLATFORM_BDW && src.type == ELK_REGISTER_TYPE_HF)) {
+      if (devinfo->platform == INTEL_PLATFORM_BDW && src.type == ELK_REGISTER_TYPE_HF) {
          src = stride(src, 0, 2, 1);
 
          elk_push_insn_state(p);
@@ -1404,17 +1387,14 @@ elk_fs_generator::generate_scratch_header(elk_fs_inst *inst, struct elk_reg dst)
    insn = elk_AND(p, suboffset(dst, 3),
                      retype(elk_vec1_grf(0, 3), ELK_REGISTER_TYPE_UD),
                      elk_imm_ud(INTEL_MASK(3, 0)));
-   if (devinfo->ver < 12) {
-      elk_inst_set_no_dd_clear(p->devinfo, insn, true);
-      elk_inst_set_no_dd_check(p->devinfo, insn, true);
-   }
+   elk_inst_set_no_dd_clear(p->devinfo, insn, true);
+   elk_inst_set_no_dd_check(p->devinfo, insn, true);
 
    /* Copy the scratch base address from g0.5[31:10] */
    insn = elk_AND(p, suboffset(dst, 5),
                      retype(elk_vec1_grf(0, 5), ELK_REGISTER_TYPE_UD),
                      elk_imm_ud(INTEL_MASK(31, 10)));
-   if (devinfo->ver < 12)
-      elk_inst_set_no_dd_check(p->devinfo, insn, true);
+   elk_inst_set_no_dd_check(p->devinfo, insn, true);
 }
 
 void
@@ -1570,7 +1550,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
        * and empirically this affects CHV as well.
        */
       if (devinfo->ver >= 8 &&
-          devinfo->ver <= 9 &&
           p->nr_insn > 1 &&
           elk_inst_opcode(p->isa, elk_last_inst) == ELK_OPCODE_MATH &&
           elk_inst_math_function(devinfo, elk_last_inst) == ELK_MATH_FUNCTION_POW &&
@@ -1625,7 +1604,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
            inst->dst.component_size(inst->exec_size) > REG_SIZE;
       elk_set_default_compression(p, compressed);
 
-      if ((devinfo->ver >= 20 || devinfo->ver < 7) && inst->group % 8 != 0) {
+      if (devinfo->ver < 7 && inst->group % 8 != 0) {
          assert(inst->force_writemask_all);
          assert(!inst->predicate && !inst->conditional_mod);
          assert(!inst->writes_accumulator_implicitly(devinfo) &&
@@ -1664,14 +1643,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
       elk_set_default_flag_reg(p, flag_subreg / 2, flag_subreg % 2);
       elk_set_default_saturate(p, inst->saturate);
       elk_set_default_mask_control(p, inst->force_writemask_all);
-      if (devinfo->ver >= 20 && inst->writes_accumulator) {
-         assert(inst->dst.is_accumulator() ||
-                inst->opcode == ELK_OPCODE_ADDC ||
-                inst->opcode == ELK_OPCODE_MACH ||
-                inst->opcode == ELK_OPCODE_SUBB);
-      } else {
-         elk_set_default_acc_write_control(p, inst->writes_accumulator);
-      }
+      elk_set_default_acc_write_control(p, inst->writes_accumulator);
 
       unsigned exec_size = inst->exec_size;
       if (devinfo->verx10 == 70 &&
@@ -1709,15 +1681,13 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 
       case ELK_OPCODE_MAD:
          assert(devinfo->ver >= 6);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_MAD(p, dst, src[0], src[1], src[2]);
 	 break;
 
       case ELK_OPCODE_LRP:
-         assert(devinfo->ver >= 6 && devinfo->ver <= 10);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         assert(devinfo->ver >= 6);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_LRP(p, dst, src[0], src[1], src[2]);
 	 break;
 
@@ -1830,8 +1800,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 
       case ELK_OPCODE_BFE:
          assert(devinfo->ver >= 7);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_BFE(p, dst, src[0], src[1], src[2]);
          break;
 
@@ -1841,8 +1810,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          break;
       case ELK_OPCODE_BFI2:
          assert(devinfo->ver >= 7);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_BFI2(p, dst, src[0], src[1], src[2]);
          break;
 
@@ -1905,7 +1873,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
       case ELK_SHADER_OPCODE_INT_QUOTIENT:
       case ELK_SHADER_OPCODE_INT_REMAINDER:
       case ELK_SHADER_OPCODE_POW:
-         assert(devinfo->verx10 < 125);
          assert(inst->conditional_mod == ELK_CONDITIONAL_NONE);
          if (devinfo->ver >= 6) {
             assert(inst->mlen == 0);
@@ -2208,10 +2175,8 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 
          if (inst->conditional_mod)
             elk_inst_set_cond_modifier(p->devinfo, last, inst->conditional_mod);
-         if (devinfo->ver < 12) {
-            elk_inst_set_no_dd_clear(p->devinfo, last, inst->no_dd_clear);
-            elk_inst_set_no_dd_check(p->devinfo, last, inst->no_dd_check);
-         }
+         elk_inst_set_no_dd_clear(p->devinfo, last, inst->no_dd_clear);
+         elk_inst_set_no_dd_check(p->devinfo, last, inst->no_dd_check);
       }
    }
 

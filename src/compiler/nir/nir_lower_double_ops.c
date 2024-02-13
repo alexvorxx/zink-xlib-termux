@@ -101,6 +101,19 @@ get_signed_zero(nir_builder *b, nir_def *src)
    return zero;
 }
 
+static nir_def *
+preserve_nan(nir_builder *b, nir_def *src, nir_def *res)
+{
+   uint32_t exec_mode = b->shader->info.float_controls_execution_mode;
+
+   if (nir_is_float_control_nan_preserve(exec_mode, 64)) {
+      nir_def *is_nan = nir_fneu(b, src, src);
+      return nir_bcsel(b, is_nan, src, res);
+   }
+
+   return res;
+}
+
 /*
  * Generates the correctly-signed infinity if the source was zero, and flushes
  * the result to 0 if the source was infinity or the calculated exponent was
@@ -111,12 +124,14 @@ static nir_def *
 fix_inv_result(nir_builder *b, nir_def *res, nir_def *src,
                nir_def *exp)
 {
-   /* If the exponent is too small or the original input was infinity/NaN,
+   /* If the exponent is too small or the original input was infinity,
     * force the result to 0 (flush denorms) to avoid the work of handling
-    * denorms properly.
+    * denorms properly. If we are asked to preserve NaN, do so, otherwise
+    * we return the flushed result for it.
     */
    res = nir_bcsel(b, nir_ior(b, nir_ile_imm(b, exp, 0), nir_feq_imm(b, nir_fabs(b, src), INFINITY)),
                    get_signed_zero(b, src), res);
+   res = preserve_nan(b, src, res);
 
    /* If the original input was 0, generate the correctly-signed infinity */
    res = nir_bcsel(b, nir_fneu_imm(b, src, 0.0f),
@@ -301,16 +316,15 @@ lower_sqrt_rsq(nir_builder *b, nir_def *src, bool sqrt)
       res = nir_ffma(b, y_1, r_1, y_1);
    }
 
+   uint32_t exec_mode = b->shader->info.float_controls_execution_mode;
    if (sqrt) {
       /* Here, the special cases we need to handle are
        * 0 -> 0 and
        * +inf -> +inf
+       * NaN -> NaN
        */
-      const bool preserve_denorms =
-         b->shader->info.float_controls_execution_mode &
-         FLOAT_CONTROLS_DENORM_PRESERVE_FP64;
       nir_def *src_flushed = src;
-      if (!preserve_denorms) {
+      if (!nir_is_denorm_preserve(exec_mode, 64)) {
          src_flushed = nir_bcsel(b,
                                  nir_flt_imm(b, nir_fabs(b, src), DBL_MIN),
                                  get_signed_zero(b, src),
@@ -318,9 +332,14 @@ lower_sqrt_rsq(nir_builder *b, nir_def *src, bool sqrt)
       }
       res = nir_bcsel(b, nir_ior(b, nir_feq_imm(b, src_flushed, 0.0), nir_feq_imm(b, src, INFINITY)),
                       src_flushed, res);
+      res = preserve_nan(b, src, res);
    } else {
       res = fix_inv_result(b, res, src, new_exp);
    }
+
+   if (nir_is_float_control_nan_preserve(exec_mode, 64))
+      res = nir_bcsel(b, nir_feq_imm(b, src, -INFINITY),
+                      nir_imm_double(b, NAN), res);
 
    return res;
 }

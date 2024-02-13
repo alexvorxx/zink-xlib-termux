@@ -37,13 +37,15 @@
 struct nvk_device_memory;
 struct nvk_physical_device;
 
-static VkFormatFeatureFlags2
-nvk_get_image_plane_format_features(struct nvk_physical_device *pdev,
-                                    VkFormat vk_format, VkImageTiling tiling);
-
 VkFormatFeatureFlags2
 nvk_get_image_format_features(struct nvk_physical_device *pdevice,
-                              VkFormat format, VkImageTiling tiling);
+                              VkFormat format, VkImageTiling tiling,
+                              uint64_t drm_format_mod);
+
+void
+nvk_get_drm_format_modifier_properties_list(struct nvk_physical_device *pdev,
+                                            VkFormat vk_format,
+                                            VkBaseOutStructure *ext);
 
 uint32_t
 nvk_image_max_dimension(const struct nv_device_info *info,

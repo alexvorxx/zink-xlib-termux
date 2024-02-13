@@ -295,8 +295,7 @@ with_any_broadcom = [
   with_broadcom_vk,
 ].contains(true)
 
-if ['x86_64'].contains(host_machine.cpu_family()) and \
-   get_option('intel-clc') != 'system'
+if get_option('intel-clc') != 'system'
   # Require intel-clc with Anv & Iris (for internal shaders)
   with_intel_clc = get_option('intel-clc') == 'enabled' or \
                    with_intel_vk or with_gallium_iris
@@ -304,9 +303,7 @@ else
   with_intel_clc = false
 endif
 
-with_intel_vk_rt = with_intel_vk and \
-                   get_option('intel-clc') != 'disabled' and \
-                   get_option('intel-rt') != 'disabled'
+with_intel_vk_rt = with_intel_vk and get_option('intel-rt') != 'disabled'
 
 with_any_intel = [
   with_gallium_crocus,

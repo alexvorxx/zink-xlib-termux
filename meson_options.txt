@@ -635,11 +635,11 @@ option(
   'intel-clc',
   type : 'combo',
   deprecated: {'true': 'enabled', 'false': 'disabled'},
-  value : 'disabled',
+  value : 'auto',
   choices : [
-    'enabled', 'disabled', 'system',
+    'enabled', 'system', 'auto'
   ],
-  description : 'Build the intel-clc compiler.'
+  description : 'Build the intel-clc compiler or use a system version.'
 )
 
 option(

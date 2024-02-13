@@ -12,10 +12,8 @@ use rusticl_opencl_gen::*;
 use rusticl_proc_macros::cl_entrypoint;
 use rusticl_proc_macros::cl_info_entrypoint;
 
-use std::collections::HashSet;
 use std::ffi::c_char;
 use std::ffi::c_void;
-use std::iter::FromIterator;
 use std::mem::transmute;
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -164,9 +162,10 @@ fn create_context(
     }
 
     // Duplicate devices specified in devices are ignored.
-    let set: HashSet<_> =
-        HashSet::from_iter(unsafe { slice::from_raw_parts(devices, num_devices as usize) }.iter());
-    let devs: Result<_, _> = set.into_iter().map(|&d| Device::ref_from_raw(d)).collect();
+    let mut devs = unsafe { slice::from_raw_parts(devices, num_devices as usize) }.to_owned();
+    devs.sort();
+    devs.dedup();
+    let devs: Result<_, _> = devs.into_iter().map(Device::ref_from_raw).collect();
     let devs: Vec<&Device> = devs?;
 
     let gl_ctx_manager = GLCtxManager::new(gl_context, glx_display, egl_display)?;

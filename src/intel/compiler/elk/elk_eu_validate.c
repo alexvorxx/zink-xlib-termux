@@ -1744,12 +1744,10 @@ special_requirements_for_handling_double_precision_data_types(
        *    2. Regioning must ensure Src.Vstride = Src.Width * Src.Hstride.
        *    3. Source and Destination offset must be the same, except the case
        *       of scalar source.
-       *
-       * We assume that the restriction applies to GLK as well.
        */
       if (is_double_precision &&
           elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1 &&
-          (devinfo->platform == INTEL_PLATFORM_CHV || intel_device_info_is_9lp(devinfo))) {
+          devinfo->platform == INTEL_PLATFORM_CHV) {
          ERROR_IF(!is_scalar_region &&
                   (src_stride % 8 != 0 ||
                    dst_stride % 8 != 0 ||
@@ -1770,11 +1768,8 @@ special_requirements_for_handling_double_precision_data_types(
        *
        *    When source or destination datatype is 64b or operation is integer
        *    DWord multiply, indirect addressing must not be used.
-       *
-       * We assume that the restriction applies to GLK as well.
        */
-      if (is_double_precision &&
-          (devinfo->platform == INTEL_PLATFORM_CHV || intel_device_info_is_9lp(devinfo))) {
+      if (is_double_precision && devinfo->platform == INTEL_PLATFORM_CHV) {
          ERROR_IF(ELK_ADDRESS_REGISTER_INDIRECT_REGISTER == address_mode ||
                   ELK_ADDRESS_REGISTER_INDIRECT_REGISTER == dst_address_mode,
                   "Indirect addressing is not allowed when the execution type "
@@ -1786,13 +1781,9 @@ special_requirements_for_handling_double_precision_data_types(
        *    ARF registers must never be used with 64b datatype or when
        *    operation is integer DWord multiply.
        *
-       * We assume that the restriction applies to GLK as well.
-       *
        * We assume that the restriction does not apply to the null register.
        */
-      if (is_double_precision &&
-          (devinfo->platform == INTEL_PLATFORM_CHV ||
-           intel_device_info_is_9lp(devinfo))) {
+      if (is_double_precision && devinfo->platform == INTEL_PLATFORM_CHV) {
          ERROR_IF(elk_inst_opcode(isa, inst) == ELK_OPCODE_MAC ||
                   elk_inst_acc_wr_control(devinfo, inst) ||
                   (ELK_ARCHITECTURE_REGISTER_FILE == file &&
@@ -1830,11 +1821,8 @@ special_requirements_for_handling_double_precision_data_types(
     *
     *    When source or destination datatype is 64b or operation is integer
     *    DWord multiply, DepCtrl must not be used.
-    *
-    * We assume that the restriction applies to GLK as well.
     */
-   if (is_double_precision &&
-       (devinfo->platform == INTEL_PLATFORM_CHV || intel_device_info_is_9lp(devinfo))) {
+   if (is_double_precision && devinfo->platform == INTEL_PLATFORM_CHV) {
       ERROR_IF(elk_inst_no_dd_check(devinfo, inst) ||
                elk_inst_no_dd_clear(devinfo, inst),
                "DepCtrl is not allowed when the execution type is 64-bit");

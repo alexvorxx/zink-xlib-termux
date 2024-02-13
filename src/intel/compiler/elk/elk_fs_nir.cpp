@@ -5026,8 +5026,7 @@ fs_nir_emit_intrinsic(nir_to_elk_state &ntb,
          unsigned read_size = nir_intrinsic_range(instr) -
             (instr->num_components - 1) * type_sz(dest.type);
 
-         bool supports_64bit_indirects =
-            devinfo->platform != INTEL_PLATFORM_CHV && !intel_device_info_is_9lp(devinfo);
+         bool supports_64bit_indirects = devinfo->platform != INTEL_PLATFORM_CHV;
 
          if (type_sz(dest.type) != 8 || supports_64bit_indirects) {
             for (unsigned j = 0; j < instr->num_components; j++) {

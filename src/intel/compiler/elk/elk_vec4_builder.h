@@ -528,7 +528,7 @@ namespace elk {
          /* The LRP instruction actually does op1 * op0 + op2 * (1 - op0), so
           * we need to reorder the operands.
           */
-         assert(shader->devinfo->ver >= 6 && shader->devinfo->ver <= 9);
+         assert(shader->devinfo->ver >= 6);
          return emit(ELK_OPCODE_LRP, dst, a, y, x);
       }
 

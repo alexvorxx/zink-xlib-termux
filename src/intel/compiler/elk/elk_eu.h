@@ -271,7 +271,7 @@ ALU2(SUBB)
 static inline unsigned
 reg_unit(const struct intel_device_info *devinfo)
 {
-   return devinfo->ver >= 20 ? 2 : 1;
+   return 1;
 }
 
 
@@ -387,20 +387,6 @@ elk_sampler_desc(const struct intel_device_info *devinfo,
    const unsigned desc = (SET_BITS(binding_table_index, 7, 0) |
                           SET_BITS(sampler, 11, 8));
 
-   /* From GFX20 Bspec: Shared Functions - Message Descriptor -
-    * Sampling Engine:
-    *
-    *    Message Type[5]  31  This bit represents the upper bit of message type
-    *                         6-bit encoding (c.f. [16:12]). This bit is set
-    *                         for messages with programmable offsets.
-    */
-   if (devinfo->ver >= 20)
-      return desc | SET_BITS(msg_type & 0x1F, 16, 12) |
-             SET_BITS(simd_mode & 0x3, 18, 17) |
-             SET_BITS(simd_mode >> 2, 29, 29) |
-             SET_BITS(return_format, 30, 30) |
-             SET_BITS(msg_type >> 5, 31, 31);
-
    /* From the CHV Bspec: Shared Functions - Message Descriptor -
     * Sampling Engine:
     *
@@ -443,9 +429,7 @@ elk_sampler_desc_sampler(UNUSED const struct intel_device_info *devinfo,
 static inline unsigned
 elk_sampler_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
 {
-   if (devinfo->ver >= 20)
-      return GET_BITS(desc, 31, 31) << 5 | GET_BITS(desc, 16, 12);
-   else if (devinfo->ver >= 7)
+   if (devinfo->ver >= 7)
       return GET_BITS(desc, 16, 12);
    else if (devinfo->verx10 >= 45)
       return GET_BITS(desc, 15, 12);
@@ -1066,7 +1050,7 @@ elk_fb_write_desc(const struct intel_device_info *devinfo,
       GFX6_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE :
       ELK_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE;
 
-   assert(devinfo->ver >= 10 || !coarse_write);
+   assert(!coarse_write);
 
    if (devinfo->ver >= 6) {
       return elk_fb_desc(devinfo, binding_table_index, msg_type, msg_control) |
@@ -1119,14 +1103,6 @@ elk_fb_write_desc_write_commit(const struct intel_device_info *devinfo,
       return GET_BITS(desc, 17, 17);
    else
       return GET_BITS(desc, 15, 15);
-}
-
-static inline bool
-elk_fb_write_desc_coarse_write(const struct intel_device_info *devinfo,
-                               uint32_t desc)
-{
-   assert(devinfo->ver >= 10);
-   return GET_BITS(desc, 18, 18);
 }
 
 static inline bool
@@ -1571,18 +1547,6 @@ elk_mdc_sm2_exec_size(uint32_t sm2)
 }
 
 static inline uint32_t
-elk_btd_spawn_desc(ASSERTED const struct intel_device_info *devinfo,
-                   unsigned exec_size, unsigned msg_type)
-{
-   assert(devinfo->has_ray_tracing);
-   assert(devinfo->ver < 20 || exec_size == 16);
-
-   return SET_BITS(0, 19, 19) | /* No header */
-          SET_BITS(msg_type, 17, 14) |
-          SET_BITS(elk_mdc_sm2(exec_size), 8, 8);
-}
-
-static inline uint32_t
 elk_btd_spawn_msg_type(UNUSED const struct intel_device_info *devinfo,
                        uint32_t desc)
 {
@@ -1612,7 +1576,7 @@ elk_pixel_interp_desc(UNUSED const struct intel_device_info *devinfo,
    const bool simd_mode = exec_size == 16;
    const bool slot_group = group >= 16;
 
-   assert(devinfo->ver >= 10 || !coarse_pixel_rate);
+   assert(!coarse_pixel_rate);
    return (SET_BITS(slot_group, 11, 11) |
            SET_BITS(msg_type, 13, 12) |
            SET_BITS(!!noperspective, 14, 14) |

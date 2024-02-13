@@ -639,8 +639,8 @@ F(rt_message_type,     /* 4+ */ MD(10),  MD( 8))
  * Thread Spawn message function control bits:
  *  @{
  */
-FC(ts_resource_select,  /* 4+ */ MD( 4),  MD( 4), devinfo->ver < 11)
-FC(ts_request_type,     /* 4+ */ MD( 1),  MD( 1), devinfo->ver < 11)
+F(ts_resource_select,  /* 4+ */ MD( 4),   MD( 4))
+F(ts_request_type,     /* 4+ */ MD( 1),   MD( 1))
 F(ts_opcode,            /* 4+ */ MD( 0),  MD( 0))
 /** @} */
 
@@ -677,13 +677,8 @@ static inline uint64_t
 elk_inst_imm_uq(const struct intel_device_info *devinfo,
                 const elk_inst *insn)
 {
-   if (devinfo->ver >= 12) {
-      return elk_inst_bits(insn, 95, 64) << 32 |
-             elk_inst_bits(insn, 127, 96);
-   } else {
-      assert(devinfo->ver >= 8);
-      return elk_inst_bits(insn, 127, 64);
-   }
+   assert(devinfo->ver >= 8);
+   return elk_inst_bits(insn, 127, 64);
 }
 
 static inline float
@@ -749,12 +744,7 @@ elk_inst_set_imm_df(const struct intel_device_info *devinfo,
    (void) devinfo;
    dt.d = value;
 
-   if (devinfo->ver >= 12) {
-      elk_inst_set_bits(insn, 95, 64, dt.u >> 32);
-      elk_inst_set_bits(insn, 127, 96, dt.u & 0xFFFFFFFF);
-   } else {
-      elk_inst_set_bits(insn, 127, 64, dt.u);
-   }
+   elk_inst_set_bits(insn, 127, 64, dt.u);
 }
 
 static inline void
@@ -762,12 +752,7 @@ elk_inst_set_imm_uq(const struct intel_device_info *devinfo,
                     elk_inst *insn, uint64_t value)
 {
    (void) devinfo;
-   if (devinfo->ver >= 12) {
-      elk_inst_set_bits(insn, 95, 64, value >> 32);
-      elk_inst_set_bits(insn, 127, 96, value & 0xFFFFFFFF);
-   } else {
-      elk_inst_set_bits(insn, 127, 64, value);
-   }
+   elk_inst_set_bits(insn, 127, 64, value);
 }
 
 /** @} */
@@ -802,25 +787,14 @@ REG_TYPE(src1)
 
 
 /* The AddrImm fields are split into two discontiguous sections on Gfx8+ */
-#define ELK_IA1_ADDR_IMM(reg, g4_high, g4_low, g8_nine, g8_high, g8_low, \
-                         g12_high, g12_low, g20_high, g20_low, g20_zero) \
+#define ELK_IA1_ADDR_IMM(reg, g4_high, g4_low, g8_nine, g8_high, g8_low) \
 static inline void                                                       \
 elk_inst_set_##reg##_ia1_addr_imm(const struct                           \
                                   intel_device_info *devinfo,            \
                                   elk_inst *inst,                        \
                                   unsigned value)                        \
 {                                                                        \
-   if (devinfo->ver >= 20) {                                             \
-      assert((value & ~0x7ff) == 0);                                     \
-      elk_inst_set_bits(inst, g20_high, g20_low, value >> 1);            \
-      if (g20_zero == -1)                                                \
-         assert((value & 1) == 0);                                       \
-      else                                                               \
-         elk_inst_set_bits(inst, g20_zero, g20_zero, value & 1);         \
-   } else if (devinfo->ver >= 12) {                                      \
-      assert((value & ~0x3ff) == 0);                                     \
-      elk_inst_set_bits(inst, g12_high, g12_low, value);                 \
-   } else if (devinfo->ver >= 8) {                                       \
+   if (devinfo->ver >= 8) {                                              \
       assert((value & ~0x3ff) == 0);                                     \
       elk_inst_set_bits(inst, g8_high, g8_low, value & 0x1ff);           \
       elk_inst_set_bits(inst, g8_nine, g8_nine, value >> 9);             \
@@ -833,13 +807,7 @@ static inline unsigned                                                   \
 elk_inst_##reg##_ia1_addr_imm(const struct intel_device_info *devinfo,   \
                               const elk_inst *inst)                      \
 {                                                                        \
-   if (devinfo->ver >= 20) {                                             \
-      return elk_inst_bits(inst, g20_high, g20_low) << 1 |               \
-             (g20_zero == -1 ? 0 :                                       \
-              elk_inst_bits(inst, g20_zero, g20_zero));                  \
-   } else if (devinfo->ver >= 12) {                                      \
-      return elk_inst_bits(inst, g12_high, g12_low);                     \
-   } else if (devinfo->ver >= 8) {                                       \
+   if (devinfo->ver >= 8) {                                              \
       return elk_inst_bits(inst, g8_high, g8_low) |                      \
              (elk_inst_bits(inst, g8_nine, g8_nine) << 9);               \
    } else {                                                              \
@@ -847,11 +815,11 @@ elk_inst_##reg##_ia1_addr_imm(const struct intel_device_info *devinfo,   \
    }                                                                     \
 }
 
-/* AddrImm for Align1 Indirect Addressing                          */
-/*                     -Gen 4-  ----Gfx8----  -Gfx12-  ---Gfx20--- */
-ELK_IA1_ADDR_IMM(src1, 105, 96, 121, 104, 96, 107, 98, 107, 98, -1)
-ELK_IA1_ADDR_IMM(src0,  73, 64,  95,  72, 64,  75, 66,  75, 66, 87)
-ELK_IA1_ADDR_IMM(dst,   57, 48,  47,  56, 48,  59, 50,  59, 50, 33)
+/* AddrImm for Align1 Indirect Addressing    */
+/*                     -Gen 4-  ----Gfx8---- */
+ELK_IA1_ADDR_IMM(src1, 105, 96, 121, 104, 96)
+ELK_IA1_ADDR_IMM(src0,  73, 64,  95,  72, 64)
+ELK_IA1_ADDR_IMM(dst,   57, 48,  47,  56, 48)
 
 #define ELK_IA16_ADDR_IMM(reg, g4_high, g4_low, g8_nine, g8_high, g8_low) \
 static inline void                                                        \
@@ -859,7 +827,6 @@ elk_inst_set_##reg##_ia16_addr_imm(const struct                           \
                                    intel_device_info *devinfo,            \
                                    elk_inst *inst, unsigned value)        \
 {                                                                         \
-   assert(devinfo->ver < 12);                                             \
    assert((value & ~0x3ff) == 0);                                         \
    if (devinfo->ver >= 8) {                                               \
       assert(GET_BITS(value, 3, 0) == 0);                                 \
@@ -873,7 +840,6 @@ static inline unsigned                                                    \
 elk_inst_##reg##_ia16_addr_imm(const struct intel_device_info *devinfo,   \
                                const elk_inst *inst)                      \
 {                                                                         \
-   assert(devinfo->ver < 12);                                             \
    if (devinfo->ver >= 8) {                                               \
       return (elk_inst_bits(inst, g8_high, g8_low) << 4) |                \
              (elk_inst_bits(inst, g8_nine, g8_nine) << 9);                \
@@ -1049,12 +1015,8 @@ static inline unsigned
 elk_compact_inst_imm(const struct intel_device_info *devinfo,
                      const elk_compact_inst *inst)
 {
-   if (devinfo->ver >= 12) {
-      return elk_compact_inst_bits(inst, 63, 52);
-   } else {
-      return (elk_compact_inst_bits(inst, 39, 35) << 8) |
-             (elk_compact_inst_bits(inst, 63, 56));
-   }
+   return (elk_compact_inst_bits(inst, 39, 35) << 8) |
+          (elk_compact_inst_bits(inst, 63, 56));
 }
 
 /**

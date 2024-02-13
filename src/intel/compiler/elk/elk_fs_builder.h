@@ -781,7 +781,7 @@ namespace elk {
       LRP(const dst_reg &dst, const src_reg &x, const src_reg &y,
           const src_reg &a) const
       {
-         if (shader->devinfo->ver >= 6 && shader->devinfo->ver <= 10) {
+         if (shader->devinfo->ver >= 6) {
             /* The LRP instruction actually does op1 * op0 + op2 * (1 - op0), so
              * we need to reorder the operands.
              */

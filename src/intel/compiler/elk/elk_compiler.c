@@ -86,7 +86,7 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
     * destination type can be Quadword and source type Doubleword for Gfx8 and
     * Gfx9. So, lower 64 bit multiply instruction on rest of the platforms.
     */
-   if (devinfo->ver < 8 || devinfo->ver > 9)
+   if (devinfo->ver < 8)
       int64_options |= nir_lower_imul_2x32_64;
 
    /* We want the GLSL compiler to emit code that uses condition codes */
@@ -107,8 +107,7 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       nir_options->lower_ffma16 = devinfo->ver < 6;
       nir_options->lower_ffma32 = devinfo->ver < 6;
       nir_options->lower_ffma64 = devinfo->ver < 6;
-      nir_options->lower_flrp32 = devinfo->ver < 6 || devinfo->ver >= 11;
-      nir_options->lower_fpow = devinfo->ver >= 12;
+      nir_options->lower_flrp32 = devinfo->ver < 6;
 
       nir_options->has_bfe = devinfo->ver >= 7;
       nir_options->has_bfm = devinfo->ver >= 7;
@@ -127,9 +126,8 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
          elk_nir_no_indirect_mask(compiler, i);
       nir_options->force_indirect_unrolling_sampler = devinfo->ver < 7;
 
-      if (devinfo->ver < 12)
-         nir_options->divergence_analysis_options |=
-            nir_divergence_single_prim_per_subgroup;
+      nir_options->divergence_analysis_options |=
+         nir_divergence_single_prim_per_subgroup;
 
       compiler->nir_options[i] = nir_options;
    }

@@ -1760,8 +1760,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 	 break;
       case ELK_OPCODE_CSEL:
          assert(devinfo->ver >= 8);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_CSEL(p, dst, src[0], src[1], src[2]);
          break;
       case ELK_OPCODE_BFREV:

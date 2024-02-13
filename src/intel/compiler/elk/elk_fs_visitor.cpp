@@ -247,8 +247,7 @@ elk_fs_visitor::emit_interpolation_setup_gfx6()
        * on gfx20+.  gi_reg is the 32B section of the GRF that
        * contains the subspan coordinates.
        */
-      const struct elk_reg gi_reg = devinfo->ver >= 20 ? xe2_vec1_grf(i, 8) :
-                                    elk_vec1_grf(i + 1, 0);
+      const struct elk_reg gi_reg = elk_vec1_grf(i + 1, 0);
       const struct elk_reg gi_uw = retype(gi_reg, ELK_REGISTER_TYPE_UW);
 
       if (devinfo->ver >= 8 || dispatch_width == 8) {
@@ -575,29 +574,6 @@ elk_fs_visitor::emit_fb_writes()
                                 this->outputs[0].file != BAD_FILE);
    assert(!prog_data->dual_src_blend || key->nr_color_regions == 1);
 
-   /* Following condition implements Wa_14017468336:
-    *
-    * "If dual source blend is enabled do not enable SIMD32 dispatch" and
-    * "For a thread dispatched as SIMD32, must not issue SIMD8 message with Last
-    *  Render Target Select set."
-    */
-   if (devinfo->ver >= 11 && devinfo->ver <= 12 &&
-       prog_data->dual_src_blend) {
-      /* The dual-source RT write messages fail to release the thread
-       * dependency on ICL and TGL with SIMD32 dispatch, leading to hangs.
-       *
-       * XXX - Emit an extra single-source NULL RT-write marked LastRT in
-       *       order to release the thread dependency without disabling
-       *       SIMD32.
-       *
-       * The dual-source RT write messages may lead to hangs with SIMD16
-       * dispatch on ICL due some unknown reasons, see
-       * https://gitlab.freedesktop.org/mesa/mesa/-/issues/2183
-       */
-      limit_dispatch_width(8, "Dual source blending unsupported "
-                           "in SIMD16 and SIMD32 modes.\n");
-   }
-
    do_emit_fb_writes(key->nr_color_regions, replicate_alpha);
 }
 
@@ -801,11 +777,7 @@ elk_fs_visitor::emit_urb_writes(const elk_fs_reg &gs_vertex_count)
          elk_fs_inst *inst = abld.emit(ELK_SHADER_OPCODE_URB_WRITE_LOGICAL, reg_undef,
                                    srcs, ARRAY_SIZE(srcs));
 
-         /* For ICL Wa_1805992985 one needs additional write in the end. */
-         if (devinfo->ver == 11 && stage == MESA_SHADER_TESS_EVAL)
-            inst->eot = false;
-         else
-            inst->eot = slot == last_slot && stage != MESA_SHADER_GEOMETRY;
+         inst->eot = slot == last_slot && stage != MESA_SHADER_GEOMETRY;
 
          inst->offset = urb_offset;
          urb_offset = starting_urb_offset + slot + 1;
@@ -850,57 +822,6 @@ elk_fs_visitor::emit_urb_writes(const elk_fs_reg &gs_vertex_count)
       inst->eot = true;
       inst->offset = 1;
       return;
-   }
-
-   /* ICL Wa_1805992985:
-    *
-    * ICLLP GPU hangs on one of tessellation vkcts tests with DS not done. The
-    * send cycle, which is a urb write with an eot must be 4 phases long and
-    * all 8 lanes must valid.
-    */
-   if (devinfo->ver == 11 && stage == MESA_SHADER_TESS_EVAL) {
-      assert(dispatch_width == 8);
-      elk_fs_reg uniform_urb_handle = elk_fs_reg(VGRF, alloc.allocate(1), ELK_REGISTER_TYPE_UD);
-      elk_fs_reg uniform_mask = elk_fs_reg(VGRF, alloc.allocate(1), ELK_REGISTER_TYPE_UD);
-      elk_fs_reg payload = elk_fs_reg(VGRF, alloc.allocate(4), ELK_REGISTER_TYPE_UD);
-
-      /* Workaround requires all 8 channels (lanes) to be valid. This is
-       * understood to mean they all need to be alive. First trick is to find
-       * a live channel and copy its urb handle for all the other channels to
-       * make sure all handles are valid.
-       */
-      bld.exec_all().MOV(uniform_urb_handle, bld.emit_uniformize(urb_handle));
-
-      /* Second trick is to use masked URB write where one can tell the HW to
-       * actually write data only for selected channels even though all are
-       * active.
-       * Third trick is to take advantage of the must-be-zero (MBZ) area in
-       * the very beginning of the URB.
-       *
-       * One masks data to be written only for the first channel and uses
-       * offset zero explicitly to land data to the MBZ area avoiding trashing
-       * any other part of the URB.
-       *
-       * Since the WA says that the write needs to be 4 phases long one uses
-       * 4 slots data. All are explicitly zeros in order to to keep the MBZ
-       * area written as zeros.
-       */
-      bld.exec_all().MOV(uniform_mask, elk_imm_ud(0x10000u));
-      bld.exec_all().MOV(offset(payload, bld, 0), elk_imm_ud(0u));
-      bld.exec_all().MOV(offset(payload, bld, 1), elk_imm_ud(0u));
-      bld.exec_all().MOV(offset(payload, bld, 2), elk_imm_ud(0u));
-      bld.exec_all().MOV(offset(payload, bld, 3), elk_imm_ud(0u));
-
-      elk_fs_reg srcs[URB_LOGICAL_NUM_SRCS];
-      srcs[URB_LOGICAL_SRC_HANDLE] = uniform_urb_handle;
-      srcs[URB_LOGICAL_SRC_CHANNEL_MASK] = uniform_mask;
-      srcs[URB_LOGICAL_SRC_DATA] = payload;
-      srcs[URB_LOGICAL_SRC_COMPONENTS] = elk_imm_ud(4);
-
-      elk_fs_inst *inst = bld.exec_all().emit(ELK_SHADER_OPCODE_URB_WRITE_LOGICAL,
-                                          reg_undef, srcs, ARRAY_SIZE(srcs));
-      inst->eot = true;
-      inst->offset = 0;
    }
 }
 
@@ -1002,7 +923,7 @@ elk_fs_visitor::elk_fs_visitor(const struct elk_compiler *compiler,
      live_analysis(this), regpressure_analysis(this),
      performance_analysis(this),
      needs_register_pressure(needs_register_pressure),
-     dispatch_width(compiler->devinfo->ver >= 20 ? 16 : 8),
+     dispatch_width(8),
      max_polygons(0),
      api_subgroup_size(elk_nir_api_subgroup_size(shader, dispatch_width))
 {

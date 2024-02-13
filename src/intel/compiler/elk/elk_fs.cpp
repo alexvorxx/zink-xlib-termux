@@ -435,28 +435,7 @@ elk_fs_inst::can_do_source_mods(const struct intel_device_info *devinfo) const
    if (is_send_from_grf())
       return false;
 
-   /* From Wa_1604601757:
-    *
-    * "When multiplying a DW and any lower precision integer, source modifier
-    *  is not supported."
-    */
-   if (devinfo->ver >= 12 && (opcode == ELK_OPCODE_MUL ||
-                              opcode == ELK_OPCODE_MAD)) {
-      const elk_reg_type exec_type = get_exec_type(this);
-      const unsigned min_type_sz = opcode == ELK_OPCODE_MAD ?
-         MIN2(type_sz(src[1].type), type_sz(src[2].type)) :
-         MIN2(type_sz(src[0].type), type_sz(src[1].type));
-
-      if (elk_reg_type_is_integer(exec_type) &&
-          type_sz(exec_type) >= 4 &&
-          type_sz(exec_type) != min_type_sz)
-         return false;
-   }
-
-   if (!elk_backend_instruction::can_do_source_mods())
-      return false;
-
-   return true;
+   return elk_backend_instruction::can_do_source_mods();
 }
 
 bool
@@ -939,24 +918,20 @@ namespace {
    unsigned
    predicate_width(const intel_device_info *devinfo, elk_predicate predicate)
    {
-      if (devinfo->ver >= 20) {
-         return 1;
-      } else {
-         switch (predicate) {
-         case ELK_PREDICATE_NONE:            return 1;
-         case ELK_PREDICATE_NORMAL:          return 1;
-         case ELK_PREDICATE_ALIGN1_ANY2H:    return 2;
-         case ELK_PREDICATE_ALIGN1_ALL2H:    return 2;
-         case ELK_PREDICATE_ALIGN1_ANY4H:    return 4;
-         case ELK_PREDICATE_ALIGN1_ALL4H:    return 4;
-         case ELK_PREDICATE_ALIGN1_ANY8H:    return 8;
-         case ELK_PREDICATE_ALIGN1_ALL8H:    return 8;
-         case ELK_PREDICATE_ALIGN1_ANY16H:   return 16;
-         case ELK_PREDICATE_ALIGN1_ALL16H:   return 16;
-         case ELK_PREDICATE_ALIGN1_ANY32H:   return 32;
-         case ELK_PREDICATE_ALIGN1_ALL32H:   return 32;
-         default: unreachable("Unsupported predicate");
-         }
+      switch (predicate) {
+      case ELK_PREDICATE_NONE:            return 1;
+      case ELK_PREDICATE_NORMAL:          return 1;
+      case ELK_PREDICATE_ALIGN1_ANY2H:    return 2;
+      case ELK_PREDICATE_ALIGN1_ALL2H:    return 2;
+      case ELK_PREDICATE_ALIGN1_ANY4H:    return 4;
+      case ELK_PREDICATE_ALIGN1_ALL4H:    return 4;
+      case ELK_PREDICATE_ALIGN1_ANY8H:    return 8;
+      case ELK_PREDICATE_ALIGN1_ALL8H:    return 8;
+      case ELK_PREDICATE_ALIGN1_ANY16H:   return 16;
+      case ELK_PREDICATE_ALIGN1_ALL16H:   return 16;
+      case ELK_PREDICATE_ALIGN1_ANY32H:   return 32;
+      case ELK_PREDICATE_ALIGN1_ALL32H:   return 32;
+      default: unreachable("Unsupported predicate");
       }
    }
 
@@ -996,8 +971,8 @@ namespace {
 unsigned
 elk_fs_inst::flags_read(const intel_device_info *devinfo) const
 {
-   if (devinfo->ver < 20 && (predicate == ELK_PREDICATE_ALIGN1_ANYV ||
-                             predicate == ELK_PREDICATE_ALIGN1_ALLV)) {
+   if (predicate == ELK_PREDICATE_ALIGN1_ANYV ||
+       predicate == ELK_PREDICATE_ALIGN1_ALLV) {
       /* The vertical predication modes combine corresponding bits from
        * f0.0 and f1.0 on Gfx7+, and f0.0 and f0.1 on older hardware.
        */
@@ -1275,17 +1250,6 @@ elk_fs_visitor::assign_curb_setup()
    prog_data->curb_read_length = uniform_push_length + ubo_push_length;
 
    uint64_t used = 0;
-   bool is_compute = gl_shader_stage_is_compute(stage);
-
-   if (is_compute && elk_cs_prog_data(prog_data)->uses_inline_data) {
-      /* With COMPUTE_WALKER, we can push up to one register worth of data via
-       * the inline data parameter in the COMPUTE_WALKER command itself.
-       *
-       * TODO: Support inline data and push at the same time.
-       */
-      assert(devinfo->verx10 >= 125);
-      assert(uniform_push_length <= reg_unit(devinfo));
-   }
 
    /* Map the offsets in the UNIFORM file to fixed HW regs. */
    foreach_block_and_inst(block, elk_fs_inst, inst, cfg) {
@@ -1602,78 +1566,22 @@ elk_fs_visitor::assign_urb_setup()
              * representation described above into an offset and a
              * grf, which contains the plane parameters for the first
              * polygon processed by the thread.
+             *
+             * Earlier platforms and per-primitive block pack 2 logical
+             * input components per 32B register.
              */
-            if (devinfo->ver >= 20 && !per_prim) {
-               /* Gfx20+ is able to pack 5 logical input components
-                * per 64B register for vertex setup data.
-                */
-               const unsigned grf = base + idx / 5 * 2 * max_polygons;
-               assert(inst->src[i].offset / param_width < 12);
-               const unsigned delta = idx % 5 * 12 +
-                  inst->src[i].offset / (param_width * chan_sz) * chan_sz +
-                  inst->src[i].offset % chan_sz;
-               reg = byte_offset(retype(elk_vec8_grf(grf, 0), inst->src[i].type),
-                                 delta);
-            } else {
-               /* Earlier platforms and per-primitive block pack 2 logical
-                * input components per 32B register.
-                */
-               const unsigned grf = base + idx / 2 * max_polygons;
-               assert(inst->src[i].offset / param_width < REG_SIZE / 2);
-               const unsigned delta = (idx % 2) * (REG_SIZE / 2) +
-                  inst->src[i].offset / (param_width * chan_sz) * chan_sz +
-                  inst->src[i].offset % chan_sz;
-               reg = byte_offset(retype(elk_vec8_grf(grf, 0), inst->src[i].type),
-                                 delta);
-            }
+            const unsigned grf = base + idx / 2 * max_polygons;
+            assert(inst->src[i].offset / param_width < REG_SIZE / 2);
+            const unsigned delta = (idx % 2) * (REG_SIZE / 2) +
+               inst->src[i].offset / (param_width * chan_sz) * chan_sz +
+               inst->src[i].offset % chan_sz;
+            reg = byte_offset(retype(elk_vec8_grf(grf, 0), inst->src[i].type),
+                              delta);
 
-            if (max_polygons > 1) {
-               assert(devinfo->ver >= 12);
-               /* Misaligned channel strides that would lead to
-                * cross-channel access in the representation above are
-                * disallowed.
-                */
-               assert(inst->src[i].stride * type_sz(inst->src[i].type) == chan_sz);
-
-               /* Number of channels processing the same polygon. */
-               const unsigned poly_width = dispatch_width / max_polygons;
-               assert(dispatch_width % max_polygons == 0);
-
-               /* Accessing a subset of channels of a parameter vector
-                * starting from "chan" is necessary to handle
-                * SIMD-lowered instructions though.
-                */
-               const unsigned chan = inst->src[i].offset %
-                  (param_width * chan_sz) / chan_sz;
-               assert(chan < dispatch_width);
-               assert(chan % poly_width == 0);
-               const unsigned reg_size = reg_unit(devinfo) * REG_SIZE;
-               reg = byte_offset(reg, chan / poly_width * reg_size);
-
-               if (inst->exec_size > poly_width) {
-                  /* Accessing the parameters for multiple polygons.
-                   * Corresponding parameters for different polygons
-                   * are stored a GRF apart on the thread payload, so
-                   * use that as vertical stride.
-                   */
-                  const unsigned vstride = reg_size / type_sz(inst->src[i].type);
-                  assert(vstride <= 32);
-                  assert(chan % poly_width == 0);
-                  reg = stride(reg, vstride, poly_width, 0);
-               } else {
-                  /* Accessing one parameter for a single polygon --
-                   * Translate to a scalar region.
-                   */
-                  assert(chan % poly_width + inst->exec_size <= poly_width);
-                  reg = stride(reg, 0, 1, 0);
-               }
-
-            } else {
-               const unsigned width = inst->src[i].stride == 0 ?
-                  1 : MIN2(inst->exec_size, 8);
-               reg = stride(reg, width * inst->src[i].stride,
-                            width, inst->src[i].stride);
-            }
+            const unsigned width = inst->src[i].stride == 0 ?
+               1 : MIN2(inst->exec_size, 8);
+            reg = stride(reg, width * inst->src[i].stride,
+                         width, inst->src[i].stride);
 
             reg.abs = inst->src[i].abs;
             reg.negate = inst->src[i].negate;
@@ -2076,9 +1984,6 @@ elk_get_subgroup_id_param_index(const intel_device_info *devinfo,
                                 const elk_stage_prog_data *prog_data)
 {
    if (prog_data->nr_params == 0)
-      return -1;
-
-   if (devinfo->verx10 >= 125)
       return -1;
 
    /* The local thread id is always the last parameter in the list */
@@ -3787,20 +3692,7 @@ elk_fs_visitor::lower_mul_dword_inst(elk_fs_inst *inst, elk_bblock_t *block)
 
       bool do_addition = true;
       if (devinfo->ver >= 7) {
-         /* From Wa_1604601757:
-          *
-          * "When multiplying a DW and any lower precision integer, source modifier
-          *  is not supported."
-          *
-          * An unsupported negate modifier on src[1] would ordinarily be
-          * lowered by the subsequent lower_regioning pass.  In this case that
-          * pass would spawn another dword multiply.  Instead, lower the
-          * modifier first.
-          */
-         const bool source_mods_unsupported = (devinfo->ver >= 12);
-
-         if (inst->src[1].abs || (inst->src[1].negate &&
-                                  source_mods_unsupported))
+         if (inst->src[1].abs)
             lower_src_modifiers(this, block, inst, 1);
 
          if (inst->src[1].file == IMM) {
@@ -4027,8 +3919,7 @@ elk_fs_visitor::lower_integer_multiplication()
          } else if (!inst->dst.is_accumulator() &&
                     (inst->dst.type == ELK_REGISTER_TYPE_D ||
                      inst->dst.type == ELK_REGISTER_TYPE_UD) &&
-                    (!devinfo->has_integer_dword_mul ||
-                     devinfo->verx10 >= 125)) {
+                    !devinfo->has_integer_dword_mul) {
             lower_mul_dword_inst(inst, block);
             inst->remove(block);
             progress = true;
@@ -4192,7 +4083,6 @@ elk_sample_mask_reg(const fs_builder &bld)
       return elk_flag_subreg(sample_mask_flag_subreg(s) + bld.group() / 16);
    } else {
       assert(s.devinfo->ver >= 6 && bld.dispatch_width() <= 16);
-      assert(s.devinfo->ver < 20);
       return retype(elk_vec1_grf((bld.group() >= 16 ? 2 : 1), 7),
                     ELK_REGISTER_TYPE_UW);
    }
@@ -4258,7 +4148,6 @@ elk_emit_predicate_on_sample_mask(const fs_builder &bld, elk_fs_inst *inst)
       assert(inst->predicate == ELK_PREDICATE_NORMAL);
       assert(!inst->predicate_inverse);
       assert(inst->flag_subreg == 0);
-      assert(s.devinfo->ver < 20);
       /* Combine the sample mask with the existing predicate by using a
        * vertical predication mode.
        */
@@ -4458,7 +4347,7 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
     *  "Ternary instruction with condition modifiers must not use SIMD32."
     */
    if (inst->conditional_mod && (devinfo->ver < 8 ||
-                                 (inst->elk_is_3src(compiler) && devinfo->ver < 12)))
+                                 inst->elk_is_3src(compiler)))
       max_width = MIN2(max_width, 16);
 
    /* From the IVB PRMs (applies to other devices that don't have the
@@ -4521,7 +4410,7 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
     * instructions do not support HF types and conversions from/to F are
     * required.
     */
-   if (is_mixed_float_with_fp32_dst(inst) && devinfo->ver < 20)
+   if (is_mixed_float_with_fp32_dst(inst))
       max_width = MIN2(max_width, 8);
 
    /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
@@ -4530,7 +4419,7 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
     *    "No SIMD16 in mixed mode when destination is packed f16 for both
     *     Align1 and Align16."
     */
-   if (is_mixed_float_with_packed_fp16_dst(inst) && devinfo->ver < 20)
+   if (is_mixed_float_with_packed_fp16_dst(inst))
       max_width = MIN2(max_width, 8);
 
    /* Only power-of-two execution sizes are representable in the instruction
@@ -4566,7 +4455,7 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
     */
    if (inst->opcode != ELK_SHADER_OPCODE_TEX &&
        inst->components_read(TEX_LOGICAL_SRC_MIN_LOD))
-      return devinfo->ver < 20 ? 8 : 16;
+      return 8;
 
    /* Calculate the number of coordinate components that have to be present
     * assuming that additional arguments follow the texel coordinates in the
@@ -4581,14 +4470,6 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
                             inst->opcode != ELK_SHADER_OPCODE_TXF_CMS_LOGICAL) ? 4 :
       3;
 
-   /* On Gfx9+ the LOD argument is for free if we're able to use the LZ
-    * variant of the TXL or TXF message.
-    */
-   const bool implicit_lod = devinfo->ver >= 9 &&
-                             (inst->opcode == ELK_SHADER_OPCODE_TXL ||
-                              inst->opcode == ELK_SHADER_OPCODE_TXF) &&
-                             inst->src[TEX_LOGICAL_SRC_LOD].is_zero();
-
    /* Calculate the total number of argument components that need to be passed
     * to the sampler unit.
     */
@@ -4596,7 +4477,7 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
       MAX2(inst->components_read(TEX_LOGICAL_SRC_COORDINATE),
            req_coord_components) +
       inst->components_read(TEX_LOGICAL_SRC_SHADOW_C) +
-      (implicit_lod ? 0 : inst->components_read(TEX_LOGICAL_SRC_LOD)) +
+      inst->components_read(TEX_LOGICAL_SRC_LOD) +
       inst->components_read(TEX_LOGICAL_SRC_LOD2) +
       inst->components_read(TEX_LOGICAL_SRC_SAMPLE_INDEX) +
       (inst->opcode == ELK_SHADER_OPCODE_TG4_OFFSET_LOGICAL ?
@@ -4781,8 +4662,7 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
       /* MULH is lowered to the MUL/MACH sequence using the accumulator, which
        * is 8-wide on Gfx7+.
        */
-      return (devinfo->ver >= 20 ? 16 :
-              devinfo->ver >= 7 ? 8 :
+      return (devinfo->ver >= 7 ? 8 :
               get_fpu_lowered_simd_width(shader, inst));
 
    case ELK_FS_OPCODE_FB_WRITE_LOGICAL:
@@ -4817,7 +4697,7 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
       /* TXD is unsupported in SIMD16 mode previous to Xe2. SIMD32 is still
        * unsuppported on Xe2.
        */
-      return devinfo->ver < 20 ? 8 : 16;
+      return 8;
 
    case ELK_SHADER_OPCODE_TXL_LOGICAL:
    case ELK_FS_OPCODE_TXB_LOGICAL:
@@ -4870,13 +4750,13 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
 
    case ELK_SHADER_OPCODE_URB_READ_LOGICAL:
    case ELK_SHADER_OPCODE_URB_WRITE_LOGICAL:
-      return MIN2(devinfo->ver < 20 ? 8 : 16, inst->exec_size);
+      return MIN2(8, inst->exec_size);
 
    case ELK_SHADER_OPCODE_QUAD_SWIZZLE: {
       const unsigned swiz = inst->src[1].ud;
       return (is_uniform(inst->src[0]) ?
                  get_fpu_lowered_simd_width(shader, inst) :
-              devinfo->ver < 11 && type_sz(inst->src[0].type) == 4 ? 8 :
+              type_sz(inst->src[0].type) == 4 ? 8 :
               swiz == ELK_SWIZZLE_XYXY || swiz == ELK_SWIZZLE_ZWZW ? 4 :
               get_fpu_lowered_simd_width(shader, inst));
    }
@@ -5249,7 +5129,7 @@ bool
 elk_fs_visitor::lower_barycentrics()
 {
    const bool has_interleaved_layout = devinfo->has_pln ||
-      (devinfo->ver >= 7 && devinfo->ver < 20);
+                                       devinfo->ver >= 7;
    bool progress = false;
 
    if (stage != MESA_SHADER_FRAGMENT || !has_interleaved_layout)
@@ -6125,18 +6005,9 @@ elk_fs_visitor::set_tcs_invocation_id()
    struct elk_vue_prog_data *vue_prog_data = &tcs_prog_data->base;
    const fs_builder bld = fs_builder(this).at_end();
 
-   const unsigned instance_id_mask =
-      (devinfo->verx10 >= 125) ? INTEL_MASK(7, 0) :
-      (devinfo->ver >= 11)     ? INTEL_MASK(22, 16) :
-                                 INTEL_MASK(23, 17);
-   const unsigned instance_id_shift =
-      (devinfo->verx10 >= 125) ? 0 : (devinfo->ver >= 11) ? 16 : 17;
+   const unsigned instance_id_mask = INTEL_MASK(23, 17);
+   const unsigned instance_id_shift = 17;
 
-   /* Get instance number from g0.2 bits:
-    *  * 7:0 on DG2+
-    *  * 22:16 on gfx11+
-    *  * 23:17 otherwise
-    */
    elk_fs_reg t = bld.vgrf(ELK_REGISTER_TYPE_UD);
    bld.AND(t, elk_fs_reg(retype(elk_vec1_grf(0, 2), ELK_REGISTER_TYPE_UD)),
            elk_imm_ud(instance_id_mask));
@@ -7341,8 +7212,6 @@ namespace elk {
    {
       if (!regs[0])
          return elk_fs_reg();
-      else if (bld.shader->devinfo->ver >= 20)
-         return fetch_payload_reg(bld, regs, ELK_REGISTER_TYPE_F, 2);
 
       const elk_fs_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_F, 2);
       const elk::fs_builder hbld = bld.exec_all().group(8, 0);

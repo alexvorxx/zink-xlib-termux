@@ -1799,7 +1799,7 @@ elk_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
     * to do a full test run with elk_fs_test_dispatch_packing() hooked up to
     * the NIR front-end before changing this assertion.
     */
-   assert(devinfo->ver <= 12);
+   assert(devinfo->ver <= 8);
 
    switch (stage) {
    case MESA_SHADER_FRAGMENT: {
@@ -1813,8 +1813,7 @@ elk_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
        */
       const struct elk_wm_prog_data *wm_prog_data =
          (const struct elk_wm_prog_data *)prog_data;
-      return devinfo->verx10 < 125 &&
-             !wm_prog_data->persample_dispatch &&
+      return !wm_prog_data->persample_dispatch &&
              wm_prog_data->uses_vmask &&
              max_polygons < 2;
    }

@@ -2728,6 +2728,73 @@ optimize_encoding(Program* program, ra_ctx& ctx, RegisterFile& register_file,
       optimize_encoding_sopk(program, ctx, register_file, instr);
 }
 
+void
+emit_parallel_copy(ra_ctx& ctx, std::vector<std::pair<Operand, Definition>>& parallelcopy,
+                   aco_ptr<Instruction>& instr, std::vector<aco_ptr<Instruction>>& instructions,
+                   bool temp_in_scc, RegisterFile& register_file)
+{
+   if (parallelcopy.empty())
+      return;
+
+   aco_ptr<Pseudo_instruction> pc;
+   pc.reset(create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO,
+                                                   parallelcopy.size(), parallelcopy.size()));
+   bool linear_vgpr = false;
+   bool sgpr_operands_alias_defs = false;
+   uint64_t sgpr_operands[4] = {0, 0, 0, 0};
+   for (unsigned i = 0; i < parallelcopy.size(); i++) {
+      linear_vgpr |= parallelcopy[i].first.regClass().is_linear_vgpr();
+
+      if (temp_in_scc && parallelcopy[i].first.isTemp() &&
+          parallelcopy[i].first.getTemp().type() == RegType::sgpr) {
+         if (!sgpr_operands_alias_defs) {
+            unsigned reg = parallelcopy[i].first.physReg().reg();
+            unsigned size = parallelcopy[i].first.getTemp().size();
+            sgpr_operands[reg / 64u] |= u_bit_consecutive64(reg % 64u, size);
+
+            reg = parallelcopy[i].second.physReg().reg();
+            size = parallelcopy[i].second.getTemp().size();
+            if (sgpr_operands[reg / 64u] & u_bit_consecutive64(reg % 64u, size))
+               sgpr_operands_alias_defs = true;
+         }
+      }
+
+      pc->operands[i] = parallelcopy[i].first;
+      pc->definitions[i] = parallelcopy[i].second;
+      assert(pc->operands[i].size() == pc->definitions[i].size());
+
+      /* it might happen that the operand is already renamed. we have to restore the
+       * original name. */
+      std::unordered_map<unsigned, Temp>::iterator it =
+         ctx.orig_names.find(pc->operands[i].tempId());
+      Temp orig = it != ctx.orig_names.end() ? it->second : pc->operands[i].getTemp();
+      ctx.orig_names[pc->definitions[i].tempId()] = orig;
+      ctx.renames[ctx.block->index][orig.id()] = pc->definitions[i].getTemp();
+   }
+
+   if (temp_in_scc && (sgpr_operands_alias_defs || linear_vgpr)) {
+      /* disable definitions and re-enable operands */
+      RegisterFile tmp_file(register_file);
+      for (const Definition& def : instr->definitions) {
+         if (def.isTemp() && !def.isKill())
+            tmp_file.clear(def);
+      }
+      for (const Operand& op : instr->operands) {
+         if (op.isTemp() && op.isFirstKill())
+            tmp_file.block(op.physReg(), op.regClass());
+      }
+
+      handle_pseudo(ctx, tmp_file, pc.get());
+   } else {
+      pc->needs_scratch_reg = sgpr_operands_alias_defs || linear_vgpr;
+      pc->tmp_in_scc = false;
+   }
+
+   instructions.emplace_back(std::move(pc));
+
+   parallelcopy.clear();
+}
+
 } /* end namespace */
 
 void
@@ -3019,65 +3086,7 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
                add_subdword_operand(ctx, instr, i, op.physReg().byte(), op.regClass());
          }
 
-         /* emit parallelcopy */
-         if (!parallelcopy.empty()) {
-            aco_ptr<Pseudo_instruction> pc;
-            pc.reset(create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy,
-                                                            Format::PSEUDO, parallelcopy.size(),
-                                                            parallelcopy.size()));
-            bool linear_vgpr = false;
-            bool sgpr_operands_alias_defs = false;
-            uint64_t sgpr_operands[4] = {0, 0, 0, 0};
-            for (unsigned i = 0; i < parallelcopy.size(); i++) {
-               linear_vgpr |= parallelcopy[i].first.regClass().is_linear_vgpr();
-
-               if (temp_in_scc && parallelcopy[i].first.isTemp() &&
-                   parallelcopy[i].first.getTemp().type() == RegType::sgpr) {
-                  if (!sgpr_operands_alias_defs) {
-                     unsigned reg = parallelcopy[i].first.physReg().reg();
-                     unsigned size = parallelcopy[i].first.getTemp().size();
-                     sgpr_operands[reg / 64u] |= u_bit_consecutive64(reg % 64u, size);
-
-                     reg = parallelcopy[i].second.physReg().reg();
-                     size = parallelcopy[i].second.getTemp().size();
-                     if (sgpr_operands[reg / 64u] & u_bit_consecutive64(reg % 64u, size))
-                        sgpr_operands_alias_defs = true;
-                  }
-               }
-
-               pc->operands[i] = parallelcopy[i].first;
-               pc->definitions[i] = parallelcopy[i].second;
-               assert(pc->operands[i].size() == pc->definitions[i].size());
-
-               /* it might happen that the operand is already renamed. we have to restore the
-                * original name. */
-               std::unordered_map<unsigned, Temp>::iterator it =
-                  ctx.orig_names.find(pc->operands[i].tempId());
-               Temp orig = it != ctx.orig_names.end() ? it->second : pc->operands[i].getTemp();
-               ctx.orig_names[pc->definitions[i].tempId()] = orig;
-               ctx.renames[block.index][orig.id()] = pc->definitions[i].getTemp();
-            }
-
-            if (temp_in_scc && (sgpr_operands_alias_defs || linear_vgpr)) {
-               /* disable definitions and re-enable operands */
-               RegisterFile tmp_file(register_file);
-               for (const Definition& def : instr->definitions) {
-                  if (def.isTemp() && !def.isKill())
-                     tmp_file.clear(def);
-               }
-               for (const Operand& op : instr->operands) {
-                  if (op.isTemp() && op.isFirstKill())
-                     tmp_file.block(op.physReg(), op.regClass());
-               }
-
-               handle_pseudo(ctx, tmp_file, pc.get());
-            } else {
-               pc->needs_scratch_reg = sgpr_operands_alias_defs || linear_vgpr;
-               pc->tmp_in_scc = false;
-            }
-
-            instructions.emplace_back(std::move(pc));
-         }
+         emit_parallel_copy(ctx, parallelcopy, instr, instructions, temp_in_scc, register_file);
 
          /* some instructions need VOP3 encoding if operand/definition is not assigned to VCC */
          bool instr_needs_vop3 =

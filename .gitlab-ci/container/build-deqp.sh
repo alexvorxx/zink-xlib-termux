@@ -12,12 +12,8 @@ set -ex -o pipefail
 
 
 DEQP_VK_VERSION=1.3.7.0
-
-# FIXME: these should be GL & GLES releases instead
-#DEQP_GL_VERSION=4.6.3.3
-DEQP_GL_VERSION=1.3.7.0
-#DEQP_GLES_VERSION=3.2.9.3
-DEQP_GLES_VERSION=1.3.7.0
+DEQP_GL_VERSION=4.6.4.0
+DEQP_GLES_VERSION=3.2.10.0
 
 # Patches to VulkanCTS may come from commits in their repo (listed in
 # cts_commits_to_backport) or patch files stored in our repo (in the patch
@@ -95,11 +91,8 @@ git config --global user.name "Mesa CI"
 # shellcheck disable=SC2153
 case "${DEQP_API}" in
   VK) DEQP_VERSION="vulkan-cts-$DEQP_VK_VERSION";;
-  # FIXME: these should be GL & GLES releases instead
-  #GL) DEQP_VERSION="opengl-cts-$DEQP_GL_VERSION";;
-  GL) DEQP_VERSION="vulkan-cts-$DEQP_GL_VERSION";;
-  #GLES) DEQP_VERSION="opengl-es-cts-$DEQP_GLES_VERSION";;
-  GLES) DEQP_VERSION="vulkan-cts-$DEQP_GLES_VERSION";;
+  GL) DEQP_VERSION="opengl-cts-$DEQP_GL_VERSION";;
+  GLES) DEQP_VERSION="opengl-es-cts-$DEQP_GLES_VERSION";;
 esac
 
 git clone \
@@ -219,20 +212,23 @@ if [ "${DEQP_TARGET}" != 'android' ]; then
 
     if [ "${DEQP_API}" = 'GL' ]; then
         cp \
-            /deqp/external/openglcts/modules/gl_cts/data/mustpass/gles/aosp_mustpass/3.2.6.x/*.txt \
-            /deqp/mustpass/.
+            /VK-GL-CTS/external/openglcts/data/mustpass/gl/khronos_mustpass/4.6.1.x/*-main.txt \
+            /deqp/mustpass/
         cp \
-            /deqp/external/openglcts/modules/gl_cts/data/mustpass/egl/aosp_mustpass/3.2.6.x/egl-master.txt \
-            /deqp/mustpass/.
+            /VK-GL-CTS/external/openglcts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/*-single.txt \
+            /deqp/mustpass/
+    fi
+
+    if [ "${DEQP_API}" = 'GLES' ]; then
         cp \
-            /deqp/external/openglcts/modules/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/*-master.txt \
-            /deqp/mustpass/.
+            /VK-GL-CTS/external/openglcts/data/mustpass/gles/aosp_mustpass/3.2.6.x/*.txt \
+            /deqp/mustpass/
         cp \
-            /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/*-master.txt \
-            /deqp/mustpass/.
+            /VK-GL-CTS/external/openglcts/data/mustpass/egl/aosp_mustpass/3.2.6.x/egl-main.txt \
+            /deqp/mustpass/
         cp \
-            /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/*-single.txt \
-            /deqp/mustpass/.
+            /VK-GL-CTS/external/openglcts/data/mustpass/gles/khronos_mustpass/3.2.6.x/*-main.txt \
+            /deqp/mustpass/
     fi
 
     # Save *some* executor utils, but otherwise strip things down
@@ -244,7 +240,7 @@ if [ "${DEQP_TARGET}" != 'android' ]; then
 fi
 
 # Remove other mustpass files, since we saved off the ones we wanted to conventient locations above.
-rm -rf /deqp/external/openglcts/modules/gl_cts/data/mustpass
+rm -rf /deqp/external/**/mustpass/
 rm -rf /deqp/external/vulkancts/modules/vulkan/vk-master*
 rm -rf /deqp/external/vulkancts/modules/vulkan/vk-default
 

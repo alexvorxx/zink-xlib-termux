@@ -4,6 +4,8 @@ KHR-GL46.multi_bind.dispatch_bind_image_textures,Fail
 KHR-GL46.shader_image_load_store.basic-allTargets-store,Fail
 KHR-GL46.shader_subroutine.control_flow_and_returned_subroutine_values_used_as_subroutine_input,Fail
 
+dEQP-GLES31.functional.texture.border_clamp.range_clamp.linear_float_color,Fail
+
 # Fails when TU_DEBUG=forcebin is set
 gmem-dEQP-VK.spirv_assembly.instruction.graphics.variable_pointers.graphics.writes_two_buffers_vert,Fail
 

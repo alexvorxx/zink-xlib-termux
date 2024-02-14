@@ -14,13 +14,13 @@ $ ninja -C build modules/egl/deqp-egl
 
 Signed-off-by: Tomeu Vizoso <tomeu.vizoso@collabora.com>
 ---
- CMakeLists.txt                                | 36 ++-----------------
- .../android/tcuAndroidNativeActivity.cpp      | 36 ++++++++++---------
- .../platform/android/tcuAndroidPlatform.cpp   | 12 ++++++-
- 3 files changed, 33 insertions(+), 51 deletions(-)
+ CMakeLists.txt                                | 38 ++-----------------
+ .../android/tcuAndroidNativeActivity.cpp      | 36 +++++++++---------
+ .../platform/android/tcuAndroidPlatform.cpp   | 12 +++++-
+ 3 files changed, 34 insertions(+), 52 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index f9c61d0db..d6ad2990b 100644
+index eb58cc7ba..98b8fc6cc 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -272,7 +272,7 @@ include_directories(
@@ -35,6 +35,15 @@ index f9c61d0db..d6ad2990b 100644
 @@ -316,7 +316,7 @@ macro (add_deqp_module MODULE_NAME SRCS LIBS EXECLIBS ENTRY)
  	set(DEQP_MODULE_LIBRARIES		${DEQP_MODULE_LIBRARIES} PARENT_SCOPE)
  	set(DEQP_MODULE_ENTRY_POINTS	${DEQP_MODULE_ENTRY_POINTS} PARENT_SCOPE)
+ 
+-	if (NOT DE_OS_IS_ANDROID AND NOT DE_OS_IS_IOS)
++	if (NOT DE_OS_IS_IOS)
+ 		# Executable target
+ 		add_executable(${MODULE_NAME} ${PROJECT_SOURCE_DIR}/framework/platform/tcuMain.cpp ${ENTRY})
+ 		target_link_libraries(${MODULE_NAME} PUBLIC "${EXECLIBS}" "${MODULE_NAME}${MODULE_LIB_TARGET_POSTFIX}")
+@@ -338,7 +338,7 @@ macro (add_deqp_module_skip_android MODULE_NAME SRCS LIBS EXECLIBS ENTRY)
+ 	add_library("${MODULE_NAME}${MODULE_LIB_TARGET_POSTFIX}" STATIC ${SRCS})
+ 	target_link_libraries("${MODULE_NAME}${MODULE_LIB_TARGET_POSTFIX}" ${LIBS})
  
 -	if (NOT DE_OS_IS_ANDROID AND NOT DE_OS_IS_IOS)
 +	if (NOT DE_OS_IS_IOS)

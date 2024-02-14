@@ -28,6 +28,8 @@ KHR-GLES31.core.tessellation_shader.tessellation_shader_tc_barriers.barrier_guar
 KHR-GLES31.core.texture_cube_map_array.color_depth_attachments,Fail
 KHR-GL46.texture_cube_map_array.color_depth_attachments,Fail
 
+dEQP-GLES31.functional.texture.border_clamp.range_clamp.linear_float_color,Fail
+
 #
 # new fails with gl45:
 #

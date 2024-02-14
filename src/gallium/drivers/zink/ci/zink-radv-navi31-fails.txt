@@ -342,7 +342,6 @@ spec@!opengl 1.0@gl-1.0-polygon-line-aa,Fail
 spec@arb_viewport_array@display-list,Fail
 
 dEQP-GLES3.functional.shaders.precision.uint.highp_div_fragment,Fail
-dEQP-GLES31.functional.image_load_store.buffer.atomic.comp_swap_r32i_return_value,Fail
 spec@arb_sample_shading@arb_sample_shading-builtin-gl-sample-mask-mrt-alpha-to-coverage,Fail
 
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-export,Fail

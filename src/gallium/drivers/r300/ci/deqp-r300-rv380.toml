@@ -4,8 +4,8 @@ renderer_check = "RV370"
 [[deqp]]
 deqp = "/deqp/external/openglcts/modules/glcts"
 caselists = [
-    "/deqp/mustpass/gles2-khr-master.txt",
-    "/deqp/mustpass/gles2-master.txt",
+    "/deqp/mustpass/gles2-khr-main.txt",
+    "/deqp/mustpass/gles2-main.txt",
 ]
 deqp_args = [
     "--deqp-surface-width=256",

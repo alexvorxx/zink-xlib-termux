@@ -424,15 +424,15 @@ if args.glcts:
         "--deqp",
         "{}/build/external/openglcts/modules/glcts".format(glcts_path),
         "--caselist",
-        "{}/build/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-master.txt".format(
+        "{}/external/openglcts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-main.txt".format(
             glcts_path
         ),
         "--caselist",
-        "{}/build/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/gl46-khr-single.txt".format(
+        "{}/external/openglcts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/gl46-khr-single.txt".format(
             glcts_path
         ),
         "--caselist",
-        "{}/build/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-gtf-master.txt".format(
+        "{}/external/openglcts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-gtf-main.txt".format(
             glcts_path
         ),
         "--output",
@@ -468,19 +468,19 @@ if args.escts:
         "--deqp",
         "{}/build/external/openglcts/modules/glcts".format(escts_path),
         "--caselist",
-        "{}/build/external/openglcts/modules/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles2-khr-master.txt".format(
+        "{}/external/openglcts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles2-khr-main.txt".format(
             escts_path
         ),
         "--caselist",
-        "{}/build/external/openglcts/modules/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles3-khr-master.txt".format(
+        "{}/external/openglcts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles3-khr-main.txt".format(
             escts_path
         ),
         "--caselist",
-        "{}/build/external/openglcts/modules/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles31-khr-master.txt".format(
+        "{}/external/openglcts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles31-khr-main.txt".format(
             escts_path
         ),
         "--caselist",
-        "{}/build/external/openglcts/modules/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles32-khr-master.txt".format(
+        "{}/external/openglcts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles32-khr-main.txt".format(
             escts_path
         ),
         "--output",
@@ -530,7 +530,7 @@ if args.deqp:
         )
         suite.write(
             'caselists = ["{}"]\n'.format(
-                "{}/android/cts/main/{}-master.txt".format(deqp_path, k)
+                "{}/android/cts/main/{}-main.txt".format(deqp_path, k)
             )
         )
         if os.path.exists(baseline):

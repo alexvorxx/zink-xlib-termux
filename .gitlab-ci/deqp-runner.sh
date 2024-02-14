@@ -62,13 +62,13 @@ if [ -z "$DEQP_SUITE" ]; then
        MUSTPASS=/deqp/mustpass/vk-master.txt
        DEQP=/deqp/external/vulkancts/modules/vulkan/deqp-vk
     elif [ "$DEQP_VER" = "gles2" ] || [ "$DEQP_VER" = "gles3" ] || [ "$DEQP_VER" = "gles31" ] || [ "$DEQP_VER" = "egl" ]; then
-       MUSTPASS=/deqp/mustpass/$DEQP_VER-master.txt
+       MUSTPASS=/deqp/mustpass/$DEQP_VER-main.txt
        DEQP=/deqp/modules/$DEQP_VER/deqp-$DEQP_VER
     elif [ "$DEQP_VER" = "gles2-khr" ] || [ "$DEQP_VER" = "gles3-khr" ] || [ "$DEQP_VER" = "gles31-khr" ] || [ "$DEQP_VER" = "gles32-khr" ]; then
-       MUSTPASS=/deqp/mustpass/$DEQP_VER-master.txt
+       MUSTPASS=/deqp/mustpass/$DEQP_VER-main.txt
        DEQP=/deqp/external/openglcts/modules/glcts
     else
-       MUSTPASS=/deqp/mustpass/$DEQP_VER-master.txt
+       MUSTPASS=/deqp/mustpass/$DEQP_VER-main.txt
        DEQP=/deqp/external/openglcts/modules/glcts
     fi
 

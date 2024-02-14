@@ -634,7 +634,7 @@ calculate_tiling(struct etna_context *ctx, const struct etna_operation *operatio
 }
 
 static struct etna_bo *
-create_nn_config(struct etna_ml_subgraph *subgraph, const struct etna_operation *operation, struct etna_bo *coefficients, unsigned coefficients_size)
+create_nn_config(struct etna_ml_subgraph *subgraph, const struct etna_operation *operation, struct etna_bo *coefficients, unsigned coef_cache_size)
 {
    struct pipe_context *context = subgraph->base.context;
    struct etna_context *ctx = etna_context(context);
@@ -659,8 +659,6 @@ create_nn_config(struct etna_ml_subgraph *subgraph, const struct etna_operation 
    if (operation->addition)
       calc_addition_sizes(&input_width, &input_height, &input_channels,
                           &output_width, &output_height, &output_channels);
-
-   unsigned input_size = input_width * input_height * input_channels;
 
    etna_bo_cpu_prep(bo, DRM_ETNA_PREP_WRITE);
 
@@ -784,32 +782,30 @@ create_nn_config(struct etna_ml_subgraph *subgraph, const struct etna_operation 
 
    map->kernels_per_core = DIV_ROUND_UP(DIV_ROUND_UP(output_channels, nn_core_count), superblocks);
 
-   /* The header doesn't get cached */
-   coefficients_size -= 64;
-
-   map->kernel_cache_start_address = 0x800;
-   map->kernel_cache_end_address = MAX2(MIN2(map->kernel_cache_start_address + coefficients_size, oc_sram_size), 0x1a00);
-
-   if (output_channels <= 128 || map->kernel_cache_end_address == oc_sram_size) {
-      map->image_caching_mode = SRAM_CACHE_MODE_NO_CACHE;
-      map->image_cache_start_address = 0x0;
-      map->image_cache_end_address = 0x800;
+   unsigned image_cache_size;
+   if (superblocks == 1) {
+      /* No point in caching the input image if there is only one iteration */
+      image_cache_size = 0;
    } else {
-      map->image_caching_mode = SRAM_CACHE_MODE_FULL_CACHE;
-      map->image_cache_start_address = map->kernel_cache_end_address;
-      map->image_cache_end_address = MIN2(map->image_cache_start_address + input_size + 1024, oc_sram_size);
+      unsigned in_image_tile_x_size = map->out_image_tile_x_size + weight_width - 1;
+      unsigned in_image_tile_y_size = map->out_image_tile_y_size + weight_width - 1;
+      image_cache_size = in_image_tile_x_size * in_image_tile_y_size;
+      image_cache_size = ALIGN(image_cache_size, 16);
+      image_cache_size *= input_channels;
+      image_cache_size = ALIGN(image_cache_size, 128);
    }
 
-   /* TODO: Look at re-enabling the image cache again */
-   map->image_caching_mode = SRAM_CACHE_MODE_NO_CACHE;
-   map->image_cache_start_address = 0x0;
-   map->image_cache_end_address = 0x800;
+   ML_DBG("coefficients_size 0x%x (%d) image_size 0x%x (%d)\n", coef_cache_size, coef_cache_size, image_cache_size, image_cache_size);
 
-   if (etna_bo_size(coefficients) <= 0x80000 - 0x800) {
+   map->kernel_cache_start_address = 0x800;
+
+   /* Get all the image tiles in the cache, then use the rest for the kernels */
+   if (map->kernel_cache_start_address + coef_cache_size + image_cache_size < oc_sram_size) {
       map->kernel_caching_mode = SRAM_CACHE_MODE_FULL_CACHE;
       map->kernel_pattern_msb = 0x0;
       map->kernel_pattern_low = 0x0;
       map->kernel_pattern_high = 0x0;
+      map->kernel_cache_end_address = MAX2(MIN2(ALIGN(map->kernel_cache_start_address + coef_cache_size, 128), oc_sram_size), 0xa00);
    } else {
       /* Doesn't fit in the 512KB we have of on-chip SRAM */
       map->kernel_caching_mode = SRAM_CACHE_MODE_PARTIAL_CACHE;
@@ -833,6 +829,29 @@ create_nn_config(struct etna_ml_subgraph *subgraph, const struct etna_operation 
          map->kernel_pattern_msb = 0x3f;
          map->kernel_pattern_low = 0xfffffffe;
          map->kernel_pattern_high = 0xffffffff;
+      }
+      if (map->kernel_cache_start_address + coef_cache_size >= oc_sram_size) {
+         map->kernel_cache_end_address = oc_sram_size;
+         image_cache_size = 0;
+      } else if (image_cache_size > oc_sram_size) {
+         image_cache_size = 0;
+      } else
+         map->kernel_cache_end_address = oc_sram_size - image_cache_size;
+   }
+
+   if (image_cache_size == 0) {
+      map->image_caching_mode = SRAM_CACHE_MODE_NO_CACHE;
+      map->image_cache_start_address = 0x0;
+      map->image_cache_end_address = 0x800;
+   } else {
+      map->image_caching_mode = SRAM_CACHE_MODE_FULL_CACHE;
+      if (image_cache_size >= map->kernel_cache_start_address) {
+         map->image_cache_start_address = map->kernel_cache_end_address;
+         map->image_cache_end_address = MIN2(map->image_cache_start_address + image_cache_size, oc_sram_size);
+         ML_DBG("image_cache_end_address %d image_cache_start_address %d image_cache_size %d oc_sram_size %d\n", map->image_cache_end_address, map->image_cache_start_address, image_cache_size, oc_sram_size);
+      } else {
+         map->image_cache_start_address = 0x0;
+         map->image_cache_end_address = 0x800;
       }
    }
 
@@ -1284,7 +1303,7 @@ calculate_zrl_bits(struct etna_ml_subgraph *subgraph, const struct etna_operatio
 }
 
 static struct etna_bo *
-create_coefficients_bo(struct etna_ml_subgraph *subgraph, const struct etna_operation *operation, unsigned *size)
+create_coefficients_bo(struct etna_ml_subgraph *subgraph, const struct etna_operation *operation, unsigned *cache_size)
 {
    struct pipe_context *context = subgraph->base.context;
    struct etna_context *ctx = etna_context(context);
@@ -1294,18 +1313,20 @@ create_coefficients_bo(struct etna_ml_subgraph *subgraph, const struct etna_oper
    unsigned output_channels = operation->addition ? 1 : operation->output_channels;
    unsigned cores_used = MIN2(output_channels, nn_core_count);
    unsigned zrl_bits;
+   unsigned max_core_size = 0;
+   unsigned bo_size;
 
-   *size = calculate_weight_bo_size(subgraph, operation);
+   bo_size = calculate_weight_bo_size(subgraph, operation);
    zrl_bits = calculate_zrl_bits(subgraph, operation);
 
    struct etna_bo *compressed = etna_bo_new(ctx->screen->dev,
-                                            *size,
+                                            bo_size,
                                             DRM_ETNA_GEM_CACHE_WC);
 
    etna_bo_cpu_prep(compressed, DRM_ETNA_PREP_WRITE);
 
    uint32_t *map = etna_bo_map(compressed);
-   memset(map, 0, *size);
+   memset(map, 0, bo_size);
 
    uint32_t *header = map;
    map += header_size / 4;
@@ -1321,6 +1342,7 @@ create_coefficients_bo(struct etna_ml_subgraph *subgraph, const struct etna_oper
          actual_size = write_core_sequential(subgraph, map, core, operation, zrl_bits);
 
       actual_size = ALIGN(actual_size, 64);
+      max_core_size = MAX2(actual_size, max_core_size);
 
       header[core] = actual_size;
 
@@ -1329,6 +1351,8 @@ create_coefficients_bo(struct etna_ml_subgraph *subgraph, const struct etna_oper
 
    etna_bo_cpu_fini(compressed);
 
+   *cache_size = max_core_size * cores_used;
+
    return compressed;
 }
 
@@ -1336,10 +1360,10 @@ void
 etna_ml_compile_operation_nn(struct etna_ml_subgraph *subgraph, const struct etna_operation *operation,
                              struct etna_vip_instruction *instruction)
 {
-   unsigned coefficients_size;
+   unsigned coef_cache_size;
 
    instruction->type = ETNA_JOB_TYPE_NN;
-   instruction->coefficients = create_coefficients_bo(subgraph, operation, &coefficients_size);
+   instruction->coefficients = create_coefficients_bo(subgraph, operation, &coef_cache_size);
 
    struct pipe_resource *input = etna_ml_get_tensor(subgraph, operation->input_tensor);
    assert(input);
@@ -1349,7 +1373,7 @@ etna_ml_compile_operation_nn(struct etna_ml_subgraph *subgraph, const struct etn
    assert(output);
    pipe_resource_reference(&instruction->output, output);
 
-   instruction->configs[0] = create_nn_config(subgraph, operation, instruction->coefficients, coefficients_size);
+   instruction->configs[0] = create_nn_config(subgraph, operation, instruction->coefficients, coef_cache_size);
 }
 
 void

@@ -1605,6 +1605,14 @@ typedef struct nir_alu_instr {
     */
    bool no_unsigned_wrap : 1;
 
+   /**
+    * The float controls bit float_controls2 cares about. That is,
+    * NAN/INF/SIGNED_ZERO_PRESERVE only. Allow{Contract,Reassoc,Transform} are
+    * still handled through the exact bit, and the other float controls bits
+    * (rounding mode and denorm handling) remain in the execution mode only.
+    */
+   uint32_t fp_fast_math : 9;
+
    /** Destination */
    nir_def def;
 

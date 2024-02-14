@@ -800,7 +800,7 @@ nvk_get_image_memory_requirements(struct nvk_device *dev,
    uint64_t size_B = 0;
    uint32_t align_B = 0;
    if (image->disjoint) {
-      uint8_t plane = nvk_image_aspects_to_plane(image, aspects);
+      uint8_t plane = nvk_image_memory_aspects_to_plane(image, aspects);
       nvk_image_plane_add_req(&image->planes[plane], &size_B, &align_B);
    } else {
       for (unsigned plane = 0; plane < image->plane_count; plane++)
@@ -986,7 +986,7 @@ nvk_get_image_subresource_layout(UNUSED struct nvk_device *dev,
 {
    const VkImageSubresource *isr = &pSubresource->imageSubresource;
 
-   const uint8_t p = nvk_image_aspects_to_plane(image, isr->aspectMask);
+   const uint8_t p = nvk_image_memory_aspects_to_plane(image, isr->aspectMask);
    const struct nvk_image_plane *plane = &image->planes[p];
 
    uint64_t offset_B = 0;
@@ -1096,7 +1096,7 @@ nvk_BindImageMemory2(VkDevice device,
       if (image->disjoint) {
          const VkBindImagePlaneMemoryInfo *plane_info =
             vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_PLANE_MEMORY_INFO);
-         uint8_t plane = nvk_image_aspects_to_plane(image, plane_info->planeAspect);
+         uint8_t plane = nvk_image_memory_aspects_to_plane(image, plane_info->planeAspect);
          nvk_image_plane_bind(dev, &image->planes[plane], mem, &offset_B);
       } else {
          for (unsigned plane = 0; plane < image->plane_count; plane++) {

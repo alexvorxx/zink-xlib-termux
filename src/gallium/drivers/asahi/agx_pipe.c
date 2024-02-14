@@ -1416,6 +1416,14 @@ agx_memory_barrier(struct pipe_context *pctx, unsigned flags)
    agx_flush_all(agx_context(pctx), "Memory barrier");
 }
 
+static enum pipe_reset_status
+asahi_get_device_reset_status(struct pipe_context *pipe)
+{
+   struct agx_context *ctx = agx_context(pipe);
+
+   return ctx->any_faults ? PIPE_GUILTY_CONTEXT_RESET : PIPE_NO_RESET;
+}
+
 static struct pipe_context *
 agx_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 {
@@ -1462,6 +1470,8 @@ agx_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
    pctx->create_fence_fd = agx_create_fence_fd;
    pctx->fence_server_sync = agx_fence_server_sync;
+
+   pctx->get_device_reset_status = asahi_get_device_reset_status;
 
    agx_init_state_functions(pctx);
    agx_init_query_functions(pctx);

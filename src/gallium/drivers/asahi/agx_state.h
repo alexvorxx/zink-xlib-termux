@@ -628,6 +628,8 @@ struct agx_context {
    struct agx_compiled_shader *gs_unroll_restart[MESA_PRIM_MAX][3];
    struct agx_meta_cache meta;
 
+   bool any_faults;
+
    uint32_t syncobj;
    uint32_t dummy_syncobj;
    int in_sync_fd;

@@ -53,6 +53,8 @@ struct drm_asahi_params_global {
    uint32_t gpu_variant;
    uint32_t num_dies;
    uint32_t timer_frequency_hz;
+   uint32_t num_cores_per_cluster;
+   uint64_t core_masks[32];
 };
 
 /* How many power-of-two levels in the BO cache do we want? 2^14 minimum chosen

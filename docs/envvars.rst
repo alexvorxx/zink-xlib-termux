@@ -1347,7 +1347,7 @@ RADV driver environment variables
    ``gewave32``
       enable wave32 for vertex/tess/geometry shaders (GFX10+)
    ``gsfastlaunch2``
-      use GS_FAST_LAUNCH=2 for Mesh shaders (GFX11+)
+      use GS_FAST_LAUNCH=2 for Mesh shaders (GFX11+ dGPUs only)
    ``localbos``
       enable local BOs
    ``nggc``

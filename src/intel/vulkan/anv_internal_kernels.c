@@ -184,21 +184,18 @@ compile_shader(struct anv_device *device,
          assert(stats[stat_idx].spills == 0);
          assert(stats[stat_idx].fills == 0);
          assert(stats[stat_idx].sends == sends_count_expectation);
-         assert(stats[stat_idx].spills == 0);
          stat_idx++;
       }
       if (prog_data.wm.dispatch_16) {
          assert(stats[stat_idx].spills == 0);
          assert(stats[stat_idx].fills == 0);
          assert(stats[stat_idx].sends == sends_count_expectation);
-         assert(stats[stat_idx].spills == 0);
          stat_idx++;
       }
       if (prog_data.wm.dispatch_32) {
          assert(stats[stat_idx].spills == 0);
          assert(stats[stat_idx].fills == 0);
          assert(stats[stat_idx].sends == sends_count_expectation * 2);
-         assert(stats[stat_idx].spills == 0);
          stat_idx++;
       }
    } else {

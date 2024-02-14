@@ -62,8 +62,8 @@ BEGIN_TEST(d3d11_derivs.simple)
 
    //>> v_interp_p2_f32_e32 v#rx_tmp, v#_, attr0.x                                         ; $_
    //>> v_interp_p2_f32_e32 v#ry_tmp, v#_, attr0.y                                         ; $_
-   //>> v_mov_b32_e32 v#ry, v#ry_tmp                                                       ; $_
    //>> v_mov_b32_e32 v#rx, v#rx_tmp                                                       ; $_
+   //>> v_mov_b32_e32 v#ry, v#ry_tmp                                                       ; $_
    //>> image_sample v[#_:#_], v[#rx:#ry], s[#_:#_], s[#_:#_] dmask:0xf dim:SQ_RSRC_IMG_2D ; $_ $_
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "Assembly");
 END_TEST
@@ -101,8 +101,9 @@ BEGIN_TEST(d3d11_derivs.constant)
    //>> p_end_linear_vgpr (latekill)(kill)%wqm
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "ACO IR");
 
-   //>> v_interp_p2_f32_e32 v#rx, v#_, attr0.x                                             ; $_
+   //>> v_interp_p2_f32_e32 v#rx_tmp, v#_, attr0.x                                         ; $_
    //>> v_mov_b32_e32 v#ry, -0.5                                                           ; $_
+   //>> v_mov_b32_e32 v#rx, v#rx_tmp                                                       ; $_
    //>> image_sample v[#_:#_], v[#rx:#ry], s[#_:#_], s[#_:#_] dmask:0xf dim:SQ_RSRC_IMG_2D ; $_ $_
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "Assembly");
 END_TEST
@@ -173,12 +174,12 @@ BEGIN_TEST(d3d11_derivs.bias)
    //>> p_end_linear_vgpr (latekill)(kill)%wqm
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "ACO IR");
 
-   //>> v_interp_p2_f32_e32 v#rx_tmp, v#_, attr0.x                                                 ; $_
-   //>> v_interp_p2_f32_e32 v#ry_tmp, v#_, attr0.y                                                 ; $_
-   //>> v_mov_b32_e32 v#rx, v#rx_tmp                                                               ; $_
-   //>> v_mov_b32_e32 v#ry, v#ry_tmp                                                               ; $_
+   //>> v_interp_p2_f32_e32 v#rx_tmp, v#_, attr0.x                                                   ; $_
+   //>> v_interp_p2_f32_e32 v#ry_tmp, v#_, attr0.y                                                   ; $_
+   //>> v_mov_b32_e32 v#rx, v#rx_tmp                                                                 ; $_
+   //>> v_mov_b32_e32 v#ry, v#ry_tmp                                                                 ; $_
    //>> BB1:
-   //>> image_sample_b v[#_:#_], [v2, v#rx, v#ry], s[#_:#_], s[#_:#_] dmask:0xf dim:SQ_RSRC_IMG_2D ; $_ $_ $_
+   //>> image_sample_b v[#_:#_], [v#rb, v#rx, v#ry], s[#_:#_], s[#_:#_] dmask:0xf dim:SQ_RSRC_IMG_2D ; $_ $_ $_
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "Assembly");
 END_TEST
 
@@ -265,9 +266,9 @@ BEGIN_TEST(d3d11_derivs.array)
    //>> v_interp_p2_f32_e32 v#rx_tmp, v#_, attr0.x                                               ; $_
    //>> v_interp_p2_f32_e32 v#ry_tmp, v#_, attr0.y                                               ; $_
    //>> v_rndne_f32_e32 v#rl_tmp, v#rl_tmp                                                       ; $_
-   //>> v_mov_b32_e32 v#rl, v#rl_tmp                                                             ; $_
    //>> v_mov_b32_e32 v#rx, v#rx_tmp                                                             ; $_
    //>> v_mov_b32_e32 v#ry, v#ry_tmp                                                             ; $_
+   //>> v_mov_b32_e32 v#rl, v#rl_tmp                                                             ; $_
    //>> BB1:
    //; success = rx+1 == ry and rx+2 == rl
    //>> image_sample v[#_:#_], v[#rx:#rl], s[#_:#_], s[#_:#_] dmask:0xf dim:SQ_RSRC_IMG_2D_ARRAY ; $_ $_
@@ -353,8 +354,9 @@ BEGIN_TEST(d3d11_derivs._1d_gfx9)
    //>> p_end_linear_vgpr (latekill)(kill)%wqm
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "ACO IR");
 
-   //>> v_interp_p2_f32_e32 v#rx, v#_, attr0.x                    ; $_
+   //>> v_interp_p2_f32_e32 v#rx_tmp, v#_, attr0.x                ; $_
    //>> v_mov_b32_e32 v#ry, 0.5                                   ; $_
+   //>> v_mov_b32_e32 v#rx, v#rx_tmp                              ; $_
    //; success = rx+1 == ry
    //>> image_sample v[#_:#_], v#rx, s[#_:#_], s[#_:#_] dmask:0xf ; $_ $_
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "Assembly");
@@ -398,8 +400,8 @@ BEGIN_TEST(d3d11_derivs._1d_array_gfx9)
    //>> v_interp_p2_f32_e32 v#rx_tmp, v#_, attr0.x                   ; $_
    //>> v_rndne_f32_e32 v#rl_tmp, v#rl_tmp                           ; $_
    //>> v_mov_b32_e32 v#ry, 0.5                                      ; $_
-   //>> v_mov_b32_e32 v#rl, v#rl_tmp                                 ; $_
    //>> v_mov_b32_e32 v#rx, v#rx_tmp                                 ; $_
+   //>> v_mov_b32_e32 v#rl, v#rl_tmp                                 ; $_
    //>> BB1:
    //; success = rx+1 == ry and rx+2 == rl
    //>> image_sample v[#_:#_], v#rx, s[#_:#_], s[#_:#_] dmask:0xf da ; $_ $_
@@ -442,10 +444,11 @@ BEGIN_TEST(d3d11_derivs.cube)
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "ACO IR");
 
    //>> v_cubeid_f32 v#rf_tmp, v#_, v#_, v#_                                                 ; $_ $_
-   //>> v_fmaak_f32 v#rx, v#_, v#_, 0x3fc00000                                               ; $_ $_
-   //>> v_fmaak_f32 v#ry_tmp, v#_, v#_, 0x3fc00000                                           ; $_ $_
    //>> v_mov_b32_e32 v#rf, v#rf_tmp                                                         ; $_
+   //>> v_fmaak_f32 v#rx_tmp, v#_, v#_, 0x3fc00000                                           ; $_ $_
+   //>> v_fmaak_f32 v#ry_tmp, v#_, v#_, 0x3fc00000                                           ; $_ $_
    //>> v_mov_b32_e32 v#ry, v#ry_tmp                                                         ; $_
+   //>> v_mov_b32_e32 v#rx, v#rx_tmp                                                         ; $_
    //; success = rx+1 == ry and rx+2 == rf
    //>> image_sample v[#_:#_], v[#rx:#rf], s[#_:#_], s[#_:#_] dmask:0xf dim:SQ_RSRC_IMG_CUBE ; $_ $_
    pbld.print_ir(VK_SHADER_STAGE_FRAGMENT_BIT, "Assembly");

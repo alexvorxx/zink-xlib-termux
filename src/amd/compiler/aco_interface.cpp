@@ -176,7 +176,7 @@ aco_postprocess_shader(const struct aco_compiler_options* options,
       validate(program.get());
 
       /* Register Allocation */
-      aco::register_allocation(program.get(), live_vars.live_out);
+      aco::register_allocation(program.get(), live_vars);
 
       if (aco::validate_ra(program.get())) {
          aco_print_program(program.get(), stderr);

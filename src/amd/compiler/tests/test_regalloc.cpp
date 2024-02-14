@@ -232,6 +232,8 @@ BEGIN_TEST(regalloc.branch_def_phis_at_merge_block)
    if (!setup_cs("", GFX10))
       return;
 
+   program->blocks[0].kind &= ~block_kind_top_level;
+
    //! s2: %_:s[2-3] = p_branch
    bld.branch(aco_opcode::p_branch, bld.def(s2));
 
@@ -277,6 +279,7 @@ BEGIN_TEST(regalloc.branch_def_phis_at_branch_block)
    bld.reset(program->create_and_insert_block());
    program->blocks[3].linear_preds.push_back(1);
    program->blocks[3].linear_preds.push_back(2);
+   program->blocks[3].kind |= block_kind_top_level;
 
    finish_ra_test(ra_test_policy());
 END_TEST

@@ -44,14 +44,14 @@ vk_cts_commits_to_backport=(
 vk_cts_patch_files=(
   # Derivate subgroup fix
   # https://github.com/KhronosGroup/VK-GL-CTS/pull/442
-  build-deqp_Use-subgroups-helper-in-derivate-tests.patch
-  build-deqp_Add-missing-subgroup-support-checks-for-linear-derivate-tests.patch
+  build-deqp-vk_Use-subgroups-helper-in-derivate-tests.patch
+  build-deqp-vk_Add-missing-subgroup-support-checks-for-linear-derivate-tests.patch
 )
 
 if [ "${DEQP_TARGET}" = 'android' ]; then
   vk_cts_patch_files+=(
-    build-deqp_Allow-running-on-Android-from-the-command-line.patch
-    build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
+    build-deqp-vk_Allow-running-on-Android-from-the-command-line.patch
+    build-deqp-vk_Android-prints-to-stdout-instead-of-logcat.patch
   )
 fi
 
@@ -65,8 +65,8 @@ gl_cts_patch_files=(
 
 if [ "${DEQP_TARGET}" = 'android' ]; then
   gl_cts_patch_files+=(
-    build-deqp_Allow-running-on-Android-from-the-command-line.patch
-    build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
+    build-deqp-gl_Allow-running-on-Android-from-the-command-line.patch
+    build-deqp-gl_Android-prints-to-stdout-instead-of-logcat.patch
   )
 fi
 
@@ -80,8 +80,8 @@ gles_cts_patch_files=(
 
 if [ "${DEQP_TARGET}" = 'android' ]; then
   gles_cts_patch_files+=(
-    build-deqp_Allow-running-on-Android-from-the-command-line.patch
-    build-deqp_Android-prints-to-stdout-instead-of-logcat.patch
+    build-deqp-gles_Allow-running-on-Android-from-the-command-line.patch
+    build-deqp-gles_Android-prints-to-stdout-instead-of-logcat.patch
   )
 fi
 

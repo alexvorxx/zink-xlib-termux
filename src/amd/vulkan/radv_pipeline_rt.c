@@ -613,7 +613,7 @@ radv_rt_compile_shaders(struct radv_device *device, struct vk_pipeline_cache *ca
       has_callable |= rt_stages[i].stage == MESA_SHADER_CALLABLE;
       monolithic &= rt_stages[i].info.can_inline;
 
-      if (i > pCreateInfo->stageCount)
+      if (i >= pCreateInfo->stageCount)
          raygen_imported |= rt_stages[i].stage == MESA_SHADER_RAYGEN;
    }
 

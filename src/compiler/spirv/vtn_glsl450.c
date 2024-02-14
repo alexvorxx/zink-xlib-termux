@@ -697,6 +697,7 @@ bool
 vtn_handle_glsl450_instruction(struct vtn_builder *b, SpvOp ext_opcode,
                                const uint32_t *w, unsigned count)
 {
+   vtn_handle_fp_fast_math(b, vtn_untyped_value(b, w[2]));
    switch ((enum GLSLstd450)ext_opcode) {
    case GLSLstd450Determinant: {
       vtn_push_nir_ssa(b, w[2], build_mat_det(b, vtn_ssa_value(b, w[5])));

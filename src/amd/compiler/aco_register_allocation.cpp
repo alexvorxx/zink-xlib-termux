@@ -262,7 +262,7 @@ public:
 
    uint32_t& operator[](PhysReg index) { return regs[index]; }
 
-   unsigned count_zero(PhysRegInterval reg_interval)
+   unsigned count_zero(PhysRegInterval reg_interval) const
    {
       unsigned res = 0;
       for (PhysReg reg : reg_interval)
@@ -271,16 +271,17 @@ public:
    }
 
    /* Returns true if any of the bytes in the given range are allocated or blocked */
-   bool test(PhysReg start, unsigned num_bytes)
+   bool test(PhysReg start, unsigned num_bytes) const
    {
       for (PhysReg i = start; i.reg_b < start.reg_b + num_bytes; i = PhysReg(i + 1)) {
          assert(i <= 511);
          if (regs[i] & 0x0FFFFFFF)
             return true;
          if (regs[i] == 0xF0000000) {
-            assert(subdword_regs.find(i) != subdword_regs.end());
+            auto it = subdword_regs.find(i);
+            assert(it != subdword_regs.end());
             for (unsigned j = i.byte(); i * 4 + j < start.reg_b + num_bytes && j < 4; j++) {
-               if (subdword_regs[i][j])
+               if (it->second[j])
                   return true;
             }
          }
@@ -296,24 +297,28 @@ public:
          fill(start, rc.size(), 0xFFFFFFFF);
    }
 
-   bool is_blocked(PhysReg start)
+   bool is_blocked(PhysReg start) const
    {
       if (regs[start] == 0xFFFFFFFF)
          return true;
       if (regs[start] == 0xF0000000) {
+         auto it = subdword_regs.find(start);
+         assert(it != subdword_regs.end());
          for (unsigned i = start.byte(); i < 4; i++)
-            if (subdword_regs[start][i] == 0xFFFFFFFF)
+            if (it->second[i] == 0xFFFFFFFF)
                return true;
       }
       return false;
    }
 
-   bool is_empty_or_blocked(PhysReg start)
+   bool is_empty_or_blocked(PhysReg start) const
    {
       /* Empty is 0, blocked is 0xFFFFFFFF, so to check both we compare the
        * incremented value to 1 */
       if (regs[start] == 0xF0000000) {
-         return subdword_regs[start][start.byte()] + 1 <= 1;
+         auto it = subdword_regs.find(start);
+         assert(it != subdword_regs.end());
+         return it->second[start.byte()] + 1 <= 1;
       }
       return regs[start] + 1 <= 1;
    }
@@ -346,9 +351,9 @@ public:
 
    void clear(Definition def) { clear(def.physReg(), def.regClass()); }
 
-   unsigned get_id(PhysReg reg)
+   unsigned get_id(PhysReg reg) const
    {
-      return regs[reg] == 0xF0000000 ? subdword_regs[reg][reg.byte()] : regs[reg];
+      return regs[reg] == 0xF0000000 ? subdword_regs.at(reg)[reg.byte()] : regs[reg];
    }
 
 private:
@@ -376,7 +381,7 @@ private:
    }
 };
 
-std::vector<unsigned> find_vars(ra_ctx& ctx, RegisterFile& reg_file,
+std::vector<unsigned> find_vars(ra_ctx& ctx, const RegisterFile& reg_file,
                                 const PhysRegInterval reg_interval);
 
 /* helper function for debugging */
@@ -419,7 +424,7 @@ print_reg(const RegisterFile& reg_file, PhysReg reg, bool has_adjacent_variable)
 
 /* helper function for debugging */
 UNUSED void
-print_regs(ra_ctx& ctx, bool vgprs, RegisterFile& reg_file)
+print_regs(ra_ctx& ctx, bool vgprs, const RegisterFile& reg_file)
 {
    PhysRegInterval regs = get_reg_bounds(ctx.program, vgprs ? RegType::vgpr : RegType::sgpr);
    char reg_char = vgprs ? 'v' : 's';
@@ -880,7 +885,7 @@ update_renames(ra_ctx& ctx, RegisterFile& reg_file,
 }
 
 std::optional<PhysReg>
-get_reg_simple(ra_ctx& ctx, RegisterFile& reg_file, DefInfo info)
+get_reg_simple(ra_ctx& ctx, const RegisterFile& reg_file, DefInfo info)
 {
    const PhysRegInterval& bounds = info.bounds;
    uint32_t size = info.size;
@@ -973,7 +978,8 @@ get_reg_simple(ra_ctx& ctx, RegisterFile& reg_file, DefInfo info)
     * larger instruction encodings or copies
     * TODO: don't do this in situations where it doesn't benefit */
    if (rc.is_subdword()) {
-      for (std::pair<const uint32_t, std::array<uint32_t, 4>>& entry : reg_file.subdword_regs) {
+      for (const std::pair<const uint32_t, std::array<uint32_t, 4>>& entry :
+           reg_file.subdword_regs) {
          assert(reg_file[PhysReg{entry.first}] == 0xF0000000);
          if (!bounds.contains({PhysReg{entry.first}, rc.size()}))
             continue;
@@ -1003,7 +1009,7 @@ get_reg_simple(ra_ctx& ctx, RegisterFile& reg_file, DefInfo info)
 
 /* collect variables from a register area */
 std::vector<unsigned>
-find_vars(ra_ctx& ctx, RegisterFile& reg_file, const PhysRegInterval reg_interval)
+find_vars(ra_ctx& ctx, const RegisterFile& reg_file, const PhysRegInterval reg_interval)
 {
    std::vector<unsigned> vars;
    for (PhysReg j : reg_interval) {
@@ -1011,7 +1017,7 @@ find_vars(ra_ctx& ctx, RegisterFile& reg_file, const PhysRegInterval reg_interva
          continue;
       if (reg_file[j] == 0xF0000000) {
          for (unsigned k = 0; k < 4; k++) {
-            unsigned id = reg_file.subdword_regs[j][k];
+            unsigned id = reg_file.subdword_regs.at(j)[k];
             if (id && (vars.empty() || id != vars.back()))
                vars.emplace_back(id);
          }
@@ -1254,7 +1260,7 @@ get_regs_for_copies(ra_ctx& ctx, RegisterFile& reg_file,
 }
 
 std::optional<PhysReg>
-get_reg_impl(ra_ctx& ctx, RegisterFile& reg_file,
+get_reg_impl(ra_ctx& ctx, const RegisterFile& reg_file,
              std::vector<std::pair<Operand, Definition>>& parallelcopies, const DefInfo& info,
              aco_ptr<Instruction>& instr)
 {
@@ -1402,8 +1408,8 @@ get_reg_impl(ra_ctx& ctx, RegisterFile& reg_file,
 }
 
 bool
-get_reg_specified(ra_ctx& ctx, RegisterFile& reg_file, RegClass rc, aco_ptr<Instruction>& instr,
-                  PhysReg reg)
+get_reg_specified(ra_ctx& ctx, const RegisterFile& reg_file, RegClass rc,
+                  aco_ptr<Instruction>& instr, PhysReg reg)
 {
    /* catch out-of-range registers */
    if (reg >= PhysReg{512})
@@ -1538,7 +1544,7 @@ compact_relocate_vars(ra_ctx& ctx, const std::vector<IDAndRegClass>& vars,
 }
 
 bool
-is_mimg_vaddr_intact(ra_ctx& ctx, RegisterFile& reg_file, Instruction* instr)
+is_mimg_vaddr_intact(ra_ctx& ctx, const RegisterFile& reg_file, Instruction* instr)
 {
    PhysReg first{512};
    for (unsigned i = 0; i < instr->operands.size() - 3u; i++) {
@@ -1570,7 +1576,7 @@ is_mimg_vaddr_intact(ra_ctx& ctx, RegisterFile& reg_file, Instruction* instr)
 }
 
 std::optional<PhysReg>
-get_reg_vector(ra_ctx& ctx, RegisterFile& reg_file, Temp temp, aco_ptr<Instruction>& instr)
+get_reg_vector(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp, aco_ptr<Instruction>& instr)
 {
    Instruction* vec = ctx.vectors[temp.id()];
    unsigned first_operand = vec->format == Format::MIMG ? 3 : 0;
@@ -1622,7 +1628,7 @@ get_reg_vector(ra_ctx& ctx, RegisterFile& reg_file, Temp temp, aco_ptr<Instructi
 }
 
 PhysReg
-get_reg(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
+get_reg(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
         std::vector<std::pair<Operand, Definition>>& parallelcopies, aco_ptr<Instruction>& instr,
         int operand_index = -1)
 {
@@ -1735,7 +1741,7 @@ get_reg(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
 }
 
 PhysReg
-get_reg_create_vector(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
+get_reg_create_vector(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
                       std::vector<std::pair<Operand, Definition>>& parallelcopies,
                       aco_ptr<Instruction>& instr)
 {

@@ -4181,6 +4181,12 @@ typedef struct nir_shader_compiler_options {
    /** clip/cull distance and tess level arrays use compact semantics */
    bool compact_arrays;
 
+   /**
+    * Whether discard gets emitted as nir_intrinsic_demote.
+    * Otherwise, nir_intrinsic_terminate is being used.
+    */
+   bool discard_is_demote;
+
    /** Options determining lowering and behavior of inputs and outputs. */
    nir_io_options io_options;
 

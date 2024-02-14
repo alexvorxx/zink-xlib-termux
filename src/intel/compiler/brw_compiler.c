@@ -32,6 +32,7 @@
 const struct nir_shader_compiler_options brw_scalar_nir_options = {
    .avoid_ternary_with_two_constants = true,
    .compact_arrays = true,
+   .discard_is_demote = true,
    .divergence_analysis_options =
       (nir_divergence_single_patch_per_tcs_subgroup |
        nir_divergence_single_patch_per_tes_subgroup |

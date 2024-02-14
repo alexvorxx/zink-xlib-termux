@@ -155,6 +155,7 @@ fn nir_options(dev: &nv_device_info) -> nir_shader_compiler_options {
     op.has_find_msb_rev = true;
     op.has_pack_half_2x16_rtz = true;
     op.has_bfm = dev.sm >= 70;
+    op.discard_is_demote = true;
 
     op.max_unroll_iterations = 32;
 

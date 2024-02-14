@@ -1434,6 +1434,9 @@ zink_screen_init_compiler(struct zink_screen *screen)
        screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_OPEN_SOURCE ||
        screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_PROPRIETARY)
       screen->nir_options.lower_doubles_options = nir_lower_dmod;
+
+   if (screen->info.have_EXT_shader_demote_to_helper_invocation)
+      screen->nir_options.discard_is_demote = true;
 }
 
 const void *

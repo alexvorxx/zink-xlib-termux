@@ -93,6 +93,7 @@ void ac_set_nir_options(struct radeon_info *info, bool use_llvm,
    options->lower_fisnormal = true;
    options->support_16bit_alu = info->gfx_level >= GFX8;
    options->vectorize_vec2_16bit = info->has_packed_math_16bit;
+   options->discard_is_demote = true;
 }
 
 bool

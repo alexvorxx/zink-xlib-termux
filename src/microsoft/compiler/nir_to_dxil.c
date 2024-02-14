@@ -160,6 +160,7 @@ nir_options = {
    .linker_ignore_precision = true,
    .support_16bit_alu = true,
    .preserve_mediump = true,
+   .discard_is_demote = true,
 };
 
 const nir_shader_compiler_options*

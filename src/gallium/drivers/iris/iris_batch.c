@@ -867,6 +867,7 @@ iris_batch_is_banned(struct iris_bufmgr *bufmgr, int ret)
 {
    enum intel_kmd_type kmd_type = iris_bufmgr_get_device_info(bufmgr)->kmd_type;
 
+   assert(ret < 0);
    /* In i915 EIO means our context is banned, while on Xe ECANCELED means
     * our exec queue was banned
     */

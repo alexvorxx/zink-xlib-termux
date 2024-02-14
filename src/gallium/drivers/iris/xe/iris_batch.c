@@ -182,7 +182,7 @@ iris_xe_wait_exec_queue_idle(struct iris_batch *batch)
    if (ret == 0) {
       assert(iris_wait_syncobj(bufmgr, syncobj, INT64_MAX));
    } else {
-      assert(iris_batch_is_banned(bufmgr, errno) == true);
+      assert(iris_batch_is_banned(bufmgr, -errno) == true);
    }
 
    iris_syncobj_destroy(bufmgr, syncobj);

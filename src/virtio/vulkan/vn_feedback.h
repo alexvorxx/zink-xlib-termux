@@ -30,9 +30,10 @@ struct vn_feedback_pool {
 };
 
 enum vn_feedback_type {
-   VN_FEEDBACK_TYPE_FENCE,
-   VN_FEEDBACK_TYPE_TIMELINE_SEMAPHORE,
-   VN_FEEDBACK_TYPE_EVENT,
+   VN_FEEDBACK_TYPE_FENCE = 0x1,
+   VN_FEEDBACK_TYPE_TIMELINE_SEMAPHORE = 0x2,
+   VN_FEEDBACK_TYPE_EVENT = 0x4,
+   VN_FEEDBACK_TYPE_QUERY = 0x8,
 };
 
 struct vn_feedback_slot {

@@ -2558,11 +2558,11 @@ ntt_emit_intrinsic(struct ntt_compile *c, nir_intrinsic_instr *instr)
       ntt_DEMOTE(c);
       break;
 
-   case nir_intrinsic_discard:
+   case nir_intrinsic_terminate:
       ntt_KILL(c);
       break;
 
-   case nir_intrinsic_discard_if: {
+   case nir_intrinsic_terminate_if: {
       struct ureg_src cond = ureg_scalar(ntt_get_src(c, instr->src[0]), 0);
 
       if (c->native_integers) {

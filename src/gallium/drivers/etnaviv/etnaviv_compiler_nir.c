@@ -561,10 +561,10 @@ emit_intrinsic(struct etna_compile *c, nir_intrinsic_instr * intr)
    case nir_intrinsic_store_deref:
       etna_emit_output(c, nir_src_as_deref(intr->src[0])->var, get_src(c, &intr->src[1]));
       break;
-   case nir_intrinsic_discard_if:
+   case nir_intrinsic_terminate_if:
       etna_emit_discard(c, get_src(c, &intr->src[0]));
       break;
-   case nir_intrinsic_discard:
+   case nir_intrinsic_terminate:
       etna_emit_discard(c, SRC_DISABLE);
       break;
    case nir_intrinsic_load_uniform: {

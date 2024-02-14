@@ -469,8 +469,6 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
    case nir_intrinsic_demote_if:
       shader->info.fs.uses_demote = true;
       FALLTHROUGH; /* quads with helper lanes only might be discarded entirely */
-   case nir_intrinsic_discard:
-   case nir_intrinsic_discard_if:
    case nir_intrinsic_terminate:
    case nir_intrinsic_terminate_if:
       /* Freedreno uses discard_if() to end GS invocations that don't produce

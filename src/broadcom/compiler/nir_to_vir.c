@@ -3573,7 +3573,6 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
          * early termination by emitting a (maybe conditional) jump to the
          * end section of the fragment shader for affected invocations.
          */
-        case nir_intrinsic_discard:
         case nir_intrinsic_terminate:
                 c->emitted_discard = true;
                 FALLTHROUGH;
@@ -3592,7 +3591,6 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
                 }
                 break;
 
-        case nir_intrinsic_discard_if:
         case nir_intrinsic_terminate_if:
                 c->emitted_discard = true;
                 FALLTHROUGH;

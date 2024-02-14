@@ -414,8 +414,6 @@ intrinsic("is_sparse_resident_zink", dest_comp=1, src_comp=[0], bit_sizes=[1],
 def barrier(name):
     intrinsic(name)
 
-barrier("discard")
-
 # Demote fragment shader invocation to a helper invocation.  Any stores to
 # memory after this instruction are suppressed and the fragment does not write
 # outputs to the framebuffer.  Unlike discard, demote needs to ensure that
@@ -480,8 +478,7 @@ intrinsic("inverse_ballot", src_comp=[0], dest_comp=1, flags=[CAN_ELIMINATE])
 barrier("begin_invocation_interlock")
 barrier("end_invocation_interlock")
 
-# A conditional discard/demote/terminate, with a single boolean source.
-intrinsic("discard_if", src_comp=[1])
+# A conditional demote/terminate, with a single boolean source.
 intrinsic("demote_if", src_comp=[1])
 intrinsic("terminate_if", src_comp=[1])
 

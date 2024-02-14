@@ -195,9 +195,9 @@ opt_move_discards_to_top_impl(nir_function_impl *impl)
             case nir_intrinsic_masked_swizzle_amd:
                instr->pass_flags = STOP_PROCESSING_INSTR_FLAG;
                goto break_all;
-            case nir_intrinsic_discard_if:
+            case nir_intrinsic_terminate_if:
                if (!consider_discards) {
-                  /* assume that a shader either uses discard or demote, but not both */
+                  /* assume that a shader either uses terminate or demote, but not both */
                   instr->pass_flags = STOP_PROCESSING_INSTR_FLAG;
                   goto break_all;
                }

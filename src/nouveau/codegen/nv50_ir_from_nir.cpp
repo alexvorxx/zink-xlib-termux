@@ -1860,14 +1860,12 @@ Converter::visit(nir_intrinsic_instr *insn)
       break;
    }
    case nir_intrinsic_demote:
-   case nir_intrinsic_discard:
       mkOp(OP_DISCARD, TYPE_NONE, NULL);
       break;
-   case nir_intrinsic_demote_if:
-   case nir_intrinsic_discard_if: {
+   case nir_intrinsic_demote_if: {
       Value *pred = getSSA(1, FILE_PREDICATE);
       if (insn->num_components > 1) {
-         ERROR("nir_intrinsic_discard_if only with 1 component supported!\n");
+         ERROR("nir_intrinsic_demote_if only with 1 component supported!\n");
          assert(false);
          return false;
       }

@@ -2137,6 +2137,24 @@ nir_build_call(nir_builder *build, nir_function *func, size_t count,
    nir_builder_instr_insert(build, &call->instr);
 }
 
+static inline void
+nir_discard(nir_builder *build)
+{
+   if (build->shader->options->discard_is_demote)
+      nir_demote(build);
+   else
+      nir_terminate(build);
+}
+
+static inline void
+nir_discard_if(nir_builder *build, nir_def *src)
+{
+   if (build->shader->options->discard_is_demote)
+      nir_demote_if(build, src);
+   else
+      nir_terminate_if(build, src);
+}
+
 /*
  * Call a given nir_function * with a variadic number of nir_def * arguments.
  *

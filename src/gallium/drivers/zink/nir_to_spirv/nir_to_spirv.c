@@ -3228,7 +3228,7 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
       emit_store_reg(ctx, intr);
       break;
 
-   case nir_intrinsic_discard:
+   case nir_intrinsic_terminate:
       emit_discard(ctx, intr);
       break;
 

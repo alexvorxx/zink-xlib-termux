@@ -80,8 +80,6 @@ block_check_for_allowed_instrs(nir_block *block, unsigned *count,
             switch (intr->intrinsic) {
             case nir_intrinsic_terminate:
             case nir_intrinsic_terminate_if:
-            case nir_intrinsic_discard:
-            case nir_intrinsic_discard_if:
                /* For non-CF hardware, we need to be able to move discards up
                 * and flatten, so let them pass.
                 */
@@ -394,8 +392,7 @@ rewrite_discard_conds(nir_instr *instr, nir_def *if_cond, bool is_else)
       return;
    nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
 
-   if (intr->intrinsic != nir_intrinsic_discard_if && intr->intrinsic != nir_intrinsic_discard &&
-       intr->intrinsic != nir_intrinsic_terminate_if && intr->intrinsic != nir_intrinsic_terminate)
+   if (intr->intrinsic != nir_intrinsic_terminate_if && intr->intrinsic != nir_intrinsic_terminate)
       return;
 
    nir_builder b = nir_builder_at(nir_before_instr(instr));
@@ -403,8 +400,7 @@ rewrite_discard_conds(nir_instr *instr, nir_def *if_cond, bool is_else)
    if (is_else)
       if_cond = nir_inot(&b, if_cond);
 
-   if (intr->intrinsic == nir_intrinsic_discard_if ||
-       intr->intrinsic == nir_intrinsic_terminate_if) {
+   if (intr->intrinsic == nir_intrinsic_terminate_if) {
       nir_src_rewrite(&intr->src[0], nir_iand(&b, intr->src[0].ssa, if_cond));
    } else {
       nir_discard_if(&b, if_cond);

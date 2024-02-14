@@ -375,9 +375,7 @@ opt_intrinsics_impl(nir_function_impl *impl,
 
          case nir_instr_type_intrinsic: {
             nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
-            if (intrin->intrinsic == nir_intrinsic_discard ||
-                intrin->intrinsic == nir_intrinsic_discard_if ||
-                intrin->intrinsic == nir_intrinsic_demote ||
+            if (intrin->intrinsic == nir_intrinsic_demote ||
                 intrin->intrinsic == nir_intrinsic_demote_if ||
                 intrin->intrinsic == nir_intrinsic_terminate ||
                 intrin->intrinsic == nir_intrinsic_terminate_if)

@@ -1901,7 +1901,7 @@ visit_discard(struct lp_build_nir_context *bld_base,
               nir_intrinsic_instr *instr)
 {
    LLVMValueRef cond = NULL;
-   if (instr->intrinsic == nir_intrinsic_discard_if) {
+   if (instr->intrinsic == nir_intrinsic_terminate_if) {
       cond = get_src(bld_base, instr->src[0]);
       cond = cast_type(bld_base, cond, nir_type_int, 32);
    }
@@ -2175,8 +2175,8 @@ visit_intrinsic(struct lp_build_nir_context *bld_base,
    case nir_intrinsic_load_helper_invocation:
       bld_base->helper_invocation(bld_base, &result[0]);
       break;
-   case nir_intrinsic_discard_if:
-   case nir_intrinsic_discard:
+   case nir_intrinsic_terminate_if:
+   case nir_intrinsic_terminate:
       visit_discard(bld_base, instr);
       break;
    case nir_intrinsic_emit_vertex:

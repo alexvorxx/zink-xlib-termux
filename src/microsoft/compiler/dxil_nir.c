@@ -1826,17 +1826,14 @@ static bool
 lower_kill(struct nir_builder *builder, nir_intrinsic_instr *intr,
            void *_cb_data)
 {
-   if (intr->intrinsic != nir_intrinsic_discard &&
-       intr->intrinsic != nir_intrinsic_terminate &&
-       intr->intrinsic != nir_intrinsic_discard_if &&
+   if (intr->intrinsic != nir_intrinsic_terminate &&
        intr->intrinsic != nir_intrinsic_terminate_if)
       return false;
 
    builder->cursor = nir_instr_remove(&intr->instr);
    nir_def *condition;
 
-   if (intr->intrinsic == nir_intrinsic_discard ||
-       intr->intrinsic == nir_intrinsic_terminate) {
+   if (intr->intrinsic == nir_intrinsic_terminate) {
       nir_demote(builder);
       condition = nir_imm_true(builder);
    } else {

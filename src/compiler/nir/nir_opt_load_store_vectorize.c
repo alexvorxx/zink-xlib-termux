@@ -1310,8 +1310,6 @@ handle_barrier(struct vectorize_ctx *ctx, bool *progress, nir_function_impl *imp
       nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
       switch (intrin->intrinsic) {
       /* prevent speculative loads/stores */
-      case nir_intrinsic_discard_if:
-      case nir_intrinsic_discard:
       case nir_intrinsic_terminate_if:
       case nir_intrinsic_terminate:
       case nir_intrinsic_launch_mesh_workgroups:

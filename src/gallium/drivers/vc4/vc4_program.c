@@ -1815,7 +1815,7 @@ ntq_emit_intrinsic(struct vc4_compile *c, nir_intrinsic_instr *instr)
                 }
                 break;
 
-        case nir_intrinsic_discard:
+        case nir_intrinsic_terminate:
                 if (c->execute.file != QFILE_NULL) {
                         qir_SF(c, c->execute);
                         qir_MOV_cond(c, QPU_COND_ZS, c->discard,
@@ -1825,7 +1825,7 @@ ntq_emit_intrinsic(struct vc4_compile *c, nir_intrinsic_instr *instr)
                 }
                 break;
 
-        case nir_intrinsic_discard_if: {
+        case nir_intrinsic_terminate_if: {
                 /* true (~0) if we're discarding */
                 struct qreg cond = ntq_get_src(c, instr->src[0], 0);
 

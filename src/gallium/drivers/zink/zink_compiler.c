@@ -6228,10 +6228,6 @@ zink_shader_init(struct zink_screen *screen, struct zink_shader *zs)
       NIR_PASS_V(nir, strip_tex_ms);
    NIR_PASS_V(nir, nir_lower_frexp); /* TODO: Use the spirv instructions for this. */
 
-   if (screen->info.have_EXT_shader_demote_to_helper_invocation) {
-      NIR_PASS_V(nir, nir_lower_discard_or_demote, true);
-   }
-
    if (screen->need_2D_zs)
       NIR_PASS_V(nir, lower_1d_shadow, screen);
 

@@ -1621,11 +1621,11 @@ ntr_emit_intrinsic(struct ntr_compile *c, nir_intrinsic_instr *instr)
       ntr_emit_load_output(c, instr);
       break;
 
-   case nir_intrinsic_discard:
+   case nir_intrinsic_terminate:
       ntr_KILL(c);
       break;
 
-   case nir_intrinsic_discard_if: {
+   case nir_intrinsic_terminate_if: {
       struct ureg_src cond = ureg_scalar(ntr_get_src(c, instr->src[0]), 0);
       /* For !native_integers, the bool got lowered to 1.0 or 0.0. */
       ntr_KILL_IF(c, ureg_negate(cond));

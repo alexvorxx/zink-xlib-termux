@@ -23,6 +23,7 @@
 
 #include "brw_kernel.h"
 #include "brw_nir.h"
+#include "elk/elk_nir_options.h"
 #include "intel_nir.h"
 
 #include "intel_nir.h"
@@ -587,8 +588,8 @@ cleanup_llvm17_scratch(nir_shader *nir)
 }
 
 nir_shader *
-brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size,
-                   bool llvm17_wa)
+brw_nir_from_spirv(void *mem_ctx, unsigned gfx_version, const uint32_t *spirv,
+                   size_t spirv_size, bool llvm17_wa)
 {
    struct spirv_to_nir_options spirv_options = {
       .environment = NIR_SPIRV_OPENCL,
@@ -625,9 +626,15 @@ brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size,
    };
 
    assert(spirv_size % 4 == 0);
+
+   assert(gfx_version);
+   const nir_shader_compiler_options *nir_options =
+      gfx_version >= 9 ? &brw_scalar_nir_options
+                       : &elk_scalar_nir_options;
+
    nir_shader *nir =
       spirv_to_nir(spirv, spirv_size / 4, NULL, 0, MESA_SHADER_KERNEL,
-                   "library", &spirv_options, &brw_scalar_nir_options);
+                   "library", &spirv_options, nir_options);
    nir_validate_shader(nir, "after spirv_to_nir");
    nir_validate_ssa_dominance(nir, "after spirv_to_nir");
    ralloc_steal(mem_ctx, nir);

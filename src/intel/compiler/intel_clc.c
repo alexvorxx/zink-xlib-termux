@@ -285,6 +285,7 @@ print_usage(char *exec_name, FILE *f)
 "  -i, --in <filename>     Specify one input filename. Accepted multiple times.\n"
 "  -s, --spv <filename>    Specify the output filename for spirv.\n"
 "  -n, --nir               Specify whether to output serialized NIR instead of ISA.\n"
+"  -g, --gfx-version <ver> Specify the Gfx version used for NIR output.\n"
 "  -t, --text <filename>   Specify the output filename for the parsed text\n"
 "  -v, --verbose           Print more information during compilation.\n"
 "  -M, --llvm-version      Print LLVM version.\n"
@@ -300,6 +301,8 @@ struct intel_clc_params {
    char *spv_outfile;
    char *txt_outfile;
    char *prefix;
+
+   unsigned gfx_version;
 
    bool output_nir;
    bool print_info;
@@ -359,7 +362,7 @@ output_nir(const struct intel_clc_params *params, struct clc_binary *binary)
    spirv_library_to_nir_builder(fp, binary->data, binary->size / 4,
                                 &spirv_options);
 
-   nir_shader *nir = brw_nir_from_spirv(params->mem_ctx,
+   nir_shader *nir = brw_nir_from_spirv(params->mem_ctx, params->gfx_version,
                                         binary->data, binary->size,
                                         params->llvm17_wa);
    if (!nir) {
@@ -460,6 +463,7 @@ int main(int argc, char **argv)
       {"out",          required_argument,   0, 'o'},
       {"spv",          required_argument,   0, 's'},
       {"text",         required_argument,   0, 't'},
+      {"gfx-version",  required_argument,   0, 'g'},
       {"nir",          no_argument,         0, 'n'},
       {"llvm17-wa",    no_argument,         0, 'L'},
       {"llvm-version", no_argument,         0, 'M'},
@@ -482,7 +486,7 @@ int main(int argc, char **argv)
    util_dynarray_init(&input_files, params.mem_ctx);
 
    int ch;
-   while ((ch = getopt_long(argc, argv, "he:p:s:t:i:no:MLv", long_options, NULL)) != -1)
+   while ((ch = getopt_long(argc, argv, "he:p:s:t:i:no:MLvg:", long_options, NULL)) != -1)
    {
       switch (ch)
       {
@@ -519,6 +523,9 @@ int main(int argc, char **argv)
       case 'M':
          print_llvm_version(stdout);
          return EXIT_SUCCESS;
+      case 'g':
+         params.gfx_version = strtoul(optarg, NULL, 10);
+         break;
       case OPT_PREFIX:
          params.prefix = optarg;
          break;
@@ -610,6 +617,12 @@ int main(int argc, char **argv)
    glsl_type_singleton_init_or_ref();
 
    if (params.output_nir) {
+      if (params.gfx_version == 0) {
+         fprintf(stderr, "No target Gfx version specified.\n");
+         print_usage(argv[0], stderr);
+         goto fail;
+      }
+
       exit_code = output_nir(&params, &spirv_obj);
    } else {
       if (params.platform == NULL) {
@@ -632,6 +645,12 @@ int main(int argc, char **argv)
       if (params.devinfo.verx10 < 125) {
          fprintf(stderr, "Platform currently not supported.\n");
          goto fail;
+      }
+
+      if (params.gfx_version) {
+         fprintf(stderr, "WARNING: Ignorining unnecessary parameter for "
+                         "gfx version, using version based on platform.\n");
+         /* Keep going. */
       }
 
       if (params.entry_point == NULL) {

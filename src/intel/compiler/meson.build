@@ -190,7 +190,14 @@ if get_option('intel-clc') == 'system'
 elif with_intel_clc
   prog_intel_clc = executable(
     'intel_clc',
-    ['intel_clc.c', 'brw_kernel.c'],
+    [
+      'intel_clc.c',
+      'brw_kernel.c',
+
+      # Use just the nir_options part of ELK instead of fully linking.
+      'elk/elk_nir_options.h',
+      'elk/elk_nir_options.c',
+    ],
     link_with : [
       libintel_compiler_brw, libintel_common,libisl,
     ],

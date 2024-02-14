@@ -55,6 +55,7 @@ foreach gen : intel_shaders_gens
     output : 'intel_gfx@0@_shaders_code.h'.format(gen[1]),
     command : [
       prog_intel_clc, intel_shaders_clc_wa_args, '--nir',
+      '--gfx-version=@0@'.format(gen[0] / 10),
       '--prefix', 'gfx@0@_intel_shaders'.format(gen[1]),
       prepended_input_args, '-o', '@OUTPUT@', '--',
       '-cl-std=cl2.0', '-D__OPENCL_VERSION__=200',

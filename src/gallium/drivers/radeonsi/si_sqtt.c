@@ -37,7 +37,7 @@ static bool si_sqtt_init_bo(struct si_context *sctx)
    size += sctx->sqtt->buffer_size * (uint64_t)max_se;
 
    sctx->sqtt->bo =
-      ws->buffer_create(ws, size, 4096, RADEON_DOMAIN_VRAM,
+      ws->buffer_create(ws, size, 4096, RADEON_DOMAIN_GTT,
                         RADEON_FLAG_NO_INTERPROCESS_SHARING |
                            RADEON_FLAG_GTT_WC | RADEON_FLAG_NO_SUBALLOC);
    if (!sctx->sqtt->bo)

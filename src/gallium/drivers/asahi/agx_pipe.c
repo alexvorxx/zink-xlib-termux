@@ -1338,26 +1338,6 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
       batch->occlusion_buffer.gpu = 0;
    }
 
-   unsigned handle_count = agx_batch_num_bo(batch) +
-                           agx_pool_num_bos(&batch->pool) +
-                           agx_pool_num_bos(&batch->pipeline_pool);
-
-   uint32_t *handles = calloc(sizeof(uint32_t), handle_count);
-   unsigned handle = 0, handle_i = 0;
-
-   AGX_BATCH_FOREACH_BO_HANDLE(batch, handle) {
-      handles[handle_i++] = handle;
-   }
-
-   agx_pool_get_bo_handles(&batch->pool, handles + handle_i);
-   handle_i += agx_pool_num_bos(&batch->pool);
-
-   agx_pool_get_bo_handles(&batch->pipeline_pool, handles + handle_i);
-   handle_i += agx_pool_num_bos(&batch->pipeline_pool);
-
-   /* Size calculation should've been exact */
-   assert(handle_i == handle_count);
-
    /* TODO: Linux UAPI submission */
    (void)dev;
    (void)zbias;

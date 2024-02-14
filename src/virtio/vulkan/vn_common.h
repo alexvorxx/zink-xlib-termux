@@ -238,6 +238,21 @@ struct vn_tls {
    struct list_head tls_rings;
 };
 
+/* A cached storage for object internal usages with below constraints:
+ * - It belongs to the object and shares the lifetime.
+ * - The storage reuse is protected by external synchronization.
+ * - The returned storage is not zero-initialized.
+ * - It never shrinks unless being purged via fini.
+ *
+ * The current users are:
+ * - VkCommandPool
+ */
+struct vn_cached_storage {
+   const VkAllocationCallbacks *alloc;
+   size_t size;
+   void *data;
+};
+
 void
 vn_env_init(void);
 
@@ -546,6 +561,37 @@ static inline bool
 vn_cache_key_equal_function(const void *key1, const void *key2)
 {
    return memcmp(key1, key2, SHA1_DIGEST_LENGTH) == 0;
+}
+
+static inline void
+vn_cached_storage_init(struct vn_cached_storage *storage,
+                       const VkAllocationCallbacks *alloc)
+{
+   storage->alloc = alloc;
+   storage->size = 0;
+   storage->data = NULL;
+}
+
+static inline void *
+vn_cached_storage_get(struct vn_cached_storage *storage, size_t size)
+{
+   if (size > storage->size) {
+      void *data =
+         vk_realloc(storage->alloc, storage->data, size, VN_DEFAULT_ALIGN,
+                    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      if (!data)
+         return NULL;
+
+      storage->size = size;
+      storage->data = data;
+   }
+   return storage->data;
+}
+
+static inline void
+vn_cached_storage_fini(struct vn_cached_storage *storage)
+{
+   vk_free(storage->alloc, storage->data);
 }
 
 #endif /* VN_COMMON_H */

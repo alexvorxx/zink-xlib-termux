@@ -67,30 +67,12 @@ vn_dependency_info_has_present_src(uint32_t dep_count,
    return false;
 }
 
-static void *
-vn_cmd_get_tmp_data(struct vn_command_buffer *cmd, size_t size)
-{
-   struct vn_command_pool *pool = cmd->pool;
-   /* avoid shrinking in case of non efficient reallocation implementation */
-   if (size > pool->tmp.size) {
-      void *data =
-         vk_realloc(&pool->allocator, pool->tmp.data, size, VN_DEFAULT_ALIGN,
-                    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-      if (!data)
-         return NULL;
-
-      pool->tmp.data = data;
-      pool->tmp.size = size;
-   }
-
-   return pool->tmp.data;
-}
-
 static inline VkImageMemoryBarrier *
 vn_cmd_get_image_memory_barriers(struct vn_command_buffer *cmd,
                                  uint32_t count)
 {
-   return vn_cmd_get_tmp_data(cmd, count * sizeof(VkImageMemoryBarrier));
+   return vn_cached_storage_get(&cmd->pool->storage,
+                                count * sizeof(VkImageMemoryBarrier));
 }
 
 /* About VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, the spec says
@@ -403,7 +385,7 @@ vn_cmd_fix_dependency_infos(struct vn_command_buffer *cmd,
 
    size_t tmp_size = dep_count * sizeof(VkDependencyInfo) +
                      total_barrier_count * sizeof(VkImageMemoryBarrier2);
-   void *tmp = vn_cmd_get_tmp_data(cmd, tmp_size);
+   void *tmp = vn_cached_storage_get(&cmd->pool->storage, tmp_size);
    if (!tmp) {
       cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
       return dep_infos;
@@ -682,6 +664,8 @@ vn_CreateCommandPool(VkDevice device,
    list_inithead(&pool->command_buffers);
    list_inithead(&pool->free_query_batches);
 
+   vn_cached_storage_init(&pool->storage, alloc);
+
    VkCommandPool pool_handle = vn_command_pool_to_handle(pool);
    vn_async_vkCreateCommandPool(dev->primary_ring, device, pCreateInfo, NULL,
                                 &pool_handle);
@@ -735,8 +719,7 @@ vn_DestroyCommandPool(VkDevice device,
                             &pool->free_query_batches, head)
       vk_free(alloc, batch);
 
-   if (pool->tmp.data)
-      vk_free(alloc, pool->tmp.data);
+   vn_cached_storage_fini(&pool->storage);
 
    vn_object_base_fini(&pool->base);
    vk_free(alloc, pool);
@@ -784,6 +767,9 @@ vn_ResetCommandPool(VkDevice device,
       list_for_each_entry_safe(struct vn_feedback_query_batch, batch,
                                &pool->free_query_batches, head)
          vk_free(&pool->allocator, batch);
+
+      vn_cached_storage_fini(&pool->storage);
+      vn_cached_storage_init(&pool->storage, &pool->allocator);
    }
 
    vn_async_vkResetCommandPool(dev->primary_ring, device, commandPool, flags);

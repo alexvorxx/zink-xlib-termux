@@ -127,6 +127,8 @@ nvk_AllocateMemory(VkDevice device,
       vk_find_struct_const(pAllocateInfo->pNext, IMPORT_MEMORY_FD_INFO_KHR);
    const VkExportMemoryAllocateInfo *export_info =
       vk_find_struct_const(pAllocateInfo->pNext, EXPORT_MEMORY_ALLOCATE_INFO);
+   const VkMemoryDedicatedAllocateInfo *dedicated_info =
+      vk_find_struct_const(pAllocateInfo->pNext, MEMORY_DEDICATED_ALLOCATE_INFO);
    const VkMemoryType *type =
       &pdev->mem_types[pAllocateInfo->memoryTypeIndex];
 
@@ -142,6 +144,21 @@ nvk_AllocateMemory(VkDevice device,
    uint32_t alignment = (1ULL << 12);
    if (flags & NOUVEAU_WS_BO_LOCAL)
       alignment = (1ULL << 16);
+
+   uint8_t pte_kind = 0, tile_mode = 0;
+   if (dedicated_info != NULL) {
+      VK_FROM_HANDLE(nvk_image, image, dedicated_info->image);
+      if (image != NULL &&
+          image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
+         /* This image might be shared with GL so we need to set the BO flags
+          * such that GL can bind and use it.
+          */
+         assert(image->plane_count == 1);
+         alignment = MAX2(alignment, image->planes[0].nil.align_B);
+         pte_kind = image->planes[0].nil.pte_kind;
+         tile_mode = image->planes[0].nil.tile_mode;
+      }
+   }
 
    const uint64_t aligned_size =
       align64(pAllocateInfo->allocationSize, alignment);
@@ -170,6 +187,13 @@ nvk_AllocateMemory(VkDevice device,
        */
       if (fd_info->handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT)
          assert(!(flags & ~mem->bo->flags));
+   } else if (pte_kind != 0 || tile_mode != 0) {
+      mem->bo = nouveau_ws_bo_new_tiled(dev->ws_dev, aligned_size, alignment,
+                                        pte_kind, tile_mode, flags);
+      if (!mem->bo) {
+         result = vk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY, "%m");
+         goto fail_alloc;
+      }
    } else {
       mem->bo = nouveau_ws_bo_new(dev->ws_dev, aligned_size, alignment, flags);
       if (!mem->bo) {

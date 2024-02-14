@@ -1281,7 +1281,22 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
 
    if (min_lod.file != BAD_FILE && !min_lod_is_first) {
       /* Account for all of the missing coordinate sources */
-      if (op == SHADER_OPCODE_TXD && devinfo->verx10 >= 125) {
+      if (op == FS_OPCODE_TXB && devinfo->ver >= 20 &&
+          inst->has_packed_lod_ai_src) {
+         /* Bspec 64985:
+          *
+          * For sample_b sampler message format:
+          *
+          * SIMD16H/SIMD32H
+          * Param Number   0     1  2  3  4  5
+          * Param          BIAS  U  V  R  Ai MLOD
+          *
+          * SIMD16/SIMD32
+          * Param Number   0        1  2  3  4
+          * Param          BIAS_AI  U  V  R  MLOD
+          */
+         length += 3 - coord_components;
+      } else if (op == SHADER_OPCODE_TXD && devinfo->verx10 >= 125) {
          /* On DG2 and newer platforms, sample_d can only be used with 1D and
           * 2D surfaces, so the maximum number of gradient components is 2.
           * In spite of this limitation, the Bspec lists a mysterious R
@@ -1433,8 +1448,10 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
 
 static unsigned
 get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
-                                      opcode op, const fs_reg *src)
+                                      opcode op, const fs_inst *inst)
 {
+   assert(inst);
+   const fs_reg *src = inst->src;
    unsigned src_type_size = 0;
 
    /* All sources need to have the same size, therefore seek the first valid
@@ -1480,7 +1497,9 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
    if (op == SHADER_OPCODE_TXF_CMS_W ||
        op == SHADER_OPCODE_TXF_CMS ||
        op == SHADER_OPCODE_TXF_UMS ||
-       op == SHADER_OPCODE_TXF_MCS)
+       op == SHADER_OPCODE_TXF_MCS ||
+       (op == FS_OPCODE_TXB && !inst->has_packed_lod_ai_src &&
+        devinfo->ver >= 20))
       src_type_size = 2;
 
    return src_type_size * 8;
@@ -1513,7 +1532,7 @@ lower_sampler_logical_send(const fs_builder &bld, fs_inst *inst, opcode op)
 
    if (devinfo->ver >= 7) {
       const unsigned msg_payload_type_bit_size =
-         get_sampler_msg_payload_type_bit_size(devinfo, op, inst->src);
+         get_sampler_msg_payload_type_bit_size(devinfo, op, inst);
 
       /* 16-bit payloads are available only on gfx11+ */
       assert(msg_payload_type_bit_size != 16 || devinfo->ver >= 11);

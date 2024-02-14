@@ -429,6 +429,9 @@ public:
    bool keep_payload_trailing_zeros;
 
    tgl_swsb sched; /**< Scheduling info. */
+
+   /* Hint that this instruction has combined LOD/LOD bias with array index */
+   bool has_packed_lod_ai_src;
 };
 
 /**

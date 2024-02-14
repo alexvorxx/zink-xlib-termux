@@ -8087,6 +8087,7 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
 
    ASSERTED bool got_lod = false;
    ASSERTED bool got_bias = false;
+   bool pack_lod_and_array_index = false;
    uint32_t header_bits = 0;
    for (unsigned i = 0; i < instr->num_srcs; i++) {
       nir_src nir_src = instr->src[i].src;
@@ -8224,7 +8225,7 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
       case nir_tex_src_backend1:
          assert(!got_lod && !got_bias);
          got_lod = true;
-
+         pack_lod_and_array_index = true;
          assert(instr->op == nir_texop_txl || instr->op == nir_texop_txb);
          srcs[TEX_LOGICAL_SRC_LOD] =
             retype(get_nir_src_imm(ntb, instr->src[i].src), BRW_REGISTER_TYPE_F);
@@ -8349,6 +8350,8 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    fs_reg dst = bld.vgrf(brw_type_for_nir_type(devinfo, instr->dest_type), 4 + instr->is_sparse);
    fs_inst *inst = bld.emit(opcode, dst, srcs, ARRAY_SIZE(srcs));
    inst->offset = header_bits;
+
+   inst->has_packed_lod_ai_src = pack_lod_and_array_index;
 
    const unsigned dest_size = nir_tex_instr_dest_size(instr);
    if (devinfo->ver >= 9 &&

@@ -4104,7 +4104,8 @@ VkResult anv_AllocateMemory(
    if (device->info->has_aux_map)
       alloc_flags |= ANV_BO_ALLOC_AUX_TT_ALIGNED;
 
-   /* If the allocation is not dedicated, allocate additional CCS space.
+   /* If the allocation is not dedicated nor a host pointer, allocate
+    * additional CCS space.
     *
     * TODO: If we ever ship VK_EXT_descriptor_buffer (ahahah... :() we could
     * drop this flag in the descriptor buffer case as we don't need any
@@ -4113,7 +4114,9 @@ VkResult anv_AllocateMemory(
     * TODO: We could also create new memory types for allocations that don't
     * need any compression.
     */
-   if (device->physical->alloc_aux_tt_mem && dedicated_info == NULL)
+   if (device->physical->alloc_aux_tt_mem &&
+       dedicated_info == NULL &&
+       mem->vk.host_ptr == NULL)
       alloc_flags |= ANV_BO_ALLOC_AUX_CCS;
 
    /* TODO: Android, ChromeOS and other applications may need another way to

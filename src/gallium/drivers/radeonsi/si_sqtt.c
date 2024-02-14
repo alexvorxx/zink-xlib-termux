@@ -331,7 +331,8 @@ bool si_init_sqtt(struct si_context *sctx)
    /* Default buffer size set to 32MB per SE. */
    sctx->sqtt->buffer_size =
       debug_get_num_option("AMD_THREAD_TRACE_BUFFER_SIZE", 32 * 1024) * 1024;
-   sctx->sqtt->instruction_timing_enabled = false;
+   sctx->sqtt->instruction_timing_enabled =
+      debug_get_bool_option("AMD_THREAD_TRACE_INSTRUCTION_TIMING", true);
    sctx->sqtt->start_frame = 10;
 
    const char *trigger = getenv("AMD_THREAD_TRACE_TRIGGER");

@@ -129,8 +129,8 @@ struct etna_nn_params {
 
    /* 18 */
    FIELD(out_image_circular_buf_size, 26) /* >> 6 */
-   FIELD(unused7, 5)
    FIELD(per_channel_post_mul, 1)
+   FIELD(unused7, 5)
 
    /* 19 */
    FIELD(out_image_circular_buf_end_addr_plus_1, 26) /* >> 6 */

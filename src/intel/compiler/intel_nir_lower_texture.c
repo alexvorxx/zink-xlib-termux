@@ -84,7 +84,8 @@ pack_lod_and_array_index(nir_builder *b, nir_tex_instr *tex)
    /* Second, replace the coordinate with a new value that has one fewer
     * component (i.e., drop the array index).
     */
-   nir_def *reduced_coord = nir_trim_vector(b, coord, 2);
+   nir_def *reduced_coord = nir_trim_vector(b, coord,
+                                            tex->coord_components - 1);
    tex->coord_components--;
 
    /* Finally, remove the old sources and add the new. */

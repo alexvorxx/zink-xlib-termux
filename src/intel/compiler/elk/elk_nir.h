@@ -32,9 +32,6 @@
 extern "C" {
 #endif
 
-extern const struct nir_shader_compiler_options elk_scalar_nir_options;
-extern const struct nir_shader_compiler_options elk_vector_nir_options;
-
 int elk_type_size_vec4(const struct glsl_type *type, bool bindless);
 int elk_type_size_dvec4(const struct glsl_type *type, bool bindless);
 

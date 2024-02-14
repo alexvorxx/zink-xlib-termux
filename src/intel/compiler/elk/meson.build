@@ -88,6 +88,8 @@ libintel_compiler_elk_files = files(
   'elk_nir_lower_alpha_to_coverage.c',
   'elk_nir_lower_cs_intrinsics.c',
   'elk_nir_lower_storage_image.c',
+  'elk_nir_options.h',
+  'elk_nir_options.c',
   'elk_nir_private.h',
   'elk_packed_float.c',
   'elk_predicated_break.cpp',

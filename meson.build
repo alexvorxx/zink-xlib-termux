@@ -303,7 +303,8 @@ else
   with_intel_clc = false
 endif
 
-with_intel_vk_rt = with_intel_vk and get_option('intel-rt') != 'disabled'
+with_intel_vk_rt = ['x86_64'].contains(host_machine.cpu_family()) and \
+  with_intel_vk and get_option('intel-rt') != 'disabled'
 
 with_any_intel = [
   with_gallium_crocus,

@@ -859,7 +859,7 @@ zink_kopper_acquire_readback(struct zink_context *ctx, struct zink_resource *res
 
    /* if this hasn't been presented or if it has data, use this as the readback target */
    if (res->obj->last_dt_idx == UINT32_MAX ||
-       (zink_kopper_acquired(cdt, res->obj->dt_idx) && cdt->swapchain->images[res->obj->dt_idx].dt_has_data)) {
+       (res->obj->dt_idx != UINT32_MAX && cdt->swapchain->images[res->obj->dt_idx].age)) {
       *readback = res;
       return false;
    }

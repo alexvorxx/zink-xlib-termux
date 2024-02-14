@@ -368,28 +368,15 @@ static bool si_update_shaders(struct si_context *sctx)
             for (int i = 0; i < SI_NUM_GRAPHICS_SHADERS; i++) {
                struct si_shader *shader = sctx->shaders[i].current;
                if (sctx->shaders[i].cso && shader) {
-                  struct ac_rtld_binary binary;
-                  si_shader_binary_open(sctx->screen, shader, &binary);
+                  si_resource_reference(&shader->bo, bo);
 
-                  struct ac_rtld_upload_info u = {};
-                  u.binary = &binary;
-                  u.get_external_symbol = si_get_external_symbol;
-                  u.cb_data = &scratch_va;
-                  u.rx_va = bo->gpu_address + offset;
-                  u.rx_ptr = ptr + offset;
-
-                  int size = ac_rtld_upload(&u);
-                  ac_rtld_close(&binary);
-
+                  int size = si_shader_binary_upload_at(sctx->screen, shader, scratch_va, offset);
                   pipeline->offset[i] = offset;
-
-                  shader->gpu_address = u.rx_va;
-
                   offset += align(size, 256);
 
                   struct si_pm4_state *pm4 = &shader->pm4;
 
-                  uint64_t va_low = (pipeline->bo->gpu_address + pipeline->offset[i]) >> 8;
+                  uint64_t va_low = shader->gpu_address >> 8;
                   uint32_t reg = pm4->spi_shader_pgm_lo_reg;
                   si_pm4_set_reg(&pipeline->pm4, reg, va_low);
                }

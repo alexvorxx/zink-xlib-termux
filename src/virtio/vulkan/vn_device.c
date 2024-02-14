@@ -32,6 +32,7 @@ vn_queue_fini(struct vn_queue *queue)
    if (queue->sparse_semaphore != VK_NULL_HANDLE) {
       vn_DestroySemaphore(dev_handle, queue->sparse_semaphore, NULL);
    }
+   vn_cached_storage_fini(&queue->storage);
    vn_queue_base_fini(&queue->base);
 }
 
@@ -45,6 +46,8 @@ vn_queue_init(struct vn_device *dev,
       vn_queue_base_init(&queue->base, &dev->base, queue_info, queue_index);
    if (result != VK_SUCCESS)
       return result;
+
+   vn_cached_storage_init(&queue->storage, &dev->base.base.alloc);
 
    VkDeviceQueueTimelineInfoMESA timeline_info;
    const struct vn_renderer_info *renderer_info =

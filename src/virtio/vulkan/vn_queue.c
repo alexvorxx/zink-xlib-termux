@@ -343,7 +343,6 @@ static VkResult
 vn_queue_submission_alloc_storage(struct vn_queue_submission *submit)
 {
    struct vn_queue *queue = vn_queue_from_handle(submit->queue_handle);
-   const VkAllocationCallbacks *alloc = &queue->base.base.base.device->alloc;
    size_t batch_size = 0;
    size_t cmd_size = 0;
 
@@ -369,9 +368,8 @@ vn_queue_submission_alloc_storage(struct vn_queue_submission *submit)
    /* for fence, timeline semaphore and query feedback cmds */
    const size_t total_cmd_size =
       cmd_size * MAX2(submit->feedback_cmd_buffer_count, 1);
-   submit->temp.storage =
-      vk_alloc(alloc, total_batch_size + total_cmd_size, VN_DEFAULT_ALIGN,
-               VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+   submit->temp.storage = vn_cached_storage_get(
+      &queue->storage, total_batch_size + total_cmd_size);
    if (!submit->temp.storage)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
@@ -968,16 +966,9 @@ vn_queue_recycle_src_feedback(struct vn_queue_submission *submit)
 static void
 vn_queue_submission_cleanup(struct vn_queue_submission *submit)
 {
-   struct vn_queue *queue = vn_queue_from_handle(submit->queue_handle);
-   const VkAllocationCallbacks *alloc = &queue->base.base.base.device->alloc;
-
    /* TODO clean up pending src feedbacks on failure? */
    if (submit->has_feedback_semaphore)
       vn_queue_recycle_src_feedback(submit);
-
-   if (submit->has_feedback_fence || submit->has_feedback_semaphore ||
-       submit->has_feedback_query)
-      vk_free(alloc, submit->temp.storage);
 }
 
 static VkResult

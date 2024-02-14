@@ -29,6 +29,9 @@ struct vn_queue {
     */
    VkSemaphore sparse_semaphore;
    uint64_t sparse_semaphore_counter;
+
+   /* for vn_queue_submission storage */
+   struct vn_cached_storage storage;
 };
 VK_DEFINE_HANDLE_CASTS(vn_queue, base.base.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 

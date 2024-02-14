@@ -846,7 +846,7 @@ nir_algebraic_instr(nir_builder *build, nir_instr *instr,
    const unsigned execution_mode =
       build->shader->info.float_controls_execution_mode;
    const bool ignore_inexact =
-      nir_is_float_control_signed_zero_inf_nan_preserve(execution_mode, bit_size) ||
+      nir_is_float_control_signed_zero_inf_nan_preserve(alu->fp_fast_math, bit_size) ||
       nir_is_denorm_flush_to_zero(execution_mode, bit_size);
 
    int xform_idx = *util_dynarray_element(states, uint16_t,

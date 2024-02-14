@@ -1822,6 +1822,17 @@ emit_wave_size(struct ntd_context *ctx)
    return dxil_get_metadata_node(&ctx->mod, &wave_size_node, 1);
 }
 
+static const struct dxil_mdnode *
+emit_wave_size_range(struct ntd_context *ctx)
+{
+   const nir_shader *s = ctx->shader;
+   const struct dxil_mdnode *wave_size_nodes[3];
+   wave_size_nodes[0] = dxil_get_metadata_int32(&ctx->mod, s->info.subgroup_size);
+   wave_size_nodes[1] = wave_size_nodes[0];
+   wave_size_nodes[2] = wave_size_nodes[0];
+   return dxil_get_metadata_node(&ctx->mod, wave_size_nodes, ARRAY_SIZE(wave_size_nodes));
+}
+
 static int64_t
 get_module_flags(struct ntd_context *ctx)
 {
@@ -2047,9 +2058,15 @@ emit_metadata(struct ntd_context *ctx)
       if (!emit_tag(ctx, DXIL_SHADER_TAG_NUM_THREADS, emit_threads(ctx)))
          return false;
       if (ctx->mod.minor_version >= 6 &&
-          ctx->shader->info.subgroup_size >= SUBGROUP_SIZE_REQUIRE_8 &&
-          !emit_tag(ctx, DXIL_SHADER_TAG_WAVE_SIZE, emit_wave_size(ctx)))
-          return false;
+          ctx->shader->info.subgroup_size >= SUBGROUP_SIZE_REQUIRE_8) {
+         if (ctx->mod.minor_version < 8) {
+            if (!emit_tag(ctx, DXIL_SHADER_TAG_WAVE_SIZE, emit_wave_size(ctx)))
+               return false;
+         } else {
+            if (!emit_tag(ctx, DXIL_SHADER_TAG_WAVE_SIZE_RANGE, emit_wave_size_range(ctx)))
+               return false;
+         }
+      }
    }
 
    uint64_t flags = get_module_flags(ctx);

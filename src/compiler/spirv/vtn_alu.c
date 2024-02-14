@@ -402,6 +402,43 @@ vtn_nir_alu_op_for_spirv_opcode(struct vtn_builder *b,
    }
 }
 
+static void
+handle_fp_fast_math(struct vtn_builder *b, UNUSED struct vtn_value *val,
+                 UNUSED int member, const struct vtn_decoration *dec,
+                 UNUSED void *_void)
+{
+   vtn_assert(dec->scope == VTN_DEC_DECORATION);
+   if (dec->decoration != SpvDecorationFPFastMathMode)
+      return;
+
+   SpvFPFastMathModeMask can_fast_math =
+      SpvFPFastMathModeAllowRecipMask |
+      SpvFPFastMathModeAllowContractMask |
+      SpvFPFastMathModeAllowReassocMask |
+      SpvFPFastMathModeAllowTransformMask;
+
+   if ((dec->operands[0] & can_fast_math) != can_fast_math)
+      b->nb.exact = true;
+
+   /* Decoration overrides defaults */
+   b->nb.fp_fast_math = 0;
+   if (!(dec->operands[0] & SpvFPFastMathModeNSZMask))
+      b->nb.fp_fast_math |=
+         FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE_FP16 |
+         FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE_FP32 |
+         FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE_FP64;
+   if (!(dec->operands[0] & SpvFPFastMathModeNotNaNMask))
+      b->nb.fp_fast_math |=
+         FLOAT_CONTROLS_NAN_PRESERVE_FP16 |
+         FLOAT_CONTROLS_NAN_PRESERVE_FP32 |
+         FLOAT_CONTROLS_NAN_PRESERVE_FP64;
+   if (!(dec->operands[0] & SpvFPFastMathModeNotInfMask))
+      b->nb.fp_fast_math |=
+         FLOAT_CONTROLS_INF_PRESERVE_FP16 |
+         FLOAT_CONTROLS_INF_PRESERVE_FP32 |
+         FLOAT_CONTROLS_INF_PRESERVE_FP64;
+}
+
 void
 vtn_handle_fp_fast_math(struct vtn_builder *b, struct vtn_value *val)
 {
@@ -418,6 +455,7 @@ vtn_handle_fp_fast_math(struct vtn_builder *b, struct vtn_value *val)
       "enum float_controls and fp_fast_math out of sync!");
    b->nb.fp_fast_math = b->shader->info.float_controls_execution_mode &
       FLOAT_CONTROLS2_BITS;
+   vtn_foreach_decoration(b, val, handle_fp_fast_math, NULL);
 #undef FLOAT_CONTROLS2_BITS
 }
 

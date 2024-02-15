@@ -64,8 +64,7 @@ struct schedule_node_child;
 class schedule_node : public exec_node
 {
 public:
-   void set_latency_gfx4();
-   void set_latency_gfx7(const struct brw_isa_info *isa);
+   void set_latency(const struct brw_isa_info *isa);
 
    backend_instruction *inst;
    schedule_node_child *children;
@@ -149,48 +148,8 @@ exit_initial_unblocked_time(const schedule_node *n)
 }
 
 void
-schedule_node::set_latency_gfx4()
+schedule_node::set_latency(const struct brw_isa_info *isa)
 {
-   int chans = 8;
-   int math_latency = 22;
-
-   switch (inst->opcode) {
-   case SHADER_OPCODE_RCP:
-      this->latency = 1 * chans * math_latency;
-      break;
-   case SHADER_OPCODE_RSQ:
-      this->latency = 2 * chans * math_latency;
-      break;
-   case SHADER_OPCODE_INT_QUOTIENT:
-   case SHADER_OPCODE_SQRT:
-   case SHADER_OPCODE_LOG2:
-      /* full precision log.  partial is 2. */
-      this->latency = 3 * chans * math_latency;
-      break;
-   case SHADER_OPCODE_INT_REMAINDER:
-   case SHADER_OPCODE_EXP2:
-      /* full precision.  partial is 3, same throughput. */
-      this->latency = 4 * chans * math_latency;
-      break;
-   case SHADER_OPCODE_POW:
-      this->latency = 8 * chans * math_latency;
-      break;
-   case SHADER_OPCODE_SIN:
-   case SHADER_OPCODE_COS:
-      /* minimum latency, max is 12 rounds. */
-      this->latency = 5 * chans * math_latency;
-      break;
-   default:
-      this->latency = 2;
-      break;
-   }
-}
-
-void
-schedule_node::set_latency_gfx7(const struct brw_isa_info *isa)
-{
-   const bool is_haswell = isa->devinfo->verx10 == 75;
-
    switch (inst->opcode) {
    case BRW_OPCODE_MAD:
       /* 2 cycles
@@ -215,7 +174,7 @@ schedule_node::set_latency_gfx7(const struct brw_isa_info *isa)
       /* Our register allocator doesn't know about register banks, so use the
        * higher latency.
        */
-      latency = is_haswell ? 16 : 18;
+      latency = 18;
       break;
 
    case BRW_OPCODE_LRP:
@@ -260,7 +219,7 @@ schedule_node::set_latency_gfx7(const struct brw_isa_info *isa)
        *
        * Same for exp2, log2, rsq, sqrt, sin, cos.
        */
-      latency = is_haswell ? 14 : 16;
+      latency = 16;
       break;
 
    case SHADER_OPCODE_POW:
@@ -271,7 +230,7 @@ schedule_node::set_latency_gfx7(const struct brw_isa_info *isa)
        * math pow(8) g4<1>F g2<0,1,0>F   g2.1<0,1,0>F  { align1 WE_normal 1Q };
        * mov(8)      null   g4<8,8,1>F                 { align1 WE_normal 1Q };
        */
-      latency = is_haswell ? 22 : 24;
+      latency = 24;
       break;
 
    case SHADER_OPCODE_TEX:
@@ -431,13 +390,11 @@ schedule_node::set_latency_gfx7(const struct brw_isa_info *isa)
          case GFX7_DATAPORT_RC_TYPED_SURFACE_WRITE:
          case GFX7_DATAPORT_RC_TYPED_SURFACE_READ:
             /* See also SHADER_OPCODE_TYPED_SURFACE_READ */
-            assert(!is_haswell);
             latency = 600;
             break;
 
          case GFX7_DATAPORT_RC_TYPED_ATOMIC_OP:
             /* See also SHADER_OPCODE_TYPED_ATOMIC */
-            assert(!is_haswell);
             latency = 14000;
             break;
 
@@ -493,7 +450,6 @@ schedule_node::set_latency_gfx7(const struct brw_isa_info *isa)
              * gives an average latency of 583 cycles per surface read,
              * standard deviation 0.9%.
              */
-            assert(!is_haswell);
             latency = 600;
             break;
 
@@ -512,7 +468,6 @@ schedule_node::set_latency_gfx7(const struct brw_isa_info *isa)
              * collisions between threads and favorable pipelining has been
              * seen to be reduced by a factor of 100.
              */
-            assert(!is_haswell);
             latency = 14000;
             break;
 
@@ -659,22 +614,16 @@ public:
       this->nodes_len = s->cfg->last_block()->end_ip + 1;
       this->nodes = linear_zalloc_array(lin_ctx, schedule_node, this->nodes_len);
 
-      const struct intel_device_info *devinfo = bs->devinfo;
       const struct brw_isa_info *isa = &bs->compiler->isa;
 
       schedule_node *n = nodes;
       foreach_block_and_inst(block, backend_instruction, inst, s->cfg) {
          n->inst = inst;
 
-         /* We can't measure Gfx6 timings directly but expect them to be much
-          * closer to Gfx7 than Gfx4.
-          */
          if (!post_reg_alloc)
             n->latency = 1;
-         else if (devinfo->ver >= 6)
-            n->set_latency_gfx7(isa);
          else
-            n->set_latency_gfx4();
+            n->set_latency(isa);
 
          n++;
       }
@@ -1534,8 +1483,6 @@ fs_instruction_scheduler::choose_instruction_to_schedule()
        * latency.
        */
       foreach_in_list(schedule_node, n, &current.available) {
-         fs_inst *inst = (fs_inst *)n->inst;
-
          if (!chosen) {
             chosen = n;
             chosen_register_pressure_benefit =
@@ -1573,30 +1520,6 @@ fs_instruction_scheduler::choose_instruction_to_schedule()
                continue;
             } else if (n->tmp.cand_generation < chosen->tmp.cand_generation) {
                continue;
-            }
-
-            /* On MRF-using chips, prefer non-SEND instructions.  If we don't
-             * do this, then because we prefer instructions that just became
-             * candidates, we'll end up in a pattern of scheduling a SEND,
-             * then the MRFs for the next SEND, then the next SEND, then the
-             * MRFs, etc., without ever consuming the results of a send.
-             */
-            if (v->devinfo->ver < 7) {
-               fs_inst *chosen_inst = (fs_inst *)chosen->inst;
-
-               /* We use size_written > 4 * exec_size as our test for the kind
-                * of send instruction to avoid -- only sends generate many
-                * regs, and a single-result send is probably actually reducing
-                * register pressure.
-                */
-               if (inst->size_written <= 4 * inst->exec_size &&
-                   chosen_inst->size_written > 4 * chosen_inst->exec_size) {
-                  chosen = n;
-                  chosen_register_pressure_benefit = register_pressure_benefit;
-                  continue;
-               } else if (inst->size_written > chosen_inst->size_written) {
-                  continue;
-               }
             }
          }
 
@@ -1704,19 +1627,6 @@ instruction_scheduler::update_children(schedule_node *chosen)
       }
    }
    current.cand_generation++;
-
-   /* Shared resource: the mathbox.  There's one mathbox per EU on Gfx6+
-    * but it's more limited pre-gfx6, so if we send something off to it then
-    * the next math instruction isn't going to make progress until the first
-    * is done.
-    */
-   if (bs->devinfo->ver < 6 && chosen->inst->is_math()) {
-      foreach_in_list(schedule_node, n, &current.available) {
-         if (n->inst->is_math())
-            n->tmp.unblocked_time = MAX2(n->tmp.unblocked_time,
-                                         current.time + chosen->latency);
-      }
-   }
 }
 
 void

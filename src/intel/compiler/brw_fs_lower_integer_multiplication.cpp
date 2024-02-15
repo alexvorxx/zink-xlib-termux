@@ -150,23 +150,16 @@ brw_fs_lower_mul_dword_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
     */
    if (inst->src[1].file == IMM &&
        (inst->src[1].d >= INT16_MIN && inst->src[1].d <= UINT16_MAX)) {
-      /* The MUL instruction isn't commutative. On Gen <= 6, only the low
-       * 16-bits of src0 are read, and on Gen >= 7 only the low 16-bits of
-       * src1 are used.
+      /* The MUL instruction isn't commutative. On Gen >= 7 only
+       * the low 16-bits of src1 are used.
        *
        * If multiplying by an immediate value that fits in 16-bits, do a
        * single MUL instruction with that value in the proper location.
        */
       const bool ud = (inst->src[1].d >= 0);
-      if (devinfo->ver < 7) {
-         fs_reg imm(VGRF, s.alloc.allocate(s.dispatch_width / 8), inst->dst.type);
-         ibld.MOV(imm, inst->src[1]);
-         ibld.MUL(inst->dst, imm, inst->src[0]);
-      } else {
-         ibld.MUL(inst->dst, inst->src[0],
-                  ud ? brw_imm_uw(inst->src[1].ud)
-                     : brw_imm_w(inst->src[1].d));
-      }
+      ibld.MUL(inst->dst, inst->src[0],
+               ud ? brw_imm_uw(inst->src[1].ud)
+                  : brw_imm_w(inst->src[1].d));
    } else {
       /* Gen < 8 (and some Gfx8+ low-power parts like Cherryview) cannot
        * do 32-bit integer multiplication in one instruction, but instead
@@ -239,7 +232,7 @@ brw_fs_lower_mul_dword_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
       high.offset = inst->dst.offset % REG_SIZE;
 
       bool do_addition = true;
-      if (devinfo->ver >= 7) {
+      {
          /* From Wa_1604601757:
           *
           * "When multiplying a DW and any lower precision integer, source modifier
@@ -294,14 +287,6 @@ brw_fs_lower_mul_dword_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
             ibld.MUL(high, inst->src[0],
                      subscript(inst->src[1], BRW_REGISTER_TYPE_UW, 1));
          }
-      } else {
-         if (inst->src[0].abs)
-            lower_src_modifiers(&s, block, inst, 0);
-
-         ibld.MUL(low, subscript(inst->src[0], BRW_REGISTER_TYPE_UW, 0),
-                  inst->src[1]);
-         ibld.MUL(high, subscript(inst->src[0], BRW_REGISTER_TYPE_UW, 1),
-                  inst->src[1]);
       }
 
       if (do_addition) {
@@ -399,7 +384,7 @@ brw_fs_lower_mulh_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
     *      mul (8) acc0:d r2.0<8;8,1>:d r3.0<16;8,2>:uw
     *      mach (8) r5.0<1>:d r2.0<8;8,1>:d r3.0<8;8,1>:d"
     */
-   if (devinfo->ver >= 8 && (inst->src[1].negate || inst->src[1].abs))
+   if (inst->src[1].negate || inst->src[1].abs)
       lower_src_modifiers(&s, block, inst, 1);
 
    /* Should have been lowered to 8-wide. */
@@ -408,47 +393,23 @@ brw_fs_lower_mulh_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
    const fs_reg acc = suboffset(retype(brw_acc_reg(inst->exec_size), inst->dst.type),
                                 inst->group % acc_width);
    fs_inst *mul = ibld.MUL(acc, inst->src[0], inst->src[1]);
-   fs_inst *mach = ibld.MACH(inst->dst, inst->src[0], inst->src[1]);
+   ibld.MACH(inst->dst, inst->src[0], inst->src[1]);
 
-   if (devinfo->ver >= 8) {
-      /* Until Gfx8, integer multiplies read 32-bits from one source,
-       * and 16-bits from the other, and relying on the MACH instruction
-       * to generate the high bits of the result.
-       *
-       * On Gfx8, the multiply instruction does a full 32x32-bit
-       * multiply, but in order to do a 64-bit multiply we can simulate
-       * the previous behavior and then use a MACH instruction.
-       */
-      assert(mul->src[1].type == BRW_REGISTER_TYPE_D ||
-             mul->src[1].type == BRW_REGISTER_TYPE_UD);
-      mul->src[1].type = BRW_REGISTER_TYPE_UW;
-      mul->src[1].stride *= 2;
+   /* Until Gfx8, integer multiplies read 32-bits from one source,
+    * and 16-bits from the other, and relying on the MACH instruction
+    * to generate the high bits of the result.
+    *
+    * On Gfx8, the multiply instruction does a full 32x32-bit
+    * multiply, but in order to do a 64-bit multiply we can simulate
+    * the previous behavior and then use a MACH instruction.
+    */
+   assert(mul->src[1].type == BRW_REGISTER_TYPE_D ||
+          mul->src[1].type == BRW_REGISTER_TYPE_UD);
+   mul->src[1].type = BRW_REGISTER_TYPE_UW;
+   mul->src[1].stride *= 2;
 
-      if (mul->src[1].file == IMM) {
-         mul->src[1] = brw_imm_uw(mul->src[1].ud);
-      }
-   } else if (devinfo->verx10 == 70 &&
-              inst->group > 0) {
-      /* Among other things the quarter control bits influence which
-       * accumulator register is used by the hardware for instructions
-       * that access the accumulator implicitly (e.g. MACH).  A
-       * second-half instruction would normally map to acc1, which
-       * doesn't exist on Gfx7 and up (the hardware does emulate it for
-       * floating-point instructions *only* by taking advantage of the
-       * extra precision of acc0 not normally used for floating point
-       * arithmetic).
-       *
-       * HSW and up are careful enough not to try to access an
-       * accumulator register that doesn't exist, but on earlier Gfx7
-       * hardware we need to make sure that the quarter control bits are
-       * zero to avoid non-deterministic behaviour and emit an extra MOV
-       * to get the result masked correctly according to the current
-       * channel enables.
-       */
-      mach->group = 0;
-      mach->force_writemask_all = true;
-      mach->dst = ibld.vgrf(inst->dst.type);
-      ibld.MOV(inst->dst, mach->dst);
+   if (mul->src[1].file == IMM) {
+      mul->src[1] = brw_imm_uw(mul->src[1].ud);
    }
 }
 
@@ -463,13 +424,8 @@ brw_fs_lower_integer_multiplication(fs_visitor &s)
          /* If the instruction is already in a form that does not need lowering,
           * return early.
           */
-         if (s.devinfo->ver >= 7) {
-            if (type_sz(inst->src[1].type) < 4 && type_sz(inst->src[0].type) <= 4)
-               continue;
-         } else {
-            if (type_sz(inst->src[0].type) < 4 && type_sz(inst->src[1].type) <= 4)
-               continue;
-         }
+         if (type_sz(inst->src[1].type) < 4 && type_sz(inst->src[0].type) <= 4)
+            continue;
 
          if ((inst->dst.type == BRW_REGISTER_TYPE_Q ||
               inst->dst.type == BRW_REGISTER_TYPE_UQ) &&

@@ -764,30 +764,6 @@ brw_combine_constants(struct value *candidates, unsigned num_candidates)
    return combine_constants_greedy(candidates, num_candidates);
 }
 
-/* Returns whether an instruction could co-issue if its immediate source were
- * replaced with a GRF source.
- */
-static bool
-could_coissue(const struct intel_device_info *devinfo, const fs_inst *inst)
-{
-   assert(inst->opcode == BRW_OPCODE_MOV ||
-          inst->opcode == BRW_OPCODE_CMP ||
-          inst->opcode == BRW_OPCODE_ADD ||
-          inst->opcode == BRW_OPCODE_MUL);
-
-   if (devinfo->ver != 7)
-      return false;
-
-   /* Only float instructions can coissue.  We don't have a great
-    * understanding of whether or not something like float(int(a) + int(b))
-    * would be considered float (based on the destination type) or integer
-    * (based on the source types), so we take the conservative choice of
-    * only promoting when both destination and source are float.
-    */
-   return inst->dst.type == BRW_REGISTER_TYPE_F &&
-          inst->src[0].type == BRW_REGISTER_TYPE_F;
-}
-
 /**
  * Box for storing fs_inst and some other necessary data
  *
@@ -1346,12 +1322,6 @@ brw_fs_opt_combine_constants(fs_visitor &s)
             add_candidate_immediate(&table, inst, ip, 0, true, false, block,
                                     devinfo, const_ctx);
          }
-
-         if (inst->src[1].file == IMM && devinfo->ver < 8) {
-            add_candidate_immediate(&table, inst, ip, 1, true, false, block,
-                                    devinfo, const_ctx);
-         }
-
          break;
 
       case BRW_OPCODE_ADD3:
@@ -1414,24 +1384,6 @@ brw_fs_opt_combine_constants(fs_visitor &s)
       case BRW_OPCODE_SHR:
          if (inst->src[0].file == IMM) {
             add_candidate_immediate(&table, inst, ip, 0, true, false, block,
-                                    devinfo, const_ctx);
-         }
-         break;
-
-      case BRW_OPCODE_MOV:
-         if (could_coissue(devinfo, inst) && inst->src[0].file == IMM) {
-            add_candidate_immediate(&table, inst, ip, 0, false, false, block,
-                                    devinfo, const_ctx);
-         }
-         break;
-
-      case BRW_OPCODE_CMP:
-      case BRW_OPCODE_ADD:
-      case BRW_OPCODE_MUL:
-         assert(inst->src[0].file != IMM);
-
-         if (could_coissue(devinfo, inst) && inst->src[1].file == IMM) {
-            add_candidate_immediate(&table, inst, ip, 1, false, false, block,
                                     devinfo, const_ctx);
          }
          break;
@@ -1552,46 +1504,20 @@ brw_fs_opt_combine_constants(fs_visitor &s)
    if (s.cfg->num_blocks != 1)
       qsort(table.imm, table.len, sizeof(struct imm), compare);
 
-   if (devinfo->ver > 7) {
-      struct register_allocation *regs =
-         (struct register_allocation *) calloc(table.len, sizeof(regs[0]));
+   struct register_allocation *regs =
+      (struct register_allocation *) calloc(table.len, sizeof(regs[0]));
 
-      for (int i = 0; i < table.len; i++) {
-         regs[i].nr = UINT_MAX;
-         regs[i].avail = 0xffff;
-      }
-
-      foreach_block(block, s.cfg) {
-         parcel_out_registers(table.imm, table.len, block, regs, table.len,
-                              s.alloc, devinfo->ver);
-      }
-
-      free(regs);
-   } else {
-      fs_reg reg(VGRF, s.alloc.allocate(1));
-      reg.stride = 0;
-
-      for (int i = 0; i < table.len; i++) {
-         struct imm *imm = &table.imm[i];
-
-         /* Put the immediate in an offset aligned to its size. Some
-          * instructions seem to have additional alignment requirements, so
-          * account for that too.
-          */
-         reg.offset = ALIGN(reg.offset, get_alignment_for_imm(imm));
-
-         /* Ensure we have enough space in the register to copy the immediate */
-         if (reg.offset + imm->size > REG_SIZE) {
-            reg.nr = s.alloc.allocate(1);
-            reg.offset = 0;
-         }
-
-         imm->nr = reg.nr;
-         imm->subreg_offset = reg.offset;
-
-         reg.offset += imm->size;
-      }
+   for (int i = 0; i < table.len; i++) {
+      regs[i].nr = UINT_MAX;
+      regs[i].avail = 0xffff;
    }
+
+   foreach_block(block, s.cfg) {
+      parcel_out_registers(table.imm, table.len, block, regs, table.len,
+                           s.alloc, devinfo->ver);
+   }
+
+   free(regs);
 
    bool rebuild_cfg = false;
 
@@ -1661,7 +1587,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
        * replicating the single one we want. To avoid this, we always populate
        * both HF slots within a DWord with the constant.
        */
-      const uint32_t width = devinfo->ver == 8 && imm->is_half_float ? 2 : 1;
+      const uint32_t width = 1;
       const fs_builder ibld = fs_builder(&s, width).at(insert_block, n).exec_all();
 
       fs_reg reg(VGRF, imm->nr);

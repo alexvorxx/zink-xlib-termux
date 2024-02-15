@@ -184,7 +184,6 @@ namespace {
           * support 64-bit types at all.
           */
          if ((!has_64bit || devinfo->verx10 >= 125 ||
-              devinfo->platform == INTEL_PLATFORM_CHV ||
               intel_device_info_is_9lp(devinfo)) && type_sz(t) > 4)
             return BRW_REGISTER_TYPE_UD;
          else
@@ -192,9 +191,7 @@ namespace {
 
       case SHADER_OPCODE_BROADCAST:
       case SHADER_OPCODE_MOV_INDIRECT:
-         if (((devinfo->verx10 == 70 ||
-               devinfo->platform == INTEL_PLATFORM_CHV ||
-               intel_device_info_is_9lp(devinfo) ||
+         if (((intel_device_info_is_9lp(devinfo) ||
                devinfo->verx10 >= 125) && type_sz(inst->src[0].type) > 4) ||
              (devinfo->verx10 >= 125 &&
               brw_reg_type_is_floating_point(inst->src[0].type)))
@@ -256,24 +253,6 @@ namespace {
       if (is_send(inst) || inst->is_math() || inst->is_control_source(i) ||
           inst->opcode == BRW_OPCODE_DPAS) {
          return false;
-      }
-
-      /* Empirical testing shows that Broadwell has a bug affecting half-float
-       * MAD instructions when any of its sources has a non-zero offset, such
-       * as:
-       *
-       * mad(8) g18<1>HF -g17<4,4,1>HF g14.8<4,4,1>HF g11<4,4,1>HF { align16 1Q };
-       *
-       * We used to generate code like this for SIMD8 executions where we
-       * used to pack components Y and W of a vector at offset 16B of a SIMD
-       * register. The problem doesn't occur if the stride of the source is 0.
-       */
-      if (devinfo->ver == 8 &&
-          inst->opcode == BRW_OPCODE_MAD &&
-          inst->src[i].type == BRW_REGISTER_TYPE_HF &&
-          reg_offset(inst->src[i]) % REG_SIZE > 0 &&
-          inst->src[i].stride != 0) {
-         return true;
       }
 
       const unsigned dst_byte_offset = reg_offset(inst->dst) % (reg_unit(devinfo) * REG_SIZE);

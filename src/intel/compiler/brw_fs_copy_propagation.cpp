@@ -630,14 +630,8 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
     * are sends, so the sources are moved to MRF's and there are no
     * restrictions.
     */
-   if (inst->is_math()) {
-      if (devinfo->ver == 6 || devinfo->ver == 7) {
-         assert(inst->dst.stride == 1);
-         return stride == 1 || stride == 0;
-      } else if (devinfo->ver >= 8) {
-         return stride == inst->dst.stride || stride == 0;
-      }
-   }
+   if (inst->is_math())
+      return stride == inst->dst.stride || stride == 0;
 
    return true;
 }
@@ -725,15 +719,6 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
       }
    }
 
-   /* Avoid propagating odd-numbered FIXED_GRF registers into the first source
-    * of a LINTERP instruction on platforms where the PLN instruction has
-    * register alignment restrictions.
-    */
-   if (devinfo->has_pln && devinfo->ver <= 6 &&
-       entry->src.file == FIXED_GRF && (entry->src.nr & 1) &&
-       inst->opcode == FS_OPCODE_LINTERP && arg == 0)
-      return false;
-
    /* we can't generally copy-propagate UD negations because we
     * can end up accessing the resulting values as signed integers
     * instead. See also resolve_ud_negate() and comment in
@@ -750,8 +735,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
 
    /* Reject cases that would violate register regioning restrictions. */
    if ((entry->src.file == UNIFORM || !entry->src.is_contiguous()) &&
-       ((devinfo->ver == 6 && inst->is_math()) ||
-        inst->is_send_from_grf() ||
+       (inst->is_send_from_grf() ||
         inst->uses_indirect_addressing())) {
       return false;
    }
@@ -867,7 +851,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
         type_sz(entry->dst.type) != type_sz(inst->src[arg].type)))
       return false;
 
-   if (devinfo->ver >= 8 && (entry->src.negate || entry->src.abs) &&
+   if ((entry->src.negate || entry->src.abs) &&
        is_logic_op(inst->opcode)) {
       return false;
    }
@@ -946,7 +930,6 @@ static bool
 try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
                        acp_entry *entry, int arg)
 {
-   const struct intel_device_info *devinfo = compiler->devinfo;
    bool progress = false;
 
    if (type_sz(entry->src.type) > 4)
@@ -1002,14 +985,14 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
    val.type = inst->src[arg].type;
 
    if (inst->src[arg].abs) {
-      if ((devinfo->ver >= 8 && is_logic_op(inst->opcode)) ||
+      if (is_logic_op(inst->opcode) ||
           !brw_abs_immediate(val.type, &val.as_brw_reg())) {
          return false;
       }
    }
 
    if (inst->src[arg].negate) {
-      if ((devinfo->ver >= 8 && is_logic_op(inst->opcode)) ||
+      if (is_logic_op(inst->opcode) ||
           !brw_negate_immediate(val.type, &val.as_brw_reg())) {
          return false;
       }
@@ -1024,13 +1007,6 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       break;
 
    case SHADER_OPCODE_POW:
-      /* Allow constant propagation into src1 (except on Gen 6 which
-       * doesn't support scalar source math), and let constant combining
-       * promote the constant on Gen < 8.
-       */
-      if (devinfo->ver == 6)
-         break;
-
       if (arg == 1) {
          inst->src[arg] = val;
          progress = true;
@@ -1190,15 +1166,6 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
 
    case SHADER_OPCODE_INT_QUOTIENT:
    case SHADER_OPCODE_INT_REMAINDER:
-      /* Allow constant propagation into either source (except on Gen 6
-       * which doesn't support scalar source math). Constant combining
-       * promote the src1 constant on Gen < 8, and it will promote the src0
-       * constant on all platforms.
-       */
-      if (devinfo->ver == 6)
-         break;
-
-      FALLTHROUGH;
    case BRW_OPCODE_AND:
    case BRW_OPCODE_ASR:
    case BRW_OPCODE_BFE:

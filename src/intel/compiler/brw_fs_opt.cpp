@@ -190,9 +190,6 @@ load_payload_sources_read_for_size(fs_inst *lp, unsigned size_read)
 bool
 brw_fs_opt_zero_samples(fs_visitor &s)
 {
-   /* Implementation supports only SENDs, so applicable to Gfx7+ only. */
-   assert(s.devinfo->ver >= 7);
-
    bool progress = false;
 
    foreach_block_and_inst(block, fs_inst, send, s.cfg) {
@@ -268,9 +265,6 @@ brw_fs_opt_zero_samples(fs_visitor &s)
 bool
 brw_fs_opt_split_sends(fs_visitor &s)
 {
-   if (s.devinfo->ver < 9)
-      return false;
-
    bool progress = false;
 
    foreach_block_and_inst(block, fs_inst, send, s.cfg) {

@@ -549,8 +549,7 @@ namespace {
        * Register allocation ensures that, so don't move 127 around to avoid
        * breaking that property.
        */
-      if (v->devinfo->ver >= 8)
-         constrained[p.atom_of_reg(127)] = true;
+      constrained[p.atom_of_reg(127)] = true;
 
       foreach_block_and_inst(block, fs_inst, inst, v->cfg) {
          /* Assume that anything referenced via fixed GRFs is baked into the
@@ -567,24 +566,14 @@ namespace {
                constrained[p.atom_of_reg(reg_of(inst->src[i]))] = true;
          }
 
-         /* Preserve the original allocation of VGRFs used by the barycentric
-          * source of the LINTERP instruction on Gfx6, since pair-aligned
-          * barycentrics allow the PLN instruction to be used.
-          */
-         if (v->devinfo->has_pln && v->devinfo->ver <= 6 &&
-             inst->opcode == FS_OPCODE_LINTERP)
-            constrained[p.atom_of_reg(reg_of(inst->src[0]))] = true;
-
          /* The location of the Gfx7 MRF hack registers is hard-coded in the
           * rest of the compiler back-end.  Don't attempt to move them around.
           */
-         if (v->devinfo->ver >= 7) {
-            assert(inst->dst.file != MRF);
+         assert(inst->dst.file != MRF);
 
-            for (unsigned i = 0; i < inst->implied_mrf_writes(); i++) {
-               const unsigned reg = GFX7_MRF_HACK_START + inst->base_mrf + i;
-               constrained[p.atom_of_reg(reg)] = true;
-            }
+         for (unsigned i = 0; i < inst->implied_mrf_writes(); i++) {
+            const unsigned reg = GFX7_MRF_HACK_START + inst->base_mrf + i;
+            constrained[p.atom_of_reg(reg)] = true;
          }
       }
 
@@ -600,10 +589,10 @@ namespace {
    is_conflict_optimized_out(const intel_device_info *devinfo,
                              const fs_inst *inst)
    {
-      return devinfo->ver >= 9 &&
-         ((is_grf(inst->src[0]) && (reg_of(inst->src[0]) == reg_of(inst->src[1]) ||
-                                    reg_of(inst->src[0]) == reg_of(inst->src[2]))) ||
-          reg_of(inst->src[1]) == reg_of(inst->src[2]));
+      return
+         (is_grf(inst->src[0]) && (reg_of(inst->src[0]) == reg_of(inst->src[1]) ||
+                                   reg_of(inst->src[0]) == reg_of(inst->src[2]))) ||
+          reg_of(inst->src[1]) == reg_of(inst->src[2]);
    }
 
    /**
@@ -913,10 +902,6 @@ brw_fs_opt_bank_conflicts(fs_visitor &s)
 
    /* TODO: Re-work this pass for Gfx20+. */
    if (s.devinfo->ver >= 20)
-      return false;
-
-   /* No ternary instructions -- No bank conflicts. */
-   if (s.devinfo->ver < 6)
       return false;
 
    const partitioning p = shader_reg_partitioning(&s);

@@ -334,12 +334,11 @@ bool
 brw_fs_lower_barycentrics(fs_visitor &s)
 {
    const intel_device_info *devinfo = s.devinfo;
-   const bool has_interleaved_layout = devinfo->has_pln ||
-      (devinfo->ver >= 7 && devinfo->ver < 20);
-   bool progress = false;
 
-   if (s.stage != MESA_SHADER_FRAGMENT || !has_interleaved_layout)
+   if (s.stage != MESA_SHADER_FRAGMENT || devinfo->ver >= 20)
       return false;
+
+   bool progress = false;
 
    foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       if (inst->exec_size < 16)
@@ -460,9 +459,6 @@ bool
 brw_fs_lower_find_live_channel(fs_visitor &s)
 {
    bool progress = false;
-
-   if (s.devinfo->ver < 8)
-      return false;
 
    bool packed_dispatch =
       brw_stage_has_packed_dispatch(s.devinfo, s.stage, s.max_polygons,

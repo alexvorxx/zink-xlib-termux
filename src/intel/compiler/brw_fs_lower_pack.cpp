@@ -64,13 +64,6 @@ brw_fs_lower_pack(fs_visitor &s)
                const uint32_t half = _mesa_float_to_half(inst->src[i].f);
                ibld.MOV(subscript(dst, BRW_REGISTER_TYPE_UW, i),
                         brw_imm_uw(half));
-            } else if (i == 1 && s.devinfo->ver < 9) {
-               /* Pre-Skylake requires DWord aligned destinations */
-               fs_reg tmp = ibld.vgrf(BRW_REGISTER_TYPE_UD);
-               ibld.F32TO16(subscript(tmp, BRW_REGISTER_TYPE_HF, 0),
-                            inst->src[i]);
-               ibld.MOV(subscript(dst, BRW_REGISTER_TYPE_UW, 1),
-                        subscript(tmp, BRW_REGISTER_TYPE_UW, 0));
             } else {
                ibld.F32TO16(subscript(dst, BRW_REGISTER_TYPE_HF, i),
                             inst->src[i]);

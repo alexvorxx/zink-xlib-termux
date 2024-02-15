@@ -2341,10 +2341,10 @@ fs_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE *f
    if (inst->conditional_mod) {
       fprintf(file, "%s", conditional_modifier[inst->conditional_mod]);
       if (!inst->predicate &&
-          (devinfo->ver < 5 || (inst->opcode != BRW_OPCODE_SEL &&
-                                inst->opcode != BRW_OPCODE_CSEL &&
-                                inst->opcode != BRW_OPCODE_IF &&
-                                inst->opcode != BRW_OPCODE_WHILE))) {
+          (inst->opcode != BRW_OPCODE_SEL &&
+           inst->opcode != BRW_OPCODE_CSEL &&
+           inst->opcode != BRW_OPCODE_IF &&
+           inst->opcode != BRW_OPCODE_WHILE)) {
          fprintf(file, ".f%d.%d", inst->flag_subreg / 2,
                  inst->flag_subreg % 2);
       }

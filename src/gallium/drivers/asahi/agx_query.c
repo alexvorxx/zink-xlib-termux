@@ -343,6 +343,37 @@ agx_end_query(struct pipe_context *pctx, struct pipe_query *pquery)
    }
 }
 
+enum query_copy_type {
+   QUERY_COPY_NORMAL,
+   QUERY_COPY_BOOL32,
+   QUERY_COPY_BOOL64,
+   QUERY_COPY_TIMESTAMP,
+   QUERY_COPY_TIME_ELAPSED,
+};
+
+static enum query_copy_type
+classify_query_type(enum pipe_query_type type)
+{
+   switch (type) {
+   case PIPE_QUERY_OCCLUSION_PREDICATE:
+   case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
+      return QUERY_COPY_BOOL32;
+
+   case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
+   case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
+      return QUERY_COPY_BOOL64;
+
+   case PIPE_QUERY_TIMESTAMP:
+      return QUERY_COPY_TIMESTAMP;
+
+   case PIPE_QUERY_TIME_ELAPSED:
+      return QUERY_COPY_TIME_ELAPSED;
+
+   default:
+      return QUERY_COPY_NORMAL;
+   }
+}
+
 static bool
 agx_get_query_result(struct pipe_context *pctx, struct pipe_query *pquery,
                      bool wait, union pipe_query_result *vresult)
@@ -357,29 +388,24 @@ agx_get_query_result(struct pipe_context *pctx, struct pipe_query *pquery,
    uint64_t *ptr = query->ptr.cpu;
    uint64_t value = *ptr;
 
-   switch (query->type) {
-   case PIPE_QUERY_OCCLUSION_PREDICATE:
-   case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
+   switch (classify_query_type(query->type)) {
+   case QUERY_COPY_BOOL32:
       vresult->b = value;
       return true;
 
-   case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
-   case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
+   case QUERY_COPY_BOOL64:
       vresult->b = value > 0;
       return true;
 
-   case PIPE_QUERY_OCCLUSION_COUNTER:
-   case PIPE_QUERY_PRIMITIVES_GENERATED:
-   case PIPE_QUERY_PRIMITIVES_EMITTED:
-   case PIPE_QUERY_PIPELINE_STATISTICS_SINGLE:
+   case QUERY_COPY_NORMAL:
       vresult->u64 = value;
       return true;
 
-   case PIPE_QUERY_TIMESTAMP:
+   case QUERY_COPY_TIMESTAMP:
       vresult->u64 = agx_gpu_time_to_ns(dev, value);
       return true;
 
-   case PIPE_QUERY_TIME_ELAPSED:
+   case QUERY_COPY_TIME_ELAPSED:
       /* end - begin */
       vresult->u64 = agx_gpu_time_to_ns(dev, ptr[0] - ptr[1]);
       return true;
@@ -408,11 +434,9 @@ agx_get_query_result_resource(struct pipe_context *pipe, struct pipe_query *q,
       bool ready = agx_get_query_result(pipe, q, true, &result);
       assert(ready);
 
-      switch (query->type) {
-      case PIPE_QUERY_OCCLUSION_PREDICATE:
-      case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
-      case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
-      case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
+      switch (classify_query_type(query->type)) {
+      case QUERY_COPY_BOOL32:
+      case QUERY_COPY_BOOL64:
          result.u64 = result.b;
          break;
       default:

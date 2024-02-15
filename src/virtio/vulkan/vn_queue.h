@@ -13,8 +13,6 @@
 
 #include "vn_common.h"
 
-#include "vn_feedback.h"
-
 struct vn_queue {
    struct vn_queue_base base;
 
@@ -64,6 +62,8 @@ struct vn_sync_payload_external {
    /* ring seqno of the last queue submission */
    uint32_t ring_seqno;
 };
+
+struct vn_feedback_slot;
 
 struct vn_fence {
    struct vn_object_base base;

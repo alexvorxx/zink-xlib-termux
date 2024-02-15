@@ -1802,6 +1802,7 @@ agx_compile_nir(struct agx_device *dev, nir_shader *nir,
       memcpy(compiled->bo->ptr.cpu, binary.data, binary.size);
    }
 
+   compiled->stage = stage;
    util_dynarray_fini(&binary);
    return compiled;
 }
@@ -2065,7 +2066,6 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       compiled->gs_count =
          agx_compile_nir(dev, gs_count, &base_key, debug, so->type);
       compiled->gs_count->so = so;
-      compiled->gs_count->stage = so->type;
    }
 
    if (pre_gs) {
@@ -2093,7 +2093,6 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
    compiled->gs_output_mode = gs_out_prim;
    compiled->gs_count_words = gs_out_count_words;
    compiled->info.outputs = outputs;
-   compiled->stage = so->type;
 
    ralloc_free(nir);
    ralloc_free(pre_gs);

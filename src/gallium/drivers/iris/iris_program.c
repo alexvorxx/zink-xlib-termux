@@ -2951,11 +2951,14 @@ iris_finalize_nir(struct pipe_screen *_screen, void *nirptr)
 
    NIR_PASS_V(nir, brw_nir_lower_storage_image,
               &(struct brw_nir_lower_storage_image_opts) {
-                 .devinfo = devinfo,
-                 .lower_loads = true,
-                 .lower_stores = true,
-                 .lower_atomics = true,
-                 .lower_get_size = true,
+                 .devinfo        = devinfo,
+                 .lower_loads    = true,
+                 .lower_stores   = true,
+
+                 /* Iris uploads image params used by
+                  * get_size lowering only in Gfx8.
+                  */
+                 .lower_get_size = devinfo->ver == 8,
               });
    NIR_PASS_V(nir, iris_lower_storage_image_derefs);
 

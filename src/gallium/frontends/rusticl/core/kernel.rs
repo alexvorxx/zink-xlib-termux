@@ -634,6 +634,24 @@ fn lower_and_optimize_nir(
     opt_nir(nir, dev, true);
     nir_pass!(nir, nir_lower_memcpy);
 
+    // we might have got rid of more function_temp or shared memory
+    nir.reset_scratch_size();
+    nir.reset_shared_size();
+    nir_pass!(
+        nir,
+        nir_remove_dead_variables,
+        nir_variable_mode::nir_var_function_temp | nir_variable_mode::nir_var_mem_shared,
+        &dv_opts,
+    );
+    nir_pass!(
+        nir,
+        nir_lower_vars_to_explicit_types,
+        nir_variable_mode::nir_var_function_temp
+            | nir_variable_mode::nir_var_mem_shared
+            | nir_variable_mode::nir_var_mem_generic,
+        Some(glsl_get_cl_type_size_align),
+    );
+
     nir_pass!(
         nir,
         nir_lower_explicit_io,

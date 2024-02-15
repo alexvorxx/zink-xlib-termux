@@ -103,7 +103,7 @@ print_instruction(FILE *output, bool compact, const brw_inst *instruction)
 }
 
 static struct intel_device_info *
-i965_disasm_init(uint16_t pci_id)
+i965_asm_init(uint16_t pci_id)
 {
    struct intel_device_info *devinfo;
 
@@ -118,16 +118,18 @@ i965_disasm_init(uint16_t pci_id)
       return NULL;
    }
 
+   if (devinfo->ver < 9) {
+      fprintf(stderr, "device has gfx version %d but must be >= 9, try elk_asm instead",
+              devinfo->ver);
+      exit(EXIT_FAILURE);
+   }
+
    return devinfo;
 }
 
 static bool
 i965_postprocess_labels()
 {
-   if (p->devinfo->ver < 6) {
-      return true;
-   }
-
    void *store = p->store;
 
    struct target_label *tlabel;
@@ -151,11 +153,7 @@ i965_postprocess_labels()
                case BRW_OPCODE_ELSE:
                case BRW_OPCODE_ENDIF:
                case BRW_OPCODE_WHILE:
-                  if (p->devinfo->ver >= 7) {
-                     brw_inst_set_jip(p->devinfo, inst, relative_offset);
-                  } else if (p->devinfo->ver == 6) {
-                     brw_inst_set_gfx6_jump_count(p->devinfo, inst, relative_offset);
-                  }
+                  brw_inst_set_jip(p->devinfo, inst, relative_offset);
                   break;
                case BRW_OPCODE_BREAK:
                case BRW_OPCODE_HALT:
@@ -170,13 +168,7 @@ i965_postprocess_labels()
                switch (opcode) {
                case BRW_OPCODE_IF:
                case BRW_OPCODE_ELSE:
-                  if (p->devinfo->ver > 7) {
-                     brw_inst_set_uip(p->devinfo, inst, relative_offset);
-                  } else if (p->devinfo->ver == 7) {
-                     brw_inst_set_uip(p->devinfo, inst, relative_offset);
-                  } else if (p->devinfo->ver == 6) {
-                     // Nothing
-                  }
+                  brw_inst_set_uip(p->devinfo, inst, relative_offset);
                   break;
                case BRW_OPCODE_WHILE:
                case BRW_OPCODE_ENDIF:
@@ -303,7 +295,7 @@ int main(int argc, char **argv)
       }
    }
 
-   devinfo = i965_disasm_init(pci_id);
+   devinfo = i965_asm_init(pci_id);
    if (!devinfo) {
       fprintf(stderr, "Unable to allocate memory for "
                       "intel_device_info struct instance.\n");

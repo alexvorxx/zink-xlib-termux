@@ -66,13 +66,11 @@ brd 		{ yylval.integer = BRW_OPCODE_BRD; return BRD; }
 break 		{ yylval.integer = BRW_OPCODE_BREAK; return BREAK; }
 call 		{ yylval.integer = BRW_OPCODE_CALL; return CALL; }
 calla 		{ yylval.integer = BRW_OPCODE_CALLA; return CALLA; }
-case 		{ yylval.integer = BRW_OPCODE_CASE; return CASE; }
 cbit 		{ yylval.integer = BRW_OPCODE_CBIT; return CBIT; }
 cmp 		{ yylval.integer = BRW_OPCODE_CMP; return CMP; }
 cmpn 		{ yylval.integer = BRW_OPCODE_CMPN; return CMPN; }
 cont 		{ yylval.integer = BRW_OPCODE_CONTINUE; return CONT; }
 csel 		{ yylval.integer = BRW_OPCODE_CSEL; return CSEL; }
-dim 		{ yylval.integer = BRW_OPCODE_DIM; return DIM; }
 do 		{ yylval.integer = BRW_OPCODE_DO; return DO; }
 dp2 		{ yylval.integer = BRW_OPCODE_DP2; return DP2; }
 dp3 		{ yylval.integer = BRW_OPCODE_DP3; return DP3; }
@@ -81,16 +79,12 @@ dp4a		{ yylval.integer = BRW_OPCODE_DP4A; return DP4A; }
 dph 		{ yylval.integer = BRW_OPCODE_DPH; return DPH; }
 else 		{ yylval.integer = BRW_OPCODE_ELSE; return ELSE; }
 endif 		{ yylval.integer = BRW_OPCODE_ENDIF; return ENDIF; }
-f16to32 	{ yylval.integer = BRW_OPCODE_F16TO32; return F16TO32; }
-f32to16 	{ yylval.integer = BRW_OPCODE_F32TO16; return F32TO16; }
 fbh 		{ yylval.integer = BRW_OPCODE_FBH; return FBH; }
 fbl 		{ yylval.integer = BRW_OPCODE_FBL; return FBL; }
-fork 		{ yylval.integer = BRW_OPCODE_FORK; return FORK; }
 frc 		{ yylval.integer = BRW_OPCODE_FRC; return FRC; }
 goto 		{ yylval.integer = BRW_OPCODE_GOTO; return GOTO; }
 halt 		{ yylval.integer = BRW_OPCODE_HALT; return HALT; }
 if 		{ yylval.integer = BRW_OPCODE_IF; return IF; }
-iff 		{ yylval.integer = BRW_OPCODE_IFF; return IFF; }
 illegal 	{ yylval.integer = BRW_OPCODE_ILLEGAL; return ILLEGAL; }
 jmpi 		{ yylval.integer = BRW_OPCODE_JMPI; return JMPI; }
 line 		{ yylval.integer = BRW_OPCODE_LINE; return LINE; }
@@ -103,15 +97,10 @@ madm 		{ yylval.integer = BRW_OPCODE_MADM; return MADM; }
 mov 		{ yylval.integer = BRW_OPCODE_MOV; return MOV; }
 movi 		{ yylval.integer = BRW_OPCODE_MOVI; return MOVI; }
 mul 		{ yylval.integer = BRW_OPCODE_MUL; return MUL; }
-mrest 		{ yylval.integer = BRW_OPCODE_MREST; return MREST; }
-msave 		{ yylval.integer = BRW_OPCODE_MSAVE; return MSAVE; }
-nenop 		{ yylval.integer = BRW_OPCODE_NENOP; return NENOP; }
 nop 		{ yylval.integer = BRW_OPCODE_NOP; return NOP; }
 not 		{ yylval.integer = BRW_OPCODE_NOT; return NOT; }
 or 		{ yylval.integer = BRW_OPCODE_OR; return OR; }
 pln 		{ yylval.integer = BRW_OPCODE_PLN; return PLN; }
-pop 		{ yylval.integer = BRW_OPCODE_POP; return POP; }
-push 		{ yylval.integer = BRW_OPCODE_PUSH; return PUSH; }
 ret 		{ yylval.integer = BRW_OPCODE_RET; return RET; }
 rndd 		{ yylval.integer = BRW_OPCODE_RNDD; return RNDD; }
 rnde 		{ yylval.integer = BRW_OPCODE_RNDE; return RNDE; }
@@ -297,11 +286,6 @@ nomask      	{ return MASK_DISABLE; }
 atomic       	{ return ATOMIC; }
 switch       	{ return SWITCH; }
 
- /* compression control */
-compr 		{ return COMPR; }
-compr4    	{ return COMPR4; }
-sechalf 	{ return SECHALF; }
-
  /* Quarter Control */
 1[HNQ]       	{ }
 "2Q"	        { return QTR_2Q; }
@@ -347,10 +331,6 @@ sechalf 	{ return SECHALF; }
 
  /* flag registers */
 "f"[0|1] 	{ BEGIN(CHANNEL); yylval.integer = atoi(yytext + 1); return FLAGREG; }
-
- /* message control registers */
-"m" 		{ return MSGREGFILE; }
-m[0-9]+ 	{ yylval.integer = atoi(yytext + 1); BEGIN(REG); return MSGREG; }
 
  /* state register */
 sr[0-9]+ 	{ yylval.integer = atoi(yytext + 2); return STATEREG; }

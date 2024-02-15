@@ -1367,14 +1367,13 @@ radv_get_pre_rast_input_topology(const struct radv_shader_stage *es_stage, const
 
 static void
 gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *es_stage,
-                   struct radv_shader_stage *gs_stage)
+                   struct radv_shader_stage *gs_stage, struct gfx10_ngg_info *out)
 {
    const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
    struct radv_shader_info *gs_info = gs_stage ? &gs_stage->info : NULL;
    struct radv_shader_info *es_info = &es_stage->info;
    const unsigned max_verts_per_prim = radv_get_num_input_vertices(es_stage, gs_stage);
    const unsigned min_verts_per_prim = gs_stage ? max_verts_per_prim : 1;
-   struct gfx10_ngg_info *out = gs_stage ? &gs_info->ngg_info : &es_info->ngg_info;
 
    const unsigned gs_num_invocations = gs_stage ? MAX2(gs_info->gs.invocations, 1) : 1;
 
@@ -1654,8 +1653,9 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
       /* Compute NGG info (GFX10+) or GS info. */
       if (producer->info.is_ngg) {
          struct radv_shader_stage *gs_stage = consumer && consumer->stage == MESA_SHADER_GEOMETRY ? consumer : NULL;
+         struct gfx10_ngg_info *out = gs_stage ? &gs_stage->info.ngg_info : &producer->info.ngg_info;
 
-         gfx10_get_ngg_info(device, producer, gs_stage);
+         gfx10_get_ngg_info(device, producer, gs_stage, out);
 
          /* Determine other NGG settings like culling for VS or TES without GS. */
          if (!gs_stage) {

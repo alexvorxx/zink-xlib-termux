@@ -34,7 +34,6 @@ extern "C" {
 #endif
 
 extern const struct nir_shader_compiler_options brw_scalar_nir_options;
-extern const struct nir_shader_compiler_options brw_vector_nir_options;
 
 int type_size_vec4(const struct glsl_type *type, bool bindless);
 int type_size_dvec4(const struct glsl_type *type, bool bindless);
@@ -268,7 +267,7 @@ void brw_nir_analyze_ubo_ranges(const struct brw_compiler *compiler,
                                 nir_shader *nir,
                                 struct brw_ubo_range out_ranges[4]);
 
-void brw_nir_optimize(nir_shader *nir, bool is_scalar,
+void brw_nir_optimize(nir_shader *nir,
                       const struct intel_device_info *devinfo);
 
 nir_shader *brw_nir_create_passthrough_tcs(void *mem_ctx,

@@ -29,77 +29,51 @@
 #include "compiler/nir/nir.h"
 #include "util/u_debug.h"
 
-#define COMMON_OPTIONS                                                        \
-   .has_uclz = true,                                                          \
-   .lower_fdiv = true,                                                        \
-   .lower_scmp = true,                                                        \
-   .lower_flrp16 = true,                                                      \
-   .lower_fmod = true,                                                        \
-   .lower_ufind_msb = true,                                                   \
-   .lower_uadd_carry = true,                                                  \
-   .lower_usub_borrow = true,                                                 \
-   .lower_flrp64 = true,                                                      \
-   .lower_fisnormal = true,                                                   \
-   .lower_isign = true,                                                       \
-   .lower_ldexp = true,                                                       \
-   .lower_bitfield_extract = true,                                            \
-   .lower_bitfield_insert = true,                                             \
-   .lower_device_index_to_zero = true,                                        \
-   .vectorize_io = true,                                                      \
-   .vectorize_tess_levels = true,                                             \
-   .use_interpolated_input_intrinsics = true,                                 \
-   .lower_insert_byte = true,                                                 \
-   .lower_insert_word = true,                                                 \
-   .vertex_id_zero_based = true,                                              \
-   .lower_base_vertex = true,                                                 \
-   .support_16bit_alu = true,                                                 \
-   .lower_uniforms_to_ubo = true
-
-#define COMMON_SCALAR_OPTIONS                                                 \
-   .lower_to_scalar = true,                                                   \
-   .lower_pack_half_2x16 = true,                                              \
-   .lower_pack_snorm_2x16 = true,                                             \
-   .lower_pack_snorm_4x8 = true,                                              \
-   .lower_pack_unorm_2x16 = true,                                             \
-   .lower_pack_unorm_4x8 = true,                                              \
-   .lower_unpack_half_2x16 = true,                                            \
-   .lower_unpack_snorm_2x16 = true,                                           \
-   .lower_unpack_snorm_4x8 = true,                                            \
-   .lower_unpack_unorm_2x16 = true,                                           \
-   .lower_unpack_unorm_4x8 = true,                                            \
-   .lower_hadd64 = true,                                                      \
-   .avoid_ternary_with_two_constants = true,                                  \
-   .has_pack_32_4x8 = true,                                                   \
-   .max_unroll_iterations = 32,                                               \
-   .force_indirect_unrolling = nir_var_function_temp,                         \
-   .divergence_analysis_options =                                             \
-      (nir_divergence_single_patch_per_tcs_subgroup |                         \
-       nir_divergence_single_patch_per_tes_subgroup |                         \
-       nir_divergence_shader_record_ptr_uniform)
-
 const struct nir_shader_compiler_options brw_scalar_nir_options = {
-   COMMON_OPTIONS,
-   COMMON_SCALAR_OPTIONS,
-};
-
-const struct nir_shader_compiler_options brw_vector_nir_options = {
-   COMMON_OPTIONS,
-
-   /* In the vec4 backend, our dpN instruction replicates its result to all the
-    * components of a vec4.  We would like NIR to give us replicated fdot
-    * instructions because it can optimize better for us.
-    */
-   .fdot_replicates = true,
-
-   .lower_usub_sat = true,
+   .avoid_ternary_with_two_constants = true,
+   .divergence_analysis_options =
+      (nir_divergence_single_patch_per_tcs_subgroup |
+       nir_divergence_single_patch_per_tes_subgroup |
+       nir_divergence_shader_record_ptr_uniform),
+   .force_indirect_unrolling = nir_var_function_temp,
+   .has_pack_32_4x8 = true,
+   .has_uclz = true,
+   .lower_base_vertex = true,
+   .lower_bitfield_extract = true,
+   .lower_bitfield_insert = true,
+   .lower_device_index_to_zero = true,
+   .lower_fdiv = true,
+   .lower_fisnormal = true,
+   .lower_flrp16 = true,
+   .lower_flrp64 = true,
+   .lower_fmod = true,
+   .lower_hadd64 = true,
+   .lower_insert_byte = true,
+   .lower_insert_word = true,
+   .lower_isign = true,
+   .lower_ldexp = true,
+   .lower_pack_half_2x16 = true,
    .lower_pack_snorm_2x16 = true,
+   .lower_pack_snorm_4x8 = true,
    .lower_pack_unorm_2x16 = true,
+   .lower_pack_unorm_4x8 = true,
+   .lower_scmp = true,
+   .lower_to_scalar = true,
+   .lower_uadd_carry = true,
+   .lower_ufind_msb = true,
+   .lower_uniforms_to_ubo = true,
+   .lower_unpack_half_2x16 = true,
    .lower_unpack_snorm_2x16 = true,
+   .lower_unpack_snorm_4x8 = true,
    .lower_unpack_unorm_2x16 = true,
-   .lower_extract_byte = true,
-   .lower_extract_word = true,
-   .intel_vec4 = true,
+   .lower_unpack_unorm_4x8 = true,
+   .lower_usub_borrow = true,
    .max_unroll_iterations = 32,
+   .support_16bit_alu = true,
+   .use_interpolated_input_intrinsics = true,
+   .vectorize_io = true,
+   .vectorize_tess_levels = true,
+   .vertex_id_zero_based = true,
 };
 
 struct brw_compiler *
@@ -128,15 +102,6 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       (intel_device_info_is_arl(devinfo) &&
        devinfo->platform != INTEL_PLATFORM_ARL_H) ||
       debug_get_bool_option("INTEL_LOWER_DPAS", false);
-
-   /* There is no vec4 mode on Gfx10+, and we don't use it at all on Gfx8+. */
-   for (int i = MESA_SHADER_VERTEX; i < MESA_ALL_SHADER_STAGES; i++) {
-      compiler->scalar_stage[i] = devinfo->ver >= 8 ||
-         i == MESA_SHADER_FRAGMENT || i == MESA_SHADER_COMPUTE;
-   }
-
-   for (int i = MESA_SHADER_TASK; i < MESA_VULKAN_SHADER_STAGES; i++)
-      compiler->scalar_stage[i] = true;
 
    nir_lower_int64_options int64_options =
       nir_lower_imul64 |
@@ -175,13 +140,8 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
    for (int i = 0; i < MESA_ALL_SHADER_STAGES; i++) {
       struct nir_shader_compiler_options *nir_options =
          rzalloc(compiler, struct nir_shader_compiler_options);
-      bool is_scalar = compiler->scalar_stage[i];
-      if (is_scalar) {
-         *nir_options = brw_scalar_nir_options;
-         int64_options |= nir_lower_usub_sat64;
-      } else {
-         *nir_options = brw_vector_nir_options;
-      }
+      *nir_options = brw_scalar_nir_options;
+      int64_options |= nir_lower_usub_sat64;
 
       /* Prior to Gfx6, there are no three source operations, and Gfx11 loses
        * LRP.

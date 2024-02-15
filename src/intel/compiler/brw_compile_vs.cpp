@@ -3,11 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "brw_vec4.h"
 #include "brw_fs.h"
 #include "brw_eu.h"
 #include "brw_nir.h"
-#include "brw_vec4_vs.h"
 #include "brw_private.h"
 #include "dev/intel_debug.h"
 
@@ -28,10 +26,7 @@ brw_compile_vs(const struct brw_compiler *compiler,
    prog_data->base.base.ray_queries = nir->info.ray_queries;
    prog_data->base.base.total_scratch = 0;
 
-   const bool is_scalar = compiler->scalar_stage[MESA_SHADER_VERTEX];
    brw_nir_apply_key(nir, compiler, &key->base, 8);
-
-   const unsigned *assembly = NULL;
 
    prog_data->inputs_read = nir->info.inputs_read;
    prog_data->double_inputs_read = nir->info.vs.double_inputs;
@@ -83,17 +78,7 @@ brw_compile_vs(const struct brw_compiler *compiler,
    if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID))
           prog_data->uses_drawid = true;
 
-   /* The 3DSTATE_VS documentation lists the lower bound on "Vertex URB Entry
-    * Read Length" as 1 in vec4 mode, and 0 in SIMD8 mode.  Empirically, in
-    * vec4 mode, the hardware appears to wedge unless we read something.
-    */
-   if (is_scalar)
-      prog_data->base.urb_read_length =
-         DIV_ROUND_UP(nr_attribute_slots, 2);
-   else
-      prog_data->base.urb_read_length =
-         DIV_ROUND_UP(MAX2(nr_attribute_slots, 1), 2);
-
+   prog_data->base.urb_read_length = DIV_ROUND_UP(nr_attribute_slots, 2);
    prog_data->nr_attribute_slots = nr_attribute_slots;
 
    /* Since vertex shaders reuse the same VUE entry for inputs and outputs
@@ -114,58 +99,37 @@ brw_compile_vs(const struct brw_compiler *compiler,
       brw_print_vue_map(stderr, &prog_data->base.vue_map, MESA_SHADER_VERTEX);
    }
 
-   if (is_scalar) {
-      const unsigned dispatch_width = compiler->devinfo->ver >= 20 ? 16 : 8;
-      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
+   const unsigned dispatch_width = compiler->devinfo->ver >= 20 ? 16 : 8;
+   prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
-      fs_visitor v(compiler, &params->base, &key->base,
-                   &prog_data->base.base, nir, dispatch_width,
-                   params->base.stats != NULL, debug_enabled);
-      if (!v.run_vs()) {
-         params->base.error_str =
-            ralloc_strdup(params->base.mem_ctx, v.fail_msg);
-         return NULL;
-      }
-
-      assert(v.payload().num_regs % reg_unit(compiler->devinfo) == 0);
-      prog_data->base.base.dispatch_grf_start_reg =
-         v.payload().num_regs / reg_unit(compiler->devinfo);
-
-      fs_generator g(compiler, &params->base,
-                     &prog_data->base.base, v.runtime_check_aads_emit,
-                     MESA_SHADER_VERTEX);
-      if (unlikely(debug_enabled)) {
-         const char *debug_name =
-            ralloc_asprintf(params->base.mem_ctx, "%s vertex shader %s",
-                            nir->info.label ? nir->info.label :
-                               "unnamed",
-                            nir->info.name);
-
-         g.enable_debug(debug_name);
-      }
-      g.generate_code(v.cfg, dispatch_width, v.shader_stats,
-                      v.performance_analysis.require(), params->base.stats);
-      g.add_const_data(nir->constant_data, nir->constant_data_size);
-      assembly = g.get_assembly();
+   fs_visitor v(compiler, &params->base, &key->base,
+                &prog_data->base.base, nir, dispatch_width,
+                params->base.stats != NULL, debug_enabled);
+   if (!v.run_vs()) {
+      params->base.error_str =
+         ralloc_strdup(params->base.mem_ctx, v.fail_msg);
+      return NULL;
    }
 
-   if (!assembly) {
-      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT;
+   assert(v.payload().num_regs % reg_unit(compiler->devinfo) == 0);
+   prog_data->base.base.dispatch_grf_start_reg =
+      v.payload().num_regs / reg_unit(compiler->devinfo);
 
-      vec4_vs_visitor v(compiler, &params->base, key, prog_data,
-                        nir, debug_enabled);
-      if (!v.run()) {
-         params->base.error_str =
-            ralloc_strdup(params->base.mem_ctx, v.fail_msg);
-         return NULL;
-      }
+   fs_generator g(compiler, &params->base,
+                  &prog_data->base.base, v.runtime_check_aads_emit,
+                  MESA_SHADER_VERTEX);
+   if (unlikely(debug_enabled)) {
+      const char *debug_name =
+         ralloc_asprintf(params->base.mem_ctx, "%s vertex shader %s",
+                         nir->info.label ? nir->info.label :
+                            "unnamed",
+                         nir->info.name);
 
-      assembly = brw_vec4_generate_assembly(compiler, &params->base,
-                                            nir, &prog_data->base,
-                                            v.cfg,
-                                            v.performance_analysis.require(),
-                                            debug_enabled);
+      g.enable_debug(debug_name);
    }
+   g.generate_code(v.cfg, dispatch_width, v.shader_stats,
+                   v.performance_analysis.require(), params->base.stats);
+   g.add_const_data(nir->constant_data, nir->constant_data_size);
 
-   return assembly;
+   return g.get_assembly();
 }

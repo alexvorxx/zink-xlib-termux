@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "brw_vec4_gs_visitor.h"
-#include "gfx6_gs_visitor.h"
 #include "brw_eu.h"
 #include "brw_fs.h"
 #include "brw_prim.h"
@@ -41,7 +39,6 @@ brw_compile_gs(const struct brw_compiler *compiler,
    memset(&c, 0, sizeof(c));
    c.key = *key;
 
-   const bool is_scalar = compiler->scalar_stage[MESA_SHADER_GEOMETRY];
    const bool debug_enabled = brw_should_print_shader(nir, DEBUG_GS);
 
    prog_data->base.base.stage = MESA_SHADER_GEOMETRY;
@@ -266,135 +263,33 @@ brw_compile_gs(const struct brw_compiler *compiler,
       brw_print_vue_map(stderr, &prog_data->base.vue_map, MESA_SHADER_GEOMETRY);
    }
 
-   if (is_scalar) {
-      fs_visitor v(compiler, &params->base, &c, prog_data, nir,
-                   params->base.stats != NULL, debug_enabled);
-      if (v.run_gs()) {
-         prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
+   fs_visitor v(compiler, &params->base, &c, prog_data, nir,
+                params->base.stats != NULL, debug_enabled);
+   if (v.run_gs()) {
+      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
-         assert(v.payload().num_regs % reg_unit(compiler->devinfo) == 0);
-         prog_data->base.base.dispatch_grf_start_reg =
-            v.payload().num_regs / reg_unit(compiler->devinfo);
+      assert(v.payload().num_regs % reg_unit(compiler->devinfo) == 0);
+      prog_data->base.base.dispatch_grf_start_reg =
+         v.payload().num_regs / reg_unit(compiler->devinfo);
 
-         fs_generator g(compiler, &params->base,
-                        &prog_data->base.base, false, MESA_SHADER_GEOMETRY);
-         if (unlikely(debug_enabled)) {
-            const char *label =
-               nir->info.label ? nir->info.label : "unnamed";
-            char *name = ralloc_asprintf(params->base.mem_ctx,
-                                         "%s geometry shader %s",
-                                         label, nir->info.name);
-            g.enable_debug(name);
-         }
-         g.generate_code(v.cfg, v.dispatch_width, v.shader_stats,
-                         v.performance_analysis.require(), params->base.stats);
-         g.add_const_data(nir->constant_data, nir->constant_data_size);
-         return g.get_assembly();
+      fs_generator g(compiler, &params->base,
+                     &prog_data->base.base, false, MESA_SHADER_GEOMETRY);
+      if (unlikely(debug_enabled)) {
+         const char *label =
+            nir->info.label ? nir->info.label : "unnamed";
+         char *name = ralloc_asprintf(params->base.mem_ctx,
+                                      "%s geometry shader %s",
+                                      label, nir->info.name);
+         g.enable_debug(name);
       }
-
-      params->base.error_str = ralloc_strdup(params->base.mem_ctx, v.fail_msg);
-
-      return NULL;
+      g.generate_code(v.cfg, v.dispatch_width, v.shader_stats,
+                      v.performance_analysis.require(), params->base.stats);
+      g.add_const_data(nir->constant_data, nir->constant_data_size);
+      return g.get_assembly();
    }
 
-   if (compiler->devinfo->ver >= 7) {
-      /* Compile the geometry shader in DUAL_OBJECT dispatch mode, if we can do
-       * so without spilling. If the GS invocations count > 1, then we can't use
-       * dual object mode.
-       */
-      if (prog_data->invocations <= 1 &&
-          !INTEL_DEBUG(DEBUG_NO_DUAL_OBJECT_GS)) {
-         prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT;
+   params->base.error_str = ralloc_strdup(params->base.mem_ctx, v.fail_msg);
 
-         brw::vec4_gs_visitor v(compiler, &params->base, &c, prog_data, nir,
-                                true /* no_spills */,
-                                debug_enabled);
-
-         /* Backup 'nr_params' and 'param' as they can be modified by the
-          * the DUAL_OBJECT visitor. If it fails, we will run the fallback
-          * (DUAL_INSTANCED or SINGLE mode) and we need to restore original
-          * values.
-          */
-         const unsigned param_count = prog_data->base.base.nr_params;
-         uint32_t *param = ralloc_array(NULL, uint32_t, param_count);
-         memcpy(param, prog_data->base.base.param,
-                sizeof(uint32_t) * param_count);
-
-         if (v.run()) {
-            /* Success! Backup is not needed */
-            ralloc_free(param);
-            return brw_vec4_generate_assembly(compiler, &params->base,
-                                              nir, &prog_data->base,
-                                              v.cfg,
-                                              v.performance_analysis.require(),
-                                              debug_enabled);
-         } else {
-            /* These variables could be modified by the execution of the GS
-             * visitor if it packed the uniforms in the push constant buffer.
-             * As it failed, we need restore them so we can start again with
-             * DUAL_INSTANCED or SINGLE mode.
-             *
-             * FIXME: Could more variables be modified by this execution?
-             */
-            memcpy(prog_data->base.base.param, param,
-                   sizeof(uint32_t) * param_count);
-            prog_data->base.base.nr_params = param_count;
-            ralloc_free(param);
-         }
-      }
-   }
-
-   /* Either we failed to compile in DUAL_OBJECT mode (probably because it
-    * would have required spilling) or DUAL_OBJECT mode is disabled.  So fall
-    * back to DUAL_INSTANCED or SINGLE mode, which consumes fewer registers.
-    *
-    * FIXME: Single dispatch mode requires that the driver can handle
-    * interleaving of input registers, but this is already supported (dual
-    * instance mode has the same requirement). However, to take full advantage
-    * of single dispatch mode to reduce register pressure we would also need to
-    * do interleaved outputs, but currently, the vec4 visitor and generator
-    * classes do not support this, so at the moment register pressure in
-    * single and dual instance modes is the same.
-    *
-    * From the Ivy Bridge PRM, Vol2 Part1 7.2.1.1 "3DSTATE_GS"
-    * "If InstanceCount>1, DUAL_OBJECT mode is invalid. Software will likely
-    * want to use DUAL_INSTANCE mode for higher performance, but SINGLE mode
-    * is also supported. When InstanceCount=1 (one instance per object) software
-    * can decide which dispatch mode to use. DUAL_OBJECT mode would likely be
-    * the best choice for performance, followed by SINGLE mode."
-    *
-    * So SINGLE mode is more performant when invocations == 1 and DUAL_INSTANCE
-    * mode is more performant when invocations > 1. Gfx6 only supports
-    * SINGLE mode.
-    */
-   if (prog_data->invocations <= 1 || compiler->devinfo->ver < 7)
-      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X1_SINGLE;
-   else
-      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_INSTANCE;
-
-   brw::vec4_gs_visitor *gs = NULL;
-   const unsigned *ret = NULL;
-
-   if (compiler->devinfo->ver >= 7)
-      gs = new brw::vec4_gs_visitor(compiler, &params->base, &c, prog_data,
-                                    nir, false /* no_spills */,
-                                    debug_enabled);
-   else
-      gs = new brw::gfx6_gs_visitor(compiler, &params->base, &c, prog_data,
-                                    nir, false /* no_spills */,
-                                    debug_enabled);
-
-   if (!gs->run()) {
-      params->base.error_str =
-         ralloc_strdup(params->base.mem_ctx, gs->fail_msg);
-   } else {
-      ret = brw_vec4_generate_assembly(compiler, &params->base, nir,
-                                       &prog_data->base, gs->cfg,
-                                       gs->performance_analysis.require(),
-                                       debug_enabled);
-   }
-
-   delete gs;
-   return ret;
+   return NULL;
 }
 

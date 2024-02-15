@@ -468,10 +468,7 @@ get_features(const struct anv_physical_device *pdevice,
       .textureCompressionBC                     = true,
       .occlusionQueryPrecise                    = true,
       .pipelineStatisticsQuery                  = true,
-      /* We can't do image stores in vec4 shaders */
-      .vertexPipelineStoresAndAtomics =
-         pdevice->compiler->scalar_stage[MESA_SHADER_VERTEX] &&
-         pdevice->compiler->scalar_stage[MESA_SHADER_GEOMETRY],
+      .vertexPipelineStoresAndAtomics           = true,
       .fragmentStoresAndAtomics                 = true,
       .shaderTessellationAndGeometryPointSize   = true,
       .shaderImageGatherExtended                = true,
@@ -940,8 +937,7 @@ get_properties_1_1(const struct anv_physical_device *pdevice,
    p->subgroupSize = BRW_SUBGROUP_SIZE;
    VkShaderStageFlags scalar_stages = 0;
    for (unsigned stage = 0; stage < MESA_SHADER_STAGES; stage++) {
-      if (pdevice->compiler->scalar_stage[stage])
-         scalar_stages |= mesa_to_vk_shader_stage(stage);
+      scalar_stages |= mesa_to_vk_shader_stage(stage);
    }
    if (pdevice->vk.supported_extensions.KHR_ray_tracing_pipeline) {
       scalar_stages |= VK_SHADER_STAGE_RAYGEN_BIT_KHR |

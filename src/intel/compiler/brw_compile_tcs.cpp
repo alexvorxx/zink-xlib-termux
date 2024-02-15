@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "brw_eu.h"
 #include "intel_nir.h"
 #include "brw_nir.h"
-#include "brw_vec4_tcs.h"
 #include "brw_fs.h"
 #include "brw_private.h"
 #include "dev/intel_debug.h"
@@ -49,9 +49,7 @@ brw_compile_tcs(const struct brw_compiler *compiler,
    struct brw_tcs_prog_data *prog_data = params->prog_data;
    struct brw_vue_prog_data *vue_prog_data = &prog_data->base;
 
-   const bool is_scalar = compiler->scalar_stage[MESA_SHADER_TESS_CTRL];
    const bool debug_enabled = brw_should_print_shader(nir, DEBUG_TCS);
-   const unsigned *assembly;
 
    vue_prog_data->base.stage = MESA_SHADER_TESS_CTRL;
    prog_data->base.base.ray_queries = nir->info.ray_queries;
@@ -89,7 +87,7 @@ brw_compile_tcs(const struct brw_compiler *compiler,
       prog_data->instances = nir->info.tess.tcs_vertices_out;
       prog_data->include_primitive_id = has_primitive_id;
    } else {
-      unsigned verts_per_thread = is_scalar ? 8 : 2;
+      unsigned verts_per_thread = 8;
       vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH;
       prog_data->instances =
          DIV_ROUND_UP(nir->info.tess.tcs_vertices_out, verts_per_thread);
@@ -135,54 +133,33 @@ brw_compile_tcs(const struct brw_compiler *compiler,
       brw_print_vue_map(stderr, &vue_prog_data->vue_map, MESA_SHADER_TESS_CTRL);
    }
 
-   if (is_scalar) {
-      const unsigned dispatch_width = devinfo->ver >= 20 ? 16 : 8;
-      fs_visitor v(compiler, &params->base, &key->base,
-                   &prog_data->base.base, nir, dispatch_width,
-                   params->base.stats != NULL, debug_enabled);
-      if (!v.run_tcs()) {
-         params->base.error_str =
-            ralloc_strdup(params->base.mem_ctx, v.fail_msg);
-         return NULL;
-      }
-
-      assert(v.payload().num_regs % reg_unit(devinfo) == 0);
-      prog_data->base.base.dispatch_grf_start_reg = v.payload().num_regs / reg_unit(devinfo);
-
-      fs_generator g(compiler, &params->base,
-                     &prog_data->base.base, false, MESA_SHADER_TESS_CTRL);
-      if (unlikely(debug_enabled)) {
-         g.enable_debug(ralloc_asprintf(params->base.mem_ctx,
-                                        "%s tessellation control shader %s",
-                                        nir->info.label ? nir->info.label
-                                                        : "unnamed",
-                                        nir->info.name));
-      }
-
-      g.generate_code(v.cfg, dispatch_width, v.shader_stats,
-                      v.performance_analysis.require(), params->base.stats);
-
-      g.add_const_data(nir->constant_data, nir->constant_data_size);
-
-      assembly = g.get_assembly();
-   } else {
-      brw::vec4_tcs_visitor v(compiler, &params->base, key, prog_data,
-                              nir, debug_enabled);
-      if (!v.run()) {
-         params->base.error_str =
-            ralloc_strdup(params->base.mem_ctx, v.fail_msg);
-         return NULL;
-      }
-
-      if (INTEL_DEBUG(DEBUG_TCS))
-         v.dump_instructions();
-
-
-      assembly = brw_vec4_generate_assembly(compiler, &params->base, nir,
-                                            &prog_data->base, v.cfg,
-                                            v.performance_analysis.require(),
-                                            debug_enabled);
+   const unsigned dispatch_width = devinfo->ver >= 20 ? 16 : 8;
+   fs_visitor v(compiler, &params->base, &key->base,
+                &prog_data->base.base, nir, dispatch_width,
+                params->base.stats != NULL, debug_enabled);
+   if (!v.run_tcs()) {
+      params->base.error_str =
+         ralloc_strdup(params->base.mem_ctx, v.fail_msg);
+      return NULL;
    }
 
-   return assembly;
+   assert(v.payload().num_regs % reg_unit(devinfo) == 0);
+   prog_data->base.base.dispatch_grf_start_reg = v.payload().num_regs / reg_unit(devinfo);
+
+   fs_generator g(compiler, &params->base,
+                  &prog_data->base.base, false, MESA_SHADER_TESS_CTRL);
+   if (unlikely(debug_enabled)) {
+      g.enable_debug(ralloc_asprintf(params->base.mem_ctx,
+                                     "%s tessellation control shader %s",
+                                     nir->info.label ? nir->info.label
+                                                     : "unnamed",
+                                     nir->info.name));
+   }
+
+   g.generate_code(v.cfg, dispatch_width, v.shader_stats,
+                   v.performance_analysis.require(), params->base.stats);
+
+   g.add_const_data(nir->constant_data, nir->constant_data_size);
+
+   return g.get_assembly();
 }

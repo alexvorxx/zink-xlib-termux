@@ -26,7 +26,6 @@
 #include "brw_fs.h"
 #include "brw_nir.h"
 #include "brw_private.h"
-#include "brw_vec4_tes.h"
 #include "dev/intel_debug.h"
 #include "util/macros.h"
 #include "util/u_debug.h"
@@ -1310,9 +1309,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
    const struct intel_vue_map *input_vue_map = params->input_vue_map;
    struct brw_tes_prog_data *prog_data = params->prog_data;
 
-   const bool is_scalar = compiler->scalar_stage[MESA_SHADER_TESS_EVAL];
    const bool debug_enabled = brw_should_print_shader(nir, DEBUG_TES);
-   const unsigned *assembly;
 
    prog_data->base.base.stage = MESA_SHADER_TESS_EVAL;
    prog_data->base.base.ray_queries = nir->info.ray_queries;
@@ -1395,55 +1392,35 @@ brw_compile_tes(const struct brw_compiler *compiler,
                         MESA_SHADER_TESS_EVAL);
    }
 
-   if (is_scalar) {
-      const unsigned dispatch_width = devinfo->ver >= 20 ? 16 : 8;
-      fs_visitor v(compiler, &params->base, &key->base,
-                   &prog_data->base.base, nir, dispatch_width,
-                   params->base.stats != NULL, debug_enabled);
-      if (!v.run_tes()) {
-         params->base.error_str =
-            ralloc_strdup(params->base.mem_ctx, v.fail_msg);
-         return NULL;
-      }
-
-      assert(v.payload().num_regs % reg_unit(devinfo) == 0);
-      prog_data->base.base.dispatch_grf_start_reg = v.payload().num_regs / reg_unit(devinfo);
-
-      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
-
-      fs_generator g(compiler, &params->base,
-                     &prog_data->base.base, false, MESA_SHADER_TESS_EVAL);
-      if (unlikely(debug_enabled)) {
-         g.enable_debug(ralloc_asprintf(params->base.mem_ctx,
-                                        "%s tessellation evaluation shader %s",
-                                        nir->info.label ? nir->info.label
-                                                        : "unnamed",
-                                        nir->info.name));
-      }
-
-      g.generate_code(v.cfg, dispatch_width, v.shader_stats,
-                      v.performance_analysis.require(), params->base.stats);
-
-      g.add_const_data(nir->constant_data, nir->constant_data_size);
-
-      assembly = g.get_assembly();
-   } else {
-      brw::vec4_tes_visitor v(compiler, &params->base, key, prog_data,
-                              nir, debug_enabled);
-      if (!v.run()) {
-         params->base.error_str =
-            ralloc_strdup(params->base.mem_ctx, v.fail_msg);
-	 return NULL;
-      }
-
-      if (unlikely(debug_enabled))
-	 v.dump_instructions();
-
-      assembly = brw_vec4_generate_assembly(compiler, &params->base, nir,
-                                            &prog_data->base, v.cfg,
-                                            v.performance_analysis.require(),
-                                            debug_enabled);
+   const unsigned dispatch_width = devinfo->ver >= 20 ? 16 : 8;
+   fs_visitor v(compiler, &params->base, &key->base,
+                &prog_data->base.base, nir, dispatch_width,
+                params->base.stats != NULL, debug_enabled);
+   if (!v.run_tes()) {
+      params->base.error_str =
+         ralloc_strdup(params->base.mem_ctx, v.fail_msg);
+      return NULL;
    }
 
-   return assembly;
+   assert(v.payload().num_regs % reg_unit(devinfo) == 0);
+   prog_data->base.base.dispatch_grf_start_reg = v.payload().num_regs / reg_unit(devinfo);
+
+   prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
+
+   fs_generator g(compiler, &params->base,
+                  &prog_data->base.base, false, MESA_SHADER_TESS_EVAL);
+   if (unlikely(debug_enabled)) {
+      g.enable_debug(ralloc_asprintf(params->base.mem_ctx,
+                                     "%s tessellation evaluation shader %s",
+                                     nir->info.label ? nir->info.label
+                                                     : "unnamed",
+                                     nir->info.name));
+   }
+
+   g.generate_code(v.cfg, dispatch_width, v.shader_stats,
+                   v.performance_analysis.require(), params->base.stats);
+
+   g.add_const_data(nir->constant_data, nir->constant_data_size);
+
+   return g.get_assembly();
 }

@@ -714,7 +714,7 @@ brw_nir_lower_fs_outputs(nir_shader *nir)
 })
 
 void
-brw_nir_optimize(nir_shader *nir, bool is_scalar,
+brw_nir_optimize(nir_shader *nir,
                  const struct intel_device_info *devinfo)
 {
    bool progress;
@@ -752,18 +752,11 @@ brw_nir_optimize(nir_shader *nir, bool is_scalar,
       OPT(nir_opt_ray_queries);
       OPT(nir_opt_ray_query_ranges);
 
-      if (is_scalar) {
-         OPT(nir_lower_alu_to_scalar, NULL, NULL);
-      } else {
-         OPT(nir_opt_shrink_stores, true);
-         OPT(nir_opt_shrink_vectors);
-      }
+      OPT(nir_lower_alu_to_scalar, NULL, NULL);
 
       OPT(nir_copy_prop);
 
-      if (is_scalar) {
-         OPT(nir_lower_phis_to_scalar, false);
-      }
+      OPT(nir_lower_phis_to_scalar, false);
 
       OPT(nir_copy_prop);
       OPT(nir_opt_dce);
@@ -784,15 +777,9 @@ brw_nir_optimize(nir_shader *nir, bool is_scalar,
        * For indirect loads of uniforms (push constants), we assume that array
        * indices will nearly always be in bounds and the cost of the load is
        * low.  Therefore there shouldn't be a performance benefit to avoid it.
-       * However, in vec4 tessellation shaders, these loads operate by
-       * actually pulling from memory.
        */
-      const bool is_vec4_tessellation = !is_scalar &&
-         (nir->info.stage == MESA_SHADER_TESS_CTRL ||
-          nir->info.stage == MESA_SHADER_TESS_EVAL);
-      OPT(nir_opt_peephole_select, 0, !is_vec4_tessellation, false);
-      OPT(nir_opt_peephole_select, 8, !is_vec4_tessellation,
-          devinfo->ver >= 6);
+      OPT(nir_opt_peephole_select, 0, true, false);
+      OPT(nir_opt_peephole_select, 8, true, devinfo->ver >= 6);
 
       OPT(nir_opt_intrinsics);
       OPT(nir_opt_idiv_const, 32);
@@ -1014,15 +1001,11 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
    const struct intel_device_info *devinfo = compiler->devinfo;
    UNUSED bool progress; /* Written by OPT */
 
-   const bool is_scalar = compiler->scalar_stage[nir->info.stage];
-
    nir_validate_ssa_dominance(nir, "before brw_preprocess_nir");
 
    OPT(nir_lower_frexp);
 
-   if (is_scalar) {
-      OPT(nir_lower_alu_to_scalar, NULL, NULL);
-   }
+   OPT(nir_lower_alu_to_scalar, NULL, NULL);
 
    if (nir->info.stage == MESA_SHADER_GEOMETRY)
       OPT(nir_lower_gs_intrinsics, 0);
@@ -1081,7 +1064,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
    OPT(nir_split_var_copies);
    OPT(nir_split_struct_vars, nir_var_function_temp);
 
-   brw_nir_optimize(nir, is_scalar, devinfo);
+   brw_nir_optimize(nir, devinfo);
 
    OPT(nir_lower_doubles, opts->softfp64, nir->options->lower_doubles_options);
    if (OPT(nir_lower_int64_float_conversions)) {
@@ -1102,9 +1085,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
       OPT(nir_opt_large_constants, NULL, 32);
    }
 
-   if (is_scalar) {
-      OPT(nir_lower_load_const_to_scalar);
-   }
+   OPT(nir_lower_load_const_to_scalar);
 
    OPT(nir_lower_system_values);
    nir_lower_compute_system_values_options lower_csv_options = {
@@ -1116,7 +1097,6 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
       .ballot_bit_size = 32,
       .ballot_components = 1,
       .lower_to_scalar = true,
-      .lower_vote_trivial = !is_scalar,
       .lower_relative_shuffle = true,
       .lower_quad_broadcast_dynamic = true,
       .lower_elect = true,
@@ -1142,7 +1122,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
     * issues are helped but nothing else in shader-db is hurt except for maybe
     * that one kerbal space program shader.
     */
-   if (is_scalar && !(indirect_mask & nir_var_function_temp))
+   if (!(indirect_mask & nir_var_function_temp))
       OPT(nir_lower_indirect_derefs, nir_var_function_temp, 16);
 
    /* Lower array derefs of vectors for SSBO and UBO loads.  For both UBOs and
@@ -1165,7 +1145,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
       OPT(intel_nir_clamp_per_vertex_loads);
 
    /* Get rid of split copies */
-   brw_nir_optimize(nir, is_scalar, devinfo);
+   brw_nir_optimize(nir, devinfo);
 }
 
 static bool
@@ -1321,18 +1301,13 @@ brw_nir_link_shaders(const struct brw_compiler *compiler,
    nir_validate_shader(producer, "after nir_lower_io_arrays_to_elements");
    nir_validate_shader(consumer, "after nir_lower_io_arrays_to_elements");
 
-   const bool p_is_scalar = compiler->scalar_stage[producer->info.stage];
-   const bool c_is_scalar = compiler->scalar_stage[consumer->info.stage];
-
-   if (p_is_scalar && c_is_scalar) {
-      NIR_PASS(_, producer, nir_lower_io_to_scalar_early, nir_var_shader_out);
-      NIR_PASS(_, consumer, nir_lower_io_to_scalar_early, nir_var_shader_in);
-      brw_nir_optimize(producer, p_is_scalar, devinfo);
-      brw_nir_optimize(consumer, c_is_scalar, devinfo);
-   }
+   NIR_PASS(_, producer, nir_lower_io_to_scalar_early, nir_var_shader_out);
+   NIR_PASS(_, consumer, nir_lower_io_to_scalar_early, nir_var_shader_in);
+   brw_nir_optimize(producer, devinfo);
+   brw_nir_optimize(consumer, devinfo);
 
    if (nir_link_opt_varyings(producer, consumer))
-      brw_nir_optimize(consumer, c_is_scalar, devinfo);
+      brw_nir_optimize(consumer, devinfo);
 
    NIR_PASS(_, producer, nir_remove_dead_variables, nir_var_shader_out, NULL);
    NIR_PASS(_, consumer, nir_remove_dead_variables, nir_var_shader_in, NULL);
@@ -1361,8 +1336,8 @@ brw_nir_link_shaders(const struct brw_compiler *compiler,
                   brw_nir_no_indirect_mask(compiler, consumer->info.stage),
                   UINT32_MAX);
 
-      brw_nir_optimize(producer, p_is_scalar, devinfo);
-      brw_nir_optimize(consumer, c_is_scalar, devinfo);
+      brw_nir_optimize(producer, devinfo);
+      brw_nir_optimize(consumer, devinfo);
 
       if (producer->info.stage == MESA_SHADER_MESH &&
             consumer->info.stage == MESA_SHADER_FRAGMENT) {
@@ -1591,48 +1566,45 @@ brw_vectorize_lower_mem_access(nir_shader *nir,
                                enum brw_robustness_flags robust_flags)
 {
    bool progress = false;
-   const bool is_scalar = compiler->scalar_stage[nir->info.stage];
 
-   if (is_scalar) {
-      nir_load_store_vectorize_options options = {
-         .modes = nir_var_mem_ubo | nir_var_mem_ssbo |
-                  nir_var_mem_global | nir_var_mem_shared |
-                  nir_var_mem_task_payload,
-         .callback = brw_nir_should_vectorize_mem,
-         .robust_modes = (nir_variable_mode)0,
-      };
+   nir_load_store_vectorize_options options = {
+      .modes = nir_var_mem_ubo | nir_var_mem_ssbo |
+               nir_var_mem_global | nir_var_mem_shared |
+               nir_var_mem_task_payload,
+      .callback = brw_nir_should_vectorize_mem,
+      .robust_modes = (nir_variable_mode)0,
+   };
 
-      if (robust_flags & BRW_ROBUSTNESS_UBO)
-         options.robust_modes |= nir_var_mem_ubo | nir_var_mem_global;
-      if (robust_flags & BRW_ROBUSTNESS_SSBO)
-         options.robust_modes |= nir_var_mem_ssbo | nir_var_mem_global;
+   if (robust_flags & BRW_ROBUSTNESS_UBO)
+      options.robust_modes |= nir_var_mem_ubo | nir_var_mem_global;
+   if (robust_flags & BRW_ROBUSTNESS_SSBO)
+      options.robust_modes |= nir_var_mem_ssbo | nir_var_mem_global;
 
-      OPT(nir_opt_load_store_vectorize, &options);
+   OPT(nir_opt_load_store_vectorize, &options);
 
-      /* Only run the blockify optimization on Gfx9+ because although prior HW
-       * versions have support for block loads, they do have limitations on
-       * alignment as well as requiring split sends which are not supported
-       * there.
+   /* Only run the blockify optimization on Gfx9+ because although prior HW
+    * versions have support for block loads, they do have limitations on
+    * alignment as well as requiring split sends which are not supported
+    * there.
+    */
+   if (compiler->devinfo->ver >= 9) {
+      /* Required for nir_divergence_analysis() */
+      OPT(nir_convert_to_lcssa, true, true);
+
+      /* When HW supports block loads, using the divergence analysis, try
+       * to find uniform SSBO loads and turn them into block loads.
+       *
+       * Rerun the vectorizer after that to make the largest possible block
+       * loads.
+       *
+       * This is a win on 2 fronts :
+       *   - fewer send messages
+       *   - reduced register pressure
        */
-      if (compiler->devinfo->ver >= 9) {
-         /* Required for nir_divergence_analysis() */
-         OPT(nir_convert_to_lcssa, true, true);
-
-         /* When HW supports block loads, using the divergence analysis, try
-          * to find uniform SSBO loads and turn them into block loads.
-          *
-          * Rerun the vectorizer after that to make the largest possible block
-          * loads.
-          *
-          * This is a win on 2 fronts :
-          *   - fewer send messages
-          *   - reduced register pressure
-          */
-         nir_divergence_analysis(nir);
-         if (OPT(intel_nir_blockify_uniform_loads, compiler->devinfo))
-            OPT(nir_opt_load_store_vectorize, &options);
-         OPT(nir_opt_remove_phis);
-      }
+      nir_divergence_analysis(nir);
+      if (OPT(intel_nir_blockify_uniform_loads, compiler->devinfo))
+         OPT(nir_opt_load_store_vectorize, &options);
+      OPT(nir_opt_remove_phis);
    }
 
    nir_lower_mem_access_bit_sizes_options mem_access_options = {
@@ -1683,7 +1655,6 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
                     enum brw_robustness_flags robust_flags)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
-   const bool is_scalar = compiler->scalar_stage[nir->info.stage];
 
    UNUSED bool progress; /* Written by OPT */
 
@@ -1710,20 +1681,20 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    if (gl_shader_stage_can_set_fragment_shading_rate(nir->info.stage))
       NIR_PASS(_, nir, intel_nir_lower_shading_rate_output);
 
-   brw_nir_optimize(nir, is_scalar, devinfo);
+   brw_nir_optimize(nir, devinfo);
 
-   if (is_scalar && nir_shader_has_local_variables(nir)) {
+   if (nir_shader_has_local_variables(nir)) {
       OPT(nir_lower_vars_to_explicit_types, nir_var_function_temp,
           glsl_get_natural_size_align_bytes);
       OPT(nir_lower_explicit_io, nir_var_function_temp,
           nir_address_format_32bit_offset);
-      brw_nir_optimize(nir, is_scalar, devinfo);
+      brw_nir_optimize(nir, devinfo);
    }
 
    brw_vectorize_lower_mem_access(nir, compiler, robust_flags);
 
    if (OPT(nir_lower_int64))
-      brw_nir_optimize(nir, is_scalar, devinfo);
+      brw_nir_optimize(nir, devinfo);
 
    if (devinfo->ver >= 6) {
       /* Try and fuse multiply-adds, if successful, run shrink_vectors to
@@ -1741,8 +1712,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
          OPT(nir_opt_shrink_vectors);
    }
 
-   if (is_scalar)
-      OPT(intel_nir_opt_peephole_imul32x16);
+   OPT(intel_nir_opt_peephole_imul32x16);
 
    if (OPT(nir_opt_comparison_pre)) {
       OPT(nir_copy_prop);
@@ -1753,27 +1723,15 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
        * the other optimization passes) will have removed at least one
        * instruction from one of the branches of the if-statement, so now it
        * might be under the threshold of conversion to bcsel.
-       *
-       * See brw_nir_optimize for the explanation of is_vec4_tessellation.
        */
-      const bool is_vec4_tessellation = !is_scalar &&
-         (nir->info.stage == MESA_SHADER_TESS_CTRL ||
-          nir->info.stage == MESA_SHADER_TESS_EVAL);
-      OPT(nir_opt_peephole_select, 0, is_vec4_tessellation, false);
-      OPT(nir_opt_peephole_select, 1, is_vec4_tessellation,
-          compiler->devinfo->ver >= 6);
+      OPT(nir_opt_peephole_select, 0, false, false);
+      OPT(nir_opt_peephole_select, 1, false, compiler->devinfo->ver >= 6);
    }
 
    do {
       progress = false;
       if (OPT(nir_opt_algebraic_late)) {
-         /* At this late stage, anything that makes more constants will wreak
-          * havok on the vec4 backend.  The handling of constants in the vec4
-          * backend is not good.
-          */
-         if (is_scalar)
-            OPT(nir_opt_constant_folding);
-
+         OPT(nir_opt_constant_folding);
          OPT(nir_copy_prop);
          OPT(nir_opt_dce);
          OPT(nir_opt_cse);
@@ -1783,19 +1741,16 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    if (OPT(nir_lower_fp16_casts, nir_lower_fp16_split_fp64)) {
       if (OPT(nir_lower_int64)) {
-         brw_nir_optimize(nir, is_scalar, devinfo);
+         brw_nir_optimize(nir, devinfo);
       }
    }
 
    OPT(intel_nir_lower_conversions);
 
-   if (is_scalar)
-      OPT(nir_lower_alu_to_scalar, NULL, NULL);
+   OPT(nir_lower_alu_to_scalar, NULL, NULL);
 
    while (OPT(nir_opt_algebraic_distribute_src_mods)) {
-      if (is_scalar)
-         OPT(nir_opt_constant_folding);
-
+      OPT(nir_opt_constant_folding);
       OPT(nir_copy_prop);
       OPT(nir_opt_dce);
       OPT(nir_opt_cse);
@@ -1821,7 +1776,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
       OPT(nir_lower_subgroups, &subgroups_options);
 
       if (OPT(nir_lower_int64))
-         brw_nir_optimize(nir, is_scalar, devinfo);
+         brw_nir_optimize(nir, devinfo);
 
       divergence_analysis_dirty = true;
    }
@@ -1834,7 +1789,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
        * that must be lowered.
        */
       if (OPT(nir_lower_int64))
-         brw_nir_optimize(nir, is_scalar, devinfo);
+         brw_nir_optimize(nir, devinfo);
 
       OPT(nir_lower_subgroups, &subgroups_options);
    }
@@ -1879,11 +1834,6 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    OPT(nir_opt_remove_phis);
 
    OPT(nir_convert_from_ssa, true);
-
-   if (!is_scalar) {
-      OPT(nir_move_vec_src_uses_to_dest, true);
-      OPT(nir_lower_vec_to_regs, NULL, NULL);
-   }
 
    OPT(nir_opt_dce);
 
@@ -2035,8 +1985,7 @@ brw_nir_apply_key(nir_shader *nir,
       OPT(brw_nir_limit_trig_input_range_workaround);
 
    if (progress) {
-      const bool is_scalar = compiler->scalar_stage[nir->info.stage];
-      brw_nir_optimize(nir, is_scalar, compiler->devinfo);
+      brw_nir_optimize(nir, compiler->devinfo);
    }
 }
 

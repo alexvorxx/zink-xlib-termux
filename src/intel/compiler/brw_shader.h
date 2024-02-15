@@ -134,7 +134,6 @@ brw_nir_no_indirect_mask(const struct brw_compiler *compiler,
                          gl_shader_stage stage)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
-   const bool is_scalar = compiler->scalar_stage[stage];
    nir_variable_mode indirect_mask = (nir_variable_mode) 0;
 
    switch (stage) {
@@ -143,19 +142,14 @@ brw_nir_no_indirect_mask(const struct brw_compiler *compiler,
       indirect_mask |= nir_var_shader_in;
       break;
 
-   case MESA_SHADER_GEOMETRY:
-      if (!is_scalar)
-         indirect_mask |= nir_var_shader_in;
-      break;
-
    default:
       /* Everything else can handle indirect inputs */
       break;
    }
 
-   if (is_scalar && stage != MESA_SHADER_TESS_CTRL &&
-                    stage != MESA_SHADER_TASK &&
-                    stage != MESA_SHADER_MESH)
+   if (stage != MESA_SHADER_TESS_CTRL &&
+       stage != MESA_SHADER_TASK &&
+       stage != MESA_SHADER_MESH)
       indirect_mask |= nir_var_shader_out;
 
    /* On HSW+, we allow indirects in scalar shaders.  They get implemented
@@ -168,7 +162,7 @@ brw_nir_no_indirect_mask(const struct brw_compiler *compiler,
     * indirects as scratch all the time, we may easily exceed this limit
     * without having any fallback.
     */
-   if (is_scalar && devinfo->verx10 <= 70)
+   if (devinfo->verx10 <= 70)
       indirect_mask |= nir_var_function_temp;
 
    return indirect_mask;

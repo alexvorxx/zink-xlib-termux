@@ -685,7 +685,7 @@ radv_device_init_cache_key(struct radv_device *device)
       device->vk.enabled_features.image2DViewOf3D && device->physical_device->rad_info.gfx_level == GFX9;
    key->invariant_geom = !!(device->instance->debug_flags & RADV_DEBUG_INVARIANT_GEOM);
    key->lower_discard_to_demote = !!(device->instance->debug_flags & RADV_DEBUG_DISCARD_TO_DEMOTE);
-   key->mesh_fast_launch_2 = device->mesh_fast_launch_2;
+   key->mesh_fast_launch_2 = device->physical_device->mesh_fast_launch_2;
    key->mesh_shader_queries = device->vk.enabled_features.meshShaderQueries;
    key->no_fmask = !!(device->instance->debug_flags & RADV_DEBUG_NO_FMASK);
    key->no_rt = !!(device->instance->debug_flags & RADV_DEBUG_NO_RT);
@@ -828,9 +828,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
 
    device->pbb_allowed =
       device->physical_device->rad_info.gfx_level >= GFX9 && !(device->instance->debug_flags & RADV_DEBUG_NOBINNING);
-
-   device->mesh_fast_launch_2 = device->physical_device->rad_info.gfx_level >= GFX11 &&
-                                !(device->instance->debug_flags & RADV_DEBUG_NO_GS_FAST_LAUNCH_2);
 
    device->disable_trunc_coord = device->instance->drirc.disable_trunc_coord;
 

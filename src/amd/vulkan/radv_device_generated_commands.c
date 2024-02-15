@@ -91,7 +91,7 @@ radv_get_sequence_size_graphics(const struct radv_indirect_command_layout *layou
    } else {
       if (layout->draw_mesh_tasks) {
          /* userdata writes + instance count + non-indexed draw */
-         *cmd_size += (6 + 2 + (device->mesh_fast_launch_2 ? 5 : 3)) * 4;
+         *cmd_size += (6 + 2 + (device->physical_device->mesh_fast_launch_2 ? 5 : 3)) * 4;
       } else {
          /* userdata writes + instance count + non-indexed draw */
          *cmd_size += (5 + 2 + 3) * 4;
@@ -1181,7 +1181,7 @@ dgc_emit_draw_mesh_tasks(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_
       dgc_emit_userdata_mesh(b, cs, vtx_base_sgpr, x, y, z, sequence_id, device);
       dgc_emit_instance_count(b, cs, nir_imm_int(b, 1));
 
-      if (device->mesh_fast_launch_2) {
+      if (device->physical_device->mesh_fast_launch_2) {
          dgc_emit_dispatch_mesh_direct(b, cs, x, y, z);
       } else {
          nir_def *vertex_count = nir_imul(b, x, nir_imul(b, y, z));

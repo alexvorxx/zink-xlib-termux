@@ -737,7 +737,7 @@ calc_mesh_workgroup_size(const struct radv_device *device, const nir_shader *nir
 {
    unsigned api_workgroup_size = ac_compute_cs_workgroup_size(nir->info.workgroup_size, false, UINT32_MAX);
 
-   if (device->mesh_fast_launch_2) {
+   if (device->physical_device->mesh_fast_launch_2) {
       /* Use multi-row export. It is also necessary to use the API workgroup size for non-emulated queries. */
       info->workgroup_size = api_workgroup_size;
    } else {

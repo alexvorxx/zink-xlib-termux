@@ -1992,6 +1992,9 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
 
    device->emulate_ngg_gs_query_pipeline_stat = device->use_ngg && device->rad_info.gfx_level < GFX11;
 
+   device->mesh_fast_launch_2 =
+      device->rad_info.gfx_level >= GFX11 && !(device->instance->debug_flags & RADV_DEBUG_NO_GS_FAST_LAUNCH_2);
+
    device->emulate_mesh_shader_queries = device->rad_info.gfx_level == GFX10_3;
 
    /* Determine the number of threads per wave for all stages. */

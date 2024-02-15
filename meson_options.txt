@@ -651,12 +651,8 @@ option(
 
 option(
   'intel-rt',
-  type : 'combo',
+  type : 'feature',
   deprecated: {'true': 'enabled', 'false': 'disabled'},
-  value : 'disabled',
-  choices : [
-    'enabled', 'disabled',
-  ],
   description : 'Build Ray Tracing on supported hardware.'
 )
 

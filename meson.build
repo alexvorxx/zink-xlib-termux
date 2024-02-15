@@ -23,7 +23,7 @@ project(
   ['c', 'cpp'],
   version : files('VERSION'),
   license : 'MIT',
-  meson_version : '>= 0.60',
+  meson_version : '>= 1.1.0',
   default_options : [
     'buildtype=debugoptimized',
     'b_ndebug=if-release',
@@ -303,8 +303,10 @@ else
   with_intel_clc = false
 endif
 
-with_intel_vk_rt = ['x86_64'].contains(host_machine.cpu_family()) and \
-  with_intel_vk and get_option('intel-rt') != 'disabled'
+with_intel_vk_rt = get_option('intel-rt') \
+  .disable_auto_if(not with_intel_vk) \
+  .disable_if(host_machine.cpu_family() != 'x86_64', error_message : 'Intel Ray Tracing is only supported on x86_64') \
+  .allowed()
 
 with_any_intel = [
   with_gallium_crocus,

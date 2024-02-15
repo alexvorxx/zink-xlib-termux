@@ -39,9 +39,6 @@
 bool
 brw_has_jip(const struct intel_device_info *devinfo, enum opcode opcode)
 {
-   if (devinfo->ver < 6)
-      return false;
-
    return opcode == BRW_OPCODE_IF ||
           opcode == BRW_OPCODE_ELSE ||
           opcode == BRW_OPCODE_ENDIF ||
@@ -54,11 +51,8 @@ brw_has_jip(const struct intel_device_info *devinfo, enum opcode opcode)
 bool
 brw_has_uip(const struct intel_device_info *devinfo, enum opcode opcode)
 {
-   if (devinfo->ver < 6)
-      return false;
-
-   return (devinfo->ver >= 7 && opcode == BRW_OPCODE_IF) ||
-          (devinfo->ver >= 8 && opcode == BRW_OPCODE_ELSE) ||
+   return opcode == BRW_OPCODE_IF ||
+          opcode == BRW_OPCODE_ELSE ||
           opcode == BRW_OPCODE_BREAK ||
           opcode == BRW_OPCODE_CONTINUE ||
           opcode == BRW_OPCODE_HALT;
@@ -67,12 +61,8 @@ brw_has_uip(const struct intel_device_info *devinfo, enum opcode opcode)
 static bool
 has_branch_ctrl(const struct intel_device_info *devinfo, enum opcode opcode)
 {
-   if (devinfo->ver < 8)
-      return false;
-
    return opcode == BRW_OPCODE_IF ||
           opcode == BRW_OPCODE_ELSE;
-          /* opcode == BRW_OPCODE_GOTO; */
 }
 
 static bool
@@ -243,23 +233,11 @@ static const char *const thread_ctrl[4] = {
    [BRW_THREAD_SWITCH] = "switch",
 };
 
-static const char *const compr_ctrl[4] = {
-   [0] = "",
-   [1] = "sechalf",
-   [2] = "compr",
-   [3] = "compr4",
-};
-
 static const char *const dep_ctrl[4] = {
    [0] = "",
    [1] = "NoDDClr",
    [2] = "NoDDChk",
    [3] = "NoDDClr,NoDDChk",
-};
-
-static const char *const mask_ctrl[4] = {
-   [0] = "",
-   [1] = "nomask",
 };
 
 static const char *const access_mode[2] = {
@@ -298,19 +276,6 @@ static const char *const end_of_thread[2] = {
    [1] = "EOT"
 };
 
-/* SFIDs on Gfx4-5 */
-static const char *const gfx4_sfid[16] = {
-   [BRW_SFID_NULL]            = "null",
-   [BRW_SFID_MATH]            = "math",
-   [BRW_SFID_SAMPLER]         = "sampler",
-   [BRW_SFID_MESSAGE_GATEWAY] = "gateway",
-   [BRW_SFID_DATAPORT_READ]   = "read",
-   [BRW_SFID_DATAPORT_WRITE]  = "write",
-   [BRW_SFID_URB]             = "urb",
-   [BRW_SFID_THREAD_SPAWNER]  = "thread_spawner",
-   [BRW_SFID_VME]             = "vme",
-};
-
 static const char *const gfx6_sfid[16] = {
    [BRW_SFID_NULL]                     = "null",
    [BRW_SFID_MATH]                     = "math",
@@ -341,63 +306,6 @@ static const char *const gfx7_gateway_subfuncid[8] = {
    [BRW_MESSAGE_GATEWAY_SFID_MMIO_READ_WRITE] = "mmio read/write",
 };
 
-static const char *const gfx4_dp_read_port_msg_type[4] = {
-   [0b00] = "OWord Block Read",
-   [0b01] = "OWord Dual Block Read",
-   [0b10] = "Media Block Read",
-   [0b11] = "DWord Scattered Read",
-};
-
-static const char *const g45_dp_read_port_msg_type[8] = {
-   [0b000] = "OWord Block Read",
-   [0b010] = "OWord Dual Block Read",
-   [0b100] = "Media Block Read",
-   [0b110] = "DWord Scattered Read",
-   [0b001] = "Render Target UNORM Read",
-   [0b011] = "AVC Loop Filter Read",
-};
-
-static const char *const dp_write_port_msg_type[8] = {
-   [0b000] = "OWord block write",
-   [0b001] = "OWord dual block write",
-   [0b010] = "media block write",
-   [0b011] = "DWord scattered write",
-   [0b100] = "RT write",
-   [0b101] = "streamed VB write",
-   [0b110] = "RT UNORM write", /* G45+ */
-   [0b111] = "flush render cache",
-};
-
-static const char *const dp_rc_msg_type_gfx6[16] = {
-   [BRW_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ] = "OWORD block read",
-   [GFX6_DATAPORT_READ_MESSAGE_RENDER_UNORM_READ] = "RT UNORM read",
-   [GFX6_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ] = "OWORD dual block read",
-   [GFX6_DATAPORT_READ_MESSAGE_MEDIA_BLOCK_READ] = "media block read",
-   [GFX6_DATAPORT_READ_MESSAGE_OWORD_UNALIGN_BLOCK_READ] =
-      "OWORD unaligned block read",
-   [GFX6_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ] = "DWORD scattered read",
-   [GFX6_DATAPORT_WRITE_MESSAGE_DWORD_ATOMIC_WRITE] = "DWORD atomic write",
-   [GFX6_DATAPORT_WRITE_MESSAGE_OWORD_BLOCK_WRITE] = "OWORD block write",
-   [GFX6_DATAPORT_WRITE_MESSAGE_OWORD_DUAL_BLOCK_WRITE] =
-      "OWORD dual block write",
-   [GFX6_DATAPORT_WRITE_MESSAGE_MEDIA_BLOCK_WRITE] = "media block write",
-   [GFX6_DATAPORT_WRITE_MESSAGE_DWORD_SCATTERED_WRITE] =
-      "DWORD scattered write",
-   [GFX6_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE] = "RT write",
-   [GFX6_DATAPORT_WRITE_MESSAGE_STREAMED_VB_WRITE] = "streamed VB write",
-   [GFX6_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_UNORM_WRITE] = "RT UNORM write",
-};
-
-static const char *const dp_rc_msg_type_gfx7[16] = {
-   [GFX7_DATAPORT_RC_MEDIA_BLOCK_READ] = "media block read",
-   [GFX7_DATAPORT_RC_TYPED_SURFACE_READ] = "typed surface read",
-   [GFX7_DATAPORT_RC_TYPED_ATOMIC_OP] = "typed atomic op",
-   [GFX7_DATAPORT_RC_MEMORY_FENCE] = "memory fence",
-   [GFX7_DATAPORT_RC_MEDIA_BLOCK_WRITE] = "media block write",
-   [GFX7_DATAPORT_RC_RENDER_TARGET_WRITE] = "RT write",
-   [GFX7_DATAPORT_RC_TYPED_SURFACE_WRITE] = "typed surface write"
-};
-
 static const char *const dp_rc_msg_type_gfx9[16] = {
    [GFX9_DATAPORT_RC_RENDER_TARGET_WRITE] = "RT write",
    [GFX9_DATAPORT_RC_RENDER_TARGET_READ] = "RT read"
@@ -406,10 +314,7 @@ static const char *const dp_rc_msg_type_gfx9[16] = {
 static const char *const *
 dp_rc_msg_type(const struct intel_device_info *devinfo)
 {
-   return (devinfo->ver >= 9 ? dp_rc_msg_type_gfx9 :
-           devinfo->ver >= 7 ? dp_rc_msg_type_gfx7 :
-           devinfo->ver >= 6 ? dp_rc_msg_type_gfx6 :
-           dp_write_port_msg_type);
+   return dp_rc_msg_type_gfx9;
 }
 
 static const char *const m_rt_write_subtype[] = {
@@ -538,31 +443,6 @@ static const char *const sync_function[16] = {
    [TGL_SYNC_HOST] = "host",
 };
 
-static const char *const math_saturate[2] = {
-   [0] = "",
-   [1] = "sat"
-};
-
-static const char *const math_signed[2] = {
-   [0] = "",
-   [1] = "signed"
-};
-
-static const char *const math_scalar[2] = {
-   [0] = "",
-   [1] = "scalar"
-};
-
-static const char *const math_precision[2] = {
-   [0] = "",
-   [1] = "partial_precision"
-};
-
-static const char *const gfx5_urb_opcode[] = {
-   [0] = "urb_write",
-   [1] = "ff_sync",
-};
-
 static const char *const gfx7_urb_opcode[] = {
    [BRW_URB_OPCODE_WRITE_HWORD] = "write HWord",
    [BRW_URB_OPCODE_WRITE_OWORD] = "write OWord",
@@ -581,21 +461,6 @@ static const char *const urb_swizzle[4] = {
    [BRW_URB_SWIZZLE_NONE]       = "",
    [BRW_URB_SWIZZLE_INTERLEAVE] = "interleave",
    [BRW_URB_SWIZZLE_TRANSPOSE]  = "transpose",
-};
-
-static const char *const urb_allocate[2] = {
-   [0] = "",
-   [1] = "allocate"
-};
-
-static const char *const urb_used[2] = {
-   [0] = "",
-   [1] = "used"
-};
-
-static const char *const urb_complete[2] = {
-   [0] = "",
-   [1] = "complete"
 };
 
 static const char *const gfx5_sampler_msg_type[] = {
@@ -673,12 +538,6 @@ static const char *const xe2_sampler_simd_mode[7] = {
    [XE2_SAMPLER_SIMD_MODE_SIMD32]  = "SIMD32",
    [XE2_SAMPLER_SIMD_MODE_SIMD16H] = "SIMD16H",
    [XE2_SAMPLER_SIMD_MODE_SIMD32H] = "SIMD32H",
-};
-
-static const char *const sampler_target_format[4] = {
-   [0] = "F",
-   [2] = "UD",
-   [3] = "D"
 };
 
 static const char *const lsc_operation[] = {
@@ -1068,9 +927,7 @@ dest_3src(FILE *file, const struct intel_device_info *devinfo,
    if (devinfo->ver < 10 && is_align1)
       return 0;
 
-   if (devinfo->ver == 6 && brw_inst_3src_a16_dst_reg_file(devinfo, inst))
-      reg_file = BRW_MESSAGE_REGISTER_FILE;
-   else if (devinfo->ver >= 12)
+   if (devinfo->ver >= 12)
       reg_file = brw_inst_3src_a1_dst_reg_file(devinfo, inst);
    else if (is_align1 && brw_inst_3src_a1_dst_reg_file(devinfo, inst))
       reg_file = BRW_ARCHITECTURE_REGISTER_FILE;
@@ -1151,7 +1008,7 @@ src_da1(FILE *file,
 {
    int err = 0;
 
-   if (devinfo->ver >= 8 && is_logic_instruction(opcode))
+   if (is_logic_instruction(opcode))
       err |= control(file, "bitnot", m_bitnot, _negate, NULL);
    else
       err |= control(file, "negate", m_negate, _negate, NULL);
@@ -1183,7 +1040,7 @@ src_ia1(FILE *file,
 {
    int err = 0;
 
-   if (devinfo->ver >= 8 && is_logic_instruction(opcode))
+   if (is_logic_instruction(opcode))
       err |= control(file, "bitnot", m_bitnot, _negate, NULL);
    else
       err |= control(file, "negate", m_negate, _negate, NULL);
@@ -1238,7 +1095,7 @@ src_da16(FILE *file,
 {
    int err = 0;
 
-   if (devinfo->ver >= 8 && is_logic_instruction(opcode))
+   if (is_logic_instruction(opcode))
       err |= control(file, "bitnot", m_bitnot, _negate, NULL);
    else
       err |= control(file, "negate", m_negate, _negate, NULL);
@@ -1705,15 +1562,9 @@ imm(FILE *file, const struct brw_isa_info *isa, enum brw_reg_type type,
       /* The DIM instruction's src0 uses an F type but contains a
        * 64-bit immediate
        */
-      if (brw_inst_opcode(isa, inst) == BRW_OPCODE_DIM) {
-         format(file, "0x%"PRIx64"F", brw_inst_bits(inst, 127, 64));
-         pad(file, 48);
-         format(file, "/* %-gF */", brw_inst_imm_df(devinfo, inst));
-      } else {
-         format(file, "0x%"PRIx64"F", brw_inst_bits(inst, 127, 96));
-         pad(file, 48);
-         format(file, " /* %-gF */", brw_inst_imm_f(devinfo, inst));
-      }
+      format(file, "0x%"PRIx64"F", brw_inst_bits(inst, 127, 96));
+      pad(file, 48);
+      format(file, " /* %-gF */", brw_inst_imm_f(devinfo, inst));
       break;
    case BRW_REGISTER_TYPE_DF:
       format(file, "0x%016"PRIx64"DF", brw_inst_imm_uq(devinfo, inst));
@@ -1935,7 +1786,7 @@ qtr_ctrl(FILE *file, const struct intel_device_info *devinfo,
 {
    int qtr_ctl = brw_inst_qtr_control(devinfo, inst);
    int exec_size = 1 << brw_inst_exec_size(devinfo, inst);
-   const unsigned nib_ctl = devinfo->ver < 7 || devinfo->ver >= 20 ? 0 :
+   const unsigned nib_ctl = devinfo->ver >= 20 ? 0 :
                             brw_inst_nib_control(devinfo, inst);
 
    if (exec_size < 8 || nib_ctl) {
@@ -2105,7 +1956,7 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
       err |= control(file, "predicate inverse", pred_inv,
                      brw_inst_pred_inv(devinfo, inst), NULL);
       format(file, "f%"PRIu64".%"PRIu64,
-             devinfo->ver >= 7 ? brw_inst_flag_reg_nr(devinfo, inst) : 0,
+             brw_inst_flag_reg_nr(devinfo, inst),
              brw_inst_flag_subreg_nr(devinfo, inst));
       if (devinfo->ver >= 20) {
          err |= control(file, "predicate control", xe2_pred_ctrl,
@@ -2160,25 +2011,22 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
        * control flow doesn't update flags.
        */
       if (brw_inst_cond_modifier(devinfo, inst) &&
-          (devinfo->ver < 6 || (opcode != BRW_OPCODE_SEL &&
-                                opcode != BRW_OPCODE_CSEL &&
-                                opcode != BRW_OPCODE_IF &&
-                                opcode != BRW_OPCODE_WHILE))) {
+          (opcode != BRW_OPCODE_SEL &&
+           opcode != BRW_OPCODE_CSEL &&
+           opcode != BRW_OPCODE_IF &&
+           opcode != BRW_OPCODE_WHILE)) {
          format(file, ".f%"PRIu64".%"PRIu64,
-                devinfo->ver >= 7 ? brw_inst_flag_reg_nr(devinfo, inst) : 0,
+                brw_inst_flag_reg_nr(devinfo, inst),
                 brw_inst_flag_subreg_nr(devinfo, inst));
       }
    }
 
-   if (opcode != BRW_OPCODE_NOP && opcode != BRW_OPCODE_NENOP) {
+   if (opcode != BRW_OPCODE_NOP) {
       string(file, "(");
       err |= control(file, "execution size", exec_size,
                      brw_inst_exec_size(devinfo, inst), NULL);
       string(file, ")");
    }
-
-   if (opcode == BRW_OPCODE_SEND && devinfo->ver < 6)
-      format(file, " %"PRIu64, brw_inst_base_mrf(devinfo, inst));
 
    if (brw_has_uip(devinfo, opcode)) {
       /* Instructions that have UIP also have JIP. */
@@ -2190,32 +2038,11 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
       string(file, "UIP: ");
       write_label(file, devinfo, root_label, offset, brw_inst_uip(devinfo, inst));
    } else if (brw_has_jip(devinfo, opcode)) {
-      int jip;
-      if (devinfo->ver >= 7) {
-         jip = brw_inst_jip(devinfo, inst);
-      } else {
-         jip = brw_inst_gfx6_jump_count(devinfo, inst);
-      }
+      int jip = brw_inst_jip(devinfo, inst);
 
       pad(file, 16);
       string(file, "JIP: ");
       write_label(file, devinfo, root_label, offset, jip);
-   } else if (devinfo->ver < 6 && (opcode == BRW_OPCODE_BREAK ||
-                                   opcode == BRW_OPCODE_CONTINUE ||
-                                   opcode == BRW_OPCODE_ELSE)) {
-      pad(file, 16);
-      format(file, "Jump: %d", brw_inst_gfx4_jump_count(devinfo, inst));
-      pad(file, 32);
-      format(file, "Pop: %"PRIu64, brw_inst_gfx4_pop_count(devinfo, inst));
-   } else if (devinfo->ver < 6 && (opcode == BRW_OPCODE_IF ||
-                                   opcode == BRW_OPCODE_IFF ||
-                                   opcode == BRW_OPCODE_HALT ||
-                                   opcode == BRW_OPCODE_WHILE)) {
-      pad(file, 16);
-      format(file, "Jump: %d", brw_inst_gfx4_jump_count(devinfo, inst));
-   } else if (devinfo->ver < 6 && opcode == BRW_OPCODE_ENDIF) {
-      pad(file, 16);
-      format(file, "Pop: %"PRIu64, brw_inst_gfx4_pop_count(devinfo, inst));
    } else if (opcode == BRW_OPCODE_JMPI) {
       pad(file, 16);
       err |= src1(file, isa, inst);
@@ -2308,8 +2135,7 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
       space = 0;
 
       fprintf(file, "            ");
-      err |= control(file, "SFID", devinfo->ver >= 6 ? gfx6_sfid : gfx4_sfid,
-                     sfid, &space);
+      err |= control(file, "SFID", gfx6_sfid, sfid, &space);
       string(file, " MsgDesc:");
 
       if (!has_imm_desc) {
@@ -2317,18 +2143,6 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
       } else {
          bool unsupported = false;
          switch (sfid) {
-         case BRW_SFID_MATH:
-            err |= control(file, "math function", math_function,
-                           brw_inst_math_msg_function(devinfo, inst), &space);
-            err |= control(file, "math saturate", math_saturate,
-                           brw_inst_math_msg_saturate(devinfo, inst), &space);
-            err |= control(file, "math signed", math_signed,
-                           brw_inst_math_msg_signed_int(devinfo, inst), &space);
-            err |= control(file, "math scalar", math_scalar,
-                           brw_inst_math_msg_data_type(devinfo, inst), &space);
-            err |= control(file, "math precision", math_precision,
-                           brw_inst_math_msg_precision(devinfo, inst), &space);
-            break;
          case BRW_SFID_SAMPLER:
             if (devinfo->ver >= 20) {
                err |= control(file, "sampler message", xe2_sampler_msg_type,
@@ -2343,58 +2157,27 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                format(file, " Surface = %u Sampler = %u",
                       brw_sampler_desc_binding_table_index(devinfo, imm_desc),
                       brw_sampler_desc_sampler(devinfo, imm_desc));
-            } else if (devinfo->ver >= 5) {
+            } else {
                err |= control(file, "sampler message", gfx5_sampler_msg_type,
                               brw_sampler_desc_msg_type(devinfo, imm_desc),
                               &space);
                err |= control(file, "sampler simd mode", gfx5_sampler_simd_mode,
                               brw_sampler_desc_simd_mode(devinfo, imm_desc),
                               &space);
-               if (devinfo->ver >= 8 &&
-                   brw_sampler_desc_return_format(devinfo, imm_desc)) {
+               if (brw_sampler_desc_return_format(devinfo, imm_desc)) {
                   string(file, " HP");
                }
                format(file, " Surface = %u Sampler = %u",
                       brw_sampler_desc_binding_table_index(devinfo, imm_desc),
                       brw_sampler_desc_sampler(devinfo, imm_desc));
-            } else {
-               format(file, " (bti %u, sampler %u, msg_type %u, ",
-                      brw_sampler_desc_binding_table_index(devinfo, imm_desc),
-                      brw_sampler_desc_sampler(devinfo, imm_desc),
-                      brw_sampler_desc_msg_type(devinfo, imm_desc));
-               if (devinfo->verx10 != 45) {
-                  err |= control(file, "sampler target format",
-                                 sampler_target_format,
-                                 brw_sampler_desc_return_format(devinfo, imm_desc),
-                                 NULL);
-               }
-               string(file, ")");
             }
             break;
          case GFX6_SFID_DATAPORT_SAMPLER_CACHE:
          case GFX6_SFID_DATAPORT_CONSTANT_CACHE:
-            /* aka BRW_SFID_DATAPORT_READ on Gfx4-5 */
-            if (devinfo->ver >= 6) {
-               format(file, " (bti %u, msg_ctrl %u, msg_type %u, write_commit %u)",
-                      brw_dp_desc_binding_table_index(devinfo, imm_desc),
-                      brw_dp_desc_msg_control(devinfo, imm_desc),
-                      brw_dp_desc_msg_type(devinfo, imm_desc),
-                      devinfo->ver >= 7 ? 0u :
-                      brw_dp_write_desc_write_commit(devinfo, imm_desc));
-            } else {
-               bool is_965 = devinfo->verx10 == 40;
-               err |= control(file, "DP read message type",
-                              is_965 ? gfx4_dp_read_port_msg_type :
-                                       g45_dp_read_port_msg_type,
-                              brw_dp_read_desc_msg_type(devinfo, imm_desc),
-                              &space);
-
-               format(file, " MsgCtrl = 0x%u",
-                      brw_dp_read_desc_msg_control(devinfo, imm_desc));
-
-               format(file, " Surface = %u",
-                      brw_dp_desc_binding_table_index(devinfo, imm_desc));
-            }
+            format(file, " (bti %u, msg_ctrl %u, msg_type %u)",
+                   brw_dp_desc_binding_table_index(devinfo, imm_desc),
+                   brw_dp_desc_msg_control(devinfo, imm_desc),
+                   brw_dp_desc_msg_type(devinfo, imm_desc));
             break;
 
          case GFX6_SFID_DATAPORT_RENDER_CACHE: {
@@ -2405,22 +2188,18 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                            dp_rc_msg_type(devinfo), msg_type, &space);
 
             bool is_rt_write = msg_type ==
-               (devinfo->ver >= 6 ? GFX6_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE
-                                  : BRW_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE);
+               GFX6_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE;
 
             if (is_rt_write) {
                err |= control(file, "RT message type", m_rt_write_subtype,
                               brw_inst_rt_message_type(devinfo, inst), &space);
-               if (devinfo->ver >= 6 && brw_inst_rt_slot_group(devinfo, inst))
+               if (brw_inst_rt_slot_group(devinfo, inst))
                   string(file, " Hi");
                if (brw_fb_write_desc_last_render_target(devinfo, imm_desc))
                   string(file, " LastRT");
                if (devinfo->ver >= 10 &&
                    brw_fb_write_desc_coarse_write(devinfo, imm_desc))
                   string(file, " CoarseWrite");
-               if (devinfo->ver < 7 &&
-                   brw_fb_write_desc_write_commit(devinfo, imm_desc))
-                  string(file, " WriteCommit");
             } else {
                format(file, " MsgCtrl = 0x%u",
                       brw_fb_write_desc_msg_control(devinfo, imm_desc));
@@ -2492,12 +2271,9 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                space = 1;
 
                err |= control(file, "urb opcode",
-                              devinfo->ver >= 7 ? gfx7_urb_opcode
-                              : gfx5_urb_opcode,
-                              urb_opcode, &space);
+                              gfx7_urb_opcode, urb_opcode, &space);
 
-               if (devinfo->ver >= 7 &&
-                   brw_inst_urb_per_slot_offset(devinfo, inst)) {
+               if (brw_inst_urb_per_slot_offset(devinfo, inst)) {
                   string(file, " per-slot");
                }
 
@@ -2509,17 +2285,6 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                   err |= control(file, "urb swizzle", urb_swizzle,
                                  brw_inst_urb_swizzle_control(devinfo, inst),
                                  &space);
-               }
-
-               if (devinfo->ver < 7) {
-                  err |= control(file, "urb allocate", urb_allocate,
-                                 brw_inst_urb_allocate(devinfo, inst), &space);
-                  err |= control(file, "urb used", urb_used,
-                                 brw_inst_urb_used(devinfo, inst), &space);
-               }
-               if (devinfo->ver < 8) {
-                  err |= control(file, "urb complete", urb_complete,
-                                 brw_inst_urb_complete(devinfo, inst), &space);
                }
             }
             break;
@@ -2614,111 +2379,99 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
          }
 
          case GFX7_SFID_DATAPORT_DATA_CACHE:
-            if (devinfo->ver >= 7) {
-               format(file, " (");
-               space = 0;
+            format(file, " (");
+            space = 0;
 
-               err |= control(file, "DP DC0 message type",
-                              dp_dc0_msg_type_gfx7,
-                              brw_dp_desc_msg_type(devinfo, imm_desc), &space);
+            err |= control(file, "DP DC0 message type",
+                           dp_dc0_msg_type_gfx7,
+                           brw_dp_desc_msg_type(devinfo, imm_desc), &space);
 
-               format(file, ", bti %u, ",
-                      brw_dp_desc_binding_table_index(devinfo, imm_desc));
+            format(file, ", bti %u, ",
+                   brw_dp_desc_binding_table_index(devinfo, imm_desc));
 
-               switch (brw_inst_dp_msg_type(devinfo, inst)) {
-               case GFX7_DATAPORT_DC_UNTYPED_ATOMIC_OP:
-                  control(file, "atomic op", aop,
-                          brw_dp_desc_msg_control(devinfo, imm_desc) & 0xf,
-                          &space);
-                  break;
-               case GFX7_DATAPORT_DC_OWORD_BLOCK_READ:
-               case GFX7_DATAPORT_DC_OWORD_BLOCK_WRITE: {
-                  unsigned msg_ctrl = brw_dp_desc_msg_control(devinfo, imm_desc);
-                  assert(dp_oword_block_rw[msg_ctrl & 7]);
-                  format(file, "owords = %s, aligned = %d",
-                        dp_oword_block_rw[msg_ctrl & 7], (msg_ctrl >> 3) & 3);
-                  break;
-               }
-               default:
-                  format(file, "%u",
-                         brw_dp_desc_msg_control(devinfo, imm_desc));
-               }
-               format(file, ")");
-            } else {
-               unsupported = true;
+            switch (brw_inst_dp_msg_type(devinfo, inst)) {
+            case GFX7_DATAPORT_DC_UNTYPED_ATOMIC_OP:
+               control(file, "atomic op", aop,
+                       brw_dp_desc_msg_control(devinfo, imm_desc) & 0xf,
+                       &space);
+               break;
+            case GFX7_DATAPORT_DC_OWORD_BLOCK_READ:
+            case GFX7_DATAPORT_DC_OWORD_BLOCK_WRITE: {
+               unsigned msg_ctrl = brw_dp_desc_msg_control(devinfo, imm_desc);
+               assert(dp_oword_block_rw[msg_ctrl & 7]);
+               format(file, "owords = %s, aligned = %d",
+                     dp_oword_block_rw[msg_ctrl & 7], (msg_ctrl >> 3) & 3);
+               break;
             }
+            default:
+               format(file, "%u",
+                      brw_dp_desc_msg_control(devinfo, imm_desc));
+            }
+            format(file, ")");
             break;
 
          case HSW_SFID_DATAPORT_DATA_CACHE_1: {
-            if (devinfo->ver >= 7) {
-               format(file, " (");
-               space = 0;
+            format(file, " (");
+            space = 0;
 
-               unsigned msg_ctrl = brw_dp_desc_msg_control(devinfo, imm_desc);
+            unsigned msg_ctrl = brw_dp_desc_msg_control(devinfo, imm_desc);
 
-               err |= control(file, "DP DC1 message type",
-                              dp_dc1_msg_type_hsw,
-                              brw_dp_desc_msg_type(devinfo, imm_desc), &space);
+            err |= control(file, "DP DC1 message type",
+                           dp_dc1_msg_type_hsw,
+                           brw_dp_desc_msg_type(devinfo, imm_desc), &space);
 
-               format(file, ", Surface = %u, ",
-                      brw_dp_desc_binding_table_index(devinfo, imm_desc));
+            format(file, ", Surface = %u, ",
+                   brw_dp_desc_binding_table_index(devinfo, imm_desc));
 
-               switch (brw_inst_dp_msg_type(devinfo, inst)) {
-               case HSW_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_OP:
-               case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP:
-               case HSW_DATAPORT_DC_PORT1_ATOMIC_COUNTER_OP:
-                  format(file, "SIMD%d,", (msg_ctrl & (1 << 4)) ? 8 : 16);
-                  FALLTHROUGH;
-               case HSW_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_OP_SIMD4X2:
-               case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP_SIMD4X2:
-               case HSW_DATAPORT_DC_PORT1_ATOMIC_COUNTER_OP_SIMD4X2:
-               case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP:
-               case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP:
-                  control(file, "atomic op", aop, msg_ctrl & 0xf, &space);
-                  break;
-               case HSW_DATAPORT_DC_PORT1_UNTYPED_SURFACE_READ:
-               case HSW_DATAPORT_DC_PORT1_UNTYPED_SURFACE_WRITE:
-               case HSW_DATAPORT_DC_PORT1_TYPED_SURFACE_READ:
-               case HSW_DATAPORT_DC_PORT1_TYPED_SURFACE_WRITE:
-               case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_WRITE:
-               case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_READ: {
-                  static const char *simd_modes[] = { "4x2", "16", "8" };
-                  format(file, "SIMD%s, Mask = 0x%x",
-                         simd_modes[msg_ctrl >> 4], msg_ctrl & 0xf);
-                  break;
-               }
-               case GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP:
-               case GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP:
-               case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP:
-                  format(file, "SIMD%d,", (msg_ctrl & (1 << 4)) ? 8 : 16);
-                  control(file, "atomic float op", aop_float, msg_ctrl & 0xf,
-                          &space);
-                  break;
-               case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
-               case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
-                  assert(dp_oword_block_rw[msg_ctrl & 7]);
-                  format(file, "owords = %s, aligned = %d",
-                        dp_oword_block_rw[msg_ctrl & 7], (msg_ctrl >> 3) & 3);
-                  break;
-               default:
-                  format(file, "0x%x", msg_ctrl);
-               }
-               format(file, ")");
-            } else {
-               unsupported = true;
+            switch (brw_inst_dp_msg_type(devinfo, inst)) {
+            case HSW_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_OP:
+            case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP:
+            case HSW_DATAPORT_DC_PORT1_ATOMIC_COUNTER_OP:
+               format(file, "SIMD%d,", (msg_ctrl & (1 << 4)) ? 8 : 16);
+               FALLTHROUGH;
+            case HSW_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_OP_SIMD4X2:
+            case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP_SIMD4X2:
+            case HSW_DATAPORT_DC_PORT1_ATOMIC_COUNTER_OP_SIMD4X2:
+            case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP:
+            case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP:
+               control(file, "atomic op", aop, msg_ctrl & 0xf, &space);
+               break;
+            case HSW_DATAPORT_DC_PORT1_UNTYPED_SURFACE_READ:
+            case HSW_DATAPORT_DC_PORT1_UNTYPED_SURFACE_WRITE:
+            case HSW_DATAPORT_DC_PORT1_TYPED_SURFACE_READ:
+            case HSW_DATAPORT_DC_PORT1_TYPED_SURFACE_WRITE:
+            case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_WRITE:
+            case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_READ: {
+               static const char *simd_modes[] = { "4x2", "16", "8" };
+               format(file, "SIMD%s, Mask = 0x%x",
+                      simd_modes[msg_ctrl >> 4], msg_ctrl & 0xf);
+               break;
             }
+            case GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP:
+            case GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP:
+            case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP:
+               format(file, "SIMD%d,", (msg_ctrl & (1 << 4)) ? 8 : 16);
+               control(file, "atomic float op", aop_float, msg_ctrl & 0xf,
+                       &space);
+               break;
+            case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
+            case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
+               assert(dp_oword_block_rw[msg_ctrl & 7]);
+               format(file, "owords = %s, aligned = %d",
+                     dp_oword_block_rw[msg_ctrl & 7], (msg_ctrl >> 3) & 3);
+               break;
+            default:
+               format(file, "0x%x", msg_ctrl);
+            }
+            format(file, ")");
             break;
          }
 
          case GFX7_SFID_PIXEL_INTERPOLATOR:
-            if (devinfo->ver >= 7) {
-               format(file, " (%s, %s, 0x%02"PRIx64")",
-                      brw_inst_pi_nopersp(devinfo, inst) ? "linear" : "persp",
-                      pixel_interpolator_msg_types[brw_inst_pi_message_type(devinfo, inst)],
-                      brw_inst_pi_message_data(devinfo, inst));
-            } else {
-               unsupported = true;
-            }
+            format(file, " (%s, %s, 0x%02"PRIx64")",
+                   brw_inst_pi_nopersp(devinfo, inst) ? "linear" : "persp",
+                   pixel_interpolator_msg_types[brw_inst_pi_message_type(devinfo, inst)],
+                   brw_inst_pi_message_data(devinfo, inst));
             break;
 
          case GEN_RT_SFID_RAY_TRACE_ACCELERATOR:
@@ -2764,18 +2517,13 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
       }
    }
    pad(file, 64);
-   if (opcode != BRW_OPCODE_NOP && opcode != BRW_OPCODE_NENOP) {
+   if (opcode != BRW_OPCODE_NOP) {
       string(file, "{");
       space = 1;
       err |= control(file, "access mode", access_mode,
                      brw_inst_access_mode(devinfo, inst), &space);
-      if (devinfo->ver >= 6) {
-         err |= control(file, "write enable control", wectrl,
-                        brw_inst_mask_control(devinfo, inst), &space);
-      } else {
-         err |= control(file, "mask control", mask_ctrl,
-                        brw_inst_mask_control(devinfo, inst), &space);
-      }
+      err |= control(file, "write enable control", wectrl,
+                     brw_inst_mask_control(devinfo, inst), &space);
 
       if (devinfo->ver < 12) {
          err |= control(file, "dependency control", dep_ctrl,
@@ -2783,19 +2531,7 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                          brw_inst_no_dd_clear(devinfo, inst)), &space);
       }
 
-      if (devinfo->ver >= 6)
-         err |= qtr_ctrl(file, devinfo, inst);
-      else {
-         if (brw_inst_qtr_control(devinfo, inst) == BRW_COMPRESSION_COMPRESSED &&
-             desc && desc->ndst > 0 &&
-             brw_inst_dst_reg_file(devinfo, inst) == BRW_MESSAGE_REGISTER_FILE &&
-             brw_inst_dst_da_reg_nr(devinfo, inst) & BRW_MRF_COMPR4) {
-            format(file, " compr4");
-         } else {
-            err |= control(file, "compression control", compr_ctrl,
-                           brw_inst_qtr_control(devinfo, inst), &space);
-         }
-      }
+      err |= qtr_ctrl(file, devinfo, inst);
 
       if (devinfo->ver >= 12)
          err |= swsb(file, isa, inst);
@@ -2808,7 +2544,7 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
       if (has_branch_ctrl(devinfo, opcode)) {
          err |= control(file, "branch ctrl", branch_ctrl,
                         brw_inst_branch_control(devinfo, inst), &space);
-      } else if (devinfo->ver >= 6 && devinfo->ver < 20) {
+      } else if (devinfo->ver < 20) {
          err |= control(file, "acc write control", accwr,
                         brw_inst_acc_wr_control(devinfo, inst), &space);
       }

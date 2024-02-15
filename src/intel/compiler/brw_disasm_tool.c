@@ -209,6 +209,12 @@ int main(int argc, char *argv[])
       exit(EXIT_FAILURE);
    }
 
+   if (devinfo.ver < 9) {
+      fprintf(stderr, "device has gfx version %d but must be >= 9, try elk_disasm instead",
+              devinfo.ver);
+      exit(EXIT_FAILURE);
+   }
+
    struct brw_isa_info isa;
    brw_init_isa_info(&isa, &devinfo);
 

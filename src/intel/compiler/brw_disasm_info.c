@@ -130,7 +130,6 @@ void
 disasm_annotate(struct disasm_info *disasm,
                 struct backend_instruction *inst, unsigned offset)
 {
-   const struct intel_device_info *devinfo = disasm->isa->devinfo;
    const struct cfg_t *cfg = disasm->cfg;
 
    struct inst_group *group;
@@ -159,7 +158,7 @@ disasm_annotate(struct disasm_info *disasm,
     * There's also only complication from emitting an annotation without
     * a corresponding hardware instruction to disassemble.
     */
-   if (devinfo->ver >= 6 && inst->opcode == BRW_OPCODE_DO) {
+   if (inst->opcode == BRW_OPCODE_DO) {
       disasm->use_tail = true;
    }
 

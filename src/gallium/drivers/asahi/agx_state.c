@@ -2775,7 +2775,7 @@ agx_destroy_meta_shaders(struct agx_context *ctx)
    _mesa_hash_table_destroy(ctx->generic_meta, agx_delete_compiled_shader);
 }
 
-static struct agx_compiled_shader *
+struct agx_compiled_shader *
 agx_build_meta_shader(struct agx_context *ctx, meta_shader_builder_t builder,
                       void *data, size_t data_size)
 {

@@ -1153,3 +1153,7 @@ typedef void (*meta_shader_builder_t)(struct nir_builder *b, const void *key);
 void agx_init_meta_shaders(struct agx_context *ctx);
 
 void agx_destroy_meta_shaders(struct agx_context *ctx);
+
+struct agx_compiled_shader *agx_build_meta_shader(struct agx_context *ctx,
+                                                  meta_shader_builder_t builder,
+                                                  void *data, size_t data_size);

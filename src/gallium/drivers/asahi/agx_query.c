@@ -174,13 +174,23 @@ agx_create_query(struct pipe_context *ctx, unsigned query_type, unsigned index)
 }
 
 static void
-sync_query_writers(struct agx_context *ctx, struct agx_query *query,
-                   const char *reason)
+flush_query_writers(struct agx_context *ctx, struct agx_query *query,
+                    const char *reason)
 {
    STATIC_ASSERT(ARRAY_SIZE(ctx->batches.generation) == AGX_MAX_BATCHES);
    STATIC_ASSERT(ARRAY_SIZE(ctx->batches.slots) == AGX_MAX_BATCHES);
    STATIC_ASSERT(ARRAY_SIZE(query->writer_generation) == AGX_MAX_BATCHES);
 
+   for (unsigned i = 0; i < AGX_MAX_BATCHES; ++i) {
+      if (query->writer_generation[i] == ctx->batches.generation[i])
+         agx_flush_batch_for_reason(ctx, &ctx->batches.slots[i], reason);
+   }
+}
+
+static void
+sync_query_writers(struct agx_context *ctx, struct agx_query *query,
+                   const char *reason)
+{
    for (unsigned i = 0; i < AGX_MAX_BATCHES; ++i) {
       if (query->writer_generation[i] == ctx->batches.generation[i])
          agx_sync_batch_for_reason(ctx, &ctx->batches.slots[i], reason);

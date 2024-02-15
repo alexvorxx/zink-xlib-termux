@@ -707,9 +707,9 @@ vn_DestroyCommandPool(VkDevice device,
                                &cmd->builder.query_batches, head)
          vk_free(alloc, batch);
 
-      if (cmd->linked_query_feedback_cmd) {
-         vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
-         cmd->linked_query_feedback_cmd = NULL;
+      if (cmd->linked_qfb_cmd) {
+         vn_feedback_query_cmd_free(cmd->linked_qfb_cmd);
+         cmd->linked_qfb_cmd = NULL;
       }
 
       vk_free(alloc, cmd);
@@ -740,9 +740,9 @@ vn_cmd_reset(struct vn_command_buffer *cmd)
                             &cmd->builder.query_batches, head)
       list_move_to(&batch->head, &cmd->pool->free_query_batches);
 
-   if (cmd->linked_query_feedback_cmd) {
-      vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
-      cmd->linked_query_feedback_cmd = NULL;
+   if (cmd->linked_qfb_cmd) {
+      vn_feedback_query_cmd_free(cmd->linked_qfb_cmd);
+      cmd->linked_qfb_cmd = NULL;
    }
 
    memset(&cmd->builder, 0, sizeof(cmd->builder));
@@ -871,9 +871,9 @@ vn_FreeCommandBuffers(VkDevice device,
                                &cmd->builder.query_batches, head)
          list_move_to(&batch->head, &cmd->pool->free_query_batches);
 
-      if (cmd->linked_query_feedback_cmd) {
-         vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
-         cmd->linked_query_feedback_cmd = NULL;
+      if (cmd->linked_qfb_cmd) {
+         vn_feedback_query_cmd_free(cmd->linked_qfb_cmd);
+         cmd->linked_qfb_cmd = NULL;
       }
 
       vn_object_base_fini(&cmd->base);
@@ -1598,7 +1598,7 @@ vn_CmdSetEvent(VkCommandBuffer commandBuffer,
 {
    VN_CMD_ENQUEUE(vkCmdSetEvent, commandBuffer, event, stageMask);
 
-   vn_feedback_event_cmd_record(commandBuffer, event, stageMask, VK_EVENT_SET,
+   vn_event_feedback_cmd_record(commandBuffer, event, stageMask, VK_EVENT_SET,
                                 false);
 }
 
@@ -1632,10 +1632,9 @@ vn_CmdSetEvent2(VkCommandBuffer commandBuffer,
 
    VN_CMD_ENQUEUE(vkCmdSetEvent2, commandBuffer, event, pDependencyInfo);
 
-   VkPipelineStageFlags2 src_stage_mask =
+   const VkPipelineStageFlags2 src_stage_mask =
       vn_dependency_info_collect_src_stage_mask(pDependencyInfo);
-
-   vn_feedback_event_cmd_record(commandBuffer, event, src_stage_mask,
+   vn_event_feedback_cmd_record(commandBuffer, event, src_stage_mask,
                                 VK_EVENT_SET, true);
 }
 
@@ -1646,7 +1645,7 @@ vn_CmdResetEvent(VkCommandBuffer commandBuffer,
 {
    VN_CMD_ENQUEUE(vkCmdResetEvent, commandBuffer, event, stageMask);
 
-   vn_feedback_event_cmd_record(commandBuffer, event, stageMask,
+   vn_event_feedback_cmd_record(commandBuffer, event, stageMask,
                                 VK_EVENT_RESET, false);
 }
 
@@ -1656,7 +1655,7 @@ vn_CmdResetEvent2(VkCommandBuffer commandBuffer,
                   VkPipelineStageFlags2 stageMask)
 {
    VN_CMD_ENQUEUE(vkCmdResetEvent2, commandBuffer, event, stageMask);
-   vn_feedback_event_cmd_record(commandBuffer, event, stageMask,
+   vn_event_feedback_cmd_record(commandBuffer, event, stageMask,
                                 VK_EVENT_RESET, true);
 }
 
@@ -1764,7 +1763,7 @@ vn_cmd_add_query_feedback(VkCommandBuffer cmd_handle,
    struct vn_command_buffer *cmd = vn_command_buffer_from_handle(cmd_handle);
    struct vn_query_pool *query_pool = vn_query_pool_from_handle(pool_handle);
 
-   if (!query_pool->feedback)
+   if (!query_pool->fb_buf)
       return;
 
    /* Per 1.3.255 spec "If queries are used while executing a render pass
@@ -1797,7 +1796,7 @@ vn_cmd_add_query_reset_feedback(VkCommandBuffer cmd_handle,
    struct vn_command_buffer *cmd = vn_command_buffer_from_handle(cmd_handle);
    struct vn_query_pool *query_pool = vn_query_pool_from_handle(pool_handle);
 
-   if (!query_pool->feedback)
+   if (!query_pool->fb_buf)
       return;
 
    struct vn_feedback_query_batch *batch = vn_cmd_query_batch_alloc(

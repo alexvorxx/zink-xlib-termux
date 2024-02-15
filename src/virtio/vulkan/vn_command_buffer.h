@@ -91,7 +91,7 @@ struct vn_command_buffer {
 
    struct vn_command_buffer_builder builder;
 
-   struct vn_query_feedback_cmd *linked_query_feedback_cmd;
+   struct vn_query_feedback_cmd *linked_qfb_cmd;
 
    struct list_head head;
 };

@@ -92,7 +92,7 @@ vn_CreateQueryPool(VkDevice device,
        */
       const uint32_t slot_size = (pool->result_array_size * 8) + 8;
       VkResult result = vn_feedback_buffer_create(
-         dev, slot_size * pCreateInfo->queryCount, alloc, &pool->feedback);
+         dev, slot_size * pCreateInfo->queryCount, alloc, &pool->fb_buf);
       if (result != VK_SUCCESS) {
          vn_object_base_fini(&pool->base);
          vk_free(alloc, pool);
@@ -144,8 +144,8 @@ vn_DestroyQueryPool(VkDevice device,
 
    alloc = pAllocator ? pAllocator : &pool->allocator;
 
-   if (pool->feedback)
-      vn_feedback_buffer_destroy(dev, pool->feedback, alloc);
+   if (pool->fb_buf)
+      vn_feedback_buffer_destroy(dev, pool->fb_buf, alloc);
 
    vn_async_vkDestroyQueryPool(dev->primary_ring, device, queryPool, NULL);
 
@@ -164,13 +164,13 @@ vn_ResetQueryPool(VkDevice device,
 
    vn_async_vkResetQueryPool(dev->primary_ring, device, queryPool, firstQuery,
                              queryCount);
-   if (pool->feedback) {
+   if (pool->fb_buf) {
       /* Feedback results are always 64 bit and include availability bit
        * (also 64 bit)
        */
       const uint32_t slot_size = (pool->result_array_size * 8) + 8;
       const uint32_t offset = slot_size * firstQuery;
-      memset(pool->feedback->data + offset, 0, slot_size * queryCount);
+      memset(pool->fb_buf->data + offset, 0, slot_size * queryCount);
    }
 }
 
@@ -187,7 +187,7 @@ vn_get_query_pool_feedback(struct vn_query_pool *pool,
     * (also 64 bit)
     */
    const uint32_t slot_array_size = pool->result_array_size + 1;
-   uint64_t *src = pool->feedback->data;
+   uint64_t *src = pool->fb_buf->data;
    src += slot_array_size * firstQuery;
 
    uint32_t dst_index = 0;
@@ -263,7 +263,7 @@ vn_query_feedback_wait_ready(struct vn_query_pool *pool,
     * (also 64 bit)
     */
    const uint32_t slot_array_size = pool->result_array_size + 1;
-   volatile uint64_t *src = pool->feedback->data;
+   volatile uint64_t *src = pool->fb_buf->data;
    src += (slot_array_size * firstQuery) + pool->result_array_size;
 
    uint32_t src_index = 0;
@@ -302,7 +302,7 @@ vn_GetQueryPoolResults(VkDevice device,
    /* Get results from feedback buffers
     * Not possible for VK_QUERY_RESULT_PARTIAL_BIT
     */
-   if (pool->feedback) {
+   if (pool->fb_buf) {
       /* If wait bit is set, wait poll until query is ready */
       if (flags & VK_QUERY_RESULT_WAIT_BIT) {
          result = vn_query_feedback_wait_ready(pool, firstQuery, queryCount);

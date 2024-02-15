@@ -388,7 +388,7 @@ vn_device_feedback_pool_init(struct vn_device *dev)
    const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
 
    if (VN_PERF(NO_EVENT_FEEDBACK) && VN_PERF(NO_FENCE_FEEDBACK) &&
-       VN_PERF(NO_TIMELINE_SEM_FEEDBACK))
+       VN_PERF(NO_SEMAPHORE_FEEDBACK))
       return VK_SUCCESS;
 
    return vn_feedback_pool_init(dev, &dev->feedback_pool, pool_size, alloc);
@@ -398,7 +398,7 @@ static inline void
 vn_device_feedback_pool_fini(struct vn_device *dev)
 {
    if (VN_PERF(NO_EVENT_FEEDBACK) && VN_PERF(NO_FENCE_FEEDBACK) &&
-       VN_PERF(NO_TIMELINE_SEM_FEEDBACK))
+       VN_PERF(NO_SEMAPHORE_FEEDBACK))
       return;
 
    vn_feedback_pool_fini(&dev->feedback_pool);
@@ -496,7 +496,7 @@ vn_device_init(struct vn_device *dev,
 
    result = vn_device_init_queues(dev, create_info);
    if (result != VK_SUCCESS)
-      goto out_cmd_pools_fini;
+      goto out_feedback_cmd_pools_fini;
 
    vn_buffer_reqs_cache_init(dev);
    vn_image_reqs_cache_init(dev);
@@ -508,7 +508,7 @@ vn_device_init(struct vn_device *dev,
 
    return VK_SUCCESS;
 
-out_cmd_pools_fini:
+out_feedback_cmd_pools_fini:
    vn_feedback_cmd_pools_fini(dev);
 
 out_feedback_pool_fini:

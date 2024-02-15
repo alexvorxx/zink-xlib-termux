@@ -98,7 +98,7 @@ struct vn_semaphore {
    struct vn_sync_payload temporary;
 
    struct {
-      /* non-NULL if VN_PERF_NO_TIMELINE_SEM_FEEDBACK is disabled */
+      /* non-NULL if VN_PERF_NO_SEMAPHORE_FEEDBACK is disabled */
       struct vn_feedback_slot *slot;
 
       /* Lists of allocated vn_feedback_src

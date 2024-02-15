@@ -448,26 +448,18 @@ public:
    const unsigned *get_assembly();
 
 private:
-   void fire_fb_write(fs_inst *inst,
-                      struct brw_reg payload,
-                      struct brw_reg implied_header,
-                      GLuint nr);
    void generate_send(fs_inst *inst,
                       struct brw_reg dst,
                       struct brw_reg desc,
                       struct brw_reg ex_desc,
                       struct brw_reg payload,
                       struct brw_reg payload2);
-   void generate_fb_write(fs_inst *inst, struct brw_reg payload);
    void generate_fb_read(fs_inst *inst, struct brw_reg dst,
                          struct brw_reg payload);
    void generate_cs_terminate(fs_inst *inst, struct brw_reg payload);
    void generate_barrier(fs_inst *inst, struct brw_reg src);
    bool generate_linterp(fs_inst *inst, struct brw_reg dst,
 			 struct brw_reg *src);
-   void generate_tex(fs_inst *inst, struct brw_reg dst,
-                     struct brw_reg surface_index,
-                     struct brw_reg sampler_index);
    void generate_ddx(const fs_inst *inst,
                      struct brw_reg dst, struct brw_reg src);
    void generate_ddy(const fs_inst *inst,
@@ -479,9 +471,6 @@ private:
    void generate_uniform_pull_constant_load(fs_inst *inst, struct brw_reg dst,
                                             struct brw_reg index,
                                             struct brw_reg offset);
-   void generate_varying_pull_constant_load_gfx4(fs_inst *inst,
-                                                 struct brw_reg dst,
-                                                 struct brw_reg index);
 
    void generate_set_sample_id(fs_inst *inst,
                                struct brw_reg dst,

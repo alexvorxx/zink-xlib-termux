@@ -2504,60 +2504,6 @@ void brw_oword_block_read(struct brw_codegen *p,
 }
 
 brw_inst *
-brw_fb_WRITE(struct brw_codegen *p,
-             struct brw_reg payload,
-             struct brw_reg implied_header,
-             unsigned msg_control,
-             unsigned binding_table_index,
-             unsigned msg_length,
-             unsigned response_length,
-             bool eot,
-             bool last_render_target,
-             bool header_present)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   const unsigned target_cache =
-      (devinfo->ver >= 6 ? GFX6_SFID_DATAPORT_RENDER_CACHE :
-       BRW_SFID_DATAPORT_WRITE);
-   brw_inst *insn;
-   struct brw_reg dest, src0;
-
-   if (brw_get_default_exec_size(p) >= BRW_EXECUTE_16)
-      dest = retype(vec16(brw_null_reg()), BRW_REGISTER_TYPE_UW);
-   else
-      dest = retype(vec8(brw_null_reg()), BRW_REGISTER_TYPE_UW);
-
-   if (devinfo->ver >= 6) {
-      insn = next_insn(p, BRW_OPCODE_SENDC);
-   } else {
-      insn = next_insn(p, BRW_OPCODE_SEND);
-   }
-   brw_inst_set_sfid(devinfo, insn, target_cache);
-   brw_inst_set_compression(devinfo, insn, false);
-
-   if (devinfo->ver >= 6) {
-      /* headerless version, just submit color payload */
-      src0 = payload;
-   } else {
-      assert(payload.file == BRW_MESSAGE_REGISTER_FILE);
-      brw_inst_set_base_mrf(devinfo, insn, payload.nr);
-      src0 = implied_header;
-   }
-
-   brw_set_dest(p, insn, dest);
-   brw_set_src0(p, insn, src0);
-   brw_set_desc(p, insn,
-                brw_message_desc(devinfo, msg_length, response_length,
-                                 header_present) |
-                brw_fb_write_desc(devinfo, binding_table_index, msg_control,
-                                  last_render_target,
-                                  false /* coarse_write */));
-   brw_inst_set_eot(devinfo, insn, eot);
-
-   return insn;
-}
-
-brw_inst *
 gfx9_fb_READ(struct brw_codegen *p,
              struct brw_reg dst,
              struct brw_reg payload,

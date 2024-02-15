@@ -2698,6 +2698,186 @@ impl_display_for_op!(OpDSetP);
 
 #[repr(C)]
 #[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpHAdd2 {
+    pub dst: Dst,
+
+    #[src_type(F16v2)]
+    pub srcs: [Src; 2],
+
+    pub saturate: bool,
+    pub ftz: bool,
+    pub f32: bool,
+}
+
+impl DisplayOp for OpHAdd2 {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sat = if self.saturate { ".sat" } else { "" };
+        let f32 = if self.f32 { ".f32" } else { "" };
+        write!(f, "hadd2{sat}{f32}")?;
+        if self.ftz {
+            write!(f, ".ftz")?;
+        }
+        write!(f, " {} {}", self.srcs[0], self.srcs[1])
+    }
+}
+impl_display_for_op!(OpHAdd2);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpHSet2 {
+    pub dst: Dst,
+
+    pub set_op: PredSetOp,
+    pub cmp_op: FloatCmpOp,
+
+    #[src_type(F16v2)]
+    pub srcs: [Src; 2],
+
+    #[src_type(Pred)]
+    pub accum: Src,
+
+    pub ftz: bool,
+}
+
+impl DisplayOp for OpHSet2 {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ftz = if self.ftz { ".ftz" } else { "" };
+        write!(f, "hset2{}{ftz}", self.cmp_op)?;
+        if !self.set_op.is_trivial(&self.accum) {
+            write!(f, "{}", self.set_op)?;
+        }
+        write!(f, " {} {}", self.srcs[0], self.srcs[1])?;
+        if !self.set_op.is_trivial(&self.accum) {
+            write!(f, " {}", self.accum)?;
+        }
+        Ok(())
+    }
+}
+impl_display_for_op!(OpHSet2);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpHSetP2 {
+    pub dsts: [Dst; 2],
+
+    pub set_op: PredSetOp,
+    pub cmp_op: FloatCmpOp,
+
+    #[src_type(F16v2)]
+    pub srcs: [Src; 2],
+
+    #[src_type(Pred)]
+    pub accum: Src,
+
+    pub ftz: bool,
+
+    // When not set, each dsts get the result of each lanes.
+    // When set, the first dst gets the result of both lanes (res0 && res1)
+    // and the second dst gets the negation !(res0 && res1)
+    // before applying the accumulator.
+    pub horizontal: bool,
+}
+
+impl DisplayOp for OpHSetP2 {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ftz = if self.ftz { ".ftz" } else { "" };
+        write!(f, "hsetp2{}{ftz}", self.cmp_op)?;
+        if !self.set_op.is_trivial(&self.accum) {
+            write!(f, "{}", self.set_op)?;
+        }
+        write!(f, " {} {}", self.srcs[0], self.srcs[1])?;
+        if !self.set_op.is_trivial(&self.accum) {
+            write!(f, " {}", self.accum)?;
+        }
+        Ok(())
+    }
+}
+impl_display_for_op!(OpHSetP2);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpHMul2 {
+    pub dst: Dst,
+
+    #[src_type(F16v2)]
+    pub srcs: [Src; 2],
+
+    pub saturate: bool,
+    pub ftz: bool,
+    pub dnz: bool,
+}
+
+impl DisplayOp for OpHMul2 {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sat = if self.saturate { ".sat" } else { "" };
+        write!(f, "hmul2{sat}")?;
+        if self.dnz {
+            write!(f, ".dnz")?;
+        } else if self.ftz {
+            write!(f, ".ftz")?;
+        }
+        write!(f, " {} {}", self.srcs[0], self.srcs[1])
+    }
+}
+impl_display_for_op!(OpHMul2);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpHFma2 {
+    pub dst: Dst,
+
+    #[src_type(F16v2)]
+    pub srcs: [Src; 3],
+
+    pub saturate: bool,
+    pub ftz: bool,
+    pub dnz: bool,
+    pub f32: bool,
+}
+
+impl DisplayOp for OpHFma2 {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sat = if self.saturate { ".sat" } else { "" };
+        let f32 = if self.f32 { ".f32" } else { "" };
+        write!(f, "hfma2{sat}{f32}")?;
+        if self.dnz {
+            write!(f, ".dnz")?;
+        } else if self.ftz {
+            write!(f, ".ftz")?;
+        }
+        write!(f, " {} {} {}", self.srcs[0], self.srcs[1], self.srcs[2])
+    }
+}
+impl_display_for_op!(OpHFma2);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpHMnMx2 {
+    pub dst: Dst,
+
+    #[src_type(F16v2)]
+    pub srcs: [Src; 2],
+
+    #[src_type(Pred)]
+    pub min: Src,
+
+    pub ftz: bool,
+}
+
+impl DisplayOp for OpHMnMx2 {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ftz = if self.ftz { ".ftz" } else { "" };
+        write!(
+            f,
+            "hmnmx2{ftz} {} {} {}",
+            self.srcs[0], self.srcs[1], self.min
+        )
+    }
+}
+impl_display_for_op!(OpHMnMx2);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpBMsk {
     pub dst: Dst,
 
@@ -4999,6 +5179,12 @@ pub enum Op {
     DMnMx(OpDMnMx),
     DMul(OpDMul),
     DSetP(OpDSetP),
+    HAdd2(OpHAdd2),
+    HFma2(OpHFma2),
+    HMul2(OpHMul2),
+    HSet2(OpHSet2),
+    HSetP2(OpHSetP2),
+    HMnMx2(OpHMnMx2),
     BMsk(OpBMsk),
     BRev(OpBRev),
     Bfe(OpBfe),
@@ -5434,6 +5620,12 @@ impl Instr {
             | Op::FMul(_)
             | Op::FSet(_)
             | Op::FSetP(_)
+            | Op::HAdd2(_)
+            | Op::HFma2(_)
+            | Op::HMul2(_)
+            | Op::HSet2(_)
+            | Op::HSetP2(_)
+            | Op::HMnMx2(_)
             | Op::FSwzAdd(_) => true,
 
             // Multi-function unit is variable latency

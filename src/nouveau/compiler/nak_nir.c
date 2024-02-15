@@ -146,13 +146,19 @@ nak_optimize_nir(nir_shader *nir, const struct nak_compiler *nak)
 }
 
 static unsigned
-lower_bit_size_cb(const nir_instr *instr, void *_data)
+lower_bit_size_cb(const nir_instr *instr, void *data)
 {
+   const struct nak_compiler *nak = data;
+
    switch (instr->type) {
    case nir_instr_type_alu: {
       nir_alu_instr *alu = nir_instr_as_alu(instr);
       if (nir_op_infos[alu->op].is_conversion)
          return 0;
+
+      const unsigned bit_size = nir_alu_instr_is_comparison(alu)
+                                ? alu->src[0].src.ssa->bit_size
+                                : alu->def.bit_size;
 
       switch (alu->op) {
       case nir_op_bit_count:
@@ -164,17 +170,40 @@ lower_bit_size_cb(const nir_instr *instr, void *_data)
           * source.
           */
          return alu->src[0].src.ssa->bit_size == 32 ? 0 : 32;
+
+      case nir_op_fabs:
+      case nir_op_fadd:
+      case nir_op_fneg:
+      case nir_op_feq:
+      case nir_op_fge:
+      case nir_op_flt:
+      case nir_op_fneu:
+      case nir_op_fmul:
+      case nir_op_ffma:
+      case nir_op_ffmaz:
+      case nir_op_fsign:
+      case nir_op_fsat:
+      case nir_op_fceil:
+      case nir_op_ffloor:
+      case nir_op_fround_even:
+      case nir_op_ftrunc:
+         if (bit_size == 16  && nak->sm >= 70)
+            return 0;
+         break;
+
+      case nir_op_fmax:
+      case nir_op_fmin:
+         if (bit_size == 16 && nak->sm >= 80)
+            return 0;
+         break;
+
       default:
          break;
       }
 
-      const unsigned bit_size = nir_alu_instr_is_comparison(alu)
-                                ? alu->src[0].src.ssa->bit_size
-                                : alu->def.bit_size;
       if (bit_size >= 32)
          return 0;
 
-      /* TODO: Some hardware has native 16-bit support */
       if (bit_size & (8 | 16))
          return 32;
 

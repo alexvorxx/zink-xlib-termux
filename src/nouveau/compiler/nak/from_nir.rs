@@ -511,6 +511,16 @@ impl<'a> ShaderFromNir<'a> {
             }
         }
 
+        // Restricts an F16v2 source to just x if the ALU op is single-component. This
+        // must only be called for per-component sources (see nir_op_info::output_sizes
+        // for more details).
+        let restrict_f16v2_src = |mut src: Src| {
+            if alu.def.num_components == 1 {
+                src.src_swizzle = SrcSwizzle::Xx;
+            }
+            src
+        };
+
         let dst: SSARef = match alu.op {
             nir_op_b2b1 => {
                 assert!(alu.get_src(0).bit_size() == 32);
@@ -524,6 +534,7 @@ impl<'a> ShaderFromNir<'a> {
                 let hi = b.copy(0.into());
                 [lo[0], hi[0]].into()
             }
+            nir_op_b2f16 => b.sel(srcs[0].bnot(), 0.into(), 0x3c00.into()),
             nir_op_b2f32 => {
                 b.sel(srcs[0].bnot(), 0.0_f32.into(), 1.0_f32.into())
             }
@@ -688,7 +699,7 @@ impl<'a> ShaderFromNir<'a> {
             }
             nir_op_fabs | nir_op_fadd | nir_op_fneg => {
                 let (x, y) = match alu.op {
-                    nir_op_fabs => (srcs[0].fabs(), 0.0_f32.into()),
+                    nir_op_fabs => (srcs[0].fabs(), 0.into()),
                     nir_op_fadd => (srcs[0], srcs[1]),
                     nir_op_fneg => (Src::new_zero().fneg(), srcs[0].fneg()),
                     _ => panic!("Unhandled case"),
@@ -711,6 +722,19 @@ impl<'a> ShaderFromNir<'a> {
                         rnd_mode: self.float_ctl[ftype].rnd_mode,
                         ftz: self.float_ctl[ftype].ftz,
                     });
+                } else if alu.def.bit_size() == 16 {
+                    assert!(
+                        self.float_ctl[ftype].rnd_mode == FRndMode::NearestEven
+                    );
+
+                    dst = b.alloc_ssa(RegFile::GPR, 1);
+                    b.push_op(OpHAdd2 {
+                        dst: dst.into(),
+                        srcs: [restrict_f16v2_src(x), restrict_f16v2_src(y)],
+                        saturate: self.try_saturate_alu_dst(&alu.def),
+                        ftz: self.float_ctl[ftype].ftz,
+                        f32: false,
+                    });
                 } else {
                     panic!("Unsupported float type: f{}", alu.def.bit_size());
                 }
@@ -718,7 +742,6 @@ impl<'a> ShaderFromNir<'a> {
             }
             nir_op_fceil | nir_op_ffloor | nir_op_fround_even
             | nir_op_ftrunc => {
-                assert!(alu.def.bit_size() == 32);
                 let dst = b.alloc_ssa(RegFile::GPR, 1);
                 let ty = FloatType::from_bits(alu.def.bit_size().into());
                 let rnd_mode = match alu.op {
@@ -730,6 +753,9 @@ impl<'a> ShaderFromNir<'a> {
                 };
                 let ftz = self.float_ctl[ty].ftz;
                 if b.sm() >= 70 {
+                    assert!(
+                        alu.def.bit_size() == 32 || alu.def.bit_size() == 16
+                    );
                     b.push_op(OpFRnd {
                         dst: dst.into(),
                         src: srcs[0],
@@ -739,6 +765,7 @@ impl<'a> ShaderFromNir<'a> {
                         ftz,
                     });
                 } else {
+                    assert!(alu.def.bit_size() == 32);
                     b.push_op(OpF2F {
                         dst: dst.into(),
                         src: srcs[0],
@@ -764,8 +791,9 @@ impl<'a> ShaderFromNir<'a> {
                     _ => panic!("Usupported float comparison"),
                 };
 
-                let dst = b.alloc_ssa(RegFile::Pred, 1);
+                let dst = b.alloc_ssa(RegFile::Pred, alu.def.num_components);
                 if alu.get_src(0).bit_size() == 64 {
+                    assert!(alu.def.num_components == 1);
                     b.push_op(OpDSetP {
                         dst: dst.into(),
                         set_op: PredSetOp::And,
@@ -774,6 +802,7 @@ impl<'a> ShaderFromNir<'a> {
                         accum: SrcRef::True.into(),
                     });
                 } else if alu.get_src(0).bit_size() == 32 {
+                    assert!(alu.def.num_components == 1);
                     b.push_op(OpFSetP {
                         dst: dst.into(),
                         set_op: PredSetOp::And,
@@ -781,6 +810,30 @@ impl<'a> ShaderFromNir<'a> {
                         srcs: [srcs[0], srcs[1]],
                         accum: SrcRef::True.into(),
                         ftz: self.float_ctl[src_type].ftz,
+                    });
+                } else if alu.get_src(0).bit_size() == 16 {
+                    assert!(
+                        alu.def.num_components == 1
+                            || alu.def.num_components == 2
+                    );
+
+                    let dsts = if alu.def.num_components == 2 {
+                        [dst[0].into(), dst[1].into()]
+                    } else {
+                        [dst[0].into(), Dst::None]
+                    };
+
+                    b.push_op(OpHSetP2 {
+                        dsts,
+                        set_op: PredSetOp::And,
+                        cmp_op: cmp_op,
+                        srcs: [
+                            restrict_f16v2_src(srcs[0]),
+                            restrict_f16v2_src(srcs[1]),
+                        ],
+                        accum: SrcRef::True.into(),
+                        ftz: self.float_ctl[src_type].ftz,
+                        horizontal: false,
                     });
                 } else {
                     panic!(
@@ -813,6 +866,24 @@ impl<'a> ShaderFromNir<'a> {
                         // anyway so only set one of the two bits.
                         ftz: self.float_ctl[ftype].ftz,
                         dnz: false,
+                    });
+                } else if alu.def.bit_size() == 16 {
+                    assert!(
+                        self.float_ctl[ftype].rnd_mode == FRndMode::NearestEven
+                    );
+
+                    dst = b.alloc_ssa(RegFile::GPR, 1);
+                    b.push_op(OpHFma2 {
+                        dst: dst.into(),
+                        srcs: [
+                            restrict_f16v2_src(srcs[0]),
+                            restrict_f16v2_src(srcs[1]),
+                            restrict_f16v2_src(srcs[2]),
+                        ],
+                        saturate: self.try_saturate_alu_dst(&alu.def),
+                        ftz: self.float_ctl[ftype].ftz,
+                        dnz: false,
+                        f32: false,
                     });
                 } else {
                     panic!("Unsupported float type: f{}", alu.def.bit_size());
@@ -857,6 +928,17 @@ impl<'a> ShaderFromNir<'a> {
                         min: (alu.op == nir_op_fmin).into(),
                         ftz: self.float_ctl.fp32.ftz,
                     });
+                } else if alu.def.bit_size() == 16 {
+                    dst = b.alloc_ssa(RegFile::GPR, 1);
+                    b.push_op(OpHMnMx2 {
+                        dst: dst.into(),
+                        srcs: [
+                            restrict_f16v2_src(srcs[0]),
+                            restrict_f16v2_src(srcs[1]),
+                        ],
+                        min: (alu.op == nir_op_fmin).into(),
+                        ftz: self.float_ctl.fp16.ftz,
+                    });
                 } else {
                     panic!("Unsupported float type: f{}", alu.def.bit_size());
                 }
@@ -880,6 +962,22 @@ impl<'a> ShaderFromNir<'a> {
                         srcs: [srcs[0], srcs[1]],
                         saturate: self.try_saturate_alu_dst(&alu.def),
                         rnd_mode: self.float_ctl[ftype].rnd_mode,
+                        ftz: self.float_ctl[ftype].ftz,
+                        dnz: false,
+                    });
+                } else if alu.def.bit_size() == 16 {
+                    assert!(
+                        self.float_ctl[ftype].rnd_mode == FRndMode::NearestEven
+                    );
+
+                    dst = b.alloc_ssa(RegFile::GPR, 1);
+                    b.push_op(OpHMul2 {
+                        dst: dst.into(),
+                        srcs: [
+                            restrict_f16v2_src(srcs[0]),
+                            restrict_f16v2_src(srcs[1]),
+                        ],
+                        saturate: self.try_saturate_alu_dst(&alu.def),
                         ftz: self.float_ctl[ftype].ftz,
                         dnz: false,
                     });
@@ -940,11 +1038,11 @@ impl<'a> ShaderFromNir<'a> {
                 b.mufu(MuFuOp::Rsq, srcs[0])
             }
             nir_op_fsat => {
-                assert!(alu.def.bit_size() == 32);
+                let ftype = FloatType::from_bits(alu.def.bit_size().into());
+
                 if self.alu_src_is_saturated(&alu.srcs_as_slice()[0]) {
                     b.copy(srcs[0])
-                } else {
-                    let ftype = FloatType::from_bits(alu.def.bit_size().into());
+                } else if alu.def.bit_size() == 32 {
                     let dst = b.alloc_ssa(RegFile::GPR, 1);
                     b.push_op(OpFAdd {
                         dst: dst.into(),
@@ -954,6 +1052,22 @@ impl<'a> ShaderFromNir<'a> {
                         ftz: self.float_ctl[ftype].ftz,
                     });
                     dst
+                } else if alu.def.bit_size() == 16 {
+                    assert!(
+                        self.float_ctl[ftype].rnd_mode == FRndMode::NearestEven
+                    );
+
+                    let dst = b.alloc_ssa(RegFile::GPR, 1);
+                    b.push_op(OpHAdd2 {
+                        dst: dst.into(),
+                        srcs: [restrict_f16v2_src(srcs[0]), 0.into()],
+                        saturate: true,
+                        ftz: self.float_ctl[ftype].ftz,
+                        f32: false,
+                    });
+                    dst
+                } else {
+                    panic!("Unsupported float type: f{}", alu.def.bit_size());
                 }
             }
             nir_op_fsign => {
@@ -968,6 +1082,17 @@ impl<'a> ShaderFromNir<'a> {
                     let lz = b.fset(FloatCmpOp::OrdLt, srcs[0], 0.into());
                     let gz = b.fset(FloatCmpOp::OrdGt, srcs[0], 0.into());
                     b.fadd(gz.into(), Src::from(lz).fneg())
+                } else if alu.def.bit_size() == 16 {
+                    let x = restrict_f16v2_src(srcs[0]);
+
+                    let lz = restrict_f16v2_src(
+                        b.hset2(FloatCmpOp::OrdLt, x, 0.into()).into(),
+                    );
+                    let gz = restrict_f16v2_src(
+                        b.hset2(FloatCmpOp::OrdGt, x, 0.into()).into(),
+                    );
+
+                    b.hadd2(gz, lz.fneg())
                 } else {
                     panic!("Unsupported float type: f{}", alu.def.bit_size());
                 }

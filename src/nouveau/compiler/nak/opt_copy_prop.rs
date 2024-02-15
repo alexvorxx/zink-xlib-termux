@@ -395,6 +395,19 @@ impl CopyPropPass {
 
     fn try_add_instr(&mut self, instr: &Instr) {
         match &instr.op {
+            Op::HAdd2(add) => {
+                let dst = add.dst.as_ssa().unwrap();
+                assert!(dst.comps() == 1);
+                let dst = dst[0];
+
+                if !add.saturate {
+                    if add.srcs[0].is_fneg_zero(SrcType::F16v2) {
+                        self.add_copy(dst, SrcType::F16v2, add.srcs[1]);
+                    } else if add.srcs[1].is_fneg_zero(SrcType::F16v2) {
+                        self.add_copy(dst, SrcType::F16v2, add.srcs[0]);
+                    }
+                }
+            }
             Op::FAdd(add) => {
                 let dst = add.dst.as_ssa().unwrap();
                 assert!(dst.comps() == 1);

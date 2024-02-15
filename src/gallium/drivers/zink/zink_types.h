@@ -1360,6 +1360,9 @@ struct zink_resource {
       };
    };
 
+   VkRect2D damage;
+   bool use_damage;
+
    bool copies_warned;
    bool swapchain;
    bool dmabuf;

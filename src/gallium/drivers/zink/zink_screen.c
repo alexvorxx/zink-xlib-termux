@@ -1534,6 +1534,22 @@ zink_is_format_supported(struct pipe_screen *pscreen,
 }
 
 static void
+zink_set_damage_region(struct pipe_screen *pscreen, struct pipe_resource *pres, unsigned int nrects, const struct pipe_box *rects)
+{
+   struct zink_resource *res = zink_resource(pres);
+
+   for (unsigned i = 0; i < nrects; i++) {
+      int y = pres->height0 - rects[i].y - rects[i].height;
+      res->damage.extent.width = MAX2(res->damage.extent.width, rects[i].x + rects[i].width);
+      res->damage.extent.height = MAX2(res->damage.extent.height, y + rects[i].height);
+      res->damage.offset.x = MIN2(res->damage.offset.x, rects[i].x);
+      res->damage.offset.y = MIN2(res->damage.offset.y, y);
+   }
+
+   res->use_damage = nrects > 0;
+}
+
+static void
 zink_destroy_screen(struct pipe_screen *pscreen)
 {
    struct zink_screen *screen = zink_screen(pscreen);
@@ -1825,6 +1841,7 @@ zink_flush_frontbuffer(struct pipe_screen *pscreen,
          util_queue_fence_wait(&bs->flush_completed);
       }
    }
+   res->use_damage = false;
 
    /* always verify that this was acquired */
    assert(zink_kopper_acquired(res->obj->dt, res->obj->dt_idx));
@@ -3457,6 +3474,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    screen->base.get_sparse_texture_virtual_page_size = zink_get_sparse_texture_virtual_page_size;
    screen->base.get_driver_query_group_info = zink_get_driver_query_group_info;
    screen->base.get_driver_query_info = zink_get_driver_query_info;
+   screen->base.set_damage_region = zink_set_damage_region;
 
    if (screen->info.have_EXT_sample_locations) {
       VkMultisamplePropertiesEXT prop;

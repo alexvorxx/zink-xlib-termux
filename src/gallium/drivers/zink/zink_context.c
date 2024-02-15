@@ -2923,6 +2923,8 @@ begin_rendering(struct zink_context *ctx)
       assert(ctx->dynamic_fb.info.renderArea.extent.height <= res->base.b.height0);
       assert(ctx->fb_state.width <= res->base.b.width0);
       assert(ctx->fb_state.height <= res->base.b.height0);
+      if (res->use_damage)
+         ctx->dynamic_fb.info.renderArea = res->damage;
    }
    if (ctx->fb_state.zsbuf && zsbuf_used) {
       struct zink_surface *surf = zink_csurface(ctx->fb_state.zsbuf);

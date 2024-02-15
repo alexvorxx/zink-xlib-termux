@@ -220,8 +220,6 @@ struct brw_nir_lower_storage_image_opts {
 
    bool lower_loads;
    bool lower_stores;
-   bool lower_atomics;
-   bool lower_get_size;
 };
 
 bool brw_nir_lower_storage_image(nir_shader *nir,

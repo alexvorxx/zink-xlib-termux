@@ -74,7 +74,7 @@ saturate_propagation_test::saturate_propagation_test()
 
    bld = fs_builder(v).at_end();
 
-   devinfo->ver = 6;
+   devinfo->ver = 9;
    devinfo->verx10 = devinfo->ver * 10;
 }
 

@@ -74,7 +74,7 @@ copy_propagation_test::copy_propagation_test()
 
    bld = fs_builder(v).at_end();
 
-   devinfo->ver = 4;
+   devinfo->ver = 9;
    devinfo->verx10 = devinfo->ver * 10;
 }
 

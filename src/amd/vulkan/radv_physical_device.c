@@ -1956,18 +1956,6 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    snprintf(device->marketing_name, sizeof(device->name), "%s (RADV %s%s)",
             marketing_name ? marketing_name : "AMD Unknown", device->rad_info.name, radv_get_compiler_string(device));
 
-   if (radv_device_get_cache_uuid(device, device->cache_uuid)) {
-      result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED, "cannot generate UUID");
-      goto fail_wsi;
-   }
-
-   /* The gpu id is already embedded in the uuid so we just pass "radv"
-    * when creating the cache.
-    */
-   char buf[VK_UUID_SIZE * 2 + 1];
-   mesa_bytes_to_hex(buf, device->cache_uuid, VK_UUID_SIZE);
-   device->vk.disk_cache = disk_cache_create(device->name, buf, 0);
-
    if (!radv_is_conformant(device))
       vk_warn_non_conformant_implementation("radv");
 
@@ -2059,6 +2047,18 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
       device->render_devid = render_stat.st_rdev;
    }
 #endif
+
+   if (radv_device_get_cache_uuid(device, device->cache_uuid)) {
+      result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED, "cannot generate UUID");
+      goto fail_wsi;
+   }
+
+   /* The gpu id is already embedded in the uuid so we just pass "radv"
+    * when creating the cache.
+    */
+   char buf[VK_UUID_SIZE * 2 + 1];
+   mesa_bytes_to_hex(buf, device->cache_uuid, VK_UUID_SIZE);
+   device->vk.disk_cache = disk_cache_create(device->name, buf, 0);
 
    radv_get_physical_device_properties(device);
 

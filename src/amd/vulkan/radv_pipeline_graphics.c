@@ -1991,7 +1991,7 @@ static void
 radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *stages,
                           VkShaderStageFlagBits active_nir_stages)
 {
-   if (!device->cache_key.use_ngg)
+   if (!device->physical_device->cache_key.use_ngg)
       return;
 
    if (stages[MESA_SHADER_VERTEX].nir && stages[MESA_SHADER_VERTEX].info.next_stage != MESA_SHADER_TESS_CTRL) {

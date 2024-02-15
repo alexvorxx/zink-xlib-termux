@@ -139,14 +139,44 @@ parse_hex(char *out, const char *in, unsigned length)
    }
 }
 
+static void
+radv_physical_device_init_cache_key(struct radv_physical_device *pdevice)
+{
+   struct radv_physical_device_cache_key *key = &pdevice->cache_key;
+
+   key->family = pdevice->rad_info.family;
+   key->ptr_size = sizeof(void *);
+   key->conformant_trunc_coord = pdevice->rad_info.conformant_trunc_coord;
+
+   key->clear_lds = pdevice->instance->drirc.clear_lds;
+   key->cs_wave32 = pdevice->cs_wave_size == 32;
+   key->disable_aniso_single_level =
+      pdevice->instance->drirc.disable_aniso_single_level && pdevice->rad_info.gfx_level < GFX8;
+   key->disable_shrink_image_store = pdevice->instance->drirc.disable_shrink_image_store;
+   key->disable_sinking_load_input_fs = pdevice->instance->drirc.disable_sinking_load_input_fs;
+   key->dual_color_blend_by_location = pdevice->instance->drirc.dual_color_blend_by_location;
+   key->emulate_rt = !!(pdevice->instance->perftest_flags & RADV_PERFTEST_EMULATE_RT);
+   key->ge_wave32 = pdevice->ge_wave_size == 32;
+   key->invariant_geom = !!(pdevice->instance->debug_flags & RADV_DEBUG_INVARIANT_GEOM);
+   key->lower_discard_to_demote = !!(pdevice->instance->debug_flags & RADV_DEBUG_DISCARD_TO_DEMOTE);
+   key->mesh_fast_launch_2 = pdevice->mesh_fast_launch_2;
+   key->no_fmask = !!(pdevice->instance->debug_flags & RADV_DEBUG_NO_FMASK);
+   key->no_rt = !!(pdevice->instance->debug_flags & RADV_DEBUG_NO_RT);
+   key->ps_wave32 = pdevice->ps_wave_size == 32;
+   key->rt_wave64 = pdevice->rt_wave_size == 64;
+   key->split_fma = !!(pdevice->instance->debug_flags & RADV_DEBUG_SPLIT_FMA);
+   key->ssbo_non_uniform = pdevice->instance->drirc.ssbo_non_uniform;
+   key->tex_non_uniform = pdevice->instance->drirc.tex_non_uniform;
+   key->use_llvm = pdevice->use_llvm;
+   key->use_ngg = pdevice->use_ngg;
+   key->use_ngg_culling = pdevice->use_ngg_culling;
+}
+
 static int
 radv_device_get_cache_uuid(struct radv_physical_device *pdevice, void *uuid)
 {
-   enum radeon_family family = pdevice->rad_info.family;
-   bool conformant_trunc_coord = pdevice->rad_info.conformant_trunc_coord;
    struct mesa_sha1 ctx;
    unsigned char sha1[20];
-   unsigned ptr_size = sizeof(void *);
 
    memset(uuid, 0, VK_UUID_SIZE);
    _mesa_sha1_init(&ctx);
@@ -168,9 +198,7 @@ radv_device_get_cache_uuid(struct radv_physical_device *pdevice, void *uuid)
       return -1;
 #endif
 
-   _mesa_sha1_update(&ctx, &family, sizeof(family));
-   _mesa_sha1_update(&ctx, &conformant_trunc_coord, sizeof(conformant_trunc_coord));
-   _mesa_sha1_update(&ctx, &ptr_size, sizeof(ptr_size));
+   _mesa_sha1_update(&ctx, &pdevice->cache_key, sizeof(pdevice->cache_key));
    _mesa_sha1_final(&ctx, sha1);
 
    memcpy(uuid, sha1, VK_UUID_SIZE);
@@ -2047,6 +2075,8 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
       device->render_devid = render_stat.st_rdev;
    }
 #endif
+
+   radv_physical_device_init_cache_key(device);
 
    if (radv_device_get_cache_uuid(device, device->cache_uuid)) {
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED, "cannot generate UUID");

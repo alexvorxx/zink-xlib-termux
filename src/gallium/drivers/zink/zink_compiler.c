@@ -5764,20 +5764,6 @@ zink_gfx_shader_free(struct zink_screen *screen, struct zink_shader *shader)
          }
 
       }
-      while (util_dynarray_contains(&shader->pipeline_libs, struct zink_gfx_lib_cache*)) {
-         struct zink_gfx_lib_cache *libs = util_dynarray_pop(&shader->pipeline_libs, struct zink_gfx_lib_cache*);
-         //this condition is equivalent to verifying that, for each bit stages_present_i in stages_present,
-         //stages_present_i implies libs->stages_present_i
-         if ((stages_present & ~(libs->stages_present & stages_present)) != 0)
-            continue;
-         if (!libs->removed) {
-            libs->removed = true;
-            simple_mtx_lock(&screen->pipeline_libs_lock[idx]);
-            _mesa_set_remove_key(&screen->pipeline_libs[idx], libs);
-            simple_mtx_unlock(&screen->pipeline_libs_lock[idx]);
-         }
-         zink_gfx_lib_cache_unref(screen, libs);
-      }
       if (stage == MESA_SHADER_FRAGMENT || !shader->non_fs.is_generated) {
          prog->shaders[stage] = NULL;
          prog->stages_remaining &= ~BITFIELD_BIT(stage);
@@ -5792,6 +5778,17 @@ zink_gfx_shader_free(struct zink_screen *screen, struct zink_shader *shader)
          prog->shaders[MESA_SHADER_GEOMETRY] = NULL;
       }
       zink_gfx_program_reference(screen, &prog, NULL);
+   }
+   while (util_dynarray_contains(&shader->pipeline_libs, struct zink_gfx_lib_cache*)) {
+      struct zink_gfx_lib_cache *libs = util_dynarray_pop(&shader->pipeline_libs, struct zink_gfx_lib_cache*);
+      if (!libs->removed) {
+         libs->removed = true;
+         unsigned idx = zink_program_cache_stages(libs->stages_present);
+         simple_mtx_lock(&screen->pipeline_libs_lock[idx]);
+         _mesa_set_remove_key(&screen->pipeline_libs[idx], libs);
+         simple_mtx_unlock(&screen->pipeline_libs_lock[idx]);
+      }
+      zink_gfx_lib_cache_unref(screen, libs);
    }
    if (shader->info.stage == MESA_SHADER_TESS_EVAL &&
        shader->non_fs.generated_tcs) {

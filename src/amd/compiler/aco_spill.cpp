@@ -73,7 +73,7 @@ struct spill_ctx {
    Program* program;
    aco::monotonic_buffer_resource memory;
 
-   std::vector<std::vector<RegisterDemand>> register_demand;
+   live& live_vars;
    std::vector<aco::map<Temp, Temp>> renames;
    std::vector<aco::unordered_map<Temp, uint32_t>> spills_entry;
    std::vector<aco::unordered_map<Temp, uint32_t>> spills_exit;
@@ -96,10 +96,8 @@ struct spill_ctx {
    unsigned vgpr_spill_slots;
    Temp scratch_rsrc;
 
-   spill_ctx(const RegisterDemand target_pressure_, Program* program_,
-             std::vector<std::vector<RegisterDemand>> register_demand_)
-       : target_pressure(target_pressure_), program(program_), memory(),
-         register_demand(std::move(register_demand_)),
+   spill_ctx(const RegisterDemand target_pressure_, Program* program_, live& live_vars_)
+       : target_pressure(target_pressure_), program(program_), memory(), live_vars(live_vars_),
          renames(program->blocks.size(), aco::map<Temp, Temp>(memory)),
          spills_entry(program->blocks.size(), aco::unordered_map<Temp, uint32_t>(memory)),
          spills_exit(program->blocks.size(), aco::unordered_map<Temp, uint32_t>(memory)),
@@ -456,12 +454,12 @@ RegisterDemand
 get_demand_before(spill_ctx& ctx, unsigned block_idx, unsigned idx)
 {
    if (idx == 0) {
-      RegisterDemand demand = ctx.register_demand[block_idx][idx];
+      RegisterDemand demand = ctx.live_vars.register_demand[block_idx][idx];
       aco_ptr<Instruction>& instr = ctx.program->blocks[block_idx].instructions[idx];
       aco_ptr<Instruction> instr_before(nullptr);
       return get_demand_before(demand, instr, instr_before);
    } else {
-      return ctx.register_demand[block_idx][idx - 1];
+      return ctx.live_vars.register_demand[block_idx][idx - 1];
    }
 }
 
@@ -491,7 +489,7 @@ get_live_in_demand(spill_ctx& ctx, unsigned block_idx)
     * reg_pressure if the branch instructions define sgprs. */
    for (unsigned pred : block.linear_preds)
       reg_pressure.sgpr =
-         std::max<int16_t>(reg_pressure.sgpr, ctx.register_demand[pred].back().sgpr);
+         std::max<int16_t>(reg_pressure.sgpr, ctx.live_vars.register_demand[pred].back().sgpr);
 
    return reg_pressure;
 }
@@ -768,7 +766,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
    if (block->linear_preds.size() == 1 &&
        !(block->kind & (block_kind_loop_exit | block_kind_loop_header))) {
       assert(ctx.processed[block->linear_preds[0]]);
-      assert(ctx.register_demand[block_idx].size() == block->instructions.size());
+      assert(ctx.live_vars.register_demand[block_idx].size() == block->instructions.size());
 
       ctx.renames[block_idx] = ctx.renames[block->linear_preds[0]];
       if (!block->logical_preds.empty() && block->logical_preds[0] != block->linear_preds[0]) {
@@ -1078,10 +1076,11 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
    if (!ctx.processed[block_idx]) {
       assert(!(block->kind & block_kind_loop_header));
       RegisterDemand demand_before = get_demand_before(ctx, block_idx, idx);
-      ctx.register_demand[block->index].erase(ctx.register_demand[block->index].begin(),
-                                              ctx.register_demand[block->index].begin() + idx);
-      ctx.register_demand[block->index].insert(ctx.register_demand[block->index].begin(),
-                                               instructions.size(), demand_before);
+      ctx.live_vars.register_demand[block->index].erase(
+         ctx.live_vars.register_demand[block->index].begin(),
+         ctx.live_vars.register_demand[block->index].begin() + idx);
+      ctx.live_vars.register_demand[block->index].insert(
+         ctx.live_vars.register_demand[block->index].begin(), instructions.size(), demand_before);
    }
 
    std::vector<aco_ptr<Instruction>>::iterator start = std::next(block->instructions.begin(), idx);
@@ -1157,7 +1156,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
       /* check if register demand is low enough before and after the current instruction */
       if (block->register_demand.exceeds(ctx.target_pressure)) {
 
-         RegisterDemand new_demand = ctx.register_demand[block_idx][idx];
+         RegisterDemand new_demand = ctx.live_vars.register_demand[block_idx][idx];
          new_demand.update(get_demand_before(ctx, block_idx, idx));
 
          assert(!ctx.local_next_use_distance.empty());
@@ -1866,7 +1865,7 @@ spill(Program* program, live& live_vars)
    const RegisterDemand target(vgpr_limit - extra_vgprs, sgpr_limit - extra_sgprs);
 
    /* initialize ctx */
-   spill_ctx ctx(target, program, live_vars.register_demand);
+   spill_ctx ctx(target, program, live_vars);
    compute_global_next_uses(ctx);
    get_rematerialize_info(ctx);
 

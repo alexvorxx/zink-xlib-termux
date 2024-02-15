@@ -771,7 +771,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     */
    if (has_dst_aligned_region_restriction(devinfo, inst, dst_type) &&
        entry_stride != 0 &&
-       (reg_offset(inst->dst) % REG_SIZE) != (reg_offset(entry->src) % REG_SIZE))
+       (reg_offset(inst->dst) % (REG_SIZE * reg_unit(devinfo))) != (reg_offset(entry->src) % (REG_SIZE * reg_unit(devinfo))))
       return false;
 
    /* The <8;8,0> regions used for FS attributes in multipolygon

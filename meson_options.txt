@@ -634,7 +634,7 @@ option(
 option(
   'intel-clc',
   type : 'combo',
-  deprecated: {'true': 'enabled', 'false': 'disabled'},
+  deprecated: {'true': 'enabled'},
   value : 'auto',
   choices : [
     'enabled', 'system', 'auto'

@@ -171,6 +171,30 @@ struct spill_ctx {
    uint32_t next_spill_id = 0;
 };
 
+void
+compute_live_in(spill_ctx& ctx)
+{
+   for (Block& block : ctx.program->blocks) {
+      IDSet& live_set = ctx.live_vars.live_out[block.index];
+
+      for (int i = block.instructions.size() - 1; i >= 0; i--) {
+         aco_ptr<Instruction>& instr = block.instructions[i];
+         const bool phi = is_phi(instr);
+
+         for (const Definition& def : instr->definitions) {
+            if (!phi && def.isTemp() && !def.isKill())
+               live_set.erase(def.tempId());
+         }
+         for (const Operand& op : instr->operands) {
+            if (op.isTemp()) {
+               if (!phi && op.isFirstKill())
+                  live_set.insert(op.tempId());
+            }
+         }
+      }
+   }
+}
+
 int32_t
 get_dominator(int idx_a, int idx_b, Program* program, bool is_linear)
 {
@@ -1866,6 +1890,7 @@ spill(Program* program, live& live_vars)
 
    /* initialize ctx */
    spill_ctx ctx(target, program, live_vars);
+   compute_live_in(ctx);
    compute_global_next_uses(ctx);
    get_rematerialize_info(ctx);
 

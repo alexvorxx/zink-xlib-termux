@@ -9,12 +9,17 @@
 #include "util/bitset.h"
 #include "util/macros.h"
 #include "util/ralloc.h"
+#include "util/u_dump.h"
 #include "util/u_inlines.h"
 #include "util/u_prim.h"
 #include "agx_bo.h"
 #include "agx_device.h"
 #include "agx_state.h"
+#include "nir.h"
+#include "nir_builder.h"
+#include "nir_builder_opcodes.h"
 #include "pool.h"
+#include "shader_enums.h"
 
 static bool
 is_occlusion(struct agx_query *query)
@@ -415,23 +420,28 @@ agx_get_query_result(struct pipe_context *pctx, struct pipe_query *pquery,
    }
 }
 
-static void
-agx_get_query_result_resource(struct pipe_context *pipe, struct pipe_query *q,
-                              enum pipe_query_flags flags,
-                              enum pipe_query_value_type result_type, int index,
-                              struct pipe_resource *resource, unsigned offset)
+static unsigned
+result_type_size(enum pipe_query_value_type result_type)
 {
-   struct agx_query *query = (struct agx_query *)q;
+   return (result_type <= PIPE_QUERY_TYPE_U32) ? 4 : 8;
+}
 
-   /* TODO: Don't cheat XXX */
-   struct agx_context *ctx = agx_context(pipe);
-
+static void
+agx_get_query_result_resource_cpu(struct agx_context *ctx,
+                                  struct agx_query *query,
+                                  enum pipe_query_flags flags,
+                                  enum pipe_query_value_type result_type,
+                                  int index, struct pipe_resource *resource,
+                                  unsigned offset)
+{
    union pipe_query_result result;
    if (index < 0) {
       /* availability */
       result.u64 = !is_query_busy(ctx, query);
    } else {
-      bool ready = agx_get_query_result(pipe, q, true, &result);
+      bool ready =
+         agx_get_query_result(&ctx->base, (void *)query, true, &result);
+
       assert(ready);
 
       switch (classify_query_type(query->type)) {
@@ -453,10 +463,124 @@ agx_get_query_result_resource(struct pipe_context *pipe, struct pipe_query *q,
       result.u32 = x;
    }
 
-   if (result_type <= PIPE_QUERY_TYPE_U32)
-      pipe_buffer_write(pipe, resource, offset, 4, &result.u32);
-   else
-      pipe_buffer_write(pipe, resource, offset, 8, &result.u64);
+   pipe_buffer_write(&ctx->base, resource, offset,
+                     result_type_size(result_type), &result.u64);
+}
+
+struct query_copy_key {
+   enum pipe_query_value_type result;
+   enum query_copy_type query;
+};
+
+static void
+agx_nir_query_copy(nir_builder *b, const void *key_)
+{
+   const struct query_copy_key *key = key_;
+   b->shader->info.num_ubos = 1;
+
+   nir_def *params =
+      nir_load_ubo(b, 2, 64, nir_imm_int(b, 0), nir_imm_int(b, 0),
+                   .align_mul = 8, .range = 8);
+
+   nir_def *value =
+      nir_load_global_constant(b, nir_channel(b, params, 0), 8, 1, 64);
+
+   if (key->query == QUERY_COPY_BOOL32 || key->query == QUERY_COPY_BOOL64) {
+      if (key->query == QUERY_COPY_BOOL32)
+         value = nir_u2u32(b, value);
+
+      value = nir_u2u64(b, nir_ine_imm(b, value, 0));
+   }
+
+   if (key->result == PIPE_QUERY_TYPE_U32) {
+      value =
+         nir_u2u32(b, nir_umin(b, value, nir_imm_int64(b, u_uintN_max(32))));
+   } else if (key->result == PIPE_QUERY_TYPE_I32) {
+      value =
+         nir_u2u32(b, nir_iclamp(b, value, nir_imm_int64(b, u_intN_min(32)),
+                                 nir_imm_int64(b, u_intN_max(32))));
+   }
+
+   nir_store_global(b, nir_channel(b, params, 1), result_type_size(key->result),
+                    value, nir_component_mask(1));
+}
+
+static bool
+agx_get_query_result_resource_gpu(struct agx_context *ctx,
+                                  struct agx_query *query,
+                                  enum pipe_query_flags flags,
+                                  enum pipe_query_value_type result_type,
+                                  int index, struct pipe_resource *prsrc,
+                                  unsigned offset)
+{
+   /* Handle availability queries on CPU */
+   if (index < 0)
+      return false;
+
+   /* TODO: timer queries on GPU */
+   if (query->type == PIPE_QUERY_TIMESTAMP ||
+       query->type == PIPE_QUERY_TIME_ELAPSED)
+      return false;
+
+   flush_query_writers(ctx, query, util_str_query_type(query->type, true));
+
+   struct agx_resource *rsrc = agx_resource(prsrc);
+
+   struct query_copy_key key = {
+      .result = result_type,
+      .query = classify_query_type(query->type),
+   };
+
+   struct agx_compiled_shader *cs =
+      agx_build_meta_shader(ctx, agx_nir_query_copy, &key, sizeof(key));
+
+   struct agx_batch *batch = agx_get_compute_batch(ctx);
+   agx_batch_init_state(batch);
+   agx_dirty_all(ctx);
+
+   /* Save cb */
+   struct agx_stage *stage = &ctx->stage[PIPE_SHADER_COMPUTE];
+   struct pipe_constant_buffer saved_cb = {NULL};
+   pipe_resource_reference(&saved_cb.buffer, stage->cb[0].buffer);
+   memcpy(&saved_cb, &stage->cb[0], sizeof(struct pipe_constant_buffer));
+
+   /* Set params */
+   uint64_t params[2] = {query->ptr.gpu, rsrc->bo->ptr.gpu + offset};
+   agx_batch_writes_range(batch, rsrc, offset, result_type_size(result_type));
+
+   struct pipe_constant_buffer cb = {
+      .buffer_size = sizeof(params),
+      .user_buffer = &params,
+   };
+   ctx->base.set_constant_buffer(&ctx->base, PIPE_SHADER_COMPUTE, 0, false,
+                                 &cb);
+
+   struct pipe_grid_info grid = {.block = {1, 1, 1}, .grid = {1, 1, 1}};
+   agx_launch(batch, &grid, cs, PIPE_SHADER_COMPUTE);
+
+   /* take_ownership=true so do not unreference */
+   ctx->base.set_constant_buffer(&ctx->base, PIPE_SHADER_COMPUTE, 0, true,
+                                 &saved_cb);
+   return true;
+}
+
+static void
+agx_get_query_result_resource(struct pipe_context *pipe, struct pipe_query *q,
+                              enum pipe_query_flags flags,
+                              enum pipe_query_value_type result_type, int index,
+                              struct pipe_resource *resource, unsigned offset)
+{
+   struct agx_query *query = (struct agx_query *)q;
+   struct agx_context *ctx = agx_context(pipe);
+
+   /* Try to copy on the GPU */
+   if (!agx_get_query_result_resource_gpu(ctx, query, flags, result_type, index,
+                                          resource, offset)) {
+
+      /* Else, fallback to CPU */
+      agx_get_query_result_resource_cpu(ctx, query, flags, result_type, index,
+                                        resource, offset);
+   }
 }
 
 static void

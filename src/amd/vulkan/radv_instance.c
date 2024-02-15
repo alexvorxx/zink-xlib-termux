@@ -78,6 +78,7 @@ static const struct debug_control radv_debug_options[] = {{"nofastclears", RADV_
                                                           {"nort", RADV_DEBUG_NO_RT},
                                                           {"nomeshshader", RADV_DEBUG_NO_MESH_SHADER},
                                                           {"nongg_gs", RADV_DEBUG_NO_NGG_GS},
+                                                          {"nogsfastlaunch2", RADV_DEBUG_NO_GS_FAST_LAUNCH_2},
                                                           {NULL, 0}};
 
 const char *
@@ -100,7 +101,6 @@ static const struct debug_control radv_perftest_options[] = {{"localbos", RADV_P
                                                              {"rtwave64", RADV_PERFTEST_RT_WAVE_64},
                                                              {"video_decode", RADV_PERFTEST_VIDEO_DECODE},
                                                              {"dmashaders", RADV_PERFTEST_DMA_SHADERS},
-                                                             {"gsfastlaunch2", RADV_PERFTEST_GS_FAST_LAUNCH_2},
                                                              {"transfer_queue", RADV_PERFTEST_TRANSFER_QUEUE},
                                                              {"shader_object", RADV_PERFTEST_SHADER_OBJECT},
                                                              {"nircache", RADV_PERFTEST_NIR_CACHE},

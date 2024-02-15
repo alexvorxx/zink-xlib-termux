@@ -8180,10 +8180,10 @@ radv_cs_emit_indirect_mesh_draw_packet(struct radv_cmd_buffer *cmd_buffer, uint3
    cmd_buffer->state.last_vertex_offset_valid = false;
 
    uint32_t xyz_dim_enable = mesh_shader->info.cs.uses_grid_size;
-   uint32_t xyz_dim_reg = (base_reg - SI_SH_REG_OFFSET) >> 2;
-   uint32_t draw_id_reg = xyz_dim_reg + (xyz_dim_enable ? 3 : 0);
-
+   uint32_t xyz_dim_reg = !xyz_dim_enable ? 0 : (base_reg - SI_SH_REG_OFFSET) >> 2;
    uint32_t draw_id_enable = !!cmd_buffer->state.uses_drawid;
+   uint32_t draw_id_reg = !draw_id_enable ? 0 : (base_reg + (xyz_dim_enable ? 12 : 0) - SI_SH_REG_OFFSET) >> 2;
+
    uint32_t mode1_enable = !cmd_buffer->device->mesh_fast_launch_2;
 
    radeon_emit(cs, PKT3(PKT3_DISPATCH_MESH_INDIRECT_MULTI, 7, predicating) | PKT3_RESET_FILTER_CAM_S(1));
@@ -8280,9 +8280,9 @@ radv_cs_emit_dispatch_taskmesh_gfx_packet(struct radv_cmd_buffer *cmd_buffer)
 
    assert(ring_entry_loc->sgpr_idx != -1);
 
-   uint32_t xyz_dim_reg = (cmd_buffer->state.vtx_base_sgpr - SI_SH_REG_OFFSET) >> 2;
-   uint32_t ring_entry_reg = ((mesh_shader->info.user_data_0 - SI_SH_REG_OFFSET) >> 2) + ring_entry_loc->sgpr_idx;
    uint32_t xyz_dim_en = mesh_shader->info.cs.uses_grid_size;
+   uint32_t xyz_dim_reg = !xyz_dim_en ? 0 : (cmd_buffer->state.vtx_base_sgpr - SI_SH_REG_OFFSET) >> 2;
+   uint32_t ring_entry_reg = ((mesh_shader->info.user_data_0 - SI_SH_REG_OFFSET) >> 2) + ring_entry_loc->sgpr_idx;
    uint32_t mode1_en = !cmd_buffer->device->mesh_fast_launch_2;
    uint32_t linear_dispatch_en = cmd_buffer->state.shaders[MESA_SHADER_TASK]->info.cs.linear_taskmesh_dispatch;
    const bool sqtt_en = !!cmd_buffer->device->sqtt.bo;

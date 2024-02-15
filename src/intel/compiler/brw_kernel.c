@@ -31,6 +31,7 @@
 #include "compiler/spirv/nir_spirv.h"
 #include "dev/intel_debug.h"
 #include "util/u_atomic.h"
+#include "util/u_dynarray.h"
 
 static const nir_shader *
 load_clc_shader(struct brw_compiler *compiler, struct disk_cache *disk_cache,
@@ -455,9 +456,139 @@ brw_kernel_from_spirv(struct brw_compiler *compiler,
    return kernel->code != NULL;
 }
 
+static nir_def *
+rebuild_value_from_store(struct util_dynarray *stores,
+                         nir_def *value, unsigned read_offset)
+{
+   unsigned read_size = value->num_components * value->bit_size / 8;
+
+   util_dynarray_foreach(stores, nir_intrinsic_instr *, _store) {
+      nir_intrinsic_instr *store = *_store;
+
+      unsigned write_offset = nir_src_as_uint(store->src[1]);
+      unsigned write_size = nir_src_num_components(store->src[0]) *
+                            nir_src_bit_size(store->src[0]) / 8;
+      if (write_offset <= read_offset &&
+          (write_offset + write_size) >= (read_offset + read_size)) {
+         assert(nir_block_dominates(store->instr.block, value->parent_instr->block));
+         assert(write_size == read_size);
+         return store->src[0].ssa;
+      }
+   }
+   unreachable("Matching scratch store not found");
+}
+
+/**
+ * Remove temporary variables stored to scratch to be then reloaded
+ * immediately. Remap the load to the store SSA value.
+ *
+ * This workaround is only meant to be applied to shaders in src/intel/shaders
+ * were we know there should be no issue. More complex cases might not work
+ * with this approach.
+ */
+static bool
+nir_remove_llvm17_scratch(nir_shader *nir)
+{
+   struct util_dynarray scratch_stores;
+   void *mem_ctx = ralloc_context(NULL);
+
+   util_dynarray_init(&scratch_stores, mem_ctx);
+
+   nir_foreach_function_impl(func, nir) {
+      nir_foreach_block(block, func) {
+         nir_foreach_instr(instr, block) {
+            if (instr->type != nir_instr_type_intrinsic)
+               continue;
+
+            nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+
+            if (intrin->intrinsic != nir_intrinsic_store_scratch)
+               continue;
+
+            nir_const_value *offset = nir_src_as_const_value(intrin->src[1]);
+            if (offset != NULL) {
+               util_dynarray_append(&scratch_stores, nir_intrinsic_instr *, intrin);
+            }
+         }
+      }
+   }
+
+   bool progress = false;
+   if (util_dynarray_num_elements(&scratch_stores, nir_intrinsic_instr *) > 0) {
+      nir_foreach_function_impl(func, nir) {
+         nir_foreach_block(block, func) {
+            nir_foreach_instr_safe(instr, block) {
+               if (instr->type != nir_instr_type_intrinsic)
+                  continue;
+
+               nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+
+               if (intrin->intrinsic != nir_intrinsic_load_scratch)
+                  continue;
+
+               nir_const_value *offset = nir_src_as_const_value(intrin->src[0]);
+               if (offset == NULL)
+                  continue;
+
+               nir_def_rewrite_uses(&intrin->def,
+                                    rebuild_value_from_store(
+                                       &scratch_stores, &intrin->def,
+                                       nir_src_as_uint(intrin->src[0])));
+               nir_instr_remove(instr);
+
+               progress = true;
+            }
+         }
+      }
+   }
+
+   util_dynarray_foreach(&scratch_stores, nir_intrinsic_instr *, _store) {
+      nir_intrinsic_instr *store = *_store;
+      nir_instr_remove(&store->instr);
+   }
+
+   /* Quick sanity check */
+   assert(util_dynarray_num_elements(&scratch_stores, nir_intrinsic_instr *) == 0 ||
+          progress);
+
+   ralloc_free(mem_ctx);
+
+   return progress;
+}
+
+static void
+cleanup_llvm17_scratch(nir_shader *nir)
+{
+   {
+      bool progress;
+      do {
+         progress = false;
+         NIR_PASS(progress, nir, nir_copy_prop);
+         NIR_PASS(progress, nir, nir_opt_dce);
+         NIR_PASS(progress, nir, nir_opt_constant_folding);
+         NIR_PASS(progress, nir, nir_opt_cse);
+         NIR_PASS(progress, nir, nir_opt_algebraic);
+      } while (progress);
+   }
+
+   nir_remove_llvm17_scratch(nir);
+
+   {
+      bool progress;
+      do {
+         progress = false;
+         NIR_PASS(progress, nir, nir_copy_prop);
+         NIR_PASS(progress, nir, nir_opt_dce);
+         NIR_PASS(progress, nir, nir_opt_constant_folding);
+         NIR_PASS(progress, nir, nir_opt_cse);
+         NIR_PASS(progress, nir, nir_opt_algebraic);
+      } while (progress);
+   }
+}
 
 nir_shader *
-brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size)
+brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size,
+                   bool llvm17_wa)
 {
    struct spirv_to_nir_options spirv_options = {
       .environment = NIR_SPIRV_OPENCL,
@@ -610,6 +741,12 @@ brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size)
               nir_address_format_32bit_offset_as_64bit);
 
    NIR_PASS_V(nir, nir_lower_system_values);
+
+   /* Hopefully we can drop this once lower_vars_to_ssa has improved to not
+    * lower everything to scratch.
+    */
+   if (llvm17_wa)
+      cleanup_llvm17_scratch(nir);
 
    /* Lower again, this time after dead-variables to get more compact variable
     * layouts.

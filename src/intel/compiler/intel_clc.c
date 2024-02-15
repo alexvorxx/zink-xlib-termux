@@ -278,6 +278,7 @@ print_usage(char *exec_name, FILE *f)
 "Options:\n"
 "  -h  --help              Print this help.\n"
 "  -e, --entrypoint <name> Specify the entry-point name.\n"
+"  -L, --llvm17-wa         Enable LLVM 17 workarounds for opaque pointers"
 "  -p, --platform <name>   Specify the target platform name.\n"
 "      --prefix <prefix>   Prefix for variable names in generated C code.\n"
 "  -o, --out <filename>    Specify the output filename.\n"
@@ -286,6 +287,7 @@ print_usage(char *exec_name, FILE *f)
 "  -n, --nir               Specify whether to output serialized NIR instead of ISA.\n"
 "  -t, --text <filename>   Specify the output filename for the parsed text\n"
 "  -v, --verbose           Print more information during compilation.\n"
+"  -M, --llvm-version      Print LLVM version.\n"
    , exec_name);
 }
 
@@ -301,6 +303,7 @@ struct intel_clc_params {
 
    bool output_nir;
    bool print_info;
+   bool llvm17_wa;
 
    void *mem_ctx;
 
@@ -357,7 +360,8 @@ output_nir(const struct intel_clc_params *params, struct clc_binary *binary)
                                 &spirv_options);
 
    nir_shader *nir = brw_nir_from_spirv(params->mem_ctx,
-                                        binary->data, binary->size);
+                                        binary->data, binary->size,
+                                        params->llvm17_wa);
    if (!nir) {
       fprintf(stderr, "Failed to generate NIR out of SPIRV\n");
       return -1;
@@ -435,6 +439,12 @@ output_isa(const struct intel_clc_params *params, struct clc_binary *binary)
    return 0;
 }
 
+static void
+print_llvm_version(FILE *out)
+{
+   fprintf(out, "%s\n", MESA_LLVM_VERSION_STRING);
+}
+
 int main(int argc, char **argv)
 {
    int exit_code = 0;
@@ -442,16 +452,18 @@ int main(int argc, char **argv)
    process_intel_debug_variable();
 
    static struct option long_options[] ={
-      {"help",       no_argument,         0, 'h'},
-      {"entrypoint", required_argument,   0, 'e'},
-      {"platform",   required_argument,   0, 'p'},
-      {"prefix",     required_argument,   0, OPT_PREFIX},
-      {"in",         required_argument,   0, 'i'},
-      {"out",        required_argument,   0, 'o'},
-      {"spv",        required_argument,   0, 's'},
-      {"text",       required_argument,   0, 't'},
-      {"nir",        no_argument,         0, 'n'},
-      {"verbose",    no_argument,         0, 'v'},
+      {"help",         no_argument,         0, 'h'},
+      {"entrypoint",   required_argument,   0, 'e'},
+      {"platform",     required_argument,   0, 'p'},
+      {"prefix",       required_argument,   0, OPT_PREFIX},
+      {"in",           required_argument,   0, 'i'},
+      {"out",          required_argument,   0, 'o'},
+      {"spv",          required_argument,   0, 's'},
+      {"text",         required_argument,   0, 't'},
+      {"nir",          no_argument,         0, 'n'},
+      {"llvm17-wa",    no_argument,         0, 'L'},
+      {"llvm-version", no_argument,         0, 'M'},
+      {"verbose",      no_argument,         0, 'v'},
       {0, 0, 0, 0}
    };
 
@@ -470,7 +482,7 @@ int main(int argc, char **argv)
    util_dynarray_init(&input_files, params.mem_ctx);
 
    int ch;
-   while ((ch = getopt_long(argc, argv, "he:p:s:t:i:no:v", long_options, NULL)) != -1)
+   while ((ch = getopt_long(argc, argv, "he:p:s:t:i:no:MLv", long_options, NULL)) != -1)
    {
       switch (ch)
       {
@@ -501,6 +513,12 @@ int main(int argc, char **argv)
       case 'v':
          params.print_info = true;
          break;
+      case 'L':
+         params.llvm17_wa = true;
+         break;
+      case 'M':
+         print_llvm_version(stdout);
+         return EXIT_SUCCESS;
       case OPT_PREFIX:
          params.prefix = optarg;
          break;

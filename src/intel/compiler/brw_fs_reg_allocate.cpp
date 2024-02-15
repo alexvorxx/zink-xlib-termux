@@ -94,7 +94,7 @@ brw_alloc_reg_set(struct brw_compiler *compiler, int dispatch_width)
    int base_reg_count = BRW_MAX_GRF;
    const int index = util_logbase2(dispatch_width / 8);
 
-   if (dispatch_width > 8 && devinfo->ver >= 7) {
+   if (dispatch_width > 8) {
       /* For IVB+, we don't need the PLN hacks or the even-reg alignment in
        * SIMD16.  Therefore, we can use the exact same register sets for
        * SIMD16 as we do for SIMD8 and we don't need to recalculate them.
@@ -124,8 +124,7 @@ brw_alloc_reg_set(struct brw_compiler *compiler, int dispatch_width)
       class_sizes[i] = i + 1;
 
    struct ra_regs *regs = ra_alloc_reg_set(compiler, BRW_MAX_GRF, false);
-   if (devinfo->ver >= 6)
-      ra_set_allocate_round_robin(regs);
+   ra_set_allocate_round_robin(regs);
    struct ra_class **classes = ralloc_array(compiler, struct ra_class *,
                                             REG_CLASS_COUNT);
    struct ra_class *aligned_bary_class = NULL;
@@ -136,35 +135,8 @@ brw_alloc_reg_set(struct brw_compiler *compiler, int dispatch_width)
    for (int i = 0; i < REG_CLASS_COUNT; i++) {
       classes[i] = ra_alloc_contig_reg_class(regs, class_sizes[i]);
 
-      if (devinfo->ver <= 5 && dispatch_width >= 16) {
-         /* From the G45 PRM:
-          *
-          * In order to reduce the hardware complexity, the following
-          * rules and restrictions apply to the compressed instruction:
-          * ...
-          * * Operand Alignment Rule: With the exceptions listed below, a
-          *   source/destination operand in general should be aligned to
-          *   even 256-bit physical register with a region size equal to
-          *   two 256-bit physical register
-          */
-         for (int reg = 0; reg <= base_reg_count - class_sizes[i]; reg += 2)
-            ra_class_add_reg(classes[i], reg);
-      } else {
-         for (int reg = 0; reg <= base_reg_count - class_sizes[i]; reg++)
-            ra_class_add_reg(classes[i], reg);
-      }
-   }
-
-   /* Add a special class for aligned barycentrics, which we'll put the
-    * first source of LINTERP on so that we can do PLN on Gen <= 6.
-    */
-   if (devinfo->has_pln && (devinfo->ver == 6 ||
-                            (dispatch_width == 8 && devinfo->ver <= 5))) {
-      int contig_len = aligned_bary_size(dispatch_width);
-      aligned_bary_class = ra_alloc_contig_reg_class(regs, contig_len);
-
-      for (int i = 0; i <= base_reg_count - contig_len; i += 2)
-         ra_class_add_reg(aligned_bary_class, i);
+      for (int reg = 0; reg <= base_reg_count - class_sizes[i]; reg++)
+         ra_class_add_reg(classes[i], reg);
    }
 
    ra_set_finalize(regs, NULL);
@@ -333,7 +305,6 @@ public:
 
       node_count = 0;
       first_payload_node = 0;
-      first_mrf_hack_node = 0;
       scratch_header_node = 0;
       grf127_send_hack_node = 0;
       first_vgrf_node = 0;
@@ -396,7 +367,6 @@ private:
 
    int node_count;
    int first_payload_node;
-   int first_mrf_hack_node;
    int scratch_header_node;
    int grf127_send_hack_node;
    int first_vgrf_node;
@@ -409,42 +379,6 @@ private:
 
    fs_reg scratch_header;
 };
-
-/**
- * Sets the mrf_used array to indicate which MRFs are used by the shader IR
- *
- * This is used in assign_regs() to decide which of the GRFs that we use as
- * MRFs on gfx7 get normally register allocated, and in register spilling to
- * see if we can actually use MRFs to do spills without overwriting normal MRF
- * contents.
- */
-static void
-get_used_mrfs(const fs_visitor *v, bool *mrf_used)
-{
-   int reg_width = v->dispatch_width / 8;
-
-   memset(mrf_used, 0, BRW_MAX_MRF(v->devinfo->ver) * sizeof(bool));
-
-   foreach_block_and_inst(block, fs_inst, inst, v->cfg) {
-      if (inst->dst.file == MRF) {
-         int reg = inst->dst.nr & ~BRW_MRF_COMPR4;
-         mrf_used[reg] = true;
-         if (reg_width == 2) {
-            if (inst->dst.nr & BRW_MRF_COMPR4) {
-               mrf_used[reg + 4] = true;
-            } else {
-               mrf_used[reg + 1] = true;
-            }
-         }
-      }
-
-      if (inst->mlen > 0) {
-	 for (unsigned i = 0; i < inst->implied_mrf_writes(); i++) {
-            mrf_used[inst->base_mrf + i] = true;
-         }
-      }
-   }
-}
 
 namespace {
    /**
@@ -480,17 +414,6 @@ namespace {
        */
       return static_cast<const fs_visitor *>(s)->dispatch_width / 8;
    }
-
-   /**
-    * First MRF register available for spilling.
-    */
-   unsigned
-   spill_base_mrf(const backend_shader *s)
-   {
-      /* We don't use the MRF hack on Gfx9+ */
-      assert(s->devinfo->ver < 9);
-      return BRW_MAX_MRF(s->devinfo->ver) - spill_max_size(s) - 1;
-   }
 }
 
 void
@@ -510,14 +433,6 @@ fs_reg_alloc::setup_live_interference(unsigned node,
        */
       if (node_start_ip <= payload_last_use_ip[i])
          ra_add_node_interference(g, node, first_payload_node + i);
-   }
-
-   /* If we have the MRF hack enabled, mark this node as interfering with all
-    * MRF registers.
-    */
-   if (first_mrf_hack_node >= 0) {
-      for (int i = spill_base_mrf(fs); i < BRW_MAX_MRF(devinfo->ver); i++)
-         ra_add_node_interference(g, node, first_mrf_hack_node + i);
    }
 
    /* Everything interferes with the scratch header */
@@ -615,13 +530,11 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
     * they're used as sources in the same instruction.  We also need to add
     * interference here.
     */
-   if (devinfo->ver >= 9) {
-      if (inst->opcode == SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
-          inst->src[2].file == VGRF && inst->src[3].file == VGRF &&
-          inst->src[2].nr != inst->src[3].nr)
-         ra_add_node_interference(g, first_vgrf_node + inst->src[2].nr,
-                                     first_vgrf_node + inst->src[3].nr);
-   }
+   if (inst->opcode == SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
+       inst->src[2].file == VGRF && inst->src[3].file == VGRF &&
+       inst->src[2].nr != inst->src[3].nr)
+      ra_add_node_interference(g, first_vgrf_node + inst->src[2].nr,
+                                  first_vgrf_node + inst->src[3].nr);
 
    /* When we do send-from-GRF for FB writes, we need to ensure that the last
     * write instruction sends from a high register.  This is because the
@@ -638,13 +551,7 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
       const int size = DIV_ROUND_UP(fs->alloc.sizes[vgrf], reg_unit(devinfo));
       int reg = BRW_MAX_GRF - size;
 
-      if (first_mrf_hack_node >= 0) {
-         /* If something happened to spill, we want to push the EOT send
-          * register early enough in the register file that we don't
-          * conflict with any used MRF hack registers.
-          */
-         reg -= BRW_MAX_MRF(devinfo->ver) - spill_base_mrf(fs);
-      } else if (grf127_send_hack_node >= 0) {
+      if (grf127_send_hack_node >= 0) {
          /* Avoid r127 which might be unusable if the node was previously
           * written by a SIMD8 SEND message with source/destination overlap.
           */
@@ -668,22 +575,14 @@ fs_reg_alloc::build_interference_graph(bool allow_spilling)
    node_count = 0;
    first_payload_node = node_count;
    node_count += payload_node_count;
-   if (devinfo->ver >= 7 && devinfo->ver < 9 && allow_spilling) {
-      first_mrf_hack_node = node_count;
-      node_count += BRW_MAX_GRF - GFX7_MRF_HACK_START;
-   } else {
-      first_mrf_hack_node = -1;
-   }
-   if (devinfo->ver >= 8) {
-      grf127_send_hack_node = node_count;
-      node_count ++;
-   } else {
-      grf127_send_hack_node = -1;
-   }
+
+   grf127_send_hack_node = node_count;
+   node_count++;
+
    first_vgrf_node = node_count;
    node_count += fs->alloc.count;
    last_vgrf_node = node_count - 1;
-   if ((devinfo->ver >= 9 && devinfo->verx10 < 125) && allow_spilling) {
+   if (devinfo->verx10 < 125 && allow_spilling) {
       scratch_header_node = node_count++;
    } else {
       scratch_header_node = -1;
@@ -700,19 +599,6 @@ fs_reg_alloc::build_interference_graph(bool allow_spilling)
    /* Set up the payload nodes */
    for (int i = 0; i < payload_node_count; i++)
       ra_set_node_reg(g, first_payload_node + i, i);
-
-   if (first_mrf_hack_node >= 0) {
-      /* Mark each MRF reg node as being allocated to its physical
-       * register.
-       *
-       * The alternative would be to have per-physical-register classes,
-       * which would just be silly.
-       */
-      for (int i = 0; i < BRW_MAX_MRF(devinfo->ver); i++) {
-         ra_set_node_reg(g, first_mrf_hack_node + i,
-                            GFX7_MRF_HACK_START + i);
-      }
-   }
 
    if (grf127_send_hack_node >= 0)
       ra_set_node_reg(g, grf127_send_hack_node, 127);
@@ -873,7 +759,7 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
          unspill_inst->send_has_side_effects = false;
          unspill_inst->send_is_volatile = true;
          unspill_inst->send_ex_desc_scratch = true;
-      } else if (devinfo->ver >= 9) {
+      } else {
          fs_reg header = this->scratch_header;
          fs_builder ubld = bld.exec_all().group(1, 0);
          assert(spill_offset % 16 == 0);
@@ -897,21 +783,6 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
             brw_dp_desc(devinfo, bti,
                         BRW_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ,
                         BRW_DATAPORT_OWORD_BLOCK_DWORDS(reg_size * 8));
-      } else if (devinfo->ver >= 7 && spill_offset < (1 << 12) * REG_SIZE) {
-         /* The Gfx7 descriptor-based offset is 12 bits of HWORD units.
-          * Because the Gfx7-style scratch block read is hardwired to BTI 255,
-          * on Gfx9+ it would cause the DC to do an IA-coherent read, what
-          * largely outweighs the slight advantage from not having to provide
-          * the address as part of the message header, so we're better off
-          * using plain old oword block reads.
-          */
-         unspill_inst = bld.emit(SHADER_OPCODE_GFX7_SCRATCH_READ, dst);
-         unspill_inst->offset = spill_offset;
-      } else {
-         unspill_inst = bld.emit(SHADER_OPCODE_GFX4_SCRATCH_READ, dst);
-         unspill_inst->offset = spill_offset;
-         unspill_inst->base_mrf = spill_base_mrf(bld.shader);
-         unspill_inst->mlen = 1; /* header contains offset */
       }
       _mesa_set_add(spill_insts, unspill_inst);
 
@@ -968,7 +839,7 @@ fs_reg_alloc::emit_spill(const fs_builder &bld,
          spill_inst->send_has_side_effects = true;
          spill_inst->send_is_volatile = false;
          spill_inst->send_ex_desc_scratch = true;
-      } else if (devinfo->ver >= 9) {
+      } else {
          fs_reg header = this->scratch_header;
          fs_builder ubld = bld.exec_all().group(1, 0);
          assert(spill_offset % 16 == 0);
@@ -993,12 +864,6 @@ fs_reg_alloc::emit_spill(const fs_builder &bld,
             brw_dp_desc(devinfo, bti,
                         GFX6_DATAPORT_WRITE_MESSAGE_OWORD_BLOCK_WRITE,
                         BRW_DATAPORT_OWORD_BLOCK_DWORDS(reg_size * 8));
-      } else {
-         spill_inst = bld.emit(SHADER_OPCODE_GFX4_SCRATCH_WRITE,
-                               bld.null_reg_f(), src);
-         spill_inst->offset = spill_offset;
-         spill_inst->mlen = 1 + reg_size; /* header, value */
-         spill_inst->base_mrf = spill_base_mrf(bld.shader);
       }
       _mesa_set_add(spill_insts, spill_inst);
 
@@ -1171,7 +1036,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
    if (!fs->spilled_any_registers) {
       if (devinfo->verx10 >= 125) {
          /* We will allocate a register on the fly */
-      } else if (devinfo->ver >= 9) {
+      } else {
          this->scratch_header = alloc_scratch_header();
          fs_builder ubld = fs_builder(fs, 8).exec_all().at(
             fs->cfg->first_block(), fs->cfg->first_block()->start());
@@ -1179,16 +1044,6 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
          fs_inst *inst = ubld.emit(SHADER_OPCODE_SCRATCH_HEADER,
                                    this->scratch_header);
          _mesa_set_add(spill_insts, inst);
-      } else {
-         bool mrf_used[BRW_MAX_MRF(devinfo->ver)];
-         get_used_mrfs(fs, mrf_used);
-
-         for (int i = spill_base_mrf(fs); i < BRW_MAX_MRF(devinfo->ver); i++) {
-            if (mrf_used[i]) {
-               fs->fail("Register spilling not supported with m%d used", i);
-             return;
-            }
-         }
       }
 
       fs->spilled_any_registers = true;

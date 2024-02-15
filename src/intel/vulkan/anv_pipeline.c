@@ -1049,13 +1049,10 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
             &(struct brw_nir_lower_storage_image_opts) {
                /* Anv only supports Gfx9+ which has better defined typed read
                 * behavior. It allows us to only have to care about lowering
-                * loads/atomics.
+                * loads.
                 */
                .devinfo = compiler->devinfo,
                .lower_loads = true,
-               .lower_stores = false,
-               .lower_atomics = true,
-               .lower_get_size = false,
             });
 
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,

@@ -397,11 +397,8 @@ enum opcode {
     * Source 4: [required] Opcode-specific control immediate, same as source 2
     *                      of the matching non-LOGICAL opcode.
     */
-   VEC4_OPCODE_UNTYPED_ATOMIC,
    SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL,
-   VEC4_OPCODE_UNTYPED_SURFACE_READ,
    SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL,
-   VEC4_OPCODE_UNTYPED_SURFACE_WRITE,
    SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL,
 
    SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
@@ -553,20 +550,6 @@ enum opcode {
     */
    SHADER_OPCODE_HALT_TARGET,
 
-   VEC4_OPCODE_MOV_BYTES,
-   VEC4_OPCODE_PACK_BYTES,
-   VEC4_OPCODE_UNPACK_UNIFORM,
-   VEC4_OPCODE_DOUBLE_TO_F32,
-   VEC4_OPCODE_DOUBLE_TO_D32,
-   VEC4_OPCODE_DOUBLE_TO_U32,
-   VEC4_OPCODE_TO_DOUBLE,
-   VEC4_OPCODE_PICK_LOW_32BIT,
-   VEC4_OPCODE_PICK_HIGH_32BIT,
-   VEC4_OPCODE_SET_LOW_32BIT,
-   VEC4_OPCODE_SET_HIGH_32BIT,
-   VEC4_OPCODE_MOV_FOR_SCRATCH,
-   VEC4_OPCODE_ZERO_OOB_PUSH_REGS,
-
    FS_OPCODE_DDX_COARSE,
    FS_OPCODE_DDX_FINE,
    /**
@@ -586,28 +569,10 @@ enum opcode {
    FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET,
    FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET,
 
-   VEC4_VS_OPCODE_URB_WRITE,
    VS_OPCODE_PULL_CONSTANT_LOAD,
    VS_OPCODE_PULL_CONSTANT_LOAD_GFX7,
 
    VS_OPCODE_UNPACK_FLAGS_SIMD4X2,
-
-   /**
-    * Write geometry shader output data to the URB.
-    *
-    * Unlike VEC4_VS_OPCODE_URB_WRITE, this opcode doesn't do an implied move from
-    * R0 to the first MRF.  This allows the geometry shader to override the
-    * "Slot {0,1} Offset" fields in the message header.
-    */
-   VEC4_GS_OPCODE_URB_WRITE,
-
-   /**
-    * Write geometry shader output data to the URB and request a new URB
-    * handle (gfx6).
-    *
-    * This opcode doesn't do an implied move from R0 to the first MRF.
-    */
-   VEC4_GS_OPCODE_URB_WRITE_ALLOCATE,
 
    /**
     * Terminate the geometry shader thread by doing an empty URB write.
@@ -779,11 +744,7 @@ enum opcode {
    /** Fills out a relocatable immediate */
    SHADER_OPCODE_MOV_RELOC_IMM,
 
-   VEC4_OPCODE_URB_READ,
    TCS_OPCODE_GET_INSTANCE_ID,
-   VEC4_TCS_OPCODE_URB_WRITE,
-   VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS,
-   VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS,
    TCS_OPCODE_GET_PRIMITIVE_ID,
    TCS_OPCODE_CREATE_BARRIER_HEADER,
    TCS_OPCODE_SRC0_010_IS_ZERO,

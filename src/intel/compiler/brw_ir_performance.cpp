@@ -317,17 +317,6 @@ namespace {
       case FS_OPCODE_PIXEL_X:
       case FS_OPCODE_PIXEL_Y:
       case FS_OPCODE_SET_SAMPLE_ID:
-      case VEC4_OPCODE_MOV_BYTES:
-      case VEC4_OPCODE_UNPACK_UNIFORM:
-      case VEC4_OPCODE_DOUBLE_TO_F32:
-      case VEC4_OPCODE_DOUBLE_TO_D32:
-      case VEC4_OPCODE_DOUBLE_TO_U32:
-      case VEC4_OPCODE_TO_DOUBLE:
-      case VEC4_OPCODE_PICK_LOW_32BIT:
-      case VEC4_OPCODE_PICK_HIGH_32BIT:
-      case VEC4_OPCODE_SET_LOW_32BIT:
-      case VEC4_OPCODE_SET_HIGH_32BIT:
-      case VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
       case GS_OPCODE_SET_DWORD_2:
       case GS_OPCODE_SET_WRITE_OFFSET:
       case GS_OPCODE_SET_VERTEX_COUNT:
@@ -364,7 +353,6 @@ namespace {
       case BRW_OPCODE_ADD3:
       case BRW_OPCODE_MUL:
       case SHADER_OPCODE_MOV_RELOC_IMM:
-      case VEC4_OPCODE_MOV_FOR_SCRATCH:
          if (devinfo->ver >= 11) {
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 10, 6, 14, 0, 0);
@@ -830,27 +818,8 @@ namespace {
          else
             abort();
 
-      case VEC4_OPCODE_PACK_BYTES:
-         if (devinfo->ver >= 8)
-            return calculate_desc(info, EU_UNIT_FPU, 4 /* XXX */, 0, 0,
-                                  4 /* XXX */, 0,
-                                  0, 8 /* XXX */, 4 /* XXX */, 12 /* XXX */,
-                                  0, 0);
-         else if (devinfo->verx10 >= 75)
-            return calculate_desc(info, EU_UNIT_FPU, 4 /* XXX */, 0, 0,
-                                  4 /* XXX */, 0,
-                                  0, 10 /* XXX */, 6 /* XXX */, 16 /* XXX */,
-                                  0, 0);
-         else
-            return calculate_desc(info, EU_UNIT_FPU, 4 /* XXX */, 0, 0,
-                                  4 /* XXX */, 0,
-                                  0, 12 /* XXX */, 8 /* XXX */, 18 /* XXX */,
-                                  0, 0);
-
       case VS_OPCODE_UNPACK_FLAGS_SIMD4X2:
       case TCS_OPCODE_GET_INSTANCE_ID:
-      case VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
-      case VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
       case TES_OPCODE_CREATE_INPUT_READ_HEADER:
          if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 22 /* XXX */, 0, 0,
@@ -934,13 +903,8 @@ namespace {
                                8 /* XXX */, 750 /* XXX */, 0, 0,
                                2 /* XXX */, 0);
 
-      case VEC4_OPCODE_URB_READ:
-      case VEC4_VS_OPCODE_URB_WRITE:
-      case VEC4_GS_OPCODE_URB_WRITE:
-      case VEC4_GS_OPCODE_URB_WRITE_ALLOCATE:
       case GS_OPCODE_THREAD_END:
       case GS_OPCODE_FF_SYNC:
-      case VEC4_TCS_OPCODE_URB_WRITE:
       case TCS_OPCODE_RELEASE_INPUT:
       case TCS_OPCODE_THREAD_END:
          return calculate_desc(info, EU_UNIT_URB, 2, 0, 0, 0, 6 /* XXX */,
@@ -977,25 +941,6 @@ namespace {
       case SHADER_OPCODE_GFX7_SCRATCH_READ:
          return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0, 0, 8 /* XXX */,
                                10 /* XXX */, 100 /* XXX */, 0, 0, 0, 0);
-
-      case VEC4_OPCODE_UNTYPED_ATOMIC:
-         if (devinfo->ver >= 7)
-            return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0,
-                                  30 /* XXX */, 400 /* XXX */,
-                                  10 /* XXX */, 100 /* XXX */, 0, 0,
-                                  0, 400 /* XXX */);
-         else
-            abort();
-
-      case VEC4_OPCODE_UNTYPED_SURFACE_READ:
-      case VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
-         if (devinfo->ver >= 7)
-            return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0,
-                                  0, 20 /* XXX */,
-                                  10 /* XXX */, 100 /* XXX */, 0, 0,
-                                  0, 0);
-         else
-            abort();
 
       case FS_OPCODE_FB_WRITE:
       case FS_OPCODE_FB_READ:

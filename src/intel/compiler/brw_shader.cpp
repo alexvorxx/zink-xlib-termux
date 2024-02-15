@@ -297,16 +297,10 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
       return "image_size_logical";
 
-   case VEC4_OPCODE_UNTYPED_ATOMIC:
-      return "untyped_atomic";
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
       return "untyped_atomic_logical";
-   case VEC4_OPCODE_UNTYPED_SURFACE_READ:
-      return "untyped_surface_read";
    case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
       return "untyped_surface_read_logical";
-   case VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
-      return "untyped_surface_write";
    case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
       return "untyped_surface_write_logical";
    case SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
@@ -394,33 +388,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case SHADER_OPCODE_GET_BUFFER_SIZE:
       return "get_buffer_size";
 
-   case VEC4_OPCODE_MOV_BYTES:
-      return "mov_bytes";
-   case VEC4_OPCODE_PACK_BYTES:
-      return "pack_bytes";
-   case VEC4_OPCODE_UNPACK_UNIFORM:
-      return "unpack_uniform";
-   case VEC4_OPCODE_DOUBLE_TO_F32:
-      return "double_to_f32";
-   case VEC4_OPCODE_DOUBLE_TO_D32:
-      return "double_to_d32";
-   case VEC4_OPCODE_DOUBLE_TO_U32:
-      return "double_to_u32";
-   case VEC4_OPCODE_TO_DOUBLE:
-      return "single_to_double";
-   case VEC4_OPCODE_PICK_LOW_32BIT:
-      return "pick_low_32bit";
-   case VEC4_OPCODE_PICK_HIGH_32BIT:
-      return "pick_high_32bit";
-   case VEC4_OPCODE_SET_LOW_32BIT:
-      return "set_low_32bit";
-   case VEC4_OPCODE_SET_HIGH_32BIT:
-      return "set_high_32bit";
-   case VEC4_OPCODE_MOV_FOR_SCRATCH:
-      return "mov_for_scratch";
-   case VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
-      return "zero_oob_push_regs";
-
    case FS_OPCODE_DDX_COARSE:
       return "ddx_coarse";
    case FS_OPCODE_DDX_FINE:
@@ -461,8 +428,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
       return "interp_per_slot_offset";
 
-   case VEC4_VS_OPCODE_URB_WRITE:
-      return "vs_urb_write";
    case VS_OPCODE_PULL_CONSTANT_LOAD:
       return "pull_constant_load";
    case VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
@@ -471,10 +436,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case VS_OPCODE_UNPACK_FLAGS_SIMD4X2:
       return "unpack_flags_simd4x2";
 
-   case VEC4_GS_OPCODE_URB_WRITE:
-      return "gs_urb_write";
-   case VEC4_GS_OPCODE_URB_WRITE_ALLOCATE:
-      return "gs_urb_write_allocate";
    case GS_OPCODE_THREAD_END:
       return "gs_thread_end";
    case GS_OPCODE_SET_WRITE_OFFSET:
@@ -514,16 +475,8 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case SHADER_OPCODE_MOV_RELOC_IMM:
       return "mov_reloc_imm";
 
-   case VEC4_OPCODE_URB_READ:
-      return "urb_read";
    case TCS_OPCODE_GET_INSTANCE_ID:
       return "tcs_get_instance_id";
-   case VEC4_TCS_OPCODE_URB_WRITE:
-      return "tcs_urb_write";
-   case VEC4_TCS_OPCODE_SET_INPUT_URB_OFFSETS:
-      return "tcs_set_input_urb_offsets";
-   case VEC4_TCS_OPCODE_SET_OUTPUT_URB_OFFSETS:
-      return "tcs_set_output_urb_offsets";
    case TCS_OPCODE_GET_PRIMITIVE_ID:
       return "tcs_get_primitive_id";
    case TCS_OPCODE_CREATE_BARRIER_HEADER:
@@ -1105,10 +1058,8 @@ backend_instruction::has_side_effects() const
       return send_has_side_effects;
 
    case BRW_OPCODE_SYNC:
-   case VEC4_OPCODE_UNTYPED_ATOMIC:
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
    case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
-   case VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
    case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
    case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
@@ -1124,7 +1075,6 @@ backend_instruction::has_side_effects() const
    case FS_OPCODE_FB_WRITE_LOGICAL:
    case FS_OPCODE_REP_FB_WRITE:
    case SHADER_OPCODE_BARRIER:
-   case VEC4_TCS_OPCODE_URB_WRITE:
    case TCS_OPCODE_RELEASE_INPUT:
    case SHADER_OPCODE_RND_MODE:
    case SHADER_OPCODE_FLOAT_CONTROL_MODE:
@@ -1134,7 +1084,6 @@ backend_instruction::has_side_effects() const
    case SHADER_OPCODE_BTD_SPAWN_LOGICAL:
    case SHADER_OPCODE_BTD_RETIRE_LOGICAL:
    case RT_OPCODE_TRACE_RAY_LOGICAL:
-   case VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
       return true;
    default:
       return eot;
@@ -1148,14 +1097,12 @@ backend_instruction::is_volatile() const
    case SHADER_OPCODE_SEND:
       return send_is_volatile;
 
-   case VEC4_OPCODE_UNTYPED_SURFACE_READ:
    case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
    case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
    case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
    case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
    case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
-   case VEC4_OPCODE_URB_READ:
       return true;
    default:
       return false;

@@ -402,17 +402,6 @@ schedule_node::set_latency_gfx7(const struct brw_isa_info *isa)
       latency = 50;
       break;
 
-   case VEC4_OPCODE_UNTYPED_ATOMIC:
-      /* See GFX7_DATAPORT_DC_UNTYPED_ATOMIC_OP */
-      latency = 14000;
-      break;
-
-   case VEC4_OPCODE_UNTYPED_SURFACE_READ:
-   case VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
-      /* See also GFX7_DATAPORT_DC_UNTYPED_SURFACE_READ */
-      latency = is_haswell ? 300 : 600;
-      break;
-
    case SHADER_OPCODE_SEND:
       switch (inst->sfid) {
       case BRW_SFID_SAMPLER: {

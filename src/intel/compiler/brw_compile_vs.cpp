@@ -88,11 +88,7 @@ brw_compile_vs(const struct brw_compiler *compiler,
    const unsigned vue_entries =
       MAX2(nr_attribute_slots, (unsigned)prog_data->base.vue_map.num_slots);
 
-   if (compiler->devinfo->ver == 6) {
-      prog_data->base.urb_entry_size = DIV_ROUND_UP(vue_entries, 8);
-   } else {
-      prog_data->base.urb_entry_size = DIV_ROUND_UP(vue_entries, 4);
-   }
+   prog_data->base.urb_entry_size = DIV_ROUND_UP(vue_entries, 4);
 
    if (unlikely(debug_enabled)) {
       fprintf(stderr, "VS Output ");

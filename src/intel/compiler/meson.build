@@ -89,7 +89,6 @@ libintel_compiler_brw_files = files(
   'brw_fs_visitor.cpp',
   'brw_fs_workaround.cpp',
   'brw_inst.h',
-  'brw_interpolation_map.c',
   'brw_ir.h',
   'brw_ir_allocator.h',
   'brw_ir_analysis.h',

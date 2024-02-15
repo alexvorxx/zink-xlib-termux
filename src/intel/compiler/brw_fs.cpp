@@ -3667,20 +3667,17 @@ brw_compile_fs(const struct brw_compiler *compiler,
    prog_data->base.total_scratch = 0;
 
    const struct intel_device_info *devinfo = compiler->devinfo;
-   const unsigned max_subgroup_size = compiler->devinfo->ver >= 6 ? 32 : 16;
+   const unsigned max_subgroup_size = 32;
 
    brw_nir_apply_key(nir, compiler, &key->base, max_subgroup_size);
    brw_nir_lower_fs_inputs(nir, devinfo, key);
    brw_nir_lower_fs_outputs(nir);
 
-   if (devinfo->ver < 6)
-      brw_setup_vue_interpolation(params->vue_map, nir, prog_data);
-
    /* From the SKL PRM, Volume 7, "Alpha Coverage":
     *  "If Pixel Shader outputs oMask, AlphaToCoverage is disabled in
     *   hardware, regardless of the state setting for this feature."
     */
-   if (devinfo->ver > 6 && key->alpha_to_coverage != BRW_NEVER) {
+   if (key->alpha_to_coverage != BRW_NEVER) {
       /* Run constant fold optimization in order to get the correct source
        * offset to determine render target 0 store instruction in
        * emit_alpha_to_coverage pass.
@@ -3723,16 +3720,6 @@ brw_compile_fs(const struct brw_compiler *compiler,
          has_spilled = v8->spilled_any_registers;
          allow_spilling = false;
       }
-   }
-
-   /* Limit dispatch width to simd8 with dual source blending on gfx8.
-    * See: https://gitlab.freedesktop.org/mesa/mesa/-/issues/1917
-    */
-   if (devinfo->ver == 8 && prog_data->dual_src_blend &&
-       INTEL_SIMD(FS, 8)) {
-      assert(!params->use_rep_send);
-      v8->limit_dispatch_width(8, "gfx8 workaround: "
-                               "using SIMD8 when dual src blending.\n");
    }
 
    if (key->coarse_pixel && devinfo->ver < 20) {
@@ -3781,7 +3768,7 @@ brw_compile_fs(const struct brw_compiler *compiler,
    if (!has_spilled &&
        (!v8 || v8->max_dispatch_width >= 32) &&
        (!v16 || v16->max_dispatch_width >= 32) && !params->use_rep_send &&
-       devinfo->ver >= 6 && !simd16_failed &&
+       !simd16_failed &&
        INTEL_SIMD(FS, 32)) {
       /* Try a SIMD32 compile */
       v32 = std::make_unique<fs_visitor>(compiler, &params->base, key,
@@ -3890,36 +3877,6 @@ brw_compile_fs(const struct brw_compiler *compiler,
    /* When the caller requests a repclear shader, they want SIMD16-only */
    if (params->use_rep_send)
       simd8_cfg = NULL;
-
-   /* Prior to Iron Lake, the PS had a single shader offset with a jump table
-    * at the top to select the shader.  We've never implemented that.
-    * Instead, we just give them exactly one shader and we pick the widest one
-    * available.
-    */
-   if (compiler->devinfo->ver < 5) {
-      if (simd32_cfg || simd16_cfg)
-         simd8_cfg = NULL;
-      if (simd32_cfg)
-         simd16_cfg = NULL;
-   }
-
-   /* If computed depth is enabled SNB only allows SIMD8. */
-   if (compiler->devinfo->ver == 6 &&
-       prog_data->computed_depth_mode != BRW_PSCDEPTH_OFF)
-      assert(simd16_cfg == NULL && simd32_cfg == NULL);
-
-   if (compiler->devinfo->ver <= 5 && !simd8_cfg) {
-      /* Iron lake and earlier only have one Dispatch GRF start field.  Make
-       * the data available in the base prog data struct for convenience.
-       */
-      if (simd16_cfg) {
-         prog_data->base.dispatch_grf_start_reg =
-            prog_data->dispatch_grf_start_reg_16;
-      } else if (simd32_cfg) {
-         prog_data->base.dispatch_grf_start_reg =
-            prog_data->dispatch_grf_start_reg_32;
-      }
-   }
 
    fs_generator g(compiler, &params->base, &prog_data->base,
                   v8 && v8->runtime_check_aads_emit, MESA_SHADER_FRAGMENT);

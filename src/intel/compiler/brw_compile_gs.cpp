@@ -75,42 +75,37 @@ brw_compile_gs(const struct brw_compiler *compiler,
 
    prog_data->invocations = nir->info.gs.invocations;
 
-   if (compiler->devinfo->ver >= 8)
-      nir_gs_count_vertices_and_primitives(
-         nir, &prog_data->static_vertex_count, nullptr, nullptr, 1u);
+   nir_gs_count_vertices_and_primitives(
+      nir, &prog_data->static_vertex_count, nullptr, nullptr, 1u);
 
-   if (compiler->devinfo->ver >= 7) {
-      if (nir->info.gs.output_primitive == MESA_PRIM_POINTS) {
-         /* When the output type is points, the geometry shader may output data
-          * to multiple streams, and EndPrimitive() has no effect.  So we
-          * configure the hardware to interpret the control data as stream ID.
-          */
-         prog_data->control_data_format = GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_SID;
+   if (nir->info.gs.output_primitive == MESA_PRIM_POINTS) {
+      /* When the output type is points, the geometry shader may output data
+       * to multiple streams, and EndPrimitive() has no effect.  So we
+       * configure the hardware to interpret the control data as stream ID.
+       */
+      prog_data->control_data_format = GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_SID;
 
-         /* We only have to emit control bits if we are using non-zero streams */
-         if (nir->info.gs.active_stream_mask != (1 << 0))
-            c.control_data_bits_per_vertex = 2;
-         else
-            c.control_data_bits_per_vertex = 0;
-      } else {
-         /* When the output type is triangle_strip or line_strip, EndPrimitive()
-          * may be used to terminate the current strip and start a new one
-          * (similar to primitive restart), and outputting data to multiple
-          * streams is not supported.  So we configure the hardware to interpret
-          * the control data as EndPrimitive information (a.k.a. "cut bits").
-          */
-         prog_data->control_data_format = GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_CUT;
-
-         /* We only need to output control data if the shader actually calls
-          * EndPrimitive().
-          */
-         c.control_data_bits_per_vertex =
-            nir->info.gs.uses_end_primitive ? 1 : 0;
-      }
+      /* We only have to emit control bits if we are using non-zero streams */
+      if (nir->info.gs.active_stream_mask != (1 << 0))
+         c.control_data_bits_per_vertex = 2;
+      else
+         c.control_data_bits_per_vertex = 0;
    } else {
-      /* There are no control data bits in gfx6. */
-      c.control_data_bits_per_vertex = 0;
+      /* When the output type is triangle_strip or line_strip, EndPrimitive()
+       * may be used to terminate the current strip and start a new one
+       * (similar to primitive restart), and outputting data to multiple
+       * streams is not supported.  So we configure the hardware to interpret
+       * the control data as EndPrimitive information (a.k.a. "cut bits").
+       */
+      prog_data->control_data_format = GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_CUT;
+
+      /* We only need to output control data if the shader actually calls
+       * EndPrimitive().
+       */
+      c.control_data_bits_per_vertex =
+         nir->info.gs.uses_end_primitive ? 1 : 0;
    }
+
    c.control_data_header_size_bits =
       nir->info.gs.vertices_out * c.control_data_bits_per_vertex;
 
@@ -167,8 +162,7 @@ brw_compile_gs(const struct brw_compiler *compiler,
     *
     */
    unsigned output_vertex_size_bytes = prog_data->base.vue_map.num_slots * 16;
-   assert(compiler->devinfo->ver == 6 ||
-          output_vertex_size_bytes <= GFX7_MAX_GS_OUTPUT_VERTEX_SIZE_BYTES);
+   assert(output_vertex_size_bytes <= GFX7_MAX_GS_OUTPUT_VERTEX_SIZE_BYTES);
    prog_data->output_vertex_size_hwords =
       ALIGN(output_vertex_size_bytes, 32) / 32;
 
@@ -200,24 +194,16 @@ brw_compile_gs(const struct brw_compiler *compiler,
     * we need, and if it's too large, fail to compile.
     *
     * The above is for gfx7+ where we have a single URB entry that will hold
-    * all the output. In gfx6, we will have to allocate URB entries for every
-    * vertex we emit, so our URB entries only need to be large enough to hold
-    * a single vertex. Also, gfx6 does not have a control data header.
+    * all the output.
     */
-   unsigned output_size_bytes;
-   if (compiler->devinfo->ver >= 7) {
-      output_size_bytes =
-         prog_data->output_vertex_size_hwords * 32 * nir->info.gs.vertices_out;
-      output_size_bytes += 32 * prog_data->control_data_header_size_hwords;
-   } else {
-      output_size_bytes = prog_data->output_vertex_size_hwords * 32;
-   }
+   unsigned output_size_bytes =
+      prog_data->output_vertex_size_hwords * 32 * nir->info.gs.vertices_out;
+   output_size_bytes += 32 * prog_data->control_data_header_size_hwords;
 
    /* Broadwell stores "Vertex Count" as a full 8 DWord (32 byte) URB output,
     * which comes before the control header.
     */
-   if (compiler->devinfo->ver >= 8)
-      output_size_bytes += 32;
+   output_size_bytes += 32;
 
    /* Shaders can technically set max_vertices = 0, at which point we
     * may have a URB size of 0 bytes.  Nothing good can come from that,
@@ -227,20 +213,12 @@ brw_compile_gs(const struct brw_compiler *compiler,
       output_size_bytes = 1;
 
    unsigned max_output_size_bytes = GFX7_MAX_GS_URB_ENTRY_SIZE_BYTES;
-   if (compiler->devinfo->ver == 6)
-      max_output_size_bytes = GFX6_MAX_GS_URB_ENTRY_SIZE_BYTES;
    if (output_size_bytes > max_output_size_bytes)
       return NULL;
 
 
-   /* URB entry sizes are stored as a multiple of 64 bytes in gfx7+ and
-    * a multiple of 128 bytes in gfx6.
-    */
-   if (compiler->devinfo->ver >= 7) {
-      prog_data->base.urb_entry_size = ALIGN(output_size_bytes, 64) / 64;
-   } else {
-      prog_data->base.urb_entry_size = ALIGN(output_size_bytes, 128) / 128;
-   }
+   /* URB entry sizes are stored as a multiple of 64 bytes in gfx7+. */
+   prog_data->base.urb_entry_size = ALIGN(output_size_bytes, 64) / 64;
 
    assert(nir->info.gs.output_primitive < ARRAY_SIZE(gl_prim_to_hw_prim));
    prog_data->output_topology =

@@ -677,6 +677,19 @@ radv_device_init_cache_key(struct radv_device *device)
    key->mesh_shader_queries = device->vk.enabled_features.meshShaderQueries;
    key->primitives_generated_query = radv_uses_primitives_generated_query(device);
 
+   /* The Vulkan spec says:
+    *  "Binary shaders retrieved from a physical device with a certain shaderBinaryUUID are
+    *   guaranteed to be compatible with all other physical devices reporting the same
+    *   shaderBinaryUUID and the same or higher shaderBinaryVersion."
+    *
+    * That means the driver should compile shaders for the "worst" case of all features being
+    * enabled, regardless of what features are actually enabled on the logical device.
+    */
+   if (device->vk.enabled_features.shaderObject) {
+      key->image_2d_view_of_3d = device->physical_device->rad_info.gfx_level == GFX9;
+      key->primitives_generated_query = true;
+   }
+
    _mesa_blake3_compute(key, sizeof(*key), device->cache_hash);
 }
 

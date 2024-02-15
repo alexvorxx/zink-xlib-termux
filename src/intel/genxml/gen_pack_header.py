@@ -521,7 +521,7 @@ class Parser(object):
                 static inline __attribute__((always_inline)) void
                 %s_repack(__attribute__((unused)) global void * restrict dst,
                         %s__attribute__((unused)) global const uint32_t * origin,
-                        %s__attribute__((unused)) const struct %s * restrict values)
+                        %s__attribute__((unused)) private const struct %s * restrict values)
                 {""") % (name, ' ' * len(name), ' ' * len(name), name))
             else:
                 print(textwrap.dedent("""\
@@ -536,7 +536,7 @@ class Parser(object):
                 print(textwrap.dedent("""\
                 static inline __attribute__((always_inline)) void
                 %s_pack(__attribute__((unused)) global void * restrict dst,
-                      %s__attribute__((unused)) const struct %s * restrict values)
+                      %s__attribute__((unused)) private const struct %s * restrict values)
                 {""") % (name, ' ' * len(name), name))
             else:
                 print(textwrap.dedent("""\

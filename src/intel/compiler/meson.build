@@ -285,13 +285,6 @@ brw_asm_tool = executable(
 )
 
 asm_testcases = [
-  ['brw', 'gfx4'],
-  ['g4x', 'gfx4.5'],
-  ['ilk', 'gfx5'],
-  ['snb', 'gfx6'],
-  ['ivb', 'gfx7'],
-  ['hsw', 'gfx7.5'],
-  ['bdw', 'gfx8'],
   ['skl', 'gfx9'],
   ['icl', 'gfx11'],
   ['tgl', 'gfx12'],

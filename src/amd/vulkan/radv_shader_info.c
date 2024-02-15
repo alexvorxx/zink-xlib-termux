@@ -1330,16 +1330,16 @@ clamp_gsprims_to_esverts(unsigned *max_gsprims, unsigned max_esverts, unsigned m
 }
 
 static unsigned
-radv_get_num_input_vertices(const struct radv_shader_stage *es_stage, const struct radv_shader_stage *gs_stage)
+radv_get_num_input_vertices(const struct radv_shader_info *es_info, const struct radv_shader_info *gs_info)
 {
-   if (gs_stage) {
-      return gs_stage->nir->info.gs.vertices_in;
+   if (gs_info) {
+      return gs_info->gs.vertices_in;
    }
 
-   if (es_stage->stage == MESA_SHADER_TESS_EVAL) {
-      if (es_stage->nir->info.tess.point_mode)
+   if (es_info->stage == MESA_SHADER_TESS_EVAL) {
+      if (es_info->tes.point_mode)
          return 1;
-      if (es_stage->nir->info.tess._primitive_mode == TESS_PRIMITIVE_ISOLINES)
+      if (es_info->tes._primitive_mode == TESS_PRIMITIVE_ISOLINES)
          return 2;
       return 3;
    }
@@ -1348,16 +1348,16 @@ radv_get_num_input_vertices(const struct radv_shader_stage *es_stage, const stru
 }
 
 static unsigned
-radv_get_pre_rast_input_topology(const struct radv_shader_stage *es_stage, const struct radv_shader_stage *gs_stage)
+radv_get_pre_rast_input_topology(const struct radv_shader_info *es_info, const struct radv_shader_info *gs_info)
 {
-   if (gs_stage) {
-      return gs_stage->nir->info.gs.input_primitive;
+   if (gs_info) {
+      return gs_info->gs.input_prim;
    }
 
-   if (es_stage->stage == MESA_SHADER_TESS_EVAL) {
-      if (es_stage->nir->info.tess.point_mode)
+   if (es_info->stage == MESA_SHADER_TESS_EVAL) {
+      if (es_info->tes.point_mode)
          return MESA_PRIM_POINTS;
-      if (es_stage->nir->info.tess._primitive_mode == TESS_PRIMITIVE_ISOLINES)
+      if (es_info->tes._primitive_mode == TESS_PRIMITIVE_ISOLINES)
          return MESA_PRIM_LINES;
       return MESA_PRIM_TRIANGLES;
    }
@@ -1366,18 +1366,16 @@ radv_get_pre_rast_input_topology(const struct radv_shader_stage *es_stage, const
 }
 
 static void
-gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *es_stage,
-                   struct radv_shader_stage *gs_stage, struct gfx10_ngg_info *out)
+gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_info *es_info, struct radv_shader_info *gs_info,
+                   struct gfx10_ngg_info *out)
 {
    const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
-   struct radv_shader_info *gs_info = gs_stage ? &gs_stage->info : NULL;
-   struct radv_shader_info *es_info = &es_stage->info;
-   const unsigned max_verts_per_prim = radv_get_num_input_vertices(es_stage, gs_stage);
-   const unsigned min_verts_per_prim = gs_stage ? max_verts_per_prim : 1;
+   const unsigned max_verts_per_prim = radv_get_num_input_vertices(es_info, gs_info);
+   const unsigned min_verts_per_prim = gs_info ? max_verts_per_prim : 1;
 
-   const unsigned gs_num_invocations = gs_stage ? MAX2(gs_info->gs.invocations, 1) : 1;
+   const unsigned gs_num_invocations = gs_info ? MAX2(gs_info->gs.invocations, 1) : 1;
 
-   const unsigned input_prim = radv_get_pre_rast_input_topology(es_stage, gs_stage);
+   const unsigned input_prim = radv_get_pre_rast_input_topology(es_info, gs_info);
    const bool uses_adjacency = input_prim == MESA_PRIM_LINES_ADJACENCY || input_prim == MESA_PRIM_TRIANGLES_ADJACENCY;
 
    /* All these are in dwords: */
@@ -1411,7 +1409,7 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *e
     */
    max_esverts_base = MIN2(max_esverts_base, 251 + max_verts_per_prim - 1);
 
-   if (gs_stage) {
+   if (gs_info) {
       unsigned max_out_verts_per_gsprim = gs_info->gs.vertices_out * gs_num_invocations;
 
       if (max_out_verts_per_gsprim <= 256) {
@@ -1448,7 +1446,7 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *e
        * corresponding to the ES thread of the provoking vertex. All
        * ES threads load and export PrimitiveID for their thread.
        */
-      if (es_stage->stage == MESA_SHADER_VERTEX && es_stage->info.outinfo.export_prim_id)
+      if (es_info->stage == MESA_SHADER_VERTEX && es_info->outinfo.export_prim_id)
          esvert_lds_size = MAX2(esvert_lds_size, 1);
    }
 
@@ -1489,7 +1487,7 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *e
       unsigned orig_max_gsprims;
       unsigned wavesize;
 
-      if (gs_stage) {
+      if (gs_info) {
          wavesize = gs_info->wave_size;
       } else {
          wavesize = es_info->wave_size;
@@ -1541,12 +1539,12 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *e
    }
 
    unsigned max_out_vertices = max_vert_out_per_gs_instance ? gs_info->gs.vertices_out
-                               : gs_stage ? max_gsprims * gs_num_invocations * gs_info->gs.vertices_out
-                                          : max_esverts;
+                               : gs_info ? max_gsprims * gs_num_invocations * gs_info->gs.vertices_out
+                                         : max_esverts;
    assert(max_out_vertices <= 256);
 
    unsigned prim_amp_factor = 1;
-   if (gs_stage) {
+   if (gs_info) {
       /* Number of output primitives per GS input primitive after
        * GS instancing. */
       prim_amp_factor = gs_info->gs.vertices_out;
@@ -1571,7 +1569,7 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *e
    /* Don't count unusable vertices. */
    out->esgs_ring_size = MIN2(max_esverts, max_gsprims * max_verts_per_prim) * esvert_lds_size * 4;
 
-   if (gs_stage) {
+   if (gs_info) {
       out->vgt_esgs_ring_itemsize = es_info->esgs_itemsize / 4;
    } else {
       out->vgt_esgs_ring_itemsize = 1;
@@ -1581,7 +1579,7 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *e
 
    unsigned workgroup_size =
       ac_compute_ngg_workgroup_size(max_esverts, max_gsprims * gs_num_invocations, max_out_vertices, prim_amp_factor);
-   if (gs_stage) {
+   if (gs_info) {
       gs_info->workgroup_size = workgroup_size;
    }
    es_info->workgroup_size = workgroup_size;
@@ -1655,7 +1653,7 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
          struct radv_shader_stage *gs_stage = consumer && consumer->stage == MESA_SHADER_GEOMETRY ? consumer : NULL;
          struct gfx10_ngg_info *out = gs_stage ? &gs_stage->info.ngg_info : &producer->info.ngg_info;
 
-         gfx10_get_ngg_info(device, producer, gs_stage, out);
+         gfx10_get_ngg_info(device, &producer->info, gs_stage ? &gs_stage->info : NULL, out);
 
          /* Determine other NGG settings like culling for VS or TES without GS. */
          if (!gs_stage) {

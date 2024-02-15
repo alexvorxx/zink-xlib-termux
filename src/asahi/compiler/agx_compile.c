@@ -2312,12 +2312,6 @@ agx_dump_stats(agx_context *ctx, unsigned size, char **out)
                    nr_threads, ctx->loop_count, ctx->spills, ctx->fills);
 }
 
-static int
-glsl_type_size(const struct glsl_type *type, bool bindless)
-{
-   return glsl_count_attribute_slots(type, false);
-}
-
 static bool
 agx_lower_sincos_filter(const nir_instr *instr, UNUSED const void *_)
 {
@@ -2613,7 +2607,7 @@ agx_remap_varyings_vs(nir_shader *nir, struct agx_varyings_vs *varyings,
  * conformant not to, but every app gets this wrong.
  */
 static bool
-agx_gather_texcoords(nir_builder *b, nir_instr *instr, void *data)
+gather_texcoords(nir_builder *b, nir_instr *instr, void *data)
 {
    uint64_t *mask = data;
 
@@ -2648,15 +2642,10 @@ agx_gather_texcoords(nir_builder *b, nir_instr *instr, void *data)
    return false;
 }
 
-struct interp_masks {
-   uint64_t flat;
-   uint64_t linear;
-};
-
 static bool
-agx_gather_interp(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+gather_interp(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
-   struct interp_masks *masks = data;
+   struct agx_interp_info *masks = data;
 
    if (intr->intrinsic == nir_intrinsic_load_input) {
       nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
@@ -2673,16 +2662,15 @@ agx_gather_interp(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 
 /*
  * Build a bit mask of varyings (by location) that are flatshaded and linear
- * shaded. This information is needed by lower_mediump_io and
- * agx_uncompiled_shader_info.
+ * shaded. This information is needed by the driver.
  */
-static struct interp_masks
-agx_interp_masks(nir_shader *nir)
+struct agx_interp_info
+agx_gather_interp_info(nir_shader *nir)
 {
    assert(nir->info.stage == MESA_SHADER_FRAGMENT);
 
-   struct interp_masks masks = {0};
-   nir_shader_intrinsics_pass(nir, agx_gather_interp, nir_metadata_all, &masks);
+   struct agx_interp_info masks = {0};
+   nir_shader_intrinsics_pass(nir, gather_interp, nir_metadata_all, &masks);
    return masks;
 }
 
@@ -2690,14 +2678,13 @@ agx_interp_masks(nir_shader *nir)
  * Build a bit mask of varyings (by location) that are used as texture
  * coordinates. This information is needed by lower_mediump_io.
  */
-static uint64_t
-agx_texcoord_mask(nir_shader *nir)
+uint64_t
+agx_gather_texcoords(nir_shader *nir)
 {
    assert(nir->info.stage == MESA_SHADER_FRAGMENT);
 
    uint64_t mask = 0;
-   nir_shader_instructions_pass(nir, agx_gather_texcoords, nir_metadata_all,
-                                &mask);
+   nir_shader_instructions_pass(nir, gather_texcoords, nir_metadata_all, &mask);
    return mask;
 }
 
@@ -2944,32 +2931,10 @@ link_libagx(nir_shader *nir, const nir_shader *libagx)
             glsl_get_cl_type_size_align);
 }
 
-/*
- * Preprocess NIR. In particular, this lowers I/O. Drivers should call this
- * as soon as they don't need unlowered I/O.
- *
- * This also lowers as much as possible. After preprocessing NIR, the following
- * NIR passes are called by the GL driver:
- *
- *    - nir_lower_blend
- *    - nir_lower_texcoord_replace_late
- *    - agx_nir_lower_vbo
- *    - agx_nir_lower_tilebuffer
- *
- * Unless an instruction is constructed by one of the above passes, it should be
- * lowered here to avoid duplicate work with shader variants.
- */
+/* Preprocess NIR independent of shader state */
 void
-agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
-                   bool allow_mediump, struct agx_uncompiled_shader_info *out)
+agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
 {
-   if (out) {
-      memset(out, 0, sizeof(*out));
-
-      out->nr_bindful_textures = BITSET_LAST_BIT(nir->info.textures_used);
-      out->nr_bindful_images = BITSET_LAST_BIT(nir->info.images_used);
-   }
-
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
 
    /* Lower large arrays to scratch and small arrays to csel */
@@ -2979,36 +2944,13 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
    NIR_PASS(_, nir, nir_split_var_copies);
    NIR_PASS(_, nir, nir_lower_global_vars_to_local);
    NIR_PASS(_, nir, nir_lower_var_copies);
-   NIR_PASS(_, nir, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
-            glsl_type_size, nir_lower_io_lower_64bit_to_32);
+
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
-      struct interp_masks masks = agx_interp_masks(nir);
-
       NIR_PASS(_, nir, agx_nir_lower_frag_sidefx);
-
-      /* Interpolate varyings at fp16 and write to the tilebuffer at fp16. As an
-       * exception, interpolate flat shaded at fp32. This works around a
-       * hardware limitation. The resulting code (with an extra f2f16 at the end
-       * if needed) matches what Metal produces.
-       */
-      if (likely(allow_mediump)) {
-         uint64_t texcoord = agx_texcoord_mask(nir);
-
-         NIR_PASS(_, nir, nir_lower_mediump_io,
-                  nir_var_shader_in | nir_var_shader_out,
-                  ~(masks.flat | texcoord), false);
-      }
-
-      if (out) {
-         out->inputs_flat_shaded = masks.flat;
-         out->inputs_linear_shaded = masks.linear;
-      }
    } else if (nir->info.stage == MESA_SHADER_VERTEX ||
               nir->info.stage == MESA_SHADER_TESS_EVAL) {
-      out->has_edgeflags = nir->info.outputs_written & VARYING_BIT_EDGE;
-      out->cull_distance_size = nir->info.cull_distance_array_size;
 
-      if (out->cull_distance_size)
+      if (nir->info.cull_distance_array_size)
          NIR_PASS(_, nir, agx_nir_lower_cull_distance_vs);
    }
 

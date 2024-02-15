@@ -234,7 +234,17 @@ struct agx_uncompiled_shader {
    struct blob early_serialized_nir;
    struct blob serialized_nir;
    uint8_t nir_sha1[20];
-   struct agx_uncompiled_shader_info info;
+
+   struct {
+      uint64_t inputs_flat_shaded;
+      uint64_t inputs_linear_shaded;
+      uint8_t cull_distance_size;
+      bool has_edgeflags;
+
+      /* Number of bindful textures, images used */
+      unsigned nr_bindful_textures, nr_bindful_images;
+   } info;
+
    struct hash_table *variants;
    struct agx_uncompiled_shader *passthrough_progs[MESA_PRIM_COUNT][3][2];
    struct agx_uncompiled_shader *passthrough_tcs[32];

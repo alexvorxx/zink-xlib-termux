@@ -359,10 +359,7 @@ agx_nir_create_geometry_count_shader(nir_shader *gs, const nir_shader *libagx,
    NIR_PASS(_, shader, nir_shader_intrinsics_pass, lower_id,
             nir_metadata_block_index | nir_metadata_dominance, NULL);
 
-   /* Preprocess it */
-   UNUSED struct agx_uncompiled_shader_info info;
-   agx_preprocess_nir(shader, libagx, false, &info);
-
+   agx_preprocess_nir(shader, libagx);
    return shader;
 }
 
@@ -549,10 +546,7 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
 
    nir_opt_idiv_const(shader, 16);
 
-   /* Preprocess it */
-   UNUSED struct agx_uncompiled_shader_info info;
-   agx_preprocess_nir(shader, libagx, false, &info);
-
+   agx_preprocess_nir(shader, libagx);
    return shader;
 }
 
@@ -988,10 +982,7 @@ agx_nir_create_pre_gs(struct lower_gs_state *state, const nir_shader *libagx,
       nir_load_stat_query_address_agx(b, .base = PIPE_STAT_QUERY_C_INVOCATIONS),
       emitted_prims);
 
-   /* Preprocess it */
-   UNUSED struct agx_uncompiled_shader_info info;
-   agx_preprocess_nir(b->shader, libagx, false, &info);
-
+   agx_preprocess_nir(b->shader, libagx);
    return b->shader;
 }
 

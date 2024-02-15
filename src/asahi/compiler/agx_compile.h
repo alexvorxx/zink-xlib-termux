@@ -98,14 +98,10 @@ union agx_varyings {
    struct agx_varyings_fs fs;
 };
 
-struct agx_uncompiled_shader_info {
-   uint64_t inputs_flat_shaded;
-   uint64_t inputs_linear_shaded;
-   uint8_t cull_distance_size;
-   bool has_edgeflags;
-
-   /* Number of bindful textures, images used */
-   unsigned nr_bindful_textures, nr_bindful_images;
+struct agx_interp_info {
+   /* Bit masks indexed by I/O location of flat and linear varyings */
+   uint64_t flat;
+   uint64_t linear;
 };
 
 struct agx_shader_info {
@@ -243,10 +239,10 @@ struct agx_shader_key {
    };
 };
 
-void agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
-                        bool allow_mediump,
-                        struct agx_uncompiled_shader_info *out);
+struct agx_interp_info agx_gather_interp_info(nir_shader *nir);
+uint64_t agx_gather_texcoords(nir_shader *nir);
 
+void agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx);
 bool agx_nir_lower_discard_zs_emit(nir_shader *s);
 bool agx_nir_lower_sample_mask(nir_shader *s);
 

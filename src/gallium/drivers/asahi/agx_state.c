@@ -2142,6 +2142,12 @@ agx_get_shader_variant(struct agx_screen *screen, struct pipe_context *pctx,
    return compiled;
 }
 
+static int
+glsl_type_size(const struct glsl_type *type, bool bindless)
+{
+   return glsl_count_attribute_slots(type, false);
+}
+
 static void
 agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
                       nir_shader *nir, bool support_lod_bias, bool robust)
@@ -2187,11 +2193,41 @@ agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
       NIR_PASS(_, nir, nir_lower_fragcolor, 8);
    }
 
+   /* We need to do some I/O lowering before lowering textures */
+   so->info.nr_bindful_textures = BITSET_LAST_BIT(nir->info.textures_used);
+   so->info.nr_bindful_images = BITSET_LAST_BIT(nir->info.images_used);
+
+   NIR_PASS(_, nir, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
+            glsl_type_size, nir_lower_io_lower_64bit_to_32);
+
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      struct agx_interp_info interp = agx_gather_interp_info(nir);
+
+      /* Interpolate varyings at fp16 and write to the tilebuffer at fp16. As an
+       * exception, interpolate flat shaded at fp32. This works around a
+       * hardware limitation. The resulting code (with an extra f2f16 at the end
+       * if needed) matches what Metal produces.
+       */
+      if (likely(!(dev->debug & AGX_DBG_NO16))) {
+         uint64_t texcoord = agx_gather_texcoords(nir);
+
+         NIR_PASS(_, nir, nir_lower_mediump_io,
+                  nir_var_shader_in | nir_var_shader_out,
+                  ~(interp.flat | texcoord), false);
+      }
+
+      so->info.inputs_flat_shaded = interp.flat;
+      so->info.inputs_linear_shaded = interp.linear;
+   } else if (nir->info.stage == MESA_SHADER_VERTEX ||
+              nir->info.stage == MESA_SHADER_TESS_EVAL) {
+      so->info.has_edgeflags = nir->info.outputs_written & VARYING_BIT_EDGE;
+      so->info.cull_distance_size = nir->info.cull_distance_array_size;
+   }
+
    NIR_PASS(_, nir, agx_nir_lower_texture);
    NIR_PASS(_, nir, nir_lower_ssbo);
 
-   bool allow_mediump = !(dev->debug & AGX_DBG_NO16);
-   agx_preprocess_nir(nir, dev->libagx, allow_mediump, &so->info);
+   agx_preprocess_nir(nir, dev->libagx);
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT &&
        (nir->info.inputs_read & VARYING_BITS_TEX_ANY)) {
@@ -2768,8 +2804,7 @@ agx_build_meta_shader(struct agx_context *ctx, meta_shader_builder_t builder,
    builder(&b, data);
 
    struct agx_device *dev = agx_device(ctx->base.screen);
-   UNUSED struct agx_uncompiled_shader_info info;
-   agx_preprocess_nir(b.shader, dev->libagx, false, &info);
+   agx_preprocess_nir(b.shader, dev->libagx);
 
    struct agx_shader_key base_key = {0};
    struct agx_compiled_shader *shader =

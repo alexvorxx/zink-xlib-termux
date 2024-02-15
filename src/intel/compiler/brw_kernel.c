@@ -582,7 +582,8 @@ brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size)
 
    nir->scratch_size = 0;
    NIR_PASS_V(nir, nir_lower_vars_to_explicit_types,
-              nir_var_mem_shared | nir_var_function_temp | nir_var_mem_global | nir_var_mem_constant,
+              nir_var_mem_shared | nir_var_function_temp | nir_var_shader_temp |
+              nir_var_mem_global | nir_var_mem_constant,
               glsl_get_cl_type_size_align);
 
    // Lower memcpy - needs to wait until types are sized
@@ -605,7 +606,7 @@ brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size)
    NIR_PASS_V(nir, nir_lower_memcpy);
 
    NIR_PASS_V(nir, nir_lower_explicit_io,
-              nir_var_mem_shared | nir_var_function_temp | nir_var_uniform,
+              nir_var_mem_shared | nir_var_function_temp | nir_var_shader_temp | nir_var_uniform,
               nir_address_format_32bit_offset_as_64bit);
 
    NIR_PASS_V(nir, nir_lower_system_values);
@@ -617,7 +618,6 @@ brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size)
    nir->scratch_size = 0;
    nir->info.shared_size = 0;
    NIR_PASS_V(nir, nir_lower_vars_to_explicit_types,
-              nir_var_shader_temp | nir_var_function_temp |
               nir_var_mem_shared | nir_var_mem_global | nir_var_mem_constant,
               glsl_get_cl_type_size_align);
    if (nir->constant_data_size > 0) {

@@ -291,7 +291,6 @@ varying_name(brw_varying_slot slot, gl_shader_stage stage)
    static const char *brw_names[] = {
       [BRW_VARYING_SLOT_NDC - VARYING_SLOT_MAX] = "BRW_VARYING_SLOT_NDC",
       [BRW_VARYING_SLOT_PAD - VARYING_SLOT_MAX] = "BRW_VARYING_SLOT_PAD",
-      [BRW_VARYING_SLOT_PNTC - VARYING_SLOT_MAX] = "BRW_VARYING_SLOT_PNTC",
    };
 
    return brw_names[slot - VARYING_SLOT_MAX];

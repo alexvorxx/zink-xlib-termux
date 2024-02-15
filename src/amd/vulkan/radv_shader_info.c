@@ -416,6 +416,13 @@ gather_info_input_decl_vs(const nir_shader *nir, unsigned location, const struct
 }
 
 static void
+gather_shader_info_ngg_query(struct radv_device *device, struct radv_shader_info *info)
+{
+   info->has_xfb_query = info->so.num_outputs > 0;
+   info->has_prim_query = device->cache_key.primitives_generated_query || info->has_xfb_query;
+}
+
+static void
 gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
                       const struct radv_graphics_state_key *gfx_state, const struct radv_shader_stage_key *stage_key,
                       struct radv_shader_info *info)
@@ -457,8 +464,13 @@ gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
       info->esgs_itemsize = radv_compute_esgs_itemsize(device, info->vs.num_linked_outputs);
    }
 
-   if (info->is_ngg)
+   if (info->is_ngg) {
       info->vs.num_outputs = nir->num_outputs;
+
+      if (info->next_stage == MESA_SHADER_FRAGMENT || info->next_stage == MESA_SHADER_NONE) {
+         gather_shader_info_ngg_query(device, info);
+      }
+   }
 }
 
 static void
@@ -516,8 +528,13 @@ gather_shader_info_tes(struct radv_device *device, const nir_shader *nir, struct
       info->esgs_itemsize = radv_compute_esgs_itemsize(device, info->tes.num_linked_outputs);
    }
 
-   if (info->is_ngg)
+   if (info->is_ngg) {
       info->tes.num_outputs = nir->num_outputs;
+
+      if (info->next_stage == MESA_SHADER_FRAGMENT || info->next_stage == MESA_SHADER_NONE) {
+         gather_shader_info_ngg_query(device, info);
+      }
+   }
 }
 
 static void
@@ -682,8 +699,11 @@ gather_shader_info_gs(struct radv_device *device, const nir_shader *nir, struct 
    if (!info->inputs_linked)
       info->gs.num_linked_inputs = util_last_bit64(nir->info.inputs_read);
 
-   if (!info->is_ngg)
+   if (info->is_ngg) {
+      gather_shader_info_ngg_query(device, info);
+   } else {
       radv_get_legacy_gs_info(device, info);
+   }
 }
 
 static void
@@ -1569,16 +1589,6 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_stage *e
 }
 
 static void
-gfx10_get_ngg_query_info(const struct radv_device *device, struct radv_shader_stage *es_stage,
-                         struct radv_shader_stage *gs_stage)
-{
-   struct radv_shader_info *info = gs_stage ? &gs_stage->info : &es_stage->info;
-
-   info->has_xfb_query = info->so.num_outputs > 0;
-   info->has_prim_query = device->cache_key.primitives_generated_query || info->has_xfb_query;
-}
-
-static void
 radv_determine_ngg_settings(struct radv_device *device, struct radv_shader_stage *es_stage,
                             struct radv_shader_stage *fs_stage, const struct radv_graphics_state_key *gfx_state)
 {
@@ -1646,7 +1656,6 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
          struct radv_shader_stage *gs_stage = consumer && consumer->stage == MESA_SHADER_GEOMETRY ? consumer : NULL;
 
          gfx10_get_ngg_info(device, producer, gs_stage);
-         gfx10_get_ngg_query_info(device, producer, gs_stage);
 
          /* Determine other NGG settings like culling for VS or TES without GS. */
          if (!gs_stage) {

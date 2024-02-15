@@ -23,7 +23,6 @@
 
 #include "brw_eu.h"
 #include "brw_fs.h"
-#include "brw_vec4.h"
 #include "brw_cfg.h"
 
 using namespace brw;
@@ -150,29 +149,6 @@ namespace {
             tx = brw_int_type(8, tx == BRW_REGISTER_TYPE_D);
 
          rcount = inst->opcode == BRW_OPCODE_DPAS ? inst->rcount : 0;
-      }
-
-      instruction_info(const struct brw_isa_info *isa,
-                       const vec4_instruction *inst) :
-         isa(isa), devinfo(isa->devinfo), op(inst->opcode),
-         td(inst->dst.type), sd(DIV_ROUND_UP(inst->size_written, REG_SIZE)),
-         tx(get_exec_type(inst)), sx(0), ss(0), sc(0),
-         desc(inst->desc), sfid(inst->sfid), rcount(0)
-      {
-         /* Compute the maximum source size. */
-         for (unsigned i = 0; i < ARRAY_SIZE(inst->src); i++)
-            ss = MAX2(ss, DIV_ROUND_UP(inst->size_read(i), REG_SIZE));
-
-         /* Convert the execution size to GRF units. */
-         sx = DIV_ROUND_UP(inst->exec_size * type_sz(tx), REG_SIZE);
-
-         /* 32x32 integer multiplication has half the usual ALU throughput.
-          * Treat it as double-precision.
-          */
-         if ((inst->opcode == BRW_OPCODE_MUL || inst->opcode == BRW_OPCODE_MAD) &&
-             !brw_reg_type_is_floating_point(tx) && type_sz(tx) == 4 &&
-             type_sz(inst->src[0].type) == type_sz(inst->src[1].type))
-            tx = brw_int_type(8, tx == BRW_REGISTER_TYPE_D);
       }
 
       /** ISA encoding information */
@@ -1506,102 +1482,6 @@ namespace {
    }
 
    /**
-    * Model the performance behavior of a VEC4 back-end instruction.
-    */
-   void
-   issue_vec4_instruction(state &st, const struct brw_isa_info *isa,
-                          const backend_instruction *be_inst)
-   {
-      const struct intel_device_info *devinfo = isa->devinfo;
-      const vec4_instruction *inst =
-         static_cast<const vec4_instruction *>(be_inst);
-      const instruction_info info(isa, inst);
-      const perf_desc perf = instruction_desc(info);
-
-      /* Stall on any source dependencies. */
-      for (unsigned i = 0; i < ARRAY_SIZE(inst->src); i++) {
-         for (unsigned j = 0; j < regs_read(inst, i); j++)
-            stall_on_dependency(
-               st, reg_dependency_id(devinfo, inst->src[i], j));
-      }
-
-      if (inst->reads_accumulator_implicitly()) {
-         for (unsigned j = accum_reg_of_channel(devinfo, inst, info.tx, 0);
-              j <= accum_reg_of_channel(devinfo, inst, info.tx,
-                                        inst->exec_size - 1); j++)
-            stall_on_dependency(
-               st, reg_dependency_id(devinfo, brw_acc_reg(8), j));
-      }
-
-      if (inst->base_mrf != -1) {
-         for (unsigned j = 0; j < inst->mlen; j++)
-            stall_on_dependency(
-               st, reg_dependency_id(
-                  devinfo, brw_uvec_mrf(8, inst->base_mrf, 0), j));
-      }
-
-      if (inst->reads_flag())
-         stall_on_dependency(st, EU_DEPENDENCY_ID_FLAG0);
-
-      /* Stall on any write dependencies. */
-      if (!inst->no_dd_check) {
-         if (inst->dst.file != BAD_FILE && !inst->dst.is_null()) {
-            for (unsigned j = 0; j < regs_written(inst); j++)
-               stall_on_dependency(
-                  st, reg_dependency_id(devinfo, inst->dst, j));
-         }
-
-         if (inst->writes_accumulator_implicitly(devinfo)) {
-            for (unsigned j = accum_reg_of_channel(devinfo, inst, info.tx, 0);
-                 j <= accum_reg_of_channel(devinfo, inst, info.tx,
-                                           inst->exec_size - 1); j++)
-               stall_on_dependency(
-                  st, reg_dependency_id(devinfo, brw_acc_reg(8), j));
-         }
-
-         if (inst->writes_flag(devinfo))
-            stall_on_dependency(st, EU_DEPENDENCY_ID_FLAG0);
-      }
-
-      /* Execute the instruction. */
-      execute_instruction(st, perf);
-
-      /* Mark any source dependencies. */
-      if (inst->is_send_from_grf()) {
-         for (unsigned i = 0; i < ARRAY_SIZE(inst->src); i++) {
-            for (unsigned j = 0; j < regs_read(inst, i); j++)
-               mark_read_dependency(
-                  st, perf, reg_dependency_id(devinfo, inst->src[i], j));
-         }
-      }
-
-      if (inst->base_mrf != -1) {
-         for (unsigned j = 0; j < inst->mlen; j++)
-            mark_read_dependency(st, perf,
-               reg_dependency_id(devinfo, brw_uvec_mrf(8, inst->base_mrf, 0), j));
-      }
-
-      /* Mark any destination dependencies. */
-      if (inst->dst.file != BAD_FILE && !inst->dst.is_null()) {
-         for (unsigned j = 0; j < regs_written(inst); j++) {
-            mark_write_dependency(st, perf,
-                                  reg_dependency_id(devinfo, inst->dst, j));
-         }
-      }
-
-      if (inst->writes_accumulator_implicitly(devinfo)) {
-         for (unsigned j = accum_reg_of_channel(devinfo, inst, info.tx, 0);
-              j <= accum_reg_of_channel(devinfo, inst, info.tx,
-                                        inst->exec_size - 1); j++)
-            mark_write_dependency(st, perf,
-                                  reg_dependency_id(devinfo, brw_acc_reg(8), j));
-      }
-
-      if (inst->writes_flag(devinfo))
-         mark_write_dependency(st, perf, EU_DEPENDENCY_ID_FLAG0);
-   }
-
-   /**
     * Calculate the maximum possible throughput of the program compatible with
     * the cycle-count utilization estimated for each asynchronous unit, in
     * threads-per-cycle units.
@@ -1690,12 +1570,6 @@ brw::performance::performance(const fs_visitor *v) :
    block_latency(new unsigned[v->cfg->num_blocks])
 {
    calculate_performance(*this, v, issue_fs_inst, v->dispatch_width);
-}
-
-brw::performance::performance(const vec4_visitor *v) :
-   block_latency(new unsigned[v->cfg->num_blocks])
-{
-   calculate_performance(*this, v, issue_vec4_instruction, 8);
 }
 
 brw::performance::~performance()

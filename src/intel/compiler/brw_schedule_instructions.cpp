@@ -28,7 +28,6 @@
 #include "brw_eu.h"
 #include "brw_fs.h"
 #include "brw_fs_live_variables.h"
-#include "brw_vec4.h"
 #include "brw_cfg.h"
 #include "brw_shader.h"
 #include <new>
@@ -1027,25 +1026,6 @@ fs_instruction_scheduler::get_register_pressure_benefit(backend_instruction *be)
    return benefit;
 }
 
-class vec4_instruction_scheduler : public instruction_scheduler
-{
-public:
-   vec4_instruction_scheduler(void *mem_ctx, const vec4_visitor *v, int grf_count);
-   void calculate_deps();
-   schedule_node *choose_instruction_to_schedule();
-   const vec4_visitor *v;
-
-   void run();
-};
-
-vec4_instruction_scheduler::vec4_instruction_scheduler(void *mem_ctx, const vec4_visitor *v,
-                                                       int grf_count)
-   : instruction_scheduler(mem_ctx, v, grf_count, /* grf_write_scale */ 1,
-                           /* post_reg_alloc */ true),
-     v(v)
-{
-}
-
 void
 instruction_scheduler::set_current_block(bblock_t *block)
 {
@@ -1534,179 +1514,6 @@ fs_instruction_scheduler::calculate_deps()
    clear_last_grf_write();
 }
 
-void
-vec4_instruction_scheduler::calculate_deps()
-{
-   schedule_node *last_mrf_write[BRW_MAX_MRF(v->devinfo->ver)];
-   schedule_node *last_conditional_mod = NULL;
-   schedule_node *last_accumulator_write = NULL;
-   /* Fixed HW registers are assumed to be separate from the virtual
-    * GRFs, so they can be tracked separately.  We don't really write
-    * to fixed GRFs much, so don't bother tracking them on a more
-    * granular level.
-    */
-   schedule_node *last_fixed_grf_write = NULL;
-
-   memset(last_grf_write, 0, grf_count * sizeof(*last_grf_write));
-   memset(last_mrf_write, 0, sizeof(last_mrf_write));
-
-   /* top-to-bottom dependencies: RAW and WAW. */
-   for (schedule_node *n = current.start; n < current.end; n++) {
-      vec4_instruction *inst = (vec4_instruction *)n->inst;
-
-      if (is_scheduling_barrier(inst))
-         add_barrier_deps(n);
-
-      /* read-after-write deps. */
-      for (int i = 0; i < 3; i++) {
-         if (inst->src[i].file == VGRF) {
-            for (unsigned j = 0; j < regs_read(inst, i); ++j)
-               add_dep(last_grf_write[inst->src[i].nr + j], n);
-         } else if (inst->src[i].file == FIXED_GRF) {
-            add_dep(last_fixed_grf_write, n);
-         } else if (inst->src[i].is_accumulator()) {
-            assert(last_accumulator_write);
-            add_dep(last_accumulator_write, n);
-         } else if (inst->src[i].file == ARF && !inst->src[i].is_null()) {
-            add_barrier_deps(n);
-         }
-      }
-
-      if (inst->reads_g0_implicitly())
-         add_dep(last_fixed_grf_write, n);
-
-      if (!inst->is_send_from_grf()) {
-         for (int i = 0; i < inst->mlen; i++) {
-            /* It looks like the MRF regs are released in the send
-             * instruction once it's sent, not when the result comes
-             * back.
-             */
-            add_dep(last_mrf_write[inst->base_mrf + i], n);
-         }
-      }
-
-      if (inst->reads_flag()) {
-         assert(last_conditional_mod);
-         add_dep(last_conditional_mod, n);
-      }
-
-      if (inst->reads_accumulator_implicitly()) {
-         assert(last_accumulator_write);
-         add_dep(last_accumulator_write, n);
-      }
-
-      /* write-after-write deps. */
-      if (inst->dst.file == VGRF) {
-         for (unsigned j = 0; j < regs_written(inst); ++j) {
-            add_dep(last_grf_write[inst->dst.nr + j], n);
-            last_grf_write[inst->dst.nr + j] = n;
-         }
-      } else if (inst->dst.file == MRF) {
-         add_dep(last_mrf_write[inst->dst.nr], n);
-         last_mrf_write[inst->dst.nr] = n;
-     } else if (inst->dst.file == FIXED_GRF) {
-         add_dep(last_fixed_grf_write, n);
-         last_fixed_grf_write = n;
-      } else if (inst->dst.is_accumulator()) {
-         add_dep(last_accumulator_write, n);
-         last_accumulator_write = n;
-      } else if (inst->dst.file == ARF && !inst->dst.is_null()) {
-         add_barrier_deps(n);
-      }
-
-      if (inst->mlen > 0 && !inst->is_send_from_grf()) {
-         for (unsigned i = 0; i < inst->implied_mrf_writes(); i++) {
-            add_dep(last_mrf_write[inst->base_mrf + i], n);
-            last_mrf_write[inst->base_mrf + i] = n;
-         }
-      }
-
-      if (inst->writes_flag(v->devinfo)) {
-         add_dep(last_conditional_mod, n, 0);
-         last_conditional_mod = n;
-      }
-
-      if (inst->writes_accumulator_implicitly(v->devinfo) &&
-          !inst->dst.is_accumulator()) {
-         add_dep(last_accumulator_write, n);
-         last_accumulator_write = n;
-      }
-   }
-
-   /* bottom-to-top dependencies: WAR */
-   memset(last_grf_write, 0, grf_count * sizeof(*last_grf_write));
-   memset(last_mrf_write, 0, sizeof(last_mrf_write));
-   last_conditional_mod = NULL;
-   last_accumulator_write = NULL;
-   last_fixed_grf_write = NULL;
-
-   for (schedule_node *n = current.end - 1; n >= current.start; n--) {
-      vec4_instruction *inst = (vec4_instruction *)n->inst;
-
-      /* write-after-read deps. */
-      for (int i = 0; i < 3; i++) {
-         if (inst->src[i].file == VGRF) {
-            for (unsigned j = 0; j < regs_read(inst, i); ++j)
-               add_dep(n, last_grf_write[inst->src[i].nr + j]);
-         } else if (inst->src[i].file == FIXED_GRF) {
-            add_dep(n, last_fixed_grf_write);
-         } else if (inst->src[i].is_accumulator()) {
-            add_dep(n, last_accumulator_write);
-         } else if (inst->src[i].file == ARF && !inst->src[i].is_null()) {
-            add_barrier_deps(n);
-         }
-      }
-
-      if (!inst->is_send_from_grf()) {
-         for (int i = 0; i < inst->mlen; i++) {
-            /* It looks like the MRF regs are released in the send
-             * instruction once it's sent, not when the result comes
-             * back.
-             */
-            add_dep(n, last_mrf_write[inst->base_mrf + i], 2);
-         }
-      }
-
-      if (inst->reads_flag()) {
-         add_dep(n, last_conditional_mod);
-      }
-
-      if (inst->reads_accumulator_implicitly()) {
-         add_dep(n, last_accumulator_write);
-      }
-
-      /* Update the things this instruction wrote, so earlier reads
-       * can mark this as WAR dependency.
-       */
-      if (inst->dst.file == VGRF) {
-         for (unsigned j = 0; j < regs_written(inst); ++j)
-            last_grf_write[inst->dst.nr + j] = n;
-      } else if (inst->dst.file == MRF) {
-         last_mrf_write[inst->dst.nr] = n;
-      } else if (inst->dst.file == FIXED_GRF) {
-         last_fixed_grf_write = n;
-      } else if (inst->dst.is_accumulator()) {
-         last_accumulator_write = n;
-      } else if (inst->dst.file == ARF && !inst->dst.is_null()) {
-         add_barrier_deps(n);
-      }
-
-      if (inst->mlen > 0 && !inst->is_send_from_grf()) {
-         for (unsigned i = 0; i < inst->implied_mrf_writes(); i++) {
-            last_mrf_write[inst->base_mrf + i] = n;
-         }
-      }
-
-      if (inst->writes_flag(v->devinfo)) {
-         last_conditional_mod = n;
-      }
-
-      if (inst->writes_accumulator_implicitly(v->devinfo)) {
-         last_accumulator_write = n;
-      }
-   }
-}
-
 schedule_node *
 fs_instruction_scheduler::choose_instruction_to_schedule()
 {
@@ -1831,25 +1638,6 @@ fs_instruction_scheduler::choose_instruction_to_schedule()
          /* If all other metrics are equal, we prefer the first instruction in
           * the list (program execution).
           */
-      }
-   }
-
-   return chosen;
-}
-
-schedule_node *
-vec4_instruction_scheduler::choose_instruction_to_schedule()
-{
-   schedule_node *chosen = NULL;
-   int chosen_time = 0;
-
-   /* Of the instructions ready to execute or the closest to being ready,
-    * choose the oldest one.
-    */
-   foreach_in_list(schedule_node, n, &current.available) {
-      if (!chosen || n->tmp.unblocked_time < chosen_time) {
-         chosen = n;
-         chosen_time = n->tmp.unblocked_time;
       }
    }
 
@@ -2009,41 +1797,6 @@ fs_instruction_scheduler::run(instruction_scheduler_mode mode)
    }
 }
 
-void
-vec4_instruction_scheduler::run()
-{
-   foreach_block(block, v->cfg) {
-      set_current_block(block);
-
-      for (schedule_node *n = current.start; n < current.end; n++) {
-         /* We always execute as two vec4s in parallel. */
-         n->issue_time = 2;
-      }
-
-      calculate_deps();
-
-      compute_delays();
-      compute_exits();
-
-      assert(current.available.is_empty());
-      for (schedule_node *n = current.start; n < current.end; n++) {
-         reset_node_tmp(n);
-
-         /* Add DAG heads to the list of available instructions. */
-         if (n->tmp.parent_count == 0)
-            current.available.push_tail(n);
-      }
-
-      current.block->instructions.make_empty();
-
-      while (!current.available.is_empty()) {
-         schedule_node *chosen = choose_instruction_to_schedule();
-         schedule(chosen);
-         update_children(chosen);
-      }
-   }
-}
-
 fs_instruction_scheduler *
 fs_visitor::prepare_scheduler(void *mem_ctx)
 {
@@ -2077,19 +1830,6 @@ fs_visitor::schedule_instructions_post_ra()
    fs_instruction_scheduler sched(mem_ctx, this, grf_count, first_non_payload_grf,
                                   cfg->num_blocks, post_reg_alloc);
    sched.run(SCHEDULE_POST);
-
-   ralloc_free(mem_ctx);
-
-   invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
-}
-
-void
-vec4_visitor::opt_schedule_instructions()
-{
-   void *mem_ctx = ralloc_context(NULL);
-
-   vec4_instruction_scheduler sched(mem_ctx, this, prog_data->total_grf);
-   sched.run();
 
    ralloc_free(mem_ctx);
 

@@ -28,15 +28,12 @@
 class fs_visitor;
 
 namespace brw {
-   class vec4_visitor;
-
    /**
     * Various estimates of the performance of a shader based on static
     * analysis.
     */
    struct performance {
       performance(const fs_visitor *v);
-      performance(const vec4_visitor *v);
       ~performance();
 
       analysis_dependency_class

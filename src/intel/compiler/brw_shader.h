@@ -114,9 +114,6 @@ extern "C" {
 /* brw_fs_reg_allocate.cpp */
 void brw_fs_alloc_reg_sets(struct brw_compiler *compiler);
 
-/* brw_vec4_reg_allocate.cpp */
-void brw_vec4_alloc_reg_set(struct brw_compiler *compiler);
-
 /* brw_disasm.c */
 extern const char *const conditional_modifier[16];
 extern const char *const pred_ctrl_align16[16];

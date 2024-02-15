@@ -62,16 +62,6 @@ struct brw_compiler {
 
       /**
        * Array of the ra classes for the unaligned contiguous register
-       * block sizes used.
-       */
-      struct ra_class **classes;
-   } vec4_reg_set;
-
-   struct {
-      struct ra_regs *regs;
-
-      /**
-       * Array of the ra classes for the unaligned contiguous register
        * block sizes used, indexed by register size.
        */
       struct ra_class *classes[16];

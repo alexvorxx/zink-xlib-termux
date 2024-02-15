@@ -39,22 +39,22 @@ is_atomic = "".join([instructions[name].is_atomic for name in reversed(opcode_na
 extern const aco::Info instr_info = {
    {
       % for name in opcode_names:
-      ${instructions[name].opcode_gfx7},
+      ${instructions[name].op.gfx7},
       % endfor
    },
    {
       % for name in opcode_names:
-      ${instructions[name].opcode_gfx9},
+      ${instructions[name].op.gfx9},
       % endfor
    },
    {
       % for name in opcode_names:
-      ${instructions[name].opcode_gfx10},
+      ${instructions[name].op.gfx10},
       % endfor
    },
    {
       % for name in opcode_names:
-      ${instructions[name].opcode_gfx11},
+      ${instructions[name].op.gfx11},
       % endfor
    },
    std::bitset<${len(opcode_names)}>("${can_use_input_modifiers}"),

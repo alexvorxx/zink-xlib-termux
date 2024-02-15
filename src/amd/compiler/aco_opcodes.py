@@ -28,6 +28,7 @@ import sys
 import itertools
 import collections
 from enum import Enum, IntEnum, auto
+from collections import namedtuple
 
 class InstrClass(Enum):
    Valu32 = "valu32"
@@ -224,27 +225,26 @@ class Format(IntEnum):
       return res
 
 
+Opcode = namedtuple('Opcode', ['gfx6', 'gfx7', 'gfx8', 'gfx9', 'gfx10', 'gfx11'],
+                    defaults=[-1, -1, -1, -1, -1, -1])
+
 class Instruction(object):
    """Class that represents all the information we have about the opcode
    NOTE: this must be kept in sync with aco_op_info
    """
-   def __init__(self, name, opcode_gfx7, opcode_gfx9, opcode_gfx10, opcode_gfx11, format, input_mod, output_mod, is_atomic, cls, definitions, operands):
+   def __init__(self, name, opcode, format, input_mod, output_mod, is_atomic, cls, definitions, operands):
       assert isinstance(name, str)
-      assert isinstance(opcode_gfx7, int)
-      assert isinstance(opcode_gfx9, int)
-      assert isinstance(opcode_gfx10, int)
-      assert isinstance(opcode_gfx11, int)
+      assert isinstance(opcode, Opcode)
       assert isinstance(format, Format)
       assert isinstance(input_mod, bool)
       assert isinstance(output_mod, bool)
       assert isinstance(definitions, int)
       assert isinstance(operands, int)
+      assert opcode.gfx6 == -1 or opcode.gfx7 == -1 or opcode.gfx6 == opcode.gfx7
+      assert opcode.gfx8 == -1 or opcode.gfx9 == -1 or opcode.gfx8 == opcode.gfx9
 
       self.name = name
-      self.opcode_gfx7 = opcode_gfx7
-      self.opcode_gfx9 = opcode_gfx9
-      self.opcode_gfx10 = opcode_gfx10
-      self.opcode_gfx11 = opcode_gfx11
+      self.op = opcode
       self.input_mod = "1" if input_mod else "0"
       self.output_mod = "1" if output_mod else "0"
       self.is_atomic = "1" if is_atomic else "0"
@@ -294,12 +294,29 @@ def src(op1 = 0, op2 = 0, op3 = 0, op4 = 0):
 def dst(def1 = 0, def2 = 0, def3 = 0, def4 = 0):
    return def1 | (def2 << 8) | (def3 << 16) | (def4 << 24)
 
+def op(*args, **kwargs):
+   enc = [None] * len(Opcode._fields)
+
+   if len(args) > 0:
+      assert(len(args) == 1)
+      enc[0] = args[0]
+
+   for gen, val in kwargs.items():
+      idx = Opcode._fields.index(gen)
+      enc[idx] = val
+
+   for i in range(len(enc)):
+      if enc[i] == None:
+         enc[i] = enc[i - 1] if i > 0 else -1
+
+   return Opcode(*enc)
+
 # global dictionary of instructions
 instructions = {}
 
-def insn(name, opcode_gfx7 = -1, opcode_gfx9 = -1, opcode_gfx10 = -1, opcode_gfx11 = -1, format = Format.PSEUDO, cls = InstrClass.Other, input_mod = False, output_mod = False, is_atomic = False, definitions = 0, operands = 0):
+def insn(name, opcode = Opcode(), format = Format.PSEUDO, cls = InstrClass.Other, input_mod = False, output_mod = False, is_atomic = False, definitions = 0, operands = 0):
    assert name not in instructions
-   instructions[name] = Instruction(name, opcode_gfx7, opcode_gfx9, opcode_gfx10, opcode_gfx11, format, input_mod, output_mod, is_atomic, cls, definitions, operands)
+   instructions[name] = Instruction(name, opcode, format, input_mod, output_mod, is_atomic, cls, definitions, operands)
 
 def default_class(instructions, cls):
    for i in instructions:
@@ -308,7 +325,7 @@ def default_class(instructions, cls):
       else:
          yield i + (cls,)
 
-insn("exp", 0, 0, 0, 0, format = Format.EXP, cls = InstrClass.Export)
+insn("exp", op(0), format = Format.EXP, cls = InstrClass.Export)
 insn("p_parallelcopy")
 insn("p_startpgm")
 insn("p_return")
@@ -488,7 +505,7 @@ SOP2 = {
    (  -1,   -1,   -1,   -1,   -1,   -1, "p_resumeaddr_addlo", dst(1, SCC), src(1, 1, 1)),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, defs, ops, cls) in default_class(SOP2, InstrClass.Salu):
-    insn(name, gfx7, gfx9, gfx10, gfx11, Format.SOP2, cls, definitions = defs, operands = ops)
+    insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.SOP2, cls, definitions = defs, operands = ops)
 
 
 # SOPK instructions: 0 input (+ imm), 1 output + optional scc
@@ -524,7 +541,7 @@ SOPK = {
    (  -1,   -1,   -1,   -1, 0x1c, 0x17, "s_subvector_loop_end", dst(), src(), InstrClass.Branch),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, defs, ops, cls) in default_class(SOPK, InstrClass.Salu):
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.SOPK, cls, definitions = defs, operands = ops)
+   insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.SOPK, cls, definitions = defs, operands = ops)
 
 
 # SOP1 instructions: 1 input, 1 output (+optional SCC)
@@ -606,7 +623,7 @@ SOP1 = {
    (  -1,   -1,   -1,   -1,   -1,   -1, "p_load_symbol", dst(1), src(1)),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, defs, ops, cls) in default_class(SOP1, InstrClass.Salu):
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.SOP1, cls, definitions = defs, operands = ops)
+   insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.SOP1, cls, definitions = defs, operands = ops)
 
 
 # SOPC instructions: 2 inputs and 0 outputs (+SCC)
@@ -634,7 +651,7 @@ SOPC = {
    (  -1,   -1, 0x13, 0x13, 0x13, 0x11, "s_cmp_lg_u64", dst(SCC), src(2, 2)),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, defs, ops) in SOPC:
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.SOPC, InstrClass.Salu, definitions = defs, operands = ops)
+   insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.SOPC, InstrClass.Salu, definitions = defs, operands = ops)
 
 
 # SOPP instructions: 0 inputs (+optional scc/vcc), 0 outputs
@@ -683,7 +700,7 @@ SOPP = {
    (  -1,   -1,   -1,   -1,   -1, 0x0b, "s_wait_event", dst(), src()),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, defs, ops, cls) in default_class(SOPP, InstrClass.Salu):
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.SOPP, cls, definitions = defs, operands = ops)
+   insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.SOPP, cls, definitions = defs, operands = ops)
 
 
 # SMEM instructions: sbase input (2 sgpr), potentially 2 offset inputs, 1 sdata input/output
@@ -778,7 +795,7 @@ SMEM = {
    (  -1,   -1,   -1, 0xac, 0xac,   -1, "s_atomic_dec_x2"),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) in SMEM:
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.SMEM, InstrClass.SMem, is_atomic = "atomic" in name)
+   insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.SMEM, InstrClass.SMem, is_atomic = "atomic" in name)
 
 
 # VOP2 instructions: 2 inputs, 1 output (+ optional vcc)
@@ -863,7 +880,7 @@ VOP2 = {
    (  -1,   -1,   -1, 0x37, 0x02, 0x02, "v_dot2c_f32_f16", False, False, dst(1), src(1, 1, 1)), #v_dot2acc_f32_f16 in GFX11
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, in_mod, out_mod, defs, ops) in VOP2:
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOP2, InstrClass.Valu32, in_mod, out_mod, definitions = defs, operands = ops)
+   insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.VOP2, InstrClass.Valu32, in_mod, out_mod, definitions = defs, operands = ops)
 
 
 # VOP1 instructions: instructions with 1 input and 1 output
@@ -968,7 +985,7 @@ VOP1 = {
    (  -1,   -1,   -1,   -1,   -1, 0x1c, "v_mov_b16", True, False, dst(1), src(1)),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, in_mod, out_mod, defs, ops, cls) in default_class(VOP1, InstrClass.Valu32):
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOP1, cls, in_mod, out_mod, definitions = defs, operands = ops)
+   insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.VOP1, cls, in_mod, out_mod, definitions = defs, operands = ops)
 
 
 # VOPC instructions:
@@ -982,7 +999,7 @@ VOPC_CLASS = {
    (0xb8, 0xb8, 0x13, 0x13, 0xb8, 0xff, "v_cmpx_class_f64", dst(EXEC), src(2, 1), InstrClass.ValuDouble),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, defs, ops, cls) in default_class(VOPC_CLASS, InstrClass.Valu32):
-    insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, cls, True, False, definitions = defs, operands = ops)
+    insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.VOPC, cls, True, False, definitions = defs, operands = ops)
 
 VopcDataType = collections.namedtuple('VopcDataTypeInfo',
                                       ['kind', 'size', 'gfx6', 'gfx8', 'gfx10', 'gfx11'])
@@ -1034,7 +1051,8 @@ for comp, dtype, cmps, cmpx in itertools.product(range(16), dtypes, range(1), ra
    elif dtype in [I64, U64]:
       cls = InstrClass.Valu64
 
-   insn(name, gfx6, gfx8, gfx10, gfx11, Format.VOPC, cls, dtype.kind == 'f', False,
+   enc = Opcode(gfx6, gfx6, gfx8, gfx8, gfx10, gfx11)
+   insn(name, enc, Format.VOPC, cls, dtype.kind == 'f', False,
         definitions = dst(EXEC if cmpx else VCC),
         operands = src(2, 2) if dtype.size == 64 else src(1, 1))
 
@@ -1068,22 +1086,22 @@ VOPP = {
 # note that these are only supported on gfx9+ so we'll need to distinguish between gfx8 and gfx9 here
 # (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, -1, code, code, code, name)
 for (code, name, modifiers, defs, ops) in VOPP:
-   insn(name, -1, code, code, code, Format.VOP3P, InstrClass.Valu32, modifiers, modifiers, definitions = defs, operands = ops)
-insn("v_dot2_i32_i16", -1, 0x26, 0x14, -1, Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot2_u32_u16", -1, 0x27, 0x15, -1, Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot4_i32_iu8", -1, -1, -1, 0x16, Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot4_i32_i8", -1, 0x28, 0x16, -1, Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot4_u32_u8", -1, 0x29, 0x17, 0x17, Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot8_i32_iu4", -1, -1, -1, 0x18, Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot8_u32_u4", -1, 0x2b, 0x19, 0x19, Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot2_f32_f16", -1, 0x23, 0x13, 0x13, Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot2_f32_bf16", -1, -1, -1, 0x1a, Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_wmma_f32_16x16x16_f16", -1, -1, -1, 0x40, Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_f32_16x16x16_bf16", -1, -1, -1, 0x41, Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_f16_16x16x16_f16", -1, -1, -1, 0x42, Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_bf16_16x16x16_bf16", -1, -1, -1, 0x43, Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_i32_16x16x16_iu8", -1, -1, -1, 0x44, Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_i32_16x16x16_iu4", -1, -1, -1, 0x45, Format.VOP3P, InstrClass.WMMA, False, False)
+   insn(name, Opcode(-1, -1, -1, code, code, code), Format.VOP3P, InstrClass.Valu32, modifiers, modifiers, definitions = defs, operands = ops)
+insn("v_dot2_i32_i16", Opcode(-1, -1, -1, 0x26, 0x14, -1), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
+insn("v_dot2_u32_u16", Opcode(-1, -1, -1, 0x27, 0x15, -1), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
+insn("v_dot4_i32_iu8", Opcode(-1, -1, -1, -1, -1, 0x16), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
+insn("v_dot4_i32_i8", Opcode(-1, -1, -1, 0x28, 0x16, -1), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
+insn("v_dot4_u32_u8", Opcode(-1, -1, -1, 0x29, 0x17, 0x17), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
+insn("v_dot8_i32_iu4", Opcode(-1, -1, -1, -1, -1, 0x18), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
+insn("v_dot8_u32_u4", Opcode(-1, -1, -1, 0x2b, 0x19, 0x19), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
+insn("v_dot2_f32_f16", Opcode(-1, -1, -1, 0x23, 0x13, 0x13), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
+insn("v_dot2_f32_bf16", Opcode(-1, -1, -1, -1, -1, 0x1a), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
+insn("v_wmma_f32_16x16x16_f16", Opcode(-1, -1, -1, -1, -1, 0x40), Format.VOP3P, InstrClass.WMMA, False, False)
+insn("v_wmma_f32_16x16x16_bf16", Opcode(-1, -1, -1, -1, -1, 0x41), Format.VOP3P, InstrClass.WMMA, False, False)
+insn("v_wmma_f16_16x16x16_f16", Opcode(-1, -1, -1, -1, -1, 0x42), Format.VOP3P, InstrClass.WMMA, False, False)
+insn("v_wmma_bf16_16x16x16_bf16", Opcode(-1, -1, -1, -1, -1, 0x43), Format.VOP3P, InstrClass.WMMA, False, False)
+insn("v_wmma_i32_16x16x16_iu8", Opcode(-1, -1, -1, -1, -1, 0x44), Format.VOP3P, InstrClass.WMMA, False, False)
+insn("v_wmma_i32_16x16x16_iu4", Opcode(-1, -1, -1, -1, -1, 0x45), Format.VOP3P, InstrClass.WMMA, False, False)
 
 
 # VINTRP (GFX6 - GFX10.3) instructions:
@@ -1094,7 +1112,7 @@ VINTRP = {
 }
 # (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (code, code, code, code, code, code, name)
 for (code, name, defs, ops) in VINTRP:
-   insn(name, code, code, code, -1, Format.VINTRP, InstrClass.Valu32, definitions = defs, operands = ops)
+   insn(name, Opcode(code, code, code, code, code, -1), Format.VINTRP, InstrClass.Valu32, definitions = defs, operands = ops)
 
 
 # VINTERP (GFX11+) instructions:
@@ -1107,7 +1125,7 @@ VINTERP = {
    (0x05, "v_interp_p2_rtz_f16_f32_inreg"),
 }
 for (code, name) in VINTERP:
-   insn(name, -1, -1, -1, code, Format.VINTERP_INREG, InstrClass.Valu32, False, True, definitions = dst(1), operands = src(1, 1, 1))
+   insn(name, Opcode(-1, -1, -1, -1, -1, code), Format.VINTERP_INREG, InstrClass.Valu32, False, True, definitions = dst(1), operands = src(1, 1, 1))
 
 
 # VOP3 instructions: 3 inputs, 1 output
@@ -1260,7 +1278,7 @@ VOP3 = {
    (   -1,    -1,    -1,    -1,    -1, 0x25d, "v_cndmask_b16", True, False, dst(1), src(1, 1, VCC)),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, in_mod, out_mod, defs, ops, cls) in default_class(VOP3, InstrClass.Valu32):
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOP3, cls, in_mod, out_mod, definitions = defs, operands = ops)
+   insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.VOP3, cls, in_mod, out_mod, definitions = defs, operands = ops)
 
 
 VOPD = {
@@ -1283,7 +1301,7 @@ VOPD = {
    (0x12, "v_dual_and_b32"),
 }
 for gfx11, name in VOPD:
-   insn(name, -1, -1, -1, gfx11, format = Format.VOPD, cls = InstrClass.Valu32)
+   insn(name, Opcode(-1, -1, -1, -1, -1, gfx11), format = Format.VOPD, cls = InstrClass.Valu32)
 
 
 # DS instructions: 3 inputs (1 addr, 2 data), 1 output
@@ -1447,7 +1465,7 @@ DS = {
    (  -1,   -1,   -1,   -1,   -1, 0x7b, "ds_sub_gs_reg_rtn"),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) in DS:
-    insn(name, gfx7, gfx9, gfx10, gfx11, Format.DS, InstrClass.DS)
+    insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.DS, InstrClass.DS)
 
 
 # LDSDIR instructions:
@@ -1456,7 +1474,7 @@ LDSDIR = {
    (0x01, "lds_direct_load"),
 }
 for (code, name) in LDSDIR:
-    insn(name, -1, -1, -1, code, Format.LDSDIR, InstrClass.DS)
+    insn(name, Opcode(-1, -1, -1, -1, -1, code), Format.LDSDIR, InstrClass.DS)
 
 # MUBUF instructions:
 MUBUF = {
@@ -1549,7 +1567,7 @@ MUBUF = {
    (  -1,   -1,   -1,   -1,   -1, 0x56, "buffer_atomic_add_f32"),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) in MUBUF:
-    insn(name, gfx7, gfx9, gfx10, gfx11, Format.MUBUF, InstrClass.VMem, is_atomic = "atomic" in name)
+    insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.MUBUF, InstrClass.VMem, is_atomic = "atomic" in name)
 
 MTBUF = {
    (0x00, 0x00, 0x00, 0x00, 0x00, 0x00, "tbuffer_load_format_x"),
@@ -1570,7 +1588,7 @@ MTBUF = {
    (  -1,   -1, 0x0f, 0x0f, 0x0f, 0x0f, "tbuffer_store_format_d16_xyzw"),
 }
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) in MTBUF:
-    insn(name, gfx7, gfx9, gfx10, gfx11, Format.MTBUF, InstrClass.VMem)
+    insn(name, Opcode(gfx6, gfx7, gfx8, gfx9, gfx10, gfx11), Format.MTBUF, InstrClass.VMem)
 
 
 IMAGE = {
@@ -1589,9 +1607,9 @@ IMAGE = {
 }
 # (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (code, code, code, code, code, name)
 for (code, gfx11, name) in IMAGE:
-   insn(name, code, code, code, gfx11, Format.MIMG, InstrClass.VMem)
+   insn(name, Opcode(code, code, code, code, code, gfx11), Format.MIMG, InstrClass.VMem)
 
-insn("image_msaa_load", -1, -1, 0x80, 0x18, Format.MIMG, InstrClass.VMem) #GFX10.3+
+insn("image_msaa_load", Opcode(-1, -1, -1, -1, 0x80, 0x18), Format.MIMG, InstrClass.VMem) #GFX10.3+
 
 IMAGE_ATOMIC = {
    (0x0f, 0x0f, 0x10, 0x0a, "image_atomic_swap"),
@@ -1615,7 +1633,7 @@ IMAGE_ATOMIC = {
 # (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (gfx6, gfx7, gfx89, gfx89, ???, gfx11, name)
 # gfx7 and gfx10 opcodes are the same here
 for (gfx6, gfx7, gfx89, gfx11, name) in IMAGE_ATOMIC:
-   insn(name, gfx7, gfx89, gfx7, gfx11, Format.MIMG, InstrClass.VMem, is_atomic = True)
+   insn(name, Opcode(gfx6, gfx7, gfx89, gfx89, gfx7, gfx11), Format.MIMG, InstrClass.VMem, is_atomic = True)
 
 IMAGE_SAMPLE = {
    (0x20, 0x1b, "image_sample"),
@@ -1661,7 +1679,7 @@ IMAGE_SAMPLE = {
 }
 # (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (code, code, code, code, code, gfx11, name)
 for (code, gfx11, name) in IMAGE_SAMPLE:
-   insn(name, code, code, code, gfx11, Format.MIMG, InstrClass.VMem)
+   insn(name, Opcode(code, code, code, code, code, gfx11), Format.MIMG, InstrClass.VMem)
 
 IMAGE_SAMPLE_G16 = {
    (0xa2, 0x39, "image_sample_d_g16"),
@@ -1676,7 +1694,7 @@ IMAGE_SAMPLE_G16 = {
 
 # (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, -1, -1, code, gfx11, name)
 for (code, gfx11, name) in IMAGE_SAMPLE_G16:
-   insn(name, -1, -1, code, gfx11, Format.MIMG, InstrClass.VMem)
+   insn(name, Opcode(-1, -1, -1, -1, code, gfx11), Format.MIMG, InstrClass.VMem)
 
 IMAGE_GATHER4 = {
    (0x40, 0x2f, "image_gather4"),
@@ -1709,10 +1727,10 @@ IMAGE_GATHER4 = {
 }
 # (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (code, code, code, code, code, gfx11, name)
 for (code, gfx11, name) in IMAGE_GATHER4:
-   insn(name, code, code, code, gfx11, Format.MIMG, InstrClass.VMem)
+   insn(name, Opcode(code, code, code, code, code, gfx11), Format.MIMG, InstrClass.VMem)
 
-insn("image_bvh_intersect_ray", -1, -1, 0xe6, 0x19, Format.MIMG, InstrClass.VMem)
-insn("image_bvh64_intersect_ray", -1, -1, 0xe7, 0x1a, Format.MIMG, InstrClass.VMem)
+insn("image_bvh_intersect_ray", Opcode(-1, -1, -1, -1, 0xe6, 0x19), Format.MIMG, InstrClass.VMem)
+insn("image_bvh64_intersect_ray", Opcode(-1, -1, -1, -1, 0xe7, 0x1a), Format.MIMG, InstrClass.VMem)
 
 FLAT = {
    #GFX7, GFX89,GFX10,GFX11
@@ -1773,7 +1791,7 @@ FLAT = {
    (  -1,   -1,   -1, 0x56, "flat_atomic_add_f32"),
 }
 for (gfx7, gfx8, gfx10, gfx11, name) in FLAT:
-    insn(name, gfx7, gfx8, gfx10, gfx11, Format.FLAT, InstrClass.VMem, is_atomic = "atomic" in name) #TODO: also LDS?
+    insn(name, Opcode(-1, gfx7, gfx8, gfx8, gfx10, gfx11), Format.FLAT, InstrClass.VMem, is_atomic = "atomic" in name) #TODO: also LDS?
 
 GLOBAL = {
    #GFX89,GFX10,GFX11
@@ -1837,7 +1855,7 @@ GLOBAL = {
    (  -1,   -1, 0x56, "global_atomic_add_f32"),
 }
 for (gfx8, gfx10, gfx11, name) in GLOBAL:
-    insn(name, -1, gfx8, gfx10, gfx11, Format.GLOBAL, InstrClass.VMem, is_atomic = "atomic" in name)
+    insn(name, Opcode(-1, -1, gfx8, gfx8, gfx10, gfx11), Format.GLOBAL, InstrClass.VMem, is_atomic = "atomic" in name)
 
 SCRATCH = {
    #GFX89,GFX10,GFX11
@@ -1865,20 +1883,20 @@ SCRATCH = {
    (0x25, 0x25, 0x23, "scratch_load_short_d16_hi"),
 }
 for (gfx8, gfx10, gfx11, name) in SCRATCH:
-    insn(name, -1, gfx8, gfx10, gfx11, Format.SCRATCH, InstrClass.VMem)
+    insn(name, Opcode(-1, -1, gfx8, gfx8, gfx10, gfx11), Format.SCRATCH, InstrClass.VMem)
 
 # check for duplicate opcode numbers
-for ver in ['gfx9', 'gfx10', 'gfx11']:
+for ver in Opcode._fields:
     op_to_name = {}
     for inst in instructions.values():
         if inst.format in [Format.PSEUDO, Format.PSEUDO_BRANCH, Format.PSEUDO_BARRIER, Format.PSEUDO_REDUCTION]:
             continue
 
-        num = getattr(inst, 'opcode_' + ver)
-        if num == -1:
+        opcode = getattr(inst.op, ver)
+        if opcode == -1:
             continue
 
-        key = (inst.format, num)
+        key = (inst.format, opcode)
 
         if key in op_to_name:
             # exceptions

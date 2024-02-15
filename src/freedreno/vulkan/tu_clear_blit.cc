@@ -3861,7 +3861,7 @@ tu_attachment_store_unaligned(struct tu_cmd_buffer *cmd, uint32_t a)
  * current attachments will need.  This has to happen at vkBeginRenderPass()
  * time because tu_attachment_store_unaligned() looks at the image views, which
  * are only available at that point.  This should match the logic for the
- * !unaligned case in tu_store_gmem_attachment().
+ * !use_fast_path case in tu_store_gmem_attachment().
  */
 void
 tu_choose_gmem_layout(struct tu_cmd_buffer *cmd)
@@ -3876,6 +3876,11 @@ tu_choose_gmem_layout(struct tu_cmd_buffer *cmd)
          &cmd->state.pass->attachments[i];
       if ((att->store || att->store_stencil) &&
           tu_attachment_store_unaligned(cmd, i))
+         cmd->state.gmem_layout = TU_GMEM_LAYOUT_AVOID_CCU;
+      if (att->store && att->format == VK_FORMAT_S8_UINT)
+         /* We cannot pick out S8 from D24S8/D32S8, so we conservatively disable
+          * blit events for the S8_UINT format.
+          */
          cmd->state.gmem_layout = TU_GMEM_LAYOUT_AVOID_CCU;
       if (att->will_be_resolved && !blit_can_resolve(att->format))
          cmd->state.gmem_layout = TU_GMEM_LAYOUT_AVOID_CCU;

@@ -760,6 +760,8 @@ void
 brw_init_isa_info(struct brw_isa_info *isa,
                   const struct intel_device_info *devinfo)
 {
+   assert(devinfo->ver >= 9);
+
    isa->devinfo = devinfo;
 
    enum gfx_ver ver = gfx_ver_from_devinfo(devinfo);

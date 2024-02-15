@@ -5799,13 +5799,14 @@ zink_gfx_shader_free(struct zink_screen *screen, struct zink_shader *shader)
       zink_gfx_shader_free(screen, shader->non_fs.generated_tcs);
       shader->non_fs.generated_tcs = NULL;
    }
-   for (unsigned int i = 0; i < ARRAY_SIZE(shader->non_fs.generated_gs); i++) {
-      for (int j = 0; j < ARRAY_SIZE(shader->non_fs.generated_gs[0]); j++) {
-         if (shader->info.stage != MESA_SHADER_FRAGMENT &&
-             shader->non_fs.generated_gs[i][j]) {
-            /* automatically destroy generated gs shaders when owner is destroyed */
-            zink_gfx_shader_free(screen, shader->non_fs.generated_gs[i][j]);
-            shader->non_fs.generated_gs[i][j] = NULL;
+   if (shader->info.stage != MESA_SHADER_FRAGMENT) {
+      for (unsigned int i = 0; i < ARRAY_SIZE(shader->non_fs.generated_gs); i++) {
+         for (int j = 0; j < ARRAY_SIZE(shader->non_fs.generated_gs[0]); j++) {
+            if (shader->non_fs.generated_gs[i][j]) {
+               /* automatically destroy generated gs shaders when owner is destroyed */
+               zink_gfx_shader_free(screen, shader->non_fs.generated_gs[i][j]);
+               shader->non_fs.generated_gs[i][j] = NULL;
+            }
          }
       }
    }

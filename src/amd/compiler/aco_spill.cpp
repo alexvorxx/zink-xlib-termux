@@ -780,8 +780,9 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
 }
 
 void
-add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
+add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
 {
+   const unsigned block_idx = block->index;
    /* No coupling code necessary */
    if (block->linear_preds.size() == 0)
       return;
@@ -891,7 +892,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
 
       for (unsigned pred_idx : preds) {
          /* variable is dead at predecessor, it must be from a phi: this works because of CSSA form */
-         if (!ctx.next_use_distances_end[pred_idx].count(pair.first))
+         if (!ctx.live_vars.live_out[pred_idx].count(pair.first.id()))
             continue;
 
          /* variable is already spilled at predecessor */
@@ -1003,60 +1004,60 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
    }
 
    /* iterate live variables for which to reload */
-   // TODO: reload at current block if variable is spilled on all predecessors
-   for (std::pair<const Temp, std::pair<uint32_t, uint32_t>>& pair :
-        ctx.next_use_distances_start[block_idx]) {
-      /* skip spilled variables */
-      if (ctx.spills_entry[block_idx].count(pair.first))
-         continue;
-      Block::edge_vec& preds = pair.first.is_linear() ? block->linear_preds : block->logical_preds;
+   for (unsigned t : live_in) {
+      const RegClass rc = ctx.program->temp_rc[t];
+      Temp var = Temp(t, rc);
 
-      /* variable is dead at predecessor, it must be from a phi */
-      bool is_dead = false;
-      for (unsigned pred_idx : preds) {
-         if (!ctx.next_use_distances_end[pred_idx].count(pair.first))
-            is_dead = true;
-      }
+      /* skip spilled variables */
+      if (ctx.spills_entry[block_idx].count(var))
+         continue;
+
+      Block::edge_vec& preds = rc.is_linear() ? block->linear_preds : block->logical_preds;
+      /* if a variable is dead at any predecessor, it must be from a phi */
+      const bool is_dead =
+         std::any_of(preds.begin(), preds.end(),
+                     [&](unsigned pred) { return !ctx.live_vars.live_out[pred].count(var.id()); });
       if (is_dead)
          continue;
+
       for (unsigned pred_idx : preds) {
-         /* the variable is not spilled at the predecessor */
-         if (!ctx.spills_exit[pred_idx].count(pair.first))
+         /* skip if the variable is not spilled at the predecessor */
+         if (!ctx.spills_exit[pred_idx].count(var))
             continue;
 
          /* variable is spilled at predecessor and has to be reloaded */
-         Temp new_name = ctx.program->allocateTmp(pair.first.regClass());
+         Temp new_name = ctx.program->allocateTmp(rc);
          Block& pred = ctx.program->blocks[pred_idx];
          unsigned idx = pred.instructions.size();
          do {
             assert(idx != 0);
             idx--;
-         } while (pair.first.type() == RegType::vgpr &&
+         } while (rc.type() == RegType::vgpr &&
                   pred.instructions[idx]->opcode != aco_opcode::p_logical_end);
          std::vector<aco_ptr<Instruction>>::iterator it = std::next(pred.instructions.begin(), idx);
 
          aco_ptr<Instruction> reload =
-            do_reload(ctx, pair.first, new_name, ctx.spills_exit[pred.index][pair.first]);
+            do_reload(ctx, var, new_name, ctx.spills_exit[pred.index][var]);
          pred.instructions.insert(it, std::move(reload));
 
-         ctx.spills_exit[pred.index].erase(pair.first);
-         ctx.renames[pred.index][pair.first] = new_name;
+         ctx.spills_exit[pred.index].erase(var);
+         ctx.renames[pred.index][var] = new_name;
       }
 
       /* check if we have to create a new phi for this variable */
       Temp rename = Temp();
       bool is_same = true;
       for (unsigned pred_idx : preds) {
-         if (!ctx.renames[pred_idx].count(pair.first)) {
+         if (!ctx.renames[pred_idx].count(var)) {
             if (rename == Temp())
-               rename = pair.first;
+               rename = var;
             else
-               is_same = rename == pair.first;
+               is_same = rename == var;
          } else {
             if (rename == Temp())
-               rename = ctx.renames[pred_idx][pair.first];
+               rename = ctx.renames[pred_idx][var];
             else
-               is_same = rename == ctx.renames[pred_idx][pair.first];
+               is_same = rename == ctx.renames[pred_idx][var];
          }
 
          if (!is_same)
@@ -1065,17 +1066,17 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
 
       if (!is_same) {
          /* the variable was renamed differently in the predecessors: we have to create a phi */
-         aco_opcode opcode = pair.first.is_linear() ? aco_opcode::p_linear_phi : aco_opcode::p_phi;
+         aco_opcode opcode = rc.is_linear() ? aco_opcode::p_linear_phi : aco_opcode::p_phi;
          aco_ptr<Instruction> phi{create_instruction(opcode, Format::PSEUDO, preds.size(), 1)};
-         rename = ctx.program->allocateTmp(pair.first.regClass());
+         rename = ctx.program->allocateTmp(rc);
          for (unsigned i = 0; i < phi->operands.size(); i++) {
             Temp tmp;
-            if (ctx.renames[preds[i]].count(pair.first)) {
-               tmp = ctx.renames[preds[i]][pair.first];
+            if (ctx.renames[preds[i]].count(var)) {
+               tmp = ctx.renames[preds[i]][var];
             } else if (preds[i] >= block_idx) {
                tmp = rename;
             } else {
-               tmp = pair.first;
+               tmp = var;
                /* prevent the defining instruction from being DCE'd if it could be rematerialized */
                if (ctx.remat.count(tmp))
                   ctx.unused_remats.erase(ctx.remat[tmp].instr);
@@ -1087,8 +1088,8 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
       }
 
       /* the variable was renamed: add new name to renames */
-      if (!(rename == Temp() || rename == pair.first))
-         ctx.renames[block_idx][pair.first] = rename;
+      if (!(rename == Temp() || rename == var))
+         ctx.renames[block_idx][var] = rename;
    }
 
    /* combine phis with instructions */
@@ -1281,7 +1282,7 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
 
    if (!(block->kind & block_kind_loop_header)) {
       /* add spill/reload code on incoming control flow edges */
-      add_coupling_code(ctx, block, block_idx);
+      add_coupling_code(ctx, block, ctx.live_vars.live_out[block_idx]);
    }
 
    assert(ctx.spills_exit[block_idx].empty());
@@ -1301,7 +1302,7 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
    aco::map<Temp, Temp> renames = std::move(ctx.renames[loop_header_idx]);
 
    /* add coupling code to all loop header predecessors */
-   add_coupling_code(ctx, &ctx.program->blocks[loop_header_idx], loop_header_idx);
+   add_coupling_code(ctx, &ctx.program->blocks[loop_header_idx], ctx.loop.back().live_in);
    renames.swap(ctx.renames[loop_header_idx]);
 
    /* remove loop header info from stack */

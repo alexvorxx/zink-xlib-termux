@@ -1574,7 +1574,7 @@ gfx10_get_ngg_query_info(const struct radv_device *device, struct radv_shader_st
 {
    struct radv_shader_info *info = gs_stage ? &gs_stage->info : &es_stage->info;
 
-   info->has_xfb_query = gs_stage ? !!gs_stage->nir->xfb_info : !!es_stage->nir->xfb_info;
+   info->has_xfb_query = info->so.num_outputs > 0;
    info->has_prim_query = device->cache_key.primitives_generated_query || info->has_xfb_query;
 }
 

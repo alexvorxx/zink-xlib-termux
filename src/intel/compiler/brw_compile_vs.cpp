@@ -1,0 +1,171 @@
+/*
+ * Copyright © 2011 Intel Corporation
+ * SPDX-License-Identifier: MIT
+ */
+
+#include "brw_vec4.h"
+#include "brw_fs.h"
+#include "brw_eu.h"
+#include "brw_nir.h"
+#include "brw_vec4_vs.h"
+#include "brw_private.h"
+#include "dev/intel_debug.h"
+
+using namespace brw;
+
+extern "C" const unsigned *
+brw_compile_vs(const struct brw_compiler *compiler,
+               struct brw_compile_vs_params *params)
+{
+   struct nir_shader *nir = params->base.nir;
+   const struct brw_vs_prog_key *key = params->key;
+   struct brw_vs_prog_data *prog_data = params->prog_data;
+   const bool debug_enabled =
+      brw_should_print_shader(nir, params->base.debug_flag ?
+                                   params->base.debug_flag : DEBUG_VS);
+
+   prog_data->base.base.stage = MESA_SHADER_VERTEX;
+   prog_data->base.base.ray_queries = nir->info.ray_queries;
+   prog_data->base.base.total_scratch = 0;
+
+   const bool is_scalar = compiler->scalar_stage[MESA_SHADER_VERTEX];
+   brw_nir_apply_key(nir, compiler, &key->base, 8);
+
+   const unsigned *assembly = NULL;
+
+   prog_data->inputs_read = nir->info.inputs_read;
+   prog_data->double_inputs_read = nir->info.vs.double_inputs;
+
+   brw_nir_lower_vs_inputs(nir, params->edgeflag_is_last, key->gl_attrib_wa_flags);
+   brw_nir_lower_vue_outputs(nir);
+   brw_postprocess_nir(nir, compiler, debug_enabled,
+                       key->base.robust_flags);
+
+   prog_data->base.clip_distance_mask =
+      ((1 << nir->info.clip_distance_array_size) - 1);
+   prog_data->base.cull_distance_mask =
+      ((1 << nir->info.cull_distance_array_size) - 1) <<
+      nir->info.clip_distance_array_size;
+
+   unsigned nr_attribute_slots = util_bitcount64(prog_data->inputs_read);
+
+   /* gl_VertexID and gl_InstanceID are system values, but arrive via an
+    * incoming vertex attribute.  So, add an extra slot.
+    */
+   if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_FIRST_VERTEX) ||
+       BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE) ||
+       BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_VERTEX_ID_ZERO_BASE) ||
+       BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_INSTANCE_ID)) {
+      nr_attribute_slots++;
+   }
+
+   /* gl_DrawID and IsIndexedDraw share its very own vec4 */
+   if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID) ||
+       BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_IS_INDEXED_DRAW)) {
+      nr_attribute_slots++;
+   }
+
+   if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_IS_INDEXED_DRAW))
+      prog_data->uses_is_indexed_draw = true;
+
+   if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_FIRST_VERTEX))
+      prog_data->uses_firstvertex = true;
+
+   if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE))
+      prog_data->uses_baseinstance = true;
+
+   if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_VERTEX_ID_ZERO_BASE))
+      prog_data->uses_vertexid = true;
+
+   if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_INSTANCE_ID))
+      prog_data->uses_instanceid = true;
+
+   if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID))
+          prog_data->uses_drawid = true;
+
+   /* The 3DSTATE_VS documentation lists the lower bound on "Vertex URB Entry
+    * Read Length" as 1 in vec4 mode, and 0 in SIMD8 mode.  Empirically, in
+    * vec4 mode, the hardware appears to wedge unless we read something.
+    */
+   if (is_scalar)
+      prog_data->base.urb_read_length =
+         DIV_ROUND_UP(nr_attribute_slots, 2);
+   else
+      prog_data->base.urb_read_length =
+         DIV_ROUND_UP(MAX2(nr_attribute_slots, 1), 2);
+
+   prog_data->nr_attribute_slots = nr_attribute_slots;
+
+   /* Since vertex shaders reuse the same VUE entry for inputs and outputs
+    * (overwriting the original contents), we need to make sure the size is
+    * the larger of the two.
+    */
+   const unsigned vue_entries =
+      MAX2(nr_attribute_slots, (unsigned)prog_data->base.vue_map.num_slots);
+
+   if (compiler->devinfo->ver == 6) {
+      prog_data->base.urb_entry_size = DIV_ROUND_UP(vue_entries, 8);
+   } else {
+      prog_data->base.urb_entry_size = DIV_ROUND_UP(vue_entries, 4);
+   }
+
+   if (unlikely(debug_enabled)) {
+      fprintf(stderr, "VS Output ");
+      brw_print_vue_map(stderr, &prog_data->base.vue_map, MESA_SHADER_VERTEX);
+   }
+
+   if (is_scalar) {
+      const unsigned dispatch_width = compiler->devinfo->ver >= 20 ? 16 : 8;
+      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
+
+      fs_visitor v(compiler, &params->base, &key->base,
+                   &prog_data->base.base, nir, dispatch_width,
+                   params->base.stats != NULL, debug_enabled);
+      if (!v.run_vs()) {
+         params->base.error_str =
+            ralloc_strdup(params->base.mem_ctx, v.fail_msg);
+         return NULL;
+      }
+
+      assert(v.payload().num_regs % reg_unit(compiler->devinfo) == 0);
+      prog_data->base.base.dispatch_grf_start_reg =
+         v.payload().num_regs / reg_unit(compiler->devinfo);
+
+      fs_generator g(compiler, &params->base,
+                     &prog_data->base.base, v.runtime_check_aads_emit,
+                     MESA_SHADER_VERTEX);
+      if (unlikely(debug_enabled)) {
+         const char *debug_name =
+            ralloc_asprintf(params->base.mem_ctx, "%s vertex shader %s",
+                            nir->info.label ? nir->info.label :
+                               "unnamed",
+                            nir->info.name);
+
+         g.enable_debug(debug_name);
+      }
+      g.generate_code(v.cfg, dispatch_width, v.shader_stats,
+                      v.performance_analysis.require(), params->base.stats);
+      g.add_const_data(nir->constant_data, nir->constant_data_size);
+      assembly = g.get_assembly();
+   }
+
+   if (!assembly) {
+      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT;
+
+      vec4_vs_visitor v(compiler, &params->base, key, prog_data,
+                        nir, debug_enabled);
+      if (!v.run()) {
+         params->base.error_str =
+            ralloc_strdup(params->base.mem_ctx, v.fail_msg);
+         return NULL;
+      }
+
+      assembly = brw_vec4_generate_assembly(compiler, &params->base,
+                                            nir, &prog_data->base,
+                                            v.cfg,
+                                            v.performance_analysis.require(),
+                                            debug_enabled);
+   }
+
+   return assembly;
+}

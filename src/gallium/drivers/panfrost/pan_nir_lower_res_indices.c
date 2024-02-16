@@ -74,13 +74,38 @@ lower_image_intrin(nir_builder *b, nir_intrinsic_instr *intrin)
 }
 
 static bool
-lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin)
+lower_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
+                   const struct panfrost_compile_inputs *inputs)
+{
+   /* We always use heap-based varying allocation when IDVS is used on Valhall. */
+   bool malloc_idvs = !inputs->no_idvs;
+
+   /* All vertex attributes come from the attribute table.
+    * Fragment inputs come from the attribute table too, unless they've
+    * been allocated on the heap.
+    */
+   if (b->shader->info.stage == MESA_SHADER_VERTEX ||
+       (b->shader->info.stage == MESA_SHADER_FRAGMENT && !malloc_idvs)) {
+      nir_intrinsic_set_base(
+         intrin,
+         pan_res_handle(PAN_TABLE_ATTRIBUTE, nir_intrinsic_base(intrin)));
+      return true;
+   }
+
+   return false;
+}
+
+static bool
+lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
+                const struct panfrost_compile_inputs *inputs)
 {
    switch (intrin->intrinsic) {
    case nir_intrinsic_image_load:
    case nir_intrinsic_image_store:
    case nir_intrinsic_image_texel_address:
       return lower_image_intrin(b, intrin);
+   case nir_intrinsic_load_input:
+      return lower_input_intrin(b, intrin, inputs);
    default:
       return false;
    }
@@ -89,11 +114,13 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin)
 static bool
 lower_instr(nir_builder *b, nir_instr *instr, void *data)
 {
+   const struct panfrost_compile_inputs *inputs = data;
+
    switch (instr->type) {
    case nir_instr_type_tex:
       return lower_tex(b, nir_instr_as_tex(instr));
    case nir_instr_type_intrinsic:
-      return lower_intrinsic(b, nir_instr_as_intrinsic(instr));
+      return lower_intrinsic(b, nir_instr_as_intrinsic(instr), inputs);
    default:
       return false;
    }

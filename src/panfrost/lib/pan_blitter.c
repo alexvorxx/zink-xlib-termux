@@ -414,6 +414,12 @@ tex_hw_index(uint32_t index)
    return PAN_ARCH >= 9 ? pan_res_handle(PAN_TABLE_TEXTURE, index) : index;
 }
 
+static uint32_t
+attr_hw_index(uint32_t index)
+{
+   return PAN_ARCH >= 9 ? pan_res_handle(PAN_TABLE_ATTRIBUTE, index) : index;
+}
+
 static const struct pan_blit_shader_data *
 pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
                             const struct pan_blit_shader_key *key)
@@ -484,12 +490,13 @@ pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
    nir_builder b = nir_builder_init_simple_shader(
       MESA_SHADER_FRAGMENT, GENX(pan_shader_get_compiler_options)(),
       "pan_blit(%s)", sig);
+
    nir_def *barycentric = nir_load_barycentric(
       &b, nir_intrinsic_load_barycentric_pixel, INTERP_MODE_SMOOTH);
    nir_def *coord = nir_load_interpolated_input(
-      &b, coord_comps, 32, barycentric, nir_imm_int(&b, 0), .base = 0,
-      .dest_type = nir_type_float32, .io_semantics.location = VARYING_SLOT_VAR0,
-      .io_semantics.num_slots = 1);
+      &b, coord_comps, 32, barycentric, nir_imm_int(&b, 0),
+      .base = attr_hw_index(0), .dest_type = nir_type_float32,
+      .io_semantics.location = VARYING_SLOT_VAR0, .io_semantics.num_slots = 1);
 
    unsigned active_count = 0;
    for (unsigned i = 0; i < ARRAY_SIZE(key->surfaces); i++) {

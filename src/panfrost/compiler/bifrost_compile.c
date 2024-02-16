@@ -390,6 +390,40 @@ bi_is_intr_immediate(nir_intrinsic_instr *instr, unsigned *immediate,
    return (*immediate) < max;
 }
 
+static bool
+bi_is_imm_desc_handle(bi_builder *b, nir_intrinsic_instr *instr,
+                      uint32_t *immediate, unsigned max)
+{
+   nir_src *offset = nir_get_io_offset_src(instr);
+
+   if (!nir_src_is_const(*offset))
+      return false;
+
+   if (b->shader->arch >= 9) {
+      uint32_t res_handle =
+         nir_intrinsic_base(instr) + nir_src_as_uint(*offset);
+      uint32_t table_index = pan_res_handle_get_table(res_handle);
+      uint32_t res_index = pan_res_handle_get_index(res_handle);
+
+      if (!va_is_valid_const_table(table_index) || res_index >= max)
+         return false;
+
+      *immediate = res_handle;
+      return true;
+   }
+
+   return bi_is_intr_immediate(instr, immediate, max);
+}
+
+static bool
+bi_is_imm_var_desc_handle(bi_builder *b, nir_intrinsic_instr *instr,
+                          uint32_t *immediate)
+{
+   unsigned max = b->shader->arch >= 9 ? 256 : 20;
+
+   return bi_is_imm_desc_handle(b, instr, immediate, max);
+}
+
 static void bi_make_vec_to(bi_builder *b, bi_index final_dst, bi_index *src,
                            unsigned *channel, unsigned count, unsigned bitsize);
 
@@ -439,14 +473,17 @@ bi_emit_load_attr(bi_builder *b, nir_intrinsic_instr *instr)
    unsigned imm_index = 0;
    unsigned base = nir_intrinsic_base(instr);
    bool constant = nir_src_is_const(*offset);
-   bool immediate = bi_is_intr_immediate(instr, &imm_index, 16);
+   bool immediate = bi_is_imm_desc_handle(b, instr, &imm_index, 16);
    bi_index dest =
       (component == 0) ? bi_def_index(&instr->def) : bi_temp(b->shader);
    bi_instr *I;
 
    if (immediate) {
       I = bi_ld_attr_imm_to(b, dest, bi_vertex_id(b), bi_instance_id(b), regfmt,
-                            vecsize, imm_index);
+                            vecsize, pan_res_handle_get_index(imm_index));
+
+      if (b->shader->arch >= 9)
+         I->table = va_res_fold_table_idx(pan_res_handle_get_table(base));
    } else {
       bi_index idx = bi_src_index(&instr->src[0]);
 
@@ -458,9 +495,6 @@ bi_emit_load_attr(bi_builder *b, nir_intrinsic_instr *instr)
       I = bi_ld_attr_to(b, dest, bi_vertex_id(b), bi_instance_id(b), idx,
                         regfmt, vecsize);
    }
-
-   if (b->shader->arch >= 9)
-      I->table = PAN_TABLE_ATTRIBUTE;
 
    bi_copy_component(b, instr, dest);
 }
@@ -544,23 +578,38 @@ bi_emit_load_vary(bi_builder *b, nir_intrinsic_instr *instr)
 
    nir_src *offset = nir_get_io_offset_src(instr);
    unsigned imm_index = 0;
-   bool immediate = bi_is_intr_immediate(instr, &imm_index, 20);
-   bi_instr *I = NULL;
+   bool immediate = bi_is_imm_var_desc_handle(b, instr, &imm_index);
+   unsigned base = nir_intrinsic_base(instr);
+
+   /* On Valhall, ensure the table and index are valid for usage with immediate
+    * form when IDVS isn't used */
+   if (b->shader->arch >= 9 && !b->shader->malloc_idvs)
+      immediate &= va_is_valid_const_table(pan_res_handle_get_table(base)) &&
+                   pan_res_handle_get_index(base) < 256;
 
    if (b->shader->malloc_idvs && immediate) {
       /* Immediate index given in bytes. */
       bi_ld_var_buf_imm_to(b, sz, dest, src0, regfmt, sample, source_format,
                            update, vecsize,
                            bi_varying_offset(b->shader, instr));
-   } else if (immediate && smooth) {
-      I = bi_ld_var_imm_to(b, dest, src0, regfmt, sample, update, vecsize,
-                           imm_index);
-   } else if (immediate && !smooth) {
-      I = bi_ld_var_flat_imm_to(b, dest, BI_FUNCTION_NONE, regfmt, vecsize,
-                                imm_index);
+   } else if (immediate) {
+      bi_instr *I;
+
+      if (smooth) {
+         I = bi_ld_var_imm_to(b, dest, src0, regfmt, sample, update, vecsize,
+                              pan_res_handle_get_index(imm_index));
+      } else {
+         I = bi_ld_var_flat_imm_to(b, dest, BI_FUNCTION_NONE, regfmt, vecsize,
+                                   pan_res_handle_get_index(imm_index));
+      }
+
+      /* Valhall usually uses machine-allocated IDVS. If this is disabled,
+       * use a simple Midgard-style ABI.
+       */
+      if (b->shader->arch >= 9)
+         I->table = va_res_fold_table_idx(pan_res_handle_get_table(base));
    } else {
       bi_index idx = bi_src_index(offset);
-      unsigned base = nir_intrinsic_base(instr);
 
       if (b->shader->malloc_idvs) {
          /* Index needs to be in bytes, but NIR gives the index
@@ -574,24 +623,16 @@ bi_emit_load_vary(bi_builder *b, nir_intrinsic_instr *instr)
 
          bi_ld_var_buf_to(b, sz, dest, src0, idx_bytes, regfmt, sample,
                           source_format, update, vecsize);
-      } else if (smooth) {
-         if (base != 0)
-            idx = bi_iadd_u32(b, idx, bi_imm_u32(base), false);
-
-         I = bi_ld_var_to(b, dest, src0, idx, regfmt, sample, update, vecsize);
       } else {
          if (base != 0)
             idx = bi_iadd_u32(b, idx, bi_imm_u32(base), false);
 
-         I = bi_ld_var_flat_to(b, dest, idx, BI_FUNCTION_NONE, regfmt, vecsize);
+         if (smooth)
+            bi_ld_var_to(b, dest, src0, idx, regfmt, sample, update, vecsize);
+         else
+            bi_ld_var_flat_to(b, dest, idx, BI_FUNCTION_NONE, regfmt, vecsize);
       }
    }
-
-   /* Valhall usually uses machine-allocated IDVS. If this is disabled, use
-    * a simple Midgard-style ABI.
-    */
-   if (b->shader->arch >= 9 && I != NULL)
-      I->table = PAN_TABLE_ATTRIBUTE;
 
    bi_copy_component(b, instr, dest);
 }

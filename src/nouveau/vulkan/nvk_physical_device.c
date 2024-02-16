@@ -1071,9 +1071,9 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    nvk_physical_device_init_pipeline_cache(pdev);
 
    uint64_t sysmem_size_B = 0;
-   if (!os_get_available_system_memory(&sysmem_size_B)) {
+   if (!os_get_total_physical_memory(&sysmem_size_B)) {
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
-                         "Failed to query available system memory");
+                         "Failed to query total system memory");
       goto fail_disk_cache;
    }
 
@@ -1092,7 +1092,8 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 
    uint32_t sysmem_heap_idx = pdev->mem_heap_count++;
    pdev->mem_heaps[sysmem_heap_idx] = (struct nvk_memory_heap) {
-      .size = sysmem_size_B,
+      /* Advertise 3/4 of total size to avoid swapping */
+      .size = ROUND_DOWN_TO(sysmem_size_B * 3 / 4, 1 << 20),
       /* If we don't have any VRAM (iGPU), claim sysmem as DEVICE_LOCAL */
       .flags = pdev->info.vram_size_B == 0
                ? VK_MEMORY_HEAP_DEVICE_LOCAL_BIT

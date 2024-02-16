@@ -108,9 +108,9 @@ impl CLInfo<cl_device_info> for cl_device_id {
             CL_DEVICE_IMAGE_MAX_ARRAY_SIZE => cl_prop::<usize>(dev.image_array_size()),
             CL_DEVICE_IMAGE_MAX_BUFFER_SIZE => cl_prop::<usize>(dev.image_buffer_size()),
             CL_DEVICE_IMAGE_PITCH_ALIGNMENT => cl_prop::<cl_uint>(dev.image_pitch_alignment()),
-            CL_DEVICE_IMAGE_SUPPORT => cl_prop::<bool>(dev.image_supported()),
-            CL_DEVICE_IMAGE2D_MAX_HEIGHT => cl_prop::<usize>(dev.image_2d_size()),
-            CL_DEVICE_IMAGE2D_MAX_WIDTH => cl_prop::<usize>(dev.image_2d_size()),
+            CL_DEVICE_IMAGE_SUPPORT => cl_prop::<bool>(dev.caps.has_images),
+            CL_DEVICE_IMAGE2D_MAX_HEIGHT => cl_prop::<usize>(dev.caps.image_2d_size as usize),
+            CL_DEVICE_IMAGE2D_MAX_WIDTH => cl_prop::<usize>(dev.caps.image_2d_size as usize),
             CL_DEVICE_IMAGE3D_MAX_HEIGHT => cl_prop::<usize>(dev.image_3d_size()),
             CL_DEVICE_IMAGE3D_MAX_WIDTH => cl_prop::<usize>(dev.image_3d_size()),
             CL_DEVICE_IMAGE3D_MAX_DEPTH => cl_prop::<usize>(dev.image_3d_size()),
@@ -182,10 +182,10 @@ impl CLInfo<cl_device_info> for cl_device_id {
             CL_DEVICE_MAX_ON_DEVICE_QUEUES => cl_prop::<cl_uint>(0),
             CL_DEVICE_MAX_PARAMETER_SIZE => cl_prop::<usize>(dev.param_max_size()),
             CL_DEVICE_MAX_PIPE_ARGS => cl_prop::<cl_uint>(0),
-            CL_DEVICE_MAX_READ_IMAGE_ARGS => cl_prop::<cl_uint>(dev.image_read_count()),
+            CL_DEVICE_MAX_READ_IMAGE_ARGS => cl_prop::<cl_uint>(dev.caps.max_read_images),
             CL_DEVICE_MAX_READ_WRITE_IMAGE_ARGS => {
                 cl_prop::<cl_uint>(if dev.image_read_write_supported() {
-                    dev.image_write_count()
+                    dev.caps.max_write_images
                 } else {
                     0
                 })
@@ -194,7 +194,7 @@ impl CLInfo<cl_device_info> for cl_device_id {
             CL_DEVICE_MAX_WORK_GROUP_SIZE => cl_prop::<usize>(dev.max_threads_per_block()),
             CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS => cl_prop::<cl_uint>(dev.max_grid_dimensions()),
             CL_DEVICE_MAX_WORK_ITEM_SIZES => cl_prop::<Vec<usize>>(dev.max_block_sizes()),
-            CL_DEVICE_MAX_WRITE_IMAGE_ARGS => cl_prop::<cl_uint>(dev.image_write_count()),
+            CL_DEVICE_MAX_WRITE_IMAGE_ARGS => cl_prop::<cl_uint>(dev.caps.max_write_images),
             // TODO proper retrival from devices
             CL_DEVICE_MEM_BASE_ADDR_ALIGN => cl_prop::<cl_uint>(0x1000),
             CL_DEVICE_MIN_DATA_TYPE_ALIGN_SIZE => {

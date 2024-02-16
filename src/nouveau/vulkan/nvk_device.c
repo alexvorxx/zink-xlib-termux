@@ -191,12 +191,18 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    if (result != VK_SUCCESS)
       goto fail_images;
 
-   /* The I-cache pre-fetches and we don't really know by how much.  Over-
-    * allocate shader BOs by 4K to ensure we don't run past.
+   /* If we have a full BAR, go ahead and do shader uploads on the CPU.
+    * Otherwise, we fall back to doing shader uploads via the upload queue.
+    *
+    * Also, the I-cache pre-fetches and we don't really know by how much.
+    * Over-allocating shader BOs by 4K ensures we don't run past.
     */
+   enum nouveau_ws_bo_map_flags shader_map_flags = 0;
+   if (pdev->info.bar_size_B >= pdev->info.vram_size_B)
+      shader_map_flags = NOUVEAU_WS_BO_WR;
    result = nvk_heap_init(dev, &dev->shader_heap,
                           NOUVEAU_WS_BO_LOCAL | NOUVEAU_WS_BO_NO_SHARE,
-                          0 /* map_flags */,
+                          shader_map_flags,
                           4096 /* overalloc */,
                           dev->pdev->info.cls_eng3d < VOLTA_A);
    if (result != VK_SUCCESS)

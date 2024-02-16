@@ -650,6 +650,7 @@ The integer capabilities:
 * ``PIPE_CAP_VALIDATE_ALL_DIRTY_STATES`` : Whether state validation must also validate the state changes for resources types used in the previous shader but not in the current shader.
 * ``PIPE_CAP_HAS_CONST_BW``: Whether the driver only supports non-data-dependent layouts (ie. not bandwidth compressed formats like AFBC, UBWC, etc), or supports ``PIPE_BIND_CONST_BW`` to disable data-dependent layouts on requested resources.
 * ``PIPE_CAP_PERFORMANCE_MONITOR``: Whether GL_AMD_performance_monitor should be exposed.
+* ``PIPE_CAP_TEXTURE_SAMPLER_INDEPENDENT``: Whether sampler views and sampler states are independent objects, meaning both can be freely mixed and matched by the frontend. This isn't required for OpenGL where on the shader level those are the same object. However for proper gallium nine and OpenCL support this is required.
 
 
 .. _pipe_capf:

@@ -220,26 +220,11 @@ brw_inst_set_group(const struct intel_device_info *devinfo,
       assert(group % 8 == 0 && group < 32);
       brw_inst_set_qtr_control(devinfo, inst, group / 8);
 
-   } else if (devinfo->ver >= 7) {
+   } else {
       assert(group % 4 == 0 && group < 32);
       brw_inst_set_qtr_control(devinfo, inst, group / 8);
       brw_inst_set_nib_control(devinfo, inst, (group / 4) % 2);
 
-   } else if (devinfo->ver == 6) {
-      assert(group % 8 == 0 && group < 32);
-      brw_inst_set_qtr_control(devinfo, inst, group / 8);
-
-   } else {
-      assert(group % 8 == 0 && group < 16);
-      /* The channel group and compression controls are non-orthogonal, there
-       * are two possible representations for group zero and we may need to
-       * preserve the current one to avoid changing the selected compression
-       * enable inadvertently.
-       */
-      if (group == 8)
-         brw_inst_set_qtr_control(devinfo, inst, BRW_COMPRESSION_2NDHALF);
-      else if (brw_inst_qtr_control(devinfo, inst) == BRW_COMPRESSION_2NDHALF)
-         brw_inst_set_qtr_control(devinfo, inst, BRW_COMPRESSION_NONE);
    }
 }
 
@@ -507,12 +492,7 @@ brw_label_assembly(const struct brw_isa_info *isa,
          brw_create_label(&root_label,
             offset + brw_inst_jip(devinfo, inst) * to_bytes_scale, mem_ctx);
       } else if (brw_has_jip(devinfo, brw_inst_opcode(isa, inst))) {
-         int jip;
-         if (devinfo->ver >= 7) {
-            jip = brw_inst_jip(devinfo, inst);
-         } else {
-            jip = brw_inst_gfx6_jump_count(devinfo, inst);
-         }
+         int jip = brw_inst_jip(devinfo, inst);
 
          brw_create_label(&root_label, offset + jip * to_bytes_scale, mem_ctx);
       }
@@ -775,23 +755,6 @@ brw_num_sources_from_inst(const struct brw_isa_info *isa,
 
    if (brw_inst_opcode(isa, inst) == BRW_OPCODE_MATH) {
       math_function = brw_inst_math_function(devinfo, inst);
-   } else if (devinfo->ver < 6 &&
-              brw_inst_opcode(isa, inst) == BRW_OPCODE_SEND) {
-      if (brw_inst_sfid(devinfo, inst) == BRW_SFID_MATH) {
-         /* src1 must be a descriptor (including the information to determine
-          * that the SEND is doing an extended math operation), but src0 can
-          * actually be null since it serves as the source of the implicit GRF
-          * to MRF move.
-          *
-          * If we stop using that functionality, we'll have to revisit this.
-          */
-         return 2;
-      } else {
-         /* Send instructions are allowed to have null sources since they use
-          * the base_mrf field to specify which message register source.
-          */
-         return 0;
-      }
    } else {
       assert(desc->nsrc < 4);
       return desc->nsrc;

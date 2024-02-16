@@ -2182,7 +2182,7 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
 
          case GFX6_SFID_DATAPORT_RENDER_CACHE: {
             /* aka BRW_SFID_DATAPORT_WRITE on Gfx4-5 */
-            unsigned msg_type = brw_fb_write_desc_msg_type(devinfo, imm_desc);
+            unsigned msg_type = brw_fb_desc_msg_type(devinfo, imm_desc);
 
             err |= control(file, "DP rc message type",
                            dp_rc_msg_type(devinfo), msg_type, &space);
@@ -2202,7 +2202,7 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                   string(file, " CoarseWrite");
             } else {
                format(file, " MsgCtrl = 0x%u",
-                      brw_fb_write_desc_msg_control(devinfo, imm_desc));
+                      brw_fb_desc_msg_control(devinfo, imm_desc));
             }
 
             format(file, " Surface = %u",

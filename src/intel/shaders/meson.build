@@ -64,7 +64,6 @@ foreach gen : intel_shaders_gens
       '-I' + join_paths(dir_source_root, 'src/intel'),
       '-I' + join_paths(meson.project_build_root(), 'src/intel'),
       '-I' + join_paths(dir_source_root, 'src/intel/genxml'),
-      '-include', 'opencl-c.h',
     ],
     env: ['MESA_SHADER_CACHE_DISABLE=true'],
     depends : [dep_prog_intel_clc, gen_cl_xml_pack],

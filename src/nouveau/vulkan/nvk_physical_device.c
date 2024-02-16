@@ -21,6 +21,7 @@
 #include "vulkan/runtime/vk_shader_module.h"
 #include "vulkan/wsi/wsi_common.h"
 
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <xf86drm.h>
@@ -929,6 +930,7 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 {
    struct nvk_instance *instance = (struct nvk_instance *)_instance;
    VkResult result;
+   int master_fd = -1;
 
    if (!(drm_device->available_nodes & (1 << DRM_NODE_RENDER)))
       return VK_ERROR_INCOMPATIBLE_DRIVER;
@@ -1036,6 +1038,10 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
       properties.drmHasPrimary = true;
       properties.drmPrimaryMajor = major(st.st_rdev);
       properties.drmPrimaryMinor = minor(st.st_rdev);
+
+      /* TODO: Test if the FD is usable? */
+      if (instance->vk.enabled_extensions.KHR_display)
+         master_fd = open(drm_device->nodes[DRM_NODE_PRIMARY], O_RDWR | O_CLOEXEC);
    }
 
    result = vk_physical_device_init(&pdev->vk, &instance->vk,
@@ -1044,9 +1050,10 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
                                     &properties,
                                     &dispatch_table);
    if (result != VK_SUCCESS)
-      goto fail_alloc;
+      goto fail_master_fd;
 
    pdev->render_dev = render_dev;
+   pdev->master_fd = master_fd;
    pdev->info = info;
    pdev->debug_flags = debug_flags;
 
@@ -1127,7 +1134,9 @@ fail_disk_cache:
    nak_compiler_destroy(pdev->nak);
 fail_init:
    vk_physical_device_finish(&pdev->vk);
-fail_alloc:
+fail_master_fd:
+   if (master_fd >= 0)
+      close(master_fd);
    vk_free(&instance->vk.alloc, pdev);
    return result;
 }
@@ -1141,6 +1150,8 @@ nvk_physical_device_destroy(struct vk_physical_device *vk_pdev)
    nvk_finish_wsi(pdev);
    nvk_physical_device_free_disk_cache(pdev);
    nak_compiler_destroy(pdev->nak);
+   if (pdev->master_fd >= 0)
+      close(pdev->master_fd);
    vk_physical_device_finish(&pdev->vk);
    vk_free(&pdev->vk.instance->alloc, pdev);
 }

@@ -314,6 +314,11 @@ impl Device {
     }
 
     fn fill_format_tables(&mut self) {
+        // no need to do this if we don't support images
+        if !self.caps.has_images {
+            return;
+        }
+
         for f in FORMATS {
             let mut fs = HashMap::new();
             for t in CL_IMAGE_TYPES {
@@ -838,35 +843,56 @@ impl Device {
     }
 
     pub fn image_3d_size(&self) -> usize {
-        1 << (self.screen.param(pipe_cap::PIPE_CAP_MAX_TEXTURE_3D_LEVELS) - 1)
+        if self.caps.has_images {
+            1 << (self.screen.param(pipe_cap::PIPE_CAP_MAX_TEXTURE_3D_LEVELS) - 1)
+        } else {
+            0
+        }
     }
 
     pub fn image_3d_supported(&self) -> bool {
-        self.screen.param(pipe_cap::PIPE_CAP_MAX_TEXTURE_3D_LEVELS) != 0
+        self.caps.has_images && self.screen.param(pipe_cap::PIPE_CAP_MAX_TEXTURE_3D_LEVELS) != 0
     }
 
     pub fn image_array_size(&self) -> usize {
-        self.screen
-            .param(pipe_cap::PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS) as usize
+        if self.caps.has_images {
+            self.screen
+                .param(pipe_cap::PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS) as usize
+        } else {
+            0
+        }
     }
 
     pub fn image_pitch_alignment(&self) -> cl_uint {
-        self.screen
-            .param(pipe_cap::PIPE_CAP_LINEAR_IMAGE_PITCH_ALIGNMENT) as u32
+        if self.caps.has_images {
+            self.screen
+                .param(pipe_cap::PIPE_CAP_LINEAR_IMAGE_PITCH_ALIGNMENT) as u32
+        } else {
+            0
+        }
     }
 
     pub fn image_base_address_alignment(&self) -> cl_uint {
-        self.screen
-            .param(pipe_cap::PIPE_CAP_LINEAR_IMAGE_BASE_ADDRESS_ALIGNMENT) as u32
+        if self.caps.has_images {
+            self.screen
+                .param(pipe_cap::PIPE_CAP_LINEAR_IMAGE_BASE_ADDRESS_ALIGNMENT) as u32
+        } else {
+            0
+        }
     }
 
     pub fn image_buffer_size(&self) -> usize {
-        min(
-            // the CTS requires it to not exceed `CL_MAX_MEM_ALLOC_SIZE`
-            self.max_mem_alloc(),
-            self.screen
-                .param(pipe_cap::PIPE_CAP_MAX_TEXEL_BUFFER_ELEMENTS_UINT) as cl_ulong,
-        ) as usize
+        if self.caps.has_images {
+            min(
+                // the CTS requires it to not exceed `CL_MAX_MEM_ALLOC_SIZE`
+                self.max_mem_alloc(),
+                self.screen
+                    .param(pipe_cap::PIPE_CAP_MAX_TEXEL_BUFFER_ELEMENTS_UINT)
+                    as cl_ulong,
+            ) as usize
+        } else {
+            0
+        }
     }
 
     pub fn image2d_from_buffer_supported(&self) -> bool {
@@ -874,21 +900,23 @@ impl Device {
     }
 
     pub fn image_read_write_supported(&self) -> bool {
-        !FORMATS
-            .iter()
-            .filter(|f| f.req_for_full_read_and_write)
-            .map(|f| self.formats.get(&f.cl_image_format).unwrap())
-            .map(|f| f.get(&CL_MEM_OBJECT_IMAGE3D).unwrap())
-            .any(|f| *f & cl_mem_flags::from(CL_MEM_KERNEL_READ_AND_WRITE) == 0)
+        self.caps.has_images
+            && !FORMATS
+                .iter()
+                .filter(|f| f.req_for_full_read_and_write)
+                .map(|f| self.formats.get(&f.cl_image_format).unwrap())
+                .map(|f| f.get(&CL_MEM_OBJECT_IMAGE3D).unwrap())
+                .any(|f| *f & cl_mem_flags::from(CL_MEM_KERNEL_READ_AND_WRITE) == 0)
     }
 
     pub fn image_3d_write_supported(&self) -> bool {
-        !FORMATS
-            .iter()
-            .filter(|f| f.req_for_full_read_or_write)
-            .map(|f| self.formats.get(&f.cl_image_format).unwrap())
-            .map(|f| f.get(&CL_MEM_OBJECT_IMAGE3D).unwrap())
-            .any(|f| *f & cl_mem_flags::from(CL_MEM_WRITE_ONLY) == 0)
+        self.caps.has_images
+            && !FORMATS
+                .iter()
+                .filter(|f| f.req_for_full_read_or_write)
+                .map(|f| self.formats.get(&f.cl_image_format).unwrap())
+                .map(|f| f.get(&CL_MEM_OBJECT_IMAGE3D).unwrap())
+                .any(|f| *f & cl_mem_flags::from(CL_MEM_WRITE_ONLY) == 0)
     }
 
     pub fn little_endian(&self) -> bool {

@@ -779,8 +779,6 @@ radv_amdgpu_cs_execute_ib(struct radeon_cmdbuf *_cs, struct radeon_winsys_bo *bo
       const uint32_t ib_size = radv_amdgpu_cs_get_initial_size(cs->ws, cs->hw_ip);
       VkResult result;
 
-      assert(!predicate);
-
       /* Finalize the current CS without chaining to execute the external IB. */
       radv_amdgpu_cs_finalize(_cs);
 

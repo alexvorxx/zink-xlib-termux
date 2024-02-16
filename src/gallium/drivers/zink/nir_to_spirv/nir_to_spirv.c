@@ -3208,6 +3208,11 @@ emit_barrier(struct ntv_context *ctx, nir_intrinsic_instr *intr)
       if (modes & (nir_var_shader_out | nir_var_mem_task_payload))
          semantics |= SpvMemorySemanticsOutputMemoryMask;
 
+      if (!modes)
+         semantics = SpvMemorySemanticsWorkgroupMemoryMask |
+                     SpvMemorySemanticsUniformMemoryMask |
+                     SpvMemorySemanticsImageMemoryMask |
+                     SpvMemorySemanticsCrossWorkgroupMemoryMask;
       semantics |= SpvMemorySemanticsAcquireReleaseMask;
    }
 

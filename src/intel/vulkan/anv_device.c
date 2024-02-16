@@ -2020,25 +2020,21 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
          kernel_supports_non_render_engines &&
          sparse_supports_non_render_engines;
 
-      if (!can_use_non_render_engines)
-         mesa_logw("cannot initialize compute engine");
-      else
+      if (can_use_non_render_engines) {
          c_count = intel_engines_supported_count(pdevice->local_fd,
                                                  &pdevice->info,
                                                  pdevice->engine_info,
                                                  INTEL_ENGINE_CLASS_COMPUTE);
+      }
       enum intel_engine_class compute_class =
          c_count < 1 ? INTEL_ENGINE_CLASS_RENDER : INTEL_ENGINE_CLASS_COMPUTE;
 
       int blit_count = 0;
-      if (pdevice->info.verx10 >= 125) {
-         if (!can_use_non_render_engines)
-            mesa_logw("cannot initialize blitter engine");
-         else
-            blit_count = intel_engines_supported_count(pdevice->local_fd,
-                                                       &pdevice->info,
-                                                       pdevice->engine_info,
-                                                       INTEL_ENGINE_CLASS_COPY);
+      if (pdevice->info.verx10 >= 125 && can_use_non_render_engines) {
+         blit_count = intel_engines_supported_count(pdevice->local_fd,
+                                                    &pdevice->info,
+                                                    pdevice->engine_info,
+                                                    INTEL_ENGINE_CLASS_COPY);
       }
 
       anv_override_engine_counts(&gc_count, &g_count, &c_count, &v_count);

@@ -2614,22 +2614,21 @@ zink_set_patch_vertices(struct pipe_context *pctx, uint8_t patch_vertices)
    }
 }
 
-void
+bool
 zink_update_fbfetch(struct zink_context *ctx)
 {
    const bool had_fbfetch = ctx->di.fbfetch.imageLayout == VK_IMAGE_LAYOUT_GENERAL;
    if (!ctx->gfx_stages[MESA_SHADER_FRAGMENT] ||
        !ctx->gfx_stages[MESA_SHADER_FRAGMENT]->info.fs.uses_fbfetch_output) {
       if (!had_fbfetch)
-         return;
-      ctx->rp_changed = true;
+         return false;
       zink_batch_no_rp(ctx);
       ctx->di.fbfetch.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
       ctx->di.fbfetch.imageView = zink_screen(ctx->base.screen)->info.rb2_feats.nullDescriptor ?
                                   VK_NULL_HANDLE :
                                   zink_get_dummy_surface(ctx, 0)->image_view;
       ctx->invalidate_descriptor_state(ctx, MESA_SHADER_FRAGMENT, ZINK_DESCRIPTOR_TYPE_UBO, 0, 1);
-      return;
+      return true;
    }
 
    bool changed = !had_fbfetch;
@@ -2637,7 +2636,7 @@ zink_update_fbfetch(struct zink_context *ctx)
       VkImageView fbfetch = zink_csurface(ctx->fb_state.cbufs[0])->image_view;
       if (!fbfetch)
          /* swapchain image: retry later */
-         return;
+         return false;
       changed |= fbfetch != ctx->di.fbfetch.imageView;
       ctx->di.fbfetch.imageView = zink_csurface(ctx->fb_state.cbufs[0])->image_view;
 
@@ -2645,14 +2644,16 @@ zink_update_fbfetch(struct zink_context *ctx)
       if (zink_get_fs_base_key(ctx)->fbfetch_ms != fbfetch_ms)
          zink_set_fs_base_key(ctx)->fbfetch_ms = fbfetch_ms;
    }
+   bool ret = false;
    ctx->di.fbfetch.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
    if (changed) {
       ctx->invalidate_descriptor_state(ctx, MESA_SHADER_FRAGMENT, ZINK_DESCRIPTOR_TYPE_UBO, 0, 1);
       if (!had_fbfetch) {
-         ctx->rp_changed = true;
+         ret = true;
          zink_batch_no_rp(ctx);
       }
    }
+   return ret;
 }
 
 void
@@ -3631,7 +3632,7 @@ zink_set_framebuffer_state(struct pipe_context *pctx,
    }
 
    util_copy_framebuffer_state(&ctx->fb_state, state);
-   zink_update_fbfetch(ctx);
+   ctx->rp_changed |= zink_update_fbfetch(ctx);
    ctx->transient_attachments = 0;
    ctx->fb_layer_mismatch = 0;
 

@@ -503,6 +503,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
 
    /* next use distances at the beginning of the current block */
    const auto& next_use_distances = ctx.next_use_distances_start[block_idx];
+   const IDSet& live_in = ctx.live_vars.live_out[block_idx];
 
    /* loop header block */
    if (block->kind & block_kind_loop_header) {
@@ -581,7 +582,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       }
 
       /* create new loop_info */
-      loop_info info = {block_idx, ctx.spills_entry[block_idx], ctx.live_vars.live_out[block_idx]};
+      loop_info info = {block_idx, ctx.spills_entry[block_idx], live_in};
       ctx.loop.emplace_back(std::move(info));
 
       /* shortcut */
@@ -621,7 +622,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          if (pair.first.type() != RegType::sgpr)
             continue;
 
-         if (next_use_distances.count(pair.first)) {
+         if (live_in.count(pair.first.id())) {
             spilled_registers += pair.first;
             ctx.spills_entry[block_idx].emplace(pair);
          }
@@ -635,7 +636,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          if (pair.first.type() != RegType::vgpr)
             continue;
 
-         if (next_use_distances.count(pair.first)) {
+         if (live_in.count(pair.first.id())) {
             spilled_registers += pair.first;
             ctx.spills_entry[block_idx].emplace(pair);
          }
@@ -648,43 +649,47 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
    std::map<Temp, bool> partial_spills;
 
    /* keep variables spilled on all incoming paths */
-   for (const std::pair<const Temp, std::pair<uint32_t, uint32_t>>& pair : next_use_distances) {
-      Block::edge_vec& preds = pair.first.is_linear() ? block->linear_preds : block->logical_preds;
+   for (unsigned t : live_in) {
+      const RegClass rc = ctx.program->temp_rc[t];
+      Temp var = Temp(t, rc);
+      Block::edge_vec& preds = rc.is_linear() ? block->linear_preds : block->logical_preds;
+
       /* If it can be rematerialized, keep the variable spilled if all predecessors do not reload
        * it. Otherwise, if any predecessor reloads it, ensure it's reloaded on all other
        * predecessors. The idea is that it's better in practice to rematerialize redundantly than to
        * create lots of phis. */
-      const bool remat = ctx.remat.count(pair.first);
+      const bool remat = ctx.remat.count(var);
       /* If the variable is spilled at the current loop-header, spilling is essentially for free
        * while reloading is not. Thus, keep them spilled if they are at least partially spilled.
        */
-      const bool avoid_respill = block->loop_nest_depth && ctx.loop.back().spills.count(pair.first);
+      const bool avoid_respill = block->loop_nest_depth && ctx.loop.back().spills.count(var);
       bool spill = true;
       bool partial_spill = false;
       uint32_t spill_id = 0;
       for (unsigned pred_idx : preds) {
          /* variable is not even live at the predecessor: probably from a phi */
-         if (!ctx.next_use_distances_end[pred_idx].count(pair.first)) {
+         if (!ctx.live_vars.live_out[pred_idx].count(t)) {
             spill = false;
             break;
          }
-         if (!ctx.spills_exit[pred_idx].count(pair.first)) {
+
+         if (!ctx.spills_exit[pred_idx].count(var)) {
             spill = false;
          } else {
             partial_spill = true;
             /* it might be that on one incoming path, the variable has a different spill_id, but
              * add_couple_code() will take care of that. */
-            spill_id = ctx.spills_exit[pred_idx][pair.first];
+            spill_id = ctx.spills_exit[pred_idx][var];
          }
       }
       spill |= (remat && partial_spill);
       spill |= (avoid_respill && partial_spill);
       if (spill) {
-         ctx.spills_entry[block_idx][pair.first] = spill_id;
-         partial_spills.erase(pair.first);
-         spilled_registers += pair.first;
+         ctx.spills_entry[block_idx][var] = spill_id;
+         partial_spills.erase(var);
+         spilled_registers += var;
       } else {
-         partial_spills[pair.first] = partial_spill;
+         partial_spills[var] = partial_spill;
       }
    }
 
@@ -728,22 +733,22 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       std::map<Temp, bool>::iterator it = partial_spills.begin();
       Temp to_spill = Temp();
       bool is_partial_spill = false;
-      unsigned distance = 0;
+      float score = 0.0;
       RegType type = reg_pressure.vgpr > ctx.target_pressure.vgpr ? RegType::vgpr : RegType::sgpr;
 
       while (it != partial_spills.end()) {
          assert(!ctx.spills_entry[block_idx].count(it->first));
 
-         if (it->first.type() == type && ((it->second && !is_partial_spill) ||
-                                          (it->second == is_partial_spill &&
-                                           next_use_distances.at(it->first).second > distance))) {
-            distance = next_use_distances.at(it->first).second;
+         if (it->first.type() == type && !it->first.regClass().is_linear_vgpr() &&
+             ((it->second && !is_partial_spill) ||
+              (it->second == is_partial_spill && ctx.ssa_infos[it->first.id()].score() > score))) {
+            score = ctx.ssa_infos[it->first.id()].score();
             to_spill = it->first;
             is_partial_spill = it->second;
          }
          ++it;
       }
-      assert(distance != 0);
+      assert(score != 0.0);
       ctx.add_to_spills(to_spill, ctx.spills_entry[block_idx]);
       partial_spills.erase(to_spill);
       spilled_registers += to_spill;

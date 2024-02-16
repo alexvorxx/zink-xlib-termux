@@ -33,7 +33,6 @@
 #include <cstring>
 #include <map>
 #include <set>
-#include <stack>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -66,6 +65,7 @@ struct remat_info {
 struct loop_info {
    uint32_t index;
    aco::unordered_map<Temp, uint32_t> spills;
+   IDSet live_in;
 };
 
 struct spill_ctx {
@@ -607,7 +607,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       }
 
       /* create new loop_info */
-      loop_info info = {block_idx, ctx.spills_entry[block_idx]};
+      loop_info info = {block_idx, ctx.spills_entry[block_idx], ctx.live_vars.live_out[block_idx]};
       ctx.loop.emplace_back(std::move(info));
 
       /* shortcut */
@@ -1154,6 +1154,10 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
       for (Operand& op : instr->operands) {
          if (!op.isTemp())
             continue;
+
+         if (op.isFirstKill())
+            ctx.live_vars.live_out[block_idx].erase(op.tempId());
+
          if (!current_spills.count(op.getTemp())) {
             /* the Operand is in register: check if it was renamed */
             auto rename_it = ctx.renames[block_idx].find(op.getTemp());
@@ -1249,6 +1253,11 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
          }
       }
 
+      for (const Definition& def : instr->definitions) {
+         if (def.isTemp() && !def.isKill())
+            ctx.live_vars.live_out[block_idx].insert(def.tempId());
+      }
+
       /* add reloads and instruction to new instructions */
       for (std::pair<const Temp, std::pair<Temp, uint32_t>>& pair : reloads) {
          aco_ptr<Instruction> reload =
@@ -1275,22 +1284,9 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
       add_coupling_code(ctx, block, block_idx);
    }
 
-   const auto& current_spills = ctx.spills_entry[block_idx];
-
-   /* check conditions to process this block */
-   bool process = (block->register_demand - spilled_registers).exceeds(ctx.target_pressure) ||
-                  !ctx.renames[block_idx].empty() || ctx.unused_remats.size();
-
-   for (auto it = current_spills.begin(); !process && it != current_spills.end(); ++it) {
-      if (ctx.next_use_distances_start[block_idx].at(it->first).first == block_idx)
-         process = true;
-   }
-
    assert(ctx.spills_exit[block_idx].empty());
-   ctx.spills_exit[block_idx] = current_spills;
-   if (process) {
-      process_block(ctx, block_idx, block, spilled_registers);
-   }
+   ctx.spills_exit[block_idx] = ctx.spills_entry[block_idx];
+   process_block(ctx, block_idx, block, spilled_registers);
 
    ctx.processed[block_idx] = true;
 

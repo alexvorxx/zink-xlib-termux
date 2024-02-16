@@ -68,6 +68,12 @@ struct loop_info {
    IDSet live_in;
 };
 
+struct use_info {
+   uint32_t num_uses = 0;
+   uint32_t last_use = 0;
+   float score() { return last_use / num_uses; }
+};
+
 struct spill_ctx {
    RegisterDemand target_pressure;
    Program* program;
@@ -85,6 +91,7 @@ struct spill_ctx {
    std::vector<next_use_distance_startend_type> next_use_distances_start;
    std::vector<next_use_distance_startend_type> next_use_distances_end;
    std::vector<std::vector<std::pair<Temp, uint32_t>>> local_next_use_distance; /* Working buffer */
+   std::vector<use_info> ssa_infos;
    std::vector<std::pair<RegClass, std::unordered_set<uint32_t>>> interferences;
    std::vector<std::vector<uint32_t>> affinities;
    std::vector<bool> is_reloaded;
@@ -104,7 +111,8 @@ struct spill_ctx {
          processed(program->blocks.size(), false),
          next_use_distances_start(program->blocks.size(), next_use_distance_startend_type(memory)),
          next_use_distances_end(program->blocks.size(), next_use_distance_startend_type(memory)),
-         remat(memory), wave_size(program->wave_size), sgpr_spill_slots(0), vgpr_spill_slots(0)
+         ssa_infos(program->peekAllocationId()), remat(memory), wave_size(program->wave_size),
+         sgpr_spill_slots(0), vgpr_spill_slots(0)
    {}
 
    void add_affinity(uint32_t first, uint32_t second)
@@ -171,9 +179,16 @@ struct spill_ctx {
    uint32_t next_spill_id = 0;
 };
 
+/**
+ * Gathers information about the number of uses and point of last use
+ * per SSA value.
+ *
+ * Live-out variables are converted to live-in.
+ */
 void
-compute_live_in(spill_ctx& ctx)
+gather_ssa_use_info(spill_ctx& ctx)
 {
+   unsigned instruction_idx = 0;
    for (Block& block : ctx.program->blocks) {
       IDSet& live_set = ctx.live_vars.live_out[block.index];
 
@@ -187,11 +202,26 @@ compute_live_in(spill_ctx& ctx)
          }
          for (const Operand& op : instr->operands) {
             if (op.isTemp()) {
+               use_info& info = ctx.ssa_infos[op.tempId()];
+               info.num_uses++;
+               info.last_use = std::max(info.last_use, instruction_idx + i);
                if (!phi && op.isFirstKill())
                   live_set.insert(op.tempId());
             }
          }
       }
+
+      /* All live-in variables at loop headers get an additional artificial use.
+       * As we decrement the number of uses while processing the blocks, this
+       * ensures that the number of uses won't becomes zero before the loop
+       * (and the variables' live-ranges) end.
+       */
+      if (block.kind & block_kind_loop_header) {
+         for (unsigned t : live_set)
+            ctx.ssa_infos[t].num_uses++;
+      }
+
+      instruction_idx += block.instructions.size();
    }
 }
 
@@ -814,6 +844,11 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
       if (!is_phi(phi))
          break;
 
+      for (const Operand& op : phi->operands) {
+         if (op.isTemp())
+            ctx.ssa_infos[op.tempId()].num_uses--;
+      }
+
       /* if the phi is not spilled, add to instructions */
       if (!phi->definitions[0].isTemp() ||
           !ctx.spills_entry[block_idx].count(phi->definitions[0].getTemp())) {
@@ -1158,6 +1193,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
 
          if (op.isFirstKill())
             ctx.live_vars.live_out[block_idx].erase(op.tempId());
+         ctx.ssa_infos[op.tempId()].num_uses--;
 
          if (!current_spills.count(op.getTemp())) {
             /* the Operand is in register: check if it was renamed */
@@ -1302,6 +1338,8 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
    aco::map<Temp, Temp> renames = std::move(ctx.renames[loop_header_idx]);
 
    /* add coupling code to all loop header predecessors */
+   for (unsigned t : ctx.loop.back().live_in)
+      ctx.ssa_infos[t].num_uses--;
    add_coupling_code(ctx, &ctx.program->blocks[loop_header_idx], ctx.loop.back().live_in);
    renames.swap(ctx.renames[loop_header_idx]);
 
@@ -1887,7 +1925,7 @@ spill(Program* program, live& live_vars)
 
    /* initialize ctx */
    spill_ctx ctx(target, program, live_vars);
-   compute_live_in(ctx);
+   gather_ssa_use_info(ctx);
    compute_global_next_uses(ctx);
    get_rematerialize_info(ctx);
 

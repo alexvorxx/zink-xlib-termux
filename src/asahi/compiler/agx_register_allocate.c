@@ -851,7 +851,8 @@ pick_regs(struct ra_ctx *rctx, agx_instr *I, unsigned d)
       if (phi->dest[0].type == AGX_INDEX_REGISTER) {
          unsigned base = phi->dest[0].value;
 
-         if (!BITSET_TEST_RANGE(rctx->used_regs[cls], base, base + count - 1))
+         if (base + count <= rctx->bound[cls] &&
+             !BITSET_TEST_RANGE(rctx->used_regs[cls], base, base + count - 1))
             return base;
       }
    }

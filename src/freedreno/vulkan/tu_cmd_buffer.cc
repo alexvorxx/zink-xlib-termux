@@ -870,7 +870,7 @@ use_sysmem_rendering(struct tu_cmd_buffer *cmd,
       return true;
 
    /* A7XX TODO: Add gmem support */
-   if (cmd->device->physical_device->info->chip >= 7)
+   if (cmd->device->physical_device->info->chip >= 7 && !TU_DEBUG(GMEM))
       return true;
 
    /* can't fit attachments into gmem */

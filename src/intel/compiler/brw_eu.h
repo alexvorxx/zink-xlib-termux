@@ -113,7 +113,6 @@ struct brw_codegen {
     */
    bool automatic_exec_sizes;
 
-   bool single_program_flow;
    const struct brw_isa_info *isa;
    const struct intel_device_info *devinfo;
 
@@ -1717,16 +1716,6 @@ brw_pixel_interp_desc(UNUSED const struct intel_device_info *devinfo,
            SET_BITS(simd_mode, 16, 16));
 }
 
-void brw_urb_WRITE(struct brw_codegen *p,
-		   struct brw_reg dest,
-		   unsigned msg_reg_nr,
-		   struct brw_reg src0,
-                   enum brw_urb_write_flags flags,
-		   unsigned msg_length,
-		   unsigned response_length,
-		   unsigned offset,
-		   unsigned swizzle);
-
 /**
  * Send message to shared unit \p sfid with a possibly indirect descriptor \p
  * desc.  If \p desc is not an immediate it will be transparently loaded to an
@@ -1778,29 +1767,9 @@ brw_inst *gfx9_fb_READ(struct brw_codegen *p,
                        unsigned response_length,
                        bool per_sample);
 
-void brw_SAMPLE(struct brw_codegen *p,
-		struct brw_reg dest,
-		unsigned msg_reg_nr,
-		struct brw_reg src0,
-		unsigned binding_table_index,
-		unsigned sampler,
-		unsigned msg_type,
-		unsigned response_length,
-		unsigned msg_length,
-		unsigned header_present,
-		unsigned simd_mode,
-		unsigned return_format);
-
 void brw_adjust_sampler_state_pointer(struct brw_codegen *p,
                                       struct brw_reg header,
                                       struct brw_reg sampler_index);
-
-void gfx4_math(struct brw_codegen *p,
-	       struct brw_reg dest,
-	       unsigned function,
-	       unsigned msg_reg_nr,
-	       struct brw_reg src,
-	       unsigned precision );
 
 void gfx6_math(struct brw_codegen *p,
 	       struct brw_reg dest,
@@ -1945,22 +1914,6 @@ brw_memory_fence(struct brw_codegen *p,
                  uint32_t desc,
                  bool commit_enable,
                  unsigned bti);
-
-void
-brw_pixel_interpolator_query(struct brw_codegen *p,
-                             struct brw_reg dest,
-                             struct brw_reg mrf,
-                             bool noperspective,
-                             bool coarse_pixel_rate,
-                             unsigned mode,
-                             struct brw_reg data,
-                             unsigned msg_length,
-                             unsigned response_length);
-
-void
-brw_find_live_channel(struct brw_codegen *p,
-                      struct brw_reg dst,
-                      bool last);
 
 void
 brw_broadcast(struct brw_codegen *p,

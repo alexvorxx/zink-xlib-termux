@@ -1264,12 +1264,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 	 assert(src[0].type == dst.type);
 	 brw_ROR(p, dst, src[0], src[1]);
 	 break;
-      case BRW_OPCODE_F32TO16:
-         brw_F32TO16(p, dst, src[0]);
-         break;
-      case BRW_OPCODE_F16TO32:
-         brw_F16TO32(p, dst, src[0]);
-         break;
       case BRW_OPCODE_CMP:
          brw_CMP(p, dst, inst->conditional_mod, src[0], src[1]);
 	 break;
@@ -1513,12 +1507,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          break;
 
       case SHADER_OPCODE_FIND_LIVE_CHANNEL:
-         brw_find_live_channel(p, dst, false);
-         break;
       case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
-         brw_find_live_channel(p, dst, true);
-         break;
-
       case SHADER_OPCODE_LOAD_LIVE_CHANNELS:
          unreachable("Should be lowered by lower_find_live_channel()");
          break;

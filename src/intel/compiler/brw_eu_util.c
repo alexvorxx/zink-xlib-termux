@@ -34,20 +34,6 @@
 #include "brw_eu.h"
 
 
-void brw_math_invert( struct brw_codegen *p,
-			     struct brw_reg dst,
-			     struct brw_reg src)
-{
-   gfx4_math(p,
-	     dst,
-	     BRW_MATH_FUNCTION_INV,
-	     0,
-	     src,
-	     BRW_MATH_PRECISION_FULL);
-}
-
-
-
 void brw_copy4(struct brw_codegen *p,
 	       struct brw_reg dst,
 	       struct brw_reg src,

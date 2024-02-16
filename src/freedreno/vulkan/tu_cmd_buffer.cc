@@ -1454,11 +1454,13 @@ tu6_emit_binning_pass(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 
    update_vsc_pipe(cmd, cs, phys_dev->info->num_vsc_pipes);
 
-   tu_cs_emit_regs(cs,
-                   A6XX_PC_POWER_CNTL(phys_dev->info->a6xx.magic.PC_POWER_CNTL));
+   if (CHIP == A6XX) {
+      tu_cs_emit_regs(cs,
+                     A6XX_PC_POWER_CNTL(phys_dev->info->a6xx.magic.PC_POWER_CNTL));
 
-   tu_cs_emit_regs(cs,
-                   A6XX_VFD_POWER_CNTL(phys_dev->info->a6xx.magic.PC_POWER_CNTL));
+      tu_cs_emit_regs(cs,
+                     A6XX_VFD_POWER_CNTL(phys_dev->info->a6xx.magic.PC_POWER_CNTL));
+   }
 
    tu_cs_emit_pkt7(cs, CP_EVENT_WRITE, 1);
    tu_cs_emit(cs, UNK_2C);
@@ -1819,11 +1821,13 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
       tu_cs_emit_regs(cs,
                       A6XX_VFD_MODE_CNTL(RENDERING_PASS));
 
-      tu_cs_emit_regs(cs,
-                      A6XX_PC_POWER_CNTL(phys_dev->info->a6xx.magic.PC_POWER_CNTL));
+      if (CHIP == A6XX) {
+         tu_cs_emit_regs(cs,
+                        A6XX_PC_POWER_CNTL(phys_dev->info->a6xx.magic.PC_POWER_CNTL));
 
-      tu_cs_emit_regs(cs,
-                      A6XX_VFD_POWER_CNTL(phys_dev->info->a6xx.magic.PC_POWER_CNTL));
+         tu_cs_emit_regs(cs,
+                        A6XX_VFD_POWER_CNTL(phys_dev->info->a6xx.magic.PC_POWER_CNTL));
+      }
 
       tu_cs_emit_pkt7(cs, CP_SKIP_IB2_ENABLE_GLOBAL, 1);
       tu_cs_emit(cs, 0x1);

@@ -58,9 +58,6 @@ struct brw_insn_state {
    /* Group in units of channels */
    unsigned group:5;
 
-   /* Compression control on gfx4-5 */
-   bool compressed:1;
-
    /* One of BRW_MASK_* */
    unsigned mask_control:1;
 
@@ -162,9 +159,6 @@ void brw_set_default_exec_size(struct brw_codegen *p, unsigned value);
 void brw_set_default_mask_control( struct brw_codegen *p, unsigned value );
 void brw_set_default_saturate( struct brw_codegen *p, bool enable );
 void brw_set_default_access_mode( struct brw_codegen *p, unsigned access_mode );
-void brw_inst_set_compression(const struct intel_device_info *devinfo,
-                              brw_inst *inst, bool on);
-void brw_set_default_compression(struct brw_codegen *p, bool on);
 void brw_inst_set_group(const struct intel_device_info *devinfo,
                         brw_inst *inst, unsigned group);
 void brw_set_default_group(struct brw_codegen *p, unsigned group);

@@ -811,7 +811,6 @@ fs_generator::generate_scratch_write(fs_inst *inst, struct brw_reg src)
 
    brw_push_insn_state(p);
    brw_set_default_exec_size(p, cvt(lower_size) - 1);
-   brw_set_default_compression(p, lower_size > 8);
 
    for (unsigned i = 0; i < inst->exec_size / lower_size; i++) {
       brw_set_default_group(p, inst->group + lower_size * i);
@@ -969,7 +968,6 @@ fs_generator::generate_set_sample_id(fs_inst *inst,
                                suboffset(reg, i * lower_size / 4));
       brw_inst_set_exec_size(devinfo, insn, cvt(lower_size) - 1);
       brw_inst_set_group(devinfo, insn, inst->group + lower_size * i);
-      brw_inst_set_compression(devinfo, insn, lower_size > 8);
       brw_set_default_swsb(p, tgl_swsb_null());
    }
 }
@@ -1104,7 +1102,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
        */
       const bool compressed =
            inst->dst.component_size(inst->exec_size) > REG_SIZE;
-      brw_set_default_compression(p, compressed);
 
       if (devinfo->ver >= 20 && inst->group % 8 != 0) {
          assert(inst->force_writemask_all);

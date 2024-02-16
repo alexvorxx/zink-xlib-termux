@@ -544,7 +544,6 @@ brw_inst_set_state(const struct brw_isa_info *isa,
 
    brw_inst_set_exec_size(devinfo, insn, state->exec_size);
    brw_inst_set_group(devinfo, insn, state->group);
-   brw_inst_set_compression(devinfo, insn, state->compressed);
    brw_inst_set_access_mode(devinfo, insn, state->access_mode);
    brw_inst_set_mask_control(devinfo, insn, state->mask_control);
    if (devinfo->ver >= 12)
@@ -1724,7 +1723,6 @@ void brw_oword_block_write_scratch(struct brw_codegen *p,
 					 BRW_REGISTER_TYPE_UW);
 
       brw_inst_set_sfid(devinfo, insn, target_cache);
-      brw_inst_set_compression(devinfo, insn, false);
 
       if (brw_inst_exec_size(devinfo, insn) >= 16)
 	 src_header = vec16(src_header);
@@ -1813,7 +1811,6 @@ brw_oword_block_read_scratch(struct brw_codegen *p,
 
       brw_inst_set_sfid(devinfo, insn, target_cache);
       assert(brw_inst_pred_control(devinfo, insn) == 0);
-      brw_inst_set_compression(devinfo, insn, false);
 
       brw_set_dest(p, insn, dest);	/* UW? */
       brw_set_src0(p, insn, mrf);

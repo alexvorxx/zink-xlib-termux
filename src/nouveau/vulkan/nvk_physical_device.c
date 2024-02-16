@@ -1079,7 +1079,7 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 
    if (pdev->info.vram_size_B > 0) {
       uint32_t vram_heap_idx = pdev->mem_heap_count++;
-      pdev->mem_heaps[vram_heap_idx] = (VkMemoryHeap) {
+      pdev->mem_heaps[vram_heap_idx] = (struct nvk_memory_heap) {
          .size = pdev->info.vram_size_B,
          .flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT,
       };
@@ -1091,7 +1091,7 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    }
 
    uint32_t sysmem_heap_idx = pdev->mem_heap_count++;
-   pdev->mem_heaps[sysmem_heap_idx] = (VkMemoryHeap) {
+   pdev->mem_heaps[sysmem_heap_idx] = (struct nvk_memory_heap) {
       .size = sysmem_size_B,
       /* If we don't have any VRAM (iGPU), claim sysmem as DEVICE_LOCAL */
       .flags = pdev->info.vram_size_B == 0
@@ -1173,7 +1173,10 @@ nvk_GetPhysicalDeviceMemoryProperties2(
 
    pMemoryProperties->memoryProperties.memoryHeapCount = pdev->mem_heap_count;
    for (int i = 0; i < pdev->mem_heap_count; i++) {
-      pMemoryProperties->memoryProperties.memoryHeaps[i] = pdev->mem_heaps[i];
+      pMemoryProperties->memoryProperties.memoryHeaps[i] = (VkMemoryHeap) {
+         .size = pdev->mem_heaps[i].size,
+         .flags = pdev->mem_heaps[i].flags,
+      };
    }
 
    pMemoryProperties->memoryProperties.memoryTypeCount = pdev->mem_type_count;

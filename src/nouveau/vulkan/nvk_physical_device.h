@@ -25,6 +25,11 @@ struct nvk_queue_family {
    uint32_t queue_count;
 };
 
+struct nvk_memory_heap {
+   uint64_t size;
+   VkMemoryHeapFlags flags;
+};
+
 struct nvk_physical_device {
    struct vk_physical_device vk;
    struct nv_device_info info;
@@ -41,7 +46,7 @@ struct nvk_physical_device {
    uint8_t device_uuid[VK_UUID_SIZE];
 
    // TODO: add mapable VRAM heap if possible
-   VkMemoryHeap mem_heaps[2];
+   struct nvk_memory_heap mem_heaps[2];
    VkMemoryType mem_types[2];
    uint8_t mem_heap_count;
    uint8_t mem_type_count;

@@ -380,3 +380,18 @@ nouveau_ws_device_destroy(struct nouveau_ws_device *device)
    close(device->fd);
    FREE(device);
 }
+
+uint64_t
+nouveau_ws_device_vram_used(struct nouveau_ws_device *device)
+{
+   uint64_t used = 0;
+   if (nouveau_ws_param(device->fd, NOUVEAU_GETPARAM_VRAM_USED, &used))
+      return 0;
+
+   /* Zero memory used would be very strange given that it includes kernel
+    * internal allocations.
+    */
+   assert(used > 0);
+
+   return used;
+}

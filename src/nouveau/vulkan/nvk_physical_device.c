@@ -178,6 +178,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_line_rasterization = true,
       .EXT_load_store_op_none = true,
       .EXT_map_memory_placed = true,
+      .EXT_memory_budget = true,
       .EXT_multi_draw = true,
       .EXT_mutable_descriptor_type = true,
       .EXT_non_seamless_cube_map = true,
@@ -1226,6 +1227,67 @@ nvk_GetPhysicalDeviceMemoryProperties2(
    vk_foreach_struct(ext, pMemoryProperties->pNext)
    {
       switch (ext->sType) {
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT: {
+         VkPhysicalDeviceMemoryBudgetPropertiesEXT *p = (void *)ext;
+
+         for (unsigned i = 0; i < pdev->mem_heap_count; i++) {
+            const struct nvk_memory_heap *heap = &pdev->mem_heaps[i];
+            uint64_t used = p_atomic_read(&heap->used);
+
+            /* From the Vulkan 1.3.278 spec:
+             *
+             *    "heapUsage is an array of VK_MAX_MEMORY_HEAPS VkDeviceSize
+             *    values in which memory usages are returned, with one element
+             *    for each memory heap. A heap’s usage is an estimate of how
+             *    much memory the process is currently using in that heap."
+             *
+             * TODO: Include internal allocations?
+             */
+            p->heapUsage[i] = used;
+
+            uint64_t available = heap->size;
+            if (heap->available)
+               available = heap->available(pdev);
+
+            /* From the Vulkan 1.3.278 spec:
+             *
+             *    "heapBudget is an array of VK_MAX_MEMORY_HEAPS VkDeviceSize
+             *    values in which memory budgets are returned, with one
+             *    element for each memory heap. A heap’s budget is a rough
+             *    estimate of how much memory the process can allocate from
+             *    that heap before allocations may fail or cause performance
+             *    degradation. The budget includes any currently allocated
+             *    device memory."
+             *
+             * and
+             *
+             *    "The heapBudget value must be less than or equal to
+             *    VkMemoryHeap::size for each heap."
+             *
+             * available (queried above) is the total amount free memory
+             * system-wide and does not include our allocations so we need
+             * to add that in.
+             */
+            uint64_t budget = MIN2(available + used, heap->size);
+
+            /* Set the budget at 90% of available to avoid thrashing */
+            p->heapBudget[i] = ROUND_DOWN_TO(budget * 9 / 10, 1 << 20);
+         }
+
+         /* From the Vulkan 1.3.278 spec:
+          *
+          *    "The heapBudget and heapUsage values must be zero for array
+          *    elements greater than or equal to
+          *    VkPhysicalDeviceMemoryProperties::memoryHeapCount. The
+          *    heapBudget value must be non-zero for array elements less than
+          *    VkPhysicalDeviceMemoryProperties::memoryHeapCount."
+          */
+         for (unsigned i = pdev->mem_heap_count; i < VK_MAX_MEMORY_HEAPS; i++) {
+            p->heapBudget[i] = 0u;
+            p->heapUsage[i] = 0u;
+         }
+         break;
+      }
       default:
          nvk_debug_ignored_stype(ext->sType);
          break;

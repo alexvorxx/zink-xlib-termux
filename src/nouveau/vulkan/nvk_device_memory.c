@@ -12,6 +12,7 @@
 #include "nvk_physical_device.h"
 
 #include "nv_push.h"
+#include "util/u_atomic.h"
 
 #include <inttypes.h>
 #include <sys/mman.h>
@@ -234,6 +235,9 @@ nvk_AllocateMemory(VkDevice device,
       close(fd_info->fd);
    }
 
+   struct nvk_memory_heap *heap = &pdev->mem_heaps[type->heapIndex];
+   p_atomic_add(&heap->used, mem->bo->size);
+
    *pMem = nvk_device_memory_to_handle(mem);
 
    return VK_SUCCESS;
@@ -252,12 +256,17 @@ nvk_FreeMemory(VkDevice device,
 {
    VK_FROM_HANDLE(nvk_device, dev, device);
    VK_FROM_HANDLE(nvk_device_memory, mem, _mem);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
    if (!mem)
       return;
 
    if (mem->map)
       nouveau_ws_bo_unmap(mem->bo, mem->map);
+
+   const VkMemoryType *type = &pdev->mem_types[mem->vk.memory_type_index];
+   struct nvk_memory_heap *heap = &pdev->mem_heaps[type->heapIndex];
+   p_atomic_add(&heap->used, -((int64_t)mem->bo->size));
 
    nouveau_ws_bo_destroy(mem->bo);
 

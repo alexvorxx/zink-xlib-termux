@@ -28,6 +28,7 @@ struct nvk_queue_family {
 
 struct nvk_memory_heap {
    uint64_t size;
+   uint64_t used;
    VkMemoryHeapFlags flags;
    uint64_t (*available)(struct nvk_physical_device *pdev);
 };

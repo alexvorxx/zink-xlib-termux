@@ -1628,23 +1628,7 @@ radv_CmdPreprocessGeneratedCommandsNV(VkCommandBuffer commandBuffer,
    if (!radv_dgc_can_preprocess(layout, pipeline))
       return;
 
-   const bool use_predication = radv_use_dgc_predication(cmd_buffer, pGeneratedCommandsInfo);
-
-   if (use_predication) {
-      VK_FROM_HANDLE(radv_buffer, seq_count_buffer, pGeneratedCommandsInfo->sequencesCountBuffer);
-      const uint64_t va = radv_buffer_get_va(seq_count_buffer->bo) + seq_count_buffer->offset +
-                          pGeneratedCommandsInfo->sequencesCountOffset;
-
-      radv_begin_conditional_rendering(cmd_buffer, va, true);
-      cmd_buffer->state.predicating = true;
-   }
-
    radv_prepare_dgc(cmd_buffer, pGeneratedCommandsInfo);
-
-   if (use_predication) {
-      cmd_buffer->state.predicating = false;
-      radv_end_conditional_rendering(cmd_buffer);
-   }
 }
 
 /* Always need to call this directly before draw due to dependence on bound state. */

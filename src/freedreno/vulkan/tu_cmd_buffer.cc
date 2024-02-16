@@ -96,6 +96,7 @@ tu6_lazy_emit_tessfactor_addr(struct tu_cmd_buffer *cmd)
    cmd->state.tessfactor_addr_set = true;
 }
 
+template <chip CHIP>
 static void
 tu6_lazy_emit_vsc(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 {
@@ -133,14 +134,24 @@ tu6_lazy_emit_vsc(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 
    tu_get_scratch_bo(dev, size0 + num_vsc_pipes * 4, &vsc_bo);
 
-   tu_cs_emit_regs(cs,
-                   A6XX_VSC_DRAW_STRM_SIZE_ADDRESS(.bo = vsc_bo, .bo_offset = size0));
-   tu_cs_emit_regs(cs,
-                   A6XX_VSC_PRIM_STRM_ADDRESS(.bo = vsc_bo));
-   tu_cs_emit_regs(
-      cs, A6XX_VSC_DRAW_STRM_ADDRESS(.bo = vsc_bo,
-                                     .bo_offset = cmd->vsc_prim_strm_pitch *
-                                                  num_vsc_pipes));
+   if (CHIP == A6XX) {
+      tu_cs_emit_regs(cs,
+                     A6XX_VSC_DRAW_STRM_SIZE_ADDRESS(.bo = vsc_bo, .bo_offset = size0));
+      tu_cs_emit_regs(cs,
+                     A6XX_VSC_PRIM_STRM_ADDRESS(.bo = vsc_bo));
+      tu_cs_emit_regs(
+         cs, A6XX_VSC_DRAW_STRM_ADDRESS(.bo = vsc_bo,
+                                       .bo_offset = cmd->vsc_prim_strm_pitch *
+                                                   num_vsc_pipes));
+   } else {
+      tu_cs_emit_pkt7(cs, CP_SET_PSEUDO_REG, 3 * 3);
+      tu_cs_emit(cs, A6XX_CP_SET_PSEUDO_REG__0_PSEUDO_REG(DRAW_STRM_ADDRESS));
+      tu_cs_emit_qw(cs, vsc_bo->iova + cmd->vsc_prim_strm_pitch * num_vsc_pipes);
+      tu_cs_emit(cs, A6XX_CP_SET_PSEUDO_REG__0_PSEUDO_REG(DRAW_STRM_SIZE_ADDRESS));
+      tu_cs_emit_qw(cs, vsc_bo->iova + size0);
+      tu_cs_emit(cs, A6XX_CP_SET_PSEUDO_REG__0_PSEUDO_REG(PRIM_STRM_ADDRESS));
+      tu_cs_emit_qw(cs, vsc_bo->iova);
+   }
 
    cmd->vsc_initialized = true;
 }
@@ -1796,7 +1807,7 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
 
    if (use_hw_binning(cmd)) {
       if (!cmd->vsc_initialized) {
-         tu6_lazy_emit_vsc(cmd, cs);
+         tu6_lazy_emit_vsc<CHIP>(cmd, cs);
       }
 
       tu6_emit_bin_size<CHIP>(cs, tiling->tile0.width, tiling->tile0.height,

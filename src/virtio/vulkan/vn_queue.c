@@ -782,6 +782,69 @@ vn_queue_submission_add_feedback_cmds(struct vn_queue_submission *submit,
 }
 
 static VkResult
+vn_queue_submission_setup_batch(struct vn_queue_submission *submit,
+                                uint32_t batch_index,
+                                uint32_t *cmds_offset)
+{
+   const uint32_t cmd_count = vn_get_cmd_count(submit, batch_index);
+   const uint32_t signal_count =
+      vn_get_signal_semaphore_count(submit, batch_index);
+
+   uint32_t feedback_types = 0;
+   uint32_t extra_cmd_count = 0;
+   for (uint32_t i = 0; i < signal_count; i++) {
+      struct vn_semaphore *sem = vn_semaphore_from_handle(
+         vn_get_signal_semaphore(submit, batch_index, i));
+      if (sem->feedback.slot) {
+         feedback_types |= VN_FEEDBACK_TYPE_SEMAPHORE;
+         extra_cmd_count++;
+      }
+   }
+
+   for (uint32_t i = 0; i < cmd_count; i++) {
+      struct vn_command_buffer *cmd = vn_get_cmd(submit, batch_index, i);
+      if (!list_is_empty(&cmd->builder.query_batches)) {
+         feedback_types |= VN_FEEDBACK_TYPE_QUERY;
+         extra_cmd_count++;
+         break;
+      }
+   }
+
+   if (submit->feedback_types & VN_FEEDBACK_TYPE_FENCE &&
+       batch_index == submit->batch_count - 1) {
+      feedback_types |= VN_FEEDBACK_TYPE_FENCE;
+      extra_cmd_count++;
+   }
+
+   /* If the batch has qfb, sfb or ffb, copy the original commands and append
+    * feedback cmds.
+    */
+   if (extra_cmd_count) {
+      struct vn_feedback_cmds feedback_cmds = {
+         .cmds = submit->temp.cmds + *cmds_offset,
+      };
+
+      const size_t cmd_size = vn_get_cmd_size(submit);
+      const size_t total_cmd_size = cmd_count * cmd_size;
+      /* copy only needed for non-empty batches */
+      if (total_cmd_size) {
+         memcpy(feedback_cmds.cmds, vn_get_cmds(submit, batch_index),
+                total_cmd_size);
+      }
+
+      VkResult result = vn_queue_submission_add_feedback_cmds(
+         submit, batch_index, cmd_count, feedback_types, &feedback_cmds);
+      if (result != VK_SUCCESS)
+         return result;
+
+      /* set offset to next batch's cmds */
+      *cmds_offset += total_cmd_size + (extra_cmd_count * cmd_size);
+   }
+
+   return VK_SUCCESS;
+}
+
+static VkResult
 vn_queue_submission_setup_batches(struct vn_queue_submission *submit)
 {
    assert(submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO_2 ||
@@ -812,63 +875,12 @@ vn_queue_submission_setup_batches(struct vn_queue_submission *submit)
       submit->batches = submit->temp.batches;
    }
 
-   /* For any batches with semaphore or query feedback, copy the original cmd
-    * handles and append feedback cmds.
-    */
-   uint32_t cmd_offset = 0;
-   for (uint32_t batch_index = 0; batch_index < submit->batch_count;
-        batch_index++) {
-      const uint32_t cmd_count = vn_get_cmd_count(submit, batch_index);
-      const uint32_t signal_count =
-         vn_get_signal_semaphore_count(submit, batch_index);
-
-      uint32_t feedback_types = 0;
-      uint32_t extra_cmd_count = 0;
-      for (uint32_t i = 0; i < signal_count; i++) {
-         struct vn_semaphore *sem = vn_semaphore_from_handle(
-            vn_get_signal_semaphore(submit, batch_index, i));
-         if (sem->feedback.slot) {
-            feedback_types |= VN_FEEDBACK_TYPE_SEMAPHORE;
-            extra_cmd_count++;
-         }
-      }
-
-      for (uint32_t i = 0; i < cmd_count; i++) {
-         struct vn_command_buffer *cmd = vn_get_cmd(submit, batch_index, i);
-         if (!list_is_empty(&cmd->builder.query_batches)) {
-            feedback_types |= VN_FEEDBACK_TYPE_QUERY;
-            extra_cmd_count++;
-            break;
-         }
-      }
-
-      if (submit->feedback_types & VN_FEEDBACK_TYPE_FENCE &&
-          batch_index == submit->batch_count - 1) {
-         feedback_types |= VN_FEEDBACK_TYPE_FENCE;
-         extra_cmd_count++;
-      }
-
-      if (extra_cmd_count) {
-         struct vn_feedback_cmds feedback_cmds = {
-            .cmds = submit->temp.cmds + cmd_offset,
-         };
-
-         const size_t cmd_size = vn_get_cmd_size(submit);
-         const size_t total_cmd_size = cmd_count * cmd_size;
-         /* copy only needed for non-empty batches */
-         if (total_cmd_size) {
-            memcpy(feedback_cmds.cmds, vn_get_cmds(submit, batch_index),
-                   total_cmd_size);
-         }
-
-         VkResult result = vn_queue_submission_add_feedback_cmds(
-            submit, batch_index, cmd_count, feedback_types, &feedback_cmds);
-         if (result != VK_SUCCESS)
-            return result;
-
-         /* set offset to next batch's cmds */
-         cmd_offset += total_cmd_size + (extra_cmd_count * cmd_size);
-      }
+   uint32_t cmds_offset = 0;
+   for (uint32_t i = 0; i < submit->batch_count; i++) {
+      VkResult result =
+         vn_queue_submission_setup_batch(submit, i, &cmds_offset);
+      if (result != VK_SUCCESS)
+         return result;
    }
 
    submit->batches = submit->temp.batches;

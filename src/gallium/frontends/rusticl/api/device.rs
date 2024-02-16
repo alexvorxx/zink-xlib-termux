@@ -258,7 +258,9 @@ impl CLInfo<cl_device_info> for cl_device_id {
             } else {
                 "FULL_PROFILE"
             }),
-            CL_DEVICE_PROFILING_TIMER_RESOLUTION => cl_prop::<usize>(dev.timer_resolution()),
+            CL_DEVICE_PROFILING_TIMER_RESOLUTION => {
+                cl_prop::<usize>(dev.caps.timer_resolution as usize)
+            }
             CL_DEVICE_QUEUE_ON_DEVICE_MAX_SIZE => cl_prop::<cl_uint>(0),
             CL_DEVICE_QUEUE_ON_DEVICE_PREFERRED_SIZE => cl_prop::<cl_uint>(0),
             CL_DEVICE_QUEUE_ON_DEVICE_PROPERTIES => cl_prop::<cl_command_queue_properties>(0),
@@ -407,7 +409,7 @@ fn get_host_timer(device_id: cl_device_id, host_timestamp: *mut cl_ulong) -> CLR
 
     let device = Device::ref_from_raw(device_id)?;
 
-    if !device.has_timestamp {
+    if !device.caps.has_timestamp {
         // CL_INVALID_OPERATION if the platform associated with device does not support device and host timer synchronization
         return Err(CL_INVALID_OPERATION);
     }

@@ -39,14 +39,31 @@ pub struct Device {
     pub clc_versions: Vec<cl_name_version>,
     pub custom: bool,
     pub embedded: bool,
-    pub has_timestamp: bool, // Cached to keep API fast
     pub extension_string: String,
     pub extensions: Vec<cl_name_version>,
     pub spirv_extensions: Vec<CString>,
     pub clc_features: Vec<cl_name_version>,
     pub formats: HashMap<cl_image_format, HashMap<cl_mem_object_type, cl_mem_flags>>,
     pub lib_clc: NirShader,
+    pub caps: DeviceCaps,
     helper_ctx: Mutex<PipeContext>,
+}
+
+pub struct DeviceCaps {
+    pub has_timestamp: bool,
+    pub timer_resolution: u32,
+}
+
+impl DeviceCaps {
+    fn new(screen: &PipeScreen) -> Self {
+        let cap_timestamp = screen.param(pipe_cap::PIPE_CAP_QUERY_TIMESTAMP) != 0;
+        let timer_resolution = screen.param(pipe_cap::PIPE_CAP_TIMER_RESOLUTION) as u32;
+
+        Self {
+            has_timestamp: cap_timestamp && timer_resolution > 0,
+            timer_resolution: timer_resolution,
+        }
+    }
 }
 
 pub trait HelperContextWrapper {
@@ -230,6 +247,7 @@ impl Device {
         }
 
         let mut d = Self {
+            caps: DeviceCaps::new(&screen),
             base: CLObjectBase::new(RusticlTypes::Device),
             helper_ctx: Mutex::new(helper_ctx),
             screen: screen,
@@ -238,7 +256,6 @@ impl Device {
             clc_versions: Vec::new(),
             custom: false,
             embedded: false,
-            has_timestamp: false,
             extension_string: String::from(""),
             extensions: Vec::new(),
             spirv_extensions: Vec::new(),
@@ -254,10 +271,6 @@ impl Device {
 
         // check if we have to report it as a custom device
         d.custom = d.check_custom();
-
-        let cap_timestamp = d.screen.param(pipe_cap::PIPE_CAP_QUERY_TIMESTAMP);
-        let cap_timestamp_res = d.timer_resolution();
-        d.has_timestamp = cap_timestamp != 0 && cap_timestamp_res > 0;
 
         // query supported extensions
         d.fill_extensions();
@@ -1001,10 +1014,6 @@ impl Device {
 
     pub fn svm_supported(&self) -> bool {
         self.screen.param(pipe_cap::PIPE_CAP_SYSTEM_SVM) == 1
-    }
-
-    pub fn timer_resolution(&self) -> usize {
-        self.screen.param(pipe_cap::PIPE_CAP_TIMER_RESOLUTION) as usize
     }
 
     pub fn unified_memory(&self) -> bool {

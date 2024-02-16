@@ -923,6 +923,40 @@ nvk_physical_device_free_disk_cache(struct nvk_physical_device *pdev)
 #endif
 }
 
+static uint64_t
+nvk_get_sysmem_heap_size(void)
+{
+   uint64_t sysmem_size_B = 0;
+   if (!os_get_total_physical_memory(&sysmem_size_B))
+      return 0;
+
+   /* Use 3/4 of total size to avoid swapping */
+   return ROUND_DOWN_TO(sysmem_size_B * 3 / 4, 1 << 20);
+}
+
+static uint64_t
+nvk_get_sysmem_heap_available(struct nvk_physical_device *pdev)
+{
+   uint64_t sysmem_size_B = 0;
+   if (!os_get_available_system_memory(&sysmem_size_B)) {
+      vk_loge(VK_LOG_OBJS(pdev), "Failed to query available system memory");
+      return 0;
+   }
+
+   /* Use 3/4 of available to avoid swapping */
+   return ROUND_DOWN_TO(sysmem_size_B * 3 / 4, 1 << 20);
+}
+
+static uint64_t
+nvk_get_vram_heap_available(struct nvk_physical_device *pdev)
+{
+   const uint64_t used = nouveau_ws_device_vram_used(pdev->ws_dev);
+   if (used > pdev->info.vram_size_B)
+      return 0;
+
+   return pdev->info.vram_size_B - used;
+}
+
 VkResult
 nvk_create_drm_physical_device(struct vk_instance *_instance,
                                drmDevicePtr drm_device,
@@ -1070,8 +1104,8 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 
    nvk_physical_device_init_pipeline_cache(pdev);
 
-   uint64_t sysmem_size_B = 0;
-   if (!os_get_total_physical_memory(&sysmem_size_B)) {
+   uint64_t sysmem_size_B = nvk_get_sysmem_heap_size();
+   if (sysmem_size_B == 0) {
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
                          "Failed to query total system memory");
       goto fail_disk_cache;
@@ -1084,6 +1118,10 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
          .flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT,
       };
 
+      /* Only set available if we have the ioctl. */
+      if (nouveau_ws_device_vram_used(ws_dev) > 0)
+         pdev->mem_heaps[vram_heap_idx].available = nvk_get_vram_heap_available;
+
       pdev->mem_types[pdev->mem_type_count++] = (VkMemoryType) {
          .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
          .heapIndex = vram_heap_idx,
@@ -1092,12 +1130,12 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 
    uint32_t sysmem_heap_idx = pdev->mem_heap_count++;
    pdev->mem_heaps[sysmem_heap_idx] = (struct nvk_memory_heap) {
-      /* Advertise 3/4 of total size to avoid swapping */
-      .size = ROUND_DOWN_TO(sysmem_size_B * 3 / 4, 1 << 20),
+      .size = sysmem_size_B,
       /* If we don't have any VRAM (iGPU), claim sysmem as DEVICE_LOCAL */
       .flags = pdev->info.vram_size_B == 0
                ? VK_MEMORY_HEAP_DEVICE_LOCAL_BIT
                : 0,
+      .available = nvk_get_sysmem_heap_available,
    };
 
    pdev->mem_types[pdev->mem_type_count++] = (VkMemoryType) {

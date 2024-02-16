@@ -19,6 +19,7 @@
 
 struct nak_compiler;
 struct nvk_instance;
+struct nvk_physical_device;
 
 struct nvk_queue_family {
    VkQueueFlags queue_flags;
@@ -28,6 +29,7 @@ struct nvk_queue_family {
 struct nvk_memory_heap {
    uint64_t size;
    VkMemoryHeapFlags flags;
+   uint64_t (*available)(struct nvk_physical_device *pdev);
 };
 
 struct nvk_physical_device {

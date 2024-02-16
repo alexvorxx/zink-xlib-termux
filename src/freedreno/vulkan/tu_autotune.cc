@@ -621,6 +621,7 @@ tu_autotune_use_bypass(struct tu_autotune *at,
    return fallback_use_bypass(pass, framebuffer, cmd_buffer);
 }
 
+template <chip CHIP>
 void
 tu_autotune_begin_renderpass(struct tu_cmd_buffer *cmd,
                              struct tu_cs *cs,
@@ -649,12 +650,21 @@ tu_autotune_begin_renderpass(struct tu_cmd_buffer *cmd,
 
    tu_cs_emit_regs(cs, A6XX_RB_SAMPLE_COUNT_CONTROL(.copy = true));
 
-   tu_cs_emit_regs(cs, A6XX_RB_SAMPLE_COUNT_ADDR(.qword = result_iova));
-   /* A7XX TODO: Fixup ZPASS_DONE */
-   tu_cs_emit_pkt7(cs, CP_EVENT_WRITE, 1);
-   tu_cs_emit(cs, ZPASS_DONE);
+   if (CHIP >= A7XX) {
+      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE7, 3);
+      tu_cs_emit(cs, CP_EVENT_WRITE7_0(.event = ZPASS_DONE,
+                                       .write_sample_count = true).value);
+      tu_cs_emit_qw(cs, result_iova);
+   } else {
+      tu_cs_emit_regs(cs,
+                        A6XX_RB_SAMPLE_COUNT_ADDR(.qword = result_iova));
+      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE, 1);
+      tu_cs_emit(cs, ZPASS_DONE);
+   }
 }
+TU_GENX(tu_autotune_begin_renderpass);
 
+template <chip CHIP>
 void tu_autotune_end_renderpass(struct tu_cmd_buffer *cmd,
                                 struct tu_cs *cs,
                                 struct tu_renderpass_result *autotune_result)
@@ -670,9 +680,16 @@ void tu_autotune_end_renderpass(struct tu_cmd_buffer *cmd,
 
    tu_cs_emit_regs(cs, A6XX_RB_SAMPLE_COUNT_CONTROL(.copy = true));
 
-   tu_cs_emit_regs(cs, A6XX_RB_SAMPLE_COUNT_ADDR(.qword = result_iova));
-
-   /* A7XX TODO: Fixup ZPASS_DONE */
-   tu_cs_emit_pkt7(cs, CP_EVENT_WRITE, 1);
-   tu_cs_emit(cs, ZPASS_DONE);
+   if (CHIP >= A7XX) {
+      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE7, 3);
+      tu_cs_emit(cs, CP_EVENT_WRITE7_0(.event = ZPASS_DONE,
+                                       .write_sample_count = true).value);
+      tu_cs_emit_qw(cs, result_iova);
+   } else {
+      tu_cs_emit_regs(cs,
+                        A6XX_RB_SAMPLE_COUNT_ADDR(.qword = result_iova));
+      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE, 1);
+      tu_cs_emit(cs, ZPASS_DONE);
+   }
 }
+TU_GENX(tu_autotune_end_renderpass);

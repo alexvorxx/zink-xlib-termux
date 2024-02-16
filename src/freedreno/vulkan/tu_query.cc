@@ -1171,7 +1171,7 @@ emit_end_occlusion_query(struct tu_cmd_buffer *cmdbuf,
       }
    } else {
       /* A7XX TODO: Calculate (end - begin) via ZPASS_DONE. */
-      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE, 3);
+      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE7, 3);
       tu_cs_emit(cs, CP_EVENT_WRITE7_0(.event = ZPASS_DONE,
                                        .write_sample_count = true).value);
       tu_cs_emit_qw(cs, end_iova);

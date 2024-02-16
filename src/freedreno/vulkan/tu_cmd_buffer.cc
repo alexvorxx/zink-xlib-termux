@@ -1750,7 +1750,7 @@ tu6_sysmem_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
    tu_cs_emit_pkt7(cs, CP_SET_MODE, 1);
    tu_cs_emit(cs, 0x0);
 
-   tu_autotune_begin_renderpass(cmd, cs, autotune_result);
+   tu_autotune_begin_renderpass<CHIP>(cmd, cs, autotune_result);
 
    tu_cs_sanity_check(cs);
 }
@@ -1760,7 +1760,7 @@ static void
 tu6_sysmem_render_end(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
                       struct tu_renderpass_result *autotune_result)
 {
-   tu_autotune_end_renderpass(cmd, cs, autotune_result);
+   tu_autotune_end_renderpass<CHIP>(cmd, cs, autotune_result);
 
    /* Do any resolves of the last subpass. These are handled in the
     * tile_store_cs in the gmem path.
@@ -1863,7 +1863,7 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
       }
    }
 
-   tu_autotune_begin_renderpass(cmd, cs, autotune_result);
+   tu_autotune_begin_renderpass<CHIP>(cmd, cs, autotune_result);
 
    tu_cs_sanity_check(cs);
 }
@@ -1916,7 +1916,7 @@ static void
 tu6_tile_render_end(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
                     struct tu_renderpass_result *autotune_result)
 {
-   tu_autotune_end_renderpass(cmd, cs, autotune_result);
+   tu_autotune_end_renderpass<CHIP>(cmd, cs, autotune_result);
 
    tu_cs_emit_call(cs, &cmd->draw_epilogue_cs);
 

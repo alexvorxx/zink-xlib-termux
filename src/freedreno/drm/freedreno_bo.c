@@ -141,9 +141,10 @@ bo_new(struct fd_device *dev, uint32_t size, uint32_t flags,
    struct fd_bo *bo = NULL;
 
    if (size < FD_BO_HEAP_BLOCK_SIZE) {
-      if ((flags == 0) && dev->default_heap)
+      uint32_t alloc_flags = flags & ~_FD_BO_HINTS;
+      if ((alloc_flags == 0) && dev->default_heap)
          bo = fd_bo_heap_alloc(dev->default_heap, size);
-      else if ((flags == RING_FLAGS) && dev->ring_heap)
+      else if ((alloc_flags == RING_FLAGS) && dev->ring_heap)
          bo = fd_bo_heap_alloc(dev->ring_heap, size);
       if (bo)
          return bo;

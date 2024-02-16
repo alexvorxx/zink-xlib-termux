@@ -147,6 +147,16 @@ int fd_fence_wait(struct fd_fence *f);
 /* internal bo flags: */
 #define _FD_BO_NOSYNC             BITSET_BIT(7) /* Avoid userspace fencing on control buffers */
 
+/* Additional flags hinting usage, only used for tracing.  Buffers without
+ * one of these flags set will be presumed to be driver internal.
+ */
+#define FD_BO_HINT_BUFFER         BITSET_BIT(8)
+#define FD_BO_HINT_IMAGE          BITSET_BIT(9)
+#define _FD_BO_HINTS              ( \
+   FD_BO_HINT_BUFFER | \
+   FD_BO_HINT_IMAGE | \
+   0)
+
 /*
  * bo access flags: (keep aligned to MSM_PREP_x)
  */

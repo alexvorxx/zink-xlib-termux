@@ -102,6 +102,8 @@ process_derefs(nir_builder *b, nir_deref_instr **p, nir_deref_instr *parent)
          } else {
             parent = nir_build_deref_struct(b, parent, (*p)->strct.index);
          }
+      } else if ((*p)->deref_type == nir_deref_type_array_wildcard) {
+         parent = nir_build_deref_array_wildcard(b, parent);
       }
    }
 

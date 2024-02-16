@@ -317,6 +317,10 @@ nouveau_ws_device_new(drmDevicePtr drm_device)
    else
       device->local_mem_domain = NOUVEAU_GEM_DOMAIN_VRAM;
 
+   if (drm_device->bustype == DRM_BUS_PCI &&
+       !nouveau_ws_param(fd, NOUVEAU_GETPARAM_VRAM_BAR_SIZE, &value))
+      device->info.bar_size_B = value;
+
    if (nouveau_ws_param(fd, NOUVEAU_GETPARAM_GRAPH_UNITS, &value))
       goto out_err;
 

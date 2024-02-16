@@ -1628,7 +1628,16 @@ radv_CmdPreprocessGeneratedCommandsNV(VkCommandBuffer commandBuffer,
    if (!radv_dgc_can_preprocess(layout, pipeline))
       return;
 
+   /* VK_EXT_conditional_rendering says that copy commands should not be
+    * affected by conditional rendering.
+    */
+   const bool old_predicating = cmd_buffer->state.predicating;
+   cmd_buffer->state.predicating = false;
+
    radv_prepare_dgc(cmd_buffer, pGeneratedCommandsInfo);
+
+   /* Restore conditional rendering. */
+   cmd_buffer->state.predicating = old_predicating;
 }
 
 /* Always need to call this directly before draw due to dependence on bound state. */

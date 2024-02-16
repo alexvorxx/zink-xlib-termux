@@ -2854,7 +2854,7 @@ setup_barrier_message_payload_gfx125(const fs_builder &bld,
    assert(bld.shader->devinfo->verx10 >= 125);
 
    /* From BSpec: 54006, mov r0.2[31:24] into m0.2[31:24] and m0.2[23:16] */
-   fs_reg m0_10ub = component(retype(msg_payload, BRW_REGISTER_TYPE_UB), 10);
+   fs_reg m0_10ub = horiz_offset(retype(msg_payload, BRW_REGISTER_TYPE_UB), 10);
    fs_reg r0_11ub =
       stride(suboffset(retype(brw_vec1_grf(0, 0), BRW_REGISTER_TYPE_UB), 11),
              0, 1, 0);

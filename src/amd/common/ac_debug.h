@@ -63,8 +63,9 @@ void ac_print_gpuvm_fault_status(FILE *output, enum amd_gfx_level gfx_level,
                                  uint32_t status);
 
 /* ac_gather_context_rolls.c */
+struct hash_table;
 void ac_gather_context_rolls(FILE *f, uint32_t **ibs, uint32_t *ib_dw_sizes, unsigned num_ibs,
-                             const struct radeon_info *info);
+                             struct hash_table *annotations, const struct radeon_info *info);
 
 /* ac_parse_ib.c */
 void ac_dump_reg(FILE *file, enum amd_gfx_level gfx_level, enum radeon_family family,

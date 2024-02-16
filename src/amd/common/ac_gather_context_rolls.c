@@ -22,6 +22,7 @@
 #include "sid_tables.h"
 
 #include "util/bitset.h"
+#include "util/hash_table.h"
 #include "util/u_dynarray.h"
 #include "util/u_memory.h"
 
@@ -34,6 +35,7 @@ struct ac_context_reg_deltas {
 struct ac_context_reg_state {
    uint32_t regs[1024];
    struct ac_context_reg_deltas deltas;
+   const char *annotation;
 };
 
 struct ac_context_roll_ctx {
@@ -93,9 +95,16 @@ static unsigned get_reg_index(unsigned reg)
    return (reg - SI_CONTEXT_REG_OFFSET) / 4;
 }
 
-static void ac_ib_gather_context_rolls(struct ac_context_roll_ctx *ctx, uint32_t *ib, int num_dw)
+static void ac_ib_gather_context_rolls(struct ac_context_roll_ctx *ctx, uint32_t *ib, int num_dw,
+                                       struct hash_table *annotations)
 {
    for (unsigned cur_dw = 0; cur_dw < num_dw;) {
+      if (annotations) {
+         struct hash_entry *marker = _mesa_hash_table_search(annotations, ib + cur_dw);
+         if (marker)
+            ctx->cur->annotation = marker->data;
+      }
+
       uint32_t header = ib[cur_dw++];
       unsigned type = PKT_TYPE_G(header);
 
@@ -292,7 +301,7 @@ static void ac_ib_gather_context_rolls(struct ac_context_roll_ctx *ctx, uint32_t
 }
 
 void ac_gather_context_rolls(FILE *f, uint32_t **ibs, uint32_t *ib_dw_sizes, unsigned num_ibs,
-                             const struct radeon_info *info)
+                             struct hash_table *annotations, const struct radeon_info *info)
 {
    struct ac_context_roll_ctx ctx;
 
@@ -304,7 +313,7 @@ void ac_gather_context_rolls(FILE *f, uint32_t **ibs, uint32_t *ib_dw_sizes, uns
 
    /* Parse the IBs. */
    for (unsigned i = 0; i < num_ibs; i++)
-      ac_ib_gather_context_rolls(&ctx, ibs[i], ib_dw_sizes[i]);
+      ac_ib_gather_context_rolls(&ctx, ibs[i], ib_dw_sizes[i], annotations);
 
    /* Roll the last context to add it to the list. */
    ac_roll_context(&ctx);
@@ -314,6 +323,9 @@ void ac_gather_context_rolls(FILE *f, uint32_t **ibs, uint32_t *ib_dw_sizes, uns
       /* Print the context rolls starting with the most frequent one. */
       util_dynarray_foreach(&ctx.rolls, struct ac_context_reg_state *, iter) {
          struct ac_context_reg_state *state = *iter;
+
+         if (state->annotation)
+            fprintf(f, "%s: ", state->annotation);
 
          unsigned i;
          BITSET_FOREACH_SET(i, state->deltas.changed, 1024) {

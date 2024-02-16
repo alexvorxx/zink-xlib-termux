@@ -1411,7 +1411,7 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
                      ws->info.gfx_level, ws->info.family, cs->hw_ip, radv_amdgpu_winsys_get_cpu_addr, cs);
       } else {
          uint32_t *ib_dw = addr_info.cpu_addr;
-         ac_gather_context_rolls(file, &ib_dw, &cs->ib_buffers[0].cdw, 1, &ws->info);
+         ac_gather_context_rolls(file, &ib_dw, &cs->ib_buffers[0].cdw, 1, NULL, &ws->info);
       }
    } else {
       uint32_t **ibs = type == RADV_CS_DUMP_TYPE_CTX_ROLLS ? malloc(cs->num_ib_buffers * sizeof(uint32_t *)) : NULL;
@@ -1443,7 +1443,7 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
       }
 
       if (type == RADV_CS_DUMP_TYPE_CTX_ROLLS) {
-         ac_gather_context_rolls(file, ibs, ib_dw_sizes, cs->num_ib_buffers, &ws->info);
+         ac_gather_context_rolls(file, ibs, ib_dw_sizes, cs->num_ib_buffers, NULL, &ws->info);
 
          free(ibs);
          free(ib_dw_sizes);

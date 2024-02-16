@@ -1095,7 +1095,7 @@ void si_gather_context_rolls(struct si_context *sctx)
    ib_dw_sizes[cs->num_prev] = cs->current.cdw;
 
    FILE *f = fopen(sctx->screen->context_roll_log_filename, "a");
-   ac_gather_context_rolls(f, ibs, ib_dw_sizes, cs->num_prev + 1, &sctx->screen->info);
+   ac_gather_context_rolls(f, ibs, ib_dw_sizes, cs->num_prev + 1, NULL, &sctx->screen->info);
    fclose(f);
 }
 

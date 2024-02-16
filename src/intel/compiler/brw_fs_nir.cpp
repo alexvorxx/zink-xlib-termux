@@ -1901,6 +1901,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
 
    case nir_op_extract_u8:
    case nir_op_extract_i8: {
+      const brw_reg_type type = brw_int_type(1, instr->op == nir_op_extract_i8);
       unsigned byte = nir_src_as_uint(instr->src[1].src);
 
       /* The PRMs say:
@@ -1910,8 +1911,6 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
        *    Use two instructions and a word or DWord intermediate integer type.
        */
       if (instr->def.bit_size == 64) {
-         const brw_reg_type type = brw_int_type(1, instr->op == nir_op_extract_i8);
-
          if (instr->op == nir_op_extract_i8) {
             /* If we need to sign extend, extract to a word first */
             fs_reg w_temp = bld.vgrf(BRW_REGISTER_TYPE_W);
@@ -1931,7 +1930,6 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
                     brw_imm_uw(0xff));
          }
       } else {
-         const brw_reg_type type = brw_int_type(1, instr->op == nir_op_extract_i8);
          bld.MOV(result, subscript(op[0], type, byte));
       }
       break;

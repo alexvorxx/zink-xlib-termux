@@ -100,7 +100,6 @@ libintel_compiler_brw_files = files(
   'brw_mesh.cpp',
   'brw_nir.h',
   'brw_nir.c',
-  'brw_nir_analyze_boolean_resolves.c',
   'brw_nir_analyze_ubo_ranges.c',
   'brw_nir_attribute_workarounds.c',
   'brw_nir_lower_cooperative_matrix.c',

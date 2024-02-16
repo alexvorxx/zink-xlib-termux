@@ -23,12 +23,9 @@
 
 #include "intel_nir.h"
 #include "brw_nir.h"
-#include "brw_nir_rt.h"
 #include "brw_shader.h"
-#include "dev/intel_debug.h"
 #include "compiler/glsl_types.h"
 #include "compiler/nir/nir_builder.h"
-#include "util/u_math.h"
 
 /*
  * Returns the minimum number of vec4 (as_vec4 == true) or dvec4 (as_vec4 ==
@@ -622,15 +619,6 @@ brw_nir_lower_fs_inputs(nir_shader *nir,
          var->data.interpolation = flat ? INTERP_MODE_FLAT
                                         : INTERP_MODE_SMOOTH;
       }
-
-      /* On Ironlake and below, there is only one interpolation mode.
-       * Centroid interpolation doesn't mean anything on this hardware --
-       * there is no multisampling.
-       */
-      if (devinfo->ver < 6) {
-         var->data.centroid = false;
-         var->data.sample = false;
-      }
    }
 
    nir_lower_io(nir, nir_var_shader_in, type_size_vec4,
@@ -779,17 +767,13 @@ brw_nir_optimize(nir_shader *nir,
        * low.  Therefore there shouldn't be a performance benefit to avoid it.
        */
       OPT(nir_opt_peephole_select, 0, true, false);
-      OPT(nir_opt_peephole_select, 8, true, devinfo->ver >= 6);
+      OPT(nir_opt_peephole_select, 8, true, true);
 
       OPT(nir_opt_intrinsics);
       OPT(nir_opt_idiv_const, 32);
       OPT(nir_opt_algebraic);
 
-      /* BFI2 did not exist until Gfx7, so there's no point in trying to
-       * optimize an instruction that should not get generated.
-       */
-      if (devinfo->ver >= 7)
-         OPT(nir_opt_reassociate_bfi);
+      OPT(nir_opt_reassociate_bfi);
 
       OPT(nir_lower_constant_convert_alu_types);
       OPT(nir_opt_constant_folding);
@@ -836,9 +820,6 @@ brw_nir_optimize(nir_shader *nir,
 static unsigned
 lower_bit_size_callback(const nir_instr *instr, UNUSED void *data)
 {
-   const struct brw_compiler *compiler = (const struct brw_compiler *) data;
-   const struct intel_device_info *devinfo = compiler->devinfo;
-
    switch (instr->type) {
    case nir_instr_type_alu: {
       nir_alu_instr *alu = nir_instr_as_alu(instr);
@@ -884,7 +865,7 @@ lower_bit_size_callback(const nir_instr *instr, UNUSED void *data)
       case nir_op_flog2:
       case nir_op_fsin:
       case nir_op_fcos:
-         return devinfo->ver < 9 ? 32 : 0;
+         return 0;
       case nir_op_isign:
          assert(!"Should have been lowered by nir_opt_algebraic.");
          return 0;
@@ -1582,30 +1563,23 @@ brw_vectorize_lower_mem_access(nir_shader *nir,
 
    OPT(nir_opt_load_store_vectorize, &options);
 
-   /* Only run the blockify optimization on Gfx9+ because although prior HW
-    * versions have support for block loads, they do have limitations on
-    * alignment as well as requiring split sends which are not supported
-    * there.
-    */
-   if (compiler->devinfo->ver >= 9) {
-      /* Required for nir_divergence_analysis() */
-      OPT(nir_convert_to_lcssa, true, true);
+   /* Required for nir_divergence_analysis() */
+   OPT(nir_convert_to_lcssa, true, true);
 
-      /* When HW supports block loads, using the divergence analysis, try
-       * to find uniform SSBO loads and turn them into block loads.
-       *
-       * Rerun the vectorizer after that to make the largest possible block
-       * loads.
-       *
-       * This is a win on 2 fronts :
-       *   - fewer send messages
-       *   - reduced register pressure
-       */
-      nir_divergence_analysis(nir);
-      if (OPT(intel_nir_blockify_uniform_loads, compiler->devinfo))
-         OPT(nir_opt_load_store_vectorize, &options);
-      OPT(nir_opt_remove_phis);
-   }
+   /* When HW supports block loads, using the divergence analysis, try
+    * to find uniform SSBO loads and turn them into block loads.
+    *
+    * Rerun the vectorizer after that to make the largest possible block
+    * loads.
+    *
+    * This is a win on 2 fronts :
+    *   - fewer send messages
+    *   - reduced register pressure
+    */
+   nir_divergence_analysis(nir);
+   if (OPT(intel_nir_blockify_uniform_loads, compiler->devinfo))
+      OPT(nir_opt_load_store_vectorize, &options);
+   OPT(nir_opt_remove_phis);
 
    nir_lower_mem_access_bit_sizes_options mem_access_options = {
       .modes = nir_var_mem_ssbo |
@@ -1696,21 +1670,19 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    if (OPT(nir_lower_int64))
       brw_nir_optimize(nir, devinfo);
 
-   if (devinfo->ver >= 6) {
-      /* Try and fuse multiply-adds, if successful, run shrink_vectors to
-       * avoid peephole_ffma to generate things like this :
-       *    vec16 ssa_0 = ...
-       *    vec16 ssa_1 = fneg ssa_0
-       *    vec1  ssa_2 = ffma ssa_1, ...
-       *
-       * We want this instead :
-       *    vec16 ssa_0 = ...
-       *    vec1  ssa_1 = fneg ssa_0.x
-       *    vec1  ssa_2 = ffma ssa_1, ...
-       */
-      if (OPT(intel_nir_opt_peephole_ffma))
-         OPT(nir_opt_shrink_vectors);
-   }
+   /* Try and fuse multiply-adds, if successful, run shrink_vectors to
+    * avoid peephole_ffma to generate things like this :
+    *    vec16 ssa_0 = ...
+    *    vec16 ssa_1 = fneg ssa_0
+    *    vec1  ssa_2 = ffma ssa_1, ...
+    *
+    * We want this instead :
+    *    vec16 ssa_0 = ...
+    *    vec1  ssa_1 = fneg ssa_0.x
+    *    vec1  ssa_2 = ffma ssa_1, ...
+    */
+   if (OPT(intel_nir_opt_peephole_ffma))
+      OPT(nir_opt_shrink_vectors);
 
    OPT(intel_nir_opt_peephole_imul32x16);
 
@@ -1725,7 +1697,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
        * might be under the threshold of conversion to bcsel.
        */
       OPT(nir_opt_peephole_select, 0, false, false);
-      OPT(nir_opt_peephole_select, 1, false, compiler->devinfo->ver >= 6);
+      OPT(nir_opt_peephole_select, 1, false, true);
    }
 
    do {
@@ -1853,14 +1825,6 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    nir_trivialize_registers(nir);
 
-   /* This is the last pass we run before we start emitting stuff.  It
-    * determines when we need to insert boolean resolves on Gen <= 5.  We
-    * run it last because it stashes data in instr->pass_flags and we don't
-    * want that to be squashed by other NIR passes.
-    */
-   if (devinfo->ver <= 5)
-      brw_nir_analyze_boolean_resolves(nir);
-
    nir_sweep(nir);
 
    if (unlikely(debug_enabled)) {
@@ -1875,27 +1839,12 @@ brw_nir_apply_sampler_key(nir_shader *nir,
                           const struct brw_compiler *compiler,
                           const struct brw_sampler_prog_key_data *key_tex)
 {
-   const struct intel_device_info *devinfo = compiler->devinfo;
    nir_lower_tex_options tex_options = {
       .lower_txd_clamp_bindless_sampler = true,
       .lower_txd_clamp_if_sampler_index_not_lt_16 = true,
       .lower_invalid_implicit_lod = true,
       .lower_index_to_offset = true,
    };
-
-   /* Iron Lake and prior require lowering of all rectangle textures */
-   if (devinfo->ver < 6)
-      tex_options.lower_rect = true;
-
-   /* Prior to Broadwell, our hardware can't actually do GL_CLAMP */
-   if (devinfo->ver < 8) {
-      tex_options.saturate_s = key_tex->gl_clamp_mask[0];
-      tex_options.saturate_t = key_tex->gl_clamp_mask[1];
-      tex_options.saturate_r = key_tex->gl_clamp_mask[2];
-   }
-
-   /* Prior to Haswell, we have to lower gradients on shadow samplers */
-   tex_options.lower_txd_shadow = devinfo->verx10 <= 70;
 
    return nir_lower_tex(nir, &tex_options);
 }
@@ -2111,9 +2060,9 @@ brw_type_for_nir_type(const struct intel_device_info *devinfo,
    case nir_type_float64:
       return BRW_REGISTER_TYPE_DF;
    case nir_type_int64:
-      return devinfo->ver < 8 ? BRW_REGISTER_TYPE_DF : BRW_REGISTER_TYPE_Q;
+      return BRW_REGISTER_TYPE_Q;
    case nir_type_uint64:
-      return devinfo->ver < 8 ? BRW_REGISTER_TYPE_DF : BRW_REGISTER_TYPE_UQ;
+      return BRW_REGISTER_TYPE_UQ;
    case nir_type_int16:
       return BRW_REGISTER_TYPE_W;
    case nir_type_uint16:

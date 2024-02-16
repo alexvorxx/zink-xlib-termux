@@ -30,8 +30,11 @@ struct nvk_physical_device {
    struct nv_device_info info;
    enum nvk_debug debug_flags;
    dev_t render_dev;
-   dev_t primary_dev;
    int master_fd;
+
+   /* Only used for VK_EXT_memory_budget */
+   struct nouveau_ws_device *ws_dev;
+
    struct nak_compiler *nak;
    struct wsi_device wsi_device;
 

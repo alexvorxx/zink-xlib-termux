@@ -964,42 +964,44 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
       return vk_error(instance, VK_ERROR_INCOMPATIBLE_DRIVER);
 
    const struct nv_device_info info = ws_dev->info;
-   enum nvk_debug debug_flags = ws_dev->debug_flags;
-   const bool has_vm_bind = ws_dev->has_vm_bind;
    const struct vk_sync_type syncobj_sync_type =
       vk_drm_syncobj_get_type(ws_dev->fd);
 
-   nouveau_ws_device_destroy(ws_dev);
-
    /* We don't support anything pre-Kepler */
-   if (info.cls_eng3d < KEPLER_A)
-      return VK_ERROR_INCOMPATIBLE_DRIVER;
+   if (info.cls_eng3d < KEPLER_A) {
+      result = VK_ERROR_INCOMPATIBLE_DRIVER;
+      goto fail_ws_dev;
+   }
 
    if ((info.type != NV_DEVICE_TYPE_DIS ||
         info.cls_eng3d < TURING_A || info.cls_eng3d > ADA_A) &&
        !debug_get_bool_option("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", false)) {
-      return vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
-                       "WARNING: NVK is not well-tested on %s, pass "
-                       "NVK_I_WANT_A_BROKEN_VULKAN_DRIVER=1 "
-                       "if you know what you're doing.",
-                       info.device_name);
+      result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
+                         "WARNING: NVK is not well-tested on %s, pass "
+                         "NVK_I_WANT_A_BROKEN_VULKAN_DRIVER=1 "
+                         "if you know what you're doing.",
+                         info.device_name);
+      goto fail_ws_dev;
    }
 
-   if (!has_vm_bind) {
-      return vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
-                       "NVK Requires a Linux kernel version 6.6 or later");
+   if (!ws_dev->has_vm_bind) {
+      result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
+                         "NVK Requires a Linux kernel version 6.6 or later");
+      goto fail_ws_dev;
    }
 
    if (!(drm_device->available_nodes & (1 << DRM_NODE_RENDER))) {
-      return vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
-                       "NVK requires a render node");
+      result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
+                         "NVK requires a render node");
+      goto fail_ws_dev;
    }
 
    struct stat st;
    if (stat(drm_device->nodes[DRM_NODE_RENDER], &st)) {
-      return vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
-                       "fstat() failed on %s: %m",
-                       drm_device->nodes[DRM_NODE_RENDER]);
+      result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
+                         "fstat() failed on %s: %m",
+                         drm_device->nodes[DRM_NODE_RENDER]);
+      goto fail_ws_dev;
    }
    const dev_t render_dev = st.st_rdev;
 
@@ -1009,8 +1011,10 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
       vk_zalloc(&instance->vk.alloc, sizeof(*pdev),
                 8, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
 
-   if (pdev == NULL)
-      return vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+   if (pdev == NULL) {
+      result = vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto fail_ws_dev;
+   }
 
    struct vk_physical_device_dispatch_table dispatch_table;
    vk_physical_device_dispatch_table_from_entrypoints(
@@ -1052,10 +1056,11 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    if (result != VK_SUCCESS)
       goto fail_master_fd;
 
+   pdev->info = info;
+   pdev->debug_flags = ws_dev->debug_flags;
    pdev->render_dev = render_dev;
    pdev->master_fd = master_fd;
-   pdev->info = info;
-   pdev->debug_flags = debug_flags;
+   pdev->ws_dev = ws_dev;
 
    pdev->nak = nak_compiler_create(&pdev->info);
    if (pdev->nak == NULL) {
@@ -1138,6 +1143,8 @@ fail_master_fd:
    if (master_fd >= 0)
       close(master_fd);
    vk_free(&instance->vk.alloc, pdev);
+fail_ws_dev:
+   nouveau_ws_device_destroy(ws_dev);
    return result;
 }
 
@@ -1152,6 +1159,7 @@ nvk_physical_device_destroy(struct vk_physical_device *vk_pdev)
    nak_compiler_destroy(pdev->nak);
    if (pdev->master_fd >= 0)
       close(pdev->master_fd);
+   nouveau_ws_device_destroy(pdev->ws_dev);
    vk_physical_device_finish(&pdev->vk);
    vk_free(&pdev->vk.instance->alloc, pdev);
 }

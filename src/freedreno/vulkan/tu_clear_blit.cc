@@ -3114,6 +3114,9 @@ clear_gmem_attachment(struct tu_cmd_buffer *cmd,
    tu_cs_emit_pkt4(cs, REG_A6XX_RB_BLIT_CLEAR_COLOR_DW0, 4);
    tu_cs_emit_array(cs, clear_vals, 4);
 
+   if (CHIP >= A7XX)
+      tu_cs_emit_regs(cs, A7XX_RB_UNKNOWN_88E4(.unk0 = 1));
+
    tu_emit_event_write<CHIP>(cmd, cs, FD_BLIT);
 }
 
@@ -3433,6 +3436,9 @@ tu_emit_blit(struct tu_cmd_buffer *cmd,
 
       tu_cs_emit_pkt4(cs, REG_A6XX_RB_UNKNOWN_88D0, 1);
       tu_cs_emit(cs, 0);
+
+      if (CHIP >= A7XX)
+         tu_cs_emit_regs(cs, A7XX_RB_UNKNOWN_88E4(.unk0 = 1));
 
       tu_emit_event_write<CHIP>(cmd, cs, FD_BLIT);
    }

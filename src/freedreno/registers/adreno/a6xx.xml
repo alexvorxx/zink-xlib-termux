@@ -2785,7 +2785,7 @@ to upconvert to 32b float internally?
 		 -->
 		<bitfield name="BUFFER_ID" low="12" high="15"/>
 	</reg32>
-	<reg32 offset="0x88e4" name="RB_UNKNOWN_88E4" variants="A7XX-">
+	<reg32 offset="0x88e4" name="RB_UNKNOWN_88E4" variants="A7XX-" usage="rp_blit">
 		<!-- Value conditioned based on predicate, changed before blits -->
 		<bitfield name="UNK0" pos="0" type="boolean"/>
 	</reg32>

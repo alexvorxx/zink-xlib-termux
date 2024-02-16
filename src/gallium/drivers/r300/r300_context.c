@@ -86,6 +86,9 @@ static void r300_destroy_context(struct pipe_context* context)
     if (r300->draw)
         draw_destroy(r300->draw);
 
+    for (unsigned i = 0; i < r300->nr_vertex_buffers; i++)
+       pipe_vertex_buffer_unreference(&r300->vertex_buffer[i]);
+
     if (r300->uploader)
         u_upload_destroy(r300->uploader);
     if (r300->context.stream_uploader)

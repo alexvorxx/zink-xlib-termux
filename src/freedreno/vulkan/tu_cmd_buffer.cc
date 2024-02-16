@@ -1775,6 +1775,20 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
    tu_cs_emit_pkt7(cs, CP_SKIP_IB2_ENABLE_GLOBAL, 1);
    tu_cs_emit(cs, 0x0);
 
+   if (CHIP >= A7XX) {
+      tu_cs_emit_regs(cs,
+                     A7XX_RB_UNKNOWN_8812(0x0));
+      tu_cs_emit_regs(cs,
+                   A7XX_RB_UNKNOWN_8E06(0x0));
+
+      tu_cs_emit_regs(cs, A7XX_GRAS_UNKNOWN_8007(0x0));
+      tu_cs_emit_regs(cs, A7XX_GRAS_UNKNOWN_810B(0x0));
+      tu_cs_emit_regs(cs, A7XX_GRAS_UNKNOWN_8113(0x0));
+
+      tu_cs_emit_regs(cs, A6XX_GRAS_UNKNOWN_8110(0x2));
+      tu_cs_emit_regs(cs, A7XX_RB_UNKNOWN_8E09(0x4));
+   }
+
    tu_emit_cache_flush_ccu<CHIP>(cmd, cs, TU_CMD_CCU_GMEM);
 
    if (use_hw_binning(cmd)) {

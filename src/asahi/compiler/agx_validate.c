@@ -144,6 +144,7 @@ agx_write_registers(const agx_instr *I, unsigned d)
 
    switch (I->op) {
    case AGX_OPCODE_MOV:
+   case AGX_OPCODE_PHI:
       /* Tautological */
       return agx_index_size_16(I->dest[d]);
 
@@ -217,6 +218,12 @@ agx_read_registers(const agx_instr *I, unsigned s)
    case AGX_OPCODE_MOV:
       /* Tautological */
       return agx_index_size_16(I->src[0]);
+
+   case AGX_OPCODE_PHI:
+      if (I->src[s].type == AGX_INDEX_IMMEDIATE)
+         return size;
+      else
+         return agx_index_size_16(I->dest[0]);
 
    case AGX_OPCODE_SPLIT:
       return I->nr_dests * agx_size_align_16(agx_split_width(I));

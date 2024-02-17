@@ -999,7 +999,7 @@ agx_insert_parallel_copies(agx_context *ctx, agx_block *block)
 
       agx_foreach_phi_in_block(succ, phi) {
          assert(!any_succ && "control flow graph has a critical edge");
-         nr_phi++;
+         nr_phi += agx_channels(phi->dest[0]);
       }
 
       any_succ = true;
@@ -1025,11 +1025,28 @@ agx_insert_parallel_copies(agx_context *ctx, agx_block *block)
          assert(dest.type == AGX_INDEX_REGISTER);
          assert(dest.size == src.size);
 
-         copies[i++] = (struct agx_copy){
-            .dest = dest.value,
-            .dest_mem = dest.memory,
-            .src = src,
-         };
+         /* Scalarize the phi, since the parallel copy lowering doesn't handle
+          * vector phis. While we scalarize phis in NIR, we can generate vector
+          * phis from spilling so must take care.
+          */
+         for (unsigned c = 0; c < agx_channels(phi->dest[0]); ++c) {
+            agx_index src_ = src;
+            unsigned offs = c * agx_size_align_16(src.size);
+
+            if (src.type != AGX_INDEX_IMMEDIATE) {
+               assert(src.type == AGX_INDEX_UNIFORM ||
+                      src.type == AGX_INDEX_REGISTER);
+               src_.value += offs;
+               src_.channels_m1 = 1 - 1;
+            }
+
+            assert(i < nr_phi);
+            copies[i++] = (struct agx_copy){
+               .dest = dest.value + offs,
+               .dest_mem = dest.memory,
+               .src = src_,
+            };
+         }
       }
 
       agx_emit_parallel_copies(&b, copies, nr_phi);

@@ -823,7 +823,6 @@ if _opencl != 'disabled'
     error('The Clover OpenCL state tracker requires rtti')
   endif
 
-  with_clc = true
   with_gallium_opencl = true
   with_opencl_icd = _opencl == 'icd'
 else
@@ -848,7 +847,7 @@ if with_gallium_rusticl
 endif
 
 dep_clc = null_dep
-if with_clc
+if with_gallium_opencl or with_clc
   dep_clc = dependency('libclc')
 endif
 

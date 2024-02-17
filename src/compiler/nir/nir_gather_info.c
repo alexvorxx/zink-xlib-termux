@@ -664,7 +664,6 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
    case nir_intrinsic_load_barycentric_model:
    case nir_intrinsic_load_ray_launch_id:
    case nir_intrinsic_load_ray_launch_size:
-   case nir_intrinsic_load_ray_launch_size_addr_amd:
    case nir_intrinsic_load_ray_world_origin:
    case nir_intrinsic_load_ray_world_direction:
    case nir_intrinsic_load_ray_object_origin:

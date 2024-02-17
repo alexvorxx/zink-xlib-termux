@@ -1582,9 +1582,6 @@ system_value("rt_arg_scratch_offset_amd", 1)
 # Whether to call the anyhit shader for an intersection in an intersection shader.
 system_value("intersection_opaque_amd", 1, bit_sizes=[1])
 
-# Used for indirect ray tracing.
-system_value("ray_launch_size_addr_amd", 1, bit_sizes=[64])
-
 # pointer to the next resume shader
 system_value("resume_shader_address_amd", 1, bit_sizes=[64], indices=[CALL_IDX])
 

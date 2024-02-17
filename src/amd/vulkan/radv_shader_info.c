@@ -919,8 +919,6 @@ static void
 gather_shader_info_cs(struct radv_device *device, const nir_shader *nir, const struct radv_shader_stage_key *stage_key,
                       struct radv_shader_info *info)
 {
-   info->cs.uses_ray_launch_size = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_RAY_LAUNCH_SIZE_ADDR_AMD);
-
    unsigned default_wave_size = device->physical_device->cs_wave_size;
    if (info->cs.uses_rt)
       default_wave_size = device->physical_device->rt_wave_size;

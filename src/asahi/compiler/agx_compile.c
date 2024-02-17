@@ -2975,7 +2975,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
    NIR_PASS(_, nir, agx_lower_sincos);
    NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_lower_front_face,
             nir_metadata_block_index | nir_metadata_dominance, NULL);
-   NIR_PASS(_, nir, nir_lower_frag_coord_to_pixel_coord);
    NIR_PASS(_, nir, agx_nir_lower_subgroups);
    NIR_PASS(_, nir, nir_lower_phis_to_scalar, true);
 
@@ -2999,11 +2998,13 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
    /* Move before lowering */
    nir_move_options move_all = nir_move_const_undef | nir_move_load_ubo |
                                nir_move_load_input | nir_move_comparisons |
-                               nir_move_copies | nir_move_load_ssbo;
+                               nir_move_copies | nir_move_load_ssbo |
+                               nir_move_alu;
 
    NIR_PASS(_, nir, nir_opt_sink, move_all);
    NIR_PASS(_, nir, nir_opt_move, move_all);
    NIR_PASS(_, nir, agx_nir_lower_shared_bitsize);
+   NIR_PASS(_, nir, nir_lower_frag_coord_to_pixel_coord);
 }
 
 void

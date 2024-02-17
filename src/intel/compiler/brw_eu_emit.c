@@ -35,36 +35,6 @@
 
 #include "util/ralloc.h"
 
-/**
- * Prior to Sandybridge, the SEND instruction accepted non-MRF source
- * registers, implicitly moving the operand to a message register.
- *
- * On Sandybridge, this is no longer the case.  This function performs the
- * explicit move; it should be called before emitting a SEND instruction.
- */
-void
-gfx6_resolve_implied_move(struct brw_codegen *p,
-			  struct brw_reg *src,
-			  unsigned msg_reg_nr)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-
-   if (src->file == BRW_MESSAGE_REGISTER_FILE)
-      return;
-
-   if (src->file != BRW_ARCHITECTURE_REGISTER_FILE || src->nr != BRW_ARF_NULL) {
-      assert(devinfo->ver < 12);
-      brw_push_insn_state(p);
-      brw_set_default_exec_size(p, BRW_EXECUTE_8);
-      brw_set_default_mask_control(p, BRW_MASK_DISABLE);
-      brw_set_default_compression_control(p, BRW_COMPRESSION_NONE);
-      brw_MOV(p, retype(brw_message_reg(msg_reg_nr), BRW_REGISTER_TYPE_UD),
-	      retype(*src, BRW_REGISTER_TYPE_UD));
-      brw_pop_insn_state(p);
-   }
-   *src = brw_message_reg(msg_reg_nr);
-}
-
 static void
 gfx7_convert_mrf_to_grf(struct brw_codegen *p, struct brw_reg *reg)
 {
@@ -434,76 +404,6 @@ brw_set_desc_ex(struct brw_codegen *p, brw_inst *inst,
    brw_inst_set_send_desc(devinfo, inst, desc);
    if (devinfo->ver >= 9)
       brw_inst_set_send_ex_desc(devinfo, inst, ex_desc);
-}
-
-static void brw_set_math_message( struct brw_codegen *p,
-				  brw_inst *inst,
-				  unsigned function,
-				  unsigned integer_type,
-				  bool low_precision,
-				  unsigned dataType )
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   unsigned msg_length;
-   unsigned response_length;
-
-   /* Infer message length from the function */
-   switch (function) {
-   case BRW_MATH_FUNCTION_POW:
-   case BRW_MATH_FUNCTION_INT_DIV_QUOTIENT:
-   case BRW_MATH_FUNCTION_INT_DIV_REMAINDER:
-   case BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER:
-      msg_length = 2;
-      break;
-   default:
-      msg_length = 1;
-      break;
-   }
-
-   /* Infer response length from the function */
-   switch (function) {
-   case BRW_MATH_FUNCTION_SINCOS:
-   case BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER:
-      response_length = 2;
-      break;
-   default:
-      response_length = 1;
-      break;
-   }
-
-   brw_set_desc(p, inst, brw_message_desc(
-                   devinfo, msg_length, response_length, false));
-
-   brw_inst_set_sfid(devinfo, inst, BRW_SFID_MATH);
-   brw_inst_set_math_msg_function(devinfo, inst, function);
-   brw_inst_set_math_msg_signed_int(devinfo, inst, integer_type);
-   brw_inst_set_math_msg_precision(devinfo, inst, low_precision);
-   brw_inst_set_math_msg_saturate(devinfo, inst, brw_inst_saturate(devinfo, inst));
-   brw_inst_set_math_msg_data_type(devinfo, inst, dataType);
-   brw_inst_set_saturate(devinfo, inst, 0);
-}
-
-
-static void brw_set_ff_sync_message(struct brw_codegen *p,
-				    brw_inst *insn,
-				    bool allocate,
-				    unsigned response_length,
-				    bool end_of_thread)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-
-   brw_set_desc(p, insn, brw_message_desc(
-                   devinfo, 1, response_length, true));
-
-   brw_inst_set_sfid(devinfo, insn, BRW_SFID_URB);
-   brw_inst_set_eot(devinfo, insn, end_of_thread);
-   brw_inst_set_urb_opcode(devinfo, insn, 1); /* FF_SYNC */
-   brw_inst_set_urb_allocate(devinfo, insn, allocate);
-   /* The following fields are not used by FF_SYNC: */
-   brw_inst_set_urb_global_offset(devinfo, insn, 0);
-   brw_inst_set_urb_swizzle_control(devinfo, insn, 0);
-   brw_inst_set_urb_used(devinfo, insn, 0);
-   brw_inst_set_urb_complete(devinfo, insn, 0);
 }
 
 static void
@@ -1318,32 +1218,6 @@ brw_IF(struct brw_codegen *p, unsigned execute_size)
    return insn;
 }
 
-/* This function is only used for gfx6-style IF instructions with an
- * embedded comparison (conditional modifier).  It is not used on gfx7.
- */
-brw_inst *
-gfx6_IF(struct brw_codegen *p, enum brw_conditional_mod conditional,
-	struct brw_reg src0, struct brw_reg src1)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   brw_inst *insn;
-
-   insn = next_insn(p, BRW_OPCODE_IF);
-
-   brw_set_dest(p, insn, brw_imm_w(0));
-   brw_inst_set_exec_size(devinfo, insn, brw_get_default_exec_size(p));
-   brw_inst_set_gfx6_jump_count(devinfo, insn, 0);
-   brw_set_src0(p, insn, src0);
-   brw_set_src1(p, insn, src1);
-
-   assert(brw_inst_qtr_control(devinfo, insn) == BRW_COMPRESSION_NONE);
-   assert(brw_inst_pred_control(devinfo, insn) == BRW_PREDICATE_NONE);
-   brw_inst_set_cond_modifier(devinfo, insn, conditional);
-
-   push_if_stack(p, insn);
-   return insn;
-}
-
 /**
  * Patch IF and ELSE instructions with appropriate jump targets.
  */
@@ -1559,25 +1433,6 @@ brw_WHILE(struct brw_codegen *p)
    return insn;
 }
 
-/* FORWARD JUMPS:
- */
-void brw_land_fwd_jump(struct brw_codegen *p, int jmp_insn_idx)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   brw_inst *jmp_insn = &p->store[jmp_insn_idx];
-   unsigned jmpi = 2;
-
-   assert(brw_inst_opcode(p->isa, jmp_insn) == BRW_OPCODE_JMPI);
-   assert(brw_inst_src1_reg_file(devinfo, jmp_insn) == BRW_IMMEDIATE_VALUE);
-
-   brw_inst_set_gfx4_jump_count(devinfo, jmp_insn,
-                                jmpi * (p->nr_insn - jmp_insn_idx - 1));
-}
-
-/* To integrate with the above, it makes sense that the comparison
- * instruction should populate the flag register.  It might be simpler
- * just to use the flag reg for most WM tasks?
- */
 void brw_CMP(struct brw_codegen *p,
 	     struct brw_reg dest,
 	     unsigned conditional,
@@ -2385,30 +2240,6 @@ brw_set_uip_jip(struct brw_codegen *p, int start_offset)
          break;
       }
    }
-}
-
-void brw_ff_sync(struct brw_codegen *p,
-		   struct brw_reg dest,
-		   unsigned msg_reg_nr,
-		   struct brw_reg src0,
-		   bool allocate,
-		   unsigned response_length,
-		   bool eot)
-{
-   brw_inst *insn;
-
-   gfx6_resolve_implied_move(p, &src0, msg_reg_nr);
-
-   insn = next_insn(p, BRW_OPCODE_SEND);
-   brw_set_dest(p, insn, dest);
-   brw_set_src0(p, insn, src0);
-   brw_set_src1(p, insn, brw_imm_d(0));
-
-   brw_set_ff_sync_message(p,
-			   insn,
-			   allocate,
-			   response_length,
-			   eot);
 }
 
 static unsigned

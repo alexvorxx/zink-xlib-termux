@@ -194,10 +194,6 @@ void brw_add_reloc(struct brw_codegen *p, uint32_t id,
 void brw_set_dest(struct brw_codegen *p, brw_inst *insn, struct brw_reg dest);
 void brw_set_src0(struct brw_codegen *p, brw_inst *insn, struct brw_reg reg);
 
-void gfx6_resolve_implied_move(struct brw_codegen *p,
-			       struct brw_reg *src,
-			       unsigned msg_reg_nr);
-
 /* Helpers for regular instructions:
  */
 #define ALU1(OP)				\
@@ -1489,14 +1485,6 @@ brw_send_indirect_split_message(struct brw_codegen *p,
                                 bool ex_bso,
                                 bool eot);
 
-void brw_ff_sync(struct brw_codegen *p,
-		   struct brw_reg dest,
-		   unsigned msg_reg_nr,
-		   struct brw_reg src0,
-		   bool allocate,
-		   unsigned response_length,
-		   bool eot);
-
 void brw_svb_write(struct brw_codegen *p,
                    struct brw_reg dest,
                    unsigned msg_reg_nr,
@@ -1566,8 +1554,6 @@ void brw_barrier(struct brw_codegen *p, struct brw_reg src);
  * channel.
  */
 brw_inst *brw_IF(struct brw_codegen *p, unsigned execute_size);
-brw_inst *gfx6_IF(struct brw_codegen *p, enum brw_conditional_mod conditional,
-                  struct brw_reg src0, struct brw_reg src1);
 
 void brw_ELSE(struct brw_codegen *p);
 void brw_ENDIF(struct brw_codegen *p);
@@ -1584,8 +1570,6 @@ brw_inst *brw_HALT(struct brw_codegen *p);
 
 /* Forward jumps:
  */
-void brw_land_fwd_jump(struct brw_codegen *p, int jmp_insn_idx);
-
 brw_inst *brw_JMPI(struct brw_codegen *p, struct brw_reg index,
                    unsigned predicate_control);
 

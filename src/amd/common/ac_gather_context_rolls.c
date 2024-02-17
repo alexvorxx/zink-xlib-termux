@@ -26,6 +26,10 @@
 #include "util/u_dynarray.h"
 #include "util/u_memory.h"
 
+#define COLOR_RESET  "\033[0m"
+#define COLOR_RED    "\033[31m"
+#define COLOR_GREEN  "\033[1;32m"
+
 struct ac_context_reg_deltas {
    uint32_t changed_masks[1024];    /* changes masks of context registers */
    BITSET_DECLARE(changed, 1024);   /* which context register was set */
@@ -333,18 +337,25 @@ void ac_gather_context_rolls(FILE *f, uint32_t **ibs, uint32_t *ib_dw_sizes, uns
             const struct si_reg *reg = ac_find_register(info->gfx_level, info->family,
                                                         reg_offset);
 
+            if (!state->deltas.changed_masks[i])
+               fprintf(f, COLOR_RED);
+            else
+               fprintf(f, COLOR_GREEN);
+
             if (!reg) {
                fprintf(f, "0x%X(0x%x) ", reg_offset, state->deltas.changed_masks[i]);
             } else {
                fprintf(f, "%s(0x%x) ", sid_strings + reg->name_offset,
                        state->deltas.changed_masks[i]);
             }
+
+            fprintf(f, COLOR_RESET);
          }
 
          if (state->deltas.acquire_mem)
             fprintf(f, "ACQUIRE_MEM");
 
-         fprintf(f, "\n");
+         fprintf(f, "\n\n");
       }
    }
 

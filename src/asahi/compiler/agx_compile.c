@@ -944,10 +944,9 @@ agx_emit_image_load(agx_builder *b, agx_index dst, nir_intrinsic_instr *intr)
       agx_subdivide_to(b, layer, coord[coord_comps], 0);
 
       assert(ms_index.size == AGX_SIZE_16);
-      agx_index vec = agx_vec2(b, ms_index, layer);
-      vec.size = AGX_SIZE_32;
-      vec.channels_m1 = 1 - 1;
-      coord[coord_comps++] = vec;
+      agx_index tmp = agx_temp(b->shader, AGX_SIZE_32);
+      agx_emit_collect_to(b, tmp, 2, (agx_index[]){ms_index, layer});
+      coord[coord_comps++] = tmp;
    } else if (is_ms) {
       agx_index tmp = agx_temp(b->shader, AGX_SIZE_32);
       agx_mov_to(b, tmp, ms_index);

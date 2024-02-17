@@ -36,6 +36,9 @@ const struct nir_shader_compiler_options brw_scalar_nir_options = {
        nir_divergence_single_patch_per_tes_subgroup |
        nir_divergence_shader_record_ptr_uniform),
    .force_indirect_unrolling = nir_var_function_temp,
+   .has_bfe = true,
+   .has_bfi = true,
+   .has_bfm = true,
    .has_pack_32_4x8 = true,
    .has_uclz = true,
    .lower_base_vertex = true,
@@ -131,7 +134,7 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
     * destination type can be Quadword and source type Doubleword for Gfx8 and
     * Gfx9. So, lower 64 bit multiply instruction on rest of the platforms.
     */
-   if (devinfo->ver < 8 || devinfo->ver > 9)
+   if (devinfo->ver > 9)
       int64_options |= nir_lower_imul_2x32_64;
 
    /* We want the GLSL compiler to emit code that uses condition codes */
@@ -141,24 +144,13 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       *nir_options = brw_scalar_nir_options;
       int64_options |= nir_lower_usub_sat64;
 
-      /* Prior to Gfx6, there are no three source operations, and Gfx11 loses
-       * LRP.
-       */
-      nir_options->lower_ffma16 = devinfo->ver < 6;
-      nir_options->lower_ffma32 = devinfo->ver < 6;
-      nir_options->lower_ffma64 = devinfo->ver < 6;
-      nir_options->lower_flrp32 = devinfo->ver < 6 || devinfo->ver >= 11;
-      nir_options->lower_fpow = devinfo->ver >= 12;
+      /* Gfx11 loses LRP. */
+      nir_options->lower_flrp32 = devinfo->ver >= 11;
 
-      nir_options->has_bfe = devinfo->ver >= 7;
-      nir_options->has_bfm = devinfo->ver >= 7;
-      nir_options->has_bfi = devinfo->ver >= 7;
+      nir_options->lower_fpow = devinfo->ver >= 12;
 
       nir_options->has_rotate16 = devinfo->ver >= 11;
       nir_options->has_rotate32 = devinfo->ver >= 11;
-      nir_options->lower_bitfield_reverse = devinfo->ver < 7;
-      nir_options->lower_find_lsb = devinfo->ver < 7;
-      nir_options->lower_ifind_msb = devinfo->ver < 7;
       nir_options->has_iadd3 = devinfo->verx10 >= 125;
 
       nir_options->has_sdot_4x8 = devinfo->ver >= 12;
@@ -175,7 +167,6 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
 
       nir_options->force_indirect_unrolling |=
          brw_nir_no_indirect_mask(compiler, i);
-      nir_options->force_indirect_unrolling_sampler = devinfo->ver < 7;
 
       if (compiler->use_tcs_multi_patch) {
          /* TCS MULTI_PATCH mode has multiple patches per subgroup */

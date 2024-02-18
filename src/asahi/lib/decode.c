@@ -423,10 +423,11 @@ agxdecode_usc(const uint8_t *map, UNUSED uint64_t *link, UNUSED bool verbose,
       agx_unpack(agxdecode_dump_stream, map, USC_SAMPLER, temp);
       DUMP_UNPACKED(USC_SAMPLER, temp, "Sampler state\n");
 
-      uint8_t buf[(AGX_SAMPLER_LENGTH + AGX_BORDER_LENGTH) * temp.count];
-      uint8_t *samp = buf;
+      size_t stride =
+         AGX_SAMPLER_LENGTH + (extended_samplers ? AGX_BORDER_LENGTH : 0);
+      uint8_t *samp = alloca(stride * temp.count);
 
-      agxdecode_fetch_gpu_array(temp.buffer, buf);
+      agxdecode_fetch_gpu_mem(temp.buffer, stride * temp.count, samp);
 
       for (unsigned i = 0; i < temp.count; ++i) {
          DUMP_CL(SAMPLER, samp, "Sampler");

@@ -218,6 +218,23 @@ vn_get_temp_cmd_ptr(struct vn_queue_submission *submit, uint32_t cmd_index)
              : &submit->temp.cmd_infos[cmd_index].commandBuffer;
 }
 
+static inline void
+vn_set_temp_cmd(struct vn_queue_submission *submit,
+                uint32_t cmd_index,
+                VkCommandBuffer cmd_handle)
+{
+   assert((submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO) ||
+          (submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO_2));
+   if (submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO_2) {
+      submit->temp.cmd_infos[cmd_index] = (VkCommandBufferSubmitInfo){
+         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+         .commandBuffer = cmd_handle,
+      };
+   } else {
+      submit->temp.cmd_handles[cmd_index] = cmd_handle;
+   }
+}
+
 static uint64_t
 vn_get_signal_semaphore_counter(struct vn_queue_submission *submit,
                                 uint32_t batch_index,
@@ -534,8 +551,8 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
              "Could not find non simultaneous cmd to link query feedback\n");
    }
 
-   VkCommandBuffer *dst = vn_get_temp_cmd_ptr(submit, *cmd_count);
-   *dst = vn_command_buffer_to_handle(qfb_cmd->cmd);
+   vn_set_temp_cmd(submit, *cmd_count,
+                   vn_command_buffer_to_handle(qfb_cmd->cmd));
    (*cmd_count)++;
 
    return VK_SUCCESS;
@@ -569,8 +586,7 @@ vn_queue_submission_add_semaphore_feedback(struct vn_queue_submission *submit,
 
    for (uint32_t i = 0; i < dev->queue_family_count; i++) {
       if (dev->queue_families[i] == queue_vk->queue_family_index) {
-         VkCommandBuffer *dst = vn_get_temp_cmd_ptr(submit, *cmd_count);
-         *dst = sfb_cmd->cmd_handles[i];
+         vn_set_temp_cmd(submit, *cmd_count, sfb_cmd->cmd_handles[i]);
          (*cmd_count)++;
          return VK_SUCCESS;
       }
@@ -596,8 +612,7 @@ vn_queue_submission_add_fence_feedback(struct vn_queue_submission *submit,
    }
    assert(ffb_cmd_handle != VK_NULL_HANDLE);
 
-   VkCommandBuffer *dst = vn_get_temp_cmd_ptr(submit, *cmd_count);
-   *dst = ffb_cmd_handle;
+   vn_set_temp_cmd(submit, *cmd_count, ffb_cmd_handle);
    (*cmd_count)++;
 }
 
@@ -632,32 +647,14 @@ vn_queue_submission_add_feedback_cmds(struct vn_queue_submission *submit,
                                              &new_cmd_count);
    }
 
-   /* Update SubmitInfo to use our copy of cmd buffers with sem adn query
-    * feedback cmds appended and update the cmd buffer count.
-    * SubmitInfo2 also needs to initialize the cmd buffer info struct.
-    */
-   switch (submit->batch_type) {
-   case VK_STRUCTURE_TYPE_SUBMIT_INFO: {
-      VkSubmitInfo *batch = &submit->temp.submit_batches[batch_index];
-      batch->pCommandBuffers = submit->temp.cmd_handles;
-      batch->commandBufferCount = new_cmd_count;
-      break;
-   }
-   case VK_STRUCTURE_TYPE_SUBMIT_INFO_2: {
-      for (uint32_t i = cmd_count; i < new_cmd_count; i++) {
-         VkCommandBufferSubmitInfo *cmd_info = &submit->temp.cmd_infos[i];
-         cmd_info->sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-         cmd_info->pNext = NULL;
-         cmd_info->deviceMask = 0;
-      }
-
+   if (submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO_2) {
       VkSubmitInfo2 *batch = &submit->temp.submit2_batches[batch_index];
       batch->pCommandBufferInfos = submit->temp.cmd_infos;
       batch->commandBufferInfoCount = new_cmd_count;
-      break;
-   }
-   default:
-      unreachable("unexpected batch type");
+   } else {
+      VkSubmitInfo *batch = &submit->temp.submit_batches[batch_index];
+      batch->pCommandBuffers = submit->temp.cmd_handles;
+      batch->commandBufferCount = new_cmd_count;
    }
 
    return VK_SUCCESS;

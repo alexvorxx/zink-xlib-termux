@@ -261,7 +261,7 @@ brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
  * variable length combination of an IsImm (hi12) bit and an additional file
  * (lo12) bit.
  */
-#define FI(name, hi4, lo4, hi8, lo8, hi12, lo12)                              \
+#define FI(name, hi9, lo9, hi12, lo12)                                        \
 static inline void                                                            \
 brw_inst_set_##name(const struct intel_device_info *devinfo,                  \
                     brw_inst *inst, uint64_t value)                           \
@@ -271,9 +271,7 @@ brw_inst_set_##name(const struct intel_device_info *devinfo,                  \
       if ((value >> 1) == 0)                                                  \
          brw_inst_set_bits(inst, lo12, lo12, value & 1);                      \
    } else {                                                                   \
-      BOUNDS(hi4, lo4, hi4, lo4, hi4, lo4, hi4, lo4,                          \
-             hi4, lo4, hi8, lo8, -1, -1, -1, -1);                             \
-      brw_inst_set_bits(inst, high, low, value);                              \
+      brw_inst_set_bits(inst, hi9, lo9, value);                               \
    }                                                                          \
 }                                                                             \
 static inline uint64_t                                                        \
@@ -284,9 +282,7 @@ brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
              (brw_inst_bits(inst, hi12, hi12) == 0 ?                          \
               brw_inst_bits(inst, lo12, lo12) : 1);                           \
    } else {                                                                   \
-      BOUNDS(hi4, lo4, hi4, lo4, hi4, lo4, hi4, lo4,                          \
-             hi4, lo4, hi8, lo8, -1, -1, -1, -1);                             \
-      return brw_inst_bits(inst, high, low);                                  \
+      return brw_inst_bits(inst, hi9, lo9);                                   \
    }                                                                          \
 }
 
@@ -330,7 +326,7 @@ FD20(src1_da1_subreg_nr, /* 9+ */ 100, 96, /* 12+ */ 103, 99, /* 20+ */ 103, 99,
 F(src1_da16_swiz_y,    /* 9+ */ 99,  98,  /* 12+ */ -1, -1)
 F(src1_da16_swiz_x,    /* 9+ */ 97,  96,  /* 12+ */ -1, -1)
 F(src1_reg_hw_type,    /* 9+ */ 94,  91,  /* 12+ */ 91, 88)
-FI(src1_reg_file,      /* 4+ */ 43,  42,  /* 8+ */  90,  89, /* 12+ */ 47, 98)
+FI(src1_reg_file,      /* 9+ */ 90,  89,  /* 12+ */ 47, 98)
 F(src1_is_imm,         /* 9+ */ -1,  -1,  /* 12+ */ 47, 47)
 FV20(src0_vstride,     /* 9+ */ 88,  85,  /* 12+ */ 87, 84,  /* 20+ */ 86, 84)
 F(src0_width,          /* 9+ */ 84,  82,  /* 12+ */ 83, 81)
@@ -356,7 +352,7 @@ F(dst_da16_subreg_nr,  /* 9+ */ 52,  52,  /* 12+ */ -1, -1)
 FD20(dst_da1_subreg_nr, /* 9+ */ 52, 48,  /* 12+ */ 55, 51, /* 20+ */ 55, 51, 33)
 F(da16_writemask,      /* 9+ */ 51,  48,  /* 12+ */ -1, -1) /* Dst.ChanEn */
 F(src0_reg_hw_type,    /* 9+ */ 46,  43,  /* 12+ */ 43, 40)
-FI(src0_reg_file,      /* 4+ */ 38,  37,  /* 8+ */  42,  41, /* 12+ */ 46, 66)
+FI(src0_reg_file,      /* 9+ */ 42,  41,  /* 12+ */ 46, 66)
 F(src0_is_imm,         /* 9+ */ -1,  -1,  /* 12+ */ 46, 46)
 F(dst_reg_hw_type,     /* 9+ */ 40,  37,  /* 12+ */ 39, 36)
 F(dst_reg_file,        /* 9+ */ 36,  35,  /* 12+ */ 50, 50)
@@ -499,9 +495,9 @@ FC(3src_a1_special_acc,     /* 9+ */   55,  52,  /* 12+ */ 54, 51, devinfo->ver 
 /* Reserved 51:50 */
 FC(3src_a1_dst_hstride,     /* 9+ */   49,  49,  /* 12+ */ 48, 48, devinfo->ver >= 10)
 FC(3src_a1_dst_hw_type,     /* 9+ */   48,  46,  /* 12+ */ 38, 36, devinfo->ver >= 10)
-FI(3src_a1_src2_reg_file,   /* 4+ */   -1,  -1,  /* 8+ */  45, 45,  /* 12+ */ 47, 114)
+FI(3src_a1_src2_reg_file,   /* 9+ */   45,  45,  /* 12+ */ 47, 114)
 FC(3src_a1_src1_reg_file,   /* 9+ */   44,  44,  /* 12+ */ 98, 98, devinfo->ver >= 10)
-FI(3src_a1_src0_reg_file,   /* 4+ */   -1,  -1,  /* 8+ */  43, 43,  /* 12+ */ 46, 66)
+FI(3src_a1_src0_reg_file,   /* 9+ */   43,  43,  /* 12+ */ 46, 66)
 
 F(3src_a1_src2_is_imm,      /* 9+ */   -1,  -1,  /* 12+ */ 47, 47)
 F(3src_a1_src0_is_imm,      /* 9+ */   -1,  -1,  /* 12+ */ 46, 46)

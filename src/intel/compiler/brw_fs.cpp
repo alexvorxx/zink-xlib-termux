@@ -449,9 +449,6 @@ fs_inst::has_source_and_destination_hazard() const
 bool
 fs_inst::can_do_source_mods(const struct intel_device_info *devinfo) const
 {
-   if (devinfo->ver == 6 && is_math())
-      return false;
-
    if (is_send_from_grf())
       return false;
 
@@ -1023,9 +1020,9 @@ fs_inst::flags_read(const intel_device_info *devinfo) const
    if (devinfo->ver < 20 && (predicate == BRW_PREDICATE_ALIGN1_ANYV ||
                              predicate == BRW_PREDICATE_ALIGN1_ALLV)) {
       /* The vertical predication modes combine corresponding bits from
-       * f0.0 and f1.0 on Gfx7+, and f0.0 and f0.1 on older hardware.
+       * f0.0 and f1.0 on Gfx7+.
        */
-      const unsigned shift = devinfo->ver >= 7 ? 4 : 2;
+      const unsigned shift = 4;
       return brw_fs_flag_mask(this, 1) << shift | brw_fs_flag_mask(this, 1);
    } else if (predicate) {
       return brw_fs_flag_mask(this, predicate_width(devinfo, predicate));
@@ -1041,11 +1038,7 @@ fs_inst::flags_read(const intel_device_info *devinfo) const
 unsigned
 fs_inst::flags_written(const intel_device_info *devinfo) const
 {
-   /* On Gfx4 and Gfx5, sel.l (for min) and sel.ge (for max) are implemented
-    * using a separate cmpn and sel instruction.  This lowering occurs in
-    * fs_vistor::lower_minmax which is called very, very late.
-    */
-   if ((conditional_mod && ((opcode != BRW_OPCODE_SEL || devinfo->ver <= 5) &&
+   if ((conditional_mod && (opcode != BRW_OPCODE_SEL &&
                             opcode != BRW_OPCODE_CSEL &&
                             opcode != BRW_OPCODE_IF &&
                             opcode != BRW_OPCODE_WHILE)) ||

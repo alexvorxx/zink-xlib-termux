@@ -1029,11 +1029,7 @@ bool
 backend_instruction::writes_accumulator_implicitly(const struct intel_device_info *devinfo) const
 {
    return writes_accumulator ||
-          (devinfo->ver < 6 &&
-           ((opcode >= BRW_OPCODE_ADD && opcode < BRW_OPCODE_NOP) ||
-            (opcode >= FS_OPCODE_DDX_COARSE && opcode <= FS_OPCODE_LINTERP))) ||
-          (opcode == FS_OPCODE_LINTERP &&
-           (!devinfo->has_pln || devinfo->ver <= 6)) ||
+          (opcode == FS_OPCODE_LINTERP && !devinfo->has_pln) ||
           (eot && intel_needs_workaround(devinfo, 14010017096));
 }
 

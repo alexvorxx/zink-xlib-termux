@@ -163,50 +163,6 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
          return brw_inst_bits(inst, hi9, lo9);                     \
    }
 
-#define BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                     \
-               hi7, lo7, hi8, lo8, hi12, lo12, hi20, lo20)                   \
-   unsigned high, low;                                                       \
-   if (devinfo->ver >= 20) {                                                 \
-      high = hi20; low = lo20;                                               \
-   } else if (devinfo->ver >= 12) {                                          \
-      high = hi12; low = lo12;                                               \
-   } else if (devinfo->ver >= 8) {                                           \
-      high = hi8;  low = lo8;                                                \
-   } else if (devinfo->ver >= 7) {                                           \
-      high = hi7;  low = lo7;                                                \
-   } else if (devinfo->ver >= 6) {                                           \
-      high = hi6;  low = lo6;                                                \
-   } else if (devinfo->ver >= 5) {                                           \
-      high = hi5;  low = lo5;                                                \
-   } else if (devinfo->verx10 >= 45) {                                       \
-      high = hi45; low = lo45;                                               \
-   } else {                                                                  \
-      high = hi4;  low = lo4;                                                \
-   }                                                                         \
-   assert(((int) high) != -1 && ((int) low) != -1);
-
-/* A general macro for cases where the field has moved to several different
- * bit locations across generations.  GCC appears to combine cases where the
- * bits are identical, removing some of the inefficiency.
- */
-#define FF(name, hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                    \
-           hi7, lo7, hi8, lo8, hi12, lo12, hi20, lo20)                        \
-static inline void                                                            \
-brw_inst_set_##name(const struct intel_device_info *devinfo,                  \
-                    brw_inst *inst, uint64_t value)                           \
-{                                                                             \
-   BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                           \
-          hi7, lo7, hi8, lo8, hi12, lo12, hi20, lo20)                         \
-   brw_inst_set_bits(inst, high, low, value);                                 \
-}                                                                             \
-static inline uint64_t                                                        \
-brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
-{                                                                             \
-   BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                           \
-          hi7, lo7, hi8, lo8, hi12, lo12, hi20, lo20)                         \
-   return brw_inst_bits(inst, high, low);                                     \
-}
-
 /* Macro for fields that gained extra discontiguous MSBs in Gfx12 (specified
  * by hi12ex-lo12ex).
  */
@@ -349,17 +305,8 @@ F(src0_is_imm,         /* 9+ */ -1,  -1,  /* 12+ */ 46, 46)
 F(dst_reg_hw_type,     /* 9+ */ 40,  37,  /* 12+ */ 39, 36)
 F(dst_reg_file,        /* 9+ */ 36,  35,  /* 12+ */ 50, 50)
 F(mask_control,        /* 9+ */ 34,  34,  /* 12+ */ 31, 31)
-FF(flag_reg_nr,
-   /* 4-6: doesn't exist */ -1, -1, -1, -1, -1, -1, -1, -1,
-   /* 7: */ 90, 90,
-   /* 8: */ 33, 33,
-   /* 12: */ 23, 23,
-   /* 20: */ 23, 22)
-FF(flag_subreg_nr,
-   /* 4-7: */ 89, 89,  89, 89,  89, 89,  89, 89,  89, 89,
-   /* 8: */ 32, 32,
-   /* 12: */ 22, 22,
-   /* 20: */ 21, 21)
+F20(flag_reg_nr,       /* 9+ */ 33,  33,  /* 12+ */ 23, 23,  /* 20+ */ 23, 22)
+F20(flag_subreg_nr,    /* 9+ */ 32,  32,  /* 12+ */ 22, 22,  /* 20+ */ 21, 21)
 F(saturate,            /* 9+ */ 31,  31,  /* 12+ */ 34, 34)
 F(debug_control,       /* 9+ */ 30,  30,  /* 12+ */ 30, 30)
 F(cmpt_control,        /* 9+ */ 29,  29,  /* 12+ */ 29, 29)
@@ -373,12 +320,7 @@ F20(pred_control,      /* 9+ */ 19,  16,  /* 12+ */ 27, 24,  /* 20+ */ 27, 26)
 F(thread_control,      /* 9+ */ 15,  14,  /* 12+ */ -1, -1)
 F(atomic_control,      /* 9+ */ -1,  -1,  /* 12+ */ 32, 32)
 F20(qtr_control,       /* 9+ */ 13,  12,  /* 12+ */ 21, 20,  /* 20+ */ 25, 24)
-FF(nib_control,
-   /* 4-6: doesn't exist */ -1, -1, -1, -1, -1, -1, -1, -1,
-   /* 7: */ 47, 47,
-   /* 8: */ 11, 11,
-   /* 12: */ 19, 19,
-   /* 20: */ -1, -1)
+F20(nib_control,       /* 9+ */ 11,  11,  /* 12+ */ 19, 19,  /* 20+ */ -1, -1)
 F(no_dd_check,         /* 9+ */ 10,  10,  /* 12+ */ -1, -1)
 F(no_dd_clear,         /* 9+ */  9,   9,  /* 12+ */ -1, -1)
 F20(swsb,              /* 9+ */  -1, -1,  /* 12+ */ 15,   8, /* 20+ */ 17, 8)
@@ -848,130 +790,37 @@ brw_inst_sends_ex_desc(const struct intel_device_info *devinfo,
  * Fields for SEND messages:
  *  @{
  */
-F(eot,                 /* 9+ */ 127, 127, /* 12+ */ 34, 34)
-FF(mlen,
-   /* 4:   */ 119, 116,
-   /* 4.5: */ 119, 116,
-   /* 5:   */ 124, 121,
-   /* 6:   */ 124, 121,
-   /* 7:   */ 124, 121,
-   /* 8:   */ 124, 121,
-   /* 12:  */ MD12(28), MD12(25),
-   /* 20:  */ MD12(28), MD12(25));
-FF(rlen,
-   /* 4:   */ 115, 112,
-   /* 4.5: */ 115, 112,
-   /* 5:   */ 120, 116,
-   /* 6:   */ 120, 116,
-   /* 7:   */ 120, 116,
-   /* 8:   */ 120, 116,
-   /* 12:  */ MD12(24), MD12(20),
-   /* 20:  */ MD12(24), MD12(20));
-FF(header_present,
-   /* 4: doesn't exist */ -1, -1, -1, -1,
-   /* 5:   */ 115, 115,
-   /* 6:   */ 115, 115,
-   /* 7:   */ 115, 115,
-   /* 8:   */ 115, 115,
-   /* 12:  */ MD12(19), MD12(19),
-   /* 20:  */ MD12(19), MD12(19))
-F(gateway_notify, /* 9+ */ MD(16), MD(15), /* 12+ */ -1, -1)
-FD(function_control,
-   /* 9:   */ 114,  96,
-   /* 12:  */ MD12(18), MD12(11), MD12(10), MD12(0))
-FF(gateway_subfuncid,
-   /* 4:   */ MD(1), MD(0),
-   /* 4.5: */ MD(1), MD(0),
-   /* 5:   */ MD(1), MD(0), /* 2:0, but bit 2 is reserved MBZ */
-   /* 6:   */ MD(2), MD(0),
-   /* 7:   */ MD(2), MD(0),
-   /* 8:   */ MD(2), MD(0),
-   /* 12:  */ MD12(2), MD12(0),
-   /* 20:  */ MD12(2), MD12(0))
-FF(sfid,
-   /* 4:   */ 123, 120, /* called msg_target */
-   /* 4.5  */ 123, 120,
-   /* 5:   */  95,  92,
-   /* 6:   */  27,  24,
-   /* 7:   */  27,  24,
-   /* 8:   */  27,  24,
-   /* 12:  */  95,  92,
-   /* 20:  */  95,  92)
-FF(null_rt,
-   /* 4-7: */ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-   /* 8:   */ 80, 80,
-   /* 12:  */ 44, 44,
-   /* 20:  */ 44, 44) /* actually only Gfx11+ */
-FF(send_rta_index,
-   /* 4:   */  -1,  -1,
-   /* 4.5  */  -1,  -1,
-   /* 5:   */  -1,  -1,
-   /* 6:   */  -1,  -1,
-   /* 7:   */  -1,  -1,
-   /* 8:   */  -1,  -1,
-   /* 12:  */  38,  36,
-   /* 20:  */  38,  36)
+F(eot,                 /* 9+ */ 127, 127,       /* 12+ */ 34, 34)
+F(mlen,                /* 9+ */ 124, 121,       /* 12+ */ MD12(28), MD12(25))
+F(rlen,                /* 9+ */ 120, 116,       /* 12+ */ MD12(24), MD12(20))
+F(header_present,      /* 9+ */ 115, 115,       /* 12+ */ MD12(19), MD12(19))
+F(gateway_notify,      /* 9+ */ MD(16), MD(15), /* 12+ */ -1, -1)
+FD(function_control,   /* 9+ */ 114,  96,       /* 12+ */ MD12(18), MD12(11), MD12(10), MD12(0))
+F(gateway_subfuncid,   /* 9+ */ MD(2), MD(0),   /* 12+ */ MD12(2),  MD12(0))
+F(sfid,                /* 9+ */  27,  24,       /* 12+ */ 95, 92)
+F(null_rt,             /* 9+ */  80,  80,       /* 12+ */ 44, 44) /* actually only Gfx11+ */
+F(send_rta_index,      /* 9+ */  -1,  -1,       /* 12+ */  38,  36)
 /** @} */
 
 /**
  * URB message function control bits:
  *  @{
  */
-FF(urb_per_slot_offset,
-   /* 4-6: */ -1, -1, -1, -1, -1, -1, -1, -1,
-   /* 7:   */ MD(16), MD(16),
-   /* 8:   */ MD(17), MD(17),
-   /* 12:  */ MD12(17), MD12(17),
-   /* 20:  */ MD12(17), MD12(17))
+F(urb_per_slot_offset,      /* 9+ */ MD(17), MD(17), /* 12+ */ MD12(17), MD12(17))
 F(urb_channel_mask_present, /* 9+ */ MD(15), MD(15), /* 12+ */ MD12(15), MD12(15))
-FF(urb_swizzle_control,
-   /* 4:   */ MD(11), MD(10),
-   /* 4.5: */ MD(11), MD(10),
-   /* 5:   */ MD(11), MD(10),
-   /* 6:   */ MD(11), MD(10),
-   /* 7:   */ MD(14), MD(14),
-   /* 8:   */ MD(15), MD(15),
-   /* 12:  */ -1, -1,
-   /* 20:  */ -1, -1)
-FD(urb_global_offset,
-   /* 9:   */ MD(14), MD(4),
-   /* 12:  */ MD12(14), MD12(11), MD12(10), MD12(4))
-FF(urb_opcode,
-   /* 4:   */ MD( 3), MD(0),
-   /* 4.5: */ MD( 3), MD(0),
-   /* 5:   */ MD( 3), MD(0),
-   /* 6:   */ MD( 3), MD(0),
-   /* 7:   */ MD( 2), MD(0),
-   /* 8:   */ MD( 3), MD(0),
-   /* 12:  */ MD12(3), MD12(0),
-   /* 20:  */ MD12(3), MD12(0))
+F(urb_swizzle_control,      /* 9+ */ MD(15), MD(15), /* 12+ */ -1, -1)
+FD(urb_global_offset,       /* 9+ */ MD(14), MD(4),  /* 12+ */ MD12(14), MD12(11), MD12(10), MD12(4))
+F(urb_opcode,               /* 9+ */ MD( 3), MD(0),  /* 12+ */ MD12(3), MD12(0))
 /** @} */
 
 /**
  * Sampler message function control bits:
  *  @{
  */
-FF(sampler_simd_mode,
-   /* 4: doesn't exist */ -1, -1, -1, -1,
-   /* 5:   */ MD(17), MD(16),
-   /* 6:   */ MD(17), MD(16),
-   /* 7:   */ MD(18), MD(17),
-   /* 8:   */ MD(18), MD(17),
-   /* 12:  */ MD12(18), MD12(17),
-   /* 20:  */ MD12(18), MD12(17))
-FF(sampler_msg_type,
-   /* 4:   */ MD(15), MD(14),
-   /* 4.5: */ MD(15), MD(12),
-   /* 5:   */ MD(15), MD(12),
-   /* 6:   */ MD(15), MD(12),
-   /* 7:   */ MD(16), MD(12),
-   /* 8:   */ MD(16), MD(12),
-   /* 12:  */ MD12(16), MD12(12),
-   /* 20:  */ MD12(16), MD12(12))
-FD(sampler,
-   /* 9:   */ MD(11), MD(8),
-   /* 12:   */ MD12(11), MD12(11), MD12(10), MD12(8))
-F(binding_table_index,    /* 9+ */ MD(7), MD(0),  /* 12+ */ MD12(7), MD12(0)) /* also used by other messages */
+F(sampler_simd_mode,      /* 9+ */ MD(18), MD(17), /* 12+ */ MD12(18), MD12(17))
+F(sampler_msg_type,       /* 9+ */ MD(16), MD(12), /* 12+ */ MD12(16), MD12(12))
+FD(sampler,               /* 9+ */ MD(11), MD(8),  /* 12+ */ MD12(11), MD12(11), MD12(10), MD12(8))
+F(binding_table_index,    /* 9+ */ MD(7), MD(0),   /* 12+ */ MD12(7), MD12(0)) /* also used by other messages */
 /** @} */
 
 /**
@@ -980,44 +829,13 @@ F(binding_table_index,    /* 9+ */ MD(7), MD(0),  /* 12+ */ MD12(7), MD12(0)) /*
  */
 F(dp_category,            /* 9+ */ MD(18), MD(18), /* 12+ */ MD12(18), MD12(18))
 
-/* Gfx4-5 store fields in different bits for read/write messages. */
-FF(dp_read_msg_type,
-   /* 4:   */ MD(13), MD(12),
-   /* 4.5: */ MD(13), MD(11),
-   /* 5:   */ MD(13), MD(11),
-   /* 6:   */ MD(16), MD(13),
-   /* 7:   */ MD(17), MD(14),
-   /* 8:   */ MD(17), MD(14),
-   /* 12:  */ MD12(17), MD12(14),
-   /* 20:  */ MD12(17), MD12(14))
-FF(dp_write_msg_type,
-   /* 4:   */ MD(14), MD(12),
-   /* 4.5: */ MD(14), MD(12),
-   /* 5:   */ MD(14), MD(12),
-   /* 6:   */ MD(16), MD(13),
-   /* 7:   */ MD(17), MD(14),
-   /* 8:   */ MD(17), MD(14),
-   /* 12:  */ MD12(17), MD12(14),
-   /* 20:  */ MD12(17), MD12(14))
-FD(dp_read_msg_control,
-   /* 9:   */ MD(13), MD( 8),
-   /* 12:  */ MD12(13), MD12(11), MD12(10), MD12(8))
-FD(dp_write_msg_control,
-   /* 9:   */ MD(13), MD( 8),
-   /* 12:  */ MD12(13), MD12(11), MD12(10), MD12(8))
+F(dp_read_msg_type,       /* 9+ */ MD(17), MD(14), /* 12+ */ MD12(17), MD12(14))
+F(dp_write_msg_type,      /* 9+ */ MD(17), MD(14), /* 12+ */ MD12(17), MD12(14))
+FD(dp_read_msg_control,   /* 9+ */ MD(13), MD( 8), /* 12+ */ MD12(13), MD12(11), MD12(10), MD12(8))
+FD(dp_write_msg_control,  /* 9+ */ MD(13), MD( 8), /* 12+ */ MD12(13), MD12(11), MD12(10), MD12(8))
 
-/* Gfx6+ use the same bit locations for everything. */
-FF(dp_msg_type,
-   /* 4-5: use dp_read_msg_type or dp_write_msg_type instead */
-   -1, -1, -1, -1, -1, -1,
-   /* 6:   */ MD(16), MD(13),
-   /* 7:   */ MD(17), MD(14),
-   /* 8:   */ MD(18), MD(14),
-   /* 12:  */ MD12(18), MD12(14),
-   /* 20:  */ MD12(18), MD12(14))
-FD(dp_msg_control,
-   /* 9:   */ MD(13), MD( 8),
-   /* 12:  */ MD12(13), MD12(11), MD12(10), MD12(8))
+F(dp_msg_type,            /* 9+ */ MD(18), MD(14), /* 12+ */ MD12(18), MD12(14))
+FD(dp_msg_control,        /* 9+ */ MD(13), MD( 8), /* 12+ */ MD12(13), MD12(11), MD12(10), MD12(8))
 /** @} */
 
 /**
@@ -1037,15 +855,7 @@ FD(scratch_addr_offset,
  * Render Target message function control bits:
  *  @{
  */
-FF(rt_last,
-   /* 4:   */ MD(11), MD(11),
-   /* 4.5: */ MD(11), MD(11),
-   /* 5:   */ MD(11), MD(11),
-   /* 6:   */ MD(12), MD(12),
-   /* 7:   */ MD(12), MD(12),
-   /* 8:   */ MD(12), MD(12),
-   /* 12:  */ MD12(12), MD12(12),
-   /* 20:  */ MD12(12), MD12(12))
+F(rt_last,             /* 9+ */ MD(12), MD(12),  /* 12+ */ MD12(12), MD12(12))
 F(rt_slot_group,       /* 9+ */ MD(11),  MD(11), /* 12+ */ MD12(11), MD12(11))
 F(rt_message_type,     /* 9+ */ MD(10),  MD( 8), /* 12+ */ MD12(10), MD12(8))
 /** @} */
@@ -1342,8 +1152,6 @@ brw_inst_set_bits(brw_inst *inst, unsigned high, unsigned low, uint64_t value)
 #undef BRW_IA16_ADDR_IMM
 #undef BRW_IA1_ADDR_IMM
 #undef MD
-#undef FF
-#undef BOUNDS
 #undef F
 #undef FC
 #undef F20

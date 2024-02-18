@@ -1257,8 +1257,8 @@ REG_TYPE(src1)
 #undef REG_TYPE
 
 
-/* The AddrImm fields are split into two discontiguous sections on Gfx8+ */
-#define BRW_IA1_ADDR_IMM(reg, g4_high, g4_low, g8_nine, g8_high, g8_low, \
+/* The AddrImm fields are split into two discontiguous sections on Gfx9+ */
+#define BRW_IA1_ADDR_IMM(reg, g9_nine, g9_high, g9_low,                  \
                          g12_high, g12_low, g20_high, g20_low, g20_zero) \
 static inline void                                                       \
 brw_inst_set_##reg##_ia1_addr_imm(const struct                           \
@@ -1276,13 +1276,10 @@ brw_inst_set_##reg##_ia1_addr_imm(const struct                           \
    } else if (devinfo->ver >= 12) {                                      \
       assert((value & ~0x3ff) == 0);                                     \
       brw_inst_set_bits(inst, g12_high, g12_low, value);                 \
-   } else if (devinfo->ver >= 8) {                                       \
-      assert((value & ~0x3ff) == 0);                                     \
-      brw_inst_set_bits(inst, g8_high, g8_low, value & 0x1ff);           \
-      brw_inst_set_bits(inst, g8_nine, g8_nine, value >> 9);             \
    } else {                                                              \
       assert((value & ~0x3ff) == 0);                                     \
-      brw_inst_set_bits(inst, g4_high, g4_low, value);                   \
+      brw_inst_set_bits(inst, g9_high, g9_low, value & 0x1ff);           \
+      brw_inst_set_bits(inst, g9_nine, g9_nine, value >> 9);             \
    }                                                                     \
 }                                                                        \
 static inline unsigned                                                   \
@@ -1295,21 +1292,19 @@ brw_inst_##reg##_ia1_addr_imm(const struct intel_device_info *devinfo,   \
               brw_inst_bits(inst, g20_zero, g20_zero));                  \
    } else if (devinfo->ver >= 12) {                                      \
       return brw_inst_bits(inst, g12_high, g12_low);                     \
-   } else if (devinfo->ver >= 8) {                                       \
-      return brw_inst_bits(inst, g8_high, g8_low) |                      \
-             (brw_inst_bits(inst, g8_nine, g8_nine) << 9);               \
    } else {                                                              \
-      return brw_inst_bits(inst, g4_high, g4_low);                       \
+      return brw_inst_bits(inst, g9_high, g9_low) |                      \
+             (brw_inst_bits(inst, g9_nine, g9_nine) << 9);               \
    }                                                                     \
 }
 
-/* AddrImm for Align1 Indirect Addressing                          */
-/*                     -Gen 4-  ----Gfx8----  -Gfx12-  ---Gfx20--- */
-BRW_IA1_ADDR_IMM(src1, 105, 96, 121, 104, 96, 107, 98, 107, 98, -1)
-BRW_IA1_ADDR_IMM(src0,  73, 64,  95,  72, 64,  75, 66,  75, 66, 87)
-BRW_IA1_ADDR_IMM(dst,   57, 48,  47,  56, 48,  59, 50,  59, 50, 33)
+/* AddrImm for Align1 Indirect Addressing                 */
+/*                     ----Gfx9----  -Gfx12-  ---Gfx20--- */
+BRW_IA1_ADDR_IMM(src1, 121, 104, 96, 107, 98, 107, 98, -1)
+BRW_IA1_ADDR_IMM(src0,  95,  72, 64,  75, 66,  75, 66, 87)
+BRW_IA1_ADDR_IMM(dst,   47,  56, 48,  59, 50,  59, 50, 33)
 
-#define BRW_IA16_ADDR_IMM(reg, g4_high, g4_low, g8_nine, g8_high, g8_low) \
+#define BRW_IA16_ADDR_IMM(reg, g9_nine, g9_high, g9_low)                  \
 static inline void                                                        \
 brw_inst_set_##reg##_ia16_addr_imm(const struct                           \
                                    intel_device_info *devinfo,            \
@@ -1317,36 +1312,28 @@ brw_inst_set_##reg##_ia16_addr_imm(const struct                           \
 {                                                                         \
    assert(devinfo->ver < 12);                                             \
    assert((value & ~0x3ff) == 0);                                         \
-   if (devinfo->ver >= 8) {                                               \
-      assert(GET_BITS(value, 3, 0) == 0);                                 \
-      brw_inst_set_bits(inst, g8_high, g8_low, GET_BITS(value, 8, 4));    \
-      brw_inst_set_bits(inst, g8_nine, g8_nine, GET_BITS(value, 9, 9));   \
-   } else {                                                               \
-      brw_inst_set_bits(inst, g4_high, g4_low, value);                    \
-   }                                                                      \
+   assert(GET_BITS(value, 3, 0) == 0);                                    \
+   brw_inst_set_bits(inst, g9_high, g9_low, GET_BITS(value, 8, 4));       \
+   brw_inst_set_bits(inst, g9_nine, g9_nine, GET_BITS(value, 9, 9));      \
 }                                                                         \
 static inline unsigned                                                    \
 brw_inst_##reg##_ia16_addr_imm(const struct intel_device_info *devinfo,   \
                                const brw_inst *inst)                      \
 {                                                                         \
    assert(devinfo->ver < 12);                                             \
-   if (devinfo->ver >= 8) {                                               \
-      return (brw_inst_bits(inst, g8_high, g8_low) << 4) |                \
-             (brw_inst_bits(inst, g8_nine, g8_nine) << 9);                \
-   } else {                                                               \
-      return brw_inst_bits(inst, g4_high, g4_low);                        \
-   }                                                                      \
+   return (brw_inst_bits(inst, g9_high, g9_low) << 4) |                   \
+          (brw_inst_bits(inst, g9_nine, g9_nine) << 9);                   \
 }
 
 /* AddrImm[9:0] for Align16 Indirect Addressing:
  * Compared to Align1, these are missing the low 4 bits.
- *                     -Gen 4-  ----Gfx8----
+ *                             ----Gfx9----
  */
-BRW_IA16_ADDR_IMM(src1,       105, 96, 121, 104, 100)
-BRW_IA16_ADDR_IMM(src0,        73, 64,  95,  72,  68)
-BRW_IA16_ADDR_IMM(dst,         57, 52,  47,  56,  52)
-BRW_IA16_ADDR_IMM(send_src0,   -1, -1,  78,  72,  68)
-BRW_IA16_ADDR_IMM(send_dst,    -1, -1,  62,  56,  52)
+BRW_IA16_ADDR_IMM(src1,        121, 104, 100)
+BRW_IA16_ADDR_IMM(src0,         95,  72,  68)
+BRW_IA16_ADDR_IMM(dst,          47,  56,  52)
+BRW_IA16_ADDR_IMM(send_src0,    78,  72,  68)
+BRW_IA16_ADDR_IMM(send_dst,     62,  56,  52)
 
 /**
  * Fetch a set of contiguous bits from the instruction.

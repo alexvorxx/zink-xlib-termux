@@ -301,17 +301,19 @@ agxdecode_stateful(uint64_t va, const char *label, decode_cmd decoder,
    unsigned sp = 0;
 
    uint8_t buf[1024];
+   size_t size = sizeof(buf);
    if (!lib_config.read_gpu_mem) {
       struct agx_bo *alloc = agxdecode_find_mapped_gpu_mem_containing(va);
       assert(alloc != NULL && "nonexistent object");
       fprintf(agxdecode_dump_stream, "%s (%" PRIx64 ", handle %u)\n", label, va,
               alloc->handle);
+      size = MIN2(size, alloc->size - (va - alloc->ptr.gpu));
    } else {
       fprintf(agxdecode_dump_stream, "%s (%" PRIx64 ")\n", label, va);
    }
    fflush(agxdecode_dump_stream);
 
-   int len = agxdecode_fetch_gpu_array(va, buf);
+   int len = agxdecode_fetch_gpu_mem(va, size, buf);
 
    int left = len;
    uint8_t *map = buf;

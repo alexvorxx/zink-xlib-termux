@@ -202,22 +202,6 @@ fs_visitor::VARYING_PULL_CONSTANT_LOAD(const fs_builder &bld,
    shuffle_from_32bit_read(bld, dst, vec4_result, 0, components);
 }
 
-/**
- * A helper for MOV generation for fixing up broken hardware SEND dependency
- * handling.
- */
-void
-fs_visitor::DEP_RESOLVE_MOV(const fs_builder &bld, int grf)
-{
-   /* The caller always wants uncompressed to emit the minimal extra
-    * dependencies, and to avoid having to deal with aligning its regs to 2.
-    */
-   const fs_builder ubld = bld.annotate("send dependency resolve")
-                              .quarter(0);
-
-   ubld.MOV(ubld.null_reg_f(), fs_reg(VGRF, grf, BRW_REGISTER_TYPE_F));
-}
-
 bool
 fs_inst::is_send_from_grf() const
 {
@@ -1636,7 +1620,7 @@ calculate_urb_setup(const struct intel_device_info *devinfo,
                prog_data->urb_setup[i] = urb_next++;
          }
       }
-   } else if (devinfo->ver >= 6) {
+   } else {
       assert(!nir->info.per_primitive_inputs);
 
       uint64_t vue_header_bits =
@@ -1713,34 +1697,6 @@ calculate_urb_setup(const struct intel_device_info *devinfo,
          }
          urb_next = prev_stage_vue_map.num_slots - first_slot;
       }
-   } else {
-      /* FINISHME: The sf doesn't map VS->FS inputs for us very well. */
-      for (unsigned int i = 0; i < VARYING_SLOT_MAX; i++) {
-         /* Point size is packed into the header, not as a general attribute */
-         if (i == VARYING_SLOT_PSIZ)
-            continue;
-
-	 if (key->input_slots_valid & BITFIELD64_BIT(i)) {
-	    /* The back color slot is skipped when the front color is
-	     * also written to.  In addition, some slots can be
-	     * written in the vertex shader and not read in the
-	     * fragment shader.  So the register number must always be
-	     * incremented, mapped or not.
-	     */
-	    if (_mesa_varying_slot_in_fs((gl_varying_slot) i))
-	       prog_data->urb_setup[i] = urb_next;
-            urb_next++;
-	 }
-      }
-
-      /*
-       * It's a FS only attribute, and we did interpolation for this attribute
-       * in SF thread. So, count it here, too.
-       *
-       * See compile_sf_prog() for more info.
-       */
-      if (inputs_read & BITFIELD64_BIT(VARYING_SLOT_PNTC))
-         prog_data->urb_setup[VARYING_SLOT_PNTC] = urb_next++;
    }
 
    prog_data->num_varying_inputs = urb_next - prog_data->num_per_primitive_inputs;
@@ -2071,14 +2027,11 @@ fs_visitor::assign_constant_locations()
 
    /* Now that we know how many regular uniforms we'll push, reduce the
     * UBO push ranges so we don't exceed the 3DSTATE_CONSTANT limits.
-    */
-   /* For gen4/5:
-    * Only allow 16 registers (128 uniform components) as push constants.
     *
     * If changing this value, note the limitation about total_regs in
     * brw_curbe.c/crocus_state.c
     */
-   const unsigned max_push_length = compiler->devinfo->ver < 6 ? 16 : 64;
+   const unsigned max_push_length = 64;
    unsigned push_length = DIV_ROUND_UP(stage_prog_data->nr_params, 8);
    for (int i = 0; i < 4; i++) {
       struct brw_ubo_range *range = &prog_data->ubo_ranges[i];
@@ -2129,14 +2082,8 @@ fs_visitor::emit_repclear_shader()
    assert(uniforms == 0);
    assume(key->nr_color_regions > 0);
 
-   fs_reg color_output, header;
-   if (devinfo->ver >= 7) {
-      color_output = retype(brw_vec4_grf(127, 0), BRW_REGISTER_TYPE_UD);
-      header = retype(brw_vec8_grf(125, 0), BRW_REGISTER_TYPE_UD);
-   } else {
-      color_output = retype(brw_vec4_reg(MRF, 2, 0), BRW_REGISTER_TYPE_UD);
-      header = retype(brw_vec8_reg(MRF, 0, 0), BRW_REGISTER_TYPE_UD);
-   }
+   fs_reg color_output = retype(brw_vec4_grf(127, 0), BRW_REGISTER_TYPE_UD);
+   fs_reg header = retype(brw_vec8_grf(125, 0), BRW_REGISTER_TYPE_UD);
 
    /* We pass the clear color as a flat input.  Copy it to the output. */
    fs_reg color_input =
@@ -2157,23 +2104,17 @@ fs_visitor::emit_repclear_shader()
       if (i > 0)
          bld.exec_all().group(1, 0).MOV(component(header, 2), brw_imm_ud(i));
 
-      if (devinfo->ver >= 7) {
-         write = bld.emit(SHADER_OPCODE_SEND);
-         write->resize_sources(3);
-         write->sfid = GFX6_SFID_DATAPORT_RENDER_CACHE;
-         write->src[0] = brw_imm_ud(0);
-         write->src[1] = brw_imm_ud(0);
-         write->src[2] = i == 0 ? color_output : header;
-         write->check_tdr = true;
-         write->send_has_side_effects = true;
-         write->desc = brw_fb_write_desc(devinfo, i,
-            BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE_REPLICATED,
-            i == key->nr_color_regions - 1, false);
-      } else {
-         write = bld.emit(FS_OPCODE_REP_FB_WRITE);
-         write->target = i;
-         write->base_mrf = i == 0 ? color_output.nr : header.nr;
-      }
+      write = bld.emit(SHADER_OPCODE_SEND);
+      write->resize_sources(3);
+      write->sfid = GFX6_SFID_DATAPORT_RENDER_CACHE;
+      write->src[0] = brw_imm_ud(0);
+      write->src[1] = brw_imm_ud(0);
+      write->src[2] = i == 0 ? color_output : header;
+      write->check_tdr = true;
+      write->send_has_side_effects = true;
+      write->desc = brw_fb_write_desc(devinfo, i,
+         BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE_REPLICATED,
+         i == key->nr_color_regions - 1, false);
 
       /* We can use a headerless message for the first render target */
       write->header_size = i == 0 ? 0 : 2;
@@ -2206,7 +2147,7 @@ brw_sample_mask_reg(const fs_builder &bld)
       assert(bld.dispatch_width() <= 16);
       return brw_flag_subreg(sample_mask_flag_subreg(s) + bld.group() / 16);
    } else {
-      assert(s.devinfo->ver >= 6 && bld.dispatch_width() <= 16);
+      assert(bld.dispatch_width() <= 16);
       assert(s.devinfo->ver < 20);
       return retype(brw_vec1_grf((bld.group() >= 16 ? 2 : 1), 7),
                     BRW_REGISTER_TYPE_UW);
@@ -2774,24 +2715,6 @@ fs_visitor::allocate_registers(bool allow_spilling)
       prog_data->total_scratch = MAX2(brw_get_scratch_size(last_scratch),
                                       prog_data->total_scratch);
 
-      if (gl_shader_stage_is_compute(stage)) {
-         if (devinfo->platform == INTEL_PLATFORM_HSW) {
-            /* According to the MEDIA_VFE_STATE's "Per Thread Scratch Space"
-             * field documentation, Haswell supports a minimum of 2kB of
-             * scratch space for compute shaders, unlike every other stage
-             * and platform.
-             */
-            prog_data->total_scratch = MAX2(prog_data->total_scratch, 2048);
-         } else if (devinfo->ver <= 7) {
-            /* According to the MEDIA_VFE_STATE's "Per Thread Scratch Space"
-             * field documentation, platforms prior to Haswell measure scratch
-             * size linearly with a range of [1kB, 12kB] and 1kB granularity.
-             */
-            prog_data->total_scratch = ALIGN(last_scratch, 1024);
-            max_scratch_size = 12 * 1024;
-         }
-      }
-
       /* We currently only support up to 2MB of scratch space.  If we
        * need to support more eventually, the documentation suggests
        * that we could allocate a larger buffer, and partition it out
@@ -2892,7 +2815,7 @@ fs_visitor::emit_tcs_thread_end()
     * separate write just to finish the thread.  There isn't guaranteed to
     * be one, so this may not succeed.
     */
-   if (devinfo->ver != 8 && mark_last_urb_write_with_eot())
+   if (mark_last_urb_write_with_eot())
       return;
 
    const fs_builder bld = fs_builder(this).at_end();
@@ -3089,10 +3012,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
       if (nir->info.inputs_read > 0 ||
           BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_FRAG_COORD) ||
           (nir->info.outputs_read > 0 && !wm_key->coherent_fb_fetch)) {
-         if (devinfo->ver < 6)
-            emit_interpolation_setup_gfx4();
-         else
-            emit_interpolation_setup_gfx6();
+         emit_interpolation_setup();
       }
 
       /* We handle discards by keeping track of the still-live pixels in f0.1.
@@ -3108,8 +3028,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
              */
             const fs_reg dispatch_mask =
                devinfo->ver >= 20 ? xe2_vec1_grf(i, 15) :
-               devinfo->ver >= 6 ? brw_vec1_grf(i + 1, 7) :
-               brw_vec1_grf(0, 0);
+                                    brw_vec1_grf(i + 1, 7);
             bld.exec_all().group(1, 0)
                .MOV(brw_sample_mask_reg(bld.group(lower_width, i)),
                     retype(dispatch_mask, BRW_REGISTER_TYPE_UW));
@@ -3154,7 +3073,6 @@ bool
 fs_visitor::run_cs(bool allow_spilling)
 {
    assert(gl_shader_stage_is_compute(stage));
-   assert(devinfo->ver >= 7);
    const fs_builder bld = fs_builder(this).at_end();
 
    payload_ = new cs_thread_payload(*this);
@@ -3517,26 +3435,24 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
    assert(prog_data->alpha_to_coverage != BRW_SOMETIMES ||
           prog_data->persample_dispatch == BRW_SOMETIMES);
 
-   if (devinfo->ver >= 6) {
-      prog_data->uses_sample_mask =
-         BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_SAMPLE_MASK_IN);
+   prog_data->uses_sample_mask =
+      BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_SAMPLE_MASK_IN);
 
-      /* From the Ivy Bridge PRM documentation for 3DSTATE_PS:
-       *
-       *    "MSDISPMODE_PERSAMPLE is required in order to select
-       *    POSOFFSET_SAMPLE"
-       *
-       * So we can only really get sample positions if we are doing real
-       * per-sample dispatch.  If we need gl_SamplePosition and we don't have
-       * persample dispatch, we hard-code it to 0.5.
-       */
-      prog_data->uses_pos_offset =
-         prog_data->persample_dispatch != BRW_NEVER &&
-         (BITSET_TEST(shader->info.system_values_read,
-                      SYSTEM_VALUE_SAMPLE_POS) ||
-          BITSET_TEST(shader->info.system_values_read,
-                      SYSTEM_VALUE_SAMPLE_POS_OR_CENTER));
-   }
+   /* From the Ivy Bridge PRM documentation for 3DSTATE_PS:
+    *
+    *    "MSDISPMODE_PERSAMPLE is required in order to select
+    *    POSOFFSET_SAMPLE"
+    *
+    * So we can only really get sample positions if we are doing real
+    * per-sample dispatch.  If we need gl_SamplePosition and we don't have
+    * persample dispatch, we hard-code it to 0.5.
+    */
+   prog_data->uses_pos_offset =
+      prog_data->persample_dispatch != BRW_NEVER &&
+      (BITSET_TEST(shader->info.system_values_read,
+                   SYSTEM_VALUE_SAMPLE_POS) ||
+       BITSET_TEST(shader->info.system_values_read,
+                   SYSTEM_VALUE_SAMPLE_POS_OR_CENTER));
 
    prog_data->early_fragment_tests = shader->info.fs.early_fragment_tests;
    prog_data->post_depth_coverage = shader->info.fs.post_depth_coverage;
@@ -3951,17 +3867,13 @@ cs_fill_push_const_info(const struct intel_device_info *devinfo,
 {
    const struct brw_stage_prog_data *prog_data = &cs_prog_data->base;
    int subgroup_id_index = brw_get_subgroup_id_param_index(devinfo, prog_data);
-   bool cross_thread_supported = devinfo->verx10 >= 75;
 
    /* The thread ID should be stored in the last param dword */
    assert(subgroup_id_index == -1 ||
           subgroup_id_index == (int)prog_data->nr_params - 1);
 
    unsigned cross_thread_dwords, per_thread_dwords;
-   if (!cross_thread_supported) {
-      cross_thread_dwords = 0u;
-      per_thread_dwords = prog_data->nr_params;
-   } else if (subgroup_id_index >= 0) {
+   if (subgroup_id_index >= 0) {
       /* Fill all but the last register with cross-thread payload */
       cross_thread_dwords = 8 * (subgroup_id_index / 8);
       per_thread_dwords = prog_data->nr_params - cross_thread_dwords;

@@ -149,10 +149,10 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
 
    switch (op) {
    case 0 ... NUM_BRW_OPCODES - 1:
-      /* The DO instruction doesn't exist on Gfx6+, but we use it to mark the
+      /* The DO instruction doesn't exist on Gfx9+, but we use it to mark the
        * start of a loop in the IR.
        */
-      if (devinfo->ver >= 6 && op == BRW_OPCODE_DO)
+      if (op == BRW_OPCODE_DO)
          return "do";
 
       /* DPAS instructions may transiently exist on platforms that do not

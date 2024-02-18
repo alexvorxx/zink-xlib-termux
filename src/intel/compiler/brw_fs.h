@@ -223,7 +223,6 @@ public:
                                    uint32_t const_offset,
                                    uint8_t alignment,
                                    unsigned components);
-   void DEP_RESOLVE_MOV(const brw::fs_builder &bld, int grf);
 
    bool run_fs(bool allow_spilling, bool do_rep_send);
    bool run_vs();
@@ -268,8 +267,7 @@ public:
    void limit_dispatch_width(unsigned n, const char *msg);
 
    void emit_repclear_shader();
-   void emit_interpolation_setup_gfx4();
-   void emit_interpolation_setup_gfx6();
+   void emit_interpolation_setup();
 
    void set_tcs_invocation_id();
 
@@ -412,14 +410,13 @@ public:
 /**
  * Return the flag register used in fragment shaders to keep track of live
  * samples.  On Gfx7+ we use f1.0-f1.1 to allow discard jumps in SIMD32
- * dispatch mode, while earlier generations are constrained to f0.1, which
- * limits the dispatch width to SIMD16 for fragment shaders that use discard.
+ * dispatch mode.
  */
 static inline unsigned
 sample_mask_flag_subreg(const fs_visitor &s)
 {
    assert(s.stage == MESA_SHADER_FRAGMENT);
-   return s.devinfo->ver >= 7 ? 2 : 1;
+   return 2;
 }
 
 /**

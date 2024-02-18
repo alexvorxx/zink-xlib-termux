@@ -4379,11 +4379,14 @@ agx_draw_without_restart(struct agx_batch *batch,
       PIPE_SHADER_COMPUTE);
 
    /* Now draw the results without restart */
-   struct pipe_draw_info new_info = *info;
-   new_info.primitive_restart = false;
-   new_info.mode = u_decomposed_prim(info->mode);
-   new_info.index.resource = ctx->heap;
-   new_info.has_user_indices = false;
+   struct pipe_draw_info new_info = {
+      .mode = u_decomposed_prim(info->mode),
+      .index_size = info->index_size,
+      .index.resource = ctx->heap,
+      .view_mask = info->view_mask,
+      .increment_draw_id = info->increment_draw_id,
+      .index_bias_varies = info->index_bias_varies,
+   };
 
    struct pipe_draw_indirect_info new_indirect = *indirect;
    new_indirect.buffer = &out_draws_rsrc.base;
@@ -4391,7 +4394,7 @@ agx_draw_without_restart(struct agx_batch *batch,
    new_indirect.stride = 5 * sizeof(uint32_t);
 
    ctx->active_draw_without_restart = true;
-   ctx->base.draw_vbo(&ctx->base, &new_info, drawid_offset, &new_indirect, draw,
+   ctx->base.draw_vbo(&ctx->base, &new_info, drawid_offset, &new_indirect, NULL,
                       1);
    ctx->active_draw_without_restart = false;
 }

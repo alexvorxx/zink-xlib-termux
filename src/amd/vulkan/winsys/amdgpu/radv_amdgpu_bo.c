@@ -557,13 +557,16 @@ error_va_alloc:
 }
 
 static void *
-radv_amdgpu_winsys_bo_map(struct radeon_winsys *_ws, struct radeon_winsys_bo *_bo)
+radv_amdgpu_winsys_bo_map(struct radeon_winsys *_ws, struct radeon_winsys_bo *_bo, bool use_fixed_addr,
+                          void *fixed_addr)
 {
    struct radv_amdgpu_winsys_bo *bo = radv_amdgpu_winsys_bo(_bo);
 
    /* Safeguard for the Quantic Dream layer skipping unmaps. */
-   if (bo->cpu_map)
+   if (bo->cpu_map && !use_fixed_addr)
       return bo->cpu_map;
+
+   assert(!bo->cpu_map);
 
    union drm_amdgpu_gem_mmap args;
    memset(&args, 0, sizeof(args));
@@ -574,7 +577,7 @@ radv_amdgpu_winsys_bo_map(struct radeon_winsys *_ws, struct radeon_winsys_bo *_b
    if (ret)
       return NULL;
 
-   void *data = mmap(NULL, bo->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+   void *data = mmap(fixed_addr, bo->size, PROT_READ | PROT_WRITE, MAP_SHARED | (use_fixed_addr ? MAP_FIXED : 0),
                      amdgpu_device_get_fd(radv_amdgpu_winsys(_ws)->dev), args.out.addr_ptr);
    if (data == MAP_FAILED)
       return NULL;

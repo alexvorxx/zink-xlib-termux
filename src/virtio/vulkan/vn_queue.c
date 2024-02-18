@@ -28,9 +28,6 @@
 
 /* queue commands */
 
-static bool
-vn_semaphore_wait_external(struct vn_device *dev, struct vn_semaphore *sem);
-
 struct vn_queue_submission {
    VkStructureType batch_type;
    VkQueue queue_handle;
@@ -242,6 +239,9 @@ vn_get_signal_semaphore_counter(struct vn_queue_submission *submit,
    }
 }
 
+static bool
+vn_semaphore_wait_external(struct vn_device *dev, struct vn_semaphore *sem);
+
 static VkResult
 vn_queue_submission_fix_batch_semaphores(struct vn_queue_submission *submit,
                                          uint32_t batch_index)
@@ -387,110 +387,6 @@ vn_queue_submission_alloc_storage(struct vn_queue_submission *submit)
    submit->temp.cmds = submit->temp.storage + total_batch_size;
 
    return VK_SUCCESS;
-}
-
-struct vn_feedback_src {
-   struct vn_feedback_slot *src_slot;
-   VkCommandBuffer *commands;
-
-   struct list_head head;
-};
-
-static VkResult
-vn_semaphore_feedback_src_init(struct vn_device *dev,
-                               struct vn_feedback_slot *slot,
-                               struct vn_feedback_src *feedback_src,
-                               const VkAllocationCallbacks *alloc)
-{
-   VkResult result;
-   VkDevice dev_handle = vn_device_to_handle(dev);
-
-   feedback_src->src_slot =
-      vn_feedback_pool_alloc(&dev->feedback_pool, VN_FEEDBACK_TYPE_SEMAPHORE);
-
-   if (!feedback_src->src_slot)
-      return VK_ERROR_OUT_OF_HOST_MEMORY;
-
-   feedback_src->commands = vk_zalloc(
-      alloc, sizeof(feedback_src->commands) * dev->queue_family_count,
-      VN_DEFAULT_ALIGN, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-
-   if (!feedback_src->commands) {
-      vn_feedback_pool_free(&dev->feedback_pool, feedback_src->src_slot);
-      return VK_ERROR_OUT_OF_HOST_MEMORY;
-   }
-
-   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
-      result = vn_feedback_cmd_alloc(dev_handle, &dev->fb_cmd_pools[i], slot,
-                                     feedback_src->src_slot,
-                                     &feedback_src->commands[i]);
-      if (result != VK_SUCCESS) {
-         for (uint32_t j = 0; j < i; j++) {
-            vn_feedback_cmd_free(dev_handle, &dev->fb_cmd_pools[j],
-                                 feedback_src->commands[j]);
-         }
-         vk_free(alloc, feedback_src->commands);
-         vn_feedback_pool_free(&dev->feedback_pool, feedback_src->src_slot);
-         return result;
-      }
-   }
-
-   return VK_SUCCESS;
-}
-
-static VkResult
-vn_set_semaphore_feedback_cmd(struct vn_queue *queue,
-                              struct vn_semaphore *sem,
-                              uint64_t counter,
-                              VkCommandBuffer *cmd_handle)
-{
-   VkResult result;
-   struct vk_queue *queue_vk = &queue->base.base;
-   struct vn_device *dev = (void *)queue_vk->base.device;
-   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
-   struct vn_feedback_src *free_feedback_src = NULL;
-
-   assert(sem->feedback.slot);
-
-   simple_mtx_lock(&sem->feedback.src_lists_mtx);
-   if (!list_is_empty(&sem->feedback.free_src_list)) {
-      free_feedback_src = list_first_entry(&sem->feedback.free_src_list,
-                                           struct vn_feedback_src, head);
-      list_move_to(&free_feedback_src->head, &sem->feedback.pending_src_list);
-   }
-   simple_mtx_unlock(&sem->feedback.src_lists_mtx);
-
-   if (!free_feedback_src) {
-      /* allocate a new src slot if none are free */
-      free_feedback_src =
-         vk_zalloc(alloc, sizeof(*free_feedback_src), VN_DEFAULT_ALIGN,
-                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-
-      if (!free_feedback_src)
-         return VK_ERROR_OUT_OF_HOST_MEMORY;
-
-      result = vn_semaphore_feedback_src_init(dev, sem->feedback.slot,
-                                              free_feedback_src, alloc);
-      if (result != VK_SUCCESS) {
-         vk_free(alloc, free_feedback_src);
-         return result;
-      }
-
-      simple_mtx_lock(&sem->feedback.src_lists_mtx);
-      list_add(&free_feedback_src->head, &sem->feedback.pending_src_list);
-      simple_mtx_unlock(&sem->feedback.src_lists_mtx);
-   }
-
-   vn_feedback_set_counter(free_feedback_src->src_slot, counter);
-
-   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
-      if (dev->queue_families[i] == queue_vk->queue_family_index) {
-         *cmd_handle = free_feedback_src->commands[i];
-         return VK_SUCCESS;
-      }
-   }
-
-   unreachable("bad feedback sem");
 }
 
 static VkResult
@@ -645,43 +541,42 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
    return VK_SUCCESS;
 }
 
+struct vn_semaphore_feedback_cmd *
+vn_semaphore_get_feedback_cmd(struct vn_device *dev,
+                              struct vn_semaphore *sem);
+
 static VkResult
 vn_queue_submission_add_semaphore_feedback(struct vn_queue_submission *submit,
                                            uint32_t batch_index,
+                                           uint32_t signal_index,
                                            uint32_t *cmd_count)
 {
-   struct vn_queue *queue = vn_queue_from_handle(submit->queue_handle);
-   const uint32_t signal_count =
-      vn_get_signal_semaphore_count(submit, batch_index);
-   VkResult result;
+   struct vn_semaphore *sem = vn_semaphore_from_handle(
+      vn_get_signal_semaphore(submit, batch_index, signal_index));
+   if (!sem->feedback.slot)
+      return VK_SUCCESS;
 
-   /* Set the sem feedback cmds we appended in our copy of cmd buffers
-    * with cmds to write the signal value.
-    */
-   uint32_t new_cmd_count = *cmd_count;
-   for (uint32_t i = 0; i < signal_count; i++) {
-      struct vn_semaphore *sem = vn_semaphore_from_handle(
-         vn_get_signal_semaphore(submit, batch_index, i));
+   VK_FROM_HANDLE(vk_queue, queue_vk, submit->queue_handle);
+   struct vn_device *dev = (void *)queue_vk->base.device;
+   struct vn_semaphore_feedback_cmd *sfb_cmd =
+      vn_semaphore_get_feedback_cmd(dev, sem);
+   if (!sfb_cmd)
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-      if (sem->feedback.slot) {
-         VkCommandBuffer *cmd_handle =
-            vn_get_temp_cmd_ptr(submit, new_cmd_count);
+   const uint64_t counter =
+      vn_get_signal_semaphore_counter(submit, batch_index, signal_index);
+   vn_feedback_set_counter(sfb_cmd->src_slot, counter);
 
-         const uint64_t counter =
-            vn_get_signal_semaphore_counter(submit, batch_index, i);
-
-         result =
-            vn_set_semaphore_feedback_cmd(queue, sem, counter, cmd_handle);
-         if (result != VK_SUCCESS)
-            return result;
-
-         new_cmd_count++;
+   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
+      if (dev->queue_families[i] == queue_vk->queue_family_index) {
+         VkCommandBuffer *dst = vn_get_temp_cmd_ptr(submit, *cmd_count);
+         *dst = sfb_cmd->cmd_handles[i];
+         (*cmd_count)++;
+         return VK_SUCCESS;
       }
    }
 
-   *cmd_count = new_cmd_count;
-
-   return VK_SUCCESS;
+   unreachable("bad feedback sem");
 }
 
 static void
@@ -722,10 +617,14 @@ vn_queue_submission_add_feedback_cmds(struct vn_queue_submission *submit,
    }
 
    if (feedback_types & VN_FEEDBACK_TYPE_SEMAPHORE) {
-      result = vn_queue_submission_add_semaphore_feedback(submit, batch_index,
-                                                          &new_cmd_count);
-      if (result != VK_SUCCESS)
-         return result;
+      const uint32_t signal_count =
+         vn_get_signal_semaphore_count(submit, batch_index);
+      for (uint32_t i = 0; i < signal_count; i++) {
+         result = vn_queue_submission_add_semaphore_feedback(
+            submit, batch_index, i, &new_cmd_count);
+         if (result != VK_SUCCESS)
+            return result;
+      }
    }
 
    if (feedback_types & VN_FEEDBACK_TYPE_FENCE) {
@@ -865,46 +764,21 @@ vn_queue_submission_setup_batches(struct vn_queue_submission *submit)
 }
 
 static void
-vn_queue_sem_recycle_src_feedback(VkDevice dev_handle, VkSemaphore sem_handle)
-{
-
-   struct vn_semaphore *sem = vn_semaphore_from_handle(sem_handle);
-
-   if (!sem->feedback.slot)
-      return;
-
-   uint64_t curr_counter = 0;
-   vn_GetSemaphoreCounterValue(dev_handle, sem_handle, &curr_counter);
-
-   /* search pending src list for already signaled values*/
-   simple_mtx_lock(&sem->feedback.src_lists_mtx);
-   list_for_each_entry_safe(struct vn_feedback_src, feedback_src,
-                            &sem->feedback.pending_src_list, head) {
-      if (curr_counter >= vn_feedback_get_counter(feedback_src->src_slot)) {
-         list_move_to(&feedback_src->head, &sem->feedback.free_src_list);
-      }
-   }
-   simple_mtx_unlock(&sem->feedback.src_lists_mtx);
-}
+vn_semaphore_recycle_feedback_cmd(VkDevice dev_handle,
+                                  VkSemaphore sem_handle);
 
 static void
-vn_queue_recycle_src_feedback(struct vn_queue_submission *submit)
+vn_queue_submission_cleanup_semaphore_feedback(
+   struct vn_queue_submission *submit)
 {
    struct vk_queue *queue_vk = vk_queue_from_handle(submit->queue_handle);
    VkDevice dev_handle = vk_device_to_handle(queue_vk->base.device);
 
    for (uint32_t i = 0; i < submit->batch_count; i++) {
       const uint32_t wait_count = vn_get_wait_semaphore_count(submit, i);
-      const uint32_t signal_count = vn_get_signal_semaphore_count(submit, i);
-
       for (uint32_t j = 0; j < wait_count; j++) {
          VkSemaphore sem_handle = vn_get_wait_semaphore(submit, i, j);
-         vn_queue_sem_recycle_src_feedback(dev_handle, sem_handle);
-      }
-
-      for (uint32_t j = 0; j < signal_count; j++) {
-         VkSemaphore sem_handle = vn_get_signal_semaphore(submit, i, j);
-         vn_queue_sem_recycle_src_feedback(dev_handle, sem_handle);
+         vn_semaphore_recycle_feedback_cmd(dev_handle, sem_handle);
       }
    }
 }
@@ -914,7 +788,7 @@ vn_queue_submission_cleanup(struct vn_queue_submission *submit)
 {
    /* TODO clean up pending src feedbacks on failure? */
    if (submit->feedback_types & VN_FEEDBACK_TYPE_SEMAPHORE)
-      vn_queue_recycle_src_feedback(submit);
+      vn_queue_submission_cleanup_semaphore_feedback(submit);
 }
 
 static VkResult
@@ -1896,6 +1770,50 @@ vn_semaphore_signal_wsi(struct vn_device *dev, struct vn_semaphore *sem)
    sem->payload = temp;
 }
 
+struct vn_semaphore_feedback_cmd *
+vn_semaphore_get_feedback_cmd(struct vn_device *dev, struct vn_semaphore *sem)
+{
+   struct vn_semaphore_feedback_cmd *sfb_cmd = NULL;
+
+   simple_mtx_lock(&sem->feedback.cmd_mtx);
+   if (!list_is_empty(&sem->feedback.free_cmds)) {
+      sfb_cmd = list_first_entry(&sem->feedback.free_cmds,
+                                 struct vn_semaphore_feedback_cmd, head);
+      list_move_to(&sfb_cmd->head, &sem->feedback.pending_cmds);
+   }
+   simple_mtx_unlock(&sem->feedback.cmd_mtx);
+
+   if (!sfb_cmd) {
+      sfb_cmd = vn_semaphore_feedback_cmd_alloc(dev, sem->feedback.slot);
+
+      simple_mtx_lock(&sem->feedback.cmd_mtx);
+      list_add(&sfb_cmd->head, &sem->feedback.pending_cmds);
+      simple_mtx_unlock(&sem->feedback.cmd_mtx);
+   }
+
+   return sfb_cmd;
+}
+
+static void
+vn_semaphore_recycle_feedback_cmd(VkDevice dev_handle, VkSemaphore sem_handle)
+{
+   struct vn_semaphore *sem = vn_semaphore_from_handle(sem_handle);
+   if (!sem->feedback.slot)
+      return;
+
+   uint64_t curr_counter = 0;
+   vn_GetSemaphoreCounterValue(dev_handle, sem_handle, &curr_counter);
+
+   /* search pending cmds for already signaled values */
+   simple_mtx_lock(&sem->feedback.cmd_mtx);
+   list_for_each_entry_safe(struct vn_semaphore_feedback_cmd, sfb_cmd,
+                            &sem->feedback.pending_cmds, head) {
+      if (curr_counter >= vn_feedback_get_counter(sfb_cmd->src_slot))
+         list_move_to(&sfb_cmd->head, &sem->feedback.free_cmds);
+   }
+   simple_mtx_unlock(&sem->feedback.cmd_mtx);
+}
+
 static VkResult
 vn_semaphore_feedback_init(struct vn_device *dev,
                            struct vn_semaphore *sem,
@@ -1917,12 +1835,12 @@ vn_semaphore_feedback_init(struct vn_device *dev,
    if (!slot)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   list_inithead(&sem->feedback.pending_src_list);
-   list_inithead(&sem->feedback.free_src_list);
+   list_inithead(&sem->feedback.pending_cmds);
+   list_inithead(&sem->feedback.free_cmds);
 
    vn_feedback_set_counter(slot, initial_value);
 
-   simple_mtx_init(&sem->feedback.src_lists_mtx, mtx_plain);
+   simple_mtx_init(&sem->feedback.cmd_mtx, mtx_plain);
    simple_mtx_init(&sem->feedback.async_wait_mtx, mtx_plain);
 
    sem->feedback.signaled_counter = initial_value;
@@ -1932,42 +1850,20 @@ vn_semaphore_feedback_init(struct vn_device *dev,
 }
 
 static void
-vn_semaphore_feedback_free(struct vn_device *dev,
-                           struct vn_feedback_src *feedback_src)
-{
-   VkDevice dev_handle = vn_device_to_handle(dev);
-   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
-
-   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
-      vn_feedback_cmd_free(dev_handle, &dev->fb_cmd_pools[i],
-                           feedback_src->commands[i]);
-   }
-   vk_free(alloc, feedback_src->commands);
-
-   vn_feedback_pool_free(&dev->feedback_pool, feedback_src->src_slot);
-   /* feedback_src was allocated laziy at submission time using the
-    * device level alloc, not the vkCreateSemaphore passed alloc
-    */
-   vk_free(alloc, feedback_src);
-}
-
-static void
 vn_semaphore_feedback_fini(struct vn_device *dev, struct vn_semaphore *sem)
 {
    if (!sem->feedback.slot)
       return;
 
-   list_for_each_entry_safe(struct vn_feedback_src, feedback_src,
-                            &sem->feedback.free_src_list, head) {
-      vn_semaphore_feedback_free(dev, feedback_src);
-   }
+   list_for_each_entry_safe(struct vn_semaphore_feedback_cmd, sfb_cmd,
+                            &sem->feedback.free_cmds, head)
+      vn_semaphore_feedback_cmd_free(dev, sfb_cmd);
 
-   list_for_each_entry_safe(struct vn_feedback_src, feedback_src,
-                            &sem->feedback.pending_src_list, head) {
-      vn_semaphore_feedback_free(dev, feedback_src);
-   }
+   list_for_each_entry_safe(struct vn_semaphore_feedback_cmd, sfb_cmd,
+                            &sem->feedback.pending_cmds, head)
+      vn_semaphore_feedback_cmd_free(dev, sfb_cmd);
 
-   simple_mtx_destroy(&sem->feedback.src_lists_mtx);
+   simple_mtx_destroy(&sem->feedback.cmd_mtx);
    simple_mtx_destroy(&sem->feedback.async_wait_mtx);
 
    vn_feedback_pool_free(&dev->feedback_pool, sem->feedback.slot);

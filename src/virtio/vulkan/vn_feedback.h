@@ -66,6 +66,13 @@ struct vn_feedback_buffer {
    struct list_head head;
 };
 
+struct vn_semaphore_feedback_cmd {
+   struct vn_feedback_slot *src_slot;
+   VkCommandBuffer *cmd_handles;
+
+   struct list_head head;
+};
+
 /* query feedback batch for deferred recording */
 struct vn_feedback_query_batch {
    struct vn_query_pool *query_pool;
@@ -154,6 +161,14 @@ vn_event_feedback_cmd_record(VkCommandBuffer cmd_handle,
                              VkPipelineStageFlags2 src_stage_mask,
                              VkResult status,
                              bool sync2);
+
+struct vn_semaphore_feedback_cmd *
+vn_semaphore_feedback_cmd_alloc(struct vn_device *dev,
+                                struct vn_feedback_slot *dst_slot);
+
+void
+vn_semaphore_feedback_cmd_free(struct vn_device *dev,
+                               struct vn_semaphore_feedback_cmd *sfb_cmd);
 
 VkResult
 vn_feedback_query_cmd_alloc(VkDevice dev_handle,

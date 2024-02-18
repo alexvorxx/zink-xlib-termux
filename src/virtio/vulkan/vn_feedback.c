@@ -507,6 +507,65 @@ vn_feedback_cmd_record(VkCommandBuffer cmd_handle,
    return vn_EndCommandBuffer(cmd_handle);
 }
 
+struct vn_semaphore_feedback_cmd *
+vn_semaphore_feedback_cmd_alloc(struct vn_device *dev,
+                                struct vn_feedback_slot *dst_slot)
+{
+   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
+   struct vn_semaphore_feedback_cmd *sfb_cmd;
+   VkCommandBuffer *cmd_handles;
+
+   VK_MULTIALLOC(ma);
+   vk_multialloc_add(&ma, &sfb_cmd, __typeof__(*sfb_cmd), 1);
+   vk_multialloc_add(&ma, &cmd_handles, __typeof__(*cmd_handles),
+                     dev->queue_family_count);
+   if (!vk_multialloc_zalloc(&ma, alloc, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT))
+      return NULL;
+
+   struct vn_feedback_slot *src_slot =
+      vn_feedback_pool_alloc(&dev->feedback_pool, VN_FEEDBACK_TYPE_SEMAPHORE);
+   if (!src_slot) {
+      vk_free(alloc, sfb_cmd);
+      return NULL;
+   }
+
+   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
+      VkDevice dev_handle = vn_device_to_handle(dev);
+      VkResult result =
+         vn_feedback_cmd_alloc(dev_handle, &dev->fb_cmd_pools[i], dst_slot,
+                               src_slot, &cmd_handles[i]);
+      if (result != VK_SUCCESS) {
+         for (uint32_t j = 0; j < i; j++) {
+            vn_feedback_cmd_free(dev_handle, &dev->fb_cmd_pools[j],
+                                 cmd_handles[j]);
+         }
+
+         vn_feedback_pool_free(&dev->feedback_pool, src_slot);
+         vk_free(alloc, sfb_cmd);
+         return NULL;
+      }
+   }
+
+   sfb_cmd->cmd_handles = cmd_handles;
+   sfb_cmd->src_slot = src_slot;
+   return sfb_cmd;
+}
+
+void
+vn_semaphore_feedback_cmd_free(struct vn_device *dev,
+                               struct vn_semaphore_feedback_cmd *sfb_cmd)
+{
+   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
+
+   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
+      vn_feedback_cmd_free(vn_device_to_handle(dev), &dev->fb_cmd_pools[i],
+                           sfb_cmd->cmd_handles[i]);
+   }
+
+   vn_feedback_pool_free(&dev->feedback_pool, sfb_cmd->src_slot);
+   vk_free(alloc, sfb_cmd);
+}
+
 static void
 vn_feedback_query_cmd_record(VkCommandBuffer cmd_handle,
                              VkQueryPool pool_handle,

@@ -281,7 +281,7 @@ brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
 /* Macro for fields that become a constant in Gfx12+ not actually represented
  * in the instruction.
  */
-#define FK(name, hi4, lo4, const12)                           \
+#define FK(name, hi9, lo9, const12)                           \
 static inline void                                            \
 brw_inst_set_##name(const struct intel_device_info *devinfo,  \
                     brw_inst *inst, uint64_t v)               \
@@ -289,7 +289,7 @@ brw_inst_set_##name(const struct intel_device_info *devinfo,  \
    if (devinfo->ver >= 12)                                    \
       assert(v == (const12));                                 \
    else                                                       \
-      brw_inst_set_bits(inst, hi4, lo4, v);                   \
+      brw_inst_set_bits(inst, hi9, lo9, v);                   \
 }                                                             \
 static inline uint64_t                                        \
 brw_inst_##name(const struct intel_device_info *devinfo,      \
@@ -298,7 +298,7 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
    if (devinfo->ver >= 12)                                    \
       return (const12);                                       \
    else                                                       \
-      return brw_inst_bits(inst, hi4, lo4);                   \
+      return brw_inst_bits(inst, hi9, lo9);                   \
 }
 
 FV20(src1_vstride,     /* 9+ */ 120, 117, /* 12+ */ 119, 116, /* 20+ */ 118, 116)
@@ -382,7 +382,7 @@ FF(nib_control,
 F(no_dd_check,         /* 9+ */ 10,  10,  /* 12+ */ -1, -1)
 F(no_dd_clear,         /* 9+ */  9,   9,  /* 12+ */ -1, -1)
 F20(swsb,              /* 9+ */  -1, -1,  /* 12+ */ 15,   8, /* 20+ */ 17, 8)
-FK(access_mode,        /* 4+ */   8,  8,  /* 12+ */ BRW_ALIGN_1)
+FK(access_mode,        /* 9+ */   8,  8,  /* 12+ */ BRW_ALIGN_1)
 /* Bit 7 is Reserved (for future Opcode expansion) */
 F(hw_opcode,           /* 9+ */   6,  0,  /* 12+ */ 6,  0)
 
@@ -432,7 +432,7 @@ F20(3src_qtr_control,       /* 9+ */ 13, 12,   /* 12+ */ 21, 20, /* 20+ */ 25, 2
 F(3src_no_dd_check,         /* 9+ */ 10, 10,   /* 12+ */ -1, -1)
 F(3src_no_dd_clear,         /* 9+ */  9,  9,   /* 12+ */ -1, -1)
 F(3src_mask_control,        /* 9+ */ 34, 34,   /* 12+ */ 31, 31)
-FK(3src_access_mode,        /* 4+ */ 8,  8,    /* 12+ */ BRW_ALIGN_1)
+FK(3src_access_mode,        /* 9+ */  8,  8,   /* 12+ */ BRW_ALIGN_1)
 F(3src_swsb,                /* 9+ */ -1, -1,   /* 12+ */ 15,  8)
 /* Bit 7 is Reserved (for future Opcode expansion) */
 F(3src_hw_opcode,           /* 9+ */ 6,  0,    /* 12+ */ 6, 0)

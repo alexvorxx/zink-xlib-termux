@@ -2727,7 +2727,7 @@ radv_vcn_cmd_reset(struct radv_cmd_buffer *cmd_buffer)
                                     ? align(sizeof(rvcn_av1_frame_context_t), 2048)
                                     : align(sizeof(rvcn_av1_vcn4_frame_context_t), 2048);
 
-      uint8_t *ctxptr = cmd_buffer->device->ws->buffer_map(cmd_buffer->device->ws, vid->ctx.mem->bo);
+      uint8_t *ctxptr = radv_buffer_map(cmd_buffer->device->ws, vid->ctx.mem->bo);
       ctxptr += vid->ctx.offset;
       if (pdev->av1_version == RDECODE_AV1_VER_0) {
          for (unsigned i = 0; i < 4; ++i) {

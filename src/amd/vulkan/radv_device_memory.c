@@ -300,7 +300,7 @@ radv_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo, v
    if (mem->user_ptr)
       *ppData = mem->user_ptr;
    else
-      *ppData = device->ws->buffer_map(device->ws, mem->bo);
+      *ppData = radv_buffer_map(device->ws, mem->bo);
 
    if (*ppData) {
       vk_rmv_log_cpu_map(&device->vk, mem->bo->va, false);

@@ -360,4 +360,10 @@ radv_cs_add_buffer(struct radeon_winsys *ws, struct radeon_cmdbuf *cs, struct ra
    ws->cs_add_buffer(cs, bo);
 }
 
+static inline void *
+radv_buffer_map(struct radeon_winsys *ws, struct radeon_winsys_bo *bo)
+{
+   return ws->buffer_map(ws, bo);
+}
+
 #endif /* RADV_RADEON_WINSYS_H */

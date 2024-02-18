@@ -522,7 +522,7 @@ radv_cmd_buffer_resize_upload_buf(struct radv_cmd_buffer *cmd_buffer, uint64_t m
    cmd_buffer->upload.upload_bo = bo;
    cmd_buffer->upload.size = new_size;
    cmd_buffer->upload.offset = 0;
-   cmd_buffer->upload.map = device->ws->buffer_map(device->ws, cmd_buffer->upload.upload_bo);
+   cmd_buffer->upload.map = radv_buffer_map(device->ws, cmd_buffer->upload.upload_bo);
 
    if (!cmd_buffer->upload.map) {
       vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_DEVICE_MEMORY);

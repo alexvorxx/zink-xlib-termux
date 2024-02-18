@@ -1309,7 +1309,7 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
       return vk_error(device, result);
    }
 
-   pool->ptr = device->ws->buffer_map(device->ws, pool->bo);
+   pool->ptr = radv_buffer_map(device->ws, pool->bo);
    if (!pool->ptr) {
       radv_destroy_query_pool(device, pAllocator, pool);
       return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);

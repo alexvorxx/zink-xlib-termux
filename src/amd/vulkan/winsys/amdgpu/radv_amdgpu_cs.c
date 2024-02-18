@@ -272,7 +272,7 @@ radv_amdgpu_cs_get_new_ib(struct radeon_cmdbuf *_cs, uint32_t ib_size)
    if (result != VK_SUCCESS)
       return result;
 
-   cs->ib_mapped = cs->ws->base.buffer_map(&cs->ws->base, cs->ib_buffer);
+   cs->ib_mapped = radv_buffer_map(&cs->ws->base, cs->ib_buffer);
    if (!cs->ib_mapped) {
       cs->ws->base.buffer_destroy(&cs->ws->base, cs->ib_buffer);
       return VK_ERROR_OUT_OF_DEVICE_MEMORY;
@@ -404,7 +404,7 @@ radv_amdgpu_cs_grow(struct radeon_cmdbuf *_cs, size_t min_size)
       radv_amdgpu_restore_last_ib(cs);
    }
 
-   cs->ib_mapped = cs->ws->base.buffer_map(&cs->ws->base, cs->ib_buffer);
+   cs->ib_mapped = radv_buffer_map(&cs->ws->base, cs->ib_buffer);
    if (!cs->ib_mapped) {
       cs->ws->base.buffer_destroy(&cs->ws->base, cs->ib_buffer);
       cs->base.cdw = 0;
@@ -748,7 +748,7 @@ radv_amdgpu_cs_execute_secondary(struct radeon_cmdbuf *_parent, struct radeon_cm
 
          parent->base.reserved_dw = MAX2(parent->base.reserved_dw, parent->base.cdw + cdw);
 
-         mapped = ws->base.buffer_map(&ws->base, ib->bo);
+         mapped = radv_buffer_map(&ws->base, ib->bo);
          if (!mapped) {
             parent->status = VK_ERROR_OUT_OF_DEVICE_MEMORY;
             return;
@@ -1423,7 +1423,7 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
          char name[64];
          void *mapped;
 
-         mapped = ws->base.buffer_map(&ws->base, ib->bo);
+         mapped = radv_buffer_map(&ws->base, ib->bo);
          if (!mapped)
             continue;
 

@@ -300,7 +300,7 @@ radv_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo, v
    if (mem->user_ptr)
       *ppData = mem->user_ptr;
    else
-      *ppData = device->ws->buffer_map(mem->bo);
+      *ppData = device->ws->buffer_map(device->ws, mem->bo);
 
    if (*ppData) {
       vk_rmv_log_cpu_map(&device->vk, mem->bo->va, false);
@@ -319,7 +319,7 @@ radv_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapI
 
    vk_rmv_log_cpu_map(&device->vk, mem->bo->va, true);
    if (mem->user_ptr == NULL)
-      device->ws->buffer_unmap(mem->bo);
+      device->ws->buffer_unmap(device->ws, mem->bo);
 
    return VK_SUCCESS;
 }

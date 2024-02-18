@@ -551,7 +551,7 @@ error_va_alloc:
 }
 
 static void *
-radv_amdgpu_winsys_bo_map(struct radeon_winsys_bo *_bo)
+radv_amdgpu_winsys_bo_map(struct radeon_winsys *_ws, struct radeon_winsys_bo *_bo)
 {
    struct radv_amdgpu_winsys_bo *bo = radv_amdgpu_winsys_bo(_bo);
    int ret;
@@ -563,7 +563,7 @@ radv_amdgpu_winsys_bo_map(struct radeon_winsys_bo *_bo)
 }
 
 static void
-radv_amdgpu_winsys_bo_unmap(struct radeon_winsys_bo *_bo)
+radv_amdgpu_winsys_bo_unmap(struct radeon_winsys *_ws, struct radeon_winsys_bo *_bo)
 {
    struct radv_amdgpu_winsys_bo *bo = radv_amdgpu_winsys_bo(_bo);
    amdgpu_bo_cpu_unmap(bo->bo);

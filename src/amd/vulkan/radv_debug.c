@@ -80,7 +80,7 @@ radv_init_trace(struct radv_device *device)
    if (result != VK_SUCCESS)
       return false;
 
-   device->trace_id_ptr = ws->buffer_map(device->trace_bo);
+   device->trace_id_ptr = ws->buffer_map(ws, device->trace_bo);
    if (!device->trace_id_ptr)
       return false;
 
@@ -920,7 +920,7 @@ radv_trap_handler_init(struct radv_device *device)
    if (result != VK_SUCCESS)
       return false;
 
-   device->tma_ptr = ws->buffer_map(device->tma_bo);
+   device->tma_ptr = ws->buffer_map(ws, device->tma_bo);
    if (!device->tma_ptr)
       return false;
 

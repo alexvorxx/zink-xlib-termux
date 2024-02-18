@@ -54,14 +54,14 @@ error_ptr_alloc:
 }
 
 static void *
-radv_null_winsys_bo_map(struct radeon_winsys_bo *_bo)
+radv_null_winsys_bo_map(struct radeon_winsys *_ws, struct radeon_winsys_bo *_bo)
 {
    struct radv_null_winsys_bo *bo = radv_null_winsys_bo(_bo);
    return bo->ptr;
 }
 
 static void
-radv_null_winsys_bo_unmap(struct radeon_winsys_bo *_bo)
+radv_null_winsys_bo_unmap(struct radeon_winsys *_ws, struct radeon_winsys_bo *_bo)
 {
 }
 

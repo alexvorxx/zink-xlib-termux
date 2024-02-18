@@ -577,7 +577,7 @@ radv_emit_tess_factor_ring(struct radv_device *device, struct radeon_cmdbuf *cs,
 static VkResult
 radv_initialise_task_control_buffer(struct radv_device *device, struct radeon_winsys_bo *task_rings_bo)
 {
-   uint32_t *ptr = (uint32_t *)device->ws->buffer_map(task_rings_bo);
+   uint32_t *ptr = (uint32_t *)device->ws->buffer_map(device->ws, task_rings_bo);
    if (!ptr)
       return VK_ERROR_OUT_OF_DEVICE_MEMORY;
 
@@ -601,7 +601,7 @@ radv_initialise_task_control_buffer(struct radv_device *device, struct radeon_wi
    ptr[7] = task_draw_ring_va;
    ptr[8] = task_draw_ring_va >> 32;
 
-   device->ws->buffer_unmap(task_rings_bo);
+   device->ws->buffer_unmap(device->ws, task_rings_bo);
    return VK_SUCCESS;
 }
 
@@ -982,7 +982,7 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
    }
 
    if (descriptor_bo != queue->descriptor_bo) {
-      uint32_t *map = (uint32_t *)ws->buffer_map(descriptor_bo);
+      uint32_t *map = (uint32_t *)ws->buffer_map(ws, descriptor_bo);
       if (!map) {
          result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
          goto fail;
@@ -992,7 +992,7 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
                              gsvs_ring_bo, tess_rings_bo, task_rings_bo, mesh_scratch_ring_bo, needs->attr_ring_size,
                              attr_ring_bo);
 
-      ws->buffer_unmap(descriptor_bo);
+      ws->buffer_unmap(ws, descriptor_bo);
    }
 
    for (int i = 0; i < 3; ++i) {

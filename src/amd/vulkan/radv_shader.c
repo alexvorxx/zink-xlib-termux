@@ -981,7 +981,7 @@ radv_create_shader_arena(struct radv_device *device, struct radv_shader_free_lis
       add_hole(free_list, alloc);
 
    if (!(flags & RADEON_FLAG_NO_CPU_ACCESS)) {
-      arena->ptr = (char *)device->ws->buffer_map(arena->bo);
+      arena->ptr = (char *)device->ws->buffer_map(device->ws, arena->bo);
       if (!arena->ptr)
          goto fail;
    }
@@ -1916,7 +1916,7 @@ radv_shader_dma_resize_upload_buf(struct radv_shader_dma_submission *submission,
    if (result != VK_SUCCESS)
       return result;
 
-   submission->ptr = ws->buffer_map(submission->bo);
+   submission->ptr = ws->buffer_map(ws, submission->bo);
    submission->bo_size = size;
 
    return VK_SUCCESS;

@@ -645,7 +645,7 @@ radv_create_gfx_config(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   void *map = device->ws->buffer_map(device->gfx_init);
+   void *map = device->ws->buffer_map(device->ws, device->gfx_init);
    if (!map) {
       device->ws->buffer_destroy(device->ws, device->gfx_init);
       device->gfx_init = NULL;
@@ -653,7 +653,7 @@ radv_create_gfx_config(struct radv_device *device)
    }
    memcpy(map, cs->buf, cs->cdw * 4);
 
-   device->ws->buffer_unmap(device->gfx_init);
+   device->ws->buffer_unmap(device->ws, device->gfx_init);
    device->gfx_init_size_dw = cs->cdw;
 fail:
    device->ws->cs_destroy(cs);

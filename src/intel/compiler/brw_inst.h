@@ -210,8 +210,7 @@ brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
 /* Macro for fields that gained extra discontiguous MSBs in Gfx12 (specified
  * by hi12ex-lo12ex).
  */
-#define FFDC(name, hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                  \
-             hi7, lo7, hi8, lo8, hi12ex, lo12ex, hi12, lo12, assertions)      \
+#define FFDC(name, hi9, lo9, hi12ex, lo12ex, hi12, lo12, assertions)          \
 static inline void                                                            \
 brw_inst_set_##name(const struct intel_device_info *devinfo,                  \
                     brw_inst *inst, uint64_t value)                           \
@@ -223,9 +222,7 @@ brw_inst_set_##name(const struct intel_device_info *devinfo,                  \
          brw_inst_set_bits(inst, hi12ex, lo12ex, value >> k);                 \
       brw_inst_set_bits(inst, hi12, lo12, value & ((1ull << k) - 1));         \
    } else {                                                                   \
-      BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                        \
-             hi7, lo7, hi8, lo8, -1, -1, -1, -1);                             \
-      brw_inst_set_bits(inst, high, low, value);                              \
+      brw_inst_set_bits(inst, hi9, lo9, value);                               \
    }                                                                          \
 }                                                                             \
 static inline uint64_t                                                        \
@@ -238,23 +235,18 @@ brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
               brw_inst_bits(inst, hi12ex, lo12ex) << k) |                     \
              brw_inst_bits(inst, hi12, lo12);                                 \
    } else {                                                                   \
-      BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                        \
-             hi7, lo7, hi8, lo8, -1, -1, -1, -1);                             \
-      return brw_inst_bits(inst, high, low);                                  \
+      return brw_inst_bits(inst, hi9, lo9);                                   \
    }                                                                          \
 }
 
-#define FD(name, hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,        \
-           hi7, lo7, hi8, lo8, hi12ex, lo12ex, hi12, lo12)        \
-   FFDC(name, hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,           \
-        hi7, lo7, hi8, lo8, hi12ex, lo12ex, hi12, lo12, true)
+#define FD(name, hi9, lo9, hi12ex, lo12ex, hi12, lo12)            \
+   FFDC(name, hi9, lo9, hi12ex, lo12ex, hi12, lo12, true)
 
 /* Macro for fields that didn't move across generations until Gfx12, and then
  * gained extra discontiguous bits.
  */
-#define FDC(name, hi4, lo4, hi12ex, lo12ex, hi12, lo12, assertions)     \
-   FFDC(name, hi4, lo4, hi4, lo4, hi4, lo4, hi4, lo4,                   \
-        hi4, lo4, hi4, lo4, hi12ex, lo12ex, hi12, lo12, assertions)
+#define FDC(name, hi9, lo9, hi12ex, lo12ex, hi12, lo12, assertions)     \
+   FFDC(name, hi9, lo9, hi12ex, lo12ex, hi12, lo12, assertions)
 
 
 /* Macro for the 2-bit register file field, which on Gfx12+ is stored as the
@@ -481,13 +473,13 @@ FC(3src_a1_src2_hw_type,    /* 9+ */   108, 106, /* 12+ */ 82, 80, devinfo->ver 
 /* src1_reg_nr same in align16 */
 FD20(3src_a1_src1_subreg_nr, /* 9+ */   96,  92, /* 12+ */ 103, 99, /* 20+ */ 103, 99, -1)
 FC(3src_a1_src1_hstride,    /* 9+ */   91,  90,  /* 12+ */ 97, 96, devinfo->ver >= 10)
-FDC(3src_a1_src1_vstride,  /* 4+ */   89,  88,  /* 12+ */ 91, 91, 83, 83, devinfo->ver >= 10)
+FDC(3src_a1_src1_vstride,   /* 9+ */   89,  88,  /* 12+ */ 91, 91, 83, 83, devinfo->ver >= 10)
 FC(3src_a1_src1_hw_type,    /* 9+ */   87,  85,  /* 12+ */ 90, 88, devinfo->ver >= 10)
 /* Reserved 84 */
 /* src0_reg_nr same in align16 */
 FD20(3src_a1_src0_subreg_nr, /* 9+ */   75,  71, /* 12+ */ 71, 67, /* 20+ */ 71, 67, -1)
 FC(3src_a1_src0_hstride,    /* 9+ */   70,  69,  /* 12+ */ 65, 64, devinfo->ver >= 10)
-FDC(3src_a1_src0_vstride,  /* 4+ */   68,  67,  /* 12+ */ 43, 43, 35, 35, devinfo->ver >= 10)
+FDC(3src_a1_src0_vstride,   /* 9+ */   68,  67,  /* 12+ */ 43, 43, 35, 35, devinfo->ver >= 10)
 FC(3src_a1_src0_hw_type,    /* 9+ */   66,  64,  /* 12+ */ 42, 40, devinfo->ver >= 10)
 /* dst_reg_nr same in align16 */
 FC(3src_a1_dst_subreg_nr,   /* 9+ */   55,  54,  /* 12+ */ 55, 54, devinfo->ver >= 10)
@@ -885,12 +877,7 @@ FF(header_present,
    /* 20:  */ MD12(19), MD12(19))
 F(gateway_notify, /* 9+ */ MD(16), MD(15), /* 12+ */ -1, -1)
 FD(function_control,
-   /* 4:   */ 111,  96,
-   /* 4.5: */ 111,  96,
-   /* 5:   */ 114,  96,
-   /* 6:   */ 114,  96,
-   /* 7:   */ 114,  96,
-   /* 8:   */ 114,  96,
+   /* 9:   */ 114,  96,
    /* 12:  */ MD12(18), MD12(11), MD12(10), MD12(0))
 FF(gateway_subfuncid,
    /* 4:   */ MD(1), MD(0),
@@ -947,12 +934,7 @@ FF(urb_swizzle_control,
    /* 12:  */ -1, -1,
    /* 20:  */ -1, -1)
 FD(urb_global_offset,
-   /* 4:   */ MD( 9), MD(4),
-   /* 4.5: */ MD( 9), MD(4),
-   /* 5:   */ MD( 9), MD(4),
-   /* 6:   */ MD( 9), MD(4),
-   /* 7:   */ MD(13), MD(3),
-   /* 8:   */ MD(14), MD(4),
+   /* 9:   */ MD(14), MD(4),
    /* 12:  */ MD12(14), MD12(11), MD12(10), MD12(4))
 FF(urb_opcode,
    /* 4:   */ MD( 3), MD(0),
@@ -987,12 +969,7 @@ FF(sampler_msg_type,
    /* 12:  */ MD12(16), MD12(12),
    /* 20:  */ MD12(16), MD12(12))
 FD(sampler,
-   /* 4:   */ MD(11), MD(8),
-   /* 4.5: */ MD(11), MD(8),
-   /* 5:   */ MD(11), MD(8),
-   /* 6:   */ MD(11), MD(8),
-   /* 7:   */ MD(11), MD(8),
-   /* 8:   */ MD(11), MD(8),
+   /* 9:   */ MD(11), MD(8),
    /* 12:   */ MD12(11), MD12(11), MD12(10), MD12(8))
 F(binding_table_index,    /* 9+ */ MD(7), MD(0),  /* 12+ */ MD12(7), MD12(0)) /* also used by other messages */
 /** @} */
@@ -1023,20 +1000,10 @@ FF(dp_write_msg_type,
    /* 12:  */ MD12(17), MD12(14),
    /* 20:  */ MD12(17), MD12(14))
 FD(dp_read_msg_control,
-   /* 4:   */ MD(11), MD( 8),
-   /* 4.5: */ MD(10), MD( 8),
-   /* 5:   */ MD(10), MD( 8),
-   /* 6:   */ MD(12), MD( 8),
-   /* 7:   */ MD(13), MD( 8),
-   /* 8:   */ MD(13), MD( 8),
+   /* 9:   */ MD(13), MD( 8),
    /* 12:  */ MD12(13), MD12(11), MD12(10), MD12(8))
 FD(dp_write_msg_control,
-   /* 4:   */ MD(11), MD( 8),
-   /* 4.5: */ MD(11), MD( 8),
-   /* 5:   */ MD(11), MD( 8),
-   /* 6:   */ MD(12), MD( 8),
-   /* 7:   */ MD(13), MD( 8),
-   /* 8:   */ MD(13), MD( 8),
+   /* 9:   */ MD(13), MD( 8),
    /* 12:  */ MD12(13), MD12(11), MD12(10), MD12(8))
 
 /* Gfx6+ use the same bit locations for everything. */
@@ -1049,11 +1016,7 @@ FF(dp_msg_type,
    /* 12:  */ MD12(18), MD12(14),
    /* 20:  */ MD12(18), MD12(14))
 FD(dp_msg_control,
-   /* 4:   */ MD(11), MD( 8),
-   /* 4.5-5: use dp_read_msg_control or dp_write_msg_control */ -1, -1, -1, -1,
-   /* 6:   */ MD(12), MD( 8),
-   /* 7:   */ MD(13), MD( 8),
-   /* 8:   */ MD(13), MD( 8),
+   /* 9:   */ MD(13), MD( 8),
    /* 12:  */ MD12(13), MD12(11), MD12(10), MD12(8))
 /** @} */
 
@@ -1066,12 +1029,7 @@ F(scratch_type,        /* 9+ */ MD(16), MD(16), /* 12+ */ -1, -1) /* 0 = OWord, 
 F(scratch_invalidate_after_read, /* 9+ */ MD(15), MD(15), /* 12+ */ MD12(15), MD12(15))
 F(scratch_block_size,  /* 9+ */ MD(13), MD(12), /* 12+ */ MD12(13), MD12(12))
 FD(scratch_addr_offset,
-   /* 4:   */ -1, -1,
-   /* 4.5: */ -1, -1,
-   /* 5:   */ -1, -1,
-   /* 6:   */ -1, -1,
-   /* 7:   */ MD(11), MD(0),
-   /* 8:   */ MD(11), MD(0),
+   /* 9:   */ MD(11), MD(0),
    /* 12:  */ MD12(11), MD12(11), MD12(10), MD12(0))
 /** @} */
 

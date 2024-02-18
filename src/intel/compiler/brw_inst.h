@@ -108,7 +108,7 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
          return brw_inst_bits(inst, hi9, lo9);                     \
    }
 
-#define FV20(name, hi4, lo4, hi12, lo12, hi20, lo20)               \
+#define FV20(name, hi9, lo9, hi12, lo12, hi20, lo20)               \
    static inline void                                              \
    brw_inst_set_##name(const struct intel_device_info *devinfo,    \
                        brw_inst *inst, uint64_t v)                 \
@@ -118,7 +118,7 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
       else if (devinfo->ver >= 12)                                 \
          brw_inst_set_bits(inst, hi12, lo12, v);                   \
       else                                                         \
-         brw_inst_set_bits(inst, hi4, lo4, v);                     \
+         brw_inst_set_bits(inst, hi9, lo9, v);                     \
    }                                                               \
    static inline uint64_t                                          \
    brw_inst_##name(const struct intel_device_info *devinfo,        \
@@ -130,10 +130,10 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
       else if (devinfo->ver >= 12)                                 \
          return brw_inst_bits(inst, hi12, lo12);                   \
       else                                                         \
-         return brw_inst_bits(inst, hi4, lo4);                     \
+         return brw_inst_bits(inst, hi9, lo9);                     \
    }
 
-#define FD20(name, hi4, lo4, hi12, lo12, hi20, lo20, zero20)       \
+#define FD20(name, hi9, lo9, hi12, lo12, hi20, lo20, zero20)       \
    static inline void                                              \
    brw_inst_set_##name(const struct intel_device_info *devinfo,    \
                        brw_inst *inst, uint64_t v)                 \
@@ -147,7 +147,7 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
       } else if (devinfo->ver >= 12)                               \
          brw_inst_set_bits(inst, hi12, lo12, v);                   \
       else                                                         \
-         brw_inst_set_bits(inst, hi4, lo4, v);                     \
+         brw_inst_set_bits(inst, hi9, lo9, v);                     \
    }                                                               \
    static inline uint64_t                                          \
    brw_inst_##name(const struct intel_device_info *devinfo,        \
@@ -160,7 +160,7 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
       else if (devinfo->ver >= 12)                                 \
          return brw_inst_bits(inst, hi12, lo12);                   \
       else                                                         \
-         return brw_inst_bits(inst, hi4, lo4);                     \
+         return brw_inst_bits(inst, hi9, lo9);                     \
    }
 
 #define BOUNDS(hi4, lo4, hi45, lo45, hi5, lo5, hi6, lo6,                     \
@@ -313,7 +313,7 @@ brw_inst_##name(const struct intel_device_info *devinfo,      \
       return brw_inst_bits(inst, hi4, lo4);                   \
 }
 
-FV20(src1_vstride,     /* 4+ */ 120, 117, /* 12+ */ 119, 116, /* 20+ */ 118, 116)
+FV20(src1_vstride,     /* 9+ */ 120, 117, /* 12+ */ 119, 116, /* 20+ */ 118, 116)
 F(src1_width,          /* 9+ */ 116, 114, /* 12+ */ 115, 113)
 F(src1_da16_swiz_w,    /* 9+ */ 115, 114, /* 12+ */ -1, -1)
 F(src1_da16_swiz_z,    /* 9+ */ 113, 112, /* 12+ */ -1, -1)
@@ -326,13 +326,13 @@ F(src1_abs,            /* 9+ */ 109, 109, /* 12+ */ 120, 120)
 F(src1_ia_subreg_nr,   /* 9+ */ 108, 105, /* 12+ */ 111, 108)
 F(src1_da_reg_nr,      /* 9+ */ 108, 101, /* 12+ */ 111, 104)
 F(src1_da16_subreg_nr, /* 9+ */ 100, 100, /* 12+ */ -1, -1)
-FD20(src1_da1_subreg_nr, /* 4+ */ 100, 96, /* 12+ */ 103, 99, /* 20+ */ 103, 99, -1)
+FD20(src1_da1_subreg_nr, /* 9+ */ 100, 96, /* 12+ */ 103, 99, /* 20+ */ 103, 99, -1)
 F(src1_da16_swiz_y,    /* 9+ */ 99,  98,  /* 12+ */ -1, -1)
 F(src1_da16_swiz_x,    /* 9+ */ 97,  96,  /* 12+ */ -1, -1)
 F(src1_reg_hw_type,    /* 9+ */ 94,  91,  /* 12+ */ 91, 88)
 FI(src1_reg_file,      /* 4+ */ 43,  42,  /* 8+ */  90,  89, /* 12+ */ 47, 98)
 F(src1_is_imm,         /* 9+ */ -1,  -1,  /* 12+ */ 47, 47)
-FV20(src0_vstride,     /* 4+ */ 88,  85,  /* 12+ */ 87, 84,  /* 20+ */ 86, 84)
+FV20(src0_vstride,     /* 9+ */ 88,  85,  /* 12+ */ 87, 84,  /* 20+ */ 86, 84)
 F(src0_width,          /* 9+ */ 84,  82,  /* 12+ */ 83, 81)
 F(src0_da16_swiz_w,    /* 9+ */ 83,  82,  /* 12+ */ -1, -1)
 F(src0_da16_swiz_z,    /* 9+ */ 81,  80,  /* 12+ */ -1, -1)
@@ -345,7 +345,7 @@ F(src0_abs,            /* 9+ */ 77,  77,  /* 12+ */ 44, 44)
 F(src0_ia_subreg_nr,   /* 9+ */ 76,  73,  /* 12+ */ 79, 76)
 F(src0_da_reg_nr,      /* 9+ */ 76,  69,  /* 12+ */ 79, 72)
 F(src0_da16_subreg_nr, /* 9+ */ 68,  68,  /* 12+ */ -1, -1)
-FD20(src0_da1_subreg_nr, /* 4+ */ 68, 64, /* 12+ */ 71,  67, /* 20+ */ 71, 67, 87)
+FD20(src0_da1_subreg_nr, /* 9+ */ 68, 64, /* 12+ */ 71,  67, /* 20+ */ 71, 67, 87)
 F(src0_da16_swiz_y,    /* 9+ */ 67,  66,  /* 12+ */ -1, -1)
 F(src0_da16_swiz_x,    /* 9+ */ 65,  64,  /* 12+ */ -1, -1)
 F(dst_address_mode,    /* 9+ */ 63,  63,  /* 12+ */ 35, 35)
@@ -353,7 +353,7 @@ F(dst_hstride,         /* 9+ */ 62,  61,  /* 12+ */ 49, 48)
 F(dst_ia_subreg_nr,    /* 9+ */ 60,  57,  /* 12+ */ 63, 60)
 F(dst_da_reg_nr,       /* 9+ */ 60,  53,  /* 12+ */ 63, 56)
 F(dst_da16_subreg_nr,  /* 9+ */ 52,  52,  /* 12+ */ -1, -1)
-FD20(dst_da1_subreg_nr, /* 4+ */ 52, 48,  /* 12+ */ 55, 51, /* 20+ */ 55, 51, 33)
+FD20(dst_da1_subreg_nr, /* 9+ */ 52, 48,  /* 12+ */ 55, 51, /* 20+ */ 55, 51, 33)
 F(da16_writemask,      /* 9+ */ 51,  48,  /* 12+ */ -1, -1) /* Dst.ChanEn */
 F(src0_reg_hw_type,    /* 9+ */ 46,  43,  /* 12+ */ 43, 40)
 FI(src0_reg_file,      /* 4+ */ 38,  37,  /* 8+ */  42,  41, /* 12+ */ 46, 66)
@@ -477,19 +477,19 @@ REG_TYPE(src)
  */
 /* Reserved 127:126 */
 /* src2_reg_nr same in align16 */
-FD20(3src_a1_src2_subreg_nr,/* 4+ */   117, 113, /* 12+ */ 119, 115, /* 20+ */ 119, 115, -1)
+FD20(3src_a1_src2_subreg_nr,/* 9+ */   117, 113, /* 12+ */ 119, 115, /* 20+ */ 119, 115, -1)
 FC(3src_a1_src2_hstride,    /* 9+ */   112, 111, /* 12+ */ 113, 112, devinfo->ver >= 10)
 /* Reserved 110:109. src2 vstride is an implied parameter */
 FC(3src_a1_src2_hw_type,    /* 9+ */   108, 106, /* 12+ */ 82, 80, devinfo->ver >= 10)
 /* Reserved 105 */
 /* src1_reg_nr same in align16 */
-FD20(3src_a1_src1_subreg_nr, /* 4+ */   96,  92, /* 12+ */ 103, 99, /* 20+ */ 103, 99, -1)
+FD20(3src_a1_src1_subreg_nr, /* 9+ */   96,  92, /* 12+ */ 103, 99, /* 20+ */ 103, 99, -1)
 FC(3src_a1_src1_hstride,    /* 9+ */   91,  90,  /* 12+ */ 97, 96, devinfo->ver >= 10)
 FDC(3src_a1_src1_vstride,  /* 4+ */   89,  88,  /* 12+ */ 91, 91, 83, 83, devinfo->ver >= 10)
 FC(3src_a1_src1_hw_type,    /* 9+ */   87,  85,  /* 12+ */ 90, 88, devinfo->ver >= 10)
 /* Reserved 84 */
 /* src0_reg_nr same in align16 */
-FD20(3src_a1_src0_subreg_nr, /* 4+ */   75,  71, /* 12+ */ 71, 67, /* 20+ */ 71, 67, -1)
+FD20(3src_a1_src0_subreg_nr, /* 9+ */   75,  71, /* 12+ */ 71, 67, /* 20+ */ 71, 67, -1)
 FC(3src_a1_src0_hstride,    /* 9+ */   70,  69,  /* 12+ */ 65, 64, devinfo->ver >= 10)
 FDC(3src_a1_src0_vstride,  /* 4+ */   68,  67,  /* 12+ */ 43, 43, 35, 35, devinfo->ver >= 10)
 FC(3src_a1_src0_hw_type,    /* 9+ */   66,  64,  /* 12+ */ 42, 40, devinfo->ver >= 10)
@@ -1505,7 +1505,7 @@ brw_compact_inst_##name(const struct intel_device_info *devinfo,   \
 /* A macro for fields which gained extra discontiguous bits in Gfx20
  * (specified by hi20ex-lo20ex).
  */
-#define FD20(name, high, low, hi8, lo8, hi12, lo12,                     \
+#define FD20(name, hi9, lo9, hi12, lo12,                                \
              hi20, lo20, hi20ex, lo20ex)                                \
    static inline void                                                   \
 brw_compact_inst_set_##name(const struct                                \
@@ -1518,10 +1518,8 @@ brw_compact_inst_set_##name(const struct                                \
       brw_compact_inst_set_bits(inst, hi20, lo20, v & ((1u << k) - 1)); \
    } else if (devinfo->ver >= 12) {                                     \
       brw_compact_inst_set_bits(inst, hi12, lo12, v);                   \
-   } else if (devinfo->ver >= 8) {                                      \
-      brw_compact_inst_set_bits(inst, hi8, lo8, v);                     \
    } else {                                                             \
-      brw_compact_inst_set_bits(inst, high, low, v);                    \
+      brw_compact_inst_set_bits(inst, hi9, lo9, v);                     \
    }                                                                    \
 }                                                                       \
 static inline unsigned                                                  \
@@ -1534,10 +1532,8 @@ brw_compact_inst_##name(const struct intel_device_info *devinfo,        \
               brw_compact_inst_bits(inst, hi20, lo20));                 \
    } else if (devinfo->ver >= 12) {                                     \
       return brw_compact_inst_bits(inst, hi12, lo12);                   \
-   } else if (devinfo->ver >= 8) {                                      \
-      return brw_compact_inst_bits(inst, hi8, lo8);                     \
    } else {                                                             \
-      return brw_compact_inst_bits(inst, high, low);                    \
+      return brw_compact_inst_bits(inst, hi9, lo9);                     \
    }                                                                    \
 }
 
@@ -1550,7 +1546,7 @@ F(cmpt_control,      /* 9+ */ 29, 29, /* 12+ */ 29, 29) /* Same location as brw_
 F(cond_modifier,     /* 9+ */ 27, 24, /* 12+ */ -1, -1) /* Same location as brw_inst */
 F(acc_wr_control,    /* 9+ */ 23, 23, /* 12+ */ -1, -1)
 F20(subreg_index,    /* 9+ */ 22, 18, /* 12+ */ 39, 35, /* 20+ */ 51, 48)
-FD20(datatype_index, /* 4+ */ 17, 13, /*  8+ */ 17, 13, /* 12+ */ 34, 30, /* 20+ */ 28, 26, 31, 30)
+FD20(datatype_index, /* 9+ */ 17, 13, /* 12+ */ 34, 30, /* 20+ */ 28, 26, 31, 30)
 F20(control_index,   /* 9+ */ 12,  8, /* 12+ */ 28, 24, /* 20+ */ 22, 18)
 F20(swsb,            /* 9+ */ -1, -1, /* 12+ */ 15,  8, /* 20+ */ 17,  8)
 F(debug_control,     /* 9+ */  7,  7, /* 12+ */  7,  7)
@@ -1587,7 +1583,7 @@ F(3src_src0_rep_ctrl,   /* 9+ */ 28, 28, /* 12+ */ -1, -1)
 /* Reserved */
 F20(3src_dst_reg_nr,    /* 9+ */ 18, 12, /* 12+ */ 23, 16, /* 20+ */ 39, 32)
 F20(3src_source_index,  /* 9+ */ 11, 10, /* 12+ */ 34, 30, /* 20+ */ 25, 22)
-FD20(3src_subreg_index, /* 4+ */ -1, -1, /*  8+ */ -1, -1, /* 12+ */ 39, 35, /* 20+ */ 28, 26, 31, 30)
+FD20(3src_subreg_index, /* 9+ */ -1, -1, /* 12+ */ 39, 35, /* 20+ */ 28, 26, 31, 30)
 F20(3src_control_index, /* 9+ */  9,  8, /* 12+ */ 28, 24, /* 20+ */ 21, 18)
 F20(3src_swsb,          /* 9+ */ -1, -1, /* 12+ */ 15,  8, /* 20+ */ 17,  8)
 /* Bit 7 is Reserved (for future Opcode expansion) */

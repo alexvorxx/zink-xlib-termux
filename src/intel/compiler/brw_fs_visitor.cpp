@@ -941,7 +941,6 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
             sources[length++] = zero;
          break;
       }
-      case BRW_VARYING_SLOT_NDC:
       case VARYING_SLOT_EDGE:
          unreachable("unexpected scalar vs output");
          break;

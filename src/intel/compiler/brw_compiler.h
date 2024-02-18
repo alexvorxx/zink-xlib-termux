@@ -1214,18 +1214,9 @@ struct brw_bs_prog_data {
  */
 typedef enum
 {
-   BRW_VARYING_SLOT_NDC = VARYING_SLOT_MAX,
-   BRW_VARYING_SLOT_PAD,
+   BRW_VARYING_SLOT_PAD = VARYING_SLOT_MAX,
    BRW_VARYING_SLOT_COUNT
 } brw_varying_slot;
-
-/**
- * We always program SF to start reading at an offset of 1 (2 varying slots)
- * from the start of the vertex URB entry.  This causes it to skip:
- * - VARYING_SLOT_PSIZ and BRW_VARYING_SLOT_NDC on gfx4-5
- * - VARYING_SLOT_PSIZ and VARYING_SLOT_POS on gfx6+
- */
-#define BRW_SF_URB_ENTRY_READ_OFFSET 1
 
 /**
  * Bitmask indicating which fragment shader inputs represent varyings (and

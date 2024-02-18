@@ -207,19 +207,6 @@ brw_inst_##name(const struct intel_device_info *devinfo, const brw_inst *inst)\
    return brw_inst_bits(inst, high, low);                                     \
 }
 
-/* A macro for fields which moved as of Gfx8+. */
-#define F8(name, gfx4_high, gfx4_low, gfx8_high, gfx8_low, \
-           gfx12_high, gfx12_low)                          \
-FF(name,                                                   \
-   /* 4:   */ gfx4_high, gfx4_low,                         \
-   /* 4.5: */ gfx4_high, gfx4_low,                         \
-   /* 5:   */ gfx4_high, gfx4_low,                         \
-   /* 6:   */ gfx4_high, gfx4_low,                         \
-   /* 7:   */ gfx4_high, gfx4_low,                         \
-   /* 8:   */ gfx8_high, gfx8_low,                         \
-   /* 12:  */ gfx12_high, gfx12_low,                       \
-   /* 20:  */ gfx12_high, gfx12_low);
-
 /* Macro for fields that gained extra discontiguous MSBs in Gfx12 (specified
  * by hi12ex-lo12ex).
  */
@@ -336,13 +323,13 @@ F(src1_address_mode,   /* 9+ */ 111, 111, /* 12+ */ 112, 112)
 F(src1_negate,         /* 9+ */ 110, 110, /* 12+ */ 121, 121)
 F(src1_abs,            /* 9+ */ 109, 109, /* 12+ */ 120, 120)
 /** @} */
-F8(src1_ia_subreg_nr,  /* 4+ */ 108, 106, /* 8+ */  108, 105, /* 12+ */ 111, 108)
+F(src1_ia_subreg_nr,   /* 9+ */ 108, 105, /* 12+ */ 111, 108)
 F(src1_da_reg_nr,      /* 9+ */ 108, 101, /* 12+ */ 111, 104)
 F(src1_da16_subreg_nr, /* 9+ */ 100, 100, /* 12+ */ -1, -1)
 FD20(src1_da1_subreg_nr, /* 4+ */ 100, 96, /* 12+ */ 103, 99, /* 20+ */ 103, 99, -1)
 F(src1_da16_swiz_y,    /* 9+ */ 99,  98,  /* 12+ */ -1, -1)
 F(src1_da16_swiz_x,    /* 9+ */ 97,  96,  /* 12+ */ -1, -1)
-F8(src1_reg_hw_type,   /* 4+ */ 46,  44,  /* 8+ */  94,  91, /* 12+ */ 91, 88)
+F(src1_reg_hw_type,    /* 9+ */ 94,  91,  /* 12+ */ 91, 88)
 FI(src1_reg_file,      /* 4+ */ 43,  42,  /* 8+ */  90,  89, /* 12+ */ 47, 98)
 F(src1_is_imm,         /* 9+ */ -1,  -1,  /* 12+ */ 47, 47)
 FV20(src0_vstride,     /* 4+ */ 88,  85,  /* 12+ */ 87, 84,  /* 20+ */ 86, 84)
@@ -355,7 +342,7 @@ F(src0_address_mode,   /* 9+ */ 79,  79,  /* 12+ */ 80, 80)
 F(src0_negate,         /* 9+ */ 78,  78,  /* 12+ */ 45, 45)
 F(src0_abs,            /* 9+ */ 77,  77,  /* 12+ */ 44, 44)
 /** @} */
-F8(src0_ia_subreg_nr,  /* 4+ */ 76,  74,  /* 8+ */  76,  73, /* 12+ */ 79, 76)
+F(src0_ia_subreg_nr,   /* 9+ */ 76,  73,  /* 12+ */ 79, 76)
 F(src0_da_reg_nr,      /* 9+ */ 76,  69,  /* 12+ */ 79, 72)
 F(src0_da16_subreg_nr, /* 9+ */ 68,  68,  /* 12+ */ -1, -1)
 FD20(src0_da1_subreg_nr, /* 4+ */ 68, 64, /* 12+ */ 71,  67, /* 20+ */ 71, 67, 87)
@@ -363,17 +350,17 @@ F(src0_da16_swiz_y,    /* 9+ */ 67,  66,  /* 12+ */ -1, -1)
 F(src0_da16_swiz_x,    /* 9+ */ 65,  64,  /* 12+ */ -1, -1)
 F(dst_address_mode,    /* 9+ */ 63,  63,  /* 12+ */ 35, 35)
 F(dst_hstride,         /* 9+ */ 62,  61,  /* 12+ */ 49, 48)
-F8(dst_ia_subreg_nr,   /* 4+ */ 60,  58,  /* 8+ */  60,  57, /* 12+ */ 63, 60)
+F(dst_ia_subreg_nr,    /* 9+ */ 60,  57,  /* 12+ */ 63, 60)
 F(dst_da_reg_nr,       /* 9+ */ 60,  53,  /* 12+ */ 63, 56)
 F(dst_da16_subreg_nr,  /* 9+ */ 52,  52,  /* 12+ */ -1, -1)
 FD20(dst_da1_subreg_nr, /* 4+ */ 52, 48,  /* 12+ */ 55, 51, /* 20+ */ 55, 51, 33)
 F(da16_writemask,      /* 9+ */ 51,  48,  /* 12+ */ -1, -1) /* Dst.ChanEn */
-F8(src0_reg_hw_type,   /* 4+ */ 41,  39,  /* 8+ */  46,  43, /* 12+ */ 43, 40)
+F(src0_reg_hw_type,    /* 9+ */ 46,  43,  /* 12+ */ 43, 40)
 FI(src0_reg_file,      /* 4+ */ 38,  37,  /* 8+ */  42,  41, /* 12+ */ 46, 66)
 F(src0_is_imm,         /* 9+ */ -1,  -1,  /* 12+ */ 46, 46)
-F8(dst_reg_hw_type,    /* 4+ */ 36,  34,  /* 8+ */  40,  37, /* 12+ */ 39, 36)
-F8(dst_reg_file,       /* 4+ */ 33,  32,  /* 8+ */  36,  35, /* 12+ */ 50, 50)
-F8(mask_control,       /* 4+ */  9,   9,  /* 8+ */  34,  34, /* 12+ */ 31, 31)
+F(dst_reg_hw_type,     /* 9+ */ 40,  37,  /* 12+ */ 39, 36)
+F(dst_reg_file,        /* 9+ */ 36,  35,  /* 12+ */ 50, 50)
+F(mask_control,        /* 9+ */ 34,  34,  /* 12+ */ 31, 31)
 FF(flag_reg_nr,
    /* 4-6: doesn't exist */ -1, -1, -1, -1, -1, -1, -1, -1,
    /* 7: */ 90, 90,
@@ -404,8 +391,8 @@ FF(nib_control,
    /* 8: */ 11, 11,
    /* 12: */ 19, 19,
    /* 20: */ -1, -1)
-F8(no_dd_check,        /* 4+ */  11, 11,  /* 8+ */  10,  10, /* 12+ */ -1, -1)
-F8(no_dd_clear,        /* 4+ */  10, 10,  /* 8+ */   9,   9, /* 12+ */ -1, -1)
+F(no_dd_check,         /* 9+ */ 10,  10,  /* 12+ */ -1, -1)
+F(no_dd_clear,         /* 9+ */  9,   9,  /* 12+ */ -1, -1)
 F20(swsb,              /* 4+ */  -1, -1,  /* 12+ */ 15,   8, /* 20+ */ 17, 8)
 FK(access_mode,        /* 4+ */   8,  8,  /* 12+ */ BRW_ALIGN_1)
 /* Bit 7 is Reserved (for future Opcode expansion) */
@@ -430,19 +417,19 @@ F(3src_a16_src0_rep_ctrl,   /* 9+ */ 64,  64,  /* 12+ */ -1, -1)
 F(3src_dst_reg_nr,          /* 9+ */ 63,  56,  /* 12+ */ 63, 56) /* same in align1 */
 F(3src_a16_dst_subreg_nr,   /* 9+ */ 55,  53,  /* 12+ */ -1, -1)
 F(3src_a16_dst_writemask,   /* 9+ */ 52,  49,  /* 12+ */ -1, -1)
-F8(3src_a16_nib_ctrl,       /* 4+ */ 47, 47,   /* 8+ */  11, 11, /* 12+ */ -1, -1) /* only exists on IVB+ */
-F8(3src_a16_dst_hw_type,    /* 4+ */ 45, 44,   /* 8+ */  48, 46, /* 12+ */ -1, -1) /* only exists on IVB+ */
-F8(3src_a16_src_hw_type,    /* 4+ */ 43, 42,   /* 8+ */  45, 43, /* 12+ */ -1, -1)
-F8(3src_src2_negate,        /* 4+ */ 41, 41,   /* 8+ */  42, 42, /* 12+ */ 85, 85)
-F8(3src_src2_abs,           /* 4+ */ 40, 40,   /* 8+ */  41, 41, /* 12+ */ 84, 84)
-F8(3src_src1_negate,        /* 4+ */ 39, 39,   /* 8+ */  40, 40, /* 12+ */ 87, 87)
-F8(3src_src1_abs,           /* 4+ */ 38, 38,   /* 8+ */  39, 39, /* 12+ */ 86, 86)
-F8(3src_src0_negate,        /* 4+ */ 37, 37,   /* 8+ */  38, 38, /* 12+ */ 45, 45)
-F8(3src_src0_abs,           /* 4+ */ 36, 36,   /* 8+ */  37, 37, /* 12+ */ 44, 44)
-F8(3src_a16_src1_type,      /* 4+ */ -1, -1,   /* 8+ */  36, 36, /* 12+ */ -1, -1)
-F8(3src_a16_src2_type,      /* 4+ */ -1, -1,   /* 8+ */  35, 35, /* 12+ */ -1, -1)
-F8(3src_a16_flag_reg_nr,    /* 4+ */ 34, 34,   /* 8+ */  33, 33, /* 12+ */ -1, -1)
-F8(3src_a16_flag_subreg_nr, /* 4+ */ 33, 33,   /* 8+ */  32, 32, /* 12+ */ -1, -1)
+F(3src_a16_nib_ctrl,        /* 9+ */ 11,  11,  /* 12+ */ -1, -1) /* only exists on IVB+ */
+F(3src_a16_dst_hw_type,     /* 9+ */ 48,  46,  /* 12+ */ -1, -1) /* only exists on IVB+ */
+F(3src_a16_src_hw_type,     /* 9+ */ 45,  43,  /* 12+ */ -1, -1)
+F(3src_src2_negate,         /* 9+ */ 42,  42,  /* 12+ */ 85, 85)
+F(3src_src2_abs,            /* 9+ */ 41,  41,  /* 12+ */ 84, 84)
+F(3src_src1_negate,         /* 9+ */ 40,  40,  /* 12+ */ 87, 87)
+F(3src_src1_abs,            /* 9+ */ 39,  39,  /* 12+ */ 86, 86)
+F(3src_src0_negate,         /* 9+ */ 38,  38,  /* 12+ */ 45, 45)
+F(3src_src0_abs,            /* 9+ */ 37,  37,  /* 12+ */ 44, 44)
+F(3src_a16_src1_type,       /* 9+ */ 36,  36,  /* 12+ */ -1, -1)
+F(3src_a16_src2_type,       /* 9+ */ 35,  35,  /* 12+ */ -1, -1)
+F(3src_a16_flag_reg_nr,     /* 9+ */ 33,  33,  /* 12+ */ -1, -1)
+F(3src_a16_flag_subreg_nr,  /* 9+ */ 32,  32,  /* 12+ */ -1, -1)
 F(3src_saturate,            /* 9+ */ 31, 31,   /* 12+ */ 34, 34)
 F(3src_debug_control,       /* 9+ */ 30, 30,   /* 12+ */ 30, 30)
 F(3src_cmpt_control,        /* 9+ */ 29, 29,   /* 12+ */ 29, 29)
@@ -454,9 +441,9 @@ F20(3src_pred_control,      /* 4+ */ 19, 16,   /* 12+ */ 27, 24, /* 20+ */ 27, 2
 F(3src_thread_control,      /* 9+ */ 15, 14,   /* 12+ */ -1, -1)
 F(3src_atomic_control,      /* 9+ */ -1, -1,   /* 12+ */ 32, 32)
 F20(3src_qtr_control,       /* 4+ */ 13, 12,   /* 12+ */ 21, 20, /* 20+ */ 25, 24)
-F8(3src_no_dd_check,        /* 4+ */ 11, 11,   /* 8+ */  10, 10, /* 12+ */ -1, -1)
-F8(3src_no_dd_clear,        /* 4+ */ 10, 10,   /* 8+ */   9,  9, /* 12+ */ -1, -1)
-F8(3src_mask_control,       /* 4+ */ 9,  9,    /* 8+ */  34, 34, /* 12+ */ 31, 31)
+F(3src_no_dd_check,         /* 9+ */ 10, 10,   /* 12+ */ -1, -1)
+F(3src_no_dd_clear,         /* 9+ */  9,  9,   /* 12+ */ -1, -1)
+F(3src_mask_control,        /* 9+ */ 34, 34,   /* 12+ */ 31, 31)
 FK(3src_access_mode,        /* 4+ */ 8,  8,    /* 12+ */ BRW_ALIGN_1)
 F(3src_swsb,                /* 9+ */ -1, -1,   /* 12+ */ 15,  8)
 /* Bit 7 is Reserved (for future Opcode expansion) */
@@ -714,7 +701,7 @@ F(send_ex_desc_ia_subreg_nr,  /* 9+ */ 82, 80, /* 12+ */  42,  40)
 F(send_src0_address_mode,     /* 9+ */ 79, 79, /* 12+ */  -1,  -1)
 F(send_sel_reg32_desc,        /* 9+ */ 77, 77, /* 12+ */  48,  48)
 F(send_sel_reg32_ex_desc,     /* 9+ */ 61, 61, /* 12+ */  49,  49)
-F8(send_src0_reg_file,        /* 4+ */ 38, 37, /* 8+ */   42,  41, /* 12+ */ 66, 66)
+F(send_src0_reg_file,         /* 9+ */ 42, 41, /* 12+ */   66, 66)
 F(send_src1_reg_nr,           /* 9+ */ 51, 44, /* 12+ */ 111, 104)
 FC(send_src1_len,             /* 9+ */ -1, -1, /* 12+ */ 103,  99, devinfo->verx10 >= 125)
 F(send_src1_reg_file,         /* 9+ */ 36, 36, /* 12+ */  98,  98)
@@ -1414,7 +1401,6 @@ brw_inst_set_bits(brw_inst *inst, unsigned high, unsigned low, uint64_t value)
 #undef BRW_IA16_ADDR_IMM
 #undef BRW_IA1_ADDR_IMM
 #undef MD
-#undef F8
 #undef FF
 #undef BOUNDS
 #undef F

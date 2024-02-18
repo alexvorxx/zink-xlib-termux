@@ -255,20 +255,20 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
     * since multiple threads may be running to handle multidraw in parallel.
     */
    global struct agx_geometry_state *heap = ia->heap;
-   uint old_heap_bottom = atomic_fetch_add(
+   uint old_heap_bottom_B = atomic_fetch_add(
       (volatile atomic_uint *)(&heap->heap_bottom), align(alloc_size, 4));
 
    /* Regardless of the input stride, we use tightly packed output draws */
    global uint *out = &ia->out_draws[5 * draw];
 
    /* Setup most of the descriptor. Count will be determined after unroll. */
-   out[1] = in_draw[1];                     /* instance count */
-   out[2] = old_heap_bottom / index_size_B; /* index offset */
-   out[3] = in_draw[3];                     /* index bias */
-   out[4] = in_draw[4];                     /* base instance */
+   out[1] = in_draw[1];                       /* instance count */
+   out[2] = old_heap_bottom_B / index_size_B; /* index offset */
+   out[3] = in_draw[3];                       /* index bias */
+   out[4] = in_draw[4];                       /* base instance */
 
    /* Return the index buffer we allocated */
-   return (global uchar *)heap->heap + (old_heap_bottom * index_size_B);
+   return (global uchar *)heap->heap + old_heap_bottom_B;
 }
 
 #define UNROLL(INDEX, suffix)                                                  \

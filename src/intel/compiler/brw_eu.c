@@ -624,8 +624,6 @@ static const struct opcode_desc opcode_descs[] = {
    { BRW_OPCODE_CMPN,     113, "cmpn",    2,    1,    GFX_GE(GFX12) },
    { BRW_OPCODE_CSEL,     18,  "csel",    3,    1,    GFX_GE(GFX8) & GFX_LT(GFX12) },
    { BRW_OPCODE_CSEL,     114, "csel",    3,    1,    GFX_GE(GFX12) },
-   { BRW_OPCODE_F32TO16,  19,  "f32to16", 1,    1,    GFX7 | GFX75 },
-   { BRW_OPCODE_F16TO32,  20,  "f16to32", 1,    1,    GFX7 | GFX75 },
    { BRW_OPCODE_BFREV,    23,  "bfrev",   1,    1,    GFX_GE(GFX7) & GFX_LT(GFX12) },
    { BRW_OPCODE_BFREV,    119, "bfrev",   1,    1,    GFX_GE(GFX12) },
    { BRW_OPCODE_BFE,      24,  "bfe",     3,    1,    GFX_GE(GFX7) & GFX_LT(GFX12) },

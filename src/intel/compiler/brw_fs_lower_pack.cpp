@@ -65,8 +65,8 @@ brw_fs_lower_pack(fs_visitor &s)
                ibld.MOV(subscript(dst, BRW_REGISTER_TYPE_UW, i),
                         brw_imm_uw(half));
             } else {
-               ibld.F32TO16(subscript(dst, BRW_REGISTER_TYPE_HF, i),
-                            inst->src[i]);
+               ibld.MOV(subscript(dst, BRW_REGISTER_TYPE_HF, i),
+                        inst->src[i]);
             }
          }
          break;

@@ -195,8 +195,6 @@ enum opcode {
    BRW_OPCODE_CMP,
    BRW_OPCODE_CMPN,
    BRW_OPCODE_CSEL, /**< Gfx8+ */
-   BRW_OPCODE_F32TO16, /**< Gfx7 only */
-   BRW_OPCODE_F16TO32, /**< Gfx7 only */
    BRW_OPCODE_BFREV, /**< Gfx7+ */
    BRW_OPCODE_BFE, /**< Gfx7+ */
    BRW_OPCODE_BFI1, /**< Gfx7+ */

@@ -286,7 +286,6 @@ namespace {
       case BRW_OPCODE_DIM:
       case BRW_OPCODE_ASR:
       case BRW_OPCODE_CMPN:
-      case BRW_OPCODE_F16TO32:
       case BRW_OPCODE_BFREV:
       case BRW_OPCODE_BFI1:
       case BRW_OPCODE_AVG:
@@ -381,14 +380,6 @@ namespace {
                return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
                                      0, 8, 4 /* XXX */, 12 /* XXX */, 0, 0);
          }
-
-      case BRW_OPCODE_F32TO16:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 0, 4, 0, 0, 4,
-                                  0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
-         else
-            return calculate_desc(info, EU_UNIT_FPU, 0, 4, 0, 0, 4,
-                                  0, 8, 4 /* XXX */, 12 /* XXX */, 0, 0);
 
       case BRW_OPCODE_DP4:
       case BRW_OPCODE_DPH:

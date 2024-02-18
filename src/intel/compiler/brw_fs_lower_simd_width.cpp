@@ -11,12 +11,6 @@ using namespace brw;
 static bool
 is_mixed_float_with_fp32_dst(const fs_inst *inst)
 {
-   /* This opcode sometimes uses :W type on the source even if the operand is
-    * a :HF, because in gfx7 there is no support for :HF, and thus it uses :W.
-    */
-   if (inst->opcode == BRW_OPCODE_F16TO32)
-      return true;
-
    if (inst->dst.type != BRW_REGISTER_TYPE_F)
       return false;
 
@@ -31,14 +25,6 @@ is_mixed_float_with_fp32_dst(const fs_inst *inst)
 static bool
 is_mixed_float_with_packed_fp16_dst(const fs_inst *inst)
 {
-   /* This opcode sometimes uses :W type on the destination even if the
-    * destination is a :HF, because in gfx7 there is no support for :HF, and
-    * thus it uses :W.
-    */
-   if (inst->opcode == BRW_OPCODE_F32TO16 &&
-       inst->dst.stride == 1)
-      return true;
-
    if (inst->dst.type != BRW_REGISTER_TYPE_HF ||
        inst->dst.stride != 1)
       return false;
@@ -378,8 +364,6 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case BRW_OPCODE_ROL:
    case BRW_OPCODE_CMPN:
    case BRW_OPCODE_CSEL:
-   case BRW_OPCODE_F32TO16:
-   case BRW_OPCODE_F16TO32:
    case BRW_OPCODE_BFREV:
    case BRW_OPCODE_BFE:
    case BRW_OPCODE_ADD:

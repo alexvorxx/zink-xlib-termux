@@ -155,15 +155,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       if (devinfo->ver >= 6 && op == BRW_OPCODE_DO)
          return "do";
 
-      /* The following conversion opcodes doesn't exist on Gfx8+, but we use
-       * then to mark that we want to do the conversion.
-       */
-      if (devinfo->ver > 7 && op == BRW_OPCODE_F32TO16)
-         return "f32to16";
-
-      if (devinfo->ver > 7 && op == BRW_OPCODE_F16TO32)
-         return "f16to32";
-
       /* DPAS instructions may transiently exist on platforms that do not
        * support DPAS. They will eventually be lowered, but in the meantime it
        * must be possible to query the instruction name.
@@ -945,8 +936,6 @@ backend_instruction::can_do_saturate() const
    case BRW_OPCODE_DP4:
    case BRW_OPCODE_DPH:
    case BRW_OPCODE_DP4A:
-   case BRW_OPCODE_F16TO32:
-   case BRW_OPCODE_F32TO16:
    case BRW_OPCODE_LINE:
    case BRW_OPCODE_LRP:
    case BRW_OPCODE_MAC:
@@ -994,8 +983,6 @@ backend_instruction::can_do_cmod() const
    case BRW_OPCODE_DP3:
    case BRW_OPCODE_DP4:
    case BRW_OPCODE_DPH:
-   case BRW_OPCODE_F16TO32:
-   case BRW_OPCODE_F32TO16:
    case BRW_OPCODE_FRC:
    case BRW_OPCODE_LINE:
    case BRW_OPCODE_LRP:

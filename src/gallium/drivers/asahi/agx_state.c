@@ -4326,8 +4326,7 @@ agx_draw_without_restart(struct agx_batch *batch,
    agx_batch_init_state(batch);
 
    size_t ib_extent = 0;
-   uint64_t ib =
-      agx_index_buffer_ptr(batch, info, indirect ? NULL : draw, &ib_extent);
+   uint64_t ib;
 
    /* The rest of this function handles only the general case of indirect
     * multidraws, so synthesize an indexed indirect draw now if we need one for
@@ -4336,6 +4335,9 @@ agx_draw_without_restart(struct agx_batch *batch,
    struct pipe_draw_indirect_info indirect_synthesized = {.draw_count = 1};
 
    if (!indirect) {
+      /* Adds in the offset so set to 0 in the desc */
+      ib = agx_index_buffer_direct_ptr(batch, draw, info, &ib_extent);
+
       uint32_t desc[5] = {draw->count, info->instance_count, 0,
                           draw->index_bias, info->start_instance};
 
@@ -4343,6 +4345,9 @@ agx_draw_without_restart(struct agx_batch *batch,
                     &indirect_synthesized.offset, &indirect_synthesized.buffer);
 
       indirect = &indirect_synthesized;
+   } else {
+      /* Does not add in offset, the unroll kernel uses the desc's offset */
+      ib = agx_index_buffer_rsrc_ptr(batch, info, &ib_extent);
    }
 
    /* Next, we unroll the index buffer used by the indirect draw */

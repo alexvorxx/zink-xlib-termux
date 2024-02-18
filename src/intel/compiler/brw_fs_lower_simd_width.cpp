@@ -96,93 +96,13 @@ get_fpu_lowered_simd_width(const fs_visitor *shader,
    if (reg_count > max_reg_count)
       max_width = MIN2(max_width, inst->exec_size / DIV_ROUND_UP(reg_count, max_reg_count));
 
-   /* According to the IVB PRMs:
-    *  "When destination spans two registers, the source MUST span two
-    *   registers. The exception to the above rule:
-    *
-    *    - When source is scalar, the source registers are not incremented.
-    *    - When source is packed integer Word and destination is packed
-    *      integer DWord, the source register is not incremented but the
-    *      source sub register is incremented."
-    *
-    * The hardware specs from Gfx4 to Gfx7.5 mention similar regioning
-    * restrictions.  The code below intentionally doesn't check whether the
-    * destination type is integer because empirically the hardware doesn't
-    * seem to care what the actual type is as long as it's dword-aligned.
-    *
-    * HSW PRMs also add a note to the second exception:
-    *  "When lower 8 channels are disabled, the sub register of source1
-    *   operand is not incremented. If the lower 8 channels are expected
-    *   to be disabled, say by predication, the instruction must be split
-    *   into pair of simd8 operations."
-    *
-    * We can't reliably know if the channels won't be disabled due to,
-    * for example, IMASK. So, play it safe and disallow packed-word exception
-    * for src1.
-    */
-   if (devinfo->ver < 8) {
-      for (unsigned i = 0; i < inst->sources; i++) {
-         /* IVB implements DF scalars as <0;2,1> regions. */
-         const bool is_scalar_exception = is_uniform(inst->src[i]) &&
-            (devinfo->platform == INTEL_PLATFORM_HSW || type_sz(inst->src[i].type) != 8);
-         const bool is_packed_word_exception = i != 1 &&
-            type_sz(inst->dst.type) == 4 && inst->dst.stride == 1 &&
-            type_sz(inst->src[i].type) == 2 && inst->src[i].stride == 1;
-
-         /* We check size_read(i) against size_written instead of REG_SIZE
-          * because we want to properly handle SIMD32.  In SIMD32, you can end
-          * up with writes to 4 registers and a source that reads 2 registers
-          * and we may still need to lower all the way to SIMD8 in that case.
-          */
-         if (inst->size_written > REG_SIZE &&
-             inst->size_read(i) != 0 &&
-             inst->size_read(i) < inst->size_written &&
-             !is_scalar_exception && !is_packed_word_exception) {
-            const unsigned reg_count = DIV_ROUND_UP(inst->size_written, REG_SIZE);
-            max_width = MIN2(max_width, inst->exec_size / reg_count);
-         }
-      }
-   }
-
-   if (devinfo->ver < 6) {
-      /* From the G45 PRM, Volume 4 Page 361:
-       *
-       *    "Operand Alignment Rule: With the exceptions listed below, a
-       *     source/destination operand in general should be aligned to even
-       *     256-bit physical register with a region size equal to two 256-bit
-       *     physical registers."
-       *
-       * Normally we enforce this by allocating virtual registers to the
-       * even-aligned class.  But we need to handle payload registers.
-       */
-      for (unsigned i = 0; i < inst->sources; i++) {
-         if (inst->src[i].file == FIXED_GRF && (inst->src[i].nr & 1) &&
-             inst->size_read(i) > REG_SIZE) {
-            max_width = MIN2(max_width, 8);
-         }
-      }
-   }
-
-   /* From the IVB PRMs:
-    *  "When an instruction is SIMD32, the low 16 bits of the execution mask
-    *   are applied for both halves of the SIMD32 instruction. If different
-    *   execution mask channels are required, split the instruction into two
-    *   SIMD16 instructions."
-    *
-    * There is similar text in the HSW PRMs.  Gfx4-6 don't even implement
-    * 32-wide control flow support in hardware and will behave similarly.
-    */
-   if (devinfo->ver < 8 && !inst->force_writemask_all)
-      max_width = MIN2(max_width, 16);
-
    /* From the IVB PRMs (applies to HSW too):
     *  "Instructions with condition modifiers must not use SIMD32."
     *
     * From the BDW PRMs (applies to later hardware too):
     *  "Ternary instruction with condition modifiers must not use SIMD32."
     */
-   if (inst->conditional_mod && (devinfo->ver < 8 ||
-                                 (inst->is_3src(compiler) && devinfo->ver < 12)))
+   if (inst->conditional_mod && inst->is_3src(compiler) && devinfo->ver < 12)
       max_width = MIN2(max_width, 16);
 
    /* From the IVB PRMs (applies to other devices that don't have the
@@ -192,41 +112,6 @@ get_fpu_lowered_simd_width(const fs_visitor *shader,
     */
    if (inst->is_3src(compiler) && !devinfo->supports_simd16_3src)
       max_width = MIN2(max_width, inst->exec_size / reg_count);
-
-   /* Pre-Gfx8 EUs are hardwired to use the QtrCtrl+1 (where QtrCtrl is
-    * the 8-bit quarter of the execution mask signals specified in the
-    * instruction control fields) for the second compressed half of any
-    * single-precision instruction (for double-precision instructions
-    * it's hardwired to use NibCtrl+1, at least on HSW), which means that
-    * the EU will apply the wrong execution controls for the second
-    * sequential GRF write if the number of channels per GRF is not exactly
-    * eight in single-precision mode (or four in double-float mode).
-    *
-    * In this situation we calculate the maximum size of the split
-    * instructions so they only ever write to a single register.
-    */
-   if (devinfo->ver < 8 && inst->size_written > REG_SIZE &&
-       !inst->force_writemask_all) {
-      const unsigned channels_per_grf = inst->exec_size /
-         DIV_ROUND_UP(inst->size_written, REG_SIZE);
-      const unsigned exec_type_size = get_exec_type_size(inst);
-      assert(exec_type_size);
-
-      /* The hardware shifts exactly 8 channels per compressed half of the
-       * instruction in single-precision mode and exactly 4 in double-precision.
-       */
-      if (channels_per_grf != (exec_type_size == 8 ? 4 : 8))
-         max_width = MIN2(max_width, channels_per_grf);
-
-      /* Lower all non-force_writemask_all DF instructions to SIMD4 on IVB/BYT
-       * because HW applies the same channel enable signals to both halves of
-       * the compressed instruction which will be just wrong under
-       * non-uniform control flow.
-       */
-      if (devinfo->verx10 == 70 &&
-          (exec_type_size == 8 || type_sz(inst->dst.type) == 8))
-         max_width = MIN2(max_width, 4);
-   }
 
    /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
     * Float Operations:
@@ -292,24 +177,10 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
        inst->components_read(TEX_LOGICAL_SRC_MIN_LOD))
       return devinfo->ver < 20 ? 8 : 16;
 
-   /* Calculate the number of coordinate components that have to be present
-    * assuming that additional arguments follow the texel coordinates in the
-    * message payload.  On IVB+ there is no need for padding, on ILK-SNB we
-    * need to pad to four or three components depending on the message,
-    * pre-ILK we need to pad to at most three components.
-    */
-   const unsigned req_coord_components =
-      (devinfo->ver >= 7 ||
-       !inst->components_read(TEX_LOGICAL_SRC_COORDINATE)) ? 0 :
-      (devinfo->ver >= 5 && inst->opcode != SHADER_OPCODE_TXF_LOGICAL &&
-                            inst->opcode != SHADER_OPCODE_TXF_CMS_LOGICAL) ? 4 :
-      3;
-
    /* On Gfx9+ the LOD argument is for free if we're able to use the LZ
     * variant of the TXL or TXF message.
     */
-   const bool implicit_lod = devinfo->ver >= 9 &&
-                             (inst->opcode == SHADER_OPCODE_TXL ||
+   const bool implicit_lod = (inst->opcode == SHADER_OPCODE_TXL ||
                               inst->opcode == SHADER_OPCODE_TXF) &&
                              inst->src[TEX_LOGICAL_SRC_LOD].is_zero();
 
@@ -317,8 +188,7 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
     * to the sampler unit.
     */
    const unsigned num_payload_components =
-      MAX2(inst->components_read(TEX_LOGICAL_SRC_COORDINATE),
-           req_coord_components) +
+      inst->components_read(TEX_LOGICAL_SRC_COORDINATE) +
       inst->components_read(TEX_LOGICAL_SRC_SHADOW_C) +
       (implicit_lod ? 0 : inst->components_read(TEX_LOGICAL_SRC_LOD)) +
       inst->components_read(TEX_LOGICAL_SRC_LOD2) +
@@ -386,32 +256,10 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_SEL_EXEC:
    case SHADER_OPCODE_CLUSTER_BROADCAST:
    case SHADER_OPCODE_MOV_RELOC_IMM:
-      return get_fpu_lowered_simd_width(shader, inst);
-
-   case BRW_OPCODE_CMP: {
-      /* The Ivybridge/BayTrail WaCMPInstFlagDepClearedEarly workaround says that
-       * when the destination is a GRF the dependency-clear bit on the flag
-       * register is cleared early.
-       *
-       * Suggested workarounds are to disable coissuing CMP instructions
-       * or to split CMP(16) instructions into two CMP(8) instructions.
-       *
-       * We choose to split into CMP(8) instructions since disabling
-       * coissuing would affect CMP instructions not otherwise affected by
-       * the errata.
-       */
-      const unsigned max_width = (devinfo->verx10 == 70 &&
-                                  !inst->dst.is_null() ? 8 : ~0);
-      return MIN2(max_width, get_fpu_lowered_simd_width(shader, inst));
-   }
+   case BRW_OPCODE_CMP:
    case BRW_OPCODE_BFI1:
    case BRW_OPCODE_BFI2:
-      /* The Haswell WaForceSIMD8ForBFIInstruction workaround says that we
-       * should
-       *  "Force BFI instructions to be executed always in SIMD8."
-       */
-      return MIN2(devinfo->platform == INTEL_PLATFORM_HSW ? 8 : ~0u,
-                  get_fpu_lowered_simd_width(shader, inst));
+      return get_fpu_lowered_simd_width(shader, inst);
 
    case BRW_OPCODE_IF:
       assert(inst->src[0].file == BAD_FILE || inst->exec_size <= 16);
@@ -424,11 +272,6 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_LOG2:
    case SHADER_OPCODE_SIN:
    case SHADER_OPCODE_COS: {
-      /* Unary extended math instructions are limited to SIMD8 on Gfx4 and
-       * Gfx6. Extended Math Function is limited to SIMD8 with half-float.
-       */
-      if (devinfo->ver == 6 || devinfo->verx10 == 40)
-         return MIN2(8, inst->exec_size);
       if (inst->dst.type == BRW_REGISTER_TYPE_HF)
          return MIN2(8, inst->exec_size);
       return MIN2(16, inst->exec_size);
@@ -438,8 +281,6 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       /* SIMD16 is only allowed on Gfx7+. Extended Math Function is limited
        * to SIMD8 with half-float
        */
-      if (devinfo->ver < 7)
-         return MIN2(8, inst->exec_size);
       if (inst->dst.type == BRW_REGISTER_TYPE_HF)
          return MIN2(8, inst->exec_size);
       return MIN2(16, inst->exec_size);
@@ -460,64 +301,20 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
    case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
-      return MIN2(16, inst->exec_size);
-
    case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
-      /* Pre-ILK hardware doesn't have a SIMD8 variant of the texel fetch
-       * message used to implement varying pull constant loads, so expand it
-       * to SIMD16.  An alternative with longer message payload length but
-       * shorter return payload would be to use the SIMD8 sampler message that
-       * takes (header, u, v, r) as parameters instead of (header, u).
-       */
-      return (devinfo->ver == 4 ? 16 : MIN2(16, inst->exec_size));
-
    case FS_OPCODE_DDX_COARSE:
    case FS_OPCODE_DDX_FINE:
    case FS_OPCODE_DDY_COARSE:
    case FS_OPCODE_DDY_FINE:
-      /* The implementation of this virtual opcode may require emitting
-       * compressed Align16 instructions, which are severely limited on some
-       * generations.
-       *
-       * From the Ivy Bridge PRM, volume 4 part 3, section 3.3.9 (Register
-       * Region Restrictions):
-       *
-       *  "In Align16 access mode, SIMD16 is not allowed for DW operations
-       *   and SIMD8 is not allowed for DF operations."
-       *
-       * In this context, "DW operations" means "operations acting on 32-bit
-       * values", so it includes operations on floats.
-       *
-       * Gfx4 has a similar restriction.  From the i965 PRM, section 11.5.3
-       * (Instruction Compression -> Rules and Restrictions):
-       *
-       *  "A compressed instruction must be in Align1 access mode. Align16
-       *   mode instructions cannot be compressed."
-       *
-       * Similar text exists in the g45 PRM.
-       *
-       * Empirically, compressed align16 instructions using odd register
-       * numbers don't appear to work on Sandybridge either.
-       */
-      return (devinfo->ver == 4 || devinfo->ver == 6 ||
-              (devinfo->verx10 == 70) ?
-              MIN2(8, inst->exec_size) : MIN2(16, inst->exec_size));
+      return MIN2(16, inst->exec_size);
 
    case SHADER_OPCODE_MULH:
       /* MULH is lowered to the MUL/MACH sequence using the accumulator, which
        * is 8-wide on Gfx7+.
        */
-      return (devinfo->ver >= 20 ? 16 :
-              devinfo->ver >= 7 ? 8 :
-              get_fpu_lowered_simd_width(shader, inst));
+      return devinfo->ver >= 20 ? 16 : 8;
 
    case FS_OPCODE_FB_WRITE_LOGICAL:
-      /* Gfx6 doesn't support SIMD16 depth writes but we cannot handle them
-       * here.
-       */
-      assert(devinfo->ver != 6 ||
-             inst->src[FB_WRITE_LOGICAL_SRC_SRC_DEPTH].file == BAD_FILE ||
-             inst->exec_size == 8);
       /* Dual-source FB writes are unsupported in SIMD16 mode. */
       return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
               8 : MIN2(16, inst->exec_size));
@@ -539,6 +336,10 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL:
+   case SHADER_OPCODE_TXL_LOGICAL:
+   case FS_OPCODE_TXB_LOGICAL:
+   case SHADER_OPCODE_TXF_LOGICAL:
+   case SHADER_OPCODE_TXS_LOGICAL:
       return get_sampler_lowered_simd_width(devinfo, inst);
 
    /* On gfx12 parameters are fixed to 16-bit values and therefore they all
@@ -553,26 +354,6 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
        */
       return devinfo->ver < 20 ? 8 : 16;
 
-   case SHADER_OPCODE_TXL_LOGICAL:
-   case FS_OPCODE_TXB_LOGICAL:
-      /* Only one execution size is representable pre-ILK depending on whether
-       * the shadow reference argument is present.
-       */
-      if (devinfo->ver == 4)
-         return inst->src[TEX_LOGICAL_SRC_SHADOW_C].file == BAD_FILE ? 16 : 8;
-      else
-         return get_sampler_lowered_simd_width(devinfo, inst);
-
-   case SHADER_OPCODE_TXF_LOGICAL:
-   case SHADER_OPCODE_TXS_LOGICAL:
-      /* Gfx4 doesn't have SIMD8 variants for the RESINFO and LD-with-LOD
-       * messages.  Use SIMD16 instead.
-       */
-      if (devinfo->ver == 4)
-         return 16;
-      else
-         return get_sampler_lowered_simd_width(devinfo, inst);
-
    case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
    case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
    case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
@@ -585,13 +366,11 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_BYTE_SCATTERED_READ_LOGICAL:
    case SHADER_OPCODE_DWORD_SCATTERED_WRITE_LOGICAL:
    case SHADER_OPCODE_DWORD_SCATTERED_READ_LOGICAL:
-      return MIN2(16, inst->exec_size);
-
    case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
    case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
-      return devinfo->ver <= 8 ? 8 : MIN2(16, inst->exec_size);
+      return MIN2(16, inst->exec_size);
 
    case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
    case SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
@@ -624,9 +403,9 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
        * the EU decompression logic not handling VxH indirect addressing
        * correctly.
        */
-      const unsigned max_size = (devinfo->ver >= 8 ? 2 : 1) * REG_SIZE;
+      const unsigned max_size = 2 * REG_SIZE;
       /* Prior to Broadwell, we only have 8 address subregisters. */
-      return MIN3(devinfo->ver >= 8 ? 16 : 8,
+      return MIN3(16,
                   max_size / (inst->dst.stride * type_sz(inst->dst.type)),
                   inst->exec_size);
    }

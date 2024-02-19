@@ -84,7 +84,7 @@ radv_create_shadow_regs_preamble(const struct radv_device *device, struct radv_q
    memcpy(map, cs->buf, cs->cdw * 4);
    queue_state->shadow_regs_ib_size_dw = cs->cdw;
 
-   ws->buffer_unmap(ws, queue_state->shadow_regs_ib);
+   ws->buffer_unmap(ws, queue_state->shadow_regs_ib, false);
    ws->cs_destroy(cs);
    return VK_SUCCESS;
 fail_map:

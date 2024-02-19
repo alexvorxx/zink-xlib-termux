@@ -653,7 +653,7 @@ radv_create_gfx_config(struct radv_device *device)
    }
    memcpy(map, cs->buf, cs->cdw * 4);
 
-   device->ws->buffer_unmap(device->ws, device->gfx_init);
+   device->ws->buffer_unmap(device->ws, device->gfx_init, false);
    device->gfx_init_size_dw = cs->cdw;
 fail:
    device->ws->cs_destroy(cs);

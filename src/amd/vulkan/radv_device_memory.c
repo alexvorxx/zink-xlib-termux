@@ -330,7 +330,7 @@ radv_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapI
 
    vk_rmv_log_cpu_map(&device->vk, mem->bo->va, true);
    if (mem->user_ptr == NULL)
-      device->ws->buffer_unmap(device->ws, mem->bo);
+      device->ws->buffer_unmap(device->ws, mem->bo, (pMemoryUnmapInfo->flags & VK_MEMORY_UNMAP_RESERVE_BIT_EXT));
 
    return VK_SUCCESS;
 }

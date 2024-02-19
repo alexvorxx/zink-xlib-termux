@@ -601,7 +601,7 @@ radv_initialise_task_control_buffer(struct radv_device *device, struct radeon_wi
    ptr[7] = task_draw_ring_va;
    ptr[8] = task_draw_ring_va >> 32;
 
-   device->ws->buffer_unmap(device->ws, task_rings_bo);
+   device->ws->buffer_unmap(device->ws, task_rings_bo, false);
    return VK_SUCCESS;
 }
 
@@ -992,7 +992,7 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
                              gsvs_ring_bo, tess_rings_bo, task_rings_bo, mesh_scratch_ring_bo, needs->attr_ring_size,
                              attr_ring_bo);
 
-      ws->buffer_unmap(ws, descriptor_bo);
+      ws->buffer_unmap(ws, descriptor_bo, false);
    }
 
    for (int i = 0; i < 3; ++i) {

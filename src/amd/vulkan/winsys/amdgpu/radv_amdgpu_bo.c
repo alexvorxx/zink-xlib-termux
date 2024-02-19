@@ -587,15 +587,20 @@ radv_amdgpu_winsys_bo_map(struct radeon_winsys *_ws, struct radeon_winsys_bo *_b
 }
 
 static void
-radv_amdgpu_winsys_bo_unmap(struct radeon_winsys *_ws, struct radeon_winsys_bo *_bo)
+radv_amdgpu_winsys_bo_unmap(struct radeon_winsys *_ws, struct radeon_winsys_bo *_bo, bool replace)
 {
    struct radv_amdgpu_winsys_bo *bo = radv_amdgpu_winsys_bo(_bo);
 
    /* Defense in depth against buggy apps. */
-   if (!bo->cpu_map)
+   if (!bo->cpu_map && !replace)
       return;
 
-   munmap(bo->cpu_map, bo->size);
+   assert(bo->cpu_map);
+   if (replace) {
+      (void)mmap(bo->cpu_map, bo->size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+   } else {
+      munmap(bo->cpu_map, bo->size);
+   }
    bo->cpu_map = NULL;
 }
 

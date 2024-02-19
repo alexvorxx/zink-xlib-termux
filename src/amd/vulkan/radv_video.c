@@ -2742,7 +2742,7 @@ radv_vcn_cmd_reset(struct radv_cmd_buffer *cmd_buffer)
             rvcn_vcn4_av1_default_coef_probs((void *)(ctxptr + i * frame_ctxt_size), i);
          }
       }
-      cmd_buffer->device->ws->buffer_unmap(cmd_buffer->device->ws, vid->ctx.mem->bo);
+      cmd_buffer->device->ws->buffer_unmap(cmd_buffer->device->ws, vid->ctx.mem->bo, false);
    }
    radv_vid_buffer_upload_alloc(cmd_buffer, size, &out_offset, &ptr);
 

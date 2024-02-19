@@ -9910,7 +9910,6 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
                           pGeneratedCommandsInfo->sequencesCountOffset;
 
       radv_begin_conditional_rendering(cmd_buffer, va, true);
-      cmd_buffer->state.predicating = true;
    }
 
    if (!radv_dgc_can_preprocess(layout, pipeline)) {
@@ -9997,7 +9996,6 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
    }
 
    if (use_predication) {
-      cmd_buffer->state.predicating = false;
       radv_end_conditional_rendering(cmd_buffer);
    }
 }
@@ -11299,6 +11297,13 @@ radv_begin_conditional_rendering(struct radv_cmd_buffer *cmd_buffer, uint64_t va
    if (!radv_cmd_buffer_uses_mec(cmd_buffer)) {
       radv_emit_set_predication_state(cmd_buffer, draw_visible, pred_op, va);
    }
+
+   /* Store conditional rendering user info. */
+   cmd_buffer->state.predicating = true;
+   cmd_buffer->state.predication_type = draw_visible;
+   cmd_buffer->state.predication_op = pred_op;
+   cmd_buffer->state.predication_va = va;
+   cmd_buffer->mec_inv_pred_emitted = false;
 }
 
 void
@@ -11308,6 +11313,13 @@ radv_end_conditional_rendering(struct radv_cmd_buffer *cmd_buffer)
    if (!radv_cmd_buffer_uses_mec(cmd_buffer)) {
       radv_emit_set_predication_state(cmd_buffer, false, 0, 0);
    }
+
+   /* Reset conditional rendering user info. */
+   cmd_buffer->state.predicating = false;
+   cmd_buffer->state.predication_type = -1;
+   cmd_buffer->state.predication_op = 0;
+   cmd_buffer->state.predication_va = 0;
+   cmd_buffer->mec_inv_pred_emitted = false;
 }
 
 /* VK_EXT_conditional_rendering */
@@ -11317,7 +11329,6 @@ radv_CmdBeginConditionalRenderingEXT(VkCommandBuffer commandBuffer,
 {
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    RADV_FROM_HANDLE(radv_buffer, buffer, pConditionalRenderingBegin->buffer);
-   unsigned pred_op = PREDICATION_OP_BOOL32;
    bool draw_visible = true;
    uint64_t va;
 
@@ -11333,13 +11344,6 @@ radv_CmdBeginConditionalRenderingEXT(VkCommandBuffer commandBuffer,
    }
 
    radv_begin_conditional_rendering(cmd_buffer, va, draw_visible);
-
-   /* Store conditional rendering user info. */
-   cmd_buffer->state.predicating = true;
-   cmd_buffer->state.predication_type = draw_visible;
-   cmd_buffer->state.predication_op = pred_op;
-   cmd_buffer->state.predication_va = va;
-   cmd_buffer->mec_inv_pred_emitted = false;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -11348,13 +11352,6 @@ radv_CmdEndConditionalRenderingEXT(VkCommandBuffer commandBuffer)
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
 
    radv_end_conditional_rendering(cmd_buffer);
-
-   /* Reset conditional rendering user info. */
-   cmd_buffer->state.predicating = false;
-   cmd_buffer->state.predication_type = -1;
-   cmd_buffer->state.predication_op = 0;
-   cmd_buffer->state.predication_va = 0;
-   cmd_buffer->mec_inv_pred_emitted = false;
 }
 
 /* VK_EXT_transform_feedback */

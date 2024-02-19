@@ -2618,6 +2618,7 @@ static void
 init_null_fbfetch(struct zink_context *ctx)
 {
    struct zink_screen *screen = zink_screen(ctx->base.screen);
+   ctx->di.null_fbfetch_init = true;
    if (zink_descriptor_mode != ZINK_DESCRIPTOR_MODE_DB)
       return;
    VkDescriptorGetInfoEXT info;
@@ -2742,7 +2743,8 @@ zink_update_rendering_info(struct zink_context *ctx)
 static unsigned
 calc_max_dummy_fbo_size(struct zink_context *ctx)
 {
-   return MIN2(4096, zink_screen(ctx->base.screen)->info.props.limits.maxImageDimension2D);
+   unsigned size = MAX2(ctx->fb_state.width, ctx->fb_state.height);
+   return size ? size : MIN2(4096, zink_screen(ctx->base.screen)->info.props.limits.maxImageDimension2D);
 }
 
 static unsigned
@@ -5228,8 +5230,19 @@ zink_flush_dgc(struct zink_context *ctx)
 struct pipe_surface *
 zink_get_dummy_pipe_surface(struct zink_context *ctx, int samples_index)
 {
+   unsigned size = calc_max_dummy_fbo_size(ctx);
+   bool needs_null_init = false;
+   if (ctx->dummy_surface[samples_index]) {
+      /* delete old surface if ETOOSMALL */
+      struct zink_resource *res = zink_resource(ctx->dummy_surface[samples_index]->texture);
+      if (res->base.b.width0 > size || res->base.b.height0 > size) {
+         pipe_surface_release(&ctx->base, &ctx->dummy_surface[samples_index]);
+         needs_null_init = !samples_index && ctx->di.null_fbfetch_init;
+         if (!samples_index)
+            ctx->di.null_fbfetch_init = false;
+      }
+   }
    if (!ctx->dummy_surface[samples_index]) {
-      unsigned size = calc_max_dummy_fbo_size(ctx);
       ctx->dummy_surface[samples_index] = zink_surface_create_null(ctx, PIPE_TEXTURE_2D, size, size, BITFIELD_BIT(samples_index));
       assert(ctx->dummy_surface[samples_index]);
       /* This is possibly used with imageLoad which according to GL spec must return 0 */
@@ -5240,6 +5253,8 @@ zink_get_dummy_pipe_surface(struct zink_context *ctx, int samples_index)
          ctx->base.clear_texture(&ctx->base, ctx->dummy_surface[samples_index]->texture, 0, &box, &color);
       }
    }
+   if (needs_null_init)
+      init_null_fbfetch(ctx);
    return ctx->dummy_surface[samples_index];
 }
 

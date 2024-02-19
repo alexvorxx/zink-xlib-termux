@@ -2017,6 +2017,7 @@ struct zink_context {
          uint16_t any_bindless_dirty;
       };
       bool bindless_refs_dirty;
+      bool null_fbfetch_init;
    } di;
    void (*invalidate_descriptor_state)(struct zink_context *ctx, gl_shader_stage shader, enum zink_descriptor_type type, unsigned, unsigned);
    struct set *need_barriers[2]; //gfx, compute

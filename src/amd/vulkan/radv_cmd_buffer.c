@@ -9369,6 +9369,7 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    /* Determine the last VGT shader. */
    const gl_shader_stage last_vgt_api_stage = radv_cmdbuf_get_last_vgt_api_stage(cmd_buffer);
 
+   assume(last_vgt_api_stage != MESA_SHADER_NONE);
    cmd_buffer->state.last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
 
    if ((cmd_buffer->state.active_stages & VK_SHADER_STAGE_GEOMETRY_BIT) &&

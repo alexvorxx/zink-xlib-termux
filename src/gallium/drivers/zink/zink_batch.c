@@ -717,7 +717,7 @@ submit_queue(void *data, void *gdata, int thread_index)
          mb.dstAccessMask = VK_ACCESS_NONE;
          VKSCR(CmdPipelineBarrier)(bs->reordered_cmdbuf,
                                    bs->unordered_write_stages,
-                                   VK_PIPELINE_STAGE_NONE,
+                                   screen->info.have_KHR_synchronization2 ? VK_PIPELINE_STAGE_NONE : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                    0, 1, &mb, 0, NULL, 0, NULL);
       }
       VRAM_ALLOC_LOOP(result,

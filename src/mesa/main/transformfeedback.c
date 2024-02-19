@@ -1076,8 +1076,7 @@ create_transform_feedbacks(struct gl_context *ctx, GLsizei n, GLuint *ids,
             _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", func);
             return;
          }
-         _mesa_HashInsertLocked(&ctx->TransformFeedback.Objects, ids[i],
-                                obj, true);
+         _mesa_HashInsertLocked(&ctx->TransformFeedback.Objects, ids[i], obj);
          if (dsa) {
             /* this is normally done at bind time in the non-dsa case */
             obj->EverBound = GL_TRUE;

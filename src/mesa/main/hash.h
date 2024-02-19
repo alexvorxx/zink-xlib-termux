@@ -64,8 +64,7 @@ void *
 _mesa_HashLookup(struct _mesa_HashTable *table, GLuint key);
 
 void
-_mesa_HashInsert(struct _mesa_HashTable *table, GLuint key, void *data,
-                 GLboolean isGenName);
+_mesa_HashInsert(struct _mesa_HashTable *table, GLuint key, void *data);
 
 void
 _mesa_HashRemove(struct _mesa_HashTable *table, GLuint key);
@@ -74,8 +73,7 @@ void *
 _mesa_HashLookupLocked(struct _mesa_HashTable *table, GLuint key);
 
 void
-_mesa_HashInsertLocked(struct _mesa_HashTable *table,
-                       GLuint key, void *data, GLboolean isGenName);
+_mesa_HashInsertLocked(struct _mesa_HashTable *table, GLuint key, void *data);
 
 void
 _mesa_HashRemoveLocked(struct _mesa_HashTable *table, GLuint key);

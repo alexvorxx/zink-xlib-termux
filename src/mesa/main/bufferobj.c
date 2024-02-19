@@ -1298,7 +1298,7 @@ handle_bind_buffer_gen(struct gl_context *ctx,
       _mesa_HashLockMaybeLocked(&ctx->Shared->BufferObjects,
                                 ctx->BufferObjectsLocked);
       _mesa_HashInsertLocked(&ctx->Shared->BufferObjects, buffer,
-                             *buf_handle, buf != NULL);
+                             *buf_handle);
       /* If one context only creates buffers and another context only deletes
        * buffers, buffers don't get released because it only produces zombie
        * buffers. Only the context that has created the buffers can release
@@ -1981,7 +1981,7 @@ create_buffers(struct gl_context *ctx, GLsizei n, GLuint *buffers, bool dsa)
       else
          buf = &DummyBufferObject;
 
-      _mesa_HashInsertLocked(&ctx->Shared->BufferObjects, buffers[i], buf, true);
+      _mesa_HashInsertLocked(&ctx->Shared->BufferObjects, buffers[i], buf);
    }
 
    _mesa_HashUnlockMaybeLocked(&ctx->Shared->BufferObjects,

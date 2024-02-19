@@ -192,7 +192,7 @@ create_samplers(struct gl_context *ctx, GLsizei count, GLuint *samplers,
       }
 
       _mesa_HashInsertLocked(&ctx->Shared->SamplerObjects, samplers[i],
-                             sampObj, true);
+                             sampObj);
    }
 
    _mesa_HashUnlockMutex(&ctx->Shared->SamplerObjects);

@@ -218,9 +218,8 @@ _mesa_CreateMemoryObjectsEXT(GLsizei n, GLuint *memoryObjects)
          }
 
          /* insert into hash table */
-         _mesa_HashInsertLocked(&ctx->Shared->MemoryObjects,
-                                memoryObjects[i],
-                                memObj, true);
+         _mesa_HashInsertLocked(&ctx->Shared->MemoryObjects, memoryObjects[i],
+                                memObj);
       }
    }
 
@@ -787,8 +786,8 @@ _mesa_GenSemaphoresEXT(GLsizei n, GLuint *semaphores)
    _mesa_HashLockMutex(&ctx->Shared->SemaphoreObjects);
    if (_mesa_HashFindFreeKeys(&ctx->Shared->SemaphoreObjects, semaphores, n)) {
       for (GLsizei i = 0; i < n; i++) {
-         _mesa_HashInsertLocked(&ctx->Shared->SemaphoreObjects,
-                                semaphores[i], &DummySemaphoreObject, true);
+         _mesa_HashInsertLocked(&ctx->Shared->SemaphoreObjects, semaphores[i],
+                                &DummySemaphoreObject);
       }
    }
 
@@ -1163,7 +1162,7 @@ _mesa_ImportSemaphoreFdEXT(GLuint semaphore,
          _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", func);
          return;
       }
-      _mesa_HashInsert(&ctx->Shared->SemaphoreObjects, semaphore, semObj, true);
+      _mesa_HashInsert(&ctx->Shared->SemaphoreObjects, semaphore, semObj);
    }
 
    import_semaphoreobj_fd(ctx, semObj, fd);
@@ -1205,7 +1204,7 @@ _mesa_ImportSemaphoreWin32HandleEXT(GLuint semaphore,
          _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", func);
          return;
       }
-      _mesa_HashInsert(&ctx->Shared->SemaphoreObjects, semaphore, semObj, true);
+      _mesa_HashInsert(&ctx->Shared->SemaphoreObjects, semaphore, semObj);
    }
 
    enum pipe_fd_type type = handleType == GL_HANDLE_TYPE_D3D12_FENCE_EXT ?
@@ -1249,7 +1248,7 @@ _mesa_ImportSemaphoreWin32NameEXT(GLuint semaphore,
          _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", func);
          return;
       }
-      _mesa_HashInsert(&ctx->Shared->SemaphoreObjects, semaphore, semObj, true);
+      _mesa_HashInsert(&ctx->Shared->SemaphoreObjects, semaphore, semObj);
    }
 
    enum pipe_fd_type type = handleType == GL_HANDLE_TYPE_D3D12_FENCE_EXT ?

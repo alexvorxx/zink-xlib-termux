@@ -13147,7 +13147,7 @@ _mesa_GenLists(GLsizei range)
       GLint i;
       for (i = 0; i < range; i++) {
          _mesa_HashInsertLocked(&ctx->Shared->DisplayList, base + i,
-                                make_list(base + i, 1), true);
+                                make_list(base + i, 1));
       }
    }
 
@@ -13401,7 +13401,7 @@ _mesa_EndList(void)
    /* Install the new list */
    _mesa_HashInsertLocked(&ctx->Shared->DisplayList,
                           ctx->ListState.CurrentList->Name,
-                          ctx->ListState.CurrentList, false);
+                          ctx->ListState.CurrentList);
 
    if (MESA_VERBOSE & VERBOSE_DISPLAY_LIST)
       mesa_print_display_list(ctx->ListState.CurrentList->Name);

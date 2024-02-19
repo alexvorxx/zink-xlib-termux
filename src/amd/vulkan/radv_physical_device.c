@@ -612,6 +612,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_inline_uniform_block = true,
       .EXT_line_rasterization = true,
       .EXT_load_store_op_none = true,
+      .EXT_map_memory_placed = true,
       .EXT_memory_budget = true,
       .EXT_memory_priority = true,
       .EXT_mesh_shader = radv_taskmesh_enabled(device),
@@ -962,6 +963,11 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
 
       /* VK_KHR_shader_subgroup_uniform_control_flow */
       .shaderSubgroupUniformControlFlow = true,
+
+      /* VK_EXT_map_memory_placed */
+      .memoryMapPlaced = true,
+      .memoryMapRangePlaced = false,
+      .memoryUnmapReserve = true,
 
       /* VK_EXT_multi_draw */
       .multiDraw = true,
@@ -1865,6 +1871,11 @@ radv_get_physical_device_properties(struct radv_physical_device *pdevice)
    /* VK_EXT_shader_object */
    radv_device_get_cache_uuid(pdevice, p->shaderBinaryUUID);
    p->shaderBinaryVersion = 1;
+
+   /* VK_EXT_map_memory_placed */
+   uint64_t os_page_size = 4096;
+   os_get_page_size(&os_page_size);
+   p->minPlacedMemoryMapAlignment = os_page_size;
 }
 
 static VkResult

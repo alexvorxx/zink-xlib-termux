@@ -2708,6 +2708,11 @@ impl<'a> ShaderFromNir<'a> {
                 });
                 self.set_dst(&intrin.def, dst);
             }
+            nir_intrinsic_is_sparse_texels_resident => {
+                let src = self.get_src(&srcs[0]);
+                let dst = b.isetp(IntCmpType::I32, IntCmpOp::Ne, src, 0.into());
+                self.set_dst(&intrin.def, dst);
+            }
             _ => panic!(
                 "Unsupported intrinsic instruction: {}",
                 intrin.info().name()

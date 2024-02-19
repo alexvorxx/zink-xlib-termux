@@ -151,7 +151,7 @@ impl GLCtxManager {
         egl_display: EGLDisplay,
     ) -> CLResult<Option<Self>> {
         let mut info = mesa_glinterop_device_info {
-            version: 3,
+            version: 4,
             ..Default::default()
         };
         let xplat_manager = XPlatManager::new();

@@ -3466,23 +3466,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
          mesa_logw("zink: bug detected: inputAttachmentDescriptorSize(%u) > %u", (unsigned)screen->info.db_props.inputAttachmentDescriptorSize, ZINK_FBFETCH_DESCRIPTOR_SIZE);
          can_db = false;
       }
-      if (screen->compact_descriptors) {
-         if (screen->info.db_props.maxDescriptorBufferBindings < 3) {
-            if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB) {
-               mesa_loge("Cannot use db descriptor mode with compact descriptors with maxDescriptorBufferBindings < 3");
-               goto fail;
-            }
-            can_db = false;
-         }
-      } else {
-         if (screen->info.db_props.maxDescriptorBufferBindings < 5) {
-            if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB) {
-               mesa_loge("Cannot use db descriptor mode with maxDescriptorBufferBindings < 5");
-               goto fail;
-            }
-            can_db = false;
-         }
-      }
    }
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_AUTO) {
       /* descriptor buffer is not performant with virt yet */

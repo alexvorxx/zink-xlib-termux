@@ -2614,6 +2614,21 @@ zink_set_patch_vertices(struct pipe_context *pctx, uint8_t patch_vertices)
    }
 }
 
+static void
+init_null_fbfetch(struct zink_context *ctx)
+{
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
+   if (zink_descriptor_mode != ZINK_DESCRIPTOR_MODE_DB)
+      return;
+   VkDescriptorGetInfoEXT info;
+   info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT;
+   info.pNext = NULL;
+   info.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+   info.data.pInputAttachmentImage = &ctx->di.fbfetch;
+   if (screen->info.db_props.inputAttachmentDescriptorSize)
+      VKSCR(GetDescriptorEXT)(screen->dev, &info, screen->info.db_props.inputAttachmentDescriptorSize, ctx->di.fbfetch_db);
+}
+
 bool
 zink_update_fbfetch(struct zink_context *ctx)
 {
@@ -5552,14 +5567,7 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB) {
          /* cache null fbfetch descriptor info */
          ctx->di.fbfetch.imageView = zink_get_dummy_surface(ctx, 0)->image_view;
-         ctx->di.fbfetch.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-         VkDescriptorGetInfoEXT info;
-         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT;
-         info.pNext = NULL;
-         info.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-         info.data.pInputAttachmentImage = &ctx->di.fbfetch;
-         if (screen->info.db_props.inputAttachmentDescriptorSize)
-            VKSCR(GetDescriptorEXT)(screen->dev, &info, screen->info.db_props.inputAttachmentDescriptorSize, ctx->di.fbfetch_db);
+         init_null_fbfetch(ctx);
          memset(&ctx->di.fbfetch, 0, sizeof(ctx->di.fbfetch));
       }
 

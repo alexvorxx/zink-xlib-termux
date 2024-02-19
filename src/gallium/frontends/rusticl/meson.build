@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-rust = import('unstable-rust')
+rust = import('rust')
 
 libmesa_rust_util_files = files(
   'util/lib.rs',

@@ -5558,8 +5558,6 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
             VKSCR(GetDescriptorEXT)(screen->dev, &info, screen->info.db_props.inputAttachmentDescriptorSize, ctx->di.fbfetch_db);
          memset(&ctx->di.fbfetch, 0, sizeof(ctx->di.fbfetch));
       }
-      if (!screen->info.rb2_feats.nullDescriptor)
-         ctx->di.fbfetch.imageView = zink_get_dummy_surface(ctx, 0)->image_view;
 
       p_atomic_inc(&screen->base.num_contexts);
    }

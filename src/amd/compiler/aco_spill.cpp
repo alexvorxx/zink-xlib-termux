@@ -693,11 +693,14 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       Block::edge_vec& preds =
          phi->opcode == aco_opcode::p_phi ? block->logical_preds : block->linear_preds;
       bool is_all_spilled = true;
+      bool is_partial_spill = false;
       for (unsigned i = 0; i < phi->operands.size(); i++) {
          if (phi->operands[i].isUndefined())
             continue;
-         is_all_spilled &= phi->operands[i].isTemp() &&
-                           ctx.spills_exit[preds[i]].count(phi->operands[i].getTemp());
+         bool spilled = phi->operands[i].isTemp() &&
+                        ctx.spills_exit[preds[i]].count(phi->operands[i].getTemp());
+         is_all_spilled &= spilled;
+         is_partial_spill |= spilled;
       }
 
       if (is_all_spilled) {
@@ -706,7 +709,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          spilled_registers += phi->definitions[0].getTemp();
       } else {
          /* Phis might increase the register pressure. */
-         partial_spills[phi->definitions[0].getTemp()] = true;
+         partial_spills[phi->definitions[0].getTemp()] = is_partial_spill;
       }
    }
 
@@ -718,19 +721,19 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       assert(!partial_spills.empty());
       std::map<Temp, bool>::iterator it = partial_spills.begin();
       Temp to_spill = Temp();
-      bool is_spilled_or_phi = false;
+      bool is_partial_spill = false;
       unsigned distance = 0;
       RegType type = reg_pressure.vgpr > ctx.target_pressure.vgpr ? RegType::vgpr : RegType::sgpr;
 
       while (it != partial_spills.end()) {
          assert(!ctx.spills_entry[block_idx].count(it->first));
 
-         if (it->first.type() == type && ((it->second && !is_spilled_or_phi) ||
-                                          (it->second == is_spilled_or_phi &&
+         if (it->first.type() == type && ((it->second && !is_partial_spill) ||
+                                          (it->second == is_partial_spill &&
                                            next_use_distances.at(it->first).second > distance))) {
             distance = next_use_distances.at(it->first).second;
             to_spill = it->first;
-            is_spilled_or_phi = it->second;
+            is_partial_spill = it->second;
          }
          ++it;
       }

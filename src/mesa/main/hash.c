@@ -40,7 +40,6 @@
 #include "hash.h"
 #include "util/hash_table.h"
 #include "util/u_memory.h"
-#include "util/u_idalloc.h"
 
 /**
  * Magic GLuint object name that gets stored outside of the struct hash_table.
@@ -119,6 +118,9 @@ _mesa_NewHashTable(void)
       }
 
       _mesa_hash_table_set_deleted_key(table->ht, uint_key(DELETED_KEY_VALUE));
+      util_idalloc_init(&table->id_alloc, 8);
+      /* Mark ID = 0 as used, so that we don't return it. */
+      util_idalloc_reserve(&table->id_alloc, 0);
       simple_mtx_init(&table->Mutex, mtx_plain);
    }
    else {
@@ -157,29 +159,16 @@ _mesa_DeleteHashTable(struct _mesa_HashTable *table,
    }
 
    _mesa_hash_table_destroy(table->ht, NULL);
-   if (table->id_alloc) {
-      util_idalloc_fini(table->id_alloc);
-      free(table->id_alloc);
-   }
-
+   util_idalloc_fini(&table->id_alloc);
    simple_mtx_destroy(&table->Mutex);
    FREE(table);
-}
-
-static void init_name_reuse(struct _mesa_HashTable *table)
-{
-   assert(_mesa_hash_table_num_entries(table->ht) == 0);
-   table->id_alloc = MALLOC_STRUCT(util_idalloc);
-   util_idalloc_init(table->id_alloc, 8);
-   ASSERTED GLuint reserve0 = util_idalloc_alloc(table->id_alloc);
-   assert (reserve0 == 0);
 }
 
 void
 _mesa_HashEnableNameReuse(struct _mesa_HashTable *table)
 {
    _mesa_HashLockMutex(table);
-   init_name_reuse(table);
+   table->alloc_via_idalloc = true;
    _mesa_HashUnlockMutex(table);
 }
 
@@ -266,8 +255,8 @@ _mesa_HashInsertLocked(struct _mesa_HashTable *table, GLuint key, void *data,
       }
    }
 
-   if (!isGenName && table->id_alloc)
-      util_idalloc_reserve(table->id_alloc, key);
+   if (!isGenName)
+      util_idalloc_reserve(&table->id_alloc, key);
 }
 
 /**
@@ -313,8 +302,7 @@ _mesa_HashRemoveLocked(struct _mesa_HashTable *table, GLuint key)
       _mesa_hash_table_remove(table->ht, entry);
    }
 
-   if (table->id_alloc)
-      util_idalloc_free(table->id_alloc, key);
+   util_idalloc_free(&table->id_alloc, key);
 }
 
 void
@@ -373,8 +361,8 @@ GLuint
 _mesa_HashFindFreeKeyBlock(struct _mesa_HashTable *table, GLuint numKeys)
 {
    const GLuint maxKey = ~((GLuint) 0) - 1;
-   if (table->id_alloc) {
-      return util_idalloc_alloc_range(table->id_alloc, numKeys);
+   if (table->alloc_via_idalloc) {
+      return util_idalloc_alloc_range(&table->id_alloc, numKeys);
    } else if (maxKey - numKeys > table->MaxKey) {
       /* the quick solution */
       return table->MaxKey + 1;
@@ -406,7 +394,7 @@ _mesa_HashFindFreeKeyBlock(struct _mesa_HashTable *table, GLuint numKeys)
 bool
 _mesa_HashFindFreeKeys(struct _mesa_HashTable *table, GLuint* keys, GLuint numKeys)
 {
-   if (!table->id_alloc) {
+   if (!table->alloc_via_idalloc) {
       GLuint first = _mesa_HashFindFreeKeyBlock(table, numKeys);
       for (int i = 0; i < numKeys; i++) {
          keys[i] = first + i;
@@ -415,7 +403,7 @@ _mesa_HashFindFreeKeys(struct _mesa_HashTable *table, GLuint* keys, GLuint numKe
    }
 
    for (int i = 0; i < numKeys; i++) {
-      keys[i] = util_idalloc_alloc(table->id_alloc);
+      keys[i] = util_idalloc_alloc(&table->id_alloc);
    }
 
    return true;

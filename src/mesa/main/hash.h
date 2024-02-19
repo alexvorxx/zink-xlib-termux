@@ -36,8 +36,7 @@
 
 #include "c11/threads.h"
 #include "util/simple_mtx.h"
-
-struct util_idalloc;
+#include "util/u_idalloc.h"
 
 /**
  * The hash table data structure.
@@ -46,11 +45,11 @@ struct _mesa_HashTable {
    struct hash_table *ht;
    GLuint MaxKey;                        /**< highest key inserted so far */
    simple_mtx_t Mutex;                   /**< mutual exclusion lock */
-   /* Used when name reuse is enabled */
-   struct util_idalloc *id_alloc;
+   struct util_idalloc id_alloc;
 
    /** Value that would be in the table for DELETED_KEY_VALUE. */
    void *deleted_key_data;
+   bool alloc_via_idalloc;
 };
 
 struct _mesa_HashTable *

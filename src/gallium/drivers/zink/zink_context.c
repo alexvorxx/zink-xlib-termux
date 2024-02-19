@@ -2744,7 +2744,7 @@ static unsigned
 calc_max_dummy_fbo_size(struct zink_context *ctx)
 {
    unsigned size = MAX2(ctx->fb_state.width, ctx->fb_state.height);
-   return size ? size : MIN2(4096, zink_screen(ctx->base.screen)->info.props.limits.maxImageDimension2D);
+   return size ? size : MIN2(256, zink_screen(ctx->base.screen)->info.props.limits.maxImageDimension2D);
 }
 
 static unsigned

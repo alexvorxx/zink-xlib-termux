@@ -1250,6 +1250,15 @@ get_properties(const struct anv_physical_device *pdevice,
    VkSampleCountFlags sample_counts =
       isl_device_get_sample_counts(&pdevice->isl_dev);
 
+#if DETECT_OS_ANDROID
+   /* Used to fill struct VkPhysicalDevicePresentationPropertiesANDROID */
+   uint64_t front_rendering_usage = 0;
+   struct u_gralloc *gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
+   if (gralloc != NULL) {
+      u_gralloc_get_front_rendering_usage(gralloc, &front_rendering_usage);
+      u_gralloc_destroy(&gralloc);
+   }
+#endif /* DETECT_OS_ANDROID */
 
    *props = (struct vk_properties) {
       .apiVersion = ANV_API_VERSION,
@@ -1861,6 +1870,14 @@ get_properties(const struct anv_physical_device *pdevice,
       props->transformFeedbackRasterizationStreamSelect = false;
       props->transformFeedbackDraw = true;
    }
+
+   /* VK_ANDROID_native_buffer */
+#if DETECT_OS_ANDROID
+   {
+      props->sharedImage = front_rendering_usage ? VK_TRUE : VK_FALSE;
+   }
+#endif /* DETECT_OS_ANDROID */
+
 }
 
 static VkResult MUST_CHECK
@@ -2721,39 +2738,6 @@ void anv_DestroyInstance(
 
    vk_instance_finish(&instance->vk);
    vk_free(&instance->vk.alloc, instance);
-}
-
-void anv_GetPhysicalDeviceProperties2(
-    VkPhysicalDevice                            physicalDevice,
-    VkPhysicalDeviceProperties2*                pProperties)
-{
-   vk_common_GetPhysicalDeviceProperties2(physicalDevice, pProperties);
-
-   /* Unfortunately the runtime isn't handling ANDROID extensions. */
-   vk_foreach_struct(ext, pProperties->pNext) {
-      switch (ext->sType) {
-#if DETECT_OS_ANDROID
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wswitch"
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_ANDROID: {
-         VkPhysicalDevicePresentationPropertiesANDROID *props =
-            (VkPhysicalDevicePresentationPropertiesANDROID *)ext;
-         uint64_t front_rendering_usage = 0;
-         struct u_gralloc *gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
-         if (gralloc != NULL) {
-            u_gralloc_get_front_rendering_usage(gralloc, &front_rendering_usage);
-            u_gralloc_destroy(&gralloc);
-         }
-         props->sharedImage = front_rendering_usage ? VK_TRUE : VK_FALSE;
-         break;
-      }
-#pragma GCC diagnostic pop
-#endif
-
-      default:
-         break;
-      }
-   }
 }
 
 static const VkQueueFamilyProperties

@@ -2357,14 +2357,18 @@ lower_to_hw_instr(Program* program)
                handle_operands(copy_operations, &ctx, program->gfx_level, pi);
                break;
             }
-            case aco_opcode::p_create_vector: {
+            case aco_opcode::p_create_vector:
+            case aco_opcode::p_start_linear_vgpr: {
+               if (instr->operands.empty())
+                  break;
+
                std::map<PhysReg, copy_operation> copy_operations;
                PhysReg reg = instr->definitions[0].physReg();
 
                for (const Operand& op : instr->operands) {
+                  RegClass rc = RegClass::get(instr->definitions[0].regClass().type(), op.bytes());
                   if (op.isConstant()) {
-                     const Definition def = Definition(
-                        reg, instr->definitions[0].getTemp().regClass().resize(op.bytes()));
+                     const Definition def = Definition(reg, rc);
                      copy_operations[reg] = {op, def, op.bytes()};
                      reg.reg_b += op.bytes();
                      continue;
@@ -2375,10 +2379,7 @@ lower_to_hw_instr(Program* program)
                      continue;
                   }
 
-                  RegClass rc_def =
-                     op.regClass().is_subdword()
-                        ? op.regClass()
-                        : instr->definitions[0].getTemp().regClass().resize(op.bytes());
+                  RegClass rc_def = op.regClass().is_subdword() ? op.regClass() : rc;
                   const Definition def = Definition(reg, rc_def);
                   copy_operations[def.physReg()] = {op, def, op.bytes()};
                   reg.reg_b += op.bytes();
@@ -2408,19 +2409,6 @@ lower_to_hw_instr(Program* program)
                   copy_operations[instr->definitions[j].physReg()] = {
                      instr->operands[j], instr->definitions[j], instr->operands[j].bytes()};
                }
-               handle_operands(copy_operations, &ctx, program->gfx_level, pi);
-               break;
-            }
-            case aco_opcode::p_start_linear_vgpr: {
-               if (instr->operands.empty())
-                  break;
-
-               Definition def(instr->definitions[0].physReg(),
-                              RegClass::get(RegType::vgpr, instr->definitions[0].bytes()));
-
-               std::map<PhysReg, copy_operation> copy_operations;
-               copy_operations[def.physReg()] = {instr->operands[0], def,
-                                                 instr->operands[0].bytes()};
                handle_operands(copy_operations, &ctx, program->gfx_level, pi);
                break;
             }

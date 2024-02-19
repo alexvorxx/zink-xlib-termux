@@ -9271,7 +9271,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_strict_wqm_coord_amd: {
       Temp dst = get_ssa_temp(ctx, &instr->def);
       Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
-      Temp tmp = bld.tmp(RegClass::get(RegType::vgpr, dst.bytes()));
       unsigned begin_size = nir_intrinsic_base(instr);
 
       unsigned num_src = 1;
@@ -9280,7 +9279,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
          num_src = src.bytes() / it->second[0].bytes();
 
       aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
-         aco_opcode::p_create_vector, Format::PSEUDO, num_src + !!begin_size, 1)};
+         aco_opcode::p_start_linear_vgpr, Format::PSEUDO, num_src + !!begin_size, 1)};
 
       if (begin_size)
          vec->operands[0] = Operand(RegClass::get(RegType::vgpr, begin_size));
@@ -9289,10 +9288,8 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
          vec->operands[i + !!begin_size] = Operand(comp);
       }
 
-      vec->definitions[0] = Definition(tmp);
+      vec->definitions[0] = Definition(dst);
       ctx->block->instructions.emplace_back(std::move(vec));
-
-      bld.pseudo(aco_opcode::p_start_linear_vgpr, Definition(dst), tmp);
       break;
    }
    case nir_intrinsic_load_lds_ngg_scratch_base_amd: {

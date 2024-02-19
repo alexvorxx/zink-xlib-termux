@@ -580,6 +580,7 @@ pseudo_propagate_temp(opt_ctx& ctx, aco_ptr<Instruction>& instr, Temp temp, unsi
    case aco_opcode::p_linear_phi:
    case aco_opcode::p_parallelcopy:
    case aco_opcode::p_create_vector:
+   case aco_opcode::p_start_linear_vgpr:
       if (temp.bytes() != instr->operands[index].bytes())
          return false;
       break;

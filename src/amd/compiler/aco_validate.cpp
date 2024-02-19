@@ -366,6 +366,7 @@ validate_ir(Program* program)
                bool flat = instr->isFlatLike();
                bool can_be_undef = is_phi(instr) || instr->isEXP() || instr->isReduction() ||
                                    instr->opcode == aco_opcode::p_create_vector ||
+                                   instr->opcode == aco_opcode::p_start_linear_vgpr ||
                                    instr->opcode == aco_opcode::p_jump_to_epilog ||
                                    instr->opcode == aco_opcode::p_dual_src_export_gfx11 ||
                                    instr->opcode == aco_opcode::p_end_with_regs ||
@@ -527,20 +528,26 @@ validate_ir(Program* program)
 
          switch (instr->format) {
          case Format::PSEUDO: {
-            if (instr->opcode == aco_opcode::p_create_vector) {
+            if (instr->opcode == aco_opcode::p_create_vector ||
+                instr->opcode == aco_opcode::p_start_linear_vgpr) {
                unsigned size = 0;
                for (const Operand& op : instr->operands) {
                   check(op.bytes() < 4 || size % 4 == 0, "Operand is not aligned", instr.get());
                   size += op.bytes();
                }
-               check(size == instr->definitions[0].bytes(),
-                     "Definition size does not match operand sizes", instr.get());
+               if (!instr->operands.empty() || instr->opcode == aco_opcode::p_create_vector) {
+                  check(size == instr->definitions[0].bytes(),
+                        "Definition size does not match operand sizes", instr.get());
+               }
                if (instr->definitions[0].regClass().type() == RegType::sgpr) {
                   for (const Operand& op : instr->operands) {
                      check(op.isConstant() || op.regClass().type() == RegType::sgpr,
                            "Wrong Operand type for scalar vector", instr.get());
                   }
                }
+               if (instr->opcode == aco_opcode::p_start_linear_vgpr)
+                  check(instr->definitions[0].regClass().is_linear_vgpr(),
+                        "Definition must be linear VGPR", instr.get());
             } else if (instr->opcode == aco_opcode::p_extract_vector) {
                check(!instr->operands[0].isConstant() && instr->operands[1].isConstant(),
                      "Wrong Operand types", instr.get());
@@ -680,15 +687,6 @@ validate_ir(Program* program)
                      instr->operands[i].isOfType(RegType::vgpr) || instr->operands[i].isUndefined(),
                      "Operands of p_dual_src_export_gfx11 must be VGPRs or undef", instr.get());
                }
-            } else if (instr->opcode == aco_opcode::p_start_linear_vgpr) {
-               check(instr->definitions.size() == 1, "Must have one definition", instr.get());
-               check(instr->operands.size() <= 1, "Must have one or zero operands", instr.get());
-               if (!instr->definitions.empty())
-                  check(instr->definitions[0].regClass().is_linear_vgpr(),
-                        "Definition must be linear VGPR", instr.get());
-               if (!instr->definitions.empty() && !instr->operands.empty())
-                  check(instr->definitions[0].bytes() == instr->operands[0].bytes(),
-                        "Operand size must match definition", instr.get());
             }
             break;
          }

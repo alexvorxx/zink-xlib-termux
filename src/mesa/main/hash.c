@@ -133,11 +133,15 @@ _mesa_DeinitHashTable(struct _mesa_HashTable *table,
                       void *userData)
 {
    if (free_callback) {
-      hash_table_foreach(table->ht, entry) {
-         free_callback(entry->data, userData);
-      }
-      if (table->deleted_key_data) {
-         free_callback(table->deleted_key_data, userData);
+      util_idalloc_foreach_no_zero_safe(&table->id_alloc, id) {
+         void *obj;
+         if (id == DELETED_KEY_VALUE) {
+            obj = table->deleted_key_data;
+         } else {
+            obj = _mesa_hash_table_search_pre_hashed(table->ht, uint_hash(id),
+                                                     uint_key(id))->data;
+         }
+         free_callback(obj, userData);
       }
    }
 
@@ -304,11 +308,16 @@ _mesa_HashWalkLocked(struct _mesa_HashTable *table,
 {
    assert(callback);
 
-   hash_table_foreach(table->ht, entry) {
-      callback(entry->data, userData);
+   util_idalloc_foreach_no_zero_safe(&table->id_alloc, id) {
+      void *obj;
+      if (id == DELETED_KEY_VALUE) {
+         obj = table->deleted_key_data;
+      } else {
+         obj = _mesa_hash_table_search_pre_hashed(table->ht, uint_hash(id),
+                                                  uint_key(id))->data;
+      }
+      callback(obj, userData);
    }
-   if (table->deleted_key_data)
-      callback(table->deleted_key_data, userData);
 }
 
 void

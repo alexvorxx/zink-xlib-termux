@@ -1676,20 +1676,6 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo);
 uint64_t
 brw_get_compiler_config_value(const struct brw_compiler *compiler);
 
-/* Provides a string sha1 hash of all device information fields that could
- * affect shader compilation.
- */
-void
-brw_device_sha1(char *hex, const struct intel_device_info *devinfo);
-
-/* For callers computing their own UUID or hash.  Hashes all device
- * information fields that could affect shader compilation into the provided
- * sha1_ctx.
- */
-void
-brw_device_sha1_update(struct mesa_sha1 *sha1_ctx,
-                       const struct intel_device_info *devinfo);
-
 unsigned
 brw_prog_data_size(gl_shader_stage stage);
 

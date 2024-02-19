@@ -283,17 +283,6 @@ brw_get_compiler_config_value(const struct brw_compiler *compiler)
    return config;
 }
 
-void
-brw_device_sha1(char *hex,
-                const struct intel_device_info *devinfo) {
-   struct mesa_sha1 ctx;
-   _mesa_sha1_init(&ctx);
-   brw_device_sha1_update(&ctx, devinfo);
-   unsigned char result[20];
-   _mesa_sha1_final(&ctx, result);
-   _mesa_sha1_format(hex, result);
-}
-
 unsigned
 brw_prog_data_size(gl_shader_stage stage)
 {

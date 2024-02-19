@@ -139,11 +139,6 @@ libintel_compiler_elk_files = files(
   'gfx6_gs_visitor.h',
 )
 
-elk_device_sha1_gen_src = custom_target('brw_device_sha1_gen.c',
-                                        input : ['brw_device_sha1_gen_c.py', '../../dev/intel_device_info.py'],
-                                        output : ['brw_device_sha1_gen.c'],
-                                        command : [prog_python, '@INPUT0@', '--outdir', meson.current_build_dir()])
-
 elk_nir_trig = custom_target(
   'brw_nir_trig_workarounds.c',
   input : 'brw_nir_trig_workarounds.py',
@@ -157,7 +152,7 @@ elk_nir_trig = custom_target(
 
 libintel_compiler_elk = static_library(
   'intel_compiler_elk',
-  [libintel_compiler_elk_files, intel_nir_files, elk_nir_trig, ir_expression_operation_h, [elk_device_sha1_gen_src]],
+  [libintel_compiler_elk_files, intel_nir_files, elk_nir_trig, ir_expression_operation_h],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',

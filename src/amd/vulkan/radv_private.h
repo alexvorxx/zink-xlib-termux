@@ -1268,6 +1268,11 @@ struct radv_device {
 
    /* Not NULL if a GPU hang report has been generated for VK_EXT_device_fault. */
    char *gpu_hang_report;
+
+   /* For indirect compute pipeline binds with DGC only. */
+   simple_mtx_t compute_scratch_mtx;
+   uint32_t compute_scratch_size_per_wave;
+   uint32_t compute_scratch_waves;
 };
 
 bool radv_device_set_pstate(struct radv_device *device, bool enable);
@@ -1857,6 +1862,7 @@ struct radv_cmd_buffer {
    bool gds_needed;    /* for GFX10 streamout and NGG GS queries */
    bool gds_oa_needed; /* for GFX10 streamout */
    bool sample_positions_needed;
+   bool has_indirect_pipeline_binds;
 
    uint64_t gfx9_fence_va;
    uint32_t gfx9_fence_idx;

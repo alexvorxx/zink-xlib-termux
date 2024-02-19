@@ -320,9 +320,21 @@ radv_compute_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkC
    if (pipeline->base.create_flags & VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV) {
       const VkComputePipelineIndirectBufferInfoNV *indirect_buffer =
          vk_find_struct_const(pCreateInfo->pNext, COMPUTE_PIPELINE_INDIRECT_BUFFER_INFO_NV);
+      struct radv_shader *cs = pipeline->base.shaders[MESA_SHADER_COMPUTE];
 
       pipeline->indirect.va = indirect_buffer->deviceAddress;
       pipeline->indirect.size = indirect_buffer->size;
+
+      /* vkCmdUpdatePipelineIndirectBufferNV() can be called on any queues supporting transfer
+       * operations and it's not required to call it on the same queue as the DGC execute. Because
+       * it's not possible to know if the compute shader uses scratch when DGC execute is called,
+       * the only solution is gather the max scratch size of all indirect pipelines.
+       */
+      simple_mtx_lock(&device->compute_scratch_mtx);
+      device->compute_scratch_size_per_wave =
+         MAX2(device->compute_scratch_size_per_wave, cs->config.scratch_bytes_per_wave);
+      device->compute_scratch_waves = MAX2(device->compute_scratch_waves, radv_get_max_scratch_waves(device, cs));
+      simple_mtx_unlock(&device->compute_scratch_mtx);
    }
 
    *pPipeline = radv_pipeline_to_handle(&pipeline->base);

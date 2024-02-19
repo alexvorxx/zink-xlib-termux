@@ -5579,12 +5579,6 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
                ctx->di.db.texel_images[i][j].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT;
          }
       }
-      if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB) {
-         /* cache null fbfetch descriptor info */
-         ctx->di.fbfetch.imageView = zink_get_dummy_surface(ctx, 0)->image_view;
-         init_null_fbfetch(ctx);
-         memset(&ctx->di.fbfetch, 0, sizeof(ctx->di.fbfetch));
-      }
 
       p_atomic_inc(&screen->base.num_contexts);
    }

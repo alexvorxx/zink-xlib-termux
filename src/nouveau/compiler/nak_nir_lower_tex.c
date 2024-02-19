@@ -221,6 +221,7 @@ lower_tex(nir_builder *b, nir_tex_instr *tex, const struct nak_compiler *nak)
       .lod_mode = lod_mode,
       .offset_mode = offset_mode,
       .has_z_cmpr = tex->is_shadow,
+      .is_sparse = tex->is_sparse,
    };
    STATIC_ASSERT(sizeof(flags) == sizeof(tex->backend_flags));
    memcpy(&tex->backend_flags, &flags, sizeof(flags));
@@ -256,6 +257,8 @@ static bool
 lower_txq(nir_builder *b, nir_tex_instr *tex, const struct nak_compiler *nak)
 {
    b->cursor = nir_before_instr(&tex->instr);
+
+   assert(!tex->is_sparse);
 
    nir_def *tex_h = NULL, *lod = NULL;
    for (unsigned i = 0; i < tex->num_srcs; i++) {

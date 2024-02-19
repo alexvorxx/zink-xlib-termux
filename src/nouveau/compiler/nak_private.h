@@ -145,7 +145,8 @@ struct nak_nir_tex_flags {
    enum nak_nir_lod_mode lod_mode:3;
    enum nak_nir_offset_mode offset_mode:2;
    bool has_z_cmpr:1;
-   uint32_t pad:26;
+   bool is_sparse:1;
+   uint32_t pad:25;
 };
 
 bool nak_nir_lower_scan_reduce(nir_shader *shader);

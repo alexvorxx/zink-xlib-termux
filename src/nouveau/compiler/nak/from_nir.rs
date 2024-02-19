@@ -1566,7 +1566,10 @@ impl<'a> ShaderFromNir<'a> {
             unsafe { std::mem::transmute_copy(&tex.backend_flags) };
 
         let mask = tex.def.components_read();
-        let mask = u8::try_from(mask).unwrap();
+        let mut mask = u8::try_from(mask).unwrap();
+        if flags.is_sparse() {
+            mask &= !(1 << (tex.def.num_components - 1));
+        }
 
         let dst_comps = u8::try_from(mask.count_ones()).unwrap();
         let dst = b.alloc_ssa(RegFile::GPR, dst_comps);
@@ -1580,8 +1583,15 @@ impl<'a> ShaderFromNir<'a> {
             dsts[0] = dst.into();
         }
 
+        let fault = if flags.is_sparse() {
+            b.alloc_ssa(RegFile::Pred, 1).into()
+        } else {
+            Dst::None
+        };
+
         if tex.op == nir_texop_hdr_dim_nv {
             let src = self.get_src(&srcs[0].src);
+            assert!(fault.is_none());
             b.push_op(OpTxq {
                 dsts: dsts,
                 src: src,
@@ -1590,6 +1600,7 @@ impl<'a> ShaderFromNir<'a> {
             });
         } else if tex.op == nir_texop_tex_type_nv {
             let src = self.get_src(&srcs[0].src);
+            assert!(fault.is_none());
             b.push_op(OpTxq {
                 dsts: dsts,
                 src: src,
@@ -1622,7 +1633,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(!flags.has_z_cmpr());
                 b.push_op(OpTxd {
                     dsts: dsts,
-                    fault: Dst::None,
+                    fault,
                     srcs: srcs,
                     dim: dim,
                     offset: offset_mode == Tld4OffsetMode::AddOffI,
@@ -1640,7 +1651,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(offset_mode != Tld4OffsetMode::PerPx);
                 b.push_op(OpTld {
                     dsts: dsts,
-                    fault: Dst::None,
+                    fault,
                     srcs: srcs,
                     dim: dim,
                     lod_mode: lod_mode,
@@ -1651,7 +1662,7 @@ impl<'a> ShaderFromNir<'a> {
             } else if tex.op == nir_texop_tg4 {
                 b.push_op(OpTld4 {
                     dsts: dsts,
-                    fault: Dst::None,
+                    fault,
                     srcs: srcs,
                     dim: dim,
                     comp: tex.component().try_into().unwrap(),
@@ -1663,7 +1674,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(offset_mode != Tld4OffsetMode::PerPx);
                 b.push_op(OpTex {
                     dsts: dsts,
-                    fault: Dst::None,
+                    fault,
                     srcs: srcs,
                     dim: dim,
                     lod_mode: lod_mode,
@@ -1677,7 +1688,12 @@ impl<'a> ShaderFromNir<'a> {
         let mut di = 0_usize;
         let mut nir_dst = Vec::new();
         for i in 0..tex.def.num_components() {
-            if mask & (1 << i) == 0 {
+            if flags.is_sparse() && i == tex.def.num_components - 1 {
+                let Dst::SSA(fault) = fault else {
+                    panic!("No fault value for sparse op");
+                };
+                nir_dst.push(b.sel(fault.into(), 0.into(), 1.into())[0]);
+            } else if mask & (1 << i) == 0 {
                 nir_dst.push(b.copy(0.into())[0]);
             } else {
                 nir_dst.push(dst[di]);

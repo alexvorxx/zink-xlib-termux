@@ -9372,15 +9372,11 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    assume(last_vgt_api_stage != MESA_SHADER_NONE);
    cmd_buffer->state.last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
 
-   if ((cmd_buffer->state.active_stages & VK_SHADER_STAGE_GEOMETRY_BIT) &&
-       cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]->gs.copy_shader) {
-      struct radv_shader *gs_copy_shader = cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]->gs.copy_shader;
-
-      cmd_buffer->state.gs_copy_shader = gs_copy_shader;
-
-      radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, gs_copy_shader->bo);
-   } else {
-      cmd_buffer->state.gs_copy_shader = NULL;
+   cmd_buffer->state.gs_copy_shader = cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]
+                                         ? cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]->gs.copy_shader
+                                         : NULL;
+   if (cmd_buffer->state.gs_copy_shader) {
+      radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, cmd_buffer->state.gs_copy_shader->bo);
    }
 
    /* Determine the rasterized primitive. */

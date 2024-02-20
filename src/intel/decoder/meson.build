@@ -36,7 +36,7 @@ idep_intel_decoder = declare_dependency(
 )
 
 if with_tests and not with_platform_android
-  gentest_xml = files('tests/gentest.xml')
+  gentest_xml = 'tests/gentest.xml'
   _name = 'gentest_pack.h'
   gentest_pack = custom_target(
     _name,
@@ -47,8 +47,8 @@ if with_tests and not with_platform_android
     depend_files: gen_pack_header_deps
   )
 
-  genxml_path = join_paths(dir_source_root,
-                           '@0@'.format(gentest_xml[0]))
+  genxml_path = join_paths(meson.current_source_dir(),
+                           '@0@'.format(gentest_xml))
 
   test(
     'genxml_test',

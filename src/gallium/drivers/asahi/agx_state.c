@@ -4843,7 +4843,6 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
    p_tess_destroy(tess);
 
    /* Run TES as VS */
-   agx_batch_init_state(batch);
    void *vs_cso = ctx->stage[PIPE_SHADER_VERTEX].shader;
    void *tes_cso = ctx->stage[PIPE_SHADER_TESS_EVAL].shader;
    ctx->base.bind_vs_state(&ctx->base, tes_cso);
@@ -4865,8 +4864,11 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
       .draw_count = in_patches * info->instance_count,
    };
 
-   batch->uniforms.tess_params =
-      agx_pool_upload(&batch->pool, &tess_params, sizeof(tess_params));
+   /* Tess param upload is deferred to draw_vbo since the batch may change
+    * within draw_vbo for various reasons, so we can't upload it to the batch
+    * upfront.
+    */
+   memcpy(&ctx->tess_params, &tess_params, sizeof(tess_params));
 
    ctx->base.draw_vbo(&ctx->base, &draw_info, 0, &copy_indirect, NULL, 1);
 
@@ -5124,7 +5126,12 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
    if (IS_DIRTY(VS) || IS_DIRTY(FS) || ctx->gs || IS_DIRTY(VERTEX) ||
        IS_DIRTY(BLEND_COLOR) || IS_DIRTY(QUERY) || IS_DIRTY(POLY_STIPPLE) ||
-       IS_DIRTY(RS) || IS_DIRTY(PRIM)) {
+       IS_DIRTY(RS) || IS_DIRTY(PRIM) || ctx->in_tess) {
+
+      if (ctx->in_tess) {
+         batch->uniforms.tess_params = agx_pool_upload(
+            &batch->pool, &ctx->tess_params, sizeof(ctx->tess_params));
+      }
 
       if (IS_DIRTY(VERTEX)) {
          agx_upload_vbos(batch);

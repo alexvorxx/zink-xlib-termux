@@ -678,6 +678,7 @@ struct agx_context {
    struct util_debug_callback debug;
    bool is_noop;
 
+   struct agx_tess_params tess_params;
    bool in_tess;
 
    struct blitter_context *blitter;

@@ -305,7 +305,6 @@ public:
 
    const struct intel_device_info * const devinfo;
    const nir_shader *nir;
-   struct brw_stage_prog_data * const stage_prog_data;
 
    /** ralloc context for temporary data used during compile */
    void *mem_ctx;

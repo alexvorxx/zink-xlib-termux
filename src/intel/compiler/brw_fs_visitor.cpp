@@ -988,7 +988,7 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler,
                        bool debug_enabled)
    : compiler(compiler), log_data(params->log_data),
      devinfo(compiler->devinfo), nir(shader),
-     stage_prog_data(prog_data), mem_ctx(params->mem_ctx),
+     mem_ctx(params->mem_ctx),
      cfg(NULL), stage(shader->info.stage),
      debug_enabled(debug_enabled),
      key(key), gs_compile(NULL), prog_data(prog_data),
@@ -1012,7 +1012,7 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler,
                        bool debug_enabled)
    : compiler(compiler), log_data(params->log_data),
      devinfo(compiler->devinfo), nir(shader),
-     stage_prog_data(&prog_data->base), mem_ctx(params->mem_ctx),
+     mem_ctx(params->mem_ctx),
      cfg(NULL), stage(shader->info.stage),
      debug_enabled(debug_enabled),
      key(&key->base), gs_compile(NULL), prog_data(&prog_data->base),
@@ -1039,7 +1039,7 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler,
                        bool debug_enabled)
    : compiler(compiler), log_data(params->log_data),
      devinfo(compiler->devinfo), nir(shader),
-     stage_prog_data(&prog_data->base.base), mem_ctx(params->mem_ctx),
+     mem_ctx(params->mem_ctx),
      cfg(NULL), stage(shader->info.stage),
      debug_enabled(debug_enabled),
      key(&c->key.base), gs_compile(c),
@@ -1062,7 +1062,6 @@ void
 fs_visitor::init()
 {
    this->max_dispatch_width = 32;
-   this->prog_data = this->stage_prog_data;
 
    this->failed = false;
    this->fail_msg = NULL;

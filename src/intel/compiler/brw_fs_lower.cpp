@@ -405,10 +405,10 @@ brw_fs_lower_find_live_channel(fs_visitor &s)
 
    bool packed_dispatch =
       brw_stage_has_packed_dispatch(s.devinfo, s.stage, s.max_polygons,
-                                    s.stage_prog_data);
+                                    s.prog_data);
    bool vmask =
       s.stage == MESA_SHADER_FRAGMENT &&
-      brw_wm_prog_data(s.stage_prog_data)->uses_vmask;
+      brw_wm_prog_data(s.prog_data)->uses_vmask;
 
    foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       if (inst->opcode != SHADER_OPCODE_FIND_LIVE_CHANNEL &&

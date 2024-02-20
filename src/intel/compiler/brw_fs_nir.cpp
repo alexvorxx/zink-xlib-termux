@@ -2082,7 +2082,7 @@ emit_pixel_interpolater_send(const fs_builder &bld,
                              glsl_interp_mode interpolation)
 {
    struct brw_wm_prog_data *wm_prog_data =
-      brw_wm_prog_data(bld.shader->stage_prog_data);
+      brw_wm_prog_data(bld.shader->prog_data);
 
    fs_reg srcs[INTERP_NUM_SRCS];
    srcs[INTERP_SRC_OFFSET]       = src;
@@ -3794,7 +3794,7 @@ emit_shading_rate_setup(nir_to_brw_state &ntb)
    assert(devinfo->ver >= 11);
 
    struct brw_wm_prog_data *wm_prog_data =
-      brw_wm_prog_data(bld.shader->stage_prog_data);
+      brw_wm_prog_data(bld.shader->prog_data);
 
    /* Coarse pixel shading size fields overlap with other fields of not in
     * coarse pixel dispatch mode, so report 0 when that's not the case.

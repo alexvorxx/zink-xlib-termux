@@ -1188,13 +1188,13 @@ fs_visitor::emit_gs_thread_end()
 void
 fs_visitor::assign_curb_setup()
 {
-   unsigned uniform_push_length = DIV_ROUND_UP(stage_prog_data->nr_params, 8);
+   unsigned uniform_push_length = DIV_ROUND_UP(prog_data->nr_params, 8);
 
    unsigned ubo_push_length = 0;
    unsigned ubo_push_start[4];
    for (int i = 0; i < 4; i++) {
       ubo_push_start[i] = 8 * (ubo_push_length + uniform_push_length);
-      ubo_push_length += stage_prog_data->ubo_ranges[i].length;
+      ubo_push_length += prog_data->ubo_ranges[i].length;
    }
 
    prog_data->curb_read_length = uniform_push_length + ubo_push_length;
@@ -1307,13 +1307,13 @@ fs_visitor::assign_curb_setup()
       }
    }
 
-   uint64_t want_zero = used & stage_prog_data->zero_push_reg;
+   uint64_t want_zero = used & prog_data->zero_push_reg;
    if (want_zero) {
       fs_builder ubld = fs_builder(this, 8).exec_all().at(
          cfg->first_block(), cfg->first_block()->start());
 
       /* push_reg_mask_param is in 32-bit units */
-      unsigned mask_param = stage_prog_data->push_reg_mask_param;
+      unsigned mask_param = prog_data->push_reg_mask_param;
       struct brw_reg mask = brw_vec1_grf(payload().num_regs + mask_param / 8,
                                                               mask_param % 8);
 
@@ -1946,7 +1946,7 @@ fs_visitor::assign_constant_locations()
     * brw_curbe.c/crocus_state.c
     */
    const unsigned max_push_length = 64;
-   unsigned push_length = DIV_ROUND_UP(stage_prog_data->nr_params, 8);
+   unsigned push_length = DIV_ROUND_UP(prog_data->nr_params, 8);
    for (int i = 0; i < 4; i++) {
       struct brw_ubo_range *range = &prog_data->ubo_ranges[i];
 
@@ -2057,7 +2057,7 @@ brw_sample_mask_reg(const fs_builder &bld)
 
    if (s.stage != MESA_SHADER_FRAGMENT) {
       return brw_imm_ud(0xffffffff);
-   } else if (brw_wm_prog_data(s.stage_prog_data)->uses_kill) {
+   } else if (brw_wm_prog_data(s.prog_data)->uses_kill) {
       assert(bld.dispatch_width() <= 16);
       return brw_flag_subreg(sample_mask_flag_subreg(s) + bld.group() / 16);
    } else {
@@ -2111,7 +2111,7 @@ brw_emit_predicate_on_sample_mask(const fs_builder &bld, fs_inst *inst)
    const fs_reg sample_mask = brw_sample_mask_reg(bld);
    const unsigned subreg = sample_mask_flag_subreg(s);
 
-   if (brw_wm_prog_data(s.stage_prog_data)->uses_kill) {
+   if (brw_wm_prog_data(s.prog_data)->uses_kill) {
       assert(sample_mask.file == ARF &&
              sample_mask.nr == brw_flag_subreg(subreg).nr &&
              sample_mask.subnr == brw_flag_subreg(
@@ -4183,11 +4183,11 @@ brw_fs_test_dispatch_packing(const fs_builder &bld)
    const gl_shader_stage stage = shader->stage;
    const bool uses_vmask =
       stage == MESA_SHADER_FRAGMENT &&
-      brw_wm_prog_data(shader->stage_prog_data)->uses_vmask;
+      brw_wm_prog_data(shader->prog_data)->uses_vmask;
 
    if (brw_stage_has_packed_dispatch(shader->devinfo, stage,
                                      shader->max_polygons,
-                                     shader->stage_prog_data)) {
+                                     shader->prog_data)) {
       const fs_builder ubld = bld.exec_all().group(1, 0);
       const fs_reg tmp = component(bld.vgrf(BRW_REGISTER_TYPE_UD), 0);
       const fs_reg mask = uses_vmask ? brw_vmask_reg() : brw_dmask_reg();

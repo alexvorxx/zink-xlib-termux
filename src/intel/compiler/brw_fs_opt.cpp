@@ -398,7 +398,7 @@ brw_fs_opt_eliminate_find_live_channel(fs_visitor &s)
    unsigned depth = 0;
 
    if (!brw_stage_has_packed_dispatch(s.devinfo, s.stage, s.max_polygons,
-                                      s.stage_prog_data)) {
+                                      s.prog_data)) {
       /* The optimization below assumes that channel zero is live on thread
        * dispatch, which may not be the case if the fixed function dispatches
        * threads sparsely.

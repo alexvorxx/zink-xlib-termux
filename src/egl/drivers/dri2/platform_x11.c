@@ -744,6 +744,11 @@ dri2_x11_connect(struct dri2_egl_display *dri2_dpy)
          strndup(driver_name, xcb_dri2_connect_driver_name_length(connect));
    }
 
+   if (!strcmp(dri2_dpy->driver_name, "zink")) {
+      close(dri2_dpy->fd_render_gpu);
+      return EGL_FALSE;
+   }
+
    if (dri2_dpy->driver_name == NULL) {
       close(dri2_dpy->fd_render_gpu);
       free(connect);

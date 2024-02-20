@@ -634,6 +634,12 @@ dri3_x11_connect(struct dri2_egl_display *dri2_dpy)
 
    if (!dri2_dpy->driver_name)
       dri2_dpy->driver_name = loader_get_driver_for_fd(dri2_dpy->fd_render_gpu);
+
+   if (!strcmp(dri2_dpy->driver_name, "zink")) {
+      close(dri2_dpy->fd_render_gpu);
+      return EGL_FALSE;
+   }
+
    if (!dri2_dpy->driver_name) {
       _eglLog(_EGL_WARNING, "DRI3: No driver found");
       close(dri2_dpy->fd_render_gpu);

@@ -765,8 +765,6 @@ oa_metrics_available(struct intel_perf_config *perf, int fd,
          if (paranoid == 0 || geteuid() == 0)
             i915_perf_oa_available = true;
       }
-
-      perf->platform_supported = oa_register != NULL;
    }
 
    return i915_perf_oa_available &&

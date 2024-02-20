@@ -1131,8 +1131,8 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
                   &buffer_fds[0], num_planes, &strides[0], &offsets[0],
                   __DRI_YUV_COLOR_SPACE_UNDEFINED,
                   __DRI_YUV_RANGE_UNDEFINED, __DRI_YUV_CHROMA_SITING_UNDEFINED,
-                  __DRI_YUV_CHROMA_SITING_UNDEFINED, 0, &error,
-                  dri2_surf->back);
+                  __DRI_YUV_CHROMA_SITING_UNDEFINED, __DRI_IMAGE_PRIME_LINEAR_BUFFER,
+                  &error, dri2_surf->back);
 
             for (i = 0; i < num_planes; ++i) {
                if (buffer_fds[i] != -1)

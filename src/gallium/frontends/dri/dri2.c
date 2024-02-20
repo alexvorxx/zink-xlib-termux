@@ -1808,13 +1808,17 @@ dri2_from_dma_bufs3(__DRIscreen *screen,
                     unsigned *error,
                     void *loaderPrivate)
 {
+   unsigned bind = 0;
    __DRIimage *img;
+
+   if (flags & __DRI_IMAGE_PROTECTED_CONTENT_FLAG)
+      bind |= PIPE_BIND_PROTECTED;
+   if (flags & __DRI_IMAGE_PRIME_LINEAR_BUFFER)
+      bind |= PIPE_BIND_PRIME_BLIT_DST;
 
    img = dri2_create_image_from_fd(screen, width, height, fourcc,
                                    modifier, fds, num_fds, strides, offsets,
-                                   (flags & __DRI_IMAGE_PROTECTED_CONTENT_FLAG) ?
-                                      PIPE_BIND_PROTECTED : 0,
-                                   error, loaderPrivate);
+                                   bind, error, loaderPrivate);
    if (img == NULL)
       return NULL;
 

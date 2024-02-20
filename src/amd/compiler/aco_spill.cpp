@@ -1347,64 +1347,39 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
 
    /* add coupling code to all loop header predecessors */
    add_coupling_code(ctx, loop_header, loop_header->index);
-
-   /* propagate new renames through loop: i.e. repair the SSA */
    renames.swap(ctx.renames[loop_header->index]);
-   for (std::pair<Temp, Temp> rename : renames) {
-      for (unsigned idx = loop_header->index; idx <= block_idx; idx++) {
-         Block& current = ctx.program->blocks[idx];
-         std::vector<aco_ptr<Instruction>>::iterator instr_it = current.instructions.begin();
-
-         /* first rename phis */
-         while (instr_it != current.instructions.end()) {
-            aco_ptr<Instruction>& phi = *instr_it;
-            if (phi->opcode != aco_opcode::p_phi && phi->opcode != aco_opcode::p_linear_phi)
-               break;
-            /* no need to rename the loop header phis once again. this happened in
-             * add_coupling_code() */
-            if (idx == loop_header->index) {
-               instr_it++;
-               continue;
-            }
-
-            for (Operand& op : phi->operands) {
-               if (!op.isTemp())
-                  continue;
-               if (op.getTemp() == rename.first)
-                  op.setTemp(rename.second);
-            }
-            instr_it++;
-         }
-
-         /* variable is not live at beginning of this block */
-         if (ctx.next_use_distances_start[idx].count(rename.first) == 0)
-            continue;
-
-         /* if the variable is live at the block's exit, add rename */
-         if (ctx.next_use_distances_end[idx].count(rename.first) != 0)
-            ctx.renames[idx].insert(rename);
-
-         /* rename all uses in this block */
-         bool renamed = false;
-         while (!renamed && instr_it != current.instructions.end()) {
-            aco_ptr<Instruction>& instr = *instr_it;
-            for (Operand& op : instr->operands) {
-               if (!op.isTemp())
-                  continue;
-               if (op.getTemp() == rename.first) {
-                  op.setTemp(rename.second);
-                  /* we can stop with this block as soon as the variable is spilled */
-                  if (instr->opcode == aco_opcode::p_spill)
-                     renamed = true;
-               }
-            }
-            instr_it++;
-         }
-      }
-   }
 
    /* remove loop header info from stack */
    ctx.loop_header.pop();
+   if (renames.empty())
+      return;
+
+   /* Add the new renames to each block */
+   for (std::pair<Temp, Temp> rename : renames) {
+      /* If there is already a rename, don't overwrite it. */
+      for (unsigned idx = loop_header->index; idx <= block_idx; idx++)
+         ctx.renames[idx].insert(rename);
+   }
+
+   /* propagate new renames through loop: i.e. repair the SSA */
+   for (unsigned idx = loop_header->index; idx <= block_idx; idx++) {
+      Block& current = ctx.program->blocks[idx];
+      /* rename all uses in this block */
+      for (aco_ptr<Instruction>& instr : current.instructions) {
+         /* no need to rename the loop header phis once again. */
+         if (idx == loop_header->index && is_phi(instr))
+            continue;
+
+         for (Operand& op : instr->operands) {
+            if (!op.isTemp())
+               continue;
+
+            auto rename = renames.find(op.getTemp());
+            if (rename != renames.end())
+               op.setTemp(rename->second);
+         }
+      }
+   }
 }
 
 Temp

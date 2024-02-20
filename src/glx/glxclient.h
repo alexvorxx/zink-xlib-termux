@@ -78,6 +78,8 @@ typedef struct __GLXDRIdisplayRec __GLXDRIdisplay;
 typedef struct __GLXDRIscreenRec __GLXDRIscreen;
 typedef struct __GLXDRIdrawableRec __GLXDRIdrawable;
 
+#define GLX_LOADER_USE_ZINK ((struct glx_screen *)(uintptr_t)-1)
+
 struct __GLXDRIdisplayRec
 {
     /**

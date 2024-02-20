@@ -6341,8 +6341,6 @@ emit_push_constant_packets(struct iris_context *ice,
                            const struct push_bos *push_bos)
 {
    UNUSED struct isl_device *isl_dev = &batch->screen->isl_dev;
-   struct iris_compiled_shader *shader = ice->shaders.prog[stage];
-   struct brw_stage_prog_data *prog_data = (void *) shader->prog_data;
 
    iris_emit_cmd(batch, GENX(3DSTATE_CONSTANT_VS), pkt) {
       pkt._3DCommandSubOpcode = push_constant_opcodes[stage];
@@ -6351,26 +6349,24 @@ emit_push_constant_packets(struct iris_context *ice,
       pkt.MOCS = isl_mocs(isl_dev, 0, false);
 #endif
 
-      if (prog_data) {
-         /* The Skylake PRM contains the following restriction:
-          *
-          *    "The driver must ensure The following case does not occur
-          *     without a flush to the 3D engine: 3DSTATE_CONSTANT_* with
-          *     buffer 3 read length equal to zero committed followed by a
-          *     3DSTATE_CONSTANT_* with buffer 0 read length not equal to
-          *     zero committed."
-          *
-          * To avoid this, we program the buffers in the highest slots.
-          * This way, slot 0 is only used if slot 3 is also used.
-          */
-         int n = push_bos->buffer_count;
-         assert(n <= 4);
-         const unsigned shift = 4 - n;
-         for (int i = 0; i < n; i++) {
-            pkt.ConstantBody.ReadLength[i + shift] =
-               push_bos->buffers[i].length;
-            pkt.ConstantBody.Buffer[i + shift] = push_bos->buffers[i].addr;
-         }
+      /* The Skylake PRM contains the following restriction:
+       *
+       *    "The driver must ensure The following case does not occur
+       *     without a flush to the 3D engine: 3DSTATE_CONSTANT_* with
+       *     buffer 3 read length equal to zero committed followed by a
+       *     3DSTATE_CONSTANT_* with buffer 0 read length not equal to
+       *     zero committed."
+       *
+       * To avoid this, we program the buffers in the highest slots.
+       * This way, slot 0 is only used if slot 3 is also used.
+       */
+      const int n = push_bos->buffer_count;
+      assert(n <= 4);
+      const unsigned shift = 4 - n;
+      for (int i = 0; i < n; i++) {
+         pkt.ConstantBody.ReadLength[i + shift] =
+            push_bos->buffers[i].length;
+         pkt.ConstantBody.Buffer[i + shift] = push_bos->buffers[i].addr;
       }
    }
 }

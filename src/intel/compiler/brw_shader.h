@@ -87,8 +87,6 @@ public:
    }
    void dump_instructions(const char *name = nullptr) const;
 
-   void calculate_cfg();
-
    virtual void invalidate_analysis(brw::analysis_dependency_class c);
 };
 

@@ -1146,14 +1146,6 @@ backend_shader::dump_instructions_to_file(FILE *file) const
 }
 
 void
-backend_shader::calculate_cfg()
-{
-   if (this->cfg)
-      return;
-   cfg = new(mem_ctx) cfg_t(this, &this->instructions);
-}
-
-void
 backend_shader::invalidate_analysis(brw::analysis_dependency_class c)
 {
 }

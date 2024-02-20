@@ -189,7 +189,7 @@ bblock_t::unlink_list(exec_list *list)
    }
 }
 
-cfg_t::cfg_t(const backend_shader *s, exec_list *instructions) :
+cfg_t::cfg_t(const fs_visitor *s, exec_list *instructions) :
    s(s)
 {
    mem_ctx = ralloc_context(NULL);
@@ -733,6 +733,14 @@ cfg_t::dump_cfg()
       }
    }
    printf("}\n");
+}
+
+void
+fs_visitor::calculate_cfg()
+{
+   if (this->cfg)
+      return;
+   cfg = new(mem_ctx) cfg_t(this, &this->instructions);
 }
 
 #define cfgv_assert(assertion)                                          \

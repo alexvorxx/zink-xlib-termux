@@ -74,7 +74,6 @@ struct bblock_link {
 };
 
 struct fs_visitor;
-struct backend_shader;
 struct cfg_t;
 
 struct bblock_t {
@@ -326,7 +325,7 @@ struct cfg_t {
 #ifdef __cplusplus
    DECLARE_RALLOC_CXX_OPERATORS(cfg_t)
 
-   cfg_t(const backend_shader *s, exec_list *instructions);
+   cfg_t(const fs_visitor *s, exec_list *instructions);
    ~cfg_t();
 
    void remove_block(bblock_t *block);
@@ -355,7 +354,7 @@ struct cfg_t {
    inline void adjust_block_ips();
 
 #endif
-   const struct backend_shader *s;
+   const struct fs_visitor *s;
    void *mem_ctx;
 
    /** Ordered list (by ip) of basic blocks */

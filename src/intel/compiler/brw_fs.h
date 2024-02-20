@@ -290,6 +290,7 @@ public:
 
    virtual void dump_instruction_to_file(const backend_instruction *inst, FILE *file) const;
    virtual void dump_instructions_to_file(FILE *file) const;
+   void calculate_cfg();
 
    const brw_base_prog_key *const key;
 

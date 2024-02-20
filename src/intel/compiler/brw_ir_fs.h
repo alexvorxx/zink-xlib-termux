@@ -25,7 +25,8 @@
 #ifndef BRW_IR_FS_H
 #define BRW_IR_FS_H
 
-#include "brw_shader.h"
+#include "brw_ir.h"
+#include "brw_ir_allocator.h"
 
 class fs_inst;
 

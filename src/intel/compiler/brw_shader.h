@@ -30,9 +30,6 @@
 #include "compiler/nir/nir.h"
 
 #ifdef __cplusplus
-#include "brw_ir_analysis.h"
-#include "brw_ir_allocator.h"
-
 enum instruction_scheduler_mode {
    SCHEDULE_PRE,
    SCHEDULE_PRE_NON_LIFO,
@@ -42,47 +39,7 @@ enum instruction_scheduler_mode {
 };
 
 #define UBO_START ((1 << 16) - 4)
-
-struct backend_shader {
-protected:
-
-   backend_shader(const struct brw_compiler *compiler,
-                  const struct brw_compile_params *params,
-                  const nir_shader *shader,
-                  struct brw_stage_prog_data *stage_prog_data,
-                  bool debug_enabled);
-
-public:
-   virtual ~backend_shader();
-
-   const struct brw_compiler *compiler;
-   void *log_data; /* Passed to compiler->*_log functions */
-
-   const struct intel_device_info * const devinfo;
-   const nir_shader *nir;
-   struct brw_stage_prog_data * const stage_prog_data;
-
-   /** ralloc context for temporary data used during compile */
-   void *mem_ctx;
-
-   /**
-    * List of either fs_inst or vec4_instruction (inheriting from
-    * backend_instruction)
-    */
-   exec_list instructions;
-
-   cfg_t *cfg;
-
-   gl_shader_stage stage;
-   bool debug_enabled;
-
-   brw::simple_allocator alloc;
-
-   virtual void invalidate_analysis(brw::analysis_dependency_class c);
-};
-
 #else
-struct backend_shader;
 #endif /* __cplusplus */
 
 enum brw_reg_type brw_type_for_base_type(const struct glsl_type *type);

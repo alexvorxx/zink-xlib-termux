@@ -2432,7 +2432,6 @@ brw::register_pressure::~register_pressure()
 void
 fs_visitor::invalidate_analysis(brw::analysis_dependency_class c)
 {
-   backend_shader::invalidate_analysis(c);
    live_analysis.invalidate(c);
    regpressure_analysis.invalidate(c);
    idom_analysis.invalidate(c);
@@ -4180,7 +4179,7 @@ brw_compile_bs(const struct brw_compiler *compiler,
 static UNUSED void
 brw_fs_test_dispatch_packing(const fs_builder &bld)
 {
-   const fs_visitor *shader = static_cast<const fs_visitor *>(bld.shader);
+   const fs_visitor *shader = bld.shader;
    const gl_shader_stage stage = shader->stage;
    const bool uses_vmask =
       stage == MESA_SHADER_FRAGMENT &&

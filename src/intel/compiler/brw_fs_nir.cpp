@@ -3252,7 +3252,7 @@ fs_nir_emit_gs_intrinsic(nir_to_brw_state &ntb,
 static fs_reg
 fetch_render_target_array_index(const fs_builder &bld)
 {
-   const fs_visitor *v = static_cast<const fs_visitor *>(bld.shader);
+   const fs_visitor *v = bld.shader;
 
    if (bld.shader->devinfo->ver >= 20) {
       /* Gfx20+ has separate Render Target Array indices for each pair

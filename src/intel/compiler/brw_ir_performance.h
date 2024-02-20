@@ -27,7 +27,7 @@
 
 #include "brw_ir_analysis.h"
 
-class fs_visitor;
+struct fs_visitor;
 
 namespace brw {
    /**

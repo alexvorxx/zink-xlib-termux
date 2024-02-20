@@ -29,6 +29,7 @@
 #define BRW_FS_H
 
 #include "brw_shader.h"
+#include "brw_ir_allocator.h"
 #include "brw_ir_fs.h"
 #include "brw_fs_live_variables.h"
 #include "brw_ir_performance.h"
@@ -39,7 +40,7 @@ namespace {
    struct acp_entry;
 }
 
-class fs_visitor;
+struct fs_visitor;
 
 namespace brw {
    /**
@@ -181,7 +182,7 @@ class instruction_scheduler;
  *
  * Translates either GLSL IR or Mesa IR (for ARB_fragment_program) into FS IR.
  */
-class fs_visitor : public backend_shader
+struct fs_visitor
 {
 public:
    fs_visitor(const struct brw_compiler *compiler,
@@ -248,7 +249,7 @@ public:
    void assign_constant_locations();
    bool get_pull_locs(const fs_reg &src, unsigned *out_surf_index,
                       unsigned *out_pull_index);
-   virtual void invalidate_analysis(brw::analysis_dependency_class c);
+   void invalidate_analysis(brw::analysis_dependency_class c);
 
 #ifndef NDEBUG
    void validate();
@@ -298,6 +299,29 @@ public:
    void dump_instructions(const char *name = nullptr) const;
 
    void calculate_cfg();
+
+   const struct brw_compiler *compiler;
+   void *log_data; /* Passed to compiler->*_log functions */
+
+   const struct intel_device_info * const devinfo;
+   const nir_shader *nir;
+   struct brw_stage_prog_data * const stage_prog_data;
+
+   /** ralloc context for temporary data used during compile */
+   void *mem_ctx;
+
+   /**
+    * List of either fs_inst or vec4_instruction (inheriting from
+    * backend_instruction)
+    */
+   exec_list instructions;
+
+   cfg_t *cfg;
+
+   gl_shader_stage stage;
+   bool debug_enabled;
+
+   brw::simple_allocator alloc;
 
    const brw_base_prog_key *const key;
 

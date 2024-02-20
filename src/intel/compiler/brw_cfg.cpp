@@ -157,7 +157,7 @@ bblock_t::combine_with(bblock_t *that)
 void
 bblock_t::dump(FILE *file) const
 {
-   const fs_visitor *s = static_cast<const fs_visitor *>(this->cfg->s);
+   const fs_visitor *s = this->cfg->s;
 
    int ip = this->start_ip;
    foreach_inst_in_block(fs_inst, inst, this) {
@@ -617,8 +617,7 @@ sort_links(util_dynarray *scratch, exec_list *list)
 void
 cfg_t::dump(FILE *file)
 {
-   const fs_visitor *fs = static_cast<const fs_visitor *>(s);
-   const idom_tree *idom = (fs ? &fs->idom_analysis.require() : NULL);
+   const idom_tree *idom = (s ? &s->idom_analysis.require() : NULL);
 
    /* Temporary storage to sort the lists of blocks.  This normalizes the
     * output, making it possible to use it for certain tests.

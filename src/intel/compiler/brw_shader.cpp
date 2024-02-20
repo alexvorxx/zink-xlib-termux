@@ -590,27 +590,6 @@ brw_abs_immediate(enum brw_reg_type type, struct brw_reg *reg)
    return false;
 }
 
-backend_shader::backend_shader(const struct brw_compiler *compiler,
-                               const struct brw_compile_params *params,
-                               const nir_shader *shader,
-                               struct brw_stage_prog_data *stage_prog_data,
-                               bool debug_enabled)
-   : compiler(compiler),
-     log_data(params->log_data),
-     devinfo(compiler->devinfo),
-     nir(shader),
-     stage_prog_data(stage_prog_data),
-     mem_ctx(params->mem_ctx),
-     cfg(NULL),
-     stage(shader->info.stage),
-     debug_enabled(debug_enabled)
-{
-}
-
-backend_shader::~backend_shader()
-{
-}
-
 bool
 backend_reg::equals(const backend_reg &r) const
 {
@@ -1106,11 +1085,6 @@ backend_instruction::remove(bblock_t *block, bool defer_later_block_ip_updates)
    }
 
    exec_node::remove();
-}
-
-void
-backend_shader::invalidate_analysis(brw::analysis_dependency_class c)
-{
 }
 
 extern "C" const unsigned *

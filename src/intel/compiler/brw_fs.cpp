@@ -2144,7 +2144,7 @@ fs_visitor::dump_instructions_to_file(FILE *file) const
       const register_pressure &rp = regpressure_analysis.require();
       unsigned ip = 0, max_pressure = 0;
       unsigned cf_count = 0;
-      foreach_block_and_inst(block, backend_instruction, inst, cfg) {
+      foreach_block_and_inst(block, fs_inst, inst, cfg) {
          if (inst->is_control_flow_end())
             cf_count -= 1;
 
@@ -2161,7 +2161,7 @@ fs_visitor::dump_instructions_to_file(FILE *file) const
       fprintf(file, "Maximum %3d registers live at once.\n", max_pressure);
    } else {
       int ip = 0;
-      foreach_in_list(backend_instruction, inst, &instructions) {
+      foreach_in_list(fs_inst, inst, &instructions) {
          fprintf(file, "%4d: ", ip++);
          dump_instruction(inst, file);
       }
@@ -2169,10 +2169,25 @@ fs_visitor::dump_instructions_to_file(FILE *file) const
 }
 
 void
-fs_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE *file) const
+fs_visitor::dump_instructions(const char *name) const
 {
-   const fs_inst *inst = (const fs_inst *)be_inst;
+   FILE *file = stderr;
+   if (name && __normal_user()) {
+      file = fopen(name, "w");
+      if (!file)
+         file = stderr;
+   }
 
+   dump_instructions_to_file(file);
+
+   if (file != stderr) {
+      fclose(file);
+   }
+}
+
+void
+fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
+{
    if (inst->predicate) {
       fprintf(file, "(%cf%d.%d) ",
               inst->predicate_inverse ? '-' : '+',

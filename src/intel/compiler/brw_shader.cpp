@@ -1109,43 +1109,6 @@ backend_instruction::remove(bblock_t *block, bool defer_later_block_ip_updates)
 }
 
 void
-backend_shader::dump_instructions(const char *name) const
-{
-   FILE *file = stderr;
-   if (name && __normal_user()) {
-      file = fopen(name, "w");
-      if (!file)
-         file = stderr;
-   }
-
-   dump_instructions_to_file(file);
-
-   if (file != stderr) {
-      fclose(file);
-   }
-}
-
-void
-backend_shader::dump_instructions_to_file(FILE *file) const
-{
-   if (cfg) {
-      int ip = 0;
-      foreach_block_and_inst(block, backend_instruction, inst, cfg) {
-         if (!INTEL_DEBUG(DEBUG_OPTIMIZER))
-            fprintf(file, "%4d: ", ip++);
-         dump_instruction(inst, file);
-      }
-   } else {
-      int ip = 0;
-      foreach_in_list(backend_instruction, inst, &instructions) {
-         if (!INTEL_DEBUG(DEBUG_OPTIMIZER))
-            fprintf(file, "%4d: ", ip++);
-         dump_instruction(inst, file);
-      }
-   }
-}
-
-void
 backend_shader::invalidate_analysis(brw::analysis_dependency_class c)
 {
 }

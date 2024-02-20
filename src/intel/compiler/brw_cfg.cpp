@@ -157,10 +157,10 @@ bblock_t::combine_with(bblock_t *that)
 void
 bblock_t::dump(FILE *file) const
 {
-   const backend_shader *s = this->cfg->s;
+   const fs_visitor *s = static_cast<const fs_visitor *>(this->cfg->s);
 
    int ip = this->start_ip;
-   foreach_inst_in_block(backend_instruction, inst, this) {
+   foreach_inst_in_block(fs_inst, inst, this) {
       fprintf(file, "%5d: ", ip);
       s->dump_instruction(inst, file);
       ip++;

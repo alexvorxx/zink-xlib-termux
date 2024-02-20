@@ -6476,6 +6476,14 @@ radv_bind_vertex_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_sh
 {
    radv_bind_pre_rast_shader(cmd_buffer, vs);
 
+   /* Re-emit states that need to be updated when the vertex shader is compiled separately
+    * because shader configs are combined.
+    */
+   if (vs->info.merged_shader_compiled_separately && vs->info.next_stage == MESA_SHADER_TESS_CTRL) {
+      cmd_buffer->state.emitted_tcs_epilog = NULL;
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_PATCH_CONTROL_POINTS;
+   }
+
    /* Can't put anything else here due to merged shaders */
 }
 
@@ -6494,6 +6502,12 @@ radv_bind_tess_ctrl_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv
    /* Re-emit the TCS epilog when a new tessellation control shader is bound. */
    if (tcs->info.has_epilog)
       cmd_buffer->state.emitted_tcs_epilog = NULL;
+
+   /* Re-emit the VS prolog when the tessellation control shader is compiled separately because
+    * shader configs are combined and need to be updated.
+    */
+   if (tcs->info.merged_shader_compiled_separately)
+      cmd_buffer->state.emitted_vs_prolog = NULL;
 }
 
 static void
@@ -6511,6 +6525,12 @@ radv_bind_geometry_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
 
    cmd_buffer->esgs_ring_size_needed = MAX2(cmd_buffer->esgs_ring_size_needed, gs->info.gs_ring_info.esgs_ring_size);
    cmd_buffer->gsvs_ring_size_needed = MAX2(cmd_buffer->gsvs_ring_size_needed, gs->info.gs_ring_info.gsvs_ring_size);
+
+   /* Re-emit the VS prolog when the geometry shader is compiled separately because shader configs
+    * are combined and need to be updated.
+    */
+   if (gs->info.merged_shader_compiled_separately)
+      cmd_buffer->state.emitted_vs_prolog = NULL;
 }
 
 static void

@@ -283,7 +283,6 @@ namespace {
       case BRW_OPCODE_XOR:
       case BRW_OPCODE_SHR:
       case BRW_OPCODE_SHL:
-      case BRW_OPCODE_DIM:
       case BRW_OPCODE_ASR:
       case BRW_OPCODE_CMPN:
       case BRW_OPCODE_BFREV:
@@ -315,18 +314,6 @@ namespace {
       case FS_OPCODE_DDY_COARSE:
       case FS_OPCODE_PIXEL_X:
       case FS_OPCODE_PIXEL_Y:
-      case FS_OPCODE_SET_SAMPLE_ID:
-      case GS_OPCODE_SET_DWORD_2:
-      case GS_OPCODE_SET_WRITE_OFFSET:
-      case GS_OPCODE_SET_VERTEX_COUNT:
-      case GS_OPCODE_PREPARE_CHANNEL_MASKS:
-      case GS_OPCODE_SET_CHANNEL_MASKS:
-      case GS_OPCODE_GET_INSTANCE_ID:
-      case GS_OPCODE_SET_PRIMITIVE_ID:
-      case GS_OPCODE_SVB_SET_DST_INDEX:
-      case TCS_OPCODE_SRC0_010_IS_ZERO:
-      case TCS_OPCODE_GET_PRIMITIVE_ID:
-      case TES_OPCODE_GET_PRIMITIVE_ID:
       case SHADER_OPCODE_READ_SR_REG:
          if (devinfo->ver >= 11) {
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
@@ -565,27 +552,6 @@ namespace {
                                   0, 2 /* XXX */,
                                   0, 0, 0, 8 /* XXX */, 0, 0);
 
-      case VS_OPCODE_UNPACK_FLAGS_SIMD4X2:
-      case TCS_OPCODE_GET_INSTANCE_ID:
-      case TES_OPCODE_CREATE_INPUT_READ_HEADER:
-         return calculate_desc(info, EU_UNIT_FPU, 22 /* XXX */, 0, 0,
-                               6 /* XXX */, 0,
-                               0, 8 /* XXX */, 4 /* XXX */, 12 /* XXX */,
-                               0, 0);
-
-      case GS_OPCODE_FF_SYNC_SET_PRIMITIVES:
-      case TCS_OPCODE_CREATE_BARRIER_HEADER:
-         return calculate_desc(info, EU_UNIT_FPU, 32 /* XXX */, 0, 0,
-                               8 /* XXX */, 0,
-                               0, 8 /* XXX */, 4 /* XXX */, 12 /* XXX */,
-                               0, 0);
-
-      case TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
-         return calculate_desc(info, EU_UNIT_FPU, 12 /* XXX */, 0, 0,
-                               4 /* XXX */, 0,
-                               0, 8 /* XXX */, 4 /* XXX */, 12 /* XXX */,
-                               0, 0);
-
       case SHADER_OPCODE_TEX:
       case FS_OPCODE_TXB:
       case SHADER_OPCODE_TXD:
@@ -608,17 +574,9 @@ namespace {
       case SHADER_OPCODE_TG4_OFFSET_LOD:
       case SHADER_OPCODE_TG4_OFFSET_BIAS:
       case SHADER_OPCODE_SAMPLEINFO:
-      case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4:
          return calculate_desc(info, EU_UNIT_SAMPLER, 2, 0, 0, 0, 16 /* XXX */,
                                8 /* XXX */, 750 /* XXX */, 0, 0,
                                2 /* XXX */, 0);
-
-      case GS_OPCODE_THREAD_END:
-      case GS_OPCODE_FF_SYNC:
-      case TCS_OPCODE_RELEASE_INPUT:
-      case TCS_OPCODE_THREAD_END:
-         return calculate_desc(info, EU_UNIT_URB, 2, 0, 0, 0, 6 /* XXX */,
-                               32 /* XXX */, 200 /* XXX */, 0, 0, 0, 0);
 
       case SHADER_OPCODE_MEMORY_FENCE:
       case SHADER_OPCODE_INTERLOCK:
@@ -640,32 +598,13 @@ namespace {
             abort();
          }
 
-      case SHADER_OPCODE_GFX4_SCRATCH_READ:
-      case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
-      case SHADER_OPCODE_GFX7_SCRATCH_READ:
-         return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0, 0, 8 /* XXX */,
-                               10 /* XXX */, 100 /* XXX */, 0, 0, 0, 0);
-
-      case FS_OPCODE_FB_WRITE:
       case FS_OPCODE_FB_READ:
-      case FS_OPCODE_REP_FB_WRITE:
          return calculate_desc(info, EU_UNIT_DP_RC, 2, 0, 0, 0, 450 /* XXX */,
                                10 /* XXX */, 300 /* XXX */, 0, 0, 0, 0);
-
-      case GS_OPCODE_SVB_WRITE:
-         return calculate_desc(info, EU_UNIT_DP_RC, 2 /* XXX */, 0, 0,
-                               0, 450 /* XXX */,
-                               10 /* XXX */, 300 /* XXX */, 0, 0,
-                               0, 0);
 
       case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
          return calculate_desc(info, EU_UNIT_DP_CC, 2, 0, 0, 0, 16 /* XXX */,
                                10 /* XXX */, 100 /* XXX */, 0, 0, 0, 0);
-
-      case VS_OPCODE_PULL_CONSTANT_LOAD:
-      case VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
-         return calculate_desc(info, EU_UNIT_SAMPLER, 2, 0, 0, 0, 16,
-                               8, 750, 0, 0, 2, 0);
 
       case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
       case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:

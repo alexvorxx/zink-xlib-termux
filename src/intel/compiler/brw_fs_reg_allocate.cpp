@@ -505,18 +505,6 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
           inst->dst.file == VGRF)
          ra_add_node_interference(g, first_vgrf_node + inst->dst.nr,
                                      grf127_send_hack_node);
-
-      /* Spilling instruction are generated as SEND messages from MRF but as
-       * Gfx7+ supports sending from GRF the driver will maps assingn these
-       * MRF registers to a GRF. Implementations reuses the dest of the send
-       * message as source. So as we will have an overlap for sure, we create
-       * an interference between destination and grf127.
-       */
-      if ((inst->opcode == SHADER_OPCODE_GFX7_SCRATCH_READ ||
-           inst->opcode == SHADER_OPCODE_GFX4_SCRATCH_READ) &&
-          inst->dst.file == VGRF)
-         ra_add_node_interference(g, first_vgrf_node + inst->dst.nr,
-                                     grf127_send_hack_node);
    }
 
    /* From the Skylake PRM Vol. 2a docs for sends:
@@ -918,7 +906,6 @@ fs_reg_alloc::set_spill_costs()
 	 break;
 
       case BRW_OPCODE_IF:
-      case BRW_OPCODE_IFF:
          block_scale *= 0.5;
          break;
 

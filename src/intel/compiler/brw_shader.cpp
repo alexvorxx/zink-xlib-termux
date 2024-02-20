@@ -164,12 +164,8 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
 
       assert(brw_opcode_desc(isa, op)->name);
       return brw_opcode_desc(isa, op)->name;
-   case FS_OPCODE_FB_WRITE:
-      return "fb_write";
    case FS_OPCODE_FB_WRITE_LOGICAL:
       return "fb_write_logical";
-   case FS_OPCODE_REP_FB_WRITE:
-      return "rep_fb_write";
    case FS_OPCODE_FB_READ:
       return "fb_read";
    case FS_OPCODE_FB_READ_LOGICAL:
@@ -342,12 +338,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case FS_OPCODE_PACK:
       return "pack";
 
-   case SHADER_OPCODE_GFX4_SCRATCH_READ:
-      return "gfx4_scratch_read";
-   case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
-      return "gfx4_scratch_write";
-   case SHADER_OPCODE_GFX7_SCRATCH_READ:
-      return "gfx7_scratch_read";
    case SHADER_OPCODE_SCRATCH_HEADER:
       return "scratch_header";
 
@@ -398,13 +388,8 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
 
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
       return "uniform_pull_const";
-   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4:
-      return "varying_pull_const_gfx4";
    case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
       return "varying_pull_const_logical";
-
-   case FS_OPCODE_SET_SAMPLE_ID:
-      return "set_sample_id";
 
    case FS_OPCODE_PACK_HALF_2x16_SPLIT:
       return "pack_half_2x16_split";
@@ -419,38 +404,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
       return "interp_per_slot_offset";
 
-   case VS_OPCODE_PULL_CONSTANT_LOAD:
-      return "pull_constant_load";
-   case VS_OPCODE_PULL_CONSTANT_LOAD_GFX7:
-      return "pull_constant_load_gfx7";
-
-   case VS_OPCODE_UNPACK_FLAGS_SIMD4X2:
-      return "unpack_flags_simd4x2";
-
-   case GS_OPCODE_THREAD_END:
-      return "gs_thread_end";
-   case GS_OPCODE_SET_WRITE_OFFSET:
-      return "set_write_offset";
-   case GS_OPCODE_SET_VERTEX_COUNT:
-      return "set_vertex_count";
-   case GS_OPCODE_SET_DWORD_2:
-      return "set_dword_2";
-   case GS_OPCODE_PREPARE_CHANNEL_MASKS:
-      return "prepare_channel_masks";
-   case GS_OPCODE_SET_CHANNEL_MASKS:
-      return "set_channel_masks";
-   case GS_OPCODE_GET_INSTANCE_ID:
-      return "get_instance_id";
-   case GS_OPCODE_FF_SYNC:
-      return "ff_sync";
-   case GS_OPCODE_SET_PRIMITIVE_ID:
-      return "set_primitive_id";
-   case GS_OPCODE_SVB_WRITE:
-      return "gs_svb_write";
-   case GS_OPCODE_SVB_SET_DST_INDEX:
-      return "gs_svb_set_dst_index";
-   case GS_OPCODE_FF_SYNC_SET_PRIMITIVES:
-      return "gs_ff_sync_set_primitives";
    case CS_OPCODE_CS_TERMINATE:
       return "cs_terminate";
    case SHADER_OPCODE_BARRIER:
@@ -465,25 +418,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return "mov_indirect";
    case SHADER_OPCODE_MOV_RELOC_IMM:
       return "mov_reloc_imm";
-
-   case TCS_OPCODE_GET_INSTANCE_ID:
-      return "tcs_get_instance_id";
-   case TCS_OPCODE_GET_PRIMITIVE_ID:
-      return "tcs_get_primitive_id";
-   case TCS_OPCODE_CREATE_BARRIER_HEADER:
-      return "tcs_create_barrier_header";
-   case TCS_OPCODE_SRC0_010_IS_ZERO:
-      return "tcs_src0<0,1,0>_is_zero";
-   case TCS_OPCODE_RELEASE_INPUT:
-      return "tcs_release_input";
-   case TCS_OPCODE_THREAD_END:
-      return "tcs_thread_end";
-   case TES_OPCODE_CREATE_INPUT_READ_HEADER:
-      return "tes_create_input_read_header";
-   case TES_OPCODE_ADD_INDIRECT_URB_OFFSET:
-      return "tes_add_indirect_urb_offset";
-   case TES_OPCODE_GET_PRIMITIVE_ID:
-      return "tes_get_primitive_id";
 
    case RT_OPCODE_TRACE_RAY_LOGICAL:
       return "rt_trace_ray_logical";
@@ -1042,7 +976,6 @@ backend_instruction::has_side_effects() const
 
    case BRW_OPCODE_SYNC:
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
-   case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
    case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
    case SHADER_OPCODE_A64_UNTYPED_WRITE_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
@@ -1054,11 +987,8 @@ backend_instruction::has_side_effects() const
    case SHADER_OPCODE_MEMORY_FENCE:
    case SHADER_OPCODE_INTERLOCK:
    case SHADER_OPCODE_URB_WRITE_LOGICAL:
-   case FS_OPCODE_FB_WRITE:
    case FS_OPCODE_FB_WRITE_LOGICAL:
-   case FS_OPCODE_REP_FB_WRITE:
    case SHADER_OPCODE_BARRIER:
-   case TCS_OPCODE_RELEASE_INPUT:
    case SHADER_OPCODE_RND_MODE:
    case SHADER_OPCODE_FLOAT_CONTROL_MODE:
    case FS_OPCODE_SCHEDULING_FENCE:

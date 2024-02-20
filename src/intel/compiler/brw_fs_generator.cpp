@@ -795,63 +795,6 @@ fs_generator::generate_halt(fs_inst *)
    brw_HALT(p);
 }
 
-void
-fs_generator::generate_scratch_write(fs_inst *inst, struct brw_reg src)
-{
-   /* The 32-wide messages only respect the first 16-wide half of the channel
-    * enable signals which are replicated identically for the second group of
-    * 16 channels, so we cannot use them unless the write is marked
-    * force_writemask_all.
-    */
-   const unsigned lower_size = inst->force_writemask_all ? inst->exec_size :
-                               MIN2(16, inst->exec_size);
-   const unsigned block_size = 4 * lower_size / REG_SIZE;
-   const tgl_swsb swsb = brw_get_default_swsb(p);
-   assert(inst->mlen != 0);
-
-   brw_push_insn_state(p);
-   brw_set_default_exec_size(p, cvt(lower_size) - 1);
-
-   for (unsigned i = 0; i < inst->exec_size / lower_size; i++) {
-      brw_set_default_group(p, inst->group + lower_size * i);
-
-      if (i > 0) {
-         assert(swsb.mode & TGL_SBID_SET);
-         brw_set_default_swsb(p, tgl_swsb_sbid(TGL_SBID_SRC, swsb.sbid));
-      } else {
-         brw_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-      }
-
-      brw_MOV(p, brw_uvec_mrf(lower_size, inst->base_mrf + 1, 0),
-              retype(offset(src, block_size * i), BRW_REGISTER_TYPE_UD));
-
-      brw_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
-      brw_oword_block_write_scratch(p, brw_message_reg(inst->base_mrf),
-                                    block_size,
-                                    inst->offset + block_size * REG_SIZE * i);
-   }
-
-   brw_pop_insn_state(p);
-}
-
-void
-fs_generator::generate_scratch_read(fs_inst *inst, struct brw_reg dst)
-{
-   assert(inst->exec_size <= 16 || inst->force_writemask_all);
-   assert(inst->mlen != 0);
-
-   brw_oword_block_read_scratch(p, dst, brw_message_reg(inst->base_mrf),
-                                inst->exec_size / 8, inst->offset);
-}
-
-void
-fs_generator::generate_scratch_read_gfx7(fs_inst *inst, struct brw_reg dst)
-{
-   assert(inst->exec_size <= 16 || inst->force_writemask_all);
-
-   gfx7_block_read_scratch(p, dst, inst->exec_size / 8, inst->offset);
-}
-
 /* The A32 messages take a buffer base address in header.5:[31:0] (See
  * MH1_A32_PSM for typed messages or MH_A32_GO for byte/dword scattered
  * and OWord block messages in the SKL PRM Vol. 2d for more details.)
@@ -941,35 +884,6 @@ fs_generator::generate_uniform_pull_constant_load(fs_inst *inst,
 
    brw_oword_block_read(p, dst, brw_message_reg(inst->base_mrf),
 			read_offset, surf_index);
-}
-
-/* Sets vstride=1, width=4, hstride=0 of register src1 during
- * the ADD instruction.
- */
-void
-fs_generator::generate_set_sample_id(fs_inst *inst,
-                                     struct brw_reg dst,
-                                     struct brw_reg src0,
-                                     struct brw_reg src1)
-{
-   assert(dst.type == BRW_REGISTER_TYPE_D ||
-          dst.type == BRW_REGISTER_TYPE_UD);
-   assert(src0.type == BRW_REGISTER_TYPE_D ||
-          src0.type == BRW_REGISTER_TYPE_UD);
-
-   const struct brw_reg reg = stride(src1, 1, 4, 0);
-   const unsigned lower_size = MIN2(inst->exec_size, 16);
-
-   for (unsigned i = 0; i < inst->exec_size / lower_size; i++) {
-      brw_inst *insn = brw_ADD(p, offset(dst, i * lower_size / 8),
-                               offset(src0, (src0.vstride == 0 ? 0 : (1 << (src0.vstride - 1)) *
-                                             (i * lower_size / (1 << src0.width))) *
-                                            type_sz(src0.type) / REG_SIZE),
-                               suboffset(reg, i * lower_size / 4));
-      brw_inst_set_exec_size(devinfo, insn, cvt(lower_size) - 1);
-      brw_inst_set_group(devinfo, insn, inst->group + lower_size * i);
-      brw_set_default_swsb(p, tgl_swsb_null());
-   }
 }
 
 void
@@ -1411,21 +1325,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          generate_ddy(inst, dst, src[0]);
 	 break;
 
-      case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
-	 generate_scratch_write(inst, src[0]);
-         send_count++;
-	 break;
-
-      case SHADER_OPCODE_GFX4_SCRATCH_READ:
-	 generate_scratch_read(inst, dst);
-         send_count++;
-	 break;
-
-      case SHADER_OPCODE_GFX7_SCRATCH_READ:
-	 generate_scratch_read_gfx7(inst, dst);
-         send_count++;
-	 break;
-
       case SHADER_OPCODE_SCRATCH_HEADER:
          generate_scratch_header(inst, dst);
          break;
@@ -1570,10 +1469,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          brw_MOV(p, dst, strided);
          break;
       }
-
-      case FS_OPCODE_SET_SAMPLE_ID:
-         generate_set_sample_id(inst, dst, src[0], src[1]);
-         break;
 
       case SHADER_OPCODE_HALT_TARGET:
          /* This is the place where the final HALT needs to be inserted if

@@ -461,18 +461,10 @@ private:
                      struct brw_reg dst, struct brw_reg src);
    void generate_ddy(const fs_inst *inst,
                      struct brw_reg dst, struct brw_reg src);
-   void generate_scratch_write(fs_inst *inst, struct brw_reg src);
-   void generate_scratch_read(fs_inst *inst, struct brw_reg dst);
-   void generate_scratch_read_gfx7(fs_inst *inst, struct brw_reg dst);
    void generate_scratch_header(fs_inst *inst, struct brw_reg dst);
    void generate_uniform_pull_constant_load(fs_inst *inst, struct brw_reg dst,
                                             struct brw_reg index,
                                             struct brw_reg offset);
-
-   void generate_set_sample_id(fs_inst *inst,
-                               struct brw_reg dst,
-                               struct brw_reg src0,
-                               struct brw_reg src1);
 
    void generate_halt(fs_inst *inst);
 

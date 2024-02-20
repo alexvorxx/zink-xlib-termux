@@ -224,8 +224,7 @@ brw_set_src0(struct brw_codegen *p, brw_inst *inst, struct brw_reg reg)
       brw_inst_set_src0_address_mode(devinfo, inst, reg.address_mode);
 
       if (reg.file == BRW_IMMEDIATE_VALUE) {
-         if (reg.type == BRW_REGISTER_TYPE_DF ||
-             brw_inst_opcode(p->isa, inst) == BRW_OPCODE_DIM)
+         if (reg.type == BRW_REGISTER_TYPE_DF)
             brw_inst_set_imm_df(devinfo, inst, reg.df);
          else if (reg.type == BRW_REGISTER_TYPE_UQ ||
                   reg.type == BRW_REGISTER_TYPE_Q)
@@ -963,7 +962,6 @@ ALU2(OR)
 ALU2(XOR)
 ALU2(SHR)
 ALU2(SHL)
-ALU1(DIM)
 ALU2(ASR)
 ALU2(ROL)
 ALU2(ROR)
@@ -1518,165 +1516,6 @@ brw_scratch_surface_idx(const struct brw_codegen *p)
 {
    /* The scratch space is thread-local so IA coherency is unnecessary. */
    return GFX8_BTI_STATELESS_NON_COHERENT;
-}
-
-/**
- * Write a block of OWORDs (half a GRF each) from the scratch buffer,
- * using a constant offset per channel.
- *
- * The offset must be aligned to oword size (16 bytes).  Used for
- * register spilling.
- */
-void brw_oword_block_write_scratch(struct brw_codegen *p,
-				   struct brw_reg mrf,
-				   int num_regs,
-				   unsigned offset)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   const unsigned target_cache = GFX7_SFID_DATAPORT_DATA_CACHE;
-   const struct tgl_swsb swsb = brw_get_default_swsb(p);
-   uint32_t msg_type;
-
-   offset /= 16;
-
-   mrf = retype(mrf, BRW_REGISTER_TYPE_UD);
-
-   const unsigned mlen = 1 + num_regs;
-
-   /* Set up the message header.  This is g0, with g0.2 filled with
-    * the offset.  We don't want to leave our offset around in g0 or
-    * it'll screw up texture samples, so set it up inside the message
-    * reg.
-    */
-   {
-      brw_push_insn_state(p);
-      brw_set_default_exec_size(p, BRW_EXECUTE_8);
-      brw_set_default_mask_control(p, BRW_MASK_DISABLE);
-      brw_set_default_compression_control(p, BRW_COMPRESSION_NONE);
-      brw_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-
-      brw_MOV(p, mrf, retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD));
-
-      /* set message header global offset field (reg 0, element 2) */
-      brw_set_default_exec_size(p, BRW_EXECUTE_1);
-      brw_set_default_swsb(p, tgl_swsb_null());
-      brw_MOV(p,
-	      retype(brw_vec1_reg(BRW_MESSAGE_REGISTER_FILE,
-				  mrf.nr,
-				  2), BRW_REGISTER_TYPE_UD),
-	      brw_imm_ud(offset));
-
-      brw_pop_insn_state(p);
-      brw_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
-   }
-
-   {
-      struct brw_reg dest;
-      brw_inst *insn = next_insn(p, BRW_OPCODE_SEND);
-      int send_commit_msg;
-      struct brw_reg src_header = retype(brw_vec8_grf(0, 0),
-					 BRW_REGISTER_TYPE_UW);
-
-      brw_inst_set_sfid(devinfo, insn, target_cache);
-
-      if (brw_inst_exec_size(devinfo, insn) >= 16)
-	 src_header = vec16(src_header);
-
-      assert(brw_inst_pred_control(devinfo, insn) == BRW_PREDICATE_NONE);
-
-      /* Until gfx6, writes followed by reads from the same location
-       * are not guaranteed to be ordered unless write_commit is set.
-       * If set, then a no-op write is issued to the destination
-       * register to set a dependency, and a read from the destination
-       * can be used to ensure the ordering.
-       *
-       * For gfx6, only writes between different threads need ordering
-       * protection.  Our use of DP writes is all about register
-       * spilling within a thread.
-       */
-      dest = retype(vec16(brw_null_reg()), BRW_REGISTER_TYPE_UW);
-      send_commit_msg = 0;
-
-      brw_set_dest(p, insn, dest);
-      brw_set_src0(p, insn, mrf);
-
-      msg_type = GFX6_DATAPORT_WRITE_MESSAGE_OWORD_BLOCK_WRITE;
-
-      brw_set_desc(p, insn,
-                   brw_message_desc(devinfo, mlen, send_commit_msg, true) |
-                   brw_dp_write_desc(devinfo, brw_scratch_surface_idx(p),
-                                     BRW_DATAPORT_OWORD_BLOCK_DWORDS(num_regs * 8),
-                                     msg_type, send_commit_msg));
-   }
-}
-
-
-/**
- * Read a block of owords (half a GRF each) from the scratch buffer
- * using a constant index per channel.
- *
- * Offset must be aligned to oword size (16 bytes).  Used for register
- * spilling.
- */
-void
-brw_oword_block_read_scratch(struct brw_codegen *p,
-			     struct brw_reg dest,
-			     struct brw_reg mrf,
-			     int num_regs,
-			     unsigned offset)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   const struct tgl_swsb swsb = brw_get_default_swsb(p);
-
-   offset /= 16;
-
-   /* On gen 7 and above, we no longer have message registers and we can
-    * send from any register we want.  By using the destination register
-    * for the message, we guarantee that the implied message write won't
-    * accidentally overwrite anything.  This has been a problem because
-    * the MRF registers and source for the final FB write are both fixed
-    * and may overlap.
-    */
-   mrf = retype(dest, BRW_REGISTER_TYPE_UD);
-   dest = retype(dest, BRW_REGISTER_TYPE_UW);
-
-   const unsigned rlen = num_regs;
-   const unsigned target_cache = GFX7_SFID_DATAPORT_DATA_CACHE;
-
-   {
-      brw_push_insn_state(p);
-      brw_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-      brw_set_default_exec_size(p, BRW_EXECUTE_8);
-      brw_set_default_compression_control(p, BRW_COMPRESSION_NONE);
-      brw_set_default_mask_control(p, BRW_MASK_DISABLE);
-
-      brw_MOV(p, mrf, retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD));
-
-      /* set message header global offset field (reg 0, element 2) */
-      brw_set_default_exec_size(p, BRW_EXECUTE_1);
-      brw_set_default_swsb(p, tgl_swsb_null());
-      brw_MOV(p, get_element_ud(mrf, 2), brw_imm_ud(offset));
-
-      brw_pop_insn_state(p);
-      brw_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
-   }
-
-   {
-      brw_inst *insn = next_insn(p, BRW_OPCODE_SEND);
-
-      brw_inst_set_sfid(devinfo, insn, target_cache);
-      assert(brw_inst_pred_control(devinfo, insn) == 0);
-
-      brw_set_dest(p, insn, dest);	/* UW? */
-      brw_set_src0(p, insn, mrf);
-
-      brw_set_desc(p, insn,
-                   brw_message_desc(devinfo, 1, rlen, true) |
-                   brw_dp_read_desc(devinfo, brw_scratch_surface_idx(p),
-                                    BRW_DATAPORT_OWORD_BLOCK_DWORDS(num_regs * 8),
-                                    BRW_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ,
-                                    BRW_DATAPORT_READ_TARGET_RENDER_CACHE));
-   }
 }
 
 void

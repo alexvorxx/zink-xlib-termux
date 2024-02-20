@@ -603,7 +603,6 @@ namespace brw {
       ALU3(BFI2)
       ALU1(BFREV)
       ALU1(CBIT)
-      ALU1(DIM)
       ALU2(DP2)
       ALU2(DP3)
       ALU2(DP4)

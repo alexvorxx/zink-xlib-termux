@@ -317,9 +317,7 @@ schedule_node::set_latency(const struct brw_isa_info *isa)
       latency = 100;
       break;
 
-   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4:
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
-   case VS_OPCODE_PULL_CONSTANT_LOAD:
       /* testing using varying-index pull constants:
        *
        * 16 cycles:
@@ -347,18 +345,6 @@ schedule_node::set_latency(const struct brw_isa_info *isa)
        * in that direction.
        */
       latency = 200;
-      break;
-
-   case SHADER_OPCODE_GFX7_SCRATCH_READ:
-      /* Testing a load from offset 0, that had been previously written:
-       *
-       * send(8) g114<1>UW g0<8,8,1>F data (0, 0, 0) mlen 1 rlen 1 { align1 WE_normal 1Q };
-       * mov(8)  null      g114<8,8,1>F { align1 WE_normal 1Q };
-       *
-       * The cycles spent seemed to be grouped around 40-50 (as low as 38),
-       * then around 140.  Presumably this is cache hit vs miss.
-       */
-      latency = 50;
       break;
 
    case SHADER_OPCODE_SEND:

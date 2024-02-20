@@ -740,10 +740,6 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
       return false;
    }
 
-   if (has_source_modifiers &&
-       inst->opcode == SHADER_OPCODE_GFX4_SCRATCH_WRITE)
-      return false;
-
    /* Some instructions implemented in the generator backend, such as
     * derivatives, assume that their operands are packed so we can't
     * generally propagate strided regions to them.

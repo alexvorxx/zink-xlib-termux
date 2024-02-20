@@ -180,53 +180,45 @@ enum opcode {
    BRW_OPCODE_SYNC,
    BRW_OPCODE_MOV,
    BRW_OPCODE_SEL,
-   BRW_OPCODE_MOVI, /**< G45+ */
+   BRW_OPCODE_MOVI,
    BRW_OPCODE_NOT,
    BRW_OPCODE_AND,
    BRW_OPCODE_OR,
    BRW_OPCODE_XOR,
    BRW_OPCODE_SHR,
    BRW_OPCODE_SHL,
-   BRW_OPCODE_DIM, /**< Gfx7.5 only */
-   BRW_OPCODE_SMOV, /**< Gfx8+ */
+   BRW_OPCODE_SMOV,
    BRW_OPCODE_ASR,
    BRW_OPCODE_ROR,  /**< Gfx11+ */
    BRW_OPCODE_ROL,  /**< Gfx11+ */
    BRW_OPCODE_CMP,
    BRW_OPCODE_CMPN,
-   BRW_OPCODE_CSEL, /**< Gfx8+ */
-   BRW_OPCODE_BFREV, /**< Gfx7+ */
-   BRW_OPCODE_BFE, /**< Gfx7+ */
-   BRW_OPCODE_BFI1, /**< Gfx7+ */
-   BRW_OPCODE_BFI2, /**< Gfx7+ */
+   BRW_OPCODE_CSEL,
+   BRW_OPCODE_BFREV,
+   BRW_OPCODE_BFE,
+   BRW_OPCODE_BFI1,
+   BRW_OPCODE_BFI2,
    BRW_OPCODE_JMPI,
-   BRW_OPCODE_BRD, /**< Gfx7+ */
+   BRW_OPCODE_BRD,
    BRW_OPCODE_IF,
-   BRW_OPCODE_IFF, /**< Pre-Gfx6 */
-   BRW_OPCODE_BRC, /**< Gfx7+ */
+   BRW_OPCODE_BRC,
    BRW_OPCODE_ELSE,
    BRW_OPCODE_ENDIF,
-   BRW_OPCODE_DO, /**< Pre-Gfx6 */
-   BRW_OPCODE_CASE, /**< Gfx6 only */
+   BRW_OPCODE_DO, /**< Used as pseudo opcode, will be moved later. */
    BRW_OPCODE_WHILE,
    BRW_OPCODE_BREAK,
    BRW_OPCODE_CONTINUE,
    BRW_OPCODE_HALT,
-   BRW_OPCODE_CALLA, /**< Gfx7.5+ */
-   BRW_OPCODE_MSAVE, /**< Pre-Gfx6 */
-   BRW_OPCODE_CALL, /**< Gfx6+ */
-   BRW_OPCODE_MREST, /**< Pre-Gfx6 */
-   BRW_OPCODE_RET, /**< Gfx6+ */
-   BRW_OPCODE_PUSH, /**< Pre-Gfx6 */
-   BRW_OPCODE_FORK, /**< Gfx6 only */
-   BRW_OPCODE_GOTO, /**< Gfx8+ */
-   BRW_OPCODE_POP, /**< Pre-Gfx6 */
+   BRW_OPCODE_CALLA,
+   BRW_OPCODE_CALL,
+   BRW_OPCODE_RET,
+   BRW_OPCODE_GOTO,
    BRW_OPCODE_WAIT,
    BRW_OPCODE_SEND,
    BRW_OPCODE_SENDC,
-   BRW_OPCODE_SENDS, /**< Gfx9+ */
-   BRW_OPCODE_SENDSC, /**< Gfx9+ */
-   BRW_OPCODE_MATH, /**< Gfx6+ */
+   BRW_OPCODE_SENDS,
+   BRW_OPCODE_SENDSC,
+   BRW_OPCODE_MATH,
    BRW_OPCODE_ADD,
    BRW_OPCODE_MUL,
    BRW_OPCODE_AVG,
@@ -238,11 +230,11 @@ enum opcode {
    BRW_OPCODE_MAC,
    BRW_OPCODE_MACH,
    BRW_OPCODE_LZD,
-   BRW_OPCODE_FBH, /**< Gfx7+ */
-   BRW_OPCODE_FBL, /**< Gfx7+ */
-   BRW_OPCODE_CBIT, /**< Gfx7+ */
-   BRW_OPCODE_ADDC, /**< Gfx7+ */
-   BRW_OPCODE_SUBB, /**< Gfx7+ */
+   BRW_OPCODE_FBH,
+   BRW_OPCODE_FBL,
+   BRW_OPCODE_CBIT,
+   BRW_OPCODE_ADDC,
+   BRW_OPCODE_SUBB,
    BRW_OPCODE_SAD2,
    BRW_OPCODE_SADA2,
    BRW_OPCODE_ADD3, /* Gen12+ only */
@@ -253,29 +245,19 @@ enum opcode {
    BRW_OPCODE_DP4A, /**< Gfx12+ */
    BRW_OPCODE_LINE,
    BRW_OPCODE_DPAS,  /**< Gfx12.5+ */
-   BRW_OPCODE_PLN, /**< G45+ */
-   BRW_OPCODE_MAD, /**< Gfx6+ */
-   BRW_OPCODE_LRP, /**< Gfx6+ */
-   BRW_OPCODE_MADM, /**< Gfx8+ */
-   BRW_OPCODE_NENOP, /**< G45 only */
+   BRW_OPCODE_PLN, /**< Up until Gfx9 */
+   BRW_OPCODE_MAD,
+   BRW_OPCODE_LRP,
+   BRW_OPCODE_MADM,
    BRW_OPCODE_NOP,
 
    NUM_BRW_OPCODES,
 
-   /* These are compiler backend opcodes that get translated into other
-    * instructions.
-    */
-   FS_OPCODE_FB_WRITE = NUM_BRW_OPCODES,
-
    /**
-    * Same as FS_OPCODE_FB_WRITE but expects its arguments separately as
-    * individual sources instead of as a single payload blob. The
-    * position/ordering of the arguments are defined by the enum
-    * fb_write_logical_srcs.
+    * The position/ordering of the arguments are defined
+    * by the enum fb_write_logical_srcs.
     */
-   FS_OPCODE_FB_WRITE_LOGICAL,
-
-   FS_OPCODE_REP_FB_WRITE,
+   FS_OPCODE_FB_WRITE_LOGICAL = NUM_BRW_OPCODES,
 
    FS_OPCODE_FB_READ,
    FS_OPCODE_FB_READ_LOGICAL,
@@ -459,10 +441,6 @@ enum opcode {
     */
    FS_OPCODE_SCHEDULING_FENCE,
 
-   SHADER_OPCODE_GFX4_SCRATCH_READ,
-   SHADER_OPCODE_GFX4_SCRATCH_WRITE,
-   SHADER_OPCODE_GFX7_SCRATCH_READ,
-
    SHADER_OPCODE_SCRATCH_HEADER,
 
    /**
@@ -559,154 +537,11 @@ enum opcode {
    FS_OPCODE_PIXEL_X,
    FS_OPCODE_PIXEL_Y,
    FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD,
-   FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4,
    FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL,
-   FS_OPCODE_SET_SAMPLE_ID,
    FS_OPCODE_PACK_HALF_2x16_SPLIT,
    FS_OPCODE_INTERPOLATE_AT_SAMPLE,
    FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET,
    FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET,
-
-   VS_OPCODE_PULL_CONSTANT_LOAD,
-   VS_OPCODE_PULL_CONSTANT_LOAD_GFX7,
-
-   VS_OPCODE_UNPACK_FLAGS_SIMD4X2,
-
-   /**
-    * Terminate the geometry shader thread by doing an empty URB write.
-    *
-    * This opcode doesn't do an implied move from R0 to the first MRF.  This
-    * allows the geometry shader to override the "GS Number of Output Vertices
-    * for Slot {0,1}" fields in the message header.
-    */
-   GS_OPCODE_THREAD_END,
-
-   /**
-    * Set the "Slot {0,1} Offset" fields of a URB_WRITE message header.
-    *
-    * - dst is the MRF containing the message header.
-    *
-    * - src0.x indicates which portion of the URB should be written to (e.g. a
-    *   vertex number)
-    *
-    * - src1 is an immediate multiplier which will be applied to src0
-    *   (e.g. the size of a single vertex in the URB).
-    *
-    * Note: the hardware will apply this offset *in addition to* the offset in
-    * vec4_instruction::offset.
-    */
-   GS_OPCODE_SET_WRITE_OFFSET,
-
-   /**
-    * Set the "GS Number of Output Vertices for Slot {0,1}" fields of a
-    * URB_WRITE message header.
-    *
-    * - dst is the MRF containing the message header.
-    *
-    * - src0.x is the vertex count.  The upper 16 bits will be ignored.
-    */
-   GS_OPCODE_SET_VERTEX_COUNT,
-
-   /**
-    * Set DWORD 2 of dst to the value in src.
-    */
-   GS_OPCODE_SET_DWORD_2,
-
-   /**
-    * Prepare the dst register for storage in the "Channel Mask" fields of a
-    * URB_WRITE message header.
-    *
-    * DWORD 4 of dst is shifted left by 4 bits, so that later,
-    * GS_OPCODE_SET_CHANNEL_MASKS can OR DWORDs 0 and 4 together to form the
-    * final channel mask.
-    *
-    * Note: since GS_OPCODE_SET_CHANNEL_MASKS ORs DWORDs 0 and 4 together to
-    * form the final channel mask, DWORDs 0 and 4 of the dst register must not
-    * have any extraneous bits set prior to execution of this opcode (that is,
-    * they should be in the range 0x0 to 0xf).
-    */
-   GS_OPCODE_PREPARE_CHANNEL_MASKS,
-
-   /**
-    * Set the "Channel Mask" fields of a URB_WRITE message header.
-    *
-    * - dst is the MRF containing the message header.
-    *
-    * - src.x is the channel mask, as prepared by
-    *   GS_OPCODE_PREPARE_CHANNEL_MASKS.  DWORDs 0 and 4 are OR'ed together to
-    *   form the final channel mask.
-    */
-   GS_OPCODE_SET_CHANNEL_MASKS,
-
-   /**
-    * Get the "Instance ID" fields from the payload.
-    *
-    * - dst is the GRF for gl_InvocationID.
-    */
-   GS_OPCODE_GET_INSTANCE_ID,
-
-   /**
-    * Send a FF_SYNC message to allocate initial URB handles (gfx6).
-    *
-    * - dst will be used as the writeback register for the FF_SYNC operation.
-    *
-    * - src0 is the number of primitives written.
-    *
-    * - src1 is the value to hold in M0.0: number of SO vertices to write
-    *   and number of SO primitives needed. Its value will be overwritten
-    *   with the SVBI values if transform feedback is enabled.
-    *
-    * Note: This opcode uses an implicit MRF register for the ff_sync message
-    * header, so the caller is expected to set inst->base_mrf and initialize
-    * that MRF register to r0. This opcode will also write to this MRF register
-    * to include the allocated URB handle so it can then be reused directly as
-    * the header in the URB write operation we are allocating the handle for.
-    */
-   GS_OPCODE_FF_SYNC,
-
-   /**
-    * Move r0.1 (which holds PrimitiveID information in gfx6) to a separate
-    * register.
-    *
-    * - dst is the GRF where PrimitiveID information will be moved.
-    */
-   GS_OPCODE_SET_PRIMITIVE_ID,
-
-   /**
-    * Write transform feedback data to the SVB by sending a SVB WRITE message.
-    * Used in gfx6.
-    *
-    * - dst is the MRF register containing the message header.
-    *
-    * - src0 is the register where the vertex data is going to be copied from.
-    *
-    * - src1 is the destination register when write commit occurs.
-    */
-   GS_OPCODE_SVB_WRITE,
-
-   /**
-    * Set destination index in the SVB write message payload (M0.5). Used
-    * in gfx6 for transform feedback.
-    *
-    * - dst is the header to save the destination indices for SVB WRITE.
-    * - src is the register that holds the destination indices value.
-    */
-   GS_OPCODE_SVB_SET_DST_INDEX,
-
-   /**
-    * Prepare Mx.0 subregister for being used in the FF_SYNC message header.
-    * Used in gfx6 for transform feedback.
-    *
-    * - dst will hold the register with the final Mx.0 value.
-    *
-    * - src0 has the number of vertices emitted in SO (NumSOVertsToWrite)
-    *
-    * - src1 has the number of needed primitives for SO (NumSOPrimsNeeded)
-    *
-    * - src2 is the value to hold in M0: number of SO vertices to write
-    *   and number of SO primitives needed.
-    */
-   GS_OPCODE_FF_SYNC_SET_PRIMITIVES,
 
    /**
     * Terminate the compute shader.
@@ -741,17 +576,6 @@ enum opcode {
 
    /** Fills out a relocatable immediate */
    SHADER_OPCODE_MOV_RELOC_IMM,
-
-   TCS_OPCODE_GET_INSTANCE_ID,
-   TCS_OPCODE_GET_PRIMITIVE_ID,
-   TCS_OPCODE_CREATE_BARRIER_HEADER,
-   TCS_OPCODE_SRC0_010_IS_ZERO,
-   TCS_OPCODE_RELEASE_INPUT,
-   TCS_OPCODE_THREAD_END,
-
-   TES_OPCODE_GET_PRIMITIVE_ID,
-   TES_OPCODE_CREATE_INPUT_READ_HEADER,
-   TES_OPCODE_ADD_INDIRECT_URB_OFFSET,
 
    SHADER_OPCODE_BTD_SPAWN_LOGICAL,
    SHADER_OPCODE_BTD_RETIRE_LOGICAL,

@@ -2407,7 +2407,6 @@ brw_compact_instructions(struct brw_codegen *p, int start_offset,
          break;
 
       case BRW_OPCODE_IF:
-      case BRW_OPCODE_IFF:
       case BRW_OPCODE_ELSE:
       case BRW_OPCODE_ENDIF:
       case BRW_OPCODE_WHILE:

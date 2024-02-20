@@ -216,7 +216,6 @@ fs_inst::is_send_from_grf() const
       return true;
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
       return src[1].file == VGRF;
-   case FS_OPCODE_FB_WRITE:
    case FS_OPCODE_FB_READ:
       return src[0].file == VGRF;
    default:
@@ -229,7 +228,6 @@ fs_inst::is_control_source(unsigned arg) const
 {
    switch (opcode) {
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
-   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4:
       return arg == 0;
 
    case SHADER_OPCODE_BROADCAST:
@@ -277,7 +275,6 @@ bool
 fs_inst::is_payload(unsigned arg) const
 {
    switch (opcode) {
-   case FS_OPCODE_FB_WRITE:
    case FS_OPCODE_FB_READ:
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
@@ -864,26 +861,11 @@ fs_inst::size_read(int arg) const
       }
       break;
 
-   case FS_OPCODE_FB_WRITE:
-   case FS_OPCODE_REP_FB_WRITE:
-      if (arg == 0) {
-         if (base_mrf >= 0)
-            return src[0].file == BAD_FILE ? 0 : 2 * REG_SIZE;
-         else
-            return mlen * REG_SIZE;
-      }
-      break;
-
    case FS_OPCODE_FB_READ:
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
    case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
       if (arg == 0)
          return mlen * REG_SIZE;
-      break;
-
-   case FS_OPCODE_SET_SAMPLE_ID:
-      if (arg == 1)
-         return 1;
       break;
 
    case FS_OPCODE_LINTERP:
@@ -1022,11 +1004,10 @@ fs_inst::flags_read(const intel_device_info *devinfo) const
 unsigned
 fs_inst::flags_written(const intel_device_info *devinfo) const
 {
-   if ((conditional_mod && (opcode != BRW_OPCODE_SEL &&
-                            opcode != BRW_OPCODE_CSEL &&
-                            opcode != BRW_OPCODE_IF &&
-                            opcode != BRW_OPCODE_WHILE)) ||
-       opcode == FS_OPCODE_FB_WRITE) {
+   if (conditional_mod && (opcode != BRW_OPCODE_SEL &&
+                           opcode != BRW_OPCODE_CSEL &&
+                           opcode != BRW_OPCODE_IF &&
+                           opcode != BRW_OPCODE_WHILE)) {
       return brw_fs_flag_mask(this, 1);
    } else if (opcode == SHADER_OPCODE_FIND_LIVE_CHANNEL ||
               opcode == SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL ||
@@ -1083,15 +1064,7 @@ fs_inst::implied_mrf_writes() const
    case SHADER_OPCODE_LOD:
    case SHADER_OPCODE_SAMPLEINFO:
       return 1;
-   case FS_OPCODE_FB_WRITE:
-   case FS_OPCODE_REP_FB_WRITE:
-      return src[0].file == BAD_FILE ? 0 : 2;
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
-   case SHADER_OPCODE_GFX4_SCRATCH_READ:
-      return 1;
-   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GFX4:
-      return mlen;
-   case SHADER_OPCODE_GFX4_SCRATCH_WRITE:
       return mlen;
    default:
       unreachable("not reached");
@@ -2160,10 +2133,7 @@ brw_fb_write_msg_control(const fs_inst *inst,
 {
    uint32_t mctl;
 
-   if (inst->opcode == FS_OPCODE_REP_FB_WRITE) {
-      assert(inst->group == 0 && inst->exec_size == 16);
-      mctl = BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE_REPLICATED;
-   } else if (prog_data->dual_src_blend) {
+   if (prog_data->dual_src_blend) {
       assert(inst->exec_size == 8);
 
       if (inst->group % 16 == 0)

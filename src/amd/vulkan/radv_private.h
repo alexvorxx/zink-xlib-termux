@@ -1414,7 +1414,7 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_OCCLUSION_QUERY = 1ull << 58,
    RADV_CMD_DIRTY_DB_SHADER_CONTROL = 1ull << 59,
    RADV_CMD_DIRTY_STREAMOUT_ENABLE = 1ull << 60,
-   RADV_CMD_DIRTY_SHADERS = 1ull << 61,
+   RADV_CMD_DIRTY_GRAPHICS_SHADERS = 1ull << 61,
 };
 
 enum radv_cmd_flush_bits {

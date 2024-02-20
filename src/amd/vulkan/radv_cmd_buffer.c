@@ -6673,7 +6673,7 @@ radv_reset_shader_object_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBin
       break;
    }
 
-   cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_SHADERS;
+   cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_GRAPHICS_SHADERS;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -9092,14 +9092,13 @@ radv_cmdbuf_get_last_vgt_api_stage(const struct radv_cmd_buffer *cmd_buffer)
 }
 
 static void
-radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
+radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
 {
    const gl_shader_stage last_vgt_api_stage = radv_cmdbuf_get_last_vgt_api_stage(cmd_buffer);
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
    struct radv_device *device = cmd_buffer->device;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
 
-   /* Emit graphics shaders. */
    radv_foreach_stage(s, cmd_buffer->state.active_stages & RADV_GRAPHICS_STAGE_BITS)
    {
       struct radv_shader_object *shader_obj = cmd_buffer->state.shader_objs[s];
@@ -9200,7 +9199,7 @@ radv_emit_shaders(struct radv_cmd_buffer *cmd_buffer)
       gfx103_emit_vrs_state(device, cs, NULL, false, false, false);
    }
 
-   cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_SHADERS;
+   cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_GRAPHICS_SHADERS;
 }
 
 static void
@@ -9215,7 +9214,7 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
            (cmd_buffer->state.dirty &
             (RADV_CMD_DIRTY_DYNAMIC_COLOR_WRITE_MASK | RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_ENABLE |
              RADV_CMD_DIRTY_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE | RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_EQUATION |
-             RADV_CMD_DIRTY_SHADERS)))) {
+             RADV_CMD_DIRTY_GRAPHICS_SHADERS)))) {
          ps_epilog = lookup_ps_epilog(cmd_buffer);
          if (!ps_epilog) {
             vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -9275,8 +9274,8 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
 
    if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_PIPELINE) {
       radv_emit_graphics_pipeline(cmd_buffer);
-   } else if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_SHADERS) {
-      radv_emit_shaders(cmd_buffer);
+   } else if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_GRAPHICS_SHADERS) {
+      radv_emit_graphics_shaders(cmd_buffer);
    }
 
    if (ps_epilog)
@@ -9451,7 +9450,7 @@ radv_before_draw(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info
       cmd_buffer->state.last_index_type = -1;
    }
 
-   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_SHADERS) {
+   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_GRAPHICS_SHADERS) {
       radv_bind_graphics_shaders(cmd_buffer);
    }
 
@@ -9519,7 +9518,7 @@ radv_before_taskmesh_draw(struct radv_cmd_buffer *cmd_buffer, const struct radv_
    if (unlikely(!info->count))
       return false;
 
-   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_SHADERS) {
+   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_GRAPHICS_SHADERS) {
       radv_bind_graphics_shaders(cmd_buffer);
    }
 
@@ -11910,7 +11909,7 @@ radv_CmdBindShadersEXT(VkCommandBuffer commandBuffer, uint32_t stageCount, const
       /* Graphics shaders are handled at draw time because of shader variants. */
    }
 
-   cmd_buffer->state.dirty |= RADV_CMD_DIRTY_SHADERS;
+   cmd_buffer->state.dirty |= RADV_CMD_DIRTY_GRAPHICS_SHADERS;
 }
 
 VKAPI_ATTR void VKAPI_CALL

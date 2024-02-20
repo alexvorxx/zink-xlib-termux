@@ -809,6 +809,7 @@ struct agx_rasterizer {
    uint8_t cull[AGX_CULL_LENGTH];
    uint8_t line_width;
    uint8_t polygon_mode;
+   bool depth_bias;
 };
 
 struct agx_query {

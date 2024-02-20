@@ -408,6 +408,7 @@ agx_create_rs_state(struct pipe_context *ctx,
 
    so->polygon_mode = agx_translate_polygon_mode(cso->fill_front);
    so->line_width = agx_pack_line_width(cso->line_width);
+   so->depth_bias = util_get_offset(cso, cso->fill_front);
 
    return so;
 }
@@ -423,9 +424,9 @@ agx_bind_rasterizer_state(struct pipe_context *pctx, void *cso)
    /* Check if scissor or depth bias state has changed, since scissor/depth bias
     * enable is part of the rasterizer state but everything else needed for
     * scissors and depth bias is part of the scissor/depth bias arrays */
-   bool scissor_zbias_changed =
-      base_cso_changed || (ctx->rast->base.scissor != so->base.scissor) ||
-      (ctx->rast->base.offset_tri != so->base.offset_tri);
+   bool scissor_zbias_changed = base_cso_changed ||
+                                (ctx->rast->base.scissor != so->base.scissor) ||
+                                (ctx->rast->depth_bias != so->depth_bias);
 
    ctx->dirty |= AGX_DIRTY_RS;
 
@@ -3663,7 +3664,7 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
 
    struct agx_pool *pool = &batch->pool;
 
-   if ((ctx->dirty & AGX_DIRTY_RS) && ctx->rast->base.offset_tri) {
+   if ((ctx->dirty & AGX_DIRTY_RS) && ctx->rast->depth_bias) {
       agx_upload_depth_bias(batch, &ctx->rast->base);
       ctx->dirty |= AGX_DIRTY_SCISSOR_ZBIAS;
    }
@@ -3725,7 +3726,8 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
 
          cfg.stencil_test_enable = ctx->zs->base.stencil[0].enabled;
          cfg.two_sided_stencil = ctx->zs->base.stencil[1].enabled;
-         cfg.depth_bias_enable = rast->base.offset_tri;
+         cfg.depth_bias_enable =
+            rast->depth_bias && object_type == AGX_OBJECT_TYPE_TRIANGLE;
 
          /* Always enable scissoring so we may scissor to the viewport (TODO:
           * optimize this out if the viewport is the default and the app does

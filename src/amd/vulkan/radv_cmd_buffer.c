@@ -9156,25 +9156,6 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       }
    }
 
-   if (cmd_buffer->state.active_stages & VK_SHADER_STAGE_GEOMETRY_BIT) {
-      const struct radv_shader *gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
-
-      if (gs->info.merged_shader_compiled_separately) {
-         const struct radv_userdata_info *vgt_esgs_ring_itemsize = radv_get_user_sgpr(gs, AC_UD_VGT_ESGS_RING_ITEMSIZE);
-         uint32_t esgs_itemsize;
-
-         if (cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL]) {
-            esgs_itemsize = cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL]->info.esgs_itemsize;
-         } else {
-            esgs_itemsize = cmd_buffer->state.shaders[MESA_SHADER_VERTEX]->info.esgs_itemsize;
-         }
-
-         assert(vgt_esgs_ring_itemsize->sgpr_idx != -1 && vgt_esgs_ring_itemsize->num_sgprs == 1);
-
-         radeon_set_sh_reg(cs, gs->info.user_data_0 + vgt_esgs_ring_itemsize->sgpr_idx * 4, esgs_itemsize / 4);
-      }
-   }
-
    /* Emit graphics states related to shaders. */
    struct radv_vgt_shader_key vgt_shader_cfg_key = {
       .tess = !!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL],

@@ -3322,6 +3322,14 @@ radv_emit_geometry_shader(const struct radv_device *device, struct radeon_cmdbuf
    }
 
    radeon_set_context_reg(ctx_cs, R_028B38_VGT_GS_MAX_VERT_OUT, gs->info.gs.vertices_out);
+
+   if (gs->info.merged_shader_compiled_separately) {
+      const struct radv_userdata_info *vgt_esgs_ring_itemsize = radv_get_user_sgpr(gs, AC_UD_VGT_ESGS_RING_ITEMSIZE);
+
+      assert(vgt_esgs_ring_itemsize->sgpr_idx != -1 && vgt_esgs_ring_itemsize->num_sgprs == 1);
+
+      radeon_set_sh_reg(cs, gs->info.user_data_0 + vgt_esgs_ring_itemsize->sgpr_idx * 4, es->info.esgs_itemsize / 4);
+   }
 }
 
 void

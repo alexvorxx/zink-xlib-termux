@@ -3948,21 +3948,27 @@ agx_index_buffer_ptr(struct agx_batch *batch, const struct pipe_draw_info *info,
 }
 
 static void
-agx_ensure_vdm_cmdbuf_has_space(struct agx_batch *batch, size_t space)
+agx_ensure_cmdbuf_has_space(struct agx_batch *batch, struct agx_encoder *enc,
+                            size_t space)
 {
+   bool vdm = enc == &batch->vdm;
+   assert(vdm || (enc == &batch->cdm));
+
+   size_t link_length =
+      vdm ? AGX_VDM_STREAM_LINK_LENGTH : AGX_CDM_STREAM_LINK_LENGTH;
+
    /* Assert that we have space for a link tag */
-   assert((batch->vdm.current + AGX_VDM_STREAM_LINK_LENGTH) <= batch->vdm.end &&
-          "Encoder overflowed");
+   assert((enc->current + link_length) <= enc->end && "Encoder overflowed");
 
    /* Always leave room for a link tag, in case we run out of space later,
     * plus padding because VDM apparently overreads?
     *
     * 0x200 is not enough. 0x400 seems to work. 0x800 for safety.
     */
-   space += AGX_VDM_STREAM_LINK_LENGTH + 0x800;
+   space += link_length + 0x800;
 
    /* If there is room in the command buffer, we're done */
-   if (likely((batch->vdm.end - batch->vdm.current) >= space))
+   if (likely((enc->end - enc->current) >= space))
       return;
 
    /* Otherwise, we need to allocate a new command buffer. We use memory owned
@@ -3972,14 +3978,21 @@ agx_ensure_vdm_cmdbuf_has_space(struct agx_batch *batch, size_t space)
    struct agx_ptr T = agx_pool_alloc_aligned(&batch->pool, size, 256);
 
    /* Jump from the old command buffer to the new command buffer */
-   agx_pack(batch->vdm.current, VDM_STREAM_LINK, cfg) {
-      cfg.target_lo = T.gpu & BITFIELD_MASK(32);
-      cfg.target_hi = T.gpu >> 32;
+   if (vdm) {
+      agx_pack(enc->current, VDM_STREAM_LINK, cfg) {
+         cfg.target_lo = T.gpu & BITFIELD_MASK(32);
+         cfg.target_hi = T.gpu >> 32;
+      }
+   } else {
+      agx_pack(enc->current, CDM_STREAM_LINK, cfg) {
+         cfg.target_lo = T.gpu & BITFIELD_MASK(32);
+         cfg.target_hi = T.gpu >> 32;
+      }
    }
 
    /* Swap out the command buffer */
-   batch->vdm.current = T.cpu;
-   batch->vdm.end = batch->vdm.current + size;
+   enc->current = T.cpu;
+   enc->end = enc->current + size;
 }
 
 #define COUNT_NONRESTART(T)                                                    \
@@ -4232,6 +4245,12 @@ agx_launch_gs_prerast(struct agx_batch *batch,
    if (!batch->cdm.bo) {
       batch->cdm = agx_encoder_allocate(batch, dev);
    }
+
+   agx_ensure_cmdbuf_has_space(
+      batch, &batch->cdm,
+      8 * (AGX_CDM_LAUNCH_LENGTH + AGX_CDM_UNK_G14X_LENGTH +
+           AGX_CDM_INDIRECT_LENGTH + AGX_CDM_GLOBAL_SIZE_LENGTH +
+           AGX_CDM_LOCAL_SIZE_LENGTH + AGX_CDM_BARRIER_LENGTH));
 
    assert(!info->primitive_restart && "should have been lowered");
 
@@ -5208,8 +5227,8 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
     * We only need to do this once per draw as long as we conservatively
     * estimate the maximum bytes of VDM commands that this draw will emit.
     */
-   agx_ensure_vdm_cmdbuf_has_space(
-      batch,
+   agx_ensure_cmdbuf_has_space(
+      batch, &batch->vdm,
       (AGX_VDM_STATE_LENGTH * 2) + (AGX_PPP_STATE_LENGTH * MAX_PPP_UPDATES) +
          AGX_VDM_STATE_RESTART_INDEX_LENGTH +
          AGX_VDM_STATE_VERTEX_SHADER_WORD_0_LENGTH +

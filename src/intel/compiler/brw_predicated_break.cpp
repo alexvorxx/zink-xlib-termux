@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "brw_shader.h"
+#include "brw_fs.h"
 
 using namespace brw;
 
@@ -99,7 +99,7 @@ has_continue(const struct loop_continue_tracking *s)
 }
 
 bool
-opt_predicated_break(backend_shader &s)
+brw_fs_opt_predicated_break(fs_visitor &s)
 {
    bool progress = false;
    struct loop_continue_tracking state = { {0, }, 0 };

@@ -72,7 +72,6 @@ public:
    exec_list instructions;
 
    cfg_t *cfg;
-   brw_analysis<brw::idom_tree, backend_shader> idom_analysis;
 
    gl_shader_stage stage;
    bool debug_enabled;
@@ -92,8 +91,6 @@ public:
 
    virtual void invalidate_analysis(brw::analysis_dependency_class c);
 };
-
-bool opt_predicated_break(backend_shader &s);
 
 #else
 struct backend_shader;

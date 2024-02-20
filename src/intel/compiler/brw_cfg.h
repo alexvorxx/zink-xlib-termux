@@ -73,6 +73,7 @@ struct bblock_link {
    enum bblock_link_kind kind;
 };
 
+struct fs_visitor;
 struct backend_shader;
 struct cfg_t;
 
@@ -486,11 +487,11 @@ namespace brw {
     * Immediate dominator tree analysis of a shader.
     */
    struct idom_tree {
-      idom_tree(const backend_shader *s);
+      idom_tree(const fs_visitor *s);
       ~idom_tree();
 
       bool
-      validate(const backend_shader *) const
+      validate(const fs_visitor *) const
       {
          /* FINISHME */
          return true;

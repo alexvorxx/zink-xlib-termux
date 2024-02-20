@@ -25,6 +25,8 @@
 #ifndef BRW_IR_PERFORMANCE_H
 #define BRW_IR_PERFORMANCE_H
 
+#include "brw_ir_analysis.h"
+
 class fs_visitor;
 
 namespace brw {
@@ -44,7 +46,7 @@ namespace brw {
       }
 
       bool
-      validate(const backend_shader *) const
+      validate(const fs_visitor *) const
       {
          return true;
       }

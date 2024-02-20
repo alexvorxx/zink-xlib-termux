@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "brw_dead_control_flow.h"
 #include "brw_eu.h"
 #include "brw_fs.h"
 #include "brw_fs_builder.h"
@@ -44,7 +43,7 @@ brw_fs_optimize(fs_visitor &s)
    s.validate();
 
    if (s.compiler->lower_dpas)
-      OPT(brw_lower_dpas);
+      OPT(brw_fs_lower_dpas);
 
    OPT(brw_fs_opt_split_virtual_grfs);
 
@@ -66,11 +65,11 @@ brw_fs_optimize(fs_visitor &s)
       OPT(brw_fs_opt_algebraic);
       OPT(brw_fs_opt_cse);
       OPT(brw_fs_opt_copy_propagation);
-      OPT(opt_predicated_break);
+      OPT(brw_fs_opt_predicated_break);
       OPT(brw_fs_opt_cmod_propagation);
       OPT(brw_fs_opt_dead_code_eliminate);
       OPT(brw_fs_opt_peephole_sel);
-      OPT(dead_control_flow_eliminate);
+      OPT(brw_fs_opt_dead_control_flow_eliminate);
       OPT(brw_fs_opt_saturate_propagation);
       OPT(brw_fs_opt_register_coalesce);
       OPT(brw_fs_opt_eliminate_find_live_channel);

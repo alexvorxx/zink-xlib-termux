@@ -45,7 +45,6 @@ libintel_compiler_brw_files = files(
   'brw_compiler.c',
   'brw_compiler.h',
   'brw_dead_control_flow.cpp',
-  'brw_dead_control_flow.h',
   'brw_debug_recompile.c',
   'brw_disasm.c',
   'brw_disasm_info.c',

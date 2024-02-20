@@ -1013,7 +1013,7 @@ namespace {
     * Estimate the performance of the specified shader.
     */
    void
-   calculate_performance(performance &p, const backend_shader *s,
+   calculate_performance(performance &p, const fs_visitor *s,
                          void (*issue_instruction)(
                             state &, const struct brw_isa_info *,
                             const backend_instruction *),

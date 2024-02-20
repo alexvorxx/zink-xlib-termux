@@ -586,7 +586,7 @@ schedule_node::set_latency(const struct brw_isa_info *isa)
 
 class instruction_scheduler {
 public:
-   instruction_scheduler(void *mem_ctx, const backend_shader *s, int grf_count,
+   instruction_scheduler(void *mem_ctx, const fs_visitor *s, int grf_count,
                          int grf_write_scale, bool post_reg_alloc):
       bs(s)
    {
@@ -662,7 +662,7 @@ public:
 
    bool post_reg_alloc;
    int grf_count;
-   const backend_shader *bs;
+   const fs_visitor *bs;
 
    /**
     * Last instruction to have written the grf (or a channel in the grf, for the

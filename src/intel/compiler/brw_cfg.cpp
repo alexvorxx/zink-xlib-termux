@@ -27,7 +27,7 @@
 
 #include "brw_cfg.h"
 #include "util/u_dynarray.h"
-#include "brw_shader.h"
+#include "brw_fs.h"
 
 /** @file brw_cfg.cpp
  *
@@ -617,7 +617,8 @@ sort_links(util_dynarray *scratch, exec_list *list)
 void
 cfg_t::dump(FILE *file)
 {
-   const idom_tree *idom = (s ? &s->idom_analysis.require() : NULL);
+   const fs_visitor *fs = static_cast<const fs_visitor *>(s);
+   const idom_tree *idom = (fs ? &fs->idom_analysis.require() : NULL);
 
    /* Temporary storage to sort the lists of blocks.  This normalizes the
     * output, making it possible to use it for certain tests.
@@ -658,7 +659,7 @@ cfg_t::dump(FILE *file)
  * (less than 1000 nodes) that this algorithm is significantly faster than
  * others like Lengauer-Tarjan.
  */
-idom_tree::idom_tree(const backend_shader *s) :
+idom_tree::idom_tree(const fs_visitor *s) :
    num_parents(s->cfg->num_blocks),
    parents(new bblock_t *[num_parents]())
 {

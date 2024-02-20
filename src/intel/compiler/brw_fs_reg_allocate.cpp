@@ -364,7 +364,7 @@ namespace {
     * into multiple (force_writemask_all) scratch messages.
     */
    unsigned
-   spill_max_size(const backend_shader *s)
+   spill_max_size(const fs_visitor *s)
    {
       /* LSC is limited to SIMD16 sends */
       if (s->devinfo->has_lsc)
@@ -379,7 +379,7 @@ namespace {
        *            backend_shader (or some nonexistent fs_shader class?)
        *            rather than in the visitor class.
        */
-      return static_cast<const fs_visitor *>(s)->dispatch_width / 8;
+      return s->dispatch_width / 8;
    }
 }
 

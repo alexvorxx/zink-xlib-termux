@@ -34,7 +34,6 @@
 #include "brw_fs_live_variables.h"
 #include "brw_nir.h"
 #include "brw_cfg.h"
-#include "brw_dead_control_flow.h"
 #include "brw_private.h"
 #include "intel_nir.h"
 #include "shader_enums.h"
@@ -2421,6 +2420,7 @@ fs_visitor::invalidate_analysis(brw::analysis_dependency_class c)
    backend_shader::invalidate_analysis(c);
    live_analysis.invalidate(c);
    regpressure_analysis.invalidate(c);
+   idom_analysis.invalidate(c);
 }
 
 void

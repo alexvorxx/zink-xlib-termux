@@ -250,7 +250,7 @@ namespace {
     * Return the number of instructions in the program.
     */
    unsigned
-   num_instructions(const backend_shader *shader)
+   num_instructions(const fs_visitor *shader)
    {
       return shader->cfg->blocks[shader->cfg->num_blocks - 1]->end_ip + 1;
    }

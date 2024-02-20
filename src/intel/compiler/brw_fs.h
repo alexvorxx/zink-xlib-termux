@@ -297,9 +297,10 @@ public:
 
    struct brw_stage_prog_data *prog_data;
 
-   brw_analysis<brw::fs_live_variables, backend_shader> live_analysis;
+   brw_analysis<brw::fs_live_variables, fs_visitor> live_analysis;
    brw_analysis<brw::register_pressure, fs_visitor> regpressure_analysis;
    brw_analysis<brw::performance, fs_visitor> performance_analysis;
+   brw_analysis<brw::idom_tree, fs_visitor> idom_analysis;
 
    /** Number of uniform variable components visited. */
    unsigned uniforms;
@@ -537,8 +538,6 @@ void brw_emit_predicate_on_sample_mask(const brw::fs_builder &bld, fs_inst *inst
 int brw_get_subgroup_id_param_index(const intel_device_info *devinfo,
                                     const brw_stage_prog_data *prog_data);
 
-bool brw_lower_dpas(fs_visitor &v);
-
 void nir_to_brw(fs_visitor *s);
 
 void brw_fs_optimize(fs_visitor &s);
@@ -547,6 +546,7 @@ bool brw_fs_lower_3src_null_dest(fs_visitor &s);
 bool brw_fs_lower_barycentrics(fs_visitor &s);
 bool brw_fs_lower_constant_loads(fs_visitor &s);
 bool brw_fs_lower_derivatives(fs_visitor &s);
+bool brw_fs_lower_dpas(fs_visitor &s);
 bool brw_fs_lower_find_live_channel(fs_visitor &s);
 bool brw_fs_lower_integer_multiplication(fs_visitor &s);
 bool brw_fs_lower_logical_sends(fs_visitor &s);
@@ -567,8 +567,10 @@ bool brw_fs_opt_compact_virtual_grfs(fs_visitor &s);
 bool brw_fs_opt_copy_propagation(fs_visitor &s);
 bool brw_fs_opt_cse(fs_visitor &s);
 bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
+bool brw_fs_opt_dead_control_flow_eliminate(fs_visitor &s);
 bool brw_fs_opt_eliminate_find_live_channel(fs_visitor &s);
 bool brw_fs_opt_peephole_sel(fs_visitor &s);
+bool brw_fs_opt_predicated_break(fs_visitor &s);
 bool brw_fs_opt_register_coalesce(fs_visitor &s);
 bool brw_fs_opt_remove_extra_rounding_modes(fs_visitor &s);
 bool brw_fs_opt_remove_redundant_halts(fs_visitor &s);

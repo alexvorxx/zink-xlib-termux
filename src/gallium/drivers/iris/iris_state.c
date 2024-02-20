@@ -8860,7 +8860,7 @@ iris_upload_compute_walker(struct iris_context *ice,
          cw.GenerateLocalID = cs_prog_data->generate_local_id != 0;
          cw.EmitLocal       = cs_prog_data->generate_local_id;
          cw.WalkOrder       = cs_prog_data->walk_order;
-         cw.TileLayout = cs_prog_data->walk_order == BRW_WALK_ORDER_YXZ ?
+         cw.TileLayout = cs_prog_data->walk_order == INTEL_WALK_ORDER_YXZ ?
                          TileY32bpe : Linear;
 #endif
 

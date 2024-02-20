@@ -567,7 +567,7 @@ genX(emit_simple_shader_dispatch)(struct anv_simple_shader *state,
          cw.GenerateLocalID                = prog_data->generate_local_id != 0;
          cw.EmitLocal                      = prog_data->generate_local_id;
          cw.WalkOrder                      = prog_data->walk_order;
-         cw.TileLayout = prog_data->walk_order == BRW_WALK_ORDER_YXZ ?
+         cw.TileLayout = prog_data->walk_order == INTEL_WALK_ORDER_YXZ ?
                          TileY32bpe : Linear;
 #endif
 

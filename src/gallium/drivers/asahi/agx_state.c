@@ -609,13 +609,6 @@ agx_bind_sampler_states(struct pipe_context *pctx, enum pipe_shader_type shader,
    }
 }
 
-/* See agx_stage_needs_bindless_sampler for explanation */
-static enum pipe_shader_type
-merged_stage(struct agx_context *ctx, enum pipe_shader_type stage)
-{
-   return stage == MESA_SHADER_TESS_CTRL ? MESA_SHADER_VERTEX : stage;
-}
-
 static enum agx_texture_dimension
 agx_translate_tex_dim(enum pipe_texture_target dim, unsigned samples)
 {
@@ -1906,21 +1899,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
                   key->next.gs.index_size_B, &outputs);
       }
    } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {
-      struct asahi_tcs_shader_key *key = &key_->tcs;
-
-      /* TODO: Deduplicate this logic from the GS case! */
-      struct blob_reader vs_reader;
-      blob_reader_init(&vs_reader, linked_so->serialized_nir.data,
-                       linked_so->serialized_nir.size);
-      nir_shader *vs = nir_deserialize(NULL, &agx_nir_options, &vs_reader);
-
-      /* Apply the VS key to the VS before linking it in */
-      NIR_PASS_V(vs, lower_vbo, key->attribs);
-      NIR_PASS_V(vs, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
-      NIR_PASS_V(vs, agx_nir_lower_sysvals, PIPE_SHADER_VERTEX, false);
-
-      NIR_PASS_V(nir, agx_nir_lower_tcs, vs, dev->libagx, key->index_size_B);
-      ralloc_free(vs);
+      NIR_PASS_V(nir, agx_nir_lower_tcs, dev->libagx);
    } else if (nir->info.stage == MESA_SHADER_GEOMETRY) {
       struct asahi_gs_shader_key *key = &key_->gs;
 
@@ -2482,10 +2461,11 @@ agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
       rast_prim(ctx->batch->reduced_prim, ctx->rast->base.fill_front);
 
    struct asahi_vs_shader_key key = {
-      .next_stage = ctx->stage[PIPE_SHADER_TESS_EVAL].shader && !ctx->in_tess
-                       ? ASAHI_VS_TCS
-                    : ctx->stage[PIPE_SHADER_GEOMETRY].shader ? ASAHI_VS_GS
-                                                              : ASAHI_VS_FS,
+      .next_stage =
+         ((ctx->stage[PIPE_SHADER_TESS_EVAL].shader && !ctx->in_tess) ||
+          ctx->stage[PIPE_SHADER_GEOMETRY].shader)
+            ? ASAHI_VS_GS
+            : ASAHI_VS_FS,
    };
 
    if (key.next_stage == ASAHI_VS_FS) {
@@ -2840,9 +2820,6 @@ translate_sampler_state_count(struct agx_context *ctx,
                               struct agx_compiled_shader *cs,
                               enum pipe_shader_type stage)
 {
-   /* Get samplers from merged stage but get txf status from cs */
-   stage = merged_stage(ctx, stage);
-
    /* Clamp to binding table maximum, anything larger will be bindless */
    return agx_translate_sampler_state_count(
       MIN2(sampler_count(ctx, cs, stage), 16),
@@ -3054,12 +3031,9 @@ agx_sampler_heap_add(struct agx_device *dev, struct agx_sampler_heap *heap,
 
 static void
 agx_upload_samplers(struct agx_batch *batch, struct agx_compiled_shader *cs,
-                    enum pipe_shader_type orig_stage)
+                    enum pipe_shader_type stage)
 {
    struct agx_context *ctx = batch->ctx;
-
-   /* Get samplers from merged stage but get txf status from cs */
-   enum pipe_shader_type stage = merged_stage(ctx, orig_stage);
 
    unsigned nr_samplers = sampler_count(ctx, cs, stage);
    bool custom_borders = ctx->stage[stage].custom_borders;
@@ -3104,8 +3078,8 @@ agx_upload_samplers(struct agx_batch *batch, struct agx_compiled_shader *cs,
       out_sampler += sampler_length;
    }
 
-   batch->sampler_count[orig_stage] = nr_samplers;
-   batch->samplers[orig_stage] = T.gpu;
+   batch->sampler_count[stage] = nr_samplers;
+   batch->samplers[stage] = T.gpu;
 }
 
 static void
@@ -3131,8 +3105,7 @@ agx_update_descriptors(struct agx_batch *batch, struct agx_compiled_shader *cs)
    if (ctx->stage[stage].dirty & AGX_STAGE_DIRTY_SAMPLER)
       agx_set_sampler_uniforms(batch, stage);
 
-   if ((ctx->stage[stage].dirty & AGX_STAGE_DIRTY_SAMPLER) ||
-       (ctx->stage[merged_stage(ctx, stage)].dirty & AGX_STAGE_DIRTY_SAMPLER))
+   if (ctx->stage[stage].dirty & AGX_STAGE_DIRTY_SAMPLER)
       agx_upload_samplers(batch, cs, stage);
 
    struct agx_stage_uniforms *unif = &batch->stage_uniforms[stage];
@@ -3151,14 +3124,13 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
       agx_alloc_usc_control(&batch->pipeline_pool, cs->push_range_count + 2);
 
    enum pipe_shader_type stage = cs->stage;
-   enum pipe_shader_type merged = merged_stage(ctx, stage);
 
-   if (batch->texture_count[merged]) {
+   if (batch->texture_count[stage]) {
       agx_usc_pack(&b, TEXTURE, cfg) {
          cfg.start = 0;
          cfg.count =
-            MIN2(batch->texture_count[merged], AGX_NUM_TEXTURE_STATE_REGS);
-         cfg.buffer = batch->stage_uniforms[merged].texture_base;
+            MIN2(batch->texture_count[stage], AGX_NUM_TEXTURE_STATE_REGS);
+         cfg.buffer = batch->stage_uniforms[stage].texture_base;
       }
    }
 
@@ -4192,10 +4164,12 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
     * & count buffers. GPU calculates and allocates for indirect draws.
     */
    unsigned count_buffer_stride = batch->ctx->gs->gs_count_words * 4;
-   params.vs_outputs = batch->ctx->vs->info.outputs;
+   batch->uniforms.vertex_outputs = batch->ctx->vs->info.outputs;
 
    if (indirect) {
       params.count_buffer_stride = count_buffer_stride;
+      batch->uniforms.vertex_output_buffer_ptr =
+         agx_pool_alloc_aligned(&batch->pool, 8, 8).gpu;
    } else {
       params.gs_grid[0] =
          u_decomposed_prims_for_vertices(info->mode, draw->count);
@@ -4206,7 +4180,7 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
       params.input_vertices = draw->count;
 
       unsigned vb_size = libagx_tcs_in_size(draw->count * info->instance_count,
-                                            params.vs_outputs);
+                                            batch->uniforms.vertex_outputs);
       unsigned size = params.input_primitives * count_buffer_stride;
 
       if (size) {
@@ -4215,8 +4189,9 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
       }
 
       if (vb_size) {
-         params.vertex_buffer =
-            agx_pool_alloc_aligned(&batch->pool, vb_size, 4).gpu;
+         uint64_t addr = agx_pool_alloc_aligned(&batch->pool, vb_size, 4).gpu;
+         batch->uniforms.vertex_output_buffer_ptr =
+            agx_pool_upload(&batch->pool, &addr, 8);
       }
    }
 
@@ -4743,14 +4718,28 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
    agx_update_descriptors(batch, ctx->vs);
    agx_update_descriptors(batch, ctx->tcs);
 
+   batch->uniforms.vertex_outputs = ctx->vs->info.outputs;
+
+   unsigned vb_size = libagx_tcs_in_size(draws->count * info->instance_count,
+                                         batch->uniforms.vertex_outputs);
+   uint64_t addr = agx_pool_alloc_aligned(&batch->pool, vb_size, 4).gpu;
+   batch->uniforms.vertex_output_buffer_ptr =
+      agx_pool_upload(&batch->pool, &addr, 8);
+
+   struct pipe_grid_info vs_grid = {
+      .block = {1, 1, 1},
+      .grid = {draws->count, info->instance_count, 1},
+   };
+
+   agx_launch(batch, &vs_grid, ctx->vs, PIPE_SHADER_VERTEX);
+
    struct pipe_grid_info tcs_grid = {
-      .block = {MAX2(patch_vertices, tcs->tess.output_patch_size), 1, 1},
+      .block = {tcs->tess.output_patch_size, 1, 1},
       .grid = {in_patches, info->instance_count, 1},
-      /* XXX */
-      .variable_shared_mem = 32768,
    };
 
    agx_launch(batch, &tcs_grid, ctx->tcs, PIPE_SHADER_TESS_CTRL);
+   batch->uniforms.vertex_output_buffer_ptr = 0;
 
    agx_flush_all(ctx, "HACK");
    agx_sync_all(ctx, "HACK");

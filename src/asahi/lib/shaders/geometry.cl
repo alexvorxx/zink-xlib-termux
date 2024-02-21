@@ -425,8 +425,9 @@ libagx_build_gs_draw(global struct agx_geometry_params *p, bool indexed,
 
 void
 libagx_gs_setup_indirect(global struct agx_geometry_params *p,
-                         global struct agx_ia_state *ia, enum mesa_prim mode,
-                         uint local_id)
+                         global struct agx_ia_state *ia,
+                         global uintptr_t *vertex_buffer, uint64_t vs_outputs,
+                         enum mesa_prim mode, uint local_id)
 {
    global uint *in_draw = (global uint *)ia->draws;
 
@@ -463,13 +464,13 @@ libagx_gs_setup_indirect(global struct agx_geometry_params *p,
    global struct agx_geometry_state *state = p->state;
 
    uint vertex_buffer_size =
-      libagx_tcs_in_size(vertex_count * instance_count, p->vs_outputs);
+      libagx_tcs_in_size(vertex_count * instance_count, vs_outputs);
 
    p->count_buffer = (global uint *)(state->heap + state->heap_bottom);
    state->heap_bottom +=
       align(p->input_primitives * p->count_buffer_stride, 16);
 
-   p->vertex_buffer = (global uint *)(state->heap + state->heap_bottom);
+   *vertex_buffer = (uintptr_t)(state->heap + state->heap_bottom);
    state->heap_bottom += align(vertex_buffer_size, 4);
 }
 
@@ -518,9 +519,8 @@ libagx_is_provoking_last(global struct agx_ia_state *ia)
 }
 
 uintptr_t
-libagx_vertex_output_address(constant struct agx_geometry_params *p, uint vtx,
-                             gl_varying_slot location, uint64_t vs_outputs)
+libagx_vertex_output_address(uintptr_t buffer, uint64_t mask, uint vtx,
+                             gl_varying_slot location)
 {
-   return (uintptr_t)p->vertex_buffer +
-          libagx_tcs_in_offs(vtx, location, vs_outputs);
+   return buffer + libagx_tcs_in_offs(vtx, location, mask);
 }

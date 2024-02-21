@@ -167,6 +167,22 @@ load_instance_id(nir_builder *b)
    return nir_channel(b, nir_load_global_invocation_id(b, 32), 1);
 }
 
+nir_def *
+agx_load_per_vertex_input(nir_builder *b, nir_intrinsic_instr *intr,
+                          nir_def *vertex)
+{
+   assert(intr->intrinsic == nir_intrinsic_load_per_vertex_input);
+   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
+
+   nir_def *addr = libagx_vertex_output_address(
+      b, nir_load_vs_output_buffer_agx(b), nir_load_vs_outputs_agx(b), vertex,
+      nir_iadd_imm(b, intr->src[1].ssa, sem.location));
+
+   addr = nir_iadd_imm(b, addr, 4 * nir_intrinsic_component(intr));
+   return nir_load_global_constant(b, addr, 4, intr->def.num_components,
+                                   intr->def.bit_size);
+}
+
 static bool
 lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *_)
 {
@@ -174,9 +190,6 @@ lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *_)
       return false;
 
    b->cursor = nir_instr_remove(&intr->instr);
-   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
-
-   nir_def *location = nir_iadd_imm(b, intr->src[1].ssa, sem.location);
 
    /* Calculate the vertex ID we're pulling, based on the topology class */
    nir_def *vert_in_prim = intr->src[0].ssa;
@@ -192,16 +205,7 @@ lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *_)
                         load_geometry_param(b, input_vertices)),
                vertex);
 
-   /* Calculate the address of the input given the unrolled vertex ID */
-   nir_def *addr = libagx_vertex_output_address(
-      b, nir_load_geometry_param_buffer_agx(b), unrolled, location,
-      load_geometry_param(b, vs_outputs));
-
-   assert(intr->def.bit_size == 32);
-   addr = nir_iadd_imm(b, addr, nir_intrinsic_component(intr) * 4);
-
-   nir_def *val = nir_load_global_constant(b, addr, 4, intr->def.num_components,
-                                           intr->def.bit_size);
+   nir_def *val = agx_load_per_vertex_input(b, intr, unrolled);
    nir_def_rewrite_uses(&intr->def, val);
    return true;
 }
@@ -1312,9 +1316,13 @@ lower_vs_before_gs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
    nir_def *location = nir_iadd_imm(b, intr->src[1].ssa, sem.location);
 
+   /* We inline the outputs_written because it's known at compile-time, even
+    * with shader objects. This lets us constant fold a bit of address math.
+    */
+   nir_def *mask = nir_imm_int64(b, b->shader->info.outputs_written);
+
    nir_def *addr = libagx_vertex_output_address(
-      b, nir_load_geometry_param_buffer_agx(b), calc_unrolled_id(b), location,
-      nir_imm_int64(b, b->shader->info.outputs_written));
+      b, nir_load_vs_output_buffer_agx(b), mask, calc_unrolled_id(b), location);
 
    assert(nir_src_bit_size(intr->src[0]) == 32);
    addr = nir_iadd_imm(b, addr, nir_intrinsic_component(intr) * 4);
@@ -1377,6 +1385,8 @@ agx_nir_gs_setup_indirect(nir_builder *b, const void *data)
 
    libagx_gs_setup_indirect(b, nir_load_geometry_param_buffer_agx(b),
                             nir_load_input_assembly_buffer_agx(b),
+                            nir_load_vs_output_buffer_ptr_agx(b),
+                            nir_load_vs_outputs_agx(b),
                             nir_imm_int(b, key->prim),
                             nir_channel(b, nir_load_local_invocation_id(b), 0));
 }

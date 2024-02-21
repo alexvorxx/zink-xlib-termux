@@ -7,14 +7,10 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "nir.h"
 #include "shader_enums.h"
 
-struct nir_shader;
 enum mesa_prim;
-
-struct nir_instr;
-struct nir_builder;
-struct nir_variable;
 
 struct agx_lower_output_to_var_state {
    struct nir_variable *outputs[NUM_TOTAL_VARYING_SLOTS];
@@ -22,6 +18,10 @@ struct agx_lower_output_to_var_state {
 
 bool agx_lower_output_to_var(struct nir_builder *b, struct nir_instr *instr,
                              void *data);
+
+struct nir_def *agx_load_per_vertex_input(struct nir_builder *b,
+                                          nir_intrinsic_instr *intr,
+                                          struct nir_def *vertex);
 
 struct nir_def *agx_vertex_id_for_topology_class(struct nir_builder *b,
                                                  struct nir_def *vert,
@@ -54,8 +54,7 @@ struct agx_unroll_restart_key {
 
 void agx_nir_unroll_restart(struct nir_builder *b, const void *key);
 
-bool agx_nir_lower_tcs(struct nir_shader *tcs, const struct nir_shader *vs,
-                       const struct nir_shader *libagx, uint8_t index_size_B);
+bool agx_nir_lower_tcs(struct nir_shader *tcs, const struct nir_shader *libagx);
 
 bool agx_nir_lower_tes(struct nir_shader *tes, const struct nir_shader *libagx);
 

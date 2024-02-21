@@ -23,18 +23,6 @@
  *    2. Images (read/write interleaved)
  */
 
-/*
- * We only support VS/TCS merging, so we lower TCS samplers to bindless and let
- * VS have exclusive binding table access.
- *
- * This could be optimized but it should be good enough for now.
- */
-static bool
-agx_stage_needs_bindless(enum pipe_shader_type stage)
-{
-   return stage == MESA_SHADER_TESS_CTRL;
-}
-
 static bool
 lower_sampler(nir_builder *b, nir_tex_instr *tex)
 {
@@ -55,8 +43,7 @@ lower(nir_builder *b, nir_instr *instr, void *data)
 {
    bool *uses_bindless_samplers = data;
    bool progress = false;
-   bool force_bindless = agx_nir_needs_texture_crawl(instr) ||
-                         agx_stage_needs_bindless(b->shader->info.stage);
+   bool force_bindless = agx_nir_needs_texture_crawl(instr);
    b->cursor = nir_before_instr(instr);
 
    if (instr->type == nir_instr_type_intrinsic) {
@@ -132,8 +119,7 @@ lower(nir_builder *b, nir_instr *instr, void *data)
    } else if (instr->type == nir_instr_type_tex) {
       nir_tex_instr *tex = nir_instr_as_tex(instr);
 
-      if ((agx_stage_needs_bindless(b->shader->info.stage) ||
-           BITSET_COUNT(b->shader->info.samplers_used) > 16) &&
+      if ((BITSET_COUNT(b->shader->info.samplers_used) > 16) &&
           lower_sampler(b, tex)) {
 
          progress = true;

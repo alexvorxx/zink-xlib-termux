@@ -112,6 +112,16 @@ struct PACKED agx_draw_uniforms {
    /* Addresses for the results of pipeline statistics queries */
    uint64_t pipeline_statistics[PIPE_STAT_QUERY_MS_INVOCATIONS];
 
+   /* Pointer to base address of the VS->TCS, VS->GS, or TES->GS buffer.
+    * Indirected so it can be written to in an indirect setup kernel. G13
+    * appears to prefetch uniforms across dispatches, but does not pre-run
+    * preambles, so this indirection saves us from splitting the batch.
+    */
+   uint64_t vertex_output_buffer_ptr;
+
+   /* Mask of outputs flowing VS->TCS, VS->GS, or TES->GS . */
+   uint64_t vertex_outputs;
+
    /* Address of input assembly buffer if geom/tess is used, else 0 */
    uint64_t input_assembly;
 

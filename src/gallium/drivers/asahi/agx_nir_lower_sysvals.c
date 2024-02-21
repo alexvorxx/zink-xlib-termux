@@ -6,6 +6,7 @@
 #include "compiler/nir/nir_builder.h"
 #include "util/bitset.h"
 #include "util/u_dynarray.h"
+#include "agx_nir_lower_gs.h"
 #include "agx_state.h"
 #include "nir.h"
 #include "nir_builder_opcodes.h"
@@ -173,6 +174,13 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intr,
       return load_sysval_root(b, 1, 64, &u->input_assembly);
    case nir_intrinsic_load_geometry_param_buffer_agx:
       return load_sysval_root(b, 1, 64, &u->geometry_params);
+   case nir_intrinsic_load_vs_output_buffer_agx:
+      return nir_load_global_constant(
+         b, load_sysval_root(b, 1, 64, &u->vertex_output_buffer_ptr), 8, 1, 64);
+   case nir_intrinsic_load_vs_output_buffer_ptr_agx:
+      return load_sysval_root(b, 1, 64, &u->vertex_output_buffer_ptr);
+   case nir_intrinsic_load_vs_outputs_agx:
+      return load_sysval_root(b, 1, 64, &u->vertex_outputs);
    case nir_intrinsic_load_tess_param_buffer_agx:
       return load_sysval_root(b, 1, 64, &u->tess_params);
    case nir_intrinsic_load_fixed_point_size_agx:

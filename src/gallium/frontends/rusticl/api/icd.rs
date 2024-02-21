@@ -570,7 +570,7 @@ extern "C" fn cl_svm_alloc(
 }
 
 extern "C" fn cl_svm_free(context: cl_context, svm_pointer: *mut ::std::os::raw::c_void) {
-    svm_free(context, svm_pointer).ok();
+    svm_free(context, svm_pointer as usize).ok();
 }
 
 extern "C" fn cl_get_kernel_sub_group_info(

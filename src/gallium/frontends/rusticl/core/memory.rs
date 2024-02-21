@@ -654,7 +654,9 @@ impl MemBase {
     // implement this.
     pub fn is_svm(&self) -> bool {
         let mem = self.get_parent();
-        self.context.find_svm_alloc(mem.host_ptr.cast()).is_some()
+        self.context
+            .find_svm_alloc(mem.host_ptr as usize)
+            .is_some()
             && bit_check(mem.flags, CL_MEM_USE_HOST_PTR)
     }
 

@@ -2968,11 +2968,13 @@ radv_emit_hw_ngg(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
       es_type = shader->info.stage;
    }
 
-   radeon_set_sh_reg(cs, R_00B320_SPI_SHADER_PGM_LO_ES, va >> 8);
+   if (!shader->info.merged_shader_compiled_separately) {
+      radeon_set_sh_reg(cs, R_00B320_SPI_SHADER_PGM_LO_ES, va >> 8);
 
-   radeon_set_sh_reg_seq(cs, R_00B228_SPI_SHADER_PGM_RSRC1_GS, 2);
-   radeon_emit(cs, shader->config.rsrc1);
-   radeon_emit(cs, shader->config.rsrc2);
+      radeon_set_sh_reg_seq(cs, R_00B228_SPI_SHADER_PGM_RSRC1_GS, 2);
+      radeon_emit(cs, shader->config.rsrc1);
+      radeon_emit(cs, shader->config.rsrc2);
+   }
 
    const struct radv_vs_output_info *outinfo = &shader->info.outinfo;
    unsigned clip_dist_mask, cull_dist_mask, total_mask;
@@ -3160,9 +3162,17 @@ radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *
                radeon_set_sh_reg(cs, R_00B210_SPI_SHADER_PGM_LO_ES, vs->va >> 8);
             }
 
+            unsigned lds_size;
+            if (next_stage->info.is_ngg) {
+               lds_size = DIV_ROUND_UP(next_stage->info.ngg_info.lds_size,
+                                       device->physical_device->rad_info.lds_encode_granularity);
+            } else {
+               lds_size = next_stage->info.gs_ring_info.lds_size;
+            }
+
             radeon_set_sh_reg_seq(cs, R_00B228_SPI_SHADER_PGM_RSRC1_GS, 2);
             radeon_emit(cs, rsrc1);
-            radeon_emit(cs, rsrc2 | S_00B22C_LDS_SIZE(next_stage->info.gs_ring_info.lds_size));
+            radeon_emit(cs, rsrc2 | S_00B22C_LDS_SIZE(lds_size));
          }
       }
 
@@ -3208,9 +3218,16 @@ radv_emit_tess_eval_shader(const struct radv_device *device, struct radeon_cmdbu
 
       radeon_set_sh_reg(cs, R_00B210_SPI_SHADER_PGM_LO_ES, tes->va >> 8);
 
+      unsigned lds_size;
+      if (gs->info.is_ngg) {
+         lds_size = DIV_ROUND_UP(gs->info.ngg_info.lds_size, device->physical_device->rad_info.lds_encode_granularity);
+      } else {
+         lds_size = gs->info.gs_ring_info.lds_size;
+      }
+
       radeon_set_sh_reg_seq(cs, R_00B228_SPI_SHADER_PGM_RSRC1_GS, 2);
       radeon_emit(cs, rsrc1);
-      radeon_emit(cs, rsrc2 | S_00B22C_LDS_SIZE(gs->info.gs_ring_info.lds_size));
+      radeon_emit(cs, rsrc2 | S_00B22C_LDS_SIZE(lds_size));
 
       radv_emit_shader_pointer(device, cs, base_reg + loc->sgpr_idx * 4, gs->va, false);
       return;
@@ -3329,6 +3346,17 @@ radv_emit_geometry_shader(const struct radv_device *device, struct radeon_cmdbuf
       assert(vgt_esgs_ring_itemsize->sgpr_idx != -1 && vgt_esgs_ring_itemsize->num_sgprs == 1);
 
       radeon_set_sh_reg(cs, gs->info.user_data_0 + vgt_esgs_ring_itemsize->sgpr_idx * 4, es->info.esgs_itemsize / 4);
+
+      if (gs->info.is_ngg) {
+         const struct radv_userdata_info *ngg_lds_layout = radv_get_user_sgpr(gs, AC_UD_NGG_LDS_LAYOUT);
+
+         assert(ngg_lds_layout->sgpr_idx != -1 && ngg_lds_layout->num_sgprs == 1);
+         assert(!(gs->info.ngg_info.esgs_ring_size & 0xffff0000) && !(gs->info.ngg_info.scratch_lds_base & 0xffff0000));
+
+         radeon_set_sh_reg(cs, gs->info.user_data_0 + ngg_lds_layout->sgpr_idx * 4,
+                           SET_SGPR_FIELD(NGG_LDS_LAYOUT_GS_OUT_VERTEX_BASE, gs->info.ngg_info.esgs_ring_size) |
+                              SET_SGPR_FIELD(NGG_LDS_LAYOUT_SCRATCH_BASE, gs->info.ngg_info.scratch_lds_base));
+      }
    }
 }
 

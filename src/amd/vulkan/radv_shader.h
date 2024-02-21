@@ -1058,6 +1058,9 @@ void radv_nir_shader_info_init(gl_shader_stage stage, gl_shader_stage next_stage
 void radv_nir_shader_info_link(struct radv_device *device, const struct radv_graphics_state_key *gfx_state,
                                struct radv_shader_stage *stages);
 
+void gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_info *es_info,
+                        struct radv_shader_info *gs_info, struct gfx10_ngg_info *out);
+
 void radv_shader_combine_cfg_vs_tcs(const struct radv_shader *vs, const struct radv_shader *tcs, uint32_t *rsrc1_out,
                                     uint32_t *rsrc2_out);
 

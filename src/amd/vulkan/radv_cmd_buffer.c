@@ -3970,8 +3970,16 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
       if (vs_shader->info.merged_shader_compiled_separately) {
          if (vs_shader->info.next_stage == MESA_SHADER_GEOMETRY) {
             const struct radv_shader *gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
+            unsigned lds_size;
 
-            radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2 | S_00B22C_LDS_SIZE(gs->info.gs_ring_info.lds_size));
+            if (gs->info.is_ngg) {
+               lds_size = DIV_ROUND_UP(gs->info.ngg_info.lds_size,
+                                       cmd_buffer->device->physical_device->rad_info.lds_encode_granularity);
+            } else {
+               lds_size = gs->info.gs_ring_info.lds_size;
+            }
+
+            radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2 | S_00B22C_LDS_SIZE(lds_size));
          } else {
             radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2);
          }
@@ -9370,6 +9378,18 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
                                          : NULL;
    if (cmd_buffer->state.gs_copy_shader) {
       radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, cmd_buffer->state.gs_copy_shader->bo);
+   }
+
+   /* Determine NGG GS info. */
+   if (cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY] &&
+       cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY]->info.is_ngg &&
+       cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY]->info.merged_shader_compiled_separately) {
+      struct radv_shader *es = cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL]
+                                  ? cmd_buffer->state.shaders[MESA_SHADER_TESS_EVAL]
+                                  : cmd_buffer->state.shaders[MESA_SHADER_VERTEX];
+      struct radv_shader *gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
+
+      gfx10_get_ngg_info(device, &es->info, &gs->info, &gs->info.ngg_info);
    }
 
    /* Determine the rasterized primitive. */

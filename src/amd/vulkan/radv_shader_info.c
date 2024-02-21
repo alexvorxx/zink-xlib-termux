@@ -1395,7 +1395,7 @@ gfx10_get_ngg_scratch_lds_base(const struct radv_device *device, const struct ra
    return scratch_lds_base;
 }
 
-static void
+void
 gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_info *es_info, struct radv_shader_info *gs_info,
                    struct gfx10_ngg_info *out)
 {

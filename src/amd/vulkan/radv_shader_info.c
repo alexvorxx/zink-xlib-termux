@@ -1609,6 +1609,13 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_info *es
 
    out->scratch_lds_base = gfx10_get_ngg_scratch_lds_base(device, es_info, gs_info, out);
 
+   /* Get scratch LDS usage. */
+   const struct radv_shader_info *info = gs_info ? gs_info : es_info;
+   const unsigned scratch_lds_size =
+      ac_ngg_get_scratch_lds_size(info->stage, info->workgroup_size, info->wave_size,
+                                  device->physical_device->use_ngg_streamout, info->has_ngg_culling);
+   out->lds_size = out->scratch_lds_base + scratch_lds_size;
+
    unsigned workgroup_size =
       ac_compute_ngg_workgroup_size(max_esverts, max_gsprims * gs_num_invocations, max_out_vertices, prim_amp_factor);
    if (gs_info) {

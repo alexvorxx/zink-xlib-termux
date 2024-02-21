@@ -770,23 +770,6 @@ radv_consider_culling(const struct radv_physical_device *pdevice, struct nir_sha
    return true;
 }
 
-static void
-setup_ngg_lds_layout(struct radv_device *device, nir_shader *nir, struct radv_shader_info *info)
-{
-   if (info->stage == MESA_SHADER_MESH) {
-      /* not handled here */
-      return;
-   }
-
-   /* Get scratch LDS usage. */
-   unsigned scratch_lds_size =
-      ac_ngg_get_scratch_lds_size(info->stage, info->workgroup_size, info->wave_size,
-                                  device->physical_device->use_ngg_streamout, info->has_ngg_culling);
-
-   /* Get total LDS usage. */
-   nir->info.shared_size = info->ngg_info.scratch_lds_base + scratch_lds_size;
-}
-
 void
 radv_lower_ngg(struct radv_device *device, struct radv_shader_stage *ngg_stage,
                const struct radv_graphics_state_key *gfx_state)
@@ -830,7 +813,8 @@ radv_lower_ngg(struct radv_device *device, struct radv_shader_stage *ngg_stage,
       unreachable("NGG needs to be VS, TES or GS.");
    }
 
-   setup_ngg_lds_layout(device, nir, &ngg_stage->info);
+   if (nir->info.stage != MESA_SHADER_MESH)
+      nir->info.shared_size = info->ngg_info.lds_size;
 
    ac_nir_lower_ngg_options options = {0};
    options.family = device->physical_device->rad_info.family;

@@ -322,6 +322,7 @@ struct gfx10_ngg_info {
    uint32_t vgt_esgs_ring_itemsize;
    uint32_t esgs_ring_size;
    uint32_t scratch_lds_base;
+   uint32_t lds_size;
    bool max_vert_out_per_gs_instance;
 };
 

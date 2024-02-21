@@ -1365,6 +1365,36 @@ radv_get_pre_rast_input_topology(const struct radv_shader_info *es_info, const s
    return MESA_PRIM_TRIANGLES;
 }
 
+static unsigned
+gfx10_get_ngg_scratch_lds_base(const struct radv_device *device, const struct radv_shader_info *es_info,
+                               const struct radv_shader_info *gs_info, const struct gfx10_ngg_info *ngg_info)
+{
+   uint32_t scratch_lds_base;
+
+   if (gs_info) {
+      const unsigned esgs_ring_lds_bytes = ngg_info->esgs_ring_size;
+      const unsigned gs_total_out_vtx_bytes = ngg_info->ngg_emit_size * 4u;
+
+      scratch_lds_base = ALIGN(esgs_ring_lds_bytes + gs_total_out_vtx_bytes, 8u /* for the repacking code */);
+   } else {
+      const bool uses_instanceid = es_info->vs.needs_instance_id;
+      const bool uses_primitive_id = es_info->uses_prim_id;
+      const bool streamout_enabled = es_info->so.num_outputs && device->physical_device->use_ngg_streamout;
+      const uint32_t num_outputs =
+         es_info->stage == MESA_SHADER_VERTEX ? es_info->vs.num_outputs : es_info->tes.num_outputs;
+      unsigned pervertex_lds_bytes = ac_ngg_nogs_get_pervertex_lds_size(
+         es_info->stage, num_outputs, streamout_enabled, es_info->outinfo.export_prim_id, false, /* user edge flag */
+         es_info->has_ngg_culling, uses_instanceid, uses_primitive_id);
+
+      assert(ngg_info->hw_max_esverts <= 256);
+      unsigned total_es_lds_bytes = pervertex_lds_bytes * ngg_info->hw_max_esverts;
+
+      scratch_lds_base = ALIGN(total_es_lds_bytes, 8u);
+   }
+
+   return scratch_lds_base;
+}
+
 static void
 gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_info *es_info, struct radv_shader_info *gs_info,
                    struct gfx10_ngg_info *out)
@@ -1576,6 +1606,8 @@ gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_info *es
    }
 
    assert(out->hw_max_esverts >= min_esverts); /* HW limitation */
+
+   out->scratch_lds_base = gfx10_get_ngg_scratch_lds_base(device, es_info, gs_info, out);
 
    unsigned workgroup_size =
       ac_compute_ngg_workgroup_size(max_esverts, max_gsprims * gs_num_invocations, max_out_vertices, prim_amp_factor);

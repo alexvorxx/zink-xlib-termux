@@ -773,40 +773,18 @@ radv_consider_culling(const struct radv_physical_device *pdevice, struct nir_sha
 static void
 setup_ngg_lds_layout(struct radv_device *device, nir_shader *nir, struct radv_shader_info *info)
 {
-   unsigned scratch_lds_base = 0;
-   gl_shader_stage stage = info->stage;
-
-   if (stage == MESA_SHADER_VERTEX || stage == MESA_SHADER_TESS_EVAL) {
-      /* Get pervertex LDS usage. */
-      const bool uses_instanceid = info->vs.needs_instance_id;
-      const bool uses_primitive_id = info->uses_prim_id;
-      const bool streamout_enabled = info->so.num_outputs && device->physical_device->use_ngg_streamout;
-      const uint32_t num_outputs = stage == MESA_SHADER_VERTEX ? info->vs.num_outputs : info->tes.num_outputs;
-      unsigned pervertex_lds_bytes = ac_ngg_nogs_get_pervertex_lds_size(
-         stage, num_outputs, streamout_enabled, info->outinfo.export_prim_id, false, /* user edge flag */
-         info->has_ngg_culling, uses_instanceid, uses_primitive_id);
-
-      assert(info->ngg_info.hw_max_esverts <= 256);
-      unsigned total_es_lds_bytes = pervertex_lds_bytes * info->ngg_info.hw_max_esverts;
-      scratch_lds_base = ALIGN(total_es_lds_bytes, 8u);
-   } else if (stage == MESA_SHADER_GEOMETRY) {
-      unsigned esgs_ring_lds_bytes = info->ngg_info.esgs_ring_size;
-      unsigned gs_total_out_vtx_bytes = info->ngg_info.ngg_emit_size * 4u;
-      scratch_lds_base = ALIGN(esgs_ring_lds_bytes + gs_total_out_vtx_bytes, 8u /* for the repacking code */);
-   } else {
+   if (info->stage == MESA_SHADER_MESH) {
       /* not handled here */
       return;
    }
 
    /* Get scratch LDS usage. */
-   unsigned scratch_lds_size = ac_ngg_get_scratch_lds_size(
-      stage, info->workgroup_size, info->wave_size, device->physical_device->use_ngg_streamout, info->has_ngg_culling);
+   unsigned scratch_lds_size =
+      ac_ngg_get_scratch_lds_size(info->stage, info->workgroup_size, info->wave_size,
+                                  device->physical_device->use_ngg_streamout, info->has_ngg_culling);
 
    /* Get total LDS usage. */
-   nir->info.shared_size = scratch_lds_base + scratch_lds_size;
-
-   /* Record scratch base for abi lower of nir_load_lds_ngg_scratch_base_amd. */
-   info->ngg_info.scratch_lds_base = scratch_lds_base;
+   nir->info.shared_size = info->ngg_info.scratch_lds_base + scratch_lds_size;
 }
 
 void

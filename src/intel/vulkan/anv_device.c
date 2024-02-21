@@ -2607,17 +2607,34 @@ void anv_GetPhysicalDeviceProperties2(
 }
 
 static const VkQueueFamilyProperties
-anv_queue_family_properties_template = {
-   .timestampValidBits = 36, /* XXX: Real value here */
-   .minImageTransferGranularity = { 1, 1, 1 },
-};
+get_anv_queue_family_properties_template(const struct anv_physical_device *device)
+{
+
+   /*
+    * For Xe2+:
+    * Bspec 60411: Timestamp register can hold 64-bit value
+    *
+    * Platforms < Xe2:
+    * Bpsec 46111: Timestamp register can hold only 36-bit
+    *              value
+    */
+   const VkQueueFamilyProperties anv_queue_family_properties_template =
+   {
+      .timestampValidBits = device->info.ver >= 20 ? 64 : 36,
+      .minImageTransferGranularity = { 1, 1, 1 },
+   };
+
+   return anv_queue_family_properties_template;
+}
 
 static VkQueueFamilyProperties
 anv_device_physical_get_queue_properties(const struct anv_physical_device *device,
                                          uint32_t family_index)
 {
    const struct anv_queue_family *family = &device->queue.families[family_index];
-   VkQueueFamilyProperties properties = anv_queue_family_properties_template;
+   VkQueueFamilyProperties properties =
+      get_anv_queue_family_properties_template(device);
+
    properties.queueFlags = family->queueFlags;
    properties.queueCount = family->queueCount;
    /* TODO: enable protected content on video queue */

@@ -2,7 +2,7 @@
 [[deqp]]
 deqp = "/deqp/external/vulkancts/modules/vulkan/deqp-vk"
 caselists = ["/deqp/mustpass/vk-master.txt"]
-fraction = 2
+fraction = 6
 renderer_check = "TGL GT2"
 
 # Rerun query tests with shader query optimizations (14443 tests)

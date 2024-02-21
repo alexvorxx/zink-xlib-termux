@@ -388,6 +388,9 @@ midgard_preprocess_nir(nir_shader *nir, unsigned gpu_id)
    if (quirks & MIDGARD_BROKEN_LOD)
       NIR_PASS_V(nir, midgard_nir_lod_errata);
 
+   /* lower MSAA image operations to 3D load before coordinate lowering */
+   NIR_PASS_V(nir, pan_nir_lower_image_ms);
+
    /* Midgard image ops coordinates are 16-bit instead of 32-bit */
    NIR_PASS_V(nir, midgard_nir_lower_image_bitsize);
 
@@ -1292,8 +1295,7 @@ emit_image_op(compiler_context *ctx, nir_intrinsic_instr *instr)
    bool is_array = nir_intrinsic_image_array(instr);
    bool is_store = instr->intrinsic == nir_intrinsic_image_store;
 
-   /* TODO: MSAA */
-   assert(dim != GLSL_SAMPLER_DIM_MS && "MSAA'd images not supported");
+   assert(dim != GLSL_SAMPLER_DIM_MS && "MSAA'd image not lowered");
 
    unsigned coord_reg = nir_src_index(ctx, &instr->src[1]);
    emit_explicit_constant(ctx, coord_reg);

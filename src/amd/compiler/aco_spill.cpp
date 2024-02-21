@@ -870,6 +870,10 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
       Block::edge_vec& preds = pair.first.is_linear() ? block->linear_preds : block->logical_preds;
 
       for (unsigned pred_idx : preds) {
+         /* variable is dead at predecessor, it must be from a phi: this works because of CSSA form */
+         if (!ctx.next_use_distances_end[pred_idx].count(pair.first))
+            continue;
+
          /* variable is already spilled at predecessor */
          auto spilled = ctx.spills_exit[pred_idx].find(pair.first);
          if (spilled != ctx.spills_exit[pred_idx].end()) {
@@ -878,9 +882,18 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
             continue;
          }
 
-         /* variable is dead at predecessor, it must be from a phi: this works because of CSSA form */
-         if (!ctx.next_use_distances_end[pred_idx].count(pair.first))
-            continue;
+         /* If this variable is spilled through the entire loop, no need to re-spill.
+          * It can be reloaded from the same spill-slot it got at the loop-preheader.
+          * No need to add interferences since every spilled variable in the loop already
+          * interferes with the spilled loop-variables. Make sure that the spill_ids match.
+          */
+         const uint32_t loop_nest_depth = std::min(ctx.program->blocks[pred_idx].loop_nest_depth,
+                                                   ctx.program->blocks[block_idx].loop_nest_depth);
+         if (loop_nest_depth) {
+            auto spill = ctx.loop[loop_nest_depth - 1].spills.find(pair.first);
+            if (spill != ctx.loop[loop_nest_depth - 1].spills.end() && spill->second == pair.second)
+               continue;
+         }
 
          /* add interferences between spilled variable and predecessors exit spills */
          for (std::pair<Temp, uint32_t> exit_spill : ctx.spills_exit[pred_idx])

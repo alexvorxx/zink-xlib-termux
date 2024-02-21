@@ -867,6 +867,8 @@ zink_kopper_acquire_readback(struct zink_context *ctx, struct zink_resource *res
    uint32_t last_dt_idx = res->obj->last_dt_idx;
    VkResult ret = VK_SUCCESS;
 
+   if (++cdt->readback_counter >= ZINK_READBACK_THRESHOLD)
+      kopper_ensure_readback(screen, res);
    /* if this hasn't been presented or if it has data, use this as the readback target */
    if (res->obj->last_dt_idx == UINT32_MAX ||
        (res->obj->dt_idx != UINT32_MAX && cdt->swapchain->images[res->obj->dt_idx].age)) {
@@ -885,8 +887,6 @@ zink_kopper_acquire_readback(struct zink_context *ctx, struct zink_resource *res
          return false;
       }
    }
-   if (++cdt->readback_counter >= ZINK_READBACK_THRESHOLD)
-      kopper_ensure_readback(screen, res);
    while (res->obj->dt_idx != last_dt_idx) {
       cdt->age_locked = true;
       if (res->obj->dt_idx != UINT32_MAX && !zink_kopper_present_readback(ctx, res))

@@ -1157,25 +1157,45 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
          while ((new_demand - spilled_registers).exceeds(ctx.target_pressure)) {
             unsigned distance = 0;
             Temp to_spill;
-            bool do_rematerialize = false;
+            unsigned do_rematerialize = 0;
+            unsigned avoid_respill = 0;
             RegType type = RegType::sgpr;
             if (new_demand.vgpr - spilled_registers.vgpr > ctx.target_pressure.vgpr)
                type = RegType::vgpr;
 
             for (std::pair<Temp, uint32_t> pair : ctx.local_next_use_distance[idx]) {
-               if (pair.first.type() != type)
+               if (pair.first.type() != type || current_spills.count(pair.first))
                   continue;
-               bool can_rematerialize = ctx.remat.count(pair.first);
-               if (((pair.second > distance && can_rematerialize == do_rematerialize) ||
-                    (can_rematerialize && !do_rematerialize && pair.second > idx)) &&
-                   !current_spills.count(pair.first)) {
+
+               unsigned can_rematerialize = ctx.remat.count(pair.first);
+               unsigned loop_variable =
+                  block->loop_nest_depth && ctx.loop.back().spills.count(pair.first);
+               if (avoid_respill > loop_variable || do_rematerialize > can_rematerialize)
+                  continue;
+
+               if (can_rematerialize > do_rematerialize || loop_variable > avoid_respill ||
+                   pair.second > distance) {
+                  /* Don't spill operands */
+                  if (pair.second <= idx)
+                     continue;
+
                   to_spill = pair.first;
                   distance = pair.second;
                   do_rematerialize = can_rematerialize;
+                  avoid_respill = loop_variable;
                }
             }
-
             assert(distance != 0 && distance > idx);
+
+            if (avoid_respill) {
+               /* This variable is spilled at the loop-header of the current loop.
+                * Re-use the spill-slot in order to avoid an extra store.
+                */
+               current_spills[to_spill] = ctx.loop.back().spills[to_spill];
+               spilled_registers += to_spill;
+               continue;
+            }
+
             uint32_t spill_id = ctx.add_to_spills(to_spill, current_spills);
             /* add interferences with reloads */
             for (std::pair<const Temp, std::pair<Temp, uint32_t>>& pair : reloads)

@@ -44,6 +44,8 @@ aubinator = executable(
 aubinator_error_decode = executable(
   'aubinator_error_decode',
   files('aubinator_error_decode.c',
+        'aubinator_error_decode_lib.c',
+        'aubinator_error_decode_lib.h',
         'aubinator_error_decode_xe.c',
         'aubinator_error_decode_xe.h'),
   dependencies : [idep_mesautil, dep_zlib, dep_thread, idep_intel_dev,

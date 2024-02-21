@@ -7,4 +7,6 @@
 
 #include <stdio.h>
 
-void read_xe_data_file(FILE *file);
+#include "decoder/intel_decoder.h"
+
+void read_xe_data_file(FILE *file, enum intel_batch_decode_flags batch_flags);

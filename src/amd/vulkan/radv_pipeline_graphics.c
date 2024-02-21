@@ -3696,8 +3696,11 @@ radv_pipeline_init_vertex_input_state(const struct radv_device *device, struct r
          const struct ac_vtx_format_info *vtx_info = &vtx_info_table[format];
 
          pipeline->vs_input_state.formats[i] = format;
-         uint8_t align_req_minus_1 = vtx_info->chan_byte_size >= 4 ? 3 : (vtx_info->element_size - 1);
-         pipeline->vs_input_state.format_align_req_minus_1[i] = align_req_minus_1;
+         uint8_t format_align_req_minus_1 = vtx_info->chan_byte_size >= 4 ? 3 : (vtx_info->element_size - 1);
+         pipeline->vs_input_state.format_align_req_minus_1[i] = format_align_req_minus_1;
+         uint8_t component_align_req_minus_1 =
+            MIN2(vtx_info->chan_byte_size ? vtx_info->chan_byte_size : vtx_info->element_size, 4) - 1;
+         pipeline->vs_input_state.component_align_req_minus_1[i] = component_align_req_minus_1;
          pipeline->vs_input_state.format_sizes[i] = vtx_info->element_size;
          pipeline->vs_input_state.alpha_adjust_lo |= (vtx_info->alpha_adjust & 0x1) << i;
          pipeline->vs_input_state.alpha_adjust_hi |= (vtx_info->alpha_adjust >> 1) << i;

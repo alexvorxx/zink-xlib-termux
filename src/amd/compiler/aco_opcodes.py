@@ -25,6 +25,8 @@
 # NOTE: this must be kept in sync with aco_op_info
 
 import sys
+import itertools
+import collections
 from enum import Enum, IntEnum, auto
 
 class InstrClass(Enum):
@@ -982,73 +984,59 @@ VOPC_CLASS = {
 for (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name, defs, ops, cls) in default_class(VOPC_CLASS, InstrClass.Valu32):
     insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, cls, True, False, definitions = defs, operands = ops)
 
+VopcDataType = collections.namedtuple('VopcDataTypeInfo',
+                                      ['kind', 'size', 'gfx6', 'gfx8', 'gfx10', 'gfx11'])
+
+#                  kind, size, gfx6, gfx8, gfx10,gfx11
+F16 = VopcDataType('f',  16,      0, 0x20, 0xc8, 0x00)
+F32 = VopcDataType('f',  32,   0x00, 0x40, 0x00, 0x10)
+F64 = VopcDataType('f',  64,   0x20, 0x60, 0x20, 0x20)
+I16 = VopcDataType('i',  16,      0, 0xa0, 0x88, 0x30)
+I32 = VopcDataType('i',  32,   0x80, 0xc0, 0x80, 0x40)
+I64 = VopcDataType('i',  64,   0xa0, 0xe0, 0xa0, 0x50)
+U16 = VopcDataType('u',  16,      0, 0xa8, 0xa8, 0x38)
+U32 = VopcDataType('u',  32,   0xc0, 0xc8, 0xc0, 0x48)
+U64 = VopcDataType('u',  64,   0xe0, 0xe8, 0xe0, 0x58)
+dtypes = [F16, F32, F64, I16, I32, I64, U16, U32, U64]
+
 COMPF = ["f", "lt", "eq", "le", "gt", "lg", "ge", "o", "u", "nge", "nlg", "ngt", "nle", "neq", "nlt", "tru"]
-
-for i in range(8):
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0x20+i, 0x20+i, 0xc8+i, 0x00+i, "v_cmp_"+COMPF[i]+"_f16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, True, False, definitions = dst(VCC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0x30+i, 0x30+i, 0xd8+i, 0x80+i, "v_cmpx_"+COMPF[i]+"_f16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, True, False, definitions = dst(EXEC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0x28+i, 0x28+i, 0xe8+i, 0x08+i, "v_cmp_"+COMPF[i+8]+"_f16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, True, False, definitions = dst(VCC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0x38+i, 0x38+i, 0xf8+i, 0x88+i, "v_cmpx_"+COMPF[i+8]+"_f16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, True, False, definitions = dst(EXEC), operands = src(1, 1))
-
-for i in range(16):
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x00+i, 0x00+i, 0x40+i, 0x40+i, 0x00+i, 0x10+i, "v_cmp_"+COMPF[i]+"_f32")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, True, False, definitions = dst(VCC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x10+i, 0x10+i, 0x50+i, 0x50+i, 0x10+i, 0x90+i, "v_cmpx_"+COMPF[i]+"_f32")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, True, False, definitions = dst(EXEC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x20+i, 0x20+i, 0x60+i, 0x60+i, 0x20+i, 0x20+i, "v_cmp_"+COMPF[i]+"_f64")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.ValuDouble, True, False, definitions = dst(VCC), operands = src(2, 2))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x30+i, 0x30+i, 0x70+i, 0x70+i, 0x30+i, 0xa0+i, "v_cmpx_"+COMPF[i]+"_f64")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.ValuDouble, True, False, definitions = dst(EXEC), operands = src(2, 2))
-   # GFX_6_7
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x40+i, 0x40+i, -1, -1, -1, -1, "v_cmps_"+COMPF[i]+"_f32")
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x50+i, 0x50+i, -1, -1, -1, -1, "v_cmpsx_"+COMPF[i]+"_f32")
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x60+i, 0x60+i, -1, -1, -1, -1, "v_cmps_"+COMPF[i]+"_f64")
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x70+i, 0x70+i, -1, -1, -1, -1, "v_cmpsx_"+COMPF[i]+"_f64")
-
 COMPI = ["f", "lt", "eq", "le", "gt", "lg", "ge", "tru"]
+for comp, dtype, cmps, cmpx in itertools.product(range(16), dtypes, range(1), range(2)):
+   if (comp >= 8 or cmps) and dtype.kind != 'f':
+      continue
 
-# GFX_8_9
-for i in [0,7]: # only 0 and 7
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0xa0+i, 0xa0+i, -1, -1, "v_cmp_"+COMPI[i]+"_i16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(VCC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0xb0+i, 0xb0+i, -1, -1, "v_cmpx_"+COMPI[i]+"_i16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(EXEC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0xa8+i, 0xa8+i, -1, -1, "v_cmp_"+COMPI[i]+"_u16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(VCC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0xb8+i, 0xb8+i, -1, -1, "v_cmpx_"+COMPI[i]+"_u16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(EXEC), operands = src(1, 1))
+   name = COMPF[comp] if dtype.kind == 'f' else COMPI[comp]
+   name = 'v_cmp{}{}_{}_{}{}'.format('s' if cmps else '', 'x' if cmpx else '', name, dtype.kind, dtype.size)
 
-for i in range(1, 7): # [1..6]
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0xa0+i, 0xa0+i, 0x88+i, 0x30+i, "v_cmp_"+COMPI[i]+"_i16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(VCC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0xb0+i, 0xb0+i, 0x98+i, 0xb0+i, "v_cmpx_"+COMPI[i]+"_i16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(EXEC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0xa8+i, 0xa8+i, 0xa8+i, 0x38+i, "v_cmp_"+COMPI[i]+"_u16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(VCC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (-1, -1, 0xb8+i, 0xb8+i, 0xb8+i, 0xb8+i, "v_cmpx_"+COMPI[i]+"_u16")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(EXEC), operands = src(1, 1))
+   gfx6 = comp | (cmpx<<4) | (cmps<<6) | dtype.gfx6
+   gfx8 = comp | (cmpx<<4) | dtype.gfx8
+   if dtype == F16:
+      gfx10 = (comp & 0x7) | ((comp & 0x8) << 2) | (cmpx<<4) | dtype.gfx10
+   else:
+      gfx10 = comp | (cmpx<<4) | dtype.gfx10
+   gfx11 = comp | (cmpx<<7) | dtype.gfx11
 
-for i in range(8):
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x80+i, 0x80+i, 0xc0+i, 0xc0+i, 0x80+i, 0x40+i, "v_cmp_"+COMPI[i]+"_i32")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(VCC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0x90+i, 0x90+i, 0xd0+i, 0xd0+i, 0x90+i, 0xc0+i, "v_cmpx_"+COMPI[i]+"_i32")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(EXEC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0xa0+i, 0xa0+i, 0xe0+i, 0xe0+i, 0xa0+i, 0x50+i, "v_cmp_"+COMPI[i]+"_i64")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu64, definitions = dst(VCC), operands = src(2, 2))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0xb0+i, 0xb0+i, 0xf0+i, 0xf0+i, 0xb0+i, 0xd0+i, "v_cmpx_"+COMPI[i]+"_i64")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu64, definitions = dst(EXEC), operands = src(2, 2))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0xc0+i, 0xc0+i, 0xc8+i, 0xc8+i, 0xc0+i, 0x48+i, "v_cmp_"+COMPI[i]+"_u32")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(VCC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0xd0+i, 0xd0+i, 0xd8+i, 0xd8+i, 0xd0+i, 0xc8+i, "v_cmpx_"+COMPI[i]+"_u32")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu32, definitions = dst(EXEC), operands = src(1, 1))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0xe0+i, 0xe0+i, 0xe8+i, 0xe8+i, 0xe0+i, 0x58+i, "v_cmp_"+COMPI[i]+"_u64")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu64, definitions = dst(VCC), operands = src(2, 2))
-   (gfx6, gfx7, gfx8, gfx9, gfx10, gfx11, name) = (0xf0+i, 0xf0+i, 0xf8+i, 0xf8+i, 0xf0+i, 0xd8+i, "v_cmpx_"+COMPI[i]+"_u64")
-   insn(name, gfx7, gfx9, gfx10, gfx11, Format.VOPC, InstrClass.Valu64, definitions = dst(EXEC), operands = src(2, 2))
+   if cmps:
+      gfx8 = -1
+      gfx10 = -1
+      gfx11 = -1
+
+   if dtype.size == 16:
+      gfx6 = -1
+
+   if dtype in [I16, U16] and comp in [0, 7]:
+      gfx10 = -1
+      gfx11 = -1
+
+   cls = InstrClass.Valu32
+   if dtype == F64:
+      cls = InstrClass.ValuDouble
+   elif dtype in [I64, U64]:
+      cls = InstrClass.Valu64
+
+   insn(name, gfx6, gfx8, gfx10, gfx11, Format.VOPC, cls, dtype.kind == 'f', False,
+        definitions = dst(EXEC if cmpx else VCC),
+        operands = src(2, 2) if dtype.size == 64 else src(1, 1))
 
 
 # VOPP instructions: packed 16bit instructions - 2 or 3 inputs and 1 output

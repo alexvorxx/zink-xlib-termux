@@ -2249,7 +2249,7 @@ impl<'a> ShaderFromNir<'a> {
                         for c in 0..4 {
                             let reg = self.fs_out_regs[i * 4 + c];
                             if reg.is_none() {
-                                srcs.push(0.into());
+                                srcs.push(b.undef().into());
                             } else {
                                 srcs.push(reg.into());
                             }
@@ -2262,7 +2262,7 @@ impl<'a> ShaderFromNir<'a> {
                     if info.writes_sample_mask {
                         srcs.push(self.fs_out_regs[mask_idx].into());
                     } else {
-                        srcs.push(0.into());
+                        srcs.push(b.undef().into());
                     }
                     if info.writes_depth {
                         // Saturate depth writes.

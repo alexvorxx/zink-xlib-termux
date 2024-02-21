@@ -652,6 +652,12 @@ pub trait SSABuilder: Builder {
         }
     }
 
+    fn undef(&mut self) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        self.push_op(OpUndef { dst: dst.into() });
+        dst
+    }
+
     fn copy(&mut self, src: Src) -> SSARef {
         let dst = if src.is_predicate() {
             self.alloc_ssa(RegFile::Pred, 1)

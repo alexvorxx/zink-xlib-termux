@@ -41,10 +41,10 @@ struct zink_batch_usage;
 
 struct kopper_swapchain_image {
    bool init;
-   bool acquired;
    bool dt_has_data;
    int age;
    VkImage image;
+   struct zink_resource *acquired;
    struct pipe_resource *readback;
    VkSemaphore acquire;
    VkImageLayout layout;

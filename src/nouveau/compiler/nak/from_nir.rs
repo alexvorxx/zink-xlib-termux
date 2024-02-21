@@ -2232,9 +2232,8 @@ impl<'a> ShaderFromNir<'a> {
                 };
 
                 for i in 0..32 {
-                    // Assume that colors have to come a vec4 at a time
                     if !self.fs_out_regs[i].is_none() {
-                        info.writes_color |= 0xf << (i & !3)
+                        info.writes_color |= 1 << i;
                     }
                 }
                 let mask_idx = (NAK_FS_OUT_SAMPLE_MASK / 4) as usize;
@@ -2243,12 +2242,17 @@ impl<'a> ShaderFromNir<'a> {
                 info.writes_depth = !self.fs_out_regs[depth_idx].is_none();
 
                 let mut srcs = Vec::new();
-                for i in 0..32 {
-                    if info.writes_color & (1 << i) != 0 {
-                        if self.fs_out_regs[i].is_none() {
-                            srcs.push(0.into());
-                        } else {
-                            srcs.push(self.fs_out_regs[i].into());
+                for i in 0..8 {
+                    // Even though the mask is per-component, the actual output
+                    // space is per-output vec4s.
+                    if info.writes_color & (0xf << (i * 4)) != 0 {
+                        for c in 0..4 {
+                            let reg = self.fs_out_regs[i * 4 + c];
+                            if reg.is_none() {
+                                srcs.push(0.into());
+                            } else {
+                                srcs.push(reg.into());
+                            }
                         }
                     }
                 }

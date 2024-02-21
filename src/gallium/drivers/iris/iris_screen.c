@@ -743,7 +743,6 @@ iris_init_identifier_bo(struct iris_screen *screen)
 
    assert(iris_bo_is_real(screen->workaround_bo));
 
-   screen->workaround_bo->real.capture = true;
    screen->workaround_address = (struct iris_address) {
       .bo = screen->workaround_bo,
       .offset = ALIGN(
@@ -814,7 +813,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
 
    screen->workaround_bo =
       iris_bo_alloc(screen->bufmgr, "workaround", 4096, 4096,
-                    IRIS_MEMZONE_OTHER, BO_ALLOC_NO_SUBALLOC);
+                    IRIS_MEMZONE_OTHER, BO_ALLOC_NO_SUBALLOC | BO_ALLOC_CAPTURE);
    if (!screen->workaround_bo)
       return NULL;
 

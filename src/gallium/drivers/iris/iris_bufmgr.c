@@ -1008,6 +1008,9 @@ alloc_bo_from_cache(struct iris_bufmgr *bufmgr,
       if (match_zone && memzone != iris_memzone_for_address(cur->address))
          continue;
 
+      if (cur->real.capture != !!(flags & BO_ALLOC_CAPTURE))
+         continue;
+
       /* If the last BO in the cache is busy, there are no idle BOs.  Bail,
        * either falling back to a non-matching memzone, or if that fails,
        * allocating a fresh buffer.
@@ -1126,6 +1129,7 @@ alloc_fresh_bo(struct iris_bufmgr *bufmgr, uint64_t bo_size, unsigned flags)
    bo->size = bo_size;
    bo->idle = true;
    bo->zeroed = true;
+   bo->real.capture = (flags & BO_ALLOC_CAPTURE) != 0;
 
    return bo;
 }
@@ -1173,6 +1177,12 @@ iris_bo_alloc(struct iris_bufmgr *bufmgr,
 
    if (memzone != IRIS_MEMZONE_OTHER || (flags & BO_ALLOC_COHERENT))
       flags |= BO_ALLOC_NO_SUBALLOC;
+
+   /* By default, capture all driver-internal buffers like shader kernels,
+    * surface states, dynamic states, border colors, and so on.
+    */
+   if (memzone < IRIS_MEMZONE_OTHER || INTEL_DEBUG(DEBUG_CAPTURE_ALL))
+      flags |= BO_ALLOC_CAPTURE;
 
    bo = alloc_bo_from_slabs(bufmgr, name, size, alignment, flags);
 
@@ -1226,12 +1236,6 @@ iris_bo_alloc(struct iris_bufmgr *bufmgr,
    bo->real.protected = flags & BO_ALLOC_PROTECTED;
    bo->index = -1;
    bo->real.prime_fd = -1;
-
-   /* By default, capture all driver-internal buffers like shader kernels,
-    * surface states, dynamic states, border colors, and so on.
-    */
-   if (memzone < IRIS_MEMZONE_OTHER || INTEL_DEBUG(DEBUG_CAPTURE_ALL))
-      bo->real.capture = true;
 
    assert(bo->real.map == NULL || bo->real.mmap_mode == mmap_mode);
    bo->real.mmap_mode = mmap_mode;
@@ -2162,7 +2166,7 @@ intel_aux_map_buffer_alloc(void *driver_ctx, uint32_t size)
    unsigned int page_size = getpagesize();
    size = MAX2(ALIGN(size, page_size), page_size);
 
-   struct iris_bo *bo = alloc_fresh_bo(bufmgr, size, 0);
+   struct iris_bo *bo = alloc_fresh_bo(bufmgr, size, BO_ALLOC_CAPTURE);
    if (!bo) {
       free(buf);
       return NULL;
@@ -2182,7 +2186,6 @@ intel_aux_map_buffer_alloc(void *driver_ctx, uint32_t size)
    bo->name = "aux-map";
    p_atomic_set(&bo->refcount, 1);
    bo->index = -1;
-   bo->real.capture = true;
    bo->real.mmap_mode = heap_to_mmap_mode(bufmgr, bo->real.heap);
    bo->real.prime_fd = -1;
 

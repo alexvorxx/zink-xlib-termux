@@ -114,6 +114,7 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
       .flags = DRM_XE_SYNC_FLAG_SIGNAL,
    };
    uint64_t range, obj_offset = 0;
+   uint32_t flags = 0;
    int ret, fd;
 
    fd = iris_bufmgr_get_fd(bufmgr);
@@ -134,6 +135,9 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
    if (op != DRM_XE_VM_BIND_OP_UNMAP)
       pat_index = iris_heap_to_pat_entry(devinfo, bo->real.heap)->index;
 
+   if (bo->real.capture)
+      flags |= DRM_XE_VM_BIND_FLAG_DUMPABLE;
+
    struct drm_xe_vm_bind args = {
       .vm_id = iris_bufmgr_get_global_vm_id(bufmgr),
       .num_syncs = 1,
@@ -145,6 +149,7 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
       .bind.addr = intel_48b_address(bo->address),
       .bind.op = op,
       .bind.pat_index = pat_index,
+      .bind.flags = flags,
    };
 
    xe_sync.timeline_value = intel_bind_timeline_bind_begin(bind_timeline);

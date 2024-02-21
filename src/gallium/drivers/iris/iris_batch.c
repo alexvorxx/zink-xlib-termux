@@ -426,8 +426,8 @@ create_batch(struct iris_batch *batch)
    /* TODO: We probably could suballocate batches... */
    batch->bo = iris_bo_alloc(bufmgr, "command buffer",
                              BATCH_SZ + BATCH_RESERVED, 8,
-                             IRIS_MEMZONE_OTHER, BO_ALLOC_NO_SUBALLOC);
-   iris_get_backing_bo(batch->bo)->real.capture = true;
+                             IRIS_MEMZONE_OTHER,
+                             BO_ALLOC_NO_SUBALLOC | BO_ALLOC_CAPTURE);
    batch->map = iris_bo_map(NULL, batch->bo, MAP_READ | MAP_WRITE);
    batch->map_next = batch->map;
 

@@ -326,7 +326,10 @@ struct iris_bo {
          /** Boolean of whether this buffer is protected (HW encryption) */
          bool protected;
 
-         /** Boolean of whether this buffer needs to be captured in error dump */
+         /** Boolean of whether this buffer needs to be captured in error dump.
+          * Xe KMD requires this to be set before vm bind while i915 needs
+          * this set before batch_submit().
+          */
          bool capture;
       } real;
       struct {
@@ -345,6 +348,7 @@ struct iris_bo {
 #define BO_ALLOC_LMEM        (1<<5)
 #define BO_ALLOC_PROTECTED   (1<<6)
 #define BO_ALLOC_SHARED      (1<<7)
+#define BO_ALLOC_CAPTURE     (1<<8)
 
 /**
  * Allocate a buffer object.

@@ -22,7 +22,7 @@ static_assert!(CL_RUNNING == 1);
 static_assert!(CL_SUBMITTED == 2);
 static_assert!(CL_QUEUED == 3);
 
-pub type EventSig = Box<dyn FnOnce(&Arc<Queue>, &QueueContext) -> CLResult<()>>;
+pub type EventSig = Box<dyn FnOnce(&Arc<Queue>, &QueueContext) -> CLResult<()> + Send + Sync>;
 
 pub enum EventTimes {
     Queued = CL_PROFILING_COMMAND_QUEUED as isize,
@@ -53,10 +53,6 @@ pub struct Event {
 }
 
 impl_cl_type_trait!(cl_event, Event, CL_INVALID_EVENT);
-
-// TODO shouldn't be needed, but... uff C pointers are annoying
-unsafe impl Send for Event {}
-unsafe impl Sync for Event {}
 
 impl Event {
     pub fn new(

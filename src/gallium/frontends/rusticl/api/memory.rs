@@ -234,7 +234,7 @@ impl CLInfo<cl_mem_info> for cl_mem {
             CL_MEM_FLAGS => cl_prop::<cl_mem_flags>(mem.flags),
             // TODO debugging feature
             CL_MEM_MAP_COUNT => cl_prop::<cl_uint>(0),
-            CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(mem.host_ptr),
+            CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(mem.host_ptr()),
             CL_MEM_OFFSET => cl_prop::<usize>(if mem.is_buffer() {
                 Buffer::ref_from_raw(*self)?.offset
             } else {

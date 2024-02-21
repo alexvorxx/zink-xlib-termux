@@ -168,7 +168,9 @@ pub struct MemBase {
     pub mem_type: cl_mem_object_type,
     pub flags: cl_mem_flags,
     pub size: usize,
-    pub host_ptr: *mut c_void,
+    // it's a bit hacky, but storing the pointer as `usize` gives us `Send` and `Sync`. The
+    // application is required to ensure no data races exist on the memory anyway.
+    pub host_ptr: usize,
     pub props: Vec<cl_mem_properties>,
     pub cbs: Mutex<Vec<MemCB>>,
     pub gl_obj: Option<GLObject>,
@@ -372,9 +374,9 @@ impl MemBase {
         )?;
 
         let host_ptr = if bit_check(flags, CL_MEM_USE_HOST_PTR) {
-            host_ptr
+            host_ptr as usize
         } else {
-            ptr::null_mut()
+            0
         };
 
         Ok(Arc::new(Buffer {
@@ -402,10 +404,10 @@ impl MemBase {
         offset: usize,
         size: usize,
     ) -> Arc<Buffer> {
-        let host_ptr = if parent.host_ptr.is_null() {
-            ptr::null_mut()
+        let host_ptr = if parent.host_ptr().is_null() {
+            0
         } else {
-            unsafe { parent.host_ptr.add(offset) }
+            unsafe { parent.host_ptr().add(offset) as usize }
         };
 
         Arc::new(Buffer {
@@ -485,9 +487,9 @@ impl MemBase {
         };
 
         let host_ptr = if bit_check(flags, CL_MEM_USE_HOST_PTR) {
-            host_ptr
+            host_ptr as usize
         } else {
-            ptr::null_mut()
+            0
         };
 
         let pipe_format = image_format.to_pipe_format().unwrap();
@@ -600,7 +602,7 @@ impl MemBase {
             mem_type: mem_type,
             flags: flags,
             size: gl_mem_props.size(),
-            host_ptr: ptr::null_mut(),
+            host_ptr: 0,
             props: Vec::new(),
             gl_obj: Some(GLObject {
                 gl_object_target: gl_export_manager.export_in.target,
@@ -654,9 +656,7 @@ impl MemBase {
     // implement this.
     pub fn is_svm(&self) -> bool {
         let mem = self.get_parent();
-        self.context
-            .find_svm_alloc(mem.host_ptr as usize)
-            .is_some()
+        self.context.find_svm_alloc(mem.host_ptr).is_some()
             && bit_check(mem.flags, CL_MEM_USE_HOST_PTR)
     }
 
@@ -679,6 +679,10 @@ impl MemBase {
     fn has_user_shadow_buffer(&self, d: &Device) -> CLResult<bool> {
         let r = self.get_res_of_dev(d)?;
         Ok(!r.is_user && bit_check(self.flags, CL_MEM_USE_HOST_PTR))
+    }
+
+    pub fn host_ptr(&self) -> *mut c_void {
+        self.host_ptr as *mut c_void
     }
 
     pub fn is_mapped_ptr(&self, ptr: *mut c_void) -> bool {
@@ -849,7 +853,7 @@ impl Buffer {
 
     pub fn map(&self, dev: &'static Device, offset: usize) -> CLResult<*mut c_void> {
         let ptr = if self.has_user_shadow_buffer(dev)? {
-            self.host_ptr
+            self.host_ptr()
         } else {
             let mut lock = self.maps.lock().unwrap();
 
@@ -925,7 +929,7 @@ impl Buffer {
         }
 
         if self.has_user_shadow_buffer(q.device)? {
-            self.read(q, ctx, 0, self.host_ptr, self.size)
+            self.read(q, ctx, 0, self.host_ptr(), self.size)
         } else {
             if let Some(shadow) = lock.tx.get(&q.device).and_then(|tx| tx.shadow.as_ref()) {
                 let res = self.get_res_of_dev(q.device)?;
@@ -1013,7 +1017,7 @@ impl Buffer {
 
                 ctx.resource_copy_region(shadow, res, &[offset, 0, 0], &bx);
             } else if self.has_user_shadow_buffer(q.device)? {
-                self.write(q, ctx, 0, self.host_ptr, self.size)?;
+                self.write(q, ctx, 0, self.host_ptr(), self.size)?;
             }
         }
 
@@ -1294,7 +1298,7 @@ impl Image {
         let ptr = if self.has_user_shadow_buffer(dev)? {
             *row_pitch = self.image_desc.image_row_pitch;
             *slice_pitch = self.image_desc.image_slice_pitch;
-            self.host_ptr
+            self.host_ptr()
         } else if let Some(Mem::Buffer(buffer)) = &self.parent {
             *row_pitch = self.image_desc.image_row_pitch;
             *slice_pitch = self.image_desc.image_slice_pitch;
@@ -1407,7 +1411,7 @@ impl Image {
 
         if self.has_user_shadow_buffer(q.device)? {
             self.read(
-                self.host_ptr,
+                self.host_ptr(),
                 q,
                 ctx,
                 &self.image_desc.size(),
@@ -1492,7 +1496,7 @@ impl Image {
                 ctx.resource_copy_region(shadow, res, &[0, 0, 0], &bx);
             } else if self.has_user_shadow_buffer(q.device)? {
                 self.write(
-                    self.host_ptr,
+                    self.host_ptr(),
                     q,
                     ctx,
                     &self.image_desc.size(),

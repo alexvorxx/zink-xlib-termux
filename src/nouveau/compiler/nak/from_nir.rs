@@ -2042,6 +2042,39 @@ impl<'a> ShaderFromNir<'a> {
                 });
                 self.set_dst(&intrin.def, dst);
             }
+            nir_intrinsic_bindless_image_sparse_load => {
+                let handle = self.get_src(&srcs[0]);
+                let dim = self.get_image_dim(intrin);
+                let coord = self.get_image_coord(intrin, dim);
+                // let sample = self.get_src(&srcs[2]);
+
+                let comps = intrin.num_components;
+                assert!(intrin.def.bit_size() == 32);
+                assert!(comps == 5);
+
+                let dst = b.alloc_ssa(RegFile::GPR, comps - 1);
+                let fault = b.alloc_ssa(RegFile::Pred, 1);
+
+                b.push_op(OpSuLd {
+                    dst: dst.into(),
+                    fault: fault.into(),
+                    image_dim: dim,
+                    mem_order: MemOrder::Strong(MemScope::System),
+                    mem_eviction_priority: self
+                        .get_eviction_priority(intrin.access()),
+                    mask: (1 << (comps - 1)) - 1,
+                    handle: handle,
+                    coord: coord,
+                });
+
+                let mut final_dst = Vec::new();
+                for i in 0..usize::from(comps) - 1 {
+                    final_dst.push(dst[i]);
+                }
+                final_dst.push(b.sel(fault.into(), 0.into(), 1.into())[0]);
+
+                self.set_ssa(&intrin.def, final_dst);
+            }
             nir_intrinsic_bindless_image_store => {
                 let handle = self.get_src(&srcs[0]);
                 let dim = self.get_image_dim(intrin);

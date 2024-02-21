@@ -8205,16 +8205,19 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    inst->has_packed_lod_ai_src = pack_lod_and_array_index;
 
    const unsigned dest_size = nir_tex_instr_dest_size(instr);
+   unsigned read_size = dest_size;
    if (instr->op != nir_texop_tg4 && instr->op != nir_texop_query_levels) {
       unsigned write_mask = nir_def_components_read(&instr->def);
       assert(write_mask != 0); /* dead code should have been eliminated */
       if (instr->is_sparse) {
-         inst->size_written = (util_last_bit(write_mask) - 1) *
-                              inst->dst.component_size(inst->exec_size) +
-                              (reg_unit(devinfo) * REG_SIZE);
+         read_size = util_last_bit(write_mask) - 1;
+         inst->size_written =
+            read_size * inst->dst.component_size(inst->exec_size) +
+            (reg_unit(devinfo) * REG_SIZE);
       } else {
-         inst->size_written = util_last_bit(write_mask) *
-                              inst->dst.component_size(inst->exec_size);
+         read_size = util_last_bit(write_mask);
+         inst->size_written =
+            read_size * inst->dst.component_size(inst->exec_size);
       }
    } else {
       inst->size_written = 4 * inst->dst.component_size(inst->exec_size) +
@@ -8241,7 +8244,7 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    }
 
    fs_reg nir_dest[5];
-   for (unsigned i = 0; i < dest_size; i++)
+   for (unsigned i = 0; i < read_size; i++)
       nir_dest[i] = offset(dst, bld, i);
 
    if (instr->op == nir_texop_query_levels) {

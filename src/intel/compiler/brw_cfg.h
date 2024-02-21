@@ -28,10 +28,13 @@
 #ifndef BRW_CFG_H
 #define BRW_CFG_H
 
-#include "brw_ir.h"
+struct bblock_t;
+struct backend_instruction;
+
 #ifdef __cplusplus
+
+#include "brw_ir.h"
 #include "brw_ir_analysis.h"
-#endif
 
 struct bblock_t;
 
@@ -54,14 +57,12 @@ enum bblock_link_kind {
 };
 
 struct bblock_link {
-#ifdef __cplusplus
    DECLARE_RALLOC_CXX_OPERATORS(bblock_link)
 
    bblock_link(bblock_t *block, enum bblock_link_kind kind)
       : block(block), kind(kind)
    {
    }
-#endif
 
    struct exec_node link;
    struct bblock_t *block;
@@ -77,7 +78,6 @@ struct fs_visitor;
 struct cfg_t;
 
 struct bblock_t {
-#ifdef __cplusplus
    DECLARE_RALLOC_CXX_OPERATORS(bblock_t)
 
    explicit bblock_t(cfg_t *cfg);
@@ -124,7 +124,6 @@ public:
    {
       unlink_list(&children);
    }
-#endif
 
    struct exec_node link;
    struct cfg_t *cfg;
@@ -247,7 +246,6 @@ bblock_last_non_control_flow_inst(struct bblock_t *block)
    return inst;
 }
 
-#ifdef __cplusplus
 inline backend_instruction *
 bblock_t::start()
 {
@@ -319,10 +317,8 @@ bblock_t::last_non_control_flow_inst()
 {
    return bblock_last_non_control_flow_inst(this);
 }
-#endif
 
 struct cfg_t {
-#ifdef __cplusplus
    DECLARE_RALLOC_CXX_OPERATORS(cfg_t)
 
    cfg_t(const fs_visitor *s, exec_list *instructions);
@@ -353,7 +349,6 @@ struct cfg_t {
     */
    inline void adjust_block_ips();
 
-#endif
    const struct fs_visitor *s;
    void *mem_ctx;
 
@@ -387,7 +382,6 @@ cfg_last_block_const(const struct cfg_t *cfg)
    return (const struct bblock_t *)exec_list_get_tail_const(&cfg->block_list);
 }
 
-#ifdef __cplusplus
 inline bblock_t *
 cfg_t::first_block()
 {
@@ -411,7 +405,6 @@ cfg_t::last_block() const
 {
    return cfg_last_block_const(this);
 }
-#endif
 
 /* Note that this is implemented with a double for loop -- break will
  * break from the inner loop only!
@@ -465,7 +458,6 @@ cfg_t::last_block() const
         !__scan_inst->is_head_sentinel();                      \
         __scan_inst = (__type *)__scan_inst->prev)
 
-#ifdef __cplusplus
 inline void
 cfg_t::adjust_block_ips()
 {
@@ -527,6 +519,7 @@ namespace brw {
       bblock_t **parents;
    };
 }
+
 #endif
 
 #endif /* BRW_CFG_H */

@@ -464,6 +464,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
       add_ud_arg(args, 1, AC_ARG_INT, &args->ngg_provoking_vtx, AC_UD_NGG_PROVOKING_VTX);
    }
    add_ud_arg(args, 1, AC_ARG_INT, &args->vgt_esgs_ring_itemsize, AC_UD_VGT_ESGS_RING_ITEMSIZE);
+   add_ud_arg(args, 1, AC_ARG_INT, &args->ngg_lds_layout, AC_UD_NGG_LDS_LAYOUT);
    add_ud_arg(args, 1, AC_ARG_INT, &args->next_stage_pc, AC_UD_NEXT_STAGE_PC);
 
    /* VGPRs (GS) */
@@ -497,6 +498,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    if (info->is_ngg)
       ac_add_preserved(&args->ac, &args->ngg_provoking_vtx);
    ac_add_preserved(&args->ac, &args->vgt_esgs_ring_itemsize);
+   ac_add_preserved(&args->ac, &args->ngg_lds_layout);
 
    /* Preserved VGPRs */
    ac_add_preserved(&args->ac, &args->ac.gs_vtx_offset[0]);

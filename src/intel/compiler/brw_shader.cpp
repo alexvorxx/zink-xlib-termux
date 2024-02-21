@@ -183,19 +183,7 @@ brw_abs_immediate(enum brw_reg_type type, struct brw_reg *reg)
 }
 
 bool
-backend_reg::equals(const backend_reg &r) const
-{
-   return brw_regs_equal(this, &r) && offset == r.offset;
-}
-
-bool
-backend_reg::negative_equals(const backend_reg &r) const
-{
-   return brw_regs_negative_equal(this, &r) && offset == r.offset;
-}
-
-bool
-backend_reg::is_zero() const
+fs_reg::is_zero() const
 {
    if (file != IMM)
       return false;
@@ -226,7 +214,7 @@ backend_reg::is_zero() const
 }
 
 bool
-backend_reg::is_one() const
+fs_reg::is_one() const
 {
    if (file != IMM)
       return false;
@@ -257,7 +245,7 @@ backend_reg::is_one() const
 }
 
 bool
-backend_reg::is_negative_one() const
+fs_reg::is_negative_one() const
 {
    if (file != IMM)
       return false;
@@ -285,14 +273,14 @@ backend_reg::is_negative_one() const
 }
 
 bool
-backend_reg::is_null() const
+fs_reg::is_null() const
 {
    return file == ARF && nr == BRW_ARF_NULL;
 }
 
 
 bool
-backend_reg::is_accumulator() const
+fs_reg::is_accumulator() const
 {
    return file == ARF && nr == BRW_ARF_ACCUMULATOR;
 }

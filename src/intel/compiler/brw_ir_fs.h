@@ -28,7 +28,7 @@
 #include "brw_ir.h"
 #include "brw_ir_allocator.h"
 
-class fs_reg : public backend_reg {
+class fs_reg : private brw_reg {
 public:
    DECLARE_RALLOC_CXX_OPERATORS(fs_reg)
 
@@ -39,15 +39,60 @@ public:
    fs_reg(enum brw_reg_file file, unsigned nr);
    fs_reg(enum brw_reg_file file, unsigned nr, enum brw_reg_type type);
 
+   const brw_reg &as_brw_reg() const
+   {
+      assert(file == ARF || file == FIXED_GRF || file == IMM);
+      assert(offset == 0);
+      return static_cast<const brw_reg &>(*this);
+   }
+
+   brw_reg &as_brw_reg()
+   {
+      assert(file == ARF || file == FIXED_GRF || file == IMM);
+      assert(offset == 0);
+      return static_cast<brw_reg &>(*this);
+   }
+
    bool equals(const fs_reg &r) const;
    bool negative_equals(const fs_reg &r) const;
    bool is_contiguous() const;
+
+   bool is_zero() const;
+   bool is_one() const;
+   bool is_negative_one() const;
+   bool is_null() const;
+   bool is_accumulator() const;
 
    /**
     * Return the size in bytes of a single logical component of the
     * register assuming the given execution width.
     */
    unsigned component_size(unsigned width) const;
+
+   using brw_reg::type;
+   using brw_reg::file;
+   using brw_reg::negate;
+   using brw_reg::abs;
+   using brw_reg::address_mode;
+   using brw_reg::subnr;
+   using brw_reg::nr;
+
+   using brw_reg::swizzle;
+   using brw_reg::writemask;
+   using brw_reg::indirect_offset;
+   using brw_reg::vstride;
+   using brw_reg::width;
+   using brw_reg::hstride;
+
+   using brw_reg::df;
+   using brw_reg::f;
+   using brw_reg::d;
+   using brw_reg::ud;
+   using brw_reg::d64;
+   using brw_reg::u64;
+
+   /** Offset from the start of the (virtual) register in bytes. */
+   uint16_t offset;
 
    /** Register region horizontal stride */
    uint8_t stride;

@@ -519,7 +519,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
    const auto& next_use_distances = ctx.next_use_distances_start[block_idx];
 
    /* loop header block */
-   if (block->loop_nest_depth > ctx.program->blocks[block_idx - 1].loop_nest_depth) {
+   if (block->kind & block_kind_loop_header) {
       assert(block->linear_preds[0] == block_idx - 1);
       assert(block->logical_preds[0] == block_idx - 1);
 
@@ -527,11 +527,8 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       RegisterDemand reg_pressure = get_live_in_demand(ctx, block_idx);
       RegisterDemand loop_demand = reg_pressure;
       unsigned i = block_idx;
-      while (ctx.program->blocks[i].loop_nest_depth >= block->loop_nest_depth) {
-         assert(ctx.program->blocks.size() > i);
+      while (ctx.program->blocks[i].loop_nest_depth >= block->loop_nest_depth)
          loop_demand.update(ctx.program->blocks[i++].register_demand);
-      }
-      unsigned loop_end = i;
 
       for (auto spilled : ctx.spills_exit[block_idx - 1]) {
          auto it = next_use_distances.find(spilled.first);
@@ -557,15 +554,17 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
             break;
 
          unsigned distance = 0;
+         unsigned remat = 0;
          Temp to_spill;
          for (const std::pair<const Temp, std::pair<uint32_t, uint32_t>>& pair :
               next_use_distances) {
-            if (pair.first.type() == type &&
-                (pair.second.first >= loop_end ||
-                 (ctx.remat.count(pair.first) && type == RegType::sgpr)) &&
-                pair.second.second > distance && !ctx.spills_entry[block_idx].count(pair.first)) {
+            unsigned can_remat = ctx.remat.count(pair.first);
+            if (pair.first.type() == type && !ctx.spills_entry[block_idx].count(pair.first) &&
+                ctx.next_use_distances_end[block_idx - 1].count(pair.first) &&
+                (can_remat > remat || (can_remat == remat && pair.second.second > distance))) {
                to_spill = pair.first;
                distance = pair.second.second;
+               remat = can_remat;
             }
          }
 
@@ -577,12 +576,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
             continue;
          }
 
-         if (!ctx.spills_exit[block_idx - 1].count(to_spill)) {
-            ctx.add_to_spills(to_spill, ctx.spills_entry[block_idx]);
-         } else {
-            ctx.spills_entry[block_idx][to_spill] = ctx.spills_exit[block_idx - 1][to_spill];
-         }
-
+         ctx.add_to_spills(to_spill, ctx.spills_entry[block_idx]);
          spilled_registers += to_spill;
          loop_demand -= to_spill;
       }

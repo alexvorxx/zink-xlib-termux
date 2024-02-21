@@ -877,7 +877,7 @@ zink_kopper_acquire_readback(struct zink_context *ctx, struct zink_resource *res
    VkResult ret = VK_SUCCESS;
 
    if (++cdt->readback_counter >= ZINK_READBACK_THRESHOLD) {
-      if (kopper_ensure_readback(screen, res))
+      if (kopper_ensure_readback(screen, res) && cswap->images[res->obj->dt_idx].readback_needs_update)
          zink_kopper_readback_update(ctx, res);
    }
    /* if this hasn't been presented or if it has data, use this as the readback target */

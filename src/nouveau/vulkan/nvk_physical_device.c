@@ -263,7 +263,7 @@ nvk_get_device_features(const struct nv_device_info *info,
       .shaderInt64 = true,
       .shaderInt16 = true,
       /* TODO: shaderResourceResidency */
-      .shaderResourceMinLod = true,
+      .shaderResourceMinLod = info->cls_eng3d >= VOLTA_A,
       .sparseBinding = true,
       .sparseResidencyBuffer = info->cls_eng3d >= MAXWELL_A,
       /* TODO: sparseResidency* */

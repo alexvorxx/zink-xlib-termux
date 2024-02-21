@@ -330,10 +330,7 @@ public:
    /** ralloc context for temporary data used during compile */
    void *mem_ctx;
 
-   /**
-    * List of either fs_inst or vec4_instruction (inheriting from
-    * backend_instruction)
-    */
+   /** List of fs_inst. */
    exec_list instructions;
 
    cfg_t *cfg;

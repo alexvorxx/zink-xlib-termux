@@ -448,17 +448,75 @@ fs_inst::can_do_source_mods(const struct intel_device_info *devinfo) const
          return false;
    }
 
-   if (!backend_instruction::can_do_source_mods())
+   switch (opcode) {
+   case BRW_OPCODE_ADDC:
+   case BRW_OPCODE_BFE:
+   case BRW_OPCODE_BFI1:
+   case BRW_OPCODE_BFI2:
+   case BRW_OPCODE_BFREV:
+   case BRW_OPCODE_CBIT:
+   case BRW_OPCODE_FBH:
+   case BRW_OPCODE_FBL:
+   case BRW_OPCODE_ROL:
+   case BRW_OPCODE_ROR:
+   case BRW_OPCODE_SUBB:
+   case BRW_OPCODE_DP4A:
+   case BRW_OPCODE_DPAS:
+   case SHADER_OPCODE_BROADCAST:
+   case SHADER_OPCODE_CLUSTER_BROADCAST:
+   case SHADER_OPCODE_MOV_INDIRECT:
+   case SHADER_OPCODE_SHUFFLE:
+   case SHADER_OPCODE_INT_QUOTIENT:
+   case SHADER_OPCODE_INT_REMAINDER:
       return false;
-
-   return true;
+   default:
+      return true;
+   }
 }
 
 bool
-fs_inst::can_do_cmod()
+fs_inst::can_do_cmod() const
 {
-   if (!backend_instruction::can_do_cmod())
+   switch (opcode) {
+   case BRW_OPCODE_ADD:
+   case BRW_OPCODE_ADD3:
+   case BRW_OPCODE_ADDC:
+   case BRW_OPCODE_AND:
+   case BRW_OPCODE_ASR:
+   case BRW_OPCODE_AVG:
+   case BRW_OPCODE_CMP:
+   case BRW_OPCODE_CMPN:
+   case BRW_OPCODE_DP2:
+   case BRW_OPCODE_DP3:
+   case BRW_OPCODE_DP4:
+   case BRW_OPCODE_DPH:
+   case BRW_OPCODE_FRC:
+   case BRW_OPCODE_LINE:
+   case BRW_OPCODE_LRP:
+   case BRW_OPCODE_LZD:
+   case BRW_OPCODE_MAC:
+   case BRW_OPCODE_MACH:
+   case BRW_OPCODE_MAD:
+   case BRW_OPCODE_MOV:
+   case BRW_OPCODE_MUL:
+   case BRW_OPCODE_NOT:
+   case BRW_OPCODE_OR:
+   case BRW_OPCODE_PLN:
+   case BRW_OPCODE_RNDD:
+   case BRW_OPCODE_RNDE:
+   case BRW_OPCODE_RNDU:
+   case BRW_OPCODE_RNDZ:
+   case BRW_OPCODE_SAD2:
+   case BRW_OPCODE_SADA2:
+   case BRW_OPCODE_SHL:
+   case BRW_OPCODE_SHR:
+   case BRW_OPCODE_SUBB:
+   case BRW_OPCODE_XOR:
+   case FS_OPCODE_LINTERP:
+      break;
+   default:
       return false;
+   }
 
    /* The accumulator result appears to get used for the conditional modifier
     * generation.  When negating a UD value, there is a 33rd bit generated for

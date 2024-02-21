@@ -298,7 +298,7 @@ backend_reg::is_accumulator() const
 }
 
 bool
-backend_instruction::is_commutative() const
+fs_inst::is_commutative() const
 {
    switch (opcode) {
    case BRW_OPCODE_AND:
@@ -322,13 +322,13 @@ backend_instruction::is_commutative() const
 }
 
 bool
-backend_instruction::is_3src(const struct brw_compiler *compiler) const
+fs_inst::is_3src(const struct brw_compiler *compiler) const
 {
    return ::is_3src(&compiler->isa, opcode);
 }
 
 bool
-backend_instruction::is_math() const
+fs_inst::is_math() const
 {
    return (opcode == SHADER_OPCODE_RCP ||
            opcode == SHADER_OPCODE_RSQ ||
@@ -343,7 +343,7 @@ backend_instruction::is_math() const
 }
 
 bool
-backend_instruction::is_control_flow_begin() const
+fs_inst::is_control_flow_begin() const
 {
    switch (opcode) {
    case BRW_OPCODE_DO:
@@ -356,7 +356,7 @@ backend_instruction::is_control_flow_begin() const
 }
 
 bool
-backend_instruction::is_control_flow_end() const
+fs_inst::is_control_flow_end() const
 {
    switch (opcode) {
    case BRW_OPCODE_ELSE:
@@ -369,7 +369,7 @@ backend_instruction::is_control_flow_end() const
 }
 
 bool
-backend_instruction::is_control_flow() const
+fs_inst::is_control_flow() const
 {
    switch (opcode) {
    case BRW_OPCODE_DO:
@@ -386,7 +386,7 @@ backend_instruction::is_control_flow() const
 }
 
 bool
-backend_instruction::uses_indirect_addressing() const
+fs_inst::uses_indirect_addressing() const
 {
    switch (opcode) {
    case SHADER_OPCODE_BROADCAST:
@@ -399,36 +399,7 @@ backend_instruction::uses_indirect_addressing() const
 }
 
 bool
-backend_instruction::can_do_source_mods() const
-{
-   switch (opcode) {
-   case BRW_OPCODE_ADDC:
-   case BRW_OPCODE_BFE:
-   case BRW_OPCODE_BFI1:
-   case BRW_OPCODE_BFI2:
-   case BRW_OPCODE_BFREV:
-   case BRW_OPCODE_CBIT:
-   case BRW_OPCODE_FBH:
-   case BRW_OPCODE_FBL:
-   case BRW_OPCODE_ROL:
-   case BRW_OPCODE_ROR:
-   case BRW_OPCODE_SUBB:
-   case BRW_OPCODE_DP4A:
-   case BRW_OPCODE_DPAS:
-   case SHADER_OPCODE_BROADCAST:
-   case SHADER_OPCODE_CLUSTER_BROADCAST:
-   case SHADER_OPCODE_MOV_INDIRECT:
-   case SHADER_OPCODE_SHUFFLE:
-   case SHADER_OPCODE_INT_QUOTIENT:
-   case SHADER_OPCODE_INT_REMAINDER:
-      return false;
-   default:
-      return true;
-   }
-}
-
-bool
-backend_instruction::can_do_saturate() const
+fs_inst::can_do_saturate() const
 {
    switch (opcode) {
    case BRW_OPCODE_ADD:
@@ -473,52 +444,7 @@ backend_instruction::can_do_saturate() const
 }
 
 bool
-backend_instruction::can_do_cmod() const
-{
-   switch (opcode) {
-   case BRW_OPCODE_ADD:
-   case BRW_OPCODE_ADD3:
-   case BRW_OPCODE_ADDC:
-   case BRW_OPCODE_AND:
-   case BRW_OPCODE_ASR:
-   case BRW_OPCODE_AVG:
-   case BRW_OPCODE_CMP:
-   case BRW_OPCODE_CMPN:
-   case BRW_OPCODE_DP2:
-   case BRW_OPCODE_DP3:
-   case BRW_OPCODE_DP4:
-   case BRW_OPCODE_DPH:
-   case BRW_OPCODE_FRC:
-   case BRW_OPCODE_LINE:
-   case BRW_OPCODE_LRP:
-   case BRW_OPCODE_LZD:
-   case BRW_OPCODE_MAC:
-   case BRW_OPCODE_MACH:
-   case BRW_OPCODE_MAD:
-   case BRW_OPCODE_MOV:
-   case BRW_OPCODE_MUL:
-   case BRW_OPCODE_NOT:
-   case BRW_OPCODE_OR:
-   case BRW_OPCODE_PLN:
-   case BRW_OPCODE_RNDD:
-   case BRW_OPCODE_RNDE:
-   case BRW_OPCODE_RNDU:
-   case BRW_OPCODE_RNDZ:
-   case BRW_OPCODE_SAD2:
-   case BRW_OPCODE_SADA2:
-   case BRW_OPCODE_SHL:
-   case BRW_OPCODE_SHR:
-   case BRW_OPCODE_SUBB:
-   case BRW_OPCODE_XOR:
-   case FS_OPCODE_LINTERP:
-      return true;
-   default:
-      return false;
-   }
-}
-
-bool
-backend_instruction::reads_accumulator_implicitly() const
+fs_inst::reads_accumulator_implicitly() const
 {
    switch (opcode) {
    case BRW_OPCODE_MAC:
@@ -531,7 +457,7 @@ backend_instruction::reads_accumulator_implicitly() const
 }
 
 bool
-backend_instruction::writes_accumulator_implicitly(const struct intel_device_info *devinfo) const
+fs_inst::writes_accumulator_implicitly(const struct intel_device_info *devinfo) const
 {
    return writes_accumulator ||
           (opcode == FS_OPCODE_LINTERP && !devinfo->has_pln) ||
@@ -539,7 +465,7 @@ backend_instruction::writes_accumulator_implicitly(const struct intel_device_inf
 }
 
 bool
-backend_instruction::has_side_effects() const
+fs_inst::has_side_effects() const
 {
    switch (opcode) {
    case SHADER_OPCODE_SEND:
@@ -575,7 +501,7 @@ backend_instruction::has_side_effects() const
 }
 
 bool
-backend_instruction::is_volatile() const
+fs_inst::is_volatile() const
 {
    switch (opcode) {
    case SHADER_OPCODE_SEND:
@@ -622,7 +548,7 @@ adjust_later_block_ips(bblock_t *start_block, int ip_adjustment)
 }
 
 void
-backend_instruction::insert_after(bblock_t *block, backend_instruction *inst)
+fs_inst::insert_after(bblock_t *block, fs_inst *inst)
 {
    assert(this != inst);
    assert(block->end_ip_delta == 0);
@@ -638,7 +564,7 @@ backend_instruction::insert_after(bblock_t *block, backend_instruction *inst)
 }
 
 void
-backend_instruction::insert_before(bblock_t *block, backend_instruction *inst)
+fs_inst::insert_before(bblock_t *block, fs_inst *inst)
 {
    assert(this != inst);
    assert(block->end_ip_delta == 0);
@@ -654,7 +580,7 @@ backend_instruction::insert_before(bblock_t *block, backend_instruction *inst)
 }
 
 void
-backend_instruction::remove(bblock_t *block, bool defer_later_block_ip_updates)
+fs_inst::remove(bblock_t *block, bool defer_later_block_ip_updates)
 {
    assert(inst_is_in_block(block, this) || !"Instruction not in block");
 

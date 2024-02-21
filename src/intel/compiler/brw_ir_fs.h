@@ -355,9 +355,42 @@ public:
    unsigned components_read(unsigned i) const;
    unsigned size_read(int arg) const;
    bool can_do_source_mods(const struct intel_device_info *devinfo) const;
-   bool can_do_cmod();
+   bool can_do_cmod() const;
    bool can_change_types() const;
    bool has_source_and_destination_hazard() const;
+
+   bool is_3src(const struct brw_compiler *compiler) const;
+   bool is_math() const;
+   bool is_control_flow_begin() const;
+   bool is_control_flow_end() const;
+   bool is_control_flow() const;
+   bool is_commutative() const;
+   bool can_do_saturate() const;
+   bool reads_accumulator_implicitly() const;
+   bool writes_accumulator_implicitly(const struct intel_device_info *devinfo) const;
+
+   /**
+    * Instructions that use indirect addressing have additional register
+    * regioning restrictions.
+    */
+   bool uses_indirect_addressing() const;
+
+   void remove(bblock_t *block, bool defer_later_block_ip_updates = false);
+   void insert_after(bblock_t *block, fs_inst *inst);
+   void insert_before(bblock_t *block, fs_inst *inst);
+
+   /**
+    * True if the instruction has side effects other than writing to
+    * its destination registers.  You are expected not to reorder or
+    * optimize these out unless you know what you are doing.
+    */
+   bool has_side_effects() const;
+
+   /**
+    * True if the instruction might be affected by side effects of other
+    * instructions.
+    */
+   bool is_volatile() const;
 
    /**
     * Return whether \p arg is a control source of a virtual instruction which

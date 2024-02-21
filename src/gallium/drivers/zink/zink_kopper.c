@@ -842,7 +842,7 @@ zink_kopper_update_last_written(struct zink_resource *res)
    res->obj->last_dt_idx = res->obj->dt_idx;
 }
 
-static void
+static bool
 kopper_ensure_readback(struct zink_screen *screen, struct zink_resource *res)
 {
    struct kopper_displaytarget *cdt = res->obj->dt;
@@ -850,11 +850,12 @@ kopper_ensure_readback(struct zink_screen *screen, struct zink_resource *res)
 
    for (unsigned i = 0; i < cswap->num_images; i++) {
       if (cswap->images[i].readback)
-         return;
+         return false;
       struct pipe_resource templ = res->base.b;
       templ.bind = PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW;
       cswap->images[i].readback = screen->base.resource_create(&screen->base, &templ);
    }
+   return true;
 }
 
 bool
@@ -867,8 +868,10 @@ zink_kopper_acquire_readback(struct zink_context *ctx, struct zink_resource *res
    uint32_t last_dt_idx = res->obj->last_dt_idx;
    VkResult ret = VK_SUCCESS;
 
-   if (++cdt->readback_counter >= ZINK_READBACK_THRESHOLD)
-      kopper_ensure_readback(screen, res);
+   if (++cdt->readback_counter >= ZINK_READBACK_THRESHOLD) {
+      if (kopper_ensure_readback(screen, res))
+         zink_kopper_readback_update(ctx, res);
+   }
    /* if this hasn't been presented or if it has data, use this as the readback target */
    if (res->obj->last_dt_idx == UINT32_MAX ||
        (res->obj->dt_idx != UINT32_MAX && cdt->swapchain->images[res->obj->dt_idx].age)) {

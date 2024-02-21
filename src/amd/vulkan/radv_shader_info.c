@@ -1653,12 +1653,12 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
          struct radv_shader_stage *gs_stage = consumer && consumer->stage == MESA_SHADER_GEOMETRY ? consumer : NULL;
          struct gfx10_ngg_info *out = gs_stage ? &gs_stage->info.ngg_info : &producer->info.ngg_info;
 
-         gfx10_get_ngg_info(device, &producer->info, gs_stage ? &gs_stage->info : NULL, out);
-
          /* Determine other NGG settings like culling for VS or TES without GS. */
          if (!gs_stage) {
             radv_determine_ngg_settings(device, producer, consumer, gfx_state);
          }
+
+         gfx10_get_ngg_info(device, &producer->info, gs_stage ? &gs_stage->info : NULL, out);
       } else if (consumer && consumer->stage == MESA_SHADER_GEOMETRY) {
          struct radv_shader_info *gs_info = &consumer->info;
          struct radv_shader_info *es_info = &producer->info;

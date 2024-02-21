@@ -305,12 +305,6 @@ assign_regs_by_copying(struct ra_ctx *rctx, unsigned npot_count, unsigned align,
 {
    assert(cls == RA_GPR);
 
-   /* XXX: This needs some special handling but so far it has been prohibitively
-    * difficult to hit the case
-    */
-   if (I->op == AGX_OPCODE_PHI)
-      unreachable("TODO");
-
    /* Expand the destination to the next power-of-two size. This simplifies
     * splitting and is accounted for by the demand calculation, so is legal.
     */
@@ -469,6 +463,8 @@ insert_copies_for_clobbered_killed(struct ra_ctx *rctx, unsigned reg,
    if (nr_vars == 0)
       return;
 
+   assert(I->op != AGX_OPCODE_PHI && "kill bit not set for phis");
+
    /* Sort by descending alignment so they are packed with natural alignment */
    util_qsort_r(vars, nr_vars, sizeof(vars[0]), sort_by_size, rctx->sizes);
 
@@ -512,6 +508,49 @@ insert_copies_for_clobbered_killed(struct ra_ctx *rctx, unsigned reg,
    assert(base <= reg + count && "no overflow");
 }
 
+/*
+ * When shuffling registers to assign a phi destination, we can't simply insert
+ * the required moves before the phi, since phis happen in parallel along the
+ * edge. Instead, there are two cases:
+ *
+ * 1. The source of the copy is the destination of a phi. Since we are
+ *    emitting shuffle code, there will be no more reads of that destination
+ *    with the old register. Since the phis all happen in parallel and writes
+ *    precede reads, there was no previous read of that destination either. So
+ *    the old destination is dead. Just replace the phi's destination with the
+ *    moves's destination instead.
+ *
+ * 2. Otherwise, the source of the copy is a live-in value, since it's
+ *    live when assigning phis at the start of a block but it is not a phi.
+ *    If we move in parallel with the phi, the phi will still read the correct
+ *    old register regardless and the destinations can't alias. So, insert a phi
+ *    to do the copy in parallel along the incoming edges.
+ */
+static void
+agx_emit_move_before_phi(agx_context *ctx, agx_block *block,
+                         struct agx_copy *copy)
+{
+   assert(!copy->dest_mem && !copy->src.memory && "no memory shuffles");
+
+   /* Look for the phi writing the destination */
+   agx_foreach_phi_in_block(block, phi) {
+      if (agx_is_equiv(phi->dest[0], copy->src) && !phi->dest[0].memory) {
+         phi->dest[0].value = copy->dest;
+         return;
+      }
+   }
+
+   /* There wasn't such a phi, so it's live-in. Insert a phi instead. */
+   agx_builder b = agx_init_builder(ctx, agx_before_block(block));
+
+   agx_instr *phi = agx_phi_to(&b, agx_register_like(copy->dest, copy->src),
+                               agx_num_predecessors(block));
+
+   agx_foreach_src(phi, s) {
+      phi->src[s] = copy->src;
+   }
+}
+
 static unsigned
 find_regs(struct ra_ctx *rctx, agx_instr *I, unsigned dest_idx, unsigned count,
           unsigned align)
@@ -549,10 +588,19 @@ find_regs(struct ra_ctx *rctx, agx_instr *I, unsigned dest_idx, unsigned count,
       insert_copies_for_clobbered_killed(rctx, reg, count, I, &copies,
                                          clobbered);
 
-      /* Insert the necessary copies */
-      agx_builder b = agx_init_builder(rctx->shader, agx_before_instr(I));
-      agx_emit_parallel_copies(
-         &b, copies.data, util_dynarray_num_elements(&copies, struct agx_copy));
+      /* Insert the necessary copies. Phis need special handling since we can't
+       * insert instructions before the phi.
+       */
+      if (I->op == AGX_OPCODE_PHI) {
+         util_dynarray_foreach(&copies, struct agx_copy, copy) {
+            agx_emit_move_before_phi(rctx->shader, rctx->block, copy);
+         }
+      } else {
+         agx_builder b = agx_init_builder(rctx->shader, agx_before_instr(I));
+         agx_emit_parallel_copies(
+            &b, copies.data,
+            util_dynarray_num_elements(&copies, struct agx_copy));
+      }
 
       /* assign_regs asserts this is cleared, so clear to be reassigned */
       BITSET_CLEAR_RANGE(rctx->used_regs[cls], reg, reg + count - 1);

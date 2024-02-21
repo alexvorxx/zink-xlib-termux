@@ -842,6 +842,14 @@ zink_kopper_update_last_written(struct zink_resource *res)
    res->obj->last_dt_idx = res->obj->dt_idx;
 }
 
+void
+zink_kopper_set_readback_needs_update(struct zink_resource *res)
+{
+   struct kopper_displaytarget *cdt = res->obj->dt;
+   struct kopper_swapchain *cswap = cdt->swapchain;
+   cswap->images[res->obj->dt_idx].readback_needs_update = true;
+}
+
 static bool
 kopper_ensure_readback(struct zink_screen *screen, struct zink_resource *res)
 {
@@ -976,6 +984,7 @@ zink_kopper_readback_update(struct zink_context *ctx, struct zink_resource *res)
 
    if (readback)
       ctx->base.resource_copy_region(&ctx->base, readback, 0, 0, 0, 0, &res->base.b, 0, &box);
+   cswap->images[res->obj->dt_idx].readback_needs_update = false;
 }
 
 bool

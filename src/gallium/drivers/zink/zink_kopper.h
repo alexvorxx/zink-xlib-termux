@@ -41,6 +41,7 @@ struct zink_batch_usage;
 
 struct kopper_swapchain_image {
    bool init;
+   bool readback_needs_update;
    bool dt_has_data;
    int age;
    VkImage image;
@@ -163,6 +164,8 @@ int
 zink_kopper_query_buffer_age(struct pipe_context *pctx, struct pipe_resource *pres);
 void
 zink_kopper_prune_batch_usage(struct kopper_displaytarget *cdt, const struct zink_batch_usage *u);
+void
+zink_kopper_set_readback_needs_update(struct zink_resource *res);
 
 #ifdef __cplusplus
 }

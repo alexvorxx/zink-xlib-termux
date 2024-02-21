@@ -458,8 +458,8 @@ get_batch_state(struct zink_context *ctx, struct zink_batch *batch)
       }
       simple_mtx_unlock(&screen->free_batch_states_lock);
    }
-   if (!bs && ctx->batch_states) {
-      /* states are stored sequentially, so if the first one doesn't work, none of them will */
+   /* states are stored sequentially, so if the first one doesn't work, none of them will */
+   if (!bs && ctx->batch_states && ctx->batch_states->next) {
       if (zink_screen_check_last_finished(screen, ctx->batch_states->fence.batch_id) ||
           find_unused_state(ctx->batch_states)) {
          bs = ctx->batch_states;

@@ -801,6 +801,7 @@ static const driOptionDescription tu_dri_options[] = {
    DRI_CONF_SECTION_MISCELLANEOUS
       DRI_CONF_DISABLE_CONSERVATIVE_LRZ(false)
       DRI_CONF_TU_DONT_RESERVE_DESCRIPTOR_SET(false)
+      DRI_CONF_TU_ALLOW_OOB_INDIRECT_UBO_LOADS(false)
    DRI_CONF_SECTION_END
 };
 
@@ -819,6 +820,8 @@ tu_init_dri_options(struct tu_instance *instance)
          !driQueryOptionb(&instance->dri_options, "disable_conservative_lrz");
    instance->reserve_descriptor_set =
          !driQueryOptionb(&instance->dri_options, "tu_dont_reserve_descriptor_set");
+   instance->allow_oob_indirect_ubo_loads =
+         driQueryOptionb(&instance->dri_options, "tu_allow_oob_indirect_ubo_loads");
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

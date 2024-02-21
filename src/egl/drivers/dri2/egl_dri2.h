@@ -217,6 +217,12 @@ struct dmabuf_feedback {
 };
 #endif
 
+enum dri2_egl_driver_fail {
+   DRI2_EGL_DRIVER_LOADED = 0,
+   DRI2_EGL_DRIVER_FAILED = 1,
+   DRI2_EGL_DRIVER_PREFER_ZINK = 2,
+};
+
 struct dri2_egl_display {
    const struct dri2_egl_display_vtbl *vtbl;
 

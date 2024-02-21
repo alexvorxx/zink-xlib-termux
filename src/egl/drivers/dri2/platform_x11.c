@@ -1601,18 +1601,19 @@ static const __DRIextension *dri3_image_loader_extensions[] = {
    NULL,
 };
 
-static EGLBoolean
+static enum dri2_egl_driver_fail
 dri2_initialize_x11_dri3(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_display_create();
-
+   enum dri2_egl_driver_fail status = DRI2_EGL_DRIVER_FAILED;
    if (!dri2_dpy)
-      return EGL_FALSE;
+      return DRI2_EGL_DRIVER_FAILED;
 
    if (!dri2_get_xcb_connection(disp, dri2_dpy))
       goto cleanup;
 
-   if (!dri3_x11_connect(dri2_dpy))
+   status = dri3_x11_connect(dri2_dpy);
+   if (status != DRI2_EGL_DRIVER_LOADED)
       goto cleanup;
 
    if (!dri2_load_driver_dri3(disp))
@@ -1668,11 +1669,11 @@ dri2_initialize_x11_dri3(_EGLDisplay *disp)
 
    _eglLog(_EGL_INFO, "Using DRI3");
 
-   return EGL_TRUE;
+   return DRI2_EGL_DRIVER_LOADED;
 
 cleanup:
    dri2_display_destroy(disp);
-   return EGL_FALSE;
+   return status;
 }
 #endif
 
@@ -1775,16 +1776,20 @@ cleanup:
 EGLBoolean
 dri2_initialize_x11(_EGLDisplay *disp)
 {
+   enum dri2_egl_driver_fail status = DRI2_EGL_DRIVER_FAILED;
    if (disp->Options.ForceSoftware || disp->Options.Zink)
       return dri2_initialize_x11_swrast(disp);
 
 #ifdef HAVE_DRI3
-   if (!debug_get_bool_option("LIBGL_DRI3_DISABLE", false))
-      if (dri2_initialize_x11_dri3(disp))
+   if (!debug_get_bool_option("LIBGL_DRI3_DISABLE", false)) {
+      status = dri2_initialize_x11_dri3(disp);
+      if (status == DRI2_EGL_DRIVER_LOADED)
          return EGL_TRUE;
+   }
 #endif
 
-   if (!debug_get_bool_option("LIBGL_DRI2_DISABLE", false))
+   if (!debug_get_bool_option("LIBGL_DRI2_DISABLE", false) &&
+       status != DRI2_EGL_DRIVER_PREFER_ZINK)
       if (dri2_initialize_x11_dri2(disp))
          return EGL_TRUE;
 

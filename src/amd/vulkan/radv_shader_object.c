@@ -169,19 +169,19 @@ radv_shader_object_init_graphics(struct radv_shader_object *shader_obj, struct r
 
          if (stage == MESA_SHADER_VERTEX) {
             if (next_stage == MESA_SHADER_TESS_CTRL) {
-               shader_obj->vs.as_ls.shader = shader;
-               shader_obj->vs.as_ls.binary = binary;
+               shader_obj->as_ls.shader = shader;
+               shader_obj->as_ls.binary = binary;
             } else if (next_stage == MESA_SHADER_GEOMETRY) {
-               shader_obj->vs.as_es.shader = shader;
-               shader_obj->vs.as_es.binary = binary;
+               shader_obj->as_es.shader = shader;
+               shader_obj->as_es.binary = binary;
             } else {
                shader_obj->shader = shader;
                shader_obj->binary = binary;
             }
          } else if (stage == MESA_SHADER_TESS_EVAL) {
             if (next_stage == MESA_SHADER_GEOMETRY) {
-               shader_obj->tes.as_es.shader = shader;
-               shader_obj->tes.as_es.binary = binary;
+               shader_obj->as_es.shader = shader;
+               shader_obj->as_es.binary = binary;
             } else {
                shader_obj->shader = shader;
                shader_obj->binary = binary;
@@ -311,24 +311,24 @@ radv_shader_object_init(struct radv_shader_object *shader_obj, struct radv_devic
       if (shader_obj->stage == MESA_SHADER_VERTEX) {
          const bool has_es_binary = blob_read_uint32(&blob);
          if (has_es_binary) {
-            result = radv_shader_object_init_binary(device, &blob, &shader_obj->vs.as_es.shader,
-                                                    &shader_obj->vs.as_es.binary);
+            result =
+               radv_shader_object_init_binary(device, &blob, &shader_obj->as_es.shader, &shader_obj->as_es.binary);
             if (result != VK_SUCCESS)
                return result;
          }
 
          const bool has_ls_binary = blob_read_uint32(&blob);
          if (has_ls_binary) {
-            result = radv_shader_object_init_binary(device, &blob, &shader_obj->vs.as_ls.shader,
-                                                    &shader_obj->vs.as_ls.binary);
+            result =
+               radv_shader_object_init_binary(device, &blob, &shader_obj->as_ls.shader, &shader_obj->as_ls.binary);
             if (result != VK_SUCCESS)
                return result;
          }
       } else if (shader_obj->stage == MESA_SHADER_TESS_EVAL) {
          const bool has_es_binary = blob_read_uint32(&blob);
          if (has_es_binary) {
-            result = radv_shader_object_init_binary(device, &blob, &shader_obj->tes.as_es.shader,
-                                                    &shader_obj->tes.as_es.binary);
+            result =
+               radv_shader_object_init_binary(device, &blob, &shader_obj->as_es.shader, &shader_obj->as_es.binary);
             if (result != VK_SUCCESS)
                return result;
          }
@@ -482,19 +482,19 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
 
       if (s == MESA_SHADER_VERTEX) {
          if (stages[s].next_stage == MESA_SHADER_TESS_CTRL) {
-            shader_obj->vs.as_ls.shader = shaders[s];
-            shader_obj->vs.as_ls.binary = binaries[s];
+            shader_obj->as_ls.shader = shaders[s];
+            shader_obj->as_ls.binary = binaries[s];
          } else if (stages[s].next_stage == MESA_SHADER_GEOMETRY) {
-            shader_obj->vs.as_es.shader = shaders[s];
-            shader_obj->vs.as_es.binary = binaries[s];
+            shader_obj->as_es.shader = shaders[s];
+            shader_obj->as_es.binary = binaries[s];
          } else {
             shader_obj->shader = shaders[s];
             shader_obj->binary = binaries[s];
          }
       } else if (s == MESA_SHADER_TESS_EVAL) {
          if (stages[s].next_stage == MESA_SHADER_GEOMETRY) {
-            shader_obj->tes.as_es.shader = shaders[s];
-            shader_obj->tes.as_es.binary = binaries[s];
+            shader_obj->as_es.shader = shaders[s];
+            shader_obj->as_es.binary = binaries[s];
          } else {
             shader_obj->shader = shaders[s];
             shader_obj->binary = binaries[s];
@@ -566,10 +566,10 @@ radv_get_shader_object_size(const struct radv_shader_object *shader_obj)
    size += radv_get_shader_binary_size(shader_obj->binary);
 
    if (shader_obj->stage == MESA_SHADER_VERTEX) {
-      size += radv_get_shader_binary_size(shader_obj->vs.as_es.binary);
-      size += radv_get_shader_binary_size(shader_obj->vs.as_ls.binary);
+      size += radv_get_shader_binary_size(shader_obj->as_es.binary);
+      size += radv_get_shader_binary_size(shader_obj->as_ls.binary);
    } else if (shader_obj->stage == MESA_SHADER_TESS_EVAL) {
-      size += radv_get_shader_binary_size(shader_obj->tes.as_es.binary);
+      size += radv_get_shader_binary_size(shader_obj->as_es.binary);
    } else if (shader_obj->stage == MESA_SHADER_GEOMETRY) {
       size += radv_get_shader_binary_size(shader_obj->gs.copy_binary);
    }
@@ -617,10 +617,10 @@ radv_GetShaderBinaryDataEXT(VkDevice _device, VkShaderEXT shader, size_t *pDataS
    radv_write_shader_binary(&blob, shader_obj->binary);
 
    if (shader_obj->stage == MESA_SHADER_VERTEX) {
-      radv_write_shader_binary(&blob, shader_obj->vs.as_es.binary);
-      radv_write_shader_binary(&blob, shader_obj->vs.as_ls.binary);
+      radv_write_shader_binary(&blob, shader_obj->as_es.binary);
+      radv_write_shader_binary(&blob, shader_obj->as_ls.binary);
    } else if (shader_obj->stage == MESA_SHADER_TESS_EVAL) {
-      radv_write_shader_binary(&blob, shader_obj->tes.as_es.binary);
+      radv_write_shader_binary(&blob, shader_obj->as_es.binary);
    } else if (shader_obj->stage == MESA_SHADER_GEOMETRY) {
       radv_write_shader_binary(&blob, shader_obj->gs.copy_binary);
    }

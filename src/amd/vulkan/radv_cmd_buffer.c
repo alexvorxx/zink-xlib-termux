@@ -9344,12 +9344,12 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       if (s == MESA_SHADER_VERTEX && (cmd_buffer->state.shader_objs[MESA_SHADER_TESS_CTRL] ||
                                       cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY])) {
          if (cmd_buffer->state.shader_objs[MESA_SHADER_TESS_CTRL]) {
-            shader = shader_obj->vs.as_ls.shader;
+            shader = shader_obj->as_ls.shader;
          } else {
-            shader = shader_obj->vs.as_es.shader;
+            shader = shader_obj->as_es.shader;
          }
       } else if (s == MESA_SHADER_TESS_EVAL && cmd_buffer->state.shader_objs[MESA_SHADER_GEOMETRY]) {
-         shader = shader_obj->tes.as_es.shader;
+         shader = shader_obj->as_es.shader;
       } else {
          shader = shader_obj->shader;
       }

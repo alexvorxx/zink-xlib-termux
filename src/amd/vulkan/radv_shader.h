@@ -734,35 +734,23 @@ struct radv_shader_object {
    struct radv_shader_binary *binary;
 
    /* Shader variants */
-   union {
-      struct {
-         /* VS + TCS */
-         struct {
-            struct radv_shader *shader;
-            struct radv_shader_binary *binary;
-         } as_ls;
+   /* VS before TCS */
+   struct {
+      struct radv_shader *shader;
+      struct radv_shader_binary *binary;
+   } as_ls;
 
-         /* VS + GS */
-         struct {
-            struct radv_shader *shader;
-            struct radv_shader_binary *binary;
-         } as_es;
-      } vs;
+   /* VS/TES before GS */
+   struct {
+      struct radv_shader *shader;
+      struct radv_shader_binary *binary;
+   } as_es;
 
-      struct {
-         /* TES + GS */
-         struct {
-            struct radv_shader *shader;
-            struct radv_shader_binary *binary;
-         } as_es;
-      } tes;
-
-      struct {
-         /* GS copy shader */
-         struct radv_shader *copy_shader;
-         struct radv_shader_binary *copy_binary;
-      } gs;
-   };
+   /* GS copy shader */
+   struct {
+      struct radv_shader *copy_shader;
+      struct radv_shader_binary *copy_binary;
+   } gs;
 
    uint32_t push_constant_size;
    uint32_t dynamic_offset_count;

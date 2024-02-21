@@ -530,6 +530,8 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
          shader_obj->gs.copy_binary = gs_copy_binary;
       }
 
+      ralloc_free(stages[s].nir);
+
       pShaders[i] = radv_shader_object_to_handle(shader_obj);
    }
 

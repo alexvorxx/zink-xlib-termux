@@ -28,8 +28,6 @@
 #include "brw_ir.h"
 #include "brw_ir_allocator.h"
 
-class fs_inst;
-
 class fs_reg : public backend_reg {
 public:
    DECLARE_RALLOC_CXX_OPERATORS(fs_reg)
@@ -324,7 +322,8 @@ horiz_stride(fs_reg reg, unsigned s)
 
 static const fs_reg reg_undef;
 
-class fs_inst : public backend_instruction {
+struct fs_inst : public exec_node {
+private:
    fs_inst &operator=(const fs_inst &);
 
    void init(enum opcode opcode, uint8_t exec_width, const fs_reg &dst,
@@ -416,6 +415,84 @@ public:
     * data.
     */
    bool has_sampler_residency() const;
+
+   /** @{
+    * Annotation for the generated IR.  One of the two can be set.
+    */
+   const void *ir;
+   const char *annotation;
+   /** @} */
+
+   /**
+    * Execution size of the instruction.  This is used by the generator to
+    * generate the correct binary for the given instruction.  Current valid
+    * values are 1, 4, 8, 16, 32.
+    */
+   uint8_t exec_size;
+
+   /**
+    * Channel group from the hardware execution and predication mask that
+    * should be applied to the instruction.  The subset of channel enable
+    * signals (calculated from the EU control flow and predication state)
+    * given by [group, group + exec_size) will be used to mask GRF writes and
+    * any other side effects of the instruction.
+    */
+   uint8_t group;
+
+   uint32_t offset; /**< spill/unspill offset or texture offset bitfield */
+   uint8_t mlen; /**< SEND message length */
+   uint8_t ex_mlen; /**< SENDS extended message length */
+   uint8_t target; /**< MRT target. */
+   uint8_t sfid; /**< SFID for SEND instructions */
+   uint32_t desc; /**< SEND[S] message descriptor immediate */
+   uint32_t ex_desc; /**< SEND[S] extended message descriptor immediate */
+   unsigned size_written; /**< Data written to the destination register in bytes. */
+
+   enum opcode opcode; /* BRW_OPCODE_* or FS_OPCODE_* */
+   enum brw_conditional_mod conditional_mod; /**< BRW_CONDITIONAL_* */
+   enum brw_predicate predicate;
+   bool predicate_inverse:1;
+   bool writes_accumulator:1; /**< instruction implicitly writes accumulator */
+   bool force_writemask_all:1;
+   bool no_dd_clear:1;
+   bool no_dd_check:1;
+   bool saturate:1;
+   bool shadow_compare:1;
+   bool check_tdr:1; /**< Only valid for SEND; turns it into a SENDC */
+   bool send_has_side_effects:1; /**< Only valid for SHADER_OPCODE_SEND */
+   bool send_is_volatile:1; /**< Only valid for SHADER_OPCODE_SEND */
+   bool send_ex_desc_scratch:1; /**< Only valid for SHADER_OPCODE_SEND, use
+                                 *   the scratch surface offset to build
+                                 *   extended descriptor
+                                 */
+   bool send_ex_bso:1; /**< Only for SHADER_OPCODE_SEND, use extended bindless
+                        *   surface offset (26bits instead of 20bits)
+                        */
+   bool predicate_trivial:1; /**< The predication mask applied to this
+                              *   instruction is guaranteed to be uniform and
+                              *   a superset of the execution mask of the
+                              *   present block, no currently enabled channels
+                              *   will be disabled by the predicate.
+                              */
+   bool eot:1;
+
+   /* Chooses which flag subregister (f0.0 to f3.1) is used for conditional
+    * mod and predication.
+    */
+   unsigned flag_subreg:3;
+
+   /**
+    * Systolic depth used by DPAS instruction.
+    */
+   unsigned sdepth:4;
+
+   /**
+    * Repeat count used by DPAS instruction.
+    */
+   unsigned rcount:4;
+
+   /** The number of hardware registers used for a message header. */
+   uint8_t header_size;
 
    fs_reg dst;
    fs_reg *src;

@@ -521,7 +521,7 @@ fs_inst::is_volatile() const
 
 #ifndef NDEBUG
 static bool
-inst_is_in_block(const bblock_t *block, const backend_instruction *inst)
+inst_is_in_block(const bblock_t *block, const fs_inst *inst)
 {
    const exec_node *n = inst;
 

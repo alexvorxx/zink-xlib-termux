@@ -28,6 +28,7 @@ libpanfrost_util_files = files(
   'pan_liveness.c',
   'pan_lower_framebuffer.c',
   'pan_lower_helper_invocation.c',
+  'pan_lower_image_ms.c',
   'pan_lower_sample_position.c',
   'pan_lower_store_component.c',
   'pan_lower_writeout.c',

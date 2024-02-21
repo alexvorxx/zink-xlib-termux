@@ -873,6 +873,11 @@ zink_kopper_acquire_readback(struct zink_context *ctx, struct zink_resource *res
       *readback = res;
       return false;
    }
+   if (cswap->images[last_dt_idx].acquired) {
+      struct zink_resource *rb = cswap->images[last_dt_idx].acquired;
+      *readback = rb;
+      return false;
+   }
    if (cswap->images[last_dt_idx].readback) {
       struct zink_resource *rb = zink_resource(cswap->images[res->obj->last_dt_idx].readback);
       if (rb->valid) {

@@ -1643,6 +1643,12 @@ dri2_wl_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
          dri2_surf->current->dri_image, 0, 0, dri2_surf->base.Width,
          dri2_surf->base.Height, 0, 0, dri2_surf->base.Width,
          dri2_surf->base.Height, 0);
+
+      if (dri2_dpy->flush) {
+         __DRIdrawable *dri_drawable = dri2_dpy->vtbl->get_dri_drawable(draw);
+
+         dri2_dpy->flush->flush(dri_drawable);
+      }
    }
 
    wl_surface_commit(dri2_surf->wl_surface_wrapper);

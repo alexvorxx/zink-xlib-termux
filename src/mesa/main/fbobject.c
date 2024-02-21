@@ -2658,7 +2658,8 @@ _mesa_base_fbo_format(const struct gl_context *ctx, GLenum internalFormat)
          ? GL_RGB : 0;
 
    case GL_BGRA:
-      /* EXT_texture_format_BGRA8888 only adds this as color-renderable for
+   case GL_BGRA8_EXT:
+      /* EXT_texture_format_BGRA8888 only adds these as color-renderable for
        * GLES 2 and later
        */
       if (_mesa_has_EXT_texture_format_BGRA8888(ctx) && _mesa_is_gles2(ctx))

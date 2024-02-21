@@ -24,9 +24,28 @@
 #include "radv_private.h"
 
 static void
+radv_shader_object_destroy_variant(struct radv_device *device, VkShaderCodeTypeEXT code_type,
+                                   struct radv_shader *shader, struct radv_shader_binary *binary)
+{
+   if (shader)
+      radv_shader_unref(device, shader);
+
+   if (code_type == VK_SHADER_CODE_TYPE_SPIRV_EXT)
+      free(binary);
+}
+
+static void
 radv_shader_object_destroy(struct radv_device *device, struct radv_shader_object *shader_obj,
                            const VkAllocationCallbacks *pAllocator)
 {
+   radv_shader_object_destroy_variant(device, shader_obj->code_type, shader_obj->as_ls.shader,
+                                      shader_obj->as_ls.binary);
+   radv_shader_object_destroy_variant(device, shader_obj->code_type, shader_obj->as_es.shader,
+                                      shader_obj->as_es.binary);
+   radv_shader_object_destroy_variant(device, shader_obj->code_type, shader_obj->gs.copy_shader,
+                                      shader_obj->gs.copy_binary);
+   radv_shader_object_destroy_variant(device, shader_obj->code_type, shader_obj->shader, shader_obj->binary);
+
    vk_object_base_finish(&shader_obj->base);
    vk_free2(&device->vk.alloc, pAllocator, shader_obj);
 }
@@ -284,6 +303,7 @@ radv_shader_object_init(struct radv_shader_object *shader_obj, struct radv_devic
    radv_get_shader_layout(pCreateInfo, &layout);
 
    shader_obj->stage = vk_to_mesa_shader_stage(pCreateInfo->stage);
+   shader_obj->code_type = pCreateInfo->codeType;
    shader_obj->push_constant_size = layout.push_constant_size;
    shader_obj->dynamic_offset_count = layout.dynamic_offset_count;
 
@@ -477,6 +497,7 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
       vk_object_base_init(&device->vk, &shader_obj->base, VK_OBJECT_TYPE_SHADER_EXT);
 
       shader_obj->stage = s;
+      shader_obj->code_type = pCreateInfo->codeType;
       shader_obj->push_constant_size = stages[s].layout.push_constant_size;
       shader_obj->dynamic_offset_count = stages[s].layout.dynamic_offset_count;
 

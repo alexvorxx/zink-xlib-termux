@@ -729,6 +729,8 @@ struct radv_shader_object {
 
    gl_shader_stage stage;
 
+   VkShaderCodeTypeEXT code_type;
+
    /* Main shader */
    struct radv_shader *shader;
    struct radv_shader_binary *binary;

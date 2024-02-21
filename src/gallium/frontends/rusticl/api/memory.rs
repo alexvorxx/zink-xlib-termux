@@ -1060,6 +1060,8 @@ fn enqueue_read_buffer(
         return Err(CL_INVALID_OPERATION);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { MutMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_READ_BUFFER,
@@ -1113,6 +1115,8 @@ fn enqueue_write_buffer(
         return Err(CL_INVALID_OPERATION);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { ConstMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_WRITE_BUFFER,
@@ -1282,6 +1286,8 @@ fn enqueue_read_buffer_rect(
         return Err(CL_INVALID_CONTEXT);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { MutMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_READ_BUFFER_RECT,
@@ -1405,6 +1411,8 @@ fn enqueue_write_buffer_rect(
         return Err(CL_INVALID_CONTEXT);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { ConstMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_WRITE_BUFFER_RECT,
@@ -1670,7 +1678,7 @@ fn enqueue_map_buffer(
         Box::new(move |q, ctx| b.sync_shadow(q, ctx, ptr)),
     )?;
 
-    Ok(ptr)
+    Ok(ptr.as_ptr())
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for the device associated with queue. This error code is missing before version 1.1.
@@ -1741,6 +1749,8 @@ fn enqueue_read_image(
         slice_pitch = row_pitch * r[1];
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { MutMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_READ_IMAGE,
@@ -1819,6 +1829,8 @@ fn enqueue_write_image(
         slice_pitch = row_pitch * r[1];
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { ConstMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_WRITE_BUFFER_RECT,
@@ -2118,13 +2130,15 @@ fn enqueue_map_image(
         image_slice_pitch,
     )?;
 
+    // SAFETY: it's required that applications do not cause data races
+    let sync_ptr = unsafe { MutMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_MAP_IMAGE,
         evs,
         event,
         block,
-        Box::new(move |q, ctx| i.sync_shadow(q, ctx, ptr)),
+        Box::new(move |q, ctx| i.sync_shadow(q, ctx, sync_ptr)),
     )?;
 
     Ok(ptr)
@@ -2181,6 +2195,8 @@ fn enqueue_unmap_mem_object(
         return Err(CL_INVALID_VALUE);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let mapped_ptr = unsafe { MutMemoryPtr::from_ptr(mapped_ptr) };
     create_and_queue(
         q,
         CL_COMMAND_UNMAP_MEM_OBJECT,

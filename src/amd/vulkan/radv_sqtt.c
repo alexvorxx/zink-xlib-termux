@@ -858,8 +858,10 @@ radv_begin_sqtt(struct radv_queue *queue)
    /* Start SQTT. */
    radv_emit_sqtt_start(device, cs, family);
 
-   if (device->spm.bo)
+   if (device->spm.bo) {
+      radeon_check_space(ws, cs, 8);
       radv_perfcounter_emit_spm_start(device, cs, family);
+   }
 
    result = ws->cs_finalize(cs);
    if (result != VK_SUCCESS) {
@@ -911,8 +913,10 @@ radv_end_sqtt(struct radv_queue *queue)
    /* Make sure to wait-for-idle before stopping SQTT. */
    radv_emit_wait_for_idle(device, cs, family);
 
-   if (device->spm.bo)
+   if (device->spm.bo) {
+      radeon_check_space(ws, cs, 8);
       radv_perfcounter_emit_spm_stop(device, cs, family);
+   }
 
    /* Stop SQTT. */
    radv_emit_sqtt_stop(device, cs, family);

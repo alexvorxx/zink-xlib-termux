@@ -33,6 +33,66 @@ ra_class_for_index(agx_index idx)
    return idx.memory ? RA_MEM : RA_GPR;
 }
 
+struct phi_web_node {
+   /* Parent index, or circular for root */
+   uint32_t parent;
+
+   /* If root, assigned register, or ~0 if no register assigned. */
+   uint16_t reg;
+   bool assigned;
+
+   /* Rank, at most log2(n) so need ~5-bits */
+   uint8_t rank;
+};
+static_assert(sizeof(struct phi_web_node) == 8, "packed");
+
+static unsigned
+phi_web_find(struct phi_web_node *web, unsigned x)
+{
+   if (web[x].parent == x) {
+      /* Root */
+      return x;
+   } else {
+      /* Search up the tree */
+      unsigned root = x;
+      while (web[root].parent != root)
+         root = web[root].parent;
+
+      /* Compress path. Second pass ensures O(1) memory usage. */
+      while (web[x].parent != x) {
+         unsigned temp = web[x].parent;
+         web[x].parent = root;
+         x = temp;
+      }
+
+      return root;
+   }
+}
+
+static void
+phi_web_union(struct phi_web_node *web, unsigned x, unsigned y)
+{
+   x = phi_web_find(web, x);
+   y = phi_web_find(web, y);
+
+   if (x == y)
+      return;
+
+   /* Union-by-rank: ensure x.rank >= y.rank */
+   if (web[x].rank < web[y].rank) {
+      unsigned temp = x;
+      x = y;
+      y = temp;
+   }
+
+   web[y].parent = x;
+
+   /* Increment rank if necessary */
+   if (web[x].rank == web[y].rank) {
+      web[x].rank++;
+   }
+}
+
 struct ra_ctx {
    agx_context *shader;
    agx_block *block;
@@ -49,6 +109,7 @@ struct ra_ctx {
 
    /* For affinities */
    agx_instr **src_to_collect_phi;
+   struct phi_web_node *phi_web;
 
    /* If bit i of used_regs is set, and register i is the first consecutive
     * register holding an SSA value, then reg_to_ssa[i] is the SSA index of the
@@ -716,6 +777,15 @@ assign_regs(struct ra_ctx *rctx, agx_index v, unsigned reg)
 
    if (cls == RA_GPR)
       rctx->reg_to_ssa[reg] = v.value;
+
+   /* Phi webs need to remember which register they're assigned to */
+   struct phi_web_node *node =
+      &rctx->phi_web[phi_web_find(rctx->phi_web, v.value)];
+
+   if (!node->assigned) {
+      node->reg = reg;
+      node->assigned = true;
+   }
 }
 
 static void
@@ -785,6 +855,15 @@ pick_regs(struct ra_ctx *rctx, agx_instr *I, unsigned d)
    assert(count >= 1);
 
    unsigned align = count;
+
+   /* Try to allocate entire phi webs compatibly */
+   unsigned phi_idx = phi_web_find(rctx->phi_web, idx.value);
+   if (rctx->phi_web[phi_idx].assigned) {
+      unsigned reg = rctx->phi_web[phi_idx].reg;
+      if ((reg % align) == 0 && reg + align < rctx->bound[cls] &&
+          !BITSET_TEST_RANGE(rctx->used_regs[cls], reg, reg + align - 1))
+         return reg;
+   }
 
    /* Try to allocate phis compatibly with their sources */
    if (I->op == AGX_OPCODE_PHI) {
@@ -1238,6 +1317,23 @@ agx_ra(agx_context *ctx)
       assert(effective_demand <= max_possible_regs && "spiller post-condition");
    }
 
+   /* Record all phi webs. First initialize the union-find data structure with
+    * all SSA defs in their own singletons, then union together anything related
+    * by a phi. The resulting union-find structure will be the webs.
+    */
+   struct phi_web_node *phi_web = calloc(ctx->alloc, sizeof(*phi_web));
+   for (unsigned i = 0; i < ctx->alloc; ++i) {
+      phi_web[i].parent = i;
+   }
+
+   agx_foreach_block(ctx, block) {
+      agx_foreach_phi_in_block(block, phi) {
+         agx_foreach_ssa_src(phi, s) {
+            phi_web_union(phi_web, phi->dest[0].value, phi->src[s].value);
+         }
+      }
+   }
+
    uint8_t *ncomps = calloc(ctx->alloc, sizeof(uint8_t));
    enum ra_class *classes = calloc(ctx->alloc, sizeof(enum ra_class));
    agx_instr **src_to_collect_phi = calloc(ctx->alloc, sizeof(agx_instr *));
@@ -1312,6 +1408,7 @@ agx_ra(agx_context *ctx)
          .shader = ctx,
          .block = block,
          .src_to_collect_phi = src_to_collect_phi,
+         .phi_web = phi_web,
          .ncomps = ncomps,
          .sizes = sizes,
          .classes = classes,
@@ -1441,6 +1538,7 @@ agx_ra(agx_context *ctx)
       block->ssa_to_reg_out = NULL;
    }
 
+   free(phi_web);
    free(src_to_collect_phi);
    free(ncomps);
    free(sizes);

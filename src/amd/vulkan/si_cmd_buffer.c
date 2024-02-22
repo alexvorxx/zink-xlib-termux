@@ -1559,6 +1559,25 @@ radv_emit_set_predication_state(struct radv_cmd_buffer *cmd_buffer, bool draw_vi
    }
 }
 
+void
+radv_emit_cond_exec(const struct radv_device *device, struct radeon_cmdbuf *cs, uint64_t va, uint32_t count)
+{
+   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+
+   if (gfx_level >= GFX7) {
+      radeon_emit(cs, PKT3(PKT3_COND_EXEC, 3, 0));
+      radeon_emit(cs, va);
+      radeon_emit(cs, va >> 32);
+      radeon_emit(cs, 0);
+      radeon_emit(cs, count);
+   } else {
+      radeon_emit(cs, PKT3(PKT3_COND_EXEC, 2, 0));
+      radeon_emit(cs, va);
+      radeon_emit(cs, va >> 32);
+      radeon_emit(cs, count);
+   }
+}
+
 /* Set this if you want the 3D engine to wait until CP DMA is done.
  * It should be set on the last CP DMA packet. */
 #define CP_DMA_SYNC (1 << 0)

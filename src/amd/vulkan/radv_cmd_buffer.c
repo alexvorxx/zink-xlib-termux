@@ -2914,11 +2914,7 @@ radv_update_zrange_precision(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_
    if (requires_cond_exec) {
       uint64_t va = radv_get_tc_compat_zrange_va(image, iview->vk.base_mip_level);
 
-      radeon_emit(cmd_buffer->cs, PKT3(PKT3_COND_EXEC, 3, 0));
-      radeon_emit(cmd_buffer->cs, va);
-      radeon_emit(cmd_buffer->cs, va >> 32);
-      radeon_emit(cmd_buffer->cs, 0);
-      radeon_emit(cmd_buffer->cs, 3); /* SET_CONTEXT_REG size */
+      radv_emit_cond_exec(cmd_buffer->device, cmd_buffer->cs, va, 3 /* SET_CONTEXT_REG size */);
    }
 
    radeon_set_context_reg(cmd_buffer->cs, db_z_info_reg, db_z_info);
@@ -8084,18 +8080,7 @@ radv_cs_emit_compute_predication(const struct radv_device *device, struct radv_c
          radeon_emit(cs, inv_va >> 32);
 
          /* If the API predication VA == 0, skip next command. */
-         if (device->physical_device->rad_info.gfx_level >= GFX7) {
-            radeon_emit(cs, PKT3(PKT3_COND_EXEC, 3, 0));
-            radeon_emit(cs, va);
-            radeon_emit(cs, va >> 32);
-            radeon_emit(cs, 0);
-            radeon_emit(cs, 6); /* 1x COPY_DATA size */
-         } else {
-            radeon_emit(cs, PKT3(PKT3_COND_EXEC, 2, 0));
-            radeon_emit(cs, va);
-            radeon_emit(cs, va >> 32);
-            radeon_emit(cs, 6); /* 1x COPY_DATA size */
-         }
+         radv_emit_cond_exec(device, cs, va, 6 /* 1x COPY_DATA size */);
 
          /* Write 0 to the new predication VA (when the API condition != 0) */
          radeon_emit(cs, PKT3(PKT3_COPY_DATA, 4, 0));
@@ -8110,18 +8095,7 @@ radv_cs_emit_compute_predication(const struct radv_device *device, struct radv_c
       va = inv_va;
    }
 
-   if (device->physical_device->rad_info.gfx_level >= GFX7) {
-      radeon_emit(cs, PKT3(PKT3_COND_EXEC, 3, 0));
-      radeon_emit(cs, va);
-      radeon_emit(cs, va >> 32);
-      radeon_emit(cs, 0);      /* Cache policy */
-      radeon_emit(cs, dwords); /* Size of the predicated packet(s) in DWORDs. */
-   } else {
-      radeon_emit(cs, PKT3(PKT3_COND_EXEC, 2, 0));
-      radeon_emit(cs, va);
-      radeon_emit(cs, va >> 32);
-      radeon_emit(cs, dwords); /* Size of the predicated packet(s) in DWORDs. */
-   }
+   radv_emit_cond_exec(device, cs, va, dwords);
 }
 
 static void
@@ -8775,11 +8749,8 @@ radv_emit_indirect_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, con
                                     ace_predication_size);
 
    if (workaround_cond_va) {
-      radeon_emit(ace_cs, PKT3(PKT3_COND_EXEC, 3, 0));
-      radeon_emit(ace_cs, count_va);
-      radeon_emit(ace_cs, count_va >> 32);
-      radeon_emit(ace_cs, 0);
-      radeon_emit(ace_cs, 6 + 11 * num_views); /* 1x COPY_DATA + Nx DISPATCH_TASKMESH_INDIRECT_MULTI_ACE */
+      radv_emit_cond_exec(cmd_buffer->device, ace_cs, count_va,
+                          6 + 11 * num_views /* 1x COPY_DATA + Nx DISPATCH_TASKMESH_INDIRECT_MULTI_ACE */);
 
       radeon_emit(ace_cs, PKT3(PKT3_COPY_DATA, 4, 0));
       radeon_emit(ace_cs,
@@ -8802,11 +8773,8 @@ radv_emit_indirect_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, con
    }
 
    if (workaround_cond_va) {
-      radeon_emit(ace_cs, PKT3(PKT3_COND_EXEC, 3, 0));
-      radeon_emit(ace_cs, workaround_cond_va);
-      radeon_emit(ace_cs, workaround_cond_va >> 32);
-      radeon_emit(ace_cs, 0);
-      radeon_emit(ace_cs, 6 * num_views); /* Nx DISPATCH_TASKMESH_DIRECT_ACE */
+      radv_emit_cond_exec(cmd_buffer->device, ace_cs, workaround_cond_va,
+                          6 * num_views /* Nx DISPATCH_TASKMESH_DIRECT_ACE */);
 
       for (unsigned v = 0; v < num_views; ++v) {
          radv_cs_emit_dispatch_taskmesh_direct_ace_packet(cmd_buffer, 0, 0, 0);

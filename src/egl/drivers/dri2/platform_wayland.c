@@ -2432,12 +2432,14 @@ dri2_wl_swrast_get_image(__DRIdrawable *read, int x, int y, int w, int h,
    char *src, *dst;
 
    src = dri2_wl_swrast_get_frontbuffer_data(dri2_surf);
+   /* this is already the most up-to-date buffer */
+   if (src == data)
+      return;
    if (!src) {
       memset(data, 0, copy_width * h);
       return;
    }
 
-   assert(data != src);
    assert(copy_width <= src_stride);
 
    src += x_offset;

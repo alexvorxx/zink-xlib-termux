@@ -639,14 +639,28 @@ agx_start_block(agx_context *ctx)
 
 #define agx_foreach_src(ins, v) for (unsigned v = 0; v < ins->nr_srcs; ++v)
 
+#define agx_foreach_src_rev(ins, v)                                            \
+   for (signed v = ins->nr_srcs - 1; v >= 0; --v)
+
 #define agx_foreach_dest(ins, v) for (unsigned v = 0; v < ins->nr_dests; ++v)
+
+#define agx_foreach_dest_rev(ins, v)                                           \
+   for (signed v = ins->nr_dests - 1; v >= 0; --v)
 
 #define agx_foreach_ssa_src(ins, v)                                            \
    agx_foreach_src(ins, v)                                                     \
       if (ins->src[v].type == AGX_INDEX_NORMAL)
 
+#define agx_foreach_ssa_src_rev(ins, v)                                        \
+   agx_foreach_src_rev(ins, v)                                                 \
+      if (ins->src[v].type == AGX_INDEX_NORMAL)
+
 #define agx_foreach_ssa_dest(ins, v)                                           \
    agx_foreach_dest(ins, v)                                                    \
+      if (ins->dest[v].type == AGX_INDEX_NORMAL)
+
+#define agx_foreach_ssa_dest_rev(ins, v)                                       \
+   agx_foreach_dest_rev(ins, v)                                                \
       if (ins->dest[v].type == AGX_INDEX_NORMAL)
 
 /* Phis only come at the start (after else instructions) so we stop as soon as
@@ -654,6 +668,14 @@ agx_start_block(agx_context *ctx)
  */
 #define agx_foreach_phi_in_block(block, v)                                     \
    agx_foreach_instr_in_block(block, v)                                        \
+      if (v->op == AGX_OPCODE_ELSE_ICMP || v->op == AGX_OPCODE_ELSE_FCMP)      \
+         continue;                                                             \
+      else if (v->op != AGX_OPCODE_PHI)                                        \
+         break;                                                                \
+      else
+
+#define agx_foreach_phi_in_block_safe(block, v)                                \
+   agx_foreach_instr_in_block_safe(block, v)                                   \
       if (v->op == AGX_OPCODE_ELSE_ICMP || v->op == AGX_OPCODE_ELSE_FCMP)      \
          continue;                                                             \
       else if (v->op != AGX_OPCODE_PHI)                                        \

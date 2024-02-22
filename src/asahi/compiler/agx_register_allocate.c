@@ -1196,88 +1196,12 @@ agx_insert_parallel_copies(agx_context *ctx, agx_block *block)
    }
 }
 
-static inline agx_index
-agx_index_as_mem(agx_index idx, unsigned mem_base)
-{
-   assert(idx.type == AGX_INDEX_NORMAL);
-   assert(!idx.memory);
-   idx.memory = true;
-   idx.value = mem_base + idx.value;
-   return idx;
-}
-
-/*
- * Spill everything to the stack, trivially. For debugging spilling.
- *
- * Only phis and stack moves can access memory variables.
- */
-static void
-agx_spill_everything(agx_context *ctx)
-{
-   /* Immediates and uniforms are not allowed to be spilled, so they cannot
-    * appear in phi webs. Lower them first.
-    */
-   agx_foreach_block(ctx, block) {
-      agx_block **preds = util_dynarray_begin(&block->predecessors);
-
-      agx_foreach_phi_in_block(block, phi) {
-         agx_foreach_src(phi, s) {
-            if (phi->src[s].type == AGX_INDEX_IMMEDIATE ||
-                phi->src[s].type == AGX_INDEX_UNIFORM) {
-
-               agx_builder b =
-                  agx_init_builder(ctx, agx_after_block_logical(preds[s]));
-
-               agx_index temp = agx_temp(ctx, phi->dest[0].size);
-
-               if (phi->src[s].type == AGX_INDEX_IMMEDIATE)
-                  agx_mov_imm_to(&b, temp, phi->src[s].value);
-               else
-                  agx_mov_to(&b, temp, phi->src[s]);
-
-               agx_replace_src(phi, s, temp);
-            }
-         }
-      }
-   }
-
-   /* Now we can spill everything */
-   unsigned mem_base = ctx->alloc;
-   ctx->alloc = mem_base + ctx->alloc;
-
-   agx_foreach_instr_global_safe(ctx, I) {
-      if (I->op == AGX_OPCODE_PHI) {
-         agx_foreach_ssa_dest(I, d) {
-            I->dest[d] = agx_replace_index(
-               I->dest[d], agx_index_as_mem(I->dest[d], mem_base));
-         }
-
-         agx_foreach_ssa_src(I, s) {
-            agx_replace_src(I, s, agx_index_as_mem(I->src[s], mem_base));
-         }
-      } else {
-         agx_builder b = agx_init_builder(ctx, agx_before_instr(I));
-         agx_foreach_ssa_src(I, s) {
-            agx_index fill =
-               agx_vec_temp(ctx, I->src[s].size, agx_channels(I->src[s]));
-
-            agx_mov_to(&b, fill, agx_index_as_mem(I->src[s], mem_base));
-            agx_replace_src(I, s, fill);
-         }
-
-         agx_foreach_ssa_dest(I, d) {
-            agx_builder b = agx_init_builder(ctx, agx_after_instr(I));
-            agx_mov_to(&b, agx_index_as_mem(I->dest[d], mem_base), I->dest[d]);
-         }
-      }
-   }
-
-   agx_validate(ctx, "Trivial spill");
-}
-
 void
 agx_ra(agx_context *ctx)
 {
+   bool force_spilling =
+      (agx_compiler_debug & AGX_DBG_SPILL) && ctx->key->has_scratch;
+
    /* Determine maximum possible registers. We won't exceed this! */
    unsigned max_possible_regs = AGX_NUM_REGS;
 
@@ -1303,9 +1227,10 @@ agx_ra(agx_context *ctx)
    }
 
    /* The helper program is unspillable and has a limited register file */
-   if (ctx->key->is_helper) {
+   if (force_spilling)
       max_possible_regs = 32;
-   }
+   else if (ctx->key->is_helper)
+      max_possible_regs = 32;
 
    /* Calculate the demand. We'll use it to determine if we need to spill and to
     * bound register assignment.
@@ -1313,11 +1238,10 @@ agx_ra(agx_context *ctx)
    agx_compute_liveness(ctx);
    unsigned effective_demand = agx_calc_register_demand(ctx);
    bool spilling = (effective_demand > max_possible_regs);
-   spilling |= ((agx_compiler_debug & AGX_DBG_SPILL) && ctx->key->has_scratch);
 
    if (spilling) {
       assert(ctx->key->has_scratch && "internal shaders are unspillable");
-      agx_spill_everything(ctx);
+      agx_spill(ctx, max_possible_regs);
 
       /* After spilling, recalculate liveness and demand */
       agx_compute_liveness(ctx);
@@ -1388,8 +1312,8 @@ agx_ra(agx_context *ctx)
     * affecting occupancy. This reduces live range splitting.
     */
    unsigned max_regs = agx_occupancy_for_register_count(demand).max_registers;
-   if (ctx->key->is_helper)
-      max_regs = 32;
+   if (ctx->key->is_helper || force_spilling)
+      max_regs = max_possible_regs;
 
    max_regs = ROUND_DOWN_TO(max_regs, reg_file_alignment);
 

@@ -1381,12 +1381,6 @@ agx_ra(agx_context *ctx)
    unsigned reg_file_alignment = MAX2(max_ncomps, 8);
    assert(util_is_power_of_two_nonzero(reg_file_alignment));
 
-   if (spilling) {
-      /* We need to allocate scratch registers for lowering spilling later */
-      effective_demand = MAX2(effective_demand, 6 * 2 /* preloading */);
-      effective_demand += reg_file_alignment;
-   }
-
    unsigned demand = ALIGN_POT(effective_demand, reg_file_alignment);
    assert(demand <= max_possible_regs && "Invariant");
 

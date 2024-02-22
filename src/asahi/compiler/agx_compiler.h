@@ -28,6 +28,9 @@ extern "C" {
 /* Semi-arbitrary limit for spill slot allocation */
 #define AGX_NUM_MODELED_REGS (2048)
 
+/* Limit on number of sources for non-phi instructions */
+#define AGX_MAX_NORMAL_SOURCES (16)
+
 enum agx_index_type {
    AGX_INDEX_NULL = 0,
    AGX_INDEX_NORMAL = 1,

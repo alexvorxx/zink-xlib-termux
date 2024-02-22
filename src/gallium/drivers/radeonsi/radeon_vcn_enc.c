@@ -769,7 +769,17 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
             pic->seq.num_temporal_layers : RENCODE_MAX_NUM_TEMPORAL_LAYERS;
 
    /* 1, 2 layer needs 1 reference, and 3, 4 layer needs 2 references */
-   enc->base.max_references = (enc_pic->num_temporal_layers + 1) / 2;
+   enc->base.max_references = (enc_pic->num_temporal_layers + 1) / 2
+                              + RENCODE_VCN4_AV1_MAX_NUM_LTR;
+   for (int i = 0; i < RENCDOE_AV1_REFS_PER_FRAME; i++)
+      enc_pic->av1_ref_frame_idx[i] = pic->ref_frame_idx[i];
+
+   for (int i = 0; i < RENCDOE_AV1_NUM_REF_FRAMES; i++)
+      enc_pic->av1_ref_list[i] = pic->ref_list[i];
+
+   enc_pic->av1_recon_frame = pic->recon_frame;
+   enc_pic->av1_ref_frame_ctrl_l0 = pic->ref_frame_ctrl_l0;
+
    radeon_vcn_enc_quality_modes(enc, &pic->quality_modes);
    enc_pic->frame_id_numbers_present = pic->seq.seq_bits.frame_id_number_present_flag;
    enc_pic->enable_error_resilient_mode = pic->error_resilient_mode;
@@ -785,6 +795,7 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
    enc_pic->disable_screen_content_tools = !pic->allow_screen_content_tools;
    enc_pic->is_obu_frame = pic->enable_frame_obu;
    enc_pic->need_av1_seq = (pic->frame_type == PIPE_AV1_ENC_FRAME_TYPE_KEY);
+   enc_pic->av1_mark_long_term_reference = pic->long_term_reference;
 
    radeon_vcn_enc_av1_get_spec_misc_param(enc, pic);
    radeon_vcn_enc_av1_timing_info(enc, pic);

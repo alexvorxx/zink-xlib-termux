@@ -124,6 +124,7 @@ struct radeon_enc_pic {
             uint32_t is_obu_frame:1;
             uint32_t stream_obu_frame:1;  /* all frames have the same number of tiles */
             uint32_t need_av1_seq:1;
+            uint32_t av1_mark_long_term_reference:1;
          };
          uint32_t render_width;
          uint32_t render_height;
@@ -131,6 +132,7 @@ struct radeon_enc_pic {
          enum pipe_av1_enc_frame_type last_frame_type;
          uint32_t display_frame_id;
          uint32_t frame_id;
+         uint32_t temporal_seq_num;
          uint32_t order_hint;
          uint32_t order_hint_bits;
          uint32_t refresh_frame_flags;
@@ -146,6 +148,12 @@ struct radeon_enc_pic {
       uint32_t count_last_layer;
       rvcn_enc_av1_ref_frame_t frames[RENCDOE_AV1_NUM_REF_FRAMES];
       rvcn_enc_av1_recon_slot_t recon_slots[RENCDOE_AV1_NUM_REF_FRAMES + 1];
+      uint8_t av1_ref_frame_idx[RENCDOE_AV1_REFS_PER_FRAME];
+      void *av1_ref_list[RENCDOE_AV1_NUM_REF_FRAMES];
+      void *av1_recon_frame;
+      uint32_t av1_ref_frame_ctrl_l0;
+      uint32_t av1_ref_frame_ctrl_l1;
+      uint32_t av1_ltr_seq;
    };
 
    rvcn_enc_session_info_t session_info;

@@ -719,8 +719,7 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
              "Could not find non simultaneous cmd to link query feedback\n");
    }
 
-   vn_set_temp_cmd(submit, *cmd_count,
-                   vn_command_buffer_to_handle(qfb_cmd->cmd));
+   vn_set_temp_cmd(submit, *cmd_count, qfb_cmd->cmd_handle);
    (*cmd_count)++;
 
    return VK_SUCCESS;

@@ -692,7 +692,7 @@ vn_feedback_query_cmd_alloc(VkDevice dev_handle,
       }
 
       qfb_cmd->fb_cmd_pool = fb_cmd_pool;
-      qfb_cmd->cmd = vn_command_buffer_from_handle(qfb_cmd_handle);
+      qfb_cmd->cmd_handle = qfb_cmd_handle;
    }
 
    *out_qfb_cmd = qfb_cmd;
@@ -704,7 +704,7 @@ void
 vn_feedback_query_cmd_free(struct vn_query_feedback_cmd *qfb_cmd)
 {
    simple_mtx_lock(&qfb_cmd->fb_cmd_pool->mutex);
-   vn_ResetCommandBuffer(vn_command_buffer_to_handle(qfb_cmd->cmd), 0);
+   vn_ResetCommandBuffer(qfb_cmd->cmd_handle, 0);
    list_add(&qfb_cmd->head, &qfb_cmd->fb_cmd_pool->free_qfb_cmds);
    simple_mtx_unlock(&qfb_cmd->fb_cmd_pool->mutex);
 }
@@ -717,29 +717,28 @@ vn_feedback_query_batch_record(VkDevice dev_handle,
    static const VkCommandBufferBeginInfo begin_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
    };
-   VkCommandBuffer qfb_cmd_handle = vn_command_buffer_to_handle(qfb_cmd->cmd);
    VkResult result;
 
    simple_mtx_lock(&qfb_cmd->fb_cmd_pool->mutex);
 
-   result = vn_BeginCommandBuffer(qfb_cmd_handle, &begin_info);
+   result = vn_BeginCommandBuffer(qfb_cmd->cmd_handle, &begin_info);
    if (result != VK_SUCCESS) {
       vn_FreeCommandBuffers(dev_handle, qfb_cmd->fb_cmd_pool->pool_handle, 1,
-                            &qfb_cmd_handle);
+                            &qfb_cmd->cmd_handle);
       goto out_unlock;
    }
 
    list_for_each_entry_safe(struct vn_feedback_query_batch, batch,
                             combined_query_batches, head) {
       vn_feedback_query_cmd_record(
-         qfb_cmd_handle, vn_query_pool_to_handle(batch->query_pool),
+         qfb_cmd->cmd_handle, vn_query_pool_to_handle(batch->query_pool),
          batch->query, batch->query_count, batch->copy);
    }
 
-   result = vn_EndCommandBuffer(qfb_cmd_handle);
+   result = vn_EndCommandBuffer(qfb_cmd->cmd_handle);
    if (result != VK_SUCCESS) {
       vn_FreeCommandBuffers(dev_handle, qfb_cmd->fb_cmd_pool->pool_handle, 1,
-                            &qfb_cmd_handle);
+                            &qfb_cmd->cmd_handle);
       goto out_unlock;
    }
 

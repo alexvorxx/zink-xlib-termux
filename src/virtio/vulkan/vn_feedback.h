@@ -85,7 +85,7 @@ struct vn_feedback_query_batch {
 
 struct vn_query_feedback_cmd {
    struct vn_feedback_cmd_pool *fb_cmd_pool;
-   struct vn_command_buffer *cmd;
+   VkCommandBuffer cmd_handle;
 
    struct list_head head;
 };

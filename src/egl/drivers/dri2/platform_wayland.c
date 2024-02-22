@@ -2463,6 +2463,9 @@ dri2_wl_swrast_put_image2(__DRIdrawable *draw, int op, int x, int y, int w,
                           int h, int stride, char *data, void *loaderPrivate)
 {
    struct dri2_egl_surface *dri2_surf = loaderPrivate;
+   /* clamp to surface size */
+   w = MIN2(w, dri2_surf->base.Width);
+   h = MIN2(h, dri2_surf->base.Height);
    int copy_width = dri2_wl_swrast_get_stride_for_format(dri2_surf->format, w);
    int dst_stride = dri2_wl_swrast_get_stride_for_format(dri2_surf->format,
                                                          dri2_surf->base.Width);

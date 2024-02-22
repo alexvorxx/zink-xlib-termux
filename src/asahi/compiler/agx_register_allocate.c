@@ -602,6 +602,8 @@ find_regs(struct ra_ctx *rctx, agx_instr *I, unsigned dest_idx, unsigned count,
             util_dynarray_num_elements(&copies, struct agx_copy));
       }
 
+      util_dynarray_fini(&copies);
+
       /* assign_regs asserts this is cleared, so clear to be reassigned */
       BITSET_CLEAR_RANGE(rctx->used_regs[cls], reg, reg + count - 1);
       return reg;

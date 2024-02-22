@@ -1905,6 +1905,8 @@ agx_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type shader,
       /* TODO: Enable when fully baked */
       if (strcmp(util_get_process_name(), "blender") == 0)
          return PIPE_MAX_SAMPLERS;
+      else if (strcasestr(util_get_process_name(), "ryujinx") != NULL)
+         return PIPE_MAX_SAMPLERS;
       else
          return 16;
 

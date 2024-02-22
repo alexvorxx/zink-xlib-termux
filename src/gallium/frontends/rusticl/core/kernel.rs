@@ -301,7 +301,7 @@ pub struct Kernel {
     pub prog: Arc<Program>,
     pub name: String,
     values: Mutex<Vec<Option<KernelArgValue>>>,
-    pub builds: HashMap<&'static Device, Arc<NirKernelBuild>>,
+    builds: HashMap<&'static Device, Arc<NirKernelBuild>>,
     pub kernel_info: KernelInfo,
 }
 

@@ -331,9 +331,10 @@ fn set_kernel_arg(
     arg_value: *const ::std::os::raw::c_void,
 ) -> CLResult<()> {
     let k = Kernel::ref_from_raw(kernel)?;
+    let arg_index = arg_index as usize;
 
     // CL_INVALID_ARG_INDEX if arg_index is not a valid argument index.
-    if let Some(arg) = k.kernel_info.args.get(arg_index as usize) {
+    if let Some(arg) = k.kernel_info.args.get(arg_index) {
         // CL_INVALID_ARG_SIZE if arg_size does not match the size of the data type for an argument
         // that is not a memory object or if the argument is a memory object and
         // arg_size != sizeof(cl_mem) or if arg_size is zero and the argument is declared with the
@@ -408,8 +409,7 @@ fn set_kernel_arg(
                 }
             }
         };
-        k.values.get(arg_index as usize).unwrap().replace(Some(arg));
-        Ok(())
+        k.set_kernel_arg(arg_index, arg)
     } else {
         Err(CL_INVALID_ARG_INDEX)
     }
@@ -442,8 +442,7 @@ fn set_kernel_arg_svm_pointer(
         }
 
         let arg_value = KernelArgValue::Constant(arg_value.to_ne_bytes().to_vec());
-        kernel.values[arg_index].replace(Some(arg_value));
-        Ok(())
+        kernel.set_kernel_arg(arg_index, arg_value)
     } else {
         Err(CL_INVALID_ARG_INDEX)
     }
@@ -521,7 +520,7 @@ fn enqueue_ndrange_kernel(
     }
 
     // CL_INVALID_KERNEL_ARGS if the kernel argument values have not been specified.
-    if k.values.iter().any(|v| v.borrow().is_none()) {
+    if k.arg_values().iter().any(|v| v.is_none()) {
         return Err(CL_INVALID_KERNEL_ARGS);
     }
 

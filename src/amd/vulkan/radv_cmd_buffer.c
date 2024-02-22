@@ -10134,6 +10134,13 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
          radeon_emit(cs, info->va);
          radeon_emit(cs, info->va >> 32);
 
+         if (cmd_buffer->qf == RADV_QUEUE_COMPUTE) {
+            radv_cs_emit_compute_predication(cmd_buffer->device, &cmd_buffer->state, cs,
+                                             cmd_buffer->state.mec_inv_pred_va, &cmd_buffer->state.mec_inv_pred_emitted,
+                                             3 /* PKT3_DISPATCH_INDIRECT */);
+            predicating = false;
+         }
+
          radeon_emit(cs, PKT3(PKT3_DISPATCH_INDIRECT, 1, predicating) | PKT3_SHADER_TYPE_S(1));
          radeon_emit(cs, 0);
          radeon_emit(cs, dispatch_initiator);

@@ -2472,11 +2472,6 @@ dri2_wl_swrast_put_image2(__DRIdrawable *draw, int op, int x, int y, int w,
 
    dst = dri2_wl_swrast_get_backbuffer_data(dri2_surf);
 
-   /* partial copy, copy old content */
-   if (copy_width < dst_stride)
-      dri2_wl_swrast_get_image(draw, 0, 0, dri2_surf->base.Width,
-                               dri2_surf->base.Height, dst, loaderPrivate);
-
    dst += x_offset;
    dst += y * dst_stride;
 
@@ -2519,8 +2514,21 @@ dri2_wl_swrast_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
    if (!disp->Options.Zink)
       (void)swrast_update_buffers(dri2_surf);
 
-   if (!disp->Options.Zink)
+   if (!disp->Options.Zink) {
       dri2_wl_swrast_attach_backbuffer(dri2_surf);
+
+      /* guarantee full copy for partial update */
+      int w = n_rects == 1 ? (rects[2] - rects[0]) : 0;
+      int copy_width = dri2_wl_swrast_get_stride_for_format(dri2_surf->format, w);
+      int dst_stride = dri2_wl_swrast_get_stride_for_format(dri2_surf->format,
+                                                            dri2_surf->base.Width);
+      char *dst = dri2_wl_swrast_get_backbuffer_data(dri2_surf);
+
+      /* partial copy, copy old content */
+      if (copy_width < dst_stride)
+         dri2_wl_swrast_get_image(NULL, 0, 0, dri2_surf->base.Width,
+                                  dri2_surf->base.Height, dst, dri2_surf);
+   }
 
    if (n_rects)
       dri2_dpy->core->swapBuffersWithDamage(dri2_surf->dri_drawable, n_rects, rects);

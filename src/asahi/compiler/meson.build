@@ -34,6 +34,7 @@ libasahi_agx_files = files(
   'agx_opt_empty_else.c',
   'agx_opt_jmp_none.c',
   'agx_optimizer.c',
+  'agx_reindex_ssa.c',
   'agx_register_allocate.c',
   'agx_validate.c',
 )

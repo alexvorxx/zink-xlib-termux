@@ -535,9 +535,11 @@ find_regs(struct ra_ctx *rctx, agx_instr *I, unsigned dest_idx, unsigned count,
       agx_foreach_ssa_src(I, s) {
          unsigned v = I->src[s].value;
 
-         if (BITSET_TEST(rctx->visited, v)) {
+         if (BITSET_TEST(rctx->visited, v) && !I->src[s].memory) {
             unsigned base = rctx->ssa_to_reg[v];
             unsigned nr = rctx->ncomps[v];
+
+            assert(base + nr <= AGX_NUM_REGS);
             BITSET_SET_RANGE(killed, base, base + nr - 1);
          }
       }

@@ -193,10 +193,9 @@ blorp_alloc_vertex_buffer(struct blorp_batch *batch, uint32_t size,
 {
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
    struct anv_state vb_state =
-      anv_cmd_buffer_alloc_dynamic_state(cmd_buffer, size, 64);
+      anv_cmd_buffer_alloc_temporary_state(cmd_buffer, size, 64);
    struct anv_address vb_addr =
-      anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
-                                   vb_state);
+      anv_cmd_buffer_temporary_state_address(cmd_buffer, vb_state);
 
    *addr = (struct blorp_address) {
       .buffer = vb_addr.bo,

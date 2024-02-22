@@ -5572,10 +5572,9 @@ genX(cmd_buffer_begin_companion_rcs_syncpoint)(
 #if GFX_VERx10 >= 125
    const struct intel_device_info *info = cmd_buffer->device->info;
    struct anv_state syncpoint =
-      anv_cmd_buffer_alloc_dynamic_state(cmd_buffer, 2 * sizeof(uint32_t), 4);
+      anv_cmd_buffer_alloc_temporary_state(cmd_buffer, 2 * sizeof(uint32_t), 4);
    struct anv_address xcs_wait_addr =
-      anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
-                                   syncpoint);
+      anv_cmd_buffer_temporary_state_address(cmd_buffer, syncpoint);
    struct anv_address rcs_wait_addr = anv_address_add(xcs_wait_addr, 4);
 
    /* Reset the sync point */
@@ -5654,8 +5653,7 @@ genX(cmd_buffer_end_companion_rcs_syncpoint)(struct anv_cmd_buffer *cmd_buffer,
 {
 #if GFX_VERx10 >= 125
    struct anv_address xcs_wait_addr =
-      anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
-                                   syncpoint);
+      anv_cmd_buffer_temporary_state_address(cmd_buffer, syncpoint);
 
    struct mi_builder b;
 

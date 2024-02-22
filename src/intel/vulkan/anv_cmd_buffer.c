@@ -485,12 +485,8 @@ anv_cmd_buffer_set_ray_query_buffer(struct anv_cmd_buffer *cmd_buffer,
                          device->ray_query_bo);
 
    /* Fill the push constants & mark them dirty. */
-   struct anv_state ray_query_global_state =
-      anv_genX(device->info, cmd_buffer_ray_query_globals)(cmd_buffer);
-
    struct anv_address ray_query_globals_addr =
-      anv_state_pool_state_address(&device->dynamic_state_pool,
-                                   ray_query_global_state);
+      anv_genX(device->info, cmd_buffer_ray_query_globals)(cmd_buffer);
    pipeline_state->push_constants.ray_query_globals =
       anv_address_physical(ray_query_globals_addr);
    cmd_buffer->state.push_constants_dirty |= stages;
@@ -1085,9 +1081,9 @@ anv_cmd_buffer_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer)
       &cmd_buffer->state.gfx.base.push_constants;
 
    struct anv_state state =
-      anv_cmd_buffer_alloc_dynamic_state(cmd_buffer,
-                                         sizeof(struct anv_push_constants),
-                                         32 /* bottom 5 bits MBZ */);
+      anv_cmd_buffer_alloc_temporary_state(cmd_buffer,
+                                           sizeof(struct anv_push_constants),
+                                           32 /* bottom 5 bits MBZ */);
    memcpy(state.map, data, sizeof(struct anv_push_constants));
 
    return state;

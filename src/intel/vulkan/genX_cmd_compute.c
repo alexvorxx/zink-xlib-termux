@@ -468,14 +468,13 @@ void genX(CmdDispatchBase)(
 
    if (prog_data->uses_num_work_groups) {
       struct anv_state state =
-         anv_cmd_buffer_alloc_dynamic_state(cmd_buffer, 12, 4);
+         anv_cmd_buffer_alloc_temporary_state(cmd_buffer, 12, 4);
       uint32_t *sizes = state.map;
       sizes[0] = groupCountX;
       sizes[1] = groupCountY;
       sizes[2] = groupCountZ;
       cmd_buffer->state.compute.num_workgroups =
-         anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
-                                      state);
+         anv_cmd_buffer_temporary_state_address(cmd_buffer, state);
 
       /* The num_workgroups buffer goes in the binding table */
       cmd_buffer->state.descriptors_dirty |= VK_SHADER_STAGE_COMPUTE_BIT;
@@ -532,16 +531,15 @@ void genX(CmdDispatchIndirect)(
    trace_intel_end_compute(&cmd_buffer->trace, 0, 0, 0);
 }
 
-struct anv_state
+struct anv_address
 genX(cmd_buffer_ray_query_globals)(struct anv_cmd_buffer *cmd_buffer)
 {
 #if GFX_VERx10 >= 125
    struct anv_device *device = cmd_buffer->device;
 
    struct anv_state state =
-      anv_cmd_buffer_alloc_dynamic_state(cmd_buffer,
-                                         BRW_RT_DISPATCH_GLOBALS_SIZE,
-                                         64);
+      anv_cmd_buffer_alloc_temporary_state(cmd_buffer,
+                                           BRW_RT_DISPATCH_GLOBALS_SIZE, 64);
    struct brw_rt_scratch_layout layout;
    uint32_t stack_ids_per_dss = 2048; /* TODO: can we use a lower value in
                                        * some cases?
@@ -567,7 +565,7 @@ genX(cmd_buffer_ray_query_globals)(struct anv_cmd_buffer *cmd_buffer)
    };
    GENX(RT_DISPATCH_GLOBALS_pack)(NULL, state.map, &rtdg);
 
-   return state;
+   return anv_cmd_buffer_temporary_state_address(cmd_buffer, state);
 #else
    unreachable("Not supported");
 #endif
@@ -734,10 +732,10 @@ cmd_buffer_emit_rt_dispatch_globals(struct anv_cmd_buffer *cmd_buffer,
    struct anv_cmd_ray_tracing_state *rt = &cmd_buffer->state.rt;
 
    struct anv_state rtdg_state =
-      anv_cmd_buffer_alloc_dynamic_state(cmd_buffer,
-                                         BRW_RT_PUSH_CONST_OFFSET +
-                                         sizeof(struct anv_push_constants),
-                                         64);
+      anv_cmd_buffer_alloc_temporary_state(cmd_buffer,
+                                           BRW_RT_PUSH_CONST_OFFSET +
+                                           sizeof(struct anv_push_constants),
+                                           64);
 
    struct GENX(RT_DISPATCH_GLOBALS) rtdg = {
       .MemBaseAddress     = (struct anv_address) {
@@ -782,10 +780,10 @@ cmd_buffer_emit_rt_dispatch_globals_indirect(struct anv_cmd_buffer *cmd_buffer,
    struct anv_cmd_ray_tracing_state *rt = &cmd_buffer->state.rt;
 
    struct anv_state rtdg_state =
-      anv_cmd_buffer_alloc_dynamic_state(cmd_buffer,
-                                         BRW_RT_PUSH_CONST_OFFSET +
-                                         sizeof(struct anv_push_constants),
-                                         64);
+      anv_cmd_buffer_alloc_temporary_state(cmd_buffer,
+                                           BRW_RT_PUSH_CONST_OFFSET +
+                                           sizeof(struct anv_push_constants),
+                                           64);
 
    struct GENX(RT_DISPATCH_GLOBALS) rtdg = {
       .MemBaseAddress     = (struct anv_address) {
@@ -803,9 +801,7 @@ cmd_buffer_emit_rt_dispatch_globals_indirect(struct anv_cmd_buffer *cmd_buffer,
    GENX(RT_DISPATCH_GLOBALS_pack)(NULL, rtdg_state.map, &rtdg);
 
    struct anv_address rtdg_addr =
-      anv_state_pool_state_address(
-         &cmd_buffer->device->dynamic_state_pool,
-         rtdg_state);
+      anv_cmd_buffer_temporary_state_address(cmd_buffer, rtdg_state);
 
    struct mi_builder b;
    mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
@@ -912,8 +908,7 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
           sizeof(struct anv_push_constants));
 
    struct anv_address rtdg_addr =
-      anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
-                                   rtdg_state);
+      anv_cmd_buffer_temporary_state_address(cmd_buffer, rtdg_state);
 
    uint8_t local_size_log2[3];
    uint32_t global_size[3] = {};

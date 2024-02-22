@@ -3929,6 +3929,20 @@ anv_cmd_buffer_alloc_dynamic_state(struct anv_cmd_buffer *cmd_buffer,
 struct anv_state
 anv_cmd_buffer_alloc_general_state(struct anv_cmd_buffer *cmd_buffer,
                                    uint32_t size, uint32_t alignment);
+static inline struct anv_state
+anv_cmd_buffer_alloc_temporary_state(struct anv_cmd_buffer *cmd_buffer,
+                                     uint32_t size, uint32_t alignment)
+{
+   return anv_state_stream_alloc(&cmd_buffer->dynamic_state_stream,
+                                 size, alignment);
+}
+static inline struct anv_address
+anv_cmd_buffer_temporary_state_address(struct anv_cmd_buffer *cmd_buffer,
+                                       struct anv_state state)
+{
+   return anv_state_pool_state_address(
+      &cmd_buffer->device->dynamic_state_pool, state);
+}
 
 void
 anv_cmd_buffer_chain_command_buffers(struct anv_cmd_buffer **cmd_buffers,

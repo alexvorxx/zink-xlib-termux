@@ -188,21 +188,31 @@ zink_context_destroy(struct pipe_context *pctx)
          screen->free_batch_states = ctx->batch_states;
          screen->last_free_batch_state = screen->free_batch_states;
       }
-      while (screen->last_free_batch_state->next)
-         screen->last_free_batch_state = screen->last_free_batch_state->next;
    }
+   while (screen->last_free_batch_state && screen->last_free_batch_state->next)
+      screen->last_free_batch_state = screen->last_free_batch_state->next;
    if (ctx->free_batch_states) {
       if (screen->free_batch_states)
          screen->last_free_batch_state->next = ctx->free_batch_states;
-      else
+      else {
          screen->free_batch_states = ctx->free_batch_states;
-      screen->last_free_batch_state = ctx->last_free_batch_state;
+         screen->last_free_batch_state = ctx->last_free_batch_state;
+      }
    }
-   simple_mtx_unlock(&screen->free_batch_states_lock);
+   while (screen->last_free_batch_state && screen->last_free_batch_state->next)
+      screen->last_free_batch_state = screen->last_free_batch_state->next;
    if (ctx->batch.state) {
       zink_clear_batch_state(ctx, ctx->batch.state);
-      zink_batch_state_destroy(screen, ctx->batch.state);
+      if (screen->free_batch_states)
+         screen->last_free_batch_state->next = ctx->batch.state;
+      else {
+         screen->free_batch_states = ctx->batch.state;
+         screen->last_free_batch_state = screen->free_batch_states;
+      }
    }
+   while (screen->last_free_batch_state && screen->last_free_batch_state->next)
+      screen->last_free_batch_state = screen->last_free_batch_state->next;
+   simple_mtx_unlock(&screen->free_batch_states_lock);
 
    for (unsigned i = 0; i < 2; i++) {
       util_idalloc_fini(&ctx->di.bindless[i].tex_slots);

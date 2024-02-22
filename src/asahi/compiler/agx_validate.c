@@ -101,6 +101,9 @@ agx_validate_sources(agx_instr *I)
          agx_validate_assert(src.value < (1 << (ldst ? 16 : 8)));
       } else if (I->op == AGX_OPCODE_COLLECT && !agx_is_null(src)) {
          agx_validate_assert(src.size == I->src[0].size);
+      } else if (I->op == AGX_OPCODE_PHI) {
+         agx_validate_assert(src.size == I->dest[0].size);
+         agx_validate_assert(!agx_is_null(src));
       }
 
       agx_validate_assert(!src.memory || is_stack_valid(I));

@@ -513,6 +513,13 @@ agx_temp(agx_context *ctx, enum agx_size size)
    return agx_get_index(ctx->alloc++, size);
 }
 
+static inline agx_index
+agx_temp_like(agx_context *ctx, agx_index idx)
+{
+   idx.value = ctx->alloc++;
+   return idx;
+}
+
 static enum agx_size
 agx_size_for_bits(unsigned bits)
 {

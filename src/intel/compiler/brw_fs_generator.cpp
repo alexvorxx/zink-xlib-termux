@@ -44,8 +44,6 @@ brw_file_from_reg(fs_reg *reg)
    case FIXED_GRF:
    case VGRF:
       return BRW_GENERAL_REGISTER_FILE;
-   case MRF:
-      return BRW_MESSAGE_REGISTER_FILE;
    case IMM:
       return BRW_IMMEDIATE_VALUE;
    case BAD_FILE:
@@ -63,9 +61,6 @@ brw_reg_from_fs_reg(const struct intel_device_info *devinfo, fs_inst *inst,
    struct brw_reg brw_reg;
 
    switch (reg->file) {
-   case MRF:
-      assert((reg->nr & ~BRW_MRF_COMPR4) < BRW_MAX_MRF(devinfo->ver));
-      FALLTHROUGH;
    case VGRF:
       if (reg->stride == 0) {
          brw_reg = brw_vec1_reg(brw_file_from_reg(reg), reg->nr, 0);
@@ -866,27 +861,6 @@ fs_generator::generate_scratch_header(fs_inst *inst, struct brw_reg dst)
 }
 
 void
-fs_generator::generate_uniform_pull_constant_load(fs_inst *inst,
-                                                  struct brw_reg dst,
-                                                  struct brw_reg index,
-                                                  struct brw_reg offset)
-{
-   assert(type_sz(dst.type) == 4);
-   assert(inst->mlen != 0);
-
-   assert(index.file == BRW_IMMEDIATE_VALUE &&
-	  index.type == BRW_REGISTER_TYPE_UD);
-   uint32_t surf_index = index.ud;
-
-   assert(offset.file == BRW_IMMEDIATE_VALUE &&
-	  offset.type == BRW_REGISTER_TYPE_UD);
-   uint32_t read_offset = offset.ud;
-
-   brw_oword_block_read(p, dst, brw_message_reg(inst->base_mrf),
-			read_offset, surf_index);
-}
-
-void
 fs_generator::enable_debug(const char *shader_name)
 {
    debug_flag = true;
@@ -1070,7 +1044,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 
       assert(inst->force_writemask_all || inst->exec_size >= 4);
       assert(inst->force_writemask_all || inst->group % inst->exec_size == 0);
-      assert(inst->base_mrf + inst->mlen <= BRW_MAX_MRF(devinfo->ver));
       assert(inst->mlen <= BRW_MAX_MSG_LENGTH * reg_unit(devinfo));
 
       switch (inst->opcode) {
@@ -1337,14 +1310,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          assert(src[0].file == BRW_IMMEDIATE_VALUE);
          brw_MOV_reloc_imm(p, dst, dst.type, src[0].ud);
          break;
-
-      case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
-         assert(inst->force_writemask_all);
-	 generate_uniform_pull_constant_load(inst, dst,
-                                             src[PULL_UNIFORM_CONSTANT_SRC_SURFACE],
-                                             src[PULL_UNIFORM_CONSTANT_SRC_OFFSET]);
-         send_count++;
-	 break;
 
       case FS_OPCODE_FB_READ:
          generate_fb_read(inst, dst, src[0]);

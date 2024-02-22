@@ -259,21 +259,6 @@ invalid_values(const struct brw_isa_info *isa, const brw_inst *inst)
    if (inst_is_send(isa, inst))
       return error_msg;
 
-   if (num_sources == 3) {
-      /* Nothing to test:
-       *    No 3-src instructions on Gfx4-5
-       *    No reg file bits on Gfx6-10 (align16)
-       *    No invalid encodings on Gfx10-12 (align1)
-       */
-   } else {
-      ERROR_IF(brw_inst_dst_reg_file(devinfo, inst) == MRF ||
-               (num_sources > 0 &&
-                brw_inst_src0_reg_file(devinfo, inst) == MRF) ||
-               (num_sources > 1 &&
-                brw_inst_src1_reg_file(devinfo, inst) == MRF),
-               "invalid register file encoding");
-   }
-
    if (error_msg.str)
       return error_msg;
 

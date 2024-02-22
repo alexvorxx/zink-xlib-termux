@@ -1174,7 +1174,6 @@ fs_instruction_scheduler::calculate_deps()
     * After register allocation, reg_offsets are gone and we track individual
     * GRF registers.
     */
-   schedule_node *last_mrf_write[BRW_MAX_MRF(v->devinfo->ver)];
    schedule_node *last_conditional_mod[8] = {};
    schedule_node *last_accumulator_write = NULL;
    /* Fixed HW registers are assumed to be separate from the virtual
@@ -1183,8 +1182,6 @@ fs_instruction_scheduler::calculate_deps()
     * granular level.
     */
    schedule_node *last_fixed_grf_write = NULL;
-
-   memset(last_mrf_write, 0, sizeof(last_mrf_write));
 
    /* top-to-bottom dependencies: RAW and WAW. */
    for (schedule_node *n = current.start; n < current.end; n++) {
@@ -1223,16 +1220,6 @@ fs_instruction_scheduler::calculate_deps()
          }
       }
 
-      if (inst->base_mrf != -1) {
-         for (int i = 0; i < inst->mlen; i++) {
-            /* It looks like the MRF regs are released in the send
-             * instruction once it's sent, not when the result comes
-             * back.
-             */
-            add_dep(last_mrf_write[inst->base_mrf + i], n);
-         }
-      }
-
       if (const unsigned mask = inst->flags_read(v->devinfo)) {
          assert(mask < (1 << ARRAY_SIZE(last_conditional_mod)));
 
@@ -1261,19 +1248,6 @@ fs_instruction_scheduler::calculate_deps()
                               inst->dst.offset / REG_SIZE + r] = n;
             }
          }
-      } else if (inst->dst.file == MRF) {
-         int reg = inst->dst.nr & ~BRW_MRF_COMPR4;
-
-         add_dep(last_mrf_write[reg], n);
-         last_mrf_write[reg] = n;
-         if (is_compressed(inst)) {
-            if (inst->dst.nr & BRW_MRF_COMPR4)
-               reg += 4;
-            else
-               reg++;
-            add_dep(last_mrf_write[reg], n);
-            last_mrf_write[reg] = n;
-         }
       } else if (inst->dst.file == FIXED_GRF) {
          if (post_reg_alloc) {
             for (unsigned r = 0; r < regs_written(inst); r++) {
@@ -1289,13 +1263,6 @@ fs_instruction_scheduler::calculate_deps()
          last_accumulator_write = n;
       } else if (inst->dst.file == ARF && !inst->dst.is_null()) {
          add_barrier_deps(n);
-      }
-
-      if (inst->mlen > 0 && inst->base_mrf != -1) {
-         for (unsigned i = 0; i < inst->implied_mrf_writes(); i++) {
-            add_dep(last_mrf_write[inst->base_mrf + i], n);
-            last_mrf_write[inst->base_mrf + i] = n;
-         }
       }
 
       if (const unsigned mask = inst->flags_written(v->devinfo)) {
@@ -1319,7 +1286,6 @@ fs_instruction_scheduler::calculate_deps()
    clear_last_grf_write();
 
    /* bottom-to-top dependencies: WAR */
-   memset(last_mrf_write, 0, sizeof(last_mrf_write));
    memset(last_conditional_mod, 0, sizeof(last_conditional_mod));
    last_accumulator_write = NULL;
    last_fixed_grf_write = NULL;
@@ -1353,16 +1319,6 @@ fs_instruction_scheduler::calculate_deps()
          }
       }
 
-      if (inst->base_mrf != -1) {
-         for (int i = 0; i < inst->mlen; i++) {
-            /* It looks like the MRF regs are released in the send
-             * instruction once it's sent, not when the result comes
-             * back.
-             */
-            add_dep(n, last_mrf_write[inst->base_mrf + i], 2);
-         }
-      }
-
       if (const unsigned mask = inst->flags_read(v->devinfo)) {
          assert(mask < (1 << ARRAY_SIZE(last_conditional_mod)));
 
@@ -1389,19 +1345,6 @@ fs_instruction_scheduler::calculate_deps()
                               inst->dst.offset / REG_SIZE + r] = n;
             }
          }
-      } else if (inst->dst.file == MRF) {
-         int reg = inst->dst.nr & ~BRW_MRF_COMPR4;
-
-         last_mrf_write[reg] = n;
-
-         if (is_compressed(inst)) {
-            if (inst->dst.nr & BRW_MRF_COMPR4)
-               reg += 4;
-            else
-               reg++;
-
-            last_mrf_write[reg] = n;
-         }
       } else if (inst->dst.file == FIXED_GRF) {
          if (post_reg_alloc) {
             for (unsigned r = 0; r < regs_written(inst); r++)
@@ -1413,12 +1356,6 @@ fs_instruction_scheduler::calculate_deps()
          last_accumulator_write = n;
       } else if (inst->dst.file == ARF && !inst->dst.is_null()) {
          add_barrier_deps(n);
-      }
-
-      if (inst->mlen > 0 && inst->base_mrf != -1) {
-         for (unsigned i = 0; i < inst->implied_mrf_writes(); i++) {
-            last_mrf_write[inst->base_mrf + i] = n;
-         }
       }
 
       if (const unsigned mask = inst->flags_written(v->devinfo)) {

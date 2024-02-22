@@ -619,16 +619,6 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
     *     The following restrictions apply for align1 mode: Scalar source is
     *     supported. Source and destination horizontal stride must be the
     *     same.
-    *
-    * From the Haswell PRM Volume 2b "Command Reference - Instructions", page
-    * 134 ("Extended Math Function"):
-    *
-    *    Scalar source is supported. Source and destination horizontal stride
-    *    must be 1.
-    *
-    * and similar language exists for IVB and SNB. Pre-SNB, math instructions
-    * are sends, so the sources are moved to MRF's and there are no
-    * restrictions.
     */
    if (inst->is_math())
       return stride == inst->dst.stride || stride == 0;

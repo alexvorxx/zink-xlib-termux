@@ -196,7 +196,6 @@ instructions_match(fs_inst *a, fs_inst *b, bool *negate)
           a->sfid == b->sfid &&
           a->desc == b->desc &&
           a->size_written == b->size_written &&
-          a->base_mrf == b->base_mrf &&
           a->check_tdr == b->check_tdr &&
           a->send_has_side_effects == b->send_has_side_effects &&
           a->eot == b->eot &&

@@ -310,9 +310,6 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
 
    assert(inst->target != 0 || src0_alpha.file == BAD_FILE);
 
-   /* We can potentially have a message length of up to 15, so we have to set
-    * base_mrf to either 0 or 1 in order to fit in m0..m15.
-    */
    fs_reg sources[15];
    int header_size = 2, payload_header_size;
    unsigned length = 0;

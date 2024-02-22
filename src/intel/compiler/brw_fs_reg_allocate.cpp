@@ -69,9 +69,9 @@ fs_visitor::assign_regs_trivial()
       }
    }
 
-   if (this->grf_used >= max_grf) {
+   if (this->grf_used >= BRW_MAX_GRF) {
       fail("Ran out of regs on trivial allocator (%d/%d)\n",
-	   this->grf_used, max_grf);
+	   this->grf_used, BRW_MAX_GRF);
    } else {
       this->alloc.count = this->grf_used;
    }

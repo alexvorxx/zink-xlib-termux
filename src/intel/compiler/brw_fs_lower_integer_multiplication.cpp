@@ -215,7 +215,7 @@ brw_fs_lower_mul_dword_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
        * register.
        */
       fs_reg low = inst->dst;
-      if (orig_dst.is_null() || orig_dst.file == MRF ||
+      if (orig_dst.is_null() ||
           regions_overlap(inst->dst, inst->size_written,
                           inst->src[0], inst->size_read(0)) ||
           regions_overlap(inst->dst, inst->size_written,

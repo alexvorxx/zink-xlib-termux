@@ -217,7 +217,6 @@ namespace {
       case UNIFORM:
       case IMM:
       case VGRF:
-      case MRF:
       case ATTR:
          return reg.stride * type_sz(reg.type);
       case ARF:

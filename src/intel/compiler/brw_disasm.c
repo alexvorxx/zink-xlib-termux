@@ -776,10 +776,6 @@ reg(FILE *file, unsigned _reg_file, unsigned _reg_nr)
 {
    int err = 0;
 
-   /* Clear the Compr4 instruction compression bit. */
-   if (_reg_file == BRW_MESSAGE_REGISTER_FILE)
-      _reg_nr &= ~BRW_MRF_COMPR4;
-
    if (_reg_file == BRW_ARCHITECTURE_REGISTER_FILE) {
       switch (_reg_nr & 0xf0) {
       case BRW_ARF_NULL:

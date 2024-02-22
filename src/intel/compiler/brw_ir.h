@@ -45,14 +45,14 @@ struct backend_reg : private brw_reg
 
    const brw_reg &as_brw_reg() const
    {
-      assert(file == ARF || file == FIXED_GRF || file == MRF || file == IMM);
+      assert(file == ARF || file == FIXED_GRF || file == IMM);
       assert(offset == 0);
       return static_cast<const brw_reg &>(*this);
    }
 
    brw_reg &as_brw_reg()
    {
-      assert(file == ARF || file == FIXED_GRF || file == MRF || file == IMM);
+      assert(file == ARF || file == FIXED_GRF || file == IMM);
       assert(offset == 0);
       return static_cast<brw_reg &>(*this);
    }
@@ -159,7 +159,6 @@ struct backend_instruction {
    uint32_t offset; /**< spill/unspill offset or texture offset bitfield */
    uint8_t mlen; /**< SEND message length */
    uint8_t ex_mlen; /**< SENDS extended message length */
-   int8_t base_mrf; /**< First MRF in the SEND message, if mlen is nonzero. */
    uint8_t target; /**< MRT target. */
    uint8_t sfid; /**< SFID for SEND instructions */
    uint32_t desc; /**< SEND[S] message descriptor immediate */

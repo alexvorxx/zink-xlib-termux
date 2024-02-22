@@ -35,31 +35,12 @@
 
 #include "util/ralloc.h"
 
-static void
-gfx7_convert_mrf_to_grf(struct brw_codegen *p, struct brw_reg *reg)
-{
-   /* From the Ivybridge PRM, Volume 4 Part 3, page 218 ("send"):
-    * "The send with EOT should use register space R112-R127 for <src>. This is
-    *  to enable loading of a new thread into the same slot while the message
-    *  with EOT for current thread is pending dispatch."
-    *
-    * Since we're pretending to have 16 MRFs anyway, we may as well use the
-    * registers required for messages with EOT.
-    */
-   if (reg->file == BRW_MESSAGE_REGISTER_FILE) {
-      reg->file = BRW_GENERAL_REGISTER_FILE;
-      reg->nr += GFX7_MRF_HACK_START;
-   }
-}
-
 void
 brw_set_dest(struct brw_codegen *p, brw_inst *inst, struct brw_reg dest)
 {
    const struct intel_device_info *devinfo = p->devinfo;
 
-   if (dest.file == BRW_MESSAGE_REGISTER_FILE)
-      assert((dest.nr & ~BRW_MRF_COMPR4) < BRW_MAX_MRF(devinfo->ver));
-   else if (dest.file == BRW_GENERAL_REGISTER_FILE)
+   if (dest.file == BRW_GENERAL_REGISTER_FILE)
       assert(dest.nr < XE2_MAX_GRF);
 
    /* The hardware has a restriction where a destination of size Byte with
@@ -73,8 +54,6 @@ brw_set_dest(struct brw_codegen *p, brw_inst *inst, struct brw_reg dest)
        dest.hstride == BRW_HORIZONTAL_STRIDE_1) {
       dest.hstride = BRW_HORIZONTAL_STRIDE_2;
    }
-
-   gfx7_convert_mrf_to_grf(p, &dest);
 
    if (devinfo->ver >= 12 &&
        (brw_inst_opcode(p->isa, inst) == BRW_OPCODE_SEND ||
@@ -118,8 +97,7 @@ brw_set_dest(struct brw_codegen *p, brw_inst *inst, struct brw_reg dest)
          } else {
             brw_inst_set_dst_da16_subreg_nr(devinfo, inst, dest.subnr / 16);
             brw_inst_set_da16_writemask(devinfo, inst, dest.writemask);
-            if (dest.file == BRW_GENERAL_REGISTER_FILE ||
-                dest.file == BRW_MESSAGE_REGISTER_FILE) {
+            if (dest.file == BRW_GENERAL_REGISTER_FILE) {
                assert(dest.writemask != 0);
             }
             /* From the Ivybridge PRM, Vol 4, Part 3, Section 5.2.4.1:
@@ -173,19 +151,15 @@ brw_set_src0(struct brw_codegen *p, brw_inst *inst, struct brw_reg reg)
 {
    const struct intel_device_info *devinfo = p->devinfo;
 
-   if (reg.file == BRW_MESSAGE_REGISTER_FILE)
-      assert((reg.nr & ~BRW_MRF_COMPR4) < BRW_MAX_MRF(devinfo->ver));
-   else if (reg.file == BRW_GENERAL_REGISTER_FILE)
+   if (reg.file == BRW_GENERAL_REGISTER_FILE)
       assert(reg.nr < XE2_MAX_GRF);
-
-   gfx7_convert_mrf_to_grf(p, &reg);
 
    if (brw_inst_opcode(p->isa, inst) == BRW_OPCODE_SEND  ||
        brw_inst_opcode(p->isa, inst) == BRW_OPCODE_SENDC ||
        brw_inst_opcode(p->isa, inst) == BRW_OPCODE_SENDS ||
        brw_inst_opcode(p->isa, inst) == BRW_OPCODE_SENDSC) {
       /* Any source modifiers or regions will be ignored, since this just
-       * identifies the MRF/GRF to start reading the message contents from.
+       * identifies the GRF to start reading the message contents from.
        * Check for some likely failures.
        */
       assert(!reg.negate);
@@ -322,9 +296,6 @@ brw_set_src1(struct brw_codegen *p, brw_inst *inst, struct brw_reg reg)
        */
       assert(reg.file != BRW_ARCHITECTURE_REGISTER_FILE ||
              reg.nr != BRW_ARF_ACCUMULATOR);
-
-      gfx7_convert_mrf_to_grf(p, &reg);
-      assert(reg.file != BRW_MESSAGE_REGISTER_FILE);
 
       brw_inst_set_src1_file_type(devinfo, inst, reg.file, reg.type);
       brw_inst_set_src1_abs(devinfo, inst, reg.abs);
@@ -631,8 +602,6 @@ brw_alu3(struct brw_codegen *p, unsigned opcode, struct brw_reg dest,
    const struct intel_device_info *devinfo = p->devinfo;
    brw_inst *inst = next_insn(p, opcode);
 
-   gfx7_convert_mrf_to_grf(p, &dest);
-
    assert(dest.nr < XE2_MAX_GRF);
 
    if (devinfo->ver >= 10)
@@ -765,8 +734,7 @@ brw_alu3(struct brw_codegen *p, unsigned opcode, struct brw_reg dest,
       }
 
    } else {
-      assert(dest.file == BRW_GENERAL_REGISTER_FILE ||
-             dest.file == BRW_MESSAGE_REGISTER_FILE);
+      assert(dest.file == BRW_GENERAL_REGISTER_FILE);
       assert(dest.type == BRW_REGISTER_TYPE_F  ||
              dest.type == BRW_REGISTER_TYPE_DF ||
              dest.type == BRW_REGISTER_TYPE_D  ||
@@ -1474,8 +1442,7 @@ void gfx6_math(struct brw_codegen *p,
    const struct intel_device_info *devinfo = p->devinfo;
    brw_inst *insn = next_insn(p, BRW_OPCODE_MATH);
 
-   assert(dest.file == BRW_GENERAL_REGISTER_FILE ||
-          dest.file == BRW_MESSAGE_REGISTER_FILE);
+   assert(dest.file == BRW_GENERAL_REGISTER_FILE);
 
    assert(dest.hstride == BRW_HORIZONTAL_STRIDE_1);
 
@@ -1550,70 +1517,6 @@ gfx7_block_read_scratch(struct brw_codegen *p,
                                1,        /* mlen: just g0 */
                                num_regs, /* rlen */
                                true);    /* header present */
-}
-
-/**
- * Read float[4] vectors from the data port constant cache.
- * Location (in buffer) should be a multiple of 16.
- * Used for fetching shader constants.
- */
-void brw_oword_block_read(struct brw_codegen *p,
-			  struct brw_reg dest,
-			  struct brw_reg mrf,
-			  uint32_t offset,
-			  uint32_t bind_table_index)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   const unsigned target_cache = GFX6_SFID_DATAPORT_CONSTANT_CACHE;
-   const unsigned exec_size = 1 << brw_get_default_exec_size(p);
-   const struct tgl_swsb swsb = brw_get_default_swsb(p);
-
-   /* On newer hardware, offset is in units of owords. */
-   offset /= 16;
-
-   mrf = retype(mrf, BRW_REGISTER_TYPE_UD);
-
-   brw_push_insn_state(p);
-   brw_set_default_predicate_control(p, BRW_PREDICATE_NONE);
-   brw_set_default_flag_reg(p, 0, 0);
-   brw_set_default_compression_control(p, BRW_COMPRESSION_NONE);
-   brw_set_default_mask_control(p, BRW_MASK_DISABLE);
-
-   brw_push_insn_state(p);
-   brw_set_default_exec_size(p, BRW_EXECUTE_8);
-   brw_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-   brw_MOV(p, mrf, retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD));
-
-   /* set message header global offset field (reg 0, element 2) */
-   brw_set_default_exec_size(p, BRW_EXECUTE_1);
-   brw_set_default_swsb(p, tgl_swsb_null());
-   brw_MOV(p,
-	   retype(brw_vec1_reg(BRW_MESSAGE_REGISTER_FILE,
-			       mrf.nr,
-			       2), BRW_REGISTER_TYPE_UD),
-	   brw_imm_ud(offset));
-   brw_pop_insn_state(p);
-
-   brw_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
-
-   brw_inst *insn = next_insn(p, BRW_OPCODE_SEND);
-
-   brw_inst_set_sfid(devinfo, insn, target_cache);
-
-   /* cast dest to a uword[8] vector */
-   dest = retype(vec8(dest), BRW_REGISTER_TYPE_UW);
-
-   brw_set_dest(p, insn, dest);
-   brw_set_src0(p, insn, mrf);
-
-   brw_set_desc(p, insn,
-                brw_message_desc(devinfo, 1, DIV_ROUND_UP(exec_size, 8), true) |
-                brw_dp_read_desc(devinfo, bind_table_index,
-                                 BRW_DATAPORT_OWORD_BLOCK_DWORDS(exec_size),
-                                 BRW_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ,
-                                 BRW_DATAPORT_READ_TARGET_DATA_CACHE));
-
-   brw_pop_insn_state(p);
 }
 
 brw_inst *

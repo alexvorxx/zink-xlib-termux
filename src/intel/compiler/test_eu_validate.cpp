@@ -222,29 +222,6 @@ TEST_P(validation_test, invalid_exec_size_encoding)
    }
 }
 
-TEST_P(validation_test, invalid_file_encoding)
-{
-   /* Register file on Gfx12 is only one bit */
-   if (devinfo.ver >= 12)
-      return;
-
-   brw_MOV(p, g0, g0);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_MESSAGE_REGISTER_FILE, BRW_REGISTER_TYPE_F);
-
-   if (devinfo.ver > 6) {
-      EXPECT_FALSE(validate(p));
-   } else {
-      EXPECT_TRUE(validate(p));
-   }
-
-   clear_instructions(p);
-
-   gfx6_math(p, g0, BRW_MATH_FUNCTION_SIN, g0, null);
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_MESSAGE_REGISTER_FILE, BRW_REGISTER_TYPE_F);
-
-   EXPECT_FALSE(validate(p));
-}
-
 TEST_P(validation_test, invalid_type_encoding)
 {
    enum brw_reg_file files[2] = {

@@ -62,7 +62,6 @@ fs_inst::init(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
    this->dst = dst;
    this->sources = sources;
    this->exec_size = exec_size;
-   this->base_mrf = -1;
 
    assert(dst.file != IMM && dst.file != UNIFORM);
 
@@ -75,7 +74,6 @@ fs_inst::init(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
    case VGRF:
    case ARF:
    case FIXED_GRF:
-   case MRF:
    case ATTR:
       this->size_written = dst.component_size(exec_size);
       break;
@@ -538,7 +536,6 @@ fs_reg::is_contiguous() const
    case FIXED_GRF:
       return hstride == BRW_HORIZONTAL_STRIDE_1 &&
              vstride == width + hstride;
-   case MRF:
    case VGRF:
    case ATTR:
       return stride == 1;
@@ -948,8 +945,6 @@ fs_inst::size_read(int arg) const
    case VGRF:
    case ATTR:
       return components_read(arg) * src[arg].component_size(exec_size);
-   case MRF:
-      unreachable("MRF registers are not allowed as sources");
    }
    return 0;
 }
@@ -1015,59 +1010,6 @@ fs_inst::flags_written(const intel_device_info *devinfo) const
       return brw_fs_flag_mask(this, 32);
    } else {
       return brw_fs_flag_mask(dst, size_written);
-   }
-}
-
-/**
- * Returns how many MRFs an FS opcode will write over.
- *
- * Note that this is not the 0 or 1 implied writes in an actual gen
- * instruction -- the FS opcodes often generate MOVs in addition.
- */
-unsigned
-fs_inst::implied_mrf_writes() const
-{
-   if (mlen == 0)
-      return 0;
-
-   if (base_mrf == -1)
-      return 0;
-
-   switch (opcode) {
-   case SHADER_OPCODE_RCP:
-   case SHADER_OPCODE_RSQ:
-   case SHADER_OPCODE_SQRT:
-   case SHADER_OPCODE_EXP2:
-   case SHADER_OPCODE_LOG2:
-   case SHADER_OPCODE_SIN:
-   case SHADER_OPCODE_COS:
-      return 1 * exec_size / 8;
-   case SHADER_OPCODE_POW:
-   case SHADER_OPCODE_INT_QUOTIENT:
-   case SHADER_OPCODE_INT_REMAINDER:
-      return 2 * exec_size / 8;
-   case SHADER_OPCODE_TEX:
-   case FS_OPCODE_TXB:
-   case SHADER_OPCODE_TXD:
-   case SHADER_OPCODE_TXF:
-   case SHADER_OPCODE_TXF_CMS:
-   case SHADER_OPCODE_TXF_MCS:
-   case SHADER_OPCODE_TG4:
-   case SHADER_OPCODE_TG4_OFFSET:
-   case SHADER_OPCODE_TG4_BIAS:
-   case SHADER_OPCODE_TG4_EXPLICIT_LOD:
-   case SHADER_OPCODE_TG4_IMPLICIT_LOD:
-   case SHADER_OPCODE_TG4_OFFSET_LOD:
-   case SHADER_OPCODE_TG4_OFFSET_BIAS:
-   case SHADER_OPCODE_TXL:
-   case SHADER_OPCODE_TXS:
-   case SHADER_OPCODE_LOD:
-   case SHADER_OPCODE_SAMPLEINFO:
-      return 1;
-   case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
-      return mlen;
-   default:
-      unreachable("not reached");
    }
 }
 
@@ -2274,9 +2216,6 @@ fs_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE *f
    case FIXED_GRF:
       fprintf(file, "g%d", inst->dst.nr);
       break;
-   case MRF:
-      fprintf(file, "m%d", inst->dst.nr);
-      break;
    case BAD_FILE:
       fprintf(file, "(null)");
       break;
@@ -2332,9 +2271,6 @@ fs_visitor::dump_instruction_to_file(const backend_instruction *be_inst, FILE *f
          break;
       case FIXED_GRF:
          fprintf(file, "g%d", inst->src[i].nr);
-         break;
-      case MRF:
-         fprintf(file, "***m%d***", inst->src[i].nr);
          break;
       case ATTR:
          fprintf(file, "attr%d", inst->src[i].nr);

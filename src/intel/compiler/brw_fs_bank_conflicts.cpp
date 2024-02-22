@@ -565,16 +565,6 @@ namespace {
                 (is_grf(inst->src[i]) && inst->eot))
                constrained[p.atom_of_reg(reg_of(inst->src[i]))] = true;
          }
-
-         /* The location of the Gfx7 MRF hack registers is hard-coded in the
-          * rest of the compiler back-end.  Don't attempt to move them around.
-          */
-         assert(inst->dst.file != MRF);
-
-         for (unsigned i = 0; i < inst->implied_mrf_writes(); i++) {
-            const unsigned reg = GFX7_MRF_HACK_START + inst->base_mrf + i;
-            constrained[p.atom_of_reg(reg)] = true;
-         }
       }
 
       return constrained;

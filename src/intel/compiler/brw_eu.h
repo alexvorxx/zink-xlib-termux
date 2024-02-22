@@ -1510,12 +1510,6 @@ void gfx6_math(struct brw_codegen *p,
 	       struct brw_reg src0,
 	       struct brw_reg src1);
 
-void brw_oword_block_read(struct brw_codegen *p,
-			  struct brw_reg dest,
-			  struct brw_reg mrf,
-			  uint32_t offset,
-			  uint32_t bind_table_index);
-
 unsigned brw_scratch_surface_idx(const struct brw_codegen *p);
 
 void gfx7_block_read_scratch(struct brw_codegen *p,
@@ -1725,12 +1719,6 @@ next_offset(const struct intel_device_info *devinfo, void *store, int offset)
 
 /** Maximum SEND message length */
 #define BRW_MAX_MSG_LENGTH 15
-
-/** First MRF register used by pull loads */
-#define FIRST_SPILL_MRF(gen) ((gen) == 6 ? 21 : 13)
-
-/** First MRF register used by spills */
-#define FIRST_PULL_LOAD_MRF(gen) ((gen) == 6 ? 16 : 13)
 
 #ifdef __cplusplus
 }

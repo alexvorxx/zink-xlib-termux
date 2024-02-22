@@ -70,10 +70,8 @@ namespace {
    enum intel_eu_dependency_id {
       /* Register part of the GRF. */
       EU_DEPENDENCY_ID_GRF0 = 0,
-      /* Register part of the MRF.  Only used on Gfx4-6. */
-      EU_DEPENDENCY_ID_MRF0 = EU_DEPENDENCY_ID_GRF0 + XE2_MAX_GRF,
       /* Address register part of the ARF. */
-      EU_DEPENDENCY_ID_ADDR0 = EU_DEPENDENCY_ID_MRF0 + 24,
+      EU_DEPENDENCY_ID_ADDR0 = EU_DEPENDENCY_ID_GRF0 + XE2_MAX_GRF,
       /* Accumulator register part of the ARF. */
       EU_DEPENDENCY_ID_ACCUM0 = EU_DEPENDENCY_ID_ADDR0 + 1,
       /* Flag register part of the ARF. */
@@ -807,18 +805,12 @@ namespace {
    {
       if (r.file == VGRF) {
          const unsigned i = r.nr + r.offset / REG_SIZE + delta;
-         assert(i < EU_DEPENDENCY_ID_MRF0 - EU_DEPENDENCY_ID_GRF0);
+         assert(i < EU_DEPENDENCY_ID_ADDR0 - EU_DEPENDENCY_ID_GRF0);
          return intel_eu_dependency_id(EU_DEPENDENCY_ID_GRF0 + i);
 
       } else if (r.file == FIXED_GRF) {
          const unsigned i = r.nr + delta;
-         assert(i < EU_DEPENDENCY_ID_MRF0 - EU_DEPENDENCY_ID_GRF0);
-         return intel_eu_dependency_id(EU_DEPENDENCY_ID_GRF0 + i);
-
-      } else if (r.file == MRF) {
-         const unsigned i = GFX7_MRF_HACK_START +
-                            r.nr + r.offset / REG_SIZE + delta;
-         assert(i < EU_DEPENDENCY_ID_MRF0 - EU_DEPENDENCY_ID_GRF0);
+         assert(i < EU_DEPENDENCY_ID_ADDR0 - EU_DEPENDENCY_ID_GRF0);
          return intel_eu_dependency_id(EU_DEPENDENCY_ID_GRF0 + i);
 
       } else if (r.file == ARF && r.nr >= BRW_ARF_ADDRESS &&
@@ -922,13 +914,6 @@ namespace {
                st, reg_dependency_id(devinfo, brw_acc_reg(8), j));
       }
 
-      if (is_send(inst) && inst->base_mrf != -1) {
-         for (unsigned j = 0; j < inst->mlen; j++)
-            stall_on_dependency(
-               st, reg_dependency_id(
-                  devinfo, brw_uvec_mrf(8, inst->base_mrf, 0), j));
-      }
-
       if (const unsigned mask = inst->flags_read(devinfo)) {
          for (unsigned i = 0; i < sizeof(mask) * CHAR_BIT; i++) {
             if (mask & (1 << i))
@@ -978,12 +963,6 @@ namespace {
                      st, perf, reg_dependency_id(devinfo, inst->src[i], j));
             }
          }
-      }
-
-      if (is_send(inst) && inst->base_mrf != -1) {
-         for (unsigned j = 0; j < inst->mlen; j++)
-            mark_read_dependency(st, perf,
-               reg_dependency_id(devinfo, brw_uvec_mrf(8, inst->base_mrf, 0), j));
       }
 
       /* Mark any destination dependencies. */

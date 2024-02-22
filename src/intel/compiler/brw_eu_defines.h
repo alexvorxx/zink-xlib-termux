@@ -840,12 +840,10 @@ enum ENUM_PACKED brw_predicate {
 enum ENUM_PACKED brw_reg_file {
    BRW_ARCHITECTURE_REGISTER_FILE = 0,
    BRW_GENERAL_REGISTER_FILE      = 1,
-   BRW_MESSAGE_REGISTER_FILE      = 2,
    BRW_IMMEDIATE_VALUE            = 3,
 
    ARF = BRW_ARCHITECTURE_REGISTER_FILE,
    FIXED_GRF = BRW_GENERAL_REGISTER_FILE,
-   MRF = BRW_MESSAGE_REGISTER_FILE,
    IMM = BRW_IMMEDIATE_VALUE,
 
    /* These are not hardware values */
@@ -884,8 +882,6 @@ enum ENUM_PACKED gfx10_align1_3src_exec_type {
 #define BRW_ARF_IP                    0xA0
 #define BRW_ARF_TDR                   0xB0
 #define BRW_ARF_TIMESTAMP             0xC0
-
-#define BRW_MRF_COMPR4			(1 << 7)
 
 #define BRW_AMASK   0
 #define BRW_IMASK   1

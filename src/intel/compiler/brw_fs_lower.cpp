@@ -88,13 +88,9 @@ brw_fs_lower_load_payload(fs_visitor &s)
       if (inst->opcode != SHADER_OPCODE_LOAD_PAYLOAD)
          continue;
 
-      assert(inst->dst.file == MRF || inst->dst.file == VGRF);
+      assert(inst->dst.file == VGRF);
       assert(inst->saturate == false);
       fs_reg dst = inst->dst;
-
-      /* Get rid of COMPR4.  We'll add it back in if we need it */
-      if (dst.file == MRF)
-         dst.nr = dst.nr & ~BRW_MRF_COMPR4;
 
       const fs_builder ibld(&s, block, inst);
       const fs_builder ubld = ibld.exec_all();
@@ -114,59 +110,6 @@ brw_fs_lower_load_payload(fs_visitor &s)
 
          dst = byte_offset(dst, n * REG_SIZE);
          i += n;
-      }
-
-      if (inst->dst.file == MRF && (inst->dst.nr & BRW_MRF_COMPR4) &&
-          inst->exec_size > 8) {
-         /* In this case, the payload portion of the LOAD_PAYLOAD isn't
-          * a straightforward copy.  Instead, the result of the
-          * LOAD_PAYLOAD is treated as interleaved and the first four
-          * non-header sources are unpacked as:
-          *
-          * m + 0: r0
-          * m + 1: g0
-          * m + 2: b0
-          * m + 3: a0
-          * m + 4: r1
-          * m + 5: g1
-          * m + 6: b1
-          * m + 7: a1
-          *
-          * This is used for gen <= 5 fb writes.
-          */
-         assert(inst->exec_size == 16);
-         assert(inst->header_size + 4 <= inst->sources);
-         for (uint8_t i = inst->header_size; i < inst->header_size + 4; i++) {
-            if (inst->src[i].file != BAD_FILE) {
-               if (s.devinfo->has_compr4) {
-                  fs_reg compr4_dst = retype(dst, inst->src[i].type);
-                  compr4_dst.nr |= BRW_MRF_COMPR4;
-                  ibld.MOV(compr4_dst, inst->src[i]);
-               } else {
-                  /* Platform doesn't have COMPR4.  We have to fake it */
-                  fs_reg mov_dst = retype(dst, inst->src[i].type);
-                  ibld.quarter(0).MOV(mov_dst, quarter(inst->src[i], 0));
-                  mov_dst.nr += 4;
-                  ibld.quarter(1).MOV(mov_dst, quarter(inst->src[i], 1));
-               }
-            }
-
-            dst.nr++;
-         }
-
-         /* The loop above only ever incremented us through the first set
-          * of 4 registers.  However, thanks to the magic of COMPR4, we
-          * actually wrote to the first 8 registers, so we need to take
-          * that into account now.
-          */
-         dst.nr += 4;
-
-         /* The COMPR4 code took care of the first 4 sources.  We'll let
-          * the regular path handle any remaining sources.  Yes, we are
-          * modifying the instruction but we're about to delete it so
-          * this really doesn't hurt anything.
-          */
-         inst->header_size += 4;
       }
 
       for (uint8_t i = inst->header_size; i < inst->sources; i++) {
@@ -592,7 +535,7 @@ brw_fs_lower_sends_overlapping_payload(fs_visitor &s)
 }
 
 /**
- * Three source instruction must have a GRF/MRF destination register.
+ * Three source instruction must have a GRF destination register.
  * ARF NULL is not allowed.  Fix that up by allocating a temporary GRF.
  */
 bool

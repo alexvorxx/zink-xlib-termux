@@ -218,6 +218,7 @@ ForEachMacros:
   - agx_foreach_ssa_src
   - agx_foreach_ssa_src_rev
   - agx_foreach_successor
+  - foreach_next_use
 
 # radv
   - PHASE

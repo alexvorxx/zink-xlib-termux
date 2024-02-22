@@ -6,6 +6,7 @@
 #include "util/bitset.h"
 #include "util/macros.h"
 #include "util/u_dynarray.h"
+#include "util/u_memory.h"
 #include "util/u_qsort.h"
 #include "agx_builder.h"
 #include "agx_compile.h"
@@ -671,6 +672,18 @@ find_regs(struct ra_ctx *rctx, agx_instr *I, unsigned dest_idx, unsigned count,
    }
 }
 
+static uint32_t
+search_ssa_to_reg_out(struct ra_ctx *ctx, struct agx_block *blk,
+                      enum ra_class cls, unsigned ssa)
+{
+   for (unsigned reg = 0; reg < ctx->bound[cls]; ++reg) {
+      if (blk->reg_to_ssa_out[cls][reg] == ssa)
+         return reg;
+   }
+
+   unreachable("variable not defined in block");
+}
+
 /*
  * Loop over live-in values at the start of the block and mark their registers
  * as in-use. We process blocks in dominance order, so this handles everything
@@ -699,6 +712,7 @@ reserve_live_in(struct ra_ctx *rctx)
          continue;
 
       unsigned base;
+      enum ra_class cls = rctx->classes[i];
 
       /* If we split live ranges, the variable might be defined differently at
        * the end of each predecessor. Join them together with a phi inserted at
@@ -712,7 +726,7 @@ reserve_live_in(struct ra_ctx *rctx)
          agx_foreach_predecessor(rctx->block, pred) {
             unsigned pred_idx = agx_predecessor_index(rctx->block, *pred);
 
-            if ((*pred)->ssa_to_reg_out == NULL) {
+            if ((*pred)->reg_to_ssa_out[cls] == NULL) {
                /* If this is a loop header, we don't know where the register
                 * will end up. So, we create a phi conservatively but don't fill
                 * it in until the end of the loop. Stash in the information
@@ -723,8 +737,8 @@ reserve_live_in(struct ra_ctx *rctx)
                phi->src[pred_idx].memory = rctx->classes[i] == RA_MEM;
             } else {
                /* Otherwise, we can build the phi now */
-               unsigned reg = (*pred)->ssa_to_reg_out[i];
-               phi->src[pred_idx] = rctx->classes[i] == RA_MEM
+               unsigned reg = search_ssa_to_reg_out(rctx, *pred, cls, i);
+               phi->src[pred_idx] = cls == RA_MEM
                                        ? agx_memory_register(reg, size)
                                        : agx_register(reg, size);
             }
@@ -742,10 +756,10 @@ reserve_live_in(struct ra_ctx *rctx)
          assert(nr_preds == 1);
 
          agx_block **pred = util_dynarray_begin(&rctx->block->predecessors);
-         base = (*pred)->ssa_to_reg_out[i];
+         /* TODO: Flip logic to eliminate the search */
+         base = search_ssa_to_reg_out(rctx, *pred, cls, i);
       }
 
-      enum ra_class cls = rctx->classes[i];
       set_ssa_to_reg(rctx, i, base);
 
       for (unsigned j = 0; j < rctx->ncomps[i]; ++j) {
@@ -1095,7 +1109,19 @@ agx_ra_assign_local(struct ra_ctx *rctx)
       agx_set_dests(rctx, I);
    }
 
-   block->ssa_to_reg_out = rctx->ssa_to_reg;
+   for (unsigned i = 0; i < RA_CLASSES; ++i) {
+      block->reg_to_ssa_out[i] =
+         malloc(rctx->bound[i] * sizeof(*block->reg_to_ssa_out[i]));
+
+      /* Initialize with sentinel so we don't have unused regs mapping to r0 */
+      memset(block->reg_to_ssa_out[i], 0xFF,
+             rctx->bound[i] * sizeof(*block->reg_to_ssa_out[i]));
+   }
+
+   int i;
+   BITSET_FOREACH_SET(i, block->live_out, rctx->shader->alloc) {
+      block->reg_to_ssa_out[rctx->classes[i]][rctx->ssa_to_reg[i]] = i;
+   }
 
    /* Also set the sources for the phis in our successors, since that logically
     * happens now (given the possibility of live range splits, etc)
@@ -1114,6 +1140,8 @@ agx_ra_assign_local(struct ra_ctx *rctx)
          }
       }
    }
+
+   free(rctx->ssa_to_reg);
 }
 
 /*
@@ -1462,8 +1490,10 @@ agx_ra(agx_context *ctx)
       agx_lower_spill(ctx);
 
    agx_foreach_block(ctx, block) {
-      free(block->ssa_to_reg_out);
-      block->ssa_to_reg_out = NULL;
+      for (unsigned i = 0; i < ARRAY_SIZE(block->reg_to_ssa_out); ++i) {
+         free(block->reg_to_ssa_out[i]);
+         block->reg_to_ssa_out[i] = NULL;
+      }
    }
 
    free(phi_web);

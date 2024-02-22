@@ -414,9 +414,10 @@ typedef struct agx_block {
    BITSET_WORD *live_out;
 
    /* For visited blocks during register assignment and live-out registers, the
-    * mapping of SSA names to registers at the end of the block.
+    * mapping of registers to SSA names at the end of the block. This is dense,
+    * unlike its inverse.
     */
-   uint16_t *ssa_to_reg_out;
+   uint32_t *reg_to_ssa_out[2];
 
    /* Is this block a loop header? If not, all of its predecessors precede it in
     * source order.

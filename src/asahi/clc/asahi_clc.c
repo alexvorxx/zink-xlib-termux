@@ -491,7 +491,7 @@ main(int argc, char **argv)
    fprintf(fp, " #include <stdint.h>\n");
 
    /* Compile SPIR-V to NIR */
-   nir_shader *nir = compile(NULL, final_spirv.data, final_spirv.size);
+   nir_shader *nir = compile(mem_ctx, final_spirv.data, final_spirv.size);
 
    {
       struct util_dynarray binary;
@@ -543,6 +543,11 @@ main(int argc, char **argv)
    if (fp != stdout)
       fclose(fp);
 
+   util_dynarray_foreach(&spirv_objs, struct clc_binary, p) {
+      clc_free_spirv(p);
+   }
+
+   clc_free_spirv(&final_spirv);
    ralloc_free(mem_ctx);
 
    return 0;

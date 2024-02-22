@@ -249,6 +249,15 @@
     B2C_JOB_SUCCESS_REGEX: '^\+ DEQP_EXITCODE=0\r$'
     HWCI_TEST_SCRIPT: ./install/deqp-runner.sh
 
+.tahiti-test-valve:
+  variables:
+    FDO_CI_CONCURRENT: 8
+    RUNNER_FARM_LOCATION: mupuf
+    B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=8g'
+  tags:
+    - farm:$RUNNER_FARM_LOCATION
+    - amdgpu:codename:TAHITI
+
 .kabini-test-valve:
   variables:
     RUNNER_FARM_LOCATION: mupuf

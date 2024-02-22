@@ -661,10 +661,13 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
        * it. Otherwise, if any predecessor reloads it, ensure it's reloaded on all other
        * predecessors. The idea is that it's better in practice to rematerialize redundantly than to
        * create lots of phis. */
-      /* TODO: test this idea with more than Dawn of War III shaders (the current pipeline-db
-       * doesn't seem to exercise this path much) */
-      bool remat = ctx.remat.count(pair.first);
-      bool spill = !remat;
+      const bool remat = ctx.remat.count(pair.first);
+      /* If the variable is spilled at the current loop-header, spilling is essentially for free
+       * while reloading is not. Thus, keep them spilled if they are at least partially spilled.
+       */
+      const bool avoid_respill = block->loop_nest_depth && ctx.loop.back().spills.count(pair.first);
+      bool spill = true;
+      bool partial_spill = false;
       uint32_t spill_id = 0;
       for (unsigned pred_idx : preds) {
          /* variable is not even live at the predecessor: probably from a phi */
@@ -673,22 +676,22 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
             break;
          }
          if (!ctx.spills_exit[pred_idx].count(pair.first)) {
-            partial_spills.emplace(pair.first, false);
-            if (!remat)
-               spill = false;
+            spill = false;
          } else {
-            partial_spills[pair.first] = true;
+            partial_spill = true;
             /* it might be that on one incoming path, the variable has a different spill_id, but
              * add_couple_code() will take care of that. */
             spill_id = ctx.spills_exit[pred_idx][pair.first];
-            if (remat)
-               spill = true;
          }
       }
+      spill |= (remat && partial_spill);
+      spill |= (avoid_respill && partial_spill);
       if (spill) {
          ctx.spills_entry[block_idx][pair.first] = spill_id;
          partial_spills.erase(pair.first);
          spilled_registers += pair.first;
+      } else {
+         partial_spills[pair.first] = partial_spill;
       }
    }
 
@@ -716,6 +719,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          /* The phi is spilled at all predecessors. Keep it spilled. */
          ctx.add_to_spills(phi->definitions[0].getTemp(), ctx.spills_entry[block_idx]);
          spilled_registers += phi->definitions[0].getTemp();
+         partial_spills.erase(phi->definitions[0].getTemp());
       } else {
          /* Phis might increase the register pressure. */
          partial_spills[phi->definitions[0].getTemp()] = is_partial_spill;

@@ -1287,6 +1287,7 @@ agx_ra(agx_context *ctx)
                continue;
             assert(ins->src[i].size == ins->src[0].size);
 
+            assert(n < ins->nr_srcs);
             copies[n++] = (struct agx_copy){
                .dest = base + (i * width),
                .src = ins->src[i],
@@ -1318,6 +1319,7 @@ agx_ra(agx_context *ctx)
             src.channels_m1 = 0;
             src.value += (i * width);
 
+            assert(n < ARRAY_SIZE(copies));
             copies[n++] = (struct agx_copy){
                .dest = ins->dest[i].value,
                .src = src,

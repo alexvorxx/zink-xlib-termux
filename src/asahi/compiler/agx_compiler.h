@@ -588,6 +588,8 @@ agx_start_block(agx_context *ctx)
    return first;
 }
 
+void agx_block_add_successor(agx_block *block, agx_block *successor);
+
 /* Iterators for AGX IR */
 
 #define agx_foreach_block(ctx, v)                                              \

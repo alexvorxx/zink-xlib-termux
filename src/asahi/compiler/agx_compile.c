@@ -256,7 +256,7 @@ agx_subdivide_to(agx_builder *b, agx_index dst, agx_index s0, unsigned comp)
    return split;
 }
 
-static void
+void
 agx_block_add_successor(agx_block *block, agx_block *successor)
 {
    assert(block != NULL && successor != NULL);

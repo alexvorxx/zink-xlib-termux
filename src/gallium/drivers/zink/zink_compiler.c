@@ -5321,11 +5321,20 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
 
    assert(util_is_power_of_two_nonzero(align));
 
-   return (nir_mem_access_size_align){
-      .num_components = MIN2(bytes / (bit_size / 8), 4),
-      .bit_size = bit_size,
-      .align = bit_size / 8,
-   };
+   /* simply drop the bit_size for unaligned load/stores */
+   if (align < (bit_size / 8)) {
+      return (nir_mem_access_size_align){
+         .num_components = MIN2(bytes / align, 4),
+         .bit_size = align * 8,
+         .align = align,
+      };
+   } else {
+      return (nir_mem_access_size_align){
+         .num_components = MIN2(bytes / (bit_size / 8), 4),
+         .bit_size = bit_size,
+         .align = bit_size / 8,
+      };
+   }
 }
 
 static nir_mem_access_size_align

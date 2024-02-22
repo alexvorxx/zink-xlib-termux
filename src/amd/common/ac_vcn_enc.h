@@ -200,6 +200,8 @@
 #define RENCODE_COLOR_SPACE_YUV                                                     0
 #define RENCODE_COLOR_SPACE_RGB                                                     1
 
+#define RENCODE_VCN4_AV1_MAX_NUM_LTR                                                2
+
 typedef struct rvcn_enc_session_info_s {
    uint32_t interface_version;
    uint32_t sw_context_address_hi;
@@ -611,10 +613,13 @@ typedef struct rvcn_enc_av1_color_description_s
 typedef struct rvcn_enc_av1_ref_frame_s
 {
    bool in_use;
+   bool is_ltr;
    uint32_t frame_id;
    uint32_t temporal_id;
    uint32_t slot_id;
    uint32_t frame_type;
+   uint32_t ltr_seq;
+   void *frame_signature;
 } rvcn_enc_av1_ref_frame_t;
 
 typedef struct rvcn_enc_av1_recon_slot_s

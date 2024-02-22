@@ -996,6 +996,7 @@ struct pipe_av1_enc_picture_desc
       uint32_t use_superres:1;
       uint32_t reduced_tx_set:1;
       uint32_t skip_mode_present:1;
+      uint32_t long_term_reference:1;
    };
    struct pipe_enc_quality_modes quality_modes;
    struct pipe_enc_intra_refresh intra_refresh;
@@ -1028,6 +1029,9 @@ struct pipe_av1_enc_picture_desc
    uint32_t primary_ref_frame;
    uint8_t refresh_frame_flags;
    uint8_t ref_frame_idx[7];
+   uint32_t ref_frame_ctrl_l0;            /* forward prediction only */
+   void *ref_list[8];                     /* for tracking ref frames */
+   void *recon_frame;
 
    struct {
       uint8_t cdef_damping_minus_3;

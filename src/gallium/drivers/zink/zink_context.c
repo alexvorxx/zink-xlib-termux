@@ -2859,6 +2859,29 @@ begin_rendering(struct zink_context *ctx)
                ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS+1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             }
          }
+      }
+      if (changed_size || changed_layout)
+         ctx->rp_changed = true;
+      ctx->rp_loadop_changed = false;
+      ctx->rp_layout_changed = false;
+   }
+   /* always assemble clear_buffers mask:
+    * if a scissored clear must be triggered during glFlush,
+    * the renderpass metadata may be unchanged (e.g., LOAD from previous rp),
+    * but the buffer mask must still be returned
+    */
+   if (ctx->clears_enabled) {
+      for (int i = 0; i < ctx->fb_state.nr_cbufs; i++) {
+         /* these are no-ops */
+         if (!ctx->fb_state.cbufs[i] || !zink_fb_clear_enabled(ctx, i))
+            continue;
+         /* these need actual clear calls inside the rp */
+         if (zink_fb_clear_needs_explicit(&ctx->fb_clears[i]))
+            clear_buffers |= (PIPE_CLEAR_COLOR0 << i);
+      }
+      if (ctx->fb_state.zsbuf && zink_fb_clear_enabled(ctx, PIPE_MAX_COLOR_BUFS)) {
+         struct zink_framebuffer_clear *fb_clear = &ctx->fb_clears[PIPE_MAX_COLOR_BUFS];
+         struct zink_framebuffer_clear_data *clear = zink_fb_clear_element(fb_clear, 0);
          if (zink_fb_clear_needs_explicit(fb_clear)) {
             for (int j = !zink_fb_clear_element_needs_explicit(clear);
                  (clear_buffers & PIPE_CLEAR_DEPTHSTENCIL) != PIPE_CLEAR_DEPTHSTENCIL && j < zink_fb_clear_count(fb_clear);
@@ -2866,10 +2889,6 @@ begin_rendering(struct zink_context *ctx)
                clear_buffers |= zink_fb_clear_element(fb_clear, j)->zs.bits;
          }
       }
-      if (changed_size || changed_layout)
-         ctx->rp_changed = true;
-      ctx->rp_loadop_changed = false;
-      ctx->rp_layout_changed = false;
    }
 
    if (!ctx->rp_changed && ctx->batch.in_rp)

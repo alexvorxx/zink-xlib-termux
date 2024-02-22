@@ -49,9 +49,16 @@ template <> struct hash<aco::Temp> {
 } // namespace std
 
 /*
- * Implements the spilling algorithm on SSA-form from
+ * Implements the spilling algorithm on SSA-form based on
  * "Register Spilling and Live-Range Splitting for SSA-Form Programs"
  * by Matthias Braun and Sebastian Hack.
+ *
+ * Key difference between this algorithm and the min-algorithm from the paper
+ * is the use of average use distances rather than next-use distances per
+ * instruction.
+ * As we decrement the number of remaining uses, the average use distances
+ * give an approximation of the next-use distances while being computationally
+ * and memory-wise less expensive.
  */
 
 namespace aco {
@@ -87,9 +94,6 @@ struct spill_ctx {
    std::vector<bool> processed;
    std::vector<loop_info> loop;
 
-   using next_use_distance_startend_type = aco::unordered_map<Temp, std::pair<uint32_t, uint32_t>>;
-   std::vector<next_use_distance_startend_type> next_use_distances_start;
-   std::vector<next_use_distance_startend_type> next_use_distances_end;
    std::vector<use_info> ssa_infos;
    std::vector<std::pair<RegClass, std::unordered_set<uint32_t>>> interferences;
    std::vector<std::vector<uint32_t>> affinities;
@@ -107,11 +111,8 @@ struct spill_ctx {
          renames(program->blocks.size(), aco::map<Temp, Temp>(memory)),
          spills_entry(program->blocks.size(), aco::unordered_map<Temp, uint32_t>(memory)),
          spills_exit(program->blocks.size(), aco::unordered_map<Temp, uint32_t>(memory)),
-         processed(program->blocks.size(), false),
-         next_use_distances_start(program->blocks.size(), next_use_distance_startend_type(memory)),
-         next_use_distances_end(program->blocks.size(), next_use_distance_startend_type(memory)),
-         ssa_infos(program->peekAllocationId()), remat(memory), wave_size(program->wave_size),
-         sgpr_spill_slots(0), vgpr_spill_slots(0)
+         processed(program->blocks.size(), false), ssa_infos(program->peekAllocationId()),
+         remat(memory), wave_size(program->wave_size), sgpr_spill_slots(0), vgpr_spill_slots(0)
    {}
 
    void add_affinity(uint32_t first, uint32_t second)
@@ -221,142 +222,6 @@ gather_ssa_use_info(spill_ctx& ctx)
       }
 
       instruction_idx += block.instructions.size();
-   }
-}
-
-int32_t
-get_dominator(int idx_a, int idx_b, Program* program, bool is_linear)
-{
-
-   if (idx_a == -1)
-      return idx_b;
-   if (idx_b == -1)
-      return idx_a;
-   if (is_linear) {
-      while (idx_a != idx_b) {
-         if (idx_a > idx_b)
-            idx_a = program->blocks[idx_a].linear_idom;
-         else
-            idx_b = program->blocks[idx_b].linear_idom;
-      }
-   } else {
-      while (idx_a != idx_b) {
-         if (idx_a > idx_b)
-            idx_a = program->blocks[idx_a].logical_idom;
-         else
-            idx_b = program->blocks[idx_b].logical_idom;
-      }
-   }
-   assert(idx_a != -1);
-   return idx_a;
-}
-
-void
-next_uses_per_block(spill_ctx& ctx, unsigned block_idx, uint32_t& worklist)
-{
-   Block* block = &ctx.program->blocks[block_idx];
-   ctx.next_use_distances_start[block_idx] = ctx.next_use_distances_end[block_idx];
-   auto& next_use_distances_start = ctx.next_use_distances_start[block_idx];
-
-   /* to compute the next use distance at the beginning of the block, we have to add the block's
-    * size */
-   for (std::unordered_map<Temp, std::pair<uint32_t, uint32_t>>::iterator it =
-           next_use_distances_start.begin();
-        it != next_use_distances_start.end(); ++it)
-      it->second.second = it->second.second + block->instructions.size();
-
-   int idx = block->instructions.size() - 1;
-   while (idx >= 0) {
-      aco_ptr<Instruction>& instr = block->instructions[idx];
-
-      if (instr->opcode == aco_opcode::p_linear_phi || instr->opcode == aco_opcode::p_phi)
-         break;
-
-      for (const Definition& def : instr->definitions) {
-         if (def.isTemp())
-            next_use_distances_start.erase(def.getTemp());
-      }
-
-      for (const Operand& op : instr->operands) {
-         /* omit exec mask */
-         if (op.isFixed() && op.physReg() == exec)
-            continue;
-         if (op.regClass().type() == RegType::vgpr && op.regClass().is_linear())
-            continue;
-         if (op.isTemp())
-            next_use_distances_start[op.getTemp()] = {block_idx, idx};
-      }
-      idx--;
-   }
-
-   assert(block_idx != 0 || next_use_distances_start.empty());
-   std::unordered_set<Temp> phi_defs;
-   while (idx >= 0) {
-      aco_ptr<Instruction>& instr = block->instructions[idx];
-      assert(instr->opcode == aco_opcode::p_linear_phi || instr->opcode == aco_opcode::p_phi);
-
-      std::pair<uint32_t, uint32_t> distance{block_idx, 0};
-
-      auto it = instr->definitions[0].isTemp()
-                   ? next_use_distances_start.find(instr->definitions[0].getTemp())
-                   : next_use_distances_start.end();
-      if (it != next_use_distances_start.end() &&
-          phi_defs.insert(instr->definitions[0].getTemp()).second) {
-         distance = it->second;
-      }
-
-      for (unsigned i = 0; i < instr->operands.size(); i++) {
-         unsigned pred_idx =
-            instr->opcode == aco_opcode::p_phi ? block->logical_preds[i] : block->linear_preds[i];
-         if (instr->operands[i].isTemp()) {
-            auto insert_result = ctx.next_use_distances_end[pred_idx].insert(
-               std::make_pair(instr->operands[i].getTemp(), distance));
-            const bool inserted = insert_result.second;
-            std::pair<uint32_t, uint32_t>& entry_distance = insert_result.first->second;
-            if (inserted || entry_distance != distance)
-               worklist = std::max(worklist, pred_idx + 1);
-            entry_distance = distance;
-         }
-      }
-      idx--;
-   }
-
-   /* all remaining live vars must be live-out at the predecessors */
-   for (std::pair<const Temp, std::pair<uint32_t, uint32_t>>& pair : next_use_distances_start) {
-      Temp temp = pair.first;
-      if (phi_defs.count(temp)) {
-         continue;
-      }
-      uint32_t distance = pair.second.second;
-      uint32_t dom = pair.second.first;
-      Block::edge_vec& preds = temp.is_linear() ? block->linear_preds : block->logical_preds;
-      for (unsigned pred_idx : preds) {
-         if (ctx.program->blocks[pred_idx].loop_nest_depth > block->loop_nest_depth)
-            distance += 0xFFFF;
-         auto insert_result = ctx.next_use_distances_end[pred_idx].insert(
-            std::make_pair(temp, std::pair<uint32_t, uint32_t>{}));
-         const bool inserted = insert_result.second;
-         std::pair<uint32_t, uint32_t>& entry_distance = insert_result.first->second;
-
-         if (!inserted) {
-            dom = get_dominator(dom, entry_distance.first, ctx.program, temp.is_linear());
-            distance = std::min(entry_distance.second, distance);
-         }
-         if (entry_distance != std::pair<uint32_t, uint32_t>{dom, distance}) {
-            worklist = std::max(worklist, pred_idx + 1);
-            entry_distance = {dom, distance};
-         }
-      }
-   }
-}
-
-void
-compute_global_next_uses(spill_ctx& ctx)
-{
-   uint32_t worklist = ctx.program->blocks.size();
-   while (worklist) {
-      unsigned block_idx = --worklist;
-      next_uses_per_block(ctx, block_idx, worklist);
    }
 }
 
@@ -501,8 +366,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
    if (block->linear_preds.empty())
       return {0, 0};
 
-   /* next use distances at the beginning of the current block */
-   const auto& next_use_distances = ctx.next_use_distances_start[block_idx];
+   /* live-in variables at the beginning of the current block */
    const IDSet& live_in = ctx.live_vars.live_out[block_idx];
 
    /* loop header block */
@@ -518,10 +382,8 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          loop_demand.update(ctx.program->blocks[i++].register_demand);
 
       for (auto spilled : ctx.spills_exit[block_idx - 1]) {
-         auto it = next_use_distances.find(spilled.first);
-
          /* variable is not live at loop entry: probably a phi operand */
-         if (it == next_use_distances.end())
+         if (!live_in.count(spilled.first.id()))
             continue;
 
          /* keep live-through variables spilled */
@@ -535,7 +397,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
             /* If the inner loop comes after the last continue statement of the outer loop,
              * the loop-carried variables might not be live-in for the inner loop.
              */
-            if (next_use_distances.count(spilled.first) &&
+            if (live_in.count(spilled.first.id()) &&
                 ctx.spills_entry[block_idx].insert(spilled).second) {
                spilled_registers += spilled.first;
                loop_demand -= spilled.first;
@@ -553,23 +415,25 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          if (type == RegType::sgpr && loop_demand.sgpr <= ctx.target_pressure.sgpr)
             break;
 
-         unsigned distance = 0;
+         float score = 0.0;
          unsigned remat = 0;
          Temp to_spill;
-         for (const std::pair<const Temp, std::pair<uint32_t, uint32_t>>& pair :
-              next_use_distances) {
-            unsigned can_remat = ctx.remat.count(pair.first);
-            if (pair.first.type() == type && !ctx.spills_entry[block_idx].count(pair.first) &&
-                ctx.next_use_distances_end[block_idx - 1].count(pair.first) &&
-                (can_remat > remat || (can_remat == remat && pair.second.second > distance))) {
-               to_spill = pair.first;
-               distance = pair.second.second;
+         for (unsigned t : live_in) {
+            Temp var = Temp(t, ctx.program->temp_rc[t]);
+            if (var.type() != type || ctx.spills_entry[block_idx].count(var) ||
+                !ctx.live_vars.live_out[block_idx - 1].count(t) || var.regClass().is_linear_vgpr())
+               continue;
+
+            unsigned can_remat = ctx.remat.count(var);
+            if (can_remat > remat || (can_remat == remat && ctx.ssa_infos[t].score() > score)) {
+               to_spill = var;
+               score = ctx.ssa_infos[t].score();
                remat = can_remat;
             }
          }
 
          /* select SGPRs or break */
-         if (distance == 0) {
+         if (score == 0.0) {
             if (type == RegType::sgpr)
                break;
             type = RegType::sgpr;
@@ -593,19 +457,18 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       reg_pressure -= spilled_registers;
 
       while (reg_pressure.exceeds(ctx.target_pressure)) {
-         unsigned distance = 0;
+         float score = 0;
          Temp to_spill;
          type = reg_pressure.vgpr > ctx.target_pressure.vgpr ? RegType::vgpr : RegType::sgpr;
-
-         for (const std::pair<const Temp, std::pair<uint32_t, uint32_t>>& pair :
-              next_use_distances) {
-            if (pair.first.type() == type && pair.second.second > distance &&
-                !ctx.spills_entry[block_idx].count(pair.first)) {
-               to_spill = pair.first;
-               distance = pair.second.second;
+         for (unsigned t : live_in) {
+            Temp var = Temp(t, ctx.program->temp_rc[t]);
+            if (var.type() == type && !ctx.spills_entry[block_idx].count(var) &&
+                ctx.ssa_infos[t].score() > score) {
+               to_spill = var;
+               score = ctx.ssa_infos[t].score();
             }
          }
-         assert(distance != 0);
+         assert(score != 0.0);
          ctx.add_to_spills(to_spill, ctx.spills_entry[block_idx]);
          spilled_registers += to_spill;
          reg_pressure -= to_spill;
@@ -1872,7 +1735,6 @@ spill(Program* program, live& live_vars)
    /* initialize ctx */
    spill_ctx ctx(target, program, live_vars);
    gather_ssa_use_info(ctx);
-   compute_global_next_uses(ctx);
    get_rematerialize_info(ctx);
 
    /* create spills and reloads */

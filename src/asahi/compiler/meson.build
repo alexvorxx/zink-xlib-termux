@@ -109,6 +109,7 @@ if with_tests
          'test/test-lower-pseudo.cpp',
          'test/test-lower-parallel-copy.cpp',
          'test/test-lower-spill.cpp',
+         'test/test-repair-ssa.cpp',
       ),
       c_args : [c_msvc_compat_args, no_override_init_args],
       gnu_symbol_visibility : 'hidden',

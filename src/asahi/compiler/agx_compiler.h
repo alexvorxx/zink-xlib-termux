@@ -864,6 +864,21 @@ agx_after_block_logical(agx_block *block)
    return agx_before_block(block);
 }
 
+/* Get a cursor at the start of a function, after any preloads */
+static inline agx_cursor
+agx_before_function(agx_context *ctx)
+{
+   agx_block *block = agx_start_block(ctx);
+
+   agx_foreach_instr_in_block(block, I) {
+      if (I->op != AGX_OPCODE_PRELOAD)
+         return agx_before_instr(I);
+   }
+
+   /* The whole block is preloads, so insert at the end */
+   return agx_after_block(block);
+}
+
 /* IR builder in terms of cursor infrastructure */
 
 typedef struct {

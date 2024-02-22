@@ -865,6 +865,16 @@ pick_regs(struct ra_ctx *rctx, agx_instr *I, unsigned d)
          return reg;
    }
 
+   /* Try to allocate moves compatibly with their sources */
+   if (I->op == AGX_OPCODE_MOV && I->src[0].type == AGX_INDEX_NORMAL &&
+       I->src[0].memory == I->dest[0].memory &&
+       I->src[0].size == I->dest[0].size) {
+
+      unsigned out;
+      if (try_coalesce_with(rctx, I->src[0], count, false, &out))
+         return out;
+   }
+
    /* Try to allocate phis compatibly with their sources */
    if (I->op == AGX_OPCODE_PHI) {
       agx_foreach_ssa_src(I, s) {

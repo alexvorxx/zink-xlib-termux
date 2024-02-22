@@ -740,10 +740,10 @@ radv_consider_culling(const struct radv_physical_device *pdev, struct nir_shader
    /* Shader based culling efficiency can depend on PS throughput.
     * Estimate an upper limit for PS input param count based on GPU info.
     */
-   unsigned max_ps_params = 4;
+   unsigned max_ps_params = 8;
 
    if (pdev->info.gfx_level >= GFX10_3 && pdev->info.has_dedicated_vram)
-      max_ps_params = 6; /* GFX10.3 and newer discrete GPUs. */
+      max_ps_params = 12; /* GFX10.3 and newer discrete GPUs. */
 
    /* TODO: consider other heuristics here, such as PS execution time */
    if (util_bitcount64(ps_inputs_read & ~VARYING_BIT_POS) > max_ps_params)

@@ -57,6 +57,7 @@ ForEachMacros:
 
   - hash_table_foreach
   - hash_table_foreach_remove
+  - hash_table_u64_foreach
 
   - rb_tree_foreach
   - rb_tree_foreach_rev

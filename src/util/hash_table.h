@@ -171,6 +171,12 @@ struct hash_table_u64 {
    void *deleted_key_data;
 };
 
+struct hash_entry_u64 {
+   uint64_t key;
+   void *data;
+   struct hash_entry *_entry;
+};
+
 struct hash_table_u64 *
 _mesa_hash_table_u64_create(void *mem_ctx);
 
@@ -189,6 +195,22 @@ _mesa_hash_table_u64_remove(struct hash_table_u64 *ht, uint64_t key);
 
 void
 _mesa_hash_table_u64_clear(struct hash_table_u64 *ht);
+
+struct hash_entry_u64
+_mesa_hash_table_u64_next_entry(struct hash_table_u64 *ht,
+                                struct hash_entry_u64 *ent);
+
+/**
+ * This foreach function is safe against deletion (which just replaces
+ * an entry's data with the deleted marker), but not against insertion
+ * (which may rehash the table, making entry a dangling pointer).
+ */
+#define hash_table_u64_foreach(ht, entry)                                      \
+   for (struct hash_entry_u64 entry =                                          \
+         _mesa_hash_table_u64_next_entry(ht, NULL);                            \
+        entry.data != NULL;                                                    \
+        entry = _mesa_hash_table_u64_next_entry(ht, &entry))
+
 
 #ifdef __cplusplus
 } /* extern C */

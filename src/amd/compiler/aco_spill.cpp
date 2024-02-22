@@ -540,15 +540,13 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          if (it == next_use_distances.end())
             continue;
 
-         /* keep constants and live-through variables spilled */
-         if (it->second.first >= loop_end || ctx.remat.count(spilled.first)) {
-            ctx.spills_entry[block_idx][spilled.first] = spilled.second;
-            spilled_registers += spilled.first;
-            loop_demand -= spilled.first;
-         }
+         /* keep live-through variables spilled */
+         ctx.spills_entry[block_idx][spilled.first] = spilled.second;
+         spilled_registers += spilled.first;
+         loop_demand -= spilled.first;
       }
 
-      /* select live-through variables and constants */
+      /* select more live-through variables and constants */
       RegType type = RegType::vgpr;
       while (loop_demand.exceeds(ctx.target_pressure)) {
          /* if VGPR demand is low enough, select SGPRs */

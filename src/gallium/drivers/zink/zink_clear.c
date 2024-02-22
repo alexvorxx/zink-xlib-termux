@@ -98,8 +98,8 @@ clear_in_rp(struct pipe_context *pctx,
          return;
       cr.rect.offset.x = scissor_state->minx;
       cr.rect.offset.y = scissor_state->miny;
-      cr.rect.extent.width = MIN2(fb->width, scissor_state->maxx - scissor_state->minx);
-      cr.rect.extent.height = MIN2(fb->height, scissor_state->maxy - scissor_state->miny);
+      cr.rect.extent.width = MIN2(fb->width - cr.rect.offset.x, scissor_state->maxx - scissor_state->minx);
+      cr.rect.extent.height = MIN2(fb->height - cr.rect.offset.y, scissor_state->maxy - scissor_state->miny);
    } else {
       cr.rect.extent.width = fb->width;
       cr.rect.extent.height = fb->height;

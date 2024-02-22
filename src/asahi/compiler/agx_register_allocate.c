@@ -931,6 +931,8 @@ agx_ra_assign_local(struct ra_ctx *rctx)
       /* First, free killed sources */
       agx_foreach_ssa_src(I, s) {
          if (I->src[s].kill) {
+            assert(I->op != AGX_OPCODE_PHI && "phis don't use .kill");
+
             enum ra_class cls = ra_class_for_index(I->src[s]);
             unsigned reg = ssa_to_reg[I->src[s].value];
             unsigned count = ncomps[I->src[s].value];

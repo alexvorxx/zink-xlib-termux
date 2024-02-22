@@ -3772,7 +3772,6 @@ genX(flush_pipeline_select)(struct anv_cmd_buffer *cmd_buffer,
       cmd_buffer->state.compute.pipeline_dirty = true;
 #endif
 
-#if GFX_VERx10 < 125
    /* We apparently cannot flush the tile cache (color/depth) from the GPGPU
     * pipeline. That means query clears will not be visible to query
     * copy/write. So we need to flush it before going to GPGPU mode.
@@ -3783,7 +3782,6 @@ genX(flush_pipeline_select)(struct anv_cmd_buffer *cmd_buffer,
                                 ANV_PIPE_QUERY_BITS(cmd_buffer->state.queries.clear_bits),
                                 "query clear flush prior to GPGPU");
    }
-#endif
 
    /* Flush and invalidate bits done needed prior PIPELINE_SELECT. */
    enum anv_pipe_bits bits = 0;

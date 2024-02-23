@@ -236,6 +236,17 @@ unsafe fn kernel_work_arr_or_default<'a>(arr: *const usize, work_dim: cl_uint) -
     }
 }
 
+/// # Safety
+///
+/// This function is only safe when called on an array of `work_dim` length
+unsafe fn kernel_work_arr_mut<'a>(arr: *mut usize, work_dim: cl_uint) -> Option<&'a mut [usize]> {
+    if !arr.is_null() {
+        unsafe { Some(slice::from_raw_parts_mut(arr, work_dim as usize)) }
+    } else {
+        None
+    }
+}
+
 #[cl_entrypoint]
 fn create_kernel(
     program: cl_program,
@@ -648,4 +659,110 @@ fn enqueue_task(
 fn clone_kernel(source_kernel: cl_kernel) -> CLResult<cl_kernel> {
     let k = Kernel::ref_from_raw(source_kernel)?;
     Ok(Arc::new(k.clone()).into_cl())
+}
+
+#[cl_entrypoint]
+fn get_kernel_suggested_local_work_size_khr(
+    command_queue: cl_command_queue,
+    kernel: cl_kernel,
+    work_dim: cl_uint,
+    global_work_offset: *const usize,
+    global_work_size: *const usize,
+    suggested_local_work_size: *mut usize,
+) -> CLResult<()> {
+    // CL_INVALID_GLOBAL_WORK_SIZE if global_work_size is NULL or if any of the values specified in
+    // global_work_size are 0.
+    if global_work_size.is_null() {
+        return Err(CL_INVALID_GLOBAL_WORK_SIZE);
+    }
+
+    if global_work_offset.is_null() {
+        return Err(CL_INVALID_GLOBAL_OFFSET);
+    }
+
+    // CL_INVALID_VALUE if suggested_local_work_size is NULL.
+    if suggested_local_work_size.is_null() {
+        return Err(CL_INVALID_VALUE);
+    }
+
+    // CL_INVALID_COMMAND_QUEUE if command_queue is not a valid host command-queue.
+    let queue = Queue::ref_from_raw(command_queue)?;
+
+    // CL_INVALID_KERNEL if kernel is not a valid kernel object.
+    let kernel = Kernel::ref_from_raw(kernel)?;
+
+    // CL_INVALID_CONTEXT if the context associated with kernel is not the same as the context
+    // associated with command_queue.
+    if queue.context != kernel.prog.context {
+        return Err(CL_INVALID_CONTEXT);
+    }
+
+    // CL_INVALID_PROGRAM_EXECUTABLE if there is no successfully built program executable available
+    // for kernel for the device associated with command_queue.
+    if kernel.prog.status(queue.device) != CL_BUILD_SUCCESS as cl_build_status {
+        return Err(CL_INVALID_PROGRAM_EXECUTABLE);
+    }
+
+    // CL_INVALID_KERNEL_ARGS if all argument values for kernel have not been set.
+    if kernel.arg_values().iter().any(|v| v.is_none()) {
+        return Err(CL_INVALID_KERNEL_ARGS);
+    }
+
+    // CL_INVALID_WORK_DIMENSION if work_dim is not a valid value (i.e. a value between 1 and
+    // CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS).
+    if work_dim == 0 || work_dim > queue.device.max_grid_dimensions() {
+        return Err(CL_INVALID_WORK_DIMENSION);
+    }
+
+    let mut global_work_size =
+        unsafe { kernel_work_arr_or_default(global_work_size, work_dim).to_vec() };
+
+    let suggested_local_work_size = unsafe {
+        kernel_work_arr_mut(suggested_local_work_size, work_dim).ok_or(CL_INVALID_VALUE)?
+    };
+
+    let global_work_offset = unsafe { kernel_work_arr_or_default(global_work_offset, work_dim) };
+
+    let device_bits = queue.device.address_bits();
+    let device_max = u64::MAX >> (u64::BITS - device_bits);
+    for i in 0..work_dim as usize {
+        let gws = global_work_size[i];
+        let gwo = global_work_offset[i];
+
+        // CL_INVALID_GLOBAL_WORK_SIZE if global_work_size is NULL or if any of the values specified
+        // in global_work_size are 0.
+        if gws == 0 {
+            return Err(CL_INVALID_GLOBAL_WORK_SIZE);
+        }
+        // CL_INVALID_GLOBAL_WORK_SIZE if any of the values specified in global_work_size exceed the
+        // maximum value representable by size_t on the device associated with command_queue.
+        if gws as u64 > device_max {
+            return Err(CL_INVALID_GLOBAL_WORK_SIZE);
+        }
+        // CL_INVALID_GLOBAL_OFFSET if the value specified in global_work_size plus the
+        // corresponding value in global_work_offset for dimension exceeds the maximum value
+        // representable by size_t on the device associated with command_queue.
+        if u64::checked_add(gws as u64, gwo as u64)
+            .filter(|&x| x <= device_max)
+            .is_none()
+        {
+            return Err(CL_INVALID_GLOBAL_OFFSET);
+        }
+    }
+
+    kernel.suggest_local_size(
+        queue.device,
+        work_dim as usize,
+        &mut global_work_size,
+        suggested_local_work_size,
+    );
+
+    Ok(())
+
+    // CL_MISALIGNED_SUB_BUFFER_OFFSET if a sub-buffer object is set as an argument to kernel and the offset specified when the sub-buffer object was created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN for the device associated with command_queue.
+    // CL_INVALID_IMAGE_SIZE if an image object is set as an argument to kernel and the image dimensions are not supported by device associated with command_queue.
+    // CL_IMAGE_FORMAT_NOT_SUPPORTED if an image object is set as an argument to kernel and the image format is not supported by the device associated with command_queue.
+    // CL_INVALID_OPERATION if an SVM pointer is set as an argument to kernel and the device associated with command_queue does not support SVM or the required SVM capabilities for the SVM pointer.
+    // CL_OUT_OF_RESOURCES if there is a failure to allocate resources required by the OpenCL implementation on the device.
+    // CL_OUT_OF_HOST_MEMORY if there is a failure to allocate resources required by the OpenCL implementation on the host.
 }

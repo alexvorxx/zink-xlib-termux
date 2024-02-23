@@ -831,21 +831,19 @@ impl Kernel {
         })
     }
 
-    fn optimize_local_size(&self, d: &Device, grid: &mut [u32; 3], block: &mut [u32; 3]) {
-        let mut threads = self.max_threads_per_block(d) as u32;
+    pub fn suggest_local_size(
+        &self,
+        d: &Device,
+        work_dim: usize,
+        grid: &mut [usize],
+        block: &mut [usize],
+    ) {
+        let mut threads = self.max_threads_per_block(d);
         let dim_threads = d.max_block_sizes();
-        let subgroups = self.preferred_simd_size(d) as u32;
+        let subgroups = self.preferred_simd_size(d);
 
-        if !block.contains(&0) {
-            for i in 0..3 {
-                // we already made sure everything is fine
-                grid[i] /= block[i];
-            }
-            return;
-        }
-
-        for i in 0..3 {
-            let t = cmp::min(threads, dim_threads[i] as u32);
+        for i in 0..work_dim {
+            let t = cmp::min(threads, dim_threads[i]);
             let gcd = gcd(t, grid[i]);
 
             block[i] = gcd;
@@ -856,9 +854,9 @@ impl Kernel {
         }
 
         // if we didn't fill the subgroup we can do a bit better if we have threads remaining
-        let total_threads = block[0] * block[1] * block[2];
+        let total_threads = block.iter().take(work_dim).product::<usize>();
         if threads != 1 && total_threads < subgroups {
-            for i in 0..3 {
+            for i in 0..work_dim {
                 if grid[i] * total_threads < threads {
                     block[i] *= grid[i];
                     grid[i] = 1;
@@ -866,6 +864,31 @@ impl Kernel {
                     break;
                 }
             }
+        }
+    }
+
+    fn optimize_local_size(&self, d: &Device, grid: &mut [u32; 3], block: &mut [u32; 3]) {
+        if !block.contains(&0) {
+            for i in 0..3 {
+                // we already made sure everything is fine
+                grid[i] /= block[i];
+            }
+            return;
+        }
+
+        let mut usize_grid = [0usize; 3];
+        let mut usize_block = [0usize; 3];
+
+        for i in 0..3 {
+            usize_grid[i] = grid[i] as usize;
+            usize_block[i] = block[i] as usize;
+        }
+
+        self.suggest_local_size(d, 3, &mut usize_grid, &mut usize_block);
+
+        for i in 0..3 {
+            grid[i] = usize_grid[i] as u32;
+            block[i] = usize_block[i] as u32;
         }
     }
 

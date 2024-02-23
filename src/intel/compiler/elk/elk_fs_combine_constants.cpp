@@ -43,6 +43,8 @@ using namespace elk;
 
 static const bool debug = false;
 
+namespace {
+
 enum PACKED interpreted_type {
    float_only = 0,
    integer_only,
@@ -1303,6 +1305,8 @@ parcel_out_registers(struct imm *imm, unsigned len, const elk_bblock_t *cur_bloc
       }
    }
 }
+
+} /* namespace */
 
 bool
 elk_fs_visitor::opt_combine_constants()

@@ -456,7 +456,11 @@ static inline bool
 blorp_ensure_sf_program(struct blorp_batch *batch,
                         struct blorp_params *params)
 {
-   return batch->blorp->compiler->ensure_sf_program(batch, params);
+   struct blorp_compiler *c = batch->blorp->compiler;
+   /* Absence of callback indicates it is not needed.  This is the case for
+    * brw, which is Gfx9+.
+    */
+   return !c->ensure_sf_program || c->ensure_sf_program(batch, params);
 }
 
 static inline uint8_t

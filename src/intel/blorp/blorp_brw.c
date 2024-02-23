@@ -7,7 +7,6 @@
 #include "blorp_nir_builder.h"
 #include "compiler/brw_compiler.h"
 #include "compiler/brw_nir.h"
-#include "compiler/intel_nir.h"
 #include "dev/intel_debug.h"
 
 static struct blorp_program
@@ -32,13 +31,6 @@ blorp_compile_fs_brw(struct blorp_context *blorp, void *mem_ctx,
    memset(&wm_key, 0, sizeof(wm_key));
    wm_key.multisample_fbo = multisample_fbo ? BRW_ALWAYS : BRW_NEVER;
    wm_key.nr_color_regions = 1;
-
-   if (compiler->devinfo->ver < 6) {
-      if (nir->info.fs.uses_discard)
-         wm_key.iz_lookup |= BRW_WM_IZ_PS_KILL_ALPHATEST_BIT;
-
-      wm_key.input_slots_valid = nir->info.inputs_read | VARYING_BIT_POS;
-   }
 
    struct brw_compile_fs_params params = {
       .base = {
@@ -174,70 +166,6 @@ blorp_compile_cs_brw(struct blorp_context *blorp, void *mem_ctx,
    };
 }
 
-struct blorp_sf_key {
-   struct blorp_base_key base;
-   struct brw_sf_prog_key key;
-};
-
-static bool
-blorp_ensure_sf_program_brw(struct blorp_batch *batch,
-                            struct blorp_params *params)
-{
-   struct blorp_context *blorp = batch->blorp;
-   const struct brw_compiler *compiler = blorp->compiler->brw;
-   const struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
-   assert(params->wm_prog_data);
-
-   /* Gfx6+ doesn't need a strips and fans program */
-   if (compiler->devinfo->ver >= 6)
-      return true;
-
-   struct blorp_sf_key key = {
-      .base = BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_GFX4_SF),
-   };
-
-   /* Everything gets compacted in vertex setup, so we just need a
-    * pass-through for the correct number of input varyings.
-    */
-   const uint64_t slots_valid = VARYING_BIT_POS |
-      ((1ull << wm_prog_data->num_varying_inputs) - 1) << VARYING_SLOT_VAR0;
-
-   key.key.attrs = slots_valid;
-   key.key.primitive = BRW_SF_PRIM_TRIANGLES;
-   key.key.contains_flat_varying = wm_prog_data->contains_flat_varying;
-
-   STATIC_ASSERT(sizeof(key.key.interp_mode) ==
-                 sizeof(wm_prog_data->interp_mode));
-   memcpy(key.key.interp_mode, wm_prog_data->interp_mode,
-          sizeof(key.key.interp_mode));
-
-   if (blorp->lookup_shader(batch, &key, sizeof(key),
-                            &params->sf_prog_kernel, &params->sf_prog_data))
-      return true;
-
-   void *mem_ctx = ralloc_context(NULL);
-
-   const unsigned *program;
-   unsigned program_size;
-
-   struct intel_vue_map vue_map;
-   brw_compute_vue_map(compiler->devinfo, &vue_map, slots_valid, false, 1);
-
-   struct brw_sf_prog_data prog_data_tmp;
-   program = brw_compile_sf(compiler, mem_ctx, &key.key,
-                            &prog_data_tmp, &vue_map, &program_size);
-
-   bool result =
-      blorp->upload_shader(batch, MESA_SHADER_NONE,
-                           &key, sizeof(key), program, program_size,
-                           (void *)&prog_data_tmp, sizeof(prog_data_tmp),
-                           &params->sf_prog_kernel, &params->sf_prog_data);
-
-   ralloc_free(mem_ctx);
-
-   return result;
-}
-
 #pragma pack(push, 1)
 struct layer_offset_vs_key {
    struct blorp_base_key base;
@@ -342,7 +270,6 @@ blorp_init_brw(struct blorp_context *blorp, void *driver_ctx,
    blorp->compiler->compile_fs = blorp_compile_fs_brw;
    blorp->compiler->compile_vs = blorp_compile_vs_brw;
    blorp->compiler->compile_cs = blorp_compile_cs_brw;
-   blorp->compiler->ensure_sf_program = blorp_ensure_sf_program_brw;
    blorp->compiler->params_get_layer_offset_vs =
       blorp_params_get_layer_offset_vs_brw;
 }

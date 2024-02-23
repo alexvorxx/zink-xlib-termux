@@ -2076,21 +2076,6 @@ vk_to_nv_index_format(VkIndexType type)
    }
 }
 
-static uint32_t
-vk_index_to_restart(VkIndexType index_type)
-{
-   switch (index_type) {
-   case VK_INDEX_TYPE_UINT16:
-      return 0xffff;
-   case VK_INDEX_TYPE_UINT32:
-      return 0xffffffff;
-   case VK_INDEX_TYPE_UINT8_KHR:
-      return 0xff;
-   default:
-      unreachable("unexpected index type");
-   }
-}
-
 VKAPI_ATTR void VKAPI_CALL
 nvk_CmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer,
                            VkBuffer _buffer,

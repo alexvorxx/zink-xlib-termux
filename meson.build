@@ -158,7 +158,7 @@ if gallium_drivers.contains('auto')
             host_machine.cpu_family()))
     endif
   elif ['windows'].contains(host_machine.system())
-    gallium_drivers = ['swrast', 'zink']
+    gallium_drivers = ['swrast', 'zink', 'd3d12']
   elif ['darwin', 'cygwin', 'haiku'].contains(host_machine.system())
     gallium_drivers = ['swrast']
   else

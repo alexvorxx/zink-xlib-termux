@@ -2226,7 +2226,8 @@ wsi_wl_swapchain_chain_free(struct wsi_wl_swapchain *chain,
     * creation (see MAX_FDS_OUT) to avoid filling up VRAM with
     * released buffers.
     */
-   wl_display_flush(chain->wsi_wl_surface->display->wl_display);
+   if (chain->wsi_wl_surface)
+      wl_display_flush(chain->wsi_wl_surface->display->wl_display);
 
    if (chain->frame)
       wl_callback_destroy(chain->frame);

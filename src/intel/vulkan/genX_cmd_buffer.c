@@ -5259,20 +5259,6 @@ static uint32_t vk_to_intel_index_type(VkIndexType type)
    }
 }
 
-static uint32_t restart_index_for_type(VkIndexType type)
-{
-   switch (type) {
-   case VK_INDEX_TYPE_UINT8_KHR:
-      return UINT8_MAX;
-   case VK_INDEX_TYPE_UINT16:
-      return UINT16_MAX;
-   case VK_INDEX_TYPE_UINT32:
-      return UINT32_MAX;
-   default:
-      unreachable("invalid index type");
-   }
-}
-
 void genX(CmdBindIndexBuffer2KHR)(
     VkCommandBuffer                             commandBuffer,
     VkBuffer                                    _buffer,
@@ -5283,7 +5269,7 @@ void genX(CmdBindIndexBuffer2KHR)(
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_buffer, buffer, _buffer);
 
-   uint32_t restart_index = restart_index_for_type(indexType);
+   uint32_t restart_index = vk_index_to_restart(indexType);
    if (cmd_buffer->state.gfx.restart_index != restart_index) {
       cmd_buffer->state.gfx.restart_index = restart_index;
       cmd_buffer->state.gfx.dirty |= ANV_CMD_DIRTY_RESTART_INDEX;

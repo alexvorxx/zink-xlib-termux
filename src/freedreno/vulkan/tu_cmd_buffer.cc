@@ -2394,23 +2394,21 @@ tu_CmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer,
 
    size = vk_buffer_range(&buf->vk, offset, size);
 
-   uint32_t index_size, index_shift, restart_index;
+   uint32_t index_size, index_shift;
+   uint32_t restart_index = vk_index_to_restart(indexType);
 
    switch (indexType) {
    case VK_INDEX_TYPE_UINT16:
       index_size = INDEX4_SIZE_16_BIT;
       index_shift = 1;
-      restart_index = 0xffff;
       break;
    case VK_INDEX_TYPE_UINT32:
       index_size = INDEX4_SIZE_32_BIT;
       index_shift = 2;
-      restart_index = 0xffffffff;
       break;
    case VK_INDEX_TYPE_UINT8_EXT:
       index_size = INDEX4_SIZE_8_BIT;
       index_shift = 0;
-      restart_index = 0xff;
       break;
    default:
       unreachable("invalid VkIndexType");

@@ -152,8 +152,7 @@ bool brw_nir_lower_alpha_to_coverage(nir_shader *shader,
                                      const struct brw_wm_prog_key *key,
                                      const struct brw_wm_prog_data *prog_data);
 void brw_nir_lower_vs_inputs(nir_shader *nir,
-                             bool edgeflag_is_last,
-                             const uint8_t *vs_attrib_wa_flags);
+                             bool edgeflag_is_last);
 void brw_nir_lower_vue_inputs(nir_shader *nir,
                               const struct intel_vue_map *vue_map);
 void brw_nir_lower_tes_inputs(nir_shader *nir, const struct intel_vue_map *vue);

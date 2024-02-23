@@ -91,10 +91,6 @@ debug_vs_recompile(const struct brw_compiler *c, void *log,
 {
    bool found = debug_base_recompile(c, log, &old_key->base, &key->base);
 
-   for (unsigned i = 0; i < VERT_ATTRIB_MAX; i++) {
-      found |= check("vertex attrib w/a flags", gl_attrib_wa_flags[i]);
-   }
-
    found |= check("legacy user clipping", nr_userclip_plane_consts);
    found |= check("copy edgeflag", copy_edgeflag);
    found |= check("pointcoord replace", point_coord_replace);

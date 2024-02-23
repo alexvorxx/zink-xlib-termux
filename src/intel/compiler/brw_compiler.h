@@ -260,17 +260,6 @@ struct brw_base_prog_key {
 };
 
 /**
- * The VF can't natively handle certain types of attributes, such as GL_FIXED
- * or most 10_10_10_2 types.  These flags enable various VS workarounds to
- * "fix" attributes at the beginning of shaders.
- */
-#define BRW_ATTRIB_WA_COMPONENT_MASK    7  /* mask for GL_FIXED scale channel count */
-#define BRW_ATTRIB_WA_NORMALIZE     8   /* normalize in shader */
-#define BRW_ATTRIB_WA_BGRA          16  /* swap r/b channels in shader */
-#define BRW_ATTRIB_WA_SIGN          32  /* interpret as signed in shader */
-#define BRW_ATTRIB_WA_SCALE         64  /* interpret as scaled in shader */
-
-/**
  * OpenGL attribute slots fall in [0, VERT_ATTRIB_MAX - 1] with the range
  * [VERT_ATTRIB_GENERIC0, VERT_ATTRIB_MAX - 1] reserved for up to 16 user
  * input vertex attributes. In Vulkan, we expose up to 28 user vertex input
@@ -309,20 +298,6 @@ struct brw_vs_prog_key {
    struct brw_base_prog_key base;
 
    /**
-    * Per-attribute workaround flags
-    *
-    * For each attribute, a combination of BRW_ATTRIB_WA_*.
-    *
-    * For OpenGL, where we expose a maximum of 16 user input attributes
-    * we only need up to VERT_ATTRIB_MAX slots, however, in Vulkan
-    * slots preceding VERT_ATTRIB_GENERIC0 are unused and we can
-    * expose up to 28 user input vertex attributes that are mapped to slots
-    * starting at VERT_ATTRIB_GENERIC0, so this array needs to be large
-    * enough to hold this many slots.
-    */
-   uint8_t gl_attrib_wa_flags[MAX2(MAX_GL_VERT_ATTRIB, MAX_VK_VERT_ATTRIB)];
-
-   /**
     * For pre-Gfx6 hardware, a bitfield indicating which texture coordinates
     * are going to be replaced with point coordinates (as a consequence of a
     * call to glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE)).  Because
@@ -346,7 +321,7 @@ struct brw_vs_prog_key {
     */
    unsigned nr_userclip_plane_consts:4;
 
-   uint32_t padding: 25;
+   uint32_t padding:17;
 };
 
 /** The program key for Tessellation Control Shaders. */

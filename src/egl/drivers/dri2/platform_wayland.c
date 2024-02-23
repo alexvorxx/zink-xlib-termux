@@ -247,7 +247,7 @@ static const struct dri2_wl_visual {
 
 static int
 dri2_wl_visual_idx_from_config(struct dri2_egl_display *dri2_dpy,
-                               const __DRIconfig *config, bool force_opaque)
+                               const __DRIconfig *config)
 {
    int shifts[4];
    unsigned int sizes[4];
@@ -257,16 +257,13 @@ dri2_wl_visual_idx_from_config(struct dri2_egl_display *dri2_dpy,
    for (unsigned int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
       const struct dri2_wl_visual *wl_visual = &dri2_wl_visuals[i];
 
-      int cmp_rgb_shifts =
-         memcmp(shifts, wl_visual->rgba_shifts, 3 * sizeof(shifts[0]));
-      int cmp_rgb_sizes =
-         memcmp(sizes, wl_visual->rgba_sizes, 3 * sizeof(sizes[0]));
+      int cmp_rgba_shifts =
+         memcmp(shifts, wl_visual->rgba_shifts, 4 * sizeof(shifts[0]));
+      int cmp_rgba_sizes =
+         memcmp(sizes, wl_visual->rgba_sizes, 4 * sizeof(sizes[0]));
 
-      if (cmp_rgb_shifts == 0 && cmp_rgb_sizes == 0 &&
-          wl_visual->rgba_shifts[3] == (force_opaque ? -1 : shifts[3]) &&
-          wl_visual->rgba_sizes[3] == (force_opaque ? 0 : sizes[3])) {
+      if (cmp_rgba_shifts == 0 && cmp_rgba_sizes == 0)
          return i;
-      }
    }
 
    return -1;
@@ -319,7 +316,7 @@ dri2_wl_is_format_supported(void *user_data, uint32_t format)
 
    for (int i = 0; dri2_dpy->driver_configs[i]; i++)
       if (j == dri2_wl_visual_idx_from_config(
-                  dri2_dpy, dri2_dpy->driver_configs[i], false))
+                  dri2_dpy, dri2_dpy->driver_configs[i]))
          return true;
 
    return false;
@@ -727,43 +724,9 @@ dri2_wl_create_window_surface(_EGLDisplay *disp, _EGLConfig *conf,
    dri2_surf->base.Width = window->width;
    dri2_surf->base.Height = window->height;
 
-#ifndef NDEBUG
-   /* Enforce that every visual has an opaque variant (requirement to support
-    * EGL_EXT_present_opaque)
-    */
-   for (unsigned int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
-      const struct dri2_wl_visual *transparent_visual = &dri2_wl_visuals[i];
-      if (transparent_visual->rgba_sizes[3] == 0) {
-         continue;
-      }
-
-      bool found_opaque_equivalent = false;
-      for (unsigned int j = 0; j < ARRAY_SIZE(dri2_wl_visuals); j++) {
-         const struct dri2_wl_visual *opaque_visual = &dri2_wl_visuals[j];
-         if (opaque_visual->rgba_sizes[3] != 0) {
-            continue;
-         }
-
-         int cmp_rgb_shifts =
-            memcmp(transparent_visual->rgba_shifts, opaque_visual->rgba_shifts,
-                   3 * sizeof(opaque_visual->rgba_shifts[0]));
-         int cmp_rgb_sizes =
-            memcmp(transparent_visual->rgba_sizes, opaque_visual->rgba_sizes,
-                   3 * sizeof(opaque_visual->rgba_sizes[0]));
-
-         if (cmp_rgb_shifts == 0 && cmp_rgb_sizes == 0) {
-            found_opaque_equivalent = true;
-            break;
-         }
-      }
-
-      assert(found_opaque_equivalent);
-   }
-#endif
-
-   visual_idx = dri2_wl_visual_idx_from_config(dri2_dpy, config,
-                                               dri2_surf->base.PresentOpaque);
+   visual_idx = dri2_wl_visual_idx_from_config(dri2_dpy, config);
    assert(visual_idx != -1);
+   assert(dri2_wl_visuals[visual_idx].pipe_format != PIPE_FORMAT_NONE);
 
    if (dri2_dpy->wl_dmabuf || dri2_dpy->wl_drm) {
       dri2_surf->format = dri2_wl_visuals[visual_idx].wl_drm_format;
@@ -1506,6 +1469,9 @@ create_wl_buffer(struct dri2_egl_display *dri2_dpy,
          close(fd);
       }
 
+      if (dri2_surf && dri2_surf->base.PresentOpaque)
+         fourcc = dri2_wl_visuals[visual_idx].opaque_wl_drm_format;
+
       ret = zwp_linux_buffer_params_v1_create_immed(params, width, height,
                                                     fourcc, 0);
       zwp_linux_buffer_params_v1_destroy(params);
@@ -2089,7 +2055,7 @@ dri2_wl_add_configs_for_visuals(_EGLDisplay *disp)
 
          /* No match for config. Try if we can blitImage convert to a visual */
          c = dri2_wl_visual_idx_from_config(dri2_dpy,
-                                            dri2_dpy->driver_configs[i], false);
+                                            dri2_dpy->driver_configs[i]);
 
          if (c == -1)
             continue;

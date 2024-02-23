@@ -73,8 +73,8 @@ v3d_versions = ['42', '71']
 
 v3dv_flags = []
 
-dep_v3dv3 = dependency('v3dv3', required : false)
-if dep_v3dv3.found()
+dep_v3d_hw = dependency('v3d_hw', required : false)
+if dep_v3d_hw.found()
   v3dv_flags += '-DUSE_V3D_SIMULATOR'
 endif
 
@@ -82,7 +82,7 @@ v3dv_deps = [
   dep_dl,
   dep_libdrm,
   dep_valgrind,
-  dep_v3dv3,
+  dep_v3d_hw,
   idep_nir,
   idep_nir_headers,
   idep_vulkan_util,

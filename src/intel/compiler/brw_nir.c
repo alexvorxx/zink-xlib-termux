@@ -1834,21 +1834,6 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    }
 }
 
-static bool
-brw_nir_apply_sampler_key(nir_shader *nir,
-                          const struct brw_compiler *compiler,
-                          const struct brw_sampler_prog_key_data *key_tex)
-{
-   nir_lower_tex_options tex_options = {
-      .lower_txd_clamp_bindless_sampler = true,
-      .lower_txd_clamp_if_sampler_index_not_lt_16 = true,
-      .lower_invalid_implicit_lod = true,
-      .lower_index_to_offset = true,
-   };
-
-   return nir_lower_tex(nir, &tex_options);
-}
-
 static unsigned
 get_subgroup_size(const struct shader_info *info, unsigned max_subgroup_size)
 {
@@ -1915,7 +1900,13 @@ brw_nir_apply_key(nir_shader *nir,
 {
    bool progress = false;
 
-   OPT(brw_nir_apply_sampler_key, compiler, &key->tex);
+   nir_lower_tex_options nir_tex_opts = {
+      .lower_txd_clamp_bindless_sampler = true,
+      .lower_txd_clamp_if_sampler_index_not_lt_16 = true,
+      .lower_invalid_implicit_lod = true,
+      .lower_index_to_offset = true,
+   };
+   OPT(nir_lower_tex, &nir_tex_opts);
 
    const struct intel_nir_lower_texture_opts tex_opts = {
       .combined_lod_and_array_index = compiler->devinfo->ver >= 20,

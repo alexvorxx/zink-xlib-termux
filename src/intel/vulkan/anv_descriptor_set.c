@@ -1811,6 +1811,19 @@ anv_push_descriptor_set_init(struct anv_cmd_buffer *cmd_buffer,
                              struct anv_descriptor_set_layout *layout)
 {
    struct anv_descriptor_set *set = &push_set->set;
+   /* Only copy the old descriptor data if needed :
+    *    - not if there was no previous layout
+    *    - not if the layout is different (descriptor set data becomes
+    *      undefined)
+    *    - not if there is only one descriptor, we know the entire data will
+    *      be replaced
+    *
+    * TODO: we could optimizer further, try to keep a copy of the old data on
+    *       the host, try to copy only the non newly written bits, ...
+    */
+   const bool copy_old_descriptors = set->layout != NULL &&
+                                     set->layout == layout &&
+                                     layout->descriptor_count > 1;
 
    if (set->layout != layout) {
       if (set->layout) {
@@ -1858,8 +1871,7 @@ anv_push_descriptor_set_init(struct anv_cmd_buffer *cmd_buffer,
       if (desc_surface_mem.map == NULL)
          return false;
 
-      if (set->desc_surface_mem.alloc_size) {
-         /* TODO: Do we really need to copy all the time? */
+      if (copy_old_descriptors) {
          memcpy(desc_surface_mem.map, set->desc_surface_mem.map,
                 MIN2(desc_surface_mem.alloc_size,
                      set->desc_surface_mem.alloc_size));
@@ -1893,8 +1905,7 @@ anv_push_descriptor_set_init(struct anv_cmd_buffer *cmd_buffer,
       if (desc_sampler_mem.map == NULL)
          return false;
 
-      if (set->desc_sampler_mem.alloc_size) {
-         /* TODO: Do we really need to copy all the time? */
+      if (copy_old_descriptors) {
          memcpy(desc_sampler_mem.map, set->desc_sampler_mem.map,
                 MIN2(desc_sampler_mem.alloc_size,
                      set->desc_sampler_mem.alloc_size));

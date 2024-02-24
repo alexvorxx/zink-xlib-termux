@@ -241,31 +241,6 @@ struct brw_base_prog_key {
 #define MAX_GL_VERT_ATTRIB     VERT_ATTRIB_MAX
 #define MAX_VK_VERT_ATTRIB     (VERT_ATTRIB_GENERIC0 + 28)
 
-/**
- * Max number of binding table entries used for stream output.
- *
- * From the OpenGL 3.0 spec, table 6.44 (Transform Feedback State), the
- * minimum value of MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS is 64.
- *
- * On Gfx6, the size of transform feedback data is limited not by the number
- * of components but by the number of binding table entries we set aside.  We
- * use one binding table entry for a float, one entry for a vector, and one
- * entry per matrix column.  Since the only way we can communicate our
- * transform feedback capabilities to the client is via
- * MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS, we need to plan for the
- * worst case, in which all the varyings are floats, so we use up one binding
- * table entry per component.  Therefore we need to set aside at least 64
- * binding table entries for use by transform feedback.
- *
- * Note: since we don't currently pack varyings, it is currently impossible
- * for the client to actually use up all of these binding table entries--if
- * all of their varyings were floats, they would run out of varying slots and
- * fail to link.  But that's a bug, so it seems prudent to go ahead and
- * allocate the number of binding table entries we will need once the bug is
- * fixed.
- */
-#define BRW_MAX_SOL_BINDINGS 64
-
 /** The program key for Vertex Shaders. */
 struct brw_vs_prog_key {
    struct brw_base_prog_key base;
@@ -330,21 +305,6 @@ struct brw_mesh_prog_key
 
    bool compact_mue:1;
    unsigned padding:31;
-};
-
-/* A big lookup table is used to figure out which and how many
- * additional regs will inserted before the main payload in the WM
- * program execution.  These mainly relate to depth and stencil
- * processing and the early-depth-test optimization.
- */
-enum brw_wm_iz_bits {
-   BRW_WM_IZ_PS_KILL_ALPHATEST_BIT     = 0x1,
-   BRW_WM_IZ_PS_COMPUTES_DEPTH_BIT     = 0x2,
-   BRW_WM_IZ_DEPTH_WRITE_ENABLE_BIT    = 0x4,
-   BRW_WM_IZ_DEPTH_TEST_ENABLE_BIT     = 0x8,
-   BRW_WM_IZ_STENCIL_WRITE_ENABLE_BIT  = 0x10,
-   BRW_WM_IZ_STENCIL_TEST_ENABLE_BIT   = 0x20,
-   BRW_WM_IZ_BIT_MAX                   = 0x40
 };
 
 enum brw_sometimes {
@@ -432,11 +392,6 @@ PRAGMA_DIAGNOSTIC_POP
 
 /** Max number of render targets in a shader */
 #define BRW_MAX_DRAW_BUFFERS 8
-
-/**
- * Binding table index for the first gfx6 SOL binding.
- */
-#define BRW_GFX6_SOL_BINDING_START 0
 
 struct brw_ubo_range
 {
@@ -1251,31 +1206,6 @@ struct brw_gs_prog_data
    int static_vertex_count;
 
    int invocations;
-
-   /**
-    * Gfx6: Provoking vertex convention for odd-numbered triangles
-    * in tristrips.
-    */
-   unsigned pv_first:1;
-
-   /**
-    * Gfx6: Number of varyings that are output to transform feedback.
-    */
-   unsigned num_transform_feedback_bindings:7; /* 0-BRW_MAX_SOL_BINDINGS */
-
-   /**
-    * Gfx6: Map from the index of a transform feedback binding table entry to the
-    * gl_varying_slot that should be streamed out through that binding table
-    * entry.
-    */
-   unsigned char transform_feedback_bindings[64 /* BRW_MAX_SOL_BINDINGS */];
-
-   /**
-    * Gfx6: Map from the index of a transform feedback binding table entry to the
-    * swizzles that should be used when streaming out data through that
-    * binding table entry.
-    */
-   unsigned char transform_feedback_swizzles[64 /* BRW_MAX_SOL_BINDINGS */];
 };
 
 struct brw_tue_map {

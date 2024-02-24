@@ -307,7 +307,7 @@ tu_get_features(struct tu_physical_device *pdevice,
    features->depthBiasClamp = true;
    features->fillModeNonSolid = true;
    features->depthBounds = true;
-   features->wideLines = false;
+   features->wideLines = pdevice->info->a6xx.line_width_max > 1.0;
    features->largePoints = true;
    features->alphaToOne = true;
    features->multiViewport = true;
@@ -894,10 +894,11 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->discreteQueuePriorities = 2;
    props->pointSizeRange[0] = 1;
    props->pointSizeRange[1] = 4092;
-   props->lineWidthRange[0] = 
-      props->lineWidthRange[1] = 1.0;
+   props->lineWidthRange[0] = pdevice->info->a6xx.line_width_min;
+   props->lineWidthRange[1] = pdevice->info->a6xx.line_width_max;
    props->pointSizeGranularity = 	0.0625;
-   props->lineWidthGranularity = 0.0;
+   props->lineWidthGranularity =
+      pdevice->info->a6xx.line_width_max == 1.0 ? 1.0 : 0.5;
    props->strictLines = true;
    props->standardSampleLocations = true;
    props->optimalBufferCopyOffsetAlignment = 128;

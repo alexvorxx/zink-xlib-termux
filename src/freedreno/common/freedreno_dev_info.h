@@ -203,6 +203,9 @@ struct fd_dev_info {
 
       /* maximum number of descriptor sets */
       uint32_t max_sets;
+
+      float line_width_min;
+      float line_width_max;
    } a6xx;
 
    struct {

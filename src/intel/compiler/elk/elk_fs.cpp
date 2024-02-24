@@ -7318,8 +7318,6 @@ elk_nir_populate_wm_prog_data(nir_shader *shader,
                       SYSTEM_VALUE_SAMPLE_POS_OR_CENTER));
    }
 
-   prog_data->has_render_target_reads = shader->info.outputs_read != 0ull;
-
    prog_data->early_fragment_tests = shader->info.fs.early_fragment_tests;
    prog_data->post_depth_coverage = shader->info.fs.post_depth_coverage;
    prog_data->inner_coverage = shader->info.fs.inner_coverage;

@@ -451,7 +451,7 @@ vn_queue_submission_count_batch_feedback(struct vn_queue_submission *submit,
       const uint32_t cmd_count = vn_get_cmd_count(submit, batch_index);
       for (uint32_t i = 0; i < cmd_count; i++) {
          struct vn_command_buffer *cmd = vn_get_cmd(submit, batch_index, i);
-         if (!list_is_empty(&cmd->builder.query_batches))
+         if (!list_is_empty(&cmd->builder.query_records))
             feedback_types |= VN_FEEDBACK_TYPE_QUERY;
 
          /* If a cmd that was submitted previously and already has a feedback
@@ -463,7 +463,7 @@ vn_queue_submission_count_batch_feedback(struct vn_queue_submission *submit,
          if (cmd->linked_qfb_cmd) {
             assert(!cmd->builder.is_simultaneous);
 
-            vn_feedback_query_cmd_free(cmd->linked_qfb_cmd);
+            vn_query_feedback_cmd_free(cmd->linked_qfb_cmd);
             cmd->linked_qfb_cmd = NULL;
          }
       }
@@ -575,7 +575,7 @@ vn_queue_submission_alloc_storage(struct vn_queue_submission *submit)
 }
 
 static VkResult
-vn_combine_query_feedback_batches_and_record(
+vn_combine_query_records_and_record_feedback(
    VkDevice dev_handle,
    VkCommandBuffer *cmd_handles,
    uint32_t cmd_count,
@@ -587,55 +587,57 @@ vn_combine_query_feedback_batches_and_record(
       vn_command_pool_from_handle(fb_cmd_pool->pool_handle);
    VkResult result = VK_SUCCESS;
 
-   struct list_head combined_batches;
-   list_inithead(&combined_batches);
+   struct list_head resolved_records;
+   list_inithead(&resolved_records);
 
    uintptr_t cmd_handle_ptr = (uintptr_t)cmd_handles;
    for (uint32_t i = 0; i < cmd_count; i++) {
       struct vn_command_buffer *cmd =
          vn_command_buffer_from_handle(*(VkCommandBuffer *)cmd_handle_ptr);
 
-      list_for_each_entry(struct vn_feedback_query_batch, batch,
-                          &cmd->builder.query_batches, head) {
-         if (!batch->copy) {
-            list_for_each_entry_safe(struct vn_feedback_query_batch,
-                                     batch_clone, &combined_batches, head) {
+      list_for_each_entry(struct vn_cmd_query_record, record,
+                          &cmd->builder.query_records, head) {
+         if (!record->copy) {
+            list_for_each_entry_safe(struct vn_cmd_query_record,
+                                     resolved_record, &resolved_records,
+                                     head) {
                /* If we previously added a query feedback that is now getting
                 * reset, remove it since it is now a no-op and the deferred
                 * feedback copy will cause a hang waiting for the reset query
                 * to become available.
                 */
-               if (batch_clone->copy &&
-                   (vn_query_pool_to_handle(batch_clone->query_pool) ==
-                    vn_query_pool_to_handle(batch->query_pool)) &&
-                   batch_clone->query >= batch->query &&
-                   batch_clone->query < batch->query + batch->query_count) {
+               if (resolved_record->copy &&
+                   (vn_query_pool_to_handle(resolved_record->query_pool) ==
+                    vn_query_pool_to_handle(record->query_pool)) &&
+                   resolved_record->query >= record->query &&
+                   resolved_record->query <
+                      record->query + record->query_count) {
                   simple_mtx_lock(&fb_cmd_pool->mutex);
-                  list_move_to(&batch_clone->head,
-                               &cmd_pool->free_query_batches);
+                  list_move_to(&resolved_record->head,
+                               &cmd_pool->free_query_records);
                   simple_mtx_unlock(&fb_cmd_pool->mutex);
                }
             }
          }
 
          simple_mtx_lock(&fb_cmd_pool->mutex);
-         struct vn_feedback_query_batch *batch_clone =
-            vn_cmd_query_batch_alloc(cmd_pool, batch->query_pool,
-                                     batch->query, batch->query_count,
-                                     batch->copy);
+         struct vn_cmd_query_record *resolved_record =
+            vn_cmd_query_record_alloc(cmd_pool, record->query_pool,
+                                      record->query, record->query_count,
+                                      record->copy);
          simple_mtx_unlock(&fb_cmd_pool->mutex);
-         if (!batch_clone) {
+         if (!resolved_record) {
             result = VK_ERROR_OUT_OF_HOST_MEMORY;
-            goto recycle_combined_batches;
+            goto recycle_resolved_records;
          }
 
-         list_addtail(&batch_clone->head, &combined_batches);
+         list_addtail(&resolved_record->head, &resolved_records);
       }
 
       cmd_handle_ptr += cmd_stride;
    }
 
-   if (list_is_empty(&combined_batches)) {
+   if (list_is_empty(&resolved_records)) {
       /* On the off chance the combined list resolves to empty due to
        * resets, we can return with a null feedback cmd to indicate
        * the query feedback cmd is noop and can be skipped.
@@ -645,19 +647,19 @@ vn_combine_query_feedback_batches_and_record(
    }
 
    struct vn_query_feedback_cmd *qfb_cmd;
-   result = vn_feedback_query_cmd_alloc(dev_handle, fb_cmd_pool, &qfb_cmd);
+   result = vn_query_feedback_cmd_alloc(dev_handle, fb_cmd_pool, &qfb_cmd);
    if (result == VK_SUCCESS) {
-      result = vn_feedback_query_batch_record(dev_handle, qfb_cmd,
-                                              &combined_batches);
+      result =
+         vn_query_feedback_cmd_record(dev_handle, &resolved_records, qfb_cmd);
       if (result != VK_SUCCESS)
-         vn_feedback_query_cmd_free(qfb_cmd);
+         vn_query_feedback_cmd_free(qfb_cmd);
    }
 
-recycle_combined_batches:
+recycle_resolved_records:
    simple_mtx_lock(&fb_cmd_pool->mutex);
-   list_for_each_entry_safe(struct vn_feedback_query_batch, batch_clone,
-                            &combined_batches, head)
-      list_move_to(&batch_clone->head, &cmd_pool->free_query_batches);
+   list_for_each_entry_safe(struct vn_cmd_query_record, record,
+                            &resolved_records, head)
+      list_move_to(&record->head, &cmd_pool->free_query_records);
    simple_mtx_unlock(&fb_cmd_pool->mutex);
 
    *out_qfb_cmd = qfb_cmd;
@@ -683,7 +685,7 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
    }
 
    struct vn_query_feedback_cmd *qfb_cmd = NULL;
-   VkResult result = vn_combine_query_feedback_batches_and_record(
+   VkResult result = vn_combine_query_records_and_record_feedback(
       dev_handle, cmd_handles, *cmd_count, vn_get_cmd_size(submit),
       fb_cmd_pool, &qfb_cmd);
    if (result != VK_SUCCESS)
@@ -856,7 +858,7 @@ vn_queue_submission_setup_batch(struct vn_queue_submission *submit,
 
    for (uint32_t i = 0; i < cmd_count; i++) {
       struct vn_command_buffer *cmd = vn_get_cmd(submit, batch_index, i);
-      if (!list_is_empty(&cmd->builder.query_batches)) {
+      if (!list_is_empty(&cmd->builder.query_records)) {
          feedback_types |= VN_FEEDBACK_TYPE_QUERY;
          extra_cmd_count++;
          break;

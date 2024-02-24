@@ -69,8 +69,6 @@ brw_compile_tcs(const struct brw_compiler *compiler,
    brw_nir_lower_vue_inputs(nir, &input_vue_map);
    brw_nir_lower_tcs_outputs(nir, &vue_prog_data->vue_map,
                              key->_tes_primitive_mode);
-   if (key->quads_workaround)
-      intel_nir_apply_tcs_quads_workaround(nir);
    if (key->input_vertices > 0)
       intel_nir_lower_patch_vertices_in(nir, key->input_vertices);
 

@@ -8131,15 +8131,7 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    }
 
    if (instr->op == nir_texop_tg4) {
-      if (instr->component == 1 &&
-          s.key_tex->gather_channel_quirk_mask & (1 << instr->texture_index)) {
-         /* gather4 sampler is broken for green channel on RG32F --
-          * we must ask for blue instead.
-          */
-         header_bits |= 2 << 16;
-      } else {
-         header_bits |= instr->component << 16;
-      }
+      header_bits |= instr->component << 16;
    }
 
    fs_reg dst = bld.vgrf(brw_type_for_nir_type(devinfo, instr->dest_type), 4 + instr->is_sparse);

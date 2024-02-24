@@ -511,11 +511,6 @@ iris_to_brw_vs_key(const struct iris_screen *screen,
    return (struct brw_vs_prog_key) {
       BRW_KEY_INIT(screen->devinfo->ver, key->vue.base.program_string_id,
                    key->vue.base.limit_trig_input_range),
-
-      /* Don't tell the backend about our clip plane constants, we've
-       * already lowered them in NIR and don't want it doing it again.
-       */
-      .nr_userclip_plane_consts = 0,
    };
 }
 
@@ -530,7 +525,6 @@ iris_to_brw_tcs_key(const struct iris_screen *screen,
       .input_vertices = key->input_vertices,
       .patch_outputs_written = key->patch_outputs_written,
       .outputs_written = key->outputs_written,
-      .quads_workaround = key->quads_workaround,
    };
 }
 

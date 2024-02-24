@@ -524,61 +524,6 @@ fs_visitor::emit_interpolation_setup()
    }
 }
 
-static enum brw_conditional_mod
-cond_for_alpha_func(enum compare_func func)
-{
-   switch(func) {
-   case COMPARE_FUNC_GREATER:
-      return BRW_CONDITIONAL_G;
-   case COMPARE_FUNC_GEQUAL:
-      return BRW_CONDITIONAL_GE;
-   case COMPARE_FUNC_LESS:
-      return BRW_CONDITIONAL_L;
-   case COMPARE_FUNC_LEQUAL:
-      return BRW_CONDITIONAL_LE;
-   case COMPARE_FUNC_EQUAL:
-      return BRW_CONDITIONAL_EQ;
-   case COMPARE_FUNC_NOTEQUAL:
-      return BRW_CONDITIONAL_NEQ;
-   default:
-      unreachable("Not reached");
-   }
-}
-
-/**
- * Alpha test support for when we compile it into the shader instead
- * of using the normal fixed-function alpha test.
- */
-void
-fs_visitor::emit_alpha_test()
-{
-   assert(stage == MESA_SHADER_FRAGMENT);
-   brw_wm_prog_key *key = (brw_wm_prog_key*) this->key;
-   const fs_builder bld = fs_builder(this).at_end();
-   const fs_builder abld = bld.annotate("Alpha test");
-
-   fs_inst *cmp;
-   if (key->alpha_test_func == COMPARE_FUNC_ALWAYS)
-      return;
-
-   if (key->alpha_test_func == COMPARE_FUNC_NEVER) {
-      /* f0.1 = 0 */
-      fs_reg some_reg = fs_reg(retype(brw_vec8_grf(0, 0),
-                                      BRW_REGISTER_TYPE_UW));
-      cmp = abld.CMP(bld.null_reg_f(), some_reg, some_reg,
-                     BRW_CONDITIONAL_NEQ);
-   } else {
-      /* RT0 alpha */
-      fs_reg color = offset(outputs[0], bld, 3);
-
-      /* f0.1 &= func(color, ref) */
-      cmp = abld.CMP(bld.null_reg_f(), color, brw_imm_f(key->alpha_test_ref),
-                     cond_for_alpha_func(key->alpha_test_func));
-   }
-   cmp->predicate = BRW_PREDICATE_NORMAL;
-   cmp->flag_subreg = 1;
-}
-
 fs_inst *
 fs_visitor::emit_single_fb_write(const fs_builder &bld,
                                  fs_reg color0, fs_reg color1,
@@ -719,8 +664,6 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
    int starting_urb_offset = 0;
    const struct brw_vue_prog_data *vue_prog_data =
       brw_vue_prog_data(this->prog_data);
-   const struct brw_vs_prog_key *vs_key =
-      (const struct brw_vs_prog_key *) this->key;
    const GLbitfield64 psiz_mask =
       VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT | VARYING_BIT_PSIZ | VARYING_BIT_PRIMITIVE_SHADING_RATE;
    const struct intel_vue_map *vue_map = &vue_prog_data->vue_map;
@@ -857,34 +800,17 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
             break;
          }
 
-         if (stage == MESA_SHADER_VERTEX && vs_key->clamp_vertex_color &&
-             (varying == VARYING_SLOT_COL0 ||
-              varying == VARYING_SLOT_COL1 ||
-              varying == VARYING_SLOT_BFC0 ||
-              varying == VARYING_SLOT_BFC1)) {
-            /* We need to clamp these guys, so do a saturating MOV into a
-             * temp register and use that for the payload.
-             */
-            for (int i = 0; i < 4; i++) {
-               fs_reg reg = fs_reg(VGRF, alloc.allocate(dispatch_width / 8),
-                                   outputs[varying].type);
-               fs_reg src = offset(this->outputs[varying], bld, i);
-               set_saturate(true, bld.MOV(reg, src));
-               sources[length++] = reg;
-            }
-         } else {
-            int slot_offset = 0;
+         int slot_offset = 0;
 
-            /* When using Primitive Replication, there may be multiple slots
-             * assigned to POS.
-             */
-            if (varying == VARYING_SLOT_POS)
-               slot_offset = slot - vue_map->varying_to_slot[VARYING_SLOT_POS];
+         /* When using Primitive Replication, there may be multiple slots
+          * assigned to POS.
+          */
+         if (varying == VARYING_SLOT_POS)
+            slot_offset = slot - vue_map->varying_to_slot[VARYING_SLOT_POS];
 
-            for (unsigned i = 0; i < 4; i++) {
-               sources[length++] = offset(this->outputs[varying], bld,
-                                          i + (slot_offset * 4));
-            }
+         for (unsigned i = 0; i < 4; i++) {
+            sources[length++] = offset(this->outputs[varying], bld,
+                                       i + (slot_offset * 4));
          }
          break;
       }
@@ -1125,11 +1051,6 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler,
 void
 fs_visitor::init()
 {
-   if (key)
-      this->key_tex = &key->tex;
-   else
-      this->key_tex = NULL;
-
    this->max_dispatch_width = 32;
    this->prog_data = this->stage_prog_data;
 

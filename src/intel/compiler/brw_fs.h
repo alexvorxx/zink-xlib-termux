@@ -271,7 +271,6 @@ public:
 
    void set_tcs_invocation_id();
 
-   void emit_alpha_test();
    fs_inst *emit_single_fb_write(const brw::fs_builder &bld,
                                  fs_reg color1, fs_reg color2,
                                  fs_reg src0_alpha, unsigned components);
@@ -294,7 +293,6 @@ public:
    virtual void dump_instructions_to_file(FILE *file) const;
 
    const brw_base_prog_key *const key;
-   const struct brw_sampler_prog_key_data *key_tex;
 
    struct brw_gs_compile *gs_compile;
 

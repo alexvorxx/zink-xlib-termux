@@ -2949,9 +2949,6 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
       if (failed)
 	 return false;
 
-      if (wm_key->emit_alpha_test)
-         emit_alpha_test();
-
       emit_fb_writes();
 
       calculate_cfg();
@@ -3304,12 +3301,8 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
                               struct brw_wm_prog_data *prog_data,
                               const struct brw_mue_map *mue_map)
 {
-   /* key->alpha_test_func means simulating alpha testing via discards,
-    * so the shader definitely kills pixels.
-    */
    prog_data->uses_kill = shader->info.fs.uses_discard ||
-                          shader->info.fs.uses_demote ||
-                          key->emit_alpha_test;
+                          shader->info.fs.uses_demote;
    prog_data->uses_omask = !key->ignore_sample_mask_out &&
       (shader->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK));
    prog_data->color_outputs_written = key->color_outputs_valid;

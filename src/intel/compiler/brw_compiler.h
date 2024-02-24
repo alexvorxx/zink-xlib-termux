@@ -212,31 +212,6 @@ enum PACKED gfx6_gather_sampler_wa {
 PRAGMA_DIAGNOSTIC_PUSH
 PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 
-/**
- * Sampler information needed by VS, WM, and GS program cache keys.
- */
-struct brw_sampler_prog_key_data {
-   /**
-    * EXT_texture_swizzle and DEPTH_TEXTURE_MODE swizzles.
-    *
-    * This field is not consumed by the back-end compiler and is only relevant
-    * for the crocus OpenGL driver for Broadwell and earlier hardware.
-    */
-   uint16_t swizzles[BRW_MAX_SAMPLERS];
-
-   uint32_t gl_clamp_mask[3];
-
-   /**
-    * For RG32F, gather4's channel select is broken.
-    */
-   uint32_t gather_channel_quirk_mask;
-
-   /**
-    * For Sandybridge, which shader w/a we need for gather quirks.
-    */
-   enum gfx6_gather_sampler_wa gfx6_gather_wa[BRW_MAX_SAMPLERS];
-};
-
 enum brw_robustness_flags {
    BRW_ROBUSTNESS_UBO  = BITFIELD_BIT(0),
    BRW_ROBUSTNESS_SSBO = BITFIELD_BIT(1),
@@ -255,8 +230,6 @@ struct brw_base_prog_key {
     * avoid precision issues.
     */
    bool limit_trig_input_range;
-
-   struct brw_sampler_prog_key_data tex;
 };
 
 /**
@@ -296,32 +269,6 @@ struct brw_base_prog_key {
 /** The program key for Vertex Shaders. */
 struct brw_vs_prog_key {
    struct brw_base_prog_key base;
-
-   /**
-    * For pre-Gfx6 hardware, a bitfield indicating which texture coordinates
-    * are going to be replaced with point coordinates (as a consequence of a
-    * call to glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE)).  Because
-    * our SF thread requires exact matching between VS outputs and FS inputs,
-    * these texture coordinates will need to be unconditionally included in
-    * the VUE, even if they aren't written by the vertex shader.
-    */
-   uint8_t point_coord_replace;
-   unsigned clamp_pointsize:1;
-
-   bool copy_edgeflag:1;
-
-   bool clamp_vertex_color:1;
-
-   /**
-    * How many user clipping planes are being uploaded to the vertex shader as
-    * push constants.
-    *
-    * These are used for lowering legacy gl_ClipVertex/gl_Position clipping to
-    * clip distances.
-    */
-   unsigned nr_userclip_plane_consts:4;
-
-   uint32_t padding:17;
 };
 
 /** The program key for Tessellation Control Shaders. */
@@ -340,8 +287,7 @@ struct brw_tcs_prog_key
    /** A bitfield of per-patch outputs written. */
    uint32_t patch_outputs_written;
 
-   bool quads_workaround;
-   uint32_t padding:24;
+   uint32_t padding;
 };
 
 #define BRW_MAX_TCS_INPUT_VERTICES (32)
@@ -364,33 +310,13 @@ struct brw_tes_prog_key
    /** A bitfield of per-patch inputs read. */
    uint32_t patch_inputs_read;
 
-   /**
-    * How many user clipping planes are being uploaded to the tessellation
-    * evaluation shader as push constants.
-    *
-    * These are used for lowering legacy gl_ClipVertex/gl_Position clipping to
-    * clip distances.
-    */
-   unsigned nr_userclip_plane_consts:4;
-   unsigned clamp_pointsize:1;
-   uint32_t padding:27;
+   uint32_t padding;
 };
 
 /** The program key for Geometry Shaders. */
 struct brw_gs_prog_key
 {
    struct brw_base_prog_key base;
-
-   /**
-    * How many user clipping planes are being uploaded to the geometry shader
-    * as push constants.
-    *
-    * These are used for lowering legacy gl_ClipVertex/gl_Position clipping to
-    * clip distances.
-    */
-   unsigned nr_userclip_plane_consts:4;
-   unsigned clamp_pointsize:1;
-   unsigned padding:27;
 };
 
 struct brw_task_prog_key
@@ -438,16 +364,11 @@ struct brw_wm_prog_key {
    struct brw_base_prog_key base;
 
    uint64_t input_slots_valid;
-   float alpha_test_ref;
    uint8_t color_outputs_valid;
 
    /* Some collection of BRW_WM_IZ_* */
-   uint8_t iz_lookup;
-   bool stats_wm:1;
    bool flat_shade:1;
    unsigned nr_color_regions:5;
-   bool emit_alpha_test:1;
-   enum compare_func alpha_test_func:3; /* < For Gfx4/5 MRT alpha test */
    bool alpha_test_replicate_alpha:1;
    enum brw_sometimes alpha_to_coverage:2;
    bool clamp_fragment_color:1;
@@ -476,7 +397,7 @@ struct brw_wm_prog_key {
    bool ignore_sample_mask_out:1;
    bool coarse_pixel:1;
 
-   uint64_t padding:53;
+   uint64_t padding:34;
 };
 
 struct brw_cs_prog_key {

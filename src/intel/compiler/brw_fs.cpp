@@ -3168,200 +3168,6 @@ fs_visitor::opt_redundant_halt()
 }
 
 /**
- * Compute a bitmask with GRF granularity with a bit set for each GRF starting
- * from \p r.offset which overlaps the region starting at \p s.offset and
- * spanning \p ds bytes.
- */
-static inline unsigned
-mask_relative_to(const fs_reg &r, const fs_reg &s, unsigned ds)
-{
-   const int rel_offset = reg_offset(s) - reg_offset(r);
-   const int shift = rel_offset / REG_SIZE;
-   const unsigned n = DIV_ROUND_UP(rel_offset % REG_SIZE + ds, REG_SIZE);
-   assert(reg_space(r) == reg_space(s) &&
-          shift >= 0 && shift < int(8 * sizeof(unsigned)));
-   return ((1 << n) - 1) << shift;
-}
-
-bool
-fs_visitor::compute_to_mrf()
-{
-   bool progress = false;
-   int next_ip = 0;
-
-   /* No MRFs on Gen >= 7. */
-   if (devinfo->ver >= 7)
-      return false;
-
-   const fs_live_variables &live = live_analysis.require();
-
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
-      int ip = next_ip;
-      next_ip++;
-
-      if (inst->opcode != BRW_OPCODE_MOV ||
-	  inst->is_partial_write() ||
-	  inst->dst.file != MRF || inst->src[0].file != VGRF ||
-	  inst->dst.type != inst->src[0].type ||
-	  inst->src[0].abs || inst->src[0].negate ||
-          !inst->src[0].is_contiguous() ||
-          inst->src[0].offset % REG_SIZE != 0)
-	 continue;
-
-      /* Can't compute-to-MRF this GRF if someone else was going to
-       * read it later.
-       */
-      if (live.vgrf_end[inst->src[0].nr] > ip)
-	 continue;
-
-      /* Found a move of a GRF to a MRF.  Let's see if we can go rewrite the
-       * things that computed the value of all GRFs of the source region.  The
-       * regs_left bitset keeps track of the registers we haven't yet found a
-       * generating instruction for.
-       */
-      unsigned regs_left = (1 << regs_read(inst, 0)) - 1;
-
-      foreach_inst_in_block_reverse_starting_from(fs_inst, scan_inst, inst) {
-         if (regions_overlap(scan_inst->dst, scan_inst->size_written,
-                             inst->src[0], inst->size_read(0))) {
-	    /* Found the last thing to write our reg we want to turn
-	     * into a compute-to-MRF.
-	     */
-
-	    /* If this one instruction didn't populate all the
-	     * channels, bail.  We might be able to rewrite everything
-	     * that writes that reg, but it would require smarter
-	     * tracking.
-	     */
-	    if (scan_inst->is_partial_write())
-	       break;
-
-            /* Handling things not fully contained in the source of the copy
-             * would need us to understand coalescing out more than one MOV at
-             * a time.
-             */
-            if (!region_contained_in(scan_inst->dst, scan_inst->size_written,
-                                     inst->src[0], inst->size_read(0)))
-               break;
-
-	    /* SEND instructions can't have MRF as a destination. */
-	    if (scan_inst->mlen)
-	       break;
-
-	    if (devinfo->ver == 6) {
-	       /* gfx6 math instructions must have the destination be
-		* GRF, so no compute-to-MRF for them.
-		*/
-	       if (scan_inst->is_math()) {
-		  break;
-	       }
-	    }
-
-            /* Clear the bits for any registers this instruction overwrites. */
-            regs_left &= ~mask_relative_to(
-               inst->src[0], scan_inst->dst, scan_inst->size_written);
-            if (!regs_left)
-               break;
-	 }
-
-	 /* We don't handle control flow here.  Most computation of
-	  * values that end up in MRFs are shortly before the MRF
-	  * write anyway.
-	  */
-	 if (block->start() == scan_inst)
-	    break;
-
-	 /* You can't read from an MRF, so if someone else reads our
-	  * MRF's source GRF that we wanted to rewrite, that stops us.
-	  */
-	 bool interfered = false;
-	 for (int i = 0; i < scan_inst->sources; i++) {
-            if (regions_overlap(scan_inst->src[i], scan_inst->size_read(i),
-                                inst->src[0], inst->size_read(0))) {
-	       interfered = true;
-	    }
-	 }
-	 if (interfered)
-	    break;
-
-         if (regions_overlap(scan_inst->dst, scan_inst->size_written,
-                             inst->dst, inst->size_written)) {
-	    /* If somebody else writes our MRF here, we can't
-	     * compute-to-MRF before that.
-	     */
-            break;
-         }
-
-         if (scan_inst->mlen > 0 && scan_inst->base_mrf != -1 &&
-             regions_overlap(fs_reg(MRF, scan_inst->base_mrf), scan_inst->mlen * REG_SIZE,
-                             inst->dst, inst->size_written)) {
-	    /* Found a SEND instruction, which means that there are
-	     * live values in MRFs from base_mrf to base_mrf +
-	     * scan_inst->mlen - 1.  Don't go pushing our MRF write up
-	     * above it.
-	     */
-            break;
-         }
-      }
-
-      if (regs_left)
-         continue;
-
-      /* Found all generating instructions of our MRF's source value, so it
-       * should be safe to rewrite them to point to the MRF directly.
-       */
-      regs_left = (1 << regs_read(inst, 0)) - 1;
-
-      foreach_inst_in_block_reverse_starting_from(fs_inst, scan_inst, inst) {
-         if (regions_overlap(scan_inst->dst, scan_inst->size_written,
-                             inst->src[0], inst->size_read(0))) {
-            /* Clear the bits for any registers this instruction overwrites. */
-            regs_left &= ~mask_relative_to(
-               inst->src[0], scan_inst->dst, scan_inst->size_written);
-
-            const unsigned rel_offset = reg_offset(scan_inst->dst) -
-                                        reg_offset(inst->src[0]);
-
-            if (inst->dst.nr & BRW_MRF_COMPR4) {
-               /* Apply the same address transformation done by the hardware
-                * for COMPR4 MRF writes.
-                */
-               assert(rel_offset < 2 * REG_SIZE);
-               scan_inst->dst.nr = inst->dst.nr + rel_offset / REG_SIZE * 4;
-
-               /* Clear the COMPR4 bit if the generating instruction is not
-                * compressed.
-                */
-               if (scan_inst->size_written < 2 * REG_SIZE)
-                  scan_inst->dst.nr &= ~BRW_MRF_COMPR4;
-
-            } else {
-               /* Calculate the MRF number the result of this instruction is
-                * ultimately written to.
-                */
-               scan_inst->dst.nr = inst->dst.nr + rel_offset / REG_SIZE;
-            }
-
-            scan_inst->dst.file = MRF;
-            scan_inst->dst.offset = inst->dst.offset + rel_offset % REG_SIZE;
-            scan_inst->saturate |= inst->saturate;
-            if (!regs_left)
-               break;
-         }
-      }
-
-      assert(!regs_left);
-      inst->remove(block);
-      progress = true;
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
-
-   return progress;
-}
-
-/**
  * Eliminate FIND_LIVE_CHANNEL instructions occurring outside any control
  * flow.  We could probably do better here with some form of divergence
  * analysis.
@@ -3495,81 +3301,6 @@ fs_visitor::emit_repclear_shader()
 }
 
 /**
- * Walks through basic blocks, looking for repeated MRF writes and
- * removing the later ones.
- */
-bool
-fs_visitor::remove_duplicate_mrf_writes()
-{
-   fs_inst *last_mrf_move[BRW_MAX_MRF(devinfo->ver)];
-   bool progress = false;
-
-   /* Need to update the MRF tracking for compressed instructions. */
-   if (dispatch_width >= 16)
-      return false;
-
-   memset(last_mrf_move, 0, sizeof(last_mrf_move));
-
-   foreach_block_and_inst_safe (block, fs_inst, inst, cfg) {
-      if (inst->is_control_flow()) {
-	 memset(last_mrf_move, 0, sizeof(last_mrf_move));
-      }
-
-      if (inst->opcode == BRW_OPCODE_MOV &&
-	  inst->dst.file == MRF) {
-         fs_inst *prev_inst = last_mrf_move[inst->dst.nr];
-	 if (prev_inst && prev_inst->opcode == BRW_OPCODE_MOV &&
-             inst->dst.equals(prev_inst->dst) &&
-             inst->src[0].equals(prev_inst->src[0]) &&
-             inst->saturate == prev_inst->saturate &&
-             inst->predicate == prev_inst->predicate &&
-             inst->conditional_mod == prev_inst->conditional_mod &&
-             inst->exec_size == prev_inst->exec_size) {
-	    inst->remove(block);
-	    progress = true;
-	    continue;
-	 }
-      }
-
-      /* Clear out the last-write records for MRFs that were overwritten. */
-      if (inst->dst.file == MRF) {
-         last_mrf_move[inst->dst.nr] = NULL;
-      }
-
-      if (inst->mlen > 0 && inst->base_mrf != -1) {
-	 /* Found a SEND instruction, which will include two or fewer
-	  * implied MRF writes.  We could do better here.
-	  */
-	 for (unsigned i = 0; i < inst->implied_mrf_writes(); i++) {
-	    last_mrf_move[inst->base_mrf + i] = NULL;
-	 }
-      }
-
-      /* Clear out any MRF move records whose sources got overwritten. */
-      for (unsigned i = 0; i < ARRAY_SIZE(last_mrf_move); i++) {
-         if (last_mrf_move[i] &&
-             regions_overlap(inst->dst, inst->size_written,
-                             last_mrf_move[i]->src[0],
-                             last_mrf_move[i]->size_read(0))) {
-            last_mrf_move[i] = NULL;
-         }
-      }
-
-      if (inst->opcode == BRW_OPCODE_MOV &&
-	  inst->dst.file == MRF &&
-	  inst->src[0].file != ARF &&
-	  !inst->is_partial_write()) {
-         last_mrf_move[inst->dst.nr] = inst;
-      }
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
-
-   return progress;
-}
-
-/**
  * Rounding modes for conversion instructions are included for each
  * conversion, but right now it is a state. So once it is set,
  * we don't need to call it again for subsequent calls.
@@ -3616,185 +3347,6 @@ fs_visitor::remove_extra_rounding_modes()
       invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
 
    return progress;
-}
-
-static void
-clear_deps_for_inst_src(fs_inst *inst, bool *deps, int first_grf, int grf_len)
-{
-   /* Clear the flag for registers that actually got read (as expected). */
-   for (int i = 0; i < inst->sources; i++) {
-      int grf;
-      if (inst->src[i].file == VGRF || inst->src[i].file == FIXED_GRF) {
-         grf = inst->src[i].nr;
-      } else {
-         continue;
-      }
-
-      if (grf >= first_grf &&
-          grf < first_grf + grf_len) {
-         deps[grf - first_grf] = false;
-         if (inst->exec_size == 16)
-            deps[grf - first_grf + 1] = false;
-      }
-   }
-}
-
-/**
- * Implements this workaround for the original 965:
- *
- *     "[DevBW, DevCL] Implementation Restrictions: As the hardware does not
- *      check for post destination dependencies on this instruction, software
- *      must ensure that there is no destination hazard for the case of ‘write
- *      followed by a posted write’ shown in the following example.
- *
- *      1. mov r3 0
- *      2. send r3.xy <rest of send instruction>
- *      3. mov r2 r3
- *
- *      Due to no post-destination dependency check on the ‘send’, the above
- *      code sequence could have two instructions (1 and 2) in flight at the
- *      same time that both consider ‘r3’ as the target of their final writes.
- */
-void
-fs_visitor::insert_gfx4_pre_send_dependency_workarounds(bblock_t *block,
-                                                        fs_inst *inst)
-{
-   int write_len = regs_written(inst);
-   int first_write_grf = inst->dst.nr;
-   bool needs_dep[BRW_MAX_MRF(devinfo->ver)];
-   assert(write_len < (int)sizeof(needs_dep) - 1);
-
-   memset(needs_dep, false, sizeof(needs_dep));
-   memset(needs_dep, true, write_len);
-
-   clear_deps_for_inst_src(inst, needs_dep, first_write_grf, write_len);
-
-   /* Walk backwards looking for writes to registers we're writing which
-    * aren't read since being written.  If we hit the start of the program,
-    * we assume that there are no outstanding dependencies on entry to the
-    * program.
-    */
-   foreach_inst_in_block_reverse_starting_from(fs_inst, scan_inst, inst) {
-      /* If we hit control flow, assume that there *are* outstanding
-       * dependencies, and force their cleanup before our instruction.
-       */
-      if (block->start() == scan_inst && block->num != 0) {
-         for (int i = 0; i < write_len; i++) {
-            if (needs_dep[i])
-               DEP_RESOLVE_MOV(fs_builder(this, block, inst),
-                               first_write_grf + i);
-         }
-         return;
-      }
-
-      /* We insert our reads as late as possible on the assumption that any
-       * instruction but a MOV that might have left us an outstanding
-       * dependency has more latency than a MOV.
-       */
-      if (scan_inst->dst.file == VGRF) {
-         for (unsigned i = 0; i < regs_written(scan_inst); i++) {
-            int reg = scan_inst->dst.nr + i;
-
-            if (reg >= first_write_grf &&
-                reg < first_write_grf + write_len &&
-                needs_dep[reg - first_write_grf]) {
-               DEP_RESOLVE_MOV(fs_builder(this, block, inst), reg);
-               needs_dep[reg - first_write_grf] = false;
-               if (scan_inst->exec_size == 16)
-                  needs_dep[reg - first_write_grf + 1] = false;
-            }
-         }
-      }
-
-      /* Clear the flag for registers that actually got read (as expected). */
-      clear_deps_for_inst_src(scan_inst, needs_dep, first_write_grf, write_len);
-
-      /* Continue the loop only if we haven't resolved all the dependencies */
-      int i;
-      for (i = 0; i < write_len; i++) {
-         if (needs_dep[i])
-            break;
-      }
-      if (i == write_len)
-         return;
-   }
-}
-
-/**
- * Implements this workaround for the original 965:
- *
- *     "[DevBW, DevCL] Errata: A destination register from a send can not be
- *      used as a destination register until after it has been sourced by an
- *      instruction with a different destination register.
- */
-void
-fs_visitor::insert_gfx4_post_send_dependency_workarounds(bblock_t *block, fs_inst *inst)
-{
-   int write_len = regs_written(inst);
-   unsigned first_write_grf = inst->dst.nr;
-   bool needs_dep[BRW_MAX_MRF(devinfo->ver)];
-   assert(write_len < (int)sizeof(needs_dep) - 1);
-
-   memset(needs_dep, false, sizeof(needs_dep));
-   memset(needs_dep, true, write_len);
-   /* Walk forwards looking for writes to registers we're writing which aren't
-    * read before being written.
-    */
-   foreach_inst_in_block_starting_from(fs_inst, scan_inst, inst) {
-      /* If we hit control flow, force resolve all remaining dependencies. */
-      if (block->end() == scan_inst && block->num != cfg->num_blocks - 1) {
-         for (int i = 0; i < write_len; i++) {
-            if (needs_dep[i])
-               DEP_RESOLVE_MOV(fs_builder(this, block, scan_inst),
-                               first_write_grf + i);
-         }
-         return;
-      }
-
-      /* Clear the flag for registers that actually got read (as expected). */
-      clear_deps_for_inst_src(scan_inst, needs_dep, first_write_grf, write_len);
-
-      /* We insert our reads as late as possible since they're reading the
-       * result of a SEND, which has massive latency.
-       */
-      if (scan_inst->dst.file == VGRF &&
-          scan_inst->dst.nr >= first_write_grf &&
-          scan_inst->dst.nr < first_write_grf + write_len &&
-          needs_dep[scan_inst->dst.nr - first_write_grf]) {
-         DEP_RESOLVE_MOV(fs_builder(this, block, scan_inst),
-                         scan_inst->dst.nr);
-         needs_dep[scan_inst->dst.nr - first_write_grf] = false;
-      }
-
-      /* Continue the loop only if we haven't resolved all the dependencies */
-      int i;
-      for (i = 0; i < write_len; i++) {
-         if (needs_dep[i])
-            break;
-      }
-      if (i == write_len)
-         return;
-   }
-}
-
-void
-fs_visitor::insert_gfx4_send_dependency_workarounds()
-{
-   if (devinfo->ver != 4 || devinfo->platform == INTEL_PLATFORM_G4X)
-      return;
-
-   bool progress = false;
-
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
-      if (inst->mlen != 0 && inst->dst.file == VGRF) {
-         insert_gfx4_pre_send_dependency_workarounds(block, inst);
-         insert_gfx4_post_send_dependency_workarounds(block, inst);
-         progress = true;
-      }
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
 }
 
 bool
@@ -4392,44 +3944,6 @@ fs_visitor::lower_integer_multiplication()
 
    if (progress)
       invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
-
-   return progress;
-}
-
-bool
-fs_visitor::lower_minmax()
-{
-   assert(devinfo->ver < 6);
-
-   bool progress = false;
-
-   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
-      const fs_builder ibld(this, block, inst);
-
-      if (inst->opcode == BRW_OPCODE_SEL &&
-          inst->predicate == BRW_PREDICATE_NONE) {
-         /* If src1 is an immediate value that is not NaN, then it can't be
-          * NaN.  In that case, emit CMP because it is much better for cmod
-          * propagation.  Likewise if src1 is not float.  Gfx4 and Gfx5 don't
-          * support HF or DF, so it is not necessary to check for those.
-          */
-         if (inst->src[1].type != BRW_REGISTER_TYPE_F ||
-             (inst->src[1].file == IMM && !isnan(inst->src[1].f))) {
-            ibld.CMP(ibld.null_reg_d(), inst->src[0], inst->src[1],
-                     inst->conditional_mod);
-         } else {
-            ibld.CMPN(ibld.null_reg_d(), inst->src[0], inst->src[1],
-                      inst->conditional_mod);
-         }
-         inst->predicate = BRW_PREDICATE_NORMAL;
-         inst->conditional_mod = BRW_CONDITIONAL_NONE;
-
-         progress = true;
-      }
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
 
    return progress;
 }
@@ -6163,8 +5677,6 @@ fs_visitor::optimize()
       pass_num = 0;
       iteration++;
 
-      OPT(remove_duplicate_mrf_writes);
-
       OPT(opt_algebraic);
       OPT(opt_cse);
       OPT(opt_copy_propagation);
@@ -6175,7 +5687,6 @@ fs_visitor::optimize()
       OPT(dead_control_flow_eliminate, this);
       OPT(opt_saturate_propagation);
       OPT(register_coalesce);
-      OPT(compute_to_mrf);
       OPT(eliminate_find_live_channel);
 
       OPT(compact_virtual_grfs);
@@ -6201,10 +5712,8 @@ fs_visitor::optimize()
    /* Identify trailing zeros LOAD_PAYLOAD of sampler messages.
     * Do this before splitting SENDs.
     */
-   if (devinfo->ver >= 7) {
-      if (OPT(opt_zero_samples) && OPT(opt_copy_propagation))
-         OPT(opt_algebraic);
-   }
+   if (OPT(opt_zero_samples) && OPT(opt_copy_propagation))
+      OPT(opt_algebraic);
 
    OPT(opt_split_sends);
    OPT(fixup_nomask_control_flow);
@@ -6220,9 +5729,7 @@ fs_visitor::optimize()
        */
       OPT(opt_cse);
       OPT(register_coalesce);
-      OPT(compute_to_mrf);
       OPT(dead_code_eliminate);
-      OPT(remove_duplicate_mrf_writes);
       OPT(opt_peephole_sel);
    }
 
@@ -6237,7 +5744,6 @@ fs_visitor::optimize()
 
       OPT(register_coalesce);
       OPT(lower_simd_width);
-      OPT(compute_to_mrf);
       OPT(dead_code_eliminate);
    }
 
@@ -6250,14 +5756,6 @@ fs_visitor::optimize()
       OPT(lower_integer_multiplication);
    }
    OPT(lower_sub_sat);
-
-   if (devinfo->ver <= 5 && OPT(lower_minmax)) {
-      OPT(opt_cmod_propagation);
-      OPT(opt_cse);
-      if (OPT(opt_copy_propagation))
-         OPT(opt_algebraic);
-      OPT(dead_code_eliminate);
-   }
 
    progress = false;
    OPT(lower_derivatives);
@@ -6769,12 +6267,6 @@ fs_visitor::allocate_registers(bool allow_spilling)
                           "values to improve performance.\n",
                           _mesa_shader_stage_to_string(stage));
    }
-
-   /* This must come after all optimization and register allocation, since
-    * it inserts dead code that happens to have side effects, and it does
-    * so based on the actual physical registers in use.
-    */
-   insert_gfx4_send_dependency_workarounds();
 
    if (failed)
       return;

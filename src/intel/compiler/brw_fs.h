@@ -276,10 +276,8 @@ public:
    bool opt_bank_conflicts();
    bool opt_split_sends();
    bool register_coalesce();
-   bool compute_to_mrf();
    bool eliminate_find_live_channel();
    bool dead_code_eliminate();
-   bool remove_duplicate_mrf_writes();
    bool remove_extra_rounding_modes();
 
    fs_instruction_scheduler *prepare_scheduler(void *mem_ctx);
@@ -287,11 +285,6 @@ public:
                                      instruction_scheduler_mode mode);
    void schedule_instructions_post_ra();
 
-   void insert_gfx4_send_dependency_workarounds();
-   void insert_gfx4_pre_send_dependency_workarounds(bblock_t *block,
-                                                    fs_inst *inst);
-   void insert_gfx4_post_send_dependency_workarounds(bblock_t *block,
-                                                     fs_inst *inst);
    void vfail(const char *msg, va_list args);
    void fail(const char *msg, ...);
    void limit_dispatch_width(unsigned n, const char *msg);
@@ -301,7 +294,6 @@ public:
    bool lower_regioning();
    bool lower_logical_sends();
    bool lower_integer_multiplication();
-   bool lower_minmax();
    bool lower_simd_width();
    bool lower_barycentrics();
    bool lower_derivatives();

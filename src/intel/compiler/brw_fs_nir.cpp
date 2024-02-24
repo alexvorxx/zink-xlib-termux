@@ -379,19 +379,9 @@ fs_nir_emit_system_values(nir_to_brw_state &ntb)
     * never end up using it.
     */
    {
-      const fs_builder abld = bld.annotate("gl_SubgroupInvocation", NULL);
       fs_reg &reg = ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION];
-      reg = abld.vgrf(BRW_TYPE_UW);
-      abld.UNDEF(reg);
-
-      const fs_builder allbld8 = abld.group(8, 0).exec_all();
-      allbld8.MOV(reg, brw_imm_v(0x76543210));
-      if (s.dispatch_width > 8)
-         allbld8.ADD(byte_offset(reg, 16), reg, brw_imm_uw(8u));
-      if (s.dispatch_width > 16) {
-         const fs_builder allbld16 = abld.group(16, 0).exec_all();
-         allbld16.ADD(byte_offset(reg, 32), reg, brw_imm_uw(16u));
-      }
+      reg = bld.vgrf(s.dispatch_width < 16 ? BRW_TYPE_UD : BRW_TYPE_UW);
+      bld.emit(SHADER_OPCODE_LOAD_SUBGROUP_INVOCATION, reg);
    }
 
    nir_function_impl *impl = nir_shader_get_entrypoint((nir_shader *)s.nir);

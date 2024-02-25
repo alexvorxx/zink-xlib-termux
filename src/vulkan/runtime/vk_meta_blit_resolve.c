@@ -757,6 +757,14 @@ vk_meta_blit_image(struct vk_command_buffer *cmd,
                         &dst_rect.y0, &dst_rect.y1,
                         &push.y_off, &push.y_scale);
 
+      VkImageSubresourceLayers src_subres = regions[r].srcSubresource;
+      src_subres.layerCount =
+         vk_image_subresource_layer_count(src_image, &src_subres);
+
+      VkImageSubresourceLayers dst_subres = regions[r].dstSubresource;
+      dst_subres.layerCount =
+         vk_image_subresource_layer_count(dst_image, &dst_subres);
+
       uint32_t dst_layer_count;
       if (src_image->image_type == VK_IMAGE_TYPE_3D) {
          uint32_t layer0, layer1;
@@ -770,18 +778,15 @@ vk_meta_blit_image(struct vk_command_buffer *cmd,
          dst_rect.layer = layer0;
          dst_layer_count = layer1 - layer0;
       } else {
-         assert(regions[r].srcSubresource.layerCount ==
-                regions[r].dstSubresource.layerCount);
-         dst_layer_count = regions[r].dstSubresource.layerCount;
-         push.arr_delta = regions[r].dstSubresource.baseArrayLayer -
-                          regions[r].srcSubresource.baseArrayLayer;
+         assert(src_subres.layerCount == dst_subres.layerCount);
+         dst_layer_count = dst_subres.layerCount;
+         push.arr_delta = dst_subres.baseArrayLayer -
+                          src_subres.baseArrayLayer;
       }
 
       do_blit(cmd, meta,
-              src_image, src_format, src_image_layout,
-              regions[r].srcSubresource,
-              dst_image, dst_format, dst_image_layout,
-              regions[r].dstSubresource,
+              src_image, src_format, src_image_layout, src_subres,
+              dst_image, dst_format, dst_image_layout, dst_subres,
               sampler, &key, &push, &dst_rect, dst_layer_count);
    }
 }
@@ -837,13 +842,19 @@ vk_meta_resolve_image(struct vk_command_buffer *cmd,
          .y1 = regions[r].dstOffset.y + regions[r].extent.height,
       };
 
+      VkImageSubresourceLayers src_subres = regions[r].srcSubresource;
+      src_subres.layerCount =
+         vk_image_subresource_layer_count(src_image, &src_subres);
+
+      VkImageSubresourceLayers dst_subres = regions[r].dstSubresource;
+      dst_subres.layerCount =
+         vk_image_subresource_layer_count(dst_image, &dst_subres);
+
       do_blit(cmd, meta,
-              src_image, src_format, src_image_layout,
-              regions[r].srcSubresource,
-              dst_image, dst_format, dst_image_layout,
-              regions[r].dstSubresource,
+              src_image, src_format, src_image_layout, src_subres,
+              dst_image, dst_format, dst_image_layout, dst_subres,
               VK_NULL_HANDLE, &key, &push, &dst_rect,
-              regions[r].dstSubresource.layerCount);
+              dst_subres.layerCount);
    }
 }
 

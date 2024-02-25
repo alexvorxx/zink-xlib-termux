@@ -8194,34 +8194,47 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
       inst->keep_payload_trailing_zeros = true;
    }
 
-   fs_reg nir_dest[5];
-   for (unsigned i = 0; i < read_size; i++)
-      nir_dest[i] = offset(dst, bld, i);
+   fs_reg nir_def_reg = get_nir_def(ntb, instr->def);
 
-   if (instr->op == nir_texop_query_levels) {
-      /* # levels is in .w */
-      if (devinfo->ver == 9) {
-         /**
-          * Wa_1940217:
-          *
-          * When a surface of type SURFTYPE_NULL is accessed by resinfo, the
-          * MIPCount returned is undefined instead of 0.
-          */
-         fs_inst *mov = bld.MOV(bld.null_reg_d(), dst);
-         mov->conditional_mod = BRW_CONDITIONAL_NZ;
-         nir_dest[0] = bld.vgrf(BRW_TYPE_D);
-         fs_inst *sel = bld.SEL(nir_dest[0], offset(dst, bld, 3), brw_imm_d(0));
-         sel->predicate = BRW_PREDICATE_NORMAL;
-      } else {
-         nir_dest[0] = offset(dst, bld, 3);
+   if (instr->op != nir_texop_query_levels && !instr->is_sparse) {
+      /* In most cases we can write directly to the result. */
+      inst->dst = nir_def_reg;
+   } else {
+      /* In other cases, we have to reorganize the sampler message's results
+       * a bit to match the NIR intrinsic's expectations.
+       */
+      fs_reg nir_dest[5];
+      for (unsigned i = 0; i < read_size; i++)
+         nir_dest[i] = offset(dst, bld, i);
+
+      if (instr->op == nir_texop_query_levels) {
+         /* # levels is in .w */
+         if (devinfo->ver == 9) {
+            /**
+             * Wa_1940217:
+             *
+             * When a surface of type SURFTYPE_NULL is accessed by resinfo, the
+             * MIPCount returned is undefined instead of 0.
+             */
+            fs_inst *mov = bld.MOV(bld.null_reg_d(), dst);
+            mov->conditional_mod = BRW_CONDITIONAL_NZ;
+            nir_dest[0] = bld.vgrf(BRW_TYPE_D);
+            fs_inst *sel =
+               bld.SEL(nir_dest[0], offset(dst, bld, 3), brw_imm_d(0));
+            sel->predicate = BRW_PREDICATE_NORMAL;
+         } else {
+            nir_dest[0] = offset(dst, bld, 3);
+         }
       }
+
+      /* The residency bits are only in the first component. */
+      if (instr->is_sparse) {
+         nir_dest[dest_size - 1] =
+            component(offset(dst, bld, dest_size - 1), 0);
+      }
+
+      bld.LOAD_PAYLOAD(nir_def_reg, nir_dest, dest_size, 0);
    }
-
-   /* The residency bits are only in the first component. */
-   if (instr->is_sparse)
-      nir_dest[dest_size - 1] = component(offset(dst, bld, dest_size - 1), 0);
-
-   bld.LOAD_PAYLOAD(get_nir_def(ntb, instr->def), nir_dest, dest_size, 0);
 }
 
 static void

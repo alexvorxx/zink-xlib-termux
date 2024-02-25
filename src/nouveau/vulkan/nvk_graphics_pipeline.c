@@ -417,6 +417,11 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
                  CONTROL_V_SELECTS_LAYER,
    });
 
+   P_IMMD(p, NV9097, SET_ATTRIBUTE_POINT_SIZE, {
+      .enable  = last_geom->info.vtg.writes_point_size,
+      .slot    = 0,
+   });
+
    emit_pipeline_xfb_state(&push, &last_geom->info.vtg.xfb);
 
    emit_pipeline_ct_write_state(&push, state.cb, state.rp);

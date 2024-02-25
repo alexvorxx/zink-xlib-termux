@@ -255,13 +255,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       .output7 = OUTPUT7_FALSE,
    });
 
-   /* vulkan allows setting point sizes only within shaders */
-   P_IMMD(p, NV9097, SET_ATTRIBUTE_POINT_SIZE, {
-      .enable  = ENABLE_TRUE,
-      .slot    = 0,
-   });
    P_IMMD(p, NV9097, SET_POINT_SIZE, fui(1.0));
-
 
    /* From vulkan spec's point rasterization:
     * "Point rasterization produces a fragment for each fragment area group of

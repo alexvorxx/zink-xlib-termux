@@ -367,6 +367,7 @@ output_nir(const struct intel_clc_params *params, struct clc_binary *binary)
                                         params->llvm17_wa);
    if (!nir) {
       fprintf(stderr, "Failed to generate NIR out of SPIRV\n");
+      fclose(fp);
       return -1;
    }
 

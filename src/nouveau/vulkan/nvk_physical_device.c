@@ -113,15 +113,20 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_map_memory2 = true,
       .KHR_multiview = true,
       .KHR_pipeline_executable_properties = true,
-      /* Hide these behind dri configs for now since we cannot implement it reliably on
-       * all surfaces yet. There is no surface capability query for present wait/id,
-       * but the feature is useful enough to hide behind an opt-in mechanism for now.
-       * If the instance only enables surface extensions that unconditionally support present wait,
-       * we can also expose the extension that way. */
+
+#ifdef NVK_USE_WSI_PLATFORM
+      /* Hide these behind dri configs for now since we cannot implement it
+       * reliably on all surfaces yet. There is no surface capability query
+       * for present wait/id, but the feature is useful enough to hide behind
+       * an opt-in mechanism for now.  If the instance only enables surface
+       * extensions that unconditionally support present wait, we can also
+       * expose the extension that way.
+       */
       .KHR_present_id = driQueryOptionb(&instance->dri_options, "vk_khr_present_wait") ||
                         wsi_common_vk_instance_supports_present_wait(&instance->vk),
       .KHR_present_wait = driQueryOptionb(&instance->dri_options, "vk_khr_present_wait") ||
                           wsi_common_vk_instance_supports_present_wait(&instance->vk),
+#endif
       .KHR_push_descriptor = true,
       .KHR_relaxed_block_layout = true,
       .KHR_sampler_mirror_clamp_to_edge = true,

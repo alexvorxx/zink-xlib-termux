@@ -37,6 +37,7 @@ def get_xml_patch_version(xml_file):
             continue
 
         return name.tail.strip()
+    assert False, f"Failed to find VK_HEADER_VERSION in {xml_file}"
 
 
 if __name__ == '__main__':

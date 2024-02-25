@@ -609,7 +609,8 @@ nvk_get_device_properties(const struct nvk_instance *instance,
    *properties = (struct vk_properties) {
       .apiVersion = nvk_get_vk_version(info),
       .driverVersion = vk_get_driver_version(),
-      .vendorID = NVIDIA_VENDOR_ID,
+      .vendorID = instance->force_vk_vendor != 0 ?
+                  instance->force_vk_vendor : NVIDIA_VENDOR_ID,
       .deviceID = info->device_id,
       .deviceType = info->type == NV_DEVICE_TYPE_DIS ?
                     VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU :

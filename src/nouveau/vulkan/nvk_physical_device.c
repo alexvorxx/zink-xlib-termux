@@ -103,6 +103,9 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_get_memory_requirements2 = true,
       .KHR_image_format_list = true,
       .KHR_imageless_framebuffer = true,
+#ifdef NVK_USE_WSI_PLATFORM
+      .KHR_incremental_present = true,
+#endif
       .KHR_index_type_uint8 = true,
       .KHR_line_rasterization = true,
       .KHR_load_store_op_none = true,

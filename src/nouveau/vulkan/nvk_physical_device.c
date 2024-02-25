@@ -113,6 +113,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_maintenance2 = true,
       .KHR_maintenance3 = true,
       .KHR_maintenance4 = true,
+      .KHR_maintenance5 = true,
       .KHR_map_memory2 = true,
       .KHR_multiview = true,
       .KHR_pipeline_executable_properties = true,
@@ -359,6 +360,9 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_KHR_fragment_shader_barycentric */
       .fragmentShaderBarycentric = info->cls_eng3d >= TURING_A &&
          (nvk_nak_stages(info) & VK_SHADER_STAGE_FRAGMENT_BIT) != 0,
+
+      /* VK_KHR_maintenance5 */
+      .maintenance5 = true,
 
       /* VK_KHR_pipeline_executable_properties */
       .pipelineExecutableInfo = true,
@@ -803,6 +807,14 @@ nvk_get_device_properties(const struct nvk_instance *instance,
 
       /* VK_KHR_line_rasterization */
       .lineSubPixelPrecisionBits = 8,
+
+      /* VK_KHR_maintenance5 */
+      .earlyFragmentMultisampleCoverageAfterSampleCounting = true,
+      .earlyFragmentSampleMaskTestBeforeSampleCounting = true,
+      .depthStencilSwizzleOneSupport = true,
+      .polygonModePointSize = true,
+      .nonStrictSinglePixelWideLinesUseParallelogram = false,
+      .nonStrictWideLinesUseParallelogram = false,
 
       /* VK_EXT_map_memory_placed */
       .minPlacedMemoryMapAlignment = os_page_size,

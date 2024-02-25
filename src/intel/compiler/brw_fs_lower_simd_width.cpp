@@ -637,7 +637,8 @@ brw_fs_lower_simd_width(fs_visitor &s)
           */
          const unsigned max_width = MAX2(inst->exec_size, lower_width);
 
-         const fs_builder bld = fs_builder(&s).at_end();
+         const fs_builder bld =
+            fs_builder(&s, MAX2(max_width, s.dispatch_width)).at_end();
          const fs_builder ibld = bld.at(block, inst)
                                     .exec_all(inst->force_writemask_all)
                                     .group(max_width, inst->group / max_width);

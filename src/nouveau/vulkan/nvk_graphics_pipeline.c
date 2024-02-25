@@ -35,7 +35,7 @@ nvk_populate_fs_key(struct nak_fs_key *key,
    key->sample_locations_offset = nvk_root_descriptor_offset(draw.sample_locations);
 
    if (state->pipeline_flags &
-       VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
+       VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
       key->zs_self_dep = true;
 
    if (ms == NULL || ms->rasterization_samples <= 1)
@@ -161,7 +161,7 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
       vk_graphics_pipeline_create_flags(pCreateInfo);
 
    if (pipeline_flags &
-       VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR)
+       VK_PIPELINE_CREATE_2_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR)
       cache = NULL;
 
    struct vk_graphics_pipeline_all_state all;
@@ -229,7 +229,7 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
       }
 
       if (!cache_objs[stage] &&
-          pCreateInfo->flags & VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT) {
+          pCreateInfo->flags & VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_KHR) {
          result = VK_PIPELINE_COMPILE_REQUIRED;
          goto fail;
       }

@@ -174,7 +174,7 @@ nvk_compute_pipeline_create(struct nvk_device *dev,
       vk_compute_pipeline_create_flags(pCreateInfo);
 
    if (pipeline_flags &
-       VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR)
+       VK_PIPELINE_CREATE_2_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR)
       cache = NULL;
 
    struct vk_pipeline_robustness_state robustness;
@@ -199,7 +199,7 @@ nvk_compute_pipeline_create(struct nvk_device *dev,
 
    if (!cache_obj) {
       if (pCreateInfo->flags &
-          VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT) {
+          VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_KHR) {
          result = VK_PIPELINE_COMPILE_REQUIRED;
          goto fail;
       }

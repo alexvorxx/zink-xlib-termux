@@ -1106,6 +1106,11 @@ nvk_BindImageMemory2(VkDevice device,
 
       if (image->stencil_copy_temp.nil.size_B > 0)
          nvk_image_plane_bind(dev, &image->stencil_copy_temp, mem, &offset_B);
+
+      const VkBindMemoryStatusKHR *status =
+         vk_find_struct_const(pBindInfos[i].pNext, BIND_MEMORY_STATUS_KHR);
+      if (status != NULL && status->pResult != NULL)
+         *status->pResult = VK_SUCCESS;
    }
 
    return VK_SUCCESS;

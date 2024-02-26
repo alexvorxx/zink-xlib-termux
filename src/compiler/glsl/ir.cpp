@@ -2212,7 +2212,7 @@ ir_function::has_user_signature()
 ir_rvalue *
 ir_rvalue::error_value(void *mem_ctx)
 {
-   ir_rvalue *v = new(mem_ctx) ir_rvalue(ir_type_unset);
+   ir_rvalue *v = new(mem_ctx) ir_rvalue(ir_type_error);
 
    v->type = &glsl_type_builtin_error;
    return v;

@@ -94,7 +94,8 @@ enum ir_node_type {
    ir_type_end_primitive,
    ir_type_barrier,
    ir_type_max, /**< maximum ir_type enum number, for validation */
-   ir_type_unset = ir_type_max
+   ir_type_unset = ir_type_max,
+   ir_type_error
 };
 
 
@@ -132,7 +133,8 @@ public:
              ir_type == ir_type_constant ||
              ir_type == ir_type_expression ||
              ir_type == ir_type_swizzle ||
-             ir_type == ir_type_texture;
+             ir_type == ir_type_texture ||
+             ir_type == ir_type_error;
    }
 
    bool is_dereference() const

@@ -16,10 +16,10 @@
 #include <errno.h>
 #include <stdlib.h>
 
-#include <nouveau_drm.h>
+#include "drm-uapi/nouveau_drm.h"
 #include <xf86drm.h>
-#include <nvif/class.h>
-#include <nvif/cl0080.h>
+#include "nvif/class.h"
+#include "nvif/cl0080.h"
 
 #include "nouveau_winsys.h"
 #include "nouveau_screen.h"
@@ -261,13 +261,13 @@ nouveau_pushbuf_destroy(struct nouveau_pushbuf **push)
 }
 
 static bool
-nouveau_check_for_uma(int chipset, struct nouveau_object *obj)
+nouveau_check_for_uma(int chipset, struct nouveau_device *dev)
 {
    struct nv_device_info_v0 info = {
       .version = 0,
    };
 
-   nouveau_object_mthd(obj, NV_DEVICE_V0_INFO, &info, sizeof(info));
+   nouveau_device_info(dev, &info);
 
    return (info.platform == NV_DEVICE_INFO_V0_IGP) || (info.platform == NV_DEVICE_INFO_V0_SOC);
 }
@@ -286,6 +286,7 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
    struct pipe_screen *pscreen = &screen->base;
    struct nv04_fifo nv04_data = { .vram = 0xbeef0201, .gart = 0xbeef0202 };
    struct nvc0_fifo nvc0_data = { };
+   struct nve0_fifo nve0_data = { .engine = NOUVEAU_FIFO_ENGINE_GR };
    uint64_t time;
    int size, ret;
    void *data;
@@ -313,9 +314,12 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
    if (dev->chipset < 0xc0) {
       data = &nv04_data;
       size = sizeof(nv04_data);
-   } else {
+   } else if (dev->chipset < 0xe0) {
       data = &nvc0_data;
       size = sizeof(nvc0_data);
+   } else {
+      data = &nve0_data;
+      size = sizeof(nve0_data);
    }
 
    bool enable_svm = debug_get_bool_option("NOUVEAU_SVM", false);
@@ -432,7 +436,7 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
       PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_STREAM_OUTPUT |
       PIPE_BIND_COMMAND_ARGS_BUFFER;
 
-   screen->is_uma = nouveau_check_for_uma(dev->chipset, &dev->object);
+   screen->is_uma = nouveau_check_for_uma(dev->chipset, dev);
 
    memset(&mm_config, 0, sizeof(mm_config));
    nouveau_fence_list_init(&screen->fence);

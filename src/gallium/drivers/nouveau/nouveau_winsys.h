@@ -8,8 +8,7 @@
 #include "util/os_misc.h"
 
 #include "drm-uapi/drm.h"
-#include <nouveau.h>
-
+#include "nouveau.h"
 #include "nouveau_screen.h"
 
 #ifndef NV04_PFIFO_MAX_PACKET_LEN

@@ -78,10 +78,10 @@ static inline uint32_t inst_write_mask_compose(uint32_t wm1, uint32_t wm2)
 
 /* Return whether the rgroup is one of the uniforms */
 static inline int
-etna_rgroup_is_uniform(unsigned rgroup)
+etna_rgroup_is_uniform(enum isa_reg_group rgroup)
 {
-   return rgroup == INST_RGROUP_UNIFORM_0 ||
-          rgroup == INST_RGROUP_UNIFORM_1;
+   return rgroup == ISA_REG_GROUP_UNIFORM_0 ||
+          rgroup == ISA_REG_GROUP_UNIFORM_1;
 }
 
 static inline struct etna_inst_src
@@ -89,7 +89,7 @@ etna_immediate_src(unsigned type, uint32_t bits)
 {
    return (struct etna_inst_src) {
       .use = 1,
-      .rgroup = INST_RGROUP_IMMEDIATE,
+      .rgroup = ISA_REG_GROUP_IMMED,
       .imm_val = bits,
       .imm_type = type
    };

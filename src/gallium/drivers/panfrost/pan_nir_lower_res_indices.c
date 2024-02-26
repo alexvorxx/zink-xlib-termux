@@ -96,6 +96,19 @@ lower_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
 }
 
 static bool
+lower_load_ubo_intrin(nir_builder *b, nir_intrinsic_instr *intrin)
+{
+   b->cursor = nir_before_instr(&intrin->instr);
+
+   nir_def *new_offset =
+      nir_ior_imm(b, intrin->src[0].ssa, pan_res_handle(PAN_TABLE_UBO, 0));
+
+   nir_src_rewrite(&intrin->src[0], new_offset);
+
+   return true;
+}
+
+static bool
 lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
                 const struct panfrost_compile_inputs *inputs)
 {
@@ -106,6 +119,8 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
       return lower_image_intrin(b, intrin);
    case nir_intrinsic_load_input:
       return lower_input_intrin(b, intrin, inputs);
+   case nir_intrinsic_load_ubo:
+      return lower_load_ubo_intrin(b, intrin);
    default:
       return false;
    }

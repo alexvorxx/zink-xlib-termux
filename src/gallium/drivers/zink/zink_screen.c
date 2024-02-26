@@ -2367,7 +2367,7 @@ zink_screen_export_dmabuf_semaphore(struct zink_screen *screen, struct zink_reso
       .fd = -1,
    };
 
-   int fd;
+   int fd = -1;
    if (res->obj->is_aux) {
       fd = os_dupfd_cloexec(res->obj->handle);
    } else {
@@ -2376,6 +2376,11 @@ zink_screen_export_dmabuf_semaphore(struct zink_screen *screen, struct zink_reso
       fd_info.memory = zink_bo_get_mem(res->obj->bo);
       fd_info.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
       VKSCR(GetMemoryFdKHR)(screen->dev, &fd_info, &fd);
+   }
+
+   if (unlikely(fd < 0)) {
+      mesa_loge("MESA: Unable to get a valid memory fd");
+      return VK_NULL_HANDLE;
    }
 
    int ret = drmIoctl(fd, DMA_BUF_IOCTL_EXPORT_SYNC_FILE, &export);

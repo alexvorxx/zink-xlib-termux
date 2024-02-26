@@ -1358,12 +1358,6 @@ vn_fence_feedback_init(struct vn_device *dev,
    if (fence->is_external)
       return VK_SUCCESS;
 
-   /* Fence feedback implementation relies on vkWaitForFences to cover the gap
-    * between feedback slot signaling and the actual fence signal operation.
-    */
-   if (unlikely(!dev->renderer->info.allow_vk_wait_syncs))
-      return VK_SUCCESS;
-
    if (VN_PERF(NO_FENCE_FEEDBACK))
       return VK_SUCCESS;
 

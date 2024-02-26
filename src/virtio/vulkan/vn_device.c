@@ -49,27 +49,20 @@ vn_queue_init(struct vn_device *dev,
 
    vn_cached_storage_init(&queue->storage, &dev->base.base.alloc);
 
-   VkDeviceQueueTimelineInfoMESA timeline_info;
-   const struct vn_renderer_info *renderer_info =
-      &dev->instance->renderer->info;
-   if (renderer_info->supports_multiple_timelines) {
-      int ring_idx = vn_instance_acquire_ring_idx(dev->instance);
-      if (ring_idx < 0) {
-         vn_log(dev->instance, "failed binding VkQueue to renderer timeline");
-         return VK_ERROR_INITIALIZATION_FAILED;
-      }
-      queue->ring_idx = (uint32_t)ring_idx;
-
-      timeline_info = (VkDeviceQueueTimelineInfoMESA){
-         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_TIMELINE_INFO_MESA,
-         .ringIdx = queue->ring_idx,
-      };
+   const int ring_idx = vn_instance_acquire_ring_idx(dev->instance);
+   if (ring_idx < 0) {
+      vn_log(dev->instance, "failed binding VkQueue to renderer timeline");
+      return VK_ERROR_INITIALIZATION_FAILED;
    }
+   queue->ring_idx = (uint32_t)ring_idx;
 
+   const VkDeviceQueueTimelineInfoMESA timeline_info = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_TIMELINE_INFO_MESA,
+      .ringIdx = queue->ring_idx,
+   };
    const VkDeviceQueueInfo2 device_queue_info = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_INFO_2,
-      .pNext =
-         renderer_info->supports_multiple_timelines ? &timeline_info : NULL,
+      .pNext = &timeline_info,
       .flags = queue_info->flags,
       .queueFamilyIndex = queue_info->queueFamilyIndex,
       .queueIndex = queue_index,
@@ -614,10 +607,8 @@ vn_DestroyDevice(VkDevice device, const VkAllocationCallbacks *pAllocator)
     * Otherwise, another thread might reuse their ring_idx while they
     * are still bound to the queues in the renderer.
     */
-   if (dev->renderer->info.supports_multiple_timelines) {
-      for (uint32_t i = 0; i < dev->queue_count; i++) {
-         vn_instance_release_ring_idx(dev->instance, dev->queues[i].ring_idx);
-      }
+   for (uint32_t i = 0; i < dev->queue_count; i++) {
+      vn_instance_release_ring_idx(dev->instance, dev->queues[i].ring_idx);
    }
 
    vk_free(alloc, dev->queues);

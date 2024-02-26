@@ -250,6 +250,7 @@ assert_memhandle_type(VkExternalMemoryHandleTypeFlags type)
 {
    switch (type) {
    case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
+   case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT:
       break;
    default:
       mesa_loge("lavapipe: unimplemented external memory type %u", type);
@@ -1787,32 +1788,39 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_AllocateMemory(
       mem->memory_type = LVP_DEVICE_MEMORY_TYPE_USER_PTR;
    }
 #ifdef PIPE_MEMORY_FD
-   else if(import_info) {
+   else if(import_info && import_info->handleType) {
+      bool dmabuf = import_info->handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
       uint64_t size;
-      if(!device->pscreen->import_memory_fd(device->pscreen, import_info->fd, &mem->pmem, &size, false)) {
+      if(!device->pscreen->import_memory_fd(device->pscreen, import_info->fd, (struct pipe_memory_allocation**)&mem->alloc, &size, dmabuf)) {
          close(import_info->fd);
          error = VK_ERROR_INVALID_EXTERNAL_HANDLE;
          goto fail;
       }
       if(size < pAllocateInfo->allocationSize) {
-         device->pscreen->free_memory_fd(device->pscreen, mem->pmem);
+         device->pscreen->free_memory_fd(device->pscreen, (struct pipe_memory_allocation*)mem->alloc);
          close(import_info->fd);
          goto fail;
       }
-      if (export_info && export_info->handleTypes) {
+      if (export_info && export_info->handleTypes == import_info->handleType) {
          mem->backed_fd = import_info->fd;
       }
       else {
          close(import_info->fd);
       }
-      mem->memory_type = LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD;
+
+      mem->size = size;
+      mem->pmem = mem->alloc->data;
+      mem->memory_type = dmabuf ? LVP_DEVICE_MEMORY_TYPE_DMA_BUF : LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD;
    }
    else if (export_info && export_info->handleTypes) {
-      mem->pmem = device->pscreen->allocate_memory_fd(device->pscreen, pAllocateInfo->allocationSize, &mem->backed_fd, false);
-      if (!mem->pmem || mem->backed_fd < 0) {
-         goto fail;
+      bool dmabuf = export_info->handleTypes == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+      mem->alloc = (struct llvmpipe_memory_fd_alloc*)device->pscreen->allocate_memory_fd(device->pscreen, pAllocateInfo->allocationSize, &mem->backed_fd, dmabuf);
+      if (!mem->alloc || mem->backed_fd < 0) {
+          goto fail;
       }
-      mem->memory_type = LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD;
+
+      mem->pmem = mem->alloc->data;
+      mem->memory_type = dmabuf ? LVP_DEVICE_MEMORY_TYPE_DMA_BUF : LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD;
    }
 #endif
    else {
@@ -1853,8 +1861,9 @@ VKAPI_ATTR void VKAPI_CALL lvp_FreeMemory(
       device->pscreen->free_memory(device->pscreen, mem->pmem);
       break;
 #ifdef PIPE_MEMORY_FD
+   case LVP_DEVICE_MEMORY_TYPE_DMA_BUF:
    case LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD:
-      device->pscreen->free_memory_fd(device->pscreen, mem->pmem);
+      device->pscreen->free_memory_fd(device->pscreen, (struct pipe_memory_allocation*)mem->alloc);
       if(mem->backed_fd >= 0)
          close(mem->backed_fd);
       break;
@@ -2207,7 +2216,7 @@ lvp_GetMemoryFdPropertiesKHR(VkDevice _device,
 
    assert(pMemoryFdProperties->sType == VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR);
 
-   if(handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT) {
+   if (assert_memhandle_type(handleType)) {
       // There is only one memoryType so select this one
       pMemoryFdProperties->memoryTypeBits = 1;
    }

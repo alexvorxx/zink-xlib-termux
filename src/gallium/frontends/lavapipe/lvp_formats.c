@@ -443,6 +443,18 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_GetPhysicalDeviceImageFormatProperties2(
       VkExternalMemoryHandleTypeFlags compat_flags = 0;
 
       switch (external_info->handleType) {
+#ifdef HAVE_LIBDRM
+      case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT: {
+         int params = physical_device->pscreen->get_param(physical_device->pscreen, PIPE_CAP_DMABUF);
+         flags = VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
+         if (params & DRM_PRIME_CAP_EXPORT)
+            flags |= VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT;
+
+         export_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+         compat_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+         break;
+      }
+#endif
 #ifdef PIPE_MEMORY_FD
       case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
          flags = VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT | VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
@@ -501,6 +513,19 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceExternalBufferProperties(
    VkExternalMemoryHandleTypeFlags export_flags = 0;
    VkExternalMemoryHandleTypeFlags compat_flags = 0;
    switch (pExternalBufferInfo->handleType) {
+#ifdef HAVE_LIBDRM
+      case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT: {
+         LVP_FROM_HANDLE(lvp_physical_device, physical_device, physicalDevice);
+         int params = physical_device->pscreen->get_param(physical_device->pscreen, PIPE_CAP_DMABUF);
+         flags = VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
+         if (params & DRM_PRIME_CAP_EXPORT)
+            flags |= VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT;
+
+         export_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+         compat_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+         break;
+      }
+#endif
 #ifdef PIPE_MEMORY_FD
    case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
       flags = VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT | VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;

@@ -95,6 +95,29 @@ get_autotune_fence(struct tu_autotune *at)
    return at->device->global_bo_map->autotune_fence;
 }
 
+template <chip CHIP>
+static void
+create_submission_fence(struct tu_device *dev,
+                        struct tu_cs *cs,
+                        uint32_t fence)
+{
+   uint64_t dst_iova = dev->global_bo->iova + gb_offset(autotune_fence);
+   if (CHIP >= A7XX) {
+      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE7, 4);
+      tu_cs_emit(cs,
+         CP_EVENT_WRITE7_0(.event = CACHE_FLUSH_TS,
+                           .write_src = EV_WRITE_USER_32B,
+                           .write_dst = EV_DST_RAM,
+                           .write_enabled = true).value);
+   } else {
+      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE, 4);
+      tu_cs_emit(cs, CP_EVENT_WRITE_0_EVENT(CACHE_FLUSH_TS));
+   }
+
+   tu_cs_emit_qw(cs, dst_iova);
+   tu_cs_emit(cs, fence);
+}
+
 static struct tu_submission_data *
 create_submission_data(struct tu_device *dev, struct tu_autotune *at,
                        uint32_t fence)
@@ -113,12 +136,7 @@ create_submission_data(struct tu_device *dev, struct tu_autotune *at,
 
    struct tu_cs* fence_cs = &submission_data->fence_cs;
    tu_cs_begin(fence_cs);
-
-   tu_cs_emit_pkt7(fence_cs, CP_EVENT_WRITE, 4);
-   tu_cs_emit(fence_cs, CP_EVENT_WRITE_0_EVENT(CACHE_FLUSH_TS));
-   tu_cs_emit_qw(fence_cs, dev->global_bo->iova + gb_offset(autotune_fence));
-   tu_cs_emit(fence_cs, fence);
-
+   TU_CALLX(dev, create_submission_fence)(dev, fence_cs, fence);
    tu_cs_end(fence_cs);
 
    list_addtail(&submission_data->node, &at->pending_submission_data);

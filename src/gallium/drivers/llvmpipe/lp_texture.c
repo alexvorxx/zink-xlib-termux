@@ -360,7 +360,7 @@ llvmpipe_memobj_create_from_handle(struct pipe_screen *pscreen,
    struct llvmpipe_memory_object *memobj = CALLOC_STRUCT(llvmpipe_memory_object);
 
    if (handle->type == WINSYS_HANDLE_TYPE_FD &&
-       pscreen->import_memory_fd(pscreen, handle->handle, &memobj->data, &memobj->size)) {
+       pscreen->import_memory_fd(pscreen, handle->handle, &memobj->data, &memobj->size, false)) {
       return &memobj->b;
    }
    free(memobj);
@@ -991,7 +991,8 @@ static const char *driver_id = "llvmpipe" MESA_GIT_SHA1;
 static struct pipe_memory_allocation *
 llvmpipe_allocate_memory_fd(struct pipe_screen *screen,
                             uint64_t size,
-                            int *fd)
+                            int *fd,
+                            bool dmabuf)
 {
    uint64_t alignment;
    if (!os_get_page_size(&alignment))
@@ -1005,7 +1006,8 @@ static bool
 llvmpipe_import_memory_fd(struct pipe_screen *screen,
                           int fd,
                           struct pipe_memory_allocation **ptr,
-                          uint64_t *size)
+                          uint64_t *size,
+                          bool dmabuf)
 {
    return os_import_memory_fd(fd, (void**)ptr, size, driver_id);
 }

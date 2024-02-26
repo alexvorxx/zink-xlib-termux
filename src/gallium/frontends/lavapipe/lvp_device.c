@@ -1776,7 +1776,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_AllocateMemory(
 #ifdef PIPE_MEMORY_FD
    else if(import_info) {
       uint64_t size;
-      if(!device->pscreen->import_memory_fd(device->pscreen, import_info->fd, &mem->pmem, &size)) {
+      if(!device->pscreen->import_memory_fd(device->pscreen, import_info->fd, &mem->pmem, &size, false)) {
          close(import_info->fd);
          error = VK_ERROR_INVALID_EXTERNAL_HANDLE;
          goto fail;
@@ -1795,7 +1795,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_AllocateMemory(
       mem->memory_type = LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD;
    }
    else if (export_info && export_info->handleTypes) {
-      mem->pmem = device->pscreen->allocate_memory_fd(device->pscreen, pAllocateInfo->allocationSize, &mem->backed_fd);
+      mem->pmem = device->pscreen->allocate_memory_fd(device->pscreen, pAllocateInfo->allocationSize, &mem->backed_fd, false);
       if (!mem->pmem || mem->backed_fd < 0) {
          goto fail;
       }

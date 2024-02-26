@@ -59,7 +59,8 @@
 
 #include "nir.h"
 
-#ifdef PIPE_MEMORY_FD
+#ifdef HAVE_LIBDRM
+#include <xf86drm.h>
 #include <fcntl.h>
 #endif
 
@@ -121,7 +122,18 @@ llvmpipe_get_name(struct pipe_screen *screen)
 static int
 llvmpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
 {
+#ifdef HAVE_LIBDRM
+   struct llvmpipe_screen *lscreen = llvmpipe_screen(screen);
+#endif
+
    switch (param) {
+#ifdef HAVE_LIBDRM
+   case PIPE_CAP_DMABUF:
+      if (lscreen->udmabuf_fd != -1)
+         return DRM_PRIME_CAP_IMPORT | DRM_PRIME_CAP_EXPORT;
+      else
+         return DRM_PRIME_CAP_IMPORT;
+#endif
    case PIPE_CAP_NPOT_TEXTURES:
    case PIPE_CAP_MIXED_FRAMEBUFFER_SIZES:
    case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:

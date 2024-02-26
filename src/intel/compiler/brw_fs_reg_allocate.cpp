@@ -78,30 +78,11 @@ fs_visitor::assign_regs_trivial()
 
 }
 
-/**
- * Size of a register from the aligned_bary_class register class.
- */
-static unsigned
-aligned_bary_size(unsigned dispatch_width)
-{
-   return (dispatch_width == 8 ? 2 : 4);
-}
-
-static void
-brw_alloc_reg_set(struct brw_compiler *compiler, int dispatch_width)
+void
+brw_fs_alloc_reg_sets(struct brw_compiler *compiler)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
    int base_reg_count = BRW_MAX_GRF;
-   const int index = util_logbase2(dispatch_width / 8);
-
-   if (dispatch_width > 8) {
-      /* For IVB+, we don't need the PLN hacks or the even-reg alignment in
-       * SIMD16.  Therefore, we can use the exact same register sets for
-       * SIMD16 as we do for SIMD8 and we don't need to recalculate them.
-       */
-      compiler->fs_reg_sets[index] = compiler->fs_reg_sets[0];
-      return;
-   }
 
    /* The registers used to make up almost all values handled in the compiler
     * are a scalar value occupying a single register (or 2 registers in the
@@ -127,7 +108,6 @@ brw_alloc_reg_set(struct brw_compiler *compiler, int dispatch_width)
    ra_set_allocate_round_robin(regs);
    struct ra_class **classes = ralloc_array(compiler, struct ra_class *,
                                             REG_CLASS_COUNT);
-   struct ra_class *aligned_bary_class = NULL;
 
    /* Now, make the register classes for each size of contiguous register
     * allocation we might need to make.
@@ -141,20 +121,11 @@ brw_alloc_reg_set(struct brw_compiler *compiler, int dispatch_width)
 
    ra_set_finalize(regs, NULL);
 
-   compiler->fs_reg_sets[index].regs = regs;
-   for (unsigned i = 0; i < ARRAY_SIZE(compiler->fs_reg_sets[index].classes); i++)
-      compiler->fs_reg_sets[index].classes[i] = NULL;
+   compiler->fs_reg_set.regs = regs;
+   for (unsigned i = 0; i < ARRAY_SIZE(compiler->fs_reg_set.classes); i++)
+      compiler->fs_reg_set.classes[i] = NULL;
    for (int i = 0; i < REG_CLASS_COUNT; i++)
-      compiler->fs_reg_sets[index].classes[class_sizes[i] - 1] = classes[i];
-   compiler->fs_reg_sets[index].aligned_bary_class = aligned_bary_class;
-}
-
-void
-brw_fs_alloc_reg_sets(struct brw_compiler *compiler)
-{
-   brw_alloc_reg_set(compiler, 8);
-   brw_alloc_reg_set(compiler, 16);
-   brw_alloc_reg_set(compiler, 32);
+      compiler->fs_reg_set.classes[class_sizes[i] - 1] = classes[i];
 }
 
 static int
@@ -297,7 +268,6 @@ public:
        * for reg_width == 2.
        */
       int reg_width = fs->dispatch_width / 8;
-      rsi = util_logbase2(reg_width);
       payload_node_count = ALIGN(fs->first_non_payload_grf, reg_width);
 
       /* Get payload IP information */
@@ -355,9 +325,6 @@ private:
    int live_instr_count;
 
    set *spill_insts;
-
-   /* Which compiler->fs_reg_sets[] to use */
-   int rsi;
 
    ra_graph *g;
    bool have_spill_costs;
@@ -581,7 +548,7 @@ fs_reg_alloc::build_interference_graph(bool allow_spilling)
                                 payload_last_use_ip);
 
    assert(g == NULL);
-   g = ra_alloc_interference_graph(compiler->fs_reg_sets[rsi].regs, node_count);
+   g = ra_alloc_interference_graph(compiler->fs_reg_set.regs, node_count);
    ralloc_steal(mem_ctx, g);
 
    /* Set up the payload nodes */
@@ -595,26 +562,11 @@ fs_reg_alloc::build_interference_graph(bool allow_spilling)
    for (unsigned i = 0; i < fs->alloc.count; i++) {
       unsigned size = DIV_ROUND_UP(fs->alloc.sizes[i], reg_unit(devinfo));
 
-      assert(size <= ARRAY_SIZE(compiler->fs_reg_sets[rsi].classes) &&
+      assert(size <= ARRAY_SIZE(compiler->fs_reg_set.classes) &&
              "Register allocation relies on split_virtual_grfs()");
 
       ra_set_node_class(g, first_vgrf_node + i,
-                        compiler->fs_reg_sets[rsi].classes[size - 1]);
-   }
-
-   /* Special case: on pre-Gfx7 hardware that supports PLN, the second operand
-    * of a PLN instruction needs to be an even-numbered register, so we have a
-    * special register class aligned_bary_class to handle this case.
-    */
-   if (compiler->fs_reg_sets[rsi].aligned_bary_class) {
-      foreach_block_and_inst(block, fs_inst, inst, fs->cfg) {
-         if (inst->opcode == FS_OPCODE_LINTERP && inst->src[0].file == VGRF &&
-             fs->alloc.sizes[inst->src[0].nr] ==
-               aligned_bary_size(fs->dispatch_width)) {
-            ra_set_node_class(g, first_vgrf_node + inst->src[0].nr,
-                              compiler->fs_reg_sets[rsi].aligned_bary_class);
-         }
-      }
+                        compiler->fs_reg_set.classes[size - 1]);
    }
 
    /* Add interference based on the live range of the register */
@@ -966,7 +918,7 @@ fs_reg_alloc::alloc_scratch_header()
    int vgrf = fs->alloc.allocate(1);
    assert(first_vgrf_node + vgrf == scratch_header_node);
    ra_set_node_class(g, scratch_header_node,
-                        compiler->fs_reg_sets[rsi].classes[0]);
+                        compiler->fs_reg_set.classes[0]);
 
    setup_live_interference(scratch_header_node, 0, INT_MAX);
 
@@ -978,7 +930,7 @@ fs_reg_alloc::alloc_spill_reg(unsigned size, int ip)
 {
    int vgrf = fs->alloc.allocate(ALIGN(size, reg_unit(devinfo)));
    int class_idx = DIV_ROUND_UP(size, reg_unit(devinfo)) - 1;
-   int n = ra_add_node(g, compiler->fs_reg_sets[rsi].classes[class_idx]);
+   int n = ra_add_node(g, compiler->fs_reg_set.classes[class_idx]);
    assert(n == first_vgrf_node + vgrf);
    assert(n == first_spill_node + spill_node_count);
 

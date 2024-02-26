@@ -65,13 +65,7 @@ struct brw_compiler {
        * block sizes used, indexed by register size.
        */
       struct ra_class *classes[16];
-
-      /**
-       * ra class for the aligned barycentrics we use for PLN, which doesn't
-       * appear in *classes.
-       */
-      struct ra_class *aligned_bary_class;
-   } fs_reg_sets[3];
+   } fs_reg_set;
 
    void (*shader_debug_log)(void *, unsigned *id, const char *str, ...) PRINTFLIKE(3, 4);
    void (*shader_perf_log)(void *, unsigned *id, const char *str, ...) PRINTFLIKE(3, 4);

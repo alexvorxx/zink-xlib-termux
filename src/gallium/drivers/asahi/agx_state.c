@@ -1876,15 +1876,15 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
       NIR_PASS(_, nir, lower_vbo, key->attribs);
 
-      if (key->next_stage == ASAHI_VS_FS) {
+      if (key->hw) {
          NIR_PASS(_, nir, agx_nir_lower_point_size,
-                  key->next.fs.fixed_point_size);
+                  key->next.hw.fixed_point_size);
          NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
                   nir_metadata_block_index | nir_metadata_dominance, NULL);
-      } else if (key->next_stage == ASAHI_VS_GS) {
+      } else {
          NIR_PASS(_, nir, agx_nir_lower_sysvals, PIPE_SHADER_VERTEX, false);
          NIR_PASS(_, nir, agx_nir_lower_vs_before_gs, dev->libagx,
-                  key->next.gs.index_size_B, &outputs);
+                  key->next.sw.index_size_B, &outputs);
       }
    } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {
       NIR_PASS_V(nir, agx_nir_lower_tcs, dev->libagx);
@@ -2006,11 +2006,11 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
    if (nir->info.stage == MESA_SHADER_VERTEX) {
       struct asahi_vs_shader_key *key = &key_->vs;
 
-      if (key->next_stage == ASAHI_VS_FS) {
-         base_key.vs.outputs_flat_shaded = key_->vs.next.fs.outputs_flat_shaded;
+      if (key->hw) {
+         base_key.vs.outputs_flat_shaded = key_->vs.next.hw.outputs_flat_shaded;
 
          base_key.vs.outputs_linear_shaded =
-            key_->vs.next.fs.outputs_linear_shaded;
+            key_->vs.next.hw.outputs_linear_shaded;
       }
    }
 
@@ -2451,26 +2451,23 @@ agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
       rast_prim(ctx->batch->reduced_prim, ctx->rast->base.fill_front);
 
    struct asahi_vs_shader_key key = {
-      .next_stage =
-         ((ctx->stage[PIPE_SHADER_TESS_EVAL].shader && !ctx->in_tess) ||
-          ctx->stage[PIPE_SHADER_GEOMETRY].shader)
-            ? ASAHI_VS_GS
-            : ASAHI_VS_FS,
+      .hw = !((ctx->stage[PIPE_SHADER_TESS_EVAL].shader && !ctx->in_tess) ||
+              ctx->stage[PIPE_SHADER_GEOMETRY].shader),
    };
 
-   if (key.next_stage == ASAHI_VS_FS) {
+   if (key.hw) {
       /* If we are not rasterizing points, don't set fixed_point_size to
        * eliminate the useless point size write.
        */
-      key.next.fs.fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
+      key.next.hw.fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
                                      rasterized_prim == MESA_PRIM_POINTS;
 
-      key.next.fs.outputs_flat_shaded =
+      key.next.hw.outputs_flat_shaded =
          ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_flat_shaded;
-      key.next.fs.outputs_linear_shaded =
+      key.next.hw.outputs_linear_shaded =
          ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_linear_shaded;
-   } else if (key.next_stage == ASAHI_VS_GS) {
-      key.next.gs.index_size_B = index_size_B;
+   } else {
+      key.next.sw.index_size_B = index_size_B;
    }
 
    memcpy(key.attribs, &ctx->attributes->key, sizeof(key.attribs));

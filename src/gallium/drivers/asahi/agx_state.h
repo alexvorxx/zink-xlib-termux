@@ -463,26 +463,24 @@ struct agx_velem_key {
    uint8_t pad;
 };
 
-enum asahi_vs_next_stage {
-   ASAHI_VS_FS,
-   ASAHI_VS_GS,
-   ASAHI_VS_TCS,
-};
-
 struct asahi_vs_shader_key {
    struct agx_velem_key attribs[AGX_MAX_VBUFS];
-   enum asahi_vs_next_stage next_stage;
+
+   /* If true, this is running as a hardware vertex shader. If false, this is a
+    * compute job used to feed a TCS or GS.
+    */
+   bool hw;
 
    union {
       struct {
          uint8_t index_size_B;
-      } gs;
+      } sw;
 
       struct {
          bool fixed_point_size;
          uint64_t outputs_flat_shaded;
          uint64_t outputs_linear_shaded;
-      } fs;
+      } hw;
    } next;
 };
 

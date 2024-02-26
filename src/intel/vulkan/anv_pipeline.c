@@ -655,14 +655,20 @@ populate_wm_prog_key(struct anv_pipeline_stage *stage,
        *
        * It's also required for the fragment output interface.
        */
-      key->alpha_to_coverage =
-         ms->alpha_to_coverage_enable ? BRW_ALWAYS : BRW_NEVER;
       key->multisample_fbo =
+         BITSET_TEST(dynamic, MESA_VK_DYNAMIC_MS_RASTERIZATION_SAMPLES) ?
+         BRW_SOMETIMES :
          ms->rasterization_samples > 1 ? BRW_ALWAYS : BRW_NEVER;
       key->persample_interp =
+         BITSET_TEST(dynamic, MESA_VK_DYNAMIC_MS_RASTERIZATION_SAMPLES) ?
+         BRW_SOMETIMES :
          (ms->sample_shading_enable &&
           (ms->min_sample_shading * ms->rasterization_samples) > 1) ?
          BRW_ALWAYS : BRW_NEVER;
+      key->alpha_to_coverage =
+         BITSET_TEST(dynamic, MESA_VK_DYNAMIC_MS_ALPHA_TO_COVERAGE_ENABLE) ?
+         BRW_SOMETIMES :
+         (ms->alpha_to_coverage_enable ? BRW_ALWAYS : BRW_NEVER);
 
       /* TODO: We should make this dynamic */
       if (device->physical->instance->sample_mask_out_opengl_behaviour)

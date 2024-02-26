@@ -65,16 +65,16 @@ SPDX-License-Identifier: MIT
 </enum>
 
 <enum name="#reg_group">
-	<value val="0" display="t"/>
-	<value val="1" display="i"/>
-	<value val="2" display="u"/>
-	<value val="3" display="u"/>
+	<value val="0" name="temp" display="t"/>
+	<value val="1" name="internal" display="i"/>
+	<value val="2" name="uniform_0" display="u"/>
+	<value val="3" name="uniform_1" display="u"/>
 	<value val="4" display="th"/>
 	<value val="7" name="immed" display=""/>
 </enum>
 
 <enum name="#reg_addressing_mode">
-	<value val="0" display=""/>
+	<value val="0" name="direct" display=""/>
 	<value val="1" display="[a.x]"/>
 	<value val="2" display="[a.y]"/>
 	<value val="3" display="[a.z]"/>

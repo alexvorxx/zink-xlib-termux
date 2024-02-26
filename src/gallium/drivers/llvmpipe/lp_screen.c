@@ -59,6 +59,9 @@
 
 #include "nir.h"
 
+#ifdef PIPE_MEMORY_FD
+#include <fcntl.h>
+#endif
 
 int LP_DEBUG = 0;
 
@@ -902,6 +905,10 @@ llvmpipe_destroy_screen(struct pipe_screen *_screen)
 
    glsl_type_singleton_decref();
 
+#ifdef HAVE_LIBDRM
+   close(screen->udmabuf_fd);
+#endif
+
    mtx_destroy(&screen->rast_mutex);
    mtx_destroy(&screen->cs_mutex);
    FREE(screen);
@@ -1139,6 +1146,9 @@ llvmpipe_create_screen(struct sw_winsys *winsys)
                                               screen->num_threads);
    screen->num_threads = MIN2(screen->num_threads, LP_MAX_THREADS);
 
+#ifdef HAVE_LIBDRM
+   screen->udmabuf_fd = open("/dev/udmabuf", O_RDWR);
+#endif
 
    snprintf(screen->renderer_string, sizeof(screen->renderer_string),
             "llvmpipe (LLVM " MESA_LLVM_VERSION_STRING ", %u bits)",

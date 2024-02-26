@@ -1508,18 +1508,6 @@ asahi_fs_shader_key_equal(const void *a, const void *b)
    return memcmp(a, b, sizeof(struct asahi_fs_shader_key)) == 0;
 }
 
-static uint32_t
-asahi_tcs_shader_key_hash(const void *key)
-{
-   return _mesa_hash_data(key, sizeof(struct asahi_tcs_shader_key));
-}
-
-static bool
-asahi_tcs_shader_key_equal(const void *a, const void *b)
-{
-   return memcmp(a, b, sizeof(struct asahi_tcs_shader_key)) == 0;
-}
-
 /* No compute variants */
 static uint32_t
 asahi_cs_shader_key_hash(const void *key)
@@ -2109,10 +2097,9 @@ agx_get_shader_variant(struct agx_screen *screen, struct pipe_context *pctx,
       memcpy(cloned_key, key, sizeof(struct asahi_vs_shader_key));
    } else if (so->type == PIPE_SHADER_GEOMETRY) {
       memcpy(cloned_key, key, sizeof(struct asahi_gs_shader_key));
-   } else if (so->type == PIPE_SHADER_TESS_CTRL) {
-      memcpy(cloned_key, key, sizeof(struct asahi_tcs_shader_key));
    } else {
-      assert(gl_shader_stage_is_compute(so->type));
+      assert(gl_shader_stage_is_compute(so->type) ||
+             so->type == PIPE_SHADER_TESS_CTRL);
       /* No key */
    }
 
@@ -2267,13 +2254,11 @@ agx_create_shader_state(struct pipe_context *pctx,
       so->variants = _mesa_hash_table_create(NULL, asahi_gs_shader_key_hash,
                                              asahi_gs_shader_key_equal);
 
-   } else if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
+   } else if (nir->info.stage == MESA_SHADER_TESS_EVAL ||
+              nir->info.stage == MESA_SHADER_TESS_CTRL) {
       /* No variants */
       so->variants = _mesa_hash_table_create(NULL, asahi_cs_shader_key_hash,
                                              asahi_cs_shader_key_equal);
-   } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {
-      so->variants = _mesa_hash_table_create(NULL, asahi_tcs_shader_key_hash,
-                                             asahi_tcs_shader_key_equal);
    } else {
       so->variants = _mesa_hash_table_create(so, asahi_fs_shader_key_hash,
                                              asahi_fs_shader_key_equal);
@@ -2302,10 +2287,16 @@ agx_create_shader_state(struct pipe_context *pctx,
    ralloc_free(nir);
    nir = NULL;
 
-   /* For shader-db, precompile a shader with a default key. This could be
-    * improved but hopefully this is acceptable for now.
+   /* Precompile shaders that have no key. For shader-db, precompile a shader
+    * with a default key. This could be improved but hopefully this is
+    * acceptable for now.
     */
-   if (dev->debug & AGX_DBG_PRECOMPILE) {
+   if (so->type == PIPE_SHADER_TESS_CTRL) {
+      union asahi_shader_key key = {0};
+
+      agx_get_shader_variant(agx_screen(pctx->screen), pctx, so, &pctx->debug,
+                             &key, NULL);
+   } else if (dev->debug & AGX_DBG_PRECOMPILE) {
       union asahi_shader_key key = {0};
 
       switch (so->type) {
@@ -2323,7 +2314,6 @@ agx_create_shader_state(struct pipe_context *pctx,
       case PIPE_SHADER_GEOMETRY:
          break;
 
-      case PIPE_SHADER_TESS_CTRL:
       case PIPE_SHADER_TESS_EVAL:
          /* TODO: Tessellation shaders with shader-db */
          return so;
@@ -2494,22 +2484,10 @@ agx_update_tcs(struct agx_context *ctx, const struct pipe_draw_info *info)
 {
    assert(info->mode == MESA_PRIM_PATCHES);
 
-   /* We don't bother to dirty track yet, update! */
-   struct asahi_tcs_shader_key key = {
-      .index_size_B = info->index_size,
-   };
-
-   memcpy(key.attribs, &ctx->attributes->key, sizeof(key.attribs));
-
-   static_assert(sizeof(key.input_nir_sha1) ==
-                    sizeof(ctx->stage[PIPE_SHADER_VERTEX].shader->nir_sha1),
-                 "common size for shader sha-1");
-
-   memcpy(key.input_nir_sha1, ctx->stage[PIPE_SHADER_VERTEX].shader->nir_sha1,
-          sizeof(key.input_nir_sha1));
-
-   return agx_update_shader(ctx, &ctx->tcs, PIPE_SHADER_TESS_CTRL,
-                            (union asahi_shader_key *)&key);
+   ctx->tcs = _mesa_hash_table_next_entry(
+                 ctx->stage[PIPE_SHADER_TESS_CTRL].shader->variants, NULL)
+                 ->data;
+   return true;
 }
 
 static bool

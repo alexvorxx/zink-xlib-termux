@@ -512,18 +512,6 @@ struct asahi_fs_shader_key {
    enum pipe_format rt_formats[PIPE_MAX_COLOR_BUFS];
 };
 
-struct asahi_tcs_shader_key {
-   /* Input assembly key. Simplified because we know we're operating on patches.
-    */
-   uint8_t index_size_B;
-
-   /* Vertex shader key */
-   struct agx_velem_key attribs[AGX_MAX_VBUFS];
-
-   /* Tessellation control shaders must be linked with a vertex shader. */
-   uint8_t input_nir_sha1[20];
-};
-
 struct asahi_gs_shader_key {
    /* Rasterizer shader key */
    uint64_t outputs_flat_shaded;
@@ -538,7 +526,6 @@ static_assert(sizeof(struct asahi_gs_shader_key) == 24, "no holes");
 
 union asahi_shader_key {
    struct asahi_vs_shader_key vs;
-   struct asahi_tcs_shader_key tcs;
    struct asahi_gs_shader_key gs;
    struct asahi_fs_shader_key fs;
 };

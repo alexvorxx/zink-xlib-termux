@@ -39,11 +39,10 @@ agx_disk_cache_compute_key(struct disk_cache *cache,
       key_size = sizeof(shader_key->vs);
    else if (uncompiled->type == PIPE_SHADER_GEOMETRY)
       key_size = sizeof(shader_key->gs);
-   else if (uncompiled->type == PIPE_SHADER_TESS_CTRL)
-      key_size = sizeof(shader_key->tcs);
    else if (uncompiled->type == PIPE_SHADER_FRAGMENT)
       key_size = sizeof(shader_key->fs);
-   else if (uncompiled->type == PIPE_SHADER_COMPUTE)
+   else if (uncompiled->type == PIPE_SHADER_COMPUTE ||
+            uncompiled->type == PIPE_SHADER_TESS_CTRL)
       key_size = 0;
    else
       unreachable("Unsupported shader stage");

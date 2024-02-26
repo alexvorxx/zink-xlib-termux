@@ -537,37 +537,41 @@ cmd_buffer_end_render_pass_frame(struct v3dv_cmd_buffer *cmd_buffer)
    struct v3dv_job *job = cmd_buffer->state.job;
    assert(job);
 
-
    /* For subpass jobs we always emit the RCL here */
    assert(v3dv_cl_offset(&job->rcl) == 0);
 
-   /* Decide if we want to enable double-buffer for this job. If we do, then
-    * we need to rewrite the TILE_BINNING_MODE_CFG packet in the BCL.
-    */
-   if (job_should_enable_double_buffer(job)) {
-      assert(!job->frame_tiling.double_buffer);
-      job_compute_frame_tiling(job,
-                               job->frame_tiling.width,
-                               job->frame_tiling.height,
-                               job->frame_tiling.layers,
-                               job->frame_tiling.render_target_count,
-                               job->frame_tiling.internal_bpp,
-                               job->frame_tiling.total_color_bpp,
-                               job->frame_tiling.msaa,
-                               true);
+   /* Only emit RCL for the first job in a suspend/resume chain */
+   if (!job->resuming) {
+      /* Decide if we want to enable double-buffer for this job. If we do, then
+       * we need to rewrite the TILE_BINNING_MODE_CFG packet in the BCL.
+       */
+      if (job_should_enable_double_buffer(job)) {
+         assert(!job->frame_tiling.double_buffer);
+         job_compute_frame_tiling(job,
+                                  job->frame_tiling.width,
+                                  job->frame_tiling.height,
+                                  job->frame_tiling.layers,
+                                  job->frame_tiling.render_target_count,
+                                  job->frame_tiling.internal_bpp,
+                                  job->frame_tiling.total_color_bpp,
+                                  job->frame_tiling.msaa,
+                                  true);
 
-      v3dv_X(job->device, job_emit_enable_double_buffer)(job);
+         v3dv_X(job->device, job_emit_enable_double_buffer)(job);
+      }
+
+      /* At this point we have decided whether we want to use double-buffer or
+       * not and the job's frame tiling represents that decision so we can
+       * allocate the tile state, which we need to do before we emit the RCL.
+       */
+      v3dv_job_allocate_tile_state(job);
+
+      v3dv_X(cmd_buffer->device, cmd_buffer_emit_render_pass_rcl)(cmd_buffer);
    }
 
-   /* At this point we have decided whether we want to use double-buffer or
-    * not and the job's frame tiling represents that decision so we can
-    * allocate the tile state, which we need to do before we emit the RCL.
-    */
-   v3dv_job_allocate_tile_state(job);
-
-   v3dv_X(cmd_buffer->device, cmd_buffer_emit_render_pass_rcl)(cmd_buffer);
-
-   v3dv_X(cmd_buffer->device, job_emit_binning_flush)(job);
+   /* Only emit the binning flush for the last job in resume/suspend chain */
+   if (!job->suspending)
+      v3dv_X(cmd_buffer->device, job_emit_binning_flush)(job);
 }
 
 struct v3dv_job *
@@ -639,17 +643,6 @@ v3dv_cmd_buffer_finish_job(struct v3dv_cmd_buffer *cmd_buffer)
    if (!job)
       return;
 
-   /* Always clear BCL state after a job has been finished if we don't have
-    * a pending graphics barrier that could consume it (BCL barriers only
-    * apply to graphics jobs). This can happen if the application recorded
-    * a barrier involving geometry stages but none of the draw calls in the
-    * job actually required a binning sync.
-    */
-   if (!(cmd_buffer->state.barrier.dst_mask & V3DV_BARRIER_GRAPHICS_BIT)) {
-      cmd_buffer->state.barrier.bcl_buffer_access = 0;
-      cmd_buffer->state.barrier.bcl_image_access = 0;
-   }
-
    if (cmd_buffer->state.oom) {
       v3dv_job_destroy(job);
       cmd_buffer->state.job = NULL;
@@ -661,8 +654,17 @@ v3dv_cmd_buffer_finish_job(struct v3dv_cmd_buffer *cmd_buffer)
     * should at least have the start frame commands, otherwise, it should have
     * a transfer command. The only exception are secondary command buffers
     * inside a render pass.
+    *
+    * With dynamic rendering there is also the possibility that we resume a
+    * suspended pass with an empty job. In that case, we need to ensure the
+    * empty job is still a valid commmand list, which we will ensure when we
+    * add the binning flush right below, which only happens if this is the
+    * last job in the resume/suspend chain. If it is not the last then we know
+    * it must at least have the BRANCH instruction to link with a follow-up
+    * resume job.
     */
    assert(cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY ||
+          (job->resuming && !job->suspending) ||
           v3dv_cl_offset(&job->bcl) > 0);
 
    /* When we merge multiple subpasses into the same job we must only emit one
@@ -671,6 +673,11 @@ v3dv_cmd_buffer_finish_job(struct v3dv_cmd_buffer *cmd_buffer)
     * the RCL should have been emitted by the time we got here.
     */
    assert(v3dv_cl_offset(&job->rcl) != 0 || cmd_buffer->state.pass);
+
+   if (!(cmd_buffer->state.barrier.dst_mask & V3DV_BARRIER_GRAPHICS_BIT)) {
+      cmd_buffer->state.barrier.bcl_buffer_access = 0;
+      cmd_buffer->state.barrier.bcl_image_access = 0;
+   }
 
    /* If we are finishing a job inside a render pass we have two scenarios:
     *
@@ -692,6 +699,7 @@ v3dv_cmd_buffer_finish_job(struct v3dv_cmd_buffer *cmd_buffer)
       }
    }
 
+   bool suspending = job->suspending;
    list_addtail(&job->list_link, &cmd_buffer->jobs);
    cmd_buffer->state.job = NULL;
 
@@ -701,10 +709,12 @@ v3dv_cmd_buffer_finish_job(struct v3dv_cmd_buffer *cmd_buffer)
     * that case we want to defer this until we finish recording the primary
     * job into which we execute the secondary.
     */
-   if (cmd_buffer_has_pending_jobs(cmd_buffer) &&
-       (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY ||
-        !cmd_buffer->state.pass)) {
-      cmd_buffer_add_pending_jobs(cmd_buffer);
+   if (!suspending) {
+      if (cmd_buffer_has_pending_jobs(cmd_buffer) &&
+          (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY ||
+           !cmd_buffer->state.pass)) {
+         cmd_buffer_add_pending_jobs(cmd_buffer);
+      }
    }
 }
 
@@ -1683,7 +1693,8 @@ cmd_buffer_subpass_check_double_buffer_mode(struct v3dv_cmd_buffer *cmd_buffer,
 static struct v3dv_job *
 cmd_buffer_subpass_create_job(struct v3dv_cmd_buffer *cmd_buffer,
                               uint32_t subpass_idx,
-                              enum v3dv_job_type type)
+                              enum v3dv_job_type type,
+                              bool is_subpass_start)
 {
    assert(type == V3DV_JOB_TYPE_GPU_CL ||
           type == V3DV_JOB_TYPE_GPU_CL_SECONDARY);
@@ -1700,15 +1711,23 @@ cmd_buffer_subpass_create_job(struct v3dv_cmd_buffer *cmd_buffer,
    if (!job)
       return NULL;
 
+   if (is_subpass_start && cmd_buffer->state.resuming) {
+      assert(subpass_idx == 0);
+      job->resuming = true;
+   }
+
    state->subpass_idx = subpass_idx;
 
    /* If we are starting a new job we need to setup binning. We only do this
     * for V3DV_JOB_TYPE_GPU_CL jobs because V3DV_JOB_TYPE_GPU_CL_SECONDARY
     * jobs are not submitted to the GPU directly, and are instead meant to be
-    * branched to from other V3DV_JOB_TYPE_GPU_CL jobs.
+    * branched to from other V3DV_JOB_TYPE_GPU_CL jobs. With dynamic rendering,
+    * all resuming jobs work similarly to secondary command buffers, so we
+    * apply the same.
     */
    if (type == V3DV_JOB_TYPE_GPU_CL &&
-       job->first_subpass == state->subpass_idx) {
+       job->first_subpass == state->subpass_idx &&
+       !job->resuming) {
       const struct v3dv_subpass *subpass =
          &state->pass->subpasses[state->subpass_idx];
 
@@ -1759,9 +1778,11 @@ v3dv_cmd_buffer_subpass_start(struct v3dv_cmd_buffer *cmd_buffer,
 
    struct v3dv_job *job =
       cmd_buffer_subpass_create_job(cmd_buffer, subpass_idx,
-                                    V3DV_JOB_TYPE_GPU_CL);
+                                    V3DV_JOB_TYPE_GPU_CL, true);
    if (!job)
       return NULL;
+
+   /* FIXME: do we need all this below for resuming jobs?  */
 
    /* Check if our render area is aligned to tile boundaries. We have to do
     * this in each subpass because the subset of attachments used can change
@@ -1784,9 +1805,14 @@ v3dv_cmd_buffer_subpass_start(struct v3dv_cmd_buffer *cmd_buffer,
     * record a meta operation (with its own render pass) that relies on
     * attachment load clears, but we don't have any instances of that right
     * now.
+    *
+    * For dynamic render passes, we only want to emit this once with the job
+    * starting the resume/suspend chain.
     */
-   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY &&
+       !cmd_buffer->state.resuming) {
       cmd_buffer_emit_subpass_clears(cmd_buffer);
+   }
 
    return job;
 }
@@ -1801,11 +1827,11 @@ v3dv_cmd_buffer_subpass_resume(struct v3dv_cmd_buffer *cmd_buffer,
    struct v3dv_job *job;
    if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY) {
       job = cmd_buffer_subpass_create_job(cmd_buffer, subpass_idx,
-                                          V3DV_JOB_TYPE_GPU_CL);
+                                          V3DV_JOB_TYPE_GPU_CL, false);
    } else {
       assert(cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY);
       job = cmd_buffer_subpass_create_job(cmd_buffer, subpass_idx,
-                                          V3DV_JOB_TYPE_GPU_CL_SECONDARY);
+                                          V3DV_JOB_TYPE_GPU_CL_SECONDARY, false);
    }
 
    if (!job)
@@ -4512,14 +4538,18 @@ v3dv_CmdBeginRenderingKHR(VkCommandBuffer commandBuffer,
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
 
+   cmd_buffer->state.suspending = info->flags & VK_RENDERING_SUSPENDING_BIT;
+   cmd_buffer->state.resuming = info->flags & VK_RENDERING_RESUMING_BIT;
+
+   /* FIXME: for resuming passes we might not need all this setup below since
+    * we are only mostly recording draw calls like in secondaries.
+    */
+
    v3dv_setup_dynamic_render_pass(cmd_buffer, info);
    v3dv_return_if_oom(cmd_buffer, NULL);
 
    v3dv_setup_dynamic_framebuffer(cmd_buffer, info);
    v3dv_return_if_oom(cmd_buffer, NULL);
-
-   /* FIXME: handle resume/suspend */
-   assert(!info->flags);
 
    struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
    state->pass = &state->dynamic_pass;
@@ -4593,15 +4623,55 @@ v3dv_CmdEndRenderingKHR(VkCommandBuffer commandBuffer)
 
    v3dv_return_if_oom(cmd_buffer, NULL);
 
-   /* FIXME: handle resume/suspend */
    struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
    assert(state->subpass_idx == state->pass->subpass_count - 1);
+
+   /* If we have any pending jobs that were waiting for the current job
+    * to finish and we are suspending the pass here, we need to finish the
+    * job completely and ensure we emit the pending jobs immediately.
+    *
+    * FIXME: this is not optimal but since the resuming command buffer won't
+    * have the pending state we can't do it after the resuming chain completes
+    * without some extra work: we would have to generate the pending jobs
+    * now but not add them to this command buffer's job list, instead, they
+    * should be added to a separate list of "pending jobs" and at submit time
+    * we would accumulate these jobs during the suspend/resume chain and emit
+    * them all after the last job in the chain.
+    */
+   if (state->suspending && cmd_buffer_has_pending_jobs(cmd_buffer))
+      v3dv_cmd_buffer_finish_job(cmd_buffer);
+
+   /* If we don't have a job and we are suspending we will need to create one
+    * so we can link to a follow-up resume job. Because would be starting a new
+    * job, we should ensure the command buffer state is not flagged as resuming
+    * from a previous suspend. The new job will consume any pending barrier
+    * state if necessary.
+    */
+   struct v3dv_job *job = cmd_buffer->state.job;
+   if (!job && state->suspending) {
+      state->resuming = false;
+      job = v3dv_cmd_buffer_subpass_resume(cmd_buffer, state->subpass_idx);
+      if (!job)
+         return;
+   }
+
+   /* If this job is suspending it means it will continue execution in another
+    * job (with the same RCL spec). We implement this by branching the BCL and
+    * we will patch the branch address when we know the resuming job.
+    */
+   if (state->suspending)
+      v3dv_X(cmd_buffer->device, cmd_buffer_suspend)(cmd_buffer);
+
    v3dv_cmd_buffer_subpass_finish(cmd_buffer);
    v3dv_cmd_buffer_finish_job(cmd_buffer);
 
-   cmd_buffer_subpass_handle_pending_resolves(cmd_buffer);
+   /* This must be done after the resume/suspend chain completed. */
+   if (!state->suspending)
+      cmd_buffer_subpass_handle_pending_resolves(cmd_buffer);
 
    state->framebuffer = NULL;
    state->pass = NULL;
    state->subpass_idx = -1;
+   state->suspending = false;
+   state->resuming = false;
 }

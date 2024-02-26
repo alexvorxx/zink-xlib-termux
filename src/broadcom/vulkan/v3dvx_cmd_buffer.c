@@ -2726,3 +2726,53 @@ v3dX(cmd_buffer_emit_indexed_indirect)(struct v3dv_cmd_buffer *cmd_buffer,
                                      buffer->mem_offset + offset);
    }
 }
+
+void
+v3dX(cmd_buffer_suspend)(struct v3dv_cmd_buffer *cmd_buffer)
+{
+   struct v3dv_job *job = cmd_buffer->state.job;
+   assert(job);
+
+   job->suspending = true;
+
+   v3dv_cl_ensure_space_with_branch(&job->bcl, cl_packet_length(BRANCH));
+
+   job->suspend_branch_inst_ptr = cl_start(&job->bcl);
+   cl_emit(&job->bcl, BRANCH, branch) {
+      branch.address = v3dv_cl_address(NULL, 0);
+   }
+
+   /* The sim complains if the command list ends with a branch */
+   cl_emit(&job->bcl, NOP, nop);
+}
+
+void
+v3dX(job_patch_resume_address)(struct v3dv_job *first_suspend,
+                               struct v3dv_job *suspend,
+                               struct v3dv_job *resume)
+{
+   assert(resume && resume->resuming);
+   assert(first_suspend && first_suspend->suspending);
+   assert(suspend && suspend->suspending);
+   assert(suspend->suspend_branch_inst_ptr != NULL);
+
+   struct v3dv_bo *resume_bo =
+      list_first_entry(&resume->bcl.bo_list, struct v3dv_bo, list_link);
+   struct cl_packet_struct(BRANCH) branch = {
+      cl_packet_header(BRANCH),
+   };
+   branch.address = v3dv_cl_address(resume_bo, 0);
+
+   uint8_t *rewrite_addr = (uint8_t *) suspend->suspend_branch_inst_ptr;
+   cl_packet_pack(BRANCH)(&suspend->bcl, rewrite_addr, &branch);
+
+   if (resume != first_suspend) {
+      set_foreach(resume->bos, entry) {
+         struct v3dv_bo *bo = (void *)entry->key;
+         v3dv_job_add_bo(first_suspend, bo);
+      }
+   }
+
+   first_suspend->suspended_bcl_end = resume->bcl.bo->offset +
+                                      v3dv_cl_offset(&resume->bcl);
+}

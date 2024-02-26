@@ -1235,6 +1235,12 @@ struct v3dv_job {
     */
    bool is_clone;
 
+   /* VK_KHR_dynamic_rendering */
+   bool suspending;
+   bool resuming;
+   struct v3dv_cl_out *suspend_branch_inst_ptr;
+   uint32_t suspended_bcl_end;
+
    /* If the job executes on the transfer stage of the pipeline */
    bool is_transfer;
 
@@ -1561,6 +1567,10 @@ struct v3dv_cmd_buffer_state {
 
    /* If we are currently recording job(s) for a transfer operation */
    bool is_transfer;
+
+   /* VK_KHR_dynamic_rendering */
+   bool suspending;
+   bool resuming;
 
    /* Barrier state tracking */
    struct v3dv_barrier_state barrier;

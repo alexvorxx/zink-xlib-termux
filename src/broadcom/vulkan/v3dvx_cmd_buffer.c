@@ -1826,10 +1826,11 @@ job_update_ez_state(struct v3dv_job *job,
          return false;
       }
 
-      /* GFXH-1918: the early-z buffer may load incorrect depth values
-       * if the frame has odd width or height.
+      /* GFXH-1918: the early-z buffer may load incorrect depth values if the
+       * frame has odd width or height, or if the buffer is 16-bit and
+       * multisampled.
        *
-       * So we need to disable EZ in this case.
+       * So we need to disable EZ in these cases.
        */
       const struct v3dv_render_pass_attachment *ds_attachment =
          &state->pass->attachments[subpass->ds_attachment.attachment];
@@ -1846,6 +1847,15 @@ job_update_ez_state(struct v3dv_job *job,
                                           ds_attachment->desc.storeOp);
 
       if (needs_depth_load) {
+         if (ds_attachment->desc.format == VK_FORMAT_D16_UNORM &&
+             ds_attachment->desc.samples != VK_SAMPLE_COUNT_1_BIT) {
+            perf_debug("Loading depth aspect from a multisampled 16-bit "
+                       "depth buffer disables early-Z tests.\n");
+            job->first_ez_state = V3D_EZ_DISABLED;
+            job->ez_state = V3D_EZ_DISABLED;
+            return false;
+         }
+
          struct v3dv_framebuffer *fb = state->framebuffer;
 
          if (!fb) {

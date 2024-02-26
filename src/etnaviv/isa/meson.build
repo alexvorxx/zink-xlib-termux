@@ -56,6 +56,20 @@ enums_h = custom_target(
   depend_files: isa_depend_files,
 )
 
+encode_files = [
+  enums_h,
+  'encode.c',
+]
+
+libetnaviv_encode = static_library(
+  'etnaviv_encode',
+  encode_files,
+  gnu_symbol_visibility: 'hidden',
+  include_directories: [
+    inc_src,
+  ],
+)
+
 disasm = executable(
   'etnaviv-disasm',
   ['disasm.c'],

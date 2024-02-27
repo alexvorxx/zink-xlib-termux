@@ -128,8 +128,7 @@ struct gs_thread_payload : public thread_payload {
 
 struct fs_thread_payload : public thread_payload {
    fs_thread_payload(const fs_visitor &v,
-                     bool &source_depth_to_render_target,
-                     bool &runtime_check_aads_emit);
+                     bool &source_depth_to_render_target);
 
    uint8_t subspan_coord_reg[2];
    uint8_t source_depth_reg[2];
@@ -371,7 +370,6 @@ public:
    }
 
    bool source_depth_to_render_target;
-   bool runtime_check_aads_emit;
 
    fs_reg pixel_x;
    fs_reg pixel_y;
@@ -426,7 +424,6 @@ public:
    fs_generator(const struct brw_compiler *compiler,
                 const struct brw_compile_params *params,
                 struct brw_stage_prog_data *prog_data,
-                bool runtime_check_aads_emit,
                 gl_shader_stage stage);
    ~fs_generator();
 
@@ -488,7 +485,6 @@ private:
    unsigned dispatch_width; /**< 8, 16 or 32 */
 
    exec_list discard_halt_patches;
-   bool runtime_check_aads_emit;
    bool debug_flag;
    const char *shader_name;
    gl_shader_stage stage;

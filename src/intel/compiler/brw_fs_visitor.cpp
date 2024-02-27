@@ -1059,7 +1059,6 @@ fs_visitor::init()
 
    this->payload_ = NULL;
    this->source_depth_to_render_target = false;
-   this->runtime_check_aads_emit = false;
    this->first_non_payload_grf = 0;
 
    this->uniforms = 0;

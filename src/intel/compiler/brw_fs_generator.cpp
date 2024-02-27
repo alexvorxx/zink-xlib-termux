@@ -129,13 +129,12 @@ brw_reg_from_fs_reg(const struct intel_device_info *devinfo, fs_inst *inst,
 fs_generator::fs_generator(const struct brw_compiler *compiler,
                            const struct brw_compile_params *params,
                            struct brw_stage_prog_data *prog_data,
-                           bool runtime_check_aads_emit,
                            gl_shader_stage stage)
 
    : compiler(compiler), params(params),
      devinfo(compiler->devinfo),
      prog_data(prog_data), dispatch_width(0),
-     runtime_check_aads_emit(runtime_check_aads_emit), debug_flag(false),
+     debug_flag(false),
      shader_name(NULL), stage(stage), mem_ctx(params->mem_ctx)
 {
    p = rzalloc(mem_ctx, struct brw_codegen);

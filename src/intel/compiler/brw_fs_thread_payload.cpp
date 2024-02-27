@@ -303,8 +303,7 @@ setup_fs_payload_gfx9(fs_thread_payload &payload,
 }
 
 fs_thread_payload::fs_thread_payload(const fs_visitor &v,
-                                     bool &source_depth_to_render_target,
-                                     bool &runtime_check_aads_emit)
+                                     bool &source_depth_to_render_target)
   : subspan_coord_reg(),
     source_depth_reg(),
     source_w_reg(),

@@ -2908,8 +2908,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
 
    assert(stage == MESA_SHADER_FRAGMENT);
 
-   payload_ = new fs_thread_payload(*this, source_depth_to_render_target,
-                                    runtime_check_aads_emit);
+   payload_ = new fs_thread_payload(*this, source_depth_to_render_target);
 
    if (do_rep_send) {
       assert(dispatch_width == 16);
@@ -3687,7 +3686,7 @@ brw_compile_fs(const struct brw_compiler *compiler,
       simd8_cfg = NULL;
 
    fs_generator g(compiler, &params->base, &prog_data->base,
-                  v8 && v8->runtime_check_aads_emit, MESA_SHADER_FRAGMENT);
+                  MESA_SHADER_FRAGMENT);
 
    if (unlikely(debug_enabled)) {
       g.enable_debug(ralloc_asprintf(params->base.mem_ctx,
@@ -3932,13 +3931,12 @@ brw_compile_cs(const struct brw_compiler *compiler,
    }
 
    assert(selected_simd < 3);
-   fs_visitor *selected = v[selected_simd].get();
 
    if (!nir->info.workgroup_size_variable)
       prog_data->prog_mask = 1 << selected_simd;
 
    fs_generator g(compiler, &params->base, &prog_data->base,
-                  selected->runtime_check_aads_emit, MESA_SHADER_COMPUTE);
+                  MESA_SHADER_COMPUTE);
    if (unlikely(debug_enabled)) {
       char *name = ralloc_asprintf(params->base.mem_ctx,
                                    "%s compute shader %s",
@@ -4116,7 +4114,7 @@ brw_compile_bs(const struct brw_compiler *compiler,
    prog_data->num_resume_shaders = num_resume_shaders;
 
    fs_generator g(compiler, &params->base, &prog_data->base,
-                  false, shader->info.stage);
+                  shader->info.stage);
    if (unlikely(debug_enabled)) {
       char *name = ralloc_asprintf(params->base.mem_ctx,
                                    "%s %s shader %s",

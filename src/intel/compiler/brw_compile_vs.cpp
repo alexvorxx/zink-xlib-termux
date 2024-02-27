@@ -112,7 +112,7 @@ brw_compile_vs(const struct brw_compiler *compiler,
       v.payload().num_regs / reg_unit(compiler->devinfo);
 
    fs_generator g(compiler, &params->base,
-                  &prog_data->base.base, v.runtime_check_aads_emit,
+                  &prog_data->base.base,
                   MESA_SHADER_VERTEX);
    if (unlikely(debug_enabled)) {
       const char *debug_name =

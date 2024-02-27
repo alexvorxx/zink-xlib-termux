@@ -1268,7 +1268,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
    prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
    fs_generator g(compiler, &params->base,
-                  &prog_data->base.base, false, MESA_SHADER_TESS_EVAL);
+                  &prog_data->base.base, MESA_SHADER_TESS_EVAL);
    if (unlikely(debug_enabled)) {
       g.enable_debug(ralloc_asprintf(params->base.mem_ctx,
                                      "%s tessellation evaluation shader %s",

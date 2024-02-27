@@ -1077,7 +1077,8 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    }
    const dev_t render_dev = st.st_rdev;
 
-   vk_warn_non_conformant_implementation("NVK");
+   if (!conformant)
+      vk_warn_non_conformant_implementation("NVK");
 
    struct nvk_physical_device *pdev =
       vk_zalloc(&instance->vk.alloc, sizeof(*pdev),

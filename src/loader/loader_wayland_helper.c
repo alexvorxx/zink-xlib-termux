@@ -122,6 +122,12 @@ wl_display_dispatch_queue_timeout(struct wl_display *display,
       ret = wl_display_dispatch_queue_pending(display, queue);
       if (ret != 0)
          break;
+
+      /* wl_display_dispatch_queue_pending can return 0 if we ended up reading
+       * from WL fd, but there was no complete event to dispatch yet.
+       * Try reading again. */
+      if (wl_display_prepare_read_queue(display, queue) == -1)
+         return wl_display_dispatch_queue_pending(display, queue);
    }
 
    return ret;

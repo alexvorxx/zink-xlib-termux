@@ -4904,6 +4904,15 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
       dynamic_draw_state_dirty = tu_emit_draw_state<CHIP>(cmd);
    }
 
+   /* Primitive restart value works in non-indexed draws, we have to disable
+    * prim restart for such draws since we may read stale restart index.
+    */
+   if (cmd->state.last_draw_indexed != indexed) {
+      cmd->state.last_draw_indexed = indexed;
+      BITSET_SET(cmd->vk.dynamic_graphics_state.dirty,
+                 MESA_VK_DYNAMIC_IA_PRIMITIVE_RESTART_ENABLE);
+   }
+
    /* Fill draw stats for autotuner */
    rp->drawcall_count++;
 

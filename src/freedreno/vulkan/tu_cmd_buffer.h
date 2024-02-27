@@ -513,6 +513,7 @@ struct tu_cmd_state
    struct tu_draw_state lrz_and_depth_plane_state;
 
    struct tu_vs_params last_vs_params;
+   bool last_draw_indexed;
 
    struct tu_tess_params tess_params;
 

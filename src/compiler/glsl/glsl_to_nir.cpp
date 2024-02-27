@@ -175,24 +175,6 @@ glsl_to_nir(const struct gl_constants *consts,
       nir_print_shader(shader, stdout);
    }
 
-   /* We have to lower away local constant initializers right before we
-    * inline functions.  That way they get properly initialized at the top
-    * of the function and not at the top of its caller.
-    */
-   NIR_PASS(_, shader, nir_lower_variable_initializers, nir_var_all);
-   NIR_PASS(_, shader, nir_lower_returns);
-   NIR_PASS(_, shader, nir_inline_functions);
-   NIR_PASS(_, shader, nir_opt_deref);
-
-   nir_validate_shader(shader, "after function inlining and return lowering");
-
-   /* We set func->is_entrypoint after nir_function_create if the function
-    * is named "main", so we can use nir_remove_non_entrypoints() for this.
-    * Now that we have inlined everything remove all of the functions except
-    * func->is_entrypoint.
-    */
-   nir_remove_non_entrypoints(shader);
-
    shader->info.name = ralloc_asprintf(shader, "GLSL%d", shader_prog->Name);
    if (shader_prog->Label)
       shader->info.label = ralloc_strdup(shader, shader_prog->Label);

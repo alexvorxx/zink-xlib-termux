@@ -31,6 +31,7 @@
 #include "nir.h"
 #include "builtin_functions.h"
 #include "nir.h"
+#include "gl_nir.h"
 #include "glsl_to_nir.h"
 #include "nir_builder.h"
 #include "program.h"
@@ -200,6 +201,8 @@ namespace
       };
 
       nir = glsl_to_nir(&ctx->Const, whole_program, MESA_SHADER_FRAGMENT, &compiler_options);
+
+      gl_nir_inline_functions(nir);
 
       standalone_destroy_shader_program(whole_program);
 

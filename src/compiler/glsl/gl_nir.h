@@ -62,6 +62,8 @@ void gl_nir_lower_packed_varyings(const struct gl_constants *consts,
                                   bool disable_varying_packing,
                                   bool disable_xfb_packing, bool xfb_enabled);
 
+void gl_nir_inline_functions(nir_shader *shader);
+
 #ifdef __cplusplus
 }
 #endif

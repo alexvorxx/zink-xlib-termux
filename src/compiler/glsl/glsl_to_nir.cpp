@@ -660,12 +660,17 @@ nir_visitor::create_function(ir_function_signature *ir)
       /* The return value is a variable deref (basically an out parameter) */
       func->params[np].num_components = 1;
       func->params[np].bit_size = 32;
+      func->params[np].type = ir->return_type;
+      func->params[np].is_return = true;
       np++;
    }
 
    foreach_in_list(ir_variable, param, &ir->parameters) {
       func->params[np].num_components = 1;
       func->params[np].bit_size = 32;
+
+      func->params[np].type = param->type;
+      func->params[np].is_return = false;
       np++;
    }
    assert(np == func->num_params);

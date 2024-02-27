@@ -3468,6 +3468,12 @@ nir_cf_list_is_empty_block(struct exec_list *cf_list)
 typedef struct {
    uint8_t num_components;
    uint8_t bit_size;
+
+   /* True if this paramater is actually the function return variable */
+   bool is_return;
+
+   /* The type of the function param */
+   const struct glsl_type *type;
 } nir_parameter;
 
 typedef struct nir_function {

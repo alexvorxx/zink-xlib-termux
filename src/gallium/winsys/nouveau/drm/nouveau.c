@@ -900,7 +900,7 @@ nouveau_bo_wait(struct nouveau_bo *bo, uint32_t access, struct nouveau_client *c
       return 0;
 
    push = cli_push_get(client, bo);
-   if (push && push->channel)
+   if (push)
       nouveau_pushbuf_kick(push, push->channel);
 
    if (!nvbo->head.next && !(nvbo->access & NOUVEAU_BO_WR) && !(access & NOUVEAU_BO_WR))
@@ -1202,22 +1202,15 @@ pushbuf_flush(struct nouveau_pushbuf *push)
    struct nouveau_pushbuf_priv *nvpb = nouveau_pushbuf(push);
    struct nouveau_pushbuf_krec *krec = nvpb->krec;
    struct drm_nouveau_gem_pushbuf_bo *kref;
-   int ret = 0, i;
+   int i;
 
-   if (push->channel) {
-      ret = pushbuf_submit(push, push->channel);
-   } else {
-      nouveau_pushbuf_data(push, NULL, 0, 0);
-      krec->next = malloc(sizeof(*krec));
-      nvpb->krec = krec->next;
-   }
+   int ret = pushbuf_submit(push, push->channel);
 
    kref = krec->buffer;
    for (i = 0; i < krec->nr_buffer; i++, kref++) {
       struct nouveau_bo *bo = (void *)(unsigned long)kref->user_priv;
       cli_kref_set(push->client, bo, NULL, NULL);
-      if (push->channel)
-         nouveau_bo_ref(NULL, &bo);
+      nouveau_bo_ref(NULL, &bo);
    }
 
    krec = nvpb->krec;
@@ -1659,8 +1652,6 @@ nouveau_pushbuf_data(struct nouveau_pushbuf *push, struct nouveau_bo *bo, uint64
 int
 nouveau_pushbuf_kick(struct nouveau_pushbuf *push, struct nouveau_object *chan)
 {
-   if (!push->channel)
-      return pushbuf_submit(push, chan);
    pushbuf_flush(push);
    return pushbuf_validate(push, false);
 }
@@ -1694,7 +1685,7 @@ nouveau_pushbuf_space(struct nouveau_pushbuf *push, uint32_t dwords, uint32_t re
    if (push->cur + dwords >= push->end) {
       if (nvpb->bo_next < nvpb->bo_nr) {
          nouveau_bo_ref(nvpb->bos[nvpb->bo_next++], &bo);
-         if (nvpb->bo_next == nvpb->bo_nr && push->channel)
+         if (nvpb->bo_next == nvpb->bo_nr)
             nvpb->bo_next = 0;
       } else {
          ret = nouveau_bo_new(client->device, nvpb->type, 0, nvpb->bos[0]->size, NULL, &bo);
@@ -1712,7 +1703,7 @@ nouveau_pushbuf_space(struct nouveau_pushbuf *push, uint32_t dwords, uint32_t re
     * if the new buffer won't fit, or if the kernel push/reloc limits
     * have been hit
     */
-   if ((bo && (push->channel || !pushbuf_kref(push, bo, push->flags))) ||
+   if (bo ||
        krec->nr_reloc + relocs >= NOUVEAU_GEM_MAX_RELOCS ||
        krec->nr_push + pushes >= NOUVEAU_GEM_MAX_PUSH) {
       if (nvpb->bo && krec->nr_buffer)

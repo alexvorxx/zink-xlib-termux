@@ -8033,25 +8033,28 @@ radv_emit_view_index_per_stage(struct radeon_cmdbuf *cs, const struct radv_shade
 }
 
 static void
-radv_emit_view_index(struct radv_cmd_buffer *cmd_buffer, unsigned index)
+radv_emit_view_index(const struct radv_cmd_state *cmd_state, struct radeon_cmdbuf *cs, unsigned index)
 {
-   struct radeon_cmdbuf *cs = cmd_buffer->cs;
-
-   radv_foreach_stage(stage, cmd_buffer->state.active_stages & ~VK_SHADER_STAGE_TASK_BIT_EXT)
+   radv_foreach_stage(stage, cmd_state->active_stages & ~VK_SHADER_STAGE_TASK_BIT_EXT)
    {
-      const struct radv_shader *shader = radv_get_shader(cmd_buffer->state.shaders, stage);
+      const struct radv_shader *shader = radv_get_shader(cmd_state->shaders, stage);
 
       radv_emit_view_index_per_stage(cs, shader, shader->info.user_data_0, index);
    }
 
-   if (cmd_buffer->state.gs_copy_shader) {
-      radv_emit_view_index_per_stage(cs, cmd_buffer->state.gs_copy_shader, R_00B130_SPI_SHADER_USER_DATA_VS_0, index);
+   if (cmd_state->gs_copy_shader) {
+      radv_emit_view_index_per_stage(cs, cmd_state->gs_copy_shader, R_00B130_SPI_SHADER_USER_DATA_VS_0, index);
    }
+}
 
-   if (cmd_buffer->state.active_stages & VK_SHADER_STAGE_TASK_BIT_EXT) {
-      radv_emit_view_index_per_stage(cmd_buffer->gang.cs, cmd_buffer->state.shaders[MESA_SHADER_TASK],
-                                     cmd_buffer->state.shaders[MESA_SHADER_TASK]->info.user_data_0, index);
-   }
+static void
+radv_emit_view_index_with_task(const struct radv_cmd_state *cmd_state, struct radeon_cmdbuf *cs,
+                               struct radeon_cmdbuf *ace_cs, unsigned index)
+{
+   radv_emit_view_index(cmd_state, cs, index);
+
+   radv_emit_view_index_per_stage(ace_cs, cmd_state->shaders[MESA_SHADER_TASK],
+                                  cmd_state->shaders[MESA_SHADER_TASK]->info.user_data_0, index);
 }
 
 /**
@@ -8453,7 +8456,7 @@ radv_emit_draw_packets_indexed(struct radv_cmd_buffer *cmd_buffer, const struct 
                radv_cs_emit_draw_indexed_packet(cmd_buffer, index_va, remaining_indexes, draw->indexCount, false);
             } else {
                u_foreach_bit (view, state->render.view_mask) {
-                  radv_emit_view_index(cmd_buffer, view);
+                  radv_emit_view_index(&cmd_buffer->state, cmd_buffer->cs, view);
 
                   radv_cs_emit_draw_indexed_packet(cmd_buffer, index_va, remaining_indexes, draw->indexCount, false);
                }
@@ -8481,7 +8484,7 @@ radv_emit_draw_packets_indexed(struct radv_cmd_buffer *cmd_buffer, const struct 
                radv_cs_emit_draw_indexed_packet(cmd_buffer, index_va, remaining_indexes, draw->indexCount, false);
             } else {
                u_foreach_bit (view, state->render.view_mask) {
-                  radv_emit_view_index(cmd_buffer, view);
+                  radv_emit_view_index(&cmd_buffer->state, cmd_buffer->cs, view);
 
                   radv_cs_emit_draw_indexed_packet(cmd_buffer, index_va, remaining_indexes, draw->indexCount, false);
                }
@@ -8520,7 +8523,7 @@ radv_emit_draw_packets_indexed(struct radv_cmd_buffer *cmd_buffer, const struct 
                                                 can_eop && i < drawCount - 1);
             } else {
                u_foreach_bit (view, state->render.view_mask) {
-                  radv_emit_view_index(cmd_buffer, view);
+                  radv_emit_view_index(&cmd_buffer->state, cmd_buffer->cs, view);
 
                   radv_cs_emit_draw_indexed_packet(cmd_buffer, index_va, remaining_indexes, draw->indexCount, false);
                }
@@ -8545,7 +8548,7 @@ radv_emit_draw_packets_indexed(struct radv_cmd_buffer *cmd_buffer, const struct 
                                                 can_eop && !offset_changes && i < drawCount - 1);
             } else {
                u_foreach_bit (view, state->render.view_mask) {
-                  radv_emit_view_index(cmd_buffer, view);
+                  radv_emit_view_index(&cmd_buffer->state, cmd_buffer->cs, view);
 
                   radv_cs_emit_draw_indexed_packet(cmd_buffer, index_va, remaining_indexes, draw->indexCount, false);
                }
@@ -8577,7 +8580,7 @@ radv_emit_direct_draw_packets(struct radv_cmd_buffer *cmd_buffer, const struct r
          radv_cs_emit_draw_packet(cmd_buffer, draw->vertexCount, use_opaque);
       } else {
          u_foreach_bit (view, view_mask) {
-            radv_emit_view_index(cmd_buffer, view);
+            radv_emit_view_index(&cmd_buffer->state, cmd_buffer->cs, view);
             radv_cs_emit_draw_packet(cmd_buffer, draw->vertexCount, use_opaque);
          }
       }
@@ -8614,7 +8617,7 @@ radv_emit_direct_mesh_draw_packet(struct radv_cmd_buffer *cmd_buffer, uint32_t x
          radv_cs_emit_mesh_dispatch_packet(cmd_buffer, x, y, z);
       } else {
          u_foreach_bit (view, view_mask) {
-            radv_emit_view_index(cmd_buffer, view);
+            radv_emit_view_index(&cmd_buffer->state, cmd_buffer->cs, view);
             radv_cs_emit_mesh_dispatch_packet(cmd_buffer, x, y, z);
          }
       }
@@ -8624,7 +8627,7 @@ radv_emit_direct_mesh_draw_packet(struct radv_cmd_buffer *cmd_buffer, uint32_t x
          radv_cs_emit_draw_packet(cmd_buffer, count, 0);
       } else {
          u_foreach_bit (view, view_mask) {
-            radv_emit_view_index(cmd_buffer, view);
+            radv_emit_view_index(&cmd_buffer->state, cmd_buffer->cs, view);
             radv_cs_emit_draw_packet(cmd_buffer, count, 0);
          }
       }
@@ -8664,7 +8667,7 @@ radv_emit_indirect_mesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, const s
       radv_cs_emit_indirect_mesh_draw_packet(cmd_buffer, info->count, count_va, info->stride);
    } else {
       u_foreach_bit (i, state->render.view_mask) {
-         radv_emit_view_index(cmd_buffer, i);
+         radv_emit_view_index(&cmd_buffer->state, cs, i);
          radv_cs_emit_indirect_mesh_draw_packet(cmd_buffer, info->count, count_va, info->stride);
       }
    }
@@ -8690,7 +8693,8 @@ radv_emit_direct_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, uint3
       radv_cs_emit_dispatch_taskmesh_gfx_packet(cmd_buffer);
    } else {
       u_foreach_bit (view, view_mask) {
-         radv_emit_view_index(cmd_buffer, view);
+         radv_emit_view_index_with_task(&cmd_buffer->state, cmd_buffer->cs, cmd_buffer->gang.cs, view);
+
          radv_cs_emit_dispatch_taskmesh_direct_ace_packet(cmd_buffer, x, y, z);
          radv_cs_emit_dispatch_taskmesh_gfx_packet(cmd_buffer);
       }
@@ -8774,7 +8778,8 @@ radv_emit_indirect_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, con
       radv_cs_emit_dispatch_taskmesh_gfx_packet(cmd_buffer);
    } else {
       u_foreach_bit (view, view_mask) {
-         radv_emit_view_index(cmd_buffer, view);
+         radv_emit_view_index_with_task(&cmd_buffer->state, cmd_buffer->cs, cmd_buffer->gang.cs, view);
+
          radv_cs_emit_dispatch_taskmesh_indirect_multi_ace_packet(cmd_buffer, va, info->count, count_va, info->stride);
          radv_cs_emit_dispatch_taskmesh_gfx_packet(cmd_buffer);
       }
@@ -8816,7 +8821,7 @@ radv_emit_indirect_draw_packets(struct radv_cmd_buffer *cmd_buffer, const struct
       radv_cs_emit_indirect_draw_packet(cmd_buffer, info->indexed, info->count, count_va, info->stride);
    } else {
       u_foreach_bit (i, state->render.view_mask) {
-         radv_emit_view_index(cmd_buffer, i);
+         radv_emit_view_index(&cmd_buffer->state, cs, i);
 
          radv_cs_emit_indirect_draw_packet(cmd_buffer, info->indexed, info->count, count_va, info->stride);
       }
@@ -9984,7 +9989,7 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
       device->ws->cs_execute_ib(cmd_buffer->cs, ib_bo, ib_offset, cmdbuf_size >> 2, cmd_buffer->state.predicating);
    } else {
       u_foreach_bit (view, view_mask) {
-         radv_emit_view_index(cmd_buffer, view);
+         radv_emit_view_index(&cmd_buffer->state, cmd_buffer->cs, view);
 
          device->ws->cs_execute_ib(cmd_buffer->cs, ib_bo, ib_offset, cmdbuf_size >> 2, cmd_buffer->state.predicating);
       }

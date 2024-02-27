@@ -1048,11 +1048,15 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 
    if (!conformant &&
        !debug_get_bool_option("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", false)) {
+#ifdef NDEBUG
+      result = VK_ERROR_INCOMPATIBLE_DRIVER;
+#else
       result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
                          "WARNING: NVK is not well-tested on %s, pass "
                          "NVK_I_WANT_A_BROKEN_VULKAN_DRIVER=1 "
                          "if you know what you're doing.",
                          info.device_name);
+#endif
       goto fail_ws_dev;
    }
 

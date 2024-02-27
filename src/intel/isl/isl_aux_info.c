@@ -136,9 +136,24 @@ isl_aux_get_initial_state(const struct intel_device_info *devinfo,
    case ISL_AUX_USAGE_HIZ:
    case ISL_AUX_USAGE_HIZ_CCS:
    case ISL_AUX_USAGE_HIZ_CCS_WT:
+      return ISL_AUX_STATE_AUX_INVALID;
    case ISL_AUX_USAGE_MCS:
    case ISL_AUX_USAGE_MCS_CCS:
-      return ISL_AUX_STATE_AUX_INVALID;
+      if (zeroed) {
+         /* From the Sky Lake PRM, "Compressed Multisampled Surfaces":
+          *
+          *    "An MCS value of 0x00 indicates that both samples are stored in
+          *    sample slice 0 (thus have the same color). This is the fully
+          *    compressed case."
+          *
+          * This quote is from the 2x MSAA section, but the same mapping
+          * exists for 4-16x MSAA. This state can avoid the need to ambiguate
+          * in some cases.
+          */
+         return ISL_AUX_STATE_COMPRESSED_NO_CLEAR;
+      } else {
+         return ISL_AUX_STATE_AUX_INVALID;
+      }
    case ISL_AUX_USAGE_CCS_D:
    case ISL_AUX_USAGE_CCS_E:
    case ISL_AUX_USAGE_FCV_CCS_E:

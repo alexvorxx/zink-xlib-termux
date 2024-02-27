@@ -395,6 +395,11 @@ vn_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
              instance->enable_wsi_multi_plane_modifiers ? "yes" : "no");
    }
 
+   const char *engine_name = instance->base.base.app_info.engine_name;
+   if (engine_name) {
+      instance->engine_is_zink = strcmp(engine_name, "mesa zink") == 0;
+   }
+
    *pInstance = instance_handle;
 
    return VK_SUCCESS;

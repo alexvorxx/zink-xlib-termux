@@ -125,6 +125,7 @@ files_libglsl = files(
   'builtin_functions.h',
   'builtin_types.cpp',
   'builtin_variables.cpp',
+  'gl_nir_detect_function_recursion.c',
   'gl_nir_lower_atomics.c',
   'gl_nir_lower_images.c',
   'gl_nir_lower_blend_equation_advanced.c',

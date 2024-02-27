@@ -951,7 +951,10 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<!-- frc -->
+<bitset name="frc" extends="#instruction-alu-src2">
+	<pattern low="0" high="5">010011</pattern> <!-- OPC -->
+	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
 
 <bitset name="call" extends="#instruction-cf-no-src">
 	<pattern low="0" high="5">010100</pattern> <!-- OPC -->

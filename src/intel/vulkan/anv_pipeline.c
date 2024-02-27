@@ -656,9 +656,9 @@ populate_wm_prog_key(struct anv_pipeline_stage *stage,
        * It's also required for the fragment output interface.
        */
       key->alpha_to_coverage =
-         ms && ms->alpha_to_coverage_enable ? BRW_ALWAYS : BRW_NEVER;
+         ms->alpha_to_coverage_enable ? BRW_ALWAYS : BRW_NEVER;
       key->multisample_fbo =
-         ms && ms->rasterization_samples > 1 ? BRW_ALWAYS : BRW_NEVER;
+         ms->rasterization_samples > 1 ? BRW_ALWAYS : BRW_NEVER;
       key->persample_interp =
       (ms->sample_shading_enable &&
        (ms->min_sample_shading * ms->rasterization_samples) > 1) ?

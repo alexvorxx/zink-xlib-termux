@@ -194,6 +194,7 @@ init_vcn_decoder(struct radv_physical_device *pdevice)
    case VCN_4_0_2:
    case VCN_4_0_4:
    case VCN_4_0_5:
+   case VCN_4_0_6:
       pdevice->vid_addr_gfx_mode = RDECODE_ARRAY_MODE_ADDRLIB_SEL_GFX11;
       pdevice->av1_version = RDECODE_AV1_VER_1;
       break;

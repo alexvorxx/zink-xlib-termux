@@ -3681,8 +3681,6 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
     * to definitively tell whether alpha_to_coverage is on or off.
     */
    prog_data->alpha_to_coverage = key->alpha_to_coverage;
-   assert(prog_data->alpha_to_coverage != BRW_SOMETIMES ||
-          prog_data->persample_dispatch == BRW_SOMETIMES);
 
    prog_data->uses_sample_mask =
       BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_SAMPLE_MASK_IN);

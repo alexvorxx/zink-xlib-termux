@@ -1723,6 +1723,8 @@ struct radv_cmd_state {
    uint8_t predication_op; /* 32-bit or 64-bit predicate value */
    int predication_type;   /* -1: disabled, 0: normal, 1: inverted */
    uint64_t predication_va;
+   uint64_t mec_inv_pred_va;  /* For inverted predication when using MEC. */
+   bool mec_inv_pred_emitted; /* To ensure we don't have to repeat inverting the VA. */
 
    /* Inheritance info. */
    VkQueryPipelineStatisticFlags inherited_pipeline_statistics;
@@ -1851,9 +1853,6 @@ struct radv_cmd_buffer {
    uint64_t gfx9_fence_va;
    uint32_t gfx9_fence_idx;
    uint64_t gfx9_eop_bug_va;
-
-   uint64_t mec_inv_pred_va;  /* For inverted predication when using MEC. */
-   bool mec_inv_pred_emitted; /* To ensure we don't have to repeat inverting the VA. */
 
    struct set vs_prologs;
    struct set ps_epilogs;

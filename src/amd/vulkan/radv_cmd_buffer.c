@@ -5809,8 +5809,8 @@ radv_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBegi
       if (!radv_cmd_buffer_upload_data(cmd_buffer, 4, &pred_value, &pred_offset))
          vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-      cmd_buffer->mec_inv_pred_emitted = false;
-      cmd_buffer->mec_inv_pred_va = radv_buffer_get_va(cmd_buffer->upload.upload_bo) + pred_offset;
+      cmd_buffer->state.mec_inv_pred_emitted = false;
+      cmd_buffer->state.mec_inv_pred_va = radv_buffer_get_va(cmd_buffer->upload.upload_bo) + pred_offset;
    }
 
    if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX9 && cmd_buffer->qf == RADV_QUEUE_GENERAL) {
@@ -8682,8 +8682,8 @@ radv_emit_direct_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, uint3
       ace_predication_size += num_views * 3; /* SET_SH_REG size (view index SGPR) */
 
    radv_emit_userdata_task(cmd_buffer, x, y, z, 0);
-   radv_cs_emit_compute_predication(&cmd_buffer->state, cmd_buffer->gang.cs, cmd_buffer->mec_inv_pred_va,
-                                    &cmd_buffer->mec_inv_pred_emitted, ace_predication_size);
+   radv_cs_emit_compute_predication(&cmd_buffer->state, cmd_buffer->gang.cs, cmd_buffer->state.mec_inv_pred_va,
+                                    &cmd_buffer->state.mec_inv_pred_emitted, ace_predication_size);
 
    if (!view_mask) {
       radv_cs_emit_dispatch_taskmesh_direct_ace_packet(cmd_buffer, x, y, z);
@@ -8752,8 +8752,8 @@ radv_emit_indirect_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, con
    }
 
    radv_cs_add_buffer(ws, cmd_buffer->gang.cs, info->indirect->bo);
-   radv_cs_emit_compute_predication(&cmd_buffer->state, cmd_buffer->gang.cs, cmd_buffer->mec_inv_pred_va,
-                                    &cmd_buffer->mec_inv_pred_emitted, ace_predication_size);
+   radv_cs_emit_compute_predication(&cmd_buffer->state, cmd_buffer->gang.cs, cmd_buffer->state.mec_inv_pred_va,
+                                    &cmd_buffer->state.mec_inv_pred_emitted, ace_predication_size);
 
    if (workaround_cond_va) {
       radeon_emit(ace_cs, PKT3(PKT3_COND_EXEC, 3, 0));
@@ -10075,8 +10075,8 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
          const unsigned ace_predication_size =
             4 /* DISPATCH_INDIRECT */ + (needs_align32_workaround ? 6 * 3 /* 3x COPY_DATA */ : 0);
 
-         radv_cs_emit_compute_predication(&cmd_buffer->state, cs, cmd_buffer->mec_inv_pred_va,
-                                          &cmd_buffer->mec_inv_pred_emitted, ace_predication_size);
+         radv_cs_emit_compute_predication(&cmd_buffer->state, cs, cmd_buffer->state.mec_inv_pred_va,
+                                          &cmd_buffer->state.mec_inv_pred_emitted, ace_predication_size);
 
          if (needs_align32_workaround) {
             const uint64_t unaligned_va = indirect_va;
@@ -10181,8 +10181,8 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
       }
 
       if (radv_cmd_buffer_uses_mec(cmd_buffer)) {
-         radv_cs_emit_compute_predication(&cmd_buffer->state, cs, cmd_buffer->mec_inv_pred_va,
-                                          &cmd_buffer->mec_inv_pred_emitted, 5 /* DISPATCH_DIRECT size */);
+         radv_cs_emit_compute_predication(&cmd_buffer->state, cs, cmd_buffer->state.mec_inv_pred_va,
+                                          &cmd_buffer->state.mec_inv_pred_emitted, 5 /* DISPATCH_DIRECT size */);
          predicating = false;
       }
 
@@ -11320,7 +11320,7 @@ radv_begin_conditional_rendering(struct radv_cmd_buffer *cmd_buffer, uint64_t va
    cmd_buffer->state.predication_type = draw_visible;
    cmd_buffer->state.predication_op = pred_op;
    cmd_buffer->state.predication_va = va;
-   cmd_buffer->mec_inv_pred_emitted = false;
+   cmd_buffer->state.mec_inv_pred_emitted = false;
 }
 
 void
@@ -11336,7 +11336,7 @@ radv_end_conditional_rendering(struct radv_cmd_buffer *cmd_buffer)
    cmd_buffer->state.predication_type = -1;
    cmd_buffer->state.predication_op = 0;
    cmd_buffer->state.predication_va = 0;
-   cmd_buffer->mec_inv_pred_emitted = false;
+   cmd_buffer->state.mec_inv_pred_emitted = false;
 }
 
 /* VK_EXT_conditional_rendering */

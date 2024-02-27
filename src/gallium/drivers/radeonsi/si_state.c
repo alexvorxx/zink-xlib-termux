@@ -6416,8 +6416,10 @@ static void gfx10_init_gfx_preamble_state(struct si_context *sctx)
                      S_028B50_DONUT_SPLIT_GFX9(24) |
                      S_028B50_TRAP_SPLIT(6));
 
+   /* GFX11+ shouldn't subtract 1 from pbb_max_alloc_count.  */
+   unsigned gfx10_one = sctx->gfx_level < GFX11;
    si_pm4_set_reg(pm4, R_028C48_PA_SC_BINNER_CNTL_1,
-                  S_028C48_MAX_ALLOC_COUNT(sscreen->info.pbb_max_alloc_count - 1) |
+                  S_028C48_MAX_ALLOC_COUNT(sscreen->info.pbb_max_alloc_count - gfx10_one) |
                   S_028C48_MAX_PRIM_PER_BATCH(1023));
 
    if (sctx->gfx_level >= GFX11_5)

@@ -187,7 +187,7 @@ nouveau_bufctx_mthd(struct nouveau_bufctx *, int bin,  uint32_t packet, struct n
 void nouveau_bufctx_reset(struct nouveau_bufctx *, int bin);
 
 int nouveau_pushbuf_new(struct nouveau_client *, struct nouveau_object *chan, int nr, uint32_t size,
-                        bool immediate, struct nouveau_pushbuf **);
+                        struct nouveau_pushbuf **);
 void nouveau_pushbuf_del(struct nouveau_pushbuf **);
 struct nouveau_bufctx *
 nouveau_pushbuf_bufctx(struct nouveau_pushbuf *, struct nouveau_bufctx *);

@@ -1514,7 +1514,7 @@ pushbuf_validate(struct nouveau_pushbuf *push, bool retry)
 
 int
 nouveau_pushbuf_new(struct nouveau_client *client, struct nouveau_object *chan, int nr,
-                    uint32_t size, bool immediate, struct nouveau_pushbuf **ppush)
+                    uint32_t size, struct nouveau_pushbuf **ppush)
 {
    struct nouveau_drm *drm = nouveau_drm(&client->device->object);
    struct nouveau_fifo *fifo = chan->data;
@@ -1550,7 +1550,7 @@ nouveau_pushbuf_new(struct nouveau_client *client, struct nouveau_object *chan, 
 
    push = &nvpb->base;
    push->client = client;
-   push->channel = immediate ? chan : NULL;
+   push->channel = chan;
    push->flags = NOUVEAU_BO_RD;
    if (fifo->pushbuf & NOUVEAU_GEM_DOMAIN_GART) {
       push->flags |= NOUVEAU_BO_GART;

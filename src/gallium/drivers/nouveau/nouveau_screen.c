@@ -232,10 +232,10 @@ nouveau_pushbuf_cb(struct nouveau_pushbuf *push)
 int
 nouveau_pushbuf_create(struct nouveau_screen *screen, struct nouveau_context *context,
                        struct nouveau_client *client, struct nouveau_object *chan, int nr,
-                       uint32_t size, bool immediate, struct nouveau_pushbuf **push)
+                       uint32_t size, struct nouveau_pushbuf **push)
 {
    int ret;
-   ret = nouveau_pushbuf_new(client, chan, nr, size, immediate, push);
+   ret = nouveau_pushbuf_new(client, chan, nr, size, push);
    if (ret)
       return ret;
 
@@ -396,8 +396,7 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
    if (ret)
       goto err;
    ret = nouveau_pushbuf_create(screen, NULL, screen->client, screen->channel,
-                                4, 512 * 1024, 1,
-                                &screen->pushbuf);
+                                4, 512 * 1024, &screen->pushbuf);
    if (ret)
       goto err;
 
@@ -506,8 +505,7 @@ nouveau_context_init(struct nouveau_context *context, struct nouveau_screen *scr
       return ret;
 
    ret = nouveau_pushbuf_create(screen, context, context->client, screen->channel,
-                                4, 512 * 1024, 1,
-                                &context->pushbuf);
+                                4, 512 * 1024, &context->pushbuf);
    if (ret)
       return ret;
 

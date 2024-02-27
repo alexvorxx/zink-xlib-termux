@@ -1227,6 +1227,10 @@ intrinsic("printf", src_comp=[1, 1], dest_comp=1, bit_sizes=[32])
 # in a buffer, nir_lower_printf will do that, but requires
 # the driver to at least provide a base location
 system_value("printf_buffer_address", 1, bit_sizes=[32,64])
+# If driver wants to have all printfs from various shaders merged into a
+# single output buffer, it needs each shader to have its own base identifier
+# from which each printf is indexed.
+system_value("printf_base_identifier", 1, bit_sizes=[32])
 
 # Mesh shading MultiView intrinsics
 system_value("mesh_view_count", 1)

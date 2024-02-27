@@ -34,7 +34,15 @@ lower_printf_intrin(nir_builder *b, nir_intrinsic_instr *prntf, void *_options)
    if (prntf->intrinsic != nir_intrinsic_printf)
       return false;
 
+   b->cursor = nir_before_instr(&prntf->instr);
+
    nir_def *fmt_str_id = prntf->src[0].ssa;
+   if (options && options->use_printf_base_identifier) {
+      fmt_str_id = nir_iadd(b,
+                            nir_load_printf_base_identifier(b),
+                            fmt_str_id);
+   }
+
    nir_deref_instr *args = nir_src_as_deref(prntf->src[1]);
    assert(args->deref_type == nir_deref_type_var);
 
@@ -43,7 +51,6 @@ lower_printf_intrin(nir_builder *b, nir_intrinsic_instr *prntf, void *_options)
    /* Atomic add a buffer size counter to determine where to write.  If
     * overflowed, return -1, otherwise, store the arguments and return 0.
     */
-   b->cursor = nir_before_instr(&prntf->instr);
    nir_def *buffer_addr = nir_load_printf_buffer_address(b, ptr_bit_size);
    nir_deref_instr *buffer =
       nir_build_deref_cast(b, buffer_addr, nir_var_mem_global,

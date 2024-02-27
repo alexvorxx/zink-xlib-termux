@@ -1137,6 +1137,11 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
+<bitset name="bit_extract" extends="#instruction-alu-src0-src1-src2">
+	<pattern low="0" high="5">100000</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
 <bitset name="popcount" extends="#instruction-alu-src2">
 	<pattern low="0" high="5">100001</pattern> <!-- OPC -->
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->

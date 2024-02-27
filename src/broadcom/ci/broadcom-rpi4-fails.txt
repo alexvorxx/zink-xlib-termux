@@ -592,7 +592,3 @@ spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 3,Fai
 spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 4,Fail
 spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 7,Fail
 spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 8,Fail
-
-# https://gitlab.freedesktop.org/mesa/mesa/-/issues/10678
-dEQP-VK.wsi.wayland.swapchain.destroy.old_swapchain,Crash
-dEQP-VK.wsi.wayland.swapchain.modify.resize,Crash

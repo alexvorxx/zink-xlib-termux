@@ -1534,8 +1534,6 @@ struct brw_compile_vs_params {
 
    const struct brw_vs_prog_key *key;
    struct brw_vs_prog_data *prog_data;
-
-   bool edgeflag_is_last; /* true for gallium */
 };
 
 /**

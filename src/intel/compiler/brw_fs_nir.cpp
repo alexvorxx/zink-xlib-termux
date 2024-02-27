@@ -2081,7 +2081,10 @@ get_nir_def(nir_to_brw_state &ntb, const nir_def &def)
                                     BRW_REGISTER_TYPE_F);
       ntb.ssa_values[def.index] =
          bld.vgrf(reg_type, def.num_components);
-      bld.UNDEF(ntb.ssa_values[def.index]);
+
+      if (def.bit_size * bld.dispatch_width() < 8 * REG_SIZE)
+         bld.UNDEF(ntb.ssa_values[def.index]);
+
       return ntb.ssa_values[def.index];
    } else {
       nir_intrinsic_instr *decl_reg =

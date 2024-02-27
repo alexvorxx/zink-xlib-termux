@@ -52,6 +52,19 @@ def main():
 
         enums[name] = e
 
+    opc = {}
+
+    for instr in isa.instructions():
+        pattern = instr.xml.findall('pattern')
+        bit05 = int(pattern[0].text, 2)
+        bit6 = int(pattern[1].text, 2)
+        num = bit05 | (bit6 << 6)
+
+        opc[prefix.upper() + '_OPC_' + instr.name.upper()] = num
+
+    opc = dict(sorted(opc.items(), key=lambda item: int(item[1])))
+    enums['opc'] = opc
+
     print(Template(template).render(prefix=prefix, enums=enums))
 
 if __name__ == '__main__':

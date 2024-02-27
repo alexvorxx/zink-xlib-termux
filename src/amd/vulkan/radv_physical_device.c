@@ -161,6 +161,7 @@ radv_physical_device_init_cache_key(struct radv_physical_device *pdevice)
    key->lower_discard_to_demote = !!(pdevice->instance->debug_flags & RADV_DEBUG_DISCARD_TO_DEMOTE);
    key->mesh_fast_launch_2 = pdevice->mesh_fast_launch_2;
    key->no_fmask = !!(pdevice->instance->debug_flags & RADV_DEBUG_NO_FMASK);
+   key->no_ngg_gs = !!(pdevice->instance->debug_flags & RADV_DEBUG_NO_NGG_GS);
    key->no_rt = !!(pdevice->instance->debug_flags & RADV_DEBUG_NO_RT);
    key->ps_wave32 = pdevice->ps_wave_size == 32;
    key->rt_wave64 = pdevice->rt_wave_size == 64;

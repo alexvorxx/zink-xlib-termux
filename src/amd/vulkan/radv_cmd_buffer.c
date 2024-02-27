@@ -8678,6 +8678,9 @@ radv_emit_direct_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, uint3
    const unsigned num_views = MAX2(1, util_bitcount(view_mask));
    unsigned ace_predication_size = num_views * 6; /* DISPATCH_TASKMESH_DIRECT_ACE size */
 
+   if (num_views > 1)
+      ace_predication_size += num_views * 3; /* SET_SH_REG size (view index SGPR) */
+
    radv_emit_userdata_task(cmd_buffer, x, y, z, 0);
    radv_cs_emit_compute_predication(&cmd_buffer->state, cmd_buffer->gang.cs, cmd_buffer->mec_inv_pred_va,
                                     &cmd_buffer->mec_inv_pred_emitted, ace_predication_size);

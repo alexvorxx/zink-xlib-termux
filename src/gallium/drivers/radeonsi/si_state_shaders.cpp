@@ -4872,11 +4872,58 @@ static void si_emit_spi_map(struct si_context *sctx, unsigned index)
    radeon_end_update_context_roll(sctx);
 }
 
+static void si_emit_spi_ge_ring_state(struct si_context *sctx, unsigned index)
+{
+   struct si_screen *sscreen = sctx->screen;
+
+   if (sctx->gfx_level >= GFX11) {
+      radeon_begin(&sctx->gfx_cs);
+      /* We must wait for idle using an EOP event before changing the attribute ring registers.
+       * Use the bottom-of-pipe EOP event, but increment the PWS counter instead of writing memory.
+       */
+      radeon_emit(PKT3(PKT3_RELEASE_MEM, 6, 0));
+      radeon_emit(S_490_EVENT_TYPE(V_028A90_BOTTOM_OF_PIPE_TS) |
+                  S_490_EVENT_INDEX(5) |
+                  S_490_PWS_ENABLE(1));
+      radeon_emit(0); /* DST_SEL, INT_SEL, DATA_SEL */
+      radeon_emit(0); /* ADDRESS_LO */
+      radeon_emit(0); /* ADDRESS_HI */
+      radeon_emit(0); /* DATA_LO */
+      radeon_emit(0); /* DATA_HI */
+      radeon_emit(0); /* INT_CTXID */
+
+      /* Wait for the PWS counter. */
+      radeon_emit(PKT3(PKT3_ACQUIRE_MEM, 6, 0));
+      radeon_emit(S_580_PWS_STAGE_SEL(V_580_CP_ME) |
+                  S_580_PWS_COUNTER_SEL(V_580_TS_SELECT) |
+                  S_580_PWS_ENA2(1) |
+                  S_580_PWS_COUNT(0));
+      radeon_emit(0xffffffff); /* GCR_SIZE */
+      radeon_emit(0x01ffffff); /* GCR_SIZE_HI */
+      radeon_emit(0); /* GCR_BASE_LO */
+      radeon_emit(0); /* GCR_BASE_HI */
+      radeon_emit(S_585_PWS_ENA(1));
+      radeon_emit(0); /* GCR_CNTL */
+
+      assert((sscreen->attribute_ring->gpu_address >> 32) == sscreen->info.address32_hi);
+
+      radeon_set_uconfig_reg_seq(R_031110_SPI_GS_THROTTLE_CNTL1, 4);
+      radeon_emit(0x12355123);      /* SPI_GS_THROTTLE_CNTL1 */
+      radeon_emit(0x1544D);         /* SPI_GS_THROTTLE_CNTL2 */
+      radeon_emit(sscreen->attribute_ring->gpu_address >> 16); /* SPI_ATTRIBUTE_RING_BASE */
+      radeon_emit(S_03111C_MEM_SIZE((sscreen->info.attribute_ring_size_per_se >> 16) - 1) |
+                  S_03111C_BIG_PAGE(sscreen->info.discardable_allows_big_page) |
+                  S_03111C_L1_POLICY(1)); /* SPI_ATTRIBUTE_RING_SIZE */
+      radeon_end();
+   }
+}
+
 void si_init_shader_functions(struct si_context *sctx)
 {
    sctx->atoms.s.vgt_pipeline_state.emit = si_emit_vgt_pipeline_state;
    sctx->atoms.s.scratch_state.emit = si_emit_scratch_state;
    sctx->atoms.s.tess_io_layout.emit = si_emit_tess_io_layout_state;
+   sctx->atoms.s.spi_ge_ring_state.emit = si_emit_spi_ge_ring_state;
 
    sctx->b.create_vs_state = si_create_shader;
    sctx->b.create_tcs_state = si_create_shader;

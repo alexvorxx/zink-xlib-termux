@@ -411,6 +411,7 @@ void si_begin_new_gfx_cs(struct si_context *ctx, bool first_cs)
       ctx->flags |= SI_CONTEXT_VGT_FLUSH;
 
    si_mark_atom_dirty(ctx, &ctx->atoms.s.cache_flush);
+   si_mark_atom_dirty(ctx, &ctx->atoms.s.spi_ge_ring_state);
 
    if (ctx->screen->attribute_ring) {
       radeon_add_to_buffer_list(ctx, &ctx->gfx_cs, ctx->screen->attribute_ring,

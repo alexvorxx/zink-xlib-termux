@@ -4701,7 +4701,7 @@ fs_params_offset(struct tu_cmd_buffer *cmd)
       &cmd->state.program.link[MESA_SHADER_FRAGMENT];
    const struct ir3_const_state *const_state = &link->const_state;
 
-   if (const_state->num_driver_params < IR3_DP_FS_DYNAMIC)
+   if (const_state->num_driver_params <= IR3_DP_FS_DYNAMIC)
       return 0;
 
    if (const_state->offsets.driver_param + IR3_DP_FS_DYNAMIC / 4 >= link->constlen)

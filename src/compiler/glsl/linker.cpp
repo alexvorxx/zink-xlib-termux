@@ -2840,10 +2840,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
       struct gl_linked_shader *shader = prog->_LinkedShaders[i];
       exec_list *ir = shader->ir;
 
-      detect_recursion_linked(prog, ir);
-      if (!prog->data->LinkStatus)
-         goto done;
-
       const struct gl_shader_compiler_options *gl_options =
          &consts->ShaderCompilerOptions[i];
 

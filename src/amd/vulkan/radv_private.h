@@ -742,6 +742,12 @@ struct radv_meta_state {
 
 #define RADV_NUM_HW_CTX (RADEON_CTX_PRIORITY_REALTIME + 1)
 
+static inline bool
+radv_sparse_queue_enabled(const struct radv_physical_device *pdevice)
+{
+   return !pdevice->instance->drirc.legacy_sparse_binding;
+}
+
 static inline enum radv_queue_family
 vk_queue_to_radv(const struct radv_physical_device *phys_dev, int queue_family_index)
 {

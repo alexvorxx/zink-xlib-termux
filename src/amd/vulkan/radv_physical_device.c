@@ -246,7 +246,10 @@ radv_physical_device_init_queue_table(struct radv_physical_device *pdevice)
       idx++;
    }
 
-   pdevice->vk_queue_to_radv[idx++] = RADV_QUEUE_SPARSE;
+   if (radv_sparse_queue_enabled(pdevice)) {
+      pdevice->vk_queue_to_radv[idx] = RADV_QUEUE_SPARSE;
+      idx++;
+   }
 
    pdevice->num_queues = idx;
 }
@@ -2193,7 +2196,7 @@ static void
 radv_get_physical_device_queue_family_properties(struct radv_physical_device *pdevice, uint32_t *pCount,
                                                  VkQueueFamilyProperties **pQueueFamilyProperties)
 {
-   int num_queue_families = 2;
+   int num_queue_families = 1;
    int idx;
    if (pdevice->rad_info.ip[AMD_IP_COMPUTE].num_queues > 0 &&
        !(pdevice->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE))
@@ -2208,6 +2211,10 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
       num_queue_families++;
    }
 
+   if (radv_sparse_queue_enabled(pdevice)) {
+      num_queue_families++;
+   }
+
    if (pQueueFamilyProperties == NULL) {
       *pCount = num_queue_families;
       return;
@@ -2219,7 +2226,7 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
    idx = 0;
    if (*pCount >= 1) {
       VkQueueFlags gfx_flags = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
-      if (pdevice->instance->drirc.legacy_sparse_binding)
+      if (!radv_sparse_queue_enabled(pdevice))
          gfx_flags |= VK_QUEUE_SPARSE_BINDING_BIT;
       *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
          .queueFlags = gfx_flags,
@@ -2233,7 +2240,7 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
    if (pdevice->rad_info.ip[AMD_IP_COMPUTE].num_queues > 0 &&
        !(pdevice->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE)) {
       VkQueueFlags compute_flags = VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
-      if (pdevice->instance->drirc.legacy_sparse_binding)
+      if (!radv_sparse_queue_enabled(pdevice))
          compute_flags |= VK_QUEUE_SPARSE_BINDING_BIT;
       if (*pCount > idx) {
          *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
@@ -2272,14 +2279,16 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
       }
    }
 
-   if (*pCount > idx) {
-      *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
-         .queueFlags = VK_QUEUE_SPARSE_BINDING_BIT,
-         .queueCount = 1,
-         .timestampValidBits = 64,
-         .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
-      };
-      idx++;
+   if (radv_sparse_queue_enabled(pdevice)) {
+      if (*pCount > idx) {
+         *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
+            .queueFlags = VK_QUEUE_SPARSE_BINDING_BIT,
+            .queueCount = 1,
+            .timestampValidBits = 64,
+            .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
+         };
+         idx++;
+      }
    }
 
    *pCount = idx;

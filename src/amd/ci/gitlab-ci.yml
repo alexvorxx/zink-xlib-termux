@@ -171,6 +171,7 @@ vkcts-tahiti-valve:
     B2C_TIMEOUT_BOOT_MINUTES: 350
     B2C_TIMEOUT_OVERALL_MINUTES: 350
     B2C_TIMEOUT_BOOT_RETRIES: 0
+    RADV_PERFTEST: shader_object
 
 vkcts-polaris10-valve:
   extends:

@@ -745,7 +745,9 @@ struct radv_meta_state {
 static inline bool
 radv_sparse_queue_enabled(const struct radv_physical_device *pdevice)
 {
-   return !pdevice->instance->drirc.legacy_sparse_binding;
+   /* Dedicated sparse queue requires VK_QUEUE_SUBMIT_MODE_THREADED, which is incompatible with
+    * VK_DEVICE_TIMELINE_MODE_EMULATED. */
+   return pdevice->rad_info.has_timeline_syncobj && !pdevice->instance->drirc.legacy_sparse_binding;
 }
 
 static inline enum radv_queue_family

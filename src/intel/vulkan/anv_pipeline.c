@@ -660,9 +660,9 @@ populate_wm_prog_key(struct anv_pipeline_stage *stage,
       key->multisample_fbo =
          ms->rasterization_samples > 1 ? BRW_ALWAYS : BRW_NEVER;
       key->persample_interp =
-      (ms->sample_shading_enable &&
-       (ms->min_sample_shading * ms->rasterization_samples) > 1) ?
-      BRW_ALWAYS : BRW_NEVER;
+         (ms->sample_shading_enable &&
+          (ms->min_sample_shading * ms->rasterization_samples) > 1) ?
+         BRW_ALWAYS : BRW_NEVER;
 
       /* TODO: We should make this dynamic */
       if (device->physical->instance->sample_mask_out_opengl_behaviour)

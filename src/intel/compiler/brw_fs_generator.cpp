@@ -139,12 +139,6 @@ fs_generator::fs_generator(const struct brw_compiler *compiler,
 {
    p = rzalloc(mem_ctx, struct brw_codegen);
    brw_init_codegen(&compiler->isa, p, mem_ctx);
-
-   /* In the FS code generator, we are very careful to ensure that we always
-    * set the right execution size so we don't need the EU code to "help" us
-    * by trying to infer it.  Sometimes, it infers the wrong thing.
-    */
-   p->automatic_exec_sizes = false;
 }
 
 fs_generator::~fs_generator()

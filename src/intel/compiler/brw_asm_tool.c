@@ -307,7 +307,6 @@ int main(int argc, char **argv)
 
    p = rzalloc(NULL, struct brw_codegen);
    brw_init_codegen(&isa, p, p);
-   p->automatic_exec_sizes = false;
 
    err = yyparse();
    if (err || errors)

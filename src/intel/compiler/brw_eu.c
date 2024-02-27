@@ -278,7 +278,6 @@ brw_init_codegen(const struct brw_isa_info *isa,
 
    p->isa = isa;
    p->devinfo = isa->devinfo;
-   p->automatic_exec_sizes = true;
    /*
     * Set the initial instruction store array size to 1024, if found that
     * isn't enough, then it will double the store size at brw_next_insn()

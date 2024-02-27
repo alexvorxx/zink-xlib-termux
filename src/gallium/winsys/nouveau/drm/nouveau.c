@@ -901,7 +901,7 @@ nouveau_bo_wait(struct nouveau_bo *bo, uint32_t access, struct nouveau_client *c
 
    push = cli_push_get(client, bo);
    if (push)
-      nouveau_pushbuf_kick(push, push->channel);
+      nouveau_pushbuf_kick(push);
 
    if (!nvbo->head.next && !(nvbo->access & NOUVEAU_BO_WR) && !(access & NOUVEAU_BO_WR))
       return 0;
@@ -1650,7 +1650,7 @@ nouveau_pushbuf_data(struct nouveau_pushbuf *push, struct nouveau_bo *bo, uint64
 }
 
 int
-nouveau_pushbuf_kick(struct nouveau_pushbuf *push, struct nouveau_object *chan)
+nouveau_pushbuf_kick(struct nouveau_pushbuf *push)
 {
    pushbuf_flush(push);
    return pushbuf_validate(push, false);

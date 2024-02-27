@@ -761,10 +761,6 @@ vn_queue_submission_setup_batches(struct vn_queue_submission *submit)
 }
 
 static void
-vn_semaphore_recycle_feedback_cmd(VkDevice dev_handle,
-                                  VkSemaphore sem_handle);
-
-static void
 vn_queue_submission_cleanup_semaphore_feedback(
    struct vn_queue_submission *submit)
 {
@@ -775,7 +771,13 @@ vn_queue_submission_cleanup_semaphore_feedback(
       const uint32_t wait_count = vn_get_wait_semaphore_count(submit, i);
       for (uint32_t j = 0; j < wait_count; j++) {
          VkSemaphore sem_handle = vn_get_wait_semaphore(submit, i, j);
-         vn_semaphore_recycle_feedback_cmd(dev_handle, sem_handle);
+         struct vn_semaphore *sem = vn_semaphore_from_handle(sem_handle);
+         if (!sem->feedback.slot)
+            continue;
+
+         /* sfb pending cmds are recycled when signaled counter is updated */
+         uint64_t counter = 0;
+         vn_GetSemaphoreCounterValue(dev_handle, sem_handle, &counter);
       }
    }
 }
@@ -1791,26 +1793,6 @@ vn_semaphore_get_feedback_cmd(struct vn_device *dev, struct vn_semaphore *sem)
    return sfb_cmd;
 }
 
-static void
-vn_semaphore_recycle_feedback_cmd(VkDevice dev_handle, VkSemaphore sem_handle)
-{
-   struct vn_semaphore *sem = vn_semaphore_from_handle(sem_handle);
-   if (!sem->feedback.slot)
-      return;
-
-   uint64_t curr_counter = 0;
-   vn_GetSemaphoreCounterValue(dev_handle, sem_handle, &curr_counter);
-
-   /* search pending cmds for already signaled values */
-   simple_mtx_lock(&sem->feedback.cmd_mtx);
-   list_for_each_entry_safe(struct vn_semaphore_feedback_cmd, sfb_cmd,
-                            &sem->feedback.pending_cmds, head) {
-      if (curr_counter >= vn_feedback_get_counter(sfb_cmd->src_slot))
-         list_move_to(&sfb_cmd->head, &sem->feedback.free_cmds);
-   }
-   simple_mtx_unlock(&sem->feedback.cmd_mtx);
-}
-
 static VkResult
 vn_semaphore_feedback_init(struct vn_device *dev,
                            struct vn_semaphore *sem,
@@ -1965,10 +1947,8 @@ vn_GetSemaphoreCounterValue(VkDevice device,
 
    if (sem->feedback.slot) {
       simple_mtx_lock(&sem->feedback.async_wait_mtx);
-
-      *pValue = vn_feedback_get_counter(sem->feedback.slot);
-
-      if (sem->feedback.signaled_counter < *pValue) {
+      const uint64_t counter = vn_feedback_get_counter(sem->feedback.slot);
+      if (sem->feedback.signaled_counter < counter) {
          /* When the timeline semaphore feedback slot gets signaled, the real
           * semaphore signal operation follows after but the signaling isr can
           * be deferred or preempted. To avoid racing, we let the renderer
@@ -1990,15 +1970,26 @@ vn_GetSemaphoreCounterValue(VkDevice device,
             .flags = 0,
             .semaphoreCount = 1,
             .pSemaphores = &semaphore,
-            .pValues = pValue,
+            .pValues = &counter,
          };
 
          vn_async_vkWaitSemaphores(dev->primary_ring, device, &wait_info,
                                    UINT64_MAX);
-         sem->feedback.signaled_counter = *pValue;
+
+         /* search pending cmds for already signaled values */
+         simple_mtx_lock(&sem->feedback.cmd_mtx);
+         list_for_each_entry_safe(struct vn_semaphore_feedback_cmd, sfb_cmd,
+                                  &sem->feedback.pending_cmds, head) {
+            if (counter >= vn_feedback_get_counter(sfb_cmd->src_slot))
+               list_move_to(&sfb_cmd->head, &sem->feedback.free_cmds);
+         }
+         simple_mtx_unlock(&sem->feedback.cmd_mtx);
+
+         sem->feedback.signaled_counter = counter;
       }
       simple_mtx_unlock(&sem->feedback.async_wait_mtx);
 
+      *pValue = counter;
       return VK_SUCCESS;
    } else {
       return vn_call_vkGetSemaphoreCounterValue(dev->primary_ring, device,

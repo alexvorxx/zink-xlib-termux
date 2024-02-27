@@ -4241,42 +4241,55 @@ bool si_update_spi_tmpring_size(struct si_context *sctx, unsigned bytes)
 
 void si_init_tess_factor_ring(struct si_context *sctx)
 {
-   assert(!sctx->tess_rings);
+   struct si_screen *sscreen = sctx->screen;
+   assert(!sctx->has_tessellation);
 
-   /* The address must be aligned to 2^19, because the shader only
-    * receives the high 13 bits. Align it to 2MB to match the GPU page size.
-    */
-   sctx->tess_rings = pipe_aligned_buffer_create(sctx->b.screen,
-                                                 PIPE_RESOURCE_FLAG_UNMAPPABLE |
-                                                 SI_RESOURCE_FLAG_32BIT |
-                                                 SI_RESOURCE_FLAG_DRIVER_INTERNAL |
-                                                 SI_RESOURCE_FLAG_DISCARDABLE,
-                                                 PIPE_USAGE_DEFAULT,
-                                                 sctx->screen->hs.tess_offchip_ring_size +
-                                                 sctx->screen->hs.tess_factor_ring_size,
-                                                 2 * 1024 * 1024);
-   if (!sctx->tess_rings)
+   if (sctx->has_tessellation)
       return;
 
-   if (sctx->screen->info.has_tmz_support) {
-      sctx->tess_rings_tmz = pipe_aligned_buffer_create(sctx->b.screen,
-                                                        PIPE_RESOURCE_FLAG_UNMAPPABLE |
-                                                        PIPE_RESOURCE_FLAG_ENCRYPTED |
-                                                        SI_RESOURCE_FLAG_32BIT |
-                                                        SI_RESOURCE_FLAG_DRIVER_INTERNAL |
-                                                        SI_RESOURCE_FLAG_DISCARDABLE,
-                                                        PIPE_USAGE_DEFAULT,
-                                                        sctx->screen->hs.tess_offchip_ring_size +
-                                                        sctx->screen->hs.tess_factor_ring_size,
-                                                        2 * 1024 * 1024);
+   simple_mtx_lock(&sscreen->tess_ring_lock);
+
+   if (!sscreen->tess_rings) {
+      /* The address must be aligned to 2^19, because the shader only
+       * receives the high 13 bits. Align it to 2MB to match the GPU page size.
+       */
+      sscreen->tess_rings = pipe_aligned_buffer_create(sctx->b.screen,
+                                                       PIPE_RESOURCE_FLAG_UNMAPPABLE |
+                                                       SI_RESOURCE_FLAG_32BIT |
+                                                       SI_RESOURCE_FLAG_DRIVER_INTERNAL |
+                                                       SI_RESOURCE_FLAG_DISCARDABLE,
+                                                       PIPE_USAGE_DEFAULT,
+                                                       sscreen->hs.tess_offchip_ring_size +
+                                                       sscreen->hs.tess_factor_ring_size,
+                                                       2 * 1024 * 1024);
+      if (!sscreen->tess_rings) {
+         simple_mtx_unlock(&sscreen->tess_ring_lock);
+         return;
+      }
+
+      if (sscreen->info.has_tmz_support) {
+         sscreen->tess_rings_tmz = pipe_aligned_buffer_create(sctx->b.screen,
+                                                              PIPE_RESOURCE_FLAG_UNMAPPABLE |
+                                                              PIPE_RESOURCE_FLAG_ENCRYPTED |
+                                                              SI_RESOURCE_FLAG_32BIT |
+                                                              SI_RESOURCE_FLAG_DRIVER_INTERNAL |
+                                                              SI_RESOURCE_FLAG_DISCARDABLE,
+                                                              PIPE_USAGE_DEFAULT,
+                                                              sscreen->hs.tess_offchip_ring_size +
+                                                              sscreen->hs.tess_factor_ring_size,
+                                                              2 * 1024 * 1024);
+      }
    }
 
-   uint64_t factor_va =
-      si_resource(sctx->tess_rings)->gpu_address + sctx->screen->hs.tess_offchip_ring_size;
+   simple_mtx_unlock(&sscreen->tess_ring_lock);
+   sctx->has_tessellation = true;
 
-   unsigned tf_ring_size_field = sctx->screen->hs.tess_factor_ring_size / 4;
+   uint64_t factor_va = si_resource(sscreen->tess_rings)->gpu_address +
+                        sscreen->hs.tess_offchip_ring_size;
+
+   unsigned tf_ring_size_field = sscreen->hs.tess_factor_ring_size / 4;
    if (sctx->gfx_level >= GFX11)
-      tf_ring_size_field /= sctx->screen->info.max_se;
+      tf_ring_size_field /= sscreen->info.max_se;
 
    assert((tf_ring_size_field & C_030938_SIZE) == 0);
 
@@ -4287,7 +4300,7 @@ void si_init_tess_factor_ring(struct si_context *sctx)
 
       assert(sctx->gfx_level >= GFX7);
 
-      radeon_add_to_buffer_list(sctx, &sctx->gfx_cs, si_resource(sctx->tess_rings),
+      radeon_add_to_buffer_list(sctx, &sctx->gfx_cs, si_resource(sscreen->tess_rings),
                                 RADEON_USAGE_READWRITE | RADEON_PRIO_SHADER_RINGS);
       si_emit_vgt_flush(cs);
 
@@ -4304,7 +4317,7 @@ void si_init_tess_factor_ring(struct si_context *sctx)
                                 S_030944_BASE_HI(factor_va >> 40));
       }
       radeon_set_uconfig_reg(R_03093C_VGT_HS_OFFCHIP_PARAM,
-                             sctx->screen->hs.hs_offchip_param);
+                             sscreen->hs.hs_offchip_param);
       radeon_end();
       return;
    }
@@ -4313,18 +4326,18 @@ void si_init_tess_factor_ring(struct si_context *sctx)
    /* Add these registers to cs_preamble_state. */
    for (unsigned tmz = 0; tmz <= 1; tmz++) {
       struct si_pm4_state *pm4 = tmz ? sctx->cs_preamble_state_tmz : sctx->cs_preamble_state;
-      struct pipe_resource *tf_ring = tmz ? sctx->tess_rings_tmz : sctx->tess_rings;
+      struct pipe_resource *tf_ring = tmz ? sscreen->tess_rings_tmz : sscreen->tess_rings;
 
       if (!tf_ring)
          continue; /* TMZ not supported */
 
-      uint64_t va = si_resource(tf_ring)->gpu_address + sctx->screen->hs.tess_offchip_ring_size;
+      uint64_t va = si_resource(tf_ring)->gpu_address + sscreen->hs.tess_offchip_ring_size;
 
       si_cs_preamble_add_vgt_flush(sctx, tmz);
 
       if (sctx->gfx_level >= GFX7) {
          si_pm4_set_reg(pm4, R_030938_VGT_TF_RING_SIZE, S_030938_SIZE(tf_ring_size_field));
-         si_pm4_set_reg(pm4, R_03093C_VGT_HS_OFFCHIP_PARAM, sctx->screen->hs.hs_offchip_param);
+         si_pm4_set_reg(pm4, R_03093C_VGT_HS_OFFCHIP_PARAM, sscreen->hs.hs_offchip_param);
          si_pm4_set_reg(pm4, R_030940_VGT_TF_MEMORY_BASE, va >> 8);
          if (sctx->gfx_level >= GFX10)
             si_pm4_set_reg(pm4, R_030984_VGT_TF_MEMORY_BASE_HI, S_030984_BASE_HI(va >> 40));
@@ -4333,7 +4346,7 @@ void si_init_tess_factor_ring(struct si_context *sctx)
       } else {
          si_pm4_set_reg(pm4, R_008988_VGT_TF_RING_SIZE, S_008988_SIZE(tf_ring_size_field));
          si_pm4_set_reg(pm4, R_0089B8_VGT_TF_MEMORY_BASE, factor_va >> 8);
-         si_pm4_set_reg(pm4, R_0089B0_VGT_HS_OFFCHIP_PARAM, sctx->screen->hs.hs_offchip_param);
+         si_pm4_set_reg(pm4, R_0089B0_VGT_HS_OFFCHIP_PARAM, sscreen->hs.hs_offchip_param);
       }
       si_pm4_finalize(pm4);
    }
@@ -4483,7 +4496,7 @@ static void si_set_patch_vertices(struct pipe_context *ctx, uint8_t patch_vertic
          /* Update the io layout now if possible,
           * otherwise make sure it's done by si_update_shaders.
           */
-         if (sctx->tess_rings)
+         if (sctx->has_tessellation)
             si_update_tess_io_layout_state(sctx);
          else
             sctx->do_update_shaders = true;
@@ -4656,8 +4669,10 @@ void si_update_tess_io_layout_state(struct si_context *sctx)
    assert(num_patches <= 64);
    assert(((pervertex_output_patch_size * num_patches) & ~0xffff) == 0);
 
-   uint64_t ring_va = (unlikely(sctx->ws->cs_is_secure(&sctx->gfx_cs)) ?
-      si_resource(sctx->tess_rings_tmz) : si_resource(sctx->tess_rings))->gpu_address;
+   uint64_t ring_va =
+      sctx->ws->cs_is_secure(&sctx->gfx_cs) ?
+          si_resource(sctx->screen->tess_rings_tmz)->gpu_address :
+          si_resource(sctx->screen->tess_rings)->gpu_address;
    assert((ring_va & u_bit_consecutive(0, 19)) == 0);
 
    sctx->tes_offchip_ring_va_sgpr = ring_va;

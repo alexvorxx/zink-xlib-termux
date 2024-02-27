@@ -52,9 +52,9 @@ static bool si_update_shaders(struct si_context *sctx)
 
    /* Update TCS and TES. */
    if (HAS_TESS) {
-      if (!sctx->tess_rings) {
+      if (!sctx->has_tessellation) {
          si_init_tess_factor_ring(sctx);
-         if (!sctx->tess_rings)
+         if (!sctx->has_tessellation)
             return false;
       }
 

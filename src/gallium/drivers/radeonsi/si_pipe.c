@@ -223,8 +223,6 @@ static void si_destroy_context(struct pipe_context *context)
 
    pipe_resource_reference(&sctx->esgs_ring, NULL);
    pipe_resource_reference(&sctx->gsvs_ring, NULL);
-   pipe_resource_reference(&sctx->tess_rings, NULL);
-   pipe_resource_reference(&sctx->tess_rings_tmz, NULL);
    pipe_resource_reference(&sctx->null_const_buf.buffer, NULL);
    pipe_resource_reference(&sctx->sample_pos_buffer, NULL);
    si_resource_reference(&sctx->border_color_buffer, NULL);
@@ -974,6 +972,8 @@ static void si_destroy_screen(struct pipe_screen *pscreen)
    }
 
    si_resource_reference(&sscreen->attribute_ring, NULL);
+   pipe_resource_reference(&sscreen->tess_rings, NULL);
+   pipe_resource_reference(&sscreen->tess_rings_tmz, NULL);
 
    util_queue_destroy(&sscreen->shader_compiler_queue);
    util_queue_destroy(&sscreen->shader_compiler_queue_opt_variants);
@@ -1031,6 +1031,7 @@ static void si_destroy_screen(struct pipe_screen *pscreen)
 
    simple_mtx_destroy(&sscreen->gpu_load_mutex);
    simple_mtx_destroy(&sscreen->gds_mutex);
+   simple_mtx_destroy(&sscreen->tess_ring_lock);
 
    radeon_bo_reference(sscreen->ws, &sscreen->gds_oa, NULL);
 
@@ -1277,6 +1278,7 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
    (void)simple_mtx_init(&sscreen->async_compute_context_lock, mtx_plain);
    (void)simple_mtx_init(&sscreen->gpu_load_mutex, mtx_plain);
    (void)simple_mtx_init(&sscreen->gds_mutex, mtx_plain);
+   (void)simple_mtx_init(&sscreen->tess_ring_lock, mtx_plain);
 
    si_init_gs_info(sscreen);
    if (!si_init_shader_cache(sscreen)) {

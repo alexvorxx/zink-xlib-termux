@@ -712,6 +712,10 @@ struct si_screen {
 
    struct si_resource *attribute_ring;
 
+   simple_mtx_t tess_ring_lock;
+   struct pipe_resource *tess_rings;
+   struct pipe_resource *tess_rings_tmz;
+
    /* NGG streamout. */
    simple_mtx_t gds_mutex;
    struct pb_buffer_lean *gds_oa;
@@ -1129,6 +1133,7 @@ struct si_context {
    bool vs_uses_base_instance;
    bool vs_uses_draw_id;
    uint8_t patch_vertices;
+   bool has_tessellation; /* whether si_screen::tess_rings* are valid */
 
    /* shader descriptors */
    struct si_descriptors descriptors[SI_NUM_DESCS];
@@ -1147,8 +1152,6 @@ struct si_context {
    struct pipe_constant_buffer null_const_buf; /* used for set_constant_buffer(NULL) on GFX7 */
    struct pipe_resource *esgs_ring;
    struct pipe_resource *gsvs_ring;
-   struct pipe_resource *tess_rings;
-   struct pipe_resource *tess_rings_tmz;
    union pipe_color_union *border_color_table; /* in CPU memory, any endian */
    struct si_resource *border_color_buffer;
    union pipe_color_union *border_color_map; /* in VRAM (slow access), little endian */

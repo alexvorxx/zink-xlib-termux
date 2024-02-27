@@ -994,9 +994,7 @@ fs_inst::flags_written(const intel_device_info *devinfo) const
                            opcode != BRW_OPCODE_IF &&
                            opcode != BRW_OPCODE_WHILE)) {
       return brw_fs_flag_mask(this, 1);
-   } else if (opcode == SHADER_OPCODE_FIND_LIVE_CHANNEL ||
-              opcode == SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL ||
-              opcode == FS_OPCODE_LOAD_LIVE_CHANNELS) {
+   } else if (opcode == FS_OPCODE_LOAD_LIVE_CHANNELS) {
       return brw_fs_flag_mask(this, 32);
    } else {
       return brw_fs_flag_mask(dst, size_written);

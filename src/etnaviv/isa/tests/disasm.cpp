@@ -152,6 +152,7 @@ INSTANTIATE_TEST_SUITE_P(Opcodes, DisasmTest,
       disasm_state{ {0x0080102a, 0x2a800884, 0x50010050, 0x0000000f}, "atomic_or.s32     t0.x___, u0.zzzz, 0, t0.xxxx\t; dontcare bits in atomic_or: 00000000000000000000008000000000\n"},
       disasm_state{ {0x0082102b, 0x2a800884, 0x50010050, 0x0000001f}, "atomic_and.s32    t2.x___, u0.zzzz, 0, t1.xxxx\t; dontcare bits in atomic_and: 00000000000000000000008000000000\n"},
       disasm_state{ {0x0080102c, 0x2a800884, 0x50010050, 0x0000001f}, "atomic_xor.s32    t0.x___, u0.zzzz, 0, t1.xxxx\t; dontcare bits in atomic_xor: 00000000000000000000008000000000\n"},
+      disasm_state{ {0x00811033, 0x04402804, 0x00ef00c0, 0x00000000}, "dp2               t1.x___, t2.yxyx, t1.wywy, void\n"},
       disasm_state{ {0x00811034, 0x15c01804, 0x00010000, 0x00000000}, "norm_dp2          t1.x___, t1.wyyy, void, void\n"},
       disasm_state{ {0x04011035, 0x14801804, 0x00010000, 0x00000000}, "norm_dp3          t1.___w, t1.zxyy, void, void\n"},
       disasm_state{ {0x00821036, 0x0e401804, 0x00010000, 0x00000000}, "norm_dp4          t2.x___, t1.yzwx, void, void\n"}

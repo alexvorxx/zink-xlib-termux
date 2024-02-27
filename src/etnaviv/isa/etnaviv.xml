@@ -886,11 +886,6 @@ SPDX-License-Identifier: MIT
 
 <!-- dst -->
 
-<bitset name="dp2" extends="#instruction-alu-src0-src1">
-	<pattern low="0" high="5">000100</pattern> <!-- OPC -->
-	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
-</bitset>
-
 <bitset name="dp3" extends="#instruction-alu-src0-src1">
 	<pattern low="0" high="5">000101</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
@@ -1214,6 +1209,11 @@ SPDX-License-Identifier: MIT
 
 <bitset name="texldlpcf" extends="#instruction-tex-src0-src1-src2">
 	<pattern low="0" high="5">101111</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="dp2" extends="#instruction-alu-src0-src1">
+	<pattern low="0" high="5">110011</pattern> <!-- OPC -->
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 

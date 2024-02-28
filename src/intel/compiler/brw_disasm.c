@@ -443,10 +443,6 @@ static const char *const sync_function[16] = {
 };
 
 static const char *const gfx7_urb_opcode[] = {
-   [BRW_URB_OPCODE_WRITE_HWORD] = "write HWord",
-   [BRW_URB_OPCODE_WRITE_OWORD] = "write OWord",
-   [BRW_URB_OPCODE_READ_HWORD] = "read HWord",
-   [BRW_URB_OPCODE_READ_OWORD] = "read OWord",
    [GFX7_URB_OPCODE_ATOMIC_MOV] = "atomic mov",  /* Gfx7+ */
    [GFX7_URB_OPCODE_ATOMIC_INC] = "atomic inc",  /* Gfx7+ */
    [GFX8_URB_OPCODE_ATOMIC_ADD] = "atomic add",  /* Gfx8+ */

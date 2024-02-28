@@ -2278,10 +2278,6 @@ send_descriptor_restrictions(const struct brw_isa_info *isa,
                "Header must be present for all URB messages.");
 
       switch (brw_inst_urb_opcode(devinfo, inst)) {
-      case BRW_URB_OPCODE_READ_HWORD:
-      case BRW_URB_OPCODE_READ_OWORD:
-      case BRW_URB_OPCODE_WRITE_HWORD:
-      case BRW_URB_OPCODE_WRITE_OWORD:
       case GFX7_URB_OPCODE_ATOMIC_INC:
       case GFX7_URB_OPCODE_ATOMIC_MOV:
       case GFX8_URB_OPCODE_ATOMIC_ADD:

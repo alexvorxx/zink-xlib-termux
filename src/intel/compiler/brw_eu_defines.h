@@ -1414,10 +1414,6 @@ enum brw_message_target {
 #define GFX8_MATH_FUNCTION_INVM                            14
 #define GFX8_MATH_FUNCTION_RSQRTM                          15
 
-#define BRW_URB_OPCODE_WRITE_HWORD  0
-#define BRW_URB_OPCODE_WRITE_OWORD  1
-#define BRW_URB_OPCODE_READ_HWORD   2
-#define BRW_URB_OPCODE_READ_OWORD   3
 #define GFX7_URB_OPCODE_ATOMIC_MOV  4
 #define GFX7_URB_OPCODE_ATOMIC_INC  5
 #define GFX8_URB_OPCODE_ATOMIC_ADD  6

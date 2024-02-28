@@ -111,6 +111,11 @@ lower_builtins(nir_builder *b, nir_instr *instr, void *data)
       nir_store_deref(b, nir_src_as_deref(call->params[0]),
                       nir_load_helper_arg_hi_agx(b, 1, 32), 1);
       return true;
+   } else if (strcmp(func->name, "ballot") == 0) {
+      b->cursor = nir_instr_remove(&call->instr);
+      nir_store_deref(b, nir_src_as_deref(call->params[0]),
+                      nir_ballot(b, 1, 32, call->params[1].ssa), 1);
+      return true;
    } else if (strcmp(func->name, "nir_fence_helper_exit_agx") == 0) {
       b->cursor = nir_instr_remove(&call->instr);
       nir_fence_helper_exit_agx(b);

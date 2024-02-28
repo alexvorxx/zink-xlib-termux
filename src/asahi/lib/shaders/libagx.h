@@ -38,6 +38,9 @@ uint32_t nir_load_helper_arg_lo_agx(void);
 uint32_t nir_load_helper_arg_hi_agx(void);
 uint32_t nir_fence_helper_exit_agx(void);
 
+/* I have no idea why CL doesn't have this */
+uint ballot(bool cond);
+
 #define AGX_STATIC_ASSERT(_COND)                                               \
    typedef char static_assertion_##__line__[(_COND) ? 1 : -1]
 

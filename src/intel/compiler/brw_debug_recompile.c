@@ -139,7 +139,6 @@ debug_fs_recompile(const struct brw_compiler *c, void *log,
    found |= check("fragment color clamping", clamp_fragment_color);
    found |= check("per-sample interpolation", persample_interp);
    found |= check("multisampled FBO", multisample_fbo);
-   found |= check("line smoothing", line_aa);
    found |= check("force dual color blending", force_dual_color_blend);
    found |= check("coherent fb fetch", coherent_fb_fetch);
    found |= check("ignore sample mask out", ignore_sample_mask_out);

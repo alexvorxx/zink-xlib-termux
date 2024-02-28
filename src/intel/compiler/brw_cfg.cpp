@@ -106,7 +106,7 @@ bblock_t::is_successor_of(const bblock_t *block,
 }
 
 static bool
-ends_block(const backend_instruction *inst)
+ends_block(const fs_inst *inst)
 {
    enum opcode op = inst->opcode;
 
@@ -119,7 +119,7 @@ ends_block(const backend_instruction *inst)
 }
 
 static bool
-starts_block(const backend_instruction *inst)
+starts_block(const fs_inst *inst)
 {
    enum opcode op = inst->opcode;
 
@@ -210,7 +210,7 @@ cfg_t::cfg_t(const fs_visitor *s, exec_list *instructions) :
 
    set_next_block(&cur, entry, ip);
 
-   foreach_in_list_safe(backend_instruction, inst, instructions) {
+   foreach_in_list_safe(fs_inst, inst, instructions) {
       /* set_next_block wants the post-incremented ip */
       ip++;
 
@@ -808,7 +808,7 @@ cfg_t::validate(const char *stage_abbrev)
          }
       }
 
-      backend_instruction *first_inst = block->start();
+      fs_inst *first_inst = block->start();
       if (first_inst->opcode == BRW_OPCODE_DO) {
          /* DO instructions both begin and end a block, so the DO instruction
           * must be the only instruction in the block.

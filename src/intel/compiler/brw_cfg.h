@@ -29,12 +29,12 @@
 #define BRW_CFG_H
 
 struct bblock_t;
-struct backend_instruction;
 
 #ifdef __cplusplus
 
 #include "brw_ir.h"
 #include "brw_ir_analysis.h"
+#include "brw_ir_fs.h"
 
 struct bblock_t;
 
@@ -92,10 +92,10 @@ struct bblock_t {
    void combine_with(bblock_t *that);
    void dump(FILE *file = stderr) const;
 
-   backend_instruction *start();
-   const backend_instruction *start() const;
-   backend_instruction *end();
-   const backend_instruction *end() const;
+   fs_inst *start();
+   const fs_inst *start() const;
+   fs_inst *end();
+   const fs_inst *end() const;
 
    bblock_t *next();
    const bblock_t *next() const;
@@ -105,8 +105,8 @@ struct bblock_t {
    bool starts_with_control_flow() const;
    bool ends_with_control_flow() const;
 
-   backend_instruction *first_non_control_flow_inst();
-   backend_instruction *last_non_control_flow_inst();
+   fs_inst *first_non_control_flow_inst();
+   fs_inst *last_non_control_flow_inst();
 
 private:
    /**
@@ -142,28 +142,28 @@ public:
    int num;
 };
 
-static inline struct backend_instruction *
+static inline fs_inst *
 bblock_start(struct bblock_t *block)
 {
-   return (struct backend_instruction *)exec_list_get_head(&block->instructions);
+   return (fs_inst *)exec_list_get_head(&block->instructions);
 }
 
-static inline const struct backend_instruction *
+static inline const fs_inst *
 bblock_start_const(const struct bblock_t *block)
 {
-   return (const struct backend_instruction *)exec_list_get_head_const(&block->instructions);
+   return (const fs_inst *)exec_list_get_head_const(&block->instructions);
 }
 
-static inline struct backend_instruction *
+static inline fs_inst *
 bblock_end(struct bblock_t *block)
 {
-   return (struct backend_instruction *)exec_list_get_tail(&block->instructions);
+   return (fs_inst *)exec_list_get_tail(&block->instructions);
 }
 
-static inline const struct backend_instruction *
+static inline const fs_inst *
 bblock_end_const(const struct bblock_t *block)
 {
-   return (const struct backend_instruction *)exec_list_get_tail_const(&block->instructions);
+   return (const fs_inst *)exec_list_get_tail_const(&block->instructions);
 }
 
 static inline struct bblock_t *
@@ -220,51 +220,51 @@ bblock_ends_with_control_flow(const struct bblock_t *block)
           op == BRW_OPCODE_CONTINUE;
 }
 
-static inline struct backend_instruction *
+static inline fs_inst *
 bblock_first_non_control_flow_inst(struct bblock_t *block)
 {
-   struct backend_instruction *inst = bblock_start(block);
+   fs_inst *inst = bblock_start(block);
    if (bblock_starts_with_control_flow(block))
 #ifdef __cplusplus
-      inst = (struct backend_instruction *)inst->next;
+      inst = (fs_inst *)inst->next;
 #else
-      inst = (struct backend_instruction *)inst->link.next;
+      inst = (fs_inst *)inst->link.next;
 #endif
    return inst;
 }
 
-static inline struct backend_instruction *
+static inline fs_inst *
 bblock_last_non_control_flow_inst(struct bblock_t *block)
 {
-   struct backend_instruction *inst = bblock_end(block);
+   fs_inst *inst = bblock_end(block);
    if (bblock_ends_with_control_flow(block))
 #ifdef __cplusplus
-      inst = (struct backend_instruction *)inst->prev;
+      inst = (fs_inst *)inst->prev;
 #else
-      inst = (struct backend_instruction *)inst->link.prev;
+      inst = (fs_inst *)inst->link.prev;
 #endif
    return inst;
 }
 
-inline backend_instruction *
+inline fs_inst *
 bblock_t::start()
 {
    return bblock_start(this);
 }
 
-inline const backend_instruction *
+inline const fs_inst *
 bblock_t::start() const
 {
    return bblock_start_const(this);
 }
 
-inline backend_instruction *
+inline fs_inst *
 bblock_t::end()
 {
    return bblock_end(this);
 }
 
-inline const backend_instruction *
+inline const fs_inst *
 bblock_t::end() const
 {
    return bblock_end_const(this);
@@ -306,13 +306,13 @@ bblock_t::ends_with_control_flow() const
    return bblock_ends_with_control_flow(this);
 }
 
-inline backend_instruction *
+inline fs_inst *
 bblock_t::first_non_control_flow_inst()
 {
    return bblock_first_non_control_flow_inst(this);
 }
 
-inline backend_instruction *
+inline fs_inst *
 bblock_t::last_non_control_flow_inst()
 {
    return bblock_last_non_control_flow_inst(this);

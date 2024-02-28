@@ -911,17 +911,14 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
             }
          }
 
-         uint32_t spill_id = ctx.allocate_spill_id(phi->definitions[0].regClass());
-
-         /* add interferences and affinity */
+         /* add interferences */
          for (std::pair<Temp, uint32_t> pair : ctx.spills_exit[pred_idx])
-            ctx.add_interference(spill_id, pair.second);
-         ctx.add_affinity(def_spill_id, spill_id);
+            ctx.add_interference(def_spill_id, pair.second);
 
          aco_ptr<Pseudo_instruction> spill{
             create_instruction<Pseudo_instruction>(aco_opcode::p_spill, Format::PSEUDO, 2, 0)};
          spill->operands[0] = spill_op;
-         spill->operands[1] = Operand::c32(spill_id);
+         spill->operands[1] = Operand::c32(def_spill_id);
          Block& pred = ctx.program->blocks[pred_idx];
          unsigned idx = pred.instructions.size();
          do {
@@ -934,7 +931,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
 
          /* Add the original name to predecessor's spilled variables */
          if (spill_op.isTemp())
-            ctx.spills_exit[pred_idx][phi->operands[i].getTemp()] = spill_id;
+            ctx.spills_exit[pred_idx][phi->operands[i].getTemp()] = def_spill_id;
       }
 
       /* remove phi from instructions */

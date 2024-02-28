@@ -174,7 +174,7 @@ struct bs_thread_payload : public thread_payload {
    void load_shader_type(const brw::fs_builder &bld, fs_reg &dest) const;
 };
 
-class fs_instruction_scheduler;
+class instruction_scheduler;
 
 /**
  * The fragment shader front-end.
@@ -256,8 +256,8 @@ public:
    void validate() {}
 #endif
 
-   fs_instruction_scheduler *prepare_scheduler(void *mem_ctx);
-   void schedule_instructions_pre_ra(fs_instruction_scheduler *sched,
+   instruction_scheduler *prepare_scheduler(void *mem_ctx);
+   void schedule_instructions_pre_ra(instruction_scheduler *sched,
                                      instruction_scheduler_mode mode);
    void schedule_instructions_post_ra();
 

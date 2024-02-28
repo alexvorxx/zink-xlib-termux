@@ -2530,7 +2530,7 @@ fs_visitor::allocate_registers(bool allow_spilling)
    fs_inst **best_pressure_order = NULL;
 
    void *scheduler_ctx = ralloc_context(NULL);
-   fs_instruction_scheduler *sched = prepare_scheduler(scheduler_ctx);
+   instruction_scheduler *sched = prepare_scheduler(scheduler_ctx);
 
    /* Try each scheduling heuristic to see if it can successfully register
     * allocate without spilling.  They should be ordered by decreasing

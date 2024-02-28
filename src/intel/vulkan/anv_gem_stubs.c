@@ -100,27 +100,6 @@ stub_bo_alloc_flags_to_bo_flags(struct anv_device *device,
    return 0;
 }
 
-void *
-anv_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
-             uint64_t size)
-{
-   void *map = device->kmd_backend->gem_mmap(device, bo, offset, size);
-
-   if (map != MAP_FAILED)
-      VG(VALGRIND_MALLOCLIKE_BLOCK(map, size, 0, 1));
-
-   return map;
-}
-
-/* This is just a wrapper around munmap, but it also notifies valgrind that
- * this map is no longer valid.  Pair this with gem_mmap().
- */
-void
-anv_gem_munmap(struct anv_device *device, void *p, uint64_t size)
-{
-   munmap(p, size);
-}
-
 static uint32_t
 stub_gem_create_userptr(struct anv_device *device, void *mem, uint64_t size)
 {

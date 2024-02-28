@@ -1590,11 +1590,12 @@ anv_device_map_bo(struct anv_device *device,
    assert(!bo->from_host_ptr);
    assert(size > 0);
 
-   void *map = anv_gem_mmap(device, bo, offset, size);
+   void *map = device->kmd_backend->gem_mmap(device, bo, offset, size);
    if (unlikely(map == MAP_FAILED))
       return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED, "mmap failed: %m");
 
    assert(map != NULL);
+   VG(VALGRIND_MALLOCLIKE_BLOCK(map, size, 0, 1));
 
    if (map_out)
       *map_out = map;
@@ -1609,7 +1610,8 @@ anv_device_unmap_bo(struct anv_device *device,
 {
    assert(!bo->from_host_ptr);
 
-   anv_gem_munmap(device, map, map_size);
+   VG(VALGRIND_FREELIKE_BLOCK(map, 0));
+   munmap(map, map_size);
 }
 
 VkResult

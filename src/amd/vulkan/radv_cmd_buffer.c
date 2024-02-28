@@ -3936,10 +3936,8 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
    if (chip < GFX10 && G_00B228_SGPRS(prolog->rsrc1) > G_00B228_SGPRS(rsrc1))
       rsrc1 = (rsrc1 & C_00B228_SGPRS) | (prolog->rsrc1 & ~C_00B228_SGPRS);
 
-   /* The main shader must not use less VGPRs than the prolog, otherwise shared vgprs might not
-    * work.
-    */
-   assert(G_00B848_VGPRS(vs_shader->config.rsrc1) >= G_00B848_VGPRS(prolog->rsrc1));
+   if (G_00B848_VGPRS(prolog->rsrc1) > G_00B848_VGPRS(rsrc1))
+      rsrc1 = (rsrc1 & C_00B848_VGPRS) | (prolog->rsrc1 & ~C_00B848_VGPRS);
 
    unsigned pgm_lo_reg = R_00B120_SPI_SHADER_PGM_LO_VS;
    unsigned rsrc1_reg = R_00B128_SPI_SHADER_PGM_RSRC1_VS;
@@ -3962,28 +3960,24 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
 
    radeon_set_sh_reg(cmd_buffer->cs, pgm_lo_reg, prolog->va >> 8);
 
-   if (chip < GFX10 || vs_shader->info.merged_shader_compiled_separately) {
-      radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg, rsrc1);
+   radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg, rsrc1);
 
-      if (vs_shader->info.merged_shader_compiled_separately) {
-         if (vs_shader->info.next_stage == MESA_SHADER_GEOMETRY) {
-            const struct radv_shader *gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
-            unsigned lds_size;
+   if (vs_shader->info.merged_shader_compiled_separately) {
+      if (vs_shader->info.next_stage == MESA_SHADER_GEOMETRY) {
+         const struct radv_shader *gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
+         unsigned lds_size;
 
-            if (gs->info.is_ngg) {
-               lds_size = DIV_ROUND_UP(gs->info.ngg_info.lds_size,
-                                       cmd_buffer->device->physical_device->rad_info.lds_encode_granularity);
-            } else {
-               lds_size = gs->info.gs_ring_info.lds_size;
-            }
-
-            radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2 | S_00B22C_LDS_SIZE(lds_size));
+         if (gs->info.is_ngg) {
+            lds_size = DIV_ROUND_UP(gs->info.ngg_info.lds_size,
+                                    cmd_buffer->device->physical_device->rad_info.lds_encode_granularity);
          } else {
-            radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2);
+            lds_size = gs->info.gs_ring_info.lds_size;
          }
+
+         radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2 | S_00B22C_LDS_SIZE(lds_size));
+      } else {
+         radeon_set_sh_reg(cmd_buffer->cs, rsrc1_reg + 4, rsrc2);
       }
-   } else {
-      assert(rsrc1 == vs_shader->config.rsrc1);
    }
 
    radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, prolog->bo);

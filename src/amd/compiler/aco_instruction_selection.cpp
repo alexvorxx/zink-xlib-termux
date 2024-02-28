@@ -194,7 +194,7 @@ emit_bpermute(isel_context* ctx, Builder& bld, Temp index, Temp data)
       ctx->options->gfx_level >= GFX10 && ctx->options->gfx_level < GFX11 &&
       ctx->program->wave_size == 64 &&
       (ctx->program->info.has_epilog || ctx->program->info.merged_shader_compiled_separately ||
-       ctx->stage == raytracing_cs);
+       ctx->program->info.vs.has_prolog || ctx->stage == raytracing_cs);
 
    if (ctx->options->gfx_level <= GFX7 || avoid_shared_vgprs) {
       /* GFX6-7: there is no bpermute instruction */

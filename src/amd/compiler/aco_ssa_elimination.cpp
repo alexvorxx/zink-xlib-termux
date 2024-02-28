@@ -133,6 +133,7 @@ insert_parallelcopies(ssa_elimination_ctx& ctx)
       }
       pc->tmp_in_scc = block.scc_live_out;
       pc->scratch_sgpr = scratch_sgpr;
+      pc->needs_scratch_reg = true;
       block.instructions.insert(it, std::move(pc));
    }
 }

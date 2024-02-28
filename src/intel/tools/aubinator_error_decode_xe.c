@@ -32,6 +32,8 @@ struct xe_vm {
     */
    struct xe_vm_entry *entries;
    uint32_t entries_len;
+
+   struct xe_vm_entry hw_context;
 };
 
 static const char *
@@ -131,10 +133,61 @@ read_xe_vm_line(const char *line, uint64_t *address, const char **value_ptr)
    return type;
 }
 
+/*
+ * similar to read_xe_vm_line() but it parses '[HWCTX].data: ...'
+ */
+static enum xe_vm_topic_type
+read_xe_hw_sp_or_ctx_line(const char *line, const char **value_ptr, bool *is_hw_ctx)
+{
+   enum xe_vm_topic_type type;
+   char text_addr[64];
+   bool is_hw_sp;
+   int i;
+
+   if (*line != '\t')
+      return XE_VM_TOPIC_TYPE_UNKNOWN;
+
+   line++;
+   if (*line != '[')
+      return XE_VM_TOPIC_TYPE_UNKNOWN;
+
+   for (i = 0, line++; *line != ']'; i++, line++)
+      text_addr[i] = *line;
+
+   text_addr[i] = 0;
+   *is_hw_ctx = strncmp(text_addr, "HWCTX", strlen("HWCTX")) == 0;
+   is_hw_sp =  strncmp(text_addr, "HWSP", strlen("HWSP")) == 0;
+   if (*is_hw_ctx == false && is_hw_sp == false)
+         return XE_VM_TOPIC_TYPE_UNKNOWN;
+
+   /* at this point line points to last address digit so +3 to point to type */
+   line += 2;
+   switch (*line) {
+   case 'd':
+      type = XE_VM_TOPIC_TYPE_DATA;
+      break;
+   case 'l':
+      type = XE_VM_TOPIC_TYPE_LENGTH;
+      break;
+   case 'e':
+      type = XE_VM_TOPIC_TYPE_ERROR;
+      break;
+   default:
+      printf("type char: %c\n", *line);
+      return XE_VM_TOPIC_TYPE_UNKNOWN;
+   }
+
+   for (; *line != ':'; line++);
+
+   *value_ptr = line + 2;
+   return type;
+}
+
 static void xe_vm_init(struct xe_vm *xe_vm)
 {
    xe_vm->entries = NULL;
    xe_vm->entries_len = 0;
+   memset(&xe_vm->hw_context, 0, sizeof(xe_vm->hw_context));
 }
 
 static void xe_vm_fini(struct xe_vm *xe_vm)
@@ -144,7 +197,24 @@ static void xe_vm_fini(struct xe_vm *xe_vm)
    for (i = 0; i < xe_vm->entries_len; i++)
       free((uint32_t *)xe_vm->entries[i].data);
 
+   free((uint32_t *)xe_vm->hw_context.data);
    free(xe_vm->entries);
+}
+
+static void
+xe_vm_entry_set(struct xe_vm_entry *entry, const uint64_t address,
+                const uint32_t length, const uint32_t *data)
+{
+   entry->address = address;
+   entry->length = length;
+   entry->data = data;
+}
+
+static void
+xe_vm_hw_ctx_set(struct xe_vm *xe_vm, const uint32_t length,
+                 const uint32_t *data)
+{
+   xe_vm_entry_set(&xe_vm->hw_context, 0, length, data);
 }
 
 /*
@@ -159,9 +229,7 @@ xe_vm_append(struct xe_vm *xe_vm, const uint64_t address, const uint32_t length,
    if (!xe_vm->entries)
       return false;
 
-   xe_vm->entries[xe_vm->entries_len].address = address;
-   xe_vm->entries[xe_vm->entries_len].length = length;
-   xe_vm->entries[xe_vm->entries_len].data = data;
+   xe_vm_entry_set(&xe_vm->entries[xe_vm->entries_len], address, length, data);
    xe_vm->entries_len++;
    return true;
 }
@@ -258,6 +326,7 @@ print_batch(struct intel_batch_decode_ctx *batch_ctx, const uint32_t *bb_data,
       batch_ctx->engine = engine_class;
       intel_print_batch(batch_ctx, bb_data, bb_len, bb_addr, is_ring_buffer);
       batch_ctx->flags = batch_flags;
+      printf("\n");
    }
 }
 
@@ -365,6 +434,46 @@ read_xe_data_file(FILE *file,
 
          break;
       }
+      case TOPIC_GUC_CT: {
+         enum xe_vm_topic_type type;
+         const char *value_ptr;
+         bool is_hw_ctx;
+
+         /* TODO: what to do with HWSP? */
+         type = read_xe_hw_sp_or_ctx_line(line, &value_ptr, &is_hw_ctx);
+         if (type != XE_VM_TOPIC_TYPE_UNKNOWN) {
+            print_line = false;
+
+            if (!is_hw_ctx)
+               break;
+
+            switch (type) {
+            case XE_VM_TOPIC_TYPE_DATA:
+               if (!ascii85_decode_allocated(value_ptr, vm_entry_data, vm_entry_len))
+                  printf("Failed to parse HWCTX data\n");
+               break;
+            case XE_VM_TOPIC_TYPE_LENGTH: {
+               vm_entry_len = strtoul(value_ptr, NULL, 0);
+               vm_entry_data = calloc(1, vm_entry_len);
+               if (!vm_entry_data) {
+                  printf("Out of memory to allocate a buffer to store content of HWCTX\n");
+                  break;
+               }
+
+               if (is_hw_ctx)
+                  xe_vm_hw_ctx_set(&xe_vm, vm_entry_len, vm_entry_data);
+               break;
+            }
+            case XE_VM_TOPIC_TYPE_ERROR:
+               printf("HWCTX not present in dump, content will be zeroed: %s\n", line);
+               break;
+            default:
+               printf("Not expected line in HWCTX: %s", line);
+            }
+         }
+
+         break;
+      }
       case TOPIC_VM: {
          enum xe_vm_topic_type type;
          const char *value_ptr;
@@ -392,7 +501,7 @@ read_xe_data_file(FILE *file,
             break;
          }
          case XE_VM_TOPIC_TYPE_ERROR:
-            printf("VMA 0x%" PRIx64 " not present in dump, content will be zeroed. %s\n", address, line);
+            printf("VMA 0x%" PRIx64 " not present in dump, content will be zeroed: %s\n", address, line);
             break;
          default:
             printf("Not expected line in VM state: %s", line);
@@ -429,6 +538,21 @@ read_xe_data_file(FILE *file,
 
       bb_data = xe_vm_entry_address_get_data(vm_entry, bb_addr);
       bb_len = xe_vm_entry_address_get_len(vm_entry, bb_addr);
+      print_batch(&batch_ctx, bb_data, bb_addr, bb_len, buffer_name,
+                  engine_name, engine_class, batch_flags, option_print_all_bb,
+                  ring_wraps);
+   }
+
+   printf("**** HW context ****\n");
+   if (xe_vm.hw_context.length) {
+      const char *engine_name = intel_engines_class_to_string(engine_class);
+      const char *buffer_name = "HW Context";
+      const uint64_t bb_addr = 0;
+      const uint32_t *bb_data;
+      uint32_t bb_len;
+
+      bb_data = xe_vm.hw_context.data;
+      bb_len = xe_vm.hw_context.length;
       print_batch(&batch_ctx, bb_data, bb_addr, bb_len, buffer_name,
                   engine_name, engine_class, batch_flags, option_print_all_bb,
                   ring_wraps);

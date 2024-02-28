@@ -1091,6 +1091,45 @@ impl Src {
         }
     }
 
+    pub fn fold_imm(&self, src_type: SrcType) -> Src {
+        let SrcRef::Imm32(mut u) = self.src_ref else {
+            return *self;
+        };
+
+        if self.src_mod.is_none() {
+            return *self;
+        }
+
+        u = match src_type {
+            SrcType::F32 | SrcType::F64 => match self.src_mod {
+                SrcMod::None => u,
+                SrcMod::FAbs => u & !(1_u32 << 31),
+                SrcMod::FNeg => u ^ (1_u32 << 31),
+                SrcMod::FNegAbs => u | (1_u32 << 31),
+                _ => panic!("Not a float source modifier"),
+            },
+            SrcType::I32 => match self.src_mod {
+                SrcMod::None => u,
+                SrcMod::INeg => -(u as i32) as u32,
+                _ => panic!("Not an integer source modifier"),
+            },
+            SrcType::B32 => match self.src_mod {
+                SrcMod::None => u,
+                SrcMod::BNot => !u,
+                _ => panic!("Not a bitwise source modifier"),
+            },
+            _ => {
+                assert!(self.src_mod.is_none());
+                u
+            }
+        };
+
+        Src {
+            src_mod: SrcMod::None,
+            src_ref: u.into(),
+        }
+    }
+
     pub fn as_ssa(&self) -> Option<&SSARef> {
         if self.src_mod.is_none() {
             self.src_ref.as_ssa()
@@ -1193,13 +1232,8 @@ impl Src {
     }
 
     pub fn is_fneg_zero(&self, src_type: SrcType) -> bool {
-        match self.src_ref {
-            SrcRef::Zero | SrcRef::Imm32(0) => {
-                matches!(self.src_mod, SrcMod::FNeg | SrcMod::FNegAbs)
-            }
-            SrcRef::Imm32(0x80000000) => {
-                src_type == SrcType::F32 && self.src_mod.is_none()
-            }
+        match self.fold_imm(src_type).src_ref {
+            SrcRef::Imm32(0x80000000) => src_type == SrcType::F32,
             _ => false,
         }
     }

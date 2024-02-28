@@ -861,15 +861,6 @@ F(rt_message_type,     /* 9+ */ MD(10),  MD( 8), /* 12+ */ MD12(10), MD12(8))
 /** @} */
 
 /**
- * Thread Spawn message function control bits:
- *  @{
- */
-FC(ts_resource_select,  /* 9+ */ MD( 4),  MD( 4), /* 12+ */ -1, -1, devinfo->ver < 11)
-FC(ts_request_type,     /* 9+ */ MD( 1),  MD( 1), /* 12+ */ -1, -1, devinfo->ver < 11)
-F(ts_opcode,           /* 9+ */ MD( 0),  MD( 0), /* 12+ */ MD12(0), MD12(0))
-/** @} */
-
-/**
  * Pixel Interpolator message function control bits:
  *  @{
  */

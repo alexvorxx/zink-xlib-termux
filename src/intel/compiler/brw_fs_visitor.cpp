@@ -970,7 +970,7 @@ fs_visitor::emit_urb_fence()
 void
 fs_visitor::emit_cs_terminate()
 {
-   const fs_builder bld = fs_builder(this).at_end();
+   const fs_builder ubld = fs_builder(this).at_end().exec_all();
 
    /* We can't directly send from g0, since sends with EOT have to use
     * g112-127. So, copy it to a virtual register, The register allocator will
@@ -978,12 +978,36 @@ fs_visitor::emit_cs_terminate()
     */
    struct brw_reg g0 = retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD);
    fs_reg payload = fs_reg(VGRF, alloc.allocate(1), BRW_REGISTER_TYPE_UD);
-   bld.group(8, 0).exec_all().MOV(payload, g0);
+   ubld.group(8, 0).MOV(payload, g0);
 
-   /* Send a message to the thread spawner to terminate the thread. */
-   fs_inst *inst = bld.exec_all()
-                      .emit(CS_OPCODE_CS_TERMINATE, reg_undef, payload);
-   inst->eot = true;
+   /* Set the descriptor to "Dereference Resource" and "Root Thread" */
+   unsigned desc = 0;
+
+   /* Set Resource Select to "Do not dereference URB" on Gfx < 11.
+    *
+    * Note that even though the thread has a URB resource associated with it,
+    * we set the "do not dereference URB" bit, because the URB resource is
+    * managed by the fixed-function unit, so it will free it automatically.
+    */
+   if (devinfo->ver < 11)
+      desc |= (1 << 4); /* Do not dereference URB */
+
+   fs_reg srcs[4] = {
+      brw_imm_ud(desc), /* desc */
+      brw_imm_ud(0), /* ex_desc */
+      payload,       /* payload */
+      fs_reg(),      /* payload2 */
+   };
+
+   fs_inst *send = ubld.emit(SHADER_OPCODE_SEND, reg_undef, srcs, 4);
+
+   /* On Alchemist and later, send an EOT message to the message gateway to
+    * terminate a compute shader.  For older GPUs, send to the thread spawner.
+    */
+   send->sfid = devinfo->verx10 >= 125 ? BRW_SFID_MESSAGE_GATEWAY
+                                       : BRW_SFID_THREAD_SPAWNER;
+   send->mlen = 1;
+   send->eot = true;
 }
 
 fs_visitor::fs_visitor(const struct brw_compiler *compiler,

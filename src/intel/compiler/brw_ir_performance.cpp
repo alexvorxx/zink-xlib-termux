@@ -594,10 +594,6 @@ namespace {
                                0 /* XXX */, 0,
                                0, 0, 0, 0, 0, 0);
 
-      case CS_OPCODE_CS_TERMINATE:
-         return calculate_desc(info, EU_UNIT_SPAWNER, 2, 0, 0, 0 /* XXX */, 0,
-                               10 /* XXX */, 0, 0, 0, 0, 0);
-
       case SHADER_OPCODE_SEND:
          switch (info.sfid) {
          case GFX6_SFID_DATAPORT_CONSTANT_CACHE:
@@ -685,7 +681,8 @@ namespace {
                abort();
             }
 
-         case GEN_RT_SFID_BINDLESS_THREAD_DISPATCH:
+         case BRW_SFID_MESSAGE_GATEWAY:
+         case GEN_RT_SFID_BINDLESS_THREAD_DISPATCH: /* or THREAD_SPAWNER */
          case GEN_RT_SFID_RAY_TRACE_ACCELERATOR:
             return calculate_desc(info, EU_UNIT_SPAWNER, 2, 0, 0, 0 /* XXX */, 0,
                                   10 /* XXX */, 0, 0, 0, 0, 0);

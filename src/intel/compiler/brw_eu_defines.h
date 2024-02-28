@@ -507,11 +507,6 @@ enum opcode {
    FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET,
 
    /**
-    * Terminate the compute shader.
-    */
-   CS_OPCODE_CS_TERMINATE,
-
-   /**
     * GLSL barrier()
     */
    SHADER_OPCODE_BARRIER,

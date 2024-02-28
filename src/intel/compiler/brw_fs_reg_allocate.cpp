@@ -221,24 +221,15 @@ void fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
          }
       }
 
-      /* Special case instructions which have extra implied registers used. */
-      switch (inst->opcode) {
-      case CS_OPCODE_CS_TERMINATE:
+      if (inst->eot) {
+         /* We could omit this for the !inst->header_present case, except
+          * that the simulator apparently incorrectly reads from g0/g1
+          * instead of sideband.  It also really freaks out driver
+          * developers to see g0 used in unusual places, so just always
+          * reserve it.
+          */
          payload_last_use_ip[0] = use_ip;
-         break;
-
-      default:
-         if (inst->eot) {
-            /* We could omit this for the !inst->header_present case, except
-             * that the simulator apparently incorrectly reads from g0/g1
-             * instead of sideband.  It also really freaks out driver
-             * developers to see g0 used in unusual places, so just always
-             * reserve it.
-             */
-            payload_last_use_ip[0] = use_ip;
-            payload_last_use_ip[1] = use_ip;
-         }
-         break;
+         payload_last_use_ip[1] = use_ip;
       }
 
       ip++;

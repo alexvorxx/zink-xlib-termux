@@ -890,7 +890,6 @@ fs_inst::size_read(int arg) const
          return retype(src[arg], BRW_REGISTER_TYPE_UD).component_size(8);
       break;
 
-   case CS_OPCODE_CS_TERMINATE:
    case SHADER_OPCODE_BARRIER:
       return REG_SIZE;
 
@@ -2440,8 +2439,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
       return "interp_per_slot_offset";
 
-   case CS_OPCODE_CS_TERMINATE:
-      return "cs_terminate";
    case SHADER_OPCODE_BARRIER:
       return "barrier";
    case SHADER_OPCODE_MULH:

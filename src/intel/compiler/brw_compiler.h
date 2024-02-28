@@ -607,24 +607,11 @@ struct brw_wm_prog_data {
    unsigned num_per_primitive_inputs;
    unsigned num_varying_inputs;
 
-   uint8_t reg_blocks_8;
-   uint8_t reg_blocks_16;
-   uint8_t reg_blocks_32;
-
    uint8_t dispatch_grf_start_reg_16;
    uint8_t dispatch_grf_start_reg_32;
    uint32_t prog_offset_16;
    uint32_t prog_offset_32;
 
-   struct {
-      /** @{
-       * surface indices the WM-specific surfaces
-       */
-      uint32_t render_target_read_start;
-      /** @} */
-   } binding_table;
-
-   uint8_t color_outputs_written;
    uint8_t computed_depth_mode;
 
    /**
@@ -708,11 +695,6 @@ struct brw_wm_prog_data {
     * The FS inputs
     */
    uint64_t inputs;
-
-   /* Mapping of VUE slots to interpolation modes.
-    * Used by the Gfx4-5 clip/sf/wm stages.
-    */
-   unsigned char interp_mode[65]; /* BRW_VARYING_SLOT_COUNT */
 
    /**
     * Map from gl_varying_slot to the position within the FS setup data
@@ -837,22 +819,6 @@ _brw_wm_prog_data_dispatch_grf_start_reg(const struct brw_wm_prog_data *prog_dat
 
 #define brw_wm_prog_data_dispatch_grf_start_reg(prog_data, wm_state, ksp_idx) \
    _brw_wm_prog_data_dispatch_grf_start_reg(prog_data, \
-      brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
-
-static inline uint8_t
-_brw_wm_prog_data_reg_blocks(const struct brw_wm_prog_data *prog_data,
-                             unsigned simd_width)
-{
-   switch (simd_width) {
-   case 8: return prog_data->reg_blocks_8;
-   case 16: return prog_data->reg_blocks_16;
-   case 32: return prog_data->reg_blocks_32;
-   default: return 0;
-   }
-}
-
-#define brw_wm_prog_data_reg_blocks(prog_data, wm_state, ksp_idx) \
-   _brw_wm_prog_data_reg_blocks(prog_data, \
       brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
 
 static inline bool

@@ -3304,7 +3304,6 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
                           shader->info.fs.uses_demote;
    prog_data->uses_omask = !key->ignore_sample_mask_out &&
       (shader->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK));
-   prog_data->color_outputs_written = key->color_outputs_valid;
    prog_data->max_polygons = 1;
    prog_data->computed_depth_mode = computed_depth_mode(shader);
    prog_data->computed_stencil =
@@ -3446,17 +3445,6 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
    brw_compute_flat_inputs(prog_data, shader);
 }
 
-/**
- * Pre-gfx6, the register file of the EUs was shared between threads,
- * and each thread used some subset allocated on a 16-register block
- * granularity.  The unit states wanted these block counts.
- */
-static inline int
-brw_register_blocks(int reg_count)
-{
-   return ALIGN(reg_count, 16) / 16 - 1;
-}
-
 const unsigned *
 brw_compile_fs(const struct brw_compiler *compiler,
                struct brw_compile_fs_params *params)
@@ -3521,7 +3509,6 @@ brw_compile_fs(const struct brw_compiler *compiler,
          assert(v8->payload().num_regs % reg_unit(devinfo) == 0);
          prog_data->base.dispatch_grf_start_reg = v8->payload().num_regs / reg_unit(devinfo);
 
-         prog_data->reg_blocks_8 = brw_register_blocks(v8->grf_used);
          const performance &perf = v8->performance_analysis.require();
          throughput = MAX2(throughput, perf.throughput);
          has_spilled = v8->spilled_any_registers;
@@ -3561,7 +3548,6 @@ brw_compile_fs(const struct brw_compiler *compiler,
          assert(v16->payload().num_regs % reg_unit(devinfo) == 0);
          prog_data->dispatch_grf_start_reg_16 = v16->payload().num_regs / reg_unit(devinfo);
 
-         prog_data->reg_blocks_16 = brw_register_blocks(v16->grf_used);
          const performance &perf = v16->performance_analysis.require();
          throughput = MAX2(throughput, perf.throughput);
          has_spilled = v16->spilled_any_registers;
@@ -3603,7 +3589,6 @@ brw_compile_fs(const struct brw_compiler *compiler,
             assert(v32->payload().num_regs % reg_unit(devinfo) == 0);
             prog_data->dispatch_grf_start_reg_32 = v32->payload().num_regs / reg_unit(devinfo);
 
-            prog_data->reg_blocks_32 = brw_register_blocks(v32->grf_used);
             throughput = MAX2(throughput, perf.throughput);
          }
       }
@@ -3676,8 +3661,6 @@ brw_compile_fs(const struct brw_compiler *compiler,
       if (multi_cfg) {
          assert(vmulti->payload().num_regs % reg_unit(devinfo) == 0);
          prog_data->base.dispatch_grf_start_reg = vmulti->payload().num_regs / reg_unit(devinfo);
-
-         prog_data->reg_blocks_8 = brw_register_blocks(vmulti->grf_used);
       }
    }
 

@@ -32,14 +32,15 @@ enum ENUM_PACKED nil_sample_layout {
 enum nil_sample_layout nil_choose_sample_layout(uint32_t samples);
 
 enum nil_image_usage_flags {
-   NIL_IMAGE_USAGE_RENDER_TARGET_BIT   = BITFIELD_BIT(0),
-   NIL_IMAGE_USAGE_DEPTH_BIT           = BITFIELD_BIT(1),
-   NIL_IMAGE_USAGE_STENCIL_BIT         = BITFIELD_BIT(2),
-   NIL_IMAGE_USAGE_TEXTURE_BIT         = BITFIELD_BIT(3),
-   NIL_IMAGE_USAGE_STORAGE_BIT         = BITFIELD_BIT(4),
-   NIL_IMAGE_USAGE_CUBE_BIT            = BITFIELD_BIT(5),
-   NIL_IMAGE_USAGE_2D_VIEW_BIT         = BITFIELD_BIT(6),
-   NIL_IMAGE_USAGE_LINEAR_BIT          = BITFIELD_BIT(7),
+   NIL_IMAGE_USAGE_RENDER_TARGET_BIT      = BITFIELD_BIT(0),
+   NIL_IMAGE_USAGE_DEPTH_BIT              = BITFIELD_BIT(1),
+   NIL_IMAGE_USAGE_STENCIL_BIT            = BITFIELD_BIT(2),
+   NIL_IMAGE_USAGE_TEXTURE_BIT            = BITFIELD_BIT(3),
+   NIL_IMAGE_USAGE_STORAGE_BIT            = BITFIELD_BIT(4),
+   NIL_IMAGE_USAGE_CUBE_BIT               = BITFIELD_BIT(5),
+   NIL_IMAGE_USAGE_2D_VIEW_BIT            = BITFIELD_BIT(6),
+   NIL_IMAGE_USAGE_LINEAR_BIT             = BITFIELD_BIT(7),
+   NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT   = BITFIELD_BIT(8),
 };
 
 enum ENUM_PACKED nil_view_type {
@@ -148,6 +149,7 @@ struct nil_image {
    struct nil_extent4d extent_px;
    enum nil_sample_layout sample_layout;
    uint8_t num_levels;
+   uint8_t mip_tail_first_lod;
 
    struct nil_image_level levels[NIL_MAX_LEVELS];
 
@@ -218,6 +220,19 @@ nil_image_level_layer_offset_B(const struct nil_image *image,
    return image->levels[level].offset_B + (layer * image->array_stride_B);
 }
 
+static inline uint32_t
+nil_image_mip_tail_offset_B(const struct nil_image *image)
+{
+   assert(image->mip_tail_first_lod > 0);
+   return image->levels[image->mip_tail_first_lod].offset_B;
+}
+
+static inline uint32_t
+nil_image_mip_tail_size_B(const struct nil_image *image)
+{
+   return image->array_stride_B - nil_image_mip_tail_offset_B(image);
+}
+
 struct nil_extent4d
 nil_extent4d_px_to_tl(struct nil_extent4d extent_px,
                       struct nil_tiling tiling, enum pipe_format format,
@@ -263,5 +278,10 @@ void nil_buffer_fill_tic(struct nv_device_info *dev,
                          enum pipe_format format,
                          uint32_t num_elements,
                          void *desc_out);
+
+struct nil_extent4d
+nil_sparse_block_extent_px(enum pipe_format format,
+                           enum nil_image_dim dim,
+                           enum nil_sample_layout sample_layout);
 
 #endif /* NIL_IMAGE_H */

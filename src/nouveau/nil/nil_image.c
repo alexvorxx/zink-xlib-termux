@@ -277,6 +277,85 @@ choose_tiling(struct nil_extent4d extent_px,
    return nil_tiling_clamp(tiling, extent_B);
 }
 
+static struct nil_extent4d
+nil_sparse_block_extent_el(enum pipe_format format,
+                           enum nil_image_dim dim)
+{
+   /* Taken from Vulkan 1.3.279 spec section entitled "Standard Sparse Image
+    * Block Shapes".
+    */
+   switch (dim) {
+   case NIL_IMAGE_DIM_2D:
+      switch (util_format_get_blocksizebits(format)) {
+      case 8:   return nil_extent4d(256, 256, 1, 1);
+      case 16:  return nil_extent4d(256, 128, 1, 1);
+      case 32:  return nil_extent4d(128, 128, 1, 1);
+      case 64:  return nil_extent4d(128, 64,  1, 1);
+      case 128: return nil_extent4d(64,  64,  1, 1);
+      default:  unreachable("Invalid texel size");
+      }
+   case NIL_IMAGE_DIM_3D:
+      switch (util_format_get_blocksizebits(format)) {
+      case 8:   return nil_extent4d(64, 32, 32, 1);
+      case 16:  return nil_extent4d(32, 32, 32, 1);
+      case 32:  return nil_extent4d(32, 32, 16, 1);
+      case 64:  return nil_extent4d(32, 16, 16, 1);
+      case 128: return nil_extent4d(16, 16, 16, 1);
+      default:  unreachable("Invalid texel size");
+      }
+   default:
+      unreachable("Invalid dimension");
+   }
+}
+
+struct nil_extent4d
+nil_sparse_block_extent_px(enum pipe_format format,
+                           enum nil_image_dim dim,
+                           enum nil_sample_layout sample_layout)
+{
+   struct nil_extent4d block_extent_el =
+      nil_sparse_block_extent_el(format, dim);
+   const struct nil_extent4d el_extent_sa = nil_el_extent_sa(format);
+   struct nil_extent4d block_extent_sa =
+      nil_extent4d_mul(block_extent_el, el_extent_sa);
+
+   return nil_extent4d_div_round_up(block_extent_sa,
+                                    nil_px_extent_sa(sample_layout));
+}
+
+static struct nil_extent4d
+nil_sparse_block_extent_B(enum pipe_format format,
+                          enum nil_image_dim dim)
+{
+   const struct nil_extent4d block_extent_el =
+      nil_sparse_block_extent_el(format, dim);
+   const uint32_t B_per_el = util_format_get_blocksize(format);
+   return nil_extent4d_el_to_B(block_extent_el, B_per_el);
+}
+
+static struct nil_tiling
+sparse_tiling(enum pipe_format format, enum nil_image_dim dim)
+{
+   const struct nil_extent4d sparse_block_extent_B =
+      nil_sparse_block_extent_B(format, dim);
+
+   assert(util_is_power_of_two_or_zero(sparse_block_extent_B.w));
+   assert(util_is_power_of_two_or_zero(sparse_block_extent_B.h));
+   assert(util_is_power_of_two_or_zero(sparse_block_extent_B.d));
+
+   const bool gob_height_8 = true;
+   const struct nil_extent4d sparse_block_extent_GOB =
+      nil_extent4d_B_to_GOB(sparse_block_extent_B, gob_height_8);
+
+   return (struct nil_tiling) {
+      .is_tiled = true,
+      .gob_height_8 = gob_height_8,
+      .x_log2 = util_logbase2(sparse_block_extent_GOB.w),
+      .y_log2 = util_logbase2(sparse_block_extent_GOB.h),
+      .z_log2 = util_logbase2(sparse_block_extent_GOB.d),
+   };
+}
+
 uint32_t
 nil_tiling_size_B(struct nil_tiling tiling)
 {
@@ -523,8 +602,14 @@ nil_image_init(struct nv_device_info *dev,
 
    const enum nil_sample_layout sample_layout =
       nil_choose_sample_layout(info->samples);
-   const struct nil_tiling tiling =
-      choose_tiling(info->extent_px, info->format, sample_layout, info->usage);
+
+   struct nil_tiling tiling;
+   if (info->usage & NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT) {
+      tiling = sparse_tiling(info->format, info->dim);
+   } else {
+      tiling = choose_tiling(info->extent_px, info->format,
+                             sample_layout, info->usage);
+   }
 
    *image = (struct nil_image) {
       .dim = info->dim,
@@ -534,12 +619,20 @@ nil_image_init(struct nv_device_info *dev,
       .num_levels = info->levels,
    };
 
+   /* If the client requested sparse, default mip_tail_firs_lod to the number
+    * of mip levels and we'll clamp it as needed in the loop below.
+    */
+   if (info->usage & NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT)
+      image->mip_tail_first_lod = info->levels;
+
    uint64_t layer_size_B = 0;
    for (uint32_t l = 0; l < info->levels; l++) {
       struct nil_extent4d lvl_ext_B = image_level_extent_B(image, l);
       if (tiling.is_tiled) {
          struct nil_tiling lvl_tiling = nil_tiling_clamp(tiling, lvl_ext_B);
-         assert(l > 0 || nil_tiling_eq(tiling, lvl_tiling));
+
+         if (!nil_tiling_eq(tiling, lvl_tiling))
+            image->mip_tail_first_lod = MIN2(image->mip_tail_first_lod, l);
 
          /* Align the size to tiles */
          struct nil_extent4d lvl_tiling_ext_B = nil_tiling_extent_B(lvl_tiling);
@@ -568,6 +661,12 @@ nil_image_init(struct nv_device_info *dev,
       layer_size_B += nil_image_level_size_B(image, l);
    }
 
+   /* We use the tiling for level 0 instead of the tiling selected above
+    * because, in the case of sparse residency with small images, level 0 may
+    * have a smaller tiling than what we tried to use.  However, the level 0
+    * tiling is the one we program in the hardware so that's the one we need
+    * to use for array stride calculations and the like.
+    */
    const uint32_t lvl0_tiling_size_B =
       nil_tiling_size_B(image->levels[0].tiling);
 
@@ -576,6 +675,13 @@ nil_image_init(struct nv_device_info *dev,
 
    image->size_B = (uint64_t)image->array_stride_B * image->extent_px.a;
    image->align_B = lvl0_tiling_size_B;
+
+   /* If the client requested sparse residency, we need a 64K alignment or
+    * else sparse binding may fail.  This is true regardless of whether or
+    * not we actually select a 64K tile format.
+    */
+   if (info->usage & NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT)
+      image->align_B = MAX2(image->align_B, (1 << 16));
 
    if (image->levels[0].tiling.is_tiled) {
       image->tile_mode = (uint16_t)image->levels[0].tiling.y_log2 << 4 |
@@ -649,6 +755,7 @@ nil_image_for_level(const struct nil_image *image_in,
       .size_B = size_B,
       .tile_mode = image_in->tile_mode,
       .pte_kind = image_in->pte_kind,
+      .mip_tail_first_lod = level < image_in->mip_tail_first_lod ? 1 : 0,
    };
 }
 

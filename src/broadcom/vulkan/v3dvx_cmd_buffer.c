@@ -2060,7 +2060,7 @@ v3dX(cmd_buffer_execute_inside_pass)(struct v3dv_cmd_buffer *primary,
 
       list_for_each_entry(struct v3dv_job, secondary_job,
                           &secondary->jobs, list_link) {
-         if (secondary_job->type == V3DV_JOB_TYPE_GPU_CL_SECONDARY) {
+         if (secondary_job->type == V3DV_JOB_TYPE_GPU_CL_INCOMPLETE) {
             /* If the job is a CL, then we branch to it from the primary BCL.
              * In this case the secondary's BCL is finished with a
              * RETURN_FROM_SUB_LIST command to return back to the primary BCL

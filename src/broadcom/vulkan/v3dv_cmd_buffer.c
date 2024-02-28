@@ -128,7 +128,7 @@ static void
 job_destroy_gpu_cl_resources(struct v3dv_job *job)
 {
    assert(job->type == V3DV_JOB_TYPE_GPU_CL ||
-          job->type == V3DV_JOB_TYPE_GPU_CL_SECONDARY);
+          job->type == V3DV_JOB_TYPE_GPU_CL_INCOMPLETE);
 
    v3dv_cl_destroy(&job->bcl);
    v3dv_cl_destroy(&job->rcl);
@@ -193,7 +193,7 @@ v3dv_job_destroy(struct v3dv_job *job)
    if (!job->is_clone) {
       switch (job->type) {
       case V3DV_JOB_TYPE_GPU_CL:
-      case V3DV_JOB_TYPE_GPU_CL_SECONDARY:
+      case V3DV_JOB_TYPE_GPU_CL_INCOMPLETE:
          job_destroy_gpu_cl_resources(job);
          break;
       case V3DV_JOB_TYPE_GPU_CSD:
@@ -694,7 +694,7 @@ v3dv_cmd_buffer_finish_job(struct v3dv_cmd_buffer *cmd_buffer)
       if (job->type == V3DV_JOB_TYPE_GPU_CL) {
          cmd_buffer_end_render_pass_frame(cmd_buffer);
       } else {
-         assert(job->type == V3DV_JOB_TYPE_GPU_CL_SECONDARY);
+         assert(job->type == V3DV_JOB_TYPE_GPU_CL_INCOMPLETE);
          v3dv_X(cmd_buffer->device, cmd_buffer_end_render_pass_secondary)(cmd_buffer);
       }
    }
@@ -723,7 +723,7 @@ v3dv_job_type_is_gpu(struct v3dv_job *job)
 {
    switch (job->type) {
    case V3DV_JOB_TYPE_GPU_CL:
-   case V3DV_JOB_TYPE_GPU_CL_SECONDARY:
+   case V3DV_JOB_TYPE_GPU_CL_INCOMPLETE:
    case V3DV_JOB_TYPE_GPU_TFU:
    case V3DV_JOB_TYPE_GPU_CSD:
       return true;
@@ -756,13 +756,13 @@ cmd_buffer_serialize_job_if_needed(struct v3dv_cmd_buffer *cmd_buffer,
       src_mask = &cmd_buffer->state.barrier.src_mask_compute;
    } else if (job->is_transfer) {
       assert(job->type == V3DV_JOB_TYPE_GPU_CL ||
-             job->type == V3DV_JOB_TYPE_GPU_CL_SECONDARY ||
+             job->type == V3DV_JOB_TYPE_GPU_CL_INCOMPLETE ||
              job->type == V3DV_JOB_TYPE_GPU_TFU);
       bit = V3DV_BARRIER_TRANSFER_BIT;
       src_mask = &cmd_buffer->state.barrier.src_mask_transfer;
    } else {
       assert(job->type == V3DV_JOB_TYPE_GPU_CL ||
-             job->type == V3DV_JOB_TYPE_GPU_CL_SECONDARY);
+             job->type == V3DV_JOB_TYPE_GPU_CL_INCOMPLETE);
       bit = V3DV_BARRIER_GRAPHICS_BIT;
       src_mask = &cmd_buffer->state.barrier.src_mask_graphics;
    }
@@ -794,7 +794,7 @@ v3dv_job_init(struct v3dv_job *job,
    list_inithead(&job->list_link);
 
    if (type == V3DV_JOB_TYPE_GPU_CL ||
-       type == V3DV_JOB_TYPE_GPU_CL_SECONDARY ||
+       type == V3DV_JOB_TYPE_GPU_CL_INCOMPLETE ||
        type == V3DV_JOB_TYPE_GPU_CSD) {
       job->bos =
          _mesa_set_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
@@ -807,7 +807,7 @@ v3dv_job_init(struct v3dv_job *job,
    }
 
    if (type == V3DV_JOB_TYPE_GPU_CL ||
-       type == V3DV_JOB_TYPE_GPU_CL_SECONDARY) {
+       type == V3DV_JOB_TYPE_GPU_CL_INCOMPLETE) {
       v3dv_cl_init(job, &job->bcl);
       v3dv_cl_init(job, &job->rcl);
    }
@@ -1051,7 +1051,7 @@ cmd_buffer_begin_render_pass_secondary(
     */
    struct v3dv_job *job =
       v3dv_cmd_buffer_start_job(cmd_buffer, inheritance_info->subpass,
-                                V3DV_JOB_TYPE_GPU_CL_SECONDARY);
+                                V3DV_JOB_TYPE_GPU_CL_INCOMPLETE);
    if (!job) {
       v3dv_flag_oom(cmd_buffer, NULL);
       return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -1697,7 +1697,7 @@ cmd_buffer_subpass_create_job(struct v3dv_cmd_buffer *cmd_buffer,
                               bool is_subpass_start)
 {
    assert(type == V3DV_JOB_TYPE_GPU_CL ||
-          type == V3DV_JOB_TYPE_GPU_CL_SECONDARY);
+          type == V3DV_JOB_TYPE_GPU_CL_INCOMPLETE);
 
    struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
    assert(subpass_idx < state->pass->subpass_count);
@@ -1719,7 +1719,7 @@ cmd_buffer_subpass_create_job(struct v3dv_cmd_buffer *cmd_buffer,
    state->subpass_idx = subpass_idx;
 
    /* If we are starting a new job we need to setup binning. We only do this
-    * for V3DV_JOB_TYPE_GPU_CL jobs because V3DV_JOB_TYPE_GPU_CL_SECONDARY
+    * for V3DV_JOB_TYPE_GPU_CL jobs because V3DV_JOB_TYPE_GPU_CL_INCOMPLETE
     * jobs are not submitted to the GPU directly, and are instead meant to be
     * branched to from other V3DV_JOB_TYPE_GPU_CL jobs. With dynamic rendering,
     * all resuming jobs work similarly to secondary command buffers, so we
@@ -1831,7 +1831,7 @@ v3dv_cmd_buffer_subpass_resume(struct v3dv_cmd_buffer *cmd_buffer,
    } else {
       assert(cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY);
       job = cmd_buffer_subpass_create_job(cmd_buffer, subpass_idx,
-                                          V3DV_JOB_TYPE_GPU_CL_SECONDARY, false);
+                                          V3DV_JOB_TYPE_GPU_CL_INCOMPLETE, false);
    }
 
    if (!job)
@@ -2002,7 +2002,7 @@ cmd_buffer_execute_outside_pass(struct v3dv_cmd_buffer *primary,
       list_for_each_entry(struct v3dv_job, secondary_job,
                           &secondary->jobs, list_link) {
          /* These can only happen inside a render pass */
-         assert(secondary_job->type != V3DV_JOB_TYPE_GPU_CL_SECONDARY);
+         assert(secondary_job->type != V3DV_JOB_TYPE_GPU_CL_INCOMPLETE);
          struct v3dv_job *job = v3dv_job_clone_in_cmd_buffer(secondary_job, primary);
          if (!job)
             return;

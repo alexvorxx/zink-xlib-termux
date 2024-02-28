@@ -67,6 +67,9 @@ enum etna_feature {
 struct etna_core_info {
    uint32_t model;
    uint32_t revision;
+   uint32_t product_id;
+   uint32_t eco_id;
+   uint32_t customer_id;
 
    BITSET_DECLARE(feature, ETNA_FEATURE_NUM);
 };

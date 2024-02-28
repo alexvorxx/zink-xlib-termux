@@ -181,6 +181,12 @@ struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 
 	DEBUG_MSG(" GPU model:          0x%x (rev %x)", gpu->info.model, gpu->info.revision);
 
+	if (dev->drm_version >= ETNA_DRM_VERSION(1, 4)) {
+		gpu->info.product_id = get_param(dev, core, ETNAVIV_PARAM_GPU_PRODUCT_ID);
+		gpu->info.customer_id = get_param(dev, core, ETNAVIV_PARAM_GPU_CUSTOMER_ID);
+		gpu->info.eco_id = get_param(dev, core, ETNAVIV_PARAM_GPU_ECO_ID);
+	}
+
 	query_features_from_kernel(gpu);
 
 	return gpu;
@@ -285,13 +291,13 @@ int etna_gpu_get_param(struct etna_gpu *gpu, enum etna_param_id param,
 		*value = get_param(dev, core, ETNA_SOFTPIN_START_ADDR);
 		return 0;
 	case ETNA_GPU_PRODUCT_ID:
-		*value = get_param(dev, core, ETNA_GPU_PRODUCT_ID);
+		*value = gpu->info.product_id;
 		return 0;
 	case ETNA_GPU_CUSTOMER_ID:
-		*value = get_param(dev, core, ETNA_GPU_CUSTOMER_ID);
+		*value = gpu->info.customer_id;
 		return 0;
 	case ETNA_GPU_ECO_ID:
-		*value = get_param(dev, core, ETNA_GPU_ECO_ID);
+		*value = gpu->info.eco_id;
 		return 0;
 	case ETNA_GPU_NN_CORE_COUNT:
 		*value = get_param(dev, core, ETNA_GPU_NN_CORE_COUNT);

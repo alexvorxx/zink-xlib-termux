@@ -198,3 +198,8 @@ int etna_gpu_get_param(struct etna_gpu *gpu, enum etna_param_id param,
 
 	return 0;
 }
+
+struct etna_core_info *etna_gpu_get_core_info(struct etna_gpu *gpu)
+{
+	return &gpu->info;
+}

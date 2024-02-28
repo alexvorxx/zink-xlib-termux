@@ -257,6 +257,14 @@ read_xe_data_file(FILE *file,
    struct xe_vm xe_vm;
    char *line = NULL;
    size_t line_size;
+   enum  {
+      TOPIC_DEVICE = 0,
+      TOPIC_GUC_CT,
+      TOPIC_JOB,
+      TOPIC_HW_ENGINES,
+      TOPIC_VM,
+      TOPIC_INVALID,
+   } xe_topic = TOPIC_INVALID;
 
    xe_vm_init(&xe_vm);
 
@@ -268,14 +276,6 @@ read_xe_data_file(FILE *file,
          "**** HW Engines ****",
          "**** VM state ****",
       };
-      enum  {
-         TOPIC_DEVICE = 0,
-         TOPIC_GUC_CT,
-         TOPIC_JOB,
-         TOPIC_HW_ENGINES,
-         TOPIC_VM,
-         TOPIC_INVALID,
-      } xe_topic = TOPIC_INVALID;
       bool topic_changed = false;
       bool print_line = true;
 

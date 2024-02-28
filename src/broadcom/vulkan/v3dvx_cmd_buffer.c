@@ -2756,15 +2756,35 @@ v3dX(job_patch_resume_address)(struct v3dv_job *first_suspend,
    assert(suspend && suspend->suspending);
    assert(suspend->suspend_branch_inst_ptr != NULL);
 
+   /* We need to be extra careful when patching resuming addresses when
+    * secondary command buffers are involved: we execute secondaries by
+    * cloning them into the primary, but the cloning is not deep, which
+    * means the command lists still point to the original job we cloned
+    * from. This is important when we are patching the resume address
+    * since the BRANCH instruction will try to add the BO of the address
+    * to the original job (obtianed thought the BCL reference) instead of
+    * the clone and this will cause a mismatch between the bo_count in the
+    * clone job and its bo_set. To avoid that, we specify the address through
+    * an absolute offset rather than a bo + relative_offset and (we also
+    * avoid specifying the BCL list in the cl_packet_pack call below for extra
+    * safety). This will ensure the BO is not added automatically when packing
+    * the branch instruction. We are going to manually add all the BOs from the
+    * resume job into the first suspended job right below anyway, so this is
+    * fine.
+    *
+    * FIXME: this is very hacky, maybe we should consider making proper clones
+    * of the secondaries when we merge them into primaries to avoid
+    * this kind of situations.
+    */
    struct v3dv_bo *resume_bo =
       list_first_entry(&resume->bcl.bo_list, struct v3dv_bo, list_link);
    struct cl_packet_struct(BRANCH) branch = {
       cl_packet_header(BRANCH),
    };
-   branch.address = v3dv_cl_address(resume_bo, 0);
+   branch.address = v3dv_cl_address(NULL, resume_bo->offset);
 
    uint8_t *rewrite_addr = (uint8_t *) suspend->suspend_branch_inst_ptr;
-   cl_packet_pack(BRANCH)(&suspend->bcl, rewrite_addr, &branch);
+   cl_packet_pack(BRANCH)(NULL, rewrite_addr, &branch);
 
    if (resume != first_suspend) {
       set_foreach(resume->bos, entry) {

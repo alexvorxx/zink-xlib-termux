@@ -713,13 +713,7 @@ anv_stage_write_shader_hash(struct anv_pipeline_stage *stage,
 
    vk_pipeline_hash_shader_stage(stage->info, &stage->rstate, stage->shader_sha1);
 
-   stage->robust_flags =
-      ((stage->rstate.storage_buffers !=
-        VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT) ?
-       BRW_ROBUSTNESS_SSBO : 0) |
-      ((stage->rstate.uniform_buffers !=
-        VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT) ?
-       BRW_ROBUSTNESS_UBO : 0);
+   stage->robust_flags = anv_get_robust_flags(&stage->rstate);
 
    /* Use lowest dword of source shader sha1 for shader hash. */
    stage->source_hash = ((uint32_t*)stage->shader_sha1)[0];

@@ -627,6 +627,10 @@ llvmpipe_resource_from_handle(struct pipe_screen *_screen,
    /* no miplevels */
    assert(template->last_level == 0);
 
+   /* Multiplanar surfaces are not supported */
+   if (whandle->plane > 0)
+      return NULL;
+
    lpr = CALLOC_STRUCT(llvmpipe_resource);
    if (!lpr) {
       goto no_lpr;
@@ -647,42 +651,55 @@ llvmpipe_resource_from_handle(struct pipe_screen *_screen,
    assert(lpr->base.height0 == height);
 #endif
 
-   void *data;
-#ifdef HAVE_LIBDRM
-   struct llvmpipe_memory_fd_alloc *alloc;
-   uint64_t size;
-   if(_screen->import_memory_fd(_screen, whandle->handle, (struct pipe_memory_allocation**)&alloc, &size, true)) {
-      data = alloc->data;
-      lpr->dt = winsys->displaytarget_create_mapped(winsys, template->bind,
-                                                    template->format, template->width0, template->height0,
-                                                    whandle->stride, data);
-      if (!lpr->dt)
-         goto no_dt;
-      lpr->dmabuf_alloc = alloc;
-   } else
-#endif
-   {
-      lpr->dt = winsys->displaytarget_from_handle(winsys,
-                                                  template,
-                                                  whandle,
-                                                  &lpr->row_stride[0]);
-      if (!lpr->dt)
-         goto no_dt;
-      data = winsys->displaytarget_map(winsys, lpr->dt, PIPE_MAP_READ_WRITE);
-   }
-   if (!data) {
-      winsys->displaytarget_destroy(winsys, lpr->dt);
-      goto no_dt;
-   }
-
-   lpr->row_stride[0] = whandle->stride;
    unsigned nblocksy = util_format_get_nblocksy(template->format, align(template->height0, LP_RASTER_BLOCK_SIZE));
-   lpr->img_stride[0] = whandle->stride * nblocksy;
+   if (whandle->type == WINSYS_HANDLE_TYPE_UNBACKED && whandle->image_stride)
+      lpr->img_stride[0] = whandle->image_stride;
+   else
+      lpr->img_stride[0] = whandle->stride * nblocksy;
    lpr->sample_stride = lpr->img_stride[0];
    lpr->size_required = lpr->sample_stride;
 
-   assert(llvmpipe_resource_is_texture(&lpr->base));
-   lpr->tex_data = data;
+   if (whandle->type != WINSYS_HANDLE_TYPE_UNBACKED) {
+      void *data;
+#ifdef HAVE_LIBDRM
+      struct llvmpipe_memory_fd_alloc *alloc;
+      uint64_t size;
+      if(_screen->import_memory_fd(_screen, whandle->handle, (struct pipe_memory_allocation**)&alloc, &size, true)) {
+         data = alloc->data;
+         lpr->dt = winsys->displaytarget_create_mapped(winsys, template->bind,
+                                                       template->format, template->width0, template->height0,
+                                                       whandle->stride, data);
+         if (!lpr->dt)
+            goto no_dt;
+         lpr->dmabuf_alloc = alloc;
+         whandle->size = size;
+      } else
+#endif
+      {
+         lpr->dt = winsys->displaytarget_from_handle(winsys,
+                                                     template,
+                                                     whandle,
+                                                     &lpr->row_stride[0]);
+         if (!lpr->dt)
+            goto no_dt;
+         data = winsys->displaytarget_map(winsys, lpr->dt, PIPE_MAP_READ_WRITE);
+         if (!data) {
+            winsys->displaytarget_destroy(winsys, lpr->dt);
+            goto no_dt;
+         }
+
+         whandle->size = lpr->size_required;
+      }
+
+      assert(llvmpipe_resource_is_texture(&lpr->base));
+      lpr->tex_data = data;
+   } else {
+      whandle->size = lpr->size_required;
+      lpr->backable = true;
+   }
+
+   lpr->row_stride[0] = whandle->stride;
+
    lpr->id = id_counter++;
    lpr->dmabuf = true;
 
@@ -733,7 +750,7 @@ llvmpipe_resource_get_handle(struct pipe_screen *_screen,
          if (!lpr->imported_memory)
             align_free(is_tex ? lpr->tex_data : lpr->data);
          if (is_tex)
-            lpr->tex_data = lpr->dmabuf_alloc;
+            lpr->tex_data = lpr->dmabuf_alloc->data;
          else
             lpr->data = lpr->dmabuf_alloc->data;
          /* reuse lavapipe codepath to handle destruction */
@@ -1261,14 +1278,15 @@ llvmpipe_free_memory_fd(struct pipe_screen *screen,
 
 #endif
 
-
 static bool
-llvmpipe_resource_bind_backing(struct pipe_screen *screen,
+llvmpipe_resource_bind_backing(struct pipe_screen *pscreen,
                                struct pipe_resource *pt,
                                struct pipe_memory_allocation *pmem,
                                uint64_t offset)
 {
+   struct llvmpipe_screen *screen = llvmpipe_screen(pscreen);
    struct llvmpipe_resource *lpr = llvmpipe_resource(pt);
+   struct sw_winsys *winsys = screen->winsys;
 
    if (!lpr->backable)
       return false;
@@ -1278,6 +1296,25 @@ llvmpipe_resource_bind_backing(struct pipe_screen *screen,
          return false;
 
       lpr->tex_data = (char *)pmem + offset;
+
+      if (lpr->dmabuf) {
+         if (lpr->dt)
+            winsys->displaytarget_destroy(winsys, lpr->dt);
+         if (pmem) {
+            /* Round up the surface size to a multiple of the tile size to
+             * avoid tile clipping.
+             */
+            const unsigned width = MAX2(1, align(lpr->base.width0, TILE_SIZE));
+            const unsigned height = MAX2(1, align(lpr->base.height0, TILE_SIZE));
+
+            lpr->dt = winsys->displaytarget_create_mapped(winsys,
+                                                          lpr->base.bind,
+                                                          lpr->base.format,
+                                                          width, height,
+                                                          lpr->row_stride[0],
+                                                          lpr->tex_data);
+         }
+      }
    } else
       lpr->data = (char *)pmem + offset;
    lpr->backing_offset = offset;

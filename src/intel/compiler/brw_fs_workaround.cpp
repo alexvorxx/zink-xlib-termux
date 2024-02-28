@@ -19,7 +19,7 @@ brw_fs_workaround_emit_dummy_mov_instruction(fs_visitor &s)
    if (!intel_needs_workaround(s.devinfo, 14015360517))
       return false;
 
-   struct backend_instruction *first_inst =
+   fs_inst *first_inst =
       s.cfg->first_block()->start();
 
    /* We can skip the WA if first instruction is marked with

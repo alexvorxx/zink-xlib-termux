@@ -108,12 +108,12 @@ brw_fs_opt_predicated_break(fs_visitor &s)
       /* DO instructions, by definition, can only be found at the beginning of
        * basic blocks.
        */
-      backend_instruction *const do_inst = block->start();
+      fs_inst *const do_inst = block->start();
 
       /* BREAK, CONTINUE, and WHILE instructions, by definition, can only be
        * found at the ends of basic blocks.
        */
-      backend_instruction *jump_inst = block->end();
+      fs_inst *jump_inst = block->end();
 
       if (do_inst->opcode == BRW_OPCODE_DO)
          enter_loop(&state);
@@ -130,11 +130,11 @@ brw_fs_opt_predicated_break(fs_visitor &s)
           jump_inst->opcode != BRW_OPCODE_CONTINUE)
          continue;
 
-      backend_instruction *if_inst = block->prev()->end();
+      fs_inst *if_inst = block->prev()->end();
       if (if_inst->opcode != BRW_OPCODE_IF)
          continue;
 
-      backend_instruction *endif_inst = block->next()->start();
+      fs_inst *endif_inst = block->next()->start();
       if (endif_inst->opcode != BRW_OPCODE_ENDIF)
          continue;
 
@@ -219,7 +219,7 @@ brw_fs_opt_predicated_break(fs_visitor &s)
        * CONT instruction.
        */
       bblock_t *while_block = earlier_block->next();
-      backend_instruction *while_inst = while_block->start();
+      fs_inst *while_inst = while_block->start();
 
       if (jump_inst->opcode == BRW_OPCODE_BREAK &&
           while_inst->opcode == BRW_OPCODE_WHILE &&

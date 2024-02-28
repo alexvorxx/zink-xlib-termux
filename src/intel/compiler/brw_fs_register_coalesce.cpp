@@ -331,7 +331,7 @@ brw_fs_opt_register_coalesce(fs_visitor &s)
    }
 
    if (progress) {
-      foreach_block_and_inst_safe (block, backend_instruction, inst, s.cfg) {
+      foreach_block_and_inst_safe (block, fs_inst, inst, s.cfg) {
          if (inst->opcode == BRW_OPCODE_NOP) {
             inst->remove(block, true);
          }

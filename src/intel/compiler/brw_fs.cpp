@@ -2808,7 +2808,7 @@ fs_visitor::compute_max_register_pressure()
 {
    const register_pressure &rp = regpressure_analysis.require();
    uint32_t ip = 0, max_pressure = 0;
-   foreach_block_and_inst(block, backend_instruction, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, cfg) {
       max_pressure = MAX2(max_pressure, rp.regs_live_at_ip[ip]);
       ip++;
    }

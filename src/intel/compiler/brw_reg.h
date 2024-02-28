@@ -120,41 +120,6 @@ brw_compose_swizzle(unsigned swz0, unsigned swz1)
 }
 
 /**
- * Return the result of applying swizzle \p swz to shuffle the bits of \p mask
- * (AKA image).
- */
-static inline unsigned
-brw_apply_swizzle_to_mask(unsigned swz, unsigned mask)
-{
-   unsigned result = 0;
-
-   for (unsigned i = 0; i < 4; i++) {
-      if (mask & (1 << BRW_GET_SWZ(swz, i)))
-         result |= 1 << i;
-   }
-
-   return result;
-}
-
-/**
- * Return the result of applying the inverse of swizzle \p swz to shuffle the
- * bits of \p mask (AKA preimage).  Useful to find out which components are
- * read from a swizzled source given the instruction writemask.
- */
-static inline unsigned
-brw_apply_inv_swizzle_to_mask(unsigned swz, unsigned mask)
-{
-   unsigned result = 0;
-
-   for (unsigned i = 0; i < 4; i++) {
-      if (mask & (1 << i))
-         result |= 1 << BRW_GET_SWZ(swz, i);
-   }
-
-   return result;
-}
-
-/**
  * Construct an identity swizzle for the set of enabled channels given by \p
  * mask.  The result will only reference channels enabled in the provided \p
  * mask, assuming that \p mask is non-zero.  The constructed swizzle will
@@ -177,28 +142,6 @@ brw_swizzle_for_mask(unsigned mask)
       last = swz[i] = (mask & (1 << i) ? i : last);
 
    return BRW_SWIZZLE4(swz[0], swz[1], swz[2], swz[3]);
-}
-
-/**
- * Construct an identity swizzle for the first \p n components of a vector.
- * When only a subset of channels of a vec4 are used we don't want to
- * reference the other channels, as that will tell optimization passes that
- * those other channels are used.
- */
-static inline unsigned
-brw_swizzle_for_size(unsigned n)
-{
-   return brw_swizzle_for_mask((1 << n) - 1);
-}
-
-/**
- * Converse of brw_swizzle_for_mask().  Returns the mask of components
- * accessed by the specified swizzle \p swz.
- */
-static inline unsigned
-brw_mask_for_swizzle(unsigned swz)
-{
-   return brw_apply_inv_swizzle_to_mask(swz, ~0);
 }
 
 uint32_t brw_swizzle_immediate(enum brw_reg_type type, uint32_t x, unsigned swz);

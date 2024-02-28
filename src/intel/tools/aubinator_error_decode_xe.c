@@ -234,6 +234,33 @@ get_bo(void *user_data, bool ppgtt, uint64_t bo_addr)
    return ret;
 }
 
+static void
+print_batch(struct intel_batch_decode_ctx *batch_ctx, const uint32_t *bb_data,
+            const uint64_t bb_addr, uint32_t bb_len, const char *buffer_name,
+            const char *engine_name, enum intel_engine_class engine_class,
+            enum intel_batch_decode_flags batch_flags,
+            bool option_print_all_bb, bool ring_wraps)
+{
+   bool is_ring_buffer;
+
+   printf("--- %s (%s) at 0x%016"PRIx64"\n", buffer_name, engine_name, bb_addr);
+
+   /* TODO: checks around buffer_name are copied from i915, if Xe KMD
+    * starts to dump HW context or ring buffer this might become
+    * useful.
+    */
+   is_ring_buffer = strcmp(buffer_name, "ring buffer") == 0;
+   if (option_print_all_bb || is_ring_buffer ||
+       strcmp(buffer_name, "batch buffer") == 0 ||
+       strcmp(buffer_name, "HW Context") == 0) {
+      if (is_ring_buffer && ring_wraps)
+         batch_ctx->flags &= ~INTEL_BATCH_DECODE_OFFSETS;
+      batch_ctx->engine = engine_class;
+      intel_print_batch(batch_ctx, bb_data, bb_len, bb_addr, is_ring_buffer);
+      batch_ctx->flags = batch_flags;
+   }
+}
+
 void
 read_xe_data_file(FILE *file,
                   enum intel_batch_decode_flags batch_flags,
@@ -395,7 +422,6 @@ read_xe_data_file(FILE *file,
       const char *engine_name = intel_engines_class_to_string(engine_class);
       const char *buffer_name = "batch buffer";
       const uint32_t *bb_data;
-      bool is_ring_buffer;
       uint32_t bb_len;
 
       if (!vm_entry)
@@ -403,24 +429,9 @@ read_xe_data_file(FILE *file,
 
       bb_data = xe_vm_entry_address_get_data(vm_entry, bb_addr);
       bb_len = xe_vm_entry_address_get_len(vm_entry, bb_addr);
-
-      printf("--- %s (%s) at 0x%016"PRIx64"\n",
-             buffer_name, engine_name, batch_buffers.addrs[i]);
-
-      /* TODO: checks around buffer_name are copied from i915, if Xe KMD
-       * starts to dump HW context or ring buffer this might become
-       * useful.
-       */
-      is_ring_buffer = strcmp(buffer_name, "ring buffer") == 0;
-      if (option_print_all_bb || is_ring_buffer ||
-          strcmp(buffer_name, "batch buffer") == 0 ||
-          strcmp(buffer_name, "HW Context") == 0) {
-         if (is_ring_buffer && ring_wraps)
-            batch_ctx.flags &= ~INTEL_BATCH_DECODE_OFFSETS;
-         batch_ctx.engine = engine_class;
-         intel_print_batch(&batch_ctx, bb_data, bb_len, bb_addr, is_ring_buffer);
-         batch_ctx.flags = batch_flags;
-      }
+      print_batch(&batch_ctx, bb_data, bb_addr, bb_len, buffer_name,
+                  engine_name, engine_class, batch_flags, option_print_all_bb,
+                  ring_wraps);
    }
 
    intel_batch_decode_ctx_finish(&batch_ctx);

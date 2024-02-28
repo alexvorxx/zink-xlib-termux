@@ -119,6 +119,7 @@ libradv_files = files(
   'radv_device_generated_commands.c',
   'radv_event.c',
   'radv_formats.c',
+  'radv_formats.h',
   'radv_image.c',
   'radv_image_view.c',
   'radv_instance.c',
@@ -150,7 +151,6 @@ libradv_files = files(
   'radv_video.c',
   'radv_wsi.c',
   'si_cmd_buffer.c',
-  'vk_format.h',
 )
 
 if not with_platform_windows

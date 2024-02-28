@@ -24,7 +24,7 @@
 #include "helpers.h"
 
 #include "common/amd_family.h"
-#include "vulkan/vk_format.h"
+#include "vk_format.h"
 
 #include <llvm-c/Target.h>
 

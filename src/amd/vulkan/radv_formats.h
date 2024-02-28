@@ -24,13 +24,14 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef VK_FORMAT_H
-#define VK_FORMAT_H
+#ifndef RADV_FORMATS_H
+#define RADV_FORMATS_H
 
 #include <assert.h>
 #include <util/macros.h>
-#include <vulkan/util/vk_format.h>
 #include <vulkan/vulkan.h>
+
+#include "vk_format.h"
 
 /**
  * Return the index of the first non-void channel
@@ -152,4 +153,4 @@ vk_format_get_plane_height(VkFormat format, unsigned plane, unsigned height)
    return util_format_get_plane_height(vk_format_to_pipe_format(format), plane, height);
 }
 
-#endif /* VK_FORMAT_H */
+#endif /* RADV_FORMATS_H */

@@ -55,7 +55,6 @@ libintel_compiler_brw_files = files(
   'brw_eu_defines.h',
   'brw_eu_emit.c',
   'brw_eu.h',
-  'brw_eu_util.c',
   'brw_eu_validate.c',
   'brw_fs_bank_conflicts.cpp',
   'brw_fs_builder.h',

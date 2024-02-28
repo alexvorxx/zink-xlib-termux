@@ -1631,34 +1631,6 @@ unsigned
 brw_num_sources_from_inst(const struct brw_isa_info *isa,
                           const brw_inst *inst);
 
-/***********************************************************************
- * brw_eu_util.c:
- */
-
-void brw_copy_indirect_to_indirect(struct brw_codegen *p,
-				   struct brw_indirect dst_ptr,
-				   struct brw_indirect src_ptr,
-				   unsigned count);
-
-void brw_copy_from_indirect(struct brw_codegen *p,
-			    struct brw_reg dst,
-			    struct brw_indirect ptr,
-			    unsigned count);
-
-void brw_copy4(struct brw_codegen *p,
-	       struct brw_reg dst,
-	       struct brw_reg src,
-	       unsigned count);
-
-void brw_copy8(struct brw_codegen *p,
-	       struct brw_reg dst,
-	       struct brw_reg src,
-	       unsigned count);
-
-void brw_math_invert( struct brw_codegen *p,
-		      struct brw_reg dst,
-		      struct brw_reg src);
-
 void brw_set_src1(struct brw_codegen *p, brw_inst *insn, struct brw_reg reg);
 
 void brw_set_desc_ex(struct brw_codegen *p, brw_inst *insn,

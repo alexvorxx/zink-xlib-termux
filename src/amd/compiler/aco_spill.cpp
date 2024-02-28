@@ -566,6 +566,10 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          uint32_t spill_id;
          if (!ctx.spills_exit[block_idx - 1].count(to_spill)) {
             spill_id = ctx.allocate_spill_id(to_spill.regClass());
+
+            /* Add new interferences */
+            for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx])
+               ctx.add_interference(spill_id, pair.second);
          } else {
             spill_id = ctx.spills_exit[block_idx - 1][to_spill];
          }
@@ -596,7 +600,13 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
             }
          }
          assert(distance != 0);
-         ctx.spills_entry[block_idx][to_spill] = ctx.allocate_spill_id(to_spill.regClass());
+         const uint32_t spill_id = ctx.allocate_spill_id(to_spill.regClass());
+
+         /* Add new interferences */
+         for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx])
+            ctx.add_interference(spill_id, pair.second);
+
+         ctx.spills_entry[block_idx][to_spill] = spill_id;
          spilled_registers += to_spill;
          reg_pressure -= to_spill;
       }
@@ -719,8 +729,12 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
 
       if (is_all_spilled) {
          /* The phi is spilled at all predecessors. Keep it spilled. */
-         ctx.spills_entry[block_idx][phi->definitions[0].getTemp()] =
-            ctx.allocate_spill_id(phi->definitions[0].regClass());
+         const uint32_t spill_id = ctx.allocate_spill_id(phi->definitions[0].regClass());
+         /* Add new interferences */
+         for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx])
+            ctx.add_interference(spill_id, pair.second);
+
+         ctx.spills_entry[block_idx][phi->definitions[0].getTemp()] = spill_id;
          spilled_registers += phi->definitions[0].getTemp();
       } else {
          /* Phis might increase the register pressure. */
@@ -753,8 +767,13 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          ++it;
       }
       assert(distance != 0);
+      const uint32_t spill_id = ctx.allocate_spill_id(to_spill.regClass());
 
-      ctx.spills_entry[block_idx][to_spill] = ctx.allocate_spill_id(to_spill.regClass());
+      /* Add new interferences */
+      for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx])
+         ctx.add_interference(spill_id, pair.second);
+
+      ctx.spills_entry[block_idx][to_spill] = spill_id;
       partial_spills.erase(to_spill);
       spilled_registers += to_spill;
       reg_pressure -= to_spill;
@@ -929,8 +948,11 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
          std::vector<aco_ptr<Instruction>>::iterator it = std::next(pred.instructions.begin(), idx);
          pred.instructions.insert(it, std::move(spill));
 
-         /* Add the original name to predecessor's spilled variables */
-         if (spill_op.isTemp())
+         /* If the phi operand has the same name as the definition,
+          * add to predecessor's spilled variables, so that it gets
+          * skipped in the loop below.
+          */
+         if (spill_op.isTemp() && phi->operands[i].getTemp() == phi->definitions[0].getTemp())
             ctx.spills_exit[pred_idx][phi->operands[i].getTemp()] = def_spill_id;
       }
 
@@ -957,11 +979,8 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
             continue;
 
          /* add interferences between spilled variable and predecessors exit spills */
-         for (std::pair<Temp, uint32_t> exit_spill : ctx.spills_exit[pred_idx]) {
-            if (exit_spill.first == pair.first)
-               continue;
+         for (std::pair<Temp, uint32_t> exit_spill : ctx.spills_exit[pred_idx])
             ctx.add_interference(exit_spill.second, pair.second);
-         }
 
          /* variable is in register at predecessor and has to be spilled */
          /* rename if necessary */
@@ -985,7 +1004,6 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
                   pred.instructions[idx]->opcode != aco_opcode::p_logical_end);
          std::vector<aco_ptr<Instruction>>::iterator it = std::next(pred.instructions.begin(), idx);
          pred.instructions.insert(it, std::move(spill));
-         ctx.spills_exit[pred.index][pair.first] = pair.second;
       }
    }
 
@@ -1299,13 +1317,6 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
 
    /* determine set of variables which are spilled at the beginning of the block */
    RegisterDemand spilled_registers = init_live_in_vars(ctx, block, block_idx);
-
-   /* add interferences for spilled variables */
-   for (auto it = ctx.spills_entry[block_idx].begin(); it != ctx.spills_entry[block_idx].end();
-        ++it) {
-      for (auto it2 = std::next(it); it2 != ctx.spills_entry[block_idx].end(); ++it2)
-         ctx.add_interference(it->second, it2->second);
-   }
 
    bool is_loop_header = block->loop_nest_depth && ctx.loop_header.top()->index == block_idx;
    if (!is_loop_header) {

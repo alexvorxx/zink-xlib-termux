@@ -1166,7 +1166,7 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
 
          part_stages |= mesa_to_vk_shader_stage(stage->stage);
          _mesa_blake3_update(&blake3_ctx, stage->precomp->blake3,
-                           sizeof(stage->precomp->blake3));
+                             sizeof(stage->precomp->blake3));
 
          VkShaderCreateFlagsEXT shader_flags =
             vk_pipeline_to_shader_flags(pipeline->base.flags, stage->stage);

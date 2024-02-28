@@ -2295,11 +2295,17 @@ agx_set_st_vary_final(agx_context *ctx)
 static int
 agx_dump_stats(agx_context *ctx, unsigned size, char **out)
 {
-   unsigned nr_ins = 0;
+   unsigned nr_ins = 0, spills = 0, fills = 0;
 
    /* Count instructions */
-   agx_foreach_instr_global(ctx, I)
+   agx_foreach_instr_global(ctx, I) {
       nr_ins++;
+
+      if (I->op == AGX_OPCODE_STACK_STORE)
+         spills++;
+      else if (I->op == AGX_OPCODE_STACK_LOAD)
+         fills++;
+   }
 
    unsigned nr_threads =
       agx_occupancy_for_register_count(ctx->max_reg).max_threads;
@@ -2308,7 +2314,7 @@ agx_dump_stats(agx_context *ctx, unsigned size, char **out)
                    "%s shader: %u inst, %u bytes, %u halfregs, %u threads, "
                    "%u loops, %u:%u spills:fills",
                    gl_shader_stage_name(ctx->stage), nr_ins, size, ctx->max_reg,
-                   nr_threads, ctx->loop_count, ctx->spills, ctx->fills);
+                   nr_threads, ctx->loop_count, spills, fills);
 }
 
 static bool

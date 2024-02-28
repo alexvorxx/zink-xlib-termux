@@ -398,6 +398,10 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
                                    regs_intersect(Definition(exec, ctx.program->lane_mask), def);
                          }))
             break;
+
+         if (instr->isPseudo() && instr->pseudo().needs_scratch_reg &&
+             regs_intersect(exec_copy_def, Definition(instr->pseudo().scratch_sgpr, s1)))
+            break;
       }
    }
 
@@ -437,6 +441,9 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
          for (const Definition& def : instr->definitions)
             if (regs_intersect(exec_copy_def, def))
                return;
+         if (instr->isPseudo() && instr->pseudo().needs_scratch_reg &&
+             regs_intersect(exec_copy_def, Definition(instr->pseudo().scratch_sgpr, s1)))
+            return;
       }
 
       /* Check if the instruction may implicitly read VCC, eg. v_cndmask or add with carry.

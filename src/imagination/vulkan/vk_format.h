@@ -40,15 +40,6 @@
 #include "util/u_endian.h"
 
 
-static inline uint vk_format_get_channel_width(VkFormat vk_format,
-                                               uint32_t channel)
-{
-   const struct util_format_description *desc =
-      vk_format_description(vk_format);
-
-   return desc->channel[channel].size;
-}
-
 static inline bool vk_format_has_32bit_component(VkFormat vk_format)
 {
    const struct util_format_description *desc =

@@ -42,7 +42,9 @@ void pvr_pbe_get_src_format_and_gamma(VkFormat vk_format,
                                       uint32_t *const src_format_out,
                                       enum pvr_pbe_gamma *const gamma_out)
 {
-   uint32_t chan_0_width = vk_format_get_channel_width(vk_format, 0);
+   const struct util_format_description *desc =
+      vk_format_description(vk_format);
+   uint32_t chan_0_width = desc->channel[0].size;
 
    *gamma_out = default_gamma;
 

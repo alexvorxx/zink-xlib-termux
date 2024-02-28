@@ -384,7 +384,7 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> IF ILLEGAL
 %token <integer> JMPI JOIN
 %token <integer> LINE LRP LZD
-%token <integer> MAC MACH MAD MADM MOV MOVI MUL MREST MSAVE
+%token <integer> MAC MACH MAD MADM MATH MOV MOVI MUL MREST MSAVE
 %token <integer> NENOP NOP NOT
 %token <integer> OR
 %token <integer> PLN POP PUSH
@@ -404,8 +404,8 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %type <reg> sync_arg
 
 /* shared functions for send */
-%token CONST CRE DATA DP_DATA_1 GATEWAY MATH PIXEL_INTERP READ RENDER SAMPLER
-%token THREAD_SPAWNER URB VME WRITE DP_SAMPLER RT_ACCEL SLM TGM UGM
+%token CONST CRE DATA DP_DATA_1 GATEWAY PIXEL_INTERP RENDER SAMPLER
+%token THREAD_SPAWNER URB VME DP_SAMPLER RT_ACCEL SLM TGM UGM
 
 /* message details for send */
 %token MSGDESC_BEGIN SRC1_LEN EX_BSO MSGDESC_END
@@ -1044,10 +1044,7 @@ sendsopcode:
 
 sharedfunction:
 	NULL_TOKEN 	        { $$ = BRW_SFID_NULL; }
-	| MATH 		        { $$ = BRW_SFID_MATH; }
 	| GATEWAY 	        { $$ = BRW_SFID_MESSAGE_GATEWAY; }
-	| READ 		        { $$ = BRW_SFID_DATAPORT_READ; }
-	| WRITE 	        { $$ = BRW_SFID_DATAPORT_WRITE; }
 	| URB 		        { $$ = BRW_SFID_URB; }
 	| THREAD_SPAWNER 	{ $$ = BRW_SFID_THREAD_SPAWNER; }
 	| VME 		        { $$ = BRW_SFID_VME; }

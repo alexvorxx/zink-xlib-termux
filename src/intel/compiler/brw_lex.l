@@ -129,6 +129,7 @@ wait 		{ yylval.integer = BRW_OPCODE_WAIT; return WAIT; }
 while 		{ yylval.integer = BRW_OPCODE_WHILE; return WHILE; }
 xor 		{ yylval.integer = BRW_OPCODE_XOR; return XOR; }
 sync		{ yylval.integer = BRW_OPCODE_SYNC; return SYNC; }
+math		{ yylval.integer = BRW_OPCODE_MATH; return MATH; }
 
  /* extended math functions */
 cos 		{ yylval.integer = BRW_MATH_FUNCTION_COS; return COS; }
@@ -174,9 +175,6 @@ render            	{ return RENDER; }
 const 			{ return CONST; }
 data 			{ return DATA; }
 cre 			{ return CRE; }
-math 			{ return MATH; }
-read 			{ return READ; }
-write 			{ return WRITE; }
 vme 			{ return VME; }
 "pixel interp"		{ return PIXEL_INTERP; }
 "dp data 1" 		{ return DP_DATA_1; }

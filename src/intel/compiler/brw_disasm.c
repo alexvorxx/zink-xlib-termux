@@ -278,7 +278,6 @@ static const char *const end_of_thread[2] = {
 
 static const char *const gfx6_sfid[16] = {
    [BRW_SFID_NULL]                     = "null",
-   [BRW_SFID_MATH]                     = "math",
    [BRW_SFID_SAMPLER]                  = "sampler",
    [BRW_SFID_MESSAGE_GATEWAY]          = "gateway",
    [BRW_SFID_URB]                      = "urb",

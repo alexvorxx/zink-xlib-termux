@@ -1120,11 +1120,8 @@ enum tgl_sync_function {
  */
 enum brw_message_target {
    BRW_SFID_NULL                     = 0,
-   BRW_SFID_MATH                     = 1, /* Only valid on Gfx4-5 */
    BRW_SFID_SAMPLER                  = 2,
    BRW_SFID_MESSAGE_GATEWAY          = 3,
-   BRW_SFID_DATAPORT_READ            = 4,
-   BRW_SFID_DATAPORT_WRITE           = 5,
    BRW_SFID_URB                      = 6,
    BRW_SFID_THREAD_SPAWNER           = 7,
    BRW_SFID_VME                      = 8,

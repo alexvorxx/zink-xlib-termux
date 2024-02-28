@@ -1156,6 +1156,14 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
    for (uint32_t p = 0; p < part_count; p++) {
       const int64_t part_start = os_time_get_nano();
 
+      /* Don't try to re-compile any fast-link shaders */
+      if (!(pipeline->base.flags &
+            VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT)) {
+         assert(partition[p + 1] == partition[p] + 1);
+         if (stages[partition[p]].shader != NULL)
+            continue;
+      }
+
       struct vk_shader_pipeline_cache_key shader_key = { 0 };
 
       _mesa_blake3_init(&blake3_ctx);
@@ -1226,6 +1234,19 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
 
             shader_key.stage = stage->stage;
 
+            if (stage->shader) {
+               /* If we have a shader from some library pipeline and the key
+                * matches, just use that.
+                */
+               if (memcmp(&stage->shader->pipeline.cache_key,
+                          &shader_key, sizeof(shader_key)) == 0)
+                  continue;
+
+               /* Otherwise, throw it away */
+               vk_shader_unref(device, stage->shader);
+               stage->shader = NULL;
+            }
+
             bool cache_hit = false;
             struct vk_pipeline_cache_object *cache_obj =
                vk_pipeline_cache_lookup_object(cache, &shader_key,
@@ -1233,6 +1254,7 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
                                                &pipeline_shader_cache_ops,
                                                &cache_hit);
             if (cache_obj != NULL) {
+               assert(stage->shader == NULL);
                stage->shader = vk_shader_from_cache_obj(cache_obj);
             } else {
                all_shaders_found = false;
@@ -1370,6 +1392,9 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
              * shader as vk_pipeline_cache_add_object() would throw it away
              * for us anyway.
              */
+            assert(memcmp(&stage->shader->pipeline.cache_key,
+                          &shaders[i]->pipeline.cache_key,
+                          sizeof(shaders[i]->pipeline.cache_key)) == 0);
             vk_shader_destroy(device, shaders[i], &device->alloc);
          }
 

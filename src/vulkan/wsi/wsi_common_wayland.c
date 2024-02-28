@@ -148,6 +148,8 @@ enum wsi_wl_buffer_type {
 struct wsi_wl_surface {
    VkIcdSurfaceWayland base;
 
+   unsigned int chain_count;
+
    struct wsi_wl_swapchain *chain;
    struct wl_surface *surface;
    struct wsi_wl_display *display;
@@ -2396,9 +2398,16 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
    pthread_mutex_init(&chain->present_ids.lock, NULL);
 
    wl_list_init(&chain->present_ids.outstanding_list);
+
+   char *queue_name = vk_asprintf(pAllocator,
+                                  VK_SYSTEM_ALLOCATION_SCOPE_OBJECT,
+                                  "mesa vk surface %d swapchain %d queue",
+                                  wl_proxy_get_id((struct wl_proxy *) wsi_wl_surface->surface),
+                                  wsi_wl_surface->chain_count++);
    chain->present_ids.queue =
       wl_display_create_queue_with_name(chain->wsi_wl_surface->display->wl_display,
-                                        "mesa vk swapchain queue");
+                                        queue_name);
+   vk_free(pAllocator, queue_name);
 
    if (chain->wsi_wl_surface->display->wp_presentation_notwrapped) {
       chain->present_ids.wp_presentation =

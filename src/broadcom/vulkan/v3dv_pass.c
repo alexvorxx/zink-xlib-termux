@@ -610,3 +610,87 @@ v3dv_setup_dynamic_render_pass(struct v3dv_cmd_buffer *cmd_buffer,
 
    pass->attachment_count = a;
 }
+
+void
+v3dv_setup_dynamic_render_pass_inheritance(struct v3dv_cmd_buffer *cmd_buffer,
+                                           const VkCommandBufferInheritanceRenderingInfo *info)
+{
+   struct v3dv_device *device = cmd_buffer->device;
+   struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
+
+   struct v3dv_render_pass *pass = &state->dynamic_pass;
+   struct v3dv_subpass *subpass = &state->dynamic_subpass;
+   struct v3dv_render_pass_attachment *pass_attachments =
+      &state->dynamic_attachments[0];
+   struct v3dv_subpass_attachment *subpass_attachments =
+      &state->dynamic_subpass_attachments[0];
+
+   memset(pass, 0, sizeof(*pass));
+   memset(subpass, 0, sizeof(*subpass));
+   memset(pass_attachments, 0, sizeof(state->dynamic_subpass_attachments));
+   memset(subpass_attachments, 0, sizeof(state->dynamic_subpass_attachments));
+
+   vk_object_base_init(&device->vk, (struct vk_object_base *) pass,
+                       VK_OBJECT_TYPE_RENDER_PASS);
+
+   pass->attachments = pass_attachments;
+   pass->subpass_attachments = subpass_attachments;
+
+   subpass->view_mask = info->viewMask;
+   subpass->color_count = info->colorAttachmentCount;
+   subpass->color_attachments = &subpass_attachments[0];
+   subpass->resolve_attachments = NULL;
+
+   pass->multiview_enabled = info->viewMask != 0;
+   pass->subpass_count = 1;
+   pass->subpasses = subpass;
+
+   int a = 0;
+   for (int i = 0; i < info->colorAttachmentCount; i++) {
+      struct v3dv_render_pass_attachment *att = &pass->attachments[a];
+      const VkFormat format = info->pColorAttachmentFormats[i];
+
+      if (format == VK_FORMAT_UNDEFINED) {
+         subpass->color_attachments[i].attachment = VK_ATTACHMENT_UNUSED;
+         continue;
+      }
+
+      /* We don't have info about load/store, so we assume we load and we
+       * store.
+       */
+      att->desc.format = format;
+      att->desc.samples = info->rasterizationSamples;
+      att->desc.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+      att->desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+      att->desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      att->desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      subpass->color_attachments[i].attachment = a++;
+   }
+
+   if (info->depthAttachmentFormat != VK_FORMAT_UNDEFINED ||
+       info->stencilAttachmentFormat != VK_FORMAT_UNDEFINED) {
+      struct v3dv_render_pass_attachment *att = &pass->attachments[a];
+      att->desc.format = info->depthAttachmentFormat != VK_FORMAT_UNDEFINED ?
+         info->depthAttachmentFormat : info->stencilAttachmentFormat;
+      att->desc.samples = info->rasterizationSamples;
+      if (vk_format_has_depth(att->desc.format)) {
+         att->desc.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+         att->desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+      } else {
+         att->desc.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+         att->desc.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      }
+      if (vk_format_has_stencil(att->desc.format)) {
+         att->desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+         att->desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+      } else {
+         att->desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+         att->desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      }
+      subpass->ds_attachment.attachment = a++;
+   } else {
+      subpass->ds_attachment.attachment = VK_ATTACHMENT_UNUSED;
+   }
+
+   pass->attachment_count = a;
+}

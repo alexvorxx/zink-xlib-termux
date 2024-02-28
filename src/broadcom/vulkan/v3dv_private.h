@@ -1430,6 +1430,10 @@ void
 v3dv_setup_dynamic_render_pass(struct v3dv_cmd_buffer *cmd_buffer,
                                const VkRenderingInfoKHR *pRenderingInfo);
 
+void
+v3dv_setup_dynamic_render_pass_inheritance(struct v3dv_cmd_buffer *cmd_buffer,
+                                           const VkCommandBufferInheritanceRenderingInfo *info);
+
 /* FIXME: only used on v3dv_cmd_buffer and v3dvx_cmd_buffer, perhaps move to a
  * cmd_buffer specific header?
  */

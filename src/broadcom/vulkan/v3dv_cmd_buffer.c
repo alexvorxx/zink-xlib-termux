@@ -1033,15 +1033,26 @@ cmd_buffer_begin_render_pass_secondary(
    assert(cmd_buffer->usage_flags & VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT);
    assert(inheritance_info);
 
-   cmd_buffer->state.pass =
-      v3dv_render_pass_from_handle(inheritance_info->renderPass);
+   const VkCommandBufferInheritanceRenderingInfo *rendering_info = NULL;
+   if (inheritance_info->renderPass == VK_NULL_HANDLE) {
+      rendering_info = vk_find_struct_const(inheritance_info,
+                                            COMMAND_BUFFER_INHERITANCE_RENDERING_INFO);
+      assert(rendering_info);
+      v3dv_setup_dynamic_render_pass_inheritance(cmd_buffer, rendering_info);
+      cmd_buffer->state.pass = &cmd_buffer->state.dynamic_pass;
+      cmd_buffer->state.subpass_idx = 0;
+      cmd_buffer->state.framebuffer = NULL;
+   } else {
+      cmd_buffer->state.pass =
+         v3dv_render_pass_from_handle(inheritance_info->renderPass);
+
+      assert(inheritance_info->subpass < cmd_buffer->state.pass->subpass_count);
+      cmd_buffer->state.subpass_idx = inheritance_info->subpass;
+
+      cmd_buffer->state.framebuffer =
+         v3dv_framebuffer_from_handle(inheritance_info->framebuffer);
+   }
    assert(cmd_buffer->state.pass);
-
-   cmd_buffer->state.framebuffer =
-      v3dv_framebuffer_from_handle(inheritance_info->framebuffer);
-
-   assert(inheritance_info->subpass < cmd_buffer->state.pass->subpass_count);
-   cmd_buffer->state.subpass_idx = inheritance_info->subpass;
 
    cmd_buffer->state.inheritance.occlusion_query_enable =
       inheritance_info->occlusionQueryEnable;
@@ -1050,7 +1061,7 @@ cmd_buffer_begin_render_pass_secondary(
     * so we want to create a job for them here.
     */
    struct v3dv_job *job =
-      v3dv_cmd_buffer_start_job(cmd_buffer, inheritance_info->subpass,
+      v3dv_cmd_buffer_start_job(cmd_buffer, cmd_buffer->state.subpass_idx,
                                 V3DV_JOB_TYPE_GPU_CL_INCOMPLETE);
    if (!job) {
       v3dv_flag_oom(cmd_buffer, NULL);

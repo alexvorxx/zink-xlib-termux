@@ -5972,8 +5972,12 @@ VkResult
 genX(write_trtt_entries)(struct anv_trtt_submission *submit)
 {
 #if GFX_VER >= 12
+   const struct intel_device_info *devinfo =
+      submit->sparse->queue->device->info;
+
    size_t batch_size = submit->l3l2_binds_len * 20 +
-                       submit->l1_binds_len * 16 + 8;
+                       submit->l1_binds_len * 16 +
+                       GENX(PIPE_CONTROL_length) * sizeof(uint32_t) + 8;
    STACK_ARRAY(uint32_t, cmds, batch_size);
    struct anv_batch batch = {
       .start = cmds,
@@ -6065,6 +6069,10 @@ genX(write_trtt_entries)(struct anv_trtt_submission *submit)
 
       i += extra_writes;
    }
+
+   genx_batch_emit_pipe_control(&batch, devinfo, _3D,
+                                ANV_PIPE_CS_STALL_BIT |
+                                ANV_PIPE_TLB_INVALIDATE_BIT);
 
    anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
 

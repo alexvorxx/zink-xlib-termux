@@ -348,24 +348,24 @@ read_xe_data_file(FILE *file,
          switch (type) {
          case XE_VM_TOPIC_TYPE_DATA: {
             if (!ascii85_decode_allocated(value_ptr, vm_entry_data, vm_entry_len))
-               printf("Failed to parse VMA 0x%lx data\n", address);
+               printf("Failed to parse VMA 0x%" PRIx64 " data\n", address);
             break;
          }
          case XE_VM_TOPIC_TYPE_LENGTH: {
             vm_entry_len = strtoul(value_ptr, NULL, 0);
             vm_entry_data = calloc(1, vm_entry_len);
             if (!vm_entry_data) {
-               printf("Out of memory to allocate a buffer to store content of VMA 0x%lx\n", address);
+               printf("Out of memory to allocate a buffer to store content of VMA 0x%" PRIx64 "\n", address);
                break;
             }
             if (!xe_vm_append(&xe_vm, address, vm_entry_len, vm_entry_data)) {
-               printf("xe_vm_append() failed for VMA 0x%lx\n", address);
+               printf("xe_vm_append() failed for VMA 0x%" PRIx64 "\n", address);
                break;
             }
             break;
          }
          case XE_VM_TOPIC_TYPE_ERROR:
-            printf("VMA 0x%lx not present in dump, content will be zeroed. %s\n", address, line);
+            printf("VMA 0x%" PRIx64 " not present in dump, content will be zeroed. %s\n", address, line);
             break;
          default:
             printf("Not expected line in VM state: %s", line);

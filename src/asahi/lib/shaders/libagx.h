@@ -11,7 +11,7 @@
 #include <stdint.h>
 #include "util/macros.h"
 #define GLOBAL(type_)            uint64_t
-#define AGX_STATIC_ASSERT(_COND) static_assert(_COND, "OpenCL assertion")
+#define AGX_STATIC_ASSERT(_COND) static_assert(_COND, #_COND)
 #else
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 #define PACKED        __attribute__((packed, aligned(4)))

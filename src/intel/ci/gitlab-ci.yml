@@ -246,6 +246,7 @@ iris-kbl-traces-performance:
 
 intel-tgl-skqp:
   extends:
+    - .lava-asus-cx9400-volteer:x86_64
     - .intel-tgl-test
   variables:
     DEQP_SUITE: intel-tgl-skqp

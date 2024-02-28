@@ -400,7 +400,6 @@
 ## Intel (anv + iris)
 .intel-tgl-test:
   extends:
-    - .lava-asus-cx9400-volteer:x86_64
     - .anv-test
     - .intel-test
   variables:

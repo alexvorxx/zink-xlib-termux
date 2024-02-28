@@ -171,6 +171,7 @@ struct wsi_wl_swapchain {
    enum wl_shm_format shm_format;
 
    bool suboptimal;
+   bool retired;
 
    uint32_t num_drm_modifiers;
    const uint64_t *drm_modifiers;
@@ -1683,7 +1684,12 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
                                   uint64_t timeout)
 {
    struct wsi_wl_swapchain *chain = (struct wsi_wl_swapchain *)wsi_chain;
+
+   /* We might not own this surface if we're retired, but it is only used here to
+    * read events from the present ID queue. This queue is private to a given VkSwapchainKHR,
+    * so calling present wait on a retired swapchain cannot interfere with a non-retired swapchain. */
    struct wl_display *wl_display = chain->wsi_wl_surface->display->wl_display;
+
    struct timespec end_time;
    VkResult ret;
    int err;
@@ -1810,10 +1816,14 @@ wsi_wl_swapchain_acquire_next_image(struct wsi_swapchain *wsi_chain,
                                     uint32_t *image_index)
 {
    struct wsi_wl_swapchain *chain = (struct wsi_wl_swapchain *)wsi_chain;
-   struct wsi_wl_surface *wsi_wl_surface = chain->wsi_wl_surface;
    struct timespec start_time, end_time;
    struct timespec rel_timeout;
 
+   /* See comments in queue_present() */
+   if (chain->retired)
+      return VK_ERROR_OUT_OF_DATE_KHR;
+
+   struct wsi_wl_surface *wsi_wl_surface = chain->wsi_wl_surface;
    timespec_from_nsec(&rel_timeout, info->timeout);
 
    clock_gettime(CLOCK_MONOTONIC, &start_time);
@@ -1929,6 +1939,20 @@ wsi_wl_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
                                const VkPresentRegionKHR *damage)
 {
    struct wsi_wl_swapchain *chain = (struct wsi_wl_swapchain *)wsi_chain;
+
+   /* While the specification suggests we can keep presenting already acquired
+    * images on a retired swapchain, there is no requirement to support that.
+    * From spec 1.3.278:
+    *
+    * After oldSwapchain is retired, the application can pass to vkQueuePresentKHR
+    * any images it had already acquired from oldSwapchain.
+    * E.g., an application may present an image from the old swapchain
+    * before an image from the new swapchain is ready to be presented.
+    * As usual, vkQueuePresentKHR may fail if oldSwapchain has entered a state
+    * that causes VK_ERROR_OUT_OF_DATE_KHR to be returned. */
+   if (chain->retired)
+      return VK_ERROR_OUT_OF_DATE_KHR;
+
    struct wsi_wl_surface *wsi_wl_surface = chain->wsi_wl_surface;
 
    if (chain->buffer_type == WSI_WL_BUFFER_SHM_MEMCPY) {
@@ -2144,15 +2168,20 @@ wsi_wl_swapchain_chain_free(struct wsi_wl_swapchain *chain,
     * creation (see MAX_FDS_OUT) to avoid filling up VRAM with
     * released buffers.
     */
-   if (chain->wsi_wl_surface)
-      wl_display_flush(chain->wsi_wl_surface->display->wl_display);
+   struct wsi_wl_surface *wsi_wl_surface = chain->wsi_wl_surface;
+   if (!chain->retired)
+      wl_display_flush(wsi_wl_surface->display->wl_display);
 
    if (chain->frame)
       wl_callback_destroy(chain->frame);
    if (chain->tearing_control)
       wp_tearing_control_v1_destroy(chain->tearing_control);
-   if (chain->wsi_wl_surface)
-      chain->wsi_wl_surface->chain = NULL;
+
+   /* Only unregister if we are the non-retired swapchain, or
+    * we are a retired swapchain and memory allocation failed,
+    * in which case there are only retired swapchains. */
+   if (wsi_wl_surface->chain == chain)
+      wsi_wl_surface->chain = NULL;
 
    assert(!chain->present_ids.dispatch_in_progress);
 
@@ -2213,6 +2242,17 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR);
 
+   /* From spec 1.3.278:
+    * Upon calling vkCreateSwapchainKHR with an oldSwapchain that is not VK_NULL_HANDLE,
+    * oldSwapchain is retired - even if creation of the new swapchain fails. */
+   if (pCreateInfo->oldSwapchain) {
+      VK_FROM_HANDLE(wsi_wl_swapchain, old_chain, pCreateInfo->oldSwapchain);
+      /* oldSwapchain is extern-sync, so it is not possible to call AcquireNextImage or QueuePresent
+       * concurrently with this function. Next call to acquire or present will immediately
+       * return OUT_OF_DATE. */
+      old_chain->retired = true;
+   }
+
    int num_images = pCreateInfo->minImageCount;
 
    size_t size = sizeof(*chain) + num_images * sizeof(chain->images[0]);
@@ -2231,7 +2271,6 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
    }
    if (pCreateInfo->oldSwapchain) {
       VK_FROM_HANDLE(wsi_wl_swapchain, old_chain, pCreateInfo->oldSwapchain);
-      old_chain->wsi_wl_surface = NULL;
       if (old_chain->tearing_control) {
          wp_tearing_control_v1_destroy(old_chain->tearing_control);
          old_chain->tearing_control = NULL;

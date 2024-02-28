@@ -80,12 +80,6 @@ struct brw_compiler {
    bool precise_trig;
 
    /**
-    * Is 3DSTATE_CONSTANT_*'s Constant Buffer 0 relative to Dynamic State
-    * Base Address?  (If not, it's a normal GPU address.)
-    */
-   bool constant_buffer_0_is_relative;
-
-   /**
     * Whether or not the driver supports NIR shader constants.  This controls
     * whether nir_opt_large_constants will be run.
     */

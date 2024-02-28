@@ -783,6 +783,12 @@ optimize_postRA(Program* program)
 
       for (aco_ptr<Instruction>& instr : block.instructions)
          process_instruction(ctx, instr);
+
+      /* SCC might get overwritten by copies or swaps from parallelcopies
+       * inserted by SSA-elimination for linear phis.
+       */
+      if (!block.scc_live_out)
+         ctx.instr_idx_by_regs[block.index][scc] = overwritten_unknown_instr;
    }
 
    /* Cleanup pass

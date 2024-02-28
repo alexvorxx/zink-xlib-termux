@@ -2363,7 +2363,7 @@ zink_buffer_map(struct pipe_context *pctx,
       /* any read, non-HV write, or unmappable that reaches this point needs staging */
       if ((usage & PIPE_MAP_READ) || !res->obj->host_visible || res->base.b.flags & PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY) {
 overwrite:
-         trans->offset = box->x % screen->info.props.limits.minMemoryMapAlignment;
+         trans->offset = box->x % MAX2(screen->info.props.limits.minMemoryMapAlignment, 1 << MIN_SLAB_ORDER);
          trans->staging_res = pipe_buffer_create(&screen->base, PIPE_BIND_LINEAR, PIPE_USAGE_STAGING, box->width + trans->offset);
          if (!trans->staging_res)
             goto fail;

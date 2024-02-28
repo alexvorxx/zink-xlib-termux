@@ -253,7 +253,7 @@ void pvr_get_hw_clear_color(VkFormat vk_format,
 
 uint32_t pvr_pbe_pixel_num_loads(enum pvr_transfer_pbe_pixel_src pbe_format);
 
-static inline bool vk_format_has_32bit_component(VkFormat vk_format)
+static inline bool pvr_vk_format_has_32bit_component(VkFormat vk_format)
 {
    const struct util_format_description *desc =
       vk_format_description(vk_format);
@@ -266,7 +266,7 @@ static inline bool vk_format_has_32bit_component(VkFormat vk_format)
    return false;
 }
 
-static inline bool vk_format_is_normalized(VkFormat vk_format)
+static inline bool pvr_vk_format_is_fully_normalized(VkFormat vk_format)
 {
    const struct util_format_description *desc =
       vk_format_description(vk_format);
@@ -280,7 +280,7 @@ static inline bool vk_format_is_normalized(VkFormat vk_format)
 }
 
 static inline uint32_t
-vk_format_get_common_color_channel_count(VkFormat src_format,
+pvr_vk_format_get_common_color_channel_count(VkFormat src_format,
                                          VkFormat dst_format)
 {
    const struct util_format_description *dst_desc =

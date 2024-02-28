@@ -39,19 +39,6 @@
 
 #include "util/u_endian.h"
 
-static inline bool vk_format_is_alpha_on_msb(VkFormat vk_format)
-{
-   const struct util_format_description *desc =
-      vk_format_description(vk_format);
-
-   return (desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB ||
-           desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB) &&
-#if UTIL_ARCH_BIG_ENDIAN
-          desc->swizzle[3] == PIPE_SWIZZLE_X;
-#else
-          desc->swizzle[3] == PIPE_SWIZZLE_W;
-#endif
-}
 
 static inline uint vk_format_get_channel_width(VkFormat vk_format,
                                                uint32_t channel)
@@ -122,11 +109,6 @@ vk_format_get_common_color_channel_count(VkFormat src_format,
    }
 
    return count;
-}
-
-static inline bool vk_format_is_alpha(VkFormat format)
-{
-   return util_format_is_alpha(vk_format_to_pipe_format(format));
 }
 
 #endif /* VK_FORMAT_H */

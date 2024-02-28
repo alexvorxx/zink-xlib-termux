@@ -35,6 +35,36 @@
 #include "util/mesa-sha1.h"
 #include "util/half_float.h"
 
+static uint32_t
+brw_math_function(enum opcode op)
+{
+   switch (op) {
+   case SHADER_OPCODE_RCP:
+      return BRW_MATH_FUNCTION_INV;
+   case SHADER_OPCODE_RSQ:
+      return BRW_MATH_FUNCTION_RSQ;
+   case SHADER_OPCODE_SQRT:
+      return BRW_MATH_FUNCTION_SQRT;
+   case SHADER_OPCODE_EXP2:
+      return BRW_MATH_FUNCTION_EXP;
+   case SHADER_OPCODE_LOG2:
+      return BRW_MATH_FUNCTION_LOG;
+   case SHADER_OPCODE_POW:
+      return BRW_MATH_FUNCTION_POW;
+   case SHADER_OPCODE_SIN:
+      return BRW_MATH_FUNCTION_SIN;
+   case SHADER_OPCODE_COS:
+      return BRW_MATH_FUNCTION_COS;
+   case SHADER_OPCODE_INT_QUOTIENT:
+      return BRW_MATH_FUNCTION_INT_DIV_QUOTIENT;
+   case SHADER_OPCODE_INT_REMAINDER:
+      return BRW_MATH_FUNCTION_INT_DIV_REMAINDER;
+   default:
+      unreachable("not reached: unknown math function");
+   }
+}
+
+
 static enum brw_reg_file
 brw_file_from_reg(fs_reg *reg)
 {

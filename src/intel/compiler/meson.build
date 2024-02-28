@@ -120,7 +120,6 @@ libintel_compiler_brw_files = files(
   'brw_rt.h',
   'brw_schedule_instructions.cpp',
   'brw_shader.cpp',
-  'brw_shader.h',
   'brw_simd_selection.cpp',
   'brw_vue_map.c',
 )

@@ -21,6 +21,7 @@
  * OF THIS SOFTWARE.
  */
 
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +34,6 @@
 #include "brw_inst.h"
 #include "brw_isa_info.h"
 #include "brw_reg.h"
-#include "brw_shader.h"
 #include "util/half_float.h"
 
 bool

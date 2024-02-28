@@ -28,7 +28,8 @@
 #ifndef BRW_FS_H
 #define BRW_FS_H
 
-#include "brw_shader.h"
+#include "brw_cfg.h"
+#include "brw_compiler.h"
 #include "brw_ir_allocator.h"
 #include "brw_ir_fs.h"
 #include "brw_fs_live_variables.h"
@@ -70,7 +71,19 @@ namespace brw {
    };
 }
 
-struct brw_gs_compile;
+#define UBO_START ((1 << 16) - 4)
+
+/**
+ * Scratch data used when compiling a GLSL geometry shader.
+ */
+struct brw_gs_compile
+{
+   struct brw_gs_prog_key key;
+   struct intel_vue_map input_vue_map;
+
+   unsigned control_data_bits_per_vertex;
+   unsigned control_data_header_size_bits;
+};
 
 namespace brw {
 class fs_builder;
@@ -173,6 +186,14 @@ struct bs_thread_payload : public thread_payload {
    fs_reg local_arg_ptr;
 
    void load_shader_type(const brw::fs_builder &bld, fs_reg &dest) const;
+};
+
+enum instruction_scheduler_mode {
+   SCHEDULE_PRE,
+   SCHEDULE_PRE_NON_LIFO,
+   SCHEDULE_PRE_LIFO,
+   SCHEDULE_POST,
+   SCHEDULE_NONE,
 };
 
 class instruction_scheduler;

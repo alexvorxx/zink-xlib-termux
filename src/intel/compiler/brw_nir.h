@@ -242,6 +242,31 @@ const struct glsl_type *brw_nir_get_var_type(const struct nir_shader *nir,
 
 void brw_nir_adjust_payload(nir_shader *shader);
 
+static inline nir_variable_mode
+brw_nir_no_indirect_mask(const struct brw_compiler *compiler,
+                         gl_shader_stage stage)
+{
+   nir_variable_mode indirect_mask = (nir_variable_mode) 0;
+
+   switch (stage) {
+   case MESA_SHADER_VERTEX:
+   case MESA_SHADER_FRAGMENT:
+      indirect_mask |= nir_var_shader_in;
+      break;
+
+   default:
+      /* Everything else can handle indirect inputs */
+      break;
+   }
+
+   if (stage != MESA_SHADER_TESS_CTRL &&
+       stage != MESA_SHADER_TASK &&
+       stage != MESA_SHADER_MESH)
+      indirect_mask |= nir_var_shader_out;
+
+   return indirect_mask;
+}
+
 #ifdef __cplusplus
 }
 #endif

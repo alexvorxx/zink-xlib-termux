@@ -35,7 +35,7 @@
 #include "brw_disasm.h"
 #include "brw_eu_defines.h"
 #include "brw_eu.h"
-#include "brw_shader.h"
+#include "brw_private.h"
 #include "intel_gfx_ver_enum.h"
 #include "dev/intel_debug.h"
 

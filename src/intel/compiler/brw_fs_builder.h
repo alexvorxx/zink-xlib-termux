@@ -26,7 +26,6 @@
 #define BRW_FS_BUILDER_H
 
 #include "brw_ir_fs.h"
-#include "brw_shader.h"
 #include "brw_eu.h"
 #include "brw_fs.h"
 

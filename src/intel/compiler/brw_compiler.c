@@ -22,9 +22,9 @@
  */
 
 #include "brw_compiler.h"
-#include "brw_shader.h"
 #include "brw_eu.h"
 #include "brw_nir.h"
+#include "brw_private.h"
 #include "dev/intel_debug.h"
 #include "compiler/nir/nir.h"
 #include "util/u_debug.h"

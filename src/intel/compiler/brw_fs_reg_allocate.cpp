@@ -78,7 +78,7 @@ fs_visitor::assign_regs_trivial()
 
 }
 
-void
+extern "C" void
 brw_fs_alloc_reg_sets(struct brw_compiler *compiler)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;

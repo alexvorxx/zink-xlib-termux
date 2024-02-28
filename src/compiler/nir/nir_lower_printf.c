@@ -46,7 +46,8 @@ lower_printf_intrin(nir_builder *b, nir_intrinsic_instr *prntf, void *_options)
    nir_deref_instr *args = nir_src_as_deref(prntf->src[1]);
    assert(args->deref_type == nir_deref_type_var);
 
-   const unsigned ptr_bit_size = nir_get_ptr_bitsize(b->shader);
+   const unsigned ptr_bit_size = options->ptr_bit_size != 0 ?
+      options->ptr_bit_size : nir_get_ptr_bitsize(b->shader);
 
    /* Atomic add a buffer size counter to determine where to write.  If
     * overflowed, return -1, otherwise, store the arguments and return 0.

@@ -6444,6 +6444,7 @@ bool nir_lower_helper_writes(nir_shader *shader, bool lower_plain_stores);
 
 typedef struct nir_lower_printf_options {
    unsigned max_buffer_size;
+   unsigned ptr_bit_size;
    bool     use_printf_base_identifier;
 } nir_lower_printf_options;
 

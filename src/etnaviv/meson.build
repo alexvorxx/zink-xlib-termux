@@ -20,6 +20,7 @@
 
 inc_etnaviv = include_directories(['.'])
 
+subdir('common')
 subdir('drm')
 subdir('isa')
 

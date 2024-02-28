@@ -28,6 +28,7 @@
 #include "hwdef/rogue_hw_utils.h"
 #include "pvr_csb_enum_helpers.h"
 #include "pvr_device_info.h"
+#include "pvr_formats.h"
 #include "pvr_job_common.h"
 #include "pvr_private.h"
 #include "util/macros.h"

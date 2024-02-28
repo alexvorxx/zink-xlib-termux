@@ -3933,7 +3933,6 @@ iris_compiler_init(struct iris_screen *screen)
       screen->brw = brw_compiler_create(screen, screen->devinfo);
       screen->brw->shader_debug_log = iris_shader_debug_log;
       screen->brw->shader_perf_log = iris_shader_perf_log;
-      screen->brw->supports_shader_constants = true;
       screen->brw->indirect_ubos_use_sampler = iris_indirect_ubos_use_sampler(screen);
    } else {
       screen->elk = elk_compiler_create(screen, screen->devinfo);

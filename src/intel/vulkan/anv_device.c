@@ -2418,7 +2418,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    }
    device->compiler->shader_debug_log = compiler_debug_log;
    device->compiler->shader_perf_log = compiler_perf_log;
-   device->compiler->supports_shader_constants = true;
    device->compiler->indirect_ubos_use_sampler = device->info.ver < 12;
    device->compiler->extended_bindless_surface_offset = device->uses_ex_bso;
    device->compiler->use_bindless_sampler_offset = false;

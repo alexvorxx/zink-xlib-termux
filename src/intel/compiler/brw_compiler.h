@@ -80,12 +80,6 @@ struct brw_compiler {
    bool precise_trig;
 
    /**
-    * Whether or not the driver supports NIR shader constants.  This controls
-    * whether nir_opt_large_constants will be run.
-    */
-   bool supports_shader_constants;
-
-   /**
     * Whether indirect UBO loads should use the sampler or go through the
     * data/constant cache.  For the sampler, UBO surface states have to be set
     * up with VK_FORMAT_R32G32B32A32_FLOAT whereas if it's going through the

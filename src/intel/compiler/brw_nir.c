@@ -1050,9 +1050,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
    /* This needs to be run after the first optimization pass but before we
     * lower indirect derefs away
     */
-   if (compiler->supports_shader_constants) {
-      OPT(nir_opt_large_constants, NULL, 32);
-   }
+   OPT(nir_opt_large_constants, NULL, 32);
 
    OPT(nir_lower_load_const_to_scalar);
 

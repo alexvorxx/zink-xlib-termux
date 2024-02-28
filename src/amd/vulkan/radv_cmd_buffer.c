@@ -8702,7 +8702,8 @@ radv_emit_direct_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, uint3
 }
 
 static void
-radv_emit_indirect_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info *info)
+radv_emit_indirect_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info *info,
+                                         uint64_t workaround_cond_va)
 {
    const uint32_t view_mask = cmd_buffer->state.render.view_mask;
    struct radeon_winsys *ws = cmd_buffer->device->ws;
@@ -8714,7 +8715,6 @@ radv_emit_indirect_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, con
    const uint64_t count_va = !info->count_buffer ? 0
                                                  : radv_buffer_get_va(info->count_buffer->bo) +
                                                       info->count_buffer->offset + info->count_buffer_offset;
-   uint64_t workaround_cond_va = 0;
 
    if (num_views > 1)
       ace_predication_size += num_views * 3; /* SET_SH_REG size (view index SGPR) */
@@ -8735,14 +8735,6 @@ radv_emit_indirect_taskmesh_draw_packets(struct radv_cmd_buffer *cmd_buffer, con
        * - When count != 0, write 0 to the workaround BO and execute the indirect dispatch
        * - When workaround BO != 0 (count was 0), execute an empty direct dispatch
        */
-
-      uint32_t workaround_cond_init = 0;
-      uint32_t workaround_cond_off;
-      if (!radv_cmd_buffer_upload_data(cmd_buffer, 4, &workaround_cond_init, &workaround_cond_off))
-         vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-      workaround_cond_va = radv_buffer_get_va(cmd_buffer->upload.upload_bo) + workaround_cond_off;
-
       radeon_emit(ace_cs, PKT3(PKT3_COPY_DATA, 4, 0));
       radeon_emit(ace_cs,
                   COPY_DATA_SRC_SEL(COPY_DATA_IMM) | COPY_DATA_DST_SEL(COPY_DATA_DST_MEM) | COPY_DATA_WR_CONFIRM);
@@ -9856,7 +9848,7 @@ radv_CmdDrawMeshTasksIndirectEXT(VkCommandBuffer commandBuffer, VkBuffer _buffer
       return;
 
    if (radv_cmdbuf_has_stage(cmd_buffer, MESA_SHADER_TASK)) {
-      radv_emit_indirect_taskmesh_draw_packets(cmd_buffer, &info);
+      radv_emit_indirect_taskmesh_draw_packets(cmd_buffer, &info, 0);
    } else {
       radv_emit_indirect_mesh_draw_packets(cmd_buffer, &info);
    }
@@ -9890,7 +9882,20 @@ radv_CmdDrawMeshTasksIndirectCountEXT(VkCommandBuffer commandBuffer, VkBuffer _b
       return;
 
    if (radv_cmdbuf_has_stage(cmd_buffer, MESA_SHADER_TASK)) {
-      radv_emit_indirect_taskmesh_draw_packets(cmd_buffer, &info);
+      uint64_t workaround_cond_va = 0;
+
+      if (cmd_buffer->device->physical_device->rad_info.has_taskmesh_indirect0_bug && info.count_buffer) {
+         /* Allocate a 32-bit value for the MEC firmware bug workaround. */
+         uint32_t workaround_cond_init = 0;
+         uint32_t workaround_cond_off;
+
+         if (!radv_cmd_buffer_upload_data(cmd_buffer, 4, &workaround_cond_init, &workaround_cond_off))
+            vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+         workaround_cond_va = radv_buffer_get_va(cmd_buffer->upload.upload_bo) + workaround_cond_off;
+      }
+
+      radv_emit_indirect_taskmesh_draw_packets(cmd_buffer, &info, workaround_cond_va);
    } else {
       radv_emit_indirect_mesh_draw_packets(cmd_buffer, &info);
    }

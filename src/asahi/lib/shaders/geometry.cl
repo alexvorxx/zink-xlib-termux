@@ -234,6 +234,15 @@ libagx_vertex_id_for_topology(enum mesa_prim mode, bool flatshade_first,
    }
 }
 
+/* Return the ID of the first thread where cond is true. cond must be true for
+ * some thread.
+ */
+static uint
+first_true_thread(bool cond)
+{
+   return ctz(ballot(cond));
+}
+
 /*
  * When unrolling the index buffer for a draw, we translate the old indirect
  * draws to new indirect draws. This routine allocates the new index buffer and
@@ -273,7 +282,8 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
 
 #define UNROLL(INDEX, suffix)                                                  \
    void libagx_unroll_restart_##suffix(global struct agx_ia_state *ia,         \
-                                       enum mesa_prim mode, uint draw)         \
+                                       enum mesa_prim mode, uint draw,         \
+                                       uint tid)                               \
    {                                                                           \
       /* For an indirect multidraw, we are dispatched maxDraws times and       \
        * terminate trailing invocations.                                       \
@@ -288,8 +298,10 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
       constant INDEX *in = (constant INDEX *)ia->index_buffer;                 \
       in += in_draw[2];                                                        \
                                                                                \
-      global INDEX *out =                                                      \
-         setup_unroll_for_draw(ia, in_draw, draw, mode, sizeof(INDEX));        \
+      global INDEX *out;                                                       \
+      if (tid == 0)                                                            \
+         out = setup_unroll_for_draw(ia, in_draw, draw, mode, sizeof(INDEX));  \
+      out = (global INDEX *)sub_group_broadcast((uintptr_t)out, 0);            \
                                                                                \
       uint out_prims = 0;                                                      \
       INDEX restart_idx = ia->restart_index;                                   \
@@ -299,31 +311,42 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
       uint needle = 0;                                                         \
       uint per_prim = mesa_vertices_per_prim(mode);                            \
       while (needle < count) {                                                 \
-         /* Search for next restart or the end */                              \
+         /* Search for next restart or the end. Lanes load in parallel. */     \
          uint next_restart = needle;                                           \
-         while ((next_restart < count) && in[next_restart] != restart_idx)     \
-            ++next_restart;                                                    \
+         for (;;) {                                                            \
+            uint idx = next_restart + tid;                                     \
+            /* Relies on shortcircuiting */                                    \
+            bool restart = idx >= count || in[idx] == restart_idx;             \
+            if (sub_group_any(restart)) {                                      \
+               uint first_restart_tid = first_true_thread(restart);            \
+               next_restart += first_restart_tid;                              \
+               break;                                                          \
+            } else {                                                           \
+               /* No restart in this group, try the next */                    \
+               next_restart += get_sub_group_size();                           \
+            }                                                                  \
+         }                                                                     \
                                                                                \
-         /* Emit up to the next restart */                                     \
+         /* Emit up to the next restart. Lanes output in parallel */           \
          uint subcount = next_restart - needle;                                \
          uint subprims = u_decomposed_prims_for_vertices(mode, subcount);      \
-         for (uint i = 0; i < subprims; ++i) {                                 \
+         uint out_prims_base = out_prims;                                      \
+         for (uint i = tid; i < subprims; i += get_sub_group_size()) {         \
             for (uint vtx = 0; vtx < per_prim; ++vtx) {                        \
                uint id = libagx_vertex_id_for_topology(mode, flatshade_first,  \
                                                        i, vtx, subprims);      \
                uint offset = needle + id;                                      \
                                                                                \
-               out[(out_prims * per_prim) + vtx] =                             \
+               out[((out_prims_base + i) * per_prim) + vtx] =                  \
                   offset < in_size_el ? in[offset] : 0;                        \
             }                                                                  \
-                                                                               \
-            out_prims++;                                                       \
          }                                                                     \
-                                                                               \
+         out_prims += subprims;                                                \
          needle = next_restart + 1;                                            \
       }                                                                        \
                                                                                \
-      ia->out_draws[(5 * draw) + 0] = out_prims * per_prim;                    \
+      if (tid == 0)                                                            \
+         ia->out_draws[(5 * draw) + 0] = out_prims * per_prim;                 \
    }
 
 UNROLL(uchar, u8)

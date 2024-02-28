@@ -1397,14 +1397,15 @@ agx_nir_unroll_restart(nir_builder *b, const void *data)
    const struct agx_unroll_restart_key *key = data;
    nir_def *ia = nir_load_input_assembly_buffer_agx(b);
    nir_def *draw = nir_channel(b, nir_load_workgroup_id(b), 0);
+   nir_def *lane = nir_load_subgroup_invocation(b);
    nir_def *mode = nir_imm_int(b, key->prim);
 
    if (key->index_size_B == 1)
-      libagx_unroll_restart_u8(b, ia, mode, draw);
+      libagx_unroll_restart_u8(b, ia, mode, draw, lane);
    else if (key->index_size_B == 2)
-      libagx_unroll_restart_u16(b, ia, mode, draw);
+      libagx_unroll_restart_u16(b, ia, mode, draw, lane);
    else if (key->index_size_B == 4)
-      libagx_unroll_restart_u32(b, ia, mode, draw);
+      libagx_unroll_restart_u32(b, ia, mode, draw, lane);
    else
       unreachable("invalid index size");
 }

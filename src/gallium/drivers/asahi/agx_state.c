@@ -4356,7 +4356,7 @@ agx_draw_without_restart(struct agx_batch *batch,
 
    /* Unroll the index buffer for each draw */
    const struct pipe_grid_info grid_setup = {
-      .block = {1, 1, 1},
+      .block = {32, 1, 1},
       .grid = {indirect->draw_count, 1, 1},
    };
 

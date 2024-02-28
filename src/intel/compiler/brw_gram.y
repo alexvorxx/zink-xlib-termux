@@ -580,7 +580,7 @@ add_instruction_option(struct options *options, struct instoption opt)
 		options->no_dd_check = true;
 		break;
 	case NODDCLR:
-		options->no_dd_clear = BRW_DEPENDENCY_NOTCLEARED;
+		options->no_dd_clear = true;
 		break;
 	case MASK_DISABLE:
 		options->mask_control |= BRW_MASK_DISABLE;

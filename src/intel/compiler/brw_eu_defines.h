@@ -59,13 +59,6 @@
 #define GET_BITS(data, high, low) ((data & INTEL_MASK((high), (low))) >> (low))
 #define GET_FIELD(word, field) (((word)  & field ## _MASK) >> field ## _SHIFT)
 
-/* Bitfields for the URB_WRITE message, DW2 of message header: */
-#define URB_WRITE_PRIM_END		0x1
-#define URB_WRITE_PRIM_START		0x2
-#define URB_WRITE_PRIM_TYPE_SHIFT	2
-
-#define BRW_SPRITE_POINT_ENABLE  16
-
 # define GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_CUT		0
 # define GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_SID		1
 
@@ -113,11 +106,6 @@ enum ENUM_PACKED brw_conditional_mod {
 
 #define BRW_DEBUG_NONE        0
 #define BRW_DEBUG_BREAKPOINT  1
-
-#define BRW_DEPENDENCY_NORMAL         0
-#define BRW_DEPENDENCY_NOTCLEARED     1
-#define BRW_DEPENDENCY_NOTCHECKED     2
-#define BRW_DEPENDENCY_DISABLE        3
 
 enum ENUM_PACKED brw_execution_size {
    BRW_EXECUTE_1  = 0,
@@ -811,13 +799,6 @@ enum ENUM_PACKED gfx10_align1_3src_exec_type {
 #define BRW_ARF_TDR                   0xB0
 #define BRW_ARF_TIMESTAMP             0xC0
 
-#define BRW_AMASK   0
-#define BRW_IMASK   1
-#define BRW_LMASK   2
-#define BRW_CMASK   3
-
-
-
 #define BRW_THREAD_NORMAL     0
 #define BRW_THREAD_ATOMIC     1
 #define BRW_THREAD_SWITCH     2
@@ -1174,25 +1155,6 @@ enum brw_message_target {
 #define GFX8_SAMPLER_RETURN_FORMAT_32BITS    0
 #define GFX8_SAMPLER_RETURN_FORMAT_16BITS    1
 
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE              0
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE             0
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE_BIAS        0
-#define BRW_SAMPLER_MESSAGE_SIMD8_KILLPIX             1
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_LOD        1
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE_LOD         1
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_GRADIENTS  2
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE_GRADIENTS    2
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_COMPARE    0
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE_COMPARE     2
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE_BIAS_COMPARE 0
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_LOD_COMPARE 1
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE_LOD_COMPARE  1
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_RESINFO           2
-#define BRW_SAMPLER_MESSAGE_SIMD16_RESINFO            2
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_LD                3
-#define BRW_SAMPLER_MESSAGE_SIMD8_LD                  3
-#define BRW_SAMPLER_MESSAGE_SIMD16_LD                 3
-
 #define GFX5_SAMPLER_MESSAGE_SAMPLE              0
 #define GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS         1
 #define GFX5_SAMPLER_MESSAGE_SAMPLE_LOD          2
@@ -1274,16 +1236,6 @@ enum brw_message_target {
 
 /* This one stays the same across generations. */
 #define BRW_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ          0
-/* GFX4 */
-#define BRW_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ     1
-#define BRW_DATAPORT_READ_MESSAGE_MEDIA_BLOCK_READ          2
-#define BRW_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ      3
-/* G45, GFX5 */
-#define G45_DATAPORT_READ_MESSAGE_RENDER_UNORM_READ	    1
-#define G45_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ     2
-#define G45_DATAPORT_READ_MESSAGE_AVC_LOOP_FILTER_READ	    3
-#define G45_DATAPORT_READ_MESSAGE_MEDIA_BLOCK_READ          4
-#define G45_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ      6
 /* GFX6 */
 #define GFX6_DATAPORT_READ_MESSAGE_RENDER_UNORM_READ	    1
 #define GFX6_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ     2
@@ -1291,23 +1243,11 @@ enum brw_message_target {
 #define GFX6_DATAPORT_READ_MESSAGE_OWORD_UNALIGN_BLOCK_READ  5
 #define GFX6_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ      6
 
-#define BRW_DATAPORT_READ_TARGET_DATA_CACHE      0
-#define BRW_DATAPORT_READ_TARGET_RENDER_CACHE    1
-#define BRW_DATAPORT_READ_TARGET_SAMPLER_CACHE   2
-
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE                0
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE_REPLICATED     1
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN01         2
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN23         3
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_SINGLE_SOURCE_SUBSPAN01       4
-
-#define BRW_DATAPORT_WRITE_MESSAGE_OWORD_BLOCK_WRITE                0
-#define BRW_DATAPORT_WRITE_MESSAGE_OWORD_DUAL_BLOCK_WRITE           1
-#define BRW_DATAPORT_WRITE_MESSAGE_MEDIA_BLOCK_WRITE                2
-#define BRW_DATAPORT_WRITE_MESSAGE_DWORD_SCATTERED_WRITE            3
-#define BRW_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE              4
-#define BRW_DATAPORT_WRITE_MESSAGE_STREAMED_VERTEX_BUFFER_WRITE     5
-#define BRW_DATAPORT_WRITE_MESSAGE_FLUSH_RENDER_CACHE               7
 
 /* GFX6 */
 #define GFX6_DATAPORT_WRITE_MESSAGE_DWORD_ATOMIC_WRITE              7
@@ -1402,12 +1342,6 @@ enum brw_message_target {
 #define BRW_BTI_STATELESS                255
 #define GFX7_BTI_SLM                     254
 
-#define HSW_BTI_STATELESS_LOCALLY_COHERENT 255
-#define HSW_BTI_STATELESS_NON_COHERENT 253
-#define HSW_BTI_STATELESS_GLOBALLY_COHERENT 252
-#define HSW_BTI_STATELESS_LLC_COHERENT 251
-#define HSW_BTI_STATELESS_L3_UNCACHED 250
-
 /* The hardware docs are a bit contradictory here.  On Haswell, where they
  * first added cache ability control, there were 5 different cache modes (see
  * HSW_BTI_STATELESS_* above).  On Broadwell, they reduced to two:
@@ -1483,18 +1417,6 @@ enum brw_message_target {
 #define GFX8_MATH_FUNCTION_INVM                            14
 #define GFX8_MATH_FUNCTION_RSQRTM                          15
 
-#define BRW_MATH_INTEGER_UNSIGNED     0
-#define BRW_MATH_INTEGER_SIGNED       1
-
-#define BRW_MATH_PRECISION_FULL        0
-#define BRW_MATH_PRECISION_PARTIAL     1
-
-#define BRW_MATH_SATURATE_NONE         0
-#define BRW_MATH_SATURATE_SATURATE     1
-
-#define BRW_MATH_DATA_VECTOR  0
-#define BRW_MATH_DATA_SCALAR  1
-
 #define BRW_URB_OPCODE_WRITE_HWORD  0
 #define BRW_URB_OPCODE_WRITE_OWORD  1
 #define BRW_URB_OPCODE_READ_HWORD   2
@@ -1509,19 +1431,6 @@ enum brw_message_target {
 #define BRW_URB_SWIZZLE_NONE          0
 #define BRW_URB_SWIZZLE_INTERLEAVE    1
 #define BRW_URB_SWIZZLE_TRANSPOSE     2
-
-#define BRW_SCRATCH_SPACE_SIZE_1K     0
-#define BRW_SCRATCH_SPACE_SIZE_2K     1
-#define BRW_SCRATCH_SPACE_SIZE_4K     2
-#define BRW_SCRATCH_SPACE_SIZE_8K     3
-#define BRW_SCRATCH_SPACE_SIZE_16K    4
-#define BRW_SCRATCH_SPACE_SIZE_32K    5
-#define BRW_SCRATCH_SPACE_SIZE_64K    6
-#define BRW_SCRATCH_SPACE_SIZE_128K   7
-#define BRW_SCRATCH_SPACE_SIZE_256K   8
-#define BRW_SCRATCH_SPACE_SIZE_512K   9
-#define BRW_SCRATCH_SPACE_SIZE_1M     10
-#define BRW_SCRATCH_SPACE_SIZE_2M     11
 
 #define BRW_MESSAGE_GATEWAY_SFID_OPEN_GATEWAY         0
 #define BRW_MESSAGE_GATEWAY_SFID_CLOSE_GATEWAY        1
@@ -1542,14 +1451,6 @@ enum brw_message_target {
 #define GFX7_MAX_HS_URB_ENTRY_SIZE_BYTES                (512*64)
 #define GFX7_MAX_VS_URB_ENTRY_SIZE_BYTES                (512*64)
 
-#define BRW_GS_EDGE_INDICATOR_0			(1 << 8)
-#define BRW_GS_EDGE_INDICATOR_1			(1 << 9)
-
-/* Gfx6 "GS URB Entry Allocation Size" is defined as a number of 1024-bit
- * (128 bytes) URB rows and the maximum allowed value is 5 rows.
- */
-#define GFX6_MAX_GS_URB_ENTRY_SIZE_BYTES                (5*128)
-
 /* GS Thread Payload
  */
 
@@ -1558,9 +1459,6 @@ enum brw_message_target {
  */
 #define GFX7_MAX_GS_OUTPUT_VERTEX_SIZE_BYTES            (62*16)
 
-
-/* R0 */
-# define GFX7_GS_PAYLOAD_INSTANCE_ID_SHIFT		27
 
 /* CR0.0[5:4] Floating-Point Rounding Modes
  *  Skylake PRM, Volume 7 Part 1, "Control Register", page 756

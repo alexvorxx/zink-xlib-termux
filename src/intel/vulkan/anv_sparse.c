@@ -624,24 +624,9 @@ anv_sparse_bind_vm_bind(struct anv_device *device,
    if (result != VK_SUCCESS)
       return vk_queue_set_lost(&queue->vk, "vk_sync_wait failed");
 
-   /* FIXME: here we were supposed to issue a single vm_bind ioctl by calling
-    * vm_bind(device, num_binds, binds), but for an unknown reason some
-    * shader-related tests fail when we do that, so work around it for now.
-    * See: https://gitlab.freedesktop.org/drm/xe/kernel/-/issues/746
-    */
-   for (int b = 0; b < submit->binds_len; b++) {
-      struct anv_sparse_submission s = {
-         .queue = submit->queue,
-         .binds = &submit->binds[b],
-         .binds_len = 1,
-         .binds_capacity = 1,
-         .wait_count = 0,
-         .signal_count = 0,
-      };
-      int rc = device->kmd_backend->vm_bind(device, &s);
-      if (rc)
-         return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
-   }
+   int rc = device->kmd_backend->vm_bind(device, submit);
+   if (rc)
+      return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
 
    for (uint32_t i = 0; i < submit->signal_count; i++) {
       struct vk_sync_signal *s = &submit->signals[i];

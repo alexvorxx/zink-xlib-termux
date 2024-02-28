@@ -179,12 +179,6 @@ brw_shader_stage_requires_bindless_resources(gl_shader_stage stage)
  *  @{
  */
 
-enum PACKED gfx6_gather_sampler_wa {
-   WA_SIGN = 1,      /* whether we need to sign extend */
-   WA_8BIT = 2,      /* if we have an 8bit format needing wa */
-   WA_16BIT = 4,     /* if we have a 16bit format needing wa */
-};
-
 #define BRW_MAX_SAMPLERS 32
 
 /* Provide explicit padding for each member, to ensure that the compiler

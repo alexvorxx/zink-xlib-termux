@@ -1405,7 +1405,6 @@ enum brw_message_target {
 #define BRW_MATH_FUNCTION_RSQ                              5
 #define BRW_MATH_FUNCTION_SIN                              6
 #define BRW_MATH_FUNCTION_COS                              7
-#define BRW_MATH_FUNCTION_SINCOS                           8 /* gfx4, gfx5 */
 #define BRW_MATH_FUNCTION_FDIV                             9 /* gfx6+ */
 #define BRW_MATH_FUNCTION_POW                              10
 #define BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER   11

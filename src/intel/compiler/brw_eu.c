@@ -729,7 +729,6 @@ brw_num_sources_from_inst(const struct brw_isa_info *isa,
    case BRW_MATH_FUNCTION_RSQ:
    case BRW_MATH_FUNCTION_SIN:
    case BRW_MATH_FUNCTION_COS:
-   case BRW_MATH_FUNCTION_SINCOS:
    case GFX8_MATH_FUNCTION_INVM:
    case GFX8_MATH_FUNCTION_RSQRTM:
       return 1;

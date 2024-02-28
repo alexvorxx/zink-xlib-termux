@@ -423,7 +423,6 @@ static const char *const math_function[16] = {
    [BRW_MATH_FUNCTION_RSQ]    = "rsq",
    [BRW_MATH_FUNCTION_SIN]    = "sin",
    [BRW_MATH_FUNCTION_COS]    = "cos",
-   [BRW_MATH_FUNCTION_SINCOS] = "sincos",
    [BRW_MATH_FUNCTION_FDIV]   = "fdiv",
    [BRW_MATH_FUNCTION_POW]    = "pow",
    [BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER] = "intdivmod",

@@ -156,7 +156,6 @@ rsq 		{ yylval.integer = BRW_MATH_FUNCTION_RSQ; return RSQ; }
 rsqrtm       	{ yylval.integer = GFX8_MATH_FUNCTION_RSQRTM; return RSQRTM; }
 sin 		{ yylval.integer = BRW_MATH_FUNCTION_SIN; return SIN; }
 sqrt 		{ yylval.integer = BRW_MATH_FUNCTION_SQRT; return SQRT; }
-sincos       	{ yylval.integer = BRW_MATH_FUNCTION_SINCOS; return SINCOS; }
 
  /* sync instruction */
 allrd		{ yylval.integer = TGL_SYNC_ALLRD; return ALLRD; }

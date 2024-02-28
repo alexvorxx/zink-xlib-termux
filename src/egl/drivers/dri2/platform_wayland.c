@@ -1425,6 +1425,12 @@ create_wl_buffer(struct dri2_egl_display *dri2_dpy,
          dri2_surf ? dri2_surf->wl_drm_wrapper : dri2_dpy->wl_drm;
       int fd = -1, stride;
 
+      /* wl_drm doesn't support explicit modifiers, so ideally we should bail
+       * out if modifier != DRM_FORMAT_MOD_INVALID. However many drivers will
+       * return a valid modifier when querying the DRIImage even if a buffer
+       * was allocated without explicit modifiers.
+       * XXX: bail out if the buffer was allocated without explicit modifiers
+       */
       if (num_planes > 1)
          return NULL;
 

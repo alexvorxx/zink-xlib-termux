@@ -2543,6 +2543,8 @@ genX(batch_emit_pipe_control_write)(struct anv_batch *batch,
 
       pipe.DepthStallEnable = bits & ANV_PIPE_DEPTH_STALL_BIT;
 
+      pipe.TLBInvalidate = bits & ANV_PIPE_TLB_INVALIDATE_BIT;
+
 #if GFX_VERx10 >= 125
       pipe.PSSStallSyncEnable = bits & ANV_PIPE_PSS_STALL_SYNC_BIT;
 #endif

@@ -24,7 +24,8 @@ anv-jsl:
 
 anv-tgl:
   extends:
-    - .anv-tgl-test
+    - .lava-asus-cx9400-volteer:x86_64
+    - .anv-test
   variables:
     DEQP_SUITE: anv-tgl
     DEQP_FRACTION: 5 # temporarily drop network load
@@ -82,7 +83,8 @@ anv-jsl-angle-full:
 
 anv-tgl-angle:
   extends:
-    - .anv-tgl-test
+    - .lava-asus-cx9400-volteer:x86_64
+    - .anv-test
     - .anv-angle-test
   variables:
     DEQP_SUITE: anv-tgl-angle

@@ -286,11 +286,6 @@
     - .intel-rules
 
 ## ANV only
-.anv-tgl-test:
-  extends:
-    - .anv-test
-    - .lava-asus-cx9400-volteer:x86_64
-
 .anv-angle-test:
   extends:
     - .anv-test
@@ -395,7 +390,8 @@
 ## Intel (anv + iris)
 .intel-tgl-test:
   extends:
-    - .anv-tgl-test
+    - .lava-asus-cx9400-volteer:x86_64
+    - .anv-test
     - .intel-test
   variables:
     GPU_VERSION: intel-tgl

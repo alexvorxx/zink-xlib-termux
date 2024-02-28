@@ -57,13 +57,13 @@ struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 	gpu->dev = dev;
 	gpu->core = core;
 
-	gpu->model    	= get_param(dev, core, ETNAVIV_PARAM_GPU_MODEL);
-	gpu->revision 	= get_param(dev, core, ETNAVIV_PARAM_GPU_REVISION);
+	gpu->info.model    	= get_param(dev, core, ETNAVIV_PARAM_GPU_MODEL);
+	gpu->info.revision 	= get_param(dev, core, ETNAVIV_PARAM_GPU_REVISION);
 
-	if (!gpu->model)
+	if (!gpu->info.model)
 		goto fail;
 
-	DEBUG_MSG(" GPU model:          0x%x (rev %x)", gpu->model, gpu->revision);
+	DEBUG_MSG(" GPU model:          0x%x (rev %x)", gpu->info.model, gpu->info.revision);
 
 	return gpu;
 fail:
@@ -86,10 +86,10 @@ int etna_gpu_get_param(struct etna_gpu *gpu, enum etna_param_id param,
 
 	switch(param) {
 	case ETNA_GPU_MODEL:
-		*value = gpu->model;
+		*value = gpu->info.model;
 		return 0;
 	case ETNA_GPU_REVISION:
-		*value = gpu->revision;
+		*value = gpu->info.revision;
 		return 0;
 	case ETNA_GPU_FEATURES_0:
 		*value = get_param(dev, core, ETNAVIV_PARAM_GPU_FEATURES_0);

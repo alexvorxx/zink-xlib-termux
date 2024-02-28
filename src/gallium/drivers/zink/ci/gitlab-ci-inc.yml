@@ -121,7 +121,7 @@
 
 .zink-anv-test:
   extends:
-    - .lava-asus-cx9400-volteer:x86_64
+    - .lava-acer-cp514-2h-1160g7-volteer:x86_64
     - .anv-test
     - .zink-anv-rules
     - .zink-test

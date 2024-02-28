@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 struct cfg_t;
-struct backend_instruction;
+struct fs_inst;
 struct intel_device_info;
 
 struct inst_group {
@@ -77,7 +77,7 @@ disasm_new_inst_group(struct disasm_info *disasm, int offset);
 
 void
 disasm_annotate(struct disasm_info *disasm,
-                struct backend_instruction *inst, int offset);
+                struct fs_inst *inst, int offset);
 
 void
 disasm_insert_error(struct disasm_info *disasm, int offset,

@@ -126,7 +126,7 @@ disasm_new_inst_group(struct disasm_info *disasm, int next_inst_offset)
 
 void
 disasm_annotate(struct disasm_info *disasm,
-                struct backend_instruction *inst, int offset)
+                fs_inst *inst, int offset)
 {
    const struct cfg_t *cfg = disasm->cfg;
 

@@ -182,32 +182,6 @@ void brw_set_default_access_mode( struct brw_codegen *p, unsigned access_mode )
    p->current->access_mode = access_mode;
 }
 
-void
-brw_set_default_compression_control(struct brw_codegen *p,
-			    enum brw_compression compression_control)
-{
-   switch (compression_control) {
-   case BRW_COMPRESSION_NONE:
-      /* This is the "use the first set of bits of dmask/vmask/arf
-       * according to execsize" option.
-       */
-      p->current->group = 0;
-      break;
-   case BRW_COMPRESSION_2NDHALF:
-      /* For SIMD8, this is "use the second set of 8 bits." */
-      p->current->group = 8;
-      break;
-   case BRW_COMPRESSION_COMPRESSED:
-      /* For SIMD16 instruction compression, use the first set of 16 bits
-       * since we don't do SIMD32 dispatch.
-       */
-      p->current->group = 0;
-      break;
-   default:
-      unreachable("not reached");
-   }
-}
-
 /**
  * Apply the range of channel enable signals given by
  * [group, group + exec_size) to the instruction passed as argument.
@@ -296,7 +270,6 @@ brw_init_codegen(const struct brw_isa_info *isa,
    brw_set_default_exec_size(p, BRW_EXECUTE_8);
    brw_set_default_mask_control(p, BRW_MASK_ENABLE); /* what does this do? */
    brw_set_default_saturate(p, 0);
-   brw_set_default_compression_control(p, BRW_COMPRESSION_NONE);
 
    /* Set up control flow stack */
    p->if_stack_depth = 0;

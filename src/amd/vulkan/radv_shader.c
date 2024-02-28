@@ -952,6 +952,13 @@ radv_create_shader_arena(struct radv_device *device, struct radv_shader_free_lis
    if (replayable)
       flags |= RADEON_FLAG_REPLAYABLE;
 
+   /* vkCmdUpdatePipelineIndirectBufferNV() can be called on any queue supporting transfer
+    * operations and it's not required to call it on the same queue as DGC execute. To make sure the
+    * compute shader BO is part of the DGC execute submission, force all shaders to be local BOs.
+    */
+   if (device->vk.enabled_features.deviceGeneratedComputePipelines)
+      flags |= RADEON_FLAG_PREFER_LOCAL_BO;
+
    VkResult result;
    result = device->ws->buffer_create(device->ws, arena_size, RADV_SHADER_ALLOC_ALIGNMENT, RADEON_DOMAIN_VRAM, flags,
                                       RADV_BO_PRIORITY_SHADER, replay_va, &arena->bo);

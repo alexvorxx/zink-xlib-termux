@@ -117,6 +117,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_map_memory2 = true,
       .KHR_multiview = true,
       .KHR_pipeline_executable_properties = true,
+      .KHR_pipeline_library = true,
 
 #ifdef NVK_USE_WSI_PLATFORM
       /* Hide these behind dri configs for now since we cannot implement it

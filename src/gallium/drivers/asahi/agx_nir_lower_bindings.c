@@ -119,9 +119,10 @@ lower(nir_builder *b, nir_instr *instr, void *data)
    } else if (instr->type == nir_instr_type_tex) {
       nir_tex_instr *tex = nir_instr_as_tex(instr);
 
-      if ((BITSET_COUNT(b->shader->info.samplers_used) > 16) &&
+      if (((BITSET_COUNT(b->shader->info.samplers_used) > 16) &&
+           (nir_tex_instr_src_index(tex, nir_tex_src_sampler_offset) >= 0 ||
+            tex->sampler_index >= 16)) &&
           lower_sampler(b, tex)) {
-
          progress = true;
          *uses_bindless_samplers = true;
       }

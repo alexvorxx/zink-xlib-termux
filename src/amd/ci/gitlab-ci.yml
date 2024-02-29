@@ -216,6 +216,7 @@ vkcts-navi10-valve:
     - .radv-valve-manual-rules
   variables:
     GPU_VERSION: radv-navi10-aco
+    RADV_PERFTEST: shader_object
 
 vkcts-navi21-valve:
   timeout: 35m
@@ -228,6 +229,7 @@ vkcts-navi21-valve:
     GPU_VERSION: radv-navi21-aco
     B2C_TIMEOUT_BOOT_MINUTES: 30
     B2C_TIMEOUT_OVERALL_MINUTES: 30
+    RADV_PERFTEST: shader_object
 
 # Disabled due to its extremelly-broken nature
 .vkcts-navi21-llvm-valve:
@@ -248,6 +250,7 @@ vkcts-vangogh-valve:
   timeout: 2h 10m
   variables:
     GPU_VERSION: radv-vangogh-aco
+    RADV_PERFTEST: shader_object
 
 glcts-vangogh-valve:
   extends:
@@ -268,6 +271,7 @@ vkcts-navi31-valve:
   variables:
     GPU_VERSION: radv-navi31-aco
     RADV_DEBUG: nomeshshader # Disable mesh shaders until task shaders stop hanging
+    RADV_PERFTEST: shader_object
 
 ############### Fossilize
 radv-fossils:

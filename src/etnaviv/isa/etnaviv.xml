@@ -43,7 +43,7 @@ SPDX-License-Identifier: MIT
 	<value val="13" display=".gz"/>
 	<value val="14" display=".lez"/>
 	<value val="15" display=".lz"/>
-	<value val="22" display=".0x16"/>
+	<value val="22" display=".selmsb"/>
 </enum>
 
 <enum name="#swiz">

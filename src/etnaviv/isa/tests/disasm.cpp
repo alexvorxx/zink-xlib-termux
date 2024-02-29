@@ -227,7 +227,7 @@ INSTANTIATE_TEST_SUITE_P(Threads, DisasmTest,
       disasm_state{ {0x0101102e, 0x00202804, 0x80000020, 0x01000000}, "f2i.u32.t1        t1._y__, th2.xxxx, void, void\n"},
       disasm_state{ {0x00811171, 0x15601804, 0x80000040, 0x76fffffa}, "cmp.eq.u32.t0     t1.x___, t1.yyyy, u0.xxxx, -1\n"},
       disasm_state{ {0x00811171, 0x15601804, 0x80000040, 0x77ffdffa}, "cmp.eq.u32.t1     t1.x___, t1.yyyy, u0.xxxx, -1\n"},
-      disasm_state{ {0x0081158f, 0x00201804, 0x700000c0, 0x7c00000f}, "select.0x16.s16   t1.x___, t1.xxxx, 0.000000, 0.000000\n"},
+      disasm_state{ {0x0081158f, 0x00201804, 0x700000c0, 0x7c00000f}, "select.selmsb.s16 t1.x___, t1.xxxx, 0.000000, 0.000000\n"},
       disasm_state{ {0x0381102d, 0x00201804, 0x40000000, 0x00000000}, "i2f.s16           t1.xyz_, t1.xxxx, void, void\n"},
       disasm_state{ {0x04011009, 0x00000004, 0x00000000, 0x20154008}, "mov               t1.___w, void, void, u0.yyyy\n"}
    )

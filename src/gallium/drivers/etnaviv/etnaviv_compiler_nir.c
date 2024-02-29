@@ -1247,8 +1247,7 @@ etna_compile_shader(struct etna_shader_variant *v)
       if (inst->opcode == INST_OPCODE_BRANCH)
          inst->imm = block_ptr[inst->imm];
 
-      inst->no_oneconst_limit = specs->has_no_oneconst_limit;
-      etna_assemble(&code[i * 4], inst);
+      etna_assemble(&code[i * 4], inst, specs->has_no_oneconst_limit);
    }
 
    v->code_size = c->inst_ptr * 4;

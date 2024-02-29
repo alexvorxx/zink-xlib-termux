@@ -59,13 +59,13 @@ check_uniforms(const struct etna_inst *inst)
 }
 
 int
-etna_assemble(uint32_t *out, const struct etna_inst *inst)
+etna_assemble(uint32_t *out, const struct etna_inst *inst, bool has_no_oneconst_limit)
 {
    /* cannot have both src2 and imm */
    if (inst->imm && inst->src[2].use)
       return 1;
 
-   if (!inst->no_oneconst_limit && !check_uniforms(inst))
+   if (!has_no_oneconst_limit && !check_uniforms(inst))
       BUG("error: generating instruction that accesses two different uniforms");
 
    assert(!(inst->opcode&~0x7f));

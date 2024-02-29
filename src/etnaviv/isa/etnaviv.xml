@@ -1145,6 +1145,11 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
+<bitset name="movai" extends="#instruction-alu-src2">
+	<pattern low="0" high="5">010110</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
 <bitset name="iabs" extends="#instruction-alu-src2">
 	<pattern low="0" high="5">010111</pattern> <!-- OPC -->
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->

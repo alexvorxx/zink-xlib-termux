@@ -30,13 +30,17 @@ specific to NVK:
 :envvar:`NVK_DEBUG`:
    a comma-separated list of named flags, which do various things:
 
-   ``push_dump``
+   ``push``
       Dumps all pusbufs to stderr on submit.  This requires that
       ``push_sync`` also be set.
    ``push_sync``
       Waits for submit to complete before continuing
    ``zero_memory``
       Zeros all VkDeviceMemory objects upon creation
+   ``vm``
+      Logs VM binds and unbinds
+   ``no_cbuf``
+      Disables automatic promotion of UBOs to constant buffers
 
 :envvar:`NVK_I_WANT_A_BROKEN_VULKAN_DRIVER`
    If defined to ``1`` or ``true``, this will enable enumeration of all

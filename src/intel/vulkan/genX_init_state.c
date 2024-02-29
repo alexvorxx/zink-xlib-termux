@@ -287,7 +287,8 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
             device->physical->va.bindless_surface_state_pool.addr,
          };
          sba.BindlessSurfaceStateSize =
-            anv_physical_device_bindless_heap_size(device->physical) / ANV_SURFACE_STATE_SIZE - 1;
+            anv_physical_device_bindless_heap_size(device->physical, false) /
+            ANV_SURFACE_STATE_SIZE - 1;
          sba.BindlessSurfaceStateMOCS = mocs;
          sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
       } else {

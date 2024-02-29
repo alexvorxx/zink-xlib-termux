@@ -4332,7 +4332,7 @@ pub struct OpIsberd {
 
 impl DisplayOp for OpIsberd {
     fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "isberd {} [{}]", self.dst, self.idx)
+        write!(f, "isberd [{}]", self.idx)
     }
 }
 impl_display_for_op!(OpIsberd);

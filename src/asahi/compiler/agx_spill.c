@@ -272,6 +272,19 @@ reconstruct_index(struct spill_ctx *ctx, unsigned node)
    return agx_get_vec_index(node, ctx->size[node], ctx->channels[node]);
 }
 
+static bool
+can_remat(agx_instr *I)
+{
+   return I->op == AGX_OPCODE_MOV_IMM;
+}
+
+static void
+remat_to(agx_builder *b, agx_index dst, struct spill_ctx *ctx, unsigned node)
+{
+   assert(can_remat(ctx->remat[node]));
+   agx_mov_imm_to(b, dst, ctx->remat[node]->imm);
+}
+
 static void
 insert_spill(agx_builder *b, struct spill_ctx *ctx, unsigned node)
 {
@@ -290,8 +303,7 @@ insert_reload(struct spill_ctx *ctx, agx_block *block, agx_cursor cursor,
 
    /* Reloading breaks SSA, but agx_repair_ssa will repair */
    if (ctx->remat[node]) {
-      assert(ctx->remat[node]->op == AGX_OPCODE_MOV_IMM);
-      agx_mov_imm_to(&b, idx, ctx->remat[node]->imm);
+      remat_to(&b, idx, ctx, node);
    } else {
       agx_mov_to(&b, idx, agx_index_as_mem(idx, ctx->spill_base));
    }
@@ -479,11 +491,10 @@ insert_coupling_code(struct spill_ctx *ctx, agx_block *pred, agx_block *succ)
       if (ctx->remat[I->src[s].value]) {
          unsigned node = I->src[s].value;
          agx_index idx = reconstruct_index(ctx, node);
+         agx_index tmp = agx_temp_like(ctx->shader, idx);
 
-         assert(ctx->remat[node]->op == AGX_OPCODE_MOV_IMM);
-         agx_mov_to(&b, agx_index_as_mem(idx, ctx->spill_base),
-                    agx_mov_imm(&b, agx_size_align_16(idx.size) * 16,
-                                ctx->remat[node]->imm));
+         remat_to(&b, tmp, ctx, node);
+         agx_mov_to(&b, agx_index_as_mem(idx, ctx->spill_base), tmp);
       }
 
       /* Use the spilled version */
@@ -1106,7 +1117,7 @@ agx_spill(agx_context *ctx, unsigned k)
    agx_instr **remat = rzalloc_array(memctx, agx_instr *, ctx->alloc);
 
    agx_foreach_instr_global(ctx, I) {
-      if (I->op == AGX_OPCODE_MOV_IMM)
+      if (can_remat(I))
          remat[I->dest[0].value] = I;
 
       /* Measure vectors */

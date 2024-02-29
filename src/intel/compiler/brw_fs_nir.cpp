@@ -566,6 +566,22 @@ optimize_extract_to_float(nir_to_brw_state &ntb, nir_alu_instr *instr,
                      nir_src_bit_size(src0->src[0].src)));
    op0 = offset(op0, bld, src0->src[0].swizzle[0]);
 
+   /* Bspec "Register Region Restrictions" for Xe says:
+    *
+    *    "In case of all float point data types used in destination
+    *
+    *    1. Register Regioning patterns where register data bit location of
+    *       the LSB of the channels are changed between source and destination
+    *       are not supported on Src0 and Src1 except for broadcast of a
+    *       scalar."
+    *
+    * This restriction is enfored in brw_fs_lower_regioning.  There is no
+    * reason to generate an optimized instruction that brw_fs_lower_regioning
+    * will have to break up later.
+    */
+   if (devinfo->verx10 >= 125 && element != 0 && !is_uniform(op0))
+      return false;
+
    bld.MOV(result, subscript(op0, type, element));
    return true;
 }

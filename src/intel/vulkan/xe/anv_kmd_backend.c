@@ -126,17 +126,54 @@ static inline int
 xe_vm_bind_op(struct anv_device *device,
               struct anv_sparse_submission *submit)
 {
-   struct drm_xe_sync xe_sync = {
-      .handle = intel_bind_timeline_get_syncobj(&device->bind_timeline),
+   int num_syncs = submit->wait_count + submit->signal_count + 1;
+   STACK_ARRAY(struct drm_xe_sync, xe_syncs, num_syncs);
+   if (!xe_syncs)
+      return -ENOMEM;
+
+   int sync_idx = 0;
+   for (int s = 0; s < submit->wait_count; s++) {
+      const struct vk_drm_syncobj *syncobj =
+         vk_sync_as_drm_syncobj(submit->waits[s].sync);
+      assert(syncobj);
+      uint64_t val = submit->waits[s].wait_value;
+
+      xe_syncs[sync_idx++] = (struct drm_xe_sync) {
+         .type = val ? DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ :
+                       DRM_XE_SYNC_TYPE_SYNCOBJ,
+         .flags = 0,
+         .handle = syncobj->syncobj,
+         .timeline_value = val,
+      };
+   }
+   for (int s = 0; s < submit->signal_count; s++) {
+      const struct vk_drm_syncobj *syncobj =
+         vk_sync_as_drm_syncobj(submit->signals[s].sync);
+      assert(syncobj);
+      uint64_t val = submit->signals[s].signal_value;
+
+      xe_syncs[sync_idx++] = (struct drm_xe_sync) {
+         .type = val ? DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ :
+                       DRM_XE_SYNC_TYPE_SYNCOBJ,
+         .flags = DRM_XE_SYNC_FLAG_SIGNAL,
+         .handle = syncobj->syncobj,
+         .timeline_value = val,
+      };
+   }
+   xe_syncs[sync_idx++] = (struct drm_xe_sync) {
       .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
       .flags = DRM_XE_SYNC_FLAG_SIGNAL,
+      .handle = intel_bind_timeline_get_syncobj(&device->bind_timeline),
+      /* .timeline_value will be set later. */
    };
+   assert(sync_idx == num_syncs);
+
    struct drm_xe_vm_bind args = {
       .vm_id = device->vm_id,
       .num_binds = submit->binds_len,
       .bind = {},
-      .num_syncs = 1,
-      .syncs = (uintptr_t)&xe_sync,
+      .num_syncs = num_syncs,
+      .syncs = (uintptr_t)xe_syncs,
    };
    int ret;
 
@@ -144,8 +181,10 @@ xe_vm_bind_op(struct anv_device *device,
                submit->binds_len);
    struct drm_xe_vm_bind_op *xe_binds;
    if (submit->binds_len > 1) {
-      if (!xe_binds_stackarray)
-         return -ENOMEM;
+      if (!xe_binds_stackarray) {
+         ret = -ENOMEM;
+         goto out_syncs;
+      }
 
       xe_binds = xe_binds_stackarray;
       args.vector_of_binds = (uintptr_t)xe_binds;
@@ -198,7 +237,8 @@ xe_vm_bind_op(struct anv_device *device,
          xe_bind->userptr = (uintptr_t)bo->map;
    }
 
-   xe_sync.timeline_value = intel_bind_timeline_bind_begin(&device->bind_timeline);
+   xe_syncs[num_syncs - 1].timeline_value =
+      intel_bind_timeline_bind_begin(&device->bind_timeline);
    ret = intel_ioctl(device->fd, DRM_IOCTL_XE_VM_BIND, &args);
    intel_bind_timeline_bind_end(&device->bind_timeline);
 
@@ -209,6 +249,8 @@ xe_vm_bind_op(struct anv_device *device,
 
 out_stackarray:
    STACK_ARRAY_FINISH(xe_binds_stackarray);
+out_syncs:
+   STACK_ARRAY_FINISH(xe_syncs);
 
    return ret;
 }

@@ -89,7 +89,6 @@ INSTANTIATE_TEST_SUITE_P(OperandTypes, DisasmTest,
 // clang-format off
 INSTANTIATE_TEST_SUITE_P(Opcodes, DisasmTest,
    testing::Values(
-      // GC3000
       disasm_state{ {0x00000000, 0x00000000, 0x00000000, 0x00000000}, "nop               void, void, void, void\n" },
       disasm_state{ {0x00801001, 0x00001804, 0x00000000, 0x00000008}, "add               t0.x___, t1.xxxx, void, t0.xxxx\n" },
       disasm_state{ {0x07801002, 0x39002805, 0x01c800c0, 0x00390038}, "mad.rtz           t0, t2.xyzw, t1.xyzw, t3.xyzw\n" },

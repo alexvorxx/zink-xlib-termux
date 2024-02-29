@@ -1394,10 +1394,12 @@ agx_nir_gs_setup_indirect(nir_builder *b, const void *data)
 void
 agx_nir_unroll_restart(nir_builder *b, const void *data)
 {
+   b->shader->info.workgroup_size[0] = 1024;
+
    const struct agx_unroll_restart_key *key = data;
    nir_def *ia = nir_load_input_assembly_buffer_agx(b);
    nir_def *draw = nir_channel(b, nir_load_workgroup_id(b), 0);
-   nir_def *lane = nir_load_subgroup_invocation(b);
+   nir_def *lane = nir_channel(b, nir_load_local_invocation_id(b), 0);
    nir_def *mode = nir_imm_int(b, key->prim);
 
    if (key->index_size_B == 1)

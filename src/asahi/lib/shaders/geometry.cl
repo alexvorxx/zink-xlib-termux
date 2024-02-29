@@ -234,13 +234,20 @@ libagx_vertex_id_for_topology(enum mesa_prim mode, bool flatshade_first,
    }
 }
 
-/* Return the ID of the first thread where cond is true. cond must be true for
- * some thread.
+/*
+ * Return the ID of the first thread in the workgroup where cond is true, or
+ * 1024 if cond is false across the workgroup.
  */
 static uint
-first_true_thread(bool cond)
+first_true_thread_in_workgroup(bool cond, local uint *scratch)
 {
-   return ctz(ballot(cond));
+   barrier(CLK_LOCAL_MEM_FENCE);
+   scratch[get_sub_group_id()] = ballot(cond);
+   barrier(CLK_LOCAL_MEM_FENCE);
+
+   uint first_group = ctz(ballot(scratch[get_sub_group_local_id()]));
+   uint off = ctz(first_group < 32 ? scratch[first_group] : 0);
+   return (first_group * 32) + off;
 }
 
 /*
@@ -281,9 +288,9 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
 }
 
 #define UNROLL(INDEX, suffix)                                                  \
-   void libagx_unroll_restart_##suffix(global struct agx_ia_state *ia,         \
-                                       enum mesa_prim mode, uint draw,         \
-                                       uint tid)                               \
+   kernel void libagx_unroll_restart_##suffix(global struct agx_ia_state *ia,  \
+                                              enum mesa_prim mode, uint draw,  \
+                                              uint tid)                        \
    {                                                                           \
       /* For an indirect multidraw, we are dispatched maxDraws times and       \
        * terminate trailing invocations.                                       \
@@ -298,10 +305,16 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
       constant INDEX *in = (constant INDEX *)ia->index_buffer;                 \
       in += in_draw[2];                                                        \
                                                                                \
-      global INDEX *out;                                                       \
-      if (tid == 0)                                                            \
-         out = setup_unroll_for_draw(ia, in_draw, draw, mode, sizeof(INDEX));  \
-      out = (global INDEX *)sub_group_broadcast((uintptr_t)out, 0);            \
+      local uintptr_t out_ptr;                                                 \
+      if (tid == 0) {                                                          \
+         out_ptr = (uintptr_t)setup_unroll_for_draw(ia, in_draw, draw, mode,   \
+                                                    sizeof(INDEX));            \
+      }                                                                        \
+                                                                               \
+      barrier(CLK_LOCAL_MEM_FENCE);                                            \
+      global INDEX *out = (global INDEX *)out_ptr;                             \
+                                                                               \
+      local uint scratch[32];                                                  \
                                                                                \
       uint out_prims = 0;                                                      \
       INDEX restart_idx = ia->restart_index;                                   \
@@ -314,24 +327,22 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
          /* Search for next restart or the end. Lanes load in parallel. */     \
          uint next_restart = needle;                                           \
          for (;;) {                                                            \
-            uint idx = next_restart + tid;                                     \
             /* Relies on shortcircuiting */                                    \
+            uint idx = next_restart + tid;                                     \
             bool restart = idx >= count || in[idx] == restart_idx;             \
-            if (sub_group_any(restart)) {                                      \
-               uint first_restart_tid = first_true_thread(restart);            \
-               next_restart += first_restart_tid;                              \
+                                                                               \
+            uint next_offs = first_true_thread_in_workgroup(restart, scratch); \
+                                                                               \
+            next_restart += next_offs;                                         \
+            if (next_offs < 1024)                                              \
                break;                                                          \
-            } else {                                                           \
-               /* No restart in this group, try the next */                    \
-               next_restart += get_sub_group_size();                           \
-            }                                                                  \
          }                                                                     \
                                                                                \
          /* Emit up to the next restart. Lanes output in parallel */           \
          uint subcount = next_restart - needle;                                \
          uint subprims = u_decomposed_prims_for_vertices(mode, subcount);      \
          uint out_prims_base = out_prims;                                      \
-         for (uint i = tid; i < subprims; i += get_sub_group_size()) {         \
+         for (uint i = tid; i < subprims; i += 1024) {                         \
             for (uint vtx = 0; vtx < per_prim; ++vtx) {                        \
                uint id = libagx_vertex_id_for_topology(mode, flatshade_first,  \
                                                        i, vtx, subprims);      \
@@ -341,6 +352,7 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
                   offset < in_size_el ? in[offset] : 0;                        \
             }                                                                  \
          }                                                                     \
+                                                                               \
          out_prims += subprims;                                                \
          needle = next_restart + 1;                                            \
       }                                                                        \

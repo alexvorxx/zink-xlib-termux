@@ -54,7 +54,6 @@ struct nouveau_device {
 
 struct nouveau_client {
    struct nouveau_device *device;
-   int id;
 };
 
 union nouveau_bo_config {

@@ -318,8 +318,6 @@ struct nouveau_device_priv {
    struct nouveau_device base;
    simple_mtx_t lock;
    struct list_head bo_list;
-   uint32_t *client;
-   uint32_t nr_client;
    int gart_limit_percent;
    int vram_limit_percent;
 };
@@ -453,7 +451,6 @@ nouveau_device_del(struct nouveau_device **pdev)
       return;
 
    simple_mtx_destroy(&nvdev->lock);
-   free(nvdev->client);
    free(nvdev);
    *pdev = NULL;
 }
@@ -488,55 +485,21 @@ nouveau_client(struct nouveau_client *client)
 int
 nouveau_client_new(struct nouveau_device *dev, struct nouveau_client **pclient)
 {
-   struct nouveau_device_priv *nvdev = nouveau_device(dev);
-   struct nouveau_client_priv *pcli;
-   int id = 0;
-   int ret = -ENOMEM;
-   uint32_t *clients;
+   struct nouveau_client_priv *pcli = calloc(1, sizeof(*pcli));
+   if (!pcli)
+      return -ENOMEM;
 
-   simple_mtx_lock(&nvdev->lock);
-
-   int i;
-   for (i = 0; i < nvdev->nr_client; i++) {
-      id = ffs(nvdev->client[i]) - 1;
-      if (id >= 0)
-         goto out;
-   }
-
-   clients = realloc(nvdev->client, sizeof(uint32_t) * (i + 1));
-   if (!clients)
-      goto unlock;
-   nvdev->client = clients;
-   nvdev->client[i] = 0;
-   nvdev->nr_client++;
-
-out:
-   pcli = calloc(1, sizeof(*pcli));
-   if (pcli) {
-      nvdev->client[i] |= (1 << id);
-      pcli->base.device = dev;
-      pcli->base.id = (i * 32) + id;
-      ret = 0;
-   }
-
+   pcli->base.device = dev;
    *pclient = &pcli->base;
 
-unlock:
-   simple_mtx_unlock(&nvdev->lock);
-   return ret;
+   return 0;
 }
 
 void
 nouveau_client_del(struct nouveau_client **pclient)
 {
    struct nouveau_client_priv *pcli = nouveau_client(*pclient);
-   struct nouveau_device_priv *nvdev;
    if (pcli) {
-      int id = pcli->base.id;
-      nvdev = nouveau_device(pcli->base.device);
-      simple_mtx_lock(&nvdev->lock);
-      nvdev->client[id / 32] &= ~(1 << (id % 32));
-      simple_mtx_unlock(&nvdev->lock);
       free(pcli->kref);
       free(pcli);
    }

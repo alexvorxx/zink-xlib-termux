@@ -550,26 +550,7 @@ namespace {
                                   0, 2 /* XXX */,
                                   0, 0, 0, 8 /* XXX */, 0, 0);
 
-      case SHADER_OPCODE_TEX:
-      case FS_OPCODE_TXB:
-      case SHADER_OPCODE_TXD:
-      case SHADER_OPCODE_TXF:
-      case SHADER_OPCODE_TXF_LZ:
-      case SHADER_OPCODE_TXL:
-      case SHADER_OPCODE_TXL_LZ:
-      case SHADER_OPCODE_TXF_CMS_W:
-      case SHADER_OPCODE_TXF_MCS:
-      case SHADER_OPCODE_TXS:
-      case SHADER_OPCODE_LOD:
       case SHADER_OPCODE_GET_BUFFER_SIZE:
-      case SHADER_OPCODE_TG4:
-      case SHADER_OPCODE_TG4_BIAS:
-      case SHADER_OPCODE_TG4_EXPLICIT_LOD:
-      case SHADER_OPCODE_TG4_IMPLICIT_LOD:
-      case SHADER_OPCODE_TG4_OFFSET:
-      case SHADER_OPCODE_TG4_OFFSET_LOD:
-      case SHADER_OPCODE_TG4_OFFSET_BIAS:
-      case SHADER_OPCODE_SAMPLEINFO:
          return calculate_desc(info, EU_UNIT_SAMPLER, 2, 0, 0, 0, 16 /* XXX */,
                                8 /* XXX */, 750 /* XXX */, 0, 0,
                                2 /* XXX */, 0);

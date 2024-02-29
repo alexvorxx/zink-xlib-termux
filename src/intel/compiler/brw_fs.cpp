@@ -237,25 +237,6 @@ fs_inst::is_control_source(unsigned arg) const
 
    case SHADER_OPCODE_MOV_INDIRECT:
    case SHADER_OPCODE_CLUSTER_BROADCAST:
-   case SHADER_OPCODE_TEX:
-   case FS_OPCODE_TXB:
-   case SHADER_OPCODE_TXD:
-   case SHADER_OPCODE_TXF:
-   case SHADER_OPCODE_TXF_LZ:
-   case SHADER_OPCODE_TXF_CMS_W:
-   case SHADER_OPCODE_TXF_MCS:
-   case SHADER_OPCODE_TXL:
-   case SHADER_OPCODE_TXL_LZ:
-   case SHADER_OPCODE_TXS:
-   case SHADER_OPCODE_LOD:
-   case SHADER_OPCODE_TG4:
-   case SHADER_OPCODE_TG4_OFFSET:
-   case SHADER_OPCODE_TG4_BIAS:
-   case SHADER_OPCODE_TG4_EXPLICIT_LOD:
-   case SHADER_OPCODE_TG4_IMPLICIT_LOD:
-   case SHADER_OPCODE_TG4_OFFSET_LOD:
-   case SHADER_OPCODE_TG4_OFFSET_BIAS:
-   case SHADER_OPCODE_SAMPLEINFO:
       return arg == 1 || arg == 2;
 
    case SHADER_OPCODE_SEND:
@@ -277,25 +258,6 @@ fs_inst::is_payload(unsigned arg) const
    case SHADER_OPCODE_INTERLOCK:
    case SHADER_OPCODE_MEMORY_FENCE:
    case SHADER_OPCODE_BARRIER:
-   case SHADER_OPCODE_TEX:
-   case FS_OPCODE_TXB:
-   case SHADER_OPCODE_TXD:
-   case SHADER_OPCODE_TXF:
-   case SHADER_OPCODE_TXF_LZ:
-   case SHADER_OPCODE_TXF_CMS_W:
-   case SHADER_OPCODE_TXF_MCS:
-   case SHADER_OPCODE_TXL:
-   case SHADER_OPCODE_TXL_LZ:
-   case SHADER_OPCODE_TXS:
-   case SHADER_OPCODE_LOD:
-   case SHADER_OPCODE_TG4:
-   case SHADER_OPCODE_TG4_OFFSET:
-   case SHADER_OPCODE_TG4_BIAS:
-   case SHADER_OPCODE_TG4_EXPLICIT_LOD:
-   case SHADER_OPCODE_TG4_IMPLICIT_LOD:
-   case SHADER_OPCODE_TG4_OFFSET_LOD:
-   case SHADER_OPCODE_TG4_OFFSET_BIAS:
-   case SHADER_OPCODE_SAMPLEINFO:
       return arg == 0;
 
    case SHADER_OPCODE_SEND:
@@ -957,29 +919,6 @@ fs_inst::size_read(int arg) const
       default:
          unreachable("Invalid source number.");
       }
-      break;
-
-   case SHADER_OPCODE_TEX:
-   case FS_OPCODE_TXB:
-   case SHADER_OPCODE_TXD:
-   case SHADER_OPCODE_TXF:
-   case SHADER_OPCODE_TXF_LZ:
-   case SHADER_OPCODE_TXF_CMS_W:
-   case SHADER_OPCODE_TXF_MCS:
-   case SHADER_OPCODE_TXL:
-   case SHADER_OPCODE_TXL_LZ:
-   case SHADER_OPCODE_TXS:
-   case SHADER_OPCODE_LOD:
-   case SHADER_OPCODE_TG4:
-   case SHADER_OPCODE_TG4_OFFSET:
-   case SHADER_OPCODE_TG4_BIAS:
-   case SHADER_OPCODE_TG4_EXPLICIT_LOD:
-   case SHADER_OPCODE_TG4_IMPLICIT_LOD:
-   case SHADER_OPCODE_TG4_OFFSET_LOD:
-   case SHADER_OPCODE_TG4_OFFSET_BIAS:
-   case SHADER_OPCODE_SAMPLEINFO:
-      if (arg == 0 && src[0].file == VGRF)
-         return mlen * REG_SIZE;
       break;
 
    default:
@@ -2343,78 +2282,40 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case SHADER_OPCODE_UNDEF:
       return "undef";
 
-   case SHADER_OPCODE_TEX:
-      return "tex";
    case SHADER_OPCODE_TEX_LOGICAL:
       return "tex_logical";
-   case SHADER_OPCODE_TXD:
-      return "txd";
    case SHADER_OPCODE_TXD_LOGICAL:
       return "txd_logical";
-   case SHADER_OPCODE_TXF:
-      return "txf";
    case SHADER_OPCODE_TXF_LOGICAL:
       return "txf_logical";
-   case SHADER_OPCODE_TXF_LZ:
-      return "txf_lz";
-   case SHADER_OPCODE_TXL:
-      return "txl";
    case SHADER_OPCODE_TXL_LOGICAL:
       return "txl_logical";
-   case SHADER_OPCODE_TXL_LZ:
-      return "txl_lz";
-   case SHADER_OPCODE_TXS:
-      return "txs";
    case SHADER_OPCODE_TXS_LOGICAL:
       return "txs_logical";
-   case FS_OPCODE_TXB:
-      return "txb";
    case FS_OPCODE_TXB_LOGICAL:
       return "txb_logical";
-   case SHADER_OPCODE_TXF_CMS_W:
-      return "txf_cms_w";
    case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
       return "txf_cms_w_logical";
    case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
       return "txf_cms_w_gfx12_logical";
-   case SHADER_OPCODE_TXF_MCS:
-      return "txf_mcs";
    case SHADER_OPCODE_TXF_MCS_LOGICAL:
       return "txf_mcs_logical";
-   case SHADER_OPCODE_LOD:
-      return "lod";
    case SHADER_OPCODE_LOD_LOGICAL:
       return "lod_logical";
-   case SHADER_OPCODE_TG4:
-      return "tg4";
    case SHADER_OPCODE_TG4_LOGICAL:
       return "tg4_logical";
-   case SHADER_OPCODE_TG4_OFFSET:
-      return "tg4_offset";
    case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
       return "tg4_offset_logical";
-   case SHADER_OPCODE_TG4_OFFSET_LOD:
-      return "tg4_offset_lod";
    case SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL:
       return "tg4_offset_lod_logical";
-   case SHADER_OPCODE_TG4_OFFSET_BIAS:
-      return "tg4_offset_bias";
    case SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL:
       return "tg4_offset_bias_logical";
-   case SHADER_OPCODE_TG4_BIAS:
-      return "tg4_b";
    case SHADER_OPCODE_TG4_BIAS_LOGICAL:
       return "tg4_b_logical";
-   case SHADER_OPCODE_TG4_EXPLICIT_LOD:
-      return "tg4_l";
    case SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL:
       return "tg4_l_logical";
-   case SHADER_OPCODE_TG4_IMPLICIT_LOD:
-      return "tg4_i";
    case SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL:
       return "tg4_i_logical";
-   case SHADER_OPCODE_SAMPLEINFO:
-      return "sampleinfo";
    case SHADER_OPCODE_SAMPLEINFO_LOGICAL:
       return "sampleinfo_logical";
 

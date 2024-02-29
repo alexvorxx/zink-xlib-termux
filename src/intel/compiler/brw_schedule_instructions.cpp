@@ -231,90 +231,6 @@ schedule_node::set_latency(const struct brw_isa_info *isa)
       latency = 24;
       break;
 
-   case SHADER_OPCODE_TEX:
-   case SHADER_OPCODE_TXD:
-   case SHADER_OPCODE_TXF:
-   case SHADER_OPCODE_TXF_LZ:
-   case SHADER_OPCODE_TXL:
-   case SHADER_OPCODE_TXL_LZ:
-      /* 18 cycles:
-       * mov(8)  g115<1>F   0F                         { align1 WE_normal 1Q };
-       * mov(8)  g114<1>F   0F                         { align1 WE_normal 1Q };
-       * send(8) g4<1>UW    g114<8,8,1>F
-       *   sampler (10, 0, 0, 1) mlen 2 rlen 4         { align1 WE_normal 1Q };
-       *
-       * 697 +/-49 cycles (min 610, n=26):
-       * mov(8)  g115<1>F   0F                         { align1 WE_normal 1Q };
-       * mov(8)  g114<1>F   0F                         { align1 WE_normal 1Q };
-       * send(8) g4<1>UW    g114<8,8,1>F
-       *   sampler (10, 0, 0, 1) mlen 2 rlen 4         { align1 WE_normal 1Q };
-       * mov(8)  null       g4<8,8,1>F                 { align1 WE_normal 1Q };
-       *
-       * So the latency on our first texture load of the batchbuffer takes
-       * ~700 cycles, since the caches are cold at that point.
-       *
-       * 840 +/- 92 cycles (min 720, n=25):
-       * mov(8)  g115<1>F   0F                         { align1 WE_normal 1Q };
-       * mov(8)  g114<1>F   0F                         { align1 WE_normal 1Q };
-       * send(8) g4<1>UW    g114<8,8,1>F
-       *   sampler (10, 0, 0, 1) mlen 2 rlen 4         { align1 WE_normal 1Q };
-       * mov(8)  null       g4<8,8,1>F                 { align1 WE_normal 1Q };
-       * send(8) g4<1>UW    g114<8,8,1>F
-       *   sampler (10, 0, 0, 1) mlen 2 rlen 4         { align1 WE_normal 1Q };
-       * mov(8)  null       g4<8,8,1>F                 { align1 WE_normal 1Q };
-       *
-       * On the second load, it takes just an extra ~140 cycles, and after
-       * accounting for the 14 cycles of the MOV's latency, that makes ~130.
-       *
-       * 683 +/- 49 cycles (min = 602, n=47):
-       * mov(8)  g115<1>F   0F                         { align1 WE_normal 1Q };
-       * mov(8)  g114<1>F   0F                         { align1 WE_normal 1Q };
-       * send(8) g4<1>UW    g114<8,8,1>F
-       *   sampler (10, 0, 0, 1) mlen 2 rlen 4         { align1 WE_normal 1Q };
-       * send(8) g50<1>UW   g114<8,8,1>F
-       *   sampler (10, 0, 0, 1) mlen 2 rlen 4         { align1 WE_normal 1Q };
-       * mov(8)  null       g4<8,8,1>F                 { align1 WE_normal 1Q };
-       *
-       * The unit appears to be pipelined, since this matches up with the
-       * cache-cold case, despite there being two loads here.  If you replace
-       * the g4 in the MOV to null with g50, it's still 693 +/- 52 (n=39).
-       *
-       * So, take some number between the cache-hot 140 cycles and the
-       * cache-cold 700 cycles.  No particular tuning was done on this.
-       *
-       * I haven't done significant testing of the non-TEX opcodes.  TXL at
-       * least looked about the same as TEX.
-       */
-      latency = 200;
-      break;
-
-   case SHADER_OPCODE_TXS:
-      /* Testing textureSize(sampler2D, 0), one load was 420 +/- 41
-       * cycles (n=15):
-       * mov(8)   g114<1>UD  0D                        { align1 WE_normal 1Q };
-       * send(8)  g6<1>UW    g114<8,8,1>F
-       *   sampler (10, 0, 10, 1) mlen 1 rlen 4        { align1 WE_normal 1Q };
-       * mov(16)  g6<1>F     g6<8,8,1>D                { align1 WE_normal 1Q };
-       *
-       *
-       * Two loads was 535 +/- 30 cycles (n=19):
-       * mov(16)   g114<1>UD  0D                       { align1 WE_normal 1H };
-       * send(16)  g6<1>UW    g114<8,8,1>F
-       *   sampler (10, 0, 10, 2) mlen 2 rlen 8        { align1 WE_normal 1H };
-       * mov(16)   g114<1>UD  0D                       { align1 WE_normal 1H };
-       * mov(16)   g6<1>F     g6<8,8,1>D               { align1 WE_normal 1H };
-       * send(16)  g8<1>UW    g114<8,8,1>F
-       *   sampler (10, 0, 10, 2) mlen 2 rlen 8        { align1 WE_normal 1H };
-       * mov(16)   g8<1>F     g8<8,8,1>D               { align1 WE_normal 1H };
-       * add(16)   g6<1>F     g6<8,8,1>F   g8<8,8,1>F  { align1 WE_normal 1H };
-       *
-       * Since the only caches that should matter are just the
-       * instruction/state cache containing the surface state, assume that we
-       * always have hot caches.
-       */
-      latency = 100;
-      break;
-
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
       /* testing using varying-index pull constants:
        *
@@ -352,12 +268,83 @@ schedule_node::set_latency(const struct brw_isa_info *isa)
          switch (msg_type) {
          case GFX5_SAMPLER_MESSAGE_SAMPLE_RESINFO:
          case GFX6_SAMPLER_MESSAGE_SAMPLE_SAMPLEINFO:
-            /* See also SHADER_OPCODE_TXS */
+            /* Testing textureSize(sampler2D, 0), one load was 420 +/- 41
+             * cycles (n=15):
+             * mov(8)   g114<1>UD  0D                  { align1 WE_normal 1Q };
+             * send(8)  g6<1>UW    g114<8,8,1>F
+             *   sampler (10, 0, 10, 1) mlen 1 rlen 4  { align1 WE_normal 1Q };
+             * mov(16)  g6<1>F     g6<8,8,1>D                { align1 WE_normal 1Q };
+             *
+             *
+             * Two loads was 535 +/- 30 cycles (n=19):
+             * mov(16)   g114<1>UD  0D                 { align1 WE_normal 1H };
+             * send(16)  g6<1>UW    g114<8,8,1>F
+             *   sampler (10, 0, 10, 2) mlen 2 rlen 8  { align1 WE_normal 1H };
+             * mov(16)   g114<1>UD  0D                 { align1 WE_normal 1H };
+             * mov(16)   g6<1>F     g6<8,8,1>D         { align1 WE_normal 1H };
+             * send(16)  g8<1>UW    g114<8,8,1>F
+             *   sampler (10, 0, 10, 2) mlen 2 rlen 8  { align1 WE_normal 1H };
+             * mov(16)   g8<1>F     g8<8,8,1>D         { align1 WE_normal 1H };
+             * add(16)   g6<1>F     g6<8,8,1>F   g8<8,8,1>F  { align1 WE_normal 1H };
+             *
+             * Since the only caches that should matter are just the
+             * instruction/state cache containing the surface state,
+             * assume that we always have hot caches.
+             */
             latency = 100;
             break;
 
          default:
-            /* See also SHADER_OPCODE_TEX */
+            /* 18 cycles:
+             * mov(8)  g115<1>F   0F                  { align1 WE_normal 1Q };
+             * mov(8)  g114<1>F   0F                  { align1 WE_normal 1Q };
+             * send(8) g4<1>UW    g114<8,8,1>F
+             *   sampler (10, 0, 0, 1) mlen 2 rlen 4  { align1 WE_normal 1Q };
+             *
+             * 697 +/-49 cycles (min 610, n=26):
+             * mov(8)  g115<1>F   0F                  { align1 WE_normal 1Q };
+             * mov(8)  g114<1>F   0F                  { align1 WE_normal 1Q };
+             * send(8) g4<1>UW    g114<8,8,1>F
+             *   sampler (10, 0, 0, 1) mlen 2 rlen 4  { align1 WE_normal 1Q };
+             * mov(8)  null       g4<8,8,1>F          { align1 WE_normal 1Q };
+             *
+             * So the latency on our first texture load of the batchbuffer
+             * takes ~700 cycles, since the caches are cold at that point.
+             *
+             * 840 +/- 92 cycles (min 720, n=25):
+             * mov(8)  g115<1>F   0F                  { align1 WE_normal 1Q };
+             * mov(8)  g114<1>F   0F                  { align1 WE_normal 1Q };
+             * send(8) g4<1>UW    g114<8,8,1>F
+             *   sampler (10, 0, 0, 1) mlen 2 rlen 4  { align1 WE_normal 1Q };
+             * mov(8)  null       g4<8,8,1>F          { align1 WE_normal 1Q };
+             * send(8) g4<1>UW    g114<8,8,1>F
+             *   sampler (10, 0, 0, 1) mlen 2 rlen 4  { align1 WE_normal 1Q };
+             * mov(8)  null       g4<8,8,1>F          { align1 WE_normal 1Q };
+             *
+             * On the second load, it takes just an extra ~140 cycles, and
+             * after accounting for the 14 cycles of the MOV's latency, that
+             * makes ~130.
+             *
+             * 683 +/- 49 cycles (min = 602, n=47):
+             * mov(8)  g115<1>F   0F                  { align1 WE_normal 1Q };
+             * mov(8)  g114<1>F   0F                  { align1 WE_normal 1Q };
+             * send(8) g4<1>UW    g114<8,8,1>F
+             *   sampler (10, 0, 0, 1) mlen 2 rlen 4  { align1 WE_normal 1Q };
+             * send(8) g50<1>UW   g114<8,8,1>F
+             *   sampler (10, 0, 0, 1) mlen 2 rlen 4  { align1 WE_normal 1Q };
+             * mov(8)  null       g4<8,8,1>F          { align1 WE_normal 1Q };
+             *
+             * The unit appears to be pipelined, since this matches up with
+             * the cache-cold case, despite there being two loads here.  If
+             * you replace the g4 in the MOV to null with g50, it's still
+             * 693 +/- 52 (n=39).
+             *
+             * So, take some number between the cache-hot 140 cycles and the
+             * cache-cold 700 cycles.  No particular tuning was done on this.
+             *
+             * I haven't done significant testing of the non-TEX opcodes.
+             * TXL at least looked about the same as TEX.
+             */
             latency = 200;
             break;
          }

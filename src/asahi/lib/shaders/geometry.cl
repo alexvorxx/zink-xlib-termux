@@ -302,17 +302,19 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
          (constant uint *)(ia->draws + (draw * ia->draw_stride));              \
                                                                                \
       uint count = in_draw[0];                                                 \
-      constant INDEX *in = (constant INDEX *)ia->index_buffer;                 \
-      in += in_draw[2];                                                        \
                                                                                \
-      local uintptr_t out_ptr;                                                 \
+      local uintptr_t out_ptr, in_ptr;                                         \
       if (tid == 0) {                                                          \
          out_ptr = (uintptr_t)setup_unroll_for_draw(ia, in_draw, draw, mode,   \
                                                     sizeof(INDEX));            \
+                                                                               \
+         /* Accessed thru local mem because NIR deref is too aggressive */     \
+         in_ptr = (uintptr_t)(ia->index_buffer + sizeof(INDEX) * in_draw[2]);  \
       }                                                                        \
                                                                                \
       barrier(CLK_LOCAL_MEM_FENCE);                                            \
       global INDEX *out = (global INDEX *)out_ptr;                             \
+      constant INDEX *in = (constant INDEX *)in_ptr;                           \
                                                                                \
       local uint scratch[32];                                                  \
                                                                                \

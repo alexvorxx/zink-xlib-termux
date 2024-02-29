@@ -152,6 +152,10 @@ libintel_compiler_elk = static_library(
   build_by_default : false,
 )
 
+idep_intel_compiler_elk = declare_dependency(
+  link_with : [libintel_compiler_elk],
+)
+
 if with_tests
   test(
     'intel_compiler_elk_tests',
@@ -175,9 +179,10 @@ if with_tests
       ir_expression_operation_h,
       include_directories : [inc_include, inc_src, inc_intel],
       link_with : [
-        libintel_compiler_elk, libintel_common, libisl
+        libintel_common, libisl
       ],
-      dependencies : [idep_gtest, idep_nir, idep_mesautil, idep_intel_dev],
+      dependencies : [idep_gtest, idep_nir, idep_mesautil, idep_intel_dev,
+                      idep_intel_compiler_elk],
     ),
     suite : ['intel'],
     protocol : 'gtest',
@@ -203,9 +208,9 @@ elk_lex_yy_c = custom_target(
 elk_asm_tool = executable(
   'elk_asm',
   ['elk_asm_tool.c', elk_gram_tab[0], elk_gram_tab[1], elk_lex_yy_c],
-  dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
+  dependencies : [idep_mesautil, dep_thread, idep_intel_dev, idep_intel_compiler_elk],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler_elk],
+  link_with : [libintel_common],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true
@@ -241,9 +246,9 @@ endforeach
 elk_disasm_tool = executable(
   'elk_disasm',
   files('elk_disasm_tool.c'),
-  dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
+  dependencies : [idep_mesautil, dep_thread, idep_intel_dev, idep_intel_compiler_elk],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler_elk],
+  link_with : [libintel_common],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true

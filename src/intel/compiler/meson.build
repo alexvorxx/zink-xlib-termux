@@ -151,6 +151,10 @@ libintel_compiler_brw = static_library(
   build_by_default : false,
 )
 
+idep_intel_compiler_brw = declare_dependency(
+  link_with : [libintel_compiler_brw],
+)
+
 # For now this tool is only going to be used by Anv
 if get_option('intel-clc') == 'system'
   prog_intel_clc = find_program('intel_clc', native : true)
@@ -167,12 +171,13 @@ elif with_intel_clc
       'elk/elk_nir_options.c',
     ],
     link_with : [
-      libintel_compiler_brw, libintel_common,libisl,
+      libintel_common,libisl,
     ],
     include_directories : [inc_include, inc_src, inc_intel],
     c_args : [pre_args, no_override_init_args],
     link_args : [ld_args_build_id],
-    dependencies : [idep_nir, idep_vtn, idep_mesaclc, idep_mesautil, idep_intel_dev],
+    dependencies : [idep_nir, idep_vtn, idep_mesaclc, idep_mesautil, idep_intel_dev,
+                    idep_intel_compiler_brw],
     native : true,
     install : get_option('install-intel-clc'),
   )
@@ -199,9 +204,10 @@ if with_tests
       ir_expression_operation_h,
       include_directories : [inc_include, inc_src, inc_intel],
       link_with : [
-        libintel_compiler_brw, libintel_common, libisl
+        libintel_common, libisl
       ],
-      dependencies : [idep_gtest, idep_nir, idep_mesautil, idep_intel_dev],
+      dependencies : [idep_gtest, idep_nir, idep_mesautil, idep_intel_dev,
+                      idep_intel_compiler_brw],
     ),
     suite : ['intel'],
     protocol : 'gtest',
@@ -240,9 +246,10 @@ brw_lex_yy_c = custom_target(
 brw_asm_tool = executable(
   'brw_asm',
   ['brw_asm_tool.c', brw_gram_tab[0], brw_gram_tab[1], brw_lex_yy_c],
-  dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
+  dependencies : [idep_mesautil, dep_thread, idep_intel_dev,
+                  idep_intel_compiler_brw],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler_brw],
+  link_with : [libintel_common],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true
@@ -275,9 +282,10 @@ endforeach
 brw_disasm_tool = executable(
   'brw_disasm',
   files('brw_disasm_tool.c'),
-  dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
+  dependencies : [idep_mesautil, dep_thread, idep_intel_dev,
+                  idep_intel_compiler_brw],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler_brw],
+  link_with : [libintel_common],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true

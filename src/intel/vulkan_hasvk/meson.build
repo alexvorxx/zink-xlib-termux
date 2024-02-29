@@ -190,14 +190,14 @@ libvulkan_intel_hasvk = shared_library(
   ],
   link_whole : [libanv_hasvk_common, libanv_per_hw_ver_libs],
   link_with : [
-    libintel_compiler_elk, libisl, libintel_perf,
+    libisl, libintel_perf,
   ],
   dependencies : [
     dep_thread, dep_dl, dep_m, anv_deps, idep_libintel_common,
     idep_nir, idep_genxml, idep_vulkan_util, idep_vulkan_wsi,
     idep_vulkan_runtime, idep_mesautil, idep_xmlconfig,
     idep_intel_driver_ds, idep_intel_dev, idep_intel_blorp_elk,
-    idep_intel_decoder_elk,
+    idep_intel_decoder_elk, idep_intel_compiler_elk,
   ],
   c_args : anv_flags,
   gnu_symbol_visibility : 'hidden',
@@ -229,14 +229,14 @@ if with_tests
     ],
     link_whole : libanv_hasvk_common,
     link_with : [
-      libanv_per_hw_ver_libs, libintel_compiler_elk, libintel_common,
+      libanv_per_hw_ver_libs, libintel_common,
       libisl, libintel_perf,
     ],
     dependencies : [
       dep_thread, dep_dl, dep_m, anv_deps,
       idep_nir, idep_vulkan_util, idep_vulkan_wsi, idep_vulkan_runtime,
       idep_mesautil, idep_intel_dev, idep_intel_blorp_elk,
-      idep_intel_decoder_elk,
+      idep_intel_decoder_elk, idep_intel_compiler_elk,
     ],
     c_args : anv_flags,
     gnu_symbol_visibility : 'hidden',

@@ -4278,8 +4278,8 @@ agx_launch_gs_prerast(struct agx_batch *batch,
       unsigned words = gs->gs_count_words;
       agx_launch(batch,
                  &(const struct pipe_grid_info){
-                    .block = {32, gs->gs_count_words, 1},
-                    .grid = {1, 1, 1},
+                    .block = {1024, 1, 1},
+                    .grid = {gs->gs_count_words, 1, 1},
                  },
                  agx_build_meta_shader(ctx, agx_nir_prefix_sum_gs, &words,
                                        sizeof(words)),

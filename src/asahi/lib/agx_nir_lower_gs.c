@@ -1368,14 +1368,11 @@ agx_nir_prefix_sum_gs(nir_builder *b, const void *data)
 {
    const unsigned *words = data;
 
-   uint32_t subgroup_size = 32;
-   b->shader->info.workgroup_size[0] = subgroup_size;
-   b->shader->info.workgroup_size[1] = *words;
+   b->shader->info.workgroup_size[0] = 1024;
 
    libagx_prefix_sum(b, load_geometry_param(b, count_buffer),
                      load_geometry_param(b, input_primitives),
-                     nir_imm_int(b, *words),
-                     nir_trim_vector(b, nir_load_local_invocation_id(b), 2));
+                     nir_imm_int(b, *words));
 }
 
 void

@@ -511,41 +511,75 @@ libagx_gs_setup_indirect(global struct agx_geometry_params *p,
    state->heap_bottom += align(vertex_buffer_size, 4);
 }
 
-void
-libagx_prefix_sum(global uint *buffer, uint len, uint words, uint2 local_id)
+/*
+ * Returns (work_group_scan_inclusive_add(x), work_group_sum(x)). Implemented
+ * manually with subgroup ops and local memory since Mesa doesn't do those
+ * lowerings yet.
+ */
+static uint2
+libagx_work_group_scan_inclusive_add(uint x, local uint *scratch)
 {
-   /* Main loop: complete subgroups processing 32 values at once
-    *
-    * TODO: Don't do a serial bottleneck! This is bad!
+   uint sg_id = get_sub_group_id();
+
+   /* Partial prefix sum of the subgroup */
+   uint sg = sub_group_scan_exclusive_add(x) + x;
+
+   /* Reduction (sum) for the subgroup */
+   uint sg_sum = sub_group_broadcast(sg, 31);
+
+   /* Write out all the subgroups sums */
+   barrier(CLK_LOCAL_MEM_FENCE);
+   scratch[sg_id] = sg_sum;
+   barrier(CLK_LOCAL_MEM_FENCE);
+
+   /* Read all the subgroup sums. Thread T in subgroup G reads the sum of all
+    * threads in subgroup T.
     */
+   uint other_sum = scratch[get_sub_group_local_id()];
+
+   /* Exclusive sum the subgroup sums to get the total before the current group,
+    * which can be added to the total for the current group.
+    */
+   uint other_sums = sub_group_scan_exclusive_add(other_sum);
+   uint base = sub_group_broadcast(other_sums, sg_id);
+   uint prefix = base + sg;
+
+   /* Reduce the workgroup using the prefix sum we already did */
+   uint reduction = sub_group_broadcast(other_sums, 31) + other_sum;
+
+   return (uint2)(prefix, reduction);
+}
+
+kernel void
+libagx_prefix_sum(global uint *buffer, uint len, uint words)
+{
+   local uint scratch[32];
+   uint tid = get_local_id(0);
+   uint word = get_group_id(0);
+
+   /* Main loop: complete workgroups processing 1024 values at once */
    uint i, count = 0;
-   uint len_remainder = len % 32;
+   uint len_remainder = len % 1024;
    uint len_rounded_down = len - len_remainder;
 
-   for (i = local_id.x; i < len_rounded_down; i += 32) {
-      global uint *ptr = &buffer[(i * words) + local_id.y];
+   for (i = tid; i < len_rounded_down; i += 1024) {
+      global uint *ptr = &buffer[(i * words) + word];
       uint value = *ptr;
+      uint2 sums = libagx_work_group_scan_inclusive_add(value, scratch);
 
-      /* TODO: use inclusive once that's wired up */
-      uint value_prefix_sum = sub_group_scan_exclusive_add(value) + value;
-      *ptr = count + value_prefix_sum;
-
-      /* Advance count by the reduction sum of all processed values. We already
-       * have that sum calculated in the last lane. We know that lane is active,
-       * since all control flow is uniform except in the last iteration.
-       */
-      count += sub_group_broadcast(value_prefix_sum, 31);
+      *ptr = count + sums[0];
+      count += sums[1];
    }
 
    /* The last iteration is special since we won't have a full subgroup unless
     * the length is divisible by the subgroup size, and we don't advance count.
     */
-   if (local_id.x < len_remainder) {
-      global uint *ptr = &buffer[(i * words) + local_id.y];
-      uint value = *ptr;
+   global uint *ptr = &buffer[(i * words) + word];
+   uint value = (tid < len_remainder) ? *ptr : 0;
+   uint scan = libagx_work_group_scan_inclusive_add(value, scratch)[0];
 
-      /* TODO: use inclusive once that's wired up */
-      *ptr = count + sub_group_scan_exclusive_add(value) + value;
+   if (tid < len_remainder) {
+      *ptr = count + scan;
    }
 }
 

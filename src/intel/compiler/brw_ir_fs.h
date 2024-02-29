@@ -472,6 +472,8 @@ public:
    const char *annotation;
    /** @} */
 
+   uint8_t sources; /**< Number of fs_reg sources. */
+
    /**
     * Execution size of the instruction.  This is used by the generator to
     * generate the correct binary for the given instruction.  Current valid
@@ -488,74 +490,82 @@ public:
     */
    uint8_t group;
 
-   uint32_t offset; /**< spill/unspill offset or texture offset bitfield */
    uint8_t mlen; /**< SEND message length */
    uint8_t ex_mlen; /**< SENDS extended message length */
-   uint8_t target; /**< MRT target. */
    uint8_t sfid; /**< SFID for SEND instructions */
+   /** The number of hardware registers used for a message header. */
+   uint8_t header_size;
+   uint8_t target; /**< MRT target. */
    uint32_t desc; /**< SEND[S] message descriptor immediate */
    uint32_t ex_desc; /**< SEND[S] extended message descriptor immediate */
+
+   uint32_t offset; /**< spill/unspill offset or texture offset bitfield */
    unsigned size_written; /**< Data written to the destination register in bytes. */
 
    enum opcode opcode; /* BRW_OPCODE_* or FS_OPCODE_* */
    enum brw_conditional_mod conditional_mod; /**< BRW_CONDITIONAL_* */
    enum brw_predicate predicate;
-   bool predicate_inverse:1;
-   bool writes_accumulator:1; /**< instruction implicitly writes accumulator */
-   bool force_writemask_all:1;
-   bool no_dd_clear:1;
-   bool no_dd_check:1;
-   bool saturate:1;
-   bool shadow_compare:1;
-   bool check_tdr:1; /**< Only valid for SEND; turns it into a SENDC */
-   bool send_has_side_effects:1; /**< Only valid for SHADER_OPCODE_SEND */
-   bool send_is_volatile:1; /**< Only valid for SHADER_OPCODE_SEND */
-   bool send_ex_desc_scratch:1; /**< Only valid for SHADER_OPCODE_SEND, use
-                                 *   the scratch surface offset to build
-                                 *   extended descriptor
-                                 */
-   bool send_ex_bso:1; /**< Only for SHADER_OPCODE_SEND, use extended bindless
-                        *   surface offset (26bits instead of 20bits)
-                        */
-   bool predicate_trivial:1; /**< The predication mask applied to this
-                              *   instruction is guaranteed to be uniform and
-                              *   a superset of the execution mask of the
-                              *   present block, no currently enabled channels
-                              *   will be disabled by the predicate.
-                              */
-   bool eot:1;
-
-   /* Chooses which flag subregister (f0.0 to f3.1) is used for conditional
-    * mod and predication.
-    */
-   unsigned flag_subreg:3;
-
-   /**
-    * Systolic depth used by DPAS instruction.
-    */
-   unsigned sdepth:4;
-
-   /**
-    * Repeat count used by DPAS instruction.
-    */
-   unsigned rcount:4;
-
-   /** The number of hardware registers used for a message header. */
-   uint8_t header_size;
-
-   fs_reg dst;
-   fs_reg *src;
-
-   uint8_t sources; /**< Number of fs_reg sources. */
-
-   bool last_rt:1;
-   bool pi_noperspective:1;   /**< Pixel interpolator noperspective flag */
-   bool keep_payload_trailing_zeros;
 
    tgl_swsb sched; /**< Scheduling info. */
 
-   /* Hint that this instruction has combined LOD/LOD bias with array index */
-   bool has_packed_lod_ai_src;
+   union {
+      struct {
+         /* Chooses which flag subregister (f0.0 to f3.1) is used for
+          * conditional mod and predication.
+          */
+         unsigned flag_subreg:3;
+
+         /**
+          * Systolic depth used by DPAS instruction.
+          */
+         unsigned sdepth:4;
+
+         /**
+          * Repeat count used by DPAS instruction.
+          */
+         unsigned rcount:4;
+
+         unsigned pad:3;
+
+         bool predicate_inverse:1;
+         bool writes_accumulator:1; /**< instruction implicitly writes accumulator */
+         bool force_writemask_all:1;
+         bool no_dd_clear:1;
+         bool no_dd_check:1;
+         bool saturate:1;
+         bool shadow_compare:1;
+         bool check_tdr:1; /**< Only valid for SEND; turns it into a SENDC */
+         bool send_has_side_effects:1; /**< Only valid for SHADER_OPCODE_SEND */
+         bool send_is_volatile:1; /**< Only valid for SHADER_OPCODE_SEND */
+         bool send_ex_desc_scratch:1; /**< Only valid for SHADER_OPCODE_SEND, use
+                                       *   the scratch surface offset to build
+                                       *   extended descriptor
+                                       */
+         bool send_ex_bso:1; /**< Only for SHADER_OPCODE_SEND, use extended
+                              *   bindless surface offset (26bits instead of
+                              *   20bits)
+                              */
+         /**
+          * The predication mask applied to this instruction is guaranteed to
+          * be uniform and a superset of the execution mask of the present block.
+          * No currently enabled channel will be disabled by the predicate.
+          */
+         bool predicate_trivial:1;
+         bool eot:1;
+         bool last_rt:1;
+         bool pi_noperspective:1;   /**< Pixel interpolator noperspective flag */
+         bool keep_payload_trailing_zeros:1;
+
+         /**
+          * Hint that this instruction has combined LOD/LOD bias with array index
+          */
+         bool has_packed_lod_ai_src:1;
+      };
+      uint32_t bits;
+   };
+
+   fs_reg dst;
+   fs_reg *src;
 };
 
 /**

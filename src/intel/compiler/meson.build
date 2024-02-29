@@ -153,6 +153,9 @@ libintel_compiler_brw = static_library(
 
 idep_intel_compiler_brw = declare_dependency(
   link_with : [libintel_compiler_brw],
+  dependencies : [
+    idep_nir,
+  ],
 )
 
 # For now this tool is only going to be used by Anv

@@ -154,6 +154,9 @@ libintel_compiler_elk = static_library(
 
 idep_intel_compiler_elk = declare_dependency(
   link_with : [libintel_compiler_elk],
+  dependencies : [
+    idep_nir,
+  ],
 )
 
 if with_tests

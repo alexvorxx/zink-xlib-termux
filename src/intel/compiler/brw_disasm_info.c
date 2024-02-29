@@ -28,9 +28,6 @@
 #include "dev/intel_debug.h"
 #include "compiler/nir/nir.h"
 
-__attribute__((weak)) void nir_print_instr(UNUSED const nir_instr *instr,
-                                           UNUSED FILE *fp) {}
-
 void
 dump_assembly(void *assembly, int start_offset, int end_offset,
               struct disasm_info *disasm, const unsigned *block_latency)

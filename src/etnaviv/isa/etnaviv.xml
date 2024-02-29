@@ -986,6 +986,11 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
+<bitset name="texldd" extends="#instruction-tex-src0-src1-src2">
+	<pattern low="0" high="5">011010</pattern> <!-- OPC -->
+	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
 <bitset name="texldl" extends="#instruction-tex-src0">
 	<pattern low="0" high="5">011011</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
@@ -993,7 +998,6 @@ SPDX-License-Identifier: MIT
 
 <!-- 0x7800000f 0x9011007c 0x00200804 0x0100100c -->
 
-<!-- texldd -->
 <!-- texldpcf -->
 <!-- rep -->
 <!-- endrep -->

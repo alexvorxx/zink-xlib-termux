@@ -29,11 +29,26 @@
 #include "nvk_clc597.h"
 
 static void
+nvk_descriptor_state_fini(struct nvk_cmd_buffer *cmd,
+                          struct nvk_descriptor_state *desc)
+{
+   struct nvk_cmd_pool *pool = nvk_cmd_buffer_pool(cmd);
+
+   for (unsigned i = 0; i < NVK_MAX_SETS; i++) {
+      vk_free(&pool->vk.alloc, desc->push[i]);
+      desc->push[i] = NULL;
+   }
+}
+
+static void
 nvk_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
 {
    struct nvk_cmd_buffer *cmd =
       container_of(vk_cmd_buffer, struct nvk_cmd_buffer, vk);
    struct nvk_cmd_pool *pool = nvk_cmd_buffer_pool(cmd);
+
+   nvk_descriptor_state_fini(cmd, &cmd->state.gfx.descriptors);
+   nvk_descriptor_state_fini(cmd, &cmd->state.cs.descriptors);
 
    nvk_cmd_pool_free_bo_list(pool, &cmd->bos);
    nvk_cmd_pool_free_bo_list(pool, &cmd->gart_bos);
@@ -85,6 +100,9 @@ nvk_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer,
    struct nvk_cmd_pool *pool = nvk_cmd_buffer_pool(cmd);
 
    vk_command_buffer_reset(&cmd->vk);
+
+   nvk_descriptor_state_fini(cmd, &cmd->state.gfx.descriptors);
+   nvk_descriptor_state_fini(cmd, &cmd->state.cs.descriptors);
 
    nvk_cmd_pool_free_bo_list(pool, &cmd->bos);
    nvk_cmd_pool_free_gart_bo_list(pool, &cmd->gart_bos);

@@ -93,8 +93,9 @@ static void si_emit_cb_render_state(struct si_context *sctx, unsigned index)
          blend->dcc_msaa_corruption_4bit & cb_target_mask && sctx->framebuffer.nr_samples >= 2;
 
       if (sctx->gfx_level >= GFX11) {
-         cb_dcc_control = S_028424_SAMPLE_MASK_TRACKER_DISABLE(oc_disable) |
-                          S_028424_SAMPLE_MASK_TRACKER_WATERMARK(0);
+         cb_dcc_control =
+            S_028424_SAMPLE_MASK_TRACKER_DISABLE(oc_disable) |
+            S_028424_SAMPLE_MASK_TRACKER_WATERMARK(sctx->screen->info.has_dedicated_vram ? 0 : 15);
       } else {
          cb_dcc_control =
             S_028424_OVERWRITE_COMBINER_MRT_SHARING_DISABLE(sctx->gfx_level <= GFX9) |

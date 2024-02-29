@@ -132,10 +132,6 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
          op = DRM_XE_VM_BIND_OP_MAP_USERPTR;
    }
 
-   uint16_t pat_index = 0;
-   if (op != DRM_XE_VM_BIND_OP_UNMAP)
-      pat_index = iris_heap_to_pat_entry(devinfo, bo->real.heap)->index;
-
    if (bo->real.capture)
       flags |= DRM_XE_VM_BIND_FLAG_DUMPABLE;
 
@@ -149,7 +145,7 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
       .bind.range = range,
       .bind.addr = intel_48b_address(bo->address),
       .bind.op = op,
-      .bind.pat_index = pat_index,
+      .bind.pat_index = iris_heap_to_pat_entry(devinfo, bo->real.heap)->index,
       .bind.flags = flags,
    };
 

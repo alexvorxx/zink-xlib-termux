@@ -275,14 +275,29 @@ reconstruct_index(struct spill_ctx *ctx, unsigned node)
 static bool
 can_remat(agx_instr *I)
 {
-   return I->op == AGX_OPCODE_MOV_IMM;
+   switch (I->op) {
+   case AGX_OPCODE_MOV_IMM:
+   case AGX_OPCODE_GET_SR:
+      return true;
+   default:
+      return false;
+   }
 }
 
-static void
+static agx_instr *
 remat_to(agx_builder *b, agx_index dst, struct spill_ctx *ctx, unsigned node)
 {
-   assert(can_remat(ctx->remat[node]));
-   agx_mov_imm_to(b, dst, ctx->remat[node]->imm);
+   agx_instr *I = ctx->remat[node];
+   assert(can_remat(I));
+
+   switch (I->op) {
+   case AGX_OPCODE_MOV_IMM:
+      return agx_mov_imm_to(b, dst, I->imm);
+   case AGX_OPCODE_GET_SR:
+      return agx_get_sr_to(b, dst, I->sr);
+   default:
+      unreachable("invalid remat");
+   }
 }
 
 static void

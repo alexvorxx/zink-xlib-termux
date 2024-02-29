@@ -2027,6 +2027,12 @@ emit_intrinsic_reduce_clusters(struct ir3_context *ctx,
       create_immed_shared(ctx->block, get_reduce_identity(nir_reduce_op, dst_size),
                           true);
 
+   struct ir3_instruction *inclusive_src = ir3_get_src(ctx, &intr->src[0])[0];
+
+   struct ir3_instruction *exclusive_src = NULL;
+   if (need_exclusive)
+         exclusive_src = ir3_get_src(ctx, &intr->src[1])[0];
+
    /* OPC_SCAN_CLUSTERS_MACRO has the following destinations:
     * - Shared reg reduction result, must be initialized to the identity
     * - Inclusive scan result
@@ -2074,14 +2080,10 @@ emit_intrinsic_reduce_clusters(struct ir3_context *ctx,
    struct ir3_register *reduce_init = __ssa_src(scan, identity, IR3_REG_SHARED);
    ir3_reg_tie(reduce, reduce_init);
 
-   struct ir3_instruction *inclusive_src = ir3_get_src(ctx, &intr->src[0])[0];
    __ssa_src(scan, inclusive_src, 0);
 
-   if (need_exclusive) {
-      struct ir3_instruction *exclusive_src =
-         ir3_get_src(ctx, &intr->src[1])[0];
+   if (need_exclusive)
       __ssa_src(scan, exclusive_src, 0);
-   }
 
    struct ir3_register *dst;
    switch (intr->intrinsic) {

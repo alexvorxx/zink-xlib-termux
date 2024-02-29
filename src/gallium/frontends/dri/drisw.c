@@ -43,6 +43,10 @@
 #include "dri_helpers.h"
 #include "dri_query_renderer.h"
 
+#ifdef HAVE_LIBDRM
+#include <xf86drm.h>
+#endif
+
 DEBUG_GET_ONCE_BOOL_OPTION(swrast_no_present, "SWRAST_NO_PRESENT", false);
 
 static inline void
@@ -507,6 +511,8 @@ static __DRIimageExtension driSWImageExtension = {
     .destroyImage = dri2_destroy_image,
 };
 
+extern const __DRIimageExtension driVkImageExtension;
+
 static const __DRIrobustnessExtension dri2Robustness = {
    .base = { __DRI2_ROBUSTNESS, 1 }
 };
@@ -608,6 +614,10 @@ drisw_init_screen(struct dri_screen *screen)
    }
    else
       screen->extensions = drisw_screen_extensions;
+#ifdef HAVE_LIBDRM
+   if (pscreen->resource_create_with_modifiers && (pscreen->get_param(pscreen, PIPE_CAP_DMABUF) & DRM_PRIME_CAP_EXPORT))
+      screen->extensions[0] = &driVkImageExtension.base;
+#endif
    screen->lookup_egl_image = dri2_lookup_egl_image;
 
    const __DRIimageLookupExtension *image = screen->dri2.image;

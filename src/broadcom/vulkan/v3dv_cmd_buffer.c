@@ -1411,10 +1411,9 @@ v3dv_CmdNextSubpass2(VkCommandBuffer commandBuffer,
 static void
 cmd_buffer_emit_subpass_clears(struct v3dv_cmd_buffer *cmd_buffer)
 {
-   assert(cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-
    assert(cmd_buffer->state.pass);
    assert(cmd_buffer->state.subpass_idx < cmd_buffer->state.pass->subpass_count);
+   assert(!cmd_buffer->state.resuming);
    const struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
    const struct v3dv_render_pass *pass = state->pass;
    const struct v3dv_subpass *subpass = &pass->subpasses[state->subpass_idx];
@@ -1808,22 +1807,11 @@ v3dv_cmd_buffer_subpass_start(struct v3dv_cmd_buffer *cmd_buffer,
 
    /* If we can't use TLB clears then we need to emit draw clears for any
     * LOAD_OP_CLEAR attachments in this subpass now. We might also need to emit
-    * Depth/Stencil clears if we hit GFXH-1461.
-    *
-    * Secondary command buffers don't start subpasses (and may not even have
-    * framebuffer state), so we only care about this in primaries. The only
-    * exception could be a secondary running inside a subpass that needs to
-    * record a meta operation (with its own render pass) that relies on
-    * attachment load clears, but we don't have any instances of that right
-    * now.
-    *
-    * For dynamic render passes, we only want to emit this once with the job
-    * starting the resume/suspend chain.
+    * Depth/Stencil clears if we hit GFXH-1461. With dynamic render passes this
+    * should only be called when starting the render pass, not when resuming.
     */
-   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY &&
-       !cmd_buffer->state.resuming) {
+   if (!cmd_buffer->state.resuming)
       cmd_buffer_emit_subpass_clears(cmd_buffer);
-   }
 
    return job;
 }

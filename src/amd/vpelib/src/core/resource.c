@@ -31,6 +31,10 @@
 #include "vpe10_resource.h"
 #endif
 
+#ifdef VPE_BUILD_1_1
+#include "vpe11_resource.h"
+#endif
+
 static const struct vpe_debug_options debug_defaults = {
     .flags                   = {0},
     .cm_in_bypass            = 0,
@@ -87,6 +91,12 @@ enum vpe_ip_level vpe_resource_parse_ip_version(
         ip_level = VPE_IP_LEVEL_1_0;
         break;
 #endif
+#if VPE_BUILD_1_1
+    case VPE_VERSION(6, 1, 1):
+    case VPE_VERSION(6, 1, 2):
+        ip_level = VPE_IP_LEVEL_1_1;
+        break;
+#endif
 #endif
     default:
         ip_level = VPE_IP_LEVEL_UNKNOWN;
@@ -103,6 +113,11 @@ enum vpe_status vpe_construct_resource(
 #ifdef VPE_BUILD_1_0
     case VPE_IP_LEVEL_1_0:
         status = vpe10_construct_resource(vpe_priv, res);
+        break;
+#endif
+#ifdef VPE_BUILD_1_1
+    case VPE_IP_LEVEL_1_1:
+        status = vpe11_construct_resource(vpe_priv, res);
         break;
 #endif
     default:
@@ -125,6 +140,11 @@ void vpe_destroy_resource(struct vpe_priv *vpe_priv, struct resource *res)
 #ifdef VPE_BUILD_1_0
     case VPE_IP_LEVEL_1_0:
         vpe10_destroy_resource(vpe_priv, res);
+        break;
+#endif
+#ifdef VPE_BUILD_1_1
+    case VPE_IP_LEVEL_1_1:
+        vpe11_destroy_resource(vpe_priv, res);
         break;
 #endif
     default:

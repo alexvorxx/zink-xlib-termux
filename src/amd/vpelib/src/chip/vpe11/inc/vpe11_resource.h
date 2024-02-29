@@ -1,4 +1,4 @@
-/* Copyright 2022 Advanced Micro Devices, Inc.
+/* Copyright 2023 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,33 +21,21 @@
  * Authors: AMD
  *
  */
-
 #pragma once
 
-#include "vpe_types.h"
+#include "resource.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct vpe_priv;
+enum vpe_status vpe11_construct_resource(struct vpe_priv *vpe_priv, struct resource *res);
 
-struct cmd_builder {
-    enum vpe_status (*build_noops)(
-        struct vpe_priv *vpe_priv, uint32_t **ppbuf, uint32_t num_dwords);
+void vpe11_destroy_resource(struct vpe_priv *vpe_priv, struct resource *res);
 
-    // prelimenary APIs
-    enum vpe_status (*build_vpe_cmd)(
-        struct vpe_priv *vpe_priv, struct vpe_build_bufs *cur_bufs, uint32_t cmd_idx);
-
-    enum vpe_status (*build_plane_descriptor)(
-        struct vpe_priv *vpe_priv, struct vpe_buf *buf, uint32_t cmd_idx);
-
-#ifdef VPE_BUILD_1_1
-    enum vpe_status (*build_collaborate_sync_cmd)(
-        struct vpe_priv *vpe_priv, struct vpe_build_bufs *cur_bufs, bool is_end);
-#endif
-};
+enum vpe_status vpe11_set_num_segments(struct vpe_priv *vpe_priv, struct stream_ctx *stream_ctx,
+    struct scaler_data *scl_data, struct vpe_rect *src_rect, struct vpe_rect *dst_rect,
+    uint32_t *max_seg_width);
 
 #ifdef __cplusplus
 }

@@ -19,9 +19,10 @@ struct vn_info_extension {
 };
 
 /* sorted by extension names for bsearch */
-static const uint32_t _vn_info_extension_count = 114;
-static const struct vn_info_extension _vn_info_extensions[114] = {
+static const uint32_t _vn_info_extension_count = 115;
+static const struct vn_info_extension _vn_info_extensions[115] = {
    { "VK_EXT_4444_formats", 341, 1 },
+   { "VK_EXT_attachment_feedback_loop_layout", 340, 2 },
    { "VK_EXT_border_color_swizzle", 412, 1 },
    { "VK_EXT_calibrated_timestamps", 185, 2 },
    { "VK_EXT_color_write_enable", 382, 1 },

@@ -188,7 +188,7 @@ static const struct nil_format_info nil_format_infos[PIPE_FORMAT_COUNT] =
    C4(A, I32_SINT,   RS32, R, R, R, R, SINT,    R32,  TR),
    C4(A, I32_UINT,   RU32, R, R, R, R, UINT,    R32,  TR),
 
-   A1(A, A8_UNORM,   A8,   x, x, x, R, UNORM,   R8,   TA),
+   A1(A, A8_UNORM,   A8,   x, x, x, R, UNORM,   R8,   IA),
    A1(A, A8_SNORM,   RN8,  x, x, x, R, SNORM,   R8,   T),
    A1(A, A8_SINT,    RS8,  x, x, x, R, SINT,    R8,   T),
    A1(A, A8_UINT,    RU8,  x, x, x, R, UINT,    R8,   T),

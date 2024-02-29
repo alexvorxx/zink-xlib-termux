@@ -1471,12 +1471,20 @@ cmd_buffer_emit_subpass_clears(struct v3dv_cmd_buffer *cmd_buffer)
     * So the clear is only constrained by the render area and not by pipeline
     * state such as scissor or viewport, these are the semantics of
     * vkCmdClearAttachments as well.
+    *
+    * Also:
+    *
+    *   "If the render pass instance this is recorded in uses multiview, then
+    *    baseArrayLayer must be zero and layerCount must be one."
     */
+   assert(state->framebuffer);
+   uint32_t layer_count = cmd_buffer->state.pass->multiview_enabled ?
+      1 : state->framebuffer->layers;
    VkCommandBuffer _cmd_buffer = v3dv_cmd_buffer_to_handle(cmd_buffer);
    VkClearRect rect = {
       .rect = state->render_area,
       .baseArrayLayer = 0,
-      .layerCount = 1,
+      .layerCount = layer_count,
    };
    v3dv_CmdClearAttachments(_cmd_buffer, att_count, atts, 1, &rect);
 }

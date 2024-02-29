@@ -1366,7 +1366,7 @@ RADV driver environment variables
       enable optimizations to move more driver internal objects to VRAM.
    ``shader_object``
       enable experimental implementation of VK_EXT_shader_object (GFX6-8,
-      VEGA10, and GFX11)
+      VEGA10, and GFX10-GFX11)
    ``transfer_queue``
       enable experimental transfer queue support (GFX9+, not yet spec compliant)
    ``video_decode``

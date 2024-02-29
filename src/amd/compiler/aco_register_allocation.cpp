@@ -2879,9 +2879,10 @@ optimize_encoding(Program* program, ra_ctx& ctx, RegisterFile& register_file,
 }
 
 void
-emit_parallel_copy(ra_ctx& ctx, std::vector<std::pair<Operand, Definition>>& parallelcopy,
-                   aco_ptr<Instruction>& instr, std::vector<aco_ptr<Instruction>>& instructions,
-                   bool temp_in_scc, RegisterFile& register_file)
+emit_parallel_copy_internal(ra_ctx& ctx, std::vector<std::pair<Operand, Definition>>& parallelcopy,
+                            aco_ptr<Instruction>& instr,
+                            std::vector<aco_ptr<Instruction>>& instructions, bool temp_in_scc,
+                            RegisterFile& register_file)
 {
    if (parallelcopy.empty())
       return;
@@ -2943,6 +2944,38 @@ emit_parallel_copy(ra_ctx& ctx, std::vector<std::pair<Operand, Definition>>& par
    instructions.emplace_back(std::move(pc));
 
    parallelcopy.clear();
+}
+
+void
+emit_parallel_copy(ra_ctx& ctx, std::vector<std::pair<Operand, Definition>>& parallelcopy,
+                   aco_ptr<Instruction>& instr, std::vector<aco_ptr<Instruction>>& instructions,
+                   bool temp_in_scc, RegisterFile& register_file)
+{
+   if (parallelcopy.empty())
+      return;
+
+   std::vector<std::pair<Operand, Definition>> linear_vgpr;
+   if (ctx.num_linear_vgprs) {
+      unsigned next = 0;
+      for (unsigned i = 0; i < parallelcopy.size(); i++) {
+         if (parallelcopy[i].first.regClass().is_linear_vgpr()) {
+            linear_vgpr.push_back(parallelcopy[i]);
+            continue;
+         }
+
+         if (next != i)
+            parallelcopy[next] = parallelcopy[i];
+         next++;
+      }
+      parallelcopy.resize(next);
+   }
+
+   /* Because of how linear VGPRs are allocated, we should never have to move a linear VGPR into the
+    * space of a normal one. This means the copy can be done entirely before normal VGPR copies. */
+   emit_parallel_copy_internal(ctx, linear_vgpr, instr, instructions, temp_in_scc,
+                               register_file);
+   emit_parallel_copy_internal(ctx, parallelcopy, instr, instructions, temp_in_scc,
+                               register_file);
 }
 
 } /* end namespace */
@@ -3325,7 +3358,7 @@ register_allocation(Program* program, live& live_vars, ra_test_policy policy)
          std::vector<std::pair<Operand, Definition>> parallelcopy;
          compact_linear_vgprs(ctx, register_file, parallelcopy);
          update_renames(ctx, register_file, parallelcopy, br, rename_not_killed_ops);
-         emit_parallel_copy(ctx, parallelcopy, br, instructions, temp_in_scc, register_file);
+         emit_parallel_copy_internal(ctx, parallelcopy, br, instructions, temp_in_scc, register_file);
 
          instructions.push_back(std::move(br));
       }

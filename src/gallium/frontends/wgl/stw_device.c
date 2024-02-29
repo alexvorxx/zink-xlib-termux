@@ -258,7 +258,8 @@ stw_cleanup(void)
    st_screen_destroy(stw_dev->fscreen);
    FREE(stw_dev->fscreen);
 
-   stw_dev->screen->destroy(stw_dev->screen);
+   if (stw_dev->screen)
+      stw_dev->screen->destroy(stw_dev->screen);
 
    stw_tls_cleanup();
 

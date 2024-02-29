@@ -30,7 +30,7 @@
 #include "util/macros.h"
 
 bool
-brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg)
+fs_reg_saturate_immediate(fs_reg *reg)
 {
    union {
       unsigned ud;
@@ -39,7 +39,7 @@ brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg)
       double df;
    } imm, sat_imm = { 0 };
 
-   const unsigned size = type_sz(type);
+   const unsigned size = type_sz(reg->type);
 
    /* We want to either do a 32-bit or 64-bit data copy, the type is otherwise
     * irrelevant, so just check the size of the type and copy from/to an
@@ -50,7 +50,7 @@ brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg)
    else
       imm.df = reg->df;
 
-   switch (type) {
+   switch (reg->type) {
    case BRW_REGISTER_TYPE_UD:
    case BRW_REGISTER_TYPE_D:
    case BRW_REGISTER_TYPE_UW:
@@ -93,9 +93,9 @@ brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg)
 }
 
 bool
-brw_negate_immediate(enum brw_reg_type type, struct brw_reg *reg)
+fs_reg_negate_immediate(fs_reg *reg)
 {
-   switch (type) {
+   switch (reg->type) {
    case BRW_REGISTER_TYPE_D:
    case BRW_REGISTER_TYPE_UD:
       reg->d = -reg->d;
@@ -136,9 +136,9 @@ brw_negate_immediate(enum brw_reg_type type, struct brw_reg *reg)
 }
 
 bool
-brw_abs_immediate(enum brw_reg_type type, struct brw_reg *reg)
+fs_reg_abs_immediate(fs_reg *reg)
 {
-   switch (type) {
+   switch (reg->type) {
    case BRW_REGISTER_TYPE_D:
       reg->d = abs(reg->d);
       return true;

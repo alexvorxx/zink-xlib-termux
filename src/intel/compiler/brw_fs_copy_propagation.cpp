@@ -972,14 +972,14 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
 
    if (inst->src[arg].abs) {
       if (is_logic_op(inst->opcode) ||
-          !brw_abs_immediate(val.type, &val.as_brw_reg())) {
+          !fs_reg_abs_immediate(&val)) {
          return false;
       }
    }
 
    if (inst->src[arg].negate) {
       if (is_logic_op(inst->opcode) ||
-          !brw_negate_immediate(val.type, &val.as_brw_reg())) {
+          !fs_reg_negate_immediate(&val)) {
          return false;
       }
    }

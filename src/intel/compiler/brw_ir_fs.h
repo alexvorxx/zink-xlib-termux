@@ -365,6 +365,10 @@ horiz_stride(fs_reg reg, unsigned s)
    return reg;
 }
 
+bool fs_reg_saturate_immediate(fs_reg *reg);
+bool fs_reg_negate_immediate(fs_reg *reg);
+bool fs_reg_abs_immediate(fs_reg *reg);
+
 static const fs_reg reg_undef;
 
 struct fs_inst : public exec_node {

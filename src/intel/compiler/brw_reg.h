@@ -1280,10 +1280,6 @@ element_sz(struct brw_reg reg)
 int brw_float_to_vf(float f);
 float brw_vf_to_float(unsigned char vf);
 
-bool brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg);
-bool brw_negate_immediate(enum brw_reg_type type, struct brw_reg *reg);
-bool brw_abs_immediate(enum brw_reg_type type, struct brw_reg *reg);
-
 #ifdef __cplusplus
 }
 #endif

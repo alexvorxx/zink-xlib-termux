@@ -93,8 +93,7 @@ opt_saturate_propagation_local(const fs_live_variables &live, bblock_t *block)
                      } else if (scan_inst->opcode == BRW_OPCODE_MAD) {
                         for (int i = 0; i < 2; i++) {
                            if (scan_inst->src[i].file == IMM) {
-                              brw_negate_immediate(scan_inst->src[i].type,
-                                                   &scan_inst->src[i].as_brw_reg());
+                              fs_reg_negate_immediate(&scan_inst->src[i]);
                            } else {
                               scan_inst->src[i].negate = !scan_inst->src[i].negate;
                            }
@@ -102,8 +101,7 @@ opt_saturate_propagation_local(const fs_live_variables &live, bblock_t *block)
                         inst->src[0].negate = false;
                      } else if (scan_inst->opcode == BRW_OPCODE_ADD) {
                         if (scan_inst->src[1].file == IMM) {
-                           if (!brw_negate_immediate(scan_inst->src[1].type,
-                                                     &scan_inst->src[1].as_brw_reg())) {
+                           if (!fs_reg_negate_immediate(&scan_inst->src[1])) {
                               break;
                            }
                         } else {

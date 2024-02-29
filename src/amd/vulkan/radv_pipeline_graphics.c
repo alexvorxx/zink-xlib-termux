@@ -2049,6 +2049,22 @@ radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *
          else
             stages[MESA_SHADER_GEOMETRY].info.is_ngg = stages[MESA_SHADER_VERTEX].info.is_ngg;
       }
+
+      /* When pre-rasterization stages are compiled separately with shader objects, NGG GS needs to
+       * be disabled because if the next stage of VS/TES is GS and GS is unknown, it might use
+       * streamout but it's not possible to know that when compiling VS or TES only.
+       */
+      if (stages[MESA_SHADER_VERTEX].nir && stages[MESA_SHADER_VERTEX].info.next_stage == MESA_SHADER_GEOMETRY &&
+          !stages[MESA_SHADER_GEOMETRY].nir) {
+         stages[MESA_SHADER_VERTEX].info.is_ngg = false;
+      } else if (stages[MESA_SHADER_TESS_EVAL].nir &&
+                 stages[MESA_SHADER_TESS_EVAL].info.next_stage == MESA_SHADER_GEOMETRY &&
+                 !stages[MESA_SHADER_GEOMETRY].nir) {
+         stages[MESA_SHADER_TESS_EVAL].info.is_ngg = false;
+      } else if (stages[MESA_SHADER_GEOMETRY].nir &&
+                 (!stages[MESA_SHADER_VERTEX].nir && !stages[MESA_SHADER_TESS_EVAL].nir)) {
+         stages[MESA_SHADER_GEOMETRY].info.is_ngg = false;
+      }
    }
 }
 

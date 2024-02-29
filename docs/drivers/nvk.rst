@@ -18,9 +18,8 @@ NVK requires at least a Linux 6.6 kernel
 Conformance status:
 -------------------
 
-NVK is not currently conformant on any hardware.  As of the writing of this
-documentation, it was failing about 2000 tests with the current feature
-set.
+NVK is a conformant Vulkan 1.3 implementation for all Turing (RTX 20XX and
+GTX 16XX) and later GPUs.
 
 Debugging
 ---------

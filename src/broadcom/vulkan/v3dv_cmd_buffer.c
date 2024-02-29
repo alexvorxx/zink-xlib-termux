@@ -3012,8 +3012,10 @@ static inline void
 cmd_buffer_set_view_index(struct v3dv_cmd_buffer *cmd_buffer,
                           uint32_t view_index)
 {
-   cmd_buffer->state.view_index = view_index;
-   cmd_buffer->state.dirty |= V3DV_CMD_DIRTY_VIEW_INDEX;
+   if (view_index != cmd_buffer->state.view_index) {
+      cmd_buffer->state.view_index = view_index;
+      cmd_buffer->state.dirty |= V3DV_CMD_DIRTY_VIEW_INDEX;
+   }
 }
 
 static void
@@ -3025,6 +3027,7 @@ cmd_buffer_draw(struct v3dv_cmd_buffer *cmd_buffer,
 
    struct v3dv_render_pass *pass = cmd_buffer->state.pass;
    if (likely(!pass->multiview_enabled)) {
+      cmd_buffer_set_view_index(cmd_buffer, 0);
       v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, false, vertex_count);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw)(cmd_buffer, info);
       return;
@@ -3104,6 +3107,7 @@ v3dv_CmdDrawIndexed(VkCommandBuffer commandBuffer,
 
    struct v3dv_render_pass *pass = cmd_buffer->state.pass;
    if (likely(!pass->multiview_enabled)) {
+      cmd_buffer_set_view_index(cmd_buffer, 0);
       v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, false, vertex_count);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw_indexed)
          (cmd_buffer, indexCount, instanceCount,
@@ -3145,13 +3149,13 @@ v3dv_CmdDrawMultiIndexedEXT(VkCommandBuffer commandBuffer,
 
       struct v3dv_render_pass *pass = cmd_buffer->state.pass;
       if (likely(!pass->multiview_enabled)) {
+         cmd_buffer_set_view_index(cmd_buffer, 0);
          v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, false, vertex_count);
          v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw_indexed)
             (cmd_buffer, draw->indexCount, instanceCount,
              draw->firstIndex, vertexOffset, firstInstance);
          continue;
       }
-
       uint32_t view_mask = pass->subpasses[cmd_buffer->state.subpass_idx].view_mask;
       while (view_mask) {
          cmd_buffer_set_view_index(cmd_buffer, u_bit_scan(&view_mask));
@@ -3179,6 +3183,7 @@ v3dv_CmdDrawIndirect(VkCommandBuffer commandBuffer,
 
    struct v3dv_render_pass *pass = cmd_buffer->state.pass;
    if (likely(!pass->multiview_enabled)) {
+      cmd_buffer_set_view_index(cmd_buffer, 0);
       v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, true, 0);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw_indirect)
          (cmd_buffer, buffer, offset, drawCount, stride);
@@ -3210,6 +3215,7 @@ v3dv_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer,
 
    struct v3dv_render_pass *pass = cmd_buffer->state.pass;
    if (likely(!pass->multiview_enabled)) {
+      cmd_buffer_set_view_index(cmd_buffer, 0);
       v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, true, 0);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_indexed_indirect)
          (cmd_buffer, buffer, offset, drawCount, stride);

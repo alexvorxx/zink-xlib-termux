@@ -836,11 +836,20 @@ llvmpipe_is_format_supported(struct pipe_screen *_screen,
        format != PIPE_FORMAT_ETC1_RGB8)
       return false;
 
+   /* planar not supported natively */
    if ((format_desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED ||
         format_desc->layout == UTIL_FORMAT_LAYOUT_PLANAR2 ||
         format_desc->layout == UTIL_FORMAT_LAYOUT_PLANAR3) &&
        target == PIPE_BUFFER)
       return false;
+
+   if (format_desc->colorspace == UTIL_FORMAT_COLORSPACE_YUV) {
+      if (format == PIPE_FORMAT_UYVY ||
+          format == PIPE_FORMAT_YUYV ||
+          format == PIPE_FORMAT_NV12)
+         return true;
+      return false;
+   }
 
    /*
     * Everything can be supported by u_format

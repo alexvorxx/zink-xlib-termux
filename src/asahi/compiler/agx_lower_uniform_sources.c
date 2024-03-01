@@ -12,31 +12,32 @@
  *
  * This pass lowers invalid uniforms.
  */
-static bool
-should_lower(enum agx_opcode op, agx_index uniform, unsigned src_index)
+bool
+agx_instr_accepts_uniform(enum agx_opcode op, unsigned src_index,
+                          unsigned value)
 {
-   if (uniform.type != AGX_INDEX_UNIFORM)
-      return false;
-
    /* Some instructions only seem able to access uniforms in the low half */
-   bool high = uniform.value >= 256;
+   bool high = value >= 256;
 
    switch (op) {
    case AGX_OPCODE_IMAGE_LOAD:
    case AGX_OPCODE_TEXTURE_LOAD:
    case AGX_OPCODE_TEXTURE_SAMPLE:
-      return !((src_index == 1 && !high) || src_index == 2);
+      /* Unknown if this works, but the driver will never hit this. */
+      assert(!(src_index == 2 && high) && "texture heap always low");
+      return !high && (src_index == 1 || src_index == 2);
+
    case AGX_OPCODE_DEVICE_LOAD:
-      return src_index != 0 || high;
+      return src_index == 0 && !high;
    case AGX_OPCODE_DEVICE_STORE:
    case AGX_OPCODE_ATOMIC:
-      return src_index != 1 || high;
+      return src_index == 1 && !high;
    case AGX_OPCODE_LOCAL_LOAD:
-      return src_index != 0;
+      return src_index == 0;
    case AGX_OPCODE_LOCAL_STORE:
-      return src_index != 1;
+      return src_index == 1;
    case AGX_OPCODE_IMAGE_WRITE:
-      return src_index != 3;
+      return src_index == 3;
    case AGX_OPCODE_ZS_EMIT:
    case AGX_OPCODE_ST_TILE:
    case AGX_OPCODE_LD_TILE:
@@ -49,9 +50,9 @@ should_lower(enum agx_opcode op, agx_index uniform, unsigned src_index)
    case AGX_OPCODE_ITERPROJ:
    case AGX_OPCODE_STACK_LOAD:
    case AGX_OPCODE_STACK_STORE:
-      return true;
-   default:
       return false;
+   default:
+      return true;
    }
 }
 
@@ -62,7 +63,9 @@ agx_lower_uniform_sources(agx_context *ctx)
       agx_builder b = agx_init_builder(ctx, agx_before_instr(I));
 
       agx_foreach_src(I, s) {
-         if (should_lower(I->op, I->src[s], s)) {
+         if (I->src[s].type == AGX_INDEX_UNIFORM &&
+             !agx_instr_accepts_uniform(I->op, s, I->src[s].value)) {
+
             agx_index idx = I->src[s];
             idx.abs = idx.neg = false;
             agx_replace_src(I, s, agx_mov(&b, idx));

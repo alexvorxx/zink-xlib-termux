@@ -1164,36 +1164,6 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="or" extends="#instruction-alu-src0-src2">
-	<pattern low="0" high="5">011100</pattern> <!-- OPC -->
-	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
-</bitset>
-
-<bitset name="and" extends="#instruction-alu-src0-src2">
-	<pattern low="0" high="5">011101</pattern> <!-- OPC -->
-	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
-</bitset>
-
-<bitset name="xor" extends="#instruction-alu-src0-src2">
-	<pattern low="0" high="5">011110</pattern> <!-- OPC -->
-	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
-</bitset>
-
-<bitset name="not" extends="#instruction-alu-src2">
-	<pattern low="0" high="5">011111</pattern> <!-- OPC -->
-	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
-</bitset>
-
-<bitset name="bit_extract" extends="#instruction-alu-src0-src1-src2">
-	<pattern low="0" high="5">100000</pattern> <!-- OPC -->
-	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
-</bitset>
-
-<bitset name="popcount" extends="#instruction-alu-src2">
-	<pattern low="0" high="5">100001</pattern> <!-- OPC -->
-	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
-</bitset>
-
 <bitset name="movai" extends="#instruction-alu-src2">
 	<pattern low="0" high="5">010110</pattern> <!-- OPC -->
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
@@ -1221,6 +1191,36 @@ SPDX-License-Identifier: MIT
 
 <bitset name="rotate" extends="#instruction-alu-src0-src2">
 	<pattern low="0" high="5">011011</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="or" extends="#instruction-alu-src0-src2">
+	<pattern low="0" high="5">011100</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="and" extends="#instruction-alu-src0-src2">
+	<pattern low="0" high="5">011101</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="xor" extends="#instruction-alu-src0-src2">
+	<pattern low="0" high="5">011110</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="not" extends="#instruction-alu-src2">
+	<pattern low="0" high="5">011111</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="bit_extract" extends="#instruction-alu-src0-src1-src2">
+	<pattern low="0" high="5">100000</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="popcount" extends="#instruction-alu-src2">
+	<pattern low="0" high="5">100001</pattern> <!-- OPC -->
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 

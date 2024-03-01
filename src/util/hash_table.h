@@ -200,6 +200,13 @@ struct hash_entry_u64
 _mesa_hash_table_u64_next_entry(struct hash_table_u64 *ht,
                                 struct hash_entry_u64 *ent);
 
+static inline uint32_t
+_mesa_hash_table_u64_num_entries(struct hash_table_u64 *ht)
+{
+   return (!!ht->freed_key_data) + (!!ht->deleted_key_data) +
+          _mesa_hash_table_num_entries(ht->table);
+}
+
 /**
  * This foreach function is safe against deletion (which just replaces
  * an entry's data with the deleted marker), but not against insertion

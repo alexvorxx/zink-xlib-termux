@@ -2822,6 +2822,7 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
 
       /* After DCE, use counts are right so we can run the optimizer. */
       agx_optimizer(ctx);
+      agx_opt_compact_constants(ctx);
 
       /* After inlining constants, promote what's left */
       if (key->promote_constants && !(agx_compiler_debug & AGX_DBG_NOPROMOTE)) {

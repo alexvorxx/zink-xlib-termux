@@ -770,6 +770,8 @@ genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
 #endif
 
    pdevice->cmd_emit_timestamp = genX(cmd_emit_timestamp);
+
+   pdevice->gpgpu_pipeline_value = GPGPU;
 }
 
 VkResult

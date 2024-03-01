@@ -130,6 +130,10 @@ anv_blorp_batch_init(struct anv_cmd_buffer *cmd_buffer,
       unreachable("unknown queue family");
    }
 
+   /* Can't have both flags at the same time. */
+   assert((flags & BLORP_BATCH_USE_BLITTER) == 0 ||
+          (flags & BLORP_BATCH_USE_COMPUTE) == 0);
+
    blorp_batch_init(&cmd_buffer->device->blorp, batch, cmd_buffer, flags);
 }
 
@@ -1030,7 +1034,10 @@ void anv_CmdCopyBuffer2(
    ANV_FROM_HANDLE(anv_buffer, dst_buffer, pCopyBufferInfo->dstBuffer);
 
    struct blorp_batch batch;
-   anv_blorp_batch_init(cmd_buffer, &batch, 0);
+   anv_blorp_batch_init(cmd_buffer, &batch,
+                        cmd_buffer->state.current_pipeline ==
+                        cmd_buffer->device->physical->gpgpu_pipeline_value ?
+                        BLORP_BATCH_USE_COMPUTE : 0);
 
    for (unsigned r = 0; r < pCopyBufferInfo->regionCount; r++) {
       copy_buffer(cmd_buffer->device, &batch, src_buffer, dst_buffer,
@@ -1054,7 +1061,10 @@ void anv_CmdUpdateBuffer(
    ANV_FROM_HANDLE(anv_buffer, dst_buffer, dstBuffer);
 
    struct blorp_batch batch;
-   anv_blorp_batch_init(cmd_buffer, &batch, 0);
+   anv_blorp_batch_init(cmd_buffer, &batch,
+                        cmd_buffer->state.current_pipeline ==
+                        cmd_buffer->device->physical->gpgpu_pipeline_value ?
+                        BLORP_BATCH_USE_COMPUTE : 0);
 
    /* We can't quite grab a full block because the state stream needs a
     * little data at the top to build its linked list.
@@ -1118,7 +1128,10 @@ anv_cmd_buffer_fill_area(struct anv_cmd_buffer *cmd_buffer,
    struct isl_surf isl_surf;
 
    struct blorp_batch batch;
-   anv_blorp_batch_init(cmd_buffer, &batch, 0);
+   anv_blorp_batch_init(cmd_buffer, &batch,
+                        cmd_buffer->state.current_pipeline ==
+                        cmd_buffer->device->physical->gpgpu_pipeline_value ?
+                        BLORP_BATCH_USE_COMPUTE : 0);
 
    /* First, we compute the biggest format that can be used with the
     * given offsets and size.

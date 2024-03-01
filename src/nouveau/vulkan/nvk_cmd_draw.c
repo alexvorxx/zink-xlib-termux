@@ -118,9 +118,11 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
     * For generations with firmware support for our `SET_PRIV_REG` mme method
     * we simply use that. On older generations we'll let the kernel do it.
     * Starting with GSP we have to do it via the firmware anyway.
+    *
+    * This clears bit 3 of gr_gpcs_tpcs_sm_disp_ctrl
     */
    if (dev->pdev->info.cls_eng3d >= MAXWELL_B) {
-      unsigned reg = dev->pdev->info.cls_eng3d >= VOLTA_A ? 0x419ba4 : 0x419f78;
+      unsigned reg = pdev->info.cls_eng3d >= VOLTA_A ? 0x419ba4 : 0x419f78;
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SET_PRIV_REG));
       P_INLINE_DATA(p, 0);
       P_INLINE_DATA(p, BITFIELD_BIT(3));

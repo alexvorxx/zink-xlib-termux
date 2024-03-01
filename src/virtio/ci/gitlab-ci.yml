@@ -21,7 +21,7 @@
 
 venus-lavapipe:
   extends:
-    - .deqp-test-vk
+    - .deqp-test
     - .venus-lavapipe-test
   variables:
     DEQP_FRACTION: 35

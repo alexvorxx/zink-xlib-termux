@@ -6364,6 +6364,7 @@ static void gfx10_init_gfx_preamble_state(struct si_context *sctx)
                   (sctx->gfx_level >= GFX11 ?
                       S_028410_DCC_WR_POLICY_GFX11(meta_write_policy) |
                       S_028410_COLOR_WR_POLICY_GFX11(V_028410_CACHE_STREAM) |
+                      S_028410_DCC_RD_POLICY(meta_read_policy) |
                       S_028410_COLOR_RD_POLICY(V_028410_CACHE_NOA_GFX11)
                     :
                       S_028410_CMASK_WR_POLICY(meta_write_policy) |
@@ -6373,7 +6374,7 @@ static void gfx10_init_gfx_preamble_state(struct si_context *sctx)
                       S_028410_CMASK_RD_POLICY(meta_read_policy) |
                       S_028410_FMASK_RD_POLICY(V_028410_CACHE_NOA_GFX10) |
                       S_028410_COLOR_RD_POLICY(V_028410_CACHE_NOA_GFX10)) |
-                  S_028410_DCC_RD_POLICY(meta_read_policy));
+                      S_028410_DCC_RD_POLICY(meta_read_policy));
    si_pm4_set_reg(pm4, R_028708_SPI_SHADER_IDX_FORMAT,
                   S_028708_IDX0_EXPORT_FORMAT(V_028708_SPI_SHADER_1COMP));
 

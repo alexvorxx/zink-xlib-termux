@@ -89,6 +89,7 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case SHADER_OPCODE_TXS_LOGICAL:
    case FS_OPCODE_TXB_LOGICAL:
    case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
+   case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
    case SHADER_OPCODE_TXF_MCS_LOGICAL:
    case SHADER_OPCODE_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_LOGICAL:

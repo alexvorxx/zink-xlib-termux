@@ -927,7 +927,7 @@ agx_builder_insert(agx_cursor *cursor, agx_instr *I)
 }
 
 bool agx_instr_accepts_uniform(enum agx_opcode op, unsigned src_index,
-                               unsigned value);
+                               unsigned value, enum agx_size size);
 
 /* Routines defined for AIR */
 void agx_print_index(agx_index index, bool is_float, FILE *fp);

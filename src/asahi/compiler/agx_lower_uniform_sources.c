@@ -14,10 +14,13 @@
  */
 bool
 agx_instr_accepts_uniform(enum agx_opcode op, unsigned src_index,
-                          unsigned value)
+                          unsigned value, enum agx_size size)
 {
    /* Some instructions only seem able to access uniforms in the low half */
    bool high = value >= 256;
+
+   /* ALU cannot access 64-bit uniforms */
+   bool is_64 = size == AGX_SIZE_64;
 
    switch (op) {
    case AGX_OPCODE_IMAGE_LOAD:
@@ -52,7 +55,7 @@ agx_instr_accepts_uniform(enum agx_opcode op, unsigned src_index,
    case AGX_OPCODE_STACK_STORE:
       return false;
    default:
-      return true;
+      return !is_64;
    }
 }
 
@@ -64,7 +67,8 @@ agx_lower_uniform_sources(agx_context *ctx)
 
       agx_foreach_src(I, s) {
          if (I->src[s].type == AGX_INDEX_UNIFORM &&
-             !agx_instr_accepts_uniform(I->op, s, I->src[s].value)) {
+             !agx_instr_accepts_uniform(I->op, s, I->src[s].value,
+                                        I->src[s].size)) {
 
             agx_index idx = I->src[s];
             idx.abs = idx.neg = false;

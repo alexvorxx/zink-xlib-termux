@@ -179,7 +179,7 @@ void GENX(pan_emit_tls)(const struct pan_tls_info *info, void *out);
 
 int GENX(pan_select_crc_rt)(const struct pan_fb_info *fb, unsigned tile_size);
 
-unsigned GENX(pan_emit_fbd)(const struct pan_fb_info *fb,
+unsigned GENX(pan_emit_fbd)(const struct pan_fb_info *fb, unsigned layer_idx,
                             const struct pan_tls_info *tls,
                             const struct pan_tiler_context *tiler_ctx,
                             void *out);

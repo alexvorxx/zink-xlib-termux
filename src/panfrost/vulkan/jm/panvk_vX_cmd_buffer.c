@@ -150,9 +150,9 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
                                  panfrost_sample_positions_offset(
                                     pan_sample_pattern(fbinfo->nr_samples));
 
-      batch->fb.desc.gpu |=
-         GENX(pan_emit_fbd)(&cmdbuf->state.gfx.render.fb.info, &batch->tlsinfo,
-                            &batch->tiler.ctx, batch->fb.desc.cpu);
+      batch->fb.desc.gpu |= GENX(pan_emit_fbd)(
+         &cmdbuf->state.gfx.render.fb.info, 0, &batch->tlsinfo,
+         &batch->tiler.ctx, batch->fb.desc.cpu);
 
       panvk_cmd_prepare_fragment_job(cmdbuf);
    }

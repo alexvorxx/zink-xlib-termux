@@ -1771,6 +1771,7 @@ agx_compile_nir(struct agx_device *dev, nir_shader *nir,
                               dev->params.num_dies > 1;
    key.libagx = dev->libagx;
    key.has_scratch = true;
+   key.promote_constants = true;
 
    NIR_PASS(_, nir, agx_nir_lower_sysvals, stage, true);
    NIR_PASS(_, nir, agx_nir_layout_uniforms, compiled, &key.reserved_preamble);
@@ -3095,8 +3096,9 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
                    unsigned variable_shared_mem, size_t max_subgroups)
 {
    struct agx_context *ctx = batch->ctx;
-   struct agx_usc_builder b =
-      agx_alloc_usc_control(&batch->pipeline_pool, cs->push_range_count + 2);
+   unsigned constant_push_ranges = DIV_ROUND_UP(cs->info.immediate_size_16, 64);
+   struct agx_usc_builder b = agx_alloc_usc_control(
+      &batch->pipeline_pool, constant_push_ranges + cs->push_range_count + 2);
 
    enum pipe_shader_type stage = cs->stage;
 
@@ -3121,6 +3123,21 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
       agx_usc_uniform(
          &b, cs->push[i].uniform, cs->push[i].length,
          batch->uniforms.tables[cs->push[i].table] + cs->push[i].offset);
+   }
+
+   if (cs->info.immediate_size_16) {
+      /* XXX: do ahead of time */
+      uint64_t ptr = agx_pool_upload_aligned(
+         &batch->pool, cs->info.immediates, cs->info.immediate_size_16 * 2, 64);
+
+      for (unsigned range = 0; range < constant_push_ranges; ++range) {
+         unsigned offset = 64 * range;
+         assert(offset < cs->info.immediate_size_16);
+
+         agx_usc_uniform(&b, cs->info.immediate_base_uniform + offset,
+                         MIN2(64, cs->info.immediate_size_16 - offset),
+                         ptr + (offset * 2));
+      }
    }
 
    if (stage == PIPE_SHADER_FRAGMENT) {

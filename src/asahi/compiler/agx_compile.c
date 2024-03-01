@@ -37,6 +37,7 @@ static const struct debug_named_value agx_debug_options[] = {
    {"demand",    AGX_DBG_DEMAND,    "Bound tightly to register demand"},
    {"nosched",   AGX_DBG_NOSCHED,   "Do not schedule the shader"},
    {"spill",     AGX_DBG_SPILL,     "Spill (almost) everything"},
+   {"nopromote", AGX_DBG_NOPROMOTE, "Do not promote constants to uniforms"},
    DEBUG_NAMED_VALUE_END
 };
 /* clang-format on */
@@ -2821,6 +2822,11 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
 
       /* After DCE, use counts are right so we can run the optimizer. */
       agx_optimizer(ctx);
+
+      /* After inlining constants, promote what's left */
+      if (key->promote_constants && !(agx_compiler_debug & AGX_DBG_NOPROMOTE)) {
+         agx_opt_promote_constants(ctx);
+      }
    }
 
    /* For correctness, lower uniform sources after copyprop (for correctness,

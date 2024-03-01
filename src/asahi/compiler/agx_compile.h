@@ -166,6 +166,11 @@ struct agx_shader_info {
 
    /* Output mask set during driver lowering */
    uint64_t outputs;
+
+   /* Immediate data that must be uploaded and mapped as uniform registers */
+   unsigned immediate_base_uniform;
+   unsigned immediate_size_16;
+   uint16_t immediates[512];
 };
 
 #define AGX_MAX_RTS (8)
@@ -232,6 +237,11 @@ struct agx_shader_key {
     * This has special register allocation requirements.
     */
    bool is_helper;
+
+   /* Whether the driver supports uploading constants for this shader. If
+    * false, constants will not be promoted to uniforms.
+    */
+   bool promote_constants;
 
    union {
       struct agx_vs_shader_key vs;

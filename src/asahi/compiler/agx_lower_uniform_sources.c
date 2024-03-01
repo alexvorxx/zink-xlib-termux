@@ -62,8 +62,11 @@ agx_lower_uniform_sources(agx_context *ctx)
       agx_builder b = agx_init_builder(ctx, agx_before_instr(I));
 
       agx_foreach_src(I, s) {
-         if (should_lower(I->op, I->src[s], s))
-            I->src[s] = agx_mov(&b, I->src[s]);
+         if (should_lower(I->op, I->src[s], s)) {
+            agx_index idx = I->src[s];
+            idx.abs = idx.neg = false;
+            agx_replace_src(I, s, agx_mov(&b, idx));
+         }
       }
    }
 }

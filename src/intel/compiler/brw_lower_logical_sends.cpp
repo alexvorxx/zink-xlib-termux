@@ -609,9 +609,6 @@ sampler_msg_type(const intel_device_info *devinfo,
    case SHADER_OPCODE_TXF_CMS_W:
       assert(!has_min_lod);
       return GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W;
-   case SHADER_OPCODE_TXF_UMS:
-      assert(!has_min_lod);
-      return GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS;
    case SHADER_OPCODE_TXF_MCS:
       assert(!has_min_lod);
       return GFX7_SAMPLER_MESSAGE_SAMPLE_LD_MCS;
@@ -961,10 +958,8 @@ lower_sampler_logical_send(const fs_builder &bld, fs_inst *inst, opcode op,
       break;
 
    case SHADER_OPCODE_TXF_CMS_W:
-   case SHADER_OPCODE_TXF_UMS:
    case SHADER_OPCODE_TXF_MCS:
-      if (op == SHADER_OPCODE_TXF_UMS ||
-          op == SHADER_OPCODE_TXF_CMS_W) {
+      if (op == SHADER_OPCODE_TXF_CMS_W) {
          bld.MOV(retype(sources[length++], payload_unsigned_type), sample_index);
       }
 
@@ -1253,7 +1248,6 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
     */
 
    if (op == SHADER_OPCODE_TXF_CMS_W ||
-       op == SHADER_OPCODE_TXF_UMS ||
        op == SHADER_OPCODE_TXF_MCS ||
        (op == FS_OPCODE_TXB && !inst->has_packed_lod_ai_src &&
         devinfo->ver >= 20))
@@ -2794,10 +2788,6 @@ brw_fs_lower_logical_sends(fs_visitor &s)
       case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
       case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
          lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXF_CMS_W);
-         break;
-
-      case SHADER_OPCODE_TXF_UMS_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXF_UMS);
          break;
 
       case SHADER_OPCODE_TXF_MCS_LOGICAL:

@@ -558,7 +558,6 @@ namespace {
       case SHADER_OPCODE_TXL:
       case SHADER_OPCODE_TXL_LZ:
       case SHADER_OPCODE_TXF_CMS_W:
-      case SHADER_OPCODE_TXF_UMS:
       case SHADER_OPCODE_TXF_MCS:
       case SHADER_OPCODE_TXS:
       case SHADER_OPCODE_LOD:

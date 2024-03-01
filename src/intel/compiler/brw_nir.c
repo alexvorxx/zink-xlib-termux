@@ -1812,7 +1812,6 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
     */
    NIR_PASS(_, nir, nir_convert_to_lcssa, true, true);
    NIR_PASS_V(nir, nir_divergence_analysis);
-   OPT(nir_opt_remove_phis);
 
    OPT(nir_convert_from_ssa, true);
 

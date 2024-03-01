@@ -73,15 +73,15 @@ disasm_initialize(const struct brw_isa_info *isa,
                   const struct cfg_t *cfg);
 
 struct inst_group *
-disasm_new_inst_group(struct disasm_info *disasm, unsigned offset);
+disasm_new_inst_group(struct disasm_info *disasm, int offset);
 
 void
 disasm_annotate(struct disasm_info *disasm,
-                struct backend_instruction *inst, unsigned offset);
+                struct backend_instruction *inst, int offset);
 
 void
-disasm_insert_error(struct disasm_info *disasm, unsigned offset,
-                    unsigned inst_size, const char *error);
+disasm_insert_error(struct disasm_info *disasm, int offset,
+                    int inst_size, const char *error);
 
 #ifdef __cplusplus
 } /* extern "C" */

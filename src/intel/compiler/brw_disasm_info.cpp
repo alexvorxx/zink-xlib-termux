@@ -68,7 +68,7 @@ dump_assembly(void *assembly, int start_offset, int end_offset,
          last_annotation_ir = group->ir;
          if (last_annotation_ir) {
             fprintf(stderr, "   ");
-            nir_print_instr(group->ir, stderr);
+            nir_print_instr((nir_instr *)group->ir, stderr);
             fprintf(stderr, "\n");
          }
       }
@@ -115,8 +115,9 @@ disasm_initialize(const struct brw_isa_info *isa,
 }
 
 struct inst_group *
-disasm_new_inst_group(struct disasm_info *disasm, unsigned next_inst_offset)
+disasm_new_inst_group(struct disasm_info *disasm, int next_inst_offset)
 {
+   assert(next_inst_offset >= 0);
    struct inst_group *tail = rzalloc(disasm, struct inst_group);
    tail->offset = next_inst_offset;
    exec_list_push_tail(&disasm->group_list, &tail->link);
@@ -125,7 +126,7 @@ disasm_new_inst_group(struct disasm_info *disasm, unsigned next_inst_offset)
 
 void
 disasm_annotate(struct disasm_info *disasm,
-                struct backend_instruction *inst, unsigned offset)
+                struct backend_instruction *inst, int offset)
 {
    const struct cfg_t *cfg = disasm->cfg;
 
@@ -166,8 +167,8 @@ disasm_annotate(struct disasm_info *disasm,
 }
 
 void
-disasm_insert_error(struct disasm_info *disasm, unsigned offset,
-                    unsigned inst_size, const char *error)
+disasm_insert_error(struct disasm_info *disasm, int offset,
+                    int inst_size, const char *error)
 {
    foreach_list_typed(struct inst_group, cur, link, &disasm->group_list) {
       struct exec_node *next_node = exec_node_get_next(&cur->link);
@@ -181,17 +182,17 @@ disasm_insert_error(struct disasm_info *disasm, unsigned offset,
          continue;
 
       if (offset + inst_size != next->offset) {
-         struct inst_group *new = ralloc(disasm, struct inst_group);
-         memcpy(new, cur, sizeof(struct inst_group));
+         struct inst_group *new_group = ralloc(disasm, struct inst_group);
+         memcpy(new_group, cur, sizeof(struct inst_group));
 
          cur->error = NULL;
          cur->error_length = 0;
          cur->block_end = NULL;
 
-         new->offset = offset + inst_size;
-         new->block_start = NULL;
+         new_group->offset = offset + inst_size;
+         new_group->block_start = NULL;
 
-         exec_node_insert_after(&cur->link, &new->link);
+         exec_node_insert_after(&cur->link, &new_group->link);
       }
 
       if (cur->error)

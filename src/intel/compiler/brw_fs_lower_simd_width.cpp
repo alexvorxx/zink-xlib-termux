@@ -461,16 +461,10 @@ emit_unzip(const fs_builder &lbld, fs_inst *inst, unsigned i)
    const fs_reg src = horiz_offset(inst->src[i], lbld.group() - inst->group);
 
    if (needs_src_copy(lbld, inst, i)) {
-      /* Builder of the right width to perform the copy avoiding uninitialized
-       * data if the lowered execution size is greater than the original
-       * execution size of the instruction.
-       */
-      const fs_builder cbld = lbld.group(MIN2(lbld.dispatch_width(),
-                                              inst->exec_size), 0);
       const fs_reg tmp = lbld.vgrf(inst->src[i].type, inst->components_read(i));
 
       for (unsigned k = 0; k < inst->components_read(i); ++k)
-         cbld.MOV(offset(tmp, lbld, k), offset(src, inst->exec_size, k));
+         lbld.MOV(offset(tmp, lbld, k), offset(src, inst->exec_size, k));
 
       return tmp;
 
@@ -505,13 +499,6 @@ needs_dst_copy(const fs_builder &lbld, const fs_inst *inst)
     * they end up arranged correctly in the original destination region.
     */
    if (inst->size_written > inst->dst.component_size(inst->exec_size))
-      return true;
-
-   /* If the lowered execution size is larger than the original the result of
-    * the instruction won't fit in the original destination, so we'll have to
-    * allocate a temporary in any case.
-    */
-   if (lbld.dispatch_width() > inst->exec_size)
       return true;
 
    for (unsigned i = 0; i < inst->sources; i++) {
@@ -578,24 +565,15 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
        * destination into the temporary before emitting the lowered
        * instruction.
        */
-      const fs_builder gbld_before =
-         lbld_before.group(MIN2(lbld_before.dispatch_width(),
-                                inst->exec_size), 0);
       for (unsigned k = 0; k < dst_size; ++k) {
-         gbld_before.MOV(offset(tmp, lbld_before, k),
+         lbld_before.MOV(offset(tmp, lbld_before, k),
                          offset(dst, inst->exec_size, k));
       }
    }
 
-   const fs_builder gbld_after =
-      lbld_after.group(MIN2(lbld_after.dispatch_width(),
-                            inst->exec_size), 0);
    for (unsigned k = 0; k < dst_size; ++k) {
-      /* Use a builder of the right width to perform the copy avoiding
-       * uninitialized data if the lowered execution size is greater than the
-       * original execution size of the instruction.
-       */
-      gbld_after.MOV(offset(dst, inst->exec_size, k),
+      /* Copy the (split) temp into the original (larger) destination */
+      lbld_after.MOV(offset(dst, inst->exec_size, k),
                      offset(tmp, lbld_after, k));
    }
 
@@ -606,14 +584,14 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
        * have to build a single 32bit value for the SIMD32 message out of 2
        * SIMD16 16 bit values.
        */
-      const fs_builder rbld = gbld_after.exec_all().group(1, 0);
+      const fs_builder rbld = lbld_after.exec_all().group(1, 0);
       fs_reg local_res_reg = component(
          retype(offset(tmp, lbld_before, dst_size),
                 BRW_REGISTER_TYPE_UW), 0);
       fs_reg final_res_reg =
          retype(byte_offset(inst->dst,
                             inst->size_written - residency_size +
-                            gbld_after.group() / 8),
+                            lbld_after.group() / 8),
                 BRW_REGISTER_TYPE_UW);
       rbld.MOV(final_res_reg, local_res_reg);
    }
@@ -629,20 +607,19 @@ brw_fs_lower_simd_width(fs_visitor &s)
    foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       const unsigned lower_width = brw_fs_get_lowered_simd_width(&s, inst);
 
-      if (lower_width != inst->exec_size) {
-         /* Builder matching the original instruction.  We may also need to
-          * emit an instruction of width larger than the original, set the
-          * execution size of the builder to the highest of both for now so
-          * we're sure that both cases can be handled.
-          */
-         const unsigned max_width = MAX2(inst->exec_size, lower_width);
+      /* No splitting required */
+      if (lower_width == inst->exec_size)
+         continue;
 
-         const fs_builder bld =
-            fs_builder(&s, MAX2(max_width, s.dispatch_width)).at_end();
-         const fs_builder ibld = bld.at(block, inst)
-                                    .exec_all(inst->force_writemask_all)
-                                    .group(max_width, inst->group / max_width);
+      assert(lower_width < inst->exec_size);
 
+      /* Builder matching the original instruction. */
+      const fs_builder bld = fs_builder(&s).at_end();
+      const fs_builder ibld =
+         bld.at(block, inst).exec_all(inst->force_writemask_all)
+            .group(inst->exec_size, inst->group / inst->exec_size);
+
+      {
          /* Split the copies in chunks of the execution width of either the
           * original or the lowered instruction, whichever is lower.
           */

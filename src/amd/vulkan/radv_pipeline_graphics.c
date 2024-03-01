@@ -1580,6 +1580,10 @@ radv_link_mesh(const struct radv_device *device, struct radv_shader_stage *mesh_
    nir_foreach_shader_out_variable (var, mesh_stage->nir) {
       var->data.driver_location = 0;
    }
+
+   /* Lower mesh shader draw ID to zero prevent app bugs from triggering undefined behaviour. */
+   if (mesh_stage->info.ms.has_task && BITSET_TEST(mesh_stage->nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID))
+      radv_nir_lower_draw_id_to_zero(mesh_stage->nir);
 }
 
 static void

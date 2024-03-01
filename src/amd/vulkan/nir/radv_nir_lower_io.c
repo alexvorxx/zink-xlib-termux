@@ -179,3 +179,24 @@ radv_nir_lower_io_to_mem(struct radv_device *device, struct radv_shader_stage *s
 
    return false;
 }
+
+static bool
+radv_nir_lower_draw_id_to_zero_callback(struct nir_builder *b, nir_intrinsic_instr *intrin, UNUSED void *state)
+{
+   if (intrin->intrinsic != nir_intrinsic_load_draw_id)
+      return false;
+
+   nir_def *replacement = nir_imm_zero(b, intrin->def.num_components, intrin->def.bit_size);
+   nir_def_rewrite_uses(&intrin->def, replacement);
+   nir_instr_remove(&intrin->instr);
+   nir_instr_free(&intrin->instr);
+
+   return true;
+}
+
+bool
+radv_nir_lower_draw_id_to_zero(nir_shader *shader)
+{
+   return nir_shader_intrinsics_pass(shader, radv_nir_lower_draw_id_to_zero_callback,
+                                     nir_metadata_block_index | nir_metadata_dominance, NULL);
+}

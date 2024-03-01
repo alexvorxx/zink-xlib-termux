@@ -74,8 +74,14 @@ popd
 
 ############### Building and installing Debian package ...
 
-git clone --depth 1 https://github.com/google/android-cuttlefish.git
+ANDROID_CUTTLEFISH_VERSION=f6494d9fbeaa9974b56923e3029909e5d5f440dd
+
+mkdir android-cuttlefish
 pushd android-cuttlefish
+git init
+git remote add origin https://github.com/google/android-cuttlefish.git
+git fetch --depth 1 origin "$ANDROID_CUTTLEFISH_VERSION"
+git checkout FETCH_HEAD
 
 pushd base
 dpkg-buildpackage -uc -us

@@ -609,6 +609,55 @@ dxil_nir_lower_var_bit_size(nir_shader *shader, nir_variable_mode modes,
 }
 
 static bool
+remove_oob_array_access(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+{
+   uint32_t num_derefs = 1;
+
+   switch (intr->intrinsic) {
+   case nir_intrinsic_copy_deref:
+      num_derefs = 2;
+      FALLTHROUGH;
+   case nir_intrinsic_load_deref:
+   case nir_intrinsic_store_deref:
+   case nir_intrinsic_deref_atomic:
+   case nir_intrinsic_deref_atomic_swap:
+      break;
+   default:
+      return false;
+   }
+
+   for (uint32_t i = 0; i < num_derefs; ++i) {
+      if (nir_deref_instr_is_known_out_of_bounds(nir_src_as_deref(intr->src[i]))) {
+         switch (intr->intrinsic) {
+         case nir_intrinsic_load_deref:
+         case nir_intrinsic_deref_atomic:
+         case nir_intrinsic_deref_atomic_swap:
+            b->cursor = nir_before_instr(&intr->instr);
+            nir_def *undef = nir_undef(b, intr->def.num_components, intr->def.bit_size);
+            nir_def_rewrite_uses(&intr->def, undef);
+            break;
+         default:
+            break;
+         }
+         nir_instr_remove(&intr->instr);
+         return true;
+      }
+   }
+
+   return false;
+}
+
+bool
+dxil_nir_remove_oob_array_accesses(nir_shader *shader)
+{
+   return nir_shader_intrinsics_pass(shader, remove_oob_array_access,
+                                     nir_metadata_block_index |
+                                        nir_metadata_dominance |
+                                        nir_metadata_loop_analysis,
+                                     NULL);
+}
+
+static bool
 lower_shared_atomic(nir_builder *b, nir_intrinsic_instr *intr, nir_variable *var)
 {
    b->cursor = nir_before_instr(&intr->instr);

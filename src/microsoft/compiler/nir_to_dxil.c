@@ -6331,6 +6331,7 @@ optimize_nir(struct nir_shader *s, const struct nir_to_dxil_options *opts)
       NIR_PASS(progress, s, nir_lower_phis_to_scalar, true);
       NIR_PASS(progress, s, nir_opt_loop_unroll);
       NIR_PASS(progress, s, nir_lower_pack);
+      NIR_PASS(progress, s, dxil_nir_remove_oob_array_accesses);
       NIR_PASS_V(s, nir_lower_system_values);
    } while (progress);
 

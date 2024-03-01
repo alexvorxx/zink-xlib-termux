@@ -2311,10 +2311,11 @@ agx_dump_stats(agx_context *ctx, unsigned size, char **out)
       agx_occupancy_for_register_count(ctx->max_reg).max_threads;
 
    return asprintf(out,
-                   "%s shader: %u inst, %u bytes, %u halfregs, %u threads, "
-                   "%u loops, %u:%u spills:fills",
+                   "%s shader: %u inst, %u bytes, %u regs, %u uniforms, "
+                   "%u scratch, %u threads, %u loops, %u:%u spills:fills",
                    gl_shader_stage_name(ctx->stage), nr_ins, size, ctx->max_reg,
-                   nr_threads, ctx->loop_count, spills, fills);
+                   ctx->out->push_count, ctx->scratch_size, nr_threads,
+                   ctx->loop_count, spills, fills);
 }
 
 static bool

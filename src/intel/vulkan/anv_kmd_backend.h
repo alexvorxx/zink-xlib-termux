@@ -73,12 +73,24 @@ struct anv_kmd_backend {
    /* Returns MAP_FAILED on error */
    void *(*gem_mmap)(struct anv_device *device, struct anv_bo *bo,
                      uint64_t offset, uint64_t size, void *placed_addr);
-   /* Bind things however you want. */
+
+   /*
+    * Bind things however you want.
+    * This is intended for sparse resources, so it does not use the
+    * bind_timeline interface: synchronization is up to the callers.
+    */
    int (*vm_bind)(struct anv_device *device,
                   struct anv_sparse_submission *submit);
-   /* Fully bind or unbind a BO. */
+
+   /*
+    * Fully bind or unbind a BO.
+    * This is intended for general buffer creation/destruction, so it creates
+    * a new point in the bind_timeline, which will be waited for the next time
+    * a batch is submitted.
+    */
    int (*vm_bind_bo)(struct anv_device *device, struct anv_bo *bo);
    int (*vm_unbind_bo)(struct anv_device *device, struct anv_bo *bo);
+
    VkResult (*execute_simple_batch)(struct anv_queue *queue,
                                     struct anv_bo *batch_bo,
                                     uint32_t batch_bo_size,

@@ -124,9 +124,11 @@ capture_vm_in_error_dump(struct anv_device *device, struct anv_bo *bo)
 
 static inline int
 xe_vm_bind_op(struct anv_device *device,
-              struct anv_sparse_submission *submit)
+              struct anv_sparse_submission *submit,
+              bool signal_bind_timeline)
 {
-   int num_syncs = submit->wait_count + submit->signal_count + 1;
+   int num_syncs = submit->wait_count + submit->signal_count +
+                   signal_bind_timeline;
    STACK_ARRAY(struct drm_xe_sync, xe_syncs, num_syncs);
    if (!xe_syncs)
       return -ENOMEM;
@@ -160,12 +162,14 @@ xe_vm_bind_op(struct anv_device *device,
          .timeline_value = val,
       };
    }
-   xe_syncs[sync_idx++] = (struct drm_xe_sync) {
-      .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
-      .flags = DRM_XE_SYNC_FLAG_SIGNAL,
-      .handle = intel_bind_timeline_get_syncobj(&device->bind_timeline),
-      /* .timeline_value will be set later. */
-   };
+   if (signal_bind_timeline) {
+      xe_syncs[sync_idx++] = (struct drm_xe_sync) {
+         .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
+         .flags = DRM_XE_SYNC_FLAG_SIGNAL,
+         .handle = intel_bind_timeline_get_syncobj(&device->bind_timeline),
+         /* .timeline_value will be set later. */
+      };
+   }
    assert(sync_idx == num_syncs);
 
    struct drm_xe_vm_bind args = {
@@ -237,10 +241,13 @@ xe_vm_bind_op(struct anv_device *device,
          xe_bind->userptr = (uintptr_t)bo->map;
    }
 
-   xe_syncs[num_syncs - 1].timeline_value =
-      intel_bind_timeline_bind_begin(&device->bind_timeline);
+   if (signal_bind_timeline) {
+      xe_syncs[num_syncs - 1].timeline_value =
+         intel_bind_timeline_bind_begin(&device->bind_timeline);
+   }
    ret = intel_ioctl(device->fd, DRM_IOCTL_XE_VM_BIND, &args);
-   intel_bind_timeline_bind_end(&device->bind_timeline);
+   if (signal_bind_timeline)
+      intel_bind_timeline_bind_end(&device->bind_timeline);
 
    if (ret)
       goto out_stackarray;
@@ -258,7 +265,7 @@ out_syncs:
 static int
 xe_vm_bind(struct anv_device *device, struct anv_sparse_submission *submit)
 {
-   return xe_vm_bind_op(device, submit);
+   return xe_vm_bind_op(device, submit, false);
 }
 
 static int xe_vm_bind_bo(struct anv_device *device, struct anv_bo *bo)
@@ -278,7 +285,7 @@ static int xe_vm_bind_bo(struct anv_device *device, struct anv_bo *bo)
       .wait_count = 0,
       .signal_count = 0,
    };
-   return xe_vm_bind_op(device, &submit);
+   return xe_vm_bind_op(device, &submit, true);
 }
 
 static int xe_vm_unbind_bo(struct anv_device *device, struct anv_bo *bo)
@@ -298,7 +305,7 @@ static int xe_vm_unbind_bo(struct anv_device *device, struct anv_bo *bo)
       .wait_count = 0,
       .signal_count = 0,
    };
-   return xe_vm_bind_op(device, &submit);
+   return xe_vm_bind_op(device, &submit, true);
 }
 
 static uint32_t

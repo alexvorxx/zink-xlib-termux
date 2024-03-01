@@ -147,6 +147,7 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
       VkPhysicalDeviceShaderExpectAssumeFeaturesKHR expect_assume;
 
       /* EXT */
+      VkPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT attachment_feedback_loop_layout;
       VkPhysicalDeviceBorderColorSwizzleFeaturesEXT border_color_swizzle;
       VkPhysicalDeviceColorWriteEnableFeaturesEXT color_write_enable;
       VkPhysicalDeviceConditionalRenderingFeaturesEXT conditional_rendering;
@@ -250,6 +251,7 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
    VN_ADD_PNEXT_EXT(feats2, SHADER_EXPECT_ASSUME_FEATURES_KHR, local_feats.expect_assume, exts->KHR_shader_expect_assume);
 
    /* EXT */
+   VN_ADD_PNEXT_EXT(feats2, ATTACHMENT_FEEDBACK_LOOP_LAYOUT_FEATURES_EXT, local_feats.attachment_feedback_loop_layout, exts->EXT_attachment_feedback_loop_layout);
    VN_ADD_PNEXT_EXT(feats2, BORDER_COLOR_SWIZZLE_FEATURES_EXT, local_feats.border_color_swizzle, exts->EXT_border_color_swizzle);
    VN_ADD_PNEXT_EXT(feats2, COLOR_WRITE_ENABLE_FEATURES_EXT, local_feats.color_write_enable, exts->EXT_color_write_enable);
    VN_ADD_PNEXT_EXT(feats2, CONDITIONAL_RENDERING_FEATURES_EXT, local_feats.conditional_rendering, exts->EXT_conditional_rendering);
@@ -1129,6 +1131,7 @@ vn_physical_device_get_passthrough_extensions(
       .KHR_shader_expect_assume = true,
 
       /* EXT */
+      .EXT_attachment_feedback_loop_layout = true,
       .EXT_border_color_swizzle = true,
       .EXT_calibrated_timestamps = true,
       .EXT_color_write_enable = true,

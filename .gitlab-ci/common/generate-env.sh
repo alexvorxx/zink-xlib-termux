@@ -39,7 +39,6 @@ for var in \
     DEQP_RUNNER_OPTIONS \
     DEQP_SUITE \
     DEQP_TEMP_DIR \
-    DEQP_VARIANT \
     DEQP_VER \
     DEQP_WIDTH \
     DEVICE_NAME \

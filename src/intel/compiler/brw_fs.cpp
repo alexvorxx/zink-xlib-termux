@@ -242,7 +242,6 @@ fs_inst::is_control_source(unsigned arg) const
    case SHADER_OPCODE_TXD:
    case SHADER_OPCODE_TXF:
    case SHADER_OPCODE_TXF_LZ:
-   case SHADER_OPCODE_TXF_CMS:
    case SHADER_OPCODE_TXF_CMS_W:
    case SHADER_OPCODE_TXF_UMS:
    case SHADER_OPCODE_TXF_MCS:
@@ -284,7 +283,6 @@ fs_inst::is_payload(unsigned arg) const
    case SHADER_OPCODE_TXD:
    case SHADER_OPCODE_TXF:
    case SHADER_OPCODE_TXF_LZ:
-   case SHADER_OPCODE_TXF_CMS:
    case SHADER_OPCODE_TXF_CMS_W:
    case SHADER_OPCODE_TXF_UMS:
    case SHADER_OPCODE_TXF_MCS:
@@ -751,7 +749,6 @@ fs_inst::components_read(unsigned i) const
    case SHADER_OPCODE_TXS_LOGICAL:
    case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
    case FS_OPCODE_TXB_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_LOGICAL:
    case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
    case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
    case SHADER_OPCODE_TXF_UMS_LOGICAL:
@@ -970,7 +967,6 @@ fs_inst::size_read(int arg) const
    case SHADER_OPCODE_TXD:
    case SHADER_OPCODE_TXF:
    case SHADER_OPCODE_TXF_LZ:
-   case SHADER_OPCODE_TXF_CMS:
    case SHADER_OPCODE_TXF_CMS_W:
    case SHADER_OPCODE_TXF_UMS:
    case SHADER_OPCODE_TXF_MCS:
@@ -1083,7 +1079,6 @@ fs_inst::has_sampler_residency() const
    case SHADER_OPCODE_TXF_LOGICAL:
    case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
    case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_LOGICAL:
    case SHADER_OPCODE_TXS_LOGICAL:
    case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
    case SHADER_OPCODE_TG4_LOGICAL:
@@ -2380,10 +2375,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return "txb";
    case FS_OPCODE_TXB_LOGICAL:
       return "txb_logical";
-   case SHADER_OPCODE_TXF_CMS:
-      return "txf_cms";
-   case SHADER_OPCODE_TXF_CMS_LOGICAL:
-      return "txf_cms_logical";
    case SHADER_OPCODE_TXF_CMS_W:
       return "txf_cms_w";
    case SHADER_OPCODE_TXF_CMS_W_LOGICAL:

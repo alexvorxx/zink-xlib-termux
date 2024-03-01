@@ -1168,7 +1168,6 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
    case SHADER_OPCODE_TXL_LOGICAL:
    case SHADER_OPCODE_TXS_LOGICAL:
    case FS_OPCODE_TXB_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_LOGICAL:
    case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
    case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
    case SHADER_OPCODE_TXF_UMS_LOGICAL:

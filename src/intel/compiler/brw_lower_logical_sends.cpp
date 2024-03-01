@@ -609,9 +609,6 @@ sampler_msg_type(const intel_device_info *devinfo,
    case SHADER_OPCODE_TXF_CMS_W:
       assert(!has_min_lod);
       return GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W;
-   case SHADER_OPCODE_TXF_CMS:
-      assert(!has_min_lod);
-      return GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DMS;
    case SHADER_OPCODE_TXF_UMS:
       assert(!has_min_lod);
       return GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS;
@@ -963,18 +960,16 @@ lower_sampler_logical_send(const fs_builder &bld, fs_inst *inst, opcode op,
       coordinate_done = true;
       break;
 
-   case SHADER_OPCODE_TXF_CMS:
    case SHADER_OPCODE_TXF_CMS_W:
    case SHADER_OPCODE_TXF_UMS:
    case SHADER_OPCODE_TXF_MCS:
       if (op == SHADER_OPCODE_TXF_UMS ||
-          op == SHADER_OPCODE_TXF_CMS ||
           op == SHADER_OPCODE_TXF_CMS_W) {
          bld.MOV(retype(sources[length++], payload_unsigned_type), sample_index);
       }
 
       /* Data from the multisample control surface. */
-      if (op == SHADER_OPCODE_TXF_CMS || op == SHADER_OPCODE_TXF_CMS_W) {
+      if (op == SHADER_OPCODE_TXF_CMS_W) {
          unsigned num_mcs_components = 1;
 
          /* From the Gfx12HP BSpec: Render Engine - 3D and GPGPU Programs -
@@ -1237,9 +1232,7 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
     * which is already in 16-bits unlike the other parameters that need forced
     * conversion.
     */
-   if (devinfo->verx10 < 125 ||
-       (op != SHADER_OPCODE_TXF_CMS_W &&
-        op != SHADER_OPCODE_TXF_CMS)) {
+   if (devinfo->verx10 < 125 || op != SHADER_OPCODE_TXF_CMS_W) {
       for (unsigned i = 0; i < TEX_LOGICAL_NUM_SRCS; i++) {
          assert(src[i].file == BAD_FILE ||
                 brw_reg_type_to_size(src[i].type) == src_type_size);
@@ -1260,7 +1253,6 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
     */
 
    if (op == SHADER_OPCODE_TXF_CMS_W ||
-       op == SHADER_OPCODE_TXF_CMS ||
        op == SHADER_OPCODE_TXF_UMS ||
        op == SHADER_OPCODE_TXF_MCS ||
        (op == FS_OPCODE_TXB && !inst->has_packed_lod_ai_src &&
@@ -2797,10 +2789,6 @@ brw_fs_lower_logical_sends(fs_visitor &s)
 
       case FS_OPCODE_TXB_LOGICAL:
          lower_sampler_logical_send(ibld, inst, FS_OPCODE_TXB);
-         break;
-
-      case SHADER_OPCODE_TXF_CMS_LOGICAL:
-         lower_sampler_logical_send(ibld, inst, SHADER_OPCODE_TXF_CMS);
          break;
 
       case SHADER_OPCODE_TXF_CMS_W_LOGICAL:

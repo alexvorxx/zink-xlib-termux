@@ -540,6 +540,43 @@ SPDX-License-Identifier: MIT
 	<field name="SRC2_RGROUP" low="124" high="126" type="#reg_group"/>
 </bitset>
 
+<bitset name="#instruction-alu-src1-src2" extends="#instruction-alu">
+	<display>
+		{INSTR_ALU} {DST:align=18}, void, {SRC1}, {SRC2}
+	</display>
+
+	<!-- SRC0 -->
+	<pattern pos="43">0</pattern> <!-- SRC0_USE -->
+	<pattern low="44" high="52">000000000</pattern> <!-- SRC0_REG -->
+	<pattern low="54" high="61">00000000</pattern> <!-- SRC0_SWIZ -->
+	<pattern pos="62">0</pattern> <!-- SRC0_NEG -->
+	<pattern pos="63">0</pattern> <!-- SRC0_ABS -->
+	<pattern pos="64">0</pattern> <!-- SRC0_AMODE -->
+	<pattern low="67" high="69">000</pattern> <!-- SRC0_RGROUP -->
+
+	<!-- SRC1 -->
+	<pattern pos="70">1</pattern> <!-- SRC1_USE -->
+	<field name="SRC1_REG" low="71" high="79" type="uint"/>
+	<field name="SRC1" low="81" high="90" type="#instruction-src">
+		<param name="SRC1_REG" as="SRC_REG"/>
+		<param name="SRC1_AMODE" as="SRC_AMODE"/>
+		<param name="SRC1_RGROUP" as="SRC_RGROUP"/>
+	</field>
+	<field name="SRC1_AMODE" low="91" high="93" type="#reg_addressing_mode"/>
+	<field name="SRC1_RGROUP" low="96" high="98" type="#reg_group"/>
+
+	<!-- SRC2 -->
+	<pattern pos="99">1</pattern> <!-- SRC2_USE -->
+	<field name="SRC2_REG" low="100" high="108" type="uint"/>
+	<field name="SRC2" low="110" high="119" type="#instruction-src">
+		<param name="SRC2_REG" as="SRC_REG"/>
+		<param name="SRC2_AMODE" as="SRC_AMODE"/>
+		<param name="SRC2_RGROUP" as="SRC_RGROUP"/>
+	</field>
+	<field name="SRC2_AMODE" low="121" high="123" type="#reg_addressing_mode"/>
+	<field name="SRC2_RGROUP" low="124" high="126" type="#reg_group"/>
+</bitset>
+
 <bitset name="#instruction-alu-src0-src1-src2" extends="#instruction-alu">
 	<display>
 		{INSTR_ALU} {DST:align=18}, {SRC0}, {SRC1}, {SRC2}
@@ -1184,6 +1221,11 @@ SPDX-License-Identifier: MIT
 
 <bitset name="rotate" extends="#instruction-alu-src0-src2">
 	<pattern low="0" high="5">011011</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="div" extends="#instruction-alu-src1-src2">
+	<pattern low="0" high="5">100100</pattern> <!-- OPC -->
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 

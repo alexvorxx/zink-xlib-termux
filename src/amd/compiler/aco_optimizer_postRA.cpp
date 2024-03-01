@@ -57,8 +57,8 @@ Idx const_or_undef{UINT32_MAX, 2};
 /** Indicates that a register was overwritten by different instructions in previous blocks. */
 Idx overwritten_untrackable{UINT32_MAX, 3};
 
-/** Indicates that a register was written by subdword operations. */
-Idx overwritten_subdword{UINT32_MAX, 4};
+/** Indicates that there isn't a clear single writer, for example due to subdword operations. */
+Idx overwritten_unknown_instr{UINT32_MAX, 4};
 
 struct pr_opt_ctx {
    using Idx_array = std::array<Idx, max_reg_cnt>;
@@ -150,7 +150,7 @@ save_reg_writes(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
       Idx idx{ctx.current_block->index, ctx.current_instr_idx};
 
       if (def.regClass().is_subdword())
-         idx = overwritten_subdword;
+         idx = overwritten_unknown_instr;
 
       assert((r + dw_size) <= max_reg_cnt);
       assert(def.size() == dw_size || def.regClass().is_subdword());
@@ -211,7 +211,7 @@ is_overwritten_since(pr_opt_ctx& ctx, PhysReg reg, RegClass rc, const Idx& since
          return true;
       else if (i == overwritten_untrackable || i == not_written_yet)
          continue;
-      else if (i == overwritten_subdword)
+      else if (i == overwritten_unknown_instr)
          return true;
 
       assert(i.found());

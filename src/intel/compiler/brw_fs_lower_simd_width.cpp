@@ -619,96 +619,94 @@ brw_fs_lower_simd_width(fs_visitor &s)
          bld.at(block, inst).exec_all(inst->force_writemask_all)
             .group(inst->exec_size, inst->group / inst->exec_size);
 
-      {
-         /* Split the copies in chunks of the execution width of either the
-          * original or the lowered instruction, whichever is lower.
+      /* Split the copies in chunks of the execution width of either the
+       * original or the lowered instruction, whichever is lower.
+       */
+      const unsigned n = DIV_ROUND_UP(inst->exec_size, lower_width);
+      const unsigned residency_size = inst->has_sampler_residency() ?
+         (reg_unit(s.devinfo) * REG_SIZE) : 0;
+      const unsigned dst_size =
+         (inst->size_written - residency_size) /
+         inst->dst.component_size(inst->exec_size);
+
+      assert(!inst->writes_accumulator && !inst->mlen);
+
+      /* Inserting the zip, unzip, and duplicated instructions in all of
+       * the right spots is somewhat tricky.  All of the unzip and any
+       * instructions from the zip which unzip the destination prior to
+       * writing need to happen before all of the per-group instructions
+       * and the zip instructions need to happen after.  In order to sort
+       * this all out, we insert the unzip instructions before \p inst,
+       * insert the per-group instructions after \p inst (i.e. before
+       * inst->next), and insert the zip instructions before the
+       * instruction after \p inst.  Since we are inserting instructions
+       * after \p inst, inst->next is a moving target and we need to save
+       * it off here so that we insert the zip instructions in the right
+       * place.
+       *
+       * Since we're inserting split instructions after after_inst, the
+       * instructions will end up in the reverse order that we insert them.
+       * However, certain render target writes require that the low group
+       * instructions come before the high group.  From the Ivy Bridge PRM
+       * Vol. 4, Pt. 1, Section 3.9.11:
+       *
+       *    "If multiple SIMD8 Dual Source messages are delivered by the
+       *    pixel shader thread, each SIMD8_DUALSRC_LO message must be
+       *    issued before the SIMD8_DUALSRC_HI message with the same Slot
+       *    Group Select setting."
+       *
+       * And, from Section 3.9.11.1 of the same PRM:
+       *
+       *    "When SIMD32 or SIMD16 PS threads send render target writes
+       *    with multiple SIMD8 and SIMD16 messages, the following must
+       *    hold:
+       *
+       *    All the slots (as described above) must have a corresponding
+       *    render target write irrespective of the slot's validity. A slot
+       *    is considered valid when at least one sample is enabled. For
+       *    example, a SIMD16 PS thread must send two SIMD8 render target
+       *    writes to cover all the slots.
+       *
+       *    PS thread must send SIMD render target write messages with
+       *    increasing slot numbers. For example, SIMD16 thread has
+       *    Slot[15:0] and if two SIMD8 render target writes are used, the
+       *    first SIMD8 render target write must send Slot[7:0] and the
+       *    next one must send Slot[15:8]."
+       *
+       * In order to make low group instructions come before high group
+       * instructions (this is required for some render target writes), we
+       * split from the highest group to lowest.
+       */
+      exec_node *const after_inst = inst->next;
+      for (int i = n - 1; i >= 0; i--) {
+         /* Emit a copy of the original instruction with the lowered width.
+          * If the EOT flag was set throw it away except for the last
+          * instruction to avoid killing the thread prematurely.
           */
-         const unsigned n = DIV_ROUND_UP(inst->exec_size, lower_width);
-         const unsigned residency_size = inst->has_sampler_residency() ?
-            (reg_unit(s.devinfo) * REG_SIZE) : 0;
-         const unsigned dst_size =
-            (inst->size_written - residency_size) /
-            inst->dst.component_size(inst->exec_size);
+         fs_inst split_inst = *inst;
+         split_inst.exec_size = lower_width;
+         split_inst.eot = inst->eot && i == int(n - 1);
 
-         assert(!inst->writes_accumulator && !inst->mlen);
-
-         /* Inserting the zip, unzip, and duplicated instructions in all of
-          * the right spots is somewhat tricky.  All of the unzip and any
-          * instructions from the zip which unzip the destination prior to
-          * writing need to happen before all of the per-group instructions
-          * and the zip instructions need to happen after.  In order to sort
-          * this all out, we insert the unzip instructions before \p inst,
-          * insert the per-group instructions after \p inst (i.e. before
-          * inst->next), and insert the zip instructions before the
-          * instruction after \p inst.  Since we are inserting instructions
-          * after \p inst, inst->next is a moving target and we need to save
-          * it off here so that we insert the zip instructions in the right
-          * place.
-          *
-          * Since we're inserting split instructions after after_inst, the
-          * instructions will end up in the reverse order that we insert them.
-          * However, certain render target writes require that the low group
-          * instructions come before the high group.  From the Ivy Bridge PRM
-          * Vol. 4, Pt. 1, Section 3.9.11:
-          *
-          *    "If multiple SIMD8 Dual Source messages are delivered by the
-          *    pixel shader thread, each SIMD8_DUALSRC_LO message must be
-          *    issued before the SIMD8_DUALSRC_HI message with the same Slot
-          *    Group Select setting."
-          *
-          * And, from Section 3.9.11.1 of the same PRM:
-          *
-          *    "When SIMD32 or SIMD16 PS threads send render target writes
-          *    with multiple SIMD8 and SIMD16 messages, the following must
-          *    hold:
-          *
-          *    All the slots (as described above) must have a corresponding
-          *    render target write irrespective of the slot's validity. A slot
-          *    is considered valid when at least one sample is enabled. For
-          *    example, a SIMD16 PS thread must send two SIMD8 render target
-          *    writes to cover all the slots.
-          *
-          *    PS thread must send SIMD render target write messages with
-          *    increasing slot numbers. For example, SIMD16 thread has
-          *    Slot[15:0] and if two SIMD8 render target writes are used, the
-          *    first SIMD8 render target write must send Slot[7:0] and the
-          *    next one must send Slot[15:8]."
-          *
-          * In order to make low group instructions come before high group
-          * instructions (this is required for some render target writes), we
-          * split from the highest group to lowest.
+         /* Select the correct channel enables for the i-th group, then
+          * transform the sources and destination and emit the lowered
+          * instruction.
           */
-         exec_node *const after_inst = inst->next;
-         for (int i = n - 1; i >= 0; i--) {
-            /* Emit a copy of the original instruction with the lowered width.
-             * If the EOT flag was set throw it away except for the last
-             * instruction to avoid killing the thread prematurely.
-             */
-            fs_inst split_inst = *inst;
-            split_inst.exec_size = lower_width;
-            split_inst.eot = inst->eot && i == int(n - 1);
+         const fs_builder lbld = ibld.group(lower_width, i);
 
-            /* Select the correct channel enables for the i-th group, then
-             * transform the sources and destination and emit the lowered
-             * instruction.
-             */
-            const fs_builder lbld = ibld.group(lower_width, i);
+         for (unsigned j = 0; j < inst->sources; j++)
+            split_inst.src[j] = emit_unzip(lbld.at(block, inst), inst, j);
 
-            for (unsigned j = 0; j < inst->sources; j++)
-               split_inst.src[j] = emit_unzip(lbld.at(block, inst), inst, j);
+         split_inst.dst = emit_zip(lbld.at(block, inst),
+                                   lbld.at(block, after_inst), inst);
+         split_inst.size_written =
+            split_inst.dst.component_size(lower_width) * dst_size +
+            residency_size;
 
-            split_inst.dst = emit_zip(lbld.at(block, inst),
-                                      lbld.at(block, after_inst), inst);
-            split_inst.size_written =
-               split_inst.dst.component_size(lower_width) * dst_size +
-               residency_size;
-
-            lbld.at(block, inst->next).emit(split_inst);
-         }
-
-         inst->remove(block);
-         progress = true;
+         lbld.at(block, inst->next).emit(split_inst);
       }
+
+      inst->remove(block);
+      progress = true;
    }
 
    if (progress)

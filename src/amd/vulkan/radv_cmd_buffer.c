@@ -10240,6 +10240,17 @@ radv_upload_compute_shader_descriptors(struct radv_cmd_buffer *cmd_buffer, VkPip
 }
 
 static void
+radv_emit_rt_stack_size(struct radv_cmd_buffer *cmd_buffer)
+{
+   unsigned rsrc2 = cmd_buffer->state.rt_prolog->config.rsrc2;
+   if (cmd_buffer->state.rt_stack_size)
+      rsrc2 |= S_00B12C_SCRATCH_EN(1);
+
+   radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 3);
+   radeon_set_sh_reg(cmd_buffer->cs, R_00B84C_COMPUTE_PGM_RSRC2, rsrc2);
+}
+
+static void
 radv_dispatch(struct radv_cmd_buffer *cmd_buffer, const struct radv_dispatch_info *info,
               struct radv_compute_pipeline *pipeline, struct radv_shader *compute_shader,
               VkPipelineBindPoint bind_point)
@@ -10260,6 +10271,8 @@ radv_dispatch(struct radv_cmd_buffer *cmd_buffer, const struct radv_dispatch_inf
        * packets between the wait and the draw)
        */
       radv_emit_compute_pipeline(cmd_buffer, pipeline);
+      if (bind_point == VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR)
+         radv_emit_rt_stack_size(cmd_buffer);
       radv_emit_cache_flush(cmd_buffer);
       /* <-- CUs are idle here --> */
 
@@ -10288,6 +10301,8 @@ radv_dispatch(struct radv_cmd_buffer *cmd_buffer, const struct radv_dispatch_inf
       radv_upload_compute_shader_descriptors(cmd_buffer, bind_point);
 
       radv_emit_compute_pipeline(cmd_buffer, pipeline);
+      if (bind_point == VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR)
+         radv_emit_rt_stack_size(cmd_buffer);
       radv_emit_dispatch_packets(cmd_buffer, compute_shader, info);
    }
 

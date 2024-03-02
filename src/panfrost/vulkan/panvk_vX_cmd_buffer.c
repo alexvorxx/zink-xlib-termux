@@ -166,8 +166,8 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
          struct panfrost_ptr ptr =
             pan_pool_alloc_desc(&cmdbuf->desc_pool.base, JOB_HEADER);
          util_dynarray_append(&batch->jobs, void *, ptr.cpu);
-         pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_NULL,
-                        false, false, 0, 0, &ptr, false);
+         pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_NULL, false, false, 0, 0,
+                        &ptr, false);
          list_addtail(&batch->node, &cmdbuf->batches);
       }
       cmdbuf->cur_batch = NULL;
@@ -1545,13 +1545,12 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
       MAX3(pipeline->vs.info.tls_size, pipeline->fs.info.tls_size,
            batch->tlsinfo.tls.size);
 
-   unsigned vjob_id =
-      pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_VERTEX,
-                     false, false, 0, 0, &draw->jobs.vertex, false);
+   unsigned vjob_id = pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_VERTEX, false,
+                                     false, 0, 0, &draw->jobs.vertex, false);
 
    if (!rs->rasterizer_discard_enable && draw->position) {
-      pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_TILER,
-                     false, false, vjob_id, 0, &draw->jobs.tiler, false);
+      pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_TILER, false, false, vjob_id, 0,
+                     &draw->jobs.tiler, false);
    }
 
    /* Clear the dirty flags all at once */
@@ -1998,8 +1997,8 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
       cfg.samplers = dispatch.samplers;
    }
 
-   pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_COMPUTE,
-                  false, false, 0, 0, &job, false);
+   pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0, &job,
+                  false);
 
    batch->tlsinfo.tls.size = pipeline->cs.info.tls_size;
    batch->tlsinfo.wls.size = pipeline->cs.info.wls_size;

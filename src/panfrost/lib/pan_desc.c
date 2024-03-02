@@ -941,14 +941,9 @@ GENX(pan_emit_fbd)(const struct pan_fb_info *fb, unsigned layer_idx,
 
 #if PAN_ARCH <= 9
 void
-GENX(pan_emit_fragment_job)(const struct pan_fb_info *fb, mali_ptr fbd,
-                            void *out)
+GENX(pan_emit_fragment_job_payload)(const struct pan_fb_info *fb, mali_ptr fbd,
+                                    void *out)
 {
-   pan_section_pack(out, FRAGMENT_JOB, HEADER, header) {
-      header.type = MALI_JOB_TYPE_FRAGMENT;
-      header.index = 1;
-   }
-
    pan_section_pack(out, FRAGMENT_JOB, PAYLOAD, payload) {
       payload.bound_min_x = fb->extent.minx >> MALI_TILE_SHIFT;
       payload.bound_min_y = fb->extent.miny >> MALI_TILE_SHIFT;

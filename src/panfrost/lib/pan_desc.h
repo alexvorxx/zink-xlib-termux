@@ -185,8 +185,8 @@ unsigned GENX(pan_emit_fbd)(const struct pan_fb_info *fb, unsigned layer_idx,
                             void *out);
 
 #if PAN_ARCH <= 9
-void GENX(pan_emit_fragment_job)(const struct pan_fb_info *fb, mali_ptr fbd,
-                                 void *out);
+void GENX(pan_emit_fragment_job_payload)(const struct pan_fb_info *fb,
+                                         mali_ptr fbd, void *out);
 #endif
 
 #endif /* ifdef PAN_ARCH */

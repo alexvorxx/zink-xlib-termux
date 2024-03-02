@@ -249,7 +249,13 @@ GENX(jm_emit_fragment_job)(struct panfrost_batch *batch,
    struct panfrost_ptr transfer =
       pan_pool_alloc_desc(&batch->pool.base, FRAGMENT_JOB);
 
-   GENX(pan_emit_fragment_job)(pfb, batch->framebuffer.gpu, transfer.cpu);
+   GENX(pan_emit_fragment_job_payload)
+   (pfb, batch->framebuffer.gpu, transfer.cpu);
+
+   pan_section_pack(transfer.cpu, FRAGMENT_JOB, HEADER, header) {
+      header.type = MALI_JOB_TYPE_FRAGMENT;
+      header.index = 1;
+   }
 
    batch->jm.jobs.frag = transfer.gpu;
 }

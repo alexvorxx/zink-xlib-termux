@@ -3,6 +3,7 @@
 spec@arb_shader_texture_lod@execution@tex-miplevel-selection*
 spec@arb_texture_rectangle@tex-miplevel-selection*
 spec@glsl-1.20@execution@tex-miplevel-selection*
+spec@!opengl 1.4@tex-miplevel-selection
 spec@!opengl 1.4@tex-miplevel-selection-lod
 spec@!opengl 1.4@tex-miplevel-selection-lod-bias
 

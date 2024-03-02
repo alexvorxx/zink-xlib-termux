@@ -106,6 +106,7 @@ if with_tests
     executable(
       'agx_tests',
       files(
+         'test/test-compact-constants.cpp',
          'test/test-minifloat.cpp',
          'test/test-optimizer.cpp',
          'test/test-lower-pseudo.cpp',

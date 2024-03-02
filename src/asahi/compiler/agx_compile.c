@@ -7,6 +7,7 @@
 
 #include "agx_compile.h"
 #include "compiler/nir/nir_builder.h"
+#include "util/bitset.h"
 #include "util/glheader.h"
 #include "util/macros.h"
 #include "util/u_debug.h"
@@ -79,56 +80,188 @@ agx_instance_id(agx_builder *b)
                              AGX_SIZE_32);
 }
 
+#define VARYING_NUM_COMPONENTS (VARYING_SLOT_MAX * 4)
+
+struct coefficient_info {
+   BITSET_DECLARE(smooth, VARYING_NUM_COMPONENTS);
+   BITSET_DECLARE(flat, VARYING_NUM_COMPONENTS);
+   BITSET_DECLARE(noperspective, VARYING_NUM_COMPONENTS);
+};
+
+static BITSET_WORD *
+bitset_for_interp(struct coefficient_info *info, enum glsl_interp_mode mode)
+{
+   /* clang-format off */
+   switch (mode) {
+   case INTERP_MODE_NONE:
+   case INTERP_MODE_SMOOTH:         return info->smooth;
+   case INTERP_MODE_NOPERSPECTIVE:  return info->noperspective;
+   case INTERP_MODE_FLAT:           return info->flat;
+   default:                         unreachable("invalid interp mode");
+   }
+   /* clang-format on */
+}
+
+static bool
+gather_cf(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+{
+   /* First handle frag coord loads */
+   struct coefficient_info *info = data;
+   if (intr->intrinsic == nir_intrinsic_load_frag_coord_zw) {
+      BITSET_SET(info->noperspective,
+                 VARYING_SLOT_POS + nir_intrinsic_component(intr));
+      return false;
+   }
+
+   /* Look for input loads and grab the instruction with the interp mode */
+   nir_intrinsic_instr *bary;
+   unsigned nr = 1;
+
+   if (intr->intrinsic == nir_intrinsic_load_coefficients_agx) {
+      bary = intr;
+      /* Always load a scalar */
+   } else if (intr->intrinsic == nir_intrinsic_load_interpolated_input) {
+      bary = nir_src_as_intrinsic(intr->src[0]);
+      nr = intr->num_components;
+
+      /* Perspective interpolation internally reads W */
+      if (nir_intrinsic_interp_mode(bary) != INTERP_MODE_NOPERSPECTIVE)
+         BITSET_SET(info->noperspective, VARYING_SLOT_POS + 3);
+   } else {
+      return false;
+   }
+
+   BITSET_WORD *set = bitset_for_interp(data, nir_intrinsic_interp_mode(bary));
+   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
+   nir_src *offset = nir_get_io_offset_src(intr);
+
+   /* Mark the exact range for direct loads to minimize CF registers, but mark a
+    * conservative bounding range for indirect array access.
+    */
+   if (nir_src_is_const(*offset)) {
+      unsigned location = sem.location + nir_src_as_uint(*offset);
+      unsigned start_comp = (location * 4) + nir_intrinsic_component(intr);
+
+      BITSET_SET_RANGE(set, start_comp, start_comp + nr - 1);
+   } else {
+      unsigned start_comp = sem.location * 4;
+      unsigned count = sem.num_slots * 4;
+
+      BITSET_SET_RANGE(set, start_comp, start_comp + count - 1);
+   }
+
+   return false;
+}
+
+/*
+ * We assign all coefficient registers up front to ensure we have a consistent
+ * layout required for indirects to work.
+ */
+static void
+assign_coefficient_regs(nir_shader *nir, struct agx_varyings_fs *var)
+{
+   struct coefficient_info info = {0};
+   nir_shader_intrinsics_pass(nir, gather_cf, nir_metadata_all, &info);
+
+   /* W */
+   if (BITSET_TEST(info.noperspective, VARYING_SLOT_POS + 3)) {
+      var->bindings[var->nr_bindings++] = (struct agx_cf_binding){
+         .cf_base = var->nr_cf++,
+         .slot = VARYING_SLOT_POS,
+         .offset = 3,
+         .count = 1,
+         .smooth = true,
+      };
+   }
+
+   /* Z */
+   if (BITSET_TEST(info.noperspective, VARYING_SLOT_POS + 2)) {
+      var->bindings[var->nr_bindings++] = (struct agx_cf_binding){
+         .cf_base = var->nr_cf++,
+         .slot = VARYING_SLOT_POS,
+         .offset = 2,
+         .count = 1,
+         .smooth = true,
+      };
+
+      var->reads_z = true;
+   }
+
+   static_assert(VARYING_SLOT_POS == 0, "special and handled first");
+
+   for (unsigned i = VARYING_SLOT_POS + 1; i < VARYING_SLOT_MAX; ++i) {
+      bool smooth = BITSET_TEST_RANGE(info.smooth, i * 4, (i * 4) + 3);
+      bool flat = BITSET_TEST_RANGE(info.flat, i * 4, (i * 4) + 3);
+      bool noperspective =
+         BITSET_TEST_RANGE(info.noperspective, i * 4, (i * 4) + 3);
+
+      if (!(smooth || flat || noperspective))
+         continue;
+
+      /* From the GLSL 4.60 spec ("Input Layout Qualifiers"):
+       *
+       *    when location aliasing, the aliases sharing the location must have
+       *    the same underlying numerical type and bit width (floating-point or
+       *    integer, 32-bit versus 64-bit, etc.) and the same auxiliary storage
+       *    and interpolation qualification.
+       *
+       * SPIR-V should obey this as well although the spec text is muddier.
+       */
+      assert((smooth + flat + noperspective) == 1 &&
+             "slots must have consistent interpolation");
+
+      BITSET_WORD *set = smooth ? info.smooth
+                         : flat ? info.flat
+                                : info.noperspective;
+
+      /* Find the start offset */
+      unsigned offset = 0;
+      for (offset = 0; offset < 4 && !BITSET_TEST(set, (i * 4) + offset);
+           ++offset)
+         ;
+
+      /* Find the end offset. TODO: Do we ever need to split into two bindings
+       * to handle e.g. x_zw read masks?
+       */
+      unsigned count = 0;
+      for (unsigned c = offset; c < 4; ++c) {
+         if (BITSET_TEST(set, (i * 4) + c))
+            count = c - offset + 1;
+      }
+      assert(count >= 1 && (count + offset) <= 4);
+
+      var->bindings[var->nr_bindings++] = (struct agx_cf_binding){
+         .cf_base = var->nr_cf,
+         .slot = i,
+         .offset = offset,
+         .count = count,
+         .smooth = !flat,
+         .perspective = smooth,
+      };
+
+      var->nr_cf += count;
+   }
+}
+
 static agx_index
-agx_get_cf(agx_context *ctx, bool smooth, bool perspective,
-           gl_varying_slot slot, unsigned offset, unsigned count)
+agx_get_cf(agx_context *ctx, gl_varying_slot slot, unsigned offset)
 {
    struct agx_varyings_fs *varyings = &ctx->out->varyings.fs;
-   unsigned cf_base = varyings->nr_cf;
 
-   if (slot == VARYING_SLOT_POS) {
-      assert(offset == 2 || offset == 3);
-      varyings->reads_z |= (offset == 2);
-   }
-
-   /* Forcibly vectorize pointcoord reads, since there's no (known) way to index
-    * Y alone.
-    */
-   bool is_pntc = (slot == VARYING_SLOT_PNTC);
-   bool is_tex = slot >= VARYING_SLOT_TEX0 && slot <= VARYING_SLOT_TEX7;
-   unsigned cf_offset = 0;
-
-   if (is_pntc || is_tex) {
-      cf_offset = offset;
-      offset = 0;
-      count = is_tex ? 4 : MAX2(2, count + offset);
-   }
-
-   /* First, search for an appropriate binding. This is O(n) to the number of
-    * bindings, which isn't great, but n should be small in practice.
-    */
+   /* We already have an appropriate binding, find it */
    for (unsigned b = 0; b < varyings->nr_bindings; ++b) {
-      if ((varyings->bindings[b].slot == slot) &&
-          (varyings->bindings[b].offset == offset) &&
-          (varyings->bindings[b].count == count) &&
-          (varyings->bindings[b].smooth == smooth) &&
-          (varyings->bindings[b].perspective == perspective)) {
+      if (varyings->bindings[b].slot == slot &&
+          (slot != VARYING_SLOT_POS ||
+           offset == varyings->bindings[b].offset)) {
+
+         signed cf_offset = offset - varyings->bindings[b].offset;
+         assert(cf_offset >= 0);
 
          return agx_immediate(varyings->bindings[b].cf_base + cf_offset);
       }
    }
 
-   /* If we didn't find one, make one */
-   unsigned b = varyings->nr_bindings++;
-   varyings->bindings[b].cf_base = varyings->nr_cf;
-   varyings->bindings[b].slot = slot;
-   varyings->bindings[b].offset = offset;
-   varyings->bindings[b].count = count;
-   varyings->bindings[b].smooth = smooth;
-   varyings->bindings[b].perspective = perspective;
-   varyings->nr_cf += count;
-
-   return agx_immediate(cf_base + cf_offset);
+   unreachable("all coefficient registers preassigned");
 }
 
 /* Builds a 64-bit hash table key for an index */
@@ -373,13 +506,9 @@ static void
 agx_emit_load_coefficients(agx_builder *b, agx_index dest,
                            nir_intrinsic_instr *instr)
 {
-   enum glsl_interp_mode mode = nir_intrinsic_interp_mode(instr);
-   bool smooth = (mode != INTERP_MODE_FLAT);
-   bool perspective = smooth && (mode != INTERP_MODE_NOPERSPECTIVE);
-
-   agx_index cf = agx_get_cf(b->shader, smooth, perspective,
-                             nir_intrinsic_io_semantics(instr).location,
-                             nir_intrinsic_component(instr), 1);
+   agx_index cf =
+      agx_get_cf(b->shader, nir_intrinsic_io_semantics(instr).location,
+                 nir_intrinsic_component(instr));
 
    agx_ldcf_to(b, dest, cf, 1);
    agx_emit_cached_split(b, dest, 3);
@@ -426,13 +555,12 @@ agx_emit_load_vary(agx_builder *b, agx_index dest, nir_intrinsic_instr *instr)
              nir_component_mask(components) &&
           "iter does not handle write-after-write hazards");
 
-   agx_index I = agx_get_cf(b->shader, true, perspective,
-                            sem.location + nir_src_as_uint(*offset),
-                            nir_intrinsic_component(instr), components);
+   agx_index I = agx_get_cf(b->shader, sem.location + nir_src_as_uint(*offset),
+                            nir_intrinsic_component(instr));
 
    /* For perspective interpolation, we project (multiply by 1/W) */
    if (perspective) {
-      agx_index J = agx_get_cf(b->shader, true, false, VARYING_SLOT_POS, 3, 1);
+      agx_index J = agx_get_cf(b->shader, VARYING_SLOT_POS, 3);
       agx_iterproj_to(b, dest, I, J, sample_index, components, interp);
    } else {
       agx_iter_to(b, dest, I, sample_index, components, interp);
@@ -1120,8 +1248,8 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
          });
 
    case nir_intrinsic_load_frag_coord_zw: {
-      agx_index cf = agx_get_cf(b->shader, true, false, VARYING_SLOT_POS,
-                                nir_intrinsic_component(instr), 1);
+      agx_index cf = agx_get_cf(b->shader, VARYING_SLOT_POS,
+                                nir_intrinsic_component(instr));
 
       return agx_iter_to(b, dst, cf, agx_zero(), 1, AGX_INTERPOLATION_CENTER);
    }
@@ -3128,6 +3256,8 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    /* Must be last since NIR passes can remap driver_location freely */
    if (nir->info.stage == MESA_SHADER_VERTEX)
       agx_remap_varyings_vs(nir, &out->varyings.vs, key);
+   else if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      assign_coefficient_regs(nir, &out->varyings.fs);
 
    if (agx_should_dump(nir, AGX_DBG_SHADERS))
       nir_print_shader(nir, stdout);

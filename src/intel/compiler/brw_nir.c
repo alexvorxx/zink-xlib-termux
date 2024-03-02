@@ -1820,8 +1820,6 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    if (OPT(nir_opt_rematerialize_compares))
       OPT(nir_opt_dce);
 
-   OPT(nir_opt_dce);
-
    /* The mesh stages require this pass to be called at the last minute,
     * but if anything is done by it, it will also constant fold, and that
     * undoes the work done by nir_trivialize_registers, so call it right

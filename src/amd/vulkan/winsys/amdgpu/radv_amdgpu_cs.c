@@ -1356,7 +1356,6 @@ static void
 radv_amdgpu_winsys_get_cpu_addr(void *_cs, uint64_t addr, struct ac_addr_info *info)
 {
    struct radv_amdgpu_cs *cs = (struct radv_amdgpu_cs *)_cs;
-   void *ret = NULL;
 
    memset(info, 0, sizeof(struct ac_addr_info));
 
@@ -1381,8 +1380,9 @@ radv_amdgpu_winsys_get_cpu_addr(void *_cs, uint64_t addr, struct ac_addr_info *i
       struct radv_amdgpu_winsys_bo *bo = (struct radv_amdgpu_winsys_bo *)ib->bo;
 
       if (addr >= bo->base.va && addr - bo->base.va < bo->size) {
-         if (amdgpu_bo_cpu_map(bo->bo, &ret) == 0) {
-            info->cpu_addr = (char *)ret + (addr - bo->base.va);
+         void *map = radv_buffer_map(&cs->ws->base, &bo->base);
+         if (map) {
+            info->cpu_addr = (char *)map + (addr - bo->base.va);
             info->valid = true;
             return;
          }
@@ -1392,10 +1392,11 @@ radv_amdgpu_winsys_get_cpu_addr(void *_cs, uint64_t addr, struct ac_addr_info *i
    for (uint32_t i = 0; i < cs->ws->global_bo_list.count; i++) {
       struct radv_amdgpu_winsys_bo *bo = cs->ws->global_bo_list.bos[i];
       if (addr >= bo->base.va && addr - bo->base.va < bo->size) {
-         if (amdgpu_bo_cpu_map(bo->bo, &ret) == 0) {
+         void *map = radv_buffer_map(&cs->ws->base, &bo->base);
+         if (map) {
             u_rwlock_rdunlock(&cs->ws->global_bo_list.lock);
             info->valid = true;
-            info->cpu_addr = (char *)ret + (addr - bo->base.va);
+            info->cpu_addr = (char *)map + (addr - bo->base.va);
             return;
          }
       }

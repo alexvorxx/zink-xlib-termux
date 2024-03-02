@@ -1542,8 +1542,6 @@ elk_postprocess_nir(nir_shader *nir, const struct elk_compiler *compiler,
    if (OPT(nir_opt_rematerialize_compares))
       OPT(nir_opt_dce);
 
-   OPT(nir_opt_dce);
-
    nir_trivialize_registers(nir);
 
    /* This is the last pass we run before we start emitting stuff.  It

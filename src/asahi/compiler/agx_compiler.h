@@ -965,6 +965,16 @@ agx_validate(UNUSED agx_context *ctx, UNUSED const char *after_str)
 enum agx_size agx_split_width(const agx_instr *I);
 bool agx_allows_16bit_immediate(agx_instr *I);
 
+static inline bool
+agx_is_float_src(const agx_instr *I, unsigned s)
+{
+   struct agx_opcode_info info = agx_opcodes_info[I->op];
+   bool fcmp = (I->op == AGX_OPCODE_FCMPSEL || I->op == AGX_OPCODE_FCMP);
+
+   /* fcmp takes first 2 as floats but returns an integer */
+   return info.is_float || (s < 2 && fcmp);
+}
+
 struct agx_copy {
    /* Base register destination of the copy */
    unsigned dest;

@@ -131,7 +131,7 @@ image_write_source_can_be_immediate(agx_instr *I, unsigned s)
 }
 
 static void
-agx_optimizer_inline_imm(agx_instr **defs, agx_instr *I, bool is_float)
+agx_optimizer_inline_imm(agx_instr **defs, agx_instr *I)
 {
    agx_foreach_ssa_src(I, s) {
       agx_index src = I->src[s];
@@ -145,11 +145,8 @@ agx_optimizer_inline_imm(agx_instr **defs, agx_instr *I, bool is_float)
       uint8_t value = def->imm;
       uint16_t value_u16 = def->imm;
 
-      bool float_src = is_float;
+      bool float_src = agx_is_float_src(I, s);
 
-      /* fcmpsel takes first 2 as floats specially */
-      if (s < 2 && (I->op == AGX_OPCODE_FCMPSEL || I->op == AGX_OPCODE_FCMP))
-         float_src = true;
       if (I->op == AGX_OPCODE_ST_TILE && s == 0)
          continue;
       if (I->op == AGX_OPCODE_ZS_EMIT && s != 0)
@@ -450,7 +447,7 @@ agx_optimizer_forward(agx_context *ctx)
           I->op != AGX_OPCODE_IMAGE_LOAD && I->op != AGX_OPCODE_TEXTURE_LOAD &&
           I->op != AGX_OPCODE_UNIFORM_STORE &&
           I->op != AGX_OPCODE_BLOCK_IMAGE_STORE)
-         agx_optimizer_inline_imm(defs, I, info.is_float);
+         agx_optimizer_inline_imm(defs, I);
 
       if (I->op == AGX_OPCODE_IF_ICMP)
          agx_optimizer_if_cmp(defs, I);

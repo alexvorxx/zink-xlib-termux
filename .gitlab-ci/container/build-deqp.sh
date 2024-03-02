@@ -42,10 +42,6 @@ vk_cts_commits_to_backport=(
 
 # shellcheck disable=SC2034
 vk_cts_patch_files=(
-  # Change zlib URL because the one from zlib.net requires a human-verification
-  # Forward-port of b61f15f09adb6b7c9eefc7f7c44612c0c390abe5 into modern dEQP codebase
-  build-deqp_Change-zlib-URL-because-the-one-from-zlib.net-requir.patch
-
   # Derivate subgroup fix
   # https://github.com/KhronosGroup/VK-GL-CTS/pull/442
   build-deqp_Use-subgroups-helper-in-derivate-tests.patch
@@ -65,9 +61,6 @@ gl_cts_commits_to_backport=(
 
 # shellcheck disable=SC2034
 gl_cts_patch_files=(
-  # Change zlib URL because the one from zlib.net requires a human-verification
-  # Forward-port of b61f15f09adb6b7c9eefc7f7c44612c0c390abe5 into modern dEQP codebase
-  build-deqp_Change-zlib-URL-because-the-one-from-zlib.net-requir.patch
 )
 
 if [ "${DEQP_TARGET}" = 'android' ]; then

@@ -171,8 +171,8 @@ FUNOP = lambda x: (x << 28)
 FUNOP_MASK = FUNOP((1 << 14) - 1)
 
 def funop(name, opcode, schedule_class = "none"):
-   op(name, (0x0A | L | (opcode << 28),
-      0x3F | L | (((1 << 14) - 1) << 28), 6, _),
+   op(name, (0x0A | (opcode << 28),
+      0x3F | (((1 << 14) - 1) << 28), 4, 6),
       srcs = 1, is_float = True, schedule_class = schedule_class)
 
 def iunop(name, opcode):

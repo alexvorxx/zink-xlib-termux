@@ -602,7 +602,8 @@ agx_pack_instr(struct util_dynarray *emission, struct util_dynarray *fixups,
       unsigned channels = (I->channels & 0x3);
 
       agx_index src_I = I->src[0];
-      pack_assert(I, src_I.type == AGX_INDEX_IMMEDIATE);
+      pack_assert(I, src_I.type == AGX_INDEX_IMMEDIATE ||
+                        src_I.type == AGX_INDEX_REGISTER);
 
       unsigned cf_I = src_I.value;
       unsigned cf_J = 0;
@@ -635,11 +636,13 @@ agx_pack_instr(struct util_dynarray *emission, struct util_dynarray *fixups,
       uint64_t raw =
          0x21 | (flat ? (1 << 7) : 0) | (perspective ? (1 << 6) : 0) |
          ((D & 0xFF) << 7) | (1ull << 15) | /* XXX */
-         ((cf_I & BITFIELD_MASK(6)) << 16) | ((cf_J & BITFIELD_MASK(6)) << 24) |
-         (((uint64_t)channels) << 30) | (((uint64_t)sample_index.value) << 32) |
-         (forward ? (1ull << 46) : 0) | (((uint64_t)interp) << 48) |
-         (kill ? (1ull << 52) : 0) | (((uint64_t)(D >> 8)) << 56) |
-         ((uint64_t)(cf_I >> 6) << 58) | ((uint64_t)(cf_J >> 6) << 60);
+         ((cf_I & BITFIELD_MASK(6)) << 16) |
+         ((src_I.type == AGX_INDEX_REGISTER) ? (1 << 23) : 0) |
+         ((cf_J & BITFIELD_MASK(6)) << 24) | (((uint64_t)channels) << 30) |
+         (((uint64_t)sample_index.value) << 32) | (forward ? (1ull << 46) : 0) |
+         (((uint64_t)interp) << 48) | (kill ? (1ull << 52) : 0) |
+         (((uint64_t)(D >> 8)) << 56) | ((uint64_t)(cf_I >> 6) << 58) |
+         ((uint64_t)(cf_J >> 6) << 60);
 
       unsigned size = 8;
       memcpy(util_dynarray_grow_bytes(emission, 1, size), &raw, size);

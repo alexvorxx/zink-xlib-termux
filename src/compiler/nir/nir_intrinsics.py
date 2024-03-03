@@ -1809,6 +1809,17 @@ intrinsic("load_coefficients_agx", [1],
           indices=[COMPONENT, IO_SEMANTICS, INTERP_MODE],
           flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# src[] = { value, index }
+# Store a vertex shader output to the Unified Vertex Store (UVS). Indexed by UVS
+# index, which must be assigned by the driver based on the linked fragment
+# shader's interpolation qualifiers. This corresponds to the native instruction.
+store("uvs_agx", [1], [], [CAN_REORDER])
+
+# Driver intrinsic to map a location to a UVS index. This is generated when
+# lowering store_output to store_uvs_agx, and must be lowered by the driver.
+intrinsic("load_uvs_index_agx", dest_comp = 1, bit_sizes=[16],
+          indices=[IO_SEMANTICS], flags=[CAN_ELIMINATE, CAN_REORDER])
+
 # In a fragment shader, boolean system value that is true if the last vertex
 # stage writes the layer ID. If false, layer IDs are defined to read back zero.
 # This system value facilitates that. 16-bit 0/~0 bool allows easy masking.

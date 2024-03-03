@@ -14,6 +14,7 @@
 #include "asahi/lib/agx_nir_lower_vbo.h"
 #include "asahi/lib/agx_scratch.h"
 #include "asahi/lib/agx_tilebuffer.h"
+#include "asahi/lib/agx_uvs.h"
 #include "asahi/lib/pool.h"
 #include "asahi/lib/shaders/geometry.h"
 #include "compiler/nir/nir_lower_blend.h"
@@ -29,6 +30,7 @@
 #include "util/u_range.h"
 #include "agx_helpers.h"
 #include "agx_meta.h"
+#include "agx_nir_passes.h"
 
 #ifdef __GLIBC__
 #include <errno.h>
@@ -162,6 +164,11 @@ struct PACKED agx_draw_uniforms {
 
    /* Zero for [0, 1] clipping, 0.5 for [-1, 1] clipping. */
    uint16_t clip_z_coeff;
+
+   /* Mapping from varying slots written by the last vertex stage to UVS
+    * indices. This mapping must be compatible with the fragment shader.
+    */
+   uint16_t uvs_index[VARYING_SLOT_MAX];
 };
 
 struct PACKED agx_stage_uniforms {
@@ -220,6 +227,9 @@ struct agx_compiled_shader {
    /* Uniforms the driver must push */
    unsigned push_range_count;
    struct agx_push_range push[AGX_MAX_PUSH_RANGES];
+
+   /* UVS layout for the last vertex stage */
+   struct agx_unlinked_uvs_layout uvs;
 
    /* Auxiliary programs, or NULL if not used */
    struct agx_compiled_shader *gs_count, *pre_gs;
@@ -366,6 +376,7 @@ struct agx_batch {
 
    /* Current varyings linkage structures */
    uint32_t varyings;
+   struct agx_varyings_vs linked_varyings;
 
    struct agx_draw_uniforms uniforms;
    struct agx_stage_uniforms stage_uniforms[PIPE_SHADER_TYPES];
@@ -478,8 +489,6 @@ struct asahi_vs_shader_key {
 
       struct {
          bool fixed_point_size;
-         uint64_t outputs_flat_shaded;
-         uint64_t outputs_linear_shaded;
       } hw;
    } next;
 };
@@ -512,15 +521,13 @@ struct asahi_fs_shader_key {
 
 struct asahi_gs_shader_key {
    /* Rasterizer shader key */
-   uint64_t outputs_flat_shaded;
-   uint64_t outputs_linear_shaded;
    bool fixed_point_size;
 
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;
    bool padding[6];
 };
-static_assert(sizeof(struct asahi_gs_shader_key) == 24, "no holes");
+static_assert(sizeof(struct asahi_gs_shader_key) == 8, "no holes");
 
 union asahi_shader_key {
    struct asahi_vs_shader_key vs;

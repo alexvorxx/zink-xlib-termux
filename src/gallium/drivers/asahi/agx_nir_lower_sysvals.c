@@ -189,6 +189,9 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intr,
       return load_sysval_root(b, 1, 16, &u->sprite_mask);
    case nir_intrinsic_load_clip_z_coeff_agx:
       return nir_f2f32(b, load_sysval_root(b, 1, 16, &u->clip_z_coeff));
+   case nir_intrinsic_load_uvs_index_agx:
+      return load_sysval_root(
+         b, 1, 16, &u->uvs_index[nir_intrinsic_io_semantics(intr).location]);
    case nir_intrinsic_load_polygon_stipple_agx: {
       nir_def *base = load_sysval_root(b, 1, 64, &u->polygon_stipple);
       nir_def *row = intr->src[0].ssa;

@@ -63,6 +63,7 @@ write_shader(struct blob *blob, const struct agx_compiled_shader *binary,
    blob_write_uint32(blob, shader_size);
    blob_write_bytes(blob, binary->bo->ptr.cpu, shader_size);
    blob_write_bytes(blob, &binary->info, sizeof(binary->info));
+   blob_write_bytes(blob, &binary->uvs, sizeof(binary->uvs));
    blob_write_uint32(blob, binary->push_range_count);
    blob_write_bytes(blob, binary->push,
                     sizeof(binary->push[0]) * binary->push_range_count);
@@ -96,6 +97,7 @@ read_shader(struct agx_screen *screen, struct blob_reader *blob,
    blob_copy_bytes(blob, binary->bo->ptr.cpu, binary_size);
 
    blob_copy_bytes(blob, &binary->info, sizeof(binary->info));
+   blob_copy_bytes(blob, &binary->uvs, sizeof(binary->uvs));
    binary->push_range_count = blob_read_uint32(blob);
    blob_copy_bytes(blob, binary->push,
                    sizeof(binary->push[0]) * binary->push_range_count);

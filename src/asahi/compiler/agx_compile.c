@@ -579,39 +579,6 @@ agx_emit_load_vary(agx_builder *b, agx_index dest, nir_intrinsic_instr *instr)
 }
 
 static agx_instr *
-agx_emit_store_vary(agx_builder *b, nir_intrinsic_instr *instr)
-{
-   nir_io_semantics sem = nir_intrinsic_io_semantics(instr);
-   nir_src *offset = nir_get_io_offset_src(instr);
-   assert(nir_src_is_const(*offset) && "todo: indirects");
-
-   unsigned imm_index = b->shader->out->varyings.vs.slots[sem.location];
-
-   if (sem.location == VARYING_SLOT_LAYER ||
-       sem.location == VARYING_SLOT_CLIP_DIST0) {
-      /* Separate slots used for the sysval vs the varying. The default slot
-       * above is for the varying. Change for the sysval.
-       */
-      assert(sem.no_sysval_output || sem.no_varying);
-
-      if (sem.no_varying) {
-         imm_index = sem.location == VARYING_SLOT_LAYER
-                        ? b->shader->out->varyings.vs.layer_viewport_slot
-                        : b->shader->out->varyings.vs.clip_dist_slot;
-      }
-   }
-
-   assert(imm_index < ~0);
-   imm_index += (nir_src_as_uint(*offset) * 4) + nir_intrinsic_component(instr);
-
-   /* nir_lower_io_to_scalar */
-   assert(nir_intrinsic_write_mask(instr) == 0x1);
-
-   return agx_st_vary(b, agx_immediate(imm_index),
-                      agx_src_index(&instr->src[0]));
-}
-
-static agx_instr *
 agx_emit_local_store_pixel(agx_builder *b, nir_intrinsic_instr *instr)
 {
    /* TODO: Reverse-engineer interactions with MRT */
@@ -1210,9 +1177,10 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
       agx_emit_load(b, dst, instr);
       return NULL;
 
-   case nir_intrinsic_store_output:
+   case nir_intrinsic_store_uvs_agx:
       assert(stage == MESA_SHADER_VERTEX);
-      return agx_emit_store_vary(b, instr);
+      return agx_st_vary(b, agx_src_index(&instr->src[1]),
+                         agx_src_index(&instr->src[0]));
 
    case nir_intrinsic_store_agx:
       agx_emit_store(b, instr);
@@ -2667,96 +2635,6 @@ agx_optimize_nir(nir_shader *nir, unsigned *preamble_size)
    NIR_PASS(_, nir, nir_lower_phis_to_scalar, true);
 }
 
-/* ABI: position first, then user, then psiz */
-static void
-agx_remap_varyings_vs(nir_shader *nir, struct agx_varyings_vs *varyings,
-                      struct agx_shader_key *key)
-{
-   unsigned base = 0;
-
-   /* Initialize to "nothing is written" */
-   for (unsigned i = 0; i < ARRAY_SIZE(varyings->slots); ++i)
-      varyings->slots[i] = ~0;
-
-   /* gl_Position is implicitly written, although it may validly be absent in
-    * vertex programs run only for transform feedback. Those ignore their
-    * varyings so it doesn't matter what we do here as long as we don't fail.
-    */
-   varyings->slots[VARYING_SLOT_POS] = base;
-   base += 4;
-
-   /* These are always flat-shaded from the FS perspective */
-   key->vs.outputs_flat_shaded |= VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT;
-
-   /* The internal cull distance slots are always linearly-interpolated */
-   key->vs.outputs_linear_shaded |=
-      BITFIELD64_RANGE(VARYING_SLOT_CULL_PRIMITIVE, 2);
-
-   assert(!(key->vs.outputs_flat_shaded & key->vs.outputs_linear_shaded));
-
-   /* Smooth 32-bit user bindings go next */
-   u_foreach_bit64(loc, nir->info.outputs_written &
-                           ~key->vs.outputs_flat_shaded &
-                           ~key->vs.outputs_linear_shaded) {
-      if (loc == VARYING_SLOT_POS || loc == VARYING_SLOT_PSIZ)
-         continue;
-
-      assert(loc < ARRAY_SIZE(varyings->slots));
-      varyings->slots[loc] = base;
-      base += 4;
-      varyings->num_32_smooth += 4;
-   }
-
-   /* Flat 32-bit user bindings go next */
-   u_foreach_bit64(loc,
-                   nir->info.outputs_written & key->vs.outputs_flat_shaded) {
-      if (loc == VARYING_SLOT_POS || loc == VARYING_SLOT_PSIZ)
-         continue;
-
-      assert(loc < ARRAY_SIZE(varyings->slots));
-      varyings->slots[loc] = base;
-      base += 4;
-      varyings->num_32_flat += 4;
-   }
-
-   /* Linear 32-bit user bindings go next */
-   u_foreach_bit64(loc,
-                   nir->info.outputs_written & key->vs.outputs_linear_shaded) {
-      if (loc == VARYING_SLOT_POS || loc == VARYING_SLOT_PSIZ)
-         continue;
-
-      assert(loc < ARRAY_SIZE(varyings->slots));
-      varyings->slots[loc] = base;
-      base += 4;
-      varyings->num_32_linear += 4;
-   }
-
-   /* TODO: Link FP16 varyings */
-   varyings->base_index_fp16 = base;
-   varyings->num_16_smooth = 0;
-   varyings->num_16_flat = 0;
-   varyings->num_16_linear = 0;
-
-   if (nir->info.outputs_written & VARYING_BIT_PSIZ) {
-      varyings->slots[VARYING_SLOT_PSIZ] = base;
-      base += 1;
-   }
-
-   if (nir->info.outputs_written & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT)) {
-      varyings->layer_viewport_slot = base;
-      base += 1;
-   }
-
-   if (nir->info.outputs_written & VARYING_BIT_CLIP_DIST0) {
-      varyings->clip_dist_slot = base;
-      varyings->nr_clip_dists = nir->info.clip_distance_array_size;
-      base += varyings->nr_clip_dists;
-   }
-
-   /* All varyings linked now */
-   varyings->nr_index = base;
-}
-
 /*
  * Varyings that are used as texture coordinates should be kept at fp32, because
  * fp16 does not have enough precision for large textures. It's technically
@@ -3188,10 +3066,6 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
       out->tag_write_disable = !nir->info.writes_memory;
 
-   if (nir->info.stage == MESA_SHADER_VERTEX &&
-       (nir->info.outputs_written & VARYING_BIT_CLIP_DIST0))
-      NIR_PASS(_, nir, agx_nir_lower_clip_distance);
-
    bool needs_libagx = true /* TODO: Optimize */;
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
@@ -3238,19 +3112,6 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    /* Late VBO lowering creates constant udiv instructions */
    NIR_PASS(_, nir, nir_opt_idiv_const, 16);
 
-   /* Varying output is scalar, other I/O is vector. Lowered late because
-    * transform feedback programs will use vector output.
-    */
-   if (nir->info.stage == MESA_SHADER_VERTEX) {
-      NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
-
-      if (nir->info.outputs_written &
-          (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT)) {
-
-         NIR_PASS(_, nir, agx_nir_lower_layer);
-      }
-   }
-
    NIR_PASS(_, nir, nir_opt_constant_folding);
    NIR_PASS(_, nir, nir_shader_intrinsics_pass, lower_load_from_texture_handle,
             nir_metadata_block_index | nir_metadata_dominance, NULL);
@@ -3258,10 +3119,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    out->push_count = key->reserved_preamble;
    agx_optimize_nir(nir, &out->push_count);
 
-   /* Must be last since NIR passes can remap driver_location freely */
-   if (nir->info.stage == MESA_SHADER_VERTEX)
-      agx_remap_varyings_vs(nir, &out->varyings.vs, key);
-   else if (nir->info.stage == MESA_SHADER_FRAGMENT)
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
       assign_coefficient_regs(nir, &out->varyings.fs);
 
    if (agx_should_dump(nir, AGX_DBG_SHADERS))
@@ -3284,9 +3142,6 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    }
 
    if (nir->info.stage == MESA_SHADER_VERTEX) {
-      out->writes_psiz =
-         nir->info.outputs_written & BITFIELD_BIT(VARYING_SLOT_PSIZ);
-
       out->nonzero_viewport = nir->info.outputs_written & VARYING_BIT_VIEWPORT;
 
       out->writes_layer_viewport =

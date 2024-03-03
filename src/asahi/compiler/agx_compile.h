@@ -9,50 +9,6 @@
 #include "util/u_dynarray.h"
 #include "shader_enums.h"
 
-struct agx_varyings_vs {
-   /* The number of user varyings of each type. The varyings must be allocated
-    * in this order ({smooth, flat, linear} × {32, 16}), which may require
-    * remapping.
-    */
-   unsigned num_32_smooth;
-   unsigned num_32_flat;
-   unsigned num_32_linear;
-   unsigned num_16_smooth;
-   unsigned num_16_flat;
-   unsigned num_16_linear;
-
-   /* The first index used for FP16 varyings. Indices less than this are treated
-    * as FP32. This may require remapping slots to guarantee.
-    */
-   unsigned base_index_fp16;
-
-   /* The total number of vertex shader indices output. Must be at least
-    * base_index_fp16.
-    */
-   unsigned nr_index;
-
-   /* If the slot is written, this is the base index that the first component
-    * of the slot is written to.  The next components are found in the next
-    * indices. If less than base_index_fp16, this is a 32-bit slot (with 4
-    * indices for the 4 components), else this is a 16-bit slot (with 2
-    * indices for the 4 components). This must be less than nr_index.
-    *
-    * If the slot is not written, this must be ~0.
-    */
-   unsigned slots[VARYING_SLOT_MAX];
-
-   /* Slot for the combined layer/viewport 32-bit sysval output, or ~0 if none
-    * is written. What's at slots[VARYING_SLOT_LAYER] is the varying output.
-    */
-   unsigned layer_viewport_slot;
-
-   /* Base slot for the clip distance sysval outputs, or ~0 if none is written.
-    * What's at slots[VARYING_SLOT_CLIP_DIST0] is the varying output.
-    */
-   unsigned clip_dist_slot;
-   unsigned nr_clip_dists;
-};
-
 struct agx_cf_binding {
    /* Base coefficient register */
    unsigned cf_base;
@@ -96,7 +52,6 @@ struct agx_varyings_fs {
 };
 
 union agx_varyings {
-   struct agx_varyings_vs vs;
    struct agx_varyings_fs fs;
 };
 
@@ -126,9 +81,6 @@ struct agx_shader_info {
 
    /* Does the shader read the tilebuffer? */
    bool reads_tib;
-
-   /* Does the shader write point size? */
-   bool writes_psiz;
 
    /* Does the shader potentially draw to a nonzero viewport? */
    bool nonzero_viewport;
@@ -195,17 +147,6 @@ enum agx_format {
    AGX_NUM_FORMATS,
 };
 
-struct agx_vs_shader_key {
-   /* The GPU ABI requires all smooth shaded varyings to come first, then all
-    * flat shaded varyings, then all linear shaded varyings, as written by the
-    * VS. In order to correctly remap the varyings into the right order in the
-    * VS, we need to propagate the mask of flat/linear shaded varyings into the
-    * compiler.
-    */
-   uint64_t outputs_flat_shaded;
-   uint64_t outputs_linear_shaded;
-};
-
 struct agx_fs_shader_key {
    /* Normally, access to the tilebuffer must be guarded by appropriate fencing
     * instructions to ensure correct results in the presence of out-of-order
@@ -246,7 +187,6 @@ struct agx_shader_key {
    bool promote_constants;
 
    union {
-      struct agx_vs_shader_key vs;
       struct agx_fs_shader_key fs;
    };
 };

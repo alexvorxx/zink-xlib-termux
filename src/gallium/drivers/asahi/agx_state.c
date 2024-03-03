@@ -1521,59 +1521,10 @@ asahi_cs_shader_key_equal(const void *a, const void *b)
    return true;
 }
 
-static unsigned
-agx_find_linked_slot(struct agx_varyings_vs *vs, struct agx_varyings_fs *fs,
-                     gl_varying_slot slot, unsigned offset)
-{
-   assert(offset < 4);
-   assert(slot != VARYING_SLOT_PNTC && "point coords aren't linked");
-
-   if (slot == VARYING_SLOT_POS) {
-      if (offset == 3) {
-         return 0; /* W */
-      } else if (offset == 2) {
-         assert(fs->reads_z);
-         return 1; /* Z */
-      } else {
-         unreachable("gl_Position.xy are not varyings");
-      }
-   }
-
-   unsigned vs_index = vs->slots[slot];
-
-   /* Varyings not written by vertex shader are undefined but we can't crash */
-   if (!(vs_index < vs->nr_index))
-      return 0;
-
-   assert(vs_index >= 4 && "gl_Position should have been the first 4 slots");
-   assert((vs_index < vs->base_index_fp16) ==
-             ((vs_index + offset) < vs->base_index_fp16) &&
-          "a given varying must have a consistent type");
-
-   unsigned vs_user_index = (vs_index + offset) - 4;
-
-   if (fs->reads_z)
-      return vs_user_index + 2;
-   else
-      return vs_user_index + 1;
-}
-
-static unsigned
-agx_num_general_outputs(struct agx_varyings_vs *vs)
-{
-   unsigned nr_vs = vs->nr_index;
-   bool writes_psiz = vs->slots[VARYING_SLOT_PSIZ] < nr_vs;
-
-   assert(nr_vs >= 4 && "gl_Position must be written");
-   if (writes_psiz)
-      assert(nr_vs >= 5 && "gl_PointSize is written");
-
-   return nr_vs - (writes_psiz ? 5 : 4);
-}
-
 static uint32_t
 agx_link_varyings_vs_fs(struct agx_pool *pool, struct agx_varyings_vs *vs,
-                        struct agx_varyings_fs *fs, bool first_provoking_vertex,
+                        unsigned nr_user_indices, struct agx_varyings_fs *fs,
+                        bool first_provoking_vertex,
                         uint8_t sprite_coord_enable,
                         bool *generate_primitive_id)
 {
@@ -1586,11 +1537,14 @@ agx_link_varyings_vs_fs(struct agx_pool *pool, struct agx_varyings_vs *vs,
    size_t linkage_size =
       AGX_CF_BINDING_HEADER_LENGTH + (fs->nr_bindings * AGX_CF_BINDING_LENGTH);
 
-   void *tmp = alloca(linkage_size);
-   struct agx_cf_binding_header_packed *header = tmp;
+   struct agx_ptr t = agx_pool_alloc_aligned(pool, linkage_size, 256);
+   assert(t.gpu < (1ull << 32) && "varyings must be in low memory");
+
+   struct agx_cf_binding_header_packed *header = t.cpu;
    struct agx_cf_binding_packed *bindings = (void *)(header + 1);
 
-   unsigned nr_slots = agx_num_general_outputs(vs) + 1 + (fs->reads_z ? 1 : 0);
+   unsigned user_base = 1 + (fs->reads_z ? 1 : 0);
+   unsigned nr_slots = user_base + nr_user_indices;
 
    agx_pack(header, CF_BINDING_HEADER, cfg) {
       cfg.number_of_32_bit_slots = nr_slots;
@@ -1598,35 +1552,45 @@ agx_link_varyings_vs_fs(struct agx_pool *pool, struct agx_varyings_vs *vs,
    }
 
    for (unsigned i = 0; i < fs->nr_bindings; ++i) {
+      struct agx_cf_binding b = fs->bindings[i];
+
       agx_pack(bindings + i, CF_BINDING, cfg) {
-         cfg.base_coefficient_register = fs->bindings[i].cf_base;
-         cfg.components = fs->bindings[i].count;
+         cfg.base_coefficient_register = b.cf_base;
+         cfg.components = b.count;
          cfg.shade_model =
             agx_translate_shade_model(fs, i, first_provoking_vertex);
 
-         if (util_varying_is_point_coord(fs->bindings[i].slot,
-                                         sprite_coord_enable)) {
-            assert(fs->bindings[i].offset == 0);
+         if (util_varying_is_point_coord(b.slot, sprite_coord_enable)) {
+            assert(b.offset == 0);
             cfg.source = AGX_COEFFICIENT_SOURCE_POINT_COORD;
-         } else if (fs->bindings[i].slot == VARYING_SLOT_PRIMITIVE_ID &&
-                    vs->slots[VARYING_SLOT_PRIMITIVE_ID] == ~0) {
+         } else if (b.slot == VARYING_SLOT_PRIMITIVE_ID &&
+                    !vs->slots[VARYING_SLOT_PRIMITIVE_ID]) {
             cfg.source = AGX_COEFFICIENT_SOURCE_PRIMITIVE_ID;
             *generate_primitive_id = true;
-         } else {
-            cfg.base_slot = agx_find_linked_slot(vs, fs, fs->bindings[i].slot,
-                                                 fs->bindings[i].offset);
+         } else if (b.slot == VARYING_SLOT_POS) {
+            assert(b.offset >= 2 && "gl_Position.xy are not varyings");
+            assert(fs->reads_z || b.offset != 2);
 
-            assert(cfg.base_slot + cfg.components <=
-                      MAX2(nr_slots, cfg.components) &&
-                   "overflow slots");
-         }
-
-         if (fs->bindings[i].slot == VARYING_SLOT_POS) {
-            if (fs->bindings[i].offset == 2) {
+            if (b.offset == 2) {
                cfg.source = AGX_COEFFICIENT_SOURCE_FRAGCOORD_Z;
+               cfg.base_slot = 1;
             } else {
-               assert(!fs->bindings[i].perspective &&
-                      "W must not be perspective divided");
+               assert(!b.perspective && "W must not be perspective divided");
+            }
+         } else {
+            unsigned vs_index = vs->slots[b.slot];
+            assert(b.offset < 4);
+
+            /* Varyings not written by vertex shader are undefined but we can't
+             * crash */
+            if (vs_index) {
+               assert(vs_index >= 4 &&
+                      "gl_Position should have been the first 4 slots");
+
+               cfg.base_slot = user_base + (vs_index - 4) + b.offset;
+
+               assert(cfg.base_slot + cfg.components <= nr_slots &&
+                      "overflow slots");
             }
          }
 
@@ -1635,16 +1599,7 @@ agx_link_varyings_vs_fs(struct agx_pool *pool, struct agx_varyings_vs *vs,
       }
    }
 
-   struct agx_ptr ptr = agx_pool_alloc_aligned(pool, (3 * linkage_size), 256);
-   assert(ptr.gpu < (1ull << 32) && "varyings must be in low memory");
-
-   /* I don't understand why the data structures are repeated thrice */
-   for (unsigned i = 0; i < 3; ++i) {
-      memcpy(((uint8_t *)ptr.cpu) + (i * linkage_size), (uint8_t *)tmp,
-             linkage_size);
-   }
-
-   return ptr.gpu;
+   return t.gpu;
 }
 
 /* Dynamic lowered I/O version of nir_lower_clip_halfz */
@@ -1859,6 +1814,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
    perf_debug(dev, "Compiling shader variant #%u",
               _mesa_hash_table_num_entries(so->variants));
 
+   struct agx_unlinked_uvs_layout uvs = {0};
    bool force_translucent = false;
 
    if (nir->info.stage == MESA_SHADER_VERTEX) {
@@ -1871,6 +1827,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
                   key->next.hw.fixed_point_size);
          NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
                   nir_metadata_block_index | nir_metadata_dominance, NULL);
+         NIR_PASS(_, nir, agx_nir_lower_uvs, &uvs);
       } else {
          NIR_PASS(_, nir, agx_nir_lower_sysvals, PIPE_SHADER_VERTEX, false);
          NIR_PASS(_, nir, agx_nir_lower_vs_before_gs, dev->libagx,
@@ -1993,21 +1950,11 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
    struct agx_shader_key base_key = {0};
 
-   if (nir->info.stage == MESA_SHADER_VERTEX) {
-      struct asahi_vs_shader_key *key = &key_->vs;
-
-      if (key->hw) {
-         base_key.vs.outputs_flat_shaded = key_->vs.next.hw.outputs_flat_shaded;
-
-         base_key.vs.outputs_linear_shaded =
-            key_->vs.next.hw.outputs_linear_shaded;
-      }
-   }
-
    struct agx_compiled_shader *compiled =
       agx_compile_nir(dev, nir, &base_key, debug, so->type);
 
    compiled->so = so;
+   compiled->uvs = uvs;
 
    /* reads_tib => Translucent pass type */
    compiled->info.reads_tib |= force_translucent;
@@ -2039,13 +1986,14 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       NIR_PASS(_, gs_copy, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
                nir_metadata_block_index | nir_metadata_dominance, NULL);
 
-      base_key.vs.outputs_flat_shaded = key->outputs_flat_shaded;
-      base_key.vs.outputs_linear_shaded = key->outputs_linear_shaded;
+      struct agx_unlinked_uvs_layout uvs = {0};
+      NIR_PASS(_, gs_copy, agx_nir_lower_uvs, &uvs);
 
       compiled->gs_copy =
          agx_compile_nir(dev, gs_copy, &base_key, debug, PIPE_SHADER_GEOMETRY);
       compiled->gs_copy->so = so;
       compiled->gs_copy->stage = so->type;
+      compiled->gs_copy->uvs = uvs;
    }
 
    compiled->gs_output_mode = gs_out_prim;
@@ -2427,10 +2375,9 @@ agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
     *
     * vb_mask, attributes, vertex_buffers: VERTEX
     * point_size_per_vertex: RS
-    * outputs_{flat,linear}_shaded: FS_PROG
     */
    if (!((ctx->dirty & (AGX_DIRTY_VS_PROG | AGX_DIRTY_VERTEX | AGX_DIRTY_XFB |
-                        AGX_DIRTY_FS_PROG | AGX_DIRTY_RS | AGX_DIRTY_PRIM)) ||
+                        AGX_DIRTY_RS | AGX_DIRTY_PRIM)) ||
          ctx->stage[PIPE_SHADER_TESS_EVAL].dirty ||
          ctx->stage[PIPE_SHADER_GEOMETRY].dirty ||
          ctx->stage[PIPE_SHADER_TESS_EVAL].shader ||
@@ -2451,11 +2398,6 @@ agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
        */
       key.next.hw.fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
                                      rasterized_prim == MESA_PRIM_POINTS;
-
-      key.next.hw.outputs_flat_shaded =
-         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_flat_shaded;
-      key.next.hw.outputs_linear_shaded =
-         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_linear_shaded;
    } else {
       key.next.sw.index_size_B = index_size_B;
    }
@@ -2511,10 +2453,6 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
       /* TODO: Deduplicate */
       .fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
                           rasterized_prim == MESA_PRIM_POINTS,
-      .outputs_flat_shaded =
-         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_flat_shaded,
-      .outputs_linear_shaded =
-         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_linear_shaded,
    };
 
    return agx_update_shader(ctx, &ctx->gs, PIPE_SHADER_GEOMETRY,
@@ -3564,8 +3502,9 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
 
    if (IS_DIRTY(VS_PROG) || IS_DIRTY(FS_PROG) || IS_DIRTY(RS) ||
        IS_DIRTY(PRIM)) {
+
       batch->varyings = agx_link_varyings_vs_fs(
-         &batch->pipeline_pool, &vs->info.varyings.vs,
+         &batch->pipeline_pool, &batch->linked_varyings, vs->uvs.user_size,
          &ctx->fs->info.varyings.fs, ctx->rast->base.flatshade_first,
          (batch->reduced_prim == MESA_PRIM_POINTS)
             ? ctx->rast->base.sprite_coord_enable
@@ -3596,10 +3535,7 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
          cfg.pipeline = agx_build_pipeline(batch, vs, PIPE_SHADER_VERTEX, 0, 0);
       }
 
-      agx_push(out, VDM_STATE_VERTEX_OUTPUTS, cfg) {
-         cfg.output_count_1 = vs->info.varyings.vs.nr_index;
-         cfg.output_count_2 = cfg.output_count_1;
-      }
+      agx_push_packed(out, vs->uvs.vdm, VDM_STATE_VERTEX_OUTPUTS);
 
       agx_push(out, VDM_STATE_VERTEX_UNKNOWN, cfg) {
          cfg.flat_shading_control = ctx->rast->base.flatshade_first
@@ -3654,9 +3590,9 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
       .fragment_back_face = fragment_face_dirty,
       .fragment_back_face_2 = object_type_dirty || IS_DIRTY(FS_PROG),
       .fragment_back_stencil = IS_DIRTY(ZS),
-      .output_select = IS_DIRTY(VS_PROG) || IS_DIRTY(FS_PROG),
-      .varying_counts_32 = IS_DIRTY(VS_PROG),
-      .varying_counts_16 = IS_DIRTY(VS_PROG),
+      .output_select = varyings_dirty,
+      .varying_counts_32 = varyings_dirty,
+      .varying_counts_16 = varyings_dirty,
       .cull = IS_DIRTY(RS),
       .cull_2 = varyings_dirty,
       .fragment_shader =
@@ -3742,40 +3678,24 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
    if (dirty.fragment_back_stencil)
       agx_ppp_push_packed(&ppp, ctx->zs->back_stencil.opaque, FRAGMENT_STENCIL);
 
-   if (dirty.output_select) {
-      agx_ppp_push(&ppp, OUTPUT_SELECT, cfg) {
-         cfg.varyings = !!fs->info.varyings.fs.nr_bindings;
-         cfg.point_size = vs->info.writes_psiz;
-         cfg.viewport_target = vs->info.writes_layer_viewport;
-         cfg.render_target = vs->info.writes_layer_viewport;
-         cfg.frag_coord_z = fs->info.varyings.fs.reads_z;
-         cfg.clip_distance_plane_0 = vs->info.varyings.vs.nr_clip_dists > 0;
-         cfg.clip_distance_plane_1 = vs->info.varyings.vs.nr_clip_dists > 1;
-         cfg.clip_distance_plane_2 = vs->info.varyings.vs.nr_clip_dists > 2;
-         cfg.clip_distance_plane_3 = vs->info.varyings.vs.nr_clip_dists > 3;
-         cfg.clip_distance_plane_4 = vs->info.varyings.vs.nr_clip_dists > 4;
-         cfg.clip_distance_plane_5 = vs->info.varyings.vs.nr_clip_dists > 5;
-         cfg.clip_distance_plane_6 = vs->info.varyings.vs.nr_clip_dists > 6;
-         cfg.clip_distance_plane_7 = vs->info.varyings.vs.nr_clip_dists > 7;
-
-         assert(cfg.point_size || !is_points);
-      }
-   }
-
    assert(dirty.varying_counts_32 == dirty.varying_counts_16);
+   assert(dirty.varying_counts_32 == dirty.output_select);
 
-   if (dirty.varying_counts_32) {
-      agx_ppp_push(&ppp, VARYING_COUNTS, cfg) {
-         cfg.smooth = vs->info.varyings.vs.num_32_smooth;
-         cfg.flat = vs->info.varyings.vs.num_32_flat;
-         cfg.linear = vs->info.varyings.vs.num_32_linear;
+   if (dirty.output_select) {
+      struct agx_output_select_packed osel;
+      agx_pack(&osel, OUTPUT_SELECT, cfg) {
+         cfg.varyings = !!fs->info.varyings.fs.nr_bindings;
+         cfg.frag_coord_z = fs->info.varyings.fs.reads_z;
       }
 
-      agx_ppp_push(&ppp, VARYING_COUNTS, cfg) {
-         cfg.smooth = vs->info.varyings.vs.num_16_smooth;
-         cfg.flat = vs->info.varyings.vs.num_16_flat;
-         cfg.linear = vs->info.varyings.vs.num_16_linear;
-      }
+      agx_merge(osel, vs->uvs.osel, OUTPUT_SELECT);
+      agx_ppp_push_packed(&ppp, &osel, OUTPUT_SELECT);
+
+      agx_ppp_push_packed(&ppp, &batch->linked_varyings.counts_32,
+                          VARYING_COUNTS);
+
+      agx_ppp_push_packed(&ppp, &batch->linked_varyings.counts_16,
+                          VARYING_COUNTS);
    }
 
    if (dirty.cull)
@@ -3817,7 +3737,7 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
 
    if (dirty.output_size) {
       agx_ppp_push(&ppp, OUTPUT_SIZE, cfg)
-         cfg.count = vs->info.varyings.vs.nr_index;
+         cfg.count = vs->uvs.size;
    }
 
    agx_ppp_fini(&out, &ppp);
@@ -5059,6 +4979,21 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
       agx_batch_add_bo(batch, ctx->gs->bo);
       agx_batch_add_bo(batch, ctx->gs->gs_copy->bo);
+   }
+
+   if (ctx->dirty & (AGX_DIRTY_VS_PROG | AGX_DIRTY_FS_PROG)) {
+      struct agx_compiled_shader *vs = ctx->vs;
+      if (ctx->gs)
+         vs = ctx->gs->gs_copy;
+
+      agx_assign_uvs(
+         &batch->linked_varyings, &vs->uvs,
+         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_flat_shaded,
+         ctx->stage[PIPE_SHADER_FRAGMENT].shader->info.inputs_linear_shaded);
+
+      for (unsigned i = 0; i < VARYING_SLOT_MAX; ++i) {
+         batch->uniforms.uvs_index[i] = batch->linked_varyings.slots[i];
+      }
    }
 
    /* Set draw ID */

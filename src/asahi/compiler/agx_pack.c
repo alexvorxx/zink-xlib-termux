@@ -674,16 +674,25 @@ agx_pack_instr(struct util_dynarray *emission, struct util_dynarray *fixups,
       bool is_store = is_device_store || is_uniform_store;
       bool has_base = !is_uniform_store;
 
-      /* Uniform stores internally packed as 16-bit. Fix up the format, mask,
-       * and size so we can use scalar 32-bit values in the IR and avoid
-       * special casing earlier in the compiler.
+      /* Uniform stores are required to be 16-bit. The encoding that should be
+       * 32-bit annoyingly doesn't work. Fix up the format and size so we can
+       * use scalar 32-bit values in the IR and avoid special casing earlier in
+       * the compiler.
        */
       enum agx_format format = is_uniform_store ? AGX_FORMAT_I16 : I->format;
       agx_index reg = is_store ? I->src[0] : I->dest[0];
       unsigned mask = I->mask;
 
-      if (is_uniform_store) {
-         mask = BITFIELD_MASK(agx_size_align_16(reg.size));
+      if (is_uniform_store && reg.size != AGX_SIZE_16) {
+         if (reg.size == AGX_SIZE_64) {
+            assert(mask == 1);
+            mask = BITFIELD_MASK(4);
+         } else {
+            assert(reg.size == AGX_SIZE_32);
+            assert(mask == 1 || mask == 3);
+            mask = BITFIELD_MASK(mask == 3 ? 4 : 2);
+         }
+
          reg.size = AGX_SIZE_16;
       }
 

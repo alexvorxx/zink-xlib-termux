@@ -322,7 +322,7 @@ op("local_store",
 # TODO: Consider permitting the short form
 op("uniform_store",
       encoding_32 = ((0b111 << 27) | 0b1000101 | (1 << 47), 0, 8, _),
-      dests = 0, srcs = 2, can_eliminate = False)
+      dests = 0, srcs = 2, imms = [MASK], can_eliminate = False)
 
 # sources are value, base, index
 op("atomic",

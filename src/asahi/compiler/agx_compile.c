@@ -612,10 +612,18 @@ agx_emit_store_preamble(agx_builder *b, nir_intrinsic_instr *instr)
    agx_index vec = agx_src_index(&instr->src[0]);
    unsigned base = nir_intrinsic_base(instr);
    unsigned stride = agx_size_align_16(vec.size);
+   unsigned nr = nir_src_num_components(instr->src[0]);
 
-   for (unsigned i = 0; i < nir_src_num_components(instr->src[0]); ++i) {
-      agx_uniform_store(b, agx_extract_nir_src(b, instr->src[0], i),
-                        agx_immediate(base + i * stride));
+   for (unsigned i = 0; i < nr; i += (4 / stride)) {
+      agx_index data[4] = {0};
+      unsigned count = MIN2(4 / stride, nr - i);
+
+      for (unsigned c = 0; c < count; ++c) {
+         data[c] = agx_extract_nir_src(b, instr->src[0], i + c);
+      }
+
+      agx_uniform_store(b, agx_emit_collect(b, count, data),
+                        agx_immediate(base + i * stride), BITFIELD_MASK(count));
    }
 
    return NULL;

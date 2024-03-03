@@ -231,6 +231,12 @@ agx_read_registers(const agx_instr *I, unsigned s)
    case AGX_OPCODE_SPLIT:
       return I->nr_dests * agx_size_align_16(agx_split_width(I));
 
+   case AGX_OPCODE_UNIFORM_STORE:
+      if (s == 0)
+         return util_bitcount(I->mask) * size;
+      else
+         return size;
+
    case AGX_OPCODE_DEVICE_STORE:
    case AGX_OPCODE_LOCAL_STORE:
    case AGX_OPCODE_STACK_STORE:

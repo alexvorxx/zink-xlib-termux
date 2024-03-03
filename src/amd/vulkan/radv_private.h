@@ -1094,7 +1094,7 @@ typedef struct nir_def nir_def;
 
 void radv_build_printf(nir_builder *b, nir_def *cond, const char *format, ...);
 
-void radv_dump_printf_data(struct radv_device *device);
+void radv_dump_printf_data(struct radv_device *device, FILE *out);
 
 void radv_device_associate_nir(struct radv_device *device, nir_shader *nir);
 

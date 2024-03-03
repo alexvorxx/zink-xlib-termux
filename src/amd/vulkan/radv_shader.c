@@ -2911,7 +2911,7 @@ radv_create_rt_prolog(struct radv_device *device)
    info.wave_size = pdev->rt_wave_size;
    info.workgroup_size = info.wave_size;
    info.user_data_0 = R_00B900_COMPUTE_USER_DATA_0;
-   info.cs.is_rt_shader = true;
+   info.type = RADV_SHADER_TYPE_RT_PROLOG;
    info.cs.uses_dynamic_rt_callable_stack = true;
    info.cs.block_size[0] = 8;
    info.cs.block_size[1] = pdev->rt_wave_size == 64 ? 8 : 4;

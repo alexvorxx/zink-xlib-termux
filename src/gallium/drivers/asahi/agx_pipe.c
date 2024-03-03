@@ -1870,7 +1870,8 @@ agx_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type shader,
       return 1;
 
    case PIPE_SHADER_CAP_INDIRECT_INPUT_ADDR:
-      return shader == PIPE_SHADER_TESS_CTRL || shader == PIPE_SHADER_TESS_EVAL;
+      return shader == PIPE_SHADER_TESS_CTRL ||
+             shader == PIPE_SHADER_TESS_EVAL || shader == PIPE_SHADER_FRAGMENT;
 
    case PIPE_SHADER_CAP_INDIRECT_OUTPUT_ADDR:
       return shader == PIPE_SHADER_TESS_CTRL;

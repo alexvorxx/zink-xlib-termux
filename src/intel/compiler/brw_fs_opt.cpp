@@ -62,7 +62,7 @@ brw_fs_optimize(fs_visitor &s)
       iteration++;
 
       OPT(brw_fs_opt_algebraic);
-      OPT(brw_fs_opt_cse);
+      OPT(brw_fs_opt_cse_defs);
       OPT(brw_fs_opt_copy_propagation);
       OPT(brw_fs_opt_predicated_break);
       OPT(brw_fs_opt_cmod_propagation);
@@ -110,7 +110,7 @@ brw_fs_optimize(fs_visitor &s)
        * e.g. texturing messages in cases where it wasn't possible to CSE the
        * whole logical instruction.
        */
-      OPT(brw_fs_opt_cse);
+      OPT(brw_fs_opt_cse_defs);
       OPT(brw_fs_opt_register_coalesce);
       OPT(brw_fs_opt_dead_code_eliminate);
       OPT(brw_fs_opt_peephole_sel);

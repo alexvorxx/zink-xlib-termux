@@ -653,16 +653,18 @@ agx_pack_instr(struct util_dynarray *emission, struct util_dynarray *fixups,
       agx_index index_src = I->src[0];
       agx_index value = I->src[1];
 
-      pack_assert(I, index_src.type == AGX_INDEX_IMMEDIATE);
+      pack_assert(I, index_src.type == AGX_INDEX_IMMEDIATE ||
+                        index_src.type == AGX_INDEX_REGISTER);
       pack_assert(I, index_src.value < BITFIELD_MASK(8));
       pack_assert(I, value.type == AGX_INDEX_REGISTER);
       pack_assert(I, value.size == AGX_SIZE_32);
 
-      uint64_t raw =
-         0x11 | (I->last ? (1 << 7) : 0) | ((value.value & 0x3F) << 9) |
-         (((uint64_t)(index_src.value & 0x3F)) << 16) | (0x80 << 16) | /* XXX */
-         ((value.value >> 6) << 24) | ((index_src.value >> 6) << 26) |
-         (0x8u << 28); /* XXX */
+      uint64_t raw = 0x11 | (I->last ? (1 << 7) : 0) |
+                     ((value.value & 0x3F) << 9) |
+                     (((uint64_t)(index_src.value & 0x3F)) << 16) |
+                     (index_src.type == AGX_INDEX_IMMEDIATE ? (1 << 23) : 0) |
+                     ((value.value >> 6) << 24) |
+                     ((index_src.value >> 6) << 26) | (0x8u << 28); /* XXX */
 
       unsigned size = 4;
       memcpy(util_dynarray_grow_bytes(emission, 1, size), &raw, size);

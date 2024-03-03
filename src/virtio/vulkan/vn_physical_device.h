@@ -24,6 +24,7 @@ struct vn_physical_device_properties {
    VkPhysicalDeviceVulkan13Properties vulkan_1_3;
 
    /* KHR */
+   VkPhysicalDeviceFragmentShadingRatePropertiesKHR fragment_shading_rate;
    VkPhysicalDevicePushDescriptorPropertiesKHR push_descriptor;
 
    /* EXT */

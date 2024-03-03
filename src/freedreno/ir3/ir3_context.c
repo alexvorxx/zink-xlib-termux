@@ -167,6 +167,21 @@ ir3_context_init(struct ir3_compiler *compiler, struct ir3_shader *shader,
 
    ir3_ibo_mapping_init(&so->image_mapping, ctx->s->info.num_textures);
 
+   /* Implement the "dual_color_blend_by_location" workaround for Unigine Heaven
+    * and Unigine Valley, by remapping FRAG_RESULT_DATA1 to be the 2nd color
+    * channel of FRAG_RESULT_DATA0.
+    */
+   if ((so->type == MESA_SHADER_FRAGMENT) && so->key.force_dual_color_blend) {
+      nir_variable *var = nir_find_variable_with_location(
+         ctx->s, nir_var_shader_out, FRAG_RESULT_DATA1);
+      if (var) {
+         var->data.location = FRAG_RESULT_DATA0;
+         var->data.index = 1;
+         nir_shader_gather_info(ctx->s, nir_shader_get_entrypoint(ctx->s));
+         so->dual_src_blend = true;
+      }
+   }
+
    return ctx;
 }
 

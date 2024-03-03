@@ -72,6 +72,9 @@ struct ir3_compiler_options {
   bool lower_base_vertex;
 
   bool shared_push_consts;
+
+   /* "dual_color_blend_by_location" workaround is enabled: */
+   bool dual_color_blend_by_location;
 };
 
 struct ir3_compiler {

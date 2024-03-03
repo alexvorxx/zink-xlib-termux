@@ -2497,6 +2497,7 @@ agx_optimize_nir(nir_shader *nir, unsigned *preamble_size)
     * do it after fusing constant shifts. Constant folding will clean up.
     */
    NIR_PASS(_, nir, agx_nir_lower_algebraic_late);
+   NIR_PASS(_, nir, agx_nir_fuse_selects);
    NIR_PASS(_, nir, nir_opt_constant_folding);
    NIR_PASS(_, nir, nir_opt_combine_barriers, NULL, NULL);
 

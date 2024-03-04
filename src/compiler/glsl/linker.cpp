@@ -2820,19 +2820,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
             prog->_LinkedShaders[MESA_SHADER_FRAGMENT]))
          goto done;
 
-   /* Implement the GLSL 1.30+ rule for discard vs infinite loops Do
-    * it before optimization because we want most of the checks to get
-    * dropped thanks to constant propagation.
-    *
-    * This rule also applies to GLSL ES 3.00.
-    */
-   if (max_version >= (prog->IsES ? 300 : 130)) {
-      struct gl_linked_shader *sh = prog->_LinkedShaders[MESA_SHADER_FRAGMENT];
-      if (sh) {
-         lower_discard_flow(sh->ir);
-      }
-   }
-
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       if (prog->_LinkedShaders[i] == NULL)
          continue;

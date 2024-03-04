@@ -1485,6 +1485,15 @@ gl_nir_link_glsl(const struct gl_constants *consts,
       last = i;
    }
 
+   /* Implement the GLSL 1.30+ rule for discard vs infinite loops.
+    * This rule also applies to GLSL ES 3.00.
+    */
+   if (prog->GLSL_Version >= (prog->IsES ? 300 : 130)) {
+      struct gl_linked_shader *sh = prog->_LinkedShaders[MESA_SHADER_FRAGMENT];
+      if (sh)
+         gl_nir_lower_discard_flow(sh->Program->nir);
+   }
+
    gl_nir_lower_named_interface_blocks(prog);
 
    /* Validate the inputs of each stage with the output of the preceding

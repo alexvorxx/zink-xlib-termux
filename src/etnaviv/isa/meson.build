@@ -56,8 +56,19 @@ enums_h = custom_target(
   depend_files: isa_depend_files,
 )
 
+encode_h = custom_target(
+  'encode.h',
+  input: ['etnaviv.xml'],
+  output: 'encode.h',
+  command: [
+    prog_isaspec_encode, '--xml', '@INPUT@', '--out-h', '@OUTPUT@'
+  ],
+  depend_files: isa_depend_files,
+)
+
 encode_files = [
   enums_h,
+  encode_h,
   'encode.c',
 ]
 

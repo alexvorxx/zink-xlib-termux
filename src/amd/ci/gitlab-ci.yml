@@ -207,6 +207,7 @@ vkcts-renoir-valve:
     GPU_VERSION: radv-renoir-aco
     B2C_TIMEOUT_BOOT_MINUTES: 130
     B2C_TIMEOUT_OVERALL_MINUTES: 130
+    RADV_PERFTEST: shader_object
 
 vkcts-navi10-valve:
   parallel: 2

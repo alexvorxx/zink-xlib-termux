@@ -156,6 +156,8 @@ agx_optimizer_inline_imm(agx_instr **defs, agx_instr *I)
            I->op == AGX_OPCODE_LOCAL_ATOMIC) &&
           s != 2)
          continue;
+      if (I->op == AGX_OPCODE_ST_VARY && s != 0)
+         continue;
       if ((I->op == AGX_OPCODE_LOCAL_LOAD || I->op == AGX_OPCODE_DEVICE_LOAD ||
            I->op == AGX_OPCODE_STACK_STORE) &&
           s != 1)
@@ -442,8 +444,7 @@ agx_optimizer_forward(agx_context *ctx)
          agx_optimizer_fmov(defs, I);
 
       /* Inline immediates if we can. TODO: systematic */
-      if (I->op != AGX_OPCODE_ST_VARY && I->op != AGX_OPCODE_COLLECT &&
-          I->op != AGX_OPCODE_TEXTURE_SAMPLE &&
+      if (I->op != AGX_OPCODE_COLLECT && I->op != AGX_OPCODE_TEXTURE_SAMPLE &&
           I->op != AGX_OPCODE_IMAGE_LOAD && I->op != AGX_OPCODE_TEXTURE_LOAD &&
           I->op != AGX_OPCODE_UNIFORM_STORE &&
           I->op != AGX_OPCODE_BLOCK_IMAGE_STORE)

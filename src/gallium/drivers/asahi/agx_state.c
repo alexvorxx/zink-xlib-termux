@@ -1702,20 +1702,20 @@ agx_nir_lower_stats_fs(nir_shader *s)
  */
 static struct agx_compiled_shader *
 agx_compile_nir(struct agx_device *dev, nir_shader *nir,
-                const struct agx_shader_key *base_key,
                 struct util_debug_callback *debug, enum pipe_shader_type stage)
 {
    struct agx_compiled_shader *compiled = CALLOC_STRUCT(agx_compiled_shader);
    struct util_dynarray binary;
    util_dynarray_init(&binary, NULL);
 
-   struct agx_shader_key key = *base_key;
-   key.needs_g13x_coherency = (dev->params.gpu_generation == 13 &&
+   struct agx_shader_key key = {
+      .needs_g13x_coherency = (dev->params.gpu_generation == 13 &&
                                dev->params.num_clusters_total > 1) ||
-                              dev->params.num_dies > 1;
-   key.libagx = dev->libagx;
-   key.has_scratch = true;
-   key.promote_constants = true;
+                              dev->params.num_dies > 1,
+      .libagx = dev->libagx,
+      .has_scratch = true,
+      .promote_constants = true,
+   };
 
    NIR_PASS(_, nir, agx_nir_lower_sysvals, stage, true);
    NIR_PASS(_, nir, agx_nir_layout_uniforms, compiled, &key.reserved_preamble);
@@ -1948,10 +1948,8 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
    NIR_PASS(_, nir, agx_nir_lower_multisampled_image_store);
 
-   struct agx_shader_key base_key = {0};
-
    struct agx_compiled_shader *compiled =
-      agx_compile_nir(dev, nir, &base_key, debug, so->type);
+      agx_compile_nir(dev, nir, debug, so->type);
 
    compiled->so = so;
    compiled->uvs = uvs;
@@ -1968,14 +1966,13 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
    /* Compile auxiliary programs */
    if (gs_count) {
-      compiled->gs_count =
-         agx_compile_nir(dev, gs_count, &base_key, debug, so->type);
+      compiled->gs_count = agx_compile_nir(dev, gs_count, debug, so->type);
       compiled->gs_count->so = so;
    }
 
    if (pre_gs) {
       compiled->pre_gs =
-         agx_compile_nir(dev, pre_gs, &base_key, debug, PIPE_SHADER_COMPUTE);
+         agx_compile_nir(dev, pre_gs, debug, PIPE_SHADER_COMPUTE);
    }
 
    if (gs_copy) {
@@ -1990,7 +1987,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       NIR_PASS(_, gs_copy, agx_nir_lower_uvs, &uvs);
 
       compiled->gs_copy =
-         agx_compile_nir(dev, gs_copy, &base_key, debug, PIPE_SHADER_GEOMETRY);
+         agx_compile_nir(dev, gs_copy, debug, PIPE_SHADER_GEOMETRY);
       compiled->gs_copy->so = so;
       compiled->gs_copy->stage = so->type;
       compiled->gs_copy->uvs = uvs;
@@ -2689,9 +2686,8 @@ agx_build_meta_shader(struct agx_context *ctx, meta_shader_builder_t builder,
    struct agx_device *dev = agx_device(ctx->base.screen);
    agx_preprocess_nir(b.shader, dev->libagx);
 
-   struct agx_shader_key base_key = {0};
    struct agx_compiled_shader *shader =
-      agx_compile_nir(dev, b.shader, &base_key, NULL, PIPE_SHADER_COMPUTE);
+      agx_compile_nir(dev, b.shader, NULL, PIPE_SHADER_COMPUTE);
 
    ralloc_free(b.shader);
 

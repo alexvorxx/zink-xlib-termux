@@ -3722,6 +3722,16 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
                                   ctx->ac.v4i32, args, ARRAY_SIZE(args), 0);
       break;
    }
+   case nir_intrinsic_sleep_amd: {
+      LLVMValueRef arg = LLVMConstInt(ctx->ac.i32, nir_intrinsic_base(instr), 0);
+      ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.s.sleep", ctx->ac.voidt, &arg, 1, 0);
+      break;
+   }
+   case nir_intrinsic_nop_amd: {
+      LLVMValueRef arg = LLVMConstInt(ctx->ac.i32, nir_intrinsic_base(instr), 0);
+      ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.s.nop", ctx->ac.voidt, &arg, 1, 0);
+      break;
+   }
    default:
       fprintf(stderr, "Unknown intrinsic: ");
       nir_print_instr(&instr->instr, stderr);

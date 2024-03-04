@@ -49,7 +49,7 @@ struct encode_state {
  */
 
 static inline bool
-extract_SRC1_R(struct ir3_instruction *instr)
+extract_SRC1_R(const struct ir3_instruction *instr)
 {
 	if (instr->nop) {
 		assert(!instr->repeat);
@@ -59,7 +59,7 @@ extract_SRC1_R(struct ir3_instruction *instr)
 }
 
 static inline bool
-extract_SRC2_R(struct ir3_instruction *instr)
+extract_SRC2_R(const struct ir3_instruction *instr)
 {
 	if (instr->nop) {
 		assert(!instr->repeat);
@@ -72,7 +72,7 @@ extract_SRC2_R(struct ir3_instruction *instr)
 }
 
 static inline opc_t
-__instruction_case(struct encode_state *s, struct ir3_instruction *instr)
+__instruction_case(struct encode_state *s, const struct ir3_instruction *instr)
 {
 	/*
 	 * Temporary hack.. the new world doesn't map opcodes directly to hw
@@ -112,7 +112,7 @@ __instruction_case(struct encode_state *s, struct ir3_instruction *instr)
 }
 
 static inline unsigned
-extract_ABSNEG(struct ir3_register *reg)
+extract_ABSNEG(const struct ir3_register *reg)
 {
 	// TODO generate enums for this:
 	if (reg->flags & (IR3_REG_FNEG | IR3_REG_SNEG | IR3_REG_BNOT)) {
@@ -129,14 +129,14 @@ extract_ABSNEG(struct ir3_register *reg)
 }
 
 static inline int32_t
-extract_reg_iim(struct ir3_register *reg)
+extract_reg_iim(const struct ir3_register *reg)
 {
    assert(reg->flags & IR3_REG_IMMED);
    return reg->iim_val;
 }
 
 static inline uint32_t
-extract_reg_uim(struct ir3_register *reg)
+extract_reg_uim(const struct ir3_register *reg)
 {
    assert(reg->flags & IR3_REG_IMMED);
    return reg->uim_val;
@@ -149,7 +149,7 @@ extract_reg_uim(struct ir3_register *reg)
  * TODO revisit this once legacy 'packed struct' encoding is gone
  */
 static inline struct ir3_register *
-extract_cat5_SRC(struct ir3_instruction *instr, unsigned n)
+extract_cat5_SRC(const struct ir3_instruction *instr, unsigned n)
 {
 	if (instr->flags & IR3_INSTR_S2EN) {
 		n++;
@@ -160,7 +160,7 @@ extract_cat5_SRC(struct ir3_instruction *instr, unsigned n)
 }
 
 static inline bool
-extract_cat5_FULL(struct ir3_instruction *instr)
+extract_cat5_FULL(const struct ir3_instruction *instr)
 {
 	struct ir3_register *reg = extract_cat5_SRC(instr, 0);
 	/* some cat5 have zero src regs, in which case 'FULL' is false */
@@ -170,7 +170,7 @@ extract_cat5_FULL(struct ir3_instruction *instr)
 }
 
 static inline cat5_desc_mode_t
-extract_cat5_DESC_MODE(struct ir3_instruction *instr)
+extract_cat5_DESC_MODE(const struct ir3_instruction *instr)
 {
 	assert(instr->flags & (IR3_INSTR_S2EN | IR3_INSTR_B));
 	if (instr->flags & IR3_INSTR_S2EN) {
@@ -204,7 +204,7 @@ extract_cat5_DESC_MODE(struct ir3_instruction *instr)
 }
 
 static inline unsigned
-extract_cat6_DESC_MODE(struct ir3_instruction *instr)
+extract_cat6_DESC_MODE(const struct ir3_instruction *instr)
 {
 	struct ir3_register *ssbo = instr->srcs[0];
 	if (ssbo->flags & IR3_REG_IMMED) {
@@ -224,7 +224,7 @@ extract_cat6_DESC_MODE(struct ir3_instruction *instr)
  * TODO revisit this once legacy 'packed struct' encoding is gone
  */
 static inline struct ir3_register *
-extract_cat6_SRC(struct ir3_instruction *instr, unsigned n)
+extract_cat6_SRC(const struct ir3_instruction *instr, unsigned n)
 {
 	if (is_global_a3xx_atomic(instr->opc)) {
 		n++;
@@ -244,7 +244,7 @@ typedef enum {
 } reg_multisrc_t;
 
 static inline reg_multisrc_t
-__multisrc_case(struct encode_state *s, struct ir3_register *reg)
+__multisrc_case(struct encode_state *s, const struct ir3_register *reg)
 {
 	if (reg->flags & IR3_REG_IMMED) {
 		assert(opc_cat(s->instr->opc) == 2);
@@ -276,7 +276,7 @@ typedef enum {
 } reg_cat3_src_t;
 
 static inline reg_cat3_src_t
-__cat3_src_case(struct encode_state *s, struct ir3_register *reg)
+__cat3_src_case(struct encode_state *s, const struct ir3_register *reg)
 {
 	if (reg->flags & IR3_REG_RELATIV) {
 		if (reg->flags & IR3_REG_CONST) {
@@ -297,7 +297,7 @@ typedef enum {
 } stc_dst_t;
 
 static inline stc_dst_t
-__const_dst_case(struct encode_state *s, struct ir3_instruction *instr)
+__const_dst_case(struct encode_state *s, const struct ir3_instruction *instr)
 {
    return (instr->flags & IR3_INSTR_A1EN) ? CONST_DST_A1 : CONST_DST_IMM;
 }

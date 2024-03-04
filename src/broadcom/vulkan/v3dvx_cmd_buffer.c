@@ -2014,8 +2014,7 @@ cmd_buffer_copy_secondary_end_query_state(struct v3dv_cmd_buffer *primary,
       struct v3dv_end_query_info *p_qstate =
          &p_state->query.end.states[p_state->query.end.used_count++];
 
-      p_qstate->pool = s_qstate->pool;
-      p_qstate->query = s_qstate->query;
+      memcpy(p_qstate, s_qstate, sizeof(struct v3dv_end_query_info));
    }
 }
 

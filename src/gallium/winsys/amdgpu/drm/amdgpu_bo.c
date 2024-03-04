@@ -189,7 +189,7 @@ void amdgpu_bo_destroy(struct amdgpu_winsys *ws, struct pb_buffer_lean *_buf)
 
    if (!bo->is_user_ptr && bo->cpu_ptr) {
       bo->cpu_ptr = NULL;
-      amdgpu_bo_unmap(&ws->dummy_ws.base, &bo->b.base);
+      amdgpu_bo_unmap(&ws->dummy_sws.base, &bo->b.base);
    }
    assert(bo->is_user_ptr || bo->map_count == 0);
 
@@ -628,7 +628,7 @@ error_bo_alloc:
 
 bool amdgpu_bo_can_reclaim(struct amdgpu_winsys *ws, struct pb_buffer_lean *_buf)
 {
-   return amdgpu_bo_wait(&ws->dummy_ws.base, _buf, 0, RADEON_USAGE_READWRITE);
+   return amdgpu_bo_wait(&ws->dummy_sws.base, _buf, 0, RADEON_USAGE_READWRITE);
 }
 
 bool amdgpu_bo_can_reclaim_slab(void *priv, struct pb_slab_entry *entry)
@@ -1795,23 +1795,23 @@ static void amdgpu_buffer_destroy(struct radeon_winsys *ws, struct pb_buffer_lea
       amdgpu_bo_destroy_or_cache(ws, buf);
 }
 
-void amdgpu_bo_init_functions(struct amdgpu_screen_winsys *ws)
+void amdgpu_bo_init_functions(struct amdgpu_screen_winsys *sws)
 {
-   ws->base.buffer_set_metadata = amdgpu_buffer_set_metadata;
-   ws->base.buffer_get_metadata = amdgpu_buffer_get_metadata;
-   ws->base.buffer_map = amdgpu_bo_map;
-   ws->base.buffer_unmap = amdgpu_bo_unmap;
-   ws->base.buffer_wait = amdgpu_bo_wait;
-   ws->base.buffer_create = amdgpu_buffer_create;
-   ws->base.buffer_destroy = amdgpu_buffer_destroy;
-   ws->base.buffer_from_handle = amdgpu_bo_from_handle;
-   ws->base.buffer_from_ptr = amdgpu_bo_from_ptr;
-   ws->base.buffer_is_user_ptr = amdgpu_bo_is_user_ptr;
-   ws->base.buffer_is_suballocated = amdgpu_bo_is_suballocated;
-   ws->base.buffer_get_handle = amdgpu_bo_get_handle;
-   ws->base.buffer_commit = amdgpu_bo_sparse_commit;
-   ws->base.buffer_find_next_committed_memory = amdgpu_bo_find_next_committed_memory;
-   ws->base.buffer_get_virtual_address = amdgpu_bo_get_va;
-   ws->base.buffer_get_initial_domain = amdgpu_bo_get_initial_domain;
-   ws->base.buffer_get_flags = amdgpu_bo_get_flags;
+   sws->base.buffer_set_metadata = amdgpu_buffer_set_metadata;
+   sws->base.buffer_get_metadata = amdgpu_buffer_get_metadata;
+   sws->base.buffer_map = amdgpu_bo_map;
+   sws->base.buffer_unmap = amdgpu_bo_unmap;
+   sws->base.buffer_wait = amdgpu_bo_wait;
+   sws->base.buffer_create = amdgpu_buffer_create;
+   sws->base.buffer_destroy = amdgpu_buffer_destroy;
+   sws->base.buffer_from_handle = amdgpu_bo_from_handle;
+   sws->base.buffer_from_ptr = amdgpu_bo_from_ptr;
+   sws->base.buffer_is_user_ptr = amdgpu_bo_is_user_ptr;
+   sws->base.buffer_is_suballocated = amdgpu_bo_is_suballocated;
+   sws->base.buffer_get_handle = amdgpu_bo_get_handle;
+   sws->base.buffer_commit = amdgpu_bo_sparse_commit;
+   sws->base.buffer_find_next_committed_memory = amdgpu_bo_find_next_committed_memory;
+   sws->base.buffer_get_virtual_address = amdgpu_bo_get_va;
+   sws->base.buffer_get_initial_domain = amdgpu_bo_get_initial_domain;
+   sws->base.buffer_get_flags = amdgpu_bo_get_flags;
 }

@@ -359,18 +359,18 @@ PUBLIC struct radeon_winsys *
 amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
 		     radeon_screen_create_t screen_create)
 {
-   struct amdgpu_screen_winsys *ws;
+   struct amdgpu_screen_winsys *sws;
    struct amdgpu_winsys *aws;
    amdgpu_device_handle dev;
    uint32_t drm_major, drm_minor;
    int r;
 
-   ws = CALLOC_STRUCT(amdgpu_screen_winsys);
-   if (!ws)
+   sws = CALLOC_STRUCT(amdgpu_screen_winsys);
+   if (!sws)
       return NULL;
 
-   pipe_reference_init(&ws->reference, 1);
-   ws->fd = os_dupfd_cloexec(fd);
+   pipe_reference_init(&sws->reference, 1);
+   sws->fd = os_dupfd_cloexec(fd);
 
    /* Look up the winsys from the dev table. */
    simple_mtx_lock(&dev_tab_mutex);
@@ -379,7 +379,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
 
    /* Initialize the amdgpu device. This should always return the same pointer
     * for the same fd. */
-   r = amdgpu_device_initialize(ws->fd, &drm_major, &drm_minor, &dev);
+   r = amdgpu_device_initialize(sws->fd, &drm_major, &drm_minor, &dev);
    if (r) {
       fprintf(stderr, "amdgpu: amdgpu_device_initialize failed.\n");
       goto fail;
@@ -398,20 +398,20 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
 
       simple_mtx_lock(&aws->sws_list_lock);
       for (sws_iter = aws->sws_list; sws_iter; sws_iter = sws_iter->next) {
-         if (are_file_descriptions_equal(sws_iter->fd, ws->fd)) {
-            close(ws->fd);
-            FREE(ws);
-            ws = sws_iter;
-            pipe_reference(NULL, &ws->reference);
+         if (are_file_descriptions_equal(sws_iter->fd, sws->fd)) {
+            close(sws->fd);
+            FREE(sws);
+            sws = sws_iter;
+            pipe_reference(NULL, &sws->reference);
             simple_mtx_unlock(&aws->sws_list_lock);
             goto unlock;
          }
       }
       simple_mtx_unlock(&aws->sws_list_lock);
 
-      ws->kms_handles = _mesa_hash_table_create(NULL, kms_handle_hash,
+      sws->kms_handles = _mesa_hash_table_create(NULL, kms_handle_hash,
                                                 kms_handle_equals);
-      if (!ws->kms_handles)
+      if (!sws->kms_handles)
          goto fail;
 
       pipe_reference(NULL, &aws->reference);
@@ -429,9 +429,9 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
        */
       int device_fd = amdgpu_device_get_fd(dev);
       if (!are_file_descriptions_equal(device_fd, fd)) {
-         ws->kms_handles = _mesa_hash_table_create(NULL, kms_handle_hash,
-                                                   kms_handle_equals);
-         if (!ws->kms_handles)
+         sws->kms_handles = _mesa_hash_table_create(NULL, kms_handle_hash,
+                                                    kms_handle_equals);
+         if (!sws->kms_handles)
             goto fail;
          /* We could avoid storing the fd and use amdgpu_device_get_fd() where
           * we need it but we'd have to use os_same_file_description() to
@@ -439,14 +439,14 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
           */
          aws->fd = device_fd;
       } else {
-         aws->fd = ws->fd;
+         aws->fd = sws->fd;
       }
       aws->info.drm_major = drm_major;
       aws->info.drm_minor = drm_minor;
 
       /* Only aws and buffer functions are used. */
-      aws->dummy_ws.aws = aws;
-      amdgpu_bo_init_functions(&aws->dummy_ws);
+      aws->dummy_sws.aws = aws;
+      amdgpu_bo_init_functions(&aws->dummy_sws);
 
       if (!do_winsys_init(aws, config, fd))
          goto fail_alloc;
@@ -470,7 +470,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
                          /* Cast to void* because one of the function parameters
                           * is a struct pointer instead of void*. */
                          (void*)amdgpu_bo_slab_free)) {
-         amdgpu_winsys_destroy(&ws->base);
+         amdgpu_winsys_destroy(&sws->base);
          simple_mtx_unlock(&dev_tab_mutex);
          return NULL;
       }
@@ -493,7 +493,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
 
       if (!util_queue_init(&aws->cs_queue, "cs", 8, 1,
                            UTIL_QUEUE_INIT_RESIZE_IF_FULL, NULL)) {
-         amdgpu_winsys_destroy(&ws->base);
+         amdgpu_winsys_destroy(&sws->base);
          simple_mtx_unlock(&dev_tab_mutex);
          return NULL;
       }
@@ -503,34 +503,34 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
       if (aws->reserve_vmid) {
          r = amdgpu_vm_reserve_vmid(dev, 0);
          if (r) {
-            amdgpu_winsys_destroy(&ws->base);
+            amdgpu_winsys_destroy(&sws->base);
             simple_mtx_unlock(&dev_tab_mutex);
             return NULL;
          }
       }
    }
 
-   ws->aws = aws;
+   sws->aws = aws;
 
    /* Set functions. */
-   ws->base.unref = amdgpu_winsys_unref;
-   ws->base.destroy = amdgpu_winsys_destroy;
-   ws->base.get_fd = amdgpu_drm_winsys_get_fd;
-   ws->base.query_info = amdgpu_winsys_query_info;
-   ws->base.cs_request_feature = amdgpu_cs_request_feature;
-   ws->base.query_value = amdgpu_query_value;
-   ws->base.read_registers = amdgpu_read_registers;
-   ws->base.pin_threads_to_L3_cache = amdgpu_pin_threads_to_L3_cache;
-   ws->base.cs_is_secure = amdgpu_cs_is_secure;
-   ws->base.cs_set_pstate = amdgpu_cs_set_pstate;
+   sws->base.unref = amdgpu_winsys_unref;
+   sws->base.destroy = amdgpu_winsys_destroy;
+   sws->base.get_fd = amdgpu_drm_winsys_get_fd;
+   sws->base.query_info = amdgpu_winsys_query_info;
+   sws->base.cs_request_feature = amdgpu_cs_request_feature;
+   sws->base.query_value = amdgpu_query_value;
+   sws->base.read_registers = amdgpu_read_registers;
+   sws->base.pin_threads_to_L3_cache = amdgpu_pin_threads_to_L3_cache;
+   sws->base.cs_is_secure = amdgpu_cs_is_secure;
+   sws->base.cs_set_pstate = amdgpu_cs_set_pstate;
 
-   amdgpu_bo_init_functions(ws);
-   amdgpu_cs_init_functions(ws);
-   amdgpu_surface_init_functions(ws);
+   amdgpu_bo_init_functions(sws);
+   amdgpu_cs_init_functions(sws);
+   amdgpu_surface_init_functions(sws);
 
    simple_mtx_lock(&aws->sws_list_lock);
-   ws->next = aws->sws_list;
-   aws->sws_list = ws;
+   sws->next = aws->sws_list;
+   aws->sws_list = sws;
    simple_mtx_unlock(&aws->sws_list_lock);
 
    /* Create the screen at the end. The winsys must be initialized
@@ -538,9 +538,9 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
     *
     * Alternatively, we could create the screen based on "ws->gen"
     * and link all drivers into one binary blob. */
-   ws->base.screen = screen_create(&ws->base, config);
-   if (!ws->base.screen) {
-      amdgpu_winsys_destroy_locked(&ws->base, true);
+   sws->base.screen = screen_create(&sws->base, config);
+   if (!sws->base.screen) {
+      amdgpu_winsys_destroy_locked(&sws->base, true);
       simple_mtx_unlock(&dev_tab_mutex);
       return NULL;
    }
@@ -551,15 +551,15 @@ unlock:
     * get a fully initialized winsys and not just half-way initialized. */
    simple_mtx_unlock(&dev_tab_mutex);
 
-   return &ws->base;
+   return &sws->base;
 
 fail_alloc:
    FREE(aws);
 fail:
-   if (ws->kms_handles)
-      _mesa_hash_table_destroy(ws->kms_handles, NULL);
-   close(ws->fd);
-   FREE(ws);
+   if (sws->kms_handles)
+      _mesa_hash_table_destroy(sws->kms_handles, NULL);
+   close(sws->fd);
+   FREE(sws);
    simple_mtx_unlock(&dev_tab_mutex);
    return NULL;
 }

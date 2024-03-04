@@ -268,7 +268,7 @@ void *amdgpu_bo_map(struct radeon_winsys *rws,
                     struct radeon_cmdbuf *rcs,
                     enum pipe_map_flags usage);
 void amdgpu_bo_unmap(struct radeon_winsys *rws, struct pb_buffer_lean *buf);
-void amdgpu_bo_init_functions(struct amdgpu_screen_winsys *ws);
+void amdgpu_bo_init_functions(struct amdgpu_screen_winsys *sws);
 
 bool amdgpu_bo_can_reclaim_slab(void *priv, struct pb_slab_entry *entry);
 struct pb_slab *amdgpu_bo_slab_alloc(void *priv, unsigned heap, unsigned entry_size,
@@ -286,7 +286,7 @@ static inline void
 amdgpu_winsys_bo_reference(struct amdgpu_winsys *ws, struct amdgpu_winsys_bo **dst,
                            struct amdgpu_winsys_bo *src)
 {
-   radeon_bo_reference(&ws->dummy_ws.base,
+   radeon_bo_reference(&ws->dummy_sws.base,
                        (struct pb_buffer_lean**)dst, (struct pb_buffer_lean*)src);
 }
 
@@ -301,7 +301,7 @@ amdgpu_winsys_bo_set_reference(struct amdgpu_winsys_bo **dst, struct amdgpu_wins
 static inline void
 amdgpu_winsys_bo_drop_reference(struct amdgpu_winsys *ws, struct amdgpu_winsys_bo *dst)
 {
-   radeon_bo_drop_reference(&ws->dummy_ws.base, &dst->base);
+   radeon_bo_drop_reference(&ws->dummy_sws.base, &dst->base);
 }
 
 #ifdef __cplusplus

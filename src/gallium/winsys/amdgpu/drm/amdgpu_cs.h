@@ -269,7 +269,7 @@ amdgpu_bo_is_referenced_by_cs_with_usage(struct amdgpu_cs *cs,
 bool amdgpu_fence_wait(struct pipe_fence_handle *fence, uint64_t timeout,
                        bool absolute);
 void amdgpu_cs_sync_flush(struct radeon_cmdbuf *rcs);
-void amdgpu_cs_init_functions(struct amdgpu_screen_winsys *ws);
+void amdgpu_cs_init_functions(struct amdgpu_screen_winsys *sws);
 
 #ifdef __cplusplus
 }

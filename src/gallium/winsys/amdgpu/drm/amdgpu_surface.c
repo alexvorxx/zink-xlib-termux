@@ -91,7 +91,7 @@ static int amdgpu_surface_init(struct radeon_winsys *rws,
    return ac_compute_surface(ws->addrlib, info, &config, mode, surf);
 }
 
-void amdgpu_surface_init_functions(struct amdgpu_screen_winsys *ws)
+void amdgpu_surface_init_functions(struct amdgpu_screen_winsys *sws)
 {
-   ws->base.surface_init = amdgpu_surface_init;
+   sws->base.surface_init = amdgpu_surface_init;
 }

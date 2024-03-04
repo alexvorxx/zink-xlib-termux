@@ -202,10 +202,10 @@ struct amdgpu_winsys {
    struct hash_table *bo_export_table;
    simple_mtx_t bo_export_table_lock;
 
-   /* Since most winsys functions require struct radeon_winsys *, dummy_ws.base is used
+   /* Since most winsys functions require struct radeon_winsys *, dummy_sws.base is used
     * for invoking them because sws_list can be NULL.
     */
-   struct amdgpu_screen_winsys dummy_ws;
+   struct amdgpu_screen_winsys dummy_sws;
 };
 
 static inline struct amdgpu_screen_winsys *
@@ -220,6 +220,6 @@ amdgpu_winsys(struct radeon_winsys *base)
    return amdgpu_screen_winsys(base)->aws;
 }
 
-void amdgpu_surface_init_functions(struct amdgpu_screen_winsys *ws);
+void amdgpu_surface_init_functions(struct amdgpu_screen_winsys *sws);
 
 #endif

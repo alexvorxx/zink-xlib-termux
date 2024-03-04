@@ -707,14 +707,14 @@ static bool amdgpu_ib_new_buffer(struct amdgpu_winsys *ws,
    if (!pb)
       return false;
 
-   mapped = (uint8_t*)amdgpu_bo_map(&ws->dummy_ws.base, pb, NULL, PIPE_MAP_WRITE);
+   mapped = (uint8_t*)amdgpu_bo_map(&ws->dummy_sws.base, pb, NULL, PIPE_MAP_WRITE);
    if (!mapped) {
-      radeon_bo_reference(&ws->dummy_ws.base, &pb, NULL);
+      radeon_bo_reference(&ws->dummy_sws.base, &pb, NULL);
       return false;
    }
 
-   radeon_bo_reference(&ws->dummy_ws.base, &main_ib->big_buffer, pb);
-   radeon_bo_reference(&ws->dummy_ws.base, &pb, NULL);
+   radeon_bo_reference(&ws->dummy_sws.base, &main_ib->big_buffer, pb);
+   radeon_bo_reference(&ws->dummy_sws.base, &pb, NULL);
 
    main_ib->gpu_address = amdgpu_bo_get_va(main_ib->big_buffer);
    main_ib->big_buffer_cpu_ptr = mapped;
@@ -992,10 +992,10 @@ amdgpu_cs_setup_preemption(struct radeon_cmdbuf *rcs, const uint32_t *preamble_i
    if (!preamble_bo)
       return false;
 
-   map = (uint32_t*)amdgpu_bo_map(&ws->dummy_ws.base, preamble_bo, NULL,
+   map = (uint32_t*)amdgpu_bo_map(&ws->dummy_sws.base, preamble_bo, NULL,
                                   (pipe_map_flags)(PIPE_MAP_WRITE | RADEON_MAP_TEMPORARY));
    if (!map) {
-      radeon_bo_reference(&ws->dummy_ws.base, &preamble_bo, NULL);
+      radeon_bo_reference(&ws->dummy_sws.base, &preamble_bo, NULL);
       return false;
    }
 
@@ -1004,7 +1004,7 @@ amdgpu_cs_setup_preemption(struct radeon_cmdbuf *rcs, const uint32_t *preamble_i
 
    /* Pad the IB. */
    amdgpu_pad_gfx_compute_ib(ws, cs->ip_type, map, &preamble_num_dw, 0);
-   amdgpu_bo_unmap(&ws->dummy_ws.base, preamble_bo);
+   amdgpu_bo_unmap(&ws->dummy_sws.base, preamble_bo);
 
    for (unsigned i = 0; i < 2; i++) {
       csc[i]->chunk_ib[IB_PREAMBLE].va_start = amdgpu_bo_get_va(preamble_bo);
@@ -1857,8 +1857,8 @@ static void amdgpu_cs_destroy(struct radeon_cmdbuf *rcs)
    amdgpu_cs_sync_flush(rcs);
    util_queue_fence_destroy(&cs->flush_completed);
    p_atomic_dec(&cs->ws->num_cs);
-   radeon_bo_reference(&cs->ws->dummy_ws.base, &cs->preamble_ib_bo, NULL);
-   radeon_bo_reference(&cs->ws->dummy_ws.base, &cs->main_ib.big_buffer, NULL);
+   radeon_bo_reference(&cs->ws->dummy_sws.base, &cs->preamble_ib_bo, NULL);
+   radeon_bo_reference(&cs->ws->dummy_sws.base, &cs->main_ib.big_buffer, NULL);
    FREE(rcs->prev);
    amdgpu_destroy_cs_context(cs->ws, &cs->csc1);
    amdgpu_destroy_cs_context(cs->ws, &cs->csc2);
@@ -1893,33 +1893,33 @@ static void amdgpu_winsys_fence_reference(struct radeon_winsys *rws,
    amdgpu_fence_reference(dst, src);
 }
 
-void amdgpu_cs_init_functions(struct amdgpu_screen_winsys *ws)
+void amdgpu_cs_init_functions(struct amdgpu_screen_winsys *sws)
 {
-   ws->base.ctx_create = amdgpu_ctx_create;
-   ws->base.ctx_destroy = amdgpu_ctx_destroy;
-   ws->base.ctx_set_sw_reset_status = amdgpu_ctx_set_sw_reset_status;
-   ws->base.ctx_query_reset_status = amdgpu_ctx_query_reset_status;
-   ws->base.cs_create = amdgpu_cs_create;
-   ws->base.cs_setup_preemption = amdgpu_cs_setup_preemption;
-   ws->base.cs_destroy = amdgpu_cs_destroy;
-   ws->base.cs_add_buffer = amdgpu_cs_add_buffer;
-   ws->base.cs_validate = amdgpu_cs_validate;
-   ws->base.cs_check_space = amdgpu_cs_check_space;
-   ws->base.cs_get_buffer_list = amdgpu_cs_get_buffer_list;
-   ws->base.cs_flush = amdgpu_cs_flush;
-   ws->base.cs_get_next_fence = amdgpu_cs_get_next_fence;
-   ws->base.cs_is_buffer_referenced = amdgpu_bo_is_referenced;
-   ws->base.cs_sync_flush = amdgpu_cs_sync_flush;
-   ws->base.cs_add_fence_dependency = amdgpu_cs_add_fence_dependency;
-   ws->base.cs_add_syncobj_signal = amdgpu_cs_add_syncobj_signal;
-   ws->base.cs_get_ip_type = amdgpu_cs_get_ip_type;
-   ws->base.fence_wait = amdgpu_fence_wait_rel_timeout;
-   ws->base.fence_reference = amdgpu_winsys_fence_reference;
-   ws->base.fence_import_syncobj = amdgpu_fence_import_syncobj;
-   ws->base.fence_import_sync_file = amdgpu_fence_import_sync_file;
-   ws->base.fence_export_sync_file = amdgpu_fence_export_sync_file;
-   ws->base.export_signalled_sync_file = amdgpu_export_signalled_sync_file;
+   sws->base.ctx_create = amdgpu_ctx_create;
+   sws->base.ctx_destroy = amdgpu_ctx_destroy;
+   sws->base.ctx_set_sw_reset_status = amdgpu_ctx_set_sw_reset_status;
+   sws->base.ctx_query_reset_status = amdgpu_ctx_query_reset_status;
+   sws->base.cs_create = amdgpu_cs_create;
+   sws->base.cs_setup_preemption = amdgpu_cs_setup_preemption;
+   sws->base.cs_destroy = amdgpu_cs_destroy;
+   sws->base.cs_add_buffer = amdgpu_cs_add_buffer;
+   sws->base.cs_validate = amdgpu_cs_validate;
+   sws->base.cs_check_space = amdgpu_cs_check_space;
+   sws->base.cs_get_buffer_list = amdgpu_cs_get_buffer_list;
+   sws->base.cs_flush = amdgpu_cs_flush;
+   sws->base.cs_get_next_fence = amdgpu_cs_get_next_fence;
+   sws->base.cs_is_buffer_referenced = amdgpu_bo_is_referenced;
+   sws->base.cs_sync_flush = amdgpu_cs_sync_flush;
+   sws->base.cs_add_fence_dependency = amdgpu_cs_add_fence_dependency;
+   sws->base.cs_add_syncobj_signal = amdgpu_cs_add_syncobj_signal;
+   sws->base.cs_get_ip_type = amdgpu_cs_get_ip_type;
+   sws->base.fence_wait = amdgpu_fence_wait_rel_timeout;
+   sws->base.fence_reference = amdgpu_winsys_fence_reference;
+   sws->base.fence_import_syncobj = amdgpu_fence_import_syncobj;
+   sws->base.fence_import_sync_file = amdgpu_fence_import_sync_file;
+   sws->base.fence_export_sync_file = amdgpu_fence_export_sync_file;
+   sws->base.export_signalled_sync_file = amdgpu_export_signalled_sync_file;
 
-   if (ws->aws->info.has_fw_based_shadowing)
-      ws->base.cs_set_mcbp_reg_shadowing_va = amdgpu_cs_set_mcbp_reg_shadowing_va;
+   if (sws->aws->info.has_fw_based_shadowing)
+      sws->base.cs_set_mcbp_reg_shadowing_va = amdgpu_cs_set_mcbp_reg_shadowing_va;
 }

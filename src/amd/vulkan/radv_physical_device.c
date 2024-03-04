@@ -98,9 +98,7 @@ radv_calibrated_timestamps_enabled(const struct radv_physical_device *pdevice)
 static bool
 radv_shader_object_enabled(const struct radv_physical_device *pdevice)
 {
-   /* FIXME: Fix GPU hangs on Renoir. */
-   return (pdevice->rad_info.gfx_level != GFX9 || pdevice->rad_info.family == CHIP_VEGA10) && !pdevice->use_llvm &&
-          pdevice->instance->perftest_flags & RADV_PERFTEST_SHADER_OBJECT;
+   return !pdevice->use_llvm && pdevice->instance->perftest_flags & RADV_PERFTEST_SHADER_OBJECT;
 }
 
 bool

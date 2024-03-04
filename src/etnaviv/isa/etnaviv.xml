@@ -66,6 +66,7 @@ SPDX-License-Identifier: MIT
 
 <enum name="#reg_group">
 	<value val="0" display="t"/>
+	<value val="1" display="i"/>
 	<value val="2" display="u"/>
 	<value val="3" display="u"/>
 	<value val="4" display="th"/>

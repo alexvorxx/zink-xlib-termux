@@ -1523,7 +1523,7 @@ asahi_cs_shader_key_equal(const void *a, const void *b)
 
 static unsigned
 agx_find_linked_slot(struct agx_varyings_vs *vs, struct agx_varyings_fs *fs,
-                     gl_varying_slot slot, unsigned offset, bool debug)
+                     gl_varying_slot slot, unsigned offset)
 {
    assert(offset < 4);
    assert(slot != VARYING_SLOT_PNTC && "point coords aren't linked");
@@ -1541,19 +1541,9 @@ agx_find_linked_slot(struct agx_varyings_vs *vs, struct agx_varyings_fs *fs,
 
    unsigned vs_index = vs->slots[slot];
 
-   if (!(vs_index < vs->nr_index)) {
-      /* Varyings not written by vertex shader are undefined, be robust.
-       *
-       * If the layer is read but not written, its value will be ignored by the
-       * agx_nir_predicate_layer_id lowering, so read garbage.
-       *
-       * For other varyings, this is probably an app bug.
-       */
-      if (unlikely(debug && (slot != VARYING_SLOT_LAYER)))
-         unreachable("Fragment shader read varying not written by vertex!");
-
+   /* Varyings not written by vertex shader are undefined but we can't crash */
+   if (!(vs_index < vs->nr_index))
       return 0;
-   }
 
    assert(vs_index >= 4 && "gl_Position should have been the first 4 slots");
    assert((vs_index < vs->base_index_fp16) ==
@@ -1623,9 +1613,8 @@ agx_link_varyings_vs_fs(struct agx_pool *pool, struct agx_varyings_vs *vs,
             cfg.source = AGX_COEFFICIENT_SOURCE_PRIMITIVE_ID;
             *generate_primitive_id = true;
          } else {
-            cfg.base_slot = agx_find_linked_slot(
-               vs, fs, fs->bindings[i].slot, fs->bindings[i].offset,
-               pool->dev->debug & AGX_DBG_VARYINGS);
+            cfg.base_slot = agx_find_linked_slot(vs, fs, fs->bindings[i].slot,
+                                                 fs->bindings[i].offset);
 
             assert(cfg.base_slot + cfg.components <=
                       MAX2(nr_slots, cfg.components) &&

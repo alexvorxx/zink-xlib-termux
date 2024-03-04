@@ -565,10 +565,6 @@ agx_emit_load_vary(agx_builder *b, agx_index dest, nir_intrinsic_instr *instr)
    bool perspective =
       nir_intrinsic_interp_mode(bary) != INTERP_MODE_NOPERSPECTIVE;
 
-   assert(nir_def_components_read(&instr->def) ==
-             nir_component_mask(components) &&
-          "iter does not handle write-after-write hazards");
-
    agx_index I = cf_for_intrinsic(b, instr);
 
    /* For perspective interpolation, we project (multiply by 1/W) */
@@ -2654,11 +2650,6 @@ agx_optimize_nir(nir_shader *nir, unsigned *preamble_size)
    NIR_PASS(_, nir, agx_nir_fuse_selects);
    NIR_PASS(_, nir, nir_opt_constant_folding);
    NIR_PASS(_, nir, nir_opt_combine_barriers, NULL, NULL);
-
-   /* Must run after uses are fixed but before a last round of copyprop + DCE */
-   if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      NIR_PASS(_, nir, agx_nir_lower_load_mask);
-
    NIR_PASS(_, nir, nir_copy_prop);
    NIR_PASS(_, nir, nir_opt_dce);
    NIR_PASS(_, nir, nir_opt_cse);

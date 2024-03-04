@@ -1,3 +1,8 @@
+/*
+ * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
+ * Copyright Axel Davy <davyaxel0@gmail.com>
+ * SPDX-License-Identifier: MIT
+ */
 
 /* FF is big and ugly so feel free to write lines as long as you like.
  * Aieeeeeeeee !

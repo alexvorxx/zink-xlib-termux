@@ -23,81 +23,44 @@
 
 vulkan_lite_runtime_files = files(
   'rmv/vk_rmv_common.c',
-  'rmv/vk_rmv_common.h',
   'rmv/vk_rmv_exporter.c',
-  'rmv/vk_rmv_tokens.h',
   'vk_acceleration_structure.c',
-  'vk_acceleration_structure.h',
   'vk_blend.c',
-  'vk_blend.h',
   'vk_buffer.c',
-  'vk_buffer.h',
   'vk_buffer_view.c',
-  'vk_buffer_view.h',
   'vk_cmd_copy.c',
   'vk_cmd_enqueue.c',
   'vk_command_buffer.c',
-  'vk_command_buffer.h',
   'vk_command_pool.c',
-  'vk_command_pool.h',
   'vk_debug_report.c',
-  'vk_debug_report.h',
   'vk_debug_utils.c',
-  'vk_debug_utils.h',
   'vk_deferred_operation.c',
-  'vk_deferred_operation.h',
   'vk_descriptor_set_layout.c',
-  'vk_descriptor_set_layout.h',
   'vk_descriptors.c',
-  'vk_descriptors.h',
   'vk_descriptor_update_template.c',
-  'vk_descriptor_update_template.h',
   'vk_device.c',
-  'vk_device.h',
   'vk_device_memory.c',
-  'vk_device_memory.h',
   'vk_fence.c',
-  'vk_fence.h',
   'vk_framebuffer.c',
-  'vk_framebuffer.h',
   'vk_graphics_state.c',
-  'vk_graphics_state.h',
   'vk_image.c',
-  'vk_image.h',
   'vk_log.c',
-  'vk_log.h',
   'vk_object.c',
-  'vk_object.h',
   'vk_physical_device.c',
-  'vk_physical_device.h',
   'vk_pipeline_layout.c',
-  'vk_pipeline_layout.h',
   'vk_query_pool.c',
-  'vk_query_pool.h',
   'vk_queue.c',
-  'vk_queue.h',
   'vk_render_pass.c',
-  'vk_render_pass.h',
   'vk_sampler.c',
-  'vk_sampler.h',
   'vk_semaphore.c',
-  'vk_semaphore.h',
   'vk_standard_sample_locations.c',
-  'vk_standard_sample_locations.h',
   'vk_sync.c',
-  'vk_sync.h',
   'vk_sync_binary.c',
-  'vk_sync_binary.h',
   'vk_sync_dummy.c',
-  'vk_sync_dummy.h',
   'vk_sync_timeline.c',
-  'vk_sync_timeline.h',
   'vk_synchronization.c',
-  'vk_synchronization.h',
   'vk_video.c',
-  'vk_video.h',
   'vk_ycbcr_conversion.c',
-  'vk_ycbcr_conversion.h',
 )
 
 vulkan_lite_runtime_deps = [
@@ -108,12 +71,12 @@ vulkan_lite_runtime_deps = [
 ]
 
 if dep_libdrm.found()
-  vulkan_lite_runtime_files += files('vk_drm_syncobj.c', 'vk_drm_syncobj.h')
+  vulkan_lite_runtime_files += files('vk_drm_syncobj.c')
   vulkan_lite_runtime_deps += dep_libdrm
 endif
 
 if with_platform_android
-  vulkan_lite_runtime_files += files('vk_android.c', 'vk_android.h')
+  vulkan_lite_runtime_files += files('vk_android.c')
   vulkan_lite_runtime_deps += dep_android
 endif
 
@@ -254,7 +217,7 @@ libvulkan_lite_runtime = static_library(
 
 libvulkan_lite_instance = static_library(
   'vulkan_lite_instance',
-  ['vk_instance.c', 'vk_instance.h',],
+  ['vk_instance.c'],
   include_directories : [inc_include, inc_src],
   dependencies : vulkan_lite_runtime_deps,
   c_args : ['-DVK_LITE_RUNTIME_INSTANCE=1', c_msvc_compat_args],
@@ -286,25 +249,16 @@ endif
 
 vulkan_runtime_files = files(
   'vk_meta.c',
-  'vk_meta.h',
   'vk_meta_blit_resolve.c',
   'vk_meta_clear.c',
   'vk_meta_draw_rects.c',
-  'vk_meta_private.h',
   'vk_nir.c',
-  'vk_nir.h',
   'vk_nir_convert_ycbcr.c',
-  'vk_nir_convert_ycbcr.h',
   'vk_pipeline.c',
-  'vk_pipeline.h',
   'vk_pipeline_cache.c',
-  'vk_pipeline_cache.h',
   'vk_shader.c',
-  'vk_shader.h',
   'vk_shader_module.c',
-  'vk_shader_module.h',
   'vk_texcompress_etc2.c',
-  'vk_texcompress_etc2.h',
 )
 
 vulkan_runtime_deps = [
@@ -314,7 +268,7 @@ vulkan_runtime_deps = [
 ]
 
 if prog_glslang.found()
-  vulkan_runtime_files += files('vk_texcompress_astc.c', 'vk_texcompress_astc.h')
+  vulkan_runtime_files += files('vk_texcompress_astc.c')
   vulkan_runtime_files += custom_target(
     'astc_spv.h',
     input : astc_decoder_glsl_file,
@@ -335,7 +289,7 @@ libvulkan_runtime = static_library(
 
 libvulkan_instance = static_library(
   'vulkan_instance',
-  ['vk_instance.c', 'vk_instance.h',],
+  ['vk_instance.c'],
   include_directories : [inc_include, inc_src],
   dependencies : vulkan_runtime_deps,
   c_args : ['-DVK_LITE_RUNTIME_INSTANCE=0', c_msvc_compat_args],

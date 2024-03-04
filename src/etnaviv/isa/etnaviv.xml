@@ -949,7 +949,11 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<!-- movar -->
+<bitset name="movar" extends="#instruction-alu-src2">
+	<pattern low="0" high="5">001010</pattern> <!-- OPC -->
+	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
 <!-- movaf -->
 
 <bitset name="rcp" extends="#instruction-alu-src2">

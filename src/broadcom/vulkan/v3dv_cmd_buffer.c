@@ -605,26 +605,29 @@ cmd_buffer_emit_end_query_cpu(struct v3dv_cmd_buffer *cmd_buffer,
    list_addtail(&job->list_link, &cmd_buffer->jobs);
 }
 
+static inline bool
+cmd_buffer_has_pending_jobs(struct v3dv_cmd_buffer *cmd_buffer)
+{
+   return cmd_buffer->state.query.end.used_count > 0;
+}
+
 static void
-cmd_buffer_add_jobs_for_pending_state(struct v3dv_cmd_buffer *cmd_buffer)
+cmd_buffer_add_pending_jobs(struct v3dv_cmd_buffer *cmd_buffer)
 {
    struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
-
-   if (state->query.end.used_count > 0) {
-      const uint32_t count = state->query.end.used_count;
-      for (uint32_t i = 0; i < count; i++) {
-         assert(i < state->query.end.used_count);
-         struct v3dv_end_query_info *info = &state->query.end.states[i];
-          if (info->pool->query_type == VK_QUERY_TYPE_OCCLUSION) {
-            v3dv_cmd_buffer_emit_set_query_availability(cmd_buffer, info->pool,
-                                                        info->query, info->count, 1);
-         } else {
-            cmd_buffer_emit_end_query_cpu(cmd_buffer, info->pool,
-                                          info->query, info->count);
-         }
+   const uint32_t count = state->query.end.used_count;
+   for (uint32_t i = 0; i < count; i++) {
+      assert(i < state->query.end.used_count);
+      struct v3dv_end_query_info *info = &state->query.end.states[i];
+       if (info->pool->query_type == VK_QUERY_TYPE_OCCLUSION) {
+         v3dv_cmd_buffer_emit_set_query_availability(cmd_buffer, info->pool,
+                                                     info->query, info->count, 1);
+      } else {
+         cmd_buffer_emit_end_query_cpu(cmd_buffer, info->pool,
+                                       info->query, info->count);
       }
-      state->query.end.used_count = 0;
    }
+   state->query.end.used_count = 0;
 }
 
 void
@@ -696,9 +699,10 @@ v3dv_cmd_buffer_finish_job(struct v3dv_cmd_buffer *cmd_buffer)
     * that case we want to defer this until we finish recording the primary
     * job into which we execute the secondary.
     */
-   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY ||
-       !cmd_buffer->state.pass) {
-      cmd_buffer_add_jobs_for_pending_state(cmd_buffer);
+   if (cmd_buffer_has_pending_jobs(cmd_buffer) &&
+       (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY ||
+        !cmd_buffer->state.pass)) {
+      cmd_buffer_add_pending_jobs(cmd_buffer);
    }
 }
 

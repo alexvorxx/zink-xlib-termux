@@ -6,6 +6,8 @@
 
 #include "compiler/nir/nir_builder.h"
 #include "agx_compiler.h"
+#include "nir.h"
+#include "nir_opcodes.h"
 
 static void
 def_size(nir_def *def, unsigned *size, unsigned *align)
@@ -14,6 +16,41 @@ def_size(nir_def *def, unsigned *size, unsigned *align)
 
    *size = (bit_size * def->num_components) / 16;
    *align = bit_size / 16;
+}
+
+static bool
+all_uses_float(nir_def *def)
+{
+   nir_foreach_use_including_if(use, def) {
+      if (nir_src_is_if(use))
+         return false;
+
+      nir_instr *use_instr = nir_src_parent_instr(use);
+      if (use_instr->type != nir_instr_type_alu)
+         return false;
+
+      nir_alu_instr *use_alu = nir_instr_as_alu(use_instr);
+      unsigned src_index = ~0;
+      for (unsigned i = 0; i < nir_op_infos[use_alu->op].num_inputs; i++) {
+         if (&use_alu->src[i].src == use) {
+            src_index = i;
+            break;
+         }
+      }
+
+      assert(src_index != ~0);
+      nir_alu_type src_type = nir_alu_type_get_base_type(
+         nir_op_infos[use_alu->op].input_types[src_index]);
+
+      if (src_type != nir_type_float)
+         return false;
+
+      /* No float modifiers on G13 */
+      if (use_alu->op == nir_op_fmax || use_alu->op == nir_op_fmin)
+         return false;
+   }
+
+   return true;
 }
 
 static float
@@ -37,12 +74,21 @@ instr_cost(nir_instr *instr, const void *data)
       /* Texturing involes lots of memory bandwidth */
       return 20.0;
 
-   case nir_instr_type_alu:
-      /* We optimistically assume that moves get coalesced */
-      if (nir_op_is_vec_or_mov(nir_instr_as_alu(instr)->op))
-         return 0.0;
-      else
-         return 2.0;
+   case nir_instr_type_alu: {
+      nir_alu_instr *alu = nir_instr_as_alu(instr);
+
+      switch (alu->op) {
+      case nir_op_fneg:
+      case nir_op_fabs:
+      case nir_op_f2f32:
+         /* Float source modifiers will be propagated */
+         return all_uses_float(&alu->def) ? 0.0 : 2.0;
+
+      default:
+         /* We optimistically assume that moves get coalesced */
+         return nir_op_is_vec_or_mov(alu->op) ? 0.0 : 2.0;
+      }
+   }
 
    default:
       return 1.0;

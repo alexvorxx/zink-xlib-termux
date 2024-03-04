@@ -264,7 +264,7 @@ radeon_to_amdgpu_priority(enum radeon_ctx_priority radeon_priority)
    }
 }
 
-static struct radeon_winsys_ctx *amdgpu_ctx_create(struct radeon_winsys *ws,
+static struct radeon_winsys_ctx *amdgpu_ctx_create(struct radeon_winsys *rws,
                                                    enum radeon_ctx_priority priority,
                                                    bool allow_context_lost)
 {
@@ -277,7 +277,7 @@ static struct radeon_winsys_ctx *amdgpu_ctx_create(struct radeon_winsys *ws,
    if (!ctx)
       return NULL;
 
-   ctx->ws = amdgpu_winsys(ws);
+   ctx->ws = amdgpu_winsys(rws);
    ctx->reference.count = 1;
    ctx->allow_context_lost = allow_context_lost;
 

@@ -1465,13 +1465,13 @@ no_slab:
 }
 
 static struct pb_buffer_lean *
-amdgpu_buffer_create(struct radeon_winsys *ws,
+amdgpu_buffer_create(struct radeon_winsys *rws,
                      uint64_t size,
                      unsigned alignment,
                      enum radeon_bo_domain domain,
                      enum radeon_bo_flag flags)
 {
-   struct pb_buffer_lean * res = amdgpu_bo_create(amdgpu_winsys(ws), size, alignment, domain,
+   struct pb_buffer_lean * res = amdgpu_bo_create(amdgpu_winsys(rws), size, alignment, domain,
                            flags);
    return res;
 }
@@ -1783,16 +1783,16 @@ uint64_t amdgpu_bo_get_va(struct pb_buffer_lean *buf)
    }
 }
 
-static void amdgpu_buffer_destroy(struct radeon_winsys *ws, struct pb_buffer_lean *buf)
+static void amdgpu_buffer_destroy(struct radeon_winsys *rws, struct pb_buffer_lean *buf)
 {
    struct amdgpu_winsys_bo *bo = amdgpu_winsys_bo(buf);
 
    if (bo->type == AMDGPU_BO_SLAB_ENTRY)
-      amdgpu_bo_slab_destroy(ws, buf);
+      amdgpu_bo_slab_destroy(rws, buf);
    else if (bo->type == AMDGPU_BO_SPARSE)
-      amdgpu_bo_sparse_destroy(ws, buf);
+      amdgpu_bo_sparse_destroy(rws, buf);
    else
-      amdgpu_bo_destroy_or_cache(ws, buf);
+      amdgpu_bo_destroy_or_cache(rws, buf);
 }
 
 void amdgpu_bo_init_functions(struct amdgpu_screen_winsys *sws)

@@ -470,7 +470,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
                          /* Cast to void* because one of the function parameters
                           * is a struct pointer instead of void*. */
                          (void*)amdgpu_bo_slab_free)) {
-         amdgpu_winsys_destroy(&sws->base);
+         amdgpu_winsys_destroy_locked(&sws->base, true);
          simple_mtx_unlock(&dev_tab_mutex);
          return NULL;
       }
@@ -493,7 +493,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
 
       if (!util_queue_init(&aws->cs_queue, "cs", 8, 1,
                            UTIL_QUEUE_INIT_RESIZE_IF_FULL, NULL)) {
-         amdgpu_winsys_destroy(&sws->base);
+         amdgpu_winsys_destroy_locked(&sws->base, true);
          simple_mtx_unlock(&dev_tab_mutex);
          return NULL;
       }
@@ -503,7 +503,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
       if (aws->reserve_vmid) {
          r = amdgpu_vm_reserve_vmid(dev, 0);
          if (r) {
-            amdgpu_winsys_destroy(&sws->base);
+            amdgpu_winsys_destroy_locked(&sws->base, true);
             simple_mtx_unlock(&dev_tab_mutex);
             return NULL;
          }

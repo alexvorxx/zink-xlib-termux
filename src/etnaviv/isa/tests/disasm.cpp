@@ -61,8 +61,8 @@ TEST_P(DisasmTest, basicOpCodes)
 INSTANTIATE_TEST_SUITE_P(Default, DisasmTest,
    testing::Values(
       disasm_state{ {0x00000000, 0x00000000, 0x00000000, 0x00000000}, "nop               void, void, void, void\n" },
-      disasm_state{ {0x07811018, 0x15001f20, 0x00000000, 0x00000000}, "texld.xyzw        t1, tex0, t1.xyyy, void, void\n" },
-      disasm_state{ {0x07831018, 0x39003f20, 0x00000000, 0x00000000}, "texld.xyzw        t3, tex0, t3.xyzw, void, void\n" },
+      disasm_state{ {0x07811018, 0x15001f20, 0x00000000, 0x00000000}, "texld             t1, tex0.xyzw, t1.xyyy, void, void\n" },
+      disasm_state{ {0x07831018, 0x39003f20, 0x00000000, 0x00000000}, "texld             t3, tex0.xyzw, t3.xyzw, void, void\n" },
       disasm_state{ {0x07811009, 0x00000000, 0x00000000, 0x20390008}, "mov.pack          t1, void, void, u0.xyzw\n" },
       disasm_state{ {0x01821009, 0x00000000, 0x00000000, 0x00150028}, "mov.pack          t2.xy__, void, void, t2.xyyy\n"},
       disasm_state{ {0x01821009, 0x00000000, 0x00000000, 0x00550028}, "mov.pack          t2.xy__, void, void, -t2.xyyy\n"},
@@ -110,10 +110,10 @@ INSTANTIATE_TEST_SUITE_P(Opcodes, DisasmTest,
       disasm_state{ {0x00000016, 0x00000000, 0x00000000, 0x00001080}, "branch            void, void, void, 33\n"},
       disasm_state{ {0x00000017, 0x00000000, 0x00000000, 0x00000000}, "texkill.pack      void, void, void, void\n" },
       disasm_state{ {0x00000057, 0x00002800, 0x00000040, 0x00000002}, "texkill.gt.pack   void, t2.xxxx, u0.xxxx, void\n" },
-      disasm_state{ {0x07811018, 0x15001f20, 0x00000000, 0x00000000}, "texld.xyzw        t1, tex0, t1.xyyy, void, void\n" },
-      disasm_state{ {0x07811019, 0x39002f20, 0x00000000, 0x00000000}, "texldb.xyzw       t1, tex0, t2.xyzw, void, void\n" },
-      disasm_state{ {0x0781101a, 0x15001f20, 0x00a80140, 0x003f8018}, "texldd.xyzw       t1, tex0, t1.xyyy, t1.xyyy, t1.zwww\n" },
-      disasm_state{ {0x4781101b, 0x39003f20, 0x00000000, 0x00000000}, "texldl.xyzw       t1, tex8, t3.xyzw, void, void\n" },
+      disasm_state{ {0x07811018, 0x15001f20, 0x00000000, 0x00000000}, "texld             t1, tex0.xyzw, t1.xyyy, void, void\n" },
+      disasm_state{ {0x07811019, 0x39002f20, 0x00000000, 0x00000000}, "texldb            t1, tex0.xyzw, t2.xyzw, void, void\n" },
+      disasm_state{ {0x0781101a, 0x15001f20, 0x00a80140, 0x003f8018}, "texldd            t1, tex0.xyzw, t1.xyyy, t1.xyyy, t1.zwww\n" },
+      disasm_state{ {0x4781101b, 0x39003f20, 0x00000000, 0x00000000}, "texldl            t1, tex8.xyzw, t3.xyzw, void, void\n" },
       disasm_state{ {0x00801021, 0x00000004, 0x00000000, 0x00000008}, "sqrt              t0.x___, void, void, t0.xxxx\n" },
       disasm_state{ {0x03001022, 0x00000005, 0x00000000, 0x00154008}, "sin.rtz           t0.zy, void, void, t0.yyyy\n" },
       disasm_state{ {0x01801023, 0x00000005, 0x00000000, 0x00000008}, "cos.rtz           t0.xy__, void, void, t0.xxxx\n" },
@@ -306,7 +306,7 @@ INSTANTIATE_TEST_SUITE_P(texldlpcf, DisasmTest,
    testing::Values(
       // taken from dEQP-GLES3.functional.shaders.texture_functions.texturelod.sampler2dshadow_vertex (GC7000)
       disasm_state{ {0x04011809, 0x00000004, 0x00000000, 0x002a8018}, "mov.sat           t1.___w, void, void, t1.zzzz\n"},
-      disasm_state{ {0x0081102f, 0x29001800, 0x00010140, 0x003fc018}, "texldlpcf.xxxx    t1.x___, tex0, t1.xyzz, t1.xxxx, t1.wwww\n"},
+      disasm_state{ {0x0081102f, 0x29001800, 0x00010140, 0x003fc018}, "texldlpcf         t1.x___, tex0.xxxx, t1.xyzz, t1.xxxx, t1.wwww\n"},
       disasm_state{ {0x07011009, 0x00000004, 0x00000000, 0x20390018}, "mov               t1._yzw, void, void, u1.xyzw\n"}
    )
 );

@@ -11,7 +11,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <template name="INSTR_TEX">
-	{NAME}{TEX_SWIZ}
+	{NAME}
 </template>
 
 <template name="INSTR_CF">
@@ -634,7 +634,7 @@ SPDX-License-Identifier: MIT
 
 <bitset name="#instruction-tex-src0" extends="#instruction-tex">
 	<display>
-		{INSTR_TEX} {DST:align=18}, tex{TEX_ID}, {SRC0}, void, void
+		{INSTR_TEX} {DST:align=18}, tex{TEX_ID}{TEX_SWIZ}, {SRC0}, void, void
 	</display>
 
 	<!-- SRC0 -->
@@ -669,7 +669,7 @@ SPDX-License-Identifier: MIT
 
 <bitset name="#instruction-tex-src0-src1-src2" extends="#instruction-tex">
 	<display>
-		{INSTR_TEX} {DST:align=18}, tex{TEX_ID}, {SRC0}, {SRC1}, {SRC2}
+		{INSTR_TEX} {DST:align=18}, tex{TEX_ID}{TEX_SWIZ}, {SRC0}, {SRC1}, {SRC2}
 	</display>
 
 	<!-- SRC0 -->

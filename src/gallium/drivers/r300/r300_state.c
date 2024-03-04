@@ -1965,9 +1965,13 @@ static void* r300_create_vs_state(struct pipe_context* pipe,
                    !(info->name && !strcmp("TTN", info->name))) {
                    NIR_PASS_V(shader->ir.nir, r300_transform_vs_trig_input);
                }
-           }
-           else
+           } else {
                ntr_options = &hwtcl_r300_options;
+
+               if (r300->screen->caps.is_r400) {
+                   NIR_PASS_V(shader->ir.nir, r300_transform_vs_trig_input);
+               }
+           }
        } else {
            ntr_options = &swtcl_options;
        }

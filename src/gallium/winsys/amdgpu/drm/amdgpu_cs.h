@@ -24,7 +24,7 @@ extern "C" {
 
 struct amdgpu_ctx {
    struct pipe_reference reference;
-   struct amdgpu_winsys *ws;
+   struct amdgpu_winsys *aws;
    amdgpu_context_handle ctx;
    amdgpu_bo_handle user_fence_bo;
    uint64_t *user_fence_cpu_address_base;
@@ -87,7 +87,7 @@ struct amdgpu_cs_context {
    struct drm_amdgpu_cs_chunk_ib chunk_ib[IB_NUM];
    uint32_t                    *ib_main_addr; /* the beginning of IB before chaining */
 
-   struct amdgpu_winsys *ws;
+   struct amdgpu_winsys *aws;
 
    /* Buffers. */
    struct amdgpu_buffer_list   buffer_lists[NUM_BO_LIST_TYPES];
@@ -115,7 +115,7 @@ struct amdgpu_cs_context {
 
 struct amdgpu_cs {
    struct amdgpu_ib main_ib; /* must be first because this is inherited */
-   struct amdgpu_winsys *ws;
+   struct amdgpu_winsys *aws;
    struct amdgpu_ctx *ctx;
 
    /*
@@ -164,7 +164,7 @@ struct amdgpu_fence {
    struct pipe_reference reference;
    uint32_t syncobj;
 
-   struct amdgpu_winsys *ws;
+   struct amdgpu_winsys *aws;
 
    /* The following field aren't set for imported fences. */
    struct amdgpu_ctx *ctx;  /* submission context */

@@ -77,7 +77,7 @@ vn_deps = [
   dep_thread,
   idep_mesautil,
   idep_vulkan_util,
-  idep_vulkan_runtime,
+  idep_vulkan_lite_runtime,
   idep_vulkan_wsi,
   idep_xmlconfig,
 ]

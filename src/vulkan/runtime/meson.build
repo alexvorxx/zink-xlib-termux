@@ -21,7 +21,7 @@
 # Mesa-local imports in the Python files must be declared here for correct
 # dependency tracking.
 
-vulkan_runtime_files = files(
+vulkan_lite_runtime_files = files(
   'rmv/vk_rmv_common.c',
   'rmv/vk_rmv_common.h',
   'rmv/vk_rmv_exporter.c',
@@ -64,25 +64,10 @@ vulkan_runtime_files = files(
   'vk_graphics_state.h',
   'vk_image.c',
   'vk_image.h',
-  'vk_instance.c',
-  'vk_instance.h',
   'vk_log.c',
   'vk_log.h',
-  'vk_meta.c',
-  'vk_meta.h',
-  'vk_meta_blit_resolve.c',
-  'vk_meta_draw_rects.c',
-  'vk_meta_clear.c',
-  'vk_nir.c',
-  'vk_nir.h',
-  'vk_nir_convert_ycbcr.c',
-  'vk_nir_convert_ycbcr.h',
   'vk_object.c',
   'vk_object.h',
-  'vk_pipeline.c',
-  'vk_pipeline.h',
-  'vk_pipeline_cache.c',
-  'vk_pipeline_cache.h',
   'vk_physical_device.c',
   'vk_physical_device.h',
   'vk_pipeline_layout.c',
@@ -92,14 +77,11 @@ vulkan_runtime_files = files(
   'vk_queue.c',
   'vk_queue.h',
   'vk_render_pass.c',
+  'vk_render_pass.h',
   'vk_sampler.c',
   'vk_sampler.h',
   'vk_semaphore.c',
   'vk_semaphore.h',
-  'vk_shader.c',
-  'vk_shader.h',
-  'vk_shader_module.c',
-  'vk_shader_module.h',
   'vk_standard_sample_locations.c',
   'vk_standard_sample_locations.h',
   'vk_sync.c',
@@ -112,40 +94,27 @@ vulkan_runtime_files = files(
   'vk_sync_timeline.h',
   'vk_synchronization.c',
   'vk_synchronization.h',
-  'vk_texcompress_etc2.c',
-  'vk_texcompress_etc2.h',
   'vk_video.c',
   'vk_video.h',
   'vk_ycbcr_conversion.c',
   'vk_ycbcr_conversion.h',
 )
 
-vulkan_runtime_deps = [
+vulkan_lite_runtime_deps = [
   vulkan_wsi_deps,
   idep_mesautil,
-  idep_nir,
-  idep_vtn,
+  idep_nir_headers,
   idep_vulkan_util,
 ]
 
 if dep_libdrm.found()
-  vulkan_runtime_files += files('vk_drm_syncobj.c', 'vk_drm_syncobj.h')
-  vulkan_runtime_deps += dep_libdrm
+  vulkan_lite_runtime_files += files('vk_drm_syncobj.c', 'vk_drm_syncobj.h')
+  vulkan_lite_runtime_deps += dep_libdrm
 endif
 
 if with_platform_android
-  vulkan_runtime_files += files('vk_android.c', 'vk_android.h')
-  vulkan_runtime_deps += dep_android
-endif
-
-if prog_glslang.found()
-  vulkan_runtime_files += files('vk_texcompress_astc.c', 'vk_texcompress_astc.h')
-  vulkan_runtime_files += custom_target(
-    'astc_spv.h',
-    input : astc_decoder_glsl_file,
-    output : 'astc_spv.h',
-    command : [prog_glslang, '-V', '-S', 'comp', '-x', '-o', '@OUTPUT@', '@INPUT@'] + glslang_quiet,
-    )
+  vulkan_lite_runtime_files += files('vk_android.c', 'vk_android.h')
+  vulkan_lite_runtime_deps += dep_android
 endif
 
 vk_common_entrypoints = custom_target(
@@ -243,13 +212,107 @@ vk_format_info = custom_target(
   ],
 )
 
+vulkan_lite_runtime_files += [
+  vk_common_entrypoints,
+  vk_cmd_queue,
+  vk_cmd_enqueue_entrypoints,
+  vk_dispatch_trampolines,
+  vk_physical_device_features,
+  vk_physical_device_properties,
+  vk_synchronization_helpers,
+  vk_format_info,
+]
+
+idep_vulkan_common_entrypoints_h = declare_dependency(
+  sources : [vk_common_entrypoints[0]]
+)
+
+vulkan_lite_runtime_deps += idep_vulkan_common_entrypoints_h
+
+libvulkan_lite_runtime = static_library(
+  'vulkan_lite_runtime',
+  vulkan_lite_runtime_files,
+  include_directories : [inc_include, inc_src],
+  dependencies : vulkan_lite_runtime_deps,
+  c_args : c_msvc_compat_args,
+  gnu_symbol_visibility : 'hidden',
+  build_by_default : false,
+)
+
+libvulkan_lite_instance = static_library(
+  'vulkan_lite_instance',
+  ['vk_instance.c', 'vk_instance.h',],
+  include_directories : [inc_include, inc_src],
+  dependencies : vulkan_lite_runtime_deps,
+  c_args : ['-DVK_LITE_RUNTIME_INSTANCE=1', c_msvc_compat_args],
+  gnu_symbol_visibility : 'hidden',
+  build_by_default : false,
+)
+
+idep_vulkan_lite_runtime_headers = declare_dependency(
+  sources : [vk_cmd_queue[1], vk_physical_device_features[1], vk_physical_device_properties[1]],
+  include_directories : include_directories('.'),
+)
+
+# This is likely a bug in the Meson VS backend, as MSVC with ninja works fine.
+# See this discussion here:
+# https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/10506
+if get_option('backend').startswith('vs')
+  idep_vulkan_lite_runtime = declare_dependency(
+    link_with : [libvulkan_lite_runtime, libvulkan_lite_instance],
+    dependencies : idep_vulkan_lite_runtime_headers
+  )
+else
+  idep_vulkan_lite_runtime = declare_dependency(
+    # Instruct users of this library to link with --whole-archive.  Otherwise,
+    # our weak function overloads may not resolve properly.
+    link_whole : [libvulkan_lite_runtime, libvulkan_lite_instance],
+    dependencies : idep_vulkan_lite_runtime_headers
+  )
+endif
+
+vulkan_runtime_files = files(
+  'vk_meta.c',
+  'vk_meta.h',
+  'vk_meta_blit_resolve.c',
+  'vk_meta_clear.c',
+  'vk_meta_draw_rects.c',
+  'vk_meta_private.h',
+  'vk_nir.c',
+  'vk_nir.h',
+  'vk_nir_convert_ycbcr.c',
+  'vk_nir_convert_ycbcr.h',
+  'vk_pipeline.c',
+  'vk_pipeline.h',
+  'vk_pipeline_cache.c',
+  'vk_pipeline_cache.h',
+  'vk_shader.c',
+  'vk_shader.h',
+  'vk_shader_module.c',
+  'vk_shader_module.h',
+  'vk_texcompress_etc2.c',
+  'vk_texcompress_etc2.h',
+)
+
+vulkan_runtime_deps = [
+  vulkan_lite_runtime_deps,
+  idep_nir,
+  idep_vtn,
+]
+
+if prog_glslang.found()
+  vulkan_runtime_files += files('vk_texcompress_astc.c', 'vk_texcompress_astc.h')
+  vulkan_runtime_files += custom_target(
+    'astc_spv.h',
+    input : astc_decoder_glsl_file,
+    output : 'astc_spv.h',
+    command : [prog_glslang, '-V', '-S', 'comp', '-x', '-o', '@OUTPUT@', '@INPUT@'] + glslang_quiet,
+  )
+endif
+
 libvulkan_runtime = static_library(
   'vulkan_runtime',
-  [vulkan_runtime_files, vk_common_entrypoints,
-   vk_cmd_queue, vk_cmd_enqueue_entrypoints,
-   vk_dispatch_trampolines, vk_physical_device_features,
-   vk_physical_device_properties, vk_synchronization_helpers,
-   vk_format_info],
+  [vulkan_runtime_files],
   include_directories : [inc_include, inc_src],
   dependencies : vulkan_runtime_deps,
   c_args : c_msvc_compat_args,
@@ -257,28 +320,31 @@ libvulkan_runtime = static_library(
   build_by_default : false,
 )
 
-idep_vulkan_runtime_headers = declare_dependency(
-  sources : [vk_cmd_queue[1], vk_physical_device_features[1], vk_physical_device_properties[1]],
-  include_directories : include_directories('.'),
+libvulkan_instance = static_library(
+  'vulkan_instance',
+  ['vk_instance.c', 'vk_instance.h',],
+  include_directories : [inc_include, inc_src],
+  dependencies : vulkan_runtime_deps,
+  c_args : ['-DVK_LITE_RUNTIME_INSTANCE=0', c_msvc_compat_args],
+  gnu_symbol_visibility : 'hidden',
+  build_by_default : false,
 )
 
-idep_vulkan_common_entrypoints_h = declare_dependency(
-  sources : [vk_common_entrypoints[0]]
-)
-
-# This is likely a bug in the Meson VS backend, as MSVC with ninja works fine.
-# See this discussion here:
-# https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/10506
 if get_option('backend').startswith('vs')
-  idep_vulkan_runtime = declare_dependency(
-    link_with : libvulkan_runtime,
-    dependencies : idep_vulkan_runtime_headers
+  idep_vulkan_runtime_body = declare_dependency(
+    link_with : [libvulkan_lite_runtime, libvulkan_runtime, libvulkan_instance],
   )
 else
-  idep_vulkan_runtime = declare_dependency(
-    # Instruct users of this library to link with --whole-archive.  Otherwise,
-    # our weak function overloads may not resolve properly.
-    link_whole : libvulkan_runtime,
-    dependencies : idep_vulkan_runtime_headers
+  idep_vulkan_runtime_body = declare_dependency(
+    link_whole : [libvulkan_lite_runtime, libvulkan_runtime, libvulkan_instance],
   )
 endif
+
+idep_vulkan_runtime_headers = idep_vulkan_lite_runtime_headers
+
+idep_vulkan_runtime = declare_dependency(
+  dependencies : [
+    idep_vulkan_runtime_headers,
+    idep_vulkan_runtime_body,
+  ]
+)

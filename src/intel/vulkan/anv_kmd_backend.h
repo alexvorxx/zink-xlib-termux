@@ -72,7 +72,7 @@ struct anv_kmd_backend {
    void (*gem_close)(struct anv_device *device, struct anv_bo *bo);
    /* Returns MAP_FAILED on error */
    void *(*gem_mmap)(struct anv_device *device, struct anv_bo *bo,
-                     uint64_t offset, uint64_t size);
+                     uint64_t offset, uint64_t size, void *placed_addr);
    /* Bind things however you want. */
    int (*vm_bind)(struct anv_device *device,
                   struct anv_sparse_submission *submit);

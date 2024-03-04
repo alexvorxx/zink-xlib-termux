@@ -52,7 +52,7 @@ stub_gem_create(struct anv_device *device,
 
 static void *
 stub_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
-              uint64_t size)
+              uint64_t size, void *placed_addr)
 {
    return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, bo->gem_handle,
                offset);

@@ -603,6 +603,7 @@ anv_h265_decode_video(struct anv_cmd_buffer *cmd_buffer,
                         src_buffer->address.bo,
                         src_buffer->address.offset,
                         frame_info->srcBufferRange,
+                        NULL /* placed_addr */,
                         &slice_map);
    if (result != VK_SUCCESS) {
       anv_batch_set_error(&cmd_buffer->batch, result);
@@ -626,7 +627,9 @@ anv_h265_decode_video(struct anv_cmd_buffer *cmd_buffer,
       vk_fill_video_h265_reference_info(frame_info, h265_pic_info, &slice_params[s], ref_slots);
    }
 
-   anv_device_unmap_bo(cmd_buffer->device, src_buffer->address.bo, slice_map, frame_info->srcBufferRange);
+   anv_device_unmap_bo(cmd_buffer->device, src_buffer->address.bo,
+                       slice_map, frame_info->srcBufferRange,
+                       false /* replace */);
 
    for (unsigned s = 0; s < h265_pic_info->sliceSegmentCount; s++) {
       uint32_t ctb_size = 1 << (sps->log2_diff_max_min_luma_coding_block_size +

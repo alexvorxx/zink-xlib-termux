@@ -367,6 +367,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_inline_uniform_block              = true,
       .EXT_line_rasterization                = true,
       .EXT_load_store_op_none                = true,
+      .EXT_map_memory_placed                 = device->info.has_mmap_offset,
       /* Enable the extension only if we have support on both the local &
        * system memory
        */
@@ -901,6 +902,11 @@ get_features(const struct anv_physical_device *pdevice,
       .descriptorBufferCaptureReplay = true,
       .descriptorBufferImageLayoutIgnored = false,
       .descriptorBufferPushDescriptors = true,
+
+      /* VK_EXT_map_memory_placed */
+      .memoryMapPlaced = true,
+      .memoryMapRangePlaced = false,
+      .memoryUnmapReserve = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -1580,6 +1586,11 @@ get_properties(const struct anv_physical_device *pdevice,
        * subpixel precision bits applies to all line rasterization types.
        */
       props->lineSubPixelPrecisionBits = 4;
+   }
+
+   /* VK_EXT_map_memory_placed */
+   {
+      props->minPlacedMemoryMapAlignment = 4096;
    }
 
    /* VK_EXT_mesh_shader */
@@ -4653,6 +4664,14 @@ VkResult anv_MapMemory2KHR(
                        "Memory object already mapped.");
    }
 
+   void *placed_addr = NULL;
+   if (pMemoryMapInfo->flags & VK_MEMORY_MAP_PLACED_BIT_EXT) {
+      const VkMemoryMapPlacedInfoEXT *placed_info =
+         vk_find_struct_const(pMemoryMapInfo->pNext, MEMORY_MAP_PLACED_INFO_EXT);
+      assert(placed_info != NULL);
+      placed_addr = placed_info->pPlacedAddress;
+   }
+
    /* GEM will fail to map if the offset isn't 4k-aligned.  Round down. */
    uint64_t map_offset;
    if (!device->physical->info.has_mmap_offset)
@@ -4666,7 +4685,8 @@ VkResult anv_MapMemory2KHR(
    map_size = align64(map_size, 4096);
 
    void *map;
-   VkResult result = anv_device_map_bo(device, mem->bo, map_offset, map_size, &map);
+   VkResult result = anv_device_map_bo(device, mem->bo, map_offset,
+                                       map_size, placed_addr, &map);
    if (result != VK_SUCCESS)
       return result;
 
@@ -4688,7 +4708,11 @@ VkResult anv_UnmapMemory2KHR(
    if (mem == NULL || mem->vk.host_ptr)
       return VK_SUCCESS;
 
-   anv_device_unmap_bo(device, mem->bo, mem->map, mem->map_size);
+   VkResult result =
+      anv_device_unmap_bo(device, mem->bo, mem->map, mem->map_size,
+                          pMemoryUnmapInfo->flags & VK_MEMORY_UNMAP_RESERVE_BIT_EXT);
+   if (result != VK_SUCCESS)
+      return result;
 
    mem->map = NULL;
    mem->map_size = 0;

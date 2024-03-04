@@ -99,7 +99,7 @@ xe_gem_close(struct anv_device *device, struct anv_bo *bo)
 
 static void *
 xe_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
-            uint64_t size)
+            uint64_t size, void *placed_addr)
 {
    struct drm_xe_gem_mmap_offset args = {
       .handle = bo->gem_handle,
@@ -107,7 +107,8 @@ xe_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
    if (intel_ioctl(device->fd, DRM_IOCTL_XE_GEM_MMAP_OFFSET, &args))
       return MAP_FAILED;
 
-   return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+   return mmap(placed_addr, size, PROT_READ | PROT_WRITE,
+               (placed_addr != NULL ? MAP_FIXED : 0) | MAP_SHARED,
                device->fd, args.offset);
 }
 

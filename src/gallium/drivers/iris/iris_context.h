@@ -1059,6 +1059,9 @@ struct iris_context {
       /** State tracking for Wa_18020335297. */
       bool viewport_ptr_set;
 
+      /** State for Wa_14015055625, Wa_14019166699 */
+      bool uses_primitive_id;
+
       /** Do we have integer RT in current framebuffer state? */
       bool has_integer_rt;
 

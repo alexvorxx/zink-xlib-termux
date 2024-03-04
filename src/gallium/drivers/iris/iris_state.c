@@ -7150,19 +7150,16 @@ iris_upload_dirty_render_state(struct iris_context *ice,
    }
 
 #if GFX_VERx10 >= 125
-   /* This is only used on >= gfx125 for dynamic 3DSTATE_TE emission
-    * related workarounds.
+   /* This is only used on >= gfx125 for dynamic 3DSTATE_TE and
+    * 3DSTATE_VFG emission related workarounds.
     */
    bool program_uses_primitive_id = false;
-#endif
 
-#if INTEL_WA_14015055625_GFX_VER
-   /* Check if FS stage will use primitive ID overrides for Wa_14015055625. */
+   /* Check if FS stage will use primitive ID overrides. */
    const struct intel_vue_map *last_vue_map =
       &iris_vue_data(ice->shaders.last_vue_shader)->vue_map;
    if ((fs_data->inputs & VARYING_BIT_PRIMITIVE_ID) &&
-       last_vue_map->varying_to_slot[VARYING_SLOT_PRIMITIVE_ID] == -1 &&
-       intel_needs_workaround(batch->screen->devinfo, 14015055625)) {
+       last_vue_map->varying_to_slot[VARYING_SLOT_PRIMITIVE_ID] == -1) {
       program_uses_primitive_id = true;
    }
 #endif
@@ -7180,7 +7177,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          uint32_t scratch_addr =
             pin_scratch_space(ice, batch, shader, stage);
 
-#if INTEL_WA_14015055625_GFX_VER
+#if GFX_VERx10 >= 125
          shader_program_uses_primitive_id(ice, batch, shader, stage,
                                           &program_uses_primitive_id);
 #endif
@@ -7333,6 +7330,15 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          }
       }
    }
+
+#if GFX_VERx10 >= 125
+   /* Inspect program_uses_primitive_id state and dirty VFG if required. */
+   if (intel_needs_workaround(batch->screen->devinfo, 14019166699) &&
+       program_uses_primitive_id != ice->state.uses_primitive_id) {
+      dirty |= IRIS_DIRTY_VFG;
+      ice->state.uses_primitive_id = program_uses_primitive_id;
+   }
+#endif
 
    if (ice->state.streamout_active) {
       if (dirty & IRIS_DIRTY_SO_BUFFERS) {
@@ -8052,7 +8058,11 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          vfg.DistributionMode =
             ice->shaders.prog[MESA_SHADER_TESS_EVAL] != NULL ? RR_STRICT :
                                                                RR_FREE;
-         vfg.DistributionGranularity = BatchLevelGranularity;
+         if (intel_needs_workaround(batch->screen->devinfo, 14019166699) &&
+             program_uses_primitive_id)
+            vfg.DistributionGranularity = InstanceLevelGranularity;
+         else
+            vfg.DistributionGranularity = BatchLevelGranularity;
 #if INTEL_WA_14014851047_GFX_VER
          vfg.GranularityThresholdDisable =
             intel_needs_workaround(batch->screen->devinfo, 14014851047);

@@ -112,11 +112,6 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr,
    case nir_intrinsic_vote_ieq:
    case nir_intrinsic_first_invocation:
    case nir_intrinsic_last_invocation:
-   case nir_intrinsic_load_subgroup_eq_mask:
-   case nir_intrinsic_load_subgroup_ge_mask:
-   case nir_intrinsic_load_subgroup_gt_mask:
-   case nir_intrinsic_load_subgroup_le_mask:
-   case nir_intrinsic_load_subgroup_lt_mask:
    case nir_intrinsic_load_subgroup_id:
       /* VS/TES/GS invocations of the same primitive can be in different
        * subgroups, so subgroup ops are always divergent between vertices of
@@ -560,6 +555,11 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr,
    case nir_intrinsic_load_global_invocation_id_zero_base:
    case nir_intrinsic_load_global_invocation_index:
    case nir_intrinsic_load_subgroup_invocation:
+   case nir_intrinsic_load_subgroup_eq_mask:
+   case nir_intrinsic_load_subgroup_ge_mask:
+   case nir_intrinsic_load_subgroup_gt_mask:
+   case nir_intrinsic_load_subgroup_le_mask:
+   case nir_intrinsic_load_subgroup_lt_mask:
    case nir_intrinsic_load_helper_invocation:
    case nir_intrinsic_is_helper_invocation:
    case nir_intrinsic_load_scratch:

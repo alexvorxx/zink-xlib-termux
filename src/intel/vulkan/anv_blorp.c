@@ -1051,9 +1051,9 @@ void anv_CmdUpdateBuffer(
       const uint32_t copy_size = MIN2(dataSize, max_update_size);
 
       struct anv_state tmp_data =
-         anv_cmd_buffer_alloc_dynamic_state(cmd_buffer, copy_size, 64);
+         anv_cmd_buffer_alloc_temporary_state(cmd_buffer, copy_size, 64);
       struct anv_address tmp_addr =
-         anv_cmd_buffer_dynamic_state_address(cmd_buffer, tmp_data);
+         anv_cmd_buffer_temporary_state_address(cmd_buffer, tmp_data);
 
       memcpy(tmp_data.map, pData, copy_size);
 

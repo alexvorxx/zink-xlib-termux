@@ -54,7 +54,9 @@ static nir_def *build_attr_ring_desc(nir_builder *b, struct si_shader *shader,
                   S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
                   S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) |
                   S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W) |
-                  S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_32_32_32_FLOAT) |
+                  (sel->screen->info.gfx_level >= GFX12 ?
+                     S_008F0C_FORMAT_GFX12(V_008F0C_GFX11_FORMAT_32_32_32_32_FLOAT) :
+                     S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_32_32_32_FLOAT)) |
                   S_008F0C_INDEX_STRIDE(2) /* 32 elements */),
    };
 
@@ -138,7 +140,10 @@ static nir_def *build_tess_ring_desc(nir_builder *b, struct si_screen *screen,
       S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) |
       S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
 
-   if (screen->info.gfx_level >= GFX11) {
+   if (screen->info.gfx_level >= GFX12) {
+      rsrc3 |= S_008F0C_FORMAT_GFX12(V_008F0C_GFX11_FORMAT_32_FLOAT) |
+               S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
+   } else if (screen->info.gfx_level >= GFX11) {
       rsrc3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) |
                S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
    } else if (screen->info.gfx_level >= GFX10) {
@@ -474,6 +479,12 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       replacement = si_nir_load_internal_binding(b, args, slot, 4);
       break;
    }
+   case nir_intrinsic_load_xfb_state_address_gfx12_amd: {
+      nir_def *address = si_nir_load_internal_binding(b, args, SI_STREAMOUT_STATE_BUF, 1);
+      nir_def *address32_hi = nir_imm_int(b, s->shader->selector->screen->info.address32_hi);
+      replacement = nir_pack_64_2x32_split(b, address, address32_hi);
+      break;
+   }
    case nir_intrinsic_atomic_add_gs_emit_prim_count_amd:
    case nir_intrinsic_atomic_add_shader_invocation_count_amd: {
       enum pipe_statistics_query_index index =
@@ -613,7 +624,8 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       break;
    }
    case nir_intrinsic_load_layer_id:
-      replacement = ac_nir_unpack_arg(b, &args->ac, args->ac.ancillary, 16, 13);
+      replacement = ac_nir_unpack_arg(b, &args->ac, args->ac.ancillary,
+                                      16, sel->screen->info.gfx_level >= GFX12 ? 14 : 13);
       break;
    case nir_intrinsic_load_color0:
    case nir_intrinsic_load_color1: {

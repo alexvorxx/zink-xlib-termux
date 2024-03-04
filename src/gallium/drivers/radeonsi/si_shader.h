@@ -706,6 +706,9 @@ struct si_shader_key_ge {
          unsigned vs_export_prim_id : 1;    /* VS and TES only */
          unsigned gs_tri_strip_adj_fix : 1; /* GS only */
       } u;
+
+      /* Gfx12: When no streamout buffers are bound, streamout must be disabled. */
+      unsigned remove_streamout : 1;
    } mono;
 
    /* Optimization flags for asynchronous compilation only. */
@@ -953,6 +956,8 @@ struct si_shader {
          unsigned cb_shader_mask;
          unsigned db_shader_control;
          unsigned num_interp;
+         unsigned spi_gs_out_config_ps;
+         unsigned pa_sc_hisz_control;
          bool writes_samplemask;
       } ps;
    };
@@ -1069,7 +1074,8 @@ static inline bool si_shader_uses_streamout(const struct si_shader *shader)
 {
    return shader->selector->stage <= MESA_SHADER_GEOMETRY &&
           shader->selector->info.enabled_streamout_buffer_mask &&
-          !shader->key.ge.opt.remove_streamout;
+          !shader->key.ge.opt.remove_streamout &&
+          !shader->key.ge.mono.remove_streamout;
 }
 
 static inline bool si_shader_uses_discard(struct si_shader *shader)

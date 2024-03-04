@@ -1730,16 +1730,26 @@ copy_query_results_with_shader(struct anv_cmd_buffer *cmd_buffer,
       genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
    }
 
+   struct anv_shader_bin *copy_kernel;
+   VkResult ret =
+      anv_device_get_internal_shader(
+         cmd_buffer->device,
+         cmd_buffer->state.current_pipeline == GPGPU ?
+         ANV_INTERNAL_KERNEL_COPY_QUERY_RESULTS_COMPUTE :
+         ANV_INTERNAL_KERNEL_COPY_QUERY_RESULTS_FRAGMENT,
+         &copy_kernel);
+   if (ret != VK_SUCCESS) {
+      anv_batch_set_error(&cmd_buffer->batch, ret);
+      return;
+   }
+
    struct anv_simple_shader state = {
       .device               = cmd_buffer->device,
       .cmd_buffer           = cmd_buffer,
       .dynamic_state_stream = &cmd_buffer->dynamic_state_stream,
       .general_state_stream = &cmd_buffer->general_state_stream,
       .batch                = &cmd_buffer->batch,
-      .kernel               = device->internal_kernels[
-         cmd_buffer->state.current_pipeline == GPGPU ?
-         ANV_INTERNAL_KERNEL_COPY_QUERY_RESULTS_COMPUTE :
-         ANV_INTERNAL_KERNEL_COPY_QUERY_RESULTS_FRAGMENT],
+      .kernel               = copy_kernel,
       .l3_config            = device->internal_kernels_l3_config,
       .urb_cfg              = &cmd_buffer->state.gfx.urb_cfg,
    };

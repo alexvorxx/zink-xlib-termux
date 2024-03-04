@@ -135,6 +135,17 @@ genX(cmd_buffer_emit_indirect_generated_draws_init)(struct anv_cmd_buffer *cmd_b
 
    trace_intel_end_generate_draws(&cmd_buffer->trace);
 
+   struct anv_shader_bin *gen_kernel;
+   VkResult ret =
+      anv_device_get_internal_shader(
+         cmd_buffer->device,
+         ANV_INTERNAL_KERNEL_GENERATED_DRAWS,
+         &gen_kernel);
+   if (ret != VK_SUCCESS) {
+      anv_batch_set_error(&cmd_buffer->batch, ret);
+      return;
+   }
+
    struct anv_device *device = cmd_buffer->device;
    struct anv_simple_shader *state = &cmd_buffer->generation.shader_state;
    *state = (struct anv_simple_shader) {
@@ -143,8 +154,7 @@ genX(cmd_buffer_emit_indirect_generated_draws_init)(struct anv_cmd_buffer *cmd_b
       .dynamic_state_stream = &cmd_buffer->dynamic_state_stream,
       .general_state_stream = &cmd_buffer->general_state_stream,
       .batch                = &cmd_buffer->generation.batch,
-      .kernel               = device->internal_kernels[
-         ANV_INTERNAL_KERNEL_GENERATED_DRAWS],
+      .kernel               = gen_kernel,
       .l3_config            = device->internal_kernels_l3_config,
       .urb_cfg              = &cmd_buffer->state.gfx.urb_cfg,
    };
@@ -465,14 +475,24 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
     */
    struct anv_address gen_addr = anv_batch_current_address(&cmd_buffer->batch);
 
+   struct anv_shader_bin *gen_kernel;
+   VkResult ret =
+      anv_device_get_internal_shader(
+         cmd_buffer->device,
+         ANV_INTERNAL_KERNEL_GENERATED_DRAWS,
+         &gen_kernel);
+   if (ret != VK_SUCCESS) {
+      anv_batch_set_error(&cmd_buffer->batch, ret);
+      return;
+   }
+
    struct anv_simple_shader simple_state = (struct anv_simple_shader) {
       .device               = device,
       .cmd_buffer           = cmd_buffer,
       .dynamic_state_stream = &cmd_buffer->dynamic_state_stream,
       .general_state_stream = &cmd_buffer->general_state_stream,
       .batch                = &cmd_buffer->batch,
-      .kernel               = device->internal_kernels[
-         ANV_INTERNAL_KERNEL_GENERATED_DRAWS],
+      .kernel               = gen_kernel,
       .l3_config            = device->internal_kernels_l3_config,
       .urb_cfg              = &cmd_buffer->state.gfx.urb_cfg,
    };

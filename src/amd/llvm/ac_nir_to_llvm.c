@@ -3684,6 +3684,100 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       }
       break;
    }
+   case nir_intrinsic_ordered_xfb_counter_add_gfx12_amd: {
+      const unsigned num_atomics = 6; /* max 8, using v0..v15 as temporaries */
+      char code[2048];
+      char *ptr = code;
+
+      /* Assembly outputs:
+       *    i32 VGPR $0 = dwordsWritten (set in 4 lanes)
+       *
+       * Assembly inputs:
+       *    EXEC = 0xf (4 lanes, set by nir_push_if())
+       *    i64 SGPR $1 = atomic base address
+       *    i32 VGPR $2 = voffset = 8 * threadIDInGroup
+       *    i32 SGPR $3 = orderedID
+       *    i64 VGPR $4 = {orderedID, numDwords} (set in 4 lanes)
+       */
+
+      /* Issue (num_atomics - 1) atomics to initialize the results.
+       * There are no s_sleeps here because the atomics must be pipelined.
+       */
+      for (int i = 0; i < num_atomics - 1; i++) {
+         /* global_atomic_ordered_add_b64 dst, offset, data, address */
+         ptr += sprintf(ptr,
+                        "global_atomic_ordered_add_b64 v[%u:%u], $2, $4, $1 th:TH_ATOMIC_RETURN\n",
+                        i * 2,
+                        i * 2 + 1);
+      }
+
+      /* This is an infinite while loop with breaks. The loop body executes "num_atomics"
+       * atomics and the same number of conditional breaks.
+       *
+       * It's pipelined such that we only wait for the oldest atomic, so there is always
+       * "num_atomics" atomics in flight while the shader is waiting.
+       */
+      unsigned inst_block_size = 3 + 1 + 3 + 2; /* size of the next sprintf in dwords */
+
+      for (unsigned i = 0; i < num_atomics; i++) {
+         unsigned issue_index = (num_atomics - 1 + i) % num_atomics;
+         unsigned read_index = i;
+
+         /* result = dwords_written */
+         ptr += sprintf(ptr,
+                        /* Issue (or repeat) the attempt. */
+                        "global_atomic_ordered_add_b64 v[%u:%u], $2, $4, $1 th:TH_ATOMIC_RETURN\n"
+                        "s_wait_loadcnt 0x%x\n"
+                        /* if (result[check_index].ordered_id == ordered_id) {
+                         *    dwords_written = result[check_index].dwords_written;
+                         *    break;
+                         * }
+                         */
+                        "v_cmp_eq_u32 %s, $3, v%u\n"
+                        "v_mov_b32 $0, v%u\n"
+                        "s_cbranch_vccnz 0x%x\n"
+                        /* This is roughly "atomic_latency / num_atomics - latency_of_last_5_instructions" cycles. */
+                        "s_nop 15\n"
+                        "s_nop 10\n",
+                        issue_index * 2,
+                        issue_index * 2 + 1,
+                        num_atomics - 1, /* wait count */
+                        ctx->ac.wave_size == 32 ? "vcc_lo" : "vcc",
+                        read_index * 2, /* v_cmp_eq: src1 */
+                        read_index * 2 + 1, /* output */
+                        inst_block_size * (num_atomics - i - 1) + 3); /* forward s_cbranch as loop break */
+      }
+
+      /* Jump to the beginning of the loop. */
+      ptr += sprintf(ptr,
+                     "s_branch 0x%x\n"
+                     "s_wait_loadcnt 0x0\n",
+                     (inst_block_size * -(int)num_atomics - 1) & 0xffff);
+
+      LLVMTypeRef param_types[] = {ctx->ac.i64, ctx->ac.i32, ctx->ac.i32, ctx->ac.i64};
+      LLVMTypeRef calltype = LLVMFunctionType(ctx->ac.i32, param_types, 4, false);
+
+      /* =v means a VGPR output, =& means the dst register must be different from src registers,
+       * s means an SGPR input, v means a VGPR input, ~{reg} means that the register is clobbered
+       */
+      char constraint[128];
+      snprintf(constraint, sizeof(constraint), "=&v,s,v,s,v,~{%s},~{v[0:%u]}",
+               ctx->ac.wave_size == 32 ? "vcc_lo" : "vcc",
+               num_atomics * 2 - 1);
+
+      LLVMValueRef inlineasm = LLVMConstInlineAsm(calltype, code, constraint, true, false);
+
+      LLVMValueRef args[] = {
+         get_src(ctx, instr->src[0]),
+         get_src(ctx, instr->src[1]),
+         get_src(ctx, instr->src[2]),
+         get_src(ctx, instr->src[3]),
+      };
+      result = LLVMBuildCall2(ctx->ac.builder, calltype, inlineasm, args, 4, "");
+
+      assert(ptr < code + sizeof(code));
+      break;
+   }
    case nir_intrinsic_export_amd: {
       unsigned flags = nir_intrinsic_flags(instr);
       unsigned target = nir_intrinsic_base(instr);

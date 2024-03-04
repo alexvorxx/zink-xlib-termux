@@ -1762,6 +1762,14 @@ intrinsic("cmat_muladd_amd", src_comp=[16, 16, 0], dest_comp=0, bit_sizes=src2,
 # Get the debug log buffer descriptor.
 intrinsic("load_debug_log_desc_amd", bit_sizes=[32], dest_comp=4, flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# s_sleep BASE (sleep for 64*BASE cycles). BASE must be in [0, 0xffff].
+# BASE=0 is valid but isn't useful.
+# GFX12+: If BASE & 0x8000, sleep forever (until wakeup, trap, or kill).
+intrinsic("sleep_amd", indices=[BASE])
+
+# s_nop BASE (sleep for BASE+1 cycles, BASE must be in [0, 15]).
+intrinsic("nop_amd", indices=[BASE])
+
 system_value("ray_tracing_stack_base_lvp", 1)
 
 system_value("shader_call_data_offset_lvp", 1)

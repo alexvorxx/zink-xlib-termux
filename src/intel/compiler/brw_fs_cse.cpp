@@ -100,7 +100,6 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL:
    case FS_OPCODE_PACK:
-      return true;
    case SHADER_OPCODE_RCP:
    case SHADER_OPCODE_RSQ:
    case SHADER_OPCODE_SQRT:
@@ -111,7 +110,7 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case SHADER_OPCODE_INT_REMAINDER:
    case SHADER_OPCODE_SIN:
    case SHADER_OPCODE_COS:
-      return inst->mlen < 2;
+      return true;
    case SHADER_OPCODE_LOAD_PAYLOAD:
       return !is_coalescing_payload(v->alloc, inst);
    default:

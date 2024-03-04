@@ -8475,7 +8475,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
       Temp delta = get_ssa_temp(ctx, instr->src[1].ssa);
       Temp dst = get_ssa_temp(ctx, &instr->def);
-      assert(nir_intrinsic_execution_scope(instr) == SCOPE_SUBGROUP);
       assert(instr->def.bit_size > 1 && instr->def.bit_size <= 32);
 
       if (!nir_src_is_divergent(instr->src[0])) {

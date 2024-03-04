@@ -21,7 +21,7 @@
 #include <inttypes.h>
 
 #ifndef AMDGPU_VA_RANGE_HIGH
-#define AMDGPU_VA_RANGE_HIGH	0x2
+#define AMDGPU_VA_RANGE_HIGH 0x2
 #endif
 
 /* Set to 1 for verbose output showing committed sparse buffer ranges. */
@@ -305,7 +305,7 @@ void *amdgpu_bo_map(struct radeon_winsys *rws,
             if (cs && amdgpu_bo_is_referenced_by_cs_with_usage(cs, bo,
                                                                RADEON_USAGE_WRITE)) {
                cs->flush_cs(cs->flush_data,
-			    RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
+                            RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
                return NULL;
             }
 
@@ -316,7 +316,7 @@ void *amdgpu_bo_map(struct radeon_winsys *rws,
          } else {
             if (cs && amdgpu_bo_is_referenced_by_cs(cs, bo)) {
                cs->flush_cs(cs->flush_data,
-			    RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
+                            RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
                return NULL;
             }
 
@@ -340,7 +340,7 @@ void *amdgpu_bo_map(struct radeon_winsys *rws,
                if (amdgpu_bo_is_referenced_by_cs_with_usage(cs, bo,
                                                             RADEON_USAGE_WRITE)) {
                   cs->flush_cs(cs->flush_data,
-			       RADEON_FLUSH_START_NEXT_GFX_IB_NOW, NULL);
+                               RADEON_FLUSH_START_NEXT_GFX_IB_NOW, NULL);
                } else {
                   /* Try to avoid busy-waiting in amdgpu_bo_wait. */
                   if (p_atomic_read(&bo->num_active_ioctls))
@@ -355,7 +355,7 @@ void *amdgpu_bo_map(struct radeon_winsys *rws,
             if (cs) {
                if (amdgpu_bo_is_referenced_by_cs(cs, bo)) {
                   cs->flush_cs(cs->flush_data,
-			       RADEON_FLUSH_START_NEXT_GFX_IB_NOW, NULL);
+                               RADEON_FLUSH_START_NEXT_GFX_IB_NOW, NULL);
                } else {
                   /* Try to avoid busy-waiting in amdgpu_bo_wait. */
                   if (p_atomic_read(&bo->num_active_ioctls))
@@ -589,8 +589,7 @@ static struct amdgpu_winsys_bo *amdgpu_create_bo(struct amdgpu_winsys *aws,
       if (flags & RADEON_FLAG_GL2_BYPASS)
          vm_flags |= AMDGPU_VM_MTYPE_UC;
 
-      r = amdgpu_bo_va_op_raw(aws->dev, buf_handle, 0, size, va, vm_flags,
-			   AMDGPU_VA_OP_MAP);
+      r = amdgpu_bo_va_op_raw(aws->dev, buf_handle, 0, size, va, vm_flags, AMDGPU_VA_OP_MAP);
       if (r)
          goto error_va_map;
    }
@@ -1294,8 +1293,7 @@ amdgpu_bo_find_next_committed_memory(struct pb_buffer_lean *buf,
 
    /* Calc size of first committed part */
    *range_size = *range_size - uncommitted_range_next - uncommitted_range_prev;
-   return *range_size ? uncommitted_range_prev
-	   : uncommitted_range_prev + uncommitted_range_next;
+   return *range_size ? uncommitted_range_prev : uncommitted_range_prev + uncommitted_range_next;
 }
 
 static void amdgpu_buffer_get_metadata(struct radeon_winsys *rws,
@@ -1571,7 +1569,7 @@ static struct pb_buffer_lean *amdgpu_bo_from_handle(struct radeon_winsys *rws,
    pipe_reference_init(&bo->b.base.reference, 1);
    bo->b.base.placement = initial;
    bo->b.base.alignment_log2 = util_logbase2(info.phys_alignment ?
-				info.phys_alignment : aws->info.gart_page_size);
+                                             info.phys_alignment : aws->info.gart_page_size);
    bo->b.base.usage = flags;
    bo->b.base.size = result.alloc_size;
    bo->b.type = AMDGPU_BO_REAL;
@@ -1692,8 +1690,8 @@ static bool amdgpu_bo_get_handle(struct radeon_winsys *rws,
 }
 
 static struct pb_buffer_lean *amdgpu_bo_from_ptr(struct radeon_winsys *rws,
-					    void *pointer, uint64_t size,
-					    enum radeon_bo_flag flags)
+                                                 void *pointer, uint64_t size,
+                                                 enum radeon_bo_flag flags)
 {
     struct amdgpu_winsys *aws = amdgpu_winsys(rws);
     amdgpu_bo_handle buf_handle;

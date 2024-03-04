@@ -357,7 +357,7 @@ amdgpu_drm_winsys_get_fd(struct radeon_winsys *rws)
 
 PUBLIC struct radeon_winsys *
 amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
-		     radeon_screen_create_t screen_create)
+                     radeon_screen_create_t screen_create)
 {
    struct amdgpu_screen_winsys *sws;
    struct amdgpu_winsys *aws;

@@ -118,7 +118,7 @@ amdgpu_fence_import_sync_file(struct radeon_winsys *rws, int fd)
 }
 
 static int amdgpu_fence_export_sync_file(struct radeon_winsys *rws,
-					 struct pipe_fence_handle *pfence)
+                                         struct pipe_fence_handle *pfence)
 {
    struct amdgpu_winsys *aws = amdgpu_winsys(rws);
    struct amdgpu_fence *fence = (struct amdgpu_fence*)pfence;

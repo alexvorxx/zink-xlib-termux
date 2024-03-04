@@ -1217,6 +1217,9 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
          case nir_atomic_op_dec_wrap:
             fprintf(fp, "dec_wrap");
             break;
+         case nir_atomic_op_ordered_add_gfx12_amd:
+            fprintf(fp, "ordered_add");
+            break;
          }
          break;
       }

@@ -1827,6 +1827,7 @@ translate_atomic_op_str(nir_atomic_op op)
    case nir_atomic_op_cmpxchg:  return "cmpswap";
    case nir_atomic_op_inc_wrap: return "inc";
    case nir_atomic_op_dec_wrap: return "dec";
+   case nir_atomic_op_ordered_add_gfx12_amd: return "ordered.add";
    default: abort();
    }
 }
@@ -2070,6 +2071,9 @@ static LLVMValueRef visit_global_atomic(struct ac_nir_context *ctx,
       LLVMValueRef data1 = get_src(ctx, instr->src[2]);
       result = ac_build_atomic_cmp_xchg(&ctx->ac, addr, data, data1, sync_scope);
       result = LLVMBuildExtractValue(ctx->ac.builder, result, 0, "");
+   } else if (nir_op == nir_atomic_op_ordered_add_gfx12_amd) {
+      result = ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.global.atomic.ordered.add.b64", ctx->ac.i64,
+                                  (LLVMValueRef[]){addr, data}, 2, 0);
    } else if (is_float) {
       const char *op = translate_atomic_op_str(nir_op);
       char name[64], type[8];

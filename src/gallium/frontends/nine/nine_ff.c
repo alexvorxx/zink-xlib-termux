@@ -4,13 +4,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-/* FF is big and ugly so feel free to write lines as long as you like.
- * Aieeeeeeeee !
- *
- * Let me make that clearer:
- * Aieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee ! !! !!!
- */
-
 #include "device9.h"
 #include "basetexture9.h"
 #include "vertexdeclaration9.h"

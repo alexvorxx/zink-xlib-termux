@@ -1322,6 +1322,26 @@ cmd_buffer_ensure_render_pass_attachment_state(struct v3dv_cmd_buffer *cmd_buffe
    assert(state->attachment_alloc_count >= pass->attachment_count);
 }
 
+/* If our render area is smaller than the current clip window we will have
+ * to emit a new clip window to constraint it to the render area.
+ */
+static void
+constraint_clip_window_to_render_area(struct v3dv_cmd_buffer_state *state)
+{
+   uint32_t min_render_x = state->render_area.offset.x;
+   uint32_t min_render_y = state->render_area.offset.y;
+   uint32_t max_render_x = min_render_x + state->render_area.extent.width - 1;
+   uint32_t max_render_y = min_render_y + state->render_area.extent.height - 1;
+   uint32_t min_clip_x = state->clip_window.offset.x;
+   uint32_t min_clip_y = state->clip_window.offset.y;
+   uint32_t max_clip_x = min_clip_x + state->clip_window.extent.width - 1;
+   uint32_t max_clip_y = min_clip_y + state->clip_window.extent.height - 1;
+   if (min_render_x > min_clip_x || min_render_y > min_clip_y ||
+       max_render_x < max_clip_x || max_render_y < max_clip_y) {
+      state->dirty |= V3DV_CMD_DIRTY_SCISSOR;
+   }
+}
+
 VKAPI_ATTR void VKAPI_CALL
 v3dv_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
                          const VkRenderPassBeginInfo *pRenderPassBegin,
@@ -1341,22 +1361,7 @@ v3dv_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
    cmd_buffer_init_render_pass_attachment_state(cmd_buffer, pRenderPassBegin);
 
    state->render_area = pRenderPassBegin->renderArea;
-
-   /* If our render area is smaller than the current clip window we will have
-    * to emit a new clip window to constraint it to the render area.
-    */
-   uint32_t min_render_x = state->render_area.offset.x;
-   uint32_t min_render_y = state->render_area.offset.y;
-   uint32_t max_render_x = min_render_x + state->render_area.extent.width - 1;
-   uint32_t max_render_y = min_render_y + state->render_area.extent.height - 1;
-   uint32_t min_clip_x = state->clip_window.offset.x;
-   uint32_t min_clip_y = state->clip_window.offset.y;
-   uint32_t max_clip_x = min_clip_x + state->clip_window.extent.width - 1;
-   uint32_t max_clip_y = min_clip_y + state->clip_window.extent.height - 1;
-   if (min_render_x > min_clip_x || min_render_y > min_clip_y ||
-       max_render_x < max_clip_x || max_render_y < max_clip_y) {
-      state->dirty |= V3DV_CMD_DIRTY_SCISSOR;
-   }
+   constraint_clip_window_to_render_area(state);
 
    /* Setup for first subpass */
    v3dv_cmd_buffer_subpass_start(cmd_buffer, 0);

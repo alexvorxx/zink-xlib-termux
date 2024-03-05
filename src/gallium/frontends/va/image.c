@@ -227,7 +227,7 @@ vlVaDeriveImage(VADriverContextP ctx, VASurfaceID surface, VAImage *image)
    VAImage *img;
    VAStatus status;
    struct pipe_screen *screen;
-   struct pipe_surface **surfaces;
+   struct pipe_resource *buf_resources[VL_NUM_COMPONENTS];
    struct pipe_video_buffer *new_buffer = NULL;
    int w;
    int h;
@@ -283,8 +283,10 @@ vlVaDeriveImage(VADriverContextP ctx, VASurfaceID surface, VAImage *image)
       return VA_STATUS_ERROR_OPERATION_FAILED;
    }
 
-   surfaces = surf->buffer->get_surfaces(surf->buffer);
-   if (!surfaces || !surfaces[0]->texture)
+   memset(buf_resources, 0, sizeof(buf_resources));
+   surf->buffer->get_resources(surf->buffer, buf_resources);
+
+   if (!buf_resources[0])
       return VA_STATUS_ERROR_ALLOCATION_FAILED;
 
    img = CALLOC(1, sizeof(VAImage));
@@ -311,7 +313,7 @@ vlVaDeriveImage(VADriverContextP ctx, VASurfaceID surface, VAImage *image)
 
    mtx_lock(&drv->mutex);
    if (screen->resource_get_info) {
-      screen->resource_get_info(screen, surfaces[0]->texture, &stride,
+      screen->resource_get_info(screen, buf_resources[0], &stride,
                                 &offset);
       if (!stride)
          offset = 0;
@@ -344,14 +346,14 @@ vlVaDeriveImage(VADriverContextP ctx, VASurfaceID surface, VAImage *image)
       /* In some gallium platforms, the stride and offset are different*/
       /* for the Y and UV planes, query them independently.*/
       if (screen->resource_get_info) {
-         /* resource_get_info is called above for surfaces[0]->texture and */
+         /* resource_get_info is called above for buf_resources[0] and */
          /* saved results in stride, offset, reuse those values to avoid a new call to: */
-         /* screen->resource_get_info(screen, surfaces[0]->texture, &img->pitches[0],*/
+         /* screen->resource_get_info(screen, buf_resources[0], &img->pitches[0],*/
          /*                         &img->offsets[0]);*/
          img->pitches[0] = stride;
          img->offsets[0] = offset;
 
-         screen->resource_get_info(screen, surfaces[1]->texture, &img->pitches[1],
+         screen->resource_get_info(screen, buf_resources[1], &img->pitches[1],
                                  &img->offsets[1]);
          if (!img->pitches[1])
                img->offsets[1] = 0;
@@ -383,14 +385,15 @@ vlVaDeriveImage(VADriverContextP ctx, VASurfaceID surface, VAImage *image)
                            VL_COMPOSITOR_WEAVE);
 
          /* recalculate the values now that we have a new surface */
-         surfaces = surf->buffer->get_surfaces(new_buffer);
+         memset(buf_resources, 0, sizeof(buf_resources));
+         new_buffer->get_resources(new_buffer, buf_resources);
          if (screen->resource_get_info) {
-            screen->resource_get_info(screen, surfaces[0]->texture, &img->pitches[0],
+            screen->resource_get_info(screen, buf_resources[0], &img->pitches[0],
                                     &img->offsets[0]);
             if (!img->pitches[0])
                img->offsets[0] = 0;
 
-            screen->resource_get_info(screen, surfaces[1]->texture, &img->pitches[1],
+            screen->resource_get_info(screen, buf_resources[1], &img->pitches[1],
                                     &img->offsets[1]);
             if (!img->pitches[1])
                img->offsets[1] = 0;
@@ -432,7 +435,7 @@ vlVaDeriveImage(VADriverContextP ctx, VASurfaceID surface, VAImage *image)
    img_buf->size = img->data_size;
    img_buf->num_elements = 1;
 
-   pipe_resource_reference(&img_buf->derived_surface.resource, surfaces[0]->texture);
+   pipe_resource_reference(&img_buf->derived_surface.resource, buf_resources[0]);
    img_buf->derived_image_buffer = new_buffer;
 
    if (surf->ctx)

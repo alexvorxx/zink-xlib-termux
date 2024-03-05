@@ -1073,24 +1073,24 @@ VOPP = {
    ("v_fma_mix_f32",    True, dst(1), src(1, 1, 1), op(gfx9=0x20)), # v_mad_mix_f32 in VEGA ISA, v_fma_mix_f32 in RDNA ISA
    ("v_fma_mixlo_f16",  True, dst(1), src(1, 1, 1), op(gfx9=0x21)), # v_mad_mixlo_f16 in VEGA ISA, v_fma_mixlo_f16 in RDNA ISA
    ("v_fma_mixhi_f16",  True, dst(1), src(1, 1, 1), op(gfx9=0x22)), # v_mad_mixhi_f16 in VEGA ISA, v_fma_mixhi_f16 in RDNA ISA
+   ("v_dot2_i32_i16",      False, dst(1), src(1, 1, 1), op(gfx9=0x26, gfx10=0x14, gfx11=-1)),
+   ("v_dot2_u32_u16",      False, dst(1), src(1, 1, 1), op(gfx9=0x27, gfx10=0x15, gfx11=-1)),
+   ("v_dot4_i32_iu8",      False, dst(1), src(1, 1, 1), op(gfx11=0x16)),
+   ("v_dot4_i32_i8",       False, dst(1), src(1, 1, 1), op(gfx9=0x28, gfx10=0x16, gfx11=-1)),
+   ("v_dot4_u32_u8",       False, dst(1), src(1, 1, 1), op(gfx9=0x29, gfx10=0x17)),
+   ("v_dot8_i32_iu4",      False, dst(1), src(1, 1, 1), op(gfx11=0x18)),
+   ("v_dot8_u32_u4",       False, dst(1), src(1, 1, 1), op(gfx9=0x2b, gfx10=0x19)),
+   ("v_dot2_f32_f16",      False, dst(1), src(1, 1, 1), op(gfx9=0x23, gfx10=0x13)),
+   ("v_dot2_f32_bf16",     False, dst(1), src(1, 1, 1), op(gfx11=0x1a)),
+   ("v_wmma_f32_16x16x16_f16",       False, dst(), src(), op(gfx11=0x40), InstrClass.WMMA),
+   ("v_wmma_f32_16x16x16_bf16",      False, dst(), src(), op(gfx11=0x41), InstrClass.WMMA),
+   ("v_wmma_f16_16x16x16_f16",       False, dst(), src(), op(gfx11=0x42), InstrClass.WMMA),
+   ("v_wmma_bf16_16x16x16_bf16",     False, dst(), src(), op(gfx11=0x43), InstrClass.WMMA),
+   ("v_wmma_i32_16x16x16_iu8",       False, dst(), src(), op(gfx11=0x44), InstrClass.WMMA),
+   ("v_wmma_i32_16x16x16_iu4",       False, dst(), src(), op(gfx11=0x45), InstrClass.WMMA),
 }
-for (name, modifiers, defs, ops, num) in VOPP:
-   insn(name, num, Format.VOP3P, InstrClass.Valu32, modifiers, modifiers, definitions = defs, operands = ops)
-insn("v_dot2_i32_i16", op(gfx9=0x26, gfx10=0x14, gfx11=-1), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot2_u32_u16", op(gfx9=0x27, gfx10=0x15, gfx11=-1), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot4_i32_iu8", op(gfx11=0x16), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot4_i32_i8", op(gfx9=0x28, gfx10=0x16, gfx11=-1), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot4_u32_u8", op(gfx9=0x29, gfx10=0x17), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot8_i32_iu4", op(gfx11=0x18), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot8_u32_u4", op(gfx9=0x2b, gfx10=0x19), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot2_f32_f16", op(gfx9=0x23, gfx10=0x13), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_dot2_f32_bf16", op(gfx11=0x1a), Format.VOP3P, InstrClass.Valu32, definitions = dst(1), operands = src(1, 1, 1))
-insn("v_wmma_f32_16x16x16_f16", op(gfx11=0x40), Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_f32_16x16x16_bf16", op(gfx11=0x41), Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_f16_16x16x16_f16", op(gfx11=0x42), Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_bf16_16x16x16_bf16", op(gfx11=0x43), Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_i32_16x16x16_iu8", op(gfx11=0x44), Format.VOP3P, InstrClass.WMMA, False, False)
-insn("v_wmma_i32_16x16x16_iu4", op(gfx11=0x45), Format.VOP3P, InstrClass.WMMA, False, False)
+for (name, modifiers, defs, ops, num, cls) in default_class(VOPP, InstrClass.Valu32):
+   insn(name, num, Format.VOP3P, cls, modifiers, modifiers, definitions = defs, operands = ops)
 
 
 # VINTRP (GFX6 - GFX10.3) instructions:

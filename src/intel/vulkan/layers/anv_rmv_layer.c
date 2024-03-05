@@ -76,19 +76,6 @@ VkResult anv_rmv_InvalidateMappedMemoryRanges(
    return VK_SUCCESS;
 }
 
-VkResult anv_rmv_DebugMarkerSetObjectNameEXT(
-    VkDevice                                    device,
-    const VkDebugMarkerObjectNameInfoEXT*       pNameInfo)
-{
-   assert(pNameInfo->sType == VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT);
-   VkDebugUtilsObjectNameInfoEXT name_info;
-   name_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-   name_info.objectType = pNameInfo->objectType;
-   name_info.objectHandle = pNameInfo->object;
-   name_info.pObjectName = pNameInfo->pObjectName;
-   return anv_rmv_SetDebugUtilsObjectNameEXT(device, &name_info);
-}
-
 VkResult anv_rmv_SetDebugUtilsObjectNameEXT(
     VkDevice                                    _device,
     const VkDebugUtilsObjectNameInfoEXT*        pNameInfo)

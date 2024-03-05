@@ -71,18 +71,6 @@ rmv_InvalidateMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount, co
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-rmv_DebugMarkerSetObjectNameEXT(VkDevice device, const VkDebugMarkerObjectNameInfoEXT *pNameInfo)
-{
-   assert(pNameInfo->sType == VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT);
-   VkDebugUtilsObjectNameInfoEXT name_info;
-   name_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-   name_info.objectType = pNameInfo->objectType;
-   name_info.objectHandle = pNameInfo->object;
-   name_info.pObjectName = pNameInfo->pObjectName;
-   return rmv_SetDebugUtilsObjectNameEXT(device, &name_info);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
 rmv_SetDebugUtilsObjectNameEXT(VkDevice _device, const VkDebugUtilsObjectNameInfoEXT *pNameInfo)
 {
    assert(pNameInfo->sType == VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT);

@@ -168,7 +168,12 @@ static const nir_opt_preamble_options preamble_options = {
    .instr_cost_cb = instr_cost,
    .rewrite_cost_cb = rewrite_cost,
    .avoid_instr_cb = avoid_instr,
-   .preamble_storage_size = 512,
+
+   /* hardware size is 512, but it's polite to leave some wiggle room to push
+    * hot constants so we don't end up rematerializing all over the place.
+    * 480 seems to be a sweetspot, based on a few minutes of shader-db.
+    */
+   .preamble_storage_size = 480,
 };
 
 bool

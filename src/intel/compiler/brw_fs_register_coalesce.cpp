@@ -266,7 +266,7 @@ brw_fs_opt_register_coalesce(fs_visitor &s)
 
       if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
          for (int i = 0; i < src_size; i++) {
-            dst_reg_offset[i] = i;
+            dst_reg_offset[i] = inst->dst.offset / REG_SIZE + i;
          }
          mov[0] = inst;
          channels_remaining -= regs_written(inst);

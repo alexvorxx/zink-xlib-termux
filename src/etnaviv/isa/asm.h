@@ -16,6 +16,26 @@
 /* Number of source operands per instruction */
 #define ETNA_NUM_SRC (3)
 
+#define SWIZ_X(x) (((x) & 0x03) << 0)
+#define SWIZ_Y(y) (((y) & 0x03) << 2)
+#define SWIZ_Z(z) (((z) & 0x03) << 4)
+#define SWIZ_W(w) (((w) & 0x03) << 6)
+
+/* Broadcast swizzle to all four components */
+#define INST_SWIZ_BROADCAST(x) \
+        (SWIZ_X(x) | SWIZ_Y(x) | SWIZ_Z(x) | SWIZ_W(x))
+/* Identity (NOP) swizzle */
+#define INST_SWIZ_IDENTITY \
+        (SWIZ_X(0) | SWIZ_Y(1) | SWIZ_Z(2) | SWIZ_W(3))
+/* Fully specified swizzle */
+#define INST_SWIZ(x, y, z, w) \
+        (SWIZ_X(x) | SWIZ_Y(y) | SWIZ_Z(z) | SWIZ_W(w))
+#define SWIZZLE(c0, c1, c2, c3) \
+        INST_SWIZ(ISA_SWIZ_##c0, \
+                  ISA_SWIZ_##c1, \
+                  ISA_SWIZ_##c2, \
+                  ISA_SWIZ_##c3)
+
 /*** operands ***/
 
 /* destination operand */

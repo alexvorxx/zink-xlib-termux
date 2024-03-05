@@ -502,16 +502,34 @@ agx_format_for_pipe(enum pipe_format format)
    unreachable("Invalid format");
 }
 
-static void
-agx_emit_load_coefficients(agx_builder *b, agx_index dest,
-                           nir_intrinsic_instr *instr)
+static agx_index
+cf_for_intrinsic(agx_builder *b, nir_intrinsic_instr *intr)
 {
-   agx_index cf =
-      agx_get_cf(b->shader, nir_intrinsic_io_semantics(instr).location,
-                 nir_intrinsic_component(instr));
+   /* Determine the base location, taking into account a constant offset */
+   unsigned location = nir_intrinsic_io_semantics(intr).location;
+   bool compact = location == VARYING_SLOT_CLIP_DIST0 ||
+                  location == VARYING_SLOT_CULL_DIST0;
 
-   agx_ldcf_to(b, dest, cf, 1);
-   agx_emit_cached_split(b, dest, 3);
+   nir_src *offset = nir_get_io_offset_src(intr);
+   if (nir_src_is_const(*offset)) {
+      /* XXX: NIR is broken and uses constant offsets in slots but dynamic
+       * offsets in scalars for compact varyings. This needs to be fixed
+       * upstream.
+       */
+      location += nir_src_as_uint(*offset);
+   }
+
+   agx_index I = agx_get_cf(b->shader, location, nir_intrinsic_component(intr));
+
+   /* If we have a non-constant offset, we add it to the CF. Offsets are in
+    * vec4 slots (unless we're compact) but the CF is in components, so we need
+    * to shift the offset by 2 before adding.
+    */
+   if (!nir_src_is_const(*offset)) {
+      I = agx_iadd(b, I, agx_src_index(offset), compact ? 0 : 2);
+   }
+
+   return I;
 }
 
 static enum agx_interpolation
@@ -547,16 +565,11 @@ agx_emit_load_vary(agx_builder *b, agx_index dest, nir_intrinsic_instr *instr)
    bool perspective =
       nir_intrinsic_interp_mode(bary) != INTERP_MODE_NOPERSPECTIVE;
 
-   nir_io_semantics sem = nir_intrinsic_io_semantics(instr);
-   nir_src *offset = nir_get_io_offset_src(instr);
-   assert(nir_src_is_const(*offset) && "no indirects");
-
    assert(nir_def_components_read(&instr->def) ==
              nir_component_mask(components) &&
           "iter does not handle write-after-write hazards");
 
-   agx_index I = agx_get_cf(b->shader, sem.location + nir_src_as_uint(*offset),
-                            nir_intrinsic_component(instr));
+   agx_index I = cf_for_intrinsic(b, instr);
 
    /* For perspective interpolation, we project (multiply by 1/W) */
    if (perspective) {
@@ -1192,7 +1205,8 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
 
    case nir_intrinsic_load_coefficients_agx:
       assert(stage == MESA_SHADER_FRAGMENT);
-      agx_emit_load_coefficients(b, dst, instr);
+      agx_ldcf_to(b, dst, cf_for_intrinsic(b, instr), 1);
+      agx_emit_cached_split(b, dst, 3);
       return NULL;
 
    case nir_intrinsic_load_agx:

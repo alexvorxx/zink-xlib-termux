@@ -222,6 +222,7 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
       compiler->num_predicates = 4;
       compiler->bitops_can_write_predicates = true;
       compiler->has_branch_and_or = true;
+      compiler->has_predication = true;
    } else {
       compiler->max_const_pipeline = 512;
       compiler->max_const_geom = 512;

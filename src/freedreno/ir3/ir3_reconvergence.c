@@ -181,6 +181,11 @@ ir3_calc_reconvergence(struct ir3_shader_variant *so)
     * reconvergence point.
     */
    foreach_block (block, &so->ir->block_list) {
+      struct ir3_instruction *terminator = ir3_block_get_terminator(block);
+      if (!terminator)
+         continue;
+      if (terminator->opc == OPC_PREDT || terminator->opc == OPC_PREDF)
+         continue;
       if (block->successors[0] && block->successors[1] &&
           block->divergent_condition) {
          unsigned idx = block->successors[0]->index >

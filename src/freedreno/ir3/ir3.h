@@ -891,6 +891,8 @@ is_terminator(struct ir3_instruction *instr)
    case OPC_SHPS:
    case OPC_GETONE:
    case OPC_GETLAST:
+   case OPC_PREDT:
+   case OPC_PREDF:
       return true;
    default:
       return false;
@@ -2388,7 +2390,7 @@ INSTR0(END)
 INSTR0(CHSH)
 INSTR0(CHMASK)
 INSTR1NODST(PREDT)
-INSTR0(PREDF)
+INSTR1NODST(PREDF)
 INSTR0(PREDE)
 INSTR0(GETONE)
 INSTR0(GETLAST)

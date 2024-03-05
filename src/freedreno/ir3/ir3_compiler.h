@@ -226,6 +226,9 @@ struct ir3_compiler {
    /* True if braa/brao are available. */
    bool has_branch_and_or;
 
+   /* True if predt/predf/prede are supported. */
+   bool has_predication;
+
    /* MAX_COMPUTE_VARIABLE_GROUP_INVOCATIONS_ARB */
    uint32_t max_variable_workgroup_size;
 

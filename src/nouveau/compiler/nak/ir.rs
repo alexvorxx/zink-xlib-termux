@@ -350,12 +350,10 @@ impl<T> PerRegFile<T> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn values(&self) -> slice::Iter<T> {
         self.per_file.iter()
     }
 
-    #[allow(dead_code)]
     pub fn values_mut(&mut self) -> slice::IterMut<T> {
         self.per_file.iter_mut()
     }
@@ -420,7 +418,6 @@ impl SSAValue {
     }
 
     /// Returns true if this SSA value is equal to SSAValue::NONE
-    #[allow(dead_code)]
     pub fn is_none(&self) -> bool {
         self.packed == 0
     }
@@ -791,6 +788,7 @@ pub enum SrcRef {
 }
 
 impl SrcRef {
+    #[allow(dead_code)]
     pub fn is_alu(&self) -> bool {
         match self {
             SrcRef::Zero | SrcRef::Imm32(_) | SrcRef::CBuf(_) => true,
@@ -809,6 +807,7 @@ impl SrcRef {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_barrier(&self) -> bool {
         match self {
             SrcRef::SSA(ssa) => ssa.file() == RegFile::Bar,
@@ -1382,7 +1381,6 @@ macro_rules! impl_display_for_op {
     };
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum PredSetOp {
     And,
@@ -1681,7 +1679,6 @@ impl fmt::Display for FloatType {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum FRndMode {
     NearestEven,
@@ -1982,7 +1979,6 @@ impl fmt::Display for MemOrder {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum MemScope {
     CTA,
@@ -2150,7 +2146,6 @@ impl fmt::Display for AtomOp {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum InterpFreq {
     Pass,
@@ -2159,7 +2154,6 @@ pub enum InterpFreq {
     State,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum InterpLoc {
     Default,
@@ -3011,7 +3005,6 @@ impl DisplayOp for OpLop3 {
 }
 impl_display_for_op!(OpLop3);
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum ShflOp {
     Idx,

@@ -1629,7 +1629,12 @@ d3d12_init_screen(struct d3d12_screen *screen, IUnknown *adapter)
       return false;
    }
 
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
    screen->max_feature_level = feature_levels.MaxSupportedFeatureLevel;
+#else
+   screen->max_feature_level = D3D_FEATURE_LEVEL_1_0_GENERIC;
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
+
    screen->queue_type = (screen->max_feature_level >= D3D_FEATURE_LEVEL_11_0) ? D3D12_COMMAND_LIST_TYPE_DIRECT : D3D12_COMMAND_LIST_TYPE_COMPUTE;
 
 #ifdef HAVE_GALLIUM_D3D12_GRAPHICS

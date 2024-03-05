@@ -33,21 +33,23 @@ endif
 
 files_libd3d12 = files(
   'd3d12_batch.cpp',
-  'd3d12_blit.cpp',
+  'd3d12_copy.cpp',
   'd3d12_bufmgr.cpp',
-  'd3d12_context.cpp',
-  'd3d12_draw.cpp',
+  'd3d12_context_common.cpp',
   'd3d12_fence.cpp',
   'd3d12_format.c',
   'd3d12_residency.cpp',
   'd3d12_resource.cpp',
   'd3d12_resource_state.cpp',
   'd3d12_screen.cpp',
-  'd3d12_surface.cpp',
 )
 
 if with_gallium_d3d12_graphics
   files_libd3d12 += [
+    'd3d12_blit.cpp',
+    'd3d12_draw.cpp',
+    'd3d12_surface.cpp',
+    'd3d12_context_graphics.cpp',
     'd3d12_cmd_signature.cpp',
     'd3d12_compiler.cpp',
     'd3d12_compute_transforms.cpp',

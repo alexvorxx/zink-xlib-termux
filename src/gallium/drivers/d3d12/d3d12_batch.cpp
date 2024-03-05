@@ -313,12 +313,15 @@ d3d12_end_batch(struct d3d12_context *ctx, struct d3d12_batch *batch)
    batch->fence = d3d12_create_fence(screen);
 
 #ifdef HAVE_GALLIUM_D3D12_GRAPHICS
-   set_foreach_remove(batch->queries, entry) {
-      d3d12_query *query = (struct d3d12_query *)entry->key;
-      if (pipe_reference(&query->reference, nullptr))
-         d3d12_destroy_query(query);
-      else
-         query->fence_value = screen->fence_value;
+   /* batch->queries is NULL when no grfx supported */
+   if (screen->max_feature_level >= D3D_FEATURE_LEVEL_11_0) {
+      set_foreach_remove(batch->queries, entry) {
+         d3d12_query *query = (struct d3d12_query *)entry->key;
+         if (pipe_reference(&query->reference, nullptr))
+            d3d12_destroy_query(query);
+         else
+            query->fence_value = screen->fence_value;
+      }
    }
 #endif // HAVE_GALLIUM_D3D12_GRAPHICS
 

@@ -1307,6 +1307,7 @@ transfer_image_to_buf(struct d3d12_context *ctx,
    }
 
    struct pipe_resource *resolved_resource = nullptr;
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
    if (res->base.b.nr_samples > 1) {
       struct pipe_resource tmpl = res->base.b;
       tmpl.nr_samples = 0;
@@ -1327,7 +1328,7 @@ transfer_image_to_buf(struct d3d12_context *ctx,
       d3d12_blit(&ctx->base, &resolve_info);
       res = (struct d3d12_resource *)resolved_resource;
    }
-
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
 
    if (res->base.b.target == PIPE_TEXTURE_3D) {
       transfer_image_part_to_buf(ctx, res, staging_res, trans, resid,

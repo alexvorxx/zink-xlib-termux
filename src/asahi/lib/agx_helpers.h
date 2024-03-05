@@ -18,6 +18,11 @@
    for (unsigned _loop = 0; _loop < 1; ++_loop, ptr += AGX_##T##_LENGTH)       \
       agx_pack(ptr, T, cfg)
 
+#define agx_push_packed(ptr, src, T)                                           \
+   STATIC_ASSERT(sizeof(src) == AGX_##T##_LENGTH);                             \
+   memcpy(ptr, &src, sizeof(src));                                             \
+   ptr += sizeof(src);
+
 static inline enum agx_sampler_states
 agx_translate_sampler_state_count(unsigned count, bool extended)
 {

@@ -123,7 +123,8 @@ interpolate_channel(nir_builder *b, nir_intrinsic_instr *load, unsigned channel)
    sem.num_slots = 1;
 
    nir_def *coefficients = nir_load_coefficients_agx(
-      b, .component = nir_intrinsic_component(load) + channel,
+      b, nir_imm_int(b, 0),
+      .component = nir_intrinsic_component(load) + channel,
       .interp_mode = interp_mode_for_load(load), .io_semantics = sem);
 
    if (load->intrinsic == nir_intrinsic_load_input) {

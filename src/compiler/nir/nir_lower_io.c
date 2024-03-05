@@ -2737,6 +2737,7 @@ nir_get_io_offset_src_number(const nir_intrinsic_instr *instr)
    case nir_intrinsic_task_payload_atomic_swap:
    case nir_intrinsic_global_atomic:
    case nir_intrinsic_global_atomic_swap:
+   case nir_intrinsic_load_coefficients_agx:
       return 0;
    case nir_intrinsic_load_ubo:
    case nir_intrinsic_load_ssbo:

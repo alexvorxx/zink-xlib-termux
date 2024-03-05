@@ -1803,7 +1803,7 @@ intrinsic("load_from_texture_handle_agx", [2], 1, [],
 # Load the coefficient register corresponding to a given fragment shader input.
 # Coefficient registers are vec3s that are dotted with <x, y, 1> to interpolate
 # the input, where x and y are relative to the 32x32 supertile.
-intrinsic("load_coefficients_agx",
+intrinsic("load_coefficients_agx", [1],
           bit_sizes = [32],
           dest_comp = 3,
           indices=[COMPONENT, IO_SEMANTICS, INTERP_MODE],

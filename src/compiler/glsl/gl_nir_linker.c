@@ -1450,6 +1450,90 @@ validate_sampler_array_indexing(const struct gl_constants *consts,
    return true;
 }
 
+static nir_variable *
+find_frag_builtin(nir_shader *shader, bool is_sysval, unsigned sysval,
+                  unsigned varying)
+{
+
+   unsigned location = is_sysval ? sysval : varying;
+   nir_variable_mode mode =
+      is_sysval ? nir_var_system_value : nir_var_shader_in;
+
+   return nir_find_variable_with_location(shader, mode, location);
+}
+
+/**
+ * Verifies the invariance of built-in special variables.
+ */
+static bool
+validate_invariant_builtins(const struct gl_constants *consts,
+                            struct gl_shader_program *prog,
+                            const struct gl_linked_shader *vert,
+                            const struct gl_linked_shader *frag)
+{
+   const nir_variable *var_vert;
+   const nir_variable *var_frag;
+
+   if (!vert || !frag)
+      return true;
+
+   /*
+    * From OpenGL ES Shading Language 1.0 specification
+    * (4.6.4 Invariance and Linkage):
+    *     "The invariance of varyings that are declared in both the vertex and
+    *     fragment shaders must match. For the built-in special variables,
+    *     gl_FragCoord can only be declared invariant if and only if
+    *     gl_Position is declared invariant. Similarly gl_PointCoord can only
+    *     be declared invariant if and only if gl_PointSize is declared
+    *     invariant. It is an error to declare gl_FrontFacing as invariant.
+    *     The invariance of gl_FrontFacing is the same as the invariance of
+    *     gl_Position."
+    */
+   var_frag = find_frag_builtin(frag->Program->nir,
+                                consts->GLSLFragCoordIsSysVal,
+                                SYSTEM_VALUE_FRAG_COORD, VARYING_SLOT_POS);
+   if (var_frag && var_frag->data.invariant) {
+      var_vert = nir_find_variable_with_location(vert->Program->nir,
+                                                 nir_var_shader_out,
+                                                 VARYING_SLOT_POS);
+      if (var_vert && !var_vert->data.invariant) {
+         linker_error(prog,
+                      "fragment shader built-in `%s' has invariant qualifier, "
+                      "but vertex shader built-in `%s' lacks invariant qualifier\n",
+                      var_frag->name, var_vert->name);
+         return false;
+      }
+   }
+
+   var_frag = find_frag_builtin(frag->Program->nir,
+                                consts->GLSLPointCoordIsSysVal,
+                                SYSTEM_VALUE_POINT_COORD, VARYING_SLOT_PNTC);
+   if (var_frag && var_frag->data.invariant) {
+      var_vert = nir_find_variable_with_location(vert->Program->nir,
+                                                 nir_var_shader_out,
+                                                 VARYING_SLOT_PSIZ);
+      if (var_vert && !var_vert->data.invariant) {
+         linker_error(prog,
+                      "fragment shader built-in `%s' has invariant qualifier, "
+                      "but vertex shader built-in `%s' lacks invariant qualifier\n",
+                      var_frag->name, var_vert->name);
+         return false;
+      }
+   }
+
+   var_frag = find_frag_builtin(frag->Program->nir,
+                                consts->GLSLFrontFacingIsSysVal,
+                                SYSTEM_VALUE_FRONT_FACE, VARYING_SLOT_FACE);
+   if (var_frag && var_frag->data.invariant) {
+      linker_error(prog,
+                   "fragment shader built-in `%s' can not be declared as invariant\n",
+                   var_frag->name);
+      return false;
+   }
+
+   return true;
+}
+
 bool
 gl_nir_link_glsl(const struct gl_constants *consts,
                  const struct gl_extensions *exts,
@@ -1460,6 +1544,12 @@ gl_nir_link_glsl(const struct gl_constants *consts,
       return true;
 
    MESA_TRACE_FUNC();
+
+   if (prog->IsES && prog->GLSL_Version == 100)
+      if (!validate_invariant_builtins(consts, prog,
+            prog->_LinkedShaders[MESA_SHADER_VERTEX],
+            prog->_LinkedShaders[MESA_SHADER_FRAGMENT]))
+         return false;
 
    /* Check and validate stream emissions in geometry shaders */
    validate_geometry_shader_emissions(consts, prog);

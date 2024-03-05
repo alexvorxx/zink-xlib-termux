@@ -1823,8 +1823,8 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       NIR_PASS(_, nir, lower_vbo, key->attribs);
 
       if (key->hw) {
-         NIR_PASS(_, nir, agx_nir_lower_point_size,
-                  key->next.hw.fixed_point_size);
+         NIR_PASS(_, nir, agx_nir_lower_point_size, true);
+
          NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
                   nir_metadata_block_index | nir_metadata_dominance, NULL);
          NIR_PASS(_, nir, agx_nir_lower_uvs, &uvs);
@@ -1976,10 +1976,11 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
    }
 
    if (gs_copy) {
-      struct asahi_gs_shader_key *key = &key_->gs;
+      /* Replace the point size write if present, but do not insert a write:
+       * the GS rast program writes point size iff we have points.
+       */
+      NIR_PASS(_, gs_copy, agx_nir_lower_point_size, false);
 
-      /* TODO: deduplicate */
-      NIR_PASS(_, gs_copy, agx_nir_lower_point_size, key->fixed_point_size);
       NIR_PASS(_, gs_copy, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
                nir_metadata_block_index | nir_metadata_dominance, NULL);
 
@@ -2381,21 +2382,12 @@ agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
          ctx->stage[PIPE_SHADER_GEOMETRY].shader || ctx->in_tess))
       return false;
 
-   enum mesa_prim rasterized_prim =
-      rast_prim(ctx->batch->reduced_prim, ctx->rast->base.fill_front);
-
    struct asahi_vs_shader_key key = {
       .hw = !((ctx->stage[PIPE_SHADER_TESS_EVAL].shader && !ctx->in_tess) ||
               ctx->stage[PIPE_SHADER_GEOMETRY].shader),
    };
 
-   if (key.hw) {
-      /* If we are not rasterizing points, don't set fixed_point_size to
-       * eliminate the useless point size write.
-       */
-      key.next.hw.fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
-                                     rasterized_prim == MESA_PRIM_POINTS;
-   } else {
+   if (!key.hw) {
       key.next.sw.index_size_B = index_size_B;
    }
 
@@ -2441,15 +2433,8 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
          tgt->stride = gs->xfb_strides[i];
    }
 
-   enum mesa_prim rasterized_prim =
-      rast_prim(gs->gs_mode, ctx->rast->base.fill_front);
-
    struct asahi_gs_shader_key key = {
       .rasterizer_discard = ctx->rast->base.rasterizer_discard,
-
-      /* TODO: Deduplicate */
-      .fixed_point_size = !ctx->rast->base.point_size_per_vertex &&
-                          rasterized_prim == MESA_PRIM_POINTS,
    };
 
    return agx_update_shader(ctx, &ctx->gs, PIPE_SHADER_GEOMETRY,
@@ -5044,7 +5029,9 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       }
 
       if (IS_DIRTY(RS)) {
-         batch->uniforms.fixed_point_size = ctx->rast->base.point_size;
+         batch->uniforms.fixed_point_size =
+            ctx->rast->base.point_size_per_vertex ? 0.0
+                                                  : ctx->rast->base.point_size;
       }
 
       if (IS_DIRTY(QUERY)) {

@@ -1936,7 +1936,8 @@ system_value("api_sample_mask_agx", 1, bit_sizes=[16])
 # Loads the sample position array as fixed point packed into a 32-bit word
 system_value("sample_positions_agx", 1, bit_sizes=[32])
 
-# Loads the fixed-function glPointSize() value
+# Loads the fixed-function glPointSize() value, or zero if the
+# shader-supplied value should be used.
 system_value("fixed_point_size_agx", 1, bit_sizes=[32])
 
 # Bit mask of TEX locations that are replaced with point sprites

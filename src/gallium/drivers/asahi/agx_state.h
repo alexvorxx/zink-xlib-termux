@@ -486,10 +486,6 @@ struct asahi_vs_shader_key {
       struct {
          uint8_t index_size_B;
       } sw;
-
-      struct {
-         bool fixed_point_size;
-      } hw;
    } next;
 };
 
@@ -520,12 +516,9 @@ struct asahi_fs_shader_key {
 };
 
 struct asahi_gs_shader_key {
-   /* Rasterizer shader key */
-   bool fixed_point_size;
-
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;
-   bool padding[6];
+   bool padding[7];
 };
 static_assert(sizeof(struct asahi_gs_shader_key) == 8, "no holes");
 
@@ -980,7 +973,7 @@ void agx_set_cbuf_uniforms(struct agx_batch *batch,
 void agx_set_ssbo_uniforms(struct agx_batch *batch,
                            enum pipe_shader_type stage);
 
-bool agx_nir_lower_point_size(nir_shader *nir, bool fixed_point_size);
+bool agx_nir_lower_point_size(nir_shader *nir, bool insert_write);
 
 bool agx_nir_lower_sysvals(nir_shader *shader, enum pipe_shader_type desc_stage,
                            bool lower_draw_params);

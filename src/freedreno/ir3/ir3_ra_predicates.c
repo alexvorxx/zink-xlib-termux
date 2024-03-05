@@ -382,7 +382,7 @@ ra_block(struct ra_predicates_ctx *ctx, struct ir3_block *block)
 
          /* Different def in the same register, free it first. */
          if (cur_def->def)
-            free_reg(ctx, live, cur_def->def);
+            free_reg(ctx, live, get_def(cur_def));
 
          /* Reload the def in the required register right before the block's
           * terminator.

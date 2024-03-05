@@ -1413,6 +1413,10 @@ void v3dv_cmd_buffer_emit_pre_draw(struct v3dv_cmd_buffer *cmd_buffer,
 
 bool v3dv_job_allocate_tile_state(struct v3dv_job *job);
 
+void
+v3dv_setup_dynamic_render_pass(struct v3dv_cmd_buffer *cmd_buffer,
+                               const VkRenderingInfoKHR *pRenderingInfo);
+
 /* FIXME: only used on v3dv_cmd_buffer and v3dvx_cmd_buffer, perhaps move to a
  * cmd_buffer specific header?
  */
@@ -1472,6 +1476,13 @@ struct v3dv_barrier_state {
 struct v3dv_cmd_buffer_state {
    struct v3dv_render_pass *pass;
    struct v3dv_framebuffer *framebuffer;
+
+   /* VK_KHR_dynamic_rendering */
+   struct v3dv_render_pass dynamic_pass;
+   struct v3dv_subpass dynamic_subpass;
+   struct v3dv_render_pass_attachment dynamic_attachments[18 /* (8 color + D/S) x 2 (for resolves) */];
+   struct v3dv_subpass_attachment dynamic_subpass_attachments[18];
+
    VkRect2D render_area;
 
    /* Current job being recorded */

@@ -433,3 +433,180 @@ v3dv_subpass_area_is_tile_aligned(struct v3dv_device *device,
           (fb->has_edge_padding &&
            area->offset.y + area->extent.height >= fb->height));
 }
+
+static void
+setup_dynamic_attachment(struct v3dv_device *device,
+                         struct v3dv_render_pass_attachment *att,
+                         const VkRenderingAttachmentInfo *info,
+                         bool is_stencil,
+                         bool is_resolve)
+{
+   struct v3dv_image_view *view = v3dv_image_view_from_handle(info->imageView);
+
+   VkAttachmentLoadOp load_op, stencil_load_op;
+   VkAttachmentStoreOp store_op, stencil_store_op;
+
+   if (!is_stencil) {
+      stencil_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      stencil_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      if (!is_resolve) {
+         load_op = info->loadOp;
+         store_op = info->storeOp;
+      } else {
+         load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+         store_op = VK_ATTACHMENT_STORE_OP_STORE;
+      }
+   } else {
+      load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      if (!is_resolve) {
+         stencil_load_op = info->loadOp;
+         stencil_store_op = info->storeOp;
+      } else {
+         stencil_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+         stencil_store_op = VK_ATTACHMENT_STORE_OP_STORE;
+      }
+   }
+
+   att->desc = (VkAttachmentDescription2) {
+      .sType = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2,
+      .flags = 0,
+      .format = view->vk.format,
+      .samples = view->vk.image->samples,
+      .loadOp = load_op,
+      .storeOp = store_op,
+      .stencilLoadOp = stencil_load_op,
+      .stencilStoreOp = stencil_store_op,
+      .initialLayout = info->imageLayout,
+      .finalLayout = info->imageLayout,
+   };
+
+   if (is_resolve)
+      set_try_tlb_resolve(device, att);
+}
+
+void
+v3dv_setup_dynamic_render_pass(struct v3dv_cmd_buffer *cmd_buffer,
+                               const VkRenderingInfoKHR *info)
+{
+   struct v3dv_device *device = cmd_buffer->device;
+   struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
+
+   struct v3dv_render_pass *pass = &state->dynamic_pass;
+   struct v3dv_subpass *subpass = &state->dynamic_subpass;
+   struct v3dv_render_pass_attachment *pass_attachments =
+      &state->dynamic_attachments[0];
+   struct v3dv_subpass_attachment *subpass_attachments =
+      &state->dynamic_subpass_attachments[0];
+
+   memset(pass, 0, sizeof(*pass));
+   memset(subpass, 0, sizeof(*subpass));
+   memset(pass_attachments, 0, sizeof(state->dynamic_subpass_attachments));
+   memset(subpass_attachments, 0, sizeof(state->dynamic_subpass_attachments));
+
+   vk_object_base_init(&device->vk, (struct vk_object_base *) pass,
+                       VK_OBJECT_TYPE_RENDER_PASS);
+
+   pass->attachments = pass_attachments;
+   pass->subpass_attachments = subpass_attachments;
+
+   subpass->view_mask = info->viewMask;
+   subpass->color_count = info->colorAttachmentCount;
+   subpass->color_attachments = &subpass_attachments[0];
+   subpass->resolve_attachments = &subpass_attachments[subpass->color_count];
+
+   pass->multiview_enabled = info->viewMask != 0;
+   pass->subpass_count = 1;
+   pass->subpasses = subpass;
+
+   int a = 0;
+   for (int i = 0; i < info->colorAttachmentCount; i++) {
+      struct v3dv_render_pass_attachment *att = &pass->attachments[a];
+      const VkRenderingAttachmentInfo *att_info = &info->pColorAttachments[i];
+
+      if (att_info->imageView == VK_NULL_HANDLE) {
+         subpass->color_attachments[i].attachment = VK_ATTACHMENT_UNUSED;
+         subpass->resolve_attachments[i].attachment = VK_ATTACHMENT_UNUSED;
+         continue;
+      }
+
+      setup_dynamic_attachment(device, att, att_info, false, false);
+      subpass->color_attachments[i].attachment = a++;
+      subpass->color_attachments[i].layout = att_info->imageLayout;
+
+      if (att_info->resolveMode != VK_RESOLVE_MODE_NONE) {
+         struct v3dv_render_pass_attachment *resolve_att = &pass->attachments[a];
+         setup_dynamic_attachment(device, resolve_att, att_info, false, true);
+         subpass->resolve_attachments[i].attachment = a++;
+         subpass->resolve_attachments[i].layout = att_info->resolveImageLayout;
+      } else {
+         subpass->resolve_attachments[i].attachment = VK_ATTACHMENT_UNUSED;
+      }
+   }
+
+   bool has_depth = info->pDepthAttachment &&
+                    info->pDepthAttachment->imageView != VK_NULL_HANDLE;
+   bool has_stencil = info->pStencilAttachment &&
+                      info->pStencilAttachment->imageView != VK_NULL_HANDLE;
+   if (has_depth || has_stencil) {
+      struct v3dv_render_pass_attachment *att = &pass->attachments[a];
+      subpass->ds_attachment.attachment = a++;
+
+      bool has_depth_resolve = false;
+      bool has_stencil_resolve = false;
+
+      if (has_depth) {
+         setup_dynamic_attachment(device, att, info->pDepthAttachment,
+                                  false, false);
+         subpass->ds_attachment.layout = info->pDepthAttachment->imageLayout;
+         has_depth_resolve =
+            info->pDepthAttachment->resolveMode != VK_RESOLVE_MODE_NONE;
+      }
+
+      if (has_stencil) {
+         if (has_depth) {
+            att->desc.stencilLoadOp = info->pStencilAttachment->loadOp;
+            att->desc.stencilStoreOp = info->pStencilAttachment->storeOp;
+         } else {
+            setup_dynamic_attachment(device, att, info->pStencilAttachment,
+                                     true, false);
+            subpass->ds_attachment.layout =
+               info->pStencilAttachment->imageLayout;
+         }
+         has_stencil_resolve =
+            info->pStencilAttachment->resolveMode != VK_RESOLVE_MODE_NONE;
+      }
+
+      if (has_depth_resolve || has_stencil_resolve) {
+         struct v3dv_render_pass_attachment *att = &pass->attachments[a];
+         subpass->ds_resolve_attachment.attachment = a++;
+         if (has_depth_resolve) {
+            setup_dynamic_attachment(device, att, info->pDepthAttachment,
+                                     false, true);
+            subpass->ds_resolve_attachment.layout =
+               info->pDepthAttachment->resolveImageLayout;
+            subpass->resolve_depth = true;
+         }
+         if (has_stencil_resolve) {
+            if (has_depth_resolve) {
+               att->desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+               att->desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+            } else {
+               setup_dynamic_attachment(device, att, info->pStencilAttachment,
+                                        true, true);
+               subpass->ds_resolve_attachment.layout =
+                  info->pStencilAttachment->resolveImageLayout;
+            }
+            subpass->resolve_stencil = true;
+         }
+      } else {
+         subpass->ds_resolve_attachment.attachment = VK_ATTACHMENT_UNUSED;
+      }
+   } else {
+      subpass->ds_attachment.attachment = VK_ATTACHMENT_UNUSED;
+   }
+
+   check_do_depth_stencil_clear_with_draw(device, pass, subpass);
+
+   pass->attachment_count = a;
+}

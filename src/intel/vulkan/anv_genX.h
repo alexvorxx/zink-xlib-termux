@@ -302,6 +302,10 @@ genX(emit_breakpoint)(struct anv_batch *batch,
       genX(batch_emit_breakpoint)(batch, device, emit_before_draw);
 }
 
+void
+genX(cmd_buffer_begin_companion)(struct anv_cmd_buffer *buffer,
+                                 VkCommandBufferLevel level);
+
 struct anv_state
 genX(cmd_buffer_begin_companion_rcs_syncpoint)(struct anv_cmd_buffer *cmd_buffer);
 

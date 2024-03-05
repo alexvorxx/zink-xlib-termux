@@ -53,6 +53,29 @@ struct agx_varyings_vs {
    unsigned nr_clip_dists;
 };
 
+struct agx_cf_binding {
+   /* Base coefficient register */
+   unsigned cf_base;
+
+   /* Slot being bound */
+   gl_varying_slot slot;
+
+   /* First component bound.
+    *
+    * Must be 2 (Z) or 3 (W) if slot == VARYING_SLOT_POS.
+    */
+   unsigned offset : 2;
+
+   /* Number of components bound */
+   unsigned count : 3;
+
+   /* Is smooth shading enabled? If false, flat shading is used */
+   bool smooth : 1;
+
+   /* Perspective correct interpolation */
+   bool perspective : 1;
+};
+
 /* Conservative bound, * 4 due to offsets (TODO: maybe worth eliminating
  * coefficient register aliasing?)
  */
@@ -69,28 +92,7 @@ struct agx_varyings_fs {
    bool reads_z;
 
    /* Coefficient register bindings */
-   struct {
-      /* Base coefficient register */
-      unsigned cf_base;
-
-      /* Slot being bound */
-      gl_varying_slot slot;
-
-      /* First component bound.
-       *
-       * Must be 2 (Z) or 3 (W) if slot == VARYING_SLOT_POS.
-       */
-      unsigned offset : 2;
-
-      /* Number of components bound */
-      unsigned count : 3;
-
-      /* Is smooth shading enabled? If false, flat shading is used */
-      bool smooth : 1;
-
-      /* Perspective correct interpolation */
-      bool perspective : 1;
-   } bindings[AGX_MAX_CF_BINDINGS];
+   struct agx_cf_binding bindings[AGX_MAX_CF_BINDINGS];
 };
 
 union agx_varyings {

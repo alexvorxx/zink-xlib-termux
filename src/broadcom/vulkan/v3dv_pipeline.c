@@ -1122,8 +1122,47 @@ enable_line_smooth(uint8_t topology,
 }
 
 static void
+v3d_fs_key_set_color_attachment(struct v3d_fs_key *key,
+                                const struct v3dv_pipeline_stage *p_stage,
+                                uint32_t index,
+                                VkFormat fb_format)
+{
+   key->cbufs |= 1 << index;
+
+   enum pipe_format fb_pipe_format = vk_format_to_pipe_format(fb_format);
+
+   /* If logic operations are enabled then we might emit color reads and we
+    * need to know the color buffer format and swizzle for that
+    */
+   if (key->logicop_func != PIPE_LOGICOP_COPY) {
+      /* Framebuffer formats should be single plane */
+      assert(vk_format_get_plane_count(fb_format) == 1);
+      key->color_fmt[index].format = fb_pipe_format;
+      memcpy(key->color_fmt[index].swizzle,
+             v3dv_get_format_swizzle(p_stage->pipeline->device, fb_format, 0),
+             sizeof(key->color_fmt[index].swizzle));
+   }
+
+   const struct util_format_description *desc =
+      vk_format_description(fb_format);
+
+   if (desc->channel[0].type == UTIL_FORMAT_TYPE_FLOAT &&
+       desc->channel[0].size == 32) {
+      key->f32_color_rb |= 1 << index;
+   }
+
+   if (p_stage->nir->info.fs.untyped_color_outputs) {
+      if (util_format_is_pure_uint(fb_pipe_format))
+         key->uint_color_rb |= 1 << index;
+      else if (util_format_is_pure_sint(fb_pipe_format))
+         key->int_color_rb |= 1 << index;
+   }
+}
+
+static void
 pipeline_populate_v3d_fs_key(struct v3d_fs_key *key,
                              const VkGraphicsPipelineCreateInfo *pCreateInfo,
+                             const struct vk_render_pass_state *rendering_info,
                              const struct v3dv_pipeline_stage *p_stage,
                              bool has_geometry_shader,
                              uint32_t ucp_enables)
@@ -1192,48 +1231,11 @@ pipeline_populate_v3d_fs_key(struct v3d_fs_key *key,
     */
    key->swap_color_rb = 0;
 
-   const struct v3dv_render_pass *pass =
-      v3dv_render_pass_from_handle(pCreateInfo->renderPass);
-   const struct v3dv_subpass *subpass = p_stage->pipeline->subpass;
-   for (uint32_t i = 0; i < subpass->color_count; i++) {
-      const uint32_t att_idx = subpass->color_attachments[i].attachment;
-      if (att_idx == VK_ATTACHMENT_UNUSED)
+   for (uint32_t i = 0; i < rendering_info->color_attachment_count; i++) {
+      if (rendering_info->color_attachment_formats[i] == VK_FORMAT_UNDEFINED)
          continue;
-
-      key->cbufs |= 1 << i;
-
-      VkFormat fb_format = pass->attachments[att_idx].desc.format;
-      enum pipe_format fb_pipe_format = vk_format_to_pipe_format(fb_format);
-
-      /* If logic operations are enabled then we might emit color reads and we
-       * need to know the color buffer format and swizzle for that
-       *
-       */
-      if (key->logicop_func != PIPE_LOGICOP_COPY) {
-         /* Framebuffer formats should be single plane */
-         assert(vk_format_get_plane_count(fb_format) == 1);
-         key->color_fmt[i].format = fb_pipe_format;
-         memcpy(key->color_fmt[i].swizzle,
-                v3dv_get_format_swizzle(p_stage->pipeline->device,
-                                        fb_format,
-                                        0),
-                sizeof(key->color_fmt[i].swizzle));
-      }
-
-      const struct util_format_description *desc =
-         vk_format_description(fb_format);
-
-      if (desc->channel[0].type == UTIL_FORMAT_TYPE_FLOAT &&
-          desc->channel[0].size == 32) {
-         key->f32_color_rb |= 1 << i;
-      }
-
-      if (p_stage->nir->info.fs.untyped_color_outputs) {
-         if (util_format_is_pure_uint(fb_pipe_format))
-            key->uint_color_rb |= 1 << i;
-         else if (util_format_is_pure_sint(fb_pipe_format))
-            key->int_color_rb |= 1 << i;
-      }
+      v3d_fs_key_set_color_attachment(key, p_stage, i,
+                                      rendering_info->color_attachment_formats[i]);
    }
 }
 
@@ -1951,8 +1953,8 @@ pipeline_compile_fragment_shader(struct v3dv_pipeline *pipeline,
       pipeline->stages[BROADCOM_SHADER_GEOMETRY];
 
    struct v3d_fs_key key;
-   pipeline_populate_v3d_fs_key(&key, pCreateInfo, p_stage_fs,
-                                p_stage_gs != NULL,
+   pipeline_populate_v3d_fs_key(&key, pCreateInfo, &pipeline->rendering_info,
+                                p_stage_fs, p_stage_gs != NULL,
                                 get_ucp_enable_mask(p_stage_vs));
 
    if (key.is_points) {
@@ -2011,17 +2013,14 @@ pipeline_populate_graphics_key(struct v3dv_pipeline *pipeline,
       key->sample_alpha_to_one = ms_info->alphaToOneEnable;
    }
 
-   const struct v3dv_render_pass *pass =
-      v3dv_render_pass_from_handle(pCreateInfo->renderPass);
-   const struct v3dv_subpass *subpass = pipeline->subpass;
-   for (uint32_t i = 0; i < subpass->color_count; i++) {
-      const uint32_t att_idx = subpass->color_attachments[i].attachment;
-      if (att_idx == VK_ATTACHMENT_UNUSED)
+   struct vk_render_pass_state *ri = &pipeline->rendering_info;
+   for (uint32_t i = 0; i < ri->color_attachment_count; i++) {
+      if (ri->color_attachment_formats[i] == VK_FORMAT_UNDEFINED)
          continue;
 
       key->cbufs |= 1 << i;
 
-      VkFormat fb_format = pass->attachments[att_idx].desc.format;
+      VkFormat fb_format = ri->color_attachment_formats[i];
       enum pipe_format fb_pipe_format = vk_format_to_pipe_format(fb_format);
 
       /* If logic operations are enabled then we might emit color reads and we
@@ -2057,8 +2056,7 @@ pipeline_populate_graphics_key(struct v3dv_pipeline *pipeline,
       }
    }
 
-   assert(pipeline->subpass);
-   key->has_multiview = pipeline->subpass->view_mask != 0;
+   key->has_multiview = ri->view_mask != 0;
 }
 
 static void
@@ -2110,7 +2108,7 @@ v3dv_pipeline_shared_data_new_empty(const unsigned char sha1_key[20],
       if (stage == BROADCOM_SHADER_GEOMETRY &&
           !pipeline->stages[BROADCOM_SHADER_GEOMETRY]) {
          /* We always inject a custom GS if we have multiview */
-         if (!pipeline->subpass->view_mask)
+         if (!pipeline->rendering_info.view_mask)
             continue;
       }
 
@@ -2469,9 +2467,10 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
    /* If multiview is enabled, we inject a custom passthrough geometry shader
     * to broadcast draw calls to the appropriate views.
     */
-   assert(!pipeline->subpass->view_mask ||
+   const uint32_t view_mask = pipeline->rendering_info.view_mask;
+   assert(!view_mask ||
           (!pipeline->has_gs && !pipeline->stages[BROADCOM_SHADER_GEOMETRY]));
-   if (pipeline->subpass->view_mask) {
+   if (view_mask) {
       if (!pipeline_add_multiview_gs(pipeline, cache, pAllocator))
          return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
@@ -2566,7 +2565,8 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
 
    /* We should have got all the variants or no variants from the cache */
    assert(!pipeline->shared_data->variants[BROADCOM_SHADER_FRAGMENT]);
-   vk_result = pipeline_compile_fragment_shader(pipeline, pAllocator, pCreateInfo);
+   vk_result = pipeline_compile_fragment_shader(pipeline, pAllocator,
+                                                pCreateInfo);
    if (vk_result != VK_SUCCESS)
       return vk_result;
 
@@ -2804,18 +2804,8 @@ enable_depth_bias(struct v3dv_pipeline *pipeline,
    /* Check the depth/stencil attachment description for the subpass used with
     * this pipeline.
     */
-   assert(pipeline->pass && pipeline->subpass);
-   struct v3dv_render_pass *pass = pipeline->pass;
-   struct v3dv_subpass *subpass = pipeline->subpass;
-
-   if (subpass->ds_attachment.attachment == VK_ATTACHMENT_UNUSED)
-      return;
-
-   assert(subpass->ds_attachment.attachment < pass->attachment_count);
-   struct v3dv_render_pass_attachment *att =
-      &pass->attachments[subpass->ds_attachment.attachment];
-
-   if (att->desc.format == VK_FORMAT_D16_UNORM)
+   VkFormat ds_format = pipeline->rendering_info.depth_attachment_format;
+   if (ds_format == VK_FORMAT_D16_UNORM)
       pipeline->depth_bias.is_z16 = true;
 
    pipeline->depth_bias.enabled = true;
@@ -3132,9 +3122,7 @@ graphics_pipeline_create(VkDevice _device,
    if (pipeline == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   result = pipeline_init(pipeline, device, cache,
-                          pCreateInfo,
-                          pAllocator);
+   result = pipeline_init(pipeline, device, cache, pCreateInfo, pAllocator);
 
    if (result != VK_SUCCESS) {
       v3dv_destroy_pipeline(pipeline, device, pAllocator);

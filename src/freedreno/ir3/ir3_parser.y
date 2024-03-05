@@ -901,8 +901,8 @@ cat0_instr:        T_OP_NOP        { new_instr(OPC_NOP); }
 |                  T_OP_DBG        { new_instr(OPC_DBG); }
 |                  T_OP_SHPS       { new_instr(OPC_SHPS); }     cat0_immed
 |                  T_OP_SHPE       { new_instr(OPC_SHPE); }
-|                  T_OP_PREDT      { new_instr(OPC_PREDT); }    cat0_src1
-|                  T_OP_PREDF      { new_instr(OPC_PREDF); }    cat0_src1
+|                  T_OP_PREDT      { new_instr(OPC_PREDT); }
+|                  T_OP_PREDF      { new_instr(OPC_PREDF); }
 |                  T_OP_PREDE      { new_instr(OPC_PREDE); }
 |                  T_OP_GETLAST '.' T_W { new_instr(OPC_GETLAST); }   cat0_immed
 

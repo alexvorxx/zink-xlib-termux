@@ -78,8 +78,8 @@ static const struct test {
    INSTR_6XX(00804040_00000003, "braa p0.x, p0.y, #3"),
    INSTR_6XX(07820000_00000000, "prede"),
    INSTR_6XX(00800063_0000001e, "brac.3 #30"),
-   INSTR_6XX(06820000_00000000, "predt p0.x"),
-   INSTR_6XX(07020000_00000000, "predf p0.x"),
+   INSTR_6XX(06820000_00000000, "predt"),
+   INSTR_6XX(07020000_00000000, "predf"),
    INSTR_6XX(07820000_00000000, "prede"),
 
    /* cat1 */

@@ -1623,9 +1623,6 @@ system_value("intersection_opaque_amd", 1, bit_sizes=[1])
 # pointer to the next resume shader
 system_value("resume_shader_address_amd", 1, bit_sizes=[64], indices=[CALL_IDX])
 
-# Scratch base of callable stack for ray tracing.
-system_value("rt_dynamic_callable_stack_base_amd", 1)
-
 # Ray Tracing Traversal inputs
 system_value("sbt_offset_amd", 1)
 system_value("sbt_stride_amd", 1)

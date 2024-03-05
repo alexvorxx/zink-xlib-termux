@@ -1579,7 +1579,7 @@ for (name, num) in MTBUF:
     insn(name, num, Format.MTBUF, InstrClass.VMem)
 
 
-IMAGE = {
+MIMG = {
    ("image_load",                op(0x00)),
    ("image_load_mip",            op(0x01)),
    ("image_load_pck",            op(0x02)),
@@ -1592,13 +1592,7 @@ IMAGE = {
    ("image_store_mip_pck",       op(0x0b, gfx11=0x09)),
    ("image_get_resinfo",         op(0x0e, gfx11=0x17)),
    ("image_get_lod",             op(0x60, gfx11=0x38)),
-}
-for (name, num) in IMAGE:
-   insn(name, num, Format.MIMG, InstrClass.VMem)
-
-insn("image_msaa_load", op(gfx10=0x80, gfx11=0x18), Format.MIMG, InstrClass.VMem) #GFX10.3+
-
-IMAGE_ATOMIC = {
+   ("image_msaa_load",           op(gfx10=0x80, gfx11=0x18)), #GFX10.3+
    ("image_atomic_swap",         op(0x0f, gfx8=0x10, gfx10=0x0f, gfx11=0x0a)),
    ("image_atomic_cmpswap",      op(0x10, gfx8=0x11, gfx10=0x10, gfx11=0x0b)),
    ("image_atomic_add",          op(0x11, gfx8=0x12, gfx10=0x11, gfx11=0x0c)),
@@ -1616,11 +1610,6 @@ IMAGE_ATOMIC = {
    ("image_atomic_fcmpswap",     op(0x1d, gfx8=-1, gfx10=0x1d, gfx11=-1)),
    ("image_atomic_fmin",         op(0x1e, gfx8=-1, gfx10=0x1e, gfx11=-1)),
    ("image_atomic_fmax",         op(0x1f, gfx8=-1, gfx10=0x1f, gfx11=-1)),
-}
-for (name, num) in IMAGE_ATOMIC:
-   insn(name, num, Format.MIMG, InstrClass.VMem, is_atomic = True)
-
-IMAGE_SAMPLE = {
    ("image_sample",              op(0x20, gfx11=0x1b)),
    ("image_sample_cl",           op(0x21, gfx11=0x40)),
    ("image_sample_d",            op(0x22, gfx11=0x1c)),
@@ -1661,11 +1650,6 @@ IMAGE_SAMPLE = {
    ("image_sample_cd_cl_o",      op(0x6d, gfx11=-1)),
    ("image_sample_c_cd_o",       op(0x6e, gfx11=-1)),
    ("image_sample_c_cd_cl_o",    op(0x6f, gfx11=-1)),
-}
-for (name, num) in IMAGE_SAMPLE:
-   insn(name, num, Format.MIMG, InstrClass.VMem)
-
-IMAGE_SAMPLE_G16 = {
    ("image_sample_d_g16",        op(gfx10=0xa2, gfx11=0x39)),
    ("image_sample_d_cl_g16",     op(gfx10=0xa3, gfx11=0x5f)),
    ("image_sample_c_d_g16",      op(gfx10=0xaa, gfx11=0x3a)),
@@ -1674,11 +1658,6 @@ IMAGE_SAMPLE_G16 = {
    ("image_sample_d_cl_o_g16",   op(gfx10=0xb3, gfx11=0x55)),
    ("image_sample_c_d_o_g16",    op(gfx10=0xba, gfx11=0x3c)),
    ("image_sample_c_d_cl_o_g16", op(gfx10=0xbb, gfx11=0x56)),
-}
-for (name, num) in IMAGE_SAMPLE_G16:
-   insn(name, num, Format.MIMG, InstrClass.VMem)
-
-IMAGE_GATHER4 = {
    #("image_gather4h",            op(gfx9=0x42, gfx10=0x61, gfx11=0x90)), VEGA only?
    #("image_gather4h_pck",        op(gfx9=0x4a, gfx10=-1)), VEGA only?
    #("image_gather8h_pck",        op(gfx9=0x4b, gfx10=-1)), VEGA only?
@@ -1706,12 +1685,11 @@ IMAGE_GATHER4 = {
    ("image_gather4_c_b_o",       op(0x5d, gfx11=-1)),
    ("image_gather4_c_b_cl_o",    op(0x5e, gfx11=-1)),
    ("image_gather4_c_lz_o",      op(0x5f, gfx11=0x37)),
+   ("image_bvh_intersect_ray",   op(gfx10=0xe6, gfx11=0x19)),
+   ("image_bvh64_intersect_ray", op(gfx10=0xe7, gfx11=0x1a)),
 }
-for (name, num) in IMAGE_GATHER4:
-   insn(name, num, Format.MIMG, InstrClass.VMem)
-
-insn("image_bvh_intersect_ray", op(gfx10=0xe6, gfx11=0x19), Format.MIMG, InstrClass.VMem)
-insn("image_bvh64_intersect_ray", op(gfx10=0xe7, gfx11=0x1a), Format.MIMG, InstrClass.VMem)
+for (name, num) in MIMG:
+   insn(name, num, Format.MIMG, InstrClass.VMem, is_atomic = "atomic" in name)
 
 FLAT = {
    ("flat_load_ubyte",          op(0x08, gfx8=0x10, gfx10=0x08, gfx11=0x10)),

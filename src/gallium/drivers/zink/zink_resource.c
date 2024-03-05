@@ -1185,10 +1185,10 @@ create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
    VkExternalMemoryBufferCreateInfo embci;
    VkMemoryRequirements reqs = {0};
 
-   if (alloc_info->user_mem) {
-      embci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+   embci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+   if (alloc_info->external) {
       embci.pNext = bci.pNext;
-      embci.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      embci.handleTypes = alloc_info->export_types;
       bci.pNext = &embci;
    }
 
@@ -1483,7 +1483,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       .whandle = whandle,
       .need_dedicated = false,
       .external = 0,
-      .export_types = ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT,
+      .export_types = user_mem ? VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT : ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT,
       .shared = templ->bind & PIPE_BIND_SHARED,
       .user_mem = user_mem
    };

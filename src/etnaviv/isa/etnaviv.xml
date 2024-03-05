@@ -132,7 +132,6 @@ SPDX-License-Identifier: MIT
 	<field name="SAT" pos="11" type="bool" display=".sat"/>
 
 	<field name="TYPE_BIT2" pos="53" type="uint"/>
-	<pattern low="65" high="66">00</pattern>
 	<field name="TYPE_BIT01" low="94" high="95" type="int"/>
 
 	<derived name="TYPE" type="#type">
@@ -290,7 +289,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->
@@ -327,7 +326,7 @@ SPDX-License-Identifier: MIT
 	<pattern low="54" high="61">00000000</pattern> <!-- SRC0_SWIZ -->
 	<pattern pos="62">0</pattern> <!-- SRC0_NEG -->
 	<pattern pos="63">0</pattern> <!-- SRC0_ABS -->
-	<pattern pos="64">0</pattern> <!-- SRC0_AMODE -->
+	<pattern low="64" high="66">000</pattern> <!-- SRC0_AMODE -->
 	<pattern low="67" high="69">000</pattern> <!-- SRC0_RGROUP -->
 
 	<!-- SRC1 -->
@@ -373,7 +372,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->
@@ -410,7 +409,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->
@@ -443,7 +442,7 @@ SPDX-License-Identifier: MIT
 	<pattern low="54" high="61">00000000</pattern> <!-- SRC0_SWIZ -->
 	<pattern pos="62">0</pattern> <!-- SRC0_NEG -->
 	<pattern pos="63">0</pattern> <!-- SRC0_ABS -->
-	<pattern pos="64">0</pattern> <!-- SRC0_AMODE -->
+	<pattern low="64" high="66">000</pattern> <!-- SRC0_AMODE -->
 	<pattern low="67" high="69">000</pattern> <!-- SRC0_RGROUP -->
 
 	<!-- SRC1 -->
@@ -480,7 +479,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->
@@ -517,7 +516,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->
@@ -552,7 +551,7 @@ SPDX-License-Identifier: MIT
 	<pattern low="54" high="61">00000000</pattern> <!-- SRC0_SWIZ -->
 	<pattern pos="62">0</pattern> <!-- SRC0_NEG -->
 	<pattern pos="63">0</pattern> <!-- SRC0_ABS -->
-	<pattern pos="64">0</pattern> <!-- SRC0_AMODE -->
+	<pattern low="64" high="66">000</pattern> <!-- SRC0_AMODE -->
 	<pattern low="67" high="69">000</pattern> <!-- SRC0_RGROUP -->
 
 	<!-- SRC1 -->
@@ -591,7 +590,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->
@@ -645,7 +644,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->
@@ -680,7 +679,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->
@@ -725,8 +724,7 @@ SPDX-License-Identifier: MIT
 
 	<pattern low="43" high="52">0000000000</pattern>
 	<pattern low="54" high="63">0000000000</pattern>
-
-	<pattern pos="64">0</pattern>
+	<pattern low="64" high="66">000</pattern>
 	<pattern low="67" high="79">0000000000000</pattern>
 	<pattern low="81" high="93">0000000000000</pattern>
 	<pattern low="96" high="98">000</pattern>
@@ -745,7 +743,7 @@ SPDX-License-Identifier: MIT
                <param name="SRC0_AMODE" as="SRC_AMODE"/>
                <param name="SRC0_RGROUP" as="SRC_RGROUP"/>
        </field>
-       <field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+       <field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
        <field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
        <!-- SRC1 -->
@@ -808,7 +806,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->
@@ -874,7 +872,7 @@ SPDX-License-Identifier: MIT
 		<param name="SRC0_AMODE" as="SRC_AMODE"/>
 		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
 	</field>
-	<field name="SRC0_AMODE" pos="64" type="#reg_addressing_mode"/>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
 	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
 	<!-- SRC1 -->

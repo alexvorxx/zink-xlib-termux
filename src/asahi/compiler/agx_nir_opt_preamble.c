@@ -241,25 +241,35 @@ instr_cost(nir_instr *instr, const void *data)
 static float
 rewrite_cost(nir_def *def, const void *data)
 {
-   bool mov_needed = false;
+   bool mov_needed = false, vectorizable = true;
    nir_foreach_use(use, def) {
       nir_instr *parent_instr = nir_src_parent_instr(use);
-      if (parent_instr->type != nir_instr_type_alu) {
+      if (parent_instr->type == nir_instr_type_tex) {
+         /* TODO: Maybe check the source index, but biases can be uniform */
+         break;
+      } else if (parent_instr->type == nir_instr_type_phi) {
+         /* Assume we'd eat a move anyway */
+      } else if (parent_instr->type != nir_instr_type_alu) {
          mov_needed = true;
+         vectorizable = false;
          break;
       } else {
          nir_alu_instr *alu = nir_instr_as_alu(parent_instr);
          if (alu->op == nir_op_vec2 || alu->op == nir_op_vec3 ||
-             alu->op == nir_op_vec4 || alu->op == nir_op_mov) {
+             alu->op == nir_op_vec4) {
             mov_needed = true;
             break;
+         } else if (alu->op == nir_op_mov) {
+            mov_needed = true;
+            vectorizable = false;
          } else {
             /* Assume for non-moves that the const is folded into the src */
          }
       }
    }
 
-   return mov_needed ? ((float)(def->num_components * def->bit_size) / 32.0)
+   return mov_needed ? ((float)(def->num_components * def->bit_size) /
+                        (vectorizable ? 32.0 : 16.0))
                      : 0;
 }
 

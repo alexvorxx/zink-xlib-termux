@@ -4505,3 +4505,103 @@ v3dv_CmdDispatchIndirect(VkCommandBuffer commandBuffer,
    cmd_buffer_emit_pre_dispatch(cmd_buffer);
    cmd_buffer_dispatch_indirect(cmd_buffer, buffer, offset);
 }
+
+VKAPI_ATTR void VKAPI_CALL
+v3dv_CmdBeginRenderingKHR(VkCommandBuffer commandBuffer,
+                          const VkRenderingInfoKHR *info)
+{
+   V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
+
+   v3dv_setup_dynamic_render_pass(cmd_buffer, info);
+   v3dv_return_if_oom(cmd_buffer, NULL);
+
+   v3dv_setup_dynamic_framebuffer(cmd_buffer, info);
+   v3dv_return_if_oom(cmd_buffer, NULL);
+
+   /* FIXME: handle resume/suspend */
+   assert(!info->flags);
+
+   struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
+   state->pass = &state->dynamic_pass;
+   state->framebuffer = state->dynamic_framebuffer;
+
+   VkRenderPassBeginInfo begin_info = {
+      .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+      .pNext = NULL,
+      .renderPass = v3dv_render_pass_to_handle(state->pass),
+      .framebuffer = v3dv_framebuffer_to_handle(state->framebuffer),
+      .renderArea = info->renderArea,
+   };
+
+   VkClearValue *clear_values = NULL;
+   if (state->pass->attachment_count > 0) {
+      clear_values =
+         vk_alloc(&cmd_buffer->device->vk.alloc,
+                  state->pass->attachment_count * sizeof(VkClearValue), 8,
+                  VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+      if (!clear_values) {
+            v3dv_flag_oom(cmd_buffer, NULL);
+            return;
+      }
+   }
+
+   for (int i = 0; i < info->colorAttachmentCount; i++) {
+      if (!info->pColorAttachments[i].imageView)
+         continue;
+
+      uint32_t a = cmd_buffer->state.dynamic_subpass.color_attachments[i].attachment;
+      assert(a < state->pass->attachment_count);
+      clear_values[a] = info->pColorAttachments[i].clearValue;
+   }
+
+   if (info->pDepthAttachment &&
+       info->pDepthAttachment->imageView != VK_NULL_HANDLE) {
+      uint32_t a = cmd_buffer->state.dynamic_subpass.ds_attachment.attachment;
+      assert(a < state->pass->attachment_count);
+      clear_values[a].depthStencil.depth =
+         info->pDepthAttachment->clearValue.depthStencil.depth;
+   }
+
+   if (info->pStencilAttachment &&
+       info->pStencilAttachment->imageView != VK_NULL_HANDLE) {
+      uint32_t a = cmd_buffer->state.dynamic_subpass.ds_attachment.attachment;
+      assert(a < state->pass->attachment_count);
+      clear_values[a].depthStencil.stencil =
+         info->pStencilAttachment->clearValue.depthStencil.stencil;
+   }
+
+   begin_info.clearValueCount = state->pass->attachment_count;
+   begin_info.pClearValues = clear_values;
+
+   cmd_buffer_ensure_render_pass_attachment_state(cmd_buffer);
+   v3dv_return_if_oom(cmd_buffer, NULL);
+   cmd_buffer_init_render_pass_attachment_state(cmd_buffer, &begin_info);
+
+   if (clear_values)
+      vk_free(&cmd_buffer->vk.pool->alloc, clear_values);
+
+   state->render_area = info->renderArea;
+   constraint_clip_window_to_render_area(state);
+
+   v3dv_cmd_buffer_subpass_start(cmd_buffer, 0);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+v3dv_CmdEndRenderingKHR(VkCommandBuffer commandBuffer)
+{
+   V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
+
+   v3dv_return_if_oom(cmd_buffer, NULL);
+
+   /* FIXME: handle resume/suspend */
+   struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
+   assert(state->subpass_idx == state->pass->subpass_count - 1);
+   v3dv_cmd_buffer_subpass_finish(cmd_buffer);
+   v3dv_cmd_buffer_finish_job(cmd_buffer);
+
+   cmd_buffer_subpass_handle_pending_resolves(cmd_buffer);
+
+   state->framebuffer = NULL;
+   state->pass = NULL;
+   state->subpass_idx = -1;
+}

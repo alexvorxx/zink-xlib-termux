@@ -1869,17 +1869,12 @@ agx_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type shader,
    case PIPE_SHADER_CAP_CONT_SUPPORTED:
       return 1;
 
-   case PIPE_SHADER_CAP_INDIRECT_INPUT_ADDR:
-      return shader == PIPE_SHADER_TESS_CTRL ||
-             shader == PIPE_SHADER_TESS_EVAL || shader == PIPE_SHADER_FRAGMENT;
-
-   case PIPE_SHADER_CAP_INDIRECT_OUTPUT_ADDR:
-      return shader == PIPE_SHADER_TESS_CTRL;
-
    case PIPE_SHADER_CAP_SUBROUTINES:
    case PIPE_SHADER_CAP_TGSI_SQRT_SUPPORTED:
       return 0;
 
+   case PIPE_SHADER_CAP_INDIRECT_INPUT_ADDR:
+   case PIPE_SHADER_CAP_INDIRECT_OUTPUT_ADDR:
    case PIPE_SHADER_CAP_INDIRECT_TEMP_ADDR:
    case PIPE_SHADER_CAP_INDIRECT_CONST_ADDR:
    case PIPE_SHADER_CAP_INTEGERS:

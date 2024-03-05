@@ -2889,6 +2889,92 @@ pipeline_set_sample_rate_shading(struct v3dv_pipeline *pipeline,
       ms_info->sampleShadingEnable;
 }
 
+static void
+pipeline_setup_rendering_info(struct v3dv_device *device,
+                              struct v3dv_pipeline *pipeline,
+                              const VkGraphicsPipelineCreateInfo *pCreateInfo,
+                              const VkAllocationCallbacks *alloc)
+{
+   struct vk_render_pass_state *rp = &pipeline->rendering_info;
+
+   if (pipeline->pass) {
+      assert(pipeline->subpass);
+      struct v3dv_render_pass *pass = pipeline->pass;
+      struct v3dv_subpass *subpass = pipeline->subpass;
+      const uint32_t attachment_idx = subpass->ds_attachment.attachment;
+
+      rp->view_mask = subpass->view_mask;
+
+      rp->depth_attachment_format = VK_FORMAT_UNDEFINED;
+      rp->stencil_attachment_format = VK_FORMAT_UNDEFINED;
+      rp->attachments = MESA_VK_RP_ATTACHMENT_NONE;
+      if (attachment_idx != VK_ATTACHMENT_UNUSED) {
+         VkFormat ds_format = pass->attachments[attachment_idx].desc.format;
+         if (vk_format_has_depth(ds_format)) {
+            rp->depth_attachment_format = ds_format;
+            rp->attachments |= MESA_VK_RP_ATTACHMENT_DEPTH_BIT;
+         }
+         if (vk_format_has_stencil(ds_format)) {
+            rp->stencil_attachment_format = ds_format;
+            rp->attachments |= MESA_VK_RP_ATTACHMENT_STENCIL_BIT;
+         }
+      }
+
+      rp->color_attachment_count = subpass->color_count;
+      for (uint32_t i = 0; i < subpass->color_count; i++) {
+         const uint32_t attachment_idx = subpass->color_attachments[i].attachment;
+         if (attachment_idx == VK_ATTACHMENT_UNUSED) {
+            rp->color_attachment_formats[i] = VK_FORMAT_UNDEFINED;
+            continue;
+         }
+         rp->color_attachment_formats[i] =
+            pass->attachments[attachment_idx].desc.format;
+         rp->attachments |= MESA_VK_RP_ATTACHMENT_COLOR_BIT(i);
+      }
+      return;
+   }
+
+   const VkPipelineRenderingCreateInfo *ri =
+      vk_find_struct_const(pCreateInfo->pNext,
+                           PIPELINE_RENDERING_CREATE_INFO);
+   if (ri) {
+      rp->view_mask = ri->viewMask;
+
+      rp->color_attachment_count = ri->colorAttachmentCount;
+      for (int i = 0; i < ri->colorAttachmentCount; i++) {
+         rp->color_attachment_formats[i] = ri->pColorAttachmentFormats[i];
+         if (rp->color_attachment_formats[i] != VK_FORMAT_UNDEFINED) {
+            rp->attachments |= MESA_VK_RP_ATTACHMENT_COLOR_BIT(i);
+         }
+      }
+
+      rp->depth_attachment_format = ri->depthAttachmentFormat;
+      if (ri->depthAttachmentFormat != VK_FORMAT_UNDEFINED)
+         rp->attachments |= MESA_VK_RP_ATTACHMENT_DEPTH_BIT;
+
+      rp->stencil_attachment_format = ri->stencilAttachmentFormat;
+      if (ri->stencilAttachmentFormat != VK_FORMAT_UNDEFINED)
+         rp->attachments |= MESA_VK_RP_ATTACHMENT_STENCIL_BIT;
+
+      return;
+   }
+
+   /* From the Vulkan spec for VkPipelineRenderingCreateInfo:
+    *
+    *    "if this structure is not specified, and the pipeline does not include
+    *     a VkRenderPass, viewMask and colorAttachmentCount are 0, and
+    *     depthAttachmentFormat and stencilAttachmentFormat are
+    *     VK_FORMAT_UNDEFINED.
+    */
+   pipeline->rendering_info = (struct vk_render_pass_state) {
+      .view_mask = 0,
+      .attachments = 0,
+      .color_attachment_count = 0,
+      .depth_attachment_format = VK_FORMAT_UNDEFINED,
+      .stencil_attachment_format = VK_FORMAT_UNDEFINED,
+   };
+}
+
 static VkResult
 pipeline_init(struct v3dv_pipeline *pipeline,
               struct v3dv_device *device,
@@ -2906,9 +2992,13 @@ pipeline_init(struct v3dv_pipeline *pipeline,
    v3dv_pipeline_layout_ref(pipeline->layout);
 
    V3DV_FROM_HANDLE(v3dv_render_pass, render_pass, pCreateInfo->renderPass);
-   assert(pCreateInfo->subpass < render_pass->subpass_count);
-   pipeline->pass = render_pass;
-   pipeline->subpass = &render_pass->subpasses[pCreateInfo->subpass];
+   if (render_pass) {
+      assert(pCreateInfo->subpass < render_pass->subpass_count);
+      pipeline->pass = render_pass;
+      pipeline->subpass = &render_pass->subpasses[pCreateInfo->subpass];
+   }
+
+   pipeline_setup_rendering_info(device, pipeline, pCreateInfo, pAllocator);
 
    const VkPipelineInputAssemblyStateCreateInfo *ia_info =
       pCreateInfo->pInputAssemblyState;

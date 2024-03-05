@@ -2261,6 +2261,9 @@ struct v3dv_pipeline {
 
    struct v3dv_pipeline_stage *stages[BROADCOM_SHADER_STAGES];
 
+   /* For VK_KHR_dynamic_rendering */
+   struct vk_render_pass_state rendering_info;
+
    /* Flags for whether optional pipeline stages are present, for convenience */
    bool has_gs;
 

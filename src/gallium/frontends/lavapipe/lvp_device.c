@@ -994,11 +994,11 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
       .robustStorageBufferDescriptorSize = sizeof(struct lp_descriptor),
       .inputAttachmentDescriptorSize = sizeof(struct lp_descriptor),
       .accelerationStructureDescriptorSize = 0,
-      .maxSamplerDescriptorBufferRange = 1<<27, //spec minimum
-      .maxResourceDescriptorBufferRange = 1<<28, //spec minimum
-      .resourceDescriptorBufferAddressSpaceSize = 1<<27, //spec minimum
-      .samplerDescriptorBufferAddressSpaceSize = 1<<27, //spec minimum
-      .descriptorBufferAddressSpaceSize = 1<<27, //spec minimum
+      .maxSamplerDescriptorBufferRange = UINT32_MAX,
+      .maxResourceDescriptorBufferRange = UINT32_MAX,
+      .resourceDescriptorBufferAddressSpaceSize = UINT32_MAX,
+      .samplerDescriptorBufferAddressSpaceSize = UINT32_MAX,
+      .descriptorBufferAddressSpaceSize = UINT32_MAX,
 
       /* VK_EXT_graphics_pipeline_library */
       .graphicsPipelineLibraryFastLinking = VK_TRUE,

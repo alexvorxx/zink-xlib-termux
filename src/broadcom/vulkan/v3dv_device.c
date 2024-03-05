@@ -2713,6 +2713,105 @@ v3dv_DestroyFramebuffer(VkDevice _device,
    vk_object_free(&device->vk, pAllocator, fb);
 }
 
+void
+v3dv_setup_dynamic_framebuffer(struct v3dv_cmd_buffer *cmd_buffer,
+                               const VkRenderingInfoKHR *info)
+{
+   struct v3dv_device *device = cmd_buffer->device;
+
+   /* Max framebuffer attachments is max_color_RTs + D/S multiplied by two for
+    * MSAA resolves.
+    */
+   const uint32_t max_attachments =
+      2 * (V3D_MAX_RENDER_TARGETS(device->devinfo.ver) + 1);
+   const uint32_t attachments_alloc_size =
+      sizeof(struct v3dv_image_view *) * max_attachments;
+
+   /* Only allocate the dynamic framebuffer once and will stay valid
+    * for the duration of the command buffer.
+    */
+   struct v3dv_framebuffer *fb = cmd_buffer->state.dynamic_framebuffer;
+   if (!fb) {
+      uint32_t alloc_size = sizeof(struct v3dv_framebuffer) +
+                            attachments_alloc_size;
+      fb = vk_object_zalloc(&cmd_buffer->device->vk, NULL, alloc_size,
+                            VK_OBJECT_TYPE_FRAMEBUFFER);
+      if (fb == NULL) {
+         v3dv_flag_oom(cmd_buffer, NULL);
+         return;
+      }
+      cmd_buffer->state.dynamic_framebuffer = fb;
+   } else {
+      memset(fb->attachments, 0, attachments_alloc_size);
+   }
+
+   fb->width = info->renderArea.offset.x + info->renderArea.extent.width;
+   fb->height = info->renderArea.offset.y + info->renderArea.extent.height;
+
+   /* From the Vulkan spec for VkFramebufferCreateInfo:
+    *
+    *    "If the render pass uses multiview, then layers must be one (...)"
+    */
+   fb->layers = info->viewMask == 0 ? info->layerCount : 1;
+
+   struct v3dv_render_pass *pass = &cmd_buffer->state.dynamic_pass;
+   assert(pass->subpass_count == 1 && pass->subpasses);
+   assert(pass->subpasses[0].color_count == info->colorAttachmentCount);
+   fb->color_attachment_count = info->colorAttachmentCount;
+
+   uint32_t a = 0;
+   for (int i = 0; i < info->colorAttachmentCount; i++) {
+      if (info->pColorAttachments[i].imageView == VK_NULL_HANDLE)
+         continue;
+      fb->attachments[a++] =
+         v3dv_image_view_from_handle(info->pColorAttachments[i].imageView);
+      if (info->pColorAttachments[i].resolveMode != VK_RESOLVE_MODE_NONE) {
+         fb->attachments[a++] =
+            v3dv_image_view_from_handle(info->pColorAttachments[i].resolveImageView);
+      }
+   }
+
+   if ((info->pDepthAttachment && info->pDepthAttachment->imageView) ||
+       (info->pStencilAttachment && info->pStencilAttachment->imageView)) {
+      const struct VkRenderingAttachmentInfo *common_ds_info =
+         (info->pDepthAttachment &&
+          info->pDepthAttachment->imageView != VK_NULL_HANDLE) ?
+         info->pDepthAttachment :
+         info->pStencilAttachment;
+
+      fb->attachments[a++] =
+         v3dv_image_view_from_handle(common_ds_info->imageView);
+
+      if (common_ds_info->resolveMode != VK_RESOLVE_MODE_NONE) {
+         fb->attachments[a++] =
+            v3dv_image_view_from_handle(common_ds_info->resolveImageView);
+      }
+   }
+
+   assert(a == pass->attachment_count);
+   fb->attachment_count = a;
+
+   /* Dynamic rendering doesn't provide the size of the underlying framebuffer
+    * so we estimate its size from the render area. This means it is possible
+    * the underlying attachments are larger and thus we cannot assume we have
+    * edge padding.
+    */
+   fb->has_edge_padding = false;
+}
+
+void
+v3dv_destroy_dynamic_framebuffer(struct v3dv_cmd_buffer *cmd_buffer)
+{
+   if (!cmd_buffer->state.dynamic_framebuffer)
+      return;
+
+   VkDevice vk_device = v3dv_device_to_handle(cmd_buffer->device);
+   VkFramebuffer vk_dynamic_fb =
+      v3dv_framebuffer_to_handle(cmd_buffer->state.dynamic_framebuffer);
+   v3dv_DestroyFramebuffer(vk_device, vk_dynamic_fb, NULL);
+   cmd_buffer->state.dynamic_framebuffer = NULL;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 v3dv_GetMemoryFdPropertiesKHR(VkDevice _device,
                               VkExternalMemoryHandleTypeFlagBits handleType,

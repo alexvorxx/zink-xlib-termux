@@ -271,6 +271,8 @@ cmd_buffer_free_resources(struct v3dv_cmd_buffer *cmd_buffer)
          assert(cmd_buffer->state.meta.attachment_alloc_count > 0);
          vk_free(&cmd_buffer->device->vk.alloc, cmd_buffer->state.meta.attachments);
    }
+
+   v3dv_destroy_dynamic_framebuffer(cmd_buffer);
 }
 
 static void

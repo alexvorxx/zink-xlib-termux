@@ -1007,7 +1007,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 0;
 
    case PIPE_CAP_MAX_SHADER_PATCH_VARYINGS:
-      return screen->info.props.limits.maxTessellationControlPerVertexOutputComponents / 4;
+      return screen->info.props.limits.maxTessellationControlPerPatchOutputComponents / 4;
    case PIPE_CAP_MAX_VARYINGS:
       /* need to reserve up to 60 of our varying components and 16 slots for streamout */
       return MIN2(screen->info.props.limits.maxVertexOutputComponents / 4 / 2, 16);

@@ -145,6 +145,7 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .KHR_driver_properties                = true,
       .KHR_descriptor_update_template       = true,
       .KHR_depth_stencil_resolve            = true,
+      .KHR_dynamic_rendering                = true,
       .KHR_external_fence                   = true,
       .KHR_external_fence_fd                = true,
       .KHR_external_memory                  = true,
@@ -466,6 +467,9 @@ get_features(const struct v3dv_physical_device *physical_device,
 
       /* VK_KHR_shader_expect_assume */
       .shaderExpectAssume = true,
+
+      /* VK_KHR_dynamic_rendering */
+      .dynamicRendering = true,
    };
 }
 

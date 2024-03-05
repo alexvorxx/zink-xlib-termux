@@ -2319,15 +2319,19 @@ agx_dump_stats(agx_context *ctx, unsigned size, char **out)
          fills++;
    }
 
+   struct agx_cycle_estimate cycles = agx_estimate_cycles(ctx);
+
    unsigned nr_threads =
       agx_occupancy_for_register_count(ctx->max_reg).max_threads;
 
-   return asprintf(out,
-                   "%s shader: %u inst, %u bytes, %u regs, %u uniforms, "
-                   "%u scratch, %u threads, %u loops, %u:%u spills:fills",
-                   gl_shader_stage_name(ctx->stage), nr_ins, size, ctx->max_reg,
-                   ctx->out->push_count, ctx->scratch_size, nr_threads,
-                   ctx->loop_count, spills, fills);
+   return asprintf(
+      out,
+      "%s shader: %u inst, %u alu, %u fscib, %u ic, %u bytes, %u regs, "
+      "%u uniforms, %u scratch, %u threads, %u loops, "
+      "%u:%u spills:fills",
+      gl_shader_stage_name(ctx->stage), nr_ins, cycles.alu, cycles.f_scib,
+      cycles.ic, size, ctx->max_reg, ctx->out->push_count, ctx->scratch_size,
+      nr_threads, ctx->loop_count, spills, fills);
 }
 
 static bool

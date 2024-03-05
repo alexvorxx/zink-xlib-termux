@@ -1004,6 +1004,21 @@ bool agx_nir_lower_ubo(nir_shader *shader);
 bool agx_nir_lower_shared_bitsize(nir_shader *shader);
 bool agx_nir_lower_frag_sidefx(nir_shader *s);
 
+struct agx_cycle_estimate {
+   /* ALU throughput */
+   unsigned alu;
+
+   /* Floating point and SCIB (select, conditional, integer, and boolean)
+    * throughput.
+    */
+   unsigned f_scib;
+
+   /* IC (Integer and complex) throughput */
+   unsigned ic;
+};
+
+struct agx_cycle_estimate agx_estimate_cycles(agx_context *ctx);
+
 extern int agx_compiler_debug;
 
 #ifdef __cplusplus

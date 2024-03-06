@@ -711,6 +711,49 @@ SPDX-License-Identifier: MIT
 	<field name="SRC2_RGROUP" low="124" high="126" type="#reg_group"/>
 </bitset>
 
+<bitset name="#instruction-tex-maybe-src0-src1" extends="#instruction-tex">
+	<display>
+		{INSTR_TEX} {DST:align=18}, tex{TEX_ID}{TEX_SWIZ}, {SRC0}, {SRC1}, void
+	</display>
+
+	<override expr="#instruction-has-src0">
+		<display>
+			{INSTR_TEX} {DST:align=18}, tex{TEX_ID}{TEX_SWIZ}, {SRC0}, void, void
+		</display>
+	</override>
+
+	<!-- SRC0 -->
+	<field name="SRC0_USE" pos="43" type="bool"/>
+	<field name="SRC0_REG" low="44" high="52" type="uint"/>
+	<field name="SRC0" low="54" high="63" type="#instruction-src">
+		<param name="SRC0_REG" as="SRC_REG"/>
+		<param name="SRC0_AMODE" as="SRC_AMODE"/>
+		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
+	</field>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
+	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
+
+	<!-- SRC1 -->
+	<field name="SRC1_USE" pos="70" type="bool"/>
+	<field name="SRC1_REG" low="71" high="79" type="uint"/>
+	<field name="SRC1" low="81" high="90" type="#instruction-src">
+		<param name="SRC1_REG" as="SRC_REG"/>
+		<param name="SRC1_AMODE" as="SRC_AMODE"/>
+		<param name="SRC1_RGROUP" as="SRC_RGROUP"/>
+	</field>
+	<field name="SRC1_AMODE" low="91" high="93" type="#reg_addressing_mode"/>
+	<field name="SRC1_RGROUP" low="96" high="98" type="#reg_group"/>
+
+	<!-- SRC2 -->
+	<pattern pos="99">0</pattern> <!-- SRC2_USE -->
+	<pattern low="100" high="108">000000000</pattern> <!-- SRC2_REG -->
+	<pattern low="110" high="117">00000000</pattern> <!-- SRC2_SWIZ -->
+	<pattern pos="118">0</pattern> <!-- SRC2_NEG -->
+	<pattern pos="119">0</pattern> <!-- SRC2_ABS -->
+	<pattern low="121" high="123">000</pattern> <!-- SRC2_AMODE -->
+	<pattern low="124" high="126">000</pattern> <!-- SRC2_RGROUP -->
+</bitset>
+
 <bitset name="#instruction-cf" extends="#instruction">
 	<pattern low="12" high="31">00000000000000000000</pattern>
 
@@ -1048,7 +1091,7 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="texldl" extends="#instruction-tex-src0">
+<bitset name="texldl" extends="#instruction-tex-maybe-src0-src1">
 	<pattern low="0" high="5">011011</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>

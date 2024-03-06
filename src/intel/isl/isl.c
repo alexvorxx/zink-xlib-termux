@@ -2218,22 +2218,23 @@ isl_calc_row_pitch_alignment(const struct isl_device *dev,
                              const struct isl_tile_info *tile_info)
 {
    if (tile_info->tiling != ISL_TILING_LINEAR) {
-      /* According to BSpec: 44930, Gfx12's CCS-compressed surface pitches must
-       * be 512B-aligned. CCS is only support on Y tilings.
+      /* From Bspec 49252, Render Decompression:
        *
-       * Only consider 512B alignment when :
-       *    - AUX is not explicitly disabled
-       *    - the caller has specified no pitch
+       *    "Compressed displayable surfaces must be 16KB aligned and have
+       *    pitches padded to multiple of 4 tiles."
        *
-       * isl_surf_supports_ccs() will check that the main surface alignment
-       * matches CCS expectations.
+       * Only consider padding the pitch when the caller has specified no
+       * pitch. isl_surf_supports_ccs() will confirm that the main surface
+       * pitch matches CCS expectations.
        */
-      if (ISL_GFX_VER(dev) >= 12 &&
+      if (ISL_GFX_VER(dev) == 12 &&
+          isl_surf_usage_is_display(surf_info->usage) &&
           _isl_surf_info_supports_ccs(dev, surf_info->format,
                                       surf_info->usage) &&
           tile_info->tiling != ISL_TILING_X &&
           surf_info->row_pitch_B == 0) {
-         return isl_align(tile_info->phys_extent_B.width, 512);
+         assert(tile_info->phys_extent_B.width == 128);
+         return 512;
       }
 
       return tile_info->phys_extent_B.width;
@@ -3129,13 +3130,22 @@ isl_surf_supports_ccs(const struct isl_device *dev,
           */
          if (dev->info->verx10 == 120 && surf->dim == ISL_SURF_DIM_3D)
             return false;
-      }
 
-      /* On Gfx12, all CCS-compressed surface pitches must be multiples of
-       * 512B.
-       */
-      if (surf->row_pitch_B % 512 != 0)
-         return false;
+         /* From Bspec 49252, Render Decompression:
+          *
+          *    "Compressed displayable surfaces must be 16KB aligned and have
+          *    pitches padded to multiple of 4 tiles."
+          *
+          * The drm_fourcc.h header doesn't require the aligned address for
+          * compressed dmabufs, but it does require the aligned pitch.
+          */
+         if (isl_surf_usage_is_display(surf->usage)) {
+            assert(surf->tiling == ISL_TILING_4 ||
+                   surf->tiling == ISL_TILING_Y0);
+            if (surf->row_pitch_B % 512 != 0)
+               return false;
+         }
+      }
 
       if (intel_needs_workaround(dev->info, 22015614752) &&
           (surf->usage & ISL_SURF_USAGE_MULTI_ENGINE_PAR_BIT) &&

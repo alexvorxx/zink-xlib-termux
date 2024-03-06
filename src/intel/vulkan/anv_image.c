@@ -790,11 +790,18 @@ add_aux_surface_if_supported(struct anv_device *device,
             return result;
       }
    } else if ((aspect & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV) && image->vk.samples == 1) {
-      ok = isl_surf_get_ccs_surf(&device->isl_dev,
-                                 &image->planes[plane].primary_surface.isl,
-                                 NULL,
-                                 &image->planes[plane].aux_surface.isl,
-                                 stride);
+
+      if (device->info->has_flat_ccs || device->info->has_aux_map) {
+         ok = isl_surf_supports_ccs(&device->isl_dev,
+                                    &image->planes[plane].primary_surface.isl,
+                                    NULL);
+      } else {
+         ok = isl_surf_get_ccs_surf(&device->isl_dev,
+                                    &image->planes[plane].primary_surface.isl,
+                                    NULL,
+                                    &image->planes[plane].aux_surface.isl,
+                                    stride);
+      }
       if (!ok)
          return VK_SUCCESS;
 

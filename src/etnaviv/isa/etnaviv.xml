@@ -348,7 +348,7 @@ SPDX-License-Identifier: MIT
 	<pattern low="124" high="126">000</pattern> <!-- SRC2_RGROUP -->
 </bitset>
 
-<expr name="#instruction-alu-no-dst-has-src0-src1">
+<expr name="#instruction-has-src0-src1">
      ({SRC0_USE} != 0) &amp;&amp; ({SRC1_USE} != 0)
 </expr>
 
@@ -358,7 +358,7 @@ SPDX-License-Identifier: MIT
 		{NAME}{COND}{TYPE}{PMODE}{THREAD}{RMODE} {DST:align=18}{DST_FULL}, void, void, void
 	</display>
 
-	<override expr="#instruction-alu-no-dst-has-src0-src1">
+	<override expr="#instruction-has-src0-src1">
 		<display>
 			{NAME}{COND}{TYPE}{PMODE}{THREAD}{RMODE} {DST:align=18}, {SRC0}, {SRC1}, void
 		</display>

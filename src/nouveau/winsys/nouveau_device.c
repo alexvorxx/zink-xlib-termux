@@ -2,6 +2,8 @@
 
 #include "nouveau_context.h"
 
+#include "nvidia/g_nv_name_released.h"
+
 #include "drm-uapi/nouveau_drm.h"
 #include "util/hash_table.h"
 #include "util/u_debug.h"
@@ -14,6 +16,37 @@
 #include <nvif/class.h>
 #include <unistd.h>
 #include <xf86drm.h>
+
+static const char *
+name_for_chip(uint32_t dev_id,
+              uint16_t subsystem_id,
+              uint16_t subsystem_vendor_id)
+{
+   const char *name = NULL;
+   for (uint32_t i = 0; i < ARRAY_SIZE(sChipsReleased); i++) {
+      const CHIPS_RELEASED *chip = &sChipsReleased[i];
+
+      if (dev_id != chip->devID)
+         continue;
+
+      if (chip->subSystemID == 0 && chip->subSystemVendorID == 0) {
+         /* When subSystemID and subSystemVendorID are both 0, this is the
+          * default name for the given chip.  A more specific name may exist
+          * elsewhere in the list.
+          */
+         assert(name == NULL);
+         name = chip->name;
+         continue;
+      }
+
+      /* If we find a specific name, return it */
+      if (chip->subSystemID == subsystem_id &&
+          chip->subSystemVendorID == subsystem_vendor_id)
+         return chip->name;
+   }
+
+   return name;
+}
 
 static uint8_t
 sm_for_chipset(uint16_t chipset)
@@ -294,6 +327,7 @@ nouveau_ws_device_new(drmDevicePtr drm_device)
    if (nouveau_ws_device_info(fd, device))
       goto out_err;
 
+   const char *name;
    if (drm_device->bustype == DRM_BUS_PCI) {
       assert(device->info.type == NV_DEVICE_TYPE_DIS);
       assert(device->info.device_id == drm_device->deviceinfo.pci->device_id);
@@ -303,7 +337,19 @@ nouveau_ws_device_new(drmDevicePtr drm_device)
       device->info.pci.dev          = drm_device->businfo.pci->dev;
       device->info.pci.func         = drm_device->businfo.pci->func;
       device->info.pci.revision_id  = drm_device->deviceinfo.pci->revision_id;
-   };
+
+      name = name_for_chip(drm_device->deviceinfo.pci->device_id,
+                           drm_device->deviceinfo.pci->subdevice_id,
+                           drm_device->deviceinfo.pci->subvendor_id);
+   } else {
+      name = name_for_chip(device->info.device_id, 0, 0);
+   }
+
+   if (name != NULL) {
+      size_t end = sizeof(device->info.device_name) - 1;
+      strncpy(device->info.device_name, name, end);
+      device->info.device_name[end] = 0;
+   }
 
    device->fd = fd;
 

@@ -730,7 +730,7 @@ SPDX-License-Identifier: MIT
 	<pattern low="96" high="98">000</pattern>
 </bitset>
 
-<bitset name="#instruction-cf-src1-src2" extends="#instruction-cf">
+<bitset name="#instruction-cf-src0-src1" extends="#instruction-cf">
        <display>
                {INSTR_CF} {:align=18}void, {SRC0}, {SRC1}, {TARGET}
        </display>
@@ -1006,7 +1006,7 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="branch_if" extends="#instruction-cf-src1-src2" displayname="branch">
+<bitset name="branch_if" extends="#instruction-cf-src0-src1" displayname="branch">
 	<pattern low="0" high="5">010110</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
@@ -1059,7 +1059,7 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="branch_any" extends="#instruction-cf-src1-src2">
+<bitset name="branch_any" extends="#instruction-cf-src0-src1">
 	<pattern low="0" high="5">100100</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>

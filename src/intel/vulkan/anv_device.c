@@ -2107,8 +2107,7 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
          intel_engines_count(pdevice->engine_info, INTEL_ENGINE_CLASS_VIDEO);
       int g_count = 0;
       int c_count = 0;
-      const bool kernel_supports_non_render_engines =
-         pdevice->info.kmd_type == INTEL_KMD_TYPE_XE || pdevice->has_vm_control;
+      const bool kernel_supports_non_render_engines = pdevice->has_vm_control;
       const bool sparse_supports_non_render_engines =
          pdevice->sparse_type != ANV_SPARSE_TYPE_TRTT;
       const bool can_use_non_render_engines =

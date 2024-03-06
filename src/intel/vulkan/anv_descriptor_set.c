@@ -2903,7 +2903,7 @@ void anv_GetDescriptorEXT(
                    ANV_SURFACE_STATE_SIZE);
          } else {
             memcpy(pDescriptor + desc_offset,
-                   device->null_surface_state.map,
+                   device->host_null_surface_state,
                    ANV_SURFACE_STATE_SIZE);
          }
 
@@ -2936,7 +2936,7 @@ void anv_GetDescriptorEXT(
                                                              layout),
                 ANV_SURFACE_STATE_SIZE);
       } else {
-         memcpy(pDescriptor, device->null_surface_state.map,
+         memcpy(pDescriptor, device->host_null_surface_state,
                 ANV_SURFACE_STATE_SIZE);
       }
       break;
@@ -2960,7 +2960,7 @@ void anv_GetDescriptorEXT(
                                        align_down_npot_u32(addr_info->range, format_bs),
                                        format_bs);
       } else {
-         memcpy(pDescriptor, device->null_surface_state.map,
+         memcpy(pDescriptor, device->host_null_surface_state,
                 ANV_SURFACE_STATE_SIZE);
       }
       break;
@@ -2985,7 +2985,7 @@ void anv_GetDescriptorEXT(
                                        align_down_npot_u32(addr_info->range, format_bs),
                                        format_bs);
       } else {
-         memcpy(pDescriptor, device->null_surface_state.map,
+         memcpy(pDescriptor, device->host_null_surface_state,
                 ANV_SURFACE_STATE_SIZE);
       }
       break;
@@ -3021,7 +3021,7 @@ void anv_GetDescriptorEXT(
                                .swizzle = ISL_SWIZZLE_IDENTITY,
                                .stride_B = 1);
       } else {
-         memcpy(pDescriptor, device->null_surface_state.map,
+         memcpy(pDescriptor, device->host_null_surface_state,
                 ANV_SURFACE_STATE_SIZE);
       }
       break;

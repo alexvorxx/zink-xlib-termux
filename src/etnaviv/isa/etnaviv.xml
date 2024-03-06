@@ -730,13 +730,19 @@ SPDX-License-Identifier: MIT
 	<pattern low="96" high="98">000</pattern>
 </bitset>
 
-<bitset name="#instruction-cf-src0-src1" extends="#instruction-cf">
+<bitset name="#instruction-cf-maybe-src0-src1" extends="#instruction-cf">
        <display>
-               {INSTR_CF} {:align=18}void, {SRC0}, {SRC1}, {TARGET}
+               {INSTR_CF} {:align=18}void, void, void, {TARGET}
        </display>
 
+	<override expr="#instruction-has-src0-src1">
+		<display>
+			{INSTR_CF} {:align=18}void, {SRC0}, {SRC1}, {TARGET}
+		</display>
+	</override>
+
        <!-- SRC0 -->
-       <pattern pos="43">1</pattern> <!-- SRC0_USE -->
+       <field name="SRC0_USE" pos="43" type="bool"/>
        <field name="SRC0_REG" low="44" high="52" type="uint"/>
        <field name="SRC0" low="54" high="63" type="#instruction-src">
                <param name="SRC0_REG" as="SRC_REG"/>
@@ -747,7 +753,7 @@ SPDX-License-Identifier: MIT
        <field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
        <!-- SRC1 -->
-       <pattern pos="70">1</pattern> <!-- SRC1_USE -->
+       <field name="SRC1_USE" pos="70" type="bool"/>
        <field name="SRC1_REG" low="71" high="79" type="uint"/>
        <field name="SRC1" low="81" high="90" type="#instruction-src">
                <param name="SRC1_REG" as="SRC_REG"/>
@@ -1001,12 +1007,7 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="branch" extends="#instruction-cf-no-src">
-	<pattern low="0" high="5">010110</pattern> <!-- OPC -->
-	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
-</bitset>
-
-<bitset name="branch_if" extends="#instruction-cf-src0-src1" displayname="branch">
+<bitset name="branch" extends="#instruction-cf-maybe-src0-src1">
 	<pattern low="0" high="5">010110</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
@@ -1059,7 +1060,7 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="branch_any" extends="#instruction-cf-src0-src1">
+<bitset name="branch_any" extends="#instruction-cf-maybe-src0-src1">
 	<pattern low="0" high="5">100100</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>

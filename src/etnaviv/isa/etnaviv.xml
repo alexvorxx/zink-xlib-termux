@@ -1081,7 +1081,7 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="texldb" extends="#instruction-tex-src0">
+<bitset name="texldb" extends="#instruction-tex-maybe-src0-src1">
 	<pattern low="0" high="5">011001</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>

@@ -9220,17 +9220,19 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
             return;
          }
 
-         cmd_buffer->state.col_format_non_compacted = ps_epilog->spi_shader_col_format;
+         uint32_t col_format_non_compacted = ps_epilog->spi_shader_col_format;
 
          assert(cmd_buffer->state.custom_blend_mode == 0);
 
-         bool need_null_export_workaround =
-            radv_needs_null_export_workaround(device, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], 0);
+         if (radv_needs_null_export_workaround(device, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], 0) &&
+             !col_format_non_compacted)
+            col_format_non_compacted = V_028714_SPI_SHADER_32_R;
 
-         if (need_null_export_workaround && !cmd_buffer->state.col_format_non_compacted)
-            cmd_buffer->state.col_format_non_compacted = V_028714_SPI_SHADER_32_R;
-         if (device->physical_device->rad_info.rbplus_allowed)
+         if (device->physical_device->rad_info.rbplus_allowed &&
+             cmd_buffer->state.col_format_non_compacted != col_format_non_compacted) {
+            cmd_buffer->state.col_format_non_compacted = col_format_non_compacted;
             cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
+         }
       }
    }
 

@@ -40,10 +40,10 @@
 /* Compose two swizzles (computes swz1.swz2) */
 static inline uint32_t inst_swiz_compose(uint32_t swz1, uint32_t swz2)
 {
-   return INST_SWIZ_X((swz1 >> (((swz2 >> 0)&3)*2))&3) |
-          INST_SWIZ_Y((swz1 >> (((swz2 >> 2)&3)*2))&3) |
-          INST_SWIZ_Z((swz1 >> (((swz2 >> 4)&3)*2))&3) |
-          INST_SWIZ_W((swz1 >> (((swz2 >> 6)&3)*2))&3);
+   return SWIZ_X((swz1 >> (((swz2 >> 0)&3)*2))&3) |
+          SWIZ_Y((swz1 >> (((swz2 >> 2)&3)*2))&3) |
+          SWIZ_Z((swz1 >> (((swz2 >> 4)&3)*2))&3) |
+          SWIZ_W((swz1 >> (((swz2 >> 6)&3)*2))&3);
 };
 
 /* Compose two write_masks (computes wm1.wm2) */

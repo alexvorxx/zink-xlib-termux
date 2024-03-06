@@ -364,6 +364,12 @@ SPDX-License-Identifier: MIT
 		</display>
 	</override>
 
+	<override expr="#instruction-has-src0">
+		<display>
+			{NAME}{COND}{TYPE}{PMODE}{THREAD}{RMODE} {DST:align=18}, {SRC0}, void, void
+		</display>
+	</override>
+
 	<!-- SRC0 -->
 	<field name="SRC0_USE" pos="43" type="bool"/>
 	<field name="SRC0_REG" low="44" high="52" type="uint"/>

@@ -352,7 +352,7 @@ SPDX-License-Identifier: MIT
      ({SRC0_USE} != 0) &amp;&amp; ({SRC1_USE} != 0)
 </expr>
 
-<bitset name="#instruction-alu-no-dst-maybe-src1-src2" extends="#instruction-alu">
+<bitset name="#instruction-alu-no-dst-maybe-src0-src1" extends="#instruction-alu">
 	<doc>Needed for texkill</doc>
 	<display>
 		{NAME}{COND}{TYPE}{PMODE}{THREAD}{RMODE} {DST:align=18}{DST_FULL}, void, void, void
@@ -1011,7 +1011,7 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="texkill" extends="#instruction-alu-no-dst-maybe-src1-src2">
+<bitset name="texkill" extends="#instruction-alu-no-dst-maybe-src0-src1">
 	<pattern low="0" high="5">010111</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>

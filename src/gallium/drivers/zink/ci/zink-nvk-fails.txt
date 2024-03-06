@@ -1,4 +1,8 @@
-KHR-GL46.tessellation_shader.tessellation_control_to_tessellation_evaluation.gl_PatchVerticesIn,Fail
+# regressions ?
+spec@arb_bindless_texture@execution@images@ubo-named-block,Fail
+spec@arb_get_texture_sub_image@arb_get_texture_sub_image-get,Fail
+spec@egl_ext_device_query@conformance,Fail
+
 KHR-GL46.tessellation_shader.tessellation_control_to_tessellation_evaluation.gl_tessLevel,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two_samples.multisample_rbo_4,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two_samples.multisample_rbo_8,Fail
@@ -6,95 +10,11 @@ dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two_samples.multisample_texture_8,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bits_unique_per_two_samples.multisample_texture_4,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bits_unique_per_two_samples.multisample_texture_8,Fail
-GTF-GL46.gtf44.GL31Tests.texture_stencil8.texture_stencil8_gl44,Fail
 KHR-GL46.direct_state_access.framebuffers_texture_layer_attachment,Fail
-KHR-GL46.draw_indirect.basic-buffer-mapRange,Fail
-KHR-GL46.draw_indirect.basic-buffer-unMap,Fail
 KHR-GL46.gl_spirv.spirv_validation_capabilities_test,Crash
-KHR-GL46.map_buffer_alignment.functional,Fail
-KHR-GL46.sparse_buffer_tests.BufferStorageTest,Crash
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negx_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negx_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negx_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negx_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negx_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negx_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negx_texture2d,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negy_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negy_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negy_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negy_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negy_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negy_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negy_texture2d,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negz_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negz_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negz_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negz_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negz_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negz_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_negz_texture2d,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posx_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posx_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posx_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posx_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posx_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posx_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posx_texture2d,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posy_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posy_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posy_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posy_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posy_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posy_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posy_texture2d,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posz_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posz_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posz_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posz_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posz_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posz_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.cubemap_posz_texture2d,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.renderbuffer_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.renderbuffer_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.renderbuffer_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.renderbuffer_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.renderbuffer_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.renderbuffer_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.renderbuffer_texture2d,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture2d_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture2d_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture2d_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture2d_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture2d_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture2d_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture2d_texture2d,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture3d_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture3d_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture3d_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture3d_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture3d_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture3d_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture3d_texture2d,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture_array_cubemap_negx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture_array_cubemap_negy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture_array_cubemap_negz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture_array_cubemap_posx,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture_array_cubemap_posy,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture_array_cubemap_posz,Fail
-KHR-GLES3.copy_tex_image_conversions.forbidden.texture_array_texture2d,Fail
 KHR-GLES3.packed_pixels.pbo_rectangle.rgba,Fail
-KHR-GLES3.packed_pixels.pbo_rectangle.rgba4,Fail
-KHR-GLES3.packed_pixels.pbo_rectangle.rgba8,Fail
 KHR-GLES3.packed_pixels.rectangle.rgba,Fail
-KHR-GLES3.packed_pixels.rectangle.rgba4,Fail
-KHR-GLES3.packed_pixels.rectangle.rgba8,Fail
 KHR-GLES3.packed_pixels.varied_rectangle.rgba,Fail
-KHR-GLES3.packed_pixels.varied_rectangle.rgba4,Fail
-KHR-GLES3.packed_pixels.varied_rectangle.rgba8,Fail
-KHR-GLES31.core.draw_indirect.basic-buffer-mapRange,Fail
-dEQP-GLES3.functional.fbo.blit.depth_stencil.depth24_stencil8_stencil_only,Fail
-dEQP-GLES3.functional.fbo.blit.depth_stencil.depth32f_stencil8_stencil_only,Fail
 dEQP-GLES3.functional.fbo.completeness.renderable.texture.color0.rgba_unsigned_short_4_4_4_4,Fail
 dEQP-GLES3.functional.lifetime.attach.deleted_input.texture_framebuffer,Fail
 dEQP-GLES3.functional.lifetime.attach.deleted_name.texture_framebuffer,Fail
@@ -138,7 +58,6 @@ spec@!opengl 1.1@polygon-mode-offset@config 5: Expected blue pixel in center,Fai
 spec@!opengl 1.1@polygon-mode-offset@config 6: Expected blue pixel in center,Fail
 spec@!opengl 1.1@polygon-mode-offset@config 6: Expected white pixel on right edge,Fail
 spec@!opengl 1.1@polygon-mode-offset@config 6: Expected white pixel on top edge,Fail
-spec@!opengl 1.1@streaming-texture-leak,Crash
 spec@!opengl 1.2@copyteximage 3d,Fail
 spec@!opengl 2.1@pbo,Fail
 spec@!opengl 2.1@pbo@test_polygon_stip,Fail
@@ -160,7 +79,6 @@ spec@arb_buffer_storage@bufferstorage-persistent_gles3 draw,Fail
 spec@arb_buffer_storage@bufferstorage-persistent_gles3 read,Fail
 spec@arb_fragment_layer_viewport@layer-gs-writes-out-of-range,Fail
 spec@arb_fragment_layer_viewport@viewport-gs-writes-out-of-range,Fail
-spec@arb_framebuffer_object@arb_framebuffer_object-depth-stencil-blit stencil gl_depth24_stencil8,Fail
 spec@arb_framebuffer_object@fbo-blit-scaled-linear,Fail
 spec@arb_gl_spirv@execution@ubo@aoa-2,Fail
 spec@arb_gl_spirv@execution@ubo@array-complex,Fail
@@ -523,7 +441,6 @@ spec@arb_shading_language_packing@execution@built-in-functions@fs-packhalf2x16,F
 spec@arb_shading_language_packing@execution@built-in-functions@vs-packhalf2x16,Fail
 spec@arb_sync@clientwaitsync-timeout,Fail
 spec@arb_sync@clientwaitsync-timeout@read,Fail
-spec@arb_tessellation_shader@execution@tcs-tes-max-in-out-patch-components,Crash
 spec@arb_tessellation_shader@execution@variable-indexing@tes-both-input-array-float-index-rd,Crash
 spec@arb_tessellation_shader@execution@variable-indexing@tes-both-input-array-vec2-index-rd,Crash
 spec@arb_tessellation_shader@execution@variable-indexing@tes-both-input-array-vec3-index-rd,Crash
@@ -534,6 +451,10 @@ spec@arb_tessellation_shader@execution@variable-indexing@tes-patch-input-array-v
 spec@arb_tessellation_shader@execution@variable-indexing@tes-patch-input-array-vec3-index-rd,Crash
 spec@arb_tessellation_shader@execution@variable-indexing@tes-patch-input-array-vec4-index-rd,Crash
 spec@arb_texture_buffer_object@formats (fs- arb),Crash
+spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA8I_EXT,Fail
+spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA8UI_EXT,Fail
+spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA8I_EXT,Fail
+spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA8UI_EXT,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA16,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA16F_ARB,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA16I_EXT,Fail
@@ -541,9 +462,6 @@ spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA16UI_EXT,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA32F_ARB,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA32I_EXT,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA32UI_EXT,Fail
-spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA8,Fail
-spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA8I_EXT,Fail
-spec@arb_texture_buffer_object@formats (fs- arb)@GL_ALPHA8UI_EXT,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_LUMINANCE16,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_LUMINANCE16F_ARB,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_LUMINANCE16I_EXT,Fail
@@ -572,9 +490,6 @@ spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA16UI_EXT,Fail
 spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA32F_ARB,Fail
 spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA32I_EXT,Fail
 spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA32UI_EXT,Fail
-spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA8,Fail
-spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA8I_EXT,Fail
-spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA8UI_EXT,Fail
 spec@arb_texture_buffer_object@formats (vs- arb)@GL_LUMINANCE16,Fail
 spec@arb_texture_buffer_object@formats (vs- arb)@GL_LUMINANCE16F_ARB,Fail
 spec@arb_texture_buffer_object@formats (vs- arb)@GL_LUMINANCE16I_EXT,Fail
@@ -891,16 +806,7 @@ spec@egl_khr_gl_image@egl_khr_gl_renderbuffer_image-clear-shared-image gl_depth_
 spec@egl_nok_texture_from_pixmap@basic,Crash
 spec@ext_direct_state_access@named-buffers 30,Fail
 spec@ext_direct_state_access@named-buffers 30@FlushMappedNamedBufferRangeEXT,Fail
-spec@ext_external_objects@vk-buf-exchange,Crash
-spec@ext_external_objects@vk-image-display,Crash
-spec@ext_external_objects@vk-image-display-muliple-textures,Crash
-spec@ext_external_objects@vk-image-display-overwrite,Crash
 spec@ext_external_objects@vk-image-overwrite,Crash
-spec@ext_external_objects@vk-pix-buf-update-errors,Crash
-spec@ext_external_objects@vk-semaphores,Crash
-spec@ext_external_objects@vk-semaphores-2,Crash
-spec@ext_external_objects@vk-vert-buf-reuse,Crash
-spec@ext_external_objects@vk-vert-buf-update-errors,Crash
 spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
 spec@ext_framebuffer_multisample@accuracy 2 srgb small depthstencil,Fail
 spec@ext_framebuffer_multisample@accuracy 2 srgb small depthstencil linear,Fail
@@ -935,19 +841,6 @@ spec@ext_framebuffer_multisample@interpolation 8 centroid-deriv-disabled,Fail
 spec@ext_framebuffer_multisample@interpolation 8 centroid-disabled,Fail
 spec@ext_framebuffer_multisample@interpolation 8 non-centroid-deriv-disabled,Fail
 spec@ext_framebuffer_multisample@interpolation 8 non-centroid-disabled,Fail
-spec@ext_framebuffer_multisample@multisample-blit 2 stencil,Fail
-spec@ext_framebuffer_multisample@multisample-blit 4 stencil,Fail
-spec@ext_framebuffer_multisample@multisample-blit 6 stencil,Fail
-spec@ext_framebuffer_multisample@multisample-blit 8 stencil,Fail
-spec@ext_framebuffer_multisample@no-color 2 stencil combined,Fail
-spec@ext_framebuffer_multisample@no-color 2 stencil single,Fail
-spec@ext_framebuffer_multisample@no-color 4 stencil combined,Fail
-spec@ext_framebuffer_multisample@no-color 4 stencil single,Fail
-spec@ext_framebuffer_multisample@no-color 6 stencil combined,Fail
-spec@ext_framebuffer_multisample@no-color 6 stencil single,Fail
-spec@ext_framebuffer_multisample@no-color 8 stencil combined,Fail
-spec@ext_framebuffer_multisample@no-color 8 stencil single,Fail
-spec@ext_framebuffer_object@fbo-drawbuffers-maxtargets,Crash
 spec@ext_packed_float@query-rgba-signed-components,Fail
 spec@ext_texture_array@texsubimage array,Fail
 spec@ext_texture_env_combine@texture-env-combine,Timeout

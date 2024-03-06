@@ -646,17 +646,39 @@ impl<'a> ShaderFromNir<'a> {
                 let src_type = FloatType::from_bits(src_bits);
                 let dst = b.alloc_ssa(RegFile::GPR, dst_bits.div_ceil(32));
                 let dst_is_signed = alu.info().output_type & 2 != 0;
-                b.push_op(OpF2I {
-                    dst: dst.into(),
-                    src: srcs[0],
-                    src_type: src_type,
-                    dst_type: IntType::from_bits(
-                        dst_bits.into(),
-                        dst_is_signed,
-                    ),
-                    rnd_mode: FRndMode::Zero,
-                    ftz: self.float_ctl[src_type].ftz,
-                });
+                let dst_type =
+                    IntType::from_bits(dst_bits.into(), dst_is_signed);
+                if b.sm() < 70 && dst_bits == 8 {
+                    // F2I doesn't support 8-bit destinations pre-Volta
+                    let tmp = b.alloc_ssa(RegFile::GPR, 1);
+                    let tmp_type = IntType::from_bits(32, dst_is_signed);
+                    b.push_op(OpF2I {
+                        dst: tmp.into(),
+                        src: srcs[0],
+                        src_type,
+                        dst_type: tmp_type,
+                        rnd_mode: FRndMode::Zero,
+                        ftz: self.float_ctl[src_type].ftz,
+                    });
+                    b.push_op(OpI2I {
+                        dst: dst.into(),
+                        src: tmp.into(),
+                        src_type: tmp_type,
+                        dst_type,
+                        saturate: true,
+                        abs: false,
+                        neg: false,
+                    });
+                } else {
+                    b.push_op(OpF2I {
+                        dst: dst.into(),
+                        src: srcs[0],
+                        src_type,
+                        dst_type,
+                        rnd_mode: FRndMode::Zero,
+                        ftz: self.float_ctl[src_type].ftz,
+                    });
+                }
                 dst
             }
             nir_op_fabs | nir_op_fadd | nir_op_fneg => {

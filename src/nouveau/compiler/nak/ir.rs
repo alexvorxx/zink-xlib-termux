@@ -1820,6 +1820,7 @@ impl fmt::Display for ImageDim {
     }
 }
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum IntType {
     U8,
     I8,

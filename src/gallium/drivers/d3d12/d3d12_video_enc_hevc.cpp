@@ -906,8 +906,13 @@ d3d12_video_encoder_update_current_encoder_config_state_hevc(struct d3d12_video_
    // try to fallback if any of them is not supported and return the negotiated d3d12 settings
    D3D12_FEATURE_DATA_VIDEO_ENCODER_SUPPORT1 capEncoderSupportData1 = {};
    // Get max number of slices per frame supported
-   pD3D12Enc->m_currentEncodeConfig.m_encoderSliceConfigMode =
-      D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_UNIFORM_PARTITIONING_SUBREGIONS_PER_FRAME;
+   if (hevcPic->num_slice_descriptors > 1)
+      pD3D12Enc->m_currentEncodeConfig.m_encoderSliceConfigMode =
+         D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_UNIFORM_PARTITIONING_SUBREGIONS_PER_FRAME;
+   else
+      pD3D12Enc->m_currentEncodeConfig.m_encoderSliceConfigMode =
+         D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_FULL_FRAME;
+
    if (!d3d12_video_encoder_negotiate_requested_features_and_d3d12_driver_caps(pD3D12Enc, capEncoderSupportData1)) {
       debug_printf("[d3d12_video_encoder_hevc] After negotiating caps, D3D12_FEATURE_VIDEO_ENCODER_SUPPORT1 "
                       "arguments are not supported - "

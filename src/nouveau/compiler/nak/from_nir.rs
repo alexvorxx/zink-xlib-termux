@@ -546,25 +546,7 @@ impl<'a> ShaderFromNir<'a> {
                 });
                 dst
             }
-            nir_op_bitfield_reverse => {
-                let dst = b.alloc_ssa(RegFile::GPR, 1);
-                if self.info.sm >= 70 {
-                    b.push_op(OpBRev {
-                        dst: dst.into(),
-                        src: srcs[0],
-                    });
-                } else {
-                    // No BREV in Maxwell
-                    b.push_op(OpBfe {
-                        dst: dst.into(),
-                        base: srcs[0],
-                        signed: false,
-                        range: Src::new_imm_u32(0x2000),
-                        reverse: true,
-                    });
-                }
-                dst
-            }
+            nir_op_bitfield_reverse => b.brev(srcs[0]),
             nir_op_ibitfield_extract | nir_op_ubitfield_extract => {
                 let range = b.alloc_ssa(RegFile::GPR, 1);
                 b.push_op(OpPrmt {
@@ -647,16 +629,12 @@ impl<'a> ShaderFromNir<'a> {
                 dst
             }
             nir_op_find_lsb => {
-                let tmp = b.alloc_ssa(RegFile::GPR, 1);
-                b.push_op(OpBRev {
-                    dst: tmp.into(),
-                    src: srcs[0],
-                });
+                let rev = b.brev(srcs[0]);
                 let dst = b.alloc_ssa(RegFile::GPR, 1);
                 b.push_op(OpFlo {
                     dst: dst.into(),
-                    src: tmp.into(),
-                    signed: alu.op == nir_op_ifind_msb,
+                    src: rev.into(),
+                    signed: false,
                     return_shift_amount: true,
                 });
                 dst

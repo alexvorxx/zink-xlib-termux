@@ -524,7 +524,7 @@ try_eliminate_scc_copy(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
 
    /* Verify that the operands of the producer instruction haven't been overwritten. */
    for (const Operand& op : producer_instr->operands) {
-      if (is_overwritten_since(ctx, op, producer_idx, true))
+      if (!op.isConstant() && is_overwritten_since(ctx, op, producer_idx, true))
          return;
    }
 

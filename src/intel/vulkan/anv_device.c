@@ -2096,6 +2096,8 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
    uint32_t family_count = 0;
    VkQueueFlags sparse_flags = pdevice->sparse_type != ANV_SPARSE_TYPE_NOT_SUPPORTED ?
                                VK_QUEUE_SPARSE_BINDING_BIT : 0;
+   VkQueueFlags protected_flag = pdevice->has_protected_contexts ?
+                                 VK_QUEUE_PROTECTED_BIT : 0;
 
    if (pdevice->engine_info) {
       int gc_count =
@@ -2137,7 +2139,8 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
             .queueFlags = VK_QUEUE_GRAPHICS_BIT |
                           VK_QUEUE_COMPUTE_BIT |
                           VK_QUEUE_TRANSFER_BIT |
-                          sparse_flags,
+                          sparse_flags |
+                          protected_flag,
             .queueCount = gc_count,
             .engine_class = INTEL_ENGINE_CLASS_RENDER,
          };
@@ -2146,7 +2149,8 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
          pdevice->queue.families[family_count++] = (struct anv_queue_family) {
             .queueFlags = VK_QUEUE_GRAPHICS_BIT |
                           VK_QUEUE_TRANSFER_BIT |
-                          sparse_flags,
+                          sparse_flags |
+                          protected_flag,
             .queueCount = g_count,
             .engine_class = INTEL_ENGINE_CLASS_RENDER,
          };
@@ -2155,7 +2159,8 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
          pdevice->queue.families[family_count++] = (struct anv_queue_family) {
             .queueFlags = VK_QUEUE_COMPUTE_BIT |
                           VK_QUEUE_TRANSFER_BIT |
-                          sparse_flags,
+                          sparse_flags |
+                          protected_flag,
             .queueCount = c_count,
             .engine_class = compute_class,
          };
@@ -2171,6 +2176,7 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
           * When this bug is fixed we should be able to check HEVC support to determine the
           * correct number of queues.
           */
+         /* TODO: enable protected content on video queue */
          pdevice->queue.families[family_count++] = (struct anv_queue_family) {
             .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
             .queueCount = pdevice->info.ver == 9 ? MIN2(1, v_count) : v_count,
@@ -2179,7 +2185,8 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
       }
       if (blit_count > 0) {
          pdevice->queue.families[family_count++] = (struct anv_queue_family) {
-            .queueFlags = VK_QUEUE_TRANSFER_BIT,
+            .queueFlags = VK_QUEUE_TRANSFER_BIT |
+                          protected_flag,
             .queueCount = blit_count,
             .engine_class = INTEL_ENGINE_CLASS_COPY,
          };
@@ -2732,10 +2739,6 @@ anv_device_physical_get_queue_properties(const struct anv_physical_device *devic
 
    properties.queueFlags = family->queueFlags;
    properties.queueCount = family->queueCount;
-   /* TODO: enable protected content on video queue */
-   if (device->has_protected_contexts &&
-       (family->queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) == 0)
-      properties.queueFlags |= VK_QUEUE_PROTECTED_BIT;
    return properties;
 }
 

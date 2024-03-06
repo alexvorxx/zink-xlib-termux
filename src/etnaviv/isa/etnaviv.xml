@@ -730,6 +730,10 @@ SPDX-License-Identifier: MIT
 	<pattern low="96" high="98">000</pattern>
 </bitset>
 
+<expr name="#instruction-has-src0">
+     ({SRC0_USE} != 0) &amp;&amp; ({SRC1_USE} == 0)
+</expr>
+
 <bitset name="#instruction-cf-maybe-src0-src1" extends="#instruction-cf">
        <display>
                {INSTR_CF} {:align=18}void, void, void, {TARGET}
@@ -738,6 +742,12 @@ SPDX-License-Identifier: MIT
 	<override expr="#instruction-has-src0-src1">
 		<display>
 			{INSTR_CF} {:align=18}void, {SRC0}, {SRC1}, {TARGET}
+		</display>
+	</override>
+
+	<override expr="#instruction-has-src0">
+		<display>
+			{INSTR_CF} {:align=18}void, {SRC0}, void, {TARGET}
 		</display>
 	</override>
 

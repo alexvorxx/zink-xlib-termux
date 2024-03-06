@@ -2421,6 +2421,15 @@ isl_drm_modifier_has_aux(uint64_t modifier)
 }
 
 static inline bool
+isl_drm_modifier_needs_display_layout(uint64_t modifier)
+{
+   /* Modifiers supporting compression are specified to be compatible with the
+    * display engine, even if they won't actually be used for scanout.
+    */
+   return isl_drm_modifier_has_aux(modifier);
+}
+
+static inline bool
 isl_drm_modifier_plane_is_clear_color(uint64_t modifier, uint32_t plane)
 {
    if (modifier == DRM_FORMAT_MOD_INVALID)

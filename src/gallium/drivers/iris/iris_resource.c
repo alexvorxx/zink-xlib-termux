@@ -760,6 +760,9 @@ iris_resource_configure_main(const struct iris_screen *screen,
    if (templ->bind & PIPE_BIND_SCANOUT)
       usage |= ISL_SURF_USAGE_DISPLAY_BIT;
 
+   else if (isl_drm_modifier_needs_display_layout(modifier))
+      usage |= ISL_SURF_USAGE_DISPLAY_BIT;
+
    if (templ->target == PIPE_TEXTURE_CUBE ||
        templ->target == PIPE_TEXTURE_CUBE_ARRAY) {
       usage |= ISL_SURF_USAGE_CUBE_BIT;

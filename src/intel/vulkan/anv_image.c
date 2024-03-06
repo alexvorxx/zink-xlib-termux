@@ -1554,6 +1554,8 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
    image->vk.stencil_usage =
       anv_image_create_usage(pCreateInfo, image->vk.stencil_usage);
 
+   isl_surf_usage_flags_t isl_extra_usage_flags =
+      create_info->isl_extra_usage_flags;
    if (pCreateInfo->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       assert(!image->vk.wsi_legacy_scanout);
       mod_explicit_info =
@@ -1573,6 +1575,9 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
       assert(isl_mod_info);
       assert(image->vk.drm_format_mod == DRM_FORMAT_MOD_INVALID);
       image->vk.drm_format_mod = isl_mod_info->modifier;
+
+      if (isl_drm_modifier_needs_display_layout(image->vk.drm_format_mod))
+         isl_extra_usage_flags |= ISL_SURF_USAGE_DISPLAY_BIT;
    }
 
    for (int i = 0; i < ANV_IMAGE_MEMORY_BINDING_END; ++i) {
@@ -1604,7 +1609,6 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
    image->disjoint = image->n_planes > 1 &&
                      (pCreateInfo->flags & VK_IMAGE_CREATE_DISJOINT_BIT);
 
-   isl_surf_usage_flags_t isl_extra_usage_flags = create_info->isl_extra_usage_flags;
    if (anv_is_format_emulated(device->physical, pCreateInfo->format)) {
       assert(image->n_planes == 1 &&
              vk_format_is_compressed(image->vk.format));

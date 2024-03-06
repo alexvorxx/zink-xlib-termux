@@ -263,7 +263,7 @@ build_blit_shader(const struct vk_meta_blit_key *key)
       switch (aspect) {
       case VK_IMAGE_ASPECT_COLOR_BIT:
          tex_name = "color_tex";
-         if (vk_format_is_int(key->dst_format))
+         if (vk_format_is_sint(key->dst_format))
             base_type = GLSL_TYPE_INT;
          else if (vk_format_is_uint(key->dst_format))
             base_type = GLSL_TYPE_UINT;

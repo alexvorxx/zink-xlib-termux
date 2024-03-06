@@ -564,17 +564,15 @@ gather_shader_info_tcs(struct radv_device *device, const nir_shader *nir,
 
    if (gfx_state->ts.patch_control_points) {
       /* Number of tessellation patches per workgroup processed by the current pipeline. */
-      info->num_tess_patches = get_tcs_num_patches(
-         gfx_state->ts.patch_control_points, nir->info.tess.tcs_vertices_out, info->tcs.num_linked_inputs,
+      info->num_tess_patches = radv_get_tcs_num_patches(
+         pdev, gfx_state->ts.patch_control_points, nir->info.tess.tcs_vertices_out, info->tcs.num_linked_inputs,
          info->tcs.num_lds_per_vertex_outputs, info->tcs.num_lds_per_patch_outputs, info->tcs.num_linked_outputs,
-         info->tcs.num_linked_patch_outputs, pdev->hs.tess_offchip_block_dw_size, pdev->info.gfx_level,
-         pdev->info.family);
+         info->tcs.num_linked_patch_outputs);
 
       /* LDS size used by VS+TCS for storing TCS inputs and outputs. */
-      info->tcs.num_lds_blocks =
-         calculate_tess_lds_size(pdev->info.gfx_level, gfx_state->ts.patch_control_points,
-                                 nir->info.tess.tcs_vertices_out, info->tcs.num_linked_inputs, info->num_tess_patches,
-                                 info->tcs.num_lds_per_vertex_outputs, info->tcs.num_lds_per_patch_outputs);
+      info->tcs.num_lds_blocks = radv_get_tess_lds_size(
+         pdev, gfx_state->ts.patch_control_points, nir->info.tess.tcs_vertices_out, info->tcs.num_linked_inputs,
+         info->num_tess_patches, info->tcs.num_lds_per_vertex_outputs, info->tcs.num_lds_per_patch_outputs);
    }
 }
 

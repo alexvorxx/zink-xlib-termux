@@ -2647,17 +2647,16 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
     */
    if (cmd_buffer->state.uses_dynamic_patch_control_points) {
       /* Compute the number of patches. */
-      cmd_buffer->state.tess_num_patches = get_tcs_num_patches(
-         d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out, vs->info.vs.num_linked_outputs,
+      cmd_buffer->state.tess_num_patches = radv_get_tcs_num_patches(
+         pdev, d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out, vs->info.vs.num_linked_outputs,
          tcs->info.tcs.num_lds_per_vertex_outputs, tcs->info.tcs.num_lds_per_patch_outputs,
-         tcs->info.tcs.num_linked_outputs, tcs->info.tcs.num_linked_patch_outputs, pdev->hs.tess_offchip_block_dw_size,
-         pdev->info.gfx_level, pdev->info.family);
+         tcs->info.tcs.num_linked_outputs, tcs->info.tcs.num_linked_patch_outputs);
 
       /* Compute the LDS size. */
       cmd_buffer->state.tess_lds_size =
-         calculate_tess_lds_size(pdev->info.gfx_level, d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out,
-                                 vs->info.vs.num_linked_outputs, cmd_buffer->state.tess_num_patches,
-                                 tcs->info.tcs.num_lds_per_vertex_outputs, tcs->info.tcs.num_lds_per_patch_outputs);
+         radv_get_tess_lds_size(pdev, d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out,
+                                vs->info.vs.num_linked_outputs, cmd_buffer->state.tess_num_patches,
+                                tcs->info.tcs.num_lds_per_vertex_outputs, tcs->info.tcs.num_lds_per_patch_outputs);
    }
 
    ls_hs_config = S_028B58_NUM_PATCHES(cmd_buffer->state.tess_num_patches) |

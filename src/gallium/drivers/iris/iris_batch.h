@@ -51,7 +51,7 @@ struct iris_context;
 #define BATCH_RESERVED 60
 
 /* Our target batch size - flush approximately at this point. */
-#define BATCH_SZ (64 * 1024 - BATCH_RESERVED)
+#define BATCH_SZ (128 * 1024 - BATCH_RESERVED)
 
 enum iris_batch_name {
    IRIS_BATCH_RENDER,

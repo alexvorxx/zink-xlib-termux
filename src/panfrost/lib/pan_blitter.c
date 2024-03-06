@@ -63,6 +63,22 @@ blit_type_to_reg_fmt(nir_alu_type in)
 }
 #endif
 
+/* On Valhall, the driver gives the hardware a table of resource tables.
+ * Resources are addressed as the index of the table together with the index of
+ * the resource within the table. For simplicity, we put one type of resource
+ * in each table and fix the numbering of the tables.
+ *
+ * This numbering is arbitrary.
+ */
+enum pan_blit_resource_table {
+   PAN_BLIT_TABLE_ATTRIBUTE = 0,
+   PAN_BLIT_TABLE_ATTRIBUTE_BUFFER,
+   PAN_BLIT_TABLE_SAMPLER,
+   PAN_BLIT_TABLE_TEXTURE,
+
+   PAN_BLIT_NUM_RESOURCE_TABLES
+};
+
 struct pan_blit_surface {
    gl_frag_result loc              : 4;
    nir_alu_type type               : 8;
@@ -405,19 +421,20 @@ lower_sampler_parameters(nir_builder *b, nir_intrinsic_instr *intr,
 static uint32_t
 sampler_hw_index(uint32_t index)
 {
-   return PAN_ARCH >= 9 ? pan_res_handle(PAN_TABLE_SAMPLER, index) : index;
+   return PAN_ARCH >= 9 ? pan_res_handle(PAN_BLIT_TABLE_SAMPLER, index) : index;
 }
 
 static uint32_t
 tex_hw_index(uint32_t index)
 {
-   return PAN_ARCH >= 9 ? pan_res_handle(PAN_TABLE_TEXTURE, index) : index;
+   return PAN_ARCH >= 9 ? pan_res_handle(PAN_BLIT_TABLE_TEXTURE, index) : index;
 }
 
 static uint32_t
 attr_hw_index(uint32_t index)
 {
-   return PAN_ARCH >= 9 ? pan_res_handle(PAN_TABLE_ATTRIBUTE, index) : index;
+   return PAN_ARCH >= 9 ? pan_res_handle(PAN_BLIT_TABLE_ATTRIBUTE, index)
+                        : index;
 }
 
 static const struct pan_blit_shader_data *
@@ -913,7 +930,7 @@ pan_blitter_emit_varying(struct pan_pool *pool)
 
 #if PAN_ARCH >= 9
       cfg.attribute_type = MALI_ATTRIBUTE_TYPE_1D;
-      cfg.table = PAN_TABLE_ATTRIBUTE_BUFFER;
+      cfg.table = PAN_BLIT_TABLE_ATTRIBUTE_BUFFER;
       cfg.frequency = MALI_ATTRIBUTE_FREQUENCY_VERTEX;
       cfg.stride = 4 * sizeof(float);
 #endif
@@ -1169,7 +1186,7 @@ pan_preload_emit_dcd(struct pan_blitter_cache *cache,
    }
 #else
    struct panfrost_ptr T;
-   unsigned nr_tables = 12;
+   unsigned nr_tables = PAN_BLIT_NUM_RESOURCE_TABLES;
 
    /* Although individual resources need only 16 byte alignment, the
     * resource table as a whole must be 64-byte aligned.
@@ -1177,11 +1194,11 @@ pan_preload_emit_dcd(struct pan_blitter_cache *cache,
    T = pan_pool_alloc_aligned(pool, nr_tables * pan_size(RESOURCE), 64);
    memset(T.cpu, 0, nr_tables * pan_size(RESOURCE));
 
-   panfrost_make_resource_table(T, PAN_TABLE_TEXTURE, textures, tex_count);
-   panfrost_make_resource_table(T, PAN_TABLE_SAMPLER, samplers, 1);
-   panfrost_make_resource_table(T, PAN_TABLE_ATTRIBUTE, varyings, 1);
-   panfrost_make_resource_table(T, PAN_TABLE_ATTRIBUTE_BUFFER, varying_buffers,
-                                1);
+   panfrost_make_resource_table(T, PAN_BLIT_TABLE_TEXTURE, textures, tex_count);
+   panfrost_make_resource_table(T, PAN_BLIT_TABLE_SAMPLER, samplers, 1);
+   panfrost_make_resource_table(T, PAN_BLIT_TABLE_ATTRIBUTE, varyings, 1);
+   panfrost_make_resource_table(T, PAN_BLIT_TABLE_ATTRIBUTE_BUFFER,
+                                varying_buffers, 1);
 
    struct pan_blit_shader_key key = pan_blitter_get_key(&views);
    const struct pan_blit_shader_data *blit_shader =

@@ -30,7 +30,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "util/u_math.h"
-#include "hw/isa.xml.h"
 
 #include <etnaviv/isa/asm.h>
 

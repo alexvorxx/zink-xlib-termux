@@ -129,7 +129,11 @@ struct nil_image_level {
    /** Tiling for this level */
    struct nil_tiling tiling;
 
-   /** Stride between rows in bytes */
+   /** Stride between rows in bytes
+    *
+    * For linear images, this is the obvious stride.  For tiled images, it's
+    * the width of the mip level rounded up to the tile size.
+    */
    uint32_t row_stride_B;
 };
 

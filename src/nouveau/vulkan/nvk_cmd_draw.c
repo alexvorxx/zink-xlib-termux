@@ -639,10 +639,17 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          P_NV9097_SET_COLOR_TARGET_B(p, i, addr);
 
          if (level->tiling.is_tiled) {
-            P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, level_extent_sa.w);
-            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
             const enum pipe_format p_format =
                vk_format_to_pipe_format(iview->vk.format);
+
+            /* We use the stride for depth/stencil targets because the Z/S
+             * hardware has no concept of a tile width.  Instead, we just set
+             * the width to the stride divided by bpp.
+             */
+            const uint32_t row_stride_el =
+               level->row_stride_B / util_format_get_blocksize(p_format);
+            P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, row_stride_el);
+            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
             const uint8_t ct_format = nil_format_to_color_target(p_format);
             P_NV9097_SET_COLOR_TARGET_FORMAT(p, i, ct_format);
 
@@ -773,8 +780,15 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
       struct nil_extent4d level_extent_sa =
          nil_image_level_extent_sa(&nil_image, mip_level);
 
+      /* We use the stride for depth/stencil targets because the Z/S hardware
+       * has no concept of a tile width.  Instead, we just set the width to
+       * the stride divided by bpp.
+       */
+      const uint32_t row_stride_el =
+         level->row_stride_B / util_format_get_blocksize(p_format);
+
       P_MTHD(p, NV9097, SET_ZT_SIZE_A);
-      P_NV9097_SET_ZT_SIZE_A(p, level_extent_sa.w);
+      P_NV9097_SET_ZT_SIZE_A(p, row_stride_el);
       P_NV9097_SET_ZT_SIZE_B(p, level_extent_sa.h);
       P_NV9097_SET_ZT_SIZE_C(p, {
          .third_dimension  = base_array_layer + layer_count,

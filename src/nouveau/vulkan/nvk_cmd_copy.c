@@ -232,7 +232,12 @@ nouveau_copy_rect(struct nvk_cmd_buffer *cmd, struct nouveau_copy *copy)
                           GOB_HEIGHT_GOB_HEIGHT_FERMI_8 :
                           GOB_HEIGHT_GOB_HEIGHT_TESLA_4,
          });
-         P_NV90B5_SET_SRC_WIDTH(p, copy->src.extent_el.width * src_bw);
+         /* We use the stride for copies because the copy hardware has no
+          * concept of a tile width.  Instead, we just set the width to the
+          * stride divided by bpp.
+          */
+         uint32_t src_stride_el = copy->src.row_stride / copy->src.bpp;
+         P_NV90B5_SET_SRC_WIDTH(p, src_stride_el * src_bw);
          P_NV90B5_SET_SRC_HEIGHT(p, copy->src.extent_el.height);
          P_NV90B5_SET_SRC_DEPTH(p, copy->src.extent_el.depth);
          if (copy->src.image_type == VK_IMAGE_TYPE_3D)
@@ -268,7 +273,12 @@ nouveau_copy_rect(struct nvk_cmd_buffer *cmd, struct nouveau_copy *copy)
                           GOB_HEIGHT_GOB_HEIGHT_FERMI_8 :
                           GOB_HEIGHT_GOB_HEIGHT_TESLA_4,
          });
-         P_NV90B5_SET_DST_WIDTH(p, copy->dst.extent_el.width * dst_bw);
+         /* We use the stride for copies because the copy hardware has no
+          * concept of a tile width.  Instead, we just set the width to the
+          * stride divided by bpp.
+          */
+         uint32_t dst_stride_el = copy->dst.row_stride / copy->dst.bpp;
+         P_NV90B5_SET_DST_WIDTH(p, dst_stride_el * dst_bw);
          P_NV90B5_SET_DST_HEIGHT(p, copy->dst.extent_el.height);
          P_NV90B5_SET_DST_DEPTH(p, copy->dst.extent_el.depth);
          if (copy->dst.image_type == VK_IMAGE_TYPE_3D)

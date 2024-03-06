@@ -154,8 +154,10 @@ etna_emit_alu(struct etna_compile *c, nir_op op, struct etna_inst_dst dst,
    case nir_op_flog2:
    case nir_op_fsin:
    case nir_op_fcos:
-      if (c->specs->has_new_transcendentals)
+      if (c->specs->has_new_transcendentals) {
          inst.tex.amode = 1;
+         inst.rounding = ISA_ROUNDING_RTZ;
+      }
       FALLTHROUGH;
    case nir_op_frsq:
    case nir_op_frcp:

@@ -56,6 +56,7 @@ struct etna_inst_src {
 struct etna_inst {
    enum isa_opc opcode;
    enum isa_type type;
+   enum isa_rounding rounding;
    enum isa_cond cond : 5;
    unsigned sat       : 1;                 /* saturate result between 0..1 */
    unsigned sel_bit0  : 1;                 /* select low half mediump */

@@ -449,8 +449,8 @@ static const char *const dp_dc1_msg_type_hsw[32] = {
    [GFX9_DATAPORT_DC_PORT1_A64_SCATTERED_READ] = "DC A64 scattered read",
    [GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_READ] = "DC A64 untyped surface read",
    [GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP] = "DC A64 untyped atomic op",
-   [GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ] = "DC A64 oword block read",
-   [GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE] = "DC A64 oword block write",
+   [GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ] = "DC A64 oword block read",
+   [GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE] = "DC A64 oword block write",
    [GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_WRITE] = "DC A64 untyped surface write",
    [GFX8_DATAPORT_DC_PORT1_A64_SCATTERED_WRITE] = "DC A64 scattered write",
    [GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP] =
@@ -2105,8 +2105,8 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                   control(file, "atomic float op", aop_float, msg_ctrl & 0xf,
                           &space);
                   break;
-               case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
-               case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
+               case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
+               case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
                   assert(dp_oword_block_rw[msg_ctrl & 7]);
                   format(file, "owords = %s, aligned = %d",
                         dp_oword_block_rw[msg_ctrl & 7], (msg_ctrl >> 3) & 3);

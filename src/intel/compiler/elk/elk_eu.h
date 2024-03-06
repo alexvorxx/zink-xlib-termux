@@ -878,8 +878,8 @@ elk_dp_a64_oword_block_rw_desc(const struct intel_device_info *devinfo,
    assert(!write || align_16B);
 
    unsigned msg_type =
-      write ? GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE :
-              GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ;
+      write ? GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE :
+              GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ;
 
    unsigned msg_control =
       SET_BITS(!align_16B, 4, 3) |

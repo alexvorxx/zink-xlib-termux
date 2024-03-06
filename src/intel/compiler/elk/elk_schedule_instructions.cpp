@@ -543,8 +543,8 @@ elk_schedule_node::set_latency_gfx7(const struct elk_isa_info *isa)
          case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_READ:
          case GFX8_DATAPORT_DC_PORT1_A64_SCATTERED_WRITE:
          case GFX9_DATAPORT_DC_PORT1_A64_SCATTERED_READ:
-         case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
-         case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
+         case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
+         case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
             /* See also GFX7_DATAPORT_DC_UNTYPED_SURFACE_READ */
             latency = 300;
             break;

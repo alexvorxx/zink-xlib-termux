@@ -35,6 +35,7 @@ void
 d3d12_video_encoder_update_current_rate_control_hevc(struct d3d12_video_encoder *pD3D12Enc,
                                                      pipe_h265_enc_picture_desc *picture)
 {
+   struct D3D12EncodeRateControlState m_prevRCState = pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc;
    pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc = {};
    pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_FrameRate.Numerator =
       picture->rc.frame_rate_num;
@@ -277,12 +278,31 @@ d3d12_video_encoder_update_current_rate_control_hevc(struct d3d12_video_encoder 
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_DISABLE:
       {
          pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Mode = D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CQP;
-         pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CQP
-            .ConstantQP_FullIntracodedFrame = picture->rc.quant_i_frames;
-         pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CQP
-            .ConstantQP_InterPredictedFrame_PrevRefOnly = picture->rc.quant_p_frames;
-         pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CQP
-            .ConstantQP_InterPredictedFrame_BiDirectionalRef = picture->rc.quant_b_frames;
+         // Load previous RC state for all frames and only update the current frame
+         pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CQP =
+                  m_prevRCState.m_Config.m_Configuration_CQP;
+         switch (picture->picture_type) {
+            case PIPE_H2645_ENC_PICTURE_TYPE_P:
+            {
+               pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CQP
+                  .ConstantQP_InterPredictedFrame_PrevRefOnly = picture->rc.quant_p_frames;
+            } break;
+            case PIPE_H2645_ENC_PICTURE_TYPE_B:
+            {
+               pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CQP
+                  .ConstantQP_InterPredictedFrame_BiDirectionalRef = picture->rc.quant_b_frames;
+            } break;
+            case PIPE_H2645_ENC_PICTURE_TYPE_I:
+            case PIPE_H2645_ENC_PICTURE_TYPE_IDR:
+            {
+               pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CQP
+                  .ConstantQP_FullIntracodedFrame = picture->rc.quant_i_frames;
+            } break;
+            default:
+            {
+               unreachable("Unsupported pipe_h2645_enc_picture_type");
+            } break;
+         }
 
          if (picture->quality_modes.level > 0) {
             pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Flags |=

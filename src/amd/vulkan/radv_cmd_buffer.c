@@ -1879,8 +1879,7 @@ radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader
 
    uint32_t col_format = radv_compact_spi_shader_col_format(ps_shader, ps_epilog->spi_shader_col_format);
 
-   bool need_null_export_workaround =
-      radv_needs_null_export_workaround(device, ps_shader, cmd_buffer->state.custom_blend_mode);
+   bool need_null_export_workaround = radv_needs_null_export_workaround(device, ps_shader, 0);
    if (need_null_export_workaround && !col_format)
       col_format = V_028714_SPI_SHADER_32_R;
    radeon_set_context_reg(cmd_buffer->cs, R_028714_SPI_SHADER_COL_FORMAT, col_format);
@@ -9223,8 +9222,10 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
 
          cmd_buffer->state.col_format_non_compacted = ps_epilog->spi_shader_col_format;
 
-         bool need_null_export_workaround = radv_needs_null_export_workaround(
-            device, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], cmd_buffer->state.custom_blend_mode);
+         assert(cmd_buffer->state.custom_blend_mode == 0);
+
+         bool need_null_export_workaround =
+            radv_needs_null_export_workaround(device, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], 0);
 
          if (need_null_export_workaround && !cmd_buffer->state.col_format_non_compacted)
             cmd_buffer->state.col_format_non_compacted = V_028714_SPI_SHADER_32_R;

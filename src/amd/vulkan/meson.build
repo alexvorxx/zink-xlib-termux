@@ -305,10 +305,6 @@ if with_tests
       include_directories : [
         inc_include,
         inc_src,
-        inc_mapi,
-        inc_mesa,
-        inc_gallium,
-        inc_gallium_aux,
         inc_amd,
         inc_amd_common,
         inc_compiler,

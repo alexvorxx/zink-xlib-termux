@@ -614,7 +614,6 @@ add_aux_surface_if_supported(struct anv_device *device,
 
       ok = isl_surf_get_ccs_surf(&device->isl_dev,
                                  &image->planes[plane].primary_surface.isl,
-                                 NULL,
                                  &image->planes[plane].aux_surface.isl,
                                  stride);
       if (!ok)

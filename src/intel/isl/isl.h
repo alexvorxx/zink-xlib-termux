@@ -593,8 +593,6 @@ enum isl_tiling {
    ISL_TILING_HIZ,
    /** Tiling format for CCS surfaces */
    ISL_TILING_CCS,
-   /** Tiling format for Gfx12 CCS surfaces */
-   ISL_TILING_GFX12_CCS,
 };
 
 /**
@@ -615,7 +613,6 @@ typedef uint32_t isl_tiling_flags_t;
 #define ISL_TILING_64_XE2_BIT             (1u << ISL_TILING_64_XE2)
 #define ISL_TILING_HIZ_BIT                (1u << ISL_TILING_HIZ)
 #define ISL_TILING_CCS_BIT                (1u << ISL_TILING_CCS)
-#define ISL_TILING_GFX12_CCS_BIT          (1u << ISL_TILING_GFX12_CCS)
 #define ISL_TILING_ANY_MASK               (~0u)
 #define ISL_TILING_NON_LINEAR_MASK        (~ISL_TILING_LINEAR_BIT)
 
@@ -2693,14 +2690,7 @@ isl_surf_get_mcs_surf(const struct isl_device *dev,
  *   scale-down from the main surfaced that's attached side-band via a second
  *   set of page tables.
  *
- * In spite of this, it's sometimes useful to think of it as being a linear
- * buffer-like surface, at least for the purposes of allocation.  When invoked
- * on Tigerlake or later, this function still works and produces such a linear
- * surface.
- *
  * :param surf:                 |in|  The main surface
- * :param hiz_or_mcs_surf:      |in|  HiZ or MCS surface associated with the main
- *                                    surface
  * :param ccs_surf:             |out| The CCS to populate on success
  * :param row_pitch_B:                The row pitch for the CCS in bytes or 0 if
  *                                    ISL should calculate the row pitch.
@@ -2709,7 +2699,6 @@ isl_surf_get_mcs_surf(const struct isl_device *dev,
 bool
 isl_surf_get_ccs_surf(const struct isl_device *dev,
                       const struct isl_surf *surf,
-                      const struct isl_surf *hiz_or_mcs_surf,
                       struct isl_surf *ccs_surf,
                       uint32_t row_pitch_B);
 

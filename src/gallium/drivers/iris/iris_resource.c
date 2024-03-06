@@ -840,7 +840,7 @@ iris_resource_configure_aux(struct iris_screen *screen,
 
    const bool has_ccs = devinfo->has_aux_map || devinfo->has_flat_ccs ?
       isl_surf_supports_ccs(&screen->isl_dev, &res->surf, &res->aux.surf) :
-      isl_surf_get_ccs_surf(&screen->isl_dev, &res->surf, NULL, &res->aux.surf, 0);
+      isl_surf_get_ccs_surf(&screen->isl_dev, &res->surf, &res->aux.surf, 0);
 
    if (has_mcs) {
       assert(!res->mod_info);

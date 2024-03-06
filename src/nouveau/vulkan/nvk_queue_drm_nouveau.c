@@ -104,6 +104,28 @@ push_add_sync_signal(struct push_builder *pb,
 }
 
 static void
+push_bind(struct push_builder *pb, const struct drm_nouveau_vm_bind_op *bind)
+{
+   if (pb->vmbind.op_count > 0) {
+      struct drm_nouveau_vm_bind_op *prev_bind =
+         &pb->bind_ops[pb->vmbind.op_count - 1];
+
+      /* Try to coalesce bind ops together if we can */
+      if (bind->op == prev_bind->op &&
+          bind->flags == prev_bind->flags &&
+          bind->handle == prev_bind->handle &&
+          bind->addr == prev_bind->addr + prev_bind->range &&
+          bind->bo_offset == prev_bind->bo_offset + prev_bind->range) {
+         prev_bind->range += bind->range;
+         return;
+      }
+   }
+
+   assert(pb->vmbind.op_count < NVK_PUSH_MAX_BINDS);
+   pb->bind_ops[pb->vmbind.op_count++] = *bind;
+}
+
+static void
 push_add_buffer_bind(struct push_builder *pb,
                      VkSparseBufferMemoryBindInfo *bind_info)
 {
@@ -115,15 +137,14 @@ push_add_buffer_bind(struct push_builder *pb,
       assert(bind->resourceOffset + bind->size <= buffer->vma_size_B);
       assert(!mem || bind->memoryOffset + bind->size <= mem->vk.size);
 
-      assert(pb->vmbind.op_count < NVK_PUSH_MAX_BINDS);
-      pb->bind_ops[pb->vmbind.op_count++] = (struct drm_nouveau_vm_bind_op) {
+      push_bind(pb, &(struct drm_nouveau_vm_bind_op) {
          .op = mem ? DRM_NOUVEAU_VM_BIND_OP_MAP :
                      DRM_NOUVEAU_VM_BIND_OP_UNMAP,
          .handle = mem ? mem->bo->handle : 0,
          .addr = buffer->addr + bind->resourceOffset,
          .bo_offset = bind->memoryOffset,
          .range = bind->size,
-      };
+      });
    }
 }
 
@@ -174,8 +195,7 @@ push_add_image_plane_opaque_bind(struct push_builder *pb,
    assert(plane_bind_offset_B + bind_size_B <= plane->vma_size_B);
    assert(!mem || mem_bind_offset_B + bind_size_B <= mem->vk.size);
 
-   assert(pb->vmbind.op_count < NVK_PUSH_MAX_BINDS);
-   pb->bind_ops[pb->vmbind.op_count++] = (struct drm_nouveau_vm_bind_op) {
+   push_bind(pb, &(struct drm_nouveau_vm_bind_op) {
       .op = mem ? DRM_NOUVEAU_VM_BIND_OP_MAP :
                   DRM_NOUVEAU_VM_BIND_OP_UNMAP,
       .handle = mem ? mem->bo->handle : 0,
@@ -183,7 +203,7 @@ push_add_image_plane_opaque_bind(struct push_builder *pb,
       .bo_offset = mem_bind_offset_B,
       .range = bind_size_B,
       .flags = plane->nil.pte_kind,
-   };
+   });
 
 skip:
    assert(plane->vma_size_B == plane->nil.size_B);

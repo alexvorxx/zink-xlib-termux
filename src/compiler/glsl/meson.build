@@ -194,7 +194,6 @@ files_libglsl = files(
   'link_interface_blocks.cpp',
   'list.h',
   'lower_builtins.cpp',
-  'lower_discard_flow.cpp',
   'lower_instructions.cpp',
   'lower_jumps.cpp',
   'lower_mat_op_to_vec.cpp',

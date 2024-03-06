@@ -692,9 +692,9 @@ SPDX-License-Identifier: MIT
 	<pattern pos="70">1</pattern> <!-- SRC1_USE -->
 	<field name="SRC1_REG" low="71" high="79" type="uint"/>
 	<field name="SRC1" low="81" high="90" type="#instruction-src">
-		<param name="SRC2_REG" as="SRC_REG"/>
-		<param name="SRC2_AMODE" as="SRC_AMODE"/>
-		<param name="SRC2_RGROUP" as="SRC_RGROUP"/>
+		<param name="SRC1_REG" as="SRC_REG"/>
+		<param name="SRC1_AMODE" as="SRC_AMODE"/>
+		<param name="SRC1_RGROUP" as="SRC_RGROUP"/>
 	</field>
 	<field name="SRC1_AMODE" low="91" high="93" type="#reg_addressing_mode"/>
 	<field name="SRC1_RGROUP" low="96" high="98" type="#reg_group"/>

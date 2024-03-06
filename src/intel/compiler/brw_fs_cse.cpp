@@ -58,12 +58,24 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case BRW_OPCODE_SHR:
    case BRW_OPCODE_SHL:
    case BRW_OPCODE_ASR:
+   case BRW_OPCODE_ROR:
+   case BRW_OPCODE_ROL:
    case BRW_OPCODE_CMP:
    case BRW_OPCODE_CMPN:
+   case BRW_OPCODE_CSEL:
+   case BRW_OPCODE_BFREV:
+   case BRW_OPCODE_BFE:
+   case BRW_OPCODE_BFI1:
+   case BRW_OPCODE_BFI2:
    case BRW_OPCODE_ADD:
    case BRW_OPCODE_MUL:
    case SHADER_OPCODE_MULH:
+   case BRW_OPCODE_AVG:
    case BRW_OPCODE_FRC:
+   case BRW_OPCODE_LZD:
+   case BRW_OPCODE_FBH:
+   case BRW_OPCODE_FBL:
+   case BRW_OPCODE_CBIT:
    case BRW_OPCODE_RNDU:
    case BRW_OPCODE_RNDD:
    case BRW_OPCODE_RNDE:
@@ -80,6 +92,9 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case SHADER_OPCODE_LOAD_LIVE_CHANNELS:
    case FS_OPCODE_LOAD_LIVE_CHANNELS:
    case SHADER_OPCODE_BROADCAST:
+   case SHADER_OPCODE_SHUFFLE:
+   case SHADER_OPCODE_QUAD_SWIZZLE:
+   case SHADER_OPCODE_CLUSTER_BROADCAST:
    case SHADER_OPCODE_MOV_INDIRECT:
    case SHADER_OPCODE_TEX_LOGICAL:
    case SHADER_OPCODE_TXD_LOGICAL:
@@ -98,7 +113,11 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
    case SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL:
+   case SHADER_OPCODE_SAMPLEINFO_LOGICAL:
+   case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
+   case SHADER_OPCODE_GET_BUFFER_SIZE:
    case FS_OPCODE_PACK:
+   case FS_OPCODE_PACK_HALF_2x16_SPLIT:
    case SHADER_OPCODE_RCP:
    case SHADER_OPCODE_RSQ:
    case SHADER_OPCODE_SQRT:

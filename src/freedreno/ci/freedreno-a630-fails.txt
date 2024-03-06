@@ -307,19 +307,6 @@ spec@!opengl 1.0@depth-clear-precision-check@depth32,Fail
 # timestamp/time-elapsed qbo tests fail due to lack of way to convert
 # from ticks to ns on the CP (ie. we'd need to spin up a compute shader
 # or something equally drastic)
-spec@arb_query_buffer_object@qbo,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIMESTAMP-ASYNC_CPU_READ_AFTER-GL_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIMESTAMP-ASYNC_CPU_READ_AFTER-GL_UNSIGNED_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIMESTAMP-ASYNC_CPU_READ_AFTER-GL_UNSIGNED_INT64_ARB,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIMESTAMP-SYNC_CPU_READ_AFTER_CACHE_TEST-GL_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIMESTAMP-SYNC_CPU_READ_AFTER_CACHE_TEST-GL_UNSIGNED_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIMESTAMP-SYNC_CPU_READ_AFTER_CACHE_TEST-GL_UNSIGNED_INT64_ARB,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIME_ELAPSED-ASYNC_CPU_READ_AFTER-GL_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIME_ELAPSED-ASYNC_CPU_READ_AFTER-GL_UNSIGNED_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIME_ELAPSED-ASYNC_CPU_READ_AFTER-GL_UNSIGNED_INT64_ARB,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIME_ELAPSED-SYNC_CPU_READ_AFTER_CACHE_TEST-GL_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIME_ELAPSED-SYNC_CPU_READ_AFTER_CACHE_TEST-GL_UNSIGNED_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TIME_ELAPSED-SYNC_CPU_READ_AFTER_CACHE_TEST-GL_UNSIGNED_INT64_ARB,Fail
 
 # These seem to fail with zink as well (and on various other drivers
 # from what I can tell from expectations files, so maybe test issue?)
@@ -333,18 +320,6 @@ spec@arb_query_buffer_object@coherency@indirect-draw-count-GL_GEOMETRY_SHADER_PR
 spec@arb_query_buffer_object@coherency@indirect-draw-count-GL_TESS_CONTROL_SHADER_PATCHES,Fail
 spec@arb_query_buffer_object@coherency@indirect-draw-count-GL_TESS_EVALUATION_SHADER_INVOCATIONS,Fail
 spec@arb_query_buffer_object@coherency@indirect-draw-count-GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-ASYNC_CPU_READ_AFTER-GL_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-ASYNC_CPU_READ_AFTER-GL_UNSIGNED_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-ASYNC_CPU_READ_AFTER-GL_UNSIGNED_INT64_ARB,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-ASYNC_CPU_READ_BEFORE-GL_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-ASYNC_CPU_READ_BEFORE-GL_UNSIGNED_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-ASYNC_CPU_READ_BEFORE-GL_UNSIGNED_INT64_ARB,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-SYNC-GL_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-SYNC-GL_UNSIGNED_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-SYNC-GL_UNSIGNED_INT64_ARB,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-SYNC_CPU_READ_AFTER_CACHE_TEST-GL_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-SYNC_CPU_READ_AFTER_CACHE_TEST-GL_UNSIGNED_INT,Fail
-spec@arb_query_buffer_object@qbo@query-GL_TESS_CONTROL_SHADER_PATCHES-SYNC_CPU_READ_AFTER_CACHE_TEST-GL_UNSIGNED_INT64_ARB,Fail
 
 spec@!opengl 1.1@line-smooth-stipple,Fail
 
@@ -392,4 +367,3 @@ stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.
 stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.geom.xfb.rast.line_strip_with_adjacency.pgq_default_xfb_1.single_draw.xfbq_first.after,Fail
 stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.geom.xfb.rast.triangle_strip_with_adjacency.pgq_default_xfb_1.single_draw.xfbq_first.before_2_queries,Fail
 stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.tese.xfb.rast.patch_list.pgq_default_xfb_default.two_draws.xfbq_first.none_2_queries,Fail
-

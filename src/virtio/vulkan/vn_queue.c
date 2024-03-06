@@ -29,6 +29,12 @@
 
 /* queue commands */
 
+struct vn_submit_info_pnext_fix {
+   VkDeviceGroupSubmitInfo group;
+   VkProtectedSubmitInfo protected;
+   VkTimelineSemaphoreSubmitInfo timeline;
+};
+
 struct vn_queue_submission {
    VkStructureType batch_type;
    VkQueue queue_handle;
@@ -43,6 +49,8 @@ struct vn_queue_submission {
 
    uint32_t cmd_count;
    uint32_t feedback_types;
+   uint32_t pnext_count;
+   uint32_t dev_mask_count;
    bool has_zink_sync_batch;
    const struct vn_device_memory *wsi_mem;
    struct vn_sync_payload_external external_payload;
@@ -76,6 +84,9 @@ struct vn_queue_submission {
          VkCommandBuffer *cmd_handles;
          VkCommandBufferSubmitInfo *cmd_infos;
       };
+
+      struct vn_submit_info_pnext_fix *pnexts;
+      uint32_t *dev_masks;
    } temp;
 };
 
@@ -314,6 +325,72 @@ vn_fix_batch_cmd_count_for_zink_sync(struct vn_queue_submission *submit,
    return false;
 }
 
+static void
+vn_fix_device_group_cmd_count(struct vn_queue_submission *submit,
+                              uint32_t batch_index)
+{
+   const VkSubmitInfo *src_batch = &submit->submit_batches[batch_index];
+   struct vn_submit_info_pnext_fix *pnext_fix = submit->temp.pnexts;
+   VkBaseOutStructure *dst =
+      (void *)&submit->temp.submit_batches[batch_index];
+   uint32_t new_cmd_count =
+      submit->temp.submit_batches[batch_index].commandBufferCount;
+
+   vk_foreach_struct_const(src, src_batch->pNext) {
+      void *pnext = NULL;
+      switch (src->sType) {
+      case VK_STRUCTURE_TYPE_DEVICE_GROUP_SUBMIT_INFO: {
+         uint32_t orig_cmd_count = 0;
+
+         memcpy(&pnext_fix->group, src, sizeof(pnext_fix->group));
+
+         VkDeviceGroupSubmitInfo *src_device_group =
+            (VkDeviceGroupSubmitInfo *)src;
+         if (src_device_group->commandBufferCount) {
+            orig_cmd_count = src_device_group->commandBufferCount;
+            memcpy(submit->temp.dev_masks,
+                   src_device_group->pCommandBufferDeviceMasks,
+                   sizeof(uint32_t) * orig_cmd_count);
+         }
+
+         /* Set feedback cmd device masks to 0 */
+         for (uint32_t i = orig_cmd_count; i < new_cmd_count; i++) {
+            submit->temp.dev_masks[i] = 0;
+         }
+
+         pnext_fix->group.commandBufferCount = new_cmd_count;
+         pnext_fix->group.pCommandBufferDeviceMasks = submit->temp.dev_masks;
+         pnext = &pnext_fix->group;
+         break;
+      }
+      case VK_STRUCTURE_TYPE_PROTECTED_SUBMIT_INFO:
+         memcpy(&pnext_fix->protected, src, sizeof(pnext_fix->protected));
+         pnext = &pnext_fix->protected;
+         break;
+      case VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO:
+         memcpy(&pnext_fix->timeline, src, sizeof(pnext_fix->timeline));
+         pnext = &pnext_fix->timeline;
+         break;
+      default:
+         /* The following structs are not supported by venus so are not
+          * handled here. VkAmigoProfilingSubmitInfoSEC,
+          * VkD3D12FenceSubmitInfoKHR, VkFrameBoundaryEXT,
+          * VkLatencySubmissionPresentIdNV, VkPerformanceQuerySubmitInfoKHR,
+          * VkWin32KeyedMutexAcquireReleaseInfoKHR,
+          * VkWin32KeyedMutexAcquireReleaseInfoNV
+          */
+         break;
+      }
+
+      if (pnext) {
+         dst->pNext = pnext;
+         dst = pnext;
+      }
+   }
+   submit->temp.pnexts++;
+   submit->temp.dev_masks += new_cmd_count;
+}
+
 static bool
 vn_semaphore_wait_external(struct vn_device *dev, struct vn_semaphore *sem);
 
@@ -358,6 +435,7 @@ vn_queue_submission_count_batch_feedback(struct vn_queue_submission *submit,
 {
    const uint32_t signal_count =
       vn_get_signal_semaphore_count(submit, batch_index);
+   uint32_t extra_cmd_count = 0;
    uint32_t feedback_types = 0;
 
    for (uint32_t i = 0; i < signal_count; i++) {
@@ -365,7 +443,7 @@ vn_queue_submission_count_batch_feedback(struct vn_queue_submission *submit,
          vn_get_signal_semaphore(submit, batch_index, i));
       if (sem->feedback.slot) {
          feedback_types |= VN_FEEDBACK_TYPE_SEMAPHORE;
-         submit->cmd_count++;
+         extra_cmd_count++;
       }
    }
 
@@ -390,12 +468,12 @@ vn_queue_submission_count_batch_feedback(struct vn_queue_submission *submit,
          }
       }
       if (feedback_types & VN_FEEDBACK_TYPE_QUERY)
-         submit->cmd_count++;
+         extra_cmd_count++;
 
       if (submit->feedback_types & VN_FEEDBACK_TYPE_FENCE &&
           batch_index == submit->batch_count - 1) {
          feedback_types |= VN_FEEDBACK_TYPE_FENCE;
-         submit->cmd_count++;
+         extra_cmd_count++;
       }
 
       /* Space to copy the original cmds to append feedback to it.
@@ -406,11 +484,22 @@ vn_queue_submission_count_batch_feedback(struct vn_queue_submission *submit,
        */
       if (feedback_types || (batch_index == submit->batch_count - 2 &&
                              submit->has_zink_sync_batch)) {
-         submit->cmd_count += cmd_count;
+         extra_cmd_count += cmd_count;
+      }
+   }
+
+   if (submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO &&
+       extra_cmd_count) {
+      const VkDeviceGroupSubmitInfo *device_group = vk_find_struct_const(
+         submit->submit_batches[batch_index].pNext, DEVICE_GROUP_SUBMIT_INFO);
+      if (device_group) {
+         submit->pnext_count++;
+         submit->dev_mask_count += extra_cmd_count;
       }
    }
 
    submit->feedback_types |= feedback_types;
+   submit->cmd_count += extra_cmd_count;
 }
 
 static VkResult
@@ -464,13 +553,23 @@ vn_queue_submission_alloc_storage(struct vn_queue_submission *submit)
    /* for fence, timeline semaphore and query feedback cmds */
    const size_t total_cmd_size =
       vn_get_cmd_size(submit) * MAX2(submit->cmd_count, 1);
+   /* for fixing command buffer counts in device group info, if it exists */
+   const size_t total_pnext_size =
+      submit->pnext_count * sizeof(struct vn_submit_info_pnext_fix);
+   const size_t total_dev_mask_size =
+      submit->dev_mask_count * sizeof(uint32_t);
    submit->temp.storage = vn_cached_storage_get(
-      &queue->storage, total_batch_size + total_cmd_size);
+      &queue->storage, total_batch_size + total_cmd_size + total_pnext_size +
+                          total_dev_mask_size);
    if (!submit->temp.storage)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
    submit->temp.batches = submit->temp.storage;
    submit->temp.cmds = submit->temp.storage + total_batch_size;
+   submit->temp.pnexts =
+      submit->temp.storage + total_batch_size + total_cmd_size;
+   submit->temp.dev_masks = submit->temp.storage + total_batch_size +
+                            total_cmd_size + total_pnext_size;
 
    return VK_SUCCESS;
 }
@@ -727,6 +826,11 @@ vn_queue_submission_add_feedback_cmds(struct vn_queue_submission *submit,
       VkSubmitInfo *batch = &submit->temp.submit_batches[batch_index];
       batch->pCommandBuffers = submit->temp.cmd_handles;
       batch->commandBufferCount = new_cmd_count;
+
+      const VkDeviceGroupSubmitInfo *device_group = vk_find_struct_const(
+         submit->submit_batches[batch_index].pNext, DEVICE_GROUP_SUBMIT_INFO);
+      if (device_group)
+         vn_fix_device_group_cmd_count(submit, batch_index);
    }
 
    return VK_SUCCESS;

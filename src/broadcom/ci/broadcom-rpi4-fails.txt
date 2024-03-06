@@ -496,12 +496,6 @@ spec@!opengl 1.1@line-smooth-stipple,Fail
 # Works when run individually, but fail consistently on the CI
 dEQP-GLES3.functional.texture.specification.teximage2d_pbo.rgba32i_cube,Fail
 
-# These tests should be skipped as we don't support the extension. CTS tests needs to be fixed
-dEQP-VK.pipeline.shader_object_linked_binary.framebuffer_attachment.unused_attachment,Crash
-dEQP-VK.pipeline.shader_object_linked_spirv.framebuffer_attachment.unused_attachment,Crash
-dEQP-VK.pipeline.shader_object_unlinked_binary.framebuffer_attachment.unused_attachment,Crash
-dEQP-VK.pipeline.shader_object_unlinked_spirv.framebuffer_attachment.unused_attachment,Crash
-
 # https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/4422
 KHR-GL31.texture_size_promotion.functional,Fail
 

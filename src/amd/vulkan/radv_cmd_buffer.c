@@ -9198,6 +9198,11 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       gfx103_emit_vrs_state(device, cs, NULL, false, false, false);
    }
 
+   uint32_t spi_shader_col_format = 0;
+   if (radv_needs_null_export_workaround(device, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], 0))
+      spi_shader_col_format = V_028714_SPI_SHADER_32_R;
+   radv_emit_blend_state(cs, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], spi_shader_col_format, 0);
+
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_GRAPHICS_SHADERS;
 }
 
@@ -9420,6 +9425,19 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       /* Re-emit the vertex buffer descriptors because they are really tied to the pipeline. */
       if (vs->info.vs.vb_desc_usage_mask) {
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_VERTEX_BUFFER;
+      }
+   }
+
+   const struct radv_shader *ps = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
+   if (ps && !ps->info.has_epilog) {
+      uint32_t col_format_non_compacted = 0;
+      if (radv_needs_null_export_workaround(device, ps, 0))
+         col_format_non_compacted = V_028714_SPI_SHADER_32_R;
+
+      if (device->physical_device->rad_info.rbplus_allowed &&
+          cmd_buffer->state.col_format_non_compacted != col_format_non_compacted) {
+         cmd_buffer->state.col_format_non_compacted = col_format_non_compacted;
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
       }
    }
 

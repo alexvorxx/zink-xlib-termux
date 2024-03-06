@@ -2043,6 +2043,9 @@ uint32_t radv_get_vgt_index_size(uint32_t type);
 void radv_emit_vgt_shader_config(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                                  const struct radv_vgt_shader_key *key);
 
+void radv_emit_blend_state(struct radeon_cmdbuf *ctx_cs, const struct radv_shader *ps, uint32_t spi_shader_col_format,
+                           uint32_t cb_shader_mask);
+
 unsigned radv_instance_rate_prolog_index(unsigned num_attributes, uint32_t instance_rate_inputs);
 
 struct radv_ps_epilog_state {

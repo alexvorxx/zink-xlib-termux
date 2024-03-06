@@ -2832,18 +2832,16 @@ done:
    return result;
 }
 
-static void
-radv_pipeline_emit_blend_state(struct radeon_cmdbuf *ctx_cs, const struct radv_graphics_pipeline *pipeline,
-                               const struct radv_blend_state *blend)
+void
+radv_emit_blend_state(struct radeon_cmdbuf *ctx_cs, const struct radv_shader *ps, uint32_t spi_shader_col_format,
+                      uint32_t cb_shader_mask)
 {
-   struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
-
    if (ps && ps->info.has_epilog)
       return;
 
-   radeon_set_context_reg(ctx_cs, R_028714_SPI_SHADER_COL_FORMAT, blend->spi_shader_col_format);
+   radeon_set_context_reg(ctx_cs, R_028714_SPI_SHADER_COL_FORMAT, spi_shader_col_format);
 
-   radeon_set_context_reg(ctx_cs, R_02823C_CB_SHADER_MASK, blend->cb_shader_mask);
+   radeon_set_context_reg(ctx_cs, R_02823C_CB_SHADER_MASK, cb_shader_mask);
 }
 
 void
@@ -3774,7 +3772,7 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
 
    struct radv_vgt_shader_key vgt_shader_key = radv_pipeline_generate_vgt_shader_key(device, pipeline);
 
-   radv_pipeline_emit_blend_state(ctx_cs, pipeline, blend);
+   radv_emit_blend_state(ctx_cs, ps, blend->spi_shader_col_format, blend->cb_shader_mask);
    radv_emit_vgt_gs_mode(device, ctx_cs, pipeline->base.shaders[pipeline->last_vgt_api_stage]);
 
    if (radv_pipeline_has_stage(pipeline, MESA_SHADER_VERTEX)) {

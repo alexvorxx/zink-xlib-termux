@@ -108,7 +108,7 @@ enum {
    RADV_IO_SLOT_VAR0, /* 0..31 */
 };
 
-static unsigned
+unsigned
 radv_map_io_driver_location(unsigned semantic)
 {
    if ((semantic >= VARYING_SLOT_PATCH0 && semantic < VARYING_SLOT_TESS_MAX) ||

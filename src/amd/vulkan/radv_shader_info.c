@@ -22,6 +22,7 @@
  */
 #include "nir/nir.h"
 #include "nir/nir_xfb_info.h"
+#include "nir/radv_nir.h"
 #include "radv_private.h"
 #include "radv_shader.h"
 
@@ -422,13 +423,49 @@ gather_shader_info_ngg_query(struct radv_device *device, struct radv_shader_info
    info->has_prim_query = device->cache_key.primitives_generated_query || info->has_xfb_query;
 }
 
+static uint64_t
+gather_io_mask(const uint64_t nir_mask, const uint64_t nir_patch_mask, const bool per_patch)
+{
+   /* Select the correct NIR IO mask.
+    * Exclude per-patch built-in variables, because in NIR they are not part of the patch I/O masks.
+    */
+   const uint64_t nir_io_mask =
+      (per_patch ? nir_patch_mask : nir_mask) & ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER);
+
+   /* Create a mask of driver locations mapped from NIR semantics. */
+   uint64_t radv_io_mask = 0;
+   u_foreach_bit64 (semantic, nir_io_mask) {
+      /* These outputs are not used when fixed output slots are needed. */
+      if (semantic == VARYING_SLOT_LAYER || semantic == VARYING_SLOT_VIEWPORT ||
+          semantic == VARYING_SLOT_PRIMITIVE_ID || semantic == VARYING_SLOT_PRIMITIVE_SHADING_RATE)
+         continue;
+
+      /* Generic per-patch outputs start at an offset. */
+      if (per_patch)
+         semantic += VARYING_SLOT_PATCH0;
+
+      radv_io_mask |= BITFIELD64_BIT(radv_map_io_driver_location(semantic));
+   }
+
+   /* Include per-patch built-in variables. */
+   if (per_patch) {
+      if (nir_mask & VARYING_BIT_TESS_LEVEL_OUTER)
+         radv_io_mask |= BITFIELD64_BIT(radv_map_io_driver_location(VARYING_SLOT_TESS_LEVEL_OUTER));
+      if (nir_mask & VARYING_BIT_TESS_LEVEL_INNER)
+         radv_io_mask |= BITFIELD64_BIT(radv_map_io_driver_location(VARYING_SLOT_TESS_LEVEL_INNER));
+   }
+
+   return radv_io_mask;
+}
+
 static void
 gather_info_unlinked_input(struct radv_shader_info *info, const nir_shader *nir)
 {
    if (info->inputs_linked)
       return;
 
-   const unsigned num_linked_inputs = util_last_bit64(nir->info.inputs_read);
+   const uint64_t io_mask = gather_io_mask(nir->info.inputs_read, 0, false);
+   const unsigned num_linked_inputs = util_last_bit64(io_mask);
 
    switch (nir->info.stage) {
    case MESA_SHADER_TESS_CTRL:
@@ -451,7 +488,9 @@ gather_info_unlinked_output(struct radv_shader_info *info, const nir_shader *nir
    if (info->outputs_linked)
       return;
 
-   const unsigned num_linked_outputs = util_last_bit64(nir->info.outputs_written);
+   const uint64_t io_mask = gather_io_mask(nir->info.outputs_written, 0, false);
+   const uint64_t patch_io_mask = gather_io_mask(nir->info.outputs_written, nir->info.patch_outputs_written, true);
+   const unsigned num_linked_outputs = util_last_bit64(io_mask);
 
    switch (nir->info.stage) {
    case MESA_SHADER_VERTEX:
@@ -459,7 +498,7 @@ gather_info_unlinked_output(struct radv_shader_info *info, const nir_shader *nir
       break;
    case MESA_SHADER_TESS_CTRL:
       info->tcs.num_linked_outputs = num_linked_outputs;
-      info->tcs.num_linked_patch_outputs = util_last_bit64(nir->info.patch_outputs_written);
+      info->tcs.num_linked_patch_outputs = util_last_bit64(patch_io_mask);
       break;
    case MESA_SHADER_TESS_EVAL:
       info->tes.num_linked_outputs = num_linked_outputs;

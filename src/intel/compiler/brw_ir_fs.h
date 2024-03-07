@@ -720,6 +720,43 @@ is_unordered(const intel_device_info *devinfo, const fs_inst *inst)
             inst->dst.type == BRW_REGISTER_TYPE_DF));
 }
 
+/*
+ * Return the stride between channels of the specified register in
+ * byte units, or ~0u if the region cannot be represented with a
+ * single one-dimensional stride.
+ */
+static inline unsigned
+byte_stride(const fs_reg &reg)
+{
+   switch (reg.file) {
+   case BAD_FILE:
+   case UNIFORM:
+   case IMM:
+   case VGRF:
+   case ATTR:
+      return reg.stride * type_sz(reg.type);
+   case ARF:
+   case FIXED_GRF:
+      if (reg.is_null()) {
+         return 0;
+      } else {
+         const unsigned hstride = reg.hstride ? 1 << (reg.hstride - 1) : 0;
+         const unsigned vstride = reg.vstride ? 1 << (reg.vstride - 1) : 0;
+         const unsigned width = 1 << reg.width;
+
+         if (width == 1) {
+            return vstride * type_sz(reg.type);
+         } else if (hstride * width == vstride) {
+            return hstride * type_sz(reg.type);
+         } else {
+            return ~0u;
+         }
+      }
+   default:
+      unreachable("Invalid register file");
+   }
+}
+
 /**
  * Return whether the following regioning restriction applies to the specified
  * instruction.  From the Cherryview PRM Vol 7. "Register Region
@@ -766,6 +803,30 @@ has_dst_aligned_region_restriction(const intel_device_info *devinfo,
                                    const fs_inst *inst)
 {
    return has_dst_aligned_region_restriction(devinfo, inst, inst->dst.type);
+}
+
+/**
+ * Return true if the instruction can be potentially affected by the Xe2+
+ * regioning restrictions that apply to integer types smaller than a dword.
+ * The restriction isn't quoted here due to its length, see BSpec #56640 for
+ * details.
+ */
+static inline bool
+has_subdword_integer_region_restriction(const intel_device_info *devinfo,
+                                        const fs_inst *inst)
+{
+   if (devinfo->ver >= 20 &&
+       brw_reg_type_is_integer(inst->dst.type) &&
+       MAX2(byte_stride(inst->dst), type_sz(inst->dst.type)) < 4) {
+      for (unsigned i = 0; i < inst->sources; i++) {
+         if (brw_reg_type_is_integer(inst->src[i].type) &&
+             type_sz(inst->src[i].type) < 4 &&
+             byte_stride(inst->src[i]) >= 4)
+            return true;
+      }
+   }
+
+   return false;
 }
 
 /**

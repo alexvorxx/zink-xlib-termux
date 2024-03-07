@@ -735,6 +735,10 @@ tu_CreateImage(VkDevice _device,
 
    TU_RMV(image_create, device, image);
 
+#ifdef HAVE_PERFETTO
+   tu_perfetto_log_create_image(device, image);
+#endif
+
    *pImage = tu_image_to_handle(image);
 
 #if DETECT_OS_ANDROID
@@ -757,6 +761,10 @@ tu_DestroyImage(VkDevice _device,
       return;
 
    TU_RMV(image_destroy, device, image);
+
+#ifdef HAVE_PERFETTO
+   tu_perfetto_log_destroy_image(device, image);
+#endif
 
 #if DETECT_OS_ANDROID
    if (image->owned_memory != VK_NULL_HANDLE)

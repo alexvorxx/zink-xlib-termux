@@ -2961,6 +2961,9 @@ tu_BindBufferMemory2(VkDevice device,
              (VK_BUFFER_USAGE_2_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT |
               VK_BUFFER_USAGE_2_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT))
             tu_bo_allow_dump(dev, mem->bo);
+#ifdef HAVE_PERFETTO
+         tu_perfetto_log_bind_buffer(dev, buffer);
+#endif
       } else {
          buffer->bo = NULL;
       }
@@ -2996,6 +2999,9 @@ tu_BindImageMemory2(VkDevice _device,
          } else {
             image->map = NULL;
          }
+#ifdef HAVE_PERFETTO
+         tu_perfetto_log_bind_image(device, image);
+#endif
       } else {
          image->bo = NULL;
          image->map = NULL;
@@ -3118,6 +3124,10 @@ tu_CreateBuffer(VkDevice _device,
 
    TU_RMV(buffer_create, device, buffer);
 
+#ifdef HAVE_PERFETTO
+   tu_perfetto_log_create_buffer(device, buffer);
+#endif
+
    *pBuffer = tu_buffer_to_handle(buffer);
 
    return VK_SUCCESS;
@@ -3135,6 +3145,10 @@ tu_DestroyBuffer(VkDevice _device,
       return;
 
    TU_RMV(buffer_destroy, device, buffer);
+
+#ifdef HAVE_PERFETTO
+   tu_perfetto_log_destroy_buffer(device, buffer);
+#endif
 
    vk_buffer_destroy(&device->vk, pAllocator, &buffer->vk);
 }

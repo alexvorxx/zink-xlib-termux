@@ -230,11 +230,19 @@ is_overwritten_since(pr_opt_ctx& ctx, PhysReg reg, RegClass rc, const Idx& since
    return false;
 }
 
-template <typename T>
 bool
-is_overwritten_since(pr_opt_ctx& ctx, const T& t, const Idx& idx, bool inclusive = false)
+is_overwritten_since(pr_opt_ctx& ctx, const Definition& def, const Idx& idx, bool inclusive = false)
 {
-   return is_overwritten_since(ctx, t.physReg(), t.regClass(), idx, inclusive);
+   return is_overwritten_since(ctx, def.physReg(), def.regClass(), idx, inclusive);
+}
+
+bool
+is_overwritten_since(pr_opt_ctx& ctx, const Operand& op, const Idx& idx, bool inclusive = false)
+{
+   if (op.isConstant())
+      return false;
+
+   return is_overwritten_since(ctx, op.physReg(), op.regClass(), idx, inclusive);
 }
 
 void
@@ -382,7 +390,7 @@ try_optimize_scc_nocompare(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
 
          /* Check whether the operands of the writer are overwritten. */
          for (const Operand& op : wr_instr->operands) {
-            if (!op.isConstant() && is_overwritten_since(ctx, op, wr_idx))
+            if (is_overwritten_since(ctx, op, wr_idx))
                return;
          }
 
@@ -523,7 +531,7 @@ try_eliminate_scc_copy(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
 
    /* Verify that the operands of the producer instruction haven't been overwritten. */
    for (const Operand& op : producer_instr->operands) {
-      if (!op.isConstant() && is_overwritten_since(ctx, op, producer_idx, true))
+      if (is_overwritten_since(ctx, op, producer_idx, true))
          return;
    }
 

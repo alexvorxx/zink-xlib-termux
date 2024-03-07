@@ -269,11 +269,13 @@ intersect_ray_amd_software_tri(struct radv_device *device, nir_builder *b, nir_d
 
       nir_push_if(b, det_cond_front);
       {
-         t = nir_f2f32(b, nir_fdiv(b, t, det));
-         v = nir_f2f32(b, nir_fdiv(b, v, det));
-         w = nir_f2f32(b, nir_fdiv(b, w, det));
+         nir_def *det_abs = nir_fabs(b, det);
 
-         nir_def *indices[4] = {t, nir_imm_float(b, 1.0), v, w};
+         t = nir_f2f32(b, nir_fdiv(b, t, det_abs));
+         v = nir_f2f32(b, nir_fdiv(b, v, det_abs));
+         w = nir_f2f32(b, nir_fdiv(b, w, det_abs));
+
+         nir_def *indices[4] = {t, nir_f2f32(b, nir_fsign(b, det)), v, w};
          nir_store_var(b, result, nir_vec(b, indices, 4), 0xf);
       }
       nir_pop_if(b, NULL);

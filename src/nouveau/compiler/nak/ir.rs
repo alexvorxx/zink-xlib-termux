@@ -3530,7 +3530,7 @@ impl_display_for_op!(OpPopC);
 #[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpTex {
     pub dsts: [Dst; 2],
-    pub resident: Dst,
+    pub fault: Dst,
 
     #[src_type(SSA)]
     pub srcs: [Src; 2],
@@ -3563,7 +3563,7 @@ impl_display_for_op!(OpTex);
 #[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpTld {
     pub dsts: [Dst; 2],
-    pub resident: Dst,
+    pub fault: Dst,
 
     #[src_type(SSA)]
     pub srcs: [Src; 2],
@@ -3596,7 +3596,7 @@ impl_display_for_op!(OpTld);
 #[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpTld4 {
     pub dsts: [Dst; 2],
-    pub resident: Dst,
+    pub fault: Dst,
 
     #[src_type(SSA)]
     pub srcs: [Src; 2],
@@ -3646,7 +3646,7 @@ impl_display_for_op!(OpTmml);
 #[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpTxd {
     pub dsts: [Dst; 2],
-    pub resident: Dst,
+    pub fault: Dst,
 
     #[src_type(SSA)]
     pub srcs: [Src; 2],
@@ -3690,7 +3690,7 @@ impl_display_for_op!(OpTxq);
 #[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpSuLd {
     pub dst: Dst,
-    pub resident: Dst,
+    pub fault: Dst,
 
     pub image_dim: ImageDim,
     pub mem_order: MemOrder,
@@ -3757,7 +3757,7 @@ impl_display_for_op!(OpSuSt);
 #[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpSuAtom {
     pub dst: Dst,
-    pub resident: Dst,
+    pub fault: Dst,
 
     pub image_dim: ImageDim,
 

@@ -1087,7 +1087,7 @@ impl SM50Instr {
 
         self.set_dst(op.dsts[0]);
         assert!(op.dsts[1].is_none());
-        assert!(op.resident.is_none());
+        assert!(op.fault.is_none());
         self.set_reg_src(8..16, op.srcs[0]);
         self.set_reg_src(20..28, op.srcs[1]);
 
@@ -1105,7 +1105,7 @@ impl SM50Instr {
 
         self.set_dst(op.dsts[0]);
         assert!(op.dsts[1].is_none());
-        assert!(op.resident.is_none());
+        assert!(op.fault.is_none());
         self.set_reg_src(8..16, op.srcs[0]);
         self.set_reg_src(20..28, op.srcs[1]);
 
@@ -1126,7 +1126,7 @@ impl SM50Instr {
 
         self.set_dst(op.dsts[0]);
         assert!(op.dsts[1].is_none());
-        assert!(op.resident.is_none());
+        assert!(op.fault.is_none());
         self.set_reg_src(8..16, op.srcs[0]);
         self.set_reg_src(20..28, op.srcs[1]);
 
@@ -1165,7 +1165,7 @@ impl SM50Instr {
 
         self.set_dst(op.dsts[0]);
         assert!(op.dsts[1].is_none());
-        assert!(op.resident.is_none());
+        assert!(op.fault.is_none());
         self.set_reg_src(8..16, op.srcs[0]);
         self.set_reg_src(20..28, op.srcs[1]);
 

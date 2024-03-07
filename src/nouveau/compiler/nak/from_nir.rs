@@ -1622,7 +1622,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(!flags.has_z_cmpr());
                 b.push_op(OpTxd {
                     dsts: dsts,
-                    resident: Dst::None,
+                    fault: Dst::None,
                     srcs: srcs,
                     dim: dim,
                     offset: offset_mode == Tld4OffsetMode::AddOffI,
@@ -1640,7 +1640,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(offset_mode != Tld4OffsetMode::PerPx);
                 b.push_op(OpTld {
                     dsts: dsts,
-                    resident: Dst::None,
+                    fault: Dst::None,
                     srcs: srcs,
                     dim: dim,
                     lod_mode: lod_mode,
@@ -1651,7 +1651,7 @@ impl<'a> ShaderFromNir<'a> {
             } else if tex.op == nir_texop_tg4 {
                 b.push_op(OpTld4 {
                     dsts: dsts,
-                    resident: Dst::None,
+                    fault: Dst::None,
                     srcs: srcs,
                     dim: dim,
                     comp: tex.component().try_into().unwrap(),
@@ -1663,7 +1663,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(offset_mode != Tld4OffsetMode::PerPx);
                 b.push_op(OpTex {
                     dsts: dsts,
-                    resident: Dst::None,
+                    fault: Dst::None,
                     srcs: srcs,
                     dim: dim,
                     lod_mode: lod_mode,
@@ -1988,7 +1988,7 @@ impl<'a> ShaderFromNir<'a> {
 
                 b.push_op(OpSuAtom {
                     dst: dst.into(),
-                    resident: Dst::None,
+                    fault: Dst::None,
                     handle: handle,
                     coord: coord,
                     data: data,
@@ -2015,7 +2015,7 @@ impl<'a> ShaderFromNir<'a> {
 
                 b.push_op(OpSuLd {
                     dst: dst.into(),
-                    resident: Dst::None,
+                    fault: Dst::None,
                     image_dim: dim,
                     mem_order: MemOrder::Strong(MemScope::System),
                     mem_eviction_priority: self

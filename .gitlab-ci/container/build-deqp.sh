@@ -53,6 +53,8 @@ fi
 
 # shellcheck disable=SC2034
 gl_cts_commits_to_backport=(
+  # Implement support for the EGL_EXT_config_select_group extension 
+  88ba9ac270db5be600b1ecacbc6d9db0c55d5be4
 )
 
 # shellcheck disable=SC2034

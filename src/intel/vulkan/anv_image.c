@@ -2542,42 +2542,12 @@ VkResult anv_BindImageMemory2(
    return result;
 }
 
-static inline void
-get_image_fast_clear_layout(const struct anv_image *image,
-                            VkSubresourceLayout *out_layout)
-{
-   /* If the memory binding differs between primary and fast clear
-    * region, then the returned offset will be incorrect.
-    */
-   assert(image->planes[0].fast_clear_memory_range.binding ==
-          image->planes[0].primary_surface.memory_range.binding);
-   out_layout->offset = image->planes[0].fast_clear_memory_range.offset;
-   out_layout->size = image->planes[0].fast_clear_memory_range.size;
-   /* Refer to the comment above add_aux_state_tracking_buffer() for the
-    * design of fast clear region. It is not a typical isl surface, so we
-    * just push some values in these pitches when no other requirements
-    * to meet. We have some freedom to do so according to the spec of
-    * VkSubresourceLayout:
-    *
-    * If the image is non-linear, then rowPitch, arrayPitch, and depthPitch
-    * have an implementation-dependent meaning.
-    *
-    * Fast clear is neither supported on linear tiling formats nor linear
-    * modifiers, which don't have the fast clear plane. We should be safe
-    * with these values.
-    */
-   out_layout->arrayPitch = 1;
-   out_layout->depthPitch = 1;
-   out_layout->rowPitch = ISL_DRM_CC_PLANE_PITCH_B;
-}
-
 static void
 anv_get_image_subresource_layout(const struct anv_image *image,
                                  const VkImageSubresource2KHR *subresource,
                                  VkSubresourceLayout2KHR *layout)
 {
    const struct anv_image_memory_range *mem_range;
-   const struct isl_surf *isl_surf;
 
    assert(__builtin_popcount(subresource->imageSubresource.aspectMask) == 1);
 
@@ -2617,56 +2587,87 @@ anv_get_image_subresource_layout(const struct anv_image *image,
       default:
          unreachable("bad VkImageAspectFlags");
       }
+
+      uint32_t row_pitch_B;
       if (isl_drm_modifier_plane_is_clear_color(image->vk.drm_format_mod,
                                                 mem_plane)) {
-         get_image_fast_clear_layout(image, &layout->subresourceLayout);
-
-         return;
-      } else if (mem_plane == 1 &&
-                 isl_drm_modifier_has_aux(image->vk.drm_format_mod)) {
          assert(image->n_planes == 1);
-         /* If the memory binding differs between primary and aux, then the
-          * returned offset will be incorrect.
-          */
-         mem_range = anv_image_get_aux_memory_range(image, 0);
-         assert(mem_range->binding ==
-                image->planes[0].primary_surface.memory_range.binding);
-         isl_surf = &image->planes[0].aux_surface.isl;
+
+         mem_range = &image->planes[0].fast_clear_memory_range;
+         row_pitch_B = ISL_DRM_CC_PLANE_PITCH_B;
+      } else if (mem_plane == 1 &&
+                 image->planes[0].compr_ctrl_memory_range.size > 0) {
+         assert(image->n_planes == 1);
+         assert(isl_drm_modifier_has_aux(image->vk.drm_format_mod));
+
+         mem_range = &image->planes[0].compr_ctrl_memory_range;
+         row_pitch_B = image->planes[0].aux_surface.isl.row_pitch_B;
+      } else if (mem_plane == 1 &&
+                 image->planes[0].aux_surface.memory_range.size > 0) {
+         assert(image->n_planes == 1);
+         assert(image->vk.drm_format_mod == I915_FORMAT_MOD_Y_TILED_CCS);
+
+         mem_range = &image->planes[0].aux_surface.memory_range;
+         row_pitch_B = image->planes[0].aux_surface.isl.row_pitch_B;
       } else {
          assert(mem_plane < image->n_planes);
+
          mem_range = &image->planes[mem_plane].primary_surface.memory_range;
-         isl_surf = &image->planes[mem_plane].primary_surface.isl;
+         row_pitch_B =
+            image->planes[mem_plane].primary_surface.isl.row_pitch_B;
       }
+
+      /* If the memory binding differs between the primary plane and the
+       * specified memory plane, the returned offset will be incorrect.
+       */
+      assert(mem_range->binding ==
+             image->planes[0].primary_surface.memory_range.binding);
+
+      layout->subresourceLayout.offset = mem_range->offset;
+      layout->subresourceLayout.size = mem_range->size;
+      layout->subresourceLayout.rowPitch = row_pitch_B;
+      /* The spec for VkSubresourceLayout says,
+       *
+       *    The value of arrayPitch is undefined for images that were not
+       *    created as arrays. depthPitch is defined only for 3D images.
+       *
+       * We are working with a non-arrayed 2D image. So, we leave the
+       * remaining pitches undefined.
+       */
+      assert(image->vk.image_type == VK_IMAGE_TYPE_2D);
+      assert(image->vk.array_layers == 1);
    } else {
       const uint32_t plane =
-         anv_image_aspect_to_plane(image, subresource->imageSubresource.aspectMask);
+         anv_image_aspect_to_plane(image,
+                                   subresource->imageSubresource.aspectMask);
+      const struct isl_surf *isl_surf =
+         &image->planes[plane].primary_surface.isl;
       mem_range = &image->planes[plane].primary_surface.memory_range;
-      isl_surf = &image->planes[plane].primary_surface.isl;
-   }
 
-   layout->subresourceLayout.offset = mem_range->offset;
-   layout->subresourceLayout.rowPitch = isl_surf->row_pitch_B;
-   layout->subresourceLayout.depthPitch = isl_surf_get_array_pitch(isl_surf);
-   layout->subresourceLayout.arrayPitch = isl_surf_get_array_pitch(isl_surf);
+      layout->subresourceLayout.offset = mem_range->offset;
+      layout->subresourceLayout.rowPitch = isl_surf->row_pitch_B;
+      layout->subresourceLayout.depthPitch =
+         isl_surf_get_array_pitch(isl_surf);
+      layout->subresourceLayout.arrayPitch =
+         isl_surf_get_array_pitch(isl_surf);
 
-   if (subresource->imageSubresource.mipLevel > 0 ||
-       subresource->imageSubresource.arrayLayer > 0) {
-      assert(isl_surf->tiling == ISL_TILING_LINEAR);
+      const uint32_t level = subresource->imageSubresource.mipLevel;
+      const uint32_t layer = subresource->imageSubresource.arrayLayer;
+      if (level > 0 || layer > 0) {
+         assert(isl_surf->tiling == ISL_TILING_LINEAR);
 
-      uint64_t offset_B;
-      isl_surf_get_image_offset_B_tile_sa(isl_surf,
-                                          subresource->imageSubresource.mipLevel,
-                                          subresource->imageSubresource.arrayLayer,
-                                          0 /* logical_z_offset_px */,
-                                          &offset_B, NULL, NULL);
-      layout->subresourceLayout.offset += offset_B;
-      layout->subresourceLayout.size =
-         layout->subresourceLayout.rowPitch *
-         u_minify(image->vk.extent.height,
-                  subresource->imageSubresource.mipLevel) *
-         image->vk.extent.depth;
-   } else {
-      layout->subresourceLayout.size = mem_range->size;
+         uint64_t offset_B;
+         isl_surf_get_image_offset_B_tile_sa(isl_surf, level, layer,
+                                             0 /* logical_z_offset_px */,
+                                             &offset_B, NULL, NULL);
+         layout->subresourceLayout.offset += offset_B;
+         layout->subresourceLayout.size =
+            layout->subresourceLayout.rowPitch *
+            u_minify(image->vk.extent.height, level) *
+            image->vk.extent.depth;
+      } else {
+         layout->subresourceLayout.size = mem_range->size;
+      }
    }
 
    VkImageCompressionPropertiesEXT *comp_props =

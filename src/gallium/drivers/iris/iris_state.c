@@ -7313,7 +7313,13 @@ iris_upload_dirty_render_state(struct iris_context *ice,
             switch (stage) {
             case MESA_SHADER_VERTEX:    MERGE_SCRATCH_ADDR(3DSTATE_VS); break;
             case MESA_SHADER_TESS_CTRL: MERGE_SCRATCH_ADDR(3DSTATE_HS); break;
-            case MESA_SHADER_TESS_EVAL: MERGE_SCRATCH_ADDR(3DSTATE_DS); break;
+            case MESA_SHADER_TESS_EVAL: {
+               uint32_t *shader_ds = (uint32_t *) shader->derived_data;
+               uint32_t *shader_te = shader_ds + GENX(3DSTATE_DS_length);
+               iris_batch_emit(batch, shader_te, 4 * GENX(3DSTATE_TE_length));
+               MERGE_SCRATCH_ADDR(3DSTATE_DS);
+               break;
+            }
             case MESA_SHADER_GEOMETRY:  MERGE_SCRATCH_ADDR(3DSTATE_GS); break;
             }
          } else {

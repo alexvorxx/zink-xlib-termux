@@ -1647,41 +1647,9 @@ GENX(pan_blit)(struct pan_blit_context *ctx, struct pan_pool *pool,
 }
 #endif
 
-static uint32_t
-pan_blit_shader_key_hash(const void *key)
-{
-   return _mesa_hash_data(key, sizeof(struct pan_blit_shader_key));
-}
-
-static bool
-pan_blit_shader_key_equal(const void *a, const void *b)
-{
-   return !memcmp(a, b, sizeof(struct pan_blit_shader_key));
-}
-
-static uint32_t
-pan_blit_blend_shader_key_hash(const void *key)
-{
-   return _mesa_hash_data(key, sizeof(struct pan_blit_blend_shader_key));
-}
-
-static bool
-pan_blit_blend_shader_key_equal(const void *a, const void *b)
-{
-   return !memcmp(a, b, sizeof(struct pan_blit_blend_shader_key));
-}
-
-static uint32_t
-pan_blit_rsd_key_hash(const void *key)
-{
-   return _mesa_hash_data(key, sizeof(struct pan_blit_rsd_key));
-}
-
-static bool
-pan_blit_rsd_key_equal(const void *a, const void *b)
-{
-   return !memcmp(a, b, sizeof(struct pan_blit_rsd_key));
-}
+DERIVE_HASH_TABLE(pan_blit_shader_key);
+DERIVE_HASH_TABLE(pan_blit_blend_shader_key);
+DERIVE_HASH_TABLE(pan_blit_rsd_key);
 
 static void
 pan_blitter_prefill_blit_shader_cache(struct pan_blitter_cache *cache)
@@ -1731,17 +1699,14 @@ GENX(pan_blitter_cache_init)(struct pan_blitter_cache *cache,
                              struct pan_pool *desc_pool)
 {
    cache->gpu_id = gpu_id;
-   cache->shaders.blit = _mesa_hash_table_create(NULL, pan_blit_shader_key_hash,
-                                                 pan_blit_shader_key_equal);
-   cache->shaders.blend = _mesa_hash_table_create(
-      NULL, pan_blit_blend_shader_key_hash, pan_blit_blend_shader_key_equal);
+   cache->shaders.blit = pan_blit_shader_key_table_create(NULL);
+   cache->shaders.blend = pan_blit_blend_shader_key_table_create(NULL);
    cache->shaders.pool = bin_pool;
    pthread_mutex_init(&cache->shaders.lock, NULL);
    pan_blitter_prefill_blit_shader_cache(cache);
 
    cache->rsds.pool = desc_pool;
-   cache->rsds.rsds = _mesa_hash_table_create(NULL, pan_blit_rsd_key_hash,
-                                              pan_blit_rsd_key_equal);
+   cache->rsds.rsds = pan_blit_rsd_key_table_create(NULL);
    pthread_mutex_init(&cache->rsds.lock, NULL);
    cache->blend_shader_cache = blend_shader_cache;
 }

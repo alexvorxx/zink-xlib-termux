@@ -4345,22 +4345,12 @@ struct si_fixed_func_tcs_shader_key {
    uint8_t vertices_out;
 };
 
-static uint32_t si_fixed_func_tcs_shader_key_hash(const void *key)
-{
-   return _mesa_hash_data(key, sizeof(struct si_fixed_func_tcs_shader_key));
-}
-
-static bool si_fixed_func_tcs_shader_key_equals(const void *a, const void *b)
-{
-   return memcmp(a, b, sizeof(struct si_fixed_func_tcs_shader_key)) == 0;
-}
+DERIVE_HASH_TABLE(si_fixed_func_tcs_shader_key);
 
 bool si_set_tcs_to_fixed_func_shader(struct si_context *sctx)
 {
    if (!sctx->fixed_func_tcs_shader_cache) {
-      sctx->fixed_func_tcs_shader_cache = _mesa_hash_table_create(
-         NULL, si_fixed_func_tcs_shader_key_hash,
-         si_fixed_func_tcs_shader_key_equals);
+      sctx->fixed_func_tcs_shader_cache = si_fixed_func_tcs_shader_key_table_create(NULL);
    }
 
    struct si_fixed_func_tcs_shader_key key;

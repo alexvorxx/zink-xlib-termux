@@ -165,6 +165,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_imageless_framebuffer = true,
       .KHR_incremental_present = TU_HAS_SURFACE,
       .KHR_index_type_uint8 = true,
+      .KHR_line_rasterization = true,
       .KHR_load_store_op_none = true,
       .KHR_maintenance1 = true,
       .KHR_maintenance2 = true,
@@ -513,7 +514,7 @@ tu_get_features(struct tu_physical_device *pdevice,
    /* VK_EXT_mutable_descriptor_type */
    features->mutableDescriptorType = true;
 
-   /* VK_EXT_line_rasterization */
+   /* VK_KHR_line_rasterization */
    features->rectangularLines = true;
    features->bresenhamLines = true;
    features->smoothLines = false;
@@ -977,7 +978,7 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->provokingVertexModePerPipeline = true;
    props->transformFeedbackPreservesTriangleFanProvokingVertex = false;
 
-   /* VK_EXT_line_rasterization */
+   /* VK_KHR_line_rasterization */
   props->lineSubPixelPrecisionBits = 8;
   
    /* VK_EXT_physical_device_drm */

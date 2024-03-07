@@ -3016,7 +3016,7 @@ tu6_emit_rast(struct tu_cs *cs,
               bool per_view_viewport)
 {
    enum a5xx_line_mode line_mode =
-      rs->line.mode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT ?
+      rs->line.mode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_KHR ?
       BRESENHAM : RECTANGULAR;
    tu_cs_emit_regs(cs,
                    A6XX_GRAS_SU_CNTL(

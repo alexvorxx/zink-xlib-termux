@@ -1472,41 +1472,9 @@ agx_bind_vertex_elements_state(struct pipe_context *pctx, void *cso)
    ctx->dirty |= AGX_DIRTY_VERTEX;
 }
 
-static uint32_t
-asahi_vs_shader_key_hash(const void *key)
-{
-   return _mesa_hash_data(key, sizeof(struct asahi_vs_shader_key));
-}
-
-static bool
-asahi_vs_shader_key_equal(const void *a, const void *b)
-{
-   return memcmp(a, b, sizeof(struct asahi_vs_shader_key)) == 0;
-}
-
-static uint32_t
-asahi_gs_shader_key_hash(const void *key)
-{
-   return _mesa_hash_data(key, sizeof(struct asahi_gs_shader_key));
-}
-
-static bool
-asahi_gs_shader_key_equal(const void *a, const void *b)
-{
-   return memcmp(a, b, sizeof(struct asahi_gs_shader_key)) == 0;
-}
-
-static uint32_t
-asahi_fs_shader_key_hash(const void *key)
-{
-   return _mesa_hash_data(key, sizeof(struct asahi_fs_shader_key));
-}
-
-static bool
-asahi_fs_shader_key_equal(const void *a, const void *b)
-{
-   return memcmp(a, b, sizeof(struct asahi_fs_shader_key)) == 0;
-}
+DERIVE_HASH_TABLE(asahi_vs_shader_key);
+DERIVE_HASH_TABLE(asahi_gs_shader_key);
+DERIVE_HASH_TABLE(asahi_fs_shader_key);
 
 /* No compute variants */
 static uint32_t
@@ -2181,20 +2149,16 @@ agx_create_shader_state(struct pipe_context *pctx,
                         : tgsi_to_nir(cso->tokens, pctx->screen, false);
 
    if (nir->info.stage == MESA_SHADER_VERTEX) {
-      so->variants = _mesa_hash_table_create(so, asahi_vs_shader_key_hash,
-                                             asahi_vs_shader_key_equal);
+      so->variants = asahi_vs_shader_key_table_create(so);
    } else if (nir->info.stage == MESA_SHADER_GEOMETRY) {
-      so->variants = _mesa_hash_table_create(NULL, asahi_gs_shader_key_hash,
-                                             asahi_gs_shader_key_equal);
-
+      so->variants = asahi_gs_shader_key_table_create(so);
    } else if (nir->info.stage == MESA_SHADER_TESS_EVAL ||
               nir->info.stage == MESA_SHADER_TESS_CTRL) {
       /* No variants */
       so->variants = _mesa_hash_table_create(NULL, asahi_cs_shader_key_hash,
                                              asahi_cs_shader_key_equal);
    } else {
-      so->variants = _mesa_hash_table_create(so, asahi_fs_shader_key_hash,
-                                             asahi_fs_shader_key_equal);
+      so->variants = asahi_fs_shader_key_table_create(so);
    }
 
    if (nir->info.stage == MESA_SHADER_TESS_EVAL ||

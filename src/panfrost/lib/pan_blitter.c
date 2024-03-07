@@ -472,12 +472,12 @@ pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
    nir_builder b = nir_builder_init_simple_shader(
       MESA_SHADER_FRAGMENT, GENX(pan_shader_get_compiler_options)(),
       "pan_blit(%s)", sig);
-   nir_variable *coord_var = nir_variable_create(
-      b.shader, nir_var_shader_in,
-      glsl_vector_type(GLSL_TYPE_FLOAT, coord_comps), "coord");
-   coord_var->data.location = VARYING_SLOT_VAR0;
-
-   nir_def *coord = nir_load_var(&b, coord_var);
+   nir_def *barycentric = nir_load_barycentric(
+      &b, nir_intrinsic_load_barycentric_pixel, INTERP_MODE_SMOOTH);
+   nir_def *coord = nir_load_interpolated_input(
+      &b, coord_comps, 32, barycentric, nir_imm_int(&b, 0), .base = 0,
+      .dest_type = nir_type_float32, .io_semantics.location = VARYING_SLOT_VAR0,
+      .io_semantics.num_slots = 1);
 
    unsigned active_count = 0;
    for (unsigned i = 0; i < ARRAY_SIZE(key->surfaces); i++) {
@@ -487,19 +487,6 @@ pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
       /* Resolve operations only work for N -> 1 samples. */
       assert(key->surfaces[i].dst_samples == 1 ||
              key->surfaces[i].src_samples == key->surfaces[i].dst_samples);
-
-      static const char *out_names[] = {
-         "out0", "out1", "out2", "out3", "out4", "out5", "out6", "out7",
-      };
-
-      unsigned ncomps = key->surfaces[i].loc >= FRAG_RESULT_DATA0 ? 4 : 1;
-      enum glsl_base_type type =
-         nir_get_glsl_base_type_for_nir_type(key->surfaces[i].type);
-      nir_variable *out = nir_variable_create(b.shader, nir_var_shader_out,
-                                              glsl_vector_type(type, ncomps),
-                                              out_names[active_count]);
-      out->data.location = key->surfaces[i].loc;
-      out->data.driver_location = active_count;
 
       bool resolve =
          key->surfaces[i].src_samples > key->surfaces[i].dst_samples;
@@ -596,10 +583,19 @@ pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
       assert(res);
 
       if (key->surfaces[i].loc >= FRAG_RESULT_DATA0) {
-         nir_store_var(&b, out, res, 0xFF);
+         nir_store_output(
+            &b, res, nir_imm_int(&b, 0), .base = active_count,
+            .src_type = key->surfaces[i].type,
+            .io_semantics.location = key->surfaces[i].loc,
+            .io_semantics.num_slots = 1,
+            .write_mask = nir_component_mask(res->num_components));
       } else {
          unsigned c = key->surfaces[i].loc == FRAG_RESULT_STENCIL ? 1 : 0;
-         nir_store_var(&b, out, nir_channel(&b, res, c), 0xFF);
+         nir_store_output(
+            &b, nir_channel(&b, res, c), nir_imm_int(&b, 0),
+            .base = active_count, .src_type = key->surfaces[i].type,
+            .io_semantics.location = key->surfaces[i].loc,
+            .io_semantics.num_slots = 1, .write_mask = nir_component_mask(1));
       }
       active_count++;
    }

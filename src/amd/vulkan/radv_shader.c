@@ -178,7 +178,7 @@ radv_optimize_nir(struct nir_shader *shader, bool optimize_conservatively)
    } while (progress && !optimize_conservatively);
    _mesa_set_destroy(skip, NULL);
 
-   NIR_PASS(progress, shader, nir_opt_shrink_vectors);
+   NIR_PASS(progress, shader, nir_opt_shrink_vectors, true);
    NIR_PASS(progress, shader, nir_remove_dead_variables,
             nir_var_function_temp | nir_var_shader_in | nir_var_shader_out | nir_var_mem_shared, NULL);
 

@@ -1487,7 +1487,7 @@ optimize_nir(struct nir_shader *s, struct zink_shader *zs, bool can_shrink)
       if (zs)
          NIR_PASS(progress, s, bound_bo_access, zs);
       if (can_shrink)
-         NIR_PASS(progress, s, nir_opt_shrink_vectors);
+         NIR_PASS(progress, s, nir_opt_shrink_vectors, false);
    } while (progress);
 
    do {

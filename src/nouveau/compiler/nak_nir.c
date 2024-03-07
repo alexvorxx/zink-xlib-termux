@@ -1198,7 +1198,7 @@ nak_postprocess_nir(nir_shader *nir,
       nak_optimize_nir(nir, nak);
    }
 
-   OPT(nir, nir_opt_shrink_vectors);
+   OPT(nir, nir_opt_shrink_vectors, true);
 
    nir_load_store_vectorize_options vectorize_opts = {};
    vectorize_opts.modes = nir_var_mem_global |

@@ -2418,7 +2418,7 @@ const void *nir_to_rc_options(struct nir_shader *s,
    NIR_PASS_V(s, nir_opt_vectorize, ntr_should_vectorize_instr, NULL);
    do {
       progress = false;
-      NIR_PASS(progress, s, nir_opt_shrink_vectors);
+      NIR_PASS(progress, s, nir_opt_shrink_vectors, false);
    } while (progress);
    NIR_PASS_V(s, nir_copy_prop);
    NIR_PASS_V(s, nir_opt_cse);

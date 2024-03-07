@@ -632,7 +632,7 @@ elk_nir_optimize(nir_shader *nir, bool is_scalar,
          OPT(nir_lower_alu_to_scalar, NULL, NULL);
       } else {
          OPT(nir_opt_shrink_stores, true);
-         OPT(nir_opt_shrink_vectors);
+         OPT(nir_opt_shrink_vectors, false);
       }
 
       OPT(nir_copy_prop);
@@ -1401,7 +1401,7 @@ elk_postprocess_nir(nir_shader *nir, const struct elk_compiler *compiler,
        *    vec1  ssa_2 = ffma ssa_1, ...
        */
       if (OPT(intel_nir_opt_peephole_ffma))
-         OPT(nir_opt_shrink_vectors);
+         OPT(nir_opt_shrink_vectors, false);
    }
 
    if (is_scalar)

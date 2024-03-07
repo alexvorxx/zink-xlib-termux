@@ -6406,7 +6406,7 @@ bool nir_opt_phi_precision(nir_shader *shader);
 
 bool nir_opt_shrink_stores(nir_shader *shader, bool shrink_image_store);
 
-bool nir_opt_shrink_vectors(nir_shader *shader);
+bool nir_opt_shrink_vectors(nir_shader *shader, bool shrink_start);
 
 bool nir_opt_undef(nir_shader *shader);
 

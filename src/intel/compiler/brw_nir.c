@@ -1667,7 +1667,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
     *    vec1  ssa_2 = ffma ssa_1, ...
     */
    if (OPT(intel_nir_opt_peephole_ffma))
-      OPT(nir_opt_shrink_vectors);
+      OPT(nir_opt_shrink_vectors, false);
 
    OPT(intel_nir_opt_peephole_imul32x16);
 

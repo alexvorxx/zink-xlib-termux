@@ -1795,8 +1795,7 @@ static struct agx_compiled_shader *
 agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
                     struct agx_uncompiled_shader *so,
                     struct util_debug_callback *debug,
-                    union asahi_shader_key *key_,
-                    struct agx_uncompiled_shader *linked_so)
+                    union asahi_shader_key *key_)
 {
    struct blob_reader reader;
    blob_reader_init(&reader, so->serialized_nir.data, so->serialized_nir.size);
@@ -2008,15 +2007,13 @@ static struct agx_compiled_shader *
 agx_get_shader_variant(struct agx_screen *screen, struct pipe_context *pctx,
                        struct agx_uncompiled_shader *so,
                        struct util_debug_callback *debug,
-                       union asahi_shader_key *key,
-                       struct agx_uncompiled_shader *linked_so)
+                       union asahi_shader_key *key)
 {
    struct agx_compiled_shader *compiled =
       agx_disk_cache_retrieve(screen, so, key);
 
    if (!compiled) {
-      compiled =
-         agx_compile_variant(&screen->dev, pctx, so, debug, key, linked_so);
+      compiled = agx_compile_variant(&screen->dev, pctx, so, debug, key);
       agx_disk_cache_store(screen->disk_cache, so, key, compiled);
    }
 
@@ -2231,7 +2228,7 @@ agx_create_shader_state(struct pipe_context *pctx,
       union asahi_shader_key key = {0};
 
       agx_get_shader_variant(agx_screen(pctx->screen), pctx, so, &pctx->debug,
-                             &key, NULL);
+                             &key);
    } else if (dev->debug & AGX_DBG_PRECOMPILE) {
       union asahi_shader_key key = {0};
 
@@ -2275,7 +2272,7 @@ agx_create_shader_state(struct pipe_context *pctx,
          unreachable("Unknown shader stage in shader-db precompile");
       }
 
-      agx_compile_variant(dev, pctx, so, &pctx->debug, &key, NULL);
+      agx_compile_variant(dev, pctx, so, &pctx->debug, &key);
    }
 
    return so;
@@ -2303,7 +2300,7 @@ agx_create_compute_state(struct pipe_context *pctx,
 
    agx_shader_initialize(dev, so, nir, ctx->support_lod_bias, ctx->robust);
    agx_get_shader_variant(agx_screen(pctx->screen), pctx, so, &pctx->debug,
-                          &key, NULL);
+                          &key);
 
    /* We're done with the NIR, throw it away */
    ralloc_free(nir);
@@ -2316,7 +2313,7 @@ agx_get_compute_state_info(struct pipe_context *pctx, void *cso,
 {
    union asahi_shader_key key = {0};
    struct agx_compiled_shader *so = agx_get_shader_variant(
-      agx_screen(pctx->screen), pctx, cso, &pctx->debug, &key, NULL);
+      agx_screen(pctx->screen), pctx, cso, &pctx->debug, &key);
 
    info->max_threads =
       agx_occupancy_for_register_count(so->info.nr_gprs).max_threads;
@@ -2343,13 +2340,8 @@ agx_update_shader(struct agx_context *ctx, struct agx_compiled_shader **out,
       return true;
    }
 
-   struct agx_uncompiled_shader *linked_so = NULL;
-   if (stage == PIPE_SHADER_TESS_CTRL || stage == PIPE_SHADER_GEOMETRY)
-      linked_so = ctx->stage[PIPE_SHADER_VERTEX].shader;
-
    struct agx_screen *screen = agx_screen(ctx->base.screen);
-   *out = agx_get_shader_variant(screen, &ctx->base, so, &ctx->base.debug, key,
-                                 linked_so);
+   *out = agx_get_shader_variant(screen, &ctx->base, so, &ctx->base.debug, key);
    return true;
 }
 

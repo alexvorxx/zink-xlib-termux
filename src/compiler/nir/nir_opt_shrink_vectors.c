@@ -58,6 +58,31 @@ round_up_components(unsigned n)
    return (n > 5) ? util_next_power_of_two(n) : n;
 }
 
+static void
+reswizzle_alu_uses(nir_def *def, uint8_t *reswizzle)
+{
+   nir_foreach_use(use_src, def) {
+      /* all uses must be ALU instructions */
+      assert(nir_src_parent_instr(use_src)->type == nir_instr_type_alu);
+      nir_alu_src *alu_src = (nir_alu_src *)use_src;
+
+      /* reswizzle ALU sources */
+      for (unsigned i = 0; i < NIR_MAX_VEC_COMPONENTS; i++)
+         alu_src->swizzle[i] = reswizzle[alu_src->swizzle[i]];
+   }
+}
+
+static bool
+is_only_used_by_alu(nir_def *def)
+{
+   nir_foreach_use(use_src, def) {
+      if (nir_src_parent_instr(use_src)->type != nir_instr_type_alu)
+         return false;
+   }
+
+   return true;
+}
+
 static bool
 shrink_dest_to_read_mask(nir_def *def)
 {
@@ -116,31 +141,6 @@ shrink_intrinsic_to_non_sparse(nir_intrinsic_instr *instr)
       break;
    default:
       break;
-   }
-
-   return true;
-}
-
-static void
-reswizzle_alu_uses(nir_def *def, uint8_t *reswizzle)
-{
-   nir_foreach_use(use_src, def) {
-      /* all uses must be ALU instructions */
-      assert(nir_src_parent_instr(use_src)->type == nir_instr_type_alu);
-      nir_alu_src *alu_src = (nir_alu_src *)use_src;
-
-      /* reswizzle ALU sources */
-      for (unsigned i = 0; i < NIR_MAX_VEC_COMPONENTS; i++)
-         alu_src->swizzle[i] = reswizzle[alu_src->swizzle[i]];
-   }
-}
-
-static bool
-is_only_used_by_alu(nir_def *def)
-{
-   nir_foreach_use(use_src, def) {
-      if (nir_src_parent_instr(use_src)->type != nir_instr_type_alu)
-         return false;
    }
 
    return true;

@@ -58,10 +58,12 @@ spirv_to_nir_options = {
       .int64 = true,
       .float64 = true,
       .tessellation = true,
+      .physical_storage_buffer_address = true,
    },
    .ubo_addr_format = nir_address_format_32bit_index_offset,
    .ssbo_addr_format = nir_address_format_32bit_index_offset,
    .shared_addr_format = nir_address_format_logical,
+   .phys_ssbo_addr_format = nir_address_format_32bit_index_offset_pack64,
 
    .min_ubo_alignment = 256, /* D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT */
    .min_ssbo_alignment = 16, /* D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT */
@@ -1123,8 +1125,11 @@ dxil_spirv_nir_passes(nir_shader *nir,
               conf->push_constant_cbv.base_shader_register,
               &push_constant_size);
 
+   NIR_PASS_V(nir, dxil_spirv_nir_lower_buffer_device_address);
    NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_ubo | nir_var_mem_ssbo,
               nir_address_format_32bit_index_offset);
+   NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_global,
+              nir_address_format_32bit_index_offset_pack64);
 
    if (nir->info.shared_memory_explicit_layout) {
       NIR_PASS_V(nir, nir_lower_vars_to_explicit_types, nir_var_mem_shared,

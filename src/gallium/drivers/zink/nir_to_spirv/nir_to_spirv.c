@@ -2739,6 +2739,8 @@ emit_interpolate(struct ntv_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_interp_deref_at_sample:
       op = GLSLstd450InterpolateAtSample;
       src1 = get_src(ctx, &intr->src[1], &atype);
+      if (atype != nir_type_int)
+         src1 = emit_bitcast(ctx, get_ivec_type(ctx, 32, 1), src1);
       break;
    case nir_intrinsic_interp_deref_at_offset:
       op = GLSLstd450InterpolateAtOffset;

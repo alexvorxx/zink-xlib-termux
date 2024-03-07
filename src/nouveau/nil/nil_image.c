@@ -194,7 +194,7 @@ nil_tiling_extent_B(struct nil_tiling tiling)
 {
    if (tiling.is_tiled) {
       return (struct nil_extent4d) {
-         .w = NIL_GOB_WIDTH_B, /* Tiles are always 1 GOB wide */
+         .w = NIL_GOB_WIDTH_B << tiling.x_log2,
          .h = NIL_GOB_HEIGHT(tiling.gob_height_8) << tiling.y_log2,
          .d = NIL_GOB_DEPTH << tiling.z_log2,
          .a = 1,
@@ -214,6 +214,14 @@ nil_tiling_clamp(struct nil_tiling tiling, struct nil_extent4d extent_B)
 {
    if (!tiling.is_tiled)
       return tiling;
+
+   const struct nil_extent4d tiling_extent_B = nil_tiling_extent_B(tiling);
+
+   /* The moment the LOD is smaller than a tile, tiling.x_log2 goes to 0 */
+   if (extent_B.w < tiling_extent_B.w ||
+       extent_B.h < tiling_extent_B.h ||
+       extent_B.d < tiling_extent_B.d)
+      tiling.x_log2 = 0;
 
    const struct nil_extent4d extent_GOB =
       nil_extent4d_B_to_GOB(extent_B, tiling.gob_height_8);

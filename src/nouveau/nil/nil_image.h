@@ -106,10 +106,12 @@ nil_offset4d_px_to_el(struct nil_offset4d offset_px,
 struct nil_tiling {
    bool is_tiled:1;
    bool gob_height_8:1; /**< GOB height is 4 or 8 */
+   uint8_t x_log2:3; /**< log2 of the Y tile dimension in GOBs */
    uint8_t y_log2:3; /**< log2 of the Y tile dimension in GOBs */
    uint8_t z_log2:3; /**< log2 of the Z tile dimension in GOBs */
+   uint8_t pad:5;
 };
-static_assert(sizeof(struct nil_tiling) == 1, "This struct has no holes");
+static_assert(sizeof(struct nil_tiling) == 2, "This struct has no holes");
 
 struct nil_image_init_info {
    enum nil_image_dim dim;

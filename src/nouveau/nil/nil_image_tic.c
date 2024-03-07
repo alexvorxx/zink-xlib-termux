@@ -330,6 +330,7 @@ nv9097_nil_image_fill_tic(const struct nil_image *image,
       TH_NV9097_SET_E(th, 2, MEMORY_LAYOUT, BLOCKLINEAR);
 
       assert(tiling->gob_height_8);
+      assert(tiling->x_log2 == 0);
       TH_NV9097_SET_E(th, 2, GOBS_PER_BLOCK_WIDTH, ONE_GOB);
       TH_NV9097_SET_U(th, 2, GOBS_PER_BLOCK_HEIGHT, tiling->y_log2);
       TH_NV9097_SET_U(th, 2, GOBS_PER_BLOCK_DEPTH, tiling->z_log2);
@@ -421,6 +422,7 @@ nvb097_nil_image_fill_tic(const struct nil_image *image,
       TH_NVB097_SET_E(th, BL, GOBS_PER_BLOCK_WIDTH, ONE_GOB);
       TH_NVB097_SET_U(th, BL, GOBS_PER_BLOCK_HEIGHT, tiling->y_log2);
       TH_NVB097_SET_U(th, BL, GOBS_PER_BLOCK_DEPTH, tiling->z_log2);
+      TH_NVB097_SET_U(th, BL, TILE_WIDTH_IN_GOBS, tiling->x_log2);
 
       TH_NVB097_SET_U(th, BL, TEXTURE_TYPE, pipe_to_nv_texture_type(view->type));
    } else {

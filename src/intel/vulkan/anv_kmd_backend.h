@@ -79,8 +79,8 @@ struct anv_kmd_backend {
     * This is intended for sparse resources, so it does not use the
     * bind_timeline interface: synchronization is up to the callers.
     */
-   int (*vm_bind)(struct anv_device *device,
-                  struct anv_sparse_submission *submit);
+   VkResult (*vm_bind)(struct anv_device *device,
+                       struct anv_sparse_submission *submit);
 
    /*
     * Fully bind or unbind a BO.
@@ -88,8 +88,8 @@ struct anv_kmd_backend {
     * a new point in the bind_timeline, which will be waited for the next time
     * a batch is submitted.
     */
-   int (*vm_bind_bo)(struct anv_device *device, struct anv_bo *bo);
-   int (*vm_unbind_bo)(struct anv_device *device, struct anv_bo *bo);
+   VkResult (*vm_bind_bo)(struct anv_device *device, struct anv_bo *bo);
+   VkResult (*vm_unbind_bo)(struct anv_device *device, struct anv_bo *bo);
 
    VkResult (*execute_simple_batch)(struct anv_queue *queue,
                                     struct anv_bo *batch_bo,

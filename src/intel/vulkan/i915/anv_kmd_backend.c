@@ -226,16 +226,16 @@ i915_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
    return i915_gem_mmap_legacy(device, bo, offset, size, flags);
 }
 
-static int
+static VkResult
 i915_vm_bind(struct anv_device *device, struct anv_sparse_submission *submit)
 {
-   return 0;
+   return VK_SUCCESS;
 }
 
-static int
+static VkResult
 i915_vm_bind_bo(struct anv_device *device, struct anv_bo *bo)
 {
-   return 0;
+   return VK_SUCCESS;
 }
 
 static uint32_t

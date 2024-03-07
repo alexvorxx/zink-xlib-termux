@@ -613,11 +613,7 @@ anv_sparse_bind_vm_bind(struct anv_device *device,
    if (!queue)
       assert(submit->wait_count == 0 && submit->signal_count == 0);
 
-   int rc = device->kmd_backend->vm_bind(device, submit);
-   if (rc)
-      return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
-
-   return VK_SUCCESS;
+   return device->kmd_backend->vm_bind(device, submit);
 }
 
 VkResult

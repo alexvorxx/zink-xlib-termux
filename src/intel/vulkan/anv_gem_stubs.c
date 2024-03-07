@@ -152,16 +152,16 @@ anv_gem_import_bo_alloc_flags_to_bo_flags(struct anv_device *device,
    return VK_SUCCESS;
 }
 
-static int
+static VkResult
 stub_vm_bind(struct anv_device *device, struct anv_sparse_submission *submit)
 {
-   return 0;
+   return VK_SUCCESS;
 }
 
-static int
+static VkResult
 stub_vm_bind_bo(struct anv_device *device, struct anv_bo *bo)
 {
-   return 0;
+   return VK_SUCCESS;
 }
 
 const struct anv_kmd_backend *anv_stub_kmd_backend_get(void)

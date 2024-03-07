@@ -109,6 +109,7 @@ struct nil_tiling {
    uint8_t y_log2:3; /**< log2 of the Y tile dimension in GOBs */
    uint8_t z_log2:3; /**< log2 of the Z tile dimension in GOBs */
 };
+static_assert(sizeof(struct nil_tiling) == 1, "This struct has no holes");
 
 struct nil_image_init_info {
    enum nil_image_dim dim;

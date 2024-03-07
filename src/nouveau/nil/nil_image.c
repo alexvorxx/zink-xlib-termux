@@ -205,6 +205,31 @@ nil_tiling_extent_B(struct nil_tiling tiling)
    }
 }
 
+/** Clamps the tiling to less than 2x the gven extent in each dimension
+ *
+ * This operation is done by the hardware at each LOD.
+ */
+static struct nil_tiling
+nil_tiling_clamp(struct nil_tiling tiling, struct nil_extent4d extent_B)
+{
+   if (!tiling.is_tiled)
+      return tiling;
+
+   const struct nil_extent4d extent_GOB =
+      nil_extent4d_B_to_GOB(extent_B, tiling.gob_height_8);
+
+   tiling.y_log2 = MIN2(tiling.y_log2, util_logbase2_ceil(extent_GOB.h));
+   tiling.z_log2 = MIN2(tiling.z_log2, util_logbase2_ceil(extent_GOB.d));
+
+   return tiling;
+}
+
+static bool
+nil_tiling_eq(struct nil_tiling a, struct nil_tiling b)
+{
+   return memcmp(&a, &b, sizeof(b)) == 0;
+}
+
 enum nil_sample_layout
 nil_choose_sample_layout(uint32_t samples)
 {
@@ -220,7 +245,9 @@ nil_choose_sample_layout(uint32_t samples)
 }
 
 static struct nil_tiling
-choose_tiling(struct nil_extent4d extent_B,
+choose_tiling(struct nil_extent4d extent_px,
+              enum pipe_format format,
+              enum nil_sample_layout sample_layout,
               enum nil_image_usage_flags usage)
 {
    if (usage & NIL_IMAGE_USAGE_LINEAR_BIT)
@@ -229,21 +256,17 @@ choose_tiling(struct nil_extent4d extent_B,
    struct nil_tiling tiling = {
       .is_tiled = true,
       .gob_height_8 = true,
+      .y_log2 = 5,
+      .z_log2 = 5,
    };
-
-   const struct nil_extent4d extent_GOB =
-      nil_extent4d_B_to_GOB(extent_B, tiling.gob_height_8);
-
-   const uint32_t height_log2 = util_logbase2_ceil(extent_GOB.height);
-   const uint32_t depth_log2 = util_logbase2_ceil(extent_GOB.depth);
-
-   tiling.y_log2 = MIN2(height_log2, 5);
-   tiling.z_log2 = MIN2(depth_log2, 5);
 
    if (usage & NIL_IMAGE_USAGE_2D_VIEW_BIT)
       tiling.z_log2 = 0;
 
-   return tiling;
+   const struct nil_extent4d extent_B =
+      nil_extent4d_px_to_B(extent_px, format, sample_layout);
+
+   return nil_tiling_clamp(tiling, extent_B);
 }
 
 uint32_t
@@ -490,22 +513,26 @@ nil_image_init(struct nv_device_info *dev,
       break;
    }
 
+   const enum nil_sample_layout sample_layout =
+      nil_choose_sample_layout(info->samples);
+   const struct nil_tiling tiling =
+      choose_tiling(info->extent_px, info->format, sample_layout, info->usage);
+
    *image = (struct nil_image) {
       .dim = info->dim,
       .format = info->format,
       .extent_px = info->extent_px,
-      .sample_layout = nil_choose_sample_layout(info->samples),
+      .sample_layout = sample_layout,
       .num_levels = info->levels,
    };
 
    uint64_t layer_size_B = 0;
    for (uint32_t l = 0; l < info->levels; l++) {
       struct nil_extent4d lvl_ext_B = image_level_extent_B(image, l);
+      if (tiling.is_tiled) {
+         struct nil_tiling lvl_tiling = nil_tiling_clamp(tiling, lvl_ext_B);
+         assert(l > 0 || nil_tiling_eq(tiling, lvl_tiling));
 
-      /* Tiling is chosen per-level with LOD0 acting as a maximum */
-      struct nil_tiling lvl_tiling = choose_tiling(lvl_ext_B, info->usage);
-
-      if (lvl_tiling.is_tiled) {
          /* Align the size to tiles */
          struct nil_extent4d lvl_tiling_ext_B = nil_tiling_extent_B(lvl_tiling);
          lvl_ext_B = nil_extent4d_align(lvl_ext_B, lvl_tiling_ext_B);
@@ -525,7 +552,7 @@ nil_image_init(struct nv_device_info *dev,
 
          image->levels[l] = (struct nil_image_level) {
             .offset_B = layer_size_B,
-            .tiling = lvl_tiling,
+            .tiling = tiling,
             /* Row stride needs to be aligned to 128B for render to work */
             .row_stride_B = align(lvl_ext_B.width, 128),
          };
@@ -533,13 +560,14 @@ nil_image_init(struct nv_device_info *dev,
       layer_size_B += nil_image_level_size_B(image, l);
    }
 
-   /* Align the image and array stride to a single level0 tile */
-   image->align_B = nil_tiling_size_B(image->levels[0].tiling);
+   const uint32_t lvl0_tiling_size_B =
+      nil_tiling_size_B(image->levels[0].tiling);
 
-   /* I have no idea why but hardware seems to align layer strides */
-   image->array_stride_B = (uint32_t)align64(layer_size_B, image->align_B);
+   /* The array stride has to be aligned to the size of a level 0 tile */
+   image->array_stride_B = align(layer_size_B, lvl0_tiling_size_B);
 
    image->size_B = (uint64_t)image->array_stride_B * image->extent_px.a;
+   image->align_B = lvl0_tiling_size_B;
 
    if (image->levels[0].tiling.is_tiled) {
       image->tile_mode = (uint16_t)image->levels[0].tiling.y_log2 << 4 |

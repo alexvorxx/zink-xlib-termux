@@ -103,6 +103,7 @@ dzn_physical_device_get_extensions(struct dzn_physical_device *pdev)
    pdev->vk.supported_extensions = (struct vk_device_extension_table) {
       .KHR_16bit_storage                     = pdev->options4.Native16BitShaderOpsSupported,
       .KHR_bind_memory2                      = true,
+      .KHR_buffer_device_address             = pdev->shader_model >= D3D_SHADER_MODEL_6_6,
       .KHR_create_renderpass2                = true,
       .KHR_dedicated_allocation              = true,
       .KHR_depth_stencil_resolve             = true,
@@ -143,6 +144,7 @@ dzn_physical_device_get_extensions(struct dzn_physical_device *pdev)
       .KHR_synchronization2                  = true,
       .KHR_timeline_semaphore                = true,
       .KHR_uniform_buffer_standard_layout    = true,
+      .EXT_buffer_device_address             = pdev->shader_model >= D3D_SHADER_MODEL_6_6,
       .EXT_descriptor_indexing               = pdev->shader_model >= D3D_SHADER_MODEL_6_6,
 #if defined(_WIN32)
       .EXT_external_memory_host              = pdev->dev13,
@@ -758,7 +760,7 @@ dzn_physical_device_get_features(const struct dzn_physical_device *pdev,
       .separateDepthStencilLayouts        = true,
       .hostQueryReset                     = true,
       .timelineSemaphore                  = true,
-      .bufferDeviceAddress                = false,
+      .bufferDeviceAddress                = pdev->shader_model >= D3D_SHADER_MODEL_6_6,
       .bufferDeviceAddressCaptureReplay   = false,
       .bufferDeviceAddressMultiDevice     = false,
       .vulkanMemoryModel                  = false,
@@ -2393,7 +2395,9 @@ dzn_device_create(struct dzn_physical_device *pdev,
    device->support_static_samplers = true;
    device->bindless = (instance->debug_flags & DZN_DEBUG_BINDLESS) != 0 ||
       device->vk.enabled_features.descriptorIndexing ||
-      device->vk.enabled_extensions.EXT_descriptor_indexing;
+      device->vk.enabled_extensions.EXT_descriptor_indexing ||
+      device->vk.enabled_features.bufferDeviceAddress ||
+      device->vk.enabled_extensions.EXT_buffer_device_address;
 
    if (device->bindless) {
       uint32_t sampler_count = MIN2(pdev->options19.MaxSamplerDescriptorHeapSize, 4000);
@@ -3074,7 +3078,8 @@ dzn_buffer_create(struct dzn_device *device,
 
    if (buf->usage &
        (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-        VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT)) {
+        VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)) {
       buf->desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
       buf->valid_access |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
    }
@@ -3088,7 +3093,7 @@ dzn_buffer_create(struct dzn_device *device,
             return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
          }
       }
-      if (buf->usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) {
+      if (buf->usage & (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)) {
          buf->uav_bindless_slot = dzn_device_descriptor_heap_alloc_slot(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
          if (buf->uav_bindless_slot < 0) {
             dzn_buffer_destroy(buf, pAllocator);
@@ -3689,7 +3694,8 @@ dzn_GetBufferDeviceAddress(VkDevice device,
 {
    struct dzn_buffer *buffer = dzn_buffer_from_handle(pInfo->buffer);
 
-   return buffer->gpuva;
+   /* Insert a pointer tag so we never return null */
+   return ((uint64_t)buffer->uav_bindless_slot << 32ull) | (0xD3ull << 56);
 }
 
 VKAPI_ATTR uint64_t VKAPI_CALL

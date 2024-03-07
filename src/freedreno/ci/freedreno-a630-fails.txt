@@ -144,12 +144,8 @@ spec@ext_external_objects@vk-depth-display@D16,Fail
 # "Failed to submit queue." from the test some of the time.  No validation failures.
 # When it doesn't fail with that message, gets a set of corrupted colors (supposed
 # to be vertical stripes).
-spec@ext_external_objects@vk-image-display,Fail
-spec@ext_external_objects@vk-image-display-muliple-textures,Fail
-spec@ext_external_objects@vk-image-display-overwrite,Fail
 
 # Linear cases seem to do fine, optimal tiling fails.
-spec@ext_external_objects@vk-image-overwrite,Fail
 spec@ext_external_objects@vk-image-overwrite@RGB 10 A2 UINT optimal: Failed to initialize OpenGL FBO/RBO,Fail
 spec@ext_external_objects@vk-image-overwrite@RGB 10 A2 UNORM optimal: Failed to initialize OpenGL FBO/RBO,Fail
 spec@ext_external_objects@vk-image-overwrite@RGB 5 A1 UNORM optimal: Failed to initialize OpenGL FBO/RBO,Fail
@@ -164,8 +160,6 @@ spec@ext_external_objects@vk-image-overwrite@RGBA 8 SRGB optimal: Failed to init
 spec@ext_external_objects@vk-image-overwrite@RGBA 8 UINT optimal: Failed to initialize OpenGL FBO/RBO,Fail
 spec@ext_external_objects@vk-image-overwrite@RGBA 8 UNORM optimal: Failed to initialize OpenGL FBO/RBO,Fail
 
-spec@ext_external_objects@vk-semaphores,Fail
-spec@ext_external_objects@vk-semaphores-2,Fail
 
 # D32S8 skips (GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT), D24S8 fails.
 spec@ext_external_objects@vk-stencil-display,Fail

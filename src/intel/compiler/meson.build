@@ -181,7 +181,10 @@ elif with_intel_clc
     link_args : [ld_args_build_id],
     dependencies : [idep_nir, idep_vtn, idep_mesaclc, idep_mesautil, idep_intel_dev,
                     idep_intel_compiler_brw],
-    native : true,
+    # If we can run host binaries directly, just build intel_clc for the host.
+    # Most commonly this happens when doing a cross compile from an x86_64 build
+    # machine to an x86 host
+    native : not meson.can_run_host_binaries(),
     install : get_option('install-intel-clc'),
   )
   dep_prog_intel_clc = [prog_intel_clc]

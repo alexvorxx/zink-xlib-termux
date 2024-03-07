@@ -499,6 +499,17 @@ lvp_shader_lower(struct lvp_device *pdevice, struct lvp_pipeline *pipeline, nir_
                                nir->info.stage);
 }
 
+VkResult
+lvp_spirv_to_nir(struct lvp_pipeline *pipeline, const VkPipelineShaderStageCreateInfo *sinfo,
+                 nir_shader **out_nir)
+{
+   VkResult result = compile_spirv(pipeline->device, sinfo, out_nir);
+   if (result == VK_SUCCESS)
+      lvp_shader_lower(pipeline->device, pipeline, *out_nir, pipeline->layout);
+
+   return result;
+}
+
 static void
 lvp_shader_init(struct lvp_shader *shader, nir_shader *nir)
 {
@@ -514,14 +525,12 @@ static VkResult
 lvp_shader_compile_to_ir(struct lvp_pipeline *pipeline,
                          const VkPipelineShaderStageCreateInfo *sinfo)
 {
-   struct lvp_device *pdevice = pipeline->device;
    gl_shader_stage stage = vk_to_mesa_shader_stage(sinfo->stage);
    assert(stage <= LVP_SHADER_STAGES && stage != MESA_SHADER_NONE);
-   struct lvp_shader *shader = &pipeline->shaders[stage];
    nir_shader *nir;
-   VkResult result = compile_spirv(pdevice, sinfo, &nir);
+   VkResult result = lvp_spirv_to_nir(pipeline, sinfo, &nir);
    if (result == VK_SUCCESS) {
-      lvp_shader_lower(pdevice, pipeline, nir, pipeline->layout);
+      struct lvp_shader *shader = &pipeline->shaders[stage];
       lvp_shader_init(shader, nir);
    }
    return result;

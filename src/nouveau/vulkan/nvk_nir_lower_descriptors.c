@@ -21,17 +21,7 @@ struct lower_desc_cbuf {
    uint64_t end;
 };
 
-static uint32_t
-hash_cbuf(const void *data)
-{
-   return _mesa_hash_data(data, sizeof(struct nvk_cbuf));
-}
-
-static bool
-cbufs_equal(const void *a, const void *b)
-{
-   return memcmp(a, b, sizeof(struct nvk_cbuf)) == 0;
-}
+DERIVE_HASH_TABLE(nvk_cbuf);
 
 static int
 compar_cbufs(const void *_a, const void *_b)
@@ -388,7 +378,7 @@ record_cbuf_uses_instr(UNUSED nir_builder *b, nir_instr *instr, void *_ctx)
 static void
 build_cbuf_map(nir_shader *nir, struct lower_descriptors_ctx *ctx)
 {
-   ctx->cbufs = _mesa_hash_table_create(NULL, hash_cbuf, cbufs_equal);
+   ctx->cbufs = nvk_cbuf_table_create(NULL);
 
    nir_shader_instructions_pass(nir, record_cbuf_uses_instr,
                                 nir_metadata_all, (void *)ctx);
@@ -459,7 +449,7 @@ get_mapped_cbuf_idx(const struct nvk_cbuf *key,
       return -1;
 
    for (uint32_t c = 0; c < ctx->cbuf_map->cbuf_count; c++) {
-      if (cbufs_equal(&ctx->cbuf_map->cbufs[c], key)) {
+      if (nvk_cbuf_equal(&ctx->cbuf_map->cbufs[c], key)) {
          return c;
       }
    }

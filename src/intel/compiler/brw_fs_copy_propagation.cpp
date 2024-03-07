@@ -880,8 +880,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
    /* Compute the first component of the copy that the instruction is
     * reading, and the base byte offset within that component.
     */
-   assert((entry->dst.offset % REG_SIZE == 0 || inst->opcode == BRW_OPCODE_MOV) &&
-           entry->dst.stride == 1);
+   assert(entry->dst.stride == 1);
    const unsigned component = rel_offset / type_sz(entry->dst.type);
    const unsigned suboffset = rel_offset % type_sz(entry->dst.type);
 

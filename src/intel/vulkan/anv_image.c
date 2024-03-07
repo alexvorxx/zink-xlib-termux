@@ -2601,7 +2601,8 @@ anv_get_image_subresource_layout(const struct anv_image *image,
          assert(isl_drm_modifier_has_aux(image->vk.drm_format_mod));
 
          mem_range = &image->planes[0].compr_ctrl_memory_range;
-         row_pitch_B = image->planes[0].aux_surface.isl.row_pitch_B;
+         row_pitch_B = image->planes[0].primary_surface.isl.row_pitch_B /
+                       INTEL_AUX_MAP_MAIN_PITCH_SCALEDOWN;
       } else if (mem_plane == 1 &&
                  image->planes[0].aux_surface.memory_range.size > 0) {
          assert(image->n_planes == 1);

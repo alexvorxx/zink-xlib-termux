@@ -45,6 +45,16 @@ struct intel_device_info;
 
 #define INTEL_AUX_MAP_ENTRY_VALID_BIT    0x1ull
 
+/**
+ * The ratio between the granularity of main surface pitch and AUX data pitch
+ * (when viewed as a surface).
+ *
+ * In agreement with Bspec 44930, the kernel expects that every 512B of the
+ * main surface pitch maps to 64B of the AUX data pitch. This is not
+ * documented in drm_fourcc.h.
+ */
+#define INTEL_AUX_MAP_MAIN_PITCH_SCALEDOWN (512 / 64)
+
 struct intel_aux_map_context *
 intel_aux_map_init(void *driver_ctx,
                    struct intel_mapped_pinned_buffer_alloc *buffer_alloc,

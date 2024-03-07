@@ -1325,8 +1325,15 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
             assert(!devinfo->has_flat_ccs);
             assert(plane_res->bo->size >= plane_res->offset +
                    main_res->aux.surf.size_B);
-            assert(main_res->aux.surf.row_pitch_B ==
-                   plane_res->surf.row_pitch_B);
+
+            if (devinfo->has_aux_map) {
+               assert(plane_res->surf.row_pitch_B ==
+                      main_res->surf.row_pitch_B /
+                      INTEL_AUX_MAP_MAIN_PITCH_SCALEDOWN);
+            } else {
+               assert(plane_res->surf.row_pitch_B ==
+                      main_res->aux.surf.row_pitch_B);
+            }
 
             iris_bo_reference(plane_res->bo);
             main_res->aux.bo = plane_res->bo;
@@ -1670,8 +1677,15 @@ iris_resource_get_param(struct pipe_screen *pscreen,
       }
       return true;
    case PIPE_RESOURCE_PARAM_STRIDE:
-      *value = wants_cc ? ISL_DRM_CC_PLANE_PITCH_B :
-               wants_aux ? res->aux.surf.row_pitch_B : res->surf.row_pitch_B;
+      if (wants_cc) {
+         *value = ISL_DRM_CC_PLANE_PITCH_B;
+      } else if (wants_aux) {
+         *value = screen->devinfo->has_aux_map ?
+                  res->surf.row_pitch_B / INTEL_AUX_MAP_MAIN_PITCH_SCALEDOWN :
+                  res->aux.surf.row_pitch_B;
+      } else {
+         *value = res->surf.row_pitch_B;
+      }
 
       /* Mesa's implementation of eglCreateImage rejects strides of zero (see
        * dri2_check_dma_buf_attribs). Ensure we return a non-zero stride as

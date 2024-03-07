@@ -11130,7 +11130,7 @@ create_fs_jump_to_epilog(isel_context* ctx)
       }
    }
 
-   Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.ps.epilog_pc));
+   Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.epilog_pc));
 
    aco_ptr<Pseudo_instruction> jump{create_instruction<Pseudo_instruction>(
       aco_opcode::p_jump_to_epilog, Format::PSEUDO, 1 + exports.size(), 0)};
@@ -11275,8 +11275,7 @@ create_tcs_jump_to_epilog(isel_context* ctx)
                  Operand::c32(0u), Operand::c32(8u), Operand::c32(0u));
    rel_patch_id.setFixed(vgpr_start.advance(8u));
 
-   Temp continue_pc =
-      convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.tcs.epilog_pc));
+   Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.epilog_pc));
 
    aco_ptr<Pseudo_instruction> jump{
       create_instruction<Pseudo_instruction>(aco_opcode::p_jump_to_epilog, Format::PSEUDO, 9, 0)};

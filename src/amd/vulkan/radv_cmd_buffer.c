@@ -1882,7 +1882,7 @@ radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader
 
    assert((ps_epilog->va >> 32) == cmd_buffer->device->physical_device->rad_info.address32_hi);
 
-   struct radv_userdata_info *loc = &ps_shader->info.user_sgprs_locs.shader_data[AC_UD_PS_EPILOG_PC];
+   struct radv_userdata_info *loc = &ps_shader->info.user_sgprs_locs.shader_data[AC_UD_EPILOG_PC];
    uint32_t base_reg = ps_shader->info.user_data_0;
    assert(loc->sgpr_idx != -1);
    assert(loc->num_sgprs == 1);
@@ -1921,7 +1921,7 @@ radv_emit_tcs_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shade
 
    assert((tcs_epilog->va >> 32) == cmd_buffer->device->physical_device->rad_info.address32_hi);
 
-   struct radv_userdata_info *loc = &tcs->info.user_sgprs_locs.shader_data[AC_UD_TCS_EPILOG_PC];
+   struct radv_userdata_info *loc = &tcs->info.user_sgprs_locs.shader_data[AC_UD_EPILOG_PC];
    uint32_t base_reg = tcs->info.user_data_0;
    assert(loc->sgpr_idx != -1);
    assert(loc->num_sgprs == 1);

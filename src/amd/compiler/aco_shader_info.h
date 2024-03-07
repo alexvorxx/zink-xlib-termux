@@ -137,6 +137,7 @@ struct aco_shader_info {
    bool has_epilog;                        /* Only for TCS or PS. */
    bool merged_shader_compiled_separately; /* GFX9+ */
    struct ac_arg next_stage_pc;
+   struct ac_arg epilog_pc; /* Vulkan only */
    struct {
       bool tcs_in_out_eq;
       uint64_t tcs_temp_only_input_mask;
@@ -147,7 +148,6 @@ struct aco_shader_info {
 
       /* Vulkan only */
       uint32_t num_lds_blocks;
-      struct ac_arg epilog_pc;
       uint32_t num_linked_outputs;
       uint32_t num_linked_patch_outputs;
       uint32_t tcs_vertices_out;
@@ -162,9 +162,6 @@ struct aco_shader_info {
       uint32_t num_interp;
       unsigned spi_ps_input_ena;
       unsigned spi_ps_input_addr;
-
-      /* Vulkan only */
-      struct ac_arg epilog_pc;
 
       /* OpenGL only */
       struct ac_arg alpha_reference;

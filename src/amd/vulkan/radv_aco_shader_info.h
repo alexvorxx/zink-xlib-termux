@@ -64,9 +64,8 @@ radv_aco_convert_shader_info(struct aco_shader_info *aco_info, const struct radv
    aco_info->gfx9_gs_ring_lds_size = radv->gs_ring_info.lds_size;
    aco_info->is_trap_handler_shader = radv->type == RADV_SHADER_TYPE_TRAP_HANDLER;
    aco_info->image_2d_view_of_3d = radv_key->image_2d_view_of_3d;
-   aco_info->ps.epilog_pc = radv_args->ps_epilog_pc;
+   aco_info->epilog_pc = radv_args->epilog_pc;
    aco_info->hw_stage = radv_select_hw_stage(radv, gfx_level);
-   aco_info->tcs.epilog_pc = radv_args->tcs_epilog_pc;
    aco_info->tcs.tcs_offchip_layout = radv_args->tcs_offchip_layout;
    aco_info->next_stage_pc = radv_args->next_stage_pc;
 }

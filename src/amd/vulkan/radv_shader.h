@@ -217,12 +217,12 @@ enum radv_ud_index {
    AC_UD_TASK_RING_ENTRY = 13,
    AC_UD_NUM_VERTS_PER_PRIM = 14,
    AC_UD_NEXT_STAGE_PC = 15,
-   AC_UD_SHADER_START = 16,
+   AC_UD_EPILOG_PC = 16,
+   AC_UD_SHADER_START = 17,
    AC_UD_VS_VERTEX_BUFFERS = AC_UD_SHADER_START,
    AC_UD_VS_BASE_VERTEX_START_INSTANCE,
    AC_UD_VS_PROLOG_INPUTS,
    AC_UD_VS_MAX_UD,
-   AC_UD_PS_EPILOG_PC,
    AC_UD_PS_STATE,
    AC_UD_PS_MAX_UD,
    AC_UD_CS_GRID_SIZE = AC_UD_SHADER_START,
@@ -236,7 +236,6 @@ enum radv_ud_index {
    AC_UD_CS_MAX_UD,
    AC_UD_GS_MAX_UD,
    AC_UD_TCS_OFFCHIP_LAYOUT = AC_UD_VS_MAX_UD,
-   AC_UD_TCS_EPILOG_PC,
    AC_UD_TCS_MAX_UD,
    /* We might not know the previous stage when compiling a geometry shader, so we just
     * declare both TES and VS user SGPRs.

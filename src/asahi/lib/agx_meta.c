@@ -206,23 +206,13 @@ agx_get_meta_shader(struct agx_meta_cache *cache, struct agx_meta_key *key)
    return ret;
 }
 
-static uint32_t
-key_hash(const void *key)
-{
-   return _mesa_hash_data(key, sizeof(struct agx_meta_key));
-}
-
-static bool
-key_compare(const void *a, const void *b)
-{
-   return memcmp(a, b, sizeof(struct agx_meta_key)) == 0;
-}
+DERIVE_HASH_TABLE(agx_meta_key);
 
 void
 agx_meta_init(struct agx_meta_cache *cache, struct agx_device *dev)
 {
    agx_pool_init(&cache->pool, dev, AGX_BO_EXEC | AGX_BO_LOW_VA, true);
-   cache->ht = _mesa_hash_table_create(NULL, key_hash, key_compare);
+   cache->ht = agx_meta_key_table_create(NULL);
    cache->dev = dev;
 }
 

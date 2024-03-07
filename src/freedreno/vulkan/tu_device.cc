@@ -38,6 +38,7 @@
 #include "tu_image.h"
 #include "tu_pass.h"
 #include "tu_query.h"
+#include "tu_rmv.h"
 #include "tu_tracepoints.h"
 #include "tu_wsi.h"
 
@@ -1619,7 +1620,7 @@ tu_trace_create_ts_buffer(struct u_trace_context *utctx, uint32_t size)
       container_of(utctx, struct tu_device, trace_context);
 
    struct tu_bo *bo;
-   tu_bo_init_new(device, &bo, size, TU_BO_ALLOC_NO_FLAGS, "trace");
+   tu_bo_init_new(device, &bo, size, TU_BO_ALLOC_INTERNAL_RESOURCE, "trace");
 
    return bo;
 }
@@ -2137,8 +2138,16 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
       return vk_startup_errorf(physical_device->instance, VK_ERROR_OUT_OF_HOST_MEMORY, "OOM");
 
    struct vk_device_dispatch_table dispatch_table;
+   bool override_initial_entrypoints = true;
+
+   if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
+      vk_device_dispatch_table_from_entrypoints(
+         &dispatch_table, &tu_rmv_device_entrypoints, true);
+      override_initial_entrypoints = false;
+   }
+
    vk_device_dispatch_table_from_entrypoints(
-      &dispatch_table, &tu_device_entrypoints, true);
+      &dispatch_table, &tu_device_entrypoints, override_initial_entrypoints);
 
    switch (fd_dev_gen(&physical_device->dev_id)) {
    case 6:
@@ -2196,6 +2205,9 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
 
    if (TU_DEBUG(BOS))
       device->bo_sizes = _mesa_hash_table_create(NULL, _mesa_hash_string, _mesa_key_string_equal);
+
+   if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV)
+      tu_memory_trace_init(device);
 
    /* kgsl is not a drm device: */
    if (!is_kgsl(physical_device->instance))
@@ -2278,16 +2290,24 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
 
    tu_bo_suballocator_init(
       &device->pipeline_suballoc, device, 128 * 1024,
-      (enum tu_bo_alloc_flags) (TU_BO_ALLOC_GPU_READ_ONLY | TU_BO_ALLOC_ALLOW_DUMP), "pipeline_suballoc");
+      (enum tu_bo_alloc_flags) (TU_BO_ALLOC_GPU_READ_ONLY |
+                                TU_BO_ALLOC_ALLOW_DUMP |
+                                TU_BO_ALLOC_INTERNAL_RESOURCE),
+      "pipeline_suballoc");
    tu_bo_suballocator_init(&device->autotune_suballoc, device,
-                           128 * 1024, TU_BO_ALLOC_NO_FLAGS, "autotune_suballoc");
+                           128 * 1024, TU_BO_ALLOC_INTERNAL_RESOURCE,
+                           "autotune_suballoc");
    if (is_kgsl(physical_device->instance)) {
       tu_bo_suballocator_init(&device->kgsl_profiling_suballoc, device,
-                              128 * 1024, TU_BO_ALLOC_NO_FLAGS, "kgsl_profiling_suballoc");
+                              128 * 1024, TU_BO_ALLOC_INTERNAL_RESOURCE,
+                              "kgsl_profiling_suballoc");
    }
 
-   result = tu_bo_init_new(device, &device->global_bo, global_size,
-                           TU_BO_ALLOC_ALLOW_DUMP, "global");
+   result = tu_bo_init_new(
+      device, &device->global_bo, global_size,
+      (enum tu_bo_alloc_flags) (TU_BO_ALLOC_ALLOW_DUMP |
+                                TU_BO_ALLOC_INTERNAL_RESOURCE),
+      "global");
    if (result != VK_SUCCESS) {
       vk_startup_errorf(device->instance, result, "BO init");
       goto fail_global_bo;
@@ -2488,6 +2508,7 @@ fail_dynamic_rendering:
 fail_empty_shaders:
    tu_destroy_clear_blit_shaders(device);
 fail_global_bo_map:
+   TU_RMV(resource_destroy, device, device->global_bo);
    tu_bo_finish(device, device->global_bo);
    vk_free(&device->vk.alloc, device->bo_list);
 fail_global_bo:
@@ -2518,6 +2539,8 @@ tu_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    if (!device)
       return;
+
+   tu_memory_trace_finish(device);
 
    if (FD_RD_DUMP(ENABLE))
       fd_rd_output_fini(&device->rd_output);
@@ -2633,7 +2656,7 @@ tu_get_scratch_bo(struct tu_device *dev, uint64_t size, struct tu_bo **bo)
 
    unsigned bo_size = 1ull << size_log2;
    VkResult result = tu_bo_init_new(dev, &dev->scratch_bos[index].bo, bo_size,
-                                    TU_BO_ALLOC_NO_FLAGS, "scratch");
+                                    TU_BO_ALLOC_INTERNAL_RESOURCE, "scratch");
    if (result != VK_SUCCESS) {
       mtx_unlock(&dev->scratch_bos[index].construct_mtx);
       return result;
@@ -2804,6 +2827,8 @@ tu_AllocateMemory(VkDevice _device,
       mem->image = NULL;
    }
 
+   TU_RMV(heap_create, device, pAllocateInfo, mem);
+
    *pMem = tu_device_memory_to_handle(mem);
 
    return VK_SUCCESS;
@@ -2819,6 +2844,8 @@ tu_FreeMemory(VkDevice _device,
 
    if (mem == NULL)
       return;
+
+   TU_RMV(resource_destroy, device, mem);
 
    p_atomic_add(&device->physical_device->heap.used, -mem->bo->size);
    tu_bo_finish(device, mem->bo);
@@ -2934,6 +2961,8 @@ tu_BindBufferMemory2(VkDevice device,
       } else {
          buffer->bo = NULL;
       }
+
+      TU_RMV(buffer_bind, dev, buffer);
    }
    return VK_SUCCESS;
 }
@@ -2969,6 +2998,8 @@ tu_BindImageMemory2(VkDevice _device,
          image->map = NULL;
          image->iova = 0;
       }
+
+      TU_RMV(image_bind, device, image);
    }
 
    return VK_SUCCESS;
@@ -3006,6 +3037,8 @@ tu_CreateEvent(VkDevice _device,
    if (result != VK_SUCCESS)
       goto fail_map;
 
+   TU_RMV(event_create, device, pCreateInfo, event);
+
    *pEvent = tu_event_to_handle(event);
 
    return VK_SUCCESS;
@@ -3027,6 +3060,8 @@ tu_DestroyEvent(VkDevice _device,
 
    if (!event)
       return;
+
+   TU_RMV(resource_destroy, device, event);
 
    tu_bo_finish(device, event->bo);
    vk_object_free(&device->vk, pAllocator, event);
@@ -3078,6 +3113,8 @@ tu_CreateBuffer(VkDevice _device,
    if (buffer == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   TU_RMV(buffer_create, device, buffer);
+
    *pBuffer = tu_buffer_to_handle(buffer);
 
    return VK_SUCCESS;
@@ -3093,6 +3130,8 @@ tu_DestroyBuffer(VkDevice _device,
 
    if (!buffer)
       return;
+
+   TU_RMV(buffer_destroy, device, buffer);
 
    vk_buffer_destroy(&device->vk, pAllocator, &buffer->vk);
 }

@@ -18,8 +18,9 @@
 
 #include "tu_device.h"
 #include "tu_descriptor_set.h"
-#include "tu_pipeline.h"
 #include "tu_lrz.h"
+#include "tu_pipeline.h"
+#include "tu_rmv.h"
 
 #include <initializer_list>
 
@@ -2078,7 +2079,7 @@ tu_setup_pvtmem(struct tu_device *dev,
          dev->physical_device->info->num_sp_cores * pvtmem_bo->per_sp_size;
 
       VkResult result = tu_bo_init_new(dev, &pvtmem_bo->bo, total_size,
-                                       TU_BO_ALLOC_NO_FLAGS, "pvtmem");
+                                       TU_BO_ALLOC_INTERNAL_RESOURCE, "pvtmem");
       if (result != VK_SUCCESS) {
          mtx_unlock(&pvtmem_bo->mtx);
          return result;
@@ -2190,6 +2191,7 @@ tu_upload_shader(struct tu_device *dev,
       return result;
    }
 
+   TU_RMV(cmd_buffer_suballoc_bo_create, dev, &shader->bo);
    tu_cs_init_suballoc(&shader->cs, dev, &shader->bo);
 
    uint64_t iova = tu_upload_variant(&shader->cs, v);
@@ -2886,6 +2888,7 @@ tu_empty_shader_create(struct tu_device *dev,
       return result;
    }
 
+   TU_RMV(cmd_buffer_suballoc_bo_create, dev, &shader->bo);
    tu_cs_init_suballoc(&shader->cs, dev, &shader->bo);
 
    struct tu_pvtmem_config pvtmem_config = { };
@@ -2987,6 +2990,7 @@ tu_shader_destroy(struct tu_device *dev,
                   struct tu_shader *shader)
 {
    tu_cs_finish(&shader->cs);
+   TU_RMV(resource_destroy, dev, &shader->bo);
 
    pthread_mutex_lock(&dev->pipeline_mutex);
    tu_suballoc_bo_free(&dev->pipeline_suballoc, &shader->bo);

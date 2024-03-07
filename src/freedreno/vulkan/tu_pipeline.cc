@@ -30,6 +30,7 @@
 #include "tu_formats.h"
 #include "tu_lrz.h"
 #include "tu_pass.h"
+#include "tu_rmv.h"
 
 /* Emit IB that preloads the descriptors that the shader uses */
 
@@ -1072,8 +1073,10 @@ tu_get_tess_iova(struct tu_device *dev,
    /* Create the shared tess factor BO the first time tess is used on the device. */
    if (!dev->tess_bo) {
       mtx_lock(&dev->mutex);
-      if (!dev->tess_bo)
-         tu_bo_init_new(dev, &dev->tess_bo, TU_TESS_BO_SIZE, TU_BO_ALLOC_NO_FLAGS, "tess");
+      if (!dev->tess_bo) {
+         tu_bo_init_new(dev, &dev->tess_bo, TU_TESS_BO_SIZE,
+                        TU_BO_ALLOC_INTERNAL_RESOURCE, "tess");
+      }
       mtx_unlock(&dev->mutex);
    }
 
@@ -1403,6 +1406,7 @@ tu_pipeline_allocate_cs(struct tu_device *dev,
    if (result != VK_SUCCESS)
       return result;
 
+   TU_RMV(cmd_buffer_suballoc_bo_create, dev, &pipeline->bo);
    tu_cs_init_suballoc(&pipeline->cs, dev, &pipeline->bo);
 
    return VK_SUCCESS;
@@ -3660,6 +3664,8 @@ tu_pipeline_finish(struct tu_pipeline *pipeline,
                    const VkAllocationCallbacks *alloc)
 {
    tu_cs_finish(&pipeline->cs);
+   TU_RMV(resource_destroy, dev, &pipeline->bo);
+
    mtx_lock(&dev->pipeline_mutex);
    tu_suballoc_bo_free(&dev->pipeline_suballoc, &pipeline->bo);
    mtx_unlock(&dev->pipeline_mutex);
@@ -4045,9 +4051,11 @@ tu_graphics_pipeline_create(VkDevice device,
    VkResult result = tu_pipeline_builder_build<CHIP>(&builder, &pipeline);
    tu_pipeline_builder_finish(&builder);
 
-   if (result == VK_SUCCESS)
+   if (result == VK_SUCCESS) {
+      TU_RMV(graphics_pipeline_create, dev, tu_pipeline_to_graphics(pipeline));
+
       *pPipeline = tu_pipeline_to_handle(pipeline);
-   else
+   } else
       *pPipeline = VK_NULL_HANDLE;
 
    return result;
@@ -4230,6 +4238,8 @@ tu_compute_pipeline_create(VkDevice device,
 
    ralloc_free(pipeline_mem_ctx);
 
+   TU_RMV(compute_pipeline_create, dev, pipeline);
+
    *pPipeline = tu_pipeline_to_handle(&pipeline->base);
 
    return VK_SUCCESS;
@@ -4293,6 +4303,8 @@ tu_DestroyPipeline(VkDevice _device,
 
    if (!_pipeline)
       return;
+
+   TU_RMV(resource_destroy, dev, pipeline);
 
    tu_pipeline_finish(pipeline, dev, pAllocator);
    vk_object_free(&dev->vk, pAllocator, pipeline);

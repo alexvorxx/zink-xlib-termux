@@ -23,6 +23,7 @@
 #include "tu_device.h"
 #include "tu_dynamic_rendering.h"
 #include "tu_knl_drm.h"
+#include "tu_rmv.h"
 #include "redump.h"
 
 struct tu_queue_submit
@@ -472,6 +473,8 @@ tu_bo_init(struct tu_device *dev,
 
    mtx_unlock(&dev->bo_mutex);
 
+   TU_RMV(bo_allocate, dev, bo);
+
    return VK_SUCCESS;
 }
 
@@ -544,10 +547,14 @@ msm_bo_init(struct tu_device *dev,
    VkResult result =
       tu_bo_init(dev, bo, req.handle, size, client_iova, flags, name);
 
-   if (result != VK_SUCCESS)
-      memset(bo, 0, sizeof(*bo));
-   else
+   if (result == VK_SUCCESS) {
       *out_bo = bo;
+      if (flags & TU_BO_ALLOC_INTERNAL_RESOURCE) {
+         TU_RMV(internal_resource_create, dev, bo);
+         TU_RMV(resource_name, dev, bo, name);
+      }
+   } else
+      memset(bo, 0, sizeof(*bo));
 
    /* We don't use bo->name here because for the !TU_DEBUG=bo case bo->name is NULL. */
    tu_bo_set_kernel_name(dev, bo, name);
@@ -640,6 +647,8 @@ msm_bo_map(struct tu_device *dev, struct tu_bo *bo)
       return vk_error(dev, VK_ERROR_MEMORY_MAP_FAILED);
 
    bo->map = map;
+   TU_RMV(bo_map, dev, bo);
+
    return VK_SUCCESS;
 }
 

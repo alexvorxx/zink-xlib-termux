@@ -163,6 +163,26 @@ hash_table_call_foreach(struct hash_table *ht,
 }
 
 /**
+ * This helper macro generates the boilerplate required to use a hash table with
+ * a fixed-size struct as the key.
+ */
+#define DERIVE_HASH_TABLE(T)                                                   \
+   static uint32_t T##_hash(const void *key)                                   \
+   {                                                                           \
+      return _mesa_hash_data(key, sizeof(struct T));                           \
+   }                                                                           \
+                                                                               \
+   static bool T##_equal(const void *a, const void *b)                         \
+   {                                                                           \
+      return memcmp(a, b, sizeof(struct T)) == 0;                              \
+   }                                                                           \
+                                                                               \
+   static struct hash_table *T##_table_create(void *memctx)                    \
+   {                                                                           \
+      return _mesa_hash_table_create(memctx, T##_hash, T##_equal);             \
+   }
+
+/**
  * Hash table wrapper which supports 64-bit keys.
  */
 struct hash_table_u64 {

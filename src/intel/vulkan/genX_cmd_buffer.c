@@ -341,10 +341,9 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
    enum anv_pipe_bits bits =
       ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
       ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT |
-#if GFX_VERx10 == 125
-      ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT |
-#endif
-      ANV_PIPE_STATE_CACHE_INVALIDATE_BIT;
+      ANV_PIPE_STATE_CACHE_INVALIDATE_BIT |
+      (intel_needs_workaround(cmd_buffer->device->info, 16013000631) ?
+          ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT : 0);
 
 #if GFX_VER >= 9 && GFX_VER <= 11
       /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",

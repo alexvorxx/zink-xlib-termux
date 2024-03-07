@@ -375,10 +375,12 @@ pvr_get_physical_device_descriptor_limits(
 }
 
 static bool pvr_physical_device_get_properties(
-   const struct pvr_device_info *const dev_info,
-   const struct pvr_device_runtime_info *const dev_runtime_info,
+   const struct pvr_physical_device *const pdevice,
    struct vk_properties *const properties)
 {
+   const struct pvr_device_info *const dev_info = &pdevice->dev_info;
+   const struct pvr_device_runtime_info *const dev_runtime_info =
+      &pdevice->dev_runtime_info;
    const struct pvr_descriptor_limits *descriptor_limits =
       pvr_get_physical_device_descriptor_limits(dev_info, dev_runtime_info);
 
@@ -539,7 +541,7 @@ static bool pvr_physical_device_get_properties(
       .viewportBoundsRange[1] = 2U * max_render_size,
 
       .viewportSubPixelBits = 0,
-      .minMemoryMapAlignment = 64U,
+      .minMemoryMapAlignment = pdevice->ws->page_size,
       .minTexelBufferOffsetAlignment = 16U,
       .minUniformBufferOffsetAlignment = 4U,
       .minStorageBufferOffsetAlignment = 4U,
@@ -762,9 +764,7 @@ static VkResult pvr_physical_device_init(struct pvr_physical_device *pdevice,
    pvr_physical_device_get_supported_extensions(&supported_extensions);
    pvr_physical_device_get_supported_features(&pdevice->dev_info,
                                               &supported_features);
-   if (!pvr_physical_device_get_properties(&pdevice->dev_info,
-                                           &pdevice->dev_runtime_info,
-                                           &supported_properties)) {
+   if (!pvr_physical_device_get_properties(pdevice, &supported_properties)) {
       result = vk_errorf(instance,
                          VK_ERROR_INITIALIZATION_FAILED,
                          "Failed to collect physical device properties");

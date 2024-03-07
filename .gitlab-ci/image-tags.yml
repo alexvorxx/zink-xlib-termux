@@ -32,7 +32,7 @@ variables:
    ALPINE_X86_64_BUILD_TAG: "20240208-libclc-5"
    ALPINE_X86_64_LAVA_SSH_TAG: "20230626-v1"
    FEDORA_X86_64_BUILD_TAG: "20240301-mold"
-   KERNEL_TAG: "v6.6.16-mesa-475e"
+   KERNEL_TAG: "v6.6.21-mesa-19fc"
    KERNEL_REPO: "gfx-ci/linux"
    PKG_REPO_REV: "3cc12a2a"
 

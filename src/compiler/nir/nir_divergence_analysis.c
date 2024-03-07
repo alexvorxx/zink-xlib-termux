@@ -736,10 +736,24 @@ nir_variable_mode_is_uniform(nir_variable_mode mode)
 }
 
 static bool
-nir_variable_is_uniform(nir_shader *shader, nir_variable *var)
+nir_variable_is_uniform(nir_shader *shader, nir_variable *var,
+                        struct divergence_state *state)
 {
    if (nir_variable_mode_is_uniform(var->data.mode))
       return true;
+
+   /* Handle system value variables. */
+   if (var->data.mode == nir_var_system_value) {
+      /* Fake the instruction to reuse visit_intrinsic for all sysvals. */
+      nir_intrinsic_instr fake_instr;
+
+      memset(&fake_instr, 0, sizeof(fake_instr));
+      fake_instr.intrinsic =
+         nir_intrinsic_from_system_value(var->data.location);
+
+      visit_intrinsic(&fake_instr, state);
+      return !fake_instr.def.divergent;
+   }
 
    nir_divergence_options options = shader->options->divergence_analysis_options;
    gl_shader_stage stage = shader->info.stage;
@@ -764,7 +778,8 @@ nir_variable_is_uniform(nir_shader *shader, nir_variable *var)
 }
 
 static bool
-visit_deref(nir_shader *shader, nir_deref_instr *deref)
+visit_deref(nir_shader *shader, nir_deref_instr *deref,
+            struct divergence_state *state)
 {
    if (deref->def.divergent)
       return false;
@@ -772,7 +787,7 @@ visit_deref(nir_shader *shader, nir_deref_instr *deref)
    bool is_divergent = false;
    switch (deref->deref_type) {
    case nir_deref_type_var:
-      is_divergent = !nir_variable_is_uniform(shader, deref->var);
+      is_divergent = !nir_variable_is_uniform(shader, deref->var, state);
       break;
    case nir_deref_type_array:
    case nir_deref_type_ptr_as_array:
@@ -844,7 +859,7 @@ update_instr_divergence(nir_instr *instr, struct divergence_state *state)
    case nir_instr_type_undef:
       return visit_def(&nir_instr_as_undef(instr)->def, state);
    case nir_instr_type_deref:
-      return visit_deref(state->shader, nir_instr_as_deref(instr));
+      return visit_deref(state->shader, nir_instr_as_deref(instr), state);
    case nir_instr_type_jump:
    case nir_instr_type_phi:
    case nir_instr_type_call:

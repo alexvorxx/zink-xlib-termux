@@ -746,6 +746,9 @@ lvp_spirv_to_nir(struct lvp_pipeline *pipeline, const VkPipelineShaderStageCreat
                  nir_shader **out_nir);
 
 void
+lvp_shader_init(struct lvp_shader *shader, nir_shader *nir);
+
+void
 lvp_shader_optimize(nir_shader *nir);
 bool
 lvp_find_inlinable_uniforms(struct lvp_shader *shader, nir_shader *nir);

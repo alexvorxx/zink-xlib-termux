@@ -510,7 +510,7 @@ lvp_spirv_to_nir(struct lvp_pipeline *pipeline, const VkPipelineShaderStageCreat
    return result;
 }
 
-static void
+void
 lvp_shader_init(struct lvp_shader *shader, nir_shader *nir)
 {
    nir_function_impl *impl = nir_shader_get_entrypoint(nir);

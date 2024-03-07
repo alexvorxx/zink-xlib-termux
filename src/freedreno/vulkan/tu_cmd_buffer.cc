@@ -2451,7 +2451,7 @@ tu_CmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer,
       index_size = INDEX4_SIZE_32_BIT;
       index_shift = 2;
       break;
-   case VK_INDEX_TYPE_UINT8_EXT:
+   case VK_INDEX_TYPE_UINT8_KHR:
       index_size = INDEX4_SIZE_8_BIT;
       index_shift = 0;
       break;

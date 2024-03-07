@@ -164,6 +164,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_image_format_list = true,
       .KHR_imageless_framebuffer = true,
       .KHR_incremental_present = TU_HAS_SURFACE,
+      .KHR_index_type_uint8 = true,
       .KHR_maintenance1 = true,
       .KHR_maintenance2 = true,
       .KHR_maintenance3 = true,
@@ -430,8 +431,9 @@ tu_get_features(struct tu_physical_device *pdevice,
    features->transformFeedback = true;
    features->geometryStreams = true;
 
-   /* VK_EXT_index_type_uint8 */
+   /* VK_KHR_index_type_uint8 */
    features->indexTypeUint8 = true;
+
    /* VK_EXT_vertex_attribute_divisor */
    features->vertexAttributeInstanceRateDivisor = true;
    features->vertexAttributeInstanceRateZeroDivisor = true;

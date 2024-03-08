@@ -186,6 +186,7 @@ pipe_to_nv_texture_type(enum nil_view_type type)
    CASE(1D,             ONE_D);
    CASE(2D,             TWO_D);
    CASE(3D,             THREE_D);
+   CASE(3D_SLICED,      THREE_D);
    CASE(CUBE,           CUBEMAP);
    CASE(1D_ARRAY,       ONE_D_ARRAY);
    CASE(2D_ARRAY,       TWO_D_ARRAY);
@@ -295,6 +296,10 @@ nil_normalize_extent(const struct nil_image *image,
       assert(image->dim == NIL_IMAGE_DIM_3D);
       extent.depth = image->extent_px.depth;
       break;
+   case NIL_VIEW_TYPE_3D_SLICED:
+      assert(image->dim == NIL_IMAGE_DIM_3D);
+      extent.depth = view->array_len;
+      break;
    default:
       unreachable("Unsupported image view target");
    };
@@ -400,16 +405,43 @@ nvb097_nil_image_fill_tic(const struct nil_image *image,
    assert(util_format_get_blocksize(image->format) ==
           util_format_get_blocksize(view->format));
    assert(view->base_level + view->num_levels <= image->num_levels);
-   assert(view->base_array_layer + view->array_len <= image->extent_px.a);
 
    uint32_t th[8] = { };
 
    th[0] = nvb097_th_bl_0(view->format, view->swizzle);
 
-   /* There's no base layer field in the texture header */
-   const uint64_t layer_address =
-      base_address + view->base_array_layer * image->array_stride_B;
    const struct nil_tiling *tiling = &image->levels[0].tiling;
+
+   /* There's no base layer field in the texture header */
+   uint64_t layer_address = base_address;
+   if (view->type == NIL_VIEW_TYPE_3D_SLICED) {
+      assert(view->num_levels == 1);
+      assert(view->base_array_layer + view->array_len <= image->extent_px.d);
+
+      /* For sliced 3D images, computing the offset is a bit more complicated.
+       * We first have to compute the offset to the tile then, within that
+       * tile, the offset to the GOB.
+       *
+       * TODO: If we ever enable 3D gobs, we'll also have to compute the
+       * offset within the gob.
+       */
+      const uint32_t z_tl = view->base_array_layer >> tiling->z_log2;
+      const uint32_t z_GOB =
+         view->base_array_layer & BITFIELD_MASK(tiling->z_log2);
+
+      const struct nil_extent4d extent_tl =
+         nil_extent4d_px_to_tl(image->extent_px, *tiling,
+                               image->format, image->sample_layout);
+      layer_address += extent_tl.w * extent_tl.h * z_tl *
+                       nil_tiling_size_B(*tiling);
+
+      const struct nil_extent4d tiling_extent_B =
+         nil_tiling_extent_B(*tiling);
+      layer_address += tiling_extent_B.w * tiling_extent_B.h * z_GOB;
+   } else {
+      assert(view->base_array_layer + view->array_len <= image->extent_px.a);
+      layer_address += view->base_array_layer * image->array_stride_B;
+   }
 
    if (tiling->is_tiled) {
       TH_NVB097_SET_E(th, BL, HEADER_VERSION, SELECT_BLOCKLINEAR);

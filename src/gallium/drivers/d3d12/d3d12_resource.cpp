@@ -304,7 +304,7 @@ init_texture(struct d3d12_screen *screen,
       D3D12_FEATURE_DATA_PLACED_RESOURCE_SUPPORT_INFO capData;
       capData.Dimension = desc.Dimension;
       capData.Format = desc.Format;
-      capData.DestHeapProperties = heap->GetDesc().Properties;
+      capData.DestHeapProperties = GetDesc(heap).Properties;
       capData.Supported = false;
       if (FAILED(screen->dev->CheckFeatureSupport(D3D12_FEATURE_PLACED_RESOURCE_SUPPORT_INFO, &capData, sizeof(capData))) || !capData.Supported) {
          debug_printf("D3D12: d3d12_resource_create_or_place cannot place a resource since D3D12_FEATURE_DATA_PLACED_RESOURCE_SUPPORT_INFO is not supported\n");

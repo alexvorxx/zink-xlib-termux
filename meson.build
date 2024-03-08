@@ -956,11 +956,6 @@ if cc.get_define('ETIME', prefix : '#include <errno.h>') == ''
   pre_args += '-DETIME=ETIMEDOUT'
 endif
 
-# Define DEBUG for debug builds only (debugoptimized is not included on this one)
-if with_mesa_debug
-  pre_args += '-DDEBUG'
-endif
-
 # Define MESA_DEBUG to 1 for debug builds only (debugoptimized is not included on this one);
 # otherwise define MESA_DEBUG to 0
 pre_args += '-DMESA_DEBUG=' + (with_mesa_debug ? '1' : '0')

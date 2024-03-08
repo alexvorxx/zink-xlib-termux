@@ -702,6 +702,7 @@ struct radv_meta_state {
    struct {
       VkPipelineLayout leaf_p_layout;
       VkPipeline leaf_pipeline;
+      VkPipeline leaf_updateable_pipeline;
       VkPipelineLayout morton_p_layout;
       VkPipeline morton_pipeline;
       VkPipelineLayout lbvh_main_p_layout;

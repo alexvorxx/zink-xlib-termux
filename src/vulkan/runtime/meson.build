@@ -186,10 +186,6 @@ vulkan_lite_runtime_files += [
   vk_synchronization_helpers,
 ]
 
-idep_vulkan_common_entrypoints_h = declare_dependency(
-  sources : [vk_common_entrypoints[0]]
-)
-
 # as a runtime library dep to ensure header gen order
 vulkan_lite_runtime_header_gen_deps = declare_dependency(
   sources : [
@@ -225,8 +221,21 @@ libvulkan_lite_instance = static_library(
   build_by_default : false,
 )
 
+# The sources part is to ensure those generated headers used externally are
+# indeed generated before being compiled with, as long as either one of below
+# is included as a dependency:
+# - idep_vulkan_lite_runtime_headers
+# - idep_vulkan_lite_runtime
+# - idep_vulkan_runtime_headers
+# - idep_vulkan_runtime
 idep_vulkan_lite_runtime_headers = declare_dependency(
-  sources : [vk_cmd_queue[1], vk_physical_device_features[1], vk_physical_device_properties[1]],
+  sources : [
+    vk_cmd_enqueue_entrypoints[0],
+    vk_cmd_queue[1],
+    vk_common_entrypoints[0],
+    vk_physical_device_features[1],
+    vk_physical_device_properties[1],
+  ],
   include_directories : include_directories('.'),
 )
 

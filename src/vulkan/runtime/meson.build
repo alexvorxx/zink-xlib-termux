@@ -213,21 +213,34 @@ vk_format_info = custom_target(
 )
 
 vulkan_lite_runtime_files += [
-  vk_common_entrypoints,
-  vk_cmd_queue,
   vk_cmd_enqueue_entrypoints,
+  vk_cmd_queue,
+  vk_common_entrypoints,
   vk_dispatch_trampolines,
+  vk_format_info,
   vk_physical_device_features,
   vk_physical_device_properties,
   vk_synchronization_helpers,
-  vk_format_info,
 ]
 
 idep_vulkan_common_entrypoints_h = declare_dependency(
   sources : [vk_common_entrypoints[0]]
 )
 
-vulkan_lite_runtime_deps += idep_vulkan_common_entrypoints_h
+# as a runtime library dep to ensure header gen order
+vulkan_lite_runtime_header_gen_deps = declare_dependency(
+  sources : [
+    vk_cmd_enqueue_entrypoints[0],
+    vk_cmd_queue[1],
+    vk_common_entrypoints[0],
+    vk_dispatch_trampolines[1],
+    vk_format_info[1],
+    vk_physical_device_features[1],
+    vk_physical_device_properties[1],
+  ],
+)
+
+vulkan_lite_runtime_deps += vulkan_lite_runtime_header_gen_deps
 
 libvulkan_lite_runtime = static_library(
   'vulkan_lite_runtime',

@@ -3485,6 +3485,17 @@ anv_can_fast_clear_color_view(struct anv_device *device,
          return false;
    }
 
+   /* On gfx12.0, CCS fast clears don't seem to cover the correct portion of
+    * the aux buffer when the pitch is not 512B-aligned.
+    */
+   if (device->info->verx10 == 120 &&
+       iview->image->planes->primary_surface.isl.samples == 1 &&
+       iview->image->planes->primary_surface.isl.row_pitch_B % 512) {
+      anv_perf_warn(VK_LOG_OBJS(&iview->image->vk.base),
+                    "Pitch not 512B-aligned. Slow clearing surface.");
+      return false;
+   }
+
    /* Disable sRGB fast-clears for non-0/1 color values on Gfx9. For texturing
     * and draw calls, HW expects the clear color to be in two different color
     * spaces after sRGB fast-clears - sRGB in the former and linear in the

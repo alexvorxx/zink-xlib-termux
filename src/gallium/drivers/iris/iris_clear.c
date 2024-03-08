@@ -147,6 +147,16 @@ can_fast_clear_color(struct iris_context *ice,
          return false;
    }
 
+   /* On gfx12.0, CCS fast clears don't seem to cover the correct portion of
+    * the aux buffer when the pitch is not 512B-aligned.
+    */
+   if (devinfo->verx10 == 120 &&
+       res->surf.samples == 1 &&
+       res->surf.row_pitch_B % 512) {
+      perf_debug(&ice->dbg, "Pitch not 512B-aligned. Slow clearing surface.");
+      return false;
+   }
+
    return true;
 }
 

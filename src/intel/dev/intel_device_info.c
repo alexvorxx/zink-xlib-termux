@@ -1763,6 +1763,14 @@ intel_device_info_update_after_hwconfig(struct intel_device_info *devinfo)
 enum intel_wa_steppings
 intel_device_info_wa_stepping(struct intel_device_info *devinfo)
 {
+   /* When adding platforms to this function, check to see if
+    * stepping-specific workarounds impact the compiler.
+    *
+    * If a stepping specific compiler workaround is required on a released
+    * platform, intel_device_info->revision must be added as a
+    * 'compiler_field' in intel_device_info.py
+    */
+
    if (devinfo->platform == INTEL_PLATFORM_TGL) {
       /* TGL production steppings: B0 and C0 */
       switch (devinfo->revision) {

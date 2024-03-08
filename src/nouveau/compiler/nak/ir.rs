@@ -5106,6 +5106,78 @@ impl DisplayOp for OpBra {
 impl_display_for_op!(OpBra);
 
 #[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpSSy {
+    pub target: Label,
+}
+
+impl DisplayOp for OpSSy {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ssy {}", self.target)
+    }
+}
+impl_display_for_op!(OpSSy);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpSync {}
+
+impl DisplayOp for OpSync {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "sync")
+    }
+}
+impl_display_for_op!(OpSync);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpBrk {}
+
+impl DisplayOp for OpBrk {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "brk")
+    }
+}
+impl_display_for_op!(OpBrk);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpPBk {
+    pub target: Label,
+}
+
+impl DisplayOp for OpPBk {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "pbk {}", self.target)
+    }
+}
+impl_display_for_op!(OpPBk);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpCont {}
+
+impl DisplayOp for OpCont {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "cont")
+    }
+}
+impl_display_for_op!(OpCont);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpPCnt {
+    pub target: Label,
+}
+
+impl DisplayOp for OpPCnt {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "pcnt {}", self.target)
+    }
+}
+impl_display_for_op!(OpPCnt);
+
+#[repr(C)]
 #[derive(Clone, SrcsAsSlice, DstsAsSlice)]
 pub struct OpExit {}
 
@@ -5841,6 +5913,12 @@ pub enum Op {
     BSSy(OpBSSy),
     BSync(OpBSync),
     Bra(OpBra),
+    SSy(OpSSy),
+    Sync(OpSync),
+    Brk(OpBrk),
+    PBk(OpPBk),
+    Cont(OpCont),
+    PCnt(OpPCnt),
     Exit(OpExit),
     WarpSync(OpWarpSync),
     Bar(OpBar),
@@ -6160,7 +6238,14 @@ impl Instr {
     }
 
     pub fn is_branch(&self) -> bool {
-        matches!(self.op, Op::Bra(_) | Op::Exit(_))
+        match &self.op {
+            Op::Bra(_)
+            | Op::Sync(_)
+            | Op::Brk(_)
+            | Op::Cont(_)
+            | Op::Exit(_) => true,
+            _ => false,
+        }
     }
 
     pub fn uses_global_mem(&self) -> bool {
@@ -6195,6 +6280,12 @@ impl Instr {
             | Op::Nop(_)
             | Op::BSync(_)
             | Op::Bra(_)
+            | Op::SSy(_)
+            | Op::Sync(_)
+            | Op::Brk(_)
+            | Op::PBk(_)
+            | Op::Cont(_)
+            | Op::PCnt(_)
             | Op::Exit(_)
             | Op::WarpSync(_)
             | Op::Bar(_)
@@ -6300,6 +6391,12 @@ impl Instr {
 
             // Control-flow ops
             Op::BClear(_) | Op::Break(_) | Op::BSSy(_) | Op::BSync(_) => true,
+            Op::SSy(_)
+            | Op::Sync(_)
+            | Op::Brk(_)
+            | Op::PBk(_)
+            | Op::Cont(_)
+            | Op::PCnt(_) => true,
             Op::Bra(_) | Op::Exit(_) => true,
             Op::WarpSync(_) => false,
 

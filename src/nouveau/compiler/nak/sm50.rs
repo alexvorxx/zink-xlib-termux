@@ -2714,6 +2714,75 @@ impl SM50Op for OpBra {
     }
 }
 
+impl SM50Op for OpSSy {
+    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
+        // Nothing to do
+    }
+
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xe290);
+        e.set_rel_offset(20..44, &self.target);
+        e.set_field(0..5, 0xF_u8); // TODO: Pred?
+    }
+}
+
+impl SM50Op for OpSync {
+    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
+        // Nothing to do
+    }
+
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xf0f8);
+        e.set_field(0..5, 0xF_u8); // TODO: Pred?
+    }
+}
+
+impl SM50Op for OpBrk {
+    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
+        // Nothing to do
+    }
+
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xe340);
+        e.set_field(0..5, 0xF_u8); // TODO: Pred?
+    }
+}
+
+impl SM50Op for OpPBk {
+    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
+        // Nothing to do
+    }
+
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xe2a0);
+        e.set_rel_offset(20..44, &self.target);
+        e.set_field(0..5, 0xF_u8); // TODO: Pred?
+    }
+}
+
+impl SM50Op for OpCont {
+    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
+        // Nothing to do
+    }
+
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xe350);
+        e.set_field(0..5, 0xF_u8); // TODO: Pred?
+    }
+}
+
+impl SM50Op for OpPCnt {
+    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
+        // Nothing to do
+    }
+
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xe2b0);
+        e.set_rel_offset(20..44, &self.target);
+        e.set_field(0..5, 0xF_u8); // TODO: Pred?
+    }
+}
+
 impl SM50Op for OpExit {
     fn legalize(&mut self, _b: &mut LegalizeBuilder) {
         // Nothing to do
@@ -2954,6 +3023,12 @@ macro_rules! as_sm50_op_match {
             Op::MemBar(op) => op,
             Op::Atom(op) => op,
             Op::Bra(op) => op,
+            Op::SSy(op) => op,
+            Op::Sync(op) => op,
+            Op::Brk(op) => op,
+            Op::PBk(op) => op,
+            Op::Cont(op) => op,
+            Op::PCnt(op) => op,
             Op::Exit(op) => op,
             Op::Bar(op) => op,
             Op::SuLd(op) => op,

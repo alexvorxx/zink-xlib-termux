@@ -4771,6 +4771,60 @@ split_bitfields(nir_shader *shader)
    return nir_shader_instructions_pass(shader, split_bitfields_instr, nir_metadata_dominance, NULL);
 }
 
+static bool
+strip_tex_ms_instr(nir_builder *b, nir_instr *in, void *data)
+{
+   if (in->type != nir_instr_type_intrinsic)
+      return false;
+   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(in);
+   switch (intr->intrinsic) {
+   case nir_intrinsic_image_deref_store:
+   case nir_intrinsic_image_deref_load:
+      break;
+   default:
+      return false;
+   }
+   enum glsl_sampler_dim dim = nir_intrinsic_image_dim(intr);
+   if (dim != GLSL_SAMPLER_DIM_MS)
+      return false;
+
+   nir_deref_instr *deref = nir_src_as_deref(intr->src[0]);
+   nir_variable *var = nir_deref_instr_get_variable(deref);
+   nir_deref_instr *parent = nir_deref_instr_parent(deref);
+   if (parent) {
+      parent->type = var->type;
+      deref->type = glsl_without_array(var->type);
+   } else {
+      deref->type = var->type;
+   }
+   nir_intrinsic_set_image_dim(intr, GLSL_SAMPLER_DIM_2D);
+   return true;
+}
+
+
+static bool
+strip_tex_ms(nir_shader *shader)
+{
+   bool progress = false;
+   nir_foreach_image_variable(var, shader) {
+      const struct glsl_type *bare_type = glsl_without_array(var->type);
+      if (glsl_get_sampler_dim(bare_type) != GLSL_SAMPLER_DIM_MS)
+         continue;
+      unsigned array_size = 0;
+      if (glsl_type_is_array(var->type))
+         array_size = glsl_array_size(var->type);
+
+      const struct glsl_type *new_type = glsl_image_type(GLSL_SAMPLER_DIM_2D, glsl_sampler_type_is_array(bare_type), glsl_get_sampler_result_type(bare_type));
+      if (array_size)
+         new_type = glsl_array_type(new_type, array_size, glsl_get_explicit_stride(var->type));
+      var->type = new_type;
+      progress = true;
+   }
+   if (!progress)
+      return false;
+   return nir_shader_instructions_pass(shader, strip_tex_ms_instr, nir_metadata_all, NULL);
+}
+
 static void
 rewrite_cl_derefs(nir_shader *nir, nir_variable *var)
 {
@@ -5515,6 +5569,8 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
    NIR_PASS_V(nir, lower_baseinstance);
    NIR_PASS_V(nir, lower_sparse_and);
    NIR_PASS_V(nir, split_bitfields);
+   if (!screen->info.feats.features.shaderStorageImageMultisample)
+      NIR_PASS_V(nir, strip_tex_ms);
    NIR_PASS_V(nir, nir_lower_frexp); /* TODO: Use the spirv instructions for this. */
 
    if (screen->info.have_EXT_shader_demote_to_helper_invocation) {

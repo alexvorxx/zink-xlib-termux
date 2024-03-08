@@ -300,7 +300,7 @@ init_texture(struct d3d12_screen *screen,
    HRESULT hres = E_FAIL;
    enum d3d12_residency_status init_residency;
 
-   if (heap) {
+   if (heap && screen->max_feature_level == D3D_FEATURE_LEVEL_1_0_GENERIC) {
       D3D12_FEATURE_DATA_PLACED_RESOURCE_SUPPORT_INFO capData;
       capData.Dimension = desc.Dimension;
       capData.Format = desc.Format;

@@ -355,7 +355,8 @@ zink_create_surface(struct pipe_context *pctx,
       if (!transient)
          return NULL;
       ivci.image = transient->obj->image;
-      csurf->transient = wrap_surface(pctx, (struct pipe_surface*)create_surface(pctx, &transient->base.b, templ, &ivci, true));
+      struct zink_surface *tsurf = create_surface(pctx, &transient->base.b, templ, &ivci, true);
+      csurf->transient = wrap_surface(pctx, &tsurf->base);
       if (!csurf->transient) {
          pipe_resource_reference((struct pipe_resource**)&transient, NULL);
          pipe_surface_release(pctx, &psurf);

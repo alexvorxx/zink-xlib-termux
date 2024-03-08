@@ -807,7 +807,7 @@ vn_queue_submission_setup_batches(struct vn_queue_submission *submit)
     * - non-empty: copy batches for adding feedbacks
     * - empty: initialize a batch for fence feedback
     */
-   if (submit->batches) {
+   if (submit->batch_count) {
       memcpy(submit->temp.batches, submit->batches,
              vn_get_batch_size(submit) * submit->batch_count);
    } else {

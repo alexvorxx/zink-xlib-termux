@@ -66,7 +66,7 @@ namespace {
           * lowering pass will detect the mismatch in has_invalid_src_region
           * and fix the sources of the multiply instead of the destination.
           */
-         return inst->dst.stride * type_sz(inst->dst.type);
+         return inst->dst.hstride * type_sz(inst->dst.type);
       } else if (type_sz(inst->dst.type) < get_exec_type_size(inst) &&
           !is_byte_raw_mov(inst)) {
          return get_exec_type_size(inst);

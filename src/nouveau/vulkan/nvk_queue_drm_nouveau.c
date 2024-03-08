@@ -148,66 +148,79 @@ push_add_buffer_bind(struct push_builder *pb,
    }
 }
 
+static bool
+next_opaque_bind_plane(const VkSparseMemoryBind *bind,
+                       uint64_t size_B, uint32_t align_B,
+                       uint64_t *plane_offset_B,
+                       uint64_t *mem_offset_B,
+                       uint64_t *bind_size_B,
+                       uint64_t *image_plane_offset_B_iter)
+{
+   /* Figure out the offset to thise plane and increment _iter up-front so
+    * that we're free to early return elsewhere in the function.
+    */
+   *image_plane_offset_B_iter = align64(*image_plane_offset_B_iter, align_B);
+   const uint64_t image_plane_offset_B = *image_plane_offset_B_iter;
+   *image_plane_offset_B_iter += size_B;
+
+   const uint64_t bind_offset_B = bind->resourceOffset;
+
+   if (bind_offset_B < image_plane_offset_B) {
+      /* The offset of the plane within the bind */
+      const uint64_t bind_plane_offset_B =
+         image_plane_offset_B - bind_offset_B;
+
+      /* If this plane lies above the bound range, skip this plane */
+      if (bind_plane_offset_B >= bind->size)
+         return false;
+
+      *plane_offset_B = 0;
+      *mem_offset_B = bind->memoryOffset + bind_plane_offset_B;
+      *bind_size_B = MIN2(bind->size - bind_plane_offset_B, size_B);
+   } else {
+      /* The offset of the bind within the plane */
+      const uint64_t plane_bind_offset_B =
+         bind_offset_B - image_plane_offset_B;
+
+      /* If this plane lies below the bound range, skip this plane */
+      if (plane_bind_offset_B >= size_B)
+         return false;
+
+      *plane_offset_B = plane_bind_offset_B;
+      *mem_offset_B = bind->memoryOffset;
+      *bind_size_B = MIN2(bind->size, size_B - plane_bind_offset_B);
+   }
+
+   return true;
+}
+
 static void
 push_add_image_plane_opaque_bind(struct push_builder *pb,
                                  const struct nvk_image_plane *plane,
                                  const VkSparseMemoryBind *bind,
                                  uint64_t *image_plane_offset_B)
 {
-   *image_plane_offset_B = align64(*image_plane_offset_B, plane->nil.align_B);
-
-   /* The offset of the bind range within the image */
-   uint64_t image_bind_offset_B = bind->resourceOffset;
-   uint64_t mem_bind_offset_B = bind->memoryOffset;
-   uint64_t bind_size_B = bind->size;
-
-   /* If the bind starts before the plane, clamp from below */
-   if (image_bind_offset_B < *image_plane_offset_B) {
-      /* The offset of the plane within the range being bound */
-      const uint64_t bind_plane_offset_B =
-         *image_plane_offset_B - image_bind_offset_B;
-
-      /* If this plane lies above the bound range, skip this bind */
-      if (bind_plane_offset_B >= bind_size_B)
-         goto skip;
-
-      image_bind_offset_B += bind_plane_offset_B;
-      mem_bind_offset_B += bind_plane_offset_B;
-      bind_size_B -= bind_plane_offset_B;
-
-      assert(image_bind_offset_B == *image_plane_offset_B);
-   }
-
-   /* The offset of the bind range within the plane */
-   const uint64_t plane_bind_offset_B =
-      image_bind_offset_B - *image_plane_offset_B;
-
-   /* The bound range lies above the plane */
-   if (plane_bind_offset_B >= plane->vma_size_B)
-      goto skip;
-
-   /* Clamp the size to fit inside the plane */
-   bind_size_B = MIN2(bind_size_B, plane->vma_size_B - plane_bind_offset_B);
-   assert(bind_size_B > 0);
+   uint64_t plane_offset_B, mem_offset_B, bind_size_B;
+   if (!next_opaque_bind_plane(bind, plane->nil.size_B, plane->nil.align_B,
+                               &plane_offset_B, &mem_offset_B, &bind_size_B,
+                               image_plane_offset_B))
+      return;
 
    VK_FROM_HANDLE(nvk_device_memory, mem, bind->memory);
 
-   assert(plane_bind_offset_B + bind_size_B <= plane->vma_size_B);
-   assert(!mem || mem_bind_offset_B + bind_size_B <= mem->vk.size);
+   assert(plane->vma_size_B == plane->nil.size_B);
+   assert(plane_offset_B + bind_size_B <= plane->vma_size_B);
+   assert(!mem || mem_offset_B + bind_size_B <= mem->vk.size);
 
    push_bind(pb, &(struct drm_nouveau_vm_bind_op) {
       .op = mem ? DRM_NOUVEAU_VM_BIND_OP_MAP :
                   DRM_NOUVEAU_VM_BIND_OP_UNMAP,
       .handle = mem ? mem->bo->handle : 0,
-      .addr = plane->addr + plane_bind_offset_B,
-      .bo_offset = mem_bind_offset_B,
+      .addr = plane->addr + plane_offset_B,
+      .bo_offset = mem_offset_B,
       .range = bind_size_B,
       .flags = plane->nil.pte_kind,
    });
-
-skip:
-   assert(plane->vma_size_B == plane->nil.size_B);
-   *image_plane_offset_B += plane->nil.size_B;
 }
 
 static void

@@ -977,8 +977,9 @@ fs_visitor::emit_cs_terminate()
     * make sure it uses the appropriate register range.
     */
    struct brw_reg g0 = retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_UD);
-   fs_reg payload = fs_reg(VGRF, alloc.allocate(1), BRW_REGISTER_TYPE_UD);
-   ubld.group(8, 0).MOV(payload, g0);
+   fs_reg payload = fs_reg(VGRF, alloc.allocate(reg_unit(devinfo)),
+                           BRW_REGISTER_TYPE_UD);
+   ubld.group(8 * reg_unit(devinfo), 0).MOV(payload, g0);
 
    /* Set the descriptor to "Dereference Resource" and "Root Thread" */
    unsigned desc = 0;
@@ -1006,7 +1007,7 @@ fs_visitor::emit_cs_terminate()
     */
    send->sfid = devinfo->verx10 >= 125 ? BRW_SFID_MESSAGE_GATEWAY
                                        : BRW_SFID_THREAD_SPAWNER;
-   send->mlen = 1;
+   send->mlen = reg_unit(devinfo);
    send->eot = true;
 }
 

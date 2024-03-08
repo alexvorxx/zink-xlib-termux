@@ -25,7 +25,6 @@
 #include "rmv/vk_rmv_tokens.h"
 #include "radv_private.h"
 #include "vk_common_entrypoints.h"
-#include "wsi_common_entrypoints.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
 rmv_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)

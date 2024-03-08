@@ -26,7 +26,6 @@
 #include "radv_shader.h"
 #include "vk_common_entrypoints.h"
 #include "vk_semaphore.h"
-#include "wsi_common_entrypoints.h"
 
 #include "ac_rgp.h"
 #include "ac_sqtt.h"

@@ -25,7 +25,6 @@
 #include "rmv/vk_rmv_tokens.h"
 #include "anv_private.h"
 #include "vk_common_entrypoints.h"
-#include "wsi_common_entrypoints.h"
 
 VkResult anv_rmv_QueuePresentKHR(
     VkQueue                                  _queue,

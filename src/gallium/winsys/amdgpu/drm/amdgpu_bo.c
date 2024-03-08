@@ -195,7 +195,7 @@ void amdgpu_bo_destroy(struct amdgpu_winsys *ws, struct pb_buffer_lean *_buf)
 
    amdgpu_bo_free(bo->bo_handle);
 
-#if DEBUG
+#ifdef DEBUG
    if (ws->debug_all_bos) {
       simple_mtx_lock(&ws->global_bo_list_lock);
       list_del(&bo->global_list_item);
@@ -440,7 +440,7 @@ void amdgpu_bo_unmap(struct radeon_winsys *rws, struct pb_buffer_lean *buf)
 
 static void amdgpu_add_buffer_to_global_list(struct amdgpu_winsys *ws, struct amdgpu_bo_real *bo)
 {
-#if DEBUG
+#ifdef DEBUG
    if (ws->debug_all_bos) {
       simple_mtx_lock(&ws->global_bo_list_lock);
       list_addtail(&bo->global_list_item, &ws->global_bo_list);

@@ -26,7 +26,7 @@
 static struct hash_table *dev_tab = NULL;
 static simple_mtx_t dev_tab_mutex = SIMPLE_MTX_INITIALIZER;
 
-#if DEBUG
+#ifdef DEBUG
 DEBUG_GET_ONCE_BOOL_OPTION(all_bos, "RADEON_ALL_BOS", false)
 #endif
 
@@ -51,7 +51,7 @@ static bool do_winsys_init(struct amdgpu_winsys *ws,
    ws->check_vm = strstr(debug_get_option("R600_DEBUG", ""), "check_vm") != NULL ||
                   strstr(debug_get_option("AMD_DEBUG", ""), "check_vm") != NULL;
    ws->noop_cs = ws->info.family_overridden || debug_get_bool_option("RADEON_NOOP", false);
-#if DEBUG
+#ifdef DEBUG
    ws->debug_all_bos = debug_get_option_all_bos();
 #endif
    ws->reserve_vmid = strstr(debug_get_option("R600_DEBUG", ""), "reserve_vmid") != NULL ||
@@ -89,7 +89,7 @@ static void do_winsys_deinit(struct amdgpu_winsys *ws)
    pb_cache_deinit(&ws->bo_cache);
    _mesa_hash_table_destroy(ws->bo_export_table, NULL);
    simple_mtx_destroy(&ws->sws_list_lock);
-#if DEBUG
+#ifdef DEBUG
    simple_mtx_destroy(&ws->global_bo_list_lock);
 #endif
    simple_mtx_destroy(&ws->bo_export_table_lock);
@@ -479,13 +479,13 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
 
       /* init reference */
       pipe_reference_init(&aws->reference, 1);
-#if DEBUG
+#ifdef DEBUG
       list_inithead(&aws->global_bo_list);
 #endif
       aws->bo_export_table = util_hash_table_create_ptr_keys();
 
       (void) simple_mtx_init(&aws->sws_list_lock, mtx_plain);
-#if DEBUG
+#ifdef DEBUG
       (void) simple_mtx_init(&aws->global_bo_list_lock, mtx_plain);
 #endif
       (void) simple_mtx_init(&aws->bo_fence_lock, mtx_plain);

@@ -215,6 +215,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_timeline_semaphore = true,
       .KHR_uniform_buffer_standard_layout = true,
       .KHR_variable_pointers = true,
+      .KHR_vertex_attribute_divisor = true,
       .KHR_vulkan_memory_model = true,
       .KHR_zero_initialize_workgroup_memory = true,
 
@@ -437,7 +438,7 @@ tu_get_features(struct tu_physical_device *pdevice,
    /* VK_KHR_index_type_uint8 */
    features->indexTypeUint8 = true;
 
-   /* VK_EXT_vertex_attribute_divisor */
+   /* VK_KHR_vertex_attribute_divisor */
    features->vertexAttributeInstanceRateDivisor = true;
    features->vertexAttributeInstanceRateZeroDivisor = true;
 
@@ -962,6 +963,7 @@ tu_get_properties(struct tu_physical_device *pdevice,
 
    /* VK_KHR_vertex_attribute_divisor */
    props->maxVertexAttribDivisor = UINT32_MAX;
+   props->supportsNonZeroFirstInstance = true;
    
    /* VK_EXT_custom_border_color */
    props->maxCustomBorderColorSamplers = TU_BORDER_COLOR_COUNT;

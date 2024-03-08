@@ -104,7 +104,7 @@
 #include "wsi_common.h"
 
 /* A non-fatal assert.  Useful for debugging. */
-#ifdef DEBUG
+#if MESA_DEBUG
 #define v3dv_assert(x) ({ \
    if (unlikely(!(x))) \
       fprintf(stderr, "%s:%d ASSERT: %s", __FILE__, __LINE__, #x); \

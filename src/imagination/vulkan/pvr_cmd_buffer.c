@@ -2485,7 +2485,7 @@ void pvr_CmdBindPipeline(VkCommandBuffer commandBuffer,
    }
 }
 
-#if defined(DEBUG)
+#if MESA_DEBUG
 static void check_viewport_quirk_70165(const struct pvr_device *device,
                                        const VkViewport *pViewport)
 {
@@ -2565,7 +2565,7 @@ void pvr_CmdSetViewport(VkCommandBuffer commandBuffer,
 
    PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
 
-#if defined(DEBUG)
+#if MESA_DEBUG
    if (PVR_HAS_QUIRK(&cmd_buffer->device->pdevice->dev_info, 70165)) {
       for (uint32_t viewport = 0; viewport < viewportCount; viewport++) {
          check_viewport_quirk_70165(cmd_buffer->device, &pViewports[viewport]);
@@ -2706,7 +2706,7 @@ void pvr_CmdPushConstants(VkCommandBuffer commandBuffer,
                           uint32_t size,
                           const void *pValues)
 {
-#if defined(DEBUG)
+#if MESA_DEBUG
    const uint64_t ending = (uint64_t)offset + (uint64_t)size;
 #endif
 
@@ -3916,7 +3916,7 @@ static VkResult pvr_cmd_buffer_upload_patched_desc_set(
                     descriptors[desc_idx].buffer_whole_range -
                        dynamic_offsets[desc_idx]);
 
-#if defined(DEBUG)
+#if MESA_DEBUG
             uint32_t desc_primary_offset;
             uint32_t desc_secondary_offset;
 

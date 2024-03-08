@@ -202,7 +202,7 @@ struct nine_allocator {
     struct list_head pending_frees;
 };
 
-#ifdef DEBUG
+#if MESA_DEBUG
 
 static void
 debug_dump_memfd_state(struct nine_memfd_file *memfd_file, bool details)

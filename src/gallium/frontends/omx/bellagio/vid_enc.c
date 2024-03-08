@@ -37,7 +37,7 @@
 #include <OMX_Video.h>
 
 /* bellagio defines a DEBUG macro that we don't want */
-#ifndef DEBUG
+#if !MESA_DEBUG
 #include <bellagio/omxcore.h>
 #undef DEBUG
 #else

@@ -643,7 +643,7 @@ private:
     * If the name length fits into name_storage, it's used, otherwise
     * the name is ralloc'd. shader-db mining showed that 70% of variables
     * fit here. This is a win over ralloc where only ralloc_header has
-    * 20 bytes on 64-bit (28 bytes with DEBUG), and we can also skip malloc.
+    * 20 bytes on 64-bit (28 bytes with debug), and we can also skip malloc.
     */
    char name_storage[16];
 

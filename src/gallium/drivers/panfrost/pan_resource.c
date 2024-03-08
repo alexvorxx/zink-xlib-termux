@@ -923,7 +923,7 @@ panfrost_load_tiled_images(struct panfrost_transfer *transfer,
    }
 }
 
-#ifdef DEBUG
+#if MESA_DEBUG
 
 static unsigned
 get_superblock_size(uint32_t *hdr, unsigned uncompressed_size)

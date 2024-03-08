@@ -1170,7 +1170,7 @@ uint32_t pvr_calc_fscommon_size_and_tiles_in_flight(
 
    num_tile_in_flight /= num_allocs;
 
-#if defined(DEBUG)
+#if MESA_DEBUG
    /* Validate the above result. */
 
    assert(num_tile_in_flight >= MIN2(num_tile_in_flight, max_tiles_in_flight));

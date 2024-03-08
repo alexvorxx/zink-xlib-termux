@@ -1478,7 +1478,7 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
    }
    simple_mtx_unlock(&aws->bo_fence_lock);
 
-#ifdef DEBUG
+#if MESA_DEBUG
    /* Prepare the buffer list. */
    if (aws->debug_all_bos) {
       /* The buffer list contains all buffers. This is a slow path that

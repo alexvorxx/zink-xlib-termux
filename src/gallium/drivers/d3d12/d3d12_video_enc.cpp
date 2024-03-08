@@ -2094,7 +2094,7 @@ d3d12_video_encoder_encode_bitstream(struct pipe_video_codec * codec,
 
          CD3DX12_RESOURCE_DESC referencesTexArrayDesc(GetDesc(referenceFramesDescriptor.ppTexture2Ds[0]));
 
-#ifdef DEBUG
+#if MESA_DEBUG
    // the reconpic output should be all the same texarray allocation
    if((reconPicOutputTextureDesc.pReconstructedPicture) && (referenceFramesDescriptor.NumTexture2Ds > 0))
       assert(referenceFramesDescriptor.ppTexture2Ds[0] == reconPicOutputTextureDesc.pReconstructedPicture);

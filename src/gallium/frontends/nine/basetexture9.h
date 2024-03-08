@@ -139,7 +139,7 @@ NineBindTextureToDevice( struct NineDevice9 *device,
     nine_bind(slot, tex);
 }
 
-#if defined(DEBUG) || !defined(NDEBUG)
+#if MESA_DEBUG || !defined(NDEBUG)
 void
 NineBaseTexture9_Dump( struct NineBaseTexture9 *This );
 #else

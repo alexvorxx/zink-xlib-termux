@@ -1450,7 +1450,7 @@ inst_has_type(const struct elk_isa_info *isa,
    }
 }
 
-#ifdef DEBUG
+#if MESA_DEBUG
 static __attribute__((__unused__)) int
 elk_disassemble_imm(const struct elk_isa_info *isa,
                     uint32_t dw3, uint32_t dw2, uint32_t dw1, uint32_t dw0)

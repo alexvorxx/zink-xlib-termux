@@ -504,7 +504,7 @@ struct ir3_block *
 ir3_block_create(struct ir3 *shader)
 {
    struct ir3_block *block = ir3_alloc(shader, sizeof(*block));
-#ifdef DEBUG
+#if MESA_DEBUG
    block->serialno = ++shader->block_count;
 #endif
    block->shader = shader;
@@ -633,7 +633,7 @@ instr_create(struct ir3_block *block, opc_t opc, int ndst, int nsrc)
    instr->dsts = (struct ir3_register **)ptr;
    instr->srcs = instr->dsts + ndst;
 
-#ifdef DEBUG
+#if MESA_DEBUG
    instr->dsts_max = ndst;
    instr->srcs_max = nsrc;
 #endif
@@ -737,7 +737,7 @@ struct ir3_register *
 ir3_src_create(struct ir3_instruction *instr, int num, int flags)
 {
    struct ir3 *shader = instr->block->shader;
-#ifdef DEBUG
+#if MESA_DEBUG
    assert(instr->srcs_count < instr->srcs_max);
 #endif
    struct ir3_register *reg = reg_create(shader, num, flags);
@@ -749,7 +749,7 @@ struct ir3_register *
 ir3_dst_create(struct ir3_instruction *instr, int num, int flags)
 {
    struct ir3 *shader = instr->block->shader;
-#ifdef DEBUG
+#if MESA_DEBUG
    assert(instr->dsts_count < instr->dsts_max);
 #endif
    struct ir3_register *reg = reg_create(shader, num, flags);

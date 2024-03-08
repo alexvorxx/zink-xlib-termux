@@ -739,7 +739,7 @@ make_null_texture(GLint width, GLint height, GLint depth, GLenum format)
    const GLint numPixels = width * height * depth;
    GLubyte *data = (GLubyte *) malloc(numPixels * components * sizeof(GLubyte));
 
-#ifdef DEBUG
+#if MESA_DEBUG
    /*
     * Let's see if anyone finds this.  If glTexImage2D() is called with
     * a NULL image pointer then load the texture image with something

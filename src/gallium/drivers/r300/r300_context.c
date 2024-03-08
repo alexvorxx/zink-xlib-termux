@@ -503,7 +503,7 @@ struct pipe_context* r300_create_context(struct pipe_screen* screen,
     rc_init_regalloc_state(&r300->vs_regalloc_state, RC_VERTEX_PROGRAM);
 
     /* Print driver info. */
-#ifdef DEBUG
+#if MESA_DEBUG
     {
 #else
     if (DBG_ON(r300, DBG_INFO)) {

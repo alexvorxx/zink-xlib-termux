@@ -317,7 +317,7 @@ enum ir3_shader_debug {
    IR3_DBG_FULLSYNC = BITFIELD_BIT(15),
    IR3_DBG_FULLNOP = BITFIELD_BIT(16),
 
-   /* DEBUG-only options: */
+   /* MESA_DEBUG-only options: */
    IR3_DBG_SCHEDMSGS = BITFIELD_BIT(20),
    IR3_DBG_RAMSGS = BITFIELD_BIT(21),
 

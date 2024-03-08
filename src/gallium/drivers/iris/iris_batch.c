@@ -984,7 +984,7 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
    }
 
    if (ret < 0) {
-#ifdef DEBUG
+#if MESA_DEBUG
       const bool color = INTEL_DEBUG(DEBUG_COLOR);
       fprintf(stderr, "%siris: Failed to submit batchbuffer: %-80s%s\n",
               color ? "\e[1;41m" : "", strerror(-ret), color ? "\e[0m" : "");

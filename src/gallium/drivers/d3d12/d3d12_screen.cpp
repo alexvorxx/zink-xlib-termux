@@ -1521,7 +1521,7 @@ d3d12_init_screen(struct d3d12_screen *screen, IUnknown *adapter)
 #ifndef _GAMING_XBOX
       ID3D12DeviceFactory *factory = try_create_device_factory(screen->d3d12_mod);
 
-#ifndef DEBUG
+#if !MESA_DEBUG
       if (d3d12_debug & D3D12_DEBUG_DEBUG_LAYER)
 #endif
          enable_d3d12_debug_layer(screen->d3d12_mod, factory);

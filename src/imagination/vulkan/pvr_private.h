@@ -1598,7 +1598,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_render_pass,
    } while (0)
 
 /* A non-fatal assert. Useful for debugging. */
-#ifdef DEBUG
+#if MESA_DEBUG
 #   define pvr_assert(x)                                           \
       ({                                                           \
          if (unlikely(!(x)))                                       \

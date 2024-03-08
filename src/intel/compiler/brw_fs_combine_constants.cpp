@@ -1641,7 +1641,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
             reg->type = brw_int_type(type_sz(reg->type), true);
          }
 
-#ifdef DEBUG
+#if MESA_DEBUG
          switch (reg->type) {
          case BRW_REGISTER_TYPE_DF:
             assert((isnan(reg->df) && isnan(table.imm[i].df)) ||

@@ -20,3 +20,5 @@ dEQP-VK.rasterization.primitives_multisample_2_bit.static_stipple.bresenham_line
 dEQP-VK.ray_tracing_pipeline.pipeline_library.configurations.(single|multi)threaded_compilation.*_check_(all|capture_replay)_handles
 
 dEQP-VK.ubo.random.nested_structs_instance_arrays.0
+
+dEQP-VK.shader_object.binding.mesh_swap_task

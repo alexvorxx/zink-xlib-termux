@@ -268,7 +268,7 @@ zink_get_surface(struct zink_context *ctx,
 }
 
 /* wrap a surface for use as a framebuffer attachment */
-static struct pipe_surface *
+static struct zink_ctx_surface *
 wrap_surface(struct pipe_context *pctx, const struct pipe_surface *psurf)
 {
    struct zink_ctx_surface *csurf = CALLOC_STRUCT(zink_ctx_surface);
@@ -276,13 +276,13 @@ wrap_surface(struct pipe_context *pctx, const struct pipe_surface *psurf)
       mesa_loge("ZINK: failed to allocate csurf!");
       return NULL;
    }
-      
+
    csurf->base = *psurf;
    pipe_reference_init(&csurf->base.reference, 1);
    csurf->surf = (struct zink_surface*)psurf;
    csurf->base.context = pctx;
 
-   return &csurf->base;
+   return csurf;
 }
 
 /* this the context hook that returns a zink_ctx_surface */
@@ -338,7 +338,7 @@ zink_create_surface(struct pipe_context *pctx,
    if (!psurf && !needs_mutable)
       return NULL;
 
-   struct zink_ctx_surface *csurf = (struct zink_ctx_surface*)wrap_surface(pctx, needs_mutable ? templ : psurf);
+   struct zink_ctx_surface *csurf = wrap_surface(pctx, needs_mutable ? templ : psurf);
    csurf->needs_mutable = needs_mutable;
    if (needs_mutable) {
       csurf->surf = NULL;
@@ -355,7 +355,7 @@ zink_create_surface(struct pipe_context *pctx,
       if (!transient)
          return NULL;
       ivci.image = transient->obj->image;
-      csurf->transient = (struct zink_ctx_surface*)wrap_surface(pctx, (struct pipe_surface*)create_surface(pctx, &transient->base.b, templ, &ivci, true));
+      csurf->transient = wrap_surface(pctx, (struct pipe_surface*)create_surface(pctx, &transient->base.b, templ, &ivci, true));
       if (!csurf->transient) {
          pipe_resource_reference((struct pipe_resource**)&transient, NULL);
          pipe_surface_release(pctx, &psurf);

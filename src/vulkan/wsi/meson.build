@@ -76,6 +76,7 @@ libvulkan_wsi = static_library(
 )
 
 idep_vulkan_wsi_headers = declare_dependency(
+  sources : wsi_entrypoints[0],
   dependencies : idep_vulkan_wsi_defines,
   include_directories : include_directories('.')
 )

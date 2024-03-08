@@ -44,6 +44,14 @@ impl<'a, T> ExecListIter<'a, T> {
             _marker: PhantomData,
         }
     }
+
+    fn at(n: &'a exec_node, offset: usize) -> Self {
+        Self {
+            n,
+            offset: offset,
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<'a, T: 'a> Iterator for ExecListIter<'a, T> {
@@ -556,6 +564,7 @@ pub trait NirCfNode {
     fn as_block(&self) -> Option<&nir_block>;
     fn as_if(&self) -> Option<&nir_if>;
     fn as_loop(&self) -> Option<&nir_loop>;
+    fn next(&self) -> Option<&nir_cf_node>;
 }
 
 impl NirCfNode for nir_cf_node {
@@ -581,6 +590,12 @@ impl NirCfNode for nir_cf_node {
         } else {
             None
         }
+    }
+
+    fn next(&self) -> Option<&nir_cf_node> {
+        let mut iter: ExecListIter<nir_cf_node> =
+            ExecListIter::at(&self.node, offset_of!(nir_cf_node, node));
+        iter.next()
     }
 }
 

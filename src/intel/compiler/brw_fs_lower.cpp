@@ -207,7 +207,8 @@ brw_fs_lower_sub_sat(fs_visitor &s)
           */
          if (inst->exec_size == 8 && inst->src[0].type != BRW_REGISTER_TYPE_Q &&
              inst->src[0].type != BRW_REGISTER_TYPE_UQ) {
-            fs_reg acc(ARF, BRW_ARF_ACCUMULATOR, inst->src[1].type);
+            fs_reg acc = retype(brw_acc_reg(inst->exec_size),
+                                inst->src[1].type);
 
             ibld.MOV(acc, inst->src[1]);
             fs_inst *add = ibld.ADD(inst->dst, acc, inst->src[0]);

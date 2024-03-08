@@ -300,10 +300,6 @@ spec@!opengl 1.0@depth-clear-precision-check@depth24,Fail
 spec@!opengl 1.0@depth-clear-precision-check@depth24_stencil8,Fail
 spec@!opengl 1.0@depth-clear-precision-check@depth32,Fail
 
-# timestamp/time-elapsed qbo tests fail due to lack of way to convert
-# from ticks to ns on the CP (ie. we'd need to spin up a compute shader
-# or something equally drastic)
-
 # These seem to fail with zink as well (and on various other drivers
 # from what I can tell from expectations files, so maybe test issue?)
 spec@arb_query_buffer_object@coherency,Fail

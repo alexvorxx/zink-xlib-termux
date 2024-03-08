@@ -287,6 +287,12 @@ impl Index<FloatType> for ShaderFloatControls {
     }
 }
 
+enum SyncType {
+    Sync,
+    Brk,
+    Cont,
+}
+
 struct ShaderFromNir<'a> {
     nir: &'a nir_shader,
     sm: &'a dyn ShaderModel,
@@ -296,6 +302,7 @@ struct ShaderFromNir<'a> {
     label_alloc: LabelAllocator,
     block_label: HashMap<u32, Label>,
     bar_label: HashMap<u32, Label>,
+    block_sync: HashMap<u32, SyncType>,
     fs_out_regs: [SSAValue; 34],
     end_block_id: u32,
     ssa_map: HashMap<u32, Vec<SSAValue>>,
@@ -314,6 +321,7 @@ impl<'a> ShaderFromNir<'a> {
             label_alloc: LabelAllocator::new(),
             block_label: HashMap::new(),
             bar_label: HashMap::new(),
+            block_sync: HashMap::new(),
             fs_out_regs: [SSAValue::NONE; 34],
             end_block_id: 0,
             ssa_map: HashMap::new(),
@@ -3089,9 +3097,24 @@ impl<'a> ShaderFromNir<'a> {
             b.push_op(OpExit {});
         } else {
             self.cfg.add_edge(nb.index, target.index);
-            b.push_op(OpBra {
-                target: self.get_block_label(target),
-            });
+
+            if let Some(sync) = self.block_sync.get(&target.index) {
+                match sync {
+                    SyncType::Sync => {
+                        b.push_op(OpSync {});
+                    }
+                    SyncType::Brk => {
+                        b.push_op(OpBrk {});
+                    }
+                    SyncType::Cont => {
+                        b.push_op(OpCont {});
+                    }
+                }
+            } else {
+                b.push_op(OpBra {
+                    target: self.get_block_label(target),
+                });
+            }
         }
     }
 
@@ -3195,6 +3218,12 @@ impl<'a> ShaderFromNir<'a> {
             b.push_op(phi);
         }
 
+        if matches!(self.block_sync.get(&nb.index), Some(SyncType::Cont)) {
+            b.push_op(OpPCnt {
+                target: self.get_block_label(nb),
+            });
+        }
+
         let mut goto = None;
         for ni in nb.iter_instr_list() {
             if DEBUG.annotate() && ni.type_ != nir_instr_type_phi {
@@ -3241,6 +3270,24 @@ impl<'a> ShaderFromNir<'a> {
                 }
                 nir_instr_type_phi => (),
                 _ => panic!("Unsupported instruction type"),
+            }
+        }
+
+        if self.sm.sm() < 70 {
+            if let Some(ni) = nb.following_if() {
+                if ni.condition.as_def().divergent {
+                    let fb = ni.following_block();
+                    self.block_sync.insert(fb.index, SyncType::Sync);
+                    b.push_op(OpSSy {
+                        target: self.get_block_label(fb),
+                    });
+                }
+            } else if let Some(nl) = nb.following_loop() {
+                let fb = nl.following_block();
+                self.block_sync.insert(fb.index, SyncType::Brk);
+                b.push_op(OpPBk {
+                    target: self.get_block_label(fb),
+                });
             }
         }
 
@@ -3338,6 +3385,10 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(succ[1].is_none());
                 let s0 = succ[0].unwrap();
                 self.emit_jump(&mut b, nb, s0);
+
+                if self.sm.sm() < 70 && nb.following_loop().is_some() {
+                    self.block_sync.insert(s0.index, SyncType::Cont);
+                }
             }
         }
 

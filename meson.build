@@ -961,6 +961,10 @@ if with_mesa_debug
   pre_args += '-DDEBUG'
 endif
 
+# Define MESA_DEBUG to 1 for debug builds only (debugoptimized is not included on this one);
+# otherwise define MESA_DEBUG to 0
+pre_args += '-DMESA_DEBUG=' + (with_mesa_debug ? '1' : '0')
+
 with_shader_cache = get_option('shader-cache') \
   .require(host_machine.system() != 'windows', error_message : 'Shader Cache does not currently work on Windows') \
   .allowed()

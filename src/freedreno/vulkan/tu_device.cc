@@ -172,6 +172,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_maintenance3 = true,
       .KHR_maintenance4 = true,
       .KHR_maintenance5 = true,
+      .KHR_map_memory2 = true,
       .KHR_multiview = TU_DEBUG(NOCONFORM) ? true : device->info->a6xx.has_hw_multiview,
       .KHR_performance_query = TU_DEBUG(PERFC),
       .KHR_pipeline_executable_properties = true,
@@ -2857,15 +2858,10 @@ tu_FreeMemory(VkDevice _device,
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-tu_MapMemory(VkDevice _device,
-             VkDeviceMemory _memory,
-             VkDeviceSize offset,
-             VkDeviceSize size,
-             VkMemoryMapFlags flags,
-             void **ppData)
+tu_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo, void **ppData)
 {
    TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_device_memory, mem, _memory);
+   TU_FROM_HANDLE(tu_device_memory, mem, pMemoryMapInfo->memory);
    VkResult result;
 
    if (mem == NULL) {
@@ -2879,14 +2875,15 @@ tu_MapMemory(VkDevice _device,
          return result;
    }
 
-   *ppData = (char *) mem->bo->map + offset;
+   *ppData = (char *) mem->bo->map + pMemoryMapInfo->offset;
    return VK_SUCCESS;
 }
 
-VKAPI_ATTR void VKAPI_CALL
-tu_UnmapMemory(VkDevice _device, VkDeviceMemory _memory)
+VKAPI_ATTR VkResult VKAPI_CALL
+tu_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapInfo)
 {
    /* TODO: unmap here instead of waiting for FreeMemory */
+   return VK_SUCCESS;
 }
 
 static void

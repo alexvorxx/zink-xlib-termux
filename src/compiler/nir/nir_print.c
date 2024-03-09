@@ -1384,6 +1384,9 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
          if (io.high_16bits)
             fprintf(fp, " high_16bits");
 
+         if (io.invariant)
+            fprintf(fp, " invariant");
+
          if (io.high_dvec2)
             fprintf(fp, " high_dvec2");
 

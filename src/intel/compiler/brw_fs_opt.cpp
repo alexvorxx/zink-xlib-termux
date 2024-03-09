@@ -63,7 +63,8 @@ brw_fs_optimize(fs_visitor &s)
 
       OPT(brw_fs_opt_algebraic);
       OPT(brw_fs_opt_cse_defs);
-      OPT(brw_fs_opt_copy_propagation);
+      if (!OPT(brw_fs_opt_copy_propagation_defs))
+         OPT(brw_fs_opt_copy_propagation);
       OPT(brw_fs_opt_predicated_break);
       OPT(brw_fs_opt_cmod_propagation);
       OPT(brw_fs_opt_dead_code_eliminate);
@@ -89,20 +90,20 @@ brw_fs_optimize(fs_visitor &s)
 
    /* After logical SEND lowering. */
 
-   if (OPT(brw_fs_opt_copy_propagation))
+   if (OPT(brw_fs_opt_copy_propagation_defs) || OPT(brw_fs_opt_copy_propagation))
       OPT(brw_fs_opt_algebraic);
 
    /* Identify trailing zeros LOAD_PAYLOAD of sampler messages.
     * Do this before splitting SENDs.
     */
-   if (OPT(brw_fs_opt_zero_samples) && OPT(brw_fs_opt_copy_propagation))
+   if (OPT(brw_fs_opt_zero_samples) && (OPT(brw_fs_opt_copy_propagation_defs) || OPT(brw_fs_opt_copy_propagation)))
       OPT(brw_fs_opt_algebraic);
 
    OPT(brw_fs_opt_split_sends);
    OPT(brw_fs_workaround_nomask_control_flow);
 
    if (progress) {
-      if (OPT(brw_fs_opt_copy_propagation))
+      if (OPT(brw_fs_opt_copy_propagation_defs) || OPT(brw_fs_opt_copy_propagation))
          OPT(brw_fs_opt_algebraic);
 
       /* Run after logical send lowering to give it a chance to CSE the
@@ -142,7 +143,12 @@ brw_fs_optimize(fs_visitor &s)
    OPT(brw_fs_lower_derivatives);
    OPT(brw_fs_lower_regioning);
    if (progress) {
-      if (OPT(brw_fs_opt_copy_propagation)) {
+      /* Try both copy propagation passes.  The defs one will likely not be
+       * able to handle everything at this point.
+       */
+      const bool cp1 = OPT(brw_fs_opt_copy_propagation_defs);
+      const bool cp2 = OPT(brw_fs_opt_copy_propagation);
+      if (cp1 || cp2) {
          OPT(brw_fs_opt_algebraic);
          OPT(brw_fs_opt_combine_constants);
       }

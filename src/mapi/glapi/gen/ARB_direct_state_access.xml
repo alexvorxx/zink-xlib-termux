@@ -375,7 +375,7 @@
    </function>
 
    <function name="TextureSubImage1D" no_error="true"
-             marshal="async" marshal_sync="_mesa_glthread_has_no_unpack_buffer(ctx)">
+             marshal="async" marshal_sync="!_mesa_glthread_has_unpack_buffer(ctx)">
       <param name="texture" type="GLuint" />
       <param name="level" type="GLint" />
       <param name="xoffset" type="GLint" />
@@ -386,7 +386,7 @@
    </function>
 
    <function name="TextureSubImage2D" no_error="true"
-             marshal="async" marshal_sync="_mesa_glthread_has_no_unpack_buffer(ctx)">
+             marshal="async" marshal_sync="!_mesa_glthread_has_unpack_buffer(ctx)">
       <param name="texture" type="GLuint" />
       <param name="level" type="GLint" />
       <param name="xoffset" type="GLint" />
@@ -399,7 +399,7 @@
    </function>
 
    <function name="TextureSubImage3D" no_error="true"
-             marshal="async" marshal_sync="_mesa_glthread_has_no_unpack_buffer(ctx)">
+             marshal="async" marshal_sync="!_mesa_glthread_has_unpack_buffer(ctx)">
       <param name="texture" type="GLuint" />
       <param name="level" type="GLint" />
       <param name="xoffset" type="GLint" />
@@ -414,7 +414,7 @@
    </function>
 
    <function name="CompressedTextureSubImage1D" no_error="true"
-             marshal="async" marshal_sync="_mesa_glthread_has_no_unpack_buffer(ctx)">
+             marshal="async" marshal_sync="!_mesa_glthread_has_unpack_buffer(ctx)">
       <param name="texture" type="GLuint" />
       <param name="level" type="GLint" />
       <param name="xoffset" type="GLint" />
@@ -425,7 +425,7 @@
    </function>
 
    <function name="CompressedTextureSubImage2D" no_error="true"
-             marshal="async" marshal_sync="_mesa_glthread_has_no_unpack_buffer(ctx)">
+             marshal="async" marshal_sync="!_mesa_glthread_has_unpack_buffer(ctx)">
       <param name="texture" type="GLuint" />
       <param name="level" type="GLint" />
       <param name="xoffset" type="GLint" />
@@ -438,7 +438,7 @@
    </function>
 
    <function name="CompressedTextureSubImage3D" no_error="true"
-             marshal="async" marshal_sync="_mesa_glthread_has_no_unpack_buffer(ctx)">
+             marshal="async" marshal_sync="!_mesa_glthread_has_unpack_buffer(ctx)">
       <param name="texture" type="GLuint" />
       <param name="level" type="GLint" />
       <param name="xoffset" type="GLint" />
@@ -530,7 +530,7 @@
    </function>
 
    <function name="GetTextureImage"
-             marshal="async" marshal_sync="_mesa_glthread_has_no_pack_buffer(ctx)">
+             marshal="async" marshal_sync="!_mesa_glthread_has_pack_buffer(ctx)">
       <param name="texture" type="GLuint" />
       <param name="level" type="GLint" />
       <param name="format" type="GLenum" />
@@ -540,7 +540,7 @@
    </function>
 
    <function name="GetCompressedTextureImage"
-             marshal="async" marshal_sync="_mesa_glthread_has_no_pack_buffer(ctx)">
+             marshal="async" marshal_sync="!_mesa_glthread_has_pack_buffer(ctx)">
       <param name="texture" type="GLuint" />
       <param name="level" type="GLint" />
       <param name="bufSize" type="GLsizei" />

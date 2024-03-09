@@ -47,7 +47,7 @@ _mesa_marshal_Bitmap(GLsizei width, GLsizei height, GLfloat xorig,
       /* PBO path or bitmap == NULL (which means xmove/ymove only move the raster
        * pos.
        */
-      if (!bitmap || !_mesa_glthread_has_no_unpack_buffer(ctx)) {
+      if (!bitmap || _mesa_glthread_has_unpack_buffer(ctx)) {
          struct marshal_cmd_Bitmap *cmd =
             _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_Bitmap,
                                             cmd_size);
@@ -120,7 +120,7 @@ _mesa_marshal_DrawPixels(GLsizei width, GLsizei height, GLenum format,
    /* If not building a display list... */
    if (!ctx->GLThread.ListMode) {
       /* PBO */
-      if (!_mesa_glthread_has_no_unpack_buffer(ctx)) {
+      if (_mesa_glthread_has_unpack_buffer(ctx)) {
          struct marshal_cmd_DrawPixels *cmd =
             _mesa_glthread_allocate_command(ctx, DISPATCH_CMD_DrawPixels,
                                             cmd_size);

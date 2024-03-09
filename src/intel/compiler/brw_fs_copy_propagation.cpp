@@ -1482,3 +1482,375 @@ brw_fs_opt_copy_propagation(fs_visitor &s)
 
    return progress;
 }
+
+static bool
+try_copy_propagate_def(const brw_compiler *compiler,
+                       const brw::simple_allocator &alloc,
+                       fs_inst *def, const fs_reg &val,
+                       fs_inst *inst, int arg,
+                       uint8_t max_polygons)
+{
+   const struct intel_device_info *devinfo = compiler->devinfo;
+
+   assert(val.file != BAD_FILE);
+
+   /* We can't generally copy-propagate UD negations because we can end up
+    * accessing the resulting values as signed integers instead.
+    */
+   if (val.negate && val.type == BRW_TYPE_UD)
+      return false;
+
+   /* Bail if the instruction type is larger than the execution type of the
+    * copy, what implies that each channel is reading multiple channels of the
+    * destination of the copy, and simply replacing the sources would give a
+    * program with different semantics.
+    */
+   if (inst->opcode != BRW_OPCODE_MOV &&
+       brw_type_size_bits(def->dst.type) <
+       brw_type_size_bits(inst->src[arg].type))
+      return false;
+
+   const bool has_source_modifiers = val.abs || val.negate;
+
+   if (has_source_modifiers) {
+      if (is_logic_op(inst->opcode) || !inst->can_do_source_mods(devinfo))
+         return false;
+
+      /* Since semantics of source modifiers are type-dependent we need to
+       * ensure that the meaning of the instruction remains the same if we
+       * change the type. If the sizes of the types are different the new
+       * instruction will read a different amount of data than the original
+       * and the semantics will always be different.
+       */
+      if (def->dst.type != inst->src[arg].type &&
+          (!inst->can_change_types() ||
+           brw_type_size_bits(def->dst.type) !=
+           brw_type_size_bits(inst->src[arg].type)))
+         return false;
+   }
+
+   /* Send messages with EOT set are restricted to use g112-g127 (and we
+    * sometimes need g127 for other purposes), so avoid copy propagating
+    * anything that would make it impossible to satisfy that restriction.
+    */
+   if (inst->eot) {
+      /* Don't propagate things that are already pinned. */
+      if (val.file != VGRF)
+         return false;
+
+      /* We might be propagating from a large register, while the SEND only
+       * is reading a portion of it (say the .A channel in an RGBA value).
+       * We need to pin both split SEND sources in g112-g126/127, so only
+       * allow this if the registers aren't too large.
+       */
+      if (inst->opcode == SHADER_OPCODE_SEND && inst->sources >= 4 &&
+          val.file == VGRF) {
+         int other_src = arg == 2 ? 3 : 2;
+         unsigned other_size = inst->src[other_src].file == VGRF ?
+                               alloc.sizes[inst->src[other_src].nr] :
+                               inst->size_read(other_src);
+         unsigned prop_src_size = alloc.sizes[val.nr];
+         if (other_size + prop_src_size > 15)
+            return false;
+      }
+   }
+
+   /* Reject cases that would violate register regioning restrictions. */
+   if ((val.file == UNIFORM || !val.is_contiguous()) &&
+       (inst->is_send_from_grf() || inst->uses_indirect_addressing())) {
+      return false;
+   }
+
+   /* Some instructions implemented in the generator backend, such as
+    * derivatives, assume that their operands are packed so we can't
+    * generally propagate strided regions to them.
+    */
+   const unsigned entry_stride = val.file == FIXED_GRF ? 1 : val.stride;
+   if (instruction_requires_packed_data(inst) && entry_stride != 1)
+      return false;
+
+   const brw_reg_type dst_type = (has_source_modifiers &&
+                                  def->dst.type != inst->src[arg].type) ?
+      def->dst.type : inst->dst.type;
+
+   /* Bail if the result of composing both strides would exceed the
+    * hardware limit.
+    */
+   if (!can_take_stride(inst, dst_type, arg,
+                        entry_stride * inst->src[arg].stride,
+                        compiler))
+      return false;
+
+   /* Bail if the source FIXED_GRF region of the copy cannot be trivially
+    * composed with the source region of the instruction -- E.g. because the
+    * copy uses some extended stride greater than 4 not supported natively by
+    * the hardware as a horizontal stride, or because instruction compression
+    * could require us to use a vertical stride shorter than a GRF.
+    */
+   if (val.file == FIXED_GRF &&
+       (inst->src[arg].stride > 4 ||
+        inst->dst.component_size(inst->exec_size) >
+        inst->src[arg].component_size(inst->exec_size)))
+      return false;
+
+   /* Bail if the result of composing both strides cannot be expressed
+    * as another stride. This avoids, for example, trying to transform
+    * this:
+    *
+    *     MOV (8) rX<1>UD rY<0;1,0>UD
+    *     FOO (8) ...     rX<8;8,1>UW
+    *
+    * into this:
+    *
+    *     FOO (8) ...     rY<0;1,0>UW
+    *
+    * Which would have different semantics.
+    */
+   if (entry_stride != 1 &&
+       (inst->src[arg].stride *
+        brw_type_size_bytes(inst->src[arg].type)) % brw_type_size_bytes(val.type) != 0)
+      return false;
+
+   /* From the Cherry Trail/Braswell PRMs, Volume 7: 3D Media GPGPU:
+    *    EU Overview
+    *       Register Region Restrictions
+    *          Special Requirements for Handling Double Precision Data Types :
+    *
+    *   "When source or destination datatype is 64b or operation is integer
+    *    DWord multiply, regioning in Align1 must follow these rules:
+    *
+    *      1. Source and Destination horizontal stride must be aligned to the
+    *         same qword.
+    *      2. Regioning must ensure Src.Vstride = Src.Width * Src.Hstride.
+    *      3. Source and Destination offset must be the same, except the case
+    *         of scalar source."
+    *
+    * Most of this is already checked in can_take_stride(), we're only left
+    * with checking 3.
+    */
+   if (has_dst_aligned_region_restriction(devinfo, inst, dst_type) &&
+       entry_stride != 0 &&
+       (reg_offset(inst->dst) % (REG_SIZE * reg_unit(devinfo))) != (reg_offset(val) % (REG_SIZE * reg_unit(devinfo))))
+      return false;
+
+   /* The <8;8,0> regions used for FS attributes in multipolygon
+    * dispatch mode could violate regioning restrictions, don't copy
+    * propagate them in such cases.
+    */
+   if (max_polygons > 1 && val.file == ATTR &&
+       (has_dst_aligned_region_restriction(devinfo, inst, dst_type) ||
+        instruction_requires_packed_data(inst) ||
+        (inst->is_3src(compiler) && arg == 2) ||
+        def->dst.type != inst->src[arg].type))
+      return false;
+
+   /* Fold the copy into the instruction consuming it. */
+   inst->src[arg].file = val.file;
+   inst->src[arg].nr = val.nr;
+   inst->src[arg].subnr = val.subnr;
+   inst->src[arg].offset = val.offset;
+
+   /* Compose the strides of both regions. */
+   if (val.file == FIXED_GRF) {
+      if (inst->src[arg].stride) {
+         const unsigned orig_width = 1 << val.width;
+         const unsigned reg_width =
+            REG_SIZE / (brw_type_size_bytes(inst->src[arg].type) *
+                        inst->src[arg].stride);
+         inst->src[arg].width = cvt(MIN2(orig_width, reg_width)) - 1;
+         inst->src[arg].hstride = cvt(inst->src[arg].stride);
+         inst->src[arg].vstride = inst->src[arg].hstride + inst->src[arg].width;
+      } else {
+         inst->src[arg].vstride = inst->src[arg].hstride =
+            inst->src[arg].width = 0;
+      }
+
+      inst->src[arg].stride = 1;
+
+      /* Hopefully no Align16 around here... */
+      assert(val.swizzle == BRW_SWIZZLE_XYZW);
+      inst->src[arg].swizzle = val.swizzle;
+   } else {
+      inst->src[arg].stride *= val.stride;
+   }
+
+   /* Handle NoMask cases where the def replicates a small scalar to a number
+    * of channels, but the use is a lower SIMD width but larger type, so each
+    * invocation reads multiple channels worth of data, e.g.
+    *
+    *    mov(16) vgrf1:UW, u0<0>:UW NoMask
+    *    mov(8)  vgrf2:UD, vgrf1:UD NoMask group0
+    *
+    * In this case, we should just use the scalar's type.
+    */
+   if (val.stride == 0 &&
+       inst->opcode == BRW_OPCODE_MOV &&
+       inst->force_writemask_all && def->force_writemask_all &&
+       inst->exec_size < def->exec_size &&
+       (inst->exec_size * brw_type_size_bytes(inst->src[arg].type) ==
+        def->exec_size * brw_type_size_bytes(val.type))) {
+      inst->src[arg].type = val.type;
+      inst->dst.type = val.type;
+      inst->exec_size = def->exec_size;
+   }
+
+   if (has_source_modifiers) {
+      if (def->dst.type != inst->src[arg].type) {
+         /* We are propagating source modifiers from a MOV with a different
+          * type.  If we got here, then we can just change the source and
+          * destination types of the instruction and keep going.
+          */
+         for (int i = 0; i < inst->sources; i++) {
+            inst->src[i].type = def->dst.type;
+         }
+         inst->dst.type = def->dst.type;
+      }
+
+      if (!inst->src[arg].abs) {
+         inst->src[arg].abs = val.abs;
+         inst->src[arg].negate ^= val.negate;
+      }
+   }
+
+   return true;
+}
+
+static bool
+try_constant_propagate_def(fs_inst *def, fs_reg val, fs_inst *inst, int arg)
+{
+   /* Bail if inst is reading more than a single vector component of entry */
+   if (inst->size_read(arg) > def->dst.component_size(inst->exec_size))
+      return false;
+
+   return try_constant_propagate_value(val, def->dst.type, inst, arg);
+}
+
+/**
+ * Handle cases like UW subreads of a UD immediate, with an offset.
+ */
+static fs_reg
+extract_imm(fs_reg val, brw_reg_type type, unsigned offset)
+{
+   assert(val.file == IMM);
+
+   const unsigned bitsize = brw_type_size_bits(type);
+
+   if (offset == 0 || bitsize == brw_type_size_bits(val.type))
+      return val;
+
+   assert(bitsize < brw_type_size_bits(val.type));
+
+   switch (val.type) {
+   case BRW_TYPE_UD:
+      val.ud = (val.ud >> (bitsize * offset)) & ((1u << bitsize) - 1);
+      break;
+   case BRW_TYPE_D:
+      val.d = (val.d << (bitsize * (32/bitsize - 1 - offset))) >> ((32/bitsize - 1) * bitsize);
+      break;
+   default:
+      return fs_reg();
+   }
+
+   return val;
+}
+
+static fs_reg
+find_value_for_offset(fs_inst *def, const fs_reg &src, unsigned src_size)
+{
+   fs_reg val;
+
+   switch (def->opcode) {
+   case BRW_OPCODE_MOV:
+      if (def->dst.type == def->src[0].type && def->src[0].stride <= 1) {
+         val = def->src[0];
+
+         unsigned rel_offset = src.offset - def->dst.offset;
+
+         if (val.stride == 0)
+            rel_offset %= brw_type_size_bytes(def->dst.type);
+
+         if (val.file == IMM)
+            val = extract_imm(val, src.type, rel_offset);
+         else
+            val = byte_offset(def->src[0], rel_offset);
+      }
+      break;
+   case SHADER_OPCODE_LOAD_PAYLOAD: {
+      unsigned offset = 0;
+      for (int i = def->header_size; i < def->sources; i++) {
+         const unsigned splat = def->src[i].stride == 0 ? def->exec_size : 1;
+         if (offset == src.offset) {
+            if (def->dst.type == def->src[i].type &&
+                def->src[i].stride <= 1 &&
+                def->src[i].component_size(def->exec_size) * splat == src_size)
+               val = def->src[i];
+
+            break;
+         }
+
+         offset += def->exec_size * brw_type_size_bytes(def->src[i].type);
+      }
+      break;
+   }
+   default:
+      break;
+   }
+
+   return val;
+}
+
+bool
+brw_fs_opt_copy_propagation_defs(fs_visitor &s)
+{
+   const brw::def_analysis &defs = s.def_analysis.require();
+   bool progress = false;
+
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
+      /* Try propagating into this instruction. */
+      bool instruction_progress = false;
+
+      for (int i = inst->sources - 1; i >= 0; i--) {
+         fs_inst *def = defs.get(inst->src[i]);
+
+         if (!def || def->saturate)
+            continue;
+
+         if (def->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
+            if (inst->size_read(i) == def->size_written &&
+                def->src[0].file != BAD_FILE && def->src[0].file != IMM &&
+                is_identity_payload(def->src[0].file, def)) {
+               instruction_progress |=
+                  try_copy_propagate_def(s.compiler, s.alloc, def, def->src[0],
+                                         inst, i, s.max_polygons);
+               continue;
+            }
+         }
+
+         fs_reg val =
+            find_value_for_offset(def, inst->src[i], inst->size_read(i));
+
+         if (val.file == IMM) {
+            instruction_progress |=
+               try_constant_propagate_def(def, val, inst, i);
+         } else if (val.file == VGRF ||
+                    val.file == ATTR || val.file == UNIFORM ||
+                    (val.file == FIXED_GRF && val.is_contiguous())) {
+            instruction_progress |=
+               try_copy_propagate_def(s.compiler, s.alloc, def, val, inst, i,
+                                      s.max_polygons);
+         }
+      }
+
+      if (instruction_progress) {
+         progress = true;
+         commute_immediates(inst);
+      }
+   }
+
+   if (progress) {
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
+                            DEPENDENCY_INSTRUCTION_DETAIL);
+   }
+
+   return progress;
+}

@@ -671,6 +671,7 @@ bool brw_fs_opt_cmod_propagation(fs_visitor &s);
 bool brw_fs_opt_combine_constants(fs_visitor &s);
 bool brw_fs_opt_compact_virtual_grfs(fs_visitor &s);
 bool brw_fs_opt_copy_propagation(fs_visitor &s);
+bool brw_fs_opt_copy_propagation_defs(fs_visitor &s);
 bool brw_fs_opt_cse_defs(fs_visitor &s);
 bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
 bool brw_fs_opt_dead_control_flow_eliminate(fs_visitor &s);

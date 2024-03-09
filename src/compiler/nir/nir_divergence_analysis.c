@@ -889,6 +889,14 @@ visit_block(nir_block *block, struct divergence_state *state)
       }
    }
 
+   bool divergent = state->divergent_loop_cf ||
+                    state->divergent_loop_continue ||
+                    state->divergent_loop_break;
+   if (divergent != block->divergent) {
+      block->divergent = divergent;
+      has_changed = true;
+   }
+
    return has_changed;
 }
 

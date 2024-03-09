@@ -253,11 +253,17 @@ xe_vm_bind_op(struct anv_device *device,
          intel_bind_timeline_bind_begin(&device->bind_timeline);
    }
    int ret = intel_ioctl(device->fd, DRM_IOCTL_XE_VM_BIND, &args);
+   int errno_ = errno;
    if (signal_bind_timeline)
       intel_bind_timeline_bind_end(&device->bind_timeline);
 
    if (ret) {
-      result = vk_device_set_lost(&device->vk, "vm_bind failed: %m");
+      assert(errno_ != EINVAL);
+      if (errno_ == ENOMEM)
+         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+      else
+         result = vk_device_set_lost(&device->vk,
+                                     "vm_bind failed with errno %d", errno_);
       goto out_stackarray;
    }
 

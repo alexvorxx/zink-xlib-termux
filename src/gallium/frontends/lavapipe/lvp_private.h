@@ -439,6 +439,9 @@ struct lvp_pipeline_nir {
    nir_shader *nir;
 };
 
+struct lvp_pipeline_nir *
+lvp_create_pipeline_nir(nir_shader *nir);
+
 static inline void
 lvp_pipeline_nir_ref(struct lvp_pipeline_nir **dst, struct lvp_pipeline_nir *src)
 {

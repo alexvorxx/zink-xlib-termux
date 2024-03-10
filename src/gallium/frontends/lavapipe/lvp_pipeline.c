@@ -271,8 +271,8 @@ lvp_shader_optimize(nir_shader *nir)
    nir_sweep(nir);
 }
 
-static struct lvp_pipeline_nir *
-create_pipeline_nir(nir_shader *nir)
+struct lvp_pipeline_nir *
+lvp_create_pipeline_nir(nir_shader *nir)
 {
    struct lvp_pipeline_nir *pipeline_nir = ralloc(NULL, struct lvp_pipeline_nir);
    pipeline_nir->nir = nir;
@@ -516,7 +516,7 @@ lvp_shader_init(struct lvp_shader *shader, nir_shader *nir)
    nir_function_impl *impl = nir_shader_get_entrypoint(nir);
    if (impl->ssa_alloc > 100) //skip for small shaders
       shader->inlines.must_inline = lvp_find_inlinable_uniforms(shader, nir);
-   shader->pipeline_nir = create_pipeline_nir(nir);
+   shader->pipeline_nir = lvp_create_pipeline_nir(nir);
    if (shader->inlines.can_inline)
       _mesa_set_init(&shader->inlines.variants, NULL, NULL, inline_variant_equals);
 }
@@ -904,7 +904,7 @@ lvp_graphics_pipeline_init(struct lvp_pipeline *pipeline,
       merge_tess_info(&pipeline->shaders[MESA_SHADER_TESS_EVAL].pipeline_nir->nir->info, &pipeline->shaders[MESA_SHADER_TESS_CTRL].pipeline_nir->nir->info);
       if (BITSET_TEST(pipeline->graphics_state.dynamic,
                       MESA_VK_DYNAMIC_TS_DOMAIN_ORIGIN)) {
-         pipeline->shaders[MESA_SHADER_TESS_EVAL].tess_ccw = create_pipeline_nir(nir_shader_clone(NULL, pipeline->shaders[MESA_SHADER_TESS_EVAL].pipeline_nir->nir));
+         pipeline->shaders[MESA_SHADER_TESS_EVAL].tess_ccw = lvp_create_pipeline_nir(nir_shader_clone(NULL, pipeline->shaders[MESA_SHADER_TESS_EVAL].pipeline_nir->nir));
          pipeline->shaders[MESA_SHADER_TESS_EVAL].tess_ccw->nir->info.tess.ccw = !pipeline->shaders[MESA_SHADER_TESS_EVAL].pipeline_nir->nir->info.tess.ccw;
       } else if (pipeline->graphics_state.ts &&
                  pipeline->graphics_state.ts->domain_origin == VK_TESSELLATION_DOMAIN_ORIGIN_UPPER_LEFT) {
@@ -1284,7 +1284,7 @@ create_shader_object(struct lvp_device *device, const VkShaderCreateInfoEXT *pCr
    if (stage == MESA_SHADER_TESS_EVAL) {
       /* spec requires that all tess modes are set in both shaders */
       nir_lower_patch_vertices(shader->pipeline_nir->nir, shader->pipeline_nir->nir->info.tess.tcs_vertices_out, NULL);
-      shader->tess_ccw = create_pipeline_nir(nir_shader_clone(NULL, shader->pipeline_nir->nir));
+      shader->tess_ccw = lvp_create_pipeline_nir(nir_shader_clone(NULL, shader->pipeline_nir->nir));
       shader->tess_ccw->nir->info.tess.ccw = !shader->pipeline_nir->nir->info.tess.ccw;
       shader->tess_ccw_cso = lvp_shader_compile(device, shader, nir_shader_clone(NULL, shader->tess_ccw->nir), false);
    } else if (stage == MESA_SHADER_FRAGMENT && nir->info.fs.uses_fbfetch_output) {

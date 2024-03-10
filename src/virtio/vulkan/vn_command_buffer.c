@@ -678,6 +678,27 @@ vn_CreateCommandPool(VkDevice device,
    return VK_SUCCESS;
 }
 
+static void
+vn_cmd_reset(struct vn_command_buffer *cmd)
+{
+   vn_cs_encoder_reset(&cmd->cs);
+
+   cmd->state = VN_COMMAND_BUFFER_STATE_INITIAL;
+   cmd->draw_cmd_batched = 0;
+
+   /* reset cmd builder */
+   vk_free(&cmd->pool->allocator, cmd->builder.present_src_images);
+   list_splicetail(&cmd->builder.query_records,
+                   &cmd->pool->free_query_records);
+   memset(&cmd->builder, 0, sizeof(cmd->builder));
+   list_inithead(&cmd->builder.query_records);
+
+   if (cmd->linked_qfb_cmd) {
+      vn_query_feedback_cmd_free(cmd->linked_qfb_cmd);
+      cmd->linked_qfb_cmd = NULL;
+   }
+}
+
 void
 vn_DestroyCommandPool(VkDevice device,
                       VkCommandPool commandPool,
@@ -698,21 +719,9 @@ vn_DestroyCommandPool(VkDevice device,
 
    list_for_each_entry_safe(struct vn_command_buffer, cmd,
                             &pool->command_buffers, head) {
+      vn_cmd_reset(cmd);
       vn_cs_encoder_fini(&cmd->cs);
       vn_object_base_fini(&cmd->base);
-
-      if (cmd->builder.present_src_images)
-         vk_free(alloc, cmd->builder.present_src_images);
-
-      list_for_each_entry_safe(struct vn_cmd_query_record, record,
-                               &cmd->builder.query_records, head)
-         vk_free(alloc, record);
-
-      if (cmd->linked_qfb_cmd) {
-         vn_query_feedback_cmd_free(cmd->linked_qfb_cmd);
-         cmd->linked_qfb_cmd = NULL;
-      }
-
       vk_free(alloc, cmd);
    }
 
@@ -724,31 +733,6 @@ vn_DestroyCommandPool(VkDevice device,
 
    vn_object_base_fini(&pool->base);
    vk_free(alloc, pool);
-}
-
-static void
-vn_cmd_reset(struct vn_command_buffer *cmd)
-{
-   vn_cs_encoder_reset(&cmd->cs);
-
-   cmd->state = VN_COMMAND_BUFFER_STATE_INITIAL;
-   cmd->draw_cmd_batched = 0;
-
-   if (cmd->builder.present_src_images)
-      vk_free(&cmd->pool->allocator, cmd->builder.present_src_images);
-
-   list_for_each_entry_safe(struct vn_cmd_query_record, record,
-                            &cmd->builder.query_records, head)
-      list_move_to(&record->head, &cmd->pool->free_query_records);
-
-   if (cmd->linked_qfb_cmd) {
-      vn_query_feedback_cmd_free(cmd->linked_qfb_cmd);
-      cmd->linked_qfb_cmd = NULL;
-   }
-
-   memset(&cmd->builder, 0, sizeof(cmd->builder));
-
-   list_inithead(&cmd->builder.query_records);
 }
 
 VkResult
@@ -862,21 +846,10 @@ vn_FreeCommandBuffers(VkDevice device,
       if (!cmd)
          continue;
 
-      vn_cs_encoder_fini(&cmd->cs);
       list_del(&cmd->head);
 
-      if (cmd->builder.present_src_images)
-         vk_free(alloc, cmd->builder.present_src_images);
-
-      list_for_each_entry_safe(struct vn_cmd_query_record, record,
-                               &cmd->builder.query_records, head)
-         list_move_to(&record->head, &cmd->pool->free_query_records);
-
-      if (cmd->linked_qfb_cmd) {
-         vn_query_feedback_cmd_free(cmd->linked_qfb_cmd);
-         cmd->linked_qfb_cmd = NULL;
-      }
-
+      vn_cmd_reset(cmd);
+      vn_cs_encoder_fini(&cmd->cs);
       vn_object_base_fini(&cmd->base);
       vk_free(alloc, cmd);
    }

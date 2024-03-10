@@ -82,12 +82,6 @@ struct lvp_ray_traversal_args {
 
    struct lvp_ray_traversal_vars vars;
 
-   /* The increment/decrement used for radv_ray_traversal_vars::stack, and how many entries are
-    * available. stack_base is the base address of the stack. */
-   uint32_t stack_stride;
-   uint32_t stack_entries;
-   uint32_t stack_base;
-
    lvp_aabb_intersection_cb aabb_cb;
    lvp_triangle_intersection_cb triangle_cb;
 

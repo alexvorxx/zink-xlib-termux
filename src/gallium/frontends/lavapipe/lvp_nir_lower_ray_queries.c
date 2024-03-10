@@ -149,10 +149,6 @@ struct ray_query_vars {
    struct ray_query_intersection_vars candidate;
 
    struct ray_query_traversal_vars trav;
-
-   rq_variable *stack;
-   uint32_t shared_base;
-   uint32_t stack_entries;
 };
 
 #define VAR_NAME(name)                                                                             \
@@ -565,7 +561,6 @@ lower_rq_proceed(nir_builder *b, nir_def *index, struct ray_query_vars *vars)
       .tmin = rq_load_var(b, index, vars->tmin),
       .dir = rq_load_var(b, index, vars->direction),
       .vars = trav_vars,
-      .stack_entries = vars->stack_entries,
       .aabb_cb = handle_candidate_aabb,
       .triangle_cb = handle_candidate_triangle,
       .data = &data,

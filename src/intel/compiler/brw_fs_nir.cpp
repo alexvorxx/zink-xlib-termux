@@ -7209,7 +7209,13 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
    case nir_intrinsic_read_invocation: {
       const fs_reg value = get_nir_src(ntb, instr->src[0]);
-      const fs_reg invocation = get_nir_src(ntb, instr->src[1]);
+      const fs_reg invocation = get_nir_src_imm(ntb, instr->src[1]);
+
+      if (invocation.file == IMM) {
+         unsigned i = invocation.ud & (bld.dispatch_width() - 1);
+         bld.MOV(retype(dest, value.type), component(value, i));
+         break;
+      }
 
       fs_reg tmp = bld.vgrf(value.type);
 

@@ -118,10 +118,17 @@ struct vn_cmd_query_record {
 };
 
 struct vn_cmd_query_record *
-vn_cmd_query_record_alloc(struct vn_command_pool *cmd_pool,
-                          struct vn_query_pool *query_pool,
-                          uint32_t query,
-                          uint32_t query_count,
-                          bool copy);
+vn_cmd_pool_alloc_query_record(struct vn_command_pool *cmd_pool,
+                               struct vn_query_pool *query_pool,
+                               uint32_t query,
+                               uint32_t query_count,
+                               bool copy);
+
+static inline void
+vn_cmd_pool_free_query_records(struct vn_command_pool *cmd_pool,
+                               struct list_head *query_records)
+{
+   list_splicetail(query_records, &cmd_pool->free_query_records);
+}
 
 #endif /* VN_COMMAND_BUFFER_H */

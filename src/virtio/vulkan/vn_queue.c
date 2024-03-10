@@ -575,10 +575,13 @@ vn_combine_query_records_and_record_feedback(
 {
    struct vn_command_pool *cmd_pool =
       vn_command_pool_from_handle(fb_cmd_pool->pool_handle);
+   struct vn_query_feedback_cmd *qfb_cmd = NULL;
    VkResult result = VK_SUCCESS;
 
    struct list_head resolved_records;
+   struct list_head dropped_records;
    list_inithead(&resolved_records);
+   list_inithead(&dropped_records);
 
    uintptr_t cmd_handle_ptr = (uintptr_t)cmd_handles;
    for (uint32_t i = 0; i < cmd_count; i++) {
@@ -597,28 +600,23 @@ vn_combine_query_records_and_record_feedback(
                 * to become available.
                 */
                if (resolved_record->copy &&
-                   (vn_query_pool_to_handle(resolved_record->query_pool) ==
-                    vn_query_pool_to_handle(record->query_pool)) &&
+                   resolved_record->query_pool == record->query_pool &&
                    resolved_record->query >= record->query &&
                    resolved_record->query <
-                      record->query + record->query_count) {
-                  simple_mtx_lock(&fb_cmd_pool->mutex);
-                  list_move_to(&resolved_record->head,
-                               &cmd_pool->free_query_records);
-                  simple_mtx_unlock(&fb_cmd_pool->mutex);
-               }
+                      record->query + record->query_count)
+                  list_move_to(&resolved_record->head, &dropped_records);
             }
          }
 
          simple_mtx_lock(&fb_cmd_pool->mutex);
          struct vn_cmd_query_record *resolved_record =
-            vn_cmd_query_record_alloc(cmd_pool, record->query_pool,
-                                      record->query, record->query_count,
-                                      record->copy);
+            vn_cmd_pool_alloc_query_record(cmd_pool, record->query_pool,
+                                           record->query, record->query_count,
+                                           record->copy);
          simple_mtx_unlock(&fb_cmd_pool->mutex);
          if (!resolved_record) {
             result = VK_ERROR_OUT_OF_HOST_MEMORY;
-            goto recycle_resolved_records;
+            goto out_free_query_records;
          }
 
          list_addtail(&resolved_record->head, &resolved_records);
@@ -627,29 +625,24 @@ vn_combine_query_records_and_record_feedback(
       cmd_handle_ptr += cmd_stride;
    }
 
-   if (list_is_empty(&resolved_records)) {
-      /* On the off chance the combined list resolves to empty due to
-       * resets, we can return with a null feedback cmd to indicate
-       * the query feedback cmd is noop and can be skipped.
-       */
-      *out_qfb_cmd = NULL;
-      return VK_SUCCESS;
+   /* On the off chance the combined list resolves to empty due to resets, we
+    * can return with a null feedback cmd to indicate the query feedback cmd
+    * is noop and can be skipped.
+    */
+   if (!list_is_empty(&resolved_records)) {
+      result = vn_query_feedback_cmd_alloc(dev_handle, fb_cmd_pool, &qfb_cmd);
+      if (result == VK_SUCCESS) {
+         result = vn_query_feedback_cmd_record(dev_handle, &resolved_records,
+                                               qfb_cmd);
+         if (result != VK_SUCCESS)
+            vn_query_feedback_cmd_free(qfb_cmd);
+      }
    }
 
-   struct vn_query_feedback_cmd *qfb_cmd;
-   result = vn_query_feedback_cmd_alloc(dev_handle, fb_cmd_pool, &qfb_cmd);
-   if (result == VK_SUCCESS) {
-      result =
-         vn_query_feedback_cmd_record(dev_handle, &resolved_records, qfb_cmd);
-      if (result != VK_SUCCESS)
-         vn_query_feedback_cmd_free(qfb_cmd);
-   }
-
-recycle_resolved_records:
+out_free_query_records:
    simple_mtx_lock(&fb_cmd_pool->mutex);
-   list_for_each_entry_safe(struct vn_cmd_query_record, record,
-                            &resolved_records, head)
-      list_move_to(&record->head, &cmd_pool->free_query_records);
+   vn_cmd_pool_free_query_records(cmd_pool, &resolved_records);
+   vn_cmd_pool_free_query_records(cmd_pool, &dropped_records);
    simple_mtx_unlock(&fb_cmd_pool->mutex);
 
    *out_qfb_cmd = qfb_cmd;

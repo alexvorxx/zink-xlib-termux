@@ -490,11 +490,11 @@ vn_cmd_transfer_present_src_images(
 }
 
 struct vn_cmd_query_record *
-vn_cmd_query_record_alloc(struct vn_command_pool *cmd_pool,
-                          struct vn_query_pool *query_pool,
-                          uint32_t query,
-                          uint32_t query_count,
-                          bool copy)
+vn_cmd_pool_alloc_query_record(struct vn_command_pool *cmd_pool,
+                               struct vn_query_pool *query_pool,
+                               uint32_t query,
+                               uint32_t query_count,
+                               bool copy)
 {
    struct vn_cmd_query_record *record;
    if (list_is_empty(&cmd_pool->free_query_records)) {
@@ -522,12 +522,10 @@ vn_cmd_merge_query_records(struct vn_command_buffer *primary_cmd,
 {
    list_for_each_entry_safe(struct vn_cmd_query_record, secondary_record,
                             &secondary_cmd->builder.query_records, head) {
-
-      struct vn_cmd_query_record *record = vn_cmd_query_record_alloc(
+      struct vn_cmd_query_record *record = vn_cmd_pool_alloc_query_record(
          primary_cmd->pool, secondary_record->query_pool,
          secondary_record->query, secondary_record->query_count,
          secondary_record->copy);
-
       if (!record) {
          primary_cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
          return;
@@ -688,8 +686,7 @@ vn_cmd_reset(struct vn_command_buffer *cmd)
 
    /* reset cmd builder */
    vk_free(&cmd->pool->allocator, cmd->builder.present_src_images);
-   list_splicetail(&cmd->builder.query_records,
-                   &cmd->pool->free_query_records);
+   vn_cmd_pool_free_query_records(cmd->pool, &cmd->builder.query_records);
    memset(&cmd->builder, 0, sizeof(cmd->builder));
    list_inithead(&cmd->builder.query_records);
 
@@ -1756,7 +1753,7 @@ vn_cmd_record_query(VkCommandBuffer cmd_handle,
       return;
 
    struct vn_command_buffer *cmd = vn_command_buffer_from_handle(cmd_handle);
-   struct vn_cmd_query_record *record = vn_cmd_query_record_alloc(
+   struct vn_cmd_query_record *record = vn_cmd_pool_alloc_query_record(
       cmd->pool, query_pool, query, query_count, copy);
    if (!record) {
       cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;

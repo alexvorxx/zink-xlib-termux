@@ -163,15 +163,11 @@ vn_semaphore_feedback_cmd_free(struct vn_device *dev,
 VkResult
 vn_query_feedback_cmd_alloc(VkDevice dev_handle,
                             struct vn_feedback_cmd_pool *fb_cmd_pool,
+                            struct list_head *resolved_query_records,
                             struct vn_query_feedback_cmd **out_qfb_cmd);
 
 void
 vn_query_feedback_cmd_free(struct vn_query_feedback_cmd *qfb_cmd);
-
-VkResult
-vn_query_feedback_cmd_record(VkDevice dev_handle,
-                             struct list_head *resolved_query_records,
-                             struct vn_query_feedback_cmd *qfb_cmd);
 
 VkResult
 vn_feedback_cmd_alloc(VkDevice dev_handle,

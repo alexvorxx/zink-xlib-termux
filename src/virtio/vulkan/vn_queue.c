@@ -630,13 +630,8 @@ vn_combine_query_records_and_record_feedback(
     * is noop and can be skipped.
     */
    if (!list_is_empty(&resolved_records)) {
-      result = vn_query_feedback_cmd_alloc(dev_handle, fb_cmd_pool, &qfb_cmd);
-      if (result == VK_SUCCESS) {
-         result = vn_query_feedback_cmd_record(dev_handle, &resolved_records,
-                                               qfb_cmd);
-         if (result != VK_SUCCESS)
-            vn_query_feedback_cmd_free(qfb_cmd);
-      }
+      result = vn_query_feedback_cmd_alloc(dev_handle, fb_cmd_pool,
+                                           &resolved_records, &qfb_cmd);
    }
 
 out_free_query_records:

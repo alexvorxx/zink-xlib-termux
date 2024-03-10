@@ -59,21 +59,12 @@ nvk_mme_set_priv_reg(struct mme_builder *b)
    mme_mthd(b, NV9097_SET_FALCON04);
    mme_emit(b, mme_load(b));
 
-   mme_if(b, ieq, s26, mme_imm(2)) {
-      struct mme_value loop_cond = mme_mov(b, mme_zero());
-      mme_while(b, ine, loop_cond, mme_imm(1)) {
-         mme_state_to(b, loop_cond, NV9097_SET_MME_SHADOW_SCRATCH(0));
-         mme_mthd(b, NV9097_NO_OPERATION);
-         mme_emit(b, mme_zero());
-      };
-   }
-
-   mme_if(b, ine, s26, mme_imm(2)) {
-      mme_loop(b, mme_imm(10)) {
-         mme_mthd(b, NV9097_NO_OPERATION);
-         mme_emit(b, mme_zero());
-      }
-   }
+   struct mme_value loop_cond = mme_mov(b, mme_zero());
+   mme_while(b, ine, loop_cond, mme_imm(1)) {
+      mme_state_to(b, loop_cond, NV9097_SET_MME_SHADOW_SCRATCH(0));
+      mme_mthd(b, NV9097_NO_OPERATION);
+      mme_emit(b, mme_zero());
+   };
 }
 
 VkResult

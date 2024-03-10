@@ -3078,7 +3078,7 @@ void lp_build_nir_soa_func(struct gallivm_state *gallivm,
                                               "scratch");
    }
 
-   if (shader->info.stage == MESA_SHADER_KERNEL) {
+   if (!exec_list_is_singular(&shader->functions)) {
       bld.call_context_type = lp_build_cs_func_call_context(gallivm, type.length, bld.context_type, bld.resources_type);
       if (!params->call_context_ptr) {
          build_call_context(&bld);

@@ -221,16 +221,6 @@ vn_get_cmd(struct vn_queue_submission *submit,
               .commandBuffer);
 }
 
-static inline VkCommandBuffer *
-vn_get_temp_cmd_ptr(struct vn_queue_submission *submit, uint32_t cmd_index)
-{
-   assert((submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO) ||
-          (submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO_2));
-   return submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO
-             ? &submit->temp.cmd_handles[cmd_index]
-             : &submit->temp.cmd_infos[cmd_index].commandBuffer;
-}
-
 static inline void
 vn_set_temp_cmd(struct vn_queue_submission *submit,
                 uint32_t cmd_index,
@@ -669,12 +659,12 @@ recycle_resolved_records:
 
 static VkResult
 vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
+                                       uint32_t batch_index,
                                        uint32_t *new_cmd_count)
 {
    struct vk_queue *queue_vk = vk_queue_from_handle(submit->queue_handle);
    VkDevice dev_handle = vk_device_to_handle(queue_vk->base.device);
    struct vn_device *dev = vn_device_from_handle(dev_handle);
-   VkCommandBuffer *cmd_handles = vn_get_temp_cmd_ptr(submit, 0);
 
    struct vn_feedback_cmd_pool *fb_cmd_pool = NULL;
    for (uint32_t i = 0; i < dev->queue_family_count; i++) {
@@ -684,17 +674,19 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
       }
    }
 
+   VkCommandBuffer cmd_handle =
+      vn_command_buffer_to_handle(vn_get_cmd(submit, batch_index, 0));
+   const uint32_t cmd_count = vn_get_cmd_count(submit, batch_index);
    struct vn_query_feedback_cmd *qfb_cmd = NULL;
    VkResult result = vn_combine_query_records_and_record_feedback(
-      dev_handle, cmd_handles, *new_cmd_count, vn_get_cmd_size(submit),
+      dev_handle, &cmd_handle, cmd_count, vn_get_cmd_size(submit),
       fb_cmd_pool, &qfb_cmd);
    if (result != VK_SUCCESS)
       return result;
 
-   if (!qfb_cmd) {
-      /* No qfb needed, return without incrementing new_cmd_count */
+   /* No qfb needed, return without incrementing new_cmd_count */
+   if (!qfb_cmd)
       return VK_SUCCESS;
-   }
 
    /* link query feedback cmd lifecycle with a cmd in the original batch so
     * that the feedback cmd can be reset and recycled when that cmd gets
@@ -705,10 +697,8 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
     * Should be rare enough to just log and leak the feedback cmd.
     */
    bool found_companion_cmd = false;
-   for (uint32_t i = 0; i < *new_cmd_count; i++) {
-      VkCommandBuffer *cmd_handle = vn_get_temp_cmd_ptr(submit, i);
-      struct vn_command_buffer *cmd =
-         vn_command_buffer_from_handle(*cmd_handle);
+   for (uint32_t i = 0; i < cmd_count; i++) {
+      struct vn_command_buffer *cmd = vn_get_cmd(submit, batch_index, i);
       if (!cmd->builder.is_simultaneous) {
          cmd->linked_qfb_cmd = qfb_cmd;
          found_companion_cmd = true;
@@ -791,7 +781,8 @@ vn_queue_submission_add_feedback_cmds(struct vn_queue_submission *submit,
    uint32_t new_cmd_count = vn_get_cmd_count(submit, batch_index);
 
    if (feedback_types & VN_FEEDBACK_TYPE_QUERY) {
-      result = vn_queue_submission_add_query_feedback(submit, &new_cmd_count);
+      result = vn_queue_submission_add_query_feedback(submit, batch_index,
+                                                      &new_cmd_count);
       if (result != VK_SUCCESS)
          return result;
    }

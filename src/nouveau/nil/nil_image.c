@@ -205,7 +205,7 @@ nil_tiling_extent_B(struct nil_tiling tiling)
    }
 }
 
-/** Clamps the tiling to less than 2x the gven extent in each dimension
+/** Clamps the tiling to less than 2x the given extent in each dimension
  *
  * This operation is done by the hardware at each LOD.
  */

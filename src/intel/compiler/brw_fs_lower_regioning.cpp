@@ -189,16 +189,6 @@ namespace {
          else
             return brw_int_type(type_sz(t), false);
 
-      case SHADER_OPCODE_BROADCAST:
-      case SHADER_OPCODE_MOV_INDIRECT:
-         if (((intel_device_info_is_9lp(devinfo) ||
-               devinfo->verx10 >= 125) && type_sz(inst->src[0].type) > 4) ||
-             (devinfo->verx10 >= 125 &&
-              brw_reg_type_is_floating_point(inst->src[0].type)))
-            return brw_int_type(type_sz(t), false);
-         else
-            return t;
-
       default:
          return t;
       }

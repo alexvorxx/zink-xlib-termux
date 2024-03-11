@@ -168,7 +168,6 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
 
    vk_device_set_drm_fd(&dev->vk, dev->ws_dev->fd);
    dev->vk.command_buffer_ops = &nvk_cmd_buffer_ops;
-   dev->pdev = pdev;
 
    result = nvk_upload_queue_init(dev, &dev->upload);
    if (result != VK_SUCCESS)

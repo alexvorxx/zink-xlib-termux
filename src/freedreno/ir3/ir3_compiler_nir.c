@@ -5202,6 +5202,21 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
       }
    }
 
+   uint8_t clip_cull_mask = ctx->so->clip_mask | ctx->so->cull_mask;
+   /* Having non-zero clip/cull mask and not writting corresponding regs
+    * leads to a GPU fault on A7XX.
+    */
+   if (clip_cull_mask &&
+       ir3_find_output_regid(ctx->so, VARYING_SLOT_CLIP_DIST0) == regid(63, 0)) {
+      ctx->so->clip_mask &= 0xf0;
+      ctx->so->cull_mask &= 0xf0;
+   }
+   if ((clip_cull_mask >> 4) &&
+       ir3_find_output_regid(ctx->so, VARYING_SLOT_CLIP_DIST1) == regid(63, 0)) {
+      ctx->so->clip_mask &= 0xf;
+      ctx->so->cull_mask &= 0xf;
+   }
+
    if (ctx->astc_srgb)
       fixup_astc_srgb(ctx);
 

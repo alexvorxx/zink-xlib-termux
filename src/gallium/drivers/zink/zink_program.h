@@ -429,6 +429,14 @@ zink_driver_thread_add_job(struct pipe_screen *pscreen, void *data,
 equals_gfx_pipeline_state_func
 zink_get_gfx_pipeline_eq_func(struct zink_screen *screen, struct zink_gfx_program *prog);
 
+/* determines whether the 'samples' shader key is valid */
+static inline bool
+zink_shader_uses_samples(const struct zink_shader *zs)
+{
+   assert(zs->info.stage == MESA_SHADER_FRAGMENT);
+   return zs->uses_sample || zs->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK);
+}
+
 static inline uint32_t
 zink_sanitize_optimal_key(struct zink_shader **shaders, uint32_t val)
 {
@@ -437,7 +445,7 @@ zink_sanitize_optimal_key(struct zink_shader **shaders, uint32_t val)
       k.val = val;
    else
       k.val = zink_shader_key_optimal_no_tcs(val);
-   if (!(shaders[MESA_SHADER_FRAGMENT]->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK)))
+   if (!zink_shader_uses_samples(shaders[MESA_SHADER_FRAGMENT]))
       k.fs.samples = false;
    if (!(shaders[MESA_SHADER_FRAGMENT]->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DATA1)))
       k.fs.force_dual_color_blend = false;

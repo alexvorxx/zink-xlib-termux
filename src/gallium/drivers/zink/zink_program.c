@@ -1839,8 +1839,7 @@ zink_update_fs_key_samples(struct zink_context *ctx)
 {
    if (!ctx->gfx_stages[MESA_SHADER_FRAGMENT])
       return;
-   shader_info *info = &ctx->gfx_stages[MESA_SHADER_FRAGMENT]->info;
-   if (info->outputs_written & (1 << FRAG_RESULT_SAMPLE_MASK)) {
+   if (zink_shader_uses_samples(ctx->gfx_stages[MESA_SHADER_FRAGMENT])) {
       bool samples = zink_get_fs_base_key(ctx)->samples;
       if (samples != (ctx->fb_state.samples > 1))
          zink_set_fs_base_key(ctx)->samples = ctx->fb_state.samples > 1;

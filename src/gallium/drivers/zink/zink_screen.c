@@ -2663,13 +2663,8 @@ zink_get_sparse_texture_virtual_page_size(struct pipe_screen *pscreen,
                                                          flags,
                                                          VK_IMAGE_TILING_OPTIMAL,
                                                          &prop_count, props);
-      if (!prop_count) {
-         if (pformat == PIPE_FORMAT_R9G9B9E5_FLOAT) {
-            screen->faked_e5sparse = true;
-            goto hack_it_up;
-         }
+      if (!prop_count)
          return 0;
-      }
    }
 
    if (size) {

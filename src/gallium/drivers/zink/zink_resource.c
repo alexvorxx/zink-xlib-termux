@@ -1590,10 +1590,6 @@ resource_create(struct pipe_screen *pscreen,
    if (templ2.flags & PIPE_RESOURCE_FLAG_SPARSE &&
        (util_res_sample_count(templ) == 1 || screen->info.feats.features.shaderStorageImageMultisample))
       templ2.bind |= PIPE_BIND_SHADER_IMAGE;
-   if (screen->faked_e5sparse && templ->format == PIPE_FORMAT_R9G9B9E5_FLOAT) {
-      templ2.flags &= ~PIPE_RESOURCE_FLAG_SPARSE;
-      res->base.b.flags &= ~PIPE_RESOURCE_FLAG_SPARSE;
-   }
    res->obj = resource_object_create(screen, &templ2, whandle, &linear, res->modifiers, res->modifiers_count, loader_private, user_mem);
    if (!res->obj) {
       free(res->modifiers);

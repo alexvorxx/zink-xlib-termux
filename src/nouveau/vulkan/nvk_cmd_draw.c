@@ -101,7 +101,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       free(dw);
    }
 
-   if (dev->pdev->info.cls_eng3d >= TURING_A)
+   if (pdev->info.cls_eng3d >= TURING_A)
       P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);
 
    /* Enable FP hepler invocation memory loads
@@ -112,7 +112,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
     *
     * This clears bit 3 of gr_gpcs_tpcs_sm_disp_ctrl
     */
-   if (dev->pdev->info.cls_eng3d >= MAXWELL_B) {
+   if (pdev->info.cls_eng3d >= MAXWELL_B) {
       unsigned reg = pdev->info.cls_eng3d >= VOLTA_A ? 0x419ba4 : 0x419f78;
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SET_PRIV_REG));
       P_INLINE_DATA(p, 0);
@@ -166,7 +166,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
     *
     * This clears bit 14 of gr_gpcs_tpcs_sms_hww_warp_esr_report_mask
     */
-   if (dev->pdev->info.cls_eng3d >= MAXWELL_B) {
+   if (pdev->info.cls_eng3d >= MAXWELL_B) {
       unsigned reg = pdev->info.cls_eng3d >= VOLTA_A ? 0x419ea8 : 0x419e44;
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SET_PRIV_REG));
       P_INLINE_DATA(p, 0);
@@ -225,7 +225,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       .all_covered_all_hit_once = 0xff,
    });
 
-   if (dev->pdev->info.cls_eng3d < VOLTA_A)
+   if (pdev->info.cls_eng3d < VOLTA_A)
       P_IMMD(p, NV9097, SET_ALPHA_FRACTION, 0x3f);
 
    P_IMMD(p, NV9097, CHECK_SPH_VERSION, {
@@ -237,7 +237,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       .oldest_supported = 2,
    });
 
-   if (dev->pdev->info.cls_eng3d < MAXWELL_A)
+   if (pdev->info.cls_eng3d < MAXWELL_A)
       P_IMMD(p, NV9097, SET_SHADER_SCHEDULING, MODE_OLDEST_THREAD_FIRST);
 
    P_IMMD(p, NV9097, SET_L2_CACHE_CONTROL_FOR_ROP_PREFETCH_READ_REQUESTS,
@@ -272,18 +272,18 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       .qualify_by_anti_alias_enable = QUALIFY_BY_ANTI_ALIAS_ENABLE_ENABLE,
    });
 
-   if (dev->pdev->info.cls_eng3d < VOLTA_A)
+   if (pdev->info.cls_eng3d < VOLTA_A)
       P_IMMD(p, NV9097, SET_PRIM_CIRCULAR_BUFFER_THROTTLE, 0x3fffff);
 
    P_IMMD(p, NV9097, SET_BLEND_OPT_CONTROL, ALLOW_FLOAT_PIXEL_KILLS_TRUE);
    P_IMMD(p, NV9097, SET_BLEND_FLOAT_OPTION, ZERO_TIMES_ANYTHING_IS_ZERO_TRUE);
    P_IMMD(p, NV9097, SET_BLEND_STATE_PER_TARGET, ENABLE_TRUE);
 
-   if (dev->pdev->info.cls_eng3d < MAXWELL_A)
+   if (pdev->info.cls_eng3d < MAXWELL_A)
       P_IMMD(p, NV9097, SET_MAX_TI_WARPS_PER_BATCH, 3);
 
-   if (dev->pdev->info.cls_eng3d >= KEPLER_A &&
-       dev->pdev->info.cls_eng3d < MAXWELL_A) {
+   if (pdev->info.cls_eng3d >= KEPLER_A &&
+       pdev->info.cls_eng3d < MAXWELL_A) {
       P_IMMD(p, NVA097, SET_TEXTURE_INSTRUCTION_OPERAND,
                         ORDERING_KEPLER_ORDER);
    }
@@ -348,7 +348,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
    /* OpenGL's GL_POINT_SMOOTH */
    P_IMMD(p, NV9097, SET_ANTI_ALIASED_POINT, ENABLE_FALSE);
 
-   if (dev->pdev->info.cls_eng3d >= MAXWELL_B)
+   if (pdev->info.cls_eng3d >= MAXWELL_B)
       P_IMMD(p, NVB197, SET_FILL_VIA_TRIANGLE, MODE_DISABLED);
 
    P_IMMD(p, NV9097, SET_POLY_SMOOTH, ENABLE_FALSE);
@@ -366,7 +366,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
     */
    P_IMMD(p, NV9097, SET_ANTI_ALIAS_ENABLE, V_TRUE);
 
-   if (dev->pdev->info.cls_eng3d >= MAXWELL_B) {
+   if (pdev->info.cls_eng3d >= MAXWELL_B) {
       P_IMMD(p, NVB197, SET_OFFSET_RENDER_TARGET_INDEX,
                         BY_VIEWPORT_INDEX_FALSE);
    }
@@ -444,8 +444,8 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
    P_NV9097_SET_VERTEX_STREAM_SUBSTITUTE_A(p, zero_addr >> 32);
    P_NV9097_SET_VERTEX_STREAM_SUBSTITUTE_B(p, zero_addr);
 
-   if (dev->pdev->info.cls_eng3d >= FERMI_A &&
-       dev->pdev->info.cls_eng3d < MAXWELL_A) {
+   if (pdev->info.cls_eng3d >= FERMI_A &&
+       pdev->info.cls_eng3d < MAXWELL_A) {
       assert(dev->vab_memory);
       uint64_t vab_addr = dev->vab_memory->offset;
       P_MTHD(p, NV9097, SET_VAB_MEMORY_AREA_A);
@@ -454,7 +454,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       P_NV9097_SET_VAB_MEMORY_AREA_C(p, SIZE_BYTES_256K);
    }
 
-   if (dev->pdev->info.cls_eng3d == MAXWELL_A)
+   if (pdev->info.cls_eng3d == MAXWELL_A)
       P_IMMD(p, NVB097, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
 
    return VK_SUCCESS;

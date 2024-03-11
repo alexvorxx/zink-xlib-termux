@@ -304,7 +304,7 @@ nvk_queue_init_context_state(struct nvk_queue *queue,
        */
       P_MTHD(p, NV9039, SET_OBJECT);
       P_NV9039_SET_OBJECT(p, {
-         .class_id = dev->pdev->info.cls_m2mf,
+         .class_id = pdev->info.cls_m2mf,
          .engine_id = 0,
       });
    }

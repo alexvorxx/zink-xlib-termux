@@ -386,7 +386,7 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
    /* TODO: Kepler image lowering requires image params to be loaded from the
     * descriptor set which we don't currently support.
     */
-   assert(dev->pdev->info.cls_eng3d >= MAXWELL_A || !nir_has_image_var(nir));
+   assert(pdev->info.cls_eng3d >= MAXWELL_A || !nir_has_image_var(nir));
 
    struct nvk_cbuf_map *cbuf_map = NULL;
    if (use_nak(pdev, nir->info.stage) &&

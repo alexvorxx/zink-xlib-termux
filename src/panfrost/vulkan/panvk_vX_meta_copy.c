@@ -569,9 +569,7 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
    unsigned fmtidx = panvk_meta_copy_img2img_format_idx(key);
    unsigned ms = dst->pimage.layout.nr_samples > 1 ? 1 : 0;
 
-   mali_ptr rsd =
-      cmdbuf->device->meta.copy.img2img[ms][texdimidx][fmtidx]
-         .rsd;
+   mali_ptr rsd = cmdbuf->device->meta.copy.img2img[ms][texdimidx][fmtidx].rsd;
 
    struct pan_image_view srcview = {
       .format = key.srcfmt,
@@ -1026,8 +1024,7 @@ panvk_meta_copy_buf2img(struct panvk_cmd_buffer *cmdbuf,
 
    unsigned fmtidx = panvk_meta_copy_buf2img_format_idx(key);
 
-   mali_ptr rsd =
-      cmdbuf->device->meta.copy.buf2img[fmtidx].rsd;
+   mali_ptr rsd = cmdbuf->device->meta.copy.buf2img[fmtidx].rsd;
 
    const struct vk_image_buffer_layout buflayout =
       vk_image_buffer_copy_layout(&img->vk, region);
@@ -1466,8 +1463,7 @@ panvk_meta_copy_img2buf(struct panvk_cmd_buffer *cmdbuf,
       img->pimage.layout.dim, img->pimage.layout.array_size > 1);
    unsigned fmtidx = panvk_meta_copy_img2buf_format_idx(key);
 
-   mali_ptr rsd =
-      cmdbuf->device->meta.copy.img2buf[texdimidx][fmtidx].rsd;
+   mali_ptr rsd = cmdbuf->device->meta.copy.img2buf[texdimidx][fmtidx].rsd;
 
    struct panvk_meta_copy_img2buf_info info = {
       .buf.ptr = panvk_buffer_gpu_ptr(buf, region->bufferOffset),
@@ -1615,8 +1611,7 @@ struct panvk_meta_copy_buf2buf_info {
       .range = ~0)
 
 static mali_ptr
-panvk_meta_copy_buf2buf_shader(struct panvk_device *dev,
-                               unsigned blksz,
+panvk_meta_copy_buf2buf_shader(struct panvk_device *dev, unsigned blksz,
                                struct pan_shader_info *shader_info)
 {
    struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
@@ -1693,10 +1688,8 @@ panvk_meta_copy_buf2buf(struct panvk_cmd_buffer *cmdbuf,
    unsigned alignment = ffs((info.src | info.dst | region->size) & 15);
    unsigned log2blksz = alignment ? alignment - 1 : 4;
 
-   assert(log2blksz <
-          ARRAY_SIZE(cmdbuf->device->meta.copy.buf2buf));
-   mali_ptr rsd =
-      cmdbuf->device->meta.copy.buf2buf[log2blksz].rsd;
+   assert(log2blksz < ARRAY_SIZE(cmdbuf->device->meta.copy.buf2buf));
+   mali_ptr rsd = cmdbuf->device->meta.copy.buf2buf[log2blksz].rsd;
 
    mali_ptr pushconsts =
       pan_pool_upload_aligned(&cmdbuf->desc_pool.base, &info, sizeof(info), 16);
@@ -1890,8 +1883,7 @@ panvk_meta_update_buf(struct panvk_cmd_buffer *cmdbuf,
 
    unsigned log2blksz = ffs(sizeof(uint32_t)) - 1;
 
-   mali_ptr rsd =
-      cmdbuf->device->meta.copy.buf2buf[log2blksz].rsd;
+   mali_ptr rsd = cmdbuf->device->meta.copy.buf2buf[log2blksz].rsd;
 
    mali_ptr pushconsts =
       pan_pool_upload_aligned(&cmdbuf->desc_pool.base, &info, sizeof(info), 16);

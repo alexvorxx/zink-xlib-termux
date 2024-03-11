@@ -31,9 +31,9 @@
 #include "decode.h"
 
 #include "pan_encoder.h"
-#include "pan_util.h"
 #include "pan_props.h"
 #include "pan_samples.h"
+#include "pan_util.h"
 
 #include "vk_cmd_enqueue_entrypoints.h"
 #include "vk_common_entrypoints.h"
@@ -323,8 +323,8 @@ panvk_destroy_physical_device(struct vk_physical_device *device)
 }
 
 static void *
-panvk_kmod_zalloc(const struct pan_kmod_allocator *allocator,
-                  size_t size, bool transient)
+panvk_kmod_zalloc(const struct pan_kmod_allocator *allocator, size_t size,
+                  bool transient)
 {
    const VkAllocationCallbacks *vkalloc = allocator->priv;
 
@@ -515,8 +515,7 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    panvk_get_driver_uuid(&device->device_uuid);
    panvk_get_device_uuid(&device->device_uuid);
 
-   device->drm_syncobj_type =
-      vk_drm_syncobj_get_type(device->kmod.dev->fd);
+   device->drm_syncobj_type = vk_drm_syncobj_get_type(device->kmod.dev->fd);
    /* We don't support timelines in the uAPI yet and we don't want it getting
     * suddenly turned on by vk_drm_syncobj_get_type() without us adding panvk
     * code for it first.
@@ -872,10 +871,10 @@ panvk_queue_finish(struct panvk_queue *queue)
    vk_queue_finish(&queue->vk);
 }
 
-struct panvk_priv_bo *panvk_priv_bo_create(struct panvk_device *dev,
-                                           size_t size, uint32_t flags,
-                                           const struct VkAllocationCallbacks *alloc,
-                                           VkSystemAllocationScope scope)
+struct panvk_priv_bo *
+panvk_priv_bo_create(struct panvk_device *dev, size_t size, uint32_t flags,
+                     const struct VkAllocationCallbacks *alloc,
+                     VkSystemAllocationScope scope)
 {
    int ret;
    struct panvk_priv_bo *priv_bo =
@@ -914,7 +913,6 @@ struct panvk_priv_bo *panvk_priv_bo_create(struct panvk_device *dev,
    ret = pan_kmod_vm_bind(dev->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &op, 1);
    if (ret)
       goto err_munmap_bo;
-
 
    priv_bo->addr.dev = op.va.start;
 
@@ -1078,8 +1076,8 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
       &device->vk.alloc, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
 
    device->sample_positions = panvk_priv_bo_create(
-      device, panfrost_sample_positions_buffer_size(), 0,
-      &device->vk.alloc, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+      device, panfrost_sample_positions_buffer_size(), 0, &device->vk.alloc,
+      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    panfrost_upload_sample_positions(device->sample_positions->addr.host);
 
    vk_device_set_drm_fd(&device->vk, device->kmod.dev->fd);
@@ -1398,7 +1396,8 @@ panvk_InvalidateMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount,
 }
 
 VkDeviceAddress
-panvk_GetBufferDeviceAddress(VkDevice _device, const VkBufferDeviceAddressInfo *pInfo)
+panvk_GetBufferDeviceAddress(VkDevice _device,
+                             const VkBufferDeviceAddressInfo *pInfo)
 {
    VK_FROM_HANDLE(panvk_buffer, buffer, pInfo->buffer);
 
@@ -1466,12 +1465,12 @@ panvk_BindBufferMemory2(VkDevice device, uint32_t bindInfoCount,
       buffer->dev_addr = mem->addr.dev + pBindInfos[i].memoryOffset;
 
       /* FIXME: Only host map for index buffers so we can do the min/max
-         * index retrieval on the CPU. This is all broken anyway and the
-         * min/max search should be done with a compute shader that also
-         * patches the job descriptor accordingly (basically an indirect draw).
-         *
-         * Make sure this goes away as soon as we fixed indirect draws.
-         */
+       * index retrieval on the CPU. This is all broken anyway and the
+       * min/max search should be done with a compute shader that also
+       * patches the job descriptor accordingly (basically an indirect draw).
+       *
+       * Make sure this goes away as soon as we fixed indirect draws.
+       */
       if (buffer->vk.usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
          VkDeviceSize offset = pBindInfos[i].memoryOffset;
          VkDeviceSize pgsize = getpagesize();
@@ -1479,7 +1478,7 @@ panvk_BindBufferMemory2(VkDevice device, uint32_t bindInfoCount,
          off_t map_end = offset + buffer->vk.size;
          void *map_addr =
             pan_kmod_bo_mmap(mem->bo, map_start, map_end - map_start,
-                              PROT_WRITE, MAP_SHARED, NULL);
+                             PROT_WRITE, MAP_SHARED, NULL);
 
          assert(map_addr != MAP_FAILED);
          buffer->host_ptr = map_addr + (offset & pgsize);

@@ -2653,11 +2653,21 @@ zink_get_sparse_texture_virtual_page_size(struct pipe_screen *pscreen,
                                                        VK_IMAGE_TILING_OPTIMAL,
                                                        &prop_count, props);
    if (!prop_count) {
-      if (pformat == PIPE_FORMAT_R9G9B9E5_FLOAT) {
-         screen->faked_e5sparse = true;
-         goto hack_it_up;
+      /* format may not support storage; try without */
+      flags &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+      prop_count = ARRAY_SIZE(props);
+      VKSCR(GetPhysicalDeviceSparseImageFormatProperties)(screen->pdev, format, type,
+                                                         multi_sample ? VK_SAMPLE_COUNT_2_BIT : VK_SAMPLE_COUNT_1_BIT,
+                                                         flags,
+                                                         VK_IMAGE_TILING_OPTIMAL,
+                                                         &prop_count, props);
+      if (!prop_count) {
+         if (pformat == PIPE_FORMAT_R9G9B9E5_FLOAT) {
+            screen->faked_e5sparse = true;
+            goto hack_it_up;
+         }
+         return 0;
       }
-      return 0;
    }
 
    if (size) {

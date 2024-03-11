@@ -38,13 +38,6 @@
 #include "vk_util.h"
 
 unsigned
-panvk_image_get_plane_size(const struct panvk_image *image, unsigned plane)
-{
-   assert(!plane);
-   return image->pimage.layout.data_size;
-}
-
-unsigned
 panvk_image_get_total_size(const struct panvk_image *image)
 {
    assert(util_format_get_num_planes(image->pimage.layout.format) == 1);

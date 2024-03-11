@@ -972,9 +972,6 @@ struct panvk_image {
    struct pan_image pimage;
 };
 
-unsigned panvk_image_get_plane_size(const struct panvk_image *image,
-                                    unsigned plane);
-
 unsigned panvk_image_get_total_size(const struct panvk_image *image);
 
 #define TEXTURE_DESC_WORDS    8

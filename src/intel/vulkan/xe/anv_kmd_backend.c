@@ -309,6 +309,11 @@ xe_vm_unbind_bo(struct anv_device *device, struct anv_bo *bo)
       .wait_count = 0,
       .signal_count = 0,
    };
+   if (bo->from_host_ptr) {
+      bind.address = bo->offset;
+      bind.size = bo->actual_size;
+      bind.op = ANV_VM_UNBIND;
+   }
    return xe_vm_bind_op(device, &submit, true);
 }
 

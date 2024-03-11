@@ -232,7 +232,7 @@ do_create_surface(struct pipe_context *pctx, struct pipe_resource *pres, const s
 }
 
 /* get a cached surface for a shader descriptor */
-struct pipe_surface *
+struct zink_surface *
 zink_get_surface(struct zink_context *ctx,
             struct pipe_resource *pres,
             const struct pipe_surface *templ,
@@ -264,7 +264,7 @@ zink_get_surface(struct zink_context *ctx,
    }
    simple_mtx_unlock(&res->surface_mtx);
 
-   return &surface->base;
+   return surface;
 }
 
 /* wrap a surface for use as a framebuffer attachment
@@ -351,7 +351,7 @@ zink_create_surface(struct pipe_context *pctx,
 
       surface->is_swapchain = true;
    } else if (!needs_mutable) {
-      surface = (struct zink_surface*)zink_get_surface(zink_context(pctx), pres, templ, &ivci);
+      surface = zink_get_surface(zink_context(pctx), pres, templ, &ivci);
       if (unlikely(!surface))
          return NULL;
    }

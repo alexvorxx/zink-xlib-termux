@@ -36,6 +36,10 @@ files_libdri = files(
   'dri_util.h',
 )
 
+if with_platform_x11
+  deps_for_libdri += dep_xcb
+endif
+
 if with_dri
   files_libdri += files('drisw.c')
 endif

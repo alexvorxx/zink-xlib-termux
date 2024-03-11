@@ -727,12 +727,14 @@ zink_gfx_program_update_optimal(struct zink_context *ctx)
          prog = (struct zink_gfx_program*)entry->data;
          if (prog->is_separable) {
             /* shader variants can't be handled by separable programs: sync and compile */
-            if (!ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key))
+            if (!ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key) ||
+                (prog->base.uses_shobj ? !zink_can_use_shader_objects(ctx) : !zink_can_use_pipeline_libs(ctx)))
                util_queue_fence_wait(&prog->base.cache_fence);
             /* If the optimized linked pipeline is done compiling, swap it into place. */
             if (util_queue_fence_is_signalled(&prog->base.cache_fence) &&
                 /* but only if needed for ZINK_DEBUG=noopt */
-                (!(zink_debug & ZINK_DEBUG_NOOPT) || !ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key))) {
+                (!(zink_debug & ZINK_DEBUG_NOOPT) || !ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key) ||
+                 (prog->base.uses_shobj ? !zink_can_use_shader_objects(ctx) : !zink_can_use_pipeline_libs(ctx)))) {
                prog = replace_separable_prog(screen, entry, prog);
             }
          }
@@ -757,7 +759,8 @@ zink_gfx_program_update_optimal(struct zink_context *ctx)
       /* remove old hash */
       ctx->gfx_pipeline_state.optimal_key = zink_sanitize_optimal_key(ctx->gfx_stages, ctx->gfx_pipeline_state.shader_keys_optimal.key.val);
       ctx->gfx_pipeline_state.final_hash ^= ctx->curr_program->last_variant_hash;
-      if (ctx->curr_program->is_separable && !ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key)) {
+      if (ctx->curr_program->is_separable && !ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key) &&
+          (ctx->curr_program->base.uses_shobj ? !zink_can_use_shader_objects(ctx) : !zink_can_use_pipeline_libs(ctx))) {
          struct zink_gfx_program *prog = ctx->curr_program;
 
          util_queue_fence_wait(&prog->base.cache_fence);

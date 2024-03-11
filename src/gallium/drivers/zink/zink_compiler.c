@@ -3843,6 +3843,19 @@ compile_module(struct zink_screen *screen, struct zink_shader *zs, nir_shader *n
    return obj;
 }
 
+static bool
+remove_interpolate_at_sample(struct nir_builder *b, nir_intrinsic_instr *interp, void *data)
+{
+   if (interp->intrinsic != nir_intrinsic_interp_deref_at_sample)
+      return false;
+
+   b->cursor = nir_before_instr(&interp->instr);
+   nir_def *res = nir_load_deref(b, nir_src_as_deref(interp->src[0]));
+   nir_def_rewrite_uses(&interp->def, res);
+
+   return true;
+}
+
 struct zink_shader_object
 zink_shader_compile(struct zink_screen *screen, bool can_shobj, struct zink_shader *zs,
                     nir_shader *nir, const struct zink_shader_key *key, const void *extra_data, struct zink_program *pg)
@@ -3953,8 +3966,7 @@ zink_shader_compile(struct zink_screen *screen, bool can_shobj, struct zink_shad
          if (zink_fs_key(key)->robust_access)
             NIR_PASS(need_optimize, nir, lower_txf_lod_robustness);
 
-         if (!zink_fs_key_base(key)->samples &&
-            nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK)) {
+         if (!zink_fs_key_base(key)->samples && zink_shader_uses_samples(zs)) {
             /* VK will always use gl_SampleMask[] values even if sample count is 0,
             * so we need to skip this write here to mimic GL's behavior of ignoring it
             */
@@ -3964,6 +3976,9 @@ zink_shader_compile(struct zink_screen *screen, bool can_shobj, struct zink_shad
             }
             nir_fixup_deref_modes(nir);
             NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_shader_temp, NULL);
+            NIR_PASS_V(nir, nir_shader_intrinsics_pass, remove_interpolate_at_sample,
+                       nir_metadata_dominance | nir_metadata_block_index, NULL);
+
             need_optimize = true;
          }
          if (zink_fs_key_base(key)->force_dual_color_blend && nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DATA1)) {

@@ -1571,6 +1571,7 @@ iris_reallocate_resource_inplace(struct iris_context *ice,
 
    /* Replace the structure fields with the new ones */
    old_res->base.b.bind = templ.bind;
+   old_res->surf = new_res->surf;
    old_res->bo = new_res->bo;
    old_res->aux.surf = new_res->aux.surf;
    old_res->aux.bo = new_res->aux.bo;

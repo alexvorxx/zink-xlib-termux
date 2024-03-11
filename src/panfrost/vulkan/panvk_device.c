@@ -1498,36 +1498,32 @@ panvk_BindImageMemory2(VkDevice device, uint32_t bindInfoCount,
       VK_FROM_HANDLE(panvk_device_memory, mem, pBindInfos[i].memory);
       struct pan_kmod_bo *old_bo = image->bo;
 
-      if (mem) {
-         image->bo = pan_kmod_bo_get(mem->bo);
-         image->pimage.data.base = mem->addr.dev;
-         image->pimage.data.offset = pBindInfos[i].memoryOffset;
-         /* Reset the AFBC headers */
-         if (drm_is_afbc(image->pimage.layout.modifier)) {
-            /* Transient CPU mapping */
-            void *base = pan_kmod_bo_mmap(mem->bo, 0, pan_kmod_bo_size(mem->bo),
-                                          PROT_WRITE, MAP_SHARED, NULL);
+      assert(mem);
+      image->bo = pan_kmod_bo_get(mem->bo);
+      image->pimage.data.base = mem->addr.dev;
+      image->pimage.data.offset = pBindInfos[i].memoryOffset;
+      /* Reset the AFBC headers */
+      if (drm_is_afbc(image->pimage.layout.modifier)) {
+         /* Transient CPU mapping */
+         void *base = pan_kmod_bo_mmap(mem->bo, 0, pan_kmod_bo_size(mem->bo),
+                                       PROT_WRITE, MAP_SHARED, NULL);
 
-            assert(base != MAP_FAILED);
+         assert(base != MAP_FAILED);
 
-            for (unsigned layer = 0; layer < image->pimage.layout.array_size;
-                 layer++) {
-               for (unsigned level = 0; level < image->pimage.layout.nr_slices;
-                    level++) {
-                  void *header = base + image->pimage.data.offset +
-                                 (layer * image->pimage.layout.array_stride) +
-                                 image->pimage.layout.slices[level].offset;
-                  memset(header, 0,
-                         image->pimage.layout.slices[level].afbc.header_size);
-               }
+         for (unsigned layer = 0; layer < image->pimage.layout.array_size;
+              layer++) {
+            for (unsigned level = 0; level < image->pimage.layout.nr_slices;
+                 level++) {
+               void *header = base + image->pimage.data.offset +
+                              (layer * image->pimage.layout.array_stride) +
+                              image->pimage.layout.slices[level].offset;
+               memset(header, 0,
+                      image->pimage.layout.slices[level].afbc.header_size);
             }
-
-            ASSERTED int ret = os_munmap(base, pan_kmod_bo_size(mem->bo));
-            assert(!ret);
          }
-      } else {
-         image->bo = NULL;
-         image->pimage.data.offset = pBindInfos[i].memoryOffset;
+
+         ASSERTED int ret = os_munmap(base, pan_kmod_bo_size(mem->bo));
+         assert(!ret);
       }
 
       pan_kmod_bo_put(old_bo);

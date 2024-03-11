@@ -702,6 +702,34 @@ nil_image_init(struct nv_device_info *dev,
    return true;
 }
 
+/** Offset of the given Z slice within the level */
+uint64_t
+nil_image_level_z_offset_B(const struct nil_image *image,
+                           uint32_t level, uint32_t z)
+{
+   assert(level < image->num_levels);
+   const struct nil_extent4d lvl_extent_px =
+      nil_image_level_extent_px(image, level);
+   assert(z < lvl_extent_px.d);
+
+   const struct nil_tiling *lvl_tiling = &image->levels[level].tiling;
+
+   const uint32_t z_tl = z >> lvl_tiling->z_log2;
+   const uint32_t z_GOB = z & BITFIELD_MASK(lvl_tiling->z_log2);
+
+   const struct nil_extent4d lvl_extent_tl =
+      nil_extent4d_px_to_tl(lvl_extent_px, *lvl_tiling,
+                            image->format, image->sample_layout);
+   uint64_t offset_B = lvl_extent_tl.w * lvl_extent_tl.h * (uint64_t)z_tl *
+                       nil_tiling_size_B(*lvl_tiling);
+
+   const struct nil_extent4d tiling_extent_B =
+      nil_tiling_extent_B(*lvl_tiling);
+   offset_B += tiling_extent_B.w * tiling_extent_B.h * z_GOB;
+
+   return offset_B;
+}
+
 uint64_t
 nil_image_level_depth_stride_B(const struct nil_image *image, uint32_t level)
 {

@@ -415,29 +415,10 @@ nvb097_nil_image_fill_tic(const struct nil_image *image,
    /* There's no base layer field in the texture header */
    uint64_t layer_address = base_address;
    if (view->type == NIL_VIEW_TYPE_3D_SLICED) {
-      assert(view->num_levels == 1);
+      assert(image->num_levels == 1);
       assert(view->base_array_layer + view->array_len <= image->extent_px.d);
-
-      /* For sliced 3D images, computing the offset is a bit more complicated.
-       * We first have to compute the offset to the tile then, within that
-       * tile, the offset to the GOB.
-       *
-       * TODO: If we ever enable 3D gobs, we'll also have to compute the
-       * offset within the gob.
-       */
-      const uint32_t z_tl = view->base_array_layer >> tiling->z_log2;
-      const uint32_t z_GOB =
-         view->base_array_layer & BITFIELD_MASK(tiling->z_log2);
-
-      const struct nil_extent4d extent_tl =
-         nil_extent4d_px_to_tl(image->extent_px, *tiling,
-                               image->format, image->sample_layout);
-      layer_address += extent_tl.w * extent_tl.h * z_tl *
-                       nil_tiling_size_B(*tiling);
-
-      const struct nil_extent4d tiling_extent_B =
-         nil_tiling_extent_B(*tiling);
-      layer_address += tiling_extent_B.w * tiling_extent_B.h * z_GOB;
+      layer_address += nil_image_level_z_offset_B(image, view->base_level,
+                                                  view->base_array_layer);
    } else {
       assert(view->base_array_layer + view->array_len <= image->extent_px.a);
       layer_address += view->base_array_layer * image->array_stride_B;

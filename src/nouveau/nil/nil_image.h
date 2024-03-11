@@ -220,6 +220,9 @@ nil_image_level_layer_offset_B(const struct nil_image *image,
    return image->levels[level].offset_B + (layer * image->array_stride_B);
 }
 
+uint64_t nil_image_level_z_offset_B(const struct nil_image *image,
+                                    uint32_t level, uint32_t z);
+
 static inline uint32_t
 nil_image_mip_tail_offset_B(const struct nil_image *image)
 {

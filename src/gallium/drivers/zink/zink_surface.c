@@ -287,6 +287,20 @@ wrap_surface(struct pipe_context *pctx,
    return csurf;
 }
 
+/* this is the context hook, so only zink_ctx_surfaces will reach it */
+static void
+zink_surface_destroy(struct pipe_context *pctx,
+                     struct pipe_surface *psurface)
+{
+   struct zink_ctx_surface *csurf = (struct zink_ctx_surface *)psurface;
+   if (csurf->needs_mutable)
+      /* this has an extra resource ref */
+      pipe_resource_reference(&csurf->base.texture, NULL);
+   zink_surface_reference(zink_screen(pctx->screen), &csurf->surf, NULL);
+   pipe_surface_release(pctx, (struct pipe_surface**)&csurf->transient);
+   FREE(csurf);
+}
+
 /* this the context hook that returns a zink_ctx_surface */
 static struct pipe_surface *
 zink_create_surface(struct pipe_context *pctx,
@@ -400,20 +414,6 @@ zink_destroy_surface(struct zink_screen *screen, struct pipe_surface *psurface)
    simple_mtx_unlock(&res->obj->view_lock);
    pipe_resource_reference(&psurface->texture, NULL);
    FREE(surface);
-}
-
-/* this is the context hook, so only zink_ctx_surfaces will reach it */
-static void
-zink_surface_destroy(struct pipe_context *pctx,
-                     struct pipe_surface *psurface)
-{
-   struct zink_ctx_surface *csurf = (struct zink_ctx_surface *)psurface;
-   if (csurf->needs_mutable)
-      /* this has an extra resource ref */
-      pipe_resource_reference(&csurf->base.texture, NULL);
-   zink_surface_reference(zink_screen(pctx->screen), &csurf->surf, NULL);
-   pipe_surface_release(pctx, (struct pipe_surface**)&csurf->transient);
-   FREE(csurf);
 }
 
 /* this is called when a surface is rebound for mutable/storage use */

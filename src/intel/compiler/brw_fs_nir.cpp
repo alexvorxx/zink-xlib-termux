@@ -7074,6 +7074,28 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
       fs_reg cond = get_nir_src(ntb, instr->src[0]);
 
+      /* Before Xe2, we can use specialized predicates. */
+      if (devinfo->ver < 20) {
+         const bool any = instr->intrinsic == nir_intrinsic_quad_vote_any;
+
+         /* The any/all predicates do not consider channel enables. To prevent
+          * dead channels from affecting the result, we initialize the flag with
+          * with the identity value for the logical operation.
+          */
+         const unsigned identity = any ? 0 : 0xFFFFFFFF;
+         bld.exec_all().group(1, 0).MOV(flag, retype(brw_imm_ud(identity), flag.type));
+
+         bld.CMP(bld.null_reg_ud(), cond, brw_imm_ud(0u), BRW_CONDITIONAL_NZ);
+         bld.exec_all().MOV(retype(dest, BRW_REGISTER_TYPE_UD), brw_imm_ud(0));
+
+         const enum brw_predicate pred = any ? BRW_PREDICATE_ALIGN1_ANY4H
+                                             : BRW_PREDICATE_ALIGN1_ALL4H;
+
+         fs_inst *mov = bld.MOV(retype(dest, BRW_REGISTER_TYPE_D), brw_imm_d(-1));
+         set_predicate(pred, mov);
+         break;
+      }
+
       /* This code is going to manipulate the results of flag mask, so clear it to
        * avoid any residual value from disabled channels.
        */

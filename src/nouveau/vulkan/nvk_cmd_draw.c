@@ -670,15 +670,15 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
           */
          assert(iview->plane_count == 1);
          const uint8_t ip = iview->planes[0].image_plane;
-
+         const struct nil_image *nil_image = &image->planes[ip].nil;
          const struct nil_image_level *level =
-            &image->planes[ip].nil.levels[iview->vk.base_mip_level];
+            &nil_image->levels[iview->vk.base_mip_level];
          struct nil_extent4d level_extent_sa =
-            nil_image_level_extent_sa(&image->planes[ip].nil, iview->vk.base_mip_level);
+            nil_image_level_extent_sa(nil_image, iview->vk.base_mip_level);
 
          assert(sample_layout == NIL_SAMPLE_LAYOUT_INVALID ||
-                sample_layout == image->planes[ip].nil.sample_layout);
-         sample_layout = image->planes[ip].nil.sample_layout;
+                sample_layout == nil_image->sample_layout);
+         sample_layout = nil_image->sample_layout;
          render->samples = image->vk.samples;
 
          uint64_t addr = nvk_image_base_address(image, ip) + level->offset_B;
@@ -707,8 +707,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
                .block_height  = level->tiling.y_log2,
                .block_depth   = level->tiling.z_log2,
                .layout        = LAYOUT_BLOCKLINEAR,
-               .third_dimension_control =
-                  (image->planes[ip].nil.dim == NIL_IMAGE_DIM_3D) ?
+               .third_dimension_control = (nil_image->dim == NIL_IMAGE_DIM_3D) ?
                   THIRD_DIMENSION_CONTROL_THIRD_DIMENSION_DEFINES_DEPTH_SIZE :
                   THIRD_DIMENSION_CONTROL_THIRD_DIMENSION_DEFINES_ARRAY_SIZE,
             });
@@ -716,11 +715,11 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
             P_NV9097_SET_COLOR_TARGET_THIRD_DIMENSION(p, i,
                iview->vk.base_array_layer + layer_count);
             P_NV9097_SET_COLOR_TARGET_ARRAY_PITCH(p, i,
-               image->planes[ip].nil.array_stride_B >> 2);
+               nil_image->array_stride_B >> 2);
             P_NV9097_SET_COLOR_TARGET_LAYER(p, i, iview->vk.base_array_layer);
          } else {
             /* NVIDIA can only render to 2D linear images */
-            assert(image->planes[ip].nil.dim == NIL_IMAGE_DIM_2D);
+            assert(nil_image->dim == NIL_IMAGE_DIM_2D);
             /* NVIDIA can only render to non-multisampled images */
             assert(sample_layout == NIL_SAMPLE_LAYOUT_1X1);
             /* NVIDIA doesn't support linear array images */
@@ -729,8 +728,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
             uint32_t pitch = level->row_stride_B;
             const enum pipe_format p_format =
                vk_format_to_pipe_format(iview->vk.format);
-            /* When memory layout is set to LAYOUT_PITCH, the WIDTH field 
-             * takes row pitch 
+            /* When memory layout is set to LAYOUT_PITCH, the WIDTH field
+             * takes row pitch
              */
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, pitch);
             P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);

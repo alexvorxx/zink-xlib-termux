@@ -1,2 +1,1 @@
 KHR-GL46.direct_state_access.framebuffers_texture_layer_attachment
-KHR-GL46.tessellation_shader.tessellation_control_to_tessellation_evaluation.gl_tessLevel

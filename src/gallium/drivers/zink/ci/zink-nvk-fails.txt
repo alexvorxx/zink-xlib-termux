@@ -1,9 +1,20 @@
+# nvk sparse needs more testing
+KHR-GL46.sparse_texture2_tests.SparseTexture2Allocation,Fail
+KHR-GL46.sparse_texture2_tests.SparseTexture2Commitment,Fail
+KHR-GL46.sparse_texture2_tests.SparseTexture2Lookup,Fail
+KHR-GL46.sparse_texture2_tests.StandardPageSizesTestCase,Fail
+KHR-GL46.sparse_texture2_tests.UncommittedRegionsAccess,Fail
+KHR-GL46.sparse_texture_clamp_tests.SparseTextureClampLookupColor,Fail
+KHR-GL46.sparse_texture_clamp_tests.SparseTextureClampLookupResidency,Fail
+KHR-GL46.sparse_texture_tests.InternalFormatQueries,Fail
+KHR-GL46.sparse_texture_tests.SparseTextureAllocation,Fail
+KHR-GL46.sparse_texture_tests.SparseTextureCommitment,Fail
+
 # regressions ?
 spec@arb_bindless_texture@execution@images@ubo-named-block,Fail
 spec@arb_get_texture_sub_image@arb_get_texture_sub_image-get,Fail
 spec@egl_ext_device_query@conformance,Fail
 
-KHR-GL46.tessellation_shader.tessellation_control_to_tessellation_evaluation.gl_tessLevel,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two_samples.multisample_rbo_4,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two_samples.multisample_rbo_8,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two_samples.multisample_texture_4,Fail
@@ -11,14 +22,6 @@ dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bits_unique_per_two_samples.multisample_texture_4,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bits_unique_per_two_samples.multisample_texture_8,Fail
 KHR-GL46.direct_state_access.framebuffers_texture_layer_attachment,Fail
-KHR-GL46.gl_spirv.spirv_validation_capabilities_test,Crash
-KHR-GLES3.packed_pixels.pbo_rectangle.rgba,Fail
-KHR-GLES3.packed_pixels.rectangle.rgba,Fail
-KHR-GLES3.packed_pixels.varied_rectangle.rgba,Fail
-dEQP-GLES3.functional.fbo.completeness.renderable.texture.color0.rgba_unsigned_short_4_4_4_4,Fail
-dEQP-GLES3.functional.lifetime.attach.deleted_input.texture_framebuffer,Fail
-dEQP-GLES3.functional.lifetime.attach.deleted_name.texture_framebuffer,Fail
-dEQP-GLES3.functional.lifetime.attach.deleted_output.texture_framebuffer,Fail
 dEQP-GLES31.functional.shaders.multisample_interpolation.interpolate_at_sample.non_multisample_buffer.sample_n_default_framebuffer,Fail
 dEQP-GLES31.functional.shaders.multisample_interpolation.interpolate_at_sample.non_multisample_buffer.sample_n_singlesample_rbo,Fail
 dEQP-GLES31.functional.shaders.multisample_interpolation.interpolate_at_sample.non_multisample_buffer.sample_n_singlesample_texture,Fail

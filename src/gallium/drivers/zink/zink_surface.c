@@ -267,21 +267,23 @@ zink_get_surface(struct zink_context *ctx,
    return &surface->base;
 }
 
-/* wrap a surface for use as a framebuffer attachment */
+/* wrap a surface for use as a framebuffer attachment
+ * Takes ownership of surface */
 static struct zink_ctx_surface *
 wrap_surface(struct pipe_context *pctx,
-             struct pipe_surface *psurf,
+             struct zink_surface *surface,
              const struct pipe_surface *templ)
 {
    struct zink_ctx_surface *csurf = CALLOC_STRUCT(zink_ctx_surface);
    if (!csurf) {
+      zink_surface_reference (zink_screen(pctx->screen), &surface, NULL);
       mesa_loge("ZINK: failed to allocate csurf!");
       return NULL;
    }
 
    csurf->base = *templ;
    pipe_reference_init(&csurf->base.reference, 1);
-   csurf->surf = zink_surface(psurf);
+   csurf->surf = surface;
    csurf->base.context = pctx;
 
    return csurf;
@@ -340,22 +342,24 @@ zink_create_surface(struct pipe_context *pctx,
    VkImageViewCreateInfo ivci = create_ivci(screen, res, templ,
                                             pres->target == PIPE_TEXTURE_3D ? target_2d[is_array] : pres->target);
 
-   struct pipe_surface *psurf = NULL;
+   struct zink_surface *surface = NULL;
    if (res->obj->dt) {
       /* don't cache swapchain surfaces. that's weird. */
-      struct zink_surface *surface = do_create_surface(pctx, pres, templ, &ivci, 0, false);
+      surface = do_create_surface(pctx, pres, templ, &ivci, 0, false);
       if (unlikely(!surface))
          return NULL;
 
       surface->is_swapchain = true;
-      psurf = &surface->base;
    } else if (!needs_mutable) {
-      psurf = zink_get_surface(zink_context(pctx), pres, templ, &ivci);
-      if (unlikely(!psurf))
+      surface = (struct zink_surface*)zink_get_surface(zink_context(pctx), pres, templ, &ivci);
+      if (unlikely(!surface))
          return NULL;
    }
 
-   struct zink_ctx_surface *csurf = wrap_surface(pctx, needs_mutable ? NULL : psurf, needs_mutable ? templ : psurf);
+   struct zink_ctx_surface *csurf = wrap_surface(pctx, surface, needs_mutable ? templ : &surface->base); /* move ownership of surface */
+   if (!unlikely (csurf))
+      return NULL;
+
    csurf->needs_mutable = needs_mutable;
    if (needs_mutable) {
       pipe_resource_reference(&csurf->base.texture, pres);
@@ -368,20 +372,24 @@ zink_create_surface(struct pipe_context *pctx,
       rtempl.nr_samples = templ->nr_samples;
       rtempl.bind |= ZINK_BIND_TRANSIENT;
       struct zink_resource *transient = zink_resource(pctx->screen->resource_create(pctx->screen, &rtempl));
-      if (!transient)
-         return NULL;
+      if (unlikely(!transient))
+         goto fail;
+
       ivci.image = transient->obj->image;
       struct zink_surface *tsurf = create_surface(pctx, &transient->base.b, templ, &ivci, true);
-      csurf->transient = wrap_surface(pctx, &tsurf->base, &tsurf->base);
-      if (!csurf->transient) {
-         pipe_resource_reference((struct pipe_resource**)&transient, NULL);
-         pipe_surface_release(pctx, &psurf);
-         return NULL;
-      }
       pipe_resource_reference((struct pipe_resource**)&transient, NULL);
+      if (unlikely(!tsurf))
+         goto fail;
+
+      csurf->transient = wrap_surface(pctx, tsurf, &tsurf->base); /* move ownership of tsurf */
+      if (unlikely(!csurf->transient))
+         goto fail;
    }
 
    return &csurf->base;
+fail:
+   zink_surface_destroy(pctx, &csurf->base);
+   return NULL;
 }
 
 void

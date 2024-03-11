@@ -26,6 +26,7 @@
 #include "pan_blitter.h"
 #include "pan_props.h"
 
+#include "panvk_image.h"
 #include "panvk_private.h"
 
 static void

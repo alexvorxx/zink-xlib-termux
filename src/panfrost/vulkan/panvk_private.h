@@ -932,21 +932,6 @@ struct panvk_pipeline {
    VkRect2D scissor;
 };
 
-#define PANVK_MAX_PLANES 1
-
-struct panvk_image {
-   struct vk_image vk;
-
-   /* TODO: See if we can rework the synchronization logic so we don't need to
-    * pass BOs around.
-    */
-   struct pan_kmod_bo *bo;
-
-   struct pan_image pimage;
-};
-
-unsigned panvk_image_get_total_size(const struct panvk_image *image);
-
 #define TEXTURE_DESC_WORDS    8
 #define ATTRIB_BUF_DESC_WORDS 4
 
@@ -1003,8 +988,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set_layout, vk.base,
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_device_memory, vk.base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image, vk.base, VkImage,
-                               VK_OBJECT_TYPE_IMAGE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image_view, vk.base, VkImageView,
                                VK_OBJECT_TYPE_IMAGE_VIEW);
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline,

@@ -28,6 +28,7 @@
 
 #include "pan_props.h"
 
+#include "panvk_image.h"
 #include "panvk_private.h"
 
 #include "drm-uapi/drm_fourcc.h"
@@ -37,7 +38,9 @@
 #include "vk_object.h"
 #include "vk_util.h"
 
-unsigned
+#define PANVK_MAX_PLANES 1
+
+static unsigned
 panvk_image_get_total_size(const struct panvk_image *image)
 {
    assert(util_format_get_num_planes(image->pimage.layout.format) == 1);
@@ -267,6 +270,73 @@ panvk_DestroyImageView(VkDevice _device, VkImageView _view,
 
    panvk_priv_bo_destroy(view->bo, NULL);
    vk_image_view_destroy(&device->vk, pAllocator, &view->vk);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_GetImageMemoryRequirements2(VkDevice device,
+                                  const VkImageMemoryRequirementsInfo2 *pInfo,
+                                  VkMemoryRequirements2 *pMemoryRequirements)
+{
+   VK_FROM_HANDLE(panvk_image, image, pInfo->image);
+
+   const uint64_t alignment = 4096;
+   const uint64_t size = panvk_image_get_total_size(image);
+
+   pMemoryRequirements->memoryRequirements.memoryTypeBits = 1;
+   pMemoryRequirements->memoryRequirements.alignment = alignment;
+   pMemoryRequirements->memoryRequirements.size = size;
+}
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_GetImageSparseMemoryRequirements2(
+   VkDevice device, const VkImageSparseMemoryRequirementsInfo2 *pInfo,
+   uint32_t *pSparseMemoryRequirementCount,
+   VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements)
+{
+   panvk_stub();
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+panvk_BindImageMemory2(VkDevice device, uint32_t bindInfoCount,
+                       const VkBindImageMemoryInfo *pBindInfos)
+{
+   for (uint32_t i = 0; i < bindInfoCount; ++i) {
+      VK_FROM_HANDLE(panvk_image, image, pBindInfos[i].image);
+      VK_FROM_HANDLE(panvk_device_memory, mem, pBindInfos[i].memory);
+      struct pan_kmod_bo *old_bo = image->bo;
+
+      assert(mem);
+      image->bo = pan_kmod_bo_get(mem->bo);
+      image->pimage.data.base = mem->addr.dev;
+      image->pimage.data.offset = pBindInfos[i].memoryOffset;
+      /* Reset the AFBC headers */
+      if (drm_is_afbc(image->pimage.layout.modifier)) {
+         /* Transient CPU mapping */
+         void *base = pan_kmod_bo_mmap(mem->bo, 0, pan_kmod_bo_size(mem->bo),
+                                       PROT_WRITE, MAP_SHARED, NULL);
+
+         assert(base != MAP_FAILED);
+
+         for (unsigned layer = 0; layer < image->pimage.layout.array_size;
+              layer++) {
+            for (unsigned level = 0; level < image->pimage.layout.nr_slices;
+                 level++) {
+               void *header = base + image->pimage.data.offset +
+                              (layer * image->pimage.layout.array_stride) +
+                              image->pimage.layout.slices[level].offset;
+               memset(header, 0,
+                      image->pimage.layout.slices[level].afbc.header_size);
+            }
+         }
+
+         ASSERTED int ret = os_munmap(base, pan_kmod_bo_size(mem->bo));
+         assert(!ret);
+      }
+
+      pan_kmod_bo_put(old_bo);
+   }
+
+   return VK_SUCCESS;
 }
 
 VKAPI_ATTR void VKAPI_CALL

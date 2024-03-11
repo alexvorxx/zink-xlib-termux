@@ -29,6 +29,7 @@
 #include "genxml/gen_macros.h"
 
 #include "panvk_cs.h"
+#include "panvk_image.h"
 #include "panvk_private.h"
 
 #include "pan_blitter.h"

@@ -28,6 +28,7 @@
 #include "pan_props.h"
 #include "pan_shader.h"
 
+#include "panvk_image.h"
 #include "panvk_private.h"
 
 static mali_ptr

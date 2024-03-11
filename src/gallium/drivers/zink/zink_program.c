@@ -698,9 +698,13 @@ update_gfx_program_optimal(struct zink_context *ctx, struct zink_gfx_program *pr
 }
 
 static struct zink_gfx_program *
-replace_separable_prog(struct zink_screen *screen, struct hash_entry *entry, struct zink_gfx_program *prog)
+replace_separable_prog(struct zink_context *ctx, struct hash_entry *entry, struct zink_gfx_program *prog)
 {
-   struct zink_gfx_program *real = prog->full_prog;
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
+   struct zink_gfx_program *real = prog->full_prog ?
+                                   prog->full_prog :
+                                   /* this will be NULL with ZINK_DEBUG_NOOPT */
+                                   zink_create_gfx_program(ctx, ctx->gfx_stages, ctx->gfx_pipeline_state.dyn_state2.vertices_per_patch, ctx->gfx_hash);
    entry->data = real;
    entry->key = real->shaders;
    real->base.removed = false;
@@ -725,17 +729,16 @@ zink_gfx_program_update_optimal(struct zink_context *ctx)
          ctx->gfx_pipeline_state.final_hash ^= ctx->curr_program->last_variant_hash;
       if (entry) {
          prog = (struct zink_gfx_program*)entry->data;
+         bool must_replace = prog->base.uses_shobj ? !zink_can_use_shader_objects(ctx) : (prog->is_separable && !zink_can_use_pipeline_libs(ctx));
          if (prog->is_separable) {
             /* shader variants can't be handled by separable programs: sync and compile */
-            if (!ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key) ||
-                (prog->base.uses_shobj ? !zink_can_use_shader_objects(ctx) : !zink_can_use_pipeline_libs(ctx)))
+            if (!ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key) || must_replace)
                util_queue_fence_wait(&prog->base.cache_fence);
             /* If the optimized linked pipeline is done compiling, swap it into place. */
             if (util_queue_fence_is_signalled(&prog->base.cache_fence) &&
                 /* but only if needed for ZINK_DEBUG=noopt */
-                (!(zink_debug & ZINK_DEBUG_NOOPT) || !ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key) ||
-                 (prog->base.uses_shobj ? !zink_can_use_shader_objects(ctx) : !zink_can_use_pipeline_libs(ctx)))) {
-               prog = replace_separable_prog(screen, entry, prog);
+                (!(zink_debug & ZINK_DEBUG_NOOPT) || !ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key) || must_replace)) {
+               prog = replace_separable_prog(ctx, entry, prog);
             }
          }
          update_gfx_program_optimal(ctx, prog);
@@ -759,8 +762,9 @@ zink_gfx_program_update_optimal(struct zink_context *ctx)
       /* remove old hash */
       ctx->gfx_pipeline_state.optimal_key = zink_sanitize_optimal_key(ctx->gfx_stages, ctx->gfx_pipeline_state.shader_keys_optimal.key.val);
       ctx->gfx_pipeline_state.final_hash ^= ctx->curr_program->last_variant_hash;
-      if (ctx->curr_program->is_separable && !ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key) &&
-          (ctx->curr_program->base.uses_shobj ? !zink_can_use_shader_objects(ctx) : !zink_can_use_pipeline_libs(ctx))) {
+
+      bool must_replace = ctx->curr_program->base.uses_shobj ? !zink_can_use_shader_objects(ctx) : (ctx->curr_program->is_separable && !zink_can_use_pipeline_libs(ctx));
+      if (must_replace || (ctx->curr_program->is_separable && !ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(ctx->gfx_pipeline_state.optimal_key))) {
          struct zink_gfx_program *prog = ctx->curr_program;
 
          util_queue_fence_wait(&prog->base.cache_fence);
@@ -770,7 +774,7 @@ zink_gfx_program_update_optimal(struct zink_context *ctx)
          const uint32_t hash = ctx->gfx_hash;
          simple_mtx_lock(&ctx->program_lock[zink_program_cache_stages(ctx->shader_stages)]);
          struct hash_entry *entry = _mesa_hash_table_search_pre_hashed(ht, hash, ctx->gfx_stages);
-         ctx->curr_program = replace_separable_prog(screen, entry, prog);
+         ctx->curr_program = replace_separable_prog(ctx, entry, prog);
          simple_mtx_unlock(&ctx->program_lock[zink_program_cache_stages(ctx->shader_stages)]);
       }
       update_gfx_program_optimal(ctx, ctx->curr_program);

@@ -682,8 +682,8 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .GOOGLE_user_type = true,
       .INTEL_shader_integer_functions2 = true,
       .NV_compute_shader_derivatives = true,
-      .NV_device_generated_commands = device->instance->drirc.enable_dgc,
-      .NV_device_generated_commands_compute = device->instance->drirc.enable_dgc,
+      .NV_device_generated_commands = !device->use_llvm && device->instance->drirc.enable_dgc,
+      .NV_device_generated_commands_compute = !device->use_llvm && device->instance->drirc.enable_dgc,
       /* Undocumented extension purely for vkd3d-proton. This check is to prevent anyone else from
        * using it.
        */

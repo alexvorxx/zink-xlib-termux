@@ -1484,7 +1484,7 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
       anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline,
                                     final.so_decl_list);
 
-#if GFX_VER >= 11
+#if GFX_VER >= 11 && GFX_VER < 20
       /* ICL PRMs, Volume 2a - Command Reference: Instructions,
        * 3DSTATE_SO_DECL_LIST:
        *

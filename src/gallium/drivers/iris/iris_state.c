@@ -7405,7 +7405,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
             ice->state.streamout + GENX(3DSTATE_STREAMOUT_length);
          iris_batch_emit(batch, decl_list, 4 * ((decl_list[0] & 0xff) + 2));
 
-#if GFX_VER >= 11
+#if GFX_VER >= 11 && GFX_VER < 20
          /* ICL PRMs, Volume 2a - Command Reference: Instructions,
           * 3DSTATE_SO_DECL_LIST:
           *

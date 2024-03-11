@@ -1553,12 +1553,6 @@ static void
 zink_destroy_screen(struct pipe_screen *pscreen)
 {
    struct zink_screen *screen = zink_screen(pscreen);
-   struct zink_batch_state *bs = screen->free_batch_states;
-   while (bs) {
-      struct zink_batch_state *bs_next = bs->next;
-      zink_batch_state_destroy(screen, bs);
-      bs = bs_next;
-   }
 
 #ifdef HAVE_RENDERDOC_APP_H
    if (screen->renderdoc_capture_all && p_atomic_dec_zero(&num_screens))
@@ -1570,6 +1564,13 @@ zink_destroy_screen(struct pipe_screen *pscreen)
 
    if (screen->copy_context)
       screen->copy_context->base.destroy(&screen->copy_context->base);
+
+   struct zink_batch_state *bs = screen->free_batch_states;
+   while (bs) {
+      struct zink_batch_state *bs_next = bs->next;
+      zink_batch_state_destroy(screen, bs);
+      bs = bs_next;
+   }
 
    if (VK_NULL_HANDLE != screen->debugUtilsCallbackHandle) {
       VKSCR(DestroyDebugUtilsMessengerEXT)(screen->instance, screen->debugUtilsCallbackHandle, NULL);

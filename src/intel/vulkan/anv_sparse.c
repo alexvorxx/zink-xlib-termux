@@ -594,7 +594,7 @@ anv_sparse_bind_vm_bind(struct anv_device *device,
    if (!queue)
       assert(submit->wait_count == 0 && submit->signal_count == 0);
 
-   return device->kmd_backend->vm_bind(device, submit);
+   return device->kmd_backend->vm_bind(device, submit, ANV_VM_BIND_FLAG_NONE);
 }
 
 VkResult

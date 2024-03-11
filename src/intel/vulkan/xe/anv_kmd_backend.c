@@ -171,9 +171,12 @@ anv_vm_bind_to_drm_xe_vm_bind(struct anv_device *device,
 static inline VkResult
 xe_vm_bind_op(struct anv_device *device,
               struct anv_sparse_submission *submit,
-              bool signal_bind_timeline)
+              enum anv_vm_bind_flags flags)
 {
    VkResult result = VK_SUCCESS;
+   const bool signal_bind_timeline =
+      flags & ANV_VM_BIND_FLAG_SIGNAL_BIND_TIMELINE;
+
    int num_syncs = submit->wait_count + submit->signal_count +
                    signal_bind_timeline;
    STACK_ARRAY(struct drm_xe_sync, xe_syncs, num_syncs);
@@ -269,9 +272,10 @@ out_syncs:
 }
 
 static VkResult
-xe_vm_bind(struct anv_device *device, struct anv_sparse_submission *submit)
+xe_vm_bind(struct anv_device *device, struct anv_sparse_submission *submit,
+           enum anv_vm_bind_flags flags)
 {
-   return xe_vm_bind_op(device, submit, false);
+   return xe_vm_bind_op(device, submit, flags);
 }
 
 static VkResult
@@ -292,7 +296,8 @@ xe_vm_bind_bo(struct anv_device *device, struct anv_bo *bo)
       .wait_count = 0,
       .signal_count = 0,
    };
-   return xe_vm_bind_op(device, &submit, true);
+   return xe_vm_bind_op(device, &submit,
+                        ANV_VM_BIND_FLAG_SIGNAL_BIND_TIMELINE);
 }
 
 static VkResult
@@ -318,7 +323,8 @@ xe_vm_unbind_bo(struct anv_device *device, struct anv_bo *bo)
       bind.size = bo->actual_size;
       bind.op = ANV_VM_UNBIND;
    }
-   return xe_vm_bind_op(device, &submit, true);
+   return xe_vm_bind_op(device, &submit,
+                        ANV_VM_BIND_FLAG_SIGNAL_BIND_TIMELINE);
 }
 
 static uint32_t

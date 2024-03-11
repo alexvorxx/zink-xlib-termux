@@ -330,15 +330,16 @@ zink_create_surface(struct pipe_context *pctx,
    if (res->obj->dt) {
       /* don't cache swapchain surfaces. that's weird. */
       struct zink_surface *surface = do_create_surface(pctx, pres, templ, &ivci, 0, false);
-      if (surface) {
-         surface->is_swapchain = true;
-         psurf = &surface->base;
-      }
+      if (unlikely(!surface))
+         return NULL;
+
+      surface->is_swapchain = true;
+      psurf = &surface->base;
    } else if (!needs_mutable) {
       psurf = zink_get_surface(zink_context(pctx), pres, templ, &ivci);
+      if (unlikely(!psurf))
+         return NULL;
    }
-   if (!psurf && !needs_mutable)
-      return NULL;
 
    struct zink_ctx_surface *csurf = wrap_surface(pctx, needs_mutable ? NULL : psurf, needs_mutable ? templ : psurf);
    csurf->needs_mutable = needs_mutable;

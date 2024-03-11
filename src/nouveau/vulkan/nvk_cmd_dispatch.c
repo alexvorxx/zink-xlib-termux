@@ -75,7 +75,9 @@ nvk_push_dispatch_state_init(struct nvk_device *dev, struct nv_push *p)
 static inline uint16_t
 nvk_cmd_buffer_compute_cls(struct nvk_cmd_buffer *cmd)
 {
-   return nvk_cmd_buffer_device(cmd)->pdev->info.cls_compute;
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+   return pdev->info.cls_compute;
 }
 
 void

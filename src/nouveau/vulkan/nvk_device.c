@@ -58,6 +58,7 @@ nvk_slm_area_ensure(struct nvk_device *dev,
                     struct nvk_slm_area *area,
                     uint32_t bytes_per_thread)
 {
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
    assert(bytes_per_thread < (1 << 24));
 
    /* TODO: Volta+doesn't use CRC */
@@ -70,8 +71,8 @@ nvk_slm_area_ensure(struct nvk_device *dev,
     */
    bytes_per_warp = align64(bytes_per_warp, 0x200);
 
-   uint64_t bytes_per_mp = bytes_per_warp * dev->pdev->info.max_warps_per_mp;
-   uint64_t bytes_per_tpc = bytes_per_mp * dev->pdev->info.mp_per_tpc;
+   uint64_t bytes_per_mp = bytes_per_warp * pdev->info.max_warps_per_mp;
+   uint64_t bytes_per_tpc = bytes_per_mp * pdev->info.mp_per_tpc;
 
    /* The hardware seems to require this alignment for
     * NVA0C0_SET_SHADER_LOCAL_MEMORY_NON_THROTTLED_A_SIZE_LOWER.
@@ -88,7 +89,7 @@ nvk_slm_area_ensure(struct nvk_device *dev,
    if (likely(bytes_per_tpc <= area->bytes_per_tpc))
       return VK_SUCCESS;
 
-   uint64_t size = bytes_per_tpc * dev->pdev->info.tpc_count;
+   uint64_t size = bytes_per_tpc * pdev->info.tpc_count;
 
    /* The hardware seems to require this alignment for
     * NV9097_SET_SHADER_LOCAL_MEMORY_D_SIZE_LOWER.

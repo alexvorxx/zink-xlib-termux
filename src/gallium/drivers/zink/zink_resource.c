@@ -1587,7 +1587,8 @@ resource_create(struct pipe_screen *pscreen,
 
    bool linear = false;
    struct pipe_resource templ2 = *templ;
-   if (templ2.flags & PIPE_RESOURCE_FLAG_SPARSE)
+   if (templ2.flags & PIPE_RESOURCE_FLAG_SPARSE &&
+       (util_res_sample_count(templ) == 1 || screen->info.feats.features.shaderStorageImageMultisample))
       templ2.bind |= PIPE_BIND_SHADER_IMAGE;
    if (screen->faked_e5sparse && templ->format == PIPE_FORMAT_R9G9B9E5_FLOAT) {
       templ2.flags &= ~PIPE_RESOURCE_FLAG_SPARSE;

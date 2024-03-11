@@ -1,14 +1,9 @@
 # nvk sparse needs more testing
-KHR-GL46.sparse_texture2_tests.SparseTexture2Allocation,Fail
 KHR-GL46.sparse_texture2_tests.SparseTexture2Commitment,Fail
 KHR-GL46.sparse_texture2_tests.SparseTexture2Lookup,Fail
-KHR-GL46.sparse_texture2_tests.StandardPageSizesTestCase,Fail
 KHR-GL46.sparse_texture2_tests.UncommittedRegionsAccess,Fail
 KHR-GL46.sparse_texture_clamp_tests.SparseTextureClampLookupColor,Fail
 KHR-GL46.sparse_texture_clamp_tests.SparseTextureClampLookupResidency,Fail
-KHR-GL46.sparse_texture_tests.InternalFormatQueries,Fail
-KHR-GL46.sparse_texture_tests.SparseTextureAllocation,Fail
-KHR-GL46.sparse_texture_tests.SparseTextureCommitment,Fail
 
 # regressions ?
 spec@arb_bindless_texture@execution@images@ubo-named-block,Fail

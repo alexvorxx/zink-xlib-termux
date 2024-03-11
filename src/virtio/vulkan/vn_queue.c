@@ -565,31 +565,19 @@ vn_queue_submission_alloc_storage(struct vn_queue_submission *submit)
 }
 
 static VkResult
-vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
-                                       uint32_t batch_index,
-                                       uint32_t *new_cmd_count)
+vn_queue_submission_get_resolved_query_records(
+   struct vn_queue_submission *submit,
+   uint32_t batch_index,
+   struct vn_feedback_cmd_pool *fb_cmd_pool,
+   struct list_head *resolved_records)
 {
-   struct vk_queue *queue_vk = vk_queue_from_handle(submit->queue_handle);
-   struct vn_device *dev = (void *)queue_vk->base.device;
-   struct vn_query_feedback_cmd *qfb_cmd = NULL;
+   struct vn_command_pool *cmd_pool =
+      vn_command_pool_from_handle(fb_cmd_pool->pool_handle);
+   struct list_head dropped_records;
    VkResult result = VK_SUCCESS;
 
-   struct vn_feedback_cmd_pool *fb_cmd_pool = NULL;
-   struct vn_command_pool *cmd_pool = NULL;
-   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
-      if (dev->queue_families[i] == queue_vk->queue_family_index) {
-         fb_cmd_pool = &dev->fb_cmd_pools[i];
-         cmd_pool = vn_command_pool_from_handle(fb_cmd_pool->pool_handle);
-         break;
-      }
-   }
-   assert(fb_cmd_pool && cmd_pool);
-
-   struct list_head resolved_records;
-   struct list_head dropped_records;
-   list_inithead(&resolved_records);
+   list_inithead(resolved_records);
    list_inithead(&dropped_records);
-
    const uint32_t cmd_count = vn_get_cmd_count(submit, batch_index);
    for (uint32_t i = 0; i < cmd_count; i++) {
       struct vn_command_buffer *cmd = vn_get_cmd(submit, batch_index, i);
@@ -598,7 +586,7 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
                           &cmd->builder.query_records, head) {
          if (!record->copy) {
             list_for_each_entry_safe(struct vn_cmd_query_record,
-                                     resolved_record, &resolved_records,
+                                     resolved_record, resolved_records,
                                      head) {
                /* If we previously added a query feedback that is now getting
                 * reset, remove it since it is now a no-op and the deferred
@@ -620,16 +608,51 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
                                            record->query, record->query_count,
                                            record->copy);
          simple_mtx_unlock(&fb_cmd_pool->mutex);
+
          if (!resolved_record) {
+            list_splicetail(resolved_records, &dropped_records);
             result = VK_ERROR_OUT_OF_HOST_MEMORY;
-            goto out_free_query_records;
+            goto out_free_dropped_records;
          }
 
-         list_addtail(&resolved_record->head, &resolved_records);
+         list_addtail(&resolved_record->head, resolved_records);
       }
    }
 
+out_free_dropped_records:
+   simple_mtx_lock(&fb_cmd_pool->mutex);
+   vn_cmd_pool_free_query_records(cmd_pool, &dropped_records);
+   simple_mtx_unlock(&fb_cmd_pool->mutex);
+   return result;
+}
+
+static VkResult
+vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
+                                       uint32_t batch_index,
+                                       uint32_t *new_cmd_count)
+{
+   struct vk_queue *queue_vk = vk_queue_from_handle(submit->queue_handle);
+   struct vn_device *dev = (void *)queue_vk->base.device;
+   VkResult result;
+
+   struct vn_feedback_cmd_pool *fb_cmd_pool = NULL;
+   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
+      if (dev->queue_families[i] == queue_vk->queue_family_index) {
+         fb_cmd_pool = &dev->fb_cmd_pools[i];
+         break;
+      }
+   }
+   assert(fb_cmd_pool);
+
+   struct list_head resolved_records;
+   result = vn_queue_submission_get_resolved_query_records(
+      submit, batch_index, fb_cmd_pool, &resolved_records);
+   if (result != VK_SUCCESS)
+      return result;
+
+   /* currently the reset query is always recorded */
    assert(!list_is_empty(&resolved_records));
+   struct vn_query_feedback_cmd *qfb_cmd;
    result = vn_query_feedback_cmd_alloc(vn_device_to_handle(dev), fb_cmd_pool,
                                         &resolved_records, &qfb_cmd);
    if (result == VK_SUCCESS) {
@@ -642,6 +665,7 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
        * Should be rare enough to just log and leak the feedback cmd.
        */
       bool found_companion_cmd = false;
+      const uint32_t cmd_count = vn_get_cmd_count(submit, batch_index);
       for (uint32_t i = 0; i < cmd_count; i++) {
          struct vn_command_buffer *cmd = vn_get_cmd(submit, batch_index, i);
          if (!cmd->builder.is_simultaneous) {
@@ -656,11 +680,12 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
       vn_set_temp_cmd(submit, (*new_cmd_count)++, qfb_cmd->cmd_handle);
    }
 
-out_free_query_records:
    simple_mtx_lock(&fb_cmd_pool->mutex);
-   vn_cmd_pool_free_query_records(cmd_pool, &resolved_records);
-   vn_cmd_pool_free_query_records(cmd_pool, &dropped_records);
+   vn_cmd_pool_free_query_records(
+      vn_command_pool_from_handle(fb_cmd_pool->pool_handle),
+      &resolved_records);
    simple_mtx_unlock(&fb_cmd_pool->mutex);
+
    return result;
 }
 

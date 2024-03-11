@@ -7066,6 +7066,58 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
    case nir_intrinsic_load_subgroup_lt_mask:
       unreachable("not reached");
 
+   case nir_intrinsic_quad_vote_any:
+   case nir_intrinsic_quad_vote_all: {
+      struct brw_reg flag = brw_flag_reg(0, 0);
+      if (s.dispatch_width == 32)
+         flag.type = BRW_REGISTER_TYPE_UD;
+
+      fs_reg cond = get_nir_src(ntb, instr->src[0]);
+
+      /* This code is going to manipulate the results of flag mask, so clear it to
+       * avoid any residual value from disabled channels.
+       */
+      bld.exec_all().group(1, 0).MOV(flag, retype(brw_imm_ud(0), flag.type));
+
+      /* Mask of invocations where condition is true, note that mask is
+       * replicated to each invocation.
+       */
+      bld.CMP(bld.null_reg_ud(), cond, brw_imm_ud(0u), BRW_CONDITIONAL_NZ);
+      fs_reg cond_mask = bld.vgrf(BRW_REGISTER_TYPE_UD);
+      bld.MOV(cond_mask, flag);
+
+      /* Mask of invocations in the quad, each invocation will get
+       * all the bits set for their quad, i.e. invocations 0-3 will have
+       * 0b...1111, invocations 4-7 will have 0b...11110000 and so on.
+       */
+      fs_reg quad_mask = bld.vgrf(BRW_REGISTER_TYPE_UD);
+      bld.MOV(quad_mask, ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION]);
+      bld.AND(quad_mask, quad_mask, brw_imm_ud(0xFFFFFFFC));
+      bld.SHL(quad_mask, brw_imm_ud(0xF), quad_mask);
+
+      /* An invocation will have bits set for each quad that passes the
+       * condition.  This is uniform among each quad.
+       */
+      fs_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
+      bld.AND(tmp, cond_mask, quad_mask);
+
+      if (instr->intrinsic == nir_intrinsic_quad_vote_any) {
+         bld.CMP(retype(dest, BRW_REGISTER_TYPE_UD), tmp, brw_imm_ud(0), BRW_CONDITIONAL_NZ);
+      } else {
+         assert(instr->intrinsic == nir_intrinsic_quad_vote_all);
+
+         /* Filter out quad_mask to include only active channels. */
+         fs_reg active = bld.vgrf(BRW_REGISTER_TYPE_UD);
+         bld.exec_all().emit(SHADER_OPCODE_LOAD_LIVE_CHANNELS, active);
+         bld.MOV(active, fs_reg(component(active, 0)));
+         bld.AND(quad_mask, quad_mask, active);
+
+         bld.CMP(retype(dest, BRW_REGISTER_TYPE_UD), tmp, quad_mask, BRW_CONDITIONAL_Z);
+      }
+
+      break;
+   }
+
    case nir_intrinsic_vote_any: {
       const fs_builder ubld1 = bld.exec_all().group(1, 0);
 

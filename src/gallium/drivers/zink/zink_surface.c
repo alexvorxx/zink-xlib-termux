@@ -277,7 +277,6 @@ wrap_surface(struct pipe_context *pctx,
    struct zink_ctx_surface *csurf = CALLOC_STRUCT(zink_ctx_surface);
    if (!csurf) {
       zink_surface_reference (zink_screen(pctx->screen), &surface, NULL);
-      mesa_loge("ZINK: failed to allocate csurf!");
       return NULL;
    }
 
@@ -346,19 +345,25 @@ zink_create_surface(struct pipe_context *pctx,
    if (res->obj->dt) {
       /* don't cache swapchain surfaces. that's weird. */
       surface = do_create_surface(pctx, pres, templ, &ivci, 0, false);
-      if (unlikely(!surface))
+      if (unlikely(!surface)) {
+         mesa_loge("ZINK: failed do_create_surface!");
          return NULL;
+      }
 
       surface->is_swapchain = true;
    } else if (!needs_mutable) {
       surface = zink_get_surface(zink_context(pctx), pres, templ, &ivci);
-      if (unlikely(!surface))
+      if (unlikely(!surface)) {
+         mesa_loge("ZINK: failed to get non-mutable surface!");
          return NULL;
+      }
    }
 
    struct zink_ctx_surface *csurf = wrap_surface(pctx, surface, needs_mutable ? templ : &surface->base); /* move ownership of surface */
-   if (!unlikely (csurf))
+   if (!unlikely (csurf)) {
+      mesa_loge("ZINK: failed to allocate csurf!");
       return NULL;
+   }
 
    csurf->needs_mutable = needs_mutable;
    if (needs_mutable) {
@@ -372,18 +377,24 @@ zink_create_surface(struct pipe_context *pctx,
       rtempl.nr_samples = templ->nr_samples;
       rtempl.bind |= ZINK_BIND_TRANSIENT;
       struct zink_resource *transient = zink_resource(pctx->screen->resource_create(pctx->screen, &rtempl));
-      if (unlikely(!transient))
+      if (unlikely(!transient)) {
+         mesa_loge("ZINK: failed to create transient resource!");
          goto fail;
+      }
 
       ivci.image = transient->obj->image;
       struct zink_surface *tsurf = create_surface(pctx, &transient->base.b, templ, &ivci, true);
       pipe_resource_reference((struct pipe_resource**)&transient, NULL);
-      if (unlikely(!tsurf))
+      if (unlikely(!tsurf)) {
+         mesa_loge("ZINK: failed to create transient surface!");
          goto fail;
+      }
 
       csurf->transient = wrap_surface(pctx, tsurf, &tsurf->base); /* move ownership of tsurf */
-      if (unlikely(!csurf->transient))
+      if (unlikely(!csurf->transient)) {
+         mesa_loge("ZINK: failed to wrap transient surface!");
          goto fail;
+      }
    }
 
    return &csurf->base;

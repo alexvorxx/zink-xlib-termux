@@ -348,6 +348,7 @@ compile_spirv(struct lvp_device *pdevice, const VkPipelineShaderStageCreateInfo 
       .phys_ssbo_addr_format = nir_address_format_64bit_global,
       .push_const_addr_format = nir_address_format_logical,
       .shared_addr_format = nir_address_format_32bit_offset,
+      .constant_addr_format = nir_address_format_64bit_global,
 #ifdef VK_ENABLE_BETA_EXTENSIONS
       .shader_index = node_info ? node_info->index : 0,
 #endif
@@ -430,7 +431,7 @@ lvp_shader_lower(struct lvp_device *pdevice, struct lvp_pipeline *pipeline, nir_
               nir_address_format_vec2_index_32bit_offset);
 
    NIR_PASS_V(nir, nir_lower_explicit_io,
-              nir_var_mem_global,
+              nir_var_mem_global | nir_var_mem_constant,
               nir_address_format_64bit_global);
 
    if (nir->info.stage == MESA_SHADER_COMPUTE)

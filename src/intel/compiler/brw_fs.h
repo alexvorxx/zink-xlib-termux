@@ -362,12 +362,12 @@ public:
    fs_reg per_primitive_reg(const brw::fs_builder &bld,
                             int location, unsigned comp);
 
-   void dump_instruction_to_file(const fs_inst *inst, FILE *file) const;
+   void dump_instruction_to_file(const fs_inst *inst, FILE *file, const brw::def_analysis *defs) const;
    void dump_instructions_to_file(FILE *file) const;
 
    /* Convenience functions based on the above. */
-   void dump_instruction(const fs_inst *inst, FILE *file = stderr) const {
-      dump_instruction_to_file(inst, file);
+   void dump_instruction(const fs_inst *inst, FILE *file = stderr, const brw::def_analysis *defs = nullptr) const {
+      dump_instruction_to_file(inst, file, defs);
    }
    void dump_instructions(const char *name = nullptr) const;
 

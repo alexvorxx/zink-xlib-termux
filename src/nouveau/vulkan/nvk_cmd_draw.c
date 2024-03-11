@@ -3428,7 +3428,7 @@ nvk_CmdBeginTransformFeedbackEXT(VkCommandBuffer commandBuffer,
       uint64_t offset = pCounterBufferOffsets ? pCounterBufferOffsets[i] : 0;
       uint64_t cb_addr = nvk_buffer_address(buffer, offset);
 
-      if (nvk_cmd_buffer_device(cmd)->pdev->info.cls_eng3d >= TURING_A) {
+      if (nvk_cmd_buffer_3d_cls(cmd) >= TURING_A) {
          struct nv_push *p = nvk_cmd_buffer_push(cmd, 4);
          P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_XFB_COUNTER_LOAD));
          /* The STREAM_OUT_BUFFER_LOAD_WRITE_POINTER registers are 8 dword stride */

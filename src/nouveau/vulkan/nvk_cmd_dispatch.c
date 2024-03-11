@@ -562,7 +562,7 @@ nvk_CmdDispatchIndirect(VkCommandBuffer commandBuffer,
    struct nvk_descriptor_state *desc = &cmd->state.cs.descriptors;
 
    /* TODO: Indirect dispatch pre-Turing */
-   assert(nvk_cmd_buffer_device(cmd)->pdev->info.cls_eng3d >= TURING_A);
+   assert(nvk_cmd_buffer_compute_cls(cmd) >= TURING_COMPUTE_A);
 
    desc->root.cs.base_group[0] = 0;
    desc->root.cs.base_group[1] = 0;

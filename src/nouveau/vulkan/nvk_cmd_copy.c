@@ -22,6 +22,14 @@
 #include "nvk_cl90b5.h"
 #include "nvk_clc1b5.h"
 
+static inline uint16_t
+nvk_cmd_buffer_copy_cls(struct nvk_cmd_buffer *cmd)
+{
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+   return pdev->info.cls_copy;
+}
+
 struct nouveau_copy_buffer {
    uint64_t base_addr;
    VkImageType image_type;
@@ -245,7 +253,7 @@ nouveau_copy_rect(struct nvk_cmd_buffer *cmd, struct nouveau_copy *copy)
          else
             P_NV90B5_SET_SRC_LAYER(p, 0);
 
-         if (nvk_cmd_buffer_device(cmd)->pdev->info.cls_copy >= 0xc1b5) {
+         if (nvk_cmd_buffer_copy_cls(cmd) >= PASCAL_DMA_COPY_B) {
             P_MTHD(p, NVC1B5, SRC_ORIGIN_X);
             P_NVC1B5_SRC_ORIGIN_X(p, copy->src.offset_el.x * src_bw);
             P_NVC1B5_SRC_ORIGIN_Y(p, copy->src.offset_el.y);
@@ -286,7 +294,7 @@ nouveau_copy_rect(struct nvk_cmd_buffer *cmd, struct nouveau_copy *copy)
          else
             P_NV90B5_SET_DST_LAYER(p, 0);
 
-         if (nvk_cmd_buffer_device(cmd)->pdev->info.cls_copy >= 0xc1b5) {
+         if (nvk_cmd_buffer_copy_cls(cmd) >= PASCAL_DMA_COPY_B) {
             P_MTHD(p, NVC1B5, DST_ORIGIN_X);
             P_NVC1B5_DST_ORIGIN_X(p, copy->dst.offset_el.x * dst_bw);
             P_NVC1B5_DST_ORIGIN_Y(p, copy->dst.offset_el.y);

@@ -683,6 +683,15 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 
          uint64_t addr = nvk_image_base_address(image, ip) + level->offset_B;
 
+         if (nil_image->dim == NIL_IMAGE_DIM_3D) {
+            addr += nil_image_level_z_offset_B(nil_image,
+                                               iview->vk.base_mip_level,
+                                               iview->vk.base_array_layer);
+         } else {
+            addr += iview->vk.base_array_layer *
+                    (uint64_t)nil_image->array_stride_B;
+         }
+
          P_MTHD(p, NV9097, SET_COLOR_TARGET_A(i));
          P_NV9097_SET_COLOR_TARGET_A(p, i, addr >> 32);
          P_NV9097_SET_COLOR_TARGET_B(p, i, addr);
@@ -712,11 +721,10 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
                   THIRD_DIMENSION_CONTROL_THIRD_DIMENSION_DEFINES_ARRAY_SIZE,
             });
 
-            P_NV9097_SET_COLOR_TARGET_THIRD_DIMENSION(p, i,
-               iview->vk.base_array_layer + layer_count);
+            P_NV9097_SET_COLOR_TARGET_THIRD_DIMENSION(p, i, layer_count);
             P_NV9097_SET_COLOR_TARGET_ARRAY_PITCH(p, i,
                nil_image->array_stride_B >> 2);
-            P_NV9097_SET_COLOR_TARGET_LAYER(p, i, iview->vk.base_array_layer);
+            P_NV9097_SET_COLOR_TARGET_LAYER(p, i, 0);
          } else {
             /* NVIDIA can only render to 2D linear images */
             assert(nil_image->dim == NIL_IMAGE_DIM_2D);

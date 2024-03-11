@@ -21,7 +21,6 @@ dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two_samples.multisample_texture_8,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bits_unique_per_two_samples.multisample_texture_4,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bits_unique_per_two_samples.multisample_texture_8,Fail
-KHR-GL46.direct_state_access.framebuffers_texture_layer_attachment,Fail
 
 glx@glx-multi-window-single-context,Fail
 glx@glx-visuals-depth,Crash

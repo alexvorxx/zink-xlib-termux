@@ -427,35 +427,73 @@ tu_get_features(struct tu_physical_device *pdevice,
    features->shaderIntegerDotProduct             = true;
    features->maintenance4                        = true;
 
-   /* VK_EXT_conditional_rendering */
-   features->conditionalRendering = true;
-   features->inheritedConditionalRendering = true;
-
-   /* VK_EXT_transform_feedback */
-   features->transformFeedback = true;
-   features->geometryStreams = true;
-
    /* VK_KHR_index_type_uint8 */
    features->indexTypeUint8 = true;
+
+   /* VK_KHR_line_rasterization */
+   features->rectangularLines = true;
+   features->bresenhamLines = true;
+   features->smoothLines = false;
+   features->stippledRectangularLines = false;
+   features->stippledBresenhamLines = false;
+   features->stippledSmoothLines = false;
+
+   /* VK_KHR_maintenance5 */
+   features->maintenance5 = true;
+
+   /* VK_KHR_performance_query */
+   features->performanceCounterQueryPools = true;
+   features->performanceCounterMultipleQueryPools = false;
+
+   /* VK_KHR_pipeline_executable_properties */
+   features->pipelineExecutableInfo = true;
+
+   /* VK_KHR_present_id */
+   features->presentId = pdevice->vk.supported_extensions.KHR_present_id;
+
+   /* VK_KHR_present_wait */
+   features->presentWait = pdevice->vk.supported_extensions.KHR_present_wait;
+
+   /* VK_KHR_shader_expect_assume */
+   features->shaderExpectAssume = true;
 
    /* VK_KHR_vertex_attribute_divisor */
    features->vertexAttributeInstanceRateDivisor = true;
    features->vertexAttributeInstanceRateZeroDivisor = true;
 
-   /* VK_EXT_depth_clip_enable */
-   features->depthClipEnable = true;
-
    /* VK_EXT_4444_formats */
    features->formatA4R4G4B4 = true;
    features->formatA4B4G4R4 = true;
+
+   /* VK_EXT_attachment_feedback_loop_layout */
+   features->attachmentFeedbackLoopLayout = true;
 
    /* VK_EXT_border_color_swizzle */
    features->borderColorSwizzle = true;
    features->borderColorSwizzleFromImage = true;
 
+   /* VK_EXT_color_write_enable */
+   features->colorWriteEnable = true;
+
+   /* VK_EXT_conditional_rendering */
+   features->conditionalRendering = true;
+   features->inheritedConditionalRendering = true;
+
    /* VK_EXT_custom_border_color */
    features->customBorderColors = true;
    features->customBorderColorWithoutFormat = true;
+
+   /* VK_EXT_depth_clip_control */
+   features->depthClipControl = true;
+
+   /* VK_EXT_depth_clip_enable */
+   features->depthClipEnable = true;
+
+   /* VK_EXT_descriptor_buffer */
+   features->descriptorBuffer = true;
+   features->descriptorBufferCaptureReplay = pdevice->has_set_iova;
+   features->descriptorBufferImageLayoutIgnored = true;
+   features->descriptorBufferPushDescriptors = true;
 
    /* VK_EXT_extended_dynamic_state */
    features->extendedDynamicState = true;
@@ -498,105 +536,67 @@ tu_get_features(struct tu_physical_device *pdevice,
    features->extendedDynamicState3RepresentativeFragmentTestEnable = false;
    features->extendedDynamicState3ColorBlendAdvanced = false;
 
-   /* VK_KHR_performance_query */
-   features->performanceCounterQueryPools = true;
-   features->performanceCounterMultipleQueryPools = false;
+   /* VK_EXT_fragment_density_map */
+   features->fragmentDensityMap = true;
+   features->fragmentDensityMapDynamic = false;
+   features->fragmentDensityMapNonSubsampledImages = true;
 
-   /* VK_KHR_pipeline_executable_properties */
-   features->pipelineExecutableInfo = true;
+   /* VK_EXT_global_priority_query */
+   features->globalPriorityQuery = true;
 
-   /* VK_EXT_robustness2 */
-   features->robustBufferAccess2 = true;
-   features->robustImageAccess2 = true;
-   features->nullDescriptor = true;
+   /* VK_EXT_graphics_pipeline_library */
+   features->graphicsPipelineLibrary = true;
 
-   /* VK_EXT_provoking_vertex */
-   features->provokingVertexLast = true;
+   /* VK_EXT_image_2d_view_of_3d  */
+   features->image2DViewOf3D = true;
+   features->sampler2DViewOf3D = true;
+
+   /* VK_EXT_image_view_min_lod */
+   features->minLod = true;
+
+   /* VK_EXT_multi_draw */
+   features->multiDraw = true;
 
    /* VK_EXT_mutable_descriptor_type */
    features->mutableDescriptorType = true;
 
-   /* VK_KHR_line_rasterization */
-   features->rectangularLines = true;
-   features->bresenhamLines = true;
-   features->smoothLines = false;
-   features->stippledRectangularLines = false;
-   features->stippledBresenhamLines = false;
-   features->stippledSmoothLines = false;
+   /* VK_EXT_non_seamless_cube_map */
+   features->nonSeamlessCubeMap = true;
 
    /* VK_EXT_primitive_topology_list_restart */
    features->primitiveTopologyListRestart = true;
    features->primitiveTopologyPatchListRestart = false;
-
-   /* VK_EXT_rasterization_order_attachment_access */
-   features->rasterizationOrderColorAttachmentAccess = true;
-   features->rasterizationOrderDepthAttachmentAccess = true;
-   features->rasterizationOrderStencilAttachmentAccess = true;
-
-   /* VK_EXT_depth_clip_control */
-   features->depthClipControl = true;
-
-   /* VK_EXT_texel_buffer_alignment */
-   features->texelBufferAlignment = true;
 
    /* VK_EXT_primitives_generated_query */
    features->primitivesGeneratedQuery = true;
    features->primitivesGeneratedQueryWithRasterizerDiscard = false;
    features->primitivesGeneratedQueryWithNonZeroStreams = false;
 
-   /* VK_EXT_image_view_min_lod */
-   features->minLod = true;
+   /* VK_EXT_provoking_vertex */
+   features->provokingVertexLast = true;
 
-   /* VK_EXT_image_2d_view_of_3d  */
-   features->image2DViewOf3D = true;
-   features->sampler2DViewOf3D = true;
+   /* VK_EXT_rasterization_order_attachment_access */
+   features->rasterizationOrderColorAttachmentAccess = true;
+   features->rasterizationOrderDepthAttachmentAccess = true;
+   features->rasterizationOrderStencilAttachmentAccess = true;
 
-   /* VK_EXT_color_write_enable */
-   features->colorWriteEnable = true;
+   /* VK_EXT_robustness2 */
+   features->robustBufferAccess2 = true;
+   features->robustImageAccess2 = true;
+   features->nullDescriptor = true;
 
    /* VK_EXT_shader_module_identifier */
    features->shaderModuleIdentifier = true;
 
+   /* VK_EXT_texel_buffer_alignment */
+   features->texelBufferAlignment = true;
+
+   /* VK_EXT_transform_feedback */
+   features->transformFeedback = true;
+   features->geometryStreams = true;
+
    /* VK_EXT_vertex_input_dynamic_state */
    features->vertexInputDynamicState = true;
-
-   /* VK_EXT_non_seamless_cube_map */
-   features->nonSeamlessCubeMap = true;
-
-   /* VK_EXT_attachment_feedback_loop_layout */
-   features->attachmentFeedbackLoopLayout = true;
-
-   /* VK_EXT_global_priority_query */
-   features->globalPriorityQuery = true;
-
-   /* VK_EXT_multi_draw */
-   features->multiDraw = true;
-
-   /* VK_EXT_graphics_pipeline_library */
-   features->graphicsPipelineLibrary = true;
-
-   /* VK_KHR_present_id */
-   features->presentId = pdevice->vk.supported_extensions.KHR_present_id;
-
-   /* VK_KHR_present_wait */
-   features->presentWait = pdevice->vk.supported_extensions.KHR_present_wait;
-
-   /* VK_EXT_descriptor_buffer */
-   features->descriptorBuffer = true;
-   features->descriptorBufferCaptureReplay = pdevice->has_set_iova;
-   features->descriptorBufferImageLayoutIgnored = true;
-   features->descriptorBufferPushDescriptors = true;
-
-   /* VK_EXT_fragment_density_map */
-   features->fragmentDensityMap = true;
-   features->fragmentDensityMapDynamic = false;
-   features->fragmentDensityMapNonSubsampledImages = true;
-
-   /* VK_KHR_maintenance5 */
-   features->maintenance5 = true;
-
-   /* VK_KHR_shader_expect_assume */
-   features->shaderExpectAssume = true;
 }
 
 static void

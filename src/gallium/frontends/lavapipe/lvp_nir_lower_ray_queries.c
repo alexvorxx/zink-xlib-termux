@@ -347,33 +347,6 @@ lower_rq_initialize(nir_builder *b, nir_def *index, nir_intrinsic_instr *instr,
 }
 
 static nir_def *
-build_vec3_mat_mult(nir_builder *b, nir_def *vec, nir_def *matrix[], bool translation)
-{
-   nir_def *result_components[3] = {
-      nir_channel(b, matrix[0], 3),
-      nir_channel(b, matrix[1], 3),
-      nir_channel(b, matrix[2], 3),
-   };
-   for (unsigned i = 0; i < 3; ++i) {
-      for (unsigned j = 0; j < 3; ++j) {
-         nir_def *v =
-            nir_fmul(b, nir_channels(b, vec, 1 << j), nir_channels(b, matrix[i], 1 << j));
-         result_components[i] = (translation || j) ? nir_fadd(b, result_components[i], v) : v;
-      }
-   }
-   return nir_vec(b, result_components, 3);
-}
-
-static void
-build_wto_matrix_load(nir_builder *b, nir_def *instance_addr, nir_def **out)
-{
-   unsigned offset = offsetof(struct lvp_bvh_instance_node, wto_matrix);
-   for (unsigned i = 0; i < 3; ++i) {
-      out[i] = nir_build_load_global(b, 4, 32, nir_iadd_imm(b, instance_addr, offset + i * 16));
-   }
-}
-
-static nir_def *
 lower_rq_load(nir_builder *b, nir_def *index, nir_intrinsic_instr *instr,
               struct ray_query_vars *vars)
 {
@@ -416,14 +389,14 @@ lower_rq_load(nir_builder *b, nir_def *index, nir_intrinsic_instr *instr,
    case nir_ray_query_value_intersection_object_ray_direction: {
       nir_def *instance_node_addr = rq_load_var(b, index, intersection->instance_addr);
       nir_def *wto_matrix[3];
-      build_wto_matrix_load(b, instance_node_addr, wto_matrix);
-      return build_vec3_mat_mult(b, rq_load_var(b, index, vars->direction), wto_matrix, false);
+      lvp_load_wto_matrix(b, instance_node_addr, wto_matrix);
+      return lvp_mul_vec3_mat(b, rq_load_var(b, index, vars->direction), wto_matrix, false);
    }
    case nir_ray_query_value_intersection_object_ray_origin: {
       nir_def *instance_node_addr = rq_load_var(b, index, intersection->instance_addr);
       nir_def *wto_matrix[3];
-      build_wto_matrix_load(b, instance_node_addr, wto_matrix);
-      return build_vec3_mat_mult(b, rq_load_var(b, index, vars->origin), wto_matrix, true);
+      lvp_load_wto_matrix(b, instance_node_addr, wto_matrix);
+      return lvp_mul_vec3_mat(b, rq_load_var(b, index, vars->origin), wto_matrix, true);
    }
    case nir_ray_query_value_intersection_object_to_world: {
       nir_def *instance_node_addr = rq_load_var(b, index, intersection->instance_addr);
@@ -452,7 +425,7 @@ lower_rq_load(nir_builder *b, nir_def *index, nir_intrinsic_instr *instr,
       nir_def *instance_node_addr = rq_load_var(b, index, intersection->instance_addr);
 
       nir_def *wto_matrix[3];
-      build_wto_matrix_load(b, instance_node_addr, wto_matrix);
+      lvp_load_wto_matrix(b, instance_node_addr, wto_matrix);
 
       nir_def *vals[3];
       for (unsigned i = 0; i < 3; ++i)

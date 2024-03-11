@@ -13,6 +13,33 @@
 #include <float.h>
 #include <math.h>
 
+nir_def *
+lvp_mul_vec3_mat(nir_builder *b, nir_def *vec, nir_def *matrix[], bool translation)
+{
+   nir_def *result_components[3] = {
+      nir_channel(b, matrix[0], 3),
+      nir_channel(b, matrix[1], 3),
+      nir_channel(b, matrix[2], 3),
+   };
+   for (unsigned i = 0; i < 3; ++i) {
+      for (unsigned j = 0; j < 3; ++j) {
+         nir_def *v =
+            nir_fmul(b, nir_channels(b, vec, 1 << j), nir_channels(b, matrix[i], 1 << j));
+         result_components[i] = (translation || j) ? nir_fadd(b, result_components[i], v) : v;
+      }
+   }
+   return nir_vec(b, result_components, 3);
+}
+
+void
+lvp_load_wto_matrix(nir_builder *b, nir_def *instance_addr, nir_def **out)
+{
+   unsigned offset = offsetof(struct lvp_bvh_instance_node, wto_matrix);
+   for (unsigned i = 0; i < 3; ++i) {
+      out[i] = nir_build_load_global(b, 4, 32, nir_iadd_imm(b, instance_addr, offset + i * 16));
+   }
+}
+
 static nir_def *
 lvp_build_intersect_ray_box(nir_builder *b, nir_def *node_addr, nir_def *ray_tmax,
                             nir_def *origin, nir_def *dir, nir_def *inv_dir)
@@ -229,32 +256,6 @@ lvp_build_intersect_ray_tri(nir_builder *b, nir_def *node_addr, nir_def *ray_tma
 }
 
 static nir_def *
-lvp_build_vec3_mat_mult(nir_builder *b, nir_def *vec, nir_def *matrix[], bool translation)
-{
-   nir_def *result_components[3] = {
-      nir_channel(b, matrix[0], 3),
-      nir_channel(b, matrix[1], 3),
-      nir_channel(b, matrix[2], 3),
-   };
-   for (unsigned i = 0; i < 3; ++i) {
-      for (unsigned j = 0; j < 3; ++j) {
-         nir_def *v = nir_fmul(b, nir_channels(b, vec, 1 << j), nir_channels(b, matrix[i], 1 << j));
-         result_components[i] = (translation || j) ? nir_fadd(b, result_components[i], v) : v;
-      }
-   }
-   return nir_vec(b, result_components, 3);
-}
-
-static void
-lvp_build_wto_matrix_load(nir_builder *b, nir_def *instance_addr, nir_def **out)
-{
-   unsigned offset = offsetof(struct lvp_bvh_instance_node, wto_matrix);
-   for (unsigned i = 0; i < 3; ++i) {
-      out[i] = nir_build_load_global(b, 4, 32, nir_iadd_imm(b, instance_addr, offset + i * 16));
-   }
-}
-
-static nir_def *
 lvp_build_hit_is_opaque(nir_builder *b, nir_def *sbt_offset_and_flags,
                         const struct lvp_ray_flags *ray_flags, nir_def *geometry_id_and_flags)
 {
@@ -439,7 +440,7 @@ lvp_build_ray_traversal(nir_builder *b, const struct lvp_ray_traversal_args *arg
                   nir_iadd_imm(b, node_addr, offsetof(struct lvp_bvh_instance_node, bvh_ptr)));
 
                nir_def *wto_matrix[3];
-               lvp_build_wto_matrix_load(b, node_addr, wto_matrix);
+               lvp_load_wto_matrix(b, node_addr, wto_matrix);
 
                nir_store_deref(b, args->vars.sbt_offset_and_flags, nir_channel(b, instance_data, 3),
                                1);
@@ -462,9 +463,9 @@ lvp_build_ray_traversal(nir_builder *b, const struct lvp_ray_traversal_args *arg
 
                /* Transform the ray into object space */
                nir_store_deref(b, args->vars.origin,
-                               lvp_build_vec3_mat_mult(b, args->origin, wto_matrix, true), 7);
+                               lvp_mul_vec3_mat(b, args->origin, wto_matrix, true), 7);
                nir_store_deref(b, args->vars.dir,
-                               lvp_build_vec3_mat_mult(b, args->dir, wto_matrix, false), 7);
+                               lvp_mul_vec3_mat(b, args->dir, wto_matrix, false), 7);
                nir_store_deref(b, args->vars.inv_dir,
                                nir_fdiv(b, vec3ones, nir_load_deref(b, args->vars.dir)), 7);
             }

@@ -371,6 +371,17 @@ nvk_get_device_features(const struct nv_device_info *info,
       .fragmentShaderBarycentric = info->cls_eng3d >= TURING_A &&
          (nvk_nak_stages(info) & VK_SHADER_STAGE_FRAGMENT_BIT) != 0,
 
+      /* VK_KHR_index_type_uint8 */
+      .indexTypeUint8 = true,
+
+      /* VK_KHR_line_rasterization */
+      .rectangularLines = true,
+      .bresenhamLines = true,
+      .smoothLines = true,
+      .stippledRectangularLines = true,
+      .stippledBresenhamLines = true,
+      .stippledSmoothLines = true,
+
       /* VK_KHR_maintenance5 */
       .maintenance5 = true,
 
@@ -386,6 +397,13 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_KHR_shader_clock */
       .shaderSubgroupClock = true,
       .shaderDeviceClock = true,
+
+      /* VK_KHR_shader_expect_assume */
+      .shaderExpectAssume = true,
+
+      /* VK_KHR_vertex_attribute_divisor */
+      .vertexAttributeInstanceRateDivisor = true,
+      .vertexAttributeInstanceRateZeroDivisor = true,
 
       /* VK_KHR_workgroup_memory_explicit_layout */
       .workgroupMemoryExplicitLayout = true,
@@ -487,17 +505,6 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_EXT_image_view_min_lod */
       .minLod = true,
 
-      /* VK_KHR_index_type_uint8 */
-      .indexTypeUint8 = true,
-
-      /* VK_KHR_line_rasterization */
-      .rectangularLines = true,
-      .bresenhamLines = true,
-      .smoothLines = true,
-      .stippledRectangularLines = true,
-      .stippledBresenhamLines = true,
-      .stippledSmoothLines = true,
-
       /* VK_EXT_map_memory_placed */
       .memoryMapPlaced = true,
       .memoryMapRangePlaced = false,
@@ -549,10 +556,6 @@ nvk_get_device_features(const struct nv_device_info *info,
       .transformFeedback = true,
       .geometryStreams = true,
 
-      /* VK_KHR_vertex_attribute_divisor */
-      .vertexAttributeInstanceRateDivisor = true,
-      .vertexAttributeInstanceRateZeroDivisor = true,
-
       /* VK_EXT_vertex_input_dynamic_state */
       .vertexInputDynamicState = true,
 
@@ -567,9 +570,6 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_VALVE_mutable_descriptor_type */
       .mutableDescriptorType = true,
-
-      /* VK_KHR_shader_expect_assume */
-      .shaderExpectAssume = true,
    };
 }
 

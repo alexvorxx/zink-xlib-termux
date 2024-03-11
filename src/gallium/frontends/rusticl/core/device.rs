@@ -785,8 +785,17 @@ impl Device {
     }
 
     pub fn global_mem_size(&self) -> cl_ulong {
-        self.screen
-            .compute_param(pipe_compute_cap::PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE)
+        if let Some(memory_info) = self.screen().query_memory_info() {
+            let memory: cl_ulong = if memory_info.total_device_memory != 0 {
+                memory_info.total_device_memory.into()
+            } else {
+                memory_info.total_staging_memory.into()
+            };
+            memory * 1024
+        } else {
+            self.screen
+                .compute_param(pipe_compute_cap::PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE)
+        }
     }
 
     pub fn image_2d_size(&self) -> usize {

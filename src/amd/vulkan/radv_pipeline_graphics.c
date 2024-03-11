@@ -584,9 +584,11 @@ radv_compute_ia_multi_vgt_param(const struct radv_device *device, struct radv_sh
    if (shaders[MESA_SHADER_GEOMETRY] && shaders[MESA_SHADER_GEOMETRY]->info.uses_prim_id)
       ia_multi_vgt_param.ia_switch_on_eoi = true;
    if (shaders[MESA_SHADER_TESS_CTRL]) {
+      const struct radv_shader *tes = radv_get_shader(shaders, MESA_SHADER_TESS_EVAL);
+
       /* SWITCH_ON_EOI must be set if PrimID is used. */
-      if (shaders[MESA_SHADER_TESS_CTRL]->info.uses_prim_id ||
-          radv_get_shader(shaders, MESA_SHADER_TESS_EVAL)->info.uses_prim_id)
+      if (shaders[MESA_SHADER_TESS_CTRL]->info.uses_prim_id || tes->info.uses_prim_id ||
+          (tes->info.merged_shader_compiled_separately && shaders[MESA_SHADER_GEOMETRY]->info.uses_prim_id))
          ia_multi_vgt_param.ia_switch_on_eoi = true;
    }
 

@@ -4648,6 +4648,8 @@ scan_nir(struct zink_screen *screen, nir_shader *shader, struct zink_shader *zs)
                 BITSET_SET_RANGE(shader->info.images_used, var->data.binding,
                                  var->data.binding + (MAX2(size, 1) - 1));
             }
+            if (intr->intrinsic == nir_intrinsic_load_barycentric_at_sample)
+               zs->uses_sample = true;
             if (intr->intrinsic == nir_intrinsic_is_sparse_texels_resident ||
                 intr->intrinsic == nir_intrinsic_image_deref_sparse_load)
                zs->sinfo.have_sparse = true;

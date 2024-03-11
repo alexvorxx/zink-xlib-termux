@@ -824,6 +824,7 @@ struct zink_shader {
    bool has_uniforms;
    bool has_edgeflags;
    bool needs_inlining;
+   bool uses_sample;
    struct spirv_shader *spirv;
 
    struct {

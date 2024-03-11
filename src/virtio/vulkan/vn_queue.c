@@ -585,37 +585,54 @@ vn_queue_submission_get_resolved_query_records(
       list_for_each_entry(struct vn_cmd_query_record, record,
                           &cmd->builder.query_records, head) {
          if (!record->copy) {
-            list_for_each_entry_safe(struct vn_cmd_query_record,
-                                     resolved_record, resolved_records,
-                                     head) {
+            list_for_each_entry_safe(struct vn_cmd_query_record, prev,
+                                     resolved_records, head) {
                /* If we previously added a query feedback that is now getting
                 * reset, remove it since it is now a no-op and the deferred
                 * feedback copy will cause a hang waiting for the reset query
                 * to become available.
                 */
-               if (resolved_record->copy &&
-                   resolved_record->query_pool == record->query_pool &&
-                   resolved_record->query >= record->query &&
-                   resolved_record->query <
-                      record->query + record->query_count)
-                  list_move_to(&resolved_record->head, &dropped_records);
+               if (prev->copy && prev->query_pool == record->query_pool &&
+                   prev->query >= record->query &&
+                   prev->query < record->query + record->query_count)
+                  list_move_to(&prev->head, &dropped_records);
             }
          }
 
          simple_mtx_lock(&fb_cmd_pool->mutex);
-         struct vn_cmd_query_record *resolved_record =
-            vn_cmd_pool_alloc_query_record(cmd_pool, record->query_pool,
-                                           record->query, record->query_count,
-                                           record->copy);
+         struct vn_cmd_query_record *curr = vn_cmd_pool_alloc_query_record(
+            cmd_pool, record->query_pool, record->query, record->query_count,
+            record->copy);
          simple_mtx_unlock(&fb_cmd_pool->mutex);
 
-         if (!resolved_record) {
+         if (!curr) {
             list_splicetail(resolved_records, &dropped_records);
             result = VK_ERROR_OUT_OF_HOST_MEMORY;
             goto out_free_dropped_records;
          }
 
-         list_addtail(&resolved_record->head, resolved_records);
+         list_addtail(&curr->head, resolved_records);
+      }
+   }
+
+   /* further resolve to batch sequential queries */
+   struct vn_cmd_query_record *curr =
+      list_first_entry(resolved_records, struct vn_cmd_query_record, head);
+   list_for_each_entry_safe(struct vn_cmd_query_record, next,
+                            resolved_records, head) {
+      if (curr->query_pool == next->query_pool && curr->copy == next->copy) {
+         if (curr->query + curr->query_count == next->query) {
+            curr->query_count += next->query_count;
+            list_move_to(&next->head, &dropped_records);
+         } else if (curr->query == next->query + next->query_count) {
+            curr->query = next->query;
+            curr->query_count += next->query_count;
+            list_move_to(&next->head, &dropped_records);
+         } else {
+            curr = next;
+         }
+      } else {
+         curr = next;
       }
    }
 

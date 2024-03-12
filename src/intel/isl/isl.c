@@ -1114,7 +1114,8 @@ isl_surf_choose_tiling(const struct isl_device *dev,
     * shapes.
     */
    if (info->usage & ISL_SURF_USAGE_SPARSE_BIT) {
-      CHOOSE(ISL_GFX_VER(dev) >= 20 ? ISL_TILING_64_XE2 : ISL_TILING_64);
+      CHOOSE(ISL_TILING_64_XE2);
+      CHOOSE(ISL_TILING_64);
       CHOOSE(ISL_TILING_ICL_Ys);
       CHOOSE(ISL_TILING_SKL_Ys);
    }
@@ -1141,7 +1142,8 @@ isl_surf_choose_tiling(const struct isl_device *dev,
    CHOOSE(ISL_TILING_ICL_Yf);
    CHOOSE(ISL_TILING_SKL_Ys);
    CHOOSE(ISL_TILING_ICL_Ys);
-   CHOOSE(ISL_GFX_VER(dev) >= 20 ? ISL_TILING_64_XE2 : ISL_TILING_64);
+   CHOOSE(ISL_TILING_64);
+   CHOOSE(ISL_TILING_64_XE2);
 
    CHOOSE(ISL_TILING_X);
    CHOOSE(ISL_TILING_W);

@@ -41,8 +41,12 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
                          uint32_t *bos, unsigned nr_bos, uint32_t *in_fences,
                          unsigned nr_in_fences)
 {
-   const struct panvk_device *dev = queue->device;
-   unsigned debug = dev->physical_device->instance->debug_flags;
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
+   struct panvk_instance *instance =
+      to_panvk_instance(dev->vk.physical->instance);
+   unsigned debug = instance->debug_flags;
    int ret;
 
    /* Reset the batch if it's already been issued */
@@ -78,7 +82,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 
       if (debug & PANVK_DEBUG_TRACE) {
          pandecode_jc(dev->debug.decode_ctx, batch->jc.first_job,
-                      dev->physical_device->kmod.props.gpu_prod_id);
+                      phys_dev->kmod.props.gpu_prod_id);
       }
 
       if (debug & PANVK_DEBUG_DUMP)
@@ -112,7 +116,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 
       if (debug & PANVK_DEBUG_TRACE)
          pandecode_jc(dev->debug.decode_ctx, batch->fragment_job,
-                      dev->physical_device->kmod.props.gpu_prod_id);
+                      phys_dev->kmod.props.gpu_prod_id);
 
       if (debug & PANVK_DEBUG_DUMP)
          pandecode_dump_mappings(dev->debug.decode_ctx);
@@ -127,7 +131,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 static void
 panvk_queue_transfer_sync(struct panvk_queue *queue, uint32_t syncobj)
 {
-   struct panvk_device *dev = queue->device;
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
    int ret;
 
    struct drm_syncobj_handle handle = {
@@ -172,7 +176,7 @@ static void
 panvk_signal_event_syncobjs(struct panvk_queue *queue,
                             struct panvk_batch *batch)
 {
-   struct panvk_device *dev = queue->device;
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
 
    util_dynarray_foreach(&batch->event_ops, struct panvk_cmd_event_op, op) {
       switch (op->type) {
@@ -205,7 +209,7 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
                              struct vk_queue_submit *submit)
 {
    struct panvk_queue *queue = container_of(vk_queue, struct panvk_queue, vk);
-   struct panvk_device *dev = queue->device;
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
 
    unsigned nr_semaphores = submit->wait_count + 1;
    uint32_t semaphores[nr_semaphores];

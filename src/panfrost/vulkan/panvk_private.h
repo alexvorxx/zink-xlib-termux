@@ -210,8 +210,6 @@ struct panvk_physical_device {
       const struct panfrost_format *all;
    } formats;
 
-   struct panvk_instance *instance;
-
    char name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
    uint8_t driver_uuid[VK_UUID_SIZE];
    uint8_t device_uuid[VK_UUID_SIZE];
@@ -224,6 +222,12 @@ struct panvk_physical_device {
 
    int master_fd;
 };
+
+static inline struct panvk_physical_device *
+to_panvk_physical_device(struct vk_physical_device *phys_dev)
+{
+   return container_of(phys_dev, struct panvk_physical_device, vk);
+}
 
 enum panvk_debug_flags {
    PANVK_DEBUG_STARTUP = 1 << 0,
@@ -248,6 +252,12 @@ struct panvk_instance {
    } kmod;
 };
 
+static inline struct panvk_instance *
+to_panvk_instance(struct vk_instance *instance)
+{
+   return container_of(instance, struct panvk_instance, vk);
+}
+
 VkResult panvk_wsi_init(struct panvk_physical_device *physical_device);
 void panvk_wsi_finish(struct panvk_physical_device *physical_device);
 
@@ -261,7 +271,6 @@ panvk_physical_device_extension_supported(struct panvk_physical_device *dev,
 
 struct panvk_queue {
    struct vk_queue vk;
-   struct panvk_device *device;
    uint32_t sync;
 };
 
@@ -281,17 +290,19 @@ struct panvk_device {
 
    struct vk_device_dispatch_table cmd_dispatch;
 
-   struct panvk_instance *instance;
-
    struct panvk_queue *queues[PANVK_MAX_QUEUE_FAMILIES];
    int queue_count[PANVK_MAX_QUEUE_FAMILIES];
-
-   struct panvk_physical_device *physical_device;
 
    struct {
       struct pandecode_context *decode_ctx;
    } debug;
 };
+
+static inline struct panvk_device *
+to_panvk_device(struct vk_device *dev)
+{
+   return container_of(dev, struct panvk_device, vk);
+}
 
 #define TILER_DESC_WORDS 56
 
@@ -776,8 +787,6 @@ struct panvk_cmd_bind_point_state {
 
 struct panvk_cmd_buffer {
    struct vk_command_buffer vk;
-
-   struct panvk_device *device;
 
    struct panvk_pool desc_pool;
    struct panvk_pool varying_pool;

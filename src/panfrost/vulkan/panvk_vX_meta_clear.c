@@ -37,6 +37,8 @@ panvk_meta_clear_color_attachment_shader(struct panvk_device *dev,
                                          enum glsl_base_type base_type,
                                          struct pan_shader_info *shader_info)
 {
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
    struct pan_pool *bin_pool = &dev->meta.bin_pool.base;
 
    nir_builder b = nir_builder_init_simple_shader(
@@ -53,7 +55,7 @@ panvk_meta_clear_color_attachment_shader(struct panvk_device *dev,
    nir_store_var(&b, out, clear_values, 0xff);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = dev->physical_device->kmod.props.gpu_prod_id,
+      .gpu_id = phys_dev->kmod.props.gpu_prod_id,
       .is_blit = true,
       .no_ubo_to_push = true,
    };
@@ -255,7 +257,8 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf,
                             const VkClearValue *clear_value,
                             const VkClearRect *clear_rect)
 {
-   struct panvk_meta *meta = &cmdbuf->device->meta;
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_meta *meta = &dev->meta;
    struct panvk_batch *batch = cmdbuf->state.batch;
    const struct panvk_render_pass *pass = cmdbuf->state.pass;
    const struct panvk_render_pass_attachment *att =
@@ -318,6 +321,9 @@ panvk_meta_clear_color_img(struct panvk_cmd_buffer *cmdbuf,
                            const VkClearColorValue *color,
                            const VkImageSubresourceRange *range)
 {
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
    struct pan_image_view view = {
       .format = img->pimage.layout.format,
@@ -330,8 +336,7 @@ panvk_meta_clear_color_img(struct panvk_cmd_buffer *cmdbuf,
 
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = panfrost_query_optimal_tib_size(
-         cmdbuf->device->physical_device->model),
+      .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .nr_samples = img->pimage.layout.nr_samples,
       .rt_count = 1,
       .rts[0].view = &view,
@@ -389,6 +394,9 @@ panvk_meta_clear_zs_img(struct panvk_cmd_buffer *cmdbuf,
                         const VkClearDepthStencilValue *value,
                         const VkImageSubresourceRange *range)
 {
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
    struct pan_image_view view = {
       .format = img->pimage.layout.format,
@@ -401,8 +409,7 @@ panvk_meta_clear_zs_img(struct panvk_cmd_buffer *cmdbuf,
 
    cmdbuf->state.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = panfrost_query_optimal_tib_size(
-         cmdbuf->device->physical_device->model),
+      .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .nr_samples = img->pimage.layout.nr_samples,
       .rt_count = 1,
       .zs.clear_value.depth = value->depth,

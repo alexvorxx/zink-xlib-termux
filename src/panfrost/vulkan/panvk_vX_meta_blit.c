@@ -34,7 +34,9 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
                 const struct panvk_image *src_img,
                 const struct panvk_image *dst_img)
 {
-   struct panvk_device *dev = cmdbuf->device;
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
    struct pan_blit_context ctx;
    struct pan_image_view views[2] = {
@@ -56,8 +58,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
    };
 
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = panfrost_query_optimal_tib_size(
-         cmdbuf->device->physical_device->model),
+      .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .width = u_minify(blitinfo->dst.planes[0].image->layout.width,
                         blitinfo->dst.level),
       .height = u_minify(blitinfo->dst.planes[0].image->layout.height,
@@ -227,15 +228,18 @@ panvk_per_arch(CmdResolveImage2)(VkCommandBuffer commandBuffer,
 void
 panvk_per_arch(meta_blit_init)(struct panvk_device *dev)
 {
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
+
    panvk_pool_init(&dev->meta.blitter.bin_pool, dev, NULL,
                    PAN_KMOD_BO_FLAG_EXECUTABLE, 16 * 1024,
                    "panvk_meta blitter binary pool", false);
    panvk_pool_init(&dev->meta.blitter.desc_pool, dev, NULL, 0, 16 * 1024,
                    "panvk_meta blitter descriptor pool", false);
    pan_blend_shader_cache_init(&dev->meta.blend_shader_cache,
-                               dev->physical_device->kmod.props.gpu_prod_id);
+                               phys_dev->kmod.props.gpu_prod_id);
    GENX(pan_blitter_cache_init)
-   (&dev->meta.blitter.cache, dev->physical_device->kmod.props.gpu_prod_id,
+   (&dev->meta.blitter.cache, phys_dev->kmod.props.gpu_prod_id,
     &dev->meta.blend_shader_cache, &dev->meta.blitter.bin_pool.base,
     &dev->meta.blitter.desc_pool.base);
 }

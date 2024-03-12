@@ -45,9 +45,10 @@ static uint32_t
 panvk_debug_adjust_bo_flags(const struct panvk_device *device,
                             uint32_t bo_flags)
 {
-   uint32_t debug_flags = device->physical_device->instance->debug_flags;
+   struct panvk_instance *instance =
+      to_panvk_instance(device->vk.physical->instance);
 
-   if (debug_flags & PANVK_DEBUG_DUMP)
+   if (instance->debug_flags & PANVK_DEBUG_DUMP)
       bo_flags &= ~PAN_KMOD_BO_FLAG_NO_MMAP;
 
    return bo_flags;
@@ -102,7 +103,9 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
       return;
    }
 
-   struct panvk_device *dev = cmdbuf->device;
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
 
    list_addtail(&batch->node, &cmdbuf->batches);
 
@@ -118,11 +121,10 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
 
    if (batch->tlsinfo.tls.size) {
       unsigned thread_tls_alloc =
-         panfrost_query_thread_tls_alloc(&dev->physical_device->kmod.props);
+         panfrost_query_thread_tls_alloc(&phys_dev->kmod.props);
       unsigned core_id_range;
 
-      panfrost_query_core_count(&dev->physical_device->kmod.props,
-                                &core_id_range);
+      panfrost_query_core_count(&phys_dev->kmod.props, &core_id_range);
 
       unsigned size = panfrost_get_total_stack_size(
          batch->tlsinfo.tls.size, thread_tls_alloc, core_id_range);
@@ -142,7 +144,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
       GENX(pan_emit_tls)(&batch->tlsinfo, batch->tls.cpu);
 
    if (batch->fb.desc.cpu) {
-      fbinfo->sample_positions = cmdbuf->device->sample_positions->addr.dev +
+      fbinfo->sample_positions = dev->sample_positions->addr.dev +
                                  panfrost_sample_positions_offset(
                                     pan_sample_pattern(fbinfo->nr_samples));
 
@@ -376,6 +378,7 @@ static void
 panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
                           struct panvk_draw_info *draw)
 {
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    const struct panvk_pipeline *pipeline =
       panvk_cmd_get_pipeline(cmdbuf, GRAPHICS);
 
@@ -408,9 +411,8 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
 
             STATIC_ASSERT(sizeof(pipeline->blend.bd_template[0]) >=
                           sizeof(*bd_templ));
-            panvk_per_arch(emit_blend_constant)(cmdbuf->device, pipeline, i,
-                                                cmdbuf->state.blend.constants,
-                                                &bd_dyn);
+            panvk_per_arch(emit_blend_constant)(
+               dev, pipeline, i, cmdbuf->state.blend.constants, &bd_dyn);
             pan_merge(bd_dyn, (*bd_templ), BLEND);
             memcpy(bd, &bd_dyn, sizeof(bd_dyn));
          }
@@ -427,6 +429,7 @@ void
 panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
                                       unsigned width, unsigned height)
 {
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_batch *batch = cmdbuf->state.batch;
 
    if (batch->tiler.descs.cpu)
@@ -442,7 +445,7 @@ panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
       .cpu = batch->tiler.templ,
    };
 
-   panvk_per_arch(emit_tiler_context)(cmdbuf->device, width, height, &desc);
+   panvk_per_arch(emit_tiler_context)(dev, width, height, &desc);
    memcpy(batch->tiler.descs.cpu, batch->tiler.templ,
           pan_size(TILER_CONTEXT) + pan_size(TILER_HEAP));
    batch->tiler.ctx.bifrost = batch->tiler.descs.gpu;
@@ -470,6 +473,7 @@ static void
 panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
                             struct panvk_draw_info *draw)
 {
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    const struct panvk_pipeline *pipeline =
       panvk_cmd_get_pipeline(cmdbuf, GRAPHICS);
    struct panvk_varyings_info *varyings = &cmdbuf->state.varyings;
@@ -515,7 +519,7 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
       struct panfrost_ptr attribs = pan_pool_alloc_desc_array(
          &cmdbuf->desc_pool.base, varyings->stage[s].count, ATTRIBUTE);
 
-      panvk_per_arch(emit_varyings)(cmdbuf->device, varyings, s, attribs.cpu);
+      panvk_per_arch(emit_varyings)(dev, varyings, s, attribs.cpu);
       draw->stages[s].varyings = attribs.gpu;
    }
 }
@@ -580,6 +584,7 @@ static void
 panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
                               struct panvk_draw_info *draw)
 {
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_cmd_bind_point_state *bind_point_state =
       panvk_cmd_get_bind_point_state(cmdbuf, GRAPHICS);
    struct panvk_descriptor_state *desc_state = &bind_point_state->desc_state;
@@ -608,7 +613,7 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
 
    panvk_per_arch(emit_attrib_bufs)(&pipeline->attribs, cmdbuf->state.vb.bufs,
                                     cmdbuf->state.vb.count, draw, bufs.cpu);
-   panvk_per_arch(emit_attribs)(cmdbuf->device, draw, &pipeline->attribs,
+   panvk_per_arch(emit_attribs)(dev, draw, &pipeline->attribs,
                                 cmdbuf->state.vb.bufs, cmdbuf->state.vb.count,
                                 attribs.cpu);
 
@@ -809,16 +814,16 @@ panvk_index_minmax_search(struct panvk_cmd_buffer *cmdbuf, uint32_t start,
                           uint32_t count, bool restart, uint32_t *min,
                           uint32_t *max)
 {
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_instance *instance =
+      to_panvk_instance(dev->vk.physical->instance);
    void *ptr = cmdbuf->state.ib.buffer->host_ptr + cmdbuf->state.ib.offset;
 
    assert(cmdbuf->state.ib.buffer);
    assert(cmdbuf->state.ib.buffer->bo);
    assert(cmdbuf->state.ib.buffer->host_ptr);
 
-   uint32_t debug_flags =
-      cmdbuf->device->physical_device->instance->debug_flags;
-
-   if (!(debug_flags & PANVK_DEBUG_NO_KNOWN_WARN)) {
+   if (!(instance->debug_flags & PANVK_DEBUG_NO_KNOWN_WARN)) {
       fprintf(
          stderr,
          "WARNING: Crawling index buffers from the CPU isn't valid in Vulkan\n");
@@ -1078,7 +1083,7 @@ panvk_destroy_cmdbuf(struct vk_command_buffer *vk_cmdbuf)
 {
    struct panvk_cmd_buffer *cmdbuf =
       container_of(vk_cmdbuf, struct panvk_cmd_buffer, vk);
-   struct panvk_device *device = cmdbuf->device;
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
 
    list_for_each_entry_safe(struct panvk_batch, batch, &cmdbuf->batches, node) {
       list_del(&batch->node);
@@ -1092,7 +1097,7 @@ panvk_destroy_cmdbuf(struct vk_command_buffer *vk_cmdbuf)
    panvk_pool_cleanup(&cmdbuf->tls_pool);
    panvk_pool_cleanup(&cmdbuf->varying_pool);
    vk_command_buffer_finish(&cmdbuf->vk);
-   vk_free(&device->vk.alloc, cmdbuf);
+   vk_free(&dev->vk.alloc, cmdbuf);
 }
 
 static VkResult
@@ -1116,8 +1121,6 @@ panvk_create_cmdbuf(struct vk_command_pool *vk_pool,
       vk_free(&device->vk.alloc, cmdbuf);
       return result;
    }
-
-   cmdbuf->device = device;
 
    panvk_pool_init(&cmdbuf->desc_pool, device, &pool->desc_bo_pool, 0,
                    64 * 1024, "Command buffer descriptor pool", true);
@@ -1174,13 +1177,15 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
                             uint32_t y, uint32_t z)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
    struct panvk_dispatch_info dispatch = {
       .wg_count = {x, y, z},
    };
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
    struct panvk_batch *batch = panvk_cmd_open_batch(cmdbuf);
-   struct panvk_device *dev = cmdbuf->device;
 
    struct panvk_cmd_bind_point_state *bind_point_state =
       panvk_cmd_get_bind_point_state(cmdbuf, COMPUTE);
@@ -1223,8 +1228,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    if (batch->tlsinfo.wls.size) {
       unsigned core_id_range;
 
-      panfrost_query_core_count(&dev->physical_device->kmod.props,
-                                &core_id_range);
+      panfrost_query_core_count(&phys_dev->kmod.props, &core_id_range);
       batch->wls_total_size = pan_wls_adjust_size(batch->tlsinfo.wls.size) *
                               pan_wls_instances(&dispatch.wg_count) *
                               core_id_range;

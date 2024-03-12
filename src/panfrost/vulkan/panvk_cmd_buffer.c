@@ -481,14 +481,16 @@ panvk_cmd_fb_info_set_subpass(struct panvk_cmd_buffer *cmdbuf)
 void
 panvk_cmd_fb_info_init(struct panvk_cmd_buffer *cmdbuf)
 {
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
    const struct vk_framebuffer *fb = cmdbuf->state.framebuffer;
 
    memset(cmdbuf->state.fb.crc_valid, 0, sizeof(cmdbuf->state.fb.crc_valid));
 
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = panfrost_query_optimal_tib_size(
-         cmdbuf->device->physical_device->model),
+      .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .width = fb->width,
       .height = fb->height,
       .extent.maxx = fb->width - 1,

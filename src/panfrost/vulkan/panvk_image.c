@@ -65,6 +65,8 @@ panvk_image_create(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
                    uint64_t modifier, const VkSubresourceLayout *plane_layouts)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(device->vk.physical);
    struct panvk_image *image = NULL;
 
    image = vk_image_create(&device->vk, pCreateInfo, alloc, sizeof(*image));
@@ -83,7 +85,7 @@ panvk_image_create(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
       .nr_slices = image->vk.mip_levels,
    };
 
-   unsigned arch = pan_arch(device->physical_device->kmod.props.gpu_prod_id);
+   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
    pan_image_layout_init(arch, &image->pimage.layout, NULL);
 
    *pImage = panvk_image_to_handle(image);
@@ -95,11 +97,13 @@ panvk_image_select_mod(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
                        const VkSubresourceLayout **plane_layouts)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
+   struct panvk_instance *instance =
+      to_panvk_instance(device->vk.physical->instance);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(device->vk.physical);
    enum pipe_format fmt = vk_format_to_pipe_format(pCreateInfo->format);
-   bool noafbc =
-      !(device->physical_device->instance->debug_flags & PANVK_DEBUG_AFBC);
-   bool linear =
-      device->physical_device->instance->debug_flags & PANVK_DEBUG_LINEAR;
+   bool noafbc = !(instance->debug_flags & PANVK_DEBUG_AFBC);
+   bool linear = instance->debug_flags & PANVK_DEBUG_LINEAR;
 
    *plane_layouts = NULL;
 
@@ -156,11 +160,11 @@ panvk_image_select_mod(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
    if (pCreateInfo->samples > 1)
       return DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
 
-   if (!panfrost_query_afbc(&device->physical_device->kmod.props))
+   if (!panfrost_query_afbc(&phys_dev->kmod.props))
       return DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
 
    /* Only a small selection of formats are AFBC'able */
-   unsigned arch = pan_arch(device->physical_device->kmod.props.gpu_prod_id);
+   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
    if (!panfrost_format_supports_afbc(arch, fmt))
       return DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
 

@@ -414,7 +414,9 @@ panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
    if (!pan_blend_is_homogenous_constant(constant_mask, state->constants))
       return true;
 
-   unsigned arch = pan_arch(dev->physical_device->kmod.props.gpu_prod_id);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
+   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
    bool supports_2src = pan_blend_supports_2src(arch);
    return !pan_blend_can_fixed_function(state->rts[rt].equation, supports_2src);
 }

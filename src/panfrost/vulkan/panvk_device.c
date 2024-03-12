@@ -450,8 +450,6 @@ panvk_physical_device_init(struct panvk_physical_device *device,
       goto fail;
    }
 
-   device->instance = instance;
-
    if (instance->vk.enabled_extensions.KHR_display) {
       master_fd = open(drm_device->nodes[DRM_NODE_PRIMARY], O_RDWR | O_CLOEXEC);
       if (master_fd >= 0) {
@@ -929,10 +927,12 @@ static VkResult
 panvk_queue_init(struct panvk_device *device, struct panvk_queue *queue,
                  int idx, const VkDeviceQueueCreateInfo *create_info)
 {
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(device->vk.physical);
+
    VkResult result = vk_queue_init(&queue->vk, &device->vk, create_info, idx);
    if (result != VK_SUCCESS)
       return result;
-   queue->device = device;
 
    struct drm_syncobj_create create = {
       .flags = DRM_SYNCOBJ_CREATE_SIGNALED,
@@ -944,7 +944,7 @@ panvk_queue_init(struct panvk_device *device, struct panvk_queue *queue,
       return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
 
-   unsigned arch = pan_arch(device->physical_device->kmod.props.gpu_prod_id);
+   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
 
    switch (arch) {
    case 6:
@@ -1077,12 +1077,13 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
                    const VkAllocationCallbacks *pAllocator, VkDevice *pDevice)
 {
    VK_FROM_HANDLE(panvk_physical_device, physical_device, physicalDevice);
-   struct panvk_instance *instance = physical_device->instance;
+   struct panvk_instance *instance =
+      to_panvk_instance(physical_device->vk.instance);
    VkResult result;
    struct panvk_device *device;
 
-   device = vk_zalloc2(&physical_device->instance->vk.alloc, pAllocator,
-                       sizeof(*device), 8, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   device = vk_zalloc2(&instance->vk.alloc, pAllocator, sizeof(*device), 8,
+                       VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (!device)
       return vk_error(physical_device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -1138,9 +1139,6 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
     */
    device->vk.command_dispatch_table = &device->cmd_dispatch;
    device->vk.command_buffer_ops = cmd_buffer_ops;
-
-   device->instance = physical_device->instance;
-   device->physical_device = physical_device;
 
    device->kmod.allocator = (struct pan_kmod_allocator){
       .zalloc = panvk_kmod_zalloc,
@@ -1232,7 +1230,8 @@ VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
-   struct panvk_physical_device *physical_device = device->physical_device;
+   struct panvk_physical_device *physical_device =
+      to_panvk_physical_device(device->vk.physical);
 
    if (!device)
       return;
@@ -1269,8 +1268,9 @@ VKAPI_ATTR VkResult VKAPI_CALL
 panvk_QueueWaitIdle(VkQueue _queue)
 {
    VK_FROM_HANDLE(panvk_queue, queue, _queue);
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
 
-   if (vk_device_is_lost(&queue->device->vk))
+   if (vk_device_is_lost(&dev->vk))
       return VK_ERROR_DEVICE_LOST;
 
    struct drm_syncobj_wait wait = {

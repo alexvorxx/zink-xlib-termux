@@ -184,7 +184,7 @@ panvk_per_arch(CreateBufferView)(VkDevice _device,
       &device->vk, pAllocator, sizeof(*view), VK_OBJECT_TYPE_BUFFER_VIEW);
 
    if (!view)
-      return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    vk_buffer_view_init(&device->vk, &view->vk, pCreateInfo);
 

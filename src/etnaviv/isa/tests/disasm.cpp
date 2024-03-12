@@ -9,7 +9,7 @@
  * we can disassemble them correctly.
  */
 
-#include "compiler/isaspec/isaspec.h"
+#include "etnaviv/isa/etnaviv-isa.h"
 #include <gtest/gtest.h>
 
 struct disasm_state {
@@ -46,7 +46,7 @@ struct DisasmTest : testing::Test, testing::WithParamInterface<disasm_state> {
          return;
       }
 
-      isa_disasm((void *)GetParam().bin, 16, fdisasm, &options);
+      etnaviv_isa_disasm((void *)GetParam().bin, 16, fdisasm, &options);
       fflush(fdisasm);
    }
 };

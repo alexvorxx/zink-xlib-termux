@@ -404,6 +404,11 @@ struct decode_scope;
 
 uint32_t ${prefix}_isa_get_gpu_id(struct decode_scope *scope);
 
+/**
+ * Allows to use gpu_id in expr functions
+ */
+#define ISA_GPU_ID() ${prefix}_isa_get_gpu_id(scope)
+
 #ifdef __cplusplus
 }
 #endif

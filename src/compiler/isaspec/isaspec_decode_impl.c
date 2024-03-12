@@ -526,7 +526,7 @@ isa_decode_field(struct decode_scope *scope, const char *field_name)
 	return bitmask_to_uint64_t(val);
 }
 
-uint32_t
+static uint32_t
 isa_get_gpu_id(struct decode_scope *scope)
 {
 	return scope->state->options->gpu_id;
@@ -950,7 +950,7 @@ cmp_entrypoints(const void *_a, const void *_b)
 	return (int)a->offset - (int)b->offset;
 }
 
-void
+static void
 isa_disasm(void *bin, int sz, FILE *out, const struct isa_decode_options *options)
 {
 	const struct isa_decode_options default_options = {
@@ -1004,7 +1004,7 @@ isa_disasm(void *bin, int sz, FILE *out, const struct isa_decode_options *option
 	ralloc_free(state);
 }
 
-bool
+static bool
 isa_decode(void *out, void *bin, const struct isa_decode_options *options)
 {
 	struct decode_state *state = rzalloc_size(NULL, sizeof(*state));

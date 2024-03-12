@@ -31,7 +31,7 @@
 #include <util/log.h>
 #include <util/u_debug.h>
 
-#include "isa/isa.h"
+#include "freedreno/isa/ir3-isa.h"
 
 #include "disasm.h"
 #include "instr-a3xx.h"
@@ -604,7 +604,7 @@ disasm_a3xx_stat(uint32_t *dwords, int sizedwords, int level, FILE *out,
 
    decode_options.cbdata = &ctx;
 
-   isa_disasm(dwords, sizedwords * 4, out, &decode_options);
+   ir3_isa_disasm(dwords, sizedwords * 4, out, &decode_options);
 
    disasm_handle_last(&ctx);
 

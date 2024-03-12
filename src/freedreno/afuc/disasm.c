@@ -40,6 +40,7 @@
 #include "freedreno_pm4.h"
 
 #include "afuc.h"
+#include "afuc-isa.h"
 #include "util.h"
 #include "emu.h"
 
@@ -223,7 +224,7 @@ get_decode_options(struct isa_decode_options *options)
 static void
 disasm_instr(struct isa_decode_options *options, uint32_t *instrs, unsigned pc)
 {
-   isa_disasm(&instrs[pc], 4, stdout, options);
+   afuc_isa_disasm(&instrs[pc], 4, stdout, options);
 }
 
 static void
@@ -330,7 +331,7 @@ disasm(struct emu *emu)
    }
 
    /* print instructions: */
-   isa_disasm(emu->instrs, MIN2(sizedwords, jumptbl_offset) * 4, stdout, &options);
+   afuc_isa_disasm(emu->instrs, MIN2(sizedwords, jumptbl_offset) * 4, stdout, &options);
 
    /* print jump table */
    if (jumptbl_offset != ~0) {
@@ -374,7 +375,7 @@ disasm(struct emu *emu)
       jumptbl_offset = find_jump_table(emu->instrs, sizedwords, emu->jmptbl,
                                        ARRAY_SIZE(emu->jmptbl));
 
-      isa_disasm(emu->instrs, MIN2(sizedwords, jumptbl_offset) * 4, stdout, &options);
+      afuc_isa_disasm(emu->instrs, MIN2(sizedwords, jumptbl_offset) * 4, stdout, &options);
 
       if (jumptbl_offset != ~0) {
          printf(".align 32\n");
@@ -410,7 +411,7 @@ disasm(struct emu *emu)
       jumptbl_offset = find_jump_table(emu->instrs, emu->sizedwords, emu->jmptbl,
                                        ARRAY_SIZE(emu->jmptbl));
 
-      isa_disasm(emu->instrs, MIN2(emu->sizedwords, jumptbl_offset) * 4, stdout, &options);
+      afuc_isa_disasm(emu->instrs, MIN2(emu->sizedwords, jumptbl_offset) * 4, stdout, &options);
 
       if (jumptbl_offset != ~0) {
          printf("jumptbl:\n");
@@ -434,7 +435,7 @@ disasm_raw(uint32_t *instrs, int sizedwords)
    get_decode_options(&options);
    options.cbdata = &state;
 
-   isa_disasm(instrs, sizedwords * 4, stdout, &options);
+   afuc_isa_disasm(instrs, sizedwords * 4, stdout, &options);
 }
 
 static void
@@ -454,7 +455,7 @@ disasm_legacy(uint32_t *buf, int sizedwords)
    setup_packet_table(&options, jmptbl, 0x80);
 
    /* print instructions: */
-   isa_disasm(instrs, sizedwords * 4, stdout, &options);
+   afuc_isa_disasm(instrs, sizedwords * 4, stdout, &options);
 
    /* print jumptable: */
    if (verbose) {

@@ -34,7 +34,7 @@
 
 #include "freedreno_pm4.h"
 
-#include "isaspec.h"
+#include "afuc-isa.h"
 
 #include "emu.h"
 #include "util.h"
@@ -370,11 +370,11 @@ void
 emu_step(struct emu *emu)
 {
    struct afuc_instr *instr;
-   bool decoded = isa_decode((void *)&instr,
-                             (void *)&emu->instrs[emu->gpr_regs.pc],
-                             &(struct isa_decode_options) {
-                              .gpu_id = gpuver,
-                             });
+   bool decoded =
+      afuc_isa_decode((void *)&instr, (void *)&emu->instrs[emu->gpr_regs.pc],
+                      &(struct isa_decode_options){
+                         .gpu_id = gpuver,
+                      });
 
    if (!decoded) {
       uint32_t instr_val = emu->instrs[emu->gpr_regs.pc];

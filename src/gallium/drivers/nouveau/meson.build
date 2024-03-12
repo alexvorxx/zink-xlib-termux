@@ -192,5 +192,5 @@ libnouveau = static_library(
 driver_nouveau = declare_dependency(
   compile_args : '-DGALLIUM_NOUVEAU',
   dependencies : [idep_nir, idep_nouveau_codegen],
-  link_with : [libnouveau_codegen, libnouveau],
+  link_with : [libnouveau_codegen, libnouveau, libgalliumvl],
 )

@@ -105,6 +105,52 @@ template = """\
 
 #include "${header}"
 
+#include <stdint.h>
+#include <util/bitset.h>
+
+#define BITMASK_WORDS BITSET_WORDS(${isa.bitsize})
+
+typedef struct {
+    BITSET_WORD bitset[BITMASK_WORDS];
+} bitmask_t;
+
+
+#define BITSET_FORMAT ${isa.format()}
+#define BITSET_VALUE(v) ${isa.value()}
+
+static inline void
+next_instruction(bitmask_t *instr, BITSET_WORD *start)
+{
+    %for i in range(0, int(isa.bitsize / 32)):
+    instr->bitset[${i}] = *(start + ${i});
+    %endfor
+}
+
+static inline uint64_t
+bitmask_to_uint64_t(bitmask_t mask)
+{
+%   if isa.bitsize <= 32:
+    return mask.bitset[0];
+%   else:
+    return ((uint64_t)mask.bitset[1] << 32) | mask.bitset[0];
+%   endif
+}
+
+static inline bitmask_t
+uint64_t_to_bitmask(uint64_t val)
+{
+    bitmask_t mask = {
+        .bitset[0] = val & 0xffffffff,
+%   if isa.bitsize > 32:
+        .bitset[1] = (val >> 32) & 0xffffffff,
+%   endif
+    };
+
+    return mask;
+}
+
+#include "isaspec_decode_decl.h"
+
 /*
  * enum tables, these don't have any link back to other tables so just
  * dump them up front before the bitset tables
@@ -327,52 +373,6 @@ header = """\
 
 #ifndef _${guard}_
 #define _${guard}_
-
-#include <stdint.h>
-#include <util/bitset.h>
-
-#define BITMASK_WORDS BITSET_WORDS(${isa.bitsize})
-
-typedef struct {
-    BITSET_WORD bitset[BITMASK_WORDS];
-} bitmask_t;
-
-
-#define BITSET_FORMAT ${isa.format()}
-#define BITSET_VALUE(v) ${isa.value()}
-
-static inline void
-next_instruction(bitmask_t *instr, BITSET_WORD *start)
-{
-    %for i in range(0, int(isa.bitsize / 32)):
-    instr->bitset[${i}] = *(start + ${i});
-    %endfor
-}
-
-static inline uint64_t
-bitmask_to_uint64_t(bitmask_t mask)
-{
-%   if isa.bitsize <= 32:
-    return mask.bitset[0];
-%   else:
-    return ((uint64_t)mask.bitset[1] << 32) | mask.bitset[0];
-%   endif
-}
-
-static inline bitmask_t
-uint64_t_to_bitmask(uint64_t val)
-{
-    bitmask_t mask = {
-        .bitset[0] = val & 0xffffffff,
-%   if isa.bitsize > 32:
-        .bitset[1] = (val >> 32) & 0xffffffff,
-%   endif
-    };
-
-    return mask;
-}
-
-#include "isaspec_decode_decl.h"
 
 #endif /* _${guard}_ */
 

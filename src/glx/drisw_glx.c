@@ -1060,7 +1060,7 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
 }
 
 static struct glx_screen *
-driswCreateScreen(int screen, struct glx_display *priv)
+driswCreateScreen(int screen, struct glx_display *priv, bool implicit)
 {
    const struct drisw_display *pdpyp = (struct drisw_display *)priv->driswDisplay;
    if (pdpyp->zink && !debug_get_bool_option("LIBGL_KOPPER_DISABLE", false)) {

@@ -790,7 +790,7 @@ static const struct glx_screen_vtable dri3_screen_vtable = {
  */
 
 static struct glx_screen *
-dri3_create_screen(int screen, struct glx_display * priv)
+dri3_create_screen(int screen, struct glx_display * priv, bool implicit)
 {
    xcb_connection_t *c = XGetXCBConnection(priv->dpy);
    const __DRIconfig **driver_configs;

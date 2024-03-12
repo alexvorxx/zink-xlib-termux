@@ -783,19 +783,19 @@ AllocAndFetchScreenConfigs(Display * dpy, struct glx_display * priv, Bool zink)
 #if defined(GLX_USE_DRM)
 #if defined(HAVE_DRI3)
       if (priv->dri3Display)
-         psc = priv->dri3Display->createScreen(i, priv);
+         psc = priv->dri3Display->createScreen(i, priv, false);
 #endif /* HAVE_DRI3 */
       if (psc == NULL && priv->dri2Display)
-	      psc = priv->dri2Display->createScreen(i, priv);
+	      psc = priv->dri2Display->createScreen(i, priv, false);
 #endif /* GLX_USE_DRM */
 
 #ifdef GLX_USE_WINDOWSGL
       if (psc == NULL && priv->windowsdriDisplay)
-	      psc = priv->windowsdriDisplay->createScreen(i, priv);
+	      psc = priv->windowsdriDisplay->createScreen(i, priv, false);
 #endif
 
       if ((psc == GLX_LOADER_USE_ZINK || psc == NULL) && priv->driswDisplay)
-	      psc = priv->driswDisplay->createScreen(i, priv);
+	      psc = priv->driswDisplay->createScreen(i, priv, false);
 #endif /* GLX_DIRECT_RENDERING && !GLX_USE_APPLEGL */
 
 #if defined(GLX_USE_APPLE)

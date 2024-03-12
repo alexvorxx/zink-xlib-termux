@@ -1001,7 +1001,7 @@ static const struct glx_screen_vtable dri2_screen_vtable = {
 };
 
 static struct glx_screen *
-dri2CreateScreen(int screen, struct glx_display * priv)
+dri2CreateScreen(int screen, struct glx_display * priv, bool implicit)
 {
    const __DRIconfig **driver_configs;
    const __DRIextension **extensions;

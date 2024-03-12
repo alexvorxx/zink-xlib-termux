@@ -119,7 +119,6 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_multiview = true,
       .KHR_pipeline_executable_properties = true,
       .KHR_pipeline_library = true,
-
 #ifdef NVK_USE_WSI_PLATFORM
       /* Hide these behind dri configs for now since we cannot implement it
        * reliably on all surfaces yet. There is no surface capability query
@@ -221,6 +220,9 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_shader_subgroup_vote = true,
       .EXT_shader_viewport_index_layer = info->cls_eng3d >= MAXWELL_B,
       .EXT_subgroup_size_control = true,
+#ifdef NVK_USE_WSI_PLATFORM
+      .EXT_swapchain_maintenance1 = true,
+#endif
       .EXT_texel_buffer_alignment = true,
       .EXT_tooling_info = true,
       .EXT_transform_feedback = true,
@@ -505,6 +507,11 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_EXT_image_sliced_view_of_3d */
       .imageSlicedViewOf3D = true,
+
+#ifdef NVK_USE_WSI_PLATFORM
+      /* VK_EXT_swapchain_maintenance1 */
+      .swapchainMaintenance1 = true,
+#endif
 
       /* VK_EXT_image_view_min_lod */
       .minLod = true,

@@ -351,10 +351,7 @@ record_cbuf_uses_instr(UNUSED nir_builder *b, nir_instr *instr, void *_ctx)
       case nir_intrinsic_image_deref_atomic:
       case nir_intrinsic_image_deref_atomic_swap:
       case nir_intrinsic_image_deref_size:
-      case nir_intrinsic_image_deref_samples:
-      case nir_intrinsic_image_deref_load_param_intel:
-      case nir_intrinsic_image_deref_load_raw_intel:
-      case nir_intrinsic_image_deref_store_raw_intel: {
+      case nir_intrinsic_image_deref_samples: {
          nir_deref_instr *deref = nir_src_as_deref(intrin->src[0]);
          record_deref_descriptor_cbuf_use(deref, ctx);
          return false;
@@ -891,9 +888,6 @@ try_lower_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
    case nir_intrinsic_image_deref_atomic_swap:
    case nir_intrinsic_image_deref_size:
    case nir_intrinsic_image_deref_samples:
-   case nir_intrinsic_image_deref_load_param_intel:
-   case nir_intrinsic_image_deref_load_raw_intel:
-   case nir_intrinsic_image_deref_store_raw_intel:
       return lower_image_intrin(b, intrin, ctx);
 
    case nir_intrinsic_interp_deref_at_sample:

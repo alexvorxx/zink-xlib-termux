@@ -1385,6 +1385,12 @@
     <field name="Destination Depth/Stencil Resource" start="498" end="498" type="bool" />
     <field name="Destination Array Index" start="501" end="511" type="uint" />
   </instruction>
+  <register name="BLT_TRTT_VA_RANGE" length="1" num="0x4484">
+    <field name="TR-VA Base" start="0" end="12" type="uint" />
+  </register>
+  <register name="COMP_CTX0_TRTT_VA_RANGE" length="1" num="0x4584">
+    <field name="TR-VA Base" start="0" end="12" type="uint" />
+  </register>
   <register name="GFX_TRTT_VA_RANGE" length="1" num="0x4404">
     <field name="TR-VA Base" start="0" end="12" type="uint" />
   </register>

@@ -114,6 +114,11 @@ write_storage_image_view_desc(struct nvk_descriptor_set *set,
       assert(view->planes[plane].storage_desc_index < (1 << 20));
 
       desc.image_index = view->planes[plane].storage_desc_index;
+
+      const struct nil_extent4d px_extent_sa =
+         nil_px_extent_sa(view->planes[plane].sample_layout);
+      desc.sw_log2 = util_logbase2(px_extent_sa.w);
+      desc.sh_log2 = util_logbase2(px_extent_sa.h);
    }
 
    write_desc(set, binding, elem, &desc, sizeof(desc));

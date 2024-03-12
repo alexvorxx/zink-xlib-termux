@@ -26,7 +26,9 @@ static_assert(sizeof(struct nvk_sampled_image_descriptor) == 4,
 
 struct nvk_storage_image_descriptor {
    unsigned image_index:20;
-   unsigned pad:12;
+   unsigned sw_log2:2;
+   unsigned sh_log2:2;
+   unsigned pad:8;
 };
 static_assert(sizeof(struct nvk_storage_image_descriptor) == 4,
               "nvk_storage_image_descriptor has no holes");

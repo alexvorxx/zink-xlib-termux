@@ -172,6 +172,8 @@ nvk_image_view_init(struct nvk_device *dev,
          nil_view.type != NIL_VIEW_TYPE_3D)
          image_3d_view_as_2d_array(&nil_image, &nil_view, &base_addr);
 
+      view->planes[view_plane].sample_layout = nil_image.sample_layout;
+
       if (view->vk.usage & (VK_IMAGE_USAGE_SAMPLED_BIT |
                            VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) {
          uint32_t tic[8];
@@ -208,6 +210,9 @@ nvk_image_view_init(struct nvk_device *dev,
                nil_view.array_len = view->vk.storage.z_slice_count;
             }
          }
+
+         if (image->vk.samples != VK_SAMPLE_COUNT_1_BIT)
+            nil_msaa_image_as_sa(&nil_image, &nil_image);
 
          uint32_t tic[8];
          nil_image_fill_tic(&nvk_device_physical(dev)->info,

@@ -800,6 +800,80 @@ load_resource_deref_desc(nir_builder *b,
                           set, binding, index, offset_B, ctx);
 }
 
+static void
+lower_msaa_image_intrin(nir_builder *b, nir_intrinsic_instr *intrin)
+{
+   assert(nir_intrinsic_image_dim(intrin) == GLSL_SAMPLER_DIM_MS);
+
+   b->cursor = nir_before_instr(&intrin->instr);
+
+   nir_def *desc = intrin->src[0].ssa;
+   nir_def *sw_log2 = nir_ubitfield_extract_imm(b, desc, 20, 2);
+   nir_def *sh_log2 = nir_ubitfield_extract_imm(b, desc, 22, 2);
+
+   nir_def *sw = nir_ishl(b, nir_imm_int(b, 1), sw_log2);
+   nir_def *sh = nir_ishl(b, nir_imm_int(b, 1), sh_log2);
+   nir_def *num_samples = nir_imul(b, sw, sh);
+
+   switch (intrin->intrinsic) {
+   case nir_intrinsic_bindless_image_load:
+   case nir_intrinsic_bindless_image_store:
+   case nir_intrinsic_bindless_image_atomic:
+   case nir_intrinsic_bindless_image_atomic_swap: {
+      nir_def *x = nir_channel(b, intrin->src[1].ssa, 0);
+      nir_def *y = nir_channel(b, intrin->src[1].ssa, 1);
+      nir_def *z = nir_channel(b, intrin->src[1].ssa, 2);
+      nir_def *w = nir_channel(b, intrin->src[1].ssa, 3);
+      nir_def *s = intrin->src[2].ssa;
+
+      nir_def *sw_mask = nir_iadd_imm(b, sw, -1);
+      nir_def *sx = nir_iand(b, s, sw_mask);
+      nir_def *sy = nir_ishr(b, s, sw_log2);
+
+      x = nir_imad(b, x, sw, sx);
+      y = nir_imad(b, y, sh, sy);
+
+      /* Make OOB sample indices OOB X/Y indices */
+      x = nir_bcsel(b, nir_ult(b, s, num_samples), x, nir_imm_int(b, -1));
+
+      nir_src_rewrite(&intrin->src[1], nir_vec4(b, x, y, z, w));
+      nir_src_rewrite(&intrin->src[2], nir_undef(b, 1, 32));
+      break;
+   }
+
+   case nir_intrinsic_bindless_image_size: {
+      b->cursor = nir_after_instr(&intrin->instr);
+
+      nir_def *size = &intrin->def;
+      nir_def *w = nir_channel(b, size, 0);
+      nir_def *h = nir_channel(b, size, 1);
+
+      w = nir_ushr(b, w, sw_log2);
+      h = nir_ushr(b, h, sh_log2);
+
+      size = nir_vector_insert_imm(b, size, w, 0);
+      size = nir_vector_insert_imm(b, size, h, 1);
+
+      nir_def_rewrite_uses_after(&intrin->def, size, size->parent_instr);
+      break;
+   }
+
+   case nir_intrinsic_bindless_image_samples: {
+      /* We need to handle NULL descriptors explicitly */
+      nir_def *samples =
+         nir_bcsel(b, nir_ieq(b, desc, nir_imm_int(b, 0)),
+                      nir_imm_int(b, 0), num_samples);
+      nir_def_rewrite_uses(&intrin->def, samples);
+      break;
+   }
+
+   default:
+      unreachable("Unknown image intrinsic");
+   }
+
+   nir_intrinsic_set_image_dim(intrin, GLSL_SAMPLER_DIM_2D);
+}
+
 static bool
 lower_image_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
                    const struct lower_descriptors_ctx *ctx)
@@ -808,6 +882,9 @@ lower_image_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
    nir_deref_instr *deref = nir_src_as_deref(intrin->src[0]);
    nir_def *desc = load_resource_deref_desc(b, 1, 32, deref, 0, ctx);
    nir_rewrite_image_intrinsic(intrin, desc, true);
+
+   if (nir_intrinsic_image_dim(intrin) == GLSL_SAMPLER_DIM_MS)
+      lower_msaa_image_intrin(b, intrin);
 
    return true;
 }

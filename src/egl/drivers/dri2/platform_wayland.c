@@ -2460,7 +2460,7 @@ dri2_wl_swrast_put_image2(__DRIdrawable *draw, int op, int x, int y, int w,
       wl_surface_damage(dri2_surf->wl_surface_wrapper, 0, 0, INT32_MAX, INT32_MAX);
    else
       wl_surface_damage_buffer(dri2_surf->wl_surface_wrapper,
-                               x, dri2_surf->base.Height - y - h, w, h);
+                               x, y, w, h);
 
    dst = dri2_wl_swrast_get_backbuffer_data(dri2_surf);
 

@@ -346,6 +346,20 @@ static void decode_${bitset.get_c_name()}_gen_${bitset.gen_min}(void *out, struc
 }
 %endfor
 
+void ${prefix}_isa_disasm(void *bin, int sz, FILE *out, const struct isa_decode_options *options)
+{
+    isa_disasm(bin, sz, out, options);
+}
+
+bool ${prefix}_isa_decode(void *out, void *bin, const struct isa_decode_options *options)
+{
+    return isa_decode(out, bin, options);
+}
+
+uint32_t ${prefix}_isa_get_gpu_id(struct decode_scope *scope)
+{
+    return isa_get_gpu_id(scope);
+}
 """
 
 header = """\
@@ -374,12 +388,32 @@ header = """\
 #ifndef _${guard}_
 #define _${guard}_
 
+#include "compiler/isaspec/isaspec.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void ${prefix}_isa_disasm(void *bin, int sz, FILE *out, const struct isa_decode_options *options);
+bool ${prefix}_isa_decode(void *out, void *bin, const struct isa_decode_options *options);
+
+struct decode_scope;
+
+uint32_t ${prefix}_isa_get_gpu_id(struct decode_scope *scope);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* _${guard}_ */
 
 """
 
 def guard(p):
     return os.path.basename(p).upper().replace("-", "_").replace(".", "_")
+
+def prefix(p):
+    return os.path.basename(p).lower().replace("-", "_").replace(".", "_").split('_')[0]
 
 def main():
     parser = argparse.ArgumentParser()
@@ -394,10 +428,10 @@ def main():
     try:
         with open(args.out_c, 'w', encoding='utf-8') as f:
             out_h_basename = os.path.basename(args.out_h)
-            f.write(Template(template).render(isa=isa, s=s, header=out_h_basename))
+            f.write(Template(template).render(isa=isa, s=s, header=out_h_basename, prefix=prefix(args.out_h)))
 
         with open(args.out_h, 'w', encoding='utf-8') as f:
-            f.write(Template(header).render(isa=isa, guard=guard(args.out_h)))
+            f.write(Template(header).render(isa=isa, guard=guard(args.out_h), prefix=prefix(args.out_h)))
 
     except Exception:
         # In the event there's an error, this imports some helpers from mako

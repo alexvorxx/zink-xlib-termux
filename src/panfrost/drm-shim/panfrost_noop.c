@@ -68,12 +68,15 @@ pan_ioctl_get_param(int fd, unsigned long request, void *arg)
       return 0;
    case DRM_PANFROST_PARAM_TEXTURE_FEATURES0:
    case DRM_PANFROST_PARAM_TEXTURE_FEATURES1:
+   case DRM_PANFROST_PARAM_TEXTURE_FEATURES2:
+   case DRM_PANFROST_PARAM_TEXTURE_FEATURES3:
       /* Allow all compressed textures */
       gp->value = ~0;
       return 0;
    case DRM_PANFROST_PARAM_GPU_REVISION:
    case DRM_PANFROST_PARAM_THREAD_TLS_ALLOC:
    case DRM_PANFROST_PARAM_AFBC_FEATURES:
+   case DRM_PANFROST_PARAM_THREAD_FEATURES:
       gp->value = 0;
       return 0;
    case DRM_PANFROST_PARAM_MEM_FEATURES:
@@ -83,6 +86,10 @@ pan_ioctl_get_param(int fd, unsigned long request, void *arg)
    case DRM_PANFROST_PARAM_MMU_FEATURES:
       /* default for most hardware so far */
       gp->value = 0x00280030;
+      return 0;
+   case DRM_PANFROST_PARAM_MAX_THREADS:
+   case DRM_PANFROST_PARAM_THREAD_MAX_WORKGROUP_SZ:
+      gp->value = 256;
       return 0;
    default:
       fprintf(stderr, "Unknown DRM_IOCTL_PANFROST_GET_PARAM %d\n", gp->param);

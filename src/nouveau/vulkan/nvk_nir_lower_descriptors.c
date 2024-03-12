@@ -921,7 +921,8 @@ lower_tex(nir_builder *b, nir_tex_instr *tex,
    nir_def *plane_ssa = nir_steal_tex_src(tex, nir_tex_src_plane);
    const uint32_t plane =
       plane_ssa ? nir_src_as_uint(nir_src_for_ssa(plane_ssa)) : 0;
-   const uint64_t plane_offset_B = plane * sizeof(struct nvk_image_descriptor);
+   const uint64_t plane_offset_B =
+      plane * sizeof(struct nvk_sampled_image_descriptor);
 
    nir_def *combined_handle;
    if (texture == sampler) {

@@ -36,11 +36,17 @@ nvk_descriptor_stride_align_for_type(const struct nvk_physical_device *pdev,
    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
       /* TODO: How do samplers work? */
    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-   case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+      *stride = *alignment = sizeof(struct nvk_sampled_image_descriptor);
+      break;
+
+   case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+      *stride = *alignment = sizeof(struct nvk_storage_image_descriptor);
+      break;
+
    case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
    case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-      *stride = *alignment = sizeof(struct nvk_image_descriptor);
+      *stride = *alignment = sizeof(struct nvk_buffer_view_descriptor);
       break;
 
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:

@@ -17,10 +17,26 @@ struct nvk_descriptor_set_layout;
 #define NVK_IMAGE_DESCRIPTOR_IMAGE_INDEX_MASK   0x000fffff
 #define NVK_IMAGE_DESCRIPTOR_SAMPLER_INDEX_MASK 0xfff00000
 
-struct nvk_image_descriptor {
+struct nvk_sampled_image_descriptor {
    unsigned image_index:20;
    unsigned sampler_index:12;
 };
+static_assert(sizeof(struct nvk_sampled_image_descriptor) == 4,
+              "nvk_sampled_image_descriptor has no holes");
+
+struct nvk_storage_image_descriptor {
+   unsigned image_index:20;
+   unsigned pad:12;
+};
+static_assert(sizeof(struct nvk_storage_image_descriptor) == 4,
+              "nvk_storage_image_descriptor has no holes");
+
+struct nvk_buffer_view_descriptor {
+   unsigned image_index:20;
+   unsigned pad:12;
+};
+static_assert(sizeof(struct nvk_buffer_view_descriptor) == 4,
+              "nvk_buffer_view_descriptor has no holes");
 
 /* This has to match nir_address_format_64bit_bounded_global */
 struct nvk_buffer_address {

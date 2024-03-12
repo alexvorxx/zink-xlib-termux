@@ -2663,8 +2663,7 @@ isl_calc_base_alignment(const struct isl_device *dev,
          base_alignment_B = MAX(base_alignment_B, 4096);
 
       if (dev->info->has_aux_map &&
-          (isl_format_supports_ccs_d(dev->info, info->format) ||
-           isl_format_supports_ccs_e(dev->info, info->format)) &&
+          isl_format_supports_ccs_e(dev->info, info->format) &&
           !INTEL_DEBUG(DEBUG_NO_CCS) &&
           !(info->usage & ISL_SURF_USAGE_DISABLE_AUX_BIT)) {
          /* Wa_22015614752:

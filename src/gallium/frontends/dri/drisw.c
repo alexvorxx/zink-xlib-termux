@@ -246,7 +246,7 @@ drisw_swap_buffers_with_damage(struct dri_drawable *drawable, int nrects, const 
          for (unsigned int i = 0; i < nrects; i++) {
             const int *rect = &rects[i * 4];
 
-            u_box_2d(rect[0], rect[1], rect[2], rect[3], &stack_boxes[i]);
+            u_box_2d(rect[0], ptex->height0 - rect[1] - rect[3], rect[2], rect[3], &stack_boxes[i]);
          }
       }
 

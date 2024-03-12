@@ -343,7 +343,7 @@ lvp_build_aabb_case(nir_builder *b, const struct lvp_ray_traversal_args *args,
    not_cull = nir_iand(b, not_cull, ray_flags->no_skip_aabbs);
    nir_push_if(b, not_cull);
    {
-      args->aabb_cb(b, &intersection, args);
+      args->aabb_cb(b, &intersection, args, ray_flags);
    }
    nir_pop_if(b, NULL);
 }

@@ -453,7 +453,8 @@ struct traversal_data {
 
 static void
 handle_candidate_aabb(nir_builder *b, struct lvp_leaf_intersection *intersection,
-                      const struct lvp_ray_traversal_args *args)
+                      const struct lvp_ray_traversal_args *args,
+                      const struct lvp_ray_flags *ray_flags)
 {
    struct traversal_data *data = args->data;
    struct ray_query_vars *vars = data->vars;

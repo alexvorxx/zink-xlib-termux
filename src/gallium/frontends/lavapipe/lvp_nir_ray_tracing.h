@@ -36,7 +36,8 @@ struct lvp_leaf_intersection {
 };
 
 typedef void (*lvp_aabb_intersection_cb)(nir_builder *b, struct lvp_leaf_intersection *intersection,
-                                         const struct lvp_ray_traversal_args *args);
+                                         const struct lvp_ray_traversal_args *args,
+                                         const struct lvp_ray_flags *ray_flags);
 
 struct lvp_triangle_intersection {
    struct lvp_leaf_intersection base;

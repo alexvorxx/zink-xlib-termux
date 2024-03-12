@@ -38,6 +38,22 @@ LibGL environment variables
 
    disable DRI3 if set to ``true``.
 
+.. envvar:: LIBGL_KOPPER_DISABLE
+
+   disable vulkan swapchains with zink if set to ``true``.
+   In general, this should not be used unless you know what you are
+   doing. Some examples of "knowing what you are doing" include:
+   - using a VK driver which has no WSI implementation for your display server
+   - profiling the DRI frontend against your VK driver's WSI implementation
+
+.. envvar:: LIBGL_KOPPER_DRI2
+
+   disable DRI3 with zink if set to ``true``.
+   In general, this should not be used unless you know what you are
+   doing. Some examples of "knowing what you are doing" include:
+   - running xrdp
+   - using a VK driver which doesn't support modifiers
+
 Core Mesa environment variables
 -------------------------------
 

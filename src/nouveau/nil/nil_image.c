@@ -77,7 +77,7 @@ nil_extent4d_align(struct nil_extent4d ext, struct nil_extent4d alignment)
    };
 }
 
-static inline struct nil_extent4d
+struct nil_extent4d
 nil_px_extent_sa(enum nil_sample_layout sample_layout)
 {
    switch (sample_layout) {

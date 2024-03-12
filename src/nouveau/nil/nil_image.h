@@ -72,6 +72,8 @@ nil_extent4d(uint32_t w, uint32_t h, uint32_t d, uint32_t a)
    return e;
 }
 
+struct nil_extent4d nil_px_extent_sa(enum nil_sample_layout sample_layout);
+
 struct nil_extent4d
 nil_extent4d_px_to_el(struct nil_extent4d extent_px,
                       enum pipe_format format,

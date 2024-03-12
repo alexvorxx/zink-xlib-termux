@@ -287,7 +287,7 @@ dri_open_driver(struct gbm_dri_device *dri)
 }
 
 static int
-dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name)
+dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name, bool implicit)
 {
    bool swrast = driver_name == NULL; /* If it's pure swrast, not just swkms. */
 
@@ -318,7 +318,7 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name)
    dri->screen = dri->mesa->createNewScreen3(0, swrast ? -1 : dri->base.v0.fd,
                                              dri->loader_extensions,
                                              dri->driver_extensions,
-                                             &dri->driver_configs, false, dri);
+                                             &dri->driver_configs, implicit, dri);
    if (dri->screen == NULL)
       goto close_driver;
 
@@ -348,7 +348,7 @@ fail:
 }
 
 static int
-dri_screen_create(struct gbm_dri_device *dri)
+dri_screen_create(struct gbm_dri_device *dri, bool implicit)
 {
    char *driver_name;
 
@@ -356,11 +356,11 @@ dri_screen_create(struct gbm_dri_device *dri)
    if (!driver_name)
       return -1;
 
-   return dri_screen_create_for_driver(dri, driver_name);
+   return dri_screen_create_for_driver(dri, driver_name, implicit);
 }
 
 static int
-dri_screen_create_sw(struct gbm_dri_device *dri)
+dri_screen_create_sw(struct gbm_dri_device *dri, bool implicit)
 {
    char *driver_name;
    int ret;
@@ -369,9 +369,9 @@ dri_screen_create_sw(struct gbm_dri_device *dri)
    if (!driver_name)
       return -errno;
 
-   ret = dri_screen_create_for_driver(dri, driver_name);
+   ret = dri_screen_create_for_driver(dri, driver_name, implicit);
    if (ret != 0)
-      ret = dri_screen_create_for_driver(dri, NULL);
+      ret = dri_screen_create_for_driver(dri, NULL, implicit);
    if (ret != 0)
       return ret;
 
@@ -1202,11 +1202,11 @@ dri_device_create(int fd, uint32_t gbm_backend_version)
 
    force_sw = debug_get_bool_option("GBM_ALWAYS_SOFTWARE", false);
    if (!force_sw) {
-      ret = dri_screen_create(dri);
+      ret = dri_screen_create(dri, false);
       if (ret)
-         ret = dri_screen_create_sw(dri);
+         ret = dri_screen_create_sw(dri, true);
    } else {
-      ret = dri_screen_create_sw(dri);
+      ret = dri_screen_create_sw(dri, false);
    }
 
    if (ret)

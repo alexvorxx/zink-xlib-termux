@@ -471,14 +471,16 @@ zink_get_physical_device_info(struct zink_screen *screen)
    // enumerate device supported extensions
    VkResult result = screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, NULL);
    if (result != VK_SUCCESS) {
-      mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed (%s)", vk_Result_to_str(result));
+      if (!screen->implicitly_loaded)
+         mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed (%s)", vk_Result_to_str(result));
    } else {
       if (num_extensions > 0) {
          VkExtensionProperties *extensions = MALLOC(sizeof(VkExtensionProperties) * num_extensions);
          if (!extensions) goto fail;
          result = screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, extensions);
          if (result != VK_SUCCESS) {
-            mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed (%s)", vk_Result_to_str(result));
+            if (!screen->implicitly_loaded)
+               mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed (%s)", vk_Result_to_str(result));
          }
 
          for (uint32_t i = 0; i < num_extensions; ++i) {

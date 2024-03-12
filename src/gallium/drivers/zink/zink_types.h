@@ -1415,6 +1415,7 @@ struct zink_screen {
    bool is_cpu;
    bool abort_on_hang;
    bool frame_marker_emitted;
+   bool implicitly_loaded;
    uint64_t curr_batch; //the current batch id
    uint32_t last_finished;
    VkSemaphore sem;

@@ -830,9 +830,6 @@ void panvk_cmd_fb_info_init(struct panvk_cmd_buffer *cmdbuf);
 
 void panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf);
 
-void panvk_pack_color(struct panvk_clear_value *out,
-                      const VkClearColorValue *in, enum pipe_format format);
-
 struct panvk_event {
    struct vk_object_base base;
    uint32_t syncobj;

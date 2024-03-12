@@ -137,7 +137,7 @@ driCreateNewScreen3(int scrn, int fd,
     driParseConfigFiles(&screen->optionCache, &screen->optionInfo, screen->myNum,
                         "dri2", NULL, NULL, NULL, 0, NULL, 0);
 
-    *driver_configs = mesa->initScreen(screen);
+    *driver_configs = mesa->initScreen(screen, implicit);
     if (*driver_configs == NULL) {
         dri_destroy_screen(screen);
         return NULL;

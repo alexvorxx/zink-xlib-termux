@@ -60,7 +60,7 @@ struct __DRImesaCoreExtensionRec {
    __DRIcreateContextAttribsFunc createContext;
 
    /* driver function for finishing initialization inside createNewScreen(). */
-   const __DRIconfig **(*initScreen)(struct dri_screen *screen);
+   const __DRIconfig **(*initScreen)(struct dri_screen *screen, bool implicit);
 
    int (*queryCompatibleRenderOnlyDeviceFd)(int kms_only_fd);
 

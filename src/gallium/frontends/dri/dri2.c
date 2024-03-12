@@ -2332,7 +2332,7 @@ dri2_create_drawable(struct dri_screen *screen, const struct gl_config *visual,
  * Returns the struct gl_config supported by this driver.
  */
 static const __DRIconfig **
-dri2_init_screen(struct dri_screen *screen)
+dri2_init_screen(struct dri_screen *screen, bool implicit)
 {
    const __DRIconfig **configs;
    struct pipe_screen *pscreen = NULL;
@@ -2390,7 +2390,7 @@ fail:
  * Returns the struct gl_config supported by this driver.
  */
 static const __DRIconfig **
-dri_swrast_kms_init_screen(struct dri_screen *screen)
+dri_swrast_kms_init_screen(struct dri_screen *screen, bool implicit)
 {
 #if defined(GALLIUM_SOFTPIPE)
    const __DRIconfig **configs;

@@ -575,7 +575,7 @@ drisw_create_drawable(struct dri_screen *screen, const struct gl_config * visual
 }
 
 static const __DRIconfig **
-drisw_init_screen(struct dri_screen *screen)
+drisw_init_screen(struct dri_screen *screen, bool implicit)
 {
    const __DRIswrastLoaderExtension *loader = screen->swrast_loader;
    const __DRIconfig **configs;

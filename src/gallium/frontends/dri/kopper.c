@@ -111,7 +111,7 @@ static const __DRIextension *drivk_sw_screen_extensions[] = {
 };
 
 static const __DRIconfig **
-kopper_init_screen(struct dri_screen *screen)
+kopper_init_screen(struct dri_screen *screen, bool implicit)
 {
    const __DRIconfig **configs;
    struct pipe_screen *pscreen = NULL;

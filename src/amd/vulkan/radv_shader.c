@@ -148,7 +148,7 @@ radv_optimize_nir(struct nir_shader *shader, bool optimize_conservatively)
       NIR_LOOP_PASS(progress, skip, shader, nir_opt_remove_phis);
       NIR_LOOP_PASS(progress, skip, shader, nir_opt_dce);
       bool opt_loop_progress = false;
-      NIR_LOOP_PASS(opt_loop_progress, skip, shader, nir_opt_loop);
+      NIR_LOOP_PASS_NOT_IDEMPOTENT(opt_loop_progress, skip, shader, nir_opt_loop);
       if (opt_loop_progress) {
          progress = true;
          NIR_LOOP_PASS(progress, skip, shader, nir_copy_prop);

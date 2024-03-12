@@ -136,7 +136,7 @@ kopper_init_screen(struct dri_screen *screen, bool implicit)
 #endif
 
    if (success)
-      pscreen = pipe_loader_create_screen(screen->dev);
+      pscreen = pipe_loader_create_screen(screen->dev, implicit);
 
    if (!pscreen)
       goto fail;

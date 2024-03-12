@@ -3546,98 +3546,60 @@ invert_point_coord(nir_shader *nir)
 }
 
 static bool
-is_residency_code(nir_def *src)
+lower_sparse_instr(nir_builder *b, nir_instr *instr, void *data)
 {
-   nir_instr *parent = src->parent_instr;
-   while (1) {
-      if (parent->type == nir_instr_type_intrinsic) {
-         ASSERTED nir_intrinsic_instr *intr = nir_instr_as_intrinsic(parent);
-         assert(intr->intrinsic == nir_intrinsic_is_sparse_texels_resident);
+   b->cursor = nir_after_instr(instr);
+
+   switch (instr->type) {
+   case nir_instr_type_tex: {
+      nir_tex_instr *tex = nir_instr_as_tex(instr);
+      if (!tex->is_sparse)
+         return false;
+
+      nir_def *res = nir_b2i32(b, nir_is_sparse_resident_zink(b, &tex->def));
+      nir_def *vec = nir_vector_insert_imm(b, &tex->def, res,
+                                           tex->def.num_components - 1);
+      nir_def_rewrite_uses_after(&tex->def, vec, vec->parent_instr);
+      return true;
+   }
+
+   case nir_instr_type_intrinsic: {
+      nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+      switch (intrin->intrinsic) {
+      case nir_intrinsic_image_deref_sparse_load: {
+         nir_def *res = nir_b2i32(b, nir_is_sparse_resident_zink(b, &intrin->def));
+         nir_def *vec = nir_vector_insert_imm(b, &intrin->def, res, 4);
+         nir_def_rewrite_uses_after(&intrin->def, vec, vec->parent_instr);
+         return true;
+      }
+
+      case nir_intrinsic_sparse_residency_code_and: {
+         nir_def *res = nir_iand(b, intrin->src[0].ssa, intrin->src[1].ssa);
+         nir_def_rewrite_uses(&intrin->def, res);
+         return true;
+      }
+
+      case nir_intrinsic_is_sparse_texels_resident: {
+         nir_def *res = nir_i2b(b, intrin->src[0].ssa);
+         nir_def_rewrite_uses(&intrin->def, res);
+         return true;
+      }
+
+      default:
          return false;
       }
-      if (parent->type == nir_instr_type_tex)
-         return true;
-      assert(parent->type == nir_instr_type_alu);
-      nir_alu_instr *alu = nir_instr_as_alu(parent);
-      parent = alu->src[0].src.ssa->parent_instr;
    }
-}
 
-static bool
-lower_sparse_and_instr(nir_builder *b, nir_intrinsic_instr *instr, void *data)
-{
-   if (instr->intrinsic != nir_intrinsic_sparse_residency_code_and)
+   default:
       return false;
-
-   b->cursor = nir_before_instr(&instr->instr);
-   nir_def *src0;
-   if (is_residency_code(instr->src[0].ssa))
-      src0 = nir_is_sparse_texels_resident(b, 1, instr->src[0].ssa);
-   else
-      src0 = instr->src[0].ssa;
-   nir_def *src1;
-   if (is_residency_code(instr->src[1].ssa))
-      src1 = nir_is_sparse_texels_resident(b, 1, instr->src[1].ssa);
-   else
-      src1 = instr->src[1].ssa;
-   nir_def *def = nir_iand(b, src0, src1);
-   nir_def_rewrite_uses_after(&instr->def, def, &instr->instr);
-   nir_instr_remove(&instr->instr);
-   return true;
-}
-
-static bool
-lower_sparse_and(nir_shader *shader)
-{
-   return nir_shader_intrinsics_pass(shader, lower_sparse_and_instr,
-                                     nir_metadata_dominance, NULL);
-}
-
-static bool
-lower_sparse_instr(nir_builder *b, nir_intrinsic_instr *instr, void *data)
-{
-   if (instr->intrinsic != nir_intrinsic_is_sparse_texels_resident)
-      return false;
-
-   /* vulkan vec can only be a vec4, but this is (maybe) vec5,
-    * so just rewrite as the first component since ntv is going to use a different
-    * method for storing the residency value anyway
-    */
-   b->cursor = nir_before_instr(&instr->instr);
-   nir_instr *parent = instr->src[0].ssa->parent_instr;
-   if (is_residency_code(instr->src[0].ssa)) {
-      assert(parent->type == nir_instr_type_alu);
-      nir_alu_instr *alu = nir_instr_as_alu(parent);
-      nir_def_rewrite_uses_after(instr->src[0].ssa, nir_channel(b, alu->src[0].src.ssa, 0), parent);
-      nir_instr_remove(parent);
-   } else {
-      nir_def *src;
-      if (parent->type == nir_instr_type_intrinsic) {
-         nir_intrinsic_instr *intr = nir_instr_as_intrinsic(parent);
-         assert(intr->intrinsic == nir_intrinsic_is_sparse_texels_resident);
-         src = intr->src[0].ssa;
-      } else {
-         assert(parent->type == nir_instr_type_alu);
-         nir_alu_instr *alu = nir_instr_as_alu(parent);
-         src = alu->src[0].src.ssa;
-      }
-      if (instr->def.bit_size != 32) {
-         if (instr->def.bit_size == 1)
-            src = nir_ieq_imm(b, src, 1);
-         else
-            src = nir_u2uN(b, src, instr->def.bit_size);
-      }
-      nir_def_rewrite_uses(&instr->def, src);
-      nir_instr_remove(&instr->instr);
    }
-   return true;
 }
 
 static bool
 lower_sparse(nir_shader *shader)
 {
-   return nir_shader_intrinsics_pass(shader, lower_sparse_instr,
-                                     nir_metadata_dominance, NULL);
+   return nir_shader_instructions_pass(shader, lower_sparse_instr,
+                                       nir_metadata_dominance, NULL);
 }
 
 static bool
@@ -5572,7 +5534,6 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
 
    NIR_PASS_V(nir, lower_basevertex);
    NIR_PASS_V(nir, lower_baseinstance);
-   NIR_PASS_V(nir, lower_sparse_and);
    NIR_PASS_V(nir, split_bitfields);
    if (!screen->info.feats.features.shaderStorageImageMultisample)
       NIR_PASS_V(nir, strip_tex_ms);

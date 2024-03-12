@@ -402,6 +402,13 @@ intrinsic("is_sparse_texels_resident", dest_comp=1, src_comp=[1], bit_sizes=[1,3
 intrinsic("sparse_residency_code_and", dest_comp=1, src_comp=[1, 1], bit_sizes=[32],
           flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# Unlike is_sparse_texels_resident, this intrinsic is required to consume
+# the destination of the nir_tex_instr or sparse_load intrinsic directly.
+# As such it is allowed to ignore the .e component where we usually store
+# sparse information.
+intrinsic("is_sparse_resident_zink", dest_comp=1, src_comp=[0], bit_sizes=[1],
+          flags=[CAN_ELIMINATE, CAN_REORDER])
+
 # a barrier is an intrinsic with no inputs/outputs but which can't be moved
 # around/optimized in general
 def barrier(name):

@@ -574,6 +574,7 @@ emit_intrinsic(struct etna_compile *c, nir_intrinsic_instr * intr)
       /* TODO: rework so extra MOV isn't required, load up to 4 addresses at once */
       emit_inst(c, &(struct etna_inst) {
          .opcode = ISA_OPC_MOVAR,
+         .dst.use = 1,
          .dst.write_mask = ISA_WRMASK_X___,
          .src[2] = get_src(c, &intr->src[0]),
       });

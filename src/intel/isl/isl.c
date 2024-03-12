@@ -2662,8 +2662,7 @@ isl_calc_base_alignment(const struct isl_device *dev,
       if (tile_info->tiling == ISL_TILING_GFX12_CCS)
          base_alignment_B = MAX(base_alignment_B, 4096);
 
-      if (dev->info->has_aux_map &&
-          isl_format_supports_ccs_e(dev->info, info->format) &&
+      if (isl_format_supports_ccs_e(dev->info, info->format) &&
           !INTEL_DEBUG(DEBUG_NO_CCS) &&
           !(info->usage & ISL_SURF_USAGE_DISABLE_AUX_BIT)) {
          /* Wa_22015614752:
@@ -2698,7 +2697,8 @@ isl_calc_base_alignment(const struct isl_device *dev,
           * is that we haven't enable CCS on linear images yet so we can avoid
           * the extra alignment there.
           */
-         if (!(info->usage & ISL_SURF_USAGE_NO_AUX_TT_ALIGNMENT_BIT)) {
+         if (dev->info->has_aux_map &&
+             !(info->usage & ISL_SURF_USAGE_NO_AUX_TT_ALIGNMENT_BIT)) {
             base_alignment_B = MAX(base_alignment_B, dev->info->verx10 >= 125 ?
                                    1024 * 1024 : 64 * 1024);
          }

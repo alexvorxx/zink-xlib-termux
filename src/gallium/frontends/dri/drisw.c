@@ -656,11 +656,12 @@ const __DRIcopySubBufferExtension driSWCopySubBufferExtension = {
 };
 
 static const struct __DRImesaCoreExtensionRec mesaCoreExtension = {
-   .base = { __DRI_MESA, 1 },
+   .base = { __DRI_MESA, 2 },
    .version_string = MESA_INTERFACE_VERSION_STRING,
    .createNewScreen = driCreateNewScreen2,
    .createContext = driCreateContextAttribs,
    .initScreen = drisw_init_screen,
+   .createNewScreen3 = driCreateNewScreen3,
 };
 
 /* This is the table of extensions that the loader will dlsym() for. */

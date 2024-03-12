@@ -250,14 +250,14 @@ static struct dri_extension_match dri_core_extensions[] = {
 
 static struct dri_extension_match gbm_dri_device_extensions[] = {
    { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), false },
-   { __DRI_MESA, 1, offsetof(struct gbm_dri_device, mesa), false },
-   { __DRI_IMAGE_DRIVER, 1, offsetof(struct gbm_dri_device, image_driver), false },
+   { __DRI_MESA, 2, offsetof(struct gbm_dri_device, mesa), false },
+   { __DRI_IMAGE_DRIVER, 2, offsetof(struct gbm_dri_device, image_driver), false },
 };
 
 static struct dri_extension_match gbm_swrast_device_extensions[] = {
    { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), false },
-   { __DRI_MESA, 1, offsetof(struct gbm_dri_device, mesa), false },
-   { __DRI_SWRAST, 4, offsetof(struct gbm_dri_device, swrast), false },
+   { __DRI_MESA, 2, offsetof(struct gbm_dri_device, mesa), false },
+   { __DRI_SWRAST, 5, offsetof(struct gbm_dri_device, swrast), false },
    { __DRI_KOPPER, 1, offsetof(struct gbm_dri_device, kopper), true },
 };
 
@@ -315,10 +315,10 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name)
 
    dri->driver_extensions = extensions;
    dri->loader_extensions = gbm_dri_screen_extensions;
-   dri->screen = dri->mesa->createNewScreen(0, swrast ? -1 : dri->base.v0.fd,
-                                            dri->loader_extensions,
-                                            dri->driver_extensions,
-                                            &dri->driver_configs, dri);
+   dri->screen = dri->mesa->createNewScreen3(0, swrast ? -1 : dri->base.v0.fd,
+                                             dri->loader_extensions,
+                                             dri->driver_extensions,
+                                             &dri->driver_configs, false, dri);
    if (dri->screen == NULL)
       goto close_driver;
 

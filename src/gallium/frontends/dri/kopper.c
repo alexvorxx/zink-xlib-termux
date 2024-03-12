@@ -940,11 +940,12 @@ const __DRIkopperExtension driKopperExtension = {
 };
 
 static const struct __DRImesaCoreExtensionRec mesaCoreExtension = {
-   .base = { __DRI_MESA, 1 },
+   .base = { __DRI_MESA, 2 },
    .version_string = MESA_INTERFACE_VERSION_STRING,
    .createNewScreen = driCreateNewScreen2,
    .createContext = driCreateContextAttribs,
    .initScreen = kopper_init_screen,
+   .createNewScreen3 = driCreateNewScreen3,
 };
 
 const __DRIextension *galliumvk_driver_extensions[] = {

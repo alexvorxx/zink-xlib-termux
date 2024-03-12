@@ -33,7 +33,7 @@
 typedef struct __DRImesaCoreExtensionRec __DRImesaCoreExtension;
 
 #define __DRI_MESA "DRI_Mesa"
-#define __DRI_MESA_VERSION 1
+#define __DRI_MESA_VERSION 2
 
 struct dri_screen;
 
@@ -63,6 +63,9 @@ struct __DRImesaCoreExtensionRec {
    const __DRIconfig **(*initScreen)(struct dri_screen *screen);
 
    int (*queryCompatibleRenderOnlyDeviceFd)(int kms_only_fd);
+
+   /* version 2 */
+   __DRIcreateNewScreen3Func createNewScreen3;
 };
 
 #endif /* MESA_INTERFACE_H */

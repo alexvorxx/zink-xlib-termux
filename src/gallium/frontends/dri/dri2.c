@@ -2448,12 +2448,13 @@ dri_query_compatible_render_only_device_fd(int kms_only_fd)
 }
 
 static const struct __DRImesaCoreExtensionRec mesaCoreExtension = {
-   .base = { __DRI_MESA, 1 },
+   .base = { __DRI_MESA, 2 },
    .version_string = MESA_INTERFACE_VERSION_STRING,
    .createNewScreen = driCreateNewScreen2,
    .createContext = driCreateContextAttribs,
    .initScreen = dri2_init_screen,
    .queryCompatibleRenderOnlyDeviceFd = dri_query_compatible_render_only_device_fd,
+   .createNewScreen3 = driCreateNewScreen3,
 };
 
 /* This is the table of extensions that the loader will dlsym() for. */
@@ -2467,11 +2468,12 @@ const __DRIextension *galliumdrm_driver_extensions[] = {
 };
 
 static const struct __DRImesaCoreExtensionRec swkmsMesaCoreExtension = {
-   .base = { __DRI_MESA, 1 },
+   .base = { __DRI_MESA, 2 },
    .version_string = MESA_INTERFACE_VERSION_STRING,
    .createNewScreen = driCreateNewScreen2,
    .createContext = driCreateContextAttribs,
    .initScreen = dri_swrast_kms_init_screen,
+   .createNewScreen3 = driCreateNewScreen3,
 };
 
 const __DRIextension *dri_swrast_kms_driver_extensions[] = {

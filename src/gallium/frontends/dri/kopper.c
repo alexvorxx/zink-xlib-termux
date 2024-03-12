@@ -130,9 +130,9 @@ kopper_init_screen(struct dri_screen *screen)
    if (screen->fd != -1)
       success = pipe_loader_drm_probe_fd(&screen->dev, screen->fd, false);
    else
-      success = pipe_loader_vk_probe_dri(&screen->dev, NULL);
+      success = pipe_loader_vk_probe_dri(&screen->dev);
 #else
-   success = pipe_loader_vk_probe_dri(&screen->dev, NULL);
+   success = pipe_loader_vk_probe_dri(&screen->dev);
 #endif
 
    if (success)

@@ -50,6 +50,10 @@ struct vn_ring {
 
    struct list_head submits;
    struct list_head free_submits;
+
+   /* to synchronize renderer/ring */
+   mtx_t roundtrip_mutex;
+   uint64_t roundtrip_next;
 };
 
 struct vn_ring_submit {
@@ -304,6 +308,9 @@ vn_ring_create(struct vn_instance *instance,
    list_inithead(&ring->submits);
    list_inithead(&ring->free_submits);
 
+   mtx_init(&ring->roundtrip_mutex, mtx_plain);
+   ring->roundtrip_next = 1;
+
    const struct VkRingMonitorInfoMESA monitor_info = {
       .sType = VK_STRUCTURE_TYPE_RING_MONITOR_INFO_MESA,
       .maxReportingPeriodMicroseconds = VN_WATCHDOG_REPORT_PERIOD_US,
@@ -346,6 +353,8 @@ vn_ring_destroy(struct vn_ring *ring)
    vn_encode_vkDestroyRingMESA(&local_enc, 0, ring->id);
    vn_renderer_submit_simple(ring->instance->renderer, destroy_ring_data,
                              vn_cs_encoder_get_len(&local_enc));
+
+   mtx_destroy(&ring->roundtrip_mutex);
 
    vn_ring_retire_submits(ring, ring->cur);
    assert(list_is_empty(&ring->submits));
@@ -681,4 +690,29 @@ vn_ring_free_command_reply(struct vn_ring *ring,
 {
    assert(submit->reply_shmem);
    vn_renderer_shmem_unref(ring->instance->renderer, submit->reply_shmem);
+}
+
+VkResult
+vn_ring_submit_roundtrip(struct vn_ring *ring, uint64_t *roundtrip_seqno)
+{
+   uint32_t local_data[8];
+   struct vn_cs_encoder local_enc =
+      VN_CS_ENCODER_INITIALIZER_LOCAL(local_data, sizeof(local_data));
+
+   mtx_lock(&ring->roundtrip_mutex);
+   const uint64_t seqno = ring->roundtrip_next++;
+   vn_encode_vkSubmitVirtqueueSeqnoMESA(&local_enc, 0, ring->id, seqno);
+   VkResult result =
+      vn_renderer_submit_simple(ring->instance->renderer, local_data,
+                                vn_cs_encoder_get_len(&local_enc));
+   mtx_unlock(&ring->roundtrip_mutex);
+
+   *roundtrip_seqno = seqno;
+   return result;
+}
+
+void
+vn_ring_wait_roundtrip(struct vn_ring *ring, uint64_t roundtrip_seqno)
+{
+   vn_async_vkWaitVirtqueueSeqnoMESA(ring, roundtrip_seqno);
 }

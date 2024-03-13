@@ -35,6 +35,7 @@
 #include "clb0c0.h"
 #include "clb197.h"
 #include "clb1c0.h"
+#include "clc097.h"
 #include "clc0c0.h"
 #include "clc1c0.h"
 #include "clc397.h"
@@ -614,7 +615,7 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .maxPushConstantsSize = NVK_MAX_PUSH_SIZE,
       .maxMemoryAllocationCount = 4096,
       .maxSamplerAllocationCount = 4000,
-      .bufferImageGranularity = info->chipset >= 0x120 ? 0x400 : 0x10000,
+      .bufferImageGranularity = info->cls_eng3d >= MAXWELL_B ? 0x400 : 0x10000,
       .sparseAddressSpaceSize = NVK_SPARSE_ADDR_SPACE_SIZE,
       .maxBoundDescriptorSets = NVK_MAX_SETS,
       .maxPerStageDescriptorSamplers = NVK_MAX_DESCRIPTORS,
@@ -680,8 +681,8 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .minInterpolationOffset = -0.5,
       .maxInterpolationOffset = 0.4375,
       .subPixelInterpolationOffsetBits = 4,
-      .maxFramebufferHeight = info->chipset >= 0x130 ? 0x8000 : 0x4000,
-      .maxFramebufferWidth = info->chipset >= 0x130 ? 0x8000 : 0x4000,
+      .maxFramebufferHeight = info->cls_eng3d >= PASCAL_A ? 0x8000 : 0x4000,
+      .maxFramebufferWidth = info->cls_eng3d >= PASCAL_A ? 0x8000 : 0x4000,
       .maxFramebufferLayers = 2048,
       .framebufferColorSampleCounts = sample_counts,
       .framebufferDepthSampleCounts = sample_counts,

@@ -15,6 +15,7 @@
 
 #include "clb097.h"
 #include "clb197.h"
+#include "clc097.h"
 
 static VkFormatFeatureFlags2
 nvk_get_image_plane_format_features(struct nvk_physical_device *pdev,
@@ -173,7 +174,7 @@ nvk_image_max_dimension(const struct nv_device_info *info,
    switch (image_type) {
    case VK_IMAGE_TYPE_1D:
    case VK_IMAGE_TYPE_2D:
-      return info->chipset >= 0x130 ? 0x8000 : 0x4000;
+      return info->cls_eng3d >= PASCAL_A ? 0x8000 : 0x4000;
    case VK_IMAGE_TYPE_3D:
       return 0x4000;
    default:

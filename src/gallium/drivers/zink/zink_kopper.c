@@ -537,6 +537,25 @@ kopper_acquire(struct zink_screen *screen, struct zink_resource *res, uint64_t t
       if (timeout == UINT64_MAX && util_queue_is_initialized(&screen->flush_queue) &&
           p_atomic_read_relaxed(&cdt->swapchain->num_acquires) >= cdt->swapchain->max_acquires) {
          util_queue_fence_wait(&cdt->swapchain->present_fence);
+         /* With a sequence of
+              glDrawBuffer(GL_FRONT_AND_BACK);
+              glClearBufferfv(GL_COLOR, 0, purple);
+              glReadBuffer(GL_FRONT);
+              glReadPIxels(...);
+            kopper_present is never called, but with glReadPIxels the pipeline
+            is flushed, and since we draw to the front- and the backbuffer, two
+            swapchain images are acquired one after the other. Because with
+            that we possibly acquire too many images at once and when using
+            "timeout == UINT64_MAX" forwad progress of vkAcquireNextImageKHR
+            can no longer be guaranteed, i.e. the call may block indefinitely;
+            VUID-vkAcquireNextImageKHR-surface-07783 is raised to warn
+            about exceeding the limit for acquires.
+
+            So let's check whether the number of acquired images is still too
+            large after the fence was signalled, and if so then clear the timeout.
+         */
+         if (p_atomic_read_relaxed(&cdt->swapchain->num_acquires) >= cdt->swapchain->max_acquires)
+            timeout = 0;
       }
       VkResult ret;
       if (!acquire) {

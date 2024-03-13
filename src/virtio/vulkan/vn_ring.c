@@ -569,6 +569,9 @@ vn_ring_cs_upload_locked(struct vn_ring *ring, const struct vn_cs_encoder *cs)
    vn_cs_encoder_write(upload, cs_size, cs_data, cs_size);
    vn_cs_encoder_commit(upload);
 
+   if (vn_cs_encoder_needs_roundtrip(upload))
+      vn_ring_roundtrip(ring);
+
    return upload;
 }
 
@@ -657,6 +660,10 @@ vn_ring_submit_command(struct vn_ring *ring,
          ring->instance, submit->reply_size, &reply_offset);
       if (!submit->reply_shmem)
          return;
+
+      if (ring->instance->renderer->info.has_guest_vram &&
+          !submit->reply_shmem->cache_timestamp)
+         vn_ring_roundtrip(ring);
    }
 
    mtx_lock(&ring->mutex);

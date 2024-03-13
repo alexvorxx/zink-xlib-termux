@@ -1037,6 +1037,9 @@ vn_cmd_submit(struct vn_command_buffer *cmd)
       return;
    }
 
+   if (vn_cs_encoder_needs_roundtrip(&cmd->cs))
+      vn_ring_roundtrip(ring);
+
    if (vn_ring_submit_command_simple(ring, &cmd->cs) != VK_SUCCESS) {
       cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
       return;

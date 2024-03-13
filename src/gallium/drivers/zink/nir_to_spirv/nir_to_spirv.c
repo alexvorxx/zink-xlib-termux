@@ -114,6 +114,7 @@ struct ntv_context {
          subgroup_size_var;
 
    SpvId discard_func;
+   SpvId float_array_type[2];
 };
 
 static SpvId
@@ -2784,6 +2785,16 @@ emit_deref_atomic_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
    nir_alu_type atype;
    nir_alu_type ret_type = nir_atomic_op_type(nir_intrinsic_atomic_op(intr)) == nir_type_float ? nir_type_float : nir_type_uint;
    SpvId ptr = get_src(ctx, &intr->src[0], &atype);
+   if (atype != ret_type && ret_type == nir_type_float) {
+      unsigned bit_size = nir_src_bit_size(intr->src[0]);
+      SpvId *float_array_type = &ctx->float_array_type[bit_size == 32 ? 0 : 1];
+      if (!*float_array_type) {
+         *float_array_type = spirv_builder_type_pointer(&ctx->builder, SpvStorageClassStorageBuffer,
+                                                        spirv_builder_type_float(&ctx->builder, bit_size));
+      }
+      ptr = emit_unop(ctx, SpvOpBitcast, *float_array_type, ptr);
+   }
+
    SpvId param = get_src(ctx, &intr->src[1], &atype);
    if (atype != ret_type)
       param = cast_src_to_type(ctx, param, intr->src[1], ret_type);

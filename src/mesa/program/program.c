@@ -251,6 +251,7 @@ _mesa_delete_program(struct gl_context *ctx, struct gl_program *prog)
    st_release_variants(st, prog);
 
    free(prog->serialized_nir);
+   free(prog->base_serialized_nir);
 
    if (prog == &_mesa_DummyProgram)
       return;

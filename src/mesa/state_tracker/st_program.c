@@ -390,6 +390,8 @@ st_prog_to_nir_postprocess(struct st_context *st, nir_shader *nir,
    st_finalize_nir_before_variants(nir);
 
    if (st->allow_st_finalize_nir_twice) {
+      st_serialize_base_nir(prog, nir);
+
       char *msg = st_finalize_nir(st, prog, NULL, nir, true, true);
       free(msg);
    }
@@ -560,6 +562,7 @@ st_translate_vertex_program(struct st_context *st,
       free(prog->serialized_nir);
       prog->serialized_nir = NULL;
    }
+   free(prog->base_serialized_nir);
 
    prog->state.type = PIPE_SHADER_IR_NIR;
    if (prog->arb.Instructions)
@@ -1302,6 +1305,20 @@ st_serialize_nir(struct gl_program *prog)
 }
 
 void
+st_serialize_base_nir(struct gl_program *prog, nir_shader *nir)
+{
+   if (!prog->base_serialized_nir && nir->info.stage == MESA_SHADER_VERTEX) {
+      struct blob blob;
+      size_t size;
+
+      blob_init(&blob);
+      nir_serialize(&blob, nir, false);
+      blob_finish_get_buffer(&blob, &prog->base_serialized_nir, &size);
+      prog->base_serialized_nir_size = size;
+   }
+}
+
+void
 st_finalize_program(struct st_context *st, struct gl_program *prog)
 {
    struct gl_context *ctx = st->ctx;
@@ -1338,6 +1355,7 @@ st_finalize_program(struct st_context *st, struct gl_program *prog)
        * is disabled. If the disk cache is enabled, GLSL programs are
        * serialized in write_nir_to_cache.
        */
+      st_serialize_base_nir(prog, prog->nir);
       st_serialize_nir(prog);
    }
 

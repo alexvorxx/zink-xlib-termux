@@ -385,8 +385,10 @@ st_glsl_to_nir_post_opts(struct st_context *st, struct gl_program *prog,
    st_finalize_nir_before_variants(nir);
 
    char *msg = NULL;
-   if (st->allow_st_finalize_nir_twice)
+   if (st->allow_st_finalize_nir_twice) {
+      st_serialize_base_nir(prog, nir);
       msg = st_finalize_nir(st, prog, shader_program, nir, true, true);
+   }
 
    if (st->ctx->_Shader->Flags & GLSL_DUMP) {
       _mesa_log("\n");

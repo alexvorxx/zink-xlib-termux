@@ -392,7 +392,7 @@ st_prog_to_nir_postprocess(struct st_context *st, nir_shader *nir,
    if (st->allow_st_finalize_nir_twice) {
       st_serialize_base_nir(prog, nir);
 
-      char *msg = st_finalize_nir(st, prog, NULL, nir, true, true);
+      char *msg = st_finalize_nir(st, prog, NULL, nir, true, true, false);
       free(msg);
    }
 
@@ -698,7 +698,7 @@ st_create_common_variant(struct st_context *st,
 
    if (finalize || !st->allow_st_finalize_nir_twice) {
       char *msg = st_finalize_nir(st, prog, prog->shader_program, state.ir.nir,
-                                    true, false);
+                                    true, false, false);
       free(msg);
 
       /* Clip lowering and edgeflags may have introduced new varyings, so
@@ -1031,7 +1031,7 @@ st_create_fp_variant(struct st_context *st,
 
    if (finalize || !st->allow_st_finalize_nir_twice) {
       char *msg = st_finalize_nir(st, fp, fp->shader_program, state.ir.nir,
-                                    false, false);
+                                    false, false, false);
       free(msg);
    }
 

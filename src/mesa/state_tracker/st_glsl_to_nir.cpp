@@ -387,7 +387,7 @@ st_glsl_to_nir_post_opts(struct st_context *st, struct gl_program *prog,
    char *msg = NULL;
    if (st->allow_st_finalize_nir_twice) {
       st_serialize_base_nir(prog, nir);
-      msg = st_finalize_nir(st, prog, shader_program, nir, true, true);
+      msg = st_finalize_nir(st, prog, shader_program, nir, true, true, false);
    }
 
    if (st->ctx->_Shader->Flags & GLSL_DUMP) {
@@ -872,7 +872,8 @@ char *
 st_finalize_nir(struct st_context *st, struct gl_program *prog,
                 struct gl_shader_program *shader_program,
                 nir_shader *nir, bool finalize_by_driver,
-                bool is_before_variants)
+                bool is_before_variants,
+                bool is_draw_shader)
 {
    struct pipe_screen *screen = st->screen;
 
@@ -882,9 +883,9 @@ st_finalize_nir(struct st_context *st, struct gl_program *prog,
    NIR_PASS(_, nir, nir_lower_var_copies);
 
    const bool lower_tg4_offsets =
-      !st->screen->get_param(screen, PIPE_CAP_TEXTURE_GATHER_OFFSETS);
+      !is_draw_shader && !st->screen->get_param(screen, PIPE_CAP_TEXTURE_GATHER_OFFSETS);
 
-   if (st->lower_rect_tex || lower_tg4_offsets) {
+   if (!is_draw_shader && (st->lower_rect_tex || lower_tg4_offsets)) {
       struct nir_lower_tex_options opts = {0};
       opts.lower_rect = !!st->lower_rect_tex;
       opts.lower_tg4_offsets = lower_tg4_offsets;
@@ -900,7 +901,7 @@ st_finalize_nir(struct st_context *st, struct gl_program *prog,
     *
     * TODO: remove this once nir_io_glsl_opt_varyings is enabled by default.
     */
-   if (nir->options->io_options & nir_io_glsl_lower_derefs &&
+   if (!is_draw_shader && nir->options->io_options & nir_io_glsl_lower_derefs &&
        !(nir->options->io_options & nir_io_glsl_opt_varyings)) {
       nir_lower_io_passes(nir, false);
       NIR_PASS(_, nir, nir_remove_dead_variables,
@@ -912,7 +913,7 @@ st_finalize_nir(struct st_context *st, struct gl_program *prog,
 
    st_nir_lower_uniforms(st, nir);
 
-   if (is_before_variants && nir->options->lower_uniforms_to_ubo) {
+   if (!is_draw_shader && is_before_variants && nir->options->lower_uniforms_to_ubo) {
       /* This must be done after uniforms are lowered to UBO and all
        * nir_var_uniform variables are removed from NIR to prevent conflicts
        * between state parameter merging and shader variant generation.
@@ -921,11 +922,11 @@ st_finalize_nir(struct st_context *st, struct gl_program *prog,
    }
 
    st_nir_lower_samplers(screen, nir, shader_program, prog);
-   if (!screen->get_param(screen, PIPE_CAP_NIR_IMAGES_AS_DEREF))
+   if (!is_draw_shader && !screen->get_param(screen, PIPE_CAP_NIR_IMAGES_AS_DEREF))
       NIR_PASS(_, nir, gl_nir_lower_images, false);
 
    char *msg = NULL;
-   if (finalize_by_driver && screen->finalize_nir)
+   if (!is_draw_shader && finalize_by_driver && screen->finalize_nir)
       msg = screen->finalize_nir(screen, nir);
 
    return msg;

@@ -35,22 +35,30 @@ mark_sampler_desc(const nir_variable *var, struct radv_shader_info *info)
 }
 
 static void
+gather_load_vs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intrin, struct radv_shader_info *info,
+                          const struct radv_graphics_state_key *gfx_state,
+                          const struct radv_shader_stage_key *stage_key)
+{
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
+   const unsigned location = io_sem.location;
+   const unsigned component = nir_intrinsic_component(intrin);
+   unsigned mask = nir_def_components_read(&intrin->def);
+   mask = (intrin->def.bit_size == 64 ? util_widen_mask(mask, 2) : mask) << component;
+
+   info->vs.input_usage_mask[location] |= mask & 0xf;
+   if (mask >> 4)
+      info->vs.input_usage_mask[location + 1] |= mask >> 4;
+}
+
+static void
 gather_intrinsic_load_input_info(const nir_shader *nir, const nir_intrinsic_instr *instr, struct radv_shader_info *info,
                                  const struct radv_graphics_state_key *gfx_state,
                                  const struct radv_shader_stage_key *stage_key)
 {
    switch (nir->info.stage) {
-   case MESA_SHADER_VERTEX: {
-      unsigned idx = nir_intrinsic_io_semantics(instr).location;
-      unsigned component = nir_intrinsic_component(instr);
-      unsigned mask = nir_def_components_read(&instr->def);
-      mask = (instr->def.bit_size == 64 ? util_widen_mask(mask, 2) : mask) << component;
-
-      info->vs.input_usage_mask[idx] |= mask & 0xf;
-      if (mask >> 4)
-         info->vs.input_usage_mask[idx + 1] |= mask >> 4;
+   case MESA_SHADER_VERTEX:
+      gather_load_vs_input_info(nir, instr, info, gfx_state, stage_key);
       break;
-   }
    default:
       break;
    }

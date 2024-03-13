@@ -225,3 +225,6 @@ KHR-GLES31.core.tessellation_shader.tessellation_shader_tc_barriers.barrier_guar
 glx@glx-visuals-depth -pixmap
 glx@glx-visuals-stencil -pixmap
 
+
+# Updated by ci-collate, found in this job run: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56260499
+dEQP-VK.binding_model.shader_access.primary_cmd_buf.storage_image.tess_eval.multiple_descriptor_sets.multiple_discontiguous_descriptors.2d

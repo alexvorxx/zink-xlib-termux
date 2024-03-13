@@ -934,3 +934,9 @@ nobin-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_
 nobin-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_3.pgq_64bit_xfb_32bit.line_strip.draw,Fail
 nobin-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_3.32bit.triangle_strip.indirect,Fail
 nobin-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_3.64bit.line_strip.draw,Fail
+
+# Updated by ci-collate, found in this job run: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56164985
+dEQP-VK.binding_model.descriptorset_random.sets4.constant.ubolimitlow.sbolimitlow.sampledimglow.outimgtexlow.iublimitlow.uab.comp.noia.0,Fail
+
+# Updated by ci-collate, found in this job run: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56164987
+dEQP-VK.info.device_properties,Fail

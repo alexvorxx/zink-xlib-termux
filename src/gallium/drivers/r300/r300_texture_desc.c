@@ -527,7 +527,9 @@ static void r300_setup_tiling(struct r300_screen *screen,
             break;
 
         case 2:
-            tex->tex.microtile = RADEON_LAYOUT_SQUARETILED;
+            tex->tex.microtile =
+                tex->b.bind & PIPE_BIND_SCANOUT ?
+                     RADEON_LAYOUT_TILED : RADEON_LAYOUT_SQUARETILED;
             break;
     }
 

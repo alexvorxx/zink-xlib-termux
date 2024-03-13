@@ -1170,10 +1170,20 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 
    if (pdev->info.vram_size_B > 0) {
       uint32_t vram_heap_idx = pdev->mem_heap_count++;
+      uint32_t bar_heap_idx = vram_heap_idx;
       pdev->mem_heaps[vram_heap_idx] = (struct nvk_memory_heap) {
          .size = pdev->info.vram_size_B,
          .flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT,
       };
+
+      if (pdev->info.bar_size_B > 0 &&
+          pdev->info.bar_size_B < pdev->info.vram_size_B) {
+         bar_heap_idx = pdev->mem_heap_count++;
+         pdev->mem_heaps[bar_heap_idx] = (struct nvk_memory_heap) {
+            .size = pdev->info.bar_size_B,
+            .flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT,
+         };
+      }
 
       /* Only set available if we have the ioctl. */
       if (nouveau_ws_device_vram_used(ws_dev) > 0)
@@ -1184,13 +1194,12 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
          .heapIndex = vram_heap_idx,
       };
 
-      if (pdev->info.cls_eng3d >= MAXWELL_A &&
-          pdev->info.bar_size_B >= pdev->info.vram_size_B) {
+      if (pdev->info.cls_eng3d >= MAXWELL_A) {
          pdev->mem_types[pdev->mem_type_count++] = (VkMemoryType) {
             .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            .heapIndex = vram_heap_idx,
+            .heapIndex = bar_heap_idx,
          };
       }
    }

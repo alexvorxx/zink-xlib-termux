@@ -49,7 +49,7 @@ struct nvk_physical_device {
    uint8_t device_uuid[VK_UUID_SIZE];
 
    // TODO: add mapable VRAM heap if possible
-   struct nvk_memory_heap mem_heaps[2];
+   struct nvk_memory_heap mem_heaps[3];
    VkMemoryType mem_types[3];
    uint8_t mem_heap_count;
    uint8_t mem_type_count;

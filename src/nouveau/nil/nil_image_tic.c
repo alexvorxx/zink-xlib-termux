@@ -426,7 +426,7 @@ nvb097_nil_image_fill_tic(const struct nil_image *image,
 
    if (tiling->is_tiled) {
       TH_NVB097_SET_E(th, BL, HEADER_VERSION, SELECT_BLOCKLINEAR);
-      
+
       assert((layer_address & BITFIELD_MASK(9)) == 0);
       TH_NVB097_SET_U(th, BL, ADDRESS_BITS31TO9, (uint32_t)layer_address >> 9);
       TH_NVB097_SET_U(th, BL, ADDRESS_BITS47TO32, layer_address >> 32);
@@ -440,7 +440,7 @@ nvb097_nil_image_fill_tic(const struct nil_image *image,
       TH_NVB097_SET_U(th, BL, TEXTURE_TYPE, pipe_to_nv_texture_type(view->type));
    } else {
       TH_NVB097_SET_E(th, PITCH, HEADER_VERSION, SELECT_PITCH);
-      
+
       assert((layer_address & BITFIELD_MASK(5)) == 0);
       TH_NVB097_SET_U(th, PITCH, ADDRESS_BITS31TO5,
                       (uint32_t)layer_address >> 5);

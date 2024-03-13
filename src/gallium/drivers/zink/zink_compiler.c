@@ -4778,6 +4778,11 @@ strip_tex_ms_instr(nir_builder *b, nir_instr *in, void *data)
       return false;
    nir_intrinsic_instr *intr = nir_instr_as_intrinsic(in);
    switch (intr->intrinsic) {
+   case nir_intrinsic_image_deref_samples:
+      b->cursor = nir_before_instr(in);
+      nir_def_rewrite_uses_after(&intr->def, nir_imm_zero(b, 1, intr->def.bit_size), in);
+      nir_instr_remove(in);
+      break;
    case nir_intrinsic_image_deref_store:
    case nir_intrinsic_image_deref_load:
       break;

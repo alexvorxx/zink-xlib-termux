@@ -9178,18 +9178,8 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    }
 
    /* Emit graphics states related to shaders. */
-   struct radv_vgt_shader_key vgt_shader_cfg_key = {
-      .tess = !!cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL],
-      .gs = !!cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY],
-      .ngg = last_vgt_shader->info.is_ngg,
-      .ngg_passthrough = last_vgt_shader->info.is_ngg_passthrough,
-      .ngg_streamout = last_vgt_shader->info.is_ngg && last_vgt_shader->info.so.num_outputs > 0,
-   };
-
-   if (cmd_buffer->state.shaders[MESA_SHADER_MESH]) {
-      vgt_shader_cfg_key.mesh = 1;
-      vgt_shader_cfg_key.mesh_scratch_ring = cmd_buffer->state.shaders[MESA_SHADER_MESH]->info.ms.needs_ms_scratch_ring;
-   }
+   const struct radv_vgt_shader_key vgt_shader_cfg_key =
+      radv_get_vgt_shader_key(cmd_buffer->device, cmd_buffer->state.shaders, cmd_buffer->state.gs_copy_shader);
 
    radv_emit_vgt_gs_mode(device, cs, last_vgt_shader);
    radv_emit_vgt_vertex_reuse(device, cs, radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL));

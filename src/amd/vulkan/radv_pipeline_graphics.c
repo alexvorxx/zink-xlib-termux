@@ -3567,7 +3567,7 @@ radv_emit_vgt_vertex_reuse(const struct radv_device *device, struct radeon_cmdbu
    radeon_set_context_reg(ctx_cs, R_028C58_VGT_VERTEX_REUSE_BLOCK_CNTL, S_028C58_VTX_REUSE_DEPTH(vtx_reuse_depth));
 }
 
-static struct radv_vgt_shader_key
+struct radv_vgt_shader_key
 radv_get_vgt_shader_key(const struct radv_device *device, struct radv_shader **shaders,
                         const struct radv_shader *gs_copy_shader)
 {

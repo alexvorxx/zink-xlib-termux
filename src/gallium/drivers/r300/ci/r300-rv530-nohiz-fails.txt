@@ -412,12 +412,10 @@ spec@!opengl 1.1@linestipple@Line loop,Fail
 spec@!opengl 1.1@linestipple@Line strip,Fail
 spec@!opengl 1.1@linestipple@Restarting lines within a single Begin-End block,Fail
 spec@!opengl 1.1@read-front samples=6,Fail
-spec@!opengl 1.1@texgen,Fail
 spec@!opengl 1.1@texsubimage,Fail
 
 spec@!opengl 1.2@lodclamp-between,Fail
 spec@!opengl 1.2@lodclamp-between-max,Fail
-spec@!opengl 1.2@tex3d,Fail
 spec@!opengl 1.2@texwrap 3d,Fail
 spec@!opengl 1.2@texwrap 3d@GL_RGBA8- NPOT,Fail
 spec@!opengl 1.2@texwrap 3d proj,Fail
@@ -609,7 +607,6 @@ spec@arb_vertex_program@big-param,Fail
 
 spec@ati_fragment_shader@ati_fragment_shader-render-notexture,Fail
 spec@ati_fragment_shader@ati_fragment_shader-render-sources,Fail
-spec@ati_fragment_shader@ati_fragment_shader-render-textargets,Fail
 
 spec@egl 1.4@eglterminate then unbind context,Fail
 

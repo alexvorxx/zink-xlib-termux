@@ -15,3 +15,8 @@ spec@glsl-1.10@execution@built-in-functions@fs-op-selection-bool-bvec3-bvec3
 spec@oes_draw_elements_base_vertex@oes_draw_elements_base_vertex-drawelements
 shaders@glsl-fs-bug25902
 shaders@glsl-lod-bias
+
+# Updated by ci-collate, found in this job run: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56164946
+spec@!opengl 1.1@texgen
+spec@!opengl 1.2@tex3d
+spec@ati_fragment_shader@ati_fragment_shader-render-textargets

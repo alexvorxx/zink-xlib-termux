@@ -59,6 +59,22 @@ gather_load_vs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intr
    const unsigned component = nir_intrinsic_component(intrin);
    unsigned mask = nir_def_components_read(&intrin->def);
    mask = (intrin->def.bit_size == 64 ? util_widen_mask(mask, 2) : mask) << component;
+
+   if (location >= VERT_ATTRIB_GENERIC0) {
+      const unsigned generic_loc = location - VERT_ATTRIB_GENERIC0;
+
+      if (gfx_state->vi.instance_rate_inputs & BITFIELD_BIT(generic_loc)) {
+         info->vs.needs_instance_id = true;
+         info->vs.needs_base_instance = true;
+      }
+
+      if (radv_use_per_attribute_vb_descs(nir, gfx_state, stage_key))
+         info->vs.vb_desc_usage_mask |= BITFIELD_BIT(generic_loc);
+      else
+         info->vs.vb_desc_usage_mask |= BITFIELD_BIT(gfx_state->vi.vertex_attribute_bindings[generic_loc]);
+
+      info->vs.input_slot_usage_mask |= BITFIELD_RANGE(generic_loc, io_sem.num_slots);
+   }
 }
 
 static void
@@ -411,39 +427,6 @@ radv_compute_esgs_itemsize(const struct radv_device *device, uint32_t num_varyin
 }
 
 static void
-gather_info_input_decl_vs(const nir_shader *nir, unsigned location, const struct glsl_type *type,
-                          const struct radv_graphics_state_key *gfx_state, struct radv_shader_info *info)
-{
-   if (glsl_type_is_scalar(type) || glsl_type_is_vector(type)) {
-      if (gfx_state->vi.instance_rate_inputs & BITFIELD_BIT(location)) {
-         info->vs.needs_instance_id = true;
-         info->vs.needs_base_instance = true;
-      }
-
-      if (info->vs.use_per_attribute_vb_descs)
-         info->vs.vb_desc_usage_mask |= BITFIELD_BIT(location);
-      else
-         info->vs.vb_desc_usage_mask |= BITFIELD_BIT(gfx_state->vi.vertex_attribute_bindings[location]);
-
-      info->vs.input_slot_usage_mask |= BITFIELD_RANGE(location, glsl_count_attribute_slots(type, false));
-   } else if (glsl_type_is_matrix(type) || glsl_type_is_array(type)) {
-      const struct glsl_type *elem = glsl_get_array_element(type);
-      unsigned stride = glsl_count_attribute_slots(elem, false);
-
-      for (unsigned i = 0; i < glsl_get_length(type); ++i)
-         gather_info_input_decl_vs(nir, location + i * stride, elem, gfx_state, info);
-   } else {
-      assert(glsl_type_is_struct_or_ifc(type));
-
-      for (unsigned i = 0; i < glsl_get_length(type); i++) {
-         const struct glsl_type *field = glsl_get_struct_field(type, i);
-         gather_info_input_decl_vs(nir, location, field, gfx_state, info);
-         location += glsl_count_attribute_slots(field, false);
-      }
-   }
-}
-
-static void
 gather_shader_info_ngg_query(struct radv_device *device, struct radv_shader_info *info)
 {
    info->has_xfb_query = info->so.num_outputs > 0;
@@ -554,9 +537,6 @@ gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
    info->vs.needs_instance_id |= info->vs.has_prolog;
    info->vs.needs_base_instance |= info->vs.has_prolog;
    info->vs.needs_draw_id |= info->vs.has_prolog;
-
-   nir_foreach_shader_in_variable (var, nir)
-      gather_info_input_decl_vs(nir, var->data.location - VERT_ATTRIB_GENERIC0, var->type, gfx_state, info);
 
    if (info->vs.dynamic_inputs)
       info->vs.vb_desc_usage_mask = BITFIELD_MASK(util_last_bit(info->vs.vb_desc_usage_mask));

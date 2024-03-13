@@ -850,3 +850,25 @@ nil_image_3d_level_as_2d_array(const struct nil_image *image_3d,
    image_2d_out->extent_px.a = lvl_image.extent_px.d;
    image_2d_out->array_stride_B = z_stride;
 }
+
+/** For a multisampled image, returns an image of samples
+ *
+ * The resulting image is supersampled with each pixel in the original
+ * consuming some number pixels in the supersampled images according to the
+ * original image's sample layout
+ */
+void
+nil_msaa_image_as_sa(const struct nil_image *image_msaa,
+                     struct nil_image *image_sa_out)
+{
+   assert(image_msaa->dim == NIL_IMAGE_DIM_2D);
+   assert(image_msaa->num_levels == 1);
+
+   const struct nil_extent4d extent_sa =
+      nil_extent4d_px_to_sa(image_msaa->extent_px,
+                            image_msaa->sample_layout);
+
+   *image_sa_out = *image_msaa;
+   image_sa_out->extent_px = extent_sa;
+   image_sa_out->sample_layout = NIL_SAMPLE_LAYOUT_1X1;
+}

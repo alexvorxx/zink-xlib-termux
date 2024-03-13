@@ -20,3 +20,14 @@ spec@arb_framebuffer_no_attachments@arb_framebuffer_no_attachments-query@glViewp
 spec@glsl-1.50@execution@geometry@point-size-out
 spec@glsl-1.50@execution@redeclare-pervertex-out-subset-gs
 spec@!opengl 1.0@rasterpos
+
+# Updated by ci-collate, found in this job run: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56164998
+spec@!opengl 1.1@depthstencil-default_fb-blit
+
+# Updated by ci-collate, found in this job run: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56260518
+dEQP-GLES31.functional.fbo.no_attachments.npot_size.17x17
+
+# This test is flaking:
+# Fail: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56268639
+# Success: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56260518
+dEQP-GLES31.functional.fbo.no_attachments.npot_size.31x31

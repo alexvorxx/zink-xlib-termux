@@ -8083,16 +8083,6 @@ radv_emit_view_index(const struct radv_cmd_state *cmd_state, struct radeon_cmdbu
    }
 }
 
-static void
-radv_emit_view_index_with_task(const struct radv_cmd_state *cmd_state, struct radeon_cmdbuf *cs,
-                               struct radeon_cmdbuf *ace_cs, unsigned index)
-{
-   radv_emit_view_index(cmd_state, cs, index);
-
-   radv_emit_view_index_per_stage(ace_cs, cmd_state->shaders[MESA_SHADER_TASK],
-                                  cmd_state->shaders[MESA_SHADER_TASK]->info.user_data_0, index);
-}
-
 /**
  * Emulates predication for MEC using COND_EXEC.
  * When the current command buffer is predicating, emit a COND_EXEC packet
@@ -8717,10 +8707,7 @@ radv_emit_direct_taskmesh_draw_packets(const struct radv_device *device, struct 
 {
    const uint32_t view_mask = cmd_state->render.view_mask;
    const unsigned num_views = MAX2(1, util_bitcount(view_mask));
-   unsigned ace_predication_size = num_views * 6; /* DISPATCH_TASKMESH_DIRECT_ACE size */
-
-   if (num_views > 1)
-      ace_predication_size += num_views * 3; /* SET_SH_REG size (view index SGPR) */
+   const unsigned ace_predication_size = num_views * 6; /* DISPATCH_TASKMESH_DIRECT_ACE size */
 
    radv_emit_userdata_task(cmd_state, ace_cs, x, y, z, 0);
    radv_cs_emit_compute_predication(device, cmd_state, ace_cs, cmd_state->mec_inv_pred_va,
@@ -8731,7 +8718,7 @@ radv_emit_direct_taskmesh_draw_packets(const struct radv_device *device, struct 
       radv_cs_emit_dispatch_taskmesh_gfx_packet(device, cmd_state, cs);
    } else {
       u_foreach_bit (view, view_mask) {
-         radv_emit_view_index_with_task(cmd_state, cs, ace_cs, view);
+         radv_emit_view_index(cmd_state, cs, view);
 
          radv_cs_emit_dispatch_taskmesh_direct_ace_packet(device, cmd_state, ace_cs, x, y, z);
          radv_cs_emit_dispatch_taskmesh_gfx_packet(device, cmd_state, cs);
@@ -8753,9 +8740,6 @@ radv_emit_indirect_taskmesh_draw_packets(const struct radv_device *device, struc
    const uint64_t count_va = !info->count_buffer ? 0
                                                  : radv_buffer_get_va(info->count_buffer->bo) +
                                                       info->count_buffer->offset + info->count_buffer_offset;
-
-   if (num_views > 1)
-      ace_predication_size += num_views * 3; /* SET_SH_REG size (view index SGPR) */
 
    if (count_va)
       radv_cs_add_buffer(ws, ace_cs, info->count_buffer->bo);
@@ -8808,7 +8792,7 @@ radv_emit_indirect_taskmesh_draw_packets(const struct radv_device *device, struc
       radv_cs_emit_dispatch_taskmesh_gfx_packet(device, cmd_state, cs);
    } else {
       u_foreach_bit (view, view_mask) {
-         radv_emit_view_index_with_task(cmd_state, cs, ace_cs, view);
+         radv_emit_view_index(cmd_state, cs, view);
 
          radv_cs_emit_dispatch_taskmesh_indirect_multi_ace_packet(device, cmd_state, ace_cs, va, info->count, count_va,
                                                                   info->stride);

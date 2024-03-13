@@ -35,7 +35,9 @@ mark_sampler_desc(const nir_variable *var, struct radv_shader_info *info)
 }
 
 static void
-gather_intrinsic_load_input_info(const nir_shader *nir, const nir_intrinsic_instr *instr, struct radv_shader_info *info)
+gather_intrinsic_load_input_info(const nir_shader *nir, const nir_intrinsic_instr *instr, struct radv_shader_info *info,
+                                 const struct radv_graphics_state_key *gfx_state,
+                                 const struct radv_shader_stage_key *stage_key)
 {
    switch (nir->info.stage) {
    case MESA_SHADER_VERTEX: {
@@ -131,6 +133,7 @@ gather_push_constant_info(const nir_shader *nir, const nir_intrinsic_instr *inst
 
 static void
 gather_intrinsic_info(const nir_shader *nir, const nir_intrinsic_instr *instr, struct radv_shader_info *info,
+                      const struct radv_graphics_state_key *gfx_state, const struct radv_shader_stage_key *stage_key,
                       bool consider_force_vrs)
 {
    switch (instr->intrinsic) {
@@ -215,7 +218,7 @@ gather_intrinsic_info(const nir_shader *nir, const nir_intrinsic_instr *instr, s
       break;
    }
    case nir_intrinsic_load_input:
-      gather_intrinsic_load_input_info(nir, instr, info);
+      gather_intrinsic_load_input_info(nir, instr, info, gfx_state, stage_key);
       break;
    case nir_intrinsic_store_output:
       gather_intrinsic_store_output_info(nir, instr, info, consider_force_vrs);
@@ -258,12 +261,14 @@ gather_tex_info(const nir_shader *nir, const nir_tex_instr *instr, struct radv_s
 }
 
 static void
-gather_info_block(const nir_shader *nir, const nir_block *block, struct radv_shader_info *info, bool consider_force_vrs)
+gather_info_block(const nir_shader *nir, const nir_block *block, struct radv_shader_info *info,
+                  const struct radv_graphics_state_key *gfx_state, const struct radv_shader_stage_key *stage_key,
+                  bool consider_force_vrs)
 {
    nir_foreach_instr (instr, block) {
       switch (instr->type) {
       case nir_instr_type_intrinsic:
-         gather_intrinsic_info(nir, nir_instr_as_intrinsic(instr), info, consider_force_vrs);
+         gather_intrinsic_info(nir, nir_instr_as_intrinsic(instr), info, gfx_state, stage_key, consider_force_vrs);
          break;
       case nir_instr_type_tex:
          gather_tex_info(nir, nir_instr_as_tex(instr), info);
@@ -1199,7 +1204,7 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
    }
 
    nir_foreach_block (block, func->impl) {
-      gather_info_block(nir, block, info, consider_force_vrs);
+      gather_info_block(nir, block, info, gfx_state, stage_key, consider_force_vrs);
    }
 
    if (nir->info.stage == MESA_SHADER_VERTEX || nir->info.stage == MESA_SHADER_TESS_EVAL ||

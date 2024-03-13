@@ -35,14 +35,14 @@ vn_device_memory_alloc_simple(struct vn_device *dev,
                                       alloc_info, NULL, &mem_handle);
    }
 
-   struct vn_ring_submit_command instance_submit;
+   struct vn_ring_submit_command ring_submit;
    vn_submit_vkAllocateMemory(dev->primary_ring, 0, dev_handle, alloc_info,
-                              NULL, &mem_handle, &instance_submit);
-   if (!instance_submit.ring_seqno_valid)
+                              NULL, &mem_handle, &ring_submit);
+   if (!ring_submit.ring_seqno_valid)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
    mem->bo_ring_seqno_valid = true;
-   mem->bo_ring_seqno = instance_submit.ring_seqno;
+   mem->bo_ring_seqno = ring_submit.ring_seqno;
    return VK_SUCCESS;
 }
 

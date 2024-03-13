@@ -1056,22 +1056,22 @@ vn_queue_submit(struct vn_queue_submission *submit)
          return vn_error(instance, result);
       }
    } else {
-      struct vn_ring_submit_command instance_submit;
+      struct vn_ring_submit_command ring_submit;
       if (submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO_2) {
          vn_submit_vkQueueSubmit2(
             dev->primary_ring, 0, submit->queue_handle, submit->batch_count,
-            submit->submit2_batches, submit->fence_handle, &instance_submit);
+            submit->submit2_batches, submit->fence_handle, &ring_submit);
       } else {
          vn_submit_vkQueueSubmit(dev->primary_ring, 0, submit->queue_handle,
                                  submit->batch_count, submit->submit_batches,
-                                 submit->fence_handle, &instance_submit);
+                                 submit->fence_handle, &ring_submit);
       }
-      if (!instance_submit.ring_seqno_valid) {
+      if (!ring_submit.ring_seqno_valid) {
          vn_queue_submission_cleanup(submit);
          return vn_error(instance, VK_ERROR_DEVICE_LOST);
       }
       submit->external_payload.ring_seqno_valid = true;
-      submit->external_payload.ring_seqno = instance_submit.ring_seqno;
+      submit->external_payload.ring_seqno = ring_submit.ring_seqno;
    }
 
    /* If external fence, track the submission's ring_idx to facilitate
@@ -1158,12 +1158,12 @@ vn_queue_bind_sparse_submit(struct vn_queue_submission *submit)
       if (result != VK_SUCCESS)
          return vn_error(instance, result);
    } else {
-      struct vn_ring_submit_command instance_submit;
+      struct vn_ring_submit_command ring_submit;
       vn_submit_vkQueueBindSparse(dev->primary_ring, 0, submit->queue_handle,
                                   submit->batch_count, submit->sparse_batches,
-                                  submit->fence_handle, &instance_submit);
+                                  submit->fence_handle, &ring_submit);
 
-      if (!instance_submit.ring_seqno_valid)
+      if (!ring_submit.ring_seqno_valid)
          return vn_error(instance, VK_ERROR_DEVICE_LOST);
    }
 

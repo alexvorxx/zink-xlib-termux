@@ -779,17 +779,20 @@ gather_shader_info_gs(struct radv_device *device, const nir_shader *nir, struct 
    info->gs.output_prim = nir->info.gs.output_primitive;
    info->gs.invocations = nir->info.gs.invocations;
    info->gs.max_stream = nir->info.gs.active_stream_mask ? util_last_bit(nir->info.gs.active_stream_mask) - 1 : 0;
-
-   nir_foreach_shader_out_variable (var, nir) {
-      unsigned num_components = glsl_get_component_slots(var->type);
-      unsigned stream = var->data.stream;
-
-      assert(stream < 4);
-
-      info->gs.num_stream_output_components[stream] += num_components;
-   }
-
    info->gs.has_pipeline_stat_query = pdev->emulate_ngg_gs_query_pipeline_stat;
+
+   for (unsigned slot = 0; slot < VARYING_SLOT_MAX; ++slot) {
+      const uint8_t usage_mask = info->gs.output_usage_mask[slot];
+      const uint8_t gs_streams = info->gs.output_streams[slot];
+
+      for (unsigned component = 0; component < 4; ++component) {
+         if (!(usage_mask & BITFIELD_BIT(component)))
+            continue;
+
+         const uint8_t stream = (gs_streams >> (component * 2)) & 0x3;
+         info->gs.num_stream_output_components[stream]++;
+      }
+   }
 
    gather_info_unlinked_input(info, nir);
 

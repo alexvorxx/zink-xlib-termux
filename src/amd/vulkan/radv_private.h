@@ -2326,9 +2326,6 @@ struct radv_graphics_pipeline {
    /* Last pre-PS API stage */
    gl_shader_stage last_vgt_api_stage;
 
-   /* Not NULL if graphics pipeline uses streamout. */
-   struct radv_shader *streamout_shader;
-
    unsigned rast_prim;
 
    /* For vk_graphics_pipeline_state */
@@ -2520,8 +2517,6 @@ radv_pipeline_has_stage(const struct radv_graphics_pipeline *pipeline, gl_shader
 {
    return pipeline->base.shaders[stage];
 }
-
-bool radv_pipeline_has_ngg_passthrough(const struct radv_graphics_pipeline *pipeline);
 
 bool radv_pipeline_has_gs_copy_shader(const struct radv_pipeline *pipeline);
 

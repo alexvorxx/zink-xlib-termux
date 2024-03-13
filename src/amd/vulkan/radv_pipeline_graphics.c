@@ -103,16 +103,6 @@ radv_pipeline_has_ngg(const struct radv_graphics_pipeline *pipeline)
 }
 
 bool
-radv_pipeline_has_ngg_passthrough(const struct radv_graphics_pipeline *pipeline)
-{
-   assert(radv_pipeline_has_ngg(pipeline));
-
-   struct radv_shader *shader = pipeline->base.shaders[pipeline->last_vgt_api_stage];
-
-   return shader->info.is_ngg_passthrough;
-}
-
-bool
 radv_pipeline_has_gs_copy_shader(const struct radv_pipeline *pipeline)
 {
    return !!pipeline->gs_copy_shader;
@@ -3580,6 +3570,7 @@ radv_emit_vgt_vertex_reuse(const struct radv_device *device, struct radeon_cmdbu
 static struct radv_vgt_shader_key
 radv_pipeline_generate_vgt_shader_key(const struct radv_device *device, const struct radv_graphics_pipeline *pipeline)
 {
+   const struct radv_shader *last_vgt_shader = radv_get_last_vgt_shader(pipeline);
    uint8_t hs_size = 64, gs_size = 64, vs_size = 64;
    struct radv_vgt_shader_key key;
 
@@ -3599,17 +3590,17 @@ radv_pipeline_generate_vgt_shader_key(const struct radv_device *device, const st
    else if (pipeline->base.shaders[MESA_SHADER_MESH])
       vs_size = gs_size = pipeline->base.shaders[MESA_SHADER_MESH]->info.wave_size;
 
-   if (radv_pipeline_has_ngg(pipeline)) {
+   if (last_vgt_shader->info.is_ngg) {
       assert(!radv_pipeline_has_gs_copy_shader(&pipeline->base));
       gs_size = vs_size;
    }
 
    key.tess = radv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_CTRL);
    key.gs = radv_pipeline_has_stage(pipeline, MESA_SHADER_GEOMETRY);
-   if (radv_pipeline_has_ngg(pipeline)) {
+   if (last_vgt_shader->info.is_ngg) {
       key.ngg = 1;
-      key.ngg_passthrough = radv_pipeline_has_ngg_passthrough(pipeline);
-      key.ngg_streamout = !!pipeline->streamout_shader;
+      key.ngg_passthrough = last_vgt_shader->info.is_ngg_passthrough;
+      key.ngg_streamout = last_vgt_shader->info.so.num_outputs > 0;
    }
    if (radv_pipeline_has_stage(pipeline, MESA_SHADER_MESH)) {
       key.mesh = 1;
@@ -3898,20 +3889,6 @@ radv_pipeline_init_vertex_input_state(const struct radv_device *device, struct r
    }
 }
 
-static struct radv_shader *
-radv_pipeline_get_streamout_shader(struct radv_graphics_pipeline *pipeline)
-{
-   int i;
-
-   for (i = MESA_SHADER_GEOMETRY; i >= MESA_SHADER_VERTEX; i--) {
-      struct radv_shader *shader = radv_get_shader(pipeline->base.shaders, i);
-
-      if (shader && shader->info.so.num_outputs > 0)
-         return shader;
-   }
-
-   return NULL;
-}
 static void
 radv_pipeline_init_shader_stages_state(const struct radv_device *device, struct radv_graphics_pipeline *pipeline)
 {
@@ -4157,9 +4134,6 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
       radv_pipeline_init_vertex_input_state(device, pipeline, &state);
 
    radv_pipeline_init_shader_stages_state(device, pipeline);
-
-   /* Find the last vertex shader stage that eventually uses streamout. */
-   pipeline->streamout_shader = radv_pipeline_get_streamout_shader(pipeline);
 
    pipeline->is_ngg = radv_pipeline_has_ngg(pipeline);
    pipeline->has_ngg_culling =

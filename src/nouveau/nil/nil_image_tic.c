@@ -13,6 +13,8 @@
 #include "cl9097tex.h"
 #include "clb097.h"
 #include "clb097tex.h"
+#include "clc097.h"
+#include "clc097tex.h"
 #include "drf.h"
 
 ALWAYS_INLINE static void
@@ -88,6 +90,9 @@ __set_bool(uint32_t *o, bool b, unsigned lo, unsigned hi)
    TH_SET_B((o), NVB097, _##VER, FIELD, (b));
 #define TH_NVB097_SET_E(o, VER, FIELD, E) \
    TH_SET_E((o), NVB097, _##VER, FIELD, E);
+
+#define TH_NVC097_SET_U(o, VER, FIELD, val) \
+   TH_SET_U((o), NVC097, _##VER, FIELD, (val));
 
 static inline uint32_t
 nv9097_th_bl_source(const struct nil_tic_format *fmt,
@@ -397,7 +402,8 @@ nv9097_nil_image_fill_tic(const struct nil_image *image,
 }
 
 static void
-nvb097_nil_image_fill_tic(const struct nil_image *image,
+nvb097_nil_image_fill_tic(struct nv_device_info *dev,
+                          const struct nil_image *image,
                           const struct nil_view *view,
                           uint64_t base_address,
                           void *desc_out)
@@ -465,8 +471,17 @@ nvb097_nil_image_fill_tic(const struct nil_image *image,
 
    const struct nil_extent4d extent = nil_normalize_extent(image, view);
    TH_NVB097_SET_U(th, BL, WIDTH_MINUS_ONE, extent.width - 1);
-   TH_NVB097_SET_U(th, BL, HEIGHT_MINUS_ONE, extent.height - 1);
-   TH_NVB097_SET_U(th, BL, DEPTH_MINUS_ONE, extent.depth - 1);
+   if (dev->cls_eng3d >= PASCAL_A) {
+      const uint32_t height_1 = extent.height - 1;
+      const uint32_t depth_1 = extent.depth - 1;
+      TH_NVC097_SET_U(th, BL, HEIGHT_MINUS_ONE, height_1 & BITFIELD_MASK(16));
+      TH_NVC097_SET_U(th, BL, HEIGHT_MINUS_ONE_BIT16, height_1 >> 16);
+      TH_NVC097_SET_U(th, BL, DEPTH_MINUS_ONE, depth_1 & BITFIELD_MASK(14));
+      TH_NVC097_SET_U(th, BL, DEPTH_MINUS_ONE_BIT14, depth_1 >> 14);
+   } else {
+      TH_NVB097_SET_U(th, BL, HEIGHT_MINUS_ONE, extent.height - 1);
+      TH_NVB097_SET_U(th, BL, DEPTH_MINUS_ONE, extent.depth - 1);
+   }
 
    TH_NVB097_SET_U(th, BL, MAX_MIP_LEVEL, nil_max_mip_level(image, view));
 
@@ -569,7 +584,7 @@ nil_image_fill_tic(struct nv_device_info *dev,
                    void *desc_out)
 {
    if (dev->cls_eng3d >= MAXWELL_A) {
-      nvb097_nil_image_fill_tic(image, view, base_address, desc_out);
+      nvb097_nil_image_fill_tic(dev, image, view, base_address, desc_out);
    } else if (dev->cls_eng3d >= FERMI_A) {
       nv9097_nil_image_fill_tic(image, view, base_address, desc_out);
    } else {

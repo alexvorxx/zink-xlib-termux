@@ -229,6 +229,9 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_vertex_input_dynamic_state = true,
       .EXT_ycbcr_2plane_444_formats = true,
       .EXT_ycbcr_image_arrays = true,
+      .GOOGLE_decorate_string = true,
+      .GOOGLE_hlsl_functionality1 = true,
+      .GOOGLE_user_type = true,
       .NV_shader_sm_builtins = true,
    };
 }

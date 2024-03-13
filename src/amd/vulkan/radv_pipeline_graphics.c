@@ -4147,18 +4147,6 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    pipeline->base.push_constant_size = pipeline_layout.push_constant_size;
    pipeline->base.dynamic_offset_count = pipeline_layout.dynamic_offset_count;
 
-   for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; i++) {
-      if (pipeline->base.shaders[i]) {
-         pipeline->base.shader_upload_seq =
-            MAX2(pipeline->base.shader_upload_seq, pipeline->base.shaders[i]->upload_seq);
-      }
-   }
-
-   if (pipeline->base.gs_copy_shader) {
-      pipeline->base.shader_upload_seq =
-         MAX2(pipeline->base.shader_upload_seq, pipeline->base.gs_copy_shader->upload_seq);
-   }
-
    if (extra) {
       radv_pipeline_init_extra(pipeline, extra, &blend, &state, &vgt_gs_out_prim_type);
    }

@@ -48,12 +48,6 @@ struct ra_predicates_ctx {
    unsigned num_regs;
    struct ir3_liveness *liveness;
    struct block_liveness *blocks_liveness;
-
-   /* True once we spilled a register. This allows us to postpone the
-    * calculation of SSA uses and instruction counting until the first time we
-    * need to spill. This is useful since spilling is rare in general.
-    */
-   bool spilled;
 };
 
 static bool
@@ -177,12 +171,6 @@ static void
 spill(struct ra_predicates_ctx *ctx, struct block_liveness *live,
       struct ir3_instruction *spill_location)
 {
-   if (!ctx->spilled) {
-      ir3_count_instructions_ra(ctx->ir);
-      ir3_find_ssa_uses_for(ctx->ir, ctx, is_predicate_use);
-      ctx->spilled = true;
-   }
-
    unsigned furthest_first_use = 0;
    unsigned spill_reg = ~0;
 
@@ -456,6 +444,8 @@ ir3_ra_predicates(struct ir3_shader_variant *v)
                                          ra_reg_is_predicate);
    ctx->blocks_liveness =
       rzalloc_array(ctx, struct block_liveness, ctx->liveness->block_count);
+   ir3_count_instructions_ra(ctx->ir);
+   ir3_find_ssa_uses_for(ctx->ir, ctx, is_predicate_use);
 
    foreach_block (block, &v->ir->block_list) {
       init_block_liveness(ctx, block);

@@ -136,20 +136,11 @@ first_non_allocated_use_after(struct ir3_register *def,
        */
       if (use->ip < after->ip)
          continue;
+      if (use->ip >= first_ip)
+         continue;
 
-      foreach_ssa_src_n (src, n, use) {
-         if (__is_false_dep(use, n))
-            continue;
-
-         struct ir3_register *src_reg = use->srcs[n];
-         if (!ra_reg_is_predicate(src_reg) || src_reg->def != def)
-            continue;
-         if (use->ip >= first_ip)
-            continue;
-
-         first_ip = use->ip;
-         first = use;
-      }
+      first_ip = use->ip;
+      first = use;
    }
 
    return first;

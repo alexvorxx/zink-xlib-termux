@@ -5755,25 +5755,6 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
          var->data.explicit_xfb_buffer = 0;
    if (nir->xfb_info && nir->xfb_info->output_count && nir->info.outputs_written)
       update_so_info(ret, nir, nir->info.outputs_written, have_psiz);
-   else if (have_psiz) {
-      bool have_fake_psiz = false;
-      nir_variable *psiz = NULL;
-      nir_foreach_shader_out_variable(var, nir) {
-         if (var->data.location == VARYING_SLOT_PSIZ) {
-            if (!var->data.explicit_location)
-               have_fake_psiz = true;
-            else
-               psiz = var;
-         }
-      }
-      /* maintenance5 allows injected psiz deletion */
-      if (have_fake_psiz && (psiz || screen->info.have_KHR_maintenance5)) {
-         psiz->data.mode = nir_var_shader_temp;
-         nir_fixup_deref_modes(nir);
-         delete_psiz_store(nir, true);
-         NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_shader_temp, NULL);
-      }
-   }
    zink_shader_serialize_blob(nir, &ret->blob);
    memcpy(&ret->info, &nir->info, sizeof(nir->info));
 

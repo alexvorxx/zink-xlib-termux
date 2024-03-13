@@ -14,7 +14,7 @@ libnouveau_ws = static_library(
     inc_include,
     inc_src,
   ],
-  c_args: [ '-Wno-gnu-variable-sized-type-not-at-end' ],
+  c_args: [ cc.get_supported_arguments('-Wno-gnu-variable-sized-type-not-at-end') ],
   dependencies : [
     dep_libdrm,
     dep_libdrm_nouveau,

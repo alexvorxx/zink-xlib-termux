@@ -1444,7 +1444,7 @@ st_program_string_notify( struct gl_context *ctx,
    } else if (target == GL_VERTEX_PROGRAM_ARB) {
       if (!st_translate_vertex_program(st, prog))
          return false;
-      if (st->lower_point_size &&
+      if (st->add_point_size &&
           gl_nir_can_add_pointsize_to_program(&st->ctx->Const, prog)) {
          prog->skip_pointsize_xfb = true;
          NIR_PASS(_, prog->nir, gl_nir_add_point_size);

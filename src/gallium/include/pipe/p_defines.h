@@ -952,6 +952,12 @@ enum pipe_cap
    /* XXX do not add caps after PIPE_CAP_LAST! */
 };
 
+enum pipe_point_size_lower_mode {
+   PIPE_POINT_SIZE_LOWER_ALWAYS,
+   PIPE_POINT_SIZE_LOWER_NEVER,
+   PIPE_POINT_SIZE_LOWER_USER_ONLY,
+};
+
 enum pipe_texture_transfer_mode {
    PIPE_TEXTURE_TRANSFER_DEFAULT = 0,
    PIPE_TEXTURE_TRANSFER_BLIT = (1 << 0),

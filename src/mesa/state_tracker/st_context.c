@@ -605,8 +605,16 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       !screen->get_param(screen, PIPE_CAP_FLATSHADE);
    st->lower_alpha_test =
       !screen->get_param(screen, PIPE_CAP_ALPHA_TEST);
-   st->lower_point_size =
-      !screen->get_param(screen, PIPE_CAP_POINT_SIZE_FIXED);
+   switch (screen->get_param(screen, PIPE_CAP_POINT_SIZE_FIXED)) {
+   case PIPE_POINT_SIZE_LOWER_ALWAYS:
+      st->lower_point_size = true;
+      st->add_point_size = true;
+      break;
+   case PIPE_POINT_SIZE_LOWER_USER_ONLY:
+      st->lower_point_size = true;
+      break;
+   default: break;
+   }
    st->lower_two_sided_color =
       !screen->get_param(screen, PIPE_CAP_TWO_SIDED_COLOR);
    st->lower_ucp =

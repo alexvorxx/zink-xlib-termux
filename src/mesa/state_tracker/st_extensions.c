@@ -174,7 +174,7 @@ void st_init_limits(struct pipe_screen *screen,
 
    c->CombinedClipCullDistanceArrays = !screen->get_param(screen, PIPE_CAP_CULL_DISTANCE_NOCOMBINE);
 
-   c->PointSizeFixed = screen->get_param(screen, PIPE_CAP_POINT_SIZE_FIXED);
+   c->PointSizeFixed = screen->get_param(screen, PIPE_CAP_POINT_SIZE_FIXED) != PIPE_POINT_SIZE_LOWER_ALWAYS;
 
    for (sh = 0; sh < PIPE_SHADER_TYPES; ++sh) {
       const gl_shader_stage stage = tgsi_processor_to_shader_stage(sh);

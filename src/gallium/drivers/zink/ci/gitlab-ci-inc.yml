@@ -62,6 +62,21 @@
     - !reference [.anv-rules, rules]
     - !reference [.zink-common-rules, rules]
 
+.zink-nvk-rules:
+  stage: layered-backends
+  rules:
+    - !reference [.test, rules]
+    - !reference [.nvk-valve-rules, rules]
+    - !reference [.zink-common-rules, rules]
+
+.zink-nvk-manual-rules:
+  stage: layered-backends
+  retry: !reference [.scheduled_pipeline-rules, retry]
+  rules:
+    - !reference [.test, rules]
+    - !reference [.nvk-valve-manual-rules, rules]
+    - !reference [.zink-common-manual-rules, rules]
+
 .zink-turnip-rules:
   stage: layered-backends
   rules:
@@ -153,6 +168,16 @@
   variables:
     VK_DRIVER: intel
     GPU_VERSION: zink-anv-tgl
+
+.zink-nvk-glcts-piglit-valve:
+  extends:
+    - .b2c-x86_64-test-gl
+    - .nvk-vkcts
+    - .zink-test
+  variables:
+    DEQP_SUITE: zink-nvk
+    # Disable reporting, since DUTs don't have internet access
+    FLAKES_CHANNEL: ""
 
 .radv-zink-test-valve:
   timeout: 30m

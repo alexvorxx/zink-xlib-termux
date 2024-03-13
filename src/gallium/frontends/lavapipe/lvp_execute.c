@@ -192,6 +192,7 @@ struct rendering_state {
    uint32_t so_offsets[PIPE_MAX_SO_BUFFERS];
 
    struct lvp_shader *shaders[LVP_SHADER_STAGES];
+   bool compute_shader_dirty;
 
    bool tess_ccw;
    void *tess_states[2];
@@ -388,8 +389,14 @@ static void emit_compute_state(struct rendering_state *state)
       state->constbuf_dirty[MESA_SHADER_COMPUTE] = false;
    }
 
-   if (state->inlines_dirty[MESA_SHADER_COMPUTE])
+   if (state->inlines_dirty[MESA_SHADER_COMPUTE] &&
+       state->shaders[MESA_SHADER_COMPUTE]->inlines.can_inline) {
       update_inline_shader_state(state, MESA_SHADER_COMPUTE, pcbuf_dirty);
+   } else if (state->compute_shader_dirty) {
+      state->pctx->bind_compute_state(state->pctx, state->shaders[MESA_SHADER_COMPUTE]->shader_cso);
+   }
+
+   state->compute_shader_dirty = false;
 }
 
 static void
@@ -591,7 +598,7 @@ handle_compute_shader(struct rendering_state *state, struct lvp_shader *shader, 
    state->dispatch_info.block[2] = shader->pipeline_nir->nir->info.workgroup_size[2];
    state->inlines_dirty[MESA_SHADER_COMPUTE] = shader->inlines.can_inline;
    if (!shader->inlines.can_inline)
-      state->pctx->bind_compute_state(state->pctx, shader->shader_cso);
+      state->compute_shader_dirty = true;
 }
 
 static void handle_compute_pipeline(struct vk_cmd_queue_entry *cmd,

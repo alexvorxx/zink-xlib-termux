@@ -1755,54 +1755,39 @@ vn_CmdBeginQuery(VkCommandBuffer commandBuffer,
    VN_CMD_ENQUEUE(vkCmdBeginQuery, commandBuffer, queryPool, query, flags);
 }
 
-static inline void
-vn_cmd_add_query_feedback(VkCommandBuffer cmd_handle,
-                          VkQueryPool pool_handle,
-                          uint32_t query)
+static inline uint32_t
+vn_cmd_get_query_count(VkCommandBuffer cmd_handle)
 {
-   struct vn_command_buffer *cmd = vn_command_buffer_from_handle(cmd_handle);
-   struct vn_query_pool *query_pool = vn_query_pool_from_handle(pool_handle);
-
-   if (!query_pool->fb_buf)
-      return;
-
    /* Per 1.3.255 spec "If queries are used while executing a render pass
     * instance that has multiview enabled, the query uses N consecutive
     * query indices in the query pool (starting at query) where N is the
     * number of bits set in the view mask in the subpass the query is used
     * in."
     */
-   uint32_t query_count =
-      (cmd->builder.in_render_pass && cmd->builder.view_mask)
-         ? util_bitcount(cmd->builder.view_mask)
-         : 1;
+   struct vn_command_buffer *cmd = vn_command_buffer_from_handle(cmd_handle);
+   return cmd->builder.in_render_pass && cmd->builder.view_mask
+             ? util_bitcount(cmd->builder.view_mask)
+             : 1;
+}
 
+static inline void
+vn_cmd_record_query(VkCommandBuffer cmd_handle,
+                    VkQueryPool pool_handle,
+                    uint32_t query,
+                    uint32_t query_count,
+                    bool copy)
+{
+   struct vn_query_pool *query_pool = vn_query_pool_from_handle(pool_handle);
+   if (!query_pool->fb_buf)
+      return;
+
+   struct vn_command_buffer *cmd = vn_command_buffer_from_handle(cmd_handle);
    struct vn_feedback_query_batch *batch = vn_cmd_query_batch_alloc(
-      cmd->pool, query_pool, query, query_count, true);
+      cmd->pool, query_pool, query, query_count, copy);
    if (!batch) {
       cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
       return;
    }
-
-   list_addtail(&batch->head, &cmd->builder.query_batches);
-}
-
-static inline void
-vn_cmd_add_query_reset_feedback(VkCommandBuffer cmd_handle,
-                                VkQueryPool pool_handle,
-                                uint32_t query,
-                                uint32_t query_count)
-{
-   struct vn_command_buffer *cmd = vn_command_buffer_from_handle(cmd_handle);
-   struct vn_query_pool *query_pool = vn_query_pool_from_handle(pool_handle);
-
-   if (!query_pool->fb_buf)
-      return;
-
-   struct vn_feedback_query_batch *batch = vn_cmd_query_batch_alloc(
-      cmd->pool, query_pool, query, query_count, false);
-   if (!batch)
-      cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
 
    list_addtail(&batch->head, &cmd->builder.query_batches);
 }
@@ -1814,7 +1799,8 @@ vn_CmdEndQuery(VkCommandBuffer commandBuffer,
 {
    VN_CMD_ENQUEUE(vkCmdEndQuery, commandBuffer, queryPool, query);
 
-   vn_cmd_add_query_feedback(commandBuffer, queryPool, query);
+   const uint32_t query_count = vn_cmd_get_query_count(commandBuffer);
+   vn_cmd_record_query(commandBuffer, queryPool, query, query_count, true);
 }
 
 void
@@ -1826,8 +1812,8 @@ vn_CmdResetQueryPool(VkCommandBuffer commandBuffer,
    VN_CMD_ENQUEUE(vkCmdResetQueryPool, commandBuffer, queryPool, firstQuery,
                   queryCount);
 
-   vn_cmd_add_query_reset_feedback(commandBuffer, queryPool, firstQuery,
-                                   queryCount);
+   vn_cmd_record_query(commandBuffer, queryPool, firstQuery, queryCount,
+                       false);
 }
 
 void
@@ -1839,7 +1825,8 @@ vn_CmdWriteTimestamp(VkCommandBuffer commandBuffer,
    VN_CMD_ENQUEUE(vkCmdWriteTimestamp, commandBuffer, pipelineStage,
                   queryPool, query);
 
-   vn_cmd_add_query_feedback(commandBuffer, queryPool, query);
+   const uint32_t query_count = vn_cmd_get_query_count(commandBuffer);
+   vn_cmd_record_query(commandBuffer, queryPool, query, query_count, true);
 }
 
 void
@@ -1851,7 +1838,8 @@ vn_CmdWriteTimestamp2(VkCommandBuffer commandBuffer,
    VN_CMD_ENQUEUE(vkCmdWriteTimestamp2, commandBuffer, stage, queryPool,
                   query);
 
-   vn_cmd_add_query_feedback(commandBuffer, queryPool, query);
+   const uint32_t query_count = vn_cmd_get_query_count(commandBuffer);
+   vn_cmd_record_query(commandBuffer, queryPool, query, query_count, true);
 }
 
 void
@@ -2016,7 +2004,8 @@ vn_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer,
    VN_CMD_ENQUEUE(vkCmdEndQueryIndexedEXT, commandBuffer, queryPool, query,
                   index);
 
-   vn_cmd_add_query_feedback(commandBuffer, queryPool, query);
+   const uint32_t query_count = vn_cmd_get_query_count(commandBuffer);
+   vn_cmd_record_query(commandBuffer, queryPool, query, query_count, true);
 }
 
 void

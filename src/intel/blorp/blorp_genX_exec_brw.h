@@ -758,9 +758,24 @@ blorp_emit_ps_config(struct blorp_batch *batch,
          ps.RenderTargetResolveType = RESOLVE_PARTIAL;
          break;
       case ISL_AUX_OP_FULL_RESOLVE:
+         /* WA 1406738321:
+          * In-place full resolve of a 3D/Volume surface is not supported.
+          * In order to fully resolve 3D/volume surface, copy operation must be
+          * performed to a new destination (declared as uncompressed) using the
+          * compressed 3D surface as a source.
+          */
+#if GFX_VERx10 == 120
+         assert(params->src.surf.dim != ISL_SURF_DIM_3D);
+#endif
          ps.RenderTargetResolveType = RESOLVE_FULL;
          break;
       case ISL_AUX_OP_FAST_CLEAR:
+         /* WA 1406738321:
+          * 3D/Volumetric surfaces do not support Fast Clear operation.
+          */
+#if GFX_VERx10 == 120
+         assert(params->dst.surf.dim != ISL_SURF_DIM_3D);
+#endif
          ps.RenderTargetFastClearEnable = true;
          break;
       default:

@@ -144,8 +144,8 @@ struct spill_ctx {
       const uint32_t spill_id = allocate_spill_id(to_spill.regClass());
       for (auto pair : spills)
          add_interference(spill_id, pair.second);
-      for (loop_info info : loop) {
-         for (auto pair : info.spills)
+      if (!loop.empty()) {
+         for (auto pair : loop.back().spills)
             add_interference(spill_id, pair.second);
       }
 
@@ -541,6 +541,17 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          ctx.spills_entry[block_idx][spilled.first] = spilled.second;
          spilled_registers += spilled.first;
          loop_demand -= spilled.first;
+      }
+      if (!ctx.loop.empty()) {
+         /* If this is a nested loop, keep variables from the outer loop spilled. */
+         for (auto spilled : ctx.loop.back().spills) {
+            assert(next_use_distances.count(spilled.first));
+
+            if (ctx.spills_entry[block_idx].insert(spilled).second) {
+               spilled_registers += spilled.first;
+               loop_demand -= spilled.first;
+            }
+         }
       }
 
       /* select more live-through variables and constants */

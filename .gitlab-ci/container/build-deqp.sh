@@ -10,6 +10,11 @@
 
 set -ex -o pipefail
 
+# See `deqp_build_targets` below for which release is used to produce which
+# binary. Unless this comment has bitrotten:
+# - the VK release produces `deqp-vk`,
+# - the GL release produces `glcts`, and
+# - the GLES release produces `deqp-gles*` and `deqp-egl`
 
 DEQP_VK_VERSION=1.3.7.0
 DEQP_GL_VERSION=4.6.4.0
@@ -192,6 +197,7 @@ case "${DEQP_API}" in
     ;;
   GLES)
     deqp_build_targets+=(deqp-gles{2,3,31})
+    # deqp-egl also comes from this build, but it is handled separately above.
     ;;
 esac
 if [ "${DEQP_TARGET}" != 'android' ]; then

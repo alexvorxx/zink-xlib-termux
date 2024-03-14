@@ -1805,13 +1805,20 @@ static void
 vn_physical_device_add_format_properties(
    struct vn_physical_device *physical_dev,
    struct vn_format_properties_entry *entry,
-   const VkFormatProperties *props)
+   const VkFormatProperties *props,
+   const VkFormatProperties3 *props3)
 {
    simple_mtx_lock(&physical_dev->format_update_mutex);
    if (!entry->valid) {
       entry->properties = *props;
       entry->valid = true;
    }
+
+   if (props3 && !entry->props3_valid) {
+      entry->properties3 = *props3;
+      entry->props3_valid = true;
+   }
+
    simple_mtx_unlock(&physical_dev->format_update_mutex);
 }
 
@@ -1975,12 +1982,32 @@ vn_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice,
       vn_physical_device_from_handle(physicalDevice);
    struct vn_ring *ring = physical_dev->instance->ring.ring;
 
+   /* VkFormatProperties3 is cached if its the only struct in pNext */
+   VkFormatProperties3 *props3 = NULL;
+   if (pFormatProperties->pNext) {
+      const VkBaseOutStructure *base = pFormatProperties->pNext;
+      if (base->sType == VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 &&
+          base->pNext == NULL) {
+         props3 = (VkFormatProperties3 *)base;
+      }
+   }
+
    struct vn_format_properties_entry *entry = NULL;
-   if (!pFormatProperties->pNext) {
+   if (!pFormatProperties->pNext || props3) {
       entry = vn_physical_device_get_format_properties(physical_dev, format);
       if (entry->valid) {
-         pFormatProperties->formatProperties = entry->properties;
-         return;
+         const bool has_valid_props3 = props3 && entry->props3_valid;
+         if (has_valid_props3)
+            *props3 = entry->properties3;
+
+         /* Make the host call if our cache doesn't have props3 but the app
+          * now requests it.
+          */
+         if (!props3 || has_valid_props3) {
+            pFormatProperties->formatProperties = entry->properties;
+            pFormatProperties->pNext = props3;
+            return;
+         }
       }
    }
 
@@ -1989,7 +2016,7 @@ vn_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice,
 
    if (entry) {
       vn_physical_device_add_format_properties(
-         physical_dev, entry, &pFormatProperties->formatProperties);
+         physical_dev, entry, &pFormatProperties->formatProperties, props3);
    }
 }
 

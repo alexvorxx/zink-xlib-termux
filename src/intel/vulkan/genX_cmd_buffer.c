@@ -3996,9 +3996,19 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
                 img_barrier->newLayout,
                 cmd_buffer->queue_family->queueFlags)) {
             for (uint32_t l = 0; l < level_count; l++) {
+               const uint32_t level = range->baseMipLevel + l;
+               const uint32_t aux_layers =
+                  anv_image_aux_layers(image, aspect, level);
+
+               if (base_layer >= aux_layers)
+                  break; /* We will only get fewer layers as level increases */
+
+               uint32_t level_layer_count =
+                  MIN2(layer_count, aux_layers - base_layer);
+
                set_image_compressed_bit(cmd_buffer, image, aspect,
-                                        range->baseMipLevel + l,
-                                        base_layer, layer_count,
+                                        level,
+                                        base_layer, level_layer_count,
                                         true);
             }
          }

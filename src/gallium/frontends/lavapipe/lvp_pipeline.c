@@ -350,6 +350,7 @@ compile_spirv(struct lvp_device *pdevice, const VkPipelineShaderStageCreateInfo 
          .runtime_descriptor_array = true,
          .shader_enqueue = true,
          .ray_query = true,
+         .ray_cull_mask = true,
          .ray_tracing = true,
       },
       .ubo_addr_format = nir_address_format_vec2_index_32bit_offset,

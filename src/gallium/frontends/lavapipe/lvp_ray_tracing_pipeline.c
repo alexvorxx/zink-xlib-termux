@@ -260,6 +260,7 @@ struct lvp_ray_traversal_state {
 struct lvp_ray_tracing_state {
    nir_variable *bvh_base;
    nir_variable *flags;
+   nir_variable *cull_mask;
    nir_variable *sbt_offset;
    nir_variable *sbt_stride;
    nir_variable *miss_index;
@@ -319,6 +320,7 @@ lvp_ray_tracing_state_init(nir_shader *nir, struct lvp_ray_tracing_state *state)
 {
    state->bvh_base = nir_variable_create(nir, nir_var_shader_temp, glsl_uint64_t_type(), "bvh_base");
    state->flags = nir_variable_create(nir, nir_var_shader_temp, glsl_uint_type(), "flags");
+   state->cull_mask = nir_variable_create(nir, nir_var_shader_temp, glsl_uint_type(), "cull_mask");
    state->sbt_offset = nir_variable_create(nir, nir_var_shader_temp, glsl_uint_type(), "sbt_offset");
    state->sbt_stride = nir_variable_create(nir, nir_var_shader_temp, glsl_uint_type(), "sbt_stride");
    state->miss_index = nir_variable_create(nir, nir_var_shader_temp, glsl_uint_type(), "miss_index");
@@ -736,6 +738,7 @@ lvp_trace_ray(nir_builder *b, struct lvp_ray_tracing_pipeline_compiler *compiler
 
    nir_store_var(b, state->bvh_base, bvh_base, 0x1);
    nir_store_var(b, state->flags, flags, 0x1);
+   nir_store_var(b, state->cull_mask, cull_mask, 0x1);
    nir_store_var(b, state->sbt_offset, sbt_offset, 0x1);
    nir_store_var(b, state->sbt_stride, sbt_stride, 0x1);
    nir_store_var(b, state->miss_index, miss_index, 0x1);
@@ -979,6 +982,9 @@ lvp_lower_ray_tracing_instr(nir_builder *b, nir_instr *instr, void *data)
       def = lvp_mul_vec3_mat(b, nir_load_var(b, state->dir), wto_matrix, false);
       break;
    }
+   case nir_intrinsic_load_cull_mask:
+      def = nir_iand_imm(b, nir_load_var(b, state->cull_mask), 0xFF);
+      break;
    /* Ray tracing stack lowering */
    case nir_intrinsic_load_scratch: {
       nir_src_rewrite(&intr->src[0], nir_iadd(b, nir_load_var(b, state->stack_ptr), intr->src[0].ssa));

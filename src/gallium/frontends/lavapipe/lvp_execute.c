@@ -4565,6 +4565,35 @@ handle_trace_rays_indirect(struct vk_cmd_queue_entry *cmd, struct rendering_stat
    state->pctx->launch_grid(state->pctx, &state->trace_rays_info);
 }
 
+static void
+handle_trace_rays_indirect2(struct vk_cmd_queue_entry *cmd, struct rendering_state *state)
+{
+   struct vk_cmd_trace_rays_indirect2_khr *trace = &cmd->u.trace_rays_indirect2_khr;
+
+   emit_ray_tracing_state(state);
+
+   size_t indirect_offset;
+   VkBuffer _indirect = get_buffer(state, (void *)(uintptr_t)trace->indirect_device_address, &indirect_offset);
+   VK_FROM_HANDLE(lvp_buffer, indirect, _indirect);
+
+   struct pipe_transfer *transfer;
+   const uint8_t *map = pipe_buffer_map(state->pctx, indirect->bo, PIPE_MAP_READ, &transfer);
+   map += indirect_offset;
+   const VkTraceRaysIndirectCommand2KHR *src = (const void *)map;
+
+   VkTraceRaysIndirectCommand2KHR *command = lvp_push_internal_buffer(
+      state, MESA_SHADER_COMPUTE, sizeof(VkTraceRaysIndirectCommand2KHR));
+   *command = *src;
+
+   state->trace_rays_info.grid[0] = DIV_ROUND_UP(src->width, state->trace_rays_info.block[0]);
+   state->trace_rays_info.grid[1] = DIV_ROUND_UP(src->height, state->trace_rays_info.block[1]);
+   state->trace_rays_info.grid[2] = DIV_ROUND_UP(src->depth, state->trace_rays_info.block[2]);
+
+   state->pctx->buffer_unmap(state->pctx, transfer);
+
+   state->pctx->launch_grid(state->pctx, &state->trace_rays_info);
+}
+
 void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
 {
    struct vk_device_dispatch_table cmd_enqueue_dispatch;
@@ -4713,6 +4742,7 @@ void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
    ENQUEUE_CMD(CmdWriteAccelerationStructuresPropertiesKHR)
 
    ENQUEUE_CMD(CmdSetRayTracingPipelineStackSizeKHR)
+   ENQUEUE_CMD(CmdTraceRaysIndirect2KHR)
    ENQUEUE_CMD(CmdTraceRaysIndirectKHR)
    ENQUEUE_CMD(CmdTraceRaysKHR)
 
@@ -5100,6 +5130,9 @@ static void lvp_execute_cmd_buffer(struct list_head *cmds,
          handle_write_acceleration_structures_properties(cmd, state);
          break;
       case VK_CMD_SET_RAY_TRACING_PIPELINE_STACK_SIZE_KHR:
+         break;
+      case VK_CMD_TRACE_RAYS_INDIRECT2_KHR:
+         handle_trace_rays_indirect2(cmd, state);
          break;
       case VK_CMD_TRACE_RAYS_INDIRECT_KHR:
          handle_trace_rays_indirect(cmd, state);

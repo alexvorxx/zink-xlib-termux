@@ -544,7 +544,7 @@ resolve_field(struct decode_scope *scope, const char *field_name, size_t field_n
 }
 
 /* This is also used from generated expr functions */
-uint64_t
+static uint64_t
 isa_decode_field(struct decode_scope *scope, const char *field_name)
 {
 	bitmask_t val;

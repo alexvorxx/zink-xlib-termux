@@ -52,11 +52,6 @@ struct isa_enum {
 typedef uint64_t (*isa_expr_t)(struct decode_scope *scope);
 
 /**
- * Used by generated expr functions
- */
-uint64_t isa_decode_field(struct decode_scope *scope, const char *field_name);
-
-/**
  * Used by generated decode functions
  */
 uint32_t isa_get_gpu_id(struct decode_scope *scope);

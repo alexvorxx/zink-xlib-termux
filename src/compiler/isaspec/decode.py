@@ -151,6 +151,9 @@ uint64_t_to_bitmask(uint64_t val)
 
 #include "isaspec_decode_decl.h"
 
+static uint64_t
+isa_decode_field(struct decode_scope *scope, const char *field_name);
+
 /*
  * enum tables, these don't have any link back to other tables so just
  * dump them up front before the bitset tables

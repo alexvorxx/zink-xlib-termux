@@ -432,7 +432,6 @@ dEQP-VK.spirv_assembly.instruction.compute.workgroup_memory.float32,Crash
 dEQP-VK.spirv_assembly.instruction.compute.workgroup_memory.int32,Crash
 dEQP-VK.spirv_assembly.instruction.compute.workgroup_memory.uint32,Crash
 
-dEQP-VK.api.command_buffers.record_many_draws_secondary_2,Fail
 dEQP-VK.api.copy_and_blit.core.image_to_image.all_formats.color.1d_to_1d.r16g16_snorm.r16g16_snorm.general_optimal,Fail
 dEQP-VK.api.copy_and_blit.core.image_to_image.all_formats.color.1d_to_1d.r16g16b16a16_uint.r16g16b16a16_uint.optimal_general,Fail
 dEQP-VK.api.copy_and_blit.core.image_to_image.all_formats.color.1d_to_1d.r8_uint.r8_uint.general_optimal,Fail

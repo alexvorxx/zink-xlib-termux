@@ -83,6 +83,7 @@ panvk_meta_copy_emit_varying(struct pan_pool *pool, mali_ptr coordinates,
 
       cfg.buffer_index = 0;
       cfg.format = GENX(panfrost_format_from_pipe_format)(f)->hw;
+      cfg.offset_enable = false;
    }
 
    *varyings = varying.gpu;

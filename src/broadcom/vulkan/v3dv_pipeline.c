@@ -1140,6 +1140,7 @@ pipeline_populate_v3d_fs_key(struct v3d_fs_key *key,
                        PIPE_LOGICOP_COPY;
 
    const bool raster_enabled =
+      pCreateInfo->pRasterizationState &&
       !pCreateInfo->pRasterizationState->rasterizerDiscardEnable;
 
    /* Multisample rasterization state must be ignored if rasterization
@@ -1950,6 +1951,7 @@ pipeline_populate_graphics_key(struct v3dv_pipeline *pipeline,
    memset(key, 0, sizeof(*key));
 
    const bool raster_enabled =
+      pCreateInfo->pRasterizationState &&
       !pCreateInfo->pRasterizationState->rasterizerDiscardEnable;
 
    const VkPipelineInputAssemblyStateCreateInfo *ia_info =
@@ -2886,6 +2888,7 @@ pipeline_init(struct v3dv_pipeline *pipeline,
     * ignored.
     */
    const bool raster_enabled =
+      pCreateInfo->pRasterizationState &&
       !pCreateInfo->pRasterizationState->rasterizerDiscardEnable;
 
    const VkPipelineViewportStateCreateInfo *vp_info =
@@ -2898,13 +2901,13 @@ pipeline_init(struct v3dv_pipeline *pipeline,
       raster_enabled ? pCreateInfo->pRasterizationState : NULL;
 
    const VkPipelineRasterizationProvokingVertexStateCreateInfoEXT *pv_info =
-      rs_info ? vk_find_struct_const(
+      raster_enabled ? vk_find_struct_const(
          rs_info->pNext,
          PIPELINE_RASTERIZATION_PROVOKING_VERTEX_STATE_CREATE_INFO_EXT) :
             NULL;
 
    const VkPipelineRasterizationLineStateCreateInfoEXT *ls_info =
-      rs_info ? vk_find_struct_const(
+      raster_enabled ? vk_find_struct_const(
          rs_info->pNext,
          PIPELINE_RASTERIZATION_LINE_STATE_CREATE_INFO_EXT) :
             NULL;
@@ -2920,13 +2923,13 @@ pipeline_init(struct v3dv_pipeline *pipeline,
                                      PIPELINE_COLOR_WRITE_CREATE_INFO_EXT) :
                 NULL;
 
-   if (vp_info) {
-      const VkPipelineViewportDepthClipControlCreateInfoEXT *depth_clip_control =
-         vk_find_struct_const(vp_info->pNext,
-                              PIPELINE_VIEWPORT_DEPTH_CLIP_CONTROL_CREATE_INFO_EXT);
-      if (depth_clip_control)
-         pipeline->negative_one_to_one = depth_clip_control->negativeOneToOne;
-   }
+   const VkPipelineViewportDepthClipControlCreateInfoEXT *depth_clip_control =
+      vp_info ? vk_find_struct_const(vp_info->pNext,
+                                     PIPELINE_VIEWPORT_DEPTH_CLIP_CONTROL_CREATE_INFO_EXT) :
+                NULL;
+
+   if (depth_clip_control)
+      pipeline->negative_one_to_one = depth_clip_control->negativeOneToOne;
 
    pipeline_init_dynamic_state(pipeline,
                                pCreateInfo->pDynamicState,

@@ -120,6 +120,7 @@ static const struct vk_instance_extension_table tu_instance_extensions_supported
    .EXT_headless_surface                = true,
 #endif
 #ifdef TU_USE_WSI_PLATFORM
+   .EXT_surface_maintenance1            = true,
    .EXT_swapchain_colorspace            = true,
 #endif
 } };
@@ -267,6 +268,9 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_shader_stencil_export = true,
       .EXT_shader_viewport_index_layer = TU_DEBUG(NOCONFORM) ? true : device->info->a6xx.has_hw_multiview,
       .EXT_subgroup_size_control = true,
+#ifdef TU_USE_WSI_PLATFORM
+      .EXT_swapchain_maintenance1 = true,
+#endif
       .EXT_texel_buffer_alignment = true,
       .EXT_tooling_info = true,
       .EXT_transform_feedback = true,
@@ -583,6 +587,11 @@ tu_get_features(struct tu_physical_device *pdevice,
 
    /* VK_EXT_shader_module_identifier */
    features->shaderModuleIdentifier = true;
+
+#ifdef TU_USE_WSI_PLATFORM
+   /* VK_EXT_swapchain_maintenance1 */
+   features->swapchainMaintenance1 = true;
+#endif
 
    /* VK_EXT_texel_buffer_alignment */
    features->texelBufferAlignment = true;

@@ -56,6 +56,8 @@ brw_fs_optimize(fs_visitor &s)
 
    OPT(brw_fs_opt_remove_extra_rounding_modes);
 
+   OPT(brw_fs_opt_eliminate_find_live_channel);
+
    do {
       progress = false;
       pass_num = 0;
@@ -71,7 +73,6 @@ brw_fs_optimize(fs_visitor &s)
       OPT(brw_fs_opt_dead_control_flow_eliminate);
       OPT(brw_fs_opt_saturate_propagation);
       OPT(brw_fs_opt_register_coalesce);
-      OPT(brw_fs_opt_eliminate_find_live_channel);
 
       OPT(brw_fs_opt_compact_virtual_grfs);
    } while (progress);
@@ -430,6 +431,26 @@ brw_fs_opt_eliminate_find_live_channel(fs_visitor &s)
             inst->sources = 1;
             inst->force_writemask_all = true;
             progress = true;
+
+            /* emit_uniformize() frequently emits FIND_LIVE_CHANNEL paired
+             * with a BROADCAST.  Save some work for opt_copy_propagation
+             * and opt_algebraic by trivially cleaning up both together.
+             */
+            assert(!inst->next->is_tail_sentinel());
+            fs_inst *bcast = (fs_inst *) inst->next;
+
+            /* Ignore stride when comparing */
+            if (bcast->opcode == SHADER_OPCODE_BROADCAST &&
+                inst->dst.file == VGRF &&
+                inst->dst.file == bcast->src[1].file &&
+                inst->dst.nr == bcast->src[1].nr &&
+                inst->dst.offset == bcast->src[1].offset) {
+               bcast->opcode = BRW_OPCODE_MOV;
+               if (!is_uniform(bcast->src[0]))
+                  bcast->src[0] = component(bcast->src[0], 0);
+               bcast->sources = 1;
+               bcast->force_writemask_all = true;
+            }
          }
          break;
 

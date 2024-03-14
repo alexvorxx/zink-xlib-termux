@@ -514,9 +514,14 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
    }
 
    if (physical_device->rad_info.gfx_level >= GFX9) {
+      unsigned max_alloc_count = physical_device->rad_info.pbb_max_alloc_count;
+
+      /* GFX11+ shouldn't subtract 1 from pbb_max_alloc_count.  */
+      if (physical_device->rad_info.gfx_level < GFX11)
+         max_alloc_count -= 1;
+
       radeon_set_context_reg(cs, R_028C48_PA_SC_BINNER_CNTL_1,
-                             S_028C48_MAX_ALLOC_COUNT(physical_device->rad_info.pbb_max_alloc_count - 1) |
-                                S_028C48_MAX_PRIM_PER_BATCH(1023));
+                             S_028C48_MAX_ALLOC_COUNT(max_alloc_count) | S_028C48_MAX_PRIM_PER_BATCH(1023));
       radeon_set_context_reg(cs, R_028C4C_PA_SC_CONSERVATIVE_RASTERIZATION_CNTL, S_028C4C_NULL_SQUAD_AA_MASK_ENABLE(1));
       radeon_set_uconfig_reg(cs, R_030968_VGT_INSTANCE_BASE_ID, 0);
    }

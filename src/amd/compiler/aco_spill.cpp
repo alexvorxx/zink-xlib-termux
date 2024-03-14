@@ -63,6 +63,11 @@ struct remat_info {
    Instruction* instr;
 };
 
+struct loop_info {
+   uint32_t index;
+   aco::unordered_map<Temp, uint32_t> spills;
+};
+
 struct spill_ctx {
    RegisterDemand target_pressure;
    Program* program;
@@ -74,7 +79,7 @@ struct spill_ctx {
    std::vector<aco::unordered_map<Temp, uint32_t>> spills_exit;
 
    std::vector<bool> processed;
-   std::stack<Block*, std::vector<Block*>> loop_header;
+   std::vector<loop_info> loop;
 
    using next_use_distance_startend_type = aco::unordered_map<Temp, std::pair<uint32_t, uint32_t>>;
    std::vector<next_use_distance_startend_type> next_use_distances_start;
@@ -139,6 +144,11 @@ struct spill_ctx {
       const uint32_t spill_id = allocate_spill_id(to_spill.regClass());
       for (auto pair : spills)
          add_interference(spill_id, pair.second);
+      for (loop_info info : loop) {
+         for (auto pair : info.spills)
+            add_interference(spill_id, pair.second);
+      }
+
       spills[to_spill] = spill_id;
       return spill_id;
    }
@@ -513,9 +523,6 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       assert(block->linear_preds[0] == block_idx - 1);
       assert(block->logical_preds[0] == block_idx - 1);
 
-      /* create new loop_info */
-      ctx.loop_header.emplace(block);
-
       /* check how many live-through variables should be spilled */
       RegisterDemand reg_pressure = get_live_in_demand(ctx, block_idx);
       RegisterDemand loop_demand = reg_pressure;
@@ -581,6 +588,10 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          spilled_registers += to_spill;
          loop_demand -= to_spill;
       }
+
+      /* create new loop_info */
+      loop_info info = {block_idx, ctx.spills_entry[block_idx]};
+      ctx.loop.emplace_back(std::move(info));
 
       /* shortcut */
       if (!loop_demand.exceeds(ctx.target_pressure))
@@ -1207,8 +1218,7 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
    /* determine set of variables which are spilled at the beginning of the block */
    RegisterDemand spilled_registers = init_live_in_vars(ctx, block, block_idx);
 
-   bool is_loop_header = block->loop_nest_depth && ctx.loop_header.top()->index == block_idx;
-   if (!is_loop_header) {
+   if (!(block->kind & block_kind_loop_header)) {
       /* add spill/reload code on incoming control flow edges */
       add_coupling_code(ctx, block, block_idx);
    }
@@ -1237,34 +1247,34 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
        ctx.program->blocks[block_idx + 1].loop_nest_depth >= block->loop_nest_depth)
       return;
 
-   Block* loop_header = ctx.loop_header.top();
+   uint32_t loop_header_idx = ctx.loop.back().index;
 
    /* preserve original renames at end of loop header block */
-   aco::map<Temp, Temp> renames = std::move(ctx.renames[loop_header->index]);
+   aco::map<Temp, Temp> renames = std::move(ctx.renames[loop_header_idx]);
 
    /* add coupling code to all loop header predecessors */
-   add_coupling_code(ctx, loop_header, loop_header->index);
-   renames.swap(ctx.renames[loop_header->index]);
+   add_coupling_code(ctx, &ctx.program->blocks[loop_header_idx], loop_header_idx);
+   renames.swap(ctx.renames[loop_header_idx]);
 
    /* remove loop header info from stack */
-   ctx.loop_header.pop();
+   ctx.loop.pop_back();
    if (renames.empty())
       return;
 
    /* Add the new renames to each block */
    for (std::pair<Temp, Temp> rename : renames) {
       /* If there is already a rename, don't overwrite it. */
-      for (unsigned idx = loop_header->index; idx <= block_idx; idx++)
+      for (unsigned idx = loop_header_idx; idx <= block_idx; idx++)
          ctx.renames[idx].insert(rename);
    }
 
    /* propagate new renames through loop: i.e. repair the SSA */
-   for (unsigned idx = loop_header->index; idx <= block_idx; idx++) {
+   for (unsigned idx = loop_header_idx; idx <= block_idx; idx++) {
       Block& current = ctx.program->blocks[idx];
       /* rename all uses in this block */
       for (aco_ptr<Instruction>& instr : current.instructions) {
          /* no need to rename the loop header phis once again. */
-         if (idx == loop_header->index && is_phi(instr))
+         if (idx == loop_header_idx && is_phi(instr))
             continue;
 
          for (Operand& op : instr->operands) {

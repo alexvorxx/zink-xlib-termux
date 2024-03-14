@@ -1944,11 +1944,13 @@ radv_emit_graphics_pipeline(struct radv_cmd_buffer *cmd_buffer)
           radv_rast_prim_is_points_or_lines(pipeline->rast_prim))
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_GUARDBAND;
 
+      if (cmd_buffer->state.emitted_graphics_pipeline->rast_prim != pipeline->rast_prim)
+         cmd_buffer->state.dirty |=
+            RADV_CMD_DIRTY_DYNAMIC_PRIMITIVE_TOPOLOGY | RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES;
+
       if (cmd_buffer->state.emitted_graphics_pipeline->ms.min_sample_shading != pipeline->ms.min_sample_shading ||
           cmd_buffer->state.emitted_graphics_pipeline->uses_out_of_order_rast != pipeline->uses_out_of_order_rast ||
-          cmd_buffer->state.emitted_graphics_pipeline->uses_vrs_attachment != pipeline->uses_vrs_attachment ||
-          cmd_buffer->state.emitted_graphics_pipeline->rast_prim != pipeline->rast_prim)
-
+          cmd_buffer->state.emitted_graphics_pipeline->uses_vrs_attachment != pipeline->uses_vrs_attachment)
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES;
 
       if (cmd_buffer->state.emitted_graphics_pipeline->ms.sample_shading_enable != pipeline->ms.sample_shading_enable) {
@@ -2316,6 +2318,7 @@ radv_emit_primitive_topology(struct radv_cmd_buffer *cmd_buffer)
 {
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.last_vgt_shader;
    const struct radv_userdata_info *loc = radv_get_user_sgpr(last_vgt_shader, AC_UD_NUM_VERTS_PER_PRIM);
+   const uint32_t vgt_gs_out_prim_type = radv_get_rasterization_prim(cmd_buffer);
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    uint32_t base_reg;
 
@@ -2327,6 +2330,8 @@ radv_emit_primitive_topology(struct radv_cmd_buffer *cmd_buffer)
    } else {
       radeon_set_config_reg(cmd_buffer->cs, R_008958_VGT_PRIMITIVE_TYPE, d->vk.ia.primitive_topology);
    }
+
+   radv_emit_vgt_gs_out(cmd_buffer->device, cmd_buffer->cs, vgt_gs_out_prim_type);
 
    if (loc->sgpr_idx == -1)
       return;
@@ -9196,7 +9201,6 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    radv_emit_vgt_gs_mode(device, cs, last_vgt_shader);
    radv_emit_vgt_vertex_reuse(device, cs, radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL));
    radv_emit_vgt_shader_config(device, cs, &vgt_shader_cfg_key);
-   radv_emit_vgt_gs_out(device, cs, radv_get_rasterization_prim(cmd_buffer));
 
    if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX10_3) {
       gfx103_emit_vgt_draw_payload_cntl(cs, cmd_buffer->state.shaders[MESA_SHADER_MESH], false);

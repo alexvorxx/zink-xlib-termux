@@ -3555,19 +3555,25 @@ radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf
 }
 
 void
-radv_emit_vgt_vertex_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                           const struct radv_shader *tes)
+radv_emit_vgt_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *tes,
+                    const struct radv_vgt_shader_key *key)
 {
    const struct radv_physical_device *pdevice = device->physical_device;
 
-   if (pdevice->rad_info.family < CHIP_POLARIS10 || pdevice->rad_info.gfx_level >= GFX10)
-      return;
+   if (pdevice->rad_info.gfx_level == GFX10_3) {
+      /* Legacy Tess+GS should disable reuse to prevent hangs on GFX10.3. */
+      const bool has_legacy_tess_gs = key->tess && key->gs && !key->ngg;
 
-   unsigned vtx_reuse_depth = 30;
-   if (tes && tes->info.tes.spacing == TESS_SPACING_FRACTIONAL_ODD) {
-      vtx_reuse_depth = 14;
+      radeon_set_context_reg(ctx_cs, R_028AB4_VGT_REUSE_OFF, S_028AB4_REUSE_OFF(has_legacy_tess_gs));
    }
-   radeon_set_context_reg(ctx_cs, R_028C58_VGT_VERTEX_REUSE_BLOCK_CNTL, S_028C58_VTX_REUSE_DEPTH(vtx_reuse_depth));
+
+   if (pdevice->rad_info.family >= CHIP_POLARIS10 && pdevice->rad_info.gfx_level < GFX10) {
+      unsigned vtx_reuse_depth = 30;
+      if (tes && tes->info.tes.spacing == TESS_SPACING_FRACTIONAL_ODD) {
+         vtx_reuse_depth = 14;
+      }
+      radeon_set_context_reg(ctx_cs, R_028C58_VGT_VERTEX_REUSE_BLOCK_CNTL, S_028C58_VTX_REUSE_DEPTH(vtx_reuse_depth));
+   }
 }
 
 struct radv_vgt_shader_key
@@ -3800,7 +3806,7 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
       radv_emit_ps_inputs(device, ctx_cs, last_vgt_shader, ps);
    }
 
-   radv_emit_vgt_vertex_reuse(device, ctx_cs, radv_get_shader(pipeline->base.shaders, MESA_SHADER_TESS_EVAL));
+   radv_emit_vgt_reuse(device, ctx_cs, radv_get_shader(pipeline->base.shaders, MESA_SHADER_TESS_EVAL), &vgt_shader_key);
    radv_emit_vgt_shader_config(device, ctx_cs, &vgt_shader_key);
 
    if (pdevice->rad_info.gfx_level >= GFX10_3) {

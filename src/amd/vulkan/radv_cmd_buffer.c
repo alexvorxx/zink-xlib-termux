@@ -9204,7 +9204,8 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       radv_get_vgt_shader_key(cmd_buffer->device, cmd_buffer->state.shaders, cmd_buffer->state.gs_copy_shader);
 
    radv_emit_vgt_gs_mode(device, cs, last_vgt_shader);
-   radv_emit_vgt_vertex_reuse(device, cs, radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL));
+   radv_emit_vgt_reuse(device, cs, radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL),
+                       &vgt_shader_cfg_key);
    radv_emit_vgt_shader_config(device, cs, &vgt_shader_cfg_key);
 
    if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX10_3) {

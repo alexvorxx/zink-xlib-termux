@@ -2546,8 +2546,8 @@ void radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf 
 struct radv_ia_multi_vgt_param_helpers radv_compute_ia_multi_vgt_param(const struct radv_device *device,
                                                                        struct radv_shader *const *shaders);
 
-void radv_emit_vgt_vertex_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                                const struct radv_shader *tes);
+void radv_emit_vgt_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *tes,
+                         const struct radv_vgt_shader_key *key);
 
 void radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                           uint32_t vgt_gs_out_prim_type);

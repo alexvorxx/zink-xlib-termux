@@ -1803,9 +1803,10 @@ bool
 brw_fs_opt_copy_propagation_defs(fs_visitor &s)
 {
    const brw::def_analysis &defs = s.def_analysis.require();
+   unsigned *uses_deleted = new unsigned[defs.count()]();
    bool progress = false;
 
-   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       /* Try propagating into this instruction. */
       bool instruction_progress = false;
 
@@ -1815,13 +1816,23 @@ brw_fs_opt_copy_propagation_defs(fs_visitor &s)
          if (!def || def->saturate)
             continue;
 
+         bool source_progress = false;
+
          if (def->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
             if (inst->size_read(i) == def->size_written &&
                 def->src[0].file != BAD_FILE && def->src[0].file != IMM &&
                 is_identity_payload(def->src[0].file, def)) {
-               instruction_progress |=
+               source_progress =
                   try_copy_propagate_def(s.compiler, s.alloc, def, def->src[0],
                                          inst, i, s.max_polygons);
+
+               if (source_progress) {
+                  instruction_progress = true;
+                  ++uses_deleted[def->dst.nr];
+                  if (defs.get_use_count(def->dst) == uses_deleted[def->dst.nr])
+                     def->remove(defs.get_block(def->dst), true);
+               }
+
                continue;
             }
          }
@@ -1830,14 +1841,21 @@ brw_fs_opt_copy_propagation_defs(fs_visitor &s)
             find_value_for_offset(def, inst->src[i], inst->size_read(i));
 
          if (val.file == IMM) {
-            instruction_progress |=
+            source_progress =
                try_constant_propagate_def(def, val, inst, i);
          } else if (val.file == VGRF ||
                     val.file == ATTR || val.file == UNIFORM ||
                     (val.file == FIXED_GRF && val.is_contiguous())) {
-            instruction_progress |=
+            source_progress =
                try_copy_propagate_def(s.compiler, s.alloc, def, val, inst, i,
                                       s.max_polygons);
+         }
+
+         if (source_progress) {
+            instruction_progress = true;
+            ++uses_deleted[def->dst.nr];
+            if (defs.get_use_count(def->dst) == uses_deleted[def->dst.nr])
+               def->remove(defs.get_block(def->dst), true);
          }
       }
 
@@ -1848,9 +1866,12 @@ brw_fs_opt_copy_propagation_defs(fs_visitor &s)
    }
 
    if (progress) {
+      s.cfg->adjust_block_ips();
       s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
                             DEPENDENCY_INSTRUCTION_DETAIL);
    }
+
+   delete [] uses_deleted;
 
    return progress;
 }

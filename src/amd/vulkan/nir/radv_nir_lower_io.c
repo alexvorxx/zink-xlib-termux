@@ -75,10 +75,6 @@ radv_nir_lower_io(struct radv_device *device, nir_shader *nir)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
-   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
-      nir_assign_io_var_locations(nir, nir_var_shader_in, &nir->num_inputs, MESA_SHADER_FRAGMENT);
-   }
-
    if (nir->info.stage == MESA_SHADER_VERTEX) {
       NIR_PASS(_, nir, nir_lower_io, nir_var_shader_in, type_size_vec4, 0);
       NIR_PASS(_, nir, nir_lower_io, nir_var_shader_out, type_size_vec4, nir_lower_io_lower_64bit_to_32);
@@ -99,6 +95,13 @@ radv_nir_lower_io(struct radv_device *device, nir_shader *nir)
        * VS/TES when lowering NGG streamout.
        */
       nir_assign_io_var_locations(nir, nir_var_shader_out, &nir->num_outputs, nir->info.stage);
+   }
+
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      /* Recompute FS input intrinsic bases to make sure that there are no gaps
+       * between the FS input slots.
+       */
+      nir_recompute_io_bases(nir, nir_var_shader_in);
    }
 }
 

@@ -109,6 +109,7 @@ static const struct vk_instance_extension_table instance_extensions = {
    .KHR_get_surface_capabilities2       = true,
    .KHR_surface                         = true,
    .KHR_surface_protected_capabilities  = true,
+   .EXT_surface_maintenance1            = true,
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
    .KHR_wayland_surface                 = true,
@@ -218,6 +219,9 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_module_identifier         = true,
       .EXT_subgroup_size_control            = true,
+#ifdef V3DV_USE_WSI_PLATFORM
+      .EXT_swapchain_maintenance1           = true,
+#endif
       .EXT_texel_buffer_alignment           = true,
       .EXT_tooling_info                     = true,
       .EXT_vertex_attribute_divisor         = true,
@@ -470,6 +474,11 @@ get_features(const struct v3dv_physical_device *physical_device,
 
       /* VK_KHR_dynamic_rendering */
       .dynamicRendering = true,
+
+#ifdef V3DV_USE_WSI_PLATFORM
+      /* VK_EXT_swapchain_maintenance1 */
+      .swapchainMaintenance1 = true,
+#endif
    };
 }
 

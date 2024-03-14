@@ -1551,7 +1551,8 @@ v3dX(cmd_buffer_emit_line_width)(struct v3dv_cmd_buffer *cmd_buffer)
    v3dv_return_if_oom(cmd_buffer, NULL);
 
    cl_emit(&job->bcl, LINE_WIDTH, line) {
-      line.line_width = cmd_buffer->state.dynamic.line_width;
+      line.line_width = v3dv_get_aa_line_width(cmd_buffer->state.gfx.pipeline,
+                                               cmd_buffer);
    }
 
    cmd_buffer->state.dirty &= ~V3DV_CMD_DIRTY_LINE_WIDTH;

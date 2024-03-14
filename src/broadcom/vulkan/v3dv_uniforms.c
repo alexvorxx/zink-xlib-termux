@@ -661,6 +661,15 @@ v3dv_write_uniforms_wg_offsets(struct v3dv_cmd_buffer *cmd_buffer,
          cl_aligned_u32(&uniforms, job->cmd_buffer->state.draw_id);
          break;
 
+      case QUNIFORM_LINE_WIDTH:
+         cl_aligned_u32(&uniforms, job->cmd_buffer->state.dynamic.line_width);
+         break;
+
+      case QUNIFORM_AA_LINE_WIDTH:
+         cl_aligned_u32(&uniforms,
+                        v3dv_get_aa_line_width(pipeline, job->cmd_buffer));
+         break;
+
       default:
          unreachable("unsupported quniform_contents uniform type\n");
       }

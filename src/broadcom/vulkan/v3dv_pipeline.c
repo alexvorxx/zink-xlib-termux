@@ -1095,6 +1095,32 @@ static const enum pipe_logicop vk_to_pipe_logicop[] = {
    [VK_LOGIC_OP_SET] = PIPE_LOGICOP_SET,
 };
 
+static bool
+enable_line_smooth(uint8_t topology,
+                   const VkPipelineRasterizationStateCreateInfo *rs_info)
+{
+   if (!rs_info || rs_info->rasterizerDiscardEnable)
+      return false;
+
+   const VkPipelineRasterizationLineStateCreateInfoKHR *ls_info =
+      vk_find_struct_const(rs_info->pNext,
+                           PIPELINE_RASTERIZATION_LINE_STATE_CREATE_INFO_KHR);
+
+   if (!ls_info)
+      return false;
+
+   switch(topology) {
+   case MESA_PRIM_LINES:
+   case MESA_PRIM_LINE_LOOP:
+   case MESA_PRIM_LINE_STRIP:
+   case MESA_PRIM_LINES_ADJACENCY:
+   case MESA_PRIM_LINE_STRIP_ADJACENCY:
+      return ls_info->lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR;
+   default:
+      return false;
+   }
+}
+
 static void
 pipeline_populate_v3d_fs_key(struct v3d_fs_key *key,
                              const VkGraphicsPipelineCreateInfo *pCreateInfo,
@@ -1158,6 +1184,8 @@ pipeline_populate_v3d_fs_key(struct v3d_fs_key *key,
 
       key->sample_alpha_to_one = ms_info->alphaToOneEnable;
    }
+
+   key->line_smoothing = enable_line_smooth(topology, pCreateInfo->pRasterizationState);
 
    /* This is intended for V3D versions before 4.1, otherwise we just use the
     * tile buffer load/store swap R/B bit.
@@ -1949,6 +1977,8 @@ pipeline_populate_graphics_key(struct v3dv_pipeline *pipeline,
    assert(device);
 
    memset(key, 0, sizeof(*key));
+
+   key->line_smooth = pipeline->line_smooth;
 
    const bool raster_enabled =
       pCreateInfo->pRasterizationState &&
@@ -2950,6 +2980,7 @@ pipeline_init(struct v3dv_pipeline *pipeline,
 
    pipeline_set_sample_mask(pipeline, ms_info);
    pipeline_set_sample_rate_shading(pipeline, ms_info);
+   pipeline->line_smooth = enable_line_smooth(pipeline->topology, rs_info);
 
    pipeline->primitive_restart =
       pCreateInfo->pInputAssemblyState->primitiveRestartEnable;

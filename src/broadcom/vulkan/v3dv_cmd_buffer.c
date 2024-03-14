@@ -27,6 +27,21 @@
 #include "vk_common_entrypoints.h"
 #include "vk_util.h"
 
+float
+v3dv_get_aa_line_width(struct v3dv_pipeline *pipeline,
+                       struct v3dv_cmd_buffer *buffer)
+{
+   float width = buffer->state.dynamic.line_width;
+
+   /* If line smoothing is enabled then we want to add some extra pixels to
+    * the width in order to have some semi-transparent edges.
+    */
+   if (pipeline->line_smooth)
+      width = floorf(M_SQRT2 * width) + 3;
+
+   return width;
+}
+
 void
 v3dv_job_add_bo(struct v3dv_job *job, struct v3dv_bo *bo)
 {

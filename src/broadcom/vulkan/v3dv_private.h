@@ -339,6 +339,7 @@ struct v3dv_pipeline_key {
    uint8_t f32_color_rb;
    uint32_t va_swap_rb_mask;
    bool has_multiview;
+   bool line_smooth;
 };
 
 struct v3dv_pipeline_cache_stats {
@@ -2297,6 +2298,8 @@ struct v3dv_pipeline {
 
    enum mesa_prim topology;
 
+   bool line_smooth;
+
    struct v3dv_pipeline_shared_data *shared_data;
 
    /* It is the combined stages sha1, layout sha1, plus the pipeline key sha1. */
@@ -2679,6 +2682,10 @@ v3dv_update_image_layout(struct v3dv_device *device,
                          uint64_t modifier,
                          bool disjoint,
                          const VkImageDrmFormatModifierExplicitCreateInfoEXT *explicit_mod_info);
+
+float
+v3dv_get_aa_line_width(struct v3dv_pipeline *pipeline,
+                       struct v3dv_cmd_buffer *buffer);
 
 #if DETECT_OS_ANDROID
 VkResult

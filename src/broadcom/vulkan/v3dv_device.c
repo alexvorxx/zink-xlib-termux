@@ -394,7 +394,7 @@ get_features(const struct v3dv_physical_device *physical_device,
       /* VK_EXT_line_rasterization */
       .rectangularLines = true,
       .bresenhamLines = true,
-      .smoothLines = false,
+      .smoothLines = true,
       .stippledRectangularLines = false,
       .stippledBresenhamLines = false,
       .stippledSmoothLines = false,

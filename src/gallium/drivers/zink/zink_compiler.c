@@ -4969,7 +4969,7 @@ fixup_io_locations(nir_shader *nir)
             else
                var->data.driver_location = var->data.location;
          }
-         return true;
+         continue;
       }
       /* i/o interface blocks are required to be EXACT matches between stages:
       * iterate over all locations and set locations incrementally

@@ -15,6 +15,9 @@
 
 #include "spirv/spirv.h"
 
+#include "util/mesa-sha1.h"
+#include "util/simple_mtx.h"
+
 static void
 lvp_init_ray_tracing_groups(struct lvp_pipeline *pipeline,
                             const VkRayTracingPipelineCreateInfoKHR *create_info)
@@ -23,8 +26,6 @@ lvp_init_ray_tracing_groups(struct lvp_pipeline *pipeline,
    for (; i < create_info->groupCount; i++) {
       const VkRayTracingShaderGroupCreateInfoKHR *group_info = create_info->pGroups + i;
       struct lvp_ray_tracing_group *dst = pipeline->rt.groups + i;
-
-      dst->handle.index = i;
 
       dst->recursive_index = VK_SHADER_UNUSED_KHR;
       dst->ahit_index = VK_SHADER_UNUSED_KHR;
@@ -50,7 +51,7 @@ lvp_init_ray_tracing_groups(struct lvp_pipeline *pipeline,
          }
          if (group_info->intersectionShader != VK_SHADER_UNUSED_KHR) {
             dst->isec_index = group_info->intersectionShader;
-            
+
             if (group_info->anyHitShader != VK_SHADER_UNUSED_KHR)
                dst->ahit_index = group_info->anyHitShader;
          }
@@ -58,6 +59,8 @@ lvp_init_ray_tracing_groups(struct lvp_pipeline *pipeline,
       default:
          unreachable("Unimplemented VkRayTracingShaderGroupTypeKHR");
       }
+
+      dst->handle.index = p_atomic_inc_return(&pipeline->device->group_handle_alloc);
    }
 
    if (!create_info->pLibraryInfo)
@@ -70,7 +73,7 @@ lvp_init_ray_tracing_groups(struct lvp_pipeline *pipeline,
          const struct lvp_ray_tracing_group *src = library->rt.groups + group_index;
          struct lvp_ray_tracing_group *dst = pipeline->rt.groups + i;
 
-         dst->handle.index = i;
+         dst->handle = src->handle;
 
          if (src->recursive_index != VK_SHADER_UNUSED_KHR)
             dst->recursive_index = stage_base_index + src->recursive_index;
@@ -1147,11 +1150,11 @@ lvp_create_ray_tracing_pipeline(VkDevice _device, const VkAllocationCallbacks *a
       goto fail;
    }
 
-   lvp_init_ray_tracing_groups(pipeline, create_info);
-
    result = lvp_compile_ray_tracing_stages(pipeline, create_info);
    if (result != VK_SUCCESS)
       goto fail;
+
+   lvp_init_ray_tracing_groups(pipeline, create_info);
 
    VkPipelineCreateFlags2KHR create_flags = vk_rt_pipeline_create_flags(create_info);
    if (!(create_flags & VK_PIPELINE_CREATE_2_LIBRARY_BIT_KHR)) {

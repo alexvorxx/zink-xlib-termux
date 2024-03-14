@@ -213,6 +213,8 @@ struct lvp_device {
    struct lp_texture_handle *null_image_handle;
    struct util_dynarray bda_texture_handles;
    struct util_dynarray bda_image_handles;
+
+   uint32_t group_handle_alloc;
 };
 
 void lvp_device_get_cache_uuid(void *uuid);

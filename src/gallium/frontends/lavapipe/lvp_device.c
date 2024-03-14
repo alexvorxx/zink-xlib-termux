@@ -211,6 +211,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
 #endif
    .EXT_pipeline_creation_feedback        = true,
    .EXT_pipeline_creation_cache_control   = true,
+   .EXT_pipeline_library_group_handles    = true,
    .EXT_post_depth_coverage               = true,
    .EXT_private_data                      = true,
    .EXT_primitives_generated_query        = true,
@@ -501,6 +502,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       .rayTracingPipelineShaderGroupHandleCaptureReplayMixed = false,
       .rayTracingPipelineTraceRaysIndirect = true,
       .rayTraversalPrimitiveCulling = true,
+
+      /* VK_EXT_pipeline_library_group_handles */
+      .pipelineLibraryGroupHandles = true,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,
@@ -1652,6 +1656,8 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
 
    util_dynarray_init(&device->bda_texture_handles, NULL);
    util_dynarray_init(&device->bda_image_handles, NULL);
+
+   device->group_handle_alloc = 1;
 
    *pDevice = lvp_device_to_handle(device);
 

@@ -134,6 +134,15 @@ struct spill_ctx {
       }
    }
 
+   uint32_t add_to_spills(Temp to_spill, aco::unordered_map<Temp, uint32_t>& spills)
+   {
+      const uint32_t spill_id = allocate_spill_id(to_spill.regClass());
+      for (auto pair : spills)
+         add_interference(spill_id, pair.second);
+      spills[to_spill] = spill_id;
+      return spill_id;
+   }
+
    void add_interference(uint32_t first, uint32_t second)
    {
       if (interferences[first].first.type() != interferences[second].first.type())
@@ -563,18 +572,12 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
             continue;
          }
 
-         uint32_t spill_id;
          if (!ctx.spills_exit[block_idx - 1].count(to_spill)) {
-            spill_id = ctx.allocate_spill_id(to_spill.regClass());
-
-            /* Add new interferences */
-            for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx])
-               ctx.add_interference(spill_id, pair.second);
+            ctx.add_to_spills(to_spill, ctx.spills_entry[block_idx]);
          } else {
-            spill_id = ctx.spills_exit[block_idx - 1][to_spill];
+            ctx.spills_entry[block_idx][to_spill] = ctx.spills_exit[block_idx - 1][to_spill];
          }
 
-         ctx.spills_entry[block_idx][to_spill] = spill_id;
          spilled_registers += to_spill;
          loop_demand -= to_spill;
       }
@@ -600,13 +603,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
             }
          }
          assert(distance != 0);
-         const uint32_t spill_id = ctx.allocate_spill_id(to_spill.regClass());
-
-         /* Add new interferences */
-         for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx])
-            ctx.add_interference(spill_id, pair.second);
-
-         ctx.spills_entry[block_idx][to_spill] = spill_id;
+         ctx.add_to_spills(to_spill, ctx.spills_entry[block_idx]);
          spilled_registers += to_spill;
          reg_pressure -= to_spill;
       }
@@ -729,12 +726,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
 
       if (is_all_spilled) {
          /* The phi is spilled at all predecessors. Keep it spilled. */
-         const uint32_t spill_id = ctx.allocate_spill_id(phi->definitions[0].regClass());
-         /* Add new interferences */
-         for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx])
-            ctx.add_interference(spill_id, pair.second);
-
-         ctx.spills_entry[block_idx][phi->definitions[0].getTemp()] = spill_id;
+         ctx.add_to_spills(phi->definitions[0].getTemp(), ctx.spills_entry[block_idx]);
          spilled_registers += phi->definitions[0].getTemp();
       } else {
          /* Phis might increase the register pressure. */
@@ -767,13 +759,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          ++it;
       }
       assert(distance != 0);
-      const uint32_t spill_id = ctx.allocate_spill_id(to_spill.regClass());
-
-      /* Add new interferences */
-      for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx])
-         ctx.add_interference(spill_id, pair.second);
-
-      ctx.spills_entry[block_idx][to_spill] = spill_id;
+      ctx.add_to_spills(to_spill, ctx.spills_entry[block_idx]);
       partial_spills.erase(to_spill);
       spilled_registers += to_spill;
       reg_pressure -= to_spill;
@@ -1272,15 +1258,11 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
             }
 
             assert(distance != 0 && distance > idx);
-            uint32_t spill_id = ctx.allocate_spill_id(to_spill.regClass());
-
-            /* add interferences with currently spilled variables */
-            for (std::pair<Temp, uint32_t> pair : current_spills)
-               ctx.add_interference(spill_id, pair.second);
+            uint32_t spill_id = ctx.add_to_spills(to_spill, current_spills);
+            /* add interferences with reloads */
             for (std::pair<const Temp, std::pair<Temp, uint32_t>>& pair : reloads)
                ctx.add_interference(spill_id, pair.second.second);
 
-            current_spills[to_spill] = spill_id;
             spilled_registers += to_spill;
 
             /* rename if necessary */

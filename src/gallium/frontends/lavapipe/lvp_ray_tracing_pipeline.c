@@ -997,6 +997,12 @@ lvp_lower_ray_tracing_instr(nir_builder *b, nir_instr *instr, void *data)
       nir_src_rewrite(&intr->src[1], nir_iadd(b, nir_load_var(b, state->stack_ptr), intr->src[1].ssa));
       return true;
    }
+   case nir_intrinsic_load_ray_triangle_vertex_positions: {
+      def = lvp_load_vertex_position(
+         b, nir_load_var(b, state->instance_addr), nir_load_var(b, state->primitive_id),
+         nir_intrinsic_column(intr));
+      break;
+   }
    /* Internal system values */
    case nir_intrinsic_load_shader_call_data_offset_lvp:
       def = nir_load_var(b, state->shader_call_data_offset);

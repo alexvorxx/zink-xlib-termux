@@ -352,6 +352,7 @@ compile_spirv(struct lvp_device *pdevice, const VkPipelineShaderStageCreateInfo 
          .ray_query = true,
          .ray_cull_mask = true,
          .ray_tracing = true,
+         .ray_tracing_position_fetch = true,
       },
       .ubo_addr_format = nir_address_format_vec2_index_32bit_offset,
       .ssbo_addr_format = nir_address_format_vec2_index_32bit_offset,

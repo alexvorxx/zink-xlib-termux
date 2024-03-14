@@ -40,6 +40,23 @@ lvp_load_wto_matrix(nir_builder *b, nir_def *instance_addr, nir_def **out)
    }
 }
 
+nir_def *
+lvp_load_vertex_position(nir_builder *b, nir_def *instance_addr, nir_def *primitive_id,
+                         uint32_t index)
+{
+   nir_def *bvh_addr = nir_build_load_global(
+      b, 1, 64, nir_iadd_imm(b, instance_addr, offsetof(struct lvp_bvh_instance_node, bvh_ptr)));
+
+   nir_def *leaf_nodes_offset = nir_build_load_global(
+      b, 1, 32, nir_iadd_imm(b, bvh_addr, offsetof(struct lvp_bvh_header, leaf_nodes_offset)));
+
+   nir_def *offset = nir_imul_imm(b, primitive_id, sizeof(struct lvp_bvh_triangle_node));
+   offset = nir_iadd(b, offset, leaf_nodes_offset);
+   offset = nir_iadd_imm(b, offset, index * 3 * sizeof(float));
+
+   return nir_build_load_global(b, 3, 32, nir_iadd(b, bvh_addr, nir_u2u64(b, offset)));
+}
+
 static nir_def *
 lvp_build_intersect_ray_box(nir_builder *b, nir_def *node_addr, nir_def *ray_tmax,
                             nir_def *origin, nir_def *dir, nir_def *inv_dir)

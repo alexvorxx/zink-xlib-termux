@@ -142,6 +142,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_ray_query                         = true,
    .KHR_ray_tracing_maintenance1          = true,
    .KHR_ray_tracing_pipeline              = true,
+   .KHR_ray_tracing_position_fetch        = true,
    .KHR_relaxed_block_layout              = true,
    .KHR_sampler_mirror_clamp_to_edge      = true,
    .KHR_sampler_ycbcr_conversion          = true,
@@ -505,6 +506,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* VK_EXT_pipeline_library_group_handles */
       .pipelineLibraryGroupHandles = true,
+
+      /* VK_KHR_ray_tracing_position_fetch */
+      .rayTracingPositionFetch = true,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,

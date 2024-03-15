@@ -5217,11 +5217,13 @@ rework_io_vars(nir_shader *nir, nir_variable_mode mode)
                   break;
                case VARYING_SLOT_CLIP_DIST0:
                case VARYING_SLOT_CLIP_DIST1:
-                  max_components = s.num_slots;
+                  max_components = nir->info.clip_distance_array_size;
+                  assert(max_components);
                   break;
                case VARYING_SLOT_CULL_DIST0:
                case VARYING_SLOT_CULL_DIST1:
-                  max_components = s.num_slots;
+                  max_components = nir->info.cull_distance_array_size;
+                  assert(max_components);
                   break;
                case VARYING_SLOT_TESS_LEVEL_OUTER:
                   max_components = 4;

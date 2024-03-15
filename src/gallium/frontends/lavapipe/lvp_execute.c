@@ -269,9 +269,10 @@ get_pcbuf_size(struct rendering_state *state, enum pipe_shader_type pstage)
 }
 
 static void
-update_pcbuf(struct rendering_state *state, enum pipe_shader_type pstage)
+update_pcbuf(struct rendering_state *state, enum pipe_shader_type pstage,
+             enum pipe_shader_type api_stage)
 {
-   unsigned size = get_pcbuf_size(state, pstage);
+   unsigned size = get_pcbuf_size(state, api_stage);
    if (size) {
       uint8_t *mem;
       struct pipe_constant_buffer cbuf;
@@ -282,7 +283,7 @@ update_pcbuf(struct rendering_state *state, enum pipe_shader_type pstage)
       memcpy(mem, state->push_constants, size);
       state->pctx->set_constant_buffer(state->pctx, pstage, 0, true, &cbuf);
    }
-   state->pcbuf_dirty[pstage] = false;
+   state->pcbuf_dirty[api_stage] = false;
 }
 
 static void
@@ -373,7 +374,7 @@ static void emit_compute_state(struct rendering_state *state)
 {
    bool pcbuf_dirty = state->pcbuf_dirty[MESA_SHADER_COMPUTE];
    if (state->pcbuf_dirty[MESA_SHADER_COMPUTE])
-      update_pcbuf(state, MESA_SHADER_COMPUTE);
+      update_pcbuf(state, MESA_SHADER_COMPUTE, MESA_SHADER_COMPUTE);
 
    if (state->constbuf_dirty[MESA_SHADER_COMPUTE]) {
       for (unsigned i = 0; i < state->num_const_bufs[MESA_SHADER_COMPUTE]; i++)
@@ -556,7 +557,7 @@ static void emit_state(struct rendering_state *state)
    lvp_forall_gfx_stage(sh) {
       pcbuf_dirty[sh] = state->pcbuf_dirty[sh];
       if (state->pcbuf_dirty[sh])
-         update_pcbuf(state, sh);
+         update_pcbuf(state, sh, sh);
    }
 
    lvp_forall_gfx_stage(sh) {

@@ -615,7 +615,8 @@ zink_resource_buffer_transfer_dst_barrier(struct zink_context *ctx, struct zink_
    if (res->obj->copies_need_reset)
       zink_resource_copies_reset(res);
    bool unordered = true;
-   struct pipe_box box = {(int)offset, 0, 0, (int)size, 0, 0};
+   struct pipe_box box;
+   u_box_3d((int)offset, 0, 0, (int)size, 0, 0, &box);
    bool can_unordered_write = unordered_res_exec(ctx, res, true);
    /* must barrier if something read the valid buffer range */
    bool valid_read = (res->obj->access || res->obj->unordered_access) &&

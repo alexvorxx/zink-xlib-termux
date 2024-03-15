@@ -2147,14 +2147,14 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
    pipe_resource *pPipeResolvedMetadataBuffer =
       d3d12_resource_from_resource(&pD3D12Screen->base, pResolvedMetadataBuffer);
    assert(resourceMetadataSize < INT_MAX);
-   struct pipe_box box = {
-      0,                                        // x
-      0,                                        // y
-      0,                                        // z
-      static_cast<int>(resourceMetadataSize),   // width
-      1,                                        // height
-      1                                         // depth
-   };
+   struct pipe_box box;
+   u_box_3d(0,                                        // x
+            0,                                        // y
+            0,                                        // z
+            static_cast<int>(resourceMetadataSize),   // width
+            1,                                        // height
+            1,                                        // depth
+            &box);
    struct pipe_transfer *mapTransferMetadata;
    uint8_t *pMetadataBufferSrc =
       reinterpret_cast<uint8_t *>(pD3D12Enc->base.context->buffer_map(pD3D12Enc->base.context,
@@ -2859,14 +2859,14 @@ upload_tile_group_obu(struct d3d12_video_encoder *pD3D12Enc,
 
       // Now copy the decode_tile() element from the driver staging GPU buffer onto the finalized GPU buffer
 
-      struct pipe_box src_box = {
-         static_cast<int>(src_buf_tile_position),   // x
-         0,                                         // y
-         0,                                         // z
-         static_cast<int>(tile_size),               // width
-         1,                                         // height
-         1                                          // depth
-      };
+      struct pipe_box src_box;
+      u_box_3d(static_cast<int>(src_buf_tile_position),   // x
+               0,                                         // y
+               0,                                         // z
+               static_cast<int>(tile_size),               // width
+               1,                                         // height
+               1,                                         // depth
+               &src_box);
 
       pD3D12Enc->base.context->resource_copy_region(pD3D12Enc->base.context,       // ctx
                                                     comp_bit_destination,          // dst

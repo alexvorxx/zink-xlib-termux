@@ -1309,7 +1309,8 @@ update_dispatch_indirect_with_sysvals(struct d3d12_context *ctx,
    output_buf_templ.usage = PIPE_USAGE_DEFAULT;
    *indirect_out = ctx->base.screen->resource_create(ctx->base.screen, &output_buf_templ);
 
-   struct pipe_box src_box = { (int)*indirect_offset_inout, 0, 0, sizeof(uint32_t) * 3, 1, 1 };
+   struct pipe_box src_box;
+   u_box_3d((int)*indirect_offset_inout, 0, 0, sizeof(uint32_t) * 3, 1, 1, &src_box);
    ctx->base.resource_copy_region(&ctx->base, *indirect_out, 0, 0, 0, 0, indirect_in, 0, &src_box);
    ctx->base.resource_copy_region(&ctx->base, *indirect_out, 0, src_box.width, 0, 0, indirect_in, 0, &src_box);
 

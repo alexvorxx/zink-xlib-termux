@@ -4518,7 +4518,8 @@ zink_copy_buffer(struct zink_context *ctx, struct zink_resource *dst, struct zin
 
    struct zink_batch *batch = &ctx->batch;
 
-   struct pipe_box box = {(int)src_offset, 0, 0, (int)size, 0, 0};
+   struct pipe_box box;
+   u_box_3d((int)src_offset, 0, 0, (int)size, 0, 0, &box);
    /* must barrier if something wrote the valid buffer range */
    bool valid_write = zink_check_valid_buffer_src_access(ctx, src, src_offset, size);
    bool unordered_src = !valid_write && !zink_check_unordered_transfer_access(src, 0, &box);

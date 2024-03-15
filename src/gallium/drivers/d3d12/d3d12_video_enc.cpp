@@ -2510,14 +2510,14 @@ d3d12_video_encoder_extract_encode_metadata(
       d3d12_resource_from_resource(&pD3D12Screen->base, pResolvedMetadataBuffer);
    assert(pPipeResolvedMetadataBuffer);
    assert(resourceMetadataSize < INT_MAX);
-   struct pipe_box box = {
-      0,                                        // x
-      0,                                        // y
-      0,                                        // z
-      static_cast<int>(resourceMetadataSize),   // width
-      1,                                        // height
-      1                                         // depth
-   };
+   struct pipe_box box;
+   u_box_3d(0,                                        // x
+            0,                                        // y
+            0,                                        // z
+            static_cast<int>(resourceMetadataSize),   // width
+            1,                                        // height
+            1,                                        // depth
+            &box);
    struct pipe_transfer *mapTransfer;
    unsigned mapUsage = PIPE_MAP_READ;
    void *                pMetadataBufferSrc = pD3D12Enc->base.context->buffer_map(pD3D12Enc->base.context,

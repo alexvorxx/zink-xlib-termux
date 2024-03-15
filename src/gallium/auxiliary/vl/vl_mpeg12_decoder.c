@@ -594,7 +594,8 @@ vl_mpeg12_begin_frame(struct pipe_video_codec *decoder,
    struct vl_mpeg12_buffer *buf;
 
    struct pipe_resource *tex;
-   struct pipe_box rect = { 0, 0, 0, 1, 1, 1 };
+   struct pipe_box rect;
+   u_box_3d(0, 0, 0, 1, 1, 1, &rect);
 
    uint8_t intra_matrix[64];
    uint8_t non_intra_matrix[64];

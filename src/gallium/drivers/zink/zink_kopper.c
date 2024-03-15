@@ -1012,7 +1012,8 @@ zink_kopper_readback_update(struct zink_context *ctx, struct zink_resource *res)
    struct kopper_swapchain *cswap = cdt->swapchain;
    assert(res->obj->dt_idx != UINT32_MAX);
    struct pipe_resource *readback = cswap->images[res->obj->dt_idx].readback;
-   struct pipe_box box = {0, 0, 0, res->base.b.width0, res->base.b.height0, res->base.b.depth0};
+   struct pipe_box box;
+   u_box_3d(0, 0, 0, res->base.b.width0, res->base.b.height0, res->base.b.depth0, &box);
 
    if (cswap->images[res->obj->dt_idx].readback_needs_update && readback)
       ctx->base.resource_copy_region(&ctx->base, readback, 0, 0, 0, 0, &res->base.b, 0, &box);

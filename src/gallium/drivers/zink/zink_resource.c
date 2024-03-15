@@ -1754,9 +1754,10 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
    res->obj = new_obj;
    res->queue = VK_QUEUE_FAMILY_IGNORED;
    for (unsigned i = 0; i <= res->base.b.last_level; i++) {
-      struct pipe_box box = {0, 0, 0,
-                             u_minify(res->base.b.width0, i),
-                             u_minify(res->base.b.height0, i), res->base.b.array_size};
+      struct pipe_box box;
+      u_box_3d(0, 0, 0,
+               u_minify(res->base.b.width0, i),
+               u_minify(res->base.b.height0, i), res->base.b.array_size, &box);
       box.depth = util_num_layers(&res->base.b, i);
       ctx->base.resource_copy_region(&ctx->base, &res->base.b, i, 0, 0, 0, &staging.base.b, i, &box);
    }
@@ -2113,7 +2114,8 @@ invalidate_buffer(struct zink_context *ctx, struct zink_resource *res)
    if (res->base.b.flags & PIPE_RESOURCE_FLAG_SPARSE)
       return false;
 
-   struct pipe_box box = {0, 0, 0, res->base.b.width0, 0, 0};
+   struct pipe_box box;
+   u_box_3d(0, 0, 0, res->base.b.width0, 0, 0, &box);
    if (res->valid_buffer_range.start > res->valid_buffer_range.end &&
        !zink_resource_copy_box_intersects(res, 0, &box))
       return false;

@@ -600,7 +600,8 @@ vlVaGetImage(VADriverContextP ctx, VASurfaceID surface, int x, int y,
                                   pipe_format_to_chroma_format(surf->templat.buffer_format),
                                   surf->templat.interlaced);
       for (j = 0; j < view_resources[i]->array_size; ++j) {
-         struct pipe_box box = {box_x, box_y, j, box_w, box_h, 1};
+         struct pipe_box box;
+         u_box_3d(box_x, box_y, j, box_w, box_h, 1, &box);
          struct pipe_transfer *transfer;
          uint8_t *map;
          map = drv->pipe->texture_map(drv->pipe, view_resources[i], 0,
@@ -727,7 +728,8 @@ vlVaPutImage(VADriverContextP ctx, VASurfaceID surface, VAImageID image,
 
       vlVaVideoSurfaceSize(surf, i, &width, &height);
       for (j = 0; j < tex->array_size; ++j) {
-         struct pipe_box dst_box = {0, 0, j, width, height, 1};
+         struct pipe_box dst_box;
+         u_box_3d(0, 0, j, width, height, 1, &dst_box);
 
          if (((format == PIPE_FORMAT_YV12) || (format == PIPE_FORMAT_IYUV))
              && (surf->buffer->buffer_format == PIPE_FORMAT_NV12)

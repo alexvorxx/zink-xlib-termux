@@ -3678,6 +3678,10 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
                   unsigned offset = slot_offset;
                   if (is_builtin_array)
                      offset *= 4;
+                  if (is_clipdist) {
+                     if (loc == VARYING_SLOT_CLIP_DIST1 || loc == VARYING_SLOT_CULL_DIST1)
+                        offset += 4;
+                  }
                   deref = nir_build_deref_array_imm(b, deref, offset + idx);
                } else {
                   nir_def *offset = src_offset->ssa;

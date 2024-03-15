@@ -68,6 +68,8 @@ typedef void *drmDevicePtr;
 #include "vk_sync.h"
 #include "vk_sync_dummy.h"
 
+#include "aco_interface.h"
+
 #if LLVM_AVAILABLE
 #include "ac_llvm_util.h"
 #endif
@@ -833,6 +835,22 @@ radv_device_init_msaa(struct radv_device *device)
       radv_get_sample_position(device, 8, i, device->sample_locations_8x[i]);
 }
 
+static bool
+radv_is_cache_disabled(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   /* The buffer address used for debug printf is hardcoded. */
+   if (device->printf.buffer_addr)
+      return true;
+
+   /* Pipeline caches can be disabled with RADV_DEBUG=nocache, with MESA_GLSL_CACHE_DISABLE=1 and
+    * when ACO_DEBUG is used. MESA_GLSL_CACHE_DISABLE is done elsewhere.
+    */
+   return (instance->debug_flags & RADV_DEBUG_NO_CACHE) || (pdev->use_llvm ? 0 : aco_get_codegen_flags());
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkDevice *pDevice)
@@ -1201,6 +1219,8 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       if (!radv_device_acquire_performance_counters(device))
          fprintf(stderr, "radv: failed to set pstate to profile_peak.\n");
    }
+
+   device->cache_disabled = radv_is_cache_disabled(device);
 
    *pDevice = radv_device_to_handle(device);
    return VK_SUCCESS;

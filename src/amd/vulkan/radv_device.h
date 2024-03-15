@@ -549,6 +549,8 @@ struct radv_device {
    simple_mtx_t compute_scratch_mtx;
    uint32_t compute_scratch_size_per_wave;
    uint32_t compute_scratch_waves;
+
+   bool cache_disabled;
 };
 
 VK_DEFINE_HANDLE_CASTS(radv_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)

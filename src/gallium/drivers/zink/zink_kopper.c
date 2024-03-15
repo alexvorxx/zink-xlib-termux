@@ -831,6 +831,8 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res,
          cpi->regions[i].offset.y = cdt->swapchain->scci.imageExtent.height - boxes[i].y - boxes[i].height;
          cpi->regions[i].extent.width = boxes[i].width;
          cpi->regions[i].extent.height = boxes[i].height;
+         cpi->regions[i].extent.width = MIN2(cpi->regions[i].extent.width, cpi->swapchain->scci.imageExtent.width - cpi->regions[i].offset.x);
+         cpi->regions[i].extent.height = MIN2(cpi->regions[i].extent.height, cpi->swapchain->scci.imageExtent.height - cpi->regions[i].offset.y);
          cpi->regions[i].layer = boxes[i].z;
       }
       cpi->info.pNext = &cpi->rinfo;

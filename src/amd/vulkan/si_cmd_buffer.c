@@ -84,14 +84,18 @@ radv_emit_compute(struct radv_device *device, struct radeon_cmdbuf *cs)
    radeon_set_sh_reg_seq(cs, R_00B858_COMPUTE_STATIC_THREAD_MGMT_SE0, 2);
    /* R_00B858_COMPUTE_STATIC_THREAD_MGMT_SE0 / SE1,
     * renamed COMPUTE_DESTINATION_EN_SEn on gfx10. */
-   radeon_emit(cs, S_00B858_SH0_CU_EN(info->spi_cu_en) | S_00B858_SH1_CU_EN(info->spi_cu_en));
-   radeon_emit(cs, S_00B858_SH0_CU_EN(info->spi_cu_en) | S_00B858_SH1_CU_EN(info->spi_cu_en));
+   for (unsigned i = 0; i < 2; ++i) {
+      unsigned cu_mask = i < info->num_se ? info->spi_cu_en : 0x0;
+      radeon_emit(cs, S_00B8AC_SA0_CU_EN(cu_mask) | S_00B8AC_SA1_CU_EN(cu_mask));
+   }
 
    if (device->physical_device->rad_info.gfx_level >= GFX7) {
       /* Also set R_00B858_COMPUTE_STATIC_THREAD_MGMT_SE2 / SE3 */
       radeon_set_sh_reg_seq(cs, R_00B864_COMPUTE_STATIC_THREAD_MGMT_SE2, 2);
-      radeon_emit(cs, S_00B858_SH0_CU_EN(info->spi_cu_en) | S_00B858_SH1_CU_EN(info->spi_cu_en));
-      radeon_emit(cs, S_00B858_SH0_CU_EN(info->spi_cu_en) | S_00B858_SH1_CU_EN(info->spi_cu_en));
+      for (unsigned i = 2; i < 4; ++i) {
+         unsigned cu_mask = i < info->num_se ? info->spi_cu_en : 0x0;
+         radeon_emit(cs, S_00B8AC_SA0_CU_EN(cu_mask) | S_00B8AC_SA1_CU_EN(cu_mask));
+      }
 
       if (device->border_color_data.bo) {
          uint64_t bc_va = radv_buffer_get_va(device->border_color_data.bo);
@@ -140,13 +144,12 @@ radv_emit_compute(struct radv_device *device, struct radeon_cmdbuf *cs)
    }
 
    if (device->physical_device->rad_info.gfx_level >= GFX11) {
-      uint32_t spi_cu_en = device->physical_device->rad_info.spi_cu_en;
-
       radeon_set_sh_reg_seq(cs, R_00B8AC_COMPUTE_STATIC_THREAD_MGMT_SE4, 4);
-      radeon_emit(cs, S_00B8AC_SA0_CU_EN(spi_cu_en) | S_00B8AC_SA1_CU_EN(spi_cu_en)); /* SE4 */
-      radeon_emit(cs, S_00B8AC_SA0_CU_EN(spi_cu_en) | S_00B8AC_SA1_CU_EN(spi_cu_en)); /* SE5 */
-      radeon_emit(cs, S_00B8AC_SA0_CU_EN(spi_cu_en) | S_00B8AC_SA1_CU_EN(spi_cu_en)); /* SE6 */
-      radeon_emit(cs, S_00B8AC_SA0_CU_EN(spi_cu_en) | S_00B8AC_SA1_CU_EN(spi_cu_en)); /* SE7 */
+      /* SE4-SE7 */
+      for (unsigned i = 4; i < 8; ++i) {
+         unsigned cu_mask = i < info->num_se ? info->spi_cu_en : 0x0;
+         radeon_emit(cs, S_00B8AC_SA0_CU_EN(cu_mask) | S_00B8AC_SA1_CU_EN(cu_mask));
+      }
 
       radeon_set_sh_reg(cs, R_00B8BC_COMPUTE_DISPATCH_INTERLEAVE, 64);
    }

@@ -533,7 +533,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_KHR_push_descriptor                                DONE (anv, hasvk, lvp, nvk, radv, tu, vn)
   VK_KHR_ray_query                                      DONE (anv/gfx12.5+, lvp, radv/gfx10.3+)
   VK_KHR_ray_tracing_maintenance1                       DONE (anv/gfx12.5+, radv/gfx10.3+)
-  VK_KHR_ray_tracing_pipeline                           DONE (anv/gfx12.5+, radv/gfx10.3+)
+  VK_KHR_ray_tracing_pipeline                           DONE (anv/gfx12.5+, lvp, radv/gfx10.3+)
   VK_KHR_ray_tracing_position_fetch                     DONE (anv, radv/gfx10.3+)
   VK_KHR_shader_clock                                   DONE (anv, hasvk, lvp, nvk, radv, vn)
   VK_KHR_shader_expect_assume                           DONE (anv, dzn, hasvk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)

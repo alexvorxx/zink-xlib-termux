@@ -95,6 +95,14 @@ lvp_pipeline_destroy(struct lvp_device *device, struct lvp_pipeline *pipeline, b
       lvp_pipeline_destroy(device, p, locked);
    }
 
+   if (pipeline->rt.stages) {
+      for (uint32_t i = 0; i < pipeline->rt.stage_count; i++)
+         lvp_pipeline_nir_ref(pipeline->rt.stages + i, NULL);
+   }
+
+   free(pipeline->rt.stages);
+   free(pipeline->rt.groups);
+
    vk_free(&device->vk.alloc, pipeline->state_data);
    vk_object_base_finish(&pipeline->base);
    vk_free(&device->vk.alloc, pipeline);
@@ -342,6 +350,7 @@ compile_spirv(struct lvp_device *pdevice, const VkPipelineShaderStageCreateInfo 
          .runtime_descriptor_array = true,
          .shader_enqueue = true,
          .ray_query = true,
+         .ray_tracing = true,
       },
       .ubo_addr_format = nir_address_format_vec2_index_32bit_offset,
       .ssbo_addr_format = nir_address_format_vec2_index_32bit_offset,

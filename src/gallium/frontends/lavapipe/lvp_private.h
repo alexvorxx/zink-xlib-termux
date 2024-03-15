@@ -127,9 +127,9 @@ void __lvp_finishme(const char *file, int line, const char *format, ...)
       return; \
    } while (0)
 
-#define LVP_SHADER_STAGES (MESA_SHADER_MESH + 1)
+#define LVP_SHADER_STAGES (MESA_SHADER_CALLABLE + 1)
 #define LVP_STAGE_MASK BITFIELD_MASK(LVP_SHADER_STAGES)
-#define LVP_STAGE_MASK_GFX (BITFIELD_MASK(LVP_SHADER_STAGES) & ~BITFIELD_BIT(MESA_SHADER_COMPUTE))
+#define LVP_STAGE_MASK_GFX (BITFIELD_MASK(PIPE_SHADER_MESH_TYPES) & ~BITFIELD_BIT(MESA_SHADER_COMPUTE))
 
 #define lvp_foreach_stage(stage, stage_bits)                         \
    for (gl_shader_stage stage,                                       \
@@ -485,6 +485,7 @@ struct lvp_shader {
 enum lvp_pipeline_type {
    LVP_PIPELINE_GRAPHICS,
    LVP_PIPELINE_COMPUTE,
+   LVP_PIPELINE_RAY_TRACING,
    LVP_PIPELINE_EXEC_GRAPH,
    LVP_PIPELINE_TYPE_COUNT,
 };
@@ -495,12 +496,17 @@ lvp_pipeline_type_from_bind_point(VkPipelineBindPoint bind_point)
    switch (bind_point) {
    case VK_PIPELINE_BIND_POINT_GRAPHICS: return LVP_PIPELINE_GRAPHICS;
    case VK_PIPELINE_BIND_POINT_COMPUTE: return LVP_PIPELINE_COMPUTE;
+   case VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR: return LVP_PIPELINE_RAY_TRACING;
 #ifdef VK_ENABLE_BETA_EXTENSIONS
    case VK_PIPELINE_BIND_POINT_EXECUTION_GRAPH_AMDX: return LVP_PIPELINE_EXEC_GRAPH;
 #endif
    default: unreachable("Unsupported VkPipelineBindPoint");
    }
 }
+
+#define LVP_RAY_TRACING_STAGES (VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR |   \
+                                VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | \
+                                VK_SHADER_STAGE_INTERSECTION_BIT_KHR | VK_SHADER_STAGE_CALLABLE_BIT_KHR)
 
 static inline uint32_t
 lvp_pipeline_types_from_shader_stages(VkShaderStageFlags stageFlags)
@@ -510,12 +516,28 @@ lvp_pipeline_types_from_shader_stages(VkShaderStageFlags stageFlags)
    if (stageFlags & MESA_VK_SHADER_STAGE_WORKGRAPH_HACK_BIT_FIXME)
       types |= BITFIELD_BIT(LVP_PIPELINE_EXEC_GRAPH);
 #endif
+   if (stageFlags & LVP_RAY_TRACING_STAGES)
+      types |= BITFIELD_BIT(LVP_PIPELINE_RAY_TRACING);
    if (stageFlags & VK_SHADER_STAGE_COMPUTE_BIT)
       types |= BITFIELD_BIT(LVP_PIPELINE_COMPUTE);
    if (stageFlags & (VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_TASK_BIT_EXT))
       types |= BITFIELD_BIT(LVP_PIPELINE_GRAPHICS);
    return types;
 }
+
+#define LVP_RAY_TRACING_GROUP_HANDLE_SIZE 32
+#define LVP_RAY_HIT_ATTRIBS_SIZE 32
+
+struct lvp_ray_tracing_group_handle {
+   uint32_t index;
+};
+
+struct lvp_ray_tracing_group {
+   struct lvp_ray_tracing_group_handle handle;
+   uint32_t recursive_index;
+   uint32_t ahit_index;
+   uint32_t isec_index;
+};
 
 struct lvp_pipeline {
    struct vk_object_base base;
@@ -543,6 +565,13 @@ struct lvp_pipeline {
       uint32_t index;
       uint32_t scratch_size;
    } exec_graph;
+
+   struct {
+      struct lvp_pipeline_nir **stages;
+      struct lvp_ray_tracing_group *groups;
+      uint32_t stage_count;
+      uint32_t group_count;
+   } rt;
 
    unsigned num_groups;
    unsigned num_groups_total;

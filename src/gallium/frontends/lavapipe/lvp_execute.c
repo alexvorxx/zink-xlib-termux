@@ -107,6 +107,7 @@ struct rendering_state {
    struct pipe_draw_info info;
 
    struct pipe_grid_info dispatch_info;
+   struct pipe_grid_info trace_rays_info;
    struct pipe_framebuffer_state framebuffer;
    int fb_map[PIPE_MAX_COLOR_BUFS];
    bool fb_remapped;
@@ -392,6 +393,9 @@ static void emit_compute_state(struct rendering_state *state)
    }
 
    state->compute_shader_dirty = false;
+
+   state->pcbuf_dirty[MESA_SHADER_RAYGEN] = true;
+   state->constbuf_dirty[MESA_SHADER_RAYGEN] = true;
 }
 
 static void
@@ -602,6 +606,26 @@ static void handle_compute_pipeline(struct vk_cmd_queue_entry *cmd,
    LVP_FROM_HANDLE(lvp_pipeline, pipeline, cmd->u.bind_pipeline.pipeline);
 
    handle_compute_shader(state, &pipeline->shaders[MESA_SHADER_COMPUTE], pipeline->layout);
+}
+
+static void handle_ray_tracing_pipeline(struct vk_cmd_queue_entry *cmd,
+                                    struct rendering_state *state)
+{
+   LVP_FROM_HANDLE(lvp_pipeline, pipeline, cmd->u.bind_pipeline.pipeline);
+
+   struct lvp_shader *shader = &pipeline->shaders[MESA_SHADER_RAYGEN];
+
+   state->shaders[MESA_SHADER_RAYGEN] = shader;
+
+   if ((pipeline->layout->push_constant_stages & LVP_RAY_TRACING_STAGES) > 0)
+      state->has_pcbuf[MESA_SHADER_RAYGEN] = pipeline->layout->push_constant_size > 0;
+
+   if (!state->has_pcbuf[MESA_SHADER_RAYGEN])
+      state->pcbuf_dirty[MESA_SHADER_RAYGEN] = false;
+
+   state->trace_rays_info.block[0] = shader->pipeline_nir->nir->info.workgroup_size[0];
+   state->trace_rays_info.block[1] = shader->pipeline_nir->nir->info.workgroup_size[1];
+   state->trace_rays_info.block[2] = shader->pipeline_nir->nir->info.workgroup_size[2];
 }
 
 static void
@@ -1093,6 +1117,8 @@ static void handle_pipeline(struct vk_cmd_queue_entry *cmd,
    pipeline->used = true;
    if (pipeline->type == LVP_PIPELINE_COMPUTE) {
       handle_compute_pipeline(cmd, state);
+   } else if (pipeline->type == LVP_PIPELINE_RAY_TRACING) {
+      handle_ray_tracing_pipeline(cmd, state);
    } else if (pipeline->type == LVP_PIPELINE_GRAPHICS) {
       handle_graphics_pipeline(pipeline, state);
    } else if (pipeline->type == LVP_PIPELINE_EXEC_GRAPH) {
@@ -1232,6 +1258,9 @@ handle_descriptor_sets(VkBindDescriptorSetsInfoKHR *bds, struct rendering_state 
             if (pipeline_type == LVP_PIPELINE_COMPUTE) {
                   bool changed = state->const_buffer[MESA_SHADER_COMPUTE][bds->firstSet + i].buffer == state->desc_buffers[bds->firstSet + i];
                   state->constbuf_dirty[MESA_SHADER_COMPUTE] |= changed;
+            } else if (pipeline_type == LVP_PIPELINE_RAY_TRACING) {
+                  bool changed = state->const_buffer[MESA_SHADER_RAYGEN][bds->firstSet + i].buffer == state->desc_buffers[bds->firstSet + i];
+                  state->constbuf_dirty[MESA_SHADER_RAYGEN] |= changed;
             } else {
                lvp_forall_gfx_stage(j) {
                   bool changed = state->const_buffer[j][bds->firstSet + i].buffer == state->desc_buffers[bds->firstSet + i];
@@ -1254,6 +1283,12 @@ handle_descriptor_sets(VkBindDescriptorSetsInfoKHR *bds, struct rendering_state 
          if (pipeline_type == LVP_PIPELINE_COMPUTE || pipeline_type == LVP_PIPELINE_EXEC_GRAPH) {
             if (set->layout->shader_stages & VK_SHADER_STAGE_COMPUTE_BIT)
                handle_set_stage(state, set, pipeline_type, MESA_SHADER_COMPUTE, bds->firstSet + i);
+            continue;
+         }
+
+         if (pipeline_type == LVP_PIPELINE_RAY_TRACING) {
+            if (set->layout->shader_stages & LVP_RAY_TRACING_STAGES)
+               handle_set_stage(state, set, pipeline_type, MESA_SHADER_RAYGEN, bds->firstSet + i);
             continue;
          }
 
@@ -2759,6 +2794,7 @@ static void handle_push_constants(struct vk_cmd_queue_entry *cmd,
    state->pcbuf_dirty[MESA_SHADER_COMPUTE] |= (stage_flags & VK_SHADER_STAGE_COMPUTE_BIT) > 0;
    state->pcbuf_dirty[MESA_SHADER_TASK] |= (stage_flags & VK_SHADER_STAGE_TASK_BIT_EXT) > 0;
    state->pcbuf_dirty[MESA_SHADER_MESH] |= (stage_flags & VK_SHADER_STAGE_MESH_BIT_EXT) > 0;
+   state->pcbuf_dirty[MESA_SHADER_RAYGEN] |= (stage_flags & LVP_RAY_TRACING_STAGES) > 0;
    state->inlines_dirty[MESA_SHADER_VERTEX] |= (stage_flags & VK_SHADER_STAGE_VERTEX_BIT) > 0;
    state->inlines_dirty[MESA_SHADER_FRAGMENT] |= (stage_flags & VK_SHADER_STAGE_FRAGMENT_BIT) > 0;
    state->inlines_dirty[MESA_SHADER_GEOMETRY] |= (stage_flags & VK_SHADER_STAGE_GEOMETRY_BIT) > 0;
@@ -4131,8 +4167,12 @@ bind_db_samplers(struct rendering_state *state, enum lvp_pipeline_type pipeline_
    if (!state->desc_buffer_addrs[buffer_index]) {
       if (set_layout->immutable_set) {
          state->desc_sets[pipeline_type][set] = set_layout->immutable_set;
-         u_foreach_bit(stage, set_layout->shader_stages)
-            handle_set_stage_buffer(state, set_layout->immutable_set->bo, 0, vk_to_mesa_shader_stage(1<<stage), set);
+         if (pipeline_type == LVP_PIPELINE_RAY_TRACING) {
+            handle_set_stage_buffer(state, set_layout->immutable_set->bo, 0, MESA_SHADER_RAYGEN, set);
+         } else {
+            u_foreach_bit(stage, set_layout->shader_stages)
+               handle_set_stage_buffer(state, set_layout->immutable_set->bo, 0, vk_to_mesa_shader_stage(1<<stage), set);
+         }
       }
       return;
    }
@@ -4151,8 +4191,12 @@ bind_db_samplers(struct rendering_state *state, enum lvp_pipeline_type pipeline_
             struct lp_descriptor *immutable_desc = &bind_layout->immutable_samplers[sampler_index]->desc;
             desc[sampler_index].sampler = immutable_desc->sampler;
             desc[sampler_index].texture.sampler_index = immutable_desc->texture.sampler_index;
-            u_foreach_bit(stage, set_layout->shader_stages)
-               did_update |= BITFIELD_BIT(vk_to_mesa_shader_stage(1<<stage));
+            if (pipeline_type == LVP_PIPELINE_RAY_TRACING) {
+               did_update |= BITFIELD_BIT(MESA_SHADER_RAYGEN);
+            } else {
+               u_foreach_bit(stage, set_layout->shader_stages)
+                  did_update |= BITFIELD_BIT(vk_to_mesa_shader_stage(1<<stage));
+            }
          }
       }
    }
@@ -4192,17 +4236,20 @@ handle_descriptor_buffer_offsets(struct vk_cmd_queue_entry *cmd, struct renderin
          state->desc_buffer_offsets[pipeline_type][idx].offset = dbo->pOffsets[i];
          const struct lvp_descriptor_set_layout *set_layout = get_set_layout(layout, idx);
 
-         /* set for all stages */
-         u_foreach_bit(stage, set_layout->shader_stages) {
-            gl_shader_stage pstage = vk_to_mesa_shader_stage(1<<stage);
-            handle_set_stage_buffer(state, state->desc_buffers[dbo->pBufferIndices[i]], dbo->pOffsets[i], pstage, idx);
+         if (pipeline_type == LVP_PIPELINE_RAY_TRACING) {
+            handle_set_stage_buffer(state, state->desc_buffers[dbo->pBufferIndices[i]], dbo->pOffsets[i], MESA_SHADER_RAYGEN, idx);
+         } else {
+            /* set for all stages */
+            u_foreach_bit(stage, set_layout->shader_stages) {
+               gl_shader_stage pstage = vk_to_mesa_shader_stage(1<<stage);
+               handle_set_stage_buffer(state, state->desc_buffers[dbo->pBufferIndices[i]], dbo->pOffsets[i], pstage, idx);
+            }
          }
          bind_db_samplers(state, pipeline_type, idx);
       }
    }
 }
 
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 static void *
 lvp_push_internal_buffer(struct rendering_state *state, gl_shader_stage stage, uint32_t size)
 {
@@ -4222,6 +4269,8 @@ lvp_push_internal_buffer(struct rendering_state *state, gl_shader_stage stage, u
 
    return mem;
 }
+
+#ifdef VK_ENABLE_BETA_EXTENSIONS
 
 static void
 dispatch_graph(struct rendering_state *state, const VkDispatchGraphInfoAMDX *info, void *scratch)
@@ -4417,6 +4466,105 @@ handle_write_acceleration_structures_properties(struct vk_cmd_queue_entry *cmd, 
    }
 }
 
+static void emit_ray_tracing_state(struct rendering_state *state)
+{
+   bool pcbuf_dirty = state->pcbuf_dirty[MESA_SHADER_RAYGEN];
+   if (pcbuf_dirty)
+      update_pcbuf(state, MESA_SHADER_COMPUTE, MESA_SHADER_RAYGEN);
+
+   if (state->constbuf_dirty[MESA_SHADER_RAYGEN]) {
+      for (unsigned i = 0; i < state->num_const_bufs[MESA_SHADER_RAYGEN]; i++)
+         state->pctx->set_constant_buffer(state->pctx, MESA_SHADER_COMPUTE,
+                                          i + 1, false, &state->const_buffer[MESA_SHADER_RAYGEN][i]);
+      state->constbuf_dirty[MESA_SHADER_RAYGEN] = false;
+   }
+
+   state->pctx->bind_compute_state(state->pctx, state->shaders[MESA_SHADER_RAYGEN]->shader_cso);
+
+   state->pcbuf_dirty[MESA_SHADER_COMPUTE] = true;
+   state->constbuf_dirty[MESA_SHADER_COMPUTE] = true;
+   state->compute_shader_dirty = true;
+}
+
+static void
+handle_trace_rays(struct vk_cmd_queue_entry *cmd, struct rendering_state *state)
+{
+   struct vk_cmd_trace_rays_khr *trace = &cmd->u.trace_rays_khr;
+
+   emit_ray_tracing_state(state);
+
+   VkTraceRaysIndirectCommand2KHR *command = lvp_push_internal_buffer(
+      state, MESA_SHADER_COMPUTE, sizeof(VkTraceRaysIndirectCommand2KHR));
+   
+   *command = (VkTraceRaysIndirectCommand2KHR) {
+      .raygenShaderRecordAddress = trace->raygen_shader_binding_table->deviceAddress,
+      .raygenShaderRecordSize = trace->raygen_shader_binding_table->size,
+      .missShaderBindingTableAddress = trace->miss_shader_binding_table->deviceAddress,
+      .missShaderBindingTableSize = trace->miss_shader_binding_table->size,
+      .missShaderBindingTableStride = trace->miss_shader_binding_table->stride,
+      .hitShaderBindingTableAddress = trace->hit_shader_binding_table->deviceAddress,
+      .hitShaderBindingTableSize = trace->hit_shader_binding_table->size,
+      .hitShaderBindingTableStride = trace->hit_shader_binding_table->stride,
+      .callableShaderBindingTableAddress = trace->callable_shader_binding_table->deviceAddress,
+      .callableShaderBindingTableSize = trace->callable_shader_binding_table->size,
+      .callableShaderBindingTableStride = trace->callable_shader_binding_table->stride,
+      .width = trace->width,
+      .height = trace->height,
+      .depth = trace->depth,
+   };
+
+   state->trace_rays_info.grid[0] = DIV_ROUND_UP(trace->width, state->trace_rays_info.block[0]);
+   state->trace_rays_info.grid[1] = DIV_ROUND_UP(trace->height, state->trace_rays_info.block[1]);
+   state->trace_rays_info.grid[2] = DIV_ROUND_UP(trace->depth, state->trace_rays_info.block[2]);
+
+   state->pctx->launch_grid(state->pctx, &state->trace_rays_info);
+}
+
+static void
+handle_trace_rays_indirect(struct vk_cmd_queue_entry *cmd, struct rendering_state *state)
+{
+   struct vk_cmd_trace_rays_indirect_khr *trace = &cmd->u.trace_rays_indirect_khr;
+
+   emit_ray_tracing_state(state);
+
+   size_t indirect_offset;
+   VkBuffer _indirect = get_buffer(state, (void *)(uintptr_t)trace->indirect_device_address, &indirect_offset);
+   VK_FROM_HANDLE(lvp_buffer, indirect, _indirect);
+
+   struct pipe_transfer *transfer;
+   const uint8_t *map = pipe_buffer_map(state->pctx, indirect->bo, PIPE_MAP_READ, &transfer);
+   map += indirect_offset;
+   const VkTraceRaysIndirectCommandKHR *src = (const void *)map;
+
+   VkTraceRaysIndirectCommand2KHR *command = lvp_push_internal_buffer(
+      state, MESA_SHADER_COMPUTE, sizeof(VkTraceRaysIndirectCommand2KHR));
+   
+   *command = (VkTraceRaysIndirectCommand2KHR) {
+      .raygenShaderRecordAddress = trace->raygen_shader_binding_table->deviceAddress,
+      .raygenShaderRecordSize = trace->raygen_shader_binding_table->size,
+      .missShaderBindingTableAddress = trace->miss_shader_binding_table->deviceAddress,
+      .missShaderBindingTableSize = trace->miss_shader_binding_table->size,
+      .missShaderBindingTableStride = trace->miss_shader_binding_table->stride,
+      .hitShaderBindingTableAddress = trace->hit_shader_binding_table->deviceAddress,
+      .hitShaderBindingTableSize = trace->hit_shader_binding_table->size,
+      .hitShaderBindingTableStride = trace->hit_shader_binding_table->stride,
+      .callableShaderBindingTableAddress = trace->callable_shader_binding_table->deviceAddress,
+      .callableShaderBindingTableSize = trace->callable_shader_binding_table->size,
+      .callableShaderBindingTableStride = trace->callable_shader_binding_table->stride,
+      .width = src->width,
+      .height = src->height,
+      .depth = src->depth,
+   };
+
+   state->trace_rays_info.grid[0] = DIV_ROUND_UP(src->width, state->trace_rays_info.block[0]);
+   state->trace_rays_info.grid[1] = DIV_ROUND_UP(src->height, state->trace_rays_info.block[1]);
+   state->trace_rays_info.grid[2] = DIV_ROUND_UP(src->depth, state->trace_rays_info.block[2]);
+
+   state->pctx->buffer_unmap(state->pctx, transfer);
+
+   state->pctx->launch_grid(state->pctx, &state->trace_rays_info);
+}
+
 void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
 {
    struct vk_device_dispatch_table cmd_enqueue_dispatch;
@@ -4563,6 +4711,10 @@ void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
    ENQUEUE_CMD(CmdBuildAccelerationStructuresKHR)
    ENQUEUE_CMD(CmdBuildAccelerationStructuresIndirectKHR)
    ENQUEUE_CMD(CmdWriteAccelerationStructuresPropertiesKHR)
+
+   ENQUEUE_CMD(CmdSetRayTracingPipelineStackSizeKHR)
+   ENQUEUE_CMD(CmdTraceRaysIndirectKHR)
+   ENQUEUE_CMD(CmdTraceRaysKHR)
 
 #undef ENQUEUE_CMD
 }
@@ -4946,6 +5098,14 @@ static void lvp_execute_cmd_buffer(struct list_head *cmds,
          break;
       case VK_CMD_WRITE_ACCELERATION_STRUCTURES_PROPERTIES_KHR:
          handle_write_acceleration_structures_properties(cmd, state);
+         break;
+      case VK_CMD_SET_RAY_TRACING_PIPELINE_STACK_SIZE_KHR:
+         break;
+      case VK_CMD_TRACE_RAYS_INDIRECT_KHR:
+         handle_trace_rays_indirect(cmd, state);
+         break;
+      case VK_CMD_TRACE_RAYS_KHR:
+         handle_trace_rays(cmd, state);
          break;
       default:
          fprintf(stderr, "Unsupported command %s\n", vk_cmd_queue_type_names[cmd->type]);

@@ -2917,12 +2917,13 @@ begin_rendering(struct zink_context *ctx)
    if (has_swapchain) {
       ASSERTED struct zink_resource *res = zink_resource(ctx->fb_state.cbufs[0]->texture);
       zink_render_fixup_swapchain(ctx);
-      assert(ctx->dynamic_fb.info.renderArea.extent.width <= res->base.b.width0);
-      assert(ctx->dynamic_fb.info.renderArea.extent.height <= res->base.b.height0);
-      assert(ctx->fb_state.width <= res->base.b.width0);
-      assert(ctx->fb_state.height <= res->base.b.height0);
       if (res->use_damage)
          ctx->dynamic_fb.info.renderArea = res->damage;
+      /* clamp for late swapchain resize */
+      if (res->base.b.width0 < ctx->dynamic_fb.info.renderArea.extent.width)
+         ctx->dynamic_fb.info.renderArea.extent.width = res->base.b.width0;
+      if (res->base.b.height0 < ctx->dynamic_fb.info.renderArea.extent.height)
+         ctx->dynamic_fb.info.renderArea.extent.height = res->base.b.height0;
    }
    if (ctx->fb_state.zsbuf && zsbuf_used) {
       struct zink_surface *surf = zink_csurface(ctx->fb_state.zsbuf);

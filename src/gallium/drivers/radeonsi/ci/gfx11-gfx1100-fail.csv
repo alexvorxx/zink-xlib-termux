@@ -153,7 +153,6 @@ KHR-GL46.transform_feedback_overflow_query_ARB.multiple-streams-one-buffer-per-s
 dEQP-GLES3.functional.fragment_ops.interaction.basic_shader.94,Fail
 
 # These are dEQP bugs. See: https://gitlab.freedesktop.org/mesa/mesa/-/issues/10361
-dEQP-GLES31.functional.geometry_shading.query.referenced_by_geometry_shader,Fail
 dEQP-GLES31.functional.tessellation.state_query.referenced_by_tess_control_shader,Fail
 dEQP-GLES31.functional.tessellation.state_query.referenced_by_tess_evaluation_shader,Fail
 dEQP-GLES31.functional.program_interface_query.uniform.random.40,Fail

@@ -141,7 +141,6 @@ KHR-GLES31.core.shader_image_load_store.basic-allTargets-loadStoreCS,Fail
 KHR-GLES31.core.shader_image_load_store.basic-allTargets-loadStoreVS,Fail
 
 # These are dEQP bugs. See: https://gitlab.freedesktop.org/mesa/mesa/-/issues/10361
-dEQP-GLES31.functional.geometry_shading.query.referenced_by_geometry_shader,Fail
 dEQP-GLES31.functional.tessellation.state_query.referenced_by_tess_control_shader,Fail
 dEQP-GLES31.functional.tessellation.state_query.referenced_by_tess_evaluation_shader,Fail
 dEQP-GLES31.functional.program_interface_query.uniform.random.40,Fail

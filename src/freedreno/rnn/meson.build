@@ -19,7 +19,6 @@
 # SOFTWARE.
 
 libfreedreno_rnn_files = files(
-  'aprintf.c',
   'colors.c',
   'colors.h',
   'path.c',

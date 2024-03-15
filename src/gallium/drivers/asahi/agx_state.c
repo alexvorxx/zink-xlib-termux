@@ -1900,7 +1900,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
                                (2 * BITSET_LAST_BIT(nir->info.images_used));
       unsigned rt_spill = rt_spill_base;
       NIR_PASS(_, nir, agx_nir_lower_tilebuffer, &tib, colormasks, &rt_spill,
-               &force_translucent, false);
+               &force_translucent);
 
       NIR_PASS(_, nir, agx_nir_lower_sample_intrinsics);
       NIR_PASS(_, nir, agx_nir_lower_monolithic_msaa,
@@ -1908,9 +1908,6 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
                   .nr_samples = tib.nr_samples,
                   .api_sample_mask = key->api_sample_mask,
                });
-
-      if (nir->info.inputs_read & VARYING_BIT_LAYER)
-         NIR_PASS(_, nir, agx_nir_predicate_layer_id);
    }
 
    NIR_PASS(_, nir, agx_nir_lower_multisampled_image_store);
@@ -4960,11 +4957,6 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    agx_update_descriptors(batch, ctx->vs);
    agx_update_descriptors(batch, ctx->gs);
    agx_update_descriptors(batch, ctx->fs);
-
-   struct agx_compiled_shader *prerast = ctx->gs ? ctx->gs->gs_copy : ctx->vs;
-
-   batch->uniforms.layer_id_written =
-      (prerast && prerast->info.writes_layer_viewport) ? ~0 : 0;
 
    if (IS_DIRTY(VS) || IS_DIRTY(FS) || ctx->gs || IS_DIRTY(VERTEX) ||
        IS_DIRTY(BLEND_COLOR) || IS_DIRTY(QUERY) || IS_DIRTY(POLY_STIPPLE) ||

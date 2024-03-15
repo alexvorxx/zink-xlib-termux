@@ -156,9 +156,6 @@ struct PACKED agx_draw_uniforms {
    /* glSampleMask */
    uint16_t sample_mask;
 
-   /* Nonzero if the last vertex stage writes the layer ID, zero otherwise */
-   uint16_t layer_id_written;
-
    /* Nonzero for indexed draws, zero otherwise */
    uint16_t is_indexed_draw;
 

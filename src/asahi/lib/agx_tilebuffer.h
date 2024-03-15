@@ -90,9 +90,7 @@ agx_build_tilebuffer_layout(enum pipe_format *formats, uint8_t nr_cbufs,
 bool agx_nir_lower_tilebuffer(struct nir_shader *shader,
                               struct agx_tilebuffer_layout *tib,
                               uint8_t *colormasks, unsigned *bindless_base,
-                              bool *translucent, bool layer_id_sr);
-
-struct nir_def *agx_internal_layer_id(struct nir_builder *b);
+                              bool *translucent);
 
 struct agx_msaa_state {
    uint8_t nr_samples;
@@ -110,8 +108,6 @@ bool agx_nir_lower_alpha_to_coverage(struct nir_shader *shader,
                                      uint8_t nr_samples);
 
 bool agx_nir_lower_alpha_to_one(struct nir_shader *shader);
-
-bool agx_nir_predicate_layer_id(struct nir_shader *shader);
 
 void agx_usc_tilebuffer(struct agx_usc_builder *b,
                         struct agx_tilebuffer_layout *tib);

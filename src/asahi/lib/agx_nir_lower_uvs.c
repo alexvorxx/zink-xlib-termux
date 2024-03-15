@@ -64,7 +64,8 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    nir_def *index = nir_iadd(b, nir_iadd_imm(b, base, component),
                              nir_imul_imm(b, nir_u2u16(b, offset), 4));
 
-   nir_intrinsic_instr *new_store = nir_store_uvs_agx(b, value, index);
+   if (sem.location != VARYING_SLOT_LAYER)
+      nir_store_uvs_agx(b, value, index);
 
    /* Insert clip distance sysval writes, and gather layer/viewport writes so we
     * can accumulate their system value. These are still lowered like normal to
@@ -73,11 +74,11 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    if (sem.location == VARYING_SLOT_LAYER) {
       assert(ctx->layer == NULL && "only written once");
       ctx->layer = value;
-      ctx->after_layer_viewport = nir_after_instr(&new_store->instr);
+      ctx->after_layer_viewport = nir_after_instr(index->parent_instr);
    } else if (sem.location == VARYING_SLOT_VIEWPORT) {
       assert(ctx->viewport == NULL && "only written once");
       ctx->viewport = value;
-      ctx->after_layer_viewport = nir_after_instr(&new_store->instr);
+      ctx->after_layer_viewport = nir_after_instr(index->parent_instr);
    } else if (sem.location == VARYING_SLOT_CLIP_DIST0) {
       unsigned clip_base = ctx->layout->group_offs[UVS_CLIP_DIST];
       nir_def *index = nir_iadd_imm(b, nir_imul_imm(b, nir_u2u16(b, offset), 4),

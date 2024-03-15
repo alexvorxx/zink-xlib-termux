@@ -1303,6 +1303,9 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_local_invocation_index:
       return agx_get_sr_to(b, dst, AGX_SR_THREAD_INDEX_IN_THREADGROUP);
 
+   case nir_intrinsic_load_layer_id:
+      return agx_get_sr_to(b, dst, AGX_SR_THREADGROUP_POSITION_IN_GRID_Z);
+
    case nir_intrinsic_barrier: {
       assert(!b->shader->is_preamble && "invalid");
 

@@ -124,7 +124,11 @@ interpolate_channel(nir_builder *b, nir_intrinsic_instr *load, unsigned channel)
 
    if (load->intrinsic == nir_intrinsic_load_input) {
       assert(load->def.bit_size == 32);
-      return interpolate_flat(b, coefficients);
+
+      if (nir_intrinsic_io_semantics(load).location == VARYING_SLOT_LAYER)
+         return nir_load_layer_id(b);
+      else
+         return interpolate_flat(b, coefficients);
    } else {
       nir_intrinsic_instr *bary = nir_src_as_intrinsic(load->src[0]);
 

@@ -168,8 +168,6 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intr,
    case nir_intrinsic_get_ssbo_size:
       return load_sysval_indirect(b, 1, 32, stage_table(b), &s->ssbo_size,
                                   intr->src[0].ssa);
-   case nir_intrinsic_load_layer_id_written_agx:
-      return load_sysval_root(b, 1, 16, &u->layer_id_written);
    case nir_intrinsic_load_input_assembly_buffer_agx:
       return load_sysval_root(b, 1, 64, &u->input_assembly);
    case nir_intrinsic_load_geometry_param_buffer_agx:

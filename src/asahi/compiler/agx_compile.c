@@ -1143,6 +1143,9 @@ agx_emit_image_store(agx_builder *b, nir_intrinsic_instr *instr)
       data = agx_emit_collect(b, 4, chan);
    }
 
+   /* Image stores act like tilebuffer stores when used for tib spilling */
+   b->shader->out->tag_write_disable = false;
+
    return agx_image_write(b, data, coords, lod, base, index, dim);
 }
 

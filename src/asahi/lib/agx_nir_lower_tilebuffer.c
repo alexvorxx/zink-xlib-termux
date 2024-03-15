@@ -195,8 +195,6 @@ store_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
 
    if (nr_samples > 1)
       nir_pop_if(b, NULL);
-
-   b->shader->info.writes_memory = true;
 }
 
 static nir_def *

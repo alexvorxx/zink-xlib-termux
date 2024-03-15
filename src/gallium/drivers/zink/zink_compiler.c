@@ -5515,6 +5515,7 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
       nir_gather_xfb_info_from_intrinsics(nir);
    /* clean up io to improve direct access */
    optimize_nir(nir, NULL, true);
+   scan_nir(screen, nir, ret);
    rework_io_vars(nir, nir_var_shader_in);
    rework_io_vars(nir, nir_var_shader_out);
    nir_sort_variables_by_location(nir, nir_var_shader_in);
@@ -5587,7 +5588,6 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
    optimize_nir(nir, NULL, true);
    prune_io(nir);
 
-   scan_nir(screen, nir, ret);
    unsigned sampler_mask = 0;
    if (nir->info.stage == MESA_SHADER_KERNEL) {
       NIR_PASS_V(nir, type_images, &sampler_mask);

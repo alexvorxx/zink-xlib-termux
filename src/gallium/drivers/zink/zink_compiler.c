@@ -5516,6 +5516,8 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
    optimize_nir(nir, NULL, true);
    rework_io_vars(nir, nir_var_shader_in);
    rework_io_vars(nir, nir_var_shader_out);
+   nir_sort_variables_by_location(nir, nir_var_shader_in);
+   nir_sort_variables_by_location(nir, nir_var_shader_out);
 
    if (nir->info.stage < MESA_SHADER_COMPUTE)
       create_gfx_pushconst(nir);

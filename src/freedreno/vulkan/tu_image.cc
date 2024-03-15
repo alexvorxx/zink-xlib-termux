@@ -22,6 +22,7 @@
 #include "tu_device.h"
 #include "tu_formats.h"
 #include "tu_rmv.h"
+#include "tu_wsi.h"
 
 uint32_t
 tu6_plane_count(VkFormat format)
@@ -680,6 +681,22 @@ tu_CreateImage(VkDevice _device,
    const VkSubresourceLayout *plane_layouts = NULL;
 
    TU_FROM_HANDLE(tu_device, device, _device);
+
+#ifdef TU_USE_WSI_PLATFORM
+   /* Ignore swapchain creation info on Android. Since we don't have an
+    * implementation in Mesa, we're guaranteed to access an Android object
+    * incorrectly.
+    */
+   const VkImageSwapchainCreateInfoKHR *swapchain_info =
+      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
+   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+      return wsi_common_create_swapchain_image(device->physical_device->vk.wsi_device,
+                                               pCreateInfo,
+                                               swapchain_info->swapchain,
+                                               pImage);
+   }
+#endif
+
    struct tu_image *image = (struct tu_image *)
       vk_object_zalloc(&device->vk, alloc, sizeof(*image), VK_OBJECT_TYPE_IMAGE);
 
@@ -784,6 +801,23 @@ tu_BindImageMemory2(VkDevice _device,
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       TU_FROM_HANDLE(tu_image, image, pBindInfos[i].image);
       TU_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
+
+      /* Ignore this struct on Android, we cannot access swapchain structures there. */
+#ifdef TU_USE_WSI_PLATFORM
+      const VkBindImageMemorySwapchainInfoKHR *swapchain_info =
+         vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR);
+
+      if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+         VkImage _wsi_image = wsi_common_get_image(swapchain_info->swapchain,
+                                                   swapchain_info->imageIndex);
+         TU_FROM_HANDLE(tu_image, wsi_img, _wsi_image);
+
+         image->bo = wsi_img->bo;
+         image->map = NULL;
+         image->iova = wsi_img->iova;
+         continue;
+      }
+#endif
 
       if (mem) {
          image->bo = mem->bo;

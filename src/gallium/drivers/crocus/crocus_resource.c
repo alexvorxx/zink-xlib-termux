@@ -38,6 +38,7 @@
 #include "util/u_cpu_detect.h"
 #include "util/u_inlines.h"
 #include "util/format/u_format.h"
+#include "util/u_resource.h"
 #include "util/u_threaded_context.h"
 #include "util/u_transfer.h"
 #include "util/u_transfer_helper.h"
@@ -913,7 +914,8 @@ crocus_resource_get_param(struct pipe_screen *pscreen,
                           uint64_t *value)
 {
    struct crocus_screen *screen = (struct crocus_screen *)pscreen;
-   struct crocus_resource *res = (struct crocus_resource *)resource;
+   struct crocus_resource *res =
+      (struct crocus_resource *)util_resource_at_index(resource, plane);
 
    /* Modifiers with compression are not supported. */
    assert(!res->mod_info ||
@@ -927,18 +929,14 @@ crocus_resource_get_param(struct pipe_screen *pscreen,
    crocus_resource_disable_aux_on_first_query(resource, handle_usage);
 
    switch (param) {
-   case PIPE_RESOURCE_PARAM_NPLANES: {
-      unsigned count = 0;
-      for (struct pipe_resource *cur = resource; cur; cur = cur->next)
-         count++;
-      *value = count;
+   case PIPE_RESOURCE_PARAM_NPLANES:
+      *value = util_resource_num(resource);
       return true;
-      }
    case PIPE_RESOURCE_PARAM_STRIDE:
       *value = res->surf.row_pitch_B;
       return true;
    case PIPE_RESOURCE_PARAM_OFFSET:
-      *value = 0;
+      *value = res->offset;
       return true;
    case PIPE_RESOURCE_PARAM_MODIFIER:
       *value = res->mod_info ? res->mod_info->modifier :

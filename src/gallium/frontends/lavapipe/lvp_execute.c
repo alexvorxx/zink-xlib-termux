@@ -263,8 +263,9 @@ static void finish_fence(struct rendering_state *state)
 static unsigned
 get_pcbuf_size(struct rendering_state *state, enum pipe_shader_type pstage)
 {
-   bool is_compute = pstage == MESA_SHADER_COMPUTE;
-   return state->has_pcbuf[pstage] ? state->push_size[is_compute] : 0;
+   enum lvp_pipeline_type type =
+      ffs(lvp_pipeline_types_from_shader_stages(mesa_to_vk_shader_stage(pstage))) - 1;
+   return state->has_pcbuf[pstage] ? state->push_size[type] : 0;
 }
 
 static void

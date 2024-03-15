@@ -5290,8 +5290,18 @@ rework_io_vars(nir_shader *nir, nir_variable_mode mode)
                vec_type = glsl_array_type(vec_type, 32 /* MAX_PATCH_VERTICES */, glsl_get_explicit_stride(vec_type));
             nir_variable *found_var = find_io_var_with_semantics(nir, mode, mode, s, location, c, is_load);
             if (found_var) {
-               if (glsl_get_vector_elements(glsl_without_array(found_var->type)) < glsl_get_vector_elements(glsl_without_array(vec_type))) {
+               if (glsl_get_vector_elements(glsl_without_array(found_var->type)) < glsl_get_vector_elements(glsl_without_array(vec_type)) ||
+                   glsl_get_aoa_size(found_var->type) < glsl_get_aoa_size(vec_type)) {
                   /* enlarge existing vars if necessary */
+                  if (glsl_get_aoa_size(found_var->type) < glsl_get_aoa_size(vec_type)) {
+                     const struct glsl_type *found_type = glsl_without_array(found_var->type);
+                     const struct glsl_type *bare_type = glsl_without_array(vec_type);
+
+                     max_components = MAX2(glsl_get_vector_elements(found_type), glsl_get_vector_elements(bare_type));
+                     enum glsl_base_type base_type = glsl_type_is_float(found_type) ? glsl_get_base_type(found_type) : glsl_get_base_type(bare_type);
+                     const struct glsl_type *vtype = glsl_vector_type(base_type, max_components);
+                     vec_type = glsl_array_type(vtype, glsl_get_aoa_size(vec_type), glsl_get_explicit_stride(vtype));
+                  }
                   found_var->type = vec_type;
                }
                continue;

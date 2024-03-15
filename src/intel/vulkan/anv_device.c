@@ -2360,7 +2360,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       device->flush_astc_ldr_void_extent_denorms =
          device->has_astc_ldr && !device->emu_astc_ldr;
    }
-   device->disable_fcv = intel_device_info_is_mtl_or_arl(&device->info) ||
+   device->disable_fcv = device->info.verx10 >= 125 ||
                          instance->disable_fcv;
 
    result = anv_physical_device_init_heaps(device, fd);

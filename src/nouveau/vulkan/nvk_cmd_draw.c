@@ -305,6 +305,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
    });
 
    P_IMMD(p, NV9097, SET_POINT_SIZE, fui(1.0));
+   P_IMMD(p, NV9097, SET_ATTRIBUTE_POINT_SIZE, { .enable = ENABLE_TRUE });
 
    /* From vulkan spec's point rasterization:
     * "Point rasterization produces a fragment for each fragment area group of
@@ -1196,18 +1197,13 @@ nvk_flush_shaders(struct nvk_cmd_buffer *cmd)
             last_vtgm = cmd->state.gfx.shaders[stage];
       }
 
-      struct nv_push *p = nvk_cmd_buffer_push(cmd, 8);
+      struct nv_push *p = nvk_cmd_buffer_push(cmd, 6);
 
       P_IMMD(p, NV9097, SET_RT_LAYER, {
          .v       = 0,
          .control = last_vtgm->info.vtg.writes_layer ?
                     CONTROL_GEOMETRY_SHADER_SELECTS_LAYER :
                     CONTROL_V_SELECTS_LAYER,
-      });
-
-      P_IMMD(p, NV9097, SET_ATTRIBUTE_POINT_SIZE, {
-         .enable  = last_vtgm->info.vtg.writes_point_size,
-         .slot    = 0,
       });
 
       const uint8_t clip_enable = last_vtgm->info.vtg.clip_enable;

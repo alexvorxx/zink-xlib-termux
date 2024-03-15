@@ -4635,6 +4635,28 @@ scan_nir(struct zink_screen *screen, nir_shader *shader, struct zink_shader *zs)
                 intr->intrinsic == nir_intrinsic_image_deref_sparse_load)
                zs->sinfo.have_sparse = true;
 
+            bool is_load = false;
+            bool is_input = false;
+            bool is_interp = false;
+            /* TODO: delete this once #10826 is fixed */
+            if (filter_io_instr(intr, &is_load, &is_input, &is_interp)) {
+               if (!(is_input && shader->info.stage == MESA_SHADER_VERTEX)) {
+                  nir_io_semantics s = nir_intrinsic_io_semantics(intr);
+                  if (s.location >= VARYING_SLOT_CLIP_DIST0 && s.location <= VARYING_SLOT_CULL_DIST1) {
+                     unsigned frac = nir_intrinsic_component(intr) + 1;
+                     if (s.location < VARYING_SLOT_CULL_DIST0) {
+                        if (s.location == VARYING_SLOT_CLIP_DIST1)
+                           frac += 4;
+                        shader->info.clip_distance_array_size = MAX3(shader->info.clip_distance_array_size, frac, s.num_slots);
+                     } else {
+                        if (s.location == VARYING_SLOT_CULL_DIST1)
+                           frac += 4;
+                        shader->info.cull_distance_array_size = MAX3(shader->info.cull_distance_array_size, frac, s.num_slots);
+                     }
+                  }
+               }
+            }
+
             static bool warned = false;
             if (!screen->info.have_EXT_shader_atomic_float && !screen->is_cpu && !warned) {
                switch (intr->intrinsic) {

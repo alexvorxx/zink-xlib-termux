@@ -109,10 +109,6 @@ struct agx_shader_info {
    /* Reads base vertex/instance */
    bool uses_base_param;
 
-   /* Shader uses txf, requiring a workaround sampler in the given location */
-   bool uses_txf;
-   unsigned txf_sampler;
-
    /* Number of 16-bit registers used by the main shader and preamble
     * respectively.
     */

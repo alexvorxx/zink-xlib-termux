@@ -969,23 +969,6 @@ agx_translate_bindless_handle(agx_builder *b, nir_src *handle, agx_index *base)
    return agx_emit_extract(b, agx_src_index(handle), 1);
 }
 
-/*
- * Contrary to NIR, in the hardware txf requires a special sampler. The sampler
- * cannot be arbitrary, since the hardware honours the clamps so particular
- * configuration is required for correct out-of-bounds behaviour for txf. This
- * helper gets the shader's txf sampler, allocating one if needed.
- */
-static agx_index
-agx_txf_sampler(agx_context *ctx)
-{
-   if (!ctx->out->uses_txf) {
-      ctx->out->txf_sampler = BITSET_LAST_BIT(ctx->nir->info.samplers_used);
-      ctx->out->uses_txf = true;
-   }
-
-   return agx_immediate(ctx->out->txf_sampler);
-}
-
 static unsigned
 agx_expand_tex_to(agx_builder *b, nir_def *def, agx_index src, bool masked)
 {
@@ -1078,8 +1061,8 @@ agx_emit_image_load(agx_builder *b, agx_index dst, nir_intrinsic_instr *intr)
    agx_index tmp = agx_vec_temp(b->shader, dst.size, 4);
 
    agx_instr *I = agx_image_load_to(
-      b, tmp, coords, lod, bindless, texture, agx_txf_sampler(b->shader),
-      agx_null(), agx_tex_dim(dim, is_array), lod_mode, 0, false);
+      b, tmp, coords, lod, bindless, texture, agx_immediate(0), agx_null(),
+      agx_tex_dim(dim, is_array), lod_mode, 0, false);
    I->mask = agx_expand_tex_to(b, &intr->def, tmp, true);
    return NULL;
 }
@@ -1910,14 +1893,8 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
 {
    agx_index coords = agx_null(), bindless = agx_immediate(0),
              texture = agx_immediate(instr->texture_index),
-             sampler = agx_immediate(instr->sampler_index),
-             lod = agx_immediate(0), compare = agx_null(),
-             packed_offset = agx_null();
-
-   bool txf = (instr->op == nir_texop_txf || instr->op == nir_texop_txf_ms);
-
-   if (txf)
-      sampler = agx_txf_sampler(b->shader);
+             sampler = agx_immediate(0), lod = agx_immediate(0),
+             compare = agx_null(), packed_offset = agx_null();
 
    for (unsigned i = 0; i < instr->num_srcs; ++i) {
       agx_index index = agx_src_index(&instr->src[i].src);
@@ -1944,7 +1921,6 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
       case nir_tex_src_texture_offset:
          texture = index;
          break;
-      case nir_tex_src_sampler_offset:
       case nir_tex_src_sampler_handle:
          sampler = index;
          break;
@@ -2005,7 +1981,7 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
       0, !agx_is_null(packed_offset), !agx_is_null(compare),
       instr->op == nir_texop_lod, agx_gather_for_nir(instr));
 
-   if (txf)
+   if (instr->op == nir_texop_txf || instr->op == nir_texop_txf_ms)
       I->op = AGX_OPCODE_TEXTURE_LOAD;
 
    /* Destination masking doesn't seem to work properly for gathers (because

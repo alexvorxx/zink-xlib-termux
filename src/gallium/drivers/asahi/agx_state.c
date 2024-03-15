@@ -2641,15 +2641,10 @@ agx_build_meta_shader(struct agx_context *ctx, meta_shader_builder_t builder,
 }
 
 static unsigned
-sampler_count(struct agx_context *ctx, struct agx_compiled_shader *cs,
-              enum pipe_shader_type stage)
+sampler_count(struct agx_context *ctx, enum pipe_shader_type stage)
 {
-   unsigned sampler_count = ctx->stage[stage].sampler_count;
-
-   if (cs->info.uses_txf)
-      sampler_count = MAX2(sampler_count, cs->info.txf_sampler + 1);
-
-   return sampler_count;
+   /* We reserve sampler #0 for txf so add 1 to the API count */
+   return ctx->stage[stage].sampler_count + 1;
 }
 
 static inline enum agx_sampler_states
@@ -2658,9 +2653,8 @@ translate_sampler_state_count(struct agx_context *ctx,
                               enum pipe_shader_type stage)
 {
    /* Clamp to binding table maximum, anything larger will be bindless */
-   return agx_translate_sampler_state_count(
-      MIN2(sampler_count(ctx, cs, stage), 16),
-      ctx->stage[stage].custom_borders);
+   return agx_translate_sampler_state_count(MIN2(sampler_count(ctx, stage), 16),
+                                            ctx->stage[stage].custom_borders);
 }
 
 /*
@@ -2872,7 +2866,7 @@ agx_upload_samplers(struct agx_batch *batch, struct agx_compiled_shader *cs,
 {
    struct agx_context *ctx = batch->ctx;
 
-   unsigned nr_samplers = sampler_count(ctx, cs, stage);
+   unsigned nr_samplers = sampler_count(ctx, stage);
    bool custom_borders = ctx->stage[stage].custom_borders;
 
    size_t sampler_length =
@@ -2881,23 +2875,25 @@ agx_upload_samplers(struct agx_batch *batch, struct agx_compiled_shader *cs,
    struct agx_ptr T =
       agx_pool_alloc_aligned(&batch->pool, sampler_length * nr_samplers, 64);
 
-   uint8_t *out_sampler = T.cpu;
-   for (unsigned i = 0; i < nr_samplers; ++i) {
+   /* Sampler #0 is reserved for txf */
+   agx_pack(T.cpu, SAMPLER, cfg) {
+      /* Allow mipmapping. This is respected by txf, weirdly. */
+      cfg.mip_filter = AGX_MIP_FILTER_NEAREST;
+
+      /* Out-of-bounds reads must return 0 */
+      cfg.wrap_s = AGX_WRAP_CLAMP_TO_BORDER;
+      cfg.wrap_t = AGX_WRAP_CLAMP_TO_BORDER;
+      cfg.wrap_r = AGX_WRAP_CLAMP_TO_BORDER;
+      cfg.border_colour = AGX_BORDER_COLOUR_TRANSPARENT_BLACK;
+   }
+
+   /* Remaining samplers are API samplers */
+   uint8_t *out_sampler = (uint8_t *)T.cpu + sampler_length;
+   for (unsigned i = 0; i < ctx->stage[stage].sampler_count; ++i) {
       struct agx_sampler_state *sampler = ctx->stage[stage].samplers[i];
       struct agx_sampler_packed *out = (struct agx_sampler_packed *)out_sampler;
 
-      if (cs->info.uses_txf && i == cs->info.txf_sampler) {
-         agx_pack(out, SAMPLER, cfg) {
-            /* Allow mipmapping. This is respected by txf, weirdly. */
-            cfg.mip_filter = AGX_MIP_FILTER_NEAREST;
-
-            /* Out-of-bounds reads must return 0 */
-            cfg.wrap_s = AGX_WRAP_CLAMP_TO_BORDER;
-            cfg.wrap_t = AGX_WRAP_CLAMP_TO_BORDER;
-            cfg.wrap_r = AGX_WRAP_CLAMP_TO_BORDER;
-            cfg.border_colour = AGX_BORDER_COLOUR_TRANSPARENT_BLACK;
-         }
-      } else if (sampler) {
+      if (sampler) {
          *out = sampler->desc;
 
          if (custom_borders) {

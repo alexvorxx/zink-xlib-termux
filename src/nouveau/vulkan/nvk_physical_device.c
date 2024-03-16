@@ -147,7 +147,6 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_shader_integer_dot_product = true,
       .KHR_shader_non_semantic_info = true,
       .KHR_shader_subgroup_extended_types = true,
-      .KHR_shader_subgroup_uniform_control_flow = nvk_use_nak(info),
       .KHR_shader_terminate_invocation =
          (nvk_nak_stages(info) & VK_SHADER_STAGE_FRAGMENT_BIT) != 0,
       .KHR_spirv_1_4 = true,
@@ -556,9 +555,6 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,
-
-      /* VK_KHR_shader_subgroup_uniform_control_flow */
-      .shaderSubgroupUniformControlFlow = nvk_use_nak(info),
 
       /* VK_EXT_texel_buffer_alignment */
       .texelBufferAlignment = true,

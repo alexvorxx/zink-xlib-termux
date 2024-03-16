@@ -817,7 +817,6 @@ spec@ext_framebuffer_multisample@interpolation 8 non-centroid-deriv-disabled,Fai
 spec@ext_framebuffer_multisample@interpolation 8 non-centroid-disabled,Fail
 spec@ext_packed_float@query-rgba-signed-components,Fail
 spec@ext_texture_array@texsubimage array,Fail
-spec@ext_texture_env_combine@texture-env-combine,Timeout
 spec@ext_texture_snorm@multisample-formats 2 gl_ext_texture_snorm,Fail
 spec@ext_texture_snorm@multisample-formats 4 gl_ext_texture_snorm,Fail
 spec@ext_texture_snorm@multisample-formats 6 gl_ext_texture_snorm,Fail

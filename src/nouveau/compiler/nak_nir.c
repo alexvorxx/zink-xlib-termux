@@ -5,6 +5,7 @@
 
 #include "nak_private.h"
 #include "nir_builder.h"
+#include "nir_control_flow.h"
 #include "nir_xfb_info.h"
 
 #include "util/u_math.h"
@@ -323,6 +324,9 @@ nak_preprocess_nir(nir_shader *nir, const struct nak_compiler *nak)
    OPT(nir, nir_lower_system_values);
    OPT(nir, nak_nir_lower_subgroup_id);
    OPT(nir, nir_lower_compute_system_values, NULL);
+
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      OPT(nir, nir_lower_terminate_to_demote);
 }
 
 static uint16_t

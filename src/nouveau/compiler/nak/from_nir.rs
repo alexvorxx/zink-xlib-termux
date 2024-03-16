@@ -2150,23 +2150,15 @@ impl<'a> ShaderFromNir<'a> {
 
                 b.push_op(OpFSOut { srcs: srcs });
             }
-            nir_intrinsic_demote
-            | nir_intrinsic_discard
-            | nir_intrinsic_terminate => {
+            nir_intrinsic_demote | nir_intrinsic_discard => {
                 if let ShaderIoInfo::Fragment(info) = &mut self.info.io {
                     info.uses_kill = true;
                 } else {
                     panic!("OpKill is only available in fragment shaders");
                 }
                 b.push_op(OpKill {});
-
-                if intrin.intrinsic == nir_intrinsic_terminate {
-                    b.push_op(OpExit {});
-                }
             }
-            nir_intrinsic_demote_if
-            | nir_intrinsic_discard_if
-            | nir_intrinsic_terminate_if => {
+            nir_intrinsic_demote_if | nir_intrinsic_discard_if => {
                 if let ShaderIoInfo::Fragment(info) = &mut self.info.io {
                     info.uses_kill = true;
                 } else {
@@ -2174,10 +2166,6 @@ impl<'a> ShaderFromNir<'a> {
                 }
                 let cond = self.get_ssa(srcs[0].as_def())[0];
                 b.predicate(cond.into()).push_op(OpKill {});
-
-                if intrin.intrinsic == nir_intrinsic_terminate_if {
-                    b.predicate(cond.into()).push_op(OpExit {});
-                }
             }
             nir_intrinsic_global_atomic => {
                 let bit_size = intrin.def.bit_size();

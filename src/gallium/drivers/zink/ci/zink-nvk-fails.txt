@@ -17,22 +17,6 @@ dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bit_count_per_two
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bits_unique_per_two_samples.multisample_texture_4,Fail
 dEQP-GLES31.functional.shaders.sample_variables.sample_mask_in.bits_unique_per_two_samples.multisample_texture_8,Fail
 
-glx@glx-multi-window-single-context,Fail
-glx@glx-visuals-depth,Crash
-glx@glx-visuals-stencil,Crash
-glx@glx_arb_create_context_es2_profile@invalid opengl es version,Fail
-glx@glx_arb_create_context_no_error@no error,Fail
-glx@glx_arb_create_context_robustness@invalid reset notification strategy,Fail
-glx@glx_ext_import_context@free context,Fail
-glx@glx_ext_import_context@get context id,Fail
-glx@glx_ext_import_context@get current display,Fail
-glx@glx_ext_import_context@import context- multi process,Fail
-glx@glx_ext_import_context@import context- single process,Fail
-glx@glx_ext_import_context@imported context has same context id,Fail
-glx@glx_ext_import_context@make current- multi process,Fail
-glx@glx_ext_import_context@make current- single process,Fail
-glx@glx_ext_import_context@query context info,Fail
-glx@glx_ext_no_config_context@no fbconfig,Fail
 spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
 spec@!opengl 1.0@rasterpos,Fail
 spec@!opengl 1.0@rasterpos@glsl_vs_gs_linked,Fail

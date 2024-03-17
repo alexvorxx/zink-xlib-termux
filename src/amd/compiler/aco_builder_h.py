@@ -417,6 +417,11 @@ public:
    Result v_mul_imm(Definition dst, Temp tmp, uint32_t imm, bool tmpu24=false, bool tmpi24=false)
    {
       assert(tmp.type() == RegType::vgpr);
+      /* Assume 24bit if high 8 bits of tmp don't impact the result. */
+      if ((imm & 0xff) == 0) {
+         tmpu24 = true;
+         tmpi24 = true;
+      }
       tmpu24 &= imm <= 0xffffffu;
       tmpi24 &= imm <= 0x7fffffu || imm >= 0xff800000u;
       bool has_lshl_add = program->gfx_level >= GFX9;

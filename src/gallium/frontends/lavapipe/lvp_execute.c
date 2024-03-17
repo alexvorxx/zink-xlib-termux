@@ -198,6 +198,7 @@ struct rendering_state {
    void *tess_states[2];
 
    struct util_dynarray push_desc_sets;
+   struct util_dynarray internal_buffers;
 
    struct lvp_pipeline *exec_graph;
 };
@@ -4217,6 +4218,8 @@ lvp_push_internal_buffer(struct rendering_state *state, gl_shader_stage stage, u
 
    state->pctx->set_shader_buffers(state->pctx, stage, 0, 1, &buffer, 0x1);
 
+   util_dynarray_append(&state->internal_buffers, struct pipe_resource *, buffer.buffer);
+
    return mem;
 }
 
@@ -4976,6 +4979,7 @@ VkResult lvp_execute_cmds(struct lvp_device *device,
    state->sample_mask = UINT32_MAX;
    state->poison_mem = device->poison_mem;
    util_dynarray_init(&state->push_desc_sets, NULL);
+   util_dynarray_init(&state->internal_buffers, NULL);
 
    /* default values */
    state->min_sample_shading = 1;
@@ -5015,6 +5019,11 @@ VkResult lvp_execute_cmds(struct lvp_device *device,
       lvp_descriptor_set_destroy(device, *set);
 
    util_dynarray_fini(&state->push_desc_sets);
+
+   util_dynarray_foreach (&state->internal_buffers, struct pipe_resource *, buffer)
+      pipe_resource_reference(buffer, NULL);
+
+   util_dynarray_fini(&state->internal_buffers);
 
    for (unsigned i = 0; i < ARRAY_SIZE(state->desc_buffers); i++)
       pipe_resource_reference(&state->desc_buffers[i], NULL);

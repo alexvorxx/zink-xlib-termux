@@ -11,7 +11,7 @@
 #include "vn_instance.h"
 #include "vn_renderer.h"
 
-#define VN_RING_IDLE_TIMEOUT_NS (5ull * 1000 * 1000)
+#define VN_RING_IDLE_TIMEOUT_NS (1ull * 1000 * 1000)
 
 static_assert(ATOMIC_INT_LOCK_FREE == 2 && sizeof(atomic_uint) == 4,
               "vn_ring_shared requires lock-free 32-bit atomic_uint");

@@ -123,6 +123,7 @@ SR = enum("sr", {
    8:  'dispatch_threads_per_threadgroup.x',
    9:  'dispatch_threads_per_threadgroup.y',
    10: 'dispatch_threads_per_threadgroup.z',
+   14: 'samples_log2',
    20: 'core_id',
    21: 'vm_slot',
    48: 'thread_position_in_threadgroup.x',

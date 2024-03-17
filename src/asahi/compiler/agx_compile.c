@@ -1239,6 +1239,9 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_back_face_agx:
       return agx_get_sr_to(b, dst, AGX_SR_BACKFACING);
 
+   case nir_intrinsic_load_samples_log2_agx:
+      return agx_get_sr_to(b, dst, AGX_SR_SAMPLES_LOG2);
+
    case nir_intrinsic_load_sample_mask_in:
       return agx_get_sr_to(b, dst, AGX_SR_INPUT_SAMPLE_MASK);
 

@@ -1239,7 +1239,16 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
       assert(stage == MESA_SHADER_FRAGMENT);
       b->shader->out->writes_sample_mask = true;
 
-      agx_wait_pix(b, 0x0001);
+      /* We need to wait_pix before running Z/S tests, but we don't need to
+       * wait_pix before merely discarding. Omit the wait_pix when the affected
+       * samples are unconditionally killed.
+       */
+      bool no_tests =
+         nir_src_is_const(instr->src[1]) && nir_src_as_uint(instr->src[1]) == 0;
+
+      if (!no_tests)
+         agx_wait_pix(b, 0x0001);
+
       return agx_sample_mask(b, agx_src_index(&instr->src[0]),
                              agx_src_index(&instr->src[1]));
    }

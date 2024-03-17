@@ -1541,7 +1541,8 @@ else
   dep_clock = cc.find_library('rt')
 endif
 
-dep_zlib = dependency('zlib', version : '>= 1.2.9',
+# IMPORTANT: We can't upgrade Zlib beyond 1.2.5 because it would break Viewperf.
+dep_zlib = dependency('zlib', version : '>= 1.2.3',
                       allow_fallback: true,
                       required : get_option('zlib'))
 if dep_zlib.found()

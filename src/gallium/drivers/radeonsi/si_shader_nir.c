@@ -255,22 +255,6 @@ static bool si_lower_intrinsics(nir_shader *nir)
                                         NULL);
 }
 
-const nir_lower_subgroups_options si_nir_subgroups_options = {
-   .subgroup_size = 64,
-   .ballot_bit_size = 64,
-   .ballot_components = 1,
-   .lower_to_scalar = true,
-   .lower_subgroup_masks = true,
-   .lower_relative_shuffle = true,
-   .lower_shuffle_to_32bit = true,
-   .lower_vote_trivial = false,
-   .lower_vote_eq = true,
-   .lower_vote_bool_eq = true,
-   .lower_inverse_ballot = true,
-   .lower_boolean_reduce = true,
-   .lower_boolean_shuffle = true,
-};
-
 void si_lower_mediump_io(nir_shader *nir)
 {
    NIR_PASS_V(nir, nir_lower_mediump_io,
@@ -318,7 +302,7 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
 
    NIR_PASS_V(nir, ac_nir_lower_sin_cos);
 
-   NIR_PASS_V(nir, nir_lower_subgroups, &si_nir_subgroups_options);
+   NIR_PASS_V(nir, nir_lower_subgroups, sscreen->nir_lower_subgroups_options);
 
    NIR_PASS_V(nir, nir_lower_discard_or_demote, true);
 

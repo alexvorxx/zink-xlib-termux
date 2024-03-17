@@ -1011,7 +1011,6 @@ void si_nir_scan_shader(struct si_screen *sscreen,  const struct nir_shader *nir
                         struct si_shader_info *info);
 
 /* si_shader_nir.c */
-extern const struct nir_lower_subgroups_options si_nir_subgroups_options;
 void si_lower_mediump_io(struct nir_shader *nir);
 
 bool si_alu_to_scalar_packed_math_filter(const struct nir_instr *instr, const void *data);

@@ -1911,7 +1911,7 @@ static void si_lower_ngg(struct si_shader *shader, nir_shader *nir)
    }
 
    /* may generate some subgroup op like ballot */
-   NIR_PASS_V(nir, nir_lower_subgroups, &si_nir_subgroups_options);
+   NIR_PASS_V(nir, nir_lower_subgroups, sel->screen->nir_lower_subgroups_options);
 
    /* may generate some vector output store */
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);

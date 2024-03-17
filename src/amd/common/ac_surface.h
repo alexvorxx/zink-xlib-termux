@@ -314,6 +314,8 @@ struct radeon_surf {
    uint8_t has_stencil : 1;
    /* This might be true even if micro_tile_mode isn't displayable or rotated. */
    uint8_t is_displayable : 1;
+   /* Thick tiling means 3D tiles. Use 3D compute workgroups for blits. (4x4x4 works well) */
+   uint8_t thick_tiling : 1;
    uint8_t first_mip_tail_level : 4;
 
    /* These are return values. Some of them can be set by the caller, but

@@ -1506,6 +1506,8 @@ static int gfx6_compute_surface(ADDR_HANDLE addrlib, const struct radeon_info *i
    surf->is_displayable = surf->is_linear || surf->micro_tile_mode == RADEON_MICRO_MODE_DISPLAY ||
                           surf->micro_tile_mode == RADEON_MICRO_MODE_RENDER;
 
+   surf->thick_tiling = AddrSurfInfoOut.blockSlices > 1;
+
    /* The rotated micro tile mode doesn't work if both CMASK and RB+ are
     * used at the same time. This case is not currently expected to occur
     * because we don't use rotated. Enforce this restriction on all chips
@@ -1851,6 +1853,8 @@ static int gfx9_compute_miptree(struct ac_addrlib *addrlib, const struct radeon_
             surf->u.gfx9.prt_level_pitch[i] = out.mipChainPitch;
       }
    }
+
+   surf->thick_tiling = out.blockSlices > 1; /* should be 0 for depth and stencil */
 
    if (in->flags.stencil) {
       surf->u.gfx9.zs.stencil_swizzle_mode = in->swizzleMode;

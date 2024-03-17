@@ -143,9 +143,8 @@ void si_get_ir_cache_key(struct si_shader_selector *sel, bool ngg, bool es,
       shader_variant_flags |= 1 << 1;
    if (wave_size == 32)
       shader_variant_flags |= 1 << 2;
-
-   /* bit gap */
-
+   if (sel->screen->options.optimize_io)
+      shader_variant_flags |= 1 << 3;
    /* use_ngg_culling disables NGG passthrough for non-culling shaders to reduce context
     * rolls, which can be changed with AMD_DEBUG=nonggc or AMD_DEBUG=nggc.
     */

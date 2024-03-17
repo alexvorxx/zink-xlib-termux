@@ -478,10 +478,10 @@ typedef struct {
     * components, populated by a split. */
    struct hash_table_u64 *allocated_vec;
 
-   /* During instruction selection, preloaded values,
-    * or NULL if it hasn't been preloaded
+   /* During instruction selection, preloaded values or NULL if it hasn't been
+    * preloaded.
     */
-   agx_index vertex_id, instance_id;
+   agx_index preloaded[AGX_NUM_REGS];
 
    /* Beginning of our stack allocation used for spilling, below that is
     * NIR-level scratch.

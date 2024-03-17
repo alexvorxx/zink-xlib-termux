@@ -55,29 +55,27 @@ agx_get_compiler_debug(void)
 }
 
 static agx_index
-agx_cached_preload(agx_context *ctx, agx_index *cache, unsigned base,
-                   enum agx_size size)
+agx_cached_preload(agx_context *ctx, unsigned base, enum agx_size size)
 {
-   if (agx_is_null(*cache)) {
+   if (agx_is_null(ctx->preloaded[base])) {
       agx_block *block = agx_start_block(ctx);
       agx_builder b = agx_init_builder(ctx, agx_before_block(block));
-      *cache = agx_preload(&b, agx_register(base, size));
+      ctx->preloaded[base] = agx_preload(&b, agx_register(base, size));
    }
 
-   return *cache;
+   return ctx->preloaded[base];
 }
 
 static agx_index
 agx_vertex_id(agx_builder *b)
 {
-   return agx_cached_preload(b->shader, &b->shader->vertex_id, 10, AGX_SIZE_32);
+   return agx_cached_preload(b->shader, 10, AGX_SIZE_32);
 }
 
 static agx_index
 agx_instance_id(agx_builder *b)
 {
-   return agx_cached_preload(b->shader, &b->shader->instance_id, 12,
-                             AGX_SIZE_32);
+   return agx_cached_preload(b->shader, 12, AGX_SIZE_32);
 }
 
 #define VARYING_NUM_COMPONENTS (VARYING_SLOT_MAX * 4)

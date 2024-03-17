@@ -107,6 +107,7 @@ struct radeon_enc_pic {
    bool sample_adaptive_offset_enabled_flag;
    bool pcm_enabled_flag;
    bool sps_temporal_mvp_enabled_flag;
+   bool use_rc_per_pic_ex;
 
    struct {
       struct {

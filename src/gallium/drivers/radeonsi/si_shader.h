@@ -1004,6 +1004,7 @@ bool si_shader_binary_open(struct si_screen *screen, struct si_shader *shader,
                            struct ac_rtld_binary *rtld);
 bool si_get_external_symbol(enum amd_gfx_level gfx_level, void *data, const char *name,
                             uint64_t *value);
+unsigned si_get_shader_prefetch_size(struct si_shader *shader);
 
 /* si_shader_info.c */
 void si_nir_scan_shader(struct si_screen *sscreen,  const struct nir_shader *nir,

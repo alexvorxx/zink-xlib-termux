@@ -839,6 +839,23 @@ static unsigned si_get_shader_binary_size(struct si_screen *screen, struct si_sh
    }
 }
 
+unsigned si_get_shader_prefetch_size(struct si_shader *shader)
+{
+   struct si_screen *sscreen = shader->selector->screen;
+   /* This excludes arrays of constants after instructions. */
+   unsigned exec_size =
+      ac_align_shader_binary_for_prefetch(&sscreen->info,
+                                          si_get_shader_binary_size(sscreen, shader));
+
+   /* INST_PREF_SIZE uses 128B granularity.
+    * - GFX11: max 128 * 63 = 8064
+    */
+   unsigned max_pref_size = 63;
+   unsigned exec_size_gran128 = DIV_ROUND_UP(exec_size, 128);
+
+   return MIN2(max_pref_size, exec_size_gran128);
+}
+
 bool si_get_external_symbol(enum amd_gfx_level gfx_level, void *data, const char *name,
                             uint64_t *value)
 {

@@ -662,13 +662,6 @@ static unsigned si_get_vs_vgpr_comp_cnt(struct si_screen *sscreen, struct si_sha
    return max;
 }
 
-unsigned si_get_shader_prefetch_size(struct si_shader *shader)
-{
-   /* inst_pref_size is calculated in cache line size granularity */
-   assert(!(shader->bo->b.b.width0 & 0x7f));
-   return MIN2(shader->bo->b.b.width0, 8064) / 128;
-}
-
 static void si_shader_ls(struct si_screen *sscreen, struct si_shader *shader)
 {
    struct si_pm4_state *pm4;

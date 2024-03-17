@@ -1600,7 +1600,7 @@ nir_channel_or_undef(nir_builder *b, nir_def *def, signed int channel)
    if (channel >= 0 && channel < def->num_components)
       return nir_channel(b, def, channel);
    else
-      return nir_undef(b, def->bit_size, 1);
+      return nir_undef(b, 1, def->bit_size);
 }
 
 /*
@@ -1631,8 +1631,8 @@ agx_nir_lower_point_sprite_zw(nir_builder *b, nir_intrinsic_instr *intr,
    nir_def *replace = nir_i2b(b, nir_iand(b, mask, bit));
 
    nir_def *vec = nir_pad_vec4(b, &intr->def);
-   nir_def *chans[4] = {NULL, NULL, nir_imm_float(b, 0.0),
-                        nir_imm_float(b, 1.0)};
+   nir_def *chans[4] = {NULL, NULL, nir_imm_floatN_t(b, 0.0, vec->bit_size),
+                        nir_imm_floatN_t(b, 1.0, vec->bit_size)};
 
    for (unsigned i = 0; i < 4; ++i) {
       nir_def *chan = nir_channel_or_undef(b, vec, i - component);

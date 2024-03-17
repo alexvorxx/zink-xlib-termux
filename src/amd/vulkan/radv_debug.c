@@ -463,7 +463,7 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
    enum amd_ip_type ring = radv_queue_ring(queue);
    struct radv_pipeline *pipeline;
 
-   fprintf(f, "AMD_IP_%s:\n", ring == AMD_IP_GFX ? "GFX" : "COMPUTE");
+   fprintf(f, "AMD_IP_%s:\n", ac_get_ip_type_string(&pdev->info, ring));
 
    pipeline = radv_get_saved_pipeline(device, ring);
    if (pipeline) {

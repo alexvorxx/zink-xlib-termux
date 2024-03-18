@@ -267,7 +267,9 @@ replay_context_init(struct replay_context *ctx, struct fd_dev_id *dev_id,
    ((uint64_t *)ctx->cp_log->mem)[1] = sizeof(uint64_t);
    ctx->cp_log->cur = ctx->cp_log->total_size;
 
-   struct ir3_compiler_options options{};
+   struct ir3_compiler_options options{
+      .disable_cache = true,
+   };
    ctx->compiler =
       ir3_compiler_create(NULL, dev_id, fd_dev_info_raw(dev_id), &options);
    ctx->compiled_shaders = _mesa_hash_table_u64_create(ctx->mem_ctx);

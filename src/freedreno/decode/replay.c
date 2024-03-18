@@ -749,6 +749,7 @@ device_create(uint64_t base_addr)
    rb_tree_init(&dev->buffers);
    util_vma_heap_init(&dev->vma, req.gpuaddr, ROUND_DOWN_TO(FAKE_ADDRESS_SPACE_SIZE, 4096));
    u_vector_init(&dev->cmdstreams, 8, sizeof(struct cmdstream));
+   u_vector_init(&dev->wrbufs, 8, sizeof(struct wrbuf));
 
    struct kgsl_drawctxt_create drawctxt_req = {
       .flags = KGSL_CONTEXT_SAVE_GMEM |
@@ -822,6 +823,8 @@ device_submit_cmdstreams(struct device *dev)
    device_print_cp_log(dev);
 
    device_dump_wrbuf(dev);
+   u_vector_finish(&dev->wrbufs);
+   u_vector_init(&dev->wrbufs, 8, sizeof(struct wrbuf));
 
    device_free_buffers(dev);
 }
@@ -1086,6 +1089,7 @@ device_create(uint64_t base_addr)
    rb_tree_init(&dev->buffers);
    util_vma_heap_init(&dev->vma, dev->va_iova, ROUND_DOWN_TO(alloc_size, 4096));
    u_vector_init(&dev->cmdstreams, 8, sizeof(struct cmdstream));
+   u_vector_init(&dev->wrbufs, 8, sizeof(struct wrbuf));
 
    printf("Allocated iova at 0x%" PRIx64 "\n", dev->va_iova);
 
@@ -1183,6 +1187,8 @@ device_submit_cmdstreams(struct device *dev)
    device_print_cp_log(dev);
 
    device_dump_wrbuf(dev);
+   u_vector_finish(&dev->wrbufs);
+   u_vector_init(&dev->wrbufs, 8, sizeof(struct wrbuf));
 
    device_free_buffers(dev);
 }

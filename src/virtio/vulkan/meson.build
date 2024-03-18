@@ -84,7 +84,9 @@ vn_deps = [
 
 vn_flags = [
   no_override_init_args,
-]
+] + cc.get_supported_arguments([
+  '-Werror=switch',
+])
 
 vn_libs = []
 

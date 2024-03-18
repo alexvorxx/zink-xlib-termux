@@ -207,10 +207,18 @@ struct vn_watchdog {
    atomic_bool alive;
 };
 
+enum vn_relax_reason {
+   VN_RELAX_REASON_RING_SEQNO,
+   VN_RELAX_REASON_RING_SPACE,
+   VN_RELAX_REASON_FENCE,
+   VN_RELAX_REASON_SEMAPHORE,
+};
+
 struct vn_relax_state {
    struct vn_instance *instance;
    uint32_t iter;
-   const char *reason;
+   enum vn_relax_reason reason;
+   const char *reason_str;
 };
 
 /* TLS ring
@@ -363,7 +371,7 @@ vn_watchdog_fini(struct vn_watchdog *watchdog)
 }
 
 struct vn_relax_state
-vn_relax_init(struct vn_instance *instance, const char *reason);
+vn_relax_init(struct vn_instance *instance, enum vn_relax_reason reason);
 
 void
 vn_relax(struct vn_relax_state *state);

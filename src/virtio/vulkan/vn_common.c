@@ -171,8 +171,25 @@ vn_relax_fini(struct vn_relax_state *state)
    vn_watchdog_release(&state->instance->ring.watchdog);
 }
 
+static inline const char *
+vn_relax_reason_string(enum vn_relax_reason reason)
+{
+   /* deliberately avoid default case for -Wswitch to catch upon compile */
+   switch (reason) {
+   case VN_RELAX_REASON_RING_SEQNO:
+      return "ring seqno";
+   case VN_RELAX_REASON_RING_SPACE:
+      return "ring space";
+   case VN_RELAX_REASON_FENCE:
+      return "fence";
+   case VN_RELAX_REASON_SEMAPHORE:
+      return "semaphore";
+   }
+   return "";
+}
+
 struct vn_relax_state
-vn_relax_init(struct vn_instance *instance, const char *reason)
+vn_relax_init(struct vn_instance *instance, enum vn_relax_reason reason)
 {
    struct vn_ring *ring = instance->ring.ring;
    struct vn_watchdog *watchdog = &instance->ring.watchdog;
@@ -183,6 +200,7 @@ vn_relax_init(struct vn_instance *instance, const char *reason)
       .instance = instance,
       .iter = 0,
       .reason = reason,
+      .reason_str = vn_relax_reason_string(reason),
    };
 }
 
@@ -190,7 +208,7 @@ void
 vn_relax(struct vn_relax_state *state)
 {
    uint32_t *iter = &state->iter;
-   const char *reason = state->reason;
+   const char *reason_str = state->reason_str;
 
    /* Yield for the first 2^busy_wait_order times and then sleep for
     * base_sleep_us microseconds for the same number of times.  After that,
@@ -213,7 +231,7 @@ vn_relax(struct vn_relax_state *state)
     */
    if (unlikely(*iter % (1 << warn_order) == 0)) {
       struct vn_instance *instance = state->instance;
-      vn_log(instance, "stuck in %s wait with iter at %d", reason, *iter);
+      vn_log(instance, "stuck in %s wait with iter at %d", reason_str, *iter);
 
       struct vn_ring *ring = instance->ring.ring;
       const uint32_t status = vn_ring_load_status(ring);

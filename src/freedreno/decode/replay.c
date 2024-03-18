@@ -363,14 +363,15 @@ device_dump_wrbuf(struct device *dev)
    if (!u_vector_length(&dev->wrbufs))
       return;
 
-   char buffer_dir[256];
-   snprintf(buffer_dir, sizeof(buffer_dir), "%s/buffers", exename);
+   char buffer_dir[PATH_MAX];
+   getcwd(buffer_dir, sizeof(buffer_dir));
+   strcat(buffer_dir, "/buffers");
    rmdir(buffer_dir);
    mkdir(buffer_dir, 0777);
 
    struct wrbuf *wrbuf;
    u_vector_foreach(wrbuf, &dev->wrbufs) {
-      char buffer_path[256];
+      char buffer_path[PATH_MAX];
       snprintf(buffer_path, sizeof(buffer_path), "%s/%s", buffer_dir, wrbuf->name);
       FILE *f = fopen(buffer_path, "wb");
       if (!f) {

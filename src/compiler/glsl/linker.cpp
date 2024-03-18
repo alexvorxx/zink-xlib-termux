@@ -2725,8 +2725,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
    if (!prog->data->LinkStatus)
       goto done;
 
-   resize_tes_inputs(consts, prog);
-
 done:
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       free(shader_list[i]);

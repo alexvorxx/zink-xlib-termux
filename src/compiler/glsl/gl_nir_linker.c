@@ -1677,6 +1677,8 @@ gl_nir_link_glsl(const struct gl_constants *consts,
 
    MESA_TRACE_FUNC();
 
+   resize_tes_inputs(consts, prog);
+
    /* Validate the inputs of each stage with the output of the preceding
     * stage.
     */

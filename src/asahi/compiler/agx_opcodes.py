@@ -475,6 +475,13 @@ op("unit_test", _, dests = 0, srcs = 1, can_eliminate = False)
 # to be coalesced during RA, rather than lowered to a real move. 
 op("preload", _, srcs = 1, schedule_class = "preload")
 
+# Opposite of preload. Exports a scalar value to a particular register at the
+# end of the shader part. Must only appear after the logical end of the exit
+# block, this avoids special casing the source's liveness. Logically all exports
+# happen in parallel at the end of the shader part.
+op("export", _, dests = 0, srcs = 1, imms = [IMM], can_eliminate = False,
+   schedule_class = "invalid")
+
 # Pseudo-instructions to set the nesting counter. Lowers to r0l writes after RA.
 op("begin_cf", _, dests = 0, can_eliminate = False)
 op("break", _, dests = 0, imms = [NEST, TARGET], can_eliminate = False,

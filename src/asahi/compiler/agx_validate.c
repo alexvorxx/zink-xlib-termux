@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "util/compiler.h"
 #include "agx_compiler.h"
 #include "agx_debug.h"
 #include "agx_opcodes.h"
@@ -42,6 +43,7 @@ agx_validate_block_form(agx_block *block)
 
    agx_foreach_instr_in_block(block, I) {
       switch (I->op) {
+      case AGX_OPCODE_PRELOAD:
       case AGX_OPCODE_ELSE_ICMP:
       case AGX_OPCODE_ELSE_FCMP:
          agx_validate_assert(state == AGX_BLOCK_STATE_CF_ELSE);
@@ -52,6 +54,11 @@ agx_validate_block_form(agx_block *block)
                              state == AGX_BLOCK_STATE_PHI);
 
          state = AGX_BLOCK_STATE_PHI;
+         break;
+
+      case AGX_OPCODE_EXPORT:
+         agx_validate_assert(agx_num_successors(block) == 0);
+         state = AGX_BLOCK_STATE_CF;
          break;
 
       default:
@@ -219,6 +226,7 @@ agx_read_registers(const agx_instr *I, unsigned s)
 
    switch (I->op) {
    case AGX_OPCODE_MOV:
+   case AGX_OPCODE_EXPORT:
       /* Tautological */
       return agx_index_size_16(I->src[0]);
 

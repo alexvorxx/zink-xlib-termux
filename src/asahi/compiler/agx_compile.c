@@ -1066,6 +1066,40 @@ agx_emit_image_load(agx_builder *b, agx_index dst, nir_intrinsic_instr *intr)
 }
 
 static agx_instr *
+agx_emit_export(agx_builder *b, unsigned base, nir_src src)
+{
+   agx_builder b_ = *b;
+   agx_cursor after_cursor = agx_after_block(agx_exit_block(b->shader));
+   b_.cursor = after_cursor;
+
+   for (unsigned c = 0; c < nir_src_num_components(src); ++c) {
+      agx_index chan = agx_extract_nir_src(b, src, c);
+      unsigned stride = agx_size_align_16(chan.size);
+
+      agx_export(&b_, chan, base + (c * stride));
+   }
+
+   if (memcmp(&b->cursor, &after_cursor, sizeof(agx_cursor)) == 0) {
+      b->cursor = agx_after_block_logical(b->cursor.block);
+   }
+
+   return NULL;
+}
+
+static agx_instr *
+agx_load_exported_to(agx_builder *b, agx_index dst, unsigned base, unsigned nr)
+{
+   agx_index chans[4] = {0};
+   unsigned stride = agx_size_align_16(dst.size);
+
+   for (unsigned c = 0; c < nr; ++c) {
+      chans[c] = agx_cached_preload(b->shader, base + c * stride, dst.size);
+   }
+
+   return agx_emit_collect_to(b, dst, nr, chans);
+}
+
+static agx_instr *
 agx_emit_image_store(agx_builder *b, nir_intrinsic_instr *instr)
 {
    /* See remarks in agx_emit_image_load */
@@ -1456,6 +1490,13 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_helper_arg_hi_agx:
       assert(b->shader->key->is_helper);
       return agx_get_sr_barrier_to(b, dst, AGX_SR_HELPER_ARG_H);
+
+   case nir_intrinsic_load_exported_agx:
+      return agx_load_exported_to(b, dst, nir_intrinsic_base(instr),
+                                  instr->def.num_components);
+
+   case nir_intrinsic_export_agx:
+      return agx_emit_export(b, nir_intrinsic_base(instr), instr->src[0]);
 
    case nir_intrinsic_load_barycentric_sample:
    case nir_intrinsic_load_sample_id:

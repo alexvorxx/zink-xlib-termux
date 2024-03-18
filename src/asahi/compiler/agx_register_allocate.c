@@ -201,6 +201,14 @@ agx_calc_register_demand(agx_context *ctx)
          if (I->op == AGX_OPCODE_PHI)
             continue;
 
+         if (I->op == AGX_OPCODE_PRELOAD) {
+            unsigned size = agx_size_align_16(I->src[0].size);
+            max_demand = MAX2(max_demand, I->src[0].value + size);
+         } else if (I->op == AGX_OPCODE_EXPORT) {
+            unsigned size = agx_size_align_16(I->src[0].size);
+            max_demand = MAX2(max_demand, I->imm + size);
+         }
+
          /* Handle late-kill registers from last instruction */
          demand -= late_kill_count;
          late_kill_count = 0;
@@ -921,8 +929,32 @@ pick_regs(struct ra_ctx *rctx, agx_instr *I, unsigned d)
       }
    }
 
-   /* Try to allocate sources of collects contiguously */
+   /* Try to coalesce scalar exports */
    agx_instr *collect_phi = rctx->src_to_collect_phi[idx.value];
+   if (collect_phi && collect_phi->op == AGX_OPCODE_EXPORT) {
+      unsigned reg = collect_phi->imm;
+
+      if (!BITSET_TEST_RANGE(rctx->used_regs[cls], reg, reg + align - 1) &&
+          (reg % align) == 0)
+         return reg;
+   }
+
+   /* Try to coalesce vector exports */
+   if (collect_phi && collect_phi->op == AGX_OPCODE_SPLIT) {
+      if (collect_phi->dest[0].type == AGX_INDEX_NORMAL) {
+         agx_instr *exp = rctx->src_to_collect_phi[collect_phi->dest[0].value];
+         if (exp && exp->op == AGX_OPCODE_EXPORT) {
+            unsigned reg = exp->imm;
+
+            if (!BITSET_TEST_RANGE(rctx->used_regs[cls], reg,
+                                   reg + align - 1) &&
+                (reg % align) == 0)
+               return reg;
+         }
+      }
+   }
+
+   /* Try to allocate sources of collects contiguously */
    if (collect_phi && collect_phi->op == AGX_OPCODE_COLLECT) {
       agx_instr *collect = collect_phi;
 
@@ -1224,6 +1256,34 @@ agx_insert_parallel_copies(agx_context *ctx, agx_block *block)
    }
 }
 
+static void
+lower_exports(agx_context *ctx)
+{
+   struct agx_copy copies[AGX_NUM_REGS];
+   unsigned nr = 0;
+   agx_block *block = agx_exit_block(ctx);
+
+   agx_foreach_instr_in_block_safe(block, I) {
+      if (I->op != AGX_OPCODE_EXPORT)
+         continue;
+
+      assert(agx_channels(I->src[0]) == 1 && "scalarized in frontend");
+      assert(nr < ARRAY_SIZE(copies));
+
+      copies[nr++] = (struct agx_copy){
+         .dest = I->imm,
+         .src = I->src[0],
+      };
+
+      /* We cannot use fewer registers than we export */
+      ctx->max_reg =
+         MAX2(ctx->max_reg, I->imm + agx_size_align_16(I->src[0].size));
+   }
+
+   agx_builder b = agx_init_builder(ctx, agx_after_block_logical(block));
+   agx_emit_parallel_copies(&b, copies, nr);
+}
+
 void
 agx_ra(agx_context *ctx)
 {
@@ -1305,7 +1365,8 @@ agx_ra(agx_context *ctx)
 
    agx_foreach_instr_global(ctx, I) {
       /* Record collects/phis so we can coalesce when assigning */
-      if (I->op == AGX_OPCODE_COLLECT || I->op == AGX_OPCODE_PHI) {
+      if (I->op == AGX_OPCODE_COLLECT || I->op == AGX_OPCODE_PHI ||
+          I->op == AGX_OPCODE_EXPORT || I->op == AGX_OPCODE_SPLIT) {
          agx_foreach_ssa_src(I, s) {
             src_to_collect_phi[I->src[s].value] = I;
          }
@@ -1456,10 +1517,12 @@ agx_ra(agx_context *ctx)
       }
    }
 
-   /* Insert parallel copies lowering phi nodes */
+   /* Insert parallel copies lowering phi nodes and exports */
    agx_foreach_block(ctx, block) {
       agx_insert_parallel_copies(ctx, block);
    }
+
+   lower_exports(ctx);
 
    agx_foreach_instr_global_safe(ctx, I) {
       switch (I->op) {

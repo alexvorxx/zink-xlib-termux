@@ -844,6 +844,7 @@ instr_after_logical_end(const agx_instr *I)
    case AGX_OPCODE_IF_FCMP:
    case AGX_OPCODE_WHILE_FCMP:
    case AGX_OPCODE_STOP:
+   case AGX_OPCODE_EXPORT:
       return true;
    default:
       return false;

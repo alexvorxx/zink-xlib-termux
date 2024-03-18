@@ -543,7 +543,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_KHR_shader_quad_control                            DONE (radv)
   VK_KHR_shared_presentable_image                       not started
   VK_KHR_surface                                        DONE (anv, dzn, hasvk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
-  VK_KHR_surface_protected_capabilities                 DONE (anv, lvp, nvk, radv, v3dv, vn)
+  VK_KHR_surface_protected_capabilities                 DONE (anv, lvp, nvk, radv, tu, v3dv, vn)
   VK_KHR_swapchain                                      DONE (anv, dzn, hasvk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
   VK_KHR_swapchain_mutable_format                       DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_KHR_vertex_attribute_divisor                       DONE (anv, nvk, radv, tu, v3dv)

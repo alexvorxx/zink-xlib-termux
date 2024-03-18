@@ -84,7 +84,7 @@ agx_tilebuffer_spills(struct agx_tilebuffer_layout *layout)
 }
 
 struct agx_tilebuffer_layout
-agx_build_tilebuffer_layout(enum pipe_format *formats, uint8_t nr_cbufs,
+agx_build_tilebuffer_layout(const enum pipe_format *formats, uint8_t nr_cbufs,
                             uint8_t nr_samples, bool layered);
 
 bool agx_nir_lower_tilebuffer(struct nir_shader *shader,

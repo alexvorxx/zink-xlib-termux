@@ -63,14 +63,13 @@ descriptor_size(struct tu_device *dev,
       return A6XX_TEX_CONST_DWORDS * 4 * 2;
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-      /* When we support 16-bit storage, we need an extra descriptor setup as
-       * a 32-bit array for isam to work.
+      /* isam.v allows using a single 16-bit descriptor for both 16-bit and
+       * 32-bit loads. If not available but 16-bit storage is still supported,
+       * two separate descriptors are required.
        */
-      if (dev->physical_device->info->a6xx.storage_16bit) {
-         return A6XX_TEX_CONST_DWORDS * 4 * 2;
-      } else {
-         return A6XX_TEX_CONST_DWORDS * 4;
-      }
+      return A6XX_TEX_CONST_DWORDS * 4 * (1 +
+         COND(dev->physical_device->info->a6xx.storage_16bit &&
+              !dev->physical_device->info->a6xx.has_isam_v, 1));
    case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
       return binding->descriptorCount;
    default:
@@ -1012,45 +1011,48 @@ write_buffer_descriptor_addr(const struct tu_device *device,
                              uint32_t *dst,
                              const VkDescriptorAddressInfoEXT *buffer_info)
 {
-   bool storage_16bit = device->physical_device->info->a6xx.storage_16bit;
-   /* newer a6xx allows using 16-bit descriptor for both 16-bit and 32-bit
-    * access, but we need to keep a 32-bit descriptor for readonly access via
-    * isam.
-    */
-   unsigned descriptors = storage_16bit ? 2 : 1;
+   const struct fd_dev_info *info = device->physical_device->info;
+   /* This prevents any misconfiguration, but 16-bit descriptor capable of both
+    * 16-bit and 32-bit access through isam.v will of course only be functional
+    * when 16-bit storage is supported. */
+   assert(!info->a6xx.has_isam_v || info->a6xx.storage_16bit);
 
-   if (!buffer_info || buffer_info->address == 0) {
-      memset(dst, 0, descriptors * A6XX_TEX_CONST_DWORDS * sizeof(uint32_t));
+   unsigned num_descriptors = 1 + COND(info->a6xx.storage_16bit &&
+                                       !info->a6xx.has_isam_v, 1);
+   memset(dst, 0, num_descriptors * A6XX_TEX_CONST_DWORDS * sizeof(uint32_t));
+
+   if (!buffer_info || buffer_info->address == 0)
       return;
-   }
 
    uint64_t va = buffer_info->address;
    uint64_t base_va = va & ~0x3full;
    unsigned offset = va & 0x3f;
    uint32_t range = buffer_info->range;
 
-   for (unsigned i = 0; i < descriptors; i++) {
-      if (storage_16bit && i == 0) {
-         dst[0] = A6XX_TEX_CONST_0_TILE_MODE(TILE6_LINEAR) | A6XX_TEX_CONST_0_FMT(FMT6_16_UINT);
-         dst[1] = DIV_ROUND_UP(range, 2);
-         dst[2] =
-            A6XX_TEX_CONST_2_STRUCTSIZETEXELS(1) |
-            A6XX_TEX_CONST_2_STARTOFFSETTEXELS(offset / 2) |
-            A6XX_TEX_CONST_2_TYPE(A6XX_TEX_BUFFER);
-      } else {
-         dst[0] = A6XX_TEX_CONST_0_TILE_MODE(TILE6_LINEAR) | A6XX_TEX_CONST_0_FMT(FMT6_32_UINT);
-         dst[1] = DIV_ROUND_UP(range, 4);
-         dst[2] =
-            A6XX_TEX_CONST_2_STRUCTSIZETEXELS(1) |
-            A6XX_TEX_CONST_2_STARTOFFSETTEXELS(offset / 4) |
-            A6XX_TEX_CONST_2_TYPE(A6XX_TEX_BUFFER);
-      }
-      dst[3] = 0;
+   if (info->a6xx.storage_16bit) {
+      dst[0] = A6XX_TEX_CONST_0_TILE_MODE(TILE6_LINEAR) | A6XX_TEX_CONST_0_FMT(FMT6_16_UINT);
+      dst[1] = DIV_ROUND_UP(range, 2);
+      dst[2] =
+         A6XX_TEX_CONST_2_STRUCTSIZETEXELS(1) |
+         A6XX_TEX_CONST_2_STARTOFFSETTEXELS(offset / 2) |
+         A6XX_TEX_CONST_2_TYPE(A6XX_TEX_BUFFER);
       dst[4] = A6XX_TEX_CONST_4_BASE_LO(base_va);
       dst[5] = A6XX_TEX_CONST_5_BASE_HI(base_va >> 32);
-      for (int j = 6; j < A6XX_TEX_CONST_DWORDS; j++)
-         dst[j] = 0;
       dst += A6XX_TEX_CONST_DWORDS;
+   }
+
+   /* Set up the 32-bit descriptor when 16-bit storage isn't supported or the
+    * 16-bit descriptor cannot be used for 32-bit loads through isam.v.
+    */
+   if (!info->a6xx.storage_16bit || !info->a6xx.has_isam_v) {
+      dst[0] = A6XX_TEX_CONST_0_TILE_MODE(TILE6_LINEAR) | A6XX_TEX_CONST_0_FMT(FMT6_32_UINT);
+      dst[1] = DIV_ROUND_UP(range, 4);
+      dst[2] =
+         A6XX_TEX_CONST_2_STRUCTSIZETEXELS(1) |
+         A6XX_TEX_CONST_2_STARTOFFSETTEXELS(offset / 4) |
+         A6XX_TEX_CONST_2_TYPE(A6XX_TEX_BUFFER);
+      dst[4] = A6XX_TEX_CONST_4_BASE_LO(base_va);
+      dst[5] = A6XX_TEX_CONST_5_BASE_HI(base_va >> 32);
    }
 }
 

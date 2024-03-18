@@ -87,9 +87,7 @@ struct fd_dev_info {
       /* Does the hw support GL_QCOM_shading_rate? */
       bool has_shading_rate;
 
-      /* newer a6xx allows using 16-bit descriptor for both 16-bit
-       * and 32-bit access
-       */
+      /* Whether a 16-bit descriptor can be used */
       bool storage_16bit;
 
       /* The latest known a630_sqe.fw fails to wait for WFI before

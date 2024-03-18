@@ -25,13 +25,19 @@
 #include "nir_builder.h"
 
 static bool
+check_location(int location)
+{
+   return location == VARYING_SLOT_COL0 ||
+          location == VARYING_SLOT_COL1 ||
+          location == VARYING_SLOT_BFC0 ||
+          location == VARYING_SLOT_BFC1;
+}
+
+static bool
 lower_input(nir_shader *shader, nir_variable *var)
 {
    if (var->data.interpolation == INTERP_MODE_NONE &&
-       (var->data.location == VARYING_SLOT_COL0 ||
-        var->data.location == VARYING_SLOT_COL1 ||
-        var->data.location == VARYING_SLOT_BFC0 ||
-        var->data.location == VARYING_SLOT_BFC1))
+       check_location(var->data.location))
       var->data.interpolation = INTERP_MODE_FLAT;
    return true;
 }

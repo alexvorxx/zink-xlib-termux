@@ -1085,6 +1085,57 @@ nak_nir_lower_fs_outputs(nir_shader *nir)
 }
 
 static bool
+nak_nir_remove_barrier_intrin(nir_builder *b, nir_intrinsic_instr *barrier,
+                              UNUSED void *_data)
+{
+   if (barrier->intrinsic != nir_intrinsic_barrier)
+      return false;
+
+   mesa_scope exec_scope = nir_intrinsic_execution_scope(barrier);
+   assert(exec_scope <= SCOPE_WORKGROUP &&
+          "Control barrier with scope > WORKGROUP");
+
+   if (exec_scope == SCOPE_WORKGROUP &&
+       nak_nir_workgroup_has_one_subgroup(b->shader))
+      exec_scope = SCOPE_SUBGROUP;
+
+   /* Because we're guaranteeing maximal convergence via warp barriers,
+    * subgroup barriers do nothing.
+    */
+   if (exec_scope <= SCOPE_SUBGROUP)
+      exec_scope = SCOPE_NONE;
+
+   const nir_variable_mode mem_modes = nir_intrinsic_memory_modes(barrier);
+   if (exec_scope == SCOPE_NONE && mem_modes == 0) {
+      nir_instr_remove(&barrier->instr);
+      return true;
+   }
+
+   /* In this case, we're leaving the barrier there */
+   b->shader->info.uses_control_barrier = true;
+
+   bool progress = false;
+   if (exec_scope != nir_intrinsic_execution_scope(barrier)) {
+      nir_intrinsic_set_execution_scope(barrier, exec_scope);
+      progress = true;
+   }
+
+   return progress;
+}
+
+static bool
+nak_nir_remove_barriers(nir_shader *nir)
+{
+   /* We'll set this back to true if we leave any barriers in place */
+   nir->info.uses_control_barrier = false;
+
+   return nir_shader_intrinsics_pass(nir, nak_nir_remove_barrier_intrin,
+                                     nir_metadata_block_index |
+                                     nir_metadata_dominance,
+                                     NULL);
+}
+
+static bool
 nak_mem_vectorize_cb(unsigned align_mul, unsigned align_offset,
                      unsigned bit_size, unsigned num_components,
                      nir_intrinsic_instr *low, nir_intrinsic_instr *high,
@@ -1304,6 +1355,7 @@ nak_postprocess_nir(nir_shader *nir,
 
    nir_divergence_analysis(nir);
 
+   OPT(nir, nak_nir_remove_barriers);
    OPT(nir, nak_nir_add_barriers, nak);
 
    /* Re-index blocks and compact SSA defs because we'll use them to index

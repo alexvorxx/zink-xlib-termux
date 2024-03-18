@@ -607,6 +607,13 @@ typedef struct nir_variable {
       unsigned explicit_location : 1;
 
       /**
+       * Highest element accessed with a constant array index
+       *
+       * Not used for non-array variables. -1 is never accessed.
+       */
+      int max_array_access;
+
+      /**
        * Is this varying used by transform feedback?
        *
        * This is used by the linker to decide if it's safe to pack the varying.

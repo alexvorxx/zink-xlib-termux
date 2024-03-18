@@ -443,6 +443,7 @@ nir_visitor::visit(ir_variable *ir)
    var->data.from_named_ifc_block = ir->data.from_named_ifc_block;
    var->data.compact = false;
    var->data.used = ir->data.used;
+   var->data.max_array_access = ir->data.max_array_access;
 
    switch(ir->data.mode) {
    case ir_var_auto:

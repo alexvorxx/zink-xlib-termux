@@ -1300,8 +1300,9 @@ override_cmdstream(struct device *dev, struct cmdstream *cs,
          uint64_t *p = (uint64_t *)ps.buf;
          wrbuf->iova = p[0];
          wrbuf->size = p[1];
-         wrbuf->name = calloc(1, p[2]);
-         memcpy(wrbuf->name, (char *)ps.buf + 3 * sizeof(uint64_t), p[2]);
+         int name_len = ps.sz - (2 * sizeof(uint64_t));
+         wrbuf->name = calloc(sizeof(char), name_len);
+         memcpy(wrbuf->name, (char*)(p + 2), name_len); // includes null terminator
          break;
       }
       default:

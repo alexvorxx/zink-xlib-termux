@@ -606,6 +606,9 @@ typedef struct nir_variable {
        */
       unsigned explicit_location : 1;
 
+      /* Was the array implicitly sized during linking */
+      unsigned implicit_sized_array : 1;
+
       /**
        * Highest element accessed with a constant array index
        *

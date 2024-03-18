@@ -2031,12 +2031,12 @@ nir_goto(nir_builder *build, struct nir_block *target)
 }
 
 static inline void
-nir_goto_if(nir_builder *build, struct nir_block *target, nir_src cond,
+nir_goto_if(nir_builder *build, struct nir_block *target, nir_def *cond,
             struct nir_block *else_target)
 {
    assert(!build->impl->structured);
    nir_jump_instr *jump = nir_jump_instr_create(build->shader, nir_jump_goto_if);
-   jump->condition = cond;
+   jump->condition = nir_src_for_ssa(cond);
    jump->target = target;
    jump->else_target = else_target;
    nir_builder_instr_insert(build, &jump->instr);

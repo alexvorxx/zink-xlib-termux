@@ -146,7 +146,7 @@ nir_lower_reg_intrinsics_to_ssa_impl(nir_function_impl *impl)
    state.values = rzalloc_array(dead_ctx, struct nir_phi_builder_value *,
                                 impl->ssa_alloc);
 
-   nir_foreach_block(block, impl) {
+   nir_foreach_block_unstructured(block, impl) {
       nir_foreach_instr_safe(instr, block) {
          if (instr->type != nir_instr_type_intrinsic)
             continue;

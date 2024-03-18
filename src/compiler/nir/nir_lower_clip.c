@@ -75,6 +75,8 @@ create_clipdist_vars(nir_shader *shader, nir_variable **io_vars,
                      bool use_clipdist_array)
 {
    shader->info.clip_distance_array_size = util_last_bit(ucp_enables);
+   if (shader->info.io_lowered)
+      return;
    if (use_clipdist_array) {
       io_vars[0] =
          create_clipdist_var(shader, output,
@@ -93,19 +95,29 @@ create_clipdist_vars(nir_shader *shader, nir_variable **io_vars,
 }
 
 static void
-store_clipdist_output(nir_builder *b, nir_variable *out, int location_offset,
-                      nir_def **val)
+store_clipdist_output(nir_builder *b, nir_variable *out, int location, int location_offset,
+                      nir_def **val, bool use_clipdist_array)
 {
+   unsigned num_slots = b->shader->info.clip_distance_array_size;
    nir_io_semantics semantics = {
-      .location = out->data.location,
-      .num_slots = 1,
+      .location = location,
+      .num_slots = num_slots,
    };
 
-   nir_store_output(b, nir_vec4(b, val[0], val[1], val[2], val[3]), nir_imm_int(b, location_offset),
-                    .base = out->data.driver_location,
-                    .src_type = nir_type_float32,
-                    .write_mask = 0xf,
-                    .io_semantics = semantics);
+   if (location == VARYING_SLOT_CLIP_DIST1 || location_offset)
+      num_slots -= 4;
+   else
+      num_slots = MIN2(num_slots, 4);
+   for (unsigned i = 0; i < num_slots; i++) {
+      nir_store_output(b,
+                       val[i] ? val[i] : nir_imm_zero(b, 1, 32),
+                       nir_imm_int(b, location_offset),
+                       .src_type = nir_type_float32,
+                       .write_mask = 0x1,
+                       .component = i,
+                       .io_semantics = semantics,
+                       .base = out ? out->data.driver_location : 0);
+   }
 }
 
 static void
@@ -142,15 +154,17 @@ load_clipdist_input(nir_builder *b, nir_variable *in, int location_offset,
 }
 
 static nir_def *
-find_output_in_block(nir_block *block, unsigned drvloc)
+find_output_in_block(nir_block *block, unsigned location)
 {
    nir_foreach_instr(instr, block) {
 
       if (instr->type == nir_instr_type_intrinsic) {
          nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-         if ((intr->intrinsic == nir_intrinsic_store_output) &&
-             nir_intrinsic_base(intr) == drvloc) {
-            assert(nir_src_is_const(intr->src[1]));
+         if ((intr->intrinsic == nir_intrinsic_store_output ||
+              intr->intrinsic == nir_intrinsic_store_per_vertex_output ||
+              intr->intrinsic == nir_intrinsic_store_per_primitive_output) &&
+             nir_intrinsic_io_semantics(intr).location == location) {
+            assert(nir_src_is_const(*nir_get_io_offset_src(intr)));
             return intr->src[0].ssa;
          }
       }
@@ -164,14 +178,15 @@ find_output_in_block(nir_block *block, unsigned drvloc)
  * so if needed nir_lower_outputs_to_temporaries()
  */
 static nir_def *
-find_output(nir_shader *shader, unsigned drvloc)
+find_output(nir_shader *shader, unsigned location)
 {
    nir_def *def = NULL;
    nir_foreach_function_impl(impl, shader) {
       nir_foreach_block_reverse(block, impl) {
-         nir_def *new_def = find_output_in_block(block, drvloc);
+         nir_def *new_def = find_output_in_block(block, location);
          assert(!(new_def && def));
-         def = new_def;
+         if (!def)
+            def = new_def;
 #if !MESA_DEBUG
          /* for debug builds, scan entire shader to assert
           * if output is written multiple times.  For release
@@ -192,6 +207,13 @@ find_clipvertex_and_position_outputs(nir_shader *shader,
                                      nir_variable **clipvertex,
                                      nir_variable **position)
 {
+   if (shader->info.io_lowered) {
+      if (shader->info.outputs_written & (VARYING_BIT_CLIP_DIST0 | VARYING_BIT_CLIP_DIST1))
+         return false;
+      if (shader->info.outputs_written & (VARYING_BIT_POS | VARYING_BIT_CLIP_VERTEX))
+         return true;
+      return false;
+   }
    nir_foreach_shader_out_variable(var, shader) {
       switch (var->data.location) {
       case VARYING_SLOT_POS:
@@ -238,7 +260,7 @@ lower_clip_outputs(nir_builder *b, nir_variable *position,
                    bool use_clipdist_array,
                    const gl_state_index16 clipplane_state_tokens[][STATE_LENGTH])
 {
-   nir_def *clipdist[MAX_CLIP_PLANES];
+   nir_def *clipdist[MAX_CLIP_PLANES] = {NULL};
    nir_def *cv;
 
    if (use_vars) {
@@ -249,11 +271,10 @@ lower_clip_outputs(nir_builder *b, nir_variable *position,
          nir_fixup_deref_modes(b->shader);
       }
    } else {
-      if (clipvertex)
-         cv = find_output(b->shader, clipvertex->data.driver_location);
+      if (b->shader->info.outputs_written & VARYING_BIT_CLIP_VERTEX)
+         cv = find_output(b->shader, VARYING_SLOT_CLIP_VERTEX);
       else {
-         assert(position);
-         cv = find_output(b->shader, position->data.driver_location);
+         cv = find_output(b->shader, VARYING_SLOT_POS);
       }
    }
 
@@ -283,15 +304,16 @@ lower_clip_outputs(nir_builder *b, nir_variable *position,
          if (ucp_enables & 0xf0)
             nir_store_var(b, out[1], nir_vec(b, &clipdist[4], 4), 0xf);
       } else if (use_clipdist_array) {
-         if (ucp_enables & 0x0f)
-            store_clipdist_output(b, out[0], 0, &clipdist[0]);
+         /* always emit first half of array */
+
+         store_clipdist_output(b, out[0], VARYING_SLOT_CLIP_DIST0, 0, &clipdist[0], use_clipdist_array);
          if (ucp_enables & 0xf0)
-            store_clipdist_output(b, out[0], 1, &clipdist[4]);
+            store_clipdist_output(b, out[0], VARYING_SLOT_CLIP_DIST0, 1, &clipdist[4], use_clipdist_array);
       } else {
          if (ucp_enables & 0x0f)
-            store_clipdist_output(b, out[0], 0, &clipdist[0]);
+            store_clipdist_output(b, out[0], VARYING_SLOT_CLIP_DIST0, 0, &clipdist[0], use_clipdist_array);
          if (ucp_enables & 0xf0)
-            store_clipdist_output(b, out[1], 0, &clipdist[4]);
+            store_clipdist_output(b, out[1], VARYING_SLOT_CLIP_DIST1, 0, &clipdist[4], use_clipdist_array);
       }
    }
 }
@@ -322,6 +344,9 @@ nir_lower_clip_vs(nir_shader *shader, unsigned ucp_enables, bool use_vars,
 
    if (!ucp_enables)
       return false;
+
+   if (shader->info.io_lowered)
+      use_vars = false;
 
    b = nir_builder_create(impl);
 
@@ -368,7 +393,7 @@ lower_clip_in_gs_block(nir_builder *b, nir_block *block, nir_variable *position,
       case nir_intrinsic_emit_vertex_with_counter:
       case nir_intrinsic_emit_vertex:
          b->cursor = nir_before_instr(instr);
-         lower_clip_outputs(b, position, clipvertex, out, ucp_enables, true,
+         lower_clip_outputs(b, position, clipvertex, out, ucp_enables, !b->shader->info.io_lowered,
                             use_clipdist_array, clipplane_state_tokens);
          break;
       default:
@@ -487,6 +512,9 @@ nir_lower_clip_fs(nir_shader *shader, unsigned ucp_enables,
 
    if (!ucp_enables)
       return false;
+
+   /* this is probably broken until https://gitlab.freedesktop.org/mesa/mesa/-/issues/10826 is fixed */
+   assert(!shader->info.io_lowered);
 
    /* No hard reason to require use_clipdist_arr to work with
     * frag-shader-based gl_ClipDistance, except that the only user that does

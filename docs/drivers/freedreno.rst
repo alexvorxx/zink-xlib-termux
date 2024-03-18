@@ -454,7 +454,7 @@ More examples:
 
 .. code-block:: sh
 
-  ./replay --override=0 --generator=./generate_rd test_replay.rd
+  ./replay --override=0 test_replay.rd
 
 Editing Command Stream (a6xx+)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -484,7 +484,7 @@ The workflow would look like this:
 
 .. code-block:: sh
 
-  ./replay --override=%cmd_stream_№% --generator=generate_rd
+  ./replay --override=%cmd_stream_№%
 
 6. Repeat 3-5.
 

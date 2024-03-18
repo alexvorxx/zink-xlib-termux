@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <libgen.h>
 #if FD_REPLAY_KGSL
 #include "../vulkan/msm_kgsl.h"
 #elif FD_REPLAY_MSM
@@ -75,7 +76,7 @@ static int handle_file(const char *filename, uint32_t first_submit,
                        uint64_t base_addr, const char *cmdstreamgen);
 
 static void
-print_usage(const char *name)
+print_usage(const char *name, const char *default_csgen)
 {
    /* clang-format off */
    fprintf(stderr, "Usage:\n\n"
@@ -83,12 +84,12 @@ print_usage(const char *name)
            "Options:\n"
            "\t-e, --exe=NAME         - only use cmdstream from named process\n"
            "\t-o  --override=submit  - № of the submit to override\n"
-           "\t-g  --generator=path   - executable which generate cmdstream for override\n"
+           "\t-g  --generator=path   - executable which generate cmdstream for override (default: %s)\n"
            "\t-f  --first=submit     - first submit № to replay\n"
            "\t-l  --last=submit      - last submit № to replay\n"
            "\t-a  --address=address  - base iova address on WSL\n"
            "\t-h, --help             - show this message\n"
-           , name);
+           , name, default_csgen);
    /* clang-format on */
    exit(2);
 }
@@ -115,7 +116,11 @@ main(int argc, char **argv)
    uint32_t first_submit = 0;
    uint32_t last_submit = -1;
    uint64_t base_addr = 0;
-   const char *cmdstreamgen = NULL;
+
+   char *default_csgen = malloc(PATH_MAX);
+   snprintf(default_csgen, PATH_MAX, "%s/generate_rd", dirname(argv[0]));
+
+   const char *csgen = default_csgen;
 
    while ((c = getopt_long(argc, argv, "e:o:g:f:l:a:h", opts, NULL)) != -1) {
       switch (c) {
@@ -129,7 +134,7 @@ main(int argc, char **argv)
          submit_to_override = strtoul(optarg, NULL, 0);
          break;
       case 'g':
-         cmdstreamgen = optarg;
+         csgen = optarg;
          break;
       case 'f':
          first_submit = strtoul(optarg, NULL, 0);
@@ -142,13 +147,13 @@ main(int argc, char **argv)
          break;
       case 'h':
       default:
-         print_usage(argv[0]);
+         print_usage(argv[0], default_csgen);
       }
    }
 
    while (optind < argc) {
       ret = handle_file(argv[optind], first_submit, last_submit,
-                        submit_to_override, base_addr, cmdstreamgen);
+                        submit_to_override, base_addr, csgen);
       if (ret) {
          fprintf(stderr, "error reading: %s\n", argv[optind]);
          fprintf(stderr, "continuing..\n");
@@ -157,7 +162,7 @@ main(int argc, char **argv)
    }
 
    if (ret)
-      print_usage(argv[0]);
+      print_usage(argv[0], default_csgen);
 
    return ret;
 }

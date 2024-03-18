@@ -620,7 +620,9 @@ device_submit_cmdstreams(struct device *dev)
 static void
 buffer_mem_alloc(struct device *dev, struct buffer *buf)
 {
-   util_vma_heap_alloc_addr(&dev->vma, buf->iova, buf->size);
+   bool success = util_vma_heap_alloc_addr(&dev->vma, buf->iova, buf->size);
+   if (!success)
+      errx(1, "Failed to allocate buffer");
 
    if (!dev->has_set_iova) {
       uint64_t offset = buf->iova - dev->va_iova;
@@ -832,7 +834,9 @@ device_submit_cmdstreams(struct device *dev)
 static void
 buffer_mem_alloc(struct device *dev, struct buffer *buf)
 {
-   util_vma_heap_alloc_addr(&dev->vma, buf->iova, buf->size);
+   bool success = util_vma_heap_alloc_addr(&dev->vma, buf->iova, buf->size);
+   if (!success)
+      errx(1, "Failed to allocate buffer");
 
    buf->map = ((uint8_t*)dev->va_map) + (buf->iova - dev->va_iova);
 }
@@ -1196,7 +1200,9 @@ device_submit_cmdstreams(struct device *dev)
 static void
 buffer_mem_alloc(struct device *dev, struct buffer *buf)
 {
-   util_vma_heap_alloc_addr(&dev->vma, buf->iova, buf->size);
+   bool success = util_vma_heap_alloc_addr(&dev->vma, buf->iova, buf->size);
+   if (!success)
+      errx(1, "Failed to allocate buffer");
 
    buf->map = ((uint8_t*)dev->va_map) + (buf->iova - dev->va_iova);
 }

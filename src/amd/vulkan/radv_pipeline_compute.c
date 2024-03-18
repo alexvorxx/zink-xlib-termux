@@ -210,6 +210,7 @@ radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline, struct rad
    VkPipelineCreationFeedback pipeline_feedback = {
       .flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT,
    };
+   bool skip_shaders_cache = false;
    VkResult result = VK_SUCCESS;
 
    int64_t pipeline_start = os_time_get_nano();
@@ -220,8 +221,15 @@ radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline, struct rad
 
    pipeline->base.pipeline_hash = *(uint64_t *)hash;
 
+   /* Skip the shaders cache when any of the below are true:
+    * - shaders are captured because it's for debugging purposes
+    */
+   if (keep_executable_info) {
+      skip_shaders_cache = true;
+   }
+
    bool found_in_application_cache = true;
-   if (!keep_executable_info &&
+   if (!skip_shaders_cache &&
        radv_pipeline_cache_search(device, cache, &pipeline->base, hash, &found_in_application_cache)) {
       if (found_in_application_cache)
          pipeline_feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
@@ -239,7 +247,7 @@ radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline, struct rad
 
    cs_stage.feedback.duration += os_time_get_nano() - stage_start;
 
-   if (!keep_executable_info) {
+   if (!skip_shaders_cache) {
       radv_pipeline_cache_insert(device, cache, &pipeline->base, hash);
    }
 

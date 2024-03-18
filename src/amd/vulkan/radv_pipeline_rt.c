@@ -842,6 +842,7 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    VK_FROM_HANDLE(radv_device, device, _device);
    VK_FROM_HANDLE(vk_pipeline_cache, cache, _cache);
    VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
+   bool skip_shaders_cache = false;
    VkResult result;
    const VkPipelineCreationFeedbackCreateInfo *creation_feedback =
       vk_find_struct_const(pCreateInfo->pNext, PIPELINE_CREATION_FEEDBACK_CREATE_INFO);
@@ -892,8 +893,16 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    radv_hash_rt_shaders(device, pipeline->sha1, stages, pCreateInfo, pipeline->groups);
    pipeline->base.base.pipeline_hash = *(uint64_t *)pipeline->sha1;
 
+   /* Skip the shaders cache when any of the below are true:
+    * - shaders are captured because it's for debugging purposes
+    * - ray history is enabled
+    */
+   if (keep_executable_info || emit_ray_history) {
+      skip_shaders_cache = true;
+   }
+
    bool cache_hit = false;
-   if (!keep_executable_info && !emit_ray_history)
+   if (!skip_shaders_cache)
       cache_hit = radv_ray_tracing_pipeline_cache_search(device, cache, pipeline, pCreateInfo);
 
    if (!cache_hit) {
@@ -913,7 +922,7 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
 
    radv_rmv_log_rt_pipeline_create(device, pipeline);
 
-   if (!cache_hit && !emit_ray_history)
+   if (!cache_hit && !skip_shaders_cache)
       radv_ray_tracing_pipeline_cache_insert(device, cache, pipeline, pCreateInfo->stageCount, pipeline->sha1);
 
    /* write shader VAs into group handles */

@@ -611,6 +611,8 @@ device_submit_cmdstreams(struct device *dev)
    device_print_cp_log(dev);
 
    device_dump_wrbuf(dev);
+   u_vector_finish(&dev->wrbufs);
+   u_vector_init(&dev->wrbufs, 8, sizeof(struct wrbuf));
 
    device_free_buffers(dev);
 }

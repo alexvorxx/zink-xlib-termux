@@ -2190,52 +2190,6 @@ link_intrastage_shaders(void *mem_ctx,
    return linked;
 }
 
-/**
- * Resize tessellation evaluation per-vertex inputs to the size of
- * tessellation control per-vertex outputs.
- */
-static void
-resize_tes_inputs(const struct gl_constants *consts,
-                  struct gl_shader_program *prog)
-{
-   if (prog->_LinkedShaders[MESA_SHADER_TESS_EVAL] == NULL)
-      return;
-
-   gl_linked_shader *const tcs = prog->_LinkedShaders[MESA_SHADER_TESS_CTRL];
-   gl_linked_shader *const tes = prog->_LinkedShaders[MESA_SHADER_TESS_EVAL];
-
-   /* If no control shader is present, then the TES inputs are statically
-    * sized to MaxPatchVertices; the actual size of the arrays won't be
-    * known until draw time.
-    */
-   const int num_vertices = tcs
-      ? tcs->Program->info.tess.tcs_vertices_out
-      : consts->MaxPatchVertices;
-
-   array_resize_visitor input_resize_visitor(num_vertices, prog,
-                                             MESA_SHADER_TESS_EVAL);
-   foreach_in_list(ir_instruction, ir, tes->ir) {
-      ir->accept(&input_resize_visitor);
-   }
-
-   if (tcs) {
-      /* Convert the gl_PatchVerticesIn system value into a constant, since
-       * the value is known at this point.
-       */
-      foreach_in_list(ir_instruction, ir, tes->ir) {
-         ir_variable *var = ir->as_variable();
-         if (var && var->data.mode == ir_var_system_value &&
-             var->data.location == SYSTEM_VALUE_VERTICES_IN) {
-            void *mem_ctx = ralloc_parent(var);
-            var->data.location = 0;
-            var->data.explicit_location = false;
-            var->data.mode = ir_var_auto;
-            var->constant_value = new(mem_ctx) ir_constant(num_vertices);
-         }
-      }
-   }
-}
-
 
 /**
  * Initializes explicit location slots to INACTIVE_UNIFORM_EXPLICIT_LOCATION

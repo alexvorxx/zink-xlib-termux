@@ -80,7 +80,7 @@ print_usage(const char *name, const char *default_csgen)
 {
    /* clang-format off */
    fprintf(stderr, "Usage:\n\n"
-           "\t%s [OPTSIONS]... FILE...\n\n"
+           "\t%s [OPTIONS]... FILE...\n\n"
            "Options:\n"
            "\t-e, --exe=NAME         - only use cmdstream from named process\n"
            "\t-o  --override=submit  - № of the submit to override\n"

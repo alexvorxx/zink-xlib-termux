@@ -2795,6 +2795,7 @@ tu_bind_descriptor_sets(struct tu_cmd_buffer *cmd,
                      case FMT6_32_UINT:
                         offset_shift = 2;
                         break;
+                     case FMT6_8_UINT:
                      default:
                         offset_shift = 0;
                         break;

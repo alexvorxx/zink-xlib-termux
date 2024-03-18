@@ -142,6 +142,7 @@ get_device_extensions(const struct tu_physical_device *device,
                       struct vk_device_extension_table *ext)
 {
    *ext = (struct vk_device_extension_table) { .table = {
+      .KHR_8bit_storage = device->info->a7xx.storage_8bit,
       .KHR_16bit_storage = device->info->a6xx.storage_16bit,
       .KHR_bind_memory2 = true,
       .KHR_buffer_device_address = true,
@@ -379,7 +380,7 @@ tu_get_features(struct tu_physical_device *pdevice,
    /* Vulkan 1.2 */
    features->samplerMirrorClampToEdge            = true;
    features->drawIndirectCount                   = true;
-   features->storageBuffer8BitAccess             = false;
+   features->storageBuffer8BitAccess             = pdevice->info->a7xx.storage_8bit;
    features->uniformAndStorageBuffer8BitAccess   = false;
    features->storagePushConstant8                = false;
    features->shaderBufferInt64Atomics            = false;
@@ -1096,7 +1097,8 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->uniformBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
    props->robustUniformBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
    props->storageBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4 * (1 +
-      COND(pdevice->info->a6xx.storage_16bit && !pdevice->info->a6xx.has_isam_v, 1));
+      COND(pdevice->info->a6xx.storage_16bit && !pdevice->info->a6xx.has_isam_v, 1) +
+      COND(pdevice->info->a7xx.storage_8bit, 1));
    props->robustStorageBufferDescriptorSize =
       props->storageBufferDescriptorSize;
    props->inputAttachmentDescriptorSize = TU_DEBUG(DYNAMIC) ?
@@ -2301,6 +2303,7 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
          .bindless_fb_read_descriptor = -1,
          .bindless_fb_read_slot = -1,
          .storage_16bit = physical_device->info->a6xx.storage_16bit,
+         .storage_8bit = physical_device->info->a7xx.storage_8bit,
          .shared_push_consts = !TU_DEBUG(PUSH_CONSTS_PER_STAGE),
       };
       device->compiler = ir3_compiler_create(

@@ -273,6 +273,50 @@ create_cov(struct ir3_context *ctx, struct ir3_instruction *src,
    if (src_type == dst_type)
       return src;
 
+   /* Zero-extension of 8-bit values doesn't work with `cov`, so simple masking
+    * is used to achieve the result.
+    */
+   if (src_type == TYPE_U8 && full_type(dst_type) == TYPE_U32) {
+      struct ir3_instruction *mask = create_immed_typed(ctx->block, 0xff, TYPE_U8);
+      struct ir3_instruction *cov = ir3_AND_B(ctx->block, src, 0, mask, 0);
+      cov->dsts[0]->flags |= type_flags(dst_type);
+      return cov;
+   }
+
+   /* Conversion of 8-bit values into floating-point values doesn't work with
+    * a simple `cov`, instead the 8-bit values first have to be converted into
+    * corresponding 16-bit values and converted from there.
+    */
+   if (src_type == TYPE_U8 && full_type(dst_type) == TYPE_F32) {
+      assert(op == nir_op_u2f16 || op == nir_op_i2f16 ||
+             op == nir_op_u2f32 || op == nir_op_i2f32);
+
+      struct ir3_instruction *cov;
+      if (op == nir_op_u2f16 || op == nir_op_u2f32) {
+         struct ir3_instruction *mask = create_immed_typed(ctx->block, 0xff, TYPE_U8);
+         cov = ir3_AND_B(ctx->block, src, 0, mask, 0);
+         cov->dsts[0]->flags |= IR3_REG_HALF;
+         cov = ir3_COV(ctx->block, cov, TYPE_U16, dst_type);
+      } else {
+         cov = ir3_COV(ctx->block, src, TYPE_U8, TYPE_S16);
+         cov = ir3_COV(ctx->block, cov, TYPE_S16, dst_type);
+      }
+      return cov;
+   }
+
+   /* Conversion of floating-point values to 8-bit values also doesn't work
+    * through a single `cov`, instead the conversion has to go through the
+    * corresponding 16-bit type that's then truncated.
+    */
+   if (full_type(src_type) == TYPE_F32 && dst_type == TYPE_U8) {
+      assert(op == nir_op_f2u8 || op == nir_op_f2i8);
+
+      type_t intermediate_type = op == nir_op_f2u8 ? TYPE_U16 : TYPE_S16;
+      struct ir3_instruction *cov = ir3_COV(ctx->block, src, src_type, intermediate_type);
+      cov = ir3_COV(ctx->block, cov, intermediate_type, TYPE_U8);
+      return cov;
+   }
+
    struct ir3_instruction *cov = ir3_COV(ctx->block, src, src_type, dst_type);
 
    if (op == nir_op_f2f16_rtne) {
@@ -1611,9 +1655,11 @@ emit_intrinsic_load_ssbo(struct ir3_context *ctx,
 {
    /* Note: we can only use isam for vectorized loads/stores if isam.v is
     * available.
+    * Note: isam also can't handle 8-bit loads.
     */
    if (!(nir_intrinsic_access(intr) & ACCESS_CAN_REORDER) ||
        (intr->def.num_components > 1 && !ctx->compiler->has_isam_v) ||
+       (ctx->compiler->options.storage_8bit && intr->def.bit_size == 8) ||
        !ctx->compiler->has_isam_ssbo) {
       ctx->funcs->emit_intrinsic_load_ssbo(ctx, intr, dst);
       return;

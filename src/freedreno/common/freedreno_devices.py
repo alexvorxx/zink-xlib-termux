@@ -856,6 +856,7 @@ a7xx_750 = A7XXProps(
         # now.
         #supports_ibo_ubwc = True,
         no_gs_hw_binning_quirk = True,
+        storage_8bit = True,
     )
 
 a730_magic_regs = dict(

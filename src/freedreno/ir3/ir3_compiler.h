@@ -67,6 +67,8 @@ struct ir3_compiler_options {
 
    /* True if 16-bit descriptors are available. */
    bool storage_16bit;
+   /* True if 8-bit descriptors are available. */
+   bool storage_8bit;
 
   /* If base_vertex should be lowered in nir */
   bool lower_base_vertex;

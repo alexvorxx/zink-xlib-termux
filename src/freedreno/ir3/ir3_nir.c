@@ -100,6 +100,13 @@ ir3_nir_should_scalarize_mem(const nir_instr *instr, const void *data)
       return true;
    }
 
+   if ((intrin->intrinsic == nir_intrinsic_load_ssbo &&
+        intrin->def.bit_size == 8) ||
+       (intrin->intrinsic == nir_intrinsic_store_ssbo &&
+        intrin->src[0].ssa->bit_size == 8)) {
+      return true;
+   }
+
    return false;
 }
 

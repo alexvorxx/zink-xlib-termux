@@ -187,6 +187,11 @@ lower_offset_for_ssbo(nir_intrinsic_instr *intrinsic, nir_builder *b,
        (!has_dest && intrinsic->src[0].ssa->bit_size == 16))
       shift = 1;
 
+   /* for 8-bit ssbo access, offset is in 8-bit words instead of dwords */
+   if ((has_dest && intrinsic->def.bit_size == 8) ||
+       (!has_dest && intrinsic->src[0].ssa->bit_size == 8))
+      shift = 0;
+
    /* Here we create a new intrinsic and copy over all contents from the old
     * one. */
 
@@ -326,7 +331,8 @@ ir3_nir_max_imm_offset(nir_intrinsic_instr *intrin, const void *data)
 
    switch (intrin->intrinsic) {
    case nir_intrinsic_load_ssbo_ir3:
-      if ((nir_intrinsic_access(intrin) & ACCESS_CAN_REORDER))
+      if ((nir_intrinsic_access(intrin) & ACCESS_CAN_REORDER) &&
+          !(compiler->options.storage_8bit && intrin->def.bit_size == 8))
          return 255; /* isam.v */
       return 127;    /* ldib.b */
    case nir_intrinsic_store_ssbo_ir3:

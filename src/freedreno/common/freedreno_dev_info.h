@@ -271,6 +271,8 @@ struct fd_dev_info {
        * best thing we could do is a toggle.
        */
       bool enable_tp_ubwc_flag_hint;
+
+      bool storage_8bit;
    } a7xx;
 };
 

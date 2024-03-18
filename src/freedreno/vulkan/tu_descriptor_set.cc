@@ -69,7 +69,8 @@ descriptor_size(struct tu_device *dev,
        */
       return A6XX_TEX_CONST_DWORDS * 4 * (1 +
          COND(dev->physical_device->info->a6xx.storage_16bit &&
-              !dev->physical_device->info->a6xx.has_isam_v, 1));
+              !dev->physical_device->info->a6xx.has_isam_v, 1) +
+         COND(dev->physical_device->info->a7xx.storage_8bit, 1));
    case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
       return binding->descriptorCount;
    default:
@@ -1016,9 +1017,17 @@ write_buffer_descriptor_addr(const struct tu_device *device,
     * 16-bit and 32-bit access through isam.v will of course only be functional
     * when 16-bit storage is supported. */
    assert(!info->a6xx.has_isam_v || info->a6xx.storage_16bit);
+   /* Any configuration enabling 8-bit storage support will also provide 16-bit
+    * storage support and 16-bit descriptors capable of 32-bit isam loads. This
+    * indirectly ensures we won't need more than two descriptors for access of
+    * any size.
+    */
+   assert(!info->a7xx.storage_8bit || (info->a6xx.storage_16bit &&
+                                       info->a6xx.has_isam_v));
 
-   unsigned num_descriptors = 1 + COND(info->a6xx.storage_16bit &&
-                                       !info->a6xx.has_isam_v, 1);
+   unsigned num_descriptors = 1 +
+      COND(info->a6xx.storage_16bit && !info->a6xx.has_isam_v, 1) +
+      COND(info->a7xx.storage_8bit, 1);
    memset(dst, 0, num_descriptors * A6XX_TEX_CONST_DWORDS * sizeof(uint32_t));
 
    if (!buffer_info || buffer_info->address == 0)
@@ -1050,6 +1059,18 @@ write_buffer_descriptor_addr(const struct tu_device *device,
       dst[2] =
          A6XX_TEX_CONST_2_STRUCTSIZETEXELS(1) |
          A6XX_TEX_CONST_2_STARTOFFSETTEXELS(offset / 4) |
+         A6XX_TEX_CONST_2_TYPE(A6XX_TEX_BUFFER);
+      dst[4] = A6XX_TEX_CONST_4_BASE_LO(base_va);
+      dst[5] = A6XX_TEX_CONST_5_BASE_HI(base_va >> 32);
+      dst += A6XX_TEX_CONST_DWORDS;
+   }
+
+   if (info->a7xx.storage_8bit) {
+      dst[0] = A6XX_TEX_CONST_0_TILE_MODE(TILE6_LINEAR) | A6XX_TEX_CONST_0_FMT(FMT6_8_UINT);
+      dst[1] = range;
+      dst[2] =
+         A6XX_TEX_CONST_2_STRUCTSIZETEXELS(1) |
+         A6XX_TEX_CONST_2_STARTOFFSETTEXELS(offset) |
          A6XX_TEX_CONST_2_TYPE(A6XX_TEX_BUFFER);
       dst[4] = A6XX_TEX_CONST_4_BASE_LO(base_va);
       dst[5] = A6XX_TEX_CONST_5_BASE_HI(base_va >> 32);

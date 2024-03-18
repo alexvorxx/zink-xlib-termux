@@ -1323,9 +1323,25 @@ override_cmdstream(struct device *dev, struct cmdstream *cs,
          uint64_t *p = (uint64_t *)ps.buf;
          wrbuf->iova = p[0];
          wrbuf->size = p[1];
-         int name_len = ps.sz - (2 * sizeof(uint64_t));
+         bool clear = p[2];
+         int name_len = ps.sz - (3 * sizeof(uint64_t));
          wrbuf->name = calloc(sizeof(char), name_len);
-         memcpy(wrbuf->name, (char*)(p + 2), name_len); // includes null terminator
+         memcpy(wrbuf->name, (char*)(p + 3), name_len); // includes null terminator
+
+         if (clear) {
+            struct buffer *buf = device_get_buffer(dev, wrbuf->iova);
+            assert(buf);
+
+            uint64_t offset = wrbuf->iova - buf->iova;
+            uint64_t end = MIN2(offset + wrbuf->size, buf->size);
+            while (offset < end) {
+               static const uint64_t clear_value = 0xdeadbeefdeadbeef;
+               memcpy(buf->map + offset, &clear_value,
+                      MIN2(sizeof(clear_value), end - offset));
+               offset += sizeof(clear_value);
+            }
+         }
+
          break;
       }
       default:

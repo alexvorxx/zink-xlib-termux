@@ -77,7 +77,7 @@ break_loop_bars(nir_block *block, struct add_barriers_state *state)
          util_dynarray_element(&state->barriers, struct barrier, idx);
       if (bar->node == p) {
          nir_def *bar_val = nir_load_reg(b, bar->bar_reg);
-         bar_val = nir_bar_break_nv(b, bar_val);
+         bar_val = nir_bar_break_nv(b, bar_val, nir_imm_true(b));
          nir_store_reg(b, bar_val, bar->bar_reg);
          idx--;
       }

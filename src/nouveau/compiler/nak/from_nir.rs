@@ -1919,12 +1919,13 @@ impl<'a> ShaderFromNir<'a> {
             nir_intrinsic_bar_break_nv => {
                 let src = self.get_src(&srcs[0]);
                 let bar_in = b.bmov_to_bar(src);
+                let cond = self.get_src(&srcs[1]);
 
                 let bar_out = b.alloc_ssa(RegFile::Bar, 1);
                 b.push_op(OpBreak {
                     bar_out: bar_out.into(),
                     bar_in: bar_in.into(),
-                    cond: SrcRef::True.into(),
+                    cond: cond.into(),
                 });
 
                 self.set_dst(&intrin.def, b.bmov_to_gpr(bar_out.into()));

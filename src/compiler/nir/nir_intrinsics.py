@@ -2006,6 +2006,15 @@ load("helper_arg_lo_agx", [], [], [CAN_ELIMINATE])
 # dst[] = { Helper argument high 32 bits }.
 load("helper_arg_hi_agx", [], [], [CAN_ELIMINATE])
 
+# Export a vector. At the end of the shader part, the source is copied to the
+# indexed GPRs starting at BASE. Exports must not overlap within a shader part.
+# Must only appear in the last block of the shader part.
+intrinsic("export_agx", [0], indices=[BASE])
+
+# Load an exported vector at the beginning of the shader part from GPRs starting
+# at BASE. Must only appear in the first block of the shader part.
+load("exported_agx", [], [BASE], [CAN_ELIMINATE])
+
 # Intel-specific query for loading from the isl_image_param struct passed
 # into the shader as a uniform.  The variable is a deref to the image
 # variable. The const index specifies which of the six parameters to load.

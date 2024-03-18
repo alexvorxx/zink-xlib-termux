@@ -1513,10 +1513,6 @@ impl<'a> ShaderFromNir<'a> {
         self.set_dst(&alu.def, dst);
     }
 
-    fn parse_jump(&mut self, _b: &mut impl SSABuilder, _jump: &nir_jump_instr) {
-        // Nothing to do
-    }
-
     fn parse_tex(&mut self, b: &mut impl SSABuilder, tex: &nir_tex_instr) {
         let dim = match tex.sampler_dim {
             GLSL_SAMPLER_DIM_1D => {
@@ -2990,6 +2986,7 @@ impl<'a> ShaderFromNir<'a> {
             b.push_op(phi);
         }
 
+        let mut goto = None;
         for ni in nb.iter_instr_list() {
             if DEBUG.annotate() {
                 let annotation = self
@@ -3008,7 +3005,12 @@ impl<'a> ShaderFromNir<'a> {
                     self.parse_alu(&mut b, ni.as_alu().unwrap())
                 }
                 nir_instr_type_jump => {
-                    self.parse_jump(&mut b, ni.as_jump().unwrap())
+                    let jump = ni.as_jump().unwrap();
+                    if jump.type_ == nir_jump_goto
+                        || jump.type_ == nir_jump_goto_if
+                    {
+                        goto = Some(jump);
+                    }
                 }
                 nir_instr_type_tex => {
                     self.parse_tex(&mut b, ni.as_tex().unwrap())
@@ -3060,20 +3062,57 @@ impl<'a> ShaderFromNir<'a> {
             }
         }
 
-        if let Some(ni) = nb.following_if() {
-            let cond = self.get_ssa(ni.condition.as_def())[0];
-            self.emit_pred_jump(
-                &mut b,
-                nb,
-                // This is the branch to jump to the else
-                Pred::from(cond).bnot(),
-                ni.first_else_block(),
-                ni.first_then_block(),
-            );
+        if let Some(goto) = goto {
+            let target = goto.target().unwrap();
+            if goto.type_ == nir_jump_goto {
+                self.emit_jump(&mut b, nb, target);
+            } else {
+                let cond = self.get_ssa(goto.condition.as_def())[0];
+                let else_target = goto.else_target().unwrap();
+
+                /* Next block in the NIR CF list */
+                let next_block = nb.cf_node.next().unwrap().as_block().unwrap();
+
+                if else_target as *const _ == next_block as *const _ {
+                    self.emit_pred_jump(
+                        &mut b,
+                        nb,
+                        // This is the branch to jump to the else
+                        cond.into(),
+                        target,
+                        else_target,
+                    );
+                } else if target as *const _ == next_block as *const _ {
+                    self.emit_pred_jump(
+                        &mut b,
+                        nb,
+                        Pred::from(cond).bnot(),
+                        else_target,
+                        target,
+                    );
+                } else {
+                    panic!(
+                        "One of the two goto targets must be the next block in \
+                            the NIR CF list"
+                    );
+                }
+            }
         } else {
-            assert!(succ[1].is_none());
-            let s0 = succ[0].unwrap();
-            self.emit_jump(&mut b, nb, s0);
+            if let Some(ni) = nb.following_if() {
+                let cond = self.get_ssa(ni.condition.as_def())[0];
+                self.emit_pred_jump(
+                    &mut b,
+                    nb,
+                    // This is the branch to jump to the else
+                    Pred::from(cond).bnot(),
+                    ni.first_else_block(),
+                    ni.first_then_block(),
+                );
+            } else {
+                assert!(succ[1].is_none());
+                let s0 = succ[0].unwrap();
+                self.emit_jump(&mut b, nb, s0);
+            }
         }
 
         let mut bb = BasicBlock::new(self.get_block_label(nb));
@@ -3127,7 +3166,8 @@ impl<'a> ShaderFromNir<'a> {
 
     pub fn parse_function_impl(&mut self, nfi: &nir_function_impl) -> Function {
         let mut ssa_alloc = SSAValueAllocator::new();
-        self.end_block_id = nfi.end_block().index;
+        let end_nb = nfi.end_block();
+        self.end_block_id = end_nb.index;
 
         let mut phi_alloc = PhiAllocator::new();
         let mut phi_map = PhiAllocMap::new(&mut phi_alloc);

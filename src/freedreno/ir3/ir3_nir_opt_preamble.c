@@ -378,12 +378,12 @@ ir3_nir_lower_preamble(nir_shader *nir, struct ir3_shader_variant *v)
          if (dest->bit_size == 1) {
             new_dest = nir_i2b(b, new_dest);
          } else if (dest->bit_size != 32) {
-            assert(dest->bit_size == 16);
             if (all_uses_float(dest, true)) {
+               assert(dest->bit_size == 16);
                new_dest = nir_f2f16(b, new_dest);
                BITSET_SET(promoted_to_float, nir_intrinsic_base(intrin));
             } else {
-               new_dest = nir_u2u16(b, new_dest);
+               new_dest = nir_u2uN(b, new_dest, dest->bit_size);
             }
          }
 
@@ -413,8 +413,8 @@ ir3_nir_lower_preamble(nir_shader *nir, struct ir3_shader_variant *v)
          if (src->bit_size == 1)
             src = nir_b2i32(b, src);
          if (src->bit_size != 32) {
-            assert(src->bit_size == 16);
-            if (BITSET_TEST(promoted_to_float, nir_intrinsic_base(intrin))) {
+            if (BITSET_TEST(promoted_to_float, nir_intrinsic_base(intrin))){
+               assert(src->bit_size == 16);
                src = nir_f2f32(b, src);
             } else {
                src = nir_u2u32(b, src);

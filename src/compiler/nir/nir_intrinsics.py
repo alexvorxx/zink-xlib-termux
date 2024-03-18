@@ -1931,6 +1931,12 @@ system_value("api_sample_mask_agx", 1, bit_sizes=[16])
 # Loads the sample position array as fixed point packed into a 32-bit word
 system_value("sample_positions_agx", 1, bit_sizes=[32])
 
+# In a fragment shader, returns the log2 of the number of samples in the
+# tilebuffer. This is the unprocessed value written in the corresponding USC
+# word. Used to determine whether sample mask writes have any effect when sample
+# count is dynamic.
+system_value("samples_log2_agx", 1, bit_sizes=[16])
+
 # Loads the fixed-function glPointSize() value, or zero if the
 # shader-supplied value should be used.
 system_value("fixed_point_size_agx", 1, bit_sizes=[32])

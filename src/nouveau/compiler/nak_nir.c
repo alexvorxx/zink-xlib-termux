@@ -1356,7 +1356,15 @@ nak_postprocess_nir(nir_shader *nir,
    nir_divergence_analysis(nir);
 
    OPT(nir, nak_nir_remove_barriers);
-   OPT(nir, nak_nir_add_barriers, nak);
+
+   if (nak->sm >= 70) {
+      if (nak_should_print_nir()) {
+         fprintf(stderr, "Structured NIR for %s shader:\n",
+                 _mesa_shader_stage_to_string(nir->info.stage));
+         nir_print_shader(nir, stderr);
+      }
+      OPT(nir, nak_nir_lower_cf);
+   }
 
    /* Re-index blocks and compact SSA defs because we'll use them to index
     * arrays
@@ -1368,8 +1376,11 @@ nak_postprocess_nir(nir_shader *nir,
       }
    }
 
-   if (nak_should_print_nir())
+   if (nak_should_print_nir()) {
+      fprintf(stderr, "NIR for %s shader:\n",
+              _mesa_shader_stage_to_string(nir->info.stage));
       nir_print_shader(nir, stderr);
+   }
 }
 
 static bool

@@ -586,3 +586,59 @@ spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 3,Fai
 spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 4,Fail
 spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 7,Fail
 spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 8,Fail
+
+# These don't actually require shader object despite the name, but they don't
+# handle dynamic state for depth and stencil correctly. Ricardo has a tentative
+# patch.
+dEQP-VK.shader_object.misc.state.pipeline.vert.alphaToOne.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.depth.none,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.discard_rectangles.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.rasterization_discard.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.color_blend.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.primitives.triangles,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.stencil.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.stencil.enabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.logic_op.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.provoking_vertex.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.sample_locations.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.cull.none,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.conservative_rasterization.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.color_write.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.color_write.false,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.color_write.true,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert.depth.bias,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.alphaToOne.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.depth.none,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.discard_rectangles.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.rasterization_discard.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.color_blend.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.primitives.triangles,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.stencil.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.stencil.enabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.logic_op.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.provoking_vertex.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.sample_locations.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.cull.none,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.conservative_rasterization.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.color_write.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.color_write.false,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.color_write.true,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_frag.depth.bias,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.alphaToOne.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.depth.none,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.discard_rectangles.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.rasterization_discard.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.color_blend.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.primitives.triangles,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.stencil.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.stencil.enabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.logic_op.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.geometry_streams.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.provoking_vertex.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.sample_locations.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.cull.none,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.conservative_rasterization.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.color_write.disabled,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.color_write.false,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.color_write.true,Crash
+dEQP-VK.shader_object.misc.state.pipeline.vert_geom_frag.depth.bias,Crash

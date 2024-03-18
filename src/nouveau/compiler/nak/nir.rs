@@ -429,6 +429,21 @@ impl NirPhiInstr for nir_phi_instr {
     }
 }
 
+pub trait NirJumpInstr {
+    fn target(&self) -> Option<&nir_block>;
+    fn else_target(&self) -> Option<&nir_block>;
+}
+
+impl NirJumpInstr for nir_jump_instr {
+    fn target(&self) -> Option<&nir_block> {
+        NonNull::new(self.target).map(|b| unsafe { b.as_ref() })
+    }
+
+    fn else_target(&self) -> Option<&nir_block> {
+        NonNull::new(self.else_target).map(|b| unsafe { b.as_ref() })
+    }
+}
+
 pub trait NirInstr {
     fn as_alu(&self) -> Option<&nir_alu_instr>;
     fn as_jump(&self) -> Option<&nir_jump_instr>;

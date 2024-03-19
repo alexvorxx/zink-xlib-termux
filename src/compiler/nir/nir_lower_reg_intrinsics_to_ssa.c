@@ -36,6 +36,11 @@ struct regs_to_ssa_state {
 static void
 setup_reg(nir_intrinsic_instr *decl, struct regs_to_ssa_state *state)
 {
+   if (nir_def_is_unused(&decl->def)) {
+      nir_instr_remove(&decl->instr);
+      return;
+   }
+
    assert(state->values[decl->def.index] == NULL);
    if (!should_lower_reg(decl))
       return;

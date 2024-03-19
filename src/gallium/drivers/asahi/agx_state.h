@@ -454,7 +454,9 @@ struct agx_blend_key {
    nir_lower_blend_rt rt[8];
    unsigned logicop_func;
    bool alpha_to_coverage, alpha_to_one;
+   bool padding[2];
 };
+static_assert(sizeof(struct agx_blend_key) == 232, "packed");
 
 struct agx_blend {
    struct agx_blend_key key;

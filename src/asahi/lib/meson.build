@@ -10,6 +10,7 @@ libasahi_lib_files = files(
   'agx_border.c',
   'agx_device.c',
   'agx_formats.c',
+  'agx_linker.c',
   'agx_meta.c',
   'agx_tilebuffer.c',
   'agx_nir_lower_alpha.c',

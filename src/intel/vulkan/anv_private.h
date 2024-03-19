@@ -3170,7 +3170,7 @@ enum anv_query_bits {
  */
 #define ANV_QUERY_RENDER_TARGET_WRITES_PENDING_BITS(devinfo) \
    (((!ANV_DEVINFO_HAS_COHERENT_L3_CS(devinfo) && \
-      devinfo->ver >= 12) ? \
+      (devinfo)->ver >= 12) ? \
      ANV_QUERY_WRITES_TILE_FLUSH : 0) | \
     ANV_QUERY_WRITES_RT_FLUSH | \
     ANV_QUERY_WRITES_CS_STALL)

@@ -83,6 +83,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_16bit_storage = true,
       .KHR_bind_memory2 = true,
       .KHR_buffer_device_address = true,
+      .KHR_calibrated_timestamps = true,
       .KHR_copy_commands2 = true,
       .KHR_create_renderpass2 = true,
       .KHR_dedicated_allocation = true,
@@ -167,6 +168,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_attachment_feedback_loop_layout = true,
       .EXT_border_color_swizzle = true,
       .EXT_buffer_device_address = true,
+      .EXT_calibrated_timestamps = true,
       .EXT_conditional_rendering = true,
       .EXT_color_write_enable = true,
       .EXT_custom_border_color = true,
@@ -1411,6 +1413,32 @@ nvk_GetPhysicalDeviceQueueFamilyProperties2(
       }
    }
 }
+
+static const VkTimeDomainKHR nvk_time_domains[] = {
+   VK_TIME_DOMAIN_DEVICE_KHR,
+   VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR,
+#ifdef CLOCK_MONOTONIC_RAW
+   VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR,
+#endif
+};
+
+VKAPI_ATTR VkResult VKAPI_CALL
+nvk_GetPhysicalDeviceCalibrateableTimeDomainsKHR(
+   VkPhysicalDevice physicalDevice,
+   uint32_t *pTimeDomainCount,
+   VkTimeDomainKHR *pTimeDomains)
+{
+   VK_OUTARRAY_MAKE_TYPED(VkTimeDomainKHR, out, pTimeDomains, pTimeDomainCount);
+
+   for (int d = 0; d < ARRAY_SIZE(nvk_time_domains); d++) {
+      vk_outarray_append_typed(VkTimeDomainKHR, &out, i) {
+         *i = nvk_time_domains[d];
+      }
+   }
+
+   return vk_outarray_status(&out);
+}
+
 
 VKAPI_ATTR void VKAPI_CALL
 nvk_GetPhysicalDeviceMultisamplePropertiesEXT(

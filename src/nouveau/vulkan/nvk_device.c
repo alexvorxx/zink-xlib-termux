@@ -322,6 +322,58 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    vk_free(&dev->vk.alloc, dev);
 }
 
+VKAPI_ATTR VkResult VKAPI_CALL
+nvk_GetCalibratedTimestampsKHR(VkDevice _device,
+                               uint32_t timestampCount,
+                               const VkCalibratedTimestampInfoKHR *pTimestampInfos,
+                               uint64_t *pTimestamps,
+                               uint64_t *pMaxDeviation)
+{
+   VK_FROM_HANDLE(nvk_device, dev, _device);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+   uint64_t max_clock_period = 0;
+   uint64_t begin, end;
+   int d;
+
+#ifdef CLOCK_MONOTONIC_RAW
+   begin = vk_clock_gettime(CLOCK_MONOTONIC_RAW);
+#else
+   begin = vk_clock_gettime(CLOCK_MONOTONIC);
+#endif
+
+   for (d = 0; d < timestampCount; d++) {
+      switch (pTimestampInfos[d].timeDomain) {
+      case VK_TIME_DOMAIN_DEVICE_KHR:
+         pTimestamps[d] = nouveau_ws_device_timestamp(pdev->ws_dev);
+         max_clock_period = MAX2(max_clock_period, 1); /* FIXME: Is timestamp period actually 1? */
+         break;
+      case VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR:
+         pTimestamps[d] = vk_clock_gettime(CLOCK_MONOTONIC);
+         max_clock_period = MAX2(max_clock_period, 1);
+         break;
+
+#ifdef CLOCK_MONOTONIC_RAW
+      case VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR:
+         pTimestamps[d] = begin;
+         break;
+#endif
+      default:
+         pTimestamps[d] = 0;
+         break;
+      }
+   }
+
+#ifdef CLOCK_MONOTONIC_RAW
+   end = vk_clock_gettime(CLOCK_MONOTONIC_RAW);
+#else
+   end = vk_clock_gettime(CLOCK_MONOTONIC);
+#endif
+
+   *pMaxDeviation = vk_time_max_deviation(begin, end, max_clock_period);
+
+   return VK_SUCCESS;
+}
+
 VkResult
 nvk_device_ensure_slm(struct nvk_device *dev,
                       uint32_t bytes_per_thread)

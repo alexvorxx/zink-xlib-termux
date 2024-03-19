@@ -4367,6 +4367,7 @@ bool ac_nir_translate(struct ac_llvm_context *ac, struct ac_shader_abi *abi,
 {
    struct ac_nir_context ctx = {0};
    struct nir_function *func;
+   bool ret;
 
    ctx.ac = *ac;
    ctx.abi = abi;
@@ -4396,10 +4397,8 @@ bool ac_nir_translate(struct ac_llvm_context *ac, struct ac_shader_abi *abi,
    if (gl_shader_stage_is_compute(nir->info.stage))
       setup_shared(&ctx, nir);
 
-   if (!visit_cf_list(&ctx, &func->impl->body))
-      return false;
-
-   phi_post_pass(&ctx);
+   if ((ret = visit_cf_list(&ctx, &func->impl->body)))
+      phi_post_pass(&ctx);
 
    free(ctx.ssa_defs);
    ralloc_free(ctx.defs);
@@ -4407,7 +4406,7 @@ bool ac_nir_translate(struct ac_llvm_context *ac, struct ac_shader_abi *abi,
    if (ctx.abi->kill_ps_if_inf_interp)
       ralloc_free(ctx.verified_interp);
 
-   return true;
+   return ret;
 }
 
 /* Fixup the HW not emitting the TCS regs if there are no HS threads. */

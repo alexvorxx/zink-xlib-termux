@@ -68,7 +68,7 @@ emit_clause(Builder& bld, unsigned num_instrs, aco_ptr<Instruction>* instrs)
 
    unsigned clause_size = end - start;
    if (clause_size > 1)
-      bld.sopp(aco_opcode::s_clause, -1, clause_size - 1);
+      bld.sopp(aco_opcode::s_clause, clause_size - 1);
 
    for (unsigned i = start; i < num_instrs; i++)
       bld.insert(std::move(instrs[i]));

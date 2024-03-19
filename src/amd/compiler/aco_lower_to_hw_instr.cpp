@@ -2154,9 +2154,9 @@ emit_set_mode(Builder& bld, float_mode new_mode, bool set_round, bool set_denorm
 {
    if (bld.program->gfx_level >= GFX10) {
       if (set_round)
-         bld.sopp(aco_opcode::s_round_mode, -1, new_mode.round);
+         bld.sopp(aco_opcode::s_round_mode, new_mode.round);
       if (set_denorm)
-         bld.sopp(aco_opcode::s_denorm_mode, -1, new_mode.denorm);
+         bld.sopp(aco_opcode::s_denorm_mode, new_mode.denorm);
    } else if (set_round || set_denorm) {
       /* "((size - 1) << 11) | register" (MODE is encoded as register 1) */
       bld.sopk(aco_opcode::s_setreg_imm32_b32, Operand::literal32(new_mode.val), (7 << 11) | 1);
@@ -2313,7 +2313,7 @@ lower_to_hw_instr(Program* program)
               instr_idx == pops_done_msg_bounds.instr_after_end_idx()) ||
              (instr->opcode == aco_opcode::s_endpgm &&
               pops_done_msg_bounds.early_exit_needs_done_msg(block_idx, instr_idx))) {
-            bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_ordered_ps_done);
+            bld.sopp(aco_opcode::s_sendmsg, sendmsg_ordered_ps_done);
          }
 
          aco_ptr<Instruction> mov;
@@ -2457,11 +2457,10 @@ lower_to_hw_instr(Program* program)
                      pops_exit_wait_imm.vm = 0;
                      if (program->has_smem_buffer_or_global_loads)
                         pops_exit_wait_imm.lgkm = 0;
-                     bld.sopp(aco_opcode::s_waitcnt, -1,
-                              pops_exit_wait_imm.pack(program->gfx_level));
+                     bld.sopp(aco_opcode::s_waitcnt, pops_exit_wait_imm.pack(program->gfx_level));
                   }
                   if (discard_sends_pops_done)
-                     bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_ordered_ps_done);
+                     bld.sopp(aco_opcode::s_sendmsg, sendmsg_ordered_ps_done);
                   unsigned target = V_008DFC_SQ_EXP_NULL;
                   if (program->gfx_level >= GFX11)
                      target =
@@ -2470,7 +2469,7 @@ lower_to_hw_instr(Program* program)
                      bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0,
                              target, false, true, true);
                   if (should_dealloc_vgprs)
-                     bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_dealloc_vgprs);
+                     bld.sopp(aco_opcode::s_sendmsg, sendmsg_dealloc_vgprs);
                   bld.sopp(aco_opcode::s_endpgm);
 
                   bld.reset(&ctx.instructions);
@@ -2728,7 +2727,7 @@ lower_to_hw_instr(Program* program)
             }
             case aco_opcode::p_jump_to_epilog: {
                if (pops_done_msg_bounds.early_exit_needs_done_msg(block_idx, instr_idx)) {
-                  bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_ordered_ps_done);
+                  bld.sopp(aco_opcode::s_sendmsg, sendmsg_ordered_ps_done);
                }
                bld.sop1(aco_opcode::s_setpc_b64, instr->operands[0]);
                break;
@@ -2896,7 +2895,7 @@ lower_to_hw_instr(Program* program)
                         bool is_break_continue =
                            program->blocks[i].kind & (block_kind_break | block_kind_continue);
                         bool discard_early_exit =
-                           program->blocks[inst->sopp().block].kind & block_kind_discard_early_exit;
+                           program->blocks[inst->sopp().imm].kind & block_kind_discard_early_exit;
                         if ((inst->opcode != aco_opcode::s_cbranch_scc0 &&
                              inst->opcode != aco_opcode::s_cbranch_scc1) ||
                             (!discard_early_exit && !is_break_continue))
@@ -3035,7 +3034,7 @@ lower_to_hw_instr(Program* program)
        */
       if (block_idx == pops_done_msg_bounds.end_block_idx() &&
           pops_done_msg_bounds.instr_after_end_idx() >= block->instructions.size()) {
-         bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_ordered_ps_done);
+         bld.sopp(aco_opcode::s_sendmsg, sendmsg_ordered_ps_done);
       }
 
       block->instructions = std::move(ctx.instructions);

@@ -614,7 +614,6 @@ handle_instruction_gfx6(State& state, NOP_ctx_gfx6& ctx, aco_ptr<Instruction>& i
       aco_ptr<SOPP_instruction> nop{
          create_instruction<SOPP_instruction>(aco_opcode::s_nop, Format::SOPP, 0, 0)};
       nop->imm = NOPs - 1;
-      nop->block = -1;
       new_instructions.emplace_back(std::move(nop));
    }
 
@@ -784,7 +783,7 @@ resolve_all_gfx6(State& state, NOP_ctx_gfx6& ctx,
    ctx.add_wait_states(NOPs);
    if (NOPs) {
       Builder bld(state.program, &new_instructions);
-      bld.sopp(aco_opcode::s_nop, -1, NOPs - 1);
+      bld.sopp(aco_opcode::s_nop, NOPs - 1);
    }
 }
 
@@ -897,7 +896,7 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
    unsigned vm_vsrc = 7;
    unsigned sa_sdst = 1;
    if (debug_flags & DEBUG_FORCE_WAITDEPS) {
-      bld.sopp(aco_opcode::s_waitcnt_depctr, -1, 0x0000);
+      bld.sopp(aco_opcode::s_waitcnt_depctr, 0x0000);
       vm_vsrc = 0;
       sa_sdst = 0;
    } else if (instr->opcode == aco_opcode::s_waitcnt_depctr) {
@@ -941,7 +940,7 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
          ctx.sgprs_read_by_VMEM_store.reset();
 
          /* Insert s_waitcnt_depctr instruction with magic imm to mitigate the problem */
-         bld.sopp(aco_opcode::s_waitcnt_depctr, -1, 0xffe3);
+         bld.sopp(aco_opcode::s_waitcnt_depctr, 0xffe3);
       }
    } else if (instr->isVALU()) {
       /* Hazard is mitigated by any VALU instruction */
@@ -977,7 +976,7 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
          ctx.has_nonVALU_exec_read = false;
 
          /* Insert s_waitcnt_depctr instruction with magic imm to mitigate the problem */
-         bld.sopp(aco_opcode::s_waitcnt_depctr, -1, 0xfffe);
+         bld.sopp(aco_opcode::s_waitcnt_depctr, 0xfffe);
       } else if (instr_writes_sgpr(instr)) {
          /* Any VALU instruction that writes an SGPR mitigates the problem */
          ctx.has_nonVALU_exec_read = false;
@@ -1052,7 +1051,7 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
       if (instr->isMUBUF() || instr->isMTBUF()) {
          uint32_t offset = instr->isMUBUF() ? instr->mubuf().offset : instr->mtbuf().offset;
          if (offset & 6)
-            bld.sopp(aco_opcode::s_nop, -1, 0);
+            bld.sopp(aco_opcode::s_nop, 0);
       }
    }
 
@@ -1064,7 +1063,7 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
    } else if (ctx.has_writelane) {
       ctx.has_writelane = false;
       if (instr->isMIMG() && get_mimg_nsa_dwords(instr.get()) > 0)
-         bld.sopp(aco_opcode::s_nop, -1, 0);
+         bld.sopp(aco_opcode::s_nop, 0);
    }
 }
 
@@ -1105,7 +1104,7 @@ resolve_all_gfx10(State& state, NOP_ctx_gfx10& ctx,
    }
 
    if (waitcnt_depctr != 0xffff)
-      bld.sopp(aco_opcode::s_waitcnt_depctr, -1, waitcnt_depctr);
+      bld.sopp(aco_opcode::s_waitcnt_depctr, waitcnt_depctr);
 
    /* SMEMtoVectorWriteHazard */
    if (ctx.sgprs_read_by_SMEM.any()) {
@@ -1124,7 +1123,7 @@ resolve_all_gfx10(State& state, NOP_ctx_gfx10& ctx,
       ctx.has_NSA_MIMG = ctx.has_writelane = false;
       /* Any instruction resolves these hazards. */
       if (new_instructions.size() == prev_count)
-         bld.sopp(aco_opcode::s_nop, -1, 0);
+         bld.sopp(aco_opcode::s_nop, 0);
    }
 }
 
@@ -1412,7 +1411,7 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
    unsigned sa_sdst = 1;
 
    if (debug_flags & DEBUG_FORCE_WAITDEPS) {
-      bld.sopp(aco_opcode::s_waitcnt_depctr, -1, 0x0000);
+      bld.sopp(aco_opcode::s_waitcnt_depctr, 0x0000);
       va_vdst = 0;
       vm_vsrc = 0;
       sa_sdst = 0;
@@ -1447,13 +1446,13 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
          }
       }
       if (num_trans <= 1 && num_valu <= 5) {
-         bld.sopp(aco_opcode::s_waitcnt_depctr, -1, 0x0fff);
+         bld.sopp(aco_opcode::s_waitcnt_depctr, 0x0fff);
          va_vdst = 0;
       }
    }
 
    if (va_vdst > 0 && handle_valu_partial_forwarding_hazard(state, instr)) {
-      bld.sopp(aco_opcode::s_waitcnt_depctr, -1, 0x0fff);
+      bld.sopp(aco_opcode::s_waitcnt_depctr, 0x0fff);
       va_vdst = 0;
    }
 
@@ -1466,7 +1465,7 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
       ctx.sgpr_read_by_valu_as_lanemask.reset();
    } else if (state.program->wave_size == 64 && instr->isSALU() &&
               check_read_regs(instr, ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu)) {
-      bld.sopp(aco_opcode::s_waitcnt_depctr, -1, 0xfffe);
+      bld.sopp(aco_opcode::s_waitcnt_depctr, 0xfffe);
       sa_sdst = 0;
    }
 
@@ -1552,7 +1551,7 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
       if (ctx.vgpr_used_by_vmem_load[instr->definitions[0].physReg().reg() - 256] ||
           ctx.vgpr_used_by_vmem_store[instr->definitions[0].physReg().reg() - 256] ||
           ctx.vgpr_used_by_ds[instr->definitions[0].physReg().reg() - 256]) {
-         bld.sopp(aco_opcode::s_waitcnt_depctr, -1, 0xffe3);
+         bld.sopp(aco_opcode::s_waitcnt_depctr, 0xffe3);
          ctx.vgpr_used_by_vmem_load.reset();
          ctx.vgpr_used_by_vmem_store.reset();
          ctx.vgpr_used_by_ds.reset();
@@ -1634,7 +1633,7 @@ resolve_all_gfx11(State& state, NOP_ctx_gfx11& ctx,
    }
 
    if (waitcnt_depctr != 0xffff)
-      bld.sopp(aco_opcode::s_waitcnt_depctr, -1, waitcnt_depctr);
+      bld.sopp(aco_opcode::s_waitcnt_depctr, waitcnt_depctr);
 }
 
 template <typename Ctx>

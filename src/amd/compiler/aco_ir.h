@@ -1314,10 +1314,12 @@ struct SOPK_instruction : public Instruction {
 static_assert(sizeof(SOPK_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
 struct SOPP_instruction : public Instruction {
+   /* In case of branch instructions, contains the Block index,
+    * and otherwise, the 16-bit signed immediate.
+    */
    uint32_t imm;
-   int block;
 };
-static_assert(sizeof(SOPP_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
+static_assert(sizeof(SOPP_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
 struct SOPC_instruction : public Instruction {
    uint32_t padding;

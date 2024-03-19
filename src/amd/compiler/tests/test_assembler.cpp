@@ -79,7 +79,7 @@ BEGIN_TEST(assembler.long_jump.unconditional_forwards)
    //! s_nop 0                                                     ; bf800000
    //!(then repeated 32767 times)
    for (unsigned i = 0; i < INT16_MAX + 1; i++)
-      bld.sopp(aco_opcode::s_nop, -1, 0);
+      bld.sopp(aco_opcode::s_nop, 0);
 
    //! BB2:
    //! s_endpgm                                                    ; bf810000
@@ -110,7 +110,7 @@ BEGIN_TEST(assembler.long_jump.conditional_forwards)
    //! s_nop 0 ; bf800000
    //!(then repeated 32767 times)
    for (unsigned i = 0; i < INT16_MAX + 1; i++)
-      bld.sopp(aco_opcode::s_nop, -1, 0);
+      bld.sopp(aco_opcode::s_nop, 0);
 
    //! BB2:
    //! s_endpgm                                                    ; bf810000
@@ -131,7 +131,7 @@ BEGIN_TEST(assembler.long_jump.unconditional_backwards)
    //! s_nop 0                                                     ; bf800000
    //!(then repeated 32767 times)
    for (unsigned i = 0; i < INT16_MAX + 1; i++)
-      bld.sopp(aco_opcode::s_nop, -1, 0);
+      bld.sopp(aco_opcode::s_nop, 0);
 
    //! s_getpc_b64 s[0:1]                                          ; be801f00
    //! s_addc_u32 s0, s0, 0xfffdfffc                               ; 8200ff00 fffdfffc
@@ -158,7 +158,7 @@ BEGIN_TEST(assembler.long_jump.conditional_backwards)
    //! s_nop 0                                                     ; bf800000
    //!(then repeated 32767 times)
    for (unsigned i = 0; i < INT16_MAX + 1; i++)
-      bld.sopp(aco_opcode::s_nop, -1, 0);
+      bld.sopp(aco_opcode::s_nop, 0);
 
    //! s_cbranch_execz BB1                                         ; bf880006
    //! s_getpc_b64 s[0:1]                                          ; be801f00
@@ -213,7 +213,7 @@ BEGIN_TEST(assembler.long_jump.constaddr)
    bld.reset(program->create_and_insert_block());
 
    for (unsigned i = 0; i < INT16_MAX + 1; i++)
-      bld.sopp(aco_opcode::s_nop, -1, 0);
+      bld.sopp(aco_opcode::s_nop, 0);
 
    bld.reset(program->create_and_insert_block());
 
@@ -249,7 +249,7 @@ BEGIN_TEST(assembler.long_jump.discard_early_exit)
    //!(then repeated 32766 times)
    //! s_endpgm                                                    ; bf810000
    for (unsigned i = 0; i < INT16_MAX; i++)
-      bld.sopp(aco_opcode::s_nop, -1, 1);
+      bld.sopp(aco_opcode::s_nop, 1);
 
    //! BB2:
    //! s_endpgm                                                    ; bf810000

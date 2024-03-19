@@ -9062,7 +9062,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_sendmsg_amd: {
       unsigned imm = nir_intrinsic_base(instr);
       Temp m0_content = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
-      bld.sopp(aco_opcode::s_sendmsg, bld.m0(m0_content), -1, imm);
+      bld.sopp(aco_opcode::s_sendmsg, bld.m0(m0_content), imm);
       break;
    }
    case nir_intrinsic_load_gs_wave_id_amd: {
@@ -11713,7 +11713,7 @@ pops_await_overlapped_waves(isel_context* ctx)
       /* GFX11+ - waiting for the export from the overlapped waves.
        * Await the export_ready event (bit wait_event_imm_dont_wait_export_ready clear).
        */
-      bld.sopp(aco_opcode::s_wait_event, -1, 0);
+      bld.sopp(aco_opcode::s_wait_event, 0);
       return;
    }
 
@@ -11805,7 +11805,7 @@ pops_await_overlapped_waves(isel_context* ctx)
    bld.reset(ctx->block);
 
    /* Sleep before rechecking to let overlapped waves run for some time. */
-   bld.sopp(aco_opcode::s_sleep, -1, ctx->program->gfx_level >= GFX10 ? UINT16_MAX : 3);
+   bld.sopp(aco_opcode::s_sleep, ctx->program->gfx_level >= GFX10 ? UINT16_MAX : 3);
 
    end_loop(ctx, &wait_loop_context);
    bld.reset(ctx->block);
@@ -11895,7 +11895,7 @@ select_shader(isel_context& ctx, nir_shader* nir, const bool need_startpgm, cons
 
       if (!program->info.vs.has_prolog &&
           (program->stage.has(SWStage::VS) || program->stage.has(SWStage::TES))) {
-         Builder(ctx.program, ctx.block).sopp(aco_opcode::s_setprio, -1u, 0x3u);
+         Builder(ctx.program, ctx.block).sopp(aco_opcode::s_setprio, 0x3u);
       }
    }
 
@@ -11904,7 +11904,7 @@ select_shader(isel_context& ctx, nir_shader* nir, const bool need_startpgm, cons
       /* Workaround for Navi1x HW bug to ensure that all NGG waves launch before
        * s_sendmsg(GS_ALLOC_REQ).
        */
-      Builder(ctx.program, ctx.block).sopp(aco_opcode::s_barrier, -1u, 0u);
+      Builder(ctx.program, ctx.block).sopp(aco_opcode::s_barrier, 0u);
    }
 
    if (check_merged_wave_info) {
@@ -12468,7 +12468,7 @@ load_vb_descs(Builder& bld, PhysReg dest, Operand base, unsigned start, unsigned
 
    unsigned num_loads = (count / 4u) + util_bitcount(count & 0x3);
    if (bld.program->gfx_level >= GFX10 && num_loads > 1)
-      bld.sopp(aco_opcode::s_clause, -1, num_loads - 1);
+      bld.sopp(aco_opcode::s_clause, num_loads - 1);
 
    for (unsigned i = 0; i < count;) {
       unsigned size = 1u << util_logbase2(MIN2(count - i, 4));
@@ -12501,7 +12501,7 @@ calc_nontrivial_instance_id(Builder& bld, const struct ac_shader_args* args,
 
    wait_imm lgkm_imm;
    lgkm_imm.lgkm = 0;
-   bld.sopp(aco_opcode::s_waitcnt, -1, lgkm_imm.pack(bld.program->gfx_level));
+   bld.sopp(aco_opcode::s_waitcnt, lgkm_imm.pack(bld.program->gfx_level));
 
    Definition fetch_index_def(tmp_vgpr0, v1);
    Operand fetch_index(tmp_vgpr0, v1);
@@ -12777,7 +12777,7 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
 
    block->instructions.reserve(16 + pinfo->num_attributes * 4);
 
-   bld.sopp(aco_opcode::s_setprio, -1u, 0x3u);
+   bld.sopp(aco_opcode::s_setprio, 0x3u);
 
    uint32_t attrib_mask = BITFIELD_MASK(pinfo->num_attributes);
    bool has_nontrivial_divisors = pinfo->nontrivial_divisors;
@@ -12882,7 +12882,7 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
             bld.vop1(aco_opcode::v_mov_b32, Definition(start_instance_vgpr, v1), start_instance);
       }
 
-      bld.sopp(aco_opcode::s_waitcnt, -1, lgkm_imm.pack(program->gfx_level));
+      bld.sopp(aco_opcode::s_waitcnt, lgkm_imm.pack(program->gfx_level));
 
       for (unsigned i = 0; i < num_descs;) {
          PhysReg dest(attributes_start.reg() + loc * 4u);
@@ -12964,7 +12964,7 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
    if (pinfo->alpha_adjust_lo | pinfo->alpha_adjust_hi) {
       wait_imm vm_imm;
       vm_imm.vm = 0;
-      bld.sopp(aco_opcode::s_waitcnt, -1, vm_imm.pack(program->gfx_level));
+      bld.sopp(aco_opcode::s_waitcnt, vm_imm.pack(program->gfx_level));
    }
 
    /* For 2_10_10_10 formats the alpha is handled as unsigned by pre-vega HW.
@@ -13005,7 +13005,7 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
    if (has_nontrivial_divisors) {
       bld.smem(aco_opcode::s_load_dwordx2, Definition(prolog_input, s2),
                get_arg_fixed(args, pinfo->inputs), Operand::c32(0u));
-      bld.sopp(aco_opcode::s_waitcnt, -1, lgkm_imm.pack(program->gfx_level));
+      bld.sopp(aco_opcode::s_waitcnt, lgkm_imm.pack(program->gfx_level));
       continue_pc = Operand(prolog_input, s2);
    }
 

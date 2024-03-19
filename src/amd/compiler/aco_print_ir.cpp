@@ -399,13 +399,13 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          break;
       }
       default: {
-         if (imm)
+         if (instr_info.classes[(int)instr->opcode] == instr_class::branch)
+            fprintf(output, " block:BB%d", instr->sopp().imm);
+         else if (imm)
             fprintf(output, " imm:%u", imm);
          break;
       }
       }
-      if (instr_info.classes[(int)instr->opcode] == instr_class::branch)
-         fprintf(output, " block:BB%d", instr->sopp().block);
       break;
    }
    case Format::SOP1: {

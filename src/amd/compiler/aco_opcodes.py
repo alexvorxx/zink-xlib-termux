@@ -106,8 +106,7 @@ class Format(IntEnum):
       if self == Format.SOPK:
          return [('uint16_t', 'imm', None)]
       elif self == Format.SOPP:
-         return [('uint32_t', 'block', '-1'),
-                 ('uint32_t', 'imm', '0')]
+         return [('uint32_t', 'imm', '0')]
       elif self == Format.SMEM:
          return [('memory_sync_info', 'sync', 'memory_sync_info()'),
                  ('bool', 'glc', 'false'),

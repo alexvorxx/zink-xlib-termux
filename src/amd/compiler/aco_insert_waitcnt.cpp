@@ -1004,7 +1004,6 @@ emit_waitcnt(wait_ctx& ctx, std::vector<aco_ptr<Instruction>>& instructions, wai
       SOPP_instruction* waitcnt =
          create_instruction<SOPP_instruction>(aco_opcode::s_waitcnt, Format::SOPP, 0, 0);
       waitcnt->imm = imm.pack(ctx.gfx_level);
-      waitcnt->block = -1;
       instructions.emplace_back(waitcnt);
    }
    imm = wait_imm();
@@ -1034,7 +1033,6 @@ emit_delay_alu(wait_ctx& ctx, std::vector<aco_ptr<Instruction>>& instructions,
    SOPP_instruction* inst =
       create_instruction<SOPP_instruction>(aco_opcode::s_delay_alu, Format::SOPP, 0, 0);
    inst->imm = imm;
-   inst->block = -1;
    inst->pass_flags = (delay.valu_cycles | (delay.trans_cycles << 16));
    instructions.emplace_back(inst);
    delay = alu_delay_info();

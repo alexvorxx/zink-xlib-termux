@@ -313,7 +313,7 @@ int
 get_wait_states(aco_ptr<Instruction>& instr)
 {
    if (instr->opcode == aco_opcode::s_nop)
-      return instr->sopp().imm + 1;
+      return instr->salu().imm + 1;
    else if (instr->opcode == aco_opcode::p_constaddr)
       return 3; /* lowered to 3 instructions in the assembler */
    else
@@ -611,8 +611,8 @@ handle_instruction_gfx6(State& state, NOP_ctx_gfx6& ctx, aco_ptr<Instruction>& i
    // TODO: try to schedule the NOP-causing instruction up to reduce the number of stall cycles
    if (NOPs) {
       /* create NOP */
-      aco_ptr<SOPP_instruction> nop{
-         create_instruction<SOPP_instruction>(aco_opcode::s_nop, Format::SOPP, 0, 0)};
+      aco_ptr<SALU_instruction> nop{
+         create_instruction<SALU_instruction>(aco_opcode::s_nop, Format::SOPP, 0, 0)};
       nop->imm = NOPs - 1;
       new_instructions.emplace_back(std::move(nop));
    }
@@ -668,7 +668,7 @@ handle_instruction_gfx6(State& state, NOP_ctx_gfx6& ctx, aco_ptr<Instruction>& i
          }
       } else if (instr->opcode == aco_opcode::s_setreg_b32 ||
                  instr->opcode == aco_opcode::s_setreg_imm32_b32) {
-         SOPK_instruction& sopk = instr->sopk();
+         SALU_instruction& sopk = instr->salu();
          unsigned offset = (sopk.imm >> 6) & 0x1f;
          unsigned size = ((sopk.imm >> 11) & 0x1f) + 1;
          unsigned reg = sopk.imm & 0x3f;
@@ -900,8 +900,8 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
       vm_vsrc = 0;
       sa_sdst = 0;
    } else if (instr->opcode == aco_opcode::s_waitcnt_depctr) {
-      vm_vsrc = (instr->sopp().imm >> 2) & 0x7;
-      sa_sdst = instr->sopp().imm & 0x1;
+      vm_vsrc = (instr->salu().imm >> 2) & 0x7;
+      sa_sdst = instr->salu().imm & 0x1;
    }
 
    /* VMEMtoScalarWriteHazard
@@ -918,12 +918,12 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
          mark_read_regs_exec(state, instr, ctx.sgprs_read_by_DS);
    } else if (instr->isSALU() || instr->isSMEM()) {
       if (instr->opcode == aco_opcode::s_waitcnt) {
-         wait_imm imm(state.program->gfx_level, instr->sopp().imm);
+         wait_imm imm(state.program->gfx_level, instr->salu().imm);
          if (imm.vm == 0)
             ctx.sgprs_read_by_VMEM.reset();
          if (imm.lgkm == 0)
             ctx.sgprs_read_by_DS.reset();
-      } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt && instr->sopk().imm == 0) {
+      } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt && instr->salu().imm == 0) {
          ctx.sgprs_read_by_VMEM_store.reset();
       } else if (vm_vsrc == 0) {
          ctx.sgprs_read_by_VMEM.reset();
@@ -1002,11 +1002,11 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
    } else if (instr->isSALU()) {
       /* Reducing lgkmcnt count to 0 always mitigates the hazard. */
       if (instr->opcode == aco_opcode::s_waitcnt_lgkmcnt) {
-         const SOPK_instruction& sopk = instr->sopk();
+         const SALU_instruction& sopk = instr->salu();
          if (sopk.imm == 0 && sopk.operands[0].physReg() == sgpr_null)
             ctx.sgprs_read_by_SMEM.reset();
       } else if (instr->opcode == aco_opcode::s_waitcnt) {
-         wait_imm imm(state.program->gfx_level, instr->sopp().imm);
+         wait_imm imm(state.program->gfx_level, instr->salu().imm);
          if (imm.lgkm == 0)
             ctx.sgprs_read_by_SMEM.reset();
       } else if (instr->format != Format::SOPP && instr->definitions.size()) {
@@ -1034,7 +1034,7 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
       ctx.has_VMEM = ctx.has_DS = false;
    } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt) {
       /* Only s_waitcnt_vscnt can mitigate the hazard */
-      const SOPK_instruction& sopk = instr->sopk();
+      const SALU_instruction& sopk = instr->salu();
       if (sopk.operands[0].physReg() == sgpr_null && sopk.imm == 0)
          ctx.has_VMEM = ctx.has_branch_after_VMEM = ctx.has_DS = ctx.has_branch_after_DS = false;
    }
@@ -1145,7 +1145,7 @@ parse_vdst_wait(aco_ptr<Instruction>& instr)
    else if (instr->isLDSDIR())
       return instr->ldsdir().wait_vdst;
    else if (instr->opcode == aco_opcode::s_waitcnt_depctr)
-      return (instr->sopp().imm >> 12) & 0xf;
+      return (instr->salu().imm >> 12) & 0xf;
    else
       return 15;
 }
@@ -1417,8 +1417,8 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
       sa_sdst = 0;
    } else if (instr->opcode == aco_opcode::s_waitcnt_depctr) {
       /* va_vdst already obtained through parse_vdst_wait(). */
-      vm_vsrc = (instr->sopp().imm >> 2) & 0x7;
-      sa_sdst = instr->sopp().imm & 0x1;
+      vm_vsrc = (instr->salu().imm >> 2) & 0x7;
+      sa_sdst = instr->salu().imm & 0x1;
    }
 
    if (instr->isLDSDIR()) {
@@ -1539,12 +1539,12 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
       ctx.vgpr_used_by_vmem_store.reset();
       ctx.vgpr_used_by_ds.reset();
    } else if (instr->opcode == aco_opcode::s_waitcnt) {
-      wait_imm imm(GFX11, instr->sopp().imm);
+      wait_imm imm(GFX11, instr->salu().imm);
       if (imm.vm == 0)
          ctx.vgpr_used_by_vmem_load.reset();
       if (imm.lgkm == 0)
          ctx.vgpr_used_by_ds.reset();
-   } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt && instr->sopk().imm == 0) {
+   } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt && instr->salu().imm == 0) {
       ctx.vgpr_used_by_vmem_store.reset();
    }
    if (instr->isLDSDIR()) {

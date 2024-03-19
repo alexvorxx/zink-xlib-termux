@@ -355,15 +355,15 @@ do_reload(spill_ctx& ctx, Temp tmp, Temp new_name, uint32_t spill_id)
          res.reset(create_instruction<VALU_instruction>(
             instr->opcode, instr->format, instr->operands.size(), instr->definitions.size()));
       } else if (instr->isSOP1()) {
-         res.reset(create_instruction<SOP1_instruction>(
+         res.reset(create_instruction<SALU_instruction>(
             instr->opcode, instr->format, instr->operands.size(), instr->definitions.size()));
       } else if (instr->isPseudo()) {
          res.reset(create_instruction<Pseudo_instruction>(
             instr->opcode, instr->format, instr->operands.size(), instr->definitions.size()));
       } else if (instr->isSOPK()) {
-         res.reset(create_instruction<SOPK_instruction>(
+         res.reset(create_instruction<SALU_instruction>(
             instr->opcode, instr->format, instr->operands.size(), instr->definitions.size()));
-         res->sopk().imm = instr->sopk().imm;
+         res->salu().imm = instr->salu().imm;
       }
       for (unsigned i = 0; i < instr->operands.size(); i++) {
          res->operands[i] = instr->operands[i];

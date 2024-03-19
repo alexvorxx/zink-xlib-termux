@@ -2468,7 +2468,7 @@ optimize_cmp_subgroup_invocation(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    const uint64_t mask = BITFIELD64_RANGE(first_bit, num_bits);
    if (wave_size == 64 && mask > 0x7fffffff && mask != -1ull) {
       /* Mask can't be represented as a 64-bit constant or literal, use s_bfm_b64. */
-      cpy = create_instruction<SOP2_instruction>(aco_opcode::s_bfm_b64, Format::SOP2, 2, 1);
+      cpy = create_instruction<SALU_instruction>(aco_opcode::s_bfm_b64, Format::SOP2, 2, 1);
       cpy->operands[0] = Operand::c32(num_bits);
       cpy->operands[1] = Operand::c32(first_bit);
    } else {
@@ -5244,10 +5244,8 @@ try_convert_sopc_to_sopk(aco_ptr<Instruction>& instr)
          return;
    }
 
-   static_assert(sizeof(SOPK_instruction) <= sizeof(SOPC_instruction),
-                 "Invalid direct instruction cast.");
    instr->format = Format::SOPK;
-   SOPK_instruction* instr_sopk = &instr->sopk();
+   SALU_instruction* instr_sopk = &instr->salu();
 
    instr_sopk->imm = instr_sopk->operands[1].constantValue() & 0xffff;
    instr_sopk->opcode = sopk_opcode_for_sopc(instr_sopk->opcode);

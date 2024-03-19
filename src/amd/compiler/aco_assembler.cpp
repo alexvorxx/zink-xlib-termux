@@ -44,7 +44,7 @@ struct constaddr_info {
 struct asm_context {
    Program* program;
    enum amd_gfx_level gfx_level;
-   std::vector<std::pair<int, SOPP_instruction*>> branches;
+   std::vector<std::pair<int, SALU_instruction*>> branches;
    std::map<unsigned, constaddr_info> constaddrs;
    std::map<unsigned, constaddr_info> resumeaddrs;
    std::vector<struct aco_symbol>* symbols;
@@ -155,7 +155,8 @@ void
 emit_sopk_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* instr)
 {
    uint32_t opcode = ctx.opcode[(int)instr->opcode];
-   SOPK_instruction& sopk = instr->sopk();
+   SALU_instruction& sopk = instr->salu();
+   assert(sopk.imm <= UINT16_MAX);
 
    if (instr->opcode == aco_opcode::s_subvector_loop_begin) {
       assert(ctx.gfx_level >= GFX10);
@@ -211,7 +212,7 @@ emit_sopp_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction*
                       bool force_imm = false)
 {
    uint32_t opcode = ctx.opcode[(int)instr->opcode];
-   SOPP_instruction& sopp = instr->sopp();
+   SALU_instruction& sopp = instr->salu();
 
    uint32_t encoding = (0b101111111 << 23);
    encoding |= opcode << 16;
@@ -1316,7 +1317,7 @@ fix_branches_gfx10(asm_context& ctx, std::vector<uint32_t>& out)
 }
 
 void
-emit_long_jump(asm_context& ctx, SOPP_instruction* branch, bool backwards,
+emit_long_jump(asm_context& ctx, SALU_instruction* branch, bool backwards,
                std::vector<uint32_t>& out)
 {
    Builder bld(ctx.program);
@@ -1384,7 +1385,7 @@ fix_branches(asm_context& ctx, std::vector<uint32_t>& out)
       if (ctx.gfx_level == GFX10)
          fix_branches_gfx10(ctx, out);
 
-      for (std::pair<int, SOPP_instruction*>& branch : ctx.branches) {
+      for (std::pair<int, SALU_instruction*>& branch : ctx.branches) {
          int offset = (int)ctx.program->blocks[branch.second->imm].offset - branch.first - 1;
          if ((offset < INT16_MIN || offset > INT16_MAX) && !branch.second->pass_flags) {
             std::vector<uint32_t> long_jump;
@@ -1461,7 +1462,7 @@ align_block(asm_context& ctx, std::vector<uint32_t>& code, Block& block)
          insert_code(ctx, code, loop_header->offset, nops.size(), nops.data());
 
          /* Change prefetch mode back to default (0x3). */
-         instr->sopp().imm = 0x3;
+         instr->salu().imm = 0x3;
          emit_instruction(ctx, code, instr.get());
       }
 

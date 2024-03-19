@@ -2848,10 +2848,8 @@ optimize_encoding_sopk(Program* program, ra_ctx& ctx, RegisterFile& register_fil
          return;
    }
 
-   static_assert(sizeof(SOPK_instruction) <= sizeof(SOP2_instruction),
-                 "Invalid direct instruction cast.");
    instr->format = Format::SOPK;
-   SOPK_instruction* instr_sopk = &instr->sopk();
+   SALU_instruction* instr_sopk = &instr->salu();
 
    instr_sopk->imm = instr_sopk->operands[literal_idx].constantValue() & 0xffff;
    if (literal_idx == 0)
@@ -3319,7 +3317,7 @@ register_allocation(Program* program, live& live_vars, ra_test_policy policy)
 
                aco_ptr<Instruction> mov;
                if (can_sgpr)
-                  mov.reset(create_instruction<SOP1_instruction>(aco_opcode::s_mov_b32,
+                  mov.reset(create_instruction<SALU_instruction>(aco_opcode::s_mov_b32,
                                                                  Format::SOP1, 1, 1));
                else
                   mov.reset(create_instruction<VALU_instruction>(aco_opcode::v_mov_b32,

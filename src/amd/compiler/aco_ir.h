@@ -939,11 +939,7 @@ private:
 struct Block;
 struct Instruction;
 struct Pseudo_instruction;
-struct SOP1_instruction;
-struct SOP2_instruction;
-struct SOPK_instruction;
-struct SOPP_instruction;
-struct SOPC_instruction;
+struct SALU_instruction;
 struct SMEM_instruction;
 struct DS_instruction;
 struct LDSDIR_instruction;
@@ -1002,61 +998,13 @@ struct Instruction {
       return *(Pseudo_instruction*)this;
    }
    constexpr bool isPseudo() const noexcept { return format == Format::PSEUDO; }
-   SOP1_instruction& sop1() noexcept
-   {
-      assert(isSOP1());
-      return *(SOP1_instruction*)this;
-   }
-   const SOP1_instruction& sop1() const noexcept
-   {
-      assert(isSOP1());
-      return *(SOP1_instruction*)this;
-   }
+
    constexpr bool isSOP1() const noexcept { return format == Format::SOP1; }
-   SOP2_instruction& sop2() noexcept
-   {
-      assert(isSOP2());
-      return *(SOP2_instruction*)this;
-   }
-   const SOP2_instruction& sop2() const noexcept
-   {
-      assert(isSOP2());
-      return *(SOP2_instruction*)this;
-   }
    constexpr bool isSOP2() const noexcept { return format == Format::SOP2; }
-   SOPK_instruction& sopk() noexcept
-   {
-      assert(isSOPK());
-      return *(SOPK_instruction*)this;
-   }
-   const SOPK_instruction& sopk() const noexcept
-   {
-      assert(isSOPK());
-      return *(SOPK_instruction*)this;
-   }
    constexpr bool isSOPK() const noexcept { return format == Format::SOPK; }
-   SOPP_instruction& sopp() noexcept
-   {
-      assert(isSOPP());
-      return *(SOPP_instruction*)this;
-   }
-   const SOPP_instruction& sopp() const noexcept
-   {
-      assert(isSOPP());
-      return *(SOPP_instruction*)this;
-   }
    constexpr bool isSOPP() const noexcept { return format == Format::SOPP; }
-   SOPC_instruction& sopc() noexcept
-   {
-      assert(isSOPC());
-      return *(SOPC_instruction*)this;
-   }
-   const SOPC_instruction& sopc() const noexcept
-   {
-      assert(isSOPC());
-      return *(SOPC_instruction*)this;
-   }
    constexpr bool isSOPC() const noexcept { return format == Format::SOPC; }
+
    SMEM_instruction& smem() noexcept
    {
       assert(isSMEM());
@@ -1295,6 +1243,16 @@ struct Instruction {
              isVOPD();
    }
 
+   SALU_instruction& salu() noexcept
+   {
+      assert(isSALU());
+      return *(SALU_instruction*)this;
+   }
+   const SALU_instruction& salu() const noexcept
+   {
+      assert(isSALU());
+      return *(SALU_instruction*)this;
+   }
    constexpr bool isSALU() const noexcept
    {
       return isSOP1() || isSOP2() || isSOPC() || isSOPK() || isSOPP();
@@ -1307,32 +1265,13 @@ struct Instruction {
 };
 static_assert(sizeof(Instruction) == 16, "Unexpected padding");
 
-struct SOPK_instruction : public Instruction {
-   uint16_t imm;
-   uint16_t padding;
-};
-static_assert(sizeof(SOPK_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
-
-struct SOPP_instruction : public Instruction {
-   /* In case of branch instructions, contains the Block index,
-    * and otherwise, the 16-bit signed immediate.
+struct SALU_instruction : public Instruction {
+   /* In case of SOPP branch instructions, contains the Block index,
+    * and otherwise, for SOPP and SOPK the 16-bit signed immediate.
     */
    uint32_t imm;
 };
-static_assert(sizeof(SOPP_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
-
-struct SOPC_instruction : public Instruction {
-   uint32_t padding;
-};
-static_assert(sizeof(SOPC_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
-
-struct SOP1_instruction : public Instruction {};
-static_assert(sizeof(SOP1_instruction) == sizeof(Instruction) + 0, "Unexpected padding");
-
-struct SOP2_instruction : public Instruction {
-   uint32_t padding;
-};
-static_assert(sizeof(SOP2_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
+static_assert(sizeof(SALU_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
 /**
  * Scalar Memory Format:

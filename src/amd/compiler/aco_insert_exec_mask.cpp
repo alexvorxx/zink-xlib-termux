@@ -498,7 +498,7 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
          Definition dst = instr->definitions[0];
          assert(dst.size() == bld.lm.size());
          if (state == Exact) {
-            instr.reset(create_instruction<SOP1_instruction>(bld.w64or32(Builder::s_mov),
+            instr.reset(create_instruction<SALU_instruction>(bld.w64or32(Builder::s_mov),
                                                              Format::SOP1, 1, 1));
             instr->operands[0] = Operand::zero();
             instr->definitions[0] = dst;
@@ -506,7 +506,7 @@ process_instructions(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instructio
             std::pair<Operand, uint8_t>& exact_mask = info.exec[0];
             assert(exact_mask.second & mask_type_exact);
 
-            instr.reset(create_instruction<SOP2_instruction>(bld.w64or32(Builder::s_andn2),
+            instr.reset(create_instruction<SALU_instruction>(bld.w64or32(Builder::s_andn2),
                                                              Format::SOP2, 2, 2));
             instr->operands[0] = Operand(exec, bld.lm); /* current exec */
             instr->operands[1] = Operand(exact_mask.first);

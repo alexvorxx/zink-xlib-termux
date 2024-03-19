@@ -2895,7 +2895,7 @@ lower_to_hw_instr(Program* program)
                         bool is_break_continue =
                            program->blocks[i].kind & (block_kind_break | block_kind_continue);
                         bool discard_early_exit =
-                           program->blocks[inst->sopp().imm].kind & block_kind_discard_early_exit;
+                           program->blocks[inst->salu().imm].kind & block_kind_discard_early_exit;
                         if ((inst->opcode != aco_opcode::s_cbranch_scc0 &&
                              inst->opcode != aco_opcode::s_cbranch_scc1) ||
                             (!discard_early_exit && !is_break_continue))

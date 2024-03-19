@@ -350,9 +350,9 @@ get_wait_imm(Program* program, aco_ptr<Instruction>& instr)
    if (instr->opcode == aco_opcode::s_endpgm) {
       return wait_imm(0, 0, 0, 0);
    } else if (instr->opcode == aco_opcode::s_waitcnt) {
-      return wait_imm(GFX10_3, instr->sopp().imm);
+      return wait_imm(GFX10_3, instr->salu().imm);
    } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt) {
-      return wait_imm(0, 0, 0, instr->sopk().imm);
+      return wait_imm(0, 0, 0, instr->salu().imm);
    } else {
       unsigned max_lgkm_cnt = program->gfx_level >= GFX10 ? 62 : 14;
       unsigned max_exp_cnt = 6;

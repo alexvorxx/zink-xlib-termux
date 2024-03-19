@@ -104,7 +104,7 @@ class Format(IntEnum):
 
    def get_builder_fields(self):
       if self == Format.SOPK:
-         return [('uint16_t', 'imm', None)]
+         return [('uint32_t', 'imm', '0')]
       elif self == Format.SOPP:
          return [('uint32_t', 'imm', '0')]
       elif self == Format.SMEM:

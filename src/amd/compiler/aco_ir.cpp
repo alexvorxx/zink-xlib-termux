@@ -231,7 +231,7 @@ get_sync_info(const Instruction* instr)
     */
    if (instr->opcode == aco_opcode::p_pops_gfx9_overlapped_wave_wait_done ||
        (instr->opcode == aco_opcode::s_wait_event &&
-        !(instr->sopp().imm & wait_event_imm_dont_wait_export_ready))) {
+        !(instr->salu().imm & wait_event_imm_dont_wait_export_ready))) {
       return memory_sync_info(storage_buffer | storage_image, semantic_acquire, scope_queuefamily);
    } else if (instr->opcode == aco_opcode::p_pops_gfx9_ordered_section_done) {
       return memory_sync_info(storage_buffer | storage_image, semantic_release, scope_queuefamily);

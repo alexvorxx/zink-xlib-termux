@@ -562,3 +562,101 @@ brw_fs_lower_3src_null_dest(fs_visitor &s)
    return progress;
 }
 
+/**
+ * Perform lowering to legalize the IR for various ALU restrictions.
+ *
+ * For example:
+ * - Splitting 64-bit MOV/SEL into 2x32-bit where needed
+ */
+bool
+brw_fs_lower_alu_restrictions(fs_visitor &s)
+{
+   const intel_device_info *devinfo = s.devinfo;
+   bool progress = false;
+
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
+      switch (inst->opcode) {
+      case BRW_OPCODE_MOV:
+         if (!devinfo->has_64bit_float &&
+             inst->dst.type == BRW_REGISTER_TYPE_DF) {
+            assert(inst->dst.type == inst->src[0].type);
+            assert(!inst->saturate);
+            assert(!inst->src[0].abs);
+            assert(!inst->src[0].negate);
+            const brw::fs_builder ibld(&s, block, inst);
+
+            if (!inst->is_partial_write())
+               ibld.emit_undef_for_dst(inst);
+
+            ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_F, 1),
+                     subscript(inst->src[0], BRW_REGISTER_TYPE_F, 1));
+            ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_F, 0),
+                     subscript(inst->src[0], BRW_REGISTER_TYPE_F, 0));
+
+            inst->remove(block);
+            progress = true;
+         }
+
+         if (!devinfo->has_64bit_int &&
+             (inst->dst.type == BRW_REGISTER_TYPE_UQ ||
+              inst->dst.type == BRW_REGISTER_TYPE_Q)) {
+            assert(inst->dst.type == inst->src[0].type);
+            assert(!inst->saturate);
+            assert(!inst->src[0].abs);
+            assert(!inst->src[0].negate);
+            const brw::fs_builder ibld(&s, block, inst);
+
+            if (!inst->is_partial_write())
+               ibld.emit_undef_for_dst(inst);
+
+            ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 1),
+                     subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 1));
+            ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 0),
+                     subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 0));
+
+            inst->remove(block);
+            progress = true;
+         }
+         break;
+
+      case BRW_OPCODE_SEL:
+         if (!devinfo->has_64bit_float &&
+             !devinfo->has_64bit_int &&
+             (inst->dst.type == BRW_REGISTER_TYPE_DF ||
+              inst->dst.type == BRW_REGISTER_TYPE_UQ ||
+              inst->dst.type == BRW_REGISTER_TYPE_Q)) {
+            assert(inst->dst.type == inst->src[0].type);
+            assert(!inst->saturate);
+            assert(!inst->src[0].abs && !inst->src[0].negate);
+            assert(!inst->src[1].abs && !inst->src[1].negate);
+            const brw::fs_builder ibld(&s, block, inst);
+
+            if (!inst->is_partial_write())
+               ibld.emit_undef_for_dst(inst);
+
+            set_predicate(inst->predicate,
+                          ibld.SEL(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 0),
+                                   subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 0),
+                                   subscript(inst->src[1], BRW_REGISTER_TYPE_UD, 0)));
+            set_predicate(inst->predicate,
+                          ibld.SEL(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 1),
+                                   subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 1),
+                                   subscript(inst->src[1], BRW_REGISTER_TYPE_UD, 1)));
+
+            inst->remove(block);
+            progress = true;
+         }
+         break;
+
+      default:
+         break;
+      }
+   }
+
+   if (progress) {
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
+                            DEPENDENCY_INSTRUCTION_DETAIL);
+   }
+
+   return progress;
+}

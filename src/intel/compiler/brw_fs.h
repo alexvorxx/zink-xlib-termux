@@ -593,6 +593,7 @@ void nir_to_brw(fs_visitor *s);
 void brw_fs_optimize(fs_visitor &s);
 
 bool brw_fs_lower_3src_null_dest(fs_visitor &s);
+bool brw_fs_lower_alu_restrictions(fs_visitor &s);
 bool brw_fs_lower_barycentrics(fs_visitor &s);
 bool brw_fs_lower_constant_loads(fs_visitor &s);
 bool brw_fs_lower_derivatives(fs_visitor &s);

@@ -95,8 +95,9 @@ static void
 gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_instr *instr,
                                    struct radv_shader_info *info, bool consider_force_vrs)
 {
-   const unsigned driver_location = nir_intrinsic_base(instr);
-   const unsigned num_slots = nir_intrinsic_io_semantics(instr).num_slots;
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(instr);
+   const unsigned location = io_sem.location;
+   const unsigned num_slots = io_sem.num_slots;
    const unsigned component = nir_intrinsic_component(instr);
    const unsigned write_mask = nir_intrinsic_write_mask(instr);
    uint8_t *output_usage_mask = NULL;
@@ -112,10 +113,11 @@ gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_in
       output_usage_mask = info->gs.output_usage_mask;
       break;
    case MESA_SHADER_FRAGMENT:
-      if (driver_location >= FRAG_RESULT_DATA0) {
-         info->ps.colors_written |= 0xfu << (4 * (driver_location - FRAG_RESULT_DATA0));
+      if (location >= FRAG_RESULT_DATA0) {
+         const unsigned fs_semantic = location + io_sem.dual_source_blend_index;
+         info->ps.colors_written |= 0xfu << (4 * (fs_semantic - FRAG_RESULT_DATA0));
 
-         if (driver_location == FRAG_RESULT_DATA0)
+         if (fs_semantic == FRAG_RESULT_DATA0)
             info->ps.color0_written = write_mask;
       }
       break;
@@ -125,11 +127,11 @@ gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_in
 
    if (output_usage_mask) {
       for (unsigned i = 0; i < num_slots; i++) {
-         output_usage_mask[driver_location + i] |= ((write_mask >> (i * 4)) & 0xf) << component;
+         output_usage_mask[location + i] |= ((write_mask >> (i * 4)) & 0xf) << component;
       }
    }
 
-   if (consider_force_vrs && driver_location == VARYING_SLOT_POS) {
+   if (consider_force_vrs && location == VARYING_SLOT_POS) {
       unsigned pos_w_chan = 3 - component;
 
       if (write_mask & BITFIELD_BIT(pos_w_chan)) {
@@ -144,7 +146,7 @@ gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_in
 
    if (nir->info.stage == MESA_SHADER_GEOMETRY) {
       const uint8_t gs_streams = nir_intrinsic_io_semantics(instr).gs_streams;
-      info->gs.output_streams[driver_location] |= gs_streams << (component * 2);
+      info->gs.output_streams[location] |= gs_streams << (component * 2);
    }
 }
 

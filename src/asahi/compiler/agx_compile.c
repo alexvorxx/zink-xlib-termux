@@ -1289,11 +1289,10 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
                          agx_zero(), AGX_ICOND_UEQ, false);
 
    case nir_intrinsic_load_vertex_id:
-      assert(b->shader->stage == MESA_SHADER_VERTEX);
+      /* We don't assert the HW stage since we use this same ABI with SW VS */
       return agx_mov_to(b, dst, agx_abs(agx_vertex_id(b)));
 
    case nir_intrinsic_load_instance_id:
-      assert(b->shader->stage == MESA_SHADER_VERTEX);
       return agx_mov_to(b, dst, agx_abs(agx_instance_id(b)));
 
    case nir_intrinsic_load_preamble:

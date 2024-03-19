@@ -1187,13 +1187,13 @@ BEGIN_TEST(insert_nops.setpc_gfx10)
    //! p_unit_test 4
    //! v1: %0:v[0] = ds_read_b32 %0:v[0]
    //! v_nop
-   //! s_branch
+   //! s_branch block:BB0
    //! s_waitcnt_vscnt %0:null imm:0
    //! s_setpc_b64 0
    bld.pseudo(aco_opcode::p_unit_test, Operand::c32(4));
    bld.ds(aco_opcode::ds_read_b32, Definition(PhysReg(256), v1), Operand(PhysReg(256), v1));
    bld.vop1(aco_opcode::v_nop); /* reset VMEMtoScalarWriteHazard */
-   bld.sopp(aco_opcode::s_branch, -1, 0);
+   bld.sopp(aco_opcode::s_branch, 0);
    bld.sop1(aco_opcode::s_setpc_b64, Operand::zero(8));
 
    //! p_unit_test 5

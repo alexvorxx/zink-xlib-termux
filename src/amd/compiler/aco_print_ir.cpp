@@ -404,7 +404,7 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          break;
       }
       }
-      if (instr->sopp().block != -1)
+      if (instr_info.classes[(int)instr->opcode] == instr_class::branch)
          fprintf(output, " block:BB%d", instr->sopp().block);
       break;
    }

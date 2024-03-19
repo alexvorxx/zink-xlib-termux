@@ -207,17 +207,20 @@ emit_sopc_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction*
 }
 
 void
-emit_sopp_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* instr)
+emit_sopp_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* instr,
+                      bool force_imm = false)
 {
    uint32_t opcode = ctx.opcode[(int)instr->opcode];
    SOPP_instruction& sopp = instr->sopp();
 
    uint32_t encoding = (0b101111111 << 23);
    encoding |= opcode << 16;
-   encoding |= (uint16_t)sopp.imm;
-   if (sopp.block != -1) {
+
+   if (!force_imm && instr_info.classes[(int)instr->opcode] == instr_class::branch) {
       sopp.pass_flags = 0;
       ctx.branches.emplace_back(out.size(), &sopp);
+   } else {
+      encoding |= (uint16_t)sopp.imm;
    }
    out.push_back(encoding);
 }
@@ -1346,7 +1349,7 @@ emit_long_jump(asm_context& ctx, SOPP_instruction* branch, bool backwards,
       default: unreachable("Unhandled long jump.");
       }
       instr.reset(bld.sopp(inv, -1, 6));
-      emit_instruction(ctx, out, instr.get());
+      emit_sopp_instruction(ctx, out, instr.get(), true);
    }
 
    /* create the new PC and stash SCC in the LSB */

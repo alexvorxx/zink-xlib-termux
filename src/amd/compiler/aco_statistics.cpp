@@ -531,7 +531,8 @@ collect_preasm_stats(Program* program)
       program->statistics[aco_statistic_instructions] += block.instructions.size();
 
       for (aco_ptr<Instruction>& instr : block.instructions) {
-         bool is_branch = instr->isSOPP() && instr->sopp().block != -1;
+         const bool is_branch =
+            instr->isSOPP() && instr_info.classes[(int)instr->opcode] == instr_class::branch;
          if (is_branch)
             program->statistics[aco_statistic_branches]++;
 

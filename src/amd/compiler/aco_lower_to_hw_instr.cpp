@@ -2889,18 +2889,21 @@ lower_to_hw_instr(Program* program)
 
                for (aco_ptr<Instruction>& inst : program->blocks[i].instructions) {
                   if (inst->isSOPP()) {
-                     /* Discard early exits and loop breaks and continues should work fine with an
-                      * empty exec mask.
-                      */
-                     bool is_break_continue =
-                        program->blocks[i].kind & (block_kind_break | block_kind_continue);
-                     bool discard_early_exit =
-                        inst->sopp().block != -1 &&
-                        (program->blocks[inst->sopp().block].kind & block_kind_discard_early_exit);
-                     if ((inst->opcode != aco_opcode::s_cbranch_scc0 &&
-                          inst->opcode != aco_opcode::s_cbranch_scc1) ||
-                         (!discard_early_exit && !is_break_continue))
+                     if (instr_info.classes[(int)inst->opcode] == instr_class::branch) {
+                        /* Discard early exits and loop breaks and continues should work fine with
+                         * an empty exec mask.
+                         */
+                        bool is_break_continue =
+                           program->blocks[i].kind & (block_kind_break | block_kind_continue);
+                        bool discard_early_exit =
+                           program->blocks[inst->sopp().block].kind & block_kind_discard_early_exit;
+                        if ((inst->opcode != aco_opcode::s_cbranch_scc0 &&
+                             inst->opcode != aco_opcode::s_cbranch_scc1) ||
+                            (!discard_early_exit && !is_break_continue))
+                           can_remove = false;
+                     } else {
                         can_remove = false;
+                     }
                   } else if (inst->isSALU()) {
                      num_scalar++;
                   } else if (inst->isVALU() || inst->isVINTRP()) {

@@ -4771,6 +4771,18 @@ nir_def_is_unused(nir_def *ssa)
    return list_is_empty(&ssa->uses);
 }
 
+/** Sorts unstructured blocks
+ *
+ * NIR requires that unstructured blocks be sorted in reverse post
+ * depth-first-search order.  This is the standard ordering used in the
+ * compiler literature which guarantees dominance.  In particular, reverse
+ * post-DFS order guarantees that dominators occur in the list before the
+ * blocks they dominate.
+ *
+ * NOTE: This function also implicitly deletes any unreachable blocks.
+ */
+void nir_sort_unstructured_blocks(nir_function_impl *impl);
+
 /** Returns the next block, disregarding structure
  *
  * The ordering is deterministic but has no guarantees beyond that.  In

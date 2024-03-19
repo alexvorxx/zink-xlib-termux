@@ -21,8 +21,6 @@
 #include "vn_instance.h"
 #include "vn_ring.h"
 
-#define VN_RELAX_MIN_BASE_SLEEP_US (160)
-
 static const struct debug_control vn_debug_options[] = {
    /* clang-format off */
    { "init", VN_DEBUG_INIT },
@@ -68,12 +66,6 @@ vn_env_init_once(void)
       parse_debug_string(os_get_option("VN_DEBUG"), vn_debug_options);
    vn_env.perf =
       parse_debug_string(os_get_option("VN_PERF"), vn_perf_options);
-   vn_env.draw_cmd_batch_limit =
-      debug_get_num_option("VN_DRAW_CMD_BATCH_LIMIT", UINT32_MAX);
-   if (!vn_env.draw_cmd_batch_limit)
-      vn_env.draw_cmd_batch_limit = UINT32_MAX;
-   vn_env.relax_base_sleep_us = debug_get_num_option(
-      "VN_RELAX_BASE_SLEEP_US", VN_RELAX_MIN_BASE_SLEEP_US);
 }
 
 void
@@ -87,11 +79,8 @@ vn_env_init(void)
       vn_log(NULL,
              "vn_env is as below:"
              "\n\tdebug = 0x%" PRIx64 ""
-             "\n\tperf = 0x%" PRIx64 ""
-             "\n\tdraw_cmd_batch_limit = %u"
-             "\n\trelax_base_sleep_us = %u",
-             vn_env.debug, vn_env.perf, vn_env.draw_cmd_batch_limit,
-             vn_env.relax_base_sleep_us);
+             "\n\tperf = 0x%" PRIx64 "",
+             vn_env.debug, vn_env.perf);
    }
 }
 
@@ -218,7 +207,7 @@ vn_relax(struct vn_relax_state *state)
     * Must also update pre-calculated "first_warn_time" in vn_relax_init().
     */
    const uint32_t busy_wait_order = 8;
-   const uint32_t base_sleep_us = vn_env.relax_base_sleep_us;
+   const uint32_t base_sleep_us = 160;
    const uint32_t warn_order = 12;
    const uint32_t abort_order = 16;
 

@@ -184,6 +184,8 @@ vn_relax_reason_string(enum vn_relax_reason reason)
       return "fence";
    case VN_RELAX_REASON_SEMAPHORE:
       return "semaphore";
+   case VN_RELAX_REASON_QUERY:
+      return "query";
    }
    return "";
 }

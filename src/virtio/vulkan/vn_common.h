@@ -212,6 +212,7 @@ enum vn_relax_reason {
    VN_RELAX_REASON_RING_SPACE,
    VN_RELAX_REASON_FENCE,
    VN_RELAX_REASON_SEMAPHORE,
+   VN_RELAX_REASON_QUERY,
 };
 
 struct vn_relax_state {

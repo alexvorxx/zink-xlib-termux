@@ -2899,6 +2899,43 @@ impl<'a> ShaderFromNir<'a> {
         self.set_ssa(&undef.def, dst);
     }
 
+    fn emit_jump(
+        &mut self,
+        b: &mut impl SSABuilder,
+        nb: &nir_block,
+        target: &nir_block,
+    ) {
+        if target.index == self.end_block_id {
+            b.push_op(OpExit {});
+        } else {
+            self.cfg.add_edge(nb.index, target.index);
+            b.push_op(OpBra {
+                target: self.get_block_label(target),
+            });
+        }
+    }
+
+    fn emit_pred_jump(
+        &mut self,
+        b: &mut impl SSABuilder,
+        nb: &nir_block,
+        pred: Pred,
+        target: &nir_block,
+        fallthrough: &nir_block,
+    ) {
+        // The fall-through edge has to come first
+        self.cfg.add_edge(nb.index, fallthrough.index);
+        let op = if target.index == self.end_block_id {
+            Op::Exit(OpExit {})
+        } else {
+            self.cfg.add_edge(nb.index, target.index);
+            Op::Bra(OpBra {
+                target: self.get_block_label(target),
+            })
+        };
+        b.predicate(pred).push_op(op);
+    }
+
     fn parse_block(
         &mut self,
         ssa_alloc: &mut SSAValueAllocator,
@@ -3024,31 +3061,19 @@ impl<'a> ShaderFromNir<'a> {
         }
 
         if let Some(ni) = nb.following_if() {
-            // The fall-through edge has to come first
-            self.cfg.add_edge(nb.index, ni.first_then_block().index);
-            self.cfg.add_edge(nb.index, ni.first_else_block().index);
-
-            let mut bra = Instr::new_boxed(OpBra {
-                target: self.get_block_label(ni.first_else_block()),
-            });
-
             let cond = self.get_ssa(ni.condition.as_def())[0];
-            bra.pred = cond.into();
-            // This is the branch to jump to the else
-            bra.pred.pred_inv = true;
-
-            b.push_instr(bra);
+            self.emit_pred_jump(
+                &mut b,
+                nb,
+                // This is the branch to jump to the else
+                Pred::from(cond).bnot(),
+                ni.first_else_block(),
+                ni.first_then_block(),
+            );
         } else {
             assert!(succ[1].is_none());
             let s0 = succ[0].unwrap();
-            if s0.index == self.end_block_id {
-                b.push_op(OpExit {});
-            } else {
-                self.cfg.add_edge(nb.index, s0.index);
-                b.push_op(OpBra {
-                    target: self.get_block_label(s0),
-                });
-            }
+            self.emit_jump(&mut b, nb, s0);
         }
 
         let mut bb = BasicBlock::new(self.get_block_label(nb));

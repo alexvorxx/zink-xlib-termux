@@ -5051,6 +5051,13 @@ impl Pred {
     pub fn iter_ssa_mut(&mut self) -> slice::IterMut<'_, SSAValue> {
         self.pred_ref.iter_ssa_mut()
     }
+
+    pub fn bnot(self) -> Self {
+        Pred {
+            pred_ref: self.pred_ref,
+            pred_inv: !self.pred_inv,
+        }
+    }
 }
 
 impl<T: Into<PredRef>> From<T> for Pred {

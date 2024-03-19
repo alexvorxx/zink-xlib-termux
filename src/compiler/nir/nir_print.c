@@ -386,11 +386,11 @@ print_load_const_instr(nir_load_const_instr *instr, print_state *state)
 }
 
 static void
-print_ssa_use(nir_def *def, print_state *state, nir_alu_type src_type)
+print_src(const nir_src *src, print_state *state, nir_alu_type src_type)
 {
    FILE *fp = state->fp;
-   fprintf(fp, "%%%u", def->index);
-   nir_instr *instr = def->parent_instr;
+   fprintf(fp, "%%%u", src->ssa->index);
+   nir_instr *instr = src->ssa->parent_instr;
 
    if (instr->type == nir_instr_type_load_const && !NIR_DEBUG(PRINT_NO_INLINE_CONSTS)) {
       nir_load_const_instr *load_const = nir_instr_as_load_const(instr);
@@ -414,14 +414,6 @@ print_ssa_use(nir_def *def, print_state *state, nir_alu_type src_type)
       assert(type != nir_type_invalid);
       print_const_from_load(load_const, state, type);
    }
-}
-
-static void print_src(const nir_src *src, print_state *state, nir_alu_type src_type);
-
-static void
-print_src(const nir_src *src, print_state *state, nir_alu_type src_type)
-{
-   print_ssa_use(src->ssa, state, src_type);
 }
 
 static const char *

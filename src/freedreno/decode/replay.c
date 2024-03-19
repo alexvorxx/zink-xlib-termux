@@ -1259,11 +1259,8 @@ override_cmdstream(struct device *dev, struct cmdstream *cs,
    /* Find a free space for the new cmdstreams and resources we will use
     * when overriding existing cmdstream.
     */
-   /* TODO: should the size be configurable? */
-   uint64_t hole_size = 32 * 1024 * 1024;
-   dev->vma.alloc_high = true;
-   uint64_t hole_iova = util_vma_heap_alloc(&dev->vma, hole_size, 4096);
-   dev->vma.alloc_high = false;
+   uint64_t hole_size = util_vma_heap_get_max_free_continuous_size(&dev->vma);
+   uint64_t hole_iova = util_vma_heap_alloc(&dev->vma, hole_size, 1);
    util_vma_heap_free(&dev->vma, hole_iova, hole_size);
 
    char cmd[2048];

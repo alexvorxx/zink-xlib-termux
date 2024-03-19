@@ -2097,6 +2097,62 @@ impl<'a> ShaderFromNir<'a> {
                     data: data,
                 });
             }
+            nir_intrinsic_copy_fs_outputs_nv => {
+                let ShaderIoInfo::Fragment(info) = &mut self.info.io else {
+                    panic!(
+                        "copy_fs_outputs_nv is only allowed in fragment shaders"
+                    );
+                };
+
+                for i in 0..32 {
+                    // Assume that colors have to come a vec4 at a time
+                    if !self.fs_out_regs[i].is_none() {
+                        info.writes_color |= 0xf << (i & !3)
+                    }
+                }
+                let mask_idx = (NAK_FS_OUT_SAMPLE_MASK / 4) as usize;
+                info.writes_sample_mask = !self.fs_out_regs[mask_idx].is_none();
+                let depth_idx = (NAK_FS_OUT_DEPTH / 4) as usize;
+                info.writes_depth = !self.fs_out_regs[depth_idx].is_none();
+
+                let mut srcs = Vec::new();
+                for i in 0..32 {
+                    if info.writes_color & (1 << i) != 0 {
+                        if self.fs_out_regs[i].is_none() {
+                            srcs.push(0.into());
+                        } else {
+                            srcs.push(self.fs_out_regs[i].into());
+                        }
+                    }
+                }
+
+                // These always come together for some reason
+                if info.writes_sample_mask || info.writes_depth {
+                    if info.writes_sample_mask {
+                        srcs.push(self.fs_out_regs[mask_idx].into());
+                    } else {
+                        srcs.push(0.into());
+                    }
+                    if info.writes_depth {
+                        // Saturate depth writes.
+                        //
+                        // TODO: This seems wrong in light of unrestricted depth
+                        // but it's needed to pass CTS tests for now.
+                        let depth = self.fs_out_regs[depth_idx];
+                        let sat_depth = b.alloc_ssa(RegFile::GPR, 1);
+                        b.push_op(OpFAdd {
+                            dst: sat_depth.into(),
+                            srcs: [depth.into(), 0.into()],
+                            saturate: true,
+                            rnd_mode: FRndMode::NearestEven,
+                            ftz: false,
+                        });
+                        srcs.push(sat_depth.into());
+                    }
+                }
+
+                b.push_op(OpFSOut { srcs: srcs });
+            }
             nir_intrinsic_demote
             | nir_intrinsic_discard
             | nir_intrinsic_terminate => {
@@ -2842,61 +2898,6 @@ impl<'a> ShaderFromNir<'a> {
         self.set_ssa(&undef.def, dst);
     }
 
-    fn store_fs_outputs(&mut self, b: &mut impl SSABuilder) {
-        let ShaderIoInfo::Fragment(info) = &mut self.info.io else {
-            return;
-        };
-
-        for i in 0..32 {
-            // Assume that colors have to come a vec4 at a time
-            if !self.fs_out_regs[i].is_none() {
-                info.writes_color |= 0xf << (i & !3)
-            }
-        }
-        let mask_idx = (NAK_FS_OUT_SAMPLE_MASK / 4) as usize;
-        info.writes_sample_mask = !self.fs_out_regs[mask_idx].is_none();
-        let depth_idx = (NAK_FS_OUT_DEPTH / 4) as usize;
-        info.writes_depth = !self.fs_out_regs[depth_idx].is_none();
-
-        let mut srcs = Vec::new();
-        for i in 0..32 {
-            if info.writes_color & (1 << i) != 0 {
-                if self.fs_out_regs[i].is_none() {
-                    srcs.push(0.into());
-                } else {
-                    srcs.push(self.fs_out_regs[i].into());
-                }
-            }
-        }
-
-        // These always come together for some reason
-        if info.writes_sample_mask || info.writes_depth {
-            if info.writes_sample_mask {
-                srcs.push(self.fs_out_regs[mask_idx].into());
-            } else {
-                srcs.push(0.into());
-            }
-            if info.writes_depth {
-                // Saturate depth writes.
-                //
-                // TODO: This seems wrong in light of unrestricted depth but
-                // it's needed to pass CTS tests for now.
-                let depth = self.fs_out_regs[depth_idx];
-                let sat_depth = b.alloc_ssa(RegFile::GPR, 1);
-                b.push_op(OpFAdd {
-                    dst: sat_depth.into(),
-                    srcs: [depth.into(), 0.into()],
-                    saturate: true,
-                    rnd_mode: FRndMode::NearestEven,
-                    ftz: false,
-                });
-                srcs.push(sat_depth.into());
-            }
-        }
-
-        b.push_op(OpFSOut { srcs: srcs });
-    }
-
     fn parse_block(
         &mut self,
         ssa_alloc: &mut SSAValueAllocator,
@@ -3040,7 +3041,6 @@ impl<'a> ShaderFromNir<'a> {
             assert!(succ[1].is_none());
             let s0 = succ[0].unwrap();
             if s0.index == self.end_block_id {
-                self.store_fs_outputs(&mut b);
                 b.push_op(OpExit {});
             } else {
                 self.cfg.add_edge(nb.index, s0.index);

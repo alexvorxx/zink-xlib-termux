@@ -2151,6 +2151,8 @@ intrinsic("end_primitive_nv", dest_comp=1, src_comp=[1], indices=[STREAM_ID])
 # Contains the final primitive handle and indicate the end of emission.
 intrinsic("final_primitive_nv", src_comp=[1])
 
+barrier("copy_fs_outputs_nv")
+
 intrinsic("bar_set_nv", dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE])
 intrinsic("bar_break_nv", dest_comp=1, bit_sizes=[32], src_comp=[1])
 # src[] = { bar, bar_set }

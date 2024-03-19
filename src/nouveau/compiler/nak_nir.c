@@ -1073,6 +1073,14 @@ nak_nir_lower_fs_outputs(nir_shader *nir)
 
    NIR_PASS_V(nir, nir_lower_io, nir_var_shader_out, fs_out_size, 0);
 
+   /* We need a copy_fs_outputs_nv intrinsic so NAK knows where to place the
+    * final copy.  This needs to be in the last block, after all store_output
+    * intrinsics.
+    */
+   nir_function_impl *impl = nir_shader_get_entrypoint(nir);
+   nir_builder b = nir_builder_at(nir_after_impl(impl));
+   nir_copy_fs_outputs_nv(&b);
+
    return true;
 }
 

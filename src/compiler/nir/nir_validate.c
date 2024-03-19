@@ -1151,17 +1151,14 @@ collect_blocks(struct exec_list *cf_list, validate_state *state)
    /* We walk the blocks manually here rather than using nir_foreach_block for
     * a few reasons:
     *
-    *  1. nir_foreach_block() doesn't work properly for unstructured NIR and
-    *     we need to be able to handle all forms of NIR here.
-    *
-    *  2. We want to call exec_list_validate() on every linked list in the IR
+    *  1. We want to call exec_list_validate() on every linked list in the IR
     *     which means we need to touch every linked and just walking blocks
     *     with nir_foreach_block() would make that difficult.  In particular,
     *     we want to validate each list before the first time we walk it so
     *     that we catch broken lists in exec_list_validate() instead of
     *     getting stuck in a hard-to-debug infinite loop in the validator.
     *
-    *  3. nir_foreach_block() depends on several invariants of the CF node
+    *  2. nir_foreach_block() depends on several invariants of the CF node
     *     hierarchy which nir_validate_shader() is responsible for verifying.
     *     If we used nir_foreach_block() in nir_validate_shader(), we could
     *     end up blowing up on a bad list walk instead of throwing the much
@@ -1188,6 +1185,43 @@ collect_blocks(struct exec_list *cf_list, validate_state *state)
          unreachable("Invalid CF node type");
       }
    }
+}
+
+static void
+collect_blocks_pdfs(nir_function_impl *impl, nir_block *block,
+                    uint32_t *count, validate_state *state)
+{
+   if (block == impl->end_block)
+      return;
+
+   if (_mesa_set_search(state->blocks, block))
+      return;
+
+   _mesa_set_add(state->blocks, block);
+
+   for (uint32_t i = 0; i < ARRAY_SIZE(block->successors); i++) {
+      if (block->successors[i] != NULL)
+         collect_blocks_pdfs(impl, block->successors[i], count, state);
+   }
+
+   /* Assert that the blocks are indexed in reverse PDFS order */
+   validate_assert(state, block->index == --(*count));
+}
+
+static void
+collect_unstructured_blocks(nir_function_impl *impl, validate_state *state)
+{
+   exec_list_validate(&impl->body);
+
+   /* Assert that the blocks are properly indexed */
+   uint32_t count = 0;
+   foreach_list_typed(nir_cf_node, node, node, &impl->body) {
+      nir_block *block = nir_cf_node_as_block(node);
+      validate_assert(state, block->index == count++);
+   }
+   validate_assert(state, impl->end_block->index == count);
+
+   collect_blocks_pdfs(impl, nir_start_block(impl), &count, state);
 }
 
 static void validate_cf_node(nir_cf_node *node, validate_state *state);
@@ -1579,7 +1613,10 @@ validate_function_impl(nir_function_impl *impl, validate_state *state)
 
    _mesa_set_clear(state->blocks, NULL);
    _mesa_set_resize(state->blocks, impl->num_blocks);
-   collect_blocks(&impl->body, state);
+   if (impl->structured)
+      collect_blocks(&impl->body, state);
+   else
+      collect_unstructured_blocks(impl, state);
    _mesa_set_add(state->blocks, impl->end_block);
    validate_assert(state, !exec_list_is_empty(&impl->body));
    foreach_list_typed(nir_cf_node, node, node, &impl->body) {

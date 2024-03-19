@@ -4783,10 +4783,11 @@ nir_def_is_unused(nir_def *ssa)
  */
 void nir_sort_unstructured_blocks(nir_function_impl *impl);
 
-/** Returns the next block, disregarding structure
+/** Returns the next block
  *
- * The ordering is deterministic but has no guarantees beyond that.  In
- * particular, it is not guaranteed to be dominance-preserving.
+ * For structured control-flow, this follows the same order as
+ * nir_block_cf_tree_next().  For unstructured control-flow the blocks are in
+ * reverse post-DFS order.  (See nir_sort_unstructured_blocks() above.)
  */
 nir_block *nir_block_unstructured_next(nir_block *block);
 nir_block *nir_unstructured_start_block(nir_function_impl *impl);

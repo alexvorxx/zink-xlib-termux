@@ -657,6 +657,11 @@ typedef struct nir_variable {
       unsigned from_named_ifc_block : 1;
 
       /**
+       * Unsized array buffer variable.
+       */
+      unsigned from_ssbo_unsized_array : 1;
+
+      /**
        * Non-zero if the variable must be a shader input. This is useful for
        * constraints on function parameters.
        */

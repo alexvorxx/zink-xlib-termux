@@ -445,6 +445,7 @@ nir_visitor::visit(ir_variable *ir)
    var->data.used = ir->data.used;
    var->data.max_array_access = ir->data.max_array_access;
    var->data.implicit_sized_array = ir->data.implicit_sized_array;
+   var->data.from_ssbo_unsized_array = ir->data.from_ssbo_unsized_array;
 
    switch(ir->data.mode) {
    case ir_var_auto:

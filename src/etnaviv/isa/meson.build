@@ -28,6 +28,7 @@ _libetnaviv_decode = static_library(
   'etnaviv_decode',
   decode_files,
   dependencies: [idep_mesautil, idep_isaspec_decode],
+  link_with: [libisaspec],
   include_directories: [
     inc_include,
     inc_src,

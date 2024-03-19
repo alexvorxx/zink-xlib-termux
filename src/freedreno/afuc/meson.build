@@ -126,6 +126,7 @@ if cc.sizeof('size_t') > 4
     ],
     link_with: [
       libfreedreno_rnn,
+      libisaspec
     ],
     dependencies: [idep_mesautil, idep_isaspec_decode],
     build_by_default : with_tools.contains('freedreno'),

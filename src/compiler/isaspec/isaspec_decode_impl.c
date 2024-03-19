@@ -176,37 +176,6 @@ struct decode_state {
 	char *errors[4];
 };
 
-void
-isa_print(struct isa_print_state *state, const char *fmt, ...)
-{
-	char *buffer;
-	va_list args;
-	int ret;
-
-	va_start(args, fmt);
-	ret = vasprintf(&buffer, fmt, args);
-	va_end(args);
-
-	if (ret != -1) {
-		const size_t len = strlen(buffer);
-
-		for (size_t i = 0; i < len; i++) {
-			const char c = buffer[i];
-
-			fputc(c, state->out);
-			state->line_column++;
-
-			if (c == '\n') {
-				state->line_column = 0;
-			}
-		}
-
-		free(buffer);
-
-		return;
-	}
-}
-
 static void display(struct decode_scope *scope);
 static void decode_error(struct decode_state *state, const char *fmt, ...) _util_printf_format(2,3);
 

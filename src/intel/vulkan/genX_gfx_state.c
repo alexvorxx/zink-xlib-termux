@@ -1331,6 +1331,20 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
    }
 #endif
 
+   struct anv_push_constants *push = &cmd_buffer->state.gfx.base.push_constants;
+
+   /* If the pipeline uses a dynamic value of patch_control_points and either
+    * the pipeline change or the dynamic value change, check the value and
+    * reemit if needed.
+    */
+   if (pipeline->dynamic_patch_control_points &&
+       ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
+        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_TS_PATCH_CONTROL_POINTS)) &&
+       push->gfx.tcs_input_vertices != dyn->ts.patch_control_points) {
+      push->gfx.tcs_input_vertices = dyn->ts.patch_control_points;
+      cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+   }
+
 #undef GET
 #undef SET
 #undef SET_STAGE

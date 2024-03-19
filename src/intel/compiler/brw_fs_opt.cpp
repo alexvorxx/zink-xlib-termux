@@ -232,8 +232,10 @@ brw_fs_opt_zero_samples(fs_visitor &s)
          zero_size += lp->exec_size * type_sz(lp->src[i].type) * lp->dst.stride;
       }
 
-      const unsigned zero_len = zero_size / (reg_unit(s.devinfo) * REG_SIZE);
+      /* Round down to ensure to only consider full registers. */
+      const unsigned zero_len = ROUND_DOWN_TO(zero_size / REG_SIZE, reg_unit(s.devinfo));
       if (zero_len > 0) {
+         /* Note mlen is in REG_SIZE units. */
          send->mlen -= zero_len;
          progress = true;
       }

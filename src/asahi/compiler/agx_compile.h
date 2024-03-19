@@ -123,6 +123,12 @@ struct agx_shader_info {
    uint16_t immediates[512];
 };
 
+struct agx_shader_part {
+   struct agx_shader_info info;
+   void *binary;
+   size_t binary_size;
+};
+
 #define AGX_MAX_RTS (8)
 
 enum agx_format {

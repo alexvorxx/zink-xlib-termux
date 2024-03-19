@@ -1928,8 +1928,20 @@ intrinsic("load_polygon_stipple_agx", src_comp=[1], dest_comp=1, bit_sizes=[32],
 # The fixed-function sample mask specified in the API (e.g. glSampleMask)
 system_value("api_sample_mask_agx", 1, bit_sizes=[16])
 
+# Bit mask of samples currently being shaded. For API-level sample shading, this
+# will usually equal (1 << sample_id). Multiple bits can be set when sample
+# shading is only enabled due to framebuffer fetch, and the framebuffer has
+# multiple samples with the same value.
+#
+# Used as a loop variable with dynamic sample shading.
+system_value("active_samples_agx", 1, bit_sizes=[16])
+
 # Loads the sample position array as fixed point packed into a 32-bit word
 system_value("sample_positions_agx", 1, bit_sizes=[32])
+
+# In a non-monolithic fragment shader part, returns whether this shader part is
+# responsible for Z/S testing after its final discard. ~0/0 boolean.
+system_value("shader_part_tests_zs_agx", 1, bit_sizes=[16])
 
 # In a fragment shader, returns the log2 of the number of samples in the
 # tilebuffer. This is the unprocessed value written in the corresponding USC

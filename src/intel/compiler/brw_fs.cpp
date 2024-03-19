@@ -211,8 +211,6 @@ fs_inst::is_send_from_grf() const
    case SHADER_OPCODE_MEMORY_FENCE:
    case SHADER_OPCODE_BARRIER:
       return true;
-   case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
-      return src[1].file == VGRF;
    case FS_OPCODE_FB_READ:
       return src[0].file == VGRF;
    default:

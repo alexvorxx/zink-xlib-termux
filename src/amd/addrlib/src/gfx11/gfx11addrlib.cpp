@@ -1024,6 +1024,17 @@ UINT_32 Gfx11Lib::GetMetaBlkSize(
                 // For htile surfaces, pad meta block size to 2K * num_pipes
                 metablkSizeLog2 = Max(metablkSizeLog2, 11 + numPipesLog2);
             }
+
+            /* This chunk is not part of upstream addrlib. See !28268 */
+            const INT_32 compFragLog2 = numSamplesLog2;
+
+            if  (IsRtOptSwizzle(swizzleMode) && (compFragLog2 > 1) && (pipeRotateLog2 >= 1))
+            {
+                const INT_32 tmp = 8 + m_pipesLog2 + Max(pipeRotateLog2, compFragLog2 - 1);
+
+                metablkSizeLog2 = Max(metablkSizeLog2, tmp);
+            }
+            /* End of the non-upstream chunk. */
         }
 
         const INT_32 metablkBitsLog2 =

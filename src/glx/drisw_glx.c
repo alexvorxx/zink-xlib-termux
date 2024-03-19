@@ -980,7 +980,8 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
                                     extensions,
                                     &driver_configs, implicit, psc);
    if (psc->driScreen == NULL) {
-      ErrorMessageF("glx: failed to create drisw screen\n");
+      if (!pdpyp->zink || !implicit)
+         ErrorMessageF("glx: failed to create drisw screen\n");
       goto handle_error;
    }
 
@@ -1053,7 +1054,7 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
    glx_screen_cleanup(&psc->base);
    free(psc);
 
-   if (pdpyp->zink == TRY_ZINK_YES)
+   if (pdpyp->zink == TRY_ZINK_YES && !implicit)
       CriticalErrorMessageF("failed to load driver: %s\n", driver);
 
    return NULL;

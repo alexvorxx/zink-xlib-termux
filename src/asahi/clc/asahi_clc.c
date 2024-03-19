@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include "util/u_math.h"
 #include <sys/mman.h>
 
 struct spirv_to_nir_options spirv_options = {
@@ -264,7 +265,6 @@ static void
 print_u32_data(FILE *fp, const char *prefix, const char *arr_name,
                const uint32_t *data, size_t len)
 {
-   assert(len % 4 == 0);
    fprintf(fp, "static const uint32_t %s_%s[] = {", prefix, arr_name);
    for (unsigned i = 0; i < (len / 4); i++) {
       if (i % 4 == 0)
@@ -272,6 +272,18 @@ print_u32_data(FILE *fp, const char *prefix, const char *arr_name,
 
       fprintf(fp, " 0x%08" PRIx32 ",", data[i]);
    }
+
+   if (len % 4) {
+      const uint8_t *data_u8 = (const uint8_t *)data;
+      uint32_t last = 0;
+      unsigned last_offs = ROUND_DOWN_TO(len, 4);
+      for (unsigned i = 0; i < len % 4; ++i) {
+         last |= (uint32_t)data_u8[last_offs + i] << (i * 8);
+      }
+
+      fprintf(fp, " 0x%08" PRIx32 ",", last);
+   }
+
    fprintf(fp, "\n};\n");
 }
 
@@ -518,12 +530,6 @@ main(int argc, char **argv)
 
       agx_preprocess_nir(b.shader, nir);
       agx_compile_shader_nir(b.shader, &key, NULL, &binary, &compiled_info);
-
-      /* Pad out */
-      uint8_t zero = 0;
-      while (binary.size % 4) {
-         util_dynarray_append(&binary, uint8_t, zero);
-      }
 
       print_u32_data(fp, "libagx_g13", "helper", binary.data, binary.size);
       util_dynarray_fini(&binary);

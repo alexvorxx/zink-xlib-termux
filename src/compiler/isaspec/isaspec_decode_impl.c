@@ -933,7 +933,7 @@ decode_bitset(void *out, struct decode_scope *scope)
 	}
 }
 
-void
+static void
 isa_decode_bitset(void *out, const struct isa_bitset **bitsets, struct decode_scope *scope, bitmask_t val)
 {
 	struct decode_state *state = scope->state;

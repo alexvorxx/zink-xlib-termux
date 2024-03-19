@@ -905,8 +905,14 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .shaderWarpsPerSM = info->max_warps_per_mp,
    };
 
-   snprintf(properties->deviceName, sizeof(properties->deviceName),
-            "%s", info->device_name);
+   /* Add the driver to the device name (like other Mesa drivers do) */
+   if (!strcmp(info->device_name, info->chipset_name)) {
+      snprintf(properties->deviceName, sizeof(properties->deviceName),
+               "NVK %s", info->device_name);
+   } else {
+      snprintf(properties->deviceName, sizeof(properties->deviceName),
+               "%s (NVK %s)", info->device_name, info->chipset_name);
+   }
 
    /* VK_EXT_shader_module_identifier */
    STATIC_ASSERT(sizeof(vk_shaderModuleIdentifierAlgorithmUUID) ==

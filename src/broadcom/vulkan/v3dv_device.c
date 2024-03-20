@@ -201,6 +201,7 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .EXT_depth_clip_enable                = device->devinfo.ver >= 71,
       .EXT_load_store_op_none               = true,
       .EXT_inline_uniform_block             = true,
+      .EXT_extended_dynamic_state           = true,
       .EXT_external_memory_dma_buf          = true,
       .EXT_host_query_reset                 = true,
       .EXT_image_drm_format_modifier        = true,
@@ -407,6 +408,9 @@ get_features(const struct v3dv_physical_device *physical_device,
 
       /* VK_EXT_color_write_enable */
       .colorWriteEnable = true,
+
+      /* VK_EXT_extended_dynamic_state */
+      .extendedDynamicState = true,
 
       /* VK_KHR_pipeline_executable_properties */
       .pipelineExecutableInfo = true,

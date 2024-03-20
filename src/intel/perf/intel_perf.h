@@ -248,7 +248,7 @@ struct intel_perf_query_info {
 
    /* OA specific */
    uint64_t oa_metrics_set_id;
-   int oa_format;
+   uint64_t oa_format;
 
    /* For indexing into the accumulator[] ... */
    int gpu_time_offset;

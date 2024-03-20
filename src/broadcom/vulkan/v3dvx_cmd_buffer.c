@@ -2486,6 +2486,8 @@ v3dX(cmd_buffer_emit_gl_shader_state)(struct v3dv_cmd_buffer *cmd_buffer)
             cs_loaded_any = true;
          }
 
+         attr.stride =
+            cmd_buffer->vk.dynamic_graphics_state.vi_binding_strides[binding];
          attr.maximum_index = 0xffffff;
       }
 

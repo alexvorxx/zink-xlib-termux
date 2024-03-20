@@ -3421,21 +3421,28 @@ v3dv_CmdPipelineBarrier2(VkCommandBuffer commandBuffer,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-v3dv_CmdBindVertexBuffers(VkCommandBuffer commandBuffer,
-                          uint32_t firstBinding,
-                          uint32_t bindingCount,
-                          const VkBuffer *pBuffers,
-                          const VkDeviceSize *pOffsets)
+v3dv_CmdBindVertexBuffers2(VkCommandBuffer commandBuffer,
+                           uint32_t firstBinding,
+                           uint32_t bindingCount,
+                           const VkBuffer *pBuffers,
+                           const VkDeviceSize *pOffsets,
+                           const VkDeviceSize *pSizes,
+                           const VkDeviceSize *pStrides)
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
    struct v3dv_vertex_binding *vb = cmd_buffer->state.vertex_bindings;
 
-   /* We have to defer setting up vertex buffer since we need the buffer
-    * stride from the pipeline.
-    */
-
    assert(firstBinding + bindingCount <= MAX_VBS);
    bool vb_state_changed = false;
+   if (pStrides) {
+      vk_cmd_set_vertex_binding_strides(&cmd_buffer->vk,
+                                        firstBinding, bindingCount,
+                                        pStrides);
+      struct vk_dynamic_graphics_state *dyn = &cmd_buffer->vk.dynamic_graphics_state;
+      if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VI_BINDING_STRIDES))
+         vb_state_changed = true;
+   }
+   /* FIXME: at this moment we don't do any thing with pSizes. */
    for (uint32_t i = 0; i < bindingCount; i++) {
       if (vb[firstBinding + i].buffer != v3dv_buffer_from_handle(pBuffers[i])) {
          vb[firstBinding + i].buffer = v3dv_buffer_from_handle(pBuffers[i]);

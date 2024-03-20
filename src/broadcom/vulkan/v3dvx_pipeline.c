@@ -656,7 +656,6 @@ pack_shader_state_attribute_record(struct v3dv_pipeline *pipeline,
 
       attr.instance_divisor = MIN2(pipeline->vb[binding].instance_divisor,
                                    0xffff);
-      attr.stride = pipeline->vb[binding].stride;
       attr.type = get_attr_type(desc);
    }
 }

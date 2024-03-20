@@ -1677,6 +1677,32 @@ gl_nir_link_glsl(const struct gl_constants *consts,
 
    MESA_TRACE_FUNC();
 
+   /* Validate the inputs of each stage with the output of the preceding
+    * stage.
+    */
+   unsigned prev = MESA_SHADER_STAGES;
+   for (unsigned i = 0; i <= MESA_SHADER_FRAGMENT; i++) {
+      if (prog->_LinkedShaders[i] == NULL)
+         continue;
+
+      if (prev == MESA_SHADER_STAGES) {
+         prev = i;
+         continue;
+      }
+
+      gl_nir_validate_interstage_inout_blocks(prog, prog->_LinkedShaders[prev],
+                                              prog->_LinkedShaders[i]);
+      if (!prog->data->LinkStatus)
+         return false;
+
+      prev = i;
+   }
+
+   /* Cross-validate uniform blocks between shader stages */
+   gl_nir_validate_interstage_uniform_blocks(prog, prog->_LinkedShaders);
+   if (!prog->data->LinkStatus)
+      return false;
+
    if (prog->IsES && prog->GLSL_Version == 100)
       if (!validate_invariant_builtins(consts, prog,
             prog->_LinkedShaders[MESA_SHADER_VERTEX],
@@ -1721,7 +1747,7 @@ gl_nir_link_glsl(const struct gl_constants *consts,
    /* Validate the inputs of each stage with the output of the preceding
     * stage.
     */
-   unsigned prev = first;
+   prev = first;
    for (unsigned i = prev + 1; i <= MESA_SHADER_FRAGMENT; i++) {
       if (prog->_LinkedShaders[i] == NULL)
          continue;

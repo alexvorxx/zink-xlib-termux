@@ -2921,7 +2921,7 @@ typedef struct nir_block {
 
    /*
     * this node's immediate dominator in the dominance tree - set to NULL for
-    * the start block.
+    * the start block and any unreachable blocks.
     */
    struct nir_block *imm_dom;
 

@@ -212,10 +212,37 @@ enum vn_relax_reason {
    VN_RELAX_REASON_QUERY,
 };
 
+/* vn_relax_profile defines the driver side polling behavior
+ *
+ * - base_sleep_us:
+ *   - the minimum polling interval after initial busy waits
+ *
+ * - busy_wait_order:
+ *   - initial 2 ^ busy_wait_order times thrd_yield()
+ *
+ * - warn_order:
+ *   - number of polls at order N:
+ *     - fn_cnt(N) = 2 ^ N
+ *   - interval of poll at order N:
+ *     - fn_step(N) = base_sleep_us * (2 ^ (N - busy_wait_order))
+ *   - warn occasionally if we have slept at least:
+ *     - for (i = busy_wait_order; i < warn_order; i++)
+ *          total_sleep += fn_cnt(i) * fn_step(i)
+ *
+ * - abort_order:
+ *   - similar to warn_order, but would abort() instead
+ */
+struct vn_relax_profile {
+   uint32_t base_sleep_us;
+   uint32_t busy_wait_order;
+   uint32_t warn_order;
+   uint32_t abort_order;
+};
+
 struct vn_relax_state {
    struct vn_instance *instance;
    uint32_t iter;
-   enum vn_relax_reason reason;
+   const struct vn_relax_profile profile;
    const char *reason_str;
 };
 

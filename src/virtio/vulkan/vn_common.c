@@ -179,6 +179,54 @@ vn_relax_reason_string(enum vn_relax_reason reason)
    return "";
 }
 
+static struct vn_relax_profile
+vn_relax_get_profile(enum vn_relax_reason reason)
+{
+   /* This is the helper to map a vn_relax_reason to a profile. For new
+    * profiles added, we MUST also update the pre-calculated "first_warn_time"
+    * in vn_watchdog_init() if the "first warn" comes sooner.
+    */
+
+   /* deliberately avoid default case for -Wswitch to catch upon compile */
+   switch (reason) {
+   case VN_RELAX_REASON_RING_SEQNO:
+      /* warn every 4096 iters after having already slept ~3.5s:
+       *   (yielded 255 times)
+       *   stuck in wait with iter at 4096  (3.5s slept already)
+       *   stuck in wait with iter at 8192  (14s slept already)
+       *   stuck in wait with iter at 12288 (35s slept already)
+       *   ...
+       *   aborting after 895s
+       */
+      return (struct vn_relax_profile){
+         .base_sleep_us = 160,
+         .busy_wait_order = 8,
+         .warn_order = 12,
+         .abort_order = 16,
+      };
+   case VN_RELAX_REASON_RING_SPACE:
+   case VN_RELAX_REASON_FENCE:
+   case VN_RELAX_REASON_SEMAPHORE:
+   case VN_RELAX_REASON_QUERY:
+      /* warn every 1024 iters after having already slept ~3.5s:
+       *   (yielded 15 times)
+       *   stuck in wait with iter at 1024 (3.5s slept already)
+       *   stuck in wait with iter at 2048 (14s slept already)
+       *   stuck in wait with iter at 3072 (35s slept already)
+       *   ...
+       *   aborting after 895s
+       */
+      return (struct vn_relax_profile){
+         .base_sleep_us = 160,
+         .busy_wait_order = 4,
+         .warn_order = 10,
+         .abort_order = 14,
+      };
+   }
+
+   unreachable("unhandled vn_relax_reason");
+}
+
 struct vn_relax_state
 vn_relax_init(struct vn_instance *instance, enum vn_relax_reason reason)
 {
@@ -190,7 +238,7 @@ vn_relax_init(struct vn_instance *instance, enum vn_relax_reason reason)
    return (struct vn_relax_state){
       .instance = instance,
       .iter = 0,
-      .reason = reason,
+      .profile = vn_relax_get_profile(reason),
       .reason_str = vn_relax_reason_string(reason),
    };
 }
@@ -198,31 +246,22 @@ vn_relax_init(struct vn_instance *instance, enum vn_relax_reason reason)
 void
 vn_relax(struct vn_relax_state *state)
 {
+   const uint32_t base_sleep_us = state->profile.base_sleep_us;
+   const uint32_t busy_wait_order = state->profile.busy_wait_order;
+   const uint32_t warn_order = state->profile.warn_order;
+   const uint32_t abort_order = state->profile.abort_order;
+
    uint32_t *iter = &state->iter;
-   const char *reason_str = state->reason_str;
-
-   /* Yield for the first 2^busy_wait_order times and then sleep for
-    * base_sleep_us microseconds for the same number of times.  After that,
-    * keep doubling both sleep length and count.
-    * Must also update pre-calculated "first_warn_time" in vn_relax_init().
-    */
-   const uint32_t busy_wait_order = 8;
-   const uint32_t base_sleep_us = 160;
-   const uint32_t warn_order = 12;
-   const uint32_t abort_order = 16;
-
    (*iter)++;
    if (*iter < (1 << busy_wait_order)) {
       thrd_yield();
       return;
    }
 
-   /* warn occasionally if we have slept at least 1.28ms for 2048 times (plus
-    * another 2047 shorter sleeps)
-    */
    if (unlikely(*iter % (1 << warn_order) == 0)) {
       struct vn_instance *instance = state->instance;
-      vn_log(instance, "stuck in %s wait with iter at %d", reason_str, *iter);
+      vn_log(instance, "stuck in %s wait with iter at %d", state->reason_str,
+             *iter);
 
       struct vn_ring *ring = instance->ring.ring;
       const uint32_t status = vn_ring_load_status(ring);

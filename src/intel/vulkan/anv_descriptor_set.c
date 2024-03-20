@@ -699,6 +699,7 @@ VkResult anv_CreateDescriptorSetLayout(
    uint32_t dynamic_offset_count = 0;
    uint32_t descriptor_buffer_surface_size = 0;
    uint32_t descriptor_buffer_sampler_size = 0;
+   uint32_t sampler_count = 0;
 
    for (uint32_t j = 0; j < pCreateInfo->bindingCount; j++) {
       const VkDescriptorSetLayoutBinding *binding = &pCreateInfo->pBindings[j];
@@ -846,6 +847,11 @@ VkResult anv_CreateDescriptorSetLayout(
          MAX2(set_layout->binding[b].max_plane_count, 1) *
          set_layout->binding[b].descriptor_data_sampler_size;
 
+      if (binding->descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER) {
+         sampler_count += binding->descriptorCount *
+                          set_layout->binding[b].max_plane_count;
+      }
+
       unsigned surface_align, sampler_align;
       anv_descriptor_data_alignment(set_layout->binding[b].data,
                                     set_layout->type,
@@ -885,6 +891,7 @@ VkResult anv_CreateDescriptorSetLayout(
        VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT) {
       assert(set_layout->descriptor_buffer_surface_size == 0);
       assert(set_layout->descriptor_buffer_sampler_size == 0);
+      set_layout->embedded_sampler_count = sampler_count;
    }
 
    *pSetLayout = anv_descriptor_set_layout_to_handle(set_layout);
@@ -1146,6 +1153,18 @@ anv_pipeline_sets_layout_add(struct anv_pipeline_sets_layout *layout,
       assert(layout->push_descriptor_set_index == -1);
       layout->push_descriptor_set_index = set_idx;
    }
+}
+
+uint32_t
+anv_pipeline_sets_layout_embedded_sampler_count(const struct anv_pipeline_sets_layout *layout)
+{
+   uint32_t count = 0;
+   for (unsigned s = 0; s < layout->num_sets; s++) {
+      if (!layout->set[s].layout)
+         continue;
+      count += layout->set[s].layout->embedded_sampler_count;
+   }
+   return count;
 }
 
 void

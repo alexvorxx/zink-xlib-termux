@@ -116,6 +116,13 @@ void gl_nir_link_check_atomic_counter_resources(const struct gl_constants *const
 void gl_nir_link_assign_xfb_resources(const struct gl_constants *consts,
                                       struct gl_shader_program *prog);
 
+void gl_nir_validate_interstage_inout_blocks(struct gl_shader_program *prog,
+                                             const struct gl_linked_shader *producer,
+                                             const struct gl_linked_shader *consumer);
+
+void gl_nir_validate_interstage_uniform_blocks(struct gl_shader_program *prog,
+                                               struct gl_linked_shader **stages);
+
 bool gl_nir_link_uniform_blocks(const struct gl_constants *consts,
                                 struct gl_shader_program *prog);
 

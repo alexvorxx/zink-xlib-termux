@@ -9,6 +9,8 @@
 #include "vulkan/vulkan.h"
 
 #include "framework.h"
+#include "ac_gpu_info.h"
+#include "nir_builder.h"
 #include <functional>
 
 enum QoShaderDeclType {
@@ -49,6 +51,7 @@ extern aco_shader_info info;
 extern std::unique_ptr<aco::Program> program;
 extern aco::Builder bld;
 extern aco::Temp inputs[16];
+extern nir_builder *nb;
 
 namespace aco {
 struct ra_test_policy;
@@ -59,6 +62,9 @@ void create_program(enum amd_gfx_level gfx_level, aco::Stage stage, unsigned wav
 bool setup_cs(const char* input_spec, enum amd_gfx_level gfx_level,
               enum radeon_family family = CHIP_UNKNOWN, const char* subvariant = "",
               unsigned wave_size = 64);
+bool
+setup_nir_cs(enum amd_gfx_level gfx_level, gl_shader_stage stage = MESA_SHADER_COMPUTE,
+             enum radeon_family family = CHIP_UNKNOWN, const char* subvariant = "");
 
 void finish_program(aco::Program* program, bool endpgm = true);
 void finish_validator_test();
@@ -72,6 +78,7 @@ void finish_waitcnt_test();
 void finish_insert_nops_test(bool endpgm = true);
 void finish_form_hard_clause_test();
 void finish_assembler_test();
+void finish_isel_test(enum ac_hw_stage hw_stage = AC_HW_COMPUTE_SHADER, unsigned wave_size = 64);
 
 void writeout(unsigned i, aco::Temp tmp = aco::Temp(0, aco::s1));
 void writeout(unsigned i, aco::Builder::Result res);

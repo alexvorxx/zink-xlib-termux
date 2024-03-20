@@ -1677,6 +1677,18 @@ gl_nir_link_glsl(const struct gl_constants *consts,
 
    MESA_TRACE_FUNC();
 
+   for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
+      if (prog->_LinkedShaders[i] == NULL)
+         continue;
+
+      gl_nir_detect_recursion_linked(prog,
+                                     prog->_LinkedShaders[i]->Program->nir);
+      if (!prog->data->LinkStatus)
+         return false;
+
+      gl_nir_inline_functions(prog->_LinkedShaders[i]->Program->nir);
+   }
+
    resize_tes_inputs(consts, prog);
 
    /* Validate the inputs of each stage with the output of the preceding

@@ -30,9 +30,11 @@ struct nir_def *agx_vertex_id_for_topology_class(struct nir_builder *b,
 bool agx_nir_lower_index_buffer(struct nir_shader *s, unsigned index_size_B,
                                 bool patches);
 
+bool agx_nir_lower_sw_vs_id(nir_shader *s);
+
 bool agx_nir_lower_vs_before_gs(struct nir_shader *vs,
                                 const struct nir_shader *libagx,
-                                unsigned index_size_B, uint64_t *outputs);
+                                uint64_t *outputs);
 
 bool agx_nir_lower_gs(struct nir_shader *gs, const struct nir_shader *libagx,
                       bool rasterizer_discard, struct nir_shader **gs_count,

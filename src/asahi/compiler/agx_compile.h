@@ -164,6 +164,16 @@ struct agx_fs_shader_key {
     * tilebuffer loads (including blending).
     */
    bool ignore_tib_dependencies;
+
+   /* When dynamic sample shading is used, the fragment shader is wrapped in a
+    * loop external to the API shader. This bit indicates that we are compiling
+    * inside the sample loop, meaning the execution nesting counter is already
+    * zero and must be preserved.
+    */
+   bool inside_sample_loop;
+
+   /* Base coefficient register. 0 for API shaders but nonzero for FS prolog */
+   uint8_t cf_base;
 };
 
 struct agx_shader_key {
@@ -191,6 +201,18 @@ struct agx_shader_key {
     */
    bool promote_constants;
 
+   /* Set if this is a non-monolithic shader that must be linked with additional
+    * shader parts before the program can be used. This suppresses omission of
+    * `stop` instructions, which the linker must insert instead.
+    */
+   bool no_stop;
+
+   /* Set if this is a secondary shader part (prolog or epilog). This prevents
+    * the compiler from allocating uniform registers. For example, this turns
+    * off preambles.
+    */
+   bool secondary;
+
    union {
       struct agx_fs_shader_key fs;
    };
@@ -208,8 +230,7 @@ bool agx_nir_lower_cull_distance_fs(struct nir_shader *s,
 
 void agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
                             struct util_debug_callback *debug,
-                            struct util_dynarray *binary,
-                            struct agx_shader_info *out);
+                            struct agx_shader_part *out);
 
 struct agx_occupancy {
    unsigned max_registers;

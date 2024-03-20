@@ -310,7 +310,7 @@ lower_gs_count_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 }
 
 static bool
-lower_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+lower_prolog_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
    b->cursor = nir_before_instr(&intr->instr);
 
@@ -318,6 +318,34 @@ lower_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    if (intr->intrinsic == nir_intrinsic_load_primitive_id)
       id = load_primitive_id(b);
    else if (intr->intrinsic == nir_intrinsic_load_instance_id)
+      id = load_instance_id(b);
+   else
+      return false;
+
+   b->cursor = nir_instr_remove(&intr->instr);
+   nir_def_rewrite_uses(&intr->def, id);
+   return true;
+}
+
+bool
+agx_nir_lower_sw_vs_id(nir_shader *s)
+{
+   return nir_shader_intrinsics_pass(
+      s, lower_prolog_id, nir_metadata_dominance | nir_metadata_block_index,
+      NULL);
+}
+
+static bool
+lower_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+{
+   bool *lower_instance = data;
+   b->cursor = nir_before_instr(&intr->instr);
+
+   nir_def *id;
+   if (intr->intrinsic == nir_intrinsic_load_primitive_id)
+      id = load_primitive_id(b);
+   else if (intr->intrinsic == nir_intrinsic_load_instance_id &&
+            *lower_instance)
       id = load_instance_id(b);
    else if (intr->intrinsic == nir_intrinsic_load_num_vertices)
       id = nir_channel(b, nir_load_num_workgroups(b), 0);
@@ -360,8 +388,9 @@ agx_nir_create_geometry_count_shader(nir_shader *gs, const nir_shader *libagx,
    NIR_PASS(_, shader, nir_shader_intrinsics_pass, lower_gs_count_instr,
             nir_metadata_block_index | nir_metadata_dominance, state);
 
+   bool lower_instance = true;
    NIR_PASS(_, shader, nir_shader_intrinsics_pass, lower_id,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_block_index | nir_metadata_dominance, &lower_instance);
 
    agx_preprocess_nir(shader, libagx);
    return shader;
@@ -427,9 +456,11 @@ lower_to_gs_rast(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 
    case nir_intrinsic_load_flat_mask:
    case nir_intrinsic_load_provoking_last:
-   case nir_intrinsic_load_input_topology_agx:
+   case nir_intrinsic_load_input_topology_agx: {
       /* Lowering the same in both GS variants */
-      return lower_id(b, intr, data);
+      bool lower_instance = true;
+      return lower_id(b, intr, &lower_instance);
+   }
 
    case nir_intrinsic_end_primitive_with_counter:
    case nir_intrinsic_set_vertex_and_primitive_count:
@@ -1202,8 +1233,9 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
 
    *gs_copy = agx_nir_create_gs_rast_shader(gs, libagx);
 
+   bool lower_instance = true;
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_id,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_block_index | nir_metadata_dominance, &lower_instance);
 
    link_libagx(gs, libagx);
 
@@ -1280,8 +1312,9 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
 
    NIR_PASS(_, gs, nir_opt_sink, ~0);
    NIR_PASS(_, gs, nir_opt_move, ~0);
+
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_id,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_block_index | nir_metadata_dominance, &lower_instance);
 
    /* Create auxiliary programs */
    *pre_gs = agx_nir_create_pre_gs(
@@ -1334,22 +1367,20 @@ lower_vs_before_gs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 
 bool
 agx_nir_lower_vs_before_gs(struct nir_shader *vs,
-                           const struct nir_shader *libagx,
-                           unsigned index_size_B, uint64_t *outputs)
+                           const struct nir_shader *libagx, uint64_t *outputs)
 {
    bool progress = false;
-
-   /* Lower vertex ID to an index buffer pull without a topology applied */
-   progress |= agx_nir_lower_index_buffer(vs, index_size_B, false);
 
    /* Lower vertex stores to memory stores */
    progress |= nir_shader_intrinsics_pass(
       vs, lower_vs_before_gs, nir_metadata_block_index | nir_metadata_dominance,
-      &index_size_B);
+      NULL);
 
-   /* Lower instance ID and num vertices */
+   /* Lower num vertices */
+   bool lower_instance = false;
    progress |= nir_shader_intrinsics_pass(
-      vs, lower_id, nir_metadata_block_index | nir_metadata_dominance, NULL);
+      vs, lower_id, nir_metadata_block_index | nir_metadata_dominance,
+      &lower_instance);
 
    /* Link libagx, used in lower_vs_before_gs */
    if (progress)

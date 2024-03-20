@@ -4,6 +4,7 @@
  */
 
 #include "agx_meta.h"
+#include "agx_compile.h"
 #include "agx_device.h" /* for AGX_MEMORY_TYPE_SHADER */
 #include "agx_nir_passes.h"
 #include "agx_tilebuffer.h"
@@ -30,16 +31,12 @@ agx_compile_meta_shader(struct agx_meta_cache *cache, nir_shader *shader,
                         struct agx_shader_key *key,
                         struct agx_tilebuffer_layout *tib)
 {
-   struct util_dynarray binary;
-   util_dynarray_init(&binary, NULL);
-
    agx_nir_lower_texture(shader);
    agx_preprocess_nir(shader, cache->dev->libagx);
    if (tib) {
       unsigned bindless_base = 0;
       agx_nir_lower_tilebuffer(shader, tib, NULL, &bindless_base, NULL);
-      agx_nir_lower_monolithic_msaa(
-         shader, &(struct agx_msaa_state){.nr_samples = tib->nr_samples});
+      agx_nir_lower_monolithic_msaa(shader, tib->nr_samples);
       agx_nir_lower_multisampled_image_store(shader);
 
       nir_shader_intrinsics_pass(
@@ -50,11 +47,13 @@ agx_compile_meta_shader(struct agx_meta_cache *cache, nir_shader *shader,
    key->libagx = cache->dev->libagx;
 
    struct agx_meta_shader *res = rzalloc(cache->ht, struct agx_meta_shader);
-   agx_compile_shader_nir(shader, key, NULL, &binary, &res->info);
+   struct agx_shader_part bin;
+   agx_compile_shader_nir(shader, key, NULL, &bin);
 
-   res->ptr = agx_pool_upload_aligned_with_bo(&cache->pool, binary.data,
-                                              binary.size, 128, &res->bo);
-   util_dynarray_fini(&binary);
+   res->info = bin.info;
+   res->ptr = agx_pool_upload_aligned_with_bo(&cache->pool, bin.binary,
+                                              bin.binary_size, 128, &res->bo);
+   free(bin.binary);
    ralloc_free(shader);
 
    return res;

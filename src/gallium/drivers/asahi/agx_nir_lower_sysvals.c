@@ -4,6 +4,7 @@
  */
 
 #include "compiler/nir/nir_builder.h"
+#include "pipe/p_defines.h"
 #include "util/bitset.h"
 #include "util/u_dynarray.h"
 #include "agx_nir_lower_gs.h"
@@ -41,6 +42,8 @@ struct table_state {
 };
 
 struct state {
+   gl_shader_stage stage, hw_stage;
+
    /* Array of nir_intrinsic_instr's to fix up at the end */
    struct util_dynarray loads;
 
@@ -185,19 +188,13 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intr,
       return load_sysval_root(b, 1, 32, &u->fixed_point_size);
    case nir_intrinsic_load_tex_sprite_mask_agx:
       return load_sysval_root(b, 1, 16, &u->sprite_mask);
+   case nir_intrinsic_load_shader_part_tests_zs_agx:
+      return load_sysval_root(b, 1, 16, &u->no_epilog_discard);
    case nir_intrinsic_load_clip_z_coeff_agx:
       return nir_f2f32(b, load_sysval_root(b, 1, 16, &u->clip_z_coeff));
    case nir_intrinsic_load_uvs_index_agx:
       return load_sysval_root(
          b, 1, 16, &u->uvs_index[nir_intrinsic_io_semantics(intr).location]);
-   case nir_intrinsic_load_polygon_stipple_agx: {
-      nir_def *base = load_sysval_root(b, 1, 64, &u->polygon_stipple);
-      nir_def *row = intr->src[0].ssa;
-      nir_def *addr = nir_iadd(b, base, nir_u2u64(b, nir_imul_imm(b, row, 4)));
-
-      return nir_load_global_constant(b, addr, 4, 1, 32);
-   }
-
    default:
       break;
    }
@@ -369,6 +366,79 @@ lay_out_uniforms(struct agx_compiled_shader *shader, struct state *state)
 {
    unsigned uniform = 0;
 
+   if (state->stage == PIPE_SHADER_VERTEX ||
+       state->stage == PIPE_SHADER_TESS_EVAL) {
+      unsigned count =
+         DIV_ROUND_UP(BITSET_LAST_BIT(shader->attrib_components_read), 4);
+
+      struct agx_draw_uniforms *u = NULL;
+      shader->push[shader->push_range_count++] = (struct agx_push_range){
+         .uniform = 0,
+         .table = AGX_SYSVAL_TABLE_ROOT,
+         .offset = (uintptr_t)&u->attrib_base,
+         .length = 4 * count,
+      };
+
+      shader->push[shader->push_range_count++] = (struct agx_push_range){
+         .uniform = 4 * count,
+         .table = AGX_SYSVAL_TABLE_ROOT,
+         .offset = (uintptr_t)&u->attrib_clamp,
+         .length = 2 * count,
+      };
+
+      shader->push[shader->push_range_count++] = (struct agx_push_range){
+         .uniform = 6 * count,
+         .table = AGX_SYSVAL_TABLE_PARAMS,
+         .offset = 4,
+         .length = 2,
+      };
+
+      uniform = (6 * count) + 2;
+
+      if (state->hw_stage == PIPE_SHADER_COMPUTE) {
+         shader->push[shader->push_range_count++] = (struct agx_push_range){
+            .uniform = (6 * count) + 2,
+            .table = AGX_SYSVAL_TABLE_PARAMS,
+            .offset = 0,
+            .length = 2,
+         };
+
+         shader->push[shader->push_range_count++] = (struct agx_push_range){
+            .uniform = (6 * count) + 4,
+            .table = AGX_SYSVAL_TABLE_ROOT,
+            .offset = (uintptr_t)&u->input_assembly,
+            .length = 4,
+         };
+
+         uniform = (6 * count) + 8;
+      }
+   } else if (state->stage == PIPE_SHADER_FRAGMENT) {
+      struct agx_draw_uniforms *u = NULL;
+      struct agx_stage_uniforms *s = NULL;
+      shader->push[shader->push_range_count++] = (struct agx_push_range){
+         .uniform = 0,
+         .table = AGX_SYSVAL_TABLE_FS,
+         .offset = (uintptr_t)&s->texture_base,
+         .length = 4,
+      };
+
+      shader->push[shader->push_range_count++] = (struct agx_push_range){
+         .uniform = 4,
+         .table = AGX_SYSVAL_TABLE_ROOT,
+         .offset = (uintptr_t)&u->blend_constant,
+         .length = 8,
+      };
+
+      shader->push[shader->push_range_count++] = (struct agx_push_range){
+         .uniform = 12,
+         .table = AGX_SYSVAL_TABLE_ROOT,
+         .offset = (uintptr_t)&u->tables[AGX_SYSVAL_TABLE_ROOT],
+         .length = 4,
+      };
+
+      uniform = 16;
+   }
+
    /* Lay out each system value table. We do this backwards to ensure the first
     * uniform goes to the bindless texture base.
     */
@@ -425,7 +495,11 @@ agx_nir_layout_uniforms(nir_shader *shader,
                         struct agx_compiled_shader *compiled,
                         unsigned *push_size)
 {
-   struct state state = {0};
+   struct state state = {
+      .stage = compiled->stage,
+      .hw_stage = shader->info.stage,
+   };
+
    nir_shader_intrinsics_pass(shader, record_loads,
                               nir_metadata_block_index | nir_metadata_dominance,
                               &state);

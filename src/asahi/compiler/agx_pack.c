@@ -1144,11 +1144,13 @@ agx_pack_binary(agx_context *ctx, struct util_dynarray *emission)
    util_dynarray_foreach(&fixups, struct agx_branch_fixup, fixup)
       agx_fixup_branch(emission, *fixup);
 
-   /* Dougall calls the instruction in this footer "trap". Match the blob. */
-   for (unsigned i = 0; i < 8; ++i) {
-      uint16_t trap = agx_opcodes_info[AGX_OPCODE_TRAP].encoding.exact;
-      util_dynarray_append(emission, uint16_t, trap);
-   }
-
    util_dynarray_fini(&fixups);
+
+   /* Dougall calls the instruction in this footer "trap". Match the blob. */
+   if (!ctx->key->no_stop || ctx->is_preamble) {
+      for (unsigned i = 0; i < 8; ++i) {
+         uint16_t trap = agx_opcodes_info[AGX_OPCODE_TRAP].encoding.exact;
+         util_dynarray_append(emission, uint16_t, trap);
+      }
+   }
 }

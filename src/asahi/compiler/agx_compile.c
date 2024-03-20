@@ -647,7 +647,6 @@ agx_emit_local_load_pixel(agx_builder *b, agx_index dest,
    assert(!b->shader->key->fs.ignore_tib_dependencies && "invalid usage");
    agx_wait_pix(b, 0x0008);
    b->shader->did_writeout = true;
-   b->shader->out->reads_tib = true;
 
    unsigned nr_comps = instr->def.num_components;
    agx_ld_tile_to(b, dest, agx_src_index(&instr->src[0]),
@@ -2620,7 +2619,7 @@ agx_optimize_nir(nir_shader *nir, unsigned *preamble_size)
       } while (progress);
    }
 
-   if (likely(!(agx_compiler_debug & AGX_DBG_NOPREAMBLE)))
+   if (preamble_size && (!(agx_compiler_debug & AGX_DBG_NOPREAMBLE)))
       NIR_PASS(_, nir, agx_nir_opt_preamble, preamble_size);
 
    /* Forming preambles may dramatically reduce the instruction count
@@ -2845,6 +2844,10 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
    ctx->indexed_nir_blocks = rzalloc_array(ctx, agx_block *, impl->num_blocks);
    list_inithead(&ctx->blocks);
 
+   if (ctx->stage == MESA_SHADER_FRAGMENT && !ctx->is_preamble) {
+      ctx->any_cf = key->fs.inside_sample_loop;
+   }
+
    ctx->alloc = impl->ssa_alloc;
    emit_cf_list(ctx, &impl->body);
    agx_emit_phis_deferred(ctx);
@@ -2860,9 +2863,11 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
    /* Stop the main shader or preamble shader after the exit block. For real
     * functions, we would return here.
     */
-   agx_block *last_block = list_last_entry(&ctx->blocks, agx_block, link);
-   agx_builder _b = agx_init_builder(ctx, agx_after_block(last_block));
-   agx_stop(&_b);
+   if (!ctx->key->no_stop || ctx->is_preamble) {
+      agx_block *last_block = list_last_entry(&ctx->blocks, agx_block, link);
+      agx_builder _b = agx_init_builder(ctx, agx_after_block(last_block));
+      agx_stop(&_b);
+   }
 
    /* Index blocks now that we're done emitting so the order is consistent */
    agx_foreach_block(ctx, block)
@@ -2884,7 +2889,8 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
       agx_opt_compact_constants(ctx);
 
       /* After inlining constants, promote what's left */
-      if (key->promote_constants && !(agx_compiler_debug & AGX_DBG_NOPROMOTE)) {
+      if (key->promote_constants && !key->secondary &&
+          !(agx_compiler_debug & AGX_DBG_NOPROMOTE)) {
          agx_opt_promote_constants(ctx);
       }
    }
@@ -2930,7 +2936,8 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
          out->scratch_size = stack_size;
    }
 
-   if (ctx->stage == MESA_SHADER_VERTEX && !impl->function->is_preamble)
+   if (ctx->stage == MESA_SHADER_VERTEX && !impl->function->is_preamble &&
+       !ctx->key->secondary)
       agx_set_st_vary_final(ctx);
 
    agx_insert_waits(ctx);
@@ -3083,10 +3090,13 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
 void
 agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
                        struct util_debug_callback *debug,
-                       struct util_dynarray *binary,
-                       struct agx_shader_info *out)
+                       struct agx_shader_part *out)
 {
    agx_compiler_debug = agx_get_compiler_debug();
+   struct agx_shader_info *info = &out->info;
+
+   struct util_dynarray binary;
+   util_dynarray_init(&binary, NULL);
 
    memset(out, 0, sizeof *out);
 
@@ -3096,7 +3106,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
 
    /* If required, tag writes will be enabled by instruction selection */
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      out->tag_write_disable = !nir->info.writes_memory;
+      info->tag_write_disable = !nir->info.writes_memory;
 
    bool needs_libagx = true /* TODO: Optimize */;
 
@@ -3148,50 +3158,53 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    NIR_PASS(_, nir, nir_shader_intrinsics_pass, lower_load_from_texture_handle,
             nir_metadata_block_index | nir_metadata_dominance, NULL);
 
-   out->push_count = key->reserved_preamble;
-   agx_optimize_nir(nir, &out->push_count);
+   info->push_count = key->reserved_preamble;
+   agx_optimize_nir(nir, key->secondary ? NULL : &info->push_count);
 
-   if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      assign_coefficient_regs(nir, &out->varyings.fs);
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      info->varyings.fs.nr_cf = key->fs.cf_base;
+      assign_coefficient_regs(nir, &info->varyings.fs);
+   }
 
    if (agx_should_dump(nir, AGX_DBG_SHADERS))
       nir_print_shader(nir, stdout);
 
-   out->local_size = nir->info.shared_size;
+   info->local_size = nir->info.shared_size;
 
    nir_foreach_function_with_impl(func, impl, nir) {
       unsigned offset =
-         agx_compile_function_nir(nir, impl, key, debug, binary, out);
+         agx_compile_function_nir(nir, impl, key, debug, &binary, &out->info);
 
       if (func->is_preamble) {
-         out->preamble_offset = offset;
-         out->has_preamble = true;
+         info->preamble_offset = offset;
+         info->has_preamble = true;
       } else if (func->is_entrypoint) {
-         out->main_offset = offset;
+         info->main_offset = offset;
+         info->main_size = binary.size - offset;
       } else {
          unreachable("General functions not yet supported");
       }
    }
 
    if (nir->info.stage == MESA_SHADER_VERTEX) {
-      out->nonzero_viewport = nir->info.outputs_written & VARYING_BIT_VIEWPORT;
+      info->nonzero_viewport = nir->info.outputs_written & VARYING_BIT_VIEWPORT;
 
-      out->writes_layer_viewport =
+      info->writes_layer_viewport =
          nir->info.outputs_written & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT);
 
-      out->uses_draw_id =
+      info->uses_draw_id =
          BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID);
 
-      out->uses_base_param =
+      info->uses_base_param =
          BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_VERTEX) ||
          BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE);
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
-      out->disable_tri_merging = nir->info.uses_wide_subgroup_intrinsics ||
-                                 nir->info.fs.needs_quad_helper_invocations ||
-                                 nir->info.writes_memory;
+      info->disable_tri_merging = nir->info.uses_wide_subgroup_intrinsics ||
+                                  nir->info.fs.needs_quad_helper_invocations ||
+                                  nir->info.writes_memory;
 
       /* Writing the sample mask requires tag writes */
-      out->tag_write_disable &= !out->writes_sample_mask;
+      info->tag_write_disable &= !info->writes_sample_mask;
 
       /* Report a canonical depth layout. This happens at the end because the
        * sample mask lowering affects it.
@@ -3199,10 +3212,15 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
       enum gl_frag_depth_layout layout = nir->info.fs.depth_layout;
 
       if (!(nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH)))
-         out->depth_layout = FRAG_DEPTH_LAYOUT_UNCHANGED;
+         info->depth_layout = FRAG_DEPTH_LAYOUT_UNCHANGED;
       else if (layout == FRAG_DEPTH_LAYOUT_NONE)
-         out->depth_layout = FRAG_DEPTH_LAYOUT_ANY;
+         info->depth_layout = FRAG_DEPTH_LAYOUT_ANY;
       else
-         out->depth_layout = layout;
+         info->depth_layout = layout;
+
+      info->reads_tib = nir->info.fs.uses_fbfetch_output;
    }
+
+   out->binary = binary.data;
+   out->binary_size = binary.size;
 }

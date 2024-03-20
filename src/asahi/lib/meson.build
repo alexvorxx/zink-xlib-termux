@@ -23,6 +23,7 @@ libasahi_lib_files = files(
   'agx_nir_lower_tilebuffer.c',
   'agx_nir_lower_uvs.c',
   'agx_nir_lower_vbo.c',
+  'agx_nir_prolog_epilog.c',
   'agx_ppp.h',
   'agx_scratch.c',
   'pool.c',

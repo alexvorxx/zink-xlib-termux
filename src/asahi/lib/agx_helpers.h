@@ -94,19 +94,6 @@ agx_translate_index_size(uint8_t size_B)
    return __builtin_ctz(size_B);
 }
 
-static enum agx_pass_type
-agx_pass_type_for_shader(struct agx_shader_info *info)
-{
-   if (info->reads_tib && info->writes_sample_mask)
-      return AGX_PASS_TYPE_TRANSLUCENT_PUNCH_THROUGH;
-   else if (info->reads_tib)
-      return AGX_PASS_TYPE_TRANSLUCENT;
-   else if (info->writes_sample_mask)
-      return AGX_PASS_TYPE_PUNCH_THROUGH;
-   else
-      return AGX_PASS_TYPE_OPAQUE;
-}
-
 static enum agx_conservative_depth
 agx_translate_depth_layout(enum gl_frag_depth_layout layout)
 {

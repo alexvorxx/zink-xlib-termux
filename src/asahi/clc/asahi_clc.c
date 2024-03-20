@@ -511,9 +511,6 @@ main(int argc, char **argv)
    nir_shader *nir = compile(mem_ctx, final_spirv.data, final_spirv.size);
 
    {
-      struct util_dynarray binary;
-      util_dynarray_init(&binary, NULL);
-
       nir_builder b = nir_builder_init_simple_shader(
          MESA_SHADER_COMPUTE, &agx_nir_options, "Helper shader");
 
@@ -522,17 +519,18 @@ main(int argc, char **argv)
 
       nir_call(&b, nir_function_clone(b.shader, func));
 
-      UNUSED struct agx_shader_info compiled_info;
+      struct agx_shader_part compiled;
       struct agx_shader_key key = {
          .libagx = nir,
          .is_helper = true,
       };
 
       agx_preprocess_nir(b.shader, nir);
-      agx_compile_shader_nir(b.shader, &key, NULL, &binary, &compiled_info);
+      agx_compile_shader_nir(b.shader, &key, NULL, &compiled);
 
-      print_u32_data(fp, "libagx_g13", "helper", binary.data, binary.size);
-      util_dynarray_fini(&binary);
+      print_u32_data(fp, "libagx_g13", "helper", compiled.binary,
+                     compiled.binary_size);
+      free(compiled.binary);
       ralloc_free(b.shader);
 
       /* Remove the NIR function, it's compiled, we don't need it at runtime */

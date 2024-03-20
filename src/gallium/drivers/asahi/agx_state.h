@@ -11,6 +11,7 @@
 #include "asahi/layout/layout.h"
 #include "asahi/lib/agx_bo.h"
 #include "asahi/lib/agx_device.h"
+#include "asahi/lib/agx_linker.h"
 #include "asahi/lib/agx_nir_lower_vbo.h"
 #include "asahi/lib/agx_scratch.h"
 #include "asahi/lib/agx_tilebuffer.h"
@@ -162,6 +163,9 @@ struct PACKED agx_draw_uniforms {
    /* Zero for [0, 1] clipping, 0.5 for [-1, 1] clipping. */
    uint16_t clip_z_coeff;
 
+   /* ~0/0 boolean whether the epilog lacks any discard instrction */
+   uint16_t no_epilog_discard;
+
    /* Mapping from varying slots written by the last vertex stage to UVS
     * indices. This mapping must be compatible with the fragment shader.
     */
@@ -212,14 +216,14 @@ struct agx_push_range {
 };
 
 struct agx_compiled_shader {
+   /* Base struct */
+   struct agx_shader_part b;
+
    /* Uncompiled shader that we belong to */
    const struct agx_uncompiled_shader *so;
 
    /* Mapped executable memory */
    struct agx_bo *bo;
-
-   /* Metadata returned from the compiler */
-   struct agx_shader_info info;
 
    /* Uniforms the driver must push */
    unsigned push_range_count;
@@ -227,6 +231,13 @@ struct agx_compiled_shader {
 
    /* UVS layout for the last vertex stage */
    struct agx_unlinked_uvs_layout uvs;
+
+   /* For a vertex shader, the mask of vertex attributes read. Used to key the
+    * prolog so the prolog doesn't write components not actually read.
+    */
+   BITSET_DECLARE(attrib_components_read, VERT_ATTRIB_MAX * 4);
+
+   struct agx_fs_epilog_link_info epilog_key;
 
    /* Auxiliary programs, or NULL if not used */
    struct agx_compiled_shader *gs_count, *pre_gs;
@@ -245,6 +256,21 @@ struct agx_compiled_shader {
    enum pipe_shader_type stage;
 };
 
+struct agx_fast_link_key {
+   union {
+      struct agx_vs_prolog_key vs;
+      struct agx_fs_prolog_key fs;
+   } prolog;
+
+   struct agx_compiled_shader *main;
+
+   union {
+      struct agx_fs_epilog_key fs;
+   } epilog;
+
+   unsigned nr_samples_shaded;
+};
+
 struct agx_uncompiled_shader {
    struct pipe_shader_state base;
    enum pipe_shader_type type;
@@ -257,6 +283,7 @@ struct agx_uncompiled_shader {
       uint64_t inputs_linear_shaded;
       uint8_t cull_distance_size;
       bool has_edgeflags;
+      bool uses_fbfetch;
 
       /* Number of bindful textures, images used */
       unsigned nr_bindful_textures, nr_bindful_images;
@@ -265,6 +292,9 @@ struct agx_uncompiled_shader {
    struct hash_table *variants;
    struct agx_uncompiled_shader *passthrough_progs[MESA_PRIM_COUNT][3][2];
    struct agx_uncompiled_shader *passthrough_tcs[32];
+
+   /* agx_fast_link_key -> agx_linked_shader */
+   struct hash_table *linked_shaders;
 
    uint32_t xfb_strides[4];
    bool has_xfb_info;
@@ -450,14 +480,6 @@ struct agx_zsa {
    uint32_t load, store;
 };
 
-struct agx_blend_key {
-   nir_lower_blend_rt rt[8];
-   unsigned logicop_func;
-   bool alpha_to_coverage, alpha_to_one;
-   bool padding[2];
-};
-static_assert(sizeof(struct agx_blend_key) == 232, "packed");
-
 struct agx_blend {
    struct agx_blend_key key;
 
@@ -465,27 +487,11 @@ struct agx_blend {
    uint32_t store;
 };
 
-/* These parts of the vertex element affect the generated code */
-struct agx_velem_key {
-   uint32_t divisor;
-   uint16_t stride;
-   uint8_t format;
-   uint8_t pad;
-};
-
 struct asahi_vs_shader_key {
-   struct agx_velem_key attribs[AGX_MAX_VBUFS];
-
    /* If true, this is running as a hardware vertex shader. If false, this is a
     * compute job used to feed a TCS or GS.
     */
    bool hw;
-
-   union {
-      struct {
-         uint8_t index_size_B;
-      } sw;
-   } next;
 };
 
 struct agx_vertex_elements {
@@ -498,21 +504,11 @@ struct agx_vertex_elements {
 };
 
 struct asahi_fs_shader_key {
-   struct agx_blend_key blend;
-
-   /* Need to count FRAGMENT_SHADER_INVOCATIONS */
-   bool statistics;
-
-   /* Set if glSampleMask() is used with a mask other than all-1s. If not, we
-    * don't want to emit lowering code for it, since it would disable early-Z.
-    */
-   bool api_sample_mask;
-   bool polygon_stipple;
-
-   uint8_t cull_distance_size;
-   uint8_t nr_samples;
    enum pipe_format rt_formats[PIPE_MAX_COLOR_BUFS];
+   uint8_t nr_samples;
+   bool padding[7];
 };
+static_assert(sizeof(struct asahi_fs_shader_key) == 40, "no holes");
 
 struct asahi_gs_shader_key {
    /* If true, this GS is run only for its side effects (including XFB) */
@@ -598,6 +594,9 @@ struct agx_oq_heap;
 struct agx_context {
    struct pipe_context base;
    struct agx_compiled_shader *vs, *fs, *gs, *tcs, *tes;
+   struct {
+      struct agx_linked_shader *vs, *tcs, *tes, *gs, *fs;
+   } linked;
    uint32_t dirty;
 
    /* Heap for dynamic memory allocation for geometry/tessellation shaders */
@@ -759,8 +758,10 @@ agx_context(struct pipe_context *pctx)
    return (struct agx_context *)pctx;
 }
 
+struct agx_linked_shader;
 void agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
-                struct agx_compiled_shader *cs, enum pipe_shader_type stage);
+                struct agx_compiled_shader *cs,
+                struct agx_linked_shader *linked, enum pipe_shader_type stage);
 
 void agx_init_query_functions(struct pipe_context *ctx);
 

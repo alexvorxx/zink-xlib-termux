@@ -1709,7 +1709,8 @@ radv_determine_ngg_settings(struct radv_device *device, struct radv_shader_stage
    assert(es_stage->stage == MESA_SHADER_VERTEX || es_stage->stage == MESA_SHADER_TESS_EVAL);
    assert(!fs_stage || fs_stage->stage == MESA_SHADER_FRAGMENT);
 
-   uint64_t ps_inputs_read = fs_stage ? fs_stage->nir->info.inputs_read : 0;
+   /* NGG culling is implicitly disabled when the FS stage is unknown. */
+   uint64_t ps_inputs_read = fs_stage ? fs_stage->nir->info.inputs_read : ~0;
 
    unsigned num_vertices_per_prim = 0;
    if (es_stage->stage == MESA_SHADER_VERTEX) {

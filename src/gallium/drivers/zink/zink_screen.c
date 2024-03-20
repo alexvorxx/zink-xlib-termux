@@ -117,6 +117,7 @@ zink_debug_options[] = {
    { "dgc", ZINK_DEBUG_DGC, "Use DGC (driver testing only)" },
    { "mem", ZINK_DEBUG_MEM, "Debug memory allocations" },
    { "quiet", ZINK_DEBUG_QUIET, "Suppress warnings" },
+   { "ioopt", ZINK_DEBUG_IOOPT, "Optimize IO" },
    DEBUG_NAMED_VALUE_END
 };
 
@@ -3526,6 +3527,8 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    }
    zink_screen_fence_init(&screen->base);
 
+   if (zink_debug & ZINK_DEBUG_IOOPT)
+      screen->driver_workarounds.io_opt = true;
    zink_screen_init_compiler(screen);
    if (!disk_cache_init(screen)) {
       mesa_loge("ZINK: failed to initialize disk cache");

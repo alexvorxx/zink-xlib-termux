@@ -241,6 +241,7 @@ enum zink_debug {
    ZINK_DEBUG_DGC = (1<<17),
    ZINK_DEBUG_MEM = (1<<18),
    ZINK_DEBUG_QUIET = (1<<19),
+   ZINK_DEBUG_IOOPT = (1<<20),
 };
 
 enum zink_pv_emulation_primitive {
@@ -1565,6 +1566,7 @@ struct zink_screen {
       bool lower_robustImageAccess2;
       bool needs_zs_shader_swizzle;
       bool can_do_invalid_linear_modifier;
+      bool io_opt;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
    } driver_workarounds;

@@ -1209,6 +1209,133 @@ zink_lower_system_values_to_inlined_uniforms(nir_shader *nir)
                                        nir_metadata_dominance, NULL);
 }
 
+/* from radeonsi */
+static unsigned
+amd_varying_expression_max_cost(nir_shader *producer, nir_shader *consumer)
+{
+   /* TODO: maybe implement shader profiles to disable, cf. 39804ebf1766d38004259085e1fec4ed8db86f1c */
+
+   switch (consumer->info.stage) {
+   case MESA_SHADER_TESS_CTRL: /* VS->TCS */
+      /* Non-amplifying shaders can always have their variyng expressions
+       * moved into later shaders.
+       */
+      return UINT_MAX;
+
+   case MESA_SHADER_GEOMETRY: /* VS->GS, TES->GS */
+      return consumer->info.gs.vertices_in == 1 ? UINT_MAX :
+             consumer->info.gs.vertices_in == 2 ? 20 : 14;
+
+   case MESA_SHADER_TESS_EVAL: /* VS->TES, TCS->TES */
+   case MESA_SHADER_FRAGMENT:
+      /* Up to 3 uniforms and 5 ALUs. */
+      return 14;
+
+   default:
+      unreachable("unexpected shader stage");
+   }
+}
+
+/* from radeonsi */
+static unsigned
+amd_varying_estimate_instr_cost(nir_instr *instr)
+{
+   unsigned dst_bit_size, src_bit_size, num_dst_dwords;
+   nir_op alu_op;
+
+   /* This is a very loose approximation based on gfx10. */
+   switch (instr->type) {
+   case nir_instr_type_alu:
+      dst_bit_size = nir_instr_as_alu(instr)->def.bit_size;
+      src_bit_size = nir_instr_as_alu(instr)->src[0].src.ssa->bit_size;
+      alu_op = nir_instr_as_alu(instr)->op;
+      num_dst_dwords = DIV_ROUND_UP(dst_bit_size, 32);
+
+      switch (alu_op) {
+      case nir_op_mov:
+      case nir_op_vec2:
+      case nir_op_vec3:
+      case nir_op_vec4:
+      case nir_op_vec5:
+      case nir_op_vec8:
+      case nir_op_vec16:
+      case nir_op_fabs:
+      case nir_op_fneg:
+      case nir_op_fsat:
+         return 0;
+
+      case nir_op_imul:
+      case nir_op_umul_low:
+         return dst_bit_size <= 16 ? 1 : 4 * num_dst_dwords;
+
+      case nir_op_imul_high:
+      case nir_op_umul_high:
+      case nir_op_imul_2x32_64:
+      case nir_op_umul_2x32_64:
+         return 4;
+
+      case nir_op_fexp2:
+      case nir_op_flog2:
+      case nir_op_frcp:
+      case nir_op_frsq:
+      case nir_op_fsqrt:
+      case nir_op_fsin:
+      case nir_op_fcos:
+      case nir_op_fsin_amd:
+      case nir_op_fcos_amd:
+         return 4; /* FP16 & FP32. */
+
+      case nir_op_fpow:
+         return 4 + 1 + 4; /* log2 + mul + exp2 */
+
+      case nir_op_fsign:
+         return dst_bit_size == 64 ? 4 : 3; /* See ac_build_fsign. */
+
+      case nir_op_idiv:
+      case nir_op_udiv:
+      case nir_op_imod:
+      case nir_op_umod:
+      case nir_op_irem:
+         return dst_bit_size == 64 ? 80 : 40;
+
+      case nir_op_fdiv:
+         return dst_bit_size == 64 ? 80 : 5; /* FP16 & FP32: rcp + mul */
+
+      case nir_op_fmod:
+      case nir_op_frem:
+         return dst_bit_size == 64 ? 80 : 8;
+
+      default:
+         /* Double opcodes. Comparisons have always full performance. */
+         if ((dst_bit_size == 64 &&
+              nir_op_infos[alu_op].output_type & nir_type_float) ||
+             (dst_bit_size >= 8 && src_bit_size == 64 &&
+              nir_op_infos[alu_op].input_types[0] & nir_type_float))
+            return 16;
+
+         return DIV_ROUND_UP(MAX2(dst_bit_size, src_bit_size), 32);
+      }
+
+   case nir_instr_type_intrinsic:
+      dst_bit_size = nir_instr_as_intrinsic(instr)->def.bit_size;
+      num_dst_dwords = DIV_ROUND_UP(dst_bit_size, 32);
+
+      switch (nir_instr_as_intrinsic(instr)->intrinsic) {
+      case nir_intrinsic_load_deref:
+         /* Uniform or UBO load.
+          * Set a low cost to balance the number of scalar loads and ALUs.
+          */
+         return 3 * num_dst_dwords;
+
+      default:
+         unreachable("unexpected intrinsic");
+      }
+
+   default:
+      unreachable("unexpected instr type");
+   }
+}
+
 void
 zink_screen_init_compiler(struct zink_screen *screen)
 {
@@ -1273,6 +1400,23 @@ zink_screen_init_compiler(struct zink_screen *screen)
        * stop Vulkan drivers from unrolling the loops.
        */
       screen->nir_options.max_unroll_iterations_fp64 = 32;
+   }
+
+   if (screen->driver_workarounds.io_opt) {
+      screen->nir_options.io_options |= nir_io_glsl_opt_varyings;
+
+      switch (screen->info.driver_props.driverID) {
+      case VK_DRIVER_ID_MESA_RADV:
+      case VK_DRIVER_ID_AMD_OPEN_SOURCE:
+      case VK_DRIVER_ID_AMD_PROPRIETARY:
+         screen->nir_options.varying_expression_max_cost = amd_varying_expression_max_cost;
+         screen->nir_options.varying_estimate_instr_cost = amd_varying_estimate_instr_cost;
+         break;
+      default:
+         mesa_logw("zink: instruction costs not implemented for this implementation!");
+         screen->nir_options.varying_expression_max_cost = amd_varying_expression_max_cost;
+         screen->nir_options.varying_estimate_instr_cost = amd_varying_estimate_instr_cost;
+      }
    }
 
    /*
@@ -3806,6 +3950,14 @@ compile_module(struct zink_screen *screen, struct zink_shader *zs, nir_shader *n
    struct zink_shader_info *sinfo = &zs->sinfo;
    prune_io(nir);
 
+   switch (nir->info.stage) {
+   case MESA_SHADER_VERTEX:
+   case MESA_SHADER_TESS_EVAL:
+   case MESA_SHADER_GEOMETRY:
+      NIR_PASS_V(nir, nir_divergence_analysis);
+      break;
+   default: break;
+   }
    NIR_PASS_V(nir, nir_convert_from_ssa, true);
 
    if (zink_debug & (ZINK_DEBUG_NIR | ZINK_DEBUG_SPIRV))

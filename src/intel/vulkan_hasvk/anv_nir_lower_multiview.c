@@ -209,6 +209,35 @@ anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask)
     */
    state.instance_id_with_views = nir_load_instance_id(b);
 
+   /* The view index is available in all stages but the instance id is only
+    * available in the VS.  If it's not a fragment shader, we need to pass
+    * the view index on to the next stage.
+    */
+   nir_def *view_index = build_view_index(&state);
+
+   assert(view_index->parent_instr->block == nir_start_block(entrypoint));
+   b->cursor = nir_after_instr(view_index->parent_instr);
+
+   /* Unless there is only one possible view index (that would be set
+    * directly), pass it to the next stage.
+    */
+   nir_variable *view_index_out = NULL;
+   if (util_bitcount(state.view_mask) != 1) {
+      view_index_out = nir_variable_create(shader, nir_var_shader_out,
+                                           glsl_int_type(), "view index");
+      view_index_out->data.location = VARYING_SLOT_VIEW_INDEX;
+   }
+
+   nir_variable *layer_id_out =
+      nir_variable_create(shader, nir_var_shader_out,
+                          glsl_int_type(), "layer ID");
+   layer_id_out->data.location = VARYING_SLOT_LAYER;
+
+   if (view_index_out)
+      nir_store_var(b, view_index_out, view_index, 0x1);
+
+   nir_store_var(b, layer_id_out, view_index, 0x1);
+
    nir_foreach_block(block, entrypoint) {
       nir_foreach_instr_safe(instr, block) {
          if (instr->type != nir_instr_type_intrinsic)
@@ -236,31 +265,6 @@ anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask)
          nir_instr_remove(&load->instr);
       }
    }
-
-   /* The view index is available in all stages but the instance id is only
-    * available in the VS.  If it's not a fragment shader, we need to pass
-    * the view index on to the next stage.
-    */
-   nir_def *view_index = build_view_index(&state);
-
-   assert(view_index->parent_instr->block == nir_start_block(entrypoint));
-   b->cursor = nir_after_instr(view_index->parent_instr);
-
-   /* Unless there is only one possible view index (that would be set
-    * directly), pass it to the next stage. */
-   if (util_bitcount(state.view_mask) != 1) {
-      nir_variable *view_index_out =
-         nir_variable_create(shader, nir_var_shader_out,
-                             glsl_int_type(), "view index");
-      view_index_out->data.location = VARYING_SLOT_VIEW_INDEX;
-      nir_store_var(b, view_index_out, view_index, 0x1);
-   }
-
-   nir_variable *layer_id_out =
-      nir_variable_create(shader, nir_var_shader_out,
-                          glsl_int_type(), "layer ID");
-   layer_id_out->data.location = VARYING_SLOT_LAYER;
-   nir_store_var(b, layer_id_out, view_index, 0x1);
 
    nir_metadata_preserve(entrypoint, nir_metadata_block_index |
                                      nir_metadata_dominance);

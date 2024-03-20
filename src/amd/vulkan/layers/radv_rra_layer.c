@@ -174,11 +174,15 @@ exit:
 }
 
 static void
-handle_accel_struct_write(VkCommandBuffer commandBuffer, struct vk_acceleration_structure *accel_struct,
-                          struct radv_rra_accel_struct_data *data)
+handle_accel_struct_write(VkCommandBuffer commandBuffer, VkAccelerationStructureKHR accelerationStructure)
 {
    VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(vk_acceleration_structure, accel_struct, accelerationStructure);
+
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+
+   struct hash_entry *entry = _mesa_hash_table_search(device->rra_trace.accel_structs, accel_struct);
+   struct radv_rra_accel_struct_data *data = entry->data;
 
    VkMemoryBarrier2 barrier = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -234,15 +238,10 @@ rra_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t in
    device->layer_dispatch.rra.CmdBuildAccelerationStructuresKHR(commandBuffer, infoCount, pInfos, ppBuildRangeInfos);
 
    simple_mtx_lock(&device->rra_trace.data_mtx);
-   for (uint32_t i = 0; i < infoCount; ++i) {
-      VK_FROM_HANDLE(vk_acceleration_structure, structure, pInfos[i].dstAccelerationStructure);
-      struct hash_entry *entry = _mesa_hash_table_search(device->rra_trace.accel_structs, structure);
 
-      assert(entry);
-      struct radv_rra_accel_struct_data *data = entry->data;
+   for (uint32_t i = 0; i < infoCount; ++i)
+      handle_accel_struct_write(commandBuffer, pInfos[i].dstAccelerationStructure);
 
-      handle_accel_struct_write(commandBuffer, structure, data);
-   }
    simple_mtx_unlock(&device->rra_trace.data_mtx);
 }
 
@@ -256,13 +255,7 @@ rra_CmdCopyAccelerationStructureKHR(VkCommandBuffer commandBuffer, const VkCopyA
 
    simple_mtx_lock(&device->rra_trace.data_mtx);
 
-   VK_FROM_HANDLE(vk_acceleration_structure, structure, pInfo->dst);
-   struct hash_entry *entry = _mesa_hash_table_search(device->rra_trace.accel_structs, structure);
-
-   assert(entry);
-   struct radv_rra_accel_struct_data *data = entry->data;
-
-   handle_accel_struct_write(commandBuffer, structure, data);
+   handle_accel_struct_write(commandBuffer, pInfo->dst);
 
    simple_mtx_unlock(&device->rra_trace.data_mtx);
 }
@@ -278,13 +271,7 @@ rra_CmdCopyMemoryToAccelerationStructureKHR(VkCommandBuffer commandBuffer,
 
    simple_mtx_lock(&device->rra_trace.data_mtx);
 
-   VK_FROM_HANDLE(vk_acceleration_structure, structure, pInfo->dst);
-   struct hash_entry *entry = _mesa_hash_table_search(device->rra_trace.accel_structs, structure);
-
-   assert(entry);
-   struct radv_rra_accel_struct_data *data = entry->data;
-
-   handle_accel_struct_write(commandBuffer, structure, data);
+   handle_accel_struct_write(commandBuffer, pInfo->dst);
 
    simple_mtx_unlock(&device->rra_trace.data_mtx);
 }

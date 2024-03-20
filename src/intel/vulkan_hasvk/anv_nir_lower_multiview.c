@@ -42,6 +42,7 @@ struct lower_multiview_state {
 
    uint32_t view_mask;
 
+   nir_def *instance_id_with_views;
    nir_def *instance_id;
    nir_def *view_index;
 };
@@ -54,14 +55,15 @@ build_instance_id(struct lower_multiview_state *state)
    if (state->instance_id == NULL) {
       nir_builder *b = &state->builder;
 
-      b->cursor = nir_before_impl(b->impl);
+      b->cursor =
+         nir_after_instr(state->instance_id_with_views->parent_instr);
 
       /* We use instancing for implementing multiview.  The actual instance id
        * is given by dividing instance_id by the number of views in this
        * subpass.
        */
       state->instance_id =
-         nir_idiv(b, nir_load_instance_id(b),
+         nir_idiv(b, state->instance_id_with_views,
                      nir_imm_int(b, util_bitcount(state->view_mask)));
    }
 
@@ -76,7 +78,8 @@ build_view_index(struct lower_multiview_state *state)
    if (state->view_index == NULL) {
       nir_builder *b = &state->builder;
 
-      b->cursor = nir_before_impl(b->impl);
+      b->cursor =
+         nir_after_instr(state->instance_id_with_views->parent_instr);
 
       assert(state->view_mask != 0);
       if (util_bitcount(state->view_mask) == 1) {
@@ -91,7 +94,7 @@ build_view_index(struct lower_multiview_state *state)
           * that to an actual view id.
           */
          nir_def *compacted =
-            nir_umod_imm(b, nir_load_instance_id(b),
+            nir_umod_imm(b, state->instance_id_with_views,
                             util_bitcount(state->view_mask));
 
          if (util_is_power_of_two_or_zero(state->view_mask + 1)) {
@@ -198,7 +201,13 @@ anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask)
       .view_mask = view_mask,
    };
 
-   state.builder = nir_builder_create(entrypoint);
+   state.builder = nir_builder_at(nir_before_impl(entrypoint));
+   nir_builder *b = &state.builder;
+
+   /* Save the original "instance ID" which is the actual instance ID
+    * multiplied by the number of views.
+    */
+   state.instance_id_with_views = nir_load_instance_id(b);
 
    nir_foreach_block(block, entrypoint) {
       nir_foreach_instr_safe(instr, block) {
@@ -206,6 +215,9 @@ anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask)
             continue;
 
          nir_intrinsic_instr *load = nir_instr_as_intrinsic(instr);
+
+         if (&load->def == state.instance_id_with_views)
+            continue;
 
          if (load->intrinsic != nir_intrinsic_load_instance_id &&
              load->intrinsic != nir_intrinsic_load_view_index)
@@ -230,8 +242,6 @@ anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask)
     * the view index on to the next stage.
     */
    nir_def *view_index = build_view_index(&state);
-
-   nir_builder *b = &state.builder;
 
    assert(view_index->parent_instr->block == nir_start_block(entrypoint));
    b->cursor = nir_after_instr(view_index->parent_instr);

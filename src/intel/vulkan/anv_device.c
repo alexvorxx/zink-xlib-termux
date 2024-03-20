@@ -3954,8 +3954,7 @@ VkResult anv_CreateDevice(
    pthread_mutex_destroy(&device->mutex);
  fail_vmas:
    util_vma_heap_finish(&device->vma_trtt);
-   if (!device->physical->indirect_descriptors)
-      util_vma_heap_finish(&device->vma_samplers);
+   util_vma_heap_finish(&device->vma_samplers);
    util_vma_heap_finish(&device->vma_desc_buf);
    util_vma_heap_finish(&device->vma_desc);
    util_vma_heap_finish(&device->vma_hi);
@@ -4085,8 +4084,7 @@ void anv_DestroyDevice(
    anv_bo_cache_finish(&device->bo_cache);
 
    util_vma_heap_finish(&device->vma_trtt);
-   if (!device->physical->indirect_descriptors)
-      util_vma_heap_finish(&device->vma_samplers);
+   util_vma_heap_finish(&device->vma_samplers);
    util_vma_heap_finish(&device->vma_desc_buf);
    util_vma_heap_finish(&device->vma_desc);
    util_vma_heap_finish(&device->vma_hi);

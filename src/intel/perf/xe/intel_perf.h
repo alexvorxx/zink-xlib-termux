@@ -5,8 +5,11 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 struct intel_perf_config;
 
 uint64_t xe_perf_get_oa_format(struct intel_perf_config *perf);
+
+bool xe_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_register_snapshots);

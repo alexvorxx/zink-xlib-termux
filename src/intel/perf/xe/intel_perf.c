@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 
 #include "perf/intel_perf.h"
+#include "intel_perf_common.h"
+#include "intel/common/i915/intel_gem.h"
 
 #include "drm-uapi/xe_drm.h"
 
@@ -26,4 +28,33 @@ uint64_t xe_perf_get_oa_format(struct intel_perf_config *perf)
    fmt |= FIELD_PREP_ULL(DRM_XE_OA_FORMAT_MASK_BC_REPORT, 0);
 
    return fmt;
+}
+
+bool
+xe_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_register_snapshots)
+{
+   bool perf_oa_available = false;
+   struct stat sb;
+
+   perf->i915_query_supported = false;
+   perf->i915_perf_version = 0;
+
+   /* The existence of this file implies that this Xe KMD version supports
+    * perf interface.
+    */
+   if (stat("/proc/sys/dev/xe/perf_stream_paranoid", &sb) == 0) {
+      uint64_t paranoid = 1;
+
+      /* Now we need to check if application has privileges to access perf
+       * interface.
+       *
+       * TODO: this approach does not takes into account applications running
+       * with CAP_PERFMON privileges.
+       */
+      read_file_uint64("/proc/sys/dev/xe/perf_stream_paranoid", &paranoid);
+      if (paranoid == 0 || geteuid() == 0)
+         perf_oa_available = true;
+   }
+
+   return perf_oa_available;
 }

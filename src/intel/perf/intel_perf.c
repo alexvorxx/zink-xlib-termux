@@ -50,6 +50,9 @@
 #include "perf/intel_perf_metrics.h"
 #include "perf/intel_perf_private.h"
 
+#include "perf/i915/intel_perf.h"
+#include "perf/xe/intel_perf.h"
+
 #include "util/bitscan.h"
 #include "util/macros.h"
 #include "util/mesa-sha1.h"
@@ -361,10 +364,26 @@ init_oa_sys_vars(struct intel_perf_config *perf,
    uint64_t min_freq_mhz = 0, max_freq_mhz = 0;
 
    if (!INTEL_DEBUG(DEBUG_NO_OACONFIG)) {
-      if (!read_sysfs_drm_device_file_uint64(perf, "gt_min_freq_mhz", &min_freq_mhz))
+      const char *min_file, *max_file;
+
+      switch (perf->devinfo->kmd_type) {
+      case INTEL_KMD_TYPE_I915:
+         min_file = "gt_min_freq_mhz";
+         max_file = "gt_max_freq_mhz";
+         break;
+      case INTEL_KMD_TYPE_XE:
+         min_file = "device/tile0/gt0/freq0/min_freq";
+         max_file = "device/tile0/gt0/freq0/max_freq";
+         break;
+      default:
+         unreachable("missing");
+         return false;
+      }
+
+      if (!read_sysfs_drm_device_file_uint64(perf, min_file, &min_freq_mhz))
          return false;
 
-      if (!read_sysfs_drm_device_file_uint64(perf,  "gt_max_freq_mhz", &max_freq_mhz))
+      if (!read_sysfs_drm_device_file_uint64(perf, max_file, &max_freq_mhz))
          return false;
    } else {
       min_freq_mhz = 300;
@@ -677,6 +696,7 @@ oa_metrics_available(struct intel_perf_config *perf, int fd,
       oa_metrics_available = i915_oa_metrics_available(perf, fd, use_register_snapshots);
       break;
    case INTEL_KMD_TYPE_XE:
+      oa_metrics_available = xe_oa_metrics_available(perf, fd, use_register_snapshots);
       break;
    default:
       unreachable("missing");

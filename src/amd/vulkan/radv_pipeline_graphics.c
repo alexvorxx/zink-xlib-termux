@@ -1053,6 +1053,10 @@ radv_pipeline_init_dynamic_state(const struct radv_device *device, struct radv_g
          uses_ds_feedback_loop ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) : VK_IMAGE_ASPECT_NONE;
    }
 
+   for (uint32_t i = 0; i < MAX_RTS; i++) {
+      dynamic->vk.cal.color_map[i] = state->cal ? state->cal->color_map[i] : i;
+   }
+
    pipeline->dynamic_state.mask = states;
 }
 
@@ -1150,12 +1154,20 @@ radv_remove_point_size(const struct radv_graphics_state_key *gfx_state, nir_shad
 static void
 radv_remove_color_exports(const struct radv_graphics_state_key *gfx_state, nir_shader *nir)
 {
+   uint8_t color_remap[MAX_RTS];
    bool fixup_derefs = false;
 
    /* Do not remove color exports when a PS epilog is used because the format isn't known and the color write mask can
     * be dynamic. */
    if (gfx_state->ps.has_epilog)
       return;
+
+   /* Shader output locations to color attachment mappings. */
+   memset(color_remap, MESA_VK_ATTACHMENT_UNUSED, sizeof(color_remap));
+   for (uint32_t i = 0; i < MAX_RTS; i++) {
+      if (gfx_state->ps.epilog.color_map[i] != MESA_VK_ATTACHMENT_UNUSED)
+         color_remap[gfx_state->ps.epilog.color_map[i]] = i;
+   }
 
    nir_foreach_shader_out_variable (var, nir) {
       int idx = var->data.location;
@@ -1164,7 +1176,8 @@ radv_remove_color_exports(const struct radv_graphics_state_key *gfx_state, nir_s
       if (idx < 0)
          continue;
 
-      unsigned col_format = (gfx_state->ps.epilog.spi_shader_col_format >> (4 * idx)) & 0xf;
+      const uint8_t cb_idx = color_remap[idx];
+      unsigned col_format = (gfx_state->ps.epilog.spi_shader_col_format >> (4 * cb_idx)) & 0xf;
 
       if (col_format == V_028714_SPI_SHADER_ZERO) {
          /* Remove the color export if it's unused or in presence of holes. */
@@ -1609,12 +1622,15 @@ radv_generate_ps_epilog_key(const struct radv_device *device, const struct radv_
    struct radv_ps_epilog_key key;
 
    memset(&key, 0, sizeof(key));
+   memset(key.color_map, MESA_VK_ATTACHMENT_UNUSED, sizeof(key.color_map));
 
    for (unsigned i = 0; i < state->color_attachment_count; ++i) {
       unsigned cf;
+      unsigned cb_idx = state->color_attachment_mappings[i];
       VkFormat fmt = state->color_attachment_formats[i];
 
-      if (fmt == VK_FORMAT_UNDEFINED || !(state->color_write_mask & (0xfu << (i * 4)))) {
+      if (fmt == VK_FORMAT_UNDEFINED || !(state->color_write_mask & (0xfu << (i * 4))) ||
+          cb_idx == MESA_VK_ATTACHMENT_UNUSED) {
          cf = V_028714_SPI_SHADER_ZERO;
       } else {
          bool blend_enable = state->color_blend_enable & (0xfu << (i * 4));
@@ -1630,6 +1646,8 @@ radv_generate_ps_epilog_key(const struct radv_device *device, const struct radv_
       }
 
       col_format |= cf << (4 * i);
+
+      key.color_map[i] = state->color_attachment_mappings[i];
    }
 
    if (!(col_format & 0xf) && state->need_src_alpha & (1 << 0)) {
@@ -1637,12 +1655,14 @@ radv_generate_ps_epilog_key(const struct radv_device *device, const struct radv_
        * alpha coverage is enabled because the depth attachment needs it.
        */
       col_format |= V_028714_SPI_SHADER_32_AR;
+      key.color_map[0] = 0;
    }
 
    /* The output for dual source blending should have the same format as the first output. */
    if (state->mrt0_is_dual_src) {
       assert(!(col_format >> 4));
       col_format |= (col_format & 0xf) << 4;
+      key.color_map[1] = 1;
    }
 
    if (state->alpha_to_coverage_via_mrtz)
@@ -1721,6 +1741,10 @@ radv_pipeline_generate_ps_epilog_key(const struct radv_device *device, const str
 
    if (state->ms)
       ps_epilog.alpha_to_one = state->ms->alpha_to_one_enable;
+
+   for (uint32_t i = 0; i < MAX_RTS; i++) {
+      ps_epilog.color_attachment_mappings[i] = state->cal ? state->cal->color_map[i] : i;
+   }
 
    return radv_generate_ps_epilog_key(device, &ps_epilog);
 }
@@ -2535,6 +2559,9 @@ radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cac
 
    if (stages[MESA_SHADER_FRAGMENT].nir) {
       radv_nir_lower_poly_line_smooth(stages[MESA_SHADER_FRAGMENT].nir, gfx_state);
+
+      if (!gfx_state->ps.has_epilog)
+         radv_nir_remap_color_attachment(stages[MESA_SHADER_FRAGMENT].nir, gfx_state);
    }
 
    radv_fill_shader_info(device, RADV_PIPELINE_GRAPHICS, gfx_state, stages, active_nir_stages);

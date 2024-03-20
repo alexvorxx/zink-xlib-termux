@@ -155,6 +155,11 @@ radv_bind_dynamic_state(struct radv_cmd_buffer *cmd_buffer, const struct radv_dy
       }
    }
 
+   if (memcmp(&dest->vk.cal.color_map, &src->vk.cal.color_map, sizeof(src->vk.cal.color_map))) {
+      typed_memcpy(dest->vk.cal.color_map, src->vk.cal.color_map, MAX_RTS);
+      cmd_buffer->state.dirty |= RADV_DYNAMIC_COLOR_ATTACHMENT_MAP;
+   }
+
 #define RADV_CMP_COPY(field, flag)                                                                                     \
    if (copy_mask & flag) {                                                                                             \
       if (dest->field != src->field) {                                                                                 \
@@ -4371,6 +4376,9 @@ lookup_ps_epilog(struct radv_cmd_buffer *cmd_buffer)
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_ps_epilog_state state = {0};
+   uint8_t color_remap[MAX_RTS];
+
+   memset(color_remap, MESA_VK_ATTACHMENT_UNUSED, sizeof(color_remap));
 
    state.color_attachment_count = render->color_att_count;
    for (unsigned i = 0; i < render->color_att_count; ++i) {
@@ -4391,6 +4399,10 @@ lookup_ps_epilog(struct radv_cmd_buffer *cmd_buffer)
           srcRGB == VK_BLEND_FACTOR_SRC_ALPHA_SATURATE || dstRGB == VK_BLEND_FACTOR_SRC_ALPHA_SATURATE ||
           srcRGB == VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA || dstRGB == VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
          state.need_src_alpha |= 1 << i;
+
+      state.color_attachment_mappings[i] = d->vk.cal.color_map[i];
+      if (state.color_attachment_mappings[i] != MESA_VK_ATTACHMENT_UNUSED)
+         color_remap[state.color_attachment_mappings[i]] = i;
    }
 
    state.mrt0_is_dual_src = radv_is_mrt0_dual_src(cmd_buffer);
@@ -4416,8 +4428,20 @@ lookup_ps_epilog(struct radv_cmd_buffer *cmd_buffer)
 
    struct radv_ps_epilog_key key = radv_generate_ps_epilog_key(device, &state);
 
+   /* Determine the actual colors written if outputs are remapped. */
+   uint32_t colors_written = 0;
+   for (uint32_t i = 0; i < MAX_RTS; i++) {
+      if (!((ps->info.ps.colors_written >> (i * 4)) & 0xf))
+         continue;
+
+      if (color_remap[i] == MESA_VK_ATTACHMENT_UNUSED)
+         continue;
+
+      colors_written |= 0xfu << (4 * color_remap[i]);
+   }
+
    /* Clear color attachments that aren't exported by the FS to match IO shader arguments. */
-   key.spi_shader_col_format &= ps->info.ps.colors_written;
+   key.spi_shader_col_format &= colors_written;
 
    return radv_shader_part_cache_get(device, &device->ps_epilogs, &cmd_buffer->ps_epilogs, &key);
 }
@@ -7925,6 +7949,23 @@ radv_CmdSetDepthBias2EXT(VkCommandBuffer commandBuffer, const VkDepthBiasInfoEXT
 }
 
 VKAPI_ATTR void VKAPI_CALL
+radv_CmdSetRenderingAttachmentLocationsKHR(VkCommandBuffer commandBuffer,
+                                           const VkRenderingAttachmentLocationInfoKHR *pLocationInfo)
+{
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   struct radv_cmd_state *state = &cmd_buffer->state;
+
+   assume(pLocationInfo->colorAttachmentCount <= MESA_VK_MAX_COLOR_ATTACHMENTS);
+   for (uint32_t i = 0; i < pLocationInfo->colorAttachmentCount; i++) {
+      state->dynamic.vk.cal.color_map[i] = pLocationInfo->pColorAttachmentLocations[i] == VK_ATTACHMENT_UNUSED
+                                              ? MESA_VK_ATTACHMENT_UNUSED
+                                              : pLocationInfo->pColorAttachmentLocations[i];
+   }
+
+   state->dirty |= RADV_CMD_DIRTY_DYNAMIC_COLOR_ATTACHMENT_MAP;
+}
+
+VKAPI_ATTR void VKAPI_CALL
 radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCount, const VkCommandBuffer *pCmdBuffers)
 {
    VK_FROM_HANDLE(radv_cmd_buffer, primary, commandBuffer);
@@ -9558,7 +9599,7 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
             (cmd_buffer->state.dirty_dynamic &
              (RADV_CMD_DIRTY_DYNAMIC_COLOR_WRITE_MASK | RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_ENABLE |
               RADV_CMD_DIRTY_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE | RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_EQUATION |
-              RADV_CMD_DIRTY_DYNAMIC_ALPHA_TO_ONE_ENABLE))))) {
+              RADV_CMD_DIRTY_DYNAMIC_ALPHA_TO_ONE_ENABLE | RADV_CMD_DIRTY_DYNAMIC_COLOR_ATTACHMENT_MAP))))) {
          ps_epilog = lookup_ps_epilog(cmd_buffer);
          if (!ps_epilog) {
             vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);

@@ -74,7 +74,8 @@ enum radv_dynamic_state_bits {
    RADV_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE = 1ull << 48,
    RADV_DYNAMIC_SAMPLE_LOCATIONS_ENABLE = 1ull << 49,
    RADV_DYNAMIC_ALPHA_TO_ONE_ENABLE = 1ull << 50,
-   RADV_DYNAMIC_ALL = (1ull << 51) - 1,
+   RADV_DYNAMIC_COLOR_ATTACHMENT_MAP = 1ull << 51,
+   RADV_DYNAMIC_ALL = (1ull << 52) - 1,
 };
 
 enum radv_cmd_dirty_dynamic_bits {
@@ -131,7 +132,8 @@ enum radv_cmd_dirty_dynamic_bits {
    RADV_CMD_DIRTY_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE = 1ull << 48,
    RADV_CMD_DIRTY_DYNAMIC_SAMPLE_LOCATIONS_ENABLE = 1ull << 49,
    RADV_CMD_DIRTY_DYNAMIC_ALPHA_TO_ONE_ENABLE = 1ull << 50,
-   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 51) - 1,
+   RADV_CMD_DIRTY_DYNAMIC_COLOR_ATTACHMENT_MAP = 1ull << 51,
+   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 52) - 1,
 };
 
 enum radv_cmd_dirty_bits {

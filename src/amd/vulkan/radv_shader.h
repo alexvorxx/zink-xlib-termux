@@ -96,6 +96,7 @@ struct radv_ps_epilog_key {
    uint8_t enable_mrt_output_nan_fixup;
 
    uint32_t colors_written;
+   uint8_t color_map[MAX_RTS];
    bool mrt0_is_dual_src;
    bool export_depth;
    bool export_stencil;

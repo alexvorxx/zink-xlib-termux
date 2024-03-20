@@ -12689,8 +12689,14 @@ select_ps_epilog(Program* program, void* pinfo, ac_shader_config* config,
    } else {
       for (unsigned i = 0; i < MAX_DRAW_BUFFERS; i++) {
          struct aco_export_mrt* mrt = &mrts[mrt_num];
-         if (export_fs_mrt_color(&ctx, einfo, colors[i], i, mrt))
+         const uint8_t cb_idx = einfo->color_map[i];
+
+         if (cb_idx == 0xff || !einfo->colors[cb_idx].used)
+            continue;
+
+         if (export_fs_mrt_color(&ctx, einfo, colors[cb_idx], i, mrt)) {
             mrt->target += mrt_num++;
+         }
       }
    }
 

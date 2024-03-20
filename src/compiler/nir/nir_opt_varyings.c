@@ -3008,7 +3008,8 @@ try_move_postdominator(struct linkage_info *linkage,
                      b, 1, new_bit_size, baryc, nir_imm_int(b, 0),
                      .base = nir_intrinsic_base(first_load),
                      .component = nir_intrinsic_component(first_load),
-                     .dest_type = nir_intrinsic_dest_type(first_load),
+                     .dest_type = nir_alu_type_get_base_type(nir_intrinsic_dest_type(first_load)) |
+                                  new_bit_size,
                      .io_semantics = nir_intrinsic_io_semantics(first_load));
 
       mask = new_bit_size == 16 ? linkage->interp_fp16_mask
@@ -3023,7 +3024,8 @@ try_move_postdominator(struct linkage_info *linkage,
                   i ? nir_imm_int(b, i) : zero, zero,
                   .base = nir_intrinsic_base(first_load),
                   .component = nir_intrinsic_component(first_load),
-                  .dest_type = nir_intrinsic_dest_type(first_load),
+                     .dest_type = nir_alu_type_get_base_type(nir_intrinsic_dest_type(first_load)) |
+                                  new_bit_size,
                   .io_semantics = nir_intrinsic_io_semantics(first_load));
       }
 
@@ -3064,7 +3066,8 @@ try_move_postdominator(struct linkage_info *linkage,
          nir_load_input(b, 1, new_bit_size, nir_imm_int(b, 0),
                         .base = nir_intrinsic_base(first_load),
                         .component = nir_intrinsic_component(first_load),
-                        .dest_type = nir_intrinsic_dest_type(first_load),
+                        .dest_type = nir_alu_type_get_base_type(nir_intrinsic_dest_type(first_load)) |
+                                    new_bit_size,
                         .io_semantics = nir_intrinsic_io_semantics(first_load));
 
       if (linkage->consumer_stage == MESA_SHADER_FRAGMENT &&
@@ -3151,6 +3154,9 @@ try_move_postdominator(struct linkage_info *linkage,
       list_first_entry(&linkage->slot[final_slot].producer.stores,
                        struct list_node, head)->instr;
    nir_instr_move(b->cursor, &store->instr);
+   if (nir_src_bit_size(store->src[0]) != producer_clone->bit_size)
+      nir_intrinsic_set_src_type(store, nir_alu_type_get_base_type(nir_intrinsic_src_type(store)) |
+                                        producer_clone->bit_size);
    nir_src_rewrite(&store->src[0], producer_clone);
 
    /* Remove all loads and stores that we are replacing from the producer

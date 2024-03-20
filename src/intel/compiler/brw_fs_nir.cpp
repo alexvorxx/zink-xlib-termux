@@ -287,7 +287,6 @@ emit_system_values_block(nir_to_brw_state &ntb, nir_block *block)
          break;
 
       case nir_intrinsic_load_workgroup_id:
-      case nir_intrinsic_load_workgroup_id_zero_base:
          if (gl_shader_stage_is_mesh(s.stage))
             unreachable("should be lowered by nir_lower_compute_system_values().");
          assert(gl_shader_stage_is_compute(s.stage));
@@ -4370,8 +4369,7 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
          bld.MOV(offset(dest, bld, i), s.cs_payload().local_invocation_id[i]);
       break;
 
-   case nir_intrinsic_load_workgroup_id:
-   case nir_intrinsic_load_workgroup_id_zero_base: {
+   case nir_intrinsic_load_workgroup_id: {
       fs_reg val = ntb.system_values[SYSTEM_VALUE_WORKGROUP_ID];
       assert(val.file != BAD_FILE);
       dest.type = val.type;

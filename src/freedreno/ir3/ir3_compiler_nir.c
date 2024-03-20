@@ -2483,7 +2483,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       ir3_split_dest(b, dst, ctx->local_invocation_id, 0, 3);
       break;
    case nir_intrinsic_load_workgroup_id:
-   case nir_intrinsic_load_workgroup_id_zero_base:
       if (ctx->compiler->has_shared_regfile) {
          if (!ctx->work_group_id) {
             ctx->work_group_id =

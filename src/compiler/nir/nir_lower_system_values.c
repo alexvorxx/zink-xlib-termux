@@ -207,6 +207,11 @@ lower_system_value_instr(nir_builder *b, nir_instr *instr, void *_state)
                          nir_load_base_global_invocation_id(b, bit_size));
       }
 
+      case SYSTEM_VALUE_WORKGROUP_ID: {
+         return nir_iadd(b, nir_u2uN(b, nir_load_workgroup_id(b), bit_size),
+                         nir_load_base_workgroup_id(b, bit_size));
+      }
+
       case SYSTEM_VALUE_SUBGROUP_EQ_MASK:
       case SYSTEM_VALUE_SUBGROUP_GE_MASK:
       case SYSTEM_VALUE_SUBGROUP_GT_MASK:
@@ -683,10 +688,12 @@ lower_compute_system_value_instr(nir_builder *b,
           !b->shader->options->has_cs_global_id) {
          nir_def *group_size = nir_load_workgroup_size(b);
          nir_def *group_id = nir_load_workgroup_id(b);
+         nir_def *base_group_id = nir_load_base_workgroup_id(b, bit_size);
          nir_def *local_id = nir_load_local_invocation_id(b);
 
-         return nir_iadd(b, nir_imul(b, nir_u2uN(b, group_id, bit_size),
-                         nir_u2uN(b, group_size, bit_size)),
+         return nir_iadd(b, nir_imul(b, nir_iadd(b, nir_u2uN(b, group_id, bit_size),
+                                                 base_group_id),
+                                     nir_u2uN(b, group_size, bit_size)),
                          nir_u2uN(b, local_id, bit_size));
       } else {
          return NULL;
@@ -695,6 +702,12 @@ lower_compute_system_value_instr(nir_builder *b,
 
    case nir_intrinsic_load_base_global_invocation_id: {
       if (options && !options->has_base_global_invocation_id)
+         return nir_imm_zero(b, 3, bit_size);
+      return NULL;
+   }
+
+   case nir_intrinsic_load_base_workgroup_id: {
+      if (options && !options->has_base_workgroup_id)
          return nir_imm_zero(b, 3, bit_size);
       return NULL;
    }
@@ -716,10 +729,7 @@ lower_compute_system_value_instr(nir_builder *b,
    }
 
    case nir_intrinsic_load_workgroup_id: {
-      if (options && options->has_base_workgroup_id)
-         return nir_iadd(b, nir_u2uN(b, nir_load_workgroup_id_zero_base(b), bit_size),
-                         nir_load_base_workgroup_id(b, bit_size));
-      else if (options && options->lower_workgroup_id_to_index) {
+      if (options && options->lower_workgroup_id_to_index) {
          nir_def *wg_idx = nir_load_workgroup_index(b);
 
          nir_def *val =

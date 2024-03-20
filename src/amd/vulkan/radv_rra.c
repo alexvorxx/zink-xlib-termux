@@ -456,9 +456,14 @@ static const char *node_type_names[8] = {
 
 static bool
 rra_validate_node(struct hash_table_u64 *accel_struct_vas, uint8_t *data, void *node, uint32_t geometry_count,
-                  uint32_t size, bool is_bottom_level)
+                  uint32_t size, bool is_bottom_level, uint32_t depth)
 {
    struct rra_validation_context ctx = {0};
+
+   if (depth > 1024) {
+      rra_validation_fail(&ctx, "depth > 1024");
+      return true;
+   }
 
    uint32_t cur_offset = (uint8_t *)node - data;
    snprintf(ctx.location, sizeof(ctx.location), "internal node (offset=%u)", cur_offset);
@@ -486,7 +491,8 @@ rra_validate_node(struct hash_table_u64 *accel_struct_vas, uint8_t *data, void *
       snprintf(child_ctx.location, sizeof(child_ctx.location), "%s node (offset=%u)", node_type_names[type], offset);
 
       if (is_internal_node(type)) {
-         ctx.failed |= rra_validate_node(accel_struct_vas, data, data + offset, geometry_count, size, is_bottom_level);
+         ctx.failed |=
+            rra_validate_node(accel_struct_vas, data, data + offset, geometry_count, size, is_bottom_level, depth + 1);
       } else if (type == radv_bvh_node_instance) {
          struct radv_bvh_instance_node *src = (struct radv_bvh_instance_node *)(data + offset);
          uint64_t blas_va = node_to_addr(src->bvh_ptr) - src->bvh_offset;
@@ -742,7 +748,7 @@ rra_dump_acceleration_structure(struct radv_rra_accel_struct_data *accel_struct,
          return VK_ERROR_VALIDATION_FAILED_EXT;
       }
       if (rra_validate_node(accel_struct_vas, data + header->bvh_offset, data + header->bvh_offset + src_root_offset,
-                            header->geometry_count, accel_struct->size, !is_tlas)) {
+                            header->geometry_count, accel_struct->size, !is_tlas, 0)) {
          return VK_ERROR_VALIDATION_FAILED_EXT;
       }
    }

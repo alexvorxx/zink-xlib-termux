@@ -150,7 +150,7 @@ radv_shader_object_init_graphics(struct radv_shader_object *shader_obj, struct r
    gfx_state.dynamic_line_rast_mode = true;
 
    if (device->physical_device->rad_info.gfx_level >= GFX11)
-      gfx_state.ms.alpha_to_coverage_via_mrtz = true;
+      gfx_state.ps.exports_mrtz_via_epilog = true;
 
    struct radv_shader *shader = NULL;
    struct radv_shader_binary *binary = NULL;
@@ -426,7 +426,7 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
    gfx_state.dynamic_line_rast_mode = true;
 
    if (device->physical_device->rad_info.gfx_level >= GFX11)
-      gfx_state.ms.alpha_to_coverage_via_mrtz = true;
+      gfx_state.ps.exports_mrtz_via_epilog = true;
 
    for (unsigned i = 0; i < createInfoCount; i++) {
       const VkShaderCreateInfoEXT *pCreateInfo = &pCreateInfos[i];

@@ -9216,7 +9216,8 @@ remove_per_vertex_blocks(exec_list *instructions,
    foreach_in_list_safe(ir_instruction, node, instructions) {
       ir_variable *const var = node->as_variable();
       if (var != NULL && var->get_interface_type() == per_vertex &&
-          var->data.mode == mode) {
+          var->data.mode == mode &&
+          var->data.how_declared == ir_var_declared_implicitly) {
          state->symbols->disable_variable(var->name);
          var->remove();
       }

@@ -295,7 +295,11 @@ if prog_glslang.found()
     'astc_spv.h',
     input : astc_decoder_glsl_file,
     output : 'astc_spv.h',
-    command : [prog_glslang, '-V', '-S', 'comp', '-x', '-o', '@OUTPUT@', '@INPUT@'] + glslang_quiet,
+    command : [
+      prog_glslang, '-V', '-S', 'comp', '-x', '-o', '@OUTPUT@', '@INPUT@',
+      glslang_quiet, glslang_depfile,
+    ],
+    depfile : 'astc_spv.h.d',
   )
 endif
 

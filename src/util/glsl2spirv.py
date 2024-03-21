@@ -38,6 +38,9 @@ if T.TYPE_CHECKING:
         extra: T.Optional[str]
         vn: str
         stage: str
+        includes: T.List[str]
+        defines: T.List[str]
+        depfile: T.Optional[str]
 
 
 def get_args() -> 'Arguments':
@@ -84,6 +87,12 @@ def get_args() -> 'Arguments':
                         default=[],
                         action='append',
                         help="Defines")
+    
+    parser.add_argument('--depfile',
+                        dest="depfile",
+                        default=None,
+                        action='store',
+                        help='Where glslangValidator should write its depfile, if unset no depfile will be written.')
 
     args = parser.parse_args()
     return args
@@ -169,6 +178,9 @@ def process_file(args: 'Arguments') -> None:
 
     if args.create_entry is not None:
         cmd_list.extend(["--entry-point", args.create_entry])
+
+    if args.depfile is not None:
+        cmd_list.extend(['--depfile', args.depfile])
 
     for f in args.includes:
         cmd_list.append('-I' + f)

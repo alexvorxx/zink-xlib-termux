@@ -623,6 +623,19 @@ validate_intrinsic_instr(nir_intrinsic_instr *instr, validate_state *state)
       validate_assert(state, instr->def.bit_size >= 8);
       break;
 
+   case nir_intrinsic_load_barycentric_pixel:
+   case nir_intrinsic_load_barycentric_centroid:
+   case nir_intrinsic_load_barycentric_sample:
+   case nir_intrinsic_load_barycentric_at_offset:
+   case nir_intrinsic_load_barycentric_at_sample: {
+      enum glsl_interp_mode mode = nir_intrinsic_interp_mode(instr);
+      validate_assert(state,
+                      mode == INTERP_MODE_NONE ||
+                      mode == INTERP_MODE_SMOOTH ||
+                      mode == INTERP_MODE_NOPERSPECTIVE);
+      break;
+   }
+
    case nir_intrinsic_store_ssbo:
    case nir_intrinsic_store_shared:
    case nir_intrinsic_store_global:

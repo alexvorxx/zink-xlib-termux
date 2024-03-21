@@ -1496,7 +1496,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
             };
             struct rra_ray_history_control_token isec_status_control = {
                .type = rra_ray_history_token_isec_status,
-               .data = i == src->ahit_count - 1 ? 2 : 0,
+               .data = i == src->isec_count - 1 ? 2 : 0,
             };
             fwrite(&isec_status_id, sizeof(isec_status_id), 1, file);
             fwrite(&isec_status_control, sizeof(isec_status_control), 1, file);

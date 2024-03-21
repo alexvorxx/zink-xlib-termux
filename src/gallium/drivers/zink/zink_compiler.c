@@ -1239,6 +1239,7 @@ zink_screen_init_compiler(struct zink_screen *screen)
       .lower_ldexp = true,
 
       .lower_mul_high = true,
+      .lower_to_scalar = true,
       .lower_uadd_carry = true,
       .compact_arrays = true,
       .lower_usub_borrow = true,

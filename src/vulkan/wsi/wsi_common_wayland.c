@@ -1666,7 +1666,6 @@ wsi_wl_swapchain_release_images(struct wsi_swapchain *wsi_chain,
    struct wsi_wl_swapchain *chain = (struct wsi_wl_swapchain *)wsi_chain;
    for (uint32_t i = 0; i < count; i++) {
       uint32_t index = indices[i];
-      assert(chain->images[index].busy);
       chain->images[index].busy = false;
    }
    return VK_SUCCESS;

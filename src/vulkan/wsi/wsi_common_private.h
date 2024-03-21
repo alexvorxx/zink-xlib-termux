@@ -130,6 +130,10 @@ struct wsi_image {
       VkDeviceMemory memory;
       VkCommandBuffer *cmd_buffers;
    } blit;
+   /* Whether or not the image has been acquired
+    * on the CPU side via acquire_next_image.
+    */
+   bool acquired;
 
 #ifndef _WIN32
    uint64_t drm_modifier;

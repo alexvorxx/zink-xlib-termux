@@ -1049,6 +1049,15 @@ wsi_ReleaseSwapchainImagesEXT(VkDevice _device,
                               const VkReleaseSwapchainImagesInfoEXT *pReleaseInfo)
 {
    VK_FROM_HANDLE(wsi_swapchain, swapchain, pReleaseInfo->swapchain);
+
+   for (uint32_t i = 0; i < pReleaseInfo->imageIndexCount; i++) {
+      uint32_t index = pReleaseInfo->pImageIndices[i];
+      assert(index < swapchain->image_count);
+      struct wsi_image *image = swapchain->get_wsi_image(swapchain, index);
+      assert(image->acquired);
+      image->acquired = false;
+   }
+
    VkResult result = swapchain->release_images(swapchain,
                                                pReleaseInfo->imageIndexCount,
                                                pReleaseInfo->pImageIndices);
@@ -1207,6 +1216,8 @@ wsi_common_acquire_next_image2(const struct wsi_device *wsi,
       return result;
    struct wsi_image *image =
       swapchain->get_wsi_image(swapchain, *pImageIndex);
+
+   image->acquired = true;
 
    if (pAcquireInfo->semaphore != VK_NULL_HANDLE) {
       VkResult signal_result =
@@ -1457,6 +1468,10 @@ wsi_common_queue_present(const struct wsi_device *wsi,
       result = wsi->QueueSubmit(submit_queue, 1, &submit_info, fence);
       if (result != VK_SUCCESS)
          goto fail_present;
+
+      /* The app can only submit images they have acquired. */
+      assert(image->acquired);
+      image->acquired = false;
 
 #ifdef HAVE_LIBDRM
       if (has_signal_dma_buf) {

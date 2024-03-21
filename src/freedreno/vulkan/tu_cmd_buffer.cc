@@ -4966,7 +4966,8 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
   if (BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
                   MESA_VK_DYNAMIC_IA_PRIMITIVE_RESTART_ENABLE) ||
       BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
-                  MESA_VK_DYNAMIC_RS_PROVOKING_VERTEX)) {
+                  MESA_VK_DYNAMIC_RS_PROVOKING_VERTEX) ||
+      (cmd->state.dirty & TU_CMD_DIRTY_DRAW_STATE)) {
       bool primitive_restart_enabled =
          cmd->vk.dynamic_graphics_state.ia.primitive_restart_enable;
 
@@ -4987,7 +4988,8 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
    struct tu_tess_params *tess_params = &cmd->state.tess_params;
    if ((cmd->state.dirty & TU_CMD_DIRTY_TESS_PARAMS) ||
        BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
-                   MESA_VK_DYNAMIC_TS_DOMAIN_ORIGIN)) {
+                   MESA_VK_DYNAMIC_TS_DOMAIN_ORIGIN) ||
+       (cmd->state.dirty & TU_CMD_DIRTY_DRAW_STATE)) {
       bool tess_upper_left_domain_origin =
          (VkTessellationDomainOrigin)cmd->vk.dynamic_graphics_state.ts.domain_origin ==
          VK_TESSELLATION_DOMAIN_ORIGIN_UPPER_LEFT;
@@ -5052,12 +5054,14 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
                    MESA_VK_DYNAMIC_IA_PRIMITIVE_TOPOLOGY) ||
        BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
                    MESA_VK_DYNAMIC_RS_LINE_MODE) ||
-       (cmd->state.dirty & TU_CMD_DIRTY_TES)) {
+       (cmd->state.dirty & TU_CMD_DIRTY_TES) ||
+       (cmd->state.dirty & TU_CMD_DIRTY_DRAW_STATE)) {
       tu6_update_msaa_disable(cmd);
    }
 
    if (BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
-                   MESA_VK_DYNAMIC_MS_RASTERIZATION_SAMPLES)) {
+                   MESA_VK_DYNAMIC_MS_RASTERIZATION_SAMPLES) ||
+       (cmd->state.dirty & TU_CMD_DIRTY_DRAW_STATE)) {
       tu6_update_msaa(cmd);
    }
 

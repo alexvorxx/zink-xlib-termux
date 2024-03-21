@@ -353,7 +353,3 @@ gmem-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_s
 stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.copy.host_reset.pgq_32bit_xfb_64bit.geom.xfb.rast.line_list_with_adjacency.pgq_0_xfb_0.single_draw.xfbq_first.none,Fail
 stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.copy.host_reset.pgq_64bit_xfb_32bit.geom.xfb.rast.line_list.pgq_default_xfb_default.two_draws.pqg_first.before,Fail
 stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.copy.queue_reset.pgq_64bit_xfb_32bit.tese.xfb.rast.patch_list.pgq_default_xfb_default.single_draw.pqg_first.after_2_queries,Fail
-stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.geom.no_xfb.rast.line_list_with_adjacency.pgq_default.single_draw.pqg_first.none,Fail
-stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.geom.xfb.rast.line_strip_with_adjacency.pgq_default_xfb_1.single_draw.xfbq_first.after,Fail
-stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.geom.xfb.rast.triangle_strip_with_adjacency.pgq_default_xfb_1.single_draw.xfbq_first.before_2_queries,Fail
-stale-regs-dEQP-VK.transform_feedback.primitives_generated_query.get.host_reset.32bit.tese.xfb.rast.patch_list.pgq_default_xfb_default.two_draws.xfbq_first.none_2_queries,Fail

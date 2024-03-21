@@ -526,6 +526,9 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_EXT_multi_draw */
       .multiDraw = true,
 
+      /* VK_EXT_mutable_descriptor_type */
+      .mutableDescriptorType = true,
+
       /* VK_EXT_non_seamless_cube_map */
       .nonSeamlessCubeMap = true,
 
@@ -577,9 +580,6 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_NV_shader_sm_builtins */
       .shaderSMBuiltins = true,
-
-      /* VK_VALVE_mutable_descriptor_type */
-      .mutableDescriptorType = true,
    };
 }
 

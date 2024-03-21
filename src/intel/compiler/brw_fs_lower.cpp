@@ -586,42 +586,23 @@ brw_fs_lower_alu_restrictions(fs_visitor &s)
    foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       switch (inst->opcode) {
       case BRW_OPCODE_MOV:
-         if (!devinfo->has_64bit_float &&
-             inst->dst.type == BRW_REGISTER_TYPE_DF) {
+         if (unsupported_64bit_type(devinfo, inst->dst.type)) {
             assert(inst->dst.type == inst->src[0].type);
             assert(!inst->saturate);
             assert(!inst->src[0].abs);
             assert(!inst->src[0].negate);
             const brw::fs_builder ibld(&s, block, inst);
 
-            if (!inst->is_partial_write())
-               ibld.emit_undef_for_dst(inst);
-
-            ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_F, 1),
-                     subscript(inst->src[0], BRW_REGISTER_TYPE_F, 1));
-            ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_F, 0),
-                     subscript(inst->src[0], BRW_REGISTER_TYPE_F, 0));
-
-            inst->remove(block);
-            progress = true;
-         }
-
-         if (!devinfo->has_64bit_int &&
-             (inst->dst.type == BRW_REGISTER_TYPE_UQ ||
-              inst->dst.type == BRW_REGISTER_TYPE_Q)) {
-            assert(inst->dst.type == inst->src[0].type);
-            assert(!inst->saturate);
-            assert(!inst->src[0].abs);
-            assert(!inst->src[0].negate);
-            const brw::fs_builder ibld(&s, block, inst);
+            enum brw_reg_type type =
+               brw_reg_type_from_bit_size(32, inst->dst.type);
 
             if (!inst->is_partial_write())
                ibld.emit_undef_for_dst(inst);
 
-            ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 1),
-                     subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 1));
-            ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 0),
-                     subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 0));
+            ibld.MOV(subscript(inst->dst, type, 1),
+                     subscript(inst->src[0], type, 1));
+            ibld.MOV(subscript(inst->dst, type, 0),
+                     subscript(inst->src[0], type, 0));
 
             inst->remove(block);
             progress = true;

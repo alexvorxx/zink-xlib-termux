@@ -779,6 +779,21 @@ validate_intrinsic_instr(nir_intrinsic_instr *instr, validate_state *state)
                        * that the output is only read by TCS and not TES.
                        */
                       state->shader->info.stage == MESA_SHADER_TESS_CTRL);
+      validate_assert(state,
+                      (!sem.dual_source_blend_index &&
+                       !sem.fb_fetch_output) ||
+                      state->shader->info.stage == MESA_SHADER_FRAGMENT);
+      validate_assert(state,
+                      !sem.gs_streams ||
+                      state->shader->info.stage == MESA_SHADER_GEOMETRY);
+      validate_assert(state,
+                      !sem.high_dvec2 ||
+                      (state->shader->info.stage == MESA_SHADER_VERTEX &&
+                       instr->intrinsic == nir_intrinsic_load_input));
+      validate_assert(state,
+                      !sem.interp_explicit_strict ||
+                      (state->shader->info.stage == MESA_SHADER_FRAGMENT &&
+                       instr->intrinsic == nir_intrinsic_load_input_vertex));
    }
 }
 

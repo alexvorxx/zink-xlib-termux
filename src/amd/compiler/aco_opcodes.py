@@ -102,6 +102,18 @@ class Format(IntEnum):
    DPP16 = 1 << 13
    DPP8 = 1 << 14
 
+   def get_accessor(self):
+      if self in [Format.VOP3, Format.VOP3P]:
+         return "valu"
+      elif self in [Format.SOPP, Format.SOPK]:
+         return "salu"
+      elif self in [Format.FLAT, Format.GLOBAL, Format.SCRATCH]:
+         return "flatlike"
+      elif self in [Format.PSEUDO_BRANCH, Format.PSEUDO_REDUCTION, Format.PSEUDO_BARRIER]:
+         return self.name.split("_")[-1].lower()
+      else:
+         return self.name.lower()
+
    def get_builder_fields(self):
       if self == Format.SOPK:
          return [('uint32_t', 'imm', '0')]
@@ -217,10 +229,12 @@ class Format(IntEnum):
       res = ''
       if self == Format.SDWA:
          for i in range(min(num_operands, 2)):
-            res += 'instr->sel[{0}] = SubdwordSel(op{0}.op.bytes(), 0, false);'.format(i)
-         res += 'instr->dst_sel = SubdwordSel(def0.bytes(), 0, false);\n'
-      elif self in [Format.DPP16, Format.DPP8]:
-         res += 'instr->fetch_inactive &= program->gfx_level >= GFX10;\n'
+            res += 'instr->sdwa().sel[{0}] = SubdwordSel(op{0}.op.bytes(), 0, false);'.format(i)
+         res += 'instr->sdwa().dst_sel = SubdwordSel(def0.bytes(), 0, false);\n'
+      elif self == Format.DPP16:
+         res += 'instr->dpp16().fetch_inactive &= program->gfx_level >= GFX10;\n'
+      elif self == Format.DPP8:
+         res += 'instr->dpp8().fetch_inactive &= program->gfx_level >= GFX10;\n'
       return res
 
 

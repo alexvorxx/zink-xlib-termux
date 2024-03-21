@@ -630,7 +630,7 @@ formats = [(f if len(f) == 5 else f + ('',)) for f in formats]
 
    Result ${name}(${', '.join(args)})
    {
-      ${struct} *instr = create_instruction<${struct}>(opcode, (Format)(${'|'.join('(int)Format::%s' % f.name for f in formats)}), ${num_operands}, ${num_definitions});
+      Instruction* instr = create_instruction<${struct}>(opcode, (Format)(${'|'.join('(int)Format::%s' % f.name for f in formats)}), ${num_operands}, ${num_definitions});
         % for i in range(num_definitions):
             instr->definitions[${i}] = def${i};
             instr->definitions[${i}].setPrecise(is_precise);
@@ -641,7 +641,7 @@ formats = [(f if len(f) == 5 else f + ('',)) for f in formats]
         % endfor
         % for f in formats:
             % for dest, field_name in zip(f.get_builder_field_dests(), f.get_builder_field_names()):
-      instr->${dest} = ${field_name};
+      instr->${f.get_accessor()}().${dest} = ${field_name};
             % endfor
             ${f.get_builder_initialization(num_operands)}
         % endfor

@@ -1252,6 +1252,8 @@ zink_screen_init_compiler(struct zink_screen *screen)
       .has_isub = true,
       .lower_mul_2x32_64 = true,
       .support_16bit_alu = true, /* not quite what it sounds like */
+      .support_indirect_inputs = BITFIELD_MASK(MESA_SHADER_COMPUTE),
+      .support_indirect_outputs = BITFIELD_MASK(MESA_SHADER_COMPUTE),
       .max_unroll_iterations = 0,
       .use_interpolated_input_intrinsics = true,
    };

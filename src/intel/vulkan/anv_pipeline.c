@@ -1972,11 +1972,16 @@ anv_graphics_pipeline_load_cached_shaders(struct anv_graphics_base_pipeline *pip
        */
       assert(found < __builtin_popcount(pipeline->base.active_stages));
 
-      vk_perf(VK_LOG_OBJS(cache ? &cache->base :
-                                  &pipeline->base.device->vk.base),
-              "Found a partial pipeline in the cache.  This is "
-              "most likely caused by an incomplete pipeline cache "
-              "import or export");
+      /* With GPL, this might well happen if the app does an optimized
+       * link.
+       */
+      if (!pipeline->base.device->vk.enabled_extensions.EXT_graphics_pipeline_library) {
+         vk_perf(VK_LOG_OBJS(cache ? &cache->base :
+                             &pipeline->base.device->vk.base),
+                 "Found a partial pipeline in the cache.  This is "
+                 "most likely caused by an incomplete pipeline cache "
+                 "import or export");
+      }
 
       /* We're going to have to recompile anyway, so just throw away our
        * references to the shaders in the cache.  We'll get them out of the

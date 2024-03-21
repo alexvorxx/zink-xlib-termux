@@ -566,6 +566,7 @@ public:
 
    fs_reg dst;
    fs_reg *src;
+   fs_reg builtin_src[4];
 };
 
 /**

@@ -271,8 +271,17 @@ dEQP-VK.wsi.wayland.incremental_present.scale_none.fifo.identity.opaque.incremen
 dEQP-VK.wsi.wayland.incremental_present.scale_none.fifo.identity.opaque.reference
 dEQP-VK.wsi.wayland.incremental_present.scale_none.fifo.identity.pre_multiplied.incremental_present
 dEQP-VK.wsi.wayland.incremental_present.scale_none.fifo.identity.pre_multiplied.reference
+dEQP-VK.wsi.wayland.maintenance1.present_fence.mailbox.mult_swapchain_ordering
+dEQP-VK.wsi.wayland.maintenance1.present_fence.mailbox.multi_swapchain
+dEQP-VK.wsi.xcb.maintenance1.present_fence.immediate.mult_swapchain_ordering
+dEQP-VK.wsi.xcb.maintenance1.present_fence.immediate.multi_swapchain
+dEQP-VK.wsi.xcb.maintenance1.present_fence.mailbox.mult_swapchain_ordering
+dEQP-VK.wsi.xcb.maintenance1.present_fence.mailbox.multi_swapchain
 dEQP-VK.wsi.xcb.swapchain.simulate_oom.image_usage
 dEQP-VK.wsi.xcb.swapchain.simulate_oom.min_image_count
+dEQP-VK.wsi.xlib.maintenance1.present_fence.immediate.multi_swapchain
+dEQP-VK.wsi.xlib.maintenance1.present_fence.mailbox.mult_swapchain_ordering
+dEQP-VK.wsi.xlib.maintenance1.present_fence.mailbox.multi_swapchain
 dEQP-VK.wsi.xlib.swapchain.simulate_oom.image_usage
 dEQP-VK.wsi.xlib.swapchain.simulate_oom.min_image_count
 

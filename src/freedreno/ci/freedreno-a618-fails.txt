@@ -46,20 +46,6 @@ glx@glx-swap-pixmap-bad,Fail
 # "../src/freedreno/ir3/ir3_shader.h:968:ir3_link_add: Assertion `i < ARRAY_SIZE(l->var)' failed."
 shaders@glsl-max-varyings >max_varying_components,Crash
 
-# "MESA: error: unknown vertex shader output name: VARYING_SLOT_EDGE
-#  gl-2.0-edgeflag: ../src/freedreno/ir3/ir3_context.c:411: ir3_context_error: Assertion `!""' failed."
-shaders@point-vertex-id divisor,Crash
-shaders@point-vertex-id gl_instanceid,Crash
-shaders@point-vertex-id gl_instanceid divisor,Crash
-shaders@point-vertex-id gl_vertexid,Crash
-shaders@point-vertex-id gl_vertexid divisor,Crash
-shaders@point-vertex-id gl_vertexid gl_instanceid,Crash
-shaders@point-vertex-id gl_vertexid gl_instanceid divisor,Crash
-spec@!opengl 2.0@gl-2.0-edgeflag,Crash
-spec@!opengl 2.0@gl-2.0-edgeflag-immediate,Crash
-spec@!opengl 1.0@gl-1.0-edgeflag,Crash
-spec@!opengl 1.0@gl-1.0-edgeflag-quads,Crash
-
 spec@arb_depth_buffer_float@fbo-clear-formats stencil,Fail
 spec@arb_depth_buffer_float@fbo-clear-formats stencil@GL_DEPTH32F_STENCIL8,Fail
 spec@arb_depth_buffer_float@fbo-generatemipmap-formats,Fail
@@ -252,12 +238,6 @@ spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
 # crash in tgsi exec doing st_freedback_draw_vbo().
 spec@!opengl 1.0@rasterpos,Crash
 
-spec@!opengl 1.1@linestipple@Factor 2x,Fail
-spec@!opengl 1.1@linestipple@Factor 3x,Fail
-spec@!opengl 1.1@linestipple,Fail
-spec@!opengl 1.1@linestipple@Line loop,Fail
-spec@!opengl 1.1@linestipple@Line strip,Fail
-spec@!opengl 1.1@linestipple@Restarting lines within a single Begin-End block,Fail
 spec@!opengl 1.1@polygon-mode-facing,Fail
 spec@!opengl 1.1@polygon-mode,Fail
 spec@!opengl 1.1@polygon-mode-offset@config 0: Expected white pixel on bottom edge,Fail
@@ -278,7 +258,6 @@ spec@!opengl 1.4@gl-1.4-polygon-offset,Fail
 
 spec@!opengl 2.1@pbo,Fail
 spec@!opengl 2.1@pbo@test_polygon_stip,Fail
-spec@!opengl 2.1@polygon-stipple-fs,Fail
 spec@!opengl 3.2@gl-3.2-adj-prims cull-back pv-first,Fail
 spec@!opengl 3.2@gl-3.2-adj-prims cull-front pv-first,Fail
 spec@!opengl 3.2@gl-3.2-adj-prims line cull-back pv-first,Fail

@@ -36,3 +36,15 @@ spec@arb_buffer_storage@bufferstorage-persistent_gles3 read coherent client-stor
 # on CI runtime:
 spec@nv_copy_image@nv_copy_image.*
 
+# Legacy gl features unsupported by hw.  We _could_ emulate it with a GS
+# at the cost of extra per-draw overhead for all users.
+#
+# If we find any non-piglit users of these features, then maybe a driconf
+# way to force fall-over to zink for that app could make sense.  Until
+# then, just pretend that this stuff doesn't exist:
+.*edgeflag.*
+.*stipple.*
+# uses edgeflags:
+shaders@point-vertex-id.*
+# uses stipple:
+spec@!opengl 1.0@gl-1.0-no-op-paths

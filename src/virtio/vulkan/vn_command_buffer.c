@@ -27,14 +27,15 @@ vn_cmd_submit(struct vn_command_buffer *cmd);
    do {                                                                      \
       struct vn_command_buffer *_cmd =                                       \
          vn_command_buffer_from_handle(commandBuffer);                       \
-      size_t _cmd_size = vn_sizeof_##cmd_name(commandBuffer, ##__VA_ARGS__); \
+      const size_t _cmd_size =                                               \
+         vn_sizeof_##cmd_name(commandBuffer, ##__VA_ARGS__);                 \
                                                                              \
-      if (vn_cs_encoder_reserve(&_cmd->cs, _cmd_size))                       \
+      if (likely(vn_cs_encoder_reserve(&_cmd->cs, _cmd_size)))               \
          vn_encode_##cmd_name(&_cmd->cs, 0, commandBuffer, ##__VA_ARGS__);   \
       else                                                                   \
          _cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;                      \
                                                                              \
-      if (VN_PERF(NO_CMD_BATCHING))                                          \
+      if (unlikely(VN_PERF(NO_CMD_BATCHING)))                                \
          vn_cmd_submit(_cmd);                                                \
    } while (0)
 

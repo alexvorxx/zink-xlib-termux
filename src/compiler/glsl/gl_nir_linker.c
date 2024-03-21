@@ -1466,6 +1466,45 @@ gl_nir_link_spirv(const struct gl_constants *consts,
    return true;
 }
 
+static void
+verify_subroutine_associated_funcs(struct gl_shader_program *prog)
+{
+   unsigned mask = prog->data->linked_stages;
+   while (mask) {
+      const int i = u_bit_scan(&mask);
+      struct gl_program *p = prog->_LinkedShaders[i]->Program;
+
+      /* Section 6.1.2 (Subroutines) of the GLSL 4.00 spec says:
+       *
+       *   "A program will fail to compile or link if any shader
+       *    or stage contains two or more functions with the same
+       *    name if the name is associated with a subroutine type."
+       */
+      for (unsigned j = 0; j < p->sh.NumSubroutineFunctions; j++) {
+         unsigned definitions = 0;
+         char *name = p->sh.SubroutineFunctions[j].name.string;
+
+         /* Calculate number of function definitions with the same name */
+         nir_foreach_function(fn, p->nir) {
+            /* If the function is only declared not implemented continue */
+            if (fn->impl != NULL)
+               continue;
+
+            if (strcmp(fn->name, name) == 0) {
+               if (++definitions > 1) {
+                  linker_error(prog, "%s shader contains two or more function "
+                               "definitions with name `%s', which is "
+                               "associated with a subroutine type.\n",
+                               _mesa_shader_stage_to_string(i),
+                               fn->name);
+                  return;
+               }
+            }
+         }
+      }
+   }
+}
+
 /**
  * Validate shader image resources.
  */
@@ -1676,6 +1715,10 @@ gl_nir_link_glsl(const struct gl_constants *consts,
       return true;
 
    MESA_TRACE_FUNC();
+
+   verify_subroutine_associated_funcs(prog);
+   if (!prog->data->LinkStatus)
+      return false;
 
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       if (prog->_LinkedShaders[i] == NULL)

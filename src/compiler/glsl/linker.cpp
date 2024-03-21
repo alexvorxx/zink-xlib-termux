@@ -2439,43 +2439,6 @@ link_assign_subroutine_types(struct gl_shader_program *prog)
    }
 }
 
-static void
-verify_subroutine_associated_funcs(struct gl_shader_program *prog)
-{
-   unsigned mask = prog->data->linked_stages;
-   while (mask) {
-      const int i = u_bit_scan(&mask);
-      gl_program *p = prog->_LinkedShaders[i]->Program;
-      glsl_symbol_table *symbols = prog->_LinkedShaders[i]->symbols;
-
-      /* Section 6.1.2 (Subroutines) of the GLSL 4.00 spec says:
-       *
-       *   "A program will fail to compile or link if any shader
-       *    or stage contains two or more functions with the same
-       *    name if the name is associated with a subroutine type."
-       */
-      for (unsigned j = 0; j < p->sh.NumSubroutineFunctions; j++) {
-         unsigned definitions = 0;
-         char *name = p->sh.SubroutineFunctions[j].name.string;
-         ir_function *fn = symbols->get_function(name);
-
-         /* Calculate number of function definitions with the same name */
-         foreach_in_list(ir_function_signature, sig, &fn->signatures) {
-            if (sig->is_defined) {
-               if (++definitions > 1) {
-                  linker_error(prog, "%s shader contains two or more function "
-                               "definitions with name `%s', which is "
-                               "associated with a subroutine type.\n",
-                               _mesa_shader_stage_to_string(i),
-                               fn->name);
-                  return;
-               }
-            }
-         }
-      }
-   }
-}
-
 void
 link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
 {
@@ -2674,10 +2637,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
 
    check_explicit_uniform_locations(&ctx->Extensions, prog);
    link_assign_subroutine_types(prog);
-   verify_subroutine_associated_funcs(prog);
-
-   if (!prog->data->LinkStatus)
-      goto done;
 
 done:
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {

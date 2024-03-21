@@ -44,7 +44,7 @@ rra_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
    VkDevice _device = radv_device_to_handle(device);
    radv_rra_trace_clear_ray_history(_device, &device->rra_trace);
 
-   if (device->rra_trace.triggered) {
+   if (device->rra_trace.triggered && device->rra_trace.ray_history_buffer) {
       result = device->layer_dispatch.rra.DeviceWaitIdle(_device);
       if (result != VK_SUCCESS)
          return result;

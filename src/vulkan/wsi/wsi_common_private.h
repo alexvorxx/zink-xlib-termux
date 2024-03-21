@@ -134,6 +134,7 @@ struct wsi_image {
     * on the CPU side via acquire_next_image.
     */
    bool acquired;
+   uint64_t present_serial;
 
 #ifndef _WIN32
    uint64_t drm_modifier;
@@ -164,6 +165,8 @@ struct wsi_swapchain {
 
    struct wsi_image_info image_info;
    uint32_t image_count;
+   
+   uint64_t present_serial;
 
    struct {
       enum wsi_swapchain_blit_type type;

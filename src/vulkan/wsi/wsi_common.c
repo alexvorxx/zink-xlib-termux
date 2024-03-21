@@ -1472,6 +1472,7 @@ wsi_common_queue_present(const struct wsi_device *wsi,
       /* The app can only submit images they have acquired. */
       assert(image->acquired);
       image->acquired = false;
+      image->present_serial = ++swapchain->present_serial;
 
 #ifdef HAVE_LIBDRM
       if (has_signal_dma_buf) {

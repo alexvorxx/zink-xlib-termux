@@ -562,6 +562,15 @@ brw_fs_lower_3src_null_dest(fs_visitor &s)
    return progress;
 }
 
+static bool
+unsupported_64bit_type(const intel_device_info *devinfo,
+                       enum brw_reg_type type)
+{
+   return (!devinfo->has_64bit_float && type == BRW_REGISTER_TYPE_DF) ||
+          (!devinfo->has_64bit_int && (type == BRW_REGISTER_TYPE_UQ ||
+                                       type == BRW_REGISTER_TYPE_Q));
+}
+
 /**
  * Perform lowering to legalize the IR for various ALU restrictions.
  *
@@ -620,11 +629,7 @@ brw_fs_lower_alu_restrictions(fs_visitor &s)
          break;
 
       case BRW_OPCODE_SEL:
-         if (!devinfo->has_64bit_float &&
-             !devinfo->has_64bit_int &&
-             (inst->dst.type == BRW_REGISTER_TYPE_DF ||
-              inst->dst.type == BRW_REGISTER_TYPE_UQ ||
-              inst->dst.type == BRW_REGISTER_TYPE_Q)) {
+         if (unsupported_64bit_type(devinfo, inst->dst.type)) {
             assert(inst->dst.type == inst->src[0].type);
             assert(!inst->saturate);
             assert(!inst->src[0].abs && !inst->src[0].negate);

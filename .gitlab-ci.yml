@@ -87,6 +87,8 @@ variables:
   ARTIFACTS_BASE_URL: https://${CI_PROJECT_ROOT_NAMESPACE}.${CI_PAGES_DOMAIN}/-/${CI_PROJECT_NAME}/-/jobs/${CI_JOB_ID}/artifacts
   # Python scripts for structured logger
   PYTHONPATH: "$PYTHONPATH:$CI_PROJECT_DIR/install"
+  # Drop once deqp-runner is upgraded to > 0.18.0
+  MESA_VK_ABORT_ON_DEVICE_LOSS: 1
 
 default:
   before_script:

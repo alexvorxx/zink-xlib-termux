@@ -637,17 +637,20 @@ brw_fs_lower_alu_restrictions(fs_visitor &s)
             assert(inst->conditional_mod == BRW_CONDITIONAL_NONE);
             const brw::fs_builder ibld(&s, block, inst);
 
+            enum brw_reg_type type =
+               brw_reg_type_from_bit_size(32, inst->dst.type);
+
             if (!inst->is_partial_write())
                ibld.emit_undef_for_dst(inst);
 
             set_predicate(inst->predicate,
-                          ibld.SEL(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 0),
-                                   subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 0),
-                                   subscript(inst->src[1], BRW_REGISTER_TYPE_UD, 0)));
+                          ibld.SEL(subscript(inst->dst, type, 0),
+                                   subscript(inst->src[0], type, 0),
+                                   subscript(inst->src[1], type, 0)));
             set_predicate(inst->predicate,
-                          ibld.SEL(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 1),
-                                   subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 1),
-                                   subscript(inst->src[1], BRW_REGISTER_TYPE_UD, 1)));
+                          ibld.SEL(subscript(inst->dst, type, 1),
+                                   subscript(inst->src[0], type, 1),
+                                   subscript(inst->src[1], type, 1)));
 
             inst->remove(block);
             progress = true;

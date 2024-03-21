@@ -10202,7 +10202,6 @@ end_loop(isel_context* ctx, loop_context* lc)
    ctx->cf_info.has_branch = false;
    ctx->program->next_loop_depth--;
 
-   // TODO: if the loop has not a single exit, we must add one °°
    /* emit loop successor block */
    ctx->block = ctx->program->insert_block(std::move(lc->loop_exit));
    append_logical_start(ctx->block);
@@ -10457,19 +10456,6 @@ visit_loop(isel_context* ctx, nir_loop* loop)
             break;
          }
       }
-   }
-
-   /* NIR seems to allow this, and even though the loop exit has no predecessors, SSA defs from the
-    * loop header are live. Handle this without complicating the ACO IR by creating a dummy break.
-    */
-   if (nir_cf_node_cf_tree_next(&loop->cf_node)->predecessors->entries == 0) {
-      Builder bld(ctx->program, ctx->block);
-      Temp cond = bld.copy(bld.def(s1, scc), Operand::zero());
-      if_context ic;
-      begin_uniform_if_then(ctx, &ic, cond);
-      emit_loop_break(ctx);
-      begin_uniform_if_else(ctx, &ic);
-      end_uniform_if(ctx, &ic);
    }
 
    end_loop(ctx, &lc);

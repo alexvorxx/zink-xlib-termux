@@ -3140,6 +3140,47 @@ tu_bind_fs(struct tu_cmd_buffer *cmd, struct tu_shader *fs)
    }
 }
 
+/* We cannot do this only at pipeline bind time since pipeline
+ * could have been bound at any time before current renderpass,
+ * e.g. in the previous renderpass.
+ */
+static void
+tu_pipeline_update_rp_state(struct tu_cmd_state *cmd_state)
+{
+   if (cmd_state->pipeline_disable_gmem &&
+       !cmd_state->rp.disable_gmem) {
+      /* VK_EXT_attachment_feedback_loop_layout allows feedback loop to involve
+       * not only input attachments but also sampled images or image resources.
+       * But we cannot just patch gmem for image in the descriptors.
+       *
+       * At the moment, in context of DXVK, it is expected that only a few
+       * drawcalls in a frame would use feedback loop and they would be wrapped
+       * in their own renderpasses, so it should be ok to force sysmem.
+       *
+       * However, there are two further possible optimizations if need would
+       * arise for other translation layer:
+       * - Tiling could be enabled if we ensure that there is no barrier in
+       *   the renderpass;
+       * - Check that both pipeline and attachments agree that feedback loop
+       *   is needed.
+       */
+      perf_debug(
+         cmd->device,
+         "Disabling gmem due to VK_EXT_attachment_feedback_loop_layout");
+      cmd_state->rp.disable_gmem = true;
+   }
+
+   if (cmd_state->pipeline_sysmem_single_prim_mode &&
+       !cmd_state->rp.sysmem_single_prim_mode) {
+      perf_debug(cmd->device, "single_prim_mode due to pipeline settings");
+      cmd_state->rp.sysmem_single_prim_mode = true;
+   }
+
+   if (cmd_state->pipeline_has_tess) {
+      cmd_state->rp.has_tess = true;
+   }
+}
+
 VKAPI_ATTR void VKAPI_CALL
 tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
                    VkPipelineBindPoint pipelineBindPoint,
@@ -3187,40 +3228,11 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
    cmd->state.load_state = pipeline->load_state;
    cmd->state.prim_order_sysmem = pipeline->prim_order.state_sysmem;
    cmd->state.prim_order_gmem = pipeline->prim_order.state_gmem;
+   cmd->state.pipeline_sysmem_single_prim_mode = pipeline->prim_order.sysmem_single_prim_mode;
+   cmd->state.pipeline_has_tess = pipeline->active_stages & VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+   cmd->state.pipeline_disable_gmem = gfx_pipeline->feedback_loop_may_involve_textures;
 
-   if (gfx_pipeline->feedback_loop_may_involve_textures &&
-       !cmd->state.rp.disable_gmem) {
-      /* VK_EXT_attachment_feedback_loop_layout allows feedback loop to involve
-       * not only input attachments but also sampled images or image resources.
-       * But we cannot just patch gmem for image in the descriptors.
-       *
-       * At the moment, in context of DXVK, it is expected that only a few
-       * drawcalls in a frame would use feedback loop and they would be wrapped
-       * in their own renderpasses, so it should be ok to force sysmem.
-       *
-       * However, there are two further possible optimizations if need would
-       * arise for other translation layer:
-       * - Tiling could be enabled if we ensure that there is no barrier in
-       *   the renderpass;
-       * - Check that both pipeline and attachments agree that feedback loop
-       *   is needed.
-       */
-      perf_debug(
-         cmd->device,
-         "Disabling gmem due to VK_EXT_attachment_feedback_loop_layout");
-      cmd->state.rp.disable_gmem = true;
-   }
-
-   if (pipeline->prim_order.sysmem_single_prim_mode &&
-       !cmd->state.rp.sysmem_single_prim_mode) {
-      if (gfx_pipeline->feedback_loop_color ||
-          gfx_pipeline->feedback_loop_ds) {
-         perf_debug(cmd->device, "single_prim_mode due to feedback loop");
-      } else {
-         perf_debug(cmd->device, "single_prim_mode due to rast order access");
-      }
-      cmd->state.rp.sysmem_single_prim_mode = true;
-   }
+   tu_pipeline_update_rp_state(&cmd->state);
 
    if (pipeline->lrz_blend.valid) {
       if (cmd->state.blend_reads_dest != pipeline->lrz_blend.reads_dest) {
@@ -3262,10 +3274,6 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
    cmd->state.pipeline_draw_states = pipeline->set_state_mask;
    u_foreach_bit(i, pipeline->set_state_mask)
       cmd->state.dynamic_state[i] = pipeline->dynamic_state[i];
-
-   if (pipeline->active_stages & VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT) {
-      cmd->state.rp.has_tess = true;
-   }
 
    if (pipeline->program.per_view_viewport != cmd->state.per_view_viewport) {
       cmd->state.per_view_viewport = pipeline->program.per_view_viewport;
@@ -5072,6 +5080,8 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
     * is OK since CmdClearAttachments won't disable/overwrite them
     */
    if (dirty & TU_CMD_DIRTY_DRAW_STATE) {
+      tu_pipeline_update_rp_state(&cmd->state);
+
       tu_cs_emit_pkt7(cs, CP_SET_DRAW_STATE, 3 * (TU_DRAW_STATE_COUNT - 2));
 
       tu_cs_emit_draw_state(cs, TU_DRAW_STATE_PROGRAM_CONFIG, program->config_state);

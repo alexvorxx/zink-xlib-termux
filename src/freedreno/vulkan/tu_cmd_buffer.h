@@ -492,6 +492,9 @@ struct tu_cmd_state
    bool stencil_front_write;
    bool stencil_back_write;
    bool pipeline_feedback_loop_ds;
+   bool pipeline_sysmem_single_prim_mode;
+   bool pipeline_has_tess;
+   bool pipeline_disable_gmem;
 
    bool pipeline_blend_lrz, pipeline_bandwidth;
    uint32_t pipeline_draw_states;

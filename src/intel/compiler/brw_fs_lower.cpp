@@ -634,6 +634,7 @@ brw_fs_lower_alu_restrictions(fs_visitor &s)
             assert(!inst->saturate);
             assert(!inst->src[0].abs && !inst->src[0].negate);
             assert(!inst->src[1].abs && !inst->src[1].negate);
+            assert(inst->conditional_mod == BRW_CONDITIONAL_NONE);
             const brw::fs_builder ibld(&s, block, inst);
 
             if (!inst->is_partial_write())

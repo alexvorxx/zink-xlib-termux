@@ -36,36 +36,56 @@ lower_point_size_mov_after(nir_builder *b, nir_variable *in)
 {
    nir_def *load = nir_load_var(b, in);
    load = nir_fclamp(b, nir_channel(b, load, 0), nir_channel(b, load, 1), nir_channel(b, load, 2));
-   nir_variable *out = NULL;
-   /* the existing output can't be removed in order to avoid breaking xfb.
-      * drivers must check var->data.explicit_location to find the original output
-      * and only emit that one for xfb
-      */
-   nir_foreach_shader_out_variable(var, b->shader) {
-      if (var->data.location == VARYING_SLOT_PSIZ && !var->data.explicit_location) {
-         out = var;
-         break;
+   if (b->shader->info.io_lowered) {
+      nir_store_output(b, load, nir_imm_int(b, 0),
+                       .io_semantics.location = VARYING_SLOT_PSIZ,
+                       .io_semantics.num_slots = 1,
+                       .src_type = nir_type_float32
+      );
+   } else {
+      nir_variable *out = NULL;
+      /* the existing output can't be removed in order to avoid breaking xfb.
+       * drivers must check var->data.explicit_location to find the original output
+       * and only emit that one for xfb
+       */
+      nir_foreach_shader_out_variable(var, b->shader) {
+         if (var->data.location == VARYING_SLOT_PSIZ && !var->data.explicit_location) {
+            out = var;
+            break;
+         }
       }
+      if (!out) {
+         out = nir_create_variable_with_location(b->shader, nir_var_shader_out,
+                                                 VARYING_SLOT_PSIZ, glsl_float_type());
+      }
+      nir_store_var(b, out, load, 0x1);
    }
-   if (!out) {
-      out = nir_create_variable_with_location(b->shader, nir_var_shader_out,
-                                                VARYING_SLOT_PSIZ, glsl_float_type());
-   }
-   nir_store_var(b, out, load, 0x1);
 }
 
 static bool
 lower_point_size_mov(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
-   if (intr->intrinsic != nir_intrinsic_store_deref)
+   nir_variable *var = NULL;
+   switch (intr->intrinsic) {
+   case nir_intrinsic_store_output:
+   case nir_intrinsic_store_per_vertex_output:
+   case nir_intrinsic_store_per_primitive_output: {
+      nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
+      if (sem.location != VARYING_SLOT_PSIZ)
+         return false;
+      break;
+   }
+   case nir_intrinsic_store_deref:
+      var = nir_intrinsic_get_var(intr, 0);
+      if (var->data.location != VARYING_SLOT_PSIZ)
+         return false;
+      break;
+   default:
       return false;
-
-   nir_variable *var = nir_intrinsic_get_var(intr, 0);
-   if (var->data.location != VARYING_SLOT_PSIZ)
-      return false;
+   }
    b->cursor = nir_after_instr(&intr->instr);
    lower_point_size_mov_after(b, data);
-   if (!var->data.explicit_location)
+   if (var && !var->data.explicit_location)
       nir_instr_remove(&intr->instr);
    return true;
 }

@@ -3810,6 +3810,7 @@ dzn_GetMemoryFdPropertiesKHR(VkDevice _device,
    if (heap_desc.Properties.Type != D3D12_HEAP_TYPE_CUSTOM)
       heap_desc.Properties = dzn_ID3D12Device4_GetCustomHeapProperties(device->dev, 0, heap_desc.Properties.Type);
 
+   pProperties->memoryTypeBits = 0;
    for (uint32_t i = 0; i < pdev->memory.memoryTypeCount; ++i) {
       const VkMemoryType *mem_type = &pdev->memory.memoryTypes[i];
       D3D12_HEAP_PROPERTIES required_props = deduce_heap_properties_from_memory(pdev, mem_type);
@@ -3852,6 +3853,7 @@ dzn_GetMemoryHostPointerPropertiesEXT(VkDevice _device,
 
    struct dzn_physical_device *pdev = container_of(device->vk.physical, struct dzn_physical_device, vk);
    D3D12_HEAP_DESC heap_desc = dzn_ID3D12Heap_GetDesc(heap);
+   pMemoryHostPointerProperties->memoryTypeBits = 0;
    for (uint32_t i = 0; i < pdev->memory.memoryTypeCount; ++i) {
       const VkMemoryType *mem_type = &pdev->memory.memoryTypes[i];
       D3D12_HEAP_PROPERTIES required_props = deduce_heap_properties_from_memory(pdev, mem_type);

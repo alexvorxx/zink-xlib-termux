@@ -353,6 +353,11 @@ if with_tests
     msvc_designated_initializer = 'cpp_std=c++20'
   endif
 
+  msvc_bigobj = []
+  if cc.get_id() == 'msvc'
+    msvc_bigobj = '/bigobj'
+  endif
+
   test(
     'nir_tests',
     executable(
@@ -385,7 +390,7 @@ if with_tests
         'tests/range_analysis_tests.cpp',
         'tests/vars_tests.cpp',
       ),
-      cpp_args : [cpp_msvc_compat_args],
+      cpp_args : [cpp_msvc_compat_args, msvc_bigobj],
       override_options: [msvc_designated_initializer],
       gnu_symbol_visibility : 'hidden',
       include_directories : [inc_include, inc_src],

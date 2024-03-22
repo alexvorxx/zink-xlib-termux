@@ -2911,6 +2911,7 @@ begin_rendering(struct zink_context *ctx)
          if (!iv)
             /* dead swapchain */
             return 0;
+         ctx->dynamic_fb.attachments[i].imageLayout = zink_resource(surf->base.texture)->layout;
       }
       ctx->dynamic_fb.attachments[i].imageView = iv;
    }

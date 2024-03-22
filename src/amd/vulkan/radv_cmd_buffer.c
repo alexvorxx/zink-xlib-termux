@@ -5668,6 +5668,9 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkAccessFlags2 dst_fla
             flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
          break;
       case VK_ACCESS_2_MEMORY_READ_BIT:
+         if (has_CB_meta || has_DB_meta)
+            flush_bits |= RADV_CMD_FLAG_INV_L2_METADATA;
+         FALLTHROUGH;
       case VK_ACCESS_2_MEMORY_WRITE_BIT:
          flush_bits |= RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_SCACHE;
          if (!image_is_coherent)

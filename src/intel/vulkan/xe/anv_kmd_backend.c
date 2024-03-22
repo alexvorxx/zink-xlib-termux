@@ -122,6 +122,52 @@ capture_vm_in_error_dump(struct anv_device *device, struct anv_bo *bo)
    return capture ? DRM_XE_VM_BIND_FLAG_DUMPABLE : 0;
 }
 
+static struct drm_xe_vm_bind_op
+anv_vm_bind_to_drm_xe_vm_bind(struct anv_device *device,
+                              struct anv_vm_bind *anv_bind)
+{
+   struct anv_bo *bo = anv_bind->bo;
+   uint16_t pat_index = bo ?
+      anv_device_get_pat_entry(device, bo->alloc_flags)->index : 0;
+
+   struct drm_xe_vm_bind_op xe_bind = {
+         .obj = 0,
+         .obj_offset = anv_bind->bo_offset,
+         .range = anv_bind->size,
+         .addr = intel_48b_address(anv_bind->address),
+         .op = DRM_XE_VM_BIND_OP_UNMAP,
+         .flags = capture_vm_in_error_dump(device, bo),
+         .prefetch_mem_region_instance = 0,
+         .pat_index = pat_index,
+   };
+
+   if (anv_bind->op == ANV_VM_BIND) {
+      if (!bo) {
+         xe_bind.op = DRM_XE_VM_BIND_OP_MAP;
+         xe_bind.flags |= DRM_XE_VM_BIND_FLAG_NULL;
+         assert(xe_bind.obj_offset == 0);
+      } else if (bo->from_host_ptr) {
+         xe_bind.op = DRM_XE_VM_BIND_OP_MAP_USERPTR;
+      } else {
+         xe_bind.op = DRM_XE_VM_BIND_OP_MAP;
+         xe_bind.obj = bo->gem_handle;
+      }
+   } else if (anv_bind->op == ANV_VM_UNBIND_ALL) {
+      xe_bind.op = DRM_XE_VM_BIND_OP_UNMAP_ALL;
+      xe_bind.obj = bo->gem_handle;
+      assert(anv_bind->address == 0);
+      assert(anv_bind->size == 0);
+   } else {
+      assert(anv_bind->op == ANV_VM_UNBIND);
+   }
+
+   /* userptr and bo_offset are an union! */
+   if (bo && bo->from_host_ptr)
+      xe_bind.userptr = (uintptr_t)bo->map;
+
+   return xe_bind;
+}
+
 static inline VkResult
 xe_vm_bind_op(struct anv_device *device,
               struct anv_sparse_submission *submit,
@@ -196,50 +242,8 @@ xe_vm_bind_op(struct anv_device *device,
       xe_binds = &args.bind;
    }
 
-   for (int i = 0; i < submit->binds_len; i++) {
-      struct anv_vm_bind *bind = &submit->binds[i];
-      struct anv_bo *bo = bind->bo;
-      uint16_t pat_index = 0;
-
-      if (bo)
-         pat_index = anv_device_get_pat_entry(device, bo->alloc_flags)->index;
-
-      struct drm_xe_vm_bind_op *xe_bind = &xe_binds[i];
-      *xe_bind = (struct drm_xe_vm_bind_op) {
-         .obj = 0,
-         .obj_offset = bind->bo_offset,
-         .range = bind->size,
-         .addr = intel_48b_address(bind->address),
-         .op = DRM_XE_VM_BIND_OP_UNMAP,
-         .flags = capture_vm_in_error_dump(device, bo),
-         .prefetch_mem_region_instance = 0,
-         .pat_index = pat_index,
-      };
-
-      if (bind->op == ANV_VM_BIND) {
-         if (!bo) {
-            xe_bind->op = DRM_XE_VM_BIND_OP_MAP;
-            xe_bind->flags |= DRM_XE_VM_BIND_FLAG_NULL;
-            assert(xe_bind->obj_offset == 0);
-         } else if (bo->from_host_ptr) {
-            xe_bind->op = DRM_XE_VM_BIND_OP_MAP_USERPTR;
-         } else {
-            xe_bind->op = DRM_XE_VM_BIND_OP_MAP;
-            xe_bind->obj = bo->gem_handle;
-         }
-      } else if (bind->op == ANV_VM_UNBIND_ALL) {
-         xe_bind->op = DRM_XE_VM_BIND_OP_UNMAP_ALL;
-         xe_bind->obj = bo->gem_handle;
-         assert(bind->address == 0);
-         assert(bind->size == 0);
-      } else {
-         assert(bind->op == ANV_VM_UNBIND);
-      }
-
-      /* userptr and bo_offset are an union! */
-      if (bo && bo->from_host_ptr)
-         xe_bind->userptr = (uintptr_t)bo->map;
-   }
+   for (int i = 0; i < submit->binds_len; i++)
+      xe_binds[i] = anv_vm_bind_to_drm_xe_vm_bind(device, &submit->binds[i]);
 
    if (signal_bind_timeline) {
       xe_syncs[num_syncs - 1].timeline_value =

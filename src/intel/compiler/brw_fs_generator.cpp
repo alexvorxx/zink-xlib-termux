@@ -1187,8 +1187,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          break;
 
       case BRW_OPCODE_IF:
-         /* Can't have embedded compare (was only allowed on Gfx6). */
-         assert(inst->src[0].file == BAD_FILE);
          brw_IF(p, brw_get_default_exec_size(p));
 	 break;
 

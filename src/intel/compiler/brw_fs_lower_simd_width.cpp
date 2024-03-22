@@ -268,10 +268,6 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case BRW_OPCODE_BFI2:
       return get_fpu_lowered_simd_width(shader, inst);
 
-   case BRW_OPCODE_IF:
-      assert(inst->src[0].file == BAD_FILE || inst->exec_size <= 16);
-      return inst->exec_size;
-
    case SHADER_OPCODE_RCP:
    case SHADER_OPCODE_RSQ:
    case SHADER_OPCODE_SQRT:

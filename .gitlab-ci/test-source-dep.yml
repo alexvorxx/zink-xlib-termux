@@ -238,3 +238,13 @@
     - changes: *rust_file_list
       when: on_success
       allow_failure: true
+
+# Rules for .mr-label-maker.yml
+.mr-label-maker-rules:
+  rules:
+    - !reference [.never-post-merge-rules, rules]
+    - !reference [.no_scheduled_pipelines-rules, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - .mr-label-maker.yml
+      when: on_success

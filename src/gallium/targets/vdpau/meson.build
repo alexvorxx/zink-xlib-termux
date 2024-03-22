@@ -31,7 +31,7 @@ endif
 
 libvdpau_gallium = shared_library(
   'vdpau_gallium',
-  'target.c',
+  'vdpau_target.c',
   gnu_symbol_visibility : 'hidden',
   link_args : [vdpau_link_args, ld_args_gc_sections],
   include_directories : [

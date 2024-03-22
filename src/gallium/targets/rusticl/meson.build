@@ -13,7 +13,7 @@ endif
 
 librusticl = shared_library(
   'RusticlOpenCL',
-  'target.c',
+  'rusticl_target.c',
   gnu_symbol_visibility : 'hidden',
   include_directories : [
     inc_include,

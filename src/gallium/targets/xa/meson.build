@@ -17,7 +17,7 @@ _xa_version = '.'.join(xa_version)
 
 libxatracker = shared_library(
   'xatracker',
-  'target.c',
+  'xa_target.c',
   gnu_symbol_visibility : 'hidden',
   link_args : [xa_link_args, ld_args_gc_sections],
   include_directories : [

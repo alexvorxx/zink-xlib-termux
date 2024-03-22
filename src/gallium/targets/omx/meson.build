@@ -17,7 +17,7 @@ endif
 
 libomx_gallium = shared_library(
   'omx_mesa',
-  'target.c',
+  'omx_target.c',
   gnu_symbol_visibility : 'hidden',
   link_args : [omx_link_args, ld_args_gc_sections],
   include_directories : [

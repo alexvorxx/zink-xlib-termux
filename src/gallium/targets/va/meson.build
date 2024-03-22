@@ -52,7 +52,7 @@ if host_machine.system() == 'windows'
 
   libva_gallium = shared_library(
     'vaon12_drv_video',
-    'target.c',
+    'va_target.c',
     link_args : [va_link_args, ld_args_gc_sections, ld_args_build_id],
     vs_module_defs : vaon12_def,
     include_directories : [
@@ -69,7 +69,7 @@ if host_machine.system() == 'windows'
 else
   libva_gallium = shared_library(
     'gallium_drv_video',
-    'target.c',
+    'va_target.c',
     gnu_symbol_visibility : 'hidden',
     link_args : [va_link_args, ld_args_gc_sections, ld_args_build_id],
     include_directories : [

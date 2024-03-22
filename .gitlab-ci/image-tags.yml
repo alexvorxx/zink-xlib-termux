@@ -40,7 +40,7 @@ variables:
    WINDOWS_X64_MSVC_TAG: "20231222-msvc"
 
    WINDOWS_X64_BUILD_PATH: "windows/x86_64_build"
-   WINDOWS_X64_BUILD_TAG: "20240117-vulkan-sdk"
+   WINDOWS_X64_BUILD_TAG: "20240322-agility-sdk"
 
    WINDOWS_X64_TEST_PATH: "windows/x86_64_test"
-   WINDOWS_X64_TEST_TAG: "20240117-vulkan-sdk"
+   WINDOWS_X64_TEST_TAG: "20240322-agility-sdk"

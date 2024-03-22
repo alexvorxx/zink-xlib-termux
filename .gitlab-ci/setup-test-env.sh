@@ -19,7 +19,7 @@ export JOB_START_S=$(date -u +"%s" -d "${CI_JOB_STARTED_AT:?}")
 function get_current_minsec {
     DATE_S=$(date -u +"%s")
     CURR_TIME=$((DATE_S-JOB_START_S))
-    echo "$(printf "%02d" $((CURR_TIME/60))):$(printf "%02d" $((CURR_TIME%60)))"
+    printf "%02d:%02d" $((CURR_TIME/60)) $((CURR_TIME%60))
 }
 
 function error {

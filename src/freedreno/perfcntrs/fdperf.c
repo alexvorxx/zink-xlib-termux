@@ -259,6 +259,7 @@ select_counter(struct counter_group *group, int ctr, int countable_val)
       break;
    case 5:
    case 6:
+   case 7:
       OUT_PKT7(ring, CP_WAIT_FOR_IDLE, 0);
 
       if (group->group->counters[ctr].enable) {

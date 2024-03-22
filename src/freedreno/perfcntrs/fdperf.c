@@ -331,20 +331,16 @@ static int max_rows, current_cntr = 1;
 static void
 redraw_footer(WINDOW *win)
 {
-   char *footer;
-   int n;
-
-   n = asprintf(&footer, " fdperf: %s (%.2fMHz..%.2fMHz)",
-                fd_dev_name(dev.dev_id), ((float)dev.min_freq) / 1000000.0,
-                ((float)dev.max_freq) / 1000000.0);
+   char footer[128];
+   int n = snprintf(footer, sizeof(footer), " fdperf: %s (%.2fMHz..%.2fMHz)",
+                    fd_dev_name(dev.dev_id), ((float)dev.min_freq) / 1000000.0,
+                    ((float)dev.max_freq) / 1000000.0);
 
    wmove(win, h - 1, 0);
    wattron(win, COLOR_PAIR(COLOR_FOOTER));
    waddstr(win, footer);
    whline(win, ' ', w - n);
    wattroff(win, COLOR_PAIR(COLOR_FOOTER));
-
-   free(footer);
 }
 
 static void
@@ -378,7 +374,7 @@ redraw_counter_label(WINDOW *win, int row, const char *name, bool selected)
 static void
 redraw_counter_value_cycles(WINDOW *win, float val)
 {
-   char *str;
+   char str[32];
    int x = getcurx(win);
    int valwidth = w - x;
    int barwidth, n;
@@ -395,7 +391,7 @@ redraw_counter_value_cycles(WINDOW *win, float val)
     */
    barwidth = MIN2(barwidth, valwidth - 1);
 
-   n = asprintf(&str, "%.2f%%", 100.0 * val);
+   n = snprintf(str, sizeof(str), "%.2f%%", 100.0 * val);
    wattron(win, COLOR_PAIR(COLOR_INVERSE));
    waddnstr(win, str, barwidth);
    if (barwidth > n) {
@@ -406,18 +402,15 @@ redraw_counter_value_cycles(WINDOW *win, float val)
    if (barwidth < n)
       waddstr(win, str + barwidth);
    whline(win, ' ', w - getcurx(win));
-
-   free(str);
 }
 
 static void
 redraw_counter_value_raw(WINDOW *win, float val)
 {
-   char *str;
-   (void)asprintf(&str, "%'.2f", val);
+   char str[32];
+   snprintf(str, sizeof(str), "%'.2f", val);
    waddstr(win, str);
    whline(win, ' ', w - getcurx(win));
-   free(str);
 }
 
 static void
@@ -828,8 +821,6 @@ config_save(void)
 static void
 config_restore(void)
 {
-   char *str;
-
    config_init(&cfg);
 
    /* Read the file. If there is an error, report it and exit. */
@@ -840,11 +831,11 @@ config_restore(void)
    config_setting_t *root = config_root_setting(&cfg);
 
    /* per device settings: */
-   (void)asprintf(&str, "%s", fd_dev_name(dev.dev_id));
-   setting = config_setting_get_member(root, str);
+   char device_name[64];
+   snprintf(device_name, sizeof(device_name), "%s", fd_dev_name(dev.dev_id));
+   setting = config_setting_get_member(root, device_name);
    if (!setting)
-      setting = config_setting_add(root, str, CONFIG_TYPE_GROUP);
-   free(str);
+      setting = config_setting_add(root, device_name, CONFIG_TYPE_GROUP);
    if (!setting)
       return;
 

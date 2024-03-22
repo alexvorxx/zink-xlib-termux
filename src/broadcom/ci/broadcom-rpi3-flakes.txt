@@ -44,3 +44,4 @@ glx@glx-multithread-clearbuffer
 
 spec@arb_vertex_buffer_object@vbo-subdata-many drawarrays
 spec@arb_vertex_buffer_object@vbo-subdata-many drawelements
+spec@arb_vertex_buffer_object@vbo-subdata-many drawrangeelements

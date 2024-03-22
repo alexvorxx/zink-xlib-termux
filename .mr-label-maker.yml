@@ -88,7 +88,7 @@ issues:
         'bisected': 'bisected'
         'coverity': 'coverity'
         'deqp': 'deqp'
-        'feature request': 'feature_request'
+        'feature request': 'feature request'
         'haiku' : 'haiku'
         'regression': 'regression'
 

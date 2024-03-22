@@ -3292,7 +3292,7 @@ emit_load_tess_coord(struct ntd_context *ctx,
    for (unsigned i = 0; i < num_coords; ++i) {
       unsigned component_idx = i;
 
-      const struct dxil_value *component = dxil_module_get_int32_const(&ctx->mod, component_idx);
+      const struct dxil_value *component = dxil_module_get_int8_const(&ctx->mod, component_idx);
       if (!component)
          return false;
 
